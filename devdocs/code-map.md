@@ -110,7 +110,7 @@ rg -n "ELBOT_CONFIG_FILE|providers.toml|state.toml|tool_tags.toml|TextHandler|au
 - `internal/agent/dialogue/commit.go`：MessageCommitter、原 binding／活跃 attempt 提交准入、调用前普通文本及不可变 ToolPair 构建与同步提交。
 - `internal/agent/responses/loop.go`、`model_call.go`：原生业务 Loop、固定选择、pending／停止／接管、无服务端存储时的完整历史及旧链失效后的一次完整回放；`native_call.go`：实际请求归档、原生流／终态及新内容检测；`input.go`：新增输入和多模态 function_call_output 编码；`initial_inputs.go`：首次失败后待提交输入完整性校验；`foreground_notice.go`：原生接管提示排队、复用及末尾排序。
 - `internal/agent/responses/persistence.go`：工具副作用前的原生提交、展示 ToolPair 与原生结果／历史快照事务，以及仅限原生层的中断调用结尾。
-- `internal/agent/responses/context.go`：seed 根、checkpoint 链与冻结结果引用的窗口重建、完整性和媒体校验；`branch.go`：历史 Fork／后台复制材料；`continuation.go`：分支新增结果的媒体解析；`compact.go`：当前模型原生压缩、整个返回窗口及素材关联。
+- `internal/agent/responses/context.go`：seed 根、checkpoint 链与冻结结果引用的窗口重建、完整性和媒体校验；`branch.go`：历史 Fork／后台复制材料；`continuation.go`：分支新增结果的媒体解析；`compact.go`：当前模型流式原生压缩、单项 compaction seed 及素材引用保留。
 - `internal/agent/responses/store.go`：从持久化请求／响应判定存储与续链能力，供主对话及分支材料准备复用。
 - `internal/agent/responses/tool_inputs.go`：从原生历史和待提交输入重建定义索引、检测同名变化、持久化新增 additional_tools；`input_format.go`：Session 输入格式标记、带版本的 seed 编解码与旧格式拒绝。
 
@@ -365,7 +365,7 @@ rg -n "Fork|Archive|Pinned|Expire|SessionMode|metadata|workspace|cron:" internal
 先看：
 
 - `internal/contextmgr/service.go`、`state.go`、`compact.go`、`compact_contract.go`：共同历史查询、用量、阈值、seed 状态与压缩路由契约；`internal/agent/chat/compact.go`、`compressor.go`、`compact_prompt.go`：Chat 历史筛选与摘要实现。
-- `internal/agent/responses/compact.go`、`context.go`：Responses 原生压缩、完整窗口／素材准备及独立 seed，不读取 Chat 摘要模型。
+- `internal/agent/responses/compact.go`、`context.go`：Responses 压缩输入的完整窗口／素材准备、单项 compaction seed 及独立素材引用，不读取 Chat 摘要模型。
 - `internal/agent/execution_compact.go`：协调手动／自动压缩的 Request／Turn、取消、绑定准入和会话交接；`context_usage.go`：协调器的用量记录与压缩阈值检查；`internal/agent/chat/context_seed.go`：Chat 的 seed 消耗时机。命令直接读取 contextmgr。
 - `internal/agent/chat/transcript.go`：Chat Prompt Builder 与历史组织。
 - `internal/agent/dialogue/system_prompt*.go`：共同 system prompt 管理和来源。
@@ -390,7 +390,7 @@ rg -n "ContextLoader|Compress|Window|System Prompt|MessageSegment|usage" interna
 - `internal/llm/responses/`：Responses 客户端、原生 items／事件／完整响应及未知 JSON 保留，成功／失败／incomplete 终态；GenerateText 是独立调用，不处理业务工具或主会话持久化。
 - `internal/llm/responses/client.go`：StoreForModel 读取 provider／模型存储偏好；PrepareRequest 提取并校验 store 配置、合并其余参数并冻结实际编码 JSON，StreamPrepared 发送同一字节快照，供业务路线在 API 前归档；鉴权头不进入快照。
 - `internal/llm/responses/tools.go`：additional_tools 编解码与验证、当前工具权限和 tool_choice 配置的交集。
-- `internal/llm/responses/compact.go`：独立 Compact 请求冻结、HTTP 调用及整个原生窗口解析；`error.go`：保留 status／code／param，识别明确的旧链失效。
+- `internal/llm/responses/compact.go`：追加 compaction_trigger、复用 Responses 请求冻结与 SSE 通路、验证终态和唯一加密压缩项；`error.go`：保留 status／code／param，识别明确的旧链失效。
 - `internal/modelmgr/service.go`、`selection.go`：共享服务与构造校验，模式／槽位、压缩和命名选择及请求快照。
 - `internal/modelmgr/compatibility.go`：按协议／provider 节点名纯比较 CanSwitch；`internal/command/builtin/model.go`：解析候选、只预检受影响槽位并提交全局选择。
 - `internal/modelmgr/signals.go`：共享客户端重试事实，供对话／压缩／命名统一消费；订阅归 app 所有。

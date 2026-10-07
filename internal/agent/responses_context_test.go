@@ -231,16 +231,26 @@ func TestResponsesForkToolCheckpointExcludesLaterResultsAndKeepsNativeRoot(t *te
 }
 
 func emitCompact(w http.ResponseWriter, items ...string) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "text/event-stream")
 	output := make([]json.RawMessage, 0, len(items))
-	for _, item := range items {
+	for index, item := range items {
 		output = append(output, json.RawMessage(item))
+		fmt.Fprintf(w, "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":%d,\"item\":%s}\n\n", index, item)
 	}
-	raw, _ := json.Marshal(map[string]any{"id": "compact-result", "object": "response.compaction", "output": output, "usage": map[string]int{"input_tokens": 7, "output_tokens": 2, "total_tokens": 9}})
-	fmt.Fprint(w, string(raw))
+	raw, _ := json.Marshal(map[string]any{"type": "response.completed", "response": map[string]any{"id": "compact-result", "status": "completed", "output": output, "usage": map[string]int{"input_tokens": 7, "output_tokens": 2, "total_tokens": 9}}})
+	fmt.Fprintf(w, "event: response.completed\ndata: %s\n\n", raw)
 }
 
-func TestResponsesCompactionUsesCurrentModelAndWholeWindowThenStartsNewChain(t *testing.T) {
+func expectCompactionRequest(t *testing.T, request nativeTestRequest) {
+	t.Helper()
+	if request.Endpoint != "/responses" || request.Store || request.PreviousResponseID != "" || string(request.ToolChoice) != `"none"` ||
+		len(request.Input) == 0 || string(request.Input[len(request.Input)-1]) != `{"type":"compaction_trigger"}` ||
+		strings.Count(inputJSON(request), "compaction_trigger") != 1 {
+		t.Errorf("invalid compaction request=%+v", request)
+	}
+}
+
+func TestResponsesCompactionUsesCurrentModelAndOnlyCompactionThenStartsNewChain(t *testing.T) {
 	for _, mode := range []string{"stored", "stateless"} {
 		t.Run(mode, func(t *testing.T) {
 			stateless := mode == "stateless"
@@ -249,19 +259,25 @@ func TestResponsesCompactionUsesCurrentModelAndWholeWindowThenStartsNewChain(t *
 				case 0:
 					emitNativeStore(w, "old", !stateless, `{"type":"reasoning","encrypted_content":"old-reasoning"}`, nativeText("source answer"))
 				case 1:
-					if request.Endpoint != "/responses/compact" || request.Model != "m" || request.PreviousResponseID != "" || !strings.Contains(inputJSON(request), "old-reasoning") {
+					expectCompactionRequest(t, request)
+					if request.Model != "m" || !strings.Contains(inputJSON(request), "old-reasoning") || !strings.Contains(inputJSON(request), "source input") {
 						t.Errorf("compact request=%+v", request)
 					}
-					emitCompact(w, `{"type":"message","role":"user","content":[{"type":"input_text","text":"retained input"}],"unknown":9007199254740993}`, `{"type":"compaction","encrypted_content":"compact-opaque","vendor_field":{"keep":true}}`, `{"type":"future_state","payload":"retain as-is"}`)
+					emitCompact(w, nativeText("audit only"), `{"type":"compaction","encrypted_content":"compact-opaque","vendor_field":{"keep":true},"unknown":9007199254740993}`, `{"type":"future_state","payload":"audit extra"}`)
 				case 2:
 					body := inputJSON(request)
-					if request.PreviousResponseID != "" || len(request.Input) != 4 || !strings.Contains(body, "compact-opaque") || !strings.Contains(body, "retain as-is") || !strings.Contains(body, "9007199254740993") || strings.Contains(body, "old-reasoning") {
+					if request.PreviousResponseID != "" || len(request.Input) != 2 || !strings.Contains(body, "compact-opaque") || !strings.Contains(body, "9007199254740993") {
 						t.Errorf("new root request=%+v", request)
+					}
+					for _, unwanted := range []string{"source input", "source answer", "old-reasoning", "audit only", "audit extra", "compaction_trigger"} {
+						if strings.Contains(body, unwanted) {
+							t.Errorf("new root retained %s: %s", unwanted, body)
+						}
 					}
 					emitNativeStore(w, "new-root", !stateless, nativeText("new answer"))
 				case 3:
 					if stateless {
-						if request.PreviousResponseID != "" || request.Store || len(request.Input) != 6 || strings.Count(inputJSON(request), "compact-opaque") != 1 {
+						if request.PreviousResponseID != "" || request.Store || len(request.Input) != 4 || strings.Count(inputJSON(request), "compact-opaque") != 1 {
 							t.Errorf("stateless compact continuation=%+v", request)
 						}
 					} else if request.PreviousResponseID != "new-root" || len(request.Input) != 1 {
@@ -289,6 +305,10 @@ func TestResponsesCompactionUsesCurrentModelAndWholeWindowThenStartsNewChain(t *
 			seed, err := f.store.Dialogues().Seed(t.Context(), next.ID)
 			if err != nil || seed.ResponseID != "" || seed.Consumed || !strings.Contains(seed.ItemsJSON, "compact-opaque") {
 				t.Fatalf("seed=%+v %v", seed, err)
+			}
+			var saved struct{ Items []json.RawMessage }
+			if err := json.Unmarshal([]byte(seed.ItemsJSON), &saved); err != nil || len(saved.Items) != 1 {
+				t.Fatalf("seed must contain only compaction: %s err=%v", seed.ItemsJSON, err)
 			}
 			if err := f.agent.HandleMessage(t.Context(), "first after compact"); err != nil {
 				t.Fatal(err)
@@ -577,9 +597,7 @@ func TestResponsesAutomaticCompactionUsesSharedThresholdAndPreservesAcceptedInpu
 		case 0:
 			emitNative(w, "old", "completed", nativeText("first answer"))
 		case 1:
-			if request.Endpoint != "/responses/compact" {
-				t.Errorf("endpoint=%s", request.Endpoint)
-			}
+			expectCompactionRequest(t, request)
 			emitCompact(w, `{"type":"compaction","encrypted_content":"auto-opaque"}`)
 		case 2:
 			if request.PreviousResponseID != "" || !strings.Contains(inputJSON(request), "auto-opaque") || strings.Count(inputJSON(request), "accepted second input") != 1 {
@@ -613,15 +631,13 @@ func TestResponsesForkAfterCompactionRetainsMediaAndHistoricalRootAfterSourceDel
 		case 0:
 			emitNative(w, "original", "completed", nativeText("original answer"))
 		case 1:
-			var retained map[string]json.RawMessage
-			if err := json.Unmarshal(request.Input[0], &retained); err != nil {
-				t.Error(err)
+			expectCompactionRequest(t, request)
+			if !strings.Contains(inputJSON(request), "data:image/png;base64,") {
+				t.Errorf("compact input missing media: %+v", request)
 			}
-			retained["id"] = json.RawMessage(`"new-retained-id"`)
-			raw, _ := json.Marshal(retained)
-			emitCompact(w, string(raw), `{"type":"compaction","encrypted_content":"media-root-opaque"}`)
+			emitCompact(w, `{"type":"compaction","encrypted_content":"media-root-opaque"}`)
 		case 2:
-			if request.PreviousResponseID != "" || !strings.Contains(inputJSON(request), "input_image") {
+			if request.PreviousResponseID != "" || strings.Contains(inputJSON(request), "input_image") || !strings.Contains(inputJSON(request), "media-root-opaque") {
 				t.Errorf("compacted root=%+v", request)
 			}
 			emitNative(w, "root-anchor", "completed", nativeText("anchor answer"))
@@ -634,7 +650,7 @@ func TestResponsesForkAfterCompactionRetainsMediaAndHistoricalRootAfterSourceDel
 			nativeChainError(w)
 		case 5:
 			body := inputJSON(request)
-			if request.PreviousResponseID != "" || !strings.Contains(body, "media-root-opaque") || !strings.Contains(body, "data:image/png;base64,") || strings.Contains(body, "exclude later") || strings.Count(body, "branch input") != 1 {
+			if request.PreviousResponseID != "" || !strings.Contains(body, "media-root-opaque") || strings.Contains(body, "data:image/png;base64,") || strings.Contains(body, "exclude later") || strings.Count(body, "branch input") != 1 {
 				t.Errorf("independent root=%+v", request)
 			}
 			emitNative(w, "branch", "completed", nativeText("branch answer"))
@@ -660,7 +676,7 @@ func TestResponsesForkAfterCompactionRetainsMediaAndHistoricalRootAfterSourceDel
 	}
 	root := fixtureSession(t, f)
 	rootSeed, err := f.store.Dialogues().Seed(t.Context(), root.ID)
-	if err != nil || !strings.Contains(rootSeed.MaterialsJSON, image.ID) || !strings.Contains(rootSeed.ItemsJSON, "new-retained-id") {
+	if err != nil || len(rootSeed.MediaIDs) != 1 || rootSeed.MediaIDs[0] != image.ID || strings.Contains(rootSeed.ItemsJSON, "input_image") || strings.Contains(rootSeed.MaterialsJSON, image.ID) {
 		t.Fatalf("retained media seed=%+v %v", rootSeed, err)
 	}
 	if err := f.agent.HandleMessage(t.Context(), "anchor input"); err != nil {

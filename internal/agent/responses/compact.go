@@ -136,20 +136,7 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	materials, err := retainedMaterials(w, items, result.Output)
-	if err != nil {
-		return nil, err
-	}
-	nextWindow := &nativeWindow{Items: result.Output, Materials: materials, Origin: target, Checkpoint: cp, RetainedMediaIDs: w.mediaIDs()}
-	found := false
-	for _, item := range result.Output {
-		if item.Type == "compaction" {
-			found = true
-		}
-	}
-	if !found {
-		return nil, fmt.Errorf("原生压缩缺少 compaction item")
-	}
+	nextWindow := &nativeWindow{Items: []api.Item{result.Compaction}, Origin: target, Checkpoint: cp, RetainedMediaIDs: w.mediaIDs()}
 	if err := validateCallLinks(nextWindow.Items, false); err != nil {
 		return nil, err
 	}
@@ -171,67 +158,4 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 		compact.SourceTokens, compact.SummaryTokens, compact.TotalTokens, compact.CacheHitTokens = usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens, usage.CacheHitTokens
 	}
 	return &contextmgr.PreparedCompact{Title: title, State: compact, Seed: seed, ExpectedCheckpointID: checkpointID}, nil
-}
-
-// Retained items keep their media positions even if compaction assigns new IDs.
-// Match media content, refusing ambiguous or missing material associations.
-func retainedMaterials(source *nativeWindow, resolved, output []api.Item) ([]material, error) {
-	var result []material
-	for index, item := range output {
-		key, err := mediaContentKey(item)
-		if err != nil {
-			return nil, err
-		}
-		if key == "" {
-			continue
-		}
-		var matched *material
-		for _, m := range source.Materials {
-			other, err := mediaContentKey(resolved[m.ItemIndex])
-			if err != nil {
-				return nil, err
-			}
-			if other != key {
-				continue
-			}
-			if matched != nil {
-				first, _ := json.Marshal(matched.Segments)
-				second, _ := json.Marshal(m.Segments)
-				if string(first) != string(second) {
-					return nil, fmt.Errorf("原生压缩输出的素材关联不明确")
-				}
-			}
-			next := m
-			matched = &next
-		}
-		if matched != nil {
-			matched.ItemIndex = index
-			result = append(result, *matched)
-		}
-	}
-	return result, nil
-}
-
-func mediaContentKey(item api.Item) (string, error) {
-	parts, err := nativeContent(item)
-	if err != nil {
-		return "", err
-	}
-	var mediaParts []map[string]json.RawMessage
-	for _, raw := range parts {
-		var part map[string]json.RawMessage
-		if err := json.Unmarshal(raw, &part); err != nil {
-			return "", err
-		}
-		var kind string
-		_ = json.Unmarshal(part["type"], &kind)
-		if kind == "input_image" || kind == "input_file" {
-			mediaParts = append(mediaParts, part)
-		}
-	}
-	if len(mediaParts) == 0 {
-		return "", nil
-	}
-	encoded, err := json.Marshal(mediaParts)
-	return string(encoded), err
 }

@@ -1,14 +1,10 @@
 package responses
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-
-	"elbot/internal/llm"
+	"strings"
 )
 
 type CompactRequest struct {
@@ -22,61 +18,36 @@ type Compactor interface {
 	CompactPrepared(context.Context, PreparedCompactRequest) (*CompactResult, error)
 }
 
-type PreparedCompactRequest struct{ body []byte }
+type PreparedCompactRequest struct{ request PreparedRequest }
 
-func (p PreparedCompactRequest) JSON() json.RawMessage {
-	return append(json.RawMessage(nil), p.body...)
-}
+func (p PreparedCompactRequest) JSON() json.RawMessage { return p.request.JSON() }
 
+// Response retains the real terminal response and all completed output for audit.
+// Only Compaction becomes the next session's context root.
 type CompactResult struct {
-	Raw    json.RawMessage `json:"-"`
-	ID     string          `json:"id"`
-	Object string          `json:"object"`
-	Output []Item          `json:"output"`
-	Usage  *ResponseUsage  `json:"usage"`
-}
-
-func (r *CompactResult) TokenUsage() *llm.Usage {
-	return (&Response{Usage: r.Usage}).TokenUsage()
+	*Response
+	Compaction Item
 }
 
 func (c *Client) PrepareCompact(req CompactRequest) (PreparedCompactRequest, error) {
-	if err := c.validateBaseURL(); err != nil {
-		return PreparedCompactRequest{}, err
-	}
-	input := req.Input
-	if input == nil {
-		input = []Item{}
-	}
-	body := map[string]any{"model": req.Model, "input": input}
-	if req.Instructions != "" {
-		body["instructions"] = req.Instructions
-	}
-	// Generation options (reasoning, text.format, tools, streaming) do not belong
-	// to /responses/compact. Only its documented cache/service options carry over.
-	compactExtras := func(source map[string]any) map[string]any {
-		extra := make(map[string]any)
-		for _, key := range []string{"service_tier", "prompt_cache_key", "prompt_cache_options", "prompt_cache_retention"} {
-			if value, ok := source[key]; ok {
-				extra[key] = value
-			}
+	input := make([]Item, 0, len(req.Input)+1)
+	for _, item := range req.Input {
+		if item.Type == "compaction_trigger" {
+			return PreparedCompactRequest{}, fmt.Errorf("compaction_trigger must not appear in retained context")
 		}
-		return extra
+		input = append(input, item)
 	}
-	body, err := llm.AddExtraFields(body, []string{"model", "input", "instructions", "previous_response_id", "conversation", "store", "stream", "tools"},
-		llm.ExtraFields{Source: "provider compact options", Fields: compactExtras(c.extraPayload)},
-		llm.ExtraFields{Source: "model compact options", Fields: compactExtras(c.modelExtraPayloads[req.Model])},
-		llm.ExtraFields{Source: "compact ExtraBody", Fields: req.ExtraBody})
+	trigger, err := ParseItem([]byte(`{"type":"compaction_trigger"}`))
 	if err != nil {
 		return PreparedCompactRequest{}, err
 	}
-	var buf bytes.Buffer
-	encoder := json.NewEncoder(&buf)
-	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(body); err != nil {
-		return PreparedCompactRequest{}, err
-	}
-	return PreparedCompactRequest{body: append([]byte(nil), buf.Bytes()...)}, nil
+	input = append(input, trigger)
+	store := false
+	prepared, err := c.prepareRequest(Request{
+		Model: req.Model, Instructions: req.Instructions, Input: input,
+		Store: &store, Include: []string{"reasoning.encrypted_content"}, ExtraBody: req.ExtraBody,
+	}, true)
+	return PreparedCompactRequest{request: prepared}, err
 }
 
 func (c *Client) Compact(ctx context.Context, req CompactRequest) (*CompactResult, error) {
@@ -88,36 +59,72 @@ func (c *Client) Compact(ctx context.Context, req CompactRequest) (*CompactResul
 }
 
 func (c *Client) CompactPrepared(ctx context.Context, prepared PreparedCompactRequest) (*CompactResult, error) {
-	if len(prepared.body) == 0 {
-		return nil, fmt.Errorf("prepared compact request is empty")
+	callCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	events, err := c.StreamPrepared(callCtx, prepared.request)
+	if err != nil {
+		return nil, err
 	}
-	resp, err := c.transport.Do(ctx, func(ctx context.Context) (*http.Request, error) {
-		r, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/responses/compact", bytes.NewReader(prepared.body))
-		if err != nil {
-			return nil, err
+	result := &CompactResult{Response: &Response{}}
+	var completedItems []Item
+	completed := false
+	for event := range events {
+		if event.Response != nil {
+			result.Response = event.Response
 		}
-		r.Header.Set("Authorization", "Bearer "+c.apiKey)
-		r.Header.Set("Content-Type", "application/json")
-		return r, nil
-	}, parseError)
-	if err != nil {
-		return nil, err
+		if event.Error != nil {
+			if len(result.Output) == 0 {
+				result.Output = completedItems
+			}
+			return result, event.Error
+		}
+		switch event.Type {
+		case "response.output_item.done":
+			if event.Item == nil {
+				return result, fmt.Errorf("compact output_item.done is missing item")
+			}
+			completedItems = append(completedItems, *event.Item)
+		case "response.completed":
+			completed = true
+		}
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, parseError(resp)
+	if len(result.Output) == 0 {
+		result.Output = completedItems
 	}
-	raw, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
+	if err := ctx.Err(); err != nil {
+		return result, err
 	}
-	var result CompactResult
-	if err := json.Unmarshal(raw, &result); err != nil {
-		return nil, fmt.Errorf("decode compact result: %w", err)
+	if !completed {
+		return result, fmt.Errorf("compact stream closed before response.completed")
 	}
-	if result.ID == "" || result.Object != "response.compaction" || len(result.Output) == 0 {
-		return nil, fmt.Errorf("incomplete compact result")
+	// A terminal output array repeats output_item.done; it is not another set of
+	// items. Validate each representation separately rather than counting twice.
+	if len(completedItems) > 0 {
+		if _, err := compactOutput(completedItems); err != nil {
+			return result, err
+		}
 	}
-	result.Raw = append(json.RawMessage(nil), raw...)
-	return &result, nil
+	result.Compaction, err = compactOutput(result.Output)
+	return result, err
+}
+
+func compactOutput(items []Item) (Item, error) {
+	var compact Item
+	count := 0
+	for _, item := range items {
+		if item.Type == "compaction" {
+			count++
+			compact = item
+		}
+	}
+	if count != 1 {
+		return Item{}, fmt.Errorf("compact expected exactly one compaction item, got %d", count)
+	}
+	var payload struct {
+		EncryptedContent string `json:"encrypted_content"`
+	}
+	if err := json.Unmarshal(compact.Raw, &payload); err != nil || strings.TrimSpace(payload.EncryptedContent) == "" {
+		return Item{}, fmt.Errorf("compaction item requires non-empty encrypted_content")
+	}
+	return compact, nil
 }

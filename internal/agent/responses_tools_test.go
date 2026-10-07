@@ -331,19 +331,17 @@ func TestResponsesPendingDefinitionsSurviveRestartAndStatelessReplay(t *testing.
 	}
 }
 
-func TestResponsesCompactionRetainsOrReloadsToolDefinitions(t *testing.T) {
-	for _, retain := range []bool{false, true} {
-		t.Run(fmt.Sprintf("retain=%v", retain), func(t *testing.T) {
+func TestResponsesCompactionReloadsToolDefinitions(t *testing.T) {
+	for _, extraDefinitions := range []bool{false, true} {
+		t.Run(fmt.Sprintf("extraDefinitions=%v", extraDefinitions), func(t *testing.T) {
 			registry := tool.NewRegistry()
 			_ = registry.Register(nativeTool{name: "one"})
 			f := newNativeFixture(t, func(index int, request nativeTestRequest, w http.ResponseWriter) {
 				expectNativeDefinitions(t, request, "one")
 				if index == 1 {
-					if request.Endpoint != "/responses/compact" {
-						t.Error("missing compact request")
-					}
+					expectCompactionRequest(t, request)
 					items := []string{`{"type":"compaction","encrypted_content":"compact-state"}`}
-					if retain {
+					if extraDefinitions {
 						for _, item := range request.Input {
 							if strings.Contains(string(item), `"type":"additional_tools"`) {
 								items = append(items, string(item))
