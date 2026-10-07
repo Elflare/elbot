@@ -12,12 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added a dedicated `view_image` for Responses: reads media IDs, URLs, local images, or images from the current chat history; images are fed back into the model, and local paths are only available to superadmins.
 - Provider added `api_mode="chat"/"response"`; if omitted, Chat Completions will still be used.
 - `edit_file` keeps an in-memory backup of each file before its most recent edit. Added `/rollback [编号]` and tool `rollback_file` available only to superadmins, which automatically expand when file read/write tools are discovered; Records become invalid after switching Sessions, restarting, or capacity eviction. Does not overwrite modifications made by Shell or external programs.
 - Added a chat command `/doctor` available only to superadmins, which performs a read-only check for missing items in the current configuration, TOML errors, unknown fields in the main configuration, and differences in built-in Skills; Lists issues by file and generates ElBot processing requests accompanied by configuration instructions and default template addresses. Returns `Everything is OK` when there are no issues, and will not automatically modify files.
 
 ### Changed
 
+- Tools now support restricting discovery, completion, preloading, and execution by API type.
+- The stdout/stderr return limit for `shell` has been increased from 16 KiB each to 256 KiB each; if exceeded, a note about truncation due to length will be added to the end of the corresponding output.
 - Responses tool definitions have been changed from the top-level of each round `tools` to incremental `additional_tools` in native input; playback retains the original position; Current invocation permissions are separately restricted by `tool_choice`. Old Responses Sessions and changes to tool definitions with the same name require creating a new Session.
 - Background path descriptions have been moved from the schema of the four path tools to the system prompt; frontend takeover no longer changes tool definitions.
 - Compaction is dispatched by Session protocol: Chat continues to use an independent summary model, while Responses use the current model and fully preserve the native return window; both share the same compaction threshold.
@@ -29,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed an issue where `shell` cached all output and only truncated it after completion, causing memory usage to grow with the output volume during execution; capacity is now limited during collection, and any excess is drained and discarded.
 - Fixed the high-risk confirmation bug.
 - Fixed the additional confirmation wait bug.
 - QQ OneBot: LLM can now see merged messages in quoted replies, expanding only one level of content.
