@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"reflect"
@@ -137,5 +138,62 @@ func TestEmitLogSnapshotsRawJSONAsStructuredValues(t *testing.T) {
 	want := map[string]any{"api_key": "secret", "count": json.Number("123")}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("raw JSON must remain inspectable for redaction: %#v", got)
+	}
+}
+
+func TestEmitLogSnapshotsErrorAndPreservesBusinessResult(t *testing.T) {
+	var received LogRecord
+	connection, err := LogSubmitted.Connect(func(_ context.Context, record LogRecord) error {
+		received = record
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Disconnect()
+	for _, wrapper := range []string{"direct", "wrapped", "joined"} {
+		t.Run(wrapper, func(t *testing.T) {
+			original := &mutableError{text: "original diagnostic"}
+			var failure error = original
+			switch wrapper {
+			case "wrapped":
+				failure = fmt.Errorf("upstream: %w", original)
+			case "joined":
+				failure = errors.Join(context.Canceled, original, errors.New("save failed"))
+			}
+			message := failure.Error()
+			if err := EmitLog(context.Background(), LogRecord{Level: slog.LevelWarn, ResultStatus: ResultFailed, Error: failure}); err != nil {
+				t.Fatal(err)
+			}
+			original.text = "changed after publication"
+			if received.Level != slog.LevelWarn || received.ResultStatus != ResultFailed || received.Error.Error() != message {
+				t.Fatalf("business facts changed: %+v", received)
+			}
+			var diagnostic DiagnosticError
+			if !errors.As(received.Error, &diagnostic) || diagnostic.LogDiagnostic() != (LogDiagnostic{Kind: "upstream", Detail: "original diagnostic"}) {
+				t.Fatalf("diagnostic changed: %v", received.Error)
+			}
+			var liveError *mutableError
+			if errors.As(received.Error, &liveError) {
+				t.Fatal("published error retained a mutable source")
+			}
+		})
+	}
+	plain := errors.New("plain failure")
+	if err := EmitLog(context.Background(), LogRecord{ResultStatus: ResultCanceled, Level: slog.LevelError, Error: plain}); err != nil {
+		t.Fatal(err)
+	}
+	var diagnostic DiagnosticError
+	if received.Level != slog.LevelError || received.ResultStatus != ResultCanceled || received.Error.Error() != plain.Error() || errors.As(received.Error, &diagnostic) {
+		t.Fatalf("plain error was reclassified: %+v", received)
+	}
+	var typedNil *mutableError
+	for _, failure := range []error{nil, typedNil} {
+		if err := EmitLog(context.Background(), LogRecord{Error: failure}); err != nil {
+			t.Fatal(err)
+		}
+		if received.ResultStatus != "" || received.Error != nil {
+			t.Fatalf("absent error or result was manufactured: %+v", received)
+		}
 	}
 }

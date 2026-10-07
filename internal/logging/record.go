@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -139,10 +140,23 @@ func identityKey(key string) bool {
 func formatRecord(ctx context.Context, record events.LogRecord, debug bool) ([]byte, error) {
 	summary := limitRunes(redactText(record.Summary, 0), maxSummaryRunes)
 	detail := ""
-	if record.Category != events.LogRuntime || debug {
+	includeDetails := record.Category != events.LogRuntime || debug
+	if includeDetails {
 		detail = limitBytes(redactText(record.Detail, 0), maxDetailBytes)
 	}
 	core := []slog.Attr{slog.String("event", limitBytes(redactText(record.Name, 0), 256)), slog.String("module", limitBytes(redactText(record.Module, 0), 256))}
+	if record.ResultStatus != "" {
+		core = append(core, safeAttr(slog.String("result_status", string(record.ResultStatus))))
+	}
+	if record.Error != nil {
+		errorField := slog.String("error", record.Error.Error())
+		var diagnostic events.DiagnosticError
+		if includeDetails && errors.As(record.Error, &diagnostic) {
+			value := diagnostic.LogDiagnostic()
+			errorField = slog.Any("error", map[string]any{"message": record.Error.Error(), "kind": value.Kind, "detail": value.Detail})
+		}
+		core = append(core, safeAttr(errorField))
+	}
 	var fields []slog.Attr
 	seen := make(map[string]bool)
 	var add func(slog.Attr)
@@ -154,8 +168,12 @@ func formatRecord(ctx context.Context, record events.LogRecord, debug bool) ([]b
 			return
 		}
 		switch attr.Key {
-		case "time", "level", "msg", "event", "module", "detail", "truncated":
+		case "time", "level", "msg", "event", "module", "detail", "truncated", "result_status":
 			return
+		case "error":
+			if record.Error != nil {
+				return
+			}
 		}
 		if identityKey(attr.Key) {
 			if !seen[attr.Key] {

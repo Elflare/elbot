@@ -95,9 +95,11 @@ func TestGlobalRecordsSnapshotBeforeQueueConsumption(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-started
+	failure := &mutableDiagnosticError{message: "original error", detail: "original diagnostic"}
 	values := map[string]any{"nested": []any{"original"}}
-	emitRecord(t, events.LogRecord{Category: events.LogRuntime, Summary: "snapshot", Detail: "debug detail", Fields: []slog.Attr{slog.Any("payload", values)}})
+	emitRecord(t, events.LogRecord{Category: events.LogRuntime, Summary: "snapshot", Detail: "debug detail", Error: failure, ResultStatus: events.ResultFailed, Fields: []slog.Attr{slog.Any("payload", values)}})
 	values["nested"].([]any)[0] = "changed"
+	failure.message, failure.detail = "changed error", "changed diagnostic"
 	close(release)
 	if err := m.Close(context.Background()); err != nil {
 		t.Fatal(err)
@@ -108,6 +110,113 @@ func TestGlobalRecordsSnapshotBeforeQueueConsumption(t *testing.T) {
 	}
 	if !strings.Contains(entries[0].Fields["payload"], "original") || strings.Contains(entries[0].Raw, "changed") || entries[0].Fields["detail"] != "debug detail" {
 		t.Fatal(entries)
+	}
+	if !strings.Contains(entries[0].Fields["error"], "original diagnostic") || !strings.Contains(entries[0].Fields["error"], "original error") || entries[0].Fields["result_status"] != "failed" {
+		t.Fatalf("lost error snapshot: %+v", entries)
+	}
+}
+
+type mutableDiagnosticError struct{ message, detail string }
+
+func (e *mutableDiagnosticError) Error() string { return e.message }
+func (e *mutableDiagnosticError) LogDiagnostic() events.LogDiagnostic {
+	return events.LogDiagnostic{Kind: "upstream", Detail: e.detail}
+}
+
+func TestGlobalResultAndErrorFieldsPreserveSeverityAndDetailPolicy(t *testing.T) {
+	for _, configuredLevel := range []string{"debug", "info", "warn", "error"} {
+		t.Run(configuredLevel, func(t *testing.T) {
+			manager := testManager(t, configuredLevel)
+			failure := &mutableDiagnosticError{message: "call failed", detail: `{"description":"diagnostic evidence","api_key":"secret-value"}`}
+			for _, category := range logCategories {
+				for _, fact := range []struct {
+					name   string
+					level  slog.Level
+					status events.ResultStatus
+				}{
+					{"attempt", slog.LevelWarn, events.ResultFailed},
+					{"cancellation", slog.LevelError, events.ResultCanceled},
+					{"rejection", slog.LevelInfo, events.ResultRejected},
+				} {
+					emitRecord(t, events.LogRecord{Category: category, Name: fact.name, Level: fact.level, ResultStatus: fact.status, Error: failure,
+						Fields: []slog.Attr{slog.String("result_status", "forged"), slog.Group("", slog.String("error", "forged"), slog.String("result_status", "forged"))}})
+				}
+			}
+			// Unmigrated producers keep their existing fields until step 2.
+			emitRecord(t, events.LogRecord{Category: events.LogAudit, Name: "existing_error", Fields: []slog.Attr{slog.String("error", "existing failure")}})
+			// No declared result must remain absent, even with a conflicting free field.
+			emitRecord(t, events.LogRecord{Category: events.LogAudit, Name: "progress", Fields: []slog.Attr{slog.String("result_status", "succeeded")}})
+			if err := manager.Close(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			for _, prefix := range []string{"elbot", "audit", "elnis"} {
+				entries, err := (Reader{Dir: manager.LogDir()}).Query(context.Background(), LogQuery{Prefix: prefix, Limit: 20})
+				if err != nil {
+					t.Fatal(err)
+				}
+				wantCount := 3
+				if prefix == "audit" {
+					wantCount += 2
+				}
+				if prefix == "elbot" && configuredLevel == "warn" {
+					wantCount = 2
+				}
+				if prefix == "elbot" && configuredLevel == "error" {
+					wantCount = 1
+				}
+				if len(entries) != wantCount {
+					t.Fatalf("%s entries=%+v", prefix, entries)
+				}
+				for _, entry := range entries {
+					name := entry.Fields["event"]
+					if name == "existing_error" {
+						if entry.Fields["error"] != "existing failure" {
+							t.Fatal(entry)
+						}
+						continue
+					}
+					if name == "progress" {
+						if _, present := entry.Fields["result_status"]; present {
+							t.Fatal(entry)
+						}
+						if _, present := entry.Fields["error"]; present {
+							t.Fatal(entry)
+						}
+						continue
+					}
+					wantLevel := map[string]string{"attempt": "WARN", "cancellation": "ERROR", "rejection": "INFO"}[name]
+					wantStatus := map[string]string{"attempt": "failed", "cancellation": "canceled", "rejection": "rejected"}[name]
+					if entry.Level != wantLevel || entry.Fields["result_status"] != wantStatus || !strings.Contains(entry.Fields["error"], "call failed") || strings.Contains(entry.Raw, "forged") || strings.Contains(entry.Raw, "secret-value") {
+						t.Fatalf("facts overwritten or secret leaked: %+v", entry)
+					}
+					wantDetails := prefix != "elbot" || configuredLevel == "debug"
+					if strings.Contains(entry.Fields["error"], "diagnostic evidence") != wantDetails {
+						t.Fatalf("detail policy: %+v", entry)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestResultErrorFieldsSurviveRecordLimits(t *testing.T) {
+	manager := testManager(t, "info")
+	failure := &mutableDiagnosticError{message: strings.Repeat("失败", 10000), detail: `{"token":"secret-value","text":"` + strings.Repeat("详情", 10000) + `"}`}
+	fields := make([]slog.Attr, 40)
+	for i := range fields {
+		fields[i] = slog.String(fmt.Sprintf("payload_%d", i), strings.Repeat("x", 8000))
+	}
+	emitRecord(t, events.LogRecord{Category: events.LogAudit, Level: slog.LevelError, Name: "large_failure", ResultStatus: events.ResultFailed, Error: failure, Fields: fields})
+	if err := manager.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := (Reader{Dir: manager.LogDir()}).Query(context.Background(), LogQuery{Prefix: "audit", Fields: map[string]string{"event": "large_failure", "result_status": "failed"}})
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("entries=%+v error=%v", entries, err)
+	}
+	entry := entries[0]
+	if len(entry.Raw) > maxRecordBytes || len(entry.Fields["error"]) > maxDetailBytes || !utf8.ValidString(entry.Raw) || !strings.Contains(entry.Fields["error"], truncatedMarker) || entry.Fields["truncated"] != "true" || strings.Contains(entry.Raw, "secret-value") {
+		t.Fatalf("limits failed: errorBytes=%d recordBytes=%d fields=%v", len(entry.Fields["error"]), len(entry.Raw), entry.Fields)
 	}
 }
 
