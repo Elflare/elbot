@@ -181,7 +181,7 @@ Note:
 - `models` is a manually supplemented list of model names, used when the Provider's model list interface cannot retrieve certain models.
 - `[providers.<name>.model_configs."<model>"]` configures `context_window` and `extra_payload` for specific models; both are optional.
 - The provider and model levels share `extra_payload`; fill in the native parameters supported by the API/model according to `api_mode`.
-- `extra_payload` will be merged into the LLM request JSON, with model-level settings overriding provider-level settings.
+- `extra_payload` will be merged into the LLM request JSON.
 - `default_context_window` of `[model_metadata]` is the global fallback value, defaulting to `256000`, and is used when `context_window` is not configured in `model_configs`.
 
 Configuration example for Responses:
@@ -191,8 +191,10 @@ Configuration example for Responses:
 api_mode = "response"
 base_url = "https://api.openai.com/v1"
 api_key_env = "OPENAI_API_KEY"
-extra_payload = { reasoning = { effort = "medium" } }
+extra_payload = { store = false, reasoning = { effort = "medium" } }
 ```
+
+The Provider or model-level `extra_payload` of Responses can use `store = false` to disable server-side storage, and subsequent full native history will be sent; Server-side continuation is used by default. If the upstream returns `store:false`, it will automatically switch and record a WARN in the background.
 
 Both Chat Completions and Responses clients can be used for naming and text summaries of Chat Sessions. Responses Sessions use the current conversation model for native compression, ignoring the selection of `/model --compact`.
 
