@@ -1,34 +1,30 @@
 package toolrun
 
-import (
-	"context"
+import "context"
 
-	"elbot/internal/tool"
-)
-
-func backgroundToolAllowed(ctx context.Context, item CachedTool, registry *tool.Registry) bool {
+func backgroundToolAllowed(ctx context.Context, item CachedTool) bool {
 	for _, name := range []string{item.Name, item.CanonicalName, item.Schema.Name} {
 		if name == "discover_tool" || name == "workspace" {
 			return false
 		}
 	}
-	return !item.ForegroundOnly && cachedToolAvailable(ctx, item, registry)
+	return !item.ForegroundOnly && cachedToolAvailable(ctx, item)
 }
 
 // BackgroundCachedTools filters declarations before their initial commit.
-func BackgroundCachedTools(ctx context.Context, items []CachedTool, registry *tool.Registry) []CachedTool {
+func BackgroundCachedTools(ctx context.Context, items []CachedTool) []CachedTool {
 	var result []CachedTool
 	for _, item := range items {
-		if backgroundToolAllowed(ctx, item, registry) {
+		if backgroundToolAllowed(ctx, item) {
 			result = append(result, item)
 		}
 	}
 	return result
 }
 
-func BackgroundToolNames(ctx context.Context, items []CachedTool, registry *tool.Registry) map[string]bool {
+func BackgroundToolNames(ctx context.Context, items []CachedTool) map[string]bool {
 	names := map[string]bool{}
-	for _, item := range BackgroundCachedTools(ctx, items, registry) {
+	for _, item := range BackgroundCachedTools(ctx, items) {
 		if name := item.Schema.Name; name != "" {
 			names[name] = true
 		}

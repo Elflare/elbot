@@ -124,10 +124,10 @@ func (m *Manager) Schemas(ctx context.Context, view Context, cached []CachedTool
 		appendSchema(schema)
 	}
 	for _, cachedTool := range cached {
-		if view.Mode == storage.SessionModeBackground && !backgroundToolAllowed(ctx, cachedTool, m.registry()) {
+		if view.Mode == storage.SessionModeBackground && !backgroundToolAllowed(ctx, cachedTool) {
 			continue
 		}
-		if !cachedToolAvailable(ctx, cachedTool, m.registry()) {
+		if !cachedToolAvailable(ctx, cachedTool) {
 			continue
 		}
 		appendSchema(cachedTool.Schema)
@@ -135,25 +135,8 @@ func (m *Manager) Schemas(ctx context.Context, view Context, cached []CachedTool
 	return out, nil
 }
 
-func (m *Manager) registry() *tool.Registry {
-	if m == nil || m.Native == nil {
-		return nil
-	}
-	return m.Native.Registry
-}
-
-func cachedToolAvailable(ctx context.Context, cached CachedTool, registry *tool.Registry) bool {
-	if !AvailableInContext(ctx, tool.Info{ForegroundOnly: cached.ForegroundOnly}) {
-		return false
-	}
-	if cached.Source == SourceKindELwisp {
-		return true
-	}
-	if registry == nil {
-		return false
-	}
-	candidate, ok := registry.Get(cached.Name)
-	return ok && AvailableInContext(ctx, candidate.Info())
+func cachedToolAvailable(ctx context.Context, cached CachedTool) bool {
+	return AvailableInContext(ctx, tool.Info{ForegroundOnly: cached.ForegroundOnly})
 }
 
 func (m *Manager) Resolve(ctx context.Context, name string, cached []CachedTool, mode string) ResolvedTool {
@@ -165,11 +148,11 @@ func (m *Manager) Resolve(ctx context.Context, name string, cached []CachedTool,
 		if cachedTool.Name != name && cachedTool.CanonicalName != name {
 			continue
 		}
-		if mode == storage.SessionModeBackground && !backgroundToolAllowed(ctx, cachedTool, m.registry()) {
+		if mode == storage.SessionModeBackground && !backgroundToolAllowed(ctx, cachedTool) {
 			continue
 		}
 		cachedCopy := cachedTool
-		if !cachedToolAvailable(ctx, cachedCopy, m.registry()) {
+		if !cachedToolAvailable(ctx, cachedCopy) {
 			return ResolvedTool{Name: name, Source: cachedCopy.Source, Cached: &cachedCopy, Available: false, Reason: "tool is unavailable in this context"}
 		}
 		source := cachedCopy.Source

@@ -20,11 +20,6 @@ import (
 // Execution still resolves and checks its fixed selection at admission.
 func (c *executionCoordinator) modelContext(ctx context.Context, row *storage.Session) (context.Context, error) {
 	selected := modelmgr.SelectionForTurn(ctx, c.models, row)
-	if row != nil {
-		if err := c.view.CheckSelection(row, selected); err != nil {
-			return ctx, err
-		}
-	}
 	return c.view.WithModel(ctx, selected)
 }
 

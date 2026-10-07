@@ -42,7 +42,6 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 	manager := NewManager(registry, security.DefaultPolicy())
 	preloader := NewPreloadService(PreloadOptions{Registry: registry})
 	actor := contextinfo.Actor{Role: contextinfo.RoleSuperadmin}
-	cache := []CachedTool{{Name: "image", Source: SourceKindNative, Schema: image.Schema()}, {Name: "gone", Schema: llm.ToolSchema{Name: "gone"}}}
 	for _, apiType := range []string{"", "chat", "response", "other"} {
 		t.Run(apiType, func(t *testing.T) {
 			ctx := contextinfo.WithActor(t.Context(), actor)
@@ -54,6 +53,11 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 			if err != nil || (len(names) == 1) != want {
 				t.Fatalf("names=%v err=%v", names, err)
 			}
+			prepared, err := preloader.PrepareTools(ctx, []string{"image"})
+			if err != nil || len(prepared.Update.Tools) != boolInt(want) {
+				t.Fatalf("preload=%+v err=%v", prepared, err)
+			}
+			cache := prepared.Update.Tools
 			for _, mode := range []string{storage.SessionModeWork, storage.SessionModeBackground} {
 				schemas, err := manager.Schemas(ctx, Context{Mode: mode, DisableBaseTools: true}, cache)
 				if err != nil || len(schemas) != boolInt(want) {
@@ -62,10 +66,6 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 				if got := manager.Resolve(ctx, "image", cache, mode); got.Available != want {
 					t.Fatalf("resolved=%+v", got)
 				}
-			}
-			prepared, err := preloader.PrepareTools(ctx, []string{"image"})
-			if err != nil || len(prepared.Update.Tools) != boolInt(want) {
-				t.Fatalf("preload=%+v err=%v", prepared, err)
 			}
 			// Authorization expands the full tag even before API facts are known.
 			roots := preloader.BackgroundSelections(ctx, []string{"pictures"})
