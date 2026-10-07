@@ -106,7 +106,6 @@ func New(ctx context.Context, cfg Config, deps Dependencies) (*Agent, error) {
 			media: deps.Media, messages: store.Messages(), mediaRows: store.Media(), logger: logger,
 		},
 		background: &backgroundRunner{
-			registry: deps.ToolRegistry,
 			sessions: sessions, sessionRows: store.Sessions(), identity: identity, execution: execution,
 			preloader: deps.ToolPreloader, toolState: deps.ToolState,
 			sandboxRoot: filepath.Clean(strings.TrimSpace(cfg.SandboxRoot)), auditLogger: auditLogger,

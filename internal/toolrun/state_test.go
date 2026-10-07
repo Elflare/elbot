@@ -12,7 +12,6 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
-	"elbot/internal/tool"
 )
 
 func stateTestStore(t *testing.T, metadata string) (storage.Store, *storage.Session) {
@@ -173,11 +172,7 @@ func TestStateConcurrentUpdatesPreserveOtherOwners(t *testing.T) {
 
 func TestSchemasAreDetachedForPreparedHook(t *testing.T) {
 	item := stateTestTool("tool")
-	registry := tool.NewRegistry()
-	if err := registry.Register(availabilityTestTool{name: "tool"}); err != nil {
-		t.Fatal(err)
-	}
-	manager := NewManager(registry, nil)
+	manager := NewManager(nil, nil)
 	schemas, err := manager.Schemas(context.Background(), Context{Mode: storage.SessionModeWork}, []CachedTool{item})
 	if err != nil {
 		t.Fatal(err)

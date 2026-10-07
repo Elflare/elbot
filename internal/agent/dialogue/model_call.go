@@ -98,7 +98,7 @@ func (c *CallProcessor) PrepareProjection(ctx context.Context, session *storage.
 		if err != nil {
 			return CallInput{}, err
 		}
-		allowedTools = toolrun.BackgroundToolNames(ctx, cached, c.Tools.Registry)
+		allowedTools = toolrun.BackgroundToolNames(ctx, cached)
 	}
 	baseMessages := llm.CloneMessages(messages)
 	requestMessages := llm.CloneMessages(baseMessages)
