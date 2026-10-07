@@ -2,11 +2,15 @@ package builtin
 
 import (
 	"context"
+	"log/slog"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"elbot/internal/command"
+	"elbot/internal/events"
 	"elbot/internal/logging"
 	"elbot/internal/tool"
 )
@@ -202,7 +206,7 @@ func TestLogCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 	if err != nil {
 		t.Fatalf("log handle --hook: %v", err)
 	}
-	if len(service.query.FieldExists) != 1 || service.query.FieldExists[0] != "hook" {
+	if service.query.Fields["module"] != "hook" || len(service.query.FieldExists) != 0 {
 		t.Fatalf("query = %#v", service.query)
 	}
 }
@@ -221,18 +225,18 @@ func TestAuditCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 	if err != nil {
 		t.Fatalf("audit handle --hook: %v", err)
 	}
-	if service.query.Fields["event"] != "hook" {
+	if service.query.Fields["module"] != "hook" || service.query.Fields["event"] != "" {
 		t.Fatalf("query = %#v", service.query)
 	}
 }
 
-func TestAuditCommandMapsOldMessageEventAliases(t *testing.T) {
+func TestAuditCommandPreservesLiteralEventNames(t *testing.T) {
 	service := &fakeLogService{entries: []logging.LogEntry{{Message: "audit event", Fields: map[string]string{"event": "user_message"}}}}
 	_, err := NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `--event user_input`})
 	if err != nil {
 		t.Fatalf("audit handle user_input: %v", err)
 	}
-	if service.query.Fields["event"] != "user_message" {
+	if service.query.Fields["event"] != "user_input" {
 		t.Fatalf("query = %#v", service.query)
 	}
 
@@ -240,8 +244,144 @@ func TestAuditCommandMapsOldMessageEventAliases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("audit handle assistant_output: %v", err)
 	}
-	if service.query.Fields["event"] != "assistant_message" {
+	if service.query.Fields["event"] != "assistant_output" {
 		t.Fatalf("query = %#v", service.query)
+	}
+}
+
+func TestAuditCommandRemovedOptionsAndHookCombinations(t *testing.T) {
+	service := &fakeLogService{}
+	for _, option := range []string{"-u", "-a"} {
+		_, err := NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: option})
+		if err == nil || !strings.Contains(err.Error(), "unknown option: "+option) {
+			t.Fatalf("%s: %v", option, err)
+		}
+	}
+	for _, args := range []string{"--hook --event hook_tool_call", "--event hook_tool_call --hook"} {
+		_, err := NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: args})
+		if err != nil || service.query.Fields["module"] != "hook" || service.query.Fields["event"] != "hook_tool_call" {
+			t.Fatalf("%s: query=%+v err=%v", args, service.query, err)
+		}
+	}
+	cmd := NewAudit(Deps{})
+	help, err := cmd.Handle(context.Background(), command.Request{Args: "--help"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, option := range []string{"  -u", "  -a"} {
+		if strings.Contains(help.Content, option) {
+			t.Fatalf("obsolete help: %s", help.Content)
+		}
+	}
+	for _, tc := range []struct {
+		raw          string
+		want, absent []string
+	}{
+		{"/audit ", []string{"-t", "--hook"}, []string{"-u", "-a"}},
+		{"/audit --event ", []string{"llm_usage", "hook_tool_call", "hook_tool_error", "hook.tool_call"}, []string{"user_input", "assistant_output", "user_message", "assistant_message", "hook"}},
+	} {
+		completions := cmd.(command.Completer).Complete(context.Background(), command.CompletionRequest{Raw: tc.raw, Prefix: "/", Name: "audit", Cursor: len(tc.raw)})
+		var names []string
+		for _, completion := range completions {
+			names = append(names, completion.Text)
+		}
+		for _, want := range tc.want {
+			if !slices.Contains(names, want) {
+				t.Fatalf("%q missing %q: %v", tc.raw, want, names)
+			}
+		}
+		for _, absent := range tc.absent {
+			if slices.Contains(names, absent) {
+				t.Fatalf("%q retained %q: %v", tc.raw, absent, names)
+			}
+		}
+	}
+}
+
+func TestLogCommandsQueryGlobalRecords(t *testing.T) {
+	// Global subscriptions are intentionally serial; each center is closed
+	// before another level's fixture starts.
+	for _, level := range []string{"info", "debug", "warn", "error"} {
+		t.Run(level, func(t *testing.T) {
+			center, err := logging.NewManager(level, filepath.Join(t.TempDir(), "sessions.sqlite"), 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			closeCenter := func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := center.Close(ctx); err != nil {
+					t.Error(err)
+				}
+			}
+			t.Cleanup(closeCenter)
+			publish := func(record events.LogRecord) {
+				t.Helper()
+				if err := events.EmitLog(context.Background(), record); err != nil {
+					t.Fatal(err)
+				}
+			}
+			body := strings.Repeat("中文正文", 100) + "TAIL_BODY"
+			for _, name := range []string{"user_message", "assistant_message", "system_message"} {
+				publish(events.LogRecord{Category: events.LogRuntime, Level: slog.LevelInfo, Name: name, Module: "agent", Summary: name + ": " + body, Detail: body})
+			}
+			publish(events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, Name: "llm_usage", Module: "agent", Summary: "llm usage", Fields: []slog.Attr{
+				slog.String("provider", "test"), slog.String("model", "model"), slog.Int("prompt_tokens", 10), slog.Int("completion_tokens", 5), slog.Int("total_tokens", 15),
+			}})
+			publish(events.LogRecord{Category: events.LogAudit, Level: slog.LevelWarn, Name: "llm_error", Module: "agent", Summary: "upstream failed", Detail: "upstream diagnostic marker"})
+			for _, module := range []string{"hook", "agent", ""} {
+				for _, category := range []events.LogCategory{events.LogRuntime, events.LogAudit} {
+					// A hook field alone must not imply module=hook.
+					publish(events.LogRecord{Category: category, Level: slog.LevelError, Name: "hook_tool_call", Module: module, Summary: "hook tool call", Fields: []slog.Attr{slog.String("hook", "sample")}})
+				}
+			}
+			closeCenter()
+			deps := Deps{Logs: logging.Reader{Dir: center.LogDir()}}
+			query := func(handler command.Handler, args string) string {
+				t.Helper()
+				result, err := handler.Handle(context.Background(), command.Request{Args: args})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return result.Content
+			}
+			for _, filter := range []string{"-u", "-a", "--system"} {
+				summary := query(NewLog(deps), filter)
+				raw := query(NewLog(deps), filter+" -d")
+				if strings.Contains(summary, "TAIL_BODY") {
+					t.Fatalf("summary exposed full detail: %s", summary)
+				}
+				if level == "info" || level == "debug" {
+					if !strings.Contains(summary, "中文正文") || !strings.Contains(summary, "truncated") {
+						t.Fatalf("missing summary: %s", summary)
+					}
+				} else if summary != "no log entries found" {
+					t.Fatalf("runtime filtering: %s", summary)
+				}
+				if strings.Contains(raw, "TAIL_BODY") != (level == "debug") {
+					t.Fatalf("detail at %s: %s", level, raw)
+				}
+			}
+			for _, handler := range []command.Handler{NewLog(deps), NewAudit(deps)} {
+				content := query(handler, "--hook")
+				if strings.Count(content, "module=hook") != 1 || strings.Count(content, "hook_tool_call") != 1 {
+					t.Fatalf("hook selection: %s", content)
+				}
+			}
+			content := query(NewAudit(deps), "--hook --event hook_tool_call")
+			if !strings.Contains(content, "module=hook") {
+				t.Fatalf("combined hook selection: %s", content)
+			}
+			if query(NewAudit(deps), "--hook --event llm_usage") != "no log entries found" {
+				t.Fatal("hook and event filters did not intersect")
+			}
+			if content := query(NewAudit(deps), "--event llm_error -d"); !strings.Contains(content, "upstream diagnostic marker") {
+				t.Fatalf("lost upstream audit: %s", content)
+			}
+			if content := query(NewUsage(deps), ""); !strings.Contains(content, "prompt: 10 | completion: 5 | total: 15") {
+				t.Fatalf("lost usage at %s: %s", level, content)
+			}
+		})
 	}
 }
 

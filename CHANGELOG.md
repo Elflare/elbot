@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `/log --hook`、`/audit --hook` 改为筛选 `module=hook`，修复审计匹配虚构 `event=hook` 和运行日志漏掉无 `hook` 字段记录的问题；与事件名等条件组合时不再覆盖原筛选。
 - 修复模型重试日志依赖通知订阅、Hook 原始失败被重复记录的问题。
 - 修复 `shell` 先缓存全部输出、结束后才截断导致执行期间内存随输出量增长的问题；现在收集时限制容量，超出部分继续排空并丢弃。
 - 修复高风险确认的bug。

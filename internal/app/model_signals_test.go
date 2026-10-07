@@ -122,7 +122,11 @@ func TestSharedRetrySubscriptionCoversChatCompactAndNaming(t *testing.T) {
 		t.Fatal("duplicate retries")
 	}
 	// Delay a retry until its own call finishes while the parent remains alive.
-	release := holdObserverQueue(t, runtime.Signals.queues[1]) // naming logs precede the shared model notification queue.
+	// Hold every observer queue so this barrier does not depend on assembly order.
+	releases := make([]func(), 0, len(runtime.Signals.queues))
+	for _, queue := range runtime.Signals.queues {
+		releases = append(releases, holdObserverQueue(t, queue))
+	}
 	stream, err := runtime.Models.ClientForProvider("test").(chatcompletions.Streamer).Stream(ctx, chatcompletions.Request{Model: "first"})
 	if err != nil {
 		t.Fatal(err)
@@ -135,8 +139,12 @@ func TestSharedRetrySubscriptionCoversChatCompactAndNaming(t *testing.T) {
 	if ctx.Err() != nil {
 		t.Fatal("test canceled parent instead of call")
 	}
-	release()
-	flushObserverQueue(t, runtime.Signals.queues[1])
+	for _, release := range releases {
+		release()
+	}
+	for _, queue := range runtime.Signals.queues {
+		flushObserverQueue(t, queue)
+	}
 	if len(p.retryNotices) != 0 {
 		t.Fatal("finished call displayed stale retry")
 	}

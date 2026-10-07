@@ -50,6 +50,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/config/definition.go`、`internal/config/provider.go`：配置规则与客户端模式校验。
 - `internal/doctor/`：配置诊断报告；`internal/command/builtin/doctor.go`：超管命令入口。
 - `internal/logging/`：日志中心订阅全局记录，分类排队、写入、轮转与读取；`record.go` 负责等级过滤、脱敏、摘要／详情和序列化大小限制。文件写入器只由中心管理，不向业务暴露 Logger。
+- `internal/logging/reader.go`：Reader 反向分块读取、逐条筛选和提前停止；保留历史文本解析与单行上限，在读取和处理记录时响应取消。
 - [配置文档](../docs/configuration.md)。
 
 <!-- locator:agent-chat -->
@@ -80,6 +81,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/command/`、`internal/command/builtin/register.go`：Router、命令契约与注册。
 - `internal/command/builtin/`：内置命令；`internal/agent/command_runtime.go`：权限、冲突和 Continuation。
+- `internal/command/builtin/log.go`：运行、审计及 Elwisp 日志的筛选、展示、帮助和补全；Hook 按模块筛选。`usage.go` 复用 Reader 聚合用量审计。
 - `internal/completion/`、`internal/agent/completion.go`：公共结构化补全与 Agent 接线。
 - `internal/agent/file_rollback.go`：文件命令准入；`internal/command/builtin/rollback.go`：撤销命令。
 - [命令文档](../docs/commands.md)。

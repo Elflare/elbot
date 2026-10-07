@@ -238,11 +238,11 @@ LLM 在 work 模式下可以通过 `discover_tool` 按需发现工具详情。�
 | `-n, --limit <n>` | 返回条数，默认 5。 |
 | `--days <n>` | 读取最近 n 天日志，默认 1。 |
 | `--level <level>` | 最低等级：`debug`、`info`、`warn`、`error`。 |
-| `-d, -i, -w, -e` | 等级快捷方式。 |
+| `-d, -i, -w, -e` | 等级快捷方式；`-d` 或显式 `--level debug` 同时显示原始记录。 |
 | `--since <time>` | 只看某时间之后，例如 `2h`、`30m`、`2026-06-03`。 |
 | `--until <time>` | 只看某时间之前。 |
 | `--msg <text>` | 按 msg 字段过滤。 |
-| `--contains <text>` | 按文本、参数、结果或 raw 内容过滤。 |
+| `--contains <text>` | 按解码后的摘要、详情、正文字段或原始记录过滤。 |
 
 `/log` 额外支持：
 
@@ -250,12 +250,14 @@ LLM 在 work 模式下可以通过 `discover_tool` 按需发现工具详情。�
 | --- | --- |
 | `-u`、`-a`、`-t` | 分别筛选用户、助手、工具事件。 |
 | `-s, --system` | 筛选并显示 `system prompt` 日志。 |
-| `--hook` | 筛选 Hook 事件。 |
+| `--hook` | 筛选 `module=hook` 的运行记录。 |
 
 `/audit` 额外支持：
 
 | 选项 | 作用 |
 | --- | --- |
+| `-t` | 筛选 `event=tool_call` 的工具审计。 |
+| `--hook` | 筛选 `module=hook` 的审计，可与 `--event` 等条件同时使用。 |
 | `--event <name>` | 按审计事件过滤，例如 `tool_call`、`llm_usage`、`permission_denied`。 |
 | `--risk <level>` | 按风险等级过滤。 |
 | `--actor <id>` | 按 actor ID 过滤。 |
@@ -281,9 +283,12 @@ LLM 在 work 模式下可以通过 `discover_tool` 按需发现工具详情。�
 /log
 /log -w -n 10
 /log --system
+/log -u -d
 /log --msg startup --days 3
 /audit --event tool_call --risk high -n 10
 /audit --actor cli:local --since 24h
+/audit --hook --event hook.tool_call
+/audit --event llm_error -d
 /elwisp
 /elwisp server-watchdog -n 20
 /elwisp --source minecraft-main --mode llm --since 2h
