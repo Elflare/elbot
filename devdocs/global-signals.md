@@ -1,5 +1,7 @@
 # 全局信号与日志中心设计
 
+后续整改：[日志结果语义与业务等级设计](#日志结果语义与业务等级设计)的步骤 1 已完成并通过验证；步骤 2、3 待实施。公共契约支持 `ResultStatus + Error`，等级仍由业务决定，全部来源迁移尚未完成。
+
 状态：原三个阶段已完成，全局日志契约、中心、生命周期、业务日志生产者及查询命令均已接入。整改阶段 1 的日志规则、职责与命名及阶段 2 的平台连接全局信号均已落实，见[审查整改设计](#审查整改设计)。原验收记录见[任务清单](tasks.md#全局信号与日志统一改造)；当前架构见 [architecture.md](architecture.md#信号与订阅)。
 
 ## 目标与范围
@@ -61,7 +63,7 @@ flowchart LR
 
 | 位置 | 目标职责和主要名字 |
 | --- | --- |
-| `internal/events/logging.go` | `LogCategory`、`LogRecord`、`LogDiagnostic`、`DiagnosticError`、`LogSubmitted`、`EmitLog` |
+| `internal/events/logging.go` | `LogCategory`、`ResultStatus`、`LogRecord`、`LogDiagnostic`、`DiagnosticError`、`LogSubmitted`、`EmitLog`；包含主错误快照 |
 | `internal/events/logging_test.go` | 发布时间、关联身份、错误和可变字段快照 |
 | `internal/events/platform.go` | `PlatformConnectedEvent`、`PlatformConnected`；平台连接事实契约 |
 | `internal/agent/platform_signals.go`、`internal/cron/platform_signals.go` | Hook 协调模块与 Cron 各自的订阅、按平台排队和关闭管理 |
@@ -89,15 +91,27 @@ const (
     LogElnis   LogCategory = "elnis"
 )
 
+type ResultStatus string
+
+const (
+    ResultSucceeded ResultStatus = "succeeded"
+    ResultFailed    ResultStatus = "failed"
+    ResultCanceled  ResultStatus = "canceled"
+    ResultRejected  ResultStatus = "rejected"
+    ResultSkipped   ResultStatus = "skipped"
+)
+
 type LogRecord struct {
-    At        time.Time
-    Category  LogCategory
-    Level     slog.Level
-    Name      string
-    Module    string
-    Summary   string
-    Detail    string
-    Fields    []slog.Attr
+    At           time.Time
+    Category     LogCategory
+    Level        slog.Level
+    Name         string
+    Module       string
+    Summary      string
+    Detail       string
+    Fields       []slog.Attr
+    ResultStatus ResultStatus
+    Error        error
 }
 
 type LogDiagnostic struct {
@@ -117,6 +131,9 @@ func EmitLog(ctx context.Context, record LogRecord) error
 
 - `Name` 对应落盘字段 `event`，使用稳定事件名，如 `llm_error`；`Module` 对应 `module`，如 `agent`、`model`、`hook`。Hook 相关审计统一标为 `hook`。
 - `Summary` 对应记录消息，`Detail` 对应详情。`Fields` 保留结构化业务字段，包含现有查询所需的 token 用量、文本摘要和关联 ID 等。
+- `ResultStatus` 对应 `result_status`，空值不落盘，也不表示成功；自由字段不能伪造该结果。`Error` 在发布前固定为错误文本和通用诊断快照，不保留原始错误类型或错误链；消费者不重新判断取消或拒绝。
+- 提供 `Error` 时，它独占落盘的 `error` 字段，普通字段及匿名分组中的同名字段不能覆盖。错误文本正常记录，诊断只在 DEBUG 运行日志及 audit／elnis 中保留；包含诊断时 `error` 是带 `message`、`kind`、`detail` 的 JSON 文本，仍先脱敏再限长。
+- 当前来源迁移尚未完成：未提供 `Error` 的旧记录继续保存既有自由 `error` 字段，不影响已有诊断；步骤 2 统一迁移这些发布点并移除该过渡支持，不保留双写入口。
 - 级别由来源明确指定，不根据事件名中的 `failed`、`error` 等字符串推断。公共包可使用 `slog.Level`、`slog.Attr` 数据类型，不持有 `slog.Logger` 或 Handler。
 - 全局信号只用于连接；生产日志统一通过 `EmitLog` 发射，以执行快照契约。`EmitLog` 不写文件、不读取当前日志级别、不创建自己的队列。
 - `EmitLog` 的返回值描述提交错误，不保证文件写入成功。记录失败不能替代或覆盖原业务结果；设施负责报告派发和消费错误。
@@ -259,6 +276,60 @@ Reader 从文件末尾按 64 KiB 分块读取，按日期从近到远、文件�
 - Agent 的关闭范围同时包含平台 Hook 与 append 等待任务；Cron Service 的关闭只管理连接恢复队列，调度器仍由 Cron Manager 管理。App 在退出开始时停止消费者，部分启动失败同样清理；全部退出共享 30 秒预算，未退出的消费者及其依赖留给进程退出处理。
 
 验收：无需 App 转发即可触发既有消费者；覆盖首次连接、重连、重复连接、先订阅后启动、部分启动失败、关闭后的订阅释放及消费者隔离。对照既有测试验证 Hook 与 Cron 的执行次数和取消行为，运行平台、Hook 协调、Cron、App 及全局事件相关测试和 race 测试，公共接口改造后运行全量测试并检查依赖边界。
+
+## 日志结果语义与业务等级设计
+
+状态：步骤 1 的事件名修复、公共契约、快照与落盘已完成并通过验证；步骤 2 的全部业务来源迁移和步骤 3 的整体收尾待实施。实施与验收状态见[任务清单](tasks.md#日志结果语义与业务等级整改)，公共契约见上文。
+
+### 已确认的问题
+
+- 预载跳过审计使用 `eventName`，普通／后台分支分别发布 `skill_wrapper_preload_skipped`／`background_preload_skipped`，并明确 `ResultSkipped`。真实落盘及事件筛选回归覆盖两个分支。
+- 多处仅凭 `errors.Is(..., context.Canceled)` 将整体日志降级；合并错误中同时存在真实失败时会被掩盖。
+- 工具解析阶段的策略禁止仍以普通错误传出，未完整保留拒绝事实，后续日志投影将其当作执行故障。
+
+### 职责与设计选择
+
+`Level` 表示关注程度，`ResultStatus` 表示操作结果，`Error` 保留具体错误。三者由业务提供，不能互相机械推导。相同底层错误在不同业务中可能具有不同含义，正常取消与真实故障由掌握操作上下文的业务判断。
+
+| 层 | 职责 |
+| --- | --- |
+| 业务操作及实例事件 | 明确操作结果、取消或拒绝原因，保留原始错误及实际调用身份 |
+| 来源模块的日志投影或直接记录点 | 根据完整业务事实指定等级、结果与错误；投影仍归业务模块 |
+| `events.EmitLog` | 补齐时间和关联身份，固定错误及字段快照，发射全局日志信号 |
+| `signal` | 连接、发射、队列和生命周期，不认识业务结果或日志等级 |
+| `logging.Manager` | 分类排队、按既有等级过滤、脱敏、限长和落盘，不重判等级 |
+
+采用独立的等级与结果字段，而非公共函数自动判级，也不使用多个布尔值组合表示成功、取消和拒绝。共享代码只处理错误树遍历、快照和格式等机械工作，不判断哪个业务取消正常，不按错误字符串或事件名猜结果。
+
+### 契约、命名与文件职责
+
+公共类型与主错误快照位于现有 `internal/events/logging.go`，落盘位于 `internal/logging/record.go`，不新增 Go 包。`ResultStatus` 常量及 `LogRecord` 字段见[公共契约](#公共契约)。以下来源字段命名与迁移要求在步骤 2 落实。
+
+- `ResultStatus` 与 `Error` 是已确认名称；相关业务事件采用完整字段名，多个操作的错误使用 `CallError`、`PersistenceError`、`FallbackError` 等。不批量重命名无关局部变量 `err`。
+- 来源业务事件保持各自的领域语义；需要传递结果时补齐契约，不为了日志将所有实例事件改为全局事件或全部加入 `slog.Level`。
+- 操作结果日志明确填写状态。普通提示、启动过程、进度日志允许不填；空值表示未声明，不能默认成功。失败结果也不强制必须伴随 Go `error`。
+- 重试日志描述本次尝试失败；是否重试、次数和延迟继续是独立业务事实，不把 `retrying` 当作最终结果。
+- `EmitLog` 在发布前将 `Error` 转为不可变快照，保留错误文本和公共 `DiagnosticError` 诊断，不把原始错误对象留给异步消费者。协议错误仍由协议来源转换，公共记录者不依赖具体协议包。
+- `internal/logging/record.go` 将正式字段写为 `result_status`、`error`；同名自由字段不能覆盖正式字段。主错误从 `Error` 进入，避免自由字段重复记录；不同操作的附加错误保留明确名称。
+- 新字段遵循既有脱敏、限长及运行详情／审计详情规则，不能借错误字段绕过非 DEBUG 运行日志的详情限制。
+- Reader 保留新字段供现有原始记录查询展示，不新增命令选项、不改写历史日志；不增加旧错误字段的平行发布入口。
+- 来源结果传递、等级判断与记录构造仍在对应业务文件和日志投影文件中完成；信号层不增加业务分类能力。
+
+### 业务判断与组合结果
+
+既有业务约定继续由来源执行：重试 WARN、最终失败 ERROR、预期取消 INFO、正常策略拒绝 WARN。特殊场景由所属模块明确判断，日志中心不强制 `failed` 必须为 ERROR，也不根据 `canceled` 自动降级。
+
+业务必须保留判断所需的信息。例如工具解析知道操作被后台策略禁止，就应明确传递拒绝事实，不能先降为普通原因字符串；工具不存在和实际执行失败仍需区分。
+
+取消与失败可能同时发生。例如模型调用被用户取消，但调用记录持久化失败，应分别保留取消事实和保存失败；需要汇总时由业务确定汇总结果并保留完整错误。禁止因错误链中存在一个取消分支而整体降级，或用一个取消标志覆盖其他操作的真实失败。同样覆盖拒绝伴随其他失败的情况。
+
+### 三步实施与验收
+
+1. **预载事件名与公共契约**：先复现普通／后台跳过审计的事件名错误，再修正并通过真实落盘与事件筛选验证；补充结果、错误快照和格式化支持。契约测试覆盖发布后原始错误变化、包装与合并错误、通用诊断、脱敏限长、同名字段，以及结果不会改写业务等级。
+2. **全部业务来源迁移**：逐个检查直接发布点和实例事件链路，覆盖 Agent、工具、Session、Model Manager、Hook、平台、发送、Cron、Elnis、媒体、命令、通知、维护及 App。操作结果明确填状态，主错误统一入口；修复取消掩盖真实失败和解析阶段策略拒绝信息丢失。通过真实入口验证状态传递，避免只测日志辅助函数。
+3. **整体验证与文档**：覆盖预期取消、包装取消、最终超时、取消伴随持久化失败、策略拒绝、拒绝伴随其他失败、重试及最终失败。执行 gofmt、相关与全量 Go 测试、相关 race 测试和依赖边界检查。代码实施时同步日志用户文档、CHANGELOG、架构、代码地图和任务状态，逐步补充实际验证记录。
+
+本轮目标是迁移所有业务日志；当前完成公共契约及预载事件名修复，其他来源仍待步骤 2 迁移。不改重试策略、权限行为、平台连接全局信号、队列策略或共同 30 秒退出预算，不自动提交。
 
 ## 原三阶段实施与验收
 

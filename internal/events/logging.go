@@ -23,6 +23,18 @@ const (
 	LogElnis   LogCategory = "elnis"
 )
 
+// ResultStatus describes an operation's result, independently of its log level.
+// The empty value means no result was declared, not success.
+type ResultStatus string
+
+const (
+	ResultSucceeded ResultStatus = "succeeded"
+	ResultFailed    ResultStatus = "failed"
+	ResultCanceled  ResultStatus = "canceled"
+	ResultRejected  ResultStatus = "rejected"
+	ResultSkipped   ResultStatus = "skipped"
+)
+
 type LogRecord struct {
 	At       time.Time
 	Category LogCategory
@@ -32,6 +44,11 @@ type LogRecord struct {
 	Summary  string
 	Detail   string
 	Fields   []slog.Attr
+	// The business owns both severity and result classification.
+	ResultStatus ResultStatus
+	// EmitLog freezes Error before publishing. Consumers must not classify its
+	// original type or cancellation chain; those decisions belong to the source.
+	Error error
 }
 
 type LogDiagnostic struct{ Kind, Detail string }
@@ -45,6 +62,7 @@ var LogSubmitted = signal.New[LogRecord]("log.submitted")
 // EmitLog reports admission errors, not durability. Logging must never replace
 // the caller's business result. The signal reports dispatch failures itself.
 func EmitLog(ctx context.Context, record LogRecord) error {
+	record.Error = snapshotLogError(record.Error)
 	if record.At.IsZero() {
 		record.At = time.Now()
 	}
@@ -80,6 +98,33 @@ func EmitLog(ctx context.Context, record LogRecord) error {
 	snapshot := logSnapshot{remaining: 16384}
 	record.Fields = snapshot.attrs(record.Fields, 0)
 	return LogSubmitted.Emit(ctx, record)
+}
+
+type diagnosticErrorSnapshot struct {
+	message    string
+	diagnostic LogDiagnostic
+}
+
+func (e diagnosticErrorSnapshot) Error() string                { return e.message }
+func (e diagnosticErrorSnapshot) LogDiagnostic() LogDiagnostic { return e.diagnostic }
+
+func snapshotLogError(failure error) error {
+	if failure == nil {
+		return nil
+	}
+	value := reflect.ValueOf(failure)
+	switch value.Kind() {
+	case reflect.Pointer, reflect.Interface, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan:
+		if value.IsNil() {
+			return nil
+		}
+	}
+	message := failure.Error()
+	var diagnostic DiagnosticError
+	if errors.As(failure, &diagnostic) {
+		return diagnosticErrorSnapshot{message: message, diagnostic: diagnostic.LogDiagnostic()}
+	}
+	return errors.New(message)
 }
 
 // A bounded walk also terminates cycles without retaining any original object.

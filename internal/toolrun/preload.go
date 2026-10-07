@@ -357,18 +357,19 @@ func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name str
 	if name == "" || name == "discover_tool" {
 		return nil
 	}
-	event, key := "skill_wrapper_preload_skipped", "tool"
+	eventName, key := "skill_wrapper_preload_skipped", "tool"
 	if background {
-		event, key = "background_preload_skipped", "name"
+		eventName, key = "background_preload_skipped", "name"
 	}
 	skip := func(reason string) {
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogAudit,
-			Level:    slog.LevelInfo,
-			Name:     "event",
-			Module:   "tool",
-			Summary:  event,
-			Fields:   slog.Group("", "session_id", sessionID, key, name, "reason", reason).Value.Group(),
+			Category:     globalevents.LogAudit,
+			Level:        slog.LevelInfo,
+			Name:         eventName,
+			Module:       "tool",
+			Summary:      eventName,
+			ResultStatus: globalevents.ResultSkipped,
+			Fields:       slog.Group("", "session_id", sessionID, key, name, "reason", reason).Value.Group(),
 		})
 	}
 	candidate, ok := s.registry.Get(name)
