@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"reflect"
 	"strings"
@@ -13,8 +14,61 @@ import (
 	"time"
 
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/hook"
+	"elbot/internal/llm"
+	"elbot/internal/signal"
+	"elbot/internal/tool"
 )
+
+type auditTestTool struct{ err error }
+
+func (auditTestTool) Name() string           { return "audit_test" }
+func (auditTestTool) Info() tool.Info        { return tool.Info{Name: "audit_test"} }
+func (auditTestTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "audit_test"} }
+func (a auditTestTool) Call(context.Context, tool.CallRequest) (*tool.Result, error) {
+	return nil, a.err
+}
+
+func TestPluginToolAuditOutcome(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		err    error
+		level  slog.Level
+		status string
+	}{
+		{"success", nil, slog.LevelInfo, "ok"}, {"failure", errors.New("failed"), slog.LevelError, "error"},
+		{"canceled", fmt.Errorf("wrapped: %w", context.Canceled), slog.LevelInfo, "canceled"}, {"timeout", context.DeadlineExceeded, slog.LevelError, "error"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var records []events.LogRecord
+			connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error { records = append(records, record); return nil }, signal.ConnectOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer connection.Disconnect()
+			registry := tool.NewRegistry()
+			if err := registry.Register(auditTestTool{err: tc.err}); err != nil {
+				t.Fatal(err)
+			}
+			worker := &worker{manager: &Manager{opts: Options{Registry: registry}}, config: Config{ID: "plugin", EventTimeoutSeconds: 10, Tools: ToolsConfig{BackgroundAllow: []string{"audit_test"}}}}
+			_, err = worker.callTool(json.RawMessage(`{"name":"audit_test","arguments":{},"background":true,"target":{"platform":"cli"}}`))
+			if !errors.Is(err, tc.err) {
+				t.Fatalf("business error changed: %v", err)
+			}
+			if len(records) != 1 || records[0].Name != "hook_tool_call" || records[0].Category != events.LogAudit || records[0].Level != tc.level {
+				t.Fatalf("records: %+v", records)
+			}
+			fields := map[string]string{}
+			for _, field := range records[0].Fields {
+				fields[field.Key] = field.Value.String()
+			}
+			if fields["source"] != "plugin" || fields["status"] != tc.status || (tc.err != nil && fields["error"] != tc.err.Error()) {
+				t.Fatal(fields)
+			}
+		})
+	}
+}
 
 func TestHookRuntimeHelperProcess(t *testing.T) {
 	marker := -1

@@ -76,6 +76,9 @@ func TestProductionGlobalLogsKeepUsageAndBoundBodies(t *testing.T) {
 			counts := map[string]int{}
 			for _, entry := range entries {
 				counts[entry.Fields["event"]]++
+				if entry.Fields["event"] == "hook_error" && entry.Level != "ERROR" {
+					t.Fatalf("final Hook failure severity: %+v", entry)
+				}
 				if entry.Fields["event"] == "user_message" {
 					if strings.Contains(entry.Raw, "end-marker") != (level == "debug") {
 						t.Fatalf("body policy for %s: %s", level, entry.Raw)
@@ -92,7 +95,7 @@ func TestProductionGlobalLogsKeepUsageAndBoundBodies(t *testing.T) {
 			} else if counts["user_message"] != 0 {
 				t.Fatal(counts)
 			}
-			if level != "error" && (counts["hook_error"] != 1 || counts["runtime_notification"] != 1) {
+			if counts["hook_error"] != 1 || (level != "error" && counts["runtime_notification"] != 1) {
 				t.Fatal(counts)
 			}
 			if (counts["startup_stage"] == 1) != (level == "debug") {
@@ -145,7 +148,7 @@ func TestBusinessLoggingDependencyBoundaries(t *testing.T) {
 			}
 			return true
 		})
-		if strings.HasPrefix(rel, "logging/") || strings.HasPrefix(rel, "events/") || rel == "agent/logging.go" {
+		if strings.HasPrefix(rel, "logging/") || strings.HasPrefix(rel, "events/") || rel == "agent/logging.go" || rel == "session/naming_logging.go" || rel == "modelmgr/logging.go" {
 			for _, p := range aliases {
 				if strings.HasPrefix(p, "elbot/internal/llm/") {
 					t.Errorf("protocol dependency in log consumer: %s", rel)

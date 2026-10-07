@@ -1,12 +1,12 @@
 # 全局信号与日志中心设计
 
-状态：原三个阶段已完成，全局日志契约、中心、生命周期、业务日志生产者及查询命令均已接入。后续审查整改设计已确认，代码待实施，见[审查整改设计](#审查整改设计待实施)。原验收记录见[任务清单](tasks.md#全局信号与日志统一改造)；当前架构见 [architecture.md](architecture.md#信号与订阅)。
+状态：原三个阶段已完成，全局日志契约、中心、生命周期、业务日志生产者及查询命令均已接入。整改阶段 1 的日志规则、职责与命名已落实，平台连接全局化仍待整改阶段 2，见[审查整改设计](#审查整改设计)。原验收记录见[任务清单](tasks.md#全局信号与日志统一改造)；当前架构见 [architecture.md](architecture.md#信号与订阅)。
 
 ## 目标与范围
 
 业务通过全局日志信号提交记录，日志中心自行订阅，统一过滤、脱敏、限长、排队、落盘、轮转和查询。业务不持有文件 Logger，也不需要经 App 转发或逐层注入日志发布器。
 
-通用信号机制继续服务日志以外的系统。已实施范围是全局日志契约和日志迁移；待实施范围是日志审查整改与已有平台连接事件的全局化。不批量迁移其他业务信号，不改远程部署。
+通用信号机制继续服务日志以外的系统。已实施范围是全局日志契约、日志迁移及日志规则／职责／命名整改；待实施范围是已有平台连接事件的全局化。不批量迁移其他业务信号，不改远程部署。
 
 以下行为保持不变：
 
@@ -57,7 +57,7 @@ flowchart LR
 
 ## 包、文件与命名
 
-原改造只新增 `internal/events` 一个 Go 包；审查整改继续使用现有包，不建立 `logevent`、`systemlog` 或 `logging/events` 包。全局事件按领域分文件。下表列出已落地位置，待实施的文件拆分见审查整改章节。
+原改造只新增 `internal/events` 一个 Go 包；审查整改继续使用现有包，不建立 `logevent`、`systemlog` 或 `logging/events` 包。全局事件按领域分文件。下表列出已落地位置，来源投影的文件职责见审查整改章节。
 
 | 位置 | 目标职责和主要名字 |
 | --- | --- |
@@ -69,7 +69,7 @@ flowchart LR
 | `internal/logging/signals.go` | 日志中心订阅、分类队列、停止准入和排空 |
 | `internal/logging/record.go` | 运行级别过滤、记录内容处理与大小限制 |
 | `internal/logging/reader.go` | 从文件末尾分块查询 |
-| `internal/agent/logging.go`、`internal/session/naming_signals.go`、`internal/modelmgr/signals.go` | 已有业务事实到日志记录的同步投影；来源模块管理连接，不另建中转队列 |
+| `internal/agent/logging.go`、`internal/session/naming_logging.go`、`internal/modelmgr/logging.go` | 已有业务事实到日志记录的同步投影；来源模块管理连接，不另建中转队列 |
 | 各模块原有构造与关闭文件 | 建立本地投影订阅并清理；删除 Logger／Audit 依赖装配 |
 
 测试优先扩展相关包现有测试文件。只有职责需要单独覆盖时新增测试文件，不增加平行的日志实现或公共测试框架。
@@ -126,7 +126,7 @@ func EmitLog(ctx context.Context, record LogRecord) error
 | --- | --- |
 | `Emit`、`Connect`、`Disconnect` | 继续使用通用信号 API，不增加另一套 Publish／Subscribe 命名 |
 | `EmitLog(ctx, record)` | 构造发布快照并发射全局日志信号 |
-| `Manager.HandleRecord(ctx, record)` | 全局信号回调，按类别提交到中心的队列；不是业务调用入口 |
+| `Manager.handleRecord(ctx, record)` | 全局信号回调，按类别提交到中心的队列；不是业务调用入口 |
 | `Manager.BeginClose()` | 停止日志准入并唤醒背压等待者，不等待回调结束 |
 | `Manager.Close(ctx)` | 使用传入的共同退出预算，排空并关闭日志资源；不另开 30 秒预算 |
 | `record`、`connection`、`queue`、`logManager` | 分别用于记录、订阅连接、执行队列、中心实例 |
@@ -150,7 +150,7 @@ func EmitLog(ctx context.Context, record LogRecord) error
 
 日志中心拥有 runtime、audit、elnis 三个串行队列，每个容量 256，使用背压和 Drain，按成功入队顺序消费。不同类别之间不保证总顺序。
 
-`HandleRecord` 同步选择类别并提交对应队列，提交时使用不随单次请求取消的 context，保持现有 FollowExecutor 的生命周期语义。请求取消不撤销已发布的日志事实；中心停止准入会唤醒等待容量的生产者。记录内容处理和文件写入在消费者中完成。
+`handleRecord` 同步选择类别并提交对应队列，提交时使用不随单次请求取消的 context，保持现有 FollowExecutor 的生命周期语义。请求取消不撤销已发布的日志事实；中心停止准入会唤醒等待容量的生产者。记录内容处理和文件写入在消费者中完成。
 
 进程内只允许一个活动日志中心。重复构造不能悄悄增加第二份文件消费者；初始化中途失败要清理已获得的连接、队列和文件。全局信号实例不因中心关闭而替换。
 
@@ -166,7 +166,7 @@ func EmitLog(ctx context.Context, record LogRecord) error
 
 ## 记录与查询规则
 
-以下是记录与查询的设计约定。严重程度和上游失败详情的实现仍有审查整改项：当前命名失败仅产生 WARN 运行日志，其诊断受 DEBUG 详情开关影响；修复及验收见[审查整改设计](#审查整改设计待实施)。
+以下是记录与查询的现行约定。命名最终上游失败同时保留 ERROR 运行摘要和 ERROR 审计诊断；具体来源职责见[审查整改设计](#审查整改设计)。
 
 | 项目 | 规则 |
 | --- | --- |
@@ -206,24 +206,25 @@ Reader 从文件末尾按 64 KiB 分块读取，按日期从近到远、文件�
 
 所有业务日志均经过全局链路的集中脱敏、限长和分类队列，不保留旧 Logger 兼容层或双写路径。App 只管理自己的通知、状态订阅和服务生命周期；终端界面输出及设施 stderr 报告使用各自入口。
 
-## 审查整改设计（待实施）
+## 审查整改设计
 
-本节描述已确认、尚未实施的整改目标。分为两个阶段，状态在[任务清单](tasks.md#日志审查整改与平台全局信号)维护。当前只准备两个设计／任务文档；实施代码时再同步架构、代码地图、中文用户文档和 CHANGELOG。
+整改阶段 1 已落实，阶段 2 待实施；状态与验证记录在[任务清单](tasks.md#日志审查整改与平台全局信号)维护。架构、代码地图及中文用户文档与当前代码保持一致。
 
-### 整改阶段 1：日志规则、职责与命名
+### 整改阶段 1：日志规则、职责与命名（已实施）
 
 #### 失败记录与诊断
 
-- 日志来源按实际结果明确指定级别：客户端每次重试失败 WARN，重试耗尽或操作最终失败 ERROR；预期取消不记为错误，权限拒绝等正常策略结果不机械升级。检查本次迁移涉及的模型、命名、工具、Hook、发送及后台任务失败记录。
-- 命名的最终上游失败发布 ERROR 审计记录，通过公共 `DiagnosticError` 获取诊断，保留发生时间、会话及实际调用身份。详情仍由日志中心脱敏、限长，INFO／WARN／ERROR 运行配置均能查询到；不能只把原运行记录提高为 ERROR，因为非 DEBUG 下的运行详情仍会被舍弃。
+- 日志来源按实际结果明确指定级别：客户端每次重试失败 WARN，重试耗尽或操作最终失败 ERROR；预期取消不记为错误，权限拒绝等正常策略结果不机械升级。模型、命名、工具、Hook、消息处理／发送及后台任务按此分类；持续重连、发送降级和待重投递仍为 WARN。导致本次操作最终失败的超时记 ERROR。
+- 命名的最终上游失败发布 ERROR 审计记录，通过公共 `DiagnosticError` 获取诊断，保留发生时间、会话及实际调用身份。详情仍由日志中心脱敏、限长，INFO／WARN／ERROR 运行配置均能查询到；普通运行记录仅保留摘要，非 DEBUG 下不保留诊断详情。`NamingFailedEvent.Err` 保留原始失败，`FallbackErr` 独立保存兜底标题写入错误，兜底失败不会覆盖上游诊断。
+- 工具来源以 `toolrun.PolicyDeniedError` 表达授权或确认拒绝；完成事件携带 `CallErr` 与 `PolicyDenied`，投影不解析错误字符串，也不把所有 `Success=false` 都当成系统故障。确认拒绝的记录保持失败事实，工具不会执行。
 - 普通运行正文与错误诊断分别按既有正文规则和审计规则处理，不为保留错误而默认启用 DEBUG。记录失败不覆盖业务结果，同一失败不因订阅迁移重复记录。
 - 重试次数、退避、重试范围及取消仍由客户端负责。保留现有 `ModelRetrying` 实例信号、来源日志投影和通知订阅；日志继续经过 `events.EmitLog`，不新增全局重试信号，也不通过广播驱动重试。重试通知沿用实际调用 context，调用结束后不显示积压通知。
 
 #### 包与文件职责
 
-包边界保持 `signal` 管机制、`events` 管全局契约、`logging` 管消费和存储；来源模块维护自己的日志投影。文件调整如下：
+包边界保持 `signal` 管机制、`events` 管全局契约、`logging` 管消费和存储；来源模块维护自己的日志投影。文件职责如下：
 
-| 位置 | 整改后的职责 |
+| 位置 | 当前职责 |
 | --- | --- |
 | `internal/app/signals.go` | App 自身订阅的通用所有权、`newQueue`、`connectSignal` 和关闭处理 |
 | `internal/app/model_signals.go` | 模型实例信号的通知接线，不放供其他领域使用的通用工具 |
@@ -238,14 +239,14 @@ Reader 从文件末尾按 64 KiB 分块读取，按日期从近到远、文件�
 #### 事件、方法与变量命名
 
 - `LogRecord.Name` 是稳定的事件标识，来源显式声明，与 `Summary` 分开提供；禁止从展示文案替换空格生成标识。整句式名称缩减为明确事实名，例如 `media_backend_unavailable`，具体原因写入摘要或字段。
-- 核对 `hook_tool_call`、`hook_tool_error`、`hook.tool_call` 的来源和含义：不同事实用明确名称区分，同一事实采用同一标识，不只靠点号与下划线区分语义。实施时同步帮助、补全、查询和测试；不增加旧名称别名，也不改写历史文件。
-- Agent 日志投影方法按类别命名：`modelOutput`、`toolOutput`、`commitOutput` 等改为 `modelRuntimeLog`、`toolRuntimeLog`、`commitRuntimeLog`；对应审计方法使用 `modelAuditLog` 等同样明确的名称。`Output` 不再用于表示记录运行日志。
-- `emitAgentLog` 等始终返回 `nil` 的发布辅助函数移除错误返回；信号回调保留机制要求的 `error` 签名，在发布后返回 `nil`。删除围绕无失败结果的 `errors.Join`、临时错误切片等代码，真实业务错误处理保持独立。
-- 日志中心订阅回调改为非导出的 `handleRecord`，业务入口仍只有 `events.EmitLog`。记录构造统一使用 `record`、`eventName`、`summary`、`detail`、`fields` 等能区分事件身份与展示内容的变量名。
+- Hook 工具调用结果使用 `hook_tool_call`：`source=rules|plugin` 标识来源，`status=ok|error|canceled` 标识结果，失败保留错误字段。帮助与补全只提供当前标识；不增加旧名称别名，也不改写历史文件。
+- Agent 日志投影方法按类别命名，例如 `modelRuntimeLog`、`toolRuntimeLog`、`commitRuntimeLog`；对应审计方法使用 `modelAuditLog` 等名称。`Output` 不用于表示记录运行日志。
+- `emitAgentLog`、`emitNamingLog` 显式接收 `eventName` 与 `summary`，不返回错误；信号回调保留机制要求的 `error` 签名，在发布后返回 `nil`。发布辅助函数不聚合虚假的观察错误，真实业务错误处理保持独立。
+- 日志中心订阅回调是非导出的 `handleRecord`，业务入口仍只有 `events.EmitLog`。记录构造统一使用 `record`、`eventName`、`summary`、`detail`、`fields` 等能区分事件身份与展示内容的变量名。
 
 验收：用真实中心落盘与查询覆盖 INFO／WARN／ERROR 下的最终失败诊断、重试 WARN／最终 ERROR 和预期取消；验证展示文案变化不改变事件标识。回归无通知订阅者时的重试日志、调用结束后的通知取消、来源身份及订阅清理。执行相关包测试、race 测试和日志依赖边界检查。
 
-### 整改阶段 2：平台连接全局信号
+### 整改阶段 2：平台连接全局信号（待实施）
 
 - 在 `internal/events/platform.go` 定义 `PlatformConnectedEvent` 和全局 `PlatformConnected` 信号，保留已有事件的 `Platform string` 身份。载荷是事实值，不持有适配器、Agent、Cron 或活跃会话对象；不扩展断开、恢复等新事件。
 - 平台适配器在既有连接／重连成功的位置直接发射全局信号。Hook 协调模块和 Cron 各自连接，持有并关闭自己的连接及执行队列；App 不再遍历适配器、判断 `ConnectionSource` 并转调各消费者。

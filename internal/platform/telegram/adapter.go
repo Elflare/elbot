@@ -100,7 +100,7 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 		if err := a.syncBotCommands(ctx); err != nil {
 			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 				Category: globalevents.LogRuntime,
-				Level:    slog.LevelWarn,
+				Level:    failureLogLevel(err),
 				Name:     "sync_telegram_bot_commands_failed",
 				Module:   "telegram",
 				Summary:  "sync telegram bot commands failed",
@@ -189,7 +189,7 @@ func (a *Adapter) handleCallbackQuery(ctx context.Context, handler platform.Plat
 		if err := a.client.answerCallbackQuery(ctx, query.ID, "已收到"); err != nil {
 			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 				Category: globalevents.LogRuntime,
-				Level:    slog.LevelWarn,
+				Level:    failureLogLevel(err),
 				Name:     "answer_telegram_callback_failed",
 				Module:   "telegram",
 				Summary:  "answer telegram callback failed",
@@ -281,7 +281,7 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 	if err := handler.HandleMessage(msgCtx, text); err != nil {
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
+			Level:    failureLogLevel(err),
 			Name:     "handle_telegram_message_failed",
 			Module:   "telegram",
 			Summary:  "handle telegram message failed",
@@ -675,4 +675,12 @@ func sleepContext(ctx context.Context, d time.Duration) bool {
 	case <-timer.C:
 		return true
 	}
+}
+
+// failureLogLevel distinguishes explicit cancellation from an operation failure.
+func failureLogLevel(err error) slog.Level {
+	if errors.Is(err, context.Canceled) {
+		return slog.LevelInfo
+	}
+	return slog.LevelError
 }

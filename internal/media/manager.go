@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -396,10 +397,13 @@ func (m *Manager) remoteBackend(ctx context.Context) (Backend, error) {
 	}
 	backend, err := m.remoteFactory(ctx)
 	if err != nil {
-
+		level := slog.LevelError
+		if errors.Is(err, context.Canceled) {
+			level = slog.LevelInfo
+		}
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
+			Level:    level,
 			Name:     "initialize_s3_media_backend_failed",
 			Module:   "media",
 			Summary:  "initialize S3 media backend failed",

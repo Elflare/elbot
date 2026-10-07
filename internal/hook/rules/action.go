@@ -3,6 +3,7 @@ package rules
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -239,22 +240,24 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 		return actionResult{Error: "tool not found"}, fmt.Errorf("tool %q not found", name)
 	}
 	toolResult, err := registered.Call(ctx, tool.CallRequest{ID: call.ID, Name: name, Arguments: json.RawMessage(arguments)})
+	level, status := slog.LevelInfo, "ok"
 	if err != nil {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogAudit,
-			Level:    slog.LevelWarn,
-			Name:     "hook_tool_error",
-			Module:   "hook",
-			Summary:  "hook_tool_error",
-			Fields:   []slog.Attr{slog.Any("tool", name), slog.Any("error", err.Error())},
-		})
+		level, status = slog.LevelError, "error"
+		if errors.Is(err, context.Canceled) {
+			level, status = slog.LevelInfo, "canceled"
+		}
+	}
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogAudit, Level: level, Name: "hook_tool_call", Module: "hook", Summary: "hook tool call",
+		Fields: []slog.Attr{slog.String("source", "rules"), slog.String("tool", name), slog.String("status", status), slog.Any("error", err)},
+	})
+	if err != nil {
 		return actionResult{Error: err.Error()}, err
 	}
 	content := ""
 	if toolResult != nil {
 		content = llm.SegmentsContentText(toolResult.LLMSegments())
 	}
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, Name: "hook_tool_call", Module: "hook", Summary: "hook_tool_call", Fields: []slog.Attr{slog.Any("tool", name)}})
 	return actionResult{Result: content}, nil
 }
 

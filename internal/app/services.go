@@ -75,7 +75,7 @@ func buildSharedServices(ctx context.Context, req RuntimeRequest) (*sharedServic
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogRuntime,
 			Level:    slog.LevelWarn,
-			Name:     "s3_media_backend_is_unavailable_remote_operations_will_fail_until_configuration_is_fixed",
+			Name:     "media_backend_unavailable",
 			Module:   "app",
 			Summary:  "S3 media backend is unavailable; remote operations will fail until configuration is fixed",
 			Fields:   []slog.Attr{slog.Any("error", err)},

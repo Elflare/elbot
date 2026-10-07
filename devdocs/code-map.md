@@ -40,8 +40,9 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/events/logging.go`：进程全局日志契约、`LogSubmitted` 和 `EmitLog` 发布快照。
 - `internal/logging/signals.go`：日志中心自身订阅、分类队列和停止准入；关闭与文件资源由 `logging.go` 管理。
 - `internal/agent/events/`、`internal/platform/signals.go`：Agent 事实与平台连接信号。
-- `internal/agent/logging.go`、`internal/session/naming_signals.go`、`internal/modelmgr/signals.go`：来源模块的同步日志投影与连接清理；模型重试日志独立于通知订阅。
-- `internal/app/signals.go`、`internal/app/agent_notifications.go`、`internal/app/agent_status.go`、`internal/app/model_signals.go`：App 通知、状态与重试通知订阅及其生命周期。
+- `internal/agent/logging.go`、`internal/session/naming_logging.go`、`internal/modelmgr/logging.go`：来源模块的同步日志投影；命名上游失败通过审计保留诊断，模型重试日志独立于通知订阅。
+- `internal/session/naming_signals.go`、`internal/modelmgr/signals.go`：实例信号契约与访问；Session 命名生命周期和 Model Manager 的 `service.go` 负责断开来源连接。
+- `internal/app/signals.go`、`internal/app/agent_notifications.go`、`internal/app/agent_status.go`、`internal/app/model_signals.go`：App 通知、状态与重试通知订阅及其生命周期；通用 `newQueue`／`connectSignal` 归 `signals.go`，模型文件只放通知接线。
 
 <!-- locator:config -->
 ## 配置、资产与日志

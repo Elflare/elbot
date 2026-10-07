@@ -10,7 +10,6 @@ import (
 
 	"elbot/internal/events"
 	"elbot/internal/logging"
-	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
@@ -62,8 +61,10 @@ func TestRunnerStopsGlobalLogAdmissionBeforeWaitingForPlatform(t *testing.T) {
 		case <-time.After(time.Second):
 			return errors.New("log admission remained open while waiting for platform")
 		}
-		if err := manager.HandleRecord(context.Background(), events.LogRecord{Category: events.LogAudit}); !errors.Is(err, signal.ErrClosed) {
-			return errors.New("queue admission remained open")
+		// Publish through the business entry point. The drained file below must
+		// contain only the record admitted before BeginClose.
+		if err := events.EmitLog(context.Background(), events.LogRecord{Category: events.LogAudit, Summary: "after admission closed"}); err != nil {
+			return err
 		}
 		return ctx.Err()
 	})

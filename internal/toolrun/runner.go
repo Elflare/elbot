@@ -43,6 +43,12 @@ type ConfirmResult struct {
 	Stopped bool
 }
 
+// PolicyDeniedError identifies an expected authorization or confirmation refusal.
+// Its text remains the user-facing reason; observers use the type, not the text.
+type PolicyDeniedError string
+
+func (e PolicyDeniedError) Error() string { return string(e) }
+
 // ToolCommitter is synchronous persistence owned by the consuming dialogue.
 // Its Started boundary precedes external tool effects; Result precedes the next call.
 type ToolCommitter interface {
@@ -158,6 +164,9 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 				message = toolMessage(call.Name, call.ID, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
 			}
 			messageText := llm.SegmentsContentText(message.Segments)
+			if err == nil {
+				err = PolicyDeniedError("tool confirmation rejected")
+			}
 			deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, messageText, err)
 			messages = append(messages, message)
 			confirmationExtra = joinAssistantText(confirmationExtra, confirm.Extra)
@@ -268,12 +277,12 @@ func (m *Manager) confirm(ctx context.Context, deps RunnerDeps, actor contextinf
 	if info.SuperadminOnly && actor.Role != contextinfo.RoleSuperadmin {
 		deps.AuditToolDenied(ctx, sessionID, call, assessment.Level, "tool_requires_superadmin")
 		message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s denied: requires superadmin role", call.Name))
-		return ConfirmResult{Message: message}, fmt.Errorf("tool requires superadmin")
+		return ConfirmResult{Message: message}, PolicyDeniedError("tool requires superadmin")
 	}
 	if !policy.CanUseTool(actor, assessment.Level, info.OwnerScoped) {
 		deps.AuditToolDenied(ctx, sessionID, call, assessment.Level, "tool_risk_above_allowed_level")
 		message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s denied: risk %s is above your allowed tool level", call.Name, assessment.Level))
-		return ConfirmResult{Message: message}, fmt.Errorf("tool risk above allowed level")
+		return ConfirmResult{Message: message}, PolicyDeniedError("tool risk above allowed level")
 	}
 	if confirm, handled := deps.ConfirmBackgroundTool(ctx, sessionID, call, resolved, assessment); handled {
 		return confirm, nil

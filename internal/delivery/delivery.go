@@ -2,6 +2,7 @@ package delivery
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -261,10 +262,14 @@ func (m Manager) SendNotice(ctx context.Context, notice Notice) (Receipt, error)
 	receipt, err := m.Sender.SendNotice(ctx, notice)
 	if err != nil {
 
+		level := slog.LevelError
+		if errors.Is(err, context.Canceled) {
+			level = slog.LevelInfo
+		}
 		attrs := outputLogAttrs(notice.Outputs[0], "platform", notice.Target.Platform, "error", err.Error())
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
+			Level:    level,
 			Name:     "notice_output_failed",
 			Module:   "delivery",
 			Summary:  "notice output failed",

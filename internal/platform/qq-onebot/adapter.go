@@ -729,7 +729,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 	if err := handler.HandleMessage(msgCtx, text); err != nil {
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
+			Level:    failureLogLevel(err),
 			Name:     "handle_qq_message_failed",
 			Module:   "qq-onebot",
 			Summary:  "handle qq message failed",
@@ -865,7 +865,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized
 	if err := a.chatHistory.Append(ctx, message); err != nil {
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
+			Level:    failureLogLevel(err),
 			Name:     "record_qq_chat_message_failed",
 			Module:   "qq-onebot",
 			Summary:  "record qq chat message failed",
@@ -927,4 +927,12 @@ func isConfiguredSuperadmin(superadmins []string, id string) bool {
 		}
 	}
 	return false
+}
+
+// failureLogLevel distinguishes explicit cancellation from an operation failure.
+func failureLogLevel(err error) slog.Level {
+	if errors.Is(err, context.Canceled) {
+		return slog.LevelInfo
+	}
+	return slog.LevelError
 }

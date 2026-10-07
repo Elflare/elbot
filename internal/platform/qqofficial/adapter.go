@@ -203,3 +203,11 @@ func sleepContext(ctx context.Context, d time.Duration) bool {
 		return true
 	}
 }
+
+// failureLogLevel distinguishes explicit cancellation from an operation failure.
+func failureLogLevel(err error) slog.Level {
+	if errors.Is(err, context.Canceled) {
+		return slog.LevelInfo
+	}
+	return slog.LevelError
+}

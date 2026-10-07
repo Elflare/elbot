@@ -3,6 +3,9 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
+	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -10,11 +13,59 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
+	"elbot/internal/logging"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 )
 
 type namingGeneratorFunc func(context.Context, []storage.Message) (TitleResult, error)
+
+type namingDiagnosticError struct{}
+
+func (namingDiagnosticError) Error() string { return "upstream failed" }
+func (namingDiagnosticError) LogDiagnostic() events.LogDiagnostic {
+	return events.LogDiagnostic{Kind: "response_error", Detail: `{"description":"gateway detail","api_key":"secret-credential","payload":"` + strings.Repeat("x", 10000) + `"}`}
+}
+
+func TestNamingFailureDiagnosticSurvivesRuntimeLevel(t *testing.T) {
+	for _, level := range []string{"info", "warn", "error"} {
+		t.Run(level, func(t *testing.T) {
+			center, err := logging.NewManager(level, filepath.Join(t.TempDir(), "sessions.db"), 30)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = center.Close(context.Background()) })
+			service := NewService(nil)
+			t.Cleanup(func() { _ = service.Close(context.Background()) })
+			at := time.Now().Add(-time.Minute).Truncate(time.Second)
+			ctx := contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "wrong", RequestID: "naming-request", RunID: "naming-run", Attempt: "attempt", RootRequestID: "root"})
+			service.notifyNamingFailed(ctx, NamingFailedEvent{SessionID: "source", TriggeredAt: at, Stage: "llm_error", Provider: "provider", Model: "model", Err: fmt.Errorf("wrapped: %w", namingDiagnosticError{})})
+			if err := center.Close(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			for _, prefix := range []string{"audit", "elbot"} {
+				entries, err := (logging.Reader{Dir: center.LogDir()}).Query(context.Background(), logging.LogQuery{Prefix: prefix, Limit: 10})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(entries) != 1 {
+					t.Fatalf("%s: got %d records", prefix, len(entries))
+				}
+				entry := entries[0]
+				if entry.Level != "ERROR" || !entry.Time.Equal(at) || entry.Fields["session_id"] != "source" || entry.Fields["request_id"] != "naming-request" || entry.Fields["provider"] != "provider" || entry.Fields["model"] != "model" {
+					t.Fatalf("lost failure facts: %+v", entry)
+				}
+				detail := entry.Fields["detail"]
+				if prefix == "audit" && (!strings.Contains(detail, "gateway detail") || strings.Contains(detail, "secret-credential") || len(detail) > 8192) {
+					t.Fatalf("unsafe or missing diagnostic: %q", detail)
+				}
+				if prefix == "elbot" && detail != "" {
+					t.Fatal("runtime exposed non-debug detail")
+				}
+			}
+		})
+	}
+}
 
 func TestNamingOwnsSynchronousLogProjection(t *testing.T) {
 	var records []events.LogRecord
@@ -43,6 +94,28 @@ func TestNamingOwnsSynchronousLogProjection(t *testing.T) {
 	service.notifyNamingCompleted(ctx, NamingCompletedEvent{SessionID: "source", TriggeredAt: at})
 	if len(records) != 1 {
 		t.Fatal("naming log connection survived close")
+	}
+}
+
+func TestNamingFallbackFailurePreservesOriginalDiagnostic(t *testing.T) {
+	store := newTestStore(t)
+	service := NewService(store)
+	defer service.Close(context.Background())
+	var failed NamingFailedEvent
+	connection, err := service.NamingSignals().Failed.Connect(func(_ context.Context, event NamingFailedEvent) error { failed = event; return nil }, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Disconnect()
+	// A missing row makes the fallback save fail after the upstream failure.
+	original := fmt.Errorf("upstream: %w", namingDiagnosticError{})
+	service.handleNamingFailure(context.Background(), &storage.Session{ID: "missing"}, []storage.Message{{Role: storage.RoleUser, Content: "fallback text"}}, "generate title", original, "llm_error", TitleResult{}, "")
+	if failed.Err != original || failed.FallbackErr == nil || failed.Reason != "generate title" || failed.Stage != "llm_error" {
+		t.Fatalf("lost original failure: %+v", failed)
+	}
+	var diagnostic events.DiagnosticError
+	if !errors.As(failed.Err, &diagnostic) {
+		t.Fatal("original diagnostic no longer reachable")
 	}
 }
 

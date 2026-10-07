@@ -91,6 +91,7 @@ type NamingFailedEvent struct {
 	InvalidReason            string
 	Reason                   string
 	Err                      error
+	FallbackErr              error
 	TriggeredAt              time.Time
 	MessageCount             int
 	FailureCount             int

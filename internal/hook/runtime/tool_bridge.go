@@ -105,9 +105,10 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	status := "ok"
 	if err != nil {
 		status = "error"
-		level = slog.LevelWarn
+		level = slog.LevelError
 		if errors.Is(err, context.Canceled) {
 			level = slog.LevelInfo
+			status = "canceled"
 		}
 	}
 	invocation := params.ToolContext
@@ -117,10 +118,12 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	_ = globalevents.EmitLog(callCtx, globalevents.LogRecord{
 		Category: globalevents.LogAudit,
 		Level:    level,
-		Name:     "hook.tool_call",
+		Name:     "hook_tool_call",
 		Module:   "hook",
-		Summary:  "hook.tool_call",
+		Summary:  "hook tool call",
 		Fields: []slog.Attr{
+			slog.String("source", "plugin"),
+			slog.Any("error", err),
 			slog.Any("hook", w.config.ID),
 			slog.Any("invocation", invocation),
 			slog.Any("tool", name),

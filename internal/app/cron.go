@@ -20,7 +20,7 @@ func startCronAsync(ctx context.Context, manager *elcron.Manager, service *elcro
 			if !errors.Is(err, context.Canceled) {
 				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 					Category: globalevents.LogRuntime,
-					Level:    slog.LevelWarn,
+					Level:    slog.LevelError,
 					Name:     "cron_async_startup_failed",
 					Module:   "app",
 					Summary:  "cron async startup failed",

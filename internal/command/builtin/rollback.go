@@ -77,9 +77,13 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 		}
 		attrs := []any{"actor_id", actor.ID, "session_id", sessionID, "path", result.Path}
 		if err != nil {
+			level := slog.LevelError
+			if errors.Is(err, context.Canceled) {
+				level = slog.LevelInfo
+			}
 			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 				Category: globalevents.LogAudit,
-				Level:    slog.LevelWarn,
+				Level:    level,
 				Name:     "file_rollback_failed",
 				Module:   "command",
 				Summary:  "file_rollback_failed",

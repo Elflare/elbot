@@ -180,7 +180,7 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 			}
 			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 				Category: globalevents.LogAudit,
-				Level:    slog.LevelWarn,
+				Level:    slog.LevelError,
 				Name:     "cron.missed_delivery_failed",
 				Module:   "cron",
 				Summary:  "cron.missed_delivery_failed",
@@ -188,7 +188,7 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 			})
 			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 				Category: globalevents.LogRuntime,
-				Level:    slog.LevelWarn,
+				Level:    slog.LevelError,
 				Name:     "missed_cron_run_failed",
 				Module:   "cron",
 				Summary:  "missed cron run failed",

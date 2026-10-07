@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"time"
@@ -156,7 +157,8 @@ func (d toolRunDeps) RecordToolCall(ctx context.Context, sessionID string, call 
 	if d.store != nil && d.store.ToolCalls() != nil {
 		recordErr = d.store.ToolCalls().Create(ctx, record)
 	}
-	agentevents.Emit(ctx, d.completed, agentevents.ToolCallCompletedEvent{EventMeta: agentevents.Meta(ctx, sessionID), Record: *record, Arguments: call.Arguments, RecordErr: recordErr})
+	var denied toolrun.PolicyDeniedError
+	agentevents.Emit(ctx, d.completed, agentevents.ToolCallCompletedEvent{EventMeta: agentevents.Meta(ctx, sessionID), Record: *record, Arguments: call.Arguments, RecordErr: recordErr, CallErr: callErr, PolicyDenied: errors.As(callErr, &denied)})
 }
 
 func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reason string) {

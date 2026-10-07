@@ -177,7 +177,7 @@ func (s *Service) handleNamingFailure(ctx context.Context, session *storage.Sess
 	if fallback != "" {
 		latest, applied, updateErr := s.saveGeneratedTitle(ctx, session.ID, fallback, failures < maxNamingFailures)
 		if updateErr != nil {
-			event.Reason, event.Err = "fallback title", updateErr
+			event.FallbackErr = updateErr
 		} else {
 			event.Title = latest.Title
 			if applied {

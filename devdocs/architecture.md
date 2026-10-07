@@ -53,6 +53,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/architecture.md
 - Agent 运行与审计日志统一使用事件发布时的 `EventMeta`，固定 `session_id`、`run_id`、`attempt`、`request_id`、`root_request_id`，显式空值也不被消费 context 覆盖；异步消费不查询当前执行身份。
 - `events.EmitLog` 在发布前固定时间、关联身份、错误诊断、延迟值及可变载荷。中心直接提交 runtime、audit、elnis 三个容量 256 的背压队列；解除请求取消的影响，按类别入队顺序排空。中心不替换全局信号实例，重复活动中心初始化被拒绝。
 - 全部业务日志消费先脱敏再限长：摘要 256 个 Unicode 字符、详情 8 KiB、序列化记录 64 KiB；优先保留事件、模块及关联字段。runtime 详情仅在 DEBUG 配置下保留，audit／elnis 不受运行等级过滤。来源协议通过 `events.DiagnosticError` 提供上游失败详情，日志消费者不导入具体协议实现。
+- 日志来源显式提供事件标识和摘要：客户端重试 WARN，最终失败 ERROR，主动取消不升级，权限／确认拒绝保留 WARN。命名失败的原始错误与兜底保存错误分别保留；上游失败审计不受运行级别影响。Hook 工具调用统一为 `hook_tool_call`，通过 `source` 和 `status` 区分来源及结果。
 - Signal／Queue 的设施故障直接写 stderr，不依赖业务 Logger 或全局日志信号；真正的文件写入错误由队列检查并报告。中心关闭超时不关闭仍在使用的文件，也不释放活动中心名额，后续显式关闭可继续清理。
 - Reader 按日期和文件写入位置倒序查询，每块读取 64 KiB，满足条数立即停止；每次读取与逐行处理检查取消。打开文件后固定本次读取大小，支持跨块行及 LF／CRLF；单行上限 16 MiB，读取失败或超限返回错误。摘要、详情、字段和原始记录均可筛选，查询不改变日志记录等级。
 - 平台 Connected 的 Hook 与 Cron 恢复使用独立队列，互不阻塞；Cron 自行维护补跑、互斥和投递状态。

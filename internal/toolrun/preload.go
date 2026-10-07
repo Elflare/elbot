@@ -2,6 +2,7 @@ package toolrun
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -100,9 +101,13 @@ func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, na
 			block, err := skillDetailBlock(ctx, candidate, detailer)
 			if err != nil {
 				result.Invalid = append(result.Invalid, name)
+				level := slog.LevelError
+				if errors.Is(err, context.Canceled) {
+					level = slog.LevelInfo
+				}
 				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 					Category: globalevents.LogAudit,
-					Level:    slog.LevelWarn,
+					Level:    level,
 					Name:     "skill_preload_failed",
 					Module:   "tool",
 					Summary:  "skill_preload_failed",
