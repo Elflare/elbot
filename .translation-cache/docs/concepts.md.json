@@ -720,6 +720,14 @@
       "translation": "Each schedule trigger of LLM Cron creates an independent background Session, executes the task as a new input, and sends the result of the current round upon completion.",
       "updated_at": 1784340226
     },
+    "docs/concepts.md:paragraph:51dcbd8bfa8f2ed1ae0db20c21b765ef2416efb28622c8250546b2b3e5399ec2": {
+      "kind": "paragraph",
+      "source": "Chat Completions 在请求顶层 __ELBOT_CODE_0__ 中发送当前工具；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "51dcbd8bfa8f2ed1ae0db20c21b765ef2416efb28622c8250546b2b3e5399ec2",
+      "translation": "Chat Completions send the current tools in the top-level __ELBOT_CODE_0__ of the request;",
+      "updated_at": 1791341016
+    },
     "docs/concepts.md:paragraph:54284c9bb47c5522d1c0a24e0277133e2b552ef21f1820dc44f854fbab450821": {
       "kind": "paragraph",
       "source": "Responses 从原生窗口开始新链，后续沿新链继续。",
@@ -800,6 +808,14 @@
       "translation": "ElBot's tool system includes risk levels and permission control.\n",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:66a033dbdcf0a214907e357a1ebbf6432b9d8954dd9d6e1e6bb49b2776bd0521": {
+      "kind": "paragraph",
+      "source": "发现流程与模型协议无关。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "66a033dbdcf0a214907e357a1ebbf6432b9d8954dd9d6e1e6bb49b2776bd0521",
+      "translation": "The discovery process is independent of the model protocol.",
+      "updated_at": 1791341016
+    },
     "docs/concepts.md:paragraph:6a674966e7f4cff4a0315756cb5662e2d9be6272af70b9809d70b910679abe05": {
       "kind": "paragraph",
       "source": "Chat 会话使用压缩模型生成文字摘要，并保留历史用户原话；",
@@ -855,6 +871,14 @@
       "source_hash": "760276971149aa197a1bcca261358eddfd3def0153ff1e933f944a3ec3750f2b",
       "translation": "Go Skills are recommended to write temporary output to __ELBOT_CODE_0__, and TOML scripts can write to the directory where the received media input is located.\n",
       "updated_at": 1789009687
+    },
+    "docs/concepts.md:paragraph:780dd8317b7a8e37fc6613c248a9bde3441ad3e44a525678ed8a76382bde0f16": {
+      "kind": "paragraph",
+      "source": "Responses 把首次出现的定义作为 __ELBOT_CODE_0__ 追加到原生输入，后续不重复添加相同定义，完整回放时保留原有位置。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "780dd8317b7a8e37fc6613c248a9bde3441ad3e44a525678ed8a76382bde0f16",
+      "translation": "Responses append the first appearance of a definition as __ELBOT_CODE_0__ to the native input; subsequent identical definitions are not added repeatedly, and original positions are preserved during full playback.",
+      "updated_at": 1791341016
     },
     "docs/concepts.md:paragraph:7e86cfad2894816675db748bc890c323d025d3247b488aa2bb497c3c852825ce": {
       "kind": "paragraph",
@@ -927,6 +951,14 @@
       "source_hash": "8fafa0ab87c1316ed561c3c7c326c5a0535a8948f1d57f6f14f332531f74ce61",
       "translation": "An empty input list can be passed to request a directory used only for output.",
       "updated_at": 1789009687
+    },
+    "docs/concepts.md:paragraph:923a16160d7a158f7cd16da68b2c1cddaf9242a5f0114c6f796a6224f67253c7": {
+      "kind": "paragraph",
+      "source": "工具发现返回的文字独立保留，每次查询 cron 的当前时间、Skill 说明等都不会因 schema 去重而丢失。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "923a16160d7a158f7cd16da68b2c1cddaf9242a5f0114c6f796a6224f67253c7",
+      "translation": "Text returned by tool discovery is preserved independently; queries for the current time of cron, Skill descriptions, etc., will not be lost due to schema deduplication.\n",
+      "updated_at": 1791341016
     },
     "docs/concepts.md:paragraph:94dc3a5bc56a498eddd22c535bcf8839da815458e0b61469d7f4ed0dc6f3bd89": {
       "kind": "paragraph",
@@ -1095,6 +1127,14 @@
       "source_hash": "bbfa54fe1df1bf21ab2cc688d3496fa9c15e162e202fa5e56790ad19ef55a91b",
       "translation": "New messages received during tool execution will not interrupt the tool currently running.",
       "updated_at": 1784466634
+    },
+    "docs/concepts.md:paragraph:bd106972f883db8641f54e79e97949f3d183b73271e5b3d2acd2c23fb054df88": {
+      "kind": "paragraph",
+      "source": "Responses 每轮通过 __ELBOT_CODE_0__ 限定当前可调用工具。历史中保留定义不代表当前获准调用；同名工具的定义发生变化时，需要新建会话。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "bd106972f883db8641f54e79e97949f3d183b73271e5b3d2acd2c23fb054df88",
+      "translation": "Responses limit the currently callable tools via __ELBOT_CODE_0__ in each round. Preserving definitions in history does not mean they are currently authorized for calling; when the definition of a tool with the same name changes, a new Session must be created.\n",
+      "updated_at": 1791341016
     },
     "docs/concepts.md:paragraph:bdda44ff661fbed92e8838361bda8666877c3b348567962ef5fdfacdafbb792a": {
       "kind": "paragraph",
@@ -1522,8 +1562,8 @@
     }
   },
   "source": "docs/concepts.md",
-  "source_hash": "9cf4ce706769ae8663d9220544f29e4f6f714fff9bc8f2722457b4d45387e71d",
+  "source_hash": "6140057f66f9c80c606bccbc2912d47fec8eb03abdc0a9f746e6931401e340bc",
   "target": "docs.en/concepts.md",
-  "updated_at": 1791301387,
+  "updated_at": 1791341016,
   "version": 2
 }
