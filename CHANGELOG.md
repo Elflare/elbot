@@ -17,8 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- 历史媒体获取的缓存、去重与 5 次未缓存获取预算从 get_media 收拢到媒体中心，与 view_image 共用；失败计数，缓存不占次数。
-- 工具支持按 API 类型限制发现、补全、预载和执行；模型类型标识统一命名为 APIType，配置与持久化字段保持不变。
+- 工具支持按 API 类型限制发现、补全、预载和执行。
 - `shell` 的 stdout／stderr 返回上限从各 16 KiB 提高到各 256 KiB，超出时在对应输出末尾说明过长截断。
 - Responses 工具定义从每轮顶层 `tools` 改为原生输入中的增量 `additional_tools`，回放保留原有位置；当前调用权限单独受 `tool_choice` 限制。旧 Responses 会话及同名工具定义变化需新建会话。
 - 后台路径说明从四个路径工具的 schema 移至系统提示，前台接管不再改变工具定义。
