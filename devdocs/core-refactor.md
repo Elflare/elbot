@@ -174,8 +174,8 @@ modelmgr.CanSwitch 只比较身份，不查询或修改 Session；源身份来�
 
 公共压缩入口按源会话归属取得 Compactor，私有实现返回统一统计及带协议身份的 seed。公共层保存和交接，Session 负责创建与激活新会话；workspace、命名代数和永久接管等继承语义沿用现状。
 
-- 两路线复用 compact_enabled、compact_trigger_ratio、当前模型窗口和手动 /compact。Chat 保留文字摘要与 compact_model，任一协议客户端均可提供独立 GenerateText；Responses 固定当前对话模型调用 /responses/compact，不读取 compact_model。
-- Responses 完整保留压缩返回窗口，以新会话 seed 开始，不接回旧链，见[原生压缩说明](https://developers.openai.com/api/docs/guides/compaction)。
+- 两路线复用 compact_enabled、compact_trigger_ratio、当前模型窗口和手动 /compact。Chat 保留文字摘要与 compact_model，任一协议客户端均可提供独立 GenerateText；Responses 固定当前对话模型，在完整输入末尾追加 compaction_trigger，通过普通 /responses 流完成压缩，不读取 compact_model。
+- Responses 的新会话 seed 仅保留唯一加密 compaction 项及来源素材引用，不拼回历史原话，不接回旧链；下一轮重新加入当前工具定义。请求固定 store=false、tool_choice=none，不继承正文格式要求。
 - 不支持原生压缩、材料不完整或提交失败时明确报错，不退成文字摘要、不改变未成功交接的当前会话。
 - 两路线从工具调用头 Fork 时，展示边界包含该调用及结果，排除后续结果。Responses 继承分叉点的不可变 checkpoint／调用快照及已完成结果引用；没有完整材料则拒绝，不能使用最新 response ID 或后续结果替代。未完成调用只在原生分支材料中补未执行／结果未知输出，不重跑历史工具；分支结果媒体重新解析，seed 独立持有素材。
 - Cron 跨平台后台副本同时复制完整原生窗口，复用源材料准备能力，不继承执行／工具运行状态或前台绑定，报告投递保持原有语义。

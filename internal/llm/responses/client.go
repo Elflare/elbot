@@ -76,6 +76,10 @@ func (c *Client) Stream(ctx context.Context, req Request) (<-chan Event, error) 
 }
 
 func (c *Client) PrepareRequest(req Request) (PreparedRequest, error) {
+	return c.prepareRequest(req, false)
+}
+
+func (c *Client) prepareRequest(req Request, compact bool) (PreparedRequest, error) {
 	if strings.TrimSpace(c.baseURL) == "" {
 		return PreparedRequest{}, errors.New("response base_url is required")
 	}
@@ -104,9 +108,21 @@ func (c *Client) PrepareRequest(req Request) (PreparedRequest, error) {
 	if req.Temperature != nil {
 		body["temperature"] = *req.Temperature
 	}
-	body, err = llm.AddExtraFields(body, []string{"model", "input", "instructions", "tools", "stream", "previous_response_id", "conversation", "store"},
-		llm.ExtraFields{Source: "provider extra_payload", Fields: withoutStore(c.extraPayload)},
-		llm.ExtraFields{Source: "model extra_payload", Fields: withoutStore(c.modelExtraPayloads[req.Model])},
+	providerExtra, modelExtra := withoutStore(c.extraPayload), withoutStore(c.modelExtraPayloads[req.Model])
+	reserved := []string{"model", "input", "instructions", "tools", "stream", "previous_response_id", "conversation", "store"}
+	if compact {
+		// Compaction inherits inference/cache options, but neither an answer format
+		// nor a configured tool choice may turn it into a normal generation.
+		for _, extra := range []map[string]any{providerExtra, modelExtra} {
+			delete(extra, "text")
+			delete(extra, "tool_choice")
+		}
+		body["tool_choice"] = "none"
+		reserved = append(reserved, "text", "tool_choice")
+	}
+	body, err = llm.AddExtraFields(body, reserved,
+		llm.ExtraFields{Source: "provider extra_payload", Fields: providerExtra},
+		llm.ExtraFields{Source: "model extra_payload", Fields: modelExtra},
 		llm.ExtraFields{Source: "request ExtraBody", Fields: req.ExtraBody})
 	if err != nil {
 		return PreparedRequest{}, err

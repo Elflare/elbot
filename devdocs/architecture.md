@@ -151,12 +151,12 @@ Agent 只保存对外能力所需的组件引用和信号集合；消息、后�
 - dialogue、contextmgr、session 分别消费 LoopResolver、CompactorResolver、MaterialResolver；注册表依赖公共契约，公共层不导入注册表实现、Agent 根包或具体路线。
 - app 在创建上下文服务前建立注册表，Agent 保留与配置 Origin 和 Client 匹配的预登记路线，为其余 provider 装配内置路线并封闭注册表，验证压缩与材料接线成功后返回。注册表不保存执行、会话或工具状态，不提供完整依赖容器。
 - `/compact` 与自动阈值继续进入 executionCoordinator，公共 contextmgr.Compact 只从源 Session 的 llm_origin 查询 Compactor，不用摘要目标或当前配置猜来源；旧 provider 删除或配置改变时仍可使用已登记的源协议能力。Chat 私有实现负责历史筛选、摘要提示、模型选择和 seed 准备。公共层负责命名信息与统计，执行／Session 负责创建、继承、保存和交接。
-- 两路线共用 compact_enabled、compact_trigger_ratio 和当前模型窗口。Chat 保留文字摘要与输入保存后消费 seed 的语义；Responses 固定当前主对话 Selection 调用原生 Compact，完整保存返回窗口，以独立 seed 创建新链。首个成功 checkpoint 在同一事务标记 seed 已消费，根材料继续保留。
+- 两路线共用 compact_enabled、compact_trigger_ratio 和当前模型窗口。Chat 保留文字摘要与输入保存后消费 seed 的语义；Responses 固定当前主对话 Selection，将完整原生上下文加末尾 compaction_trigger 送入普通 /responses 流，固定 store=false、tool_choice=none，不带 previous_response_id，不继承正文输出格式。成功终态必须含唯一且 encrypted_content 非空的 compaction，以此单项建立独立 seed 和新链。首个成功 checkpoint 在同一事务标记 seed 已消费，根材料继续保留。
 - `modelmgr.CanSwitch` 纯比较源／目标身份：Chat 可跨 Chat 厂商，同一 provider 节点的 Responses 可切模型，跨协议及涉及 Responses 的跨厂商切换拒绝。命令解析候选、预检受影响槽位后才提交全局状态；执行入口在归属登记、自动压缩和保存输入前再次检查，接管后的后续调用也检查。后台永久接管在 metadata 更新前检查 work 选择，拒绝时保留原执行。
 
 Responses 请求在 HTTP 调用前保存实际编码 JSON，主对话显式请求 reasoning.encrypted_content，与合法配置的 include 合并去重；终态保留原始 response 和完成 items。失败、取消、incomplete 或提前 EOF 不推进 checkpoint；首次失败留下的完整待提交用户输入可在下次请求继续，展示历史与原生输入不匹配时拒绝。空业务回复仍可提交 cursor，缓冲发送失败保留已提交位置。
 
-Responses 将首批和新增 schema 冻结为 developer `additional_tools` 原生输入，与待提交用户输入及工具输出一起持久化；仅该路线负责协议编码。每轮从 seed／checkpoint 历史及待提交输入重建定义索引，相同定义不重复添加，同名变化拒绝并要求新建会话。发现结果文字独立保存，重复发现仍保留新文字。新增定义排在工具输出及普通用户输入之后、接管提示之前；续链只发送新增输入，完整回放保留历史位置。压缩返回的定义继续沿用，缺失的当前工具定义在下轮重新加入。
+Responses 将首批和新增 schema 冻结为 developer `additional_tools` 原生输入，与待提交用户输入及工具输出一起持久化；仅该路线负责协议编码。每轮从 seed／checkpoint 历史及待提交输入重建定义索引，相同定义不重复添加，同名变化拒绝并要求新建会话。发现结果文字独立保存，重复发现仍保留新文字。新增定义排在工具输出及普通用户输入之后、接管提示之前；续链只发送新增输入，完整回放保留历史位置。压缩 seed 只含 compaction，当前工具定义在下轮重新加入，权限仍由当前执行状态决定。
 
 当前权限与历史定义分离：Responses 请求不发送顶层 tools，由客户端将当前工具名称和配置的 tool_choice 取交集，生成 allowed_tools／指定 function／none；响应调用也按实际请求的允许集合检查。工具轮数耗尽、chat 模式、Fork 未继承工具状态等场景不能借历史定义恢复权限。Chat 继续发送顶层 tools。后台四个路径工具的路径说明由共同 system prompt source 提供，schema 不随前台接管改变。
 
@@ -449,7 +449,7 @@ app 创建共享 `contextmgr.Service`，注入 Agent；服务不持有 Request�
 - Prompt Builder 只生成单条 system prompt，并组合历史、工具 transcript、多模态 metadata 和摘要。
 - 压缩以可取消 Request 和执行身份保护生命周期，算法归源协议 Compactor。Chat 筛选有效对话及成功工具调用生成摘要；Responses 重建完整窗口并调用原生 Compact，实际请求／返回另存审计记录，旧 checkpoint 不推进。交接在短准入内复核取消、绑定、身份和来源 checkpoint，先使旧 Turn idle，再创建无 Parent/Fork 关系的新 Session；旧记录保留。前台激活新绑定，后台保持无 current 的后台执行，接管事实及 workspace 随交接保留，旧 token 用量不带入。
 - 压缩期间拒绝新输入，支持停止；取消先于交接生效时不能切换 current。自动压缩继续此前已接收的输入和工具 pending，手动压缩不自动聊天。
-- Chat 的新 Session metadata 暂存一次性文字 seed，首条用户输入将“压缩结果 + 历史用户原话 + 当前输入”物化为单条 user message，输入保存成功后消耗。Responses 的 PreparedCompact 携带独立原生 seed，metadata 只存引用和统计；整个压缩返回窗口作为新链根，首个成功本地 checkpoint 才消费，API 或本地提交失败时仍可重试。
+- Chat 的新 Session metadata 暂存一次性文字 seed，首条用户输入将“压缩结果 + 历史用户原话 + 当前输入”物化为单条 user message，输入保存成功后消耗。Responses 的 PreparedCompact 携带独立原生 seed，metadata 只存引用和统计；唯一 compaction 项作为新链根，保留其原始 JSON 和来源素材引用，不拼回历史原话。trigger 仅存在于请求审计，终态及全部输出独立归档，额外输出不展示、不执行、不进入 seed。首个成功本地 checkpoint 才消费 seed，API 或本地提交失败时仍可重试。
 - 模型选择在 turn 开始时快照；进行中的 `/model` 不改变当前 LLM/工具循环，下一轮按新模型重新解析窗口与阈值。后台转前台后解除后台模型覆盖和强制 JSON／无人值守提示，后续 LLM 调用使用前台身份。
 - System Prompt Manager 按优先级收集 Soul、工具名称、tag prompt 等片段。
 - 最近 usage 写入 Session metadata，恢复会话后可展示；服务按 Session 隔离观测值并返回副本，保存失败记录日志但仍保留已观测用量。seed 消耗只更新所属字段，压缩交接从最新 metadata 继承其他模块字段并移除旧用量。
