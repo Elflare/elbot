@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
+
+	globalevents "elbot/internal/events"
 )
 
 const defaultShutdownTimeout = 30 * time.Second
@@ -108,9 +111,6 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 	if foundation.Lifecycle == nil {
 		return fmt.Errorf("app: foundation factory returned incomplete components")
 	}
-	if foundation.Logger == nil {
-		return fmt.Errorf("app: foundation factory returned incomplete components")
-	}
 
 	models, err := r.deps.Models.Build(ModelRequest{Foundation: foundation, Profiler: profiler})
 	if err != nil {
@@ -159,7 +159,14 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 	}
 
 	startupDuration := profiler.Flush()
-	foundation.Logger.Info("elbot startup completed", "startup_duration", startupDuration.String())
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogRuntime,
+		Level:    slog.LevelInfo,
+		Name:     "elbot_startup_completed",
+		Module:   "app",
+		Summary:  "elbot startup completed",
+		Fields:   []slog.Attr{slog.Any("startup_duration", startupDuration.String())},
+	})
 	var afterStart func(context.Context)
 	if shouldStartCron(mode) && foundation.StartCron != nil {
 		afterStart = func(ctx context.Context) {
@@ -169,13 +176,7 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 	done := make(chan error, 1)
 	platformsStopped = false
 	go func() {
-		done <- r.deps.Executor.Run(ctx, PlatformRunRequest{
-			Handler:    runtime.Handler,
-			Logger:     foundation.Logger,
-			Runtimes:   platforms.Runtimes,
-			AfterStart: afterStart,
-			Stop:       cancel,
-		})
+		done <- r.deps.Executor.Run(ctx, PlatformRunRequest{Handler: runtime.Handler, Runtimes: platforms.Runtimes, AfterStart: afterStart, Stop: cancel})
 	}()
 	select {
 	case err := <-done:

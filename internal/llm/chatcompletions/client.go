@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -29,9 +28,9 @@ type Client struct {
 	extraPayload       map[string]any
 	modelExtraPayloads map[string]map[string]any
 	transport          *httpclient.Client
-	logger             *slog.Logger
-	loggedSystemMu     sync.Mutex
-	loggedSystem       map[string]bool
+
+	loggedSystemMu sync.Mutex
+	loggedSystem   map[string]bool
 }
 
 func New(baseURL, apiKey string, extraPayload map[string]any, modelExtraPayloads map[string]map[string]any, opts RequestOptions) (*Client, error) {
@@ -42,7 +41,6 @@ func New(baseURL, apiKey string, extraPayload map[string]any, modelExtraPayloads
 	return &Client{baseURL: strings.TrimRight(baseURL, "/"), apiKey: apiKey, extraPayload: extraPayload, modelExtraPayloads: modelExtraPayloads, transport: transport, loggedSystem: map[string]bool{}}, nil
 }
 
-func (a *Client) SetLogger(logger *slog.Logger) { a.logger = logger }
 func (a *Client) SetRetryNotifier(f func(context.Context, llm.RetryEvent)) {
 	a.transport.SetRetryNotifier(f)
 }
@@ -79,7 +77,7 @@ func (a *Client) Stream(ctx context.Context, req Request) (<-chan Chunk, error) 
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
-	a.logChatRequest(req, bodyBytes)
+	a.logChatRequest(ctx, req, bodyBytes)
 	responseCtx, cancel := context.WithCancel(ctx)
 	resp, err := a.transport.Do(responseCtx, func(ctx context.Context) (*http.Request, error) {
 		r, err := http.NewRequestWithContext(ctx, http.MethodPost, a.endpoint(), bytes.NewReader(bodyBytes))

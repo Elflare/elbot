@@ -14,6 +14,8 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+
+	globalevents "elbot/internal/events"
 )
 
 type Transport struct {
@@ -21,8 +23,8 @@ type Transport struct {
 	AccessToken string
 	Timeout     time.Duration
 
-	mu        sync.Mutex
-	logger    *slog.Logger
+	mu sync.Mutex
+
 	writeOnce sync.Once
 	writeGate chan struct{}
 	conn      *websocket.Conn
@@ -362,9 +364,6 @@ func (t *Transport) acquireWrite(ctx context.Context) (func(), error) {
 }
 
 func (t *Transport) logCall(ctx context.Context, action string, frameBytes int, startedAt, encodedAt, acquiredAt, writtenAt time.Time, err error) {
-	if t.logger == nil {
-		return
-	}
 	finishedAt := time.Now()
 	elapsed := finishedAt.Sub(startedAt)
 	if err == nil && elapsed < 10*time.Second {
@@ -389,10 +388,24 @@ func (t *Transport) logCall(ctx context.Context, action string, frameBytes int, 
 	}
 	if err != nil {
 		attrs = append(attrs, "error", err.Error())
-		t.logger.WarnContext(ctx, "onebot action failed", attrs...)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelWarn,
+			Name:     "onebot_action_failed",
+			Module:   "qq-onebot",
+			Summary:  "onebot action failed",
+			Fields:   slog.Group("", attrs...).Value.Group(),
+		})
 		return
 	}
-	t.logger.DebugContext(ctx, "onebot action slow", attrs...)
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogRuntime,
+		Level:    slog.LevelDebug,
+		Name:     "onebot_action_slow",
+		Module:   "qq-onebot",
+		Summary:  "onebot action slow",
+		Fields:   slog.Group("", attrs...).Value.Group(),
+	})
 }
 
 func elapsedMillisBetween(start, end time.Time) int64 {

@@ -3,10 +3,12 @@ package qqofficial
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 )
 
 const (
@@ -135,7 +137,14 @@ func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string) 
 		if err == nil {
 			return receiptWithMessageID(resp.ID), nil
 		}
-		a.logWarn(ctx, "qqofficial markdown send failed, fallback to text", "error", err)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelWarn,
+			Name:     "qqofficial_markdown_send_failed_fallback_to_text",
+			Module:   "qqofficial",
+			Summary:  "qqofficial markdown send failed, fallback to text",
+			Fields:   []slog.Attr{slog.Any("error", err)},
+		})
 	}
 	msg := a.baseMessage(target)
 	msg.MsgType = msgTypeText

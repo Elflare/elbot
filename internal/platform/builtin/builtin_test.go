@@ -14,7 +14,7 @@ func TestNewRegistersEnabledQQOneBotOnly(t *testing.T) {
 			"qqonebot": map[string]any{"enabled": false},
 		},
 	}
-	bundle, err := New(Options{Mode: ModeFull}, cfg, nil, nil, nil)
+	bundle, err := New(Options{Mode: ModeFull}, cfg, nil, nil)
 	if err != nil {
 		t.Fatalf("New disabled: %v", err)
 	}
@@ -23,7 +23,7 @@ func TestNewRegistersEnabledQQOneBotOnly(t *testing.T) {
 	}
 
 	cfg.Platform["qqonebot"]["enabled"] = true
-	bundle, err = New(Options{Mode: ModeFull}, cfg, nil, nil, nil)
+	bundle, err = New(Options{Mode: ModeFull}, cfg, nil, nil)
 	if err != nil {
 		t.Fatalf("New enabled: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestNewQQOfficialReadsClientSecretFromConfigDotEnv(t *testing.T) {
 		},
 	}
 
-	bundle, err := New(Options{Mode: ModeFull}, cfg, nil, nil, nil)
+	bundle, err := New(Options{Mode: ModeFull}, cfg, nil, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestNewQQOneBotReadsAccessTokenFromConfigDotEnv(t *testing.T) {
 		},
 	}
 
-	bundle, err := New(Options{Mode: ModeFull}, cfg, nil, nil, nil)
+	bundle, err := New(Options{Mode: ModeFull}, cfg, nil, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestNewModes(t *testing.T) {
 		},
 	}
 
-	cliOnly, err := New(Options{Mode: ModeCLIOnly}, cfg, nil, nil, nil)
+	cliOnly, err := New(Options{Mode: ModeCLIOnly}, cfg, nil, nil)
 	if err != nil {
 		t.Fatalf("New cli-only: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestNewModes(t *testing.T) {
 		t.Fatalf("cli-only bundle = %#v", cliOnly)
 	}
 
-	service, err := New(Options{Mode: ModeService}, cfg, nil, nil, nil)
+	service, err := New(Options{Mode: ModeService}, cfg, nil, nil)
 	if err != nil {
 		t.Fatalf("New service: %v", err)
 	}

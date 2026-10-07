@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"reflect"
 	"testing"
@@ -14,6 +13,7 @@ import (
 	"elbot/internal/contextmgr"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
 	"elbot/internal/request"
 	"elbot/internal/session"
@@ -206,7 +206,7 @@ func TestExecutionCommitDuringAppendKeepsUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if usage := f.execution.usageForSession(latest); usage == nil || usage.TotalTokens != 7 {
+	if usage := f.execution.usageForSession(t.Context(), latest); usage == nil || usage.TotalTokens != 7 {
 		t.Fatalf("successful commit lost usage: %+v", usage)
 	}
 	if f.opts.Turns.Snapshot(row.ID).Phase != turn.PhaseAwaitAppendConfirm {

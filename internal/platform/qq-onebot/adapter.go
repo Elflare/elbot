@@ -20,6 +20,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
 	"elbot/internal/security"
@@ -67,11 +68,11 @@ func qqTextPages(text string) []string {
 }
 
 type Adapter struct {
-	cfg           Config
-	store         storage.Store
-	chatHistory   storage.ChatHistoryRepository
-	transport     *Transport
-	logger        *slog.Logger
+	cfg         Config
+	store       storage.Store
+	chatHistory storage.ChatHistoryRepository
+	transport   *Transport
+
 	connectedOnce sync.Once
 	connected     *signal.Signal[platform.ConnectedEvent]
 }
@@ -82,7 +83,7 @@ type target struct {
 	GroupID     int64
 }
 
-func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory storage.ChatHistoryRepository, logger *slog.Logger, superadmins []string, commandPrefixes []string, configEnvDir, attachmentDir string, maxReceiveFileBytes int64, downloadTimeoutSecs int) (*Adapter, error) {
+func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory storage.ChatHistoryRepository, superadmins []string, commandPrefixes []string, configEnvDir, attachmentDir string, maxReceiveFileBytes int64, downloadTimeoutSecs int) (*Adapter, error) {
 	var cfg Config
 	if err := platform.DecodeConfig(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("decode qqonebot config: %w", err)
@@ -104,7 +105,7 @@ func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory 
 		}
 		cfg.AccessToken = strings.TrimSpace(value)
 	}
-	return New(cfg, store, chatHistory, logger), nil
+	return New(cfg, store, chatHistory), nil
 }
 
 func applyDefaults(cfg *Config) {
@@ -141,25 +142,18 @@ func validateSendFileMode(mode string) error {
 	}
 }
 
-func New(cfg Config, store storage.Store, chatHistory storage.ChatHistoryRepository, logger *slog.Logger) *Adapter {
+func New(cfg Config, store storage.Store, chatHistory storage.ChatHistoryRepository) *Adapter {
 	applyDefaults(&cfg)
 
 	timeout := time.Duration(cfg.APITimeoutSeconds) * time.Second
 	if timeout <= 0 {
 		timeout = 15 * time.Second
 	}
-	return &Adapter{
-		cfg:         cfg,
-		store:       store,
-		chatHistory: chatHistory,
-		transport: &Transport{
-			URL:         cfg.URL,
-			AccessToken: cfg.AccessToken,
-			Timeout:     timeout,
-			logger:      logger,
-		},
-		logger: logger,
-	}
+	return &Adapter{cfg: cfg, store: store, chatHistory: chatHistory, transport: &Transport{
+		URL:         cfg.URL,
+		AccessToken: cfg.AccessToken,
+		Timeout:     timeout,
+	}}
 }
 
 func (a *Adapter) Name() string { return "qqonebot" }
@@ -190,7 +184,14 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 		}
 		if err := a.transport.Connect(ctx); err != nil {
 			if backoff.ShouldWarn() {
-				a.logWarn("onebot connect failed", "error", err)
+				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+					Category: globalevents.LogRuntime,
+					Level:    slog.LevelWarn,
+					Name:     "onebot_connect_failed",
+					Module:   "qq-onebot",
+					Summary:  "onebot connect failed",
+					Fields:   []slog.Attr{slog.Any("error", err)},
+				})
 			}
 			if !sleepContext(ctx, backoff.Delay()) {
 				return ctx.Err()
@@ -198,12 +199,26 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 			continue
 		}
 		backoff.Reset()
-		a.logInfo("onebot connected", "url", a.cfg.URL)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelInfo,
+			Name:     "onebot_connected",
+			Module:   "qq-onebot",
+			Summary:  "onebot connected",
+			Fields:   []slog.Attr{slog.Any("url", a.cfg.URL)},
+		})
 		a.notifyConnected(ctx)
 		err := a.readLoop(ctx, handler)
 		a.transport.Close(websocket.StatusNormalClosure, "reconnect")
 		if err != nil && !errors.Is(err, context.Canceled) {
-			a.logWarn("onebot disconnected", "error", err)
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogRuntime,
+				Level:    slog.LevelWarn,
+				Name:     "onebot_disconnected",
+				Module:   "qq-onebot",
+				Summary:  "onebot disconnected",
+				Fields:   []slog.Attr{slog.Any("error", err)},
+			})
 		}
 		if !sleepContext(ctx, backoff.Delay()) {
 			return ctx.Err()
@@ -239,7 +254,7 @@ func (a *Adapter) CallPlatformAPI(ctx context.Context, api string, params map[st
 }
 
 func (a *Adapter) sendTemporaryNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
-	transport := &Transport{URL: a.cfg.URL, AccessToken: a.cfg.AccessToken, Timeout: time.Duration(a.cfg.APITimeoutSeconds) * time.Second, logger: a.logger}
+	transport := &Transport{URL: a.cfg.URL, AccessToken: a.cfg.AccessToken, Timeout: time.Duration(a.cfg.APITimeoutSeconds) * time.Second}
 	if err := transport.Connect(ctx); err != nil {
 		return delivery.Receipt{}, err
 	}
@@ -712,7 +727,14 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 		return
 	}
 	if err := handler.HandleMessage(msgCtx, text); err != nil {
-		a.logWarn("handle qq message failed", "error", err, "message_id", event.MessageID)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelWarn,
+			Name:     "handle_qq_message_failed",
+			Module:   "qq-onebot",
+			Summary:  "handle qq message failed",
+			Fields:   []slog.Attr{slog.Any("error", err), slog.Any("message_id", event.MessageID)},
+		})
 	}
 }
 
@@ -733,7 +755,14 @@ func (a *Adapter) resolveAtSegments(ctx context.Context, event Event, msg Normal
 		}
 		sender, err := a.transport.GetGroupMemberInfo(ctx, event.GroupID, userID)
 		if err != nil {
-			a.logWarn("get qq group member info failed", "group_id", event.GroupID, "user_id", userID, "error", err)
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogRuntime,
+				Level:    slog.LevelWarn,
+				Name:     "get_qq_group_member_info_failed",
+				Module:   "qq-onebot",
+				Summary:  "get qq group member info failed",
+				Fields:   []slog.Attr{slog.Any("group_id", event.GroupID), slog.Any("user_id", userID), slog.Any("error", err)},
+			})
 			continue
 		}
 		text := atText(updated[i].UserID, senderName(sender))
@@ -834,7 +863,14 @@ func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized
 		CreatedAt:                createdAt,
 	}
 	if err := a.chatHistory.Append(ctx, message); err != nil {
-		a.logWarn("record qq chat message failed", "error", err, "message_id", event.MessageID)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelWarn,
+			Name:     "record_qq_chat_message_failed",
+			Module:   "qq-onebot",
+			Summary:  "record qq chat message failed",
+			Fields:   []slog.Attr{slog.Any("error", err), slog.Any("message_id", event.MessageID)},
+		})
 	}
 }
 
@@ -891,16 +927,4 @@ func isConfiguredSuperadmin(superadmins []string, id string) bool {
 		}
 	}
 	return false
-}
-
-func (a *Adapter) logInfo(msg string, args ...any) {
-	if a.logger != nil {
-		a.logger.Info(msg, args...)
-	}
-}
-
-func (a *Adapter) logWarn(msg string, args ...any) {
-	if a.logger != nil {
-		a.logger.Warn(msg, args...)
-	}
 }

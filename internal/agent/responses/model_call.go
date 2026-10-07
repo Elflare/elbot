@@ -3,6 +3,7 @@ package responses
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"slices"
 	"sort"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	api "elbot/internal/llm/responses"
@@ -77,8 +79,21 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 			return final, err
 		}
 		if !state.Available {
-			if store && state.Requested && s.route.Logger != nil {
-				s.route.Logger.WarnContext(ctx, "Responses switching to stateless replay", "provider", s.selection.Provider, "model", s.selection.Model, "session_id", s.session.ID, "response_id", s.checkpoint.ResponseID, "reason", "upstream returned store:false")
+			if store && state.Requested {
+				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+					Category: globalevents.LogRuntime,
+					Level:    slog.LevelWarn,
+					Name:     "responses_switching_to_stateless_replay",
+					Module:   "agent",
+					Summary:  "Responses switching to stateless replay",
+					Fields: []slog.Attr{
+						slog.Any("provider", s.selection.Provider),
+						slog.Any("model", s.selection.Model),
+						slog.Any("session_id", s.session.ID),
+						slog.Any("response_id", s.checkpoint.ResponseID),
+						slog.Any("reason", "upstream returned store:false"),
+					},
+				})
 			}
 			store = false
 		}

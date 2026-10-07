@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"log/slog"
 	"time"
 
 	"elbot/internal/agent/dialogue"
@@ -36,7 +35,7 @@ func (c *executionCoordinator) AdoptForeground(ctx context.Context, row *storage
 // executionCoordinator owns cross-turn admission and handoffs; domain managers
 // remain the source of truth for requests, attempts and logical execution state.
 type executionCoordinator struct {
-	logger            *slog.Logger // Context usage diagnostics.
+	// Context usage diagnostics.
 	sessions          *session.Service
 	sessionRows       storage.SessionRepository
 	turns             *turn.Manager

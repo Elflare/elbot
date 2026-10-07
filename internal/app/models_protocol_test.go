@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -57,7 +56,7 @@ func TestFactoryNativeClientsServeNamingAndChatTextCompaction(t *testing.T) {
 	defer srv.Close()
 	events := []string{}
 	cfg := &config.Config{Providers: map[string]config.ProviderConfig{"chat": {BaseURL: srv.URL}, "native": {BaseURL: srv.URL, APIMode: "response"}}}
-	clients, err := (defaultModelFactory{}).Build(ModelRequest{Foundation: &FoundationComponents{Config: cfg, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}, Profiler: profilerStub{events: &events}})
+	clients, err := (defaultModelFactory{}).Build(ModelRequest{Foundation: &FoundationComponents{Config: cfg}, Profiler: profilerStub{events: &events}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -24,7 +23,7 @@ func awaitCronDone(t *testing.T, done <-chan struct{}) {
 func TestManagerCancellationAndRepeatedStopWaitForHandlerExit(t *testing.T) {
 	repo := newFakeCronRepo()
 	var logs bytes.Buffer
-	manager := NewManager(repo, slog.New(slog.NewTextHandler(&logs, nil)))
+	manager := NewManager(repo)
 	started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	if err := manager.RegisterHandler("wait", func(ctx context.Context, _ storage.CronJob) error {
 		close(started)
@@ -99,7 +98,7 @@ func TestManagerStopWaitsForStartupAndPreventsLateScheduling(t *testing.T) {
 		close(started)
 		<-release
 		return []storage.CronJob{{Name: "late", Handler: "late", Enabled: true, Schedule: "@every 1s"}}, nil
-	}}, nil)
+	}})
 	if err := manager.RegisterHandler("late", func(context.Context, storage.CronJob) error { t.Error("late handler ran"); return nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +126,7 @@ func TestManagerStartupFailureAndStopBeforeStart(t *testing.T) {
 		t.Run(map[bool]string{true: "stop first", false: "load failure"}[stopFirst], func(t *testing.T) {
 			failure := errors.New("load failed")
 			loads := 0
-			manager := NewManager(lifecycleCronRepo{CronJobRepository: newFakeCronRepo(), list: func(context.Context) ([]storage.CronJob, error) { loads++; return nil, failure }}, nil)
+			manager := NewManager(lifecycleCronRepo{CronJobRepository: newFakeCronRepo(), list: func(context.Context) ([]storage.CronJob, error) { loads++; return nil, failure }})
 			if stopFirst {
 				awaitCronDone(t, manager.Stop().Done())
 			}
@@ -155,7 +154,7 @@ func TestManagerStopWaitsForRunBookkeeping(t *testing.T) {
 		close(finishing)
 		<-release
 		return base.UpdateRunState(ctx, id, state)
-	}}, nil)
+	}})
 	if err := manager.RegisterHandler("test", func(context.Context, storage.CronJob) error { return nil }); err != nil {
 		t.Fatal(err)
 	}

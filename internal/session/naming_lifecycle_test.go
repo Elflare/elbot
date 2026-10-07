@@ -8,10 +8,43 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/contextinfo"
+	"elbot/internal/events"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 )
 
 type namingGeneratorFunc func(context.Context, []storage.Message) (TitleResult, error)
+
+func TestNamingOwnsSynchronousLogProjection(t *testing.T) {
+	var records []events.LogRecord
+	connection, err := events.LogSubmitted.Connect(func(_ context.Context, r events.LogRecord) error { records = append(records, r); return nil }, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Disconnect()
+	service := NewService(nil)
+	at := time.Unix(123, 0)
+	ctx := contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "wrong", RequestID: "request"})
+	service.notifyNamingCompleted(ctx, NamingCompletedEvent{SessionID: "source", TriggeredAt: at, Title: "title"})
+	if len(records) != 1 || records[0].Name != "session_naming_completed" || !records[0].At.Equal(at) {
+		t.Fatal(records)
+	}
+	fields := map[string]string{}
+	for _, attr := range records[0].Fields {
+		fields[attr.Key] = attr.Value.String()
+	}
+	if fields["session_id"] != "source" || fields["request_id"] != "request" {
+		t.Fatal(fields)
+	}
+	if err := service.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	service.notifyNamingCompleted(ctx, NamingCompletedEvent{SessionID: "source", TriggeredAt: at})
+	if len(records) != 1 {
+		t.Fatal("naming log connection survived close")
+	}
+}
 
 func (f namingGeneratorFunc) GenerateTitle(ctx context.Context, messages []storage.Message) (TitleResult, error) {
 	return f(ctx, messages)

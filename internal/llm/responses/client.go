@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 
+	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/llm/httpclient"
 )
@@ -44,7 +45,6 @@ type Client struct {
 	extraPayload       map[string]any
 	modelExtraPayloads map[string]map[string]any
 	transport          *httpclient.Client
-	logger             *slog.Logger
 }
 
 func New(baseURL, apiKey string, extras map[string]any, modelExtras map[string]map[string]any, opts RequestOptions) (*Client, error) {
@@ -55,7 +55,6 @@ func New(baseURL, apiKey string, extras map[string]any, modelExtras map[string]m
 	return &Client{baseURL: strings.TrimRight(baseURL, "/"), apiKey: apiKey, extraPayload: extras, modelExtraPayloads: modelExtras, transport: transport}, nil
 }
 
-func (c *Client) SetLogger(logger *slog.Logger) { c.logger = logger }
 func (c *Client) SetRetryNotifier(f func(context.Context, llm.RetryEvent)) {
 	c.transport.SetRetryNotifier(f)
 }
@@ -207,9 +206,22 @@ func (c *Client) StreamPrepared(ctx context.Context, prepared PreparedRequest) (
 	if len(prepared.body) == 0 {
 		return nil, fmt.Errorf("prepared response request is empty")
 	}
-	if c.logger != nil {
-		c.logger.Debug("responses request", "endpoint", c.baseURL+"/responses", "model", prepared.model, "input_items", prepared.inputs, "allowed_tools", len(prepared.allowedTools), "request_bytes", len(prepared.body))
-	}
+
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogRuntime,
+		Level:    slog.LevelDebug,
+		Name:     "responses_request",
+		Module:   "model",
+		Summary:  "responses request",
+		Fields: []slog.Attr{
+			slog.Any("endpoint", c.baseURL+"/responses"),
+			slog.Any("model", prepared.model),
+			slog.Any("input_items", prepared.inputs),
+			slog.Any("allowed_tools", len(prepared.allowedTools)),
+			slog.Any("request_bytes", len(prepared.body)),
+		},
+	})
+
 	callCtx, cancel := context.WithCancel(ctx)
 	resp, err := c.transport.Do(callCtx, func(ctx context.Context) (*http.Request, error) {
 		r, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/responses", bytes.NewReader(prepared.body))

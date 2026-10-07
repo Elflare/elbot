@@ -21,7 +21,7 @@ func TestForwardTextSendingPaths(t *testing.T) {
 						requests <- req
 						return response{Data: []byte(`{"message_id":88,"forward_id":"resource-not-a-message-id"}`)}
 					})
-					a := New(Config{URL: transport.URL}, nil, nil, nil)
+					a := New(Config{URL: transport.URL}, nil, nil)
 					a.transport = transport
 					runes := []rune(strings.Repeat("娅🔥", 3001))
 					body := string(runes[:length])
@@ -134,7 +134,7 @@ func TestForwardSendFailureDoesNotFallBack(t *testing.T) {
 				calls.Add(1)
 				return tc.resp
 			})
-			a := New(Config{URL: transport.URL}, nil, nil, nil)
+			a := New(Config{URL: transport.URL}, nil, nil)
 			a.transport = transport
 			receipt, err := a.SendChat(testTargetContext(target{MessageType: "group", GroupID: 9}), []delivery.Output{delivery.Text(strings.Repeat("a", 3001))})
 			if err == nil || calls.Load() != 1 || len(receipt.PlatformMessageIDs) != 0 || len(receipt.SentMessages) != 0 {
@@ -158,7 +158,7 @@ func TestForwardAdminNoticesKeepPartialReceipts(t *testing.T) {
 				}
 				return response{Data: []byte(`{"message_id":88}`)}
 			})
-			a := New(Config{URL: transport.URL, Superadmins: []string{"1", "2", "3"}}, nil, nil, nil)
+			a := New(Config{URL: transport.URL, Superadmins: []string{"1", "2", "3"}}, nil, nil)
 			a.transport = transport
 			ctx := context.Background()
 			if temporary {
@@ -178,7 +178,7 @@ func TestLongMixedOutputKeepsNormalMessageAPI(t *testing.T) {
 		requests <- req
 		return response{Data: []byte(`{"message_id":88}`)}
 	})
-	a := New(Config{URL: transport.URL}, nil, nil, nil)
+	a := New(Config{URL: transport.URL}, nil, nil)
 	a.transport = transport
 	_, err := a.SendChat(testTargetContext(target{MessageType: "group", GroupID: 9}), []delivery.Output{delivery.Text(strings.Repeat("a", 3001)), delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/image.png"}}})
 	if err != nil {

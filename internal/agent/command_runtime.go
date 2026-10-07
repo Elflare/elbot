@@ -8,6 +8,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/session"
 	"elbot/internal/turn"
 )
@@ -21,7 +22,6 @@ type commandExecutor struct {
 	output        *outputSender
 	confirmations *confirmationCoordinator
 	input         *inputCoordinator
-	auditLogger   *slog.Logger
 }
 
 func (e *commandExecutor) Handle(ctx context.Context, text string) (bool, error) {
@@ -56,7 +56,14 @@ func (e *commandExecutor) Handle(ctx context.Context, text string) (bool, error)
 
 	actor, _ := contextinfo.ActorFromContext(ctx)
 	if hasInfo && !command.CanAccess(info, actor) {
-		writeAudit(e.auditLogger, slog.LevelInfo, "permission_denied", "actor_id", actor.ID, "command", text, "reason", "slash_command_requires_superadmin")
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelWarn,
+			Name:     "permission_denied",
+			Module:   "agent",
+			Summary:  "permission_denied",
+			Fields:   []slog.Attr{slog.Any("actor_id", actor.ID), slog.Any("command", text), slog.Any("reason", "slash_command_requires_superadmin")},
+		})
 		e.output.SendChat(ctx, fmt.Sprintf("命令 %s%s 需要超级管理员权限。", parsed.Prefix, parsed.Name))
 		return true, nil
 	}

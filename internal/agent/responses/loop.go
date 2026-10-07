@@ -3,7 +3,6 @@ package responses
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"elbot/internal/agent/dialogue"
@@ -19,7 +18,6 @@ import (
 )
 
 type Loop struct {
-	Logger     *slog.Logger
 	Repository storage.DialogueRepository
 	Context    *Context
 	Models     *modelmgr.Service

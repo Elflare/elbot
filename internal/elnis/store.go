@@ -5,20 +5,36 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"log/slog"
 	"strings"
 	"time"
 
+	globalevents "elbot/internal/events"
 	"elbot/internal/storage"
 )
 
-func (s *Service) handleDuplicate(event Event, existing *storage.ElnisEvent) {
+func (s *Service) handleDuplicate(ctx context.Context, event Event, existing *storage.ElnisEvent) {
 	attrs := s.eventAttrs(event)
 	if existing != nil && existing.ContentHash != event.ContentHash {
-		s.logWarn("elnis duplicate event hash mismatch", append(attrs, "existing_event_id", existing.ID)...)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogElnis,
+			Level:    slog.LevelWarn,
+			Name:     "elnis_duplicate_event_hash_mismatch",
+			Module:   "elnis",
+			Summary:  "elnis duplicate event hash mismatch",
+			Fields:   slog.Group("", append(attrs, "existing_event_id", existing.ID)...).Value.Group(),
+		})
 	} else {
-		s.logInfo("elnis duplicate event", attrs...)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogElnis,
+			Level:    slog.LevelInfo,
+			Name:     "elnis_duplicate_event",
+			Module:   "elnis",
+			Summary:  "elnis duplicate event",
+			Fields:   slog.Group("", attrs...).Value.Group(),
+		})
 	}
-	s.auditEvent("elnis.duplicate", attrs...)
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, Name: "elnis.duplicate", Module: "elnis", Summary: "elnis.duplicate", Fields: slog.Group("", attrs...).Value.Group()})
 }
 
 func (s *Service) completeEvent(ctx context.Context, id, resolvedTargets, status, result, eventErr string) error {
@@ -46,24 +62,6 @@ func (s *Service) eventAttrs(event Event, attrs ...any) []any {
 		"tags", event.TagsJSON,
 	)
 	return attrs
-}
-
-func (s *Service) auditEvent(event string, attrs ...any) {
-	if s.audit != nil {
-		s.audit(event, attrs...)
-	}
-}
-
-func (s *Service) logInfo(msg string, attrs ...any) {
-	if s.logger != nil {
-		s.logger.Info(msg, attrs...)
-	}
-}
-
-func (s *Service) logWarn(msg string, attrs ...any) {
-	if s.logger != nil {
-		s.logger.Warn(msg, attrs...)
-	}
 }
 
 func contentHash(req Request) string {

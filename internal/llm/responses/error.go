@@ -11,8 +11,13 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"elbot/internal/events"
 	"elbot/internal/llm/httpclient"
 )
+
+func (e *APIError) LogDiagnostic() events.LogDiagnostic {
+	return events.LogDiagnostic{Kind: e.EventType, Detail: e.Detail}
+}
 
 func (e *APIError) Error() string {
 	message := errorSummary(e.Message, 256)

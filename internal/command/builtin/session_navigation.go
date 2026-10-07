@@ -3,12 +3,14 @@ package builtin
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
+	globalevents "elbot/internal/events"
 )
 
 func NewSessions(deps Deps) command.Handler {
@@ -68,7 +70,14 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*comman
 	if err != nil {
 		return nil, err
 	}
-	auditCommand(deps, "session_resume", "session_id", session.ID, "title", session.Title)
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogAudit,
+		Level:    slog.LevelInfo,
+		Name:     "session_resume",
+		Module:   "command",
+		Summary:  "session_resume",
+		Fields:   []slog.Attr{slog.Any("session_id", session.ID), slog.Any("title", session.Title)},
+	})
 	return &command.Result{Content: formatResumeResult(ctx, deps, session)}, nil
 }
 
@@ -168,7 +177,14 @@ func NewFork(deps Deps) command.Handler {
 		if err != nil {
 			return nil, err
 		}
-		auditCommand(deps, "session_fork", "session_id", session.ID, "parent_session_id", session.ParentSessionID, "from_message_id", session.ForkFromMessageID)
+		_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelInfo,
+			Name:     "session_fork",
+			Module:   "command",
+			Summary:  "session_fork",
+			Fields:   []slog.Attr{slog.Any("session_id", session.ID), slog.Any("parent_session_id", session.ParentSessionID), slog.Any("from_message_id", session.ForkFromMessageID)},
+		})
 		return &command.Result{Content: formatForkResult(ctx, deps, session)}, nil
 	})
 }

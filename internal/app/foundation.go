@@ -10,6 +10,7 @@ import (
 
 	"elbot/internal/config"
 	elcron "elbot/internal/cron"
+	globalevents "elbot/internal/events"
 	"elbot/internal/logging"
 	"elbot/internal/maintenance"
 	"elbot/internal/storage"
@@ -36,8 +37,7 @@ func (defaultFoundationFactory) Build(ctx context.Context, req FoundationRequest
 	partial := &FoundationComponents{Logs: logs, Lifecycle: lifecycle, StopCron: lifecycle.StopCron}
 
 	req.Profiler.Mark("logging.NewManager")
-	logger := logs.Runtime()
-	logStartupConfiguration(logger, req.Options, cfg)
+	logStartupConfiguration(req.Options, cfg)
 	if err = config.FirstError(cfg.ValidateModelProviders("work")); err != nil {
 		return partial, err
 	}
@@ -57,8 +57,8 @@ func (defaultFoundationFactory) Build(ctx context.Context, req FoundationRequest
 	req.Profiler.Mark("chat history sqlite.New")
 	chatHistory := chatHistoryStore.Repository()
 
-	maint := maintenance.NewServiceWithConfig(logs, store, chatHistory, cfg, logger)
-	cronManager := elcron.NewManager(store.CronJobs(), logger)
+	maint := maintenance.NewServiceWithConfig(logs, store, chatHistory, cfg)
+	cronManager := elcron.NewManager(store.CronJobs())
 	lifecycle.cronManager = cronManager
 	if err = maint.RegisterCronHandlers(cronManager); err != nil {
 		return partial, err
@@ -69,7 +69,6 @@ func (defaultFoundationFactory) Build(ctx context.Context, req FoundationRequest
 		Maintenance:      maint,
 		Config:           cfg,
 		Logs:             logs,
-		Logger:           logger,
 		Store:            store,
 		ChatHistoryStore: chatHistoryStore,
 		ChatHistory:      chatHistory,
@@ -80,21 +79,28 @@ func (defaultFoundationFactory) Build(ctx context.Context, req FoundationRequest
 	}, nil
 }
 
-func logStartupConfiguration(logger *slog.Logger, opts Options, cfg *config.Config) {
-	logger.Info("elbot started",
-		"version", opts.Version,
-		"config_path", cfg.ConfigPath,
-		"providers_config_path", cfg.ProvidersConfigPath,
-		"state_config_path", cfg.StateConfigPath,
-		"elnis_config_path", cfg.ElnisConfigPath,
-		"work_provider", cfg.ModeModels["work"].Provider,
-		"work_model", cfg.ModeModels["work"].Model,
-		"chat_provider", cfg.ModeModels["chat"].Provider,
-		"chat_model", cfg.ModeModels["chat"].Model,
-		"soul_path", cfg.Soul.Path,
-		"sessions_sqlite_path", cfg.Storage.SessionsSQLitePath,
-		"chat_history_sqlite_path", cfg.Storage.ChatHistorySQLitePath,
-	)
+func logStartupConfiguration(opts Options, cfg *config.Config) {
+	_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
+		Category: globalevents.LogRuntime,
+		Level:    slog.LevelInfo,
+		Name:     "elbot_started",
+		Module:   "app",
+		Summary:  "elbot started",
+		Fields: []slog.Attr{
+			slog.Any("version", opts.Version),
+			slog.Any("config_path", cfg.ConfigPath),
+			slog.Any("providers_config_path", cfg.ProvidersConfigPath),
+			slog.Any("state_config_path", cfg.StateConfigPath),
+			slog.Any("elnis_config_path", cfg.ElnisConfigPath),
+			slog.Any("work_provider", cfg.ModeModels["work"].Provider),
+			slog.Any("work_model", cfg.ModeModels["work"].Model),
+			slog.Any("chat_provider", cfg.ModeModels["chat"].Provider),
+			slog.Any("chat_model", cfg.ModeModels["chat"].Model),
+			slog.Any("soul_path", cfg.Soul.Path),
+			slog.Any("sessions_sqlite_path", cfg.Storage.SessionsSQLitePath),
+			slog.Any("chat_history_sqlite_path", cfg.Storage.ChatHistorySQLitePath),
+		},
+	})
 }
 
 type foundationLifecycle struct {
@@ -119,7 +125,7 @@ func (l *foundationLifecycle) startCron(ctx context.Context, service *elcron.Ser
 	ctx, l.cronCancel = context.WithCancel(ctx)
 	l.cronScheduled = true
 	l.cronStartupDone = make(chan struct{})
-	startCronAsync(ctx, l.cronManager, service, l.cfg, l.logs.Runtime(), l.cronStartupDone)
+	startCronAsync(ctx, l.cronManager, service, l.cfg, l.cronStartupDone)
 }
 
 // StopCron stops the producer before Runner releases runtime/Hook dependencies.

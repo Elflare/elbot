@@ -8,22 +8,37 @@ import (
 
 	"elbot/internal/config"
 	elcron "elbot/internal/cron"
+	globalevents "elbot/internal/events"
 	"elbot/internal/maintenance"
 )
 
-func startCronAsync(ctx context.Context, manager *elcron.Manager, service *elcron.Service, cfg *config.Config, logger *slog.Logger, done chan<- struct{}) {
+func startCronAsync(ctx context.Context, manager *elcron.Manager, service *elcron.Service, cfg *config.Config, done chan<- struct{}) {
 	go func() {
 		defer close(done)
 		startedAt := time.Now()
 		if err := setupCron(ctx, manager, cfg); err != nil {
-			if logger != nil && !errors.Is(err, context.Canceled) {
-				logger.Warn("cron async startup failed", "duration", time.Since(startedAt).String(), "error", err.Error())
+			if !errors.Is(err, context.Canceled) {
+				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+					Category: globalevents.LogRuntime,
+					Level:    slog.LevelWarn,
+					Name:     "cron_async_startup_failed",
+					Module:   "app",
+					Summary:  "cron async startup failed",
+					Fields:   []slog.Attr{slog.Any("duration", time.Since(startedAt).String()), slog.Any("error", err.Error())},
+				})
 			}
 			return
 		}
-		if logger != nil {
-			logger.Info("cron async startup completed", "duration", time.Since(startedAt).String())
-		}
+
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelInfo,
+			Name:     "cron_async_startup_completed",
+			Module:   "app",
+			Summary:  "cron async startup completed",
+			Fields:   []slog.Attr{slog.Any("duration", time.Since(startedAt).String())},
+		})
+
 	}()
 }
 

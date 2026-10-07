@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"log/slog"
 	"time"
 
 	"elbot/internal/agent/dialogue"
@@ -14,7 +13,6 @@ import (
 )
 
 type Loop struct {
-	Logger        *slog.Logger
 	Contexts      *contextmgr.Service
 	Models        *modelmgr.Service
 	Turns         *turn.Manager

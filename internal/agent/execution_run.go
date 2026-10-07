@@ -147,7 +147,7 @@ func (c *executionCoordinator) finishCompletedTurn(ctx context.Context, session 
 		agentevents.Emit(ctx, c.persistenceFailed, agentevents.PersistenceFailedEvent{EventMeta: agentevents.Meta(ctx, session.ID), Operation: "touch_session", Err: err})
 		return turn.Input{}, err
 	}
-	c.recordUsage(session.ID, usage)
+	c.recordUsage(ctx, session.ID, usage)
 	doneStatus := runtimeDoneStatus(runtimestatus.Snapshot{SessionID: session.ID, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt, Usage: usage}, storage.Now())
 	out.PublishRuntimeStatus(ctx, doneStatus)
 	nextSelection := modelmgr.SelectionForTurn(ctx, c.models, session)

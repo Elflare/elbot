@@ -3,11 +3,13 @@ package qqofficial
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"regexp"
 	"strings"
 	"time"
 
 	"elbot/internal/contextinfo"
+	globalevents "elbot/internal/events"
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
 	"elbot/internal/security"
@@ -40,11 +42,25 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 		if conversation == contextinfo.ConversationPrivate {
 			label = "user_openid"
 		}
-		a.logWarn(ctx, "qqofficial message missing sender", "field", label, "message_id", msg.ID, "event", p.Type)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelWarn,
+			Name:     p.Type,
+			Module:   "qqofficial",
+			Summary:  "qqofficial message missing sender",
+			Fields:   []slog.Attr{slog.Any("field", label), slog.Any("message_id", msg.ID)},
+		})
 		return
 	}
 	if targetID == "" {
-		a.logWarn(ctx, "qqofficial message missing target", "message_id", msg.ID, "event", p.Type)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelWarn,
+			Name:     p.Type,
+			Module:   "qqofficial",
+			Summary:  "qqofficial message missing target",
+			Fields:   []slog.Attr{slog.Any("message_id", msg.ID)},
+		})
 		return
 	}
 
@@ -122,7 +138,14 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 	}
 	a.recordChatMessage(ctx, msg, conversation, senderID, scopeID, text, replyID, messageCtx.Reply)
 	if err := handler.HandleMessage(msgCtx, text); err != nil {
-		a.logWarn(ctx, "handle qqofficial message failed", "error", err, "message_id", msg.ID)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelWarn,
+			Name:     "handle_qqofficial_message_failed",
+			Module:   "qqofficial",
+			Summary:  "handle qqofficial message failed",
+			Fields:   []slog.Attr{slog.Any("error", err), slog.Any("message_id", msg.ID)},
+		})
 	}
 }
 
@@ -179,7 +202,14 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 		CreatedAt:                createdAt,
 	}
 	if err := a.chatHistory.Append(ctx, history); err != nil {
-		a.logWarn(ctx, "record qqofficial chat message failed", "error", err, "message_id", msg.ID)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelWarn,
+			Name:     "record_qqofficial_chat_message_failed",
+			Module:   "qqofficial",
+			Summary:  "record qqofficial chat message failed",
+			Fields:   []slog.Attr{slog.Any("error", err), slog.Any("message_id", msg.ID)},
+		})
 	}
 }
 

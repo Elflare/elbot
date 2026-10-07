@@ -84,7 +84,7 @@ func TestRecordOutputValidationAndFallback(t *testing.T) {
 
 func TestManagerSendsChat(t *testing.T) {
 	sender := &fakeSender{}
-	manager := NewManager(sender, nil)
+	manager := NewManager(sender)
 	out := Output{Kind: KindText, Text: "hello"}
 	if _, err := manager.SendChat(context.Background(), []Output{out}); err != nil {
 		t.Fatalf("SendChat: %v", err)
@@ -96,7 +96,7 @@ func TestManagerSendsChat(t *testing.T) {
 
 func TestManagerSendsNotices(t *testing.T) {
 	sender := &fakeSender{}
-	manager := NewManager(sender, nil)
+	manager := NewManager(sender)
 	image := ImagePath("pic.png")
 	image.Name = "pic"
 	if err := manager.SendNotices(context.Background(), []Output{{Kind: KindText, Text: "hello"}, image}); err != nil {
@@ -109,7 +109,7 @@ func TestManagerSendsNotices(t *testing.T) {
 
 func TestManagerPreservesNoticeLevel(t *testing.T) {
 	sender := &fakeSender{}
-	manager := NewManager(sender, nil)
+	manager := NewManager(sender)
 	notice := Notice{Outputs: []Output{Text("careful")}, Level: slog.LevelWarn}
 	if _, err := manager.SendNotice(context.Background(), notice); err != nil {
 		t.Fatalf("SendNotice: %v", err)
@@ -121,7 +121,7 @@ func TestManagerPreservesNoticeLevel(t *testing.T) {
 func TestManagerWrapsNoticeOutputErrorWithHookName(t *testing.T) {
 	boom := errors.New("boom")
 	sender := &fakeSender{err: boom}
-	manager := NewManager(sender, nil)
+	manager := NewManager(sender)
 	err := func() error {
 		_, err := manager.SendNotice(context.Background(), Notice{Target: Target{Platform: "qqonebot", PrivateUserID: "123"}, Outputs: []Output{{
 			Kind: KindText,

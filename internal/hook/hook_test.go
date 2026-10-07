@@ -12,7 +12,9 @@ import (
 	"testing"
 
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/signal"
 )
 
 func TestNoopManagerRunPreparesEvent(t *testing.T) {
@@ -314,7 +316,7 @@ func TestManagerObserverSkipsUnmatchedAndWakeupSkippedHooks(t *testing.T) {
 func TestManagerLogsCanceledHookAsInfo(t *testing.T) {
 	var buf bytes.Buffer
 	manager := NewManager()
-	manager.SetLogger(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	captureLogs(t, slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	if err := manager.Register(Registration{
 		Point: PointAgentInputPrepared,
 		Name:  "cancel",
@@ -368,7 +370,7 @@ func TestNotifyRunsAllHandlersAndJoinsErrors(t *testing.T) {
 func TestManagerLogsNamedHook(t *testing.T) {
 	var buf bytes.Buffer
 	manager := NewManager()
-	manager.SetLogger(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	captureLogs(t, slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	manager.Register(Registration{Point: PointLLMResponseReceived, Priority: 5, Name: "test.logger", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
 		event.LLM.Text = "after"
 		return event, nil
@@ -378,7 +380,7 @@ func TestManagerLogsNamedHook(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	logs := buf.String()
-	for _, want := range []string{"hook triggered", "test.logger", "before_text=before", "after_text=after", "source_text=raw"} {
+	for _, want := range []string{"hook triggered", "test.logger", `before_text\":\"before`, `after_text\":\"after`, `source_text\":\"raw`} {
 		if !strings.Contains(logs, want) {
 			t.Fatalf("logs missing %q:\n%s", want, logs)
 		}
@@ -388,7 +390,7 @@ func TestManagerLogsNamedHook(t *testing.T) {
 func TestManagerSkipsUnmatchedHookAndLogsNothing(t *testing.T) {
 	var buf bytes.Buffer
 	manager := NewManager()
-	manager.SetLogger(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	captureLogs(t, slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	called := false
 	if err := manager.Register(Registration{
 		Point:    PointLLMResponseReceived,
@@ -560,4 +562,25 @@ func TestManagerMarksHookOutputs(t *testing.T) {
 	if meta[delivery.MetaHookName] != "notify.connected" || meta[delivery.MetaHookPoint] != string(PointPlatformConnected) || meta[delivery.MetaHookMode] != "run" {
 		t.Fatalf("output meta = %#v", meta)
 	}
+}
+
+// captureLogs observes the public signal; production never receives this logger.
+func captureLogs(t *testing.T, logger *slog.Logger) {
+	t.Helper()
+	connection, err := globalevents.LogSubmitted.Connect(func(ctx context.Context, record globalevents.LogRecord) error {
+		if !logger.Enabled(ctx, record.Level) {
+			return nil
+		}
+		out := slog.NewRecord(record.At, record.Level, record.Summary, 0)
+		out.AddAttrs(record.Fields...)
+		out.AddAttrs(slog.String("event", record.Name), slog.String("module", record.Module))
+		if record.Detail != "" && logger.Enabled(ctx, slog.LevelDebug) {
+			out.AddAttrs(slog.String("detail", record.Detail))
+		}
+		return logger.Handler().Handle(ctx, out)
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(connection.Disconnect)
 }

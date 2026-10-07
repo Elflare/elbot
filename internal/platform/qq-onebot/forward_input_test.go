@@ -23,7 +23,7 @@ const twoTextForwardResponse = `{"messages":[
 const twoTextForwardDisplay = "<forward_message>\nElflare：第一条文本\n保留换行\n\nElflare：第二条文本\n</forward_message>"
 
 func TestForwardReferenceReadsMessageNodeBodies(t *testing.T) {
-	a := New(Config{}, nil, nil, nil)
+	a := New(Config{}, nil, nil)
 	a.transport = newTestTransport(t, func(req request) response {
 		switch req.Action {
 		case "get_msg":
@@ -48,7 +48,7 @@ func TestPrivateForwardExpandsWithoutReference(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer history.Close()
-	a := New(Config{}, nil, history.Repository(), nil)
+	a := New(Config{}, nil, history.Repository())
 	calls := 0
 	a.transport = newTestTransport(t, func(req request) response {
 		calls++
@@ -107,7 +107,7 @@ func TestForwardNodeBodyFields(t *testing.T) {
 func TestPrivateForwardMixedContentAndReferences(t *testing.T) {
 	for _, reference := range []string{"none", "ordinary", "forward"} {
 		t.Run(reference, func(t *testing.T) {
-			a := New(Config{}, nil, nil, nil)
+			a := New(Config{}, nil, nil)
 			calls := map[string]int{}
 			a.transport = newTestTransport(t, func(req request) response {
 				if req.Action == "get_msg" && reference != "none" {
@@ -187,7 +187,7 @@ func TestPrivateForwardKeepsAssistantResumeAndFork(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	a := New(Config{}, store, nil, nil)
+	a := New(Config{}, store, nil)
 	a.transport = newTestTransport(t, func(req request) response {
 		if req.Action == "get_forward_msg" {
 			return response{Data: []byte(twoTextForwardResponse)}
@@ -215,7 +215,7 @@ func TestPrivateForwardTextAndCommandsDoNotFetch(t *testing.T) {
 		`[{"type":"text","data":{"text":"[forward]"}}]`,
 		`[{"type":"text","data":{"text":"/new "}},{"type":"forward","data":{"id":"resource"}}]`,
 	} {
-		a := New(Config{}, nil, nil, nil)
+		a := New(Config{}, nil, nil)
 		a.transport = newTestTransport(t, func(req request) response {
 			t.Errorf("unexpected API %s", req.Action)
 			return response{Status: "failed", Retcode: 1}

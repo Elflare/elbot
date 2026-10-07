@@ -10,6 +10,7 @@ import (
 
 	"elbot/internal/config"
 	elcron "elbot/internal/cron"
+	globalevents "elbot/internal/events"
 	"elbot/internal/logging"
 	"elbot/internal/media"
 	"elbot/internal/session"
@@ -26,18 +27,26 @@ type Service struct {
 	chatHistoryCleanup config.ChatHistoryCleanupConfig
 	sandboxRoot        string
 	sandboxCleanup     config.MaintenanceCleanupConfig
-	logger             *slog.Logger
 }
 
-func NewService(logs *logging.Manager, store storage.Store, sessionCleanup config.MaintenanceCleanupConfig, logger *slog.Logger) *Service {
-	return &Service{Sessions: session.NewService(store), logs: logs, store: store, sessionCleanup: sessionCleanup, logger: logger}
+func NewService(logs *logging.Manager, store storage.Store, sessionCleanup config.MaintenanceCleanupConfig) *Service {
+	return &Service{Sessions: session.NewService(store), logs: logs, store: store, sessionCleanup: sessionCleanup}
 }
 
-func NewServiceWithConfig(logs *logging.Manager, store storage.Store, chatHistory storage.ChatHistoryRepository, cfg *config.Config, logger *slog.Logger) *Service {
+func NewServiceWithConfig(logs *logging.Manager, store storage.Store, chatHistory storage.ChatHistoryRepository, cfg *config.Config) *Service {
 	if cfg == nil {
-		return NewService(logs, store, config.MaintenanceCleanupConfig{}, logger)
+		return NewService(logs, store, config.MaintenanceCleanupConfig{})
 	}
-	return &Service{Sessions: session.NewService(store), logs: logs, store: store, chatHistory: chatHistory, sessionCleanup: cfg.Maintenance.SessionCleanup, chatHistoryCleanup: cfg.Maintenance.ChatHistoryCleanup, sandboxRoot: cfg.Sandbox.Root, sandboxCleanup: cfg.Maintenance.SandboxCleanup, logger: logger}
+	return &Service{
+		Sessions:           session.NewService(store),
+		logs:               logs,
+		store:              store,
+		chatHistory:        chatHistory,
+		sessionCleanup:     cfg.Maintenance.SessionCleanup,
+		chatHistoryCleanup: cfg.Maintenance.ChatHistoryCleanup,
+		sandboxRoot:        cfg.Sandbox.Root,
+		sandboxCleanup:     cfg.Maintenance.SandboxCleanup,
+	}
 }
 
 func (s *Service) RegisterCronHandlers(manager *elcron.Manager) error {
@@ -110,10 +119,26 @@ func upsertOrDisable(ctx context.Context, manager *elcron.Manager, enabled bool,
 
 func (s *Service) RunLogCleanup(ctx context.Context) error {
 	if err := s.logs.CleanupOldLogs(); err != nil {
-		s.warn("maintenance log cleanup failed", "error", err)
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogRuntime,
+				Level:    slog.LevelError,
+				Name:     "maintenance_log_cleanup_failed",
+				Module:   "maintenance",
+				Summary:  "maintenance log cleanup failed",
+				Fields:   slog.Group("", "error", err).Value.Group(),
+			})
+		}
 		return err
 	}
-	s.info("maintenance log cleanup completed", "retention_days", s.logs.RetentionDays())
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogRuntime,
+		Level:    slog.LevelInfo,
+		Name:     "maintenance_log_cleanup_completed",
+		Module:   "maintenance",
+		Summary:  "maintenance log cleanup completed",
+		Fields:   slog.Group("", "retention_days", s.logs.RetentionDays()).Value.Group(),
+	})
 	return nil
 }
 
@@ -123,10 +148,26 @@ func (s *Service) RunSessionCleanup(ctx context.Context) error {
 	}
 	deleted, err := s.Sessions.CleanupExpired(ctx, time.Now().AddDate(0, 0, -s.sessionCleanup.RetentionDays))
 	if err != nil {
-		s.warn("maintenance session cleanup failed", "error", err, "retention_days", s.sessionCleanup.RetentionDays)
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogRuntime,
+				Level:    slog.LevelError,
+				Name:     "maintenance_session_cleanup_failed",
+				Module:   "maintenance",
+				Summary:  "maintenance session cleanup failed",
+				Fields:   slog.Group("", "error", err, "retention_days", s.sessionCleanup.RetentionDays).Value.Group(),
+			})
+		}
 		return err
 	}
-	s.info("maintenance session cleanup completed", "deleted", deleted, "retention_days", s.sessionCleanup.RetentionDays)
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogRuntime,
+		Level:    slog.LevelInfo,
+		Name:     "maintenance_session_cleanup_completed",
+		Module:   "maintenance",
+		Summary:  "maintenance session cleanup completed",
+		Fields:   slog.Group("", "deleted", deleted, "retention_days", s.sessionCleanup.RetentionDays).Value.Group(),
+	})
 	return nil
 }
 
@@ -137,7 +178,16 @@ func (s *Service) RunChatHistoryCleanup(ctx context.Context) error {
 	cutoff := time.Now().AddDate(0, 0, -s.chatHistoryCleanup.RetentionDays)
 	deleted, err := s.chatHistory.DeleteBefore(ctx, cutoff)
 	if err != nil {
-		s.warn("maintenance chat history cleanup failed", "error", err, "retention_days", s.chatHistoryCleanup.RetentionDays)
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogRuntime,
+				Level:    slog.LevelError,
+				Name:     "maintenance_chat_history_cleanup_failed",
+				Module:   "maintenance",
+				Summary:  "maintenance chat history cleanup failed",
+				Fields:   slog.Group("", "error", err, "retention_days", s.chatHistoryCleanup.RetentionDays).Value.Group(),
+			})
+		}
 		return err
 	}
 	if s.Media != nil {
@@ -145,7 +195,14 @@ func (s *Service) RunChatHistoryCleanup(ctx context.Context) error {
 			return err
 		}
 	}
-	s.info("maintenance chat history cleanup completed", "deleted", deleted, "retention_days", s.chatHistoryCleanup.RetentionDays)
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogRuntime,
+		Level:    slog.LevelInfo,
+		Name:     "maintenance_chat_history_cleanup_completed",
+		Module:   "maintenance",
+		Summary:  "maintenance chat history cleanup completed",
+		Fields:   slog.Group("", "deleted", deleted, "retention_days", s.chatHistoryCleanup.RetentionDays).Value.Group(),
+	})
 	return nil
 }
 
@@ -156,10 +213,26 @@ func (s *Service) RunSandboxCleanup(ctx context.Context) error {
 	cutoff := time.Now().AddDate(0, 0, -s.sandboxCleanup.RetentionDays)
 	deleted, err := cleanupSandbox(ctx, s.sandboxRoot, cutoff)
 	if err != nil {
-		s.warn("maintenance sandbox cleanup failed", "error", err, "retention_days", s.sandboxCleanup.RetentionDays)
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogRuntime,
+				Level:    slog.LevelError,
+				Name:     "maintenance_sandbox_cleanup_failed",
+				Module:   "maintenance",
+				Summary:  "maintenance sandbox cleanup failed",
+				Fields:   slog.Group("", "error", err, "retention_days", s.sandboxCleanup.RetentionDays).Value.Group(),
+			})
+		}
 		return err
 	}
-	s.info("maintenance sandbox cleanup completed", "deleted", deleted, "retention_days", s.sandboxCleanup.RetentionDays)
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogRuntime,
+		Level:    slog.LevelInfo,
+		Name:     "maintenance_sandbox_cleanup_completed",
+		Module:   "maintenance",
+		Summary:  "maintenance sandbox cleanup completed",
+		Fields:   slog.Group("", "deleted", deleted, "retention_days", s.sandboxCleanup.RetentionDays).Value.Group(),
+	})
 	return nil
 }
 
@@ -215,16 +288,4 @@ func removeEmptyDirs(root string) error {
 		_ = os.Remove(dirs[i])
 	}
 	return nil
-}
-
-func (s *Service) info(msg string, attrs ...any) {
-	if s.logger != nil {
-		s.logger.Info(msg, attrs...)
-	}
-}
-
-func (s *Service) warn(msg string, attrs ...any) {
-	if s.logger != nil {
-		s.logger.Warn(msg, attrs...)
-	}
 }

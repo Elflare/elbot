@@ -17,6 +17,7 @@ import (
 	elcron "elbot/internal/cron"
 	"elbot/internal/delivery"
 	"elbot/internal/elvena"
+	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 	hookbuiltin "elbot/internal/hook/builtin"
 	hookcontrol "elbot/internal/hook/control"
@@ -38,15 +39,12 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	components := &RuntimeComponents{Lifecycle: lifecycle, Signals: &signalBindings{}}
 	foundation := req.Foundation
 	cfg := foundation.Config
-	logger := foundation.Logger
 	services, err := buildSharedServices(ctx, req)
 	if err != nil {
 		return components, err
 	}
 	lifecycle.sessions = services.Sessions
-	if err := components.Signals.connectNaming(services.Sessions, logger); err != nil {
-		return components, err
-	}
+	lifecycle.models = services.Models
 	if err := components.Signals.connectModels(services.Models, services.Notifications); err != nil {
 		return components, err
 	}
@@ -88,22 +86,13 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	req.Profiler.Mark("skill reload scheduled")
 
 	hooks := hook.NewManager()
-	hooks.SetLogger(logger)
 	elvenaBus := elvena.NewBus()
 
 	notifyHookIssue := func(ctx context.Context, text string) {
 		services.Notifications.Text(ctx, slog.LevelWarn, text)
 	}
 
-	hookRuntime := hookruntime.NewManager(hookruntime.Options{
-		Media:      services.Media,
-		Registry:   toolRuntime.Registry,
-		Logger:     logger,
-		Audit:      auditFunc(foundation.Logs),
-		Send:       sendNotice,
-		SharedDir:  filepath.Join(config.PluginConfigDir(cfg.ConfigPath), "_shared"),
-		ProcessEnv: hookProcessEnv,
-	})
+	hookRuntime := hookruntime.NewManager(hookruntime.Options{Media: services.Media, Registry: toolRuntime.Registry, Send: sendNotice, SharedDir: filepath.Join(config.PluginConfigDir(cfg.ConfigPath), "_shared"), ProcessEnv: hookProcessEnv})
 
 	lifecycle.hooks = hookRuntime
 	hookService := buildHookService(foundation, req.Platforms, toolRuntime, hooks, hookRuntime, hookProcessEnv, notifyHookIssue, sendNotice)
@@ -121,13 +110,10 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	req.Profiler.Mark("agent init")
 
 	bindings := components.Signals
-	if err := bindings.connectAgentLogs(agt.Signals(), logger, foundation.Logs.Audit()); err != nil {
-		return components, err
-	}
 	if err := bindings.connectAgentNotifications(agt.Signals(), services.Notifications, agt.NotificationSender()); err != nil {
 		return components, err
 	}
-	if err := bindings.connectStatus(agt.Signals(), services.Sessions, services.Dispatcher, logger); err != nil {
+	if err := bindings.connectStatus(agt.Signals(), services.Sessions, services.Dispatcher); err != nil {
 		return components, err
 	}
 	if err := bindings.connectSession(services.Sessions, toolRuntime.FileRollback.Manager); err != nil {
@@ -189,10 +175,8 @@ func buildCronService(ctx context.Context, foundation *FoundationComponents, mod
 	service := elcron.NewService(elcron.Options{
 		Manager:          foundation.CronManager,
 		Store:            foundation.Store,
-		Logger:           foundation.Logger,
 		EnabledPlatforms: enabledCronPlatforms(cfg),
 		SandboxRoot:      cfg.Sandbox.Root,
-		Audit:            auditFunc(foundation.Logs),
 		SendTarget:       send,
 		Models:           models,
 		Sessions:         sessions,
@@ -220,8 +204,6 @@ func buildHookService(
 	hookOpts := hookbuiltin.Options{
 		ConfigDir:       config.PluginConfigDir(cfg.ConfigPath),
 		Tools:           toolRuntime.Registry,
-		Logger:          foundation.Logger,
-		Audit:           auditFunc(foundation.Logs),
 		Notify:          notifyHookIssue,
 		Send:            sendNotice,
 		PlatformCallers: hookPlatformCallerResolver{runtimes: platforms.Runtimes},
@@ -248,7 +230,14 @@ func buildHookService(
 		notifyHookIssue(context.Background(), notice)
 	}
 	if err != nil {
-		foundation.Logger.Error("hook registration failed", "error", err)
+		_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelError,
+			Name:     "hook_registration_failed",
+			Module:   "app",
+			Summary:  "hook registration failed",
+			Fields:   []slog.Attr{slog.Any("error", err)},
+		})
 		notifyHookIssue(context.Background(), fmt.Sprintf("Hook 注册失败：%v", err))
 	}
 
@@ -259,7 +248,7 @@ func buildAgent(ctx context.Context, foundation *FoundationComponents, platforms
 	cfg := foundation.Config
 	runner := toolrun.NewManager(tools.Registry, services.Policy)
 	runner.Media = services.Media
-	preloader := toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: tools.Registry, TagsPath: cfg.ToolTagsConfigPath, Tags: cfg.ToolTags, Audit: auditFunc(foundation.Logs)})
+	preloader := toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: tools.Registry, TagsPath: cfg.ToolTagsConfigPath, Tags: cfg.ToolTags})
 	services.ToolPreloader = preloader
 	agt, err := agent.New(ctx, agent.Config{SoulPath: cfg.Soul.Path, LLMRequestConfig: cfg.LLMRequest, SessionIdleExpiration: cfg.Session.IdleExpiration, SandboxRoot: cfg.Sandbox.Root, ToolsConfig: cfg.Tools}, agent.Dependencies{
 		Routes:   services.Routes,
@@ -270,7 +259,7 @@ func buildAgent(ctx context.Context, foundation *FoundationComponents, platforms
 		ResidentMemoryStore: tools.ResidentMemoryStore,
 		HookManager:         hooks, HookRuntime: hookRuntime,
 		Dispatcher: services.Dispatcher, Notifications: services.Notifications,
-		Logs: foundation.Logs, ToolRegistry: tools.Registry, ToolRunner: runner, ToolPreloader: preloader, FileRollback: services.Files,
+		ToolRegistry: tools.Registry, ToolRunner: runner, ToolPreloader: preloader, FileRollback: services.Files,
 		SecurityPolicy: services.Policy,
 	})
 	if err != nil {
@@ -278,10 +267,4 @@ func buildAgent(ctx context.Context, foundation *FoundationComponents, platforms
 	}
 	bindAgentExecution(services, agt, hooks)
 	return agt, nil
-}
-
-func auditFunc(logs LogManager) func(string, ...any) {
-	return func(event string, attrs ...any) {
-		logs.Audit().Log(context.Background(), slog.LevelInfo, "audit event", append([]any{"event", event}, attrs...)...)
-	}
 }

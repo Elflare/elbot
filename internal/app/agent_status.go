@@ -8,6 +8,7 @@ import (
 	agentevents "elbot/internal/agent/events"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery/dispatch"
+	globalevents "elbot/internal/events"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
 	"elbot/internal/signal"
@@ -30,13 +31,13 @@ type statusDisplay struct {
 	cancel     context.CancelFunc
 	done       chan struct{}
 	dispatcher *dispatch.Router
-	logger     *slog.Logger
-	closed     bool
+
+	closed bool
 }
 
-func newStatusDisplay(dispatcher *dispatch.Router, logger *slog.Logger) *statusDisplay {
+func newStatusDisplay(dispatcher *dispatch.Router) *statusDisplay {
 	ctx, cancel := context.WithCancel(context.Background())
-	d := &statusDisplay{latest: make(map[statusTarget]*statusProjection), wake: make(chan struct{}, 1), ctx: ctx, cancel: cancel, done: make(chan struct{}), dispatcher: dispatcher, logger: logger}
+	d := &statusDisplay{latest: make(map[statusTarget]*statusProjection), wake: make(chan struct{}, 1), ctx: ctx, cancel: cancel, done: make(chan struct{}), dispatcher: dispatcher}
 	go d.run()
 	return d
 }
@@ -117,8 +118,15 @@ func (d *statusDisplay) run() {
 			}
 			stop()
 			cancel()
-			if err != nil && d.ctx.Err() == nil && d.logger != nil {
-				d.logger.Warn("status display failed", "session_id", key.SessionID, "error", err)
+			if err != nil && d.ctx.Err() == nil {
+				_ = globalevents.EmitLog(d.ctx, globalevents.LogRecord{
+					Category: globalevents.LogRuntime,
+					Level:    slog.LevelWarn,
+					Name:     "status_display_failed",
+					Module:   "app",
+					Summary:  "status display failed",
+					Fields:   []slog.Attr{slog.Any("session_id", key.SessionID), slog.Any("error", err)},
+				})
 			}
 			d.mu.Lock()
 			if latest := d.latest[key]; latest == selected {
@@ -159,8 +167,8 @@ func (d *statusDisplay) stopped() bool {
 	}
 }
 
-func (b *signalBindings) connectStatus(events agentevents.Signals, sessions *session.Service, dispatcher *dispatch.Router, logger *slog.Logger) error {
-	display := newStatusDisplay(dispatcher, logger)
+func (b *signalBindings) connectStatus(events agentevents.Signals, sessions *session.Service, dispatcher *dispatch.Router) error {
+	display := newStatusDisplay(dispatcher)
 	b.displays = append(b.displays, display)
 	if err := connectSignal(b, events.StatusChanged, display.receive, signal.ConnectOptions{}); err != nil {
 		return err

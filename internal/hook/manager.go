@@ -2,6 +2,7 @@ package hook
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 	"sync"
 
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
 )
 
@@ -78,7 +80,6 @@ type DefaultManager struct {
 	next     int
 	activeID int
 	handlers map[Point][]registration
-	logger   *slog.Logger
 	wakeup   WakeupFunc
 	observer Observer
 	active   map[string]activeHook
@@ -130,12 +131,6 @@ type registration struct {
 
 func NewManager() *DefaultManager {
 	return &DefaultManager{handlers: map[Point][]registration{}, active: map[string]activeHook{}}
-}
-
-func (m *DefaultManager) SetLogger(logger *slog.Logger) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.logger = logger
 }
 
 func (m *DefaultManager) SetWakeupFunc(fn WakeupFunc) {
@@ -419,7 +414,7 @@ func (m *DefaultManager) List() []Info {
 }
 
 // Replace atomically replaces registered handlers with a snapshot from next.
-// Runtime integrations such as logging, wakeup checks, and observers remain
+// Runtime integrations such as wakeup checks and observers remain
 // attached to the receiving manager.
 func (m *DefaultManager) Replace(next *DefaultManager) {
 	if m == nil || next == nil || m == next {
@@ -545,46 +540,35 @@ func setOutputMeta(meta map[string]any, key, value string) {
 }
 
 func (m *DefaultManager) logHook(ctx context.Context, mode string, reg registration, before, after Event, err error) {
-	logger := m.loggerForLog()
-	if logger == nil {
-		return
-	}
-	attrs := []any{
-		"point", string(before.Point),
-		"hook", reg.name,
-		"priority", reg.priority,
-		"order", reg.order,
-		"mode", mode,
-	}
+	level, name, summary := slog.LevelInfo, "hook_triggered", "hook triggered"
 	if err != nil {
-		attrs = append(attrs, "error", err.Error())
+		level, name, summary = slog.LevelWarn, "hook_error", "hook error"
 		if errors.Is(err, context.Canceled) {
-			logger.InfoContext(ctx, "hook canceled", attrs...)
-			return
+			level, name, summary = slog.LevelInfo, "hook_canceled", "hook canceled"
 		}
-		logger.WarnContext(ctx, "hook error", attrs...)
-		return
 	}
-	if logger.Enabled(ctx, slog.LevelDebug) {
-		attrs = append(attrs,
-			"session_id", after.Session.ID,
-			"provider", after.LLM.Provider,
-			"model", after.LLM.Model,
-			"tool", after.Tool.Name,
-			"before_text", trimLogText(eventText(before)),
-			"after_text", trimLogText(eventText(after)),
-			"source_text", trimLogText(after.LLM.SourceText),
-		)
-		logger.DebugContext(ctx, "hook triggered", attrs...)
-	} else {
-		logger.InfoContext(ctx, "hook triggered", attrs...)
-	}
-}
-
-func (m *DefaultManager) loggerForLog() *slog.Logger {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.logger
+	detail, _ := json.Marshal(map[string]string{"before_text": eventText(before), "after_text": eventText(after), "source_text": after.LLM.SourceText})
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogRuntime,
+		Level:    level,
+		Name:     name,
+		Module:   "hook",
+		Summary:  summary,
+		Detail:   string(detail),
+		Fields: []slog.Attr{
+			slog.String("point", string(before.Point)),
+			slog.String("hook", reg.name),
+			slog.String("plugin", reg.pluginID),
+			slog.Int("priority", reg.priority),
+			slog.Int("order", reg.order),
+			slog.String("mode", mode),
+			slog.String("session_id", before.Session.ID),
+			slog.String("provider", after.LLM.Provider),
+			slog.String("model", after.LLM.Model),
+			slog.String("tool", after.Tool.Name),
+			slog.Any("error", err),
+		},
+	})
 }
 
 func eventText(event Event) string {
@@ -600,13 +584,4 @@ func eventText(event Event) string {
 	default:
 		return ""
 	}
-}
-
-func trimLogText(text string) string {
-	const max = 300
-	if len([]rune(text)) <= max {
-		return text
-	}
-	runes := []rune(text)
-	return string(runes[:max]) + "..."
 }

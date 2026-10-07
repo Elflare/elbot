@@ -3,10 +3,12 @@ package elnis
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"elbot/internal/delivery"
 	"elbot/internal/elvena"
+	globalevents "elbot/internal/events"
 	"elbot/internal/storage"
 )
 
@@ -88,8 +90,38 @@ func (s *Service) mapReportReceipt(ctx context.Context, eventKey, sessionID, mes
 		}
 		mapping := storage.PlatformMessageMap{Platform: platformName, PlatformScopeID: scopeID, PlatformMessageID: platformMessageID, SessionID: sessionID, MessageID: messageID}
 		if err := s.store.Messages().MapPlatformMessage(ctx, mapping); err != nil {
-			s.auditEvent("elnis.report_map_failed", "event_key", eventKey, "platform", platformName, "scope_id", scopeID, "platform_message_id", platformMessageID, "session_id", sessionID, "message_id", messageID, "error", err.Error())
-			s.logWarn("map elnis report message failed", "event_key", eventKey, "platform", platformName, "scope_id", scopeID, "platform_message_id", platformMessageID, "session_id", sessionID, "message_id", messageID, "error", err.Error())
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogAudit,
+				Level:    slog.LevelError,
+				Name:     "elnis.report_map_failed",
+				Module:   "elnis",
+				Summary:  "elnis.report_map_failed",
+				Fields: []slog.Attr{
+					slog.Any("event_key", eventKey),
+					slog.Any("platform", platformName),
+					slog.Any("scope_id", scopeID),
+					slog.Any("platform_message_id", platformMessageID),
+					slog.Any("session_id", sessionID),
+					slog.Any("message_id", messageID),
+					slog.Any("error", err.Error()),
+				},
+			})
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogElnis,
+				Level:    slog.LevelError,
+				Name:     "map_elnis_report_message_failed",
+				Module:   "elnis",
+				Summary:  "map elnis report message failed",
+				Fields: []slog.Attr{
+					slog.Any("event_key", eventKey),
+					slog.Any("platform", platformName),
+					slog.Any("scope_id", scopeID),
+					slog.Any("platform_message_id", platformMessageID),
+					slog.Any("session_id", sessionID),
+					slog.Any("message_id", messageID),
+					slog.Any("error", err.Error()),
+				},
+			})
 		}
 	}
 }

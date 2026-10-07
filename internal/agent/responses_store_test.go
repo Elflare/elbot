@@ -90,7 +90,7 @@ func TestResponsesStoreFalseReplaysToolsAndFollowingTurns(t *testing.T) {
 		emitNativeStore(w, fmt.Sprintf("r%d", index+1), false, nativeText("first answer"))
 	}, func(opts *testAgentOptions) {
 		opts.ToolRegistry, opts.HookManager = registry, manager
-		opts.Logs = componentLogs{logger: slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))}
+		captureLogs(t, slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})))
 	})
 	if err := f.agent.HandleMessage(t.Context(), "@tool:once first input"); err != nil {
 		t.Fatal(err)
@@ -144,7 +144,7 @@ func TestResponsesStorageModes(t *testing.T) {
 					}
 					configureNativeStore(t, opts, scope, false)
 				}
-				opts.Logs = componentLogs{logger: slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))}
+				captureLogs(t, slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})))
 			})
 			for _, input := range []string{"first", "next"} {
 				if err := f.agent.HandleMessage(t.Context(), input); err != nil {

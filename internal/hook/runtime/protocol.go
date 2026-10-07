@@ -1,11 +1,13 @@
 package runtime
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"strings"
 	"time"
 
+	globalevents "elbot/internal/events"
 	hookprotocol "elbot/internal/hook/protocol"
 	"elbot/internal/llm"
 )
@@ -41,17 +43,23 @@ type eventResult struct {
 }
 
 type stderrLogger struct {
-	logger *slog.Logger
 	hookID string
 }
 
 func (l stderrLogger) Write(data []byte) (int, error) {
-	if l.logger != nil {
-		line := strings.TrimSpace(string(data))
-		if line != "" {
-			l.logger.Info("stateful hook stderr", "hook", l.hookID, "line", line)
-		}
+	line := strings.TrimSpace(string(data))
+	if line != "" {
+		_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelInfo,
+			Name:     "stateful_hook_stderr",
+			Module:   "hook",
+			Summary:  "stateful hook stderr" + ": " + line,
+			Fields:   []slog.Attr{slog.Any("hook", l.hookID)},
+			Detail:   line,
+		})
 	}
+
 	return len(data), nil
 }
 

@@ -19,9 +19,6 @@ import (
 const DefaultRetentionDays = 30
 
 type Manager struct {
-	runtime       *slog.Logger
-	audit         *slog.Logger
-	elnis         *slog.Logger
 	logDir        string
 	retentionDays int
 	writers       []io.WriteCloser
@@ -39,27 +36,6 @@ func NewManager(level, sqlitePath string, retentionDays int) (*Manager, error) {
 	return newManager(level, logDir, retentionDays, func(prefix string) (io.WriteCloser, error) {
 		return newDailyFileWriter(logDir, prefix, time.Now)
 	})
-}
-
-func (m *Manager) Runtime() *slog.Logger {
-	if m == nil {
-		return nil
-	}
-	return m.runtime
-}
-
-func (m *Manager) Audit() *slog.Logger {
-	if m == nil {
-		return nil
-	}
-	return m.audit
-}
-
-func (m *Manager) Elnis() *slog.Logger {
-	if m == nil {
-		return nil
-	}
-	return m.elnis
 }
 
 func (m *Manager) LogDir() string {
@@ -132,13 +108,6 @@ func (m *Manager) Close(ctx context.Context) error {
 	return m.closeErr
 }
 
-func New(level string, output io.Writer) *slog.Logger {
-	return slog.New(slog.NewTextHandler(output, &slog.HandlerOptions{
-		Level:       parseLevel(level),
-		ReplaceAttr: replaceAttr,
-	}))
-}
-
 func replaceAttr(groups []string, attr slog.Attr) slog.Attr {
 	if attr.Key == slog.TimeKey {
 		if t, ok := attr.Value.Any().(time.Time); ok {
@@ -146,19 +115,6 @@ func replaceAttr(groups []string, attr slog.Attr) slog.Attr {
 		}
 	}
 	return attr
-}
-
-func NewFile(level, sqlitePath string) (*slog.Logger, io.Closer, error) {
-	return newPrefixedFile(level, sqlitePath, "elbot")
-}
-
-func newPrefixedFile(level, sqlitePath, prefix string) (*slog.Logger, *dailyFileWriter, error) {
-	logDir := filepath.Join(filepath.Dir(sqlitePath), "logs")
-	writer, err := newDailyFileWriter(logDir, prefix, time.Now)
-	if err != nil {
-		return nil, nil, err
-	}
-	return New(level, writer), writer, nil
 }
 
 type dailyFileWriter struct {

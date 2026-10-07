@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"elbot/internal/background"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/elyph"
+	globalevents "elbot/internal/events"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -139,7 +141,14 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 				result.TakenOver = true
 				return takeoverState(state, result), "", nil
 			}
-			s.logWarn("copy cron session failed", "job", job.Name, "error", err)
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogRuntime,
+				Level:    slog.LevelError,
+				Name:     "copy_cron_session_failed",
+				Module:   "cron",
+				Summary:  "copy cron session failed",
+				Fields:   []slog.Attr{slog.Any("job", job.Name), slog.Any("error", err)},
+			})
 		}
 	}
 	state.ReportReady = true

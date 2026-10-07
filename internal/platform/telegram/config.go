@@ -24,12 +24,6 @@ const (
 	telegramRichTextRunes     = 32768
 )
 
-type Logger interface {
-	Debug(msg string, args ...any)
-	Info(msg string, args ...any)
-	Warn(msg string, args ...any)
-}
-
 type Config struct {
 	Enabled                        bool     `toml:"enabled"`
 	BotToken                       string   `toml:"bot_token"`
@@ -49,7 +43,7 @@ type Config struct {
 	ConfigEnvDir                   string   `toml:"-"`
 }
 
-func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory storage.ChatHistoryRepository, logger Logger, superadmins []string, commandPrefixes []string, configEnvDir string) (*Adapter, error) {
+func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory storage.ChatHistoryRepository, superadmins []string, commandPrefixes []string, configEnvDir string) (*Adapter, error) {
 	var cfg Config
 	if err := platform.DecodeConfig(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("decode telegram config: %w", err)
@@ -70,7 +64,7 @@ func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory 
 			return nil, err
 		}
 	}
-	return New(cfg, store, chatHistory, logger), nil
+	return New(cfg, store, chatHistory), nil
 }
 
 func applyDefaults(cfg *Config) {

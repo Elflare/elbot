@@ -4,10 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"elbot/internal/delivery"
-	"elbot/internal/hook"
-	hookruntime "elbot/internal/hook/runtime"
-	"elbot/internal/llm"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +16,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
+	"elbot/internal/hook"
+	hookruntime "elbot/internal/hook/runtime"
+	"elbot/internal/llm"
+	"elbot/internal/signal"
 )
 
 func TestExecActionDefaultStdinIncludesEvent(t *testing.T) {
@@ -265,7 +268,8 @@ func TestExecDoneUnmatchedRollsBackAndSkipsRemainingActions(t *testing.T) {
 
 func TestExecSuccessLogsStderrWithoutReadFailure(t *testing.T) {
 	var logs bytes.Buffer
-	module := Module{Logger: slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))}
+	captureLogs(t, slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	module := Module{}
 	_, err := module.runRule(context.Background(), Rule{Actions: []Action{{
 		ActionName: "script",
 		Type:       "exec",
@@ -285,7 +289,8 @@ func TestExecSuccessLogsStderrWithoutReadFailure(t *testing.T) {
 
 func TestExecFlushesStderrWithoutTrailingNewline(t *testing.T) {
 	var logs bytes.Buffer
-	module := Module{Logger: slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))}
+	captureLogs(t, slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	module := Module{}
 	_, err := module.runRule(context.Background(), Rule{Actions: []Action{{
 		Type:    "exec",
 		Command: execHelperCommand("stderr-no-newline"),
@@ -361,6 +366,27 @@ func TestExecRunsDoNotShareGlobalBlockingLock(t *testing.T) {
 			t.Fatal("parallel exec runs blocked each other")
 		}
 	}
+}
+
+// captureLogs observes the public signal; production never receives this logger.
+func captureLogs(t *testing.T, logger *slog.Logger) {
+	t.Helper()
+	connection, err := globalevents.LogSubmitted.Connect(func(ctx context.Context, record globalevents.LogRecord) error {
+		if !logger.Enabled(ctx, record.Level) {
+			return nil
+		}
+		out := slog.NewRecord(record.At, record.Level, record.Summary, 0)
+		out.AddAttrs(record.Fields...)
+		out.AddAttrs(slog.String("event", record.Name), slog.String("module", record.Module))
+		if record.Detail != "" && logger.Enabled(ctx, slog.LevelDebug) {
+			out.AddAttrs(slog.String("detail", record.Detail))
+		}
+		return logger.Handler().Handle(ctx, out)
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(connection.Disconnect)
 }
 
 func TestExecFailuresIncludeStderrTail(t *testing.T) {

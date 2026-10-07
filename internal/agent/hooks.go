@@ -9,6 +9,7 @@ import (
 	agentevents "elbot/internal/agent/events"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery/dispatch"
+	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
@@ -38,7 +39,6 @@ type hookBridge struct {
 	media      *media.Manager
 	failed     *signal.Signal[agentevents.HookFailedEvent]
 	dispatcher *dispatch.Router
-	logger     *slog.Logger
 }
 
 func (h *hookBridge) CancelRoute(event hook.Event) bool {
@@ -69,13 +69,23 @@ func (h *hookBridge) Run(ctx context.Context, event hook.Event) (hook.Event, err
 	updated, err := manager.Run(ctx, event)
 	if err == nil {
 		err = hook.ValidateCalls(ctx, before, updated)
+		if err != nil {
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogRuntime,
+				Level:    slog.LevelWarn,
+				Name:     "hook_call_validation_failed",
+				Module:   "hook",
+				Summary:  "hook call validation failed",
+				Fields:   []slog.Attr{slog.String("point", string(event.Point)), slog.Any("error", err)},
+			})
+		}
 	}
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return event, err
 		}
 		h.notifyError(ctx, event, err)
-		h.publishFailure(ctx, event, err, false, true)
+		h.publishFailure(ctx, event, err, true)
 		return before, err
 	}
 	return updated, nil
@@ -88,7 +98,7 @@ func (h *hookBridge) Notify(ctx context.Context, event hook.Event) {
 	}
 	event = h.fillContext(ctx, event)
 	if err := manager.Notify(ctx, event); err != nil {
-		h.publishFailure(ctx, event, err, true, !errors.Is(err, context.Canceled) && event.Point != hook.PointErrorOccurred)
+		h.publishFailure(ctx, event, err, !errors.Is(err, context.Canceled) && event.Point != hook.PointErrorOccurred)
 		if errors.Is(err, context.Canceled) {
 			return
 		}
@@ -118,9 +128,16 @@ func (h *hookBridge) ObserveRun(ctx context.Context, event hook.Event, info hook
 		Label:     label,
 	})
 	if err != nil {
-		if h.logger != nil {
-			h.logger.WarnContext(ctx, "hook request tracking failed", "hook", label, "point", string(info.Point), "error", err.Error())
-		}
+
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelWarn,
+			Name:     "hook_request_tracking_failed",
+			Module:   "hook",
+			Summary:  "hook request tracking failed",
+			Fields:   []slog.Attr{slog.Any("hook", label), slog.Any("point", string(info.Point)), slog.Any("error", err.Error())},
+		})
+
 		return ctx, func() {}
 	}
 	return reqCtx, done
@@ -136,13 +153,13 @@ func (h *hookBridge) notifyError(ctx context.Context, source hook.Event, err err
 	h.Notify(ctx, event)
 }
 
-func (h *hookBridge) publishFailure(ctx context.Context, event hook.Event, err error, log, notice bool) {
-	agentevents.Emit(ctx, h.failed, agentevents.HookFailedEvent{EventMeta: agentevents.Meta(ctx, event.Session.ID), Point: event.Point, Platform: event.Platform, Err: err, Log: log, Notice: notice})
+func (h *hookBridge) publishFailure(ctx context.Context, event hook.Event, err error, notice bool) {
+	agentevents.Emit(ctx, h.failed, agentevents.HookFailedEvent{EventMeta: agentevents.Meta(ctx, event.Session.ID), Point: event.Point, Platform: event.Platform, Err: err, Notice: notice})
 }
 
 func (h *hookBridge) PlatformConnected(ctx context.Context, platformName string) {
 	if err := notificationrules.PlatformConnected(ctx, platformName, h.Run, h.dispatcher); err != nil {
-		h.publishFailure(ctx, hook.Event{Point: hook.PointPlatformConnected, Platform: hook.PlatformContext{Name: platformName}}, err, true, false)
+		h.publishFailure(ctx, hook.Event{Point: hook.PointPlatformConnected, Platform: hook.PlatformContext{Name: platformName}}, err, false)
 	}
 }
 

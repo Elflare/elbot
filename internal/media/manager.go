@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"net/url"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"elbot/internal/config"
+	globalevents "elbot/internal/events"
 	"elbot/internal/storage"
 )
 
@@ -339,8 +341,7 @@ func sanitizeMediaName(value string) string {
 func sanitizeSourceURL(value string) string {
 	value = strings.TrimSpace(value)
 	parsed, err := url.Parse(value)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" ||
-		parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || parsed.RawFragment != "" {
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || parsed.RawFragment != "" {
 		return ""
 	}
 	for _, component := range strings.Split(parsed.Path, "/") {
@@ -355,8 +356,7 @@ func sanitizeSourceURL(value string) string {
 func sanitizeSourceFileID(value string) string {
 	value = strings.TrimSpace(value)
 	lower := strings.ToLower(value)
-	if value == "" || strings.HasPrefix(lower, "data:") || strings.HasPrefix(lower, "base64:") ||
-		strings.Contains(value, "://") || strings.ContainsAny(value, "/\\") {
+	if value == "" || strings.HasPrefix(lower, "data:") || strings.HasPrefix(lower, "base64:") || strings.Contains(value, "://") || strings.ContainsAny(value, "/\\") {
 		return ""
 	}
 	if parsed, err := url.Parse(value); err == nil {
@@ -365,8 +365,7 @@ func sanitizeSourceFileID(value string) string {
 			return ""
 		}
 	}
-	if len(value) >= 2 && value[1] == ':' &&
-		((value[0] >= 'a' && value[0] <= 'z') || (value[0] >= 'A' && value[0] <= 'Z')) {
+	if len(value) >= 2 && value[1] == ':' && ((value[0] >= 'a' && value[0] <= 'z') || (value[0] >= 'A' && value[0] <= 'Z')) {
 		return ""
 	}
 	return value
@@ -397,9 +396,16 @@ func (m *Manager) remoteBackend(ctx context.Context) (Backend, error) {
 	}
 	backend, err := m.remoteFactory(ctx)
 	if err != nil {
-		if m.Logger != nil {
-			m.Logger.Warn("initialize S3 media backend failed", "error", err)
-		}
+
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelWarn,
+			Name:     "initialize_s3_media_backend_failed",
+			Module:   "media",
+			Summary:  "initialize S3 media backend failed",
+			Fields:   []slog.Attr{slog.Any("error", err)},
+		})
+
 		return nil, err
 	}
 	m.Remote = backend

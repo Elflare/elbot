@@ -2,14 +2,17 @@ package builtin
 
 import (
 	"context"
-	"elbot/internal/command"
-	"elbot/internal/request"
-	"elbot/internal/session"
-	"elbot/internal/storage"
-	"elbot/internal/turn"
 	"strings"
 	"testing"
 	"time"
+
+	"elbot/internal/command"
+	globalevents "elbot/internal/events"
+	"elbot/internal/request"
+	"elbot/internal/session"
+	"elbot/internal/signal"
+	"elbot/internal/storage"
+	"elbot/internal/turn"
 )
 
 func TestFormatMessagePageOnlyUsesAssistantMessages(t *testing.T) {
@@ -164,15 +167,19 @@ func TestResumeCommandEmitsAudit(t *testing.T) {
 		t.Fatalf("create current session: %v", err)
 	}
 	var events []string
+	connection, _ := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+		if record.Category == globalevents.LogAudit {
+			events = append(events, record.Name)
+		}
+		return nil
+	}, signal.ConnectOptions{})
+	defer connection.Disconnect()
 	selections := NewSessionCommandState(10, 30)
 	deps := Deps{
 		Sessions:     svc,
 		Store:        store,
 		Scope:        func(context.Context) session.Scope { return scope },
 		SessionState: selections,
-		Audit: func(event string, attrs ...any) {
-			events = append(events, event)
-		},
 	}
 
 	result, err := NewResume(deps).Handle(ctx, command.Request{Args: "1"})

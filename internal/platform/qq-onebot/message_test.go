@@ -26,7 +26,7 @@ func TestNewFromPlatformConfig(t *testing.T) {
 		"enabled":          true,
 		"ws_url":           "ws://example",
 		"trigger_keywords": []any{"芙莉丝"},
-	}, nil, nil, nil, nil, nil, t.TempDir(), t.TempDir(), 100*1024*1024, 60)
+	}, nil, nil, nil, nil, t.TempDir(), t.TempDir(), 100*1024*1024, 60)
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestNewFromPlatformConfig(t *testing.T) {
 func TestNewFromPlatformConfigSendFileMode(t *testing.T) {
 	adapter, err := NewFromPlatformConfig(map[string]any{
 		"send_file_mode": "file_uri",
-	}, nil, nil, nil, nil, nil, t.TempDir(), t.TempDir(), 100*1024*1024, 60)
+	}, nil, nil, nil, nil, t.TempDir(), t.TempDir(), 100*1024*1024, 60)
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestNewFromPlatformConfigSendFileMode(t *testing.T) {
 func TestNewFromPlatformConfigRejectsInvalidSendFileMode(t *testing.T) {
 	_, err := NewFromPlatformConfig(map[string]any{
 		"send_file_mode": "auto",
-	}, nil, nil, nil, nil, nil, t.TempDir(), t.TempDir(), 100*1024*1024, 60)
+	}, nil, nil, nil, nil, t.TempDir(), t.TempDir(), 100*1024*1024, 60)
 	if err == nil || !strings.Contains(err.Error(), "send_file_mode") {
 		t.Fatalf("err = %v", err)
 	}
@@ -235,7 +235,7 @@ func TestHandleEventMediaRemainsRaw(t *testing.T) {
 			`[{"type":"image","data":{"file":"image-id"}}]`,
 			`[{"type":"file","data":{"file":"test.txt","file_id":"id-1"}}]`,
 		} {
-			adapter := New(Config{Enabled: true, Superadmins: []string{"1"}}, nil, nil, nil)
+			adapter := New(Config{Enabled: true, Superadmins: []string{"1"}}, nil, nil)
 			adapter.transport = newTestTransport(t, func(req request) response {
 				t.Errorf("unexpected eager API call: %s", req.Action)
 				return response{Status: "failed", Echo: req.Echo}
@@ -271,7 +271,7 @@ func TestResolveMediaUsesPlatformOnlyOnDemand(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
-			adapter := New(Config{}, nil, nil, nil)
+			adapter := New(Config{}, nil, nil)
 			adapter.transport = newTestTransport(t, func(req request) response {
 				calls++
 				action := "get_file"
@@ -292,7 +292,7 @@ func TestResolveMediaUsesPlatformOnlyOnDemand(t *testing.T) {
 }
 
 func TestHandleEventDeliversPlainGroupMessage(t *testing.T) {
-	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/", TriggerKeywords: []string{"芙莉丝"}}, nil, nil, nil)
+	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/", TriggerKeywords: []string{"芙莉丝"}}, nil, nil)
 	handler := &captureHandler{}
 
 	adapter.handleEvent(context.Background(), handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, RawMessage: "hello"})
@@ -310,7 +310,7 @@ func TestHandleEventDeliversPlainGroupMessage(t *testing.T) {
 }
 
 func TestHandleEventKeepsPlatformMessageForHooks(t *testing.T) {
-	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/"}, nil, nil, nil)
+	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/"}, nil, nil)
 	handler := &captureHandler{}
 	raw := []byte(`[{"type":"json","data":{"data":"{\"app\":\"miniapp\"}"}}]`)
 
@@ -326,7 +326,7 @@ func TestHandleEventKeepsPlatformMessageForHooks(t *testing.T) {
 }
 
 func TestHandleEventKeepsTriggerKeywordForUpperLayers(t *testing.T) {
-	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/", TriggerKeywords: []string{"芙莉丝"}}, nil, nil, nil)
+	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/", TriggerKeywords: []string{"芙莉丝"}}, nil, nil)
 	handler := &captureHandler{}
 	adapter.handleEvent(context.Background(), handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, RawMessage: "芙莉丝，你好"})
 	if handler.text != "芙莉丝，你好" {
@@ -341,7 +341,7 @@ func TestHandleEventAtUsesGroupMemberCard(t *testing.T) {
 		}
 		return response{Status: "ok", Data: []byte(`{"user_id":2,"card":"群昵称","nickname":"普通昵称"}`), Echo: req.Echo}
 	})
-	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil, nil)
+	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil)
 	adapter.transport = transport
 	handler := &captureHandler{}
 
@@ -366,7 +366,7 @@ func TestHandleEventAtFallsBackToNickname(t *testing.T) {
 		}
 		return response{Status: "ok", Data: []byte(`{"user_id":2,"nickname":"普通昵称"}`), Echo: req.Echo}
 	})
-	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil, nil)
+	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil)
 	adapter.transport = transport
 	handler := &captureHandler{}
 
@@ -427,7 +427,7 @@ func TestForkableReferenceMessageIDRequiresOwnAssistantSession(t *testing.T) {
 		}
 	}
 
-	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/"}, store, nil, nil)
+	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/"}, store, nil)
 
 	handler := &captureHandler{}
 	adapter.handleEvent(ctx, handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, Message: []byte(`[{"type":"reply","data":{"id":"first-assistant"}},{"type":"text","data":{"text":"继续"}}]`)})
@@ -537,7 +537,7 @@ func TestHandleEventStoresReferenceSnapshot(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	adapter := New(Config{}, nil, repo, nil)
+	adapter := New(Config{}, nil, repo)
 	handler := &captureHandler{}
 	adapter.handleEvent(ctx, handler, Event{
 		MessageType: "group", SelfID: 9999, UserID: 2002, GroupID: 9, MessageID: 84,
@@ -574,7 +574,7 @@ func TestHandleEventFillsReplyToSenderID(t *testing.T) {
 		}
 		return response{}
 	})
-	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil, nil)
+	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil)
 	adapter.transport = transport
 	handler := &captureHandler{}
 
@@ -612,7 +612,7 @@ func TestWithReferenceUsesGetMessageImageWhenStoreHasText(t *testing.T) {
 	transport := newTestTransport(t, func(req request) response {
 		return response{Status: "ok", Data: []byte(`{"user_id":2,"sender":{"nickname":"用户"},"message":[{"type":"image","data":{"file":"a.jpg","url":"https://example.com/a.jpg"}}]}`), Echo: req.Echo}
 	})
-	adapter := New(Config{Enabled: true, URL: transport.URL}, store, nil, nil)
+	adapter := New(Config{Enabled: true, URL: transport.URL}, store, nil)
 	adapter.transport = transport
 
 	ref, ok := adapter.referenceFetcher(Event{MessageType: "group", SelfID: 1000, GroupID: 9})(ctx, "77")

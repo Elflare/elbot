@@ -24,6 +24,7 @@ type Service struct {
 	namingConfig         NamingConfig
 	titleGen             TitleGenerator
 	namingSignals        NamingSignals
+	logConnections       []*signal.Connection
 	namingStates         map[string]namingState
 	naming               namingLifecycle
 	defaultMode          string
@@ -47,7 +48,7 @@ func NewServiceWithConfig(store storage.Store, cfg Config, titleGen TitleGenerat
 	if err := validateMode(cfg.DefaultMode); err != nil {
 		cfg.DefaultMode = storage.SessionModeWork
 	}
-	return &Service{
+	s := &Service{
 		store:         store,
 		current:       map[string]*Binding{},
 		gates:         map[string]*scopeGate{},
@@ -59,6 +60,8 @@ func NewServiceWithConfig(store storage.Store, cfg Config, titleGen TitleGenerat
 		naming:        namingLifecycle{done: make(chan struct{})},
 		defaultMode:   cfg.DefaultMode,
 	}
+	s.connectLogSignals()
+	return s
 }
 
 func (s *Service) GetOrCreateCurrent(ctx context.Context, scope Scope, firstMessage string) (*storage.Session, error) {

@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"elbot/internal/llm/chatcompletions"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -21,6 +20,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
+	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/logging"
 	"elbot/internal/platform"
 	"elbot/internal/storage"
@@ -84,6 +84,10 @@ func (m *assemblyModel) selections() []string {
 }
 
 func runtimeAssemblyFixture(t *testing.T) (RuntimeRequest, *assemblyPlatform, *assemblyModel) {
+	return runtimeAssemblyFixtureWithLogLevel(t, "error")
+}
+
+func runtimeAssemblyFixtureWithLogLevel(t *testing.T, level string) (RuntimeRequest, *assemblyPlatform, *assemblyModel) {
 	t.Helper()
 	root := t.TempDir()
 	cfg := config.Default()
@@ -109,7 +113,7 @@ func runtimeAssemblyFixture(t *testing.T) (RuntimeRequest, *assemblyPlatform, *a
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	logs, err := logging.NewManager("error", cfg.Storage.SessionsSQLitePath, 30)
+	logs, err := logging.NewManager(level, cfg.Storage.SessionsSQLitePath, 30)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +121,7 @@ func runtimeAssemblyFixture(t *testing.T) (RuntimeRequest, *assemblyPlatform, *a
 	p, model := &assemblyPlatform{}, &assemblyModel{}
 	events := []string{}
 	return RuntimeRequest{
-		Foundation: &FoundationComponents{Config: cfg, Store: store, Logs: logs, Logger: logs.Runtime(), CronManager: elcron.NewManager(store.CronJobs(), logs.Runtime())},
+		Foundation: &FoundationComponents{Config: cfg, Store: store, Logs: logs, CronManager: elcron.NewManager(store.CronJobs())},
 		Models:     ModelClients{ByProvider: map[string]llm.Client{"test": model}},
 		Platforms:  PlatformComponents{Primary: p, Runtimes: []platform.Runtime{p}},
 		Profiler:   profilerStub{events: &events},

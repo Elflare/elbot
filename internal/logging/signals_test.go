@@ -49,8 +49,6 @@ func TestGlobalRecordsUseIndependentLevelsAndReader(t *testing.T) {
 			for _, category := range logCategories {
 				emitRecord(t, events.LogRecord{At: at, Category: category, Level: slog.LevelInfo, Name: "llm_usage", Module: "model", Summary: "usage", Detail: "upstream detail", Fields: []slog.Attr{slog.Int("input_tokens", 17), slog.String("session_id", "session")}})
 			}
-			m.Audit().Info("legacy audit")
-			m.Elnis().Info("legacy elnis")
 			emitRecord(t, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, Name: "failure", Detail: "runtime detail"})
 			if err := m.Close(context.Background()); err != nil {
 				t.Fatal(err)
@@ -69,7 +67,7 @@ func TestGlobalRecordsUseIndependentLevelsAndReader(t *testing.T) {
 						t.Fatal(entries)
 					}
 				} else {
-					if len(entries) != 2 {
+					if len(entries) != 1 {
 						t.Fatal(entries)
 					}
 					var found bool

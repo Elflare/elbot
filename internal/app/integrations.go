@@ -30,25 +30,11 @@ func (defaultIntegrationFactory) Attach(ctx context.Context, req IntegrationRequ
 		if err != nil {
 			return PlatformComponents{}, err
 		}
-		elnisService, err := elnis.NewService(elnis.Options{
-			Media:            runtime.Media,
-			Config:           cfg.Elnis,
-			SandboxRoot:      cfg.Sandbox.Root,
-			Tokens:           elnisTokens,
-			Store:            foundation.Store,
-			Logger:           foundation.Logs.Elnis(),
-			EnabledPlatforms: runtimeNames(platforms.Runtimes),
-			PlatformCallers:  platformCallerResolver{runtimes: platforms.Runtimes},
-			Audit:            auditFunc(foundation.Logs),
-			Send: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
-				return runtime.Dispatcher.SendNotice(ctx, delivery.Notice{Target: target, Outputs: outputs})
-			},
-			Runner:        runtime.Agent,
-			ToolPreloader: runtime.ToolPreloader,
-			ResolveModel: func(slot string) config.ModelSelection {
-				return runtime.Models.ResolveMode(slot).ModelSelection
-			},
-		})
+		elnisService, err := elnis.NewService(elnis.Options{Media: runtime.Media, Config: cfg.Elnis, SandboxRoot: cfg.Sandbox.Root, Tokens: elnisTokens, Store: foundation.Store, EnabledPlatforms: runtimeNames(platforms.Runtimes), PlatformCallers: platformCallerResolver{runtimes: platforms.Runtimes}, Send: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+			return runtime.Dispatcher.SendNotice(ctx, delivery.Notice{Target: target, Outputs: outputs})
+		}, Runner: runtime.Agent, ToolPreloader: runtime.ToolPreloader, ResolveModel: func(slot string) config.ModelSelection {
+			return runtime.Models.ResolveMode(slot).ModelSelection
+		}})
 		if err != nil {
 			return PlatformComponents{}, err
 		}

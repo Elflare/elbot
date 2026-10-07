@@ -2,18 +2,18 @@ package maintenance
 
 import (
 	"context"
-	"elbot/internal/config"
-	"elbot/internal/session"
-	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"elbot/internal/config"
+	"elbot/internal/session"
+	"elbot/internal/storage"
+	"elbot/internal/storage/sqlite"
 )
 
 func TestCleanupSandboxDeletesOldFilesAndEmptyDirs(t *testing.T) {
-
 	root := t.TempDir()
 	oldDir := filepath.Join(root, "cron", "old")
 	newDir := filepath.Join(root, "elnis", "new")
@@ -87,7 +87,7 @@ func TestCleanupUsesInjectedLiveSessionService(t *testing.T) {
 		}
 		return nil
 	})
-	svc := NewService(nil, store, config.MaintenanceCleanupConfig{Enabled: true, RetentionDays: 1}, nil)
+	svc := NewService(nil, store, config.MaintenanceCleanupConfig{Enabled: true, RetentionDays: 1})
 	svc.Sessions = live
 	if err := svc.RunSessionCleanup(ctx); err != nil {
 		t.Fatal(err)

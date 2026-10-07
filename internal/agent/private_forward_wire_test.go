@@ -107,7 +107,7 @@ func TestPrivateOneBotForwardReachesVendor(t *testing.T) {
 			root := t.TempDir()
 			a := newTestMediaAgent(t, &fakePlatform{}, mustChatClient(t, vendor.URL, "test", nil), store, media.NewManager(store, root, &media.LocalBackend{Root: root}))
 			a.message.media.History = history.Repository()
-			adapter := qqonebot.New(qqonebot.Config{Enabled: true, URL: "ws" + strings.TrimPrefix(onebot.URL, "http")}, store, history.Repository(), nil)
+			adapter := qqonebot.New(qqonebot.Config{Enabled: true, URL: "ws" + strings.TrimPrefix(onebot.URL, "http")}, store, history.Repository())
 			completed := make(chan error, 1)
 			runDone := make(chan error, 1)
 			go func() {

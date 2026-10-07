@@ -115,7 +115,7 @@ func TestTargetAPIPathSupportsC2CAndGroup(t *testing.T) {
 
 func newQQOfficialSendTestAdapter(server *httptest.Server) *Adapter {
 	markdown := false
-	adapter := New(Config{AppID: "app", ClientSecret: "secret", MarkdownByDefault: &markdown}, nil, nil, nil)
+	adapter := New(Config{AppID: "app", ClientSecret: "secret", MarkdownByDefault: &markdown}, nil, nil)
 	adapter.client.baseURL = server.URL
 	adapter.client.http = server.Client()
 	adapter.client.tokens.client = server.Client()

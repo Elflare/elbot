@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
+	globalevents "elbot/internal/events"
 	"elbot/internal/fileops"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -68,16 +70,30 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 	result, err := c.deps.FileRollback.RollbackByID(ctx, id)
 	actor, _ := contextinfo.ActorFromContext(ctx)
 	binding, _ := session.BindingFromContext(ctx)
-	if c.deps.Audit != nil && result.Path != "" {
+	if result.Path != "" {
 		sessionID := ""
 		if binding != nil {
 			sessionID = binding.SessionID()
 		}
 		attrs := []any{"actor_id", actor.ID, "session_id", sessionID, "path", result.Path}
 		if err != nil {
-			c.deps.Audit("file_rollback_failed", append(attrs, "error", err.Error())...)
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogAudit,
+				Level:    slog.LevelWarn,
+				Name:     "file_rollback_failed",
+				Module:   "command",
+				Summary:  "file_rollback_failed",
+				Fields:   slog.Group("", append(attrs, "error", err.Error())...).Value.Group(),
+			})
 		} else {
-			c.deps.Audit("file_rollback", append(attrs, "deleted", result.Deleted)...)
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogAudit,
+				Level:    slog.LevelInfo,
+				Name:     "file_rollback",
+				Module:   "command",
+				Summary:  "file_rollback",
+				Fields:   slog.Group("", append(attrs, "deleted", result.Deleted)...).Value.Group(),
+			})
 		}
 	}
 	if err != nil {

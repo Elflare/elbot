@@ -46,11 +46,11 @@ type Dependencies struct {
 	HookRuntime         HookRouter
 	Dispatcher          *dispatch.Router
 	Notifications       *notification.Manager
-	Logs                LogManager
-	ToolRegistry        *tool.Registry
-	FileRollback        *fileops.Service
-	ToolProvider        dialogue.ToolSchemaProvider
-	SecurityPolicy      *security.Policy
+
+	ToolRegistry   *tool.Registry
+	FileRollback   *fileops.Service
+	ToolProvider   dialogue.ToolSchemaProvider
+	SecurityPolicy *security.Policy
 }
 
 func validateConstruction(ctx context.Context, cfg Config, deps Dependencies) error {

@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net/url"
 	"strings"
+
+	globalevents "elbot/internal/events"
 )
 
 type Kind string
@@ -215,11 +217,10 @@ type Sender = MessageSender
 
 type Manager struct {
 	Sender Sender
-	Logger *slog.Logger
 }
 
-func NewManager(sender Sender, logger *slog.Logger) Manager {
-	return Manager{Sender: sender, Logger: logger}
+func NewManager(sender Sender) Manager {
+	return Manager{Sender: sender}
 }
 
 func (m Manager) SendNotices(ctx context.Context, outputs []Output) error {
@@ -259,10 +260,17 @@ func (m Manager) SendNotice(ctx context.Context, notice Notice) (Receipt, error)
 	}
 	receipt, err := m.Sender.SendNotice(ctx, notice)
 	if err != nil {
-		if m.Logger != nil {
-			attrs := outputLogAttrs(notice.Outputs[0], "platform", notice.Target.Platform, "error", err.Error())
-			m.Logger.WarnContext(ctx, "notice output failed", attrs...)
-		}
+
+		attrs := outputLogAttrs(notice.Outputs[0], "platform", notice.Target.Platform, "error", err.Error())
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelWarn,
+			Name:     "notice_output_failed",
+			Module:   "delivery",
+			Summary:  "notice output failed",
+			Fields:   slog.Group("", attrs...).Value.Group(),
+		})
+
 		return receipt, wrapOutputSourceError(notice.Outputs[0], err)
 	}
 	return receipt, nil

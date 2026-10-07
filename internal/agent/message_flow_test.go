@@ -3,6 +3,14 @@ package agent
 import (
 	"bytes"
 	"context"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
@@ -14,13 +22,6 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
-	"io"
-	"log/slog"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"testing"
-	"time"
 )
 
 func TestInboundTurnInputRoundTripWithoutPlatformContext(t *testing.T) {
@@ -224,7 +225,7 @@ func TestDynamicProviderClientUsesAgentLogger(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create zhipu client: %v", err)
 	}
-	zhipu.SetLogger(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	captureLogs(t, slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	a := mustNewWithOptions(t, testAgentOptions{Platform: &fakePlatform{}, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.Client{"deepseek": &fakeLLM{}, "zhipu": zhipu}, ModeModels: modeModels, Providers: providers, DefaultMode: storage.SessionModeWork}), Store: newTestStore(t), CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
 
 	ch, err := a.execution.models.ClientForProvider("zhipu").(chatcompletions.Streamer).Stream(context.Background(), chatcompletions.Request{

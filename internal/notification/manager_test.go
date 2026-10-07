@@ -11,8 +11,10 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
+	globalevents "elbot/internal/events"
 	"elbot/internal/platform"
 	"elbot/internal/session"
+	"elbot/internal/signal"
 	"elbot/internal/storage/sqlite"
 )
 
@@ -51,7 +53,7 @@ func TestNotificationSourceSurvivesNewContextAndRejectsExpiredBinding(t *testing
 	ctx = session.WithBinding(contextinfo.WithConversation(ctx, info), binding)
 	intent := Capture(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("warning")}})
 	sender := &noticeSender{err: errors.New("send failed")}
-	manager := New(sender, nil, false)
+	manager := New(sender, false)
 	receipt, err := manager.Send(context.Background(), intent)
 	if !errors.Is(err, sender.err) || len(receipt.PlatformMessageIDs) != 1 || sender.info != info || sender.calls != 1 {
 		t.Fatalf("send=%#v/%v source=%#v calls=%d", receipt, err, sender.info, sender.calls)
@@ -70,7 +72,8 @@ func TestNotificationSourceSurvivesNewContextAndRejectsExpiredBinding(t *testing
 func TestServiceStartupNoticeLogsContentWithoutBroadcast(t *testing.T) {
 	var logs bytes.Buffer
 	sender := &noticeSender{}
-	manager := New(sender, slog.New(slog.NewTextHandler(&logs, nil)), true)
+	captureLogs(t, slog.New(slog.NewTextHandler(&logs, nil)))
+	manager := New(sender, true)
 	manager.Text(context.Background(), slog.LevelWarn, "plugin unavailable")
 	if sender.calls != 0 || !strings.Contains(logs.String(), "plugin unavailable") {
 		t.Fatalf("calls=%d logs=%s", sender.calls, logs.String())
@@ -91,7 +94,7 @@ func TestCapturedNoticeDoesNotBorrowAnotherMessagesSender(t *testing.T) {
 	original, other, registered := &noticeSender{}, &noticeSender{}, &noticeSender{}
 	router := dispatch.New(dispatch.Options{})
 	router.RegisterPlatformSender("test", registered)
-	manager := New(router, nil, false)
+	manager := New(router, false)
 	info := contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ScopeID: "same-user"}, PlatformData: "first-connection"}
 	origin := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: info, Sender: original})
 	intent := Capture(origin, delivery.Notice{Outputs: []delivery.Output{delivery.Text("delayed")}})
@@ -102,4 +105,25 @@ func TestCapturedNoticeDoesNotBorrowAnotherMessagesSender(t *testing.T) {
 	if original.calls != 1 || other.calls != 0 || registered.calls != 0 || original.info != info {
 		t.Fatalf("original=%d other=%d registered=%d source=%#v", original.calls, other.calls, registered.calls, original.info)
 	}
+}
+
+// captureLogs observes the public signal; production never receives this logger.
+func captureLogs(t *testing.T, logger *slog.Logger) {
+	t.Helper()
+	connection, err := globalevents.LogSubmitted.Connect(func(ctx context.Context, record globalevents.LogRecord) error {
+		if !logger.Enabled(ctx, record.Level) {
+			return nil
+		}
+		out := slog.NewRecord(record.At, record.Level, record.Summary, 0)
+		out.AddAttrs(record.Fields...)
+		out.AddAttrs(slog.String("event", record.Name), slog.String("module", record.Module))
+		if record.Detail != "" && logger.Enabled(ctx, slog.LevelDebug) {
+			out.AddAttrs(slog.String("detail", record.Detail))
+		}
+		return logger.Handler().Handle(ctx, out)
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(connection.Disconnect)
 }

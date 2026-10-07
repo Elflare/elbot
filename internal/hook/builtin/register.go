@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/hook/rules"
 	hookruntime "elbot/internal/hook/runtime"
@@ -14,10 +15,9 @@ import (
 
 // Options contains shared dependencies for hook plugins shipped with ElBot.
 type Options struct {
-	ConfigDir       string
-	Tools           *tool.Registry
-	Logger          *slog.Logger
-	Audit           func(event string, attrs ...any)
+	ConfigDir string
+	Tools     *tool.Registry
+
 	Notify          func(context.Context, string)
 	Send            func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
 	PlatformCallers rules.PlatformCallerResolver
@@ -29,17 +29,7 @@ func RegisterAll(registrar hook.Registrar, opts Options) ([]hookruntime.Config, 
 	if registrar == nil {
 		return nil, nil
 	}
-	rulesModule, err := rules.NewModule(rules.Options{
-		ConfigDir:       opts.ConfigDir,
-		Tools:           opts.Tools,
-		Logger:          opts.Logger,
-		Audit:           opts.Audit,
-		Notify:          opts.Notify,
-		Send:            opts.Send,
-		PlatformCallers: opts.PlatformCallers,
-		Runtime:         opts.Runtime,
-		ProcessEnv:      opts.ProcessEnv,
-	})
+	rulesModule, err := rules.NewModule(rules.Options{ConfigDir: opts.ConfigDir, Tools: opts.Tools, Notify: opts.Notify, Send: opts.Send, PlatformCallers: opts.PlatformCallers, Runtime: opts.Runtime, ProcessEnv: opts.ProcessEnv})
 	if err == nil {
 		if err := registerModule(registrar, opts, "rules", rulesModule); err != nil {
 			return nil, err
@@ -63,9 +53,16 @@ func reportPluginError(opts Options, name string, err error) {
 	if err == nil {
 		return
 	}
-	if opts.Logger != nil {
-		opts.Logger.Error("hook plugin disabled", "plugin", name, "error", err)
-	}
+
+	_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
+		Category: globalevents.LogRuntime,
+		Level:    slog.LevelError,
+		Name:     "hook_plugin_disabled",
+		Module:   "hook",
+		Summary:  "hook plugin disabled",
+		Fields:   []slog.Attr{slog.Any("plugin", name), slog.Any("error", err)},
+	})
+
 	if opts.Notify != nil {
 		opts.Notify(context.Background(), fmt.Sprintf("Hook 插件 %s 已禁用：%v", name, err))
 	}

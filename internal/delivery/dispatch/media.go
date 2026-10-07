@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/media"
 	"elbot/internal/storage"
 )
@@ -92,9 +94,16 @@ func (a *Router) sendPreparedMedia(ctx context.Context, outputs []delivery.Outpu
 	defer cleanup()
 	receipt, sendErr := send(resolved)
 	if err := a.cacheMediaReceipt(ctx, prepared, receipt); err != nil {
-		if a.logger != nil {
-			a.logger.ErrorContext(ctx, "cache sent media receipt failed", "error", err)
-		}
+
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelError,
+			Name:     "cache_sent_media_receipt_failed",
+			Module:   "delivery",
+			Summary:  "cache sent media receipt failed",
+			Fields:   []slog.Attr{slog.Any("error", err)},
+		})
+
 	}
 	return receipt, sendErr
 }

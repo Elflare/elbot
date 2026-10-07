@@ -6,7 +6,6 @@ package runtime
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"path/filepath"
 	"strings"
 
@@ -134,10 +133,9 @@ type Info struct {
 }
 
 type Options struct {
-	Media      hook.MediaAPI
-	Registry   *tool.Registry
-	Logger     *slog.Logger
-	Audit      func(event string, attrs ...any)
+	Media    hook.MediaAPI
+	Registry *tool.Registry
+
 	Send       func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
 	SharedDir  string
 	ProcessEnv hook.ProcessEnvironment

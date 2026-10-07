@@ -7,12 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 	hookoutput "elbot/internal/hook/output"
 	hookprotocol "elbot/internal/hook/protocol"
@@ -73,7 +75,7 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 		return event, actionResult{Error: err.Error()}, err
 	}
 	stderrTail := newExecStderrTail()
-	stderrLogger := newExecStderrLogger(m, action, stderrTail)
+	stderrLogger := newExecStderrLogger(ctx, m, action, stderrTail)
 	cmd.Stderr = stderrLogger
 	if err := cmd.Start(); err != nil {
 		return event, actionResult{Error: err.Error()}, err
@@ -203,8 +205,16 @@ func (m Module) readV2Response(ctx context.Context, reader *bufio.Reader, stdin 
 				return nil, requestErr
 			}
 		case "event":
-			if frame.Method == "hook.log" && m.Logger != nil {
-				m.Logger.Info("hook.v2 plugin event", "rule", firstNonEmpty(action.source.FinalName, action.ActionName), "params", string(frame.Params))
+			if frame.Method == "hook.log" {
+				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+					Category: globalevents.LogRuntime,
+					Level:    slog.LevelInfo,
+					Name:     "hook_v2_plugin_event",
+					Module:   "hook",
+					Summary:  "hook.v2 plugin event" + ": " + string(frame.Params),
+					Fields:   []slog.Attr{slog.Any("rule", firstNonEmpty(action.source.FinalName, action.ActionName))},
+					Detail:   string(frame.Params),
+				})
 			}
 		default:
 			return nil, fmt.Errorf("unsupported hook.v2 frame type %q", frame.Type)
@@ -338,7 +348,14 @@ func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, act
 		if !ok || caller == nil {
 			return nil, fmt.Errorf("platform %q does not support api calls", platformName)
 		}
-		m.audit("hook.platform_call", "platform", platformName, "api", api, "rule", firstNonEmpty(action.source.FinalName, action.ActionName))
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelInfo,
+			Name:     "hook.platform_call",
+			Module:   "hook",
+			Summary:  "hook.platform_call",
+			Fields:   []slog.Attr{slog.Any("platform", platformName), slog.Any("api", api), slog.Any("rule", firstNonEmpty(action.source.FinalName, action.ActionName))},
+		})
 		resp, err := caller.CallPlatformAPI(ctx, api, callParams)
 		if err != nil {
 			return nil, err
@@ -367,9 +384,17 @@ func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, act
 	case "message.get":
 		return map[string]any{"available": false}, nil
 	case "hook.log":
-		if m.Logger != nil {
-			m.Logger.Info("hook plugin log", "rule", firstNonEmpty(action.source.FinalName, action.ActionName), "params", string(params))
-		}
+
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelInfo,
+			Name:     "hook_plugin_log",
+			Module:   "hook",
+			Summary:  "hook plugin log" + ": " + string(params),
+			Fields:   []slog.Attr{slog.Any("rule", firstNonEmpty(action.source.FinalName, action.ActionName))},
+			Detail:   string(params),
+		})
+
 		return map[string]any{"ok": true}, nil
 	default:
 		return nil, fmt.Errorf("unsupported hook protocol method %q", method)
@@ -519,6 +544,7 @@ func (t *execStderrTail) String() string {
 }
 
 type execStderrLogger struct {
+	ctx     context.Context
 	mu      sync.Mutex
 	module  Module
 	action  Action
@@ -526,8 +552,8 @@ type execStderrLogger struct {
 	pending strings.Builder
 }
 
-func newExecStderrLogger(module Module, action Action, tail *execStderrTail) *execStderrLogger {
-	return &execStderrLogger{module: module, action: action, tail: tail}
+func newExecStderrLogger(ctx context.Context, module Module, action Action, tail *execStderrTail) *execStderrLogger {
+	return &execStderrLogger{ctx: ctx, module: module, action: action, tail: tail}
 }
 
 func (w *execStderrLogger) Write(p []byte) (int, error) {
@@ -568,8 +594,16 @@ func (w *execStderrLogger) emitLocked(line string) {
 	if w.tail != nil {
 		w.tail.Add(line)
 	}
-	if line != "" && w.module.Logger != nil {
-		w.module.Logger.Info("hook exec stderr", "rule", firstNonEmpty(w.action.source.FinalName, w.action.ActionName), "line", line)
+	if line != "" {
+		_ = globalevents.EmitLog(w.ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelInfo,
+			Name:     "hook_exec_stderr",
+			Module:   "hook",
+			Summary:  "hook exec stderr" + ": " + line,
+			Fields:   []slog.Attr{slog.Any("rule", firstNonEmpty(w.action.source.FinalName, w.action.ActionName))},
+			Detail:   line,
+		})
 	}
 }
 

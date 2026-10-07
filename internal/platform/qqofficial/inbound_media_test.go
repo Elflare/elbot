@@ -20,7 +20,7 @@ func TestPureMediaHistoryWithoutDownload(t *testing.T) {
 	defer history.Close()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { t.Error("ordinary group media must not download") }))
 	defer server.Close()
-	a := New(Config{}, nil, history.Repository(), nil)
+	a := New(Config{}, nil, history.Repository())
 	handler := &captureHandler{}
 	image := messageAttachment{URL: server.URL + "/image.png", ContentType: "image/png", Filename: "image.png"}
 	a.handleGroupMessage(ctx, handler, payload{Type: eventGroupMessageCreate}, inboundMessage{

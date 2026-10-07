@@ -51,6 +51,9 @@ func (s *Service) stopNaming() {
 // Done remains open until all admitted work, including preparation, has exited.
 func (s *Service) Close(ctx context.Context) error {
 	s.stopNaming()
+	for _, connection := range s.logConnections {
+		connection.Disconnect()
+	}
 	select {
 	case <-s.Done():
 		return nil

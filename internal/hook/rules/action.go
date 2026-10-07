@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 	hookoutput "elbot/internal/hook/output"
 	"elbot/internal/llm"
@@ -238,21 +240,22 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 	}
 	toolResult, err := registered.Call(ctx, tool.CallRequest{ID: call.ID, Name: name, Arguments: json.RawMessage(arguments)})
 	if err != nil {
-		m.audit("hook_tool_error", "tool", name, "error", err.Error())
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelWarn,
+			Name:     "hook_tool_error",
+			Module:   "hook",
+			Summary:  "hook_tool_error",
+			Fields:   []slog.Attr{slog.Any("tool", name), slog.Any("error", err.Error())},
+		})
 		return actionResult{Error: err.Error()}, err
 	}
 	content := ""
 	if toolResult != nil {
 		content = llm.SegmentsContentText(toolResult.LLMSegments())
 	}
-	m.audit("hook_tool_call", "tool", name)
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, Name: "hook_tool_call", Module: "hook", Summary: "hook_tool_call", Fields: []slog.Attr{slog.Any("tool", name)}})
 	return actionResult{Result: content}, nil
-}
-
-func (m Module) audit(event string, attrs ...any) {
-	if m.Opts.Audit != nil {
-		m.Opts.Audit(event, attrs...)
-	}
 }
 
 func render(text string, event hook.Event, state state) string {

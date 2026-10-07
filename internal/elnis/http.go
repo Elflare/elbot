@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"elbot/internal/config"
+	globalevents "elbot/internal/events"
 )
 
 type Runtime struct {
@@ -169,7 +171,14 @@ func (r *Runtime) reportWorker(ctx context.Context) {
 		return
 	}
 	if err := r.service.recoverReports(ctx, false); err != nil && ctx.Err() == nil {
-		r.service.logWarn("initial elnis report recovery failed", "error", err.Error())
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogElnis,
+			Level:    slog.LevelWarn,
+			Name:     "initial_elnis_report_recovery_failed",
+			Module:   "elnis",
+			Summary:  "initial elnis report recovery failed",
+			Fields:   []slog.Attr{slog.Any("error", err.Error())},
+		})
 	}
 	ticker := time.NewTicker(reportRecoveryInterval)
 	defer ticker.Stop()
@@ -179,7 +188,14 @@ func (r *Runtime) reportWorker(ctx context.Context) {
 			return
 		case <-ticker.C:
 			if err := r.service.recoverReports(ctx, false); err != nil && ctx.Err() == nil {
-				r.service.logWarn("elnis report retry failed", "error", err.Error())
+				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+					Category: globalevents.LogElnis,
+					Level:    slog.LevelWarn,
+					Name:     "elnis_report_retry_failed",
+					Module:   "elnis",
+					Summary:  "elnis report retry failed",
+					Fields:   []slog.Attr{slog.Any("error", err.Error())},
+				})
 			}
 		}
 	}

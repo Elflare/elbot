@@ -23,13 +23,12 @@ func testTargetContext(t target) context.Context {
 }
 
 func TestSendNoticeSkipsGroupToolPreview(t *testing.T) {
-
 	var calls atomic.Int64
 	transport := newTestTransport(t, func(req request) response {
 		calls.Add(1)
 		return response{Status: "ok", Data: []byte(`{"message_id":88}`), Echo: req.Echo}
 	})
-	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil, nil)
+	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil)
 	adapter.transport = transport
 	ctx := testTargetContext(target{MessageType: "group", GroupID: 9})
 
@@ -51,7 +50,7 @@ func TestSendNoticeKeepsPrivateToolPreview(t *testing.T) {
 		action = req.Action
 		return response{Status: "ok", Data: []byte(`{"message_id":88}`), Echo: req.Echo}
 	})
-	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil, nil)
+	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil)
 	adapter.transport = transport
 	ctx := testTargetContext(target{MessageType: "private", UserID: 1})
 
@@ -216,7 +215,7 @@ func TestSendRecordUsesPrivateAndGroupMessageAPIs(t *testing.T) {
 				}
 				return response{Status: "ok", Data: []byte(`{"message_id":88}`), Echo: req.Echo}
 			})
-			adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil, nil)
+			adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil)
 			adapter.transport = transport
 			ctx := testTargetContext(tc.target)
 			out := delivery.Output{Kind: delivery.KindRecord, Source: delivery.Source{URL: "https://example.com/voice.mp3"}}
@@ -258,7 +257,7 @@ func TestSendContextOutputReturnsSendFailureWithoutFallbackMessage(t *testing.T)
 		messages = append(messages, req.Params["message"])
 		return response{Status: "failed", Retcode: 1, Data: []byte(`{}`), Echo: req.Echo}
 	})
-	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil, nil)
+	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil)
 	adapter.transport = transport
 	ctx := testTargetContext(target{MessageType: "private", UserID: 1})
 

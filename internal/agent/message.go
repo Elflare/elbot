@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"log/slog"
 	"reflect"
 	"strings"
 
@@ -25,7 +24,6 @@ type messageHandler struct {
 	media     *media.Manager
 	messages  storage.MessageRepository
 	mediaRows storage.MediaRepository
-	logger    *slog.Logger
 }
 
 func (a *Agent) HandleMessage(ctx context.Context, text string) error {

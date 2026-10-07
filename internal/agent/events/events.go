@@ -75,10 +75,10 @@ type VisionFallbackUsedEvent struct {
 }
 type HookFailedEvent struct {
 	EventMeta
-	Point       hook.Point
-	Platform    hook.PlatformContext
-	Err         error
-	Log, Notice bool
+	Point    hook.Point
+	Platform hook.PlatformContext
+	Err      error
+	Notice   bool
 }
 type ReplyDeliveredEvent struct {
 	EventMeta

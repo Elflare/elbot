@@ -7,11 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os/exec"
 	"strings"
 	"sync"
 	"time"
 
+	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 	hookoutput "elbot/internal/hook/output"
 	hookprotocol "elbot/internal/hook/protocol"
@@ -136,7 +138,7 @@ func (w *worker) run() {
 		w.startFailed(err)
 		return
 	}
-	cmd.Stderr = stderrLogger{logger: w.manager.opts.Logger, hookID: w.config.ID}
+	cmd.Stderr = stderrLogger{hookID: w.config.ID}
 	w.manager.mu.RLock()
 	w.mu.Lock()
 	if w.manager.closed || w.cmd != nil || w.stopping || w.manualStop {
@@ -504,8 +506,15 @@ func (w *worker) runReload(reload func() error) {
 		return
 	}
 	go func() {
-		if err := reload(); err != nil && w.manager.opts.Logger != nil {
-			w.manager.opts.Logger.Warn("hook plugin reload failed", "hook", w.config.ID, "error", err)
+		if err := reload(); err != nil {
+			_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
+				Category: globalevents.LogRuntime,
+				Level:    slog.LevelWarn,
+				Name:     "hook_plugin_reload_failed",
+				Module:   "hook",
+				Summary:  "hook plugin reload failed",
+				Fields:   []slog.Attr{slog.Any("hook", w.config.ID), slog.Any("error", err)},
+			})
 		}
 	}()
 }
@@ -652,8 +661,16 @@ func (w *worker) deliverResponse(value frame) {
 }
 
 func (w *worker) handlePluginEvent(value frame) {
-	if value.Method == "hook.log" && w.manager.opts.Logger != nil {
-		w.manager.opts.Logger.Info("stateful hook event", "hook", w.config.ID, "params", string(value.Params))
+	if value.Method == "hook.log" {
+		_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelInfo,
+			Name:     "stateful_hook_event",
+			Module:   "hook",
+			Summary:  "stateful hook event" + ": " + string(value.Params),
+			Fields:   []slog.Attr{slog.Any("hook", w.config.ID)},
+			Detail:   string(value.Params),
+		})
 	}
 }
 
@@ -667,8 +684,15 @@ func (w *worker) handlePluginRequest(value frame) {
 		response.Result = mustJSON(result)
 	}
 	writeErr := w.write(response)
-	if writeErr != nil && w.manager.opts.Logger != nil {
-		w.manager.opts.Logger.Warn("write hook request response failed", "hook", w.config.ID, "method", value.Method, "error", writeErr)
+	if writeErr != nil {
+		_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelError,
+			Name:     "write_hook_request_response_failed",
+			Module:   "hook",
+			Summary:  "write hook request response failed",
+			Fields:   []slog.Attr{slog.Any("hook", w.config.ID), slog.Any("method", value.Method), slog.Any("error", writeErr)},
+		})
 	}
 	if value.Method == "hooks.reload" && err == nil {
 		if writeErr == nil {

@@ -8,6 +8,7 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/platform"
 	"elbot/internal/session"
 )
@@ -22,13 +23,13 @@ type Intent struct {
 }
 
 type Manager struct {
-	sender           delivery.MessageSender
-	logger           *slog.Logger
+	sender delivery.MessageSender
+
 	logWithoutSource bool
 }
 
-func New(sender delivery.MessageSender, logger *slog.Logger, logWithoutSource bool) *Manager {
-	return &Manager{sender: sender, logger: logger, logWithoutSource: logWithoutSource}
+func New(sender delivery.MessageSender, logWithoutSource bool) *Manager {
+	return &Manager{sender: sender, logWithoutSource: logWithoutSource}
 }
 
 func Capture(ctx context.Context, notice delivery.Notice) Intent {
@@ -73,11 +74,19 @@ func (m *Manager) Send(ctx context.Context, intent Intent) (delivery.Receipt, er
 			return delivery.Receipt{}, err
 		}
 		if target.Empty() {
-			if m.logger != nil {
-				for _, output := range intent.Notice.Outputs {
-					m.logger.Log(ctx, intent.Notice.Level, "runtime notification", "text", output.Text, "kind", output.Kind)
-				}
+
+			for _, output := range intent.Notice.Outputs {
+				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+					Category: globalevents.LogRuntime,
+					Level:    intent.Notice.Level,
+					Name:     "runtime_notification",
+					Module:   "notification",
+					Summary:  "runtime notification" + ": " + output.Text,
+					Fields:   []slog.Attr{slog.Any("kind", output.Kind)},
+					Detail:   output.Text,
+				})
 			}
+
 			return delivery.Receipt{}, nil
 		}
 	}

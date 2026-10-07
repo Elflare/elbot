@@ -2,13 +2,14 @@ package app
 
 import (
 	"context"
-	elcron "elbot/internal/cron"
-	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 	"errors"
 	"sync"
 	"testing"
 	"time"
+
+	elcron "elbot/internal/cron"
+	"elbot/internal/storage"
+	"elbot/internal/storage/sqlite"
 )
 
 func TestReviewCronStoppedBeforeRuntimeDependencies(t *testing.T) {
@@ -17,7 +18,7 @@ func TestReviewCronStoppedBeforeRuntimeDependencies(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	manager := elcron.NewManager(store.CronJobs(), nil)
+	manager := elcron.NewManager(store.CronJobs())
 	started := make(chan struct{}, 1)
 	runtimeClosing := make(chan struct{})
 	observed := make(chan bool, 1)
@@ -85,7 +86,7 @@ func TestRunnerKeepsDependenciesUntilCronActuallyExits(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	manager := elcron.NewManager(store.CronJobs(), nil)
+	manager := elcron.NewManager(store.CronJobs())
 	started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	if err := manager.RegisterHandler("wait", func(ctx context.Context, _ storage.CronJob) error {
 		close(started)
@@ -167,7 +168,7 @@ func TestFoundationStopWaitsForStartupAndRejectsLateStart(t *testing.T) {
 	}
 	defer store.Close()
 	startup, canceled := make(chan struct{}), make(chan struct{})
-	lifecycle := &foundationLifecycle{cronManager: elcron.NewManager(store.CronJobs(), nil), cronScheduled: true, cronStartupDone: startup, cronCancel: func() {
+	lifecycle := &foundationLifecycle{cronManager: elcron.NewManager(store.CronJobs()), cronScheduled: true, cronStartupDone: startup, cronCancel: func() {
 		select {
 		case <-canceled:
 		default:

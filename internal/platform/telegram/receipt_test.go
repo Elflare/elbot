@@ -2,11 +2,12 @@ package telegram
 
 import (
 	"context"
-	"elbot/internal/delivery"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"elbot/internal/delivery"
 )
 
 func TestMultiTargetKeepsPartiallySuccessfulTargetReceipt(t *testing.T) {
@@ -20,7 +21,7 @@ func TestMultiTargetKeepsPartiallySuccessfulTargetReceipt(t *testing.T) {
 		fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d}}`, calls)
 	}))
 	defer server.Close()
-	a := New(Config{BotToken: "token", APIBaseURL: server.URL, Superadmins: []string{"1", "2"}}, nil, nil, nil)
+	a := New(Config{BotToken: "token", APIBaseURL: server.URL, Superadmins: []string{"1", "2"}}, nil, nil)
 	out := delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/image.png"}}
 	receipt, err := a.SendNotice(context.Background(), delivery.Notice{Target: delivery.Target{Superadmins: true}, Outputs: []delivery.Output{out, out}})
 	if err == nil || len(receipt.SentMessages) != 3 || len(receipt.PlatformMessageIDs) != 3 {
