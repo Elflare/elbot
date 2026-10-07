@@ -51,6 +51,10 @@ The default process is:
 
 This mechanism can reduce invalid context overhead in ordinary tasks and also lower interference from irrelevant tools.
 
+The discovery process is independent of the model protocol. Chat Completions send the current tools in the top-level `tools` of the request; Responses append the first appearance of a definition as `additional_tools` to the native input; subsequent identical definitions are not added repeatedly, and original positions are preserved during full playback. Text returned by tool discovery is preserved independently; queries for the current time of cron, Skill descriptions, etc., will not be lost due to schema deduplication.
+
+Responses limit the currently callable tools via `tool_choice` in each round. Preserving definitions in history does not mean they are currently authorized for calling; when the definition of a tool with the same name changes, a new Session must be created.
+
 ## Inline Preloading
 
 Inline preloading is used to prompt ElBot in normal input that the current task may require a certain type of tool or a specific Skill.
