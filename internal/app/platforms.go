@@ -40,10 +40,6 @@ type platformLifecycle interface {
 	StopAppOnExit() bool
 }
 
-type platformHookAgent interface {
-	NotifyPlatformConnected(ctx context.Context, platformName string)
-}
-
 type completionPlatform interface {
 	SetCompleter(*completion.Service)
 }

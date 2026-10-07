@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 平台连接事件从适配器实例信号及 App 转发改为直接发布全局信号；Hook 协调模块和 Cron 自行订阅、按平台排队并管理关闭，保持原有连接触发、补执行及 30 秒退出预算。
 - 日志严重程度统一为客户端重试 WARN、最终操作失败 ERROR；主动取消和正常策略拒绝分别处理。Hook 工具调用审计从三个名称统一为 `hook_tool_call`，用 `source`、`status` 区分来源及结果，帮助和补全同步更新。
 - 审计和 Elnis 日志从共用运行等级改为独立保留，`runtime.log_level=warn/error` 不再过滤 `/usage` 所需的用量事实。信号设施故障从业务 Logger 改为直接报告 stderr，不受运行等级影响。
 - 全部业务日志从 Logger／Audit 注入及 App 中转改为通过全局信号交给日志中心；Agent、命名和重试的日志投影由来源模块维护，上游失败详情改用通用诊断契约。

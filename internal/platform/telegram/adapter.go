@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	"unicode"
 
@@ -20,7 +19,6 @@ import (
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
 	"elbot/internal/security"
-	"elbot/internal/signal"
 	"elbot/internal/storage"
 )
 
@@ -30,8 +28,6 @@ type Adapter struct {
 	chatHistory storage.ChatHistoryRepository
 	client      *apiClient
 
-	connectedOnce  sync.Once
-	connected      *signal.Signal[platform.ConnectedEvent]
 	botID          int64
 	botUsername    string
 	commandCatalog []command.Info
@@ -51,20 +47,13 @@ func (a *Adapter) Name() string { return platformName }
 
 func (a *Adapter) Enabled() bool { return a.cfg.Enabled }
 
-func (a *Adapter) ConnectedSignal() *signal.Signal[platform.ConnectedEvent] {
-	a.connectedOnce.Do(func() {
-		a.connected = signal.New[platform.ConnectedEvent](a.Name() + ".connected")
-	})
-	return a.connected
-}
-
 func (a *Adapter) SetCommandCatalog(infos []command.Info) {
 	a.commandCatalog = append([]command.Info(nil), infos...)
 }
 
 func (a *Adapter) notifyConnected(ctx context.Context) {
-	// Emit records dispatch failures; accepted callbacks run on app-owned queues.
-	_ = a.ConnectedSignal().Emit(ctx, platform.ConnectedEvent{Platform: a.Name()})
+	// Consumers own execution; Emit reports dispatch failures through signal diagnostics.
+	_ = globalevents.PlatformConnected.Emit(ctx, globalevents.PlatformConnectedEvent{Platform: a.Name()})
 }
 
 func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) error {

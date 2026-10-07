@@ -32,13 +32,14 @@ type HookRouter interface {
 }
 
 type hookBridge struct {
-	manager    hookRunner
-	router     HookRouter
-	requests   *request.Manager
-	identity   *identityResolver
-	media      *media.Manager
-	failed     *signal.Signal[agentevents.HookFailedEvent]
-	dispatcher *dispatch.Router
+	manager        hookRunner
+	router         HookRouter
+	requests       *request.Manager
+	identity       *identityResolver
+	media          *media.Manager
+	failed         *signal.Signal[agentevents.HookFailedEvent]
+	dispatcher     *dispatch.Router
+	platformEvents platformSubscriptions
 }
 
 func (h *hookBridge) CancelRoute(event hook.Event) bool {
@@ -157,7 +158,7 @@ func (h *hookBridge) publishFailure(ctx context.Context, event hook.Event, err e
 	agentevents.Emit(ctx, h.failed, agentevents.HookFailedEvent{EventMeta: agentevents.Meta(ctx, event.Session.ID), Point: event.Point, Platform: event.Platform, Err: err, Notice: notice})
 }
 
-func (h *hookBridge) PlatformConnected(ctx context.Context, platformName string) {
+func (h *hookBridge) handlePlatformConnected(ctx context.Context, platformName string) {
 	if err := notificationrules.PlatformConnected(ctx, platformName, h.Run, h.dispatcher); err != nil {
 		h.publishFailure(ctx, hook.Event{Point: hook.PointPlatformConnected, Platform: hook.PlatformContext{Name: platformName}}, err, false)
 	}
@@ -235,8 +236,4 @@ func (a *Agent) ObserveHookRun(ctx context.Context, event hook.Event, info hook.
 		return ctx, func() {}
 	}
 	return a.hooks.ObserveRun(ctx, event, info)
-}
-
-func (a *Agent) NotifyPlatformConnected(ctx context.Context, platformName string) {
-	a.hooks.PlatformConnected(ctx, platformName)
 }

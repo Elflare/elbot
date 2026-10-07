@@ -2,7 +2,10 @@ package cli
 
 import (
 	"context"
+	globalevents "elbot/internal/events"
+	"elbot/internal/signal"
 	"log/slog"
+	"os"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -45,5 +48,38 @@ func TestRemoteClientNoticeLevelDefaultsToInfo(t *testing.T) {
 		if got.Level != test.want {
 			t.Fatalf("level %q parsed as %s, want %s", test.level, got.Level, test.want)
 		}
+	}
+}
+
+func TestRunPublishesGlobalPlatformConnection(t *testing.T) {
+	calls := 0
+	connection, err := globalevents.PlatformConnected.Connect(func(_ context.Context, e globalevents.PlatformConnectedEvent) error {
+		calls++
+		if e.Platform != "cli" {
+			t.Errorf("platform=%q", e.Platform)
+		}
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Disconnect()
+	input, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer input.Close()
+	if _, err = writer.WriteString("/exit\n"); err != nil {
+		t.Fatal(err)
+	}
+	writer.Close()
+	original := os.Stdin
+	os.Stdin = input
+	defer func() { os.Stdin = original }()
+	if err := New().Run(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("calls=%d", calls)
 	}
 }

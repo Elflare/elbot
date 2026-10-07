@@ -13,7 +13,6 @@ import (
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/platform"
-	"elbot/internal/signal"
 	"elbot/internal/storage"
 )
 
@@ -22,9 +21,6 @@ type Adapter struct {
 	store       storage.Store
 	chatHistory storage.ChatHistoryRepository
 	client      *apiClient
-
-	connectedOnce sync.Once
-	connected     *signal.Signal[platform.ConnectedEvent]
 
 	seqMu     sync.Mutex
 	seqByID   map[string]int
@@ -40,16 +36,9 @@ func (a *Adapter) Name() string { return platformName }
 
 func (a *Adapter) Enabled() bool { return a.cfg.Enabled }
 
-func (a *Adapter) ConnectedSignal() *signal.Signal[platform.ConnectedEvent] {
-	a.connectedOnce.Do(func() {
-		a.connected = signal.New[platform.ConnectedEvent](a.Name() + ".connected")
-	})
-	return a.connected
-}
-
 func (a *Adapter) notifyConnected(ctx context.Context) {
-	// Emit records dispatch failures; accepted callbacks run on app-owned queues.
-	_ = a.ConnectedSignal().Emit(ctx, platform.ConnectedEvent{Platform: a.Name()})
+	// Consumers own execution; Emit reports dispatch failures through signal diagnostics.
+	_ = globalevents.PlatformConnected.Emit(ctx, globalevents.PlatformConnectedEvent{Platform: a.Name()})
 }
 
 func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) error {

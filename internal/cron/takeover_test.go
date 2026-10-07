@@ -34,7 +34,7 @@ func TestTakeoverSuppressesRepairAndDelivery(t *testing.T) {
 	if runner.calls != 1 || sent != 0 || repo.jobs[job.Name].Enabled {
 		t.Fatalf("calls=%d sent=%d enabled=%v", runner.calls, sent, repo.jobs[job.Name].Enabled)
 	}
-	svc.NotifyPlatformConnected(context.Background(), "cli")
+	svc.handlePlatformConnected(context.Background(), "cli")
 	if sent != 0 || runner.calls != 1 {
 		t.Fatal("takeover was retried on reconnect")
 	}

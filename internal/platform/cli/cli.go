@@ -15,9 +15,9 @@ import (
 
 	"elbot/internal/completion"
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
-	"elbot/internal/signal"
 )
 
 // Adapter is a CLI platform adapter that reads from stdin.
@@ -27,8 +27,6 @@ type Adapter struct {
 	program       *tea.Program
 	userName      string
 	assistantName string
-	connectedOnce sync.Once
-	connected     *signal.Signal[platform.ConnectedEvent]
 	completion    *completion.Service
 }
 
@@ -50,13 +48,6 @@ func (a *Adapter) SetCompleter(service *completion.Service) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.completion = service
-}
-
-func (a *Adapter) ConnectedSignal() *signal.Signal[platform.ConnectedEvent] {
-	a.connectedOnce.Do(func() {
-		a.connected = signal.New[platform.ConnectedEvent](a.Name() + ".connected")
-	})
-	return a.connected
 }
 
 // StopAppOnExit marks the interactive CLI as owning the current foreground process.
@@ -114,8 +105,8 @@ func (a *Adapter) setProgram(program *tea.Program) {
 }
 
 func (a *Adapter) notifyConnected(ctx context.Context) {
-	// Emit records dispatch failures; accepted callbacks run on app-owned queues.
-	_ = a.ConnectedSignal().Emit(ctx, platform.ConnectedEvent{Platform: a.Name()})
+	// Consumers own execution; Emit reports dispatch failures through signal diagnostics.
+	_ = globalevents.PlatformConnected.Emit(ctx, globalevents.PlatformConnectedEvent{Platform: a.Name()})
 }
 
 func (a *Adapter) StartStream(ctx context.Context) (delivery.MessageStream, error) {

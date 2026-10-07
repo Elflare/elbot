@@ -76,7 +76,7 @@ func TestRecoveryCancellationDoesNotSendFailureNotice(t *testing.T) {
 	}})
 	s.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
 	upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "cancel", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "report"}, Target: CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
-	s.NotifyPlatformConnected(ctx, "qqonebot")
+	s.handlePlatformConnected(ctx, "qqonebot")
 	if len(targets) != 1 || targets[0] != "qqonebot" {
 		t.Fatalf("unexpected failure notification: %v", targets)
 	}

@@ -128,10 +128,19 @@ func TestBusinessLoggingDependencyBoundaries(t *testing.T) {
 				name = imp.Name.Name
 			}
 			aliases[name] = p
+			if rel == "events/platform.go" && strings.HasPrefix(p, "elbot/internal/") && p != "elbot/internal/signal" {
+				t.Errorf("business dependency in platform event contract: %s", p)
+			}
+			if strings.HasPrefix(rel, "platform/") && (p == "elbot/internal/agent" || p == "elbot/internal/cron" || p == "elbot/internal/app") {
+				t.Errorf("platform depends on event consumer: %s: %s", rel, p)
+			}
 		}
 		infrastructure := strings.HasPrefix(rel, "logging/") || strings.HasPrefix(rel, "signal/")
 		ast.Inspect(file, func(node ast.Node) bool {
 			if selector, ok := node.(*ast.SelectorExpr); ok {
+				if id, ok := selector.X.(*ast.Ident); ok && aliases[id.Name] == "elbot/internal/events" && selector.Sel.Name == "PlatformConnected" && strings.HasPrefix(rel, "app/") {
+					t.Errorf("App owns platform signal dispatch/subscription: %s", rel)
+				}
 				if id, ok := selector.X.(*ast.Ident); ok && aliases[id.Name] == "log/slog" && !infrastructure {
 					switch selector.Sel.Name {
 					case "Logger", "Handler", "New", "NewTextHandler", "NewJSONHandler", "Default", "SetDefault", "Info", "Warn", "Error", "Debug", "InfoContext", "WarnContext", "ErrorContext", "DebugContext":
@@ -162,7 +171,7 @@ func TestBusinessLoggingDependencyBoundaries(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		for _, name := range []string{"SetLogger(", "auditFunc(", "writeAudit("} {
+		for _, name := range []string{"SetLogger(", "auditFunc(", "writeAudit(", "ConnectedSignal(", "NotifyPlatformConnected(", "ConnectionSource"} {
 			if strings.Contains(string(data), name) {
 				t.Errorf("retired log injection: %s: %s", rel, name)
 			}

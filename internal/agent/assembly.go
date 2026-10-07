@@ -153,5 +153,6 @@ func New(ctx context.Context, cfg Config, deps Dependencies) (*Agent, error) {
 		_ = a.Close(ctx)
 		return nil, err
 	}
+	a.Done() // Join owned workers on application cancellation, even without Close.
 	return a, nil
 }

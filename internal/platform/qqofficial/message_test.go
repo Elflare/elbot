@@ -2,6 +2,8 @@ package qqofficial
 
 import (
 	"context"
+	globalevents "elbot/internal/events"
+	"elbot/internal/signal"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -462,4 +464,29 @@ func newQQOfficialTestStore(t *testing.T) storage.Store {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	return store
+}
+
+func TestReadyPublishesGlobalConnectionWithoutAddingResumeEvent(t *testing.T) {
+	calls := 0
+	connection, err := globalevents.PlatformConnected.Connect(func(_ context.Context, e globalevents.PlatformConnectedEvent) error {
+		calls++
+		if e.Platform != "qqofficial" {
+			t.Errorf("platform=%q", e.Platform)
+		}
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Disconnect()
+	adapter := New(Config{}, nil, nil)
+	state := &gatewayState{}
+	for _, kind := range []string{eventReady, eventResumed, eventReady} {
+		if err := adapter.handleDispatch(context.Background(), nil, payload{Type: kind, Data: json.RawMessage(`{"session_id":"test","user":{"id":"bot","username":"test"}}`)}, state); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if calls != 2 {
+		t.Fatalf("connections=%d", calls)
+	}
 }

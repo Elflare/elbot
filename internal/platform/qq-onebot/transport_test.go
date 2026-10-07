@@ -2,6 +2,8 @@ package qqonebot
 
 import (
 	"context"
+	globalevents "elbot/internal/events"
+	"elbot/internal/signal"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -231,4 +233,42 @@ func startTransportReadLoop(ctx context.Context, transport *Transport) {
 			}
 		}
 	}()
+}
+
+func TestAdapterPublishesGlobalConnectionsOnReconnect(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		_ = conn.Close(websocket.StatusGoingAway, "reconnect")
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	calls := 0
+	connection, err := globalevents.PlatformConnected.Connect(func(_ context.Context, e globalevents.PlatformConnectedEvent) error {
+		if e.Platform != "qqonebot" {
+			t.Errorf("platform=%q", e.Platform)
+		}
+		calls++
+		if calls == 2 {
+			cancel()
+		}
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Disconnect()
+	if err := (&Adapter{}).Run(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	adapter := &Adapter{cfg: Config{Enabled: true, ReconnectIntervalSeconds: 1}, transport: &Transport{URL: "ws" + strings.TrimPrefix(server.URL, "http"), Timeout: time.Second}}
+	if err := adapter.Run(ctx, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run=%v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("connections=%d", calls)
+	}
 }

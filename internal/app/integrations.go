@@ -56,8 +56,13 @@ func (defaultIntegrationFactory) Attach(ctx context.Context, req IntegrationRequ
 			runtime.Dispatcher.RegisterPlatformSender(adapter.Name(), adapter)
 		}
 	}
-	if err := runtime.Signals.connectPlatforms(runtime.Agent, runtime.CronService, platforms.Runtimes); err != nil {
+	if err := runtime.Agent.StartPlatformEvents(ctx); err != nil {
 		return PlatformComponents{}, err
+	}
+	if runtime.CronService != nil {
+		if err := runtime.CronService.StartPlatformEvents(ctx); err != nil {
+			return PlatformComponents{}, err
+		}
 	}
 	req.Profiler.Mark("platform hooks")
 	return platforms, nil
