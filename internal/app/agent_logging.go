@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	agentevents "elbot/internal/agent/events"
+	"elbot/internal/llm/responses"
 )
 
 // writeAgentLog uses the published identity snapshot, not the consumer's context.
@@ -74,6 +75,10 @@ func (l agentLogger) modelOutput(ctx context.Context, e agentevents.ModelCallCom
 func (l agentLogger) modelAudit(ctx context.Context, e agentevents.ModelCallCompletedEvent) error {
 	attrs := []any{"provider", e.Provider, "model", e.Model, "elapsed_ms", e.ElapsedMS}
 	if e.ProviderError {
+		var apiErr *responses.APIError
+		if errors.As(e.Err, &apiErr) && apiErr.EventType != "" {
+			attrs = append(attrs, "upstream_event", apiErr.EventType, "upstream_detail", apiErr.Detail)
+		}
 		return l.auditEvent(ctx, e.EventMeta, "llm_error", append(attrs, "error", e.Err.Error())...)
 	}
 	if !e.OutputReady {

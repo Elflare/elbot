@@ -179,6 +179,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/llm/httpclient/`：传输、重试、SSE 与超时。
 - `internal/llm/chatcompletions/`、`internal/llm/responses/`：独立协议客户端。
 - `internal/llm/responses/client.go`、`internal/llm/responses/tools.go`、`internal/llm/responses/compact.go`：请求冻结、store 偏好、工具权限与原生压缩。
+- `internal/llm/responses/stream.go`、`internal/llm/responses/error.go`：原生流事件与错误解析；`APIError` 携带简短错误和脱敏限长的流失败详情，由 App 的模型审计日志消费者记录。
 
 <!-- locator:storage -->
 ## Storage 与 SQLite

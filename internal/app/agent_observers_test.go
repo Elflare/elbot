@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	agentevents "elbot/internal/agent/events"
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
+	"elbot/internal/llm/responses"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 )
@@ -137,6 +139,33 @@ func TestAgentLoggingSubscribersPreserveFactsAndFields(t *testing.T) {
 	}
 	if len(runtimeRecords) != 0 || len(auditRecords) != 0 {
 		t.Fatal("duplicate observations")
+	}
+}
+
+func TestAgentLoggingResponseErrorDetails(t *testing.T) {
+	records := make(chan slog.Record, 2)
+	logs := agentLogger{audit: slog.New(recordHandler{records: records})}
+	apiErr := &responses.APIError{Code: "server_error", Message: "upstream failed", EventType: "error", Detail: `{"error":{"description":"gateway failure"}}`}
+	meta := agentevents.EventMeta{SessionID: "session", RequestID: "request", RunID: "run", Attempt: "attempt", RootRequestID: "root", At: time.Unix(123, 0)}
+	err := fmt.Errorf("model call: %w", apiErr)
+	if logErr := logs.modelAudit(context.Background(), agentevents.ModelCallCompletedEvent{EventMeta: meta, Provider: "provider", Model: "model", ElapsedMS: 61000, ProviderError: true, Err: err}); logErr != nil {
+		t.Fatal(logErr)
+	}
+	attrs := recordAttrs(awaitRecord(t, records))
+	for key, want := range map[string]any{"event": "llm_error", "session_id": "session", "request_id": "request", "run_id": "run", "attempt": "attempt", "root_request_id": "root", "provider": "provider", "model": "model", "elapsed_ms": int64(61000), "upstream_event": "error", "upstream_detail": apiErr.Detail, "error": err.Error()} {
+		if attrs[key] != want {
+			t.Errorf("%s=%v want=%v", key, attrs[key], want)
+		}
+	}
+	if strings.Contains(err.Error(), "gateway failure") {
+		t.Fatal("raw diagnostics entered user-facing error")
+	}
+	if err := logs.modelAudit(context.Background(), agentevents.ModelCallCompletedEvent{ProviderError: true, Err: errors.New("transport failed")}); err != nil {
+		t.Fatal(err)
+	}
+	attrs = recordAttrs(awaitRecord(t, records))
+	if _, ok := attrs["upstream_detail"]; ok || attrs["error"] != "transport failed" {
+		t.Fatalf("plain error changed: %v", attrs)
 	}
 }
 
