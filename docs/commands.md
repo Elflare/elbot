@@ -287,12 +287,14 @@ LLM 在 work 模式下可以通过 `discover_tool` 按需发现工具详情。�
 /log --msg startup --days 3
 /audit --event tool_call --risk high -n 10
 /audit --actor cli:local --since 24h
-/audit --hook --event hook.tool_call
+/audit --hook --event hook_tool_call
 /audit --event llm_error -d
 /elwisp
 /elwisp server-watchdog -n 20
 /elwisp --source minecraft-main --mode llm --since 2h
 ```
+
+Hook 工具调用审计使用 `hook_tool_call`，`source` 区分 `rules`／`plugin`，`status` 区分 `ok`／`error`／`canceled`。
 
 ## Token 消耗统计
 

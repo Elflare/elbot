@@ -246,7 +246,7 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 		if err := s.runDirect(ctx, event, record.ID); err != nil {
 			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 				Category: globalevents.LogAudit,
-				Level:    slog.LevelWarn,
+				Level:    failureLogLevel(err),
 				Name:     "elnis.direct_failed",
 				Module:   "elnis",
 				Summary:  "elnis.direct_failed",
@@ -254,7 +254,7 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 			})
 			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 				Category: globalevents.LogElnis,
-				Level:    slog.LevelWarn,
+				Level:    failureLogLevel(err),
 				Name:     "elnis_direct_failed",
 				Module:   "elnis",
 				Summary:  "elnis direct failed",
@@ -280,7 +280,7 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 				_ = s.completeEvent(ctx, record.ID, event.ResolvedTargets, StatusFailed, "", err.Error())
 				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 					Category: globalevents.LogElnis,
-					Level:    slog.LevelWarn,
+					Level:    failureLogLevel(err),
 					Name:     "elnis_llm_enqueue_failed",
 					Module:   "elnis",
 					Summary:  "elnis llm enqueue failed",
@@ -293,4 +293,12 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 	default:
 		return Response{}, fmt.Errorf("unsupported mode %q", req.Mode)
 	}
+}
+
+// failureLogLevel distinguishes explicit cancellation from an operation failure.
+func failureLogLevel(err error) slog.Level {
+	if errors.Is(err, context.Canceled) {
+		return slog.LevelInfo
+	}
+	return slog.LevelError
 }

@@ -2,6 +2,8 @@ package modelmgr
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"testing"
 
 	"elbot/internal/contextinfo"
@@ -38,7 +40,7 @@ func TestRetryLogsWithoutNotificationSubscriber(t *testing.T) {
 	ctx, cancel := context.WithCancel(contextinfo.WithExecution(context.Background(), contextinfo.Execution{RequestID: "retry-request"}))
 	cancel()
 	client.notify(ctx, llm.RetryEvent{})
-	if len(records) != 1 || records[0].Name != "model_retry" {
+	if len(records) != 1 || records[0].Name != "model_retry" || records[0].Level != slog.LevelWarn {
 		t.Fatalf("retry facts: %+v", records)
 	}
 	found := false
@@ -49,5 +51,14 @@ func TestRetryLogsWithoutNotificationSubscriber(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("retry lost actual call identity")
+	}
+	client.notify(ctx, llm.RetryEvent{Err: fmt.Errorf("wrapped: %w", context.Canceled)})
+	if len(records) != 2 || records[1].Level != slog.LevelInfo {
+		t.Fatal("wrapped cancellation treated as retry failure")
+	}
+	_ = service.Close()
+	client.notify(ctx, llm.RetryEvent{})
+	if len(records) != 2 {
+		t.Fatal("retry subscription survived close")
 	}
 }

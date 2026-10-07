@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"strings"
 
 	agentevents "elbot/internal/agent/events"
 	"elbot/internal/events"
@@ -14,8 +13,8 @@ import (
 
 // emitAgentLog preserves the identity fixed by the source event, including
 // absent identities. A failed observation never changes a business result.
-func emitAgentLog(ctx context.Context, category events.LogCategory, meta agentevents.EventMeta, level slog.Level, message string, attrs ...any) error {
-	record := events.LogRecord{At: meta.At, Category: category, Level: level, Name: strings.ReplaceAll(message, " ", "_"), Module: "agent", Summary: message}
+func emitAgentLog(ctx context.Context, category events.LogCategory, meta agentevents.EventMeta, level slog.Level, eventName, summary string, attrs ...any) {
+	record := events.LogRecord{At: meta.At, Category: category, Level: level, Name: eventName, Module: "agent", Summary: summary}
 	record.Fields = []slog.Attr{
 		slog.String("session_id", meta.SessionID),
 		slog.String("run_id", meta.RunID),
@@ -25,10 +24,6 @@ func emitAgentLog(ctx context.Context, category events.LogCategory, meta agentev
 	}
 	details := map[string]any{}
 	for _, attr := range slog.Group("", attrs...).Value.Group() {
-		if attr.Key == "event" {
-			record.Name = attr.Value.String()
-			continue
-		}
 		if category == events.LogRuntime {
 			switch attr.Key {
 			case "text", "raw_text", "arguments", "result", "receipt":
@@ -50,7 +45,6 @@ func emitAgentLog(ctx context.Context, category events.LogCategory, meta agentev
 		record.Detail = string(data)
 	}
 	_ = events.EmitLog(ctx, record)
-	return nil
 }
 
 type agentLogProjection struct{}
@@ -60,46 +54,46 @@ func (a *Agent) connectLogSignals() error {
 	signals := a.signals
 	connections := []func() (*signal.Connection, error){
 		func() (*signal.Connection, error) {
-			return signals.UserInputReceived.Connect(l.userInput, signal.ConnectOptions{})
+			return signals.UserInputReceived.Connect(l.userInputRuntimeLog, signal.ConnectOptions{})
 		},
 		func() (*signal.Connection, error) {
-			return signals.PersistenceFailed.Connect(l.persistence, signal.ConnectOptions{})
+			return signals.PersistenceFailed.Connect(l.persistenceAuditLog, signal.ConnectOptions{})
 		},
 		func() (*signal.Connection, error) {
-			return signals.TurnTimedOut.Connect(l.timeoutOutput, signal.ConnectOptions{})
+			return signals.TurnTimedOut.Connect(l.timeoutRuntimeLog, signal.ConnectOptions{})
 		},
 		func() (*signal.Connection, error) {
-			return signals.TurnTimedOut.Connect(l.timeoutAudit, signal.ConnectOptions{})
+			return signals.TurnTimedOut.Connect(l.timeoutAuditLog, signal.ConnectOptions{})
 		},
 		func() (*signal.Connection, error) {
-			return signals.ModelCallCompleted.Connect(l.modelOutput, signal.ConnectOptions{})
+			return signals.ModelCallCompleted.Connect(l.modelRuntimeLog, signal.ConnectOptions{})
 		},
 		func() (*signal.Connection, error) {
-			return signals.ModelCallCompleted.Connect(l.modelAudit, signal.ConnectOptions{})
+			return signals.ModelCallCompleted.Connect(l.modelAuditLog, signal.ConnectOptions{})
 		},
 		func() (*signal.Connection, error) {
-			return signals.ToolCallCompleted.Connect(l.toolOutput, signal.ConnectOptions{})
+			return signals.ToolCallCompleted.Connect(l.toolRuntimeLog, signal.ConnectOptions{})
 		},
 		func() (*signal.Connection, error) {
-			return signals.ToolCallCompleted.Connect(l.toolAudit, signal.ConnectOptions{})
+			return signals.ToolCallCompleted.Connect(l.toolAuditLog, signal.ConnectOptions{})
 		},
 		func() (*signal.Connection, error) {
-			return signals.ConfirmationChanged.Connect(l.confirmation, signal.ConnectOptions{})
+			return signals.ConfirmationChanged.Connect(l.confirmationAuditLog, signal.ConnectOptions{})
 		},
 		func() (*signal.Connection, error) {
-			return signals.ToolDenied.Connect(l.denied, signal.ConnectOptions{})
+			return signals.ToolDenied.Connect(l.deniedAuditLog, signal.ConnectOptions{})
 		},
 		func() (*signal.Connection, error) {
-			return signals.ReplyDelivered.Connect(l.deliveryOutput, signal.ConnectOptions{})
+			return signals.ReplyDelivered.Connect(l.deliveryRuntimeLog, signal.ConnectOptions{})
 		},
 		func() (*signal.Connection, error) {
-			return signals.ReplyDelivered.Connect(l.deliveryAudit, signal.ConnectOptions{})
+			return signals.ReplyDelivered.Connect(l.deliveryAuditLog, signal.ConnectOptions{})
 		},
 		func() (*signal.Connection, error) {
-			return signals.ReplyCommitted.Connect(l.commitOutput, signal.ConnectOptions{})
+			return signals.ReplyCommitted.Connect(l.commitRuntimeLog, signal.ConnectOptions{})
 		},
 		func() (*signal.Connection, error) {
-			return signals.ReplyCommitted.Connect(l.commitAudit, signal.ConnectOptions{})
+			return signals.ReplyCommitted.Connect(l.commitAuditLog, signal.ConnectOptions{})
 		},
 	}
 	for _, connect := range connections {
@@ -118,29 +112,34 @@ func (a *Agent) disconnectLogSignals() {
 	}
 }
 
-func (l agentLogProjection) userInput(ctx context.Context, e agentevents.UserInputReceivedEvent) error {
-	return emitAgentLog(ctx, events.LogRuntime, e.EventMeta, slog.LevelInfo, "user input", "event", "user_message", "text", e.Text)
+func (l agentLogProjection) userInputRuntimeLog(ctx context.Context, e agentevents.UserInputReceivedEvent) error {
+	emitAgentLog(ctx, events.LogRuntime, e.EventMeta, slog.LevelInfo, "user_message", "user input", "text", e.Text)
+	return nil
 }
-func (l agentLogProjection) persistence(ctx context.Context, e agentevents.PersistenceFailedEvent) error {
-	return l.auditEvent(ctx, e.EventMeta, slog.LevelError, "persistence_error", "operation", e.Operation, "error", e.Err.Error())
+func (l agentLogProjection) persistenceAuditLog(ctx context.Context, e agentevents.PersistenceFailedEvent) error {
+	l.auditEvent(ctx, e.EventMeta, failureLogLevel(e.Err), "persistence_error", "persistence failed", "operation", e.Operation, "error", e.Err.Error())
+	return nil
 }
-func (l agentLogProjection) timeoutOutput(ctx context.Context, e agentevents.TurnTimedOutEvent) error {
-	return emitAgentLog(ctx, events.LogRuntime, e.EventMeta, slog.LevelWarn, "turn response timeout", "error", e.Err.Error())
+func (l agentLogProjection) timeoutRuntimeLog(ctx context.Context, e agentevents.TurnTimedOutEvent) error {
+	emitAgentLog(ctx, events.LogRuntime, e.EventMeta, slog.LevelError, "turn_response_timeout", "turn response timeout", "error", e.Err.Error())
+	return nil
 }
-func (l agentLogProjection) timeoutAudit(ctx context.Context, e agentevents.TurnTimedOutEvent) error {
-	return l.auditEvent(ctx, e.EventMeta, slog.LevelWarn, "turn_response_timeout", "error", e.Err.Error())
+func (l agentLogProjection) timeoutAuditLog(ctx context.Context, e agentevents.TurnTimedOutEvent) error {
+	l.auditEvent(ctx, e.EventMeta, slog.LevelError, "turn_response_timeout", "turn response timeout", "error", e.Err.Error())
+	return nil
 }
 
-func (l agentLogProjection) auditEvent(ctx context.Context, meta agentevents.EventMeta, level slog.Level, event string, attrs ...any) error {
-	return emitAgentLog(ctx, events.LogAudit, meta, level, "audit event", append([]any{"event", event}, attrs...)...)
+func (l agentLogProjection) auditEvent(ctx context.Context, meta agentevents.EventMeta, level slog.Level, eventName, summary string, attrs ...any) {
+	emitAgentLog(ctx, events.LogAudit, meta, level, eventName, summary, attrs...)
 }
-func (l agentLogProjection) modelOutput(ctx context.Context, e agentevents.ModelCallCompletedEvent) error {
+func (l agentLogProjection) modelRuntimeLog(ctx context.Context, e agentevents.ModelCallCompletedEvent) error {
 	if !e.OutputReady {
 		return nil
 	}
-	return emitAgentLog(ctx, events.LogRuntime, e.EventMeta, slog.LevelInfo, "llm output", "event", "assistant_message", "provider", e.Provider, "model", e.Model, "elapsed_ms", e.ElapsedMS, "text", e.Text, "raw_text", e.SourceText, "tool_call_count", e.ToolCallCount)
+	emitAgentLog(ctx, events.LogRuntime, e.EventMeta, slog.LevelInfo, "assistant_message", "llm output", "provider", e.Provider, "model", e.Model, "elapsed_ms", e.ElapsedMS, "text", e.Text, "raw_text", e.SourceText, "tool_call_count", e.ToolCallCount)
+	return nil
 }
-func (l agentLogProjection) modelAudit(ctx context.Context, e agentevents.ModelCallCompletedEvent) error {
+func (l agentLogProjection) modelAuditLog(ctx context.Context, e agentevents.ModelCallCompletedEvent) error {
 	attrs := []any{"provider", e.Provider, "model", e.Model, "elapsed_ms", e.ElapsedMS}
 	if e.ProviderError {
 		var diagnostic events.DiagnosticError
@@ -148,7 +147,8 @@ func (l agentLogProjection) modelAudit(ctx context.Context, e agentevents.ModelC
 			value := diagnostic.LogDiagnostic()
 			attrs = append(attrs, "upstream_event", value.Kind, "upstream_detail", value.Detail)
 		}
-		return l.auditEvent(ctx, e.EventMeta, slog.LevelWarn, "llm_error", append(attrs, "error", e.Err.Error())...)
+		l.auditEvent(ctx, e.EventMeta, failureLogLevel(e.Err), "llm_error", "model call failed", append(attrs, "error", e.Err.Error())...)
+		return nil
 	}
 	if !e.OutputReady {
 		return nil
@@ -156,7 +156,8 @@ func (l agentLogProjection) modelAudit(ctx context.Context, e agentevents.ModelC
 	if u := e.Usage; u != nil {
 		attrs = append(attrs, "prompt_tokens", u.PromptTokens, "completion_tokens", u.CompletionTokens, "total_tokens", u.TotalTokens, "cache_hit_tokens", u.CacheHitTokens)
 	}
-	return l.auditEvent(ctx, e.EventMeta, slog.LevelInfo, "llm_usage", attrs...)
+	l.auditEvent(ctx, e.EventMeta, slog.LevelInfo, "llm_usage", "model usage", attrs...)
+	return nil
 }
 func toolLogAttrs(e agentevents.ToolCallCompletedEvent) []any {
 	r := e.Record
@@ -179,82 +180,98 @@ func toolLogAttrs(e agentevents.ToolCallCompletedEvent) []any {
 		r.Error,
 	}
 }
-func (l agentLogProjection) toolOutput(ctx context.Context, e agentevents.ToolCallCompletedEvent) error {
-	var recordErr error
+func failureLogLevel(err error) slog.Level {
+	if errors.Is(err, context.Canceled) {
+		return slog.LevelInfo
+	}
+	return slog.LevelError
+}
+
+func toolLogLevel(event agentevents.ToolCallCompletedEvent) slog.Level {
+	if event.PolicyDenied {
+		return slog.LevelWarn
+	}
+	if event.Record.Success {
+		return slog.LevelInfo
+	}
+	return failureLogLevel(event.CallErr)
+}
+
+func (l agentLogProjection) toolRuntimeLog(ctx context.Context, e agentevents.ToolCallCompletedEvent) error {
 	if e.RecordErr != nil {
-		recordErr = emitAgentLog(ctx, events.LogRuntime, e.EventMeta, slog.LevelError, "record tool call failed", "tool", e.Record.ToolName, "error", e.RecordErr)
+		emitAgentLog(ctx, events.LogRuntime, e.EventMeta, failureLogLevel(e.RecordErr), "record_tool_call_failed", "record tool call failed", "tool", e.Record.ToolName, "error", e.RecordErr)
 	}
-	attrs := append([]any{"event", "tool_call", "result", e.Record.ResultPreview}, toolLogAttrs(e)...)
-	level := slog.LevelInfo
-	if !e.Record.Success {
-		level = slog.LevelWarn
-	}
-	return errors.Join(recordErr, emitAgentLog(ctx, events.LogRuntime, e.EventMeta, level, "tool call", attrs...))
+	fields := append([]any{"result", e.Record.ResultPreview}, toolLogAttrs(e)...)
+	emitAgentLog(ctx, events.LogRuntime, e.EventMeta, toolLogLevel(e), "tool_call", "tool call", fields...)
+	return nil
 }
-func (l agentLogProjection) toolAudit(ctx context.Context, e agentevents.ToolCallCompletedEvent) error {
-	level := slog.LevelInfo
-	if !e.Record.Success {
-		level = slog.LevelWarn
-	}
-	return l.auditEvent(ctx, e.EventMeta, level, "tool_call", toolLogAttrs(e)...)
+func (l agentLogProjection) toolAuditLog(ctx context.Context, e agentevents.ToolCallCompletedEvent) error {
+	l.auditEvent(ctx, e.EventMeta, toolLogLevel(e), "tool_call", "tool call", toolLogAttrs(e)...)
+	return nil
 }
-func (l agentLogProjection) confirmation(ctx context.Context, e agentevents.ConfirmationChangedEvent) error {
+func (l agentLogProjection) confirmationAuditLog(ctx context.Context, e agentevents.ConfirmationChangedEvent) error {
 	attrs := []any{"tool", e.Tool, "risk", e.Risk}
-	var event string
+	var eventName string
 	switch e.Phase {
 	case "command":
-		event = "risk_confirmation_command"
+		eventName = "risk_confirmation_command"
 		attrs = append(attrs, "action", e.Action, "extra", e.Extra)
 	case "wait":
-		event = "risk_confirmation_wait"
+		eventName = "risk_confirmation_wait"
 		attrs = append(attrs, "arguments", e.Arguments)
 		if e.Reasons != "" {
 			attrs = append(attrs, "risk_reasons", e.Reasons)
 		}
 	case "result":
-		event = "risk_confirmation_result"
+		eventName = "risk_confirmation_result"
 		attrs = append(attrs, "action", e.Action, "extra", e.Extra, "reason", e.Reason)
 	case "background":
-		event = "background_shell_" + e.Action
+		eventName = "background_shell_" + e.Action
 		attrs = append(attrs, "kind", e.Kind, "sandbox_dir", e.SandboxDir, "arguments", e.Arguments)
 	default:
 		return nil
 	}
-	return l.auditEvent(ctx, e.EventMeta, slog.LevelInfo, event, attrs...)
+	l.auditEvent(ctx, e.EventMeta, slog.LevelInfo, eventName, "confirmation changed", attrs...)
+	return nil
 }
-func (l agentLogProjection) denied(ctx context.Context, e agentevents.ToolDeniedEvent) error {
-	return l.auditEvent(ctx, e.EventMeta, slog.LevelWarn, "permission_denied", "actor_id", e.ActorID, "tool", e.Tool, "risk", e.Risk, "reason", e.Reason)
+func (l agentLogProjection) deniedAuditLog(ctx context.Context, e agentevents.ToolDeniedEvent) error {
+	l.auditEvent(ctx, e.EventMeta, slog.LevelWarn, "permission_denied", "permission denied", "actor_id", e.ActorID, "tool", e.Tool, "risk", e.Risk, "reason", e.Reason)
+	return nil
 }
-func (l agentLogProjection) deliveryAudit(ctx context.Context, e agentevents.ReplyDeliveredEvent) error {
+func (l agentLogProjection) deliveryAuditLog(ctx context.Context, e agentevents.ReplyDeliveredEvent) error {
 	if e.Err == nil || !e.Buffered || e.Operation != "send_assistant_message" {
 		return nil
 	}
-	return l.auditEvent(ctx, e.EventMeta, slog.LevelWarn, "platform_send_error", "operation", e.Operation, "error", e.Err.Error())
+	l.auditEvent(ctx, e.EventMeta, failureLogLevel(e.Err), "platform_send_error", "platform send failed", "operation", e.Operation, "error", e.Err.Error())
+	return nil
 }
-func (l agentLogProjection) deliveryOutput(ctx context.Context, e agentevents.ReplyDeliveredEvent) error {
-	return emitAgentLog(ctx, events.LogRuntime, e.EventMeta, slog.LevelDebug, "reply delivered", "operation", e.Operation, "platform_message_ids", e.Receipt.PlatformMessageIDs, "sent_messages", e.Receipt.SentMessages, "error", e.Err)
+func (l agentLogProjection) deliveryRuntimeLog(ctx context.Context, e agentevents.ReplyDeliveredEvent) error {
+	level := slog.LevelDebug
+	if e.Err != nil {
+		level = failureLogLevel(e.Err)
+	}
+	emitAgentLog(ctx, events.LogRuntime, e.EventMeta, level, "reply_delivered", "reply delivered", "operation", e.Operation, "platform_message_ids", e.Receipt.PlatformMessageIDs, "sent_messages", e.Receipt.SentMessages, "error", e.Err)
+	return nil
 }
-func (l agentLogProjection) commitAudit(ctx context.Context, e agentevents.ReplyCommittedEvent) error {
-	var errs []error
+func (l agentLogProjection) commitAuditLog(ctx context.Context, e agentevents.ReplyCommittedEvent) error {
 	if e.PersistErr != nil {
-		errs = append(errs, l.auditEvent(ctx, e.EventMeta, slog.LevelError, "persistence_error", "operation", "append_assistant_message", "error", e.PersistErr.Error()))
+		l.auditEvent(ctx, e.EventMeta, failureLogLevel(e.PersistErr), "persistence_error", "persistence failed", "operation", "append_assistant_message", "error", e.PersistErr.Error())
 	}
 	for _, err := range e.AssociationErrors {
 		var failure agentevents.AssociationFailure
 		if errors.As(err, &failure) {
-			errs = append(errs, l.auditEvent(ctx, e.EventMeta, slog.LevelError, "persistence_error", "operation", "map_platform_message", "platform_message_id", failure.PlatformMessageID, "error", failure.Err.Error()))
+			l.auditEvent(ctx, e.EventMeta, failureLogLevel(failure.Err), "persistence_error", "persistence failed", "operation", "map_platform_message", "platform_message_id", failure.PlatformMessageID, "error", failure.Err.Error())
 		}
 	}
-	return errors.Join(errs...)
+	return nil
 }
-func (l agentLogProjection) commitOutput(ctx context.Context, e agentevents.ReplyCommittedEvent) error {
-	var errs []error
+func (l agentLogProjection) commitRuntimeLog(ctx context.Context, e agentevents.ReplyCommittedEvent) error {
 	for _, err := range e.AssociationErrors {
 		var failure agentevents.AssociationFailure
 		if errors.As(err, &failure) {
-			errs = append(errs, emitAgentLog(ctx, events.LogRuntime, e.EventMeta, slog.LevelError, "map platform message failed", "platform_message_id", failure.PlatformMessageID, "error", failure.Err.Error()))
+			emitAgentLog(ctx, events.LogRuntime, e.EventMeta, failureLogLevel(failure.Err), "map_platform_message_failed", "map platform message failed", "platform_message_id", failure.PlatformMessageID, "error", failure.Err.Error())
 		}
 	}
-	errs = append(errs, emitAgentLog(ctx, events.LogRuntime, e.EventMeta, slog.LevelDebug, "reply committed", "message_id", e.MessageID, "persisted", e.Persisted, "persistence_error", e.PersistErr, "association_errors", e.AssociationErrors, "receipt", e.Receipt, "error", e.Err))
-	return errors.Join(errs...)
+	emitAgentLog(ctx, events.LogRuntime, e.EventMeta, slog.LevelDebug, "reply_committed", "reply committed", "message_id", e.MessageID, "persisted", e.Persisted, "persistence_error", e.PersistErr, "association_errors", e.AssociationErrors, "receipt", e.Receipt, "error", e.Err)
+	return nil
 }

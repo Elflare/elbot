@@ -52,9 +52,11 @@ type TurnTimedOutEvent struct {
 }
 type ToolCallCompletedEvent struct {
 	EventMeta
-	Record    storage.ToolCallRecord
-	Arguments string
-	RecordErr error
+	Record       storage.ToolCallRecord
+	Arguments    string
+	RecordErr    error
+	CallErr      error
+	PolicyDenied bool
 }
 type ConfirmationChangedEvent struct {
 	EventMeta

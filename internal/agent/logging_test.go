@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,8 +14,10 @@ import (
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/logging"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
+	"elbot/internal/toolrun"
 )
 
 type testDiagnosticError struct{}
@@ -51,20 +55,89 @@ func TestAgentLogProjectionPreservesFactsAndDiagnostic(t *testing.T) {
 			}
 		}
 	}
-	if records[0].Name != "assistant_message" || records[0].Detail == "" || records[1].Name != "llm_usage" || records[2].Name != "llm_error" || records[2].Detail != (testDiagnosticError{}).LogDiagnostic().Detail || records[2].Level != slog.LevelWarn {
+	if records[0].Name != "assistant_message" || records[0].Detail == "" || records[1].Name != "llm_usage" || records[2].Name != "llm_error" || records[2].Detail != (testDiagnosticError{}).LogDiagnostic().Detail || records[2].Level != slog.LevelError {
 		t.Fatalf("model facts: %+v", records[:3])
 	}
 	if records[3].Level != slog.LevelError || records[4].Name != "tool_call" || records[5].Level != slog.LevelInfo {
 		t.Fatalf("persistence error changed tool success: %+v", records[3:])
 	}
 	_ = a.signals.ToolCallCompleted.Emit(ctx, agentevents.ToolCallCompletedEvent{EventMeta: meta, Record: storage.ToolCallRecord{ToolName: "tool", Error: "execution failed"}})
-	if len(records) != 8 || records[6].Level != slog.LevelWarn || records[7].Level != slog.LevelWarn {
+	if len(records) != 8 || records[6].Level != slog.LevelError || records[7].Level != slog.LevelError {
 		t.Fatalf("tool failure severity: %+v", records[6:])
 	}
 	a.disconnectLogSignals()
 	_ = a.signals.UserInputReceived.Emit(ctx, agentevents.UserInputReceivedEvent{Text: "after close"})
 	if len(records) != 8 {
 		t.Fatal("projection retained after close")
+	}
+}
+
+func TestPersistenceCancellationAndTurnTimeoutSeverity(t *testing.T) {
+	var records []globalevents.LogRecord
+	connection, err := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+		records = append(records, record)
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Disconnect()
+	logs := agentLogProjection{}
+	_ = logs.persistenceAuditLog(context.Background(), agentevents.PersistenceFailedEvent{Err: fmt.Errorf("wrapped: %w", context.Canceled)})
+	_ = logs.persistenceAuditLog(context.Background(), agentevents.PersistenceFailedEvent{Err: errors.New("disk failed")})
+	_ = logs.timeoutAuditLog(context.Background(), agentevents.TurnTimedOutEvent{Err: context.DeadlineExceeded})
+	if len(records) != 3 || records[0].Level != slog.LevelInfo || records[1].Level != slog.LevelError || records[2].Level != slog.LevelError {
+		t.Fatalf("records: %+v", records)
+	}
+}
+
+func TestToolOutcomeSeverityAndStableNames(t *testing.T) {
+	center, err := logging.NewManager("info", filepath.Join(t.TempDir(), "db"), 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = center.Close(context.Background()) })
+	a := &Agent{signals: agentevents.NewSignals()}
+	if err := a.connectLogSignals(); err != nil {
+		t.Fatal(err)
+	}
+	defer a.disconnectLogSignals()
+	deps := toolRunDeps{completed: a.signals.ToolCallCompleted, identity: &identityResolver{}}
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"success", nil}, {"failure", errors.New("broken")},
+		{"canceled", fmt.Errorf("wrapped: %w", context.Canceled)},
+		{"timeout", context.DeadlineExceeded}, {"denied", toolrun.PolicyDeniedError("arbitrary reason")},
+	} {
+		deps.RecordToolCall(context.Background(), "session", llm.ToolCallRequest{ID: tc.name, Name: tc.name}, "low", time.Now(), "result", tc.err)
+	}
+	for _, summary := range []string{"before wording", "after\twording：变化"} {
+		emitAgentLog(context.Background(), globalevents.LogRuntime, agentevents.EventMeta{}, slog.LevelInfo, "stable_event", summary)
+	}
+	if err := center.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := (logging.Reader{Dir: center.LogDir()}).Query(context.Background(), logging.LogQuery{Prefix: "audit", Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"success": "INFO", "failure": "ERROR", "canceled": "INFO", "timeout": "ERROR", "denied": "WARN"}
+	if len(entries) != len(want) {
+		t.Fatalf("got %d tool records", len(entries))
+	}
+	for _, entry := range entries {
+		if entry.Fields["event"] != "tool_call" || entry.Level != want[entry.Fields["tool"]] {
+			t.Fatalf("wrong outcome: %+v", entry)
+		}
+		if strings.Contains(entry.Raw, "!BADKEY") {
+			t.Fatal(entry.Raw)
+		}
+	}
+	entries, err = (logging.Reader{Dir: center.LogDir()}).Query(context.Background(), logging.LogQuery{Prefix: "elbot", Limit: 20, Fields: map[string]string{"event": "stable_event"}})
+	if err != nil || len(entries) != 2 || entries[0].Message == entries[1].Message {
+		t.Fatalf("event coupled to wording: %+v %v", entries, err)
 	}
 }
 

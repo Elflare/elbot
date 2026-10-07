@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 日志严重程度统一为客户端重试 WARN、最终操作失败 ERROR；主动取消和正常策略拒绝分别处理。Hook 工具调用审计从三个名称统一为 `hook_tool_call`，用 `source`、`status` 区分来源及结果，帮助和补全同步更新。
 - 审计和 Elnis 日志从共用运行等级改为独立保留，`runtime.log_level=warn/error` 不再过滤 `/usage` 所需的用量事实。信号设施故障从业务 Logger 改为直接报告 stderr，不受运行等级影响。
 - 全部业务日志从 Logger／Audit 注入及 App 中转改为通过全局信号交给日志中心；Agent、命名和重试的日志投影由来源模块维护，上游失败详情改用通用诊断契约。
 - 运行日志正文改为最多 256 字的摘要，DEBUG 才保留详情；集中脱敏后限制单项详情 8 KiB、单条记录 64 KiB。启动耗时从直接输出改为 DEBUG 日志。
@@ -33,7 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `/log --hook`、`/audit --hook` 改为筛选 `module=hook`，修复审计匹配虚构 `event=hook` 和运行日志漏掉无 `hook` 字段记录的问题；与事件名等条件组合时不再覆盖原筛选。
+- 修复自动命名上游失败详情在非 DEBUG 配置下丢失，以及兜底标题保存失败覆盖原始错误的问题；现在通过 ERROR 审计独立保留诊断。
+- 修复日志事件标识。
+- 修复审计匹配虚构 `event=hook` 和运行日志漏掉无 `hook` 字段记录的问题；与事件名等条件组合时不再覆盖原筛选。
 - 修复模型重试日志依赖通知订阅、Hook 原始失败被重复记录的问题。
 - 修复 `shell` 先缓存全部输出、结束后才截断导致执行期间内存随输出量增长的问题；现在收集时限制容量，超出部分继续排空并丢弃。
 - 修复高风险确认的bug。

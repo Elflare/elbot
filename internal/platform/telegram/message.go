@@ -175,7 +175,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized
 	if err := a.chatHistory.Append(ctx, chatMessage); err != nil {
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
+			Level:    failureLogLevel(err),
 			Name:     "record_telegram_chat_message_failed",
 			Module:   "telegram",
 			Summary:  "record telegram chat message failed",

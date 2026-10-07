@@ -140,7 +140,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 	if err := handler.HandleMessage(msgCtx, text); err != nil {
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
+			Level:    failureLogLevel(err),
 			Name:     "handle_qqofficial_message_failed",
 			Module:   "qqofficial",
 			Summary:  "handle qqofficial message failed",
@@ -204,7 +204,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 	if err := a.chatHistory.Append(ctx, history); err != nil {
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
+			Level:    failureLogLevel(err),
 			Name:     "record_qqofficial_chat_message_failed",
 			Module:   "qqofficial",
 			Summary:  "record qqofficial chat message failed",

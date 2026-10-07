@@ -217,7 +217,7 @@ func validateLoadedRules(rules []Rule) error {
 func reportPluginConfigError(ctx context.Context, opts Options, name, path string, err error) {
 	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 		Category: globalevents.LogRuntime,
-		Level:    slog.LevelWarn,
+		Level:    slog.LevelError,
 		Name:     "hook_plugin_skipped",
 		Module:   "hook",
 		Summary:  "hook plugin skipped",

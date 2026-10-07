@@ -72,7 +72,7 @@ func (h *hookBridge) Run(ctx context.Context, event hook.Event) (hook.Event, err
 		if err != nil {
 			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 				Category: globalevents.LogRuntime,
-				Level:    slog.LevelWarn,
+				Level:    failureLogLevel(err),
 				Name:     "hook_call_validation_failed",
 				Module:   "hook",
 				Summary:  "hook call validation failed",
@@ -131,7 +131,7 @@ func (h *hookBridge) ObserveRun(ctx context.Context, event hook.Event, info hook
 
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
+			Level:    failureLogLevel(err),
 			Name:     "hook_request_tracking_failed",
 			Module:   "hook",
 			Summary:  "hook request tracking failed",

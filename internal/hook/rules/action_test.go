@@ -3,11 +3,15 @@ package rules
 import (
 	"context"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/signal"
 	"elbot/internal/tool"
 	"encoding/base64"
+	"errors"
 	"fmt"
+	"log/slog"
 	"reflect"
 	"strings"
 	"testing"
@@ -178,6 +182,7 @@ func TestRenderErrorMessage(t *testing.T) {
 
 type hookActionTestTool struct {
 	calls int
+	err   error
 }
 
 func (*hookActionTestTool) Name() string { return "hook_test_critical" }
@@ -192,7 +197,46 @@ func (*hookActionTestTool) Schema() llm.ToolSchema {
 
 func (t *hookActionTestTool) Call(context.Context, tool.CallRequest) (*tool.Result, error) {
 	t.calls++
-	return &tool.Result{Content: "called"}, nil
+	return &tool.Result{Content: "called"}, t.err
+}
+
+func TestRuleToolAuditOutcome(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		err    error
+		level  slog.Level
+		status string
+	}{
+		{"success", nil, slog.LevelInfo, "ok"}, {"failure", errors.New("failed"), slog.LevelError, "error"},
+		{"canceled", fmt.Errorf("wrapped: %w", context.Canceled), slog.LevelInfo, "canceled"}, {"timeout", context.DeadlineExceeded, slog.LevelError, "error"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var records []events.LogRecord
+			connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error { records = append(records, record); return nil }, signal.ConnectOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer connection.Disconnect()
+			registry := tool.NewRegistry()
+			if err := registry.Register(&hookActionTestTool{err: tc.err}); err != nil {
+				t.Fatal(err)
+			}
+			_, err = (Module{Opts: Options{Tools: registry}}).callTool(context.Background(), hook.Event{}, Action{Tool: "hook_test_critical", Arguments: `{}`}, state{})
+			if !errors.Is(err, tc.err) {
+				t.Fatalf("business error changed: %v", err)
+			}
+			if len(records) != 1 || records[0].Name != "hook_tool_call" || records[0].Category != events.LogAudit || records[0].Level != tc.level {
+				t.Fatalf("records: %+v", records)
+			}
+			fields := map[string]string{}
+			for _, field := range records[0].Fields {
+				fields[field.Key] = field.Value.String()
+			}
+			if fields["source"] != "rules" || fields["status"] != tc.status || (tc.err != nil && fields["error"] != tc.err.Error()) {
+				t.Fatal(fields)
+			}
+		})
+	}
 }
 
 func TestRuleToolActionLeavesRiskAndAuthorizationToHook(t *testing.T) {

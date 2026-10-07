@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 
@@ -118,10 +119,10 @@ func (d *statusDisplay) run() {
 			}
 			stop()
 			cancel()
-			if err != nil && d.ctx.Err() == nil {
+			if err != nil && !errors.Is(err, context.Canceled) && d.ctx.Err() == nil {
 				_ = globalevents.EmitLog(d.ctx, globalevents.LogRecord{
 					Category: globalevents.LogRuntime,
-					Level:    slog.LevelWarn,
+					Level:    slog.LevelError,
 					Name:     "status_display_failed",
 					Module:   "app",
 					Summary:  "status display failed",

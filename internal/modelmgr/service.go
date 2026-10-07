@@ -117,3 +117,11 @@ func (s *Service) ProviderOrigins() []llm.Origin {
 	sort.Slice(origins, func(i, j int) bool { return origins[i].Provider < origins[j].Provider })
 	return origins
 }
+
+// Close releases only this instance's synchronous projections.
+func (s *Service) Close() error {
+	for _, connection := range s.logConnections {
+		connection.Disconnect()
+	}
+	return nil
+}

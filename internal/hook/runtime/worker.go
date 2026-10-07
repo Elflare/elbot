@@ -509,7 +509,7 @@ func (w *worker) runReload(reload func() error) {
 		if err := reload(); err != nil {
 			_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
 				Category: globalevents.LogRuntime,
-				Level:    slog.LevelWarn,
+				Level:    slog.LevelError,
 				Name:     "hook_plugin_reload_failed",
 				Module:   "hook",
 				Summary:  "hook plugin reload failed",

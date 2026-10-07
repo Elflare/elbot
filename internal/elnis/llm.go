@@ -20,7 +20,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		_ = s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogElnis,
-			Level:    slog.LevelWarn,
+			Level:    failureLogLevel(err),
 			Name:     "elnis_llm_failed",
 			Module:   "elnis",
 			Summary:  "elnis llm failed",
@@ -91,7 +91,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		_ = s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogAudit,
-			Level:    slog.LevelWarn,
+			Level:    failureLogLevel(err),
 			Name:     "elnis.llm_failed",
 			Module:   "elnis",
 			Summary:  "elnis.llm_failed",
@@ -99,7 +99,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		})
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogElnis,
-			Level:    slog.LevelWarn,
+			Level:    failureLogLevel(err),
 			Name:     "elnis_llm_failed",
 			Module:   "elnis",
 			Summary:  "elnis llm failed",
@@ -119,7 +119,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		_ = s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, message, parseErr.Error())
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogAudit,
-			Level:    slog.LevelWarn,
+			Level:    failureLogLevel(parseErr),
 			Name:     "elnis.llm_failed",
 			Module:   "elnis",
 			Summary:  "elnis.llm_failed",
@@ -127,7 +127,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		})
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogElnis,
-			Level:    slog.LevelWarn,
+			Level:    failureLogLevel(parseErr),
 			Name:     "elnis_llm_format_failed",
 			Module:   "elnis",
 			Summary:  "elnis llm format failed",
@@ -142,7 +142,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 			_ = s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, string(resultJSON), err.Error())
 			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 				Category: globalevents.LogElnis,
-				Level:    slog.LevelWarn,
+				Level:    failureLogLevel(err),
 				Name:     "elnis_llm_report_prepare_failed",
 				Module:   "elnis",
 				Summary:  "elnis llm report prepare failed",

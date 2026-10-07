@@ -115,7 +115,7 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) error {
 	if err != nil {
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
+			Level:    slog.LevelError,
 			Name:     "cron_metadata_parse_failed",
 			Module:   "cron",
 			Summary:  "cron metadata parse failed",
@@ -154,7 +154,7 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) error {
 		}
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogAudit,
-			Level:    slog.LevelWarn,
+			Level:    slog.LevelError,
 			Name:     "cron.trigger_failed",
 			Module:   "cron",
 			Summary:  "cron.trigger_failed",
@@ -162,7 +162,7 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) error {
 		})
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
+			Level:    slog.LevelError,
 			Name:     "cron_trigger_failed",
 			Module:   "cron",
 			Summary:  "cron trigger failed",

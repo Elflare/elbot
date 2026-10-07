@@ -2,6 +2,7 @@ package toolrun
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -38,6 +39,7 @@ type runnerTestDeps struct {
 	completed      int
 	recorded       []runnerTestRecord
 	prepareContext func(context.Context, *storage.Session, llm.ToolCallRequest) context.Context
+	reject         bool
 }
 
 type runnerTestRecord struct {
@@ -59,6 +61,9 @@ func (d *runnerTestDeps) ShouldSendPreview(ctx context.Context, session *storage
 
 func (d *runnerTestDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail string) (ConfirmResult, error) {
 	d.confirmed = true
+	if d.reject {
+		return ConfirmResult{Message: toolMessage(call.Name, call.ID, "rejected")}, nil
+	}
 	return ConfirmResult{Allowed: true}, nil
 }
 
@@ -379,6 +384,31 @@ func TestRunPreparesToolContextBeforePreflightAndExecution(t *testing.T) {
 	}
 	if got := llm.SegmentsContentText(result.Messages[0].Segments); got != "called" {
 		t.Fatalf("tool result = %q", got)
+	}
+}
+
+func TestRunPreservesPolicyDenialFact(t *testing.T) {
+	for _, reject := range []bool{false, true} {
+		t.Run(fmt.Sprint(reject), func(t *testing.T) {
+			registry := tool.NewRegistry()
+			if err := registry.Register(runnerHighRiskTool{name: "risky"}); err != nil {
+				t.Fatal(err)
+			}
+			manager := NewManager(registry, security.NewPolicy("low", "high", nil))
+			deps := &runnerTestDeps{reject: reject}
+			role := contextinfo.RoleUser
+			if reject {
+				role = contextinfo.RoleSuperadmin
+			}
+			result := manager.Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: role}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "risky", Arguments: `{}`}}})
+			if result.Err != nil || len(deps.recorded) != 1 || deps.completed != 0 {
+				t.Fatalf("result=%+v deps=%+v", result, deps)
+			}
+			var denied PolicyDeniedError
+			if !errors.As(deps.recorded[0].err, &denied) {
+				t.Fatalf("missing denial fact: %v", deps.recorded[0].err)
+			}
+		})
 	}
 }
 

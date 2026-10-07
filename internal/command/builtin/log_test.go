@@ -278,7 +278,7 @@ func TestAuditCommandRemovedOptionsAndHookCombinations(t *testing.T) {
 		want, absent []string
 	}{
 		{"/audit ", []string{"-t", "--hook"}, []string{"-u", "-a"}},
-		{"/audit --event ", []string{"llm_usage", "hook_tool_call", "hook_tool_error", "hook.tool_call"}, []string{"user_input", "assistant_output", "user_message", "assistant_message", "hook"}},
+		{"/audit --event ", []string{"llm_usage", "hook_tool_call", "session_naming_failed"}, []string{"user_input", "assistant_output", "user_message", "assistant_message", "hook", "hook_tool_error", "hook.tool_call"}},
 	} {
 		completions := cmd.(command.Completer).Complete(context.Background(), command.CompletionRequest{Raw: tc.raw, Prefix: "/", Name: "audit", Cursor: len(tc.raw)})
 		var names []string

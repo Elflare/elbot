@@ -67,16 +67,16 @@ func newManager(level, logDir string, retentionDays int, open func(string) (io.W
 		}
 		m.sinks[category] = &logSink{queue: queue, writer: writer}
 	}
-	m.connection, err = events.LogSubmitted.Connect(m.HandleRecord, signal.ConnectOptions{Shutdown: signal.CancelPending})
+	m.connection, err = events.LogSubmitted.Connect(m.handleRecord, signal.ConnectOptions{Shutdown: signal.CancelPending})
 	if err != nil {
 		return nil, err
 	}
 	return m, nil
 }
 
-// HandleRecord only admits an already frozen record. Filtering and formatting
+// handleRecord only admits an already frozen record. Filtering and formatting
 // happen in its category's consumer. Business code calls events.EmitLog.
-func (m *Manager) HandleRecord(ctx context.Context, record events.LogRecord) error {
+func (m *Manager) handleRecord(ctx context.Context, record events.LogRecord) error {
 	sink, ok := m.sinks[record.Category]
 	if !ok {
 		return fmt.Errorf("logging: unknown category %q", record.Category)

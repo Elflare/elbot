@@ -380,7 +380,7 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 			errs = append(errs, err)
 			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 				Category: globalevents.LogAudit,
-				Level:    slog.LevelWarn,
+				Level:    slog.LevelError,
 				Name:     "cron.send_failed",
 				Module:   "cron",
 				Summary:  "cron.send_failed",
@@ -388,7 +388,7 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 			})
 			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 				Category: globalevents.LogRuntime,
-				Level:    slog.LevelWarn,
+				Level:    slog.LevelError,
 				Name:     "cron_send_failed",
 				Module:   "cron",
 				Summary:  "cron send failed",
@@ -442,7 +442,7 @@ func (s *Service) sendOutputsToPlatformsMapped(ctx context.Context, jobName stri
 				errs = append(errs, err)
 				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 					Category: globalevents.LogAudit,
-					Level:    slog.LevelWarn,
+					Level:    slog.LevelError,
 					Name:     "cron.send_failed",
 					Module:   "cron",
 					Summary:  "cron.send_failed",
@@ -450,7 +450,7 @@ func (s *Service) sendOutputsToPlatformsMapped(ctx context.Context, jobName stri
 				})
 				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 					Category: globalevents.LogRuntime,
-					Level:    slog.LevelWarn,
+					Level:    slog.LevelError,
 					Name:     "cron_send_failed",
 					Module:   "cron",
 					Summary:  "cron send failed",

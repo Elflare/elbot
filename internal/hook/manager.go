@@ -542,7 +542,7 @@ func setOutputMeta(meta map[string]any, key, value string) {
 func (m *DefaultManager) logHook(ctx context.Context, mode string, reg registration, before, after Event, err error) {
 	level, name, summary := slog.LevelInfo, "hook_triggered", "hook triggered"
 	if err != nil {
-		level, name, summary = slog.LevelWarn, "hook_error", "hook error"
+		level, name, summary = slog.LevelError, "hook_error", "hook error"
 		if errors.Is(err, context.Canceled) {
 			level, name, summary = slog.LevelInfo, "hook_canceled", "hook canceled"
 		}

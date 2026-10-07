@@ -99,7 +99,7 @@ func runPlatforms(ctx context.Context, handler platform.PlatformHandler, adapter
 			if err := adapter.Run(runCtx, handler); err != nil && !errors.Is(err, context.Canceled) {
 				_ = globalevents.EmitLog(runCtx, globalevents.LogRecord{
 					Category: globalevents.LogRuntime,
-					Level:    slog.LevelWarn,
+					Level:    slog.LevelError,
 					Name:     "platform_stopped_with_error",
 					Module:   "app",
 					Summary:  "platform stopped with error",

@@ -56,7 +56,7 @@ func (o *outputSender) SendAssistant(ctx context.Context, text string) (delivery
 
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
+			Level:    failureLogLevel(err),
 			Name:     "chat_send_failed",
 			Module:   "agent",
 			Summary:  "chat send failed",

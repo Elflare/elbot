@@ -196,7 +196,7 @@ func (m *Manager) reloadEnabled(ctx context.Context) error {
 		if err := m.scheduleJob(job); err != nil {
 			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 				Category: globalevents.LogRuntime,
-				Level:    slog.LevelWarn,
+				Level:    slog.LevelError,
 				Name:     "cron_job_schedule_failed",
 				Module:   "cron",
 				Summary:  "cron job schedule failed",
@@ -226,7 +226,7 @@ func (m *Manager) scheduleJob(job storage.CronJob) error {
 		m.mu.Unlock()
 		_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
 			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
+			Level:    slog.LevelError,
 			Name:     "cron_job_handler_not_registered",
 			Module:   "cron",
 			Summary:  "cron job handler not registered",
@@ -317,7 +317,7 @@ func (m *Manager) runJob(name string) {
 		m.mu.Unlock()
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
+			Level:    slog.LevelError,
 			Name:     "cron_job_handler_not_registered",
 			Module:   "cron",
 			Summary:  "cron job handler not registered",
@@ -375,7 +375,7 @@ func (m *Manager) runJob(name string) {
 		lastError = runErr.Error()
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
+			Level:    slog.LevelError,
 			Name:     "cron_job_failed",
 			Module:   "cron",
 			Summary:  "cron job failed",
@@ -454,7 +454,7 @@ func (m *Manager) updateNextRunAt(ctx context.Context, job storage.CronJob, next
 	if err := m.repo.UpdateNextRunAt(ctx, job.ID, nextRunAt, time.Now()); err != nil {
 		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
 			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
+			Level:    slog.LevelError,
 			Name:     "cron_job_next_run_update_failed",
 			Module:   "cron",
 			Summary:  "cron job next run update failed",
