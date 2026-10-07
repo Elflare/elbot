@@ -465,6 +465,12 @@ log_level = "info"
 log_retention_days = 30
 ```
 
+`runtime.log_level` only controls the runtime log, supporting `debug`, `info`, `warn`, and `error`. Audit and Elnis logs are preserved independently; increasing the runtime level will not stop the recording of usage facts required by `/usage`. Log files are rotated daily, using prefixes `elbot-`, `audit-`, and `elnis-`; the number of days to retain is controlled by `log_retention_days`.
+
+The query level of `/log -d` and the recording level of `runtime.log_level` are independent: queries only display existing records and do not change configurations or recover missing details. For specific filtering methods, see [Log and Audit Commands](commands.md#日志和审计).
+
+Facility failures such as signal dispatch, background signal tasks, and log writing are reported directly to stderr, collected by the terminal or service manager, and are not filtered by the runtime log level. Continue running after reporting during runtime; Initialization failure returns to the main program for handling.
+
 Maintenance task examples:
 
 ```toml
