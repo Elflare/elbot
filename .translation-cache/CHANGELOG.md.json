@@ -56,6 +56,14 @@
       "translation": "__ELBOT_CODE_0__ no longer exposes the __ELBOT_CODE_1__ parameter to the LLM; the system will automatically pre-check and generate a diff before user confirmation, and if the pre-check fails, it will not proceed to confirmation or write to the file.",
       "updated_at": 1782631048
     },
+    "CHANGELOG.md:list:06167ceacfa40536a4aeafd2737b95cef47ec40762e544b5b756fb9823c63e1a": {
+      "kind": "list",
+      "source": "日志严重程度统一为客户端重试 WARN、最终操作失败 ERROR；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "06167ceacfa40536a4aeafd2737b95cef47ec40762e544b5b756fb9823c63e1a",
+      "translation": "Log severity is unified as WARN for client retries and ERROR for final operation failures;",
+      "updated_at": 1791377010
+    },
     "CHANGELOG.md:list:074bd5829a69931af8824fb7df435a2bcd12bcb2d75a1960fbd8c089259479c1": {
       "kind": "list",
       "source": "超级管理员不受额外的 10 分钟限制，但仍遵守已启用的 Session TTL。",
@@ -112,6 +120,14 @@
       "translation": "Optimized meta information for the Agent; it now displays the platform, group number, group ID, user nickname, and user ID.",
       "updated_at": 1789560899
     },
+    "CHANGELOG.md:list:1044a79fcd4dc405a7c82791992ac605f313766bb50da66bb8d7d1eee9b639b2": {
+      "kind": "list",
+      "source": "平台连接事件从适配器实例信号及 App 转发改为直接发布全局信号；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "1044a79fcd4dc405a7c82791992ac605f313766bb50da66bb8d7d1eee9b639b2",
+      "translation": "Platform connection events have been changed from adapter instance signals and App forwarding to directly publishing global signals;",
+      "updated_at": 1791377010
+    },
     "CHANGELOG.md:list:11621501ea8bcfaddd39ec7e55a6251b636d07bf7fbcb7f3d2438f778362bf66": {
       "kind": "list",
       "source": "**记忆系统**：常驻记忆（core/normal 分层）按平台与 actor 注入；长期记忆基于 Markdown 源数据与 SQLite FTS 检索。",
@@ -119,6 +135,14 @@
       "source_hash": "11621501ea8bcfaddd39ec7e55a6251b636d07bf7fbcb7f3d2438f778362bf66",
       "translation": "**Memory System**: Resident memory (core/normal layers) injected by platform and actor; long-term memory based on Markdown source data and SQLite FTS retrieval.",
       "updated_at": 1782270601
+    },
+    "CHANGELOG.md:list:11a90c579afeba7e023caf0635338acd6f257c31163649081fd332b803e78575": {
+      "kind": "list",
+      "source": "全部业务日志从 Logger／Audit 注入及 App 中转改为通过全局信号交给日志中心；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "11a90c579afeba7e023caf0635338acd6f257c31163649081fd332b803e78575",
+      "translation": "All business logs have been changed from Logger/Audit injection and App relay to being delivered to the log center via global signals;",
+      "updated_at": 1791377010
     },
     "CHANGELOG.md:list:124caf0d7cc91f9b2ff6facd12a4ab06dd0cf07f8eaac37eb69f2f376660b75b": {
       "kind": "list",
@@ -200,6 +224,14 @@
       "translation": "Added __ELBOT_CODE_0__ command: aggregates token consumption from the audit log, supporting summaries by model/day/Session, with shortcut parameters __ELBOT_CODE_1__ for days, __ELBOT_CODE_2__ for model, and __ELBOT_CODE_3__ for Session.",
       "updated_at": 1782884148
     },
+    "CHANGELOG.md:list:1c3710a969742aa39277437b72141fec20765bf6bd19cae9d9e4c3e775c7f23c": {
+      "kind": "list",
+      "source": "审计和 Elnis 日志从共用运行等级改为独立保留，__ELBOT_CODE_0__ 不再过滤 __ELBOT_CODE_1__ 所需的用量事实。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "1c3710a969742aa39277437b72141fec20765bf6bd19cae9d9e4c3e775c7f23c",
+      "translation": "Audit and Elnis logs have been changed from a shared runtime level to being retained independently; __ELBOT_CODE_0__ no longer filters usage facts required by __ELBOT_CODE_1__.",
+      "updated_at": 1791377010
+    },
     "CHANGELOG.md:list:1e09ce6b38276aa92e6b8263e6d5d976e802755ccd80424e2d1025e6e460f939": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 新增 __ELBOT_CODE_1__ 和 __ELBOT_CODE_2__，用于筛选并显示 __ELBOT_CODE_3__ 日志。",
@@ -207,6 +239,14 @@
       "source_hash": "1e09ce6b38276aa92e6b8263e6d5d976e802755ccd80424e2d1025e6e460f939",
       "translation": "__ELBOT_CODE_0__ added __ELBOT_CODE_1__ and __ELBOT_CODE_2__ to filter and display __ELBOT_CODE_3__ logs.",
       "updated_at": 1784127057
+    },
+    "CHANGELOG.md:list:1e799a52f48b46ffcbcb447e2619076476422c8ce0eaf2ee72d95da87c200441": {
+      "kind": "list",
+      "source": "启动耗时从直接输出改为 DEBUG 日志。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "1e799a52f48b46ffcbcb447e2619076476422c8ce0eaf2ee72d95da87c200441",
+      "translation": "Startup duration has been changed from direct output to DEBUG logs.",
+      "updated_at": 1791377010
     },
     "CHANGELOG.md:list:1f43fc3e767815a7a2bb28d62158e9fa1f233ca2e46a43db188f31936f3bb56e": {
       "kind": "list",
@@ -696,6 +736,14 @@
       "translation": "LLM request timeout configuration changed to __ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__; the old __ELBOT_CODE_3__ has been removed;",
       "updated_at": 1782461728
     },
+    "CHANGELOG.md:list:5abf94d157b7b70b66d322ec0f93bb2bc5d105a1a79eca9a4ceb75b89f644109": {
+      "kind": "list",
+      "source": "信号设施故障从业务 Logger 改为直接报告 stderr，不受运行等级影响。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "5abf94d157b7b70b66d322ec0f93bb2bc5d105a1a79eca9a4ceb75b89f644109",
+      "translation": "Signal facility failures are now reported directly to stderr instead of via the business Logger, making them unaffected by the runtime level.",
+      "updated_at": 1791377010
+    },
     "CHANGELOG.md:list:5b017e55b17383861bd993aad6190054f3317280f9908c4eeee3c45dae46b41a": {
       "kind": "list",
       "source": "默认群聊所有用户过期，私聊超级管理员不过期。",
@@ -808,6 +856,14 @@
       "translation": "Descriptive AgentSkills do not read __ELBOT_CODE_0__, avoiding risk; after toolization, __ELBOT_CODE_2__ of __ELBOT_CODE_1__ shall prevail.",
       "updated_at": 1783219356
     },
+    "CHANGELOG.md:list:6af9f15cdd44b8622a73263b515679e15b3ed77896a981bfd5f82e4f1b372199": {
+      "kind": "list",
+      "source": "运行日志正文改为最多 256 字的摘要，DEBUG 才保留详情；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "6af9f15cdd44b8622a73263b515679e15b3ed77896a981bfd5f82e4f1b372199",
+      "translation": "The runtime log body has been changed to a summary of up to 256 characters; details are only preserved in DEBUG mode;",
+      "updated_at": 1791377010
+    },
     "CHANGELOG.md:list:6d478a5dfd779970629f0cfd46fe4d8231a05246961a162a024ed3172b1cfa56": {
       "kind": "list",
       "source": "首次运行会生成 __ELBOT_CODE_0__，用于提示按需求编写 ElBot 规则 Hook。",
@@ -919,6 +975,14 @@
       "source_hash": "77ae9951fcdb074ce3197606d3bcda43ebb29a1e7431e3226b28b8c30d008ce8",
       "translation": "__ELBOT_CODE_0__ and __ELBOT_CODE_1__ previously completely rejected text files exceeding 2 MiB;",
       "updated_at": 1788138091
+    },
+    "CHANGELOG.md:list:784caec0e254523b69a69435935392d53a4dbf877f49a6267ae1cc0cbdc6e10d": {
+      "kind": "list",
+      "source": "修复日志事件标识。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "784caec0e254523b69a69435935392d53a4dbf877f49a6267ae1cc0cbdc6e10d",
+      "translation": "Fixed log event identifiers.",
+      "updated_at": 1791377010
     },
     "CHANGELOG.md:list:79e13956de2275bf7954e4071d4c7b43e177af53dfe03d7cdaac4cbd1cab4431": {
       "kind": "list",
@@ -1040,6 +1104,14 @@
       "translation": "Added `__ELBOT_CODE_0__` tool: sets the shared working directory of the current foreground Session; path-related tools will resolve relative paths based on this directory.",
       "updated_at": 1782958962
     },
+    "CHANGELOG.md:list:85c5109f4e49a0fd482b595394bc2c856c66ae80340255ba35b955828fe0f7ff": {
+      "kind": "list",
+      "source": "Agent、命名和重试的日志投影由来源模块维护，上游失败详情改用通用诊断契约。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "85c5109f4e49a0fd482b595394bc2c856c66ae80340255ba35b955828fe0f7ff",
+      "translation": "Log projections for Agent, naming, and retries are now maintained by the source module, and upstream failure details now use a general diagnostic contract.",
+      "updated_at": 1791377010
+    },
     "CHANGELOG.md:list:8722a2d934648665f30becf49386a69bc05302e1048ceea9349dbb4cb96b26ac": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 工具的代理参数从 __ELBOT_CODE_1__ 改为 __ELBOT_CODE_2__：不填时使用 __ELBOT_CODE_3__ 或系统代理环境，填 __ELBOT_CODE_4__ 禁用代理，填 URL 使用指定代理。",
@@ -1071,6 +1143,14 @@
       "source_hash": "885dcf54920f2bb1bcc4e6f6bd68c3b92db9074b55c972d4778a3e42fbf62e7e",
       "translation": "Worker status, all rules, and details are now expanded only when using __ELBOT_CODE_0__; root rules and built-in Hooks are still displayed separately.",
       "updated_at": 1784858252
+    },
+    "CHANGELOG.md:list:8880430f24b450f80a80e973392c7931a43aff5c18a6923c7b77ed77a9b6391a": {
+      "kind": "list",
+      "source": "Hook 协调模块和 Cron 自行订阅、按平台排队并管理关闭，保持原有连接触发、补执行及 30 秒退出预算。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "8880430f24b450f80a80e973392c7931a43aff5c18a6923c7b77ed77a9b6391a",
+      "translation": "The Hook coordination module and Cron now subscribe independently, queue by platform, and manage shutdown, while maintaining the original connection triggers, catch-up execution, and 30-second exit budget.",
+      "updated_at": 1791377010
     },
     "CHANGELOG.md:list:8a6b94368cf2dede5354c5ff825af2af6857a380c6456fdb37a5cae19284d736": {
       "kind": "list",
@@ -1223,6 +1303,14 @@
       "source_hash": "982e715f6a8e303465255744e60589d5a93f784f31e748fbdb313c57f07a56e8",
       "translation": "Elvena LLM events and LLM Cron now support __ELBOT_CODE_0__ selecting background Session mode, with the default remaining __ELBOT_CODE_1__.",
       "updated_at": 1782699038
+    },
+    "CHANGELOG.md:list:983177398b86af27aa72ebf0996150a1591f372285a78ce8e83d704c4dfada7c": {
+      "kind": "list",
+      "source": "集中脱敏后限制单项详情 8 KiB、单条记录 64 KiB。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "983177398b86af27aa72ebf0996150a1591f372285a78ce8e83d704c4dfada7c",
+      "translation": "After centralized desensitization, single item details are limited to 8 KiB and single records to 64 KiB.",
+      "updated_at": 1791377010
     },
     "CHANGELOG.md:list:99004b88c42dd7cb7dfaa0613f43eeb48749d28e47b53e94c9e1ec6c8997abb1": {
       "kind": "list",
@@ -1399,6 +1487,14 @@
       "source_hash": "a9d6da892e7e5b7ce145d29cb24cfd5cf97b4af2fdc44bdd550062d95d5ffbb6",
       "translation": "Resident memory is no longer registered as a Hook; the __ELBOT_CODE_0__ of ordinary Hooks is explicitly defined as read-only context.",
       "updated_at": 1784467084
+    },
+    "CHANGELOG.md:list:aabe4d91ad4b80f5e2ef0857187aed1443f7f3bcf4c873476d30cca7487a3f94": {
+      "kind": "list",
+      "source": "修复审计匹配虚构 __ELBOT_CODE_0__ 和运行日志漏掉无 __ELBOT_CODE_1__ 字段记录的问题；与事件名等条件组合时不再覆盖原筛选。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "aabe4d91ad4b80f5e2ef0857187aed1443f7f3bcf4c873476d30cca7487a3f94",
+      "translation": "Fixed issues where audit matching fabricated __ELBOT_CODE_0__ and runtime logs omitted records without the __ELBOT_CODE_1__ field; these no longer overwrite the original filter when combined with conditions such as event names.",
+      "updated_at": 1791377010
     },
     "CHANGELOG.md:list:aad5c8df94eeb1f80e25162d64492b3386d626e486461b5cff2001c143cc7fbc": {
       "kind": "list",
@@ -1744,6 +1840,22 @@
       "translation": "Fixed an issue where parameters rewritten by the tool prepared Hook were not synchronized to the current LLM context, and in-process Hooks could rewrite tool IDs/names;",
       "updated_at": 1784467084
     },
+    "CHANGELOG.md:list:d585267b0165715dbd374b2c8cb856524822ee8526a8797bbcddca0a973662ee": {
+      "kind": "list",
+      "source": "Hook 工具调用审计从三个名称统一为 __ELBOT_CODE_0__，用 __ELBOT_CODE_1__、__ELBOT_CODE_2__ 区分来源及结果，帮助和补全同步更新。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "d585267b0165715dbd374b2c8cb856524822ee8526a8797bbcddca0a973662ee",
+      "translation": "Hook tool call audit has been unified from three names to __ELBOT_CODE_0__, using __ELBOT_CODE_1__ and __ELBOT_CODE_2__ to distinguish source and result; help and completion have been updated synchronously.",
+      "updated_at": 1791377010
+    },
+    "CHANGELOG.md:list:d60cae00c2b3479091e0e4b1508ae9b82dfb9e0d1cc6d2fa970c18010f6a91df": {
+      "kind": "list",
+      "source": "修复自动命名上游失败详情在非 DEBUG 配置下丢失，以及兜底标题保存失败覆盖原始错误的问题；现在通过 ERROR 审计独立保留诊断。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "d60cae00c2b3479091e0e4b1508ae9b82dfb9e0d1cc6d2fa970c18010f6a91df",
+      "translation": "Fixed an issue where upstream failure details for automatic naming were lost in non-DEBUG configurations, and where fallback title save failures overwrote the original error; diagnostics are now independently preserved via ERROR audit logs.",
+      "updated_at": 1791377010
+    },
     "CHANGELOG.md:list:d61719b795c624caee4d83ed8a8a44cf2ed9659b71fc67926033f77654881552": {
       "kind": "list",
       "source": "现在仅向超级管理员追加，普通用户或身份缺失时隐藏。",
@@ -2016,6 +2128,14 @@
       "translation": "QQ OneBot messages exceeding 3000 characters will be converted to merged messages",
       "updated_at": 1791194538
     },
+    "CHANGELOG.md:list:f64693f1dc154b4b94acbe9e233a3756e735e5b97ccb59a80ff723a9cd87a6c5": {
+      "kind": "list",
+      "source": "主动取消和正常策略拒绝分别处理。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "f64693f1dc154b4b94acbe9e233a3756e735e5b97ccb59a80ff723a9cd87a6c5",
+      "translation": "Active cancellation and normal policy rejection are now handled separately.",
+      "updated_at": 1791377010
+    },
     "CHANGELOG.md:list:f6c1cb497ae4f2ad103aff727d2c39baae1e5a5217229da9cedaecc67ef9c4ce": {
       "kind": "list",
       "source": "修复同一时间戳下会话消息可能按 UUID 错序加载，导致历史上下文顺序不稳定的问题。",
@@ -2023,6 +2143,14 @@
       "source_hash": "f6c1cb497ae4f2ad103aff727d2c39baae1e5a5217229da9cedaecc67ef9c4ce",
       "translation": "Fixed the issue where Session messages under the same timestamp might be loaded out of order by UUID, leading to unstable historical context order.",
       "updated_at": 1783334583
+    },
+    "CHANGELOG.md:list:fa2ad4d490674cefcfe1914fa01a0182096d64ec90cc491e7aeaa19d0352a734": {
+      "kind": "list",
+      "source": "修复模型重试日志依赖通知订阅、Hook 原始失败被重复记录的问题。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "fa2ad4d490674cefcfe1914fa01a0182096d64ec90cc491e7aeaa19d0352a734",
+      "translation": "Fixed issues where model retry logs depended on notification subscriptions and Hook original failures were recorded repeatedly.",
+      "updated_at": 1791377010
     },
     "CHANGELOG.md:list:faa151eb2284bda7e4e6995ad15597fdaec9d9c2d87d2a98a3ab4a418ee37890": {
       "kind": "list",
@@ -2066,8 +2194,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "91779f2b19bbebfe77496ea8ec1d878d839d85d3b1a787620d7822757b8d6ba8",
+  "source_hash": "78600b98ff18d6cb868e25131983adabd101361441171ad576eec6cc57cf4257",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1791358274,
+  "updated_at": 1791377010,
   "version": 2
 }

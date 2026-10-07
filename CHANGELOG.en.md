@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Platform connection events have been changed from adapter instance signals and App forwarding to directly publishing global signals; The Hook coordination module and Cron now subscribe independently, queue by platform, and manage shutdown, while maintaining the original connection triggers, catch-up execution, and 30-second exit budget.
+- Log severity is unified as WARN for client retries and ERROR for final operation failures; Active cancellation and normal policy rejection are now handled separately. Hook tool call audit has been unified from three names to `hook_tool_call`, using `source` and `status` to distinguish source and result; help and completion have been updated synchronously.
+- Audit and Elnis logs have been changed from a shared runtime level to being retained independently; `runtime.log_level=warn/error` no longer filters usage facts required by `/usage`. Signal facility failures are now reported directly to stderr instead of via the business Logger, making them unaffected by the runtime level.
+- All business logs have been changed from Logger/Audit injection and App relay to being delivered to the log center via global signals; Log projections for Agent, naming, and retries are now maintained by the source module, and upstream failure details now use a general diagnostic contract.
+- The runtime log body has been changed to a summary of up to 256 characters; details are only preserved in DEBUG mode; After centralized desensitization, single item details are limited to 8 KiB and single records to 64 KiB. Startup duration has been changed from direct output to DEBUG logs.
 - Tools now support restricting discovery, completion, preloading, and execution by API type.
 - The stdout/stderr return limit for `shell` has been increased from 16 KiB each to 256 KiB each; if exceeded, a note about truncation due to length will be added to the end of the corresponding output.
 - Responses tool definitions have been changed from the top-level of each round `tools` to incremental `additional_tools` in native input; playback retains the original position; Current invocation permissions are separately restricted by `tool_choice`. Old Responses Sessions and changes to tool definitions with the same name require creating a new Session.
@@ -32,6 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed an issue where upstream failure details for automatic naming were lost in non-DEBUG configurations, and where fallback title save failures overwrote the original error; diagnostics are now independently preserved via ERROR audit logs.
+- Fixed log event identifiers.
+- Fixed issues where audit matching fabricated `event=hook` and runtime logs omitted records without the `hook` field; these no longer overwrite the original filter when combined with conditions such as event names.
+- Fixed issues where model retry logs depended on notification subscriptions and Hook original failures were recorded repeatedly.
 - Fixed an issue where `shell` cached all output and only truncated it after completion, causing memory usage to grow with the output volume during execution; capacity is now limited during collection, and any excess is drained and discarded.
 - Fixed the high-risk confirmation bug.
 - Fixed the additional confirmation wait bug.
