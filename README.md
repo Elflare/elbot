@@ -33,6 +33,9 @@ ElBot does not inject the full schema of all tools by default in every round of 
 | `chat` | No injection             | Small talk, companionship, lightweight Q&A, low-cost conversation         | <500 (subsequent cache hit 95%+)  |
 | `work` | Enable tool discovery and invocation | Complex tasks such as search, files, commands, Cron, Skills, etc. | <1000 (subsequent cache hit 90%+) |
 
+
+> Note: After using the `Responses` protocol, tool discovery no longer breaks the cache, and subsequent cache hits will be higher.
+
 ### II. Powerful and Extensible
 
 **Extensible Hook system**: ElBot has a built-in Hook Layer, allowing extension logic to be inserted at key event points such as Agent input, LLM request, LLM response, platform sending, and platform connection. Hooks can modify messages, append output intents, call scripts, and more. Hook supports writing plugins in **any language**.

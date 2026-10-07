@@ -576,6 +576,14 @@
       "translation": "**ELyph Task Notation**: ELyph is used to describe LLM Cron and native skills.",
       "updated_at": 1781779200
     },
+    "README.zh-CN.md:quote:092d1ccddacf6c55808f666228e8f811bfa419c7234034895a322d9ffcaf8c4e": {
+      "kind": "quote",
+      "source": "注：使用__ELBOT_CODE_0__协议后，发现工具不再破坏缓存，后续缓存命中会更高",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "092d1ccddacf6c55808f666228e8f811bfa419c7234034895a322d9ffcaf8c4e",
+      "translation": "Note: After using the __ELBOT_CODE_0__ protocol, tool discovery no longer breaks the cache, and subsequent cache hits will be higher.",
+      "updated_at": 1791357972
+    },
     "README.zh-CN.md:table:100587977125c8c3844f25aaf755f7b998ce69c9c3c97758ae2b17eea268d13a": {
       "kind": "table",
       "source": "适用场景",
@@ -706,8 +714,8 @@
     }
   },
   "source": "README.zh-CN.md",
-  "source_hash": "aedfc2d97b8ebfa2e024b3ded38909413c6eef336f4bf9349fed9d576978b8ed",
+  "source_hash": "cd50d74de9b6716c4300c86f8721f31a76124cb6819ac85bba3fbfa042470ecc",
   "target": "README.md",
-  "updated_at": 1784013247,
+  "updated_at": 1791357972,
   "version": 2
 }
