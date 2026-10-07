@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Responses tool definitions have been changed from the top-level of each round `tools` to incremental `additional_tools` in native input; playback retains the original position; Current invocation permissions are separately restricted by `tool_choice`. Old Responses Sessions and changes to tool definitions with the same name require creating a new Session.
+- Background path descriptions have been moved from the schema of the four path tools to the system prompt; frontend takeover no longer changes tool definitions.
 - Compaction is dispatched by Session protocol: Chat continues to use an independent summary model, while Responses use the current model and fully preserve the native return window; both share the same compaction threshold.
 - The read-only `llm.tools` for tool definitions and Hooks has been changed from Chat's `type/function` wrapper to the `name/description/parameters` business structure, with protocol clients respectively generating the required API wrappers.
 - Significantly refactored the underlying architecture, optimizing the responsibilities and boundaries of each package

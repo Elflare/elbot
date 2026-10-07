@@ -368,6 +368,14 @@
       "translation": "`__ELBOT_CODE_0__` tool removed the `__ELBOT_CODE_1__` parameter; commands are executed in the current workspace by default, while background tasks remain restricted to their respective sandboxes.",
       "updated_at": 1782958962
     },
+    "CHANGELOG.md:list:327080305dd2ec0ee8ffd29a6cd134dbb8031f298cc73cb5bdfcf9f7a52cfa28": {
+      "kind": "list",
+      "source": "当前调用权限单独受 __ELBOT_CODE_0__ 限制。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "327080305dd2ec0ee8ffd29a6cd134dbb8031f298cc73cb5bdfcf9f7a52cfa28",
+      "translation": "Current invocation permissions are separately restricted by __ELBOT_CODE_0__.",
+      "updated_at": 1791341159
+    },
     "CHANGELOG.md:list:3301a0a4db1f834d0d74491d7cde5f4925a0a8949fc3d670c1ecb7f61e05b8a3": {
       "kind": "list",
       "source": "按文件列出问题，并生成附配置说明和默认模板地址的 Elbot 处理请求。",
@@ -631,6 +639,14 @@
       "source_hash": "56627bbe550c1cd55685d53c98d96f9daf509a689e4532b1444bac71bff9760f",
       "translation": "Fixed issues where Cron re-delivery used old job snapshots to overwrite disable status, scheduling, and task content, as well as duplicate generation, duplicate sending, and delivery statuses overwriting each other when multiple platforms were connected simultaneously;",
       "updated_at": 1784437461
+    },
+    "CHANGELOG.md:list:56afb2bcd759ebc7c85c8e7e687cda2e85c3cecf215e8138def15467d41354f2": {
+      "kind": "list",
+      "source": "旧 Responses 会话及同名工具定义变化需新建会话。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "56afb2bcd759ebc7c85c8e7e687cda2e85c3cecf215e8138def15467d41354f2",
+      "translation": "Old Responses Sessions and changes to tool definitions with the same name require creating a new Session.",
+      "updated_at": 1791341159
     },
     "CHANGELOG.md:list:572872f4348e759b46f65964708d6035ffe736d5c7f16bbeca3641f8458acd29": {
       "kind": "list",
@@ -1136,6 +1152,14 @@
       "translation": "High-risk confirmation details for __ELBOT_CODE_0__ now display operations such as replace, add, delete, and match by file, mode, and editing step.",
       "updated_at": 1782631048
     },
+    "CHANGELOG.md:list:91740620cd15c873f4b771f467da7322291c5d1535d4952718ff9638f5a5c5af": {
+      "kind": "list",
+      "source": "后台路径说明从四个路径工具的 schema 移至系统提示，前台接管不再改变工具定义。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "91740620cd15c873f4b771f467da7322291c5d1535d4952718ff9638f5a5c5af",
+      "translation": "Background path descriptions have been moved from the schema of the four path tools to the system prompt; frontend takeover no longer changes tool definitions.",
+      "updated_at": 1791341159
+    },
     "CHANGELOG.md:list:922424784303fc3c45ac616053b3dfec7cfba11452ddf91c54812e855710eb0c": {
       "kind": "list",
       "source": "普通用户的追加重发与高风险工具确认此前会无限等待并长期占用当前 Turn；",
@@ -1632,6 +1656,14 @@
       "translation": "Expired historical Sessions are no longer deleted immediately and can be restored directly via __ELBOT_CODE_0__.",
       "updated_at": 1784863205
     },
+    "CHANGELOG.md:list:cd502d203f8f1e3753e305a0b47991e8d1e41359cc8f7b0063609cb12e71fa24": {
+      "kind": "list",
+      "source": "Responses 工具定义从每轮顶层 __ELBOT_CODE_0__ 改为原生输入中的增量 __ELBOT_CODE_1__，回放保留原有位置；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "cd502d203f8f1e3753e305a0b47991e8d1e41359cc8f7b0063609cb12e71fa24",
+      "translation": "Responses tool definitions have been changed from the top-level of each round __ELBOT_CODE_0__ to incremental __ELBOT_CODE_1__ in native input; playback retains the original position;",
+      "updated_at": 1791341159
+    },
     "CHANGELOG.md:list:cd8d247a2da615761263d4d1c775cd8b4f3bcb8dce6a38e69a1325d2c885c46b": {
       "kind": "list",
       "source": "实际执行、后续请求和 transcript 现在统一使用最终 arguments。",
@@ -2002,8 +2034,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "0eae0db21ab311732c9e33e2954119a1d9d3f6cb630befbe9302e2bc2421375c",
+  "source_hash": "4eb68f0ffc69bd9c7c293e41ef5dd2709aebb0aa50e0902b1a7509571144c890",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1791301828,
+  "updated_at": 1791341159,
   "version": 2
 }
