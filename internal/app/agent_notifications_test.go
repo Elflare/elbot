@@ -58,7 +58,7 @@ func TestNoticeLifetimesOriginalSourceAndVisionDedup(t *testing.T) {
 	one, two := &assemblyPlatform{}, &assemblyPlatform{}
 	router := dispatch.New(dispatch.Options{Primary: two})
 	b, events := &signalBindings{}, observerSignals()
-	if err := b.connectAgentNotifications(events, notification.New(router, nil, false), noticeAssistant{router}, nil); err != nil {
+	if err := b.connectAgentNotifications(events, notification.New(router, nil, false), noticeAssistant{router}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = b.Close(context.Background()) })
@@ -112,7 +112,7 @@ func TestQueuedFailureChecksOriginalBinding(t *testing.T) {
 	p := &assemblyPlatform{}
 	router := dispatch.New(dispatch.Options{Primary: p})
 	b, events := &signalBindings{}, observerSignals()
-	if err := b.connectAgentNotifications(events, notification.New(router, nil, false), noticeAssistant{router}, nil); err != nil {
+	if err := b.connectAgentNotifications(events, notification.New(router, nil, false), noticeAssistant{router}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = b.Close(context.Background()) })

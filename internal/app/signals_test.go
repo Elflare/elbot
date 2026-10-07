@@ -3,8 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"io"
-	"log/slog"
 	"path/filepath"
 	"testing"
 	"time"
@@ -41,9 +39,8 @@ type signalAgent struct {
 func (a *signalAgent) NotifyPlatformConnected(ctx context.Context, name string) { a.notify(ctx, name) }
 
 func TestPlatformSignalsAreIsolatedAndCancelledOnClose(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	one := &signalPlatform{name: "one", connected: signal.New[platform.ConnectedEvent]("one", logger)}
-	two := &signalPlatform{name: "two", connected: signal.New[platform.ConnectedEvent]("two", logger)}
+	one := &signalPlatform{name: "one", connected: signal.New[platform.ConnectedEvent]("one")}
+	two := &signalPlatform{name: "two", connected: signal.New[platform.ConnectedEvent]("two")}
 	started, second, cancelled := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	agt := &signalAgent{notify: func(ctx context.Context, name string) {
 		if name == "one" {
@@ -57,7 +54,7 @@ func TestPlatformSignalsAreIsolatedAndCancelledOnClose(t *testing.T) {
 		}
 	}}
 	b := &signalBindings{}
-	if err := b.connectPlatforms(agt, nil, []platformRuntime{one, two}, logger); err != nil {
+	if err := b.connectPlatforms(agt, nil, []platformRuntime{one, two}); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -87,15 +84,14 @@ func TestRunnerCleansSignalBindingsOnAttachFailure(t *testing.T) {
 	runner := newTestRunner(t, &events, RunModeFull, "")
 	b := &signalBindings{}
 	started := make(chan struct{})
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	p := &signalPlatform{name: "one", connected: signal.New[platform.ConnectedEvent]("one", logger)}
+	p := &signalPlatform{name: "one", connected: signal.New[platform.ConnectedEvent]("one")}
 	runner.deps.Runtime = runtimeFactoryFunc(func(context.Context, RuntimeRequest) (*RuntimeComponents, error) {
 		return &RuntimeComponents{Handler: handlerStub{}, Signals: b, Lifecycle: lifecycleFunc(func(context.Context) error { return nil })}, nil
 	})
 	want := errors.New("attach failed")
 	runner.deps.Integrations = integrationFactoryFunc(func(_ context.Context, req IntegrationRequest) (PlatformComponents, error) {
 		agt := &signalAgent{notify: func(ctx context.Context, _ string) { close(started); <-ctx.Done() }}
-		if err := b.connectPlatforms(agt, nil, []platformRuntime{p}, logger); err != nil {
+		if err := b.connectPlatforms(agt, nil, []platformRuntime{p}); err != nil {
 			return PlatformComponents{}, err
 		}
 		if err := p.connected.Emit(context.Background(), platform.ConnectedEvent{}); err != nil {
@@ -188,7 +184,7 @@ func TestDelayedSessionCleanupCannotInvalidateNewRollbackBinding(t *testing.T) {
 	rollback := fileops.NewRollbackManager()
 	oldLease, _ := rollback.Session(old)
 	bindings := &signalBindings{}
-	if err := bindings.connectSession(sessions, rollback, nil); err != nil {
+	if err := bindings.connectSession(sessions, rollback); err != nil {
 		t.Fatal(err)
 	}
 	defer bindings.Close(ctx)

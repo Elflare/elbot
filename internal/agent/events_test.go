@@ -18,7 +18,7 @@ import (
 
 func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 	turns := turn.NewManager()
-	events := signal.New[agentevents.StatusChangedEvent]("status", nil)
+	events := signal.New[agentevents.StatusChangedEvent]("status")
 	var observed []agentevents.StatusChangedEvent
 	_, _ = events.Connect(func(_ context.Context, e agentevents.StatusChangedEvent) error {
 		observed = append(observed, e)

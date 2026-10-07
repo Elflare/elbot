@@ -3,15 +3,11 @@ package signal
 import (
 	"context"
 	"errors"
-	"io"
-	"log/slog"
 	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
 )
-
-func testLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
 func connect[T any](t *testing.T, s *Signal[T], handler Handler[T], options ConnectOptions) *Connection {
 	t.Helper()
@@ -23,7 +19,7 @@ func connect[T any](t *testing.T, s *Signal[T], handler Handler[T], options Conn
 }
 
 func TestSnapshotReentrancyAndErrors(t *testing.T) {
-	s := New[int]("reentrant", testLogger())
+	s := New[int]("reentrant")
 	wantErr := errors.New("failed")
 	var calls []int
 	var second *Connection
@@ -53,7 +49,7 @@ func TestSnapshotReentrancyAndErrors(t *testing.T) {
 }
 
 func TestConcurrentOnce(t *testing.T) {
-	s := New[int]("once", testLogger())
+	s := New[int]("once")
 	var count atomic.Int32
 	connect(t, s, func(ctx context.Context, n int) error { count.Add(1); return s.Emit(ctx, n+1) }, ConnectOptions{Once: true})
 	var wg sync.WaitGroup
@@ -78,7 +74,7 @@ func (e *rejectExecutor) Submit(context.Context, Task) error {
 }
 
 func TestOnceSubmissionFailureIsConsumedAndOtherHandlersRun(t *testing.T) {
-	s := New[int]("full", testLogger())
+	s := New[int]("full")
 	executor := &rejectExecutor{}
 	calls := 0
 	connect(t, s, func(context.Context, int) error { t.Fatal("unexpected execution"); return nil }, ConnectOptions{Executor: executor, Lifetime: FollowEmit, Once: true})
@@ -95,7 +91,7 @@ func TestOnceSubmissionFailureIsConsumedAndOtherHandlersRun(t *testing.T) {
 }
 
 func TestConnectValidation(t *testing.T) {
-	s := New[int]("validation", nil)
+	s := New[int]("validation")
 	handler := func(context.Context, int) error { return nil }
 	if _, err := s.Connect(nil, ConnectOptions{}); err == nil {
 		t.Fatal("nil handler accepted")

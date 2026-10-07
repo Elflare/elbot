@@ -53,7 +53,7 @@ func (n namingLogger) failed(ctx context.Context, event session.NamingFailedEven
 }
 
 func (b *signalBindings) connectNaming(sessions *session.Service, logger *slog.Logger) error {
-	queue, err := b.newQueue("session.naming_logs", logger, true)
+	queue, err := b.newQueue("session.naming_logs", true)
 	if err != nil {
 		return err
 	}

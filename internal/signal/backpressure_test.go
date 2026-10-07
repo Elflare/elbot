@@ -9,7 +9,7 @@ import (
 )
 
 func TestBackpressureFIFO(t *testing.T) {
-	q, err := NewQueue(QueueOptions{Capacity: 1, WaitForCapacity: true, Logger: testLogger()})
+	q, err := NewQueue(QueueOptions{Capacity: 1, WaitForCapacity: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestBackpressureFIFO(t *testing.T) {
 func TestBackpressureWakeOnCancelAndClose(t *testing.T) {
 	for _, closing := range []bool{false, true} {
 		t.Run(map[bool]string{false: "cancel", true: "close"}[closing], func(t *testing.T) {
-			q, err := NewQueue(QueueOptions{Capacity: 1, WaitForCapacity: true, Logger: testLogger()})
+			q, err := NewQueue(QueueOptions{Capacity: 1, WaitForCapacity: true})
 			if err != nil {
 				t.Fatal(err)
 			}

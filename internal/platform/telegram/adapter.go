@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -52,8 +51,7 @@ func (a *Adapter) Enabled() bool { return a.cfg.Enabled }
 
 func (a *Adapter) ConnectedSignal() *signal.Signal[platform.ConnectedEvent] {
 	a.connectedOnce.Do(func() {
-		logger, _ := a.logger.(*slog.Logger)
-		a.connected = signal.New[platform.ConnectedEvent](a.Name()+".connected", logger)
+		a.connected = signal.New[platform.ConnectedEvent](a.Name() + ".connected")
 	})
 	return a.connected
 }

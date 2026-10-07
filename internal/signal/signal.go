@@ -18,17 +18,13 @@ type slot[T any] struct {
 }
 
 type Signal[T any] struct {
-	mu     sync.Mutex
-	name   string
-	logger *slog.Logger
-	slots  []*slot[T]
+	mu    sync.Mutex
+	name  string
+	slots []*slot[T]
 }
 
-func New[T any](name string, logger *slog.Logger) *Signal[T] {
-	if logger == nil {
-		logger = slog.Default()
-	}
-	return &Signal[T]{name: name, logger: logger}
+func New[T any](name string) *Signal[T] {
+	return &Signal[T]{name: name}
 }
 
 func (s *Signal[T]) Connect(handler Handler[T], options ConnectOptions) (*Connection, error) {
@@ -102,7 +98,7 @@ func (s *Signal[T]) Emit(ctx context.Context, event T) error {
 				return (entry.options.Executor != nil && entry.options.Shutdown != Drain && errors.Is(leaf, ErrClosed)) || (ctx.Err() != nil && errors.Is(leaf, ctx.Err()))
 			})
 			if unexpected != nil {
-				s.logger.ErrorContext(ctx, "signal dispatch failed", "signal", s.name, "error", unexpected)
+				reportFailure("signal dispatch failed", slog.String("signal", s.name), slog.Any("error", unexpected))
 			}
 			errs = append(errs, fmt.Errorf("signal %s: %w", s.name, err))
 		}

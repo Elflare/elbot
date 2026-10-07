@@ -66,7 +66,7 @@ func New(opts Options) (*Service, error) {
 		clients:      make(map[string]llm.Client, len(opts.Providers)),
 		origins:      make(map[string]llm.Origin, len(opts.Providers)),
 		providers:    make(map[string]*providerCatalog, len(opts.Providers)),
-		retrying:     signal.New[ModelRetryingEvent]("model.retrying", nil),
+		retrying:     signal.New[ModelRetryingEvent]("model.retrying"),
 	}
 	for name, provider := range opts.Providers {
 		client := opts.Clients[name]

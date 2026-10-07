@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,7 +63,7 @@ func TestManagerCreatesRuntimeAuditAndElnisLogs(t *testing.T) {
 	manager.Runtime().Info("runtime log")
 	manager.Audit().Info("audit log")
 	manager.Elnis().Info("elnis log")
-	if err := manager.Close(); err != nil {
+	if err := manager.Close(context.Background()); err != nil {
 		t.Fatalf("close manager: %v", err)
 	}
 

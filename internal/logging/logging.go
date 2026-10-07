@@ -1,6 +1,8 @@
 package logging
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -9,6 +11,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"elbot/internal/events"
+	"elbot/internal/signal"
 )
 
 const DefaultRetentionDays = 30
@@ -19,28 +24,21 @@ type Manager struct {
 	elnis         *slog.Logger
 	logDir        string
 	retentionDays int
-	writers       []*dailyFileWriter
+	writers       []io.WriteCloser
+	level         slog.Level
+	sinks         map[events.LogCategory]*logSink
+	connection    *signal.Connection
+	beginOnce     sync.Once
+	closeGate     chan struct{}
+	closed        bool
+	closeErr      error
 }
 
 func NewManager(level, sqlitePath string, retentionDays int) (*Manager, error) {
 	logDir := filepath.Join(filepath.Dir(sqlitePath), "logs")
-	retentionDays = normalizeRetentionDays(retentionDays)
-	runtime, runtimeWriter, err := newPrefixedFile(level, sqlitePath, "elbot")
-	if err != nil {
-		return nil, err
-	}
-	audit, auditWriter, err := newPrefixedFile(level, sqlitePath, "audit")
-	if err != nil {
-		_ = runtimeWriter.Close()
-		return nil, err
-	}
-	elnis, elnisWriter, err := newPrefixedFile(level, sqlitePath, "elnis")
-	if err != nil {
-		_ = runtimeWriter.Close()
-		_ = auditWriter.Close()
-		return nil, err
-	}
-	return &Manager{runtime: runtime, audit: audit, elnis: elnis, logDir: logDir, retentionDays: retentionDays, writers: []*dailyFileWriter{runtimeWriter, auditWriter, elnisWriter}}, nil
+	return newManager(level, logDir, retentionDays, func(prefix string) (io.WriteCloser, error) {
+		return newDailyFileWriter(logDir, prefix, time.Now)
+	})
 }
 
 func (m *Manager) Runtime() *slog.Logger {
@@ -85,20 +83,53 @@ func (m *Manager) CleanupOldLogs() error {
 	return cleanupOldLogs(m.logDir, m.retentionDays)
 }
 
-func (m *Manager) Close() error {
+func (m *Manager) Close(ctx context.Context) error {
 	if m == nil {
 		return nil
 	}
-	var closeErr error
-	for _, writer := range m.writers {
-		if writer == nil {
-			continue
-		}
-		if err := writer.Close(); err != nil && closeErr == nil {
-			closeErr = err
+	m.BeginClose()
+	select {
+	case m.closeGate <- struct{}{}:
+	default:
+		select {
+		case m.closeGate <- struct{}{}:
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
-	return closeErr
+	defer func() { <-m.closeGate }()
+	if m.closed {
+		return m.closeErr
+	}
+	var errs []error
+	stopped := true
+	for _, category := range logCategories {
+		queue := m.sinks[category].queue
+		if err := queue.Close(ctx); err != nil {
+			errs = append(errs, err)
+		}
+		select {
+		case <-queue.Done():
+		default:
+			stopped = false
+		}
+	}
+	// A timeout never authorizes closing a writer still used by a callback.
+	// Keep ownership until an explicit later Close or process exit.
+	if !stopped {
+		return errors.Join(errs...)
+	}
+	for _, writer := range m.writers {
+		if err := writer.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	m.closed = true
+	m.closeErr = errors.Join(errs...)
+	managerOwnership.Lock()
+	managerOwnership.active = false
+	managerOwnership.Unlock()
+	return m.closeErr
 }
 
 func New(level string, output io.Writer) *slog.Logger {

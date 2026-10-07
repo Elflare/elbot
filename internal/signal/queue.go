@@ -16,7 +16,6 @@ var (
 type QueueOptions struct {
 	Name     string
 	Capacity int
-	Logger   *slog.Logger
 	// WaitForCapacity applies backpressure instead of returning ErrQueueFull.
 	WaitForCapacity bool
 }
@@ -35,7 +34,6 @@ type Queue struct {
 	activeShutdown  ShutdownPolicy
 	done            chan struct{}
 	name            string
-	logger          *slog.Logger
 	waitForCapacity bool
 }
 
@@ -46,12 +44,9 @@ func NewQueue(options QueueOptions) (*Queue, error) {
 	if options.Capacity == 0 {
 		options.Capacity = 256
 	}
-	if options.Logger == nil {
-		options.Logger = slog.Default()
-	}
 	q := &Queue{
 		jobs: make([]job, 0, options.Capacity), capacity: options.Capacity,
-		done: make(chan struct{}), name: options.Name, logger: options.Logger,
+		done: make(chan struct{}), name: options.Name,
 		waitForCapacity: options.WaitForCapacity,
 	}
 	q.ready = sync.NewCond(&q.mu)
@@ -125,7 +120,7 @@ func (q *Queue) work() {
 				return ctx.Err() != nil && errors.Is(leaf, ctx.Err())
 			})
 			if unexpected != nil {
-				q.logger.ErrorContext(ctx, "signal task failed", "queue", q.name, "error", unexpected)
+				reportFailure("signal task failed", slog.String("queue", q.name), slog.Any("error", unexpected))
 			}
 		}
 		cancel()
@@ -171,7 +166,7 @@ func (q *Queue) Close(ctx context.Context) error {
 		return nil
 	case <-ctx.Done():
 		q.mu.Lock()
-		pending, active := len(q.jobs), q.activeCancel != nil
+		pending, active := len(q.jobs), q.activeCancel != nil && q.activeShutdown == Drain
 		clear(q.jobs)
 		q.jobs = nil
 		if q.activeCancel != nil {
@@ -179,8 +174,8 @@ func (q *Queue) Close(ctx context.Context) error {
 		}
 		q.ready.Broadcast()
 		q.mu.Unlock()
-		if q.waitForCapacity && (pending > 0 || active) {
-			q.logger.ErrorContext(context.WithoutCancel(ctx), "signal log drain incomplete", "queue", q.name, "pending", pending, "active", active, "error", ctx.Err())
+		if pending > 0 || active {
+			reportFailure("signal drain incomplete", slog.String("queue", q.name), slog.Int("pending", pending), slog.Bool("active", active), slog.Any("error", ctx.Err()))
 		}
 		return fmt.Errorf("signal queue %s not fully closed: %w", q.name, ctx.Err())
 	}

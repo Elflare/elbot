@@ -20,7 +20,11 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 	var shutdownCtx context.Context
 	var shutdownCancel context.CancelFunc
 	var bindings *signalBindings
+	var logs LogManager
 	beginShutdown := func() {
+		if logs != nil {
+			logs.BeginClose()
+		}
 		if bindings != nil {
 			bindings.BeginClose()
 		}
@@ -89,6 +93,7 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 	}
 	foundation, err := r.deps.Foundation.Build(ctx, FoundationRequest{Options: opts, Mode: mode, Profiler: profiler})
 	if foundation != nil {
+		logs = foundation.Logs
 		stopCron = foundation.StopCron
 	}
 	if foundation != nil && foundation.Lifecycle != nil {

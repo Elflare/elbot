@@ -168,7 +168,7 @@ func (a *Adapter) Enabled() bool { return a.cfg.Enabled }
 
 func (a *Adapter) ConnectedSignal() *signal.Signal[platform.ConnectedEvent] {
 	a.connectedOnce.Do(func() {
-		a.connected = signal.New[platform.ConnectedEvent](a.Name()+".connected", a.logger)
+		a.connected = signal.New[platform.ConnectedEvent](a.Name() + ".connected")
 	})
 	return a.connected
 }

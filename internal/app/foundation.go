@@ -33,7 +33,7 @@ func (defaultFoundationFactory) Build(ctx context.Context, req FoundationRequest
 		return nil, err
 	}
 	lifecycle := &foundationLifecycle{cfg: cfg, logs: logs}
-	partial := &FoundationComponents{Lifecycle: lifecycle, StopCron: lifecycle.StopCron}
+	partial := &FoundationComponents{Logs: logs, Lifecycle: lifecycle, StopCron: lifecycle.StopCron}
 
 	req.Profiler.Mark("logging.NewManager")
 	logger := logs.Runtime()
@@ -169,7 +169,7 @@ func (l *foundationLifecycle) Close(ctx context.Context) error {
 		}
 	}
 	if l.logs != nil {
-		if err := l.logs.Close(); err != nil {
+		if err := l.logs.Close(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("close logs: %w", err))
 		}
 	}

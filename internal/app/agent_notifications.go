@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"log/slog"
 
 	agentevents "elbot/internal/agent/events"
 	"elbot/internal/hook"
@@ -12,12 +11,12 @@ import (
 	"elbot/internal/signal"
 )
 
-func (b *signalBindings) connectAgentNotifications(events agentevents.Signals, notices *notification.Manager, sender rules.AssistantSender, logger *slog.Logger) error {
-	progress, err := b.newQueue("agent.progress_notices", logger, false)
+func (b *signalBindings) connectAgentNotifications(events agentevents.Signals, notices *notification.Manager, sender rules.AssistantSender) error {
+	progress, err := b.newQueue("agent.progress_notices", false)
 	if err != nil {
 		return err
 	}
-	failures, err := b.newQueue("agent.failure_notices", logger, false)
+	failures, err := b.newQueue("agent.failure_notices", false)
 	if err != nil {
 		return err
 	}
