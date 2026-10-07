@@ -55,6 +55,20 @@ The discovery process is independent of the model protocol. Chat Completions sen
 
 Responses limit the currently callable tools via `tool_choice` in each round. Preserving definitions in history does not mean they are currently authorized for calling; when the definition of a tool with the same name changes, a new Session must be created.
 
+Tools can restrict the applicable API types; discovery, completion, preloading, and execution are all filtered by the current conversation model. Background tasks are determined by the model they have selected.
+
+### View Images
+
+`view_image` is only applicable to Responses and can be preloaded via `@tool:view_image`. Images are passed to the model as tool results and are not automatically sent to the chat.
+
+- `source`: Media ID, HTTP(S) URL, or local path (including `file://`); local paths are only available to superadmins and comply with workspace, background sandbox, and sensitive file reading rules.
+- `message_id`: An array of message IDs from the current chat, which can include `#`; choose either this or `source`. When `media_index` is omitted, the first image of each message is taken.
+- `media_index`: An array of media indices corresponding to each message, starting from 1; Files also occupy an index, but only images can be selected. For example, if a message contains a file, Image A, and Image B in sequence, `[[2,3]]` selects the two images.
+
+Parameters and selected indices will be checked collectively before retrieving images; If retrieval fails, explanations are returned per item; successfully retrieved images can still be viewed. Historical media retrieval for `view_image` and `get_media` attempts a maximum of 5 uncached locations each time, with failures also counting toward this limit; Cached items do not count toward the limit, and results for duplicate locations within the same request are reused. `get_media` returns media IDs, but by default, the first media of each message is still retrieved.
+
+The stdout and stderr returned by `shell` each retain a maximum of the first 256 KiB (calculated by bytes); When the limit is exceeded, a truncation notice for excessive length is appended to the end of the corresponding output. The command will continue to run and drain the output; if a complete large output is required, it can be written to a file and then read by range.
+
 ## Inline Preloading
 
 Inline preloading is used to prompt ElBot in normal input that the current task may require a certain type of tool or a specific Skill.
@@ -258,6 +272,8 @@ ElBot distinguishes between:
 | audit log | Track critical behaviors such as permission denials, tool calls, danger confirmations, and Cron deliveries. |
 
 You can use `/log` and `/audit` to query at runtime.
+
+The runtime and audit logs of Agent events uniformly carry available `session_id`, `run_id`, `attempt`, `request_id`, and `root_request_id`, used to associate the same Session, logical execution, execution attempt, and parent-child requests; Fields without a corresponding identity are omitted.
 
 ## Development Period Conventions
 
