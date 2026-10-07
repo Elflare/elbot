@@ -3,12 +3,15 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/tool"
 )
@@ -97,17 +100,37 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	callCtx = contextinfo.WithActor(callCtx, actor)
 	started := time.Now()
 	result, err := registered.Call(callCtx, tool.CallRequest{ID: randomID("plugin"), Name: name, Arguments: params.Arguments})
-	if w.manager.opts.Audit != nil {
-		status := "ok"
-		if err != nil {
-			status = "error"
+
+	level := slog.LevelInfo
+	status := "ok"
+	if err != nil {
+		status = "error"
+		level = slog.LevelWarn
+		if errors.Is(err, context.Canceled) {
+			level = slog.LevelInfo
 		}
-		invocation := params.ToolContext
-		if params.Background {
-			invocation = params.Origin
-		}
-		w.manager.opts.Audit("hook.tool_call", "hook", w.config.ID, "invocation", invocation, "tool", name, "status", status, "elapsed_ms", time.Since(started).Milliseconds(), "platform", actor.Platform, "user_id", actor.PlatformUserID)
 	}
+	invocation := params.ToolContext
+	if params.Background {
+		invocation = params.Origin
+	}
+	_ = globalevents.EmitLog(callCtx, globalevents.LogRecord{
+		Category: globalevents.LogAudit,
+		Level:    level,
+		Name:     "hook.tool_call",
+		Module:   "hook",
+		Summary:  "hook.tool_call",
+		Fields: []slog.Attr{
+			slog.Any("hook", w.config.ID),
+			slog.Any("invocation", invocation),
+			slog.Any("tool", name),
+			slog.Any("status", status),
+			slog.Any("elapsed_ms", time.Since(started).Milliseconds()),
+			slog.Any("platform", actor.Platform),
+			slog.Any("user_id", actor.PlatformUserID),
+		},
+	})
+
 	if err != nil {
 		return nil, err
 	}

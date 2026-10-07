@@ -11,6 +11,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
@@ -29,7 +30,6 @@ type backgroundRunner struct {
 	preloader   *toolrun.PreloadService
 	toolState   *toolrun.StateService
 	sandboxRoot string
-	auditLogger *slog.Logger
 }
 
 func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (background.RunResult, error) {
@@ -107,10 +107,24 @@ func (r *backgroundRunner) RunBackground(ctx context.Context, req background.Run
 		return background.RunResult{SessionID: bgSession.ID}, preloaded.Err
 	}
 	if len(preloaded.Tools) > 0 {
-		writeAudit(r.auditLogger, slog.LevelInfo, "background_tool_preloaded", "session_id", bgSession.ID, "kind", req.Kind, "name", req.Name, "tools", preloaded.Tools)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelInfo,
+			Name:     "background_tool_preloaded",
+			Module:   "agent",
+			Summary:  "background_tool_preloaded",
+			Fields:   []slog.Attr{slog.Any("session_id", bgSession.ID), slog.Any("kind", req.Kind), slog.Any("name", req.Name), slog.Any("tools", preloaded.Tools)},
+		})
 	}
 	if len(preloaded.Skills) > 0 {
-		writeAudit(r.auditLogger, slog.LevelInfo, "background_skill_preloaded", "session_id", bgSession.ID, "kind", req.Kind, "name", req.Name, "skills", preloaded.Skills)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelInfo,
+			Name:     "background_skill_preloaded",
+			Module:   "agent",
+			Summary:  "background_skill_preloaded",
+			Fields:   []slog.Attr{slog.Any("session_id", bgSession.ID), slog.Any("kind", req.Kind), slog.Any("name", req.Name), slog.Any("skills", preloaded.Skills)},
+		})
 	}
 	prompt := backgroundPromptWithSkills(req.Prompt, preloaded.SkillPrompt)
 	result := r.execution.RunBackground(ctx, bgSession, prompt)

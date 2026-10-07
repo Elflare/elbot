@@ -2,8 +2,10 @@ package agent
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
+	globalevents "elbot/internal/events"
 	"elbot/internal/media"
 	"elbot/internal/platform"
 )
@@ -70,8 +72,15 @@ func (h *messageHandler) associateInboundHistory(ctx context.Context, msg platfo
 		if resolved[i].MediaID == "" {
 			continue
 		}
-		if err := h.media.AssociateHistory(ctx, *row, index, raw.Type, resolved[i].MediaID); err != nil && h.logger != nil {
-			h.logger.WarnContext(ctx, "associate inbound history media failed", "error", err)
+		if err := h.media.AssociateHistory(ctx, *row, index, raw.Type, resolved[i].MediaID); err != nil {
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogRuntime,
+				Level:    slog.LevelError,
+				Name:     "associate_inbound_history_media_failed",
+				Module:   "agent",
+				Summary:  "associate inbound history media failed",
+				Fields:   []slog.Attr{slog.Any("error", err)},
+			})
 		}
 	}
 }

@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 
 	"elbot/internal/background"
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/storage"
 )
@@ -153,8 +155,22 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) error {
 	if err := repo.CompleteReport(ctx, eventID, StatusDelivering, StatusCompleted); err != nil {
 		return s.releaseReport(ctx, eventID, err)
 	}
-	s.auditEvent("elnis.llm_completed", "event_id", eventID, "event_key", event.EventKey, "session_id", event.SessionID)
-	s.logInfo("elnis llm completed", "event_id", eventID, "event_key", event.EventKey, "session_id", event.SessionID)
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogAudit,
+		Level:    slog.LevelInfo,
+		Name:     "elnis.llm_completed",
+		Module:   "elnis",
+		Summary:  "elnis.llm_completed",
+		Fields:   []slog.Attr{slog.Any("event_id", eventID), slog.Any("event_key", event.EventKey), slog.Any("session_id", event.SessionID)},
+	})
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogElnis,
+		Level:    slog.LevelInfo,
+		Name:     "elnis_llm_completed",
+		Module:   "elnis",
+		Summary:  "elnis llm completed",
+		Fields:   []slog.Attr{slog.Any("event_id", eventID), slog.Any("event_key", event.EventKey), slog.Any("session_id", event.SessionID)},
+	})
 	return nil
 }
 
@@ -193,7 +209,14 @@ func (s *Service) recoverReports(ctx context.Context, resetDelivering bool) erro
 			if firstErr == nil {
 				firstErr = err
 			}
-			s.logWarn("recover elnis report failed", "event_id", eventID, "error", err.Error())
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogElnis,
+				Level:    slog.LevelWarn,
+				Name:     "recover_elnis_report_failed",
+				Module:   "elnis",
+				Summary:  "recover elnis report failed",
+				Fields:   []slog.Attr{slog.Any("event_id", eventID), slog.Any("error", err.Error())},
+			})
 		}
 	}
 	return firstErr

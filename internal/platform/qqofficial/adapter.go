@@ -11,24 +11,17 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/platform"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 )
-
-type Logger interface {
-	DebugContext(context.Context, string, ...any)
-	InfoContext(context.Context, string, ...any)
-	WarnContext(context.Context, string, ...any)
-	ErrorContext(context.Context, string, ...any)
-}
 
 type Adapter struct {
 	cfg         Config
 	store       storage.Store
 	chatHistory storage.ChatHistoryRepository
 	client      *apiClient
-	logger      Logger
 
 	connectedOnce sync.Once
 	connected     *signal.Signal[platform.ConnectedEvent]
@@ -38,9 +31,9 @@ type Adapter struct {
 	wsWriteMu sync.Mutex
 }
 
-func New(cfg Config, store storage.Store, chatHistory storage.ChatHistoryRepository, logger Logger) *Adapter {
+func New(cfg Config, store storage.Store, chatHistory storage.ChatHistoryRepository) *Adapter {
 	applyDefaults(&cfg)
-	return &Adapter{cfg: cfg, store: store, chatHistory: chatHistory, client: newAPIClient(cfg), logger: logger, seqByID: map[string]int{}}
+	return &Adapter{cfg: cfg, store: store, chatHistory: chatHistory, client: newAPIClient(cfg), seqByID: map[string]int{}}
 }
 
 func (a *Adapter) Name() string { return platformName }
@@ -72,7 +65,14 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 		reason, err := a.runGatewayOnce(ctx, handler, &state)
 		if err != nil && !errors.Is(err, context.Canceled) {
 			if backoff.ShouldWarn() {
-				a.logWarn(ctx, "qqofficial gateway disconnected", "error", err, "reconnect_mode", reason.mode.String())
+				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+					Category: globalevents.LogRuntime,
+					Level:    slog.LevelWarn,
+					Name:     "qqofficial_gateway_disconnected",
+					Module:   "qqofficial",
+					Summary:  "qqofficial gateway disconnected",
+					Fields:   []slog.Attr{slog.Any("error", err), slog.Any("reconnect_mode", reason.mode.String())},
+				})
 			}
 		} else {
 			backoff.Reset()
@@ -169,26 +169,6 @@ func (a *Adapter) nextMsgSeq(msgID string) int {
 	defer a.seqMu.Unlock()
 	a.seqByID[msgID]++
 	return a.seqByID[msgID]
-}
-
-func (a *Adapter) logDebug(ctx context.Context, msg string, attrs ...any) {
-	if a.logger != nil {
-		a.logger.DebugContext(ctx, msg, attrs...)
-	}
-}
-
-func (a *Adapter) logInfo(ctx context.Context, msg string, attrs ...any) {
-	if a.logger != nil {
-		a.logger.InfoContext(ctx, msg, attrs...)
-	}
-}
-
-func (a *Adapter) logWarn(ctx context.Context, msg string, attrs ...any) {
-	if a.logger != nil {
-		a.logger.WarnContext(ctx, msg, attrs...)
-	} else {
-		slog.WarnContext(ctx, msg, attrs...)
-	}
 }
 
 type sendTarget struct {

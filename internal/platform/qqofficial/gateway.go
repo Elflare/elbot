@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"runtime"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
+	globalevents "elbot/internal/events"
 	"elbot/internal/platform"
 )
 
@@ -88,7 +90,14 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler platform.PlatformH
 		switch p.Op {
 		case opDispatch:
 			if err := a.handleDispatch(ctx, handler, p, state); err != nil {
-				a.logWarn(ctx, "handle qqofficial dispatch failed", "event", p.Type, "error", err)
+				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+					Category: globalevents.LogRuntime,
+					Level:    slog.LevelWarn,
+					Name:     p.Type,
+					Module:   "qqofficial",
+					Summary:  "handle qqofficial dispatch failed",
+					Fields:   []slog.Attr{slog.Any("error", err)},
+				})
 			}
 		case opHeartbeat:
 			_ = a.writeGateway(ctx, conn, payload{Op: opHeartbeat, Data: mustJSON(state.seq)})
@@ -102,7 +111,14 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler platform.PlatformH
 			state.sessionID = ""
 			return reconnectReason{mode: reconnectIdentify}, fmt.Errorf("qqofficial invalid session")
 		default:
-			a.logDebug(ctx, "qqofficial gateway op ignored", "op", p.Op)
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogRuntime,
+				Level:    slog.LevelDebug,
+				Name:     "qqofficial_gateway_op_ignored",
+				Module:   "qqofficial",
+				Summary:  "qqofficial gateway op ignored",
+				Fields:   []slog.Attr{slog.Any("op", p.Op)},
+			})
 		}
 	}
 }
@@ -143,7 +159,14 @@ func (a *Adapter) heartbeatLoop(ctx context.Context, conn *websocket.Conn, state
 			return
 		case <-ticker.C:
 			if err := a.writeGateway(ctx, conn, payload{Op: opHeartbeat, Data: mustJSON(state.seq)}); err != nil {
-				a.logWarn(ctx, "send qqofficial heartbeat failed", "error", err)
+				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+					Category: globalevents.LogRuntime,
+					Level:    slog.LevelWarn,
+					Name:     "send_qqofficial_heartbeat_failed",
+					Module:   "qqofficial",
+					Summary:  "send qqofficial heartbeat failed",
+					Fields:   []slog.Attr{slog.Any("error", err)},
+				})
 				return
 			}
 		}
@@ -159,7 +182,14 @@ func (a *Adapter) handleDispatch(ctx context.Context, handler platform.PlatformH
 		}
 		state.sessionID = ready.SessionID
 		state.resume = true
-		a.logInfo(ctx, "qqofficial gateway ready", "bot_id", ready.User.ID, "bot_name", ready.User.Username)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelInfo,
+			Name:     "qqofficial_gateway_ready",
+			Module:   "qqofficial",
+			Summary:  "qqofficial gateway ready",
+			Fields:   []slog.Attr{slog.Any("bot_id", ready.User.ID), slog.Any("bot_name", ready.User.Username)},
+		})
 		a.notifyConnected(ctx)
 	case eventResumed:
 		state.resume = true
@@ -178,7 +208,7 @@ func (a *Adapter) handleDispatch(ctx context.Context, handler platform.PlatformH
 		go a.handleGroupMessage(ctx, handler, p, msg)
 	default:
 		if strings.TrimSpace(p.Type) != "" {
-			a.logDebug(ctx, "qqofficial dispatch ignored", "event", p.Type)
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelDebug, Name: p.Type, Module: "qqofficial", Summary: "qqofficial dispatch ignored", Fields: []slog.Attr{}})
 		}
 	}
 	return nil

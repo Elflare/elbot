@@ -9,6 +9,7 @@ import (
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
+	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/notification"
@@ -19,7 +20,6 @@ type outputSender struct {
 	notifications *notification.Manager
 	hooks         *hookBridge
 	identity      *identityResolver
-	logger        *slog.Logger
 }
 
 func (o *outputSender) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
@@ -53,9 +53,16 @@ func (o *outputSender) SendAssistant(ctx context.Context, text string) (delivery
 	}
 	receipt, err := o.dispatcher.SendChat(ctx, []delivery.Output{delivery.Text(preparedText)})
 	if err != nil {
-		if o.logger != nil {
-			o.logger.WarnContext(ctx, "chat send failed", "error", err.Error())
-		}
+
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelWarn,
+			Name:     "chat_send_failed",
+			Module:   "agent",
+			Summary:  "chat send failed",
+			Fields:   []slog.Attr{slog.Any("error", err.Error())},
+		})
+
 		return receipt, err
 	}
 	o.hooks.Notify(ctx, hook.Event{Point: hook.PointPlatformMessageSent, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(preparedText)}})

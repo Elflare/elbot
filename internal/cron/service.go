@@ -16,6 +16,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/elyph"
+	globalevents "elbot/internal/events"
 	"elbot/internal/modelmgr"
 	"elbot/internal/security"
 	"elbot/internal/session"
@@ -27,8 +28,6 @@ const (
 	metadataKind    = "llm_cron"
 	timeLayout      = "2006-01-02 15:04:05"
 )
-
-type AuditFunc func(event string, attrs ...any)
 
 type TargetSenderFunc func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error)
 
@@ -47,10 +46,9 @@ type Models interface {
 }
 
 type Service struct {
-	manager          *Manager
-	store            storage.Store
-	logger           *slog.Logger
-	audit            AuditFunc
+	manager *Manager
+	store   storage.Store
+
 	sendTarget       TargetSenderFunc
 	runner           LLMRunner
 	models           Models
@@ -65,10 +63,9 @@ type Service struct {
 }
 
 type Options struct {
-	Manager          *Manager
-	Store            storage.Store
-	Logger           *slog.Logger
-	Audit            AuditFunc
+	Manager *Manager
+	Store   storage.Store
+
 	SendTarget       TargetSenderFunc
 	Runner           LLMRunner
 	Models           Models
@@ -82,7 +79,16 @@ func NewService(opts Options) *Service {
 	if sandboxRoot == "" {
 		sandboxRoot = filepath.Join("data", "sandbox")
 	}
-	s := &Service{manager: opts.Manager, store: opts.Store, logger: opts.Logger, audit: opts.Audit, sendTarget: opts.SendTarget, runner: opts.Runner, sandboxRoot: sandboxRoot, now: time.Now, connectedPlatforms: map[string]bool{}, deliveryGates: map[string]chan struct{}{}}
+	s := &Service{
+		manager:            opts.Manager,
+		store:              opts.Store,
+		sendTarget:         opts.SendTarget,
+		runner:             opts.Runner,
+		sandboxRoot:        sandboxRoot,
+		now:                time.Now,
+		connectedPlatforms: map[string]bool{},
+		deliveryGates:      map[string]chan struct{}{},
+	}
 	s.enabledPlatforms = normalizePlatformTargets(opts.EnabledPlatforms)
 	s.models = opts.Models
 	s.sessions = opts.Sessions
@@ -107,11 +113,32 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) error {
 	job = *latest
 	meta, err := decodeMetadata(job.Metadata)
 	if err != nil {
-		s.logWarn("cron metadata parse failed", "job", job.Name, "error", err)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelWarn,
+			Name:     "cron_metadata_parse_failed",
+			Module:   "cron",
+			Summary:  "cron metadata parse failed",
+			Fields:   []slog.Attr{slog.Any("job", job.Name), slog.Any("error", err)},
+		})
 		return err
 	}
-	s.auditEvent("cron.trigger_started", s.cronAuditAttrs(job.Name, meta, "trigger_mode", meta.Trigger.Mode, "schedule_mode", meta.Schedule.Mode)...)
-	s.logInfo("cron trigger started", s.cronLogAttrs(job.Name, meta, "trigger_mode", meta.Trigger.Mode, "schedule_mode", meta.Schedule.Mode)...)
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogAudit,
+		Level:    slog.LevelInfo,
+		Name:     "cron.trigger_started",
+		Module:   "cron",
+		Summary:  "cron.trigger_started",
+		Fields:   slog.Group("", s.cronAuditAttrs(job.Name, meta, "trigger_mode", meta.Trigger.Mode, "schedule_mode", meta.Schedule.Mode)...).Value.Group(),
+	})
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogRuntime,
+		Level:    slog.LevelInfo,
+		Name:     "cron_trigger_started",
+		Module:   "cron",
+		Summary:  "cron trigger started",
+		Fields:   slog.Group("", s.cronLogAttrs(job.Name, meta, "trigger_mode", meta.Trigger.Mode, "schedule_mode", meta.Schedule.Mode)...).Value.Group(),
+	})
 	var runErr error
 	switch meta.Trigger.Mode {
 	case TriggerDirect:
@@ -125,18 +152,53 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) error {
 		if isContextCancellation(ctx, runErr) {
 			return runErr
 		}
-		s.auditEvent("cron.trigger_failed", s.cronAuditAttrs(job.Name, meta, "error", runErr.Error())...)
-		s.logWarn("cron trigger failed", s.cronLogAttrs(job.Name, meta, "error", runErr.Error())...)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelWarn,
+			Name:     "cron.trigger_failed",
+			Module:   "cron",
+			Summary:  "cron.trigger_failed",
+			Fields:   slog.Group("", s.cronAuditAttrs(job.Name, meta, "error", runErr.Error())...).Value.Group(),
+		})
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelWarn,
+			Name:     "cron_trigger_failed",
+			Module:   "cron",
+			Summary:  "cron trigger failed",
+			Fields:   slog.Group("", s.cronLogAttrs(job.Name, meta, "error", runErr.Error())...).Value.Group(),
+		})
 		return runErr
 	}
-	s.auditEvent("cron.trigger_completed", s.cronAuditAttrs(job.Name, meta)...)
-	s.logInfo("cron trigger completed", s.cronLogAttrs(job.Name, meta)...)
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogAudit,
+		Level:    slog.LevelInfo,
+		Name:     "cron.trigger_completed",
+		Module:   "cron",
+		Summary:  "cron.trigger_completed",
+		Fields:   slog.Group("", s.cronAuditAttrs(job.Name, meta)...).Value.Group(),
+	})
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogRuntime,
+		Level:    slog.LevelInfo,
+		Name:     "cron_trigger_completed",
+		Module:   "cron",
+		Summary:  "cron trigger completed",
+		Fields:   slog.Group("", s.cronLogAttrs(job.Name, meta)...).Value.Group(),
+	})
 	return nil
 }
 
 func (s *Service) Create(ctx context.Context, req UpsertRequest) (*storage.CronJob, error) {
 	if err := requireSuperadmin(req.Actor); err != nil {
-		s.auditEvent("cron.permission_denied", "operation", "create", "actor_id", req.Actor.ID, "reason", err.Error())
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelWarn,
+			Name:     "cron.permission_denied",
+			Module:   "cron",
+			Summary:  "cron.permission_denied",
+			Fields:   []slog.Attr{slog.Any("operation", "create"), slog.Any("actor_id", req.Actor.ID), slog.Any("reason", err.Error())},
+		})
 		return nil, err
 	}
 	meta := Metadata{Kind: metadataKind, Version: 1, Title: strings.TrimSpace(req.Title), CreatedBy: actorMetadata(req.Actor), Schedule: CronSchedule{Mode: req.ScheduleMode, RunAt: strings.TrimSpace(req.RunAt), CronExpr: strings.TrimSpace(req.CronExpr)}, Trigger: CronTrigger{Mode: req.TriggerMode, Message: strings.TrimSpace(req.Message)}, Target: CronTarget{AllEnabledPlatforms: req.AllEnabledPlatforms, SourcePlatform: firstNonEmpty(req.SourcePlatform, req.Actor.Platform)}, LLM: CronLLMMetadata{ToolListNames: normalizeToolListNames(req.ToolListNames), ModelProvider: strings.TrimSpace(req.ModelProvider), Model: strings.TrimSpace(req.Model)}}
@@ -153,13 +215,27 @@ func (s *Service) Create(ctx context.Context, req UpsertRequest) (*storage.CronJ
 	if err != nil {
 		return nil, err
 	}
-	s.auditEvent("cron.create", "job", job.Name, "actor_id", req.Actor.ID, "trigger_mode", meta.Trigger.Mode, "schedule_mode", meta.Schedule.Mode)
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogAudit,
+		Level:    slog.LevelInfo,
+		Name:     "cron.create",
+		Module:   "cron",
+		Summary:  "cron.create",
+		Fields:   []slog.Attr{slog.Any("job", job.Name), slog.Any("actor_id", req.Actor.ID), slog.Any("trigger_mode", meta.Trigger.Mode), slog.Any("schedule_mode", meta.Schedule.Mode)},
+	})
 	return job, nil
 }
 
 func (s *Service) Update(ctx context.Context, req PatchRequest) (*storage.CronJob, error) {
 	if err := requireSuperadmin(req.Actor); err != nil {
-		s.auditEvent("cron.permission_denied", "operation", "update", "actor_id", req.Actor.ID, "reason", err.Error())
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelWarn,
+			Name:     "cron.permission_denied",
+			Module:   "cron",
+			Summary:  "cron.permission_denied",
+			Fields:   []slog.Attr{slog.Any("operation", "update"), slog.Any("actor_id", req.Actor.ID), slog.Any("reason", err.Error())},
+		})
 		return nil, err
 	}
 	name := normalizeJobName(req.Name)
@@ -220,13 +296,27 @@ func (s *Service) Update(ctx context.Context, req PatchRequest) (*storage.CronJo
 	if err != nil {
 		return nil, err
 	}
-	s.auditEvent("cron.update", "job", updated.Name, "actor_id", req.Actor.ID)
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogAudit,
+		Level:    slog.LevelInfo,
+		Name:     "cron.update",
+		Module:   "cron",
+		Summary:  "cron.update",
+		Fields:   []slog.Attr{slog.Any("job", updated.Name), slog.Any("actor_id", req.Actor.ID)},
+	})
 	return updated, nil
 }
 
 func (s *Service) Disable(ctx context.Context, name string, actor contextinfo.Actor) error {
 	if err := requireSuperadmin(actor); err != nil {
-		s.auditEvent("cron.permission_denied", "operation", "disable", "actor_id", actor.ID, "reason", err.Error())
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelWarn,
+			Name:     "cron.permission_denied",
+			Module:   "cron",
+			Summary:  "cron.permission_denied",
+			Fields:   []slog.Attr{slog.Any("operation", "disable"), slog.Any("actor_id", actor.ID), slog.Any("reason", err.Error())},
+		})
 		return err
 	}
 	name = normalizeJobName(name)
@@ -237,13 +327,27 @@ func (s *Service) Disable(ctx context.Context, name string, actor contextinfo.Ac
 	} else if err := s.store.CronJobs().DisableByName(ctx, name); err != nil {
 		return err
 	}
-	s.auditEvent("cron.disable", "job", name, "actor_id", actor.ID)
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogAudit,
+		Level:    slog.LevelInfo,
+		Name:     "cron.disable",
+		Module:   "cron",
+		Summary:  "cron.disable",
+		Fields:   []slog.Attr{slog.Any("job", name), slog.Any("actor_id", actor.ID)},
+	})
 	return nil
 }
 
 func (s *Service) Delete(ctx context.Context, name string, actor contextinfo.Actor) error {
 	if err := requireSuperadmin(actor); err != nil {
-		s.auditEvent("cron.permission_denied", "operation", "delete", "actor_id", actor.ID, "reason", err.Error())
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelWarn,
+			Name:     "cron.permission_denied",
+			Module:   "cron",
+			Summary:  "cron.permission_denied",
+			Fields:   []slog.Attr{slog.Any("operation", "delete"), slog.Any("actor_id", actor.ID), slog.Any("reason", err.Error())},
+		})
 		return err
 	}
 	name = normalizeJobName(name)
@@ -254,13 +358,27 @@ func (s *Service) Delete(ctx context.Context, name string, actor contextinfo.Act
 	} else if err := s.store.CronJobs().DeleteByName(ctx, name); err != nil {
 		return err
 	}
-	s.auditEvent("cron.delete", "job", name, "actor_id", actor.ID)
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogAudit,
+		Level:    slog.LevelInfo,
+		Name:     "cron.delete",
+		Module:   "cron",
+		Summary:  "cron.delete",
+		Fields:   []slog.Attr{slog.Any("job", name), slog.Any("actor_id", actor.ID)},
+	})
 	return nil
 }
 
 func (s *Service) Get(ctx context.Context, name string, actor contextinfo.Actor) (JobView, error) {
 	if err := requireSuperadmin(actor); err != nil {
-		s.auditEvent("cron.permission_denied", "operation", "get", "actor_id", actor.ID, "reason", err.Error())
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelWarn,
+			Name:     "cron.permission_denied",
+			Module:   "cron",
+			Summary:  "cron.permission_denied",
+			Fields:   []slog.Attr{slog.Any("operation", "get"), slog.Any("actor_id", actor.ID), slog.Any("reason", err.Error())},
+		})
 		return JobView{}, err
 	}
 	job, err := s.store.CronJobs().GetByName(ctx, normalizeJobName(name))
@@ -280,7 +398,14 @@ func (s *Service) Get(ctx context.Context, name string, actor contextinfo.Actor)
 
 func (s *Service) List(ctx context.Context, includeDisabled, includeCompleted bool, actor contextinfo.Actor) ([]JobView, error) {
 	if err := requireSuperadmin(actor); err != nil {
-		s.auditEvent("cron.permission_denied", "operation", "list", "actor_id", actor.ID, "reason", err.Error())
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelWarn,
+			Name:     "cron.permission_denied",
+			Module:   "cron",
+			Summary:  "cron.permission_denied",
+			Fields:   []slog.Attr{slog.Any("operation", "list"), slog.Any("actor_id", actor.ID), slog.Any("reason", err.Error())},
+		})
 		return nil, err
 	}
 	jobs, err := s.store.CronJobs().List(ctx, includeDisabled)
@@ -467,18 +592,6 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func (s *Service) logInfo(msg string, attrs ...any) {
-	if s.logger != nil {
-		s.logger.Info(msg, attrs...)
-	}
-}
-
-func (s *Service) logWarn(msg string, attrs ...any) {
-	if s.logger != nil {
-		s.logger.Warn(msg, attrs...)
-	}
-}
-
 func (s *Service) cronAuditAttrs(jobName string, meta Metadata, attrs ...any) []any {
 	base := []any{"job", jobName, "source_platform", meta.Target.SourcePlatform, "target_platforms", strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms", meta.Target.AllEnabledPlatforms}
 	return append(base, attrs...)
@@ -503,10 +616,4 @@ func containsString(values []string, value string) bool {
 		}
 	}
 	return false
-}
-
-func (s *Service) auditEvent(event string, attrs ...any) {
-	if s.audit != nil {
-		s.audit(event, attrs...)
-	}
 }

@@ -1,13 +1,16 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"runtime"
 	"strings"
 	"time"
 
+	"elbot/internal/events"
 	platformbuiltin "elbot/internal/platform/builtin"
 )
 
@@ -50,10 +53,17 @@ func (p *startupProfiler) Flush() time.Duration {
 	total := time.Since(p.startedAt)
 	if p.enabled {
 		for _, entry := range p.entries {
-			fmt.Fprintf(os.Stderr, "[startup] %-24s took=%s total=%s\n", entry.name, entry.duration, entry.total)
+			_ = events.EmitLog(context.Background(), events.LogRecord{
+				At:       p.startedAt.Add(entry.total),
+				Category: events.LogRuntime,
+				Level:    slog.LevelDebug,
+				Name:     "startup_stage",
+				Module:   "app",
+				Summary:  "startup stage",
+				Fields:   []slog.Attr{slog.String("stage", entry.name), slog.Duration("duration", entry.duration), slog.Duration("total", entry.total)},
+			})
 		}
 	}
-	fmt.Fprintf(os.Stderr, "elbot startup completed in %s\n", total)
 	return total
 }
 

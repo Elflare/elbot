@@ -252,13 +252,6 @@ func (c sessionTargetCommand) Complete(ctx context.Context, req command.Completi
 	return nil
 }
 
-func auditCommand(deps Deps, event string, attrs ...any) {
-	if deps.Audit == nil {
-		return
-	}
-	deps.Audit(event, attrs...)
-}
-
 func cleanupRetentionDays(deps Deps) int {
 	_, days := deps.SessionState.config()
 	if days <= 0 {

@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
+	globalevents "elbot/internal/events"
 	"elbot/internal/modelmgr"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
@@ -71,8 +73,15 @@ func formatContextStatus(ctx context.Context, deps Deps, row *storage.Session, m
 		return ""
 	}
 	usage, err := deps.Contexts.Usage(row)
-	if err != nil && deps.Logger != nil {
-		deps.Logger.Warn("load usage failed", "session_id", row.ID, "error", err)
+	if err != nil {
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelError,
+			Name:     "load_usage_failed",
+			Module:   "command",
+			Summary:  "load usage failed",
+			Fields:   []slog.Attr{slog.Any("session_id", row.ID), slog.Any("error", err)},
+		})
 	}
 	return deps.Contexts.Status(ctx, usage, config.ModelSelection{Provider: model.Provider, Model: model.Model})
 }

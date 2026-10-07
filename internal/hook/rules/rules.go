@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 	hookoutput "elbot/internal/hook/output"
 	hookruntime "elbot/internal/hook/runtime"
@@ -20,10 +21,9 @@ const (
 )
 
 type Options struct {
-	ConfigDir       string
-	Tools           *tool.Registry
-	Logger          *slog.Logger
-	Audit           func(event string, attrs ...any)
+	ConfigDir string
+	Tools     *tool.Registry
+
 	Notify          func(context.Context, string)
 	Send            func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
 	PlatformCallers PlatformCallerResolver
@@ -132,7 +132,6 @@ type Module struct {
 	Rules    []Rule
 	Runtimes []hookruntime.Config
 	Opts     Options
-	Logger   *slog.Logger
 }
 
 type ruleSource struct {
@@ -162,16 +161,23 @@ func NewModule(opts Options) (Module, error) {
 		reportConfigError(context.Background(), opts, path, err)
 		return Module{}, err
 	}
-	module := Module{Rules: cfg.Rules, Runtimes: cfg.Runtimes, Opts: opts, Logger: opts.Logger}
-	if module.Logger != nil {
-		enabled := 0
-		for _, rule := range module.Rules {
-			if rule.enabled() {
-				enabled++
-			}
+	module := Module{Rules: cfg.Rules, Runtimes: cfg.Runtimes, Opts: opts}
+
+	enabled := 0
+	for _, rule := range module.Rules {
+		if rule.enabled() {
+			enabled++
 		}
-		module.Logger.Info("hook rule config loaded", "path", path, "rules", len(module.Rules), "enabled", enabled)
 	}
+	_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
+		Category: globalevents.LogRuntime,
+		Level:    slog.LevelInfo,
+		Name:     "hook_rule_config_loaded",
+		Module:   "hook",
+		Summary:  "hook rule config loaded",
+		Fields:   []slog.Attr{slog.Any("path", path), slog.Any("rules", len(module.Rules)), slog.Any("enabled", enabled)},
+	})
+
 	return module, nil
 }
 
@@ -194,9 +200,23 @@ func (m Module) RegisterHooks(registrar hook.Registrar) error {
 		if name == "" {
 			name = fmt.Sprintf("rule.%d", index+1)
 		}
-		if m.Logger != nil {
-			m.Logger.Info("hook rule registered", "name", name, "point", rule.On, "priority", priority, "matches", len(rule.Match), "actions", len(rule.Actions), "config_path", rule.source.ConfigPath)
-		}
+
+		_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelInfo,
+			Name:     "hook_rule_registered",
+			Module:   "hook",
+			Summary:  "hook rule registered",
+			Fields: []slog.Attr{
+				slog.Any("name", name),
+				slog.Any("point", rule.On),
+				slog.Any("priority", priority),
+				slog.Any("matches", len(rule.Match)),
+				slog.Any("actions", len(rule.Actions)),
+				slog.Any("config_path", rule.source.ConfigPath),
+			},
+		})
+
 		rule := rule
 		registrations := ruleRegistrations(rule)
 		for roleIndex, match := range registrations {

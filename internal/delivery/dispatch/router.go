@@ -4,7 +4,6 @@ package dispatch
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
 	"sync"
 
@@ -21,7 +20,6 @@ type Options struct {
 	Store              storage.Store
 	Media              *media.Manager
 	MediaRetentionDays int
-	Logger             *slog.Logger
 }
 
 type Router struct {
@@ -31,11 +29,10 @@ type Router struct {
 	store              storage.Store
 	media              *media.Manager
 	mediaRetentionDays int
-	logger             *slog.Logger
 }
 
 func New(opts Options) *Router {
-	r := &Router{primary: opts.Primary, senders: make(map[string]delivery.MessageSender), store: opts.Store, media: opts.Media, mediaRetentionDays: opts.MediaRetentionDays, logger: opts.Logger}
+	r := &Router{primary: opts.Primary, senders: make(map[string]delivery.MessageSender), store: opts.Store, media: opts.Media, mediaRetentionDays: opts.MediaRetentionDays}
 	if opts.Primary != nil {
 		r.RegisterPlatformSender(opts.Primary.Name(), opts.Primary)
 	}
@@ -77,11 +74,11 @@ func (r *Router) sender(ctx context.Context, target delivery.Target) (delivery.M
 }
 
 func (r *Router) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
-	return delivery.NewManager(rawSender{r}, r.logger).SendChat(ctx, outputs)
+	return delivery.NewManager(rawSender{r}).SendChat(ctx, outputs)
 }
 
 func (r *Router) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
-	return delivery.NewManager(rawSender{r}, r.logger).SendNotice(ctx, notice)
+	return delivery.NewManager(rawSender{r}).SendNotice(ctx, notice)
 }
 
 type rawSender struct{ router *Router }

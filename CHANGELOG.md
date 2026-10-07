@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - 审计和 Elnis 日志从共用运行等级改为独立保留，`runtime.log_level=warn/error` 不再过滤 `/usage` 所需的用量事实。信号设施故障从业务 Logger 改为直接报告 stderr，不受运行等级影响。
+- 全部业务日志从 Logger／Audit 注入及 App 中转改为通过全局信号交给日志中心；Agent、命名和重试的日志投影由来源模块维护，上游失败详情改用通用诊断契约。
+- 运行日志正文改为最多 256 字的摘要，DEBUG 才保留详情；集中脱敏后限制单项详情 8 KiB、单条记录 64 KiB。启动耗时从直接输出改为 DEBUG 日志。
 - 工具支持按 API 类型限制发现、补全、预载和执行。
 - `shell` 的 stdout／stderr 返回上限从各 16 KiB 提高到各 256 KiB，超出时在对应输出末尾说明过长截断。
 - Responses 工具定义从每轮顶层 `tools` 改为原生输入中的增量 `additional_tools`，回放保留原有位置；当前调用权限单独受 `tool_choice` 限制。旧 Responses 会话及同名工具定义变化需新建会话。
@@ -31,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复模型重试日志依赖通知订阅、Hook 原始失败被重复记录的问题。
 - 修复 `shell` 先缓存全部输出、结束后才截断导致执行期间内存随输出量增长的问题；现在收集时限制容量，超出部分继续排空并丢弃。
 - 修复高风险确认的bug。
 - 修复追加确认等待的bug。

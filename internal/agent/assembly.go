@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"path/filepath"
 	"strings"
 
@@ -23,22 +22,15 @@ func New(ctx context.Context, cfg Config, deps Dependencies) (*Agent, error) {
 	}
 	store := deps.Store
 	requests, turns, sessions := deps.Requests, deps.Turns, deps.Sessions
-	var logger, auditLogger *slog.Logger
-	if deps.Logs != nil {
-		logger, auditLogger = deps.Logs.Runtime(), deps.Logs.Audit()
-	}
 	hookManager := hookRunner(deps.HookManager)
 	if hookManager == nil {
 		hookManager = hook.NoopManager{}
 	}
 	signals := agentevents.NewSignals()
 	identity := &identityResolver{platformName: deps.Platform.Name(), actorID: "cli:local", scopeID: "local", policy: deps.SecurityPolicy}
-	hooks := &hookBridge{
-		manager: hookManager, router: deps.HookRuntime, requests: requests,
-		identity: identity, media: deps.Media, failed: signals.HookFailed, dispatcher: deps.Dispatcher, logger: logger,
-	}
+	hooks := &hookBridge{manager: hookManager, router: deps.HookRuntime, requests: requests, identity: identity, media: deps.Media, failed: signals.HookFailed, dispatcher: deps.Dispatcher}
 	status := &statusRecorder{turns: turns, changed: signals.StatusChanged}
-	output := &outputSender{dispatcher: deps.Dispatcher, notifications: deps.Notifications, hooks: hooks, identity: identity, logger: logger}
+	output := &outputSender{dispatcher: deps.Dispatcher, notifications: deps.Notifications, hooks: hooks, identity: identity}
 	view := dialogue.ExecutionView{Sessions: store.Sessions(), Providers: deps.Routes}
 	sessions.SetForegroundCheck(func(_ context.Context, source *storage.Session) error {
 		return view.CheckSelection(source, deps.Models.ResolveMode(storage.SessionModeWork))
@@ -72,9 +64,30 @@ func New(ctx context.Context, cfg Config, deps Dependencies) (*Agent, error) {
 	preparer := &dialogue.Preparer{Contexts: deps.Contexts, Media: deps.Media, Identity: identity, Hooks: hooks, Tools: tools, InputReceived: signals.UserInputReceived}
 	calls := &dialogue.CallProcessor{Messages: messages, Media: deps.Media, Hooks: hooks, Identity: identity, Tools: tools, Completed: signals.ModelCallCompleted, Vision: signals.VisionFallbackUsed}
 	system := buildSystemPrompt(cfg.SoulPath, deps.ResidentMemoryStore, toolRuntime.provider, deps.ToolPreloader)
-	chat := &chatroute.Loop{Logger: logger, Contexts: deps.Contexts, Models: deps.Models, Turns: turns, View: view, Preparer: preparer, Tools: tools, Messages: messages, Caller: &chatroute.Caller{Calls: calls}, PromptBuilder: chatroute.PromptBuilder{System: system}}
+	chat := &chatroute.Loop{
+		Contexts:      deps.Contexts,
+		Models:        deps.Models,
+		Turns:         turns,
+		View:          view,
+		Preparer:      preparer,
+		Tools:         tools,
+		Messages:      messages,
+		Caller:        &chatroute.Caller{Calls: calls},
+		PromptBuilder: chatroute.PromptBuilder{System: system},
+	}
 	nativeContext := &responseroute.Context{Repository: store.Dialogues(), Media: deps.Media}
-	response := &responseroute.Loop{Logger: logger, Repository: store.Dialogues(), Context: nativeContext, Models: deps.Models, Turns: turns, View: view, Preparer: preparer, Tools: tools, Messages: messages, Calls: calls, System: system}
+	response := &responseroute.Loop{
+		Repository: store.Dialogues(),
+		Context:    nativeContext,
+		Models:     deps.Models,
+		Turns:      turns,
+		View:       view,
+		Preparer:   preparer,
+		Tools:      tools,
+		Messages:   messages,
+		Calls:      calls,
+		System:     system,
+	}
 	compactor := &chatroute.Compactor{Store: store, Models: deps.Models, Contexts: deps.Contexts, Loader: contextmgr.Loader{Store: store}}
 	nativeCompactor := &responseroute.Compactor{Context: nativeContext, Messages: messages, View: view, System: system, Identity: identity}
 	if err := bindProviderRoutes(deps.Routes, deps.Models, chat, response, compactor, nativeCompactor, nativeContext); err != nil {
@@ -86,29 +99,48 @@ func New(ctx context.Context, cfg Config, deps Dependencies) (*Agent, error) {
 	}
 	runner := &dialogue.Runner{Routes: deps.Routes, Preparer: preparer, Messages: messages, Replies: replies, Turns: turns, View: view}
 	execution := &executionCoordinator{
-		sessions: sessions, sessionRows: store.Sessions(), turns: turns, requests: requests, contexts: deps.Contexts,
-		models: deps.Models, dialogue: runner, identity: identity, view: view, output: output, status: status,
-		waitPolicy: waitPolicy, responseTimeout: responseTimeout(cfg.LLMRequestConfig), persistenceFailed: signals.PersistenceFailed, timedOut: signals.TurnTimedOut, logger: logger,
-		appendWaits: newAppendWaitLifecycle(ctx),
+		sessions:          sessions,
+		sessionRows:       store.Sessions(),
+		turns:             turns,
+		requests:          requests,
+		contexts:          deps.Contexts,
+		models:            deps.Models,
+		dialogue:          runner,
+		identity:          identity,
+		view:              view,
+		output:            output,
+		status:            status,
+		waitPolicy:        waitPolicy,
+		responseTimeout:   responseTimeout(cfg.LLMRequestConfig),
+		persistenceFailed: signals.PersistenceFailed,
+		timedOut:          signals.TurnTimedOut,
+		appendWaits:       newAppendWaitLifecycle(ctx),
 	}
 	input := &inputCoordinator{
-		sessions: sessions, sessionRows: store.Sessions(), turns: turns, identity: identity,
-		hooks: hooks, output: output, execution: execution, confirmations: confirmations,
-		registry: deps.ToolRegistry, preloader: deps.ToolPreloader, toolState: deps.ToolState, waitPolicy: waitPolicy, auditLogger: auditLogger,
+		sessions:      sessions,
+		sessionRows:   store.Sessions(),
+		turns:         turns,
+		identity:      identity,
+		hooks:         hooks,
+		output:        output,
+		execution:     execution,
+		confirmations: confirmations,
+		registry:      deps.ToolRegistry,
+		preloader:     deps.ToolPreloader,
+		toolState:     deps.ToolState,
+		waitPolicy:    waitPolicy,
 	}
-	commands := &commandExecutor{
-		router: deps.Commands, sessions: sessions, turns: turns, identity: identity,
-		execution: execution, output: output, confirmations: confirmations, input: input, auditLogger: auditLogger,
-	}
-	return &Agent{
-		message: &messageHandler{
-			identity: identity, hooks: hooks, output: output, commands: commands, input: input,
-			media: deps.Media, messages: store.Messages(), mediaRows: store.Media(), logger: logger,
-		},
+	commands := &commandExecutor{router: deps.Commands, sessions: sessions, turns: turns, identity: identity, execution: execution, output: output, confirmations: confirmations, input: input}
+	a := &Agent{
+		message: &messageHandler{identity: identity, hooks: hooks, output: output, commands: commands, input: input, media: deps.Media, messages: store.Messages(), mediaRows: store.Media()},
 		background: &backgroundRunner{
-			sessions: sessions, sessionRows: store.Sessions(), identity: identity, execution: execution,
-			preloader: deps.ToolPreloader, toolState: deps.ToolState,
-			sandboxRoot: filepath.Clean(strings.TrimSpace(cfg.SandboxRoot)), auditLogger: auditLogger,
+			sessions:    sessions,
+			sessionRows: store.Sessions(),
+			identity:    identity,
+			execution:   execution,
+			preloader:   deps.ToolPreloader,
+			toolState:   deps.ToolState,
+			sandboxRoot: filepath.Clean(strings.TrimSpace(cfg.SandboxRoot)),
 		},
 		fileCommands: &fileCommandPreparer{
 			service: deps.FileRollback, sessions: sessions, sessionRows: store.Sessions(),
@@ -116,5 +148,10 @@ func New(ctx context.Context, cfg Config, deps Dependencies) (*Agent, error) {
 		},
 		execution: execution, identity: identity, hooks: hooks, output: output, status: status,
 		completion: newCompletion(deps.Commands, sessions, turns, store, identity, deps.ToolRegistry, deps.ToolPreloader, execution), signals: signals,
-	}, nil
+	}
+	if err := a.connectLogSignals(); err != nil {
+		_ = a.Close(ctx)
+		return nil, err
+	}
+	return a, nil
 }

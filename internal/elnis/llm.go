@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"elbot/internal/background"
 	"elbot/internal/config"
 	"elbot/internal/elyph"
+	globalevents "elbot/internal/events"
 )
 
 func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) error {
@@ -16,14 +18,35 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	if s.runner == nil {
 		err := fmt.Errorf("elnis background runner is not configured")
 		_ = s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
-		s.logWarn("elnis llm failed", append(attrs, "event_id", eventID, "error", err.Error())...)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogElnis,
+			Level:    slog.LevelWarn,
+			Name:     "elnis_llm_failed",
+			Module:   "elnis",
+			Summary:  "elnis llm failed",
+			Fields:   slog.Group("", append(attrs, "event_id", eventID, "error", err.Error())...).Value.Group(),
+		})
 		return err
 	}
 	if err := s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusRunning, "", ""); err != nil {
 		return err
 	}
-	s.auditEvent("elnis.llm_started", append(attrs, "event_id", eventID)...)
-	s.logInfo("elnis llm started", append(attrs, "event_id", eventID)...)
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogAudit,
+		Level:    slog.LevelInfo,
+		Name:     "elnis.llm_started",
+		Module:   "elnis",
+		Summary:  "elnis.llm_started",
+		Fields:   slog.Group("", append(attrs, "event_id", eventID)...).Value.Group(),
+	})
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogElnis,
+		Level:    slog.LevelInfo,
+		Name:     "elnis_llm_started",
+		Module:   "elnis",
+		Summary:  "elnis llm started",
+		Fields:   slog.Group("", append(attrs, "event_id", eventID)...).Value.Group(),
+	})
 	segments, err := s.materializeSegments(ctx, event.Request.Segments, eventID)
 	if err != nil {
 		_ = s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
@@ -66,8 +89,22 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	}
 	if err != nil {
 		_ = s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
-		s.auditEvent("elnis.llm_failed", append(attrs, "event_id", eventID, "error", err.Error())...)
-		s.logWarn("elnis llm failed", append(attrs, "event_id", eventID, "error", err.Error())...)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelWarn,
+			Name:     "elnis.llm_failed",
+			Module:   "elnis",
+			Summary:  "elnis.llm_failed",
+			Fields:   slog.Group("", append(attrs, "event_id", eventID, "error", err.Error())...).Value.Group(),
+		})
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogElnis,
+			Level:    slog.LevelWarn,
+			Name:     "elnis_llm_failed",
+			Module:   "elnis",
+			Summary:  "elnis llm failed",
+			Fields:   slog.Group("", append(attrs, "event_id", eventID, "error", err.Error())...).Value.Group(),
+		})
 		return err
 	}
 	parsed, parseErr := background.ParseJSONResult(result.Text)
@@ -80,8 +117,22 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	if parseErr != nil {
 		message := fmt.Sprintf("Elnis 事件 %s 解析格式失败，请查看后台 session。\nsession: %s\n错误：%v", event.EventKey, result.SessionID, parseErr)
 		_ = s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, message, parseErr.Error())
-		s.auditEvent("elnis.llm_failed", append(attrs, "event_id", eventID, "session_id", result.SessionID, "error", parseErr.Error())...)
-		s.logWarn("elnis llm format failed", append(attrs, "event_id", eventID, "session_id", result.SessionID, "error", parseErr.Error())...)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelWarn,
+			Name:     "elnis.llm_failed",
+			Module:   "elnis",
+			Summary:  "elnis.llm_failed",
+			Fields:   slog.Group("", append(attrs, "event_id", eventID, "session_id", result.SessionID, "error", parseErr.Error())...).Value.Group(),
+		})
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogElnis,
+			Level:    slog.LevelWarn,
+			Name:     "elnis_llm_format_failed",
+			Module:   "elnis",
+			Summary:  "elnis llm format failed",
+			Fields:   slog.Group("", append(attrs, "event_id", eventID, "session_id", result.SessionID, "error", parseErr.Error())...).Value.Group(),
+		})
 		return parseErr
 	}
 	resultJSON, _ := json.Marshal(parsed)
@@ -89,12 +140,26 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		prepared, err := s.prepareReport(ctx, event, eventID, string(resultJSON), result.SessionID, result.MessageID, parsed)
 		if err != nil {
 			_ = s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, string(resultJSON), err.Error())
-			s.logWarn("elnis llm report prepare failed", append(attrs, "event_id", eventID, "session_id", result.SessionID, "error", err.Error())...)
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogElnis,
+				Level:    slog.LevelWarn,
+				Name:     "elnis_llm_report_prepare_failed",
+				Module:   "elnis",
+				Summary:  "elnis llm report prepare failed",
+				Fields:   slog.Group("", append(attrs, "event_id", eventID, "session_id", result.SessionID, "error", err.Error())...).Value.Group(),
+			})
 			return err
 		}
 		if prepared {
 			if err := s.deliverReport(ctx, eventID); err != nil {
-				s.logWarn("elnis llm report delivery failed", append(attrs, "event_id", eventID, "session_id", result.SessionID, "error", err.Error())...)
+				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+					Category: globalevents.LogElnis,
+					Level:    slog.LevelWarn,
+					Name:     "elnis_llm_report_delivery_failed",
+					Module:   "elnis",
+					Summary:  "elnis llm report delivery failed",
+					Fields:   slog.Group("", append(attrs, "event_id", eventID, "session_id", result.SessionID, "error", err.Error())...).Value.Group(),
+				})
 				return err
 			}
 			return nil
@@ -102,8 +167,22 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	} else if err := s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusCompleted, result.SessionID, string(resultJSON), ""); err != nil {
 		return err
 	}
-	s.auditEvent("elnis.llm_completed", append(attrs, "event_id", eventID, "session_id", result.SessionID)...)
-	s.logInfo("elnis llm completed", append(attrs, "event_id", eventID, "session_id", result.SessionID)...)
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogAudit,
+		Level:    slog.LevelInfo,
+		Name:     "elnis.llm_completed",
+		Module:   "elnis",
+		Summary:  "elnis.llm_completed",
+		Fields:   slog.Group("", append(attrs, "event_id", eventID, "session_id", result.SessionID)...).Value.Group(),
+	})
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogElnis,
+		Level:    slog.LevelInfo,
+		Name:     "elnis_llm_completed",
+		Module:   "elnis",
+		Summary:  "elnis llm completed",
+		Fields:   slog.Group("", append(attrs, "event_id", eventID, "session_id", result.SessionID)...).Value.Group(),
+	})
 	return nil
 }
 

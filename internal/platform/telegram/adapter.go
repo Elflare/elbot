@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
 	"elbot/internal/security"
@@ -23,11 +25,11 @@ import (
 )
 
 type Adapter struct {
-	cfg            Config
-	store          storage.Store
-	chatHistory    storage.ChatHistoryRepository
-	client         *apiClient
-	logger         Logger
+	cfg         Config
+	store       storage.Store
+	chatHistory storage.ChatHistoryRepository
+	client      *apiClient
+
 	connectedOnce  sync.Once
 	connected      *signal.Signal[platform.ConnectedEvent]
 	botID          int64
@@ -40,9 +42,9 @@ type target struct {
 	ScopeID string
 }
 
-func New(cfg Config, store storage.Store, chatHistory storage.ChatHistoryRepository, logger Logger) *Adapter {
+func New(cfg Config, store storage.Store, chatHistory storage.ChatHistoryRepository) *Adapter {
 	applyDefaults(&cfg)
-	return &Adapter{cfg: cfg, store: store, chatHistory: chatHistory, client: newAPIClient(cfg), logger: logger}
+	return &Adapter{cfg: cfg, store: store, chatHistory: chatHistory, client: newAPIClient(cfg)}
 }
 
 func (a *Adapter) Name() string { return platformName }
@@ -78,7 +80,14 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 		me, err := a.client.getMe(ctx)
 		if err != nil {
 			if backoff.ShouldWarn() {
-				a.logWarn("telegram getMe failed", "error", err)
+				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+					Category: globalevents.LogRuntime,
+					Level:    slog.LevelWarn,
+					Name:     "telegram_getme_failed",
+					Module:   "telegram",
+					Summary:  "telegram getMe failed",
+					Fields:   []slog.Attr{slog.Any("error", err)},
+				})
 			}
 			if !sleepContext(ctx, backoff.Delay()) {
 				return ctx.Err()
@@ -89,9 +98,23 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 		a.botID = me.ID
 		a.botUsername = strings.TrimSpace(me.Username)
 		if err := a.syncBotCommands(ctx); err != nil {
-			a.logWarn("sync telegram bot commands failed", "error", err)
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogRuntime,
+				Level:    slog.LevelWarn,
+				Name:     "sync_telegram_bot_commands_failed",
+				Module:   "telegram",
+				Summary:  "sync telegram bot commands failed",
+				Fields:   []slog.Attr{slog.Any("error", err)},
+			})
 		}
-		a.logInfo("telegram connected", "bot_id", me.ID, "bot_username", me.Username)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelInfo,
+			Name:     "telegram_connected",
+			Module:   "telegram",
+			Summary:  "telegram connected",
+			Fields:   []slog.Attr{slog.Any("bot_id", me.ID), slog.Any("bot_username", me.Username)},
+		})
 		a.notifyConnected(ctx)
 		for {
 			updates, err := a.client.getUpdates(ctx, offset)
@@ -99,7 +122,14 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 				if errors.Is(err, context.Canceled) || ctx.Err() != nil {
 					return ctx.Err()
 				}
-				a.logWarn("telegram getUpdates failed", "error", err)
+				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+					Category: globalevents.LogRuntime,
+					Level:    slog.LevelWarn,
+					Name:     "telegram_getupdates_failed",
+					Module:   "telegram",
+					Summary:  "telegram getUpdates failed",
+					Fields:   []slog.Attr{slog.Any("error", err)},
+				})
 				break
 			}
 			for _, upd := range updates {
@@ -132,7 +162,14 @@ func (a *Adapter) messageGroupRole(ctx context.Context, msg message) contextinfo
 	}
 	member, err := a.client.getChatMember(ctx, msg.Chat.ID, msg.From.ID)
 	if err != nil {
-		a.logWarn("get telegram chat member failed", "error", err)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelWarn,
+			Name:     "get_telegram_chat_member_failed",
+			Module:   "telegram",
+			Summary:  "get telegram chat member failed",
+			Fields:   []slog.Attr{slog.Any("error", err)},
+		})
 		return contextinfo.GroupRoleUnknown
 	}
 	switch strings.TrimSpace(member.Status) {
@@ -150,7 +187,14 @@ func (a *Adapter) messageGroupRole(ctx context.Context, msg message) contextinfo
 func (a *Adapter) handleCallbackQuery(ctx context.Context, handler platform.PlatformHandler, query callbackQuery) {
 	if strings.TrimSpace(query.ID) != "" {
 		if err := a.client.answerCallbackQuery(ctx, query.ID, "已收到"); err != nil {
-			a.logWarn("answer telegram callback failed", "error", err)
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogRuntime,
+				Level:    slog.LevelWarn,
+				Name:     "answer_telegram_callback_failed",
+				Module:   "telegram",
+				Summary:  "answer telegram callback failed",
+				Fields:   []slog.Attr{slog.Any("error", err)},
+			})
 		}
 	}
 	if query.Message == nil || strings.TrimSpace(query.Data) == "" {
@@ -235,7 +279,14 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 	messageCtx.Segments = finalMessageSegments(text, normalized.Segments, nil)
 	msgCtx = platform.WithMessageContext(ctx, messageCtx)
 	if err := handler.HandleMessage(msgCtx, text); err != nil {
-		a.logWarn("handle telegram message failed", "error", err, "message_id", msg.MessageID)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelWarn,
+			Name:     "handle_telegram_message_failed",
+			Module:   "telegram",
+			Summary:  "handle telegram message failed",
+			Fields:   []slog.Attr{slog.Any("error", err), slog.Any("message_id", msg.MessageID)},
+		})
 	}
 }
 
@@ -379,7 +430,14 @@ func (a *Adapter) sendText(ctx context.Context, t target, text string, replyTo i
 		if err == nil || len(receipt.PlatformMessageIDs) > 0 {
 			return receipt, err
 		}
-		a.logWarn("telegram rich message failed, fallback to html", "error", err)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelWarn,
+			Name:     "telegram_rich_message_failed_fallback_to_html",
+			Module:   "telegram",
+			Summary:  "telegram rich message failed, fallback to html",
+			Fields:   []slog.Attr{slog.Any("error", err)},
+		})
 		return a.sendHTMLText(ctx, t, text, replyTo, keyboard)
 	case "plain":
 		return a.sendPlainText(ctx, t, text, replyTo, keyboard)
@@ -417,7 +475,14 @@ func (a *Adapter) sendHTMLText(ctx context.Context, t target, text string, reply
 	if err == nil || len(receipt.PlatformMessageIDs) > 0 {
 		return receipt, err
 	}
-	a.logWarn("telegram html message failed, fallback to plain", "error", err)
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogRuntime,
+		Level:    slog.LevelWarn,
+		Name:     "telegram_html_message_failed_fallback_to_plain",
+		Module:   "telegram",
+		Summary:  "telegram html message failed, fallback to plain",
+		Fields:   []slog.Attr{slog.Any("error", err)},
+	})
 	return a.sendPlainText(ctx, t, text, replyTo, keyboard)
 }
 
@@ -609,17 +674,5 @@ func sleepContext(ctx context.Context, d time.Duration) bool {
 		return false
 	case <-timer.C:
 		return true
-	}
-}
-
-func (a *Adapter) logInfo(msg string, args ...any) {
-	if a.logger != nil {
-		a.logger.Info(msg, args...)
-	}
-}
-
-func (a *Adapter) logWarn(msg string, args ...any) {
-	if a.logger != nil {
-		a.logger.Warn(msg, args...)
 	}
 }

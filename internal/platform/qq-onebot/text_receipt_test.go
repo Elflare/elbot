@@ -12,7 +12,7 @@ func TestTextReceiptsKeepActualTarget(t *testing.T) {
 	transport := newTestTransport(t, func(req request) response {
 		return response{Status: "ok", Data: []byte(`{"message_id":88}`), Echo: req.Echo}
 	})
-	a := New(Config{Enabled: true, URL: transport.URL}, nil, nil, nil)
+	a := New(Config{Enabled: true, URL: transport.URL}, nil, nil)
 	a.transport = transport
 	for _, target := range []target{{MessageType: "private", UserID: 1}, {MessageType: "group", GroupID: 9}} {
 		for _, explicit := range []bool{false, true} {
@@ -46,7 +46,7 @@ func TestTextPagesReturnOneForwardReceipt(t *testing.T) {
 		}
 		return response{Status: "ok", Data: []byte(`{"message_id":88}`), Echo: req.Echo}
 	})
-	a := New(Config{Enabled: true, URL: transport.URL}, nil, nil, nil)
+	a := New(Config{Enabled: true, URL: transport.URL}, nil, nil)
 	a.transport = transport
 	receipt, err := a.SendChat(testTargetContext(target{MessageType: "group", GroupID: 9}), []delivery.Output{delivery.Text(strings.Repeat("a", 30000))})
 	if err != nil || calls != 1 || len(receipt.PlatformMessageIDs) != 1 || len(receipt.SentMessages) != 1 {

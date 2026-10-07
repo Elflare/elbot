@@ -66,21 +66,6 @@ func newManager(level, logDir string, retentionDays int, open func(string) (io.W
 			return nil, queueErr
 		}
 		m.sinks[category] = &logSink{queue: queue, writer: writer}
-		// Temporary legacy accessors share the same physical writers. Audit and
-		// Elnis do not inherit the runtime level, including on the legacy path.
-		legacyLevel := level
-		if category != events.LogRuntime {
-			legacyLevel = "debug"
-		}
-		logger := New(legacyLevel, writer)
-		switch category {
-		case events.LogRuntime:
-			m.runtime = logger
-		case events.LogAudit:
-			m.audit = logger
-		case events.LogElnis:
-			m.elnis = logger
-		}
 	}
 	m.connection, err = events.LogSubmitted.Connect(m.HandleRecord, signal.ConnectOptions{Shutdown: signal.CancelPending})
 	if err != nil {

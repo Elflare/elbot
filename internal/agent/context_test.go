@@ -88,7 +88,7 @@ func TestAutoCompactCreatesStableFirstUserContext(t *testing.T) {
 		}
 	}
 	a.execution.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
-	a.execution.recordUsage(source.ID, &llm.Usage{TotalTokens: 80})
+	a.execution.recordUsage(t.Context(), source.ID, &llm.Usage{TotalTokens: 80})
 
 	if err := a.HandleMessage(ctx, "J"); err != nil {
 		t.Fatalf("first message after compact: %v", err)
@@ -162,7 +162,7 @@ func TestAutoCompactCreatesStableFirstUserContext(t *testing.T) {
 		t.Fatalf("compact metadata = %#v", compactMetadata)
 	}
 
-	a.execution.recordUsage(compacted.ID, &llm.Usage{TotalTokens: 80})
+	a.execution.recordUsage(t.Context(), compacted.ID, &llm.Usage{TotalTokens: 80})
 	if err := a.HandleMessage(ctx, "M"); err != nil {
 		t.Fatalf("message after repeated compact: %v", err)
 	}
@@ -275,7 +275,7 @@ func TestCompactBlocksSessionChangesAndStopCancels(t *testing.T) {
 		}
 	}
 	a.execution.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
-	a.execution.recordUsage(source.ID, &llm.Usage{TotalTokens: 80})
+	a.execution.recordUsage(t.Context(), source.ID, &llm.Usage{TotalTokens: 80})
 
 	done := make(chan error, 1)
 	go func() { done <- a.HandleMessage(ctx, "/compact") }()
@@ -339,7 +339,7 @@ func TestAutoCompactFailureKeepsSourceSession(t *testing.T) {
 		}
 	}
 	a.execution.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
-	a.execution.recordUsage(source.ID, &llm.Usage{TotalTokens: 80})
+	a.execution.recordUsage(t.Context(), source.ID, &llm.Usage{TotalTokens: 80})
 	if err := a.HandleMessage(ctx, "J"); err == nil {
 		t.Fatal("auto compact unexpectedly succeeded")
 	}
@@ -425,7 +425,7 @@ func TestModelSwitchReevaluatesCompactWindow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	a.execution.recordUsage(current.ID, &llm.Usage{TotalTokens: 80})
+	a.execution.recordUsage(t.Context(), current.ID, &llm.Usage{TotalTokens: 80})
 	if !a.execution.shouldCompact(ctx, current, modelmgr.SelectionForTurn(ctx, a.execution.models, current)) {
 		t.Fatal("small model did not trigger compact")
 	}

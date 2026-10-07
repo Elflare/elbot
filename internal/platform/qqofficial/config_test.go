@@ -17,7 +17,7 @@ func TestNewFromPlatformConfigReadsClientSecretFromDotEnv(t *testing.T) {
 		"enabled":           true,
 		"app_id":            "app-id",
 		"client_secret_env": "QQ_SECRET",
-	}, nil, nil, nil, nil, nil, dir, "", 0, 0)
+	}, nil, nil, nil, nil, dir, "", 0, 0)
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestNewFromPlatformConfigPrefersSystemEnvironment(t *testing.T) {
 		"enabled":           true,
 		"app_id":            "app-id",
 		"client_secret_env": "QQ_SECRET",
-	}, nil, nil, nil, nil, nil, dir, "", 0, 0)
+	}, nil, nil, nil, nil, dir, "", 0, 0)
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestNewFromPlatformConfigPrefersExplicitClientSecret(t *testing.T) {
 		"app_id":            "app-id",
 		"client_secret":     "explicit-secret",
 		"client_secret_env": "QQ_SECRET",
-	}, nil, nil, nil, nil, nil, t.TempDir(), "", 0, 0)
+	}, nil, nil, nil, nil, t.TempDir(), "", 0, 0)
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestNewFromPlatformConfigKeepsTriggerKeywords(t *testing.T) {
 	adapter, err := NewFromPlatformConfig(map[string]any{
 		"enabled":          false,
 		"trigger_keywords": []any{"芙莉丝", "bot"},
-	}, nil, nil, nil, nil, nil, t.TempDir(), "", 0, 0)
+	}, nil, nil, nil, nil, t.TempDir(), "", 0, 0)
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}

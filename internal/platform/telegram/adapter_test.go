@@ -51,7 +51,7 @@ func TestPartialTextSendKeepsReceiptWithoutRestartingFallback(t *testing.T) {
 				_ = json.NewEncoder(w).Encode(apiResponse[sentMessage]{OK: false, ErrorCode: 500, Description: "later page failed"})
 			}))
 			defer server.Close()
-			adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: format}, nil, nil, nil)
+			adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: format}, nil, nil)
 			ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ConversationKind: contextinfo.ConversationGroup, ConversationID: "-19", ScopeID: "group:-19"}})
 			receipt, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(strings.Repeat("a", telegramRichTextRunes+1))}})
 			if err == nil || len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "71" || calls != 2 {
@@ -145,7 +145,7 @@ func TestTelegramInvalidProxyURLFromPlatformConfig(t *testing.T) {
 		"enabled":   true,
 		"bot_token": "token",
 		"proxy_url": "://bad",
-	}, nil, nil, nil, nil, nil, "")
+	}, nil, nil, nil, nil, "")
 	if err == nil || !strings.Contains(err.Error(), "invalid telegram proxy_url") {
 		t.Fatalf("err = %v", err)
 	}
@@ -196,7 +196,7 @@ func TestSendTextUsesHTMLByDefault(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(apiResponse[sentMessage]{OK: true, Result: sentMessage{MessageID: 7}})
 	}))
 	defer server.Close()
-	adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL}, nil, nil, nil)
+	adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL}, nil, nil)
 	receipt, err := adapter.sendText(context.Background(), target{ChatID: 1}, "# 标题\n\n| A | B |\n|---|---|", 0, false)
 	if err != nil {
 		t.Fatal(err)
@@ -223,7 +223,7 @@ func TestSendTextRichFallback(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(apiResponse[sentMessage]{OK: true, Result: sentMessage{MessageID: 8}})
 	}))
 	defer server.Close()
-	adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: "rich"}, nil, nil, nil)
+	adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: "rich"}, nil, nil)
 	receipt, err := adapter.sendText(context.Background(), target{ChatID: 1}, "# bad", 0, false)
 	if err != nil {
 		t.Fatal(err)

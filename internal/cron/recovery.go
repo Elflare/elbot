@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 
+	globalevents "elbot/internal/events"
 	"elbot/internal/storage"
 )
 
@@ -42,7 +44,14 @@ func (s *Service) MigrateLegacyDeliveryState(ctx context.Context) error {
 		if !swapped {
 			continue
 		}
-		s.logInfo("cron legacy delivery migrated", s.cronLogAttrs(job.Name, meta)...)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelInfo,
+			Name:     "cron_legacy_delivery_migrated",
+			Module:   "cron",
+			Summary:  "cron legacy delivery migrated",
+			Fields:   slog.Group("", s.cronLogAttrs(job.Name, meta)...).Value.Group(),
+		})
 		if s.deliveryComplete(meta, state) {
 			if err := s.disableCompletedDelivery(ctx, job.Name, state.RunID); err != nil {
 				return fmt.Errorf("disable migrated cron delivery %s: %w", job.Name, err)
@@ -93,7 +102,14 @@ func (s *Service) NotifyPlatformConnected(ctx context.Context, platformName stri
 	}
 	s.connectedPlatforms[platformName] = true
 	s.mu.Unlock()
-	s.logInfo("cron platform connected", "platform", platformName)
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogRuntime,
+		Level:    slog.LevelInfo,
+		Name:     "cron_platform_connected",
+		Module:   "cron",
+		Summary:  "cron platform connected",
+		Fields:   []slog.Attr{slog.Any("platform", platformName)},
+	})
 	s.runMissedOnceForPlatform(ctx, platformName)
 }
 
@@ -103,7 +119,14 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 		if isContextCancellation(ctx, err) {
 			return
 		}
-		s.logWarn("list cron jobs for missed once failed", "platform", platformName, "error", err)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelError,
+			Name:     "list_cron_jobs_for_missed_once_failed",
+			Module:   "cron",
+			Summary:  "list cron jobs for missed once failed",
+			Fields:   []slog.Attr{slog.Any("platform", platformName), slog.Any("error", err)},
+		})
 		return
 	}
 	for _, job := range jobs {
@@ -133,23 +156,65 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 			unlock()
 			continue
 		}
-		s.auditEvent("cron.missed_delivery_started", s.cronAuditAttrs(job.Name, meta, "platform", platformName)...)
-		s.logInfo("cron missed delivery started", s.cronLogAttrs(job.Name, meta, "platform", platformName)...)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelInfo,
+			Name:     "cron.missed_delivery_started",
+			Module:   "cron",
+			Summary:  "cron.missed_delivery_started",
+			Fields:   slog.Group("", s.cronAuditAttrs(job.Name, meta, "platform", platformName)...).Value.Group(),
+		})
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelInfo,
+			Name:     "cron_missed_delivery_started",
+			Module:   "cron",
+			Summary:  "cron missed delivery started",
+			Fields:   slog.Group("", s.cronLogAttrs(job.Name, meta, "platform", platformName)...).Value.Group(),
+		})
 		deliverErr := s.deliverMissedOnce(ctx, *latest, latestMeta, platformName)
 		unlock()
 		if deliverErr != nil {
 			if isContextCancellation(ctx, deliverErr) {
 				return
 			}
-			s.auditEvent("cron.missed_delivery_failed", s.cronAuditAttrs(job.Name, latestMeta, "platform", platformName, "error", deliverErr.Error())...)
-			s.logWarn("missed cron run failed", "job", job.Name, "platform", platformName, "error", deliverErr)
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogAudit,
+				Level:    slog.LevelWarn,
+				Name:     "cron.missed_delivery_failed",
+				Module:   "cron",
+				Summary:  "cron.missed_delivery_failed",
+				Fields:   slog.Group("", s.cronAuditAttrs(job.Name, latestMeta, "platform", platformName, "error", deliverErr.Error())...).Value.Group(),
+			})
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogRuntime,
+				Level:    slog.LevelWarn,
+				Name:     "missed_cron_run_failed",
+				Module:   "cron",
+				Summary:  "missed cron run failed",
+				Fields:   []slog.Attr{slog.Any("job", job.Name), slog.Any("platform", platformName), slog.Any("error", deliverErr)},
+			})
 			if ctx.Err() == nil {
 				_ = s.sendToPlatforms(ctx, job.Name, []string{"cli"}, fmt.Sprintf("cron 补跑失败：%s\n错误：%v", job.Name, deliverErr))
 			}
 			continue
 		}
-		s.auditEvent("cron.missed_delivery_completed", s.cronAuditAttrs(job.Name, latestMeta, "platform", platformName)...)
-		s.logInfo("cron missed delivery completed", s.cronLogAttrs(job.Name, latestMeta, "platform", platformName)...)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelInfo,
+			Name:     "cron.missed_delivery_completed",
+			Module:   "cron",
+			Summary:  "cron.missed_delivery_completed",
+			Fields:   slog.Group("", s.cronAuditAttrs(job.Name, latestMeta, "platform", platformName)...).Value.Group(),
+		})
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelInfo,
+			Name:     "cron_missed_delivery_completed",
+			Module:   "cron",
+			Summary:  "cron missed delivery completed",
+			Fields:   slog.Group("", s.cronLogAttrs(job.Name, latestMeta, "platform", platformName)...).Value.Group(),
+		})
 	}
 }
 

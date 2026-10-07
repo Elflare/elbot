@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	hookruntime "elbot/internal/hook/runtime"
+	"elbot/internal/modelmgr"
 	"elbot/internal/session"
 )
 
@@ -18,6 +19,7 @@ type runtimeLifecycle struct {
 	skillDone <-chan struct{}
 	hooks     *hookruntime.Manager
 	sessions  *session.Service
+	models    *modelmgr.Service
 }
 
 func (l *runtimeLifecycle) Close(ctx context.Context) error {
@@ -50,6 +52,9 @@ func (l *runtimeLifecycle) Close(ctx context.Context) error {
 		case <-ctx.Done():
 			errs = append(errs, fmt.Errorf("wait skill loading: %w", ctx.Err()))
 		}
+	}
+	if l.models != nil {
+		errs = append(errs, l.models.Close())
 	}
 	return errors.Join(errs...)
 }

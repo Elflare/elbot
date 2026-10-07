@@ -3,7 +3,6 @@ package media
 import (
 	"context"
 	"io"
-	"log/slog"
 	"sync"
 	"time"
 
@@ -59,6 +58,6 @@ type Manager struct {
 	Root            string
 	FileDelivery    config.FileDeliveryConfig
 	Media           config.MediaConfig
-	Logger          *slog.Logger
-	Now             func() time.Time
+
+	Now func() time.Time
 }

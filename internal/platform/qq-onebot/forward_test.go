@@ -22,7 +22,7 @@ func TestGroupForwardHistoryKeepsPlaceholderWithoutFetching(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer history.Close()
-	a := New(Config{}, nil, history.Repository(), nil)
+	a := New(Config{}, nil, history.Repository())
 	a.transport = newTestTransport(t, func(req request) response {
 		t.Errorf("unquoted forward called %s", req.Action)
 		return response{Status: "failed", Retcode: 1}
@@ -81,7 +81,7 @@ func TestForwardReferenceExpandsOneLayerInOrder(t *testing.T) {
 						return response{Status: "failed", Retcode: 1}
 					}
 				})
-				a := New(Config{}, nil, repo, nil)
+				a := New(Config{}, nil, repo)
 				a.transport = transport
 				if withHistory {
 					a.recordChatMessage(ctx, original, normalizeMessage(original.Message, "", original.SelfID), platform.ReplyContext{})
@@ -128,7 +128,7 @@ func TestForwardReferenceFallbacks(t *testing.T) {
 	for _, failure := range []string{"get_msg", "get_forward_msg", "empty", "malformed", "missing resource"} {
 		t.Run(failure, func(t *testing.T) {
 			var calls atomic.Int32
-			a := New(Config{}, nil, nil, nil)
+			a := New(Config{}, nil, nil)
 			a.transport = newTestTransport(t, func(req request) response {
 				calls.Add(1)
 				if req.Action == failure {
@@ -162,7 +162,7 @@ func TestForwardReferenceFallbacks(t *testing.T) {
 }
 
 func TestMultipleForwardsKeepOrderAndPartialContent(t *testing.T) {
-	a := New(Config{}, nil, nil, nil)
+	a := New(Config{}, nil, nil)
 	var calls atomic.Int32
 	a.transport = newTestTransport(t, func(req request) response {
 		if req.Action == "get_msg" {
@@ -182,7 +182,7 @@ func TestMultipleForwardsKeepOrderAndPartialContent(t *testing.T) {
 }
 
 func TestCanonicalForwardReferenceDoesNotFetchAgain(t *testing.T) {
-	a := New(Config{}, nil, nil, nil)
+	a := New(Config{}, nil, nil)
 	a.transport = newTestTransport(t, func(req request) response {
 		t.Errorf("canonical forward queried %s", req.Action)
 		return response{Status: "failed", Retcode: 1}

@@ -26,16 +26,17 @@ type Options struct {
 // Service publishes complete selection snapshots. Its provider configuration
 // and clients are immutable after construction; callers own their requests.
 type Service struct {
-	mu           sync.RWMutex
-	state        runtimeState
-	commitMu     sync.Mutex
-	statePath    string
-	sessionState config.StateSessionConfig
-	save         func(string, config.StateConfig) error
-	clients      map[string]llm.Client
-	origins      map[string]llm.Origin
-	providers    map[string]*providerCatalog
-	retrying     *signal.Signal[ModelRetryingEvent]
+	mu             sync.RWMutex
+	state          runtimeState
+	commitMu       sync.Mutex
+	statePath      string
+	sessionState   config.StateSessionConfig
+	save           func(string, config.StateConfig) error
+	clients        map[string]llm.Client
+	origins        map[string]llm.Origin
+	providers      map[string]*providerCatalog
+	retrying       *signal.Signal[ModelRetryingEvent]
+	logConnections []*signal.Connection
 }
 
 func New(opts Options) (*Service, error) {
@@ -80,6 +81,9 @@ func New(opts Options) (*Service, error) {
 			baseURL: provider.BaseURL, apiKey: provider.APIKey, apiKeyEnv: provider.APIKeyEnv,
 			configured: append([]string(nil), provider.Models...),
 		}
+	}
+	if err := s.connectLogSignals(); err != nil {
+		return nil, err
 	}
 	for provider, client := range s.clients {
 		if notifier, ok := client.(llm.RetryNotifier); ok {

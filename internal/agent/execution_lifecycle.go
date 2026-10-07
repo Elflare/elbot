@@ -80,7 +80,10 @@ func (l *appendWaitLifecycle) Close(ctx context.Context) error {
 
 // Close stops append-confirmation workers before their dependencies are released.
 // Foreground/background request producers remain owned by their entrypoints.
-func (a *Agent) Close(ctx context.Context) error { return a.execution.appendWaits.Close(ctx) }
+func (a *Agent) Close(ctx context.Context) error {
+	a.disconnectLogSignals()
+	return a.execution.appendWaits.Close(ctx)
+}
 
 // Done closes only when Close/application cancellation has stopped every wait
 // and any expiry notification it was sending.

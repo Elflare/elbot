@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
+	"elbot/internal/signal"
 )
 
 type gateWaitContext struct {
@@ -66,7 +68,8 @@ func TestRecoveryCancellationDoesNotSendFailureNotice(t *testing.T) {
 	var targets []string
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	s := NewService(Options{Store: fakeCronStore{cron: repo}, Logger: slog.New(slog.NewTextHandler(&logs, nil)), EnabledPlatforms: []PlatformTarget{{Name: "qqonebot"}}, SendTarget: func(_ context.Context, target delivery.Target, _ []delivery.Output) (delivery.Receipt, error) {
+	captureLogs(t, slog.New(slog.NewTextHandler(&logs, nil)))
+	s := NewService(Options{Store: fakeCronStore{cron: repo}, EnabledPlatforms: []PlatformTarget{{Name: "qqonebot"}}, SendTarget: func(_ context.Context, target delivery.Target, _ []delivery.Output) (delivery.Receipt, error) {
 		targets = append(targets, target.Platform)
 		cancel()
 		return delivery.Receipt{}, context.Canceled
@@ -83,4 +86,25 @@ func TestRecoveryCancellationDoesNotSendFailureNotice(t *testing.T) {
 	if isContextCancellation(ctx, fmt.Errorf("mixed: %w", errors.Join(context.Canceled, errors.New("real failure")))) {
 		t.Fatal("mixed error swallowed")
 	}
+}
+
+// captureLogs observes the public signal; production never receives this logger.
+func captureLogs(t *testing.T, logger *slog.Logger) {
+	t.Helper()
+	connection, err := globalevents.LogSubmitted.Connect(func(ctx context.Context, record globalevents.LogRecord) error {
+		if !logger.Enabled(ctx, record.Level) {
+			return nil
+		}
+		out := slog.NewRecord(record.At, record.Level, record.Summary, 0)
+		out.AddAttrs(record.Fields...)
+		out.AddAttrs(slog.String("event", record.Name), slog.String("module", record.Module))
+		if record.Detail != "" && logger.Enabled(ctx, slog.LevelDebug) {
+			out.AddAttrs(slog.String("detail", record.Detail))
+		}
+		return logger.Handler().Handle(ctx, out)
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(connection.Disconnect)
 }

@@ -2,28 +2,34 @@ package chatcompletions
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
-	"elbot/internal/llm"
 	"encoding/hex"
 	"encoding/json"
+	"log/slog"
 	"strings"
+
+	globalevents "elbot/internal/events"
+	"elbot/internal/llm"
 )
 
-func (a *Client) logChatRequest(req Request, bodyBytes []byte) {
-	if a.logger == nil {
-		return
-	}
-	a.logFirstSystemMessage(req)
-	attrs := []any{"endpoint", a.endpoint(), "model", req.Model, "session_id", req.SessionID, "latest_message_json", latestMessageJSON(req.Messages)}
-	// Debug 日志默认只记录请求摘要，不记录 Authorization 和完整 body。
-	// 完整 body 可能包含用户正文、图片 URL、工具参数等敏感信息，
-	// 需要临时排查时再手动打开。
-	// attrs := []any{"endpoint", a.endpoint(), "model", req.Model, "body_json", string(bodyBytes)}
+func (a *Client) logChatRequest(ctx context.Context, req Request, bodyBytes []byte) {
+	a.logFirstSystemMessage(ctx, req)
+	attrs := []any{"endpoint", a.endpoint(), "model", req.Model, "session_id", req.SessionID}
+	// Keep only the latest message in DEBUG detail; never publish full history.
 	attrs = append(attrs, chatRequestLogSummary(req, bodyBytes)...)
-	a.logger.Debug("openai chat request", attrs...)
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogRuntime,
+		Level:    slog.LevelDebug,
+		Name:     "openai_chat_request",
+		Module:   "model",
+		Summary:  "openai chat request",
+		Detail:   latestMessageJSON(req.Messages),
+		Fields:   slog.Group("", attrs...).Value.Group(),
+	})
 }
 
-func (a *Client) logFirstSystemMessage(req Request) {
+func (a *Client) logFirstSystemMessage(ctx context.Context, req Request) {
 	if req.SessionID == "" || firstSystemText(req.Messages) == "" {
 		return
 	}
@@ -35,12 +41,15 @@ func (a *Client) logFirstSystemMessage(req Request) {
 	a.loggedSystem[req.SessionID] = true
 	a.loggedSystemMu.Unlock()
 
-	a.logger.Info("system prompt",
-		"event", "system_message",
-		"session_id", req.SessionID,
-		"model", req.Model,
-		"first_system_message_json", firstSystemMessageJSON(req.Messages),
-	)
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogRuntime,
+		Level:    slog.LevelInfo,
+		Name:     "system_message",
+		Module:   "model",
+		Summary:  "system prompt: " + firstSystemText(req.Messages),
+		Fields:   []slog.Attr{slog.Any("session_id", req.SessionID), slog.Any("model", req.Model)},
+		Detail:   firstSystemMessageJSON(req.Messages),
+	})
 }
 
 func latestMessageJSON(messages []llm.LLMMessage) string {

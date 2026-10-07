@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
 	"elbot/internal/background"
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/session"
@@ -366,8 +368,8 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 			return errors.Join(append(errs, err)...)
 		}
 		attrs := []any{"job", jobName, "platform", platformName, "target", cronTargetLabel(target), "kind", out.Kind}
-		s.auditEvent("cron.send_started", attrs...)
-		s.logInfo("cron send started", attrs...)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, Name: "cron.send_started", Module: "cron", Summary: "cron.send_started", Fields: slog.Group("", attrs...).Value.Group()})
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, Name: "cron_send_started", Module: "cron", Summary: "cron send started", Fields: slog.Group("", attrs...).Value.Group()})
 		receipt, err := s.sendTarget(ctx, target, []delivery.Output{out})
 		s.mapReportReceipt(ctx, jobName, sessionID, messageID, receipt)
 		if err != nil {
@@ -376,12 +378,40 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 				return errors.Join(append(errs, err)...)
 			}
 			errs = append(errs, err)
-			s.auditEvent("cron.send_failed", append(attrs, "error", err.Error())...)
-			s.logWarn("cron send failed", append(attrs, "error", err.Error())...)
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogAudit,
+				Level:    slog.LevelWarn,
+				Name:     "cron.send_failed",
+				Module:   "cron",
+				Summary:  "cron.send_failed",
+				Fields:   slog.Group("", append(attrs, "error", err.Error())...).Value.Group(),
+			})
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogRuntime,
+				Level:    slog.LevelWarn,
+				Name:     "cron_send_failed",
+				Module:   "cron",
+				Summary:  "cron send failed",
+				Fields:   slog.Group("", append(attrs, "error", err.Error())...).Value.Group(),
+			})
 			continue
 		}
-		s.auditEvent("cron.send_completed", attrs...)
-		s.logInfo("cron send completed", attrs...)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelInfo,
+			Name:     "cron.send_completed",
+			Module:   "cron",
+			Summary:  "cron.send_completed",
+			Fields:   slog.Group("", attrs...).Value.Group(),
+		})
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelInfo,
+			Name:     "cron_send_completed",
+			Module:   "cron",
+			Summary:  "cron send completed",
+			Fields:   slog.Group("", attrs...).Value.Group(),
+		})
 	}
 	return errors.Join(errs...)
 }
@@ -400,8 +430,8 @@ func (s *Service) sendOutputsToPlatformsMapped(ctx context.Context, jobName stri
 				return errors.Join(append(errs, err)...)
 			}
 			attrs := []any{"job", jobName, "platform", platformName, "target", "superadmins", "kind", out.Kind}
-			s.auditEvent("cron.send_started", attrs...)
-			s.logInfo("cron send started", attrs...)
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, Name: "cron.send_started", Module: "cron", Summary: "cron.send_started", Fields: slog.Group("", attrs...).Value.Group()})
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, Name: "cron_send_started", Module: "cron", Summary: "cron send started", Fields: slog.Group("", attrs...).Value.Group()})
 			receipt, err := s.sendTarget(ctx, delivery.Target{Platform: platformName, Superadmins: true}, []delivery.Output{out})
 			s.mapReportReceipt(ctx, jobName, sessionID, messageID, receipt)
 			if err != nil {
@@ -410,12 +440,40 @@ func (s *Service) sendOutputsToPlatformsMapped(ctx context.Context, jobName stri
 					return errors.Join(append(errs, err)...)
 				}
 				errs = append(errs, err)
-				s.auditEvent("cron.send_failed", "job", jobName, "platform", platformName, "target", "superadmins", "kind", out.Kind, "error", err.Error())
-				s.logWarn("cron send failed", "job", jobName, "platform", platformName, "target", "superadmins", "kind", out.Kind, "error", err.Error())
+				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+					Category: globalevents.LogAudit,
+					Level:    slog.LevelWarn,
+					Name:     "cron.send_failed",
+					Module:   "cron",
+					Summary:  "cron.send_failed",
+					Fields:   []slog.Attr{slog.Any("job", jobName), slog.Any("platform", platformName), slog.Any("target", "superadmins"), slog.Any("kind", out.Kind), slog.Any("error", err.Error())},
+				})
+				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+					Category: globalevents.LogRuntime,
+					Level:    slog.LevelWarn,
+					Name:     "cron_send_failed",
+					Module:   "cron",
+					Summary:  "cron send failed",
+					Fields:   []slog.Attr{slog.Any("job", jobName), slog.Any("platform", platformName), slog.Any("target", "superadmins"), slog.Any("kind", out.Kind), slog.Any("error", err.Error())},
+				})
 				continue
 			}
-			s.auditEvent("cron.send_completed", attrs...)
-			s.logInfo("cron send completed", attrs...)
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogAudit,
+				Level:    slog.LevelInfo,
+				Name:     "cron.send_completed",
+				Module:   "cron",
+				Summary:  "cron.send_completed",
+				Fields:   slog.Group("", attrs...).Value.Group(),
+			})
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogRuntime,
+				Level:    slog.LevelInfo,
+				Name:     "cron_send_completed",
+				Module:   "cron",
+				Summary:  "cron send completed",
+				Fields:   slog.Group("", attrs...).Value.Group(),
+			})
 		}
 	}
 	return errors.Join(errs...)
@@ -435,8 +493,38 @@ func (s *Service) mapReportReceipt(ctx context.Context, jobName, sessionID, mess
 			if isContextCancellation(ctx, err) {
 				return
 			}
-			s.auditEvent("cron.report_map_failed", "job", jobName, "platform", platformName, "scope_id", scopeID, "platform_message_id", platformMessageID, "session_id", sessionID, "message_id", messageID, "error", err.Error())
-			s.logWarn("map cron report message failed", "job", jobName, "platform", platformName, "scope_id", scopeID, "platform_message_id", platformMessageID, "session_id", sessionID, "message_id", messageID, "error", err.Error())
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogAudit,
+				Level:    slog.LevelError,
+				Name:     "cron.report_map_failed",
+				Module:   "cron",
+				Summary:  "cron.report_map_failed",
+				Fields: []slog.Attr{
+					slog.Any("job", jobName),
+					slog.Any("platform", platformName),
+					slog.Any("scope_id", scopeID),
+					slog.Any("platform_message_id", platformMessageID),
+					slog.Any("session_id", sessionID),
+					slog.Any("message_id", messageID),
+					slog.Any("error", err.Error()),
+				},
+			})
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogRuntime,
+				Level:    slog.LevelError,
+				Name:     "map_cron_report_message_failed",
+				Module:   "cron",
+				Summary:  "map cron report message failed",
+				Fields: []slog.Attr{
+					slog.Any("job", jobName),
+					slog.Any("platform", platformName),
+					slog.Any("scope_id", scopeID),
+					slog.Any("platform_message_id", platformMessageID),
+					slog.Any("session_id", sessionID),
+					slog.Any("message_id", messageID),
+					slog.Any("error", err.Error()),
+				},
+			})
 		}
 	}
 }
@@ -483,7 +571,14 @@ func (s *Service) copySessionToBroadcastTargets(ctx context.Context, sourceSessi
 		if err != nil {
 			return err
 		}
-		s.auditEvent("cron.session_copied", "job", jobName, "source_session_id", sourceSessionID, "target_session_id", copySession.ID, "platform", target.Name)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelInfo,
+			Name:     "cron.session_copied",
+			Module:   "cron",
+			Summary:  "cron.session_copied",
+			Fields:   []slog.Attr{slog.Any("job", jobName), slog.Any("source_session_id", sourceSessionID), slog.Any("target_session_id", copySession.ID), slog.Any("platform", target.Name)},
+		})
 	}
 	return nil
 }

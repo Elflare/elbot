@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
 	appconfig "elbot/internal/config"
+	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 )
 
@@ -183,9 +185,16 @@ func normalizeLoadedRules(cfg *Config, opts Options) error {
 		final := original
 		if count := seen[original]; count > 0 {
 			final = fmt.Sprintf("%s.%d", original, count)
-			if opts.Logger != nil {
-				opts.Logger.Warn("duplicate hook rule name renamed", "name", original, "final_name", final, "config_path", rule.source.ConfigPath)
-			}
+
+			_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
+				Category: globalevents.LogRuntime,
+				Level:    slog.LevelWarn,
+				Name:     "duplicate_hook_rule_name_renamed",
+				Module:   "hook",
+				Summary:  "duplicate hook rule name renamed",
+				Fields:   []slog.Attr{slog.Any("name", original), slog.Any("final_name", final), slog.Any("config_path", rule.source.ConfigPath)},
+			})
+
 		}
 		seen[original]++
 		rule.source.FinalName = final
@@ -206,9 +215,15 @@ func validateLoadedRules(rules []Rule) error {
 }
 
 func reportPluginConfigError(ctx context.Context, opts Options, name, path string, err error) {
-	if opts.Logger != nil {
-		opts.Logger.Warn("hook plugin skipped", "plugin", name, "path", path, "error", err)
-	}
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogRuntime,
+		Level:    slog.LevelWarn,
+		Name:     "hook_plugin_skipped",
+		Module:   "hook",
+		Summary:  "hook plugin skipped",
+		Fields:   []slog.Attr{slog.Any("plugin", name), slog.Any("path", path), slog.Any("error", err)},
+	})
+
 	if opts.Notify != nil {
 		label := strings.TrimSpace(name)
 		if label == "" {
@@ -219,9 +234,15 @@ func reportPluginConfigError(ctx context.Context, opts Options, name, path strin
 }
 
 func reportPluginConfigWarning(ctx context.Context, opts Options, name, path, message string) {
-	if opts.Logger != nil {
-		opts.Logger.Warn("hook plugin warning", "plugin", name, "path", path, "warning", message)
-	}
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogRuntime,
+		Level:    slog.LevelWarn,
+		Name:     "hook_plugin_warning",
+		Module:   "hook",
+		Summary:  "hook plugin warning",
+		Fields:   []slog.Attr{slog.Any("plugin", name), slog.Any("path", path), slog.Any("warning", message)},
+	})
+
 	if opts.Notify != nil {
 		label := strings.TrimSpace(name)
 		if label == "" {
@@ -232,9 +253,15 @@ func reportPluginConfigWarning(ctx context.Context, opts Options, name, path, me
 }
 
 func reportConfigError(ctx context.Context, opts Options, path string, err error) {
-	if opts.Logger != nil {
-		opts.Logger.Error("hook rule config error", "path", path, "error", err)
-	}
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogRuntime,
+		Level:    slog.LevelError,
+		Name:     "hook_rule_config_error",
+		Module:   "hook",
+		Summary:  "hook rule config error",
+		Fields:   []slog.Attr{slog.Any("path", path), slog.Any("error", err)},
+	})
+
 	if opts.Notify != nil {
 		opts.Notify(ctx, fmt.Sprintf("Hook rules 配置错误：%v", err))
 	}

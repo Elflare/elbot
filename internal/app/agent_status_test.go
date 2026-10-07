@@ -46,7 +46,7 @@ func nextStatus(t *testing.T, sent <-chan runtimestatus.Snapshot) runtimestatus.
 func TestStatusCoalescesTerminalAndUpdatesDuringSend(t *testing.T) {
 	first, second := make(chan struct{}), make(chan struct{})
 	p := &slowStatusPlatform{sent: make(chan runtimestatus.Snapshot, 10), gates: []chan struct{}{first, second}}
-	d := newStatusDisplay(dispatch.New(dispatch.Options{Primary: p}), nil)
+	d := newStatusDisplay(dispatch.New(dispatch.Options{Primary: p}))
 	t.Cleanup(func() { _ = d.Close(context.Background()) })
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -95,7 +95,7 @@ func TestStatusCoalescesTerminalAndUpdatesDuringSend(t *testing.T) {
 
 func TestStatusTargetsKeepDistinctSendersAndBackgroundIsSilent(t *testing.T) {
 	one, two := &slowStatusPlatform{sent: make(chan runtimestatus.Snapshot, 3)}, &slowStatusPlatform{sent: make(chan runtimestatus.Snapshot, 3)}
-	d := newStatusDisplay(dispatch.New(dispatch.Options{Primary: one}), nil)
+	d := newStatusDisplay(dispatch.New(dispatch.Options{Primary: one}))
 	t.Cleanup(func() { _ = d.Close(context.Background()) })
 	e := agentevents.StatusChangedEvent{Snapshot: runtimestatus.Snapshot{SessionID: "same", Phase: runtimestatus.PhaseDone}, Version: 1, Display: true}
 	for _, p := range []*slowStatusPlatform{one, two} {

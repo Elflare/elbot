@@ -1,12 +1,9 @@
 package agent
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"log/slog"
 	"slices"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -15,8 +12,8 @@ import (
 	agentevents "elbot/internal/agent/events"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
+	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
@@ -130,45 +127,32 @@ func TestComponentPolicyOptionsReachHookAndPrompt(t *testing.T) {
 	}
 }
 
-type componentLogs struct{ logger *slog.Logger }
-
-func (l componentLogs) Runtime() *slog.Logger { return l.logger }
-func (l componentLogs) Audit() *slog.Logger   { return l.logger }
-
-func TestDiagnosticLoggerOptionsAndRetiredObservationLogs(t *testing.T) {
-	for _, enabled := range []bool{true, false} {
-		manager := hook.NewManager()
-		if err := manager.Register(hook.Registration{Point: hook.PointErrorOccurred, Name: "failing", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) {
-			return event, errors.New("hook failure")
-		})}); err != nil {
-			t.Fatal(err)
-		}
-		var logs bytes.Buffer
-		a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
-			cfg.HookManager = manager
-			if enabled {
-				cfg.Logs = componentLogs{slog.New(slog.NewTextHandler(&logs, nil))}
+func TestHookFailureIsRecordedOnceAndStillNotifies(t *testing.T) {
+	manager := hook.NewManager()
+	if err := manager.Register(hook.Registration{Point: hook.PointErrorOccurred, Name: "failing", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) {
+		return event, errors.New("hook failure")
+	})}); err != nil {
+		t.Fatal(err)
+	}
+	records := make(chan globalevents.LogRecord, 32)
+	connection, _ := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error { records <- record; return nil }, signal.ConnectOptions{})
+	defer connection.Disconnect()
+	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) { cfg.HookManager = manager })
+	facts := 0
+	_, _ = a.Signals().HookFailed.Connect(func(context.Context, agentevents.HookFailedEvent) error { facts++; return nil }, signal.ConnectOptions{})
+	a.hooks.Notify(context.Background(), hook.Event{Point: hook.PointErrorOccurred})
+	count := 0
+	for len(records) > 0 {
+		r := <-records
+		if r.Name == "hook_error" {
+			count++
+			if r.Module != "hook" {
+				t.Fatal(r)
 			}
-		})
-		var replyEvents []string
-		a.execution.dialogue.Replies.Messages = &replyTestRepository{MessageRepository: a.execution.dialogue.Replies.Messages, events: &replyEvents, mapErr: errors.New("association failure")}
-		ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Sender: mediaSendFunc(func([]delivery.Output) (delivery.Receipt, error) {
-			return delivery.Receipt{}, errors.New("send failure")
-		})})
-		a.hooks.Notify(ctx, hook.Event{Point: hook.PointErrorOccurred})
-		if _, err := a.output.SendAssistant(ctx, "hello"); err == nil {
-			t.Fatal("expected send failure")
 		}
-		a.execution.dialogue.Replies.AssociateReceipt(ctx, "session", "message", delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "qq", ScopeID: "private:1", PlatformMessageID: "sent"}}})
-		if !enabled {
-			if logs.Len() != 0 {
-				t.Fatal("unconfigured diagnostic logger wrote a record")
-			}
-			continue
-		}
-		if strings.Count(logs.String(), "chat send failed") != 1 || strings.Contains(logs.String(), "hook error") || strings.Contains(logs.String(), "map platform message failed") || strings.Contains(logs.String(), "map_platform_message") {
-			t.Fatalf("diagnostic and retired observation logs mixed: %s", logs.String())
-		}
+	}
+	if count != 1 || facts != 1 {
+		t.Fatalf("original failure records=%d facts=%d", count, facts)
 	}
 }
 
@@ -209,10 +193,7 @@ func TestExecutionViewKeepsRequestCancellationAndClearsBackgroundOverrides(t *te
 }
 
 func TestMigratedComponentsPublishFactsWithoutLogger(t *testing.T) {
-	var legacy bytes.Buffer
-	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{replies: []string{"one"}}, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
-		cfg.Logs = componentLogs{slog.New(slog.NewTextHandler(&legacy, nil))}
-	})
+	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{replies: []string{"one"}}, "model", config.ProviderConfig{}, newTestStore(t))
 	ctx, row, err := a.execution.resolveInput(context.Background(), "logging")
 	if err != nil {
 		t.Fatal(err)
@@ -238,8 +219,5 @@ func TestMigratedComponentsPublishFactsWithoutLogger(t *testing.T) {
 		if counts[event] != 1 {
 			t.Fatalf("%s events = %d", event, counts[event])
 		}
-	}
-	if legacy.Len() != 0 {
-		t.Fatalf("retired direct logs remain: %s", legacy.String())
 	}
 }

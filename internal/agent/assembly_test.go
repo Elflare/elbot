@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"testing"
 	"time"
 
@@ -57,7 +56,6 @@ type testAgentOptions struct {
 	SessionIdleExpiration *config.SessionIdleExpirationConfig
 	HookManager           hook.Manager
 	HookRuntime           HookRouter
-	Logs                  LogManager
 	SoulPath              string
 	ResidentMemoryStore   *resident.Store
 }
@@ -77,7 +75,7 @@ func assembleTestOptions(opts testAgentOptions) testAssembly {
 		opts.ToolsConfig = defaults.Tools
 	}
 	dispatcher := dispatch.New(dispatch.Options{Primary: opts.Platform, Store: opts.Store, Media: opts.Media, MediaRetentionDays: defaults.Maintenance.SandboxCleanup.RetentionDays})
-	notices := notification.New(dispatcher, nil, false)
+	notices := notification.New(dispatcher, false)
 	_, _ = opts.Models.ModelRetrying().Connect(func(ctx context.Context, event modelmgr.ModelRetryingEvent) error {
 		notificationrules.ModelRetry(notices)(ctx, event.Provider, event.Retry)
 		return nil
@@ -93,7 +91,7 @@ func assembleTestOptions(opts testAgentOptions) testAssembly {
 		ToolState: toolrun.NewStateService(opts.Store), ToolRunner: toolrun.NewManager(opts.ToolRegistry, opts.SecurityPolicy),
 		ToolPreloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: opts.ToolRegistry, TagsPath: opts.ToolTagsPath, Tags: opts.ToolTags}),
 		ToolRegistry:  opts.ToolRegistry, FileRollback: opts.FileRollback, Dispatcher: dispatcher, Notifications: notices, SecurityPolicy: opts.SecurityPolicy,
-		ToolProvider: opts.ToolProvider, HookManager: opts.HookManager, HookRuntime: opts.HookRuntime, Logs: opts.Logs, ResidentMemoryStore: opts.ResidentMemoryStore,
+		ToolProvider: opts.ToolProvider, HookManager: opts.HookManager, HookRuntime: opts.HookRuntime, ResidentMemoryStore: opts.ResidentMemoryStore,
 	}}
 
 	optsResult.ToolRunner.Media = opts.Media
@@ -144,14 +142,8 @@ func mustNewWithOptions(t *testing.T, cfg testAgentOptions, configure ...func(*t
 		Router: opts.Commands, Sessions: opts.Sessions, Requests: opts.Requests, Turns: opts.Turns, Store: opts.Store,
 		Scope: a.Scope, Models: opts.Models, Providers: opts.Routes, Contexts: opts.Contexts, Compact: a,
 		Tools: testToolRegistry{opts.ToolRegistry}, FileRollback: opts.FileRollback, PrepareFileContext: a.PrepareFileCommand,
-		SessionState: commandbuiltin.NewSessionCommandState(config.Default().View.SessionListPageSize, 30),
-		Audit: func(event string, attrs ...any) {
-			var logger *slog.Logger
-			if opts.Logs != nil {
-				logger = opts.Logs.Audit()
-			}
-			writeAudit(logger, slog.LevelInfo, event, attrs...)
-		}, RuntimeStatus: a.RuntimeStatus,
+		SessionState:  commandbuiltin.NewSessionCommandState(config.Default().View.SessionListPageSize, 30),
+		RuntimeStatus: a.RuntimeStatus,
 	}); err != nil {
 		t.Fatal(err)
 	}

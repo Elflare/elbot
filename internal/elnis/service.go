@@ -11,14 +11,13 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/elvena"
+	globalevents "elbot/internal/events"
 	"elbot/internal/media"
 	"elbot/internal/storage"
 	"elbot/internal/toolrun"
 )
 
 type SenderFunc func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error)
-
-type AuditFunc func(event string, attrs ...any)
 
 type QueuedLLMEvent struct {
 	Event   Event
@@ -30,13 +29,12 @@ type EnqueueLLMFunc func(ctx context.Context, event QueuedLLMEvent) error
 type ModelResolverFunc func(slot string) config.ModelSelection
 
 type Options struct {
-	Media            *media.Manager
-	Config           config.ElnisConfig
-	SandboxRoot      string
-	Tokens           map[string]string
-	Store            storage.Store
-	Logger           *slog.Logger
-	Audit            AuditFunc
+	Media       *media.Manager
+	Config      config.ElnisConfig
+	SandboxRoot string
+	Tokens      map[string]string
+	Store       storage.Store
+
 	Send             SenderFunc
 	Runner           background.Runner
 	ResolveModel     ModelResolverFunc
@@ -46,13 +44,12 @@ type Options struct {
 }
 
 type Service struct {
-	media            *media.Manager
-	cfg              config.ElnisConfig
-	sandboxRoot      string
-	tokens           map[string]string
-	store            storage.Store
-	logger           *slog.Logger
-	audit            AuditFunc
+	media       *media.Manager
+	cfg         config.ElnisConfig
+	sandboxRoot string
+	tokens      map[string]string
+	store       storage.Store
+
 	send             SenderFunc
 	runner           background.Runner
 	resolveModel     ModelResolverFunc
@@ -78,8 +75,6 @@ func NewService(opts Options) (*Service, error) {
 		sandboxRoot:      opts.SandboxRoot,
 		tokens:           opts.Tokens,
 		store:            opts.Store,
-		logger:           opts.Logger,
-		audit:            opts.Audit,
 		send:             opts.Send,
 		runner:           opts.Runner,
 		resolveModel:     opts.ResolveModel,
@@ -103,7 +98,7 @@ func (s *Service) SetLLMEnqueuer(enqueue EnqueueLLMFunc) {
 func (s *Service) Handle(ctx context.Context, token string, req Request) (Response, error) {
 	tokenName, ok := s.authenticate(token)
 	if !ok {
-		s.auditEvent("elnis.auth_failed")
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelWarn, Name: "elnis.auth_failed", Module: "elnis", Summary: "elnis.auth_failed", Fields: nil})
 		return Response{Accepted: false, Status: StatusFailed, Error: "unauthorized"}, fmt.Errorf("unauthorized")
 	}
 	return s.DispatchElvena(ctx, elvena.Origin{Kind: elvena.OriginHTTPToken, Name: tokenName}, req)
@@ -115,7 +110,14 @@ func (s *Service) DispatchElvena(ctx context.Context, origin elvena.Origin, req 
 	}
 	event, err := s.prepareEvent(origin, req)
 	if err != nil {
-		s.auditEvent("elnis.rejected", "origin", origin.Label(), "error", err.Error())
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelWarn,
+			Name:     "elnis.rejected",
+			Module:   "elnis",
+			Summary:  "elnis.rejected",
+			Fields:   []slog.Attr{slog.Any("origin", origin.Label()), slog.Any("error", err.Error())},
+		})
 		return Response{Accepted: false, Status: StatusFailed, Error: err.Error()}, err
 	}
 	return s.handlePreparedEvent(ctx, event)
@@ -125,22 +127,64 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 	req := event.Request
 	attrs := s.eventAttrs(event)
 	if err := s.authorizeElwisp(event); err != nil {
-		s.auditEvent("elnis.permission_denied", append(attrs, "error", err.Error())...)
-		s.logWarn("elnis permission denied", append(attrs, "error", err.Error())...)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelWarn,
+			Name:     "elnis.permission_denied",
+			Module:   "elnis",
+			Summary:  "elnis.permission_denied",
+			Fields:   slog.Group("", append(attrs, "error", err.Error())...).Value.Group(),
+		})
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogElnis,
+			Level:    slog.LevelWarn,
+			Name:     "elnis_permission_denied",
+			Module:   "elnis",
+			Summary:  "elnis permission denied",
+			Fields:   slog.Group("", append(attrs, "error", err.Error())...).Value.Group(),
+		})
 		return Response{Accepted: false, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
 	}
 	if err := s.authorizeInternalTools(ctx, event); err != nil {
-		s.auditEvent("elnis.tool_denied", append(attrs, "error", err.Error())...)
-		s.logWarn("elnis internal tool denied", append(attrs, "error", err.Error())...)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelWarn,
+			Name:     "elnis.tool_denied",
+			Module:   "elnis",
+			Summary:  "elnis.tool_denied",
+			Fields:   slog.Group("", append(attrs, "error", err.Error())...).Value.Group(),
+		})
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogElnis,
+			Level:    slog.LevelWarn,
+			Name:     "elnis_internal_tool_denied",
+			Module:   "elnis",
+			Summary:  "elnis internal tool denied",
+			Fields:   slog.Group("", append(attrs, "error", err.Error())...).Value.Group(),
+		})
 		return Response{Accepted: false, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
 	}
 	if err := s.authorizeExternalTools(event); err != nil {
-		s.auditEvent("elnis.external_tool_denied", append(attrs, "error", err.Error())...)
-		s.logWarn("elnis external tool denied", append(attrs, "error", err.Error())...)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelWarn,
+			Name:     "elnis.external_tool_denied",
+			Module:   "elnis",
+			Summary:  "elnis.external_tool_denied",
+			Fields:   slog.Group("", append(attrs, "error", err.Error())...).Value.Group(),
+		})
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogElnis,
+			Level:    slog.LevelWarn,
+			Name:     "elnis_external_tool_denied",
+			Module:   "elnis",
+			Summary:  "elnis external tool denied",
+			Fields:   slog.Group("", append(attrs, "error", err.Error())...).Value.Group(),
+		})
 		return Response{Accepted: false, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
 	}
 	if existing, err := s.store.ElnisEvents().GetByKey(ctx, req.Elwisp.Name, req.Source, req.ID); err == nil {
-		s.handleDuplicate(event, existing)
+		s.handleDuplicate(ctx, event, existing)
 		return Response{Accepted: true, Duplicate: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusDuplicate}, nil
 	} else if !errors.Is(err, storage.ErrNotFound) {
 		return Response{}, err
@@ -181,32 +225,67 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 		return Response{}, err
 	}
 	attrs = append(attrs, "event_id", record.ID)
-	s.auditEvent("elnis.accepted", attrs...)
-	s.logInfo("elnis event accepted", attrs...)
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, Name: "elnis.accepted", Module: "elnis", Summary: "elnis.accepted", Fields: slog.Group("", attrs...).Value.Group()})
+	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+		Category: globalevents.LogElnis,
+		Level:    slog.LevelInfo,
+		Name:     "elnis_event_accepted",
+		Module:   "elnis",
+		Summary:  "elnis event accepted",
+		Fields:   slog.Group("", attrs...).Value.Group(),
+	})
 
 	switch req.Mode {
 	case ModeRecord:
 		if err := s.completeEvent(ctx, record.ID, event.ResolvedTargets, StatusCompleted, "", ""); err != nil {
 			return Response{}, err
 		}
-		s.auditEvent("elnis.recorded", attrs...)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, Name: "elnis.recorded", Module: "elnis", Summary: "elnis.recorded", Fields: slog.Group("", attrs...).Value.Group()})
 		return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusCompleted}, nil
 	case ModeDirect:
 		if err := s.runDirect(ctx, event, record.ID); err != nil {
-			s.auditEvent("elnis.direct_failed", append(attrs, "error", err.Error())...)
-			s.logWarn("elnis direct failed", append(attrs, "error", err.Error())...)
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogAudit,
+				Level:    slog.LevelWarn,
+				Name:     "elnis.direct_failed",
+				Module:   "elnis",
+				Summary:  "elnis.direct_failed",
+				Fields:   slog.Group("", append(attrs, "error", err.Error())...).Value.Group(),
+			})
+			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+				Category: globalevents.LogElnis,
+				Level:    slog.LevelWarn,
+				Name:     "elnis_direct_failed",
+				Module:   "elnis",
+				Summary:  "elnis direct failed",
+				Fields:   slog.Group("", append(attrs, "error", err.Error())...).Value.Group(),
+			})
 			_ = s.completeEvent(ctx, record.ID, event.ResolvedTargets, StatusFailed, "", err.Error())
 			return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
 		}
-		s.auditEvent("elnis.direct_completed", attrs...)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelInfo,
+			Name:     "elnis.direct_completed",
+			Module:   "elnis",
+			Summary:  "elnis.direct_completed",
+			Fields:   slog.Group("", attrs...).Value.Group(),
+		})
 		return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusCompleted}, nil
 	case ModeLLM:
-		s.auditEvent("elnis.llm_queued", attrs...)
-		s.logInfo("elnis llm queued", attrs...)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, Name: "elnis.llm_queued", Module: "elnis", Summary: "elnis.llm_queued", Fields: slog.Group("", attrs...).Value.Group()})
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogElnis, Level: slog.LevelInfo, Name: "elnis_llm_queued", Module: "elnis", Summary: "elnis llm queued", Fields: slog.Group("", attrs...).Value.Group()})
 		if s.enqueueLLM != nil {
 			if err := s.enqueueLLM(ctx, QueuedLLMEvent{Event: event, EventID: record.ID}); err != nil {
 				_ = s.completeEvent(ctx, record.ID, event.ResolvedTargets, StatusFailed, "", err.Error())
-				s.logWarn("elnis llm enqueue failed", append(attrs, "error", err.Error())...)
+				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+					Category: globalevents.LogElnis,
+					Level:    slog.LevelWarn,
+					Name:     "elnis_llm_enqueue_failed",
+					Module:   "elnis",
+					Summary:  "elnis llm enqueue failed",
+					Fields:   slog.Group("", append(attrs, "error", err.Error())...).Value.Group(),
+				})
 				return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
 			}
 		}

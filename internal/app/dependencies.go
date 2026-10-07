@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"time"
 
 	"elbot/internal/agent"
@@ -40,9 +39,6 @@ type Lifecycle interface {
 }
 
 type LogManager interface {
-	Runtime() *slog.Logger
-	Audit() *slog.Logger
-	Elnis() *slog.Logger
 	LogDir() string
 	BeginClose()
 	Close(context.Context) error
@@ -60,10 +56,10 @@ type FoundationRequest struct {
 }
 
 type FoundationComponents struct {
-	Maintenance      *maintenance.Service
-	Config           *config.Config
-	Logs             LogManager
-	Logger           *slog.Logger
+	Maintenance *maintenance.Service
+	Config      *config.Config
+	Logs        LogManager
+
 	Store            storage.Store
 	ChatHistoryStore ChatHistoryStore
 	ChatHistory      storage.ChatHistoryRepository
@@ -146,8 +142,8 @@ type IntegrationFactory interface {
 }
 
 type PlatformRunRequest struct {
-	Handler    platform.PlatformHandler
-	Logger     *slog.Logger
+	Handler platform.PlatformHandler
+
 	Runtimes   []platform.Runtime
 	AfterStart func(context.Context)
 	// Stop requests application shutdown, including its shared shutdown budget.

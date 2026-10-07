@@ -2,7 +2,6 @@ package builtin
 
 import (
 	"context"
-	"log/slog"
 
 	"elbot/internal/command"
 	"elbot/internal/config"
@@ -100,18 +99,18 @@ type Deps struct {
 	Providers interface {
 		OriginFor(string) (llm.Origin, error)
 	}
-	Compact            CompactService
-	Contexts           ContextService
-	Logger             *slog.Logger
+	Compact  CompactService
+	Contexts ContextService
+
 	Tools              ToolService
 	Skills             SkillService
 	FileRollback       FileRollbackService
 	PrepareFileContext func(context.Context, bool) (context.Context, error)
 	Hooks              HookService
 	SessionState       *SessionCommandState
-	Audit              func(event string, attrs ...any)
-	Logs               LogService
-	RuntimeStatus      func(sessionID string) runtimestatus.Snapshot
+
+	Logs          LogService
+	RuntimeStatus func(sessionID string) runtimestatus.Snapshot
 }
 
 func RegisterFactories(registrar Registrar, deps Deps, factories ...HandlerFactory) error {

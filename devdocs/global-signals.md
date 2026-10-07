@@ -1,6 +1,6 @@
 # 全局信号与日志中心设计
 
-状态：阶段 1 已完成，全局日志契约、中心及生命周期已实现；阶段 2 的业务生产者迁移和阶段 3 的查询改造尚未实施。实施进度以[任务清单](tasks.md#全局信号与日志统一改造)为准；当前架构见 [architecture.md](architecture.md#信号与订阅)。本文同时约定后续迁移的目标结构。
+状态：阶段 1、2 已完成，全局日志契约、中心、生命周期及全部业务日志生产者已接入；阶段 3 的查询与命令改造尚未实施。实施进度以[任务清单](tasks.md#全局信号与日志统一改造)为准；当前架构见 [architecture.md](architecture.md#信号与订阅)。本文同时约定查询改造的目标行为。
 
 ## 目标与范围
 
@@ -69,7 +69,7 @@ flowchart LR
 | `internal/logging/signals.go` | 日志中心订阅、分类队列、停止准入和排空 |
 | `internal/logging/record.go` | 运行级别过滤、记录内容处理与大小限制 |
 | `internal/logging/reader.go` | 从文件末尾分块查询 |
-| 来源模块的 `log_events.go` | 已有业务事实到日志记录的投影；有现成合适文件时复用，不为每个调用点拆文件 |
+| `internal/agent/logging.go`、`internal/session/naming_signals.go`、`internal/modelmgr/signals.go` | 已有业务事实到日志记录的同步投影；来源模块管理连接，不另建中转队列 |
 | 各模块原有构造与关闭文件 | 建立本地投影订阅并清理；删除 Logger／Audit 依赖装配 |
 
 测试优先扩展相关包现有测试文件。只有职责需要单独覆盖时新增测试文件，不增加平行的日志实现或公共测试框架。
@@ -132,7 +132,7 @@ func EmitLog(ctx context.Context, record LogRecord) error
 | `record`、`connection`、`queue`、`logManager` | 分别用于记录、订阅连接、执行队列、中心实例 |
 | `connections`、`queues` | 由对应订阅者持有；App 不集中存储全项目订阅 |
 
-`NewManager` 保留现有构造职责，成功返回前完成自己的全局订阅。逐步移除向业务暴露 Logger 的 `Runtime`／`Audit`／`Elnis` 接口、`SetLogger`、`auditFunc`、`writeAudit` 和日志发布器构造参数。
+`NewManager` 保留现有构造职责，成功返回前完成自己的全局订阅。业务统一使用 `events.EmitLog`；不提供 `Runtime`／`Audit`／`Elnis` Logger、`SetLogger`、`auditFunc`、`writeAudit` 或日志发布器构造参数。
 
 ## 发布与消费契约
 
@@ -180,31 +180,29 @@ func EmitLog(ctx context.Context, record LogRecord) error
 
 来源决定记录什么业务事实；日志中心统一决定可落盘的内容形式和上限。来源处需要保护用户提示、挑选协议载荷时可以先缩减或脱敏，但不能因此绕过中心处理。
 
-日志查询从文件末尾分块读取，按从新到旧的顺序逐条筛选，达到数量立即停止；循环读取和处理行时检查取消，不把整天记录加载进内存。继续支持跨日、字段、正文和原始记录筛选。读取内存受分块和单行上限约束，另加实际返回结果占用；旧记录保留 16 MiB 单行读取上限，超限明确报错。
+阶段 3 的查询目标：从文件末尾分块读取，按从新到旧的顺序逐条筛选，达到数量立即停止；循环读取和处理行时检查取消，不把整天记录加载进内存。继续支持跨日、字段、正文和原始记录筛选。读取内存受分块和单行上限约束，另加实际返回结果占用；旧记录保留 16 MiB 单行读取上限，超限明确报错。
 
-命令目标行为：
+阶段 3 的命令目标行为：
 
 - `/log` 查询用户／助手正文和 system prompt 的摘要或 DEBUG 详情。
 - `/audit` 移除 `-u`、`-a` 及旧用户／助手消息事件别名，同步移除帮助和补全。
 - `/audit --hook` 筛选 `module=hook` 的真实审计记录，不再匹配不存在的 `event=hook`。
 - 不迁移历史文件来补造模块字段；新筛选规则只匹配实际带有所需字段的记录。
 
-## 迁移对应关系
+## 日志职责归属
 
-| 当前入口 | 目标归属 |
+| 记录来源 | 当前归属 |
 | --- | --- |
-| App 的 Agent 日志观察者和写记录助手 | Agent 内部同步日志投影；提交全局记录 |
-| App 的命名日志观察者 | Session 模块自身日志投影 |
-| 模型重试通知订阅 | 保留通知用途；Model Manager 来源补充独立日志投影 |
-| Responses 具体错误断言 | 协议来源提供 `LogDiagnostic`，消费者只依赖公共契约 |
-| Hook Manager 与 Agent 重复失败日志 | 原始执行失败由来源记录一次；Agent 信号继续承担通知，需要单独记录的桥接故障保留 |
-| 各业务构造参数中的 Logger／Audit | 删除参数和字段，来源直接调用 `events.EmitLog` |
-| App 中日志队列和连接生命周期 | 日志中心与来源模块分别持有自己的订阅资源 |
-| Signal／Queue 的诊断 Logger | 信号设施的独立 stderr 报告 |
+| Agent 模型、工具、回复等事实 | Agent 内部同步日志投影；提交全局记录 |
+| 会话命名事实 | Session 模块自身日志投影 |
+| 模型重试 | Model Manager 独立日志投影；App 单独订阅通知 |
+| 上游错误 | 协议来源提供 `LogDiagnostic`，消费者只依赖公共契约 |
+| Hook 失败 | 原始执行失败由 Hook Manager 记录一次；Agent 保留失败通知及自身桥接故障记录 |
+| 各业务模块诊断 | 来源直接调用 `events.EmitLog` |
+| 日志队列和连接生命周期 | 日志中心与来源模块分别持有自己的订阅资源 |
+| Signal／Queue 设施故障 | 信号设施的独立 stderr 报告 |
 
-分阶段迁移期间允许旧调用点暂时存在，但每一个被迁移的记录必须在同一阶段移除旧路径，不能双写。所有阶段完成后不保留兼容适配层。
-
-阶段 1 的旧 `Runtime`／`Audit`／`Elnis` 入口与中心共用文件写入器，audit／elnis 已独立于运行等级；集中脱敏、限长及分类队列只覆盖全局链路，旧业务生产者的完整迁移归阶段 2。
+所有业务日志均经过全局链路的集中脱敏、限长和分类队列，不保留旧 Logger 兼容层或双写路径。App 只管理自己的通知、状态订阅和服务生命周期；终端界面输出及设施 stderr 报告使用各自入口。
 
 ## 分阶段实施与验收
 

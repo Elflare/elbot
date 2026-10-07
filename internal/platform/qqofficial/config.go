@@ -37,7 +37,7 @@ type Config struct {
 	Superadmins              []string
 }
 
-func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory storage.ChatHistoryRepository, logger Logger, superadmins []string, commandPrefixes []string, configEnvDir, attachmentDir string, maxReceiveFileBytes int64, downloadTimeoutSecs int) (*Adapter, error) {
+func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory storage.ChatHistoryRepository, superadmins []string, commandPrefixes []string, configEnvDir, attachmentDir string, maxReceiveFileBytes int64, downloadTimeoutSecs int) (*Adapter, error) {
 	var cfg Config
 	if err := platform.DecodeConfig(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("decode qqofficial config: %w", err)
@@ -61,7 +61,7 @@ func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory 
 		}
 		cfg.ClientSecret = secret
 	}
-	return New(cfg, store, chatHistory, logger), nil
+	return New(cfg, store, chatHistory), nil
 }
 
 func resolveSecret(cfg Config, configEnvDir string) (string, error) {

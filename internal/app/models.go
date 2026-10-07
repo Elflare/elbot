@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"log/slog"
 	"time"
 
 	"elbot/internal/config"
@@ -16,14 +15,10 @@ type defaultModelFactory struct{}
 
 func (defaultModelFactory) Build(req ModelRequest) (ModelClients, error) {
 	cfg := req.Foundation.Config
-	logger := req.Foundation.Logger
 	clients := make(map[string]llm.Client, len(cfg.Providers))
 	for name, provider := range cfg.Providers {
 		// Protocol clients are selected only at composition, never by model name.
-		var client interface {
-			llm.Client
-			SetLogger(*slog.Logger)
-		}
+		var client llm.Client
 		var err error
 		opts := appLLMRequestOptions(cfg.LLMRequest, provider.Proxy)
 		switch provider.EffectiveAPIMode() {
@@ -37,7 +32,6 @@ func (defaultModelFactory) Build(req ModelRequest) (ModelClients, error) {
 		if err != nil {
 			return ModelClients{}, fmt.Errorf("create provider %q client: %w", name, err)
 		}
-		client.SetLogger(logger)
 		clients[name] = client
 	}
 	req.Profiler.Mark("llm adapters")

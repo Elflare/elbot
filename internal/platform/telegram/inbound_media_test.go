@@ -41,7 +41,7 @@ func TestInboundMediaHistoryAndDeferredResolver(t *testing.T) {
 		fmt.Fprint(w, "image")
 	}))
 	defer server.Close()
-	a := New(Config{BotToken: "123:secret", APIBaseURL: server.URL, FileBaseURL: server.URL}, nil, history.Repository(), nil)
+	a := New(Config{BotToken: "123:secret", APIBaseURL: server.URL, FileBaseURL: server.URL}, nil, history.Repository())
 	a.client.http = server.Client()
 	handler := &mediaCaptureHandler{}
 	a.handleMessage(ctx, handler, message{MessageID: 1, Chat: chat{ID: 9, Type: "group"}, Photo: []photoSize{{FileID: "photo-id", FileSize: 5}}})

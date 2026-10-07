@@ -16,7 +16,7 @@ func TestNewFromPlatformConfigReadsAccessTokenFromDotEnv(t *testing.T) {
 	adapter, err := NewFromPlatformConfig(map[string]any{
 		"enabled":          true,
 		"access_token_env": "QQONEBOT_TOKEN",
-	}, nil, nil, nil, nil, nil, dir, "", 0, 0)
+	}, nil, nil, nil, nil, dir, "", 0, 0)
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestNewFromPlatformConfigPrefersSystemEnvironment(t *testing.T) {
 	adapter, err := NewFromPlatformConfig(map[string]any{
 		"enabled":          true,
 		"access_token_env": "QQONEBOT_TOKEN",
-	}, nil, nil, nil, nil, nil, dir, "", 0, 0)
+	}, nil, nil, nil, nil, dir, "", 0, 0)
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestNewFromPlatformConfigPrefersLegacyAccessToken(t *testing.T) {
 		"enabled":          true,
 		"access_token":     "legacy-token",
 		"access_token_env": "QQONEBOT_TOKEN",
-	}, nil, nil, nil, nil, nil, dir, "", 0, 0)
+	}, nil, nil, nil, nil, dir, "", 0, 0)
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestNewFromPlatformConfigPrefersLegacyAccessToken(t *testing.T) {
 }
 
 func TestNewFromPlatformConfigAllowsMissingAccessToken(t *testing.T) {
-	adapter, err := NewFromPlatformConfig(map[string]any{"enabled": true}, nil, nil, nil, nil, nil, t.TempDir(), "", 0, 0)
+	adapter, err := NewFromPlatformConfig(map[string]any{"enabled": true}, nil, nil, nil, nil, t.TempDir(), "", 0, 0)
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}

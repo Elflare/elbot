@@ -2,13 +2,13 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"strings"
 	"testing"
 
 	"elbot/internal/config"
 	"elbot/internal/llm"
+	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -176,7 +176,7 @@ func TestForkKeepsHistoryWithoutCopyingToolOrUsageState(t *testing.T) {
 		t.Fatal(err)
 	}
 	state, err := a.execution.dialogue.Preparer.Tools.State.Snapshot(ctx, fork.ID)
-	if err != nil || len(state.ToolCache) != 0 || a.execution.usageForSession(fork) != nil {
+	if err != nil || len(state.ToolCache) != 0 || a.execution.usageForSession(t.Context(), fork) != nil {
 		t.Fatalf("fork inherited state: %+v err=%v", state, err)
 	}
 	loaded, err := a.execution.contexts.Load(ctx, fork.ID)

@@ -15,7 +15,9 @@ import (
 	"testing"
 	"time"
 
+	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/signal"
 )
 
 func mustClient(t *testing.T, url string, extras map[string]any, modelExtras map[string]map[string]any, opts RequestOptions) *Client {
@@ -295,7 +297,7 @@ func TestResponseLogsExcludeInputAndOpaqueReasoning(t *testing.T) {
 	defer srv.Close()
 	client := mustClient(t, srv.URL, nil, nil, RequestOptions{})
 	var logs bytes.Buffer
-	client.SetLogger(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	captureLogs(t, slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	if _, err := client.GenerateText(context.Background(), llm.TextRequest{Model: "m", Instructions: "private instructions", Input: "private input"}); err != nil {
 		t.Fatal(err)
 	}
@@ -331,4 +333,25 @@ func TestNativeInputAndUnknownItemsPreserveTheirJSON(t *testing.T) {
 	if err != nil || string(parsed.Raw) != unknownPart || len(parsed.Content) != 1 || parsed.Content[0].Type != "future_part" {
 		t.Fatalf("native content part lost: %+v error=%v", parsed, err)
 	}
+}
+
+// captureLogs observes the public signal; production never receives this logger.
+func captureLogs(t *testing.T, logger *slog.Logger) {
+	t.Helper()
+	connection, err := globalevents.LogSubmitted.Connect(func(ctx context.Context, record globalevents.LogRecord) error {
+		if !logger.Enabled(ctx, record.Level) {
+			return nil
+		}
+		out := slog.NewRecord(record.At, record.Level, record.Summary, 0)
+		out.AddAttrs(record.Fields...)
+		out.AddAttrs(slog.String("event", record.Name), slog.String("module", record.Module))
+		if record.Detail != "" && logger.Enabled(ctx, slog.LevelDebug) {
+			out.AddAttrs(slog.String("detail", record.Detail))
+		}
+		return logger.Handler().Handle(ctx, out)
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(connection.Disconnect)
 }

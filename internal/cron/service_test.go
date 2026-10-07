@@ -14,9 +14,11 @@ import (
 	"elbot/internal/background"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/session"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
@@ -974,11 +976,17 @@ func TestListHidesCompletedCronByDefault(t *testing.T) {
 
 func TestCronSendAuditIncludesPlatform(t *testing.T) {
 	var events []string
+	connection, _ := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+		for _, attr := range record.Fields {
+			if attr.Key == "platform" {
+				events = append(events, record.Name+":"+attr.Value.String())
+			}
+		}
+		return nil
+	}, signal.ConnectOptions{})
+	defer connection.Disconnect()
 	svc := NewService(Options{
 		Store: fakeCronStore{cron: newFakeCronRepo()},
-		Audit: func(event string, attrs ...any) {
-			events = append(events, event+":"+attrsString(attrs, "platform"))
-		},
 		SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 			return delivery.Receipt{}, nil
 		},

@@ -13,8 +13,10 @@ import (
 	"testing"
 	"time"
 
+	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/llm/httpclient"
+	"elbot/internal/signal"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -121,7 +123,7 @@ func TestChatStream_DebugLogIncludesLatestMessageJSON(t *testing.T) {
 
 	var logs bytes.Buffer
 	adapter := mustNewWithOptions(t, srv.URL, "secret-key", nil, nil, RequestOptions{})
-	adapter.SetLogger(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	captureLogs(t, slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	ch, err := adapter.Stream(context.Background(), Request{
 		Model: "test",
 		Messages: []llm.LLMMessage{
@@ -140,7 +142,7 @@ func TestChatStream_DebugLogIncludesLatestMessageJSON(t *testing.T) {
 	}
 
 	logText := logs.String()
-	if !strings.Contains(logText, "latest_message_json=") || !strings.Contains(logText, "https://example.com/a.png") {
+	if !strings.Contains(logText, "detail=") || !strings.Contains(logText, "https://example.com/a.png") {
 		t.Fatalf("debug log did not include latest message json: %s", logText)
 	}
 	if strings.Contains(logText, "body_json=") || strings.Contains(logText, "旧消息") || strings.Contains(logText, "旧回答") {
@@ -174,7 +176,7 @@ func TestChatStreamDebugLogRedactsDataURLButRequestKeepsIt(t *testing.T) {
 
 	var logs bytes.Buffer
 	adapter := mustNewWithOptions(t, srv.URL, "secret-key", nil, nil, RequestOptions{})
-	adapter.SetLogger(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	captureLogs(t, slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	ch, err := adapter.Stream(context.Background(), Request{
 		Model: "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: []llm.MessageSegment{
@@ -210,7 +212,7 @@ func TestChatStreamLogsFirstSystemMessageOncePerSession(t *testing.T) {
 
 	var logs bytes.Buffer
 	adapter := mustNewWithOptions(t, srv.URL, "secret-key", nil, nil, RequestOptions{})
-	adapter.SetLogger(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	captureLogs(t, slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	req := Request{
 		Model:     "test",
 		SessionID: "session-1",
@@ -229,7 +231,7 @@ func TestChatStreamLogsFirstSystemMessageOncePerSession(t *testing.T) {
 	}
 
 	logText := logs.String()
-	if strings.Count(logText, "first_system_message_json=") != 1 {
+	if strings.Count(logText, "event=system_message") != 1 {
 		t.Fatalf("first system message should be logged once, got logs:\n%s", logText)
 	}
 	if !strings.Contains(logText, "session_id=session-1") || !strings.Contains(logText, "system_hash=") {
@@ -312,7 +314,6 @@ func TestToOpenAIMessagesDerivesImageNumbersPerMessage(t *testing.T) {
 	}
 }
 func TestChatStream_IncludesEmptyContentField(t *testing.T) {
-
 	var capturedBody []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedBody, _ = io.ReadAll(r.Body)
@@ -1263,4 +1264,25 @@ func mustTransport(t *testing.T, client *http.Client) *httpclient.Client {
 		t.Fatal(err)
 	}
 	return transport
+}
+
+// captureLogs observes the public signal; production never receives this logger.
+func captureLogs(t *testing.T, logger *slog.Logger) {
+	t.Helper()
+	connection, err := globalevents.LogSubmitted.Connect(func(ctx context.Context, record globalevents.LogRecord) error {
+		if !logger.Enabled(ctx, record.Level) {
+			return nil
+		}
+		out := slog.NewRecord(record.At, record.Level, record.Summary, 0)
+		out.AddAttrs(record.Fields...)
+		out.AddAttrs(slog.String("event", record.Name), slog.String("module", record.Module))
+		if record.Detail != "" && logger.Enabled(ctx, slog.LevelDebug) {
+			out.AddAttrs(slog.String("detail", record.Detail))
+		}
+		return logger.Handler().Handle(ctx, out)
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(connection.Disconnect)
 }

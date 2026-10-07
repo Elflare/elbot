@@ -11,6 +11,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/completion"
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/platform"
 	platformbuiltin "elbot/internal/platform/builtin"
 )
@@ -19,13 +20,7 @@ type defaultPlatformFactory struct{}
 
 func (defaultPlatformFactory) Build(req PlatformRequest) (PlatformComponents, error) {
 	foundation := req.Foundation
-	bundle, err := platformbuiltin.New(
-		platformbuiltin.Options{Mode: platformMode(req.Mode)},
-		foundation.Config,
-		foundation.Store,
-		foundation.ChatHistory,
-		foundation.Logger,
-	)
+	bundle, err := platformbuiltin.New(platformbuiltin.Options{Mode: platformMode(req.Mode)}, foundation.Config, foundation.Store, foundation.ChatHistory)
 	if err != nil {
 		return PlatformComponents{}, err
 	}
@@ -36,7 +31,7 @@ func (defaultPlatformFactory) Build(req PlatformRequest) (PlatformComponents, er
 type defaultPlatformExecutor struct{}
 
 func (defaultPlatformExecutor) Run(ctx context.Context, req PlatformRunRequest) error {
-	return runPlatforms(ctx, req.Handler, req.Logger, req.Runtimes, req.AfterStart, req.Stop)
+	return runPlatforms(ctx, req.Handler, req.Runtimes, req.AfterStart, req.Stop)
 }
 
 type platformRuntime = platform.Runtime
@@ -91,7 +86,7 @@ func platformStopsAppOnExit(adapter platformRuntime) bool {
 	return ok && lifecycle.StopAppOnExit()
 }
 
-func runPlatforms(ctx context.Context, handler platform.PlatformHandler, logger *slog.Logger, adapters []platformRuntime, afterStart func(context.Context), stop context.CancelFunc) error {
+func runPlatforms(ctx context.Context, handler platform.PlatformHandler, adapters []platformRuntime, afterStart func(context.Context), stop context.CancelFunc) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -101,8 +96,15 @@ func runPlatforms(ctx context.Context, handler platform.PlatformHandler, logger 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := adapter.Run(runCtx, handler); err != nil && !errors.Is(err, context.Canceled) && logger != nil {
-				logger.WarnContext(runCtx, "platform stopped with error", "platform", adapter.Name(), "error", err.Error())
+			if err := adapter.Run(runCtx, handler); err != nil && !errors.Is(err, context.Canceled) {
+				_ = globalevents.EmitLog(runCtx, globalevents.LogRecord{
+					Category: globalevents.LogRuntime,
+					Level:    slog.LevelWarn,
+					Name:     "platform_stopped_with_error",
+					Module:   "app",
+					Summary:  "platform stopped with error",
+					Fields:   []slog.Attr{slog.Any("platform", adapter.Name()), slog.Any("error", err.Error())},
+				})
 			}
 			if platformStopsAppOnExit(adapter) {
 				cancel()

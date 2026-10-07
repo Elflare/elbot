@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"elbot/internal/events"
 )
 
 func TestDailyFileWriterRotatesWhenDateChanges(t *testing.T) {
@@ -16,11 +18,14 @@ func TestDailyFileWriterRotatesWhenDateChanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newDailyFileWriter: %v", err)
 	}
-	logger := New("info", writer)
 
-	logger.Info("before midnight")
+	if _, err := writer.Write([]byte("before midnight\n")); err != nil {
+		t.Fatal(err)
+	}
 	current = time.Date(2026, 6, 17, 0, 1, 0, 0, time.Local)
-	logger.Info("after midnight")
+	if _, err := writer.Write([]byte("after midnight\n")); err != nil {
+		t.Fatal(err)
+	}
 	if err := writer.Close(); err != nil {
 		t.Fatalf("close writer: %v", err)
 	}
@@ -60,9 +65,9 @@ func TestManagerCreatesRuntimeAuditAndElnisLogs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)
 	}
-	manager.Runtime().Info("runtime log")
-	manager.Audit().Info("audit log")
-	manager.Elnis().Info("elnis log")
+	emitRecord(t, events.LogRecord{Category: events.LogRuntime, Summary: "runtime log"})
+	emitRecord(t, events.LogRecord{Category: events.LogAudit, Summary: "audit log"})
+	emitRecord(t, events.LogRecord{Category: events.LogElnis, Summary: "elnis log"})
 	if err := manager.Close(context.Background()); err != nil {
 		t.Fatalf("close manager: %v", err)
 	}
@@ -97,11 +102,13 @@ func TestCleanupOldLogsRemovesExpiredManagedLogs(t *testing.T) {
 		}
 	}
 
-	logger, file, err := NewFile("info", filepath.Join(dir, "elbot_sessions.db"))
+	file, err := newDailyFileWriter(logDir, "elbot", time.Now)
 	if err != nil {
 		t.Fatalf("NewFile: %v", err)
 	}
-	logger.Info("hello log")
+	if _, err := file.Write([]byte("hello log\n")); err != nil {
+		t.Fatal(err)
+	}
 	if err := file.Close(); err != nil {
 		t.Fatalf("close log file: %v", err)
 	}

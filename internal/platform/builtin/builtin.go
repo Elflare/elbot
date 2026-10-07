@@ -1,7 +1,6 @@
 package builtin
 
 import (
-	"log/slog"
 	"path/filepath"
 
 	"elbot/internal/config"
@@ -42,7 +41,7 @@ func ConfigDefinitions() []config.Definition {
 	}
 }
 
-func New(opts Options, cfg *config.Config, store storage.Store, chatHistory storage.ChatHistoryRepository, logger *slog.Logger) (Bundle, error) {
+func New(opts Options, cfg *config.Config, store storage.Store, chatHistory storage.ChatHistoryRepository) (Bundle, error) {
 	mode := opts.Mode
 	if mode == "" {
 		mode = ModeFull
@@ -74,7 +73,7 @@ func New(opts Options, cfg *config.Config, store storage.Store, chatHistory stor
 	}
 	if raw, ok := cfg.Platform["qqofficial"]; ok {
 		attachmentDir := filepath.Join(cfg.Sandbox.Root, "platform", "qqofficial")
-		adapter, err := qqofficial.NewFromPlatformConfig(raw, store, chatHistory, logger, cfg.Security.Superadmins["qqofficial"], cfg.Commands.Prefixes, filepath.Dir(cfg.ConfigPath), attachmentDir, cfg.PlatformFiles.MaxReceiveFileBytes, cfg.PlatformFiles.DownloadTimeoutSecs)
+		adapter, err := qqofficial.NewFromPlatformConfig(raw, store, chatHistory, cfg.Security.Superadmins["qqofficial"], cfg.Commands.Prefixes, filepath.Dir(cfg.ConfigPath), attachmentDir, cfg.PlatformFiles.MaxReceiveFileBytes, cfg.PlatformFiles.DownloadTimeoutSecs)
 		if err != nil {
 			return Bundle{}, err
 		}
@@ -84,7 +83,7 @@ func New(opts Options, cfg *config.Config, store storage.Store, chatHistory stor
 	}
 	if raw, ok := cfg.Platform["qqonebot"]; ok {
 		attachmentDir := filepath.Join(cfg.Sandbox.Root, "platform", "qqonebot")
-		adapter, err := qqonebot.NewFromPlatformConfig(raw, store, chatHistory, logger, cfg.Security.Superadmins["qqonebot"], cfg.Commands.Prefixes, filepath.Dir(cfg.ConfigPath), attachmentDir, cfg.PlatformFiles.MaxReceiveFileBytes, cfg.PlatformFiles.DownloadTimeoutSecs)
+		adapter, err := qqonebot.NewFromPlatformConfig(raw, store, chatHistory, cfg.Security.Superadmins["qqonebot"], cfg.Commands.Prefixes, filepath.Dir(cfg.ConfigPath), attachmentDir, cfg.PlatformFiles.MaxReceiveFileBytes, cfg.PlatformFiles.DownloadTimeoutSecs)
 		if err != nil {
 			return Bundle{}, err
 		}
@@ -93,7 +92,7 @@ func New(opts Options, cfg *config.Config, store storage.Store, chatHistory stor
 		}
 	}
 	if raw, ok := cfg.Platform["telegram"]; ok {
-		adapter, err := telegram.NewFromPlatformConfig(raw, store, chatHistory, logger, cfg.Security.Superadmins["telegram"], cfg.Commands.Prefixes, filepath.Dir(cfg.ConfigPath))
+		adapter, err := telegram.NewFromPlatformConfig(raw, store, chatHistory, cfg.Security.Superadmins["telegram"], cfg.Commands.Prefixes, filepath.Dir(cfg.ConfigPath))
 		if err != nil {
 			return Bundle{}, err
 		}

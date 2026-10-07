@@ -3,11 +3,13 @@ package telegram
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
 
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 )
 
 type messageStream struct {
@@ -98,7 +100,14 @@ func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Rece
 			s.finished = true
 			return telegramReceipt(receipt, s.target), err
 		}
-		s.adapter.logWarn("telegram rich stream final failed, fallback to sendMessage", "error", err)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelWarn,
+			Name:     "telegram_rich_stream_final_failed_fallback_to_sendmessage",
+			Module:   "telegram",
+			Summary:  "telegram rich stream final failed, fallback to sendMessage",
+			Fields:   []slog.Attr{slog.Any("error", err)},
+		})
 	}
 	pages := telegramTextPages(text)
 	if s.message == 0 {

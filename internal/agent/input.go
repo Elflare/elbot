@@ -10,6 +10,7 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
+	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
@@ -37,7 +38,6 @@ type inputCoordinator struct {
 	preloader     *toolrun.PreloadService
 	toolState     *toolrun.StateService
 	waitPolicy    *confirmationPolicy
-	auditLogger   *slog.Logger
 }
 
 var errInputCompacting = errors.New("正在压缩上下文，请稍后再发送。可使用 /stop 取消当前请求。")
@@ -168,7 +168,14 @@ func (c *inputCoordinator) expireIdleCurrentSession(ctx context.Context) error {
 		return err
 	}
 	if result.Expired {
-		writeAudit(c.auditLogger, slog.LevelInfo, "session_idle_expired", "session_id", result.SessionID, "actor_id", actor.ID, "ttl_minutes", result.TTLMinutes)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogAudit,
+			Level:    slog.LevelInfo,
+			Name:     "session_idle_expired",
+			Module:   "agent",
+			Summary:  "session_idle_expired",
+			Fields:   []slog.Attr{slog.Any("session_id", result.SessionID), slog.Any("actor_id", actor.ID), slog.Any("ttl_minutes", result.TTLMinutes)},
+		})
 	}
 	return nil
 }

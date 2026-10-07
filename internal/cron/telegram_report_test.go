@@ -30,7 +30,7 @@ func TestTextReportMapsRealTelegramPartialReceipt(t *testing.T) {
 		fmt.Fprint(w, `{"ok":true,"result":{"message_id":77}}`)
 	}))
 	defer server.Close()
-	adapter := telegram.New(telegram.Config{BotToken: "token", APIBaseURL: server.URL, Format: "plain", Superadmins: []string{"1", "2"}}, nil, nil, nil)
+	adapter := telegram.New(telegram.Config{BotToken: "token", APIBaseURL: server.URL, Format: "plain", Superadmins: []string{"1", "2"}}, nil, nil)
 	store := newCronSQLiteStore(t)
 	router := dispatch.New(dispatch.Options{Primary: adapter, Store: store})
 	row := &storage.Session{ID: "task", OwnerID: "cli:local", Platform: "cli", PlatformScopeID: "cron:task", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive}

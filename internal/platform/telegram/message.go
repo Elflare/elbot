@@ -3,12 +3,14 @@ package telegram
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
 	"elbot/internal/storage"
@@ -171,7 +173,14 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized
 		CreatedAt:                createdAt,
 	}
 	if err := a.chatHistory.Append(ctx, chatMessage); err != nil {
-		a.logWarn("record telegram chat message failed", "error", err, "message_id", msg.MessageID)
+		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+			Category: globalevents.LogRuntime,
+			Level:    slog.LevelWarn,
+			Name:     "record_telegram_chat_message_failed",
+			Module:   "telegram",
+			Summary:  "record telegram chat message failed",
+			Fields:   []slog.Attr{slog.Any("error", err), slog.Any("message_id", msg.MessageID)},
+		})
 	}
 }
 

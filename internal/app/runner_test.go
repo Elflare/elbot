@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log/slog"
 	"reflect"
 	"testing"
 	"time"
@@ -230,7 +229,6 @@ func newTestRunner(t *testing.T, events *[]string, mode RunMode, failAt string) 
 		return nil
 	}
 	profiler := profilerStub{events: events}
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	deps := Dependencies{
 		Environment: environmentStub{events: events, mode: mode, profiler: profiler},
@@ -240,7 +238,7 @@ func newTestRunner(t *testing.T, events *[]string, mode RunMode, failAt string) 
 				return nil, err
 			}
 			return &FoundationComponents{
-				Logger: logger,
+
 				StartCron: func(context.Context, *elcron.Service) {
 					*events = append(*events, "cron-start")
 				},
@@ -293,13 +291,12 @@ func newTestRunner(t *testing.T, events *[]string, mode RunMode, failAt string) 
 func newLifecycleErrorRunner(t *testing.T, events *[]string, runErr, runtimeCloseErr, foundationCloseErr, markerCloseErr error) *Runner {
 	t.Helper()
 	profiler := profilerStub{events: events}
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	deps := Dependencies{
 		Environment: environmentStub{events: events, mode: RunModeFull, profiler: profiler, markerErr: markerCloseErr},
 		Foundation: foundationFactoryFunc(func(context.Context, FoundationRequest) (*FoundationComponents, error) {
 			*events = append(*events, "foundation")
 			return &FoundationComponents{
-				Logger: logger,
+
 				Lifecycle: lifecycleFunc(func(context.Context) error {
 					*events = append(*events, "foundation-close")
 					return foundationCloseErr

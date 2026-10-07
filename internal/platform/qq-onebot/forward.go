@@ -2,8 +2,10 @@ package qqonebot
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
+	globalevents "elbot/internal/events"
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
 )
@@ -31,7 +33,14 @@ func (a *Adapter) expandForwardReference(event Event) func(context.Context, stri
 		}
 		message, err := a.transport.GetMessage(ctx, replyID)
 		if err != nil {
-			a.logWarn("fetch forward reference failed", "error", err)
+			_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
+				Category: globalevents.LogRuntime,
+				Level:    slog.LevelWarn,
+				Name:     "fetch_forward_reference_failed",
+				Module:   "qq-onebot",
+				Summary:  "fetch forward reference failed",
+				Fields:   []slog.Attr{slog.Any("error", err)},
+			})
 			return fallback
 		}
 		segments, ok := decodeMessageSegments(message.Message)
@@ -84,7 +93,14 @@ func (a *Adapter) expandForwardSegments(ctx context.Context, segments []Segment,
 			if err == nil {
 				content = normalizeForwardNodes(nodes)
 			} else {
-				a.logWarn("fetch forward content failed", "error", err)
+				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
+					Category: globalevents.LogRuntime,
+					Level:    slog.LevelWarn,
+					Name:     "fetch_forward_content_failed",
+					Module:   "qq-onebot",
+					Summary:  "fetch forward content failed",
+					Fields:   []slog.Attr{slog.Any("error", err)},
+				})
 			}
 		}
 		if len(content) == 0 {

@@ -30,7 +30,7 @@ func TestMessageStreamSendEditReplace(t *testing.T) {
 	}))
 	defer server.Close()
 
-	adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, StreamEditIntervalMilliseconds: 1}, nil, nil, nil)
+	adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, StreamEditIntervalMilliseconds: 1}, nil, nil)
 	stream := &messageStream{adapter: adapter, target: target{ChatID: 1}}
 	if err := stream.Append(context.Background(), "hello"); err != nil {
 		t.Fatal(err)
@@ -80,7 +80,7 @@ func TestPrivateMessageStreamUsesRichDraft(t *testing.T) {
 	}))
 	defer server.Close()
 
-	adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, StreamEditIntervalMilliseconds: 1, Format: "rich"}, nil, nil, nil)
+	adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, StreamEditIntervalMilliseconds: 1, Format: "rich"}, nil, nil)
 	stream := &messageStream{adapter: adapter, target: target{ChatID: 1, ScopeID: "private:1"}, draftID: 1, useDraft: true}
 	if err := stream.Append(context.Background(), "# hi"); err != nil {
 		t.Fatal(err)
