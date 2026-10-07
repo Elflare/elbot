@@ -848,14 +848,6 @@
       "translation": "External tools are allowed by default; specified external tools are only disabled when a single Elwisp configures __ELBOT_CODE_0__.",
       "updated_at": 1781749596
     },
-    "docs/configuration.md:list:6f70babf7b66d9b8d82f95e9c84fa764ec3da3bac41bf99e1c162cd074a8553a": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__ 会合并到 LLM 请求 JSON 中，模型级覆盖 Provider 级。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "6f70babf7b66d9b8d82f95e9c84fa764ec3da3bac41bf99e1c162cd074a8553a",
-      "translation": "__ELBOT_CODE_0__ will be merged into the LLM request JSON, with model-level settings overriding provider-level settings.",
-      "updated_at": 1782312356
-    },
     "docs/configuration.md:list:705b9282974e374b17a4be79db2a7eb215e1d99e440c7df85b9eb01f2576365c": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__：媒体接收大小上限，默认 100MB；超过上限或无法取得时提示媒体不可用。",
@@ -1191,6 +1183,14 @@
       "source_hash": "cd239933b038dd742f0b02db0cc4eacdb9254f5846b507e13b6624b2260e0e56",
       "translation": "__ELBOT_CODE_0__: Required for toolization; a command array, do not use shell strings.",
       "updated_at": 1783479082
+    },
+    "docs/configuration.md:list:cd82928ff0a1f4249cb9f565acfdcef63add9684b638f49a479ed3501d7dd9c4": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 会合并到 LLM 请求 JSON 中。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "cd82928ff0a1f4249cb9f565acfdcef63add9684b638f49a479ed3501d7dd9c4",
+      "translation": "__ELBOT_CODE_0__ will be merged into the LLM request JSON.",
+      "updated_at": 1791338570
     },
     "docs/configuration.md:list:cf7eddd7a224ea51aed16f2d053820de607268d3e15169de46e6dc74feeb25a3": {
       "kind": "list",
@@ -1688,6 +1688,14 @@
       "translation": "__ELBOT_CODE_0__ itself does not affect the PATH, but once __ELBOT_CODE_1__ is included in the file, systemd will completely overwrite the original value before starting ElBot;",
       "updated_at": 1785918785
     },
+    "docs/configuration.md:paragraph:3ce631dcd503591d75654e5600602523721958fdb1ac22b2a9d352551f63b81e": {
+      "kind": "paragraph",
+      "source": "Responses 的 Provider 或模型级 __ELBOT_CODE_0__ 可用 __ELBOT_CODE_1__ 关闭服务端存储，后续发送完整原生历史；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "3ce631dcd503591d75654e5600602523721958fdb1ac22b2a9d352551f63b81e",
+      "translation": "The Provider or model-level __ELBOT_CODE_0__ of Responses can use __ELBOT_CODE_1__ to disable server-side storage, and subsequent full native history will be sent;",
+      "updated_at": 1791338570
+    },
     "docs/configuration.md:paragraph:3ec24d449c7a33eb474c1fe8d8afbd73b0b7db98587e8214c7d884a64f1b6f6e": {
       "kind": "paragraph",
       "source": "模型窗口在 __ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 中配置：\n",
@@ -2031,6 +2039,14 @@
       "source_hash": "8d4a3aa5a1bce6c9306825b96e3358b7ec0651b63fe2ddf04b9e478e09012931",
       "translation": "Whether ordinary group messages are delivered depends on the group message capabilities enabled for the bot by the QQ Open Platform.\n",
       "updated_at": 1788011776
+    },
+    "docs/configuration.md:paragraph:8d73c9e7d6e044a6e4c590e5099d81044c99c8b32a1e6621558ea59d710511a0": {
+      "kind": "paragraph",
+      "source": "默认使用服务端续链，若上游返回 __ELBOT_CODE_0__ 则自动切换，并在后台记录 WARN。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "8d73c9e7d6e044a6e4c590e5099d81044c99c8b32a1e6621558ea59d710511a0",
+      "translation": "Server-side continuation is used by default. If the upstream returns __ELBOT_CODE_0__, it will automatically switch and record a WARN in the background.\n",
+      "updated_at": 1791338570
     },
     "docs/configuration.md:paragraph:8f55a79f41da642503fc80e443ad38f640089984463c1b174e811f92925dc2f9": {
       "kind": "paragraph",
@@ -2810,8 +2826,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "e5a14635125acf5ac259735219635b09a6ee39cb0d3438cff06168f92e27f9d3",
+  "source_hash": "f1c87df02541f691f541f4ed74201db2ce63bd63d0d6062d6b5a010a6e37dd28",
   "target": "docs.en/configuration.md",
-  "updated_at": 1791301591,
+  "updated_at": 1791338570,
   "version": 2
 }
