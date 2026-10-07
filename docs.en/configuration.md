@@ -196,6 +196,10 @@ extra_payload = { store = false, reasoning = { effort = "medium" } }
 
 The Provider or model-level `extra_payload` of Responses can use `store = false` to disable server-side storage, and subsequent full native history will be sent; Server-side continuation is used by default. If the upstream returns `store:false`, it will automatically switch and record a WARN in the background.
 
+Responses tool definitions are sent via `additional_tools` in the native input, current invocation permissions are restricted via `tool_choice.allowed_tools`, and `none` is sent when no tools are available. Upstream must support these two capabilities; there is no top-level `tools` fallback. `extra_payload.tool_choice` can only further narrow the current permissions; Forcing the invocation of unavailable tools or setting `required` when no tools are available will result in an error.
+
+Responses Sessions use a versioned native input format; Old Sessions missing format markers cannot continue the conversation, be Forked, or be compressed; please create a new Session. Tool definitions within the same native history are fixed; changes to a schema with the same name also require creating a new Session.
+
 Both Chat Completions and Responses clients can be used for naming and text summaries of Chat Sessions. Responses Sessions use the current conversation model for native compression, ignoring the selection of `/model --compact`.
 
 The protocol and provider of an existing Session are fixed during the first conversation. The provider is the node name of `[providers.<name>]`: Chat Sessions can be switched to other Chat providers; Responses Sessions can only be switched to Responses models under the same node. A new Session must be created for cross-protocol or cross-Responses provider changes. When `base_url` of the same node changes, Responses rebuilds the chain using complete local native materials.
