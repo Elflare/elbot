@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 	"unicode/utf8"
 
@@ -41,46 +43,91 @@ func emitRecord(t *testing.T, record events.LogRecord) {
 	}
 }
 
-func TestGlobalRecordsUseIndependentLevelsAndReader(t *testing.T) {
-	for _, level := range []string{"warn", "error"} {
-		t.Run(level, func(t *testing.T) {
-			m := testManager(t, level)
-			at := time.Now().Add(-time.Minute).Truncate(time.Second)
-			for _, category := range logCategories {
-				emitRecord(t, events.LogRecord{At: at, Category: category, Level: slog.LevelInfo, Name: "llm_usage", Module: "model", Summary: "usage", Detail: "upstream detail", Fields: []slog.Attr{slog.Int("input_tokens", 17), slog.String("session_id", "session")}})
+func readJSONRecords(t *testing.T, dir, prefix string) []map[string]json.RawMessage {
+	t.Helper()
+	paths, err := filepath.Glob(filepath.Join(dir, prefix+"-*.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var entries []map[string]json.RawMessage
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(data) == 0 {
+			continue
+		}
+		if data[len(data)-1] != '\n' {
+			t.Fatalf("missing final newline: %s", path)
+		}
+		for _, line := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
+			if len(line)+1 > maxRecordBytes {
+				t.Fatalf("oversized line: %d", len(line)+1)
 			}
-			emitRecord(t, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, Name: "failure", Detail: "runtime detail"})
+			var entry map[string]json.RawMessage
+			if err := json.Unmarshal([]byte(line), &entry); err != nil {
+				t.Fatalf("%s: %v", path, err)
+			}
+			entries = append(entries, entry)
+		}
+	}
+	return entries
+}
+
+func TestGlobalRecordsUseIndependentLevelsAndContent(t *testing.T) {
+	for _, configuredLevel := range []string{"debug", "info", "warn", "error"} {
+		t.Run(configuredLevel, func(t *testing.T) {
+			readStderr := captureStderr(t)
+			m := testManager(t, configuredLevel)
+			facts := []struct {
+				name   string
+				level  slog.Level
+				status events.ResultStatus
+			}{
+				{"debug", slog.LevelDebug, events.ResultSucceeded},
+				{"rejection", slog.LevelInfo, events.ResultRejected},
+				{"attempt", slog.LevelWarn, events.ResultFailed},
+				{"cancellation", slog.LevelError, events.ResultCanceled},
+			}
+			for _, category := range logCategories {
+				for _, fact := range facts {
+					emitRecord(t, events.LogRecord{Category: category, Level: fact.level, EventName: fact.name, Module: "test",
+						Type: events.ContentJSON, Content: `{"reason":"diagnostic evidence","api_key":"secret-value","level":"forged","result_status":"forged"}`, ResultStatus: fact.status})
+				}
+			}
+			if configuredLevel != "debug" {
+				emitRecord(t, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelDebug, Type: events.ContentJSON, Content: "\"" + strings.Repeat("x", maxRecordBytes) + "\""})
+			}
 			if err := m.Close(context.Background()); err != nil {
 				t.Fatal(err)
 			}
+			if got := readStderr(); got != "" {
+				t.Fatalf("filtered record reached formatter: %s", got)
+			}
 			for _, category := range logCategories {
-				prefix := string(category)
+				prefix := category.String()
 				if category == events.LogRuntime {
 					prefix = "elbot"
 				}
-				entries, err := (Reader{Dir: m.LogDir()}).Query(context.Background(), LogQuery{Prefix: prefix, Limit: 10})
-				if err != nil {
-					t.Fatal(err)
+				entries := readJSONRecords(t, m.LogDir(), prefix)
+				var expected []int
+				for i, fact := range facts {
+					if category != events.LogRuntime || fact.level >= parseLevel(configuredLevel) {
+						expected = append(expected, i)
+					}
 				}
-				if category == events.LogRuntime {
-					if len(entries) != 1 || entries[0].Fields["event"] != "failure" || entries[0].Fields["detail"] != "" {
-						t.Fatal(entries)
+				if len(entries) != len(expected) {
+					t.Fatalf("%s: %d entries, want %d", prefix, len(entries), len(expected))
+				}
+				for i, entry := range entries {
+					fact := facts[expected[i]]
+					if string(entry["event"]) != fmt.Sprintf("%q", fact.name) || string(entry["level"]) != fmt.Sprintf("%q", fact.level.String()) ||
+						string(entry["result_status"]) != fmt.Sprintf("%q", fact.status.String()) || string(entry["category"]) != fmt.Sprintf("%q", category.String()) {
+						t.Fatalf("business facts changed: %s", entry)
 					}
-				} else {
-					if len(entries) != 1 {
-						t.Fatal(entries)
-					}
-					var found bool
-					for _, entry := range entries {
-						if entry.Fields["event"] == "llm_usage" {
-							found = true
-							if !entry.Time.Equal(at) || entry.Fields["input_tokens"] != "17" || entry.Fields["detail"] != "upstream detail" || entry.Fields["session_id"] != "session" {
-								t.Fatal(entry)
-							}
-						}
-					}
-					if !found {
-						t.Fatal(entries)
+					if !strings.Contains(string(entry["content"]), "diagnostic evidence") || strings.Contains(string(entry["content"]), "secret-value") {
+						t.Fatalf("content differs by configured level: %s", entry)
 					}
 				}
 			}
@@ -91,132 +138,58 @@ func TestGlobalRecordsUseIndependentLevelsAndReader(t *testing.T) {
 func TestGlobalRecordsSnapshotBeforeQueueConsumption(t *testing.T) {
 	m := testManager(t, "debug")
 	started, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
 	if err := m.sinks[events.LogRuntime].queue.Submit(context.Background(), signal.Task{Shutdown: signal.Drain, Run: func(context.Context) error { close(started); <-release; return nil }}); err != nil {
 		t.Fatal(err)
 	}
 	<-started
-	failure := &mutableDiagnosticError{message: "original error", detail: "original diagnostic"}
-	values := map[string]any{"nested": []any{"original"}}
-	emitRecord(t, events.LogRecord{Category: events.LogRuntime, Summary: "snapshot", Detail: "debug detail", Error: failure, ResultStatus: events.ResultFailed, Fields: []slog.Attr{slog.Any("payload", values)}})
-	values["nested"].([]any)[0] = "changed"
-	failure.message, failure.detail = "changed error", "changed diagnostic"
-	close(release)
+	value := "source-session"
+	before := time.Now()
+	emitRecord(t, events.LogRecord{Category: events.LogRuntime, Content: "original content", Identity: events.LogIdentity{SessionID: &value}})
+	after := time.Now()
+	value = "changed"
+	// RFC3339 has second precision. Consume only after the next second so a
+	// timestamp incorrectly taken by the worker cannot pass the assertion.
+	time.Sleep(time.Until(after.Truncate(time.Second).Add(time.Second)))
+	releaseOnce.Do(func() { close(release) })
 	if err := m.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	entries, err := (Reader{Dir: m.LogDir()}).Query(context.Background(), LogQuery{Prefix: "elbot"})
-	if err != nil || len(entries) != 1 {
-		t.Fatalf("entries=%v err=%v", entries, err)
-	}
-	if !strings.Contains(entries[0].Fields["payload"], "original") || strings.Contains(entries[0].Raw, "changed") || entries[0].Fields["detail"] != "debug detail" {
+	entries := readJSONRecords(t, m.LogDir(), "elbot")
+	if len(entries) != 1 {
 		t.Fatal(entries)
 	}
-	if !strings.Contains(entries[0].Fields["error"], "original diagnostic") || !strings.Contains(entries[0].Fields["error"], "original error") || entries[0].Fields["result_status"] != "failed" {
-		t.Fatalf("lost error snapshot: %+v", entries)
-	}
-}
-
-type mutableDiagnosticError struct{ message, detail string }
-
-func (e *mutableDiagnosticError) Error() string { return e.message }
-func (e *mutableDiagnosticError) LogDiagnostic() events.LogDiagnostic {
-	return events.LogDiagnostic{Kind: "upstream", Detail: e.detail}
-}
-
-func TestGlobalResultAndErrorFieldsPreserveSeverityAndDetailPolicy(t *testing.T) {
-	for _, configuredLevel := range []string{"debug", "info", "warn", "error"} {
-		t.Run(configuredLevel, func(t *testing.T) {
-			manager := testManager(t, configuredLevel)
-			failure := &mutableDiagnosticError{message: "call failed", detail: `{"description":"diagnostic evidence","api_key":"secret-value"}`}
-			for _, category := range logCategories {
-				for _, fact := range []struct {
-					name   string
-					level  slog.Level
-					status events.ResultStatus
-				}{
-					{"attempt", slog.LevelWarn, events.ResultFailed},
-					{"cancellation", slog.LevelError, events.ResultCanceled},
-					{"rejection", slog.LevelInfo, events.ResultRejected},
-				} {
-					emitRecord(t, events.LogRecord{Category: category, Name: fact.name, Level: fact.level, ResultStatus: fact.status, Error: failure,
-						Fields: []slog.Attr{slog.String("result_status", "forged"), slog.Group("", slog.String("error", "forged"), slog.String("result_status", "forged"))}})
-				}
-			}
-			// Unmigrated producers keep their existing fields until step 2.
-			emitRecord(t, events.LogRecord{Category: events.LogAudit, Name: "existing_error", Fields: []slog.Attr{slog.String("error", "existing failure")}})
-			// No declared result must remain absent, even with a conflicting free field.
-			emitRecord(t, events.LogRecord{Category: events.LogAudit, Name: "progress", Fields: []slog.Attr{slog.String("result_status", "succeeded")}})
-			if err := manager.Close(context.Background()); err != nil {
-				t.Fatal(err)
-			}
-			for _, prefix := range []string{"elbot", "audit", "elnis"} {
-				entries, err := (Reader{Dir: manager.LogDir()}).Query(context.Background(), LogQuery{Prefix: prefix, Limit: 20})
-				if err != nil {
-					t.Fatal(err)
-				}
-				wantCount := 3
-				if prefix == "audit" {
-					wantCount += 2
-				}
-				if prefix == "elbot" && configuredLevel == "warn" {
-					wantCount = 2
-				}
-				if prefix == "elbot" && configuredLevel == "error" {
-					wantCount = 1
-				}
-				if len(entries) != wantCount {
-					t.Fatalf("%s entries=%+v", prefix, entries)
-				}
-				for _, entry := range entries {
-					name := entry.Fields["event"]
-					if name == "existing_error" {
-						if entry.Fields["error"] != "existing failure" {
-							t.Fatal(entry)
-						}
-						continue
-					}
-					if name == "progress" {
-						if _, present := entry.Fields["result_status"]; present {
-							t.Fatal(entry)
-						}
-						if _, present := entry.Fields["error"]; present {
-							t.Fatal(entry)
-						}
-						continue
-					}
-					wantLevel := map[string]string{"attempt": "WARN", "cancellation": "ERROR", "rejection": "INFO"}[name]
-					wantStatus := map[string]string{"attempt": "failed", "cancellation": "canceled", "rejection": "rejected"}[name]
-					if entry.Level != wantLevel || entry.Fields["result_status"] != wantStatus || !strings.Contains(entry.Fields["error"], "call failed") || strings.Contains(entry.Raw, "forged") || strings.Contains(entry.Raw, "secret-value") {
-						t.Fatalf("facts overwritten or secret leaked: %+v", entry)
-					}
-					wantDetails := prefix != "elbot" || configuredLevel == "debug"
-					if strings.Contains(entry.Fields["error"], "diagnostic evidence") != wantDetails {
-						t.Fatalf("detail policy: %+v", entry)
-					}
-				}
-			}
-		})
-	}
-}
-
-func TestResultErrorFieldsSurviveRecordLimits(t *testing.T) {
-	manager := testManager(t, "info")
-	failure := &mutableDiagnosticError{message: strings.Repeat("失败", 10000), detail: `{"token":"secret-value","text":"` + strings.Repeat("详情", 10000) + `"}`}
-	fields := make([]slog.Attr, 40)
-	for i := range fields {
-		fields[i] = slog.String(fmt.Sprintf("payload_%d", i), strings.Repeat("x", 8000))
-	}
-	emitRecord(t, events.LogRecord{Category: events.LogAudit, Level: slog.LevelError, Name: "large_failure", ResultStatus: events.ResultFailed, Error: failure, Fields: fields})
-	if err := manager.Close(context.Background()); err != nil {
+	var timestamp string
+	if err := json.Unmarshal(entries[0]["time"], &timestamp); err != nil {
 		t.Fatal(err)
 	}
-	entries, err := (Reader{Dir: manager.LogDir()}).Query(context.Background(), LogQuery{Prefix: "audit", Fields: map[string]string{"event": "large_failure", "result_status": "failed"}})
-	if err != nil || len(entries) != 1 {
-		t.Fatalf("entries=%+v error=%v", entries, err)
+	at, err := time.Parse(time.RFC3339, timestamp)
+	if err != nil {
+		t.Fatal(err)
 	}
-	entry := entries[0]
-	if len(entry.Raw) > maxRecordBytes || len(entry.Fields["error"]) > maxDetailBytes || !utf8.ValidString(entry.Raw) || !strings.Contains(entry.Fields["error"], truncatedMarker) || entry.Fields["truncated"] != "true" || strings.Contains(entry.Raw, "secret-value") {
-		t.Fatalf("limits failed: errorBytes=%d recordBytes=%d fields=%v", len(entry.Fields["error"]), len(entry.Raw), entry.Fields)
+	if at.Before(before.Truncate(time.Second)) || at.After(after) {
+		t.Fatalf("not reception time: %s outside %s..%s", at, before, after)
+	}
+	if string(entries[0]["session_id"]) != "\"source-session\"" || string(entries[0]["content"]) != "\"original content\"" {
+		t.Fatal(entries)
+	}
+}
+
+func TestOversizedRecordsReportAndContinue(t *testing.T) {
+	readStderr := captureStderr(t)
+	m := testManager(t, "error")
+	emitRecord(t, events.LogRecord{Category: events.LogAudit, Type: events.ContentJSON, Content: "\"" + strings.Repeat("x", maxRecordBytes) + "\""})
+	emitRecord(t, events.LogRecord{Category: events.LogAudit, Content: "following record"})
+	if err := m.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	entries := readJSONRecords(t, m.LogDir(), "audit")
+	if len(entries) != 1 || string(entries[0]["content"]) != "\"following record\"" {
+		t.Fatal(entries)
+	}
+	if got := readStderr(); !strings.Contains(got, "exceeds 65536 bytes") || strings.Count(got, "signal task failed") != 1 {
+		t.Fatal(got)
 	}
 }
 
@@ -258,13 +231,13 @@ func TestManagerRejectsDuplicatesAndRollsBackFailedInitialization(t *testing.T) 
 	if original != events.LogSubmitted {
 		t.Fatal("replaced global signal")
 	}
-	emitRecord(t, events.LogRecord{Category: events.LogAudit, Summary: "one consumer"})
+	emitRecord(t, events.LogRecord{Category: events.LogAudit, Content: "one consumer"})
 	if err := next.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	entries, err := (Reader{Dir: next.LogDir()}).Query(context.Background(), LogQuery{Prefix: "audit"})
-	if err != nil || len(entries) != 1 {
-		t.Fatalf("entries=%v err=%v", entries, err)
+	entries := readJSONRecords(t, next.LogDir(), "audit")
+	if len(entries) != 1 {
+		t.Fatalf("entries=%v", entries)
 	}
 }
 
@@ -287,38 +260,120 @@ func captureStderr(t *testing.T) func() string {
 }
 
 func TestGlobalWriteFailureReportsToStderrAndContinues(t *testing.T) {
-	readStderr := captureStderr(t)
-	var writes atomic.Int32
-	m, err := newManager("error", t.TempDir(), 30, func(string) (io.WriteCloser, error) {
-		return &controlledWriter{write: func(p []byte) (int, error) {
-			if writes.Add(1) == 1 {
-				return 0, errors.New("disk write failed")
+	for _, failure := range []error{errors.New("disk write failed"), io.ErrShortWrite} {
+		t.Run(failure.Error(), func(t *testing.T) {
+			readStderr := captureStderr(t)
+			var writes atomic.Int32
+			m, err := newManager("error", t.TempDir(), 30, func(string) (io.WriteCloser, error) {
+				return &controlledWriter{write: func(p []byte) (int, error) {
+					if writes.Add(1) == 1 {
+						if failure == io.ErrShortWrite {
+							return len(p) - 1, nil
+						}
+						return 0, failure
+					}
+					return len(p), nil
+				}}, nil
+			})
+			if err != nil {
+				t.Fatal(err)
 			}
-			return len(p), nil
-		}}, nil
+			t.Cleanup(func() { _ = m.Close(context.Background()) })
+			var publications atomic.Int32
+			connection, err := events.LogSubmitted.Connect(func(context.Context, events.LogRecord) error { publications.Add(1); return nil }, signal.ConnectOptions{Shutdown: signal.CancelPending})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer connection.Disconnect()
+			for range 2 {
+				emitRecord(t, events.LogRecord{Category: events.LogAudit, Content: "business fact"})
+			}
+			if err := m.Close(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if writes.Load() != 2 || publications.Load() != 2 {
+				t.Fatalf("writes=%d publications=%d", writes.Load(), publications.Load())
+			}
+			if got := readStderr(); !strings.Contains(got, failure.Error()) || strings.Count(got, "signal task failed") != 1 {
+				t.Fatal(got)
+			}
+		})
+	}
+}
+
+func TestManagerReportsInvalidCategoryValue(t *testing.T) {
+	m := testManager(t, "info")
+	for _, category := range []events.LogCategory{0, 255} {
+		// Exercise the defensive consumer check; production publishers use EmitLog.
+		err := m.handleRecord(context.Background(), events.LogRecord{Category: category})
+		want := fmt.Sprintf("logging: unknown category %d", category)
+		if err == nil || err.Error() != want {
+			t.Fatalf("category %d: got %v, want %s", category, err, want)
+		}
+	}
+}
+
+func TestManagerRecordsTimeBeforeCapacityWait(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var output bytes.Buffer
+		started, release := make(chan struct{}), make(chan struct{})
+		var writeOnce, releaseOnce sync.Once
+		m, err := newManager("info", t.TempDir(), 30, func(prefix string) (io.WriteCloser, error) {
+			if prefix != "audit" {
+				return &controlledWriter{}, nil
+			}
+			return &controlledWriter{write: func(p []byte) (int, error) {
+				writeOnce.Do(func() { close(started); <-release })
+				return output.Write(p)
+			}}, nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			releaseOnce.Do(func() { close(release) })
+			if err := m.Close(context.Background()); err != nil {
+				t.Error(err)
+			}
+		})
+		emitRecord(t, events.LogRecord{Category: events.LogAudit, EventName: "active"})
+		<-started
+		for range 256 {
+			emitRecord(t, events.LogRecord{Category: events.LogAudit, EventName: "queued"})
+		}
+		receivedAt := time.Now()
+		done := make(chan error, 1)
+		go func() {
+			done <- events.EmitLog(context.Background(), events.LogRecord{Category: events.LogAudit, EventName: "waiting"})
+		}()
+		// Wait until the publisher is blocked inside the full queue. The fake
+		// clock then advances without relying on real scheduler timing.
+		synctest.Wait()
+		time.Sleep(2 * time.Second)
+		select {
+		case err := <-done:
+			t.Fatalf("full queue did not block publication: %v", err)
+		default:
+		}
+		releaseOnce.Do(func() { close(release) })
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+		if err := m.Close(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		lines := bytes.Split(bytes.TrimSuffix(output.Bytes(), []byte("\n")), []byte("\n"))
+		if len(lines) != 258 {
+			t.Fatalf("got %d records, want 258", len(lines))
+		}
+		var entry map[string]json.RawMessage
+		if err := json.Unmarshal(lines[len(lines)-1], &entry); err != nil {
+			t.Fatal(err)
+		}
+		if string(entry["event"]) != `"waiting"` || string(entry["time"]) != fmt.Sprintf("%q", receivedAt.Format(time.RFC3339)) {
+			t.Fatalf("record timestamp changed while waiting for capacity: %s", lines[len(lines)-1])
+		}
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = m.Close(context.Background()) })
-	var publications atomic.Int32
-	connection, err := events.LogSubmitted.Connect(func(context.Context, events.LogRecord) error { publications.Add(1); return nil }, signal.ConnectOptions{Shutdown: signal.CancelPending})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer connection.Disconnect()
-	for range 2 {
-		emitRecord(t, events.LogRecord{Category: events.LogAudit, Summary: "business fact"})
-	}
-	if err := m.Close(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if writes.Load() != 2 || publications.Load() != 2 {
-		t.Fatalf("writes=%d publications=%d", writes.Load(), publications.Load())
-	}
-	if got := readStderr(); !strings.Contains(got, "disk write failed") || strings.Count(got, "signal task failed") != 1 {
-		t.Fatal(got)
-	}
 }
 
 func TestManagerBackpressureCancellationDrainAndTimeout(t *testing.T) {
@@ -388,58 +443,157 @@ func TestManagerBackpressureCancellationDrainAndTimeout(t *testing.T) {
 func TestGlobalRecordsDrainInCategoryOrder(t *testing.T) {
 	m := testManager(t, "info")
 	for i := range 100 {
-		emitRecord(t, events.LogRecord{Category: events.LogAudit, Name: "order", Fields: []slog.Attr{slog.Int("index", i)}})
+		emitRecord(t, events.LogRecord{Category: events.LogAudit, EventName: "order", Type: events.ContentJSON, Content: fmt.Sprintf(`{"index":%d}`, i)})
 	}
 	if err := m.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	entries, err := (Reader{Dir: m.LogDir()}).Query(context.Background(), LogQuery{Prefix: "audit", Limit: 100})
-	if err != nil || len(entries) != 100 {
-		t.Fatalf("entries=%d err=%v", len(entries), err)
+	entries := readJSONRecords(t, m.LogDir(), "audit")
+	if len(entries) != 100 {
+		t.Fatalf("entries=%d", len(entries))
 	}
 	for i, entry := range entries {
-		if entry.Fields["index"] != fmt.Sprint(99-i) {
+		if string(entry["content"]) != fmt.Sprintf(`{"index":%d}`, i) {
 			t.Fatal(entry)
 		}
 	}
 }
 
 func TestRecordRedactionUTF8AndSerializedLimit(t *testing.T) {
-	m := testManager(t, "debug")
-	attrs := []slog.Attr{
-		slog.Any("raw", json.RawMessage(`{"api_key":"raw-secret"}`)),
-		slog.String("session_id", "keep-session"), slog.Int("input_tokens", 42), slog.String("token_name", "business-name"),
-		slog.Group("nested", slog.Any("payload", map[string]any{"Authorization": "nested-secret", "items": []any{map[string]any{"api_key": "array-secret"}}, "text": "Bearer inline-secret", "image_url": "data:image/png;base64,media-secret"})),
-	}
-	emitRecord(t, events.LogRecord{Category: events.LogAudit, Name: "failure", Module: "model", Summary: strings.Repeat("中文", 200), Detail: `{"credentials":{"cookie":"cookie-secret"},"message":"` + strings.Repeat("中", 5000) + `"}`, Fields: attrs})
-	for i := range 100 {
-		attrs = append(attrs, slog.String(fmt.Sprintf("large_%d", i), strings.Repeat("\"中", 6000)))
-	}
-	emitRecord(t, events.LogRecord{Category: events.LogAudit, Name: "bounded", Module: "model", Detail: strings.Repeat("文", 9000), Fields: attrs})
-	if err := m.Close(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	entries, err := (Reader{Dir: m.LogDir()}).Query(context.Background(), LogQuery{Prefix: "audit", Limit: 10})
-	if err != nil || len(entries) != 2 {
-		t.Fatalf("entries=%d err=%v", len(entries), err)
-	}
-	for _, entry := range entries {
-		if !utf8.ValidString(entry.Raw) || len(entry.Raw)+1 > maxRecordBytes || utf8.RuneCountInString(entry.Message) > maxSummaryRunes || len(entry.Fields["detail"]) > maxDetailBytes {
-			t.Fatalf("record bounds violated: %d", len(entry.Raw))
-		}
-		for _, secret := range []string{"nested-secret", "array-secret", "inline-secret", "media-secret", "cookie-secret", "raw-secret"} {
-			if strings.Contains(entry.Raw, secret) {
-				t.Fatalf("leaked %s", secret)
+	at := time.Date(2026, 10, 8, 12, 34, 56, 0, time.FixedZone("test", 8*60*60))
+	t.Run("text limits", func(t *testing.T) {
+		for _, limit := range []int{0, 1, 2, 256, 512} {
+			record := events.LogRecord{Category: events.LogRuntime, Content: strings.Repeat("中🙂", 300), ContentLimit: limit}
+			data, err := formatRecord(context.Background(), record, at)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var entry map[string]json.RawMessage
+			if err := json.Unmarshal(data, &entry); err != nil {
+				t.Fatal(err)
+			}
+			var got string
+			if err := json.Unmarshal(entry["content"], &got); err != nil {
+				t.Fatal(err)
+			}
+			want := limit
+			if want == 0 {
+				want = defaultContentLimit
+			}
+			if !utf8.ValidString(got) || utf8.RuneCountInString(got) != want || !strings.HasSuffix(got, "…") {
+				t.Fatalf("limit %d: %q", limit, got)
+			}
+			if string(entry["time"]) != "\"2026-10-08T12:34:56+08:00\"" || len(entry) != 7 {
+				t.Fatalf("unexpected fields: %s", data)
 			}
 		}
-		if entry.Fields["session_id"] != "keep-session" || entry.Fields["module"] != "model" {
-			t.Fatal(entry.Fields)
+	})
+	t.Run("text stays text", func(t *testing.T) {
+		for _, text := range []string{"", "中🙂", "line\n\"quoted\"", " { \"count\" : 9007199254740993 } "} {
+			data, err := formatRecord(context.Background(), events.LogRecord{Category: events.LogRuntime, Content: text}, at)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var entry map[string]json.RawMessage
+			if err := json.Unmarshal(data, &entry); err != nil {
+				t.Fatal(err)
+			}
+			var got string
+			if err := json.Unmarshal(entry["content"], &got); err != nil {
+				t.Fatal(err)
+			}
+			if got != text || strings.Count(string(data), "\n") != 1 {
+				t.Fatalf("%q became %s", text, data)
+			}
 		}
-		if entry.Fields["event"] == "failure" && (entry.Fields["token_name"] != "business-name" || entry.Fields["input_tokens"] != "42" || !strings.Contains(entry.Fields["detail"], truncatedMarker)) {
-			t.Fatal(entry.Fields)
+	})
+	t.Run("redact before limiting", func(t *testing.T) {
+		data, err := formatRecord(context.Background(), events.LogRecord{Category: events.LogRuntime, Content: "reason: token=" + strings.Repeat("secret", 1000)}, at)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if entry.Fields["event"] == "bounded" && entry.Fields["truncated"] != "true" {
-			t.Fatal("missing truncation marker")
+		var entry map[string]json.RawMessage
+		if err := json.Unmarshal(data, &entry); err != nil {
+			t.Fatal(err)
 		}
-	}
+		if string(entry["content"]) != "\"reason: token=[redacted]\"" {
+			t.Fatalf("%s", data)
+		}
+	})
+	t.Run("JSON types and precision", func(t *testing.T) {
+		for _, text := range []string{"null", "true", "false", "9007199254740993123456789", "0.12345678901234567890123456789", "1e1000", "\"中🙂\"", "[1,\"two\",null]", "{\"count\":9007199254740993}", strings.Repeat("[", 64) + "9007199254740993" + strings.Repeat("]", 64)} {
+			data, err := formatRecord(context.Background(), events.LogRecord{Category: events.LogAudit, Type: events.ContentJSON, Content: text, ContentLimit: 1}, at)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var entry map[string]json.RawMessage
+			if err := json.Unmarshal(data, &entry); err != nil {
+				t.Fatal(err)
+			}
+			if string(entry["content"]) != text || string(entry["type"]) != "\"json\"" {
+				t.Fatalf("%s became %s", text, data)
+			}
+		}
+	})
+	t.Run("JSON redaction and public fields", func(t *testing.T) {
+		text := `{"nested":[{"api_key":"nested-secret","authorization":"header-secret","cookie":"cookie-secret","image_data":"media-secret","text":"Bearer inline-secret","url":"data:image/png;base64,url-secret"}],"prompt_tokens":9007199254740993,"token_name":"business-name","event":"inner","level":"ERROR","result_status":"failed"}`
+		values := []string{"session", "", "2", "request", "root"}
+		record := events.LogRecord{Category: events.LogAudit, EventName: "outer", Module: "test", Type: events.ContentJSON, Content: text, ContentLimit: 1,
+			ResultStatus: events.ResultCanceled, Identity: events.LogIdentity{SessionID: &values[0], RunID: &values[1], Attempt: &values[2], RequestID: &values[3], RootRequestID: &values[4]}}
+		data, err := formatRecord(context.Background(), record, at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), "-secret") {
+			t.Fatalf("secret leaked: %s", data)
+		}
+		var entry map[string]json.RawMessage
+		if err := json.Unmarshal(data, &entry); err != nil {
+			t.Fatal(err)
+		}
+		for key, want := range map[string]string{"event": "\"outer\"", "level": "\"INFO\"", "module": "\"test\"", "result_status": "\"canceled\"", "session_id": "\"session\"", "run_id": "\"\"", "attempt": "\"2\"", "request_id": "\"request\"", "root_request_id": "\"root\""} {
+			if string(entry[key]) != want {
+				t.Fatalf("%s: %s", key, data)
+			}
+		}
+		if len(entry) != 13 {
+			t.Fatalf("unexpected outer fields: %s", data)
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(entry["content"], &fields); err != nil {
+			t.Fatal(err)
+		}
+		if string(fields["prompt_tokens"]) != "9007199254740993" || string(fields["token_name"]) != "\"business-name\"" || string(fields["event"]) != "\"inner\"" {
+			t.Fatalf("business data changed: %s", data)
+		}
+	})
+	t.Run("serialized boundary", func(t *testing.T) {
+		for _, value := range []events.LogContentType{events.ContentText, events.ContentJSON} {
+			record := events.LogRecord{Category: events.LogAudit, Type: value, ContentLimit: maxRecordBytes}
+			if value == events.ContentJSON {
+				record.Content = "\"\""
+			}
+			data, err := formatRecord(context.Background(), record, at)
+			if err != nil {
+				t.Fatal(err)
+			}
+			text := strings.Repeat("x", maxRecordBytes-len(data))
+			record.Content = text
+			if value == events.ContentJSON {
+				record.Content = "\"" + text + "\""
+			}
+			data, err = formatRecord(context.Background(), record, at)
+			if err != nil || len(data) != maxRecordBytes || data[len(data)-1] != '\n' || !json.Valid(data) {
+				t.Fatalf("boundary: len=%d err=%v", len(data), err)
+			}
+			record.Content = "x" + text
+			if value == events.ContentJSON {
+				record.Content = "\"" + record.Content + "\""
+			}
+			data, err = formatRecord(context.Background(), record, at)
+			if err == nil || data != nil {
+				t.Fatalf("oversize record accepted: len=%d err=%v", len(data), err)
+			}
+		}
+	})
 }

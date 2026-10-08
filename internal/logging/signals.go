@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"sync"
+	"time"
 
 	"elbot/internal/events"
 	"elbot/internal/signal"
@@ -52,7 +52,7 @@ func newManager(level, logDir string, retentionDays int, open func(string) (io.W
 		managerOwnership.Unlock()
 	}()
 	for _, category := range logCategories {
-		prefix := string(category)
+		prefix := category.String()
 		if category == events.LogRuntime {
 			prefix = "elbot"
 		}
@@ -61,7 +61,7 @@ func newManager(level, logDir string, retentionDays int, open func(string) (io.W
 			return nil, openErr
 		}
 		m.writers = append(m.writers, writer)
-		queue, queueErr := signal.NewQueue(signal.QueueOptions{Name: "logging." + string(category), Capacity: 256, WaitForCapacity: true})
+		queue, queueErr := signal.NewQueue(signal.QueueOptions{Name: "logging." + category.String(), Capacity: 256, WaitForCapacity: true})
 		if queueErr != nil {
 			return nil, queueErr
 		}
@@ -77,15 +77,16 @@ func newManager(level, logDir string, retentionDays int, open func(string) (io.W
 // handleRecord only admits an already frozen record. Filtering and formatting
 // happen in its category's consumer. Business code calls events.EmitLog.
 func (m *Manager) handleRecord(ctx context.Context, record events.LogRecord) error {
+	at := time.Now()
 	sink, ok := m.sinks[record.Category]
 	if !ok {
-		return fmt.Errorf("logging: unknown category %q", record.Category)
+		return fmt.Errorf("logging: unknown category %d", record.Category)
 	}
 	return sink.queue.Submit(context.WithoutCancel(ctx), signal.Task{Shutdown: signal.Drain, Run: func(ctx context.Context) error {
 		if record.Category == events.LogRuntime && record.Level < m.level {
 			return nil
 		}
-		data, err := formatRecord(ctx, record, m.level <= slog.LevelDebug)
+		data, err := formatRecord(ctx, record, at)
 		if err != nil {
 			return err
 		}

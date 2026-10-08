@@ -108,15 +108,6 @@ func (m *Manager) Close(ctx context.Context) error {
 	return m.closeErr
 }
 
-func replaceAttr(groups []string, attr slog.Attr) slog.Attr {
-	if attr.Key == slog.TimeKey {
-		if t, ok := attr.Value.Any().(time.Time); ok {
-			attr.Value = slog.StringValue(t.Format("2006-01-02 15:04:05"))
-		}
-	}
-	return attr
-}
-
 type dailyFileWriter struct {
 	mu     sync.Mutex
 	logDir string

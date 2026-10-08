@@ -2,270 +2,170 @@
 package events
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"log/slog"
-	"reflect"
-	"strings"
-	"time"
+	"os"
 
-	"elbot/internal/contextinfo"
 	"elbot/internal/signal"
 )
 
-type LogCategory string
+// LogCategory selects a log file category. Sources must provide a valid value;
+// zero is invalid and never defaults to runtime.
+type LogCategory uint8
 
 const (
-	LogRuntime LogCategory = "runtime"
-	LogAudit   LogCategory = "audit"
-	LogElnis   LogCategory = "elnis"
+	LogRuntime LogCategory = iota + 1
+	LogAudit
+	LogElnis
 )
 
-// ResultStatus describes an operation's result, independently of its log level.
-// The empty value means no result was declared, not success.
-type ResultStatus string
+func (value LogCategory) Valid() bool { return value >= LogRuntime && value <= LogElnis }
 
-const (
-	ResultSucceeded ResultStatus = "succeeded"
-	ResultFailed    ResultStatus = "failed"
-	ResultCanceled  ResultStatus = "canceled"
-	ResultRejected  ResultStatus = "rejected"
-	ResultSkipped   ResultStatus = "skipped"
-)
-
-type LogRecord struct {
-	At       time.Time
-	Category LogCategory
-	Level    slog.Level
-	Name     string
-	Module   string
-	Summary  string
-	Detail   string
-	Fields   []slog.Attr
-	// The business owns both severity and result classification.
-	ResultStatus ResultStatus
-	// EmitLog freezes Error before publishing. Consumers must not classify its
-	// original type or cancellation chain; those decisions belong to the source.
-	Error error
+func (value LogCategory) String() string {
+	switch value {
+	case LogRuntime:
+		return "runtime"
+	case LogAudit:
+		return "audit"
+	case LogElnis:
+		return "elnis"
+	}
+	return ""
 }
 
-type LogDiagnostic struct{ Kind, Detail string }
-type DiagnosticError interface{ LogDiagnostic() LogDiagnostic }
+// LogContentType is selected by the source, never inferred from the content.
+// Its zero value is ordinary text; JSON content must be valid JSON.
+type LogContentType uint8
+
+const (
+	ContentText LogContentType = iota
+	ContentJSON
+)
+
+func (value LogContentType) Valid() bool { return value == ContentText || value == ContentJSON }
+
+func (value LogContentType) String() string {
+	switch value {
+	case ContentText:
+		return "text"
+	case ContentJSON:
+		return "json"
+	}
+	return ""
+}
+
+// ResultStatus describes an operation's result, independently of its log level.
+// Sources declare the result; zero means unspecified, not success.
+type ResultStatus uint8
+
+const (
+	ResultUnspecified ResultStatus = iota
+	ResultSucceeded
+	ResultFailed
+	ResultCanceled
+	ResultRejected
+	ResultSkipped
+)
+
+func (value ResultStatus) Valid() bool { return value <= ResultSkipped }
+
+func (value ResultStatus) String() string {
+	switch value {
+	case ResultSucceeded:
+		return "succeeded"
+	case ResultFailed:
+		return "failed"
+	case ResultCanceled:
+		return "canceled"
+	case ResultRejected:
+		return "rejected"
+	case ResultSkipped:
+		return "skipped"
+	}
+	return ""
+}
+
+// LogIdentity contains fixed associations supplied by the business source.
+// EmitLog copies supplied pointers but never fills identities from context.
+// Subscribers must treat the published pointers as read-only.
+type LogIdentity struct {
+	// SessionID is the source's session ID; nil is absent, non-nil empty is explicit empty.
+	SessionID *string
+	// RunID is the source's run ID spanning requests; nil is absent, non-nil empty is explicit empty.
+	RunID *string
+	// Attempt is the source's attempt within a run; nil is absent, non-nil empty is explicit empty.
+	Attempt *string
+	// RequestID is the source's current request ID; nil is absent, non-nil empty is explicit empty.
+	RequestID *string
+	// RootRequestID is the source's root dialogue request ID; nil is absent, non-nil empty is explicit empty.
+	RootRequestID *string
+}
+
+// LogRecord is the only public log submission contract. The source supplies
+// business facts; the logging center assigns reception time before enqueueing.
+type LogRecord struct {
+	// Category is required from the source; zero and unknown values are invalid.
+	Category LogCategory
+	// Level is source-defined severity, independent of result; zero means INFO.
+	Level slog.Level
+	// EventName is a stable source-defined event identifier; empty stays empty.
+	EventName string
+	// Module names the source module; empty stays empty and does not imply a level.
+	Module string
+	// Type selects text (zero) or JSON; unknown values are rejected at publication.
+	Type LogContentType
+	// Content is source-organized text or valid JSON, including error explanations.
+	// Empty text is valid; empty JSON is not. No business objects are accepted.
+	Content string
+	// ContentLimit is the source's text limit in Unicode characters, including
+	// the truncation marker. Zero means 256; negatives are invalid even for JSON.
+	// JSON ignores this limit, and sources must bound their JSON size themselves.
+	ContentLimit int
+	// Identity contains associations explicitly supplied by the source.
+	// Zero is fully absent. EmitLog only copies pointers, without context fallback.
+	Identity LogIdentity
+	// ResultStatus is source-defined, independent of severity or content. Zero
+	// means unspecified and is omitted on disk; unknown values are rejected.
+	ResultStatus ResultStatus
+}
 
 // LogSubmitted is stable for the lifetime of the process. Connect here; publish
-// through EmitLog so consumers receive an owned snapshot. Consumers must not
-// modify the shared record. There is no replay when no consumer is connected.
+// through EmitLog so consumers receive a validated record with copied identities.
+// Consumers must not modify the shared record. There is no replay.
 var LogSubmitted = signal.New[LogRecord]("log.submitted")
 
 // EmitLog reports admission errors, not durability. Logging must never replace
 // the caller's business result. The signal reports dispatch failures itself.
 func EmitLog(ctx context.Context, record LogRecord) error {
-	record.Error = snapshotLogError(record.Error)
-	if record.At.IsZero() {
-		record.At = time.Now()
+	var err error
+	switch {
+	case !record.Category.Valid():
+		err = fmt.Errorf("invalid log category: %d", record.Category)
+	case !record.Type.Valid():
+		err = fmt.Errorf("invalid log content type: %d", record.Type)
+	case !record.ResultStatus.Valid():
+		err = fmt.Errorf("invalid log result status: %d", record.ResultStatus)
+	case record.ContentLimit < 0:
+		err = fmt.Errorf("invalid log content limit: %d", record.ContentLimit)
+	case record.Type == ContentJSON && !json.Valid([]byte(record.Content)):
+		err = fmt.Errorf("invalid log JSON content")
 	}
-	fields := record.Fields
-	record.Fields = nil
-	execution, _ := contextinfo.ExecutionFromContext(ctx)
-	for _, field := range []slog.Attr{
-		slog.String("session_id", execution.SessionID), slog.String("run_id", execution.RunID),
-		slog.String("attempt", execution.Attempt), slog.String("request_id", execution.RequestID),
-		slog.String("root_request_id", execution.RootRequestID),
+	if err != nil {
+		// Contract failures must remain visible even without a logging center.
+		// Never publish recursively or expose source content in diagnostics.
+		slog.New(slog.NewTextHandler(os.Stderr, nil)).ErrorContext(context.Background(), "invalid log record", slog.Any("error", err))
+		return err
+	}
+	for _, field := range []**string{
+		&record.Identity.SessionID, &record.Identity.RunID, &record.Identity.Attempt,
+		&record.Identity.RequestID, &record.Identity.RootRequestID,
 	} {
-		present := false
-		for _, existing := range fields {
-			if existing.Key == field.Key {
-				field = existing
-				present = true
-				break
-			}
-		}
-		if present || field.Value.String() != "" {
-			record.Fields = append(record.Fields, field)
+		if *field != nil {
+			value := **field
+			*field = &value
 		}
 	}
-	// Freeze source identities first so a large payload cannot consume their
-	// snapshot budget and cause a fallback to a different context's identity.
-	for _, field := range fields {
-		switch field.Key {
-		case "session_id", "run_id", "attempt", "request_id", "root_request_id":
-			continue
-		}
-		record.Fields = append(record.Fields, field)
-	}
-	snapshot := logSnapshot{remaining: 16384}
-	record.Fields = snapshot.attrs(record.Fields, 0)
 	return LogSubmitted.Emit(ctx, record)
-}
-
-type diagnosticErrorSnapshot struct {
-	message    string
-	diagnostic LogDiagnostic
-}
-
-func (e diagnosticErrorSnapshot) Error() string                { return e.message }
-func (e diagnosticErrorSnapshot) LogDiagnostic() LogDiagnostic { return e.diagnostic }
-
-func snapshotLogError(failure error) error {
-	if failure == nil {
-		return nil
-	}
-	value := reflect.ValueOf(failure)
-	switch value.Kind() {
-	case reflect.Pointer, reflect.Interface, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan:
-		if value.IsNil() {
-			return nil
-		}
-	}
-	message := failure.Error()
-	var diagnostic DiagnosticError
-	if errors.As(failure, &diagnostic) {
-		return diagnosticErrorSnapshot{message: message, diagnostic: diagnostic.LogDiagnostic()}
-	}
-	return errors.New(message)
-}
-
-// A bounded walk also terminates cycles without retaining any original object.
-// Unrepresentable values are explicit instead of invoking arbitrary Stringers
-// later in the consumer. Strings are immutable and can safely share storage.
-type logSnapshot struct{ remaining int }
-
-func (s *logSnapshot) attrs(attrs []slog.Attr, depth int) []slog.Attr {
-	result := make([]slog.Attr, 0, min(len(attrs), s.remaining))
-	for _, attr := range attrs {
-		if s.remaining <= 0 {
-			result = append(result, slog.String("snapshot", "[snapshot limit]"))
-			break
-		}
-		s.remaining--
-		value := attr.Value.Resolve()
-		if depth >= 32 {
-			value = slog.StringValue("[snapshot limit]")
-		} else if value.Kind() == slog.KindGroup {
-			value = slog.GroupValue(s.attrs(value.Group(), depth+1)...)
-		} else if value.Kind() == slog.KindAny {
-			value = slog.AnyValue(s.value(reflect.ValueOf(value.Any()), depth+1))
-		}
-		result = append(result, slog.Attr{Key: attr.Key, Value: value})
-	}
-	return result
-}
-
-func (s *logSnapshot) value(v reflect.Value, depth int) any {
-	if !v.IsValid() {
-		return nil
-	}
-	if depth >= 32 || s.remaining <= 0 {
-		return "[snapshot limit]"
-	}
-	s.remaining--
-	if (v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface || v.Kind() == reflect.Map || v.Kind() == reflect.Slice) && v.IsNil() {
-		return nil
-	}
-	if v.CanInterface() {
-		switch value := v.Interface().(type) {
-		case json.RawMessage:
-			var decoded any
-			decoder := json.NewDecoder(bytes.NewReader(value))
-			decoder.UseNumber()
-			if json.Valid(value) && decoder.Decode(&decoded) == nil {
-				return s.value(reflect.ValueOf(decoded), depth+1)
-			}
-			return string(value)
-		case json.Number:
-			return value
-		case time.Time:
-			return value
-		case error:
-			message := value.Error()
-			var diagnostic DiagnosticError
-			if errors.As(value, &diagnostic) {
-				d := diagnostic.LogDiagnostic()
-				return map[string]any{"message": message, "kind": d.Kind, "detail": d.Detail}
-			}
-			return message
-		case slog.LogValuer:
-			return s.slogValue(slog.AnyValue(value).Resolve(), depth+1)
-		case slog.Value:
-			return s.slogValue(value.Resolve(), depth+1)
-		}
-	}
-	switch v.Kind() {
-	case reflect.Interface, reflect.Pointer:
-		return s.value(v.Elem(), depth+1)
-	case reflect.Bool:
-		return v.Bool()
-	case reflect.String:
-		return v.String()
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return v.Int()
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return v.Uint()
-	case reflect.Float32, reflect.Float64:
-		return v.Float()
-	case reflect.Slice, reflect.Array:
-		values := make([]any, 0, min(v.Len(), s.remaining))
-		for i := 0; i < v.Len(); i++ {
-			if s.remaining <= 0 {
-				values = append(values, "[snapshot limit]")
-				break
-			}
-			values = append(values, s.value(v.Index(i), depth+1))
-		}
-		return values
-	case reflect.Map:
-		if v.Type().Key().Kind() != reflect.String {
-			return "[unsupported log value]"
-		}
-		values := make(map[string]any)
-		iter := v.MapRange()
-		for iter.Next() {
-			if s.remaining <= 0 {
-				values["snapshot"] = "[snapshot limit]"
-				break
-			}
-			values[iter.Key().String()] = s.value(iter.Value(), depth+1)
-		}
-		return values
-	case reflect.Struct:
-		values := make(map[string]any)
-		for i := 0; i < v.NumField(); i++ {
-			field := v.Type().Field(i)
-			if field.PkgPath != "" {
-				continue
-			}
-			name := strings.Split(field.Tag.Get("json"), ",")[0]
-			if name == "-" {
-				continue
-			}
-			if name == "" {
-				name = field.Name
-			}
-			if s.remaining <= 0 {
-				values["snapshot"] = "[snapshot limit]"
-				break
-			}
-			values[name] = s.value(v.Field(i), depth+1)
-		}
-		return values
-	default:
-		return "[unsupported log value]"
-	}
-}
-
-func (s *logSnapshot) slogValue(value slog.Value, depth int) any {
-	if value.Kind() == slog.KindGroup {
-		group := make(map[string]any)
-		for _, attr := range value.Group() {
-			if s.remaining <= 0 {
-				group["snapshot"] = "[snapshot limit]"
-				break
-			}
-			group[attr.Key] = s.value(reflect.ValueOf(attr.Value), depth+1)
-		}
-		return group
-	}
-	return s.value(reflect.ValueOf(value.Any()), depth+1)
 }

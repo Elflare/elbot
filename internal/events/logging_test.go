@@ -3,197 +3,163 @@ package events
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"log/slog"
+	"os"
 	"reflect"
+	"strings"
 	"testing"
-	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/signal"
 )
 
-type mutableError struct{ text string }
-
-func (e *mutableError) Error() string { return e.text }
-func (e *mutableError) LogDiagnostic() LogDiagnostic {
-	return LogDiagnostic{Kind: "upstream", Detail: e.text}
+func TestLogEnums(t *testing.T) {
+	for value := 0; value <= 255; value++ {
+		want := map[LogCategory]string{LogRuntime: "runtime", LogAudit: "audit", LogElnis: "elnis"}[LogCategory(value)]
+		if LogCategory(value).Valid() != (want != "") || LogCategory(value).String() != want {
+			t.Fatalf("category %d: valid=%v string=%q", value, LogCategory(value).Valid(), LogCategory(value).String())
+		}
+		want = map[LogContentType]string{ContentText: "text", ContentJSON: "json"}[LogContentType(value)]
+		if LogContentType(value).Valid() != (want != "") || LogContentType(value).String() != want {
+			t.Fatalf("type %d: valid=%v string=%q", value, LogContentType(value).Valid(), LogContentType(value).String())
+		}
+		want = map[ResultStatus]string{ResultSucceeded: "succeeded", ResultFailed: "failed", ResultCanceled: "canceled", ResultRejected: "rejected", ResultSkipped: "skipped"}[ResultStatus(value)]
+		if ResultStatus(value).Valid() != (value == 0 || want != "") || ResultStatus(value).String() != want {
+			t.Fatalf("result %d: valid=%v string=%q", value, ResultStatus(value).Valid(), ResultStatus(value).String())
+		}
+	}
+	if LogRuntime != 1 || LogAudit != 2 || LogElnis != 3 || ContentText != 0 || ContentJSON != 1 || ResultUnspecified != 0 || ResultSucceeded != 1 || ResultSkipped != 5 {
+		t.Fatal("enum values changed")
+	}
 }
 
-type lazyLog struct{ text *string }
-
-func (v lazyLog) LogValue() slog.Value { return slog.StringValue(*v.text) }
-
-func TestEmitLogFreezesPayloadAndExecution(t *testing.T) {
+func TestEmitLogCopiesSourceIdentity(t *testing.T) {
 	var received []LogRecord
-	connection, err := LogSubmitted.Connect(func(_ context.Context, record LogRecord) error { received = append(received, record); return nil }, signal.ConnectOptions{Shutdown: signal.CancelPending})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer connection.Disconnect()
-	values := []string{"original"}
-	nested := map[string]any{"values": values}
-	failure := &mutableError{text: "original error"}
-	lazy := "original lazy"
-	at := time.Now().Add(-time.Hour)
-	fields := []slog.Attr{
-		slog.String("session_id", "source-session"), slog.String("run_id", ""),
-		slog.Any("nested", nested), slog.Any("error", fmt.Errorf("wrapped: %w", failure)),
-		slog.Group("group", slog.Any("lazy", lazyLog{&lazy})),
-	}
-	ctx := contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "context-session", RunID: "context-run", Attempt: "2", RequestID: "req", RootRequestID: "root"})
-	if err := EmitLog(ctx, LogRecord{At: at, Category: LogAudit, Fields: fields}); err != nil {
-		t.Fatal(err)
-	}
-	values[0] = "changed"
-	nested["new"] = "changed"
-	failure.text = "changed"
-	lazy = "changed"
-	fields[0] = slog.String("session_id", "changed")
-	if len(received) != 1 || received[0].At != at {
-		t.Fatal(received)
-	}
-	got := make(map[string]slog.Value)
-	for _, attr := range received[0].Fields {
-		got[attr.Key] = attr.Value
-	}
-	for key, want := range map[string]string{"session_id": "source-session", "run_id": "", "attempt": "2", "request_id": "req", "root_request_id": "root"} {
-		if got[key].String() != want {
-			t.Fatalf("%s=%s want %s", key, got[key], want)
-		}
-	}
-	if !reflect.DeepEqual(got["nested"].Any(), map[string]any{"values": []any{"original"}}) {
-		t.Fatal(got["nested"])
-	}
-	diagnostic := got["error"].Any().(map[string]any)
-	if diagnostic["message"] != "wrapped: original error" || diagnostic["detail"] != "original error" || diagnostic["kind"] != "upstream" {
-		t.Fatal(diagnostic)
-	}
-	if got["group"].Group()[0].Value.String() != "original lazy" {
-		t.Fatal(got["group"])
-	}
-	before := time.Now()
-	if err := EmitLog(context.Background(), LogRecord{}); err != nil {
-		t.Fatal(err)
-	}
-	if received[1].At.Before(before) || len(received[1].Fields) != 0 {
-		t.Fatal(received[1])
-	}
-}
-
-func TestEmitLogBoundsCyclesAndUnsupportedObjects(t *testing.T) {
-	cycle := map[string]any{}
-	cycle["self"] = cycle
 	connection, err := LogSubmitted.Connect(func(_ context.Context, record LogRecord) error {
-		if record.Fields[1].Value.String() != "[unsupported log value]" {
-			t.Fatal(record.Fields[1])
-		}
-		return nil
-	}, signal.ConnectOptions{Shutdown: signal.CancelPending})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer connection.Disconnect()
-	if err := EmitLog(context.Background(), LogRecord{Fields: []slog.Attr{slog.Any("cycle", cycle), slog.Any("function", func() {})}}); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestEmitLogKeepsSourceIdentityWhenPayloadExhaustsSnapshotBudget(t *testing.T) {
-	connection, err := LogSubmitted.Connect(func(_ context.Context, record LogRecord) error {
-		for _, attr := range record.Fields {
-			if attr.Key == "session_id" {
-				if attr.Value.String() != "source" {
-					t.Fatalf("source identity replaced: %v", attr)
-				}
-				return nil
-			}
-		}
-		t.Fatal("source identity lost")
-		return nil
-	}, signal.ConnectOptions{Shutdown: signal.CancelPending})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer connection.Disconnect()
-	ctx := contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "context"})
-	if err := EmitLog(ctx, LogRecord{Fields: []slog.Attr{slog.Any("large", make([]int, 20000)), slog.String("session_id", "source")}}); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestEmitLogSnapshotsRawJSONAsStructuredValues(t *testing.T) {
-	raw := json.RawMessage(`{"api_key":"secret","count":123}`)
-	var got any
-	connection, err := LogSubmitted.Connect(func(_ context.Context, record LogRecord) error { got = record.Fields[0].Value.Any(); return nil }, signal.ConnectOptions{Shutdown: signal.CancelPending})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer connection.Disconnect()
-	if err := EmitLog(context.Background(), LogRecord{Fields: []slog.Attr{slog.Any("raw", raw)}}); err != nil {
-		t.Fatal(err)
-	}
-	clear(raw)
-	want := map[string]any{"api_key": "secret", "count": json.Number("123")}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("raw JSON must remain inspectable for redaction: %#v", got)
-	}
-}
-
-func TestEmitLogSnapshotsErrorAndPreservesBusinessResult(t *testing.T) {
-	var received LogRecord
-	connection, err := LogSubmitted.Connect(func(_ context.Context, record LogRecord) error {
-		received = record
+		received = append(received, record)
 		return nil
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer connection.Disconnect()
-	for _, wrapper := range []string{"direct", "wrapped", "joined"} {
-		t.Run(wrapper, func(t *testing.T) {
-			original := &mutableError{text: "original diagnostic"}
-			var failure error = original
-			switch wrapper {
-			case "wrapped":
-				failure = fmt.Errorf("upstream: %w", original)
-			case "joined":
-				failure = errors.Join(context.Canceled, original, errors.New("save failed"))
-			}
-			message := failure.Error()
-			if err := EmitLog(context.Background(), LogRecord{Level: slog.LevelWarn, ResultStatus: ResultFailed, Error: failure}); err != nil {
-				t.Fatal(err)
-			}
-			original.text = "changed after publication"
-			if received.Level != slog.LevelWarn || received.ResultStatus != ResultFailed || received.Error.Error() != message {
-				t.Fatalf("business facts changed: %+v", received)
-			}
-			var diagnostic DiagnosticError
-			if !errors.As(received.Error, &diagnostic) || diagnostic.LogDiagnostic() != (LogDiagnostic{Kind: "upstream", Detail: "original diagnostic"}) {
-				t.Fatalf("diagnostic changed: %v", received.Error)
-			}
-			var liveError *mutableError
-			if errors.As(received.Error, &liveError) {
-				t.Fatal("published error retained a mutable source")
+	values := []string{"source-session", "", "source-attempt", "source-request", "source-root"}
+	ctx := contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "context-session", RunID: "context-run", Attempt: "2", RequestID: "req", RootRequestID: "root"})
+	record := LogRecord{Category: LogAudit, Level: slog.LevelWarn, ResultStatus: ResultFailed, Type: ContentJSON, Content: `{"reason":"call failed"}`,
+		Identity: LogIdentity{SessionID: &values[0], RunID: &values[1], Attempt: &values[2], RequestID: &values[3], RootRequestID: &values[4]}}
+	if err := EmitLog(ctx, record); err != nil {
+		t.Fatal(err)
+	}
+	for i := range values {
+		values[i] = "changed"
+	}
+	record.Content = "changed"
+	if len(received) != 1 {
+		t.Fatal(received)
+	}
+	got := received[0]
+	if got.Level != slog.LevelWarn || got.ResultStatus != ResultFailed || got.Content != `{"reason":"call failed"}` {
+		t.Fatal(got)
+	}
+	for i, value := range []*string{got.Identity.SessionID, got.Identity.RunID, got.Identity.Attempt, got.Identity.RequestID, got.Identity.RootRequestID} {
+		want := []string{"source-session", "", "source-attempt", "source-request", "source-root"}[i]
+		if value == nil || *value != want || value == &values[i] {
+			t.Fatalf("identity %d: %v", i, value)
+		}
+	}
+	if err := EmitLog(ctx, LogRecord{Category: LogRuntime}); err != nil {
+		t.Fatal(err)
+	}
+	got = received[1]
+	if got.Identity != (LogIdentity{}) {
+		t.Fatalf("identity inferred from context: %+v", got.Identity)
+	}
+	values = []string{"partial-session", ""}
+	if err := EmitLog(ctx, LogRecord{Category: LogRuntime, Identity: LogIdentity{SessionID: &values[0], RequestID: &values[1]}}); err != nil {
+		t.Fatal(err)
+	}
+	values[0], values[1] = "changed", "changed"
+	got = received[len(received)-1]
+	if got.Identity.SessionID == nil || *got.Identity.SessionID != "partial-session" || got.Identity.SessionID == &values[0] ||
+		got.Identity.RequestID == nil || *got.Identity.RequestID != "" || got.Identity.RequestID == &values[1] {
+		t.Fatalf("supplied identities were not copied: %+v", got.Identity)
+	}
+	if got.Identity.RunID != nil || got.Identity.Attempt != nil || got.Identity.RootRequestID != nil {
+		t.Fatalf("missing identities inferred from context: %+v", got.Identity)
+	}
+	for _, ctx := range []context.Context{context.Background(), contextinfo.WithExecution(context.Background(), contextinfo.Execution{})} {
+		if err := EmitLog(ctx, LogRecord{Category: LogRuntime}); err != nil {
+			t.Fatal(err)
+		}
+		got = received[len(received)-1]
+		if got.Identity != (LogIdentity{}) || got.ResultStatus != ResultUnspecified {
+			t.Fatalf("manufactured absent facts: %+v", got)
+		}
+	}
+}
+
+func TestEmitLogValidatesContract(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stderr
+	os.Stderr = file
+	t.Cleanup(func() { os.Stderr = old; _ = file.Close() })
+	var received []LogRecord
+	connection, err := LogSubmitted.Connect(func(_ context.Context, record LogRecord) error { received = append(received, record); return nil }, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Disconnect()
+	for name, record := range map[string]LogRecord{
+		"missing category":    {},
+		"invalid category":    {Category: LogCategory(255)},
+		"invalid type":        {Category: LogRuntime, Type: LogContentType(255)},
+		"invalid result":      {Category: LogRuntime, ResultStatus: ResultStatus(255)},
+		"negative text limit": {Category: LogRuntime, ContentLimit: -1},
+		"negative JSON limit": {Category: LogRuntime, Type: ContentJSON, Content: "null", ContentLimit: -1},
+		"empty JSON":          {Category: LogRuntime, Type: ContentJSON},
+		"malformed JSON":      {Category: LogRuntime, Type: ContentJSON, Content: "{sensitive-invalid-body"},
+		"trailing JSON":       {Category: LogRuntime, Type: ContentJSON, Content: "{} {}"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := EmitLog(context.Background(), record); err == nil {
+				t.Fatal("invalid record accepted")
 			}
 		})
 	}
-	plain := errors.New("plain failure")
-	if err := EmitLog(context.Background(), LogRecord{ResultStatus: ResultCanceled, Level: slog.LevelError, Error: plain}); err != nil {
+	if len(received) != 0 {
+		t.Fatalf("invalid records dispatched: %v", received)
+	}
+	data, err := os.ReadFile(file.Name())
+	if err != nil {
 		t.Fatal(err)
 	}
-	var diagnostic DiagnosticError
-	if received.Level != slog.LevelError || received.ResultStatus != ResultCanceled || received.Error.Error() != plain.Error() || errors.As(received.Error, &diagnostic) {
-		t.Fatalf("plain error was reclassified: %+v", received)
+	if strings.Count(string(data), "invalid log record") != 9 || strings.Contains(string(data), "sensitive-invalid-body") {
+		t.Fatalf("invalid diagnostics: %s", data)
 	}
-	var typedNil *mutableError
-	for _, failure := range []error{nil, typedNil} {
-		if err := EmitLog(context.Background(), LogRecord{Error: failure}); err != nil {
+	for _, record := range []LogRecord{
+		{Category: LogRuntime},
+		{Category: LogAudit, Level: slog.LevelWarn, ResultStatus: ResultFailed, Content: "reason"},
+		{Category: LogElnis, Level: slog.LevelError, ResultStatus: ResultCanceled},
+		{Category: LogAudit, Type: ContentJSON, Content: "null"},
+		{Category: LogAudit, Type: ContentJSON, Content: "9007199254740993", ContentLimit: 1},
+	} {
+		if err := EmitLog(context.Background(), record); err != nil {
 			t.Fatal(err)
 		}
-		if received.ResultStatus != "" || received.Error != nil {
-			t.Fatalf("absent error or result was manufactured: %+v", received)
+		if !reflect.DeepEqual(received[len(received)-1], record) {
+			t.Fatalf("business facts changed: %+v", received)
 		}
+	}
+	for _, record := range received {
+		if record.Type == ContentJSON && !json.Valid([]byte(record.Content)) {
+			t.Fatal(record)
+		}
+	}
+	connection.Disconnect()
+	if err := EmitLog(context.Background(), LogRecord{Category: LogRuntime}); err != nil {
+		t.Fatalf("no subscribers: %v", err)
 	}
 }
