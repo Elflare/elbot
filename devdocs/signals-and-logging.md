@@ -135,7 +135,7 @@ Go 的整数枚举不能阻止强制转换非法数值，因此发布入口仍�
 
 - `Content` 是唯一正文。普通日志尽量使用 text；需要业务字段筛选、统计或解析时，由来源构造 JSON 并明确填写 `Type=json`。不按具体业务扩充公共字段，也不统一把所有日志改成 JSON。
 - `Type=text` 按自然文本脱敏，不因外观像 JSON 而解析或结构化改写；`Type=json` 才按 JSON 处理。JSON 递归脱敏保留非敏感数据。正文内的业务键不提升为公共字段，即使包含 `level`、`event` 或 `result_status`，也不能覆盖外层正式字段。
-- 原始错误留在业务返回值及实例事件中；日志来源将错误原因与必要诊断组织为正文，不将错误对象放入公共记录。组合操作使用单条 JSON 日志，在 Content 内完整保留各操作的结果、错误和必要事实，外层 ResultStatus 表达来源确定的整体结果。
+- 原始错误留在业务返回值及实例事件中；日志来源将错误原因与必要诊断组织为正文，不将错误对象放入公共记录。组合操作的单条日志由 ResultStatus 表达来源确定的整体结果，Content 写清各操作事实、具体原因和错误。普通说明优先 text，需要业务字段查询或统计时使用 JSON。
 - 不向公共日志提交任意 Go 对象、map、切片、延迟求值器或 `slog.Value`，不建设反射转换器。正文已经是不可变字符串，身份指针由发布入口复制。
 
 ### 错误诊断与通知边界
@@ -165,27 +165,27 @@ Go 的整数枚举不能阻止强制转换非法数值，因此发布入口仍�
 | 工具拒绝、记录保存失败 | 调用为 rejected，保存为 failed；整体失败，拒绝不能覆盖保存故障 |
 | 工具执行失败、记录保存失败 | 两项均为 failed，两项原始错误和日志中的错误原因均保留 |
 | 工具不存在、配置缺失或执行故障 | 与正常策略拒绝区分，不能仅凭 `Success=false` 判为同一种情况 |
-| 命名失败、兜底保存成功 | 命名为 failed，兜底为 succeeded；整体结果按事件代表的业务目标明确，不能丢失原始命名失败 |
+| 命名失败、兜底保存成功 | 以获得可用标题为整体目标，ResultStatus 为 succeeded；正文保留生成失败原因、兜底已生效及所用标题 |
 | 命名失败、兜底保存失败 | 两项均为 failed，原始命名失败不被兜底失败覆盖 |
 | 回复发送成功、持久化失败 | 发送为 succeeded，保存为 failed；整体失败，保留用户已收到消息的事实 |
 | 回复持久化成功、随后发送失败 | 保存为 succeeded，发送为 failed；整体失败，保留消息已经保存的事实 |
 | 回复发送和持久化成功、消息关联失败 | 发送和保存为 succeeded，关联为 failed；保留各项结果、已发送回执和具体关联错误 |
-| 前序失败、后续操作未执行 | 明确后续未执行及原因，不能由错误为空推导成功；各来源契约明确其表示方式 |
+| 前序失败、后续操作未执行 | 省略未执行操作的结果，不补造成功或 skipped；需要说明流程中断时在正文写明原因 |
 | 单项操作部分完成 | 例如多条消息中部分发送失败，保留失败结果及已发送回执，不能抹去已完成部分 |
 | Chat 为保留部分输出返回空错误 | 仍显式传递取消或失败事实，不能由 nil 错误推导成功 |
 | 重试或视觉回退 | 保留本次尝试失败、次数或回退事实，不把 retrying 增加为结果种类 |
 
 `CallError`、`PersistenceError`、`FallbackError`、`SendError` 是讨论过的业务操作命名示例，不是公共错误类型枚举，也不是必须加到每个结构中的固定字段。各事件最终字段必须与对应结果一起列全、讨论确认后实施。不使用含糊的 `outcome` 或 `err` 作为新公共契约名，不批量重命名无关局部 `err`。
 
-### 组合业务字段与落盘字段一致
+### 整体结果与正文
 
-一致性要求适用于组合操作的业务字段：来源事件中的操作结果、错误和必要事实，与 Content 内的 JSON 字段名称及层级一一对应，仅允许 Go 大驼峰转为 JSON 下划线名称。代码采用平铺字段时，正文也采用对应的平铺字段；代码采用嵌套结构时，正文保留相同的嵌套结构。不能在日志回调里另起名称、重组层级或只留下合并错误。
+公共日志仅用 ResultStatus 表达整体结果，保持九字段契约，不增加次结果、原因码或统一子结果结构。Level 表达关注等级，Content 说明具体原因、各操作事实、错误及部分完成情况。
 
-业务事件保留原始 error，来源在日志输出边界转换为错误文本及已约定的必要诊断；结果枚举转换为对应字符串。该规则不要求直接序列化业务事件或错误对象，也不引入通用转换器。各来源必须同时约定完整字段、类型、存在性、未执行与部分完成的表示，以及对应的 JSON 示例；未确认的字段继续讨论，不能沿用旧代码填补契约空白。
+业务事件仍完整传递各操作事实和原始 error，来源在日志输出边界组织正文。正文不要求逐字段复刻业务事件的名称和结构，也不强制为组合操作嵌套各项结果。普通说明优先 text；需要业务字段查询或统计的正文使用来源与消费者约定的 JSON。日志回调和中心不从错误链或正文反推业务结果。
 
-公共九字段仍按本文既有映射输出：EventName 落为 `event`，Identity 展开为外层身份字段，ContentLimit 不落盘，中心记录时间。业务正文的字段一致性不改变这些公共规则。
+各来源的完整事件字段、类型、存在性和整体结果含义仍需确认，不能沿用旧代码填补契约空白。未执行的操作省略结果；部分完成的操作保留已完成事实，不能由错误为空推导全部成功。
 
-组合记录的外层 ResultStatus 由掌握整个流程的业务来源按事件目标确定，各操作结果保留在 Content 中。调用取消或工具拒绝伴随独立保存失败时，整体为 failed；命名失败后兜底成功等情形需在具体来源契约中明确整体目标，不能由日志回调或中心套用统一优先级猜测。
+组合记录的整体结果由掌握整个流程的业务来源确定。调用取消或工具拒绝伴随独立保存失败时，ResultStatus 为 failed，正文同时说明两项事实和对应错误。命名生成失败但兜底标题保存成功时，ResultStatus 为 succeeded，正文说明生成失败与兜底事实；Level 可用 WARN 表达降级，不能由结果机械推导等级。
 
 ### 业务错误与日志正文
 
@@ -247,12 +247,17 @@ runtime、audit、elnis 分别使用 `elbot-日期.log`、`audit-日期.log`、`
 
 Reader 保留从文件末尾按 64 KiB 分块读取、日期从近到远和文件内写入位置倒序筛选的行为。达到数量立即停止；读取和处理行时检查取消；打开文件后固定范围，不追赶追加数据，不按事件时间重新排序。支持跨块中文、长行、LF／CRLF、无末尾换行和跨日筛选，旧记录单行读取上限保持 16 MiB，超限报错。
 
-- `/log` 的 `-u`、`-a`、`--system` 和原始记录展示行为保持；`-d` 或 `--level debug` 只影响查询展示，不提高运行记录等级。
+Reader 遇到无法解析的 JSONL 行时继续查询。正常展示跳过损坏行，提示本次实际扫描发现的损坏行数量，以及查询结果或用量统计可能不完整；该数量不代表整个文件或日期范围的损坏总数。原始模式可查看损坏行原文并标注损坏，不能将其作为有效业务记录参与统计。正常数量上限只计入条件匹配的有效记录，损坏行不会提前占满有效记录数量；文件读取失败及超过单行读取上限仍返回错误。
+
+- `/log`、`/audit`、`/elwisp` 使用 `--raw` 开启原始记录展示，只改变展示方式，不改变等级筛选或实际日志记录等级。
+- `--level` 按 Level（DEBUG／INFO／WARN／ERROR）设置最低查询等级，不按 ResultStatus 筛选；`-d/-i/-w/-e` 分别是最低等级的快捷方式，均不自动开启原始展示。选项顺序不改变等级与展示方式相互独立的含义。
+- 普通展示统一包含时间、等级、事件、内容和结果，不显示 Type。时间、等级、事件和结果集中展示，正文独立排版；text 展示解码后的文本，JSON 正文格式化展示。结果采用便于阅读的说明，零值或历史记录缺少结果时显示“未声明”，不默认成功。Type 仍用于内部解析，原始模式保留文件里的完整物理记录。
+- `/log` 的 `-u`、`-a`、`--system` 行为保持。
 - `/audit` 不提供 `-u`、`-a`；`--event` 按真实事件名筛选。
 - `/log --hook`、`/audit --hook` 按 `module=hook` 与其他条件取交集；帮助与补全使用实际事件，不虚构 `hook` 事件。
 - Hook 工具调用使用 `hook_tool_call` 和 `source=rules|plugin` 来源事实；操作结果由来源填写 `ResultStatus`。正常业务状态属性与通用操作结果各自表达对应事实。
 - 普通与后台预载跳过分别使用 `skill_wrapper_preload_skipped`、`background_preload_skipped`，结果为 `ResultSkipped`。
-- 整体结果从公共字段读取，组合操作的各项结果和错误原因从正文读取，不为本轮新增命令选项，不为历史日志补造字段。命令只按 Type 解码正文。
+- 整体结果从公共字段读取，组合操作的各项结果和错误原因从正文读取，不为历史日志补造字段。命令只按 Type 解码正文；本轮新增展示选项为 `--raw`，帮助、补全和用户命令文档随实现同步更新。
 - `/usage` 遇到非法数字、溢出等无法统计的用量值时显示 `unknown`，不按零处理，也不静默排除异常记录。受该值影响的分组和总计对应项显示 `unknown`，其他可确定的统计项正常展示；全部异常时不能显示零用量结论。
 
 ### 哪些来源使用 JSON
@@ -264,7 +269,7 @@ Reader 保留从文件末尾按 64 KiB 分块读取、日期从近到远和文�
 | `/elwisp` | Elnis 业务事件：elwisp_name、source、source_id、mode、event_key、event_id、token_name、tags 等筛选字段 | 不携带上述业务事实的运行提示 |
 | `/log` | 只有确实需要结构化读取的正文才填写 JSON | 用户消息、模型回复、系统提示、通知、启动、重连、清理等普通运行日志 |
 
-组合操作使用 JSON，具体业务结构遵循[组合业务字段与落盘字段一致](#组合业务字段与落盘字段一致)的约定，不给公共记录增加字段；其他不需要结构化读取的内容尽量用 text。JSON 业务条件必须在计入查询条数之前匹配，不先取满条数再过滤，也不将业务 JSON 字段并入外层公共字段。
+组合操作按[整体结果与正文](#整体结果与正文)表达，正文类型由查询和统计需求决定，不因包含多个操作就强制使用 JSON。不需要结构化读取的内容尽量用 text。JSON 业务条件必须在计入查询条数之前匹配，不先取满条数再过滤，也不将业务 JSON 字段并入外层公共字段。
 
 ### 落盘模拟
 
@@ -278,30 +283,41 @@ Reader 保留从文件末尾按 64 KiB 分块读取、日期从近到远和文�
 
 JSON Content 直接作为原生 JSON 值写入，避免整段重复转义；text 中的引号和换行仍按 JSON 标准转义。命令展示解码后的内容，原始模式保留物理记录。
 
-#### 组合记录的字段对照示意
+#### 组合记录示意
 
-以下仅演示代码字段与 JSON 路径保持一致，沿用讨论中的调用与保存嵌套示意。这里的字段路径不是已确认的来源事件契约；具体来源仍需列出全部字段并确认后实施，不据此新建公共操作结果类型。
-
-| 代码字段路径（示意） | 业务类型 | Content 内 JSON 路径 | 本例值 |
-| --- | --- | --- | --- |
-| `Call.ResultStatus` | `events.ResultStatus` | `call.result_status` | `ResultCanceled` → `"canceled"` |
-| `Call.Error` | `error` | `call.error` | 原始取消错误 → `"context canceled"` |
-| `Persistence.ResultStatus` | `events.ResultStatus` | `persistence.result_status` | `ResultFailed` → `"failed"` |
-| `Persistence.Error` | `error` | `persistence.error` | 原始保存错误 → `"database is locked"` |
-
-对应的单条落盘记录如下，事件名也仅用于示意，不作为新增事件名的确认：
+以下示例使用单一整体结果和 text 正文，事件名仅用于示意，不作为新增事件名的确认。公共代码字段 ResultStatus 对应 `result_status`，具体原因和各操作事实由 Content 表达：
 
 ```jsonl
-{"time":"2026-10-08T15:00:00+08:00","category":"audit","level":"ERROR","module":"agent","event":"example_combined_operation","type":"json","content":{"call":{"result_status":"canceled","error":"context canceled"},"persistence":{"result_status":"failed","error":"database is locked"}},"session_id":"sess-demo","request_id":"req-demo","result_status":"failed"}
+{"time":"2026-10-08T15:00:00+08:00","category":"audit","level":"ERROR","module":"agent","event":"example_combined_operation","type":"text","content":"模型调用已取消：context canceled；保存已有输出失败：database is locked。","session_id":"sess-demo","request_id":"req-demo","result_status":"failed"}
+{"time":"2026-10-08T15:00:01+08:00","category":"runtime","level":"WARN","module":"session","event":"example_combined_operation","type":"text","content":"自动生成标题失败：上游请求超时；已成功保存兜底标题“新会话”。","session_id":"sess-demo","result_status":"succeeded"}
 ```
 
-正文保留调用取消和保存失败两个结果及对应错误，外层表达整体失败。结果与错误不拼成一个字符串；JSON 正文不按 text 的默认 256 字符上限截断，仍遵守脱敏及整条 64 KiB 硬上限。
+第一条整体失败，正文保留调用取消和保存失败的原因；第二条以获得可用标题为整体成功，正文保留生成失败与兜底事实。text 遵守默认 256 字符和 ContentLimit 约定，来源按所需说明长度设置上限；需要结构化查询的来源可使用 JSON。所有记录仍遵守脱敏及整条 64 KiB 硬上限。
+
+### 查询展示示意
+
+以运行日志中的 `notice_output_failed` 记录为例，普通展示如下。使用 `-d`、`-e` 或 `--level` 只调整最低等级，保持这种展示方式：
+
+```text
+2026-10-07 15:00:02  ERROR  notice_output_failed  失败
+Telegram 通知发送失败：连接超时。
+```
+
+增加 `--raw` 后展示文件原文，Type 等已落盘字段保留在原始记录中：
+
+```jsonl
+{"time":"2026-10-07T15:00:02+08:00","category":"runtime","level":"ERROR","module":"delivery","event":"notice_output_failed","type":"text","content":"Telegram 通知发送失败：连接超时。","session_id":"sess-demo","request_id":"req-demo","result_status":"failed"}
+```
+
+`/audit` 和 `/elwisp` 使用相同的展示规则。原始展示不会恢复落盘前已经截断或脱敏的内容。
 
 ## 来源职责与平台连接
 
 Agent、工具、Session、模型客户端与 Model Manager、Hook、平台、发送、Cron、Elnis、媒体、命令、通知、维护和 App 的直接发布点及实例事件日志回调均遵循统一契约。
 
 Agent、Session、Model Manager 自行维护实例事件的同步日志回调和连接释放。模型重试日志独立于 App 通知订阅；没有通知订阅者也不能漏日志，调用结束后不显示过期重试通知。Hook Manager 记录原始执行失败，Agent 保留通知与自身桥接故障，同一错误不因迁移重复记录。终端交互是用户界面，不强行改成文件日志。
+
+Session 命名保留 Scheduled 信号，以 `NamingScheduledEvent` 表达调度事实；流程结束统一通过 Completed 信号发布 `NamingCompletedEvent`。Completed 表示流程已经结束，不隐含成功，整体 ResultStatus 由来源明确填写，并保留生成、保存、兜底的实际事实和原始错误。命名信号契约只有 Scheduled 和 Completed，不设置独立 Failed 信号或 `NamingFailedEvent`。生成失败但兜底标题保存成功时整体为 succeeded，日志正文仍说明生成失败与兜底事实。
 
 平台连接全局信号属于保留的现有能力：
 
@@ -340,13 +356,15 @@ Agent、Session、Model Manager 自行维护实例事件的同步日志回调和
 | `handleRecord` | 沿用中心接收方法，在入队前自动记时 |
 | `formatRecord(ctx context.Context, record events.LogRecord, at time.Time) ([]byte, error)` | 最终格式化函数，接收中心记录的时间 |
 | `defaultContentLimit` | `internal/logging/record.go`，text 默认字符上限 256 |
+| `NamingScheduledEvent`、`NamingCompletedEvent` | 沿用 `internal/session/types.go` 与 `internal/session/naming_signals.go` 的位置；Scheduled 表达调度，Completed 统一表达命名流程结束，由来源填写整体结果 |
 
 九字段名称、正文格式和身份表示已经确认，不因实现便利改回含糊字段或增加兜底入口。沿用现有包及文件，不新增包或拆文件；底层字段注释写清职责、零值及处理规则。
 
 后续来源迁移前仍必须向用户列出并确认：
 
-1. 涉及模型调用、工具调用、命名兜底、回复发送与保存等来源事件的完整字段和类型，逐项明确各操作结果与错误的对应关系、存在性、未执行与部分完成的表示及整体结果的业务含义。组合业务字段须与 Content 内 JSON 名称和层级一一对应，完整字段表与落盘示例一起确认，不能只给出几个错误字段示例，也不能照搬旧实现确定新契约。
+1. 涉及模型调用、工具调用、命名兜底、回复发送与保存等来源事件的完整字段和类型，逐项明确各操作事实与错误的对应关系、存在性、未执行与部分完成的表示及整体结果的业务含义。来源提供对应的日志正文示例；事件字段不要求与正文逐项对应，不能只给出几个错误字段示例，也不能照搬旧实现确定新契约。
 2. 受影响日志辅助函数、发布方法及新增或调整的变量名；任何新增、拆分、移动文件都要先给候选位置并讨论。
+3. Reader 查询返回接口：如何同时返回有效记录、损坏行数量及原始行信息，以及命令如何取得并展示这些信息。先明确完整类型和字段，不在实现时自行添加生产名称。
 
 确认结果写回具体契约后，再进入相应代码实施；不能把待确认项理解为实现者可自行选择。实施中遇到未约定的新名称时逐个向用户确认，包括内部变量；测试代码的名称和实现可自行决定。
 
