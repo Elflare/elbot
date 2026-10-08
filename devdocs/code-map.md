@@ -37,12 +37,12 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 信号与订阅
 
 - `internal/signal/`：类型化信号、有界执行器、背压和关闭策略；`diagnostics.go` 直接向 stderr 报告设施故障。
-- `internal/events/logging.go`：进程全局日志契约、`ResultStatus`、`LogSubmitted` 和 `EmitLog` 发布快照；主 `Error` 固定文本与通用诊断，不保留源错误对象，等级与结果由业务独立指定。
-- `internal/logging/signals.go`：日志中心自身订阅、分类队列和停止准入；关闭与文件资源由 `logging.go` 管理。
+- `internal/events/logging.go`：九字段公共日志契约、整数枚举、`LogIdentity`、`LogSubmitted` 和 `EmitLog`；发布入口验证契约，仅复制业务填写的身份，不从 context 补值。
+- `internal/logging/signals.go`：日志中心自身订阅、接收记时、分类队列、消费过滤、写入及短写检查和停止准入；非法类别诊断保留枚举数值。关闭与文件资源由 `logging.go` 管理。
 - `internal/agent/events/`：Agent 实例事实信号。
 - `internal/events/platform.go`：平台连接全局事实契约；各适配器直接发布。
 - `internal/agent/platform_signals.go`、`internal/cron/platform_signals.go`：Hook 协调模块与 Cron 自行订阅、按平台排队并关闭；`StartPlatformEvents` 在装配完成后启动订阅，`BeginClose`／`Close`／`Done` 管理退出。
-- `internal/agent/logging.go`、`internal/session/naming_logging.go`、`internal/modelmgr/logging.go`：来源模块的同步日志投影；命名上游失败通过审计保留诊断，模型重试日志独立于通知订阅。
+- `internal/agent/logging.go`、`internal/session/naming_logging.go`、`internal/modelmgr/logging.go`：来源模块的同步日志回调；模型重试日志独立于通知订阅。契约迁移待办见[任务清单](tasks.md#信号与日志系统整改)。
 - `internal/session/naming_signals.go`、`internal/modelmgr/signals.go`：实例信号契约与访问；Session 命名生命周期和 Model Manager 的 `service.go` 负责断开来源连接。
 - `internal/app/signals.go`、`internal/app/agent_notifications.go`、`internal/app/agent_status.go`、`internal/app/model_signals.go`：App 通知、状态与重试通知订阅及其生命周期；通用 `newQueue`／`connectSignal` 归 `signals.go`，模型文件只放通知接线。
 
@@ -52,7 +52,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/config/`：读取、默认资产、模块声明、provider／state／tag 及只读检查。
 - `internal/config/definition.go`、`internal/config/provider.go`：配置规则与客户端模式校验。
 - `internal/doctor/`：配置诊断报告；`internal/command/builtin/doctor.go`：超管命令入口。
-- `internal/logging/`：日志中心订阅全局记录，分类排队、写入、轮转与读取；`signals.go` 按业务指定等级过滤，`record.go` 负责 `result_status`／`error` 落盘、脱敏、摘要／详情和序列化大小限制，不按结果改写等级。文件写入器只由中心管理，不向业务暴露 Logger。
+- `internal/logging/`：日志中心订阅全局记录，分类排队、写入、轮转与读取；`signals.go` 按业务指定等级过滤，`record.go` 负责 text／JSON 脱敏、Unicode 字符限长、原生 JSON 正文、JSONL 编码及含行尾的 64 KiB 上限检查。文件写入器只由中心管理。
 - `internal/logging/reader.go`：Reader 反向分块读取、逐条筛选和提前停止；保留历史文本解析与单行上限，在读取和处理记录时响应取消。
 - [配置文档](../docs/configuration.md)。
 
@@ -186,7 +186,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/llm/httpclient/`：传输、重试、SSE 与超时。
 - `internal/llm/chatcompletions/`、`internal/llm/responses/`：独立协议客户端。
 - `internal/llm/responses/client.go`、`internal/llm/responses/tools.go`、`internal/llm/responses/compact.go`：请求冻结、store 偏好、工具权限与原生压缩。
-- `internal/llm/responses/stream.go`、`internal/llm/responses/error.go`：原生流事件与错误解析；`APIError` 通过 `events.DiagnosticError` 提供失败详情，Agent 日志投影只依赖通用诊断契约。
+- `internal/llm/responses/stream.go`、`internal/llm/responses/error.go`：原生流事件与协议错误解析。
 
 <!-- locator:storage -->
 ## Storage 与 SQLite

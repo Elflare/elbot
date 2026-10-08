@@ -44,19 +44,19 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/architecture.md
 <!-- locator:signal -->
 ## 信号与订阅
 
-来源模块拥有内部事实的实例 `Signal[T]` 及事件类型。Agent、Session 和 Model Manager 自行连接同步日志投影，并在关闭时断开；App 只管理通知和状态订阅。业务诊断和日志投影统一通过 `internal/events.EmitLog` 发布，日志中心自行订阅并持有分类队列；App 负责服务装配与生命周期，不转发日志或注入 Logger。具体见[信号与日志系统设计](signals-and-logging.md)。权限、可改写 Hook、Usage、工具记录和关键提交同步完成；信号发布观察事实。
+来源模块拥有内部事实的实例 `Signal[T]` 及事件类型。Agent、Session 和 Model Manager 自行连接同步日志回调，并在关闭时断开；App 管理通知和状态订阅及服务生命周期。公共日志入口为 `internal/events.EmitLog`，日志中心自行订阅并持有分类队列。契约见[信号与日志系统设计](signals-and-logging.md)，实施进度与待办见[任务清单](tasks.md#信号与日志系统整改)。权限、可改写 Hook、Usage、工具记录和关键提交同步完成；信号发布观察事实。
 
 - 发射时锁内取得订阅快照、锁外调用。断开不撤销已取得快照或已入队任务；一次性连接即使入队失败也被消耗。发布方固定可变数据及实际调用 context。
 - 异步连接选择 FollowEmit（继承取消）或 FollowExecutor（只保留值）；关闭选择 CancelPending 或 Drain，底层取消优先。
-- 串行队列默认容量 256、满时拒绝。日志使用 `WaitForCapacity + FollowExecutor + Drain`，按成功入队顺序写入；`BeginClose` 停止接收并唤醒等待者。入队不等于写入成功，拒绝、写入失败及未排空均有诊断，Done 表示 worker 实际退出。
+- 串行队列默认容量 256、满时拒绝。日志队列使用 `WaitForCapacity` 等待容量，以 `context.WithoutCancel` 解除单次请求取消，任务采用 `Drain`，按成功入队顺序写入；`BeginClose` 停止接收并唤醒等待者。入队不等于写入成功，拒绝、写入失败及未排空均有诊断，Done 表示 worker 实际退出。
 - 日志写入预期很快、队列通常不会满，因此有意选择等待容量，并接受极端情况下业务等待且单次请求取消不能解除入队背压的取舍。
-- Agent 运行与审计日志统一使用事件发布时的 `EventMeta`，固定 `session_id`、`run_id`、`attempt`、`request_id`、`root_request_id`，显式空值也不被消费 context 覆盖；异步消费不查询当前执行身份。
-- `events.EmitLog` 在发布前固定时间、关联身份、错误诊断、延迟值及可变载荷。中心直接提交 runtime、audit、elnis 三个容量 256 的背压队列；解除请求取消的影响，按类别入队顺序排空。中心不替换全局信号实例，重复活动中心初始化被拒绝。
-- 日志契约的 `ResultStatus` 与 `Level` 由来源独立指定，空结果不表示成功。`Error` 在发布前固定文本与通用诊断，不保留原始错误对象，中心不再解释错误链；正式字段优先于自由同名字段。当前公共契约与预载跳过记录已接入，其他业务来源的结果迁移见[任务清单](tasks.md#信号与日志系统整改)。
-- 全部业务日志消费先脱敏再限长：摘要 256 个 Unicode 字符、详情 8 KiB、序列化记录 64 KiB；优先保留事件、模块及关联字段。runtime 详情仅在 DEBUG 配置下保留，audit／elnis 不受运行等级过滤。来源协议通过 `events.DiagnosticError` 提供上游失败详情，日志消费者不导入具体协议实现。
-- 日志来源显式提供事件标识和摘要：客户端重试 WARN，最终失败 ERROR，主动取消不升级，权限／确认拒绝保留 WARN。命名失败的原始错误与兜底保存错误分别保留；上游失败审计不受运行级别影响。Hook 工具调用统一为 `hook_tool_call`，通过 `source` 和 `status` 区分来源及结果。
-- Signal／Queue 的设施故障直接写 stderr，不依赖业务 Logger 或全局日志信号；真正的文件写入错误由队列检查并报告。中心关闭超时不关闭仍在使用的文件，也不释放活动中心名额，后续显式关闭可继续清理。
-- Reader 按日期和文件写入位置倒序查询，每块读取 64 KiB，满足条数立即停止；每次读取与逐行处理检查取消。打开文件后固定本次读取大小，支持跨块行及 LF／CRLF；单行上限 16 MiB，读取失败或超限返回错误。摘要、详情、字段和原始记录均可筛选，查询不改变日志记录等级。
+- `LogRecord` 是九字段封闭契约：Category、Level、EventName、Module、Type、Content、ContentLimit、Identity、ResultStatus。三个整数枚举验证合法性，ResultStatus 零值表示未声明，Level 与结果相互独立。
+- Identity 的五个 `*string` 由业务显式填写。`events.EmitLog` 验证契约并复制身份指针，不从 context 补值；nil 身份省略，显式空字符串保留。Content 是来源组织的唯一正文。
+- 日志中心接收时、等待入队前记时，并提交 runtime、audit、elnis 三个容量 256 的背压队列；解除请求取消的影响，按类别入队顺序排空。中心不替换全局信号实例，重复活动中心初始化被拒绝。
+- 消费者先按 Level 过滤，再按 Type 脱敏与格式化；runtime 使用配置等级，audit／elnis 独立保留。text 默认 256 个 Unicode 字符，ContentLimit 可指定长度，截断标记 `…` 计入上限。JSON 递归脱敏并保持数值精度，正文以原生 JSON 值写入。
+- 文件统一写 JSONL，时间为 RFC 3339。编码后连同行尾最多 64 KiB，超限报告设施失败，不删除字段凑入上限。日志中心只处理公共契约及正文，不解释业务错误。
+- Signal／Queue 的设施故障直接写 stderr，不依赖业务 Logger 或全局日志信号；文件写入错误由队列检查并报告，短写按 `io.ErrShortWrite` 报告，后续记录继续处理。非法日志类别的诊断保留整数枚举值。中心关闭超时不关闭仍在使用的文件，也不释放活动中心名额，后续显式关闭可继续清理。
+- Reader 按日期和文件写入位置倒序查询，每块读取 64 KiB，满足条数立即停止；每次读取与逐行处理检查取消。打开文件后固定本次读取大小，支持跨块行及 LF／CRLF；单行上限 16 MiB，读取失败或超限返回错误。查询不改变日志记录等级。
 - 平台直接发布全局 `events.PlatformConnected`；Hook 协调模块与 Cron 通过自身 `StartPlatformEvents` 订阅，App 只在依赖装配完成后、平台启动前调用生命周期入口。事件仅携带平台名称，不缓存、不重放。
 - Hook 与 Cron 各自按平台惰性创建容量 256、满时拒绝的独立队列；保留发射 context 的值、解除其取消影响。重复连接继续交给业务处理，Cron 自行维护补跑、互斥和投递状态。
 - 消费者在 `BeginClose` 或应用取消时断开订阅、停止准入并取消待执行／在途任务；`Done` 表示实际退出。Agent 关闭同时等待平台 Hook 与 append 等待任务，Cron Service 关闭等待连接恢复；共享 30 秒预算耗尽时不释放活跃消费者仍在使用的依赖。
@@ -156,7 +156,7 @@ flowchart LR
     subgraph EVENTS["公共事件总线"]
         BUS["类型化 Signal[T]<br/>来源模块定义、发布"]
         OBSERVER["通知、状态展示<br/>App 管理订阅与生命周期"]
-        PROJECTION["来源模块同步日志投影"]
+        PROJECTION["来源模块同步日志回调"]
         LOG["events.EmitLog<br/>日志中心订阅、排队、落盘"]
         BUS -.-> OBSERVER
         BUS -.-> PROJECTION

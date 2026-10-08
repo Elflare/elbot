@@ -65,9 +65,9 @@ func TestManagerCreatesRuntimeAuditAndElnisLogs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)
 	}
-	emitRecord(t, events.LogRecord{Category: events.LogRuntime, Summary: "runtime log"})
-	emitRecord(t, events.LogRecord{Category: events.LogAudit, Summary: "audit log"})
-	emitRecord(t, events.LogRecord{Category: events.LogElnis, Summary: "elnis log"})
+	emitRecord(t, events.LogRecord{Category: events.LogRuntime, Content: "runtime log"})
+	emitRecord(t, events.LogRecord{Category: events.LogAudit, Content: "audit log"})
+	emitRecord(t, events.LogRecord{Category: events.LogElnis, Content: "elnis log"})
 	if err := manager.Close(context.Background()); err != nil {
 		t.Fatalf("close manager: %v", err)
 	}

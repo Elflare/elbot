@@ -241,8 +241,8 @@ LLM 在 work 模式下可以通过 `discover_tool` 按需发现工具详情。�
 | `-d, -i, -w, -e` | 等级快捷方式；`-d` 或显式 `--level debug` 同时显示原始记录。 |
 | `--since <time>` | 只看某时间之后，例如 `2h`、`30m`、`2026-06-03`。 |
 | `--until <time>` | 只看某时间之前。 |
-| `--msg <text>` | 按 msg 字段过滤。 |
-| `--contains <text>` | 按解码后的摘要、详情、正文字段或原始记录过滤。 |
+| `--msg <text>` | 按消息正文过滤。 |
+| `--contains <text>` | 按解码后的记录内容或原始记录过滤。 |
 
 `/log` 额外支持：
 
@@ -294,7 +294,7 @@ LLM 在 work 模式下可以通过 `discover_tool` 按需发现工具详情。�
 /elwisp --source minecraft-main --mode llm --since 2h
 ```
 
-Hook 工具调用审计使用 `hook_tool_call`，`source` 区分 `rules`／`plugin`，`status` 区分 `ok`／`error`／`canceled`。
+Hook 工具调用审计使用 `hook_tool_call`，`source` 区分 `rules`／`plugin`。
 
 ## Token 消耗统计
 
