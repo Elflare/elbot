@@ -52,14 +52,14 @@ func TestStatusCoalescesTerminalAndUpdatesDuringSend(t *testing.T) {
 	defer cancel()
 	emit := func(version uint64, phase runtimestatus.Phase, tokens int) {
 		t.Helper()
-		usage := &llm.Usage{TotalTokens: tokens}
+		usage := &llm.Usage{TotalTokens: func() *int64 { n := int64(tokens); return &n }()}
 		if err := d.receive(ctx, agentevents.StatusChangedEvent{Snapshot: runtimestatus.Snapshot{SessionID: "s", Phase: phase, Usage: usage}, Version: version, Display: true}); err != nil {
 			t.Fatal(err)
 		}
-		usage.TotalTokens = -1
+		*usage.TotalTokens = -1
 	}
 	emit(1, runtimestatus.PhaseLLM, 1)
-	if got := nextStatus(t, p.sent); got.Phase != runtimestatus.PhaseLLM || got.Usage.TotalTokens != 1 {
+	if got := nextStatus(t, p.sent); got.Phase != runtimestatus.PhaseLLM || (got.Usage.TotalTokens == nil || *got.Usage.TotalTokens != 1) {
 		t.Fatal(got)
 	}
 	for i := uint64(2); i < 20; i++ {
@@ -69,13 +69,13 @@ func TestStatusCoalescesTerminalAndUpdatesDuringSend(t *testing.T) {
 	emit(19, runtimestatus.PhaseTool, 19) // Late lower version must not replace done.
 	cancel()                              // Request cleanup must not cancel the final status projection.
 	close(first)
-	if got := nextStatus(t, p.sent); got.Phase != runtimestatus.PhaseDone || got.Usage.TotalTokens != 20 {
+	if got := nextStatus(t, p.sent); got.Phase != runtimestatus.PhaseDone || (got.Usage.TotalTokens == nil || *got.Usage.TotalTokens != 20) {
 		t.Fatalf("lost terminal/coalescing: %+v", got)
 	}
 	emit(21, runtimestatus.PhaseLLM, 21)
 	emit(22, runtimestatus.PhaseError, 22)
 	close(second)
-	if got := nextStatus(t, p.sent); got.Phase != runtimestatus.PhaseError || got.Usage.TotalTokens != 22 {
+	if got := nextStatus(t, p.sent); got.Phase != runtimestatus.PhaseError || (got.Usage.TotalTokens == nil || *got.Usage.TotalTokens != 22) {
 		t.Fatalf("lost update during send: %+v", got)
 	}
 	deadline := time.Now().Add(time.Second)

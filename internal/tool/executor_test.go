@@ -2,10 +2,13 @@ package tool
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 )
@@ -17,8 +20,11 @@ func TestExecutorExecutesTool(t *testing.T) {
 	}
 	executor := Executor{Registry: registry}
 	result := executor.Execute(context.Background(), llm.ToolCallRequest{ID: "call_1", Name: "ok", Arguments: `{}`})
-	if result.Err != nil {
-		t.Fatal(result.Err)
+	if result.Error != nil {
+		t.Fatal(result.Error)
+	}
+	if result.ResultStatus != events.ResultSucceeded || !result.ExecutionStarted {
+		t.Fatalf("execution facts = %#v", result)
 	}
 	if result.Message.Role != llm.RoleTool || result.Message.ToolCallID != "call_1" || result.Message.Name != "ok" || llm.SegmentsContentText(result.Message.Segments) != "ok" {
 		t.Fatalf("message = %#v", result.Message)
@@ -28,8 +34,11 @@ func TestExecutorExecutesTool(t *testing.T) {
 func TestExecutorMissingToolReturnsToolMessageError(t *testing.T) {
 	executor := Executor{Registry: NewRegistry()}
 	result := executor.Execute(context.Background(), llm.ToolCallRequest{ID: "call_1", Name: "missing", Arguments: `{}`})
-	if result.Err == nil {
+	if result.Error == nil {
 		t.Fatal("expected error")
+	}
+	if result.ResultStatus != events.ResultFailed || result.ExecutionStarted {
+		t.Fatalf("lookup facts = %#v", result)
 	}
 	if result.Message.Role != llm.RoleTool || result.Message.ToolCallID != "call_1" || !strings.Contains(llm.SegmentsContentText(result.Message.Segments), "not found") {
 		t.Fatalf("message = %#v", result.Message)
@@ -42,8 +51,8 @@ func TestExecutorUsesResultSegments(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := Executor{Registry: registry}.Execute(context.Background(), llm.ToolCallRequest{ID: "call_1", Name: "segments", Arguments: `{}`})
-	if result.Err != nil {
-		t.Fatal(result.Err)
+	if result.Error != nil {
+		t.Fatal(result.Error)
 	}
 	if len(result.Message.Segments) != 2 || result.Message.Segments[1].Type != llm.SegmentImage || result.Message.Segments[1].URL != "https://example.com/a.png" {
 		t.Fatalf("segments = %#v", result.Message.Segments)
@@ -76,8 +85,47 @@ func TestExecutorDeniesToolAboveUserRisk(t *testing.T) {
 	}
 	executor := Executor{Registry: registry, Actor: contextinfo.Actor{Role: contextinfo.RoleUser}, Policy: security.DefaultPolicy()}
 	result := executor.Execute(context.Background(), llm.ToolCallRequest{ID: "call_1", Name: "danger", Arguments: `{}`})
-	if result.Err == nil || !strings.Contains(llm.SegmentsContentText(result.Message.Segments), "above your allowed tool level") {
+	if result.Error == nil || !strings.Contains(llm.SegmentsContentText(result.Message.Segments), "above your allowed tool level") {
 		t.Fatalf("result = %#v", result)
+	}
+	var denied PolicyDeniedError
+	if result.ResultStatus != events.ResultRejected || result.ExecutionStarted || !errors.As(result.Error, &denied) {
+		t.Fatalf("policy facts = %#v", result)
+	}
+}
+
+type partialResultTool struct {
+	segmentTool
+	err error
+}
+
+func (p partialResultTool) Call(context.Context, CallRequest) (*Result, error) {
+	return &Result{Content: "completed first action", Data: []byte(`{"partial":true}`)}, p.err
+}
+
+func TestExecutorRetainsPartialResultAndOriginalError(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		err    error
+		status events.ResultStatus
+	}{
+		{"failure", errors.New("second action failed"), events.ResultFailed},
+		{"wrapped cancellation", fmt.Errorf("interrupted: %w", context.Canceled), events.ResultCanceled},
+		{"timeout", context.DeadlineExceeded, events.ResultFailed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			registry := NewRegistry()
+			if err := registry.Register(partialResultTool{err: tc.err}); err != nil {
+				t.Fatal(err)
+			}
+			result := (Executor{Registry: registry}).Execute(context.Background(), llm.ToolCallRequest{ID: "partial", Name: "segments", Arguments: `{}`})
+			if result.Error != tc.err || result.ResultStatus != tc.status || !result.ExecutionStarted {
+				t.Fatalf("execution facts = %#v", result)
+			}
+			if result.Result == nil || string(result.Result.Data) != `{"partial":true}` || llm.SegmentsContentText(result.Message.Segments) != "completed first action" {
+				t.Fatalf("partial result lost: %#v", result)
+			}
+		})
 	}
 }
 
@@ -88,7 +136,7 @@ func TestExecutorDeniesSuperadminOnlyToolForNormalUser(t *testing.T) {
 	}
 	executor := Executor{Registry: registry, Actor: contextinfo.Actor{Role: contextinfo.RoleUser}, Policy: security.NewPolicy("medium", "high", nil)}
 	result := executor.Execute(context.Background(), llm.ToolCallRequest{ID: "call_1", Name: "cron", Arguments: `{}`})
-	if result.Err == nil || !strings.Contains(llm.SegmentsContentText(result.Message.Segments), "requires superadmin") {
+	if result.Error == nil || !strings.Contains(llm.SegmentsContentText(result.Message.Segments), "requires superadmin") {
 		t.Fatalf("result = %#v", result)
 	}
 }

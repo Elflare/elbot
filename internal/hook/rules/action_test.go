@@ -9,6 +9,7 @@ import (
 	"elbot/internal/signal"
 	"elbot/internal/tool"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -207,8 +208,8 @@ func TestRuleToolAuditOutcome(t *testing.T) {
 		level  slog.Level
 		status string
 	}{
-		{"success", nil, slog.LevelInfo, "ok"}, {"failure", errors.New("failed"), slog.LevelError, "error"},
-		{"canceled", fmt.Errorf("wrapped: %w", context.Canceled), slog.LevelInfo, "canceled"}, {"timeout", context.DeadlineExceeded, slog.LevelError, "error"},
+		{"success", nil, slog.LevelInfo, "succeeded"}, {"failure", errors.New("failed"), slog.LevelError, "failed"},
+		{"canceled", fmt.Errorf("wrapped: %w", context.Canceled), slog.LevelInfo, "canceled"}, {"timeout", context.DeadlineExceeded, slog.LevelError, "failed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var records []events.LogRecord
@@ -225,14 +226,14 @@ func TestRuleToolAuditOutcome(t *testing.T) {
 			if !errors.Is(err, tc.err) {
 				t.Fatalf("business error changed: %v", err)
 			}
-			if len(records) != 1 || records[0].Name != "hook_tool_call" || records[0].Category != events.LogAudit || records[0].Level != tc.level {
+			if len(records) != 1 || records[0].EventName != "hook_tool_call" || records[0].Category != events.LogAudit || records[0].Level != tc.level {
 				t.Fatalf("records: %+v", records)
 			}
 			fields := map[string]string{}
-			for _, field := range records[0].Fields {
-				fields[field.Key] = field.Value.String()
+			if err := json.Unmarshal([]byte(records[0].Content), &fields); err != nil {
+				t.Fatal(err)
 			}
-			if fields["source"] != "rules" || fields["status"] != tc.status || (tc.err != nil && fields["error"] != tc.err.Error()) {
+			if fields["source"] != "rules" || records[0].ResultStatus.String() != tc.status || fields["result"] != "called" || (tc.err != nil && fields["error"] != tc.err.Error()) {
 				t.Fatal(fields)
 			}
 		})

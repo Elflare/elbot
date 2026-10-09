@@ -508,12 +508,12 @@ func (w *worker) runReload(reload func() error) {
 	go func() {
 		if err := reload(); err != nil {
 			_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
-				Category: globalevents.LogRuntime,
-				Level:    slog.LevelError,
-				Name:     "hook_plugin_reload_failed",
-				Module:   "hook",
-				Summary:  "hook plugin reload failed",
-				Fields:   []slog.Attr{slog.Any("hook", w.config.ID), slog.Any("error", err)},
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "hook_plugin_reload_failed",
+				Module:       "hook",
+				Content:      fmt.Sprintf("hook plugin reload failed: hook=%s error=%v", w.config.ID, err),
+				ResultStatus: globalevents.ResultFailed,
 			})
 		}
 	}()
@@ -663,13 +663,12 @@ func (w *worker) deliverResponse(value frame) {
 func (w *worker) handlePluginEvent(value frame) {
 	if value.Method == "hook.log" {
 		_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelInfo,
-			Name:     "stateful_hook_event",
-			Module:   "hook",
-			Summary:  "stateful hook event" + ": " + string(value.Params),
-			Fields:   []slog.Attr{slog.Any("hook", w.config.ID)},
-			Detail:   string(value.Params),
+			Category:     globalevents.LogRuntime,
+			Level:        slog.LevelInfo,
+			EventName:    "stateful_hook_event",
+			Module:       "hook",
+			Content:      fmt.Sprintf("stateful hook event: hook=%s\n%s", w.config.ID, value.Params),
+			ContentLimit: 4096,
 		})
 	}
 }
@@ -686,12 +685,12 @@ func (w *worker) handlePluginRequest(value frame) {
 	writeErr := w.write(response)
 	if writeErr != nil {
 		_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelError,
-			Name:     "write_hook_request_response_failed",
-			Module:   "hook",
-			Summary:  "write hook request response failed",
-			Fields:   []slog.Attr{slog.Any("hook", w.config.ID), slog.Any("method", value.Method), slog.Any("error", writeErr)},
+			Category:     globalevents.LogRuntime,
+			Level:        slog.LevelError,
+			EventName:    "write_hook_request_response_failed",
+			Module:       "hook",
+			Content:      fmt.Sprintf("write hook request response failed: hook=%s method=%s error=%v", w.config.ID, value.Method, writeErr),
+			ResultStatus: globalevents.ResultFailed,
 		})
 	}
 	if value.Method == "hooks.reload" && err == nil {

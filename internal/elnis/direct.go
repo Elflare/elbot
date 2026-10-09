@@ -2,6 +2,9 @@ package elnis
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -90,38 +93,74 @@ func (s *Service) mapReportReceipt(ctx context.Context, eventKey, sessionID, mes
 		}
 		mapping := storage.PlatformMessageMap{Platform: platformName, PlatformScopeID: scopeID, PlatformMessageID: platformMessageID, SessionID: sessionID, MessageID: messageID}
 		if err := s.store.Messages().MapPlatformMessage(ctx, mapping); err != nil {
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogAudit,
-				Level:    slog.LevelError,
-				Name:     "elnis.report_map_failed",
-				Module:   "elnis",
-				Summary:  "elnis.report_map_failed",
-				Fields: []slog.Attr{
-					slog.Any("event_key", eventKey),
-					slog.Any("platform", platformName),
-					slog.Any("scope_id", scopeID),
-					slog.Any("platform_message_id", platformMessageID),
-					slog.Any("session_id", sessionID),
-					slog.Any("message_id", messageID),
-					slog.Any("error", err.Error()),
-				},
-			})
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogElnis,
-				Level:    slog.LevelError,
-				Name:     "map_elnis_report_message_failed",
-				Module:   "elnis",
-				Summary:  "map elnis report message failed",
-				Fields: []slog.Attr{
-					slog.Any("event_key", eventKey),
-					slog.Any("platform", platformName),
-					slog.Any("scope_id", scopeID),
-					slog.Any("platform_message_id", platformMessageID),
-					slog.Any("session_id", sessionID),
-					slog.Any("message_id", messageID),
-					slog.Any("error", err.Error()),
-				},
-			})
+			{
+				content, _ := json.Marshal(map[string]any{"event_key": eventKey, "platform": platformName, "scope_id": scopeID, "platform_message_id": platformMessageID, "message_id": messageID, "error": fmt.Sprintf("%.2048s", err.Error())})
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogAudit,
+					Level:        slog.LevelError,
+					EventName:    "elnis.report_map_failed",
+					Module:       "elnis",
+					Type:         globalevents.ContentJSON,
+					Content:      string(content),
+					ResultStatus: globalevents.ResultFailed,
+				}
+				if errors.Is(err, context.Canceled) {
+					record.ResultStatus = globalevents.ResultCanceled
+					record.Level = slog.LevelInfo
+				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				record.Identity.SessionID = &sessionID
+				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			}
+			{
+				content, _ := json.Marshal(map[string]any{"event_key": eventKey, "platform": platformName, "scope_id": scopeID, "platform_message_id": platformMessageID, "message_id": messageID, "error": fmt.Sprintf("%.2048s", err.Error())})
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogElnis,
+					Level:        slog.LevelError,
+					EventName:    "map_elnis_report_message_failed",
+					Module:       "elnis",
+					Type:         globalevents.ContentJSON,
+					Content:      string(content),
+					ResultStatus: globalevents.ResultFailed,
+				}
+				if errors.Is(err, context.Canceled) {
+					record.ResultStatus = globalevents.ResultCanceled
+					record.Level = slog.LevelInfo
+				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				record.Identity.SessionID = &sessionID
+				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			}
 		}
 	}
 }

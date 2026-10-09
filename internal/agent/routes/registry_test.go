@@ -70,7 +70,7 @@ func (p *testPrepared) PrepareInput(_, requestCtx context.Context, in dialogue.L
 
 func (p *testPrepared) RunLoop(_, requestCtx context.Context, in dialogue.LoopInput, _ dialogue.Output) dialogue.LoopResult {
 	p.loop.ran++
-	return dialogue.LoopResult{Outcome: dialogue.Completed, Selection: in.Selection, Usage: &llm.Usage{TotalTokens: 7},
+	return dialogue.LoopResult{Outcome: dialogue.Completed, Selection: in.Selection, Usage: &llm.Usage{TotalTokens: func() *int64 { n := int64(7); return &n }()},
 		Commit: dialogue.ReplyCommitInput{Session: in.Session, Text: "stored reply", RawText: "source reply", PlatformText: "visible reply"}}
 }
 
@@ -161,7 +161,7 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	defer done()
 	in.RequestID = info.ID
 	result := runner.RunTurn(ctx, requestCtx, in, out)
-	if result.Outcome != dialogue.Completed || !result.Committed.Persisted || result.Usage == nil || result.Usage.TotalTokens != 7 {
+	if result.Outcome != dialogue.Completed || !result.Committed.Persisted || result.Usage == nil || (result.Usage.TotalTokens == nil || *result.Usage.TotalTokens != 7) {
 		t.Fatalf("common execution failed: %+v", result)
 	}
 	if loop.prepared != 1 || loop.ran != 1 || len(out.sent) != 1 || out.sent[0] != "visible reply" {

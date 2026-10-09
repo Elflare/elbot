@@ -2,12 +2,15 @@ package dialogue
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	agentevents "elbot/internal/agent/events"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
@@ -44,10 +47,14 @@ type CallObservation struct {
 	startedAt time.Time
 	published bool
 	Event     agentevents.ModelCallCompletedEvent
+	// LogRecord holds this call's source-defined logging result independently of
+	// the business event. Branches fill status and content; Publish does not infer
+	// outcomes from Event.Err. Identity is fixed from the source at publication.
+	LogRecord events.LogRecord
 }
 
 func (c *CallProcessor) Begin(sessionID string, selected modelmgr.Selection) *CallObservation {
-	return &CallObservation{processor: c, sessionID: sessionID, startedAt: time.Now(), Event: agentevents.ModelCallCompletedEvent{Provider: selected.Provider, Model: selected.Model, ElapsedMS: -1}}
+	return &CallObservation{processor: c, sessionID: sessionID, startedAt: time.Now(), Event: agentevents.ModelCallCompletedEvent{Provider: selected.Provider, Model: selected.Model, ElapsedMS: -1}, LogRecord: events.LogRecord{Category: events.LogAudit, Level: slog.LevelError, EventName: "llm_error", Module: "agent", Type: events.ContentJSON, ResultStatus: events.ResultFailed}}
 }
 func (o *CallObservation) Publish(ctx context.Context, err error) {
 	if o.published {
@@ -62,6 +69,44 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 	if o.Event.Err == nil {
 		o.Event.Err = err
 	}
+	content := map[string]any{"provider": o.Event.Provider, "model": o.Event.Model, "elapsed_ms": o.Event.ElapsedMS, "vision_fallback": o.Event.VisionFallback}
+	if o.LogRecord.Content != "" {
+		content["detail"] = fmt.Sprintf("%.8192s", o.LogRecord.Content)
+	}
+	if o.Event.Err != nil {
+		content["error"] = fmt.Sprintf("%.2048s", o.Event.Err.Error())
+	}
+	if usage := o.Event.Usage; usage != nil {
+		content["prompt_tokens"], content["completion_tokens"], content["total_tokens"], content["cache_hit_tokens"] = usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens, usage.CacheHitTokens
+	}
+	data, _ := json.Marshal(content)
+	o.LogRecord.Content = string(data)
+	o.LogRecord.Identity.SessionID = &o.sessionID
+	if o.Event.RunID != "" {
+		o.LogRecord.Identity.RunID = &o.Event.RunID
+	}
+	if o.Event.Attempt != "" {
+		o.LogRecord.Identity.Attempt = &o.Event.Attempt
+	}
+	if o.Event.RequestID != "" {
+		o.LogRecord.Identity.RequestID = &o.Event.RequestID
+	}
+	if o.Event.RootRequestID != "" {
+		o.LogRecord.Identity.RootRequestID = &o.Event.RootRequestID
+	}
+	_ = events.EmitLog(context.WithoutCancel(ctx), o.LogRecord)
+	if o.LogRecord.EventName == "llm_usage" && o.LogRecord.ResultStatus != events.ResultSucceeded {
+		record := o.LogRecord
+		record.EventName = "llm_error"
+		_ = events.EmitLog(context.WithoutCancel(ctx), record)
+	}
+	if o.Event.OutputReady {
+		record := o.LogRecord
+		record.Category, record.Type, record.EventName = events.LogRuntime, events.ContentText, "assistant_message"
+		record.ContentLimit = 4096
+		record.Content = fmt.Sprintf("provider=%s\nmodel=%s\nelapsed_ms=%d\ntext=%s\nraw_text=%s\ntool_call_count=%d", o.Event.Provider, o.Event.Model, o.Event.ElapsedMS, o.Event.Text, o.Event.SourceText, o.Event.ToolCallCount)
+		_ = events.EmitLog(context.WithoutCancel(ctx), record)
+	}
 	agentevents.Emit(ctx, o.processor.Completed, o.Event)
 }
 func (c *CallProcessor) RecordVisionFallback(ctx context.Context, row *storage.Session) {
@@ -72,21 +117,27 @@ func (c *CallProcessor) NotifyError(ctx context.Context, event hook.Event, err e
 	event.Error = err
 	c.Hooks.Notify(ctx, event)
 }
-func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *PendingUserMessage) (CallInput, func(), error) {
-	input, err := c.PrepareProjection(ctx, session, selection, messages, tools, pending, c.Messages.Committer("append_pending_user_message"))
+func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *PendingUserMessage, record *events.LogRecord) (CallInput, func(), error) {
+	input, err := c.PrepareProjection(ctx, session, selection, messages, tools, pending, c.Messages.Committer("append_pending_user_message"), record)
 	if err != nil {
 		return CallInput{}, func() {}, err
 	}
 	cleanup := func() {}
 	if c.Media != nil {
 		input.RequestMessages, cleanup, err = c.Media.AcquireForLLM(ctx, input.RequestMessages)
+		if err != nil {
+			record.Content += fmt.Sprintf("\nmedia_error=%v", err)
+			if errors.Is(err, context.Canceled) {
+				record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
+			}
+		}
 	}
 	return input, cleanup, err
 }
 
 // PrepareProjection applies common hooks and authorization to business views.
 // Native routes acquire only their new wire input, not old display history.
-func (c *CallProcessor) PrepareProjection(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *PendingUserMessage, persistence MessageCommitter) (CallInput, error) {
+func (c *CallProcessor) PrepareProjection(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *PendingUserMessage, persistence MessageCommitter, record *events.LogRecord) (CallInput, error) {
 	sessionID := session.ID
 	toolsEnabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
 	if !toolsEnabled {
@@ -126,8 +177,14 @@ func (c *CallProcessor) PrepareProjection(ctx context.Context, session *storage.
 		},
 	})
 	if err != nil {
+		record.Content += fmt.Sprintf("\nrequest_hook_error=%v", err)
+		if errors.Is(err, context.Canceled) {
+			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
+		}
 		if pending != nil {
 			if persistErr := persistence.Commit(ctx, &pending.Message); persistErr != nil {
+				record.Content += fmt.Sprintf("\npersistence_error=%v", persistErr)
+				record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
 				err = errors.Join(err, persistErr)
 			}
 		}

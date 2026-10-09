@@ -2,7 +2,10 @@ package toolrun
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"elbot/internal/logging"
@@ -28,14 +31,19 @@ func TestPreloadWrapperSkipAuditUsesEventName(t *testing.T) {
 			if err := manager.Close(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			entries, err := (logging.Reader{Dir: manager.LogDir()}).Query(context.Background(), logging.LogQuery{
-				Prefix: "audit", Fields: map[string]string{"event": eventName},
-			})
-			if err != nil || len(entries) != 1 {
-				t.Fatalf("event=%s entries=%+v error=%v", eventName, entries, err)
+			files, err := filepath.Glob(filepath.Join(manager.LogDir(), "audit-*.log"))
+			if err != nil || len(files) != 1 {
+				t.Fatalf("files=%v err=%v", files, err)
 			}
-			fields := entries[0].Fields
-			if fields["session_id"] != "session" || fields[targetKey] != "missing" || fields["reason"] != "not_found_or_not_allowed" || fields["result_status"] != "skipped" {
+			data, err := os.ReadFile(files[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			var fields map[string]string
+			if err := json.Unmarshal(data, &fields); err != nil {
+				t.Fatal(err)
+			}
+			if fields["event"] != eventName || fields["session_id"] != "session" || !strings.Contains(fields["content"], targetKey+"=missing") || !strings.Contains(fields["content"], "reason=not_found_or_not_allowed") || fields["result_status"] != "skipped" {
 				t.Fatalf("lost skip facts: %+v", fields)
 			}
 		})

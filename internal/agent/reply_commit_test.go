@@ -288,6 +288,24 @@ func TestReplyCommitStreamFailureRetainsReceipt(t *testing.T) {
 	}
 }
 
+func TestReplyCommitMergesReplaceAndFinishReceipts(t *testing.T) {
+	f := newReplyTestFixture(t, false)
+	s := &replyTestStream{events: &f.events, wantCtx: f.requestCtx, t: t,
+		replaceReceipt: delivery.Receipt{PlatformMessageIDs: []string{"first"}, SentMessages: []delivery.SentMessage{{Platform: "telegram", ScopeID: "scope", PlatformMessageID: "first", OutputIndexes: []int{0}}}},
+		finishReceipt:  delivery.Receipt{PlatformMessageIDs: []string{"first", "second"}, SentMessages: []delivery.SentMessage{{Platform: "telegram", ScopeID: "scope", PlatformMessageID: "first", OutputIndexes: []int{0, 1}}, {Platform: "telegram", ScopeID: "scope", PlatformMessageID: "second", OutputIndexes: []int{2}}}},
+		finishErr:      errors.New("finish partially failed"),
+	}
+	f.in.Stream = s
+	got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
+	if !errors.Is(err, s.finishErr) || !got.Persisted || !reflect.DeepEqual(got.Receipt.PlatformMessageIDs, []string{"first", "second"}) || len(got.Receipt.SentMessages) != 2 || !reflect.DeepEqual(got.Receipt.SentMessages[0].OutputIndexes, []int{0, 1}) {
+		t.Fatalf("result=%+v error=%v", got, err)
+	}
+	got.Receipt.SentMessages[0].OutputIndexes[0] = 9
+	if s.replaceReceipt.SentMessages[0].OutputIndexes[0] != 0 || s.finishReceipt.SentMessages[0].OutputIndexes[0] != 0 {
+		t.Fatal("merged receipt aliases platform receipt")
+	}
+}
+
 func TestReplyCommitEmptyAndBackground(t *testing.T) {
 	for _, buffered := range []bool{false, true} {
 		for _, mode := range []string{"empty", "background_empty", "background_reply", "outputs_only"} {

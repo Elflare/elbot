@@ -76,7 +76,7 @@ func (m *Manager) cleanSharedState(ctx context.Context) {
 		case <-ticker.C:
 			m.shared.PruneExpired()
 			if err := m.media.prune(context.Background(), time.Now(), false); err != nil {
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, Name: "prune_hook_media", Module: "hook", Summary: "prune hook media", Fields: []slog.Attr{slog.Any("error", err)}})
+				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "prune_hook_media", Module: "hook", Content: "prune hook media: " + err.Error(), ResultStatus: globalevents.ResultFailed})
 			}
 		}
 	}

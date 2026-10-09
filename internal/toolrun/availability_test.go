@@ -2,7 +2,9 @@ package toolrun
 
 import (
 	"context"
+	"elbot/internal/events"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -132,11 +134,38 @@ func TestForegroundOnlyToolResolveRejectedInBackground(t *testing.T) {
 	manager := NewManager(registry, security.DefaultPolicy())
 	ctx := sandboxctx.WithSandboxContext(context.Background(), sandboxctx.SandboxContext{Dir: t.TempDir(), Background: true, BackgroundKind: sandboxctx.BackgroundKindCron})
 	resolved := manager.Resolve(ctx, "foreground_only", nil, storage.SessionModeBackground)
-	if resolved.Available || resolved.Reason == "" {
+	if resolved.ResultStatus != events.ResultRejected || resolved.Error == nil {
 		t.Fatalf("resolved = %#v", resolved)
 	}
 	cached := manager.Resolve(ctx, "cached_foreground", []CachedTool{{Name: "cached_foreground", Source: SourceKindELwisp, Endpoint: "http://127.0.0.1", ForegroundOnly: true}}, storage.SessionModeBackground)
-	if cached.Available || cached.Reason == "" {
+	if cached.ResultStatus != events.ResultRejected || cached.Error == nil {
 		t.Fatalf("cached resolved = %#v", cached)
+	}
+	var denied tool.PolicyDeniedError
+	if !errors.As(resolved.Error, &denied) || !errors.As(cached.Error, &denied) {
+		t.Fatalf("policy errors were flattened: %T / %T", resolved.Error, cached.Error)
+	}
+}
+
+func TestResolveDistinguishesMissingToolFromMissingRemoteConfiguration(t *testing.T) {
+	manager := NewManager(tool.NewRegistry(), nil)
+	for _, tc := range []struct {
+		name   string
+		cached []CachedTool
+	}{
+		{"missing", nil},
+		{"remote", []CachedTool{{Name: "remote", Source: SourceKindELwisp}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resolved := manager.Resolve(t.Context(), tc.name, tc.cached, storage.SessionModeWork)
+			var denied tool.PolicyDeniedError
+			if resolved.ResultStatus != events.ResultFailed || resolved.Error == nil || errors.As(resolved.Error, &denied) {
+				t.Fatalf("resolution facts = %#v", resolved)
+			}
+			result := manager.Execute(t.Context(), llm.ToolCallRequest{Name: tc.name}, resolved, contextinfo.Actor{})
+			if result.ResultStatus != resolved.ResultStatus || result.Error != resolved.Error || result.ExecutionStarted {
+				t.Fatalf("execution lost resolution facts: %#v", result)
+			}
+		})
 	}
 }

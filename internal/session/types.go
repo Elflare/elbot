@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"time"
 
 	"elbot/internal/storage"
@@ -66,38 +67,67 @@ type TitleGenerator interface {
 }
 
 type NamingScheduledEvent struct {
-	SessionID    string
-	TriggeredAt  time.Time
+	// Identity is supplied by the naming source; nil IDs are absent, pointers are read-only.
+	Identity events.LogIdentity
+	// TriggeredAt is when the source began this naming check, not the log reception time.
+	TriggeredAt time.Time
+	// MessageCount is the number of selected messages, known before scheduling.
 	MessageCount int
-	TriggerStep  int
+	// TriggerStep is the configured message threshold used by this scheduling check.
+	TriggerStep int
 }
 
 type NamingCompletedEvent struct {
-	SessionID    string
-	Title        string
-	TriggeredAt  time.Time
-	MessageCount int
-	Provider     string
-	Model        string
-}
-
-type NamingFailedEvent struct {
-	SessionID                string
-	Title                    string
-	Stage                    string
-	LLMCall                  string
-	GeneratedTitleRaw        string
+	// Identity is the source's fixed association snapshot, never filled by subscribers.
+	Identity events.LogIdentity
+	// TriggeredAt is when this naming check began, including preparation.
+	TriggeredAt time.Time
+	// CompletedAt is when the source finished the flow, including any fallback save.
+	CompletedAt time.Time
+	// Scheduled reports whether the source actually emitted Scheduled for this flow.
+	Scheduled bool
+	// MessageCount is the selected message count; nil means preparation could not determine it.
+	MessageCount *int
+	// ResultStatus is the source-declared overall result of obtaining a usable title.
+	ResultStatus events.ResultStatus
+	// PreparationOperation names the last attempted preparation operation; empty means none.
+	PreparationOperation string
+	// PreparationResultStatus describes preparation; zero means not executed.
+	PreparationResultStatus events.ResultStatus
+	// PreparationError retains the original preparation error; nil does not imply success.
+	PreparationError error
+	// GenerationResultStatus describes the generator call; zero means not called.
+	GenerationResultStatus events.ResultStatus
+	// GenerationError retains the original generator error, including alongside fallback success.
+	GenerationError error
+	// Provider is returned by the generator; empty means unknown.
+	Provider string
+	// Model is returned by the generator; empty means unknown.
+	Model string
+	// GeneratedTitleRaw retains the generator output, including partial output on error.
+	GeneratedTitleRaw string
+	// GeneratedTitleNormalized is the title normalized by the naming source, not proof of saving.
 	GeneratedTitleNormalized string
-	InvalidReason            string
-	Reason                   string
-	Err                      error
-	FallbackErr              error
-	TriggeredAt              time.Time
-	MessageCount             int
-	FailureCount             int
-	MaxFailures              int
-	FallbackApplied          bool
-	FallbackTitle            string
-	Provider                 string
-	Model                    string
+	// TitleValid is set by validation; nil means validation did not run.
+	TitleValid *bool
+	// InvalidReason explains failed title validation; empty means no known invalidity.
+	InvalidReason string
+	// PersistenceResultStatus describes saving the generated title; zero means not attempted.
+	PersistenceResultStatus events.ResultStatus
+	// PersistenceError retains the original generated-title save error.
+	PersistenceError error
+	// FallbackTitle is the title selected for fallback saving; empty means none selected.
+	FallbackTitle string
+	// FallbackResultStatus describes fallback saving; zero means not attempted.
+	FallbackResultStatus events.ResultStatus
+	// FallbackError retains the original fallback save error without replacing earlier errors.
+	FallbackError error
+	// Title is the actual title read or saved by the source; nil means unknown.
+	Title *string
+	// CancellationError retains cancellation between operations; independent failures still win.
+	CancellationError error
+	// FailureCount is the source's accumulated naming failure count for this session.
+	FailureCount int
+	// MaxFailures is the source's naming retry limit, not a logging policy.
+	MaxFailures int
 }

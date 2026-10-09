@@ -14,11 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Provider 新增 `api_mode="chat"/"response"`，省略仍使用 Chat Completions。
 - `edit_file` 为每个文件保留最近一次编辑前的内存备份。新增仅超管可用的 `/rollback [编号]` 和工具 `rollback_file`，发现读写文件工具时自动展开；切换 Session、重启或容量淘汰后记录失效。不覆盖 Shell 或外部程序的修改。
 - 新增仅超级管理员可用的聊天命令 `/doctor`，只读检查当前配置的缺失项、TOML 错误、主配置未知字段和内置 Skill 差异；按文件列出问题，并生成附配置说明和默认模板地址的 Elbot 处理请求。无问题时返回 `Everything is OK`，不会自动修改文件。
+- `/log`、`/audit`、`/elwisp` 新增独立 `--raw。损坏日志行不再中断查询，会提示扫描损坏数量。
 
 ### Changed
 
-- 重构日志系统
 - 大幅重构底层，优化各包职责与边界
+- 重构日志系统
 - 平台连接事件从适配器实例信号及 App 转发改为直接发布全局信号；Hook 协调模块和 Cron 自行订阅、按平台排队并管理关闭，保持原有连接触发、补执行及 30 秒退出预算。
 - 工具支持按 API 类型限制发现、补全、预载和执行。
 - `shell` 的 stdout／stderr 返回上限从各 16 KiB 提高到各 256 KiB，超出时在对应输出末尾说明过长截断。
@@ -32,10 +33,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- 修复自动命名上游失败详情在非 DEBUG 配置下丢失，以及兜底标题保存失败覆盖原始错误的问题；现在通过 ERROR 审计独立保留诊断。
-- 修复日志事件标识。
-- 修复审计匹配虚构 `event=hook` 和运行日志漏掉无 `hook` 字段记录的问题；与事件名等条件组合时不再覆盖原筛选。
-- 修复模型重试日志依赖通知订阅、Hook 原始失败被重复记录的问题。
 - 修复 `shell` 先缓存全部输出、结束后才截断导致执行期间内存随输出量增长的问题；现在收集时限制容量，超出部分继续排空并丢弃。
 - 修复高风险确认的bug。
 - 修复追加确认等待的bug。

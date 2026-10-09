@@ -32,13 +32,13 @@ func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 	r.Record(oldCtx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseLLM}, true)
 	turns.StopSession("s", "old-attempt")
 	turns.StartExecution("s", turn.Input{}, current, "current-attempt")
-	usage := &llm.Usage{TotalTokens: 42}
+	usage := &llm.Usage{TotalTokens: func() *int64 { n := int64(42); return &n }()}
 	r.Record(ctx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseTool, Usage: usage}, true)
 	r.Record(oldCtx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseError}, true)
-	usage.TotalTokens = 900
+	*usage.TotalTokens = 900
 	copy := r.Snapshot("s")
-	copy.Usage.TotalTokens = 901
-	if len(observed) != 2 || observed[1].Version != observed[0].Version+1 || observed[1].Snapshot.Usage.TotalTokens != 42 || r.Snapshot("s").Usage.TotalTokens != 42 {
+	*copy.Usage.TotalTokens = 901
+	if len(observed) != 2 || observed[1].Version != observed[0].Version+1 || (observed[1].Snapshot.Usage.TotalTokens == nil || *observed[1].Snapshot.Usage.TotalTokens != 42) || (r.Snapshot("s").Usage.TotalTokens == nil || *r.Snapshot("s").Usage.TotalTokens != 42) {
 		t.Fatalf("old attempt/snapshot leaked: %+v", observed)
 	}
 	turns.StopSession("s", "current-attempt")
@@ -53,7 +53,7 @@ func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 }
 
 func TestModelCompletionSnapshotAndObserverFailureDoNotChangeResult(t *testing.T) {
-	usage := &llm.Usage{TotalTokens: 7}
+	usage := &llm.Usage{TotalTokens: func() *int64 { n := int64(7); return &n }()}
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: "source", Usage: usage}}}}, "model", config.ProviderConfig{}, newTestStore(t))
 	var event agentevents.ModelCallCompletedEvent
 	_, _ = a.Signals().ModelCallCompleted.Connect(func(_ context.Context, e agentevents.ModelCallCompletedEvent) error {
@@ -69,9 +69,9 @@ func TestModelCompletionSnapshotAndObserverFailureDoNotChangeResult(t *testing.T
 	if err != nil || result.Text != "source" || !event.OutputReady {
 		t.Fatalf("observation changed result: %+v / %v", result, err)
 	}
-	usage.TotalTokens = 100
-	result.Usage.TotalTokens = 101
-	if event.Usage.TotalTokens != 7 {
+	*usage.TotalTokens = 100
+	*result.Usage.TotalTokens = 101
+	if event.Usage.TotalTokens == nil || *event.Usage.TotalTokens != 7 {
 		t.Fatal("model fact retained mutable usage")
 	}
 }

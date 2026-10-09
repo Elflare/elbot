@@ -3,6 +3,7 @@ package rules
 import (
 	"bufio"
 	"context"
+	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -206,15 +207,34 @@ func (m Module) readV2Response(ctx context.Context, reader *bufio.Reader, stdin 
 			}
 		case "event":
 			if frame.Method == "hook.log" {
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-					Category: globalevents.LogRuntime,
-					Level:    slog.LevelInfo,
-					Name:     "hook_v2_plugin_event",
-					Module:   "hook",
-					Summary:  "hook.v2 plugin event" + ": " + string(frame.Params),
-					Fields:   []slog.Attr{slog.Any("rule", firstNonEmpty(action.source.FinalName, action.ActionName))},
-					Detail:   string(frame.Params),
-				})
+				{
+					record := globalevents.LogRecord{
+						Category:     globalevents.LogRuntime,
+						Level:        slog.LevelInfo,
+						EventName:    "hook_v2_plugin_event",
+						Module:       "hook",
+						Type:         globalevents.ContentText,
+						Content:      fmt.Sprintf("%s\nrule=%v", "hook.v2 plugin event"+": "+string(frame.Params), firstNonEmpty(action.source.FinalName, action.ActionName)),
+						ContentLimit: 4096,
+					}
+					facts, _ := contextinfo.ExecutionFromContext(ctx)
+					if facts.SessionID != "" {
+						record.Identity.SessionID = &facts.SessionID
+					}
+					if facts.RunID != "" {
+						record.Identity.RunID = &facts.RunID
+					}
+					if facts.Attempt != "" {
+						record.Identity.Attempt = &facts.Attempt
+					}
+					if facts.RequestID != "" {
+						record.Identity.RequestID = &facts.RequestID
+					}
+					if facts.RootRequestID != "" {
+						record.Identity.RootRequestID = &facts.RootRequestID
+					}
+					_ = globalevents.EmitLog(ctx, record)
+				}
 			}
 		default:
 			return nil, fmt.Errorf("unsupported hook.v2 frame type %q", frame.Type)
@@ -348,15 +368,49 @@ func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, act
 		if !ok || caller == nil {
 			return nil, fmt.Errorf("platform %q does not support api calls", platformName)
 		}
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogAudit,
-			Level:    slog.LevelInfo,
-			Name:     "hook.platform_call",
-			Module:   "hook",
-			Summary:  "hook.platform_call",
-			Fields:   []slog.Attr{slog.Any("platform", platformName), slog.Any("api", api), slog.Any("rule", firstNonEmpty(action.source.FinalName, action.ActionName))},
-		})
 		resp, err := caller.CallPlatformAPI(ctx, api, callParams)
+		{
+			content := map[string]any{"platform": platformName, "api": api, "rule": firstNonEmpty(action.source.FinalName, action.ActionName), "result": fmt.Sprintf("%.2048s", string(resp))}
+			if err != nil {
+				content["error"] = fmt.Sprintf("%.2048s", err.Error())
+			}
+			data, _ := json.Marshal(content)
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogAudit,
+				Level:        slog.LevelInfo,
+				EventName:    "hook.platform_call",
+				Module:       "hook",
+				Type:         globalevents.ContentJSON,
+				Content:      string(data),
+				ContentLimit: 4096,
+			}
+			record.ResultStatus = globalevents.ResultSucceeded
+			if err != nil {
+				record.ResultStatus = globalevents.ResultFailed
+				record.Level = slog.LevelError
+				if errors.Is(err, context.Canceled) {
+					record.ResultStatus = globalevents.ResultCanceled
+					record.Level = slog.LevelInfo
+				}
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -385,15 +439,34 @@ func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, act
 		return map[string]any{"available": false}, nil
 	case "hook.log":
 
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelInfo,
-			Name:     "hook_plugin_log",
-			Module:   "hook",
-			Summary:  "hook plugin log" + ": " + string(params),
-			Fields:   []slog.Attr{slog.Any("rule", firstNonEmpty(action.source.FinalName, action.ActionName))},
-			Detail:   string(params),
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelInfo,
+				EventName:    "hook_plugin_log",
+				Module:       "hook",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("%s\nrule=%v", "hook plugin log"+": "+string(params), firstNonEmpty(action.source.FinalName, action.ActionName)),
+				ContentLimit: 4096,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 
 		return map[string]any{"ok": true}, nil
 	default:
@@ -595,15 +668,34 @@ func (w *execStderrLogger) emitLocked(line string) {
 		w.tail.Add(line)
 	}
 	if line != "" {
-		_ = globalevents.EmitLog(w.ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelInfo,
-			Name:     "hook_exec_stderr",
-			Module:   "hook",
-			Summary:  "hook exec stderr" + ": " + line,
-			Fields:   []slog.Attr{slog.Any("rule", firstNonEmpty(w.action.source.FinalName, w.action.ActionName))},
-			Detail:   line,
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelInfo,
+				EventName:    "hook_exec_stderr",
+				Module:       "hook",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("%s\nrule=%v", "hook exec stderr"+": "+line, firstNonEmpty(w.action.source.FinalName, w.action.ActionName)),
+				ContentLimit: 4096,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(w.ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(w.ctx, record)
+		}
 	}
 }
 

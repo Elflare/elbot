@@ -54,14 +54,19 @@ func reportPluginError(opts Options, name string, err error) {
 		return
 	}
 
-	_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
-		Category: globalevents.LogRuntime,
-		Level:    slog.LevelError,
-		Name:     "hook_plugin_disabled",
-		Module:   "hook",
-		Summary:  "hook plugin disabled",
-		Fields:   []slog.Attr{slog.Any("plugin", name), slog.Any("error", err)},
-	})
+	{
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogRuntime,
+			Level:        slog.LevelError,
+			EventName:    "hook_plugin_disabled",
+			Module:       "hook",
+			Type:         globalevents.ContentText,
+			Content:      fmt.Sprintf("%s\nplugin=%v\nerror=%v", "hook plugin disabled", name, err),
+			ContentLimit: 4096,
+			ResultStatus: globalevents.ResultFailed,
+		}
+		_ = globalevents.EmitLog(context.Background(), record)
+	}
 
 	if opts.Notify != nil {
 		opts.Notify(context.Background(), fmt.Sprintf("Hook 插件 %s 已禁用：%v", name, err))

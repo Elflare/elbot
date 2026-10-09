@@ -64,7 +64,7 @@ func TestGenerateTextUsesNativeRequestAndCompleteResponse(t *testing.T) {
 	defer srv.Close()
 	client := mustClient(t, srv.URL, map[string]any{"reasoning": map[string]any{"effort": "medium"}}, map[string]map[string]any{"m": {"text": map[string]any{"format": map[string]any{"type": "json_object"}}}}, RequestOptions{})
 	result, err := client.GenerateText(context.Background(), llm.TextRequest{Model: "m", Instructions: "instructions", Input: "input", MaxOutputTokens: 32, ExtraBody: map[string]any{"seed": 7}})
-	if err != nil || result.Text != "title" || result.Usage == nil || result.Usage.CacheHitTokens != 4 || result.Usage.TotalTokens != 11 {
+	if err != nil || result.Text != "title" || result.Usage == nil || result.Usage.CacheHitTokens == nil || *result.Usage.CacheHitTokens != 4 || result.Usage.TotalTokens == nil || *result.Usage.TotalTokens != 11 {
 		t.Fatalf("result=%+v error=%v", result, err)
 	}
 }
@@ -342,12 +342,8 @@ func captureLogs(t *testing.T, logger *slog.Logger) {
 		if !logger.Enabled(ctx, record.Level) {
 			return nil
 		}
-		out := slog.NewRecord(record.At, record.Level, record.Summary, 0)
-		out.AddAttrs(record.Fields...)
-		out.AddAttrs(slog.String("event", record.Name), slog.String("module", record.Module))
-		if record.Detail != "" && logger.Enabled(ctx, slog.LevelDebug) {
-			out.AddAttrs(slog.String("detail", record.Detail))
-		}
+		out := slog.NewRecord(time.Now(), record.Level, record.Content, 0)
+		out.AddAttrs(slog.String("event", record.EventName), slog.String("module", record.Module))
 		return logger.Handler().Handle(ctx, out)
 	}, signal.ConnectOptions{})
 	if err != nil {

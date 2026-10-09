@@ -451,7 +451,7 @@ func TestRuntimeStatusTextShowsElapsedAndUsage(t *testing.T) {
 			Model:          "reasoner",
 			TurnStartedAt:  start,
 			StageStartedAt: start,
-			Usage:          &llm.Usage{TotalTokens: 18240, CacheHitTokens: 12100},
+			Usage:          &llm.Usage{TotalTokens: func() *int64 { n := int64(18240); return &n }(), CacheHitTokens: func() *int64 { n := int64(12100); return &n }()},
 		},
 	}
 	got := m.runtimeStatusText()

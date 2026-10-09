@@ -1,9 +1,12 @@
 package builtin
 
 import (
+	"bytes"
 	"context"
+	"elbot/internal/events"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -23,7 +26,8 @@ func auditInfo() command.Info {
   -n, --limit <n>       Number of events to show. Default: 5.
   --days <n>            Read logs from the last n days. Default: 1.
   --level <level>       Minimum level: debug, info, warn, error. Default: debug.
-  -d, -i, -w, -e       Shorthand for --level debug/info/warn/error. -d also shows raw entries.
+  -d, -i, -w, -e       Shorthand for --level debug/info/warn/error.
+  --raw                Show original physical log records.
   -t                   Filter tool events.
   --hook               Filter records from the hook module.
   --since <time>        Show events after a time, e.g. 2h, 30m, 2026-06-03, 2026-06-03T15:04:05.
@@ -34,8 +38,8 @@ func auditInfo() command.Info {
   --actor <id>          Filter by actor_id.
   --session <id>        Filter by session_id.
   --tool <name>         Filter by tool.
-  --msg <text>          Filter by msg field.
-  --contains <text>     Search summaries, details, text fields and raw records.
+  --msg <text>          Filter decoded log content.
+  --contains <text>     Search decoded content and raw records.
 
 Examples:
   /audit
@@ -59,7 +63,8 @@ func elwispInfo() command.Info {
   -n, --limit <n>       Number of log lines to show. Default: 5.
   --days <n>            Read logs from the last n days. Default: 1.
   --level <level>       Minimum level: debug, info, warn, error. Default: debug.
-  -d, -i, -w, -e       Shorthand for --level debug/info/warn/error. -d also shows raw entries.
+  -d, -i, -w, -e       Shorthand for --level debug/info/warn/error.
+  --raw                Show original physical log records.
   --since <time>        Show logs after a time, e.g. 2h, 30m, 2026-06-03, 2026-06-03T15:04:05.
   --until <time>        Show logs before a time.
   --name <name>         Filter by Elwisp name.
@@ -72,8 +77,8 @@ func elwispInfo() command.Info {
   --event-id <id>       Filter by internal Elnis event id.
   --token <name>        Filter by Elnis token name.
   --tag <tag>           Filter by Elwisp tag. Can be repeated.
-  --msg <text>          Filter by msg field.
-  --contains <text>     Search summaries, details, text fields and raw records.
+  --msg <text>          Filter decoded log content.
+  --contains <text>     Search decoded content and raw records.
 
 Examples:
   /elwisp
@@ -96,15 +101,16 @@ func logInfo() command.Info {
   -n, --limit <n>       Number of log lines to show. Default: 5.
   --days <n>            Read logs from the last n days. Default: 1.
   --level <level>       Minimum level: debug, info, warn, error. Default: debug.
-  -d, -i, -w, -e       Shorthand for --level debug/info/warn/error. -d also shows raw entries.
+  -d, -i, -w, -e       Shorthand for --level debug/info/warn/error.
+  --raw                Show original physical log records.
   -u, -a, -t           Filter user/assistant/tool events.
   -s, --system         Filter system prompt events.
   --hook               Filter records from the hook module.
   --since <time>        Show logs after a time, e.g. 2h, 30m, 2026-06-03, 2026-06-03T15:04:05.
 
   --until <time>        Show logs before a time.
-  --msg <text>          Filter by msg field.
-  --contains <text>     Search summaries, details, text fields and raw records.
+  --msg <text>          Filter decoded log content.
+  --contains <text>     Search decoded content and raw records.
 
 Examples:
   /log
@@ -162,7 +168,7 @@ func (c logCommand) Complete(ctx context.Context, req command.CompletionRequest)
 		return completeStringOptions([]string{"low", "medium", "high", "critical"}, token.Text, token.Start, token.End, "risk")
 	}
 	if c.audit && previous == "--event" {
-		return completeStringOptions([]string{"llm_usage", "llm_error", "session_naming_failed", "tool_call", "permission_denied", "session_resume", "session_fork", "hook_tool_call"}, token.Text, token.Start, token.End, "audit_event")
+		return completeStringOptions([]string{"llm_usage", "llm_error", "session_naming_completed", "tool_call", "permission_denied", "session_resume", "session_fork", "hook_tool_call"}, token.Text, token.Start, token.End, "audit_event")
 	}
 	if c.audit && previous == "--tool" {
 		return completeToolNames(c.deps, token.Text, token.Start, token.End)
@@ -182,13 +188,14 @@ func logCompletionOptions(audit, elwisp bool) []completionOption {
 		{Text: "--limit", Description: "Number of entries"},
 		{Text: "--days", Description: "Read logs from recent days"},
 		{Text: "--level", Description: "Minimum level"},
-		{Text: "-d", Description: "Debug level and raw entries"},
+		{Text: "--raw", Description: "Original physical records"},
+		{Text: "-d", Description: "Minimum debug level"},
 		{Text: "-i", Description: "Info level"},
 		{Text: "-w", Description: "Warn level"},
 		{Text: "-e", Description: "Error level"},
 		{Text: "--since", Description: "Show entries after time"},
 		{Text: "--until", Description: "Show entries before time"},
-		{Text: "--msg", Description: "Filter msg field"},
+		{Text: "--msg", Description: "Filter decoded content"},
 		{Text: "--contains", Description: "Filter text fields"},
 	}
 	if !elwisp {
@@ -219,6 +226,7 @@ func logCompletionOptions(audit, elwisp bool) []completionOption {
 			completionOption{Text: "--name", Description: "Filter Elwisp name"},
 			completionOption{Text: "--elwisp", Description: "Filter Elwisp name"},
 			completionOption{Text: "--source", Description: "Filter event source"},
+			completionOption{Text: "--tag", Description: "Filter Elwisp tag"},
 			completionOption{Text: "--id", Description: "Filter source event ID"},
 			completionOption{Text: "--source-id", Description: "Filter source event ID"},
 			completionOption{Text: "--mode", Description: "Filter Elnis mode"},
@@ -250,10 +258,22 @@ func queryLogs(ctx context.Context, deps Deps, query logging.LogQuery, formatter
 	if err != nil {
 		return nil, err
 	}
-	if len(entries) == 0 {
-		return &command.Result{Content: "no log entries found"}, nil
+	content := "no log entries found"
+	if len(entries.Entries) > 0 {
+		content = formatter(entries.Entries)
 	}
-	return &command.Result{Content: formatter(entries)}, nil
+	if entries.DamagedCount > 0 {
+		content += fmt.Sprintf("\n本次扫描发现 %d 条损坏记录，查询结果可能不完整。", entries.DamagedCount)
+		if query.Raw {
+			for _, raw := range entries.DamagedLines {
+				content += "\n损坏记录（无法判断是否匹配筛选条件）：\n" + raw
+			}
+			if entries.DamagedCount > len(entries.DamagedLines) {
+				content += fmt.Sprintf("\n另有 %d 条损坏记录未展示。", entries.DamagedCount-len(entries.DamagedLines))
+			}
+		}
+	}
+	return &command.Result{Content: content}, nil
 }
 
 func parseAuditQuery(args string) (logging.LogQuery, error) {
@@ -265,13 +285,13 @@ func parseAuditQuery(args string) (logging.LogQuery, error) {
 		case "event":
 			fields["event"] = value
 		case "risk":
-			fields["risk"] = value
+			query.ContentFields["risk"] = value
 		case "actor":
-			fields["actor_id"] = value
+			query.ContentFields["actor_id"] = value
 		case "session":
 			fields["session_id"] = value
 		case "tool":
-			fields["tool"] = value
+			query.ContentFields["tool"] = value
 		default:
 			return fmt.Errorf("unknown option: --%s", name)
 		}
@@ -301,10 +321,10 @@ func parseElwispLogQuery(args string) (logging.LogQuery, error) {
 	query.MinLevel = "debug"
 	fields := map[string]string{}
 	setElwispName := func(value string) error {
-		if fields["elwisp_name"] != "" {
+		if query.ContentFields["elwisp_name"] != "" {
 			return fmt.Errorf("elwisp name specified more than once")
 		}
-		fields["elwisp_name"] = value
+		query.ContentFields["elwisp_name"] = value
 		return nil
 	}
 	if err := parseLogArgsWithOptions(args, &query, fields, func(name, value string) error {
@@ -312,19 +332,19 @@ func parseElwispLogQuery(args string) (logging.LogQuery, error) {
 		case "name", "elwisp":
 			return setElwispName(value)
 		case "source":
-			fields["source"] = value
+			query.ContentFields["source"] = value
 		case "id", "source-id":
-			fields["source_id"] = value
+			query.ContentFields["source_id"] = value
 		case "mode":
-			fields["mode"] = value
+			query.ContentFields["mode"] = value
 		case "event-key":
-			fields["event_key"] = value
+			query.ContentFields["event_key"] = value
 		case "event-id":
-			fields["event_id"] = value
+			query.ContentFields["event_id"] = value
 		case "token":
-			fields["token_name"] = value
+			query.ContentFields["token_name"] = value
 		case "tag":
-			query.FieldContains["tags"] = append(query.FieldContains["tags"], jsonQuotedLogValue(value))
+			query.ContentFieldContains["tags"] = append(query.ContentFieldContains["tags"], value)
 		default:
 			return fmt.Errorf("unknown option: --%s", name)
 		}
@@ -337,15 +357,7 @@ func parseElwispLogQuery(args string) (logging.LogQuery, error) {
 }
 
 func baseLogQuery(prefix string) logging.LogQuery {
-	return logging.LogQuery{Prefix: prefix, Limit: defaultLogListLimit, Days: 1, FieldContains: map[string][]string{}}
-}
-
-func jsonQuotedLogValue(value string) string {
-	data, err := json.Marshal(strings.TrimSpace(value))
-	if err != nil {
-		return strings.TrimSpace(value)
-	}
-	return string(data)
+	return logging.LogQuery{Prefix: prefix, Limit: defaultLogListLimit, Days: 1, ContentFieldContains: map[string][]string{}, ContentFields: map[string]string{}}
 }
 
 func parseLogArgs(args string, query *logging.LogQuery, fields map[string]string, extra func(name, value string) error) error {
@@ -413,9 +425,9 @@ func parseLogArgsWithOptions(args string, query *logging.LogQuery, fields map[st
 				return err
 			}
 			query.MinLevel = value
-			query.Raw = strings.EqualFold(value, "debug")
 		case "-d":
 			query.MinLevel = "debug"
+		case "--raw":
 			query.Raw = true
 		case "-i":
 			query.MinLevel = "info"
@@ -453,7 +465,7 @@ func parseLogArgsWithOptions(args string, query *logging.LogQuery, fields map[st
 			if err != nil {
 				return err
 			}
-			query.MsgContains = value
+			query.ContentContains = value
 		case "--contains":
 			value, err := nextArg(parts, &i, name)
 			if err != nil {
@@ -568,30 +580,41 @@ func formatAuditEntries(raw bool) func([]logging.LogEntry) string {
 		if raw {
 			return formatRawLogEntries("audit events", entries)
 		}
-
 		var sb strings.Builder
 		sb.WriteString("audit events:\n")
 		for i, entry := range entries {
 			if i > 0 {
-				sb.WriteString("\n")
+				sb.WriteString("\n\n")
 			}
-			f := entry.Fields
-			sb.WriteString(fmt.Sprintf("  %s %s", formatLogEntryTime(entry), fieldOr(f, "event", entry.Message)))
-			appendField(&sb, "module", f["module"])
-			appendField(&sb, "session", f["session_id"])
-			appendField(&sb, "actor", f["actor_id"])
-			appendField(&sb, "tool", f["tool"])
-			appendField(&sb, "risk", f["risk"])
-			appendField(&sb, "provider", f["provider"])
-			appendField(&sb, "model", f["model"])
-			appendField(&sb, "elapsed_ms", f["elapsed_ms"])
-			appendLLMUsageFields(&sb, f)
-			appendField(&sb, "action", f["action"])
-			appendField(&sb, "args", f["arguments"])
-			appendField(&sb, "result", f["result"])
-			appendField(&sb, "text", f["text"])
-			appendField(&sb, "reason", f["reason"])
-			appendField(&sb, "error", f["error"])
+			result := "未声明"
+			switch entry.ResultStatus {
+			case events.ResultSucceeded:
+				result = "成功"
+			case events.ResultFailed:
+				result = "失败"
+			case events.ResultCanceled:
+				result = "已取消"
+			case events.ResultRejected:
+				result = "已拒绝"
+			case events.ResultSkipped:
+				result = "已跳过"
+			}
+			level := entry.Level
+			if level == "" {
+				level = "未声明"
+			}
+			fmt.Fprintf(&sb, "%s  %s  %s  %s\n", formatLogEntryTime(entry), level, entry.EventName, result)
+			content := entry.Content
+			if entry.Type == events.ContentJSON {
+				var body bytes.Buffer
+				if err := json.Indent(&body, []byte(content), "", "  "); err == nil {
+					content = body.String()
+				}
+			}
+			sb.WriteString(content)
+			if entry.LegacyFields != nil {
+				appendRuntimeLogFields(&sb, entry.LegacyFields)
+			}
 		}
 		return sb.String()
 	}
@@ -602,15 +625,41 @@ func formatRuntimeLogEntries(raw bool) func([]logging.LogEntry) string {
 		if raw {
 			return formatRawLogEntries("runtime logs", entries)
 		}
-
 		var sb strings.Builder
 		sb.WriteString("runtime logs:\n")
 		for i, entry := range entries {
 			if i > 0 {
-				sb.WriteString("\n")
+				sb.WriteString("\n\n")
 			}
-			sb.WriteString(fmt.Sprintf("  %s %s %s", formatLogEntryTime(entry), strings.ToLower(entry.Level), entry.Message))
-			appendRuntimeLogFields(&sb, entry.Fields)
+			result := "未声明"
+			switch entry.ResultStatus {
+			case events.ResultSucceeded:
+				result = "成功"
+			case events.ResultFailed:
+				result = "失败"
+			case events.ResultCanceled:
+				result = "已取消"
+			case events.ResultRejected:
+				result = "已拒绝"
+			case events.ResultSkipped:
+				result = "已跳过"
+			}
+			level := entry.Level
+			if level == "" {
+				level = "未声明"
+			}
+			fmt.Fprintf(&sb, "%s  %s  %s  %s\n", formatLogEntryTime(entry), level, entry.EventName, result)
+			content := entry.Content
+			if entry.Type == events.ContentJSON {
+				var body bytes.Buffer
+				if err := json.Indent(&body, []byte(content), "", "  "); err == nil {
+					content = body.String()
+				}
+			}
+			sb.WriteString(content)
+			if entry.LegacyFields != nil {
+				appendRuntimeLogFields(&sb, entry.LegacyFields)
+			}
 		}
 		return sb.String()
 	}
@@ -621,76 +670,57 @@ func formatElwispLogEntries(raw bool) func([]logging.LogEntry) string {
 		if raw {
 			return formatRawLogEntries("elwisp logs", entries)
 		}
-
 		var sb strings.Builder
 		sb.WriteString("elwisp logs:\n")
 		for i, entry := range entries {
 			if i > 0 {
-				sb.WriteString("\n")
+				sb.WriteString("\n\n")
 			}
-			f := entry.Fields
-			sb.WriteString(fmt.Sprintf("  %s %s %s", formatLogEntryTime(entry), strings.ToLower(entry.Level), entry.Message))
-			appendField(&sb, "elwisp", f["elwisp_name"])
-			appendField(&sb, "source", f["source"])
-			appendField(&sb, "id", f["source_id"])
-			appendField(&sb, "mode", f["mode"])
-			appendField(&sb, "tags", f["tags"])
-			appendField(&sb, "event_key", f["event_key"])
-			appendField(&sb, "event_id", f["event_id"])
-			appendField(&sb, "token", f["token_name"])
-			appendField(&sb, "session", f["session_id"])
-			appendField(&sb, "error", f["error"])
+			result := "未声明"
+			switch entry.ResultStatus {
+			case events.ResultSucceeded:
+				result = "成功"
+			case events.ResultFailed:
+				result = "失败"
+			case events.ResultCanceled:
+				result = "已取消"
+			case events.ResultRejected:
+				result = "已拒绝"
+			case events.ResultSkipped:
+				result = "已跳过"
+			}
+			level := entry.Level
+			if level == "" {
+				level = "未声明"
+			}
+			fmt.Fprintf(&sb, "%s  %s  %s  %s\n", formatLogEntryTime(entry), level, entry.EventName, result)
+			content := entry.Content
+			if entry.Type == events.ContentJSON {
+				var body bytes.Buffer
+				if err := json.Indent(&body, []byte(content), "", "  "); err == nil {
+					content = body.String()
+				}
+			}
+			sb.WriteString(content)
+			if entry.LegacyFields != nil {
+				appendRuntimeLogFields(&sb, entry.LegacyFields)
+			}
 		}
 		return sb.String()
 	}
 }
 
-func appendLLMUsageFields(sb *strings.Builder, fields map[string]string) {
-	prompt := strings.TrimSpace(fields["prompt_tokens"])
-	completion := strings.TrimSpace(fields["completion_tokens"])
-	total := strings.TrimSpace(fields["total_tokens"])
-	if prompt != "" || completion != "" || total != "" {
-		sb.WriteString(" tokens=")
-		sb.WriteString(firstNonEmptyLogField(prompt, "?"))
-		sb.WriteString("/")
-		sb.WriteString(firstNonEmptyLogField(completion, "?"))
-		sb.WriteString("/")
-		sb.WriteString(firstNonEmptyLogField(total, "?"))
-	}
-	cacheHit := strings.TrimSpace(fields["cache_hit_tokens"])
-	if cacheHit == "" {
-		return
-	}
-	sb.WriteString(" cache_hit=")
-	sb.WriteString(cacheHit)
-	if prompt == "" {
-		return
-	}
-	cacheHitTokens, errHit := strconv.Atoi(cacheHit)
-	promptTokens, errPrompt := strconv.Atoi(prompt)
-	if errHit != nil || errPrompt != nil || promptTokens <= 0 {
-		return
-	}
-	sb.WriteString(fmt.Sprintf("/%d(%.1f%%)", promptTokens, float64(cacheHitTokens)*100/float64(promptTokens)))
-}
-
-func firstNonEmptyLogField(value, fallback string) string {
-	if strings.TrimSpace(value) != "" {
-		return value
-	}
-	return fallback
-}
-
 func appendRuntimeLogFields(sb *strings.Builder, fields map[string]string) {
-	for _, key := range []string{
-		"event", "module", "point", "hook", "priority", "order", "mode",
-		"hook_point", "hook_mode",
-		"kind", "name", "platform",
-		"session_id", "request_id", "request_kind", "request_phase",
-		"actor_id", "actor_role",
-		"provider", "model", "tool", "risk",
-		"text", "raw_text", "first_system_message_json", "arguments", "result", "success", "error",
-	} {
+	keys := make([]string, 0, len(fields))
+	for key := range fields {
+		switch key {
+		case "time", "level", "event", "type", "result_status", "msg":
+			continue
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
 		appendField(sb, key, fields[key])
 	}
 }
@@ -704,33 +734,9 @@ func formatRawLogEntries(title string, entries []logging.LogEntry) string {
 			sb.WriteString("\n")
 		}
 		sb.WriteString("  ")
-		sb.WriteString(formatDebugLogEntry(entry))
+		sb.WriteString(entry.Raw)
 	}
 	return sb.String()
-}
-
-func formatDebugLogEntry(entry logging.LogEntry) string {
-	body := strings.TrimSpace(entry.Fields["body_json"])
-	if body == "" {
-		return entry.Raw
-	}
-	line := strings.TrimSpace(entry.Raw)
-	if idx := strings.Index(line, " body_json="); idx >= 0 {
-		line = line[:idx]
-	}
-	return line + "\n    body_json:\n" + indentDebugBlock(body, "      ")
-}
-
-func indentDebugBlock(text, prefix string) string {
-	lines := strings.Split(text, "\n")
-	for i, line := range lines {
-		lines[i] = prefix + line
-	}
-	return strings.Join(lines, "\n")
-}
-
-func isDebugQuery(minLevel string) bool {
-	return strings.EqualFold(strings.TrimSpace(minLevel), "debug")
 }
 
 func formatLogEntryTime(entry logging.LogEntry) string {
@@ -738,13 +744,6 @@ func formatLogEntryTime(entry logging.LogEntry) string {
 		return "unknown-time"
 	}
 	return entry.Time.Format("2006-01-02 15:04:05")
-}
-
-func fieldOr(fields map[string]string, key, fallback string) string {
-	if value := fields[key]; value != "" {
-		return value
-	}
-	return fallback
 }
 
 func appendField(sb *strings.Builder, label, value string) {

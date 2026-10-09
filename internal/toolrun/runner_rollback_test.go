@@ -66,8 +66,9 @@ func (d *runnerTestDeps) CompleteToolCall(_ context.Context, _ *storage.Session,
 }
 func (d *runnerTestDeps) SendPreview(context.Context, string)                  {}
 func (d *runnerTestDeps) SendOutputs(context.Context, []delivery.Output) error { return nil }
-func (d *runnerTestDeps) RecordToolCall(_ context.Context, _ string, _ llm.ToolCallRequest, _ string, _ time.Time, _ string, err error) {
+func (d *runnerTestDeps) RecordToolCall(_ context.Context, _ string, _ llm.ToolCallRequest, _ string, _ time.Time, _ string, err error) error {
 	d.recorded = append(d.recorded, struct{ err error }{err})
+	return nil
 }
 func (d *runnerTestDeps) AuditToolDenied(context.Context, string, llm.ToolCallRequest, tool.RiskLevel, string) {
 }

@@ -54,14 +54,39 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 		reason, err := a.runGatewayOnce(ctx, handler, &state)
 		if err != nil && !errors.Is(err, context.Canceled) {
 			if backoff.ShouldWarn() {
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-					Category: globalevents.LogRuntime,
-					Level:    slog.LevelWarn,
-					Name:     "qqofficial_gateway_disconnected",
-					Module:   "qqofficial",
-					Summary:  "qqofficial gateway disconnected",
-					Fields:   []slog.Attr{slog.Any("error", err), slog.Any("reconnect_mode", reason.mode.String())},
-				})
+				{
+					record := globalevents.LogRecord{
+						Category:     globalevents.LogRuntime,
+						Level:        slog.LevelWarn,
+						EventName:    "qqofficial_gateway_disconnected",
+						Module:       "qqofficial",
+						Type:         globalevents.ContentText,
+						Content:      fmt.Sprintf("qqofficial gateway disconnected\nerror=%v\nreconnect_mode=%v", err, reason.mode.String()),
+						ContentLimit: 4096,
+						ResultStatus: globalevents.ResultFailed,
+					}
+					if errors.Is(err, context.Canceled) {
+						record.ResultStatus = globalevents.ResultCanceled
+						record.Level = slog.LevelInfo
+					}
+					facts, _ := contextinfo.ExecutionFromContext(ctx)
+					if facts.SessionID != "" {
+						record.Identity.SessionID = &facts.SessionID
+					}
+					if facts.RunID != "" {
+						record.Identity.RunID = &facts.RunID
+					}
+					if facts.Attempt != "" {
+						record.Identity.Attempt = &facts.Attempt
+					}
+					if facts.RequestID != "" {
+						record.Identity.RequestID = &facts.RequestID
+					}
+					if facts.RootRequestID != "" {
+						record.Identity.RootRequestID = &facts.RootRequestID
+					}
+					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+				}
 			}
 		} else {
 			backoff.Reset()
@@ -191,12 +216,4 @@ func sleepContext(ctx context.Context, d time.Duration) bool {
 	case <-t.C:
 		return true
 	}
-}
-
-// failureLogLevel distinguishes explicit cancellation from an operation failure.
-func failureLogLevel(err error) slog.Level {
-	if errors.Is(err, context.Canceled) {
-		return slog.LevelInfo
-	}
-	return slog.LevelError
 }

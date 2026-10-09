@@ -2,6 +2,9 @@ package qqonebot
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
+	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -33,14 +36,23 @@ func (a *Adapter) expandForwardReference(event Event) func(context.Context, stri
 		}
 		message, err := a.transport.GetMessage(ctx, replyID)
 		if err != nil {
-			_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
-				Category: globalevents.LogRuntime,
-				Level:    slog.LevelWarn,
-				Name:     "fetch_forward_reference_failed",
-				Module:   "qq-onebot",
-				Summary:  "fetch forward reference failed",
-				Fields:   []slog.Attr{slog.Any("error", err)},
-			})
+			{
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogRuntime,
+					Level:        slog.LevelWarn,
+					EventName:    "fetch_forward_reference_failed",
+					Module:       "qq-onebot",
+					Type:         globalevents.ContentText,
+					Content:      fmt.Sprintf("fetch forward reference failed\nerror=%v", err),
+					ContentLimit: 4096,
+					ResultStatus: globalevents.ResultFailed,
+				}
+				if errors.Is(err, context.Canceled) {
+					record.ResultStatus = globalevents.ResultCanceled
+					record.Level = slog.LevelInfo
+				}
+				_ = globalevents.EmitLog(context.Background(), record)
+			}
 			return fallback
 		}
 		segments, ok := decodeMessageSegments(message.Message)
@@ -93,14 +105,39 @@ func (a *Adapter) expandForwardSegments(ctx context.Context, segments []Segment,
 			if err == nil {
 				content = normalizeForwardNodes(nodes)
 			} else {
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-					Category: globalevents.LogRuntime,
-					Level:    slog.LevelWarn,
-					Name:     "fetch_forward_content_failed",
-					Module:   "qq-onebot",
-					Summary:  "fetch forward content failed",
-					Fields:   []slog.Attr{slog.Any("error", err)},
-				})
+				{
+					record := globalevents.LogRecord{
+						Category:     globalevents.LogRuntime,
+						Level:        slog.LevelWarn,
+						EventName:    "fetch_forward_content_failed",
+						Module:       "qq-onebot",
+						Type:         globalevents.ContentText,
+						Content:      fmt.Sprintf("fetch forward content failed\nerror=%v", err),
+						ContentLimit: 4096,
+						ResultStatus: globalevents.ResultFailed,
+					}
+					if errors.Is(err, context.Canceled) {
+						record.ResultStatus = globalevents.ResultCanceled
+						record.Level = slog.LevelInfo
+					}
+					facts, _ := contextinfo.ExecutionFromContext(ctx)
+					if facts.SessionID != "" {
+						record.Identity.SessionID = &facts.SessionID
+					}
+					if facts.RunID != "" {
+						record.Identity.RunID = &facts.RunID
+					}
+					if facts.Attempt != "" {
+						record.Identity.Attempt = &facts.Attempt
+					}
+					if facts.RequestID != "" {
+						record.Identity.RequestID = &facts.RequestID
+					}
+					if facts.RootRequestID != "" {
+						record.Identity.RootRequestID = &facts.RootRequestID
+					}
+					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+				}
 			}
 		}
 		if len(content) == 0 {

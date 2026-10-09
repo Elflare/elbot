@@ -114,32 +114,94 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) error {
 	job = *latest
 	meta, err := decodeMetadata(job.Metadata)
 	if err != nil {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelError,
-			Name:     "cron_metadata_parse_failed",
-			Module:   "cron",
-			Summary:  "cron metadata parse failed",
-			Fields:   []slog.Attr{slog.Any("job", job.Name), slog.Any("error", err)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "cron_metadata_parse_failed",
+				Module:       "cron",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("cron metadata parse failed\njob=%v\nerror=%v", job.Name, err),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 		return err
 	}
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogAudit,
-		Level:    slog.LevelInfo,
-		Name:     "cron.trigger_started",
-		Module:   "cron",
-		Summary:  "cron.trigger_started",
-		Fields:   slog.Group("", s.cronAuditAttrs(job.Name, meta, "trigger_mode", meta.Trigger.Mode, "schedule_mode", meta.Schedule.Mode)...).Value.Group(),
-	})
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogRuntime,
-		Level:    slog.LevelInfo,
-		Name:     "cron_trigger_started",
-		Module:   "cron",
-		Summary:  "cron trigger started",
-		Fields:   slog.Group("", s.cronLogAttrs(job.Name, meta, "trigger_mode", meta.Trigger.Mode, "schedule_mode", meta.Schedule.Mode)...).Value.Group(),
-	})
+	{
+		content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": meta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms": meta.Target.AllEnabledPlatforms, "trigger_mode": meta.Trigger.Mode, "schedule_mode": meta.Schedule.Mode})
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogAudit,
+			Level:        slog.LevelInfo,
+			EventName:    "cron.trigger_started",
+			Module:       "cron",
+			Type:         globalevents.ContentJSON,
+			Content:      string(content),
+			ContentLimit: 4096,
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		_ = globalevents.EmitLog(ctx, record)
+	}
+	{
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogRuntime,
+			Level:        slog.LevelInfo,
+			EventName:    "cron_trigger_started",
+			Module:       "cron",
+			Type:         globalevents.ContentText,
+			Content:      fmt.Sprintf("cron trigger started\njob=%v\nsource_platform=%v\ntarget_platforms=%v\ntarget_all_enabled_platforms=%v\ntrigger_mode=%v\nschedule_mode=%v", job.Name, meta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(meta), ","), meta.Target.AllEnabledPlatforms, meta.Trigger.Mode, meta.Schedule.Mode),
+			ContentLimit: 4096,
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		_ = globalevents.EmitLog(ctx, record)
+	}
 	var runErr error
 	switch meta.Trigger.Mode {
 	case TriggerDirect:
@@ -150,56 +212,171 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) error {
 		runErr = fmt.Errorf("unsupported trigger mode %q", meta.Trigger.Mode)
 	}
 	if runErr != nil {
-		if isContextCancellation(ctx, runErr) {
-			return runErr
+		{
+			content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": meta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms": meta.Target.AllEnabledPlatforms, "error": runErr.Error()})
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogAudit,
+				Level:        slog.LevelError,
+				EventName:    "cron.trigger_failed",
+				Module:       "cron",
+				Type:         globalevents.ContentJSON,
+				Content:      string(content),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if ctx.Err() == context.Canceled && isContextCancellation(ctx, runErr) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 		}
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogAudit,
-			Level:    slog.LevelError,
-			Name:     "cron.trigger_failed",
-			Module:   "cron",
-			Summary:  "cron.trigger_failed",
-			Fields:   slog.Group("", s.cronAuditAttrs(job.Name, meta, "error", runErr.Error())...).Value.Group(),
-		})
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelError,
-			Name:     "cron_trigger_failed",
-			Module:   "cron",
-			Summary:  "cron trigger failed",
-			Fields:   slog.Group("", s.cronLogAttrs(job.Name, meta, "error", runErr.Error())...).Value.Group(),
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "cron_trigger_failed",
+				Module:       "cron",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("cron trigger failed\njob=%v\nsource_platform=%v\ntarget_platforms=%v\ntarget_all_enabled_platforms=%v\nerror=%v", job.Name, meta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(meta), ","), meta.Target.AllEnabledPlatforms, runErr.Error()),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if ctx.Err() == context.Canceled && isContextCancellation(ctx, runErr) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 		return runErr
 	}
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogAudit,
-		Level:    slog.LevelInfo,
-		Name:     "cron.trigger_completed",
-		Module:   "cron",
-		Summary:  "cron.trigger_completed",
-		Fields:   slog.Group("", s.cronAuditAttrs(job.Name, meta)...).Value.Group(),
-	})
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogRuntime,
-		Level:    slog.LevelInfo,
-		Name:     "cron_trigger_completed",
-		Module:   "cron",
-		Summary:  "cron trigger completed",
-		Fields:   slog.Group("", s.cronLogAttrs(job.Name, meta)...).Value.Group(),
-	})
+	{
+		content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": meta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms": meta.Target.AllEnabledPlatforms})
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogAudit,
+			Level:        slog.LevelInfo,
+			EventName:    "cron.trigger_completed",
+			Module:       "cron",
+			Type:         globalevents.ContentJSON,
+			Content:      string(content),
+			ContentLimit: 4096,
+			ResultStatus: globalevents.ResultSucceeded,
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		_ = globalevents.EmitLog(ctx, record)
+	}
+	{
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogRuntime,
+			Level:        slog.LevelInfo,
+			EventName:    "cron_trigger_completed",
+			Module:       "cron",
+			Type:         globalevents.ContentText,
+			Content:      fmt.Sprintf("cron trigger completed\njob=%v\nsource_platform=%v\ntarget_platforms=%v\ntarget_all_enabled_platforms=%v", job.Name, meta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(meta), ","), meta.Target.AllEnabledPlatforms),
+			ContentLimit: 4096,
+			ResultStatus: globalevents.ResultSucceeded,
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		_ = globalevents.EmitLog(ctx, record)
+	}
 	return nil
 }
 
 func (s *Service) Create(ctx context.Context, req UpsertRequest) (*storage.CronJob, error) {
 	if err := requireSuperadmin(req.Actor); err != nil {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogAudit,
-			Level:    slog.LevelWarn,
-			Name:     "cron.permission_denied",
-			Module:   "cron",
-			Summary:  "cron.permission_denied",
-			Fields:   []slog.Attr{slog.Any("operation", "create"), slog.Any("actor_id", req.Actor.ID), slog.Any("reason", err.Error())},
-		})
+		{
+			content, _ := json.Marshal(map[string]any{"operation": "create", "actor_id": req.Actor.ID, "reason": err.Error()})
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogAudit,
+				Level:        slog.LevelWarn,
+				EventName:    "cron.permission_denied",
+				Module:       "cron",
+				Type:         globalevents.ContentJSON,
+				Content:      string(content),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultRejected,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 		return nil, err
 	}
 	meta := Metadata{Kind: metadataKind, Version: 1, Title: strings.TrimSpace(req.Title), CreatedBy: actorMetadata(req.Actor), Schedule: CronSchedule{Mode: req.ScheduleMode, RunAt: strings.TrimSpace(req.RunAt), CronExpr: strings.TrimSpace(req.CronExpr)}, Trigger: CronTrigger{Mode: req.TriggerMode, Message: strings.TrimSpace(req.Message)}, Target: CronTarget{AllEnabledPlatforms: req.AllEnabledPlatforms, SourcePlatform: firstNonEmpty(req.SourcePlatform, req.Actor.Platform)}, LLM: CronLLMMetadata{ToolListNames: normalizeToolListNames(req.ToolListNames), ModelProvider: strings.TrimSpace(req.ModelProvider), Model: strings.TrimSpace(req.Model)}}
@@ -216,27 +393,71 @@ func (s *Service) Create(ctx context.Context, req UpsertRequest) (*storage.CronJ
 	if err != nil {
 		return nil, err
 	}
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogAudit,
-		Level:    slog.LevelInfo,
-		Name:     "cron.create",
-		Module:   "cron",
-		Summary:  "cron.create",
-		Fields:   []slog.Attr{slog.Any("job", job.Name), slog.Any("actor_id", req.Actor.ID), slog.Any("trigger_mode", meta.Trigger.Mode), slog.Any("schedule_mode", meta.Schedule.Mode)},
-	})
+	{
+		content, _ := json.Marshal(map[string]any{"job": job.Name, "actor_id": req.Actor.ID, "trigger_mode": meta.Trigger.Mode, "schedule_mode": meta.Schedule.Mode})
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogAudit,
+			Level:        slog.LevelInfo,
+			EventName:    "cron.create",
+			Module:       "cron",
+			Type:         globalevents.ContentJSON,
+			Content:      string(content),
+			ContentLimit: 4096,
+			ResultStatus: globalevents.ResultSucceeded,
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		_ = globalevents.EmitLog(ctx, record)
+	}
 	return job, nil
 }
 
 func (s *Service) Update(ctx context.Context, req PatchRequest) (*storage.CronJob, error) {
 	if err := requireSuperadmin(req.Actor); err != nil {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogAudit,
-			Level:    slog.LevelWarn,
-			Name:     "cron.permission_denied",
-			Module:   "cron",
-			Summary:  "cron.permission_denied",
-			Fields:   []slog.Attr{slog.Any("operation", "update"), slog.Any("actor_id", req.Actor.ID), slog.Any("reason", err.Error())},
-		})
+		{
+			content, _ := json.Marshal(map[string]any{"operation": "update", "actor_id": req.Actor.ID, "reason": err.Error()})
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogAudit,
+				Level:        slog.LevelWarn,
+				EventName:    "cron.permission_denied",
+				Module:       "cron",
+				Type:         globalevents.ContentJSON,
+				Content:      string(content),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultRejected,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 		return nil, err
 	}
 	name := normalizeJobName(req.Name)
@@ -297,27 +518,71 @@ func (s *Service) Update(ctx context.Context, req PatchRequest) (*storage.CronJo
 	if err != nil {
 		return nil, err
 	}
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogAudit,
-		Level:    slog.LevelInfo,
-		Name:     "cron.update",
-		Module:   "cron",
-		Summary:  "cron.update",
-		Fields:   []slog.Attr{slog.Any("job", updated.Name), slog.Any("actor_id", req.Actor.ID)},
-	})
+	{
+		content, _ := json.Marshal(map[string]any{"job": updated.Name, "actor_id": req.Actor.ID})
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogAudit,
+			Level:        slog.LevelInfo,
+			EventName:    "cron.update",
+			Module:       "cron",
+			Type:         globalevents.ContentJSON,
+			Content:      string(content),
+			ContentLimit: 4096,
+			ResultStatus: globalevents.ResultSucceeded,
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		_ = globalevents.EmitLog(ctx, record)
+	}
 	return updated, nil
 }
 
 func (s *Service) Disable(ctx context.Context, name string, actor contextinfo.Actor) error {
 	if err := requireSuperadmin(actor); err != nil {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogAudit,
-			Level:    slog.LevelWarn,
-			Name:     "cron.permission_denied",
-			Module:   "cron",
-			Summary:  "cron.permission_denied",
-			Fields:   []slog.Attr{slog.Any("operation", "disable"), slog.Any("actor_id", actor.ID), slog.Any("reason", err.Error())},
-		})
+		{
+			content, _ := json.Marshal(map[string]any{"operation": "disable", "actor_id": actor.ID, "reason": err.Error()})
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogAudit,
+				Level:        slog.LevelWarn,
+				EventName:    "cron.permission_denied",
+				Module:       "cron",
+				Type:         globalevents.ContentJSON,
+				Content:      string(content),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultRejected,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 		return err
 	}
 	name = normalizeJobName(name)
@@ -328,27 +593,71 @@ func (s *Service) Disable(ctx context.Context, name string, actor contextinfo.Ac
 	} else if err := s.store.CronJobs().DisableByName(ctx, name); err != nil {
 		return err
 	}
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogAudit,
-		Level:    slog.LevelInfo,
-		Name:     "cron.disable",
-		Module:   "cron",
-		Summary:  "cron.disable",
-		Fields:   []slog.Attr{slog.Any("job", name), slog.Any("actor_id", actor.ID)},
-	})
+	{
+		content, _ := json.Marshal(map[string]any{"job": name, "actor_id": actor.ID})
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogAudit,
+			Level:        slog.LevelInfo,
+			EventName:    "cron.disable",
+			Module:       "cron",
+			Type:         globalevents.ContentJSON,
+			Content:      string(content),
+			ContentLimit: 4096,
+			ResultStatus: globalevents.ResultSucceeded,
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		_ = globalevents.EmitLog(ctx, record)
+	}
 	return nil
 }
 
 func (s *Service) Delete(ctx context.Context, name string, actor contextinfo.Actor) error {
 	if err := requireSuperadmin(actor); err != nil {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogAudit,
-			Level:    slog.LevelWarn,
-			Name:     "cron.permission_denied",
-			Module:   "cron",
-			Summary:  "cron.permission_denied",
-			Fields:   []slog.Attr{slog.Any("operation", "delete"), slog.Any("actor_id", actor.ID), slog.Any("reason", err.Error())},
-		})
+		{
+			content, _ := json.Marshal(map[string]any{"operation": "delete", "actor_id": actor.ID, "reason": err.Error()})
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogAudit,
+				Level:        slog.LevelWarn,
+				EventName:    "cron.permission_denied",
+				Module:       "cron",
+				Type:         globalevents.ContentJSON,
+				Content:      string(content),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultRejected,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 		return err
 	}
 	name = normalizeJobName(name)
@@ -359,27 +668,71 @@ func (s *Service) Delete(ctx context.Context, name string, actor contextinfo.Act
 	} else if err := s.store.CronJobs().DeleteByName(ctx, name); err != nil {
 		return err
 	}
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogAudit,
-		Level:    slog.LevelInfo,
-		Name:     "cron.delete",
-		Module:   "cron",
-		Summary:  "cron.delete",
-		Fields:   []slog.Attr{slog.Any("job", name), slog.Any("actor_id", actor.ID)},
-	})
+	{
+		content, _ := json.Marshal(map[string]any{"job": name, "actor_id": actor.ID})
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogAudit,
+			Level:        slog.LevelInfo,
+			EventName:    "cron.delete",
+			Module:       "cron",
+			Type:         globalevents.ContentJSON,
+			Content:      string(content),
+			ContentLimit: 4096,
+			ResultStatus: globalevents.ResultSucceeded,
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		_ = globalevents.EmitLog(ctx, record)
+	}
 	return nil
 }
 
 func (s *Service) Get(ctx context.Context, name string, actor contextinfo.Actor) (JobView, error) {
 	if err := requireSuperadmin(actor); err != nil {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogAudit,
-			Level:    slog.LevelWarn,
-			Name:     "cron.permission_denied",
-			Module:   "cron",
-			Summary:  "cron.permission_denied",
-			Fields:   []slog.Attr{slog.Any("operation", "get"), slog.Any("actor_id", actor.ID), slog.Any("reason", err.Error())},
-		})
+		{
+			content, _ := json.Marshal(map[string]any{"operation": "get", "actor_id": actor.ID, "reason": err.Error()})
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogAudit,
+				Level:        slog.LevelWarn,
+				EventName:    "cron.permission_denied",
+				Module:       "cron",
+				Type:         globalevents.ContentJSON,
+				Content:      string(content),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultRejected,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 		return JobView{}, err
 	}
 	job, err := s.store.CronJobs().GetByName(ctx, normalizeJobName(name))
@@ -399,14 +752,36 @@ func (s *Service) Get(ctx context.Context, name string, actor contextinfo.Actor)
 
 func (s *Service) List(ctx context.Context, includeDisabled, includeCompleted bool, actor contextinfo.Actor) ([]JobView, error) {
 	if err := requireSuperadmin(actor); err != nil {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogAudit,
-			Level:    slog.LevelWarn,
-			Name:     "cron.permission_denied",
-			Module:   "cron",
-			Summary:  "cron.permission_denied",
-			Fields:   []slog.Attr{slog.Any("operation", "list"), slog.Any("actor_id", actor.ID), slog.Any("reason", err.Error())},
-		})
+		{
+			content, _ := json.Marshal(map[string]any{"operation": "list", "actor_id": actor.ID, "reason": err.Error()})
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogAudit,
+				Level:        slog.LevelWarn,
+				EventName:    "cron.permission_denied",
+				Module:       "cron",
+				Type:         globalevents.ContentJSON,
+				Content:      string(content),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultRejected,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 		return nil, err
 	}
 	jobs, err := s.store.CronJobs().List(ctx, includeDisabled)
@@ -591,15 +966,6 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func (s *Service) cronAuditAttrs(jobName string, meta Metadata, attrs ...any) []any {
-	base := []any{"job", jobName, "source_platform", meta.Target.SourcePlatform, "target_platforms", strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms", meta.Target.AllEnabledPlatforms}
-	return append(base, attrs...)
-}
-
-func (s *Service) cronLogAttrs(jobName string, meta Metadata, attrs ...any) []any {
-	return s.cronAuditAttrs(jobName, meta, attrs...)
 }
 
 func (s *Service) targetPlatformNames(meta Metadata) []string {

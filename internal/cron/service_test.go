@@ -983,9 +983,14 @@ func TestListHidesCompletedCronByDefault(t *testing.T) {
 func TestCronSendAuditIncludesPlatform(t *testing.T) {
 	var events []string
 	connection, _ := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
-		for _, attr := range record.Fields {
-			if attr.Key == "platform" {
-				events = append(events, record.Name+":"+attr.Value.String())
+		if record.Type == globalevents.ContentJSON {
+			var content map[string]json.RawMessage
+			if err := json.Unmarshal([]byte(record.Content), &content); err != nil {
+				t.Fatal(err)
+			}
+			var platform string
+			if err := json.Unmarshal(content["platform"], &platform); err == nil {
+				events = append(events, record.EventName+":"+platform)
 			}
 		}
 		return nil

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -231,14 +232,23 @@ func buildHookService(
 		notifyHookIssue(context.Background(), notice)
 	}
 	if err != nil {
-		_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelError,
-			Name:     "hook_registration_failed",
-			Module:   "app",
-			Summary:  "hook registration failed",
-			Fields:   []slog.Attr{slog.Any("error", err)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "hook_registration_failed",
+				Module:       "app",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("hook registration failed\nerror=%v", err),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if errors.Is(err, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			_ = globalevents.EmitLog(context.Background(), record)
+		}
 		notifyHookIssue(context.Background(), fmt.Sprintf("Hook 注册失败：%v", err))
 	}
 

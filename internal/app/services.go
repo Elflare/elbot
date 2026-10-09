@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
+	"errors"
+	"fmt"
 	"log/slog"
 	"path/filepath"
 	"time"
@@ -72,14 +75,39 @@ func buildSharedServices(ctx context.Context, req RuntimeRequest) (*sharedServic
 	}()
 	credentials, err := resolveFileDeliveryCredentials(cfg.FileDelivery, filepath.Dir(cfg.ConfigPath))
 	if err != nil {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
-			Name:     "media_backend_unavailable",
-			Module:   "app",
-			Summary:  "S3 media backend is unavailable; remote operations will fail until configuration is fixed",
-			Fields:   []slog.Attr{slog.Any("error", err)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelWarn,
+				EventName:    "media_backend_unavailable",
+				Module:       "app",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("S3 media backend is unavailable; remote operations will fail until configuration is fixed\nerror=%v", err),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if errors.Is(err, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 		credentials = nil
 	}
 	mediaCenter, err := media.NewConfigured(ctx, foundation.Store, filepath.Join(filepath.Dir(cfg.Sandbox.Root), "media"), cfg.FileDelivery, credentials)

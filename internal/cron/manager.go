@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -153,7 +154,34 @@ func (m *Manager) Start(ctx context.Context) error {
 		m.Stop()
 		return err
 	}
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, Name: "cron_manager_started", Module: "cron", Summary: "cron manager started", Fields: nil})
+	{
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogRuntime,
+			Level:        slog.LevelInfo,
+			EventName:    "cron_manager_started",
+			Module:       "cron",
+			Type:         globalevents.ContentText,
+			Content:      "cron manager started",
+			ContentLimit: 4096,
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		_ = globalevents.EmitLog(ctx, record)
+	}
 	return nil
 }
 
@@ -176,7 +204,18 @@ func (m *Manager) Stop() context.Context {
 		schedulerDone = m.scheduler.Stop()
 	}
 	m.mu.Unlock()
-	_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, Name: "cron_manager_stopping", Module: "cron", Summary: "cron manager stopping", Fields: nil})
+	{
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogRuntime,
+			Level:        slog.LevelInfo,
+			EventName:    "cron_manager_stopping",
+			Module:       "cron",
+			Type:         globalevents.ContentText,
+			Content:      "cron manager stopping",
+			ContentLimit: 4096,
+		}
+		_ = globalevents.EmitLog(context.Background(), record)
+	}
 	go func() {
 		if schedulerDone != nil {
 			<-schedulerDone.Done()
@@ -194,14 +233,35 @@ func (m *Manager) reloadEnabled(ctx context.Context) error {
 	}
 	for _, job := range jobs {
 		if err := m.scheduleJob(job); err != nil {
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogRuntime,
-				Level:    slog.LevelError,
-				Name:     "cron_job_schedule_failed",
-				Module:   "cron",
-				Summary:  "cron job schedule failed",
-				Fields:   []slog.Attr{slog.Any("job", job.Name), slog.Any("handler", job.Handler), slog.Any("error", err)},
-			})
+			{
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogRuntime,
+					Level:        slog.LevelError,
+					EventName:    "cron_job_schedule_failed",
+					Module:       "cron",
+					Type:         globalevents.ContentText,
+					Content:      fmt.Sprintf("cron job schedule failed\njob=%v\nhandler=%v\nerror=%v", job.Name, job.Handler, err),
+					ContentLimit: 4096,
+					ResultStatus: globalevents.ResultFailed,
+				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				_ = globalevents.EmitLog(ctx, record)
+			}
 		}
 	}
 	return nil
@@ -224,14 +284,19 @@ func (m *Manager) scheduleJob(job storage.CronJob) error {
 	}
 	if _, ok := m.handlers[job.Handler]; !ok {
 		m.mu.Unlock()
-		_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelError,
-			Name:     "cron_job_handler_not_registered",
-			Module:   "cron",
-			Summary:  "cron job handler not registered",
-			Fields:   []slog.Attr{slog.Any("job", job.Name), slog.Any("handler", job.Handler)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "cron_job_handler_not_registered",
+				Module:       "cron",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("cron job handler not registered\njob=%v\nhandler=%v", job.Name, job.Handler),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			_ = globalevents.EmitLog(context.Background(), record)
+		}
 		m.updateNextRunAt(context.Background(), job, nil)
 		return nil
 	}
@@ -255,14 +320,19 @@ func (m *Manager) scheduleJob(job storage.CronJob) error {
 	m.entries[job.Name] = entryID
 	m.mu.Unlock()
 	m.updateNextRunAt(context.Background(), job, nextRun)
-	_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
-		Category: globalevents.LogRuntime,
-		Level:    slog.LevelInfo,
-		Name:     "cron_job_scheduled",
-		Module:   "cron",
-		Summary:  "cron job scheduled",
-		Fields:   []slog.Attr{slog.Any("job", job.Name), slog.Any("handler", job.Handler), slog.Any("schedule", job.Schedule)},
-	})
+	{
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogRuntime,
+			Level:        slog.LevelInfo,
+			EventName:    "cron_job_scheduled",
+			Module:       "cron",
+			Type:         globalevents.ContentText,
+			Content:      fmt.Sprintf("cron job scheduled\njob=%v\nhandler=%v\nschedule=%v", job.Name, job.Handler, job.Schedule),
+			ContentLimit: 4096,
+			ResultStatus: globalevents.ResultSucceeded,
+		}
+		_ = globalevents.EmitLog(context.Background(), record)
+	}
 	return nil
 }
 
@@ -279,14 +349,35 @@ func (m *Manager) runJob(name string) {
 	job, err := m.repo.GetByName(ctx, name)
 	if err != nil {
 		if !isContextCancellation(ctx, err) {
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogRuntime,
-				Level:    slog.LevelError,
-				Name:     "cron_job_load_failed",
-				Module:   "cron",
-				Summary:  "cron job load failed",
-				Fields:   []slog.Attr{slog.Any("job", name), slog.Any("error", err)},
-			})
+			{
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogRuntime,
+					Level:        slog.LevelError,
+					EventName:    "cron_job_load_failed",
+					Module:       "cron",
+					Type:         globalevents.ContentText,
+					Content:      fmt.Sprintf("cron job load failed\njob=%v\nerror=%v", name, err),
+					ContentLimit: 4096,
+					ResultStatus: globalevents.ResultFailed,
+				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				_ = globalevents.EmitLog(ctx, record)
+			}
 		}
 		return
 	}
@@ -302,27 +393,69 @@ func (m *Manager) runJob(name string) {
 	}
 	if m.running[job.Name] {
 		m.mu.Unlock()
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
-			Name:     "cron_job_skipped_because_previous_run_is_still_running",
-			Module:   "cron",
-			Summary:  "cron job skipped because previous run is still running",
-			Fields:   []slog.Attr{slog.Any("job", job.Name), slog.Any("handler", job.Handler)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelWarn,
+				EventName:    "cron_job_skipped_because_previous_run_is_still_running",
+				Module:       "cron",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("cron job skipped because previous run is still running\njob=%v\nhandler=%v", job.Name, job.Handler),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultSkipped,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 		return
 	}
 	handler := m.handlers[job.Handler]
 	if handler == nil {
 		m.mu.Unlock()
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelError,
-			Name:     "cron_job_handler_not_registered",
-			Module:   "cron",
-			Summary:  "cron job handler not registered",
-			Fields:   []slog.Attr{slog.Any("job", job.Name), slog.Any("handler", job.Handler)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "cron_job_handler_not_registered",
+				Module:       "cron",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("cron job handler not registered\njob=%v\nhandler=%v", job.Name, job.Handler),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 		return
 	}
 	m.running[job.Name] = true
@@ -334,17 +467,75 @@ func (m *Manager) runJob(name string) {
 	}()
 
 	startedAt := time.Now()
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogRuntime,
-		Level:    slog.LevelInfo,
-		Name:     "cron_job_started",
-		Module:   "cron",
-		Summary:  "cron job started",
-		Fields:   []slog.Attr{slog.Any("job", job.Name), slog.Any("handler", job.Handler)},
-	})
+	{
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogRuntime,
+			Level:        slog.LevelInfo,
+			EventName:    "cron_job_started",
+			Module:       "cron",
+			Type:         globalevents.ContentText,
+			Content:      fmt.Sprintf("cron job started\njob=%v\nhandler=%v", job.Name, job.Handler),
+			ContentLimit: 4096,
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		_ = globalevents.EmitLog(ctx, record)
+	}
 	runErr := handler(ctx, *job)
 	duration := time.Since(startedAt)
 	canceled := isContextCancellation(ctx, runErr)
+	// Deadline expiry is a failure; only explicit cancellation is canceled in logs.
+	record := globalevents.LogRecord{
+		Category: globalevents.LogRuntime, Level: slog.LevelInfo,
+		EventName: "cron_job_completed", Module: "cron", Type: globalevents.ContentText,
+		Content:      fmt.Sprintf("cron job finished\njob=%s\nhandler=%s\nduration=%s", job.Name, job.Handler, duration),
+		ContentLimit: 4096, ResultStatus: globalevents.ResultSucceeded,
+	}
+	if runErr != nil {
+		record.Content += fmt.Sprintf("\nhandler_error=%v", runErr)
+		record.ResultStatus = globalevents.ResultFailed
+		record.Level = slog.LevelError
+		if canceled && ctx.Err() == context.Canceled {
+			record.ResultStatus = globalevents.ResultCanceled
+			record.Level = slog.LevelInfo
+		}
+	}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.SessionID != "" {
+		record.Identity.SessionID = &facts.SessionID
+	}
+	if facts.RunID != "" {
+		record.Identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		record.Identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		record.Identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		record.Identity.RootRequestID = &facts.RootRequestID
+	}
+	defer func() {
+		if record.ResultStatus == globalevents.ResultFailed {
+			record.EventName = "cron_job_failed"
+		}
+		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+	}()
 	// Final bookkeeping remains part of the tracked invocation after cancel.
 	ctx = context.WithoutCancel(ctx)
 
@@ -360,36 +551,43 @@ func (m *Manager) runJob(name string) {
 	if latest, err := m.repo.GetByName(ctx, job.Name); err == nil {
 		stateJob = latest
 	} else {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelError,
-			Name:     "cron_job_reload_after_run_failed",
-			Module:   "cron",
-			Summary:  "cron job reload after run failed",
-			Fields:   []slog.Attr{slog.Any("job", job.Name), slog.Any("handler", job.Handler), slog.Any("error", err)},
-		})
+		record.Content += fmt.Sprintf("\nreload_error=%v", err)
+		record.ResultStatus = globalevents.ResultFailed
+		record.Level = slog.LevelError
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "cron_job_reload_after_run_failed",
+				Module:       "cron",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("cron job reload after run failed\njob=%v\nhandler=%v\nerror=%v", job.Name, job.Handler, err),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 	}
 
 	lastError := ""
 	if runErr != nil && !canceled {
 		lastError = runErr.Error()
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelError,
-			Name:     "cron_job_failed",
-			Module:   "cron",
-			Summary:  "cron job failed",
-			Fields:   []slog.Attr{slog.Any("job", job.Name), slog.Any("handler", job.Handler), slog.Any("duration", duration.String()), slog.Any("error", runErr)},
-		})
-	} else {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelInfo,
-			Name:     "cron_job_completed",
-			Module:   "cron",
-			Summary:  "cron job completed",
-			Fields:   []slog.Attr{slog.Any("job", job.Name), slog.Any("handler", job.Handler), slog.Any("duration", duration.String())},
-		})
 	}
 
 	enabled := stateJob.Enabled
@@ -413,14 +611,38 @@ func (m *Manager) runJob(name string) {
 		Enabled:   enabled,
 		UpdatedAt: time.Now(),
 	}); err != nil {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelError,
-			Name:     "cron_job_state_update_failed",
-			Module:   "cron",
-			Summary:  "cron job state update failed",
-			Fields:   []slog.Attr{slog.Any("job", job.Name), slog.Any("handler", job.Handler), slog.Any("error", err)},
-		})
+		record.Content += fmt.Sprintf("\nstate_save_error=%v", err)
+		record.ResultStatus = globalevents.ResultFailed
+		record.Level = slog.LevelError
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "cron_job_state_update_failed",
+				Module:       "cron",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("cron job state update failed\njob=%v\nhandler=%v\nerror=%v", job.Name, job.Handler, err),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 	}
 }
 
@@ -452,14 +674,35 @@ func validateUpsertRequest(req UpsertJobRequest) error {
 
 func (m *Manager) updateNextRunAt(ctx context.Context, job storage.CronJob, nextRunAt *time.Time) {
 	if err := m.repo.UpdateNextRunAt(ctx, job.ID, nextRunAt, time.Now()); err != nil {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelError,
-			Name:     "cron_job_next_run_update_failed",
-			Module:   "cron",
-			Summary:  "cron job next run update failed",
-			Fields:   []slog.Attr{slog.Any("job", job.Name), slog.Any("handler", job.Handler), slog.Any("error", err)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "cron_job_next_run_update_failed",
+				Module:       "cron",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("cron job next run update failed\njob=%v\nhandler=%v\nerror=%v", job.Name, job.Handler, err),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 	}
 }
 

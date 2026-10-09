@@ -93,7 +93,7 @@ func TestCompactUsesFrozenResponsesRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(result.Compaction.Raw) != compactItemJSON || len(result.Output) != 2 || result.TokenUsage().TotalTokens != 13 || !bytes.Contains(result.Raw, []byte("audit only")) {
+	if string(result.Compaction.Raw) != compactItemJSON || len(result.Output) != 2 || result.TokenUsage().TotalTokens == nil || *result.TokenUsage().TotalTokens != 13 || !bytes.Contains(result.Raw, []byte("audit only")) {
 		t.Fatalf("result=%+v raw=%s", result, result.Raw)
 	}
 }

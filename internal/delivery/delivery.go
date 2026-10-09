@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 
+	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 )
 
@@ -262,36 +263,37 @@ func (m Manager) SendNotice(ctx context.Context, notice Notice) (Receipt, error)
 	receipt, err := m.Sender.SendNotice(ctx, notice)
 	if err != nil {
 
-		level := slog.LevelError
-		if errors.Is(err, context.Canceled) {
-			level = slog.LevelInfo
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		record := globalevents.LogRecord{
+			Category: globalevents.LogRuntime, Level: slog.LevelError,
+			EventName: "notice_output_failed", Module: "delivery", ResultStatus: globalevents.ResultFailed,
+			Content: fmt.Sprintf("notice output failed: platform=%s hook=%q hook_point=%q hook_mode=%q error=%v", notice.Target.Platform,
+				outputMetaString(notice.Outputs[0], MetaHookName), outputMetaString(notice.Outputs[0], MetaHookPoint), outputMetaString(notice.Outputs[0], MetaHookMode), err),
 		}
-		attrs := outputLogAttrs(notice.Outputs[0], "platform", notice.Target.Platform, "error", err.Error())
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    level,
-			Name:     "notice_output_failed",
-			Module:   "delivery",
-			Summary:  "notice output failed",
-			Fields:   slog.Group("", attrs...).Value.Group(),
-		})
+		if errors.Is(err, context.Canceled) {
+			record.Level = slog.LevelInfo
+			record.ResultStatus = globalevents.ResultCanceled
+		}
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		_ = globalevents.EmitLog(ctx, record)
 
 		return receipt, wrapOutputSourceError(notice.Outputs[0], err)
 	}
 	return receipt, nil
-}
-
-func outputLogAttrs(out Output, attrs ...any) []any {
-	if hookName := outputMetaString(out, MetaHookName); hookName != "" {
-		attrs = append(attrs, "hook", hookName)
-	}
-	if hookPoint := outputMetaString(out, MetaHookPoint); hookPoint != "" {
-		attrs = append(attrs, "hook_point", hookPoint)
-	}
-	if hookMode := outputMetaString(out, MetaHookMode); hookMode != "" {
-		attrs = append(attrs, "hook_mode", hookMode)
-	}
-	return attrs
 }
 
 func wrapOutputSourceError(out Output, err error) error {

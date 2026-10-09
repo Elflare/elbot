@@ -550,10 +550,10 @@ func TestContextSummaryRepositoryAndListAfter(t *testing.T) {
 		Summary:        "first two messages",
 		Provider:       "zhipu",
 		Model:          "glm-4-flash",
-		SourceTokens:   10,
-		SummaryTokens:  3,
-		TotalTokens:    13,
-		CacheHitTokens: 2,
+		SourceTokens:   testTokenCount(10),
+		SummaryTokens:  testTokenCount(3),
+		TotalTokens:    testTokenCount(13),
+		CacheHitTokens: testTokenCount(2),
 		TriggerReason:  "manual",
 	}
 	if err := store.ContextSummaries().Create(ctx, summary); err != nil {
@@ -564,7 +564,7 @@ func TestContextSummaryRepositoryAndListAfter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("latest summary: %v", err)
 	}
-	if latest.Summary != "first two messages" || latest.TotalTokens != 13 || latest.CacheHitTokens != 2 {
+	if latest.Summary != "first two messages" || latest.TotalTokens == nil || *latest.TotalTokens != 13 || latest.CacheHitTokens == nil || *latest.CacheHitTokens != 2 {
 		t.Fatalf("latest = %#v", latest)
 	}
 

@@ -44,19 +44,21 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/architecture.md
 <!-- locator:signal -->
 ## 信号与订阅
 
-来源模块拥有内部事实的实例 `Signal[T]` 及事件类型。Agent、Session 和 Model Manager 自行连接同步日志回调，并在关闭时断开；App 管理通知和状态订阅及服务生命周期。公共日志入口为 `internal/events.EmitLog`，日志中心自行订阅并持有分类队列。契约见[信号与日志系统设计](signals-and-logging.md)，实施进度与待办见[任务清单](tasks.md#信号与日志系统整改)。权限、可改写 Hook、Usage、工具记录和关键提交同步完成；信号发布观察事实。
+来源模块拥有业务实例信号及事件类型，并在实际操作处确定日志结果。Agent 的输入、超时、确认和拒绝使用同步日志回调；模型、工具、回复及持久化在操作来源直接组织日志。Session 命名和 Model Manager 重试自行维护同步日志连接；App 管理通知、状态订阅及服务生命周期。公共日志入口为 `internal/events.EmitLog`，日志中心自行订阅并持有分类队列。契约见[信号与日志系统设计](signals-and-logging.md)，实施进度与待办见[任务清单](tasks.md#信号与日志系统整改)。权限、可改写 Hook、Usage、工具记录和关键提交同步完成；信号发布观察事实。
 
 - 发射时锁内取得订阅快照、锁外调用。断开不撤销已取得快照或已入队任务；一次性连接即使入队失败也被消耗。发布方固定可变数据及实际调用 context。
 - 异步连接选择 FollowEmit（继承取消）或 FollowExecutor（只保留值）；关闭选择 CancelPending 或 Drain，底层取消优先。
 - 串行队列默认容量 256、满时拒绝。日志队列使用 `WaitForCapacity` 等待容量，以 `context.WithoutCancel` 解除单次请求取消，任务采用 `Drain`，按成功入队顺序写入；`BeginClose` 停止接收并唤醒等待者。入队不等于写入成功，拒绝、写入失败及未排空均有诊断，Done 表示 worker 实际退出。
 - 日志写入预期很快、队列通常不会满，因此有意选择等待容量，并接受极端情况下业务等待且单次请求取消不能解除入队背压的取舍。
 - `LogRecord` 是九字段封闭契约：Category、Level、EventName、Module、Type、Content、ContentLimit、Identity、ResultStatus。三个整数枚举验证合法性，ResultStatus 零值表示未声明，Level 与结果相互独立。
+- 业务事件和 notify 保留自身字段及原始对象；日志通过独立 LogRecord 发布，专有事实写入 Content。需要字段查询的审计和 Elnis 日志使用 JSON，普通说明使用 text。
 - Identity 的五个 `*string` 由业务显式填写。`events.EmitLog` 验证契约并复制身份指针，不从 context 补值；nil 身份省略，显式空字符串保留。Content 是来源组织的唯一正文。
 - 日志中心接收时、等待入队前记时，并提交 runtime、audit、elnis 三个容量 256 的背压队列；解除请求取消的影响，按类别入队顺序排空。中心不替换全局信号实例，重复活动中心初始化被拒绝。
 - 消费者先按 Level 过滤，再按 Type 脱敏与格式化；runtime 使用配置等级，audit／elnis 独立保留。text 默认 256 个 Unicode 字符，ContentLimit 可指定长度，截断标记 `…` 计入上限。JSON 递归脱敏并保持数值精度，正文以原生 JSON 值写入。
 - 文件统一写 JSONL，时间为 RFC 3339。编码后连同行尾最多 64 KiB，超限报告设施失败，不删除字段凑入上限。日志中心只处理公共契约及正文，不解释业务错误。
 - Signal／Queue 的设施故障直接写 stderr，不依赖业务 Logger 或全局日志信号；文件写入错误由队列检查并报告，短写按 `io.ErrShortWrite` 报告，后续记录继续处理。非法日志类别的诊断保留整数枚举值。中心关闭超时不关闭仍在使用的文件，也不释放活动中心名额，后续显式关闭可继续清理。
 - Reader 按日期和文件写入位置倒序查询，每块读取 64 KiB，满足条数立即停止；每次读取与逐行处理检查取消。打开文件后固定本次读取大小，支持跨块行及 LF／CRLF；单行上限 16 MiB，读取失败或超限返回错误。查询不改变日志记录等级。
+- Reader 兼读 JSONL 与历史文本，公共字段与 Content 业务条件分别匹配，匹配后计入上限；损坏 JSONL 单独计数并继续，raw 样本保留整行且限 10 条／256 KiB。命令普通展示时间、等级、事件、内容与结果，raw 与最低等级独立；用量统计保留整数精度，未知与溢出只传播到相关统计项。
 - 平台直接发布全局 `events.PlatformConnected`；Hook 协调模块与 Cron 通过自身 `StartPlatformEvents` 订阅，App 只在依赖装配完成后、平台启动前调用生命周期入口。事件仅携带平台名称，不缓存、不重放。
 - Hook 与 Cron 各自按平台惰性创建容量 256、满时拒绝的独立队列；保留发射 context 的值、解除其取消影响。重复连接继续交给业务处理，Cron 自行维护补跑、互斥和投递状态。
 - 消费者在 `BeginClose` 或应用取消时断开订阅、停止准入并取消待执行／在途任务；`Done` 表示实际退出。Agent 关闭同时等待平台 Hook 与 append 等待任务，Cron Service 关闭等待连接恢复；共享 30 秒预算耗尽时不释放活跃消费者仍在使用的依赖。
@@ -102,7 +104,9 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/architecture.md
 `llm/chatcompletions` 与 `llm/responses` 各自编码请求和消费原生流；`llm/httpclient` 提供传输。`agent/chat` 与 `agent/responses` 各自实现业务 Loop、Compactor 和材料准备，路线之间不互相导入。
 
 - 公共 `llm.Client` 提供模型列表与独立 `GenerateText`；`Selection` 固定 Provider、Model、Client。命名和 Chat 摘要可使用任一文本客户端，独立文本不续接主会话或执行工具。
+- 公共 `llm.Usage` 的四项 token 计数为可空 `int64`：nil 表示未知，非 nil 的零表示明确零；不推算缺失总量。Agent、contextmgr 和 App 状态队列的用量快照逐项复制计数指针，发布后只读。Chat 和 Responses 解析保留整数精度，非法用量不使模型响应失败；Chat 的非法或 null 别名继续回退，明确零立即采用。状态展示分别保留总量与缓存计数的已知／未知状态，明确零作为已知值参与上下文比例判断。
 - `routes.Registry` 按 provider 绑定 Origin、Client、Loop、Compactor、Material，并独立登记源协议能力。查询由 dialogue／contextmgr／session 的窄接口完成；重复绑定、错误接线、封闭前查询及封闭后修改报错。
+- CallObservation 分别持有业务 Event 和日志 LogRecord。Chat／Responses 在操作分支填写独立错误与整体结果，本地保存失败不标为上游错误；Chat 取消时保留部分输出。实际模型请求各写一条 llm_usage，失败与取消另保留 llm_error，准备失败不计调用。视觉回退和 Responses 重放各自结束观察，HTTP 内部重试通过独立重试信号记录。
 - 主对话按目标 provider 查询 Loop，压缩与分支按持久化源 Origin 查询能力；不从摘要目标或当前配置推断来源。缺失主对话能力在压缩、保存输入和模型请求前拒绝。
 - `CanSwitch` 纯比较身份：Chat 可跨 Chat provider，同一 provider 节点的 Responses 可换模型；跨协议及涉及 Responses 的跨 provider 切换拒绝。命令提交选择前预检，执行及接管后的调用再次检查；永久接管在变更 metadata 前检查 work 模型。
 - provider 节点名确定厂商身份，base_url 用于续链地址校验。注册表不持有执行状态或完整依赖容器。
@@ -142,7 +146,7 @@ flowchart TB
 
 ### 公共协作与事件
 
-虚线表示事实事件的发布与消费，各订阅者管理自己的连接和生命周期。
+虚线表示业务事实的发布与消费，实线表示业务调用或日志提交。实例信号与全局日志入口各自独立，各订阅者管理自己的连接和生命周期。
 
 ```mermaid
 flowchart LR
@@ -153,14 +157,13 @@ flowchart LR
 
     SHARED["公共业务协作<br/>ToolRun、媒体<br/>Hook、回复提交"]
 
-    subgraph EVENTS["公共事件总线"]
-        BUS["类型化 Signal[T]<br/>来源模块定义、发布"]
+    subgraph EVENTS["业务实例信号与日志入口"]
+        BUS["来源实例 Signal[T]<br/>业务和 notify 所需事实"]
         OBSERVER["通知、状态展示<br/>App 管理订阅与生命周期"]
-        PROJECTION["来源模块同步日志回调"]
+        PROJECTION["命名、重试及简单 Agent 事实<br/>来源模块同步日志回调"]
         LOG["events.EmitLog<br/>日志中心订阅、排队、落盘"]
         BUS -.-> OBSERVER
-        BUS -.-> PROJECTION
-        PROJECTION -.-> LOG
+        PROJECTION --> LOG
     end
 
     CHAT --> SHARED
@@ -169,6 +172,11 @@ flowchart LR
     SHARED -.->|"模型、工具、回复事实"| BUS
     ENTRY -.->|"执行事实"| BUS
     OTHER -.->|"命名、重试事实"| BUS
+    ENTRY -.->|"输入、超时、确认、拒绝"| PROJECTION
+    OTHER -.-> PROJECTION
+    CHAT -->|"模型调用日志"| LOG
+    RESPONSE -->|"模型调用日志"| LOG
+    SHARED -->|"工具、回复、持久化日志"| LOG
 ```
 
 ### Responses
@@ -209,7 +217,9 @@ flowchart LR
 `路线 → ToolExecutor → ToolRun → Tool Runtime → 完成 Hook → ToolPair 提交 → 路线续跑`。
 
 - ToolRun 使用 prepared Hook 后的真实参数，做命名解析、可见性、权限、风险确认和请求登记；Runtime 兜底检查 Actor／Policy。
+- 工具解析返回明确 ResultStatus 与原始 Error，策略拒绝使用 `tool.PolicyDeniedError`，与工具不存在、配置缺失分别表达。原生和远程执行结果包含 ExecutionStarted，仅在进入 Tool.Call 或 HTTP 发送边界后为 true；结果与错误可以同时存在，保留部分结果。
 - 完成 Hook 只处理已实际执行的结果；预检失败或拒绝不触发。结果以 Content／Segments 回灌模型，Data 仅供内部消费；输出意图交发送层。
+- Runner 在单个处理流程结束时发布日志，保留执行、输出、Hook 和各项保存的独立错误。执行过 transcript 保存时等待其返回；取消或准备失败时不伪造未执行操作的结果。批次准备失败只记批次日志。
 - 工具发现状态成功提交后才更新调用快照；已完成工具动作不因状态保存失败回滚或重跑。
 - Chat 的 tool message 只发文本，工具图片在同批 tool messages 后生成 user 多模态输入；图片标签和该派生消息不持久化。Responses 私有路线编码原生结果。
 - 风险与确认供内部权限判断，不暴露给 LLM。文件调用在预检时固定目标、参数和 revision，执行前变化或绑定失效即拒绝。
@@ -218,6 +228,8 @@ flowchart LR
 ## Tool Runtime、工具状态与文件
 
 Runtime 管注册、schema、权限与执行器；ToolRun 管当前工具视图、路由及确认。`StateService` 唯一解释 Session 的工具缓存、发现、tag 和规则卡状态；`PreloadService` 只返回待提交状态与展示材料。
+
+预载日志由 PreloadService 显式填写身份和正文；普通包装工具与后台预载跳过分别使用 `skill_wrapper_preload_skipped`、`background_preload_skipped`，整体结果为 skipped，具体原因在 text 正文。
 
 - `@tool`／`@skill`、发现及后台首轮预加载各自在一次提交中合并状态，失败保留原状态。耗时准备在准入锁外，提交前复核取消、原绑定、模式和压缩状态。
 - `tool.Info.APITypes` 声明适用的 `llm.APIType`，空集合不限；有的工具如view_image仅限在Response api下使用则可声明。
@@ -275,7 +287,9 @@ Runtime 管注册、schema、权限与执行器；ToolRun 管当前工具视图�
 - 通知保留原来源、Sender、按需携带的 binding；取消或绑定失效拒绝发送。过程提示 FollowEmit，失败事实 FollowExecutor，均 CancelPending。无来源告警在本地交互 CLI 显示或 service 记日志。
 - 发送前归一为 MediaID，临时解析发送副本。成功回执提供真实 platform／scope／message ID／output indexes；部分失败同时返回成功项和 error，关联失败记录但不重发。
 - 最终 Hook 只改变展示文本，不改模型原文和历史正文。直接回复先发送及延迟 outputs 再落库；缓冲回复先落库再发送、关联和延迟 outputs。错误仍保留实际提交／回执，已成功内容不重发。
+- 流式回复合并 Replace 与 Finish 的回执：平台消息 ID 去重，实际消息按平台、scope、消息 ID 合并并合并输出索引；保留 Finish 部分失败时已经发出的消息，合并结果不共享平台回执中的切片。
 - 状态与发送观察事实在同步保存或实际提交后发布；通知失败不再触发通知。发送必须等待实际回执，入队不算成功。
+- 发送后的媒体回执缓存失败记录 WARN，保留实际发送结果和部分回执，不触发重发；无来源通知直接组织 text 日志，不把通知对象传入日志信号。
 
 <!-- locator:platform -->
 ## 平台适配
@@ -298,7 +312,7 @@ Runtime 管注册、schema、权限与执行器；ToolRun 管当前工具视图�
 - 后台准备不激活 current，复用拒绝已接管会话。后台仅所属用户同平台私聊与 CLI 管理入口可恢复；永久接管改为前台 Scope／work，保留历史与 workspace，运行中的 Execution 同步刷新来源但不重启在途请求或工具。
 - Cron／Elnis 等待接管后 Execution 的真实结果，记录接管并停止 JSON 修正、自动报告与未开始补投递；不直接算作后台任务成功。
 - Fork／后台复制在锁外准备源材料，提交时复核 binding、checkpoint、pending 与取消；新 Session、消息、seed 和素材引用原子保存后才激活。Responses 使用分叉时的不可变 checkpoint，工具调用头边界包含对应结果、排除后续结果，seed 独立持有完整窗口；不重跑历史工具。后台副本不激活前台，也不继承执行或工具状态。
-- 命名受应用生命周期管理，Turn 结束不取消；关闭拒绝新任务并等待实际退出，取消后不写标题或 fallback。命名事件保留真实模型，包括 fallback。
+- 命名受应用生命周期管理，Turn 结束不取消；关闭拒绝新任务，等待终态发布后断开日志连接。Scheduled 表达调度，Completed 统一表达流程结束，保留生成、保存与兜底事实；生成失败但兜底保存成功为 succeeded/WARN。取消后不写标题或 fallback，事件保留实际模型来源。
 - TTL 和 /new 只清除 current，下一条输入再建记录；恢复刷新活跃时间。模式、分页选择及权限按 Scope 隔离。
 
 <!-- locator:llm -->
@@ -308,7 +322,7 @@ Runtime 管注册、schema、权限与执行器；ToolRun 管当前工具视图�
 - 模型目录并行查询各 provider，合并配置项，编号在筛选前分配；目录及选择返回独立快照。
 - 切换串行构建候选，原子保存 state.toml 后才发布内存状态，失败保留旧选择；保存时不阻塞读取旧快照。命名和摘要固定各自的选择与 fallback，Prepared Hook 不改模型身份。
 - httpclient 负责 HTTP、代理、可取消初始交换重试、SSE 分帧及超时；鉴权、编解码及终态归客户端，断流不重放请求。Extra 只能补字段，覆盖或重名发送前拒绝。
-- 共享客户端发布 ModelRetrying，对话／压缩／命名使用同一通知接线；客户端配置启动后固定。
+- HTTP 来源填写重试结果，Model Manager 固定 Identity 并发布 ModelRetrying；同步日志独立于 App 通知订阅，对话／压缩／命名共用通知接线。通知跟随调用 context，客户端配置启动后固定。
 
 <!-- locator:context -->
 ## 上下文与压缩
@@ -320,6 +334,7 @@ contextmgr 管历史、窗口、用量、阈值及压缩分派；协议 Compacto
 - Responses 固定当前模型，完整窗口末尾加 compaction_trigger，使用普通 Responses 流，store=false、tool_choice=none、不带旧链 ID 或正文格式要求。终态必须含唯一非空加密 compaction，新 seed 仅保存该项与素材引用，不拼历史原话或续旧链；首个本地 checkpoint 成功才消费 seed，根材料保留供恢复。
 - 原生压缩不支持、材料缺失或提交失败时报错，不降为文字摘要，也不切换当前会话。自动压缩交接后继续已接收输入，手动压缩不自动聊天。
 - Soul、记忆、工具和 tag 提示由共同 Prompt 来源组合；Chat 每轮构建一次 system message，不入历史。Usage 按 Session 返回副本并更新所属 metadata，保存失败仍保留已观测值。
+- 压缩状态及摘要记录的四项 token 计数同样为可空 int64；SQLite 保存未知值为 NULL，明确零为 0。数据库迁移保留既有数值，不将历史零值推断成未知。
 
 <!-- locator:storage -->
 ## Storage 与 SQLite
@@ -342,7 +357,7 @@ Elnis 接收并分发事件，Elvena 定义公共协议，Elwisp 提供外部事
 <!-- locator:cron -->
 ## Cron 与后台任务
 
-Cron 管持久化任务、调度与运行；maintenance 集中注册维护任务。Cron 与 Elnis 共用 Agent 后台执行、sandbox 和 JSON 结果能力。
+Cron 管持久化任务、调度与运行，在实际状态保存返回后组织整体日志，独立读取／保存故障不能被调用取消覆盖；maintenance 集中注册维护任务。Cron 与 Elnis 共用 Agent 后台执行、sandbox 和 JSON 结果能力。
 
 - 每次实际调度新建后台 Session，同轮 JSON 格式重试复用 Session、首轮工具状态和固定模型。后台 shell 非 critical 风险自动确认，critical 返回提醒。
 - 任务专用 provider／model 成对校验；省略更新保留、同时清空回到 work，不修改全局选择。

@@ -222,7 +222,7 @@ func TestBackgroundCompactHandoff(t *testing.T) {
 				}
 			}
 			a.execution.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: .8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
-			a.execution.recordUsage(t.Context(), row.ID, &llm.Usage{TotalTokens: 80})
+			a.execution.recordUsage(t.Context(), row.ID, &llm.Usage{TotalTokens: func() *int64 { n := int64(80); return &n }()})
 			done := make(chan backgroundTestResult, 1)
 			go func() {
 				result, err := a.RunBackground(context.Background(), req)
@@ -470,7 +470,7 @@ func TestTakeoverPendingContinuesThroughAutomaticCompact(t *testing.T) {
 	toolStarted, toolRelease := make(chan struct{}), make(chan struct{})
 	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
 		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "slow", Name: "slow", Args: "{}"}}, FinishReason: "tool_calls"}},
-		{{DeltaContent: "first final", Usage: &llm.Usage{TotalTokens: 80}}},
+		{{DeltaContent: "first final", Usage: &llm.Usage{TotalTokens: func() *int64 { n := int64(80); return &n }()}}},
 		{{DeltaContent: "summary"}},
 		{{DeltaContent: "second final"}},
 	}}

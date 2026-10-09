@@ -2,6 +2,9 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
+	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -73,14 +76,39 @@ func (h *messageHandler) associateInboundHistory(ctx context.Context, msg platfo
 			continue
 		}
 		if err := h.media.AssociateHistory(ctx, *row, index, raw.Type, resolved[i].MediaID); err != nil {
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogRuntime,
-				Level:    slog.LevelError,
-				Name:     "associate_inbound_history_media_failed",
-				Module:   "agent",
-				Summary:  "associate inbound history media failed",
-				Fields:   []slog.Attr{slog.Any("error", err)},
-			})
+			{
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogRuntime,
+					Level:        slog.LevelError,
+					EventName:    "associate_inbound_history_media_failed",
+					Module:       "agent",
+					Type:         globalevents.ContentText,
+					Content:      fmt.Sprintf("associate inbound history media failed\nerror=%v", err),
+					ContentLimit: 4096,
+					ResultStatus: globalevents.ResultFailed,
+				}
+				if errors.Is(err, context.Canceled) {
+					record.ResultStatus = globalevents.ResultCanceled
+					record.Level = slog.LevelInfo
+				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				_ = globalevents.EmitLog(ctx, record)
+			}
 		}
 	}
 }

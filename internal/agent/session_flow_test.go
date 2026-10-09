@@ -435,7 +435,7 @@ func TestChatSchedulesAsyncNamingAndSessionsShowPreview(t *testing.T) {
 func TestStatusRestoresUsageFromSessionMetadata(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
-	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: "reply", Usage: &llm.Usage{TotalTokens: 123, CacheHitTokens: 7}}}}}
+	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: "reply", Usage: &llm.Usage{TotalTokens: func() *int64 { n := int64(123); return &n }(), CacheHitTokens: func() *int64 { n := int64(7); return &n }()}}}}}
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 
 	if err := a.HandleMessage(context.Background(), "hello usage"); err != nil {

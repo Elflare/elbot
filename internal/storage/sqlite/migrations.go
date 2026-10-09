@@ -539,6 +539,45 @@ CREATE TRIGGER release_native_seed_media AFTER DELETE ON native_seeds BEGIN
 END;
 `,
 	},
+	{
+		version: 21,
+		name:    "nullable_context_summary_tokens",
+		sql: `
+CREATE TABLE context_summaries_new (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    from_message_id TEXT NULL,
+    to_message_id TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    source_tokens INTEGER NULL,
+    summary_tokens INTEGER NULL,
+    total_tokens INTEGER NULL,
+    cache_hit_tokens INTEGER NULL,
+    trigger_reason TEXT NOT NULL,
+    metadata TEXT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY(from_message_id) REFERENCES messages(id) ON DELETE SET NULL,
+    FOREIGN KEY(to_message_id) REFERENCES messages(id) ON DELETE CASCADE
+);
+INSERT INTO context_summaries_new (
+    id, session_id, from_message_id, to_message_id, summary, provider, model,
+    source_tokens, summary_tokens, total_tokens, cache_hit_tokens,
+    trigger_reason, metadata, created_at
+) SELECT id, session_id, from_message_id, to_message_id, summary, provider, model,
+    source_tokens, summary_tokens, total_tokens, cache_hit_tokens,
+    trigger_reason, metadata, created_at
+FROM context_summaries;
+DROP TABLE context_summaries;
+ALTER TABLE context_summaries_new RENAME TO context_summaries;
+CREATE INDEX idx_context_summaries_session_created_at
+ON context_summaries(session_id, created_at);
+CREATE INDEX idx_context_summaries_to_message
+ON context_summaries(to_message_id);
+`,
+	},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {

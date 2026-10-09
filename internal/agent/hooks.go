@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -71,14 +72,39 @@ func (h *hookBridge) Run(ctx context.Context, event hook.Event) (hook.Event, err
 	if err == nil {
 		err = hook.ValidateCalls(ctx, before, updated)
 		if err != nil {
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogRuntime,
-				Level:    failureLogLevel(err),
-				Name:     "hook_call_validation_failed",
-				Module:   "hook",
-				Summary:  "hook call validation failed",
-				Fields:   []slog.Attr{slog.String("point", string(event.Point)), slog.Any("error", err)},
-			})
+			{
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogRuntime,
+					Level:        slog.LevelError,
+					EventName:    "hook_call_validation_failed",
+					Module:       "hook",
+					Type:         globalevents.ContentText,
+					Content:      fmt.Sprintf("hook call validation failed\npoint=%v\nerror=%v", string(event.Point), err),
+					ContentLimit: 4096,
+					ResultStatus: globalevents.ResultFailed,
+				}
+				if errors.Is(err, context.Canceled) {
+					record.ResultStatus = globalevents.ResultCanceled
+					record.Level = slog.LevelInfo
+				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				_ = globalevents.EmitLog(ctx, record)
+			}
 		}
 	}
 	if err != nil {
@@ -130,14 +156,39 @@ func (h *hookBridge) ObserveRun(ctx context.Context, event hook.Event, info hook
 	})
 	if err != nil {
 
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    failureLogLevel(err),
-			Name:     "hook_request_tracking_failed",
-			Module:   "hook",
-			Summary:  "hook request tracking failed",
-			Fields:   []slog.Attr{slog.Any("hook", label), slog.Any("point", string(info.Point)), slog.Any("error", err.Error())},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "hook_request_tracking_failed",
+				Module:       "hook",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("hook request tracking failed\nhook=%v\npoint=%v\nerror=%v", label, string(info.Point), err.Error()),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if errors.Is(err, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 
 		return ctx, func() {}
 	}

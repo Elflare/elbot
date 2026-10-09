@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 
@@ -63,10 +64,7 @@ func (d *statusDisplay) receive(ctx context.Context, event agentevents.StatusCha
 	if old := d.latest[key]; old != nil && old.event.Version >= event.Version {
 		return nil
 	}
-	if event.Snapshot.Usage != nil {
-		usage := *event.Snapshot.Usage
-		event.Snapshot.Usage = &usage
-	}
+	event.Snapshot.Usage = agentevents.CloneUsage(event.Snapshot.Usage)
 	d.latest[key] = &statusProjection{ctx: context.WithoutCancel(ctx), event: event, dirty: true}
 	select {
 	case d.wake <- struct{}{}:
@@ -120,14 +118,40 @@ func (d *statusDisplay) run() {
 			stop()
 			cancel()
 			if err != nil && !errors.Is(err, context.Canceled) && d.ctx.Err() == nil {
-				_ = globalevents.EmitLog(d.ctx, globalevents.LogRecord{
-					Category: globalevents.LogRuntime,
-					Level:    slog.LevelError,
-					Name:     "status_display_failed",
-					Module:   "app",
-					Summary:  "status display failed",
-					Fields:   []slog.Attr{slog.Any("session_id", key.SessionID), slog.Any("error", err)},
-				})
+				{
+					record := globalevents.LogRecord{
+						Category:     globalevents.LogRuntime,
+						Level:        slog.LevelError,
+						EventName:    "status_display_failed",
+						Module:       "app",
+						Type:         globalevents.ContentText,
+						Content:      fmt.Sprintf("status display failed\nerror=%v", err),
+						ContentLimit: 4096,
+						ResultStatus: globalevents.ResultFailed,
+					}
+					if errors.Is(err, context.Canceled) {
+						record.ResultStatus = globalevents.ResultCanceled
+						record.Level = slog.LevelInfo
+					}
+					facts, _ := contextinfo.ExecutionFromContext(d.ctx)
+					if facts.SessionID != "" {
+						record.Identity.SessionID = &facts.SessionID
+					}
+					if facts.RunID != "" {
+						record.Identity.RunID = &facts.RunID
+					}
+					if facts.Attempt != "" {
+						record.Identity.Attempt = &facts.Attempt
+					}
+					if facts.RequestID != "" {
+						record.Identity.RequestID = &facts.RequestID
+					}
+					if facts.RootRequestID != "" {
+						record.Identity.RootRequestID = &facts.RootRequestID
+					}
+					record.Identity.SessionID = &key.SessionID
+					_ = globalevents.EmitLog(d.ctx, record)
+				}
 			}
 			d.mu.Lock()
 			if latest := d.latest[key]; latest == selected {

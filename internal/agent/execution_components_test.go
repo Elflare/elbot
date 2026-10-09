@@ -185,7 +185,7 @@ func TestDialogueRunnerStructuredOutcomes(t *testing.T) {
 }
 
 func TestExecutionCommitDuringAppendKeepsUsage(t *testing.T) {
-	f := newExecutionFixture(t, &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: "committed", Usage: &llm.Usage{TotalTokens: 7}}}}}, newTestStore(t))
+	f := newExecutionFixture(t, &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: "committed", Usage: &llm.Usage{TotalTokens: func() *int64 { n := int64(7); return &n }()}}}}}, newTestStore(t))
 	ctx, row, err := f.execution.resolveInput(context.Background(), "hello")
 	if err != nil {
 		t.Fatal(err)
@@ -206,7 +206,7 @@ func TestExecutionCommitDuringAppendKeepsUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if usage := f.execution.usageForSession(t.Context(), latest); usage == nil || usage.TotalTokens != 7 {
+	if usage := f.execution.usageForSession(t.Context(), latest); usage == nil || (usage.TotalTokens == nil || *usage.TotalTokens != 7) {
 		t.Fatalf("successful commit lost usage: %+v", usage)
 	}
 	if f.opts.Turns.Snapshot(row.ID).Phase != turn.PhaseAwaitAppendConfirm {

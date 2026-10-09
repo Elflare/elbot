@@ -2,8 +2,11 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
+	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"elbot/internal/agent/dialogue"
@@ -54,14 +57,39 @@ func (o *outputSender) SendAssistant(ctx context.Context, text string) (delivery
 	receipt, err := o.dispatcher.SendChat(ctx, []delivery.Output{delivery.Text(preparedText)})
 	if err != nil {
 
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    failureLogLevel(err),
-			Name:     "chat_send_failed",
-			Module:   "agent",
-			Summary:  "chat send failed",
-			Fields:   []slog.Attr{slog.Any("error", err.Error())},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "chat_send_failed",
+				Module:       "agent",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("chat send failed\nerror=%v", err.Error()),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if errors.Is(err, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 
 		return receipt, err
 	}
@@ -129,8 +157,30 @@ func (o *outputSender) ReplaceAndFinishStream(ctx context.Context, streamCtx con
 		return receipt, fmt.Errorf("stream replace: %w", err)
 	}
 	finishReceipt, err := stream.Finish(streamCtx)
-	if len(receipt.PlatformMessageIDs) == 0 {
-		receipt = finishReceipt
+	receipt.PlatformMessageIDs = append([]string(nil), receipt.PlatformMessageIDs...)
+	receipt.SentMessages = append([]delivery.SentMessage(nil), receipt.SentMessages...)
+	for i := range receipt.SentMessages {
+		receipt.SentMessages[i].OutputIndexes = append([]int(nil), receipt.SentMessages[i].OutputIndexes...)
+	}
+	for _, id := range finishReceipt.PlatformMessageIDs {
+		if !slices.Contains(receipt.PlatformMessageIDs, id) {
+			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, id)
+		}
+	}
+	for _, sent := range finishReceipt.SentMessages {
+		i := slices.IndexFunc(receipt.SentMessages, func(message delivery.SentMessage) bool {
+			return message.Platform == sent.Platform && message.ScopeID == sent.ScopeID && message.PlatformMessageID == sent.PlatformMessageID
+		})
+		if i < 0 {
+			sent.OutputIndexes = append([]int(nil), sent.OutputIndexes...)
+			receipt.SentMessages = append(receipt.SentMessages, sent)
+			continue
+		}
+		for _, index := range sent.OutputIndexes {
+			if !slices.Contains(receipt.SentMessages[i].OutputIndexes, index) {
+				receipt.SentMessages[i].OutputIndexes = append(receipt.SentMessages[i].OutputIndexes, index)
+			}
+		}
 	}
 	return receipt, err
 }

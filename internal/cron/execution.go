@@ -141,14 +141,35 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 				result.TakenOver = true
 				return takeoverState(state, result), "", nil
 			}
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogRuntime,
-				Level:    slog.LevelError,
-				Name:     "copy_cron_session_failed",
-				Module:   "cron",
-				Summary:  "copy cron session failed",
-				Fields:   []slog.Attr{slog.Any("job", job.Name), slog.Any("error", err)},
-			})
+			{
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogRuntime,
+					Level:        slog.LevelError,
+					EventName:    "copy_cron_session_failed",
+					Module:       "cron",
+					Type:         globalevents.ContentText,
+					Content:      fmt.Sprintf("copy cron session failed\njob=%v\nerror=%v", job.Name, err),
+					ContentLimit: 4096,
+					ResultStatus: globalevents.ResultFailed,
+				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				_ = globalevents.EmitLog(ctx, record)
+			}
 		}
 	}
 	state.ReportReady = true

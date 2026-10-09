@@ -3,6 +3,7 @@ package notification
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -76,15 +77,34 @@ func (m *Manager) Send(ctx context.Context, intent Intent) (delivery.Receipt, er
 		if target.Empty() {
 
 			for _, output := range intent.Notice.Outputs {
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-					Category: globalevents.LogRuntime,
-					Level:    intent.Notice.Level,
-					Name:     "runtime_notification",
-					Module:   "notification",
-					Summary:  "runtime notification" + ": " + output.Text,
-					Fields:   []slog.Attr{slog.Any("kind", output.Kind)},
-					Detail:   output.Text,
-				})
+				{
+					record := globalevents.LogRecord{
+						Category:     globalevents.LogRuntime,
+						Level:        intent.Notice.Level,
+						EventName:    "runtime_notification",
+						Module:       "notification",
+						Type:         globalevents.ContentText,
+						Content:      fmt.Sprintf("runtime notification: %s\nkind=%s", output.Text, output.Kind),
+						ContentLimit: 4096,
+					}
+					facts, _ := contextinfo.ExecutionFromContext(ctx)
+					if facts.SessionID != "" {
+						record.Identity.SessionID = &facts.SessionID
+					}
+					if facts.RunID != "" {
+						record.Identity.RunID = &facts.RunID
+					}
+					if facts.Attempt != "" {
+						record.Identity.Attempt = &facts.Attempt
+					}
+					if facts.RequestID != "" {
+						record.Identity.RequestID = &facts.RequestID
+					}
+					if facts.RootRequestID != "" {
+						record.Identity.RootRequestID = &facts.RootRequestID
+					}
+					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+				}
 			}
 
 			return delivery.Receipt{}, nil

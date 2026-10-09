@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"elbot/internal/events"
 	"elbot/internal/llm"
 )
 
@@ -26,8 +27,8 @@ func TestExecuteELwispToolPostsArguments(t *testing.T) {
 
 	call := llm.ToolCallRequest{ID: "call-1", Name: "elwisp_watcher_server_status", Arguments: `{"detail":true}`}
 	result := executeELwispTool(context.Background(), call, ResolvedTool{Cached: &CachedTool{Name: "server_status", CanonicalName: call.Name, Source: SourceKindELwisp, EventKey: "watcher/source/id", Endpoint: server.URL}})
-	if result.Err != nil {
-		t.Fatalf("executeELwispTool: %v", result.Err)
+	if result.Error != nil {
+		t.Fatalf("executeELwispTool: %v", result.Error)
 	}
 	if got := llm.SegmentsContentText(result.Message.Segments); got != "ok" {
 		t.Fatalf("content = %q", got)
@@ -45,7 +46,25 @@ func TestExecuteELwispToolReturnsHTTPError(t *testing.T) {
 
 	call := llm.ToolCallRequest{ID: "call-1", Name: "elwisp_watcher_server_status", Arguments: `{}`}
 	result := executeELwispTool(context.Background(), call, ResolvedTool{Cached: &CachedTool{Name: "server_status", CanonicalName: call.Name, Source: SourceKindELwisp, Endpoint: server.URL}})
-	if result.Err == nil {
+	if result.Error == nil {
 		t.Fatal("expected HTTP error")
+	}
+	if !result.ExecutionStarted || result.ResultStatus != events.ResultFailed {
+		t.Fatalf("send facts = %#v", result)
+	}
+}
+
+func TestExecuteELwispToolPartialAndPreparationFacts(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"content":"first action saved","error":"second action failed"}`))
+	}))
+	defer server.Close()
+	result := executeELwispTool(context.Background(), llm.ToolCallRequest{Name: "remote", Arguments: `{}`}, ResolvedTool{Cached: &CachedTool{Endpoint: server.URL}})
+	if result.Error == nil || !result.ExecutionStarted || result.ResultStatus != events.ResultFailed || result.Result == nil || result.Result.Content != "first action saved" {
+		t.Fatalf("partial facts = %#v", result)
+	}
+	result = executeELwispTool(context.Background(), llm.ToolCallRequest{Name: "remote", Arguments: `{invalid`}, ResolvedTool{Cached: &CachedTool{Endpoint: server.URL}})
+	if result.Error == nil || result.ExecutionStarted || result.ResultStatus != events.ResultFailed {
+		t.Fatalf("preparation facts = %#v", result)
 	}
 }

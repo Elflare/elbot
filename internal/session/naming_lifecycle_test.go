@@ -2,8 +2,10 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -22,12 +24,11 @@ type namingGeneratorFunc func(context.Context, []storage.Message) (TitleResult, 
 
 type namingDiagnosticError struct{}
 
-func (namingDiagnosticError) Error() string { return "upstream failed" }
-func (namingDiagnosticError) LogDiagnostic() events.LogDiagnostic {
-	return events.LogDiagnostic{Kind: "response_error", Detail: `{"description":"gateway detail","api_key":"secret-credential","payload":"` + strings.Repeat("x", 10000) + `"}`}
+func (namingDiagnosticError) Error() string {
+	return "upstream failed: gateway detail; api_key=secret-credential"
 }
 
-func TestNamingFailureDiagnosticSurvivesRuntimeLevel(t *testing.T) {
+func TestNamingFailureContentSurvivesRuntimeLevel(t *testing.T) {
 	for _, level := range []string{"info", "warn", "error"} {
 		t.Run(level, func(t *testing.T) {
 			center, err := logging.NewManager(level, filepath.Join(t.TempDir(), "sessions.db"), 30)
@@ -38,29 +39,44 @@ func TestNamingFailureDiagnosticSurvivesRuntimeLevel(t *testing.T) {
 			service := NewService(nil)
 			t.Cleanup(func() { _ = service.Close(context.Background()) })
 			at := time.Now().Add(-time.Minute).Truncate(time.Second)
-			ctx := contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "wrong", RequestID: "naming-request", RunID: "naming-run", Attempt: "attempt", RootRequestID: "root"})
-			service.notifyNamingFailed(ctx, NamingFailedEvent{SessionID: "source", TriggeredAt: at, Stage: "llm_error", Provider: "provider", Model: "model", Err: fmt.Errorf("wrapped: %w", namingDiagnosticError{})})
+			sessionID, requestID := "source", "naming-request"
+			ctx := contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "wrong", RequestID: "wrong"})
+			service.notifyNamingCompleted(ctx, NamingCompletedEvent{
+				Identity:    events.LogIdentity{SessionID: &sessionID, RequestID: &requestID},
+				TriggeredAt: at, CompletedAt: time.Now(), Provider: "provider", Model: "model",
+				ResultStatus: events.ResultFailed, GenerationResultStatus: events.ResultFailed,
+				GenerationError: fmt.Errorf("wrapped: %w", namingDiagnosticError{}),
+			})
 			if err := center.Close(context.Background()); err != nil {
 				t.Fatal(err)
 			}
 			for _, prefix := range []string{"audit", "elbot"} {
-				entries, err := (logging.Reader{Dir: center.LogDir()}).Query(context.Background(), logging.LogQuery{Prefix: prefix, Limit: 10})
+				paths, err := filepath.Glob(filepath.Join(center.LogDir(), prefix+"-*.log"))
+				if err != nil || len(paths) != 1 {
+					t.Fatalf("paths=%v err=%v", paths, err)
+				}
+				data, err := os.ReadFile(paths[0])
 				if err != nil {
 					t.Fatal(err)
 				}
-				if len(entries) != 1 {
-					t.Fatalf("%s: got %d records", prefix, len(entries))
+				var entry struct {
+					Time                                               time.Time
+					Level, Content, SessionID, RequestID, ResultStatus string
 				}
-				entry := entries[0]
-				if entry.Level != "ERROR" || !entry.Time.Equal(at) || entry.Fields["session_id"] != "source" || entry.Fields["request_id"] != "naming-request" || entry.Fields["provider"] != "provider" || entry.Fields["model"] != "model" {
-					t.Fatalf("lost failure facts: %+v", entry)
+				var raw map[string]json.RawMessage
+				if err := json.Unmarshal(data, &raw); err != nil {
+					t.Fatal(err)
 				}
-				detail := entry.Fields["detail"]
-				if prefix == "audit" && (!strings.Contains(detail, "gateway detail") || strings.Contains(detail, "secret-credential") || len(detail) > 8192) {
-					t.Fatalf("unsafe or missing diagnostic: %q", detail)
+				for key, target := range map[string]any{"time": &entry.Time, "level": &entry.Level, "content": &entry.Content, "session_id": &entry.SessionID, "request_id": &entry.RequestID, "result_status": &entry.ResultStatus} {
+					if err := json.Unmarshal(raw[key], target); err != nil {
+						t.Fatal(err)
+					}
 				}
-				if prefix == "elbot" && detail != "" {
-					t.Fatal("runtime exposed non-debug detail")
+				if entry.Level != "ERROR" || !entry.Time.After(at) || entry.SessionID != sessionID || entry.RequestID != requestID || entry.ResultStatus != "failed" {
+					t.Fatalf("lost facts: %+v", entry)
+				}
+				if !strings.Contains(entry.Content, "gateway detail") || strings.Contains(string(data), "secret-credential") {
+					t.Fatalf("unsafe or missing content: %s", data)
 				}
 			}
 		})
@@ -76,46 +92,34 @@ func TestNamingOwnsSynchronousLogProjection(t *testing.T) {
 	defer connection.Disconnect()
 	service := NewService(nil)
 	at := time.Unix(123, 0)
+	sessionID, title := "source", "title"
 	ctx := contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "wrong", RequestID: "request"})
-	service.notifyNamingCompleted(ctx, NamingCompletedEvent{SessionID: "source", TriggeredAt: at, Title: "title"})
-	if len(records) != 1 || records[0].Name != "session_naming_completed" || !records[0].At.Equal(at) {
+	service.notifyNamingCompleted(ctx, NamingCompletedEvent{Identity: events.LogIdentity{SessionID: &sessionID}, TriggeredAt: at, Title: &title, ResultStatus: events.ResultSucceeded})
+	if len(records) != 1 || records[0].EventName != "session_naming_completed" || records[0].Identity.SessionID == nil || *records[0].Identity.SessionID != "source" || records[0].Identity.RequestID != nil {
 		t.Fatal(records)
 	}
-	fields := map[string]string{}
-	for _, attr := range records[0].Fields {
-		fields[attr.Key] = attr.Value.String()
-	}
-	if fields["session_id"] != "source" || fields["request_id"] != "request" {
-		t.Fatal(fields)
+	sessionID = "changed"
+	if *records[0].Identity.SessionID != "source" {
+		t.Fatal("identity aliased source")
 	}
 	if err := service.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	service.notifyNamingCompleted(ctx, NamingCompletedEvent{SessionID: "source", TriggeredAt: at})
+	service.notifyNamingCompleted(ctx, NamingCompletedEvent{ResultStatus: events.ResultSucceeded})
 	if len(records) != 1 {
 		t.Fatal("naming log connection survived close")
 	}
 }
 
-func TestNamingFallbackFailurePreservesOriginalDiagnostic(t *testing.T) {
+func TestNamingFallbackFailurePreservesOriginalError(t *testing.T) {
 	store := newTestStore(t)
 	service := NewService(store)
 	defer service.Close(context.Background())
-	var failed NamingFailedEvent
-	connection, err := service.NamingSignals().Failed.Connect(func(_ context.Context, event NamingFailedEvent) error { failed = event; return nil }, signal.ConnectOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer connection.Disconnect()
-	// A missing row makes the fallback save fail after the upstream failure.
 	original := fmt.Errorf("upstream: %w", namingDiagnosticError{})
-	service.handleNamingFailure(context.Background(), &storage.Session{ID: "missing"}, []storage.Message{{Role: storage.RoleUser, Content: "fallback text"}}, "generate title", original, "llm_error", TitleResult{}, "")
-	if failed.Err != original || failed.FallbackErr == nil || failed.Reason != "generate title" || failed.Stage != "llm_error" {
-		t.Fatalf("lost original failure: %+v", failed)
-	}
-	var diagnostic events.DiagnosticError
-	if !errors.As(failed.Err, &diagnostic) {
-		t.Fatal("original diagnostic no longer reachable")
+	event := NamingCompletedEvent{ResultStatus: events.ResultFailed, GenerationResultStatus: events.ResultFailed, GenerationError: original}
+	service.handleNamingFailure(context.Background(), &storage.Session{ID: "missing"}, []storage.Message{{Role: storage.RoleUser, Content: "fallback text"}}, &event)
+	if event.GenerationError != original || event.FallbackError == nil || event.FallbackResultStatus != events.ResultFailed || event.ResultStatus != events.ResultFailed {
+		t.Fatalf("lost original failure: %+v", event)
 	}
 }
 
@@ -149,7 +153,7 @@ func TestNamingOutlivesTurnButStopsWithApplication(t *testing.T) {
 				}
 				return TitleResult{RawTitle: "late title"}, nil
 			})
-			notifier := &fakeNamingNotifier{failures: make(chan NamingFailedEvent, 2)}
+			notifier := &fakeNamingNotifier{failures: make(chan NamingCompletedEvent, 2)}
 			svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, gen)
 			notifier.connect(t, svc)
 			appCtx, stopApp := context.WithCancel(context.Background())
@@ -198,8 +202,15 @@ func TestNamingOutlivesTurnButStopsWithApplication(t *testing.T) {
 			}
 			select {
 			case e := <-notifier.failures:
-				t.Fatalf("cancellation failure notification: %#v", e)
+				want := events.ResultCanceled
+				if resultError {
+					want = events.ResultFailed
+				}
+				if e.ResultStatus != want || e.CancellationError == nil || !e.Scheduled || e.CompletedAt.IsZero() {
+					t.Fatalf("lost terminal facts: %#v", e)
+				}
 			default:
+				t.Fatal("shutdown discarded naming completion")
 			}
 			svc.StartNaming(context.Background())
 			svc.MaybeScheduleNaming(context.Background(), row.ID)

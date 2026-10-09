@@ -2,6 +2,8 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -44,14 +46,35 @@ func (s *Service) MigrateLegacyDeliveryState(ctx context.Context) error {
 		if !swapped {
 			continue
 		}
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelInfo,
-			Name:     "cron_legacy_delivery_migrated",
-			Module:   "cron",
-			Summary:  "cron legacy delivery migrated",
-			Fields:   slog.Group("", s.cronLogAttrs(job.Name, meta)...).Value.Group(),
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelInfo,
+				EventName:    "cron_legacy_delivery_migrated",
+				Module:       "cron",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("cron legacy delivery migrated\njob=%v\nsource_platform=%v\ntarget_platforms=%v\ntarget_all_enabled_platforms=%v", job.Name, meta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(meta), ","), meta.Target.AllEnabledPlatforms),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultSucceeded,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 		if s.deliveryComplete(meta, state) {
 			if err := s.disableCompletedDelivery(ctx, job.Name, state.RunID); err != nil {
 				return fmt.Errorf("disable migrated cron delivery %s: %w", job.Name, err)
@@ -102,14 +125,34 @@ func (s *Service) handlePlatformConnected(ctx context.Context, platformName stri
 	}
 	s.connectedPlatforms[platformName] = true
 	s.mu.Unlock()
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogRuntime,
-		Level:    slog.LevelInfo,
-		Name:     "cron_platform_connected",
-		Module:   "cron",
-		Summary:  "cron platform connected",
-		Fields:   []slog.Attr{slog.Any("platform", platformName)},
-	})
+	{
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogRuntime,
+			Level:        slog.LevelInfo,
+			EventName:    "cron_platform_connected",
+			Module:       "cron",
+			Type:         globalevents.ContentText,
+			Content:      fmt.Sprintf("cron platform connected\nplatform=%v", platformName),
+			ContentLimit: 4096,
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		_ = globalevents.EmitLog(ctx, record)
+	}
 	s.runMissedOnceForPlatform(ctx, platformName)
 }
 
@@ -119,14 +162,35 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 		if isContextCancellation(ctx, err) {
 			return
 		}
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelError,
-			Name:     "list_cron_jobs_for_missed_once_failed",
-			Module:   "cron",
-			Summary:  "list cron jobs for missed once failed",
-			Fields:   []slog.Attr{slog.Any("platform", platformName), slog.Any("error", err)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "list_cron_jobs_for_missed_once_failed",
+				Module:       "cron",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("list cron jobs for missed once failed\nplatform=%v\nerror=%v", platformName, err),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 		return
 	}
 	for _, job := range jobs {
@@ -156,65 +220,202 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 			unlock()
 			continue
 		}
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogAudit,
-			Level:    slog.LevelInfo,
-			Name:     "cron.missed_delivery_started",
-			Module:   "cron",
-			Summary:  "cron.missed_delivery_started",
-			Fields:   slog.Group("", s.cronAuditAttrs(job.Name, meta, "platform", platformName)...).Value.Group(),
-		})
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelInfo,
-			Name:     "cron_missed_delivery_started",
-			Module:   "cron",
-			Summary:  "cron missed delivery started",
-			Fields:   slog.Group("", s.cronLogAttrs(job.Name, meta, "platform", platformName)...).Value.Group(),
-		})
+		{
+			content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": meta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms": meta.Target.AllEnabledPlatforms, "platform": platformName})
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogAudit,
+				Level:        slog.LevelInfo,
+				EventName:    "cron.missed_delivery_started",
+				Module:       "cron",
+				Type:         globalevents.ContentJSON,
+				Content:      string(content),
+				ContentLimit: 4096,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelInfo,
+				EventName:    "cron_missed_delivery_started",
+				Module:       "cron",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("cron missed delivery started\njob=%v\nsource_platform=%v\ntarget_platforms=%v\ntarget_all_enabled_platforms=%v\nplatform=%v", job.Name, meta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(meta), ","), meta.Target.AllEnabledPlatforms, platformName),
+				ContentLimit: 4096,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 		deliverErr := s.deliverMissedOnce(ctx, *latest, latestMeta, platformName)
 		unlock()
 		if deliverErr != nil {
+			{
+				content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": latestMeta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(latestMeta), ","), "target_all_enabled_platforms": latestMeta.Target.AllEnabledPlatforms, "platform": platformName, "error": deliverErr.Error()})
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogAudit,
+					Level:        slog.LevelError,
+					EventName:    "cron.missed_delivery_failed",
+					Module:       "cron",
+					Type:         globalevents.ContentJSON,
+					Content:      string(content),
+					ContentLimit: 4096,
+					ResultStatus: globalevents.ResultFailed,
+				}
+				if ctx.Err() == context.Canceled && isContextCancellation(ctx, deliverErr) {
+					record.ResultStatus = globalevents.ResultCanceled
+					record.Level = slog.LevelInfo
+				}
+
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			}
+			{
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogRuntime,
+					Level:        slog.LevelError,
+					EventName:    "missed_cron_run_failed",
+					Module:       "cron",
+					Type:         globalevents.ContentText,
+					Content:      fmt.Sprintf("missed cron run failed\njob=%v\nplatform=%v\nerror=%v", job.Name, platformName, deliverErr),
+					ContentLimit: 4096,
+					ResultStatus: globalevents.ResultFailed,
+				}
+				if ctx.Err() == context.Canceled && isContextCancellation(ctx, deliverErr) {
+					record.ResultStatus = globalevents.ResultCanceled
+					record.Level = slog.LevelInfo
+				}
+
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			}
 			if isContextCancellation(ctx, deliverErr) {
 				return
 			}
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogAudit,
-				Level:    slog.LevelError,
-				Name:     "cron.missed_delivery_failed",
-				Module:   "cron",
-				Summary:  "cron.missed_delivery_failed",
-				Fields:   slog.Group("", s.cronAuditAttrs(job.Name, latestMeta, "platform", platformName, "error", deliverErr.Error())...).Value.Group(),
-			})
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogRuntime,
-				Level:    slog.LevelError,
-				Name:     "missed_cron_run_failed",
-				Module:   "cron",
-				Summary:  "missed cron run failed",
-				Fields:   []slog.Attr{slog.Any("job", job.Name), slog.Any("platform", platformName), slog.Any("error", deliverErr)},
-			})
 			if ctx.Err() == nil {
 				_ = s.sendToPlatforms(ctx, job.Name, []string{"cli"}, fmt.Sprintf("cron 补跑失败：%s\n错误：%v", job.Name, deliverErr))
 			}
 			continue
 		}
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogAudit,
-			Level:    slog.LevelInfo,
-			Name:     "cron.missed_delivery_completed",
-			Module:   "cron",
-			Summary:  "cron.missed_delivery_completed",
-			Fields:   slog.Group("", s.cronAuditAttrs(job.Name, latestMeta, "platform", platformName)...).Value.Group(),
-		})
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelInfo,
-			Name:     "cron_missed_delivery_completed",
-			Module:   "cron",
-			Summary:  "cron missed delivery completed",
-			Fields:   slog.Group("", s.cronLogAttrs(job.Name, latestMeta, "platform", platformName)...).Value.Group(),
-		})
+		{
+			content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": latestMeta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(latestMeta), ","), "target_all_enabled_platforms": latestMeta.Target.AllEnabledPlatforms, "platform": platformName})
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogAudit,
+				Level:        slog.LevelInfo,
+				EventName:    "cron.missed_delivery_completed",
+				Module:       "cron",
+				Type:         globalevents.ContentJSON,
+				Content:      string(content),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultSucceeded,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelInfo,
+				EventName:    "cron_missed_delivery_completed",
+				Module:       "cron",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("cron missed delivery completed\njob=%v\nsource_platform=%v\ntarget_platforms=%v\ntarget_all_enabled_platforms=%v\nplatform=%v", job.Name, latestMeta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(latestMeta), ","), latestMeta.Target.AllEnabledPlatforms, platformName),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultSucceeded,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 	}
 }
 

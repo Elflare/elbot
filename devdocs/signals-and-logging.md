@@ -2,21 +2,17 @@
 
 本文定义信号与日志系统的职责、契约和处理规则。实施进度、待办及验证结果统一见 [任务清单](tasks.md#信号与日志系统整改)，实际代码职责见 [架构说明](architecture.md#信号与订阅) 和 [代码地图](code-map.md#信号与订阅)。
 
-## 已确认的要求
+## 设计原则
 
 - 信号机制参考 Godot 的声明、发射和连接方式，是通用能力，未来可以服务日志以外的系统。
 - 全局契约集中定义，各业务和中心自行连接。业务日志通过全局日志信号交给日志中心，不经 App 转发，也不逐层注入 Logger、日志发布器或同一全局信号。
 - 业务决定日志等级和操作结果，原始错误保留在业务返回值和业务实例事件中。日志的 `Level`、`ResultStatus`、`Content` 各有职责，不能相互机械推导。
 - 操作结果由掌握上下文的业务来源确定，来源事件完整传递事实。日志回调、信号和日志中心不通过错误树、错误文案或事件名反推取消、拒绝和失败。
-- 日志来源组织正文，将错误原因及必要诊断写入 `Content`；普通日志优先 text，需要业务字段筛选、统计或解析的记录使用 JSON。JSON 由来源构造并先控制体积，公共日志不再传递错误对象或任意 Go 对象。
+- 日志来源组织正文，将错误原因及必要诊断写入 `Content`；普通日志优先 text，需要业务字段筛选、统计或解析的记录使用 JSON。JSON 由来源构造并先控制体积，公共日志只传递固定字段和已组织的正文。
 - 不新增 Go 包，不建设共享错误分类器、取消判断器或错误树检查设施；不为未知需求预先增加抽象。
-- 所有包、文件位置、包名、文件名、函数名和变量名必须与用户讨论确认，测试代码除外。已有名称、已确认的新名称和待讨论项必须区分；测试名称和实现可自行决定。
-- 本轮只处理已明确的日志和信号整改，不改变重试策略、权限规则、同步业务持久化、队列策略或共同的 30 秒退出预算，不自动提交。
 - 所有日志使用统一的九字段封闭契约、同一个发布入口和处理规则；Content 是唯一正文，Identity 由业务显式填写。
-- 来源迁移以本文已确认的新设计为准。旧代码用于定位业务分支和迁移点，不能以旧字段、旧日志结构或现有回调的行为反推目标契约；发现不符时整改实现。
 - 日志和 notify 各自负责自己的输出。日志中心不决定是否向平台通知，也不生成通知摘要；来源独立组织面向用户的通知。
 - 底层定义型字段必须在 Go 注释中说明用途、填写方、零值和约束。
-- 本次改动不用再写changelog.me
 
 ## 处理链路
 
@@ -66,7 +62,6 @@ flowchart TD
 | --- | --- |
 | 日志提交 | 全局日志信号，日志中心自行订阅 |
 | 已有平台连接成功事实 | 全局信号，各平台直接发布，Hook 和 Cron 自行订阅 |
-| 系统告警、配置应用完成、后台任务状态 | 适合全局观察的候选，不是本轮新增任务；应用、调度和错误返回仍由业务执行 |
 | 模型重试 | 客户端自己执行；保留模型实例信号、来源日志和独立通知，不新增全局重试信号 |
 | 会话／请求状态 | 保留实例边界，活跃 `Binding` 等执行对象不能直接搬进全局载荷 |
 | 权限、可改写 Hook、Usage 和关键持久化 | 同步完成，不依靠广播保证业务结果 |
@@ -74,7 +69,7 @@ flowchart TD
 
 ## 公共日志字段与命名
 
-以下是已经确认的目标 `LogRecord` 全部九个字段，定义位于现有 `internal/events/logging.go`。每个字段的 Go 注释必须写明用途、填写方、零值含义和约束，不再增加自由属性或其他扩展入口。
+`LogRecord` 定义于 `internal/events/logging.go`，仅包含以下九个字段。Go 注释说明用途、填写方、零值含义和约束。
 
 | 字段 | 类型或约束 | 含义与输出 |
 | --- | --- | --- |
@@ -92,7 +87,7 @@ flowchart TD
 
 ### 枚举与稳定标识
 
-`ResultStatus` 采用已讨论的 `uint8` 和 `iota` 枚举形式：
+`ResultStatus` 采用 `uint8` 和 `iota` 枚举形式：
 
 ```go
 type ResultStatus uint8
@@ -164,7 +159,7 @@ Go 的整数枚举不能阻止强制转换非法数值，因此发布入口仍�
 | 工具拒绝、记录保存成功 | 调用为 rejected，保存为 succeeded；记录已保存不代表工具执行成功 |
 | 工具拒绝、记录保存失败 | 调用为 rejected，保存为 failed；整体失败，拒绝不能覆盖保存故障 |
 | 工具执行失败、记录保存失败 | 两项均为 failed，两项原始错误和日志中的错误原因均保留 |
-| 工具不存在、配置缺失或执行故障 | 与正常策略拒绝区分，不能仅凭 `Success=false` 判为同一种情况 |
+| 工具不存在、配置缺失或执行故障 | 明确记录 failed，与正常策略拒绝的 rejected 区分 |
 | 命名失败、兜底保存成功 | 以获得可用标题为整体目标，ResultStatus 为 succeeded；正文保留生成失败原因、兜底已生效及所用标题 |
 | 命名失败、兜底保存失败 | 两项均为 failed，原始命名失败不被兜底失败覆盖 |
 | 回复发送成功、持久化失败 | 发送为 succeeded，保存为 failed；整体失败，保留用户已收到消息的事实 |
@@ -175,27 +170,109 @@ Go 的整数枚举不能阻止强制转换非法数值，因此发布入口仍�
 | Chat 为保留部分输出返回空错误 | 仍显式传递取消或失败事实，不能由 nil 错误推导成功 |
 | 重试或视觉回退 | 保留本次尝试失败、次数或回退事实，不把 retrying 增加为结果种类 |
 
-`CallError`、`PersistenceError`、`FallbackError`、`SendError` 是讨论过的业务操作命名示例，不是公共错误类型枚举，也不是必须加到每个结构中的固定字段。各事件最终字段必须与对应结果一起列全、讨论确认后实施。不使用含糊的 `outcome` 或 `err` 作为新公共契约名，不批量重命名无关局部 `err`。
-
 ### 整体结果与正文
 
 公共日志仅用 ResultStatus 表达整体结果，保持九字段契约，不增加次结果、原因码或统一子结果结构。Level 表达关注等级，Content 说明具体原因、各操作事实、错误及部分完成情况。
 
-业务事件仍完整传递各操作事实和原始 error，来源在日志输出边界组织正文。正文不要求逐字段复刻业务事件的名称和结构，也不强制为组合操作嵌套各项结果。普通说明优先 text；需要业务字段查询或统计的正文使用来源与消费者约定的 JSON。日志回调和中心不从错误链或正文反推业务结果。
-
-各来源的完整事件字段、类型、存在性和整体结果含义仍需确认，不能沿用旧代码填补契约空白。未执行的操作省略结果；部分完成的操作保留已完成事实，不能由错误为空推导全部成功。
+业务事件传递业务和 notify 所需的事实及原始 error；日志所需的其他事实由操作来源直接组织为正文。正文不要求逐字段复刻业务事件的名称和结构，也不强制为组合操作嵌套各项结果。普通说明优先 text；需要业务字段查询或统计的正文使用来源与消费者约定的 JSON。日志回调和中心不从错误链或正文反推业务结果。
 
 组合记录的整体结果由掌握整个流程的业务来源确定。调用取消或工具拒绝伴随独立保存失败时，ResultStatus 为 failed，正文同时说明两项事实和对应错误。命名生成失败但兜底标题保存成功时，ResultStatus 为 succeeded，正文说明生成失败与兜底事实；Level 可用 WARN 表达降级，不能由结果机械推导等级。
 
 ### 业务错误与日志正文
 
-业务返回值和业务实例事件保留原始错误对象、各操作事实和必要的发生时间。来源在日志构造边界把错误原因及必要诊断写入 `Content`；全局日志信号和队列只传统一记录，不再传错误对象，也不把日志文字重新包装成业务错误。
+业务返回值和业务实例事件保留原始错误对象、各操作事实和必要的发生时间。来源在日志构造边界把错误原因及必要诊断写入 `Content`；全局日志信号和队列只传统一记录，不传错误对象，也不把日志文字重新包装成业务错误。
 
 业务实例事件中的错误发布后只读，所有订阅者也只读。来源若持有可变错误结构，必须复制自己掌握的具体结构及其可变成员再发布，不能发布后继续修改。Go 的 `error` 没有通用克隆能力，本设计不承诺自动深复制任意错误类型，也不通过反射拆解或字符串化来伪装成保留原始错误。
 
-业务返回值可以继续携带必要的合并错误，但来源事件不能只剩一个合并错误而丢失各操作事实。日志回调不遍历它来重新分类。记录失败不能替代或覆盖原业务结果。
+业务返回值可以携带合并错误；来源在合并前保留日志所需的独立操作事实和错误原因。业务事件按消费者需求传递原始错误，日志回调不遍历合并错误重新分类。日志提交失败不能替代或覆盖原业务结果。
 
 业务实例事件的错误所有权与日志正文转换分开：原始错误供业务处理，日志、数据库持久化及用户回复分别在各自输出边界生成内容；不能把这些输出文字回读为业务处理所需的原始错误。
+
+## 日志与业务来源边界
+
+九字段只约束发送给日志系统的 LogRecord。业务内部及 notify 使用的事件、返回值保留实际需要的专有字段、原始错误及结果对象，不要求与 LogRecord 同形。
+
+来源在实际操作处确定结果与等级，再直接或通过本模块同步日志回调组织九字段记录。Hook 点、工具参数和结果、模型信息、业务发生时间、各阶段错误等专有信息进入 Content；日志信号和中心不接收原始业务对象。不为日志新增庞大的完成事件、类型化 Content 包装或任意对象转换器。
+
+底层字段注释说明用途、来源、零值及部分完成语义。业务保留原始错误，日志只接收其解释和必要诊断；发布后的业务事件按只读约定使用。
+
+### 会话命名
+
+`internal/session/types.go` 定义命名事件，命名信号只有 Scheduled 和 Completed。
+
+| `NamingScheduledEvent` 字段 | 类型 | 语义 |
+| --- | --- | --- |
+| `Identity` | `events.LogIdentity` | 来源填写的命名身份 |
+| `TriggeredAt` | `time.Time` | 命名检查触发时间 |
+| `MessageCount` | `int` | 已读取的消息数量 |
+| `TriggerStep` | `int` | 本次调度使用的触发步长 |
+
+| `NamingCompletedEvent` 字段 | 类型 | 语义 |
+| --- | --- | --- |
+| `Identity` | `events.LogIdentity` | 来源填写的命名身份 |
+| `TriggeredAt`、`CompletedAt` | `time.Time` | 检查触发、流程完成时间 |
+| `Scheduled` | `bool` | 本流程是否实际发布过 Scheduled |
+| `MessageCount` | `*int` | 已知消息数量；读取失败时 nil |
+| `ResultStatus` | `events.ResultStatus` | 以获得可用标题为目标的整体结果 |
+| `PreparationOperation` | `string` | 实际准备操作，未执行为空 |
+| `PreparationResultStatus`、`PreparationError` | 结果／错误 | 读取消息等准备操作 |
+| `GenerationResultStatus`、`GenerationError` | 结果／错误 | 标题生成调用 |
+| `Provider`、`Model` | `string` | 实际生成来源，未知为空 |
+| `GeneratedTitleRaw`、`GeneratedTitleNormalized` | `string` | 生成原文、规范化标题；不表示保存成功 |
+| `TitleValid` | `*bool` | 标题验证结果，未验证为 nil |
+| `InvalidReason` | `string` | 验证未通过的具体原因 |
+| `PersistenceResultStatus`、`PersistenceError` | 结果／错误 | 生成标题的保存 |
+| `FallbackTitle` | `string` | 回退保存所用标题 |
+| `FallbackResultStatus`、`FallbackError` | 结果／错误 | 回退标题的保存 |
+| `Title` | `*string` | 实际读取或保存得到的最终标题，未知为 nil |
+| `CancellationError` | `error` | 操作之间取消的原始错误 |
+| `FailureCount`、`MaxFailures` | `int` | 本次流程对应的失败计数与上限 |
+
+准备失败也发布 Completed，但不伪造 Scheduled；禁用、不满足条件等尚未启动的正常检查不发布 Completed。生成期间用户已改名时整体 skipped，保留生成事实，独立失败不能被 skipped 覆盖。生成失败但回退保存成功为 succeeded/WARN；两者失败分别保留原始错误。关闭时先等待已启动任务在共同退出预算内完成终态发布，再释放相应日志订阅。
+
+### 用量与模型调用
+
+`internal/llm/client.go` 的 `Usage` 中，`PromptTokens`、`CompletionTokens`、`TotalTokens`、`CacheHitTokens` 均为 `*int64`。nil 表示缺失或未知，非 nil 的零表示上游明确报告零；负数、溢出、非法值为未知，不因此使模型调用失败。不从其他值推算缺失总量。协议解析保留数字精度与字段存在性，所有消费者保留未知语义，事件发布复制指针值。
+
+每次业务实际发起的模型请求分别记录结果与用量；视觉降级和 Responses 重放是新请求，客户端内部 HTTP 重试不增加业务调用次数。准备失败不生成用量记录；实际请求已发出时，即使用量未知也计一次调用。来源在调用流接口前将日志事件设为 `llm_usage`，失败或取消时同时保留 `llm_error`；统计只读取 `llm_usage`，每次请求计一次。
+
+现有 `CallObservation` 分别持有业务 `Event` 和九字段 `LogRecord`。各操作来源填写结果及正文，发布时固定身份、深复制用量；日志字段不挤入业务事件。Chat 流关闭时检查实际取消状态，保留部分输出和既有空错误返回约定。
+
+日志正文保留实际请求来源、原始及交付文本、工具调用数量、用量、耗时、回退事实和必要错误。调用、输出、验证、Hook 与保存的独立失败由掌握对应分支的来源组织，不从最终合并错误重新猜测。`ModelCallCompletedEvent` 承载业务消费者所需的模型完成事实，日志通过独立的 LogRecord 发布。
+
+Chat 用量别名按既有顺序取第一个合法非负整数；缺失、null 或非法值继续尝试后续别名，明确零立即采用，不继续回退。顶层缓存别名均无有效值时再查嵌套详情。用量对象形状非法时保留未知用量，不因此使模型响应失败。
+
+Responses 在现有 `internal/llm/responses/response.go` 中以 `ResponseUsage.UnmarshalJSON(data []byte) error` 和 `parseUsageCount(value json.RawMessage) *int64` 容错解析用量，计数字段使用 `*int64`。非法用量不破坏其他有效响应内容。
+
+`CompactState` 和 `ContextSummary` 的 `SourceTokens`、`SummaryTokens`、`TotalTokens`、`CacheHitTokens` 同样使用 `*int64`。SQLite 对应列允许 NULL，新未知值写 NULL，明确零写 0；历史零值原样保留，不猜测其原始含义。数据库迁移 `nullable_context_summary_tokens` 保留已有记录、外键和索引。
+
+`RetryEvent.ResultStatus` 表达 HTTP 来源确定的本次尝试结果；`ModelRetryingEvent.Identity` 固定发布身份。协议来源把必要诊断写入 Content，日志消费者不依赖协议错误接口。
+
+### 工具解析、执行与完成
+
+现有 `internal/toolrun/toolrun.go` 的 `ResolvedTool` 字段为 `Name string`、`Source SourceKind`、`Native tool.Tool`、`Cached *CachedTool`、`ResultStatus events.ResultStatus`、`Error error`。可执行为 succeeded，正常策略拒绝为 rejected 并保留类型化错误，工具不存在或配置缺失为 failed，取消和最终超时分别由来源明确判断。
+
+`internal/toolrun/toolrun.go` 与 `internal/tool/executor.go` 的 `ExecutionResult` 均包含 `Call llm.ToolCallRequest`、`Message llm.LLMMessage`、`Result *tool.Result`（tool 包内为 `*Result`）、`ResultStatus events.ResultStatus`、`ExecutionStarted bool`、`Error error`。结果包含执行入口自身的权限复查；`ExecutionStarted` 表示实际进入原生调用或远程 HTTP 请求发送，不证明副作用全部完成。部分 Result 与 Error 可以同时存在，后续发送、Hook 或保存失败不能覆盖执行错误。
+
+`PolicyDeniedError` 定义于 `internal/tool/executor.go`，调用方使用 `tool.PolicyDeniedError` 表达策略拒绝。
+
+工具日志在单个调用流程结束时组织。执行过 transcript 保存时，必须等待保存返回后发布；取消或前序失败使后续操作未执行时，只记录已发生的事实。整体 ResultStatus 覆盖实际执行的后续处理及保存；参数、解析来源、风险、执行结果、部分结果、输出回执、Hook 和保存事实进入 Content。
+
+`RunnerDeps.RecordToolCall(...) error` 同步保存完整工具记录，返回该保存操作的错误；Runner 把错误写入正文并确定整体结果。不能在最终 transcript 保存前把整条调用报告为成功。批次准备失败只记录 tool_batch_prepare_failed，不为未处理工具伪造完成记录。业务事件和返回值按业务及 notify 的需要定义。
+
+### Elnis
+
+Elnis 的业务失败和状态保存失败分别保留；保存返回值使用 `persistenceErr`，写入 JSON 正文的键为 `persistence_error`，独立保存失败使整体为 failed。
+
+### 回复发送与提交
+
+回复业务和 notify 保留各自所需的事件与返回值；发送、Hook、保存、关联和部分回执由对应来源在日志 Content 中说明。
+
+前台保持发送→附加输出→保存，缓冲路径保持保存→发送→关联→附加输出；发送、主保存或消息关联发生独立故障时整体为 failed；纯取消为 canceled，同时保留已成功发送与保存的事实，不重发已送达内容。辅助媒体回执缓存失败单独 WARN，发送成功仍为 succeeded。
+
+流替换与结束返回的部分回执都要保留，按 platform、scope、message ID 去重并合并输出索引。原始错误继续供业务处理，不能以日志文字替代。平台既有发送接口不因日志迁移引入通用发送结果设施。
+
+正文示例：`回复已发送并保存；关联 Telegram 消息失败：database is locked。不会重新发送已送达内容。`；`模型调用已取消；保存响应失败：database is locked。已收到的部分输出仍保留。`；`标题生成失败：请求超时；已保存回退标题“新会话”。`。正文解释事实，不要求复刻上述 Go 字段。
 
 ## 发布、消费和生命周期
 
@@ -257,14 +334,63 @@ Reader 遇到无法解析的 JSONL 行时继续查询。正常展示跳过损坏
 - `/log --hook`、`/audit --hook` 按 `module=hook` 与其他条件取交集；帮助与补全使用实际事件，不虚构 `hook` 事件。
 - Hook 工具调用使用 `hook_tool_call` 和 `source=rules|plugin` 来源事实；操作结果由来源填写 `ResultStatus`。正常业务状态属性与通用操作结果各自表达对应事实。
 - 普通与后台预载跳过分别使用 `skill_wrapper_preload_skipped`、`background_preload_skipped`，结果为 `ResultSkipped`。
-- 整体结果从公共字段读取，组合操作的各项结果和错误原因从正文读取，不为历史日志补造字段。命令只按 Type 解码正文；本轮新增展示选项为 `--raw`，帮助、补全和用户命令文档随实现同步更新。
+- 整体结果从公共字段读取，组合操作的各项结果和错误原因从正文读取，不为历史日志补造字段。命令按 Type 解码正文，`--raw` 展示物理记录原文。
 - `/usage` 遇到非法数字、溢出等无法统计的用量值时显示 `unknown`，不按零处理，也不静默排除异常记录。受该值影响的分组和总计对应项显示 `unknown`，其他可确定的统计项正常展示；全部异常时不能显示零用量结论。
+
+### Reader 类型与筛选接口
+
+在现有 `internal/logging/reader.go` 中使用以下完整接口：
+
+```go
+type LogQueryResult struct {
+    Entries []LogEntry
+    DamagedCount int
+    DamagedLines []string
+}
+
+func (r Reader) Query(ctx context.Context, query LogQuery) (LogQueryResult, error)
+
+type LogEntry struct {
+    Time time.Time
+    Category events.LogCategory
+    Level string
+    EventName string
+    Module string
+    Type events.LogContentType
+    Content string
+    Identity events.LogIdentity
+    ResultStatus events.ResultStatus
+    Raw string
+    LegacyFields map[string]string
+}
+
+type LogQuery struct {
+    Prefix string
+    Limit int
+    Days int
+    MinLevel string
+    Since *time.Time
+    Until *time.Time
+    Fields map[string]string
+    ContentFields map[string]string
+    ContentFieldContains map[string][]string
+    Contains string
+    ContentContains string
+    Raw bool
+}
+```
+
+`Entries` 只含有效且匹配的记录；`DamagedCount` 是本次实际扫描遇到的损坏行数量；`DamagedLines` 仅在 Raw 模式收集，最多 10 条完整物理行、合计 256 KiB，不截断样本，继续扫描和计数并提示未展示数量。坏行单独展示，明确标注“无法判断是否匹配筛选条件”，不能声称符合身份或等级条件。
+
+`LogEntry.Level` 保留历史未知或缺失值，不默认为 INFO；`Content` 为解码文本或保持数值精度的有效 JSON；`Raw` 保留仅去掉行结束符的物理原文。`LegacyFields` 仅存历史键值字段，新 JSONL 为 nil。其他字段分别对应公共字段，历史缺失项不补造。
+
+`Fields` 对公共外层字段做等值匹配；`ContentFields` 对 JSON 顶层业务字段做等值匹配；`ContentFieldContains` 要求业务数组包含给定的全部值。历史业务条件查询 LegacyFields，不能将正文覆盖外层字段。`Contains` 检索解码正文与原文，`ContentContains` 只检索正文。`Raw` 只影响坏行收集及展示，不改变有效记录匹配规则。Prefix、Limit、Days、MinLevel、Since、Until 保留已有范围和边界语义。
 
 ### 哪些来源使用 JSON
 
 | 命令 | 需要 JSON 的来源及业务字段 | 可优先使用 text 的记录 |
 | --- | --- | --- |
-| `/usage` | `llm_usage`：provider、model、prompt_tokens、completion_tokens、total_tokens、cache_hit_tokens、elapsed_ms；按模型、日期、会话筛选和统计 | 用量正文必须可解析，不另建统计存储 |
+| `/usage` | `llm_usage`：provider、model、prompt_tokens、completion_tokens、total_tokens、cache_hit_tokens、elapsed_ms；按模型、日期、会话筛选和统计；未知 token 明确为 null，实际调用仍计数；未知或溢出仅使受影响的分组及总计字段显示 unknown | 用量正文必须可解析，不另建统计存储 |
 | `/audit` | 需要按 tool、actor_id、risk 等业务字段筛选或结构化展示的审计记录 | 只需公共事件、模块、身份、结果或全文检索的记录 |
 | `/elwisp` | Elnis 业务事件：elwisp_name、source、source_id、mode、event_key、event_id、token_name、tags 等筛选字段 | 不携带上述业务事实的运行提示 |
 | `/log` | 只有确实需要结构化读取的正文才填写 JSON | 用户消息、模型回复、系统提示、通知、启动、重连、清理等普通运行日志 |
@@ -317,8 +443,6 @@ Agent、工具、Session、模型客户端与 Model Manager、Hook、平台、�
 
 Agent、Session、Model Manager 自行维护实例事件的同步日志回调和连接释放。模型重试日志独立于 App 通知订阅；没有通知订阅者也不能漏日志，调用结束后不显示过期重试通知。Hook Manager 记录原始执行失败，Agent 保留通知与自身桥接故障，同一错误不因迁移重复记录。终端交互是用户界面，不强行改成文件日志。
 
-Session 命名保留 Scheduled 信号，以 `NamingScheduledEvent` 表达调度事实；流程结束统一通过 Completed 信号发布 `NamingCompletedEvent`。Completed 表示流程已经结束，不隐含成功，整体 ResultStatus 由来源明确填写，并保留生成、保存、兜底的实际事实和原始错误。命名信号契约只有 Scheduled 和 Completed，不设置独立 Failed 信号或 `NamingFailedEvent`。生成失败但兜底标题保存成功时整体为 succeeded，日志正文仍说明生成失败与兜底事实。
-
 平台连接全局信号属于保留的现有能力：
 
 - `PlatformConnectedEvent{Platform string}`、`PlatformConnected` 位于现有全局契约，携带平台名称，不持有适配器或业务对象，不缓存重放。
@@ -328,23 +452,9 @@ Session 命名保留 Scheduled 信号，以 `NamingScheduledEvent` 表达调度�
 - `BeginClose` 停止准入、断开连接并取消队列；关闭前已取得的发射快照不能在关闭后接纳任务。`Close` 使用共同预算等待，`Done` 表示实际退出。
 - Hook 执行及输出、Cron 状态与过期一次性任务补执行保持原业务规则，不新增去重、补跑或调度策略。未退出任务仍使用的依赖保留到进程退出。
 
-## 已有代码位置与实施前待确认项
+## 实施接口
 
-下面仅列已有位置和职责，作为定位依据，不授权新建、迁移或自行命名文件。当前代码地图继续描述实际实现，不提前写成目标结构。
-
-| 已有位置 | 职责边界 |
-| --- | --- |
-| `internal/events/logging.go` | 九字段公共日志契约、身份、枚举、全局信号和发布入口 |
-| `internal/events/platform.go` | 已有平台连接全局契约 |
-| `internal/signal/` | 通用信号、队列及独立设施诊断 |
-| `internal/logging/logging.go` | 中心、文件资源、轮转和清理 |
-| `internal/logging/signals.go` | 中心订阅、接收时间、队列准入、消费过滤及写入调用 |
-| `internal/logging/record.go` | text／JSON 脱敏、字符限长、JSONL 编码与硬上限检查 |
-| `internal/logging/reader.go` | 反向分块查询，读取契约包含历史格式和 JSONL |
-| `internal/agent/logging.go`、`internal/session/naming_logging.go`、`internal/modelmgr/logging.go` | 来源模块的日志回调，不依赖具体协议包来解释错误 |
-| `internal/app/signals.go`、`internal/app/model_signals.go` | App 自身连接管理与模型通知接线，不转发日志 |
-| `internal/session/naming_signals.go`、`internal/modelmgr/signals.go` | 来源实例事件契约，连接生命周期由所属服务负责 |
-| `internal/agent/platform_signals.go`、`internal/cron/platform_signals.go` | 平台连接消费者的订阅、按平台队列和关闭 |
+文件职责按[代码地图](code-map.md#信号与订阅)定位；实施约束与未完成项见[任务清单](tasks.md#信号与日志系统整改)。
 
 ### 已确认的位置与实施接口
 
@@ -357,16 +467,6 @@ Session 命名保留 Scheduled 信号，以 `NamingScheduledEvent` 表达调度�
 | `formatRecord(ctx context.Context, record events.LogRecord, at time.Time) ([]byte, error)` | 最终格式化函数，接收中心记录的时间 |
 | `defaultContentLimit` | `internal/logging/record.go`，text 默认字符上限 256 |
 | `NamingScheduledEvent`、`NamingCompletedEvent` | 沿用 `internal/session/types.go` 与 `internal/session/naming_signals.go` 的位置；Scheduled 表达调度，Completed 统一表达命名流程结束，由来源填写整体结果 |
-
-九字段名称、正文格式和身份表示已经确认，不因实现便利改回含糊字段或增加兜底入口。沿用现有包及文件，不新增包或拆文件；底层字段注释写清职责、零值及处理规则。
-
-后续来源迁移前仍必须向用户列出并确认：
-
-1. 涉及模型调用、工具调用、命名兜底、回复发送与保存等来源事件的完整字段和类型，逐项明确各操作事实与错误的对应关系、存在性、未执行与部分完成的表示及整体结果的业务含义。来源提供对应的日志正文示例；事件字段不要求与正文逐项对应，不能只给出几个错误字段示例，也不能照搬旧实现确定新契约。
-2. 受影响日志辅助函数、发布方法及新增或调整的变量名；任何新增、拆分、移动文件都要先给候选位置并讨论。
-3. Reader 查询返回接口：如何同时返回有效记录、损坏行数量及原始行信息，以及命令如何取得并展示这些信息。先明确完整类型和字段，不在实现时自行添加生产名称。
-
-确认结果写回具体契约后，再进入相应代码实施；不能把待确认项理解为实现者可自行选择。实施中遇到未约定的新名称时逐个向用户确认，包括内部变量；测试代码的名称和实现可自行决定。
 
 ## 设计参考
 

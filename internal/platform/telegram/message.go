@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -173,14 +174,39 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized
 		CreatedAt:                createdAt,
 	}
 	if err := a.chatHistory.Append(ctx, chatMessage); err != nil {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    failureLogLevel(err),
-			Name:     "record_telegram_chat_message_failed",
-			Module:   "telegram",
-			Summary:  "record telegram chat message failed",
-			Fields:   []slog.Attr{slog.Any("error", err), slog.Any("message_id", msg.MessageID)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "record_telegram_chat_message_failed",
+				Module:       "telegram",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("record telegram chat message failed\nerror=%v\nmessage_id=%v", err, msg.MessageID),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if errors.Is(err, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 	}
 }
 

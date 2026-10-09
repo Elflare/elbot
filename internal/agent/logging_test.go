@@ -3,156 +3,243 @@ package agent
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
+	"net/http"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"elbot/internal/agent/dialogue"
 	agentevents "elbot/internal/agent/events"
+	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/logging"
+	"elbot/internal/modelmgr"
 	"elbot/internal/signal"
-	"elbot/internal/storage"
-	"elbot/internal/toolrun"
 )
 
-type testDiagnosticError struct{}
-
-func (testDiagnosticError) Error() string { return "upstream failed" }
-func (testDiagnosticError) LogDiagnostic() globalevents.LogDiagnostic {
-	return globalevents.LogDiagnostic{Kind: "error", Detail: `{"description":"gateway failure"}`}
+type cancelLoggingLLM struct {
+	fakeLLM
+	cancel context.CancelFunc
 }
 
-func TestAgentLogProjectionPreservesFactsAndDiagnostic(t *testing.T) {
-	records := []globalevents.LogRecord{}
-	connection, _ := globalevents.LogSubmitted.Connect(func(_ context.Context, r globalevents.LogRecord) error { records = append(records, r); return nil }, signal.ConnectOptions{})
-	defer connection.Disconnect()
-	a := &Agent{signals: agentevents.NewSignals()}
-	if err := a.connectLogSignals(); err != nil {
+func (c *cancelLoggingLLM) Stream(context.Context, chatcompletions.Request) (<-chan chatcompletions.Chunk, error) {
+	ch := make(chan chatcompletions.Chunk, 1)
+	ch <- chatcompletions.Chunk{DeltaContent: "partial-before-cancel"}
+	c.cancel()
+	close(ch)
+	return ch, nil
+}
+
+func TestChatSilentCancellationPreservesPartialOutputLog(t *testing.T) {
+	client := &cancelLoggingLLM{}
+	a := newTestAgent(t, &fakePlatform{}, client, "model", config.ProviderConfig{}, newTestStore(t))
+	ctx, row, err := a.execution.resolveInput(context.Background(), "hello")
+	if err != nil {
 		t.Fatal(err)
 	}
-	defer a.disconnectLogSignals()
-	ctx, cancel := context.WithCancel(contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "wrong", RequestID: "wrong", RunID: "wrong", Attempt: "wrong", RootRequestID: "wrong"}))
-	cancel()
-	meta := agentevents.EventMeta{At: time.Unix(123, 0), SessionID: "s"}
-	_ = a.signals.ModelCallCompleted.Emit(ctx, agentevents.ModelCallCompletedEvent{EventMeta: meta, Provider: "p", Model: "m", OutputReady: true, Text: "rewritten", SourceText: "source", Usage: &llm.Usage{TotalTokens: 42}})
-	_ = a.signals.ModelCallCompleted.Emit(ctx, agentevents.ModelCallCompletedEvent{EventMeta: meta, ProviderError: true, Err: fmt.Errorf("wrapped: %w", testDiagnosticError{})})
-	_ = a.signals.ToolCallCompleted.Emit(ctx, agentevents.ToolCallCompletedEvent{EventMeta: meta, Record: storage.ToolCallRecord{Success: true, ToolName: "tool"}, RecordErr: errors.New("save failed")})
-	if len(records) != 6 {
-		t.Fatalf("records: %+v", records)
-	}
-	for _, r := range records {
-		if !r.At.Equal(meta.At) {
-			t.Fatal("event time changed")
-		}
-		for _, field := range r.Fields {
-			if field.Value.String() == "wrong" {
-				t.Fatal("identity filled from consumer context")
-			}
-		}
-	}
-	if records[0].Name != "assistant_message" || records[0].Detail == "" || records[1].Name != "llm_usage" || records[2].Name != "llm_error" || records[2].Detail != (testDiagnosticError{}).LogDiagnostic().Detail || records[2].Level != slog.LevelError {
-		t.Fatalf("model facts: %+v", records[:3])
-	}
-	if records[3].Level != slog.LevelError || records[4].Name != "tool_call" || records[5].Level != slog.LevelInfo {
-		t.Fatalf("persistence error changed tool success: %+v", records[3:])
-	}
-	_ = a.signals.ToolCallCompleted.Emit(ctx, agentevents.ToolCallCompletedEvent{EventMeta: meta, Record: storage.ToolCallRecord{ToolName: "tool", Error: "execution failed"}})
-	if len(records) != 8 || records[6].Level != slog.LevelError || records[7].Level != slog.LevelError {
-		t.Fatalf("tool failure severity: %+v", records[6:])
-	}
-	a.disconnectLogSignals()
-	_ = a.signals.UserInputReceived.Emit(ctx, agentevents.UserInputReceivedEvent{Text: "after close"})
-	if len(records) != 8 {
-		t.Fatal("projection retained after close")
-	}
-}
-
-func TestPersistenceCancellationAndTurnTimeoutSeverity(t *testing.T) {
+	ctx, client.cancel = context.WithCancel(ctx)
+	defer client.cancel()
 	var records []globalevents.LogRecord
-	connection, err := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
-		records = append(records, record)
+	connection, err := globalevents.LogSubmitted.Connect(func(_ context.Context, r globalevents.LogRecord) error {
+		if r.EventName == "llm_usage" || r.EventName == "llm_error" || r.EventName == "assistant_message" {
+			records = append(records, r)
+		}
 		return nil
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer connection.Disconnect()
-	logs := agentLogProjection{}
-	_ = logs.persistenceAuditLog(context.Background(), agentevents.PersistenceFailedEvent{Err: fmt.Errorf("wrapped: %w", context.Canceled)})
-	_ = logs.persistenceAuditLog(context.Background(), agentevents.PersistenceFailedEvent{Err: errors.New("disk failed")})
-	_ = logs.timeoutAuditLog(context.Background(), agentevents.TurnTimedOutEvent{Err: context.DeadlineExceeded})
-	if len(records) != 3 || records[0].Level != slog.LevelInfo || records[1].Level != slog.LevelError || records[2].Level != slog.LevelError {
-		t.Fatalf("records: %+v", records)
+	out := foregroundTurnOutput{sender: a.output, status: a.status}
+	result, err := testChatRoute(a).Caller.Call(ctx, row, modelmgr.SelectionForTurn(ctx, a.execution.models, row), nil, nil, nil, nil, out)
+	if err != nil || result.Text != "partial-before-cancel" {
+		t.Fatalf("result = %+v, error = %v", result, err)
+	}
+	if len(records) != 3 || records[0].EventName != "llm_usage" {
+		t.Fatalf("records = %#v", records)
+	}
+	for _, r := range records {
+		if r.ResultStatus != globalevents.ResultCanceled || r.Level != slog.LevelInfo || r.Identity.SessionID == nil || *r.Identity.SessionID != row.ID {
+			t.Fatalf("record = %#v", r)
+		}
+	}
+	if !strings.Contains(records[2].Content, "partial-before-cancel") {
+		t.Fatal("partial output missing from log")
 	}
 }
 
-func TestToolOutcomeSeverityAndStableNames(t *testing.T) {
-	center, err := logging.NewManager("info", filepath.Join(t.TempDir(), "db"), 30)
+func TestReplyLogPreservesCanceledSendAndIndependentSaveFailure(t *testing.T) {
+	f := newReplyTestFixture(t, false)
+	f.platform.sendErr = context.Canceled
+	f.repo.appendErr = errors.New("independent save failure")
+	var records []globalevents.LogRecord
+	connection, err := globalevents.LogSubmitted.Connect(func(_ context.Context, r globalevents.LogRecord) error {
+		if r.EventName == "reply_committed" {
+			records = append(records, r)
+		}
+		return nil
+	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = center.Close(context.Background()) })
+	defer connection.Disconnect()
+	result, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
+	if !errors.Is(err, f.repo.appendErr) || !errors.Is(result.SendErr, context.Canceled) || len(result.Receipt.SentMessages) != 1 {
+		t.Fatalf("result = %+v, error = %v", result, err)
+	}
+	if len(records) != 1 || records[0].ResultStatus != globalevents.ResultFailed || records[0].Level != slog.LevelError {
+		t.Fatalf("records = %#v", records)
+	}
+	for _, fact := range []string{"send_error=context canceled", "persistence_error=independent save failure", "platform_message_id=sent"} {
+		if !strings.Contains(records[0].Content, fact) {
+			t.Errorf("missing %q: %s", fact, records[0].Content)
+		}
+	}
+}
+
+func TestResponsesSuccessfulCallWithSaveFailureKeepsSourceFacts(t *testing.T) {
+	var fail atomic.Bool
+	fail.Store(true)
+	f := newNativeFixture(t, func(_ int, _ nativeTestRequest, w http.ResponseWriter) {
+		emitNative(w, "response", "completed", nativeText("upstream-success"))
+	}, func(opts *testAgentOptions) {
+		opts.Store = nativeTerminalFailureStore{Store: opts.Store, fail: &fail}
+	})
+	var event agentevents.ModelCallCompletedEvent
+	connection, err := f.agent.Signals().ModelCallCompleted.Connect(func(_ context.Context, e agentevents.ModelCallCompletedEvent) error { event = e; return nil }, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Disconnect()
+	var records []globalevents.LogRecord
+	logs, err := globalevents.LogSubmitted.Connect(func(_ context.Context, r globalevents.LogRecord) error {
+		if r.EventName == "llm_usage" {
+			records = append(records, r)
+		}
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer logs.Disconnect()
+	if err := f.agent.HandleMessage(t.Context(), "input"); err == nil || !strings.Contains(err.Error(), "terminal audit storage failed") {
+		t.Fatalf("error = %v", err)
+	}
+	if event.ProviderError || !event.OutputReady || event.Text != "upstream-success" {
+		t.Fatalf("business event = %+v", event)
+	}
+	if len(records) != 1 || records[0].ResultStatus != globalevents.ResultFailed || !strings.Contains(records[0].Content, "persistence_error=terminal audit storage failed") {
+		t.Fatalf("logs = %#v", records)
+	}
+}
+
+func TestAgentLogProjectionPreservesSourceIdentity(t *testing.T) {
+	var records []globalevents.LogRecord
+	connection, _ := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+		records = append(records, record)
+		return nil
+	}, signal.ConnectOptions{})
+	defer connection.Disconnect()
 	a := &Agent{signals: agentevents.NewSignals()}
 	if err := a.connectLogSignals(); err != nil {
 		t.Fatal(err)
 	}
 	defer a.disconnectLogSignals()
-	deps := toolRunDeps{completed: a.signals.ToolCallCompleted, identity: &identityResolver{}}
-	for _, tc := range []struct {
-		name string
-		err  error
-	}{
-		{"success", nil}, {"failure", errors.New("broken")},
-		{"canceled", fmt.Errorf("wrapped: %w", context.Canceled)},
-		{"timeout", context.DeadlineExceeded}, {"denied", toolrun.PolicyDeniedError("arbitrary reason")},
-	} {
-		deps.RecordToolCall(context.Background(), "session", llm.ToolCallRequest{ID: tc.name, Name: tc.name}, "low", time.Now(), "result", tc.err)
+	ctx := contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "wrong", RequestID: "wrong"})
+	if err := a.signals.UserInputReceived.Emit(ctx, agentevents.UserInputReceivedEvent{EventMeta: agentevents.EventMeta{SessionID: "source"}, Text: "hello"}); err != nil {
+		t.Fatal(err)
 	}
-	for _, summary := range []string{"before wording", "after\twording：变化"} {
-		emitAgentLog(context.Background(), globalevents.LogRuntime, agentevents.EventMeta{}, slog.LevelInfo, "stable_event", summary)
+	if len(records) != 1 || records[0].Identity.SessionID == nil || *records[0].Identity.SessionID != "source" || records[0].Identity.RequestID != nil {
+		t.Fatalf("records = %#v", records)
+	}
+	a.disconnectLogSignals()
+	_ = a.signals.UserInputReceived.Emit(ctx, agentevents.UserInputReceivedEvent{Text: "after close"})
+	if len(records) != 1 {
+		t.Fatal("log subscription retained")
+	}
+}
+
+func TestModelObservationPreservesExplicitResultAndUsage(t *testing.T) {
+	var records []globalevents.LogRecord
+	connection, _ := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+		records = append(records, record)
+		return nil
+	}, signal.ConnectOptions{})
+	defer connection.Disconnect()
+	processor := &dialogue.CallProcessor{}
+	observation := processor.Begin("session", modelmgr.Selection{ModelSelection: config.ModelSelection{Provider: "provider", Model: "model"}})
+	tokens := int64(9007199254740993)
+	observation.Event.Usage = &llm.Usage{TotalTokens: &tokens}
+	observation.Event.OutputReady, observation.Event.Text = true, "partial output"
+	observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultFailed, slog.LevelError
+	observation.LogRecord.Content = "call_error=context canceled\npersistence_error=disk full"
+	observation.Publish(context.Background(), errors.Join(context.Canceled, errors.New("disk full")))
+	observation.Publish(context.Background(), nil)
+	if len(records) != 2 || records[0].ResultStatus != globalevents.ResultFailed || records[1].Content == "" {
+		t.Fatalf("records = %#v", records)
+	}
+	tokens = 0
+	if observation.Event.Usage.TotalTokens == nil || *observation.Event.Usage.TotalTokens != 9007199254740993 {
+		t.Fatal("usage pointer was not copied")
+	}
+}
+
+func TestStableLogNamesIndependentOfContent(t *testing.T) {
+	center, err := logging.NewManager("info", filepath.Join(t.TempDir(), "db"), 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = center.Close(context.Background()) })
+	for _, content := range []string{"before wording", "after wording：变化"} {
+		emitAgentLog(context.Background(), agentevents.EventMeta{}, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, EventName: "stable_event", Module: "agent", Content: content})
 	}
 	if err := center.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	entries, err := (logging.Reader{Dir: center.LogDir()}).Query(context.Background(), logging.LogQuery{Prefix: "audit", Limit: 20})
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := map[string]string{"success": "INFO", "failure": "ERROR", "canceled": "INFO", "timeout": "ERROR", "denied": "WARN"}
-	if len(entries) != len(want) {
-		t.Fatalf("got %d tool records", len(entries))
-	}
-	for _, entry := range entries {
-		if entry.Fields["event"] != "tool_call" || entry.Level != want[entry.Fields["tool"]] {
-			t.Fatalf("wrong outcome: %+v", entry)
-		}
-		if strings.Contains(entry.Raw, "!BADKEY") {
-			t.Fatal(entry.Raw)
-		}
-	}
-	entries, err = (logging.Reader{Dir: center.LogDir()}).Query(context.Background(), logging.LogQuery{Prefix: "elbot", Limit: 20, Fields: map[string]string{"event": "stable_event"}})
-	if err != nil || len(entries) != 2 || entries[0].Message == entries[1].Message {
-		t.Fatalf("event coupled to wording: %+v %v", entries, err)
+	result, err := (logging.Reader{Dir: center.LogDir()}).Query(context.Background(), logging.LogQuery{Prefix: "elbot", Fields: map[string]string{"event": "stable_event"}})
+	if err != nil || len(result.Entries) != 2 || result.Entries[0].Content == result.Entries[1].Content {
+		t.Fatalf("result = %#v, err = %v", result, err)
 	}
 }
 
-// captureLogs observes the public signal; production never receives this logger.
+func TestTurnTimeoutSeverity(t *testing.T) {
+	var records []globalevents.LogRecord
+	connection, _ := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+		records = append(records, record)
+		return nil
+	}, signal.ConnectOptions{})
+	defer connection.Disconnect()
+	_ = (agentLogProjection{}).timeoutAuditLog(context.Background(), agentevents.TurnTimedOutEvent{Err: context.DeadlineExceeded})
+	if len(records) != 1 || records[0].Level != slog.LevelError || records[0].ResultStatus != globalevents.ResultFailed {
+		t.Fatalf("records = %#v", records)
+	}
+}
+
+// captureLogs observes the public signal without injecting a production logger.
 func captureLogs(t *testing.T, logger *slog.Logger) {
 	t.Helper()
 	connection, err := globalevents.LogSubmitted.Connect(func(ctx context.Context, record globalevents.LogRecord) error {
 		if !logger.Enabled(ctx, record.Level) {
 			return nil
 		}
-		out := slog.NewRecord(record.At, record.Level, record.Summary, 0)
-		out.AddAttrs(record.Fields...)
-		out.AddAttrs(slog.String("event", record.Name), slog.String("module", record.Module))
-		if record.Detail != "" && logger.Enabled(ctx, slog.LevelDebug) {
-			out.AddAttrs(slog.String("detail", record.Detail))
+		out := slog.NewRecord(time.Now(), record.Level, record.Content, 0)
+		out.AddAttrs(slog.String("event", record.EventName), slog.String("module", record.Module), slog.String("result_status", record.ResultStatus.String()))
+		for key, value := range map[string]*string{
+			"session_id":      record.Identity.SessionID,
+			"run_id":          record.Identity.RunID,
+			"attempt":         record.Identity.Attempt,
+			"request_id":      record.Identity.RequestID,
+			"root_request_id": record.Identity.RootRequestID,
+		} {
+			if value != nil {
+				out.AddAttrs(slog.String(key, *value))
+			}
 		}
 		return logger.Handler().Handle(ctx, out)
 	}, signal.ConnectOptions{})

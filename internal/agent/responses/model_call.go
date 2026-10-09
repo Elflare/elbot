@@ -2,6 +2,8 @@ package responses
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -25,8 +27,13 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 	}
 	ctx = hook.WithReadOnlyCalls(ctx)
 	observation := s.route.Calls.Begin(s.session.ID, s.selection)
-	defer func() { observation.Publish(ctx, err) }()
-	projection, err := s.route.Calls.PrepareProjection(ctx, s.session, s.selection, s.projection, s.tools, pending, inputCommitter{state: s})
+	defer func() {
+		if err != nil && observation.LogRecord.ResultStatus == globalevents.ResultSucceeded {
+			observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultFailed, slog.LevelError
+		}
+		observation.Publish(ctx, err)
+	}()
+	projection, err := s.route.Calls.PrepareProjection(ctx, s.session, s.selection, s.projection, s.tools, pending, inputCommitter{state: s}, &observation.LogRecord)
 	if err != nil {
 		return final, err
 	}
@@ -80,20 +87,35 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 		}
 		if !state.Available {
 			if store && state.Requested {
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-					Category: globalevents.LogRuntime,
-					Level:    slog.LevelWarn,
-					Name:     "responses_switching_to_stateless_replay",
-					Module:   "agent",
-					Summary:  "Responses switching to stateless replay",
-					Fields: []slog.Attr{
-						slog.Any("provider", s.selection.Provider),
-						slog.Any("model", s.selection.Model),
-						slog.Any("session_id", s.session.ID),
-						slog.Any("response_id", s.checkpoint.ResponseID),
-						slog.Any("reason", "upstream returned store:false"),
-					},
-				})
+				{
+					record := globalevents.LogRecord{
+						Category:     globalevents.LogRuntime,
+						Level:        slog.LevelWarn,
+						EventName:    "responses_switching_to_stateless_replay",
+						Module:       "agent",
+						Type:         globalevents.ContentText,
+						Content:      fmt.Sprintf("Responses switching to stateless replay\nprovider=%v\nmodel=%v\nresponse_id=%v\nreason=%v", s.selection.Provider, s.selection.Model, s.checkpoint.ResponseID, "upstream returned store:false"),
+						ContentLimit: 4096,
+					}
+					facts, _ := contextinfo.ExecutionFromContext(ctx)
+					if facts.SessionID != "" {
+						record.Identity.SessionID = &facts.SessionID
+					}
+					if facts.RunID != "" {
+						record.Identity.RunID = &facts.RunID
+					}
+					if facts.Attempt != "" {
+						record.Identity.Attempt = &facts.Attempt
+					}
+					if facts.RequestID != "" {
+						record.Identity.RequestID = &facts.RequestID
+					}
+					if facts.RootRequestID != "" {
+						record.Identity.RootRequestID = &facts.RootRequestID
+					}
+					record.Identity.SessionID = &s.session.ID
+					_ = globalevents.EmitLog(ctx, record)
+				}
 			}
 			store = false
 		}
@@ -118,18 +140,19 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 		defer release()
 	}
 	started := time.Now()
-	result, err := s.nativeCall(ctx, client, request, consumed, stream)
+	result, err := s.nativeCall(ctx, client, request, consumed, stream, observation)
 	if err != nil && request.PreviousResponseID != "" && !result.OutputStarted && result.FactsSaved && api.PreviousResponseUnavailable(err) {
+		observation.Publish(ctx, err)
+		observation = s.route.Calls.Begin(s.session.ID, s.selection)
 		var release func()
 		request, release, err = s.replayRequest(ctx, request, items, origin)
 		if err != nil {
 			return final, err
 		}
 		defer release()
-		result, err = s.nativeCall(ctx, client, request, consumed, stream)
+		result, err = s.nativeCall(ctx, client, request, consumed, stream, observation)
 	}
 	if err != nil {
-		observation.Event.ProviderError = true
 		if ctx.Err() == nil {
 			s.route.Calls.NotifyError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: s.session.ID}, LLM: hook.LLMPayload{Provider: s.selection.Provider, Model: s.selection.Model}}, err)
 		}
@@ -159,9 +182,14 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 	observation.Event.ElapsedMS = elapsed
 	final, err = s.route.Calls.CompleteCall(ctx, s.session, s.selection, text, result.Response.TokenUsage(), calls, elapsed)
 	if err != nil {
+		observation.LogRecord.Content += fmt.Sprintf("\nresponse_hook_error=%v", err)
+		if errors.Is(err, context.Canceled) {
+			observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultCanceled, slog.LevelInfo
+		}
 		return final, err
 	}
 	observation.Event.OutputReady = true
+	observation.LogRecord.ResultStatus, observation.LogRecord.Level, observation.LogRecord.EventName = globalevents.ResultSucceeded, slog.LevelInfo, "llm_usage"
 	observation.Event.Text, observation.Event.SourceText, observation.Event.ToolCallCount, observation.Event.Usage = final.Text, text, len(calls), final.Usage
 	s.exchange, s.response, s.consumed, s.calls = result.Exchange, result.Response, consumed, calls
 	return final, nil

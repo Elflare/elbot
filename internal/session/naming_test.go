@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"elbot/internal/events"
 	"elbot/internal/storage"
 	"encoding/json"
 	"fmt"
@@ -152,7 +153,7 @@ func TestServiceNamingFailureNotifiesAndKeepsFallbackTitle(t *testing.T) {
 	store := newTestStore(t)
 
 	generator := &fakeTitleGenerator{errs: []error{fmt.Errorf("boom")}, calls: make(chan []storage.Message, 1)}
-	notifier := &fakeNamingNotifier{failures: make(chan NamingFailedEvent, 1)}
+	notifier := &fakeNamingNotifier{failures: make(chan NamingCompletedEvent, 1)}
 	svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, generator)
 	notifier.connect(t, svc)
 	startTestNaming(t, svc)
@@ -168,7 +169,7 @@ func TestServiceNamingFailureNotifiesAndKeepsFallbackTitle(t *testing.T) {
 	_ = waitGeneratorCall(t, generator.calls)
 	select {
 	case event := <-notifier.failures:
-		if event.SessionID != session.ID || event.Reason != "generate title" {
+		if event.Identity.SessionID == nil || *event.Identity.SessionID != session.ID || event.GenerationResultStatus != events.ResultFailed || event.GenerationError == nil {
 			t.Fatalf("event = %#v", event)
 		}
 	case <-time.After(time.Second):
@@ -192,7 +193,7 @@ func TestServiceNamingFailureCanRetryAndSuccessStopsRepeats(t *testing.T) {
 		errs:   []error{fmt.Errorf("first failure"), nil},
 		calls:  make(chan []storage.Message, 3),
 	}
-	notifier := &fakeNamingNotifier{failures: make(chan NamingFailedEvent, 1)}
+	notifier := &fakeNamingNotifier{failures: make(chan NamingCompletedEvent, 1)}
 	svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, generator)
 	notifier.connect(t, svc)
 	startTestNaming(t, svc)
@@ -260,7 +261,7 @@ func TestServiceNamingPlaceholderFallbacksImmediately(t *testing.T) {
 		titles: []string{"New session", "should not be used"},
 		calls:  make(chan []storage.Message, 2),
 	}
-	notifier := &fakeNamingNotifier{failures: make(chan NamingFailedEvent, 1)}
+	notifier := &fakeNamingNotifier{failures: make(chan NamingCompletedEvent, 1)}
 	svc := NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, generator)
 	notifier.connect(t, svc)
 	startTestNaming(t, svc)
@@ -276,7 +277,7 @@ func TestServiceNamingPlaceholderFallbacksImmediately(t *testing.T) {
 	_ = waitGeneratorCall(t, generator.calls)
 	select {
 	case event := <-notifier.failures:
-		if event.Reason != "invalid title" || event.GeneratedTitleNormalized != "New session" || event.GeneratedTitleRaw != "New session" {
+		if event.TitleValid == nil || *event.TitleValid || event.GeneratedTitleNormalized != "New session" || event.GeneratedTitleRaw != "New session" || event.FallbackResultStatus != events.ResultSucceeded || event.ResultStatus != events.ResultSucceeded {
 			t.Fatalf("failure event = %#v", event)
 		}
 	case <-time.After(time.Second):

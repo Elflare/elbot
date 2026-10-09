@@ -93,8 +93,9 @@ func (d *runnerTestDeps) SendOutputs(ctx context.Context, outputs []delivery.Out
 	return nil
 }
 
-func (d *runnerTestDeps) RecordToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk string, startedAt time.Time, result string, callErr error) {
+func (d *runnerTestDeps) RecordToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk string, startedAt time.Time, result string, callErr error) error {
 	d.recorded = append(d.recorded, runnerTestRecord{tool: call.Name, err: callErr})
+	return nil
 }
 
 func (d *runnerTestDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reason string) {
@@ -404,7 +405,7 @@ func TestRunPreservesPolicyDenialFact(t *testing.T) {
 			if result.Err != nil || len(deps.recorded) != 1 || deps.completed != 0 {
 				t.Fatalf("result=%+v deps=%+v", result, deps)
 			}
-			var denied PolicyDeniedError
+			var denied tool.PolicyDeniedError
 			if !errors.As(deps.recorded[0].err, &denied) {
 				t.Fatalf("missing denial fact: %v", deps.recorded[0].err)
 			}
@@ -431,7 +432,7 @@ func TestRunKeepsNonEditFileAssessRiskBehavior(t *testing.T) {
 	if len(result.Messages) != 1 {
 		t.Fatalf("messages = %d", len(result.Messages))
 	}
-	if got := llm.SegmentsContentText(result.Messages[0].Segments); !strings.Contains(got, "assess risk: risk parser failed") {
+	if got := llm.SegmentsContentText(result.Messages[0].Segments); !strings.Contains(got, "risk parser failed") {
 		t.Fatalf("tool result = %q", got)
 	}
 }

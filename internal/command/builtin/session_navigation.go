@@ -70,14 +70,29 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*comman
 	if err != nil {
 		return nil, err
 	}
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogAudit,
-		Level:    slog.LevelInfo,
-		Name:     "session_resume",
-		Module:   "command",
-		Summary:  "session_resume",
-		Fields:   []slog.Attr{slog.Any("session_id", session.ID), slog.Any("title", session.Title)},
-	})
+	record := globalevents.LogRecord{
+		Category:     globalevents.LogAudit,
+		Level:        slog.LevelInfo,
+		EventName:    "session_resume",
+		Module:       "command",
+		Content:      "session resumed: title=" + session.Title,
+		Identity:     globalevents.LogIdentity{SessionID: &session.ID},
+		ResultStatus: globalevents.ResultSucceeded,
+	}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.RunID != "" {
+		record.Identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		record.Identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		record.Identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		record.Identity.RootRequestID = &facts.RootRequestID
+	}
+	_ = globalevents.EmitLog(ctx, record)
 	return &command.Result{Content: formatResumeResult(ctx, deps, session)}, nil
 }
 
@@ -178,12 +193,13 @@ func NewFork(deps Deps) command.Handler {
 			return nil, err
 		}
 		_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
-			Category: globalevents.LogAudit,
-			Level:    slog.LevelInfo,
-			Name:     "session_fork",
-			Module:   "command",
-			Summary:  "session_fork",
-			Fields:   []slog.Attr{slog.Any("session_id", session.ID), slog.Any("parent_session_id", session.ParentSessionID), slog.Any("from_message_id", session.ForkFromMessageID)},
+			Category:     globalevents.LogAudit,
+			Level:        slog.LevelInfo,
+			EventName:    "session_fork",
+			Module:       "command",
+			Content:      fmt.Sprintf("session forked: parent_session_id=%s from_message_id=%s", session.ParentSessionID, session.ForkFromMessageID),
+			Identity:     globalevents.LogIdentity{SessionID: &session.ID},
+			ResultStatus: globalevents.ResultSucceeded,
 		})
 		return &command.Result{Content: formatForkResult(ctx, deps, session)}, nil
 	})

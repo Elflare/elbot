@@ -102,37 +102,59 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	result, err := registered.Call(callCtx, tool.CallRequest{ID: randomID("plugin"), Name: name, Arguments: params.Arguments})
 
 	level := slog.LevelInfo
-	status := "ok"
+	status := globalevents.ResultSucceeded
 	if err != nil {
-		status = "error"
+		status = globalevents.ResultFailed
 		level = slog.LevelError
 		if errors.Is(err, context.Canceled) {
 			level = slog.LevelInfo
-			status = "canceled"
+			status = globalevents.ResultCanceled
 		}
 	}
 	invocation := params.ToolContext
 	if params.Background {
 		invocation = params.Origin
 	}
-	_ = globalevents.EmitLog(callCtx, globalevents.LogRecord{
-		Category: globalevents.LogAudit,
-		Level:    level,
-		Name:     "hook_tool_call",
-		Module:   "hook",
-		Summary:  "hook tool call",
-		Fields: []slog.Attr{
-			slog.String("source", "plugin"),
-			slog.Any("error", err),
-			slog.Any("hook", w.config.ID),
-			slog.Any("invocation", invocation),
-			slog.Any("tool", name),
-			slog.Any("status", status),
-			slog.Any("elapsed_ms", time.Since(started).Milliseconds()),
-			slog.Any("platform", actor.Platform),
-			slog.Any("user_id", actor.PlatformUserID),
-		},
-	})
+	content := map[string]any{"source": "plugin", "hook": w.config.ID, "invocation": invocation, "tool": name, "elapsed_ms": time.Since(started).Milliseconds(), "platform": actor.Platform, "user_id": actor.PlatformUserID, "actor_id": actor.ID}
+	if err != nil {
+		content["error"] = err.Error()
+	}
+	if result != nil {
+		content["result"] = llm.SegmentsContentText(result.LLMSegments())
+	}
+	content["arguments"] = string(params.Arguments)
+	for _, key := range []string{"arguments", "result", "error"} {
+		if text, ok := content[key].(string); ok && len([]rune(text)) > 2048 {
+			content[key] = string([]rune(text)[:2047]) + "…"
+		}
+	}
+	data, _ := json.Marshal(content)
+	record := globalevents.LogRecord{
+		Category:     globalevents.LogAudit,
+		Level:        level,
+		EventName:    "hook_tool_call",
+		Module:       "hook",
+		Type:         globalevents.ContentJSON,
+		Content:      string(data),
+		ResultStatus: status,
+	}
+	facts, _ := contextinfo.ExecutionFromContext(callCtx)
+	if facts.SessionID != "" {
+		record.Identity.SessionID = &facts.SessionID
+	}
+	if facts.RunID != "" {
+		record.Identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		record.Identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		record.Identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		record.Identity.RootRequestID = &facts.RootRequestID
+	}
+	_ = globalevents.EmitLog(callCtx, record)
 
 	if err != nil {
 		return nil, err

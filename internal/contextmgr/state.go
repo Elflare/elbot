@@ -19,12 +19,16 @@ type CompactState struct {
 	Provider        string `json:"provider,omitempty"`
 	Model           string `json:"model,omitempty"`
 	TriggerReason   string `json:"trigger_reason,omitempty"`
-	SourceTokens    int    `json:"source_tokens,omitempty"`
-	SummaryTokens   int    `json:"summary_tokens,omitempty"`
-	TotalTokens     int    `json:"total_tokens,omitempty"`
-	CacheHitTokens  int    `json:"cache_hit_tokens,omitempty"`
-	Generation      int    `json:"generation,omitempty"`
-	BaseTitle       string `json:"base_title,omitempty"`
+	// SourceTokens is the compactor's reported input count; nil means unknown.
+	SourceTokens *int64 `json:"source_tokens,omitempty"`
+	// SummaryTokens is the reported output count; a non-nil zero is explicit zero.
+	SummaryTokens *int64 `json:"summary_tokens,omitempty"`
+	// TotalTokens is the reported total; compactors do not infer missing totals.
+	TotalTokens *int64 `json:"total_tokens,omitempty"`
+	// CacheHitTokens is the reported cached count; nil remains unknown across saves.
+	CacheHitTokens *int64 `json:"cache_hit_tokens,omitempty"`
+	Generation     int    `json:"generation,omitempty"`
+	BaseTitle      string `json:"base_title,omitempty"`
 }
 
 type State struct {

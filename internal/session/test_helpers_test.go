@@ -92,15 +92,16 @@ func (g *fakeTitleGenerator) GenerateTitle(ctx context.Context, messages []stora
 }
 
 type fakeNamingNotifier struct {
-	failures chan NamingFailedEvent
+	failures chan NamingCompletedEvent
 }
 
 func (n *fakeNamingNotifier) connect(t *testing.T, svc *Service) {
 	t.Helper()
-	c, err := svc.NamingSignals().Failed.Connect(func(ctx context.Context, event NamingFailedEvent) error {
+	c, err := svc.NamingSignals().Completed.Connect(func(ctx context.Context, event NamingCompletedEvent) error {
 		select {
 		case n.failures <- event:
-		case <-ctx.Done():
+		default:
+			t.Error("unexpected extra naming completion")
 		}
 		return nil
 	}, signal.ConnectOptions{})

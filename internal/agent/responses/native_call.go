@@ -6,9 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 
+	"elbot/internal/agent/dialogue"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	api "elbot/internal/llm/responses"
 	"elbot/internal/storage"
 )
@@ -24,8 +27,11 @@ type nativeCallResult struct {
 
 // Each actual HTTP attempt gets its own immutable request and terminal facts.
 // Local hooks/inputs are prepared by the caller once, outside recovery retries.
-func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request api.Request, consumed []string, stream delivery.MessageStream) (result nativeCallResult, err error) {
+func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request api.Request, consumed []string, stream delivery.MessageStream, observation *dialogue.CallObservation) (result nativeCallResult, err error) {
 	if err := ctx.Err(); err != nil {
+		if errors.Is(err, context.Canceled) {
+			observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultCanceled, slog.LevelInfo
+		}
 		return result, err
 	}
 	if err := s.route.View.CheckSelection(s.session, s.selection); err != nil {
@@ -64,8 +70,22 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 			raw = string(result.Response.Raw)
 		}
 		result.Items = outputItems(result.Response, completed)
+		observation.Event.Text, observation.Event.SourceText = outputText(result.Items), outputText(result.Items)
+		observation.Event.OutputReady = len(result.Items) > 0
+		if result.Response != nil {
+			observation.Event.Usage = result.Response.TokenUsage()
+		}
+		if err != nil {
+			observation.LogRecord.Content += fmt.Sprintf("\ncall_error=%v", err)
+			var failure *api.APIError
+			if errors.As(err, &failure) {
+				observation.LogRecord.Content += "\nupstream_detail=" + failure.Detail
+			}
+		}
 		encoded, encodeErr := json.Marshal(result.Items)
 		if encodeErr != nil {
+			observation.LogRecord.Content += fmt.Sprintf("\npersistence_error=%v", encodeErr)
+			observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultFailed, slog.LevelError
 			err = errors.Join(err, encodeErr)
 			return
 		}
@@ -74,6 +94,8 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 			failure = err.Error()
 		}
 		if saveErr := s.route.Repository.FinishExchange(context.WithoutCancel(s.ctx), exchange.ID, status, raw, string(encoded), failure); saveErr != nil {
+			observation.LogRecord.Content += fmt.Sprintf("\npersistence_error=%v", saveErr)
+			observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultFailed, slog.LevelError
 			err = errors.Join(err, fmt.Errorf("save native response: %w", saveErr))
 		} else {
 			result.FactsSaved = true
@@ -81,11 +103,16 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 	}()
 	callCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	observation.LogRecord.EventName = "llm_usage"
 	events, err := client.StreamPrepared(callCtx, prepared)
 	if err != nil {
+		observation.Event.ProviderError = true
+		if errors.Is(err, context.Canceled) {
+			observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultCanceled, slog.LevelInfo
+		}
 		if ctx.Err() != nil {
 			status = "canceled"
-			return result, ctx.Err()
+			return result, errors.Join(err, ctx.Err())
 		}
 		return result, err
 	}
@@ -109,12 +136,16 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 			completed[event.OutputIndex] = *event.Item
 		}
 		if event.Error != nil {
+			observation.Event.ProviderError = true
+			if errors.Is(event.Error, context.Canceled) {
+				observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultCanceled, slog.LevelInfo
+			}
 			if event.Type != "" {
 				status = event.Type
 			}
 			if ctx.Err() != nil {
 				status = "canceled"
-				return result, ctx.Err()
+				return result, errors.Join(event.Error, ctx.Err())
 			}
 			return result, event.Error
 		}
@@ -122,6 +153,10 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		case "response.output_text.delta", "response.refusal.delta":
 			if stream != nil && event.Delta != "" {
 				if err := stream.Append(ctx, event.Delta); err != nil {
+					observation.LogRecord.Content += fmt.Sprintf("\nstream_error=%v", err)
+					if errors.Is(err, context.Canceled) {
+						observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultCanceled, slog.LevelInfo
+					}
 					return result, err
 				}
 			}
@@ -138,11 +173,15 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		}
 	}
 	if err := ctx.Err(); err != nil {
+		if errors.Is(err, context.Canceled) {
+			observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultCanceled, slog.LevelInfo
+		}
 		status = "canceled"
 		return result, err
 	}
 	if status != "completed" || result.Response == nil || result.Response.Status != "completed" || result.Response.ID == "" {
 		return result, fmt.Errorf("responses stream: %w", io.ErrUnexpectedEOF)
 	}
+	observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultSucceeded, slog.LevelInfo
 	return result, nil
 }

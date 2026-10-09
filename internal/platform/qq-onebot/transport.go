@@ -2,7 +2,9 @@ package qqonebot
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -277,7 +279,54 @@ func (t *Transport) call(ctx context.Context, action string, params map[string]a
 	var encodedAt, acquiredAt, writtenAt time.Time
 	frameBytes := 0
 	defer func() {
-		t.logCall(ctx, action, frameBytes, startedAt, encodedAt, acquiredAt, writtenAt, callErr)
+		finishedAt := time.Now()
+		elapsed := finishedAt.Sub(startedAt)
+		if callErr == nil && elapsed < 10*time.Second {
+			return
+		}
+		waitWriterEnd := acquiredAt
+		if waitWriterEnd.IsZero() && !encodedAt.IsZero() {
+			waitWriterEnd = finishedAt
+		}
+		writeEnd := writtenAt
+		if writeEnd.IsZero() && !acquiredAt.IsZero() {
+			writeEnd = finishedAt
+		}
+
+		record := globalevents.LogRecord{
+			Category: globalevents.LogRuntime, Level: slog.LevelDebug,
+			EventName: "onebot_action_slow", Module: "qq-onebot", Type: globalevents.ContentText,
+			Content:      fmt.Sprintf("onebot action\naction=%s\nframe_bytes=%d\nencode_ms=%d\nwait_writer_ms=%d\nwrite_ms=%d\nresponse_ms=%d\nelapsed_ms=%d", action, frameBytes, elapsedMillisBetween(startedAt, encodedAt), elapsedMillisBetween(encodedAt, waitWriterEnd), elapsedMillisBetween(acquiredAt, writeEnd), elapsedMillisBetween(writtenAt, finishedAt), elapsed.Milliseconds()),
+			ContentLimit: 4096, ResultStatus: globalevents.ResultSucceeded,
+		}
+		if callErr != nil {
+			record.EventName = "onebot_action_failed"
+			record.Level = slog.LevelWarn
+			record.ResultStatus = globalevents.ResultFailed
+			record.Content += fmt.Sprintf("\nerror=%v", callErr)
+			if errors.Is(callErr, context.Canceled) {
+				record.Level = slog.LevelInfo
+				record.ResultStatus = globalevents.ResultCanceled
+			}
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+
 	}()
 	if err := ctx.Err(); err != nil {
 		return response{}, err
@@ -361,51 +410,6 @@ func (t *Transport) acquireWrite(ctx context.Context) (func(), error) {
 	case <-t.writeGate:
 		return func() { t.writeGate <- struct{}{} }, nil
 	}
-}
-
-func (t *Transport) logCall(ctx context.Context, action string, frameBytes int, startedAt, encodedAt, acquiredAt, writtenAt time.Time, err error) {
-	finishedAt := time.Now()
-	elapsed := finishedAt.Sub(startedAt)
-	if err == nil && elapsed < 10*time.Second {
-		return
-	}
-	waitWriterEnd := acquiredAt
-	if waitWriterEnd.IsZero() && !encodedAt.IsZero() {
-		waitWriterEnd = finishedAt
-	}
-	writeEnd := writtenAt
-	if writeEnd.IsZero() && !acquiredAt.IsZero() {
-		writeEnd = finishedAt
-	}
-	attrs := []any{
-		"action", action,
-		"frame_bytes", frameBytes,
-		"encode_ms", elapsedMillisBetween(startedAt, encodedAt),
-		"wait_writer_ms", elapsedMillisBetween(encodedAt, waitWriterEnd),
-		"write_ms", elapsedMillisBetween(acquiredAt, writeEnd),
-		"response_ms", elapsedMillisBetween(writtenAt, finishedAt),
-		"elapsed_ms", elapsed.Milliseconds(),
-	}
-	if err != nil {
-		attrs = append(attrs, "error", err.Error())
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
-			Name:     "onebot_action_failed",
-			Module:   "qq-onebot",
-			Summary:  "onebot action failed",
-			Fields:   slog.Group("", attrs...).Value.Group(),
-		})
-		return
-	}
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogRuntime,
-		Level:    slog.LevelDebug,
-		Name:     "onebot_action_slow",
-		Module:   "qq-onebot",
-		Summary:  "onebot action slow",
-		Fields:   slog.Group("", attrs...).Value.Group(),
-	})
 }
 
 func elapsedMillisBetween(start, end time.Time) int64 {

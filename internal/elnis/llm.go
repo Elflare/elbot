@@ -2,7 +2,9 @@ package elnis
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -14,42 +16,136 @@ import (
 )
 
 func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) error {
-	attrs := s.eventAttrs(event)
+
 	if s.runner == nil {
 		err := fmt.Errorf("elnis background runner is not configured")
-		_ = s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogElnis,
-			Level:    failureLogLevel(err),
-			Name:     "elnis_llm_failed",
-			Module:   "elnis",
-			Summary:  "elnis llm failed",
-			Fields:   slog.Group("", append(attrs, "event_id", eventID, "error", err.Error())...).Value.Group(),
-		})
+		persistenceErr := s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
+		{
+			content := map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID, "error": fmt.Sprintf("%.2048s", err.Error())}
+			if persistenceErr != nil {
+				content["persistence_error"] = fmt.Sprintf("%.2048s", persistenceErr.Error())
+			}
+			data, _ := json.Marshal(content)
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogElnis,
+				Level:        slog.LevelError,
+				EventName:    "elnis_llm_failed",
+				Module:       "elnis",
+				Type:         globalevents.ContentJSON,
+				Content:      string(data),
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if errors.Is(err, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			if persistenceErr != nil {
+				record.ResultStatus = globalevents.ResultFailed
+				record.Level = slog.LevelError
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 		return err
 	}
 	if err := s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusRunning, "", ""); err != nil {
 		return err
 	}
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogAudit,
-		Level:    slog.LevelInfo,
-		Name:     "elnis.llm_started",
-		Module:   "elnis",
-		Summary:  "elnis.llm_started",
-		Fields:   slog.Group("", append(attrs, "event_id", eventID)...).Value.Group(),
-	})
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogElnis,
-		Level:    slog.LevelInfo,
-		Name:     "elnis_llm_started",
-		Module:   "elnis",
-		Summary:  "elnis llm started",
-		Fields:   slog.Group("", append(attrs, "event_id", eventID)...).Value.Group(),
-	})
+	{
+		content, _ := json.Marshal(map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID})
+		record := globalevents.LogRecord{
+			Category:  globalevents.LogAudit,
+			Level:     slog.LevelInfo,
+			EventName: "elnis.llm_started",
+			Module:    "elnis",
+			Type:      globalevents.ContentJSON,
+			Content:   string(content),
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+	}
+	{
+		content, _ := json.Marshal(map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID})
+		record := globalevents.LogRecord{
+			Category:  globalevents.LogElnis,
+			Level:     slog.LevelInfo,
+			EventName: "elnis_llm_started",
+			Module:    "elnis",
+			Type:      globalevents.ContentJSON,
+			Content:   string(content),
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+	}
 	segments, err := s.materializeSegments(ctx, event.Request.Segments, eventID)
 	if err != nil {
-		_ = s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
+		persistenceErr := s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
+		if persistenceErr != nil {
+			content, _ := json.Marshal(map[string]string{"event_id": eventID, "error": fmt.Sprintf("%.2048s", err.Error()), "persistence_error": fmt.Sprintf("%.2048s", persistenceErr.Error())})
+			record := globalevents.LogRecord{Category: globalevents.LogElnis, Level: slog.LevelError, EventName: "elnis_llm_failed", Module: "elnis", Type: globalevents.ContentJSON, Content: string(content), ResultStatus: globalevents.ResultFailed}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 		return err
 	}
 	model := s.modelForEvent(event)
@@ -88,23 +184,89 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		return s.completeTakeover(ctx, eventID, event.ResolvedTargets, result, err)
 	}
 	if err != nil {
-		_ = s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogAudit,
-			Level:    failureLogLevel(err),
-			Name:     "elnis.llm_failed",
-			Module:   "elnis",
-			Summary:  "elnis.llm_failed",
-			Fields:   slog.Group("", append(attrs, "event_id", eventID, "error", err.Error())...).Value.Group(),
-		})
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogElnis,
-			Level:    failureLogLevel(err),
-			Name:     "elnis_llm_failed",
-			Module:   "elnis",
-			Summary:  "elnis llm failed",
-			Fields:   slog.Group("", append(attrs, "event_id", eventID, "error", err.Error())...).Value.Group(),
-		})
+		persistenceErr := s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
+		{
+			content := map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID, "error": fmt.Sprintf("%.2048s", err.Error())}
+			if persistenceErr != nil {
+				content["persistence_error"] = fmt.Sprintf("%.2048s", persistenceErr.Error())
+			}
+			data, _ := json.Marshal(content)
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogAudit,
+				Level:        slog.LevelError,
+				EventName:    "elnis.llm_failed",
+				Module:       "elnis",
+				Type:         globalevents.ContentJSON,
+				Content:      string(data),
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if errors.Is(err, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			if persistenceErr != nil {
+				record.ResultStatus = globalevents.ResultFailed
+				record.Level = slog.LevelError
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
+		{
+			content := map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID, "error": fmt.Sprintf("%.2048s", err.Error())}
+			if persistenceErr != nil {
+				content["persistence_error"] = fmt.Sprintf("%.2048s", persistenceErr.Error())
+			}
+			data, _ := json.Marshal(content)
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogElnis,
+				Level:        slog.LevelError,
+				EventName:    "elnis_llm_failed",
+				Module:       "elnis",
+				Type:         globalevents.ContentJSON,
+				Content:      string(data),
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if errors.Is(err, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			if persistenceErr != nil {
+				record.ResultStatus = globalevents.ResultFailed
+				record.Level = slog.LevelError
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 		return err
 	}
 	parsed, parseErr := background.ParseJSONResult(result.Text)
@@ -116,50 +278,178 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	}
 	if parseErr != nil {
 		message := fmt.Sprintf("Elnis 事件 %s 解析格式失败，请查看后台 session。\nsession: %s\n错误：%v", event.EventKey, result.SessionID, parseErr)
-		_ = s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, message, parseErr.Error())
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogAudit,
-			Level:    failureLogLevel(parseErr),
-			Name:     "elnis.llm_failed",
-			Module:   "elnis",
-			Summary:  "elnis.llm_failed",
-			Fields:   slog.Group("", append(attrs, "event_id", eventID, "session_id", result.SessionID, "error", parseErr.Error())...).Value.Group(),
-		})
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogElnis,
-			Level:    failureLogLevel(parseErr),
-			Name:     "elnis_llm_format_failed",
-			Module:   "elnis",
-			Summary:  "elnis llm format failed",
-			Fields:   slog.Group("", append(attrs, "event_id", eventID, "session_id", result.SessionID, "error", parseErr.Error())...).Value.Group(),
-		})
+		persistenceErr := s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, message, parseErr.Error())
+		{
+			content := map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID, "error": fmt.Sprintf("%.2048s", parseErr.Error())}
+			if persistenceErr != nil {
+				content["persistence_error"] = fmt.Sprintf("%.2048s", persistenceErr.Error())
+			}
+			data, _ := json.Marshal(content)
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogAudit,
+				Level:        slog.LevelError,
+				EventName:    "elnis.llm_failed",
+				Module:       "elnis",
+				Type:         globalevents.ContentJSON,
+				Content:      string(data),
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if errors.Is(parseErr, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			record.Identity.SessionID = &result.SessionID
+			if persistenceErr != nil {
+				record.ResultStatus = globalevents.ResultFailed
+				record.Level = slog.LevelError
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
+		{
+			content := map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID, "error": fmt.Sprintf("%.2048s", parseErr.Error())}
+			if persistenceErr != nil {
+				content["persistence_error"] = fmt.Sprintf("%.2048s", persistenceErr.Error())
+			}
+			data, _ := json.Marshal(content)
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogElnis,
+				Level:        slog.LevelError,
+				EventName:    "elnis_llm_format_failed",
+				Module:       "elnis",
+				Type:         globalevents.ContentJSON,
+				Content:      string(data),
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if errors.Is(parseErr, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			record.Identity.SessionID = &result.SessionID
+			if persistenceErr != nil {
+				record.ResultStatus = globalevents.ResultFailed
+				record.Level = slog.LevelError
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 		return parseErr
 	}
 	resultJSON, _ := json.Marshal(parsed)
 	if parsed.NeedReport && (strings.TrimSpace(parsed.Report) != "" || len(parsed.ReportSegments) > 0) {
 		prepared, err := s.prepareReport(ctx, event, eventID, string(resultJSON), result.SessionID, result.MessageID, parsed)
 		if err != nil {
-			_ = s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, string(resultJSON), err.Error())
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogElnis,
-				Level:    failureLogLevel(err),
-				Name:     "elnis_llm_report_prepare_failed",
-				Module:   "elnis",
-				Summary:  "elnis llm report prepare failed",
-				Fields:   slog.Group("", append(attrs, "event_id", eventID, "session_id", result.SessionID, "error", err.Error())...).Value.Group(),
-			})
+			persistenceErr := s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, string(resultJSON), err.Error())
+			{
+				content := map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID, "error": fmt.Sprintf("%.2048s", err.Error())}
+				if persistenceErr != nil {
+					content["persistence_error"] = fmt.Sprintf("%.2048s", persistenceErr.Error())
+				}
+				data, _ := json.Marshal(content)
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogElnis,
+					Level:        slog.LevelError,
+					EventName:    "elnis_llm_report_prepare_failed",
+					Module:       "elnis",
+					Type:         globalevents.ContentJSON,
+					Content:      string(data),
+					ResultStatus: globalevents.ResultFailed,
+				}
+				if errors.Is(err, context.Canceled) {
+					record.ResultStatus = globalevents.ResultCanceled
+					record.Level = slog.LevelInfo
+				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				record.Identity.SessionID = &result.SessionID
+				if persistenceErr != nil {
+					record.ResultStatus = globalevents.ResultFailed
+					record.Level = slog.LevelError
+				}
+				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			}
 			return err
 		}
 		if prepared {
 			if err := s.deliverReport(ctx, eventID); err != nil {
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-					Category: globalevents.LogElnis,
-					Level:    slog.LevelWarn,
-					Name:     "elnis_llm_report_delivery_failed",
-					Module:   "elnis",
-					Summary:  "elnis llm report delivery failed",
-					Fields:   slog.Group("", append(attrs, "event_id", eventID, "session_id", result.SessionID, "error", err.Error())...).Value.Group(),
-				})
+				{
+					content, _ := json.Marshal(map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID, "error": fmt.Sprintf("%.2048s", err.Error())})
+					record := globalevents.LogRecord{
+						Category:     globalevents.LogElnis,
+						Level:        slog.LevelWarn,
+						EventName:    "elnis_llm_report_delivery_failed",
+						Module:       "elnis",
+						Type:         globalevents.ContentJSON,
+						Content:      string(content),
+						ResultStatus: globalevents.ResultFailed,
+					}
+					if errors.Is(err, context.Canceled) {
+						record.ResultStatus = globalevents.ResultCanceled
+						record.Level = slog.LevelInfo
+					}
+					facts, _ := contextinfo.ExecutionFromContext(ctx)
+					if facts.SessionID != "" {
+						record.Identity.SessionID = &facts.SessionID
+					}
+					if facts.RunID != "" {
+						record.Identity.RunID = &facts.RunID
+					}
+					if facts.Attempt != "" {
+						record.Identity.Attempt = &facts.Attempt
+					}
+					if facts.RequestID != "" {
+						record.Identity.RequestID = &facts.RequestID
+					}
+					if facts.RootRequestID != "" {
+						record.Identity.RootRequestID = &facts.RootRequestID
+					}
+					record.Identity.SessionID = &result.SessionID
+					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+				}
 				return err
 			}
 			return nil
@@ -167,22 +457,66 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	} else if err := s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusCompleted, result.SessionID, string(resultJSON), ""); err != nil {
 		return err
 	}
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogAudit,
-		Level:    slog.LevelInfo,
-		Name:     "elnis.llm_completed",
-		Module:   "elnis",
-		Summary:  "elnis.llm_completed",
-		Fields:   slog.Group("", append(attrs, "event_id", eventID, "session_id", result.SessionID)...).Value.Group(),
-	})
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogElnis,
-		Level:    slog.LevelInfo,
-		Name:     "elnis_llm_completed",
-		Module:   "elnis",
-		Summary:  "elnis llm completed",
-		Fields:   slog.Group("", append(attrs, "event_id", eventID, "session_id", result.SessionID)...).Value.Group(),
-	})
+	{
+		content, _ := json.Marshal(map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID})
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogAudit,
+			Level:        slog.LevelInfo,
+			EventName:    "elnis.llm_completed",
+			Module:       "elnis",
+			Type:         globalevents.ContentJSON,
+			Content:      string(content),
+			ResultStatus: globalevents.ResultSucceeded,
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		record.Identity.SessionID = &result.SessionID
+		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+	}
+	{
+		content, _ := json.Marshal(map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID})
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogElnis,
+			Level:        slog.LevelInfo,
+			EventName:    "elnis_llm_completed",
+			Module:       "elnis",
+			Type:         globalevents.ContentJSON,
+			Content:      string(content),
+			ResultStatus: globalevents.ResultSucceeded,
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		record.Identity.SessionID = &result.SessionID
+		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+	}
 	return nil
 }
 

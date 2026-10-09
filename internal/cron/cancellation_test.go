@@ -95,12 +95,8 @@ func captureLogs(t *testing.T, logger *slog.Logger) {
 		if !logger.Enabled(ctx, record.Level) {
 			return nil
 		}
-		out := slog.NewRecord(record.At, record.Level, record.Summary, 0)
-		out.AddAttrs(record.Fields...)
-		out.AddAttrs(slog.String("event", record.Name), slog.String("module", record.Module))
-		if record.Detail != "" && logger.Enabled(ctx, slog.LevelDebug) {
-			out.AddAttrs(slog.String("detail", record.Detail))
-		}
+		out := slog.NewRecord(time.Now(), record.Level, record.Content, 0)
+		out.AddAttrs(slog.String("event", record.EventName), slog.String("module", record.Module), slog.String("result_status", record.ResultStatus.String()))
 		return logger.Handler().Handle(ctx, out)
 	}, signal.ConnectOptions{})
 	if err != nil {

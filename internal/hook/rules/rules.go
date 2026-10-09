@@ -169,14 +169,19 @@ func NewModule(opts Options) (Module, error) {
 			enabled++
 		}
 	}
-	_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
-		Category: globalevents.LogRuntime,
-		Level:    slog.LevelInfo,
-		Name:     "hook_rule_config_loaded",
-		Module:   "hook",
-		Summary:  "hook rule config loaded",
-		Fields:   []slog.Attr{slog.Any("path", path), slog.Any("rules", len(module.Rules)), slog.Any("enabled", enabled)},
-	})
+	{
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogRuntime,
+			Level:        slog.LevelInfo,
+			EventName:    "hook_rule_config_loaded",
+			Module:       "hook",
+			Type:         globalevents.ContentText,
+			Content:      fmt.Sprintf("%s\npath=%v\nrules=%v\nenabled=%v", "hook rule config loaded", path, len(module.Rules), enabled),
+			ContentLimit: 4096,
+			ResultStatus: globalevents.ResultSucceeded,
+		}
+		_ = globalevents.EmitLog(context.Background(), record)
+	}
 
 	return module, nil
 }
@@ -201,21 +206,19 @@ func (m Module) RegisterHooks(registrar hook.Registrar) error {
 			name = fmt.Sprintf("rule.%d", index+1)
 		}
 
-		_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelInfo,
-			Name:     "hook_rule_registered",
-			Module:   "hook",
-			Summary:  "hook rule registered",
-			Fields: []slog.Attr{
-				slog.Any("name", name),
-				slog.Any("point", rule.On),
-				slog.Any("priority", priority),
-				slog.Any("matches", len(rule.Match)),
-				slog.Any("actions", len(rule.Actions)),
-				slog.Any("config_path", rule.source.ConfigPath),
-			},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelInfo,
+				EventName:    "hook_rule_registered",
+				Module:       "hook",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("%s\nname=%v\npoint=%v\npriority=%v\nmatches=%v\nactions=%v\nconfig_path=%v", "hook rule registered", name, rule.On, priority, len(rule.Match), len(rule.Actions), rule.source.ConfigPath),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultSucceeded,
+			}
+			_ = globalevents.EmitLog(context.Background(), record)
+		}
 
 		rule := rule
 		registrations := ruleRegistrations(rule)

@@ -2,8 +2,12 @@ package dialogue
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 
+	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"elbot/internal/llm"
 	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
@@ -43,9 +47,30 @@ func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storag
 	}
 	cached, err := CachedToolsForSession(ctx, r.State, r.Registry, session)
 	if err != nil {
+		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "tool_batch_prepare_failed", Module: "agent", Type: events.ContentText, Content: fmt.Sprintf("prepare_error=%v", err), ContentLimit: 4096, ResultStatus: events.ResultFailed}
+		record.Identity.SessionID = &session.ID
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		if errors.Is(err, context.Canceled) {
+			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
+		}
+		defer func() { _ = events.EmitLog(context.WithoutCancel(ctx), record) }()
 		messages := make([]llm.LLMMessage, 0, len(calls))
 		head := ToolCallStorageMessage(session.ID, assistantText, assistantRawText, calls)
 		if err := committer.Begin(ctx, &head); err != nil {
+			record.Content += fmt.Sprintf("\npersistence_error=%v", err)
+			record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
 			return toolrun.RunResult{Err: err}
 		}
 		for _, call := range calls {
@@ -55,6 +80,8 @@ func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storag
 		for i := range messages {
 			stored := ToolResultStorageMessage(session.ID, messages[i])
 			if err := committer.Result(ctx, i, calls[i], messages[i], &stored); err != nil {
+				record.Content += fmt.Sprintf("\npersistence_error=%v", err)
+				record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
 				return toolrun.RunResult{Err: err}
 			}
 		}

@@ -61,6 +61,22 @@ func cloneUsage(usage *llm.Usage) *llm.Usage {
 		return nil
 	}
 	copy := *usage
+	if usage.PromptTokens != nil {
+		copy.PromptTokens = new(int64)
+		*copy.PromptTokens = *usage.PromptTokens
+	}
+	if usage.CompletionTokens != nil {
+		copy.CompletionTokens = new(int64)
+		*copy.CompletionTokens = *usage.CompletionTokens
+	}
+	if usage.TotalTokens != nil {
+		copy.TotalTokens = new(int64)
+		*copy.TotalTokens = *usage.TotalTokens
+	}
+	if usage.CacheHitTokens != nil {
+		copy.CacheHitTokens = new(int64)
+		*copy.CacheHitTokens = *usage.CacheHitTokens
+	}
 	return &copy
 }
 
@@ -140,7 +156,7 @@ func (r *Service) Status(ctx context.Context, usage *llm.Usage, selection config
 	sb.WriteString(FormatTokens(usage))
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("  context window: %d\n", window))
-	if usage == nil || usage.TotalTokens <= 0 || window <= 0 {
+	if usage == nil || usage.TotalTokens == nil || *usage.TotalTokens < 0 || window <= 0 {
 		sb.WriteString("  context usage: unknown\n")
 		sb.WriteString(fmt.Sprintf("  compact threshold: %.0f%%\n", threshold*100))
 		status := "unknown"
@@ -150,7 +166,7 @@ func (r *Service) Status(ctx context.Context, usage *llm.Usage, selection config
 		sb.WriteString(fmt.Sprintf("  compact status: %s\n", status))
 		return sb.String()
 	}
-	ratio := float64(usage.TotalTokens) / float64(window)
+	ratio := float64(*usage.TotalTokens) / float64(window)
 	sb.WriteString(fmt.Sprintf("  context usage: %.1f%%\n", ratio*100))
 	sb.WriteString(fmt.Sprintf("  compact threshold: %.0f%%\n", threshold*100))
 	status := "ok"
@@ -170,7 +186,7 @@ func (r *Service) ReachedCompactThreshold(ctx context.Context, usage *llm.Usage,
 	ctxCfg := r.config
 	resolver := r.windowResolver
 	r.mu.Unlock()
-	if !ctxCfg.CompactEnabled || usage == nil || usage.TotalTokens <= 0 || resolver == nil {
+	if !ctxCfg.CompactEnabled || usage == nil || usage.TotalTokens == nil || *usage.TotalTokens < 0 || resolver == nil {
 		return false
 	}
 	window := resolver.Resolve(ctx, selection.Provider, selection.Model)

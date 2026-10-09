@@ -52,7 +52,7 @@ func TestRunnerStopsGlobalLogAdmissionBeforeWaitingForPlatform(t *testing.T) {
 		return result, err
 	})
 	runner.deps.Executor = executorFunc(func(ctx context.Context, req PlatformRunRequest) error {
-		if err := events.EmitLog(ctx, events.LogRecord{Category: events.LogAudit, Summary: "platform started"}); err != nil {
+		if err := events.EmitLog(ctx, events.LogRecord{Category: events.LogAudit, Content: "platform started"}); err != nil {
 			return err
 		}
 		req.Stop()
@@ -63,7 +63,7 @@ func TestRunnerStopsGlobalLogAdmissionBeforeWaitingForPlatform(t *testing.T) {
 		}
 		// Publish through the business entry point. The drained file below must
 		// contain only the record admitted before BeginClose.
-		if err := events.EmitLog(context.Background(), events.LogRecord{Category: events.LogAudit, Summary: "after admission closed"}); err != nil {
+		if err := events.EmitLog(context.Background(), events.LogRecord{Category: events.LogAudit, Content: "after admission closed"}); err != nil {
 			return err
 		}
 		return ctx.Err()
@@ -75,7 +75,7 @@ func TestRunnerStopsGlobalLogAdmissionBeforeWaitingForPlatform(t *testing.T) {
 		t.Fatalf("separate shutdown budgets: %v %v", foundationDeadline, runtimeDeadline)
 	}
 	entries, err := (logging.Reader{Dir: manager.LogDir()}).Query(context.Background(), logging.LogQuery{Prefix: "audit"})
-	if err != nil || len(entries) != 1 || entries[0].Message != "platform started" {
+	if err != nil || len(entries.Entries) != 1 || entries.Entries[0].Content != "platform started" {
 		t.Fatalf("entries=%v err=%v", entries, err)
 	}
 	next, err := logging.NewManager("info", filepath.Join(t.TempDir(), "db"), 30)

@@ -19,10 +19,10 @@ func TestContextRuntimeEvaluatesThresholdWithoutStickyState(t *testing.T) {
 	)
 	selection := config.ModelSelection{Provider: "p", Model: "m"}
 
-	if runtime.ReachedCompactThreshold(context.Background(), &llm.Usage{TotalTokens: 79}, selection) {
+	if runtime.ReachedCompactThreshold(context.Background(), &llm.Usage{TotalTokens: func() *int64 { n := int64(79); return &n }()}, selection) {
 		t.Fatal("usage below threshold reached threshold")
 	}
-	if !runtime.ReachedCompactThreshold(context.Background(), &llm.Usage{TotalTokens: 80}, selection) {
+	if !runtime.ReachedCompactThreshold(context.Background(), &llm.Usage{TotalTokens: func() *int64 { n := int64(80); return &n }()}, selection) {
 		t.Fatal("usage at threshold did not reach threshold")
 	}
 
@@ -31,7 +31,7 @@ func TestContextRuntimeEvaluatesThresholdWithoutStickyState(t *testing.T) {
 		config.ModelMetadataConfig{DefaultContextWindow: 100},
 		nil,
 	)
-	if runtime.ReachedCompactThreshold(context.Background(), &llm.Usage{TotalTokens: 100}, selection) {
+	if runtime.ReachedCompactThreshold(context.Background(), &llm.Usage{TotalTokens: func() *int64 { n := int64(100); return &n }()}, selection) {
 		t.Fatal("disabled compact reached threshold")
 	}
 }
@@ -44,7 +44,7 @@ func TestContextRuntimeStatus(t *testing.T) {
 		nil,
 	)
 	fallback := config.ModelSelection{Provider: "chat", Model: "main"}
-	status := runtime.Status(context.Background(), &llm.Usage{TotalTokens: 80, CacheHitTokens: 10}, fallback)
+	status := runtime.Status(context.Background(), &llm.Usage{TotalTokens: func() *int64 { n := int64(80); return &n }(), CacheHitTokens: func() *int64 { n := int64(10); return &n }()}, fallback)
 	for _, want := range []string{"tokens：80（命中：10）", "context window: 100", "context usage: 80.0%", "compact status: will compact before next request"} {
 		if !strings.Contains(status, want) {
 			t.Fatalf("status missing %q:\n%s", want, status)
@@ -55,7 +55,7 @@ func TestContextRuntimeStatus(t *testing.T) {
 		config.ModelMetadataConfig{DefaultContextWindow: 100},
 		nil,
 	)
-	status = runtime.Status(context.Background(), &llm.Usage{TotalTokens: 100}, fallback)
+	status = runtime.Status(context.Background(), &llm.Usage{TotalTokens: func() *int64 { n := int64(100); return &n }()}, fallback)
 	if !strings.Contains(status, "compact status: disabled") {
 		t.Fatalf("disabled status = %q", status)
 	}

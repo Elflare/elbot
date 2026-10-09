@@ -3,6 +3,8 @@ package qqofficial
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"regexp"
 	"strings"
@@ -42,25 +44,67 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 		if conversation == contextinfo.ConversationPrivate {
 			label = "user_openid"
 		}
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
-			Name:     p.Type,
-			Module:   "qqofficial",
-			Summary:  "qqofficial message missing sender",
-			Fields:   []slog.Attr{slog.Any("field", label), slog.Any("message_id", msg.ID)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelWarn,
+				EventName:    p.Type,
+				Module:       "qqofficial",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("qqofficial message missing sender\nfield=%v\nmessage_id=%v", label, msg.ID),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 		return
 	}
 	if targetID == "" {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
-			Name:     p.Type,
-			Module:   "qqofficial",
-			Summary:  "qqofficial message missing target",
-			Fields:   []slog.Attr{slog.Any("message_id", msg.ID)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelWarn,
+				EventName:    p.Type,
+				Module:       "qqofficial",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("qqofficial message missing target\nmessage_id=%v", msg.ID),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 		return
 	}
 
@@ -138,14 +182,39 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 	}
 	a.recordChatMessage(ctx, msg, conversation, senderID, scopeID, text, replyID, messageCtx.Reply)
 	if err := handler.HandleMessage(msgCtx, text); err != nil {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    failureLogLevel(err),
-			Name:     "handle_qqofficial_message_failed",
-			Module:   "qqofficial",
-			Summary:  "handle qqofficial message failed",
-			Fields:   []slog.Attr{slog.Any("error", err), slog.Any("message_id", msg.ID)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "handle_qqofficial_message_failed",
+				Module:       "qqofficial",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("handle qqofficial message failed\nerror=%v\nmessage_id=%v", err, msg.ID),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if errors.Is(err, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 	}
 }
 
@@ -202,14 +271,39 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 		CreatedAt:                createdAt,
 	}
 	if err := a.chatHistory.Append(ctx, history); err != nil {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    failureLogLevel(err),
-			Name:     "record_qqofficial_chat_message_failed",
-			Module:   "qqofficial",
-			Summary:  "record qqofficial chat message failed",
-			Fields:   []slog.Attr{slog.Any("error", err), slog.Any("message_id", msg.ID)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "record_qqofficial_chat_message_failed",
+				Module:       "qqofficial",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("record qqofficial chat message failed\nerror=%v\nmessage_id=%v", err, msg.ID),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if errors.Is(err, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 	}
 }
 

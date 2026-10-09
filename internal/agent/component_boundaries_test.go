@@ -144,7 +144,7 @@ func TestHookFailureIsRecordedOnceAndStillNotifies(t *testing.T) {
 	count := 0
 	for len(records) > 0 {
 		r := <-records
-		if r.Name == "hook_error" {
+		if r.EventName == "hook_error" {
 			count++
 			if r.Module != "hook" {
 				t.Fatal(r)

@@ -2,7 +2,6 @@ package hook
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
@@ -541,34 +541,41 @@ func setOutputMeta(meta map[string]any, key, value string) {
 
 func (m *DefaultManager) logHook(ctx context.Context, mode string, reg registration, before, after Event, err error) {
 	level, name, summary := slog.LevelInfo, "hook_triggered", "hook triggered"
+	resultStatus := globalevents.ResultSucceeded
 	if err != nil {
+		resultStatus = globalevents.ResultFailed
 		level, name, summary = slog.LevelError, "hook_error", "hook error"
 		if errors.Is(err, context.Canceled) {
+			resultStatus = globalevents.ResultCanceled
 			level, name, summary = slog.LevelInfo, "hook_canceled", "hook canceled"
 		}
 	}
-	detail, _ := json.Marshal(map[string]string{"before_text": eventText(before), "after_text": eventText(after), "source_text": after.LLM.SourceText})
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogRuntime,
-		Level:    level,
-		Name:     name,
-		Module:   "hook",
-		Summary:  summary,
-		Detail:   string(detail),
-		Fields: []slog.Attr{
-			slog.String("point", string(before.Point)),
-			slog.String("hook", reg.name),
-			slog.String("plugin", reg.pluginID),
-			slog.Int("priority", reg.priority),
-			slog.Int("order", reg.order),
-			slog.String("mode", mode),
-			slog.String("session_id", before.Session.ID),
-			slog.String("provider", after.LLM.Provider),
-			slog.String("model", after.LLM.Model),
-			slog.String("tool", after.Tool.Name),
-			slog.Any("error", err),
-		},
-	})
+	record := globalevents.LogRecord{
+		Category:     globalevents.LogRuntime,
+		Level:        level,
+		EventName:    name,
+		Module:       "hook",
+		ResultStatus: resultStatus,
+		ContentLimit: 4096,
+		Content:      fmt.Sprintf("%s: point=%s hook=%s plugin=%s priority=%d order=%d mode=%s provider=%s model=%s tool=%s error=%v\nbefore_text=%s\nafter_text=%s\nsource_text=%s", summary, before.Point, reg.name, reg.pluginID, reg.priority, reg.order, mode, after.LLM.Provider, after.LLM.Model, after.Tool.Name, err, eventText(before), eventText(after), after.LLM.SourceText),
+	}
+	if before.Session.ID != "" {
+		record.Identity.SessionID = &before.Session.ID
+	}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.RunID != "" {
+		record.Identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		record.Identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		record.Identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		record.Identity.RootRequestID = &facts.RootRequestID
+	}
+	_ = globalevents.EmitLog(ctx, record)
 }
 
 func eventText(event Event) string {

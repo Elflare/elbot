@@ -14,6 +14,8 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/elvena"
+	globalevents "elbot/internal/events"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/toolrun"
@@ -41,7 +43,7 @@ func TestHandleRecordCreatesEventAndRejectsDuplicate(t *testing.T) {
 	}
 }
 
-func TestEventAttrsIncludeTags(t *testing.T) {
+func TestEventLogContentIncludesTags(t *testing.T) {
 	service, cleanup := newTestService(t, nil)
 	defer cleanup()
 
@@ -50,13 +52,30 @@ func TestEventAttrsIncludeTags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepareEvent: %v", err)
 	}
-	attrs := service.eventAttrs(event)
-	for i := 0; i+1 < len(attrs); i += 2 {
-		if attrs[i] == "tags" && attrs[i+1] == `["test"]` {
-			return
+	var records []globalevents.LogRecord
+	connection, err := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+		if record.EventName == "elnis.recorded" {
+			records = append(records, record)
 		}
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Fatalf("tags missing from attrs: %#v", attrs)
+	defer connection.Disconnect()
+	if _, err := service.handlePreparedEvent(context.Background(), event); err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("records = %#v", records)
+	}
+	var content map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(records[0].Content), &content); err != nil {
+		t.Fatal(err)
+	}
+	if string(content["tags"]) != `["test"]` || records[0].ResultStatus != globalevents.ResultSucceeded {
+		t.Fatalf("record = %#v", records[0])
+	}
 }
 
 func TestHandleRejectsUnauthorizedToken(t *testing.T) {

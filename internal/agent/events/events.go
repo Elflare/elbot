@@ -151,6 +151,22 @@ func CloneUsage(usage *llm.Usage) *llm.Usage {
 		return nil
 	}
 	v := *usage
+	if usage.PromptTokens != nil {
+		v.PromptTokens = new(int64)
+		*v.PromptTokens = *usage.PromptTokens
+	}
+	if usage.CompletionTokens != nil {
+		v.CompletionTokens = new(int64)
+		*v.CompletionTokens = *usage.CompletionTokens
+	}
+	if usage.TotalTokens != nil {
+		v.TotalTokens = new(int64)
+		*v.TotalTokens = *usage.TotalTokens
+	}
+	if usage.CacheHitTokens != nil {
+		v.CacheHitTokens = new(int64)
+		*v.CacheHitTokens = *usage.CacheHitTokens
+	}
 	return &v
 }
 func CloneReceipt(receipt delivery.Receipt) delivery.Receipt {

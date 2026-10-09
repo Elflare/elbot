@@ -75,7 +75,7 @@ func TestFactoryNativeClientsServeNamingAndChatTextCompaction(t *testing.T) {
 		t.Fatalf("title=%+v error=%v", title, err)
 	}
 	compact, err := (chatroute.Compressor{ClientFor: models.ClientForProvider}).Compact(context.Background(), chatroute.CompactRequest{Provider: "native", Model: "m", Messages: []chatroute.CompactMessage{{Role: "user", Content: "history"}}})
-	if err != nil || compact.Summary != "native result" || compact.Usage == nil || compact.Usage.TotalTokens != 7 {
+	if err != nil || compact.Summary != "native result" || compact.Usage == nil || (compact.Usage.TotalTokens == nil || *compact.Usage.TotalTokens != 7) {
 		t.Fatalf("compact=%+v error=%v", compact, err)
 	}
 	if responseCalls.Load() != 2 || chatCalls.Load() != 0 {
