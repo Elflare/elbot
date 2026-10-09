@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -93,14 +94,39 @@ func runPlatforms(ctx context.Context, handler platform.PlatformHandler, adapter
 		go func() {
 			defer wg.Done()
 			if err := adapter.Run(runCtx, handler); err != nil && !errors.Is(err, context.Canceled) {
-				_ = globalevents.EmitLog(runCtx, globalevents.LogRecord{
-					Category: globalevents.LogRuntime,
-					Level:    slog.LevelError,
-					Name:     "platform_stopped_with_error",
-					Module:   "app",
-					Summary:  "platform stopped with error",
-					Fields:   []slog.Attr{slog.Any("platform", adapter.Name()), slog.Any("error", err.Error())},
-				})
+				{
+					record := globalevents.LogRecord{
+						Category:     globalevents.LogRuntime,
+						Level:        slog.LevelError,
+						EventName:    "platform_stopped_with_error",
+						Module:       "app",
+						Type:         globalevents.ContentText,
+						Content:      fmt.Sprintf("platform stopped with error\nplatform=%v\nerror=%v", adapter.Name(), err.Error()),
+						ContentLimit: 4096,
+						ResultStatus: globalevents.ResultFailed,
+					}
+					if errors.Is(err, context.Canceled) {
+						record.ResultStatus = globalevents.ResultCanceled
+						record.Level = slog.LevelInfo
+					}
+					facts, _ := contextinfo.ExecutionFromContext(runCtx)
+					if facts.SessionID != "" {
+						record.Identity.SessionID = &facts.SessionID
+					}
+					if facts.RunID != "" {
+						record.Identity.RunID = &facts.RunID
+					}
+					if facts.Attempt != "" {
+						record.Identity.Attempt = &facts.Attempt
+					}
+					if facts.RequestID != "" {
+						record.Identity.RequestID = &facts.RequestID
+					}
+					if facts.RootRequestID != "" {
+						record.Identity.RootRequestID = &facts.RootRequestID
+					}
+					_ = globalevents.EmitLog(runCtx, record)
+				}
 			}
 			if platformStopsAppOnExit(adapter) {
 				cancel()

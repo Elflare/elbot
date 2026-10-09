@@ -2,6 +2,7 @@ package qqofficial
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -137,14 +138,39 @@ func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string) 
 		if err == nil {
 			return receiptWithMessageID(resp.ID), nil
 		}
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
-			Name:     "qqofficial_markdown_send_failed_fallback_to_text",
-			Module:   "qqofficial",
-			Summary:  "qqofficial markdown send failed, fallback to text",
-			Fields:   []slog.Attr{slog.Any("error", err)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelWarn,
+				EventName:    "qqofficial_markdown_send_failed_fallback_to_text",
+				Module:       "qqofficial",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("qqofficial markdown send failed, fallback to text\nerror=%v", err),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if errors.Is(err, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 	}
 	msg := a.baseMessage(target)
 	msg.MsgType = msgTypeText

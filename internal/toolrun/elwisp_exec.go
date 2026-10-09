@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
+	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/tool"
 )
@@ -27,11 +29,25 @@ type elwispToolResponse struct {
 	Error   string `json:"error"`
 }
 
-func executeELwispTool(ctx context.Context, call llm.ToolCallRequest, resolved ResolvedTool) ExecutionResult {
+func executeELwispTool(ctx context.Context, call llm.ToolCallRequest, resolved ResolvedTool) (result ExecutionResult) {
+	result.Call = call
+	result.ResultStatus = events.ResultFailed
 	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
+	defer func() {
+		if result.Error != nil {
+			if errors.Is(result.Error, context.Canceled) {
+				result.ResultStatus = events.ResultCanceled
+			}
+			if result.Result == nil {
+				message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s failed: %v", call.Name, result.Error))
+			}
+		}
+		result.Message = message
+	}()
 	cached := resolved.Cached
 	if cached == nil {
-		return executionError(call, message, fmt.Errorf("ELwisp tool metadata is missing"))
+		result.Error = fmt.Errorf("ELwisp tool metadata is missing")
+		return result
 	}
 	timeout := time.Duration(cached.TimeoutSeconds) * time.Second
 	if timeout <= 0 {
@@ -46,36 +62,49 @@ func executeELwispTool(ctx context.Context, call llm.ToolCallRequest, resolved R
 	}
 	payload, err := json.Marshal(elwispToolRequest{Tool: cached.Name, EventKey: cached.EventKey, Arguments: arguments})
 	if err != nil {
-		return executionError(call, message, err)
+		result.Error = err
+		return result
 	}
 	req, err := http.NewRequestWithContext(toolCtx, http.MethodPost, cached.Endpoint, bytes.NewReader(payload))
 	if err != nil {
-		return executionError(call, message, err)
+		result.Error = err
+		return result
 	}
 	req.Header.Set("Content-Type", "application/json")
+	result.ExecutionStarted = true
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return executionError(call, message, err)
+		result.Error = err
+		return result
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return executionError(call, message, err)
+		result.Error = err
+		return result
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return executionError(call, message, fmt.Errorf("ELwisp tool HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body))))
+		result.Error = fmt.Errorf("ELwisp tool HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return result
 	}
 	content := strings.TrimSpace(string(body))
 	var parsed elwispToolResponse
 	if err := json.Unmarshal(body, &parsed); err == nil {
-		if strings.TrimSpace(parsed.Error) != "" {
-			return executionError(call, message, fmt.Errorf("ELwisp tool error: %s", strings.TrimSpace(parsed.Error)))
-		}
 		content = firstELwispResult(parsed.Content, parsed.Text, parsed.Result, content)
+		if strings.TrimSpace(parsed.Error) != "" {
+			result.Error = fmt.Errorf("ELwisp tool error: %s", strings.TrimSpace(parsed.Error))
+			content = firstELwispResult(parsed.Content, parsed.Text, parsed.Result)
+			if content != "" {
+				result.Result = &tool.Result{Content: content}
+				message.Segments = result.Result.LLMSegments()
+			}
+			return result
+		}
 	}
-	result := &tool.Result{Content: content}
-	message.Segments = result.LLMSegments()
-	return ExecutionResult{Call: call, Message: message, Result: result}
+	result.Result = &tool.Result{Content: content}
+	message.Segments = result.Result.LLMSegments()
+	result.ResultStatus = events.ResultSucceeded
+	return result
 }
 
 func firstELwispResult(values ...string) string {

@@ -50,13 +50,12 @@ func (l stderrLogger) Write(data []byte) (int, error) {
 	line := strings.TrimSpace(string(data))
 	if line != "" {
 		_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelInfo,
-			Name:     "stateful_hook_stderr",
-			Module:   "hook",
-			Summary:  "stateful hook stderr" + ": " + line,
-			Fields:   []slog.Attr{slog.Any("hook", l.hookID)},
-			Detail:   line,
+			Category:     globalevents.LogRuntime,
+			Level:        slog.LevelInfo,
+			EventName:    "stateful_hook_stderr",
+			Module:       "hook",
+			Content:      "stateful hook stderr: hook=" + l.hookID + "\n" + line,
+			ContentLimit: 4096,
 		})
 	}
 

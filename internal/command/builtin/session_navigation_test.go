@@ -169,7 +169,7 @@ func TestResumeCommandEmitsAudit(t *testing.T) {
 	var events []string
 	connection, _ := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
 		if record.Category == globalevents.LogAudit {
-			events = append(events, record.Name)
+			events = append(events, record.EventName)
 		}
 		return nil
 	}, signal.ConnectOptions{})

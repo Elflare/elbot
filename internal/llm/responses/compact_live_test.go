@@ -2,6 +2,7 @@ package responses
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -70,5 +71,9 @@ func TestCompactLive(t *testing.T) {
 	if usage == nil {
 		usage = &llm.Usage{}
 	}
-	t.Logf("compaction-only continuation passed; compact input=%d output=%d tokens", usage.PromptTokens, usage.CompletionTokens)
+	encoded, err := json.Marshal(usage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("compaction-only continuation passed; compact usage=%s", encoded)
 }

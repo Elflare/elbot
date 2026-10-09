@@ -35,7 +35,7 @@ func TestGenerateTextUsesChatRequestAndTokenLimit(t *testing.T) {
 	defer srv.Close()
 	client := mustNewWithOptions(t, srv.URL, "key", nil, nil, RequestOptions{})
 	result, err := client.GenerateText(context.Background(), llm.TextRequest{Model: "m", Instructions: "instructions", Input: "input", MaxOutputTokens: 32})
-	if err != nil || result.Text != "title" || result.Usage == nil || result.Usage.TotalTokens != 5 {
+	if err != nil || result.Text != "title" || result.Usage == nil || result.Usage.TotalTokens == nil || *result.Usage.TotalTokens != 5 {
 		t.Fatalf("result=%+v error=%v", result, err)
 	}
 }

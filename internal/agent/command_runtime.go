@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 
@@ -56,14 +57,36 @@ func (e *commandExecutor) Handle(ctx context.Context, text string) (bool, error)
 
 	actor, _ := contextinfo.ActorFromContext(ctx)
 	if hasInfo && !command.CanAccess(info, actor) {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogAudit,
-			Level:    slog.LevelWarn,
-			Name:     "permission_denied",
-			Module:   "agent",
-			Summary:  "permission_denied",
-			Fields:   []slog.Attr{slog.Any("actor_id", actor.ID), slog.Any("command", text), slog.Any("reason", "slash_command_requires_superadmin")},
-		})
+		{
+			content, _ := json.Marshal(map[string]any{"actor_id": actor.ID, "command": text, "reason": "slash_command_requires_superadmin"})
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogAudit,
+				Level:        slog.LevelWarn,
+				EventName:    "permission_denied",
+				Module:       "agent",
+				Type:         globalevents.ContentJSON,
+				Content:      string(content),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultRejected,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 		e.output.SendChat(ctx, fmt.Sprintf("命令 %s%s 需要超级管理员权限。", parsed.Prefix, parsed.Name))
 		return true, nil
 	}

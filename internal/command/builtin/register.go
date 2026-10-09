@@ -80,7 +80,7 @@ type HookService interface {
 }
 
 type LogService interface {
-	Query(ctx context.Context, query logging.LogQuery) ([]logging.LogEntry, error)
+	Query(ctx context.Context, query logging.LogQuery) (logging.LogQueryResult, error)
 }
 
 type DoctorService interface {

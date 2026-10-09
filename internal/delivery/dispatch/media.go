@@ -2,6 +2,7 @@ package dispatch
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -95,14 +96,35 @@ func (a *Router) sendPreparedMedia(ctx context.Context, outputs []delivery.Outpu
 	receipt, sendErr := send(resolved)
 	if err := a.cacheMediaReceipt(ctx, prepared, receipt); err != nil {
 
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelError,
-			Name:     "cache_sent_media_receipt_failed",
-			Module:   "delivery",
-			Summary:  "cache sent media receipt failed",
-			Fields:   []slog.Attr{slog.Any("error", err)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelWarn,
+				EventName:    "cache_sent_media_receipt_failed",
+				Module:       "delivery",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("cache sent media receipt failed\nerror=%v", err),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 
 	}
 	return receipt, sendErr

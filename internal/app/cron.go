@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -18,26 +20,72 @@ func startCronAsync(ctx context.Context, manager *elcron.Manager, service *elcro
 		startedAt := time.Now()
 		if err := setupCron(ctx, manager, cfg); err != nil {
 			if !errors.Is(err, context.Canceled) {
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-					Category: globalevents.LogRuntime,
-					Level:    slog.LevelError,
-					Name:     "cron_async_startup_failed",
-					Module:   "app",
-					Summary:  "cron async startup failed",
-					Fields:   []slog.Attr{slog.Any("duration", time.Since(startedAt).String()), slog.Any("error", err.Error())},
-				})
+				{
+					record := globalevents.LogRecord{
+						Category:     globalevents.LogRuntime,
+						Level:        slog.LevelError,
+						EventName:    "cron_async_startup_failed",
+						Module:       "app",
+						Type:         globalevents.ContentText,
+						Content:      fmt.Sprintf("cron async startup failed\nduration=%v\nerror=%v", time.Since(startedAt).String(), err.Error()),
+						ContentLimit: 4096,
+						ResultStatus: globalevents.ResultFailed,
+					}
+					if errors.Is(err, context.Canceled) {
+						record.ResultStatus = globalevents.ResultCanceled
+						record.Level = slog.LevelInfo
+					}
+					facts, _ := contextinfo.ExecutionFromContext(ctx)
+					if facts.SessionID != "" {
+						record.Identity.SessionID = &facts.SessionID
+					}
+					if facts.RunID != "" {
+						record.Identity.RunID = &facts.RunID
+					}
+					if facts.Attempt != "" {
+						record.Identity.Attempt = &facts.Attempt
+					}
+					if facts.RequestID != "" {
+						record.Identity.RequestID = &facts.RequestID
+					}
+					if facts.RootRequestID != "" {
+						record.Identity.RootRequestID = &facts.RootRequestID
+					}
+					_ = globalevents.EmitLog(ctx, record)
+				}
 			}
 			return
 		}
 
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelInfo,
-			Name:     "cron_async_startup_completed",
-			Module:   "app",
-			Summary:  "cron async startup completed",
-			Fields:   []slog.Attr{slog.Any("duration", time.Since(startedAt).String())},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelInfo,
+				EventName:    "cron_async_startup_completed",
+				Module:       "app",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("cron async startup completed\nduration=%v", time.Since(startedAt).String()),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultSucceeded,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 
 	}()
 }

@@ -11,6 +11,7 @@ import (
 
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
@@ -42,7 +43,7 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 	completed := &observation.Event
 	publishCompleted := func() { observation.Publish(ctx, callErr) }
 	defer publishCompleted()
-	input, cleanup, err := c.Calls.PrepareCall(ctx, session, selection, messages, tools, pending)
+	input, cleanup, err := c.Calls.PrepareCall(ctx, session, selection, messages, tools, pending, &observation.LogRecord)
 	if err != nil {
 		return llmCallResult{}, err
 	}
@@ -54,8 +55,14 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 		Messages:  requestMessages,
 		Tools:     tools,
 	}
+	observation.LogRecord.EventName = "llm_usage"
 	ch, err := client.Stream(ctx, req)
 	if err != nil {
+		completed.Err = err
+		observation.LogRecord.Content = fmt.Sprintf("call_error=%v", err)
+		if errors.Is(err, context.Canceled) {
+			observation.LogRecord.ResultStatus, observation.LogRecord.Level = events.ResultCanceled, slog.LevelInfo
+		}
 		if errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return llmCallResult{Messages: baseMessages, Stream: stream}, nil
 		}
@@ -77,6 +84,13 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 	reasoningOpen := false
 	for chunk := range ch {
 		if chunk.Error != nil {
+			completed.Err = chunk.Error
+			completed.Text, completed.SourceText, completed.Usage, completed.ToolCallCount = assistant.String(), assistant.String(), usage, len(toolCalls)
+			completed.OutputReady = assistant.Len() > 0 || len(toolCalls) > 0
+			observation.LogRecord.Content = fmt.Sprintf("call_error=%v", chunk.Error)
+			if errors.Is(chunk.Error, context.Canceled) {
+				observation.LogRecord.ResultStatus, observation.LogRecord.Level = events.ResultCanceled, slog.LevelInfo
+			}
 			if errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				content := assistant.String()
 				return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls, Messages: baseMessages, Stream: stream}, nil
@@ -113,6 +127,12 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 		assistant.WriteString(delta)
 		if stream != nil && delta != "" {
 			if err := stream.Append(ctx, delta); err != nil {
+				completed.Text, completed.SourceText, completed.Usage, completed.ToolCallCount = assistant.String(), assistant.String(), usage, len(toolCalls)
+				completed.OutputReady = assistant.Len() > 0 || len(toolCalls) > 0
+				observation.LogRecord.Content = fmt.Sprintf("stream_error=%v", err)
+				if errors.Is(err, context.Canceled) {
+					observation.LogRecord.ResultStatus, observation.LogRecord.Level = events.ResultCanceled, slog.LevelInfo
+				}
 				return llmCallResult{}, fmt.Errorf("stream append: %w", err)
 			}
 		}
@@ -123,10 +143,25 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 	elapsedMs := elapsedMillis(startedAt)
 	completed.ElapsedMS = elapsedMs
 	content := assistant.String()
+	completed.Text, completed.SourceText, completed.Usage, completed.ToolCallCount = content, content, usage, len(toolCalls)
+	completed.OutputReady = assistant.Len() > 0 || len(toolCalls) > 0
+	if err := ctx.Err(); err != nil {
+		completed.Err = err
+		observation.LogRecord.Content = fmt.Sprintf("call_error=%v", err)
+		if errors.Is(err, context.Canceled) {
+			observation.LogRecord.ResultStatus, observation.LogRecord.Level = events.ResultCanceled, slog.LevelInfo
+		}
+		return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls, Messages: baseMessages, Stream: stream}, nil
+	}
 	final, err := c.Calls.CompleteCall(ctx, session, selection, content, usage, toolCalls, elapsedMs)
 	if err != nil {
+		observation.LogRecord.Content = fmt.Sprintf("response_hook_error=%v", err)
+		if errors.Is(err, context.Canceled) {
+			observation.LogRecord.ResultStatus, observation.LogRecord.Level = events.ResultCanceled, slog.LevelInfo
+		}
 		return llmCallResult{}, err
 	}
+	observation.LogRecord.ResultStatus, observation.LogRecord.Level, observation.LogRecord.EventName = events.ResultSucceeded, slog.LevelInfo, "llm_usage"
 	completed.OutputReady = true
 	completed.Text, completed.SourceText, completed.ToolCallCount, completed.Usage = final.Text, final.SourceText, len(final.ToolCalls), final.Usage
 	return llmCallResult{Text: final.Text, RawText: content, Usage: final.Usage, ToolCalls: final.ToolCalls, Outputs: final.Outputs, Messages: baseMessages, Stream: stream}, nil

@@ -54,13 +54,13 @@ func (p *startupProfiler) Flush() time.Duration {
 	if p.enabled {
 		for _, entry := range p.entries {
 			_ = events.EmitLog(context.Background(), events.LogRecord{
-				At:       p.startedAt.Add(entry.total),
-				Category: events.LogRuntime,
-				Level:    slog.LevelDebug,
-				Name:     "startup_stage",
-				Module:   "app",
-				Summary:  "startup stage",
-				Fields:   []slog.Attr{slog.String("stage", entry.name), slog.Duration("duration", entry.duration), slog.Duration("total", entry.total)},
+				Category:     events.LogRuntime,
+				Level:        slog.LevelDebug,
+				EventName:    "startup_stage",
+				Module:       "app",
+				Type:         events.ContentText,
+				Content:      fmt.Sprintf("stage=%s\nduration=%s\ntotal=%s\nfinished_at=%s", entry.name, entry.duration, entry.total, p.startedAt.Add(entry.total).Format(time.RFC3339Nano)),
+				ResultStatus: events.ResultSucceeded,
 			})
 		}
 	}

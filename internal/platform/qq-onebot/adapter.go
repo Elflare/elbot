@@ -172,14 +172,39 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 		}
 		if err := a.transport.Connect(ctx); err != nil {
 			if backoff.ShouldWarn() {
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-					Category: globalevents.LogRuntime,
-					Level:    slog.LevelWarn,
-					Name:     "onebot_connect_failed",
-					Module:   "qq-onebot",
-					Summary:  "onebot connect failed",
-					Fields:   []slog.Attr{slog.Any("error", err)},
-				})
+				{
+					record := globalevents.LogRecord{
+						Category:     globalevents.LogRuntime,
+						Level:        slog.LevelWarn,
+						EventName:    "onebot_connect_failed",
+						Module:       "qq-onebot",
+						Type:         globalevents.ContentText,
+						Content:      fmt.Sprintf("onebot connect failed\nerror=%v", err),
+						ContentLimit: 4096,
+						ResultStatus: globalevents.ResultFailed,
+					}
+					if errors.Is(err, context.Canceled) {
+						record.ResultStatus = globalevents.ResultCanceled
+						record.Level = slog.LevelInfo
+					}
+					facts, _ := contextinfo.ExecutionFromContext(ctx)
+					if facts.SessionID != "" {
+						record.Identity.SessionID = &facts.SessionID
+					}
+					if facts.RunID != "" {
+						record.Identity.RunID = &facts.RunID
+					}
+					if facts.Attempt != "" {
+						record.Identity.Attempt = &facts.Attempt
+					}
+					if facts.RequestID != "" {
+						record.Identity.RequestID = &facts.RequestID
+					}
+					if facts.RootRequestID != "" {
+						record.Identity.RootRequestID = &facts.RootRequestID
+					}
+					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+				}
 			}
 			if !sleepContext(ctx, backoff.Delay()) {
 				return ctx.Err()
@@ -187,26 +212,72 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 			continue
 		}
 		backoff.Reset()
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelInfo,
-			Name:     "onebot_connected",
-			Module:   "qq-onebot",
-			Summary:  "onebot connected",
-			Fields:   []slog.Attr{slog.Any("url", a.cfg.URL)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelInfo,
+				EventName:    "onebot_connected",
+				Module:       "qq-onebot",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("onebot connected\nurl=%v", a.cfg.URL),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultSucceeded,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 		a.notifyConnected(ctx)
 		err := a.readLoop(ctx, handler)
 		a.transport.Close(websocket.StatusNormalClosure, "reconnect")
 		if err != nil && !errors.Is(err, context.Canceled) {
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogRuntime,
-				Level:    slog.LevelWarn,
-				Name:     "onebot_disconnected",
-				Module:   "qq-onebot",
-				Summary:  "onebot disconnected",
-				Fields:   []slog.Attr{slog.Any("error", err)},
-			})
+			{
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogRuntime,
+					Level:        slog.LevelWarn,
+					EventName:    "onebot_disconnected",
+					Module:       "qq-onebot",
+					Type:         globalevents.ContentText,
+					Content:      fmt.Sprintf("onebot disconnected\nerror=%v", err),
+					ContentLimit: 4096,
+					ResultStatus: globalevents.ResultFailed,
+				}
+				if errors.Is(err, context.Canceled) {
+					record.ResultStatus = globalevents.ResultCanceled
+					record.Level = slog.LevelInfo
+				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			}
 		}
 		if !sleepContext(ctx, backoff.Delay()) {
 			return ctx.Err()
@@ -715,14 +786,39 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 		return
 	}
 	if err := handler.HandleMessage(msgCtx, text); err != nil {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    failureLogLevel(err),
-			Name:     "handle_qq_message_failed",
-			Module:   "qq-onebot",
-			Summary:  "handle qq message failed",
-			Fields:   []slog.Attr{slog.Any("error", err), slog.Any("message_id", event.MessageID)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "handle_qq_message_failed",
+				Module:       "qq-onebot",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("handle qq message failed\nerror=%v\nmessage_id=%v", err, event.MessageID),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if errors.Is(err, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 	}
 }
 
@@ -743,14 +839,39 @@ func (a *Adapter) resolveAtSegments(ctx context.Context, event Event, msg Normal
 		}
 		sender, err := a.transport.GetGroupMemberInfo(ctx, event.GroupID, userID)
 		if err != nil {
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogRuntime,
-				Level:    slog.LevelWarn,
-				Name:     "get_qq_group_member_info_failed",
-				Module:   "qq-onebot",
-				Summary:  "get qq group member info failed",
-				Fields:   []slog.Attr{slog.Any("group_id", event.GroupID), slog.Any("user_id", userID), slog.Any("error", err)},
-			})
+			{
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogRuntime,
+					Level:        slog.LevelWarn,
+					EventName:    "get_qq_group_member_info_failed",
+					Module:       "qq-onebot",
+					Type:         globalevents.ContentText,
+					Content:      fmt.Sprintf("get qq group member info failed\ngroup_id=%v\nuser_id=%v\nerror=%v", event.GroupID, userID, err),
+					ContentLimit: 4096,
+					ResultStatus: globalevents.ResultFailed,
+				}
+				if errors.Is(err, context.Canceled) {
+					record.ResultStatus = globalevents.ResultCanceled
+					record.Level = slog.LevelInfo
+				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			}
 			continue
 		}
 		text := atText(updated[i].UserID, senderName(sender))
@@ -851,14 +972,39 @@ func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized
 		CreatedAt:                createdAt,
 	}
 	if err := a.chatHistory.Append(ctx, message); err != nil {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    failureLogLevel(err),
-			Name:     "record_qq_chat_message_failed",
-			Module:   "qq-onebot",
-			Summary:  "record qq chat message failed",
-			Fields:   []slog.Attr{slog.Any("error", err), slog.Any("message_id", event.MessageID)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "record_qq_chat_message_failed",
+				Module:       "qq-onebot",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("record qq chat message failed\nerror=%v\nmessage_id=%v", err, event.MessageID),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if errors.Is(err, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 	}
 }
 
@@ -915,12 +1061,4 @@ func isConfiguredSuperadmin(superadmins []string, id string) bool {
 		}
 	}
 	return false
-}
-
-// failureLogLevel distinguishes explicit cancellation from an operation failure.
-func failureLogLevel(err error) slog.Level {
-	if errors.Is(err, context.Canceled) {
-		return slog.LevelInfo
-	}
-	return slog.LevelError
 }

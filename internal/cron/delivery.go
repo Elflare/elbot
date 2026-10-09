@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -367,51 +368,219 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 		if err := ctx.Err(); err != nil {
 			return errors.Join(append(errs, err)...)
 		}
-		attrs := []any{"job", jobName, "platform", platformName, "target", cronTargetLabel(target), "kind", out.Kind}
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, Name: "cron.send_started", Module: "cron", Summary: "cron.send_started", Fields: slog.Group("", attrs...).Value.Group()})
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, Name: "cron_send_started", Module: "cron", Summary: "cron send started", Fields: slog.Group("", attrs...).Value.Group()})
+		{
+			content, _ := json.Marshal(map[string]any{"job": jobName, "platform": platformName, "target": cronTargetLabel(target), "kind": out.Kind})
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogAudit,
+				Level:        slog.LevelInfo,
+				EventName:    "cron.send_started",
+				Module:       "cron",
+				Type:         globalevents.ContentJSON,
+				Content:      string(content),
+				ContentLimit: 4096,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			if sessionID != "" {
+				record.Identity.SessionID = &sessionID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelInfo,
+				EventName:    "cron_send_started",
+				Module:       "cron",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("cron send started\njob=%v\nplatform=%v\ntarget=%v\nkind=%v", jobName, platformName, cronTargetLabel(target), out.Kind),
+				ContentLimit: 4096,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			if sessionID != "" {
+				record.Identity.SessionID = &sessionID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 		receipt, err := s.sendTarget(ctx, target, []delivery.Output{out})
 		s.mapReportReceipt(ctx, jobName, sessionID, messageID, receipt)
 		if err != nil {
 			err = fmt.Errorf("send %s: %w", platformName, err)
-			if isContextCancellation(ctx, err) {
-				return errors.Join(append(errs, err)...)
-			}
 			errs = append(errs, err)
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogAudit,
-				Level:    slog.LevelError,
-				Name:     "cron.send_failed",
-				Module:   "cron",
-				Summary:  "cron.send_failed",
-				Fields:   slog.Group("", append(attrs, "error", err.Error())...).Value.Group(),
-			})
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogRuntime,
-				Level:    slog.LevelError,
-				Name:     "cron_send_failed",
-				Module:   "cron",
-				Summary:  "cron send failed",
-				Fields:   slog.Group("", append(attrs, "error", err.Error())...).Value.Group(),
-			})
+			{
+				content, _ := json.Marshal(map[string]any{"job": jobName, "platform": platformName, "target": cronTargetLabel(target), "kind": out.Kind, "error": err.Error()})
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogAudit,
+					Level:        slog.LevelError,
+					EventName:    "cron.send_failed",
+					Module:       "cron",
+					Type:         globalevents.ContentJSON,
+					Content:      string(content),
+					ContentLimit: 4096,
+					ResultStatus: globalevents.ResultFailed,
+				}
+				if ctx.Err() == context.Canceled && isContextCancellation(ctx, err) {
+					record.ResultStatus = globalevents.ResultCanceled
+					record.Level = slog.LevelInfo
+				}
+
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				if sessionID != "" {
+					record.Identity.SessionID = &sessionID
+				}
+				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			}
+			{
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogRuntime,
+					Level:        slog.LevelError,
+					EventName:    "cron_send_failed",
+					Module:       "cron",
+					Type:         globalevents.ContentText,
+					Content:      fmt.Sprintf("cron send failed\njob=%v\nplatform=%v\ntarget=%v\nkind=%v\nerror=%v", jobName, platformName, cronTargetLabel(target), out.Kind, err.Error()),
+					ContentLimit: 4096,
+					ResultStatus: globalevents.ResultFailed,
+				}
+				if ctx.Err() == context.Canceled && isContextCancellation(ctx, err) {
+					record.ResultStatus = globalevents.ResultCanceled
+					record.Level = slog.LevelInfo
+				}
+
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				if sessionID != "" {
+					record.Identity.SessionID = &sessionID
+				}
+				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			}
+			if isContextCancellation(ctx, err) {
+				return errors.Join(errs...)
+			}
 			continue
 		}
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogAudit,
-			Level:    slog.LevelInfo,
-			Name:     "cron.send_completed",
-			Module:   "cron",
-			Summary:  "cron.send_completed",
-			Fields:   slog.Group("", attrs...).Value.Group(),
-		})
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelInfo,
-			Name:     "cron_send_completed",
-			Module:   "cron",
-			Summary:  "cron send completed",
-			Fields:   slog.Group("", attrs...).Value.Group(),
-		})
+		{
+			content, _ := json.Marshal(map[string]any{"job": jobName, "platform": platformName, "target": cronTargetLabel(target), "kind": out.Kind})
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogAudit,
+				Level:        slog.LevelInfo,
+				EventName:    "cron.send_completed",
+				Module:       "cron",
+				Type:         globalevents.ContentJSON,
+				Content:      string(content),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultSucceeded,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			if sessionID != "" {
+				record.Identity.SessionID = &sessionID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelInfo,
+				EventName:    "cron_send_completed",
+				Module:       "cron",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("cron send completed\njob=%v\nplatform=%v\ntarget=%v\nkind=%v", jobName, platformName, cronTargetLabel(target), out.Kind),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultSucceeded,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			if sessionID != "" {
+				record.Identity.SessionID = &sessionID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 	}
 	return errors.Join(errs...)
 }
@@ -429,51 +598,219 @@ func (s *Service) sendOutputsToPlatformsMapped(ctx context.Context, jobName stri
 			if err := ctx.Err(); err != nil {
 				return errors.Join(append(errs, err)...)
 			}
-			attrs := []any{"job", jobName, "platform", platformName, "target", "superadmins", "kind", out.Kind}
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, Name: "cron.send_started", Module: "cron", Summary: "cron.send_started", Fields: slog.Group("", attrs...).Value.Group()})
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, Name: "cron_send_started", Module: "cron", Summary: "cron send started", Fields: slog.Group("", attrs...).Value.Group()})
+			{
+				content, _ := json.Marshal(map[string]any{"job": jobName, "platform": platformName, "target": "superadmins", "kind": out.Kind})
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogAudit,
+					Level:        slog.LevelInfo,
+					EventName:    "cron.send_started",
+					Module:       "cron",
+					Type:         globalevents.ContentJSON,
+					Content:      string(content),
+					ContentLimit: 4096,
+				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				if sessionID != "" {
+					record.Identity.SessionID = &sessionID
+				}
+				_ = globalevents.EmitLog(ctx, record)
+			}
+			{
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogRuntime,
+					Level:        slog.LevelInfo,
+					EventName:    "cron_send_started",
+					Module:       "cron",
+					Type:         globalevents.ContentText,
+					Content:      fmt.Sprintf("cron send started\njob=%v\nplatform=%v\ntarget=%v\nkind=%v", jobName, platformName, "superadmins", out.Kind),
+					ContentLimit: 4096,
+				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				if sessionID != "" {
+					record.Identity.SessionID = &sessionID
+				}
+				_ = globalevents.EmitLog(ctx, record)
+			}
 			receipt, err := s.sendTarget(ctx, delivery.Target{Platform: platformName, Superadmins: true}, []delivery.Output{out})
 			s.mapReportReceipt(ctx, jobName, sessionID, messageID, receipt)
 			if err != nil {
 				err = fmt.Errorf("send %s: %w", platformName, err)
-				if isContextCancellation(ctx, err) {
-					return errors.Join(append(errs, err)...)
-				}
 				errs = append(errs, err)
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-					Category: globalevents.LogAudit,
-					Level:    slog.LevelError,
-					Name:     "cron.send_failed",
-					Module:   "cron",
-					Summary:  "cron.send_failed",
-					Fields:   []slog.Attr{slog.Any("job", jobName), slog.Any("platform", platformName), slog.Any("target", "superadmins"), slog.Any("kind", out.Kind), slog.Any("error", err.Error())},
-				})
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-					Category: globalevents.LogRuntime,
-					Level:    slog.LevelError,
-					Name:     "cron_send_failed",
-					Module:   "cron",
-					Summary:  "cron send failed",
-					Fields:   []slog.Attr{slog.Any("job", jobName), slog.Any("platform", platformName), slog.Any("target", "superadmins"), slog.Any("kind", out.Kind), slog.Any("error", err.Error())},
-				})
+				{
+					content, _ := json.Marshal(map[string]any{"job": jobName, "platform": platformName, "target": "superadmins", "kind": out.Kind, "error": err.Error()})
+					record := globalevents.LogRecord{
+						Category:     globalevents.LogAudit,
+						Level:        slog.LevelError,
+						EventName:    "cron.send_failed",
+						Module:       "cron",
+						Type:         globalevents.ContentJSON,
+						Content:      string(content),
+						ContentLimit: 4096,
+						ResultStatus: globalevents.ResultFailed,
+					}
+					if ctx.Err() == context.Canceled && isContextCancellation(ctx, err) {
+						record.ResultStatus = globalevents.ResultCanceled
+						record.Level = slog.LevelInfo
+					}
+
+					facts, _ := contextinfo.ExecutionFromContext(ctx)
+					if facts.SessionID != "" {
+						record.Identity.SessionID = &facts.SessionID
+					}
+					if facts.RunID != "" {
+						record.Identity.RunID = &facts.RunID
+					}
+					if facts.Attempt != "" {
+						record.Identity.Attempt = &facts.Attempt
+					}
+					if facts.RequestID != "" {
+						record.Identity.RequestID = &facts.RequestID
+					}
+					if facts.RootRequestID != "" {
+						record.Identity.RootRequestID = &facts.RootRequestID
+					}
+					if sessionID != "" {
+						record.Identity.SessionID = &sessionID
+					}
+					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+				}
+				{
+					record := globalevents.LogRecord{
+						Category:     globalevents.LogRuntime,
+						Level:        slog.LevelError,
+						EventName:    "cron_send_failed",
+						Module:       "cron",
+						Type:         globalevents.ContentText,
+						Content:      fmt.Sprintf("cron send failed\njob=%v\nplatform=%v\ntarget=%v\nkind=%v\nerror=%v", jobName, platformName, "superadmins", out.Kind, err.Error()),
+						ContentLimit: 4096,
+						ResultStatus: globalevents.ResultFailed,
+					}
+					if ctx.Err() == context.Canceled && isContextCancellation(ctx, err) {
+						record.ResultStatus = globalevents.ResultCanceled
+						record.Level = slog.LevelInfo
+					}
+
+					facts, _ := contextinfo.ExecutionFromContext(ctx)
+					if facts.SessionID != "" {
+						record.Identity.SessionID = &facts.SessionID
+					}
+					if facts.RunID != "" {
+						record.Identity.RunID = &facts.RunID
+					}
+					if facts.Attempt != "" {
+						record.Identity.Attempt = &facts.Attempt
+					}
+					if facts.RequestID != "" {
+						record.Identity.RequestID = &facts.RequestID
+					}
+					if facts.RootRequestID != "" {
+						record.Identity.RootRequestID = &facts.RootRequestID
+					}
+					if sessionID != "" {
+						record.Identity.SessionID = &sessionID
+					}
+					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+				}
+				if isContextCancellation(ctx, err) {
+					return errors.Join(errs...)
+				}
 				continue
 			}
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogAudit,
-				Level:    slog.LevelInfo,
-				Name:     "cron.send_completed",
-				Module:   "cron",
-				Summary:  "cron.send_completed",
-				Fields:   slog.Group("", attrs...).Value.Group(),
-			})
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogRuntime,
-				Level:    slog.LevelInfo,
-				Name:     "cron_send_completed",
-				Module:   "cron",
-				Summary:  "cron send completed",
-				Fields:   slog.Group("", attrs...).Value.Group(),
-			})
+			{
+				content, _ := json.Marshal(map[string]any{"job": jobName, "platform": platformName, "target": "superadmins", "kind": out.Kind})
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogAudit,
+					Level:        slog.LevelInfo,
+					EventName:    "cron.send_completed",
+					Module:       "cron",
+					Type:         globalevents.ContentJSON,
+					Content:      string(content),
+					ContentLimit: 4096,
+					ResultStatus: globalevents.ResultSucceeded,
+				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				if sessionID != "" {
+					record.Identity.SessionID = &sessionID
+				}
+				_ = globalevents.EmitLog(ctx, record)
+			}
+			{
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogRuntime,
+					Level:        slog.LevelInfo,
+					EventName:    "cron_send_completed",
+					Module:       "cron",
+					Type:         globalevents.ContentText,
+					Content:      fmt.Sprintf("cron send completed\njob=%v\nplatform=%v\ntarget=%v\nkind=%v", jobName, platformName, "superadmins", out.Kind),
+					ContentLimit: 4096,
+					ResultStatus: globalevents.ResultSucceeded,
+				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				if sessionID != "" {
+					record.Identity.SessionID = &sessionID
+				}
+				_ = globalevents.EmitLog(ctx, record)
+			}
 		}
 	}
 	return errors.Join(errs...)
@@ -493,38 +830,71 @@ func (s *Service) mapReportReceipt(ctx context.Context, jobName, sessionID, mess
 			if isContextCancellation(ctx, err) {
 				return
 			}
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogAudit,
-				Level:    slog.LevelError,
-				Name:     "cron.report_map_failed",
-				Module:   "cron",
-				Summary:  "cron.report_map_failed",
-				Fields: []slog.Attr{
-					slog.Any("job", jobName),
-					slog.Any("platform", platformName),
-					slog.Any("scope_id", scopeID),
-					slog.Any("platform_message_id", platformMessageID),
-					slog.Any("session_id", sessionID),
-					slog.Any("message_id", messageID),
-					slog.Any("error", err.Error()),
-				},
-			})
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogRuntime,
-				Level:    slog.LevelError,
-				Name:     "map_cron_report_message_failed",
-				Module:   "cron",
-				Summary:  "map cron report message failed",
-				Fields: []slog.Attr{
-					slog.Any("job", jobName),
-					slog.Any("platform", platformName),
-					slog.Any("scope_id", scopeID),
-					slog.Any("platform_message_id", platformMessageID),
-					slog.Any("session_id", sessionID),
-					slog.Any("message_id", messageID),
-					slog.Any("error", err.Error()),
-				},
-			})
+			{
+				content, _ := json.Marshal(map[string]any{"job": jobName, "platform": platformName, "scope_id": scopeID, "platform_message_id": platformMessageID, "session_id": sessionID, "message_id": messageID, "error": err.Error()})
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogAudit,
+					Level:        slog.LevelError,
+					EventName:    "cron.report_map_failed",
+					Module:       "cron",
+					Type:         globalevents.ContentJSON,
+					Content:      string(content),
+					ContentLimit: 4096,
+					ResultStatus: globalevents.ResultFailed,
+				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				if sessionID != "" {
+					record.Identity.SessionID = &sessionID
+				}
+				_ = globalevents.EmitLog(ctx, record)
+			}
+			{
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogRuntime,
+					Level:        slog.LevelError,
+					EventName:    "map_cron_report_message_failed",
+					Module:       "cron",
+					Type:         globalevents.ContentText,
+					Content:      fmt.Sprintf("map cron report message failed\njob=%v\nplatform=%v\nscope_id=%v\nplatform_message_id=%v\nsession_id=%v\nmessage_id=%v\nerror=%v", jobName, platformName, scopeID, platformMessageID, sessionID, messageID, err.Error()),
+					ContentLimit: 4096,
+					ResultStatus: globalevents.ResultFailed,
+				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				if sessionID != "" {
+					record.Identity.SessionID = &sessionID
+				}
+				_ = globalevents.EmitLog(ctx, record)
+			}
 		}
 	}
 }
@@ -571,14 +941,36 @@ func (s *Service) copySessionToBroadcastTargets(ctx context.Context, sourceSessi
 		if err != nil {
 			return err
 		}
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogAudit,
-			Level:    slog.LevelInfo,
-			Name:     "cron.session_copied",
-			Module:   "cron",
-			Summary:  "cron.session_copied",
-			Fields:   []slog.Attr{slog.Any("job", jobName), slog.Any("source_session_id", sourceSessionID), slog.Any("target_session_id", copySession.ID), slog.Any("platform", target.Name)},
-		})
+		{
+			content, _ := json.Marshal(map[string]any{"job": jobName, "source_session_id": sourceSessionID, "target_session_id": copySession.ID, "platform": target.Name})
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogAudit,
+				Level:        slog.LevelInfo,
+				EventName:    "cron.session_copied",
+				Module:       "cron",
+				Type:         globalevents.ContentJSON,
+				Content:      string(content),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultSucceeded,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(ctx, record)
+		}
 	}
 	return nil
 }

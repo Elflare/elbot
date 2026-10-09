@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"go/ast"
 	"go/parser"
@@ -26,7 +27,7 @@ func TestProductionGlobalLogsKeepUsageAndBoundBodies(t *testing.T) {
 	for _, level := range []string{"info", "debug", "warn", "error"} {
 		t.Run(level, func(t *testing.T) {
 			req, _, model := runtimeAssemblyFixtureWithLogLevel(t, level)
-			model.chunks = [][]chatcompletions.Chunk{{{DeltaContent: "assembled answer", Usage: &llm.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15}}}}
+			model.chunks = [][]chatcompletions.Chunk{{{DeltaContent: "assembled answer", Usage: &llm.Usage{PromptTokens: func() *int64 { n := int64(10); return &n }(), CompletionTokens: func() *int64 { n := int64(5); return &n }(), TotalTokens: func() *int64 { n := int64(15); return &n }()}}}}
 			runtime, err := (defaultRuntimeFactory{}).Build(context.Background(), req)
 			if err != nil {
 				t.Fatal(err)
@@ -58,10 +59,14 @@ func TestProductionGlobalLogsKeepUsageAndBoundBodies(t *testing.T) {
 				t.Fatal(err)
 			}
 			found := false
-			for _, entry := range audit {
-				if entry.Fields["event"] == "llm_usage" {
+			for _, entry := range audit.Entries {
+				if entry.EventName == "llm_usage" {
 					found = true
-					if entry.Fields["total_tokens"] == "" {
+					var content map[string]json.RawMessage
+					if err := json.Unmarshal([]byte(entry.Content), &content); err != nil {
+						t.Fatal(err)
+					}
+					if string(content["total_tokens"]) != "15" {
 						t.Fatal("lost usage fields")
 					}
 				}
@@ -74,18 +79,16 @@ func TestProductionGlobalLogsKeepUsageAndBoundBodies(t *testing.T) {
 				t.Fatal(err)
 			}
 			counts := map[string]int{}
-			for _, entry := range entries {
-				counts[entry.Fields["event"]]++
-				if entry.Fields["event"] == "hook_error" && entry.Level != "ERROR" {
+			for _, entry := range entries.Entries {
+				counts[entry.EventName]++
+				if entry.EventName == "hook_error" && entry.Level != "ERROR" {
 					t.Fatalf("final Hook failure severity: %+v", entry)
 				}
-				if entry.Fields["event"] == "user_message" {
-					if strings.Contains(entry.Raw, "end-marker") != (level == "debug") {
+				if entry.EventName == "user_message" {
+					if !strings.Contains(entry.Content, "end-marker") {
 						t.Fatalf("body policy for %s: %s", level, entry.Raw)
 					}
-					if strings.Contains(entry.Fields["msg"], "end-marker") {
-						t.Fatal("full body in summary")
-					}
+
 				}
 			}
 			if level == "info" || level == "debug" {
@@ -135,7 +138,7 @@ func TestBusinessLoggingDependencyBoundaries(t *testing.T) {
 				t.Errorf("platform depends on event consumer: %s: %s", rel, p)
 			}
 		}
-		infrastructure := strings.HasPrefix(rel, "logging/") || strings.HasPrefix(rel, "signal/")
+		infrastructure := strings.HasPrefix(rel, "logging/") || strings.HasPrefix(rel, "signal/") || rel == "events/logging.go"
 		ast.Inspect(file, func(node ast.Node) bool {
 			if selector, ok := node.(*ast.SelectorExpr); ok {
 				if id, ok := selector.X.(*ast.Ident); ok && aliases[id.Name] == "elbot/internal/events" && selector.Sel.Name == "PlatformConnected" && strings.HasPrefix(rel, "app/") {

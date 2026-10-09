@@ -80,27 +80,19 @@ func (defaultFoundationFactory) Build(ctx context.Context, req FoundationRequest
 }
 
 func logStartupConfiguration(opts Options, cfg *config.Config) {
-	_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
-		Category: globalevents.LogRuntime,
-		Level:    slog.LevelInfo,
-		Name:     "elbot_started",
-		Module:   "app",
-		Summary:  "elbot started",
-		Fields: []slog.Attr{
-			slog.Any("version", opts.Version),
-			slog.Any("config_path", cfg.ConfigPath),
-			slog.Any("providers_config_path", cfg.ProvidersConfigPath),
-			slog.Any("state_config_path", cfg.StateConfigPath),
-			slog.Any("elnis_config_path", cfg.ElnisConfigPath),
-			slog.Any("work_provider", cfg.ModeModels["work"].Provider),
-			slog.Any("work_model", cfg.ModeModels["work"].Model),
-			slog.Any("chat_provider", cfg.ModeModels["chat"].Provider),
-			slog.Any("chat_model", cfg.ModeModels["chat"].Model),
-			slog.Any("soul_path", cfg.Soul.Path),
-			slog.Any("sessions_sqlite_path", cfg.Storage.SessionsSQLitePath),
-			slog.Any("chat_history_sqlite_path", cfg.Storage.ChatHistorySQLitePath),
-		},
-	})
+	{
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogRuntime,
+			Level:        slog.LevelInfo,
+			EventName:    "elbot_started",
+			Module:       "app",
+			Type:         globalevents.ContentText,
+			Content:      fmt.Sprintf("elbot started\nversion=%v\nconfig_path=%v\nproviders_config_path=%v\nstate_config_path=%v\nelnis_config_path=%v\nwork_provider=%v\nwork_model=%v\nchat_provider=%v\nchat_model=%v\nsoul_path=%v\nsessions_sqlite_path=%v\nchat_history_sqlite_path=%v", opts.Version, cfg.ConfigPath, cfg.ProvidersConfigPath, cfg.StateConfigPath, cfg.ElnisConfigPath, cfg.ModeModels["work"].Provider, cfg.ModeModels["work"].Model, cfg.ModeModels["chat"].Provider, cfg.ModeModels["chat"].Model, cfg.Soul.Path, cfg.Storage.SessionsSQLitePath, cfg.Storage.ChatHistorySQLitePath),
+			ContentLimit: 4096,
+			ResultStatus: globalevents.ResultSucceeded,
+		}
+		_ = globalevents.EmitLog(context.Background(), record)
+	}
 }
 
 type foundationLifecycle struct {

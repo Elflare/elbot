@@ -22,7 +22,7 @@ func TestReaderStopsBeforeOlderOversizedLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	entries, err := (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "elbot", Limit: 1})
-	if err != nil || len(entries) != 1 || entries[0].Message != "latest" {
+	if err != nil || len(entries.Entries) != 1 || entries.Entries[0].Content != "latest" {
 		t.Fatalf("tail query: entries=%v err=%v", entries, err)
 	}
 }
@@ -38,16 +38,16 @@ func TestReaderParsesAndFiltersTextLogs(t *testing.T) {
 
 	entries, err := (Reader{Dir: dir}).Query(context.Background(), LogQuery{
 		Prefix: "audit",
-		Fields: map[string]string{"event": "tool_call", "risk": "high"},
+		Fields: map[string]string{"event": "tool_call"}, ContentFields: map[string]string{"risk": "high"},
 	})
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
-	if len(entries) != 1 {
+	if len(entries.Entries) != 1 {
 		t.Fatalf("entries = %#v", entries)
 	}
-	entry := entries[0]
-	if entry.Message != "audit event" || entry.Fields["tool"] != "shell" || entry.Fields["error"] != "bad thing" {
+	entry := entries.Entries[0]
+	if entry.Content != "audit event" || entry.LegacyFields["tool"] != "shell" || entry.LegacyFields["error"] != "bad thing" {
 		t.Fatalf("entry = %#v", entry)
 	}
 }
@@ -66,7 +66,7 @@ func TestReaderContainsMatchesStructuredFieldsAndRaw(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
-	if len(entries) != 1 || entries[0].Fields["event"] != "tool_call" {
+	if len(entries.Entries) != 1 || entries.Entries[0].LegacyFields["event"] != "tool_call" {
 		t.Fatalf("entries = %#v", entries)
 	}
 
@@ -74,7 +74,7 @@ func TestReaderContainsMatchesStructuredFieldsAndRaw(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Query raw: %v", err)
 	}
-	if len(entries) != 1 || entries[0].Message != "other" {
+	if len(entries.Entries) != 1 || entries.Entries[0].Content != "other" {
 		t.Fatalf("entries = %#v", entries)
 	}
 }
@@ -88,19 +88,19 @@ func TestReaderFieldContainsMatchesOnlyRequestedField(t *testing.T) {
 		t.Fatalf("write log: %v", err)
 	}
 
-	entries, err := (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "elnis", FieldContains: map[string][]string{"tags": {"\"onedrive\""}}})
+	entries, err := (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "elnis", ContentFieldContains: map[string][]string{"tags": {"onedrive"}}})
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
-	if len(entries) != 1 || entries[0].Fields["tags"] != "[\"windows\",\"onedrive\"]" {
+	if len(entries.Entries) != 1 || entries.Entries[0].LegacyFields["tags"] != "[\"windows\",\"onedrive\"]" {
 		t.Fatalf("entries = %#v", entries)
 	}
 
-	entries, err = (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "elnis", FieldContains: map[string][]string{"tags": {"\"windows\"", "\"onedrive\""}}})
+	entries, err = (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "elnis", ContentFieldContains: map[string][]string{"tags": {"windows", "onedrive"}}})
 	if err != nil {
 		t.Fatalf("Query both tags: %v", err)
 	}
-	if len(entries) != 1 || entries[0].Fields["tags"] != "[\"windows\",\"onedrive\"]" {
+	if len(entries.Entries) != 1 || entries.Entries[0].LegacyFields["tags"] != "[\"windows\",\"onedrive\"]" {
 		t.Fatalf("entries = %#v", entries)
 	}
 }
@@ -119,7 +119,7 @@ func TestReaderAppliesMinLevelAndLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
-	if len(entries) != 1 || entries[0].Message != "error" {
+	if len(entries.Entries) != 1 || entries.Entries[0].Content != "error" {
 		t.Fatalf("entries = %#v", entries)
 	}
 }
@@ -331,21 +331,21 @@ func TestReaderCrossDayFiltersAndPhysicalOrder(t *testing.T) {
 	until := since.Add(2 * time.Hour)
 	entries, err := (Reader{Dir: dir}).Query(context.Background(), LogQuery{
 		Prefix: "audit", Days: 3, Limit: 3, MinLevel: "warn", Since: &since, Until: &until,
-		Fields:      map[string]string{"module": "hook", "event": "hook_tool_call"},
-		FieldExists: []string{"detail"}, FieldContains: map[string][]string{"tags": {"tag"}},
-		Contains: "详情\n目标", MsgContains: "摘要\n匹配",
+		Fields:               map[string]string{"module": "hook", "event": "hook_tool_call"},
+		ContentFieldContains: map[string][]string{"tags": {"tag"}},
+		Contains:             "详情\n目标", ContentContains: "摘要\n匹配",
 	})
-	if err != nil || len(entries) != 3 {
+	if err != nil || len(entries.Entries) != 3 {
 		t.Fatalf("entries=%v err=%v", entries, err)
 	}
 	for i, hour := range []int{11, 12, 10} {
-		if entries[i].Time.Hour() != hour {
+		if entries.Entries[i].Time.Hour() != hour {
 			t.Fatalf("order: %v", entries)
 		}
 	}
 	entries, err = (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "audit", Contains: "摘要\n匹配"})
-	if err != nil || len(entries) != 3 {
-		t.Fatalf("decoded summary: count=%d err=%v", len(entries), err)
+	if err != nil || len(entries.Entries) != 3 {
+		t.Fatalf("decoded summary: count=%d err=%v", len(entries.Entries), err)
 	}
 }
 
@@ -360,7 +360,7 @@ func TestReaderLimitSkipsOlderFilesAndPropagatesReadErrors(t *testing.T) {
 	}
 	reader := Reader{Dir: dir}
 	entries, err := reader.Query(context.Background(), LogQuery{Prefix: "elbot", Days: 2, Limit: 1})
-	if err != nil || len(entries) != 1 {
+	if err != nil || len(entries.Entries) != 1 {
 		t.Fatalf("limit: entries=%v err=%v", entries, err)
 	}
 	_, err = reader.Query(context.Background(), LogQuery{Prefix: "elbot", Days: 2, Limit: 2})

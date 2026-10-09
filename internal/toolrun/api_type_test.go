@@ -2,6 +2,7 @@ package toolrun
 
 import (
 	"context"
+	"elbot/internal/events"
 	"testing"
 
 	"elbot/internal/contextinfo"
@@ -63,7 +64,7 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 				if err != nil || len(schemas) != boolInt(want) {
 					t.Fatalf("%s schemas=%v err=%v", mode, schemas, err)
 				}
-				if got := manager.Resolve(ctx, "image", cache, mode); got.Available != want {
+				if got := manager.Resolve(ctx, "image", cache, mode); (got.ResultStatus == events.ResultSucceeded) != want {
 					t.Fatalf("resolved=%+v", got)
 				}
 			}
@@ -73,7 +74,7 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 				t.Fatalf("roots=%+v", roots)
 			}
 			executed := (tool.Executor{Registry: registry, Actor: actor}).Execute(ctx, llm.ToolCallRequest{Name: "image", Arguments: `{}`})
-			if (executed.Err == nil) != want {
+			if (executed.Error == nil) != want {
 				t.Fatalf("execute=%+v", executed)
 			}
 		})

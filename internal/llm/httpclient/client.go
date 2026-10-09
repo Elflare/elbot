@@ -3,11 +3,13 @@ package httpclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"time"
 
+	"elbot/internal/events"
 	"elbot/internal/llm"
 )
 
@@ -95,7 +97,11 @@ func (c *Client) Do(ctx context.Context, request func(context.Context) (*http.Re
 		}
 		delay := retryDelay(c.options.RetryInitialDelay, attempt)
 		if c.onRetry != nil {
-			c.onRetry(ctx, llm.RetryEvent{Attempt: attempt + 1, MaxRetries: c.options.MaxRetries, Delay: delay, Err: lastErr})
+			event := llm.RetryEvent{Attempt: attempt + 1, MaxRetries: c.options.MaxRetries, Delay: delay, Err: lastErr, ResultStatus: events.ResultFailed}
+			if errors.Is(lastErr, context.Canceled) {
+				event.ResultStatus = events.ResultCanceled
+			}
+			c.onRetry(ctx, event)
 		}
 		if err := waitRetryDelay(ctx, delay); err != nil {
 			return nil, err

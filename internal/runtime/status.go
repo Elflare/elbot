@@ -120,12 +120,17 @@ func FormatModel(provider, model string) string {
 }
 
 func FormatUsage(usage *llm.Usage) string {
-	if usage == nil || usage.TotalTokens <= 0 {
+	if usage == nil {
 		return ""
 	}
-	text := "tokens " + formatInt(usage.TotalTokens)
-	if usage.CacheHitTokens > 0 {
-		text += " · cache " + formatInt(usage.CacheHitTokens)
+	text := "tokens unknown"
+	if usage.TotalTokens != nil && *usage.TotalTokens >= 0 {
+		text = "tokens " + formatInt(*usage.TotalTokens)
+	}
+	if usage.CacheHitTokens != nil && *usage.CacheHitTokens >= 0 {
+		text += " · cache " + formatInt(*usage.CacheHitTokens)
+	} else {
+		text += " · cache unknown"
 	}
 	return text
 }
@@ -141,7 +146,7 @@ func FormatDuration(d time.Duration) string {
 	return fmt.Sprintf("%d:%02d:%02d", seconds/3600, seconds/60%60, seconds%60)
 }
 
-func formatInt(n int) string {
+func formatInt(n int64) string {
 	s := fmt.Sprintf("%d", n)
 	if len(s) <= 3 {
 		return s

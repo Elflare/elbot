@@ -2,6 +2,7 @@ package rules
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -240,25 +241,57 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 		return actionResult{Error: "tool not found"}, fmt.Errorf("tool %q not found", name)
 	}
 	toolResult, err := registered.Call(ctx, tool.CallRequest{ID: call.ID, Name: name, Arguments: json.RawMessage(arguments)})
-	level, status := slog.LevelInfo, "ok"
+
+	record := globalevents.LogRecord{
+		Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: "hook_tool_call",
+		Module: "hook", Type: globalevents.ContentJSON, ResultStatus: globalevents.ResultSucceeded,
+	}
+	content := map[string]any{
+		"source": "rules", "tool": name, "point": string(event.Point),
+		"arguments": fmt.Sprintf("%.2048s", arguments),
+	}
+	if toolResult != nil {
+		content["result"] = fmt.Sprintf("%.2048s", llm.SegmentsContentText(toolResult.LLMSegments()))
+	}
 	if err != nil {
-		level, status = slog.LevelError, "error"
+		content["error"] = fmt.Sprintf("%.2048s", err.Error())
+		record.Level = slog.LevelError
+		record.ResultStatus = globalevents.ResultFailed
 		if errors.Is(err, context.Canceled) {
-			level, status = slog.LevelInfo, "canceled"
+			record.Level = slog.LevelInfo
+			record.ResultStatus = globalevents.ResultCanceled
 		}
 	}
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogAudit, Level: level, Name: "hook_tool_call", Module: "hook", Summary: "hook tool call",
-		Fields: []slog.Attr{slog.String("source", "rules"), slog.String("tool", name), slog.String("status", status), slog.Any("error", err)},
-	})
+	data, _ := json.Marshal(content)
+	record.Content = string(data)
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.SessionID != "" {
+		record.Identity.SessionID = &facts.SessionID
+	}
+	if facts.RunID != "" {
+		record.Identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		record.Identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		record.Identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		record.Identity.RootRequestID = &facts.RootRequestID
+	}
+	if event.Session.ID != "" {
+		record.Identity.SessionID = &event.Session.ID
+	}
+	_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+
 	if err != nil {
 		return actionResult{Error: err.Error()}, err
 	}
-	content := ""
 	if toolResult != nil {
-		content = llm.SegmentsContentText(toolResult.LLMSegments())
+		return actionResult{Result: llm.SegmentsContentText(toolResult.LLMSegments())}, nil
 	}
-	return actionResult{Result: content}, nil
+	return actionResult{}, nil
 }
 
 func render(text string, event hook.Event, state state) string {

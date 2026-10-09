@@ -14,14 +14,14 @@ type UsageState struct {
 }
 
 func (s UsageState) TokensKnown() bool {
-	return s.Usage != nil && s.Usage.TotalTokens > 0
+	return s.Usage != nil && s.Usage.TotalTokens != nil && *s.Usage.TotalTokens >= 0
 }
 
 func (s UsageState) UsageRatio() float64 {
 	if !s.TokensKnown() || s.ContextWindow <= 0 {
 		return 0
 	}
-	return float64(s.Usage.TotalTokens) / float64(s.ContextWindow)
+	return float64(*s.Usage.TotalTokens) / float64(s.ContextWindow)
 }
 
 func (s UsageState) ReachedThreshold() bool {
@@ -29,8 +29,17 @@ func (s UsageState) ReachedThreshold() bool {
 }
 
 func FormatTokens(usage *llm.Usage) string {
-	if usage == nil || usage.TotalTokens <= 0 {
+	if usage == nil {
 		return "tokens：unknown（命中：unknown）"
 	}
-	return fmt.Sprintf("tokens：%d（命中：%d）", usage.TotalTokens, usage.CacheHitTokens)
+	if usage.TotalTokens == nil || *usage.TotalTokens < 0 {
+		if usage.CacheHitTokens == nil || *usage.CacheHitTokens < 0 {
+			return "tokens：unknown（命中：unknown）"
+		}
+		return fmt.Sprintf("tokens：unknown（命中：%d）", *usage.CacheHitTokens)
+	}
+	if usage.CacheHitTokens == nil || *usage.CacheHitTokens < 0 {
+		return fmt.Sprintf("tokens：%d（命中：unknown）", *usage.TotalTokens)
+	}
+	return fmt.Sprintf("tokens：%d（命中：%d）", *usage.TotalTokens, *usage.CacheHitTokens)
 }

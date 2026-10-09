@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/signal"
 )
@@ -88,7 +89,24 @@ func New(opts Options) (*Service, error) {
 	for provider, client := range s.clients {
 		if notifier, ok := client.(llm.RetryNotifier); ok {
 			notifier.SetRetryNotifier(func(ctx context.Context, event llm.RetryEvent) {
-				_ = s.retrying.Emit(ctx, ModelRetryingEvent{Provider: provider, Retry: event})
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				record := ModelRetryingEvent{Provider: provider, Retry: event}
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				_ = s.retrying.Emit(ctx, record)
 			})
 		}
 	}

@@ -2,7 +2,11 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
+	"elbot/internal/events"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"elbot/internal/agent/dialogue"
@@ -144,6 +148,26 @@ func (c *executionCoordinator) finishCompletedTurn(ctx context.Context, session 
 	ctx = c.view.Context(ctx)
 	selection, usage, turnStartedAt, committed := result.Selection, result.Usage, result.StartedAt, result.Committed
 	if err := c.sessions.Touch(ctx, session); err != nil {
+		content, _ := json.Marshal(map[string]string{"operation": "touch_session", "error": fmt.Sprintf("%.2048s", err.Error())})
+		record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelError, EventName: "persistence_error", Module: "agent", Type: events.ContentJSON, Content: string(content), ResultStatus: events.ResultFailed}
+		record.Identity.SessionID = &session.ID
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		if errors.Is(err, context.Canceled) {
+			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
+		}
+		_ = events.EmitLog(context.WithoutCancel(ctx), record)
 		agentevents.Emit(ctx, c.persistenceFailed, agentevents.PersistenceFailedEvent{EventMeta: agentevents.Meta(ctx, session.ID), Operation: "touch_session", Err: err})
 		return turn.Input{}, err
 	}

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -166,14 +167,35 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 	}
 
 	startupDuration := profiler.Flush()
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogRuntime,
-		Level:    slog.LevelInfo,
-		Name:     "elbot_startup_completed",
-		Module:   "app",
-		Summary:  "elbot startup completed",
-		Fields:   []slog.Attr{slog.Any("startup_duration", startupDuration.String())},
-	})
+	{
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogRuntime,
+			Level:        slog.LevelInfo,
+			EventName:    "elbot_startup_completed",
+			Module:       "app",
+			Type:         globalevents.ContentText,
+			Content:      fmt.Sprintf("elbot startup completed\nstartup_duration=%v", startupDuration.String()),
+			ContentLimit: 4096,
+			ResultStatus: globalevents.ResultSucceeded,
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		_ = globalevents.EmitLog(ctx, record)
+	}
 	var afterStart func(context.Context)
 	if shouldStartCron(mode) && foundation.StartCron != nil {
 		afterStart = func(ctx context.Context) {

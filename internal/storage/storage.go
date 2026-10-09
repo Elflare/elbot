@@ -55,17 +55,21 @@ type Message struct {
 }
 
 type ContextSummary struct {
-	ID             string
-	SessionID      string
-	FromMessageID  string
-	ToMessageID    string
-	Summary        string
-	Provider       string
-	Model          string
-	SourceTokens   int
-	SummaryTokens  int
-	TotalTokens    int
-	CacheHitTokens int
+	ID            string
+	SessionID     string
+	FromMessageID string
+	ToMessageID   string
+	Summary       string
+	Provider      string
+	Model         string
+	// SourceTokens is supplied by the compactor; nil persists as SQL NULL (unknown).
+	SourceTokens *int64
+	// SummaryTokens is the reported output count; non-nil zero is an explicit zero.
+	SummaryTokens *int64
+	// TotalTokens is the reported total; nil is unknown and is never inferred.
+	TotalTokens *int64
+	// CacheHitTokens is the reported cache count; nil persists as SQL NULL.
+	CacheHitTokens *int64
 	TriggerReason  string
 	Metadata       string
 	CreatedAt      time.Time

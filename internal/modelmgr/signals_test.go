@@ -39,20 +39,14 @@ func TestRetryLogsWithoutNotificationSubscriber(t *testing.T) {
 	t.Cleanup(func() { _ = service.Close() })
 	ctx, cancel := context.WithCancel(contextinfo.WithExecution(context.Background(), contextinfo.Execution{RequestID: "retry-request"}))
 	cancel()
-	client.notify(ctx, llm.RetryEvent{})
-	if len(records) != 1 || records[0].Name != "model_retry" || records[0].Level != slog.LevelWarn {
+	client.notify(ctx, llm.RetryEvent{ResultStatus: events.ResultFailed})
+	if len(records) != 1 || records[0].EventName != "model_retry" || records[0].Level != slog.LevelWarn || records[0].ResultStatus != events.ResultFailed {
 		t.Fatalf("retry facts: %+v", records)
 	}
-	found := false
-	for _, field := range records[0].Fields {
-		if field.Key == "request_id" && field.Value.String() == "retry-request" {
-			found = true
-		}
-	}
-	if !found {
+	if records[0].Identity.RequestID == nil || *records[0].Identity.RequestID != "retry-request" {
 		t.Fatal("retry lost actual call identity")
 	}
-	client.notify(ctx, llm.RetryEvent{Err: fmt.Errorf("wrapped: %w", context.Canceled)})
+	client.notify(ctx, llm.RetryEvent{Err: fmt.Errorf("wrapped: %w", context.Canceled), ResultStatus: events.ResultCanceled})
 	if len(records) != 2 || records[1].Level != slog.LevelInfo {
 		t.Fatal("wrapped cancellation treated as retry failure")
 	}

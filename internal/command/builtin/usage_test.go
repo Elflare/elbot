@@ -8,15 +8,17 @@ import (
 	"time"
 
 	"elbot/internal/command"
+	"elbot/internal/events"
 	"elbot/internal/logging"
 )
 
 func makeUsageEntry(t time.Time, provider, model, sessionID string, prompt, completion, total, cache int, elapsedMs int64) logging.LogEntry {
 	return logging.LogEntry{
-		Time:    t,
-		Level:   "INFO",
-		Message: "audit event",
-		Fields: map[string]string{
+		Time:     t,
+		Identity: events.LogIdentity{SessionID: &sessionID},
+		Level:    "INFO",
+		Content:  "audit event",
+		LegacyFields: map[string]string{
 			"event":             "llm_usage",
 			"session_id":        sessionID,
 			"provider":          provider,
@@ -129,8 +131,8 @@ func TestUsageFiltersByModel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("usage handle: %v", err)
 	}
-	if service.query.Fields["model"] != "gpt-4o" {
-		t.Fatalf("model filter = %q", service.query.Fields["model"])
+	if service.query.ContentFields["model"] != "gpt-4o" {
+		t.Fatalf("model filter = %q", service.query.ContentFields["model"])
 	}
 }
 
@@ -184,7 +186,7 @@ func TestUsageShortFlags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("usage handle: %v", err)
 	}
-	if service.query.Days != 7 || service.query.Fields["model"] != "gpt-4o" || service.query.Fields["session_id"] != "sess-1" {
+	if service.query.Days != 7 || service.query.ContentFields["model"] != "gpt-4o" || service.query.Fields["session_id"] != "sess-1" {
 		t.Fatalf("query = %#v", service.query)
 	}
 }

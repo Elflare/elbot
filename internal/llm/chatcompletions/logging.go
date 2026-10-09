@@ -6,27 +6,43 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strings"
 
+	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
 )
 
 func (a *Client) logChatRequest(ctx context.Context, req Request, bodyBytes []byte) {
 	a.logFirstSystemMessage(ctx, req)
-	attrs := []any{"endpoint", a.endpoint(), "model", req.Model, "session_id", req.SessionID}
-	// Keep only the latest message in DEBUG detail; never publish full history.
-	attrs = append(attrs, chatRequestLogSummary(req, bodyBytes)...)
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogRuntime,
-		Level:    slog.LevelDebug,
-		Name:     "openai_chat_request",
-		Module:   "model",
-		Summary:  "openai chat request",
-		Detail:   latestMessageJSON(req.Messages),
-		Fields:   slog.Group("", attrs...).Value.Group(),
-	})
+	// The request source supplies identity explicitly; EmitLog never fills it.
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	record := globalevents.LogRecord{
+		Category:  globalevents.LogRuntime,
+		Level:     slog.LevelDebug,
+		EventName: "openai_chat_request",
+		Module:    "model",
+		Content: fmt.Sprintf("openai chat request: endpoint=%s model=%s %s\nlatest message: %s",
+			a.endpoint(), req.Model, chatRequestLogSummary(req, bodyBytes), latestMessageJSON(req.Messages)),
+	}
+	if req.SessionID != "" {
+		record.Identity.SessionID = &req.SessionID
+	}
+	if facts.RunID != "" {
+		record.Identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		record.Identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		record.Identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		record.Identity.RootRequestID = &facts.RootRequestID
+	}
+	_ = globalevents.EmitLog(ctx, record)
 }
 
 func (a *Client) logFirstSystemMessage(ctx context.Context, req Request) {
@@ -41,15 +57,28 @@ func (a *Client) logFirstSystemMessage(ctx context.Context, req Request) {
 	a.loggedSystem[req.SessionID] = true
 	a.loggedSystemMu.Unlock()
 
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogRuntime,
-		Level:    slog.LevelInfo,
-		Name:     "system_message",
-		Module:   "model",
-		Summary:  "system prompt: " + firstSystemText(req.Messages),
-		Fields:   []slog.Attr{slog.Any("session_id", req.SessionID), slog.Any("model", req.Model)},
-		Detail:   firstSystemMessageJSON(req.Messages),
-	})
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	record := globalevents.LogRecord{
+		Category:  globalevents.LogRuntime,
+		Level:     slog.LevelInfo,
+		EventName: "system_message",
+		Module:    "model",
+		Content:   "system prompt: " + firstSystemText(req.Messages) + "\nmodel=" + req.Model,
+		Identity:  globalevents.LogIdentity{SessionID: &req.SessionID},
+	}
+	if facts.RunID != "" {
+		record.Identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		record.Identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		record.Identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		record.Identity.RootRequestID = &facts.RootRequestID
+	}
+	_ = globalevents.EmitLog(ctx, record)
 }
 
 func latestMessageJSON(messages []llm.LLMMessage) string {
@@ -62,21 +91,6 @@ func latestMessageJSON(messages []llm.LLMMessage) string {
 		return ""
 	}
 	return string(data)
-}
-
-func firstSystemMessageJSON(messages []llm.LLMMessage) string {
-	for _, message := range messages {
-		if message.Role != llm.RoleSystem {
-			continue
-		}
-		converted := toOpenAIMessages(logSafeMessages([]llm.LLMMessage{message}))
-		data, err := marshalJSONNoEscape(converted[0])
-		if err != nil {
-			return ""
-		}
-		return string(data)
-	}
-	return ""
 }
 
 func logSafeMessages(messages []llm.LLMMessage) []llm.LLMMessage {
@@ -102,7 +116,7 @@ func redactDataURL(value string) string {
 	return value
 }
 
-func chatRequestLogSummary(req Request, bodyBytes []byte) []any {
+func chatRequestLogSummary(req Request, bodyBytes []byte) string {
 	roles := make([]string, 0, len(req.Messages))
 	for _, message := range req.Messages {
 		role := string(message.Role)
@@ -115,15 +129,9 @@ func chatRequestLogSummary(req Request, bodyBytes []byte) []any {
 	if len(roles) > 0 {
 		latest = roles[len(roles)-1]
 	}
-	return []any{
-		"message_count", len(req.Messages),
-		"message_roles", strings.Join(roles, ","),
-		"latest_message", latest,
-		"tool_count", len(req.Tools),
-		"system_hash", hashText(firstSystemText(req.Messages)),
-		"tools_hash", hashJSON(req.Tools),
-		"body_hash", hashBytes(bodyBytes),
-	}
+	return fmt.Sprintf("message_count=%d message_roles=%s latest_message=%s tool_count=%d system_hash=%s tools_hash=%s body_hash=%s",
+		len(req.Messages), strings.Join(roles, ","), latest, len(req.Tools),
+		hashText(firstSystemText(req.Messages)), hashJSON(req.Tools), hashBytes(bodyBytes))
 }
 
 func firstSystemText(messages []llm.LLMMessage) string {

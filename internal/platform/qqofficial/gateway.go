@@ -2,7 +2,9 @@ package qqofficial
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"runtime"
@@ -90,14 +92,39 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler platform.PlatformH
 		switch p.Op {
 		case opDispatch:
 			if err := a.handleDispatch(ctx, handler, p, state); err != nil {
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-					Category: globalevents.LogRuntime,
-					Level:    slog.LevelWarn,
-					Name:     p.Type,
-					Module:   "qqofficial",
-					Summary:  "handle qqofficial dispatch failed",
-					Fields:   []slog.Attr{slog.Any("error", err)},
-				})
+				{
+					record := globalevents.LogRecord{
+						Category:     globalevents.LogRuntime,
+						Level:        slog.LevelWarn,
+						EventName:    p.Type,
+						Module:       "qqofficial",
+						Type:         globalevents.ContentText,
+						Content:      fmt.Sprintf("handle qqofficial dispatch failed\nerror=%v", err),
+						ContentLimit: 4096,
+						ResultStatus: globalevents.ResultFailed,
+					}
+					if errors.Is(err, context.Canceled) {
+						record.ResultStatus = globalevents.ResultCanceled
+						record.Level = slog.LevelInfo
+					}
+					facts, _ := contextinfo.ExecutionFromContext(ctx)
+					if facts.SessionID != "" {
+						record.Identity.SessionID = &facts.SessionID
+					}
+					if facts.RunID != "" {
+						record.Identity.RunID = &facts.RunID
+					}
+					if facts.Attempt != "" {
+						record.Identity.Attempt = &facts.Attempt
+					}
+					if facts.RequestID != "" {
+						record.Identity.RequestID = &facts.RequestID
+					}
+					if facts.RootRequestID != "" {
+						record.Identity.RootRequestID = &facts.RootRequestID
+					}
+					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+				}
 			}
 		case opHeartbeat:
 			_ = a.writeGateway(ctx, conn, payload{Op: opHeartbeat, Data: mustJSON(state.seq)})
@@ -111,14 +138,35 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler platform.PlatformH
 			state.sessionID = ""
 			return reconnectReason{mode: reconnectIdentify}, fmt.Errorf("qqofficial invalid session")
 		default:
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogRuntime,
-				Level:    slog.LevelDebug,
-				Name:     "qqofficial_gateway_op_ignored",
-				Module:   "qqofficial",
-				Summary:  "qqofficial gateway op ignored",
-				Fields:   []slog.Attr{slog.Any("op", p.Op)},
-			})
+			{
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogRuntime,
+					Level:        slog.LevelDebug,
+					EventName:    "qqofficial_gateway_op_ignored",
+					Module:       "qqofficial",
+					Type:         globalevents.ContentText,
+					Content:      fmt.Sprintf("qqofficial gateway op ignored\nop=%v", p.Op),
+					ContentLimit: 4096,
+					ResultStatus: globalevents.ResultSkipped,
+				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			}
 		}
 	}
 }
@@ -159,14 +207,39 @@ func (a *Adapter) heartbeatLoop(ctx context.Context, conn *websocket.Conn, state
 			return
 		case <-ticker.C:
 			if err := a.writeGateway(ctx, conn, payload{Op: opHeartbeat, Data: mustJSON(state.seq)}); err != nil {
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-					Category: globalevents.LogRuntime,
-					Level:    slog.LevelWarn,
-					Name:     "send_qqofficial_heartbeat_failed",
-					Module:   "qqofficial",
-					Summary:  "send qqofficial heartbeat failed",
-					Fields:   []slog.Attr{slog.Any("error", err)},
-				})
+				{
+					record := globalevents.LogRecord{
+						Category:     globalevents.LogRuntime,
+						Level:        slog.LevelWarn,
+						EventName:    "send_qqofficial_heartbeat_failed",
+						Module:       "qqofficial",
+						Type:         globalevents.ContentText,
+						Content:      fmt.Sprintf("send qqofficial heartbeat failed\nerror=%v", err),
+						ContentLimit: 4096,
+						ResultStatus: globalevents.ResultFailed,
+					}
+					if errors.Is(err, context.Canceled) {
+						record.ResultStatus = globalevents.ResultCanceled
+						record.Level = slog.LevelInfo
+					}
+					facts, _ := contextinfo.ExecutionFromContext(ctx)
+					if facts.SessionID != "" {
+						record.Identity.SessionID = &facts.SessionID
+					}
+					if facts.RunID != "" {
+						record.Identity.RunID = &facts.RunID
+					}
+					if facts.Attempt != "" {
+						record.Identity.Attempt = &facts.Attempt
+					}
+					if facts.RequestID != "" {
+						record.Identity.RequestID = &facts.RequestID
+					}
+					if facts.RootRequestID != "" {
+						record.Identity.RootRequestID = &facts.RootRequestID
+					}
+					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+				}
 				return
 			}
 		}
@@ -182,14 +255,35 @@ func (a *Adapter) handleDispatch(ctx context.Context, handler platform.PlatformH
 		}
 		state.sessionID = ready.SessionID
 		state.resume = true
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelInfo,
-			Name:     "qqofficial_gateway_ready",
-			Module:   "qqofficial",
-			Summary:  "qqofficial gateway ready",
-			Fields:   []slog.Attr{slog.Any("bot_id", ready.User.ID), slog.Any("bot_name", ready.User.Username)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelInfo,
+				EventName:    "qqofficial_gateway_ready",
+				Module:       "qqofficial",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("qqofficial gateway ready\nbot_id=%v\nbot_name=%v", ready.User.ID, ready.User.Username),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultSucceeded,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 		a.notifyConnected(ctx)
 	case eventResumed:
 		state.resume = true
@@ -208,7 +302,35 @@ func (a *Adapter) handleDispatch(ctx context.Context, handler platform.PlatformH
 		go a.handleGroupMessage(ctx, handler, p, msg)
 	default:
 		if strings.TrimSpace(p.Type) != "" {
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelDebug, Name: p.Type, Module: "qqofficial", Summary: "qqofficial dispatch ignored", Fields: []slog.Attr{}})
+			{
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogRuntime,
+					Level:        slog.LevelDebug,
+					EventName:    p.Type,
+					Module:       "qqofficial",
+					Type:         globalevents.ContentText,
+					Content:      fmt.Sprintf("qqofficial dispatch ignored\n"),
+					ContentLimit: 4096,
+					ResultStatus: globalevents.ResultSucceeded,
+				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			}
 		}
 	}
 	return nil

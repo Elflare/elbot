@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/storage"
 )
@@ -397,18 +398,31 @@ func (m *Manager) remoteBackend(ctx context.Context) (Backend, error) {
 	}
 	backend, err := m.remoteFactory(ctx)
 	if err != nil {
-		level := slog.LevelError
-		if errors.Is(err, context.Canceled) {
-			level = slog.LevelInfo
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		record := globalevents.LogRecord{
+			Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "initialize_s3_media_backend_failed",
+			Module: "media", ResultStatus: globalevents.ResultFailed, Content: "initialize S3 media backend failed: " + err.Error(),
 		}
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    level,
-			Name:     "initialize_s3_media_backend_failed",
-			Module:   "media",
-			Summary:  "initialize S3 media backend failed",
-			Fields:   []slog.Attr{slog.Any("error", err)},
-		})
+		if errors.Is(err, context.Canceled) {
+			record.Level = slog.LevelInfo
+			record.ResultStatus = globalevents.ResultCanceled
+		}
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		_ = globalevents.EmitLog(ctx, record)
 
 		return nil, err
 	}

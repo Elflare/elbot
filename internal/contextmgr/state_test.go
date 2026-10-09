@@ -24,36 +24,38 @@ func TestUsageSnapshotsRestoreAndSaveFailure(t *testing.T) {
 	}
 	service := New(Options{Store: store})
 	restored, err := service.Usage(row)
-	if err != nil || restored.TotalTokens != 3 {
+	if err != nil || restored.TotalTokens == nil || *restored.TotalTokens != 3 {
 		t.Fatalf("restored=%v err=%v", restored, err)
 	}
-	usage := &llm.Usage{TotalTokens: 12, CacheHitTokens: 4}
+	total, cache := int64(12), int64(4)
+	usage := &llm.Usage{TotalTokens: &total, CacheHitTokens: &cache}
 	if err := service.RecordUsage(ctx, row.ID, usage); err != nil {
 		t.Fatal(err)
 	}
-	usage.TotalTokens = 999
+	*usage.TotalTokens = 999
 	snapshot, _ := service.Usage(row)
-	if snapshot.TotalTokens != 12 {
+	if snapshot.TotalTokens == nil || *snapshot.TotalTokens != 12 {
 		t.Fatal("usage aliases input")
 	}
-	snapshot.TotalTokens = 888
+	*snapshot.TotalTokens = 888
 	snapshot, _ = service.Usage(row)
-	if snapshot.TotalTokens != 12 {
+	if snapshot.TotalTokens == nil || *snapshot.TotalTokens != 12 {
 		t.Fatal("usage aliases output")
 	}
 	latest, _ := store.Sessions().Get(ctx, row.ID)
 	restored, _ = New(Options{Store: store}).Usage(latest)
-	if restored.TotalTokens != 12 || !strings.Contains(latest.Metadata, `"tool_tags":["keep"]`) {
+	if restored.TotalTokens == nil || *restored.TotalTokens != 12 || !strings.Contains(latest.Metadata, `"tool_tags":["keep"]`) {
 		t.Fatalf("restore=%v metadata=%s", restored, latest.Metadata)
 	}
 	canceled, cancel := context.WithCancel(ctx)
 	cancel()
-	if err := service.RecordUsage(canceled, row.ID, &llm.Usage{TotalTokens: 20}); !errors.Is(err, context.Canceled) {
+	total = 20
+	if err := service.RecordUsage(canceled, row.ID, &llm.Usage{TotalTokens: &total}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("save error=%v", err)
 	}
 	observed, _ := service.Usage(row)
 	persisted, _ := store.Sessions().Get(ctx, row.ID)
-	if observed.TotalTokens != 20 || persisted.Metadata != latest.Metadata {
+	if observed.TotalTokens == nil || *observed.TotalTokens != 20 || persisted.Metadata != latest.Metadata {
 		t.Fatalf("observation=%v persisted=%s", observed, persisted.Metadata)
 	}
 }

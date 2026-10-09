@@ -2,6 +2,7 @@ package toolrun
 
 import (
 	"context"
+	"elbot/internal/events"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -39,10 +40,10 @@ func TestExternalElwispDoesNotResolveHostMedia(t *testing.T) {
 	manager.Media = center
 	args, _ := json.Marshal(map[string]any{"source": item.ID, "media_inputs": []map[string]string{{"media": item.ID}}})
 	call := llm.ToolCallRequest{ID: "call", Name: "external", Arguments: string(args)}
-	resolved := ResolvedTool{Available: true, Source: SourceKindELwisp, Cached: &CachedTool{Name: "external", Endpoint: server.URL}}
+	resolved := ResolvedTool{ResultStatus: events.ResultSucceeded, Source: SourceKindELwisp, Cached: &CachedTool{Name: "external", Endpoint: server.URL}}
 	result := manager.Execute(ctx, call, resolved, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
-	if result.Err != nil {
-		t.Fatal(result.Err)
+	if result.Error != nil {
+		t.Fatal(result.Error)
 	}
 	if string(received.Arguments) != string(args) {
 		t.Fatalf("host media leaked into external args: %s", received.Arguments)

@@ -3,9 +3,11 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"elbot/internal/storage"
 )
 
@@ -37,11 +39,33 @@ func (s *Service) MaybeScheduleNaming(ctx context.Context, sessionID string) {
 	if ctx.Err() != nil || s.titleRenamed(ctx, sessionID) {
 		return
 	}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	facts.SessionID = sessionID
+	workerCtx = contextinfo.WithExecution(workerCtx, facts)
+	event := NamingCompletedEvent{Identity: events.LogIdentity{SessionID: &facts.SessionID}, TriggeredAt: storage.Now(), MaxFailures: maxNamingFailures}
+	if facts.RunID != "" {
+		event.Identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		event.Identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		event.Identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		event.Identity.RootRequestID = &facts.RootRequestID
+	}
+	event.PreparationOperation = "load messages"
 	messages, err := s.store.Messages().ListBySession(ctx, sessionID)
 	if err != nil {
-		if ctx.Err() == nil && workerCtx.Err() == nil {
-			s.notifyNamingFailed(ctx, NamingFailedEvent{SessionID: sessionID, Reason: "load messages", Err: err, TriggeredAt: storage.Now()})
+		event.PreparationError = err
+		event.PreparationResultStatus = events.ResultFailed
+		if errors.Is(err, context.Canceled) {
+			event.PreparationResultStatus = events.ResultCanceled
 		}
+		event.ResultStatus = event.PreparationResultStatus
+		event.CompletedAt = storage.Now()
+		s.notifyNamingCompleted(ctx, event)
 		return
 	}
 	conversationMessages := filterConversationMessages(messages)
@@ -53,21 +77,15 @@ func (s *Service) MaybeScheduleNaming(ctx context.Context, sessionID string) {
 		return
 	}
 
-	s.notifyNamingScheduled(ctx, NamingScheduledEvent{SessionID: sessionID, TriggeredAt: storage.Now(), MessageCount: len(namingMessages), TriggerStep: s.namingConfig.TriggerStep})
+	event.PreparationResultStatus = events.ResultSucceeded
+	event.MessageCount = new(int)
+	*event.MessageCount = len(namingMessages)
+	event.Scheduled = true
+	s.notifyNamingScheduled(ctx, NamingScheduledEvent{Identity: event.Identity, TriggeredAt: event.TriggeredAt, MessageCount: len(namingMessages), TriggerStep: s.namingConfig.TriggerStep})
 	scheduled = true
 	go func() {
 		defer finish()
-		defer func() {
-			if workerCtx.Err() == nil {
-				return
-			}
-			s.mu.Lock()
-			state := s.namingStates[sessionID]
-			state.inFlight = false
-			s.namingStates[sessionID] = state
-			s.mu.Unlock()
-		}()
-		s.generateTitle(workerCtx, sessionID, namingMessages)
+		s.generateTitle(workerCtx, sessionID, namingMessages, event)
 	}()
 }
 
@@ -85,50 +103,104 @@ func (s *Service) titleRenamed(ctx context.Context, sessionID string) bool {
 	return metadata.TitleRenamed
 }
 
-func (s *Service) generateTitle(ctx context.Context, sessionID string, messages []storage.Message) {
+func (s *Service) generateTitle(ctx context.Context, sessionID string, messages []storage.Message, event NamingCompletedEvent) {
+	defer func() {
+		s.mu.Lock()
+		state := s.namingStates[sessionID]
+		state.inFlight = false
+		s.namingStates[sessionID] = state
+		event.FailureCount = state.failures
+		s.mu.Unlock()
+		event.CompletedAt = storage.Now()
+		s.notifyNamingCompleted(ctx, event)
+	}()
 	if ctx.Err() != nil {
+		event.CancellationError = ctx.Err()
+		event.ResultStatus = events.ResultFailed
+		if errors.Is(ctx.Err(), context.Canceled) {
+			event.ResultStatus = events.ResultCanceled
+		}
 		return
 	}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	facts.SessionID = sessionID
-	ctx = contextinfo.WithExecution(ctx, facts)
+	event.PreparationOperation = "load session"
 	session, err := s.store.Sessions().Get(ctx, sessionID)
-	if ctx.Err() != nil {
-		return
-	}
 	if err != nil {
-		s.markNamingFailed(sessionID)
-		s.notifyNamingFailed(ctx, NamingFailedEvent{SessionID: sessionID, Reason: "load session", Err: err, TriggeredAt: storage.Now(), MessageCount: len(messages)})
+		event.PreparationError = err
+		event.PreparationResultStatus = events.ResultFailed
+		if errors.Is(err, context.Canceled) {
+			event.PreparationResultStatus = events.ResultCanceled
+		}
+		event.ResultStatus = event.PreparationResultStatus
+		if ctx.Err() == nil {
+			event.FailureCount = s.markNamingFailed(sessionID)
+		}
 		return
 	}
-
+	event.PreparationResultStatus = events.ResultSucceeded
+	event.Title = &session.Title
+	if ctx.Err() != nil {
+		event.CancellationError = ctx.Err()
+		event.ResultStatus = events.ResultFailed
+		if errors.Is(ctx.Err(), context.Canceled) {
+			event.ResultStatus = events.ResultCanceled
+		}
+		return
+	}
 	result, err := s.titleGen.GenerateTitle(ctx, messages)
-	if ctx.Err() != nil {
+	event.Provider, event.Model, event.GeneratedTitleRaw = result.Provider, result.Model, result.RawTitle
+	if err != nil {
+		event.GenerationError = err
+		event.GenerationResultStatus = events.ResultFailed
+		if errors.Is(err, context.Canceled) {
+			event.GenerationResultStatus = events.ResultCanceled
+		}
+		event.ResultStatus = event.GenerationResultStatus
+		if event.ResultStatus == events.ResultFailed {
+			s.handleNamingFailure(ctx, session, messages, &event)
+		}
 		return
 	}
-	if err != nil {
-		s.handleNamingFailure(ctx, session, messages, "generate title", err, "llm_error", result, "")
+	event.GenerationResultStatus = events.ResultSucceeded
+	if ctx.Err() != nil {
+		event.CancellationError = ctx.Err()
+		event.ResultStatus = events.ResultFailed
+		if errors.Is(ctx.Err(), context.Canceled) {
+			event.ResultStatus = events.ResultCanceled
+		}
 		return
 	}
 	title := normalizeTitle(result.RawTitle)
+	event.GeneratedTitleNormalized = title
+	event.TitleValid = new(bool)
+	event.InvalidReason = invalidTitleReason(title)
+	*event.TitleValid = event.InvalidReason == ""
 	if title == "" || isPlaceholderTitle(title) {
-		s.handleNamingFailure(ctx, session, messages, "invalid title", nil, "invalid_response", result, title)
+		event.ResultStatus = events.ResultFailed
+		s.handleNamingFailure(ctx, session, messages, &event)
 		return
 	}
-
-	_, applied, err := s.saveGeneratedTitle(ctx, sessionID, title, false)
-	if ctx.Err() != nil {
-		return
-	}
+	latest, applied, err := s.saveGeneratedTitle(ctx, sessionID, title, false)
 	if err != nil {
-		s.handleNamingFailure(ctx, session, messages, "update title", err, "storage_update", result, title)
+		event.PersistenceError = err
+		event.PersistenceResultStatus = events.ResultFailed
+		if errors.Is(err, context.Canceled) {
+			event.PersistenceResultStatus = events.ResultCanceled
+		}
+		event.ResultStatus = event.PersistenceResultStatus
+		if event.ResultStatus == events.ResultFailed {
+			s.handleNamingFailure(ctx, session, messages, &event)
+		}
 		return
 	}
+	event.Title = &latest.Title
 	s.markNamingDone(sessionID)
 	if !applied {
+		event.PersistenceResultStatus = events.ResultSkipped
+		event.ResultStatus = events.ResultSkipped
 		return
 	}
-	s.notifyNamingCompleted(ctx, NamingCompletedEvent{SessionID: sessionID, Title: title, TriggeredAt: storage.Now(), MessageCount: len(messages), Provider: result.Provider, Model: result.Model})
+	event.PersistenceResultStatus = events.ResultSucceeded
+	event.ResultStatus = events.ResultSucceeded
 }
 
 func (s *Service) markNamingInFlight(sessionID string) bool {
@@ -156,51 +228,70 @@ func (s *Service) markNamingFailed(sessionID string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	state := s.namingStates[sessionID]
-	state.inFlight = false
 	state.failures++
 	s.namingStates[sessionID] = state
 	return state.failures
 }
 
-func (s *Service) handleNamingFailure(ctx context.Context, session *storage.Session, messages []storage.Message, reason string, err error, stage string, result TitleResult, normalizedTitle string) {
+func (s *Service) handleNamingFailure(ctx context.Context, session *storage.Session, messages []storage.Message, event *NamingCompletedEvent) {
 	if ctx.Err() != nil {
+		event.CancellationError = ctx.Err()
 		return
 	}
 	failures := s.markNamingFailed(session.ID)
-	event := NamingFailedEvent{
-		SessionID: session.ID, Title: session.Title, Stage: stage, LLMCall: llmCallStatus(err),
-		GeneratedTitleRaw: result.RawTitle, GeneratedTitleNormalized: normalizedTitle, Provider: result.Provider, Model: result.Model,
-		InvalidReason: invalidTitleReason(normalizedTitle), Reason: reason, Err: err,
-		TriggeredAt: storage.Now(), MessageCount: len(messages), FailureCount: failures, MaxFailures: maxNamingFailures,
-	}
+	event.FailureCount = failures
 	fallback := fallbackTitle(messages)
 	if fallback != "" {
+		event.FallbackTitle = fallback
 		latest, applied, updateErr := s.saveGeneratedTitle(ctx, session.ID, fallback, failures < maxNamingFailures)
 		if updateErr != nil {
-			event.FallbackErr = updateErr
+			event.FallbackError = updateErr
+			event.FallbackResultStatus = events.ResultFailed
+			if errors.Is(updateErr, context.Canceled) {
+				event.FallbackResultStatus = events.ResultCanceled
+			}
+			event.ResultStatus = events.ResultFailed
 		} else {
-			event.Title = latest.Title
+			event.Title = &latest.Title
+			event.FallbackResultStatus = events.ResultSkipped
 			if applied {
-				event.FallbackTitle, event.FallbackApplied = fallback, true
+				event.FallbackResultStatus = events.ResultSucceeded
+				// A generation failure may recover; a failed main persistence remains an independent failure.
+				if event.PersistenceResultStatus != events.ResultFailed {
+					event.ResultStatus = events.ResultSucceeded
+				}
 				s.markNamingDone(session.ID)
 			}
 		}
 	}
-	if ctx.Err() == nil {
-		s.notifyNamingFailed(ctx, event)
-	}
 }
 
 func (s *Service) notifyNamingScheduled(ctx context.Context, event NamingScheduledEvent) {
+	for _, value := range []**string{&event.Identity.SessionID, &event.Identity.RunID, &event.Identity.Attempt, &event.Identity.RequestID, &event.Identity.RootRequestID} {
+		if *value != nil {
+			copy := **value
+			*value = &copy
+		}
+	}
 	_ = s.namingSignals.Scheduled.Emit(ctx, event)
 }
 
 func (s *Service) notifyNamingCompleted(ctx context.Context, event NamingCompletedEvent) {
+	for _, value := range []**string{&event.Identity.SessionID, &event.Identity.RunID, &event.Identity.Attempt, &event.Identity.RequestID, &event.Identity.RootRequestID, &event.Title} {
+		if *value != nil {
+			copy := **value
+			*value = &copy
+		}
+	}
+	if event.MessageCount != nil {
+		copy := *event.MessageCount
+		event.MessageCount = &copy
+	}
+	if event.TitleValid != nil {
+		copy := *event.TitleValid
+		event.TitleValid = &copy
+	}
 	_ = s.namingSignals.Completed.Emit(ctx, event)
-}
-
-func (s *Service) notifyNamingFailed(ctx context.Context, event NamingFailedEvent) {
-	_ = s.namingSignals.Failed.Emit(ctx, event)
 }
 
 func filterConversationMessages(messages []storage.Message) []storage.Message {
@@ -224,13 +315,6 @@ func normalizeTitle(text string) string {
 
 func isPlaceholderTitle(title string) bool {
 	return strings.EqualFold(strings.TrimSpace(title), "New session")
-}
-
-func llmCallStatus(err error) string {
-	if err != nil {
-		return "failed"
-	}
-	return "succeeded"
 }
 
 func invalidTitleReason(title string) string {

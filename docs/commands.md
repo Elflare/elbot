@@ -238,7 +238,8 @@ LLM 在 work 模式下可以通过 `discover_tool` 按需发现工具详情。�
 | `-n, --limit <n>` | 返回条数，默认 5。 |
 | `--days <n>` | 读取最近 n 天日志，默认 1。 |
 | `--level <level>` | 最低等级：`debug`、`info`、`warn`、`error`。 |
-| `-d, -i, -w, -e` | 等级快捷方式；`-d` 或显式 `--level debug` 同时显示原始记录。 |
+| `-d, -i, -w, -e` | 最低等级快捷方式，不改变展示方式。 |
+| `--raw` | 显示文件中的完整原始记录，与等级筛选独立。 |
 | `--since <time>` | 只看某时间之后，例如 `2h`、`30m`、`2026-06-03`。 |
 | `--until <time>` | 只看某时间之前。 |
 | `--msg <text>` | 按消息正文过滤。 |
@@ -276,6 +277,7 @@ LLM 在 work 模式下可以通过 `discover_tool` 按需发现工具详情。�
 | `--event-key <key>` | 按 Elnis event key 过滤。 |
 | `--event-id <id>` | 按内部 Elnis event ID 过滤。 |
 | `--token <name>` | 按 token name 过滤，不包含 token 原文。 |
+| `--tag <tag>` | 筛选包含指定标签的记录，可重复，要求全部标签匹配。 |
 
 示例：
 
@@ -284,6 +286,7 @@ LLM 在 work 模式下可以通过 `discover_tool` 按需发现工具详情。�
 /log -w -n 10
 /log --system
 /log -u -d
+/log -u -d --raw
 /log --msg startup --days 3
 /audit --event tool_call --risk high -n 10
 /audit --actor cli:local --since 24h
@@ -327,6 +330,7 @@ Hook 工具调用审计使用 `hook_tool_call`，`source` 区分 `rules`／`plug
 说明：
 
 - `/usage` 从审计日志的 `llm_usage` 事件聚合 token 用量，按模型/天/会话分组统计 prompt、completion、total、cache 和耗时。
+- 未知、非法或溢出的值显示 `unknown`，并传递到受影响的分组和总计项；明确的零正常统计，其他已知项不受影响。用量未知的调用仍计入次数。扫描遇到损坏记录时提示统计可能不完整。
 - 仅超级管理员可用。
 
 ## 高风险工具确认

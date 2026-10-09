@@ -142,7 +142,7 @@ func TestChatStream_DebugLogIncludesLatestMessageJSON(t *testing.T) {
 	}
 
 	logText := logs.String()
-	if !strings.Contains(logText, "detail=") || !strings.Contains(logText, "https://example.com/a.png") {
+	if !strings.Contains(logText, "latest message:") || !strings.Contains(logText, "https://example.com/a.png") {
 		t.Fatalf("debug log did not include latest message json: %s", logText)
 	}
 	if strings.Contains(logText, "body_json=") || strings.Contains(logText, "旧消息") || strings.Contains(logText, "旧回答") {
@@ -665,11 +665,11 @@ func TestChatStream_UsageOnlyChunk(t *testing.T) {
 	if usage == nil {
 		t.Fatal("expected usage-only chunk")
 	}
-	if usage.TotalTokens != 7 {
-		t.Errorf("expected total_tokens=7, got %d", usage.TotalTokens)
+	if usage.TotalTokens == nil || *usage.TotalTokens != 7 {
+		t.Errorf("expected total_tokens=7, got %v", usage.TotalTokens)
 	}
-	if usage.CacheHitTokens != 2 {
-		t.Errorf("expected cache hit tokens=2, got %d", usage.CacheHitTokens)
+	if usage.CacheHitTokens == nil || *usage.CacheHitTokens != 2 {
+		t.Errorf("expected cache hit tokens=2, got %v", usage.CacheHitTokens)
 	}
 }
 
@@ -684,7 +684,7 @@ func TestChatStream_UsageCacheHitAliases(t *testing.T) {
 				t.Fatalf("unmarshal usage: %v", err)
 			}
 			got := toUsage(&usage)
-			if got.TotalTokens != 7 || got.CacheHitTokens == 0 {
+			if got.TotalTokens == nil || *got.TotalTokens != 7 || got.CacheHitTokens == nil || *got.CacheHitTokens == 0 {
 				t.Fatalf("usage = %#v", got)
 			}
 		})
@@ -1273,11 +1273,10 @@ func captureLogs(t *testing.T, logger *slog.Logger) {
 		if !logger.Enabled(ctx, record.Level) {
 			return nil
 		}
-		out := slog.NewRecord(record.At, record.Level, record.Summary, 0)
-		out.AddAttrs(record.Fields...)
-		out.AddAttrs(slog.String("event", record.Name), slog.String("module", record.Module))
-		if record.Detail != "" && logger.Enabled(ctx, slog.LevelDebug) {
-			out.AddAttrs(slog.String("detail", record.Detail))
+		out := slog.NewRecord(time.Now(), record.Level, record.Content, 0)
+		out.AddAttrs(slog.String("event", record.EventName), slog.String("module", record.Module))
+		if record.Identity.SessionID != nil {
+			out.AddAttrs(slog.String("session_id", *record.Identity.SessionID))
 		}
 		return logger.Handler().Handle(ctx, out)
 	}, signal.ConnectOptions{})

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/tool"
 )
@@ -83,6 +84,21 @@ func (s *PreloadService) PrepareTools(ctx context.Context, names []string) (Tool
 }
 
 func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, names []string) SkillPreload {
+	record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "tool", Identity: globalevents.LogIdentity{SessionID: &sessionID}}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.RunID != "" {
+		record.Identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		record.Identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		record.Identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		record.Identity.RootRequestID = &facts.RootRequestID
+	}
+
 	result := SkillPreload{Accepted: make([]bool, len(names))}
 	if s == nil || s.registry == nil {
 		return result
@@ -105,14 +121,14 @@ func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, na
 				if errors.Is(err, context.Canceled) {
 					level = slog.LevelInfo
 				}
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-					Category: globalevents.LogAudit,
-					Level:    level,
-					Name:     "skill_preload_failed",
-					Module:   "tool",
-					Summary:  "skill_preload_failed",
-					Fields:   []slog.Attr{slog.Any("session_id", sessionID), slog.Any("tool", name), slog.Any("error", err)},
-				})
+				record.EventName = "skill_preload_failed"
+				record.Level = level
+				record.ResultStatus = globalevents.ResultFailed
+				if errors.Is(err, context.Canceled) {
+					record.ResultStatus = globalevents.ResultCanceled
+				}
+				record.Content = fmt.Sprintf("skill preload failed: tool=%s error=%v", name, err)
+				_ = globalevents.EmitLog(ctx, record)
 				continue
 			}
 			seen[name] = true
@@ -167,6 +183,21 @@ func (s *PreloadService) BackgroundSelections(ctx context.Context, names []strin
 }
 
 func (s *PreloadService) PrepareBackground(ctx context.Context, sessionID string, selectors, allowed []string) BackgroundPreload {
+	record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "tool", Identity: globalevents.LogIdentity{SessionID: &sessionID}}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.RunID != "" {
+		record.Identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		record.Identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		record.Identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		record.Identity.RootRequestID = &facts.RootRequestID
+	}
+
 	var result BackgroundPreload
 	if s == nil || s.registry == nil {
 		return result
@@ -177,14 +208,11 @@ func (s *PreloadService) PrepareBackground(ctx context.Context, sessionID string
 	for _, selection := range s.BackgroundSelections(ctx, selectors) {
 		for _, name := range selection.Names {
 			if allowed != nil && !slices.Contains(allowed, name) {
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-					Category: globalevents.LogAudit,
-					Level:    slog.LevelInfo,
-					Name:     "background_preload_skipped",
-					Module:   "tool",
-					Summary:  "background_preload_skipped",
-					Fields:   []slog.Attr{slog.Any("session_id", sessionID), slog.Any("name", name), slog.Any("reason", "not_authorized")},
-				})
+				record.EventName = "background_preload_skipped"
+				record.Level = slog.LevelInfo
+				record.ResultStatus = globalevents.ResultSkipped
+				record.Content = fmt.Sprintf("background preload skipped: name=%s reason=not_authorized", name)
+				_ = globalevents.EmitLog(ctx, record)
 				continue
 			}
 			names = append(names, name)
@@ -202,50 +230,38 @@ func (s *PreloadService) PrepareBackground(ctx context.Context, sessionID string
 		seen[name] = true
 		candidate, ok := s.registry.Get(name)
 		if !ok || !preloadAllowed(ctx, candidate) {
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogAudit,
-				Level:    slog.LevelInfo,
-				Name:     "background_preload_skipped",
-				Module:   "tool",
-				Summary:  "background_preload_skipped",
-				Fields:   []slog.Attr{slog.Any("session_id", sessionID), slog.Any("name", name), slog.Any("reason", "not_found_or_not_allowed")},
-			})
+			record.EventName = "background_preload_skipped"
+			record.Level = slog.LevelInfo
+			record.ResultStatus = globalevents.ResultSkipped
+			record.Content = fmt.Sprintf("background preload skipped: name=%s reason=not_found_or_not_allowed", name)
+			_ = globalevents.EmitLog(ctx, record)
 			continue
 		}
 		if detailer, ok := candidate.(tool.DetailProvider); ok {
 			if candidate.Info().Hidden {
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-					Category: globalevents.LogAudit,
-					Level:    slog.LevelInfo,
-					Name:     "background_preload_skipped",
-					Module:   "tool",
-					Summary:  "background_preload_skipped",
-					Fields:   []slog.Attr{slog.Any("session_id", sessionID), slog.Any("name", name), slog.Any("reason", "hidden_skill")},
-				})
+				record.EventName = "background_preload_skipped"
+				record.Level = slog.LevelInfo
+				record.ResultStatus = globalevents.ResultSkipped
+				record.Content = fmt.Sprintf("background preload skipped: name=%s reason=hidden_skill", name)
+				_ = globalevents.EmitLog(ctx, record)
 				continue
 			}
 			block, err := skillDetailBlock(ctx, candidate, detailer)
 			if err != nil {
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-					Category: globalevents.LogAudit,
-					Level:    slog.LevelInfo,
-					Name:     "background_preload_skipped",
-					Module:   "tool",
-					Summary:  "background_preload_skipped",
-					Fields:   []slog.Attr{slog.Any("session_id", sessionID), slog.Any("name", name), slog.Any("reason", "skill_detail_failed"), slog.Any("error", err)},
-				})
+				record.EventName = "background_preload_skipped"
+				record.Level = slog.LevelInfo
+				record.ResultStatus = globalevents.ResultSkipped
+				record.Content = fmt.Sprintf("background preload skipped: name=%s reason=skill_detail_failed error=%v", name, err)
+				_ = globalevents.EmitLog(ctx, record)
 				continue
 			}
 			detail := strings.TrimSpace(tool.RenderDetailBlocks([]tool.DetailBlock{block}))
 			if detail == "" {
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-					Category: globalevents.LogAudit,
-					Level:    slog.LevelInfo,
-					Name:     "background_preload_skipped",
-					Module:   "tool",
-					Summary:  "background_preload_skipped",
-					Fields:   []slog.Attr{slog.Any("session_id", sessionID), slog.Any("name", name), slog.Any("reason", "empty_skill_detail")},
-				})
+				record.EventName = "background_preload_skipped"
+				record.Level = slog.LevelInfo
+				record.ResultStatus = globalevents.ResultSkipped
+				record.Content = fmt.Sprintf("background preload skipped: name=%s reason=empty_skill_detail", name)
+				_ = globalevents.EmitLog(ctx, record)
 				continue
 			}
 			result.Skills = append(result.Skills, name)
@@ -257,14 +273,11 @@ func (s *PreloadService) PrepareBackground(ctx context.Context, sessionID string
 			continue
 		}
 		if candidate.Info().Hidden {
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogAudit,
-				Level:    slog.LevelInfo,
-				Name:     "background_preload_skipped",
-				Module:   "tool",
-				Summary:  "background_preload_skipped",
-				Fields:   []slog.Attr{slog.Any("session_id", sessionID), slog.Any("name", name), slog.Any("reason", "not_found_or_not_allowed")},
-			})
+			record.EventName = "background_preload_skipped"
+			record.Level = slog.LevelInfo
+			record.ResultStatus = globalevents.ResultSkipped
+			record.Content = fmt.Sprintf("background preload skipped: name=%s reason=not_found_or_not_allowed", name)
+			_ = globalevents.EmitLog(ctx, record)
 			continue
 		}
 		tools := NativeCachedToolsFromDiscovery(s.discoverNames(ctx, []string{name}))
@@ -353,6 +366,21 @@ func skillDetailBlock(ctx context.Context, candidate tool.Tool, detailer tool.De
 }
 
 func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name string, background bool) []CachedTool {
+	record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "tool", Identity: globalevents.LogIdentity{SessionID: &sessionID}}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.RunID != "" {
+		record.Identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		record.Identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		record.Identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		record.Identity.RootRequestID = &facts.RootRequestID
+	}
+
 	name = strings.TrimSpace(name)
 	if name == "" || name == "discover_tool" {
 		return nil
@@ -362,15 +390,11 @@ func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name str
 		eventName, key = "background_preload_skipped", "name"
 	}
 	skip := func(reason string) {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category:     globalevents.LogAudit,
-			Level:        slog.LevelInfo,
-			Name:         eventName,
-			Module:       "tool",
-			Summary:      eventName,
-			ResultStatus: globalevents.ResultSkipped,
-			Fields:       slog.Group("", "session_id", sessionID, key, name, "reason", reason).Value.Group(),
-		})
+		record.EventName = eventName
+		record.Level = slog.LevelInfo
+		record.ResultStatus = globalevents.ResultSkipped
+		record.Content = fmt.Sprintf("%s: %s=%s reason=%s", eventName, key, name, reason)
+		_ = globalevents.EmitLog(ctx, record)
 	}
 	candidate, ok := s.registry.Get(name)
 	if !ok || !preloadAllowed(ctx, candidate) {

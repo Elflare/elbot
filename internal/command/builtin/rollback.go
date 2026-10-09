@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -75,30 +76,34 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 		if binding != nil {
 			sessionID = binding.SessionID()
 		}
-		attrs := []any{"actor_id", actor.ID, "session_id", sessionID, "path", result.Path}
+		content := map[string]any{"actor_id": actor.ID, "path": result.Path, "deleted": result.Deleted}
+		record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "command", Level: slog.LevelInfo, EventName: "file_rollback", Type: globalevents.ContentJSON, Identity: globalevents.LogIdentity{SessionID: &sessionID}, ResultStatus: globalevents.ResultSucceeded}
 		if err != nil {
-			level := slog.LevelError
+			content["error"] = err.Error()
+			record.EventName = "file_rollback_failed"
+			record.Level = slog.LevelError
+			record.ResultStatus = globalevents.ResultFailed
 			if errors.Is(err, context.Canceled) {
-				level = slog.LevelInfo
+				record.Level = slog.LevelInfo
+				record.ResultStatus = globalevents.ResultCanceled
 			}
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogAudit,
-				Level:    level,
-				Name:     "file_rollback_failed",
-				Module:   "command",
-				Summary:  "file_rollback_failed",
-				Fields:   slog.Group("", append(attrs, "error", err.Error())...).Value.Group(),
-			})
-		} else {
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogAudit,
-				Level:    slog.LevelInfo,
-				Name:     "file_rollback",
-				Module:   "command",
-				Summary:  "file_rollback",
-				Fields:   slog.Group("", append(attrs, "deleted", result.Deleted)...).Value.Group(),
-			})
 		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		data, _ := json.Marshal(content)
+		record.Content = string(data)
+		_ = globalevents.EmitLog(ctx, record)
 	}
 	if err != nil {
 		return &command.Result{Content: fmt.Sprintf("无法撤销：%v\n使用 %srollback 查看当前可撤销记录。", err, req.Prefix)}, nil

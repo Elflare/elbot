@@ -2,6 +2,7 @@ package toolrun
 
 import (
 	"context"
+	"elbot/internal/events"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -162,13 +163,13 @@ func TestMediaArgumentsRemainExplicit(t *testing.T) {
 		t.Fatal("bad fixture")
 	}
 	call := llm.ToolCallRequest{Name: target.Name(), Arguments: arguments}
-	resolved := ResolvedTool{Name: target.Name(), Available: true, Native: target}
+	resolved := ResolvedTool{Name: target.Name(), ResultStatus: events.ResultSucceeded, Native: target}
 	if _, err := manager.AssessRisk(context.Background(), resolved, arguments); err != nil {
 		t.Fatal(err)
 	}
 	result := manager.Execute(context.Background(), call, resolved, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
-	if result.Err != nil {
-		t.Fatal(result.Err)
+	if result.Error != nil {
+		t.Fatal(result.Error)
 	}
 	if target.received != arguments || result.Call.Arguments != arguments {
 		t.Fatalf("rewritten call: %#v, %s", result.Call, target.received)

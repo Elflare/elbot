@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -168,14 +169,37 @@ func (c *inputCoordinator) expireIdleCurrentSession(ctx context.Context) error {
 		return err
 	}
 	if result.Expired {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogAudit,
-			Level:    slog.LevelInfo,
-			Name:     "session_idle_expired",
-			Module:   "agent",
-			Summary:  "session_idle_expired",
-			Fields:   []slog.Attr{slog.Any("session_id", result.SessionID), slog.Any("actor_id", actor.ID), slog.Any("ttl_minutes", result.TTLMinutes)},
-		})
+		{
+			content, _ := json.Marshal(map[string]any{"actor_id": actor.ID, "ttl_minutes": result.TTLMinutes})
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogAudit,
+				Level:        slog.LevelInfo,
+				EventName:    "session_idle_expired",
+				Module:       "agent",
+				Type:         globalevents.ContentJSON,
+				Content:      string(content),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultSucceeded,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			record.Identity.SessionID = &result.SessionID
+			_ = globalevents.EmitLog(ctx, record)
+		}
 	}
 	return nil
 }

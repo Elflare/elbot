@@ -3,6 +3,8 @@ package llm
 import (
 	"context"
 	"time"
+
+	"elbot/internal/events"
 )
 
 // Client exposes independent operations, not a particular conversation protocol.
@@ -24,12 +26,22 @@ type TextResult struct {
 	Usage *Usage
 }
 
-// Usage contains token usage statistics.
+// Usage contains upstream token counts. Protocol sources preserve unknown values;
+// consumers must not replace missing counts with zero or derive a missing total.
+// Published usage and its pointers are read-only snapshots.
 type Usage struct {
-	PromptTokens     int
-	CompletionTokens int
-	TotalTokens      int
-	CacheHitTokens   int
+	// PromptTokens is the input count reported by the protocol source; nil means
+	// missing or invalid, while a non-nil zero is an explicitly reported zero.
+	PromptTokens *int64
+	// CompletionTokens is the reported output count; nil means missing or invalid.
+	// The protocol source supplies only nonnegative counts, including explicit zero.
+	CompletionTokens *int64
+	// TotalTokens is the reported total, never a sum inferred by the consumer;
+	// the protocol source leaves it nil when missing or invalid.
+	TotalTokens *int64
+	// CacheHitTokens is the reported cached input count; the protocol source leaves
+	// it nil when missing or invalid, and preserves an explicitly reported zero.
+	CacheHitTokens *int64
 }
 
 type ModelMetadata struct {
@@ -42,10 +54,17 @@ type ModelMetadataProvider interface {
 }
 
 type RetryEvent struct {
-	Attempt    int
+	// Attempt is the next retry number, supplied by the HTTP attempt source.
+	Attempt int
+	// MaxRetries is the configured retry limit for this call.
 	MaxRetries int
-	Delay      time.Duration
-	Err        error
+	// Delay is the planned wait before retrying; cancellation may interrupt it.
+	Delay time.Duration
+	// Err is the original error from the completed attempt and is read-only after publication.
+	Err error
+	// ResultStatus describes the completed attempt, not the eventual model call.
+	// The transport source declares it; zero means unspecified, never success.
+	ResultStatus events.ResultStatus
 }
 
 type RetryNotifier interface {

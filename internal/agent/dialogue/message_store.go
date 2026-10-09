@@ -2,8 +2,12 @@ package dialogue
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 
 	agentevents "elbot/internal/agent/events"
 	"elbot/internal/llm"
@@ -125,6 +129,26 @@ func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit
 		err = s.Dialogues.Commit(locked, commit)
 	}
 	if err != nil {
+		content, _ := json.Marshal(map[string]string{"operation": operation, "error": fmt.Sprintf("%.2048s", err.Error())})
+		record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelError, EventName: "persistence_error", Module: "agent", Type: events.ContentJSON, Content: string(content), ResultStatus: events.ResultFailed}
+		record.Identity.SessionID = &commit.SessionID
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		if errors.Is(err, context.Canceled) {
+			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
+		}
+		_ = events.EmitLog(context.WithoutCancel(ctx), record)
 		agentevents.Emit(ctx, s.Failed, agentevents.PersistenceFailedEvent{EventMeta: agentevents.Meta(ctx, commit.SessionID), Operation: operation, Err: err})
 	}
 	return err

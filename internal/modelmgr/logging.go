@@ -2,7 +2,7 @@ package modelmgr
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"log/slog"
 
 	"elbot/internal/events"
@@ -18,20 +18,18 @@ func (s *Service) connectLogSignals() error {
 	return nil
 }
 func logModelRetry(ctx context.Context, event ModelRetryingEvent) error {
-	errorMessage, detail := "", ""
+	errorMessage := ""
 	if event.Retry.Err != nil {
 		errorMessage = event.Retry.Err.Error()
 	}
-	var diagnostic events.DiagnosticError
-	if errors.As(event.Retry.Err, &diagnostic) {
-		detail = diagnostic.LogDiagnostic().Detail
-	}
 	level := slog.LevelWarn
-	if errors.Is(event.Retry.Err, context.Canceled) {
+	if event.Retry.ResultStatus == events.ResultCanceled {
 		level = slog.LevelInfo
 	}
-	_ = events.EmitLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: level, Detail: detail, Name: "model_retry", Module: "model", Summary: "model call retry", Fields: []slog.Attr{
-		slog.String("provider", event.Provider), slog.Int("retry_attempt", event.Retry.Attempt), slog.Int("max_retries", event.Retry.MaxRetries), slog.Duration("delay", event.Retry.Delay), slog.String("error", errorMessage),
-	}})
+	_ = events.EmitLog(ctx, events.LogRecord{
+		Category: events.LogRuntime, Level: level, EventName: "model_retry", Module: "model",
+		Identity: event.Identity, ResultStatus: event.Retry.ResultStatus,
+		Content: fmt.Sprintf("model call retry: provider=%s retry_attempt=%d max_retries=%d delay=%s error=%s", event.Provider, event.Retry.Attempt, event.Retry.MaxRetries, event.Retry.Delay, errorMessage),
+	})
 	return nil
 }

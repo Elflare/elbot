@@ -2,13 +2,16 @@ package builtin
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
 
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"elbot/internal/logging"
 )
 
@@ -63,10 +66,14 @@ func (c usageCommand) Handle(ctx context.Context, req command.Request) (*command
 	if err != nil {
 		return nil, err
 	}
-	if len(entries) == 0 {
-		return &command.Result{Content: "no usage data found"}, nil
+	content := "no usage data found"
+	if len(entries.Entries) > 0 {
+		content = formatUsageSummary(entries.Entries, query, groupBy)
 	}
-	return &command.Result{Content: formatUsageSummary(entries, query, groupBy)}, nil
+	if entries.DamagedCount > 0 {
+		content += fmt.Sprintf("\n本次扫描发现 %d 条损坏记录，用量统计可能不完整。", entries.DamagedCount)
+	}
+	return &command.Result{Content: content}, nil
 }
 
 func (c usageCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -111,7 +118,7 @@ func parseUsageQuery(args string) (logging.LogQuery, usageGroupKey, error) {
 		Days:          1,
 		MinLevel:      "debug",
 		Fields:        map[string]string{"event": "llm_usage"},
-		FieldContains: map[string][]string{},
+		ContentFields: map[string]string{},
 	}
 	groupBy := groupByModel
 
@@ -137,7 +144,7 @@ func parseUsageQuery(args string) (logging.LogQuery, usageGroupKey, error) {
 			if err != nil {
 				return query, groupBy, err
 			}
-			query.Fields["model"] = value
+			query.ContentFields["model"] = value
 		case "-s", "--session":
 			value, err := nextArg(parts, &i, name)
 			if err != nil {
@@ -183,8 +190,9 @@ func parseUsageQuery(args string) (logging.LogQuery, usageGroupKey, error) {
 }
 
 type usageBucket struct {
-	key              string
-	calls            int
+	key   string
+	calls int
+	// Token and elapsed totals use -1 for unknown; overflow also becomes unknown.
 	promptTokens     int64
 	completionTokens int64
 	totalTokens      int64
@@ -198,6 +206,15 @@ func formatUsageSummary(entries []logging.LogEntry, query logging.LogQuery, grou
 	grand := &usageBucket{key: "total"}
 
 	for _, entry := range entries {
+		fields := entry.LegacyFields
+		if entry.Type == events.ContentJSON {
+			var content map[string]json.RawMessage
+			_ = json.Unmarshal([]byte(entry.Content), &content)
+			fields = map[string]string{}
+			for key, value := range content {
+				fields[key] = string(value)
+			}
+		}
 		key := usageGroupKeyFor(entry, groupBy)
 		b := buckets[key]
 		if b == nil {
@@ -205,23 +222,21 @@ func formatUsageSummary(entries []logging.LogEntry, query logging.LogQuery, grou
 			buckets[key] = b
 			order = append(order, key)
 		}
-		prompt := atoiSafe(entry.Fields["prompt_tokens"])
-		completion := atoiSafe(entry.Fields["completion_tokens"])
-		total := atoiSafe(entry.Fields["total_tokens"])
-		cache := atoiSafe(entry.Fields["cache_hit_tokens"])
-		elapsed := atoiSafe(entry.Fields["elapsed_ms"])
-		b.calls++
-		b.promptTokens += prompt
-		b.completionTokens += completion
-		b.totalTokens += total
-		b.cacheHitTokens += cache
-		b.elapsedMs += elapsed
-		grand.calls++
-		grand.promptTokens += prompt
-		grand.completionTokens += completion
-		grand.totalTokens += total
-		grand.cacheHitTokens += cache
-		grand.elapsedMs += elapsed
+		prompt := atoiSafe(fields["prompt_tokens"])
+		completion := atoiSafe(fields["completion_tokens"])
+		total := atoiSafe(fields["total_tokens"])
+		cache := atoiSafe(fields["cache_hit_tokens"])
+		elapsed := atoiSafe(fields["elapsed_ms"])
+		for _, b := range []*usageBucket{b, grand} {
+			b.calls++
+			for total, value := range map[*int64]int64{&b.promptTokens: prompt, &b.completionTokens: completion, &b.totalTokens: total, &b.cacheHitTokens: cache, &b.elapsedMs: elapsed} {
+				if *total < 0 || value < 0 || value > math.MaxInt64-*total {
+					*total = -1
+				} else {
+					*total += value
+				}
+			}
+		}
 	}
 
 	sort.Strings(order)
@@ -241,6 +256,18 @@ func formatUsageSummary(entries []logging.LogEntry, query logging.LogQuery, grou
 }
 
 func usageGroupKeyFor(entry logging.LogEntry, groupBy usageGroupKey) string {
+	fields := entry.LegacyFields
+	if entry.Type == events.ContentJSON {
+		var content map[string]json.RawMessage
+		_ = json.Unmarshal([]byte(entry.Content), &content)
+		fields = map[string]string{}
+		for key, value := range content {
+			var text string
+			if json.Unmarshal(value, &text) == nil {
+				fields[key] = text
+			}
+		}
+	}
 	switch groupBy {
 	case groupByDay:
 		if entry.Time.IsZero() {
@@ -248,10 +275,13 @@ func usageGroupKeyFor(entry logging.LogEntry, groupBy usageGroupKey) string {
 		}
 		return entry.Time.Format("2006-01-02")
 	case groupBySession:
-		return firstNonEmpty(entry.Fields["session_id"], "unknown-session")
+		if entry.Identity.SessionID != nil {
+			return firstNonEmpty(*entry.Identity.SessionID, "unknown-session")
+		}
+		return "unknown-session"
 	default:
-		provider := strings.TrimSpace(entry.Fields["provider"])
-		model := strings.TrimSpace(entry.Fields["model"])
+		provider := strings.TrimSpace(fields["provider"])
+		model := strings.TrimSpace(fields["model"])
 		if provider != "" && model != "" {
 			return provider + "/" + model
 		}
@@ -279,16 +309,19 @@ func usageRangeDesc(query logging.LogQuery) string {
 func atoiSafe(value string) int64 {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return 0
+		return -1
 	}
 	n, err := strconv.ParseInt(value, 10, 64)
-	if err != nil {
-		return 0
+	if err != nil || n < 0 {
+		return -1
 	}
 	return n
 }
 
 func formatThousands(n int64) string {
+	if n < 0 {
+		return "unknown"
+	}
 	if n == 0 {
 		return "0"
 	}
@@ -335,5 +368,8 @@ func formatUsageBucket(sb *strings.Builder, label string, b *usageBucket) {
 }
 
 func formatElapsed(ms int64) string {
+	if ms < 0 {
+		return "unknown"
+	}
 	return fmt.Sprintf("%.1fs", float64(ms)/1000)
 }

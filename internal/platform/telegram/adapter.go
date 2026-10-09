@@ -69,14 +69,39 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 		me, err := a.client.getMe(ctx)
 		if err != nil {
 			if backoff.ShouldWarn() {
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-					Category: globalevents.LogRuntime,
-					Level:    slog.LevelWarn,
-					Name:     "telegram_getme_failed",
-					Module:   "telegram",
-					Summary:  "telegram getMe failed",
-					Fields:   []slog.Attr{slog.Any("error", err)},
-				})
+				{
+					record := globalevents.LogRecord{
+						Category:     globalevents.LogRuntime,
+						Level:        slog.LevelWarn,
+						EventName:    "telegram_getme_failed",
+						Module:       "telegram",
+						Type:         globalevents.ContentText,
+						Content:      fmt.Sprintf("telegram getMe failed\nerror=%v", err),
+						ContentLimit: 4096,
+						ResultStatus: globalevents.ResultFailed,
+					}
+					if errors.Is(err, context.Canceled) {
+						record.ResultStatus = globalevents.ResultCanceled
+						record.Level = slog.LevelInfo
+					}
+					facts, _ := contextinfo.ExecutionFromContext(ctx)
+					if facts.SessionID != "" {
+						record.Identity.SessionID = &facts.SessionID
+					}
+					if facts.RunID != "" {
+						record.Identity.RunID = &facts.RunID
+					}
+					if facts.Attempt != "" {
+						record.Identity.Attempt = &facts.Attempt
+					}
+					if facts.RequestID != "" {
+						record.Identity.RequestID = &facts.RequestID
+					}
+					if facts.RootRequestID != "" {
+						record.Identity.RootRequestID = &facts.RootRequestID
+					}
+					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+				}
 			}
 			if !sleepContext(ctx, backoff.Delay()) {
 				return ctx.Err()
@@ -87,23 +112,69 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 		a.botID = me.ID
 		a.botUsername = strings.TrimSpace(me.Username)
 		if err := a.syncBotCommands(ctx); err != nil {
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogRuntime,
-				Level:    failureLogLevel(err),
-				Name:     "sync_telegram_bot_commands_failed",
-				Module:   "telegram",
-				Summary:  "sync telegram bot commands failed",
-				Fields:   []slog.Attr{slog.Any("error", err)},
-			})
+			{
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogRuntime,
+					Level:        slog.LevelError,
+					EventName:    "sync_telegram_bot_commands_failed",
+					Module:       "telegram",
+					Type:         globalevents.ContentText,
+					Content:      fmt.Sprintf("sync telegram bot commands failed\nerror=%v", err),
+					ContentLimit: 4096,
+					ResultStatus: globalevents.ResultFailed,
+				}
+				if errors.Is(err, context.Canceled) {
+					record.ResultStatus = globalevents.ResultCanceled
+					record.Level = slog.LevelInfo
+				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			}
 		}
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelInfo,
-			Name:     "telegram_connected",
-			Module:   "telegram",
-			Summary:  "telegram connected",
-			Fields:   []slog.Attr{slog.Any("bot_id", me.ID), slog.Any("bot_username", me.Username)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelInfo,
+				EventName:    "telegram_connected",
+				Module:       "telegram",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("telegram connected\nbot_id=%v\nbot_username=%v", me.ID, me.Username),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultSucceeded,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 		a.notifyConnected(ctx)
 		for {
 			updates, err := a.client.getUpdates(ctx, offset)
@@ -111,14 +182,39 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 				if errors.Is(err, context.Canceled) || ctx.Err() != nil {
 					return ctx.Err()
 				}
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-					Category: globalevents.LogRuntime,
-					Level:    slog.LevelWarn,
-					Name:     "telegram_getupdates_failed",
-					Module:   "telegram",
-					Summary:  "telegram getUpdates failed",
-					Fields:   []slog.Attr{slog.Any("error", err)},
-				})
+				{
+					record := globalevents.LogRecord{
+						Category:     globalevents.LogRuntime,
+						Level:        slog.LevelWarn,
+						EventName:    "telegram_getupdates_failed",
+						Module:       "telegram",
+						Type:         globalevents.ContentText,
+						Content:      fmt.Sprintf("telegram getUpdates failed\nerror=%v", err),
+						ContentLimit: 4096,
+						ResultStatus: globalevents.ResultFailed,
+					}
+					if errors.Is(err, context.Canceled) {
+						record.ResultStatus = globalevents.ResultCanceled
+						record.Level = slog.LevelInfo
+					}
+					facts, _ := contextinfo.ExecutionFromContext(ctx)
+					if facts.SessionID != "" {
+						record.Identity.SessionID = &facts.SessionID
+					}
+					if facts.RunID != "" {
+						record.Identity.RunID = &facts.RunID
+					}
+					if facts.Attempt != "" {
+						record.Identity.Attempt = &facts.Attempt
+					}
+					if facts.RequestID != "" {
+						record.Identity.RequestID = &facts.RequestID
+					}
+					if facts.RootRequestID != "" {
+						record.Identity.RootRequestID = &facts.RootRequestID
+					}
+					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+				}
 				break
 			}
 			for _, upd := range updates {
@@ -151,14 +247,39 @@ func (a *Adapter) messageGroupRole(ctx context.Context, msg message) contextinfo
 	}
 	member, err := a.client.getChatMember(ctx, msg.Chat.ID, msg.From.ID)
 	if err != nil {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
-			Name:     "get_telegram_chat_member_failed",
-			Module:   "telegram",
-			Summary:  "get telegram chat member failed",
-			Fields:   []slog.Attr{slog.Any("error", err)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelWarn,
+				EventName:    "get_telegram_chat_member_failed",
+				Module:       "telegram",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("get telegram chat member failed\nerror=%v", err),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if errors.Is(err, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 		return contextinfo.GroupRoleUnknown
 	}
 	switch strings.TrimSpace(member.Status) {
@@ -176,14 +297,39 @@ func (a *Adapter) messageGroupRole(ctx context.Context, msg message) contextinfo
 func (a *Adapter) handleCallbackQuery(ctx context.Context, handler platform.PlatformHandler, query callbackQuery) {
 	if strings.TrimSpace(query.ID) != "" {
 		if err := a.client.answerCallbackQuery(ctx, query.ID, "已收到"); err != nil {
-			_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-				Category: globalevents.LogRuntime,
-				Level:    failureLogLevel(err),
-				Name:     "answer_telegram_callback_failed",
-				Module:   "telegram",
-				Summary:  "answer telegram callback failed",
-				Fields:   []slog.Attr{slog.Any("error", err)},
-			})
+			{
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogRuntime,
+					Level:        slog.LevelError,
+					EventName:    "answer_telegram_callback_failed",
+					Module:       "telegram",
+					Type:         globalevents.ContentText,
+					Content:      fmt.Sprintf("answer telegram callback failed\nerror=%v", err),
+					ContentLimit: 4096,
+					ResultStatus: globalevents.ResultFailed,
+				}
+				if errors.Is(err, context.Canceled) {
+					record.ResultStatus = globalevents.ResultCanceled
+					record.Level = slog.LevelInfo
+				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			}
 		}
 	}
 	if query.Message == nil || strings.TrimSpace(query.Data) == "" {
@@ -268,14 +414,39 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 	messageCtx.Segments = finalMessageSegments(text, normalized.Segments, nil)
 	msgCtx = platform.WithMessageContext(ctx, messageCtx)
 	if err := handler.HandleMessage(msgCtx, text); err != nil {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    failureLogLevel(err),
-			Name:     "handle_telegram_message_failed",
-			Module:   "telegram",
-			Summary:  "handle telegram message failed",
-			Fields:   []slog.Attr{slog.Any("error", err), slog.Any("message_id", msg.MessageID)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "handle_telegram_message_failed",
+				Module:       "telegram",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("handle telegram message failed\nerror=%v\nmessage_id=%v", err, msg.MessageID),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if errors.Is(err, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 	}
 }
 
@@ -419,14 +590,39 @@ func (a *Adapter) sendText(ctx context.Context, t target, text string, replyTo i
 		if err == nil || len(receipt.PlatformMessageIDs) > 0 {
 			return receipt, err
 		}
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
-			Name:     "telegram_rich_message_failed_fallback_to_html",
-			Module:   "telegram",
-			Summary:  "telegram rich message failed, fallback to html",
-			Fields:   []slog.Attr{slog.Any("error", err)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelWarn,
+				EventName:    "telegram_rich_message_failed_fallback_to_html",
+				Module:       "telegram",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("telegram rich message failed, fallback to html\nerror=%v", err),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if errors.Is(err, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 		return a.sendHTMLText(ctx, t, text, replyTo, keyboard)
 	case "plain":
 		return a.sendPlainText(ctx, t, text, replyTo, keyboard)
@@ -464,14 +660,39 @@ func (a *Adapter) sendHTMLText(ctx context.Context, t target, text string, reply
 	if err == nil || len(receipt.PlatformMessageIDs) > 0 {
 		return receipt, err
 	}
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogRuntime,
-		Level:    slog.LevelWarn,
-		Name:     "telegram_html_message_failed_fallback_to_plain",
-		Module:   "telegram",
-		Summary:  "telegram html message failed, fallback to plain",
-		Fields:   []slog.Attr{slog.Any("error", err)},
-	})
+	{
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogRuntime,
+			Level:        slog.LevelWarn,
+			EventName:    "telegram_html_message_failed_fallback_to_plain",
+			Module:       "telegram",
+			Type:         globalevents.ContentText,
+			Content:      fmt.Sprintf("telegram html message failed, fallback to plain\nerror=%v", err),
+			ContentLimit: 4096,
+			ResultStatus: globalevents.ResultFailed,
+		}
+		if errors.Is(err, context.Canceled) {
+			record.ResultStatus = globalevents.ResultCanceled
+			record.Level = slog.LevelInfo
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+	}
 	return a.sendPlainText(ctx, t, text, replyTo, keyboard)
 }
 
@@ -664,12 +885,4 @@ func sleepContext(ctx context.Context, d time.Duration) bool {
 	case <-timer.C:
 		return true
 	}
-}
-
-// failureLogLevel distinguishes explicit cancellation from an operation failure.
-func failureLogLevel(err error) slog.Level {
-	if errors.Is(err, context.Canceled) {
-		return slog.LevelInfo
-	}
-	return slog.LevelError
 }

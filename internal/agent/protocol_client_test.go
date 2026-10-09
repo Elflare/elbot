@@ -38,7 +38,7 @@ func TestUnregisteredNativeDialogueRejectsBeforeCompactionAndInputWrite(t *testi
 	if err := store.Messages().Append(ctx, old); err != nil {
 		t.Fatal(err)
 	}
-	if err := fixture.opts.Contexts.RecordUsage(ctx, row.ID, &llm.Usage{PromptTokens: 1000000000, TotalTokens: 1000000000}); err != nil {
+	if err := fixture.opts.Contexts.RecordUsage(ctx, row.ID, &llm.Usage{PromptTokens: func() *int64 { n := int64(1000000000); return &n }(), TotalTokens: func() *int64 { n := int64(1000000000); return &n }()}); err != nil {
 		t.Fatal(err)
 	}
 	next, _, err := fixture.execution.runAttempt(ctx, row, "incoming", fixture.out)

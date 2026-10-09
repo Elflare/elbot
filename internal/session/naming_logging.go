@@ -2,10 +2,9 @@ package session
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
+	"fmt"
 	"log/slog"
-	"time"
+	"strings"
 
 	"elbot/internal/events"
 	"elbot/internal/signal"
@@ -14,82 +13,80 @@ import (
 type namingLogProjection struct{}
 
 func (n namingLogProjection) scheduled(ctx context.Context, event NamingScheduledEvent) error {
-	emitNamingLog(ctx, event.TriggeredAt, events.LogRuntime, slog.LevelInfo, "session_naming_scheduled", "session naming scheduled",
-		"session_id", event.SessionID,
-		"message_count", event.MessageCount,
-		"trigger_step", event.TriggerStep,
-	)
+	emitNamingLog(ctx, events.LogRecord{
+		Category: events.LogRuntime, Level: slog.LevelInfo, EventName: "session_naming_scheduled", Module: "session",
+		Identity: event.Identity,
+		Content:  fmt.Sprintf("session naming scheduled: message_count=%d trigger_step=%d", event.MessageCount, event.TriggerStep),
+	})
 	return nil
 }
 
 func (n namingLogProjection) completed(ctx context.Context, event NamingCompletedEvent) error {
-	emitNamingLog(ctx, event.TriggeredAt, events.LogRuntime, slog.LevelInfo, "session_naming_completed", "session naming completed",
-		"session_id", event.SessionID,
-		"title", event.Title,
-		"provider", event.Provider,
-		"model", event.Model,
-		"message_count", event.MessageCount,
-	)
+	level := slog.LevelInfo
+	switch event.ResultStatus {
+	case events.ResultFailed:
+		level = slog.LevelError
+	case events.ResultRejected:
+		level = slog.LevelWarn
+	case events.ResultSucceeded:
+		if event.GenerationResultStatus == events.ResultFailed || event.TitleValid != nil && !*event.TitleValid {
+			level = slog.LevelWarn
+		}
+	}
+	var summary strings.Builder
+	fmt.Fprintf(&summary, "session naming completed: result=%s provider=%s model=%s", event.ResultStatus, event.Provider, event.Model)
+	if event.PreparationResultStatus != events.ResultUnspecified {
+		fmt.Fprintf(&summary, "\npreparation %s: %s", event.PreparationOperation, event.PreparationResultStatus)
+		if event.PreparationError != nil {
+			fmt.Fprintf(&summary, "; error=%v", event.PreparationError)
+		}
+	}
+	if event.GenerationResultStatus != events.ResultUnspecified {
+		fmt.Fprintf(&summary, "\ngeneration: %s", event.GenerationResultStatus)
+		if event.GenerationError != nil {
+			fmt.Fprintf(&summary, "; error=%v", event.GenerationError)
+		}
+	}
+	if event.TitleValid != nil && !*event.TitleValid {
+		fmt.Fprintf(&summary, "\ninvalid title: %s", event.InvalidReason)
+	}
+	if event.PersistenceResultStatus != events.ResultUnspecified {
+		fmt.Fprintf(&summary, "\npersistence: %s", event.PersistenceResultStatus)
+		if event.PersistenceError != nil {
+			fmt.Fprintf(&summary, "; error=%v", event.PersistenceError)
+		}
+	}
+	if event.FallbackResultStatus != events.ResultUnspecified {
+		fmt.Fprintf(&summary, "\nfallback: %s title=%q", event.FallbackResultStatus, event.FallbackTitle)
+		if event.FallbackError != nil {
+			fmt.Fprintf(&summary, "; error=%v", event.FallbackError)
+		}
+	}
+	if event.CancellationError != nil {
+		fmt.Fprintf(&summary, "\ncancellation: %v", event.CancellationError)
+	}
+	if event.Title != nil {
+		fmt.Fprintf(&summary, "\nactual title=%q", *event.Title)
+	}
+	if event.MessageCount != nil {
+		fmt.Fprintf(&summary, "\nmessage_count=%d", *event.MessageCount)
+	}
+	fmt.Fprintf(&summary, " failures=%d/%d", event.FailureCount, event.MaxFailures)
+	record := events.LogRecord{
+		Category: events.LogRuntime, Level: level, EventName: "session_naming_completed", Module: "session",
+		Content: summary.String(), ContentLimit: 4096, Identity: event.Identity, ResultStatus: event.ResultStatus,
+	}
+	emitNamingLog(ctx, record)
+	// A terminal generator failure remains auditable even when a fallback title
+	// recovers the flow or runtime filtering suppresses its degradation warning.
+	if event.GenerationResultStatus == events.ResultFailed {
+		record.Category = events.LogAudit
+		emitNamingLog(ctx, record)
+	}
 	return nil
 }
 
-func (n namingLogProjection) failed(ctx context.Context, event NamingFailedEvent) error {
-	level := slog.LevelError
-	if errors.Is(event.Err, context.Canceled) && event.FallbackErr == nil {
-		level = slog.LevelInfo
-	}
-	fields := []any{
-		"session_id", event.SessionID,
-		"stage", event.Stage,
-		"provider", event.Provider,
-		"model", event.Model,
-		"llm_call", event.LLMCall,
-		"reason", event.Reason,
-		"invalid_reason", event.InvalidReason,
-		"title", event.Title,
-		"generated_title_raw", event.GeneratedTitleRaw,
-		"generated_title_normalized", event.GeneratedTitleNormalized,
-		"message_count", event.MessageCount,
-		"failure_count", event.FailureCount,
-		"max_failures", event.MaxFailures,
-		"fallback_applied", event.FallbackApplied,
-		"fallback_title", event.FallbackTitle,
-		"error", event.Err,
-		"fallback_error", event.FallbackErr,
-	}
-	emitNamingLog(ctx, event.TriggeredAt, events.LogRuntime, level, "session_naming_failed", "session naming failed", fields...)
-	var diagnostic events.DiagnosticError
-	if level == slog.LevelError && (event.Stage == "llm_error" || errors.As(event.Err, &diagnostic)) {
-		emitNamingLog(ctx, event.TriggeredAt, events.LogAudit, level, "session_naming_failed", "session naming failed", fields...)
-	}
-	return nil
-}
-
-func emitNamingLog(ctx context.Context, at time.Time, category events.LogCategory, level slog.Level, eventName, summary string, attrs ...any) {
-	record := events.LogRecord{At: at, Category: category, Level: level, Name: eventName, Module: "session", Summary: summary}
-	detail := map[string]any{}
-	for _, attr := range slog.Group("", attrs...).Value.Group() {
-		if attr.Key == "generated_title_raw" || attr.Key == "generated_title_normalized" {
-			detail[attr.Key] = attr.Value.Any()
-			continue
-		}
-		if err, ok := attr.Value.Any().(error); ok {
-			attr.Value = slog.StringValue(err.Error())
-			var diagnostic events.DiagnosticError
-			if errors.As(err, &diagnostic) {
-				key := "upstream"
-				if attr.Key == "fallback_error" {
-					key = "fallback_upstream"
-				}
-				detail[key] = diagnostic.LogDiagnostic()
-			}
-		}
-		record.Fields = append(record.Fields, attr)
-	}
-	if len(detail) > 0 {
-		data, _ := json.Marshal(detail)
-		record.Detail = string(data)
-	}
+func emitNamingLog(ctx context.Context, record events.LogRecord) {
 	_ = events.EmitLog(ctx, record)
 }
 
@@ -97,6 +94,5 @@ func (s *Service) connectLogSignals() {
 	logs := namingLogProjection{}
 	scheduled, _ := s.namingSignals.Scheduled.Connect(logs.scheduled, signal.ConnectOptions{})
 	completed, _ := s.namingSignals.Completed.Connect(logs.completed, signal.ConnectOptions{})
-	failed, _ := s.namingSignals.Failed.Connect(logs.failed, signal.ConnectOptions{})
-	s.logConnections = []*signal.Connection{scheduled, completed, failed}
+	s.logConnections = []*signal.Connection{scheduled, completed}
 }

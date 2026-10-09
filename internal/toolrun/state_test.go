@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -130,7 +131,8 @@ func TestStateConcurrentUpdatesPreserveOtherOwners(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			<-start
-			errs <- contexts.RecordUsage(ctx, row.ID, &llm.Usage{TotalTokens: i + 1})
+			tokens := int64(i + 1)
+			errs <- contexts.RecordUsage(ctx, row.ID, &llm.Usage{TotalTokens: &tokens})
 		}(i)
 		go func() {
 			defer wg.Done()
@@ -162,7 +164,7 @@ func TestStateConcurrentUpdatesPreserveOtherOwners(t *testing.T) {
 		t.Fatalf("context=%+v err=%v", contextsState, err)
 	}
 	usage, _ := contexts.Usage(latest)
-	if *usage != *contextsState.LastUsage || !strings.Contains(latest.Metadata, "9007199254740993") {
+	if !reflect.DeepEqual(usage, contextsState.LastUsage) || !strings.Contains(latest.Metadata, "9007199254740993") {
 		t.Fatalf("lost committed state: %s", latest.Metadata)
 	}
 	if strings.Contains(latest.Metadata, "reader") {

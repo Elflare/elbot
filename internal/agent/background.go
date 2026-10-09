@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"path/filepath"
@@ -107,24 +108,70 @@ func (r *backgroundRunner) RunBackground(ctx context.Context, req background.Run
 		return background.RunResult{SessionID: bgSession.ID}, preloaded.Err
 	}
 	if len(preloaded.Tools) > 0 {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogAudit,
-			Level:    slog.LevelInfo,
-			Name:     "background_tool_preloaded",
-			Module:   "agent",
-			Summary:  "background_tool_preloaded",
-			Fields:   []slog.Attr{slog.Any("session_id", bgSession.ID), slog.Any("kind", req.Kind), slog.Any("name", req.Name), slog.Any("tools", preloaded.Tools)},
-		})
+		{
+			content, _ := json.Marshal(map[string]any{"kind": req.Kind, "name": req.Name, "tools": preloaded.Tools})
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogAudit,
+				Level:        slog.LevelInfo,
+				EventName:    "background_tool_preloaded",
+				Module:       "agent",
+				Type:         globalevents.ContentJSON,
+				Content:      string(content),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultSucceeded,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			record.Identity.SessionID = &bgSession.ID
+			_ = globalevents.EmitLog(ctx, record)
+		}
 	}
 	if len(preloaded.Skills) > 0 {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogAudit,
-			Level:    slog.LevelInfo,
-			Name:     "background_skill_preloaded",
-			Module:   "agent",
-			Summary:  "background_skill_preloaded",
-			Fields:   []slog.Attr{slog.Any("session_id", bgSession.ID), slog.Any("kind", req.Kind), slog.Any("name", req.Name), slog.Any("skills", preloaded.Skills)},
-		})
+		{
+			content, _ := json.Marshal(map[string]any{"kind": req.Kind, "name": req.Name, "skills": preloaded.Skills})
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogAudit,
+				Level:        slog.LevelInfo,
+				EventName:    "background_skill_preloaded",
+				Module:       "agent",
+				Type:         globalevents.ContentJSON,
+				Content:      string(content),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultSucceeded,
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			record.Identity.SessionID = &bgSession.ID
+			_ = globalevents.EmitLog(ctx, record)
+		}
 	}
 	prompt := backgroundPromptWithSkills(req.Prompt, preloaded.SkillPrompt)
 	result := r.execution.RunBackground(ctx, bgSession, prompt)

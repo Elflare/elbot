@@ -138,7 +138,7 @@ func (d toolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output)
 	return d.output.SendOutputs(ctx, outputs)
 }
 
-func (d toolRunDeps) RecordToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk string, startedAt time.Time, result string, callErr error) {
+func (d toolRunDeps) RecordToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk string, startedAt time.Time, result string, callErr error) error {
 	record := &storage.ToolCallRecord{
 		SessionID:     sessionID,
 		ToolCallID:    call.ID,
@@ -157,8 +157,9 @@ func (d toolRunDeps) RecordToolCall(ctx context.Context, sessionID string, call 
 	if d.store != nil && d.store.ToolCalls() != nil {
 		recordErr = d.store.ToolCalls().Create(ctx, record)
 	}
-	var denied toolrun.PolicyDeniedError
+	var denied tool.PolicyDeniedError
 	agentevents.Emit(ctx, d.completed, agentevents.ToolCallCompletedEvent{EventMeta: agentevents.Meta(ctx, sessionID), Record: *record, Arguments: call.Arguments, RecordErr: recordErr, CallErr: callErr, PolicyDenied: errors.As(callErr, &denied)})
+	return recordErr
 }
 
 func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reason string) {

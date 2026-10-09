@@ -114,12 +114,44 @@ type IncompleteDetails struct {
 	Reason string `json:"reason"`
 }
 type ResponseUsage struct {
-	InputTokens        int `json:"input_tokens"`
-	OutputTokens       int `json:"output_tokens"`
-	TotalTokens        int `json:"total_tokens"`
+	// InputTokens is the protocol-reported input count; nil means missing or invalid.
+	// An explicitly reported zero is retained by the decoder.
+	InputTokens *int64 `json:"input_tokens"`
+	// OutputTokens is the protocol-reported output count; nil means unknown.
+	OutputTokens *int64 `json:"output_tokens"`
+	// TotalTokens is the reported total, never inferred from other counts.
+	TotalTokens *int64 `json:"total_tokens"`
+	// InputTokensDetails retains the protocol's cache counters; absent or malformed
+	// details leave individual counters nil without invalidating the response.
 	InputTokensDetails struct {
-		CachedTokens int `json:"cached_tokens"`
+		// CachedTokens is the reported cached input count; nil is unknown, not zero.
+		CachedTokens *int64 `json:"cached_tokens"`
 	} `json:"input_tokens_details"`
+}
+
+func (u *ResponseUsage) UnmarshalJSON(data []byte) error {
+	*u = ResponseUsage{}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil
+	}
+	u.InputTokens = parseUsageCount(raw["input_tokens"])
+	u.OutputTokens = parseUsageCount(raw["output_tokens"])
+	u.TotalTokens = parseUsageCount(raw["total_tokens"])
+	data = raw["input_tokens_details"]
+	raw = nil
+	if err := json.Unmarshal(data, &raw); err == nil {
+		u.InputTokensDetails.CachedTokens = parseUsageCount(raw["cached_tokens"])
+	}
+	return nil
+}
+
+func parseUsageCount(value json.RawMessage) *int64 {
+	var i *int64
+	if err := json.Unmarshal(value, &i); err != nil || i == nil || *i < 0 {
+		return nil
+	}
+	return i
 }
 
 func (r *Response) UnmarshalJSON(raw []byte) error {

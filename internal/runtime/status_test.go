@@ -17,7 +17,8 @@ func TestSnapshotElapsedUsesFinishedAt(t *testing.T) {
 }
 
 func TestFormatUsage(t *testing.T) {
-	got := FormatUsage(&llm.Usage{TotalTokens: 18240, CacheHitTokens: 12100})
+	total, cache := int64(18240), int64(12100)
+	got := FormatUsage(&llm.Usage{TotalTokens: &total, CacheHitTokens: &cache})
 	want := "tokens 18,240 · cache 12,100"
 	if got != want {
 		t.Fatalf("usage = %q, want %q", got, want)
@@ -25,11 +26,26 @@ func TestFormatUsage(t *testing.T) {
 	if got := FormatUsage(nil); got != "" {
 		t.Fatalf("nil usage = %q, want empty", got)
 	}
+	zero := int64(0)
+	for _, tc := range []struct {
+		usage llm.Usage
+		want  string
+	}{
+		{llm.Usage{}, "tokens unknown · cache unknown"},
+		{llm.Usage{TotalTokens: &zero, CacheHitTokens: &zero}, "tokens 0 · cache 0"},
+		{llm.Usage{CacheHitTokens: &cache}, "tokens unknown · cache 12,100"},
+		{llm.Usage{TotalTokens: &total}, "tokens 18,240 · cache unknown"},
+	} {
+		if got := FormatUsage(&tc.usage); got != tc.want {
+			t.Errorf("got %q, want %q", got, tc.want)
+		}
+	}
 }
 
 func TestFormatCompact(t *testing.T) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	s := Snapshot{Phase: PhaseLLM, Provider: "deepseek", Model: "reasoner", TurnStartedAt: start, StageStartedAt: start, Usage: &llm.Usage{TotalTokens: 1234, CacheHitTokens: 100}}
+	total, cache := int64(1234), int64(100)
+	s := Snapshot{Phase: PhaseLLM, Provider: "deepseek", Model: "reasoner", TurnStartedAt: start, StageStartedAt: start, Usage: &llm.Usage{TotalTokens: &total, CacheHitTokens: &cache}}
 	got := FormatCompact(s, start.Add(8*time.Second), 120)
 	for _, want := range []string{"llm", "00:08", "deepseek/reasoner", "tokens 1,234", "cache 100"} {
 		if !strings.Contains(got, want) {

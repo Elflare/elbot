@@ -2,6 +2,7 @@ package elnis
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -171,14 +172,39 @@ func (r *Runtime) reportWorker(ctx context.Context) {
 		return
 	}
 	if err := r.service.recoverReports(ctx, false); err != nil && ctx.Err() == nil {
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogElnis,
-			Level:    slog.LevelWarn,
-			Name:     "initial_elnis_report_recovery_failed",
-			Module:   "elnis",
-			Summary:  "initial elnis report recovery failed",
-			Fields:   []slog.Attr{slog.Any("error", err.Error())},
-		})
+		{
+			content, _ := json.Marshal(map[string]any{"error": fmt.Sprintf("%.2048s", err.Error())})
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogElnis,
+				Level:        slog.LevelWarn,
+				EventName:    "initial_elnis_report_recovery_failed",
+				Module:       "elnis",
+				Type:         globalevents.ContentJSON,
+				Content:      string(content),
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if errors.Is(err, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 	}
 	ticker := time.NewTicker(reportRecoveryInterval)
 	defer ticker.Stop()
@@ -188,14 +214,39 @@ func (r *Runtime) reportWorker(ctx context.Context) {
 			return
 		case <-ticker.C:
 			if err := r.service.recoverReports(ctx, false); err != nil && ctx.Err() == nil {
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-					Category: globalevents.LogElnis,
-					Level:    slog.LevelWarn,
-					Name:     "elnis_report_retry_failed",
-					Module:   "elnis",
-					Summary:  "elnis report retry failed",
-					Fields:   []slog.Attr{slog.Any("error", err.Error())},
-				})
+				{
+					content, _ := json.Marshal(map[string]any{"error": fmt.Sprintf("%.2048s", err.Error())})
+					record := globalevents.LogRecord{
+						Category:     globalevents.LogElnis,
+						Level:        slog.LevelWarn,
+						EventName:    "elnis_report_retry_failed",
+						Module:       "elnis",
+						Type:         globalevents.ContentJSON,
+						Content:      string(content),
+						ResultStatus: globalevents.ResultFailed,
+					}
+					if errors.Is(err, context.Canceled) {
+						record.ResultStatus = globalevents.ResultCanceled
+						record.Level = slog.LevelInfo
+					}
+					facts, _ := contextinfo.ExecutionFromContext(ctx)
+					if facts.SessionID != "" {
+						record.Identity.SessionID = &facts.SessionID
+					}
+					if facts.RunID != "" {
+						record.Identity.RunID = &facts.RunID
+					}
+					if facts.Attempt != "" {
+						record.Identity.Attempt = &facts.Attempt
+					}
+					if facts.RequestID != "" {
+						record.Identity.RequestID = &facts.RequestID
+					}
+					if facts.RootRequestID != "" {
+						record.Identity.RootRequestID = &facts.RootRequestID
+					}
+					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+				}
 			}
 		}
 	}

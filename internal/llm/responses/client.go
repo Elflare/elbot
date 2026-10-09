@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 
+	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/llm/httpclient"
@@ -207,20 +208,31 @@ func (c *Client) StreamPrepared(ctx context.Context, prepared PreparedRequest) (
 		return nil, fmt.Errorf("prepared response request is empty")
 	}
 
-	_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-		Category: globalevents.LogRuntime,
-		Level:    slog.LevelDebug,
-		Name:     "responses_request",
-		Module:   "model",
-		Summary:  "responses request",
-		Fields: []slog.Attr{
-			slog.Any("endpoint", c.baseURL+"/responses"),
-			slog.Any("model", prepared.model),
-			slog.Any("input_items", prepared.inputs),
-			slog.Any("allowed_tools", len(prepared.allowedTools)),
-			slog.Any("request_bytes", len(prepared.body)),
-		},
-	})
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	record := globalevents.LogRecord{
+		Category:  globalevents.LogRuntime,
+		Level:     slog.LevelDebug,
+		EventName: "responses_request",
+		Module:    "model",
+		Content: fmt.Sprintf("responses request: endpoint=%s model=%s input_items=%d allowed_tools=%d request_bytes=%d",
+			c.baseURL+"/responses", prepared.model, prepared.inputs, len(prepared.allowedTools), len(prepared.body)),
+	}
+	if facts.SessionID != "" {
+		record.Identity.SessionID = &facts.SessionID
+	}
+	if facts.RunID != "" {
+		record.Identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		record.Identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		record.Identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		record.Identity.RootRequestID = &facts.RootRequestID
+	}
+	_ = globalevents.EmitLog(ctx, record)
 
 	callCtx, cancel := context.WithCancel(ctx)
 	resp, err := c.transport.Do(callCtx, func(ctx context.Context) (*http.Request, error) {

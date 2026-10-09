@@ -2,6 +2,8 @@ package telegram
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -100,14 +102,39 @@ func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Rece
 			s.finished = true
 			return telegramReceipt(receipt, s.target), err
 		}
-		_ = globalevents.EmitLog(ctx, globalevents.LogRecord{
-			Category: globalevents.LogRuntime,
-			Level:    slog.LevelWarn,
-			Name:     "telegram_rich_stream_final_failed_fallback_to_sendmessage",
-			Module:   "telegram",
-			Summary:  "telegram rich stream final failed, fallback to sendMessage",
-			Fields:   []slog.Attr{slog.Any("error", err)},
-		})
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelWarn,
+				EventName:    "telegram_rich_stream_final_failed_fallback_to_sendmessage",
+				Module:       "telegram",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("telegram rich stream final failed, fallback to sendMessage\nerror=%v", err),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if errors.Is(err, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
 	}
 	pages := telegramTextPages(text)
 	if s.message == 0 {
