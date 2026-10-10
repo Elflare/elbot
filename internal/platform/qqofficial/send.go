@@ -30,18 +30,22 @@ func receiptWithMessageID(id string) delivery.Receipt {
 	return delivery.Receipt{PlatformMessageIDs: []string{id}}
 }
 
-func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	t, err := a.contextTarget(ctx)
 	if err != nil {
-		return delivery.Receipt{}, err
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return delivery.Receipt{}, logResult, err
 	}
 	return a.sendOutputs(ctx, t, outputs)
 }
 
-func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	var receipt delivery.Receipt
 	for i, out := range outputs {
-		sent, err := a.sendOutput(ctx, t, out)
+		sent, logResult, err := a.sendOutput(ctx, t, out)
 		var mediaIndexes []int
 		if out.Kind == delivery.KindImage || out.Kind == delivery.KindFile {
 			mediaIndexes = []int{i}
@@ -50,10 +54,10 @@ func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []deliv
 		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
 		receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
 		if err != nil {
-			return receipt, err
+			return receipt, logResult, err
 		}
 	}
-	return receipt, nil
+	return receipt, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
 func qqOfficialReceipt(receipt delivery.Receipt, target sendTarget, mediaIndexes ...int) delivery.Receipt {
@@ -74,7 +78,7 @@ func qqOfficialTargetScope(target sendTarget) string {
 	}
 	return ""
 }
-func (a *Adapter) sendOutput(ctx context.Context, t sendTarget, out delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) sendOutput(ctx context.Context, t sendTarget, out delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	switch out.Kind {
 	case delivery.KindText:
 		return a.sendText(ctx, t, out.Text)
@@ -119,13 +123,24 @@ func (a *Adapter) contextTarget(ctx context.Context) (sendTarget, error) {
 	return t, nil
 }
 
-func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string) (delivery.Receipt, error) {
+func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string) (delivery.Receipt, globalevents.LogResult, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return delivery.Receipt{}, nil
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	}
 	if target.Proactive && !a.cfg.allowProactive() {
-		return delivery.Receipt{}, fmt.Errorf("qqofficial proactive messages are disabled")
+		{
+			err := fmt.Errorf("qqofficial proactive messages are disabled")
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+			if err != nil {
+				logResult.ResultStatus = globalevents.ResultFailed
+				logResult.Content = err.Error()
+				if errors.Is(err, context.Canceled) {
+					logResult.ResultStatus = globalevents.ResultCanceled
+				}
+			}
+			return delivery.Receipt{}, logResult, err
+		}
 	}
 	if a.cfg.markdownByDefault() {
 		msg := a.baseMessage(target)
@@ -136,7 +151,7 @@ func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string) 
 		}
 		resp, err := a.client.sendMessage(ctx, target, msg)
 		if err == nil {
-			return receiptWithMessageID(resp.ID), nil
+			return receiptWithMessageID(resp.ID), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 		}
 		{
 			record := globalevents.LogRecord{
@@ -177,31 +192,58 @@ func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string) 
 	msg.Content = text
 	resp, err := a.client.sendMessage(ctx, target, msg)
 	if err != nil {
-		return delivery.Receipt{}, err
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return delivery.Receipt{}, logResult, err
 	}
-	return receiptWithMessageID(resp.ID), nil
+	return receiptWithMessageID(resp.ID), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
-func (a *Adapter) sendMedia(ctx context.Context, target sendTarget, out delivery.Output, fileType int) (delivery.Receipt, error) {
+func (a *Adapter) sendMedia(ctx context.Context, target sendTarget, out delivery.Output, fileType int) (delivery.Receipt, globalevents.LogResult, error) {
 	if target.Proactive && !a.cfg.allowProactive() {
-		return delivery.Receipt{}, fmt.Errorf("qqofficial proactive messages are disabled")
+		{
+			err := fmt.Errorf("qqofficial proactive messages are disabled")
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+			if err != nil {
+				logResult.ResultStatus = globalevents.ResultFailed
+				logResult.Content = err.Error()
+				if errors.Is(err, context.Canceled) {
+					logResult.ResultStatus = globalevents.ResultCanceled
+				}
+			}
+			return delivery.Receipt{}, logResult, err
+		}
 	}
 	source, err := prepareSource(out.Source.URL, out.Source.Path, out.Source.Data)
 	if err != nil {
-		return delivery.Receipt{}, err
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return delivery.Receipt{}, logResult, err
 	}
 	uploaded, err := a.client.uploadFile(ctx, target, fileType, source)
 	if err != nil {
-		return delivery.Receipt{}, err
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return delivery.Receipt{}, logResult, err
 	}
 	msg := a.baseMessage(target)
 	msg.MsgType = msgTypeMedia
 	msg.Media = &messageMedia{FileInfo: uploaded.FileInfo}
 	resp, err := a.client.sendMessage(ctx, target, msg)
 	if err != nil {
-		return delivery.Receipt{}, err
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return delivery.Receipt{}, logResult, err
 	}
-	return receiptWithMessageID(resp.ID), nil
+	return receiptWithMessageID(resp.ID), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
 func (a *Adapter) baseMessage(target sendTarget) messageToCreate {
@@ -215,18 +257,33 @@ func (a *Adapter) baseMessage(target sendTarget) messageToCreate {
 	return msg
 }
 
-func (a *Adapter) sendArk(ctx context.Context, target sendTarget, ark messageArk) (delivery.Receipt, error) {
+func (a *Adapter) sendArk(ctx context.Context, target sendTarget, ark messageArk) (delivery.Receipt, globalevents.LogResult, error) {
 	if !a.cfg.EnableArk {
-		return delivery.Receipt{}, fmt.Errorf("qqofficial ark is disabled")
+		{
+			err := fmt.Errorf("qqofficial ark is disabled")
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+			if err != nil {
+				logResult.ResultStatus = globalevents.ResultFailed
+				logResult.Content = err.Error()
+				if errors.Is(err, context.Canceled) {
+					logResult.ResultStatus = globalevents.ResultCanceled
+				}
+			}
+			return delivery.Receipt{}, logResult, err
+		}
 	}
 	msg := a.baseMessage(target)
 	msg.MsgType = msgTypeArk
 	msg.Ark = &ark
 	resp, err := a.client.sendMessage(ctx, target, msg)
 	if err != nil {
-		return delivery.Receipt{}, err
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return delivery.Receipt{}, logResult, err
 	}
-	return receiptWithMessageID(resp.ID), nil
+	return receiptWithMessageID(resp.ID), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
 func metaString(meta map[string]any, key string) string {

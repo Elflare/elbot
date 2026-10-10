@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/background"
 	"elbot/internal/contextinfo"
 	"fmt"
 	"log/slog"
@@ -16,7 +17,7 @@ import (
 
 // Handler supplies the execution result and independent diagnostic body. The
 // scheduler consumes these source facts without classifying the original error.
-type Handler func(ctx context.Context, job storage.CronJob) (resultStatus globalevents.ResultStatus, content string, err error)
+type Handler func(ctx context.Context, job storage.CronJob) (logResult globalevents.LogResult, err error)
 
 type Registry interface {
 	RegisterHandler(name string, handler Handler) error
@@ -182,7 +183,7 @@ func (m *Manager) Start(ctx context.Context) error {
 		if facts.RootRequestID != "" {
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
-		_ = globalevents.EmitLog(ctx, record)
+		background.LogBackground(ctx, record)
 	}
 	return nil
 }
@@ -216,7 +217,7 @@ func (m *Manager) Stop() context.Context {
 			Content:      "cron manager stopping",
 			ContentLimit: 4096,
 		}
-		_ = globalevents.EmitLog(context.Background(), record)
+		background.LogBackground(context.Background(), record)
 	}
 	go func() {
 		if schedulerDone != nil {
@@ -262,7 +263,7 @@ func (m *Manager) reloadEnabled(ctx context.Context) error {
 				if facts.RootRequestID != "" {
 					record.Identity.RootRequestID = &facts.RootRequestID
 				}
-				_ = globalevents.EmitLog(ctx, record)
+				background.LogBackground(ctx, record)
 			}
 		}
 	}
@@ -297,7 +298,7 @@ func (m *Manager) scheduleJob(job storage.CronJob) error {
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultFailed,
 			}
-			_ = globalevents.EmitLog(context.Background(), record)
+			background.LogBackground(context.Background(), record)
 		}
 		m.updateNextRunAt(context.Background(), job, nil)
 		return nil
@@ -333,7 +334,7 @@ func (m *Manager) scheduleJob(job storage.CronJob) error {
 			ContentLimit: 4096,
 			ResultStatus: globalevents.ResultSucceeded,
 		}
-		_ = globalevents.EmitLog(context.Background(), record)
+		background.LogBackground(context.Background(), record)
 	}
 	return nil
 }
@@ -345,6 +346,24 @@ func (m *Manager) runJob(name string) {
 		return
 	}
 	ctx := m.runCtx
+
+	identity := globalevents.LogIdentity{}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.SessionID != "" {
+		identity.SessionID = &facts.SessionID
+	}
+	if facts.RunID != "" {
+		identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		identity.RootRequestID = &facts.RootRequestID
+	}
 	m.workers.Add(1)
 	m.mu.Unlock()
 	defer m.workers.Done()
@@ -362,23 +381,8 @@ func (m *Manager) runJob(name string) {
 					ContentLimit: 4096,
 					ResultStatus: globalevents.ResultFailed,
 				}
-				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				if facts.SessionID != "" {
-					record.Identity.SessionID = &facts.SessionID
-				}
-				if facts.RunID != "" {
-					record.Identity.RunID = &facts.RunID
-				}
-				if facts.Attempt != "" {
-					record.Identity.Attempt = &facts.Attempt
-				}
-				if facts.RequestID != "" {
-					record.Identity.RequestID = &facts.RequestID
-				}
-				if facts.RootRequestID != "" {
-					record.Identity.RootRequestID = &facts.RootRequestID
-				}
-				_ = globalevents.EmitLog(ctx, record)
+				record.Identity = identity
+				background.LogBackground(ctx, record)
 			}
 		}
 		return
@@ -406,23 +410,8 @@ func (m *Manager) runJob(name string) {
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultSkipped,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(ctx, record)
+			record.Identity = identity
+			background.LogBackground(ctx, record)
 		}
 		return
 	}
@@ -440,23 +429,8 @@ func (m *Manager) runJob(name string) {
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultFailed,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(ctx, record)
+			record.Identity = identity
+			background.LogBackground(ctx, record)
 		}
 		return
 	}
@@ -479,25 +453,11 @@ func (m *Manager) runJob(name string) {
 			Content:      fmt.Sprintf("cron job started\njob=%v\nhandler=%v", job.Name, job.Handler),
 			ContentLimit: 4096,
 		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		_ = globalevents.EmitLog(ctx, record)
+		record.Identity = identity
+		background.LogBackground(ctx, record)
 	}
-	resultStatus, content, _ := handler(ctx, *job)
+	logResult, _ := handler(ctx, *job)
+	resultStatus, content := logResult.ResultStatus, logResult.Content
 	duration := time.Since(startedAt)
 	// Deadline expiry is a failure; only explicit cancellation is canceled in logs.
 	record := globalevents.LogRecord{
@@ -512,27 +472,12 @@ func (m *Manager) runJob(name string) {
 	if resultStatus == globalevents.ResultFailed {
 		record.Level = slog.LevelError
 	}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if facts.SessionID != "" {
-		record.Identity.SessionID = &facts.SessionID
-	}
-	if facts.RunID != "" {
-		record.Identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		record.Identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		record.Identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		record.Identity.RootRequestID = &facts.RootRequestID
-	}
+	record.Identity = identity
 	defer func() {
 		if record.ResultStatus == globalevents.ResultFailed {
 			record.EventName = "cron_job_failed"
 		}
-		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		background.LogBackground(ctx, record)
 	}()
 	// Final bookkeeping remains part of the tracked invocation after cancel.
 	ctx = context.WithoutCancel(ctx)
@@ -563,23 +508,8 @@ func (m *Manager) runJob(name string) {
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultFailed,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(ctx, record)
+			record.Identity = identity
+			background.LogBackground(ctx, record)
 		}
 	}
 
@@ -617,23 +547,8 @@ func (m *Manager) runJob(name string) {
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultFailed,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(ctx, record)
+			record.Identity = identity
+			background.LogBackground(ctx, record)
 		}
 	}
 }
@@ -693,7 +608,7 @@ func (m *Manager) updateNextRunAt(ctx context.Context, job storage.CronJob, next
 			if facts.RootRequestID != "" {
 				record.Identity.RootRequestID = &facts.RootRequestID
 			}
-			_ = globalevents.EmitLog(ctx, record)
+			background.LogBackground(ctx, record)
 		}
 	}
 }

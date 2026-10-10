@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"reflect"
 	"strings"
@@ -44,49 +45,107 @@ func (r *replyTestRepository) MapPlatformMessage(ctx context.Context, m storage.
 
 type replyTestPlatform struct {
 	fakePlatform
-	events              *[]string
-	receipt             delivery.Receipt
-	sendErr, outputsErr error
-	text                string
-	texts               []string
+	events                          *[]string
+	receipt                         delivery.Receipt
+	sendErr, outputsErr             error
+	sendLogResult, outputsLogResult *events.LogResult
+	text                            string
+	texts                           []string
 }
 
-func (p *replyTestPlatform) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+func (p *replyTestPlatform) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	*p.events = append(*p.events, "send")
 	p.text = delivery.FallbackOutput(outputs).Text
 	p.texts = append(p.texts, p.text)
-	return p.receipt, p.sendErr
+	{
+		err := p.sendErr
+		logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+		if err != nil {
+			logResult.ResultStatus = events.ResultFailed
+			logResult.Content = err.Error()
+			if err == context.Canceled {
+				logResult.ResultStatus = events.ResultCanceled
+			}
+		}
+		if p.sendLogResult != nil {
+			logResult = *p.sendLogResult
+		}
+		return p.receipt, logResult, err
+	}
 }
 
-func (p *replyTestPlatform) SendNotice(_ context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+func (p *replyTestPlatform) SendNotice(_ context.Context, notice delivery.Notice) (delivery.Receipt, events.LogResult, error) {
 	*p.events = append(*p.events, "outputs")
-	return delivery.Receipt{}, p.outputsErr
+	{
+		err := p.outputsErr
+		logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+		if err != nil {
+			logResult.ResultStatus = events.ResultFailed
+			logResult.Content = err.Error()
+			if err == context.Canceled {
+				logResult.ResultStatus = events.ResultCanceled
+			}
+		}
+		if p.outputsLogResult != nil {
+			logResult = *p.outputsLogResult
+		}
+		return delivery.Receipt{}, logResult, err
+	}
 }
 
 type replyTestStream struct {
-	events                        *[]string
-	replaceReceipt, finishReceipt delivery.Receipt
-	replaceErr, finishErr         error
-	text                          string
-	wantCtx                       context.Context
-	t                             *testing.T
+	events                            *[]string
+	replaceReceipt, finishReceipt     delivery.Receipt
+	replaceErr, finishErr             error
+	replaceLogResult, finishLogResult *events.LogResult
+	text                              string
+	wantCtx                           context.Context
+	t                                 *testing.T
 }
 
 func (s *replyTestStream) Append(context.Context, string) error { return nil }
-func (s *replyTestStream) Replace(ctx context.Context, text string) (delivery.Receipt, error) {
+func (s *replyTestStream) Replace(ctx context.Context, text string) (delivery.Receipt, events.LogResult, error) {
 	if ctx != s.wantCtx {
 		s.t.Fatal("stream lost request context")
 	}
 	*s.events = append(*s.events, "replace")
 	s.text = text
-	return s.replaceReceipt, s.replaceErr
+	{
+		err := s.replaceErr
+		logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+		if err != nil {
+			logResult.ResultStatus = events.ResultFailed
+			logResult.Content = err.Error()
+			if err == context.Canceled {
+				logResult.ResultStatus = events.ResultCanceled
+			}
+		}
+		if s.replaceLogResult != nil {
+			logResult = *s.replaceLogResult
+		}
+		return s.replaceReceipt, logResult, err
+	}
 }
-func (s *replyTestStream) Finish(ctx context.Context) (delivery.Receipt, error) {
+func (s *replyTestStream) Finish(ctx context.Context) (delivery.Receipt, events.LogResult, error) {
 	if ctx != s.wantCtx {
 		s.t.Fatal("stream lost request context")
 	}
 	*s.events = append(*s.events, "finish")
-	return s.finishReceipt, s.finishErr
+	{
+		err := s.finishErr
+		logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+		if err != nil {
+			logResult.ResultStatus = events.ResultFailed
+			logResult.Content = err.Error()
+			if err == context.Canceled {
+				logResult.ResultStatus = events.ResultCanceled
+			}
+		}
+		if s.finishLogResult != nil {
+			logResult = *s.finishLogResult
+		}
+		return s.finishReceipt, logResult, err
+	}
 }
 
 // The fixture uses the real output adapters and SQLite without constructing Agent.

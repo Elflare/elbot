@@ -56,7 +56,7 @@ func TestPartialTextSendKeepsReceiptWithoutRestartingFallback(t *testing.T) {
 			defer server.Close()
 			adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: format}, nil, nil)
 			ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ConversationKind: contextinfo.ConversationGroup, ConversationID: "-19", ScopeID: "group:-19"}})
-			receipt, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(strings.Repeat("a", telegramRichTextRunes+1))}})
+			receipt, _, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(strings.Repeat("a", telegramRichTextRunes+1))}})
 			if err == nil || len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "71" || calls != 2 {
 				t.Fatalf("receipt=%#v error=%v calls=%d", receipt, err, calls)
 			}
@@ -200,7 +200,7 @@ func TestSendTextUsesHTMLByDefault(t *testing.T) {
 	}))
 	defer server.Close()
 	adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL}, nil, nil)
-	receipt, err := adapter.sendText(context.Background(), target{ChatID: 1}, "# 标题\n\n| A | B |\n|---|---|", 0, false)
+	receipt, _, err := adapter.sendText(context.Background(), target{ChatID: 1}, "# 标题\n\n| A | B |\n|---|---|", 0, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestSendTextRichFallback(t *testing.T) {
 	}))
 	defer server.Close()
 	adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: "rich"}, nil, nil)
-	receipt, err := adapter.sendText(context.Background(), target{ChatID: 1}, "# bad", 0, false)
+	receipt, _, err := adapter.sendText(context.Background(), target{ChatID: 1}, "# bad", 0, false)
 	if err != nil {
 		t.Fatal(err)
 	}

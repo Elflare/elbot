@@ -130,14 +130,14 @@ func (s cliMessageStream) Append(ctx context.Context, text string) error {
 	return nil
 }
 
-func (s cliMessageStream) Replace(ctx context.Context, text string) (delivery.Receipt, error) {
+func (s cliMessageStream) Replace(ctx context.Context, text string) (delivery.Receipt, globalevents.LogResult, error) {
 	s.adapter.sendTUIMessage(tuiReplaceAssistantMsg(text), text)
-	return delivery.Receipt{}, nil
+	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
-func (s cliMessageStream) Finish(ctx context.Context) (delivery.Receipt, error) {
+func (s cliMessageStream) Finish(ctx context.Context) (delivery.Receipt, globalevents.LogResult, error) {
 	s.adapter.sendTUIMessage(tuiFinishAssistantMsg{}, "\n")
-	return delivery.Receipt{}, nil
+	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
 func (a *Adapter) SetRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) error {
@@ -153,29 +153,40 @@ func (a *Adapter) SendReasoning(ctx context.Context, text string) error {
 	return nil
 }
 
-func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	text := outputsText(outputs)
 	if text != "" {
 		a.sendTUIMessage(tuiOutputMsg(text), text)
 	}
-	return delivery.Receipt{}, nil
+	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
 func outputsText(outputs []delivery.Output) string {
 	return delivery.FallbackOutput(outputs).Text
 }
 
-func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, globalevents.LogResult, error) {
 	target := notice.Target
 	outputs := notice.Outputs
 	if platformName := strings.TrimSpace(target.Platform); platformName != "" && platformName != a.Name() {
-		return delivery.Receipt{}, fmt.Errorf("cli cannot send to platform %q", platformName)
+		{
+			err := fmt.Errorf("cli cannot send to platform %q", platformName)
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+			if err != nil {
+				logResult.ResultStatus = globalevents.ResultFailed
+				logResult.Content = err.Error()
+				if err == context.Canceled {
+					logResult.ResultStatus = globalevents.ResultCanceled
+				}
+			}
+			return delivery.Receipt{}, logResult, err
+		}
 	}
 	text := outputsText(outputs)
 	if text != "" {
 		a.sendTUIMessage(tuiNoticeMsg{Text: text, Level: notice.Level}, "[notice] "+text)
 	}
-	return delivery.Receipt{}, nil
+	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
 func (a *Adapter) SendToolNotice(text string) {
@@ -183,7 +194,7 @@ func (a *Adapter) SendToolNotice(text string) {
 	if text == "" {
 		return
 	}
-	_, _ = a.SendNotice(context.Background(), delivery.Notice{Outputs: []delivery.Output{delivery.Text("[tool] " + text)}, Level: slog.LevelDebug})
+	_, _, _ = a.SendNotice(context.Background(), delivery.Notice{Outputs: []delivery.Output{delivery.Text("[tool] " + text)}, Level: slog.LevelDebug})
 }
 
 func (a *Adapter) sendTUIMessage(msg tea.Msg, fallback string) {

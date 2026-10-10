@@ -83,31 +83,81 @@ func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resul
 	return true, nil
 }
 
-func (s *Service) deliverReport(ctx context.Context, eventID string) error {
+// deliverReport owns this report's send/save outcome, independent of retry state.
+func (s *Service) deliverReport(ctx context.Context, eventID string) (logResult globalevents.LogResult, err error) {
+	identity := globalevents.LogIdentity{}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.SessionID != "" {
+		identity.SessionID = &facts.SessionID
+	}
+	if facts.RunID != "" {
+		identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		identity.RootRequestID = &facts.RootRequestID
+	}
+
+	logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "event_id=" + eventID}
+	defer func() {
+		if err != nil {
+			logResult.Content += fmt.Sprintf("\nreport_error=%v", err)
+		}
+	}()
 	if s.send == nil {
-		return fmt.Errorf("elnis sender is not configured")
+		return logResult, fmt.Errorf("elnis sender is not configured")
 	}
 	repo := s.store.ElnisEvents()
 	claimed, err := repo.ClaimReport(ctx, eventID, StatusResultReady, StatusDelivering)
 	if err != nil {
-		return err
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return logResult, err
 	}
 	if !claimed {
-		return nil
+		logResult.ResultStatus = globalevents.ResultSkipped
+		logResult.Content += "\nreport is not claimable"
+		return logResult, nil
 	}
 	event, err := repo.Get(ctx, eventID)
 	if err != nil {
-		return s.releaseReport(ctx, eventID, err)
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return s.releaseReport(ctx, eventID, logResult, err)
 	}
 	deliveries, err := repo.ListReportDeliveries(ctx, eventID)
 	if err != nil {
-		return s.releaseReport(ctx, eventID, err)
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return s.releaseReport(ctx, eventID, logResult, err)
 	}
+	logResult.ResultStatus = globalevents.ResultSucceeded
 	for index := 0; index < len(deliveries); {
 		if taken, err := background.SessionTakenOver(ctx, s.store, event.SessionID); err != nil {
-			return s.releaseReport(ctx, eventID, err)
+			if logResult.ResultStatus != globalevents.ResultFailed {
+				logResult.ResultStatus = globalevents.ResultFailed
+				if errors.Is(err, context.Canceled) {
+					logResult.ResultStatus = globalevents.ResultCanceled
+				}
+			}
+			return s.releaseReport(ctx, eventID, logResult, err)
 		} else if taken {
-			return s.completeTakeover(ctx, eventID, event.ResolvedTargets, background.RunResult{SessionID: event.SessionID, TakenOver: true, Outcome: "taken_over", Text: event.Result}, nil)
+			err := s.completeTakeover(ctx, eventID, event.ResolvedTargets, background.RunResult{SessionID: event.SessionID, TakenOver: true, Outcome: "taken_over", Text: event.Result}, nil)
+			if err != nil {
+				logResult.ResultStatus = globalevents.ResultFailed
+			} else if logResult.ResultStatus == globalevents.ResultSucceeded {
+				logResult.ResultStatus = globalevents.ResultSkipped
+			}
+			logResult.Content += "\nreport stopped after foreground takeover"
+			return logResult, err
 		}
 		item := deliveries[index]
 		if item.Status == storage.ElnisReportDeliveryDelivered {
@@ -116,7 +166,8 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) error {
 		}
 		var target Target
 		if err := json.Unmarshal([]byte(item.Target), &target); err != nil {
-			return s.failReportDelivery(ctx, eventID, item.ID, fmt.Errorf("decode elnis report target: %w", err))
+			logResult.ResultStatus = globalevents.ResultFailed
+			return s.failReportDelivery(ctx, eventID, item.ID, logResult, fmt.Errorf("decode elnis report target: %w", err))
 		}
 		batch := []storage.ElnisReportDelivery{item}
 		index++
@@ -132,163 +183,157 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) error {
 		for _, deliveryItem := range batch {
 			var output delivery.Output
 			if err := json.Unmarshal([]byte(deliveryItem.Output), &output); err != nil {
-				return s.failReportDelivery(ctx, eventID, deliveryItem.ID, fmt.Errorf("decode elnis report output: %w", err))
+				logResult.ResultStatus = globalevents.ResultFailed
+				return s.failReportDelivery(ctx, eventID, deliveryItem.ID, logResult, fmt.Errorf("decode elnis report output: %w", err))
 			}
 			if err := repo.StartReportDelivery(ctx, deliveryItem.ID); err != nil {
-				return s.failReportDelivery(ctx, eventID, deliveryItem.ID, err)
+				if logResult.ResultStatus != globalevents.ResultFailed {
+					logResult.ResultStatus = globalevents.ResultFailed
+					if errors.Is(err, context.Canceled) {
+						logResult.ResultStatus = globalevents.ResultCanceled
+					}
+				}
+				return s.failReportDelivery(ctx, eventID, deliveryItem.ID, logResult, err)
 			}
 			outputs = append(outputs, output)
 		}
-		receipt, err := s.send(ctx, target.ToDeliveryTarget(), outputs)
+		receipt, result, err := s.send(ctx, target.ToDeliveryTarget(), outputs)
 		s.mapReportReceipt(ctx, event.EventKey, event.SessionID, batch[0].MessageID, receipt)
+		logResult.Content += "\nsend:\n" + result.Content
+		if result.ResultStatus == globalevents.ResultFailed ||
+			(result.ResultStatus == globalevents.ResultCanceled && logResult.ResultStatus != globalevents.ResultFailed) {
+			logResult.ResultStatus = result.ResultStatus
+		}
 		if err != nil {
-			return s.failReportDelivery(ctx, eventID, batch[0].ID, err)
+			return s.failReportDelivery(ctx, eventID, batch[0].ID, logResult, err)
 		}
 		receiptJSON, err := json.Marshal(receipt)
 		if err != nil {
-			return s.failReportDelivery(ctx, eventID, batch[0].ID, fmt.Errorf("marshal elnis report receipt: %w", err))
+			logResult.ResultStatus = globalevents.ResultFailed
+			return s.failReportDelivery(ctx, eventID, batch[0].ID, logResult, fmt.Errorf("marshal elnis report receipt: %w", err))
 		}
 		for _, deliveryItem := range batch {
 			if err := repo.MarkReportDeliveryDelivered(ctx, deliveryItem.ID, string(receiptJSON)); err != nil {
-				return s.releaseReport(ctx, eventID, err)
+				if logResult.ResultStatus != globalevents.ResultFailed {
+					logResult.ResultStatus = globalevents.ResultFailed
+					if errors.Is(err, context.Canceled) {
+						logResult.ResultStatus = globalevents.ResultCanceled
+					}
+				}
+				return s.releaseReport(ctx, eventID, logResult, err)
 			}
 		}
 	}
 	if err := repo.CompleteReport(ctx, eventID, StatusDelivering, StatusCompleted); err != nil {
-		return s.releaseReport(ctx, eventID, err)
+		if logResult.ResultStatus != globalevents.ResultFailed {
+			logResult.ResultStatus = globalevents.ResultFailed
+			if errors.Is(err, context.Canceled) {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+		}
+		return s.releaseReport(ctx, eventID, logResult, err)
 	}
-	{
-		content, _ := json.Marshal(map[string]any{"event_id": eventID, "event_key": event.EventKey})
-		record := globalevents.LogRecord{
-			Category:     globalevents.LogAudit,
-			Level:        slog.LevelInfo,
-			EventName:    "elnis.llm_completed",
-			Module:       "elnis",
-			Type:         globalevents.ContentJSON,
-			Content:      string(content),
-			ResultStatus: globalevents.ResultSucceeded,
-		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		record.Identity.SessionID = &event.SessionID
-		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+	content, _ := json.Marshal(map[string]any{"event_id": eventID, "event_key": event.EventKey, "result": fmt.Sprintf("%.2048s", logResult.Content)})
+	record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: "elnis.llm_completed", Module: "elnis", Type: globalevents.ContentJSON, Content: string(content), ResultStatus: logResult.ResultStatus}
+	if logResult.ResultStatus == globalevents.ResultFailed {
+		record.Level = slog.LevelError
 	}
-	{
-		content, _ := json.Marshal(map[string]any{"event_id": eventID, "event_key": event.EventKey})
-		record := globalevents.LogRecord{
-			Category:     globalevents.LogElnis,
-			Level:        slog.LevelInfo,
-			EventName:    "elnis_llm_completed",
-			Module:       "elnis",
-			Type:         globalevents.ContentJSON,
-			Content:      string(content),
-			ResultStatus: globalevents.ResultSucceeded,
-		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		record.Identity.SessionID = &event.SessionID
-		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
-	}
-	return nil
+	record.Identity = identity
+	record.Identity.SessionID = &event.SessionID
+	background.LogBackground(ctx, record)
+	record.Category, record.EventName = globalevents.LogElnis, "elnis_llm_completed"
+	background.LogBackground(ctx, record)
+	return logResult, nil
 }
 
-func (s *Service) failReportDelivery(ctx context.Context, eventID, deliveryID string, deliveryErr error) error {
+func (s *Service) failReportDelivery(ctx context.Context, eventID, deliveryID string, logResult globalevents.LogResult, deliveryErr error) (globalevents.LogResult, error) {
 	if err := s.store.ElnisEvents().MarkReportDeliveryFailed(ctx, eventID, deliveryID, StatusResultReady, deliveryErr.Error()); err != nil {
-		return fmt.Errorf("%v; persist delivery failure: %w", deliveryErr, err)
+		logResult.Content += fmt.Sprintf("\npersistence_error=%v", err)
+		if logResult.ResultStatus != globalevents.ResultFailed {
+			logResult.ResultStatus = globalevents.ResultFailed
+			if errors.Is(err, context.Canceled) {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+		}
+		return logResult, fmt.Errorf("%v; persist delivery failure: %w", deliveryErr, err)
 	}
-	return deliveryErr
+	return logResult, deliveryErr
 }
 
-func (s *Service) releaseReport(ctx context.Context, eventID string, deliveryErr error) error {
+func (s *Service) releaseReport(ctx context.Context, eventID string, logResult globalevents.LogResult, deliveryErr error) (globalevents.LogResult, error) {
 	if err := s.store.ElnisEvents().ReleaseReport(ctx, eventID, StatusDelivering, StatusResultReady, deliveryErr.Error()); err != nil {
-		return fmt.Errorf("%v; release report claim: %w", deliveryErr, err)
+		logResult.Content += fmt.Sprintf("\npersistence_error=%v", err)
+		if logResult.ResultStatus != globalevents.ResultFailed {
+			logResult.ResultStatus = globalevents.ResultFailed
+			if errors.Is(err, context.Canceled) {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+		}
+		return logResult, fmt.Errorf("%v; release report claim: %w", deliveryErr, err)
 	}
-	return deliveryErr
+	return logResult, deliveryErr
 }
 
 func (s *Service) resetDeliveringReports(ctx context.Context) error {
 	return s.store.ElnisEvents().ResetDeliveringReports(ctx, StatusDelivering, StatusResultReady)
 }
 
-func (s *Service) recoverReports(ctx context.Context, resetDelivering bool) error {
+// recoverReports owns one recovery pass; each report retains its declared result.
+func (s *Service) recoverReports(ctx context.Context, resetDelivering bool) (globalevents.LogResult, error) {
 	repo := s.store.ElnisEvents()
 	if resetDelivering {
 		if err := s.resetDeliveringReports(ctx); err != nil {
-			return err
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+			if errors.Is(err, context.Canceled) {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+			return logResult, err
 		}
 	}
 	ids, err := repo.ListResultReadyReportIDs(ctx, StatusResultReady)
 	if err != nil {
-		return err
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return logResult, err
 	}
 	var firstErr error
+	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSkipped}
 	for _, eventID := range ids {
-		if err := s.deliverReport(ctx, eventID); err != nil {
-			if firstErr == nil {
-				firstErr = err
+		result, err := s.deliverReport(ctx, eventID)
+		logResult.Content += "\n" + result.Content
+		if logResult.ResultStatus == globalevents.ResultSkipped || result.ResultStatus == globalevents.ResultFailed ||
+			(result.ResultStatus == globalevents.ResultCanceled && logResult.ResultStatus != globalevents.ResultFailed) {
+			logResult.ResultStatus = result.ResultStatus
+		}
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+		if result.ResultStatus == globalevents.ResultFailed || result.ResultStatus == globalevents.ResultCanceled {
+			content, _ := json.Marshal(map[string]any{"event_id": eventID, "result": fmt.Sprintf("%.2048s", result.Content)})
+			record := globalevents.LogRecord{Category: globalevents.LogElnis, Level: slog.LevelWarn, EventName: "recover_elnis_report_failed", Module: "elnis", Type: globalevents.ContentJSON, Content: string(content), ResultStatus: result.ResultStatus}
+			if result.ResultStatus == globalevents.ResultCanceled {
+				record.Level = slog.LevelInfo
 			}
-			{
-				content, _ := json.Marshal(map[string]any{"event_id": eventID, "error": fmt.Sprintf("%.2048s", err.Error())})
-				record := globalevents.LogRecord{
-					Category:     globalevents.LogElnis,
-					Level:        slog.LevelWarn,
-					EventName:    "recover_elnis_report_failed",
-					Module:       "elnis",
-					Type:         globalevents.ContentJSON,
-					Content:      string(content),
-					ResultStatus: globalevents.ResultFailed,
-				}
-				if errors.Is(err, context.Canceled) {
-					record.ResultStatus = globalevents.ResultCanceled
-					record.Level = slog.LevelInfo
-				}
-				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				if facts.SessionID != "" {
-					record.Identity.SessionID = &facts.SessionID
-				}
-				if facts.RunID != "" {
-					record.Identity.RunID = &facts.RunID
-				}
-				if facts.Attempt != "" {
-					record.Identity.Attempt = &facts.Attempt
-				}
-				if facts.RequestID != "" {
-					record.Identity.RequestID = &facts.RequestID
-				}
-				if facts.RootRequestID != "" {
-					record.Identity.RootRequestID = &facts.RootRequestID
-				}
-				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
 			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			background.LogBackground(ctx, record)
 		}
 	}
-	return firstErr
+	return logResult, firstErr
 }

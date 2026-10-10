@@ -252,6 +252,15 @@ LLM 在 work 模式下可以通过 `discover_tool` 按需发现工具详情。�
 | `-u`、`-a`、`-t` | 分别筛选用户、助手、工具事件。 |
 | `-s, --system` | 筛选并显示 `system prompt` 日志。 |
 | `--hook` | 筛选 `module=hook` 的运行记录。 |
+| `--run_source <来源>` | 按工具调用来源筛选：`foreground`、`cron`、`elnis`；可与 `-t` 和其他条件组合。 |
+
+工具调用正文会注明 `run_source`，表示本次调用开始时的来源；与表示 native／elwisp 等工具实现来源的 `source` 分开。前台接管后新开始的调用为 `foreground`，已开始的调用保留原来源。缺少来源标记的旧记录不会被推断为前台调用，使用来源筛选时不匹配。
+
+```text
+/log -t --run_source cron -n 20
+/log -t --run_source elnis --raw
+/log -t --run_source foreground -i
+```
 
 `/audit` 额外支持：
 

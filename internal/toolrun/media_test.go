@@ -173,7 +173,7 @@ func TestMediaArgumentsRemainExplicit(t *testing.T) {
 	if _, err := manager.AssessRisk(context.Background(), resolved, arguments); err != nil {
 		t.Fatal(err)
 	}
-	result := manager.Execute(context.Background(), call, resolved, contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, "", "")
+	result := manager.Execute(context.Background(), call, resolved, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	if result.Error != nil {
 		t.Fatal(result.Error)
 	}

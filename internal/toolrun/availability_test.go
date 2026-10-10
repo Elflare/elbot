@@ -165,7 +165,7 @@ func TestResolveDistinguishesMissingToolFromMissingRemoteConfiguration(t *testin
 			if resolved.ResultStatus != events.ResultFailed || resolved.Error == nil || errors.As(resolved.Error, &denied) {
 				t.Fatalf("resolution facts = %#v", resolved)
 			}
-			result := manager.Execute(t.Context(), llm.ToolCallRequest{Name: tc.name}, resolved, contextinfo.Actor{}, "", "")
+			result := manager.Execute(t.Context(), llm.ToolCallRequest{Name: tc.name}, resolved, contextinfo.Actor{})
 			if result.ResultStatus != resolved.ResultStatus || result.Error != resolved.Error || result.ExecutionStarted {
 				t.Fatalf("execution lost resolution facts: %#v", result)
 			}

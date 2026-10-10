@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/events"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -40,7 +41,7 @@ func TestTextReportMapsRealTelegramPartialReceipt(t *testing.T) {
 	if err := store.Messages().Append(ctx, &storage.Message{ID: "report", SessionID: row.ID, Role: storage.RoleAssistant, Content: "report"}); err != nil {
 		t.Fatal(err)
 	}
-	svc := NewService(Options{Store: store, SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	svc := NewService(Options{Store: store, SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		return router.SendNotice(ctx, delivery.Notice{Target: target, Outputs: outputs})
 	}})
 	_, err := svc.sendOutputsToPlatformTarget(ctx, "task", "telegram", delivery.Target{Platform: "telegram", Superadmins: true}, []delivery.Output{delivery.Text("report")}, row.ID, "report")

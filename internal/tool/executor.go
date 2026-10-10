@@ -25,9 +25,10 @@ type ExecutionResult struct {
 	Message llm.LLMMessage
 	// Result is the original tool result, including partial results on error; nil means none.
 	Result *Result
-	// LogContent is the tool-supplied log body, separate from business message
-	// segments. Empty means absent; it is never derived from Message/Segments.
-	LogContent string
+	// LogResult.Content carries the independent tool log body. Before call entry,
+	// the execution source declares ResultStatus and the reason; after entry,
+	// the runner declares the invocation log status, independent of business errors.
+	LogResult events.LogResult
 	// Error is the original execution or preparation error; nil does not declare success.
 	Error error
 	// ResultStatus is declared at the execution source, including pre-execution rejection.
@@ -95,11 +96,11 @@ func (e Executor) Execute(ctx context.Context, call llm.ToolCallRequest) Executi
 	if result != nil {
 		message.Segments = result.LLMSegments()
 	}
-	return ExecutionResult{Call: call, Message: message, Result: result, LogContent: logContent, Error: err, ResultStatus: resultStatus, ExecutionStarted: true}
+	return ExecutionResult{Call: call, Message: message, Result: result, LogResult: events.LogResult{Content: logContent}, Error: err, ResultStatus: resultStatus, ExecutionStarted: true}
 }
 
 func executionError(call llm.ToolCallRequest, message llm.LLMMessage, err error, resultStatus events.ResultStatus) ExecutionResult {
 	content := fmt.Sprintf("tool call %s failed: %v", call.Name, err)
 	message.Segments = llm.TextSegments(content)
-	return ExecutionResult{Call: call, Message: message, Error: err, ResultStatus: resultStatus}
+	return ExecutionResult{Call: call, Message: message, Error: err, ResultStatus: resultStatus, LogResult: events.LogResult{ResultStatus: resultStatus, Content: content}}
 }

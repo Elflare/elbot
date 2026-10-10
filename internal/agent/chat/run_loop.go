@@ -130,12 +130,12 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			skipped := skippedToolMessages(result.ToolCalls, r.Tools.MaxRoundsPerTurn())
 			committer := &dialogue.ToolTranscriptCommitter{Messages: r.Tools.Messages}
 			head := dialogue.ToolCallStorageMessage(s.session.ID, assistantRawText, assistantRawText, result.ToolCalls)
-			if err := committer.Begin(s.requestCtx, &head); err != nil {
+			if _, err := committer.Begin(s.requestCtx, &head); err != nil {
 				return failedLoop(err)
 			}
 			for i, message := range skipped {
 				stored := dialogue.ToolResultStorageMessage(s.session.ID, message)
-				if err := committer.Result(s.requestCtx, i, result.ToolCalls[i], message, &stored); err != nil {
+				if _, err := committer.Result(s.requestCtx, i, result.ToolCalls[i], message, &stored); err != nil {
 					return failedLoop(err)
 				}
 			}

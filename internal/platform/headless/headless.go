@@ -2,6 +2,7 @@ package headless
 
 import (
 	"context"
+	"elbot/internal/events"
 	"fmt"
 
 	"elbot/internal/delivery"
@@ -20,10 +21,32 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 	return ctx.Err()
 }
 
-func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
-	return delivery.Receipt{}, fmt.Errorf("service platform cannot send chat output without a target platform")
+func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	{
+		err := fmt.Errorf("service platform cannot send chat output without a target platform")
+		logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+		if err != nil {
+			logResult.ResultStatus = events.ResultFailed
+			logResult.Content = err.Error()
+			if err == context.Canceled {
+				logResult.ResultStatus = events.ResultCanceled
+			}
+		}
+		return delivery.Receipt{}, logResult, err
+	}
 }
 
-func (a *Adapter) SendNotice(context.Context, delivery.Notice) (delivery.Receipt, error) {
-	return delivery.Receipt{}, fmt.Errorf("service platform cannot send notice without a target platform")
+func (a *Adapter) SendNotice(context.Context, delivery.Notice) (delivery.Receipt, events.LogResult, error) {
+	{
+		err := fmt.Errorf("service platform cannot send notice without a target platform")
+		logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+		if err != nil {
+			logResult.ResultStatus = events.ResultFailed
+			logResult.Content = err.Error()
+			if err == context.Canceled {
+				logResult.ResultStatus = events.ResultCanceled
+			}
+		}
+		return delivery.Receipt{}, logResult, err
+	}
 }

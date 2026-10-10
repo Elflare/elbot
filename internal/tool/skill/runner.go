@@ -82,6 +82,7 @@ func (r GoRunner) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.Ri
 }
 
 func (r GoRunner) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, logContent string, callErr error) {
+
 	var args goRunnerArgs
 	if len(req.Arguments) > 0 {
 		var err error
@@ -132,7 +133,7 @@ func (r GoRunner) Call(ctx context.Context, req tool.CallRequest) (result *tool.
 	cmd.Stdin = bytes.NewReader(payload)
 	{
 		result, callErr := runMediaCommand(runCtx, "go skill", cmd, mediaCall)
-		logContent := ""
+		logContent = ""
 		if result != nil {
 			logContent = result.Content
 		}

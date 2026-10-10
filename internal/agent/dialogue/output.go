@@ -2,6 +2,7 @@ package dialogue
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"log/slog"
 
@@ -14,10 +15,11 @@ import (
 type Output interface {
 	StartStream(ctx context.Context) delivery.MessageStream
 	FinishIntermediate(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string, streaming bool) error
-	ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, error)
-	SendAssistant(ctx context.Context, text string) (delivery.Receipt, error)
-	// SendOutputs retains partial delivery receipts even when sending fails.
-	SendOutputs(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error)
+	ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, events.LogResult, error)
+	SendAssistant(ctx context.Context, text string) (delivery.Receipt, events.LogResult, error)
+	// SendOutputs returns the source log result and original business error;
+	// partial delivery facts belong to the source log body, not a returned receipt.
+	SendOutputs(ctx context.Context, outputs []delivery.Output) (events.LogResult, error)
 	SendNotice(ctx context.Context, level slog.Level, text string)
 	SendPreview(ctx context.Context, text string)
 	SendReasoning(ctx context.Context, text string)
@@ -45,5 +47,5 @@ func ShouldNotifyUserError(err error) bool {
 }
 
 type AssistantPreparer interface {
-	PrepareAssistant(context.Context, hook.Point, string) (string, error)
+	PrepareAssistant(context.Context, hook.Point, string) (string, events.LogResult, error)
 }

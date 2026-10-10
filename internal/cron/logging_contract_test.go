@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
@@ -18,6 +19,76 @@ type loggingCronRepo struct {
 	*fakeCronRepo
 	saveErr error
 	saved   bool
+}
+
+func TestDeliveryUsesSourceFailureWithSuccessfulBusinessReturn(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeCronRepo()
+	meta := Metadata{Kind: metadataKind, Version: 1, Title: "partial", Schedule: CronSchedule{Mode: ScheduleCron}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "report"}, Target: CronTarget{SourcePlatform: "cli"}}
+	job := upsertTestCronJob(t, repo, meta)
+	s := NewService(Options{Store: fakeCronStore{cron: repo}, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+		return delivery.Receipt{PlatformMessageIDs: []string{"received"}}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "one destination failed"}, nil
+	}})
+	var records []globalevents.LogRecord
+	connection, err := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+		if record.EventName == "cron.send_failed" || record.EventName == "cron.send_completed" {
+			records = append(records, record)
+		}
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(connection.Disconnect)
+	logResult, err := s.runDirect(ctx, *job, meta)
+	if err != nil || logResult.ResultStatus != globalevents.ResultFailed || !strings.Contains(logResult.Content, "one destination failed") {
+		t.Fatalf("log result=%#v error=%v", logResult, err)
+	}
+	if len(records) != 1 || records[0].ResultStatus != globalevents.ResultFailed || records[0].Level != slog.LevelError {
+		t.Fatalf("source failure ignored: %#v", records)
+	}
+}
+
+func TestHandlerUsesDeclaredDeliveryResult(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status globalevents.ResultStatus
+		err    error
+	}{
+		{"failed_without_business_error", globalevents.ResultFailed, nil},
+		{"canceled_without_business_error", globalevents.ResultCanceled, nil},
+		{"mixed_failure", globalevents.ResultFailed, errors.Join(context.Canceled, errors.New("independent transport failure"))},
+		{"succeeded_with_business_error", globalevents.ResultSucceeded, errors.New("business-only send error")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := newFakeCronRepo()
+			meta := Metadata{Kind: metadataKind, Version: 1, Title: "partial", Schedule: CronSchedule{Mode: ScheduleCron}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "report"}, Target: CronTarget{SourcePlatform: "cli"}}
+			job := upsertTestCronJob(t, repo, meta)
+			s := NewService(Options{Store: fakeCronStore{cron: repo}, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+				return delivery.Receipt{PlatformMessageIDs: []string{"received"}}, globalevents.LogResult{ResultStatus: tc.status, Content: "source delivery diagnostic"}, tc.err
+			}})
+			var records []globalevents.LogRecord
+			connection, err := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+				if record.EventName == "cron.trigger_failed" || record.EventName == "cron_trigger_failed" || record.EventName == "cron.trigger_completed" || record.EventName == "cron_trigger_completed" {
+					records = append(records, record)
+				}
+				return nil
+			}, signal.ConnectOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer connection.Disconnect()
+			logResult, err := s.Handler(t.Context(), *job)
+			if !errors.Is(err, tc.err) || logResult.ResultStatus != tc.status || len(records) != 2 {
+				t.Fatalf("source/business result changed: log=%#v error=%v records=%#v", logResult, err, records)
+			}
+			for _, record := range records {
+				if record.ResultStatus != tc.status || !strings.Contains(record.Content, "source delivery diagnostic") || (record.Level == slog.LevelError) != (tc.status == globalevents.ResultFailed) {
+					t.Fatalf("trigger ignored source outcome: %#v", record)
+				}
+			}
+		})
+	}
 }
 
 func (r *loggingCronRepo) UpdateRunState(ctx context.Context, id string, state storage.CronJobRunState) error {
@@ -44,6 +115,7 @@ func TestRunJobLogsFinalResultAfterStateSave(t *testing.T) {
 		{"success_and_save_failure", false, nil, errors.New("save failed"), globalevents.ResultSucceeded, globalevents.ResultFailed},
 		{"mixed_failure", true, errors.Join(context.Canceled, errors.New("independent failure")), nil, globalevents.ResultFailed, globalevents.ResultFailed},
 		{"source_rejected_without_error", false, nil, nil, globalevents.ResultRejected, globalevents.ResultRejected},
+		{"source_failed_without_error", false, nil, nil, globalevents.ResultFailed, globalevents.ResultFailed},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &loggingCronRepo{fakeCronRepo: newFakeCronRepo(), saveErr: tc.saveErr}
@@ -51,7 +123,7 @@ func TestRunJobLogsFinalResultAfterStateSave(t *testing.T) {
 			ctx, cancel := context.WithCancel(contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "session", RequestID: "request"}))
 			defer cancel()
 			manager.started, manager.runCtx = true, ctx
-			manager.handlers["handler"] = func(context.Context, storage.CronJob) (globalevents.ResultStatus, string, error) {
+			manager.handlers["handler"] = func(context.Context, storage.CronJob) (globalevents.LogResult, error) {
 				if tc.cancel {
 					cancel()
 				}
@@ -59,7 +131,7 @@ func TestRunJobLogsFinalResultAfterStateSave(t *testing.T) {
 				if tc.runErr != nil {
 					content += "\n" + tc.runErr.Error()
 				}
-				return tc.sourceResult, content, tc.runErr
+				return globalevents.LogResult{ResultStatus: tc.sourceResult, Content: content}, tc.runErr
 			}
 			job, err := repo.Upsert(ctx, storage.UpsertCronJobRequest{Name: "job", Handler: "handler", Enabled: true})
 			if err != nil {

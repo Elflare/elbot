@@ -3,6 +3,7 @@ package elnis
 import (
 	"context"
 	"crypto/sha256"
+	"elbot/internal/background"
 	"elbot/internal/contextinfo"
 	"encoding/hex"
 	"encoding/json"
@@ -15,6 +16,23 @@ import (
 )
 
 func (s *Service) handleDuplicate(ctx context.Context, event Event, existing *storage.ElnisEvent) {
+	identity := globalevents.LogIdentity{}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.SessionID != "" {
+		identity.SessionID = &facts.SessionID
+	}
+	if facts.RunID != "" {
+		identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		identity.RootRequestID = &facts.RootRequestID
+	}
 
 	if existing != nil && existing.ContentHash != event.ContentHash {
 		{
@@ -28,23 +46,8 @@ func (s *Service) handleDuplicate(ctx context.Context, event Event, existing *st
 				Content:      string(content),
 				ResultStatus: globalevents.ResultSkipped,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			record.Identity = identity
+			background.LogBackground(ctx, record)
 		}
 	} else {
 		{
@@ -58,23 +61,8 @@ func (s *Service) handleDuplicate(ctx context.Context, event Event, existing *st
 				Content:      string(content),
 				ResultStatus: globalevents.ResultSkipped,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			record.Identity = identity
+			background.LogBackground(ctx, record)
 		}
 	}
 	{
@@ -88,23 +76,8 @@ func (s *Service) handleDuplicate(ctx context.Context, event Event, existing *st
 			Content:      string(content),
 			ResultStatus: globalevents.ResultSkipped,
 		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		record.Identity = identity
+		background.LogBackground(ctx, record)
 	}
 }
 

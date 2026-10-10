@@ -183,7 +183,7 @@ func (c *executionCoordinator) compactBeforeTurn(ctx context.Context, session *s
 			}
 			ctx = sessionpkg.WithBinding(ctx, binding)
 		}
-		_, _ = out.SendAssistant(ctx, content)
+		_, _, _ = out.SendAssistant(ctx, content)
 	}
 	return ctx, session, nil
 }

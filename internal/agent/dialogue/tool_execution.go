@@ -45,9 +45,9 @@ func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storag
 	if session == nil || (session.Mode != storage.SessionModeWork && session.Mode != storage.SessionModeBackground) {
 		return toolrun.RunResult{}
 	}
-	cached, err := CachedToolsForSession(ctx, r.State, r.Registry, session)
+	cached, logResult, err := CachedToolsForSession(ctx, r.State, r.Registry, session)
 	if err != nil {
-		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "tool_batch_prepare_failed", Module: "agent", Type: events.ContentText, Content: fmt.Sprintf("prepare_error=%v", err), ContentLimit: 4096, ResultStatus: events.ResultFailed}
+		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "tool_batch_prepare_failed", Module: "agent", Type: events.ContentText, Content: logResult.Content, ContentLimit: 4096, ResultStatus: logResult.ResultStatus}
 		record.Identity.SessionID = &session.ID
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		if facts.RunID != "" {
@@ -62,16 +62,23 @@ func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storag
 		if facts.RootRequestID != "" {
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
-		if errors.Is(err, context.Canceled) {
-			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
+		if logResult.ResultStatus == events.ResultCanceled {
+			record.Level = slog.LevelInfo
 		}
 		defer func() { _ = events.EmitLog(context.WithoutCancel(ctx), record) }()
 		messages := make([]llm.LLMMessage, 0, len(calls))
 		head := ToolCallStorageMessage(session.ID, assistantText, assistantRawText, calls)
-		if err := committer.Begin(ctx, &head); err != nil {
-			record.Content += fmt.Sprintf("\npersistence_error=%v", err)
-			record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
-			return toolrun.RunResult{Err: err}
+		{
+			logResult, err := committer.Begin(ctx, &head)
+			record.Content += "\npersistence:\n" + logResult.Content
+			if logResult.ResultStatus == events.ResultFailed {
+				record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
+			} else if logResult.ResultStatus == events.ResultCanceled && record.ResultStatus != events.ResultFailed {
+				record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
+			}
+			if err != nil {
+				return toolrun.RunResult{Err: err}
+			}
 		}
 		for _, call := range calls {
 			message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments(fmt.Sprintf("tool call %s failed: load tool state: %v", call.Name, err))}
@@ -79,9 +86,14 @@ func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storag
 		}
 		for i := range messages {
 			stored := ToolResultStorageMessage(session.ID, messages[i])
-			if err := committer.Result(ctx, i, calls[i], messages[i], &stored); err != nil {
-				record.Content += fmt.Sprintf("\npersistence_error=%v", err)
+			logResult, err := committer.Result(ctx, i, calls[i], messages[i], &stored)
+			record.Content += "\npersistence:\n" + logResult.Content
+			if logResult.ResultStatus == events.ResultFailed {
 				record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
+			} else if logResult.ResultStatus == events.ResultCanceled && record.ResultStatus != events.ResultFailed {
+				record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
+			}
+			if err != nil {
 				return toolrun.RunResult{Err: err}
 			}
 		}
@@ -105,20 +117,24 @@ func (r *ToolExecutor) Schemas(ctx context.Context, session *storage.Session) ([
 	if session.Mode == storage.SessionModeWork && r.Provider != nil && !r.DefaultProvider {
 		return r.Provider.Schemas(ctx, session.Mode, session, r.Identity.Scope(ctx))
 	}
-	cached, err := CachedToolsForSession(ctx, r.State, r.Registry, session)
+	cached, _, err := CachedToolsForSession(ctx, r.State, r.Registry, session)
 	if err != nil {
 		return nil, err
 	}
 	return r.Manager.Schemas(ctx, toolrun.Context{Mode: session.Mode, Session: session, Scope: r.Identity.Scope(ctx), Actor: r.Identity.Actor(ctx), DisableBaseTools: sessionpkg.IsBackground(session)}, cached)
 }
 
-func CachedToolsForSession(ctx context.Context, service *toolrun.StateService, registry *tool.Registry, row *storage.Session) ([]toolrun.CachedTool, error) {
+func CachedToolsForSession(ctx context.Context, service *toolrun.StateService, registry *tool.Registry, row *storage.Session) ([]toolrun.CachedTool, events.LogResult, error) {
 	if row == nil {
-		return nil, nil
+		return nil, events.LogResult{ResultStatus: events.ResultSkipped, Content: "session is absent"}, nil
 	}
 	state, err := service.Snapshot(ctx, row.ID)
 	if err != nil {
-		return nil, err
+		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("tool_state_error=%v", err)}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = events.ResultCanceled
+		}
+		return nil, logResult, err
 	}
-	return state.CachedTools(registry, sessionpkg.IsBackground(row)), nil
+	return state.CachedTools(registry, sessionpkg.IsBackground(row)), events.LogResult{ResultStatus: events.ResultSucceeded, Content: "tool state loaded"}, nil
 }

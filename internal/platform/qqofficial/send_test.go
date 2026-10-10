@@ -28,7 +28,7 @@ func TestSendChatUsesGroupMessageAPI(t *testing.T) {
 
 	adapter := newQQOfficialSendTestAdapter(server)
 	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ConversationKind: contextinfo.ConversationGroup, ConversationID: "group-1"}, PlatformMessageID: "incoming-1"})
-	receipt, err := adapter.SendChat(ctx, []delivery.Output{delivery.Text("hello")})
+	receipt, _, err := adapter.SendChat(ctx, []delivery.Output{delivery.Text("hello")})
 	if err != nil {
 		t.Fatalf("SendChat: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestSendNoticeUploadsGroupMediaToGroupAPI(t *testing.T) {
 
 	adapter := newQQOfficialSendTestAdapter(server)
 	out := delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/image.png"}}
-	receipt, err := adapter.SendNotice(context.Background(), delivery.Notice{
+	receipt, _, err := adapter.SendNotice(context.Background(), delivery.Notice{
 		Target:  delivery.Target{Platform: platformName, GroupID: "group-1"},
 		Outputs: []delivery.Output{out},
 	})
@@ -85,7 +85,7 @@ func TestSendNoticeSkipsGroupToolPreview(t *testing.T) {
 
 	adapter := newQQOfficialSendTestAdapter(server)
 	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ConversationKind: contextinfo.ConversationGroup, ConversationID: "group-1"}})
-	receipt, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("[tool] 正在调用 shell：{}")}})
+	receipt, _, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("[tool] 正在调用 shell：{}")}})
 	if err != nil {
 		t.Fatalf("SendNotice: %v", err)
 	}
@@ -138,10 +138,10 @@ func TestExplicitNoticeDoesNotReuseReplySnapshot(t *testing.T) {
 	adapter := newQQOfficialSendTestAdapter(server)
 	info := contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ScopeID: "group:original"}, PlatformMessageID: "original-message", PlatformData: messageData{EventID: "event"}}
 	ctx := contextinfo.WithConversation(context.Background(), info)
-	if _, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("reply")}}); err != nil {
+	if _, _, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("reply")}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := adapter.SendNotice(ctx, delivery.Notice{Target: delivery.Target{GroupID: "other"}, Outputs: []delivery.Output{delivery.Text("proactive")}}); err != nil {
+	if _, _, err := adapter.SendNotice(ctx, delivery.Notice{Target: delivery.Target{GroupID: "other"}, Outputs: []delivery.Output{delivery.Text("proactive")}}); err != nil {
 		t.Fatal(err)
 	}
 	if len(bodies) != 2 || bodies[0].MsgID != "original-message" || bodies[0].EventID != "" || bodies[1].MsgID != "" || bodies[1].EventID != "" {

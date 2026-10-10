@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/events"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -18,6 +20,7 @@ import (
 	"elbot/internal/platform"
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/session"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/turn"
@@ -392,6 +395,28 @@ func (t foregroundContextProbe) Call(ctx context.Context, _ tool.CallRequest) (*
 }
 
 func TestTakeoverRefreshesNextToolInSameBatch(t *testing.T) {
+	origins := map[string]string{}
+	connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error {
+		if record.Module == "toolrun" && record.EventName == "tool_call" && record.Category == events.LogAudit {
+			var content map[string]json.RawMessage
+			if err := json.Unmarshal([]byte(record.Content), &content); err != nil {
+				return err
+			}
+			var name, origin string
+			if err := json.Unmarshal(content["tool"], &name); err != nil {
+				return err
+			}
+			if err := json.Unmarshal(content["run_source"], &origin); err != nil {
+				return err
+			}
+			origins[name] = origin
+		}
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(connection.Disconnect)
 	p := &fakePlatform{}
 	started, release := make(chan struct{}), make(chan struct{})
 	observed := make(chan context.Context, 1)
@@ -428,6 +453,9 @@ func TestTakeoverRefreshesNextToolInSameBatch(t *testing.T) {
 	if !result.TakenOver {
 		t.Fatal("not adopted")
 	}
+	if len(origins) != 2 || origins["slow"] != "cron" || origins["foreground_probe"] != "foreground" {
+		t.Fatalf("tool sources changed across foreground adoption: %#v", origins)
+	}
 	select {
 	case ctx := <-observed:
 		actor, _ := contextinfo.ActorFromContext(ctx)
@@ -454,14 +482,25 @@ type takeoverFinalGate struct {
 	release chan struct{}
 }
 
-func (p *takeoverFinalGate) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+func (p *takeoverFinalGate) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	for _, out := range outputs {
 		if out.Text == "first final" {
 			close(p.started)
 			select {
 			case <-p.release:
 			case <-ctx.Done():
-				return delivery.Receipt{}, ctx.Err()
+				{
+					err := ctx.Err()
+					logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+					if err != nil {
+						logResult.ResultStatus = events.ResultFailed
+						logResult.Content = err.Error()
+						if err == context.Canceled {
+							logResult.ResultStatus = events.ResultCanceled
+						}
+					}
+					return delivery.Receipt{}, logResult, err
+				}
 			}
 		}
 	}

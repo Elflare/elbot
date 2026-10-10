@@ -130,12 +130,12 @@ func TestManagerRunsRegisteredHandlerAndUpdatesState(t *testing.T) {
 	repo := newFakeCronRepo()
 	manager := NewManager(repo)
 	called := false
-	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job storage.CronJob) (globalevents.ResultStatus, string, error) {
+	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
 		called = true
 		if job.Metadata != `{"hello":"world"}` {
 			t.Fatalf("metadata = %q", job.Metadata)
 		}
-		return globalevents.ResultSucceeded, "finished", nil
+		return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "finished"}, nil
 	}); err != nil {
 		t.Fatalf("register handler: %v", err)
 	}
@@ -162,8 +162,8 @@ func TestManagerFailedHandlerStillUpdatesRunState(t *testing.T) {
 	repo := newFakeCronRepo()
 	manager := NewManager(repo)
 	boom := errors.New("boom")
-	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job storage.CronJob) (globalevents.ResultStatus, string, error) {
-		return globalevents.ResultFailed, boom.Error(), boom
+	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
+		return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: boom.Error()}, boom
 	}); err != nil {
 		t.Fatalf("register handler: %v", err)
 	}
@@ -204,12 +204,12 @@ func TestManagerUpsertStoresAndDisableClearsNextRunAt(t *testing.T) {
 func TestManagerRunJobDoesNotReenableJobDisabledByHandler(t *testing.T) {
 	repo := newFakeCronRepo()
 	manager := NewManager(repo)
-	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job storage.CronJob) (globalevents.ResultStatus, string, error) {
+	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
 		err := manager.DisableJob(ctx, job.Name)
 		if err != nil {
-			return globalevents.ResultFailed, err.Error(), err
+			return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 		}
-		return globalevents.ResultSucceeded, "job disabled", nil
+		return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "job disabled"}, nil
 	}); err != nil {
 		t.Fatalf("register handler: %v", err)
 	}
@@ -292,8 +292,8 @@ func TestManagerDeleteJobRemovesRepositoryRecord(t *testing.T) {
 func TestManagerStartSchedulesEnabledJobs(t *testing.T) {
 	repo := newFakeCronRepo()
 	manager := NewManager(repo)
-	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job storage.CronJob) (globalevents.ResultStatus, string, error) {
-		return globalevents.ResultSucceeded, "finished", nil
+	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
+		return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "finished"}, nil
 	}); err != nil {
 		t.Fatalf("register handler: %v", err)
 	}

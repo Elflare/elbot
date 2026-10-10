@@ -103,3 +103,41 @@ func TestReaderMalformedJSONContractAndMissingLevel(t *testing.T) {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }
+
+func TestReaderMatchesDeclaredRunSourceBeforeLimit(t *testing.T) {
+	for _, source := range []string{"foreground", "cron", "elnis"} {
+		t.Run(source, func(t *testing.T) {
+			line := func(module, event, kind, level string, content any) string {
+				t.Helper()
+				data, err := json.Marshal(map[string]any{"time": "2026-10-08T12:34:56Z", "category": "runtime", "level": level, "module": module, "event": event, "type": kind, "content": content})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return string(data)
+			}
+			wanted := "run_source=" + source + " tool=shell\noriginal source body"
+			r := writeMixedLog(t,
+				line("toolrun", "tool_call", "text", "INFO", wanted),
+				line("toolrun", "tool_call", "text", "DEBUG", wanted),
+				line("toolrun", "tool_call", "text", "INFO", "tool=shell\nrun_source="+source),
+				line("toolrun", "tool_call", "text", "INFO", "run_source=other tool=shell\nrun_source="+source),
+				line("other", "tool_call", "text", "INFO", wanted),
+				line("toolrun", "other", "text", "INFO", wanted),
+				line("toolrun", "tool_call", "text", "INFO", "tool=shell"),
+			)
+			query := LogQuery{Prefix: "audit", Limit: 1, MinLevel: "info", Fields: map[string]string{"event": "tool_call"}, ContentFields: map[string]string{"run_source": source}}
+			for _, raw := range []bool{false, true} {
+				query.Raw = raw
+				result, err := r.Query(t.Context(), query)
+				if err != nil || len(result.Entries) != 1 || result.Entries[0].Content != wanted {
+					t.Fatalf("raw=%t result=%#v err=%v", raw, result, err)
+				}
+			}
+			jsonReader := writeMixedLog(t, line("toolrun", "tool_call", "json", "INFO", map[string]any{"tool": "shell", "run_source": source}), line("toolrun", "tool_call", "json", "INFO", map[string]any{"tool": "shell", "result": "run_source=" + source}))
+			result, err := jsonReader.Query(t.Context(), query)
+			if err != nil || len(result.Entries) != 1 || result.Entries[0].Type != events.ContentJSON {
+				t.Fatalf("JSON source predicate result=%#v err=%v", result, err)
+			}
+		})
+	}
+}

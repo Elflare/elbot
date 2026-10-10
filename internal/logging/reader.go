@@ -34,7 +34,8 @@ type LogQuery struct {
 	Until *time.Time
 	// Fields matches outer public fields; content cannot overwrite these values.
 	Fields map[string]string
-	// ContentFields matches top-level JSON business values, or historical business attributes.
+	// ContentFields matches JSON business values or historical attributes. Toolrun
+	// text calls also expose their fixed leading run_source marker, not tool output.
 	ContentFields map[string]string
 	// ContentFieldContains requires all requested values to occur in a business array.
 	ContentFieldContains map[string][]string
@@ -458,6 +459,12 @@ func matchLogEntry(entry LogEntry, query LogQuery) bool {
 			continue
 		}
 		value := entry.LegacyFields[key]
+		// The marker belongs to toolrun's own header. Never search diagnostics
+		// or parse arbitrary text bodies as business attributes.
+		if key == "run_source" && entry.Type == events.ContentText && entry.Module == "toolrun" && entry.EventName == "tool_call" && strings.HasPrefix(entry.Content, "run_source=") {
+			value, _, _ = strings.Cut(strings.TrimPrefix(entry.Content, "run_source="), " ")
+			value, _, _ = strings.Cut(value, "\n")
+		}
 		if content != nil {
 			value = string(content[key])
 			if strings.HasPrefix(value, "\"") {

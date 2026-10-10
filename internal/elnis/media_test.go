@@ -3,6 +3,7 @@ package elnis
 import (
 	"context"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/media"
 	"elbot/internal/storage"
 	"errors"
@@ -24,8 +25,8 @@ func enableMedia(t *testing.T, s *Service) {
 
 func TestDirectMediaUsesPerCallLimits(t *testing.T) {
 	ctx := context.Background()
-	s, close := newTestService(t, func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
-		return delivery.Receipt{PlatformMessageIDs: []string{"sent"}}, nil
+	s, close := newTestService(t, func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+		return delivery.Receipt{PlatformMessageIDs: []string{"sent"}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	})
 	defer close()
 	enableMedia(t, s)
@@ -67,9 +68,9 @@ func TestDirectMediaCenterAndNoEagerDownloads(t *testing.T) {
 	}))
 	defer server.Close()
 	var sent []delivery.Output
-	s, close := newTestService(t, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	s, close := newTestService(t, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		sent = outputs
-		return delivery.Receipt{PlatformMessageIDs: []string{"sent-1", "sent-1"}}, nil
+		return delivery.Receipt{PlatformMessageIDs: []string{"sent-1", "sent-1"}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	})
 	defer close()
 	enableMedia(t, s)
@@ -121,7 +122,7 @@ func TestDirectMediaCenterAndNoEagerDownloads(t *testing.T) {
 	event := Event{Request: testRequest(ModeDirect), ResolvedTargets: "[]"}
 	event.Request.Segments = []Segment{{Kind: SegmentKindImage, URL: server.URL}}
 	// No-target direct must not fetch even if final event update fails for this synthetic event.
-	_ = s.runDirect(ctx, event, "missing")
+	_, _ = s.runDirect(ctx, event, "missing")
 	if downloads != 1 {
 		t.Fatal("no-target downloaded")
 	}
@@ -132,12 +133,23 @@ func TestReportMediaSurvivesWorkspaceRemovalAndRetry(t *testing.T) {
 	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"result","report_segments":[{"type":"image","url":"chart.png"}]}`}
 	fail := true
 	var sent []delivery.Output
-	s, close := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	s, close := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		if fail {
-			return delivery.Receipt{}, errors.New("offline")
+			{
+				err := errors.New("offline")
+				logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+				if err != nil {
+					logResult.ResultStatus = events.ResultFailed
+					logResult.Content = err.Error()
+					if err == context.Canceled {
+						logResult.ResultStatus = events.ResultCanceled
+					}
+				}
+				return delivery.Receipt{}, logResult, err
+			}
 		}
 		sent = outputs
-		return delivery.Receipt{PlatformMessageIDs: []string{"report-1"}}, nil
+		return delivery.Receipt{PlatformMessageIDs: []string{"report-1"}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	})
 	defer close()
 	enableMedia(t, s)
@@ -170,7 +182,7 @@ func TestReportMediaSurvivesWorkspaceRemovalAndRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	fail = false
-	if err := s.recoverReports(ctx, true); err != nil {
+	if _, err := s.recoverReports(ctx, true); err != nil {
 		t.Fatal(err)
 	}
 	if len(sent) != 2 {
@@ -300,12 +312,23 @@ func TestQueuedMediaReferencesRecoverAfterInterruption(t *testing.T) {
 func TestDirectPartialDeliveryReleasesEventReferences(t *testing.T) {
 	ctx := context.Background()
 	var sentID string
-	s, close := newTestService(t, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	s, close := newTestService(t, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		if target.GroupID == "2" {
-			return delivery.Receipt{}, errors.New("offline")
+			{
+				err := errors.New("offline")
+				logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+				if err != nil {
+					logResult.ResultStatus = events.ResultFailed
+					logResult.Content = err.Error()
+					if err == context.Canceled {
+						logResult.ResultStatus = events.ResultCanceled
+					}
+				}
+				return delivery.Receipt{}, logResult, err
+			}
 		}
 		sentID = outputs[0].Source.MediaID
-		return delivery.Receipt{PlatformMessageIDs: []string{"success"}}, nil
+		return delivery.Receipt{PlatformMessageIDs: []string{"success"}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	})
 	defer close()
 	enableMedia(t, s)

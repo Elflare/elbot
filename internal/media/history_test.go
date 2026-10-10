@@ -51,7 +51,7 @@ func TestHistoryReconciliationAfterInterruptedDeletion(t *testing.T) {
 		t.Fatal(refs)
 	}
 	m.History = brokenHistory{}
-	if err := m.Cleanup(ctx); err == nil {
+	if _, err := m.Cleanup(ctx); err == nil {
 		t.Fatal("history failure ignored")
 	}
 	if refs, _ := store.MediaReferences().ListMediaIDs(ctx, item.ID); len(refs) != 1 {
@@ -71,7 +71,7 @@ func TestHistoryReconciliationAfterInterruptedDeletion(t *testing.T) {
 	if refs, _ := store.MediaReferences().ListMediaIDs(ctx, item.ID); len(refs) != 0 {
 		t.Fatal(refs)
 	}
-	if err := m.Cleanup(ctx); err != nil {
+	if _, err := m.Cleanup(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := m.Metadata(ctx, item.ID); err != nil {

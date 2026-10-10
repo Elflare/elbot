@@ -190,7 +190,7 @@ func (c *executionCoordinator) finishCompletedTurn(ctx context.Context, session 
 	out.PublishRuntimeStatus(ctx, doneStatus)
 	nextSelection := modelmgr.SelectionForTurn(ctx, c.models, session)
 	if c.shouldCompact(ctx, session, nextSelection) {
-		_, _ = out.SendAssistant(ctx, "compact status: will compact before next request")
+		_, _, _ = out.SendAssistant(ctx, "compact status: will compact before next request")
 	}
 	pending, completed := c.turns.CompleteLLMInput(session.ID, turn.AttemptFromContext(ctx))
 	if !completed {

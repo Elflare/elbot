@@ -45,17 +45,38 @@ func Capture(ctx context.Context, notice delivery.Notice) Intent {
 	return intent
 }
 
-func (m *Manager) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+func (m *Manager) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, globalevents.LogResult, error) {
 	return m.Send(ctx, Capture(ctx, notice))
 }
 
-func (m *Manager) Send(ctx context.Context, intent Intent) (delivery.Receipt, error) {
+func (m *Manager) Send(ctx context.Context, intent Intent) (delivery.Receipt, globalevents.LogResult, error) {
 	if err := ctx.Err(); err != nil {
-		return delivery.Receipt{}, err
+		{
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+			if err != nil {
+				logResult.ResultStatus = globalevents.ResultFailed
+				logResult.Content = err.Error()
+				if err == context.Canceled {
+					logResult.ResultStatus = globalevents.ResultCanceled
+				}
+			}
+			return delivery.Receipt{}, logResult, err
+		}
 	}
 	if intent.Binding != nil {
 		if !intent.Binding.Valid() {
-			return delivery.Receipt{}, context.Canceled
+			{
+				err := context.Canceled
+				logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+				if err != nil {
+					logResult.ResultStatus = globalevents.ResultFailed
+					logResult.Content = err.Error()
+					if err == context.Canceled {
+						logResult.ResultStatus = globalevents.ResultCanceled
+					}
+				}
+				return delivery.Receipt{}, logResult, err
+			}
 		}
 		ctx = session.WithBinding(ctx, intent.Binding)
 	}
@@ -68,11 +89,25 @@ func (m *Manager) Send(ctx context.Context, intent Intent) (delivery.Receipt, er
 	ctx = platform.WithMessageContext(ctx, message)
 	if m.logWithoutSource && intent.Notice.Target.Empty() && (intent.Conversation == nil || intent.Conversation.Source.Platform == "") {
 		if err := delivery.ValidateOutputs(intent.Notice.Outputs); err != nil {
-			return delivery.Receipt{}, err
+			{
+				logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+				if err != nil {
+					logResult.ResultStatus = globalevents.ResultFailed
+					logResult.Content = err.Error()
+					if err == context.Canceled {
+						logResult.ResultStatus = globalevents.ResultCanceled
+					}
+				}
+				return delivery.Receipt{}, logResult, err
+			}
 		}
 		target, err := delivery.ValidateOutputsTarget(intent.Notice.Outputs)
 		if err != nil {
-			return delivery.Receipt{}, err
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+			if err == context.Canceled {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+			return delivery.Receipt{}, logResult, err
 		}
 		if target.Empty() {
 
@@ -107,7 +142,7 @@ func (m *Manager) Send(ctx context.Context, intent Intent) (delivery.Receipt, er
 				}
 			}
 
-			return delivery.Receipt{}, nil
+			return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 		}
 	}
 	return m.sender.SendNotice(ctx, intent.Notice)
@@ -115,6 +150,6 @@ func (m *Manager) Send(ctx context.Context, intent Intent) (delivery.Receipt, er
 
 func (m *Manager) Text(ctx context.Context, level slog.Level, text string) {
 	if text = strings.TrimSpace(text); text != "" {
-		_, _ = m.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(text)}, Level: level})
+		_, _, _ = m.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(text)}, Level: level})
 	}
 }

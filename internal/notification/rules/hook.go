@@ -30,6 +30,6 @@ func HookFailure(ctx context.Context, notices *notification.Manager, event hook.
 		target.Platform = event.Platform.Name
 		target.ScopeID = event.Platform.ScopeID
 	}
-	_, sendErr := notices.SendNotice(ctx, delivery.Notice{Target: target, Outputs: []delivery.Output{delivery.Text("Hook 执行失败（" + point + "）：\n" + text)}, Level: slog.LevelError})
+	_, _, sendErr := notices.SendNotice(ctx, delivery.Notice{Target: target, Outputs: []delivery.Output{delivery.Text("Hook 执行失败（" + point + "）：\n" + text)}, Level: slog.LevelError})
 	return sendErr
 }

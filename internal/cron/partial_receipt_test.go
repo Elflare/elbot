@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"testing"
 
@@ -20,8 +21,18 @@ func TestPartialSendMapsSuccessAndReturnsFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantErr := errors.New("later page failed")
-	s := NewService(Options{Store: store, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
-		return delivery.Receipt{PlatformMessageIDs: []string{"partial"}, SentMessages: []delivery.SentMessage{{Platform: "qqonebot", ScopeID: "private:1001", PlatformMessageID: "partial"}}}, wantErr
+	s := NewService(Options{Store: store, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+		{
+			logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+			if wantErr != nil {
+				logResult.ResultStatus = events.ResultFailed
+				logResult.Content = wantErr.Error()
+				if wantErr == context.Canceled {
+					logResult.ResultStatus = events.ResultCanceled
+				}
+			}
+			return delivery.Receipt{PlatformMessageIDs: []string{"partial"}, SentMessages: []delivery.SentMessage{{Platform: "qqonebot", ScopeID: "private:1001", PlatformMessageID: "partial"}}}, logResult, wantErr
+		}
 	}})
 	if _, err := s.sendOutputsToPlatformTarget(ctx, "partial", "qqonebot", delivery.Target{PrivateUserID: "1001"}, []delivery.Output{delivery.Text("report")}, row.ID, "cron-message"); !errors.Is(err, wantErr) {
 		t.Fatalf("send error=%v", err)

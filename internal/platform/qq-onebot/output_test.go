@@ -32,7 +32,7 @@ func TestSendNoticeSkipsGroupToolPreview(t *testing.T) {
 	adapter.transport = transport
 	ctx := testTargetContext(target{MessageType: "group", GroupID: 9})
 
-	receipt, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("[tool] 正在调用 shell：{}")}})
+	receipt, _, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("[tool] 正在调用 shell：{}")}})
 	if err != nil {
 		t.Fatalf("SendNotice: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestSendNoticeKeepsPrivateToolPreview(t *testing.T) {
 	adapter.transport = transport
 	ctx := testTargetContext(target{MessageType: "private", UserID: 1})
 
-	receipt, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("[tool] 正在调用 shell：{}")}})
+	receipt, _, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("[tool] 正在调用 shell：{}")}})
 	if err != nil {
 		t.Fatalf("SendNotice: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestSendRecordUsesPrivateAndGroupMessageAPIs(t *testing.T) {
 			adapter.transport = transport
 			ctx := testTargetContext(tc.target)
 			out := delivery.Output{Kind: delivery.KindRecord, Source: delivery.Source{URL: "https://example.com/voice.mp3"}}
-			receipt, err := adapter.SendChat(ctx, []delivery.Output{out})
+			receipt, _, err := adapter.SendChat(ctx, []delivery.Output{out})
 			if err != nil {
 				t.Fatalf("SendChat: %v", err)
 			}
@@ -261,7 +261,7 @@ func TestSendContextOutputReturnsSendFailureWithoutFallbackMessage(t *testing.T)
 	adapter.transport = transport
 	ctx := testTargetContext(target{MessageType: "private", UserID: 1})
 
-	_, err := adapter.SendChat(ctx, []delivery.Output{delivery.Emoticon("14", "开心", "")})
+	_, _, err := adapter.SendChat(ctx, []delivery.Output{delivery.Emoticon("14", "开心", "")})
 	if err == nil {
 		t.Fatal("SendChat error is nil")
 	}

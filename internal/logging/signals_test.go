@@ -304,12 +304,20 @@ func TestGlobalWriteFailureReportsToStderrAndContinues(t *testing.T) {
 func TestManagerReportsInvalidCategoryValue(t *testing.T) {
 	m := testManager(t, "info")
 	for _, category := range []events.LogCategory{0, 255} {
-		// Exercise the defensive consumer check; production publishers use EmitLog.
-		err := m.handleRecord(context.Background(), events.LogRecord{Category: category})
-		want := fmt.Sprintf("logging: unknown category %d", category)
+		// Invalid records are rejected at the publication boundary, before the
+		// manager receives them; consumers do not repeat contract validation.
+		err := events.EmitLog(context.Background(), events.LogRecord{Category: category})
+		want := fmt.Sprintf("invalid log category: %d", category)
 		if err == nil || err.Error() != want {
 			t.Fatalf("category %d: got %v, want %s", category, err, want)
 		}
+	}
+	emitRecord(t, events.LogRecord{Category: events.LogRuntime, EventName: "after_invalid", Content: "valid"})
+	if err := m.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if records := readJSONRecords(t, m.LogDir(), "elbot"); len(records) != 1 || string(records[0]["event"]) != `"after_invalid"` {
+		t.Fatalf("invalid records entered the consumer or blocked later records: %#v", records)
 	}
 }
 

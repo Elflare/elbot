@@ -365,11 +365,11 @@ func TestHandleRejectsElwispNameWithDot(t *testing.T) {
 func TestRunLLMEventMapsReportNoticeToBackgroundMessage(t *testing.T) {
 	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"处理完成"}`}
 	var service *Service
-	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 		if target.Platform != "qq-onebot" || target.PrivateUserID != "1001" {
 			t.Fatalf("target = %#v", target)
 		}
-		return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}, SentMessages: []delivery.SentMessage{{Platform: "qq-onebot", ScopeID: "private:1001", PlatformMessageID: "notice-1"}}}, nil
+		return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}, SentMessages: []delivery.SentMessage{{Platform: "qq-onebot", ScopeID: "private:1001", PlatformMessageID: "notice-1"}}}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	})
 	defer cleanup()
 	bgSession := &storage.Session{ID: "bg-session", OwnerID: "elnis:home", Platform: "qq-onebot", PlatformScopeID: "elnis:watcher:source:event-1", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "elnis"}
@@ -405,11 +405,11 @@ func TestRunLLMEventMapsReportNoticeToBackgroundMessage(t *testing.T) {
 func TestRunLLMEventCompletesAndReports(t *testing.T) {
 	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"处理完成"}`}
 	sent := []string{}
-	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 		if len(outputs) > 0 {
 			sent = append(sent, target.Platform+":"+outputs[0].Text)
 		}
-		return delivery.Receipt{}, nil
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	})
 	defer cleanup()
 	var queued QueuedLLMEvent
@@ -451,13 +451,24 @@ func TestRunLLMEventDoesNotCompleteBeforeReportDelivery(t *testing.T) {
 			close(release)
 		}
 	}()
-	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 		close(entered)
 		select {
 		case <-release:
-			return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}}, nil
+			return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 		case <-ctx.Done():
-			return delivery.Receipt{}, ctx.Err()
+			{
+				err := ctx.Err()
+				logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+				if err != nil {
+					logResult.ResultStatus = globalevents.ResultFailed
+					logResult.Content = err.Error()
+					if err == context.Canceled {
+						logResult.ResultStatus = globalevents.ResultCanceled
+					}
+				}
+				return delivery.Receipt{}, logResult, err
+			}
 		}
 	})
 	defer cleanup()
@@ -512,12 +523,23 @@ func TestRunLLMEventDoesNotCompleteBeforeReportDelivery(t *testing.T) {
 func TestRunLLMEventRetriesOnlyIncompleteReportDeliveries(t *testing.T) {
 	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"处理完成"}`}
 	calls := 0
-	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 		calls++
 		if calls == 2 {
-			return delivery.Receipt{}, errors.New("temporary delivery failure")
+			{
+				err := errors.New("temporary delivery failure")
+				logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+				if err != nil {
+					logResult.ResultStatus = globalevents.ResultFailed
+					logResult.Content = err.Error()
+					if err == context.Canceled {
+						logResult.ResultStatus = globalevents.ResultCanceled
+					}
+				}
+				return delivery.Receipt{}, logResult, err
+			}
 		}
-		return delivery.Receipt{PlatformMessageIDs: []string{"notice-" + target.Platform}}, nil
+		return delivery.Receipt{PlatformMessageIDs: []string{"notice-" + target.Platform}}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	})
 	defer cleanup()
 	var queued QueuedLLMEvent
@@ -549,7 +571,7 @@ func TestRunLLMEventRetriesOnlyIncompleteReportDeliveries(t *testing.T) {
 		t.Fatalf("deliveries after failure = %#v", deliveries)
 	}
 
-	if err := service.recoverReports(context.Background(), false); err != nil {
+	if _, err := service.recoverReports(context.Background(), false); err != nil {
 		t.Fatalf("recoverReports: %v", err)
 	}
 	record, err = service.store.ElnisEvents().Get(context.Background(), queued.EventID)
@@ -571,9 +593,9 @@ func TestRunLLMEventRetriesOnlyIncompleteReportDeliveries(t *testing.T) {
 func TestRunLLMEventRetriesWhenReceiptPersistenceFails(t *testing.T) {
 	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"处理完成"}`}
 	calls := 0
-	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 		calls++
-		return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}}, nil
+		return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	})
 	defer cleanup()
 	failingRepo := &failOnceReceiptRepository{ElnisEventRepository: service.store.ElnisEvents()}
@@ -599,7 +621,7 @@ func TestRunLLMEventRetriesWhenReceiptPersistenceFails(t *testing.T) {
 		t.Fatalf("record after receipt failure = %#v, calls = %d", record, calls)
 	}
 
-	if err := service.recoverReports(context.Background(), false); err != nil {
+	if _, err := service.recoverReports(context.Background(), false); err != nil {
 		t.Fatalf("recoverReports: %v", err)
 	}
 	record, err = service.store.ElnisEvents().Get(context.Background(), queued.EventID)
@@ -620,9 +642,9 @@ func TestRunLLMEventRetriesWhenReceiptPersistenceFails(t *testing.T) {
 
 func TestRecoverReportsResetsInterruptedDeliveringEvent(t *testing.T) {
 	sent := 0
-	service, cleanup := newTestService(t, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	service, cleanup := newTestService(t, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 		sent++
-		return delivery.Receipt{}, nil
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	})
 	defer cleanup()
 	var queued QueuedLLMEvent
@@ -648,7 +670,7 @@ func TestRecoverReportsResetsInterruptedDeliveringEvent(t *testing.T) {
 		t.Fatalf("ClaimReport = %v, %v", claimed, err)
 	}
 
-	if err := service.recoverReports(context.Background(), true); err != nil {
+	if _, err := service.recoverReports(context.Background(), true); err != nil {
 		t.Fatalf("recoverReports: %v", err)
 	}
 	record, err := service.store.ElnisEvents().Get(context.Background(), queued.EventID)
@@ -662,9 +684,9 @@ func TestRecoverReportsResetsInterruptedDeliveringEvent(t *testing.T) {
 
 func TestRecoverReportsDoesNotResendPersistedReceipt(t *testing.T) {
 	sent := 0
-	service, cleanup := newTestService(t, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	service, cleanup := newTestService(t, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 		sent++
-		return delivery.Receipt{}, nil
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	})
 	defer cleanup()
 	var queued QueuedLLMEvent
@@ -701,7 +723,7 @@ func TestRecoverReportsDoesNotResendPersistedReceipt(t *testing.T) {
 		t.Fatalf("MarkReportDeliveryDelivered: %v", err)
 	}
 
-	if err := service.recoverReports(context.Background(), true); err != nil {
+	if _, err := service.recoverReports(context.Background(), true); err != nil {
 		t.Fatalf("recoverReports: %v", err)
 	}
 	record, err := repo.Get(context.Background(), queued.EventID)
@@ -716,11 +738,11 @@ func TestRecoverReportsDoesNotResendPersistedReceipt(t *testing.T) {
 func TestRunLLMEventReportsSegmentsByRelativePath(t *testing.T) {
 	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"见图","report_segments":[{"type":"image","url":"chart.png"}]}`}
 	sent := []delivery.Kind{}
-	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 		if len(outputs) > 0 {
 			sent = append(sent, outputs[0].Kind)
 		}
-		return delivery.Receipt{}, nil
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	})
 	defer cleanup()
 	if err := os.MkdirAll(filepath.Join(service.sandboxRoot, "elnis", "watcher"), 0755); err != nil {
@@ -749,8 +771,8 @@ func TestRunLLMEventReportsSegmentsByRelativePath(t *testing.T) {
 
 func TestRunLLMEventRejectsAbsoluteReportSegmentPath(t *testing.T) {
 	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"见图","report_segments":[{"type":"image","url":"/tmp/chart.png"}]}`}
-	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
-		return delivery.Receipt{}, nil
+	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	})
 	defer cleanup()
 	var queued QueuedLLMEvent
@@ -771,11 +793,11 @@ func TestRunLLMEventRejectsAbsoluteReportSegmentPath(t *testing.T) {
 func TestRunLLMEventReportsFailedResultWhenRequested(t *testing.T) {
 	runner := &fakeBackgroundRunner{text: `{"completed":false,"need_report":true,"report":"创建失败：工具权限不足"}`}
 	sent := []string{}
-	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 		if len(outputs) > 0 {
 			sent = append(sent, target.Platform+":"+outputs[0].Text)
 		}
-		return delivery.Receipt{}, nil
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	})
 	defer cleanup()
 	var queued QueuedLLMEvent
@@ -878,11 +900,11 @@ func TestResolveTargetsDisabledElwispPrivateChat(t *testing.T) {
 
 func TestHandleDirectSendsToPrivateAndGroupTargets(t *testing.T) {
 	sent := []string{}
-	service, cleanup := newTestService(t, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	service, cleanup := newTestService(t, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 		if len(outputs) > 0 {
 			sent = append(sent, target.Platform+":"+target.PrivateUserID+":"+target.GroupID+":"+outputs[0].Text)
 		}
-		return delivery.Receipt{}, nil
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	})
 	defer cleanup()
 
@@ -905,11 +927,11 @@ func TestHandleDirectSendsToPrivateAndGroupTargets(t *testing.T) {
 
 func TestHandleDirectSendsToResolvedSuperadminTargets(t *testing.T) {
 	sent := []string{}
-	service, cleanup := newTestService(t, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	service, cleanup := newTestService(t, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 		if len(outputs) > 0 {
 			sent = append(sent, target.Platform+":"+outputs[0].Text)
 		}
-		return delivery.Receipt{}, nil
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	})
 	defer cleanup()
 
@@ -932,9 +954,9 @@ func TestHandleDirectSendsToResolvedSuperadminTargets(t *testing.T) {
 
 func TestHandleDirectCallsOnlyDoesNotSendOutput(t *testing.T) {
 	sent := 0
-	service, cleanup := newTestService(t, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	service, cleanup := newTestService(t, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 		sent++
-		return delivery.Receipt{}, nil
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	})
 	defer cleanup()
 	caller := &fakePlatformCallerResolver{callers: map[string]*fakePlatformCaller{"qqonebot": {}}}
@@ -971,8 +993,8 @@ func newTestServiceWithRunner(t *testing.T, runner background.Runner, send Sende
 		t.Fatalf("sqlite.New: %v", err)
 	}
 	if send == nil {
-		send = func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
-			return delivery.Receipt{}, nil
+		send = func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+			return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 		}
 	}
 	service, err := NewService(Options{

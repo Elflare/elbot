@@ -72,6 +72,49 @@ func TestLogCommandDefaultsToDebugAndFiveEntries(t *testing.T) {
 	}
 }
 
+func TestLogCommandRunSourceFilterAndCompletion(t *testing.T) {
+	for _, source := range []string{"foreground", "cron", "elnis"} {
+		for _, args := range []string{"-t --run_source " + source + " -i --raw -n 3", "--run_source " + source + " -t -n 3 --raw -i", "--run_source " + source} {
+			service := &fakeLogService{}
+			_, err := NewLog(Deps{Logs: service}).Handle(t.Context(), command.Request{Args: args})
+			if err != nil || service.query.ContentFields["run_source"] != source {
+				t.Fatalf("args=%q query=%#v err=%v", args, service.query, err)
+			}
+			if strings.Contains(args, "-t") && (service.query.Fields["event"] != "tool_call" || !service.query.Raw || service.query.Limit != 3 || service.query.MinLevel != "info") {
+				t.Fatalf("independent filters changed: %#v", service.query)
+			}
+			if !strings.Contains(args, "-t") && service.query.Fields["event"] != "" {
+				t.Fatalf("source filter invented event filter: %#v", service.query)
+			}
+		}
+	}
+	for _, args := range []string{"--run_source", "--run_source other", "--run_source \"\""} {
+		if _, err := parseRuntimeLogQuery(args); err == nil {
+			t.Fatalf("invalid source accepted: %q", args)
+		}
+	}
+	cmd := NewLog(Deps{})
+	if !strings.Contains(cmd.Info().Help, "--run_source") {
+		t.Fatal("help omits run source")
+	}
+	for _, raw := range []string{"/log --run_", "/log --run_source "} {
+		got := cmd.(command.Completer).Complete(t.Context(), command.CompletionRequest{Raw: raw, Prefix: "/", Name: "log", Args: strings.TrimPrefix(raw, "/log "), Cursor: len(raw)})
+		var values []string
+		for _, completion := range got {
+			values = append(values, completion.Text)
+		}
+		if strings.HasSuffix(raw, " ") {
+			for _, want := range []string{"foreground", "cron", "elnis"} {
+				if !slices.Contains(values, want) {
+					t.Fatalf("completion missing %s: %#v", want, got)
+				}
+			}
+		} else if !slices.Contains(values, "--run_source") {
+			t.Fatalf("option completion missing: %#v", got)
+		}
+	}
+}
+
 func TestElwispCommandDefaultsToElnisDebugAndFiveEntries(t *testing.T) {
 	service := &fakeLogService{entries: []logging.LogEntry{{
 		Time:         time.Date(2026, 6, 18, 12, 0, 0, 0, time.Local),

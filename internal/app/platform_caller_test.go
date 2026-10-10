@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"elbot/internal/events"
 	"encoding/json"
 	"testing"
 
@@ -18,12 +19,12 @@ func (r fakeRuntimeWithCaller) Name() string { return r.name }
 
 func (r fakeRuntimeWithCaller) Run(context.Context, platform.PlatformHandler) error { return nil }
 
-func (r fakeRuntimeWithCaller) SendChat(context.Context, []delivery.Output) (delivery.Receipt, error) {
-	return delivery.Receipt{}, nil
+func (r fakeRuntimeWithCaller) SendChat(context.Context, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
-func (r fakeRuntimeWithCaller) SendNotice(context.Context, delivery.Notice) (delivery.Receipt, error) {
-	return delivery.Receipt{}, nil
+func (r fakeRuntimeWithCaller) SendNotice(context.Context, delivery.Notice) (delivery.Receipt, events.LogResult, error) {
+	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
 func (r fakeRuntimeWithCaller) CallPlatformAPI(context.Context, string, map[string]any) (json.RawMessage, error) {

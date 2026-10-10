@@ -65,6 +65,7 @@ func (t CommandTool) ActivateTools() []string {
 }
 
 func (t CommandTool) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, logContent string, callErr error) {
+
 	timeout := defaultRunnerTimeout
 	if t.Manifest.TimeoutSeconds > 0 {
 		timeout = time.Duration(t.Manifest.TimeoutSeconds) * time.Second
@@ -96,7 +97,7 @@ func (t CommandTool) Call(ctx context.Context, req tool.CallRequest) (result *to
 	cmd.Dir = t.Record.Root
 	{
 		result, callErr := runMediaCommand(runCtx, "AgentSkill command", cmd, mediaCall)
-		logContent := ""
+		logContent = ""
 		if result != nil {
 			logContent = result.Content
 		}

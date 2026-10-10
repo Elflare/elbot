@@ -2,6 +2,7 @@ package elnis
 
 import (
 	"context"
+	"elbot/internal/events"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -20,7 +21,7 @@ func TestLLMTextReportMapsRealTelegramAdminReceipts(t *testing.T) {
 	adapter := telegram.New(telegram.Config{BotToken: "token", APIBaseURL: server.URL, Format: "plain", Superadmins: []string{"1", "2"}}, nil, nil)
 	router := dispatch.New(dispatch.Options{Primary: adapter})
 	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"done"}`}
-	s, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	s, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		return router.SendNotice(ctx, delivery.Notice{Target: target, Outputs: outputs})
 	})
 	defer cleanup()

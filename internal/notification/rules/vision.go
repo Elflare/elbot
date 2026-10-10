@@ -2,6 +2,7 @@ package rules
 
 import (
 	"context"
+	"elbot/internal/events"
 	"sync"
 
 	"elbot/internal/delivery"
@@ -9,7 +10,7 @@ import (
 )
 
 type AssistantSender interface {
-	SendAssistant(context.Context, string) (delivery.Receipt, error)
+	SendAssistant(context.Context, string) (delivery.Receipt, events.LogResult, error)
 }
 
 // VisionNotices owns the session-level once-per-send-attempt policy. Scheduling
@@ -37,6 +38,6 @@ func (v *VisionNotices) Send(ctx context.Context, sessionID string, visible bool
 	}
 	v.attempted[sessionID] = true
 	v.mu.Unlock()
-	_, err := v.sender.SendAssistant(ctx, VisionFallback)
+	_, _, err := v.sender.SendAssistant(ctx, VisionFallback)
 	return err
 }

@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/background"
 	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
@@ -73,7 +74,7 @@ func (s *Service) MigrateLegacyDeliveryState(ctx context.Context) error {
 			if facts.RootRequestID != "" {
 				record.Identity.RootRequestID = &facts.RootRequestID
 			}
-			_ = globalevents.EmitLog(ctx, record)
+			background.LogBackground(ctx, record)
 		}
 		if s.deliveryComplete(meta, state) {
 			if _, err := s.disableCompletedDelivery(ctx, job.Name, state.RunID); err != nil {
@@ -151,12 +152,30 @@ func (s *Service) handlePlatformConnected(ctx context.Context, platformName stri
 		if facts.RootRequestID != "" {
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
-		_ = globalevents.EmitLog(ctx, record)
+		background.LogBackground(ctx, record)
 	}
 	s.runMissedOnceForPlatform(ctx, platformName)
 }
 
 func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName string) {
+	identity := globalevents.LogIdentity{}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.SessionID != "" {
+		identity.SessionID = &facts.SessionID
+	}
+	if facts.RunID != "" {
+		identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		identity.RootRequestID = &facts.RootRequestID
+	}
+
 	jobs, err := s.store.CronJobs().ListEnabled(ctx)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -173,23 +192,8 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultFailed,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(ctx, record)
+			record.Identity = identity
+			background.LogBackground(ctx, record)
 		}
 		return
 	}
@@ -231,23 +235,8 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 				Content:      string(content),
 				ContentLimit: 4096,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(ctx, record)
+			record.Identity = identity
+			background.LogBackground(ctx, record)
 		}
 		{
 			record := globalevents.LogRecord{
@@ -259,25 +248,11 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 				Content:      fmt.Sprintf("cron missed delivery started\njob=%v\nsource_platform=%v\ntarget_platforms=%v\ntarget_all_enabled_platforms=%v\nplatform=%v", job.Name, meta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(meta), ","), meta.Target.AllEnabledPlatforms, platformName),
 				ContentLimit: 4096,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(ctx, record)
+			record.Identity = identity
+			background.LogBackground(ctx, record)
 		}
-		resultStatus, deliverErr := s.deliverMissedOnce(ctx, *latest, latestMeta, platformName)
+		logResult, deliverErr := s.deliverMissedOnce(ctx, *latest, latestMeta, platformName)
+		resultStatus := logResult.ResultStatus
 		unlock()
 		if deliverErr != nil {
 			{
@@ -297,23 +272,8 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 					record.Level = slog.LevelInfo
 				}
 
-				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				if facts.SessionID != "" {
-					record.Identity.SessionID = &facts.SessionID
-				}
-				if facts.RunID != "" {
-					record.Identity.RunID = &facts.RunID
-				}
-				if facts.Attempt != "" {
-					record.Identity.Attempt = &facts.Attempt
-				}
-				if facts.RequestID != "" {
-					record.Identity.RequestID = &facts.RequestID
-				}
-				if facts.RootRequestID != "" {
-					record.Identity.RootRequestID = &facts.RootRequestID
-				}
-				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+				record.Identity = identity
+				background.LogBackground(ctx, record)
 			}
 			{
 				record := globalevents.LogRecord{
@@ -331,23 +291,8 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 					record.Level = slog.LevelInfo
 				}
 
-				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				if facts.SessionID != "" {
-					record.Identity.SessionID = &facts.SessionID
-				}
-				if facts.RunID != "" {
-					record.Identity.RunID = &facts.RunID
-				}
-				if facts.Attempt != "" {
-					record.Identity.Attempt = &facts.Attempt
-				}
-				if facts.RequestID != "" {
-					record.Identity.RequestID = &facts.RequestID
-				}
-				if facts.RootRequestID != "" {
-					record.Identity.RootRequestID = &facts.RootRequestID
-				}
-				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+				record.Identity = identity
+				background.LogBackground(ctx, record)
 			}
 			if ctx.Err() != nil {
 				return
@@ -369,23 +314,8 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultSucceeded,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(ctx, record)
+			record.Identity = identity
+			background.LogBackground(ctx, record)
 		}
 		{
 			record := globalevents.LogRecord{
@@ -398,39 +328,43 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultSucceeded,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(ctx, record)
+			record.Identity = identity
+			background.LogBackground(ctx, record)
 		}
 	}
 }
 
-func (s *Service) deliverMissedOnce(ctx context.Context, job storage.CronJob, meta Metadata, platformName string) (globalevents.ResultStatus, error) {
-	job, state, resultStatus, prepareErr := s.prepareDelivery(ctx, job, meta)
+func (s *Service) deliverMissedOnce(ctx context.Context, job storage.CronJob, meta Metadata, platformName string) (globalevents.LogResult, error) {
+	content := "operation=deliverMissedOnce"
+	job, state, logResult, prepareErr := s.prepareDelivery(ctx, job, meta)
+	resultStatus := logResult.ResultStatus
+	content += "\n" + logResult.Content
 	if !state.ReportReady {
-		return resultStatus, prepareErr
+		{
+			err := prepareErr
+			logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
+			if err != nil {
+				logResult.Content += fmt.Sprintf("\nerror=%v", err)
+			}
+			return logResult, err
+		}
 	}
-	status, deliverErr := s.deliverPrepared(ctx, job, meta, state, platformName, true)
+	logResult, deliverErr := s.deliverPrepared(ctx, job, meta, state, platformName, true)
+	status := logResult.ResultStatus
+	content += "\n" + logResult.Content
 	if resultStatus == globalevents.ResultFailed || status == globalevents.ResultFailed {
 		status = globalevents.ResultFailed
 	} else if resultStatus == globalevents.ResultCanceled || status == globalevents.ResultCanceled {
 		status = globalevents.ResultCanceled
 	}
-	return status, errors.Join(prepareErr, deliverErr)
+	{
+		err := errors.Join(prepareErr, deliverErr)
+		logResult := globalevents.LogResult{ResultStatus: status, Content: content}
+		if err != nil {
+			logResult.Content += fmt.Sprintf("\nerror=%v", err)
+		}
+		return logResult, err
+	}
 }
 
 func missedOnceReportText(title, report string) string {

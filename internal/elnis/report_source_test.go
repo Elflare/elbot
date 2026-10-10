@@ -2,6 +2,7 @@ package elnis
 
 import (
 	"context"
+	"elbot/internal/events"
 	"testing"
 
 	"elbot/internal/delivery"
@@ -11,14 +12,14 @@ import (
 func TestDefaultAdminReportUsesActualReceiptSources(t *testing.T) {
 	ctx := context.Background()
 	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"done"}`}
-	s, cleanup := newTestServiceWithRunner(t, runner, func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+	s, cleanup := newTestServiceWithRunner(t, runner, func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		return delivery.Receipt{
 			PlatformMessageIDs: []string{"admin-1", "admin-2"},
 			SentMessages: []delivery.SentMessage{
 				{Platform: "qqonebot", ScopeID: "private:1001", PlatformMessageID: "admin-1", OutputIndexes: []int{0}},
 				{Platform: "qqonebot", ScopeID: "private:1002", PlatformMessageID: "admin-2", OutputIndexes: []int{0}},
 			},
-		}, nil
+		}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	})
 	defer cleanup()
 	row := &storage.Session{ID: "bg-session", OwnerID: "elnis:home", Platform: "qqonebot", PlatformScopeID: "elnis:review", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive}

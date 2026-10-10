@@ -103,34 +103,38 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 	}
 }
 
-func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	return a.sendContextOutput(ctx, outputs)
 }
 
-func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, globalevents.LogResult, error) {
 	target := notice.Target
 	outputs := notice.Outputs
 	if target.Empty() && isGroupToolPreviewNotice(ctx, outputs) {
-		return delivery.Receipt{}, nil
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	}
 	if target.Empty() {
 		return a.SendChat(ctx, outputs)
 	}
 	targets, err := a.targets(target)
 	if err != nil {
-		return delivery.Receipt{}, err
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if err == context.Canceled {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return delivery.Receipt{}, logResult, err
 	}
 	var receipt delivery.Receipt
 	for _, target := range targets {
 		target.Proactive = true
-		sent, err := a.sendOutputs(ctx, target, outputs)
+		sent, logResult, err := a.sendOutputs(ctx, target, outputs)
 		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
 		receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
 		if err != nil {
-			return receipt, err
+			return receipt, logResult, err
 		}
 	}
-	return receipt, nil
+	return receipt, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
 func (a *Adapter) targets(target delivery.Target) ([]sendTarget, error) {

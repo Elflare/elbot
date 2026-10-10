@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/events"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -718,7 +719,20 @@ func TestResponsesEmptyReplyAndBufferedSendFailureKeepLocalCheckpoint(t *testing
 				}
 			})
 			failure := errors.New("send failed")
-			ctx := platform.WithMessageContext(t.Context(), platform.MessageContext{BufferAssistantOutput: true, Sender: mediaSendFunc(func([]delivery.Output) (delivery.Receipt, error) { return delivery.Receipt{}, failure })})
+			ctx := platform.WithMessageContext(t.Context(), platform.MessageContext{BufferAssistantOutput: true, Sender: mediaSendFunc(func([]delivery.Output) (delivery.Receipt, events.LogResult, error) {
+				{
+					err := failure
+					logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+					if err != nil {
+						logResult.ResultStatus = events.ResultFailed
+						logResult.Content = err.Error()
+						if err == context.Canceled {
+							logResult.ResultStatus = events.ResultCanceled
+						}
+					}
+					return delivery.Receipt{}, logResult, err
+				}
+			})})
 			if err := f.agent.HandleMessage(ctx, "input"); !errors.Is(err, failure) {
 				t.Fatalf("send error=%v", err)
 			}

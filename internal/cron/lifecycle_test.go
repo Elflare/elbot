@@ -26,12 +26,12 @@ func TestManagerCancellationAndRepeatedStopWaitForHandlerExit(t *testing.T) {
 	var logs bytes.Buffer
 	manager := NewManager(repo)
 	started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	if err := manager.RegisterHandler("wait", func(ctx context.Context, _ storage.CronJob) (globalevents.ResultStatus, string, error) {
+	if err := manager.RegisterHandler("wait", func(ctx context.Context, _ storage.CronJob) (globalevents.LogResult, error) {
 		close(started)
 		<-ctx.Done()
 		close(canceled)
 		<-release
-		return globalevents.ResultCanceled, ctx.Err().Error(), ctx.Err()
+		return globalevents.LogResult{ResultStatus: globalevents.ResultCanceled, Content: ctx.Err().Error()}, ctx.Err()
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -100,9 +100,9 @@ func TestManagerStopWaitsForStartupAndPreventsLateScheduling(t *testing.T) {
 		<-release
 		return []storage.CronJob{{Name: "late", Handler: "late", Enabled: true, Schedule: "@every 1s"}}, nil
 	}})
-	if err := manager.RegisterHandler("late", func(context.Context, storage.CronJob) (globalevents.ResultStatus, string, error) {
+	if err := manager.RegisterHandler("late", func(context.Context, storage.CronJob) (globalevents.LogResult, error) {
 		t.Error("late handler ran")
-		return globalevents.ResultSucceeded, "finished", nil
+		return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "finished"}, nil
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -159,8 +159,8 @@ func TestManagerStopWaitsForRunBookkeeping(t *testing.T) {
 		<-release
 		return base.UpdateRunState(ctx, id, state)
 	}})
-	if err := manager.RegisterHandler("test", func(context.Context, storage.CronJob) (globalevents.ResultStatus, string, error) {
-		return globalevents.ResultSucceeded, "finished", nil
+	if err := manager.RegisterHandler("test", func(context.Context, storage.CronJob) (globalevents.LogResult, error) {
+		return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "finished"}, nil
 	}); err != nil {
 		t.Fatal(err)
 	}

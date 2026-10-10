@@ -226,9 +226,9 @@ type platformOutputSender struct {
 	sent chan delivery.Notice
 }
 
-func (p *platformOutputSender) SendNotice(_ context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+func (p *platformOutputSender) SendNotice(_ context.Context, notice delivery.Notice) (delivery.Receipt, globalevents.LogResult, error) {
 	p.sent <- notice
-	return delivery.Receipt{}, nil
+	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 func TestGlobalPlatformHookSendsOutput(t *testing.T) {
 	manager := hook.NewManager()

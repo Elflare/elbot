@@ -29,7 +29,7 @@ const (
 	timeLayout      = "2006-01-02 15:04:05"
 )
 
-type TargetSenderFunc func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error)
+type TargetSenderFunc func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)
 
 type PlatformTarget struct {
 	Name          string
@@ -98,31 +98,49 @@ func NewService(opts Options) *Service {
 
 func (s *Service) SetRunner(runner LLMRunner) { s.runner = runner }
 
-func (s *Service) Handler(ctx context.Context, job storage.CronJob) (resultStatus globalevents.ResultStatus, content string, err error) {
-	resultStatus = globalevents.ResultFailed
-	content = fmt.Sprintf("job=%s handler=%s", job.Name, job.Handler)
+func (s *Service) Handler(ctx context.Context, job storage.CronJob) (logResult globalevents.LogResult, err error) {
+	identity := globalevents.LogIdentity{}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.SessionID != "" {
+		identity.SessionID = &facts.SessionID
+	}
+	if facts.RunID != "" {
+		identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		identity.RootRequestID = &facts.RootRequestID
+	}
+
+	logResult.ResultStatus = globalevents.ResultFailed
+	logResult.Content = fmt.Sprintf("job=%s handler=%s", job.Name, job.Handler)
 	defer func() {
 		if err != nil {
-			content += fmt.Sprintf("\nerror=%v", err)
+			logResult.Content += fmt.Sprintf("\nerror=%v", err)
 		}
 	}()
 	unlock, err := s.lockDeliveryJob(ctx, job.Name)
 	if err != nil {
 		if err == context.Canceled {
-			resultStatus = globalevents.ResultCanceled
+			logResult.ResultStatus = globalevents.ResultCanceled
 		}
-		return resultStatus, content, err
+		return globalevents.LogResult{ResultStatus: logResult.ResultStatus, Content: logResult.Content}, err
 	}
 	defer unlock()
 	latest, err := s.store.CronJobs().GetByName(ctx, job.Name)
 	if err != nil {
 		if err == context.Canceled {
-			resultStatus = globalevents.ResultCanceled
+			logResult.ResultStatus = globalevents.ResultCanceled
 		}
-		return resultStatus, content, err
+		return globalevents.LogResult{ResultStatus: logResult.ResultStatus, Content: logResult.Content}, err
 	}
 	if !latest.Enabled {
-		return globalevents.ResultSkipped, content + "\njob is disabled", nil
+		return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: logResult.Content + "\njob is disabled"}, nil
 	}
 	job = *latest
 	meta, err := decodeMetadata(job.Metadata)
@@ -138,28 +156,13 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) (resultStatu
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultFailed,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(ctx, record)
+			record.Identity = identity
+			background.LogBackground(ctx, record)
 		}
 		if err == context.Canceled {
-			resultStatus = globalevents.ResultCanceled
+			logResult.ResultStatus = globalevents.ResultCanceled
 		}
-		return resultStatus, content, err
+		return globalevents.LogResult{ResultStatus: logResult.ResultStatus, Content: logResult.Content}, err
 	}
 	{
 		content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": meta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms": meta.Target.AllEnabledPlatforms, "trigger_mode": meta.Trigger.Mode, "schedule_mode": meta.Schedule.Mode})
@@ -172,23 +175,8 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) (resultStatu
 			Content:      string(content),
 			ContentLimit: 4096,
 		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		_ = globalevents.EmitLog(ctx, record)
+		record.Identity = identity
+		background.LogBackground(ctx, record)
 	}
 	{
 		record := globalevents.LogRecord{
@@ -200,37 +188,26 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) (resultStatu
 			Content:      fmt.Sprintf("cron trigger started\njob=%v\nsource_platform=%v\ntarget_platforms=%v\ntarget_all_enabled_platforms=%v\ntrigger_mode=%v\nschedule_mode=%v", job.Name, meta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(meta), ","), meta.Target.AllEnabledPlatforms, meta.Trigger.Mode, meta.Schedule.Mode),
 			ContentLimit: 4096,
 		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		_ = globalevents.EmitLog(ctx, record)
+		record.Identity = identity
+		background.LogBackground(ctx, record)
 	}
-	content += fmt.Sprintf("\nsource_platform=%s target_platforms=%s trigger_mode=%s schedule_mode=%s", meta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(meta), ","), meta.Trigger.Mode, meta.Schedule.Mode)
+	logResult.Content += fmt.Sprintf("\nsource_platform=%s target_platforms=%s trigger_mode=%s schedule_mode=%s", meta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(meta), ","), meta.Trigger.Mode, meta.Schedule.Mode)
+	content := logResult.Content
+	logResult.Content = ""
 	var runErr error
 	switch meta.Trigger.Mode {
 	case TriggerDirect:
-		resultStatus, runErr = s.runDirect(ctx, job, meta)
+		logResult, runErr = s.runDirect(ctx, job, meta)
 	case TriggerLLM:
-		resultStatus, runErr = s.runLLM(ctx, job, meta)
+		logResult, runErr = s.runLLM(ctx, job, meta)
 	default:
 		runErr = fmt.Errorf("unsupported trigger mode %q", meta.Trigger.Mode)
+		logResult.Content = runErr.Error()
 	}
-	if runErr != nil {
+	logResult.Content = content + "\n" + logResult.Content
+	if logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled {
 		{
-			content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": meta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms": meta.Target.AllEnabledPlatforms, "error": runErr.Error()})
+			content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": meta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms": meta.Target.AllEnabledPlatforms, "result": fmt.Sprintf("%.2048s", logResult.Content)})
 			record := globalevents.LogRecord{
 				Category:     globalevents.LogAudit,
 				Level:        slog.LevelError,
@@ -239,30 +216,14 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) (resultStatu
 				Type:         globalevents.ContentJSON,
 				Content:      string(content),
 				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultFailed,
+				ResultStatus: logResult.ResultStatus,
 			}
-			record.ResultStatus = resultStatus
-			if resultStatus == globalevents.ResultCanceled {
+			if logResult.ResultStatus == globalevents.ResultCanceled {
 				record.Level = slog.LevelInfo
 			}
 
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			record.Identity = identity
+			background.LogBackground(ctx, record)
 		}
 		{
 			record := globalevents.LogRecord{
@@ -271,37 +232,21 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) (resultStatu
 				EventName:    "cron_trigger_failed",
 				Module:       "cron",
 				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("cron trigger failed\njob=%v\nsource_platform=%v\ntarget_platforms=%v\ntarget_all_enabled_platforms=%v\nerror=%v", job.Name, meta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(meta), ","), meta.Target.AllEnabledPlatforms, runErr.Error()),
+				Content:      fmt.Sprintf("cron trigger failed\njob=%v\nsource_platform=%v\ntarget_platforms=%v\ntarget_all_enabled_platforms=%v\n%s", job.Name, meta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(meta), ","), meta.Target.AllEnabledPlatforms, logResult.Content),
 				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultFailed,
+				ResultStatus: logResult.ResultStatus,
 			}
-			record.ResultStatus = resultStatus
-			if resultStatus == globalevents.ResultCanceled {
+			if logResult.ResultStatus == globalevents.ResultCanceled {
 				record.Level = slog.LevelInfo
 			}
 
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			record.Identity = identity
+			background.LogBackground(ctx, record)
 		}
-		return resultStatus, content, runErr
+		return globalevents.LogResult{ResultStatus: logResult.ResultStatus, Content: logResult.Content}, runErr
 	}
 	{
-		content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": meta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms": meta.Target.AllEnabledPlatforms})
+		content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": meta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms": meta.Target.AllEnabledPlatforms, "result": fmt.Sprintf("%.2048s", logResult.Content)})
 		record := globalevents.LogRecord{
 			Category:     globalevents.LogAudit,
 			Level:        slog.LevelInfo,
@@ -310,25 +255,10 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) (resultStatu
 			Type:         globalevents.ContentJSON,
 			Content:      string(content),
 			ContentLimit: 4096,
-			ResultStatus: resultStatus,
+			ResultStatus: logResult.ResultStatus,
 		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		_ = globalevents.EmitLog(ctx, record)
+		record.Identity = identity
+		background.LogBackground(ctx, record)
 	}
 	{
 		record := globalevents.LogRecord{
@@ -337,32 +267,35 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) (resultStatu
 			EventName:    "cron_trigger_completed",
 			Module:       "cron",
 			Type:         globalevents.ContentText,
-			Content:      fmt.Sprintf("cron trigger completed\njob=%v\nsource_platform=%v\ntarget_platforms=%v\ntarget_all_enabled_platforms=%v", job.Name, meta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(meta), ","), meta.Target.AllEnabledPlatforms),
+			Content:      fmt.Sprintf("cron trigger completed\njob=%v\nsource_platform=%v\ntarget_platforms=%v\ntarget_all_enabled_platforms=%v\n%s", job.Name, meta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(meta), ","), meta.Target.AllEnabledPlatforms, logResult.Content),
 			ContentLimit: 4096,
-			ResultStatus: resultStatus,
+			ResultStatus: logResult.ResultStatus,
 		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		_ = globalevents.EmitLog(ctx, record)
+		record.Identity = identity
+		background.LogBackground(ctx, record)
 	}
-	return resultStatus, content, nil
+	return globalevents.LogResult{ResultStatus: logResult.ResultStatus, Content: logResult.Content}, runErr
 }
 
 func (s *Service) Create(ctx context.Context, req UpsertRequest) (*storage.CronJob, error) {
+	identity := globalevents.LogIdentity{}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.SessionID != "" {
+		identity.SessionID = &facts.SessionID
+	}
+	if facts.RunID != "" {
+		identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		identity.RootRequestID = &facts.RootRequestID
+	}
+
 	if err := requireSuperadmin(req.Actor); err != nil {
 		{
 			content, _ := json.Marshal(map[string]any{"operation": "create", "actor_id": req.Actor.ID, "reason": err.Error()})
@@ -376,23 +309,8 @@ func (s *Service) Create(ctx context.Context, req UpsertRequest) (*storage.CronJ
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultRejected,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(ctx, record)
+			record.Identity = identity
+			background.LogBackground(ctx, record)
 		}
 		return nil, err
 	}
@@ -422,28 +340,31 @@ func (s *Service) Create(ctx context.Context, req UpsertRequest) (*storage.CronJ
 			ContentLimit: 4096,
 			ResultStatus: globalevents.ResultSucceeded,
 		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		_ = globalevents.EmitLog(ctx, record)
+		record.Identity = identity
+		background.LogBackground(ctx, record)
 	}
 	return job, nil
 }
 
 func (s *Service) Update(ctx context.Context, req PatchRequest) (*storage.CronJob, error) {
+	identity := globalevents.LogIdentity{}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.SessionID != "" {
+		identity.SessionID = &facts.SessionID
+	}
+	if facts.RunID != "" {
+		identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		identity.RootRequestID = &facts.RootRequestID
+	}
+
 	if err := requireSuperadmin(req.Actor); err != nil {
 		{
 			content, _ := json.Marshal(map[string]any{"operation": "update", "actor_id": req.Actor.ID, "reason": err.Error()})
@@ -457,23 +378,8 @@ func (s *Service) Update(ctx context.Context, req PatchRequest) (*storage.CronJo
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultRejected,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(ctx, record)
+			record.Identity = identity
+			background.LogBackground(ctx, record)
 		}
 		return nil, err
 	}
@@ -547,28 +453,31 @@ func (s *Service) Update(ctx context.Context, req PatchRequest) (*storage.CronJo
 			ContentLimit: 4096,
 			ResultStatus: globalevents.ResultSucceeded,
 		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		_ = globalevents.EmitLog(ctx, record)
+		record.Identity = identity
+		background.LogBackground(ctx, record)
 	}
 	return updated, nil
 }
 
 func (s *Service) Disable(ctx context.Context, name string, actor contextinfo.Actor) error {
+	identity := globalevents.LogIdentity{}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.SessionID != "" {
+		identity.SessionID = &facts.SessionID
+	}
+	if facts.RunID != "" {
+		identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		identity.RootRequestID = &facts.RootRequestID
+	}
+
 	if err := requireSuperadmin(actor); err != nil {
 		{
 			content, _ := json.Marshal(map[string]any{"operation": "disable", "actor_id": actor.ID, "reason": err.Error()})
@@ -582,23 +491,8 @@ func (s *Service) Disable(ctx context.Context, name string, actor contextinfo.Ac
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultRejected,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(ctx, record)
+			record.Identity = identity
+			background.LogBackground(ctx, record)
 		}
 		return err
 	}
@@ -622,28 +516,31 @@ func (s *Service) Disable(ctx context.Context, name string, actor contextinfo.Ac
 			ContentLimit: 4096,
 			ResultStatus: globalevents.ResultSucceeded,
 		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		_ = globalevents.EmitLog(ctx, record)
+		record.Identity = identity
+		background.LogBackground(ctx, record)
 	}
 	return nil
 }
 
 func (s *Service) Delete(ctx context.Context, name string, actor contextinfo.Actor) error {
+	identity := globalevents.LogIdentity{}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.SessionID != "" {
+		identity.SessionID = &facts.SessionID
+	}
+	if facts.RunID != "" {
+		identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		identity.RootRequestID = &facts.RootRequestID
+	}
+
 	if err := requireSuperadmin(actor); err != nil {
 		{
 			content, _ := json.Marshal(map[string]any{"operation": "delete", "actor_id": actor.ID, "reason": err.Error()})
@@ -657,23 +554,8 @@ func (s *Service) Delete(ctx context.Context, name string, actor contextinfo.Act
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultRejected,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(ctx, record)
+			record.Identity = identity
+			background.LogBackground(ctx, record)
 		}
 		return err
 	}
@@ -697,23 +579,8 @@ func (s *Service) Delete(ctx context.Context, name string, actor contextinfo.Act
 			ContentLimit: 4096,
 			ResultStatus: globalevents.ResultSucceeded,
 		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		_ = globalevents.EmitLog(ctx, record)
+		record.Identity = identity
+		background.LogBackground(ctx, record)
 	}
 	return nil
 }
@@ -748,7 +615,7 @@ func (s *Service) Get(ctx context.Context, name string, actor contextinfo.Actor)
 			if facts.RootRequestID != "" {
 				record.Identity.RootRequestID = &facts.RootRequestID
 			}
-			_ = globalevents.EmitLog(ctx, record)
+			background.LogBackground(ctx, record)
 		}
 		return JobView{}, err
 	}
@@ -797,7 +664,7 @@ func (s *Service) List(ctx context.Context, includeDisabled, includeCompleted bo
 			if facts.RootRequestID != "" {
 				record.Identity.RootRequestID = &facts.RootRequestID
 			}
-			_ = globalevents.EmitLog(ctx, record)
+			background.LogBackground(ctx, record)
 		}
 		return nil, err
 	}

@@ -57,7 +57,7 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 	baseProcessEnv := processenv.New(os.Environ())
 	shellProcessEnv := baseProcessEnv.Fill(dotEnv)
 	hookProcessEnv := hook.ProcessEnvironment(baseProcessEnv)
-	sendNotice := func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	sendNotice := func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 		return services.Dispatcher.SendNotice(ctx, delivery.Notice{Target: target, Outputs: outputs})
 	}
 	cronService, err := buildCronService(ctx, foundation, services.Models, services.Sessions, sendNotice)
@@ -94,7 +94,10 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 		services.Notifications.Text(ctx, slog.LevelWarn, text)
 	}
 
-	hookRuntime := hookruntime.NewManager(hookruntime.Options{Media: services.Media, Registry: toolRuntime.Registry, Send: sendNotice, SharedDir: filepath.Join(config.PluginConfigDir(cfg.ConfigPath), "_shared"), ProcessEnv: hookProcessEnv})
+	hookRuntime := hookruntime.NewManager(hookruntime.Options{Media: services.Media, Registry: toolRuntime.Registry, Send: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+		receipt, _, err := sendNotice(ctx, target, outputs)
+		return receipt, err
+	}, SharedDir: filepath.Join(config.PluginConfigDir(cfg.ConfigPath), "_shared"), ProcessEnv: hookProcessEnv})
 
 	lifecycle.hooks = hookRuntime
 	hookService := buildHookService(foundation, req.Platforms, toolRuntime, hooks, hookRuntime, hookProcessEnv, notifyHookIssue, sendNotice)
@@ -172,7 +175,7 @@ func resolveFileDeliveryCredentials(cfg config.FileDeliveryConfig, configDir str
 	return credentials.NewStaticCredentialsProvider(accessKey, secretKey, ""), nil
 }
 
-func buildCronService(ctx context.Context, foundation *FoundationComponents, models *modelmgr.Service, sessions *session.Service, send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)) (*elcron.Service, error) {
+func buildCronService(ctx context.Context, foundation *FoundationComponents, models *modelmgr.Service, sessions *session.Service, send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)) (*elcron.Service, error) {
 	cfg := foundation.Config
 	service := elcron.NewService(elcron.Options{
 		Manager:          foundation.CronManager,
@@ -200,14 +203,17 @@ func buildHookService(
 	hookRuntime *hookruntime.Manager,
 	hookProcessEnv hook.ProcessEnvironment,
 	notifyHookIssue func(context.Context, string),
-	sendNotice func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error),
+	sendNotice func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error),
 ) *hookcontrol.Service {
 	cfg := foundation.Config
 	hookOpts := hookbuiltin.Options{
-		ConfigDir:       config.PluginConfigDir(cfg.ConfigPath),
-		Tools:           toolRuntime.Registry,
-		Notify:          notifyHookIssue,
-		Send:            sendNotice,
+		ConfigDir: config.PluginConfigDir(cfg.ConfigPath),
+		Tools:     toolRuntime.Registry,
+		Notify:    notifyHookIssue,
+		Send: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+			receipt, _, err := sendNotice(ctx, target, outputs)
+			return receipt, err
+		},
 		PlatformCallers: hookPlatformCallerResolver{runtimes: platforms.Runtimes},
 		Runtime:         hookRuntime,
 		ProcessEnv:      hookProcessEnv,

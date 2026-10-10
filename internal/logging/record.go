@@ -74,27 +74,19 @@ func formatRecord(ctx context.Context, record events.LogRecord, at time.Time) ([
 	switch record.Type {
 	case events.ContentText:
 		limit := record.ContentLimit
-		if limit < 0 {
-			return nil, fmt.Errorf("format log record: negative content limit")
-		}
 		if limit == 0 {
 			limit = defaultContentLimit
 		}
 		value = limitRunes(redactText(record.Content), limit)
 	case events.ContentJSON:
-		// Validation normally happens at publication. Check here as well so
-		// malformed JSON can never be partially decoded and written.
-		if !json.Valid([]byte(record.Content)) {
-			return nil, fmt.Errorf("format log record: invalid JSON content")
-		}
+		// EmitLog validates the contract once. Decode here only to redact JSON
+		// values while preserving numbers, not to validate the source again.
 		decoder := json.NewDecoder(strings.NewReader(record.Content))
 		decoder.UseNumber()
 		if err := decoder.Decode(&value); err != nil {
 			return nil, fmt.Errorf("format log record: %w", err)
 		}
 		value = redactValue(value)
-	default:
-		return nil, fmt.Errorf("format log record: invalid content type")
 	}
 	fields := map[string]any{
 		"time":     at.Format(time.RFC3339),

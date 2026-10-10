@@ -104,6 +104,7 @@ func logInfo() command.Info {
   -d, -i, -w, -e       Shorthand for --level debug/info/warn/error.
   --raw                Show original physical log records.
   -u, -a, -t           Filter user/assistant/tool events.
+  --run_source <name>   Filter tool run source: foreground, cron, elnis.
   -s, --system         Filter system prompt events.
   --hook               Filter records from the hook module.
   --since <time>        Show logs after a time, e.g. 2h, 30m, 2026-06-03, 2026-06-03T15:04:05.
@@ -115,7 +116,8 @@ func logInfo() command.Info {
 Examples:
   /log
   /log -w -n 10
-  /log --msg startup --days 3`),
+  /log --msg startup --days 3
+  /log -t --run_source cron -n 20`),
 	}
 }
 
@@ -161,6 +163,9 @@ func (c logCommand) Complete(ctx context.Context, req command.CompletionRequest)
 	_ = ctx
 	token := currentCompletionToken(req)
 	previous := previousLogToken(req.Raw, token.Start)
+	if !c.audit && !c.elwisp && previous == "--run_source" {
+		return completeStringOptions([]string{"foreground", "cron", "elnis"}, token.Text, token.Start, token.End, "run_source")
+	}
 	if previous == "--level" {
 		return completeStringOptions([]string{"debug", "info", "warn", "error"}, token.Text, token.Start, token.End, "log_level")
 	}
@@ -206,6 +211,7 @@ func logCompletionOptions(audit, elwisp bool) []completionOption {
 	}
 	if !audit && !elwisp {
 		options = append(options,
+			completionOption{Text: "--run_source", Description: "Tool run source: foreground, cron, elnis"},
 			completionOption{Text: "-u", Description: "User events"},
 			completionOption{Text: "-a", Description: "Assistant events"},
 			completionOption{Text: "-s", Description: "System prompt events"},
@@ -308,7 +314,16 @@ func parseRuntimeLogQuery(args string) (logging.LogQuery, error) {
 	query.MinLevel = "debug"
 	fields := map[string]string{}
 	if err := parseLogArgsWithOptions(args, &query, fields, func(name, value string) error {
-		return fmt.Errorf("unknown option: --%s", name)
+		if name != "run_source" {
+			return fmt.Errorf("unknown option: --%s", name)
+		}
+		switch value {
+		case "foreground", "cron", "elnis":
+			query.ContentFields["run_source"] = value
+			return nil
+		default:
+			return fmt.Errorf("invalid --run_source %q: expected foreground, cron or elnis", value)
+		}
 	}, logArgOptions{eventFilters: true, messageFilters: true, systemFilter: true}); err != nil {
 		return query, err
 	}
