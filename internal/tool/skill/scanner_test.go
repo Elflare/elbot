@@ -74,7 +74,7 @@ func TestFilesystemScannerLoadsMarkdownDetailOnDemand(t *testing.T) {
 
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Updated DOCX")
 	args, _ := json.Marshal(map[string]string{"name": "docx"})
-	result, err := tool.NewDiscoverTool(registry).Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := tool.NewDiscoverTool(registry).Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ input = "--input"
 
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Updated callable DOCX")
 	args, _ := json.Marshal(map[string]string{"name": "docx"})
-	result, err := tool.NewDiscoverTool(registry).Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := tool.NewDiscoverTool(registry).Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestMarkdownDetailReadFailureReturnsDiscoveryError(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]string{"name": "docx"})
-	_, err := tool.NewDiscoverTool(registry).Call(context.Background(), tool.CallRequest{Arguments: args})
+	_, _, err := tool.NewDiscoverTool(registry).Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "read SKILL.md") {
 		t.Fatalf("discovery error = %v, want SKILL.md read failure", err)
 	}
@@ -185,7 +185,7 @@ func TestPolicyOnlyAgentSkillHiddenFromNormalUserDiscovery(t *testing.T) {
 	actor := contextinfo.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: contextinfo.RoleUser}
 	ctx := security.WithPolicy(contextinfo.WithActor(context.Background(), actor), policy)
 	discover := tool.NewDiscoverTool(registry)
-	result, err := discover.Call(ctx, tool.CallRequest{})
+	result, _, err := discover.Call(ctx, tool.CallRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestPolicyOnlyAgentSkillHiddenFromNormalUserDiscovery(t *testing.T) {
 		t.Fatalf("private skill should be hidden from normal user: %s", result.Data)
 	}
 	args, _ := json.Marshal(map[string]string{"name": "private_doc"})
-	if _, err := discover.Call(ctx, tool.CallRequest{Arguments: args}); err == nil {
+	if _, _, err := discover.Call(ctx, tool.CallRequest{Arguments: args}); err == nil {
 		t.Fatal("expected normal user detail query to be denied")
 	}
 }
@@ -220,7 +220,7 @@ superadmin_only = true
 	superadmin := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
 	ctx := security.WithPolicy(contextinfo.WithActor(context.Background(), superadmin), policy)
 	args, _ := json.Marshal(map[string]string{"name": "private_doc"})
-	result, err := tool.NewDiscoverTool(registry).Call(ctx, tool.CallRequest{Arguments: args})
+	result, _, err := tool.NewDiscoverTool(registry).Call(ctx, tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,7 +406,7 @@ func TestAgentSkillCreatorNoticeDiscovery(t *testing.T) {
 				if role != "" {
 					ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: role})
 				}
-				result, err := discover.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"name":"docx"}`)})
+				result, _, err := discover.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"name":"docx"}`)})
 				if err != nil {
 					t.Fatal(err)
 				}

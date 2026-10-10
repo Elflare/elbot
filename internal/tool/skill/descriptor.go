@@ -49,8 +49,11 @@ func (d Descriptor) Schema() llm.ToolSchema {
 	return llm.ToolSchema{}
 }
 
-func (d Descriptor) Call(context.Context, tool.CallRequest) (*tool.Result, error) {
-	return nil, fmt.Errorf("skill %q is a document skill; query it with discover_tool", d.Record.Name)
+func (d Descriptor) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
+	{
+		callErr := fmt.Errorf("skill %q is a document skill; query it with discover_tool", d.Record.Name)
+		return nil, callErr.Error(), callErr
+	}
 }
 
 func (d Descriptor) Detail() string {

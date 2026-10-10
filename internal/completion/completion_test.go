@@ -192,8 +192,8 @@ func (t completionTestTool) Info() tool.Info {
 func (t completionTestTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: t.name}
 }
-func (t completionTestTool) Call(context.Context, tool.CallRequest) (*tool.Result, error) {
-	return nil, nil
+func (t completionTestTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
+	return nil, "", nil
 }
 
 type completionTestSkill struct{ completionTestTool }

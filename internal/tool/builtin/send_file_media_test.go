@@ -28,7 +28,7 @@ func TestSendFileMediaIDBuildsLocalOutput(t *testing.T) {
 
 	toolValue := NewSendFileTool(files)
 	arguments, _ := json.Marshal(map[string]string{"source": resource.ID})
-	result, err := toolValue.Call(ctx, tool.CallRequest{Arguments: arguments})
+	result, _, err := toolValue.Call(ctx, tool.CallRequest{Arguments: arguments})
 	if err != nil {
 		t.Fatalf("call send_file: %v", err)
 	}

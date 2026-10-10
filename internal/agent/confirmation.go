@@ -2,7 +2,9 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -10,10 +12,10 @@ import (
 	agentevents "elbot/internal/agent/events"
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/request"
 	"elbot/internal/session"
-	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/toolrun"
@@ -35,7 +37,6 @@ type confirmationCoordinator struct {
 	identity           *identityResolver
 	output             *outputSender
 	policy             *confirmationPolicy
-	changed            *signal.Signal[agentevents.ConfirmationChangedEvent]
 	autoConfirmMu      sync.Mutex
 	autoConfirmSession map[string]bool
 	autoConfirmTools   map[string]map[string]bool
@@ -73,11 +74,11 @@ func (c *confirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 		return err
 	}
 	ctx = locked
-	var observed *agentevents.ConfirmationChangedEvent
+	var observed *events.LogRecord
 	defer func() {
 		release()
 		if observed != nil {
-			agentevents.Emit(ctx, c.changed, *observed)
+			_ = events.EmitLog(context.WithoutCancel(ctx), *observed)
 		}
 	}()
 	confirmation, hasConfirmation := c.turns.PendingRiskConfirmation(sessionID)
@@ -136,8 +137,30 @@ func (c *confirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 	return nil
 }
 
-func confirmationAction(ctx context.Context, sessionID, action string, confirmation turn.RiskConfirmation, extra string) *agentevents.ConfirmationChangedEvent {
-	return &agentevents.ConfirmationChangedEvent{EventMeta: agentevents.Meta(ctx, sessionID), Phase: "command", Action: action, Tool: confirmation.ToolName, Risk: confirmation.Risk, Extra: extra}
+func confirmationAction(ctx context.Context, sessionID, action string, confirmation turn.RiskConfirmation, extra string) *events.LogRecord {
+	content := map[string]string{"tool": confirmation.ToolName, "risk": confirmation.Risk, "action": action, "extra": extra}
+	for key, value := range content {
+		runes := []rune(value)
+		if len(runes) > 2048 {
+			content[key] = string(runes[:2047]) + "…"
+		}
+	}
+	data, _ := json.Marshal(content)
+	record := &events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: "risk_confirmation_command", Module: "agent", Type: events.ContentJSON, Content: string(data), ContentLimit: 0, Identity: events.LogIdentity{SessionID: &sessionID}, ResultStatus: events.ResultUnspecified}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.RunID != "" {
+		record.Identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		record.Identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		record.Identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		record.Identity.RootRequestID = &facts.RootRequestID
+	}
+	return record
 }
 
 func (c *confirmationCoordinator) isSessionAutoConfirmed(sessionID string) bool {
@@ -168,10 +191,26 @@ func (c *confirmationCoordinator) setToolAutoConfirmed(sessionID, toolName strin
 }
 
 func (c *confirmationCoordinator) publishConfirmationWait(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reasons []string) {
-	agentevents.Emit(ctx, c.changed, agentevents.ConfirmationChangedEvent{EventMeta: agentevents.Meta(ctx, sessionID), Phase: "wait", Tool: call.Name, Risk: string(risk), Arguments: call.Arguments, Reasons: strings.Join(reasons, "; ")})
+	content := map[string]string{"tool": call.Name, "risk": string(risk), "arguments": call.Arguments, "risk_reasons": strings.Join(reasons, "; ")}
+	for key, value := range content {
+		runes := []rune(value)
+		if len(runes) > 2048 {
+			content[key] = string(runes[:2047]) + "…"
+		}
+	}
+	data, _ := json.Marshal(content)
+	emitAgentLog(ctx, agentevents.Meta(ctx, sessionID), events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: "risk_confirmation_wait", Module: "agent", Type: events.ContentJSON, Content: string(data), ContentLimit: 0, Identity: events.LogIdentity{}, ResultStatus: events.ResultUnspecified})
 }
-func (c *confirmationCoordinator) publishConfirmationResult(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, action, extra, reason string) {
-	agentevents.Emit(ctx, c.changed, agentevents.ConfirmationChangedEvent{EventMeta: agentevents.Meta(ctx, sessionID), Phase: "result", Tool: call.Name, Risk: string(risk), Action: action, Extra: extra, Reason: reason})
+func (c *confirmationCoordinator) publishConfirmationResult(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, action, extra, reason string, resultStatus events.ResultStatus, level slog.Level) {
+	content := map[string]string{"tool": call.Name, "risk": string(risk), "action": action, "extra": extra, "reason": reason}
+	for key, value := range content {
+		runes := []rune(value)
+		if len(runes) > 2048 {
+			content[key] = string(runes[:2047]) + "…"
+		}
+	}
+	data, _ := json.Marshal(content)
+	emitAgentLog(ctx, agentevents.Meta(ctx, sessionID), events.LogRecord{Category: events.LogAudit, Level: level, EventName: "risk_confirmation_result", Module: "agent", Type: events.ContentJSON, Content: string(data), ContentLimit: 0, Identity: events.LogIdentity{}, ResultStatus: resultStatus})
 }
 func (c *confirmationCoordinator) AwaitToolConfirmation(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail string) (toolrun.ConfirmResult, error) {
 	if c.isSessionAutoConfirmed(sessionID) || c.isToolAutoConfirmed(sessionID, call.Name) {
@@ -185,17 +224,32 @@ func (c *confirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	if wait != nil && ctx.Err() == nil {
 		c.publishConfirmationWait(ctx, sessionID, call, assessment.Level, assessment.Reasons)
 		if _, err := c.output.SendAssistant(ctx, fmt.Sprintf("高风险工具调用等待确认\n工具：%s\n风险：%s\n参数：%s%s\n%s。", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout))); err != nil {
+			resultStatus, level := events.ResultFailed, slog.LevelError
+			if err == context.Canceled {
+				resultStatus, level = events.ResultCanceled, slog.LevelInfo
+			}
+			c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "prompt_failed", "", fmt.Sprintf("send risk confirmation: %v", err), resultStatus, level)
 			return toolrun.ConfirmResult{Stopped: true}, fmt.Errorf("send risk confirmation: %w", err)
 		}
 	}
-	resp, ok := wait.Wait(ctx, timeout)
+	resp, ok, resultStatus := wait.Wait(ctx, timeout)
 	if resp.Expired {
-		c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "expire", resp.Extra, "confirmation wait expired")
+		c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "expire", resp.Extra, "confirmation wait expired", events.ResultFailed, slog.LevelInfo)
 		c.output.SendChat(context.WithoutCancel(ctx), "高风险工具确认已过期，当前处理已停止。")
 		return toolrun.ConfirmResult{Allowed: false, Extra: resp.Extra, Message: llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments(fmt.Sprintf("tool call %s confirmation expired", call.Name))}, Stopped: true}, nil
 	}
 	if !ok || resp.Stopped {
-		c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "stop", resp.Extra, "")
+		action, reason := "skip", "confirmation wait is no longer current"
+		switch resultStatus {
+		case events.ResultCanceled:
+			action, reason = "stop", "confirmation wait stopped"
+		case events.ResultFailed:
+			action, reason = "timeout", "confirmation wait timed out"
+		}
+		if err := ctx.Err(); err != nil {
+			reason = err.Error()
+		}
+		c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, action, resp.Extra, reason, resultStatus, slog.LevelInfo)
 		return toolrun.ConfirmResult{Allowed: false, Extra: resp.Extra, Message: llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments(fmt.Sprintf("tool call %s stopped by user", call.Name))}, Stopped: true}, nil
 	}
 	if resp.ConfirmTool {
@@ -211,7 +265,7 @@ func (c *confirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 		if reason == "" {
 			reason = "user rejected"
 		}
-		c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "reject", resp.Extra, reason)
+		c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "reject", resp.Extra, reason, events.ResultRejected, slog.LevelInfo)
 		return toolrun.ConfirmResult{Allowed: false, Extra: resp.Extra, Message: llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments(fmt.Sprintf("tool call %s rejected by user: %s", call.Name, reason))}}, nil
 	}
 	action := "confirm"
@@ -221,6 +275,6 @@ func (c *confirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	if resp.ConfirmAll {
 		action = "confirmall"
 	}
-	c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, action, resp.Extra, "")
+	c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, action, resp.Extra, "", events.ResultSucceeded, slog.LevelInfo)
 	return toolrun.ConfirmResult{Allowed: true, Extra: resp.Extra}, nil
 }

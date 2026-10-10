@@ -2,7 +2,6 @@ package dialogue
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"elbot/internal/contextinfo"
@@ -35,13 +34,6 @@ const (
 	Failed
 	Superseded
 )
-
-func FailedOutcome(err error) Outcome {
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return Canceled
-	}
-	return Failed
-}
 
 type TurnInput struct {
 	Session                  *storage.Session

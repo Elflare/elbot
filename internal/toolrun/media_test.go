@@ -26,9 +26,12 @@ func (t *mediaArgumentRecorder) Info() tool.Info {
 func (t *mediaArgumentRecorder) Schema() llm.ToolSchema {
 	return tool.NewBuilder(t.Name()).BuildSchema()
 }
-func (t *mediaArgumentRecorder) Call(_ context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t *mediaArgumentRecorder) Call(_ context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	t.received = string(req.Arguments)
-	return &tool.Result{Content: "ok"}, nil
+	{
+		result := &tool.Result{Content: "ok"}
+		return result, result.Content, nil
+	}
 }
 
 type failingMediaTool struct{}
@@ -38,8 +41,11 @@ func (failingMediaTool) Info() tool.Info { return tool.Info{Name: "failing_media
 func (failingMediaTool) Schema() llm.ToolSchema {
 	return tool.NewBuilder("failing_media").BuildSchema()
 }
-func (failingMediaTool) Call(context.Context, tool.CallRequest) (*tool.Result, error) {
-	return nil, errors.New("tool failed")
+func (failingMediaTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
+	{
+		callErr := errors.New("tool failed")
+		return nil, callErr.Error(), callErr
+	}
 }
 
 func TestRunRetainsExactMediaArgumentsForSession(t *testing.T) {
@@ -167,7 +173,7 @@ func TestMediaArgumentsRemainExplicit(t *testing.T) {
 	if _, err := manager.AssessRisk(context.Background(), resolved, arguments); err != nil {
 		t.Fatal(err)
 	}
-	result := manager.Execute(context.Background(), call, resolved, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
+	result := manager.Execute(context.Background(), call, resolved, contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, "", "")
 	if result.Error != nil {
 		t.Fatal(result.Error)
 	}

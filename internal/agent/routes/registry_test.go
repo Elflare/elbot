@@ -105,7 +105,9 @@ func (o *testOutput) SendAssistant(ctx context.Context, text string) (delivery.R
 	o.sent = append(o.sent, text)
 	return delivery.Receipt{}, nil
 }
-func (*testOutput) SendOutputs(context.Context, []delivery.Output) error         { return nil }
+func (*testOutput) SendOutputs(context.Context, []delivery.Output) (delivery.Receipt, error) {
+	return delivery.Receipt{}, nil
+}
 func (*testOutput) SendNotice(context.Context, slog.Level, string)               {}
 func (*testOutput) SendPreview(context.Context, string)                          {}
 func (*testOutput) SendReasoning(context.Context, string)                        {}

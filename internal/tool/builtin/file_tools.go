@@ -146,42 +146,67 @@ func readFileBuilder() *tool.Builder {
 		Integer("max_matches", "grep/ast/ast_function 模式最大匹配数，默认 20，范围 1-100。")
 }
 
-func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	var args readFileArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			return nil, fmt.Errorf("parse read_file arguments: %w", err)
+			{
+				callErr := fmt.Errorf("parse read_file arguments: %w", err)
+				return nil, callErr.Error(), callErr
+			}
 		}
 	}
 	mode, err := normalizeReadFileMode(args.Mode)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	resolved, err := workspace.ResolveWorkspacePath(ctx, args.Path, workspace.PathResolveOptions{AllowDirectory: mode != readFileModeRead})
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	path := resolved.Path
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	if info.IsDir() {
 		if mode == readFileModeRead {
-			return nil, fmt.Errorf("read mode requires a file path")
+			{
+				callErr := fmt.Errorf("read mode requires a file path")
+				return nil, callErr.Error(), callErr
+			}
 		}
-		return readFileDirectorySearch(ctx, path, mode, args, resolved.Warnings, t.astCache)
+		{
+			result, callErr := readFileDirectorySearch(ctx, path, mode, args, resolved.Warnings, t.astCache)
+			logContent := ""
+			if result != nil {
+				logContent = result.Content
+			}
+			if callErr != nil {
+				if logContent != "" {
+					logContent += "\n"
+				}
+				logContent += callErr.Error()
+			}
+			return result, logContent, callErr
+		}
 	}
 	if info.Size() > fileToolMaxBytes {
-		return nil, fmt.Errorf("file too large: %d bytes exceeds %d", info.Size(), fileToolMaxBytes)
+		{
+			callErr := fmt.Errorf("file too large: %d bytes exceeds %d", info.Size(), fileToolMaxBytes)
+			return nil, callErr.Error(), callErr
+		}
 	}
 	largeFile := info.Size() > fileToolDetailedMaxBytes
 	if largeFile && (mode == readFileModeAST || mode == readFileModeASTFunction) {
-		return nil, fmt.Errorf("%s mode is disabled for this %d-byte file; use read or grep mode", mode, info.Size())
+		{
+			callErr := fmt.Errorf("%s mode is disabled for this %d-byte file; use read or grep mode", mode, info.Size())
+			return nil, callErr.Error(), callErr
+		}
 	}
 	file, err := fileops.ReadFileWithLimit(path, args.Encoding, fileToolMaxBytes)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	lines := fileops.SplitLines(file.Text)
 	warnings := append(resolved.Warnings, t.FileGuard.ReadWarnings(path)...)
@@ -190,15 +215,54 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 	}
 	switch mode {
 	case readFileModeGrep:
-		return readFileGrepResult(file, lines, args.Query, args.ContextLines, args.MaxMatches, args.Index, warnings)
+		{
+			result, callErr := readFileGrepResult(file, lines, args.Query, args.ContextLines, args.MaxMatches, args.Index, warnings)
+			logContent := ""
+			if result != nil {
+				logContent = result.Content
+			}
+			if callErr != nil {
+				if logContent != "" {
+					logContent += "\n"
+				}
+				logContent += callErr.Error()
+			}
+			return result, logContent, callErr
+		}
 	case readFileModeAST:
-		return readFileASTResult(file, args.Query, args.ContextLines, args.MaxMatches, args.Index, warnings)
+		{
+			result, callErr := readFileASTResult(file, args.Query, args.ContextLines, args.MaxMatches, args.Index, warnings)
+			logContent := ""
+			if result != nil {
+				logContent = result.Content
+			}
+			if callErr != nil {
+				if logContent != "" {
+					logContent += "\n"
+				}
+				logContent += callErr.Error()
+			}
+			return result, logContent, callErr
+		}
 	case readFileModeASTFunction:
-		return readFileASTFunctionResult(file, args.Query, args.MaxMatches, args.Index, warnings)
+		{
+			result, callErr := readFileASTFunctionResult(file, args.Query, args.MaxMatches, args.Index, warnings)
+			logContent := ""
+			if result != nil {
+				logContent = result.Content
+			}
+			if callErr != nil {
+				if logContent != "" {
+					logContent += "\n"
+				}
+				logContent += callErr.Error()
+			}
+			return result, logContent, callErr
+		}
 	}
 	start, end, truncated, err := fileops.NormalizeReadRange(len(lines), int(args.StartLine), args.EndLine)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "file: %s\n", file.Path)
@@ -209,7 +273,10 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 		fmt.Fprintf(&b, "empty: true\n")
 		fmt.Fprintf(&b, "truncated: %t\n", truncated)
 		b.WriteString("content:\n")
-		return &tool.Result{Content: b.String(), Warnings: warnings}, nil
+		{
+			result := &tool.Result{Content: b.String(), Warnings: warnings}
+			return result, result.Content, nil
+		}
 	}
 
 	fmt.Fprintf(&b, "lines: %d-%d/%d\n", start, end, len(lines))
@@ -219,7 +286,10 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 	for i := start; i <= end; i++ {
 		fmt.Fprintf(&b, "%*d | %s\n", width, i, lines[i-1])
 	}
-	return &tool.Result{Content: b.String(), Warnings: warnings}, nil
+	{
+		result := &tool.Result{Content: b.String(), Warnings: warnings}
+		return result, result.Content, nil
+	}
 }
 
 func readFileGrepResult(file fileops.File, lines []string, grep string, contextLines, maxMatches, index int, warnings []string) (*tool.Result, error) {
@@ -514,16 +584,19 @@ func fileToolEditOptions() fileops.EditFileOptions {
 		DetailedDiffMaxBytes: fileToolDetailedMaxBytes,
 	}
 }
-func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	var args editFileArgs
 	if len(req.Arguments) > 0 {
 		if err := decodeStrictFileArgs(req.Arguments, &args); err != nil {
-			return nil, fmt.Errorf("parse edit_file arguments: %w", err)
+			{
+				callErr := fmt.Errorf("parse edit_file arguments: %w", err)
+				return nil, callErr.Error(), callErr
+			}
 		}
 	}
 	result, resolved, err := t.Rollback.Edit(ctx, editServiceRequest(args))
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	content := fmt.Sprintf("dry_run: %t\nedited: %s\ncreated: %t\nencoding: %s\nrevision_before: %s\nrevision_after: %s\ndiff:\n%s", result.DryRun, result.Path, result.Created, result.Encoding, result.RevisionBefore, result.RevisionAfter, result.Diff)
 	content += fmt.Sprintf("\nrollback_available: %t", result.RollbackAvailable)
@@ -533,7 +606,10 @@ func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 	if lease, _ := t.Rollback.EditSession(ctx); lease != nil && !result.RollbackAvailable {
 		resolved.Warnings = append(resolved.Warnings, "文件已编辑，但撤销备份因会话失效或容量限制未保留。")
 	}
-	return &tool.Result{Content: content, Warnings: resolved.Warnings}, nil
+	{
+		result := &tool.Result{Content: content, Warnings: resolved.Warnings}
+		return result, result.Content, nil
+	}
 }
 
 func previewEditFile(ctx context.Context, args editFileArgs, service *fileops.Service) (fileops.EditResult, error) {

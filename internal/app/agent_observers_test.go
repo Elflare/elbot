@@ -14,18 +14,10 @@ import (
 
 func observerSignals() agentevents.Signals {
 	return agentevents.Signals{
-		UserInputReceived:   signal.New[agentevents.UserInputReceivedEvent]("input"),
-		PersistenceFailed:   signal.New[agentevents.PersistenceFailedEvent]("persistence"),
-		TurnTimedOut:        signal.New[agentevents.TurnTimedOutEvent]("timeout"),
-		ModelCallCompleted:  signal.New[agentevents.ModelCallCompletedEvent]("model"),
-		ToolCallCompleted:   signal.New[agentevents.ToolCallCompletedEvent]("tool"),
-		ConfirmationChanged: signal.New[agentevents.ConfirmationChangedEvent]("confirmation"),
-		ToolDenied:          signal.New[agentevents.ToolDeniedEvent]("denied"),
-		StatusChanged:       signal.New[agentevents.StatusChangedEvent]("status"),
-		VisionFallbackUsed:  signal.New[agentevents.VisionFallbackUsedEvent]("vision"),
-		HookFailed:          signal.New[agentevents.HookFailedEvent]("hook"),
-		ReplyDelivered:      signal.New[agentevents.ReplyDeliveredEvent]("delivery"),
-		ReplyCommitted:      signal.New[agentevents.ReplyCommittedEvent]("commit"),
+		ModelCallCompleted: signal.New[agentevents.ModelCallCompletedEvent]("model"),
+		StatusChanged:      signal.New[agentevents.StatusChangedEvent]("status"),
+		VisionFallbackUsed: signal.New[agentevents.VisionFallbackUsedEvent]("vision"),
+		HookFailed:         signal.New[agentevents.HookFailedEvent]("hook"),
 	}
 }
 

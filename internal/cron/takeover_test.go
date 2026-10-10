@@ -24,7 +24,7 @@ func TestTakeoverSuppressesRepairAndDelivery(t *testing.T) {
 		return delivery.Receipt{}, nil
 	}})
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "takeover", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
-	if err := svc.runLLM(context.Background(), *job, mustDecodeTestMetadata(t, job.Metadata)); err != nil {
+	if _, err := svc.runLLM(context.Background(), *job, mustDecodeTestMetadata(t, job.Metadata)); err != nil {
 		t.Fatal(err)
 	}
 	state := mustDecodeTestDelivery(t, repo.jobs[job.Name].DeliveryState)

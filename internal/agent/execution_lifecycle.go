@@ -83,7 +83,6 @@ func (l *appendWaitLifecycle) Close(ctx context.Context) error {
 func (a *Agent) BeginClose() {
 	a.hooks.beginClosePlatformEvents()
 	a.execution.appendWaits.beginClose()
-	a.disconnectLogSignals()
 }
 
 // Close waits for owned workers before their dependencies may be released.

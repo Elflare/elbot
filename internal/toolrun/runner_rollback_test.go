@@ -64,8 +64,10 @@ func (d *runnerTestDeps) PrepareToolContext(ctx context.Context, s *storage.Sess
 func (d *runnerTestDeps) CompleteToolCall(_ context.Context, _ *storage.Session, _ llm.ToolCallRequest, _ string, segments []llm.MessageSegment, _ error) ([]llm.MessageSegment, error) {
 	return segments, nil
 }
-func (d *runnerTestDeps) SendPreview(context.Context, string)                  {}
-func (d *runnerTestDeps) SendOutputs(context.Context, []delivery.Output) error { return nil }
+func (d *runnerTestDeps) SendPreview(context.Context, string) {}
+func (d *runnerTestDeps) SendOutputs(context.Context, []delivery.Output) (delivery.Receipt, error) {
+	return delivery.Receipt{}, nil
+}
 func (d *runnerTestDeps) RecordToolCall(_ context.Context, _ string, _ llm.ToolCallRequest, _ string, _ time.Time, _ string, err error) error {
 	d.recorded = append(d.recorded, struct{ err error }{err})
 	return nil

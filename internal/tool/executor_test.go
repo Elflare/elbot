@@ -99,8 +99,21 @@ type partialResultTool struct {
 	err error
 }
 
-func (p partialResultTool) Call(context.Context, CallRequest) (*Result, error) {
-	return &Result{Content: "completed first action", Data: []byte(`{"partial":true}`)}, p.err
+func (p partialResultTool) Call(context.Context, CallRequest) (*Result, string, error) {
+	{
+		result, callErr := &Result{Content: "completed first action", Data: []byte(`{"partial":true}`)}, p.err
+		logContent := ""
+		if result != nil {
+			logContent = result.Content
+		}
+		if callErr != nil {
+			if logContent != "" {
+				logContent += "\n"
+			}
+			logContent += callErr.Error()
+		}
+		return result, logContent, callErr
+	}
 }
 
 func TestExecutorRetainsPartialResultAndOriginalError(t *testing.T) {
@@ -148,9 +161,12 @@ func (segmentTool) Info() Info   { return Info{Name: "segments", Source: SourceB
 func (segmentTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "segments"}
 }
-func (segmentTool) Call(context.Context, CallRequest) (*Result, error) {
-	return &Result{Segments: []llm.MessageSegment{
-		{Type: llm.SegmentText, Text: "image:"},
-		{Type: llm.SegmentImage, URL: "https://example.com/a.png", MIMEType: "image/png"},
-	}}, nil
+func (segmentTool) Call(context.Context, CallRequest) (*Result, string, error) {
+	{
+		result := &Result{Segments: []llm.MessageSegment{
+			{Type: llm.SegmentText, Text: "image:"},
+			{Type: llm.SegmentImage, URL: "https://example.com/a.png", MIMEType: "image/png"},
+		}}
+		return result, result.Content, nil
+	}
 }

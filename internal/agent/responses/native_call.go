@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sort"
 
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/contextinfo"
@@ -63,7 +64,12 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 	}
 	result.Exchange = exchange
 	status := "failed"
+	// Entries are snapshots of observed native items, including unfinished
+	// message content. Item/part completion replaces only the matching entry.
 	completed := map[int]api.Item{}
+	// Keep only observed content indices; a sparse upstream index must not
+	// allocate placeholders or turn an otherwise received delta into a failure.
+	parts := map[int]map[int]json.RawMessage{}
 	defer func() {
 		raw := ""
 		if result.Response != nil {
@@ -132,7 +138,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		if event.Response != nil && len(event.Response.Output) > 0 {
 			result.OutputStarted = true
 		}
-		if event.Type == "response.output_item.done" && event.Item != nil {
+		if (event.Type == "response.output_item.added" || event.Type == "response.output_item.done") && event.Item != nil {
 			completed[event.OutputIndex] = *event.Item
 		}
 		if event.Error != nil {
@@ -148,6 +154,101 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 				return result, errors.Join(event.Error, ctx.Err())
 			}
 			return result, event.Error
+		}
+		switch event.Type {
+		case "response.content_part.added", "response.content_part.done", "response.output_text.done", "response.refusal.done", "response.output_text.delta", "response.refusal.delta":
+			if event.OutputIndex < 0 || event.ContentIndex < 0 {
+				return result, fmt.Errorf("responses stream: negative output or content index")
+			}
+			item := completed[event.OutputIndex]
+			content := map[string]json.RawMessage{}
+			if len(item.Raw) > 0 {
+				if err := json.Unmarshal(item.Raw, &content); err != nil {
+					return result, fmt.Errorf("responses stream item: %w", err)
+				}
+			} else {
+				content["type"] = json.RawMessage(`"message"`)
+				content["role"] = json.RawMessage(`"assistant"`)
+				if event.ItemID != "" {
+					content["id"], _ = json.Marshal(event.ItemID)
+				}
+			}
+			if parts[event.OutputIndex] == nil {
+				parts[event.OutputIndex] = map[int]json.RawMessage{}
+				var data []json.RawMessage
+				if len(content["content"]) > 0 {
+					if err := json.Unmarshal(content["content"], &data); err != nil {
+						return result, fmt.Errorf("responses stream content: %w", err)
+					}
+				}
+				for index, part := range data {
+					parts[event.OutputIndex][index] = part
+				}
+			}
+			part := map[string]json.RawMessage{}
+			if data := parts[event.OutputIndex][event.ContentIndex]; len(data) > 0 {
+				if err := json.Unmarshal(data, &part); err != nil {
+					return result, fmt.Errorf("responses stream part: %w", err)
+				}
+			}
+			switch event.Type {
+			case "response.content_part.added", "response.content_part.done":
+				data := map[string]json.RawMessage{}
+				if err := json.Unmarshal(event.Raw, &data); err != nil {
+					return result, fmt.Errorf("responses stream part event: %w", err)
+				}
+				if err := json.Unmarshal(data["part"], &part); err != nil {
+					return result, fmt.Errorf("responses stream part event: %w", err)
+				}
+			case "response.output_text.delta", "response.output_text.done":
+				var text string
+				if len(part["text"]) > 0 {
+					if err := json.Unmarshal(part["text"], &text); err != nil {
+						return result, fmt.Errorf("responses stream text: %w", err)
+					}
+				}
+				if event.Type == "response.output_text.done" {
+					text = event.Text
+				} else {
+					text += event.Delta
+				}
+				part["type"] = json.RawMessage(`"output_text"`)
+				part["text"], _ = json.Marshal(text)
+			case "response.refusal.delta", "response.refusal.done":
+				var text string
+				if len(part["refusal"]) > 0 {
+					if err := json.Unmarshal(part["refusal"], &text); err != nil {
+						return result, fmt.Errorf("responses stream refusal: %w", err)
+					}
+				}
+				if event.Type == "response.refusal.done" {
+					text = event.Refusal
+				} else {
+					text += event.Delta
+				}
+				part["type"] = json.RawMessage(`"refusal"`)
+				part["refusal"], _ = json.Marshal(text)
+			}
+			parts[event.OutputIndex][event.ContentIndex], _ = json.Marshal(part)
+			indices := make([]int, 0, len(parts[event.OutputIndex]))
+			for index := range parts[event.OutputIndex] {
+				indices = append(indices, index)
+			}
+			sort.Ints(indices)
+			{
+				data := make([]json.RawMessage, 0, len(indices))
+				for _, index := range indices {
+					data = append(data, parts[event.OutputIndex][index])
+				}
+				content["content"], _ = json.Marshal(data)
+			}
+			data, _ := json.Marshal(content)
+			item, err = api.ParseItem(data)
+			if err != nil {
+				return result, fmt.Errorf("responses stream partial item: %w", err)
+			}
+			completed[event.OutputIndex] = item
+			result.OutputStarted = true
 		}
 		switch event.Type {
 		case "response.output_text.delta", "response.refusal.delta":

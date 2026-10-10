@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	globalevents "elbot/internal/events"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -77,7 +78,6 @@ func (r *fakeCronRepo) UpdateRunState(ctx context.Context, id string, state stor
 			job.LastRunAt = &state.LastRunAt
 			job.NextRunAt = state.NextRunAt
 			job.RunCount = state.RunCount
-			job.LastError = state.LastError
 			job.Enabled = state.Enabled
 			job.UpdatedAt = state.UpdatedAt
 			return nil
@@ -130,12 +130,12 @@ func TestManagerRunsRegisteredHandlerAndUpdatesState(t *testing.T) {
 	repo := newFakeCronRepo()
 	manager := NewManager(repo)
 	called := false
-	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job storage.CronJob) error {
+	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job storage.CronJob) (globalevents.ResultStatus, string, error) {
 		called = true
 		if job.Metadata != `{"hello":"world"}` {
 			t.Fatalf("metadata = %q", job.Metadata)
 		}
-		return nil
+		return globalevents.ResultSucceeded, "finished", nil
 	}); err != nil {
 		t.Fatalf("register handler: %v", err)
 	}
@@ -153,17 +153,17 @@ func TestManagerRunsRegisteredHandlerAndUpdatesState(t *testing.T) {
 		t.Fatal("handler was not called")
 	}
 	got := repo.jobs[job.Name]
-	if got.RunCount != 1 || got.LastError != "" || got.LastRunAt == nil {
+	if got.RunCount != 1 || got.LastRunAt == nil {
 		t.Fatalf("job state = %#v", got)
 	}
 }
 
-func TestManagerStoresHandlerError(t *testing.T) {
+func TestManagerFailedHandlerStillUpdatesRunState(t *testing.T) {
 	repo := newFakeCronRepo()
 	manager := NewManager(repo)
 	boom := errors.New("boom")
-	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job storage.CronJob) error {
-		return boom
+	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job storage.CronJob) (globalevents.ResultStatus, string, error) {
+		return globalevents.ResultFailed, boom.Error(), boom
 	}); err != nil {
 		t.Fatalf("register handler: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestManagerStoresHandlerError(t *testing.T) {
 	defer func() { <-manager.Stop().Done() }()
 	manager.runJob(job.Name)
 	got := repo.jobs[job.Name]
-	if got.RunCount != 1 || got.LastError != "boom" {
+	if got.RunCount != 1 {
 		t.Fatalf("job state = %#v", got)
 	}
 }
@@ -204,8 +204,12 @@ func TestManagerUpsertStoresAndDisableClearsNextRunAt(t *testing.T) {
 func TestManagerRunJobDoesNotReenableJobDisabledByHandler(t *testing.T) {
 	repo := newFakeCronRepo()
 	manager := NewManager(repo)
-	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job storage.CronJob) error {
-		return manager.DisableJob(ctx, job.Name)
+	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job storage.CronJob) (globalevents.ResultStatus, string, error) {
+		err := manager.DisableJob(ctx, job.Name)
+		if err != nil {
+			return globalevents.ResultFailed, err.Error(), err
+		}
+		return globalevents.ResultSucceeded, "job disabled", nil
 	}); err != nil {
 		t.Fatalf("register handler: %v", err)
 	}
@@ -288,7 +292,9 @@ func TestManagerDeleteJobRemovesRepositoryRecord(t *testing.T) {
 func TestManagerStartSchedulesEnabledJobs(t *testing.T) {
 	repo := newFakeCronRepo()
 	manager := NewManager(repo)
-	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job storage.CronJob) error { return nil }); err != nil {
+	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job storage.CronJob) (globalevents.ResultStatus, string, error) {
+		return globalevents.ResultSucceeded, "finished", nil
+	}); err != nil {
 		t.Fatalf("register handler: %v", err)
 	}
 	if _, err := manager.UpsertJob(context.Background(), UpsertJobRequest{Name: "test.job", Handler: "test.handler", Schedule: "0 3 * * *", Enabled: true}); err != nil {

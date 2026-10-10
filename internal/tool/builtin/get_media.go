@@ -41,39 +41,63 @@ func (GetMediaTool) Schema() llm.ToolSchema {
 	return schema
 }
 
-func (t GetMediaTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t GetMediaTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	var args getMediaArgs
 	if err := json.Unmarshal(req.Arguments, &args); err != nil {
-		return nil, fmt.Errorf("parse get_media arguments: %w", err)
+		{
+			callErr := fmt.Errorf("parse get_media arguments: %w", err)
+			return nil, callErr.Error(), callErr
+		}
 	}
 	if len(args.MessageIDs) == 0 {
-		return nil, fmt.Errorf("message_id must be a nonempty array")
+		{
+			callErr := fmt.Errorf("message_id must be a nonempty array")
+			return nil, callErr.Error(), callErr
+		}
 	}
 	if args.MediaIndex != nil && len(args.MediaIndex) != len(args.MessageIDs) {
-		return nil, fmt.Errorf("media_index must match message_id length")
+		{
+			callErr := fmt.Errorf("media_index must match message_id length")
+			return nil, callErr.Error(), callErr
+		}
 	}
 	for i, id := range args.MessageIDs {
 		args.MessageIDs[i] = parseChatHistoryMessageID(id)
 		if args.MessageIDs[i] == "" {
-			return nil, fmt.Errorf("message_id must not contain empty IDs")
+			{
+				callErr := fmt.Errorf("message_id must not contain empty IDs")
+				return nil, callErr.Error(), callErr
+			}
 		}
 		if args.MediaIndex != nil {
 			if len(args.MediaIndex[i]) == 0 {
-				return nil, fmt.Errorf("media_index entries must not be empty")
+				{
+					callErr := fmt.Errorf("media_index entries must not be empty")
+					return nil, callErr.Error(), callErr
+				}
 			}
 			for _, index := range args.MediaIndex[i] {
 				if index < 1 {
-					return nil, fmt.Errorf("media_index must contain positive integers")
+					{
+						callErr := fmt.Errorf("media_index must contain positive integers")
+						return nil, callErr.Error(), callErr
+					}
 				}
 			}
 		}
 	}
 	chat, err := currentChatHistoryContext(ctx)
 	if err != nil {
-		return &tool.Result{Content: err.Error()}, nil
+		{
+			result := &tool.Result{Content: err.Error()}
+			return result, result.Content, nil
+		}
 	}
 	if t.history == nil || t.center == nil {
-		return nil, fmt.Errorf("history media is not configured")
+		{
+			callErr := fmt.Errorf("history media is not configured")
+			return nil, callErr.Error(), callErr
+		}
 	}
 	msg, _ := platform.MessageContextFrom(ctx)
 	var lines []string
@@ -90,7 +114,7 @@ func (t GetMediaTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 				lines = append(lines, fmt.Sprintf("[#%s] 当前聊天没有该消息。", id))
 				continue
 			}
-			return nil, err
+			return nil, err.Error(), err
 		}
 		for _, index := range indexes {
 			positions = append(positions, len(lines))
@@ -100,7 +124,7 @@ func (t GetMediaTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 	}
 	results, err := t.center.GetHistoryMediaBatch(ctx, requests, msg.MediaResolver, media.HistoryFetchOptions{MaxFetchAttempts: getMediaDownloadLimit})
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	for i, result := range results {
 		var text string
@@ -117,7 +141,10 @@ func (t GetMediaTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 		}
 		lines[positions[i]] += text
 	}
-	return &tool.Result{Content: strings.Join(lines, "\n")}, nil
+	{
+		result := &tool.Result{Content: strings.Join(lines, "\n")}
+		return result, result.Content, nil
+	}
 }
 
 func historyMediaLabel(kind platform.MessageSegmentType, id string) string {

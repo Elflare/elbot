@@ -35,11 +35,11 @@ func New(ctx context.Context, cfg Config, deps Dependencies) (*Agent, error) {
 	sessions.SetForegroundCheck(func(_ context.Context, source *storage.Session) error {
 		return view.CheckSelection(source, deps.Models.ResolveMode(storage.SessionModeWork))
 	})
-	replies := &dialogue.ReplyCommitter{Messages: store.Messages(), Output: output, Delivered: signals.ReplyDelivered, Committed: signals.ReplyCommitted}
+	replies := &dialogue.ReplyCommitter{Messages: store.Messages(), Output: output}
 	waitPolicy := &confirmationPolicy{identity: identity, idleExpiration: sessionIdleExpirationConfig(cfg.SessionIdleExpiration), userConfirmationTimeout: defaultUserConfirmationTimeout}
 	confirmations := &confirmationCoordinator{
 		sessions: sessions, requests: requests, turns: turns, commands: deps.Commands,
-		identity: identity, output: output, policy: waitPolicy, changed: signals.ConfirmationChanged,
+		identity: identity, output: output, policy: waitPolicy,
 		autoConfirmSession: map[string]bool{}, autoConfirmTools: map[string]map[string]bool{},
 	}
 	toolRuntime := &toolRuntimeState{
@@ -54,14 +54,14 @@ func New(ctx context.Context, cfg Config, deps Dependencies) (*Agent, error) {
 	toolDeps := &toolRunDeps{
 		hooks: hooks, requests: requests, turns: turns, identity: identity, media: deps.Media,
 		state: deps.ToolState, runtime: toolRuntime, sessions: sessions, store: store,
-		confirmations: confirmations, view: view, completed: signals.ToolCallCompleted, denied: signals.ToolDenied,
+		confirmations: confirmations, view: view,
 	}
 	tools := &dialogue.ToolExecutor{Manager: deps.ToolRunner, State: deps.ToolState, Registry: deps.ToolRegistry,
 		Provider: toolRuntime.provider, DefaultProvider: toolRuntime.defaultProvider, Identity: identity, Deps: toolDeps, MaxRounds: cfg.ToolsConfig.MaxRoundsPerTurn}
-	messages := &dialogue.MessageStore{Dialogues: store.Dialogues(), Gate: &dialogue.CommitGate{Sessions: sessions, Turns: turns, View: view}, Media: deps.Media, Failed: signals.PersistenceFailed}
+	messages := &dialogue.MessageStore{Dialogues: store.Dialogues(), Gate: &dialogue.CommitGate{Sessions: sessions, Turns: turns, View: view}, Media: deps.Media}
 	replies.Persistence = messages.Committer("append_assistant_message")
 	tools.Messages = messages
-	preparer := &dialogue.Preparer{Contexts: deps.Contexts, Media: deps.Media, Identity: identity, Hooks: hooks, Tools: tools, InputReceived: signals.UserInputReceived}
+	preparer := &dialogue.Preparer{Contexts: deps.Contexts, Media: deps.Media, Identity: identity, Hooks: hooks, Tools: tools}
 	calls := &dialogue.CallProcessor{Messages: messages, Media: deps.Media, Hooks: hooks, Identity: identity, Tools: tools, Completed: signals.ModelCallCompleted, Vision: signals.VisionFallbackUsed}
 	system := buildSystemPrompt(cfg.SoulPath, deps.ResidentMemoryStore, toolRuntime.provider, deps.ToolPreloader)
 	chat := &chatroute.Loop{
@@ -99,22 +99,20 @@ func New(ctx context.Context, cfg Config, deps Dependencies) (*Agent, error) {
 	}
 	runner := &dialogue.Runner{Routes: deps.Routes, Preparer: preparer, Messages: messages, Replies: replies, Turns: turns, View: view}
 	execution := &executionCoordinator{
-		sessions:          sessions,
-		sessionRows:       store.Sessions(),
-		turns:             turns,
-		requests:          requests,
-		contexts:          deps.Contexts,
-		models:            deps.Models,
-		dialogue:          runner,
-		identity:          identity,
-		view:              view,
-		output:            output,
-		status:            status,
-		waitPolicy:        waitPolicy,
-		responseTimeout:   responseTimeout(cfg.LLMRequestConfig),
-		persistenceFailed: signals.PersistenceFailed,
-		timedOut:          signals.TurnTimedOut,
-		appendWaits:       newAppendWaitLifecycle(ctx),
+		sessions:        sessions,
+		sessionRows:     store.Sessions(),
+		turns:           turns,
+		requests:        requests,
+		contexts:        deps.Contexts,
+		models:          deps.Models,
+		dialogue:        runner,
+		identity:        identity,
+		view:            view,
+		output:          output,
+		status:          status,
+		waitPolicy:      waitPolicy,
+		responseTimeout: responseTimeout(cfg.LLMRequestConfig),
+		appendWaits:     newAppendWaitLifecycle(ctx),
 	}
 	input := &inputCoordinator{
 		sessions:      sessions,
@@ -148,10 +146,6 @@ func New(ctx context.Context, cfg Config, deps Dependencies) (*Agent, error) {
 		},
 		execution: execution, identity: identity, hooks: hooks, output: output, status: status,
 		completion: newCompletion(deps.Commands, sessions, turns, store, identity, deps.ToolRegistry, deps.ToolPreloader, execution), signals: signals,
-	}
-	if err := a.connectLogSignals(); err != nil {
-		_ = a.Close(ctx)
-		return nil, err
 	}
 	a.Done() // Join owned workers on application cancellation, even without Close.
 	return a, nil

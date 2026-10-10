@@ -478,8 +478,21 @@ func (t nativeTool) Info() tool.Info { return tool.Info{Name: t.name, Risk: secu
 func (t nativeTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: t.name, Parameters: map[string]any{"type": "object"}}
 }
-func (t nativeTool) Call(ctx context.Context, r tool.CallRequest) (*tool.Result, error) {
-	return t.run(ctx, r)
+func (t nativeTool) Call(ctx context.Context, r tool.CallRequest) (*tool.Result, string, error) {
+	{
+		result, callErr := t.run(ctx, r)
+		logContent := ""
+		if result != nil {
+			logContent = result.Content
+		}
+		if callErr != nil {
+			if logContent != "" {
+				logContent += "\n"
+			}
+			logContent += callErr.Error()
+		}
+		return result, logContent, callErr
+	}
 }
 
 func TestResponsesUsesLocalToolsAndKeepsNativeCallIDs(t *testing.T) {

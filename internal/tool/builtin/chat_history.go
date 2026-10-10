@@ -133,24 +133,36 @@ func replyChatHistoryBuilder() *tool.Builder {
 		String("message", "引用该历史消息时要发送到当前聊天的回复内容。", tool.Required())
 }
 
-func (t SearchChatHistoryTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t SearchChatHistoryTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	if t.history == nil {
-		return nil, fmt.Errorf("chat history storage is not configured")
+		{
+			callErr := fmt.Errorf("chat history storage is not configured")
+			return nil, callErr.Error(), callErr
+		}
 	}
 	chatCtx, err := currentChatHistoryContext(ctx)
 	if err != nil {
-		return &tool.Result{Content: err.Error()}, nil
+		{
+			result := &tool.Result{Content: err.Error()}
+			return result, result.Content, nil
+		}
 	}
 	var args searchChatHistoryArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			return nil, fmt.Errorf("parse search_chat_history arguments: %w", err)
+			{
+				callErr := fmt.Errorf("parse search_chat_history arguments: %w", err)
+				return nil, callErr.Error(), callErr
+			}
 		}
 	}
 	since, until := chatHistoryTimeRangeAt(args.Since, args.Until, args.Hours, args.Days, t.info.CurrentTime())
 	senderID, senderName, userErr := chatHistoryUserFilter(args.User, chatCtx)
 	if userErr != "" {
-		return &tool.Result{Content: userErr}, nil
+		{
+			result := &tool.Result{Content: userErr}
+			return result, result.Content, nil
+		}
 	}
 	rows, err := t.history.Search(ctx, storage.ChatHistorySearchRequest{
 		Platform:        chatCtx.Platform,
@@ -164,16 +176,19 @@ func (t SearchChatHistoryTool) Call(ctx context.Context, req tool.CallRequest) (
 		Limit:           clampChatHistoryLimit(args.Limit),
 	})
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	if len(rows) == 0 {
-		return &tool.Result{Content: "没有查到符合条件的当前聊天历史记录。"}, nil
+		{
+			result := &tool.Result{Content: "没有查到符合条件的当前聊天历史记录。"}
+			return result, result.Content, nil
+		}
 	}
 	lines := []string{fmt.Sprintf("当前聊天历史查询结果：返回 %d 条。", len(rows))}
 	for _, row := range rows {
 		line, err := formatChatHistoryMedia(ctx, row, "", t.center)
 		if err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
 		lines = append(lines, line)
 	}
@@ -181,26 +196,41 @@ func (t SearchChatHistoryTool) Call(ctx context.Context, req tool.CallRequest) (
 	if hint := viewImageHistoryHint(ctx, t.center); hint != "" {
 		lines = append(lines, hint)
 	}
-	return &tool.Result{Content: chatHistoryResultLines(lines)}, nil
+	{
+		result := &tool.Result{Content: chatHistoryResultLines(lines)}
+		return result, result.Content, nil
+	}
 }
 
-func (t GetChatHistoryAroundTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t GetChatHistoryAroundTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	if t.history == nil {
-		return nil, fmt.Errorf("chat history storage is not configured")
+		{
+			callErr := fmt.Errorf("chat history storage is not configured")
+			return nil, callErr.Error(), callErr
+		}
 	}
 	chatCtx, err := currentChatHistoryContext(ctx)
 	if err != nil {
-		return &tool.Result{Content: err.Error()}, nil
+		{
+			result := &tool.Result{Content: err.Error()}
+			return result, result.Content, nil
+		}
 	}
 	var args aroundChatHistoryArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			return nil, fmt.Errorf("parse get_chat_history_around arguments: %w", err)
+			{
+				callErr := fmt.Errorf("parse get_chat_history_around arguments: %w", err)
+				return nil, callErr.Error(), callErr
+			}
 		}
 	}
 	messageID := parseChatHistoryMessageID(args.MessageID)
 	if messageID == "" {
-		return &tool.Result{Content: "message_id 必须是 search_chat_history 返回的 #message_id 或纯平台消息 ID。"}, nil
+		{
+			result := &tool.Result{Content: "message_id 必须是 search_chat_history 返回的 #message_id 或纯平台消息 ID。"}
+			return result, result.Content, nil
+		}
 	}
 	rows, err := t.history.Around(ctx, storage.ChatHistoryAroundRequest{
 		Platform:          chatCtx.Platform,
@@ -211,22 +241,28 @@ func (t GetChatHistoryAroundTool) Call(ctx context.Context, req tool.CallRequest
 	})
 	if err != nil {
 		if err == storage.ErrNotFound {
-			return &tool.Result{Content: fmt.Sprintf("没有在当前聊天找到 message_id 为 %s 的历史记录。", messageID)}, nil
+			{
+				result := &tool.Result{Content: fmt.Sprintf("没有在当前聊天找到 message_id 为 %s 的历史记录。", messageID)}
+				return result, result.Content, nil
+			}
 		}
-		return nil, err
+		return nil, err.Error(), err
 	}
 	lines := []string{fmt.Sprintf("当前聊天消息 #%s 附近上下文：返回 %d 条。", messageID, len(rows))}
 	for _, row := range rows {
 		line, err := formatChatHistoryMedia(ctx, row, messageID, t.center)
 		if err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
 		lines = append(lines, line)
 	}
 	if hint := viewImageHistoryHint(ctx, t.center); hint != "" {
 		lines = append(lines, hint)
 	}
-	return &tool.Result{Content: chatHistoryResultLines(lines)}, nil
+	{
+		result := &tool.Result{Content: chatHistoryResultLines(lines)}
+		return result, result.Content, nil
+	}
 }
 
 func viewImageHistoryHint(ctx context.Context, center *media.Manager) string {
@@ -239,39 +275,60 @@ func viewImageHistoryHint(ctx context.Context, center *media.Manager) string {
 	return ""
 }
 
-func (t ReplyToChatHistoryMessageTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t ReplyToChatHistoryMessageTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	if t.history == nil {
-		return nil, fmt.Errorf("chat history storage is not configured")
+		{
+			callErr := fmt.Errorf("chat history storage is not configured")
+			return nil, callErr.Error(), callErr
+		}
 	}
 	chatCtx, err := currentChatHistoryContext(ctx)
 	if err != nil {
-		return &tool.Result{Content: err.Error()}, nil
+		{
+			result := &tool.Result{Content: err.Error()}
+			return result, result.Content, nil
+		}
 	}
 	var args replyChatHistoryArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			return nil, fmt.Errorf("parse reply_to_chat_history_message arguments: %w", err)
+			{
+				callErr := fmt.Errorf("parse reply_to_chat_history_message arguments: %w", err)
+				return nil, callErr.Error(), callErr
+			}
 		}
 	}
 	messageID := parseChatHistoryMessageID(args.MessageID)
 	if messageID == "" {
-		return &tool.Result{Content: "message_id 必须是 search_chat_history 返回的 #message_id 或纯平台消息 ID。"}, nil
+		{
+			result := &tool.Result{Content: "message_id 必须是 search_chat_history 返回的 #message_id 或纯平台消息 ID。"}
+			return result, result.Content, nil
+		}
 	}
 	replyText := strings.TrimSpace(args.Message)
 	if replyText == "" {
-		return &tool.Result{Content: "回复内容不能为空。"}, nil
+		{
+			result := &tool.Result{Content: "回复内容不能为空。"}
+			return result, result.Content, nil
+		}
 	}
 	target, err := t.history.GetByPlatformMessage(ctx, chatCtx.Platform, chatCtx.ScopeID, messageID)
 	if err != nil {
 		if err == storage.ErrNotFound {
-			return &tool.Result{Content: fmt.Sprintf("没有在当前聊天找到 message_id 为 %s 的历史记录。", messageID)}, nil
+			{
+				result := &tool.Result{Content: fmt.Sprintf("没有在当前聊天找到 message_id 为 %s 的历史记录。", messageID)}
+				return result, result.Content, nil
+			}
 		}
-		return nil, err
+		return nil, err.Error(), err
 	}
-	return &tool.Result{
-		Content: fmt.Sprintf("已引用回复 [#%s] %s(%s): %s\n回复内容已发送到当前聊天，请不要重复发送。", target.PlatformMessageID, target.SenderName, target.SenderID, truncateChatHistoryMessage(target.Text)),
-		Outputs: []delivery.Output{delivery.Reply(messageID, replyText)},
-	}, nil
+	{
+		result := &tool.Result{
+			Content: fmt.Sprintf("已引用回复 [#%s] %s(%s): %s\n回复内容已发送到当前聊天，请不要重复发送。", target.PlatformMessageID, target.SenderName, target.SenderID, truncateChatHistoryMessage(target.Text)),
+			Outputs: []delivery.Output{delivery.Reply(messageID, replyText)},
+		}
+		return result, result.Content, nil
+	}
 }
 
 type chatHistoryContext struct {

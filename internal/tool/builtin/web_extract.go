@@ -130,19 +130,25 @@ func webExtractBuilder() *tool.Builder {
 		Boolean("force_refresh", "是否跳过缓存并重新获取网页，默认 false；刷新成功后会覆盖对应缓存。")
 }
 
-func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	var args webExtractArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			return nil, fmt.Errorf("parse web_extract arguments: %w", err)
+			{
+				callErr := fmt.Errorf("parse web_extract arguments: %w", err)
+				return nil, callErr.Error(), callErr
+			}
 		}
 	}
 	url := strings.TrimSpace(args.URL)
 	if url == "" {
-		return nil, fmt.Errorf("url is required")
+		{
+			callErr := fmt.Errorf("url is required")
+			return nil, callErr.Error(), callErr
+		}
 	}
 	selector := strings.TrimSpace(args.RemoveSelector)
 	if selector == "" {
@@ -150,7 +156,7 @@ func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (*tool.
 	}
 	proxy, err := resolveExtractProxy(t.processEnv, args.Proxy)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	cache := t.extractCache()
 	useJina := true
@@ -182,13 +188,16 @@ func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (*tool.
 			fetched, err = t.fetchDirect(ctx, url, args.TimeoutMS, proxy)
 		}
 		if err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
 		entry = fetched
 		cache.set(key, entry)
 	}
 	data := sliceExtract(entry, args.Offset, args.MaxChars, cached)
-	return &tool.Result{Content: formatExtractContent(data)}, nil
+	{
+		result := &tool.Result{Content: formatExtractContent(data)}
+		return result, result.Content, nil
+	}
 }
 
 func (t *WebExtractTool) fetchJina(ctx context.Context, apiKey, targetURL, selector string, timeoutMS int, proxy extractProxyConfig) (cachedExtract, error) {

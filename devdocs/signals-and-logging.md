@@ -147,19 +147,21 @@ Go 的整数枚举不能阻止强制转换非法数值，因此发布入口仍�
 
 业务在实际成功、取消、拒绝、跳过或失败的分支确定结果。来源收到的底层错误由该业务结合上下文解释，不能把缺失的信息留给日志回调补猜。事件类型本身已明确表达的结果可以直接使用，不给所有实例事件统一添加 `ResultStatus` 或 `slog.Level`。
 
-来源日志回调根据完整事实决定业务等级并构造记录。既有业务约定为重试 WARN、最终失败 ERROR、预期取消 INFO、正常策略拒绝 WARN；持续重连、发送降级和待重投递等可恢复情况保持来源的 WARN 语义。导致操作最终失败的超时为失败，特殊场景由所属业务明确判断。日志中心不强制 failed 对应 ERROR，也不根据 canceled 自动降级。
+普通工具调用的日志与工具内部业务结果分别表达。工具已实际调用起来，包括缺 key、shell 非零退出码或业务返回错误，调用日志使用 INFO／succeeded，具体业务结果和原因写入工具提供的日志正文；工具不存在或入口故障等根本未调用起来的调用故障使用 ERROR／failed。调用前正常拒绝、取消及跳过分别使用 rejected、canceled、skipped，等级为 INFO。确认通过、拒绝、停止及等待过期使用 INFO，并按实际确认事实填写日志结果；确认提示发送的独立故障使用 ERROR。发送、持久化及其他来源按自身操作事实确定等级，不重新解释工具调用是否已运行。不能仅凭 Go error 非 nil、业务 ResultStatus 或正文判断日志等级和调用结果。
+
+日志结果不反向控制业务。确认过期的日志为 failed，但业务仍按原流程停止；等级和日志发布链整改不改变权限、执行、停止、重试及 Cron 补执行规则。完成 Hook 执行边界和 Responses 部分内容丢失两项已确认的业务缺陷另按步骤 3.1 修复。日志中心不强制 failed 对应 ERROR，也不根据 canceled 自动降级。
 
 | 场景 | 必须保留的事实 |
 | --- | --- |
 | 调用成功、保存成功 | 两项均为 succeeded，整体成功 |
-| 调用成功、保存失败 | 调用为 succeeded，保存为 failed；整体失败，不能归为上游调用失败 |
+| 调用成功、保存失败 | 两项实际事实均保留。普通工具调用日志保持 INFO／succeeded，保存来源独立记录 failed／ERROR；其他业务的整体记录不能归为上游调用失败 |
 | 调用取消、保存成功 | 调用为 canceled，保存为 succeeded；保留调用中断及部分内容已保存的事实 |
 | 调用取消、保存失败 | 调用为 canceled，保存为 failed，各自保留错误；整体失败，取消不能覆盖保存故障 |
 | 工具策略拒绝 | 解析阶段保留拒绝事实和类型化错误，复用已有 `PolicyDeniedError`；不能降为原因字符串再重建普通错误 |
-| 工具拒绝、记录保存成功 | 调用为 rejected，保存为 succeeded；记录已保存不代表工具执行成功 |
-| 工具拒绝、记录保存失败 | 调用为 rejected，保存为 failed；整体失败，拒绝不能覆盖保存故障 |
-| 工具执行失败、记录保存失败 | 两项均为 failed，两项原始错误和日志中的错误原因均保留 |
-| 工具不存在、配置缺失或执行故障 | 明确记录 failed，与正常策略拒绝的 rejected 区分 |
+| 工具拒绝、记录保存成功 | 拒绝记录保留 INFO／rejected；保存成功不代表工具已经执行，保存记录只表达自身操作 |
+| 工具拒绝、记录保存失败 | 拒绝记录保留 INFO／rejected；保存来源记录独立 failed／ERROR，各自原因保留，不能反向改变拒绝事实 |
+| 工具已运行、内部业务返回错误 | 工具调用日志为 INFO／succeeded，工具正文说明业务问题；原始业务结果和 error 保留，不能因日志成功改写业务结果 |
+| 工具根本未调用起来 | 工具不存在或入口故障的调用日志为 ERROR／failed，中间层填写已知原因；工具运行后发现缺 key 的说明属于其日志正文，调用日志仍为 INFO／succeeded |
 | 命名失败、兜底保存成功 | 以获得可用标题为整体目标，ResultStatus 为 succeeded；正文保留生成失败原因、兜底已生效及所用标题 |
 | 命名失败、兜底保存失败 | 两项均为 failed，原始命名失败不被兜底失败覆盖 |
 | 回复发送成功、持久化失败 | 发送为 succeeded，保存为 failed；整体失败，保留用户已收到消息的事实 |
@@ -176,7 +178,7 @@ Go 的整数枚举不能阻止强制转换非法数值，因此发布入口仍�
 
 业务事件传递业务和 notify 所需的事实及原始 error；日志所需的其他事实由操作来源直接组织为正文。正文不要求逐字段复刻业务事件的名称和结构，也不强制为组合操作嵌套各项结果。普通说明优先 text；需要业务字段查询或统计的正文使用来源与消费者约定的 JSON。日志回调和中心不从错误链或正文反推业务结果。
 
-组合记录的整体结果由掌握整个流程的业务来源确定。调用取消或工具拒绝伴随独立保存失败时，ResultStatus 为 failed，正文同时说明两项事实和对应错误。命名生成失败但兜底标题保存成功时，ResultStatus 为 succeeded，正文说明生成失败与兜底事实；Level 可用 WARN 表达降级，不能由结果机械推导等级。
+组合记录只表达该记录描述的业务操作，结果由掌握其完整事实的来源确定；不能把组合操作的结果投影回另一项独立操作。普通工具调用与后续发送、保存分别记录，各操作保留自身结果。回复等确有整体提交目标的组合记录中，取消伴随独立保存失败时为 failed，正文同时保留两项事实。命名兜底标题保存成功时，以获得可用标题为整体目标记录 succeeded，正文保留生成失败和兜底事实，等级由命名来源确定。
 
 ### 业务错误与日志正文
 
@@ -192,7 +194,7 @@ Go 的整数枚举不能阻止强制转换非法数值，因此发布入口仍�
 
 九字段只约束发送给日志系统的 LogRecord。业务内部及 notify 使用的事件、返回值保留实际需要的专有字段、原始错误及结果对象，不要求与 LogRecord 同形。
 
-来源在实际操作处确定结果与等级，再直接或通过本模块同步日志回调组织九字段记录。Hook 点、工具参数和结果、模型信息、业务发生时间、各阶段错误等专有信息进入 Content；日志信号和中心不接收原始业务对象。不为日志新增庞大的完成事件、类型化 Content 包装或任意对象转换器。
+来源提供实际操作事实及独立日志正文，由本模块的日志整理处组织九字段记录并发布。工具调用中间层只按明确的调用边界使用已确认的定级和结果规则，不重新判定工具内部业务成败。Hook 点、工具参数和诊断、模型信息及各阶段错误等专有信息进入 Content；日志信号和全局中心不接收原始业务对象。业务 Content 可以在含义一致时被显式复用为日志正文，业务 Segments 不自动转成日志正文；不为日志新增庞大中转事件、类型化 Content 包装或任意对象转换设施。
 
 底层字段注释说明用途、来源、零值及部分完成语义。业务保留原始错误，日志只接收其解释和必要诊断；发布后的业务事件按只读约定使用。
 
@@ -250,15 +252,15 @@ Responses 在现有 `internal/llm/responses/response.go` 中以 `ResponseUsage.U
 
 ### 工具解析、执行与完成
 
-现有 `internal/toolrun/toolrun.go` 的 `ResolvedTool` 字段为 `Name string`、`Source SourceKind`、`Native tool.Tool`、`Cached *CachedTool`、`ResultStatus events.ResultStatus`、`Error error`。可执行为 succeeded，正常策略拒绝为 rejected 并保留类型化错误，工具不存在或配置缺失为 failed，取消和最终超时分别由来源明确判断。
+工具业务返回与日志返回独立。业务的 `ResolvedTool`、`ExecutionResult`、原始 `Error`、结果对象和 `ExecutionStarted` 继续供执行编排使用；`PolicyDeniedError` 保留业务拒绝事实。日志的 ResultStatus 不覆盖同名业务字段，也不改写工具记录的业务成功标志或上层停止、重试规则。
 
-`internal/toolrun/toolrun.go` 与 `internal/tool/executor.go` 的 `ExecutionResult` 均包含 `Call llm.ToolCallRequest`、`Message llm.LLMMessage`、`Result *tool.Result`（tool 包内为 `*Result`）、`ResultStatus events.ResultStatus`、`ExecutionStarted bool`、`Error error`。结果包含执行入口自身的权限复查；`ExecutionStarted` 表示实际进入原生调用或远程 HTTP 请求发送，不证明副作用全部完成。部分 Result 与 Error 可以同时存在，后续发送、Hook 或保存失败不能覆盖执行错误。
+具体工具的 `Call(ctx, req)` 分别返回 `result *Result`、`logContent string`、`callErr error`；业务 Result.Content／Segments 保持给业务与模型使用。两处 ExecutionResult 的 `LogContent string` 只传递独立日志正文，空串表示未提供。含义一致的业务 Content 可以直接复用；不从 Message 或 Segments 自动生成日志正文。
 
-`PolicyDeniedError` 定义于 `internal/tool/executor.go`，调用方使用 `tool.PolicyDeniedError` 表达策略拒绝。
+普通工具调用记录只表达工具是否实际调用起来。已调用起来的业务错误、缺 key 和 shell 非零使用 INFO／succeeded；未调用起来的调用故障使用 ERROR／failed。正常拒绝、取消和跳过按控制事实使用 INFO。中间层保留调用事实，并在工具未运行或未提供日志正文时按需要补充已知原因；正文不能用来反推调用结果。
 
-工具日志在单个调用流程结束时组织。执行过 transcript 保存时，必须等待保存返回后发布；取消或前序失败使后续操作未执行时，只记录已发生的事实。整体 ResultStatus 覆盖实际执行的后续处理及保存；参数、解析来源、风险、执行结果、部分结果、输出回执、Hook 和保存事实进入 Content。
+中间层根据实际调用事实组织等级、结果、关联身份、已有查询事实及完整九字段记录，并控制来源正文体积。发布归已确认的 `internal/toolrun/logging.go`：`logToolCall(ctx context.Context, record events.LogRecord)`、`logToolOperation(ctx context.Context, record events.LogRecord)` 只接收完整记录并调用 `events.EmitLog`，不接收工具、Actor、风险或错误对象，不重组正文或反推结果。Runner 保留业务编排，在准备、发送、保存等所属操作返回处按明确事实组织独立记录；工具调用记录由 Execute 中间层组装。具体工具只返回正文，不自行包日志对象。文件职责图及迁移待办见[步骤 3.1](#31-其他-bug-修复)，具体工具及调用者已使用独立正文接口，调用记录在 Execute 返回时发布；后续发送和保存独立记录。
 
-`RunnerDeps.RecordToolCall(...) error` 同步保存完整工具记录，返回该保存操作的错误；Runner 把错误写入正文并确定整体结果。不能在最终 transcript 保存前把整条调用报告为成功。批次准备失败只记录 tool_batch_prepare_failed，不为未处理工具伪造完成记录。业务事件和返回值按业务及 notify 的需要定义。
+工具调用、后续发送、完成 Hook 及保存按各自操作记录，部分结果和原始错误保留；后续失败不把已经运行的调用改成未调用成功。`RunnerDeps.RecordToolCall(...) error` 继续同步保存业务工具记录并返回原始保存错误，实际保存的日志等保存返回后记录。批次准备失败只记录 tool_batch_prepare_failed，不为未调用工具伪造调用记录。
 
 ### Elnis
 
@@ -335,7 +337,7 @@ Reader 遇到无法解析的 JSONL 行时继续查询。正常展示跳过损坏
 - Hook 工具调用使用 `hook_tool_call` 和 `source=rules|plugin` 来源事实；操作结果由来源填写 `ResultStatus`。正常业务状态属性与通用操作结果各自表达对应事实。
 - 普通与后台预载跳过分别使用 `skill_wrapper_preload_skipped`、`background_preload_skipped`，结果为 `ResultSkipped`。
 - 整体结果从公共字段读取，组合操作的各项结果和错误原因从正文读取，不为历史日志补造字段。命令按 Type 解码正文，`--raw` 展示物理记录原文。
-- `/usage` 遇到非法数字、溢出等无法统计的用量值时显示 `unknown`，不按零处理，也不静默排除异常记录。受该值影响的分组和总计对应项显示 `unknown`，其他可确定的统计项正常展示；全部异常时不能显示零用量结论。
+- `/usage` 对缺失、null、非法数字或溢出等无法统计的用量值统一显示 `null`，不替换为 `unknown`，不按零处理，也不静默排除异常记录。受该值影响的分组和总计对应项保留 `null`，其他可确定的统计项正常展示；明确报告的零保留 `0`，已知数字保留千分位，已知耗时保留秒数排版。
 
 ### Reader 类型与筛选接口
 
@@ -390,7 +392,7 @@ type LogQuery struct {
 
 | 命令 | 需要 JSON 的来源及业务字段 | 可优先使用 text 的记录 |
 | --- | --- | --- |
-| `/usage` | `llm_usage`：provider、model、prompt_tokens、completion_tokens、total_tokens、cache_hit_tokens、elapsed_ms；按模型、日期、会话筛选和统计；未知 token 明确为 null，实际调用仍计数；未知或溢出仅使受影响的分组及总计字段显示 unknown | 用量正文必须可解析，不另建统计存储 |
+| `/usage` | `llm_usage`：provider、model、prompt_tokens、completion_tokens、total_tokens、cache_hit_tokens、elapsed_ms；按模型、日期、会话筛选和统计；未知 token 明确为 null，实际调用仍计数；未知或溢出仅使受影响的分组及总计字段保留 null，明确零保留 0 | 用量正文必须可解析，不另建统计存储 |
 | `/audit` | 需要按 tool、actor_id、risk 等业务字段筛选或结构化展示的审计记录 | 只需公共事件、模块、身份、结果或全文检索的记录 |
 | `/elwisp` | Elnis 业务事件：elwisp_name、source、source_id、mode、event_key、event_id、token_name、tags 等筛选字段 | 不携带上述业务事实的运行提示 |
 | `/log` | 只有确实需要结构化读取的正文才填写 JSON | 用户消息、模型回复、系统提示、通知、启动、重连、清理等普通运行日志 |
@@ -441,7 +443,7 @@ Telegram 通知发送失败：连接超时。
 
 Agent、工具、Session、模型客户端与 Model Manager、Hook、平台、发送、Cron、Elnis、媒体、命令、通知、维护和 App 的直接发布点及实例事件日志回调均遵循统一契约。
 
-Agent、Session、Model Manager 自行维护实例事件的同步日志回调和连接释放。模型重试日志独立于 App 通知订阅；没有通知订阅者也不能漏日志，调用结束后不显示过期重试通知。Hook Manager 记录原始执行失败，Agent 保留通知与自身桥接故障，同一错误不因迁移重复记录。终端交互是用户界面，不强行改成文件日志。
+Agent 的输入、超时、确认及拒绝直接由来源发布日志，不保留仅供日志转换的实例信号或投影连接。Session、Model Manager 维护有实际消费者的实例事件及同步日志回调和连接释放。模型重试日志独立于 App 通知订阅；没有通知订阅者也不能漏日志，调用结束后不显示过期重试通知。Hook Manager 记录原始执行失败，Agent 保留通知与自身桥接故障，同一错误不因迁移重复记录。终端交互是用户界面，不强行改成文件日志。
 
 平台连接全局信号属于保留的现有能力：
 
@@ -463,6 +465,9 @@ Agent、Session、Model Manager 自行维护实例事件的同步日志回调和
 | `LogIdentity` | `internal/events/logging.go`，五个已确认的 `*string` 身份字段 |
 | `LogCategory`、`LogContentType`、`ResultStatus` | 同一文件中的 `uint8`／`iota` 枚举，分别提供 `Valid() bool` 和 `String() string` |
 | `EmitLog(ctx context.Context, record LogRecord) error` | 沿用公共发布入口，返回日志提交错误，不承载业务结果 |
+| `Tool.Call(ctx, req) (result *Result, logContent string, callErr error)` | `internal/tool/tool.go`，业务结果、独立日志正文及原始业务错误分别返回；正文可以显式复用相同业务文本 |
+| `ExecutionResult.LogContent string` | `internal/tool/executor.go`、`internal/toolrun/toolrun.go`，中间层传递日志正文，空串表示未提供 |
+| `logToolCall`、`logToolOperation` | `internal/toolrun/logging.go`，接收中间层已组织好的完整九字段记录并发布；不接收业务对象、不参与业务控制 |
 | `handleRecord` | 沿用中心接收方法，在入队前自动记时 |
 | `formatRecord(ctx context.Context, record events.LogRecord, at time.Time) ([]byte, error)` | 最终格式化函数，接收中心记录的时间 |
 | `defaultContentLimit` | `internal/logging/record.go`，text 默认字符上限 256 |
@@ -476,3 +481,90 @@ Agent、Session、Model Manager 自行维护实例事件的同步日志回调和
 - [Godot：Autoloads versus regular nodes](https://docs.godotengine.org/en/stable/tutorials/best_practices/autoloads_versus_regular_nodes.html)
 
 ElBot 借鉴信号的使用和所有权方式，不复制 Godot 节点树和帧循环。Go 的 context、队列、背压、连接清理和退出预算使用本项目的显式生命周期。
+
+
+## 步骤3
+
+本节记录整体复审后的用户要求、已确认结论和后续整改事项，不代表代码已完成整改。进度直接维护在[任务清单的步骤 3](tasks.md#步骤-3整体复审整改与收尾)，不把待办写入验证记录。后续工作分为 3.1 其他 bug 修复和 3.2 Hook 结果判定与日志统一整理；Hook 自身的结果猜测随 3.2 一起整改，不在 3.1 重复列项。
+
+### 复审与实施要求
+
+- 复审同时检查业务逻辑、字段及注释、落盘内容、包依赖、文件职责、方法调用和生命周期边界；不能只看测试是否通过，也不能用旧代码反推目标设计。
+- 所有日志继续采用九字段封闭契约；专有业务事实和错误原因写入 Content，落盘键使用 snake_case。只有一个整体 ResultStatus，不增加次结果、原因码或统一子结果包装。
+- 原始错误和部分结果保留在业务中。来源在合并错误之前保留各操作事实，由实际业务编排层确定整体结果和等级；日志整理代码、日志信号、中心及输出层不重新校验工具业务结果。
+- 来源显式填写关联身份，发布入口仅复制，不从 context 补值。业务实例事件只保留实际消费者需要的事实，不为日志新增庞大的中转事件或任意业务对象转换设施。
+- 当前按用户要求做静态代码复审，不运行测试；测试安排另行明确后执行。后续代码整改时补齐底层定义字段注释，每完成一部分就同步 architecture 和 code-map，并删除过时或矛盾说明。本次不修改 CHANGELOG、AGENTS.md、英文镜像，不自动提交。
+
+### 3.1 其他 bug 修复
+
+| 项目 | 整改要求 |
+| --- | --- |
+| 无用途的实例事件链路 | 清理没有生产订阅者的 PersistenceFailed、ToolCallCompleted、ReplyDelivered、ReplyCommitted，以及仅供日志转换的 ConfirmationChanged、UserInputReceived、TurnTimedOut、ToolDenied，包括定义、装配、载荷复制、发射及仅服务这些链路的字段和方法；确认来源直接发布九字段日志。保留实际业务持久化和所需返回值，不为测试或假设中的消费者保留旧链路。 |
+| Hook 之外的结果猜测方法 | 整改 FailedOutcome 以及 Cron isContextCancellation 等共享结果分类或错误树判断路径，由掌握各阶段事实的来源确定结果；最终超时为 failed，取消伴随独立失败仍为 failed。Cron Handler 返回独立的 ResultStatus、Content 和原始 error，调度器直接使用来源结果及正文；不增加 canceled 布尔值。请求停止与送达补执行继续依据真实 context、任务和 DeliveryState／DeliveryToken，不建设替代分类器。 |
+| Cron 无用途的错误存储 | 删除 CronJob／CronJobRunState 的 LastError、调度器 lastError 推导、数据库读写及旧断言；SQLite 使用迁移删除 last_error 列。任务启用状态、调度时间、运行计数和送达状态保留。错误原因由来源 Content 记录；LastError 不参与补跑，不保留兼容读写。 |
+| 风险确认超时与终态 | 来源直接在日志中明确确认通过 succeeded、拒绝 rejected、纯停止 canceled、过期和最终超时 failed，以上使用 INFO；发送提示的独立故障使用 ERROR。不把 Stopped 或合并错误用作日志结果猜测，也不为了日志结果改变原有停止和错误返回行为。等待及命令意图允许不声明结果，实际接受响应后才记录确认终态。RiskConfirmationWait.Wait 在实际状态转换处声明现有 ResultStatus，保留原响应和接受 bool；nil／失效等待为 skipped，不通过外层 Session 快照猜停止原因。 |
+| 输出回执传递 | 上层 SendOutputs 保留底层已有的 `(delivery.Receipt, error)`，整改丢弃回执和用空回执描述实际发送的路径。工具与回复日志保留部分已发送消息及输出索引，不重发已送达内容；平台既有发送签名不变，不给 Receipt 增加 ResultStatus，不新增通用发送结果包装。 |
+| 工具完成 Hook 边界 | 只有 ExecutionStarted=true 的执行结果进入完成 Hook，预检失败、拒绝或执行入口权限复查拒绝均不触发。调用日志和后续操作分开，实际保存操作的日志等待保存返回并保留独立错误，不伪造未执行事实。 |
+| 取消与独立故障 | 工具输出及完成 Hook 的纯取消按各自操作记录，独立发送、Hook、保存故障保留自身失败；不回改已运行的工具调用记录。回复等组合路径在错误合并前保留事实，不能因合并错误含 context.Canceled 而掩盖独立失败。 |
+| Responses 部分内容 | 接收 text／refusal 等增量时保留已收到内容；在 output_item.done 之前失败或取消，也要使业务结果、完成事实、日志及响应保存保留部分内容，不伪造完整响应或成功终态。 |
+| Elnis 终态日志 | 补齐运行成功后终态保存失败、媒体准备失败但失败状态保存成功等漏记分支；业务失败与状态保存失败分别保留。不能只返回错误而由 worker 忽略，已完成事实及独立 persistence_error 进入来源日志。 |
+| 查询所需业务字段 | 工具日志保留已有工具名、调用 ID、actor_id、风险、参数、来源和耗时等查询事实。Hook 工具审计补齐已确认来源的 actor_id；Elnis 失败及组合记录保留已知 elwisp_name、source、source_id、mode、event_key、event_id、tags。 |
+
+#### 工具业务与日志分离
+
+本节描述工具业务与日志的职责。具体工具和调用者使用独立正文接口；工具调用记录由 Execute 组装，发布集中在 logging.go。其余整改进度在 tasks 的 3.1 跟踪。
+
+- 沿用现有调用中间层：toolrun.Manager.Execute 负责原生／远程路由，tool.Executor.Execute 负责原生执行入口。中间层继续做业务，保留原始结果、错误和实际调用事实。
+- 具体工具返回业务结果与独立日志正文。已确认 Tool.Call(ctx, req) 返回 (result *Result, logContent string, callErr error)，两处 ExecutionResult 通过 LogContent string 传递日志正文；空串表示未提供。业务 Result.Content 和 Segments 的用途不变；相同文本可以直接复用，不从业务 Message 或 Segments 自动提取日志正文。
+- 中间层在工具未调用起来或未提供正文时，按需要根据已知事实补充日志说明；不猜测业务正文含义，不从错误类型、文案或合并错误树判断调用结果。
+- 新增 internal/toolrun/logging.go，沿用 toolrun 包。已确认私有方法名 logToolCall、logToolOperation，分别发布工具调用记录和操作记录；两个方法均只接收 ctx 与完整 record。中间层负责九字段组装、明确等级与结果、已有查询事实及体积控制；新文件只接收完整记录并调用 events.EmitLog，不接收业务对象、不重新组织正文。工具调用记录的组装迁出 Runner；Runner 仅在准备、发送、保存等所属操作返回处组织独立操作记录。不新增队列、独立中心或 Logger 注入。
+- 普通工具已实际调用起来，包括缺 key、shell 非零和工具业务返回错误，工具调用日志为 INFO／succeeded；具体业务结果与原因写正文。工具不存在或入口故障等根本未调用起来的调用故障为 ERROR／failed。执行前正常拒绝、取消、跳过按对应控制事实使用 INFO；不因日志结果改写业务 error、ResultStatus 或停止规则。
+- 工具调用、发送、保存分别记录各自操作。发送或保存失败不会把已经运行起来的工具调用改成未调用成功；各自的错误和部分回执继续保留。实际保存操作的日志等待保存返回，未执行的操作不补结果；批次准备失败不伪造逐工具调用。
+- 工具名、调用 ID、actor_id、风险、参数、来源和耗时等已有查询事实由中间层组织进 Content，落盘键使用 snake_case；具体工具的日志正文保持来源含义。既有 text／JSON、脱敏、限长和整数精度契约保持。
+- 日志发布方法只接收完整九字段记录，不引入错误分类类型、传入工具的日志对象、庞大中转事件或类型化 Content 包装。Hook 日志迁移仍归 3.2，本节不扩大其业务规则；两个发布方法只接收 ctx 和 record events.LogRecord。
+
+```mermaid
+flowchart TD
+    A["toolrun 业务编排<br/>internal/toolrun/runner.go<br/>Manager.Run：确认、请求、输出、保存等流程"]
+    A --> B["业务调用中间层<br/>internal/toolrun/toolrun.go：Manager.Execute，原生／远程路由<br/>internal/tool/executor.go：Executor.Execute，原生执行入口"]
+    B --> C["具体工具实现<br/>原生：各工具实现文件，如 internal/tool/builtin/shell.go、web_search.go<br/>远程：internal/toolrun/elwisp_exec.go<br/>执行业务，分别提供业务结果和日志正文"]
+    C -->|"业务结果与 logContent 分别返回<br/>相同 Content 可复用；Segments 仅供业务"| B
+    B -->|"提供实际调用事实及日志正文<br/>未调用起来或缺少正文时，必要补充原因"| D["中间层组织调用记录<br/>internal/toolrun/toolrun.go<br/>依据实际调用边界明确等级和结果<br/>整理正文、填齐九字段 LogRecord"]
+    D --> E["工具日志发布<br/>internal/toolrun/logging.go<br/>只接收完整九字段 LogRecord<br/>调用 events.EmitLog"]
+    E --> S["公共信号入口<br/>internal/events/logging.go<br/>校验契约、复制身份、发射 LogSubmitted"]
+    S --> F["全局日志中心<br/>internal/logging/signals.go：记时、排队、过滤、写盘<br/>internal/logging/record.go：脱敏、限长、JSONL 编码<br/>internal/logging/logging.go：初始化、文件资源及关闭"]
+```
+
+#### 用量 null 与查询展示
+
+- 公共 Usage 继续使用四个 `*int64`；上游没有返回、返回 null、非法值或溢出均为未知，日志统一写 JSON null；明确报告的 0 写数字 0。不引入字符串 `unknown` 用量或新的未知／不存在状态类型。
+- 修复 `CallObservation.Publish` 在整份 Usage 为 nil 时省略 token 键的问题；prompt_tokens、completion_tokens、total_tokens、cache_hit_tokens 四个键都保留，未知写 null。实际请求仍计一次调用，准备失败不补造调用。
+- `/log`、`/audit` 的 JSON 展示保留原生 null；`/usage` 的未知项及受影响的分组、总计对应项也显示 null。删除把未知数值替换成 `unknown` 的展示代码，保留已知数字的千分位与已知耗时的秒数排版。
+- 保留整数精度、明确零、非法别名回退、逐项未知传播和加法溢出检查；不能为简化展示把未知当零或排除异常记录，也不能从其他字段推算缺失总量。其他可确定的统计项正常显示。
+
+### 3.2 Hook 结果判定与日志统一整理
+
+- 新增文件位置已确认：`internal/hook/logging.go`，沿用 hook 主包，统一整理 Hook 相关日志并调用 `events.EmitLog`。rules、runtime 及外部 Hook 桥接来源调用主包中的日志整理方法，主包不反向依赖 rules 或 runtime，不经 App 转发，不新增日志中心、异步中转队列或 Logger 注入。
+- 迁移范围包括 Hook 流水线、规则及工具调用、插件配置与注册、插件进程和重载、插件主动日志、stderr、协议及响应写入故障、Hook 桥接故障，以及 Hook 自身资源释放故障。删除各来源中迁移后重复的日志组装与直接发布代码。
+- Hook 自身的结果猜测与本节日志统一整理一起整改。工具调用、发送、资源释放和其他业务操作仍由各自来源执行。来源提供已确定的 ResultStatus、Level、关联身份、各操作事实、原始错误及部分结果；新文件整理唯一 Content、控制来源正文体积、组装九字段并发布，不通过错误树、文案或事件名反推结果。普通说明优先 text，需要查询的审计事实使用 JSON。
+- Hook 工具审计沿用 3.1 补齐的 Actor 来源规则：`actor_id` 跟随唤起 Hook 的 Session 的执行 Actor；没有 Session 时，从 `contextinfo.ActorFromContext` 获取。沿业务入口固定 Actor，不把 Session.OwnerID、默认本地身份或默认 Hook 权限主体当成触发者，也不由公共日志层补身份。缺少 Actor 时不补造。
+- 插件工具的 `hook_tool_call` 必须在调用和实际执行的输出发送结束后发布。工具调用成功但输出发送故障时，整体为 failed，Content 同时保留工具成功结果、发送失败原因及部分回执；纯取消沿用 canceled 语义，独立失败不能被取消覆盖。没有执行的操作不补造结果。
+- 整体判断属于 `worker.callTool` 等业务编排层：它掌握工具调用与输出发送两项事实，收集后再交给新文件整理发布。输出层负责输出并返回回执和错误，只记录自身操作事实，不校验或改写整条工具日志；原始 Hook 执行失败不经 Agent 或 App 重复记录。
+- Hook Runtime 的媒体桥接继续负责插件 `media.*` 请求、临时引用及导出文件租约；过期或关闭时释放自身引用和临时目录。`prune_hook_media` 等自身资源释放日志纳入统一整理；全局媒体清理仍由维护任务调用媒体中心执行，业务职责不迁入日志文件。
+
+```mermaid
+flowchart TD
+    A["Hook 业务编排层<br/>调用工具并保留结果与原始错误"] -->|需要且允许发送| B["实际需要发送的工具 Outputs"]
+    B --> O["输出层<br/>检查输出、准备媒体并发送"]
+    O --> R["返回回执与发送错误<br/>保留已完成的部分"]
+    A -->|无需发送或调用失败| F
+    R --> F["业务编排层汇总实际发生的事实<br/>明确整体 ResultStatus 与 Level<br/>显式提供身份和 Actor"]
+    F --> H["internal/hook/logging.go<br/>整理 text 或 JSON Content<br/>组装九字段并统一发布"]
+    H --> E["events.EmitLog<br/>验证契约并复制来源身份"]
+    E --> S["LogSubmitted"]
+    S --> L["日志中心<br/>接收记时、排队、过滤、脱敏和落盘"]
+```
+
+#### 尚待确认的实施接口
+
+Hook 统一整理发布的文件位置和职责已确认；跨包调用的新方法名称、完整签名及必要参数尚未确认，进入相关代码实施前须讨论。不得自行新增庞大的日志中转事件、类型化 Content 包装、公共错误分类设施或未讨论的生产名称。测试代码的名称和实现仍可自行决定。

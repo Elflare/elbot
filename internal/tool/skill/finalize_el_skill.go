@@ -47,32 +47,44 @@ func (FinalizeElSkillTool) Schema() llm.ToolSchema {
 		BuildSchema()
 }
 
-func (t FinalizeElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t FinalizeElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	var args finalizeElSkillArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			return nil, fmt.Errorf("parse finalize_el_skill arguments: %w", err)
+			{
+				callErr := fmt.Errorf("parse finalize_el_skill arguments: %w", err)
+				return nil, callErr.Error(), callErr
+			}
 		}
 	}
 	if t.Manager == nil || t.Manager.Registry == nil {
-		return nil, fmt.Errorf("skill manager is not configured")
+		{
+			callErr := fmt.Errorf("skill manager is not configured")
+			return nil, callErr.Error(), callErr
+		}
 	}
 	name := strings.TrimSpace(args.Name)
 	if err := validateSkillName(name); err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	root := filepath.Join(t.Manager.Root, "go", name)
 	elyphPath := filepath.Join(root, elyph.SkillFileName)
 	elyphData, err := os.ReadFile(elyphPath)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", elyph.SkillFileName, err)
+		{
+			callErr := fmt.Errorf("read %s: %w", elyph.SkillFileName, err)
+			return nil, callErr.Error(), callErr
+		}
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "finalize EL skill %s\n\n", name)
 	_, diagnostics, err := elyph.ValidateSkill(string(elyphData), name)
 	if err != nil {
 		fmt.Fprintf(&b, "ELyph: failed\n%s\n", err)
-		return &tool.Result{Content: b.String()}, nil
+		{
+			result := &tool.Result{Content: b.String()}
+			return result, result.Content, nil
+		}
 	}
 	b.WriteString("ELyph: ok\n")
 	if warnings := elyph.WarningDiagnostics(diagnostics); len(warnings) > 0 {
@@ -85,27 +97,39 @@ func (t FinalizeElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*t
 	if _, err := os.Stat(sourcePath); os.IsNotExist(err) {
 		b.WriteString("Go source: not found, text-only skill\n")
 		if err := t.Manager.Reload(ctx); err != nil {
-			return nil, fmt.Errorf("EL skill finalized but reload failed: %w", err)
+			{
+				callErr := fmt.Errorf("EL skill finalized but reload failed: %w", err)
+				return nil, callErr.Error(), callErr
+			}
 		}
 		b.WriteString("reload: ok\n")
-		return &tool.Result{Content: b.String()}, nil
+		{
+			result := &tool.Result{Content: b.String()}
+			return result, result.Content, nil
+		}
 	} else if err != nil {
-		return nil, fmt.Errorf("stat main.go: %w", err)
+		{
+			callErr := fmt.Errorf("stat main.go: %w", err)
+			return nil, callErr.Error(), callErr
+		}
 	}
 	file, err := fileops.ReadFile(sourcePath, "")
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	b.WriteString("Go source: found\n")
 
 	formatted, err := formatGoSource(file.Text)
 	if err != nil {
 		fmt.Fprintf(&b, "gofmt: failed\n%s\n", err)
-		return &tool.Result{Content: b.String()}, nil
+		{
+			result := &tool.Result{Content: b.String()}
+			return result, result.Content, nil
+		}
 	}
 	if formatted != file.Text {
 		if _, err := fileops.WriteTextFile(sourcePath, file, formatted); err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
 		b.WriteString("gofmt: changed\n")
 	} else {
@@ -113,28 +137,40 @@ func (t FinalizeElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*t
 	}
 	if err := validateGoMainSource(formatted); err != nil {
 		fmt.Fprintf(&b, "Go source validation: failed\n%s\n", err)
-		return &tool.Result{Content: b.String()}, nil
+		{
+			result := &tool.Result{Content: b.String()}
+			return result, result.Content, nil
+		}
 	}
 	b.WriteString("Go source validation: ok\n")
 
 	build := goBuildResult{}
 	build, err = runGoBuild(ctx, root, name, args.TimeoutMS, t.Manager.ProcessEnv)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	if build.Err != nil {
 		fmt.Fprintf(&b, "go build: failed\n%v\n", build.Err)
 		appendCommandOutput(&b, build.Stdout, build.Stderr)
-		return &tool.Result{Content: b.String()}, nil
+		{
+			result := &tool.Result{Content: b.String()}
+			return result, result.Content, nil
+		}
 	}
 	b.WriteString("go build: ok\n")
 	appendCommandOutput(&b, build.Stdout, build.Stderr)
 
 	if err := t.Manager.Reload(ctx); err != nil {
-		return nil, fmt.Errorf("EL skill finalized but reload failed: %w", err)
+		{
+			callErr := fmt.Errorf("EL skill finalized but reload failed: %w", err)
+			return nil, callErr.Error(), callErr
+		}
 	}
 	b.WriteString("reload: ok\n")
-	return &tool.Result{Content: b.String()}, nil
+	{
+		result := &tool.Result{Content: b.String()}
+		return result, result.Content, nil
+	}
 }
 
 func appendCommandOutput(b *strings.Builder, stdout, stderr string) {

@@ -50,7 +50,7 @@ func TestElwispCreatorToolSchemaHasNoParameters(t *testing.T) {
 }
 
 func TestElwispCreatorToolCallReturnsGuide(t *testing.T) {
-	result, err := NewElwispCreatorTool().Call(context.Background(), tool.CallRequest{})
+	result, _, err := NewElwispCreatorTool().Call(context.Background(), tool.CallRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ token_env = ["ELNIS_HOME_TOKEN"]
 `)
 	t.Setenv(config.EnvConfigFile, appPath)
 
-	result, err := NewElwispCreatorTool().Call(context.Background(), tool.CallRequest{})
+	result, _, err := NewElwispCreatorTool().Call(context.Background(), tool.CallRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ token_env = ["ELNIS_HOME_TOKEN"]
 func TestElwispCreatorGuideWarnsWhenConfigMissing(t *testing.T) {
 	t.Setenv(config.EnvConfigFile, filepath.Join(t.TempDir(), "missing.toml"))
 
-	result, err := NewElwispCreatorTool().Call(context.Background(), tool.CallRequest{})
+	result, _, err := NewElwispCreatorTool().Call(context.Background(), tool.CallRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}

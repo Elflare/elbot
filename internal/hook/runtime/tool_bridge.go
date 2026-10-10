@@ -99,7 +99,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	}
 	callCtx = contextinfo.WithActor(callCtx, actor)
 	started := time.Now()
-	result, err := registered.Call(callCtx, tool.CallRequest{ID: randomID("plugin"), Name: name, Arguments: params.Arguments})
+	result, _, err := registered.Call(callCtx, tool.CallRequest{ID: randomID("plugin"), Name: name, Arguments: params.Arguments})
 
 	level := slog.LevelInfo
 	status := globalevents.ResultSucceeded

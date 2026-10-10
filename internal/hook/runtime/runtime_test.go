@@ -26,8 +26,8 @@ type auditTestTool struct{ err error }
 func (auditTestTool) Name() string           { return "audit_test" }
 func (auditTestTool) Info() tool.Info        { return tool.Info{Name: "audit_test"} }
 func (auditTestTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "audit_test"} }
-func (a auditTestTool) Call(context.Context, tool.CallRequest) (*tool.Result, error) {
-	return nil, a.err
+func (a auditTestTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
+	return nil, a.err.Error(), a.err
 }
 
 func TestPluginToolAuditOutcome(t *testing.T) {

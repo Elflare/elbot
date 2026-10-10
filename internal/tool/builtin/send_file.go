@@ -82,26 +82,32 @@ func (t SendFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (too
 	return tool.RiskAssessment{Level: tool.RiskMedium}, nil
 }
 
-func (t SendFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t SendFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	args, err := parseSendFileArgs(req)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	source := args.source()
 	if source == "" {
-		return nil, fmt.Errorf("source is required")
+		{
+			callErr := fmt.Errorf("source is required")
+			return nil, callErr.Error(), callErr
+		}
 	}
 	sandbox, _ := sandboxctx.SandboxContextFromContext(ctx)
 	out, warnings, label, err := t.buildOutput(ctx, args, source)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	if sandbox.BackgroundKind == sandboxctx.BackgroundKindCron {
 		if info, ok := contextinfo.ConversationFromContext(ctx); ok && strings.TrimSpace(info.Source.Platform) != "" {
 			out.Target = delivery.Target{Platform: info.Source.Platform, Superadmins: true}
 		}
 	}
-	return &tool.Result{Content: fmt.Sprintf("已发送文件：%s", label), Warnings: warnings, Outputs: []delivery.Output{out}}, nil
+	{
+		result := &tool.Result{Content: fmt.Sprintf("已发送文件：%s", label), Warnings: warnings, Outputs: []delivery.Output{out}}
+		return result, fmt.Sprintf("file output prepared: %s", label), nil
+	}
 }
 
 func (t SendFileTool) buildOutput(ctx context.Context, args sendFileArgs, source string) (delivery.Output, []string, string, error) {

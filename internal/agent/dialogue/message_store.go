@@ -9,10 +9,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	agentevents "elbot/internal/agent/events"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 )
@@ -105,7 +103,6 @@ type MessageStore struct {
 	Dialogues storage.DialogueRepository
 	Gate      *CommitGate
 	Media     *media.Manager
-	Failed    *signal.Signal[agentevents.PersistenceFailedEvent]
 }
 
 func (s *MessageStore) Append(ctx context.Context, message *storage.Message, operation string) error {
@@ -149,7 +146,6 @@ func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit
 			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
 		}
 		_ = events.EmitLog(context.WithoutCancel(ctx), record)
-		agentevents.Emit(ctx, s.Failed, agentevents.PersistenceFailedEvent{EventMeta: agentevents.Meta(ctx, commit.SessionID), Operation: operation, Err: err})
 	}
 	return err
 }

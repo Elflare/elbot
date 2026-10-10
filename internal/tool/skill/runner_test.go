@@ -56,7 +56,7 @@ func main() {
 	catalog := NewCatalog()
 	catalog.Replace([]Record{{Name: "echo", Kind: KindGo, Root: dir, BinaryPath: binary}})
 	args := []byte(`{"skill_name":"echo","payload":{"input":"hello"}}`)
-	result, err := NewGoRunner(catalog).Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewGoRunner(catalog).Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func main() {
 	catalog := NewCatalog()
 	catalog.Replace([]Record{{Name: "environment", Kind: KindGo, Root: dir, BinaryPath: binary}})
 	runner := NewGoRunner(catalog, processenv.New([]string{"ELBOT_GO_SKILL_ENV_TEST=from-shared"}))
-	result, err := runner.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"skill_name":"environment","payload":{}}`)})
+	result, _, err := runner.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"skill_name":"environment","payload":{}}`)})
 	if err != nil {
 		t.Fatal(err)
 	}

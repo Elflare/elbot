@@ -25,7 +25,7 @@ func TestShellToolMissingCmdHintsExpectedArgument(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), `use {"cmd":"..."}`) {
 		t.Fatalf("AssessRisk error = %v", err)
 	}
-	_, err = shell.Call(context.Background(), tool.CallRequest{Arguments: args})
+	_, _, err = shell.Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), `use {"cmd":"..."}`) {
 		t.Fatalf("Call error = %v", err)
 	}
@@ -40,7 +40,7 @@ func TestShellToolHasAgentTag(t *testing.T) {
 func TestShellToolRunsArbitraryCommand(t *testing.T) {
 	shell := NewShellTool()
 	args, _ := json.Marshal(map[string]any{"cmd": "echo elbot-shell-test"})
-	result, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestShellToolOutputLimit(t *testing.T) {
 			}
 			ctx := workspacepath.WithWorkspaceStore(t.Context(), &testWorkspaceStore{dir: dir})
 			args, _ := json.Marshal(map[string]any{"cmd": "cat stdout.txt & cat stderr.txt >&2 & wait; exit 7"})
-			result, err := NewShellTool().Call(ctx, tool.CallRequest{Arguments: args})
+			result, _, err := NewShellTool().Call(ctx, tool.CallRequest{Arguments: args})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -254,7 +254,7 @@ func TestShellToolUsesWorkspaceDir(t *testing.T) {
 	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
 	shell := NewShellTool()
 	args, _ := json.Marshal(map[string]any{"cmd": "echo workspace > workspace.txt"})
-	if _, err := shell.Call(ctx, tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := shell.Call(ctx, tool.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(workspace, "workspace.txt")); err != nil {
@@ -286,7 +286,7 @@ func TestShellToolUsesSandboxDir(t *testing.T) {
 	shell := NewShellTool()
 	args, _ := json.Marshal(map[string]any{"cmd": "pwd > cwd.txt"})
 	ctx := sandboxctx.WithSandboxContext(context.Background(), sandboxctx.SandboxContext{Dir: sandboxDir, Background: true, BackgroundKind: sandboxctx.BackgroundKindCron})
-	if _, err := shell.Call(ctx, tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := shell.Call(ctx, tool.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(filepath.Join(sandboxDir, "cwd.txt"))
@@ -306,7 +306,7 @@ func TestShellToolCancelReturnsQuickly(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{"cmd": "echo started > started.txt; sleep 5", "timeout_ms": 10000})
 	done := make(chan error, 1)
 	go func() {
-		_, err := shell.Call(ctx, tool.CallRequest{Arguments: args})
+		_, _, err := shell.Call(ctx, tool.CallRequest{Arguments: args})
 		done <- err
 	}()
 
@@ -342,7 +342,7 @@ func TestShellToolRunsLS(t *testing.T) {
 
 	shell := NewShellTool()
 	args, _ := json.Marshal(map[string]any{"cmd": "ls", "timeout_ms": 5000})
-	result, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,7 +359,7 @@ func TestShellToolUsesConfiguredEnvironment(t *testing.T) {
 		cmdText = `Write-Output $env:ELBOT_SHELL_ENV_TEST`
 	}
 	args, _ := json.Marshal(map[string]any{"cmd": cmdText})
-	result, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := shell.Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatalf("Call: %v", err)
 	}

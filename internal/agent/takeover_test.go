@@ -383,9 +383,12 @@ func (t foregroundContextProbe) Info() tool.Info {
 func (t foregroundContextProbe) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: t.Name(), Parameters: map[string]any{"type": "object"}}
 }
-func (t foregroundContextProbe) Call(ctx context.Context, _ tool.CallRequest) (*tool.Result, error) {
+func (t foregroundContextProbe) Call(ctx context.Context, _ tool.CallRequest) (*tool.Result, string, error) {
 	t.observed <- ctx
-	return &tool.Result{Content: "foreground context observed"}, nil
+	{
+		result := &tool.Result{Content: "foreground context observed"}
+		return result, result.Content, nil
+	}
 }
 
 func TestTakeoverRefreshesNextToolInSameBatch(t *testing.T) {

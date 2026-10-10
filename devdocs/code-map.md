@@ -42,7 +42,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/events/`：Agent 实例事实信号。
 - `internal/events/platform.go`：平台连接全局事实契约；各适配器直接发布。
 - `internal/agent/platform_signals.go`、`internal/cron/platform_signals.go`：Hook 协调模块与 Cron 自行订阅、按平台排队并关闭；`StartPlatformEvents` 在装配完成后启动订阅，`BeginClose`／`Close`／`Done` 管理退出。
-- `internal/agent/logging.go`：输入、超时、确认和拒绝事件的同步日志回调；模型、工具、持久化和回复日志由实际操作来源组织。`internal/session/naming_logging.go`、`internal/modelmgr/logging.go` 保留来源明确结果的同步日志回调，独立于通知订阅。
+- `internal/agent/logging.go`：复制来源显式提供的固定身份并提交完整记录，不维护日志投影订阅。输入、超时、确认、权限拒绝、模型、工具、持久化和回复均在实际操作来源组织日志。`internal/session/naming_logging.go`、`internal/modelmgr/logging.go` 保留有实际消费者的来源事件及同步日志回调，独立于通知订阅。
 - `internal/session/naming_signals.go`：Scheduled／Completed 两种命名信号，完整终态字段定义在 `types.go`；`naming_lifecycle.go` 等待生产者退出后断开日志连接。`internal/modelmgr/signals.go` 的重试事件固定 Identity 并携带 HTTP 来源声明的尝试结果。
 - `internal/app/signals.go`、`internal/app/agent_notifications.go`、`internal/app/agent_status.go`、`internal/app/model_signals.go`：App 通知、状态与重试通知订阅及其生命周期；通用 `newQueue`／`connectSignal` 归 `signals.go`，模型文件只放通知接线，状态投影入队时深复制用量。
 
@@ -62,9 +62,10 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/agent.go`、`internal/agent/assembly.go`：薄入口与组件装配。
 - `internal/agent/message.go`、`internal/agent/input.go`、`internal/agent/background.go`：消息分发、普通输入与后台准备。
 - `internal/agent/dialogue/runner.go`、`internal/agent/dialogue/preparation.go`：公共单轮加载、准备与结果。
-- `internal/agent/dialogue/model_call.go`、`internal/agent/dialogue/system_prompt.go`：共同模型 Hook 与 Prompt 来源；CallObservation 分别持有业务 Event 和日志 LogRecord，发布时固定身份和用量副本。
+- `internal/agent/dialogue/model_call.go`、`internal/agent/dialogue/system_prompt.go`：共同模型 Hook 与 Prompt 来源；CallObservation 分别持有业务 Event 和日志 LogRecord，发布时固定身份和用量副本，Usage 整份缺失时仍写出四个 null 计数键。
 - `internal/agent/chat/`：Chat Loop、请求、历史、摘要与 seed；取消时保留部分输出。
 - `internal/agent/responses/loop.go`、`internal/agent/responses/model_call.go`：Responses Loop、续链、pending／接管及恢复。
+- `internal/agent/responses/native_call.go`：实际原生调用及终态保存；按输出项、内容索引保留 text／refusal 增量与原生字段，完成事实覆盖对应部分，中断内容不成为完成响应或可执行工具调用。
 - `internal/agent/responses/context.go`、`internal/agent/responses/persistence.go`：完整原生窗口与提交。
 - `internal/agent/responses/tool_inputs.go`、`internal/agent/responses/input_format.go`：冻结工具定义与输入／seed 格式。
 - `internal/agent/dialogue/commit.go`、`internal/agent/dialogue/reply_commit.go`：消息事务准入、ToolPair 与最终回复。
@@ -98,7 +99,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/execution.go`、`internal/agent/execution_run.go`：前后台执行与单轮收尾。
 - `internal/agent/execution_admission.go`、`internal/agent/execution_input.go`：准入、输入、追加确认与续跑。
 - `internal/agent/execution_lifecycle.go`：追加确认等待及关闭。
-- `internal/agent/confirmation.go`、`internal/agent/risk_confirmation.go`：风险确认协调与文案。
+- `internal/agent/confirmation.go`、`internal/agent/risk_confirmation.go`：风险确认协调、来源日志与文案；`internal/turn/manager.go` 的 RiskConfirmationWait.Wait 在实际状态转换处返回明确 ResultStatus，保留业务响应／接受 bool，区分失效等待、取消和超时。
 - `internal/runtime/`、`internal/agent/status.go`：状态类型、同步保存与观察事件。
 
 <!-- locator:tool -->
@@ -117,9 +118,10 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/agent/dialogue/tool_execution.go`：路线共用的 ToolRun 入口与协议提交器，批次准备失败只记批次日志。
 - `internal/agent/toolrun_adapter.go`：Hook、子请求、确认、调用记录与状态提交桥接；RecordToolCall 保存完整工具记录并返回保存错误。
-- `internal/toolrun/runner.go`：单工具流程与终态日志，记录实际执行的 transcript 保存结果及其他独立错误。
-- `internal/toolrun/toolrun.go`：工具解析与原生／远程路由，ResolvedTool 使用明确结果与原始错误。
-- `internal/tool/executor.go`、`internal/toolrun/elwisp_exec.go`：原生／远程执行，保留部分结果、原始错误和真实 ExecutionStarted 边界；PolicyDeniedError 定义在 tool 执行器。
+- `internal/toolrun/runner.go`：单工具业务编排，负责确认、请求、输出及实际保存；在操作返回处明确该操作的结果，保留部分回执并向日志发布处提交完整记录。
+- `internal/toolrun/toolrun.go`：工具业务解析及原生／远程调用中间层，保留业务结果、错误、执行事实与独立日志正文，必要时补缺失正文说明；Execute 组装工具调用的九字段记录，按实际入口事实定级并控制 JSON 正文体积。
+- `internal/toolrun/logging.go`：logToolCall／logToolOperation 只接收 ctx 和完整 LogRecord，直接 EmitLog；工具调用记录由 Execute 组装，编排操作由 Run 来源组装；全局队列、脱敏和落盘仍归 internal/logging。
+- `internal/tool/executor.go`、`internal/toolrun/elwisp_exec.go`：原生／远程执行入口，保留业务 Result、原始 error 与真实 ExecutionStarted；独立 LogContent 传递给中间层。PolicyDeniedError 只表达业务拒绝事实。
 - `internal/agent/dialogue/message_store.go`、`internal/storage/tool_pair.go`：transcript 与调用／结果关联。
 - `internal/storage/sqlite/tool_call_repository.go`：调用记录持久化。
 
@@ -149,8 +151,8 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/delivery/`、`internal/delivery/dispatch/`：输出意图、Target／Receipt、平台路由与媒体准备。
 - `internal/notification/`：通知意图、来源校验与规则；无来源通知通过九字段 text 日志记录，通知对象与日志契约独立。
-- `internal/agent/output.go`、`internal/agent/turn_output.go`、`internal/agent/execution_output.go`：发送 Hook、前后台策略与接管输出；流替换与结束回执合并去重，保留部分成功和独立切片。
-- `internal/agent/dialogue/reply_commit.go`：最终回复落库、发送顺序与回执关联。
+- `internal/agent/output.go`、`internal/agent/turn_output.go`、`internal/agent/execution_output.go`：发送 Hook、前后台策略与接管输出；SendOutputs 传递真实回执和错误，发送来源保留消息及输出索引，独立于工具调用日志。流替换与结束回执合并去重，保留部分成功和独立切片。
+- `internal/agent/dialogue/reply_commit.go`：最终回复落库、发送顺序与正文回执关联；附加输出回执独立记录，终态日志在实际发送、保存和关联处保留结果，不从最终合并错误反推。
 
 <!-- locator:platform -->
 ## 平台适配
@@ -224,7 +226,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## Cron 与维护
 
 - `internal/cron/`：任务 CRUD、调度、执行、报告与投递恢复。
-- `internal/cron/service.go`、`internal/cron/manager.go`：来源直接构造九字段日志；运行说明用 text，可筛选审计用 JSON。调度执行的最终结果在状态保存后发布，正文保留执行、重新读取和保存的独立错误。
+- `internal/cron/service.go`、`internal/cron/manager.go`：来源直接构造九字段日志；运行说明用 text，可筛选审计用 JSON。调度执行的最终结果在状态保存后发布，正文保留执行、重新读取和保存的独立错误。Cron 的运行状态不保存 LastError；错误原因写入日志，补执行依据任务及 DeliveryState／DeliveryToken。Handler 返回 ResultStatus、独立 Content 与原始 error，调度器直接接收来源结果及正文；发送聚合在错误包装、合并前保留各操作结果。
 - `internal/cron/models.go`、`internal/cron/delivery.go`、`internal/cron/recovery.go`：任务模型、逐项投递及连接恢复。
 - `internal/maintenance/`：维护任务；清理日志直接填写结果、text 正文和已有执行身份，取消与超时区分。
 - `internal/agent/background.go`、`internal/agent/background_tools.go`：公共后台执行与确认。

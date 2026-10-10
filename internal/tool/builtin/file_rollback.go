@@ -78,18 +78,21 @@ func (t RollbackFileTool) RiskDetail(ctx context.Context, req tool.CallRequest) 
 	return fmt.Sprintf("文件：%s\n操作：%s\n预检 diff:\n%s", preview.Path, action, preview.Diff), nil
 }
 
-func (t RollbackFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t RollbackFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	args, err := decodeRollbackArgs(req)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	result, err := t.Service.Rollback(ctx, args.Path, 0)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	action := "restored"
 	if result.Deleted {
 		action = "deleted_created_file"
 	}
-	return &tool.Result{Content: fmt.Sprintf("rolled_back: %s\naction: %s\nrevision: %s", result.Path, action, result.Revision)}, nil
+	{
+		result := &tool.Result{Content: fmt.Sprintf("rolled_back: %s\naction: %s\nrevision: %s", result.Path, action, result.Revision)}
+		return result, result.Content, nil
+	}
 }

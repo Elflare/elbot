@@ -133,20 +133,39 @@ func (t ViewImageTool) PreflightConfirmation(ctx context.Context, req tool.CallR
 	return err
 }
 
-func (t ViewImageTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t ViewImageTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	args, err := parseViewImageArgs(req)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	if t.center == nil {
-		return nil, fmt.Errorf("media center is not configured")
+		{
+			callErr := fmt.Errorf("media center is not configured")
+			return nil, callErr.Error(), callErr
+		}
 	}
 	if args.Source == "" {
-		return t.viewMessages(ctx, args)
+		{
+			result, callErr := t.viewMessages(ctx, args)
+			logContent := ""
+			if result != nil {
+				logContent = result.Content
+			}
+			if logContent == "" {
+				logContent = fmt.Sprintf("view_image message_id=%v media_index=%v", args.MessageIDs, args.MediaIndex)
+			}
+			if callErr != nil {
+				if logContent != "" {
+					logContent += "\n"
+				}
+				logContent += callErr.Error()
+			}
+			return result, logContent, callErr
+		}
 	}
 	path, err := t.sourcePath(ctx, args.Source)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	var item *storage.Media
 	switch {
@@ -159,18 +178,33 @@ func (t ViewImageTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Re
 	}
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			{
+				callErr := ctx.Err()
+				return nil, callErr.Error(), callErr
+			}
 		}
-		return nil, fmt.Errorf("图片获取失败：来源不可用或超限")
+		{
+			callErr := fmt.Errorf("图片获取失败：来源不可用或超限")
+			return nil, callErr.Error(), callErr
+		}
 	}
 	item, err = t.center.ImageMetadata(ctx, item.ID)
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			{
+				callErr := ctx.Err()
+				return nil, callErr.Error(), callErr
+			}
 		}
-		return nil, fmt.Errorf("媒体不是有效或支持的图片")
+		{
+			callErr := fmt.Errorf("媒体不是有效或支持的图片")
+			return nil, callErr.Error(), callErr
+		}
 	}
-	return &tool.Result{Segments: []llm.MessageSegment{imageResultSegment(item)}, Warnings: path.Warnings}, nil
+	{
+		result := &tool.Result{Segments: []llm.MessageSegment{imageResultSegment(item)}, Warnings: path.Warnings}
+		return result, fmt.Sprintf("image prepared media_id=%s source=%s", item.ID, args.Source), nil
+	}
 }
 
 func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (*tool.Result, error) {

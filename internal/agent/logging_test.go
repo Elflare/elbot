@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -72,6 +73,15 @@ func TestChatSilentCancellationPreservesPartialOutputLog(t *testing.T) {
 	if !strings.Contains(records[2].Content, "partial-before-cancel") {
 		t.Fatal("partial output missing from log")
 	}
+	var content map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(records[0].Content), &content); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"prompt_tokens", "completion_tokens", "total_tokens", "cache_hit_tokens"} {
+		if string(content[key]) != "null" {
+			t.Fatalf("missing usage: %s = %s", key, content[key])
+		}
+	}
 }
 
 func TestReplyLogPreservesCanceledSendAndIndependentSaveFailure(t *testing.T) {
@@ -139,29 +149,22 @@ func TestResponsesSuccessfulCallWithSaveFailureKeepsSourceFacts(t *testing.T) {
 	}
 }
 
-func TestAgentLogProjectionPreservesSourceIdentity(t *testing.T) {
+func TestAgentLogSourcePreservesExplicitIdentity(t *testing.T) {
 	var records []globalevents.LogRecord
-	connection, _ := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
-		records = append(records, record)
+	connection, err := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+		if record.EventName == "identity_test" {
+			records = append(records, record)
+		}
 		return nil
 	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer connection.Disconnect()
-	a := &Agent{signals: agentevents.NewSignals()}
-	if err := a.connectLogSignals(); err != nil {
-		t.Fatal(err)
-	}
-	defer a.disconnectLogSignals()
 	ctx := contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "wrong", RequestID: "wrong"})
-	if err := a.signals.UserInputReceived.Emit(ctx, agentevents.UserInputReceivedEvent{EventMeta: agentevents.EventMeta{SessionID: "source"}, Text: "hello"}); err != nil {
-		t.Fatal(err)
-	}
+	emitAgentLog(ctx, agentevents.EventMeta{SessionID: "source"}, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, EventName: "identity_test", Module: "agent", Type: globalevents.ContentText, Content: "hello"})
 	if len(records) != 1 || records[0].Identity.SessionID == nil || *records[0].Identity.SessionID != "source" || records[0].Identity.RequestID != nil {
 		t.Fatalf("records = %#v", records)
-	}
-	a.disconnectLogSignals()
-	_ = a.signals.UserInputReceived.Emit(ctx, agentevents.UserInputReceivedEvent{Text: "after close"})
-	if len(records) != 1 {
-		t.Fatal("log subscription retained")
 	}
 }
 
@@ -209,13 +212,16 @@ func TestStableLogNamesIndependentOfContent(t *testing.T) {
 }
 
 func TestTurnTimeoutSeverity(t *testing.T) {
+	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t))
 	var records []globalevents.LogRecord
 	connection, _ := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
-		records = append(records, record)
+		if record.EventName == "turn_response_timeout" && record.Category == globalevents.LogAudit {
+			records = append(records, record)
+		}
 		return nil
 	}, signal.ConnectOptions{})
 	defer connection.Disconnect()
-	_ = (agentLogProjection{}).timeoutAuditLog(context.Background(), agentevents.TurnTimedOutEvent{Err: context.DeadlineExceeded})
+	a.execution.handleTurnContextDone(context.Background(), "timeout-session", context.DeadlineExceeded, foregroundTurnOutput{sender: a.output, status: a.status})
 	if len(records) != 1 || records[0].Level != slog.LevelError || records[0].ResultStatus != globalevents.ResultFailed {
 		t.Fatalf("records = %#v", records)
 	}

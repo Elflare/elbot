@@ -98,18 +98,31 @@ func NewService(opts Options) *Service {
 
 func (s *Service) SetRunner(runner LLMRunner) { s.runner = runner }
 
-func (s *Service) Handler(ctx context.Context, job storage.CronJob) error {
+func (s *Service) Handler(ctx context.Context, job storage.CronJob) (resultStatus globalevents.ResultStatus, content string, err error) {
+	resultStatus = globalevents.ResultFailed
+	content = fmt.Sprintf("job=%s handler=%s", job.Name, job.Handler)
+	defer func() {
+		if err != nil {
+			content += fmt.Sprintf("\nerror=%v", err)
+		}
+	}()
 	unlock, err := s.lockDeliveryJob(ctx, job.Name)
 	if err != nil {
-		return err
+		if err == context.Canceled {
+			resultStatus = globalevents.ResultCanceled
+		}
+		return resultStatus, content, err
 	}
 	defer unlock()
 	latest, err := s.store.CronJobs().GetByName(ctx, job.Name)
 	if err != nil {
-		return err
+		if err == context.Canceled {
+			resultStatus = globalevents.ResultCanceled
+		}
+		return resultStatus, content, err
 	}
 	if !latest.Enabled {
-		return nil
+		return globalevents.ResultSkipped, content + "\njob is disabled", nil
 	}
 	job = *latest
 	meta, err := decodeMetadata(job.Metadata)
@@ -143,7 +156,10 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) error {
 			}
 			_ = globalevents.EmitLog(ctx, record)
 		}
-		return err
+		if err == context.Canceled {
+			resultStatus = globalevents.ResultCanceled
+		}
+		return resultStatus, content, err
 	}
 	{
 		content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": meta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms": meta.Target.AllEnabledPlatforms, "trigger_mode": meta.Trigger.Mode, "schedule_mode": meta.Schedule.Mode})
@@ -202,12 +218,13 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) error {
 		}
 		_ = globalevents.EmitLog(ctx, record)
 	}
+	content += fmt.Sprintf("\nsource_platform=%s target_platforms=%s trigger_mode=%s schedule_mode=%s", meta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(meta), ","), meta.Trigger.Mode, meta.Schedule.Mode)
 	var runErr error
 	switch meta.Trigger.Mode {
 	case TriggerDirect:
-		runErr = s.runDirect(ctx, job, meta)
+		resultStatus, runErr = s.runDirect(ctx, job, meta)
 	case TriggerLLM:
-		runErr = s.runLLM(ctx, job, meta)
+		resultStatus, runErr = s.runLLM(ctx, job, meta)
 	default:
 		runErr = fmt.Errorf("unsupported trigger mode %q", meta.Trigger.Mode)
 	}
@@ -224,8 +241,8 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) error {
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultFailed,
 			}
-			if ctx.Err() == context.Canceled && isContextCancellation(ctx, runErr) {
-				record.ResultStatus = globalevents.ResultCanceled
+			record.ResultStatus = resultStatus
+			if resultStatus == globalevents.ResultCanceled {
 				record.Level = slog.LevelInfo
 			}
 
@@ -258,8 +275,8 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) error {
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultFailed,
 			}
-			if ctx.Err() == context.Canceled && isContextCancellation(ctx, runErr) {
-				record.ResultStatus = globalevents.ResultCanceled
+			record.ResultStatus = resultStatus
+			if resultStatus == globalevents.ResultCanceled {
 				record.Level = slog.LevelInfo
 			}
 
@@ -281,7 +298,7 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) error {
 			}
 			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 		}
-		return runErr
+		return resultStatus, content, runErr
 	}
 	{
 		content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": meta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms": meta.Target.AllEnabledPlatforms})
@@ -293,7 +310,7 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) error {
 			Type:         globalevents.ContentJSON,
 			Content:      string(content),
 			ContentLimit: 4096,
-			ResultStatus: globalevents.ResultSucceeded,
+			ResultStatus: resultStatus,
 		}
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		if facts.SessionID != "" {
@@ -322,7 +339,7 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) error {
 			Type:         globalevents.ContentText,
 			Content:      fmt.Sprintf("cron trigger completed\njob=%v\nsource_platform=%v\ntarget_platforms=%v\ntarget_all_enabled_platforms=%v", job.Name, meta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(meta), ","), meta.Target.AllEnabledPlatforms),
 			ContentLimit: 4096,
-			ResultStatus: globalevents.ResultSucceeded,
+			ResultStatus: resultStatus,
 		}
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		if facts.SessionID != "" {
@@ -342,7 +359,7 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) error {
 		}
 		_ = globalevents.EmitLog(ctx, record)
 	}
-	return nil
+	return resultStatus, content, nil
 }
 
 func (s *Service) Create(ctx context.Context, req UpsertRequest) (*storage.CronJob, error) {

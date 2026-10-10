@@ -64,13 +64,16 @@ func (o executionTurnOutput) SendAssistant(ctx context.Context, text string) (de
 				if err != nil {
 					return receipt, err
 				}
-				return receipt, out.SendOutputs(ctx, outputs)
+				// Receipt continues to identify the assistant text for message association.
+				// Report outputs retain their own delivery boundary.
+				_, err = out.SendOutputs(ctx, outputs)
+				return receipt, err
 			}
 		}
 	}
 	return out.SendAssistant(ctx, text)
 }
-func (o executionTurnOutput) SendOutputs(ctx context.Context, v []delivery.Output) error {
+func (o executionTurnOutput) SendOutputs(ctx context.Context, v []delivery.Output) (delivery.Receipt, error) {
 	ctx, out := o.target(ctx)
 	return out.SendOutputs(ctx, v)
 }

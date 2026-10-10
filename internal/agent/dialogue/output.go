@@ -16,7 +16,8 @@ type Output interface {
 	FinishIntermediate(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string, streaming bool) error
 	ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, error)
 	SendAssistant(ctx context.Context, text string) (delivery.Receipt, error)
-	SendOutputs(ctx context.Context, outputs []delivery.Output) error
+	// SendOutputs retains partial delivery receipts even when sending fails.
+	SendOutputs(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error)
 	SendNotice(ctx context.Context, level slog.Level, text string)
 	SendPreview(ctx context.Context, text string)
 	SendReasoning(ctx context.Context, text string)

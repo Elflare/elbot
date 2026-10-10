@@ -152,8 +152,11 @@ func (t LongMemoryTool) Info() tool.Info {
 func (t LongMemoryTool) Schema() llm.ToolSchema {
 	return longMemoryBuilder(t.Name(), t.Info().Description).BuildSchema()
 }
-func (t LongMemoryTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
-	return textResult("long_memory 是长期记忆入口。请按需调用 long_memory_search 或 long_memory_write。long_memory_search 不传 keywords/category 时会返回分类目录。"), nil
+func (t LongMemoryTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+	{
+		result := textResult("long_memory 是长期记忆入口。请按需调用 long_memory_search 或 long_memory_write。long_memory_search 不传 keywords/category 时会返回分类目录。")
+		return result, result.Content, nil
+	}
 }
 
 func (LongMemorySearchTool) Name() string { return longMemorySearchToolName }
@@ -169,23 +172,29 @@ func (t LongMemorySearchTool) Schema() llm.ToolSchema {
 		Integer("limit", "最大结果数，默认 3，上限 10。").
 		BuildSchema()
 }
-func (t LongMemorySearchTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t LongMemorySearchTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	var args longMemorySearchArgs
 	if err := lmDecodeArgs(req.Arguments, &args, t.Name()); err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	if strings.TrimSpace(args.Keywords) == "" && strings.TrimSpace(args.Category) == "" {
 		content, err := t.store.categories(ctx)
 		if err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
-		return textResult(content), nil
+		{
+			result := textResult(content)
+			return result, result.Content, nil
+		}
 	}
 	content, err := t.store.search(ctx, args)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
-	return textResult(content), nil
+	{
+		result := textResult(content)
+		return result, result.Content, nil
+	}
 }
 
 func (LongMemoryWriteTool) Name() string { return longMemoryWriteToolName }
@@ -281,32 +290,44 @@ func longMemoryUpdateArgsFromWrite(args longMemoryWriteArgs) longMemoryUpdateArg
 	return update
 }
 
-func (t LongMemoryWriteTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t LongMemoryWriteTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	args, err := t.decodeWriteArgs(req)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	switch strings.ToLower(strings.TrimSpace(args.Operation)) {
 	case "save":
 		record, err := t.store.save(ctx, longMemorySaveArgs{Category: args.Category, Title: args.Title, Summary: args.Summary, Keywords: args.Keywords, Content: args.Content})
 		if err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
-		return textResult(fmt.Sprintf("记忆写入成功！\nID：%d\n分类：%s\n标题：%s\n文件：%s\n可通过 long_memory_search 检索，或用 long_memory_write 更新/删除。", record.ID, record.Category, record.Title, record.FilePath)), nil
+		{
+			result := textResult(fmt.Sprintf("记忆写入成功！\nID：%d\n分类：%s\n标题：%s\n文件：%s\n可通过 long_memory_search 检索，或用 long_memory_write 更新/删除。", record.ID, record.Category, record.Title, record.FilePath))
+			return result, result.Content, nil
+		}
 	case "update":
 		record, err := t.store.update(ctx, longMemoryUpdateArgsFromWrite(args))
 		if err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
-		return textResult(fmt.Sprintf("ID：%d 更新成功！\n分类：%s\n标题：%s\n文件：%s", record.ID, record.Category, record.Title, record.FilePath)), nil
+		{
+			result := textResult(fmt.Sprintf("ID：%d 更新成功！\n分类：%s\n标题：%s\n文件：%s", record.ID, record.Category, record.Title, record.FilePath))
+			return result, result.Content, nil
+		}
 	case "delete":
 		path, err := t.store.delete(ctx, args.ID)
 		if err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
-		return textResult(fmt.Sprintf("记忆ID：%d已永久删除。\n文件：%s", args.ID, path)), nil
+		{
+			result := textResult(fmt.Sprintf("记忆ID：%d已永久删除。\n文件：%s", args.ID, path))
+			return result, result.Content, nil
+		}
 	default:
-		return nil, fmt.Errorf("operation must be save, update, or delete")
+		{
+			callErr := fmt.Errorf("operation must be save, update, or delete")
+			return nil, callErr.Error(), callErr
+		}
 	}
 }
 

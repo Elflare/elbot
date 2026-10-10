@@ -34,6 +34,13 @@ func executeELwispTool(ctx context.Context, call llm.ToolCallRequest, resolved R
 	result.ResultStatus = events.ResultFailed
 	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
 	defer func() {
+		// The remote source supplies its own log body, independently of segments.
+		if result.Error != nil {
+			if result.LogContent != "" {
+				result.LogContent += "\n"
+			}
+			result.LogContent += result.Error.Error()
+		}
 		if result.Error != nil {
 			if errors.Is(result.Error, context.Canceled) {
 				result.ResultStatus = events.ResultCanceled
@@ -94,6 +101,7 @@ func executeELwispTool(ctx context.Context, call llm.ToolCallRequest, resolved R
 		if strings.TrimSpace(parsed.Error) != "" {
 			result.Error = fmt.Errorf("ELwisp tool error: %s", strings.TrimSpace(parsed.Error))
 			content = firstELwispResult(parsed.Content, parsed.Text, parsed.Result)
+			result.LogContent = content
 			if content != "" {
 				result.Result = &tool.Result{Content: content}
 				message.Segments = result.Result.LLMSegments()
@@ -102,6 +110,7 @@ func executeELwispTool(ctx context.Context, call llm.ToolCallRequest, resolved R
 		}
 	}
 	result.Result = &tool.Result{Content: content}
+	result.LogContent = content
 	message.Segments = result.Result.LLMSegments()
 	result.ResultStatus = events.ResultSucceeded
 	return result

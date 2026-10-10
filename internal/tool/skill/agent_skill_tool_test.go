@@ -42,7 +42,7 @@ func TestAgentSkillWriteRollsBackConfigWhenReloadFails(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = NewAgentSkillTool(manager).Call(context.Background(), tool.CallRequest{Arguments: args})
+			_, _, err = NewAgentSkillTool(manager).Call(context.Background(), tool.CallRequest{Arguments: args})
 			if err == nil || !strings.Contains(err.Error(), "restored previous") {
 				t.Fatalf("Call error = %v, want rollback error", err)
 			}
@@ -81,7 +81,7 @@ func TestAgentSkillWriteCommitsConfigAndReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewAgentSkillTool(manager).Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := NewAgentSkillTool(manager).Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(AgentSkillConfigPath(dir))

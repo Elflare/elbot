@@ -69,7 +69,7 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 	if o.Event.Err == nil {
 		o.Event.Err = err
 	}
-	content := map[string]any{"provider": o.Event.Provider, "model": o.Event.Model, "elapsed_ms": o.Event.ElapsedMS, "vision_fallback": o.Event.VisionFallback}
+	content := map[string]any{"provider": o.Event.Provider, "model": o.Event.Model, "elapsed_ms": o.Event.ElapsedMS, "vision_fallback": o.Event.VisionFallback, "prompt_tokens": nil, "completion_tokens": nil, "total_tokens": nil, "cache_hit_tokens": nil}
 	if o.LogRecord.Content != "" {
 		content["detail"] = fmt.Sprintf("%.8192s", o.LogRecord.Content)
 	}

@@ -88,14 +88,14 @@ func main(){
 						timeout = 100
 					}
 					raw, _ = json.Marshal(map[string]any{"skill_name": "media", "timeout_ms": timeout, "payload": map[string]any{"mode": mode, "media_inputs": []tool.MediaInput{{MediaID: item.ID}}}})
-					result, err = runner.Call(runCtx, tool.CallRequest{Arguments: raw})
+					result, _, err = runner.Call(runCtx, tool.CallRequest{Arguments: raw})
 				} else {
 					current := command
 					if mode == "wait" {
 						current.Manifest.TimeoutSeconds = 1
 					}
 					raw, _ = json.Marshal(map[string]any{"input": item.ID, "mode": mode})
-					result, err = current.Call(runCtx, tool.CallRequest{Arguments: raw})
+					result, _, err = current.Call(runCtx, tool.CallRequest{Arguments: raw})
 				}
 				if mode == "ok" {
 					if err != nil || len(result.Segments) != 2 {

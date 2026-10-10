@@ -94,7 +94,7 @@ func TestCronModelSnapshotSurvivesFormatRetry(t *testing.T) {
 			meta.LLM.ModelProvider, meta.LLM.Model = "provider", "explicit"
 			want = "explicit"
 		}
-		if _, _, err := svc.runLLMReport(context.Background(), storage.CronJob{Name: "models"}, meta, CronDeliveryState{}); err != nil {
+		if _, _, _, err := svc.runLLMReport(context.Background(), storage.CronJob{Name: "models"}, meta, CronDeliveryState{}); err != nil {
 			t.Fatal(err)
 		}
 		if len(runner.requests) != 2 {

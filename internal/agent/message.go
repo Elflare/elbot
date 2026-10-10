@@ -70,7 +70,7 @@ func (h *messageHandler) HandleMessage(ctx context.Context, text string) (err er
 		}
 	}
 	if len(event.Outputs) > 0 {
-		if err := h.output.SendOutputs(ctx, event.Outputs); err != nil {
+		if _, err := h.output.SendOutputs(ctx, event.Outputs); err != nil {
 			return err
 		}
 	}

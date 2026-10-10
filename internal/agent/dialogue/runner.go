@@ -71,7 +71,11 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 		requestCtx, err = r.View.WithModel(requestCtx, in.Selection)
 	}
 	if err != nil {
-		result.Outcome, result.Err = FailedOutcome(err), err
+		result.Outcome, result.Err = Failed, err
+		// Business lifecycle cancellation is independent of the source log result.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			result.Outcome = Canceled
+		}
 		return result
 	}
 	loopIn := LoopInput{Session: in.Session, Text: in.Text, Selection: in.Selection, RequestID: in.RequestID, StartedAt: result.StartedAt}
@@ -84,7 +88,11 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 		err = prepared.InputCommitter().Commit(requestCtx, user)
 	}
 	if err != nil {
-		result.Outcome, result.Err = FailedOutcome(err), err
+		result.Outcome, result.Err = Failed, err
+		// Business lifecycle cancellation is independent of the source log result.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			result.Outcome = Canceled
+		}
 		result.QuietCancellation = requestCtx.Err() != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded))
 		return result
 	}
@@ -96,7 +104,11 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 	}
 	requestCtx, err = r.View.RefreshSession(requestCtx, in.Session)
 	if err != nil {
-		result.Outcome, result.Err = FailedOutcome(err), err
+		result.Outcome, result.Err = Failed, err
+		// Business lifecycle cancellation is independent of the source log result.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			result.Outcome = Canceled
+		}
 		return result
 	}
 	ctx = r.View.Context(ctx)
@@ -105,7 +117,11 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 		requestCtx, err = r.View.WithModel(requestCtx, result.Selection)
 	}
 	if err != nil {
-		result.Outcome, result.Err = FailedOutcome(err), err
+		result.Outcome, result.Err = Failed, err
+		// Business lifecycle cancellation is independent of the source log result.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			result.Outcome = Canceled
+		}
 		return result
 	}
 	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: in.Session.ID, Phase: runtimestatus.PhaseSending,
@@ -113,7 +129,11 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 		Kind: request.KindTurn, Label: "chat", TurnStartedAt: result.StartedAt, StageStartedAt: storage.Now()})
 	result.Committed, err = r.Replies.Commit(ctx, requestCtx, loop.Commit, out)
 	if err != nil {
-		result.Outcome, result.Err = FailedOutcome(err), err
+		result.Outcome, result.Err = Failed, err
+		// Business lifecycle cancellation is independent of the source log result.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			result.Outcome = Canceled
+		}
 	}
 	return result
 }

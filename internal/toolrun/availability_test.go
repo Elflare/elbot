@@ -26,8 +26,11 @@ func (foregroundOnlyTestTool) Info() tool.Info {
 func (foregroundOnlyTestTool) Schema() llm.ToolSchema {
 	return tool.NewBuilder("foreground_only").ForegroundOnly().BuildSchema()
 }
-func (foregroundOnlyTestTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
-	return &tool.Result{Content: "ok"}, nil
+func (foregroundOnlyTestTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+	{
+		result := &tool.Result{Content: "ok"}
+		return result, result.Content, nil
+	}
 }
 
 func TestForegroundOnlyToolHiddenInBackgroundSchemasAndNames(t *testing.T) {
@@ -162,7 +165,7 @@ func TestResolveDistinguishesMissingToolFromMissingRemoteConfiguration(t *testin
 			if resolved.ResultStatus != events.ResultFailed || resolved.Error == nil || errors.As(resolved.Error, &denied) {
 				t.Fatalf("resolution facts = %#v", resolved)
 			}
-			result := manager.Execute(t.Context(), llm.ToolCallRequest{Name: tc.name}, resolved, contextinfo.Actor{})
+			result := manager.Execute(t.Context(), llm.ToolCallRequest{Name: tc.name}, resolved, contextinfo.Actor{}, "", "")
 			if result.ResultStatus != resolved.ResultStatus || result.Error != resolved.Error || result.ExecutionStarted {
 				t.Fatalf("execution lost resolution facts: %#v", result)
 			}

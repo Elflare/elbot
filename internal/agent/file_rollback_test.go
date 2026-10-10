@@ -61,7 +61,7 @@ func editForRollback(t *testing.T, a *Agent, ctx context.Context, row *storage.S
 	call := llm.ToolCallRequest{ID: "edit", Name: "edit_file", Arguments: string(raw)}
 	ctx = testToolDeps(a).PrepareToolContext(ctx, row, call)
 	editor, _ := a.execution.dialogue.Preparer.Tools.Registry.Get("edit_file")
-	if _, err := editor.Call(ctx, tool.CallRequest{ID: call.ID, Arguments: raw}); err != nil {
+	if _, _, err := editor.Call(ctx, tool.CallRequest{ID: call.ID, Arguments: raw}); err != nil {
 		t.Fatal(err)
 	}
 }

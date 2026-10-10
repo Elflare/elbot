@@ -240,7 +240,7 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 	if !ok {
 		return actionResult{Error: "tool not found"}, fmt.Errorf("tool %q not found", name)
 	}
-	toolResult, err := registered.Call(ctx, tool.CallRequest{ID: call.ID, Name: name, Arguments: json.RawMessage(arguments)})
+	toolResult, _, err := registered.Call(ctx, tool.CallRequest{ID: call.ID, Name: name, Arguments: json.RawMessage(arguments)})
 
 	record := globalevents.LogRecord{
 		Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: "hook_tool_call",
@@ -249,6 +249,13 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 	content := map[string]any{
 		"source": "rules", "tool": name, "point": string(event.Point),
 		"arguments": fmt.Sprintf("%.2048s", arguments),
+	}
+	// Audit identity describes the execution that triggered this Hook, not the
+	// Session owner or the permission principal used to authorize the action.
+	if event.Session.ID != "" && event.Actor.ID != "" {
+		content["actor_id"] = event.Actor.ID
+	} else if actor, ok := contextinfo.ActorFromContext(ctx); ok && actor.ID != "" {
+		content["actor_id"] = actor.ID
 	}
 	if toolResult != nil {
 		content["result"] = fmt.Sprintf("%.2048s", llm.SegmentsContentText(toolResult.LLMSegments()))

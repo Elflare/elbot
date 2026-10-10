@@ -3,6 +3,7 @@ package cron
 import (
 	"bytes"
 	"context"
+	globalevents "elbot/internal/events"
 	"errors"
 	"strings"
 	"testing"
@@ -25,12 +26,12 @@ func TestManagerCancellationAndRepeatedStopWaitForHandlerExit(t *testing.T) {
 	var logs bytes.Buffer
 	manager := NewManager(repo)
 	started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	if err := manager.RegisterHandler("wait", func(ctx context.Context, _ storage.CronJob) error {
+	if err := manager.RegisterHandler("wait", func(ctx context.Context, _ storage.CronJob) (globalevents.ResultStatus, string, error) {
 		close(started)
 		<-ctx.Done()
 		close(canceled)
 		<-release
-		return ctx.Err()
+		return globalevents.ResultCanceled, ctx.Err().Error(), ctx.Err()
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +61,7 @@ func TestManagerCancellationAndRepeatedStopWaitForHandlerExit(t *testing.T) {
 	awaitCronDone(t, first.Done())
 	awaitCronDone(t, second.Done())
 	state := repo.jobs[job.Name]
-	if state.RunCount != 1 || state.LastError != "" || state.NextRunAt != nil {
+	if state.RunCount != 1 || state.NextRunAt != nil {
 		t.Fatalf("canceled state=%+v", state)
 	}
 	if strings.Contains(logs.String(), "job failed") {
@@ -99,7 +100,10 @@ func TestManagerStopWaitsForStartupAndPreventsLateScheduling(t *testing.T) {
 		<-release
 		return []storage.CronJob{{Name: "late", Handler: "late", Enabled: true, Schedule: "@every 1s"}}, nil
 	}})
-	if err := manager.RegisterHandler("late", func(context.Context, storage.CronJob) error { t.Error("late handler ran"); return nil }); err != nil {
+	if err := manager.RegisterHandler("late", func(context.Context, storage.CronJob) (globalevents.ResultStatus, string, error) {
+		t.Error("late handler ran")
+		return globalevents.ResultSucceeded, "finished", nil
+	}); err != nil {
 		t.Fatal(err)
 	}
 	startErr := make(chan error, 1)
@@ -155,7 +159,9 @@ func TestManagerStopWaitsForRunBookkeeping(t *testing.T) {
 		<-release
 		return base.UpdateRunState(ctx, id, state)
 	}})
-	if err := manager.RegisterHandler("test", func(context.Context, storage.CronJob) error { return nil }); err != nil {
+	if err := manager.RegisterHandler("test", func(context.Context, storage.CronJob) (globalevents.ResultStatus, string, error) {
+		return globalevents.ResultSucceeded, "finished", nil
+	}); err != nil {
 		t.Fatal(err)
 	}
 	job, err := manager.UpsertJob(context.Background(), UpsertJobRequest{Name: "test", Handler: "test", Schedule: "0 0 1 1 *", Enabled: true})

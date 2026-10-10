@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"elbot/internal/agent/dialogue"
@@ -100,7 +101,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		if len(result.ToolCalls) == 0 {
 			deferredOutputs = append(deferredOutputs, laterOutputs...)
 		}
-		if err := s.output.SendOutputs(s.ctx, immediateOutputs); err != nil {
+		if _, err := s.output.SendOutputs(s.ctx, immediateOutputs); err != nil {
 			return failedLoop(err)
 		}
 		if len(result.ToolCalls) == 0 {
@@ -113,7 +114,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		if err := s.output.FinishIntermediate(s.ctx, s.requestCtx, result.Stream, assistantText, streaming); err != nil {
 			return failedLoop(err)
 		}
-		if err := s.output.SendOutputs(s.ctx, laterOutputs); err != nil {
+		if _, err := s.output.SendOutputs(s.ctx, laterOutputs); err != nil {
 			return failedLoop(err)
 		}
 		if !inToolPhase {
@@ -154,7 +155,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			}
 			immediateOutputs, laterOutputs := delivery.SplitByDeliveryTiming(summary.Outputs)
 			deferredOutputs = append(deferredOutputs, laterOutputs...)
-			if err := s.output.SendOutputs(s.ctx, immediateOutputs); err != nil {
+			if _, err := s.output.SendOutputs(s.ctx, immediateOutputs); err != nil {
 				return failedLoop(err)
 			}
 			summaryText := summary.Text
@@ -206,5 +207,9 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 }
 
 func failedLoop(err error) dialogue.LoopResult {
-	return dialogue.LoopResult{Outcome: dialogue.FailedOutcome(err), Err: err}
+	result := dialogue.LoopResult{Outcome: dialogue.Failed, Err: err}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		result.Outcome = dialogue.Canceled
+	}
+	return result
 }
