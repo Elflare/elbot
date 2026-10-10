@@ -64,7 +64,7 @@ func (t CommandTool) ActivateTools() []string {
 	return []string{AgentSkillManagerName, t.Record.Name}
 }
 
-func (t CommandTool) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, callErr error) {
+func (t CommandTool) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, logContent string, callErr error) {
 	timeout := defaultRunnerTimeout
 	if t.Manifest.TimeoutSeconds > 0 {
 		timeout = time.Duration(t.Manifest.TimeoutSeconds) * time.Second
@@ -72,20 +72,42 @@ func (t CommandTool) Call(ctx context.Context, req tool.CallRequest) (result *to
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	mediaCall := t.Media.NewCall()
-	defer func() { callErr = errors.Join(callErr, mediaCall.Close()) }()
+	defer func() {
+		err := mediaCall.Close()
+		callErr = errors.Join(callErr, err)
+		if err != nil {
+			if logContent != "" {
+				logContent += "\n"
+			}
+			logContent += fmt.Sprintf("media_cleanup_error=%v", err)
+		}
+	}()
 	raw, err := prepareCommandMedia(runCtx, req.Arguments, t.Manifest, mediaCall, t.Record.Root)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	args, err := commandArguments(t.Manifest, raw)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	command := append([]string(nil), t.Manifest.Command...)
 	command = append(command, args...)
 	cmd := exec.CommandContext(runCtx, command[0], command[1:]...)
 	cmd.Dir = t.Record.Root
-	return runMediaCommand(runCtx, "AgentSkill command", cmd, mediaCall)
+	{
+		result, callErr := runMediaCommand(runCtx, "AgentSkill command", cmd, mediaCall)
+		logContent := ""
+		if result != nil {
+			logContent = result.Content
+		}
+		if callErr != nil {
+			if logContent != "" {
+				logContent += "\n"
+			}
+			logContent += callErr.Error()
+		}
+		return result, logContent, callErr
+	}
 }
 
 func commandArguments(manifest AgentSkillManifest, raw json.RawMessage) ([]string, error) {

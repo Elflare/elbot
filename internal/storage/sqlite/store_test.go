@@ -366,7 +366,6 @@ func TestCronJobRepositoryUpsertAndRunState(t *testing.T) {
 		LastRunAt: lastRun,
 		NextRunAt: &nextRun,
 		RunCount:  1,
-		LastError: "boom",
 		Enabled:   true,
 		UpdatedAt: lastRun,
 	}); err != nil {
@@ -376,7 +375,7 @@ func TestCronJobRepositoryUpsertAndRunState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get cron job: %v", err)
 	}
-	if got.RunCount != 1 || got.LastError != "boom" || got.LastRunAt == nil || got.NextRunAt == nil {
+	if got.RunCount != 1 || got.LastRunAt == nil || got.NextRunAt == nil {
 		t.Fatalf("got = %#v", got)
 	}
 

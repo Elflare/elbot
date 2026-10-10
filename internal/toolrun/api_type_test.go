@@ -23,11 +23,14 @@ func (t availabilityTestTool) Info() tool.Info {
 	return tool.NewBuilder(t.name).APITypes(t.types...).Tags("pictures").BuildInfo()
 }
 func (t availabilityTestTool) Schema() llm.ToolSchema { return tool.NewBuilder(t.name).BuildSchema() }
-func (t availabilityTestTool) Call(context.Context, tool.CallRequest) (*tool.Result, error) {
+func (t availabilityTestTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
 	if t.calls != nil {
 		*t.calls++
 	}
-	return &tool.Result{Content: "image"}, nil
+	{
+		result := &tool.Result{Content: "image"}
+		return result, result.Content, nil
+	}
 }
 
 func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {

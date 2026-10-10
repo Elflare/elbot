@@ -89,8 +89,8 @@ func (d *runnerTestDeps) CompleteToolCall(ctx context.Context, session *storage.
 
 func (d *runnerTestDeps) SendPreview(ctx context.Context, text string) {}
 
-func (d *runnerTestDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
-	return nil
+func (d *runnerTestDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+	return delivery.Receipt{}, nil
 }
 
 func (d *runnerTestDeps) RecordToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk string, startedAt time.Time, result string, callErr error) error {
@@ -133,8 +133,11 @@ func (runnerPreflightTool) PreflightConfirmation(ctx context.Context, req tool.C
 	return fmt.Errorf("preflight rejected")
 }
 
-func (runnerPreflightTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
-	return &tool.Result{Content: "should not call"}, nil
+func (runnerPreflightTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+	{
+		result := &tool.Result{Content: "should not call"}
+		return result, result.Content, nil
+	}
 }
 
 type runnerShellPreflightTool struct{}
@@ -157,8 +160,11 @@ func (runnerShellPreflightTool) PreflightConfirmation(ctx context.Context, req t
 	return fmt.Errorf("protected file must use dedicated tool")
 }
 
-func (runnerShellPreflightTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
-	return &tool.Result{Content: "should not call"}, nil
+func (runnerShellPreflightTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+	{
+		result := &tool.Result{Content: "should not call"}
+		return result, result.Content, nil
+	}
 }
 
 type runnerContextPreflightTool struct{}
@@ -180,11 +186,17 @@ func (runnerContextPreflightTool) PreflightConfirmation(ctx context.Context, req
 	return nil
 }
 
-func (runnerContextPreflightTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (runnerContextPreflightTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	if ctx.Value(runnerContextKey{}) != "prepared" {
-		return nil, fmt.Errorf("missing prepared context during call")
+		{
+			callErr := fmt.Errorf("missing prepared context during call")
+			return nil, callErr.Error(), callErr
+		}
 	}
-	return &tool.Result{Content: "called"}, nil
+	{
+		result := &tool.Result{Content: "called"}
+		return result, result.Content, nil
+	}
 }
 
 type runnerRiskErrorTool struct{}
@@ -203,8 +215,11 @@ func (runnerRiskErrorTool) AssessRisk(ctx context.Context, req tool.CallRequest)
 	return tool.RiskAssessment{}, fmt.Errorf("risk parser failed")
 }
 
-func (runnerRiskErrorTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
-	return &tool.Result{Content: "called"}, nil
+func (runnerRiskErrorTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+	{
+		result := &tool.Result{Content: "called"}
+		return result, result.Content, nil
+	}
 }
 
 type runnerImageTool struct{}
@@ -219,11 +234,14 @@ func (runnerImageTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "image_tool", Parameters: map[string]any{"type": "object"}}
 }
 
-func (runnerImageTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
-	return &tool.Result{Segments: []llm.MessageSegment{
-		{Type: llm.SegmentText, Text: "done"},
-		{Type: llm.SegmentImage, URL: "https://example.com/a.png"},
-	}}, nil
+func (runnerImageTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+	{
+		result := &tool.Result{Segments: []llm.MessageSegment{
+			{Type: llm.SegmentText, Text: "done"},
+			{Type: llm.SegmentImage, URL: "https://example.com/a.png"},
+		}}
+		return result, result.Content, nil
+	}
 }
 
 type runnerHighRiskTool struct {
@@ -241,8 +259,11 @@ func (t runnerHighRiskTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: t.name, Parameters: map[string]any{"type": "object"}}
 }
 
-func (runnerHighRiskTool) Call(context.Context, tool.CallRequest) (*tool.Result, error) {
-	return &tool.Result{Content: "called"}, nil
+func (runnerHighRiskTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
+	{
+		result := &tool.Result{Content: "called"}
+		return result, result.Content, nil
+	}
 }
 
 func TestRunConfirmsOnlyAuthorizedHighRiskToolsForRegularUsers(t *testing.T) {

@@ -405,8 +405,11 @@ func (t agentDetailTool) Info() tool.Info {
 
 func (t agentDetailTool) Schema() llm.ToolSchema { return llm.ToolSchema{} }
 
-func (t agentDetailTool) Call(context.Context, tool.CallRequest) (*tool.Result, error) {
-	return &tool.Result{Content: t.detail}, nil
+func (t agentDetailTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
+	{
+		result := &tool.Result{Content: t.detail}
+		return result, result.Content, nil
+	}
 }
 
 func (t agentDetailTool) Detail() string {
@@ -447,8 +450,11 @@ func (t agentWrapperTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: t.name, Parameters: map[string]any{"type": "object"}}
 }
 
-func (t agentWrapperTool) Call(context.Context, tool.CallRequest) (*tool.Result, error) {
-	return &tool.Result{Content: "ok"}, nil
+func (t agentWrapperTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
+	{
+		result := &tool.Result{Content: "ok"}
+		return result, result.Content, nil
+	}
 }
 
 func hasStoredUserMessage(messages []storage.Message, content string) bool {
@@ -476,8 +482,11 @@ func (agentShellTool) AssessRisk(ctx context.Context, req tool.CallRequest) (too
 	return builtin.NewShellTool().AssessRisk(ctx, req)
 }
 
-func (agentShellTool) Call(context.Context, tool.CallRequest) (*tool.Result, error) {
-	return &tool.Result{Content: "agent test shell stdout"}, nil
+func (agentShellTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
+	{
+		result := &tool.Result{Content: "agent test shell stdout"}
+		return result, result.Content, nil
+	}
 }
 
 func newAgentShellTool() tool.Tool { return agentShellTool{} }
@@ -497,13 +506,19 @@ func (t slowTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "slow", Parameters: map[string]any{"type": "object"}}
 }
 
-func (t slowTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t slowTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	close(t.started)
 	select {
 	case <-t.release:
-		return &tool.Result{Content: "slow result"}, nil
+		{
+			result := &tool.Result{Content: "slow result"}
+			return result, result.Content, nil
+		}
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		{
+			callErr := ctx.Err()
+			return nil, callErr.Error(), callErr
+		}
 	}
 }
 

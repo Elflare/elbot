@@ -77,11 +77,14 @@ func (t ResidentMemoryTool) Info() tool.Info {
 func (t ResidentMemoryTool) Schema() llm.ToolSchema {
 	return tool.NewBuilder(t.Name()).Description(t.Info().Description).BuildSchema()
 }
-func (t ResidentMemoryTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t ResidentMemoryTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	if err := validateMemoryStore(t.Store); err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
-	return &tool.Result{Content: "resident_memory 是常驻记忆管理入口。请调用 resident_memory_read、resident_memory_normal 或 resident_memory_core。"}, nil
+	{
+		result := &tool.Result{Content: "resident_memory 是常驻记忆管理入口。请调用 resident_memory_read、resident_memory_normal 或 resident_memory_core。"}
+		return result, result.Content, nil
+	}
 }
 
 func (t ResidentMemoryReadTool) Name() string { return ResidentMemoryReadToolName }
@@ -93,27 +96,30 @@ func (t ResidentMemoryReadTool) Schema() llm.ToolSchema {
 		String("section", "读取范围：all、core 或 normal。默认 all。").
 		BuildSchema()
 }
-func (t ResidentMemoryReadTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t ResidentMemoryReadTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	scope, err := memoryScope(ctx, t.Store)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	var args memoryReadArgs
 	if err := decodeMemoryArgs(req.Arguments, &args); err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	section := strings.ToLower(strings.TrimSpace(args.Section))
 	if section == "" {
 		section = "all"
 	}
 	if section != "all" && section != "core" && section != "normal" {
-		return nil, fmt.Errorf("section must be all, core or normal")
+		{
+			callErr := fmt.Errorf("section must be all, core or normal")
+			return nil, callErr.Error(), callErr
+		}
 	}
 	memory, err := t.Store.Read(ctx, scope)
 	if errors.Is(err, resident.ErrNotFound) {
 		memory = resident.Memory{}
 	} else if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	result := memoryReadResult{Limits: t.Store.LimitsOrDefault(), Status: "ok"}
 	if section == "all" || section == "core" {
@@ -122,7 +128,20 @@ func (t ResidentMemoryReadTool) Call(ctx context.Context, req tool.CallRequest) 
 	if section == "all" || section == "normal" {
 		result.Normal = memory.Normal
 	}
-	return memoryJSONResult(result)
+	{
+		result, callErr := memoryJSONResult(result)
+		logContent := ""
+		if result != nil {
+			logContent = result.Content
+		}
+		if callErr != nil {
+			if logContent != "" {
+				logContent += "\n"
+			}
+			logContent += callErr.Error()
+		}
+		return result, logContent, callErr
+	}
 }
 
 func (t ResidentMemoryNormalTool) Name() string { return ResidentMemoryNormalToolName }
@@ -135,39 +154,57 @@ func (t ResidentMemoryNormalTool) Schema() llm.ToolSchema {
 		String("content", "append/write 时使用。write 会覆盖完整 normal，使用前必须先调用 resident_memory_read 读取 normal 或 all。delete 不需要 content。").
 		BuildSchema()
 }
-func (t ResidentMemoryNormalTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t ResidentMemoryNormalTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	scope, err := memoryScope(ctx, t.Store)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	var args memoryNormalArgs
 	if err := decodeMemoryArgs(req.Arguments, &args); err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	switch strings.ToLower(strings.TrimSpace(args.Action)) {
 	case "append", "add":
 		if args.Content == nil || strings.TrimSpace(*args.Content) == "" {
-			return nil, fmt.Errorf("normal content is required")
+			{
+				callErr := fmt.Errorf("normal content is required")
+				return nil, callErr.Error(), callErr
+			}
 		}
 		if err := t.Store.AppendNormal(ctx, scope, *args.Content); err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
-		return &tool.Result{Content: "已追加普通常驻记忆。"}, nil
+		{
+			result := &tool.Result{Content: "已追加普通常驻记忆。"}
+			return result, result.Content, nil
+		}
 	case "write", "set", "update":
 		if args.Content == nil {
-			return nil, fmt.Errorf("normal content is required")
+			{
+				callErr := fmt.Errorf("normal content is required")
+				return nil, callErr.Error(), callErr
+			}
 		}
 		if err := t.Store.WriteNormal(ctx, scope, *args.Content); err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
-		return &tool.Result{Content: "已更新普通常驻记忆。"}, nil
+		{
+			result := &tool.Result{Content: "已更新普通常驻记忆。"}
+			return result, result.Content, nil
+		}
 	case "delete", "clear":
 		if err := t.Store.DeleteNormal(ctx, scope); err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
-		return &tool.Result{Content: "已清空普通常驻记忆。"}, nil
+		{
+			result := &tool.Result{Content: "已清空普通常驻记忆。"}
+			return result, result.Content, nil
+		}
 	default:
-		return nil, fmt.Errorf("action must be append, write or delete")
+		{
+			callErr := fmt.Errorf("action must be append, write or delete")
+			return nil, callErr.Error(), callErr
+		}
 	}
 }
 
@@ -180,22 +217,28 @@ func (t ResidentMemoryCoreTool) Schema() llm.ToolSchema {
 		String("content", "完整 core 内容。允许空字符串，表示清空 core。", tool.Required()).
 		BuildSchema()
 }
-func (t ResidentMemoryCoreTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t ResidentMemoryCoreTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	scope, err := memoryScope(ctx, t.Store)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	var args memoryCoreArgs
 	if err := decodeMemoryArgs(req.Arguments, &args); err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	if args.Content == nil {
-		return nil, fmt.Errorf("core content is required")
+		{
+			callErr := fmt.Errorf("core content is required")
+			return nil, callErr.Error(), callErr
+		}
 	}
 	if err := t.Store.WriteCore(ctx, scope, *args.Content); err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
-	return &tool.Result{Content: "已更新核心常驻记忆。"}, nil
+	{
+		result := &tool.Result{Content: "已更新核心常驻记忆。"}
+		return result, result.Content, nil
+	}
 }
 
 func memoryBuilder(name, description string, risk tool.RiskLevel) *tool.Builder {

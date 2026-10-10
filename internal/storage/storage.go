@@ -102,7 +102,6 @@ type CronJob struct {
 	LastRunAt     *time.Time
 	NextRunAt     *time.Time
 	RunCount      int
-	LastError     string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 }
@@ -230,7 +229,6 @@ type CronJobRunState struct {
 	LastRunAt time.Time
 	NextRunAt *time.Time
 	RunCount  int
-	LastError string
 	Enabled   bool
 	UpdatedAt time.Time
 }

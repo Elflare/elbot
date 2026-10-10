@@ -37,8 +37,11 @@ func (t fakeTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: t.name, Description: t.Info().Description, Parameters: map[string]any{"type": "object"}}
 }
 
-func (t fakeTool) Call(context.Context, CallRequest) (*Result, error) {
-	return &Result{Content: "ok"}, nil
+func (t fakeTool) Call(context.Context, CallRequest) (*Result, string, error) {
+	{
+		result := &Result{Content: "ok"}
+		return result, result.Content, nil
+	}
 }
 
 func TestRegistryRegisterListDiscover(t *testing.T) {
@@ -207,7 +210,7 @@ func TestDiscoverToolDoesNotExposeRisk(t *testing.T) {
 	}
 
 	args, _ := json.Marshal(map[string]string{"name": "shell"})
-	result, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
+	result, _, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +228,7 @@ func TestDiscoverToolSkillDetailReturnsReadableContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]string{"name": "zrlong"})
-	result, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
+	result, _, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +253,7 @@ func TestDiscoverToolSupportsBatchAndDependencies(t *testing.T) {
 	}
 
 	args, _ := json.Marshal(map[string][]string{"names": []string{"main", "second"}})
-	result, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
+	result, _, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +277,7 @@ func TestDiscoverToolSchemaJSONUsesBusinessFieldNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]string{"name": "shell"})
-	result, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
+	result, _, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +296,7 @@ func TestDiscoverToolHidesHiddenToolsFromList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{})
+	result, _, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +311,7 @@ func TestDiscoverToolSkillDetailDoesNotReturnSchemaAndActivatesWrapper(t *testin
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]string{"name": "docx"})
-	result, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
+	result, _, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,7 +340,7 @@ func TestDiscoverToolDeduplicatesStructuredRuleCards(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string][]string{"names": []string{"alpha", "beta"}})
-	result, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
+	result, _, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -355,7 +358,7 @@ func TestDiscoverToolCannotQueryHiddenRootTool(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]string{"name": "hidden"})
-	if _, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args}); err == nil {
+	if _, _, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args}); err == nil {
 		t.Fatal("expected hidden tool discover error")
 	}
 }
@@ -369,7 +372,7 @@ func TestDiscoverToolHidesSuperadminOnlyToolsFromNormalUser(t *testing.T) {
 	policy := security.NewPolicy("medium", "high", map[string][]string{"cli": {"local"}})
 	actor := contextinfo.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: contextinfo.RoleUser}
 	ctx := security.WithPolicy(contextinfo.WithActor(context.Background(), actor), policy)
-	result, err := NewDiscoverTool(registry).Call(ctx, CallRequest{})
+	result, _, err := NewDiscoverTool(registry).Call(ctx, CallRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,7 +381,7 @@ func TestDiscoverToolHidesSuperadminOnlyToolsFromNormalUser(t *testing.T) {
 	}
 
 	args, _ := json.Marshal(map[string]string{"name": "cron"})
-	if _, err := NewDiscoverTool(registry).Call(ctx, CallRequest{Arguments: args}); err == nil {
+	if _, _, err := NewDiscoverTool(registry).Call(ctx, CallRequest{Arguments: args}); err == nil {
 		t.Fatal("expected normal user detail query to be denied")
 	}
 }
@@ -392,7 +395,7 @@ func TestDiscoverToolShowsSuperadminOnlyToolsToSuperadmin(t *testing.T) {
 	actor := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
 	ctx := security.WithPolicy(contextinfo.WithActor(context.Background(), actor), policy)
 
-	result, err := NewDiscoverTool(registry).Call(ctx, CallRequest{})
+	result, _, err := NewDiscoverTool(registry).Call(ctx, CallRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -415,8 +418,11 @@ func (t fakeDetailTool) Info() Info {
 	return Info{Name: t.name, Description: "fake " + t.name, Source: t.source, Risk: RiskLow}
 }
 func (t fakeDetailTool) Schema() llm.ToolSchema { return llm.ToolSchema{} }
-func (t fakeDetailTool) Call(context.Context, CallRequest) (*Result, error) {
-	return &Result{Content: t.detail}, nil
+func (t fakeDetailTool) Call(context.Context, CallRequest) (*Result, string, error) {
+	{
+		result := &Result{Content: t.detail}
+		return result, result.Content, nil
+	}
 }
 func (t fakeDetailTool) Detail() string { return RenderDetailBlocks([]DetailBlock{t.DetailBlock()}) }
 func (t fakeDetailTool) DetailBlock() DetailBlock {
@@ -444,7 +450,7 @@ func TestDiscoverToolDiscoveryContentAppend(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]string{"name": "cron"})
-	result, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
+	result, _, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -466,7 +472,7 @@ func TestDiscoverToolDiscoveryContentOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]string{"name": "special"})
-	result, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
+	result, _, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -498,7 +504,7 @@ func TestDiscoverToolDiscoveryContentMixed(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string][]string{"names": []string{"append_tool", "override_tool", "plain_tool"}})
-	result, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
+	result, _, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}

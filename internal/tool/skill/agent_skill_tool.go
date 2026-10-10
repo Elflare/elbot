@@ -72,18 +72,27 @@ func (t AgentSkillTool) RiskDetail(ctx context.Context, req tool.CallRequest) (s
 	return fmt.Sprintf("写入 AgentSkill %s 的 %s\n文件：%s", preview.Name, AgentSkillConfigFile, preview.Path), nil
 }
 
-func (t AgentSkillTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t AgentSkillTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	preview, err := t.preview(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	if preview.Action == "read" {
-		return &tool.Result{Content: preview.ReadContent}, nil
+		{
+			result := &tool.Result{Content: preview.ReadContent}
+			return result, result.Content, nil
+		}
 	}
 	if err := t.Manager.WriteAgentSkillConfig(ctx, preview.Name, preview.Toml); err != nil {
-		return nil, fmt.Errorf("write %s for AgentSkill %s: %w", AgentSkillConfigFile, preview.Name, err)
+		{
+			callErr := fmt.Errorf("write %s for AgentSkill %s: %w", AgentSkillConfigFile, preview.Name, err)
+			return nil, callErr.Error(), callErr
+		}
 	}
-	return &tool.Result{Content: fmt.Sprintf("wrote %s for AgentSkill %s and reloaded skills", AgentSkillConfigFile, preview.Name)}, nil
+	{
+		result := &tool.Result{Content: fmt.Sprintf("wrote %s for AgentSkill %s and reloaded skills", AgentSkillConfigFile, preview.Name)}
+		return result, result.Content, nil
+	}
 }
 
 type agentSkillPreview struct {

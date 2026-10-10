@@ -83,8 +83,19 @@ func TestRecoveryCancellationDoesNotSendFailureNotice(t *testing.T) {
 	if strings.Contains(logs.String(), "level=WARN") || strings.Contains(logs.String(), "level=ERROR") {
 		t.Fatalf("cancel logged as failure: %s", logs.String())
 	}
-	if isContextCancellation(ctx, fmt.Errorf("mixed: %w", errors.Join(context.Canceled, errors.New("real failure")))) {
-		t.Fatal("mixed error swallowed")
+}
+
+func TestDeliveryKeepsMixedFailureBeforeErrorWrapping(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	failure := errors.New("real failure")
+	s := NewService(Options{SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+		cancel()
+		return delivery.Receipt{}, fmt.Errorf("mixed: %w", errors.Join(context.Canceled, failure))
+	}})
+	status, err := s.sendOutputsToPlatformTarget(ctx, "mixed", "cli", delivery.Target{Platform: "cli"}, []delivery.Output{delivery.Text("report")}, "", "")
+	if status != globalevents.ResultFailed || !errors.Is(err, failure) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("status=%s error=%v", status, err)
 	}
 }
 

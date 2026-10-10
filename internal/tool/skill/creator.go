@@ -66,63 +66,93 @@ func (CreateElSkillTool) Schema() llm.ToolSchema {
 		BuildSchema()
 }
 
-func (t CreateElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t CreateElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	var args createElSkillArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			return nil, fmt.Errorf("parse create_el_skill arguments: %w", err)
+			{
+				callErr := fmt.Errorf("parse create_el_skill arguments: %w", err)
+				return nil, callErr.Error(), callErr
+			}
 		}
 	}
 	if t.Manager == nil || t.Manager.Registry == nil {
-		return nil, fmt.Errorf("skill manager is not configured")
+		{
+			callErr := fmt.Errorf("skill manager is not configured")
+			return nil, callErr.Error(), callErr
+		}
 	}
 	name := strings.TrimSpace(args.Name)
 	if err := validateSkillName(name); err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	if args.Description = strings.TrimSpace(args.Description); args.Description == "" {
-		return nil, fmt.Errorf("description is required")
+		{
+			callErr := fmt.Errorf("description is required")
+			return nil, callErr.Error(), callErr
+		}
 	}
 	if _, err := parseRisk(args.Risk); err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	goVersion := ""
 	if strings.TrimSpace(args.GoSource) != "" {
 		if err := validateGoSource(args.GoSource); err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
 		var err error
 		goVersion, err = detectGoModVersion(ctx, t.Manager.ProcessEnv)
 		if err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
 	}
 	_, diagnostics, err := elyph.ValidateSkill(args.Elyph, name)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	args.Elyph = withElyphMetadata(args.Elyph, args.Description, args.Risk)
 	if _, exists := t.Manager.Registry.Get(name); exists {
-		return nil, fmt.Errorf("tool or skill %q already exists", name)
+		{
+			callErr := fmt.Errorf("tool or skill %q already exists", name)
+			return nil, callErr.Error(), callErr
+		}
 	}
 	root := filepath.Join(t.Manager.Root, "go", name)
 	if _, err := os.Stat(root); err == nil {
-		return nil, fmt.Errorf("skill directory %q already exists", root)
+		{
+			callErr := fmt.Errorf("skill directory %q already exists", root)
+			return nil, callErr.Error(), callErr
+		}
 	} else if err != nil && !os.IsNotExist(err) {
-		return nil, fmt.Errorf("stat skill directory: %w", err)
+		{
+			callErr := fmt.Errorf("stat skill directory: %w", err)
+			return nil, callErr.Error(), callErr
+		}
 	}
 	if err := os.MkdirAll(root, 0o755); err != nil {
-		return nil, fmt.Errorf("create skill directory: %w", err)
+		{
+			callErr := fmt.Errorf("create skill directory: %w", err)
+			return nil, callErr.Error(), callErr
+		}
 	}
 	if err := os.WriteFile(filepath.Join(root, elyph.SkillFileName), []byte(args.Elyph), 0o644); err != nil {
-		return nil, fmt.Errorf("write %s: %w", elyph.SkillFileName, err)
+		{
+			callErr := fmt.Errorf("write %s: %w", elyph.SkillFileName, err)
+			return nil, callErr.Error(), callErr
+		}
 	}
 	if strings.TrimSpace(args.GoSource) != "" {
 		if err := os.WriteFile(filepath.Join(root, "main.go"), []byte(args.GoSource), 0o644); err != nil {
-			return nil, fmt.Errorf("write main.go: %w", err)
+			{
+				callErr := fmt.Errorf("write main.go: %w", err)
+				return nil, callErr.Error(), callErr
+			}
 		}
 		if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte(goModContent(name, goVersion)), 0o644); err != nil {
-			return nil, fmt.Errorf("write go.mod: %w", err)
+			{
+				callErr := fmt.Errorf("write go.mod: %w", err)
+				return nil, callErr.Error(), callErr
+			}
 		}
 		binary := name
 		if runtime.GOOS == "windows" {
@@ -141,13 +171,22 @@ func (t CreateElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*too
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
-			return nil, fmt.Errorf("go build failed: %w\nstdout:\n%s\nstderr:\n%s", err, truncateOutput(stdout.String()), truncateOutput(stderr.String()))
+			{
+				callErr := fmt.Errorf("go build failed: %w\nstdout:\n%s\nstderr:\n%s", err, truncateOutput(stdout.String()), truncateOutput(stderr.String()))
+				return nil, callErr.Error(), callErr
+			}
 		}
 	}
 	if err := t.Manager.Reload(ctx); err != nil {
-		return nil, fmt.Errorf("ELyph skill written but reload failed: %w", err)
+		{
+			callErr := fmt.Errorf("ELyph skill written but reload failed: %w", err)
+			return nil, callErr.Error(), callErr
+		}
 	}
-	return &tool.Result{Content: appendElyphWarnings(fmt.Sprintf("created ELyph skill %s", name), diagnostics)}, nil
+	{
+		result := &tool.Result{Content: appendElyphWarnings(fmt.Sprintf("created ELyph skill %s", name), diagnostics)}
+		return result, result.Content, nil
+	}
 }
 
 func detectGoModVersion(ctx context.Context, environments ...processenv.Environment) (string, error) {

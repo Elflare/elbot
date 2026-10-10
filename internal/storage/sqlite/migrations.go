@@ -578,6 +578,11 @@ CREATE INDEX idx_context_summaries_to_message
 ON context_summaries(to_message_id);
 `,
 	},
+	{
+		version: 22,
+		name:    "remove_cron_last_error",
+		sql:     `ALTER TABLE cron_jobs DROP COLUMN last_error;`,
+	},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {

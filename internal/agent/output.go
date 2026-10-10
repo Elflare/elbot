@@ -25,9 +25,41 @@ type outputSender struct {
 	identity      *identityResolver
 }
 
-func (o *outputSender) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
-	_, err := o.dispatcher.SendNotice(ctx, delivery.Notice{Outputs: outputs})
-	return err
+func (o *outputSender) SendOutputs(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+	receipt, err := o.dispatcher.SendNotice(ctx, delivery.Notice{Outputs: outputs})
+	if len(outputs) > 0 || err != nil {
+		// This source records only the send operation, never the overall tool result.
+		record := globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, EventName: "reply_delivered", Module: "agent", Type: globalevents.ContentText, ContentLimit: 4096, ResultStatus: globalevents.ResultSucceeded}
+		record.Content = fmt.Sprintf("operation=send_outputs\nplatform_message_ids=%v", receipt.PlatformMessageIDs)
+		for _, sent := range receipt.SentMessages {
+			record.Content += fmt.Sprintf("\nsent_message: platform=%s scope_id=%s platform_message_id=%s output_indexes=%v", sent.Platform, sent.ScopeID, sent.PlatformMessageID, sent.OutputIndexes)
+		}
+		if err != nil {
+			record.Content += fmt.Sprintf("\nerror=%v", err)
+			record.ResultStatus, record.Level = globalevents.ResultFailed, slog.LevelError
+			if err == context.Canceled {
+				record.ResultStatus, record.Level = globalevents.ResultCanceled, slog.LevelInfo
+			}
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+	}
+	return receipt, err
 }
 func (o *outputSender) SendChat(ctx context.Context, text string) {
 	_, _ = o.SendAssistant(ctx, text)

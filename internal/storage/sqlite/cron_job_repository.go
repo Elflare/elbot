@@ -78,7 +78,7 @@ func optionalTimeEqual(a, b *time.Time) bool {
 func (r *CronJobRepository) GetByName(ctx context.Context, name string) (*storage.CronJob, error) {
 	row := r.db.QueryRowContext(ctx, `
 SELECT id, name, handler, schedule, enabled, metadata, last_run_at, next_run_at,
-       run_count, last_error, created_at, updated_at, delivery_state, delivery_token
+       run_count, created_at, updated_at, delivery_state, delivery_token
 FROM cron_jobs
 WHERE name = ?`, name)
 	job, err := scanCronJob(row)
@@ -94,7 +94,7 @@ WHERE name = ?`, name)
 func (r *CronJobRepository) List(ctx context.Context, includeDisabled bool) ([]storage.CronJob, error) {
 	query := `
 SELECT id, name, handler, schedule, enabled, metadata, last_run_at, next_run_at,
-       run_count, last_error, created_at, updated_at, delivery_state, delivery_token
+       run_count, created_at, updated_at, delivery_state, delivery_token
 FROM cron_jobs`
 	args := []any{}
 	if !includeDisabled {
@@ -148,12 +148,11 @@ WHERE id = ?`,
 func (r *CronJobRepository) UpdateRunState(ctx context.Context, id string, state storage.CronJobRunState) error {
 	res, err := r.db.ExecContext(ctx, `
 UPDATE cron_jobs
-SET last_run_at = ?, next_run_at = ?, run_count = ?, last_error = ?, enabled = ?, updated_at = ?
+SET last_run_at = ?, next_run_at = ?, run_count = ?, enabled = ?, updated_at = ?
 WHERE id = ?`,
 		storage.FormatTime(state.LastRunAt),
 		nullTime(state.NextRunAt),
 		state.RunCount,
-		nullString(state.LastError),
 		boolInt(state.Enabled),
 		storage.FormatTime(state.UpdatedAt),
 		id,
@@ -233,8 +232,8 @@ func (r *CronJobRepository) create(ctx context.Context, job *storage.CronJob) er
 	_, err := r.db.ExecContext(ctx, `
 INSERT INTO cron_jobs (
     id, name, handler, schedule, enabled, metadata, last_run_at, next_run_at,
-    run_count, last_error, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    run_count, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		job.ID,
 		job.Name,
 		job.Handler,
@@ -244,7 +243,6 @@ INSERT INTO cron_jobs (
 		nullTime(job.LastRunAt),
 		nullTime(job.NextRunAt),
 		job.RunCount,
-		nullString(job.LastError),
 		storage.FormatTime(job.CreatedAt),
 		storage.FormatTime(job.UpdatedAt),
 	)
@@ -284,7 +282,7 @@ SET handler = ?, schedule = ?, enabled = ?, metadata = ?, next_run_at = ?, updat
 func scanCronJob(row interface{ Scan(dest ...any) error }) (*storage.CronJob, error) {
 	var job storage.CronJob
 	var enabled int
-	var metadata, deliveryState, deliveryToken, lastRunAt, nextRunAt, lastError sql.NullString
+	var metadata, deliveryState, deliveryToken, lastRunAt, nextRunAt sql.NullString
 	var createdAt, updatedAt string
 	if err := row.Scan(
 		&job.ID,
@@ -296,7 +294,6 @@ func scanCronJob(row interface{ Scan(dest ...any) error }) (*storage.CronJob, er
 		&lastRunAt,
 		&nextRunAt,
 		&job.RunCount,
-		&lastError,
 		&createdAt,
 		&updatedAt,
 		&deliveryState,
@@ -308,7 +305,6 @@ func scanCronJob(row interface{ Scan(dest ...any) error }) (*storage.CronJob, er
 	job.Metadata = metadata.String
 	job.DeliveryState = deliveryState.String
 	job.DeliveryToken = deliveryToken.String
-	job.LastError = lastError.String
 
 	parsedCreatedAt, err := storage.ParseTime(createdAt)
 	if err != nil {

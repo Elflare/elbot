@@ -37,9 +37,12 @@ func (countingCommitTool) Info() tool.Info { return tool.Info{Name: "count", Ris
 func (countingCommitTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "count", Parameters: map[string]any{"type": "object"}}
 }
-func (c countingCommitTool) Call(context.Context, tool.CallRequest) (*tool.Result, error) {
+func (c countingCommitTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
 	*c.count++
-	return &tool.Result{Content: "done"}, nil
+	{
+		result := &tool.Result{Content: "done"}
+		return result, result.Content, nil
+	}
 }
 
 func TestToolCommitFailureStopsBeforeNextSideEffect(t *testing.T) {

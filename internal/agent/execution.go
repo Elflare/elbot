@@ -5,13 +5,11 @@ import (
 	"time"
 
 	"elbot/internal/agent/dialogue"
-	agentevents "elbot/internal/agent/events"
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	"elbot/internal/modelmgr"
 	"elbot/internal/request"
 	"elbot/internal/session"
-	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
@@ -36,22 +34,20 @@ func (c *executionCoordinator) AdoptForeground(ctx context.Context, row *storage
 // remain the source of truth for requests, attempts and logical execution state.
 type executionCoordinator struct {
 	// Context usage diagnostics.
-	sessions          *session.Service
-	sessionRows       storage.SessionRepository
-	turns             *turn.Manager
-	requests          *request.Manager
-	contexts          *contextmgr.Service
-	models            *modelmgr.Service
-	dialogue          *dialogue.Runner
-	identity          *identityResolver
-	view              dialogue.ExecutionView
-	output            *outputSender
-	status            *statusRecorder
-	waitPolicy        *confirmationPolicy
-	appendWaits       *appendWaitLifecycle
-	responseTimeout   time.Duration
-	persistenceFailed *signal.Signal[agentevents.PersistenceFailedEvent]
-	timedOut          *signal.Signal[agentevents.TurnTimedOutEvent]
+	sessions        *session.Service
+	sessionRows     storage.SessionRepository
+	turns           *turn.Manager
+	requests        *request.Manager
+	contexts        *contextmgr.Service
+	models          *modelmgr.Service
+	dialogue        *dialogue.Runner
+	identity        *identityResolver
+	view            dialogue.ExecutionView
+	output          *outputSender
+	status          *statusRecorder
+	waitPolicy      *confirmationPolicy
+	appendWaits     *appendWaitLifecycle
+	responseTimeout time.Duration
 }
 
 func (c *executionCoordinator) Run(ctx context.Context, row *storage.Session, text string, out dialogue.Output) error {

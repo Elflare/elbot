@@ -16,7 +16,7 @@ func TestUsageUnknownAndOverflowDoNotLoseCallsOrOtherTotals(t *testing.T) {
 		{Type: events.ContentJSON, Content: `{"provider":"p","model":"b","prompt_tokens":5,"completion_tokens":6,"total_tokens":11,"cache_hit_tokens":"illegal","elapsed_ms":30}`},
 	}
 	content := formatUsageSummary(entries, logging.LogQuery{Days: 1}, groupByModel)
-	for _, want := range []string{"[p/a] calls: 2", "prompt: unknown | completion: 5 | total: unknown", "[p/b] calls: 1", "prompt: 5 | completion: 6 | total: 11", "[total] calls: 3", "prompt: unknown | completion: 11 | total: unknown", "cache: unknown"} {
+	for _, want := range []string{"[p/a] calls: 2", "prompt: null | completion: 5 | total: null", "[p/b] calls: 1", "prompt: 5 | completion: 6 | total: 11", "[total] calls: 3", "prompt: null | completion: 11 | total: null", "cache: null"} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("missing %q in %s", want, content)
 		}
@@ -26,7 +26,7 @@ func TestUsageUnknownAndOverflowDoNotLoseCallsOrOtherTotals(t *testing.T) {
 		t.Fatal(content)
 	}
 	content = formatUsageSummary([]logging.LogEntry{{Type: events.ContentJSON, Content: `{}`}}, logging.LogQuery{}, groupByModel)
-	if !strings.Contains(content, "calls: 1") || !strings.Contains(content, "prompt: unknown | completion: unknown | total: unknown") {
+	if !strings.Contains(content, "calls: 1") || !strings.Contains(content, "prompt: null | completion: null | total: null") {
 		t.Fatal(content)
 	}
 }

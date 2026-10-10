@@ -41,7 +41,7 @@ func TestExternalElwispDoesNotResolveHostMedia(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{"source": item.ID, "media_inputs": []map[string]string{{"media": item.ID}}})
 	call := llm.ToolCallRequest{ID: "call", Name: "external", Arguments: string(args)}
 	resolved := ResolvedTool{ResultStatus: events.ResultSucceeded, Source: SourceKindELwisp, Cached: &CachedTool{Name: "external", Endpoint: server.URL}}
-	result := manager.Execute(ctx, call, resolved, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
+	result := manager.Execute(ctx, call, resolved, contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, "", "")
 	if result.Error != nil {
 		t.Fatal(result.Error)
 	}

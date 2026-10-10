@@ -86,9 +86,12 @@ func (t CronTool) Info() tool.Info {
 func (t CronTool) Schema() llm.ToolSchema {
 	return cronBuilder(t.Name(), t.Info().Description).BuildSchema()
 }
-func (t CronTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t CronTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	now := t.info.CurrentTime().Format("2006-01-02 15:04:05")
-	return textResult("cron 是定时任务管理入口。当前本地时间：" + now + "。请调用 cron_query 或 cron_write。cron_query 不传 name 时列出 cron，传 name 时查询单个 cron。"), nil
+	{
+		result := textResult("cron 是定时任务管理入口。当前本地时间：" + now + "。请调用 cron_query 或 cron_write。cron_query 不传 name 时列出 cron，传 name 时查询单个 cron。")
+		return result, result.Content, nil
+	}
 }
 
 // DiscoveryContent appends the current local time to the discover_tool text.
@@ -109,23 +112,49 @@ func (t CronQueryTool) Schema() llm.ToolSchema {
 		Boolean("include_completed", "列出 cron 时是否显示已完成的 cron。默认 false；想查看历史一次性任务时设为 true。 ").
 		BuildSchema()
 }
-func (t CronQueryTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t CronQueryTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	var args cronQueryArgs
 	if err := decodeArgs(req.Arguments, &args); err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	if strings.TrimSpace(args.Name) != "" {
 		view, err := t.service.Get(ctx, args.Name, actorFromContext(ctx))
 		if err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
-		return jsonResult(view)
+		{
+			result, callErr := jsonResult(view)
+			logContent := ""
+			if result != nil {
+				logContent = result.Content
+			}
+			if callErr != nil {
+				if logContent != "" {
+					logContent += "\n"
+				}
+				logContent += callErr.Error()
+			}
+			return result, logContent, callErr
+		}
 	}
 	views, err := t.service.List(ctx, args.IncludeDisabled, args.IncludeCompleted, actorFromContext(ctx))
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
-	return jsonResult(views)
+	{
+		result, callErr := jsonResult(views)
+		logContent := ""
+		if result != nil {
+			logContent = result.Content
+		}
+		if callErr != nil {
+			if logContent != "" {
+				logContent += "\n"
+			}
+			logContent += callErr.Error()
+		}
+		return result, logContent, callErr
+	}
 }
 
 func (t CronWriteTool) Name() string { return "cron_write" }
@@ -154,28 +183,83 @@ func (t CronWriteTool) Schema() llm.ToolSchema {
 		Boolean("enabled", "create：创建后是否启用，默认 true；update：是否启用。false 表示停用但保留记录。 ").
 		BuildSchema()
 }
-func (t CronWriteTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t CronWriteTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	var args cronWriteArgs
 	if err := decodeArgs(req.Arguments, &args); err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	switch strings.ToLower(strings.TrimSpace(args.Operation)) {
 	case "create":
-		return t.create(ctx, args)
+		{
+			result, callErr := t.create(ctx, args)
+			logContent := ""
+			if result != nil {
+				logContent = result.Content
+			}
+			if callErr != nil {
+				if logContent != "" {
+					logContent += "\n"
+				}
+				logContent += callErr.Error()
+			}
+			return result, logContent, callErr
+		}
 	case "update":
-		return t.update(ctx, args)
+		{
+			result, callErr := t.update(ctx, args)
+			logContent := ""
+			if result != nil {
+				logContent = result.Content
+			}
+			if callErr != nil {
+				if logContent != "" {
+					logContent += "\n"
+				}
+				logContent += callErr.Error()
+			}
+			return result, logContent, callErr
+		}
 	case "disable":
 		if err := t.service.Disable(ctx, args.Name, actorFromContext(ctx)); err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
-		return jsonResult(map[string]any{"ok": true})
+		{
+			result, callErr := jsonResult(map[string]any{"ok": true})
+			logContent := ""
+			if result != nil {
+				logContent = result.Content
+			}
+			if callErr != nil {
+				if logContent != "" {
+					logContent += "\n"
+				}
+				logContent += callErr.Error()
+			}
+			return result, logContent, callErr
+		}
 	case "delete":
 		if err := t.service.Delete(ctx, args.Name, actorFromContext(ctx)); err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
-		return jsonResult(map[string]any{"ok": true})
+		{
+			result, callErr := jsonResult(map[string]any{"ok": true})
+			logContent := ""
+			if result != nil {
+				logContent = result.Content
+			}
+			if callErr != nil {
+				if logContent != "" {
+					logContent += "\n"
+				}
+				logContent += callErr.Error()
+			}
+			return result, logContent, callErr
+		}
 	default:
-		return nil, fmt.Errorf("operation must be create, update, disable, or delete")
+		{
+			callErr := fmt.Errorf("operation must be create, update, disable, or delete")
+			return nil, callErr.Error(), callErr
+		}
 	}
 }
 

@@ -3,6 +3,7 @@ package responses
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -153,6 +154,13 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 		result, err = s.nativeCall(ctx, client, request, consumed, stream, observation)
 	}
 	if err != nil {
+		// The failed attempt's partial output remains a business fact. It must
+		// not be promoted to a completed response or executable tool calls.
+		final.Text, final.SourceText = outputText(result.Items), outputText(result.Items)
+		s.sourceText = final.SourceText
+		if result.Response != nil {
+			final.Usage = result.Response.TokenUsage()
+		}
 		if ctx.Err() == nil {
 			s.route.Calls.NotifyError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: s.session.ID}, LLM: hook.LLMPayload{Provider: s.selection.Provider, Model: s.selection.Model}}, err)
 		}
@@ -227,6 +235,22 @@ func outputItems(response *api.Response, completed map[int]api.Item) []api.Item 
 		}
 	}
 	for index, item := range completed {
+		if response != nil && response.Status == "completed" && index >= 0 && index < len(response.Output) {
+			// Terminal fields replace partial fields, while item.done metadata
+			// omitted from the terminal response remains an observed native fact.
+			var content, data map[string]json.RawMessage
+			if json.Unmarshal(item.Raw, &content) == nil && content != nil && json.Unmarshal(response.Output[index].Raw, &data) == nil && data != nil {
+				for key, value := range data {
+					content[key] = value
+				}
+				raw, err := json.Marshal(content)
+				if err == nil {
+					if parsed, err := api.ParseItem(raw); err == nil {
+						item = parsed
+					}
+				}
+			}
+		}
 		items[index] = item
 	}
 	indices := make([]int, 0, len(items))
@@ -242,7 +266,7 @@ func outputItems(response *api.Response, completed map[int]api.Item) []api.Item 
 }
 
 func outputText(items []api.Item) string {
-	var text, refusal strings.Builder
+	var text strings.Builder
 	for _, item := range items {
 		if item.Type != "message" {
 			continue
@@ -252,12 +276,9 @@ func outputText(items []api.Item) string {
 			case "output_text":
 				text.WriteString(part.Text)
 			case "refusal":
-				refusal.WriteString(part.Refusal)
+				text.WriteString(part.Refusal)
 			}
 		}
 	}
-	if text.Len() > 0 {
-		return text.String()
-	}
-	return refusal.String()
+	return text.String()
 }

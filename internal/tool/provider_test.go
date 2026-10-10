@@ -25,8 +25,11 @@ func (t providerTestTool) Info() Info {
 func (t providerTestTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: t.name, Parameters: map[string]any{"type": "object"}}
 }
-func (t providerTestTool) Call(context.Context, CallRequest) (*Result, error) {
-	return &Result{Content: "ok"}, nil
+func (t providerTestTool) Call(context.Context, CallRequest) (*Result, string, error) {
+	{
+		result := &Result{Content: "ok"}
+		return result, result.Content, nil
+	}
 }
 
 func TestSchemaProviderHidesSuperadminOnlyToolNamesFromNormalUser(t *testing.T) {

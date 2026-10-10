@@ -320,20 +320,13 @@ func atoiSafe(value string) int64 {
 
 func formatThousands(n int64) string {
 	if n < 0 {
-		return "unknown"
+		return "null"
 	}
 	if n == 0 {
 		return "0"
 	}
-	negative := n < 0
-	if negative {
-		n = -n
-	}
 	digits := strconv.FormatInt(n, 10)
 	if len(digits) <= 3 {
-		if negative {
-			return "-" + digits
-		}
 		return digits
 	}
 	var sb strings.Builder
@@ -349,9 +342,6 @@ func formatThousands(n int64) string {
 		if i+3 < len(digits) {
 			sb.WriteByte(',')
 		}
-	}
-	if negative {
-		return "-" + sb.String()
 	}
 	return sb.String()
 }
@@ -369,7 +359,7 @@ func formatUsageBucket(sb *strings.Builder, label string, b *usageBucket) {
 
 func formatElapsed(ms int64) string {
 	if ms < 0 {
-		return "unknown"
+		return "null"
 	}
 	return fmt.Sprintf("%.1fs", float64(ms)/1000)
 }

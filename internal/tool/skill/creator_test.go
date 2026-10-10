@@ -32,7 +32,7 @@ func TestCreateElSkillCreatesBuildsAndReloads(t *testing.T) {
 		"elyph":       "#skill hello_skill - Echo reusable text.\n<- $text:str!\n-> $result:str\n",
 		"go_source":   goSource,
 	})
-	result, err := creator.Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := creator.Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestCreateElSkillReturnsElyphWarnings(t *testing.T) {
 		"risk":        "low",
 		"elyph":       "#skill warn_skill - Warn workflow.\n** 清单：\n",
 	})
-	result, err := creator.Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := creator.Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestCreateElSkillCanCreateTextOnlySkill(t *testing.T) {
 		"risk":        "low",
 		"elyph":       "#skill workflow - Reusable workflow.\n<- $text:str!\n-> $result:str\n",
 	})
-	if _, err := creator.Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := creator.Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "go", "workflow", "main.go")); !os.IsNotExist(err) {
@@ -133,7 +133,7 @@ func TestCreateElSkillRejectsInvalidInputs(t *testing.T) {
 		`{"name":"bad","description":"x","risk":"low","elyph":"#skill bad","go_source":"package nope"}`,
 	}
 	for _, raw := range cases {
-		if _, err := creator.Call(context.Background(), tool.CallRequest{Arguments: []byte(raw)}); err == nil {
+		if _, _, err := creator.Call(context.Background(), tool.CallRequest{Arguments: []byte(raw)}); err == nil {
 			t.Fatalf("expected error for %s", raw)
 		}
 	}
@@ -146,7 +146,7 @@ func TestCreateElSkillDoesNotOverwriteExistingDirectory(t *testing.T) {
 	}
 	creator := NewCreateElSkillTool(NewManager(root, tool.NewRegistry()))
 	args := `{"name":"exists","description":"x","risk":"low","elyph":"#skill exists","go_source":"package main\nfunc main(){}"}`
-	if _, err := creator.Call(context.Background(), tool.CallRequest{Arguments: []byte(args)}); err == nil {
+	if _, _, err := creator.Call(context.Background(), tool.CallRequest{Arguments: []byte(args)}); err == nil {
 		t.Fatal("expected existing directory error")
 	}
 }
@@ -170,8 +170,11 @@ func (creatorExistingTool) Info() tool.Info {
 	return tool.Info{Name: "dup", Description: "dup", Source: tool.SourceBuiltin, Risk: tool.RiskLow}
 }
 func (creatorExistingTool) Schema() llm.ToolSchema { return llm.ToolSchema{} }
-func (creatorExistingTool) Call(context.Context, tool.CallRequest) (*tool.Result, error) {
-	return &tool.Result{Content: "ok"}, nil
+func (creatorExistingTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
+	{
+		result := &tool.Result{Content: "ok"}
+		return result, result.Content, nil
+	}
 }
 
 func TestCreateElSkillDoesNotOverwriteRegistryTool(t *testing.T) {
@@ -181,7 +184,7 @@ func TestCreateElSkillDoesNotOverwriteRegistryTool(t *testing.T) {
 	}
 	creator := NewCreateElSkillTool(NewManager(t.TempDir(), registry))
 	args := `{"name":"dup","description":"x","risk":"low","elyph":"#skill dup","go_source":"package main\nfunc main(){}"}`
-	if _, err := creator.Call(context.Background(), tool.CallRequest{Arguments: []byte(args)}); err == nil {
+	if _, _, err := creator.Call(context.Background(), tool.CallRequest{Arguments: []byte(args)}); err == nil {
 		t.Fatal("expected registry conflict error")
 	}
 }

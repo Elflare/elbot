@@ -199,11 +199,23 @@ func TestMigratedComponentsPublishFactsWithoutLogger(t *testing.T) {
 		t.Fatal(err)
 	}
 	counts := map[string]int{}
-	_, _ = a.signals.UserInputReceived.Connect(func(context.Context, agentevents.UserInputReceivedEvent) error { counts["input"]++; return nil }, signal.ConnectOptions{})
+	connection, err := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+		if record.Category != globalevents.LogRuntime || record.Identity.SessionID == nil || *record.Identity.SessionID != row.ID {
+			return nil
+		}
+		switch record.EventName {
+		case "user_message":
+			counts["input"]++
+		case "turn_response_timeout":
+			counts["timeout"]++
+		}
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Disconnect()
 	_, _ = a.signals.ModelCallCompleted.Connect(func(context.Context, agentevents.ModelCallCompletedEvent) error { counts["model"]++; return nil }, signal.ConnectOptions{})
-	_, _ = a.signals.ToolCallCompleted.Connect(func(context.Context, agentevents.ToolCallCompletedEvent) error { counts["tool"]++; return nil }, signal.ConnectOptions{})
-	_, _ = a.signals.ConfirmationChanged.Connect(func(context.Context, agentevents.ConfirmationChangedEvent) error { counts["confirm"]++; return nil }, signal.ConnectOptions{})
-	_, _ = a.signals.TurnTimedOut.Connect(func(context.Context, agentevents.TurnTimedOutEvent) error { counts["timeout"]++; return nil }, signal.ConnectOptions{})
 	out := foregroundTurnOutput{sender: a.output, status: a.status}
 	if _, err := a.execution.dialogue.PrepareTurn(ctx, dialogue.TurnInput{Session: row, Text: "input", Selection: modelmgr.SelectionForTurn(ctx, a.execution.models, row)}); err != nil {
 		t.Fatal(err)
@@ -215,7 +227,7 @@ func TestMigratedComponentsPublishFactsWithoutLogger(t *testing.T) {
 	testToolDeps(a).RecordToolCall(ctx, row.ID, call, "low", storage.Now(), "done", nil)
 	a.message.input.confirmations.publishConfirmationWait(ctx, row.ID, call, tool.RiskHigh, nil)
 	a.execution.handleTurnContextDone(ctx, row.ID, context.DeadlineExceeded, out)
-	for _, event := range []string{"input", "model", "tool", "confirm", "timeout"} {
+	for _, event := range []string{"input", "model", "timeout"} {
 		if counts[event] != 1 {
 			t.Fatalf("%s events = %d", event, counts[event])
 		}

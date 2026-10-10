@@ -31,7 +31,7 @@ func (o foregroundTurnOutput) SendAssistant(ctx context.Context, text string) (d
 	return o.sender.SendAssistant(ctx, text)
 }
 
-func (o foregroundTurnOutput) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
+func (o foregroundTurnOutput) SendOutputs(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
 	return o.sender.SendOutputs(ctx, outputs)
 }
 
@@ -65,8 +65,8 @@ func (o backgroundTurnOutput) SendAssistant(ctx context.Context, text string) (d
 	return delivery.Receipt{}, nil
 }
 
-func (o backgroundTurnOutput) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
-	return nil
+func (o backgroundTurnOutput) SendOutputs(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+	return delivery.Receipt{}, nil
 }
 
 func (o backgroundTurnOutput) SendNotice(ctx context.Context, level slog.Level, text string) {}

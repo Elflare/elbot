@@ -54,7 +54,7 @@ func TestWebSearchToolReadsSharedEnvironment(t *testing.T) {
 
 	search := NewWebSearchTool(environment)
 	search.endpoint = server.URL
-	if _, err := search.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"query":"configured"}`)}); err != nil {
+	if _, _, err := search.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"query":"configured"}`)}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -81,7 +81,7 @@ func TestWebSearchToolSendsDefaults(t *testing.T) {
 
 	search := NewWebSearchTool()
 	search.endpoint = server.URL
-	result, err := search.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"query":"elbot"}`)})
+	result, _, err := search.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"query":"elbot"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestWebSearchToolSendsDefaults(t *testing.T) {
 func TestWebSearchToolRequiresKey(t *testing.T) {
 	t.Setenv(tavilyAPIKeyEnv, "")
 
-	_, err := NewWebSearchTool().Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"query":"elbot"}`)})
+	_, _, err := NewWebSearchTool().Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"query":"elbot"}`)})
 	if err == nil || !strings.Contains(err.Error(), tavilyAPIKeyEnv) {
 		t.Fatalf("err = %v", err)
 	}
@@ -127,7 +127,7 @@ func TestWebExtractToolSlicesAndCaches(t *testing.T) {
 	extract := NewWebExtractTool()
 	extract.client = server.Client()
 	extract.endpoint = server.URL
-	first, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)})
+	first, _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestWebExtractToolSlicesAndCaches(t *testing.T) {
 		t.Fatalf("first content = %q", first.Content)
 	}
 
-	second, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page","offset":8000}`)})
+	second, _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page","offset":8000}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestWebExtractToolForceRefreshReplacesCache(t *testing.T) {
 	extract := NewWebExtractTool()
 	extract.client = server.Client()
 	extract.endpoint = server.URL
-	first, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)})
+	first, _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestWebExtractToolForceRefreshReplacesCache(t *testing.T) {
 		t.Fatalf("first content = %q", first.Content)
 	}
 
-	refreshed, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page","force_refresh":true}`)})
+	refreshed, _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page","force_refresh":true}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestWebExtractToolForceRefreshReplacesCache(t *testing.T) {
 		t.Fatalf("refreshed content = %q", refreshed.Content)
 	}
 
-	cached, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)})
+	cached, _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,14 +210,14 @@ func TestWebExtractToolFailedForceRefreshPreservesCache(t *testing.T) {
 	extract := NewWebExtractTool()
 	extract.client = server.Client()
 	extract.endpoint = server.URL
-	if _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)}); err != nil {
+	if _, _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page","force_refresh":true}`)}); err == nil {
+	if _, _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page","force_refresh":true}`)}); err == nil {
 		t.Fatal("expected force refresh error")
 	}
 
-	cached, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)})
+	cached, _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,7 +323,7 @@ func TestWebExtractToolDirectFallbackWithoutJinaKey(t *testing.T) {
 	defer server.Close()
 
 	extract := NewWebExtractTool()
-	result, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"` + server.URL + `","proxy":"disabled"}`)})
+	result, _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"` + server.URL + `","proxy":"disabled"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -350,7 +350,7 @@ func TestWebExtractToolCanDisableJina(t *testing.T) {
 	extract := NewWebExtractTool()
 	extract.client = server.Client()
 	extract.endpoint = "http://127.0.0.1:1"
-	result, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"` + server.URL + `","jina":false}`)})
+	result, _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"` + server.URL + `","jina":false}`)})
 	if err != nil {
 		t.Fatal(err)
 	}

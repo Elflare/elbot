@@ -25,6 +25,9 @@ type ExecutionResult struct {
 	Message llm.LLMMessage
 	// Result is the original tool result, including partial results on error; nil means none.
 	Result *Result
+	// LogContent is the tool-supplied log body, separate from business message
+	// segments. Empty means absent; it is never derived from Message/Segments.
+	LogContent string
 	// Error is the original execution or preparation error; nil does not declare success.
 	Error error
 	// ResultStatus is declared at the execution source, including pre-execution rejection.
@@ -78,7 +81,7 @@ func (e Executor) Execute(ctx context.Context, call llm.ToolCallRequest) Executi
 	if !policy.CanUseTool(actor, assessment.Level, info.OwnerScoped) {
 		return executionError(call, message, PolicyDeniedError(fmt.Sprintf("risk %s is above your allowed tool level", assessment.Level)), events.ResultRejected)
 	}
-	result, err := tool.Call(ctx, CallRequest{ID: call.ID, Name: call.Name, Arguments: json.RawMessage(call.Arguments)})
+	result, logContent, err := tool.Call(ctx, CallRequest{ID: call.ID, Name: call.Name, Arguments: json.RawMessage(call.Arguments)})
 	resultStatus := events.ResultSucceeded
 	if err != nil {
 		resultStatus = events.ResultFailed
@@ -92,7 +95,7 @@ func (e Executor) Execute(ctx context.Context, call llm.ToolCallRequest) Executi
 	if result != nil {
 		message.Segments = result.LLMSegments()
 	}
-	return ExecutionResult{Call: call, Message: message, Result: result, Error: err, ResultStatus: resultStatus, ExecutionStarted: true}
+	return ExecutionResult{Call: call, Message: message, Result: result, LogContent: logContent, Error: err, ResultStatus: resultStatus, ExecutionStarted: true}
 }
 
 func executionError(call llm.ToolCallRequest, message llm.LLMMessage, err error, resultStatus events.ResultStatus) ExecutionResult {

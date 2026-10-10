@@ -14,7 +14,9 @@ import (
 	"elbot/internal/storage"
 )
 
-type Handler func(ctx context.Context, job storage.CronJob) error
+// Handler supplies the execution result and independent diagnostic body. The
+// scheduler consumes these source facts without classifying the original error.
+type Handler func(ctx context.Context, job storage.CronJob) (resultStatus globalevents.ResultStatus, content string, err error)
 
 type Registry interface {
 	RegisterHandler(name string, handler Handler) error
@@ -348,7 +350,7 @@ func (m *Manager) runJob(name string) {
 	defer m.workers.Done()
 	job, err := m.repo.GetByName(ctx, name)
 	if err != nil {
-		if !isContextCancellation(ctx, err) {
+		if ctx.Err() == nil {
 			{
 				record := globalevents.LogRecord{
 					Category:     globalevents.LogRuntime,
@@ -495,24 +497,20 @@ func (m *Manager) runJob(name string) {
 		}
 		_ = globalevents.EmitLog(ctx, record)
 	}
-	runErr := handler(ctx, *job)
+	resultStatus, content, _ := handler(ctx, *job)
 	duration := time.Since(startedAt)
-	canceled := isContextCancellation(ctx, runErr)
 	// Deadline expiry is a failure; only explicit cancellation is canceled in logs.
 	record := globalevents.LogRecord{
 		Category: globalevents.LogRuntime, Level: slog.LevelInfo,
 		EventName: "cron_job_completed", Module: "cron", Type: globalevents.ContentText,
 		Content:      fmt.Sprintf("cron job finished\njob=%s\nhandler=%s\nduration=%s", job.Name, job.Handler, duration),
-		ContentLimit: 4096, ResultStatus: globalevents.ResultSucceeded,
+		ContentLimit: 4096, ResultStatus: resultStatus,
 	}
-	if runErr != nil {
-		record.Content += fmt.Sprintf("\nhandler_error=%v", runErr)
-		record.ResultStatus = globalevents.ResultFailed
+	if content != "" {
+		record.Content += "\n" + content
+	}
+	if resultStatus == globalevents.ResultFailed {
 		record.Level = slog.LevelError
-		if canceled && ctx.Err() == context.Canceled {
-			record.ResultStatus = globalevents.ResultCanceled
-			record.Level = slog.LevelInfo
-		}
 	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	if facts.SessionID != "" {
@@ -585,11 +583,6 @@ func (m *Manager) runJob(name string) {
 		}
 	}
 
-	lastError := ""
-	if runErr != nil && !canceled {
-		lastError = runErr.Error()
-	}
-
 	enabled := stateJob.Enabled
 	var nextRun *time.Time
 	if enabled && scheduler != nil && entryID != 0 {
@@ -607,7 +600,6 @@ func (m *Manager) runJob(name string) {
 		LastRunAt: startedAt,
 		NextRunAt: nextRun,
 		RunCount:  stateJob.RunCount + 1,
-		LastError: lastError,
 		Enabled:   enabled,
 		UpdatedAt: time.Now(),
 	}); err != nil {

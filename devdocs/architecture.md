@@ -44,7 +44,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/architecture.md
 <!-- locator:signal -->
 ## 信号与订阅
 
-来源模块拥有业务实例信号及事件类型，并在实际操作处确定日志结果。Agent 的输入、超时、确认和拒绝使用同步日志回调；模型、工具、回复及持久化在操作来源直接组织日志。Session 命名和 Model Manager 重试自行维护同步日志连接；App 管理通知、状态订阅及服务生命周期。公共日志入口为 `internal/events.EmitLog`，日志中心自行订阅并持有分类队列。契约见[信号与日志系统设计](signals-and-logging.md)，实施进度与待办见[任务清单](tasks.md#信号与日志系统整改)。权限、可改写 Hook、Usage、工具记录和关键提交同步完成；信号发布观察事实。
+来源模块拥有业务实例信号及事件类型，并在实际操作处确定日志结果。Agent 的输入、超时、确认、拒绝、模型、工具、回复及持久化在操作来源直接组织日志；没有业务消费者的日志中转事件和投影连接已删除。Session 命名和 Model Manager 重试自行维护同步日志连接；App 管理通知、状态订阅及服务生命周期。公共日志入口为 `internal/events.EmitLog`，日志中心自行订阅并持有分类队列。契约见[信号与日志系统设计](signals-and-logging.md)，实施进度与待办见[任务清单](tasks.md#信号与日志系统整改)。权限、可改写 Hook、Usage、工具记录和关键提交同步完成；信号发布观察事实。
 
 - 发射时锁内取得订阅快照、锁外调用。断开不撤销已取得快照或已入队任务；一次性连接即使入队失败也被消耗。发布方固定可变数据及实际调用 context。
 - 异步连接选择 FollowEmit（继承取消）或 FollowExecutor（只保留值）；关闭选择 CancelPending 或 Drain，底层取消优先。
@@ -52,6 +52,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/architecture.md
 - 日志写入预期很快、队列通常不会满，因此有意选择等待容量，并接受极端情况下业务等待且单次请求取消不能解除入队背压的取舍。
 - `LogRecord` 是九字段封闭契约：Category、Level、EventName、Module、Type、Content、ContentLimit、Identity、ResultStatus。三个整数枚举验证合法性，ResultStatus 零值表示未声明，Level 与结果相互独立。
 - 业务事件和 notify 保留自身字段及原始对象；日志通过独立 LogRecord 发布，专有事实写入 Content。需要字段查询的审计和 Elnis 日志使用 JSON，普通说明使用 text。
+- 工具记录、持久化、回复送达及提交不保留无业务消费者的实例信号；实际保存和必要业务返回值保留，日志在操作来源发布。日志等级和结果不改变业务停止、重试或权限判断。
 - Identity 的五个 `*string` 由业务显式填写。`events.EmitLog` 验证契约并复制身份指针，不从 context 补值；nil 身份省略，显式空字符串保留。Content 是来源组织的唯一正文。
 - 日志中心接收时、等待入队前记时，并提交 runtime、audit、elnis 三个容量 256 的背压队列；解除请求取消的影响，按类别入队顺序排空。中心不替换全局信号实例，重复活动中心初始化被拒绝。
 - 消费者先按 Level 过滤，再按 Type 脱敏与格式化；runtime 使用配置等级，audit／elnis 独立保留。text 默认 256 个 Unicode 字符，ContentLimit 可指定长度，截断标记 `…` 计入上限。JSON 递归脱敏并保持数值精度，正文以原生 JSON 值写入。
@@ -160,7 +161,7 @@ flowchart LR
     subgraph EVENTS["业务实例信号与日志入口"]
         BUS["来源实例 Signal[T]<br/>业务和 notify 所需事实"]
         OBSERVER["通知、状态展示<br/>App 管理订阅与生命周期"]
-        PROJECTION["命名、重试及简单 Agent 事实<br/>来源模块同步日志回调"]
+        PROJECTION["命名、重试事实<br/>来源模块同步日志回调"]
         LOG["events.EmitLog<br/>日志中心订阅、排队、落盘"]
         BUS -.-> OBSERVER
         PROJECTION --> LOG
@@ -169,10 +170,10 @@ flowchart LR
     CHAT --> SHARED
     RESPONSE --> SHARED
 
-    SHARED -.->|"模型、工具、回复事实"| BUS
+    SHARED -.->|"模型完成及 notify 所需事实"| BUS
     ENTRY -.->|"执行事实"| BUS
     OTHER -.->|"命名、重试事实"| BUS
-    ENTRY -.->|"输入、超时、确认、拒绝"| PROJECTION
+    ENTRY -->|"输入、超时、确认、拒绝日志"| LOG
     OTHER -.-> PROJECTION
     CHAT -->|"模型调用日志"| LOG
     RESPONSE -->|"模型调用日志"| LOG
@@ -217,9 +218,10 @@ flowchart LR
 `路线 → ToolExecutor → ToolRun → Tool Runtime → 完成 Hook → ToolPair 提交 → 路线续跑`。
 
 - ToolRun 使用 prepared Hook 后的真实参数，做命名解析、可见性、权限、风险确认和请求登记；Runtime 兜底检查 Actor／Policy。
-- 工具解析返回明确 ResultStatus 与原始 Error，策略拒绝使用 `tool.PolicyDeniedError`，与工具不存在、配置缺失分别表达。原生和远程执行结果包含 ExecutionStarted，仅在进入 Tool.Call 或 HTTP 发送边界后为 true；结果与错误可以同时存在，保留部分结果。
+- 工具业务解析保留原始结果、Error 与拒绝事实。原生／远程执行的 ExecutionStarted 记录进入调用边界，不证明业务副作用已完成；业务 ResultStatus 和日志调用结果分别表达，不直接投影。
 - 完成 Hook 只处理已实际执行的结果；预检失败或拒绝不触发。结果以 Content／Segments 回灌模型，Data 仅供内部消费；输出意图交发送层。
-- Runner 在单个处理流程结束时发布日志，保留执行、输出、Hook 和各项保存的独立错误。执行过 transcript 保存时等待其返回；取消或准备失败时不伪造未执行操作的结果。批次准备失败只记批次日志。
+- 工具业务与日志分离：工具分别返回业务 Result、独立日志正文和原始 error，中间层保留调用事实及必要正文补充。internal/toolrun/logging.go 只接收来源组织好的完整九字段记录并发布；记录组装、等级与结果的明确、正文体积控制归中间层。代码迁移进度见[3.1](tasks.md#31-其他-bug-修复)。Runner 负责业务编排及所属操作的来源事实；Execute 发布调用记录，Run 在发送和保存等操作返回处独立记录，后续失败不回改调用结果。Segments 不自动成为日志正文。
+- 普通工具已运行的调用日志为 INFO／succeeded，缺 key、shell 非零及业务返回错误在正文说明；调用故障导致根本未运行时为 ERROR／failed。发送、完成 Hook、保存记录各自操作，不回改调用事实；实际保存日志等返回后记录，批次失败不伪造逐工具调用。
 - 工具发现状态成功提交后才更新调用快照；已完成工具动作不因状态保存失败回滚或重跑。
 - Chat 的 tool message 只发文本，工具图片在同批 tool messages 后生成 user 多模态输入；图片标签和该派生消息不持久化。Responses 私有路线编码原生结果。
 - 风险与确认供内部权限判断，不暴露给 LLM。文件调用在预检时固定目标、参数和 revision，执行前变化或绑定失效即拒绝。
@@ -286,6 +288,7 @@ Runtime 管注册、schema、权限与执行器；ToolRun 管当前工具视图�
 - app 注入共享 Router 与通知服务。显式目标优先，否则使用原 Sender 或 Conversation；后台丢弃发送器有效，不从当前 Session 重建历史目标。
 - 通知保留原来源、Sender、按需携带的 binding；取消或绑定失效拒绝发送。过程提示 FollowEmit，失败事实 FollowExecutor，均 CancelPending。无来源告警在本地交互 CLI 显示或 service 记日志。
 - 发送前归一为 MediaID，临时解析发送副本。成功回执提供真实 platform／scope／message ID／output indexes；部分失败同时返回成功项和 error，关联失败记录但不重发。
+- SendOutputs 的上层接口传递已有 Receipt 与 error；发送来源及调用者保留部分送达事实。正文回执仍用于正文消息关联，附加输出索引维持本次输出批次的含义，不合并成通用发送结果或改变重发规则。
 - 最终 Hook 只改变展示文本，不改模型原文和历史正文。直接回复先发送及延迟 outputs 再落库；缓冲回复先落库再发送、关联和延迟 outputs。错误仍保留实际提交／回执，已成功内容不重发。
 - 流式回复合并 Replace 与 Finish 的回执：平台消息 ID 去重，实际消息按平台、scope、消息 ID 合并并合并输出索引；保留 Finish 部分失败时已经发出的消息，合并结果不共享平台回执中的切片。
 - 状态与发送观察事实在同步保存或实际提交后发布；通知失败不再触发通知。发送必须等待实际回执，入队不算成功。

@@ -19,7 +19,7 @@ func TestReadElSkillReadsLineRanges(t *testing.T) {
 	writeTestSkill(t, root, "reader", content)
 	reader := NewReadElSkillTool(NewManager(root, tool.NewRegistry()))
 
-	result, err := reader.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"reader","start_line":2,"end_line":3}`)})
+	result, _, err := reader.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"reader","start_line":2,"end_line":3}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestReadElSkillReadsCodeSource(t *testing.T) {
 	writeTestGoSkill(t, root, "reader_code", content)
 	reader := NewReadElSkillTool(NewManager(root, tool.NewRegistry()))
 
-	result, err := reader.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"reader_code","target":"code_source","start_line":1,"end_line":3}`)})
+	result, _, err := reader.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"reader_code","target":"code_source","start_line":1,"end_line":3}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestModifyElSkillWritesFullContent(t *testing.T) {
 		}},
 	})
 
-	result, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestModifyElSkillRejectsStaleRevision(t *testing.T) {
 			"new_text":  "#skill guarded_revision - New.",
 		}},
 	})
-	_, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args})
+	_, _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "file revision mismatch: current "+fileops.ContentRevision([]byte(current))) {
 		t.Fatalf("expected stale revision error, got %v", err)
 	}
@@ -139,7 +139,7 @@ func TestModifyElSkillSchemaUsesRevision(t *testing.T) {
 	}
 
 	modifier := NewModifyElSkillTool(NewManager(t.TempDir(), tool.NewRegistry()))
-	_, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"missing","expected_sha256":"deadbeef","edits":[{"operation":"overwrite","new_text":"x"}]}`)})
+	_, _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"missing","expected_sha256":"deadbeef","edits":[{"operation":"overwrite","new_text":"x"}]}`)})
 	if err == nil || !strings.Contains(err.Error(), "unknown field \"expected_sha256\"") {
 		t.Fatalf("expected legacy field rejection, got %v", err)
 	}
@@ -158,7 +158,7 @@ func TestModifyElSkillDefersElyphWarningsToFinalize(t *testing.T) {
 		}},
 	})
 
-	result, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestModifyElSkillEditsLines(t *testing.T) {
 		},
 	})
 
-	if _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	want := "#skill patcher - New.\n** risk low\n<- $input:str!\n-> $result:str\n"
@@ -206,7 +206,7 @@ func TestModifyElSkillEditsCodeSourceWithoutBuild(t *testing.T) {
 		}},
 	})
 
-	result, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +233,7 @@ func TestModifyElSkillWritesInvalidCodeSourceWithoutBuild(t *testing.T) {
 		}},
 	})
 
-	if _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	if got := readTestGoSource(t, root, "broken"); !strings.Contains(got, "missing()") {
@@ -255,7 +255,7 @@ func TestModifyElSkillDeletesLines(t *testing.T) {
 		}},
 	})
 
-	if _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	if got := readTestSkill(t, root, "delete_line"); strings.Contains(got, "remove me") {
@@ -355,7 +355,7 @@ func TestModifyElSkillRejectsInvalidEditsWithoutWriting(t *testing.T) {
 		`{"name":"guarded"}`,
 	}
 	for _, raw := range cases {
-		if _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: []byte(raw)}); err == nil {
+		if _, _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: []byte(raw)}); err == nil {
 			t.Fatalf("expected error for %s", raw)
 		}
 		if got := readTestSkill(t, root, "guarded"); got != original {
@@ -366,7 +366,7 @@ func TestModifyElSkillRejectsInvalidEditsWithoutWriting(t *testing.T) {
 
 func TestModifyElSkillRejectsMissingSkill(t *testing.T) {
 	modifier := NewModifyElSkillTool(NewManager(t.TempDir(), tool.NewRegistry()))
-	_, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"missing","edits":[{"operation":"overwrite","new_text":"#skill missing"}]}`)})
+	_, _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"missing","edits":[{"operation":"overwrite","new_text":"#skill missing"}]}`)})
 	if err == nil {
 		t.Fatal("expected missing skill error")
 	}

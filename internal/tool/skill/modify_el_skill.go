@@ -92,23 +92,26 @@ func (ReadElSkillTool) Schema() llm.ToolSchema {
 	}
 }
 
-func (t ReadElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t ReadElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	var args readElSkillArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			return nil, fmt.Errorf("parse read_el_skill arguments: %w", err)
+			{
+				callErr := fmt.Errorf("parse read_el_skill arguments: %w", err)
+				return nil, callErr.Error(), callErr
+			}
 		}
 	}
 	path, _, err := elSkillTargetPath(t.Manager, strings.TrimSpace(args.Name), strings.TrimSpace(args.Target))
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	file, err := fileops.ReadFile(path, "")
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	lines := fileops.SplitLines(file.Text)
 	start := args.StartLine
@@ -120,14 +123,20 @@ func (t ReadElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*tool.
 		end = len(lines)
 	}
 	if start > end+1 || start > len(lines)+1 {
-		return nil, fmt.Errorf("start_line %d is out of range", args.StartLine)
+		{
+			callErr := fmt.Errorf("start_line %d is out of range", args.StartLine)
+			return nil, callErr.Error(), callErr
+		}
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "revision: %s\n", fileops.ContentRevision(file.Bytes))
 	for i := start; i <= end; i++ {
 		fmt.Fprintf(&b, "%d: %s\n", i, lines[i-1])
 	}
-	return &tool.Result{Content: strings.TrimRight(b.String(), "\n")}, nil
+	{
+		result := &tool.Result{Content: strings.TrimRight(b.String(), "\n")}
+		return result, result.Content, nil
+	}
 }
 
 func (ModifyElSkillTool) Name() string { return ModifyElSkillName }
@@ -184,18 +193,47 @@ func (t ModifyElSkillTool) RiskDetail(ctx context.Context, req tool.CallRequest)
 	return strings.TrimRight(b.String(), "\n"), nil
 }
 
-func (t ModifyElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t ModifyElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	preview, err := t.preview(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	switch preview.Target {
 	case elSkillTargetElyph:
-		return t.modifyElyph(preview)
+		{
+			result, callErr := t.modifyElyph(preview)
+			logContent := ""
+			if result != nil {
+				logContent = result.Content
+			}
+			if callErr != nil {
+				if logContent != "" {
+					logContent += "\n"
+				}
+				logContent += callErr.Error()
+			}
+			return result, logContent, callErr
+		}
 	case elSkillTargetCodeSource:
-		return t.modifyCodeSource(preview)
+		{
+			result, callErr := t.modifyCodeSource(preview)
+			logContent := ""
+			if result != nil {
+				logContent = result.Content
+			}
+			if callErr != nil {
+				if logContent != "" {
+					logContent += "\n"
+				}
+				logContent += callErr.Error()
+			}
+			return result, logContent, callErr
+		}
 	default:
-		return nil, fmt.Errorf("unsupported target %q", preview.Target)
+		{
+			callErr := fmt.Errorf("unsupported target %q", preview.Target)
+			return nil, callErr.Error(), callErr
+		}
 	}
 }
 

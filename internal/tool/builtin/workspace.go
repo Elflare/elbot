@@ -68,74 +68,107 @@ func workspaceBuilder() *tool.Builder {
 		Boolean("reset", "为 true 时重置为默认工作目录。")
 }
 
-func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	var args workspaceArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			return nil, fmt.Errorf("parse workspace arguments: %w", err)
+			{
+				callErr := fmt.Errorf("parse workspace arguments: %w", err)
+				return nil, callErr.Error(), callErr
+			}
 		}
 	}
 	store, hasStore := workspace.WorkspaceStoreFromContext(ctx)
 	if args.Reset {
 		dir, err := defaultWorkspaceDir()
 		if err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
 		content := fmt.Sprintf("workspace reset.\ncurrent workspace: %s", dir)
 		if hasStore {
 			if noticeStore, ok := store.(workspace.WorkspaceAgentNoticeStore); ok {
 				instructions, markNotice, err := workspaceAgentInstructions(ctx, noticeStore, dir)
 				if err != nil {
-					return nil, err
+					return nil, err.Error(), err
 				}
 				if instructions != "" {
 					content += "\n\n" + instructions
 				}
 				if err := noticeStore.ClearWorkspaceDirWithAgentNotice(ctx, dir, markNotice); err != nil {
-					return nil, fmt.Errorf("reset workspace: %w", err)
+					{
+						callErr := fmt.Errorf("reset workspace: %w", err)
+						return nil, callErr.Error(), callErr
+					}
 				}
-				return &tool.Result{Content: content}, nil
+				{
+					result := &tool.Result{Content: content}
+					return result, result.Content, nil
+				}
 			}
 			if err := store.ClearWorkspaceDir(ctx); err != nil {
-				return nil, fmt.Errorf("reset workspace: %w", err)
+				{
+					callErr := fmt.Errorf("reset workspace: %w", err)
+					return nil, callErr.Error(), callErr
+				}
 			}
 		}
-		return &tool.Result{Content: content}, nil
+		{
+			result := &tool.Result{Content: content}
+			return result, result.Content, nil
+		}
 	}
 	if path := strings.TrimSpace(args.Path); path != "" {
 		if !hasStore {
-			return nil, fmt.Errorf("workspace is unavailable in this context")
+			{
+				callErr := fmt.Errorf("workspace is unavailable in this context")
+				return nil, callErr.Error(), callErr
+			}
 		}
 		dir, err := workspace.ValidateWorkspaceDir(path)
 		if err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
 		content := fmt.Sprintf("workspace set.\ncurrent workspace: %s", dir)
 		markNotice := false
 		if noticeStore, ok := store.(workspace.WorkspaceAgentNoticeStore); ok {
 			instructions, mark, err := workspaceAgentInstructions(ctx, noticeStore, dir)
 			if err != nil {
-				return nil, err
+				return nil, err.Error(), err
 			}
 			markNotice = mark
 			if instructions != "" {
 				content += "\n\n" + instructions
 			}
 			if err := noticeStore.SetWorkspaceDirWithAgentNotice(ctx, dir, markNotice); err != nil {
-				return nil, fmt.Errorf("set workspace: %w", err)
+				{
+					callErr := fmt.Errorf("set workspace: %w", err)
+					return nil, callErr.Error(), callErr
+				}
 			}
-			return &tool.Result{Content: content}, nil
+			{
+				result := &tool.Result{Content: content}
+				return result, result.Content, nil
+			}
 		}
 		if err := store.SetWorkspaceDir(ctx, dir); err != nil {
-			return nil, fmt.Errorf("set workspace: %w", err)
+			{
+				callErr := fmt.Errorf("set workspace: %w", err)
+				return nil, callErr.Error(), callErr
+			}
 		}
-		return &tool.Result{Content: content}, nil
+		{
+			result := &tool.Result{Content: content}
+			return result, result.Content, nil
+		}
 	}
 	dir, err := workspace.CurrentWorkspaceDir(ctx)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
-	return &tool.Result{Content: fmt.Sprintf("current workspace: %s", dir)}, nil
+	{
+		result := &tool.Result{Content: fmt.Sprintf("current workspace: %s", dir)}
+		return result, result.Content, nil
+	}
 }
 
 func defaultWorkspaceDir() (string, error) {

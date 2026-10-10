@@ -166,7 +166,10 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 	s.ctx, s.requestCtx = ctx, hook.WithReadOnlyCalls(requestCtx)
 	result := dialogue.LoopResult{Selection: in.Selection}
 	fail := func(err error) dialogue.LoopResult {
-		result.Outcome = dialogue.FailedOutcome(err)
+		result.Outcome = dialogue.Failed
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			result.Outcome = dialogue.Canceled
+		}
 		result.Err = err
 		result.QuietCancellation = s.requestCtx.Err() != nil
 		return result
@@ -230,7 +233,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		result.Usage = final.Usage
 		immediate, later := delivery.SplitByDeliveryTiming(final.Outputs)
 		if len(s.calls) == 0 {
-			if err := out.SendOutputs(s.ctx, immediate); err != nil {
+			if _, err := out.SendOutputs(s.ctx, immediate); err != nil {
 				return fail(err)
 			}
 			result.Outcome = dialogue.Completed
@@ -240,7 +243,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		if err := out.FinishIntermediate(s.ctx, s.requestCtx, stream, final.Text, stream != nil); err != nil {
 			return fail(err)
 		}
-		if err := out.SendOutputs(s.ctx, append(immediate, later...)); err != nil {
+		if _, err := out.SendOutputs(s.ctx, append(immediate, later...)); err != nil {
 			return fail(err)
 		}
 		committer := &toolCommitter{state: s}
@@ -280,7 +283,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			}
 			result.Usage = summary.Usage
 			immediate, later = delivery.SplitByDeliveryTiming(summary.Outputs)
-			if err := out.SendOutputs(s.ctx, immediate); err != nil {
+			if _, err := out.SendOutputs(s.ctx, immediate); err != nil {
 				return fail(err)
 			}
 			result.Outcome = dialogue.Completed

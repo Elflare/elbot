@@ -76,7 +76,7 @@ func (s *Service) MigrateLegacyDeliveryState(ctx context.Context) error {
 			_ = globalevents.EmitLog(ctx, record)
 		}
 		if s.deliveryComplete(meta, state) {
-			if err := s.disableCompletedDelivery(ctx, job.Name, state.RunID); err != nil {
+			if _, err := s.disableCompletedDelivery(ctx, job.Name, state.RunID); err != nil {
 				return fmt.Errorf("disable migrated cron delivery %s: %w", job.Name, err)
 			}
 		}
@@ -159,7 +159,7 @@ func (s *Service) handlePlatformConnected(ctx context.Context, platformName stri
 func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName string) {
 	jobs, err := s.store.CronJobs().ListEnabled(ctx)
 	if err != nil {
-		if isContextCancellation(ctx, err) {
+		if ctx.Err() != nil {
 			return
 		}
 		{
@@ -277,7 +277,7 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 			}
 			_ = globalevents.EmitLog(ctx, record)
 		}
-		deliverErr := s.deliverMissedOnce(ctx, *latest, latestMeta, platformName)
+		resultStatus, deliverErr := s.deliverMissedOnce(ctx, *latest, latestMeta, platformName)
 		unlock()
 		if deliverErr != nil {
 			{
@@ -292,8 +292,8 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 					ContentLimit: 4096,
 					ResultStatus: globalevents.ResultFailed,
 				}
-				if ctx.Err() == context.Canceled && isContextCancellation(ctx, deliverErr) {
-					record.ResultStatus = globalevents.ResultCanceled
+				record.ResultStatus = resultStatus
+				if resultStatus == globalevents.ResultCanceled {
 					record.Level = slog.LevelInfo
 				}
 
@@ -326,8 +326,8 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 					ContentLimit: 4096,
 					ResultStatus: globalevents.ResultFailed,
 				}
-				if ctx.Err() == context.Canceled && isContextCancellation(ctx, deliverErr) {
-					record.ResultStatus = globalevents.ResultCanceled
+				record.ResultStatus = resultStatus
+				if resultStatus == globalevents.ResultCanceled {
 					record.Level = slog.LevelInfo
 				}
 
@@ -349,11 +349,11 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 				}
 				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 			}
-			if isContextCancellation(ctx, deliverErr) {
+			if ctx.Err() != nil {
 				return
 			}
 			if ctx.Err() == nil {
-				_ = s.sendToPlatforms(ctx, job.Name, []string{"cli"}, fmt.Sprintf("cron 补跑失败：%s\n错误：%v", job.Name, deliverErr))
+				_, _ = s.sendToPlatforms(ctx, job.Name, []string{"cli"}, fmt.Sprintf("cron 补跑失败：%s\n错误：%v", job.Name, deliverErr))
 			}
 			continue
 		}
@@ -419,32 +419,18 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 	}
 }
 
-func (s *Service) deliverMissedOnce(ctx context.Context, job storage.CronJob, meta Metadata, platformName string) error {
-	job, state, prepareErr := s.prepareDelivery(ctx, job, meta)
+func (s *Service) deliverMissedOnce(ctx context.Context, job storage.CronJob, meta Metadata, platformName string) (globalevents.ResultStatus, error) {
+	job, state, resultStatus, prepareErr := s.prepareDelivery(ctx, job, meta)
 	if !state.ReportReady {
-		return prepareErr
+		return resultStatus, prepareErr
 	}
-	deliverErr := s.deliverPrepared(ctx, job, meta, state, platformName, true)
-	return errors.Join(prepareErr, deliverErr)
-}
-
-// isContextCancellation excludes mixed errors containing an actual failure.
-func isContextCancellation(ctx context.Context, err error) bool {
-	if ctx.Err() == nil || err == nil {
-		return false
+	status, deliverErr := s.deliverPrepared(ctx, job, meta, state, platformName, true)
+	if resultStatus == globalevents.ResultFailed || status == globalevents.ResultFailed {
+		status = globalevents.ResultFailed
+	} else if resultStatus == globalevents.ResultCanceled || status == globalevents.ResultCanceled {
+		status = globalevents.ResultCanceled
 	}
-	if joined, ok := err.(interface{ Unwrap() []error }); ok {
-		for _, child := range joined.Unwrap() {
-			if child != nil && !isContextCancellation(ctx, child) {
-				return false
-			}
-		}
-		return true
-	}
-	if wrapped, ok := err.(interface{ Unwrap() error }); ok && wrapped.Unwrap() != nil {
-		return isContextCancellation(ctx, wrapped.Unwrap())
-	}
-	return errors.Is(err, ctx.Err())
+	return status, errors.Join(prepareErr, deliverErr)
 }
 
 func missedOnceReportText(title, report string) string {

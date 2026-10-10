@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"elbot/internal/events"
 	"elbot/internal/llm"
 )
 
@@ -254,7 +255,8 @@ func (m *Manager) AwaitRiskConfirmation(sessionID string, confirmation RiskConfi
 }
 
 func (m *Manager) AwaitRiskConfirmationContext(ctx context.Context, sessionID string, confirmation RiskConfirmation, timeout time.Duration, expected ...string) (RiskConfirmationResponse, bool) {
-	return m.BeginRiskConfirmation(sessionID, confirmation, expected...).Wait(ctx, timeout)
+	resp, ok, _ := m.BeginRiskConfirmation(sessionID, confirmation, expected...).Wait(ctx, timeout)
+	return resp, ok
 }
 
 // RiskConfirmationWait owns one registered confirmation, including a response
@@ -298,16 +300,22 @@ func (w *RiskConfirmationWait) Cancel() bool {
 	return false
 }
 
-func (w *RiskConfirmationWait) Wait(ctx context.Context, timeout time.Duration) (RiskConfirmationResponse, bool) {
+// Wait retains the original response/acceptance contract and declares its own
+// terminal result before stop, expiry and stale-wait facts collapse into false.
+func (w *RiskConfirmationWait) Wait(ctx context.Context, timeout time.Duration) (RiskConfirmationResponse, bool, events.ResultStatus) {
 	if w == nil {
-		return RiskConfirmationResponse{Stopped: true}, false
+		return RiskConfirmationResponse{Stopped: true}, false, events.ResultSkipped
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	defer w.Cancel()
 	if ctx.Err() != nil {
-		return RiskConfirmationResponse{Stopped: true}, false
+		resultStatus := events.ResultCanceled
+		if ctx.Err() == context.DeadlineExceeded {
+			resultStatus = events.ResultFailed
+		}
+		return RiskConfirmationResponse{Stopped: true}, false, resultStatus
 	}
 	m := w.manager
 	var timer *time.Timer
@@ -325,29 +333,50 @@ func (w *RiskConfirmationWait) Wait(ctx context.Context, timeout time.Duration) 
 			current := m.turns[w.sessionID]
 			if current != w.turn || current.phase != PhaseAwaitRiskConfirm || current.riskResponse != w.response {
 				m.mu.Unlock()
-				return resp, false
+				return resp, false, events.ResultSkipped
 			}
 			if resp.Stopped || ctx.Err() != nil {
 				removeTurn(m.turns, w.sessionID, current)
 				m.mu.Unlock()
 				resp.Stopped = true
-				return resp, false
+				resultStatus := events.ResultCanceled
+				if ctx.Err() == context.DeadlineExceeded {
+					resultStatus = events.ResultFailed
+				}
+				return resp, false, resultStatus
 			}
 			current.riskConfirm = nil
 			current.riskResponse = nil
 			current.waitRefresh = nil
 			current.phase = PhaseTool
 			m.mu.Unlock()
-			return resp, true
+			resultStatus := events.ResultSucceeded
+			if resp.Rejected {
+				resultStatus = events.ResultRejected
+			}
+			return resp, true, resultStatus
 		case <-w.refresh:
 			if timer != nil {
 				resetTimer(timer, timeout)
 			}
 		case <-timerC:
 			removed := w.Cancel()
-			return RiskConfirmationResponse{Stopped: true, Expired: removed && ctx.Err() == nil}, false
+			resultStatus := events.ResultSkipped
+			if removed && ctx.Err() == nil {
+				resultStatus = events.ResultFailed
+			} else if ctx.Err() != nil {
+				resultStatus = events.ResultCanceled
+				if ctx.Err() == context.DeadlineExceeded {
+					resultStatus = events.ResultFailed
+				}
+			}
+			return RiskConfirmationResponse{Stopped: true, Expired: removed && ctx.Err() == nil}, false, resultStatus
 		case <-ctx.Done():
-			return RiskConfirmationResponse{Stopped: true}, false
+			resultStatus := events.ResultCanceled
+			if ctx.Err() == context.DeadlineExceeded {
+				resultStatus = events.ResultFailed
+			}
+			return RiskConfirmationResponse{Stopped: true}, false, resultStatus
 		}
 	}
 }

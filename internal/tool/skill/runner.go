@@ -81,35 +81,69 @@ func (r GoRunner) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.Ri
 	return tool.RiskAssessment{Level: record.Risk}, nil
 }
 
-func (r GoRunner) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, callErr error) {
+func (r GoRunner) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, logContent string, callErr error) {
 	var args goRunnerArgs
 	if len(req.Arguments) > 0 {
 		var err error
 		args, err = parseGoRunnerArgs(req.Arguments)
 		if err != nil {
-			return nil, fmt.Errorf("parse go_skill_run arguments: %w", err)
+			{
+				callErr := fmt.Errorf("parse go_skill_run arguments: %w", err)
+				return nil, callErr.Error(), callErr
+			}
 		}
 	}
 	if r.Catalog == nil {
-		return nil, fmt.Errorf("skill catalog is not configured")
+		{
+			callErr := fmt.Errorf("skill catalog is not configured")
+			return nil, callErr.Error(), callErr
+		}
 	}
 	record, ok := r.Catalog.Get(strings.TrimSpace(args.SkillName))
 	if !ok || record.Kind != KindGo || record.BinaryPath == "" {
-		return nil, fmt.Errorf("go skill %q not found", args.SkillName)
+		{
+			callErr := fmt.Errorf("go skill %q not found", args.SkillName)
+			return nil, callErr.Error(), callErr
+		}
 	}
 	timeout := runnerTimeout(args.TimeoutMS)
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	mediaCall := r.Media.NewCall()
-	defer func() { callErr = errors.Join(callErr, mediaCall.Close()) }()
+	defer func() {
+		err := mediaCall.Close()
+		callErr = errors.Join(callErr, err)
+		if err != nil {
+			if logContent != "" {
+				logContent += "\n"
+			}
+			logContent += fmt.Sprintf("media_cleanup_error=%v", err)
+		}
+	}()
 	payload, err := prepareGoMedia(runCtx, args.Payload, mediaCall, record.Root)
 	if err != nil {
-		return nil, fmt.Errorf("prepare Go skill media: %w", err)
+		{
+			callErr := fmt.Errorf("prepare Go skill media: %w", err)
+			return nil, callErr.Error(), callErr
+		}
 	}
 	cmd := r.ProcessEnv.CommandContext(runCtx, record.BinaryPath)
 	cmd.Dir = record.Root
 	cmd.Stdin = bytes.NewReader(payload)
-	return runMediaCommand(runCtx, "go skill", cmd, mediaCall)
+	{
+		result, callErr := runMediaCommand(runCtx, "go skill", cmd, mediaCall)
+		logContent := ""
+		if result != nil {
+			logContent = result.Content
+		}
+		if callErr != nil {
+			if logContent != "" {
+				logContent += "\n"
+			}
+			logContent += callErr.Error()
+		}
+		return result, logContent, callErr
+	}
 }
 
 func parseGoRunnerArgs(data json.RawMessage) (goRunnerArgs, error) {

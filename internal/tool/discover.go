@@ -49,19 +49,22 @@ func (t discoverTool) Schema() llm.ToolSchema {
 		BuildSchema()
 }
 
-func (t discoverTool) Call(ctx context.Context, req CallRequest) (*Result, error) {
+func (t discoverTool) Call(ctx context.Context, req CallRequest) (*Result, string, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	if t.beforeDiscover != nil {
 		if err := t.beforeDiscover(ctx); err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
 	}
 	var args discoverArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			return nil, fmt.Errorf("parse discover_tool arguments: %w", err)
+			{
+				callErr := fmt.Errorf("parse discover_tool arguments: %w", err)
+				return nil, callErr.Error(), callErr
+			}
 		}
 	}
 	names := append([]string{}, args.Names...)
@@ -98,12 +101,18 @@ func (t discoverTool) Call(ctx context.Context, req CallRequest) (*Result, error
 		}
 		result = &DiscoveryResult{Tools: details, Errors: errors}
 		if len(details) == 0 && len(errors) > 0 && len(names) == 1 {
-			return nil, fmt.Errorf("discover tool %q: %s", errors[0].Name, errors[0].Reason)
+			{
+				callErr := fmt.Errorf("discover tool %q: %s", errors[0].Name, errors[0].Reason)
+				return nil, callErr.Error(), callErr
+			}
 		}
 	}
 	data, err := marshalJSONNoEscape(result)
 	if err != nil {
-		return nil, fmt.Errorf("marshal discovery result: %w", err)
+		{
+			callErr := fmt.Errorf("marshal discovery result: %w", err)
+			return nil, callErr.Error(), callErr
+		}
 	}
 	metadata := map[string]any{}
 	activateTools = normalizeNames(activateTools)
@@ -112,14 +121,17 @@ func (t discoverTool) Call(ctx context.Context, req CallRequest) (*Result, error
 	}
 	content, err := discoveryContent(ctx, t.registry, result)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	if formats := NewRuleCardFormatsFromContext(ctx); len(formats) > 0 {
 		metadata[MetadataShownRuleCardFormats] = formats
 	}
 	// 普通工具的完整 schema 通过 Data 交给工具状态服务，协议路线负责发送。
 	// tool message 独立保留发现说明，不重复展开完整 schema。
-	return &Result{Content: content, Data: data, Metadata: metadata}, nil
+	{
+		result := &Result{Content: content, Data: data, Metadata: metadata}
+		return result, result.Content, nil
+	}
 }
 
 func marshalJSONNoEscape(value any) ([]byte, error) {

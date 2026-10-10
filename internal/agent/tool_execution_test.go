@@ -36,9 +36,12 @@ func (t preparedArgumentTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: t.Name(), Parameters: map[string]any{"type": "object"}}
 }
 
-func (t preparedArgumentTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
+func (t preparedArgumentTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 	*t.arguments = string(req.Arguments)
-	return &tool.Result{Content: "prepared arguments received"}, nil
+	{
+		result := &tool.Result{Content: "prepared arguments received"}
+		return result, result.Content, nil
+	}
 }
 
 func TestChatExecutesToolAndFollowsUp(t *testing.T) {

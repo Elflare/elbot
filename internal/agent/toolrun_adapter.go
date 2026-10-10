@@ -2,7 +2,9 @@ package agent
 
 import (
 	"context"
-	"errors"
+	"elbot/internal/events"
+	"encoding/json"
+	"log/slog"
 	"reflect"
 	"strings"
 	"time"
@@ -17,7 +19,6 @@ import (
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
 	sessionstate "elbot/internal/session"
-	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/toolrun"
@@ -39,8 +40,6 @@ type toolRunDeps struct {
 	view          dialogue.ExecutionView
 	output        dialogue.Output
 	attempt       string
-	completed     *signal.Signal[agentevents.ToolCallCompletedEvent]
-	denied        *signal.Signal[agentevents.ToolDeniedEvent]
 }
 
 func (d toolRunDeps) ForTurn(out dialogue.Output, attempt string) toolrun.RunnerDeps {
@@ -134,7 +133,7 @@ func (d toolRunDeps) SendPreview(ctx context.Context, text string) {
 	d.output.SendPreview(ctx, text)
 }
 
-func (d toolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
+func (d toolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
 	return d.output.SendOutputs(ctx, outputs)
 }
 
@@ -157,13 +156,19 @@ func (d toolRunDeps) RecordToolCall(ctx context.Context, sessionID string, call 
 	if d.store != nil && d.store.ToolCalls() != nil {
 		recordErr = d.store.ToolCalls().Create(ctx, record)
 	}
-	var denied tool.PolicyDeniedError
-	agentevents.Emit(ctx, d.completed, agentevents.ToolCallCompletedEvent{EventMeta: agentevents.Meta(ctx, sessionID), Record: *record, Arguments: call.Arguments, RecordErr: recordErr, CallErr: callErr, PolicyDenied: errors.As(callErr, &denied)})
 	return recordErr
 }
 
 func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reason string) {
-	agentevents.Emit(ctx, d.denied, agentevents.ToolDeniedEvent{EventMeta: agentevents.Meta(ctx, sessionID), ActorID: d.identity.Actor(ctx).ID, Tool: call.Name, Risk: string(risk), Reason: reason})
+	content := map[string]string{"actor_id": d.identity.Actor(ctx).ID, "tool": call.Name, "risk": string(risk), "reason": reason}
+	for key, value := range content {
+		runes := []rune(value)
+		if len(runes) > 2048 {
+			content[key] = string(runes[:2047]) + "…"
+		}
+	}
+	data, _ := json.Marshal(content)
+	emitAgentLog(ctx, agentevents.Meta(ctx, sessionID), events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: "permission_denied", Module: "agent", Type: events.ContentJSON, Content: string(data), ContentLimit: 0, Identity: events.LogIdentity{}, ResultStatus: events.ResultRejected})
 }
 
 func (d toolRunDeps) RememberDiscoveryResult(ctx context.Context, row *storage.Session, result *tool.Result) error {

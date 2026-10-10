@@ -30,18 +30,20 @@ func (r *loggingCronRepo) UpdateRunState(ctx context.Context, id string, state s
 
 func TestRunJobLogsFinalResultAfterStateSave(t *testing.T) {
 	for _, tc := range []struct {
-		name    string
-		cancel  bool
-		runErr  error
-		saveErr error
-		want    globalevents.ResultStatus
+		name         string
+		cancel       bool
+		runErr       error
+		saveErr      error
+		sourceResult globalevents.ResultStatus
+		want         globalevents.ResultStatus
 	}{
-		{"success", false, nil, nil, globalevents.ResultSucceeded},
-		{"canceled", true, fmt.Errorf("wrapped: %w", context.Canceled), nil, globalevents.ResultCanceled},
-		{"deadline", false, context.DeadlineExceeded, nil, globalevents.ResultFailed},
-		{"cancel_and_save_failure", true, context.Canceled, errors.New("save failed"), globalevents.ResultFailed},
-		{"success_and_save_failure", false, nil, errors.New("save failed"), globalevents.ResultFailed},
-		{"mixed_failure", true, errors.Join(context.Canceled, errors.New("independent failure")), nil, globalevents.ResultFailed},
+		{"success", false, nil, nil, globalevents.ResultSucceeded, globalevents.ResultSucceeded},
+		{"canceled", true, fmt.Errorf("wrapped: %w", context.Canceled), nil, globalevents.ResultCanceled, globalevents.ResultCanceled},
+		{"deadline", false, context.DeadlineExceeded, nil, globalevents.ResultFailed, globalevents.ResultFailed},
+		{"cancel_and_save_failure", true, context.Canceled, errors.New("save failed"), globalevents.ResultCanceled, globalevents.ResultFailed},
+		{"success_and_save_failure", false, nil, errors.New("save failed"), globalevents.ResultSucceeded, globalevents.ResultFailed},
+		{"mixed_failure", true, errors.Join(context.Canceled, errors.New("independent failure")), nil, globalevents.ResultFailed, globalevents.ResultFailed},
+		{"source_rejected_without_error", false, nil, nil, globalevents.ResultRejected, globalevents.ResultRejected},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &loggingCronRepo{fakeCronRepo: newFakeCronRepo(), saveErr: tc.saveErr}
@@ -49,11 +51,15 @@ func TestRunJobLogsFinalResultAfterStateSave(t *testing.T) {
 			ctx, cancel := context.WithCancel(contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "session", RequestID: "request"}))
 			defer cancel()
 			manager.started, manager.runCtx = true, ctx
-			manager.handlers["handler"] = func(context.Context, storage.CronJob) error {
+			manager.handlers["handler"] = func(context.Context, storage.CronJob) (globalevents.ResultStatus, string, error) {
 				if tc.cancel {
 					cancel()
 				}
-				return tc.runErr
+				content := "source diagnostic"
+				if tc.runErr != nil {
+					content += "\n" + tc.runErr.Error()
+				}
+				return tc.sourceResult, content, tc.runErr
 			}
 			job, err := repo.Upsert(ctx, storage.UpsertCronJobRequest{Name: "job", Handler: "handler", Enabled: true})
 			if err != nil {

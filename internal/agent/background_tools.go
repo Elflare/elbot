@@ -2,8 +2,11 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
+	"log/slog"
 
 	agentevents "elbot/internal/agent/events"
+	"elbot/internal/events"
 	"elbot/internal/llm"
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/tool"
@@ -18,13 +21,21 @@ func (c *confirmationCoordinator) confirmBackgroundSandboxShell(ctx context.Cont
 		return false, false
 	}
 	kind := string(sandbox.BackgroundKind)
-	event := agentevents.ConfirmationChangedEvent{EventMeta: agentevents.Meta(ctx, sessionID), Phase: "background", Action: "auto_confirmed", Kind: kind, Tool: call.Name, Risk: string(risk), SandboxDir: sandbox.Dir, Arguments: call.Arguments}
+	content := map[string]string{"kind": kind, "tool": call.Name, "risk": string(risk), "sandbox_dir": sandbox.Dir, "arguments": call.Arguments}
+	for key, value := range content {
+		runes := []rune(value)
+		if len(runes) > 2048 {
+			content[key] = string(runes[:2047]) + "…"
+		}
+	}
+	data, _ := json.Marshal(content)
+	record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: "background_shell_auto_confirmed", Module: "agent", Type: events.ContentJSON, Content: string(data), ContentLimit: 0, Identity: events.LogIdentity{}, ResultStatus: events.ResultSucceeded}
 	if risk == tool.RiskCritical {
-		event.Action = "rejected"
-		agentevents.Emit(ctx, c.changed, event)
+		record.EventName, record.ResultStatus = "background_shell_rejected", events.ResultRejected
+		emitAgentLog(ctx, agentevents.Meta(ctx, sessionID), record)
 		message.Segments = llm.TextSegments("后台沙盒禁止执行 critical 风险 shell 命令。请改用相对路径，把文件限制在当前 sandbox 目录内，避免绝对路径、.. 逃逸和危险命令；若仍无法完成，请在最终报告中说明阻塞原因。")
 		return false, true
 	}
-	agentevents.Emit(ctx, c.changed, event)
+	emitAgentLog(ctx, agentevents.Meta(ctx, sessionID), record)
 	return true, true
 }

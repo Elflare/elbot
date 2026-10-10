@@ -4,22 +4,22 @@ import (
 	"context"
 	"fmt"
 
-	"elbot/internal/agent/events"
+	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	"elbot/internal/signal"
 	"elbot/internal/storage"
+	"log/slog"
 )
 
 type Preparer struct {
-	Contexts      *contextmgr.Service
-	Media         *media.Manager
-	Identity      Identity
-	Hooks         Hooks
-	Tools         *ToolExecutor
-	InputReceived *signal.Signal[events.UserInputReceivedEvent]
+	Contexts *contextmgr.Service
+	Media    *media.Manager
+	Identity Identity
+	Hooks    Hooks
+	Tools    *ToolExecutor
 }
 
 func (p *Preparer) LoadMaterials(ctx context.Context, in TurnInput) (TurnMaterials, error) {
@@ -31,7 +31,21 @@ func (p *Preparer) LoadMaterials(ctx context.Context, in TurnInput) (TurnMateria
 	message := &storage.Message{ID: storage.NewID(), SessionID: in.Session.ID, Role: storage.RoleUser,
 		Content: llm.SegmentsContentText(segments), Segments: StoredMessageSegments(segments), ReplyToPlatformMessageID: in.ReplyToPlatformMessageID}
 	input.Segments = segments
-	events.Emit(ctx, p.InputReceived, events.UserInputReceivedEvent{EventMeta: events.Meta(ctx, in.Session.ID), Text: message.Content})
+	record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelInfo, EventName: "user_message", Module: "agent", Type: events.ContentText, Content: message.Content, ContentLimit: 4096, Identity: events.LogIdentity{SessionID: &in.Session.ID}, ResultStatus: events.ResultUnspecified}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.RunID != "" {
+		record.Identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		record.Identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		record.Identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		record.Identity.RootRequestID = &facts.RootRequestID
+	}
+	_ = events.EmitLog(context.WithoutCancel(ctx), record)
 	loaded, err := p.Contexts.Load(ctx, in.Session.ID)
 	if err != nil {
 		return TurnMaterials{}, err

@@ -18,7 +18,7 @@ func TestFinalizeElSkillTextOnlyReloads(t *testing.T) {
 	registry := tool.NewRegistry()
 	finalizer := NewFinalizeElSkillTool(NewManager(root, registry))
 
-	result, err := finalizer.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"textonly"}`)})
+	result, _, err := finalizer.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"textonly"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestFinalizeElSkillReturnsElyphWarnings(t *testing.T) {
 	writeTestSkill(t, root, "warn_finalize", "#skill warn_finalize - Text.\n** 清单：\n")
 	finalizer := NewFinalizeElSkillTool(NewManager(root, tool.NewRegistry()))
 
-	result, err := finalizer.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"warn_finalize"}`)})
+	result, _, err := finalizer.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"warn_finalize"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestFinalizeElSkillFormatsBuildsAndReloads(t *testing.T) {
 	registry := tool.NewRegistry()
 	finalizer := NewFinalizeElSkillTool(NewManager(root, registry))
 
-	result, err := finalizer.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"finalize"}`)})
+	result, _, err := finalizer.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"finalize"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestFinalizeElSkillReturnsBuildFailure(t *testing.T) {
 	writeTestGoSkill(t, root, "broken", "package main\n\nfunc main() { missing() }\n")
 	finalizer := NewFinalizeElSkillTool(NewManager(root, tool.NewRegistry()))
 
-	result, err := finalizer.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"broken"}`)})
+	result, _, err := finalizer.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"broken"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestFinalizeElSkillReturnsGofmtFailure(t *testing.T) {
 	writeTestGoSkill(t, root, "badfmt", "package main\n\nfunc main( {\n")
 	finalizer := NewFinalizeElSkillTool(NewManager(root, tool.NewRegistry()))
 
-	result, err := finalizer.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"badfmt"}`)})
+	result, _, err := finalizer.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"badfmt"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestFinalizeElSkillReturnsElyphFailure(t *testing.T) {
 	finalizer := NewFinalizeElSkillTool(NewManager(root, tool.NewRegistry()))
 	args, _ := json.Marshal(map[string]string{"name": "badelyph"})
 
-	result, err := finalizer.Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := finalizer.Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}

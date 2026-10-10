@@ -112,11 +112,19 @@ func (c *executionCoordinator) finishAttempt(ctx context.Context, session *stora
 func (c *executionCoordinator) runTurn(ctx context.Context, session *storage.Session, text string, out dialogue.Output, selection modelmgr.Selection) (dialogue.TurnResult, turn.Input) {
 	prepared, err := c.dialogue.PrepareTurn(ctx, dialogue.TurnInput{Session: session, Text: text, Input: inboundTurnInput(ctx, text), ReplyToPlatformMessageID: inboundReplyMessageID(ctx), Selection: selection})
 	if err != nil {
-		return dialogue.TurnResult{Outcome: dialogue.FailedOutcome(err), Err: err}, turn.Input{}
+		result := dialogue.TurnResult{Outcome: dialogue.Failed, Err: err}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			result.Outcome = dialogue.Canceled
+		}
+		return result, turn.Input{}
 	}
 	locked, releaseRequest, err := c.sessions.EnterSessions(ctx, session.ID)
 	if err != nil {
-		return dialogue.TurnResult{Outcome: dialogue.FailedOutcome(err), Err: err}, turn.Input{}
+		result := dialogue.TurnResult{Outcome: dialogue.Failed, Err: err}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			result.Outcome = dialogue.Canceled
+		}
+		return result, turn.Input{}
 	}
 	if !c.turns.MatchesAttempt(session.ID, turn.AttemptFromContext(ctx)) {
 		releaseRequest()
@@ -125,7 +133,11 @@ func (c *executionCoordinator) runTurn(ctx context.Context, session *storage.Ses
 	reqCtxInfo, reqCtx, done, err := c.requests.Start(locked, request.StartRequest{SessionID: session.ID, Kind: request.KindTurn, Label: "chat", Timeout: c.responseTimeout})
 	releaseRequest()
 	if err != nil {
-		return dialogue.TurnResult{Outcome: dialogue.FailedOutcome(err), Err: err}, turn.Input{}
+		result := dialogue.TurnResult{Outcome: dialogue.Failed, Err: err}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			result.Outcome = dialogue.Canceled
+		}
+		return result, turn.Input{}
 	}
 	defer done()
 
@@ -139,7 +151,10 @@ func (c *executionCoordinator) runTurn(ctx context.Context, session *storage.Ses
 	}
 	pending, err := c.finishCompletedTurn(ctx, session, out, result)
 	if err != nil {
-		result.Outcome, result.Err = dialogue.FailedOutcome(err), err
+		result.Outcome, result.Err = dialogue.Failed, err
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			result.Outcome = dialogue.Canceled
+		}
 	}
 	return result, pending
 }
@@ -168,7 +183,6 @@ func (c *executionCoordinator) finishCompletedTurn(ctx context.Context, session 
 			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
 		}
 		_ = events.EmitLog(context.WithoutCancel(ctx), record)
-		agentevents.Emit(ctx, c.persistenceFailed, agentevents.PersistenceFailedEvent{EventMeta: agentevents.Meta(ctx, session.ID), Operation: "touch_session", Err: err})
 		return turn.Input{}, err
 	}
 	c.recordUsage(ctx, session.ID, usage)
@@ -196,7 +210,11 @@ func (c *executionCoordinator) handleTurnContextDone(ctx context.Context, sessio
 		}
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		agentevents.Emit(ctx, c.timedOut, agentevents.TurnTimedOutEvent{EventMeta: agentevents.Meta(ctx, sessionID), Err: err})
+		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "turn_response_timeout", Module: "agent", Type: events.ContentText, Content: fmt.Sprintf("turn response timeout: %v", err), ContentLimit: 4096, Identity: events.LogIdentity{}, ResultStatus: events.ResultFailed}
+		emitAgentLog(ctx, agentevents.Meta(ctx, sessionID), record)
+		content, _ := json.Marshal(map[string]string{"error": fmt.Sprintf("%.2048v", err)})
+		record.Category, record.Type, record.Content = events.LogAudit, events.ContentJSON, string(content)
+		emitAgentLog(ctx, agentevents.Meta(ctx, sessionID), record)
 		out.SendNotice(ctx, slog.LevelWarn, notificationrules.TurnTimeout)
 	}
 }

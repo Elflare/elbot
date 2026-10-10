@@ -132,10 +132,10 @@ func (t ShellTool) PreflightConfirmation(ctx context.Context, req tool.CallReque
 	return analyzeShellAdvice(cmdText, workDir, t.FileGuard).blockErr
 }
 
-func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, callErr error) {
+func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, logContent string, callErr error) {
 	args, cmdText, err := decodeShellArgs(req)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 
 	timeout := defaultShellTimeout
@@ -146,25 +146,37 @@ func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (result *tool
 	defer cancel()
 
 	if err := rejectShellDirectoryChange(cmdText); err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	workDir, err := resolveShellWorkDir(ctx)
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	advice := analyzeShellAdvice(cmdText, workDir, t.FileGuard)
 	if advice.blockErr != nil {
-		return nil, advice.blockErr
+		return nil, advice.blockErr.Error(), advice.blockErr
 	}
 	environment := t.ProcessEnv
 	if len(args.MediaInputs) > 0 {
 		mediaCall := t.Media.NewCall()
-		defer func() { callErr = errors.Join(callErr, mediaCall.Close()) }()
+		defer func() {
+			err := mediaCall.Close()
+			callErr = errors.Join(callErr, err)
+			if err != nil {
+				if logContent != "" {
+					logContent += "\n"
+				}
+				logContent += fmt.Sprintf("media_cleanup_error=%v", err)
+			}
+		}()
 		variables := make(map[string]string, len(args.MediaInputs))
 		for i, input := range args.MediaInputs {
 			path, err := mediaCall.CachedExport(runCtx, input.MediaID)
 			if err != nil {
-				return nil, fmt.Errorf("prepare shell media: %w", err)
+				{
+					callErr := fmt.Errorf("prepare shell media: %w", err)
+					return nil, callErr.Error(), callErr
+				}
 			}
 			variables[fmt.Sprintf("ELBOT_MEDIA_%d", i+1)] = path
 		}
@@ -182,10 +194,16 @@ func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (result *tool
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		exitCode = exitErr.ExitCode()
 	} else if err != nil {
-		return nil, fmt.Errorf("run shell: %w", err)
+		{
+			callErr := fmt.Errorf("run shell: %w", err)
+			return nil, callErr.Error(), callErr
+		}
 	}
 	data := shellData{Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: exitCode}
-	return &tool.Result{Content: formatShellContent(data), Warnings: advice.warnings}, nil
+	{
+		result := &tool.Result{Content: formatShellContent(data), Warnings: advice.warnings}
+		return result, result.Content, nil
+	}
 }
 
 func decodeShellArgs(req tool.CallRequest) (shellArgs, string, error) {

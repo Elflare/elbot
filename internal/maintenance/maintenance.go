@@ -55,31 +55,80 @@ func (s *Service) RegisterCronHandlers(manager *elcron.Manager) error {
 	if manager == nil {
 		return nil
 	}
-	if err := manager.RegisterHandler("maintenance.log_cleanup", func(ctx context.Context, job storage.CronJob) error {
-		return s.RunLogCleanup(ctx)
-	}); err != nil {
-		return err
-	}
-	if err := manager.RegisterHandler("maintenance.session_cleanup", func(ctx context.Context, job storage.CronJob) error {
-		return s.RunSessionCleanup(ctx)
-	}); err != nil {
-		return err
-	}
-	if err := manager.RegisterHandler("maintenance.sandbox_cleanup", func(ctx context.Context, job storage.CronJob) error {
-		return s.RunSandboxCleanup(ctx)
-	}); err != nil {
-		return err
-	}
-	if err := manager.RegisterHandler("maintenance.media_cleanup", func(ctx context.Context, job storage.CronJob) error {
-		if s.Media == nil {
-			return nil
+	if err := manager.RegisterHandler("maintenance.log_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.ResultStatus, string, error) {
+		err := s.RunLogCleanup(ctx)
+		if err != nil {
+			resultStatus := globalevents.ResultFailed
+			if err == context.Canceled {
+				resultStatus = globalevents.ResultCanceled
+			}
+			return resultStatus, fmt.Sprintf("cleanup_error=%v", err), err
 		}
-		return s.Media.Cleanup(ctx)
+		return globalevents.ResultSucceeded, "cleanup completed", nil
 	}); err != nil {
 		return err
 	}
-	if err := manager.RegisterHandler("maintenance.chat_history_cleanup", func(ctx context.Context, job storage.CronJob) error {
-		return s.RunChatHistoryCleanup(ctx)
+	if err := manager.RegisterHandler("maintenance.session_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.ResultStatus, string, error) {
+		if !s.sessionCleanup.Enabled {
+			return globalevents.ResultSkipped, "cleanup is not enabled or configured", nil
+		}
+		err := s.RunSessionCleanup(ctx)
+		if err != nil {
+			resultStatus := globalevents.ResultFailed
+			if err == context.Canceled {
+				resultStatus = globalevents.ResultCanceled
+			}
+			return resultStatus, fmt.Sprintf("cleanup_error=%v", err), err
+		}
+		return globalevents.ResultSucceeded, "cleanup completed", nil
+	}); err != nil {
+		return err
+	}
+	if err := manager.RegisterHandler("maintenance.sandbox_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.ResultStatus, string, error) {
+		if s.sandboxRoot == "" || s.sandboxCleanup.RetentionDays <= 0 {
+			return globalevents.ResultSkipped, "cleanup is not enabled or configured", nil
+		}
+		err := s.RunSandboxCleanup(ctx)
+		if err != nil {
+			resultStatus := globalevents.ResultFailed
+			if err == context.Canceled {
+				resultStatus = globalevents.ResultCanceled
+			}
+			return resultStatus, fmt.Sprintf("cleanup_error=%v", err), err
+		}
+		return globalevents.ResultSucceeded, "cleanup completed", nil
+	}); err != nil {
+		return err
+	}
+	if err := manager.RegisterHandler("maintenance.media_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.ResultStatus, string, error) {
+		if s.Media == nil {
+			return globalevents.ResultSkipped, "cleanup is not enabled or configured", nil
+		}
+		err := s.Media.Cleanup(ctx)
+		if err != nil {
+			resultStatus := globalevents.ResultFailed
+			if err == context.Canceled {
+				resultStatus = globalevents.ResultCanceled
+			}
+			return resultStatus, fmt.Sprintf("cleanup_error=%v", err), err
+		}
+		return globalevents.ResultSucceeded, "cleanup completed", nil
+	}); err != nil {
+		return err
+	}
+	if err := manager.RegisterHandler("maintenance.chat_history_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.ResultStatus, string, error) {
+		if !s.chatHistoryCleanup.Enabled || s.chatHistoryCleanup.RetentionDays <= 0 || s.chatHistory == nil {
+			return globalevents.ResultSkipped, "cleanup is not enabled or configured", nil
+		}
+		err := s.RunChatHistoryCleanup(ctx)
+		if err != nil {
+			resultStatus := globalevents.ResultFailed
+			if err == context.Canceled {
+				resultStatus = globalevents.ResultCanceled
+			}
+			return resultStatus, fmt.Sprintf("cleanup_error=%v", err), err
+		}
+		return globalevents.ResultSucceeded, "cleanup completed", nil
 	}); err != nil {
 		return err
 	}

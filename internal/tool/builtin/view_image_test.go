@@ -54,7 +54,8 @@ func TestViewImageMessageSelectionAndPrevalidation(t *testing.T) {
 	}
 	viewer := NewViewImageTool(get.center, get.history)
 	call := func(raw string) (*tool.Result, error) {
-		return viewer.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(raw)})
+		result, _, err := viewer.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(raw)})
+		return result, err
 	}
 	for _, raw := range []string{`{}`, `{"message_id":[]}`, `{"message_id":["mixed"],"media_index":[[]]}`, `{"message_id":["mixed"],"media_index":[[0]]}`, `{"message_id":["mixed"],"media_index":[[1]]}`, `{"message_id":["mixed"],"media_index":[[4]]}`, `{"message_id":["mixed"],"media_index":[]}`, `{"source":"media:x","message_id":["mixed"]}`} {
 		if _, err := call(raw); err == nil {
@@ -73,7 +74,7 @@ func TestViewImageMessageSelectionAndPrevalidation(t *testing.T) {
 		t.Fatalf("selection=%+v err=%v calls=%d", result, err, resolver.calls)
 	}
 	other := platform.WithMessageContext(ctx, platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ScopeID: "other"}}})
-	if _, err := viewer.Call(other, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":["mixed"]}`)}); err == nil {
+	if _, _, err := viewer.Call(other, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":["mixed"]}`)}); err == nil {
 		t.Fatal("cross-chat lookup allowed")
 	}
 	result, err = call(`{"message_id":["1"],"media_index":[[1,2,3,4,5,6]]}`)
@@ -92,7 +93,8 @@ func TestViewImageSourcesAndPermissions(t *testing.T) {
 	}
 	call := func(ctx context.Context, source string) (*tool.Result, error) {
 		raw, _ := json.Marshal(viewImageArgs{Source: source})
-		return viewer.Call(ctx, tool.CallRequest{Arguments: raw})
+		result, _, err := viewer.Call(ctx, tool.CallRequest{Arguments: raw})
+		return result, err
 	}
 	if result, err := call(ctx, item.ID); err != nil || imageCount(result) != 1 {
 		t.Fatalf("media=%+v %v", result, err)
@@ -161,11 +163,11 @@ func TestViewImagePartialFailuresKeepCachedImages(t *testing.T) {
 	ctx, get, resolver := newHistoryMediaToolTest(t)
 	resolver.data = viewImagePNG(t)
 	viewer := NewViewImageTool(get.center, get.history)
-	if _, err := viewer.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"]}`)}); err != nil {
+	if _, _, err := viewer.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"]}`)}); err != nil {
 		t.Fatal(err)
 	}
 	resolver.fail = true
-	result, err := viewer.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"],"media_index":[[2,1,2]]}`)})
+	result, _, err := viewer.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"],"media_index":[[2,1,2]]}`)})
 	if err != nil || imageCount(result) != 1 || resolver.calls != 2 {
 		t.Fatalf("partial result=%+v err=%v calls=%d", result, err, resolver.calls)
 	}

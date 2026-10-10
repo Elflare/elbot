@@ -4,11 +4,13 @@ import (
 	"context"
 	"elbot/internal/llm/chatcompletions"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	agentevents "elbot/internal/agent/events"
 	"elbot/internal/config"
+	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	runtimestatus "elbot/internal/runtime"
@@ -81,20 +83,27 @@ func TestReplyFactsPreservePartialSuccessAndReceiptSnapshot(t *testing.T) {
 	f.platform.sendErr = errors.New("partial send")
 	f.repo.mapErr = errors.New("map failed")
 	f.platform.receipt.SentMessages[0].OutputIndexes = []int{0}
-	signals := agentevents.NewSignals()
-	f.committer.Delivered, f.committer.Committed = signals.ReplyDelivered, signals.ReplyCommitted
-	var delivered agentevents.ReplyDeliveredEvent
-	var committed agentevents.ReplyCommittedEvent
-	_, _ = signals.ReplyDelivered.Connect(func(_ context.Context, e agentevents.ReplyDeliveredEvent) error { delivered = e; return nil }, signal.ConnectOptions{})
-	_, _ = signals.ReplyCommitted.Connect(func(_ context.Context, e agentevents.ReplyCommittedEvent) error { committed = e; return nil }, signal.ConnectOptions{})
+	var records []globalevents.LogRecord
+	connection, err := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+		if record.EventName == "reply_delivered" || record.EventName == "reply_committed" {
+			records = append(records, record)
+		}
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Disconnect()
 	result, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-	if err == nil || !result.Persisted || !committed.Persisted || delivered.Err == nil || len(committed.AssociationErrors) != 1 {
-		t.Fatalf("partial facts lost: %+v / %+v / %v", delivered, committed, err)
+	if err == nil || !result.Persisted || result.SendErr == nil || len(result.AssociationErrors) != 1 || len(records) != 2 {
+		t.Fatalf("partial facts lost: %+v / %+v / %v", result, records, err)
 	}
 	f.platform.receipt.PlatformMessageIDs[0] = "changed"
 	result.Receipt.SentMessages[0].OutputIndexes[0] = 99
-	if delivered.Receipt.PlatformMessageIDs[0] != "sent" || committed.Receipt.SentMessages[0].OutputIndexes[0] != 0 {
-		t.Fatal("receipt snapshot mutated")
+	for _, record := range records {
+		if !strings.Contains(record.Content, "platform_message_id=sent") || !strings.Contains(record.Content, "output_indexes=[0]") {
+			t.Fatalf("receipt log snapshot mutated: %+v", record)
+		}
 	}
 }
 
@@ -121,8 +130,8 @@ func TestConfirmationPublishesAfterAdmissionRelease(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	_, _ = a.Signals().ConfirmationChanged.Connect(func(_ context.Context, event agentevents.ConfirmationChangedEvent) error {
-		if event.Phase != "command" {
+	connection, err := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+		if record.EventName != "risk_confirmation_command" || record.Identity.SessionID == nil || *record.Identity.SessionID != row.ID {
 			return nil
 		}
 		lockCtx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -135,6 +144,10 @@ func TestConfirmationPublishesAfterAdmissionRelease(t *testing.T) {
 		release()
 		return nil
 	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Disconnect()
 	if err := a.message.input.confirmations.SubmitResponse(ctx, row.ID, "/confirm"); err != nil {
 		t.Fatal(err)
 	}

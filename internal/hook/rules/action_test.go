@@ -196,9 +196,22 @@ func (*hookActionTestTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "hook_test_critical", Parameters: map[string]any{"type": "object"}}
 }
 
-func (t *hookActionTestTool) Call(context.Context, tool.CallRequest) (*tool.Result, error) {
+func (t *hookActionTestTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
 	t.calls++
-	return &tool.Result{Content: "called"}, t.err
+	{
+		result, callErr := &tool.Result{Content: "called"}, t.err
+		logContent := ""
+		if result != nil {
+			logContent = result.Content
+		}
+		if callErr != nil {
+			if logContent != "" {
+				logContent += "\n"
+			}
+			logContent += callErr.Error()
+		}
+		return result, logContent, callErr
+	}
 }
 
 func TestRuleToolAuditOutcome(t *testing.T) {
