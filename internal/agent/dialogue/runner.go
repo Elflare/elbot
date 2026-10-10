@@ -85,7 +85,7 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 		err = requestCtx.Err()
 	}
 	if err == nil {
-		err = prepared.InputCommitter().Commit(requestCtx, user)
+		_, err = prepared.InputCommitter().Commit(requestCtx, user)
 	}
 	if err != nil {
 		result.Outcome, result.Err = Failed, err

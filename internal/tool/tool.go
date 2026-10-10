@@ -59,8 +59,9 @@ type Tool interface {
 	Info() Info
 	Schema() llm.ToolSchema
 	// Call returns the business result, an independent log body, and the original
-	// business error. An empty logContent means no log body was supplied; it does
-	// not declare success or failure. Result.Content may be explicitly reused.
+	// business error. The runner declares the invocation log status and level
+	// from actual call entry; tools only supply logContent, including diagnostics.
+	// Result.Content may be explicitly reused when its meaning matches.
 	Call(ctx context.Context, req CallRequest) (result *Result, logContent string, callErr error)
 }
 

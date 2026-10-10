@@ -25,13 +25,23 @@ type noticeSender struct {
 	err   error
 }
 
-func (s *noticeSender) SendChat(context.Context, []delivery.Output) (delivery.Receipt, error) {
+func (s *noticeSender) SendChat(context.Context, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	panic("notice sent as chat")
 }
-func (s *noticeSender) SendNotice(ctx context.Context, _ delivery.Notice) (delivery.Receipt, error) {
+func (s *noticeSender) SendNotice(ctx context.Context, _ delivery.Notice) (delivery.Receipt, globalevents.LogResult, error) {
 	s.calls++
 	s.info, _ = contextinfo.ConversationFromContext(ctx)
-	return delivery.Receipt{PlatformMessageIDs: []string{"sent"}}, s.err
+	{
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+		if s.err != nil {
+			logResult.ResultStatus = globalevents.ResultFailed
+			logResult.Content = s.err.Error()
+			if s.err == context.Canceled {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+		}
+		return delivery.Receipt{PlatformMessageIDs: []string{"sent"}}, logResult, s.err
+	}
 }
 
 func TestNotificationSourceSurvivesNewContextAndRejectsExpiredBinding(t *testing.T) {
@@ -55,14 +65,14 @@ func TestNotificationSourceSurvivesNewContextAndRejectsExpiredBinding(t *testing
 	intent := Capture(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("warning")}})
 	sender := &noticeSender{err: errors.New("send failed")}
 	manager := New(sender, false)
-	receipt, err := manager.Send(context.Background(), intent)
+	receipt, _, err := manager.Send(context.Background(), intent)
 	if !errors.Is(err, sender.err) || len(receipt.PlatformMessageIDs) != 1 || sender.info != info || sender.calls != 1 {
 		t.Fatalf("send=%#v/%v source=%#v calls=%d", receipt, err, sender.info, sender.calls)
 	}
 	if _, err := sessions.Create(context.Background(), scope, session.CreateRequest{Title: "new"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.Send(context.Background(), intent); !errors.Is(err, context.Canceled) {
+	if _, _, err := manager.Send(context.Background(), intent); !errors.Is(err, context.Canceled) {
 		t.Fatalf("expired binding error=%v", err)
 	}
 	if sender.calls != 1 {
@@ -79,7 +89,7 @@ func TestServiceStartupNoticeLogsContentWithoutBroadcast(t *testing.T) {
 	if sender.calls != 0 || !strings.Contains(logs.String(), "plugin unavailable") {
 		t.Fatalf("calls=%d logs=%s", sender.calls, logs.String())
 	}
-	_, err := manager.SendNotice(context.Background(), delivery.Notice{Outputs: []delivery.Output{{Kind: delivery.KindText, Text: "explicit", Target: delivery.Target{Platform: "test", Superadmins: true}}}})
+	_, _, err := manager.SendNotice(context.Background(), delivery.Notice{Outputs: []delivery.Output{{Kind: delivery.KindText, Text: "explicit", Target: delivery.Target{Platform: "test", Superadmins: true}}}})
 	if err != nil || sender.calls != 1 {
 		t.Fatalf("explicit target blocked: %v calls=%d", err, sender.calls)
 	}
@@ -100,7 +110,7 @@ func TestCapturedNoticeDoesNotBorrowAnotherMessagesSender(t *testing.T) {
 	origin := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: info, Sender: original})
 	intent := Capture(origin, delivery.Notice{Outputs: []delivery.Output{delivery.Text("delayed")}})
 	worker := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: info.Source, PlatformData: "second-connection"}, Sender: other})
-	if _, err := manager.Send(worker, intent); err != nil {
+	if _, _, err := manager.Send(worker, intent); err != nil {
 		t.Fatal(err)
 	}
 	if original.calls != 1 || other.calls != 0 || registered.calls != 0 || original.info != info {

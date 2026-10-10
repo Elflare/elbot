@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"testing"
 	"time"
@@ -21,7 +22,7 @@ import (
 
 type noticeAssistant struct{ router *dispatch.Router }
 
-func (s noticeAssistant) SendAssistant(ctx context.Context, text string) (delivery.Receipt, error) {
+func (s noticeAssistant) SendAssistant(ctx context.Context, text string) (delivery.Receipt, events.LogResult, error) {
 	return s.router.SendChat(ctx, []delivery.Output{delivery.Text(text)})
 }
 

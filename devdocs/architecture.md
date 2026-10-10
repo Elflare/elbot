@@ -50,16 +50,18 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/architecture.md
 - 异步连接选择 FollowEmit（继承取消）或 FollowExecutor（只保留值）；关闭选择 CancelPending 或 Drain，底层取消优先。
 - 串行队列默认容量 256、满时拒绝。日志队列使用 `WaitForCapacity` 等待容量，以 `context.WithoutCancel` 解除单次请求取消，任务采用 `Drain`，按成功入队顺序写入；`BeginClose` 停止接收并唤醒等待者。入队不等于写入成功，拒绝、写入失败及未排空均有诊断，Done 表示 worker 实际退出。
 - 日志写入预期很快、队列通常不会满，因此有意选择等待容量，并接受极端情况下业务等待且单次请求取消不能解除入队背压的取舍。
-- `LogRecord` 是九字段封闭契约：Category、Level、EventName、Module、Type、Content、ContentLimit、Identity、ResultStatus。三个整数枚举验证合法性，ResultStatus 零值表示未声明，Level 与结果相互独立。
+- `LogRecord` 是九字段封闭契约：Category、Level、EventName、Module、Type、Content、ContentLimit、Identity、ResultStatus。三个整数枚举验证合法性，ResultStatus 零值表示未声明，Level 与结果相互独立。契约验证集中于 EmitLog，消费端不重复校验；格式化仍负责脱敏、字符限长、整数精度和记录字节上限。
 - 业务事件和 notify 保留自身字段及原始对象；日志通过独立 LogRecord 发布，专有事实写入 Content。需要字段查询的审计和 Elnis 日志使用 JSON，普通说明使用 text。
-- 工具记录、持久化、回复送达及提交不保留无业务消费者的实例信号；实际保存和必要业务返回值保留，日志在操作来源发布。日志等级和结果不改变业务停止、重试或权限判断。
+- 工具记录、持久化、回复送达及提交不保留无业务消费者的实例信号；实际保存和必要业务返回值保留，日志在操作来源组织并经所属管理口发布。日志等级和结果不改变业务停止、重试或权限判断。
+- 后台来源的独立记录由 internal/background/logging.go 的 LogBackground 发布；工具记录由 internal/toolrun/logging.go 的 logTool 发布。两者只接收完整九字段，不猜结果或补身份。Cron／Elnis 调用工具仍走 toolrun，模型和回复仍由 dialogue 记录；RunBackground 只传业务结果与 error，不为日志贯穿整个执行完成链。
+- Cron 触发与 Elnis direct／报告投递／恢复使用所属来源 LogResult，业务原始 error 和 Receipt 独立传递；nil error 不覆盖日志失败，取消不覆盖独立故障，不以日志结果改变补执行、接管或重试规则。
 - Identity 的五个 `*string` 由业务显式填写。`events.EmitLog` 验证契约并复制身份指针，不从 context 补值；nil 身份省略，显式空字符串保留。Content 是来源组织的唯一正文。
 - 日志中心接收时、等待入队前记时，并提交 runtime、audit、elnis 三个容量 256 的背压队列；解除请求取消的影响，按类别入队顺序排空。中心不替换全局信号实例，重复活动中心初始化被拒绝。
 - 消费者先按 Level 过滤，再按 Type 脱敏与格式化；runtime 使用配置等级，audit／elnis 独立保留。text 默认 256 个 Unicode 字符，ContentLimit 可指定长度，截断标记 `…` 计入上限。JSON 递归脱敏并保持数值精度，正文以原生 JSON 值写入。
 - 文件统一写 JSONL，时间为 RFC 3339。编码后连同行尾最多 64 KiB，超限报告设施失败，不删除字段凑入上限。日志中心只处理公共契约及正文，不解释业务错误。
 - Signal／Queue 的设施故障直接写 stderr，不依赖业务 Logger 或全局日志信号；文件写入错误由队列检查并报告，短写按 `io.ErrShortWrite` 报告，后续记录继续处理。非法日志类别的诊断保留整数枚举值。中心关闭超时不关闭仍在使用的文件，也不释放活动中心名额，后续显式关闭可继续清理。
 - Reader 按日期和文件写入位置倒序查询，每块读取 64 KiB，满足条数立即停止；每次读取与逐行处理检查取消。打开文件后固定本次读取大小，支持跨块行及 LF／CRLF；单行上限 16 MiB，读取失败或超限返回错误。查询不改变日志记录等级。
-- Reader 兼读 JSONL 与历史文本，公共字段与 Content 业务条件分别匹配，匹配后计入上限；损坏 JSONL 单独计数并继续，raw 样本保留整行且限 10 条／256 KiB。命令普通展示时间、等级、事件、内容与结果，raw 与最低等级独立；用量统计保留整数精度，未知与溢出只传播到相关统计项。
+- Reader 兼读 JSONL 与历史文本，公共字段与 Content 业务条件分别匹配，匹配后计入上限；损坏 JSONL 单独计数并继续，raw 样本保留整行且限 10 条／256 KiB。工具调用 Content.run_source 由 Runner 在调用前固定，区分 foreground／cron／elnis；/log --run_source 复用 ContentFields，识别 JSON 键或 toolrun 的固定 text 开头标记，缺失来源不补造。命令普通展示时间、等级、事件、内容与结果，raw 与最低等级独立；用量统计保留整数精度，未知与溢出只传播到相关统计项。
 - 平台直接发布全局 `events.PlatformConnected`；Hook 协调模块与 Cron 通过自身 `StartPlatformEvents` 订阅，App 只在依赖装配完成后、平台启动前调用生命周期入口。事件仅携带平台名称，不缓存、不重放。
 - Hook 与 Cron 各自按平台惰性创建容量 256、满时拒绝的独立队列；保留发射 context 的值、解除其取消影响。重复连接继续交给业务处理，Cron 自行维护补跑、互斥和投递状态。
 - 消费者在 `BeginClose` 或应用取消时断开订阅、停止准入并取消待执行／在途任务；`Done` 表示实际退出。Agent 关闭同时等待平台 Hook 与 append 等待任务，Cron Service 关闭等待连接恢复；共享 30 秒预算耗尽时不释放活跃消费者仍在使用的依赖。
@@ -220,7 +222,7 @@ flowchart LR
 - ToolRun 使用 prepared Hook 后的真实参数，做命名解析、可见性、权限、风险确认和请求登记；Runtime 兜底检查 Actor／Policy。
 - 工具业务解析保留原始结果、Error 与拒绝事实。原生／远程执行的 ExecutionStarted 记录进入调用边界，不证明业务副作用已完成；业务 ResultStatus 和日志调用结果分别表达，不直接投影。
 - 完成 Hook 只处理已实际执行的结果；预检失败或拒绝不触发。结果以 Content／Segments 回灌模型，Data 仅供内部消费；输出意图交发送层。
-- 工具业务与日志分离：工具分别返回业务 Result、独立日志正文和原始 error，中间层保留调用事实及必要正文补充。internal/toolrun/logging.go 只接收来源组织好的完整九字段记录并发布；记录组装、等级与结果的明确、正文体积控制归中间层。代码迁移进度见[3.1](tasks.md#31-其他-bug-修复)。Runner 负责业务编排及所属操作的来源事实；Execute 发布调用记录，Run 在发送和保存等操作返回处独立记录，后续失败不回改调用结果。Segments 不自动成为日志正文。
+- 工具业务与日志分离：Tool.Call 分别返回业务 Result、独立 logContent 和原始 error，具体工具不填写日志结果或等级。执行入口保留真实 ExecutionStarted，把正文放入 ExecutionResult.LogResult.Content；未进入调用时声明明确结果及原因。Runner 在调用前从刷新后的 context 固定 run_source，在 Execute 返回后由 newRecord 复用基础九字段与当次身份，recordCall 填写调用结果、正文及查询事实并控制体积，早于后续发送／完成 Hook／保存发布；已进入调用统一 INFO／succeeded。internal/toolrun/logging.go 只接收完整记录并发布，Execute 不发布调用日志。请求登记、媒体引用准备、调用记录和 transcript 保存、发现状态保存等其他操作分别返回独立 LogResult 与原始 error，Runner 直接使用所属来源结果；后续失败不回改调用结果，Segments 不自动成为日志正文。进度见[3.1](tasks.md#31-其他-bug-修复)。
 - 普通工具已运行的调用日志为 INFO／succeeded，缺 key、shell 非零及业务返回错误在正文说明；调用故障导致根本未运行时为 ERROR／failed。发送、完成 Hook、保存记录各自操作，不回改调用事实；实际保存日志等返回后记录，批次失败不伪造逐工具调用。
 - 工具发现状态成功提交后才更新调用快照；已完成工具动作不因状态保存失败回滚或重跑。
 - Chat 的 tool message 只发文本，工具图片在同批 tool messages 后生成 user 多模态输入；图片标签和该派生消息不持久化。Responses 私有路线编码原生结果。
@@ -283,12 +285,22 @@ Runtime 管注册、schema、权限与执行器；ToolRun 管当前工具视图�
 <a id="output"></a>
 ## 输出与发送
 
-`业务输出意图 → delivery/dispatch.Router → 平台发送器 → Receipt`。notification 管通知规则与来源；最终对话提交归 ReplyCommitter。
+`业务输出意图 → delivery/dispatch.Router → 平台发送器 → Receipt、LogResult、error`。notification 管通知规则与来源；最终对话提交归 ReplyCommitter。
 
 - app 注入共享 Router 与通知服务。显式目标优先，否则使用原 Sender 或 Conversation；后台丢弃发送器有效，不从当前 Session 重建历史目标。
 - 通知保留原来源、Sender、按需携带的 binding；取消或绑定失效拒绝发送。过程提示 FollowEmit，失败事实 FollowExecutor，均 CancelPending。无来源告警在本地交互 CLI 显示或 service 记日志。
 - 发送前归一为 MediaID，临时解析发送副本。成功回执提供真实 platform／scope／message ID／output indexes；部分失败同时返回成功项和 error，关联失败记录但不重发。
-- SendOutputs 的上层接口传递已有 Receipt 与 error；发送来源及调用者保留部分送达事实。正文回执仍用于正文消息关联，附加输出索引维持本次输出批次的含义，不合并成通用发送结果或改变重发规则。
+- 业务与日志分开返回：需要两者的接口返回 Receipt、LogResult、error；仅业务保留业务结果与 error；仅日志结果的 Toolrun／Dialogue SendOutputs 返回 LogResult、error。LogResult 仅含来源明确的 ResultStatus、Content，上层不从错误或回执猜结果。正文与流式回执用于业务关联和部分送达；发送来源在 Content 中保留消息及媒体索引，不改变重发规则。
+
+```mermaid
+flowchart TD
+    A["平台发送来源<br/>internal/platform 各适配文件<br/>执行发送，分别提供 Receipt 与 LogResult"] --> B["发送路由及媒体处理<br/>internal/delivery/dispatch/router.go、media.go<br/>传递明确结果，记录实际送达事实"]
+    B --> C["业务处理<br/>internal/agent/dialogue/reply_commit.go：保存与关联<br/>internal/cron/delivery.go：报告投递及关联<br/>internal/elnis/outbox.go：投递状态与存档<br/>按需使用业务 Receipt"]
+    B --> D["日志来源<br/>internal/agent/output.go、dialogue/reply_commit.go<br/>internal/toolrun/runner.go<br/>接收 LogResult，组织完整九字段记录"]
+    D --> E["公共日志入口<br/>internal/events/logging.go<br/>校验、复制身份、发射信号"]
+    E --> F["日志中心<br/>internal/logging<br/>记时、过滤、脱敏、排队、落盘"]
+```
+
 - 最终 Hook 只改变展示文本，不改模型原文和历史正文。直接回复先发送及延迟 outputs 再落库；缓冲回复先落库再发送、关联和延迟 outputs。错误仍保留实际提交／回执，已成功内容不重发。
 - 流式回复合并 Replace 与 Finish 的回执：平台消息 ID 去重，实际消息按平台、scope、消息 ID 合并并合并输出索引；保留 Finish 部分失败时已经发出的消息，合并结果不共享平台回执中的切片。
 - 状态与发送观察事实在同步保存或实际提交后发布；通知失败不再触发通知。发送必须等待实际回执，入队不算成功。

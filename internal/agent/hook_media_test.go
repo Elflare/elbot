@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/events"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -72,7 +73,7 @@ type hookMediaSender struct {
 	data []byte
 }
 
-func (s *hookMediaSender) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+func (s *hookMediaSender) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	for _, out := range outputs {
 		if out.Source.MediaID != "" || out.Source.URL != "" {
 			s.t.Fatalf("unresolved source: %#v", out.Source)
@@ -83,9 +84,9 @@ func (s *hookMediaSender) SendChat(ctx context.Context, outputs []delivery.Outpu
 		}
 		s.path = out.Source.Path
 	}
-	return delivery.Receipt{PlatformMessageIDs: []string{"sent"}}, nil
+	return delivery.Receipt{PlatformMessageIDs: []string{"sent"}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
-func (s *hookMediaSender) SendNotice(ctx context.Context, n delivery.Notice) (delivery.Receipt, error) {
+func (s *hookMediaSender) SendNotice(ctx context.Context, n delivery.Notice) (delivery.Receipt, events.LogResult, error) {
 	return s.SendChat(ctx, n.Outputs)
 }
 
@@ -95,7 +96,7 @@ type orderedMediaSender struct {
 	names    []string
 }
 
-func (s *orderedMediaSender) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+func (s *orderedMediaSender) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	for _, out := range outputs {
 		if out.Kind != delivery.KindImage && out.Kind != delivery.KindFile && out.Kind != delivery.KindRecord {
 			continue
@@ -118,10 +119,10 @@ func (s *orderedMediaSender) SendChat(_ context.Context, outputs []delivery.Outp
 			ScopeID:           "group:9",
 			OutputIndexes:     []int{0, 1, 2},
 		}},
-	}, nil
+	}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
-func (s *orderedMediaSender) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+func (s *orderedMediaSender) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, events.LogResult, error) {
 	return s.SendChat(ctx, notice.Outputs)
 }
 
@@ -148,7 +149,7 @@ func TestOutputMediaSourcesAreCanonicalAndReceiptOrderPersists(t *testing.T) {
 		{Kind: delivery.KindFile, Name: "local.txt", Source: delivery.Source{Path: path}},
 		{Kind: delivery.KindRecord, Name: "voice.ogg", Source: delivery.Source{Data: []byte("data"), MIMEType: "audio/ogg"}},
 	}
-	if _, err := dispatcher.SendChat(messageCtx, outputs); err != nil {
+	if _, _, err := dispatcher.SendChat(messageCtx, outputs); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.Join(sender.contents, ","); got != "url,path,data" {
@@ -186,11 +187,22 @@ func TestMediaReceiptKeepsDuplicatesAndPartialSuccess(t *testing.T) {
 		{Kind: delivery.KindImage, Source: delivery.Source{MediaID: item.ID}},
 	}
 	receipt := delivery.Receipt{PlatformMessageIDs: []string{"sent"}, SentMessages: []delivery.SentMessage{{PlatformMessageID: "sent", Platform: "qqonebot", ScopeID: "group:1", OutputIndexes: []int{0, 1}}}}
-	sender := mediaSendFunc(func([]delivery.Output) (delivery.Receipt, error) {
-		return receipt, fmt.Errorf("later output failed")
+	sender := mediaSendFunc(func([]delivery.Output) (delivery.Receipt, events.LogResult, error) {
+		{
+			err := fmt.Errorf("later output failed")
+			logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+			if err != nil {
+				logResult.ResultStatus = events.ResultFailed
+				logResult.Content = err.Error()
+				if err == context.Canceled {
+					logResult.ResultStatus = events.ResultCanceled
+				}
+			}
+			return receipt, logResult, err
+		}
 	})
 	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Sender: sender})
-	got, sendErr := dispatcher.SendNotice(ctx, delivery.Notice{Outputs: outputs})
+	got, _, sendErr := dispatcher.SendNotice(ctx, delivery.Notice{Outputs: outputs})
 	if sendErr == nil || len(got.PlatformMessageIDs) != 1 {
 		t.Fatalf("receipt/error = %#v/%v", got, sendErr)
 	}

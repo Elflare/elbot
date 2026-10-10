@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"sync"
 	"testing"
@@ -44,8 +45,8 @@ func TestFinalLLMTakeoverUsesForegroundHookAndReceipt(t *testing.T) {
 			ctx := takeoverPrivateContext()
 			msg, _ := platform.MessageContextFrom(ctx)
 			msg.BufferAssistantOutput = buffered
-			msg.Sender = mediaSendFunc(func([]delivery.Output) (delivery.Receipt, error) {
-				return delivery.Receipt{PlatformMessageIDs: []string{"sent"}, SentMessages: []delivery.SentMessage{{Platform: "qq", ScopeID: "private:1", PlatformMessageID: "sent"}}}, nil
+			msg.Sender = mediaSendFunc(func([]delivery.Output) (delivery.Receipt, events.LogResult, error) {
+				return delivery.Receipt{PlatformMessageIDs: []string{"sent"}, SentMessages: []delivery.SentMessage{{Platform: "qq", ScopeID: "private:1", PlatformMessageID: "sent"}}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 			})
 			ctx = platform.WithMessageContext(ctx, msg)
 			if err := a.HandleMessage(ctx, "/resume "+id); err != nil {

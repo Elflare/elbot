@@ -55,80 +55,40 @@ func (s *Service) RegisterCronHandlers(manager *elcron.Manager) error {
 	if manager == nil {
 		return nil
 	}
-	if err := manager.RegisterHandler("maintenance.log_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.ResultStatus, string, error) {
-		err := s.RunLogCleanup(ctx)
-		if err != nil {
-			resultStatus := globalevents.ResultFailed
-			if err == context.Canceled {
-				resultStatus = globalevents.ResultCanceled
-			}
-			return resultStatus, fmt.Sprintf("cleanup_error=%v", err), err
-		}
-		return globalevents.ResultSucceeded, "cleanup completed", nil
+	if err := manager.RegisterHandler("maintenance.log_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
+		return s.RunLogCleanup(ctx)
 	}); err != nil {
 		return err
 	}
-	if err := manager.RegisterHandler("maintenance.session_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.ResultStatus, string, error) {
+	if err := manager.RegisterHandler("maintenance.session_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
 		if !s.sessionCleanup.Enabled {
-			return globalevents.ResultSkipped, "cleanup is not enabled or configured", nil
+			return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "cleanup is not enabled or configured"}, nil
 		}
-		err := s.RunSessionCleanup(ctx)
-		if err != nil {
-			resultStatus := globalevents.ResultFailed
-			if err == context.Canceled {
-				resultStatus = globalevents.ResultCanceled
-			}
-			return resultStatus, fmt.Sprintf("cleanup_error=%v", err), err
-		}
-		return globalevents.ResultSucceeded, "cleanup completed", nil
+		return s.RunSessionCleanup(ctx)
 	}); err != nil {
 		return err
 	}
-	if err := manager.RegisterHandler("maintenance.sandbox_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.ResultStatus, string, error) {
+	if err := manager.RegisterHandler("maintenance.sandbox_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
 		if s.sandboxRoot == "" || s.sandboxCleanup.RetentionDays <= 0 {
-			return globalevents.ResultSkipped, "cleanup is not enabled or configured", nil
+			return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "cleanup is not enabled or configured"}, nil
 		}
-		err := s.RunSandboxCleanup(ctx)
-		if err != nil {
-			resultStatus := globalevents.ResultFailed
-			if err == context.Canceled {
-				resultStatus = globalevents.ResultCanceled
-			}
-			return resultStatus, fmt.Sprintf("cleanup_error=%v", err), err
-		}
-		return globalevents.ResultSucceeded, "cleanup completed", nil
+		return s.RunSandboxCleanup(ctx)
 	}); err != nil {
 		return err
 	}
-	if err := manager.RegisterHandler("maintenance.media_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.ResultStatus, string, error) {
+	if err := manager.RegisterHandler("maintenance.media_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
 		if s.Media == nil {
-			return globalevents.ResultSkipped, "cleanup is not enabled or configured", nil
+			return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "cleanup is not enabled or configured"}, nil
 		}
-		err := s.Media.Cleanup(ctx)
-		if err != nil {
-			resultStatus := globalevents.ResultFailed
-			if err == context.Canceled {
-				resultStatus = globalevents.ResultCanceled
-			}
-			return resultStatus, fmt.Sprintf("cleanup_error=%v", err), err
-		}
-		return globalevents.ResultSucceeded, "cleanup completed", nil
+		return s.Media.Cleanup(ctx)
 	}); err != nil {
 		return err
 	}
-	if err := manager.RegisterHandler("maintenance.chat_history_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.ResultStatus, string, error) {
+	if err := manager.RegisterHandler("maintenance.chat_history_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
 		if !s.chatHistoryCleanup.Enabled || s.chatHistoryCleanup.RetentionDays <= 0 || s.chatHistory == nil {
-			return globalevents.ResultSkipped, "cleanup is not enabled or configured", nil
+			return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "cleanup is not enabled or configured"}, nil
 		}
-		err := s.RunChatHistoryCleanup(ctx)
-		if err != nil {
-			resultStatus := globalevents.ResultFailed
-			if err == context.Canceled {
-				resultStatus = globalevents.ResultCanceled
-			}
-			return resultStatus, fmt.Sprintf("cleanup_error=%v", err), err
-		}
-		return globalevents.ResultSucceeded, "cleanup completed", nil
+		return s.RunChatHistoryCleanup(ctx)
 	}); err != nil {
 		return err
 	}
@@ -168,7 +128,7 @@ func upsertOrDisable(ctx context.Context, manager *elcron.Manager, enabled bool,
 	return nil
 }
 
-func (s *Service) RunLogCleanup(ctx context.Context) error {
+func (s *Service) RunLogCleanup(ctx context.Context) (logResult globalevents.LogResult, err error) {
 	if err := s.logs.CleanupOldLogs(); err != nil {
 		{
 			{
@@ -202,10 +162,11 @@ func (s *Service) RunLogCleanup(ctx context.Context) error {
 				if facts.RootRequestID != "" {
 					record.Identity.RootRequestID = &facts.RootRequestID
 				}
+				logResult = globalevents.LogResult{ResultStatus: record.ResultStatus, Content: record.Content}
 				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 			}
 		}
-		return err
+		return logResult, err
 	}
 	{
 		record := globalevents.LogRecord{
@@ -234,14 +195,15 @@ func (s *Service) RunLogCleanup(ctx context.Context) error {
 		if facts.RootRequestID != "" {
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
+		logResult = globalevents.LogResult{ResultStatus: record.ResultStatus, Content: record.Content}
 		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 	}
-	return nil
+	return logResult, nil
 }
 
-func (s *Service) RunSessionCleanup(ctx context.Context) error {
+func (s *Service) RunSessionCleanup(ctx context.Context) (logResult globalevents.LogResult, err error) {
 	if !s.sessionCleanup.Enabled {
-		return nil
+		return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "cleanup is not enabled or configured"}, nil
 	}
 	deleted, err := s.Sessions.CleanupExpired(ctx, time.Now().AddDate(0, 0, -s.sessionCleanup.RetentionDays))
 	if err != nil {
@@ -277,10 +239,11 @@ func (s *Service) RunSessionCleanup(ctx context.Context) error {
 				if facts.RootRequestID != "" {
 					record.Identity.RootRequestID = &facts.RootRequestID
 				}
+				logResult = globalevents.LogResult{ResultStatus: record.ResultStatus, Content: record.Content}
 				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 			}
 		}
-		return err
+		return logResult, err
 	}
 	{
 		record := globalevents.LogRecord{
@@ -309,14 +272,15 @@ func (s *Service) RunSessionCleanup(ctx context.Context) error {
 		if facts.RootRequestID != "" {
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
+		logResult = globalevents.LogResult{ResultStatus: record.ResultStatus, Content: record.Content}
 		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 	}
-	return nil
+	return logResult, nil
 }
 
-func (s *Service) RunChatHistoryCleanup(ctx context.Context) error {
+func (s *Service) RunChatHistoryCleanup(ctx context.Context) (logResult globalevents.LogResult, err error) {
 	if !s.chatHistoryCleanup.Enabled || s.chatHistoryCleanup.RetentionDays <= 0 || s.chatHistory == nil {
-		return nil
+		return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "cleanup is not enabled or configured"}, nil
 	}
 	cutoff := time.Now().AddDate(0, 0, -s.chatHistoryCleanup.RetentionDays)
 	deleted, err := s.chatHistory.DeleteBefore(ctx, cutoff)
@@ -353,14 +317,19 @@ func (s *Service) RunChatHistoryCleanup(ctx context.Context) error {
 				if facts.RootRequestID != "" {
 					record.Identity.RootRequestID = &facts.RootRequestID
 				}
+				logResult = globalevents.LogResult{ResultStatus: record.ResultStatus, Content: record.Content}
 				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 			}
 		}
-		return err
+		return logResult, err
 	}
 	if s.Media != nil {
 		if err := s.Media.ReconcileHistory(ctx); err != nil {
-			return err
+			logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("media_reconcile_error=%v", err)}
+			if errors.Is(err, context.Canceled) {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+			return logResult, err
 		}
 	}
 	{
@@ -390,14 +359,15 @@ func (s *Service) RunChatHistoryCleanup(ctx context.Context) error {
 		if facts.RootRequestID != "" {
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
+		logResult = globalevents.LogResult{ResultStatus: record.ResultStatus, Content: record.Content}
 		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 	}
-	return nil
+	return logResult, nil
 }
 
-func (s *Service) RunSandboxCleanup(ctx context.Context) error {
+func (s *Service) RunSandboxCleanup(ctx context.Context) (logResult globalevents.LogResult, err error) {
 	if s.sandboxRoot == "" || s.sandboxCleanup.RetentionDays <= 0 {
-		return nil
+		return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "cleanup is not enabled or configured"}, nil
 	}
 	cutoff := time.Now().AddDate(0, 0, -s.sandboxCleanup.RetentionDays)
 	deleted, err := cleanupSandbox(ctx, s.sandboxRoot, cutoff)
@@ -434,10 +404,11 @@ func (s *Service) RunSandboxCleanup(ctx context.Context) error {
 				if facts.RootRequestID != "" {
 					record.Identity.RootRequestID = &facts.RootRequestID
 				}
+				logResult = globalevents.LogResult{ResultStatus: record.ResultStatus, Content: record.Content}
 				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 			}
 		}
-		return err
+		return logResult, err
 	}
 	{
 		record := globalevents.LogRecord{
@@ -466,9 +437,10 @@ func (s *Service) RunSandboxCleanup(ctx context.Context) error {
 		if facts.RootRequestID != "" {
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
+		logResult = globalevents.LogResult{ResultStatus: record.ResultStatus, Content: record.Content}
 		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 	}
-	return nil
+	return logResult, nil
 }
 
 func cleanupSandbox(ctx context.Context, dir string, cutoff time.Time) (int, error) {

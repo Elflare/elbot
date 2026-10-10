@@ -17,6 +17,6 @@ func PlatformConnected(ctx context.Context, name string, run func(context.Contex
 	if len(event.Outputs) == 0 {
 		return nil
 	}
-	_, err = sender.SendNotice(ctx, delivery.Notice{Outputs: event.Outputs})
+	_, _, err = sender.SendNotice(ctx, delivery.Notice{Outputs: event.Outputs})
 	return err
 }

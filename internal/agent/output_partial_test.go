@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"testing"
 
@@ -17,8 +18,18 @@ func TestPartialAssistantSendKeepsMessageAssociation(t *testing.T) {
 			store := newTestStore(t)
 			a := newTestAgent(t, &fakePlatform{}, &fakeLLM{replies: []string{"long answer"}}, "test-model", config.ProviderConfig{}, store)
 			wantErr := errors.New("later page failed")
-			sender := mediaSendFunc(func([]delivery.Output) (delivery.Receipt, error) {
-				return delivery.Receipt{PlatformMessageIDs: []string{"first-page"}, SentMessages: []delivery.SentMessage{{Platform: "test", ScopeID: "group:old", PlatformMessageID: "first-page"}}}, wantErr
+			sender := mediaSendFunc(func([]delivery.Output) (delivery.Receipt, events.LogResult, error) {
+				{
+					logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+					if wantErr != nil {
+						logResult.ResultStatus = events.ResultFailed
+						logResult.Content = wantErr.Error()
+						if wantErr == context.Canceled {
+							logResult.ResultStatus = events.ResultCanceled
+						}
+					}
+					return delivery.Receipt{PlatformMessageIDs: []string{"first-page"}, SentMessages: []delivery.SentMessage{{Platform: "test", ScopeID: "group:old", PlatformMessageID: "first-page"}}}, logResult, wantErr
+				}
 			})
 			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ScopeID: "group:old"}, Identity: contextinfo.Identity{PlatformUserID: "user"}}, Sender: sender, BufferAssistantOutput: buffered})
 			if err := a.HandleMessage(ctx, "question"); !errors.Is(err, wantErr) {

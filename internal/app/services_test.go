@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"elbot/internal/events"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -36,13 +37,13 @@ type assemblyPlatform struct {
 
 func (*assemblyPlatform) Name() string                                        { return "cli" }
 func (*assemblyPlatform) Run(context.Context, platform.PlatformHandler) error { return nil }
-func (p *assemblyPlatform) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+func (p *assemblyPlatform) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.outputs = append(p.outputs, delivery.FallbackOutput(outputs).Text)
-	return delivery.Receipt{PlatformMessageIDs: []string{fmt.Sprint(len(p.outputs))}}, nil
+	return delivery.Receipt{PlatformMessageIDs: []string{fmt.Sprint(len(p.outputs))}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
-func (p *assemblyPlatform) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+func (p *assemblyPlatform) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, events.LogResult, error) {
 	return p.SendChat(ctx, notice.Outputs)
 }
 func (p *assemblyPlatform) SetCommandCatalog(infos []command.Info)   { p.catalog = infos }

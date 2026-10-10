@@ -2,6 +2,7 @@ package dialogue
 
 import (
 	"context"
+	"elbot/internal/events"
 	"fmt"
 
 	"elbot/internal/llm"
@@ -13,7 +14,7 @@ import (
 // MessageCommitter commits a prepared business message, or a cursor-only reply.
 // Protocol-private implementations can atomically attach their native state.
 type MessageCommitter interface {
-	Commit(context.Context, *storage.Message) error
+	Commit(context.Context, *storage.Message) (events.LogResult, error)
 }
 
 // CommitGate uses the original activation and live attempt, not public IDs as
@@ -63,9 +64,9 @@ func (s *MessageStore) Committer(operation string) MessageCommitter {
 	return messageCommitter{store: s, operation: operation}
 }
 
-func (c messageCommitter) Commit(ctx context.Context, message *storage.Message) error {
+func (c messageCommitter) Commit(ctx context.Context, message *storage.Message) (events.LogResult, error) {
 	if message == nil {
-		return nil
+		return events.LogResult{ResultStatus: events.ResultSkipped}, nil
 	}
 	return c.store.Append(ctx, message, c.operation)
 }
@@ -76,17 +77,17 @@ type ToolTranscriptCommitter struct {
 	SessionID string
 }
 
-func (c *ToolTranscriptCommitter) Begin(ctx context.Context, head *storage.Message) error {
+func (c *ToolTranscriptCommitter) Begin(ctx context.Context, head *storage.Message) (events.LogResult, error) {
 	c.SessionID = head.SessionID
 	return c.Messages.Append(ctx, ToolBatchText(head), "append_tool_transcript")
 }
-func (c *ToolTranscriptCommitter) Prepared(context.Context, int, llm.ToolCallRequest) error {
-	return nil
+func (c *ToolTranscriptCommitter) Prepared(context.Context, int, llm.ToolCallRequest) (events.LogResult, error) {
+	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
 }
-func (c *ToolTranscriptCommitter) Started(context.Context, int, llm.ToolCallRequest) error {
-	return nil
+func (c *ToolTranscriptCommitter) Started(context.Context, int, llm.ToolCallRequest) (events.LogResult, error) {
+	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
 }
-func (c *ToolTranscriptCommitter) Result(ctx context.Context, _ int, call llm.ToolCallRequest, _ llm.LLMMessage, stored *storage.Message) error {
+func (c *ToolTranscriptCommitter) Result(ctx context.Context, _ int, call llm.ToolCallRequest, _ llm.LLMMessage, stored *storage.Message) (events.LogResult, error) {
 	return c.Messages.Commit(ctx, storage.DialogueCommit{SessionID: c.SessionID, ToolPair: NewToolPair(c.SessionID, call, stored)}, "append_tool_transcript")
 }
 

@@ -285,20 +285,28 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 	}
 }
 
-func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	if text, ok := textOutputs(outputs); ok {
 		return a.sendContextText(ctx, text)
 	}
 	t, err := contextTarget(ctx)
 	if err != nil {
-		return delivery.Receipt{}, err
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return delivery.Receipt{}, logResult, err
 	}
 	segments, err := outputSegments(a.cfg.SendFileMode, outputs...)
 	if err != nil {
-		return delivery.Receipt{}, err
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return delivery.Receipt{}, logResult, err
 	}
-	receipt, err := a.sendSegments(ctx, t, segments)
-	return oneBotReceipt(receipt, t, outputs), err
+	receipt, logResult, err := a.sendSegments(ctx, t, segments)
+	return oneBotReceipt(receipt, t, outputs), logResult, err
 }
 
 func (a *Adapter) CallPlatformAPI(ctx context.Context, api string, params map[string]any) (json.RawMessage, error) {
@@ -312,10 +320,20 @@ func (a *Adapter) CallPlatformAPI(ctx context.Context, api string, params map[st
 	return resp.Data, nil
 }
 
-func (a *Adapter) sendTemporaryNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+func (a *Adapter) sendTemporaryNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, globalevents.LogResult, error) {
 	transport := &Transport{URL: a.cfg.URL, AccessToken: a.cfg.AccessToken, Timeout: time.Duration(a.cfg.APITimeoutSeconds) * time.Second}
 	if err := transport.Connect(ctx); err != nil {
-		return delivery.Receipt{}, err
+		{
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+			if err != nil {
+				logResult.ResultStatus = globalevents.ResultFailed
+				logResult.Content = err.Error()
+				if errors.Is(err, context.Canceled) {
+					logResult.ResultStatus = globalevents.ResultCanceled
+				}
+			}
+			return delivery.Receipt{}, logResult, err
+		}
 	}
 	defer transport.Close(websocket.StatusNormalClosure, "temporary elnis delivery done")
 	go transport.readResponses(ctx)
@@ -324,14 +342,22 @@ func (a *Adapter) sendTemporaryNotice(ctx context.Context, notice delivery.Notic
 		t, err = contextTarget(ctx)
 	}
 	if err != nil {
-		return delivery.Receipt{}, err
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return delivery.Receipt{}, logResult, err
 	}
 	if text, ok := textOutputs(notice.Outputs); ok {
 		return sendText(ctx, transport, t, text)
 	}
 	segments, err := outputSegments(a.cfg.SendFileMode, notice.Outputs...)
 	if err != nil {
-		return delivery.Receipt{}, err
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return delivery.Receipt{}, logResult, err
 	}
 	var id string
 	switch t.MessageType {
@@ -343,18 +369,39 @@ func (a *Adapter) sendTemporaryNotice(ctx context.Context, notice delivery.Notic
 		err = fmt.Errorf("unsupported message target %q", t.MessageType)
 	}
 	receipt := receiptWithMessageID(id)
-	return oneBotReceipt(receipt, t, notice.Outputs), err
+	{
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+		if err != nil {
+			logResult.ResultStatus = globalevents.ResultFailed
+			logResult.Content = err.Error()
+			if errors.Is(err, context.Canceled) {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+		}
+		return oneBotReceipt(receipt, t, notice.Outputs), logResult, err
+	}
 }
 
-func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, globalevents.LogResult, error) {
 	outTarget := notice.Target
 	outputs := notice.Outputs
 	if outTarget.Empty() && isGroupToolPreviewNotice(ctx, outputs) {
-		return delivery.Receipt{}, nil
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	}
 	if outTarget.Superadmins {
 		if len(a.cfg.Superadmins) == 0 {
-			return delivery.Receipt{}, fmt.Errorf("qqonebot superadmins are not configured")
+			{
+				err := fmt.Errorf("qqonebot superadmins are not configured")
+				logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+				if err != nil {
+					logResult.ResultStatus = globalevents.ResultFailed
+					logResult.Content = err.Error()
+					if errors.Is(err, context.Canceled) {
+						logResult.ResultStatus = globalevents.ResultCanceled
+					}
+				}
+				return delivery.Receipt{}, logResult, err
+			}
 		}
 		var receipt delivery.Receipt
 		for _, id := range a.cfg.Superadmins {
@@ -368,14 +415,14 @@ func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (deliv
 			copyTarget.GroupID = ""
 			copyTarget.ScopeID = ""
 			notice.Target = copyTarget
-			sent, err := a.SendNotice(ctx, notice)
+			sent, logResult, err := a.SendNotice(ctx, notice)
 			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
 			receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
 			if err != nil {
-				return receipt, err
+				return receipt, logResult, err
 			}
 		}
-		return receipt, nil
+		return receipt, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	}
 	if delivery.UseTemporaryConnection(ctx) {
 		return a.sendTemporaryNotice(ctx, notice)
@@ -385,17 +432,25 @@ func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (deliv
 	}
 	t, err := targetToQQ(outTarget)
 	if err != nil {
-		return delivery.Receipt{}, err
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return delivery.Receipt{}, logResult, err
 	}
 	if text, ok := textOutputs(outputs); ok {
 		return sendText(ctx, a.transport, t, text)
 	}
 	segments, err := outputSegments(a.cfg.SendFileMode, outputs...)
 	if err != nil {
-		return delivery.Receipt{}, err
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return delivery.Receipt{}, logResult, err
 	}
-	receipt, err := a.sendSegments(ctx, t, segments)
-	return oneBotReceipt(receipt, t, outputs), err
+	receipt, logResult, err := a.sendSegments(ctx, t, segments)
+	return oneBotReceipt(receipt, t, outputs), logResult, err
 }
 
 func textOutputs(outputs []delivery.Output) (string, bool) {
@@ -416,20 +471,24 @@ func isGroupToolPreviewNotice(ctx context.Context, outputs []delivery.Output) bo
 	return err == nil && t.MessageType == "group"
 }
 
-func (a *Adapter) sendContextText(ctx context.Context, text string) (delivery.Receipt, error) {
+func (a *Adapter) sendContextText(ctx context.Context, text string) (delivery.Receipt, globalevents.LogResult, error) {
 	if strings.TrimSpace(text) == "" {
-		return delivery.Receipt{}, nil
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	}
 	t, err := contextTarget(ctx)
 	if err != nil {
-		return delivery.Receipt{}, err
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return delivery.Receipt{}, logResult, err
 	}
 	return sendText(ctx, a.transport, t, text)
 }
 
-func sendText(ctx context.Context, transport *Transport, t target, text string) (delivery.Receipt, error) {
+func sendText(ctx context.Context, transport *Transport, t target, text string) (delivery.Receipt, globalevents.LogResult, error) {
 	if strings.TrimSpace(text) == "" {
-		return delivery.Receipt{}, nil
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	}
 	pages := qqTextPages(text)
 	var nodes []Segment
@@ -458,27 +517,68 @@ func sendText(ctx context.Context, transport *Transport, t target, text string) 
 	default:
 		err = fmt.Errorf("unsupported message target %q", t.MessageType)
 	}
-	return oneBotReceipt(receiptWithMessageID(id), t, nil), err
-}
-
-func (a *Adapter) sendContextOutput(ctx context.Context, out delivery.Output) (delivery.Receipt, error) {
-	return a.SendChat(ctx, []delivery.Output{out})
-}
-
-func (a *Adapter) sendSegments(ctx context.Context, t target, segments []Segment) (delivery.Receipt, error) {
-	switch t.MessageType {
-	case "private":
-		id, err := a.transport.SendPrivateSegments(ctx, t.UserID, segments)
-		return receiptWithMessageID(id), err
-	case "group":
-		id, err := a.transport.SendGroupSegments(ctx, t.GroupID, segments)
-		return receiptWithMessageID(id), err
-	default:
-		return delivery.Receipt{}, fmt.Errorf("unsupported message target %q", t.MessageType)
+	{
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+		if err != nil {
+			logResult.ResultStatus = globalevents.ResultFailed
+			logResult.Content = err.Error()
+			if errors.Is(err, context.Canceled) {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+		}
+		return oneBotReceipt(receiptWithMessageID(id), t, nil), logResult, err
 	}
 }
 
-func (a *Adapter) sendTarget(ctx context.Context, outTarget delivery.Target, out delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) sendContextOutput(ctx context.Context, out delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+	return a.SendChat(ctx, []delivery.Output{out})
+}
+
+func (a *Adapter) sendSegments(ctx context.Context, t target, segments []Segment) (delivery.Receipt, globalevents.LogResult, error) {
+	switch t.MessageType {
+	case "private":
+		id, err := a.transport.SendPrivateSegments(ctx, t.UserID, segments)
+		{
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+			if err != nil {
+				logResult.ResultStatus = globalevents.ResultFailed
+				logResult.Content = err.Error()
+				if errors.Is(err, context.Canceled) {
+					logResult.ResultStatus = globalevents.ResultCanceled
+				}
+			}
+			return receiptWithMessageID(id), logResult, err
+		}
+	case "group":
+		id, err := a.transport.SendGroupSegments(ctx, t.GroupID, segments)
+		{
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+			if err != nil {
+				logResult.ResultStatus = globalevents.ResultFailed
+				logResult.Content = err.Error()
+				if errors.Is(err, context.Canceled) {
+					logResult.ResultStatus = globalevents.ResultCanceled
+				}
+			}
+			return receiptWithMessageID(id), logResult, err
+		}
+	default:
+		{
+			err := fmt.Errorf("unsupported message target %q", t.MessageType)
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+			if err != nil {
+				logResult.ResultStatus = globalevents.ResultFailed
+				logResult.Content = err.Error()
+				if errors.Is(err, context.Canceled) {
+					logResult.ResultStatus = globalevents.ResultCanceled
+				}
+			}
+			return delivery.Receipt{}, logResult, err
+		}
+	}
+}
+
+func (a *Adapter) sendTarget(ctx context.Context, outTarget delivery.Target, out delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	return a.SendNotice(ctx, delivery.Notice{Target: outTarget, Outputs: []delivery.Output{out}})
 }
 

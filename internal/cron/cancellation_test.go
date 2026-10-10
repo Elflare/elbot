@@ -69,10 +69,21 @@ func TestRecoveryCancellationDoesNotSendFailureNotice(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	captureLogs(t, slog.New(slog.NewTextHandler(&logs, nil)))
-	s := NewService(Options{Store: fakeCronStore{cron: repo}, EnabledPlatforms: []PlatformTarget{{Name: "qqonebot"}}, SendTarget: func(_ context.Context, target delivery.Target, _ []delivery.Output) (delivery.Receipt, error) {
+	s := NewService(Options{Store: fakeCronStore{cron: repo}, EnabledPlatforms: []PlatformTarget{{Name: "qqonebot"}}, SendTarget: func(_ context.Context, target delivery.Target, _ []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 		targets = append(targets, target.Platform)
 		cancel()
-		return delivery.Receipt{}, context.Canceled
+		{
+			err := context.Canceled
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+			if err != nil {
+				logResult.ResultStatus = globalevents.ResultFailed
+				logResult.Content = err.Error()
+				if err == context.Canceled {
+					logResult.ResultStatus = globalevents.ResultCanceled
+				}
+			}
+			return delivery.Receipt{}, logResult, err
+		}
 	}})
 	s.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
 	upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "cancel", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "report"}, Target: CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
@@ -89,11 +100,23 @@ func TestDeliveryKeepsMixedFailureBeforeErrorWrapping(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	failure := errors.New("real failure")
-	s := NewService(Options{SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+	s := NewService(Options{SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 		cancel()
-		return delivery.Receipt{}, fmt.Errorf("mixed: %w", errors.Join(context.Canceled, failure))
+		{
+			err := fmt.Errorf("mixed: %w", errors.Join(context.Canceled, failure))
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+			if err != nil {
+				logResult.ResultStatus = globalevents.ResultFailed
+				logResult.Content = err.Error()
+				if err == context.Canceled {
+					logResult.ResultStatus = globalevents.ResultCanceled
+				}
+			}
+			return delivery.Receipt{}, logResult, err
+		}
 	}})
-	status, err := s.sendOutputsToPlatformTarget(ctx, "mixed", "cli", delivery.Target{Platform: "cli"}, []delivery.Output{delivery.Text("report")}, "", "")
+	logResult, err := s.sendOutputsToPlatformTarget(ctx, "mixed", "cli", delivery.Target{Platform: "cli"}, []delivery.Output{delivery.Text("report")}, "", "")
+	status := logResult.ResultStatus
 	if status != globalevents.ResultFailed || !errors.Is(err, failure) || !errors.Is(err, context.Canceled) {
 		t.Fatalf("status=%s error=%v", status, err)
 	}

@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
@@ -97,17 +98,17 @@ func (p *fakePlatform) Name() string { return "cli" }
 
 func (p *fakePlatform) Run(context.Context, platform.PlatformHandler) error { return nil }
 
-func (p *fakePlatform) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+func (p *fakePlatform) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	p.out.WriteString(delivery.FallbackOutput(outputs).Text)
-	return delivery.Receipt{}, nil
+	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
-func (p *fakePlatform) SendNotice(_ context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+func (p *fakePlatform) SendNotice(_ context.Context, notice delivery.Notice) (delivery.Receipt, events.LogResult, error) {
 	outputs := notice.Outputs
 	text := delivery.FallbackOutput(outputs).Text
 	p.out.WriteString(text)
 	p.preview.WriteString(text)
-	return delivery.Receipt{}, nil
+	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
 func (p *fakePlatform) SendReasoning(ctx context.Context, text string) error {
@@ -149,14 +150,14 @@ func (s *fakeMessageStream) Append(ctx context.Context, text string) error {
 	return nil
 }
 
-func (s *fakeMessageStream) Replace(ctx context.Context, text string) (delivery.Receipt, error) {
+func (s *fakeMessageStream) Replace(ctx context.Context, text string) (delivery.Receipt, events.LogResult, error) {
 	s.replaces = append(s.replaces, text)
-	return delivery.Receipt{}, nil
+	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
-func (s *fakeMessageStream) Finish(ctx context.Context) (delivery.Receipt, error) {
+func (s *fakeMessageStream) Finish(ctx context.Context) (delivery.Receipt, events.LogResult, error) {
 	s.finished++
-	return delivery.Receipt{}, nil
+	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
 type fakeLLMBlock struct {

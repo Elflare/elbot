@@ -2,6 +2,7 @@ package elnis
 
 import (
 	"context"
+	"elbot/internal/background"
 	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
@@ -15,41 +16,71 @@ import (
 	"elbot/internal/storage"
 )
 
-func (s *Service) runDirect(ctx context.Context, event Event, eventID string) error {
+// runDirect declares this event's result before its caller saves failure state.
+// Sending and event completion retain their business errors independently.
+func (s *Service) runDirect(ctx context.Context, event Event, eventID string) (globalevents.LogResult, error) {
 	if s.send == nil {
-		return fmt.Errorf("elnis sender is not configured")
+		err := fmt.Errorf("elnis sender is not configured")
+		return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
 	req := event.Request
 	resolved, err := decodeResolvedTargets(event.ResolvedTargets)
 	if err != nil {
-		return err
+		return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
-	if err := s.executeCalls(ctx, resolved, req.Calls); err != nil {
-		return err
+	logResult, err := s.executeCalls(ctx, resolved, req.Calls)
+	if err != nil {
+		return logResult, err
 	}
 	if len(resolved) > 0 && (strings.TrimSpace(req.Content) != "" || len(req.Segments) > 0) {
 		outputs, err := s.directMediaOutputs(ctx, event, eventID)
 		if err != nil {
-			return err
+			logResult.ResultStatus = globalevents.ResultFailed
+			logResult.Content += fmt.Sprintf("\nmedia_error=%v", err)
+			if errors.Is(err, context.Canceled) {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+			return logResult, err
 		}
-		if err := s.sendOutputsToTargets(ctx, resolved, outputs); err != nil {
-			return err
+		result, err := s.sendOutputsToTargets(ctx, resolved, outputs)
+		logResult.Content += "\nsend:\n" + result.Content
+		logResult.ResultStatus = result.ResultStatus
+		if err != nil {
+			return logResult, err
 		}
 	}
-	return s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusCompleted, "", "")
+	if err := s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusCompleted, "", ""); err != nil {
+		logResult.Content += fmt.Sprintf("\npersistence_error=%v", err)
+		if logResult.ResultStatus != globalevents.ResultFailed {
+			logResult.ResultStatus = globalevents.ResultFailed
+			if errors.Is(err, context.Canceled) {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+		}
+		return logResult, err
+	}
+	if logResult.ResultStatus == globalevents.ResultSkipped {
+		logResult.ResultStatus = globalevents.ResultSucceeded
+	}
+	logResult.Content += "\nevent state completed"
+	return logResult, nil
 }
 
-func (s *Service) executeCalls(ctx context.Context, targets []Target, calls []Call) error {
+func (s *Service) executeCalls(ctx context.Context, targets []Target, calls []Call) (globalevents.LogResult, error) {
 	if len(calls) == 0 {
-		return nil
+		return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no platform API calls"}, nil
 	}
 	if s.platformCallers == nil {
-		return fmt.Errorf("platform api callers are not configured")
+		err := fmt.Errorf("platform api callers are not configured")
+		return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
+	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
 	for _, call := range calls {
 		rawCall, err := elvena.ResolveRawCall(call)
 		if err != nil {
-			return err
+			logResult.ResultStatus = globalevents.ResultFailed
+			logResult.Content += "\n" + err.Error()
+			return logResult, err
 		}
 		platform := strings.TrimSpace(rawCall.Platform)
 		if platform == "" && len(targets) > 0 {
@@ -57,32 +88,65 @@ func (s *Service) executeCalls(ctx context.Context, targets []Target, calls []Ca
 		}
 		caller, ok := s.platformCallers.PlatformCaller(platform)
 		if !ok || caller == nil {
-			return fmt.Errorf("platform %q does not support api calls", platform)
+			err := fmt.Errorf("platform %q does not support api calls", platform)
+			logResult.ResultStatus = globalevents.ResultFailed
+			logResult.Content += "\n" + err.Error()
+			return logResult, err
 		}
 		if _, err := caller.CallPlatformAPI(ctx, rawCall.API, rawCall.Params); err != nil {
-			return err
+			logResult.ResultStatus = globalevents.ResultFailed
+			logResult.Content += fmt.Sprintf("\nplatform=%s api=%s error=%v", platform, rawCall.API, err)
+			if errors.Is(err, context.Canceled) {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+			return logResult, err
 		}
+		logResult.Content += fmt.Sprintf("\nplatform=%s api=%s completed", platform, rawCall.API)
 	}
-	return nil
+	return logResult, nil
 }
 
-func (s *Service) sendOutputsToTargets(ctx context.Context, targets []Target, outputs []delivery.Output) error {
+func (s *Service) sendOutputsToTargets(ctx context.Context, targets []Target, outputs []delivery.Output) (globalevents.LogResult, error) {
 	return s.sendOutputsToTargetsMapped(ctx, "", targets, outputs, "", "")
 }
 
-func (s *Service) sendOutputsToTargetsMapped(ctx context.Context, eventKey string, targets []Target, outputs []delivery.Output, sessionID, messageID string) error {
+func (s *Service) sendOutputsToTargetsMapped(ctx context.Context, eventKey string, targets []Target, outputs []delivery.Output, sessionID, messageID string) (globalevents.LogResult, error) {
 	ctx = delivery.WithTemporaryConnection(ctx)
+	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSkipped}
 	for _, target := range targets {
-		receipt, err := s.send(ctx, target.ToDeliveryTarget(), outputs)
+		receipt, result, err := s.send(ctx, target.ToDeliveryTarget(), outputs)
 		s.mapReportReceipt(ctx, eventKey, sessionID, messageID, receipt)
+		logResult.Content += fmt.Sprintf("\ntarget=%v\n%s", target, result.Content)
+		if logResult.ResultStatus == globalevents.ResultSkipped || result.ResultStatus == globalevents.ResultFailed ||
+			(result.ResultStatus == globalevents.ResultCanceled && logResult.ResultStatus != globalevents.ResultFailed) {
+			logResult.ResultStatus = result.ResultStatus
+		}
 		if err != nil {
-			return err
+			return logResult, err
 		}
 	}
-	return nil
+	return logResult, nil
 }
 
 func (s *Service) mapReportReceipt(ctx context.Context, eventKey, sessionID, messageID string, receipt delivery.Receipt) {
+	identity := globalevents.LogIdentity{}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.SessionID != "" {
+		identity.SessionID = &facts.SessionID
+	}
+	if facts.RunID != "" {
+		identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		identity.RootRequestID = &facts.RootRequestID
+	}
+
 	if sessionID == "" || messageID == "" || s.store == nil || s.store.Messages() == nil {
 		return
 	}
@@ -108,58 +172,11 @@ func (s *Service) mapReportReceipt(ctx context.Context, eventKey, sessionID, mes
 					record.ResultStatus = globalevents.ResultCanceled
 					record.Level = slog.LevelInfo
 				}
-				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				if facts.SessionID != "" {
-					record.Identity.SessionID = &facts.SessionID
-				}
-				if facts.RunID != "" {
-					record.Identity.RunID = &facts.RunID
-				}
-				if facts.Attempt != "" {
-					record.Identity.Attempt = &facts.Attempt
-				}
-				if facts.RequestID != "" {
-					record.Identity.RequestID = &facts.RequestID
-				}
-				if facts.RootRequestID != "" {
-					record.Identity.RootRequestID = &facts.RootRequestID
-				}
+				record.Identity = identity
 				record.Identity.SessionID = &sessionID
-				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
-			}
-			{
-				content, _ := json.Marshal(map[string]any{"event_key": eventKey, "platform": platformName, "scope_id": scopeID, "platform_message_id": platformMessageID, "message_id": messageID, "error": fmt.Sprintf("%.2048s", err.Error())})
-				record := globalevents.LogRecord{
-					Category:     globalevents.LogElnis,
-					Level:        slog.LevelError,
-					EventName:    "map_elnis_report_message_failed",
-					Module:       "elnis",
-					Type:         globalevents.ContentJSON,
-					Content:      string(content),
-					ResultStatus: globalevents.ResultFailed,
-				}
-				if errors.Is(err, context.Canceled) {
-					record.ResultStatus = globalevents.ResultCanceled
-					record.Level = slog.LevelInfo
-				}
-				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				if facts.SessionID != "" {
-					record.Identity.SessionID = &facts.SessionID
-				}
-				if facts.RunID != "" {
-					record.Identity.RunID = &facts.RunID
-				}
-				if facts.Attempt != "" {
-					record.Identity.Attempt = &facts.Attempt
-				}
-				if facts.RequestID != "" {
-					record.Identity.RequestID = &facts.RequestID
-				}
-				if facts.RootRequestID != "" {
-					record.Identity.RootRequestID = &facts.RootRequestID
-				}
-				record.Identity.SessionID = &sessionID
-				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+				background.LogBackground(ctx, record)
+				record.Category, record.EventName = globalevents.LogElnis, "map_elnis_report_message_failed"
+				background.LogBackground(ctx, record)
 			}
 		}
 	}

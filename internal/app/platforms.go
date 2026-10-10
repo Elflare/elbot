@@ -166,10 +166,32 @@ func (a elnisRuntimeAdapter) Run(ctx context.Context, _ platform.PlatformHandler
 	return a.runtime.Run(ctx)
 }
 
-func (a elnisRuntimeAdapter) SendChat(context.Context, []delivery.Output) (delivery.Receipt, error) {
-	return delivery.Receipt{}, fmt.Errorf("elnis cannot send chat output")
+func (a elnisRuntimeAdapter) SendChat(context.Context, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+	{
+		err := fmt.Errorf("elnis cannot send chat output")
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+		if err != nil {
+			logResult.ResultStatus = globalevents.ResultFailed
+			logResult.Content = err.Error()
+			if err == context.Canceled {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+		}
+		return delivery.Receipt{}, logResult, err
+	}
 }
 
-func (a elnisRuntimeAdapter) SendNotice(context.Context, delivery.Notice) (delivery.Receipt, error) {
-	return delivery.Receipt{}, fmt.Errorf("elnis cannot send notice output")
+func (a elnisRuntimeAdapter) SendNotice(context.Context, delivery.Notice) (delivery.Receipt, globalevents.LogResult, error) {
+	{
+		err := fmt.Errorf("elnis cannot send notice output")
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+		if err != nil {
+			logResult.ResultStatus = globalevents.ResultFailed
+			logResult.Content = err.Error()
+			if err == context.Canceled {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+		}
+		return delivery.Receipt{}, logResult, err
+	}
 }

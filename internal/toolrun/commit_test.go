@@ -3,6 +3,7 @@ package toolrun
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
@@ -17,15 +18,37 @@ type failingToolCommitter struct {
 	phase   string
 }
 
-func (c *failingToolCommitter) Prepared(context.Context, int, llm.ToolCallRequest) error {
+func (c *failingToolCommitter) Prepared(context.Context, int, llm.ToolCallRequest) (events.LogResult, error) {
 	if c.phase == "prepared" {
-		return c.failure
+		{
+			err := c.failure
+			logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+			if err != nil {
+				logResult.ResultStatus = events.ResultFailed
+				logResult.Content = err.Error()
+				if err == context.Canceled {
+					logResult.ResultStatus = events.ResultCanceled
+				}
+			}
+			return logResult, err
+		}
 	}
-	return nil
+	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
 }
-func (c *failingToolCommitter) Result(ctx context.Context, i int, call llm.ToolCallRequest, message llm.LLMMessage, row *storage.Message) error {
+func (c *failingToolCommitter) Result(ctx context.Context, i int, call llm.ToolCallRequest, message llm.LLMMessage, row *storage.Message) (events.LogResult, error) {
 	if c.phase == "result" {
-		return c.failure
+		{
+			err := c.failure
+			logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+			if err != nil {
+				logResult.ResultStatus = events.ResultFailed
+				logResult.Content = err.Error()
+				if err == context.Canceled {
+					logResult.ResultStatus = events.ResultCanceled
+				}
+			}
+			return logResult, err
+		}
 	}
 	return c.testToolCommitter.Result(ctx, i, call, message, row)
 }

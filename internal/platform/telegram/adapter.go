@@ -450,7 +450,7 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 	}
 }
 
-func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	return a.sendContextOutput(ctx, outputs)
 }
 
@@ -461,7 +461,7 @@ func (a *Adapter) CallPlatformAPI(ctx context.Context, api string, params map[st
 	return a.client.callRaw(ctx, strings.TrimSpace(api), params)
 }
 
-func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, globalevents.LogResult, error) {
 	outTarget := notice.Target
 	outputs := notice.Outputs
 	if outTarget.Empty() {
@@ -470,10 +470,14 @@ func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (deliv
 	return a.sendTarget(ctx, outTarget, outputs)
 }
 
-func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	t, err := contextTarget(ctx)
 	if err != nil {
-		return delivery.Receipt{}, err
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return delivery.Receipt{}, logResult, err
 	}
 	return a.sendOutputs(ctx, t, outputs)
 }
@@ -501,10 +505,21 @@ func contextTarget(ctx context.Context) (target, error) {
 	return t, err
 }
 
-func (a *Adapter) sendTarget(ctx context.Context, outTarget delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) sendTarget(ctx context.Context, outTarget delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	if outTarget.Superadmins {
 		if len(a.cfg.Superadmins) == 0 {
-			return delivery.Receipt{}, fmt.Errorf("telegram superadmins are not configured")
+			{
+				err := fmt.Errorf("telegram superadmins are not configured")
+				logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+				if err != nil {
+					logResult.ResultStatus = globalevents.ResultFailed
+					logResult.Content = err.Error()
+					if errors.Is(err, context.Canceled) {
+						logResult.ResultStatus = globalevents.ResultCanceled
+					}
+				}
+				return delivery.Receipt{}, logResult, err
+			}
 		}
 		var receipt delivery.Receipt
 		for _, id := range a.cfg.Superadmins {
@@ -517,26 +532,30 @@ func (a *Adapter) sendTarget(ctx context.Context, outTarget delivery.Target, out
 			copyTarget.PrivateUserID = id
 			copyTarget.GroupID = ""
 			copyTarget.ScopeID = ""
-			sent, err := a.sendTarget(ctx, copyTarget, outputs)
+			sent, logResult, err := a.sendTarget(ctx, copyTarget, outputs)
 			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
 			receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
 			if err != nil {
-				return receipt, err
+				return receipt, logResult, err
 			}
 		}
-		return receipt, nil
+		return receipt, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	}
 	t, err := targetFromDelivery(outTarget)
 	if err != nil {
-		return delivery.Receipt{}, err
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return delivery.Receipt{}, logResult, err
 	}
 	return a.sendOutputs(ctx, t, outputs)
 }
 
-func (a *Adapter) sendOutputs(ctx context.Context, t target, outputs []delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) sendOutputs(ctx context.Context, t target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	var receipt delivery.Receipt
 	for i, out := range outputs {
-		sent, err := a.sendToTarget(ctx, t, out)
+		sent, logResult, err := a.sendToTarget(ctx, t, out)
 		var mediaIndexes []int
 		if out.Kind == delivery.KindImage || out.Kind == delivery.KindFile {
 			mediaIndexes = []int{i}
@@ -545,10 +564,10 @@ func (a *Adapter) sendOutputs(ctx context.Context, t target, outputs []delivery.
 		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
 		receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
 		if err != nil {
-			return receipt, err
+			return receipt, logResult, err
 		}
 	}
-	return receipt, nil
+	return receipt, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
 // Every sent message has a source; only actual media outputs have media indexes.
@@ -561,7 +580,7 @@ func telegramReceipt(receipt delivery.Receipt, target target, mediaIndexes ...in
 	}
 	return receipt
 }
-func (a *Adapter) sendToTarget(ctx context.Context, t target, out delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) sendToTarget(ctx context.Context, t target, out delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	switch out.Kind {
 	case delivery.KindText:
 		return a.sendText(ctx, t, out.Text, 0, shouldAttachRiskKeyboard(out.Text))
@@ -579,16 +598,16 @@ func (a *Adapter) sendToTarget(ctx context.Context, t target, out delivery.Outpu
 	}
 }
 
-func (a *Adapter) sendText(ctx context.Context, t target, text string, replyTo int64, keyboard bool) (delivery.Receipt, error) {
+func (a *Adapter) sendText(ctx context.Context, t target, text string, replyTo int64, keyboard bool) (delivery.Receipt, globalevents.LogResult, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return delivery.Receipt{}, nil
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	}
 	switch a.cfg.format() {
 	case "rich":
-		receipt, err := a.sendRichText(ctx, t, text, replyTo, keyboard)
+		receipt, logResult, err := a.sendRichText(ctx, t, text, replyTo, keyboard)
 		if err == nil || len(receipt.PlatformMessageIDs) > 0 {
-			return receipt, err
+			return receipt, logResult, err
 		}
 		{
 			record := globalevents.LogRecord{
@@ -631,7 +650,7 @@ func (a *Adapter) sendText(ctx context.Context, t target, text string, replyTo i
 	}
 }
 
-func (a *Adapter) sendRichText(ctx context.Context, t target, text string, replyTo int64, keyboard bool) (delivery.Receipt, error) {
+func (a *Adapter) sendRichText(ctx context.Context, t target, text string, replyTo int64, keyboard bool) (delivery.Receipt, globalevents.LogResult, error) {
 	pages := telegramRichTextPages(text)
 	var receipt delivery.Receipt
 	for i, page := range pages {
@@ -646,19 +665,23 @@ func (a *Adapter) sendRichText(ctx context.Context, t target, text string, reply
 		}
 		msg, err := a.client.sendRichMessage(ctx, req)
 		if err != nil {
-			return receipt, err
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+			if errors.Is(err, context.Canceled) {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+			return receipt, logResult, err
 		}
 		if msg.MessageID != 0 {
 			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, formatMessageID(msg.MessageID))
 		}
 	}
-	return receipt, nil
+	return receipt, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
-func (a *Adapter) sendHTMLText(ctx context.Context, t target, text string, replyTo int64, keyboard bool) (delivery.Receipt, error) {
-	receipt, err := a.sendFormattedText(ctx, t, telegramHTMLFromMarkdown(text), "HTML", replyTo, keyboard)
+func (a *Adapter) sendHTMLText(ctx context.Context, t target, text string, replyTo int64, keyboard bool) (delivery.Receipt, globalevents.LogResult, error) {
+	receipt, logResult, err := a.sendFormattedText(ctx, t, telegramHTMLFromMarkdown(text), "HTML", replyTo, keyboard)
 	if err == nil || len(receipt.PlatformMessageIDs) > 0 {
-		return receipt, err
+		return receipt, logResult, err
 	}
 	{
 		record := globalevents.LogRecord{
@@ -671,7 +694,7 @@ func (a *Adapter) sendHTMLText(ctx context.Context, t target, text string, reply
 			ContentLimit: 4096,
 			ResultStatus: globalevents.ResultFailed,
 		}
-		if errors.Is(err, context.Canceled) {
+		if logResult.ResultStatus == globalevents.ResultCanceled {
 			record.ResultStatus = globalevents.ResultCanceled
 			record.Level = slog.LevelInfo
 		}
@@ -696,11 +719,11 @@ func (a *Adapter) sendHTMLText(ctx context.Context, t target, text string, reply
 	return a.sendPlainText(ctx, t, text, replyTo, keyboard)
 }
 
-func (a *Adapter) sendPlainText(ctx context.Context, t target, text string, replyTo int64, keyboard bool) (delivery.Receipt, error) {
+func (a *Adapter) sendPlainText(ctx context.Context, t target, text string, replyTo int64, keyboard bool) (delivery.Receipt, globalevents.LogResult, error) {
 	return a.sendFormattedText(ctx, t, plainTextFromMarkdown(text), "", replyTo, keyboard)
 }
 
-func (a *Adapter) sendFormattedText(ctx context.Context, t target, text, parseMode string, replyTo int64, keyboard bool) (delivery.Receipt, error) {
+func (a *Adapter) sendFormattedText(ctx context.Context, t target, text, parseMode string, replyTo int64, keyboard bool) (delivery.Receipt, globalevents.LogResult, error) {
 	pages := telegramTextPages(text)
 	var receipt delivery.Receipt
 	for i, page := range pages {
@@ -713,28 +736,56 @@ func (a *Adapter) sendFormattedText(ctx context.Context, t target, text, parseMo
 		}
 		msg, err := a.client.sendMessage(ctx, req)
 		if err != nil {
-			return receipt, err
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+			if errors.Is(err, context.Canceled) {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+			return receipt, logResult, err
 		}
 		if msg.MessageID != 0 {
 			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, formatMessageID(msg.MessageID))
 		}
 	}
-	return receipt, nil
+	return receipt, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
-func (a *Adapter) sendPhoto(ctx context.Context, t target, out delivery.Output, replyTo int64) (delivery.Receipt, error) {
+func (a *Adapter) sendPhoto(ctx context.Context, t target, out delivery.Output, replyTo int64) (delivery.Receipt, globalevents.LogResult, error) {
 	msg, err := a.client.sendPhoto(ctx, t.ChatID, sourceFromOutput(out), replyTo)
-	return receiptWithMessageID(msg.MessageID), err
+	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+	if err != nil {
+		logResult.ResultStatus = globalevents.ResultFailed
+		logResult.Content = err.Error()
+		if logResult.ResultStatus == globalevents.ResultCanceled {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+	}
+	return receiptWithMessageID(msg.MessageID), logResult, err
 }
 
-func (a *Adapter) sendDocument(ctx context.Context, t target, out delivery.Output, replyTo int64) (delivery.Receipt, error) {
+func (a *Adapter) sendDocument(ctx context.Context, t target, out delivery.Output, replyTo int64) (delivery.Receipt, globalevents.LogResult, error) {
 	msg, err := a.client.sendDocument(ctx, t.ChatID, sourceFromOutput(out), replyTo)
-	return receiptWithMessageID(msg.MessageID), err
+	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+	if err != nil {
+		logResult.ResultStatus = globalevents.ResultFailed
+		logResult.Content = err.Error()
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+	}
+	return receiptWithMessageID(msg.MessageID), logResult, err
 }
 
-func (a *Adapter) sendSticker(ctx context.Context, t target, out delivery.Output, replyTo int64) (delivery.Receipt, error) {
+func (a *Adapter) sendSticker(ctx context.Context, t target, out delivery.Output, replyTo int64) (delivery.Receipt, globalevents.LogResult, error) {
 	msg, err := a.client.sendSticker(ctx, t.ChatID, out.EmoticonID, replyTo)
-	return receiptWithMessageID(msg.MessageID), err
+	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+	if err != nil {
+		logResult.ResultStatus = globalevents.ResultFailed
+		logResult.Content = err.Error()
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+	}
+	return receiptWithMessageID(msg.MessageID), logResult, err
 }
 
 func targetFromDelivery(outTarget delivery.Target) (target, error) {

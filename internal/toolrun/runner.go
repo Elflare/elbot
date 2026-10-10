@@ -14,6 +14,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/llm"
+	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 )
@@ -24,16 +25,20 @@ type RunnerDeps interface {
 	ShouldSendPreview(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, assistantText string) bool
 	ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail string) (ConfirmResult, error)
 	ConfirmBackgroundTool(ctx context.Context, sessionID string, call llm.ToolCallRequest, resolved ResolvedTool, assessment tool.RiskAssessment) (ConfirmResult, bool)
-	StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error)
+	// StartToolRequest returns its source registration result independently of
+	// the business context, start time, cleanup function and original error.
+	StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), events.LogResult, error)
 	PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context
 	CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, error)
 	SendPreview(ctx context.Context, text string)
-	// SendOutputs returns actual delivery facts, including partial success on error.
-	SendOutputs(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error)
-	// RecordToolCall saves the full tool record and returns its persistence error.
-	RecordToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk string, startedAt time.Time, result string, callErr error) error
+	// SendOutputs returns the source logging result and body, including partial
+	// delivery facts, separately from its original business error.
+	SendOutputs(ctx context.Context, outputs []delivery.Output) (events.LogResult, error)
+	// RecordToolCall saves the full business tool record and separately returns
+	// the source persistence log result and original persistence error.
+	RecordToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk string, startedAt time.Time, result string, callErr error) (events.LogResult, error)
 	AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reason string)
-	RememberDiscoveryResult(ctx context.Context, session *storage.Session, result *tool.Result) error
+	RememberDiscoveryResult(ctx context.Context, session *storage.Session, result *tool.Result) (events.LogResult, error)
 	AddToolUse(sessionID, toolName string)
 	ToolResultMessage(sessionID string, message llm.LLMMessage) storage.Message
 	ToolCallMessage(sessionID, content, rawText string, calls []llm.ToolCallRequest) storage.Message
@@ -49,11 +54,13 @@ type ConfirmResult struct {
 
 // ToolCommitter is synchronous persistence owned by the consuming dialogue.
 // Its Started boundary precedes external tool effects; Result precedes the next call.
+// Each operation returns its source log result separately from the business error;
+// phases without an actual write declare skipped instead of inventing a save.
 type ToolCommitter interface {
-	Begin(context.Context, *storage.Message) error
-	Prepared(context.Context, int, llm.ToolCallRequest) error
-	Started(context.Context, int, llm.ToolCallRequest) error
-	Result(context.Context, int, llm.ToolCallRequest, llm.LLMMessage, *storage.Message) error
+	Begin(context.Context, *storage.Message) (events.LogResult, error)
+	Prepared(context.Context, int, llm.ToolCallRequest) (events.LogResult, error)
+	Started(context.Context, int, llm.ToolCallRequest) (events.LogResult, error)
+	Result(context.Context, int, llm.ToolCallRequest, llm.LLMMessage, *storage.Message) (events.LogResult, error)
 }
 
 type RunRequest struct {
@@ -84,10 +91,16 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 	sessionID := req.Session.ID
 	messages := make([]llm.LLMMessage, 0, len(req.Calls))
 	preparedCalls := make([]llm.ToolCallRequest, 0, len(req.Calls))
-	// These are orchestration operations, separate from the invocation record
-	// assembled by Execute. The publication functions receive no business objects.
-	record := func(ctx context.Context, call llm.ToolCallRequest, eventName, content string, resultStatus events.ResultStatus, level slog.Level) {
-		record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: eventName, Module: "toolrun", Type: events.ContentText, Content: fmt.Sprintf("tool=%s tool_call_id=%s\n%s", call.Name, call.ID, content), ContentLimit: 4096, Identity: events.LogIdentity{SessionID: &sessionID}, ResultStatus: resultStatus}
+	// Invocation and orchestration records are assembled at their own boundaries
+	// in this runner. Publication receives only complete records.
+	newRecord := func(ctx context.Context, eventName string, logResult events.LogResult) events.LogRecord {
+		level := slog.LevelInfo
+		if logResult.ResultStatus == events.ResultFailed {
+			level = slog.LevelError
+		}
+		record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: eventName, Module: "toolrun", Type: events.ContentText, Content: logResult.Content, ContentLimit: 4096, Identity: events.LogIdentity{SessionID: &sessionID}, ResultStatus: logResult.ResultStatus}
+		// Read the current operation's execution facts after any foreground handoff.
+		// SessionID belongs to the supplied Session, including an explicit empty ID.
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		if facts.RunID != "" {
 			record.Identity.RunID = &facts.RunID
@@ -101,34 +114,59 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 		if facts.RootRequestID != "" {
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
-		logToolOperation(ctx, record)
+		return record
+	}
+	record := func(ctx context.Context, call llm.ToolCallRequest, eventName string, logResult events.LogResult) {
+		record := newRecord(ctx, eventName, logResult)
+		record.Content = fmt.Sprintf("tool=%s tool_call_id=%s\n%s", call.Name, call.ID, logResult.Content)
+		logTool(ctx, record)
+	}
+	recordCall := func(ctx context.Context, call llm.ToolCallRequest, resolved ResolvedTool, risk string, runSource string, startedAt time.Time, result *ExecutionResult) {
+		// Call entry declares invocation success, independently of the tool business
+		// error. The tool supplies only its diagnostic log body.
+		// runSource was fixed before entry; source separately identifies the
+		// native/Elwisp implementation. Neither is inferred from diagnostics.
+		if result.ExecutionStarted {
+			result.LogResult.ResultStatus = events.ResultSucceeded
+		}
+		logResult := result.LogResult
+		content := map[string]any{"tool": call.Name, "tool_call_id": call.ID, "actor_id": req.Actor.ID, "source": string(resolved.Source), "run_source": runSource, "risk": risk, "arguments": call.Arguments, "result": logResult.Content, "execution_started": result.ExecutionStarted, "elapsed_ms": time.Since(startedAt).Milliseconds()}
+		// Limit source JSON by Unicode characters before encoding; byte slicing
+		// would corrupt multibyte diagnostics. Every string in this source's
+		// fixed content schema is bounded, including caller-supplied names/IDs.
+		for key, value := range content {
+			text, ok := value.(string)
+			if !ok {
+				continue
+			}
+			runes := []rune(text)
+			if len(runes) > 2048 {
+				text = string(runes[:2047]) + "…"
+			}
+			content[key] = text
+		}
+		data, _ := json.Marshal(content)
+		record := newRecord(ctx, "tool_call", logResult)
+		record.Category, record.Type, record.ContentLimit, record.Content = events.LogAudit, events.ContentJSON, 0, string(data)
+		logTool(ctx, record)
+		record.Category, record.Type, record.ContentLimit = events.LogRuntime, events.ContentText, 4096
+		record.Content = fmt.Sprintf("run_source=%s tool=%s tool_call_id=%s source=%s risk=%s execution_started=%t elapsed_ms=%d\n%s", runSource, call.Name, call.ID, resolved.Source, risk, result.ExecutionStarted, content["elapsed_ms"], logResult.Content)
+		logTool(ctx, record)
 	}
 	head := deps.ToolCallMessage(sessionID, req.AssistantText, req.AssistantRawText, req.Calls)
-	if err := req.Committer.Begin(ctx, &head); err != nil {
-		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "tool_batch_prepare_failed", Module: "toolrun", Type: events.ContentText, Content: fmt.Sprintf("persistence_error=%v", err), ContentLimit: 4096, ResultStatus: events.ResultFailed}
-		record.Identity.SessionID = &sessionID
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		logToolOperation(ctx, record)
+	logResult, err := req.Committer.Begin(ctx, &head)
+	if logResult.ResultStatus == events.ResultFailed || logResult.ResultStatus == events.ResultCanceled {
+		logTool(ctx, newRecord(ctx, "tool_batch_prepare_failed", logResult))
+	}
+	if err != nil {
 		return RunResult{Err: err}
 	}
 	persistResult := func(index int, call llm.ToolCallRequest) error {
 		message := messages[len(messages)-1]
 		stored := deps.ToolResultMessage(sessionID, deps.PersistedToolMessage(message))
-		err := req.Committer.Result(ctx, index, call, message, &stored)
-		if err == nil {
-			record(ctx, call, "tool_transcript_save", "tool result saved", events.ResultSucceeded, slog.LevelInfo)
+		logResult, err := req.Committer.Result(ctx, index, call, message, &stored)
+		if logResult.ResultStatus != events.ResultSkipped {
+			record(ctx, call, "tool_transcript_save", logResult)
 		}
 		return err
 	}
@@ -150,40 +188,56 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 			if actor, ok := contextinfo.ActorFromContext(ctx); ok {
 				req.Actor = actor
 			}
+			// Fix this tool's execution origin from the refreshed context. A later
+			// handoff must not rewrite a call that has already started.
+			runSource := "foreground"
+			if sandbox, ok := sandboxctx.SandboxContextFromContext(ctx); ok && (sandbox.Background || sandbox.BackgroundKind != "") {
+				runSource = ""
+				switch sandbox.BackgroundKind {
+				case sandboxctx.BackgroundKindCron, sandboxctx.BackgroundKindElnis:
+					runSource = string(sandbox.BackgroundKind)
+				}
+			}
 			startedAt := storage.Now()
 
 			call, err := deps.PrepareToolCall(ctx, req.Session, original)
 			if err != nil {
-				resultStatus, level := events.ResultFailed, slog.LevelError
+				resultStatus := events.ResultFailed
 				if err == context.Canceled {
-					resultStatus, level = events.ResultCanceled, slog.LevelInfo
+					resultStatus = events.ResultCanceled
 				}
-				record(ctx, original, "tool_prepare", fmt.Sprintf("prepare_error=%v", err), resultStatus, level)
+				record(ctx, original, "tool_prepare", events.LogResult{ResultStatus: resultStatus, Content: fmt.Sprintf("prepare_error=%v", err)})
 				preparedCalls = append(preparedCalls, original)
 				message := toolMessage(original.Name, original.ID, fmt.Sprintf("tool call %s failed: hook: %v", original.Name, err))
 				messages = append(messages, message)
 				if err := persistResult(index, original); err != nil {
-					record(ctx, call, "tool_transcript_save", fmt.Sprintf("persistence_error=%v", err), events.ResultFailed, slog.LevelError)
 					return persistenceFailure(err)
 				}
 				return nil
 			}
 			preparedCalls = append(preparedCalls, call)
-			if err := req.Committer.Prepared(ctx, index, call); err != nil {
-				record(ctx, call, "tool_transcript_save", fmt.Sprintf("persistence_error=%v", err), events.ResultFailed, slog.LevelError)
+			logResult, err := req.Committer.Prepared(ctx, index, call)
+			if logResult.ResultStatus == events.ResultFailed || logResult.ResultStatus == events.ResultCanceled {
+				record(ctx, call, "tool_transcript_save", logResult)
+			}
+			if err != nil {
 				return persistenceFailure(err)
 			}
 			resolved := m.Resolve(ctx, call.Name, req.CachedTools, req.Session.Mode)
 			if resolved.ResultStatus != events.ResultSucceeded {
 				err := resolved.Error
-				_ = m.Execute(ctx, call, resolved, req.Actor, sessionID, "")
+				func() {
+					startedAt := time.Now()
+					result := m.Execute(ctx, call, resolved, req.Actor)
+					recordCall(ctx, call, resolved, "", runSource, startedAt, &result)
+				}()
 				message := toolMessage(call.Name, call.ID, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
-				if recordErr := deps.RecordToolCall(ctx, sessionID, call, "", startedAt, llm.SegmentsContentText(message.Segments), err); recordErr != nil {
-					record(ctx, call, "tool_record_save", fmt.Sprintf("record_error=%v", recordErr), events.ResultFailed, slog.LevelError)
+				logResult, _ := deps.RecordToolCall(ctx, sessionID, call, "", startedAt, llm.SegmentsContentText(message.Segments), err)
+				if logResult.ResultStatus != events.ResultSkipped {
+					record(ctx, call, "tool_record_save", logResult)
 				}
 				messages = append(messages, message)
 				if err := persistResult(index, call); err != nil {
-					record(ctx, call, "tool_transcript_save", fmt.Sprintf("persistence_error=%v", err), events.ResultFailed, slog.LevelError)
 					return persistenceFailure(err)
 				}
 				return nil
@@ -192,19 +246,19 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 			assessment, riskText := m.assessForRun(toolCtx, resolved, call)
 			deps.AddToolUse(sessionID, call.Name)
 			if err := m.PreflightConfirmation(toolCtx, resolved, call); err != nil {
-				resultStatus, level := events.ResultFailed, slog.LevelError
+				resultStatus := events.ResultFailed
 				if err == context.Canceled {
-					resultStatus, level = events.ResultCanceled, slog.LevelInfo
+					resultStatus = events.ResultCanceled
 				}
-				record(ctx, original, "tool_prepare", fmt.Sprintf("prepare_error=%v", err), resultStatus, level)
+				record(ctx, original, "tool_prepare", events.LogResult{ResultStatus: resultStatus, Content: fmt.Sprintf("prepare_error=%v", err)})
 				message := toolMessage(call.Name, call.ID, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
 				resultText := llm.SegmentsContentText(message.Segments)
-				if recordErr := deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, resultText, err); recordErr != nil {
-					record(ctx, call, "tool_record_save", fmt.Sprintf("record_error=%v", recordErr), events.ResultFailed, slog.LevelError)
+				logResult, _ := deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, resultText, err)
+				if logResult.ResultStatus != events.ResultSkipped {
+					record(ctx, call, "tool_record_save", logResult)
 				}
 				messages = append(messages, message)
 				if err := persistResult(index, call); err != nil {
-					record(ctx, call, "tool_transcript_save", fmt.Sprintf("persistence_error=%v", err), events.ResultFailed, slog.LevelError)
 					return persistenceFailure(err)
 				}
 				return nil
@@ -227,65 +281,70 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 				if err == nil {
 					err = tool.PolicyDeniedError("tool confirmation rejected")
 				}
-				if recordErr := deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, messageText, err); recordErr != nil {
-					record(ctx, call, "tool_record_save", fmt.Sprintf("record_error=%v", recordErr), events.ResultFailed, slog.LevelError)
+				logResult, _ := deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, messageText, err)
+				if logResult.ResultStatus != events.ResultSkipped {
+					record(ctx, call, "tool_record_save", logResult)
 				}
 				messages = append(messages, message)
 				confirmationExtra = joinAssistantText(confirmationExtra, confirm.Extra)
 				if err := persistResult(index, call); err != nil {
-					record(ctx, call, "tool_transcript_save", fmt.Sprintf("persistence_error=%v", err), events.ResultFailed, slog.LevelError)
 					return persistenceFailure(err)
 				}
 				return nil
 			}
 			confirmationExtra = joinAssistantText(confirmationExtra, confirm.Extra)
-			runToolCtx, _, done, err := deps.StartToolRequest(toolCtx, sessionID, call.Name)
+			runToolCtx, _, done, logResult, err := deps.StartToolRequest(toolCtx, sessionID, call.Name)
+			if logResult.ResultStatus == events.ResultFailed || logResult.ResultStatus == events.ResultCanceled {
+				record(ctx, call, "tool_prepare", logResult)
+			}
 			if err != nil {
-				resultStatus, level := events.ResultFailed, slog.LevelError
-				if err == context.Canceled {
-					resultStatus, level = events.ResultCanceled, slog.LevelInfo
-				}
-				record(ctx, call, "tool_prepare", fmt.Sprintf("request_error=%v", err), resultStatus, level)
 				resultText := fmt.Sprintf("tool call %s failed: %v", call.Name, err)
 				message := toolMessage(call.Name, call.ID, resultText)
-				if recordErr := deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, resultText, err); recordErr != nil {
-					record(ctx, call, "tool_record_save", fmt.Sprintf("record_error=%v", recordErr), events.ResultFailed, slog.LevelError)
+				logResult, _ := deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, resultText, err)
+				if logResult.ResultStatus != events.ResultSkipped {
+					record(ctx, call, "tool_record_save", logResult)
 				}
 				messages = append(messages, message)
 				if err := persistResult(index, call); err != nil {
-					record(ctx, call, "tool_transcript_save", fmt.Sprintf("persistence_error=%v", err), events.ResultFailed, slog.LevelError)
 					return persistenceFailure(err)
 				}
 				return nil
 			}
 			runToolCtx = deps.PrepareToolContext(runToolCtx, req.Session, call)
 			if m.Media != nil {
-				if err := m.Media.RetainSessionToolArguments(runToolCtx, sessionID, call.Arguments); err != nil {
-					resultStatus, level := events.ResultFailed, slog.LevelError
-					if err == context.Canceled {
-						resultStatus, level = events.ResultCanceled, slog.LevelInfo
-					}
-					record(ctx, original, "tool_prepare", fmt.Sprintf("media_error=%v", err), resultStatus, level)
+				logResult, err := m.Media.RetainSessionToolArguments(runToolCtx, sessionID, call.Arguments)
+				if logResult.ResultStatus == events.ResultFailed || logResult.ResultStatus == events.ResultCanceled {
+					record(runToolCtx, call, "tool_prepare", logResult)
+				}
+				if err != nil {
 					done()
 					message := toolMessage(call.Name, call.ID, fmt.Sprintf("tool call %s failed: retain media arguments: %v", call.Name, err))
 					resultText := llm.SegmentsContentText(message.Segments)
-					if recordErr := deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, resultText, err); recordErr != nil {
-						record(ctx, call, "tool_record_save", fmt.Sprintf("record_error=%v", recordErr), events.ResultFailed, slog.LevelError)
+					logResult, _ := deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, resultText, err)
+					if logResult.ResultStatus != events.ResultSkipped {
+						record(ctx, call, "tool_record_save", logResult)
 					}
 					messages = append(messages, message)
 					if err := persistResult(index, call); err != nil {
-						record(ctx, call, "tool_transcript_save", fmt.Sprintf("persistence_error=%v", err), events.ResultFailed, slog.LevelError)
 						return persistenceFailure(err)
 					}
 					return nil
 				}
 			}
-			if err := req.Committer.Started(runToolCtx, index, call); err != nil {
-				record(ctx, call, "tool_transcript_save", fmt.Sprintf("persistence_error=%v", err), events.ResultFailed, slog.LevelError)
+			logResult, err = req.Committer.Started(runToolCtx, index, call)
+			if logResult.ResultStatus == events.ResultFailed || logResult.ResultStatus == events.ResultCanceled {
+				record(ctx, call, "tool_transcript_save", logResult)
+			}
+			if err != nil {
 				done()
 				return persistenceFailure(err)
 			}
-			result := m.Execute(runToolCtx, call, resolved, req.Actor, sessionID, riskText)
+			result := func() ExecutionResult {
+				startedAt := time.Now()
+				result := m.Execute(runToolCtx, call, resolved, req.Actor)
+				recordCall(runToolCtx, call, resolved, riskText, runSource, startedAt, &result)
+				return result
+			}()
 			toolErr := runToolCtx.Err()
 			done()
 			if err := ctx.Err(); err != nil {
@@ -296,20 +355,8 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 				result.Message = toolMessage(call.Name, call.ID, fmt.Sprintf("tool call %s canceled by user", call.Name))
 			}
 			if result.Result != nil && len(result.Result.Outputs) > 0 {
-				receipt, err := deps.SendOutputs(ctx, result.Result.Outputs)
-				content := fmt.Sprintf("platform_message_ids=%v", receipt.PlatformMessageIDs)
-				for _, sent := range receipt.SentMessages {
-					content += fmt.Sprintf("\nsent_message platform=%s scope_id=%s platform_message_id=%s output_indexes=%v", sent.Platform, sent.ScopeID, sent.PlatformMessageID, sent.OutputIndexes)
-				}
-				resultStatus, level := events.ResultSucceeded, slog.LevelInfo
-				if err != nil {
-					content += fmt.Sprintf("\noutput_error=%v", err)
-					resultStatus, level = events.ResultFailed, slog.LevelError
-					if err == context.Canceled {
-						resultStatus, level = events.ResultCanceled, slog.LevelInfo
-					}
-				}
-				record(ctx, call, "tool_outputs", content, resultStatus, level)
+				logResult, err := deps.SendOutputs(ctx, result.Result.Outputs)
+				record(ctx, call, "tool_outputs", logResult)
 				if err != nil {
 					result.Error = errors.Join(result.Error, err)
 					result.Message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s failed: output: %v", call.Name, err))
@@ -318,11 +365,11 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 			if result.ExecutionStarted {
 				completedSegments, hookErr := deps.CompleteToolCall(ctx, req.Session, call, riskText, result.Message.Segments, result.Error)
 				if hookErr != nil {
-					resultStatus, level := events.ResultFailed, slog.LevelError
+					resultStatus := events.ResultFailed
 					if hookErr == context.Canceled {
-						resultStatus, level = events.ResultCanceled, slog.LevelInfo
+						resultStatus = events.ResultCanceled
 					}
-					record(ctx, call, "tool_completion_hook", fmt.Sprintf("hook_error=%v", hookErr), resultStatus, level)
+					record(ctx, call, "tool_completion_hook", events.LogResult{ResultStatus: resultStatus, Content: fmt.Sprintf("hook_error=%v", hookErr)})
 					result.Error = errors.Join(result.Error, hookErr)
 					result.Message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s failed: hook: %v", call.Name, hookErr))
 				} else {
@@ -330,19 +377,22 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 				}
 			}
 			if call.Name == "discover_tool" && result.Result != nil {
-				if stateErr := deps.RememberDiscoveryResult(ctx, req.Session, result.Result); stateErr != nil {
-					record(ctx, call, "tool_discovery_save", fmt.Sprintf("state_error=%v", stateErr), events.ResultFailed, slog.LevelError)
+				logResult, stateErr := deps.RememberDiscoveryResult(ctx, req.Session, result.Result)
+				if logResult.ResultStatus != events.ResultSkipped {
+					record(ctx, call, "tool_discovery_save", logResult)
+				}
+				if stateErr != nil {
 					result.Error = errors.Join(result.Error, stateErr)
 					result.Message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s: tool state was not saved; completed actions were not rolled back: %v", call.Name, result.Error))
 				}
 			}
 			resultText := llm.SegmentsContentText(result.Message.Segments)
-			if recordErr := deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, resultText, result.Error); recordErr != nil {
-				record(ctx, call, "tool_record_save", fmt.Sprintf("record_error=%v", recordErr), events.ResultFailed, slog.LevelError)
+			logResult, _ = deps.RecordToolCall(ctx, sessionID, call, riskText, startedAt, resultText, result.Error)
+			if logResult.ResultStatus != events.ResultSkipped {
+				record(ctx, call, "tool_record_save", logResult)
 			}
 			messages = append(messages, result.Message)
 			if err := persistResult(index, call); err != nil {
-				record(ctx, call, "tool_transcript_save", fmt.Sprintf("persistence_error=%v", err), events.ResultFailed, slog.LevelError)
 				return persistenceFailure(err)
 			}
 			if result.Error != nil {

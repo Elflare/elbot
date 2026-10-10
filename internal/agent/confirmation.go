@@ -223,12 +223,12 @@ func (c *confirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	defer wait.Cancel()
 	if wait != nil && ctx.Err() == nil {
 		c.publishConfirmationWait(ctx, sessionID, call, assessment.Level, assessment.Reasons)
-		if _, err := c.output.SendAssistant(ctx, fmt.Sprintf("高风险工具调用等待确认\n工具：%s\n风险：%s\n参数：%s%s\n%s。", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout))); err != nil {
-			resultStatus, level := events.ResultFailed, slog.LevelError
-			if err == context.Canceled {
-				resultStatus, level = events.ResultCanceled, slog.LevelInfo
+		if _, logResult, err := c.output.SendAssistant(ctx, fmt.Sprintf("高风险工具调用等待确认\n工具：%s\n风险：%s\n参数：%s%s\n%s。", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout))); err != nil {
+			resultStatus, level := logResult.ResultStatus, slog.LevelError
+			if resultStatus == events.ResultCanceled {
+				level = slog.LevelInfo
 			}
-			c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "prompt_failed", "", fmt.Sprintf("send risk confirmation: %v", err), resultStatus, level)
+			c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "prompt_failed", "", "send risk confirmation:\n"+logResult.Content, resultStatus, level)
 			return toolrun.ConfirmResult{Stopped: true}, fmt.Errorf("send risk confirmation: %w", err)
 		}
 	}

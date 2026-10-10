@@ -145,7 +145,7 @@ func (c *CallProcessor) PrepareProjection(ctx context.Context, session *storage.
 	}
 	var allowedTools map[string]bool
 	if session.Mode == storage.SessionModeBackground {
-		cached, err := CachedToolsForSession(ctx, c.Tools.State, c.Tools.Registry, session)
+		cached, _, err := CachedToolsForSession(ctx, c.Tools.State, c.Tools.Registry, session)
 		if err != nil {
 			return CallInput{}, err
 		}
@@ -182,8 +182,8 @@ func (c *CallProcessor) PrepareProjection(ctx context.Context, session *storage.
 			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
 		}
 		if pending != nil {
-			if persistErr := persistence.Commit(ctx, &pending.Message); persistErr != nil {
-				record.Content += fmt.Sprintf("\npersistence_error=%v", persistErr)
+			if logResult, persistErr := persistence.Commit(ctx, &pending.Message); persistErr != nil {
+				record.Content += "\npersistence:\n" + logResult.Content
 				record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
 				err = errors.Join(err, persistErr)
 			}
@@ -221,7 +221,7 @@ func (c *CallProcessor) PrepareProjection(ctx context.Context, session *storage.
 		requestMessages[pending.MessageIndex].Segments = segments
 		pending.Message.Content = llm.SegmentsContentText(segments)
 		pending.Message.Segments = StoredMessageSegments(segments)
-		if err := persistence.Commit(ctx, &pending.Message); err != nil {
+		if _, err := persistence.Commit(ctx, &pending.Message); err != nil {
 			return CallInput{}, err
 		}
 	}

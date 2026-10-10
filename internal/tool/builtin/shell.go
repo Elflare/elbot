@@ -133,6 +133,7 @@ func (t ShellTool) PreflightConfirmation(ctx context.Context, req tool.CallReque
 }
 
 func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, logContent string, callErr error) {
+
 	args, cmdText, err := decodeShellArgs(req)
 	if err != nil {
 		return nil, err.Error(), err

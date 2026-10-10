@@ -2,6 +2,8 @@ package responses
 
 import (
 	"context"
+	"elbot/internal/events"
+	"errors"
 	"fmt"
 
 	"elbot/internal/agent/dialogue"
@@ -11,9 +13,15 @@ import (
 
 type inputCommitter struct{ state *turnState }
 
-func (c inputCommitter) Commit(ctx context.Context, message *storage.Message) error {
+func (c inputCommitter) Commit(ctx context.Context, message *storage.Message) (events.LogResult, error) {
 	if message == nil {
-		return fmt.Errorf("native input message is required")
+		err := fmt.Errorf("native input message is required")
+		logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+		if err != nil {
+			logResult.ResultStatus = events.ResultFailed
+			logResult.Content = err.Error()
+		}
+		return logResult, err
 	}
 	segments := dialogue.MessageSegmentsFromStorage(message.Segments)
 	if len(segments) == 0 {
@@ -21,7 +29,12 @@ func (c inputCommitter) Commit(ctx context.Context, message *storage.Message) er
 	}
 	input, err := queuedInput(message.SessionID, message.ID, "", "", segments)
 	if err != nil {
-		return err
+		logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+		if err != nil {
+			logResult.ResultStatus = events.ResultFailed
+			logResult.Content = err.Error()
+		}
+		return logResult, err
 	}
 	return c.state.commit(ctx, storage.DialogueCommit{SessionID: message.SessionID, Messages: []*storage.Message{message}, Native: &storage.NativeCommit{ExpectedCheckpointID: c.state.checkpointID(), Inputs: []storage.NativeInput{input}}}, "append_user_message")
 }
@@ -33,9 +46,10 @@ func (s *turnState) checkpointID() string {
 	return s.checkpoint.ID
 }
 
-func (s *turnState) commit(ctx context.Context, commit storage.DialogueCommit, operation string) error {
-	if err := s.route.Messages.Commit(ctx, commit, operation); err != nil {
-		return err
+func (s *turnState) commit(ctx context.Context, commit storage.DialogueCommit, operation string) (events.LogResult, error) {
+	logResult, err := s.route.Messages.Commit(ctx, commit, operation)
+	if err != nil {
+		return logResult, err
 	}
 	if commit.Native != nil && commit.Native.Checkpoint.ID != "" {
 		next := commit.Native.Checkpoint
@@ -44,7 +58,7 @@ func (s *turnState) commit(ctx context.Context, commit storage.DialogueCommit, o
 			s.seed.Consumed = true
 		}
 	}
-	return nil
+	return logResult, nil
 }
 
 func (s *turnState) advance(messageID string) storage.NativeCommit {
@@ -61,7 +75,7 @@ func (s *turnState) advance(messageID string) storage.NativeCommit {
 
 type replyCommitter struct{ state *turnState }
 
-func (c replyCommitter) Commit(ctx context.Context, message *storage.Message) error {
+func (c replyCommitter) Commit(ctx context.Context, message *storage.Message) (events.LogResult, error) {
 	s := c.state
 	var rows []*storage.Message
 	id := ""
@@ -81,7 +95,7 @@ type toolCommitter struct {
 	calls []storage.NativeCall
 }
 
-func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) error {
+func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) (events.LogResult, error) {
 	s := c.state
 	text := dialogue.ToolBatchText(head)
 	var rows []*storage.Message
@@ -94,31 +108,35 @@ func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) error 
 		c.calls = append(c.calls, storage.NativeCall{ExchangeID: s.exchange.ID, CallID: call.ID, Name: call.Name, Arguments: call.Arguments, Ordinal: i, Status: "pending"})
 	}
 	native.Calls = append([]storage.NativeCall(nil), c.calls...)
-	if err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, Messages: rows, Native: &native}, "append_tool_transcript"); err != nil {
-		return err
+	logResult, err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, Messages: rows, Native: &native}, "append_tool_transcript")
+	if err != nil {
+		return logResult, err
 	}
 	s.consumed = nil
-	return nil
+	return logResult, nil
 }
-func (c *toolCommitter) Prepared(ctx context.Context, index int, call llm.ToolCallRequest) error {
+func (c *toolCommitter) Prepared(ctx context.Context, index int, call llm.ToolCallRequest) (events.LogResult, error) {
 	if index < 0 || index >= len(c.calls) || call.ID != c.calls[index].CallID || call.Name != c.calls[index].Name || call.Arguments != c.calls[index].Arguments {
-		return fmt.Errorf("native tool calls are read-only")
+		err := fmt.Errorf("native tool calls are read-only")
+		return events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}, err
 	}
-	return nil
+	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
 }
-func (c *toolCommitter) Started(ctx context.Context, index int, _ llm.ToolCallRequest) error {
+func (c *toolCommitter) Started(ctx context.Context, index int, _ llm.ToolCallRequest) (events.LogResult, error) {
 	call := c.calls[index]
 	call.Status = "started"
-	if err := c.state.commit(ctx, storage.DialogueCommit{SessionID: c.state.session.ID, Native: &storage.NativeCommit{ExpectedCheckpointID: c.state.checkpointID(), Calls: []storage.NativeCall{call}}}, "start_native_tool"); err != nil {
-		return err
+	logResult, err := c.state.commit(ctx, storage.DialogueCommit{SessionID: c.state.session.ID, Native: &storage.NativeCommit{ExpectedCheckpointID: c.state.checkpointID(), Calls: []storage.NativeCall{call}}}, "start_native_tool")
+	if err != nil {
+		return logResult, err
 	}
 	c.calls[index] = call
-	return nil
+	return logResult, nil
 }
-func (c *toolCommitter) Result(ctx context.Context, index int, request llm.ToolCallRequest, message llm.LLMMessage, stored *storage.Message) error {
+func (c *toolCommitter) Result(ctx context.Context, index int, request llm.ToolCallRequest, message llm.LLMMessage, stored *storage.Message) (events.LogResult, error) {
 	s := c.state
-	if err := c.Prepared(ctx, index, request); err != nil {
-		return err
+	logResult, err := c.Prepared(ctx, index, request)
+	if err != nil {
+		return logResult, err
 	}
 	if stored.ID == "" {
 		stored.ID = storage.NewID()
@@ -129,7 +147,11 @@ func (c *toolCommitter) Result(ctx context.Context, index int, request llm.ToolC
 	}
 	input, err := queuedInput(s.session.ID, stored.ID, s.exchange.ID, c.calls[index].CallID, segments)
 	if err != nil {
-		return err
+		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = events.ResultCanceled
+		}
+		return logResult, err
 	}
 	call := c.calls[index]
 	call.Status = "completed"
@@ -139,11 +161,12 @@ func (c *toolCommitter) Result(ctx context.Context, index int, request llm.ToolC
 	snapshot.ID, snapshot.MessageID = storage.NewID(), pair.Call.ID
 	snapshot.CreatedAt = pair.Call.CreatedAt
 	native := storage.NativeCommit{ExpectedCheckpointID: s.checkpointID(), Inputs: []storage.NativeInput{input}, Calls: []storage.NativeCall{call}, Snapshot: &snapshot}
-	if err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, ToolPair: pair, Native: &native}, "append_tool_transcript"); err != nil {
-		return err
+	logResult, err = s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, ToolPair: pair, Native: &native}, "append_tool_transcript")
+	if err != nil {
+		return logResult, err
 	}
 	c.calls[index] = call
-	return nil
+	return logResult, nil
 }
 
 // Close interrupted local tool rounds without executing historical calls.
@@ -171,7 +194,7 @@ func (s *turnState) closeInterruptedCalls(ctx context.Context) error {
 		call.Status = "interrupted"
 		call.ResultInputID = input.ID
 		native := storage.NativeCommit{ExpectedCheckpointID: s.checkpointID(), Inputs: []storage.NativeInput{input}, Calls: []storage.NativeCall{call}}
-		if err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, Native: &native}, "close_interrupted_native_tool"); err != nil {
+		if _, err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, Native: &native}, "close_interrupted_native_tool"); err != nil {
 			return err
 		}
 	}

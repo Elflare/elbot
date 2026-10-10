@@ -80,27 +80,27 @@ func (s *messageStream) Append(ctx context.Context, text string) error {
 	return nil
 }
 
-func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Receipt, error) {
+func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Receipt, globalevents.LogResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.finished {
-		return delivery.Receipt{}, nil
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	}
 	text = strings.TrimSpace(text)
 	if text == "" {
 		text = strings.TrimSpace(s.text)
 	}
 	if text == "" {
-		return delivery.Receipt{}, nil
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	}
 	if s.adapter.cfg.richMessageEnabled() {
 		if s.message != 0 {
 			_, _ = s.adapter.client.editMessageText(ctx, editMessageTextRequest{ChatID: s.target.ChatID, MessageID: s.message, Text: "回复已生成："})
 		}
-		receipt, err := s.adapter.sendRichText(ctx, s.target, text, 0, false)
+		receipt, logResult, err := s.adapter.sendRichText(ctx, s.target, text, 0, false)
 		if err == nil || len(receipt.PlatformMessageIDs) > 0 {
 			s.finished = true
-			return telegramReceipt(receipt, s.target), err
+			return telegramReceipt(receipt, s.target), logResult, err
 		}
 		{
 			record := globalevents.LogRecord{
@@ -111,10 +111,9 @@ func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Rece
 				Type:         globalevents.ContentText,
 				Content:      fmt.Sprintf("telegram rich stream final failed, fallback to sendMessage\nerror=%v", err),
 				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultFailed,
+				ResultStatus: logResult.ResultStatus,
 			}
-			if errors.Is(err, context.Canceled) {
-				record.ResultStatus = globalevents.ResultCanceled
+			if logResult.ResultStatus == globalevents.ResultCanceled {
 				record.Level = slog.LevelInfo
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
@@ -141,13 +140,27 @@ func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Rece
 		pageText, pageParseMode := s.adapter.streamPreviewPayload(pages[0])
 		sent, err := s.adapter.client.sendMessage(ctx, sendMessageRequest{ChatID: s.target.ChatID, Text: pageText, ParseMode: pageParseMode})
 		if err != nil {
-			return delivery.Receipt{}, err
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+			if errors.Is(err, context.Canceled) {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+			return delivery.Receipt{}, logResult, err
 		}
 		s.message = sent.MessageID
 	} else {
 		pageText, pageParseMode := s.adapter.streamPreviewPayload(pages[0])
 		if _, err := s.adapter.client.editMessageText(ctx, editMessageTextRequest{ChatID: s.target.ChatID, MessageID: s.message, Text: pageText, ParseMode: pageParseMode}); err != nil {
-			return delivery.Receipt{}, err
+			{
+				logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+				if err != nil {
+					logResult.ResultStatus = globalevents.ResultFailed
+					logResult.Content = err.Error()
+					if errors.Is(err, context.Canceled) {
+						logResult.ResultStatus = globalevents.ResultCanceled
+					}
+				}
+				return delivery.Receipt{}, logResult, err
+			}
 		}
 	}
 	receipt := delivery.Receipt{PlatformMessageIDs: []string{formatMessageID(s.message)}}
@@ -156,24 +169,34 @@ func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Rece
 		sent, err := s.adapter.client.sendMessage(ctx, sendMessageRequest{ChatID: s.target.ChatID, Text: pageText, ParseMode: pageParseMode})
 		if err != nil {
 			s.finished = true
-			return telegramReceipt(receipt, s.target), err
+			{
+				logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+				if err != nil {
+					logResult.ResultStatus = globalevents.ResultFailed
+					logResult.Content = err.Error()
+					if errors.Is(err, context.Canceled) {
+						logResult.ResultStatus = globalevents.ResultCanceled
+					}
+				}
+				return telegramReceipt(receipt, s.target), logResult, err
+			}
 		}
 		if sent.MessageID != 0 {
 			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, formatMessageID(sent.MessageID))
 		}
 	}
 	s.finished = true
-	return telegramReceipt(receipt, s.target), nil
+	return telegramReceipt(receipt, s.target), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
-func (s *messageStream) Finish(ctx context.Context) (delivery.Receipt, error) {
+func (s *messageStream) Finish(ctx context.Context) (delivery.Receipt, globalevents.LogResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.finished = true
 	if s.message == 0 {
-		return delivery.Receipt{}, nil
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	}
-	return telegramReceipt(delivery.Receipt{PlatformMessageIDs: []string{formatMessageID(s.message)}}, s.target), nil
+	return telegramReceipt(delivery.Receipt{PlatformMessageIDs: []string{formatMessageID(s.message)}}, s.target), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
 func (a *Adapter) streamPreviewPayload(text string) (string, string) {

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"elbot/internal/events"
 	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"strings"
@@ -54,7 +55,7 @@ type retryNoticePlatform struct {
 	retryNotices chan string
 }
 
-func (p *retryNoticePlatform) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+func (p *retryNoticePlatform) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, events.LogResult, error) {
 	text := delivery.FallbackOutput(notice.Outputs).Text
 	if strings.Contains(text, "正在重试") {
 		info, _ := contextinfo.ConversationFromContext(ctx)

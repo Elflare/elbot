@@ -2,6 +2,7 @@ package delivery
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"log/slog"
 	"strings"
@@ -14,16 +15,36 @@ type fakeSender struct {
 	err     error
 }
 
-func (s *fakeSender) SendChat(_ context.Context, outputs []Output) (Receipt, error) {
+func (s *fakeSender) SendChat(_ context.Context, outputs []Output) (Receipt, events.LogResult, error) {
 	if s.err != nil {
-		return Receipt{}, s.err
+		{
+			logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+			if s.err != nil {
+				logResult.ResultStatus = events.ResultFailed
+				logResult.Content = s.err.Error()
+				if s.err == context.Canceled {
+					logResult.ResultStatus = events.ResultCanceled
+				}
+			}
+			return Receipt{}, logResult, s.err
+		}
 	}
 	s.chats = append(s.chats, outputs)
-	return Receipt{}, nil
+	return Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
-func (s *fakeSender) SendNotice(_ context.Context, notice Notice) (Receipt, error) {
+func (s *fakeSender) SendNotice(_ context.Context, notice Notice) (Receipt, events.LogResult, error) {
 	if s.err != nil {
-		return Receipt{}, s.err
+		{
+			logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+			if s.err != nil {
+				logResult.ResultStatus = events.ResultFailed
+				logResult.Content = s.err.Error()
+				if s.err == context.Canceled {
+					logResult.ResultStatus = events.ResultCanceled
+				}
+			}
+			return Receipt{}, logResult, s.err
+		}
 	}
 	if !notice.Target.Empty() {
 		notice.Outputs = append([]Output(nil), notice.Outputs...)
@@ -32,7 +53,7 @@ func (s *fakeSender) SendNotice(_ context.Context, notice Notice) (Receipt, erro
 		}
 	}
 	s.notices = append(s.notices, notice)
-	return Receipt{}, nil
+	return Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
 func TestFallbackTextForEmoticon(t *testing.T) {
@@ -86,7 +107,7 @@ func TestManagerSendsChat(t *testing.T) {
 	sender := &fakeSender{}
 	manager := NewManager(sender)
 	out := Output{Kind: KindText, Text: "hello"}
-	if _, err := manager.SendChat(context.Background(), []Output{out}); err != nil {
+	if _, _, err := manager.SendChat(context.Background(), []Output{out}); err != nil {
 		t.Fatalf("SendChat: %v", err)
 	}
 	if len(sender.chats) != 1 || len(sender.chats[0]) != 1 || sender.chats[0][0].Text != "hello" {
@@ -111,7 +132,7 @@ func TestManagerPreservesNoticeLevel(t *testing.T) {
 	sender := &fakeSender{}
 	manager := NewManager(sender)
 	notice := Notice{Outputs: []Output{Text("careful")}, Level: slog.LevelWarn}
-	if _, err := manager.SendNotice(context.Background(), notice); err != nil {
+	if _, _, err := manager.SendNotice(context.Background(), notice); err != nil {
 		t.Fatalf("SendNotice: %v", err)
 	}
 	if len(sender.notices) != 1 || sender.notices[0].Level != slog.LevelWarn {
@@ -123,7 +144,7 @@ func TestManagerWrapsNoticeOutputErrorWithHookName(t *testing.T) {
 	sender := &fakeSender{err: boom}
 	manager := NewManager(sender)
 	err := func() error {
-		_, err := manager.SendNotice(context.Background(), Notice{Target: Target{Platform: "qqonebot", PrivateUserID: "123"}, Outputs: []Output{{
+		_, _, err := manager.SendNotice(context.Background(), Notice{Target: Target{Platform: "qqonebot", PrivateUserID: "123"}, Outputs: []Output{{
 			Kind: KindText,
 			Text: "hello",
 			Meta: map[string]any{
@@ -138,5 +159,35 @@ func TestManagerWrapsNoticeOutputErrorWithHookName(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "hook notify.connected output") {
 		t.Fatalf("SendNotice error = %q, want hook name", err.Error())
+	}
+}
+
+type independentNoticeSender struct {
+	fakeSender
+	logResult events.LogResult
+}
+
+func (s independentNoticeSender) SendNotice(context.Context, Notice) (Receipt, events.LogResult, error) {
+	return Receipt{PlatformMessageIDs: []string{"sent"}}, s.logResult, s.err
+}
+
+func TestManagerKeepsBusinessErrorIndependentOfLogResult(t *testing.T) {
+	boom := errors.New("business error")
+	for _, tc := range []struct {
+		name   string
+		status events.ResultStatus
+		err    error
+	}{
+		{"source_success_with_business_error", events.ResultSucceeded, boom},
+		{"source_failure_without_business_error", events.ResultFailed, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := events.LogResult{ResultStatus: tc.status, Content: "source declared body"}
+			manager := NewManager(&independentNoticeSender{fakeSender: fakeSender{err: tc.err}, logResult: source})
+			receipt, logResult, err := manager.SendNotice(context.Background(), Notice{Outputs: []Output{Text("hello")}})
+			if err != tc.err || logResult != source || len(receipt.PlatformMessageIDs) != 1 {
+				t.Fatalf("receipt=%#v log result=%#v error=%v", receipt, logResult, err)
+			}
+		})
 	}
 }

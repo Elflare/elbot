@@ -24,7 +24,7 @@ func ModelRetry(notices *notification.Manager) func(context.Context, string, llm
 		if provider != "" {
 			text = fmt.Sprintf("LLM 请求失败，正在重试 %d/%d（provider=%s，%s 后）：%v", event.Attempt, event.MaxRetries, provider, event.Delay.Round(time.Millisecond), event.Err)
 		}
-		_, err := notices.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(text)}, Level: slog.LevelWarn})
+		_, _, err := notices.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(text)}, Level: slog.LevelWarn})
 		return err
 	}
 }

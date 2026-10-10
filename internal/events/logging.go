@@ -87,6 +87,17 @@ func (value ResultStatus) String() string {
 	return ""
 }
 
+// LogResult carries an operation's source-declared logging result separately
+// from its business return values. It is not a log submission contract.
+type LogResult struct {
+	// ResultStatus is declared at the operation boundary; zero is unspecified,
+	// never implicit success. It does not classify the business error.
+	ResultStatus ResultStatus
+	// Content is the independent source log body, including partial completion
+	// and error explanations. Empty content does not declare an outcome.
+	Content string
+}
+
 // LogIdentity contains fixed associations supplied by the business source.
 // EmitLog copies supplied pointers but never fills identities from context.
 // Subscribers must treat the published pointers as read-only.

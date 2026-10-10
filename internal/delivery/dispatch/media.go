@@ -15,18 +15,17 @@ import (
 	"elbot/internal/storage"
 )
 
-func (a *Router) prepareMediaOutputs(ctx context.Context, outputs []delivery.Output) ([]delivery.Output, error) {
-	if err := delivery.ValidateOutputs(outputs); err != nil {
-		return nil, err
-	}
+func (a *Router) prepareMediaOutputs(ctx context.Context, outputs []delivery.Output) ([]delivery.Output, globalevents.LogResult, error) {
+	// The owning delivery.Manager validates outputs before entering rawSender.
 	prepared := append([]delivery.Output(nil), outputs...)
 	if a.media == nil {
 		for _, out := range prepared {
 			if out.Source.MediaID != "" {
-				return nil, fmt.Errorf("media center is not configured")
+				err := fmt.Errorf("media center is not configured")
+				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 			}
 		}
-		return prepared, nil
+		return prepared, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	}
 	for i, out := range prepared {
 		if out.Kind != delivery.KindImage && out.Kind != delivery.KindFile && out.Kind != delivery.KindRecord {
@@ -47,7 +46,11 @@ func (a *Router) prepareMediaOutputs(ctx context.Context, outputs []delivery.Out
 			item, err = a.media.ImportBytes(ctx, out.Source.Data, input)
 		}
 		if err != nil {
-			return nil, fmt.Errorf("prepare output media %d: %w", i, err)
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("prepare output media %d: %v", i, err)}
+			if errors.Is(err, context.Canceled) {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+			return nil, logResult, fmt.Errorf("prepare output media %d: %w", i, err)
 		}
 		prepared[i].Source = delivery.Source{MediaID: item.ID, MIMEType: item.MIMEType}
 		if prepared[i].Name == "" {
@@ -56,11 +59,11 @@ func (a *Router) prepareMediaOutputs(ctx context.Context, outputs []delivery.Out
 			prepared[i].Name = media.SanitizeName(prepared[i].Name)
 		}
 	}
-	return prepared, nil
+	return prepared, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
 // Resolve only the send copy; Hook events and queued outputs keep media IDs.
-func (a *Router) resolveMediaOutputs(ctx context.Context, outputs []delivery.Output) ([]delivery.Output, func(), error) {
+func (a *Router) resolveMediaOutputs(ctx context.Context, outputs []delivery.Output) ([]delivery.Output, func(), globalevents.LogResult, error) {
 	resolved := append([]delivery.Output(nil), outputs...)
 	var cleanups []func()
 	cleanup := func() {
@@ -75,25 +78,33 @@ func (a *Router) resolveMediaOutputs(ctx context.Context, outputs []delivery.Out
 		source, release, err := a.media.ResolveForOutput(ctx, out.Source.MediaID)
 		if err != nil {
 			cleanup()
-			return nil, func() {}, err
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("resolve output media %d: %v", i, err)}
+			if errors.Is(err, context.Canceled) {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+			return nil, func() {}, logResult, err
 		}
 		cleanups = append(cleanups, release)
 		resolved[i].Source = source
 	}
-	return resolved, cleanup, nil
+	return resolved, cleanup, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
-func (a *Router) sendPreparedMedia(ctx context.Context, outputs []delivery.Output, send func([]delivery.Output) (delivery.Receipt, error)) (delivery.Receipt, error) {
-	prepared, err := a.prepareMediaOutputs(ctx, outputs)
+func (a *Router) sendPreparedMedia(ctx context.Context, outputs []delivery.Output, send func([]delivery.Output) (delivery.Receipt, globalevents.LogResult, error)) (delivery.Receipt, globalevents.LogResult, error) {
+	prepared, logResult, err := a.prepareMediaOutputs(ctx, outputs)
 	if err != nil {
-		return delivery.Receipt{}, err
+		return delivery.Receipt{}, logResult, err
 	}
-	resolved, cleanup, err := a.resolveMediaOutputs(ctx, prepared)
+	resolved, cleanup, logResult, err := a.resolveMediaOutputs(ctx, prepared)
 	if err != nil {
-		return delivery.Receipt{}, err
+		return delivery.Receipt{}, logResult, err
 	}
 	defer cleanup()
-	receipt, sendErr := send(resolved)
+	receipt, logResult, sendErr := send(resolved)
+	logResult.Content += fmt.Sprintf("\nplatform_message_ids=%v", receipt.PlatformMessageIDs)
+	for _, sent := range receipt.SentMessages {
+		logResult.Content += fmt.Sprintf("\nsent_message: platform=%s scope_id=%s platform_message_id=%s output_indexes=%v", sent.Platform, sent.ScopeID, sent.PlatformMessageID, sent.OutputIndexes)
+	}
 	if err := a.cacheMediaReceipt(ctx, prepared, receipt); err != nil {
 
 		{
@@ -127,7 +138,7 @@ func (a *Router) sendPreparedMedia(ctx context.Context, outputs []delivery.Outpu
 		}
 
 	}
-	return receipt, sendErr
+	return receipt, logResult, sendErr
 }
 
 func (a *Router) cacheMediaReceipt(ctx context.Context, outputs []delivery.Output, receipt delivery.Receipt) error {

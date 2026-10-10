@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/events"
 	"log/slog"
 
 	"elbot/internal/agent/dialogue"
@@ -37,11 +38,11 @@ func (o executionTurnOutput) FinishIntermediate(ctx, streamCtx context.Context, 
 	ctx, out := o.target(ctx)
 	return out.FinishIntermediate(ctx, o.view.Context(streamCtx), s, text, streaming)
 }
-func (o executionTurnOutput) ReplaceAndFinishStream(ctx, streamCtx context.Context, s delivery.MessageStream, text string) (delivery.Receipt, error) {
+func (o executionTurnOutput) ReplaceAndFinishStream(ctx, streamCtx context.Context, s delivery.MessageStream, text string) (delivery.Receipt, events.LogResult, error) {
 	ctx, out := o.target(ctx)
 	return out.ReplaceAndFinishStream(ctx, o.view.Context(streamCtx), s, text)
 }
-func (o executionTurnOutput) SendAssistant(ctx context.Context, text string) (delivery.Receipt, error) {
+func (o executionTurnOutput) SendAssistant(ctx context.Context, text string) (delivery.Receipt, events.LogResult, error) {
 	ctx, out := o.target(ctx)
 	if foreground := o.execution.Foreground(); foreground != nil {
 		if parsed, err := background.ParseJSONResult(text); err == nil {
@@ -50,30 +51,47 @@ func (o executionTurnOutput) SendAssistant(ctx context.Context, text string) (de
 				binding, _ := session.BindingFromContext(foreground)
 				row, err := o.view.Sessions.Get(ctx, binding.SessionID())
 				if err != nil {
-					return delivery.Receipt{}, err
+					logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
+					if err == context.Canceled {
+						logResult.ResultStatus = events.ResultCanceled
+					}
+					return delivery.Receipt{}, logResult, err
 				}
 				dir, err := session.NewWorkspaceStore(o.sessions, o.view.Sessions, row.ID).GetWorkspaceDir(ctx)
 				if err != nil {
-					return delivery.Receipt{}, err
+					logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
+					if err == context.Canceled {
+						logResult.ResultStatus = events.ResultCanceled
+					}
+					return delivery.Receipt{}, logResult, err
 				}
 				outputs, err := background.BuildReportOutputs("", parsed.ReportSegments, sandboxctx.SandboxContext{Root: dir, Dir: dir})
 				if err != nil {
-					return delivery.Receipt{}, err
+					logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
+					if err == context.Canceled {
+						logResult.ResultStatus = events.ResultCanceled
+					}
+					return delivery.Receipt{}, logResult, err
 				}
-				receipt, err := out.SendAssistant(ctx, text)
+				receipt, logResult, err := out.SendAssistant(ctx, text)
 				if err != nil {
-					return receipt, err
+					return receipt, logResult, err
 				}
 				// Receipt continues to identify the assistant text for message association.
 				// Report outputs retain their own delivery boundary.
-				_, err = out.SendOutputs(ctx, outputs)
-				return receipt, err
+				result := logResult
+				logResult, err = out.SendOutputs(ctx, outputs)
+				logResult.Content = "assistant:\n" + result.Content + "\noutputs:\n" + logResult.Content
+				if result.ResultStatus == events.ResultFailed || (result.ResultStatus == events.ResultCanceled && logResult.ResultStatus != events.ResultFailed) {
+					logResult.ResultStatus = result.ResultStatus
+				}
+				return receipt, logResult, err
 			}
 		}
 	}
 	return out.SendAssistant(ctx, text)
 }
-func (o executionTurnOutput) SendOutputs(ctx context.Context, v []delivery.Output) (delivery.Receipt, error) {
+func (o executionTurnOutput) SendOutputs(ctx context.Context, v []delivery.Output) (events.LogResult, error) {
 	ctx, out := o.target(ctx)
 	return out.SendOutputs(ctx, v)
 }

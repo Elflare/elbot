@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"elbot/internal/events"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
@@ -180,7 +182,7 @@ func TestCleanupParallelAllowsOtherMediaAndSameIDReimport(t *testing.T) {
 		},
 	}
 	cleaned := make(chan error, 1)
-	go func() { cleaned <- m.Cleanup(ctx) }()
+	go func() { _, err := m.Cleanup(ctx); cleaned <- err }()
 	first := awaitMediaTest(t, started)
 	for range 3 {
 		awaitMediaTest(t, started)
@@ -232,7 +234,7 @@ func TestCleanupCancellationRetainsPendingObjectsForRetry(t *testing.T) {
 		return ctx.Err()
 	}}
 	done := make(chan error, 1)
-	go func() { done <- m.Cleanup(ctx) }()
+	go func() { _, err := m.Cleanup(ctx); done <- err }()
 	for range 4 {
 		awaitMediaTest(t, started)
 	}
@@ -253,7 +255,7 @@ func TestCleanupCancellationRetainsPendingObjectsForRetry(t *testing.T) {
 		}
 	}
 	m.Remote = &concurrentTestBackend{remove: func(context.Context, *storage.Media) error { return nil }}
-	if err := m.Cleanup(t.Context()); err != nil {
+	if _, err := m.Cleanup(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	for id := range data {
@@ -290,7 +292,8 @@ func TestCleanupWaitingRoundCancellation(t *testing.T) {
 		rounds.Add(1)
 		go func() {
 			defer rounds.Done()
-			done <- m.Cleanup(ctx)
+			_, err := m.Cleanup(ctx)
+			done <- err
 		}()
 		return done
 	}
@@ -354,8 +357,8 @@ func TestCleanupConcurrentRoundsAndPartialFailure(t *testing.T) {
 		return nil
 	}}
 	done := make(chan error, 2)
-	go func() { done <- m.Cleanup(t.Context()) }()
-	go func() { done <- m.Cleanup(t.Context()) }()
+	go func() { _, err := m.Cleanup(t.Context()); done <- err }()
+	go func() { _, err := m.Cleanup(t.Context()); done <- err }()
 	failures := 0
 	for range 2 {
 		if err := awaitMediaTest(t, done); err != nil {
@@ -379,6 +382,25 @@ func TestCleanupConcurrentRoundsAndPartialFailure(t *testing.T) {
 		if calls[id] != want {
 			t.Fatalf("delete calls for %s = %d, want %d", id, calls[id], want)
 		}
+	}
+}
+
+func TestCleanupKeepsIndependentFailureBeforeCancellationJoin(t *testing.T) {
+	m := newConcurrentTestManager(t)
+	seedCleanupMedia(t, m, 1)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	failure := errors.New("remote storage unavailable")
+	m.Remote = &concurrentTestBackend{remove: func(context.Context, *storage.Media) error {
+		cancel()
+		return failure
+	}}
+	logResult, err := m.Cleanup(ctx)
+	if logResult.ResultStatus != events.ResultFailed || !errors.Is(err, failure) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("source result=%#v error=%v", logResult, err)
+	}
+	if !strings.Contains(logResult.Content, failure.Error()) || !strings.Contains(logResult.Content, context.Canceled.Error()) {
+		t.Fatalf("independent facts missing: %s", logResult.Content)
 	}
 }
 
@@ -464,7 +486,7 @@ func TestPresignExistingObjectHoldsReferenceUntilSigningFinishes(t *testing.T) {
 		done <- err
 	}()
 	awaitMediaTest(t, started)
-	if err := m.Cleanup(ctx); err != nil {
+	if _, err := m.Cleanup(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if item, err := m.Store.Media().Get(ctx, id); err != nil || item.Deleting {
@@ -525,7 +547,7 @@ func TestPresignUploadSerializesSameIDAndProtectsFromCleanup(t *testing.T) {
 		done <- err
 	}()
 	waitObjectUsers(t, &m.objects, item.ID, 3)
-	if err := m.Cleanup(ctx); err != nil {
+	if _, err := m.Cleanup(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if current, err := m.Store.Media().Get(ctx, item.ID); err != nil || current.Deleting {

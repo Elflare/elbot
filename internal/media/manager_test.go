@@ -2,12 +2,14 @@ package media
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"elbot/internal/events"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
@@ -55,8 +57,8 @@ func TestRetainSessionToolArgumentsIsAtomicAndIdempotent(t *testing.T) {
 	}
 	arguments := fmt.Sprintf(`{"source":%q,"again":%q}`, item.ID, item.ID)
 	for range 2 {
-		if err := manager.RetainSessionToolArguments(ctx, session.ID, arguments); err != nil {
-			t.Fatal(err)
+		if logResult, err := manager.RetainSessionToolArguments(ctx, session.ID, arguments); err != nil || logResult.ResultStatus != events.ResultSucceeded {
+			t.Fatalf("retained references: log=%#v error=%v", logResult, err)
 		}
 	}
 	refs, err := store.MediaReferences().ListByOwner(ctx, "session_tool", session.ID)
@@ -69,11 +71,22 @@ func TestRetainSessionToolArgumentsIsAtomicAndIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	missing := IDPrefix + strings.Repeat("f", 64)
-	if err := manager.RetainSessionToolArguments(ctx, other.ID, fmt.Sprintf(`[%q,%q]`, item.ID, missing)); err == nil {
-		t.Fatal("accepted a missing media ID")
+	if logResult, err := manager.RetainSessionToolArguments(ctx, other.ID, fmt.Sprintf(`[%q,%q]`, item.ID, missing)); err == nil || logResult.ResultStatus != events.ResultFailed || !strings.Contains(logResult.Content, "count=2") {
+		t.Fatalf("missing media ID: log=%#v error=%v", logResult, err)
 	}
 	if refs, err := store.MediaReferences().ListByOwner(ctx, "session_tool", other.ID); err != nil || len(refs) != 0 {
 		t.Fatalf("partial references = %#v, %v", refs, err)
+	}
+	if logResult, err := manager.RetainSessionToolArguments(ctx, session.ID, `{}`); err != nil || logResult.ResultStatus != events.ResultSkipped {
+		t.Fatalf("empty arguments: log=%#v error=%v", logResult, err)
+	}
+	if logResult, err := manager.RetainSessionToolArguments(ctx, "", arguments); err == nil || logResult.ResultStatus != events.ResultFailed {
+		t.Fatalf("missing session: log=%#v error=%v", logResult, err)
+	}
+	canceledCtx, cancel := context.WithCancel(ctx)
+	cancel()
+	if logResult, err := manager.RetainSessionToolArguments(canceledCtx, other.ID, arguments); !errors.Is(err, context.Canceled) || logResult.ResultStatus != events.ResultCanceled || !strings.Contains(logResult.Content, "count=1") {
+		t.Fatalf("canceled references: log=%#v error=%v", logResult, err)
 	}
 	if err := store.Sessions().Delete(ctx, session.ID); err != nil {
 		t.Fatal(err)

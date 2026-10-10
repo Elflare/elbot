@@ -58,7 +58,7 @@ func TestCleanupUsesStoredLocationsAcrossBackendChanges(t *testing.T) {
 			t.Fatal(err)
 		}
 		m.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
-		if err := m.Cleanup(ctx); err != nil {
+		if _, err := m.Cleanup(ctx); err != nil {
 			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(calls, []string{"remote"}) {
@@ -92,7 +92,7 @@ func TestCleanupUsesStoredLocationsAcrossBackendChanges(t *testing.T) {
 		m.Backend = remote
 		m.Remote = remote
 		m.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
-		if err := m.Cleanup(ctx); err == nil {
+		if _, err := m.Cleanup(ctx); err == nil {
 			t.Fatal("expected remote delete failure")
 		}
 		if !reflect.DeepEqual(calls, []string{"remote"}) {
@@ -107,7 +107,7 @@ func TestCleanupUsesStoredLocationsAcrossBackendChanges(t *testing.T) {
 		}
 
 		remote.fail = false
-		if err := m.Cleanup(ctx); err != nil {
+		if _, err := m.Cleanup(ctx); err != nil {
 			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(calls, []string{"remote", "remote", "local"}) {
@@ -143,7 +143,7 @@ func TestCleanupUsesStoredLocationsAcrossBackendChanges(t *testing.T) {
 			t.Fatal(err)
 		}
 		m.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
-		if err := m.Cleanup(ctx); err == nil {
+		if _, err := m.Cleanup(ctx); err == nil {
 			t.Fatal("expected local delete failure")
 		}
 		if !reflect.DeepEqual(calls, []string{"remote", "local"}) {
@@ -157,7 +157,7 @@ func TestCleanupUsesStoredLocationsAcrossBackendChanges(t *testing.T) {
 		}
 
 		local.fail = false
-		if err := m.Cleanup(ctx); err != nil {
+		if _, err := m.Cleanup(ctx); err != nil {
 			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(calls, []string{"remote", "local", "remote", "local"}) {
@@ -188,7 +188,7 @@ func TestCleanupUsesStoredLocationsAcrossBackendChanges(t *testing.T) {
 			t.Fatal(err)
 		}
 		m.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
-		if err := m.Cleanup(ctx); err == nil {
+		if _, err := m.Cleanup(ctx); err == nil {
 			t.Fatal("expected unavailable remote backend")
 		}
 		if len(calls) != 0 {
@@ -222,7 +222,7 @@ func TestOpenProtectsMediaUntilReaderCloses(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
-	if err := m.Cleanup(ctx); err != nil {
+	if _, err := m.Cleanup(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Media().Get(ctx, item.ID); err != nil {
@@ -231,7 +231,7 @@ func TestOpenProtectsMediaUntilReaderCloses(t *testing.T) {
 	if err := reader.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.Cleanup(ctx); err != nil {
+	if _, err := m.Cleanup(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Media().Get(ctx, item.ID); err != storage.ErrNotFound {

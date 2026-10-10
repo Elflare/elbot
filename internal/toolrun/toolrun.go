@@ -4,10 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"sort"
 	"strings"
-	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
@@ -75,9 +73,10 @@ type ExecutionResult struct {
 	Message llm.LLMMessage
 	// Result is the raw tool result, which can coexist with Error; nil means none.
 	Result *tool.Result
-	// LogContent carries the independent source log body; empty means absent.
-	// Business Result, Message and Segments do not implicitly supply this value.
-	LogContent string
+	// LogResult.Content carries the independent tool log body. Before call entry,
+	// the execution source declares ResultStatus and the reason; after entry,
+	// the runner declares the invocation log status, independent of business errors.
+	LogResult events.LogResult
 	// Error is the original preparation or execution error, not a later output/save error.
 	Error error
 	// ResultStatus is the explicit result supplied by the native or remote execution source.
@@ -242,65 +241,8 @@ func (m *Manager) RiskDetail(ctx context.Context, resolved ResolvedTool, call ll
 	return strings.TrimSpace(detail)
 }
 
-func (m *Manager) Execute(ctx context.Context, call llm.ToolCallRequest, resolved ResolvedTool, actor contextinfo.Actor, sessionID, risk string) (result ExecutionResult) {
-	startedAt := time.Now()
-	defer func() {
-		// Calling a tool and the tool's business outcome are separate facts.
-		// A tool that was entered supplies its own diagnostic body, even on error.
-		level, resultStatus := slog.LevelInfo, events.ResultSucceeded
-		if !result.ExecutionStarted {
-			resultStatus = result.ResultStatus
-			if resultStatus == events.ResultFailed {
-				level = slog.LevelError
-			}
-		}
-		logContent := result.LogContent
-		if logContent == "" && result.Error != nil {
-			logContent = result.Error.Error()
-		}
-		if logContent == "" && !result.ExecutionStarted {
-			logContent = "tool execution was not started"
-		}
-		content := map[string]any{"tool": call.Name, "tool_call_id": call.ID, "actor_id": actor.ID, "source": string(resolved.Source), "risk": risk, "arguments": call.Arguments, "result": logContent, "execution_started": result.ExecutionStarted, "elapsed_ms": time.Since(startedAt).Milliseconds()}
-		// Limit source JSON by Unicode characters before encoding; byte slicing
-		// would corrupt multibyte diagnostics. Every string in this source's
-		// fixed content schema is bounded, including caller-supplied names/IDs.
-		for key, value := range content {
-			text, ok := value.(string)
-			if !ok {
-				continue
-			}
-			runes := []rune(text)
-			if len(runes) > 2048 {
-				text = string(runes[:2047]) + "…"
-			}
-			content[key] = text
-		}
-		data, _ := json.Marshal(content)
-		record := events.LogRecord{Category: events.LogAudit, Level: level, EventName: "tool_call", Module: "toolrun", Type: events.ContentJSON, Content: string(data), ContentLimit: 0, Identity: events.LogIdentity{}, ResultStatus: resultStatus}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if sessionID != "" {
-			record.Identity.SessionID = &sessionID
-		} else if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		logToolCall(ctx, record)
-		record.Category, record.Type, record.ContentLimit = events.LogRuntime, events.ContentText, 4096
-		record.Content = fmt.Sprintf("tool=%s tool_call_id=%s source=%s risk=%s execution_started=%t elapsed_ms=%d\n%s", call.Name, call.ID, resolved.Source, risk, result.ExecutionStarted, time.Since(startedAt).Milliseconds(), logContent)
-		logToolCall(ctx, record)
-	}()
+func (m *Manager) Execute(ctx context.Context, call llm.ToolCallRequest, resolved ResolvedTool, actor contextinfo.Actor) (result ExecutionResult) {
+
 	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
 	if resolved.ResultStatus != events.ResultSucceeded {
 		return executionError(call, message, resolved.Error, resolved.ResultStatus)
@@ -321,7 +263,7 @@ func (m *Manager) Execute(ctx context.Context, call llm.ToolCallRequest, resolve
 		if result.Result != nil && m != nil && m.Media != nil {
 			result.Message.Segments = m.Media.Materialize(ctx, result.Message.Segments)
 		}
-		return ExecutionResult{Call: call, Message: result.Message, Result: result.Result, LogContent: result.LogContent, Error: result.Error, ResultStatus: result.ResultStatus, ExecutionStarted: result.ExecutionStarted}
+		return ExecutionResult{Call: call, Message: result.Message, Result: result.Result, LogResult: result.LogResult, Error: result.Error, ResultStatus: result.ResultStatus, ExecutionStarted: result.ExecutionStarted}
 	}
 }
 
@@ -381,5 +323,5 @@ func policyForManager(ctx context.Context, configured *security.Policy) *securit
 func executionError(call llm.ToolCallRequest, message llm.LLMMessage, err error, resultStatus events.ResultStatus) ExecutionResult {
 	content := fmt.Sprintf("tool call %s failed: %v", call.Name, err)
 	message.Segments = llm.TextSegments(content)
-	return ExecutionResult{Call: call, Message: message, Error: err, ResultStatus: resultStatus}
+	return ExecutionResult{Call: call, Message: message, Error: err, ResultStatus: resultStatus, LogResult: events.LogResult{ResultStatus: resultStatus, Content: content}}
 }

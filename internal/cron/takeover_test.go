@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/events"
 	"testing"
 
 	"elbot/internal/background"
@@ -19,9 +20,9 @@ func TestTakeoverSuppressesRepairAndDelivery(t *testing.T) {
 	repo := newFakeCronRepo()
 	runner := &takeoverRunner{}
 	sent := 0
-	svc := NewService(Options{Store: fakeCronStore{cron: repo}, Runner: runner, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+	svc := NewService(Options{Store: fakeCronStore{cron: repo}, Runner: runner, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		sent++
-		return delivery.Receipt{}, nil
+		return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	}})
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "takeover", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
 	if _, err := svc.runLLM(context.Background(), *job, mustDecodeTestMetadata(t, job.Metadata)); err != nil {

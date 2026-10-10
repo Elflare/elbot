@@ -23,7 +23,7 @@ func TestReviewCronStoppedBeforeRuntimeDependencies(t *testing.T) {
 	started := make(chan struct{}, 1)
 	runtimeClosing := make(chan struct{})
 	observed := make(chan bool, 1)
-	if err := manager.RegisterHandler("review", func(ctx context.Context, job storage.CronJob) (globalevents.ResultStatus, string, error) {
+	if err := manager.RegisterHandler("review", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
 		started <- struct{}{}
 		select {
 		case <-ctx.Done():
@@ -31,7 +31,7 @@ func TestReviewCronStoppedBeforeRuntimeDependencies(t *testing.T) {
 		case <-runtimeClosing:
 			observed <- ctx.Err() == nil
 		}
-		return globalevents.ResultSucceeded, "finished", nil
+		return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "finished"}, nil
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -89,12 +89,12 @@ func TestRunnerKeepsDependenciesUntilCronActuallyExits(t *testing.T) {
 	defer store.Close()
 	manager := elcron.NewManager(store.CronJobs())
 	started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	if err := manager.RegisterHandler("wait", func(ctx context.Context, _ storage.CronJob) (globalevents.ResultStatus, string, error) {
+	if err := manager.RegisterHandler("wait", func(ctx context.Context, _ storage.CronJob) (globalevents.LogResult, error) {
 		close(started)
 		<-ctx.Done()
 		close(canceled)
 		<-release
-		return globalevents.ResultCanceled, ctx.Err().Error(), ctx.Err()
+		return globalevents.LogResult{ResultStatus: globalevents.ResultCanceled, Content: ctx.Err().Error()}, ctx.Err()
 	}); err != nil {
 		t.Fatal(err)
 	}

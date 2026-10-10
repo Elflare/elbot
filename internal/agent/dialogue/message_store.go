@@ -105,14 +105,14 @@ type MessageStore struct {
 	Media     *media.Manager
 }
 
-func (s *MessageStore) Append(ctx context.Context, message *storage.Message, operation string) error {
+func (s *MessageStore) Append(ctx context.Context, message *storage.Message, operation string) (events.LogResult, error) {
 	if message == nil {
-		return nil
+		return events.LogResult{ResultStatus: events.ResultSkipped}, nil
 	}
 	return s.Commit(ctx, storage.DialogueCommit{SessionID: message.SessionID, Messages: []*storage.Message{message}}, operation)
 }
 
-func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit, operation string) error {
+func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit, operation string) (events.LogResult, error) {
 	for _, message := range commit.MessageRows() {
 		if message != nil && s.Media != nil && message.Segments != "" {
 			segments := s.Media.Materialize(ctx, MessageSegmentsFromStorage(message.Segments))
@@ -120,14 +120,20 @@ func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit
 			message.Content = llm.SegmentsContentText(segments)
 		}
 	}
+	logResult := events.LogResult{ResultStatus: events.ResultSucceeded, Content: fmt.Sprintf("operation=%s session_id=%s", operation, commit.SessionID)}
 	locked, release, err := s.Gate.Enter(ctx, commit.SessionID)
 	if err == nil {
 		defer release()
 		err = s.Dialogues.Commit(locked, commit)
 	}
 	if err != nil {
+		logResult.ResultStatus = events.ResultFailed
+		logResult.Content += fmt.Sprintf("\npersistence_error=%v", err)
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = events.ResultCanceled
+		}
 		content, _ := json.Marshal(map[string]string{"operation": operation, "error": fmt.Sprintf("%.2048s", err.Error())})
-		record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelError, EventName: "persistence_error", Module: "agent", Type: events.ContentJSON, Content: string(content), ResultStatus: events.ResultFailed}
+		record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelError, EventName: "persistence_error", Module: "agent", Type: events.ContentJSON, Content: string(content), ResultStatus: logResult.ResultStatus}
 		record.Identity.SessionID = &commit.SessionID
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		if facts.RunID != "" {
@@ -142,12 +148,12 @@ func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit
 		if facts.RootRequestID != "" {
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
-		if errors.Is(err, context.Canceled) {
+		if logResult.ResultStatus == events.ResultCanceled {
 			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
 		}
 		_ = events.EmitLog(context.WithoutCancel(ctx), record)
 	}
-	return err
+	return logResult, err
 }
 
 func MessageSegmentsFromStorage(raw string) []llm.MessageSegment {

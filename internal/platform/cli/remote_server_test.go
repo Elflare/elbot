@@ -11,6 +11,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
+	"elbot/internal/events"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )
@@ -92,25 +93,31 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 			t.Fatalf("got %q, want %q", msg.Text, want)
 		}
 	}
-	if _, err := router.SendNotice(firstCtx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("first-only")}}); err != nil {
+	if _, _, err := router.SendNotice(firstCtx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("first-only")}}); err != nil {
 		t.Fatal(err)
 	}
 	read(one, "first-only")
-	if _, err := router.SendChat(secondCtx, []delivery.Output{delivery.Text("second-only")}); err != nil {
+	if _, _, err := router.SendChat(secondCtx, []delivery.Output{delivery.Text("second-only")}); err != nil {
 		t.Fatal(err)
 	}
 	read(two, "second-only")
-	if _, err := router.SendNotice(firstCtx, delivery.Notice{Target: delivery.Target{Platform: "cli", PrivateUserID: "same-user"}, Outputs: []delivery.Output{delivery.Text("both")}}); err != nil {
+	if _, _, err := router.SendNotice(firstCtx, delivery.Notice{Target: delivery.Target{Platform: "cli", PrivateUserID: "same-user"}, Outputs: []delivery.Output{delivery.Text("both")}}); err != nil {
 		t.Fatal(err)
 	}
 	read(one, "both")
 	read(two, "both")
+	first.conn.CloseNow()
+	logResult, err := s.writeClients(ctx, []*remoteClientConn{first, second}, remoteMessage{Type: remoteMsgNotice, Text: "partial-fanout"})
+	if err != nil || logResult.ResultStatus != events.ResultFailed || !strings.Contains(logResult.Content, "sent=1 targets=2") || !strings.Contains(logResult.Content, "write_error=") {
+		t.Fatalf("partial fanout changed business success or hid logging failure: %#v / %v", logResult, err)
+	}
+	read(two, "partial-fanout")
 	s.removeClient(first)
 	first.conn.CloseNow()
-	if _, err := router.SendChat(firstCtx, []delivery.Output{delivery.Text("must-not-move")}); err == nil {
+	if _, _, err := router.SendChat(firstCtx, []delivery.Output{delivery.Text("must-not-move")}); err == nil {
 		t.Fatal("disconnected original reply succeeded")
 	}
-	if _, err := router.SendChat(secondCtx, []delivery.Output{delivery.Text("survivor")}); err != nil {
+	if _, _, err := router.SendChat(secondCtx, []delivery.Output{delivery.Text("survivor")}); err != nil {
 		t.Fatal(err)
 	}
 	read(two, "survivor")

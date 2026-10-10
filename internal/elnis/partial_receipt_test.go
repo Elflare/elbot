@@ -2,6 +2,7 @@ package elnis
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"testing"
 
@@ -14,12 +15,22 @@ func TestPartialReportMapsSuccessAndRemainsRetryable(t *testing.T) {
 	wantErr := errors.New("later page failed")
 	calls := 0
 	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"done"}`}
-	s, cleanup := newTestServiceWithRunner(t, runner, func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+	s, cleanup := newTestServiceWithRunner(t, runner, func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		calls++
 		if calls == 1 {
-			return delivery.Receipt{PlatformMessageIDs: []string{"partial"}, SentMessages: []delivery.SentMessage{{Platform: "qqonebot", ScopeID: "private:1001", PlatformMessageID: "partial"}}}, wantErr
+			{
+				logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+				if wantErr != nil {
+					logResult.ResultStatus = events.ResultFailed
+					logResult.Content = wantErr.Error()
+					if wantErr == context.Canceled {
+						logResult.ResultStatus = events.ResultCanceled
+					}
+				}
+				return delivery.Receipt{PlatformMessageIDs: []string{"partial"}, SentMessages: []delivery.SentMessage{{Platform: "qqonebot", ScopeID: "private:1001", PlatformMessageID: "partial"}}}, logResult, wantErr
+			}
 		}
-		return delivery.Receipt{PlatformMessageIDs: []string{"retry"}, SentMessages: []delivery.SentMessage{{Platform: "qqonebot", ScopeID: "private:1001", PlatformMessageID: "retry"}}}, nil
+		return delivery.Receipt{PlatformMessageIDs: []string{"retry"}, SentMessages: []delivery.SentMessage{{Platform: "qqonebot", ScopeID: "private:1001", PlatformMessageID: "retry"}}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	})
 	defer cleanup()
 	row := &storage.Session{ID: "bg-session", OwnerID: "elnis:home", Platform: "qqonebot", PlatformScopeID: "elnis:watcher:source:event-1", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive}
@@ -47,7 +58,7 @@ func TestPartialReportMapsSuccessAndRemainsRetryable(t *testing.T) {
 	if err != nil || event.Status != StatusResultReady {
 		t.Fatalf("event=%#v/%v", event, err)
 	}
-	if err := s.recoverReports(ctx, false); err != nil {
+	if _, err := s.recoverReports(ctx, false); err != nil {
 		t.Fatal(err)
 	}
 	event, err = s.store.ElnisEvents().Get(ctx, queued.EventID)

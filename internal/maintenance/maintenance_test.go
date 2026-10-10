@@ -2,12 +2,15 @@ package maintenance
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"elbot/internal/config"
+	"elbot/internal/events"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -89,17 +92,47 @@ func TestCleanupUsesInjectedLiveSessionService(t *testing.T) {
 	})
 	svc := NewService(nil, store, config.MaintenanceCleanupConfig{Enabled: true, RetentionDays: 1})
 	svc.Sessions = live
-	if err := svc.RunSessionCleanup(ctx); err != nil {
-		t.Fatal(err)
+	if logResult, err := svc.RunSessionCleanup(ctx); err != nil || logResult.ResultStatus != events.ResultSucceeded || !strings.Contains(logResult.Content, "deleted=0") {
+		t.Fatalf("cleanup=%#v error=%v", logResult, err)
 	}
 	if !binding.Valid() {
 		t.Fatal("busy current was deleted")
 	}
 	busy = false
-	if err := svc.RunSessionCleanup(ctx); err != nil {
-		t.Fatal(err)
+	if logResult, err := svc.RunSessionCleanup(ctx); err != nil || logResult.ResultStatus != events.ResultSucceeded || !strings.Contains(logResult.Content, "deleted=1") {
+		t.Fatalf("cleanup=%#v error=%v", logResult, err)
 	}
 	if binding.Valid() {
 		t.Fatal("idle cleanup did not invalidate live binding")
+	}
+}
+
+func TestSandboxCleanupReturnsSourceResult(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "file"), []byte("data"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name      string
+		ctx       context.Context
+		retention int
+		want      events.ResultStatus
+		err       error
+	}{
+		{"skipped", context.Background(), 0, events.ResultSkipped, nil},
+		{"canceled", func() context.Context { ctx, cancel := context.WithCancel(context.Background()); cancel(); return ctx }(), 1, events.ResultCanceled, context.Canceled},
+		{"deadline", func() context.Context {
+			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+			defer cancel()
+			return ctx
+		}(), 1, events.ResultFailed, context.DeadlineExceeded},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := &Service{sandboxRoot: root, sandboxCleanup: config.MaintenanceCleanupConfig{RetentionDays: tc.retention}}
+			logResult, err := svc.RunSandboxCleanup(tc.ctx)
+			if logResult.ResultStatus != tc.want || !errors.Is(err, tc.err) || logResult.Content == "" {
+				t.Fatalf("source result=%#v error=%v", logResult, err)
+			}
+		})
 	}
 }

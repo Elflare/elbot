@@ -2,6 +2,7 @@ package elnis
 
 import (
 	"context"
+	"elbot/internal/background"
 	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
@@ -168,12 +169,30 @@ func (r *Runtime) Run(ctx context.Context) error {
 }
 
 func (r *Runtime) reportWorker(ctx context.Context) {
+	identity := globalevents.LogIdentity{}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.SessionID != "" {
+		identity.SessionID = &facts.SessionID
+	}
+	if facts.RunID != "" {
+		identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		identity.RootRequestID = &facts.RootRequestID
+	}
+
 	if r.service == nil {
 		return
 	}
-	if err := r.service.recoverReports(ctx, false); err != nil && ctx.Err() == nil {
+	if logResult, _ := r.service.recoverReports(ctx, false); logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled {
 		{
-			content, _ := json.Marshal(map[string]any{"error": fmt.Sprintf("%.2048s", err.Error())})
+			content, _ := json.Marshal(map[string]any{"result": fmt.Sprintf("%.2048s", logResult.Content)})
 			record := globalevents.LogRecord{
 				Category:     globalevents.LogElnis,
 				Level:        slog.LevelWarn,
@@ -181,29 +200,13 @@ func (r *Runtime) reportWorker(ctx context.Context) {
 				Module:       "elnis",
 				Type:         globalevents.ContentJSON,
 				Content:      string(content),
-				ResultStatus: globalevents.ResultFailed,
+				ResultStatus: logResult.ResultStatus,
 			}
-			if errors.Is(err, context.Canceled) {
-				record.ResultStatus = globalevents.ResultCanceled
+			if logResult.ResultStatus == globalevents.ResultCanceled {
 				record.Level = slog.LevelInfo
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			record.Identity = identity
+			background.LogBackground(ctx, record)
 		}
 	}
 	ticker := time.NewTicker(reportRecoveryInterval)
@@ -213,9 +216,9 @@ func (r *Runtime) reportWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := r.service.recoverReports(ctx, false); err != nil && ctx.Err() == nil {
+			if logResult, _ := r.service.recoverReports(ctx, false); logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled {
 				{
-					content, _ := json.Marshal(map[string]any{"error": fmt.Sprintf("%.2048s", err.Error())})
+					content, _ := json.Marshal(map[string]any{"result": fmt.Sprintf("%.2048s", logResult.Content)})
 					record := globalevents.LogRecord{
 						Category:     globalevents.LogElnis,
 						Level:        slog.LevelWarn,
@@ -223,29 +226,13 @@ func (r *Runtime) reportWorker(ctx context.Context) {
 						Module:       "elnis",
 						Type:         globalevents.ContentJSON,
 						Content:      string(content),
-						ResultStatus: globalevents.ResultFailed,
+						ResultStatus: logResult.ResultStatus,
 					}
-					if errors.Is(err, context.Canceled) {
-						record.ResultStatus = globalevents.ResultCanceled
+					if logResult.ResultStatus == globalevents.ResultCanceled {
 						record.Level = slog.LevelInfo
 					}
-					facts, _ := contextinfo.ExecutionFromContext(ctx)
-					if facts.SessionID != "" {
-						record.Identity.SessionID = &facts.SessionID
-					}
-					if facts.RunID != "" {
-						record.Identity.RunID = &facts.RunID
-					}
-					if facts.Attempt != "" {
-						record.Identity.Attempt = &facts.Attempt
-					}
-					if facts.RequestID != "" {
-						record.Identity.RequestID = &facts.RequestID
-					}
-					if facts.RootRequestID != "" {
-						record.Identity.RootRequestID = &facts.RootRequestID
-					}
-					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+					record.Identity = identity
+					background.LogBackground(ctx, record)
 				}
 			}
 		}

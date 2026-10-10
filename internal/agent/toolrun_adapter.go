@@ -4,6 +4,8 @@ import (
 	"context"
 	"elbot/internal/events"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"reflect"
 	"strings"
@@ -88,13 +90,17 @@ func (d toolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Sess
 	return materializeMedia(ctx, d.media, original), nil
 }
 
-func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error) {
+func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), events.LogResult, error) {
 	toolReq, toolCtx, done, err := d.requests.Start(ctx, request.StartRequest{ParentID: contextinfo.RootRequestIDFromContext(ctx), SessionID: sessionID, Kind: request.KindTool, Label: toolName})
 	if err != nil {
-		return ctx, time.Time{}, func() {}, err
+		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = events.ResultCanceled
+		}
+		return ctx, time.Time{}, func() {}, logResult, err
 	}
 	d.output.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: sessionID, Phase: runtimestatus.PhaseTool, RequestID: toolReq.ID, Kind: request.KindTool, Label: toolName, ToolName: toolName, StageStartedAt: toolReq.StartedAt})
-	return toolCtx, toolReq.StartedAt, done, nil
+	return toolCtx, toolReq.StartedAt, done, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "tool request started"}, nil
 }
 
 func (d toolRunDeps) PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context {
@@ -133,11 +139,11 @@ func (d toolRunDeps) SendPreview(ctx context.Context, text string) {
 	d.output.SendPreview(ctx, text)
 }
 
-func (d toolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+func (d toolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) (events.LogResult, error) {
 	return d.output.SendOutputs(ctx, outputs)
 }
 
-func (d toolRunDeps) RecordToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk string, startedAt time.Time, result string, callErr error) error {
+func (d toolRunDeps) RecordToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk string, startedAt time.Time, result string, callErr error) (events.LogResult, error) {
 	record := &storage.ToolCallRecord{
 		SessionID:     sessionID,
 		ToolCallID:    call.ID,
@@ -152,11 +158,20 @@ func (d toolRunDeps) RecordToolCall(ctx context.Context, sessionID string, call 
 	if callErr != nil {
 		record.Error = callErr.Error()
 	}
+	logResult := events.LogResult{ResultStatus: events.ResultSkipped, Content: "tool call record store is not configured"}
 	var recordErr error
 	if d.store != nil && d.store.ToolCalls() != nil {
+		logResult = events.LogResult{ResultStatus: events.ResultSucceeded, Content: "tool call record saved"}
 		recordErr = d.store.ToolCalls().Create(ctx, record)
+		if recordErr != nil {
+			logResult.ResultStatus = events.ResultFailed
+			logResult.Content = fmt.Sprintf("record_error=%v", recordErr)
+			if errors.Is(recordErr, context.Canceled) {
+				logResult.ResultStatus = events.ResultCanceled
+			}
+		}
 	}
-	return recordErr
+	return logResult, recordErr
 }
 
 func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reason string) {
@@ -171,16 +186,28 @@ func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call
 	emitAgentLog(ctx, agentevents.Meta(ctx, sessionID), events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: "permission_denied", Module: "agent", Type: events.ContentJSON, Content: string(data), ContentLimit: 0, Identity: events.LogIdentity{}, ResultStatus: events.ResultRejected})
 }
 
-func (d toolRunDeps) RememberDiscoveryResult(ctx context.Context, row *storage.Session, result *tool.Result) error {
+func (d toolRunDeps) RememberDiscoveryResult(ctx context.Context, row *storage.Session, result *tool.Result) (events.LogResult, error) {
 	if row == nil {
-		return nil
+		return events.LogResult{ResultStatus: events.ResultSkipped, Content: "session is absent"}, nil
 	}
 	update, err := toolrun.DiscoveryStateUpdate(ctx, result, d.runtime.registry, d.identity.Actor(ctx), d.identity.policy)
 	if err != nil {
-		return err
+		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = events.ResultCanceled
+		}
+		return logResult, err
 	}
 	_, err = commitToolState(ctx, d.state, row, update)
-	return err
+	logResult := events.LogResult{ResultStatus: events.ResultSucceeded, Content: "tool discovery state saved"}
+	if err != nil {
+		logResult.ResultStatus = events.ResultFailed
+		logResult.Content = err.Error()
+		if err == context.Canceled {
+			logResult.ResultStatus = events.ResultCanceled
+		}
+	}
+	return logResult, err
 }
 
 func (d toolRunDeps) AddToolUse(sessionID, toolName string) {

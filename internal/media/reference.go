@@ -4,22 +4,27 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"sort"
 	"sync"
 	"time"
 
+	"elbot/internal/events"
 	"elbot/internal/storage"
 )
 
 // RetainSessionToolArguments keeps exact media ID values from an executed tool call for its Session.
-func (m *Manager) RetainSessionToolArguments(ctx context.Context, sessionID, arguments string) error {
+// Its log result describes the reference transaction independently of the original
+// business error; arguments without media references do not invent a save.
+func (m *Manager) RetainSessionToolArguments(ctx context.Context, sessionID, arguments string) (events.LogResult, error) {
 	if sessionID == "" {
-		return errors.New("session ID is required for tool media references")
+		err := errors.New("session ID is required for tool media references")
+		return events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}, err
 	}
 	ids := ArgumentMediaIDs(arguments)
 	if len(ids) == 0 {
-		return nil
+		return events.LogResult{ResultStatus: events.ResultSkipped, Content: "tool arguments contain no media references"}, nil
 	}
 	createdAt := m.Now()
 	references := make([]storage.MediaReference, 0, len(ids))
@@ -29,7 +34,15 @@ func (m *Manager) RetainSessionToolArguments(ctx context.Context, sessionID, arg
 			Purpose: "input", SessionID: sessionID, CreatedAt: createdAt,
 		})
 	}
-	return m.Store.MediaReferences().AddAll(ctx, references)
+	if err := m.Store.MediaReferences().AddAll(ctx, references); err != nil {
+		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("retain tool media references: count=%d error=%v", len(references), err)}
+		// AddAll returns one transaction failure, before this source wraps it.
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = events.ResultCanceled
+		}
+		return logResult, err
+	}
+	return events.LogResult{ResultStatus: events.ResultSucceeded, Content: fmt.Sprintf("retained tool media references: count=%d", len(references))}, nil
 }
 
 func ArgumentMediaIDs(arguments string) []string {

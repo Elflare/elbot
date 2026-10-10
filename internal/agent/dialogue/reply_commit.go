@@ -56,7 +56,7 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in ReplyCommitIn
 		return result, fmt.Errorf("reply persistence is required")
 	}
 	result.RawText = in.RawText
-	var receipt delivery.Receipt
+	var logResult events.LogResult
 	record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelInfo, EventName: "reply_committed", Module: "agent", Type: events.ContentText, ContentLimit: 4096, ResultStatus: events.ResultSucceeded}
 	defer func() {
 		record.Identity.SessionID = &in.Session.ID
@@ -73,14 +73,7 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in ReplyCommitIn
 		if facts.RootRequestID != "" {
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
-		record.Content = fmt.Sprintf("message_id=%s\npersisted=%t\nplatform_message_ids=%v", result.MessageID, result.Persisted, result.Receipt.PlatformMessageIDs)
-		for _, sent := range result.Receipt.SentMessages {
-			record.Content += fmt.Sprintf("\nsent_message: platform=%s scope_id=%s platform_message_id=%s output_indexes=%v", sent.Platform, sent.ScopeID, sent.PlatformMessageID, sent.OutputIndexes)
-		}
-		record.Content += fmt.Sprintf("\noutput_platform_message_ids=%v", receipt.PlatformMessageIDs)
-		for _, sent := range receipt.SentMessages {
-			record.Content += fmt.Sprintf("\noutput_sent_message: platform=%s scope_id=%s platform_message_id=%s output_indexes=%v", sent.Platform, sent.ScopeID, sent.PlatformMessageID, sent.OutputIndexes)
-		}
+		record.Content = fmt.Sprintf("message_id=%s\npersisted=%t\n", result.MessageID, result.Persisted) + record.Content
 		if result.SendErr != nil {
 			record.Content += fmt.Sprintf("\nsend_error=%v", result.SendErr)
 		}
@@ -89,9 +82,6 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in ReplyCommitIn
 		}
 		if commitErr != nil {
 			record.Content += fmt.Sprintf("\nerror=%v", commitErr)
-		}
-		for _, err := range result.AssociationErrors {
-			record.Content += fmt.Sprintf("\nassociation_error=%v", err)
 		}
 		_ = events.EmitLog(context.WithoutCancel(ctx), record)
 	}()
@@ -103,26 +93,28 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in ReplyCommitIn
 	}
 	if strings.TrimSpace(text) != "" {
 		var err error
-		text, err = c.Output.PrepareAssistant(ctx, hook.PointAgentTurnOutputPrepared, text)
-		if err != nil {
+		text, logResult, err = c.Output.PrepareAssistant(ctx, hook.PointAgentTurnOutputPrepared, text)
+		record.Content += "\npreparation:\n" + logResult.Content
+		if logResult.ResultStatus == events.ResultFailed {
 			record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
-			if err == context.Canceled {
-				record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
-			}
+		} else if logResult.ResultStatus == events.ResultCanceled && record.ResultStatus != events.ResultFailed {
+			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
+		}
+		if err != nil {
 			return result, fmt.Errorf("turn output hook: %w", err)
 		}
 		if !buffered {
 			if in.Stream != nil {
-				result.Receipt, result.SendErr = out.ReplaceAndFinishStream(ctx, streamCtx, in.Stream, text)
+				result.Receipt, logResult, result.SendErr = out.ReplaceAndFinishStream(ctx, streamCtx, in.Stream, text)
 			} else {
-				result.Receipt, result.SendErr = out.SendAssistant(ctx, text)
+				result.Receipt, logResult, result.SendErr = out.SendAssistant(ctx, text)
 			}
-			c.observeDelivery(ctx, in.Session.ID, "send_assistant_message", buffered, result.Receipt, result.SendErr)
-			if result.SendErr != nil {
+			c.observeDelivery(ctx, in.Session.ID, "send_assistant_message", buffered, logResult, result.SendErr)
+			record.Content += "\nassistant_send:\n" + logResult.Content
+			if logResult.ResultStatus == events.ResultFailed {
 				record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
-				if result.SendErr == context.Canceled {
-					record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
-				}
+			} else if logResult.ResultStatus == events.ResultCanceled && record.ResultStatus != events.ResultFailed {
+				record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
 			}
 			if result.SendErr != nil && !HasReplyReceipt(result.Receipt) {
 				return result, result.SendErr
@@ -130,13 +122,13 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in ReplyCommitIn
 		}
 	}
 	if !buffered && result.SendErr == nil {
-		receipt, result.SendErr = out.SendOutputs(ctx, in.Outputs)
+		logResult, result.SendErr = out.SendOutputs(ctx, in.Outputs)
+		record.Content += "\noutputs_send:\n" + logResult.Content
 
-		if result.SendErr != nil {
+		if logResult.ResultStatus == events.ResultFailed {
 			record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
-			if result.SendErr == context.Canceled {
-				record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
-			}
+		} else if logResult.ResultStatus == events.ResultCanceled && record.ResultStatus != events.ResultFailed {
+			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
 		}
 		if result.SendErr != nil && !HasReplyReceipt(result.Receipt) {
 			return result, result.SendErr
@@ -154,13 +146,14 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in ReplyCommitIn
 		if empty {
 			toSave = nil
 		}
-		result.PersistErr = persistence.Commit(ctx, toSave)
+		logResult, result.PersistErr = persistence.Commit(ctx, toSave)
+		record.Content += "\npersistence:\n" + logResult.Content
+		if logResult.ResultStatus == events.ResultFailed {
+			record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
+		} else if logResult.ResultStatus == events.ResultCanceled && record.ResultStatus != events.ResultFailed {
+			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
+		}
 		if result.PersistErr != nil {
-			if result.PersistErr != context.Canceled {
-				record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
-			} else if record.ResultStatus != events.ResultFailed {
-				record.ResultStatus = events.ResultCanceled
-			}
 			return result, result.PersistErr
 		}
 		if toSave != nil {
@@ -170,45 +163,42 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in ReplyCommitIn
 	}
 	if buffered {
 		if strings.TrimSpace(text) != "" {
-			result.Receipt, result.SendErr = out.SendAssistant(ctx, text)
-			c.observeDelivery(ctx, in.Session.ID, "send_assistant_message", buffered, result.Receipt, result.SendErr)
-			if result.SendErr != nil {
+			result.Receipt, logResult, result.SendErr = out.SendAssistant(ctx, text)
+			c.observeDelivery(ctx, in.Session.ID, "send_assistant_message", buffered, logResult, result.SendErr)
+			record.Content += "\nassistant_send:\n" + logResult.Content
+			if logResult.ResultStatus == events.ResultFailed {
 				record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
-				if result.SendErr == context.Canceled {
-					record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
-				}
+			} else if logResult.ResultStatus == events.ResultCanceled && record.ResultStatus != events.ResultFailed {
+				record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
 			}
 			if result.Persisted {
-				result.AssociationErrors = c.AssociateReceipt(ctx, in.Session.ID, result.MessageID, result.Receipt)
-				for _, err := range result.AssociationErrors {
-					if errors.Unwrap(err) != context.Canceled {
-						record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
-					} else if record.ResultStatus != events.ResultFailed {
-						record.ResultStatus = events.ResultCanceled
-					}
+				result.AssociationErrors, logResult = c.AssociateReceipt(ctx, in.Session.ID, result.MessageID, result.Receipt)
+				record.Content += "\nassociation:\n" + logResult.Content
+				if logResult.ResultStatus == events.ResultFailed {
+					record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
+				} else if logResult.ResultStatus == events.ResultCanceled && record.ResultStatus != events.ResultFailed {
+					record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
 				}
 			}
 			if result.SendErr != nil {
 				return result, result.SendErr
 			}
 		}
-		receipt, result.SendErr = out.SendOutputs(ctx, in.Outputs)
+		logResult, result.SendErr = out.SendOutputs(ctx, in.Outputs)
+		record.Content += "\noutputs_send:\n" + logResult.Content
 
-		if result.SendErr != nil {
-			if result.SendErr != context.Canceled {
-				record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
-			} else if record.ResultStatus != events.ResultFailed {
-				record.ResultStatus = events.ResultCanceled
-			}
+		if logResult.ResultStatus == events.ResultFailed {
+			record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
+		} else if logResult.ResultStatus == events.ResultCanceled && record.ResultStatus != events.ResultFailed {
+			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
 		}
 	} else if result.Persisted {
-		result.AssociationErrors = c.AssociateReceipt(ctx, in.Session.ID, result.MessageID, result.Receipt)
-		for _, err := range result.AssociationErrors {
-			if errors.Unwrap(err) != context.Canceled {
-				record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
-			} else if record.ResultStatus != events.ResultFailed {
-				record.ResultStatus = events.ResultCanceled
-			}
+		result.AssociationErrors, logResult = c.AssociateReceipt(ctx, in.Session.ID, result.MessageID, result.Receipt)
+		record.Content += "\nassociation:\n" + logResult.Content
+		if logResult.ResultStatus == events.ResultFailed {
+			record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
+		} else if logResult.ResultStatus == events.ResultCanceled && record.ResultStatus != events.ResultFailed {
+			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
 		}
 	}
 	return result, result.SendErr
@@ -218,11 +208,12 @@ func HasReplyReceipt(receipt delivery.Receipt) bool {
 	return len(receipt.PlatformMessageIDs) != 0 || len(receipt.SentMessages) != 0
 }
 
-func (c *ReplyCommitter) AssociateReceipt(ctx context.Context, sessionID, messageID string, receipt delivery.Receipt) []error {
+func (c *ReplyCommitter) AssociateReceipt(ctx context.Context, sessionID, messageID string, receipt delivery.Receipt) ([]error, events.LogResult) {
 	if sessionID == "" || messageID == "" || c.Messages == nil {
-		return nil
+		return nil, events.LogResult{ResultStatus: events.ResultSkipped}
 	}
 	var failures []error
+	logResult := events.LogResult{ResultStatus: events.ResultSkipped}
 	for _, sent := range receipt.SentMessages {
 		platformName, scopeID, platformMessageID := strings.TrimSpace(sent.Platform), strings.TrimSpace(sent.ScopeID), strings.TrimSpace(sent.PlatformMessageID)
 		if platformName == "" || scopeID == "" || platformMessageID == "" {
@@ -231,6 +222,9 @@ func (c *ReplyCommitter) AssociateReceipt(ctx context.Context, sessionID, messag
 		mapping := storage.PlatformMessageMap{
 			Platform: platformName, PlatformScopeID: scopeID, PlatformMessageID: platformMessageID,
 			MessageID: messageID, SessionID: sessionID,
+		}
+		if logResult.ResultStatus == events.ResultSkipped {
+			logResult.ResultStatus = events.ResultSucceeded
 		}
 		if err := c.Messages.MapPlatformMessage(ctx, mapping); err != nil {
 			content, _ := json.Marshal(map[string]string{"operation": "map_platform_message", "platform": platformName, "scope_id": scopeID, "platform_message_id": platformMessageID, "message_id": messageID, "error": fmt.Sprintf("%.2048s", err.Error())})
@@ -249,9 +243,13 @@ func (c *ReplyCommitter) AssociateReceipt(ctx context.Context, sessionID, messag
 			if facts.RootRequestID != "" {
 				record.Identity.RootRequestID = &facts.RootRequestID
 			}
-			if err == context.Canceled {
+			if errors.Is(err, context.Canceled) {
 				record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
 			}
+			if record.ResultStatus == events.ResultFailed || logResult.ResultStatus != events.ResultFailed {
+				logResult.ResultStatus = record.ResultStatus
+			}
+			logResult.Content += fmt.Sprintf("\nplatform=%s scope_id=%s platform_message_id=%s mapping_error=%v", platformName, scopeID, platformMessageID, err)
 			_ = events.EmitLog(context.WithoutCancel(ctx), record)
 			record.Category, record.Type, record.EventName, record.ContentLimit = events.LogRuntime, events.ContentText, "map_platform_message_failed", 4096
 			record.Content = fmt.Sprintf("platform=%s\nscope_id=%s\nplatform_message_id=%s\nmessage_id=%s\nerror=%v", platformName, scopeID, platformMessageID, messageID, err)
@@ -259,10 +257,10 @@ func (c *ReplyCommitter) AssociateReceipt(ctx context.Context, sessionID, messag
 			failures = append(failures, fmt.Errorf("map platform message %s/%s/%s: %w", platformName, scopeID, platformMessageID, err))
 		}
 	}
-	return failures
+	return failures, logResult
 }
 
-func (c *ReplyCommitter) observeDelivery(ctx context.Context, sessionID, operation string, buffered bool, receipt delivery.Receipt, err error) {
+func (c *ReplyCommitter) observeDelivery(ctx context.Context, sessionID, operation string, buffered bool, logResult events.LogResult, err error) {
 	record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelDebug, EventName: "reply_delivered", Module: "agent", Type: events.ContentText, ContentLimit: 4096, ResultStatus: events.ResultSucceeded}
 	record.Identity.SessionID = &sessionID
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
@@ -278,16 +276,12 @@ func (c *ReplyCommitter) observeDelivery(ctx context.Context, sessionID, operati
 	if facts.RootRequestID != "" {
 		record.Identity.RootRequestID = &facts.RootRequestID
 	}
-	record.Content = fmt.Sprintf("operation=%s\nplatform_message_ids=%v", operation, receipt.PlatformMessageIDs)
-	for _, sent := range receipt.SentMessages {
-		record.Content += fmt.Sprintf("\nsent_message: platform=%s scope_id=%s platform_message_id=%s output_indexes=%v", sent.Platform, sent.ScopeID, sent.PlatformMessageID, sent.OutputIndexes)
-	}
-	if err != nil {
-		record.Content += fmt.Sprintf("\nerror=%v", err)
-		record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
-		if err == context.Canceled {
-			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
-		}
+	record.Content = "operation=" + operation + "\n" + logResult.Content
+	record.ResultStatus = logResult.ResultStatus
+	if logResult.ResultStatus == events.ResultFailed {
+		record.Level = slog.LevelError
+	} else if logResult.ResultStatus == events.ResultCanceled {
+		record.Level = slog.LevelInfo
 	}
 	_ = events.EmitLog(context.WithoutCancel(ctx), record)
 	if err != nil && buffered && operation == "send_assistant_message" {

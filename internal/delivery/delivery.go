@@ -2,7 +2,6 @@ package delivery
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -198,16 +197,20 @@ type StreamingMessageSender interface {
 
 // MessageStream represents one assistant message that can be appended while streaming
 // and replaced with the final post-hook content.
+// Replace and Finish return business receipts and independent source log results;
+// neither result replaces the original business error or controls retry policy.
 type MessageStream interface {
 	Append(ctx context.Context, text string) error
-	Replace(ctx context.Context, text string) (Receipt, error)
-	Finish(ctx context.Context) (Receipt, error)
+	Replace(ctx context.Context, text string) (Receipt, globalevents.LogResult, error)
+	Finish(ctx context.Context) (Receipt, globalevents.LogResult, error)
 }
 
 // MessageSender sends one logical message, represented by ordered output segments.
+// Receipt preserves actual delivery facts for business consumers. LogResult
+// declares the operation's logging outcome and body before any caller wraps error.
 type MessageSender interface {
-	SendChat(ctx context.Context, outputs []Output) (Receipt, error)
-	SendNotice(ctx context.Context, notice Notice) (Receipt, error)
+	SendChat(ctx context.Context, outputs []Output) (Receipt, globalevents.LogResult, error)
+	SendNotice(ctx context.Context, notice Notice) (Receipt, globalevents.LogResult, error)
 }
 
 // ContextSender can send a reply using routing information carried by ctx.
@@ -226,51 +229,60 @@ func NewManager(sender Sender) Manager {
 }
 
 func (m Manager) SendNotices(ctx context.Context, outputs []Output) error {
-	_, err := m.SendNotice(ctx, Notice{Outputs: outputs})
+	_, _, err := m.SendNotice(ctx, Notice{Outputs: outputs})
 	return err
 }
 
-func (m Manager) SendChat(ctx context.Context, outputs []Output) (Receipt, error) {
+func (m Manager) SendChat(ctx context.Context, outputs []Output) (Receipt, globalevents.LogResult, error) {
 	if err := ctx.Err(); err != nil {
-		return Receipt{}, err
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if err == context.Canceled {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return Receipt{}, logResult, err
 	}
 	if m.Sender == nil {
-		return Receipt{}, fmt.Errorf("output sender is not configured")
+		err := fmt.Errorf("output sender is not configured")
+		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
 	if err := ValidateOutputs(outputs); err != nil {
-		return Receipt{}, err
+		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
 	return m.Sender.SendChat(ctx, outputs)
 }
 
-func (m Manager) SendNotice(ctx context.Context, notice Notice) (Receipt, error) {
+func (m Manager) SendNotice(ctx context.Context, notice Notice) (Receipt, globalevents.LogResult, error) {
 	if err := ctx.Err(); err != nil {
-		return Receipt{}, err
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if err == context.Canceled {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return Receipt{}, logResult, err
 	}
 	if m.Sender == nil || len(notice.Outputs) == 0 {
-		return Receipt{}, nil
+		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "notice output is not sent"}, nil
 	}
 	if err := ValidateOutputs(notice.Outputs); err != nil {
-		return Receipt{}, err
+		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
 	configuredTarget, err := ValidateOutputsTarget(notice.Outputs)
 	if err != nil {
-		return Receipt{}, err
+		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
 	if notice.Target.Empty() {
 		notice.Target = configuredTarget
 	}
-	receipt, err := m.Sender.SendNotice(ctx, notice)
-	if err != nil {
+	receipt, logResult, err := m.Sender.SendNotice(ctx, notice)
+	if logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled {
 
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		record := globalevents.LogRecord{
 			Category: globalevents.LogRuntime, Level: slog.LevelError,
-			EventName: "notice_output_failed", Module: "delivery", ResultStatus: globalevents.ResultFailed,
-			Content: fmt.Sprintf("notice output failed: platform=%s hook=%q hook_point=%q hook_mode=%q error=%v", notice.Target.Platform,
-				outputMetaString(notice.Outputs[0], MetaHookName), outputMetaString(notice.Outputs[0], MetaHookPoint), outputMetaString(notice.Outputs[0], MetaHookMode), err),
+			EventName: "notice_output_failed", Module: "delivery", ResultStatus: logResult.ResultStatus,
+			Content: fmt.Sprintf("notice output failed: platform=%s hook=%q hook_point=%q hook_mode=%q\n%s", notice.Target.Platform,
+				outputMetaString(notice.Outputs[0], MetaHookName), outputMetaString(notice.Outputs[0], MetaHookPoint), outputMetaString(notice.Outputs[0], MetaHookMode), logResult.Content),
 		}
-		if errors.Is(err, context.Canceled) {
+		if logResult.ResultStatus == globalevents.ResultCanceled {
 			record.Level = slog.LevelInfo
 			record.ResultStatus = globalevents.ResultCanceled
 		}
@@ -290,10 +302,8 @@ func (m Manager) SendNotice(ctx context.Context, notice Notice) (Receipt, error)
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
 		_ = globalevents.EmitLog(ctx, record)
-
-		return receipt, wrapOutputSourceError(notice.Outputs[0], err)
 	}
-	return receipt, nil
+	return receipt, logResult, wrapOutputSourceError(notice.Outputs[0], err)
 }
 
 func wrapOutputSourceError(out Output, err error) error {

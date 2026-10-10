@@ -2,6 +2,7 @@ package responses
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -249,20 +250,20 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		committer := &toolCommitter{state: s}
 		if rounds >= s.route.Tools.MaxRoundsPerTurn() {
 			head := dialogue.ToolCallStorageMessage(s.session.ID, s.sourceText, s.sourceText, s.calls)
-			if err := committer.Begin(s.requestCtx, &head); err != nil {
+			if _, err := committer.Begin(s.requestCtx, &head); err != nil {
 				return fail(err)
 			}
 			for i, call := range s.calls {
 				message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments("tool call was not executed: max_rounds_per_turn reached")}
 				row := dialogue.ToolResultStorageMessage(s.session.ID, message)
-				if err := committer.Result(s.requestCtx, i, call, message, &row); err != nil {
+				if _, err := committer.Result(s.requestCtx, i, call, message, &row); err != nil {
 					return fail(err)
 				}
 			}
 			s.tools = nil
 			out.SendPreview(s.ctx, fmt.Sprintf("已达到 max_rounds_per_turn=%d，正在请求模型总结当前进度。", s.route.Tools.MaxRoundsPerTurn()))
 			summaryInput := &storage.Message{ID: storage.NewID(), SessionID: s.session.ID, Role: storage.RoleUser, Content: "已达到工具调用轮数上限，请根据已有结果总结当前进度，不再调用工具。"}
-			if err := (inputCommitter{state: s}).Commit(s.requestCtx, summaryInput); err != nil {
+			if _, err := (inputCommitter{state: s}).Commit(s.requestCtx, summaryInput); err != nil {
 				return fail(err)
 			}
 			s.projection = append(s.projection, businessMessage(*summaryInput))
@@ -313,7 +314,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		s.projection = append(s.projection, execution.Messages...)
 		if execution.ConfirmationExtra != "" {
 			message := &storage.Message{ID: storage.NewID(), SessionID: s.session.ID, Role: storage.RoleUser, Content: "补充：" + execution.ConfirmationExtra}
-			if err := (inputCommitter{state: s}).Commit(s.requestCtx, message); err != nil {
+			if _, err := (inputCommitter{state: s}).Commit(s.requestCtx, message); err != nil {
 				return fail(err)
 			}
 			s.projection = append(s.projection, businessMessage(*message))

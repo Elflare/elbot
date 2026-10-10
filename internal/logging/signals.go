@@ -78,10 +78,7 @@ func newManager(level, logDir string, retentionDays int, open func(string) (io.W
 // happen in its category's consumer. Business code calls events.EmitLog.
 func (m *Manager) handleRecord(ctx context.Context, record events.LogRecord) error {
 	at := time.Now()
-	sink, ok := m.sinks[record.Category]
-	if !ok {
-		return fmt.Errorf("logging: unknown category %d", record.Category)
-	}
+	sink := m.sinks[record.Category]
 	return sink.queue.Submit(context.WithoutCancel(ctx), signal.Task{Shutdown: signal.Drain, Run: func(ctx context.Context) error {
 		if record.Category == events.LogRuntime && record.Level < m.level {
 			return nil

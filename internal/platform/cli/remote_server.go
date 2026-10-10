@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"elbot/internal/events"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -136,7 +138,7 @@ func (s *RemoteServer) handleWebSocket(ctx context.Context, handler platform.Pla
 	client := &remoteClientConn{id: clientID, conn: conn, server: s}
 	s.addClient(client)
 	defer s.removeClient(client)
-	_ = client.write(ctx, remoteMessage{Type: remoteMsgHelloOK, ClientID: clientID})
+	_, _ = client.write(ctx, remoteMessage{Type: remoteMsgHelloOK, ClientID: clientID})
 	msgCtx := s.messageContext(ctx, client)
 	for {
 		var msg remoteMessage
@@ -156,7 +158,7 @@ func (s *RemoteServer) handleClientMessage(ctx context.Context, handler platform
 		}
 		go func() {
 			if err := handler.HandleMessage(ctx, text); err != nil {
-				_ = client.write(context.Background(), remoteMessage{Type: remoteMsgError, Text: err.Error()})
+				_, _ = client.write(context.Background(), remoteMessage{Type: remoteMsgError, Text: err.Error()})
 			}
 		}()
 	case remoteMsgComplete:
@@ -164,30 +166,52 @@ func (s *RemoteServer) handleClientMessage(ctx context.Context, handler platform
 		if s.completer != nil {
 			items = s.completer.Complete(ctx, completion.Request{Text: msg.Text, Cursor: msg.Cursor})
 		}
-		_ = client.write(context.Background(), remoteMessage{Type: remoteMsgCompleteResult, ID: msg.ID, Items: items})
+		_, _ = client.write(context.Background(), remoteMessage{Type: remoteMsgCompleteResult, ID: msg.ID, Items: items})
 	}
 }
 
-func (s *RemoteServer) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+func (s *RemoteServer) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	if client, ok := originalClient(ctx); ok && client != nil {
-		return delivery.Receipt{}, client.write(ctx, outputMessage(remoteMsgChat, delivery.FallbackOutput(outputs)))
+		{
+			logResult, err := client.write(ctx, outputMessage(remoteMsgChat, delivery.FallbackOutput(outputs)))
+			return delivery.Receipt{}, logResult, err
+		}
 	}
-	return delivery.Receipt{}, fmt.Errorf("cli chat target missing")
+	{
+		err := fmt.Errorf("cli chat target missing")
+		logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+		if err != nil {
+			logResult.ResultStatus = events.ResultFailed
+			logResult.Content = err.Error()
+			if err == context.Canceled {
+				logResult.ResultStatus = events.ResultCanceled
+			}
+		}
+		return delivery.Receipt{}, logResult, err
+	}
 }
 
-func (s *RemoteServer) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, error) {
+func (s *RemoteServer) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, events.LogResult, error) {
 	target := notice.Target
 	clients, err := s.targetClients(ctx, target)
 	if err != nil {
-		return delivery.Receipt{}, err
+		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
+		if err == context.Canceled {
+			logResult.ResultStatus = events.ResultCanceled
+		}
+		return delivery.Receipt{}, logResult, err
 	}
 	msg := remoteNoticeMessage(notice)
-	return delivery.Receipt{}, s.writeClients(ctx, clients, msg)
+	{
+		logResult, err := s.writeClients(ctx, clients, msg)
+		return delivery.Receipt{}, logResult, err
+	}
 }
 
 func (s *RemoteServer) SetRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) error {
 	if client, ok := originalClient(ctx); ok && client != nil {
-		return client.write(ctx, remoteMessage{Type: remoteMsgStatus, Snapshot: snapshot})
+		_, err := client.write(ctx, remoteMessage{Type: remoteMsgStatus, Snapshot: snapshot})
+		return err
 	}
 	return nil
 }
@@ -204,7 +228,8 @@ func (s *RemoteServer) SendReasoning(ctx context.Context, text string) error {
 		return nil
 	}
 	if client, ok := originalClient(ctx); ok && client != nil {
-		return client.write(ctx, remoteMessage{Type: remoteMsgReasoning, Text: text})
+		_, err := client.write(ctx, remoteMessage{Type: remoteMsgReasoning, Text: text})
+		return err
 	}
 	return nil
 }
@@ -223,15 +248,22 @@ func (s remoteMessageStream) Append(ctx context.Context, text string) error {
 	if text == "" {
 		return nil
 	}
-	return s.client.write(ctx, remoteMessage{Type: remoteMsgStreamAppend, Text: text})
+	_, err := s.client.write(ctx, remoteMessage{Type: remoteMsgStreamAppend, Text: text})
+	return err
 }
 
-func (s remoteMessageStream) Replace(ctx context.Context, text string) (delivery.Receipt, error) {
-	return delivery.Receipt{}, s.client.write(ctx, remoteMessage{Type: remoteMsgStreamReplace, Text: text})
+func (s remoteMessageStream) Replace(ctx context.Context, text string) (delivery.Receipt, events.LogResult, error) {
+	{
+		logResult, err := s.client.write(ctx, remoteMessage{Type: remoteMsgStreamReplace, Text: text})
+		return delivery.Receipt{}, logResult, err
+	}
 }
 
-func (s remoteMessageStream) Finish(ctx context.Context) (delivery.Receipt, error) {
-	return delivery.Receipt{}, s.client.write(ctx, remoteMessage{Type: remoteMsgStreamFinish})
+func (s remoteMessageStream) Finish(ctx context.Context) (delivery.Receipt, events.LogResult, error) {
+	{
+		logResult, err := s.client.write(ctx, remoteMessage{Type: remoteMsgStreamFinish})
+		return delivery.Receipt{}, logResult, err
+	}
 }
 
 func (s *RemoteServer) messageContext(ctx context.Context, client *remoteClientConn) context.Context {
@@ -293,11 +325,17 @@ func (s *RemoteServer) onlineClients(match func(string) bool) ([]*remoteClientCo
 	return out, nil
 }
 
-func (s *RemoteServer) writeClients(ctx context.Context, clients []*remoteClientConn, msg remoteMessage) error {
+func (s *RemoteServer) writeClients(ctx context.Context, clients []*remoteClientConn, msg remoteMessage) (events.LogResult, error) {
 	var errs []string
 	sent := 0
+	logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
 	for _, client := range clients {
-		if err := client.write(ctx, msg); err != nil {
+		result, err := client.write(ctx, msg)
+		logResult.Content += "\n" + result.Content
+		if result.ResultStatus == events.ResultFailed || (result.ResultStatus == events.ResultCanceled && logResult.ResultStatus != events.ResultFailed) {
+			logResult.ResultStatus = result.ResultStatus
+		}
+		if err != nil {
 			errs = append(errs, client.id+": "+err.Error())
 			s.removeClient(client)
 			_ = client.conn.Close(websocket.StatusInternalError, "write failed")
@@ -305,19 +343,33 @@ func (s *RemoteServer) writeClients(ctx context.Context, clients []*remoteClient
 		}
 		sent++
 	}
+	logResult.Content += fmt.Sprintf("\nsent=%d targets=%d", sent, len(clients))
 	if sent == 0 {
 		if len(errs) > 0 {
-			return fmt.Errorf("send cli message failed: %s", strings.Join(errs, "; "))
+			return logResult, fmt.Errorf("send cli message failed: %s", strings.Join(errs, "; "))
 		}
-		return fmt.Errorf("no matching cli clients are connected")
+		logResult.ResultStatus = events.ResultFailed
+		logResult.Content += "\nno matching cli clients are connected"
+		return logResult, fmt.Errorf("no matching cli clients are connected")
 	}
-	return nil
+	return logResult, nil
 }
 
-func (c *remoteClientConn) write(ctx context.Context, msg remoteMessage) error {
+func (c *remoteClientConn) write(ctx context.Context, msg remoteMessage) (events.LogResult, error) {
 	writeCtx, cancel := context.WithTimeout(ctx, remoteWriteTimeout)
 	defer cancel()
-	return wsjson.Write(writeCtx, c.conn, msg)
+	logResult := events.LogResult{ResultStatus: events.ResultSucceeded, Content: fmt.Sprintf("client_id=%s operation=%s", c.id, msg.Type)}
+	err := wsjson.Write(writeCtx, c.conn, msg)
+	if err != nil {
+		logResult.ResultStatus = events.ResultFailed
+		logResult.Content += fmt.Sprintf("\nwrite_error=%v", err)
+		// This is the single WebSocket write's SDK error, before any fanout
+		// aggregation or outer business wrapper.
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = events.ResultCanceled
+		}
+	}
+	return logResult, err
 }
 
 func (s *RemoteServer) addClient(client *remoteClientConn) {

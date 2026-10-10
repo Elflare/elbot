@@ -32,7 +32,7 @@ func (s *turnState) queueForegroundNotice(ctx context.Context, inputs []storage.
 		}
 	}
 	native := storage.NativeCommit{ExpectedCheckpointID: s.checkpointID(), Inputs: []storage.NativeInput{*notice}}
-	if err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, Native: &native}, "append_foreground_notice"); err != nil {
+	if _, err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, Native: &native}, "append_foreground_notice"); err != nil {
 		return nil, err
 	}
 	return append(inputs, *notice), nil
