@@ -451,7 +451,7 @@ func matchLogEntry(entry LogEntry, query LogQuery) bool {
 		}
 	}
 	var content map[string]json.RawMessage
-	if entry.Type == events.ContentJSON {
+	if entry.Type == events.ContentJSON && (len(query.ContentFields) != 0 || len(query.ContentFieldContains) != 0) {
 		_ = json.Unmarshal([]byte(entry.Content), &content)
 	}
 	for key, want := range query.ContentFields {

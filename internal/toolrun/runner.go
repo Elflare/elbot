@@ -138,19 +138,27 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 			result.LogResult.ResultStatus = events.ResultSucceeded
 		}
 		logResult := result.LogResult
-		content := map[string]any{"tool": call.Name, "tool_call_id": call.ID, "actor_id": req.Actor.ID, "source": string(resolved.Source), "run_source": runSource, "risk": risk, "arguments": call.Arguments, "result": logResult.Content, "execution_started": result.ExecutionStarted, "elapsed_ms": time.Since(startedAt).Milliseconds()}
-		// Tools own their result summaries. Bound the parameter preview and
-		// caller-supplied metadata without changing the actual call arguments.
-		for key, value := range content {
-			text, ok := value.(string)
-			if !ok || key == "result" {
-				continue
-			}
-			if key == "arguments" {
-				content[key] = tool.TruncateLogContent(text, 256)
-			} else {
-				content[key] = tool.TruncateLogContent(text, 2048)
-			}
+		// Declaration order is display order; tools own their result summaries.
+		content := struct {
+			Tool       string `json:"tool"`
+			ActorID    string `json:"actor_id"`
+			Arguments  string `json:"arguments"`
+			ElapsedMS  int64  `json:"elapsed_ms"`
+			Result     string `json:"result"`
+			Risk       string `json:"risk"`
+			RunSource  string `json:"run_source"`
+			Source     string `json:"source"`
+			ToolCallID string `json:"tool_call_id"`
+		}{
+			Tool:       tool.TruncateLogContent(call.Name, 2048),
+			ActorID:    tool.TruncateLogContent(req.Actor.ID, 2048),
+			Arguments:  tool.TruncateLogContent(call.Arguments, 256),
+			ElapsedMS:  time.Since(startedAt).Milliseconds(),
+			Result:     logResult.Content,
+			Risk:       tool.TruncateLogContent(risk, 2048),
+			RunSource:  tool.TruncateLogContent(runSource, 2048),
+			Source:     tool.TruncateLogContent(string(resolved.Source), 2048),
+			ToolCallID: tool.TruncateLogContent(call.ID, 2048),
 		}
 		data, _ := json.Marshal(content)
 		record := newRecord(ctx, "tool_call", logResult)

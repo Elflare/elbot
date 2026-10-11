@@ -96,6 +96,9 @@ func TestRulesToolRecordsUseIndependentBodyUniqueIDAndActor(t *testing.T) {
 		t.Fatal(*records)
 	}
 	for i, record := range *records {
+		if !strings.HasPrefix(record.Content, `{"tool":"body_test",`) {
+			t.Fatalf("tool must be first at source: %s", record.Content)
+		}
 		var content map[string]string
 		if err := json.Unmarshal([]byte(record.Content), &content); err != nil {
 			t.Fatal(err)

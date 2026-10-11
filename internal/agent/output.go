@@ -182,7 +182,10 @@ func (o *OutputSender) FinishIntermediate(ctx context.Context, streamCtx context
 
 func (o *OutputSender) ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (receipt delivery.Receipt, logResult globalevents.LogResult, err error) {
 	defer func() {
-		logResult.Content += fmt.Sprintf("\nplatform_message_ids=%v", receipt.PlatformMessageIDs)
+		if logResult.Content != "" {
+			logResult.Content += "\n"
+		}
+		logResult.Content += fmt.Sprintf("platform_message_ids=%v", receipt.PlatformMessageIDs)
 		for _, sent := range receipt.SentMessages {
 			logResult.Content += fmt.Sprintf("\nsent_message: platform=%s scope_id=%s platform_message_id=%s output_indexes=%v", sent.Platform, sent.ScopeID, sent.PlatformMessageID, sent.OutputIndexes)
 		}
@@ -197,7 +200,15 @@ func (o *OutputSender) ReplaceAndFinishStream(ctx context.Context, streamCtx con
 	}
 	result := logResult
 	finishReceipt, logResult, err := stream.Finish(streamCtx)
-	logResult.Content = "replace:\n" + result.Content + "\nfinish:\n" + logResult.Content
+	if logResult.Content != "" {
+		logResult.Content = "finish:\n" + logResult.Content
+	}
+	if result.Content != "" {
+		if logResult.Content != "" {
+			logResult.Content = "\n" + logResult.Content
+		}
+		logResult.Content = "replace:\n" + result.Content + logResult.Content
+	}
 	if result.ResultStatus == globalevents.ResultFailed || (result.ResultStatus == globalevents.ResultCanceled && logResult.ResultStatus != globalevents.ResultFailed) {
 		logResult.ResultStatus = result.ResultStatus
 	}

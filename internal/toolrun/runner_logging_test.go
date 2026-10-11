@@ -179,6 +179,9 @@ func TestRunnerWritesOnlyAuditWithBoundedArgumentPreview(t *testing.T) {
 			t.Fatalf("audit records=%+v", found)
 		}
 		entry := found.Entries[0]
+		if !strings.HasPrefix(entry.Content, `{"tool":"logging_tool",`) {
+			t.Fatalf("source tool order lost through storage: %s", entry.Content)
+		}
 		if !json.Valid([]byte(entry.Raw)) || strings.Contains(entry.Raw, "\n") {
 			t.Fatalf("invalid physical JSONL: %s", entry.Raw)
 		}
@@ -475,8 +478,11 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 				if tc.callErr != nil {
 					want += "\n" + tc.callErr.Error()
 				}
-				if content["result"] != want || content["execution_started"] != true {
+				if content["result"] != want {
 					t.Fatalf("source log body lost or replaced by business content: %s", calls[0].Content)
+				}
+				if _, exists := content["execution_started"]; exists {
+					t.Fatalf("internal execution state leaked into log: %s", calls[0].Content)
 				}
 			}
 			for eventName, failure := range map[string]error{"tool_record_save": tc.recordErr, "tool_transcript_save": tc.saveErr} {

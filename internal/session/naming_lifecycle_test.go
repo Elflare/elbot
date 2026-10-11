@@ -25,7 +25,7 @@ type namingGeneratorFunc func(context.Context, []storage.Message) (TitleResult, 
 type namingDiagnosticError struct{}
 
 func (namingDiagnosticError) Error() string {
-	return "upstream failed: gateway detail; api_key=secret-credential"
+	return "upstream failed: gateway detail"
 }
 
 func TestNamingFailureContentSurvivesRuntimeLevel(t *testing.T) {
@@ -75,8 +75,8 @@ func TestNamingFailureContentSurvivesRuntimeLevel(t *testing.T) {
 				if entry.Level != "ERROR" || !entry.Time.After(at) || entry.SessionID != sessionID || entry.RequestID != requestID || entry.ResultStatus != "failed" {
 					t.Fatalf("lost facts: %+v", entry)
 				}
-				if !strings.Contains(entry.Content, "gateway detail") || strings.Contains(string(data), "secret-credential") {
-					t.Fatalf("unsafe or missing content: %s", data)
+				if !strings.Contains(entry.Content, "wrapped: "+(namingDiagnosticError{}).Error()) {
+					t.Fatalf("source diagnostic changed: %s", data)
 				}
 			}
 		})

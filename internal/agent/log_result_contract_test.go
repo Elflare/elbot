@@ -88,6 +88,60 @@ func TestReplyCommitUsesSourceOutcomeWithoutChangingBusiness(t *testing.T) {
 	}
 }
 
+func TestReplyCommitLogSpacingComesFromSources(t *testing.T) {
+	for _, mode := range []string{"direct", "buffered", "stream"} {
+		for _, diagnostic := range []string{"", "first paragraph\n\nsecond paragraph"} {
+			t.Run(fmt.Sprintf("%s/diagnostic=%t", mode, diagnostic != ""), func(t *testing.T) {
+				fixture := newReplyTestFixture(t, mode == "buffered")
+				fixture.in.Outputs = nil
+				status := events.ResultSucceeded
+				if diagnostic != "" {
+					status = events.ResultFailed
+				}
+				source := &events.LogResult{ResultStatus: status, Content: diagnostic}
+				fixture.platform.sendLogResult = source
+				if mode == "stream" {
+					fixture.in.Stream = &replyTestStream{
+						events: &fixture.events, wantCtx: fixture.requestCtx, t: t,
+						replaceReceipt: fixture.platform.receipt, replaceLogResult: source,
+					}
+				}
+				var records []events.LogRecord
+				connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+					if record.EventName == "reply_committed" {
+						records = append(records, record)
+					}
+					return nil
+				}, signal.ConnectOptions{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(connection.Disconnect)
+				result, err := fixture.committer.Commit(fixture.ctx, fixture.requestCtx, fixture.in, fixture.out)
+				if err != nil || !result.Persisted || len(result.Receipt.PlatformMessageIDs) != 1 || len(records) != 1 {
+					t.Fatalf("result=%+v err=%v records=%+v", result, err, records)
+				}
+				content := records[0].Content
+				if records[0].ResultStatus != status || !strings.Contains(content, "persisted=true\npreparation:") || !strings.Contains(content, "platform_message_ids=[sent]") {
+					t.Fatalf("reply facts changed: %+v", records[0])
+				}
+				for _, unwanted := range []string{"\nassociation:", "\nfinish:", "assistant_send:\n\n"} {
+					if strings.Contains(content, unwanted) {
+						t.Fatalf("empty section or extra newline %q: %s", unwanted, content)
+					}
+				}
+				if diagnostic == "" {
+					if strings.Contains(content, "\n\n") || strings.HasSuffix(content, "\n") || strings.Contains(content, "\nreplace:") {
+						t.Fatalf("source introduced blank lines or empty sections: %s", content)
+					}
+				} else if !strings.Contains(content, diagnostic) {
+					t.Fatalf("diagnostic paragraph break was changed: %s", content)
+				}
+			})
+		}
+	}
+}
+
 func TestReplyCommitKeepsFailureBeforeLaterCancellation(t *testing.T) {
 	for _, buffered := range []bool{false, true} {
 		t.Run(fmt.Sprintf("buffered=%t", buffered), func(t *testing.T) {
@@ -125,6 +179,9 @@ func TestAssociateReceiptDeclaresWrappedCancellation(t *testing.T) {
 	failures, logResult := fixture.committer.AssociateReceipt(fixture.ctx, fixture.in.Session.ID, "local-message", fixture.platform.receipt)
 	if len(failures) != 1 || !errors.Is(failures[0], context.Canceled) || logResult.ResultStatus != events.ResultCanceled {
 		t.Fatalf("failures=%v log result=%#v", failures, logResult)
+	}
+	if !strings.HasPrefix(logResult.Content, "platform=") || strings.Contains(logResult.Content, "\n\n") {
+		t.Fatalf("association source introduced blank lines: %q", logResult.Content)
 	}
 }
 

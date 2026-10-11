@@ -84,6 +84,9 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 				t.Fatalf("err=%v records=%+v", err, *records)
 			}
 			for i, record := range *records {
+				if !strings.HasPrefix(record.Content, `{"tool":"logging_tool",`) {
+					t.Fatalf("tool must be first at source: %s", record.Content)
+				}
 				var content map[string]json.RawMessage
 				if err := json.Unmarshal([]byte(record.Content), &content); err != nil {
 					t.Fatal(err)
@@ -96,11 +99,16 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 					t.Fatalf("identity=%+v content=%s", record.Identity, record.Content)
 				}
 				if i == 0 {
+					if content["arguments"] == nil || content["elapsed_ms"] == nil || content["sent_messages"] != nil || content["output_count"] != nil {
+						t.Fatalf("call fields changed: %s", record.Content)
+					}
 					if record.ResultStatus != events.ResultSucceeded || record.Level != slog.LevelInfo || body != "独立日志正文" || strings.Contains(record.Content, "business segments") {
 						t.Fatal(record)
 					}
 				} else if record.EventName != "hook_tool_log" || record.ResultStatus != tc.send.ResultStatus || body != tc.send.Content || !strings.Contains(record.Content, "delivered") {
 					t.Fatal(record)
+				} else if content["arguments"] != nil || content["elapsed_ms"] != nil || string(content["output_count"]) != "1" {
+					t.Fatalf("send fields changed: %s", record.Content)
 				}
 			}
 		})

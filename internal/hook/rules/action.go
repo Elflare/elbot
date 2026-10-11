@@ -242,15 +242,29 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 	arguments := render(action.Arguments, event, state)
 	call := llm.ToolCallRequest{ID: storage.NewID(), Name: name, Arguments: arguments}
 	record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: "hook_tool_call", Module: "hook", Type: globalevents.ContentJSON, ContentLimit: 0}
-	content := map[string]any{"source": "rules", "tool": name, "point": string(event.Point), "tool_call_id": call.ID, "arguments": tool.TruncateLogContent(arguments, 256)}
+	content := struct {
+		Tool       string `json:"tool"`
+		ActorID    string `json:"actor_id,omitempty"`
+		Arguments  string `json:"arguments"`
+		Point      string `json:"point"`
+		Result     string `json:"result"`
+		Source     string `json:"source"`
+		ToolCallID string `json:"tool_call_id"`
+	}{
+		Tool:       tool.TruncateLogContent(name, 2048),
+		Arguments:  tool.TruncateLogContent(arguments, 256),
+		Point:      tool.TruncateLogContent(string(event.Point), 2048),
+		Source:     "rules",
+		ToolCallID: call.ID,
+	}
 	if event.Session.ID != "" {
 		if event.Actor.ID != "" {
-			content["actor_id"] = event.Actor.ID
+			content.ActorID = tool.TruncateLogContent(event.Actor.ID, 2048)
 		}
 		record.Identity.SessionID = &event.Session.ID
 	} else {
 		if actor, ok := contextinfo.ActorFromContext(ctx); ok && actor.ID != "" {
-			content["actor_id"] = actor.ID
+			content.ActorID = tool.TruncateLogContent(actor.ID, 2048)
 		}
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		if facts.SessionID != "" {
@@ -298,15 +312,7 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 	if logResult.ResultStatus == globalevents.ResultFailed {
 		record.Level = slog.LevelError
 	}
-	content["result"] = logResult.Content
-	for key, value := range content {
-		if key == "arguments" || key == "result" {
-			continue
-		}
-		if value, ok := value.(string); ok && len([]rune(value)) > 2048 {
-			content[key] = string([]rune(value)[:2047]) + "…"
-		}
-	}
+	content.Result = logResult.Content
 	data, _ := json.Marshal(content)
 	record.Content = string(data)
 	hook.LogHook(ctx, record)

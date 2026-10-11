@@ -126,7 +126,7 @@ func TestGlobalRecordsUseIndependentLevelsAndContent(t *testing.T) {
 						string(entry["result_status"]) != fmt.Sprintf("%q", fact.status.String()) || string(entry["category"]) != fmt.Sprintf("%q", category.String()) {
 						t.Fatalf("business facts changed: %s", entry)
 					}
-					if !strings.Contains(string(entry["content"]), "diagnostic evidence") || strings.Contains(string(entry["content"]), "secret-value") {
+					if string(entry["content"]) != `{"reason":"diagnostic evidence","api_key":"secret-value","level":"forged","result_status":"forged"}` {
 						t.Fatalf("content differs by configured level: %s", entry)
 					}
 				}
@@ -470,7 +470,7 @@ func TestGlobalRecordsDrainInCategoryOrder(t *testing.T) {
 	}
 }
 
-func TestRecordRedactionUTF8AndSerializedLimit(t *testing.T) {
+func TestRecordPreservesContentUTF8AndSerializedLimit(t *testing.T) {
 	at := time.Date(2026, 10, 8, 12, 34, 56, 0, time.FixedZone("test", 8*60*60))
 	t.Run("text limits", func(t *testing.T) {
 		for _, limit := range []int{0, 1, 2, 256, 512} {
@@ -518,7 +518,7 @@ func TestRecordRedactionUTF8AndSerializedLimit(t *testing.T) {
 			}
 		}
 	})
-	t.Run("redact before limiting", func(t *testing.T) {
+	t.Run("text is only limited", func(t *testing.T) {
 		data, err := formatRecord(context.Background(), events.LogRecord{Category: events.LogRuntime, Content: "reason: token=" + strings.Repeat("secret", 1000)}, at)
 		if err != nil {
 			t.Fatal(err)
@@ -527,7 +527,11 @@ func TestRecordRedactionUTF8AndSerializedLimit(t *testing.T) {
 		if err := json.Unmarshal(data, &entry); err != nil {
 			t.Fatal(err)
 		}
-		if string(entry["content"]) != "\"reason: token=[redacted]\"" {
+		var content string
+		if err := json.Unmarshal(entry["content"], &content); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(content, "reason: token=secret") || utf8.RuneCountInString(content) != defaultContentLimit || !strings.HasSuffix(content, "…") {
 			t.Fatalf("%s", data)
 		}
 	})
@@ -546,7 +550,7 @@ func TestRecordRedactionUTF8AndSerializedLimit(t *testing.T) {
 			}
 		}
 	})
-	t.Run("JSON redaction and public fields", func(t *testing.T) {
+	t.Run("JSON source order and public fields", func(t *testing.T) {
 		text := `{"nested":[{"api_key":"nested-secret","authorization":"header-secret","cookie":"cookie-secret","image_data":"media-secret","text":"Bearer inline-secret","url":"data:image/png;base64,url-secret"}],"prompt_tokens":9007199254740993,"token_name":"business-name","event":"inner","level":"ERROR","result_status":"failed"}`
 		values := []string{"session", "", "2", "request", "root"}
 		record := events.LogRecord{Category: events.LogAudit, EventName: "outer", Module: "test", Type: events.ContentJSON, Content: text, ContentLimit: 1,
@@ -555,12 +559,12 @@ func TestRecordRedactionUTF8AndSerializedLimit(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(string(data), "-secret") {
-			t.Fatalf("secret leaked: %s", data)
-		}
 		var entry map[string]json.RawMessage
 		if err := json.Unmarshal(data, &entry); err != nil {
 			t.Fatal(err)
+		}
+		if string(entry["content"]) != text {
+			t.Fatalf("source content or order changed: %s", data)
 		}
 		for key, want := range map[string]string{"event": "\"outer\"", "level": "\"INFO\"", "module": "\"test\"", "result_status": "\"canceled\"", "session_id": "\"session\"", "run_id": "\"\"", "attempt": "\"2\"", "request_id": "\"request\"", "root_request_id": "\"root\""} {
 			if string(entry[key]) != want {

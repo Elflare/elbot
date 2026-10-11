@@ -30,7 +30,7 @@ flowchart TD
     S --> M["日志中心订阅<br/>接收时、入队前自动记录时间<br/>按类别接收"]
     M --> Q["异步队列<br/>保留统一记录及中心接收时间"]
     Q --> FILTER["按业务指定 Level 过滤<br/>不根据结果或正文重新判级"]
-    FILTER --> FORMAT["最终文件格式化<br/>按 Type 统一脱敏<br/>text 按字符截断，默认 256<br/>JSON 保持有效，不按 ContentLimit 截断<br/>JSONL 编码及 64 KiB 硬上限检查"]
+    FILTER --> FORMAT["最终文件格式化<br/>text 按字符截断，默认 256<br/>JSON 按来源顺序原生嵌入<br/>JSONL 编码及 64 KiB 硬上限检查"]
     FORMAT --> FILE["JSONL 日志文件<br/>JSON Content 直接写为原生值"]
     OWN["业务实例事件中的错误对象发布后只读<br/>可变错误由来源复制具体结构<br/>不靠转字符串制造业务错误快照"]
     OWN -.-> E
@@ -165,7 +165,7 @@ Go 的整数枚举不能阻止强制转换非法数值，因此发布入口仍�
 `nil` 表示未提供，落盘时省略；非 nil 且指向空字符串表示明确为空，落盘时保留空字符串。`EmitLog` 仅复制业务填写的指针值，不从 context 补齐身份。来源后续修改自身变量不能改变已发布身份；所有订阅者只读，异步消费不查询当前会话来补身份。
 
 - `Content` 是唯一正文。普通日志尽量使用 text；需要业务字段筛选、统计或解析时，由来源构造 JSON 并明确填写 `Type=json`。不按具体业务扩充公共字段，也不统一把所有日志改成 JSON。
-- `Type=text` 按自然文本脱敏，不因外观像 JSON 而解析或结构化改写；`Type=json` 才按 JSON 处理。JSON 递归脱敏保留非敏感数据。正文内的业务键不提升为公共字段，即使包含 `level`、`event` 或 `result_status`，也不能覆盖外层正式字段。
+- `Type=text` 按字符限长；`Type=json` 通过 RawMessage 原生嵌入，保留来源的字段顺序和数值。正文内的业务键不提升为公共字段，即使包含 `level`、`event` 或 `result_status`，也不能覆盖外层正式字段。
 - 原始错误留在业务返回值及实例事件中；日志来源将错误原因与必要诊断组织为正文，不将错误对象放入公共记录。组合操作的单条日志由 ResultStatus 表达来源确定的整体结果，Content 写清各操作事实、具体原因和错误。普通说明优先 text，需要业务字段查询或统计时使用 JSON。
 - 不向公共日志提交任意 Go 对象、map、切片、延迟求值器或 `slog.Value`，不建设反射转换器。正文已经是不可变字符串，身份指针由发布入口复制。
 
@@ -321,7 +321,7 @@ Elnis 的业务失败和状态保存失败分别保留；保存返回值使用 `
 - 公共日志正文是不可变字符串，身份在发布前复制。业务实例事件中的错误遵循上一节的只读所有权约定。
 - 不向异步消费者传递业务管理器或活跃执行对象。身份在发布时固定；中心在接收记录、入队前记录时间。队列消费时不重新取当前时间或当前会话覆盖已固定值。
 - 日志中心自行订阅，拥有 runtime、audit、elnis 三个串行队列，每个容量 256，满时最多等待 500 毫秒，关闭采用 Drain。按成功入队顺序处理，同类别之外不保证总顺序。
-- 单次请求取消不撤销已发布事实，也不解除日志背压；中心停止准入唤醒等待者。过滤、正文脱敏、text 限长和文件格式化在中心消费者中执行。
+- 单次请求取消不撤销已发布事实，也不解除日志背压；中心停止准入唤醒等待者。过滤、text 限长和文件格式化在中心消费者中执行。
 - 进程内只允许一个活动日志中心。初始化失败清理已取得的连接、队列和文件；重复构造不能形成双写；关闭不替换全局信号实例。
 - App 先建立日志中心和消费订阅，再启动会发日志的业务。中心建立前的初始化失败直接返回主程序报告。
 - 所有退出共享既有的 30 秒预算：停止准入、取消运行并唤醒生产者，等待生产者和消费者，最后关闭已不被使用的资源。超时不能声称排空成功，也不能强行关闭仍被回调使用的文件或依赖；剩余工作交给进程退出处理。
@@ -335,7 +335,7 @@ Elnis 的业务失败和状态保存失败分别保留；保存返回值使用 `
 | `EmitLog` | 验证公共契约，仅复制来源填写的身份，发射统一记录；不从 context 补值 |
 | `LogSubmitted` | 只负责派发，不分类、不持久化、不重放 |
 | `handleRecord` | 接收时记录时间，按类别入队；消费者按来源等级过滤并调用写入 |
-| `formatRecord` | 只消费 EmitLog 已验证的记录，按 Type 脱敏，text 按字符截断，JSON 保留数字精度；JSONL 编码和记录硬上限检查 |
+| `formatRecord` | 只消费 EmitLog 已验证的记录，text 按字符截断，JSON 正文原生嵌入；JSONL 编码和记录硬上限检查 |
 | 查询命令 | 按公共字段及已知 JSON 业务契约筛选、统计或展示；所有条件匹配后计入数量上限 |
 
 ### 设施故障
@@ -355,10 +355,9 @@ Elnis 的业务失败和状态保存失败分别保留；保存返回值使用 `
 | text 长度 | 按 Unicode 字符截断，ContentLimit 为零时默认 256，正数由业务指定；超限保留前 limit−1 个字符并追加单字符 `…`，标记计入上限 |
 | JSON 长度 | 业务先控制体积，不按 ContentLimit 截断，保持完整有效 |
 | 单条记录 | JSONL 编码后连同行尾最多 64 KiB；超限明确报告设施失败，不写半条记录，不截坏 JSON |
-| 脱敏 | 先脱敏再截断，覆盖嵌套结构、凭据、认证头、cookie 和媒体内嵌载荷；保留 token 用量等业务元数据 |
 | 文件 | 新记录统一写 JSONL；保留现有文件前缀、按日轮转、保留天数和配置，不改写历史记录 |
 
-来源组织正文；最终写入阶段统一脱敏、text 限长、JSONL 编码和记录硬上限检查。普通正文直接使用 text，需要 JSON 的来源自行编码。`Type=json` 的正文写入原生 JSON 值，数值处理必须保持精度。所有来源使用统一公共契约与发布入口。提交成功只表示准入，异步格式化或写盘失败由设施诊断报告。
+来源组织正文，模型错误和 Telegram token 等已有敏感内容处理保留在各自来源；最终写入阶段负责 text 限长、JSONL 编码和记录硬上限检查。普通正文直接使用 text，需要 JSON 的来源自行编码，中心通过 RawMessage 保留正文的字段顺序和数值。所有来源使用统一公共契约与发布入口。提交成功只表示准入，异步格式化或写盘失败由设施诊断报告。
 
 runtime、audit、elnis 分别使用 `elbot-日期.log`、`audit-日期.log`、`elnis-日期.log`。Reader 的读取契约包含历史键值文本和 JSONL，包括同一文件内混合的两种格式。正文内的键不提升为公共字段，不能覆盖外层事件、等级、身份或结果。
 
@@ -449,7 +448,7 @@ type LogQuery struct {
 
 JSON Content 直接作为原生 JSON 值写入，避免整段重复转义；text 中的引号和换行仍按 JSON 标准转义。命令展示解码后的内容，原始模式保留物理记录。
 
-`internal/command/builtin/log.go` 的 `formatLogContent` 统一服务三种日志查询：JSON 对象按字段名排序，数组按原顺序展示，字符串只解码一次并呈现真实换行／制表符，保留字面量反斜杠及数值精度。日志中心继续负责正确编码，平台只发送格式化后的文本；`--raw` 不经过这一展示转换。
+`internal/command/builtin/log.go` 的 `formatLogContent` 统一服务三种日志查询：按 JSON token 原顺序展示对象和数组，字符串只解码一次并呈现真实换行／制表符，保留字面量反斜杠及数值精度。Reader 仅在正文筛选需要时解析字段，原始正文独立保留；`--raw` 不经过展示转换。
 
 #### 组合记录示意
 
@@ -460,7 +459,7 @@ JSON Content 直接作为原生 JSON 值写入，避免整段重复转义；text
 {"time":"2026-10-08T15:00:01+08:00","category":"runtime","level":"WARN","module":"session","event":"example_combined_operation","type":"text","content":"自动生成标题失败：上游请求超时；已成功保存兜底标题“新会话”。","session_id":"sess-demo","result_status":"succeeded"}
 ```
 
-第一条整体失败，正文保留调用取消和保存失败的原因；第二条以获得可用标题为整体成功，正文保留生成失败与兜底事实。text 遵守默认 256 字符和 ContentLimit 约定，来源按所需说明长度设置上限；需要结构化查询的来源可使用 JSON。所有记录仍遵守脱敏及整条 64 KiB 硬上限。
+第一条整体失败，正文保留调用取消和保存失败的原因；第二条以获得可用标题为整体成功，正文保留生成失败与兜底事实。回复提交只拼接有正文的小节，分隔换行由来源添加。text 遵守默认 256 字符和 ContentLimit 约定，来源按所需说明长度设置上限；需要结构化查询的来源可使用 JSON。所有记录遵守整条 64 KiB 硬上限。
 
 ### 查询展示示意
 
@@ -477,7 +476,7 @@ Telegram 通知发送失败：连接超时。
 {"time":"2026-10-07T15:00:02+08:00","category":"runtime","level":"ERROR","module":"delivery","event":"notice_output_failed","type":"text","content":"Telegram 通知发送失败：连接超时。","session_id":"sess-demo","request_id":"req-demo","result_status":"failed"}
 ```
 
-`/audit` 和 `/elwisp` 使用相同的展示规则。原始展示不会恢复落盘前已经截断或脱敏的内容。
+`/audit` 和 `/elwisp` 使用相同的展示规则。原始展示不会恢复落盘前已经截断或由来源处理的内容。
 
 ## 来源职责与平台连接
 
@@ -557,7 +556,7 @@ flowchart TD
     B --> C["业务消费者<br/>internal/agent/dialogue/reply_commit.go：保存与消息关联<br/>internal/cron/delivery.go：报告关联与投递<br/>internal/elnis/outbox.go：投递状态与存档<br/>按需使用 Receipt"]
     B --> D["记录来源<br/>internal/agent/output.go、dialogue/reply_commit.go：发送与回复记录<br/>internal/toolrun/runner.go：后续操作记录<br/>使用明确 LogResult，填齐九字段"]
     D --> E["公共发布<br/>internal/events/logging.go<br/>校验、复制身份、发射 LogSubmitted"]
-    E --> F["日志中心<br/>internal/logging<br/>记时、过滤、脱敏、排队、落盘"]
+    E --> F["日志中心<br/>internal/logging<br/>记时、过滤、排队、落盘"]
 ```
 
 
@@ -584,7 +583,7 @@ flowchart TD
 - internal/toolrun/logging.go 沿用 toolrun 包。logTool 统一发布各条独立记录，只接收 ctx 与完整 record。Runner 的局部函数 newRecord(ctx context.Context, eventName string, logResult events.LogResult) events.LogRecord 统一 Runtime/text 基础记录、来源等级及当次身份，供 record、recordCall 和批次失败分支复用；recordCall 补调用查询事实、唯一 Audit JSON，参数日志限 256 字符，保留工具自行精简的结果；Execute 不发布日志。调用记录在 Execute 返回后、后续发送／完成 Hook／保存之前发布，不能因调用后 context 取消而漏记。新文件只调用 events.EmitLog，不接业务对象、不重组正文；其他操作按来源 LogResult 组织独立记录。不新增队列、中心或 Logger 注入。
 - 普通工具已实际调用起来，包括缺 key、shell 非零和工具业务返回错误，工具调用日志为 INFO／succeeded；具体业务结果与原因写正文。工具不存在或入口故障等根本未调用起来的调用故障为 ERROR／failed。执行前正常拒绝、取消、跳过按对应控制事实使用 INFO；不因日志结果改写业务 error、ResultStatus 或停止规则。
 - 工具调用、发送、保存分别记录各自操作。发送或保存失败不会把已经运行起来的工具调用改成未调用成功；各自的错误和部分回执继续保留。实际保存操作的日志等待保存返回，未执行的操作不补结果；批次准备失败不伪造逐工具调用。
-- 工具名、调用 ID、actor_id、风险、256 字符参数预览、工具实现来源、run_source 和耗时等已有查询事实由 Runner 组织进 Content，落盘键使用 snake_case；具体工具的日志正文保持来源含义。既有 text／JSON、脱敏、限长和整数精度契约保持。
+- 工具名、调用 ID、actor_id、风险、256 字符参数预览、工具实现来源、run_source 和耗时由 Runner 组织进 Content，落盘键使用 snake_case。Runner、rules Hook 和 plugin Hook 通过结构体将 tool 放在首项，其余字段按既有字母序声明；具体工具的日志正文保持来源含义。
 - 日志发布方法只接收完整九字段记录，不引入错误分类类型、传入工具的日志对象、庞大中转事件或类型化 Content 包装。Hook 日志迁移仍归 3.2，本节不扩大其业务规则；logTool 只接收 ctx 和 record events.LogRecord。
 
 ```mermaid
@@ -596,7 +595,7 @@ flowchart TD
     B -->|"返回 ExecutionStarted、正文及未执行结果"| D["Runner 组织调用记录<br/>internal/toolrun/runner.go：newRecord／recordCall<br/>已进入调用统一 INFO／succeeded<br/>未进入使用入口声明的结果和原因<br/>调用前固定 runSource，写入 Content<br/>填齐九字段、参数限 256 字符、仅写 audit"]
     D --> E["工具日志发布<br/>internal/toolrun/logging.go：logTool<br/>只接收完整九字段 LogRecord<br/>调用 events.EmitLog"]
     E --> S["公共信号入口<br/>internal/events/logging.go<br/>校验契约、复制身份、发射 LogSubmitted"]
-    S --> F["全局日志中心<br/>internal/logging/signals.go：记时、排队、过滤、写盘<br/>internal/logging/record.go：脱敏、限长、JSONL 编码<br/>internal/logging/logging.go：初始化、文件资源及关闭"]
+    S --> F["全局日志中心<br/>internal/logging/signals.go：记时、排队、过滤、写盘<br/>internal/logging/record.go：text 限长、JSON 原生嵌入、JSONL 编码<br/>internal/logging/logging.go：初始化、文件资源及关闭"]
 ```
 
 #### 后台日志管理口与工具来源
@@ -624,7 +623,7 @@ flowchart TD
     T --> L["internal/toolrun/logging.go<br/>logTool：只发布完整记录"]
     B --> P["internal/events/logging.go<br/>校验、复制身份、发信号"]
     L --> P
-    P --> G["internal/logging<br/>记时、排队、过滤、脱敏、落盘"]
+    P --> G["internal/logging<br/>记时、排队、过滤、落盘"]
     Q["internal/command/builtin/log.go<br/>解析 --run_source、帮助与补全"] --> R["internal/logging/reader.go<br/>匹配 JSON 键或固定 text 标记<br/>匹配后计入数量上限"]
     G --> R
 ```
@@ -643,7 +642,7 @@ flowchart TD
 - PrepareToolCall、CompleteToolCall 增加 LogResult；PrepareAssistant 透传来源结果。Agent、Dialogue、Runner 使用来源结果；仅业务消费者显式丢弃。runtime／rules 发送接口及 sendProtocolOutput 返回 Receipt、LogResult、error，App 直接传递；一次性 handleProtocolRequest 同时返回来源 LogResult，readV2Response 在响应写入前保留它，写入独立失败不被发送取消覆盖；Receipt 只用于业务响应、关联和部分送达，业务不读取日志正文控制流程。
 - 工具调用与输出发送各记一条 Audit JSON：`hook_tool_call` 只记录调用，`hook_tool_log` 独立记录发送，使用同一实际 `tool_call_id` 关联。runtime 沿用现有 ID 生成方式，rules 每次使用 `storage.NewID()`，传入工具及日志的 ID 相同。独立 output.send 没有实际工具调用时不补造 tool_call_id，正文保留 rule、point、source；协议请求 ID 仅用于协议关联。
 - 实际进入 Tool.Call 后立即发布 INFO／succeeded，正文使用工具返回的 logContent；业务错误、缺 key、非零退出码或调用后取消不改写调用日志。未进入调用的宿主故障、正常拒绝和取消由明确分支声明；参数解析失败、工具名为空属于调用方输入拒绝，仍发布 INFO／rejected 的 hook_tool_call，正文说明未进入 Tool.Call，未得到的工具名或调用 ID 不补造。发送使用来源 LogResult，failed 与 nil error 并存仍失败；无需发送、提前返回和未执行分支不补造成功，发送准备失败说明未进入发送。
-- 普通 text 记录由中心脱敏并按 ContentLimit 截断；工具的独立日志正文作为 audit JSON 的 result，由工具自行精简至读取类 128／执行修改类 256 字符。Runner 和 Hook 调用入口只将参数日志限制为 256 字符，不二次截断工具结果；业务数据和实际执行参数不变。其他 JSON 诊断的既有预算保持。JSON 编码后遵守整条记录含行尾的 64 KiB 上限，中心不按 ContentLimit 截断 JSON，超限报告设施失败。
+- 普通 text 记录由中心按 ContentLimit 截断；工具的独立日志正文作为 audit JSON 的 result，由工具自行精简至读取类 128／执行修改类 256 字符。Runner 和 Hook 调用入口只将参数日志限制为 256 字符，不二次截断工具结果；业务数据和实际执行参数不变。其他 JSON 诊断的既有预算保持。JSON 编码后遵守整条记录含行尾的 64 KiB 上限，中心不按 ContentLimit 截断 JSON，超限报告设施失败。
 - exec 的 cancelRequested 只保存本次取消回调实际终止进程的事实，execExitCanceled 在既有平台文件核对原生退出状态；Unix 核对 SIGKILL，Windows 核对宿主终止及对应退出码，不接收或遍历 error。纯取消为 canceled，超时及独立退出、信号崩溃、IO／协议故障为 failed，正文保留同时已知的取消事实；原业务错误和进程树清理流程不改写。Worker 在同一次加锁中先固定退出状态与原因，再关闭 pending／done；请求和启动等待的取消分支读取已固定的故障事实，不等待未来故障改写已有记录。
 - `actor_id` 在授权默认值注入前固定：有 Session 跟随触发 Session 的执行 Actor，无 Session 取原始 contextinfo；缺失不补造。业务权限主体保留原用途。
 - 全部 Hook 发布点改走 LogHook：流水线、rules、waiting continuation、注册／配置、进程／重载、主动日志、stderr、协议写入、桥接及自身媒体释放。continuation 的点记录由 runtime/routes.go 组织，避免绕过普通 Manager 后丢失结果。重载 commit 返回 LogResult、error；control/service.go 透传 runtime/manager.go 的 ReplacePlugin 来源结果，worker.runReload 使用声明结果，不从回调 error 判定。来源保留组装职责；删除旧发布方法、重复转发及仅用于日志的错误分类，保留业务通知和原始错误。
@@ -658,5 +657,5 @@ flowchart TD
     O --> L["internal/hook/logging.go<br/>LogHook：只发布完整九字段"]
     H["其他 Hook 来源<br/>hook/manager.go、rules/config.go<br/>runtime/worker.go、routes.go、protocol.go、media.go<br/>control/service.go、agent/hooks.go<br/>声明结果并组装记录"] --> L
     L --> E["internal/events/logging.go<br/>验证契约、复制身份、发射信号"]
-    E --> G["internal/logging<br/>记时、过滤、脱敏、排队、落盘"]
+    E --> G["internal/logging<br/>记时、过滤、排队、落盘"]
 ```

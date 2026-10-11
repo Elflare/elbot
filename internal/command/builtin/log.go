@@ -702,7 +702,7 @@ func formatElwispLogEntries(raw bool) func([]logging.LogEntry) string {
 	}
 }
 
-// formatLogContent renders JSON values as readable fields. Strings are decoded
+// formatLogContent renders JSON fields in source order. Strings are decoded
 // once, so real newlines display normally while literal backslashes survive.
 func formatLogContent(entry logging.LogEntry) string {
 	if entry.Type != events.ContentJSON {
@@ -710,56 +710,60 @@ func formatLogContent(entry logging.LogEntry) string {
 	}
 	decoder := json.NewDecoder(strings.NewReader(entry.Content))
 	decoder.UseNumber()
-	var value any
-	if err := decoder.Decode(&value); err != nil {
-		return entry.Content
-	}
-	var render func(any, string) string
-	render = func(value any, indent string) string {
+	var render func(string) (string, error)
+	render = func(indent string) (string, error) {
+		value, err := decoder.Token()
+		if err != nil {
+			return "", err
+		}
 		switch value := value.(type) {
-		case map[string]any:
-			if len(value) == 0 {
-				return "{}"
-			}
-			keys := make([]string, 0, len(value))
-			for key := range value {
-				keys = append(keys, key)
-			}
-			sort.Strings(keys)
+		case json.Delim:
 			var body strings.Builder
-			for i, key := range keys {
-				if i > 0 {
+			for decoder.More() {
+				if body.Len() > 0 {
 					body.WriteString("\n" + indent)
 				}
-				body.WriteString(key + ": ")
-				content := render(value[key], indent+"  ")
-				if strings.Contains(content, "\n") {
+				if value == '{' {
+					key, err := decoder.Token()
+					if err != nil {
+						return "", err
+					}
+					body.WriteString(key.(string) + ": ")
+				} else {
+					body.WriteString("- ")
+				}
+				content, err := render(indent + "  ")
+				if err != nil {
+					return "", err
+				}
+				if value == '{' && strings.Contains(content, "\n") {
 					body.WriteString("\n" + indent + "  ")
 				}
 				body.WriteString(content)
 			}
-			return body.String()
-		case []any:
-			if len(value) == 0 {
-				return "[]"
+			if _, err := decoder.Token(); err != nil {
+				return "", err
 			}
-			var body strings.Builder
-			for i, item := range value {
-				if i > 0 {
-					body.WriteString("\n" + indent)
+			if body.Len() == 0 {
+				if value == '{' {
+					return "{}", nil
 				}
-				body.WriteString("- " + render(item, indent+"  "))
+				return "[]", nil
 			}
-			return body.String()
+			return body.String(), nil
 		case string:
-			return strings.ReplaceAll(value, "\n", "\n"+indent)
+			return strings.ReplaceAll(value, "\n", "\n"+indent), nil
 		case nil:
-			return "null"
+			return "null", nil
 		default:
-			return fmt.Sprint(value)
+			return fmt.Sprint(value), nil
 		}
 	}
-	return render(value, "")
+	content, err := render("")
+	if err != nil {
+		return entry.Content
+	}
+	return content
 }
 
 func appendRuntimeLogFields(sb *strings.Builder, fields map[string]string) {

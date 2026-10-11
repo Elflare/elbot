@@ -59,15 +59,35 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	callCtx := w.manager.rootCtx
 	actor, _ := contextinfo.ActorFromContext(callCtx)
 	// Keep the trigger actor separate from the permission principal below.
-	content := map[string]any{"source": "plugin", "hook": w.config.ID, "arguments": tool.TruncateLogContent(string(params.Arguments), 256)}
-	if name != "" {
-		content["tool"] = name
+	arguments := tool.TruncateLogContent(string(params.Arguments), 256)
+	// Pointer fields distinguish absent operation facts from explicit empty or
+	// zero values. Declaration order fixes the log body's display order.
+	content := struct {
+		Tool               string            `json:"tool,omitempty"`
+		ActorID            string            `json:"actor_id,omitempty"`
+		Arguments          *string           `json:"arguments,omitempty"`
+		ElapsedMS          *int64            `json:"elapsed_ms,omitempty"`
+		Hook               string            `json:"hook"`
+		Invocation         string            `json:"invocation"`
+		OutputCount        *int              `json:"output_count,omitempty"`
+		Platform           string            `json:"platform,omitempty"`
+		PlatformMessageIDs *[]string         `json:"platform_message_ids,omitempty"`
+		Result             string            `json:"result"`
+		SentMessages       *[]map[string]any `json:"sent_messages,omitempty"`
+		Source             string            `json:"source"`
+		ToolCallID         string            `json:"tool_call_id,omitempty"`
+		UserID             string            `json:"user_id,omitempty"`
+	}{
+		Tool:      tool.TruncateLogContent(name, 2048),
+		Arguments: &arguments,
+		Hook:      tool.TruncateLogContent(w.config.ID, 2048),
+		Source:    "plugin",
 	}
 	invocation := params.ToolContext
 	if params.Background {
 		invocation = params.Origin
 	}
-	content["invocation"] = invocation
+	content.Invocation = tool.TruncateLogContent(invocation, 2048)
 	// Read trigger facts without consuming the permission token. Guard failures
 	// must retain the same trigger identity as an entered call.
 	w.manager.mu.RLock()
@@ -82,24 +102,13 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		}
 	}
 	logHook := func(eventName string, logResult globalevents.LogResult) {
-		content["result"] = logResult.Content
-		if actor.ID != "" {
-			content["actor_id"] = actor.ID
+		content.Result = logResult.Content
+		if eventName != "hook_tool_call" {
+			content.Result = tool.TruncateLogContent(content.Result, 2048)
 		}
-		if actor.Platform != "" {
-			content["platform"] = actor.Platform
-		}
-		if actor.PlatformUserID != "" {
-			content["user_id"] = actor.PlatformUserID
-		}
-		for key, value := range content {
-			if key == "arguments" || (key == "result" && eventName == "hook_tool_call") {
-				continue
-			}
-			if value, ok := value.(string); ok && len([]rune(value)) > 2048 {
-				content[key] = string([]rune(value)[:2047]) + "…"
-			}
-		}
+		content.ActorID = tool.TruncateLogContent(actor.ID, 2048)
+		content.Platform = tool.TruncateLogContent(actor.Platform, 2048)
+		content.UserID = tool.TruncateLogContent(actor.PlatformUserID, 2048)
 		data, _ := json.Marshal(content)
 		record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: eventName, Module: "hook", Type: globalevents.ContentJSON, Content: string(data), ContentLimit: 0, ResultStatus: logResult.ResultStatus}
 		if logResult.ResultStatus == globalevents.ResultFailed {
@@ -135,7 +144,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		return nil, err
 	}
 	call.ID = randomID("plugin")
-	content["tool_call_id"] = call.ID
+	content.ToolCallID = call.ID
 	allowed := contains(w.config.Tools.Allow, name)
 	if params.Background {
 		allowed = contains(w.config.Tools.BackgroundAllow, name)
@@ -202,7 +211,8 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	}
 	started := time.Now()
 	result, logContent, err := registered.Call(callCtx, call)
-	content["elapsed_ms"] = time.Since(started).Milliseconds()
+	elapsedMS := time.Since(started).Milliseconds()
+	content.ElapsedMS = &elapsedMS
 	logHook("hook_tool_call", globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: logContent})
 	if err != nil {
 		return nil, err
@@ -213,8 +223,8 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	if len(result.Outputs) == 0 {
 		return map[string]any{"content": result.Content, "segments": result.Segments, "warnings": result.Warnings, "receipts": []delivery.Receipt{}}, nil
 	}
-	delete(content, "arguments")
-	delete(content, "elapsed_ms")
+	content.Arguments = nil
+	content.ElapsedMS = nil
 	if w.manager.opts.Send == nil {
 		err := fmt.Errorf("hook output sender is not configured")
 		logHook("hook_tool_log", globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "send not entered: " + err.Error()})
@@ -226,12 +236,14 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		}
 	}
 	receipt, logResult, err := w.manager.opts.Send(callCtx, params.Target, result.Outputs)
-	content["platform_message_ids"] = receipt.PlatformMessageIDs
-	content["sent_messages"] = []map[string]any{}
+	content.PlatformMessageIDs = &receipt.PlatformMessageIDs
+	sentMessages := []map[string]any{}
 	for _, sent := range receipt.SentMessages {
-		content["sent_messages"] = append(content["sent_messages"].([]map[string]any), map[string]any{"platform": sent.Platform, "scope_id": sent.ScopeID, "platform_message_id": sent.PlatformMessageID, "output_indexes": sent.OutputIndexes})
+		sentMessages = append(sentMessages, map[string]any{"platform": sent.Platform, "scope_id": sent.ScopeID, "platform_message_id": sent.PlatformMessageID, "output_indexes": sent.OutputIndexes})
 	}
-	content["output_count"] = len(result.Outputs)
+	content.SentMessages = &sentMessages
+	outputCount := len(result.Outputs)
+	content.OutputCount = &outputCount
 	logHook("hook_tool_log", logResult)
 	if err != nil {
 		return nil, err
