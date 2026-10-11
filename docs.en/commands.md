@@ -240,11 +240,12 @@ Common options:
 | `-n, --limit <n>` | Number of entries to return, default is 5. |
 | `--days <n>` | Read logs from the last n days, default is 1. |
 | `--level <level>` | Minimum level: `debug`, `info`, `warn`, `error`. |
-| `-d, -i, -w, -e` | Level shortcuts; `-d` or explicit `--level debug` to simultaneously display original records. |
+| `-d, -i, -w, -e` | Lowest level shortcut, does not change the display mode. |
+| `--raw` | Displays the complete raw records in the file, independent of level filtering. |
 | `--since <time>` | Only view entries after a certain time, e.g., `2h`, `30m`, `2026-06-03`. |
 | `--until <time>` | Only view entries before a certain time. |
-| `--msg <text>` | Filter by the msg field. |
-| `--contains <text>` | Filter by decoded summary, details, body fields, or original records. |
+| `--msg <text>` | Filter by message body. |
+| `--contains <text>` | Filter by decoded record content or raw records. |
 
 `/log` additionally supports:
 
@@ -253,6 +254,15 @@ Common options:
 | `-u`、`-a`、`-t` | Filter user, assistant, and tool events respectively. |
 | `-s, --system` | Filter and display `system prompt` logs. |
 | `--hook` | Filter runtime logs for `module=hook`. |
+| `--run_source <来源>` | Filter by tool call source: `foreground`, `cron`, `elnis`; can be combined with `-t` and other conditions. |
+
+The tool call body will be marked with `run_source`, indicating the source at the start of this call; This is separate from `source`, which represents the tool implementation source such as native/Elwisp. Calls newly started after foreground takeover are `foreground`, while calls already in progress retain their original source. Old records missing source markers will not be inferred as foreground calls and will not match when using source filters.
+
+```text
+/log -t --run_source cron -n 20
+/log -t --run_source elnis --raw
+/log -t --run_source foreground -i
+```
 
 `/audit` additionally supports:
 
@@ -278,6 +288,7 @@ Common options:
 | `--event-key <key>` | Filter by Elnis event key. |
 | `--event-id <id>` | Filter by internal Elnis event ID. |
 | `--token <name>` | Filter by token name, excluding the original token text. |
+| `--tag <tag>` | Filters records containing specified tags; can be repeated, requiring all tags to match. |
 
 Example:
 
@@ -286,17 +297,18 @@ Example:
 /log -w -n 10
 /log --system
 /log -u -d
+/log -u -d --raw
 /log --msg startup --days 3
 /audit --event tool_call --risk high -n 10
 /audit --actor cli:local --since 24h
 /audit --hook --event hook_tool_call
+/audit --hook --event hook_tool_log
+/audit --hook --tool shell --contains <tool_call_id>
 /audit --event llm_error -d
 /elwisp
 /elwisp server-watchdog -n 20
 /elwisp --source minecraft-main --mode llm --since 2h
 ```
-
-Hook tool call audits use `hook_tool_call`, `source` distinguishes between `rules`/`plugin`, and `status` distinguishes between `ok`/`error`/`canceled`.
 
 ## Token Consumption Statistics
 
@@ -329,6 +341,7 @@ Example:
 Note:
 
 - `/usage` aggregates token usage from `llm_usage` events in the audit log, calculating prompt, completion, total, cache, and duration grouped by model/day/Session.
+- Unknown, illegal, or overflowed values are displayed as `null` and are passed to the affected group and total items; Explicit zeros are counted normally, and other known items are unaffected. Calls with unknown usage are still counted. A prompt will indicate that statistics may be incomplete when the scan encounters corrupted records.
 - Available to superadmins only.
 
 ## High-risk Tool Confirmation
