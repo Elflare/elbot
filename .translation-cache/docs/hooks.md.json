@@ -856,14 +856,6 @@
       "translation": "The following is a complete round-trip of a one-time exec Hook; each line in the code block is a JSON Lines frame. Host writes to Hook stdin:\n",
       "updated_at": 1784025692
     },
-    "docs/hooks.md:paragraph:3408b855e18facc6a06b65da4a7e64e3ef7be38ec5dfe6e1712a425164bcfe35": {
-      "kind": "paragraph",
-      "source": "Hook 在 ElBot 的关键边界匹配或修改事件、追加输出，或把事件交给外部程序。输出统一由 Output Manager 发送。\n",
-      "source_file": "docs/hooks.md",
-      "source_hash": "3408b855e18facc6a06b65da4a7e64e3ef7be38ec5dfe6e1712a425164bcfe35",
-      "translation": "Hooks match or modify events, append output, or hand over events to external programs at key boundaries of ElBot. Output is sent uniformly by the Output Manager.\n",
-      "updated_at": 1784025692
-    },
     "docs/hooks.md:paragraph:34962d1527a20447943d85dfa1160b75763f064f7f58a07494896e98ce6db658": {
       "kind": "paragraph",
       "source": "没有有效 __ELBOT_CODE_0__ 时必须给显式 __ELBOT_CODE_1__。",
@@ -3618,8 +3610,8 @@
     }
   },
   "source": "docs/hooks.md",
-  "source_hash": "1df7198d30ce582ef1b1156e06db6190571a01949d1328c8168559ef98eacdfb",
+  "source_hash": "813f8764b55a284c224bc338a6d9f2eeb8839de916aa7979c2c8551c0ccff51e",
   "target": "docs.en/hooks.md",
-  "updated_at": 1791301786,
+  "updated_at": 1791708757,
   "version": 2
 }

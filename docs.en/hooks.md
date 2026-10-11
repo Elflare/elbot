@@ -2,8 +2,6 @@
 
 # Hook
 
-Hooks match or modify events, append output, or hand over events to external programs at key boundaries of ElBot. Output is sent uniformly by the Output Manager.
-
 ## Terminology and Selection
 
 | Name | Configuration and Lifecycle | Applicable Scenarios |
