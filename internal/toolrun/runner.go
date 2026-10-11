@@ -194,7 +194,7 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 			}
 			updated, err := deps.RefreshExecution(ctx, req.Session)
 			if err != nil {
-				return &RunResult{Messages: messages, PreparedCalls: preparedCalls, Stopped: true}
+				return &RunResult{Messages: messages, PreparedCalls: preparedCalls, Err: err}
 			}
 			ctx = updated
 			if actor, ok := contextinfo.ActorFromContext(ctx); ok {

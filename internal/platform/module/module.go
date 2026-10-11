@@ -31,11 +31,14 @@ type Module struct {
 	started, closed bool
 	done            chan struct{}
 	result          error
+	mode            platformbuiltin.Mode // Service mode outlives all message platform loops.
+	superadmins     map[string][]string  // Configured notice recipients, keyed by runtime platform name.
+	running         map[string]bool      // Loops not yet exited; protected by mu.
 }
 
 func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	m := &Module{ctx: ctx, cancel: cancel, done: make(chan struct{})}
+	m := &Module{ctx: ctx, cancel: cancel, done: make(chan struct{}), mode: deps.Mode, superadmins: deps.Superadmins}
 	cfg := &config.Config{ConfigPath: deps.ConfigPath, Platform: deps.Platform, Security: config.SecurityConfig{Superadmins: deps.Superadmins}, Commands: config.CommandsConfig{Prefixes: deps.Prefixes}, Sandbox: config.SandboxConfig{Root: deps.SandboxRoot}, PlatformFiles: deps.Files}
 	bundle, err := platformbuiltin.New(platformbuiltin.Options{Mode: deps.Mode}, cfg, deps.Store, deps.ChatHistory)
 	if err != nil {
@@ -58,9 +61,13 @@ func (m *Module) Start(handler platform.PlatformHandler, stop context.CancelFunc
 		return nil
 	}
 	m.started = true
+	m.running = make(map[string]bool, len(m.runtimes))
+	for _, adapter := range m.runtimes {
+		m.running[adapter.Name()] = true
+	}
 	launched := make(chan struct{})
 	go func() {
-		err := runPlatforms(m.ctx, handler, m.runtimes, func(context.Context) { close(launched) }, stop)
+		err := m.runPlatforms(m.ctx, handler, func(context.Context) { close(launched) }, stop)
 		if m.ui != nil {
 			err = errors.Join(err, m.ui.Close(context.Background()))
 		}
@@ -76,7 +83,7 @@ func (m *Module) Start(handler platform.PlatformHandler, stop context.CancelFunc
 	return nil
 }
 
-// Wait reports the same all-platform completion result as the former app executor.
+// Wait includes service lifetime even when no message platform remains running.
 func (m *Module) Wait(ctx context.Context) error {
 	select {
 	case <-m.done:
@@ -149,17 +156,21 @@ func platformStopsAppOnExit(adapter platform.Runtime) bool {
 	return ok && lifecycle.StopAppOnExit()
 }
 
-func runPlatforms(ctx context.Context, handler platform.PlatformHandler, adapters []platform.Runtime, afterStart func(context.Context), stop context.CancelFunc) error {
+func (m *Module) runPlatforms(ctx context.Context, handler platform.PlatformHandler, afterStart func(context.Context), stop context.CancelFunc) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	var wg sync.WaitGroup
-	for _, adapter := range adapters {
+	for _, adapter := range m.runtimes {
 		adapter := adapter
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := adapter.Run(runCtx, handler); err != nil && !errors.Is(err, context.Canceled) {
+			err := adapter.Run(runCtx, handler)
+			m.mu.Lock()
+			delete(m.running, adapter.Name())
+			m.mu.Unlock()
+			if err != nil && !(runCtx.Err() != nil && err == runCtx.Err()) {
 				{
 					record := globalevents.LogRecord{
 						Category:     globalevents.LogRuntime,
@@ -170,10 +181,6 @@ func runPlatforms(ctx context.Context, handler platform.PlatformHandler, adapter
 						Content:      fmt.Sprintf("platform stopped with error\nplatform=%v\nerror=%v", adapter.Name(), err.Error()),
 						ContentLimit: 4096,
 						ResultStatus: globalevents.ResultFailed,
-					}
-					if errors.Is(err, context.Canceled) {
-						record.ResultStatus = globalevents.ResultCanceled
-						record.Level = slog.LevelInfo
 					}
 					facts, _ := contextinfo.ExecutionFromContext(runCtx)
 					if facts.SessionID != "" {
@@ -191,10 +198,13 @@ func runPlatforms(ctx context.Context, handler platform.PlatformHandler, adapter
 					if facts.RootRequestID != "" {
 						record.Identity.RootRequestID = &facts.RootRequestID
 					}
-					_ = globalevents.EmitLog(runCtx, record)
+					_ = globalevents.EmitLog(context.WithoutCancel(runCtx), record)
+				}
+				if runCtx.Err() == nil {
+					m.notifyPlatformFailure(runCtx, adapter.Name(), err)
 				}
 			}
-			if platformStopsAppOnExit(adapter) {
+			if m.mode != platformbuiltin.ModeService && platformStopsAppOnExit(adapter) {
 				cancel()
 				if stop != nil {
 					stop()
@@ -216,6 +226,10 @@ func runPlatforms(ctx context.Context, handler platform.PlatformHandler, adapter
 		<-done
 		return ctx.Err()
 	case <-done:
+		if m.mode == platformbuiltin.ModeService {
+			<-ctx.Done()
+			return ctx.Err()
+		}
 		return nil
 	}
 }

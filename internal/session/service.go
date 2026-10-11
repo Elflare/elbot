@@ -12,22 +12,22 @@ import (
 )
 
 type Service struct {
-	store                storage.Store
-	mu                   sync.Mutex
-	current              map[string]*Binding
-	gates                map[string]*scopeGate
-	changed              *signal.Signal[BindingChangedEvent, signal.Empty]
-	activeSessionIDs     func() []string
-	foregroundActivation func(context.Context, *storage.Session, *Binding)
-	foregroundCheck      func(context.Context, *storage.Session) error
-	materials            MaterialResolver
-	namingConfig         NamingConfig
-	titleGen             TitleGenerator
-	namingSignals        NamingSignals
-	logConnections       []*signal.Connection
-	namingStates         map[string]namingState
-	naming               namingLifecycle
-	defaultMode          string
+	store               storage.Store
+	mu                  sync.Mutex
+	current             map[string]*Binding
+	gates               map[string]*scopeGate
+	changed             *signal.Signal[BindingChangedEvent, signal.Empty]
+	activeSessionIDs    func() []string
+	foregroundActivated *signal.Signal[ForegroundActivatedEvent, signal.Empty]
+	foregroundCheck     func(context.Context, *storage.Session) error
+	materials           MaterialResolver
+	namingConfig        NamingConfig
+	titleGen            TitleGenerator
+	namingSignals       NamingSignals
+	logConnections      []*signal.Connection
+	namingStates        map[string]namingState
+	naming              namingLifecycle
+	defaultMode         string
 }
 
 func NewService(store storage.Store) *Service {
@@ -49,16 +49,17 @@ func NewServiceWithConfig(store storage.Store, cfg Config, titleGen TitleGenerat
 		cfg.DefaultMode = storage.SessionModeWork
 	}
 	s := &Service{
-		store:         store,
-		current:       map[string]*Binding{},
-		gates:         map[string]*scopeGate{},
-		changed:       signal.New[BindingChangedEvent, signal.Empty]("session.binding_changed"),
-		namingConfig:  cfg.NamingConfig,
-		titleGen:      titleGen,
-		namingSignals: newNamingSignals(),
-		namingStates:  map[string]namingState{},
-		naming:        namingLifecycle{done: make(chan struct{})},
-		defaultMode:   cfg.DefaultMode,
+		store:               store,
+		current:             map[string]*Binding{},
+		gates:               map[string]*scopeGate{},
+		changed:             signal.New[BindingChangedEvent, signal.Empty]("session.binding_changed"),
+		foregroundActivated: signal.New[ForegroundActivatedEvent, signal.Empty]("session.foreground_activated"),
+		namingConfig:        cfg.NamingConfig,
+		titleGen:            titleGen,
+		namingSignals:       newNamingSignals(),
+		namingStates:        map[string]namingState{},
+		naming:              namingLifecycle{done: make(chan struct{})},
+		defaultMode:         cfg.DefaultMode,
 	}
 	s.connectLogSignals()
 	return s

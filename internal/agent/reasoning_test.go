@@ -12,6 +12,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm/chatcompletions"
+	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
 
@@ -80,7 +81,7 @@ func TestExecutionReasoningResolvesAdoptionForNewDeltas(t *testing.T) {
 	out := executionTurnOutput{execution: execution, foreground: foregroundTurnOutput{sender: &OutputSender{reasoning: func(context.Context) dialogue.ReasoningStream { return probe }}}}
 	stream := out.StartReasoning(ctx)
 	stream.Append(ctx, "background")
-	execution.Adopt(contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: "original"}))
+	execution.Adopt(contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: "original"}), storage.Session{})
 	stream.Append(ctx, "new")
 	if !reflect.DeepEqual(probe.targets, []string{"original:new"}) {
 		t.Fatalf("adoption replayed or lost deltas: %v", probe.targets)

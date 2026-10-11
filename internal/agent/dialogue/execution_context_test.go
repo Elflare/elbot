@@ -6,6 +6,7 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/platform"
+	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
 
@@ -18,7 +19,7 @@ func TestForegroundRefreshClearsAbsentSourceAndActor(t *testing.T) {
 	ctx = contextinfo.WithActor(ctx, contextinfo.Actor{ID: "old", Role: contextinfo.RoleSuperadmin})
 	ctx = contextinfo.WithModel(ctx, contextinfo.Model{Provider: "fixed", Model: "m", APIType: "chat"})
 	e := turn.NewExecution("run")
-	e.Adopt(context.Background())
+	e.Adopt(context.Background(), storage.Session{})
 	ctx = turn.WithExecution(ctx, e)
 	cancel()
 	refreshed := (ExecutionView{}).Context(ctx)

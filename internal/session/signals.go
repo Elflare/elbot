@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"elbot/internal/signal"
+	"elbot/internal/storage"
 )
 
 type ChangeReason string
@@ -23,6 +24,18 @@ type BindingChangedEvent struct {
 	Old    *Binding
 	New    *Binding
 	Reason ChangeReason
+}
+
+// ForegroundActivatedEvent reports a committed background-to-foreground handoff.
+// Receivers run under session admission and must only update memory, without I/O
+// or acquiring session/scope admission themselves.
+type ForegroundActivatedEvent struct {
+	Session storage.Session // Committed snapshot; receivers must not mutate its pointer fields.
+	Binding *Binding        // Foreground activation established by this handoff.
+}
+
+func (s *Service) ForegroundActivated() *signal.Signal[ForegroundActivatedEvent, signal.Empty] {
+	return s.foregroundActivated
 }
 
 func (s *Service) BindingChanged() *signal.Signal[BindingChangedEvent, signal.Empty] {

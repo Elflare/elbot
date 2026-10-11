@@ -14,7 +14,7 @@ func (a *Adapter) ConnectNotifications(s *signal.Signal[events.Notification, eve
 		if target.Empty() && isGroupToolPreviewNotice(ctx, outputs) {
 			return events.NotificationReceipt{}, nil
 		}
-		r, _, err := a.SendTo(ctx, target, outputs)
+		r, _, err := delivery.NewManager(a).SendTo(ctx, target, outputs)
 		return events.NotificationReceipt{PlatformMessageIDs: r.PlatformMessageIDs}, err
 	}, signal.ConnectOptions{})
 }
