@@ -372,19 +372,55 @@ func TestManagerLogsNamedHook(t *testing.T) {
 	var buf bytes.Buffer
 	manager := NewManager()
 	captureLogs(t, slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	manager.Register(Registration{Point: PointLLMResponseReceived, Priority: 5, Name: "test.logger", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
+	manager.Register(Registration{Point: PointLLMResponseReceived, Priority: 5, PluginID: "test.plugin", Name: "test.logger", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 		event.LLM.Text = "after"
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
 
-	if _, _, err := manager.Run(context.Background(), Event{Point: PointLLMResponseReceived, LLM: LLMPayload{Text: "before", SourceText: "raw"}}); err != nil {
+	if _, _, err := manager.Run(context.Background(), Event{Point: PointLLMResponseReceived, LLM: LLMPayload{Text: "before", SourceText: "raw", Provider: "test-provider", Model: "test-model"}}); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	logs := buf.String()
-	for _, want := range []string{"test source completed", "test.logger", "before_text=before", "after_text=after", "source_text=raw"} {
+	for _, want := range []string{"test source completed", "test.logger", "plugin=test.plugin", "provider=test-provider", "model=test-model", "before_text=before", "after_text=after", "source_text=raw"} {
 		if !strings.Contains(logs, want) {
 			t.Fatalf("logs missing %q:\n%s", want, logs)
 		}
+	}
+}
+
+func TestManagerOmitsInapplicableLogFields(t *testing.T) {
+	manager := NewManager()
+	var records []globalevents.LogRecord
+	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, r globalevents.LogRecord) error {
+		if r.EventName == "hook_triggered" {
+			records = append(records, r)
+		}
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(connection.Disconnect)
+	if err := manager.Register(Registration{Point: PointAgentTurnOutputPrepared, Name: "clear_text", Match: Always(), Handler: HandlerFunc(func(_ context.Context, event Event) (Event, globalevents.LogResult, error) {
+		event.Message.Segments = nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "action=delete"}, nil
+	})}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.Run(t.Context(), Event{Point: PointAgentTurnOutputPrepared, Message: MessagePayload{Segments: llm.TextSegments("before")}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 {
+		t.Fatal(records)
+	}
+	content := records[0].Content
+	for _, field := range []string{"plugin=", "provider=", "model=", "tool=", "source_text="} {
+		if strings.Contains(content, field) {
+			t.Fatalf("inapplicable field %s: %s", field, content)
+		}
+	}
+	if !strings.HasSuffix(content, "\nbefore_text=before\nafter_text=") {
+		t.Fatalf("text deletion lost: %q", content)
 	}
 }
 

@@ -47,6 +47,7 @@ type replyTestPlatform struct {
 	fakePlatform
 	events                          *[]string
 	receipt                         delivery.Receipt
+	outputsReceipt                  delivery.Receipt
 	sendErr, outputsErr             error
 	sendLogResult, outputsLogResult *events.LogResult
 	text                            string
@@ -89,7 +90,7 @@ func (p *replyTestPlatform) SendTo(_ context.Context, noticeTarget delivery.Targ
 		if p.outputsLogResult != nil {
 			logResult = *p.outputsLogResult
 		}
-		return delivery.Receipt{}, logResult, err
+		return p.outputsReceipt, logResult, err
 	}
 }
 

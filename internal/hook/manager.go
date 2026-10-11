@@ -583,7 +583,23 @@ func (m *DefaultManager) logHook(ctx context.Context, mode string, reg registrat
 		ResultStatus: logResult.ResultStatus,
 		Type:         globalevents.ContentText,
 		ContentLimit: 4096,
-		Content:      fmt.Sprintf("%s: point=%s hook=%s plugin=%s priority=%d order=%d mode=%s provider=%s model=%s tool=%s \nbefore_text=%s\nafter_text=%s\nsource_text=%s", logResult.Content, before.Point, reg.name, reg.pluginID, reg.priority, reg.order, mode, after.LLM.Provider, after.LLM.Model, after.Tool.Name, eventText(before), eventText(after), after.LLM.SourceText),
+		Content:      fmt.Sprintf("%s: point=%s hook=%s priority=%d order=%d mode=%s", logResult.Content, before.Point, reg.name, reg.priority, reg.order, mode),
+	}
+	if reg.pluginID != "" {
+		record.Content += " plugin=" + reg.pluginID
+	}
+	if after.LLM.Provider != "" {
+		record.Content += " provider=" + after.LLM.Provider
+	}
+	if after.LLM.Model != "" {
+		record.Content += " model=" + after.LLM.Model
+	}
+	if after.Tool.Name != "" {
+		record.Content += " tool=" + after.Tool.Name
+	}
+	record.Content += fmt.Sprintf("\nbefore_text=%s\nafter_text=%s", eventText(before), eventText(after))
+	if after.LLM.SourceText != "" {
+		record.Content += "\nsource_text=" + after.LLM.SourceText
 	}
 	if before.Session.ID != "" {
 		record.Identity.SessionID = &before.Session.ID
