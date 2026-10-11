@@ -21,7 +21,7 @@ type StatusRecorder struct {
 	owners    map[string]agentevents.EventMeta
 	version   uint64
 	turns     *turn.Manager
-	changed   *signal.Signal[agentevents.StatusChangedEvent]
+	changed   *signal.Signal[agentevents.StatusChangedEvent, signal.Empty]
 }
 
 func (r *StatusRecorder) Record(ctx context.Context, snapshot runtimestatus.Snapshot, display bool) {
@@ -113,7 +113,7 @@ func runtimeDoneStatus(base runtimestatus.Snapshot, usageUpdatedAt time.Time) ru
 // StatusRecorderDeps declares only the capabilities consumed by StatusRecorder.
 type StatusRecorderDeps struct {
 	Turns   *turn.Manager
-	Changed *signal.Signal[agentevents.StatusChangedEvent]
+	Changed *signal.Signal[agentevents.StatusChangedEvent, signal.Empty]
 }
 
 // NewStatusRecorder initializes StatusRecorder without installing cross-service callbacks.

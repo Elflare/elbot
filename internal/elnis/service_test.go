@@ -53,7 +53,7 @@ func TestEventLogContentIncludesTags(t *testing.T) {
 		t.Fatalf("prepareEvent: %v", err)
 	}
 	var records []globalevents.LogRecord
-	connection, err := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
 		if record.EventName == "elnis.recorded" {
 			records = append(records, record)
 		}

@@ -36,8 +36,8 @@ func (o foregroundTurnOutput) SendOutputs(ctx context.Context, outputs []deliver
 	return o.sender.SendOutputs(ctx, outputs)
 }
 
-func (o foregroundTurnOutput) SendNotice(ctx context.Context, level slog.Level, text string) {
-	o.sender.TextNotice(ctx, level, text)
+func (o foregroundTurnOutput) Notify(ctx context.Context, level slog.Level, text string) {
+	o.sender.Notify(ctx, level, text)
 }
 
 func (o foregroundTurnOutput) SendPreview(ctx context.Context, text string) {
@@ -70,7 +70,7 @@ func (o backgroundTurnOutput) SendOutputs(ctx context.Context, outputs []deliver
 	return events.LogResult{ResultStatus: events.ResultSkipped, Content: "background output is buffered"}, nil
 }
 
-func (o backgroundTurnOutput) SendNotice(ctx context.Context, level slog.Level, text string) {}
+func (o backgroundTurnOutput) Notify(ctx context.Context, level slog.Level, text string) {}
 
 func (o backgroundTurnOutput) SendPreview(ctx context.Context, text string) {}
 

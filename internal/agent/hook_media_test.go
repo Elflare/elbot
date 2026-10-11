@@ -86,8 +86,8 @@ func (s *hookMediaSender) SendChat(ctx context.Context, outputs []delivery.Outpu
 	}
 	return delivery.Receipt{PlatformMessageIDs: []string{"sent"}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
-func (s *hookMediaSender) SendNotice(ctx context.Context, n delivery.Notice) (delivery.Receipt, events.LogResult, error) {
-	return s.SendChat(ctx, n.Outputs)
+func (s *hookMediaSender) SendTo(ctx context.Context, nTarget delivery.Target, nOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	return s.SendChat(ctx, nOutputs)
 }
 
 type orderedMediaSender struct {
@@ -122,8 +122,8 @@ func (s *orderedMediaSender) SendChat(_ context.Context, outputs []delivery.Outp
 	}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
-func (s *orderedMediaSender) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, events.LogResult, error) {
-	return s.SendChat(ctx, notice.Outputs)
+func (s *orderedMediaSender) SendTo(ctx context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	return s.SendChat(ctx, noticeOutputs)
 }
 
 func TestOutputMediaSourcesAreCanonicalAndReceiptOrderPersists(t *testing.T) {
@@ -205,7 +205,7 @@ func TestMediaReceiptKeepsDuplicatesAndPartialSuccess(t *testing.T) {
 		}
 	})
 	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Sender: sender})
-	got, _, sendErr := dispatcher.SendNotice(ctx, delivery.Notice{Outputs: outputs})
+	got, _, sendErr := dispatcher.SendTo(ctx, delivery.Target{}, outputs)
 	if sendErr == nil || len(got.PlatformMessageIDs) != 1 {
 		t.Fatalf("receipt/error = %#v/%v", got, sendErr)
 	}

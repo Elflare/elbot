@@ -1,136 +1,196 @@
 package notification
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"log/slog"
-	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/delivery"
-	"elbot/internal/delivery/dispatch"
-	globalevents "elbot/internal/events"
-	"elbot/internal/platform"
+	"elbot/internal/events"
 	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/storage/sqlite"
 )
 
-type noticeSender struct {
-	calls int
-	info  contextinfo.Conversation
-	err   error
-}
-
-func (s *noticeSender) SendChat(context.Context, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
-	panic("notice sent as chat")
-}
-func (s *noticeSender) SendNotice(ctx context.Context, _ delivery.Notice) (delivery.Receipt, globalevents.LogResult, error) {
-	s.calls++
-	s.info, _ = contextinfo.ConversationFromContext(ctx)
-	{
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
-		if s.err != nil {
-			logResult.ResultStatus = globalevents.ResultFailed
-			logResult.Content = s.err.Error()
-			if s.err == context.Canceled {
-				logResult.ResultStatus = globalevents.ResultCanceled
-			}
-		}
-		return delivery.Receipt{PlatformMessageIDs: []string{"sent"}}, logResult, s.err
-	}
-}
-
-func TestNotificationSourceSurvivesNewContextAndRejectsExpiredBinding(t *testing.T) {
-	ctx := context.Background()
-	store, err := sqlite.New(ctx, ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	sessions := session.NewServiceWithConfig(store, session.Config{DefaultMode: "work"}, nil)
-	scope := session.Scope{ActorID: "test:one", Platform: "test", PlatformScopeID: "old"}
-	if _, err := sessions.Create(ctx, scope, session.CreateRequest{Title: "old"}); err != nil {
-		t.Fatal(err)
-	}
-	_, binding, err := sessions.CurrentBound(ctx, scope)
-	if err != nil {
-		t.Fatal(err)
-	}
-	info := contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ScopeID: "old"}, PlatformMessageID: "original", PlatformData: "extension"}
-	ctx = session.WithBinding(contextinfo.WithConversation(ctx, info), binding)
-	intent := Capture(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("warning")}})
-	sender := &noticeSender{err: errors.New("send failed")}
-	manager := New(sender, false)
-	receipt, _, err := manager.Send(context.Background(), intent)
-	if !errors.Is(err, sender.err) || len(receipt.PlatformMessageIDs) != 1 || sender.info != info || sender.calls != 1 {
-		t.Fatalf("send=%#v/%v source=%#v calls=%d", receipt, err, sender.info, sender.calls)
-	}
-	if _, err := sessions.Create(context.Background(), scope, session.CreateRequest{Title: "new"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := manager.Send(context.Background(), intent); !errors.Is(err, context.Canceled) {
-		t.Fatalf("expired binding error=%v", err)
-	}
-	if sender.calls != 1 {
-		t.Fatal("old notice sent after session replacement")
-	}
-}
-
-func TestServiceStartupNoticeLogsContentWithoutBroadcast(t *testing.T) {
-	var logs bytes.Buffer
-	sender := &noticeSender{}
-	captureLogs(t, slog.New(slog.NewTextHandler(&logs, nil)))
-	manager := New(sender, true)
-	manager.Text(context.Background(), slog.LevelWarn, "plugin unavailable")
-	if sender.calls != 0 || !strings.Contains(logs.String(), "plugin unavailable") {
-		t.Fatalf("calls=%d logs=%s", sender.calls, logs.String())
-	}
-	_, _, err := manager.SendNotice(context.Background(), delivery.Notice{Outputs: []delivery.Output{{Kind: delivery.KindText, Text: "explicit", Target: delivery.Target{Platform: "test", Superadmins: true}}}})
-	if err != nil || sender.calls != 1 {
-		t.Fatalf("explicit target blocked: %v calls=%d", err, sender.calls)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	manager.Text(ctx, slog.LevelWarn, "cancelled")
-	if strings.Contains(logs.String(), "cancelled") || sender.calls != 1 {
-		t.Fatal("cancelled notice delivered")
-	}
-}
-
-func TestCapturedNoticeDoesNotBorrowAnotherMessagesSender(t *testing.T) {
-	original, other, registered := &noticeSender{}, &noticeSender{}, &noticeSender{}
-	router := dispatch.New(dispatch.Options{})
-	router.RegisterPlatformSender("test", registered)
-	manager := New(router, false)
-	info := contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ScopeID: "same-user"}, PlatformData: "first-connection"}
-	origin := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: info, Sender: original})
-	intent := Capture(origin, delivery.Notice{Outputs: []delivery.Output{delivery.Text("delayed")}})
-	worker := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: info.Source, PlatformData: "second-connection"}, Sender: other})
-	if _, _, err := manager.Send(worker, intent); err != nil {
-		t.Fatal(err)
-	}
-	if original.calls != 1 || other.calls != 0 || registered.calls != 0 || original.info != info {
-		t.Fatalf("original=%d other=%d registered=%d source=%#v", original.calls, other.calls, registered.calls, original.info)
-	}
-}
-
-// captureLogs observes the public signal; production never receives this logger.
-func captureLogs(t *testing.T, logger *slog.Logger) {
+func testManager(t *testing.T, primary string) *Manager {
 	t.Helper()
-	connection, err := globalevents.LogSubmitted.Connect(func(ctx context.Context, record globalevents.LogRecord) error {
-		if !logger.Enabled(ctx, record.Level) {
-			return nil
+	m, err := New(primary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := m.Close(ctx); err != nil {
+			t.Error(err)
 		}
-		out := slog.NewRecord(time.Now(), record.Level, record.Content, 0)
-		out.AddAttrs(slog.String("event", record.EventName), slog.String("module", record.Module))
-		return logger.Handler().Handle(ctx, out)
+	})
+	return m
+}
+func addTestPlatform(t *testing.T, m *Manager, name string, h signal.Handler[events.Notification, events.NotificationReceipt]) *signal.Signal[events.Notification, events.NotificationReceipt] {
+	t.Helper()
+	s, err := m.AddPlatform(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Connect(h, signal.ConnectOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+func TestOriginalSourceAndPartialFailure(t *testing.T) {
+	m := testManager(t, "test")
+	wantErr := errors.New("partially sent")
+	origin := contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ConversationKind: contextinfo.ConversationPrivate, ConversationID: "one", ScopeID: "private:one"}, PlatformMessageID: "original", PlatformData: "first-connection"}
+	addTestPlatform(t, m, "test", func(ctx context.Context, n events.Notification) (events.NotificationReceipt, error) {
+		info, _ := contextinfo.ConversationFromContext(ctx)
+		if info != origin || n.Level != slog.LevelWarn {
+			t.Error("lost captured origin or severity", info, n)
+		}
+		return events.NotificationReceipt{PlatformMessageIDs: []string{"sent"}}, wantErr
+	})
+	n := events.NewNotification(contextinfo.WithConversation(context.Background(), origin), slog.LevelWarn, "warning")
+	worker := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: origin.Source, PlatformData: "other-connection"})
+	r, err := events.NotificationRequested.Emit(worker, n)
+	if !errors.Is(err, wantErr) || len(r) != 1 || len(r[0].Value.PlatformMessageIDs) != 1 || !r[0].Started {
+		t.Fatal(r, err)
+	}
+}
+func TestPlatformFullWarnsAndOtherPlatformStillSends(t *testing.T) {
+	m := testManager(t, "slow")
+	started := make(chan struct{}, 8)
+	release := make(chan struct{})
+	defer close(release)
+	slow := addTestPlatform(t, m, "slow", func(context.Context, events.Notification) (events.NotificationReceipt, error) {
+		select {
+		case started <- struct{}{}:
+		default:
+		}
+		<-release
+		return events.NotificationReceipt{}, nil
+	})
+	addTestPlatform(t, m, "fast", func(context.Context, events.Notification) (events.NotificationReceipt, error) {
+		return events.NotificationReceipt{PlatformMessageIDs: []string{"fast"}}, nil
+	})
+	for i := range 8 {
+		if _, err := slow.EmitAsync(context.Background(), events.Notification{Target: events.NotificationTarget{ID: string(rune('a' + i))}, Text: "busy"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for range 8 {
+		<-started
+	}
+	for range 256 {
+		if _, err := slow.EmitAsync(context.Background(), events.Notification{Text: "queued"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	logs := make(chan events.LogRecord, 1)
+	c, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
+		if r.EventName == "notification_queue_full" {
+			logs <- r
+		}
+		return nil
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(connection.Disconnect)
+	defer c.Close(context.Background())
+	n := events.Notification{Target: events.NotificationTarget{Platform: "slow", Kind: contextinfo.ConversationPrivate, ID: "one"}, Text: "overflow"}
+	if _, err := events.NotificationRequested.Emit(context.Background(), n); !errors.Is(err, signal.ErrQueueFull) {
+		t.Fatal(err)
+	}
+	select {
+	case r := <-logs:
+		if r.Level != slog.LevelWarn {
+			t.Fatal(r)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("missing overflow warning")
+	}
+	n.Target.Platform = "fast"
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if r, err := events.NotificationRequested.Emit(ctx, n); err != nil || r[0].Value.PlatformMessageIDs[0] != "fast" {
+		t.Fatal(r, err)
+	}
+}
+func TestQueuedNotificationRejectsExpiredBinding(t *testing.T) {
+	m := testManager(t, "cli")
+	started, release := make(chan struct{}), make(chan struct{})
+	defer func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	}()
+	var calls atomic.Int32
+	s := addTestPlatform(t, m, "cli", func(_ context.Context, n events.Notification) (events.NotificationReceipt, error) {
+		calls.Add(1)
+		if n.Text == "block" {
+			close(started)
+			<-release
+		}
+		return events.NotificationReceipt{}, nil
+	})
+	store, err := sqlite.New(context.Background(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	sessions := session.NewService(store)
+	scope := session.Scope{ActorID: "cli:one", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	if _, err := sessions.Create(context.Background(), scope, session.CreateRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	_, binding, err := sessions.CurrentBound(context.Background(), scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := events.Notification{Target: events.NotificationTarget{Platform: "cli"}, Text: "block"}
+	_, _ = s.EmitAsync(context.Background(), n)
+	<-started
+	n.Text = "old"
+	ctx := session.WithBinding(context.Background(), binding)
+	e, err := s.EmitAsync(ctx, n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sessions.Create(context.Background(), scope, session.CreateRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	deadline, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if results, err := e.Wait(deadline); !errors.Is(err, context.Canceled) || len(results) != 1 || results[0].Started {
+		t.Fatal(results, err)
+	}
+	if calls.Load() != 1 {
+		t.Fatal("queued notification bypassed the active key")
+	}
+}
+func TestManagerOwnershipAndMissingPlatform(t *testing.T) {
+	m := testManager(t, "cli")
+	if _, err := New("cli"); err == nil {
+		t.Fatal("duplicate global manager")
+	}
+	if _, err := events.NotificationRequested.Emit(context.Background(), events.Notification{Text: "missing"}); err == nil {
+		t.Fatal("missing platform succeeded")
+	}
+	s, err := m.AddPlatform("cli")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := events.NotificationRequested.Emit(context.Background(), events.Notification{Text: "no receiver"}); !errors.Is(err, signal.ErrNoReceiver) {
+		t.Fatal(err)
+	}
+	if _, err := s.Connect(func(context.Context, events.Notification) (events.NotificationReceipt, error) {
+		return events.NotificationReceipt{}, nil
+	}, signal.ConnectOptions{}); err != nil {
+		t.Fatal(err)
+	}
 }

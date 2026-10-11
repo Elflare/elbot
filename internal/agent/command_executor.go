@@ -109,7 +109,7 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 		return true, nil
 	}
 	if result.Content != "" {
-		if err := e.output.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(result.Content)}}); err != nil {
+		if err := e.output.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(result.Content)}); err != nil {
 			return true, err
 		}
 	}
@@ -135,7 +135,7 @@ type CommandExecution interface {
 
 type CommandOutput interface {
 	SendChat(context.Context, string)
-	SendNotice(context.Context, delivery.Notice) error
+	SendTo(context.Context, delivery.Target, []delivery.Output) error
 }
 
 type CommandConfirmations interface {

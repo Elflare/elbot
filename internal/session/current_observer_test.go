@@ -23,7 +23,7 @@ func TestBindingInvalidatesRollbackAtLifecycleBoundary(t *testing.T) {
 			}
 			manager := fileops.NewRollbackManager()
 			_, binding, _ := svc.CurrentBound(ctx, scope)
-			_, err = svc.BindingChanged().Connect(func(_ context.Context, event BindingChangedEvent) error { manager.Forget(event.Old); return nil }, signal.ConnectOptions{})
+			_, err = svc.BindingChanged().Observe(func(_ context.Context, event BindingChangedEvent) error { manager.Forget(event.Old); return nil }, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -115,7 +115,7 @@ func TestBindingIgnoresFailedAndConditionalTransitions(t *testing.T) {
 	ctx := context.Background()
 	scope := Scope{ActorID: "user", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 	var transitions []string
-	_, _ = svc.BindingChanged().Connect(func(_ context.Context, e BindingChangedEvent) error {
+	_, _ = svc.BindingChanged().Observe(func(_ context.Context, e BindingChangedEvent) error {
 		id := ""
 		if e.New != nil {
 			id = e.New.SessionID()

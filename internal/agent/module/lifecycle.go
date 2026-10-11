@@ -31,8 +31,8 @@ func (m *Module) BeginClose() {
 		if m.sessions != nil {
 			<-m.sessions.Done()
 		}
-		for _, q := range m.bindings.queues {
-			<-q.Done()
+		for _, connection := range m.bindings.connections {
+			<-connection.Done()
 		}
 		for _, d := range m.bindings.displays {
 			<-d.done

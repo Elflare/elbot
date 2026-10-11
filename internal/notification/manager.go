@@ -1,155 +1,151 @@
-// Package notification delivers runtime notices without owning conversation execution.
+// Package notification owns routing and lifetime of short runtime notifications.
 package notification
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/delivery"
-	globalevents "elbot/internal/events"
+	"elbot/internal/events"
 	"elbot/internal/platform"
 	"elbot/internal/session"
+	"elbot/internal/signal"
 )
 
-// Intent preserves the event's original source and activation across asynchronous work.
-// PlatformData follows contextinfo's immutable snapshot convention.
-type Intent struct {
-	Conversation *contextinfo.Conversation
-	Binding      *session.Binding
-	Notice       delivery.Notice
-	sender       delivery.ContextSender
-}
-
 type Manager struct {
-	sender delivery.MessageSender
-
-	logWithoutSource bool
+	mu         sync.Mutex
+	primary    string
+	platforms  map[string]*signal.Signal[events.Notification, events.NotificationReceipt]
+	connection *signal.Connection
+	closed     bool
 }
 
-func New(sender delivery.MessageSender, logWithoutSource bool) *Manager {
-	return &Manager{sender: sender, logWithoutSource: logWithoutSource}
-}
-
-func Capture(ctx context.Context, notice delivery.Notice) Intent {
-	intent := Intent{Notice: notice}
-	if info, ok := contextinfo.ConversationFromContext(ctx); ok {
-		intent.Conversation = &info
+func New(primary string) (*Manager, error) {
+	m := &Manager{primary: primary, platforms: make(map[string]*signal.Signal[events.Notification, events.NotificationReceipt])}
+	c, err := events.NotificationRequested.ConnectForward(m.route, signal.ConnectOptions{})
+	if err != nil {
+		return nil, err
 	}
-	intent.Binding, _ = session.BindingFromContext(ctx)
+	m.connection = c
+	return m, nil
+}
+
+// AddPlatform creates the platform's independent scheduling resources. The
+// adapter connects its sender; it does not own another notification queue.
+func (m *Manager) AddPlatform(name string) (*signal.Signal[events.Notification, events.NotificationReceipt], error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
+		return nil, signal.ErrClosed
+	}
+	if _, ok := m.platforms[name]; ok {
+		return nil, fmt.Errorf("notification platform %q already registered", name)
+	}
+	s := signal.New[events.Notification, events.NotificationReceipt]("notification."+name, signal.Options[events.Notification]{Required: true, Single: true, Key: func(n events.Notification) string {
+		if n.Target.ID != "" {
+			return string(n.Target.Kind) + "\x00" + n.Target.ID
+		}
+		return "scope\x00" + n.Target.ScopeID
+	}, Before: func(ctx context.Context, _ events.Notification) error {
+		if binding, ok := session.BindingFromContext(ctx); ok && !binding.Valid() {
+			return context.Canceled
+		}
+		return nil
+	}})
+	m.platforms[name] = s
+	return s, nil
+}
+func (m *Manager) route(ctx context.Context, n events.Notification) (*signal.Emission[events.NotificationReceipt], error) {
+	if strings.TrimSpace(n.Text) == "" {
+		return nil, errors.New("notification text is empty")
+	}
 	if msg, ok := platform.MessageContextFrom(ctx); ok {
-		intent.sender = msg.Sender
+		if suppressed, ok := msg.Sender.(interface{ NotificationsSuppressed() bool }); ok && suppressed.NotificationsSuppressed() {
+			return nil, nil
+		}
 	}
-	return intent
+	if n.Origin != nil {
+		ctx = contextinfo.WithConversation(ctx, *n.Origin)
+		if n.Target == (events.NotificationTarget{}) {
+			n.Target = events.NotificationTarget{Platform: n.Origin.Source.Platform, Kind: n.Origin.Source.ConversationKind, ID: n.Origin.Source.ConversationID, ScopeID: n.Origin.Source.ScopeID}
+		}
+	}
+	if n.Target.Platform == "" {
+		n.Target.Platform = m.primary
+	}
+	if kind, id, ok := strings.Cut(n.Target.ScopeID, ":"); ok && (kind == "private" || kind == "group" || kind == "channel") {
+		if n.Target.Kind == "" || n.Target.Kind == contextinfo.ConversationUnknown {
+			n.Target.Kind = contextinfo.ConversationKind(kind)
+		}
+		if n.Target.ID == "" {
+			n.Target.ID = id
+		}
+	}
+	if n.Target.Platform == "service" && n.Target.ID == "" {
+		logged, err := events.EmitLogAsync(ctx, events.LogRecord{Category: events.LogRuntime, Level: n.Level, EventName: "runtime_notification", Module: "notification", Type: events.ContentText, Content: n.Text, ContentLimit: 4096})
+		if logged == nil {
+			return nil, err
+		}
+		return signal.MapResults(logged, func(results []signal.Result[signal.Empty]) signal.Result[events.NotificationReceipt] {
+			var errs []error
+			var started bool
+			for _, r := range results {
+				errs = append(errs, r.Err)
+				started = started || r.Started
+			}
+			return signal.Result[events.NotificationReceipt]{Started: started, Err: errors.Join(errs...)}
+		}), err
+	}
+	if n.Target.Platform != "cli" {
+		if n.Target.ID == "" {
+			return nil, errors.New("notification target ID is empty")
+		}
+		switch n.Target.Kind {
+		case contextinfo.ConversationPrivate, contextinfo.ConversationGroup, contextinfo.ConversationChannel:
+		default:
+			return nil, errors.New("notification conversation kind is invalid")
+		}
+	}
+	m.mu.Lock()
+	s := m.platforms[n.Target.Platform]
+	closed := m.closed
+	m.mu.Unlock()
+	if closed {
+		return nil, signal.ErrClosed
+	}
+	if s == nil {
+		return nil, fmt.Errorf("notification platform %q is not configured", n.Target.Platform)
+	}
+	e, err := s.EmitAsync(ctx, n)
+	if errors.Is(err, signal.ErrQueueFull) {
+		// Logging has its own bounded signal and category queues. Do not wait for
+		// the logger here: a congested platform must not monopolize routing.
+		_, _ = events.EmitLogAsync(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_queue_full", Module: "notification", Type: events.ContentText, Content: fmt.Sprintf("notification queue full: platform=%s kind=%s target=%s", n.Target.Platform, n.Target.Kind, n.Target.ID), ContentLimit: 4096, ResultStatus: events.ResultFailed})
+	}
+	return e, err
 }
-
-func (m *Manager) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, globalevents.LogResult, error) {
-	return m.Send(ctx, Capture(ctx, notice))
+func (m *Manager) BeginClose() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
+		return
+	}
+	m.closed = true
+	m.connection.BeginClose()
+	for _, s := range m.platforms {
+		s.BeginClose()
+	}
 }
-
-func (m *Manager) Send(ctx context.Context, intent Intent) (delivery.Receipt, globalevents.LogResult, error) {
-	if err := ctx.Err(); err != nil {
-		{
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
-			if err != nil {
-				logResult.ResultStatus = globalevents.ResultFailed
-				logResult.Content = err.Error()
-				if err == context.Canceled {
-					logResult.ResultStatus = globalevents.ResultCanceled
-				}
-			}
-			return delivery.Receipt{}, logResult, err
-		}
+func (m *Manager) Close(ctx context.Context) error {
+	m.BeginClose()
+	var errs []error
+	errs = append(errs, m.connection.Close(ctx))
+	for _, s := range m.platforms {
+		errs = append(errs, s.Close(ctx))
 	}
-	if intent.Binding != nil {
-		if !intent.Binding.Valid() {
-			{
-				err := context.Canceled
-				logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
-				if err != nil {
-					logResult.ResultStatus = globalevents.ResultFailed
-					logResult.Content = err.Error()
-					if err == context.Canceled {
-						logResult.ResultStatus = globalevents.ResultCanceled
-					}
-				}
-				return delivery.Receipt{}, logResult, err
-			}
-		}
-		ctx = session.WithBinding(ctx, intent.Binding)
-	}
-	// Replace routing values, retaining the worker's cancellation. In particular,
-	// never borrow another message's Sender or lose a captured discard sender.
-	message := platform.MessageContext{Sender: intent.sender}
-	if intent.Conversation != nil {
-		message.Conversation = *intent.Conversation
-	}
-	ctx = platform.WithMessageContext(ctx, message)
-	if m.logWithoutSource && intent.Notice.Target.Empty() && (intent.Conversation == nil || intent.Conversation.Source.Platform == "") {
-		if err := delivery.ValidateOutputs(intent.Notice.Outputs); err != nil {
-			{
-				logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
-				if err != nil {
-					logResult.ResultStatus = globalevents.ResultFailed
-					logResult.Content = err.Error()
-					if err == context.Canceled {
-						logResult.ResultStatus = globalevents.ResultCanceled
-					}
-				}
-				return delivery.Receipt{}, logResult, err
-			}
-		}
-		target, err := delivery.ValidateOutputsTarget(intent.Notice.Outputs)
-		if err != nil {
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-			if err == context.Canceled {
-				logResult.ResultStatus = globalevents.ResultCanceled
-			}
-			return delivery.Receipt{}, logResult, err
-		}
-		if target.Empty() {
-
-			for _, output := range intent.Notice.Outputs {
-				{
-					record := globalevents.LogRecord{
-						Category:     globalevents.LogRuntime,
-						Level:        intent.Notice.Level,
-						EventName:    "runtime_notification",
-						Module:       "notification",
-						Type:         globalevents.ContentText,
-						Content:      fmt.Sprintf("runtime notification: %s\nkind=%s", output.Text, output.Kind),
-						ContentLimit: 4096,
-					}
-					facts, _ := contextinfo.ExecutionFromContext(ctx)
-					if facts.SessionID != "" {
-						record.Identity.SessionID = &facts.SessionID
-					}
-					if facts.RunID != "" {
-						record.Identity.RunID = &facts.RunID
-					}
-					if facts.Attempt != "" {
-						record.Identity.Attempt = &facts.Attempt
-					}
-					if facts.RequestID != "" {
-						record.Identity.RequestID = &facts.RequestID
-					}
-					if facts.RootRequestID != "" {
-						record.Identity.RootRequestID = &facts.RootRequestID
-					}
-					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
-				}
-			}
-
-			return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
-		}
-	}
-	return m.sender.SendNotice(ctx, intent.Notice)
-}
-
-func (m *Manager) Text(ctx context.Context, level slog.Level, text string) {
-	if text = strings.TrimSpace(text); text != "" {
-		_, _, _ = m.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(text)}, Level: level})
-	}
+	return errors.Join(errs...)
 }

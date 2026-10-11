@@ -44,8 +44,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 	for _, adapter := range m.runtimes {
 		m.dispatcher.RegisterPlatformSender(adapter.Name(), adapter)
 	}
-	m.notifications = notification.New(m.dispatcher, m.primary.Name() == "service")
-	return m, nil
+	return m, m.connectNotifications()
 }
 func (m *Module) Start(handler platform.PlatformHandler, stop context.CancelFunc) error {
 	m.mu.Lock()
@@ -60,6 +59,9 @@ func (m *Module) Start(handler platform.PlatformHandler, stop context.CancelFunc
 	launched := make(chan struct{})
 	go func() {
 		err := runPlatforms(m.ctx, handler, m.runtimes, func(context.Context) { close(launched) }, stop)
+		if m.notifications != nil {
+			err = errors.Join(err, m.notifications.Close(context.Background()))
+		}
 		m.mu.Lock()
 		m.result = err
 		close(m.done)
@@ -80,9 +82,8 @@ func (m *Module) Wait(ctx context.Context) error {
 		return ctx.Err()
 	}
 }
-func (m *Module) PrimaryName() string                  { return m.primary.Name() }
-func (m *Module) Dispatcher() *dispatch.Router         { return m.dispatcher }
-func (m *Module) Notifications() *notification.Manager { return m.notifications }
+func (m *Module) PrimaryName() string          { return m.primary.Name() }
+func (m *Module) Dispatcher() *dispatch.Router { return m.dispatcher }
 func (m *Module) Names() []string {
 	out := make([]string, 0, len(m.runtimes))
 	for _, r := range m.runtimes {

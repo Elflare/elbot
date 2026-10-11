@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -15,13 +16,13 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextmgr"
 	"elbot/internal/delivery/dispatch"
+	"elbot/internal/events"
 	"elbot/internal/fileops"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/modelmgr"
-	"elbot/internal/notification"
 	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/platform"
 	"elbot/internal/request"
@@ -60,7 +61,7 @@ type testAgentOptions struct {
 	ResidentMemoryStore   *resident.Store
 }
 
-func assembleTestOptions(opts testAgentOptions) testAssembly {
+func assembleTestOptions(t *testing.T, opts testAgentOptions) testAssembly {
 	defaults := config.Default()
 	if opts.Platform == nil {
 		opts.Platform = &fakePlatform{}
@@ -75,10 +76,14 @@ func assembleTestOptions(opts testAgentOptions) testAssembly {
 		opts.ToolsConfig = defaults.Tools
 	}
 	dispatcher := dispatch.New(dispatch.Options{Primary: opts.Platform, Store: opts.Store, Media: opts.Media, MediaRetentionDays: defaults.Maintenance.SandboxCleanup.RetentionDays})
-	notices := notification.New(dispatcher, false)
-	_, _ = opts.Models.ModelRetrying().Connect(func(ctx context.Context, event modelmgr.ModelRetryingEvent) error {
-		notificationrules.ModelRetry(notices)(ctx, event.Provider, event.Retry)
-		return nil
+	connectFixtureNotifications(t, opts.Platform.Name(), dispatcher)
+	_, _ = opts.Models.ModelRetrying().Observe(func(ctx context.Context, event modelmgr.ModelRetryingEvent) error {
+		text := notificationrules.ModelRetry(event.Provider, event.Retry)
+		if text == "" {
+			return nil
+		}
+		_, err := events.NotificationRequested.Emit(ctx, events.NewNotification(ctx, slog.LevelWarn, text))
+		return err
 	}, signal.ConnectOptions{})
 	registry := routes.New()
 	optsResult := testAssembly{RuntimeContext: opts.RuntimeContext,
@@ -90,7 +95,7 @@ func assembleTestOptions(opts testAgentOptions) testAssembly {
 		Contexts:  contextmgr.New(contextmgr.Options{Compactors: registry, Store: opts.Store, Models: opts.Models, Config: defaults.Context, Metadata: defaults.ModelMetadata, Providers: opts.Providers}),
 		ToolState: toolrun.NewStateService(opts.Store), ToolRunner: toolrun.NewManager(opts.ToolRegistry, opts.SecurityPolicy),
 		ToolPreloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: opts.ToolRegistry, TagsPath: opts.ToolTagsPath, Tags: opts.ToolTags}),
-		ToolRegistry:  opts.ToolRegistry, FileRollback: opts.FileRollback, Dispatcher: dispatcher, Notifications: notices, SecurityPolicy: opts.SecurityPolicy,
+		ToolRegistry:  opts.ToolRegistry, FileRollback: opts.FileRollback, Dispatcher: dispatcher, SecurityPolicy: opts.SecurityPolicy,
 		ToolProvider: opts.ToolProvider, HookManager: opts.HookManager, HookRuntime: opts.HookRuntime, ResidentMemoryStore: opts.ResidentMemoryStore,
 	}
 
@@ -106,7 +111,7 @@ func mustNewWithOptions(t *testing.T, cfg testAgentOptions, configure ...func(*t
 	for _, change := range configure {
 		change(&cfg)
 	}
-	opts := assembleTestOptions(cfg)
+	opts := assembleTestOptions(t, cfg)
 	runtimeCtx := opts.RuntimeContext
 	if runtimeCtx == nil {
 		runtimeCtx = t.Context()
@@ -115,7 +120,7 @@ func mustNewWithOptions(t *testing.T, cfg testAgentOptions, configure ...func(*t
 	if err != nil {
 		t.Fatal(err)
 	}
-	connectTestObservers(a, assembleObserverOptions{notifications: a.output.notifications, dispatcher: a.output.dispatcher})
+	connectTestObservers(a, assembleObserverOptions{dispatcher: a.output.dispatcher})
 	opts.Sessions.SetForegroundActivation(a.AdoptForeground)
 	opts.Sessions.StartNaming(context.Background())
 	ownedSessions := opts.Sessions
@@ -259,7 +264,6 @@ type testAssembly struct {
 	HookManager         hook.Manager
 	HookRuntime         HookRouter
 	Dispatcher          *dispatch.Router
-	Notifications       *notification.Manager
 
 	ToolRegistry          *tool.Registry
 	FileRollback          *fileops.Service

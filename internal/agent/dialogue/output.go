@@ -20,7 +20,7 @@ type Output interface {
 	// SendOutputs returns the source log result and original business error;
 	// partial delivery facts belong to the source log body, not a returned receipt.
 	SendOutputs(ctx context.Context, outputs []delivery.Output) (events.LogResult, error)
-	SendNotice(ctx context.Context, level slog.Level, text string)
+	Notify(ctx context.Context, level slog.Level, text string)
 	SendPreview(ctx context.Context, text string)
 	SendReasoning(ctx context.Context, text string)
 	PublishRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot)

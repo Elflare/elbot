@@ -12,8 +12,10 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/events"
+	"elbot/internal/notification"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"log/slog"
 )
 
 func TestRemoteServerTargetClients(t *testing.T) {
@@ -78,6 +80,31 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 		return contextinfo.WithConversation(ctx, info)
 	}
 	firstCtx, secondCtx := snapshot(first), snapshot(second)
+	manager, err := notification.New("cli")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close(context.Background())
+	notices, err := manager.AddPlatform("cli")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.ConnectNotifications(notices); err != nil {
+		t.Fatal(err)
+	}
+	for _, level := range []slog.Level{slog.LevelDebug, slog.LevelInfo, slog.LevelWarn, slog.LevelError} {
+		n := events.NewNotification(firstCtx, level, "original-notice")
+		if _, err := events.NotificationRequested.Emit(secondCtx, n); err != nil {
+			t.Fatal(err)
+		}
+		var msg remoteMessage
+		if err := wsjson.Read(ctx, one, &msg); err != nil {
+			t.Fatal(err)
+		}
+		if msg.Type != remoteMsgNotice || msg.Level != level.String() || msg.Text != n.Text {
+			t.Fatal(msg)
+		}
+	}
 	router := dispatch.New(dispatch.Options{Primary: s})
 	firstTarget, firstTargetErr := router.RuntimeStatusTarget(firstCtx)
 	secondTarget, secondTargetErr := router.RuntimeStatusTarget(secondCtx)
@@ -93,7 +120,7 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 			t.Fatalf("got %q, want %q", msg.Text, want)
 		}
 	}
-	if _, _, err := router.SendNotice(firstCtx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("first-only")}}); err != nil {
+	if _, _, err := router.SendTo(firstCtx, delivery.Target{}, []delivery.Output{delivery.Text("first-only")}); err != nil {
 		t.Fatal(err)
 	}
 	read(one, "first-only")
@@ -101,12 +128,16 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 	read(two, "second-only")
-	if _, _, err := router.SendNotice(firstCtx, delivery.Notice{Target: delivery.Target{Platform: "cli", PrivateUserID: "same-user"}, Outputs: []delivery.Output{delivery.Text("both")}}); err != nil {
+	if _, _, err := router.SendTo(firstCtx, delivery.Target{Platform: "cli", PrivateUserID: "same-user"}, []delivery.Output{delivery.Text("both")}); err != nil {
 		t.Fatal(err)
 	}
 	read(one, "both")
 	read(two, "both")
 	first.conn.CloseNow()
+	if _, err := events.NotificationRequested.Emit(ctx, events.Notification{Target: events.NotificationTarget{Platform: "cli", Kind: contextinfo.ConversationPrivate, ID: "same-user"}, Text: "partial-notice"}); err == nil {
+		t.Fatal("notification partial failure reported success")
+	}
+	read(two, "partial-notice")
 	logResult, err := s.writeClients(ctx, []*remoteClientConn{first, second}, remoteMessage{Type: remoteMsgNotice, Text: "partial-fanout"})
 	if err != nil || logResult.ResultStatus != events.ResultFailed || !strings.Contains(logResult.Content, "sent=1 targets=2") || !strings.Contains(logResult.Content, "write_error=") {
 		t.Fatalf("partial fanout changed business success or hid logging failure: %#v / %v", logResult, err)

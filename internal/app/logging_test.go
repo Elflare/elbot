@@ -21,7 +21,6 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/logging"
-	"elbot/internal/notification"
 )
 
 func TestProductionGlobalLogsKeepUsageAndBoundBodies(t *testing.T) {
@@ -45,8 +44,9 @@ func TestProductionGlobalLogsKeepUsageAndBoundBodies(t *testing.T) {
 			if err := runtime.Dialogue.Handler().HandleMessage(context.Background(), body); err != nil {
 				t.Fatal(err)
 			}
-			notices := notification.New(runtime.Platform.Dispatcher(), true)
-			notices.Text(context.Background(), slog.LevelWarn, "background notice")
+			if _, err := events.NotificationRequested.Emit(context.Background(), events.Notification{Target: events.NotificationTarget{Platform: "service"}, Text: "background notice", Level: slog.LevelWarn}); err != nil {
+				t.Fatal(err)
+			}
 			manager := hook.NewManager()
 			if err := manager.Register(hook.Registration{Point: hook.PointErrorOccurred, Name: "audit-hook", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 				return event, events.LogResult{ResultStatus: events.ResultFailed, Content: "test source failed"}, errors.New("hook failure")

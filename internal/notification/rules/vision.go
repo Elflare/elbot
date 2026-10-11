@@ -3,41 +3,35 @@ package rules
 import (
 	"context"
 	"elbot/internal/events"
+	"log/slog"
 	"sync"
-
-	"elbot/internal/delivery"
-	"elbot/internal/session"
 )
 
-type AssistantSender interface {
-	SendAssistant(context.Context, string) (delivery.Receipt, events.LogResult, error)
-}
-
-// VisionNotices owns the session-level once-per-send-attempt policy. Scheduling
-// or canceling a queued hint never consumes the session's first attempt.
+// VisionNotices reserves one attempt per session. Rejection/cancellation before
+// the platform callback begins returns the reservation to the next visible turn.
 type VisionNotices struct {
 	mu        sync.Mutex
 	attempted map[string]bool
-	sender    AssistantSender
 }
 
-func NewVisionNotices(sender AssistantSender) *VisionNotices {
-	return &VisionNotices{attempted: make(map[string]bool), sender: sender}
-}
-func (v *VisionNotices) Send(ctx context.Context, sessionID string, visible bool) error {
+func NewVisionNotices() *VisionNotices { return &VisionNotices{attempted: make(map[string]bool)} }
+func (v *VisionNotices) Send(ctx context.Context, id string, visible bool) error {
 	if !visible || ctx.Err() != nil {
 		return nil
 	}
-	if binding, ok := session.BindingFromContext(ctx); ok && !binding.Valid() {
-		return nil
-	}
 	v.mu.Lock()
-	if v.attempted[sessionID] {
+	if v.attempted[id] {
 		v.mu.Unlock()
 		return nil
 	}
-	v.attempted[sessionID] = true
+	v.attempted[id] = true
 	v.mu.Unlock()
-	_, _, err := v.sender.SendAssistant(ctx, VisionFallback)
+	results, err := events.NotificationRequested.Emit(ctx, events.NewNotification(ctx, slog.LevelWarn, VisionFallback))
+	started := len(results) > 0 && results[0].Started
+	if !started {
+		v.mu.Lock()
+		delete(v.attempted, id)
+		v.mu.Unlock()
+	}
 	return err
 }

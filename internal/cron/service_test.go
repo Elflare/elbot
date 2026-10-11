@@ -1015,7 +1015,7 @@ func TestListHidesCompletedCronByDefault(t *testing.T) {
 
 func TestCronSendAuditIncludesPlatform(t *testing.T) {
 	var events []string
-	connection, _ := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+	connection, _ := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
 		if record.Type == globalevents.ContentJSON {
 			var content map[string]json.RawMessage
 			if err := json.Unmarshal([]byte(record.Content), &content); err != nil {

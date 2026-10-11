@@ -2,34 +2,37 @@ package module
 
 import (
 	"context"
-	"errors"
-
 	agentevents "elbot/internal/agent/events"
+	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
-	"elbot/internal/notification"
 	"elbot/internal/notification/rules"
 	"elbot/internal/signal"
+	"errors"
+	"log/slog"
 )
 
-func (b *signalBindings) connectAgentNotifications(events agentevents.Signals, notices *notification.Manager, sender rules.AssistantSender) error {
-	progress, err := b.newQueue("agent.progress_notices", false)
-	if err != nil {
-		return err
-	}
-	failures, err := b.newQueue("agent.failure_notices", false)
-	if err != nil {
-		return err
-	}
-	vision := rules.NewVisionNotices(sender)
+func (b *signalBindings) connectAgentNotifications(events agentevents.Signals) error {
+	vision := rules.NewVisionNotices()
 	return errors.Join(
 		connectSignal(b, events.VisionFallbackUsed, func(ctx context.Context, e agentevents.VisionFallbackUsedEvent) error {
 			return vision.Send(ctx, e.SessionID, e.Visible)
-		}, signal.ConnectOptions{Executor: progress, Lifetime: signal.FollowEmit, Shutdown: signal.CancelPending}),
+		}, signal.ConnectOptions{}),
 		connectSignal(b, events.HookFailed, func(ctx context.Context, e agentevents.HookFailedEvent) error {
 			if !e.Notice {
 				return nil
 			}
-			return rules.HookFailure(ctx, notices, hook.Event{Point: e.Point, Platform: e.Platform, Session: hook.SessionContext{ID: e.SessionID}}, e.Err)
-		}, signal.ConnectOptions{Executor: failures, Lifetime: signal.FollowExecutor, Shutdown: signal.CancelPending}),
+			text := rules.HookFailure(hook.Event{Point: e.Point, Platform: e.Platform}, e.Err)
+			if text == "" {
+				return nil
+			}
+			n := globalevents.NewNotification(ctx, slog.LevelError, text)
+			if n.Origin == nil {
+				n.Target.Platform = e.Platform.Name
+				n.Target.ScopeID = e.Platform.ScopeID
+				n.Target.ID = e.Platform.ConversationID
+			}
+			_, err := globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(ctx), n)
+			return err
+		}, signal.ConnectOptions{}),
 	)
 }

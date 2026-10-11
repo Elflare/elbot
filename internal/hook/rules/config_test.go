@@ -423,9 +423,7 @@ text = "user rule"
 	var notices []string
 	cfg, _, err := loadConfig(Options{
 		ConfigDir: dir,
-		Notify: func(_ context.Context, text string) {
-			notices = append(notices, text)
-		},
+		Notices:   &notices,
 	})
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
@@ -520,9 +518,7 @@ text = "good"
 	notices := []string{}
 	cfg, _, err := loadConfig(Options{
 		ConfigDir: dir,
-		Notify: func(ctx context.Context, text string) {
-			notices = append(notices, text)
-		},
+		Notices:   &notices,
 	})
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)

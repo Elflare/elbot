@@ -91,7 +91,7 @@ func TestRegisteredProtocolUsesActualAgentAdmissionPersistenceAndSessionCapabili
 		Providers:  map[string]config.ProviderConfig{"extension-provider": {APIMode: "extension", Models: []string{"m"}}},
 		ModeModels: map[string]config.ModelSelection{"work": {Provider: "extension-provider", Model: "m"}},
 	})
-	assembled := assembleTestOptions(opts)
+	assembled := assembleTestOptions(t, opts)
 	loop := &extensionLoop{t: t, store: opts.Store}
 	compactor, material := &extensionCompactor{}, &extensionMaterial{}
 	if err := assembled.Routes.RegisterCompactor("extension", compactor); err != nil {

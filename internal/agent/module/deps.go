@@ -14,7 +14,6 @@ import (
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/modelmgr"
-	"elbot/internal/notification"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -24,22 +23,21 @@ import (
 
 // ModuleDeps declares external capabilities, never sibling modules or their complete dependency sets.
 type ModuleDeps struct {
-	PlatformName  string
-	Store         storage.Store
-	Models        *modelmgr.Service
-	Policy        *security.Policy
-	Media         *media.Manager
-	Dispatcher    *dispatch.Router
-	Notifications *notification.Manager
-	Doctor        commandbuiltin.DoctorService
-	Registry      *tool.Registry
-	ToolManager   *toolrun.Manager
-	Preloader     *toolrun.PreloadService
-	ToolState     *toolrun.StateService
-	Files         *fileops.Service
-	Skills        *skill.Manager
-	Memory        *resident.Store
-	HookRunner    interface {
+	PlatformName string
+	Store        storage.Store
+	Models       *modelmgr.Service
+	Policy       *security.Policy
+	Media        *media.Manager
+	Dispatcher   *dispatch.Router
+	Doctor       commandbuiltin.DoctorService
+	Registry     *tool.Registry
+	ToolManager  *toolrun.Manager
+	Preloader    *toolrun.PreloadService
+	ToolState    *toolrun.StateService
+	Files        *fileops.Service
+	Skills       *skill.Manager
+	Memory       *resident.Store
+	HookRunner   interface {
 		Run(context.Context, hook.Event) (hook.Event, events.LogResult, error)
 		Notify(context.Context, hook.Event) (events.LogResult, error)
 	}

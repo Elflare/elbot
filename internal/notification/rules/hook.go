@@ -2,19 +2,14 @@ package rules
 
 import (
 	"context"
-	"errors"
-	"log/slog"
-	"strings"
-
-	"elbot/internal/contextinfo"
-	"elbot/internal/delivery"
 	"elbot/internal/hook"
-	"elbot/internal/notification"
+	"errors"
+	"strings"
 )
 
-func HookFailure(ctx context.Context, notices *notification.Manager, event hook.Event, err error) error {
+func HookFailure(event hook.Event, err error) string {
 	if err == nil || event.Point == hook.PointErrorOccurred || errors.Is(err, context.Canceled) {
-		return nil
+		return ""
 	}
 	point := strings.TrimSpace(string(event.Point))
 	if point == "" {
@@ -25,11 +20,5 @@ func HookFailure(ctx context.Context, notices *notification.Manager, event hook.
 	if len(body) > 1200 {
 		text = string(body[:1200]) + "\n...（已截断）"
 	}
-	target := delivery.Target{}
-	if _, ok := contextinfo.ConversationFromContext(ctx); !ok {
-		target.Platform = event.Platform.Name
-		target.ScopeID = event.Platform.ScopeID
-	}
-	_, _, sendErr := notices.SendNotice(ctx, delivery.Notice{Target: target, Outputs: []delivery.Output{delivery.Text("Hook 执行失败（" + point + "）：\n" + text)}, Level: slog.LevelError})
-	return sendErr
+	return "Hook 执行失败（" + point + "）：\n" + text
 }

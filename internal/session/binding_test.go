@@ -18,7 +18,7 @@ func TestConcurrentFirstCurrentAndReentrantBindingSignal(t *testing.T) {
 	ctx := context.Background()
 	scope := Scope{ActorID: "u", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 	var events atomic.Int32
-	_, err := svc.BindingChanged().Connect(func(ctx context.Context, e BindingChangedEvent) error {
+	_, err := svc.BindingChanged().Observe(func(ctx context.Context, e BindingChangedEvent) error {
 		events.Add(1)
 		_, b, err := svc.CurrentBound(ctx, scope)
 		if err != nil {

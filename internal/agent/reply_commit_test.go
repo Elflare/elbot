@@ -74,7 +74,7 @@ func (p *replyTestPlatform) SendChat(_ context.Context, outputs []delivery.Outpu
 	}
 }
 
-func (p *replyTestPlatform) SendNotice(_ context.Context, notice delivery.Notice) (delivery.Receipt, events.LogResult, error) {
+func (p *replyTestPlatform) SendTo(_ context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	*p.events = append(*p.events, "outputs")
 	{
 		err := p.outputsErr

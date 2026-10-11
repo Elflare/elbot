@@ -51,6 +51,6 @@ type mediaSendFunc func([]delivery.Output) (delivery.Receipt, events.LogResult, 
 func (f mediaSendFunc) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	return f(outputs)
 }
-func (f mediaSendFunc) SendNotice(_ context.Context, notice delivery.Notice) (delivery.Receipt, events.LogResult, error) {
-	return f(notice.Outputs)
+func (f mediaSendFunc) SendTo(_ context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	return f(noticeOutputs)
 }

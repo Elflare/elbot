@@ -191,8 +191,7 @@ func (s *RemoteServer) SendChat(ctx context.Context, outputs []delivery.Output) 
 	}
 }
 
-func (s *RemoteServer) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, events.LogResult, error) {
-	target := notice.Target
+func (s *RemoteServer) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	clients, err := s.targetClients(ctx, target)
 	if err != nil {
 		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
@@ -201,7 +200,7 @@ func (s *RemoteServer) SendNotice(ctx context.Context, notice delivery.Notice) (
 		}
 		return delivery.Receipt{}, logResult, err
 	}
-	msg := remoteNoticeMessage(notice)
+	msg := outputMessage(remoteMsgChat, delivery.FallbackOutput(outputs))
 	{
 		logResult, err := s.writeClients(ctx, clients, msg)
 		return delivery.Receipt{}, logResult, err
@@ -424,12 +423,6 @@ func (s *RemoteServer) validToken(clientID, token string) bool {
 		}
 	}
 	return false
-}
-
-func remoteNoticeMessage(notice delivery.Notice) remoteMessage {
-	msg := outputMessage(remoteMsgNotice, delivery.FallbackOutput(notice.Outputs))
-	msg.Level = notice.Level.String()
-	return msg
 }
 
 func outputMessage(kind string, out delivery.Output) remoteMessage {

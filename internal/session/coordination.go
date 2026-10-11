@@ -142,5 +142,5 @@ func (s *Service) publishChange(ctx context.Context, event BindingChangedEvent) 
 		outer.mu.Unlock()
 		return
 	}
-	_ = s.changed.Emit(ctx, event)
+	_, _ = s.changed.Emit(ctx, event)
 }

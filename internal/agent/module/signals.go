@@ -9,11 +9,10 @@ import (
 	"elbot/internal/signal"
 )
 
-// signalBindings owns subscriptions and queues before platforms start, including
+// signalBindings owns subscriptions before platforms start, including
 // partial startup failures. BeginClose wakes producers before waiting for exit.
 type signalBindings struct {
 	connections []*signal.Connection
-	queues      []*signal.Queue
 	displays    []*statusDisplay
 }
 
@@ -21,17 +20,12 @@ func (b *signalBindings) connectSession(sessions *session.Service, rollback *fil
 	if rollback == nil {
 		return nil
 	}
-	queue, err := signal.NewQueue(signal.QueueOptions{Name: "session.rollback_cleanup"})
-	if err != nil {
-		return err
-	}
-	b.queues = append(b.queues, queue)
-	connection, err := sessions.BindingChanged().Connect(func(ctx context.Context, event session.BindingChangedEvent) error {
+	connection, err := sessions.BindingChanged().Observe(func(ctx context.Context, event session.BindingChangedEvent) error {
 		if event.Old != nil {
 			rollback.Forget(event.Old)
 		}
 		return nil
-	}, signal.ConnectOptions{Executor: queue, Lifetime: signal.FollowExecutor, Shutdown: signal.CancelPending})
+	}, signal.ConnectOptions{})
 	if err != nil {
 		return err
 	}
@@ -41,10 +35,7 @@ func (b *signalBindings) connectSession(sessions *session.Service, rollback *fil
 
 func (b *signalBindings) BeginClose() {
 	for _, connection := range b.connections {
-		connection.Disconnect()
-	}
-	for _, queue := range b.queues {
-		queue.BeginClose()
+		connection.BeginClose()
 	}
 	for _, display := range b.displays {
 		display.BeginClose()
@@ -53,46 +44,38 @@ func (b *signalBindings) BeginClose() {
 
 func (b *signalBindings) Close(ctx context.Context) error {
 	b.BeginClose()
-	results := make(chan error, len(b.queues)+len(b.displays))
+	results := make(chan error, len(b.displays))
 	for _, display := range b.displays {
 		go func() { results <- display.Close(ctx) }()
 	}
-	for _, queue := range b.queues {
-		go func() { results <- queue.Close(ctx) }()
-	}
 	var errs []error
-	for range len(b.queues) + len(b.displays) {
+	for _, connection := range b.connections {
+		errs = append(errs, connection.Close(ctx))
+	}
+	for range len(b.displays) {
 		errs = append(errs, <-results)
 	}
 	return errors.Join(errs...)
 }
 
 func (b *signalBindings) stopped() bool {
-	for _, display := range b.displays {
-		if !display.stopped() {
+	for _, connection := range b.connections {
+		select {
+		case <-connection.Done():
+		default:
 			return false
 		}
 	}
-	for _, queue := range b.queues {
-		select {
-		case <-queue.Done():
-		default:
+	for _, display := range b.displays {
+		if !display.stopped() {
 			return false
 		}
 	}
 	return true
 }
 
-func (b *signalBindings) newQueue(name string, backpressure bool) (*signal.Queue, error) {
-	queue, err := signal.NewQueue(signal.QueueOptions{Name: name, WaitForCapacity: backpressure})
-	if err == nil {
-		b.queues = append(b.queues, queue)
-	}
-	return queue, err
-}
-
-func connectSignal[T any](b *signalBindings, source *signal.Signal[T], handler signal.Handler[T], options signal.ConnectOptions) error {
-	c, err := source.Connect(handler, options)
+func connectSignal[T any](b *signalBindings, source *signal.Signal[T, signal.Empty], handler func(context.Context, T) error, options signal.ConnectOptions) error {
+	c, err := source.Observe(handler, options)
 	if err == nil {
 		b.connections = append(b.connections, c)
 	}

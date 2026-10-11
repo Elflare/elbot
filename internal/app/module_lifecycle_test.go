@@ -102,7 +102,7 @@ func TestServiceWithoutForegroundPlatformsWaitsForElnis(t *testing.T) {
 	d.Foundation = foundationFactoryFunc(func(context.Context, FoundationRequest) (*FoundationComponents, error) { return req.Foundation, nil })
 	d.Models = modelFactoryFunc(func(ModelRequest) (ModelClients, error) { return req.Models, nil })
 	ready := make(chan struct{})
-	conn, err := events.LogSubmitted.Connect(func(_ context.Context, r events.LogRecord) error {
+	conn, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
 		if r.EventName == "elbot_startup_completed" {
 			close(ready)
 		}

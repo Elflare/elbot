@@ -15,22 +15,15 @@ import (
 
 func TestSendNoticeAcceptsCLITarget(t *testing.T) {
 	adapter := New()
-	if _, _, err := adapter.SendNotice(context.Background(), delivery.Notice{Target: delivery.Target{Platform: "cli", Superadmins: true}, Outputs: []delivery.Output{delivery.ImagePath("pic.png")}}); err != nil {
+	if _, _, err := adapter.SendTo(context.Background(), delivery.Target{Platform: "cli", Superadmins: true}, []delivery.Output{delivery.ImagePath("pic.png")}); err != nil {
 		t.Fatalf("SendNotice: %v", err)
 	}
 }
 
 func TestSendNoticeRejectsOtherPlatform(t *testing.T) {
 	adapter := New()
-	if _, _, err := adapter.SendNotice(context.Background(), delivery.Notice{Target: delivery.Target{Platform: "qqonebot"}, Outputs: []delivery.Output{delivery.Text("hello")}}); err == nil {
+	if _, _, err := adapter.SendTo(context.Background(), delivery.Target{Platform: "qqonebot"}, []delivery.Output{delivery.Text("hello")}); err == nil {
 		t.Fatal("expected platform mismatch error")
-	}
-}
-
-func TestRemoteNoticeMessageCarriesLevel(t *testing.T) {
-	msg := remoteNoticeMessage(delivery.Notice{Outputs: []delivery.Output{delivery.Text("careful")}, Level: slog.LevelWarn})
-	if msg.Type != remoteMsgNotice || msg.Level != "WARN" || msg.Text != "careful" {
-		t.Fatalf("remote notice = %#v", msg)
 	}
 }
 
@@ -53,7 +46,7 @@ func TestRemoteClientNoticeLevelDefaultsToInfo(t *testing.T) {
 
 func TestRunPublishesGlobalPlatformConnection(t *testing.T) {
 	calls := 0
-	connection, err := globalevents.PlatformConnected.Connect(func(_ context.Context, e globalevents.PlatformConnectedEvent) error {
+	connection, err := globalevents.PlatformConnected.Observe(func(_ context.Context, e globalevents.PlatformConnectedEvent) error {
 		calls++
 		if e.Platform != "cli" {
 			t.Errorf("platform=%q", e.Platform)

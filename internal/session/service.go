@@ -16,7 +16,7 @@ type Service struct {
 	mu                   sync.Mutex
 	current              map[string]*Binding
 	gates                map[string]*scopeGate
-	changed              *signal.Signal[BindingChangedEvent]
+	changed              *signal.Signal[BindingChangedEvent, signal.Empty]
 	activeSessionIDs     func() []string
 	foregroundActivation func(context.Context, *storage.Session, *Binding)
 	foregroundCheck      func(context.Context, *storage.Session) error
@@ -52,7 +52,7 @@ func NewServiceWithConfig(store storage.Store, cfg Config, titleGen TitleGenerat
 		store:         store,
 		current:       map[string]*Binding{},
 		gates:         map[string]*scopeGate{},
-		changed:       signal.New[BindingChangedEvent]("session.binding_changed"),
+		changed:       signal.New[BindingChangedEvent, signal.Empty]("session.binding_changed"),
 		namingConfig:  cfg.NamingConfig,
 		titleGen:      titleGen,
 		namingSignals: newNamingSignals(),

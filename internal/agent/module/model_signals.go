@@ -2,19 +2,24 @@ package module
 
 import (
 	"context"
-
+	"elbot/internal/events"
 	"elbot/internal/modelmgr"
-	"elbot/internal/notification"
 	"elbot/internal/notification/rules"
 	"elbot/internal/signal"
+	"log/slog"
 )
 
-func (b *signalBindings) connectModels(models *modelmgr.Service, notices *notification.Manager) error {
-	queue, err := b.newQueue("model.notifications", false)
-	if err != nil {
+func (b *signalBindings) connectModels(models *modelmgr.Service) error {
+	return connectSignal(b, models.ModelRetrying(), func(ctx context.Context, e modelmgr.ModelRetryingEvent) error {
+		ctx = e.CallContext
+		if ctx.Err() != nil {
+			return nil
+		}
+		text := rules.ModelRetry(e.Provider, e.Retry)
+		if text == "" {
+			return nil
+		}
+		_, err := events.NotificationRequested.EmitAsync(ctx, events.NewNotification(ctx, slog.LevelWarn, text))
 		return err
-	}
-	return connectSignal(b, models.ModelRetrying(), func(ctx context.Context, event modelmgr.ModelRetryingEvent) error {
-		return rules.ModelRetry(notices)(ctx, event.Provider, event.Retry)
-	}, signal.ConnectOptions{Executor: queue, Lifetime: signal.FollowEmit, Shutdown: signal.CancelPending})
+	}, signal.ConnectOptions{})
 }

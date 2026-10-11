@@ -1,6 +1,7 @@
 package modelmgr
 
 import (
+	"context"
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/signal"
@@ -9,6 +10,9 @@ import (
 // ModelRetryingEvent is emitted with the actual provider call's context. That
 // context expires when the response stream ends, even if its parent survives.
 type ModelRetryingEvent struct {
+	// CallContext retains the actual provider call lifetime for transient UI
+	// notifications. The fact itself must still be logged after cancellation.
+	CallContext context.Context
 	// Identity is captured by the publishing source from this provider call;
 	// nil fields are absent, and published pointers are read-only snapshots.
 	Identity events.LogIdentity
@@ -18,4 +22,4 @@ type ModelRetryingEvent struct {
 	Retry llm.RetryEvent
 }
 
-func (s *Service) ModelRetrying() *signal.Signal[ModelRetryingEvent] { return s.retrying }
+func (s *Service) ModelRetrying() *signal.Signal[ModelRetryingEvent, signal.Empty] { return s.retrying }

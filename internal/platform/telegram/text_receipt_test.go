@@ -26,7 +26,7 @@ func TestTextReceiptsIncludeEverySuccessfulPage(t *testing.T) {
 			}))
 			defer server.Close()
 			a := New(Config{BotToken: "token", APIBaseURL: server.URL, Format: format}, nil, nil)
-			receipt, _, err := a.SendNotice(context.Background(), delivery.Notice{Target: delivery.Target{ScopeID: "supergroup:-19"}, Outputs: []delivery.Output{delivery.Text(strings.Repeat("a", telegramRichTextRunes*2+20))}})
+			receipt, _, err := a.SendTo(context.Background(), delivery.Target{ScopeID: "supergroup:-19"}, []delivery.Output{delivery.Text(strings.Repeat("a", telegramRichTextRunes*2+20))})
 			if err == nil || calls != 2 || len(receipt.SentMessages) != 1 {
 				t.Fatalf("receipt=%#v err=%v calls=%d", receipt, err, calls)
 			}
@@ -80,7 +80,7 @@ func TestRecordFallbackHasSourceWithoutMediaAssociation(t *testing.T) {
 	}))
 	defer server.Close()
 	a := New(Config{BotToken: "token", APIBaseURL: server.URL, Format: "plain"}, nil, nil)
-	receipt, _, err := a.SendNotice(context.Background(), delivery.Notice{Target: delivery.Target{PrivateUserID: "1"}, Outputs: []delivery.Output{{Kind: delivery.KindRecord, Source: delivery.Source{URL: "https://example.com/voice.mp3"}}}})
+	receipt, _, err := a.SendTo(context.Background(), delivery.Target{PrivateUserID: "1"}, []delivery.Output{{Kind: delivery.KindRecord, Source: delivery.Source{URL: "https://example.com/voice.mp3"}}})
 	if err != nil || len(receipt.SentMessages) != 1 {
 		t.Fatalf("receipt=%#v err=%v", receipt, err)
 	}

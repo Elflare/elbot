@@ -18,7 +18,7 @@ func TestLogHookPreservesSourceRecordAfterCancellation(t *testing.T) {
 	identity := ""
 	record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: "hook_tool_call", Module: "hook", Type: events.ContentJSON, Content: `{"result":"来源正文"}`, ContentLimit: 0, Identity: events.LogIdentity{SessionID: &identity}, ResultStatus: events.ResultFailed}
 	var received events.LogRecord
-	connection, err := events.LogSubmitted.Connect(func(ctx context.Context, value events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(ctx context.Context, value events.LogRecord) error {
 		if ctx.Err() != nil {
 			t.Fatal("publication inherited cancellation")
 		}
@@ -55,7 +55,7 @@ func TestManagerUsesDeclaredOutcomeIndependentlyOfBusinessError(t *testing.T) {
 				t.Fatal(err)
 			}
 			var records []events.LogRecord
-			connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error { records = append(records, record); return nil }, signal.ConnectOptions{})
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error { records = append(records, record); return nil }, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)
 			}

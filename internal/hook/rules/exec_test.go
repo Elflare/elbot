@@ -371,7 +371,7 @@ func TestExecRunsDoNotShareGlobalBlockingLock(t *testing.T) {
 // captureLogs observes the public signal; production never receives this logger.
 func captureLogs(t *testing.T, logger *slog.Logger) {
 	t.Helper()
-	connection, err := globalevents.LogSubmitted.Connect(func(ctx context.Context, record globalevents.LogRecord) error {
+	connection, err := globalevents.LogSubmitted.Observe(func(ctx context.Context, record globalevents.LogRecord) error {
 		if !logger.Enabled(ctx, record.Level) {
 			return nil
 		}

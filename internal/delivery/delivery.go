@@ -23,12 +23,6 @@ const (
 	KindReply    Kind = "reply"
 )
 
-type Notice struct {
-	Target  Target
-	Outputs []Output
-	Level   slog.Level
-}
-
 type Target struct {
 	Platform      string `json:"platform,omitempty"`
 	ScopeID       string `json:"scope_id,omitempty"`
@@ -210,7 +204,7 @@ type MessageStream interface {
 // declares the operation's logging outcome and body before any caller wraps error.
 type MessageSender interface {
 	SendChat(ctx context.Context, outputs []Output) (Receipt, globalevents.LogResult, error)
-	SendNotice(ctx context.Context, notice Notice) (Receipt, globalevents.LogResult, error)
+	SendTo(ctx context.Context, target Target, outputs []Output) (Receipt, globalevents.LogResult, error)
 }
 
 // ContextSender can send a reply using routing information carried by ctx.
@@ -226,11 +220,6 @@ type Manager struct {
 
 func NewManager(sender Sender) Manager {
 	return Manager{Sender: sender}
-}
-
-func (m Manager) SendNotices(ctx context.Context, outputs []Output) error {
-	_, _, err := m.SendNotice(ctx, Notice{Outputs: outputs})
-	return err
 }
 
 func (m Manager) SendChat(ctx context.Context, outputs []Output) (Receipt, globalevents.LogResult, error) {
@@ -251,7 +240,7 @@ func (m Manager) SendChat(ctx context.Context, outputs []Output) (Receipt, globa
 	return m.Sender.SendChat(ctx, outputs)
 }
 
-func (m Manager) SendNotice(ctx context.Context, notice Notice) (Receipt, globalevents.LogResult, error) {
+func (m Manager) SendTo(ctx context.Context, target Target, outputs []Output) (Receipt, globalevents.LogResult, error) {
 	if err := ctx.Err(); err != nil {
 		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
 		if err == context.Canceled {
@@ -259,28 +248,27 @@ func (m Manager) SendNotice(ctx context.Context, notice Notice) (Receipt, global
 		}
 		return Receipt{}, logResult, err
 	}
-	if m.Sender == nil || len(notice.Outputs) == 0 {
-		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "notice output is not sent"}, nil
+	if m.Sender == nil || len(outputs) == 0 {
+		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "chat output is not sent"}, nil
 	}
-	if err := ValidateOutputs(notice.Outputs); err != nil {
+	if err := ValidateOutputs(outputs); err != nil {
 		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
-	configuredTarget, err := ValidateOutputsTarget(notice.Outputs)
+	configuredTarget, err := ValidateOutputsTarget(outputs)
 	if err != nil {
 		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
-	if notice.Target.Empty() {
-		notice.Target = configuredTarget
+	if target.Empty() {
+		target = configuredTarget
 	}
-	receipt, logResult, err := m.Sender.SendNotice(ctx, notice)
+	receipt, logResult, err := m.Sender.SendTo(ctx, target, outputs)
 	if logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled {
 
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		record := globalevents.LogRecord{
 			Category: globalevents.LogRuntime, Level: slog.LevelError,
-			EventName: "notice_output_failed", Module: "delivery", ResultStatus: logResult.ResultStatus,
-			Content: fmt.Sprintf("notice output failed: platform=%s hook=%q hook_point=%q hook_mode=%q\n%s", notice.Target.Platform,
-				outputMetaString(notice.Outputs[0], MetaHookName), outputMetaString(notice.Outputs[0], MetaHookPoint), outputMetaString(notice.Outputs[0], MetaHookMode), logResult.Content),
+			EventName: "chat_output_failed", Module: "delivery", ResultStatus: logResult.ResultStatus,
+			Content: fmt.Sprintf("chat output failed: platform=%s hook=%q hook_point=%q hook_mode=%q\n%s", target.Platform, outputMetaString(outputs[0], MetaHookName), outputMetaString(outputs[0], MetaHookPoint), outputMetaString(outputs[0], MetaHookMode), logResult.Content),
 		}
 		if logResult.ResultStatus == globalevents.ResultCanceled {
 			record.Level = slog.LevelInfo
@@ -303,7 +291,7 @@ func (m Manager) SendNotice(ctx context.Context, notice Notice) (Receipt, global
 		}
 		_ = globalevents.EmitLog(ctx, record)
 	}
-	return receipt, logResult, wrapOutputSourceError(notice.Outputs[0], err)
+	return receipt, logResult, wrapOutputSourceError(outputs[0], err)
 }
 
 func wrapOutputSourceError(out Output, err error) error {

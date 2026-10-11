@@ -8,14 +8,16 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	hookcontrol "elbot/internal/hook/control"
 	hookruntime "elbot/internal/hook/runtime"
+	"elbot/internal/signal"
 	"elbot/internal/tool"
 )
 
 func TestInitialReloadWaitsForConnectionsAndBeginClosePreservesCore(t *testing.T) {
-	m, err := NewModule(t.Context(), ModuleDeps{ConfigPath: filepath.Join(t.TempDir(), "config.toml"), Registry: tool.NewRegistry(), Notify: func(context.Context, string) {}})
+	m, err := NewModule(t.Context(), ModuleDeps{ConfigPath: filepath.Join(t.TempDir(), "config.toml"), Registry: tool.NewRegistry()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,8 +65,16 @@ func TestInitialReloadWaitsForConnectionsAndBeginClosePreservesCore(t *testing.T
 	}
 }
 func TestInitialReloadKeepsWarningAndContinuePolicy(t *testing.T) {
-	var notices []string
-	m, err := NewModule(t.Context(), ModuleDeps{ConfigPath: filepath.Join(t.TempDir(), "config.toml"), Registry: tool.NewRegistry(), Notify: func(_ context.Context, text string) { notices = append(notices, text) }})
+	got := make(chan string, 2)
+	c, err := events.NotificationRequested.Connect(func(_ context.Context, n events.Notification) (events.NotificationReceipt, error) {
+		got <- n.Text
+		return events.NotificationReceipt{}, nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close(context.Background())
+	m, err := NewModule(t.Context(), ModuleDeps{ConfigPath: filepath.Join(t.TempDir(), "config.toml"), Registry: tool.NewRegistry()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +85,16 @@ func TestInitialReloadKeepsWarningAndContinuePolicy(t *testing.T) {
 	if err := m.Start(); err != nil {
 		t.Fatal("plugin failure became fatal", err)
 	}
-	if len(notices) != 2 || notices[0] != "candidate notice" || !strings.Contains(notices[1], "plugin rejected") {
+	var notices []string
+	for range 2 {
+		select {
+		case text := <-got:
+			notices = append(notices, text)
+		case <-time.After(time.Second):
+			t.Fatal("missing notification")
+		}
+	}
+	if notices[0] != "candidate notice" || !strings.Contains(notices[1], "plugin rejected") {
 		t.Fatal(notices)
 	}
 }

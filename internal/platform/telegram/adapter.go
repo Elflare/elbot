@@ -52,8 +52,8 @@ func (a *Adapter) SetCommandCatalog(infos []command.Info) {
 }
 
 func (a *Adapter) notifyConnected(ctx context.Context) {
-	// Consumers own execution; Emit reports dispatch failures through signal diagnostics.
-	_ = globalevents.PlatformConnected.Emit(ctx, globalevents.PlatformConnectedEvent{Platform: a.Name()})
+	// Subscribers hand background work to their own business queues.
+	_, _ = globalevents.PlatformConnected.Emit(ctx, globalevents.PlatformConnectedEvent{Platform: a.Name()})
 }
 
 func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) error {
@@ -461,9 +461,8 @@ func (a *Adapter) CallPlatformAPI(ctx context.Context, api string, params map[st
 	return a.client.callRaw(ctx, strings.TrimSpace(api), params)
 }
 
-func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, globalevents.LogResult, error) {
-	outTarget := notice.Target
-	outputs := notice.Outputs
+func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+	outTarget := target
 	if outTarget.Empty() {
 		return a.SendChat(ctx, outputs)
 	}

@@ -85,7 +85,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 	if err != nil {
 		return m, err
 	}
-	output, err := agent.NewOutputSender(agent.OutputSenderDeps{Dispatcher: deps.Dispatcher, Notifications: deps.Notifications, Hooks: bridge, Identity: identity})
+	output, err := agent.NewOutputSender(agent.OutputSenderDeps{Dispatcher: deps.Dispatcher, Hooks: bridge, Identity: identity})
 	if err != nil {
 		return m, err
 	}
@@ -295,7 +295,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		Execution: execution,
 	})
 	bindings := m.bindings
-	if err := bindings.connectAgentNotifications(signals, deps.Notifications, output); err != nil {
+	if err := bindings.connectAgentNotifications(signals); err != nil {
 		return m, err
 	}
 	if err := bindings.connectStatus(signals, m.sessions, deps.Dispatcher); err != nil {
@@ -304,7 +304,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 	if err := bindings.connectSession(m.sessions, deps.Files.Manager); err != nil {
 		return m, err
 	}
-	if err := m.bindings.connectModels(deps.Models, deps.Notifications); err != nil {
+	if err := m.bindings.connectModels(deps.Models); err != nil {
 		return m, err
 	}
 	m.handler, m.completion, m.identity = handler, completion, identity

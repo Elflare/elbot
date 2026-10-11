@@ -35,7 +35,7 @@ func TestLogEnums(t *testing.T) {
 
 func TestEmitLogCopiesSourceIdentity(t *testing.T) {
 	var received []LogRecord
-	connection, err := LogSubmitted.Connect(func(_ context.Context, record LogRecord) error {
+	connection, err := LogSubmitted.Observe(func(_ context.Context, record LogRecord) error {
 		received = append(received, record)
 		return nil
 	}, signal.ConnectOptions{})
@@ -107,7 +107,7 @@ func TestEmitLogValidatesContract(t *testing.T) {
 	os.Stderr = file
 	t.Cleanup(func() { os.Stderr = old; _ = file.Close() })
 	var received []LogRecord
-	connection, err := LogSubmitted.Connect(func(_ context.Context, record LogRecord) error { received = append(received, record); return nil }, signal.ConnectOptions{})
+	connection, err := LogSubmitted.Observe(func(_ context.Context, record LogRecord) error { received = append(received, record); return nil }, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

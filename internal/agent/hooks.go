@@ -9,12 +9,12 @@ import (
 
 	agentevents "elbot/internal/agent/events"
 	"elbot/internal/contextinfo"
+	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/platform"
 	"elbot/internal/request"
 	"elbot/internal/signal"
@@ -38,7 +38,7 @@ type HookBridge struct {
 	requests       *request.Manager
 	identity       HookIdentity
 	media          *media.Manager
-	failed         *signal.Signal[agentevents.HookFailedEvent]
+	failed         *signal.Signal[agentevents.HookFailedEvent, signal.Empty]
 	dispatcher     *dispatch.Router
 	platformEvents platformSubscriptions
 }
@@ -168,11 +168,15 @@ func (h *HookBridge) NotifyError(ctx context.Context, source hook.Event, err err
 }
 
 func (h *HookBridge) publishFailure(ctx context.Context, event hook.Event, err error, notice bool) {
-	agentevents.Emit(ctx, h.failed, agentevents.HookFailedEvent{EventMeta: agentevents.Meta(ctx, event.Session.ID), Point: event.Point, Platform: event.Platform, Err: err, Notice: notice})
+	agentevents.Emit(context.WithoutCancel(ctx), h.failed, agentevents.HookFailedEvent{EventMeta: agentevents.Meta(ctx, event.Session.ID), Point: event.Point, Platform: event.Platform, Err: err, Notice: notice})
 }
 
 func (h *HookBridge) handlePlatformConnected(ctx context.Context, platformName string) {
-	if err := notificationrules.PlatformConnected(ctx, platformName, h.Run, h.dispatcher); err != nil {
+	event, _, err := h.Run(ctx, hook.Event{Point: hook.PointPlatformConnected, Platform: hook.PlatformContext{Name: platformName}})
+	if err == nil && len(event.Outputs) > 0 {
+		_, _, err = h.dispatcher.SendTo(ctx, delivery.Target{}, event.Outputs)
+	}
+	if err != nil {
 		h.publishFailure(ctx, hook.Event{Point: hook.PointPlatformConnected, Platform: hook.PlatformContext{Name: platformName}}, err, false)
 	}
 }

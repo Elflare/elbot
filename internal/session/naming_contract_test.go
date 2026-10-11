@@ -31,12 +31,12 @@ func TestNamingPreparationFailureHasUnscheduledCompletion(t *testing.T) {
 	startTestNaming(t, svc)
 	var got NamingCompletedEvent
 	scheduled := 0
-	c, err := svc.NamingSignals().Scheduled.Connect(func(context.Context, NamingScheduledEvent) error { scheduled++; return nil }, signal.ConnectOptions{})
+	c, err := svc.NamingSignals().Scheduled.Observe(func(context.Context, NamingScheduledEvent) error { scheduled++; return nil }, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(c.Disconnect)
-	c, err = svc.NamingSignals().Completed.Connect(func(_ context.Context, e NamingCompletedEvent) error { got = e; return nil }, signal.ConnectOptions{})
+	c, err = svc.NamingSignals().Completed.Observe(func(_ context.Context, e NamingCompletedEvent) error { got = e; return nil }, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestNamingManualRenameDuringGenerationIsSkipped(t *testing.T) {
 	startTestNaming(t, svc)
 	row := namingRow(t, svc, store)
 	completed := make(chan NamingCompletedEvent, 1)
-	c, err := svc.NamingSignals().Completed.Connect(func(_ context.Context, e NamingCompletedEvent) error { completed <- e; return nil }, signal.ConnectOptions{})
+	c, err := svc.NamingSignals().Completed.Observe(func(_ context.Context, e NamingCompletedEvent) error { completed <- e; return nil }, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestNamingCompletionCopiesOptionalFields(t *testing.T) {
 	svc := NewService(nil)
 	defer svc.Close(context.Background())
 	var got NamingCompletedEvent
-	c, err := svc.NamingSignals().Completed.Connect(func(_ context.Context, e NamingCompletedEvent) error { got = e; return nil }, signal.ConnectOptions{})
+	c, err := svc.NamingSignals().Completed.Observe(func(_ context.Context, e NamingCompletedEvent) error { got = e; return nil }, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

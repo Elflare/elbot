@@ -18,6 +18,5 @@ type ModuleDeps struct {
 	Media           *media.Manager
 	ProcessEnv      hook.ProcessEnvironment
 	PlatformCallers rules.PlatformCallerResolver
-	Notify          func(context.Context, string)
 	Send            func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
 }

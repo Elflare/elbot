@@ -32,7 +32,7 @@ type ExecutionSender interface {
 	ReplaceAndFinishStream(context.Context, context.Context, delivery.MessageStream, string) (delivery.Receipt, events.LogResult, error)
 	SendAssistant(context.Context, string) (delivery.Receipt, events.LogResult, error)
 	SendOutputs(context.Context, []delivery.Output) (events.LogResult, error)
-	TextNotice(context.Context, slog.Level, string)
+	Notify(context.Context, slog.Level, string)
 	Preview(context.Context, string)
 	Reasoning(context.Context, string)
 }

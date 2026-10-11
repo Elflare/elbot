@@ -85,7 +85,7 @@ func TestNamingFailureContentSurvivesRuntimeLevel(t *testing.T) {
 
 func TestNamingOwnsSynchronousLogProjection(t *testing.T) {
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Connect(func(_ context.Context, r events.LogRecord) error { records = append(records, r); return nil }, signal.ConnectOptions{})
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error { records = append(records, r); return nil }, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

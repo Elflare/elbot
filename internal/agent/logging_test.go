@@ -47,7 +47,7 @@ func TestChatSilentCancellationPreservesPartialOutputLog(t *testing.T) {
 	ctx, client.cancel = context.WithCancel(ctx)
 	defer client.cancel()
 	var records []globalevents.LogRecord
-	connection, err := globalevents.LogSubmitted.Connect(func(_ context.Context, r globalevents.LogRecord) error {
+	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, r globalevents.LogRecord) error {
 		if r.EventName == "llm_usage" || r.EventName == "llm_error" || r.EventName == "assistant_message" {
 			records = append(records, r)
 		}
@@ -89,7 +89,7 @@ func TestReplyLogPreservesCanceledSendAndIndependentSaveFailure(t *testing.T) {
 	f.platform.sendErr = context.Canceled
 	f.repo.appendErr = errors.New("independent save failure")
 	var records []globalevents.LogRecord
-	connection, err := globalevents.LogSubmitted.Connect(func(_ context.Context, r globalevents.LogRecord) error {
+	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, r globalevents.LogRecord) error {
 		if r.EventName == "reply_committed" {
 			records = append(records, r)
 		}
@@ -122,13 +122,13 @@ func TestResponsesSuccessfulCallWithSaveFailureKeepsSourceFacts(t *testing.T) {
 		opts.Store = nativeTerminalFailureStore{Store: opts.Store, fail: &fail}
 	})
 	var event agentevents.ModelCallCompletedEvent
-	connection, err := f.agent.Signals().ModelCallCompleted.Connect(func(_ context.Context, e agentevents.ModelCallCompletedEvent) error { event = e; return nil }, signal.ConnectOptions{})
+	connection, err := f.agent.Signals().ModelCallCompleted.Observe(func(_ context.Context, e agentevents.ModelCallCompletedEvent) error { event = e; return nil }, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer connection.Disconnect()
 	var records []globalevents.LogRecord
-	logs, err := globalevents.LogSubmitted.Connect(func(_ context.Context, r globalevents.LogRecord) error {
+	logs, err := globalevents.LogSubmitted.Observe(func(_ context.Context, r globalevents.LogRecord) error {
 		if r.EventName == "llm_usage" {
 			records = append(records, r)
 		}
@@ -151,7 +151,7 @@ func TestResponsesSuccessfulCallWithSaveFailureKeepsSourceFacts(t *testing.T) {
 
 func TestAgentLogSourcePreservesExplicitIdentity(t *testing.T) {
 	var records []globalevents.LogRecord
-	connection, err := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
 		if record.EventName == "identity_test" {
 			records = append(records, record)
 		}
@@ -177,7 +177,7 @@ func TestAgentLogSourcePreservesExplicitIdentity(t *testing.T) {
 
 func TestModelObservationPreservesExplicitResultAndUsage(t *testing.T) {
 	var records []globalevents.LogRecord
-	connection, _ := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+	connection, _ := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
 		records = append(records, record)
 		return nil
 	}, signal.ConnectOptions{})
@@ -221,7 +221,7 @@ func TestStableLogNamesIndependentOfContent(t *testing.T) {
 func TestTurnTimeoutSeverity(t *testing.T) {
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t))
 	var records []globalevents.LogRecord
-	connection, _ := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+	connection, _ := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
 		if record.EventName == "turn_response_timeout" && record.Category == globalevents.LogAudit {
 			records = append(records, record)
 		}
@@ -237,7 +237,7 @@ func TestTurnTimeoutSeverity(t *testing.T) {
 // captureLogs observes the public signal without injecting a production logger.
 func captureLogs(t *testing.T, logger *slog.Logger) {
 	t.Helper()
-	connection, err := globalevents.LogSubmitted.Connect(func(ctx context.Context, record globalevents.LogRecord) error {
+	connection, err := globalevents.LogSubmitted.Observe(func(ctx context.Context, record globalevents.LogRecord) error {
 		if !logger.Enabled(ctx, record.Level) {
 			return nil
 		}

@@ -92,7 +92,7 @@ func emitNamingLog(ctx context.Context, record events.LogRecord) {
 
 func (s *Service) connectLogSignals() {
 	logs := namingLogProjection{}
-	scheduled, _ := s.namingSignals.Scheduled.Connect(logs.scheduled, signal.ConnectOptions{})
-	completed, _ := s.namingSignals.Completed.Connect(logs.completed, signal.ConnectOptions{})
+	scheduled, _ := s.namingSignals.Scheduled.Observe(logs.scheduled, signal.ConnectOptions{})
+	completed, _ := s.namingSignals.Completed.Observe(logs.completed, signal.ConnectOptions{})
 	s.logConnections = []*signal.Connection{scheduled, completed}
 }

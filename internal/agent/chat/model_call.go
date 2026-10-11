@@ -120,7 +120,7 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 					ElapsedMS:  elapsedMillis(startedAt),
 				},
 			}, chunk.Error)
-			out.SendNotice(ctx, slog.LevelError, notificationrules.ModelInterrupted(chunk.Error))
+			out.Notify(ctx, slog.LevelError, notificationrules.ModelInterrupted(chunk.Error))
 
 			return llmCallResult{}, dialogue.MarkUserNotified(fmt.Errorf("chat stream: %w", chunk.Error))
 		}

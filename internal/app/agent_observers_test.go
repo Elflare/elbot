@@ -14,10 +14,10 @@ import (
 
 func observerSignals() agentevents.Signals {
 	return agentevents.Signals{
-		ModelCallCompleted: signal.New[agentevents.ModelCallCompletedEvent]("model"),
-		StatusChanged:      signal.New[agentevents.StatusChangedEvent]("status"),
-		VisionFallbackUsed: signal.New[agentevents.VisionFallbackUsedEvent]("vision"),
-		HookFailed:         signal.New[agentevents.HookFailedEvent]("hook"),
+		ModelCallCompleted: signal.New[agentevents.ModelCallCompletedEvent, signal.Empty]("model"),
+		StatusChanged:      signal.New[agentevents.StatusChangedEvent, signal.Empty]("status"),
+		VisionFallbackUsed: signal.New[agentevents.VisionFallbackUsedEvent, signal.Empty]("vision"),
+		HookFailed:         signal.New[agentevents.HookFailedEvent, signal.Empty]("hook"),
 	}
 }
 
@@ -81,7 +81,7 @@ func TestProductionAssemblyObservesConversationExactlyOnce(t *testing.T) {
 
 func captureLogs(t *testing.T, logger *slog.Logger) {
 	t.Helper()
-	connection, err := globalevents.LogSubmitted.Connect(func(ctx context.Context, record globalevents.LogRecord) error {
+	connection, err := globalevents.LogSubmitted.Observe(func(ctx context.Context, record globalevents.LogRecord) error {
 		if !logger.Enabled(ctx, record.Level) {
 			return nil
 		}

@@ -28,8 +28,8 @@ type CallProcessor struct {
 	Hooks     Hooks
 	Identity  Identity
 	Tools     *ToolExecutor
-	Completed *signal.Signal[agentevents.ModelCallCompletedEvent]
-	Vision    *signal.Signal[agentevents.VisionFallbackUsedEvent]
+	Completed *signal.Signal[agentevents.ModelCallCompletedEvent, signal.Empty]
+	Vision    *signal.Signal[agentevents.VisionFallbackUsedEvent, signal.Empty]
 }
 type CallInput struct {
 	Messages, RequestMessages []llm.LLMMessage

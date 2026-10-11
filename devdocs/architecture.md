@@ -46,7 +46,7 @@ flowchart TB
     S["session/service.go<br/>会话、绑定及命名生命周期"]
     RE["request/manager.go<br/>独立请求状态"]
     TU["turn/manager.go<br/>独立执行状态"]
-    O["agent/module/signals.go、agent_status.go<br/>通知与状态观察队列"]
+    O["agent/module/signals.go、agent_status.go<br/>通知订阅与状态投影"]
     A --> W
     A --> F
     A --> L
@@ -88,10 +88,10 @@ flowchart TB
 
 来源模块拥有业务实例信号及事件类型，并在实际操作处确定日志结果。Agent 的输入、超时、确认、拒绝、模型、工具、回复及持久化在操作来源直接组织日志；没有业务消费者的日志中转事件和投影连接已删除。Session 命名和 Model Manager 重试自行维护同步日志连接；Dialogue 管理通知与状态订阅，App 统一调度五条业务线生命周期。公共日志入口为 `internal/events.EmitLog`，日志中心自行订阅并持有分类队列。契约见[信号与日志系统设计](signals-and-logging.md)，实施进度与待办见[任务清单](tasks.md#信号与日志系统整改)。权限、可改写 Hook、Usage、工具记录和关键提交同步完成；信号发布观察事实。
 
-- 发射时锁内取得订阅快照、锁外调用。断开不撤销已取得快照或已入队任务；一次性连接即使入队失败也被消耗。发布方固定可变数据及实际调用 context。
-- 异步连接选择 FollowEmit（继承取消）或 FollowExecutor（只保留值）；关闭选择 CancelPending 或 Drain，底层取消优先。
-- 串行队列默认容量 256、满时拒绝。日志队列使用 `WaitForCapacity` 等待容量，以 `context.WithoutCancel` 解除单次请求取消，任务采用 `Drain`，按成功入队顺序写入；`BeginClose` 停止接收并唤醒等待者。入队不等于写入成功，拒绝、写入失败及未排空均有诊断，Done 表示 worker 实际退出。
-- 日志写入预期很快、队列通常不会满，因此有意选择等待容量，并接受极端情况下业务等待且单次请求取消不能解除入队背压的取舍。
+- `Signal[T,R]` 使用原子订阅快照，连接变更时复制。`Emit` 等待实际结果，`EmitAsync` 返回入队错误与可等待的 `Emission[R]`；结果按订阅顺序排列。`Observe` 用于无业务返回值的事实消费者。
+- 每个信号独立调度，默认 8 个执行槽、256 个等待项、30 秒总期限；满时拒绝。按 key 串行，不同 key 并发，等待同一 key 不占执行槽。超时取消 context 并完成调用方结果，回调实际退出前不释放执行槽或 key；不配合取消的回调最多占满自身信号，不能借超时不断增生 goroutine。
+- `Disconnect` 不撤销既有快照，`Connection.BeginClose/Close` 取消并等待本连接已接纳的回调。信号关闭采用 CancelPending 或 Drain，`Done` 表示所属队列回调实际退出。来源明确选择传入业务 context，或用 `context.WithoutCancel` 发布需要保留的终态事实。
+- 日志分类队列仍串行，容量 256，入队等待上限 500 毫秒，采用 Drain。公共发布解除请求取消；九字段契约由 `EmitLog`／`EmitLogAsync` 共用验证与身份复制。诊断 stderr 使用独立有界队列，阻塞时不占业务执行槽，诊断溢出合并计数。
 - `LogRecord` 是九字段封闭契约：Category、Level、EventName、Module、Type、Content、ContentLimit、Identity、ResultStatus。三个整数枚举验证合法性，ResultStatus 零值表示未声明，Level 与结果相互独立。契约验证集中于 EmitLog，消费端不重复校验；格式化仍负责脱敏、字符限长、整数精度和记录字节上限。
 - 业务事件和 notify 保留自身字段及原始对象；日志通过独立 LogRecord 发布，专有事实写入 Content。需要字段查询的审计和 Elnis 日志使用 JSON，普通说明使用 text。
 - 工具记录、持久化、回复送达及提交不保留无业务消费者的实例信号；实际保存和必要业务返回值保留，日志在操作来源组织并经所属管理口发布。日志等级和结果不改变业务停止、重试或权限判断。
@@ -203,8 +203,8 @@ flowchart LR
     SHARED["公共业务协作<br/>ToolRun、媒体<br/>Hook、回复提交"]
 
     subgraph EVENTS["业务实例信号与日志入口"]
-        BUS["来源实例 Signal[T]<br/>业务和 notify 所需事实"]
-        OBSERVER["通知、状态展示<br/>Dialogue 管理订阅与队列"]
+        BUS["来源实例 Signal[T,R]<br/>业务和通知所需事实"]
+        OBSERVER["通知、状态展示<br/>Dialogue 管理订阅与投影"]
         PROJECTION["命名、重试事实<br/>来源模块同步日志回调"]
         LOG["events.EmitLog<br/>日志中心订阅、排队、落盘"]
         BUS -.-> OBSERVER
@@ -334,10 +334,11 @@ Hook 日志职责图见[Hook 统一发布](signals-and-logging.md#32-hook-结果
 <a id="output"></a>
 ## 输出与发送
 
-`业务输出意图 → delivery/dispatch.Router → 平台发送器 → Receipt、LogResult、error`。notification 管通知规则与来源；最终对话提交归 ReplyCommitter。
+Chat 使用 `业务输出 → delivery/dispatch.Router → 平台发送器 → Receipt、LogResult、error`。`SendChat` 回复原会话，`SendTo(ctx, Target, []Output)` 发送到明确目标；正文、媒体、命令回复、Hook 输出及 Cron／Elnis 报告均为 Chat。最终对话提交归 ReplyCommitter。
 
-- app 注入共享 Router 与通知服务。显式目标优先，否则使用原 Sender 或 Conversation；后台丢弃发送器有效，不从当前 Session 重建历史目标。
-- 通知保留原来源、Sender、按需携带的 binding；取消或绑定失效拒绝发送。过程提示 FollowEmit，失败事实 FollowExecutor，均 CancelPending。无来源告警在本地交互 CLI 显示或 service 记日志。
+- App 为 Chat 注入共享 Router。通知业务只依赖 `events.NotificationRequested` 和通知实体，不注入通知管理器。显式目标优先，否则使用捕获的原 Conversation；后台通知抑制及原 context 的 binding 校验由通知管理器执行，不从当前 Session 重建历史目标。
+- `events.Notification` 统一纯文本、等级、平台、会话类型、目标 ID／ScopeID 和可选 Origin；不接媒体或大文件。`notification.Manager` 连接全局信号并持有各平台发送信号；平台仅连接并返回实际回执和错误。重试通知随真实模型调用取消，失败事实通知明确解除请求取消。无来源本地提示走 CLI，service 提示交日志中心。
+- 全局通知路由只有一个短处理槽，用于保持投递顺序；它只转交完成结果，不等待平台网络发送。各平台独立使用 8 个发送槽、256 个等待项，相同目标按接纳顺序串行；平台队列满时返回错误并写 WARN，不重试。默认 30 秒覆盖路由、排队及发送，不在各层重新延长期限。
 - 发送前归一为 MediaID，临时解析发送副本。成功回执提供真实 platform／scope／message ID／output indexes；部分失败同时返回成功项和 error，关联失败记录但不重发。
 - 业务与日志分开返回：需要两者的接口返回 Receipt、LogResult、error；仅业务保留业务结果与 error；仅日志结果的 Toolrun／Dialogue SendOutputs 返回 LogResult、error。LogResult 仅含来源明确的 ResultStatus、Content，上层不从错误或回执猜结果。正文与流式回执用于业务关联和部分送达；发送来源在 Content 中保留消息及媒体索引，不改变重发规则。
 
@@ -354,6 +355,20 @@ flowchart TD
 - 流式回复合并 Replace 与 Finish 的回执：平台消息 ID 去重，实际消息按平台、scope、消息 ID 合并并合并输出索引；保留 Finish 部分失败时已经发出的消息，合并结果不共享平台回执中的切片。
 - 状态与发送观察事实在同步保存或实际提交后发布；通知失败不再触发通知。发送必须等待实际回执，入队不算成功。
 - 发送后的媒体回执缓存失败记录 WARN，保留实际发送结果和部分回执，不触发重发；无来源通知直接组织 text 日志，不把通知对象传入日志信号。
+
+```mermaid
+flowchart TD
+    B["业务来源<br/>agent/output.go、agent/module/*notifications.go、model_signals.go<br/>hook/module/module.go、hook/rules/config.go<br/>组装短文本通知"] --> E["events/notification.go<br/>Notification、NotificationTarget、NotificationReceipt<br/>全局 NotificationRequested"]
+    E --> M["notification/manager.go<br/>原来源与目标解析、binding 校验<br/>创建平台信号、满队列 WARN、关闭资源"]
+    A["platform/module/notifications.go<br/>装配现有 Manager 和平台订阅"] -.-> M
+    M --> Q["各平台独立 Signal<br/>每平台 8 执行槽 + 256 等待项<br/>同目标有序"]
+    Q --> P["platform/cli、qq-onebot、qqofficial、telegram/notifications.go<br/>连接本平台信号、执行发送、返回回执"]
+    P -.-> R["signal/result.go<br/>转交完成状态与部分回执<br/>Emit 等待；EmitAsync 可选等待"]
+    R -.-> B
+    S["signal/signal.go、executor.go<br/>泛型契约、原子快照、每信号选项<br/>signal/queue.go：有界并发、key 调度<br/>signal/connection.go、shutdown.go：关闭<br/>signal/diagnostics.go：独立诊断"] -.-> E
+    S -.-> Q
+    C["Cron／Elnis／Hook 正文和媒体<br/>delivery/dispatch/router.go<br/>Chat 的 SendTo 与媒体准备"] --> CP["平台 adapter.go<br/>Chat 发送协议"]
+```
 
 <!-- locator:platform -->
 ## 平台适配

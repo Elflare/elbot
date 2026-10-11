@@ -20,9 +20,9 @@ import (
 
 func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 	turns := turn.NewManager()
-	events := signal.New[agentevents.StatusChangedEvent]("status")
+	events := signal.New[agentevents.StatusChangedEvent, signal.Empty]("status")
 	var observed []agentevents.StatusChangedEvent
-	_, _ = events.Connect(func(_ context.Context, e agentevents.StatusChangedEvent) error {
+	_, _ = events.Observe(func(_ context.Context, e agentevents.StatusChangedEvent) error {
 		observed = append(observed, e)
 		return nil
 	}, signal.ConnectOptions{})
@@ -58,7 +58,7 @@ func TestModelCompletionSnapshotAndObserverFailureDoNotChangeResult(t *testing.T
 	usage := &llm.Usage{TotalTokens: func() *int64 { n := int64(7); return &n }()}
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: "source", Usage: usage}}}}, "model", config.ProviderConfig{}, newTestStore(t))
 	var event agentevents.ModelCallCompletedEvent
-	_, _ = a.Signals().ModelCallCompleted.Connect(func(_ context.Context, e agentevents.ModelCallCompletedEvent) error {
+	_, _ = a.Signals().ModelCallCompleted.Observe(func(_ context.Context, e agentevents.ModelCallCompletedEvent) error {
 		event = e
 		return errors.New("observer failed")
 	}, signal.ConnectOptions{})
@@ -84,7 +84,7 @@ func TestReplyFactsPreservePartialSuccessAndReceiptSnapshot(t *testing.T) {
 	f.repo.mapErr = errors.New("map failed")
 	f.platform.receipt.SentMessages[0].OutputIndexes = []int{0}
 	var records []globalevents.LogRecord
-	connection, err := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
 		if record.EventName == "reply_delivered" || record.EventName == "reply_committed" {
 			records = append(records, record)
 		}
@@ -130,7 +130,7 @@ func TestConfirmationPublishesAfterAdmissionRelease(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	connection, err := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
 		if record.EventName != "risk_confirmation_command" || record.Identity.SessionID == nil || *record.Identity.SessionID != row.ID {
 			return nil
 		}

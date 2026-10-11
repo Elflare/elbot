@@ -44,12 +44,12 @@ func newExecutionFixture(t *testing.T, client llm.Client, store storage.Store) *
 			storage.SessionModeChat: {Provider: "default", Model: "model"},
 		}, DefaultMode: storage.SessionModeWork,
 	})
-	opts := assembleTestOptions(testAgentOptions{Models: models, Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{DefaultMode: storage.SessionModeWork}})
+	opts := assembleTestOptions(t, testAgentOptions{Models: models, Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{DefaultMode: storage.SessionModeWork}})
 	identity := &IdentityResolver{platformName: "cli", actorID: "cli:local", scopeID: "local", policy: opts.SecurityPolicy}
 	hooks := hook.NewManager()
 	bridge := &HookBridge{manager: hooks, requests: opts.Requests, identity: identity, dispatcher: opts.Dispatcher}
 	status := &StatusRecorder{}
-	output := &OutputSender{dispatcher: opts.Dispatcher, notifications: opts.Notifications, hooks: bridge, identity: identity}
+	output := &OutputSender{dispatcher: opts.Dispatcher, hooks: bridge, identity: identity}
 	view := dialogue.ExecutionView{Sessions: store.Sessions(), Providers: opts.Routes}
 	policy := &ConfirmationPolicy{identity: identity, userConfirmationTimeout: time.Second}
 	confirmations := &ConfirmationCoordinator{

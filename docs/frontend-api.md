@@ -77,15 +77,17 @@ Token 在 `[platform.cli.server.tokens]` 中按 client_id 映射到环境变量�
 {"type": "chat", "text": "你好！有什么可以帮你的？"}
 ```
 
-Agent 完成处理后发送的完整回复消息。
+完整对话输出，包括 Agent 回复、命令回复、Hook 正文以及 Cron／Elnis 后台报告。后台报告也进入聊天区。
 
 ### notice — 通知
 
 ```json
-{"type": "notice", "level": "INFO", "text": "Cron 任务已完成"}
+{"type": "notice", "level": "WARN", "text": "模型调用失败，正在重试…"}
 ```
 
-非对话场景的通知消息，如 Cron 结果、Hook 输出、Elnis 事件报告等。`level` 可取 `DEBUG`、`INFO`、`WARN`、`ERROR`；省略时按 `INFO` 处理。
+短文本运行提示，例如重试、视觉回退、Hook 失败和配置告警。`level` 可取 `DEBUG`、`INFO`、`WARN`、`ERROR`；省略时按 `INFO` 处理。通知不承载文件、媒体或后台报告。
+
+通知按平台独立排队，同一目标按顺序发送。队列满时记录告警，不自动重发；通知默认最多等待 30 秒。原远程连接的回复通知不会迁移到同一用户的新连接。
 
 ### reasoning — 推理过程
 

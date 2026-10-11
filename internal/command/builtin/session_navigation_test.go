@@ -167,7 +167,7 @@ func TestResumeCommandEmitsAudit(t *testing.T) {
 		t.Fatalf("create current session: %v", err)
 	}
 	var events []string
-	connection, _ := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+	connection, _ := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
 		if record.Category == globalevents.LogAudit {
 			events = append(events, record.EventName)
 		}

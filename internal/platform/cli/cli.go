@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"strings"
 	"sync"
@@ -105,8 +104,8 @@ func (a *Adapter) setProgram(program *tea.Program) {
 }
 
 func (a *Adapter) notifyConnected(ctx context.Context) {
-	// Consumers own execution; Emit reports dispatch failures through signal diagnostics.
-	_ = globalevents.PlatformConnected.Emit(ctx, globalevents.PlatformConnectedEvent{Platform: a.Name()})
+	// Subscribers hand background work to their own business queues.
+	_, _ = globalevents.PlatformConnected.Emit(ctx, globalevents.PlatformConnectedEvent{Platform: a.Name()})
 }
 
 func (a *Adapter) StartStream(ctx context.Context) (delivery.MessageStream, error) {
@@ -165,9 +164,7 @@ func outputsText(outputs []delivery.Output) string {
 	return delivery.FallbackOutput(outputs).Text
 }
 
-func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, globalevents.LogResult, error) {
-	target := notice.Target
-	outputs := notice.Outputs
+func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	if platformName := strings.TrimSpace(target.Platform); platformName != "" && platformName != a.Name() {
 		{
 			err := fmt.Errorf("cli cannot send to platform %q", platformName)
@@ -184,37 +181,31 @@ func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (deliv
 	}
 	text := outputsText(outputs)
 	if text != "" {
-		a.sendTUIMessage(tuiNoticeMsg{Text: text, Level: notice.Level}, "[notice] "+text)
+		a.sendTUIMessage(tuiOutputMsg(text), text)
 	}
 	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
-func (a *Adapter) SendToolNotice(text string) {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return
-	}
-	_, _, _ = a.SendNotice(context.Background(), delivery.Notice{Outputs: []delivery.Output{delivery.Text("[tool] " + text)}, Level: slog.LevelDebug})
-}
-
-func (a *Adapter) sendTUIMessage(msg tea.Msg, fallback string) {
+func (a *Adapter) sendTUIMessage(msg tea.Msg, fallback string) error {
 	a.mu.Lock()
 	output := a.output
 	program := a.program
 	a.mu.Unlock()
 	if output == nil || !isatty.IsTerminal(os.Stdin.Fd()) {
-		printLine(fallback)
-		return
+		_, err := fmt.Fprintln(os.Stdout, strings.TrimSuffix(fallback, "\n"))
+		return err
 	}
 	if program != nil {
 		program.Send(msg)
-		return
+		return nil
 	}
 	select {
 	case output <- msg:
 	default:
-		printLine(fallback)
+		_, err := fmt.Fprintln(os.Stdout, strings.TrimSuffix(fallback, "\n"))
+		return err
 	}
+	return nil
 }
 
 func printLine(text string) {

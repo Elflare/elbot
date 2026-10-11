@@ -46,7 +46,7 @@ func TestResponsesPartialTextAndRefusalSurviveBeforeItemDone(t *testing.T) {
 		opts.Store = partialNativeStore{Store: opts.Store, items: &savedItems, status: &savedStatus}
 	})
 	var completed agentevents.ModelCallCompletedEvent
-	connection, err := f.agent.Signals().ModelCallCompleted.Connect(func(_ context.Context, event agentevents.ModelCallCompletedEvent) error {
+	connection, err := f.agent.Signals().ModelCallCompleted.Observe(func(_ context.Context, event agentevents.ModelCallCompletedEvent) error {
 		completed = event
 		return nil
 	}, signal.ConnectOptions{})
@@ -55,7 +55,7 @@ func TestResponsesPartialTextAndRefusalSurviveBeforeItemDone(t *testing.T) {
 	}
 	defer connection.Disconnect()
 	var outputLog globalevents.LogRecord
-	logs, err := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+	logs, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
 		if record.EventName == "assistant_message" {
 			outputLog = record
 		}

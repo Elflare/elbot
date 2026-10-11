@@ -36,17 +36,7 @@ func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (deli
 	}
 }
 
-func (a *Adapter) SendNotice(context.Context, delivery.Notice) (delivery.Receipt, events.LogResult, error) {
-	{
-		err := fmt.Errorf("service platform cannot send notice without a target platform")
-		logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
-		if err != nil {
-			logResult.ResultStatus = events.ResultFailed
-			logResult.Content = err.Error()
-			if err == context.Canceled {
-				logResult.ResultStatus = events.ResultCanceled
-			}
-		}
-		return delivery.Receipt{}, logResult, err
-	}
+func (a *Adapter) SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	err := fmt.Errorf("service platform cannot send chat output without a target platform")
+	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}, err
 }

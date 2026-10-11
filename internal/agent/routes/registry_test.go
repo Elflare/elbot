@@ -112,7 +112,7 @@ func (o *testOutput) SendAssistant(ctx context.Context, text string) (delivery.R
 func (*testOutput) SendOutputs(context.Context, []delivery.Output) (events.LogResult, error) {
 	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
-func (*testOutput) SendNotice(context.Context, slog.Level, string)               {}
+func (*testOutput) Notify(context.Context, slog.Level, string)                   {}
 func (*testOutput) SendPreview(context.Context, string)                          {}
 func (*testOutput) SendReasoning(context.Context, string)                        {}
 func (*testOutput) PublishRuntimeStatus(context.Context, runtimestatus.Snapshot) {}

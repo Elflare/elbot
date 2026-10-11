@@ -76,7 +76,7 @@ func TestMessageEntryConstructsWithOnlyConsumptionCapabilities(t *testing.T) {
 }
 
 func TestExecutionConstructionKeepsBorrowedCallbacksAndServices(t *testing.T) {
-	opts := assembleTestOptions(validConstructorOptions(t))
+	opts := assembleTestOptions(t, validConstructorOptions(t))
 	defer opts.Sessions.Close(context.Background())
 	identity, err := NewIdentityResolver(IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Policy: opts.SecurityPolicy})
 	if err != nil {
@@ -90,7 +90,7 @@ func TestExecutionConstructionKeepsBorrowedCallbacksAndServices(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	output, err := NewOutputSender(OutputSenderDeps{Dispatcher: opts.Dispatcher, Notifications: opts.Notifications, Hooks: constructorHooks{}, Identity: identity})
+	output, err := NewOutputSender(OutputSenderDeps{Dispatcher: opts.Dispatcher, Hooks: constructorHooks{}, Identity: identity})
 	if err != nil {
 		t.Fatal(err)
 	}

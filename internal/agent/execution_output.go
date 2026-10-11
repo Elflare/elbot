@@ -95,9 +95,9 @@ func (o executionTurnOutput) SendOutputs(ctx context.Context, v []delivery.Outpu
 	ctx, out := o.target(ctx)
 	return out.SendOutputs(ctx, v)
 }
-func (o executionTurnOutput) SendNotice(ctx context.Context, l slog.Level, text string) {
+func (o executionTurnOutput) Notify(ctx context.Context, l slog.Level, text string) {
 	ctx, out := o.target(ctx)
-	out.SendNotice(ctx, l, text)
+	out.Notify(ctx, l, text)
 }
 func (o executionTurnOutput) SendPreview(ctx context.Context, text string) {
 	ctx, out := o.target(ctx)

@@ -145,11 +145,30 @@ type LogRecord struct {
 // LogSubmitted is stable for the lifetime of the process. Connect here; publish
 // through EmitLog so consumers receive a validated record with copied identities.
 // Consumers must not modify the shared record. There is no replay.
-var LogSubmitted = signal.New[LogRecord]("log.submitted")
+var LogSubmitted = signal.New[LogRecord, signal.Empty]("log.submitted")
 
 // EmitLog reports admission errors, not durability. Logging must never replace
 // the caller's business result. The signal reports dispatch failures itself.
 func EmitLog(ctx context.Context, record LogRecord) error {
+	record, err := prepareLogRecord(record)
+	if err != nil {
+		return err
+	}
+	_, err = LogSubmitted.Emit(context.WithoutCancel(ctx), record)
+	return err
+}
+
+// EmitLogAsync applies the same closed record contract without waiting for the
+// logging center's admission. It returns admission and eventual observer results.
+func EmitLogAsync(ctx context.Context, record LogRecord) (*signal.Emission[signal.Empty], error) {
+	record, err := prepareLogRecord(record)
+	if err != nil {
+		return nil, err
+	}
+	return LogSubmitted.EmitAsync(context.WithoutCancel(ctx), record)
+}
+
+func prepareLogRecord(record LogRecord) (LogRecord, error) {
 	var err error
 	switch {
 	case !record.Category.Valid():
@@ -167,7 +186,7 @@ func EmitLog(ctx context.Context, record LogRecord) error {
 		// Contract failures must remain visible even without a logging center.
 		// Never publish recursively or expose source content in diagnostics.
 		slog.New(slog.NewTextHandler(os.Stderr, nil)).ErrorContext(context.Background(), "invalid log record", slog.Any("error", err))
-		return err
+		return record, err
 	}
 	for _, field := range []**string{
 		&record.Identity.SessionID, &record.Identity.RunID, &record.Identity.Attempt,
@@ -178,5 +197,5 @@ func EmitLog(ctx context.Context, record LogRecord) error {
 			*field = &value
 		}
 	}
-	return LogSubmitted.Emit(ctx, record)
+	return record, nil
 }

@@ -61,13 +61,13 @@ func newManager(level, logDir string, retentionDays int, open func(string) (io.W
 			return nil, openErr
 		}
 		m.writers = append(m.writers, writer)
-		queue, queueErr := signal.NewQueue(signal.QueueOptions{Name: "logging." + category.String(), Capacity: 256, WaitForCapacity: true})
+		queue, queueErr := signal.NewQueue(signal.QueueOptions{Name: "logging." + category.String(), Capacity: 256, WaitForCapacity: true, AdmissionTimeout: 500 * time.Millisecond})
 		if queueErr != nil {
 			return nil, queueErr
 		}
 		m.sinks[category] = &logSink{queue: queue, writer: writer}
 	}
-	m.connection, err = events.LogSubmitted.Connect(m.handleRecord, signal.ConnectOptions{Shutdown: signal.CancelPending})
+	m.connection, err = events.LogSubmitted.Observe(m.handleRecord, signal.ConnectOptions{Shutdown: signal.CancelPending})
 	if err != nil {
 		return nil, err
 	}
