@@ -55,6 +55,29 @@ func (s *fakeSender) SendTo(_ context.Context, noticeTarget Target, noticeOutput
 	return Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
+func TestSendToEmptyOutputsAreSilent(t *testing.T) {
+	backend := &fakeSender{}
+	for _, sender := range []Sender{nil, backend} {
+		_, logResult, err := NewManager(sender).SendTo(t.Context(), Target{}, nil)
+		if err != nil || logResult.ResultStatus != events.ResultSkipped || logResult.Content != "" {
+			t.Fatalf("empty outputs: result=%+v err=%v", logResult, err)
+		}
+	}
+	if len(backend.targeted) != 0 {
+		t.Fatal("empty outputs reached sender")
+	}
+	_, logResult, err := NewManager(nil).SendTo(t.Context(), Target{}, []Output{Text("hello")})
+	if err != nil || logResult.ResultStatus != events.ResultSkipped || logResult.Content != "chat output is not sent" {
+		t.Fatalf("missing sender changed: result=%+v err=%v", logResult, err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, logResult, err = NewManager(backend).SendTo(ctx, Target{}, nil)
+	if !errors.Is(err, context.Canceled) || logResult.ResultStatus != events.ResultCanceled || logResult.Content == "" {
+		t.Fatalf("cancellation lost: result=%+v err=%v", logResult, err)
+	}
+}
+
 func TestFallbackTextForEmoticon(t *testing.T) {
 	got := FallbackText(Emoticon("14", "微笑", ""))
 	if got != "[表情: 微笑]" {

@@ -200,11 +200,11 @@ func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (result *tool
 	}
 	data := shellData{Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: exitCode}
 	logContent = fmt.Sprintf("exit_code=%d", exitCode)
-	if data.Stderr != "" {
-		logContent += "\nstderr:\n" + data.Stderr
+	if stderr := strings.TrimRight(data.Stderr, "\r\n"); stderr != "" {
+		logContent += "\nstderr:\n" + stderr
 	}
-	if data.Stdout != "" {
-		logContent += "\nstdout:\n" + data.Stdout
+	if stdout := strings.TrimRight(data.Stdout, "\r\n"); stdout != "" {
+		logContent += "\nstdout:\n" + stdout
 	}
 	{
 		result := &tool.Result{Content: formatShellContent(data), Warnings: advice.warnings}

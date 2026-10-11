@@ -49,6 +49,43 @@ func TestShellToolRunsArbitraryCommand(t *testing.T) {
 	}
 }
 
+func TestShellLogOutputSeparators(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses POSIX shell commands")
+	}
+	for _, tc := range []struct{ name, stdout, stderr, want string }{
+		{"lf", "Current directory: /home/test\n", "", "exit_code=0\nstdout:\nCurrent directory: /home/test"},
+		{"crlf", "line\r\n", "", "exit_code=0\nstdout:\nline"},
+		{"multiple", "line\n\n", "", "exit_code=0\nstdout:\nline"},
+		{"only_newlines", "\r\n\n", "\n", "exit_code=0"},
+		{"both", "first\n\n  second\n", "warning\r\n", "exit_code=0\nstderr:\nwarning\nstdout:\nfirst\n\n  second"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for name, content := range map[string]string{"stdout.txt": tc.stdout, "stderr.txt": tc.stderr} {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			ctx := workspacepath.WithWorkspaceStore(t.Context(), &testWorkspaceStore{dir: dir})
+			result, logContent, err := NewShellTool().Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"cmd":"cat stdout.txt; cat stderr.txt >&2"}`)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if logContent != tc.want {
+				t.Fatalf("log=%q want=%q", logContent, tc.want)
+			}
+			wantBusiness := tc.stdout
+			if tc.stderr != "" {
+				wantBusiness += "\nstderr:\n" + tc.stderr
+			}
+			if result.Content != wantBusiness {
+				t.Fatalf("business output changed: got=%q want=%q", result.Content, wantBusiness)
+			}
+		})
+	}
+}
+
 func TestShellOutputBufferDrainsWithBoundedMemory(t *testing.T) {
 	const limit = 256 * 1024
 	for _, chunkSize := range []int{0, 1, 4093, limit + 1} {
