@@ -191,15 +191,29 @@ func TestRuntimeAssemblyCommandsShareToolAndModelServices(t *testing.T) {
 		t.Fatalf("shared backup completion = %#v; output: %s", choices, p.text())
 	}
 	calls := len(model.selections())
-	send("/rollback " + choices[0].Text)
+	notice := func() string {
+		output, err := os.CreateTemp(t.TempDir(), "command-notice-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		original := os.Stdout
+		os.Stdout = output
+		defer func() { os.Stdout = original; _ = output.Close() }()
+		send("/rollback " + choices[0].Text)
+		data, err := os.ReadFile(output.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}()
 	if data, _ := os.ReadFile(path); string(data) != "before" {
 		t.Fatalf("command rollback = %q; output: %s", data, p.text())
 	}
 	if len(model.selections()) != calls {
 		t.Fatal("rollback unexpectedly used the model")
 	}
-	if !strings.Contains(p.text(), "已恢复编辑前内容") {
-		t.Fatal("missing rollback notice")
+	if !strings.Contains(notice, "[notice] 已恢复编辑前内容") || strings.Contains(p.text(), "已恢复编辑前内容") {
+		t.Fatalf("rollback result must use the CLI notification receiver: notice=%q chat=%q", notice, p.text())
 	}
 	send("/model --work test/second")
 	state, err := os.ReadFile(req.Foundation.Config.StateConfigPath)

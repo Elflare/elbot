@@ -9,7 +9,6 @@ import (
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
-	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -109,7 +108,9 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 		return true, nil
 	}
 	if result.Content != "" {
-		if err := e.output.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(result.Content)}); err != nil {
+		// A command can invalidate its old session binding. Its result still
+		// belongs to the original conversation, independently of that activation.
+		if _, err := globalevents.NotificationRequested.Emit(session.WithBinding(ctx, nil), globalevents.NewNotification(ctx, slog.LevelInfo, result.Content)); err != nil {
 			return true, err
 		}
 	}
@@ -135,7 +136,6 @@ type CommandExecution interface {
 
 type CommandOutput interface {
 	SendChat(context.Context, string)
-	SendTo(context.Context, delivery.Target, []delivery.Output) error
 }
 
 type CommandConfirmations interface {

@@ -84,6 +84,7 @@ func TestBackgroundTakeoverDuringToolSharesPending(t *testing.T) {
 		cfg.ToolRegistry = registry
 	})
 	a.output.dispatcher.RegisterPlatformSender("qq", p)
+	connectFixtureNotifications(t, "qq", a.output.dispatcher)
 	done := startTakeoverTest(a)
 	select {
 	case <-started:
@@ -152,6 +153,7 @@ func TestBackgroundTakeoverSwitchesTaskModelToWork(t *testing.T) {
 		cfg.ToolRegistry = registry
 	})
 	a.output.dispatcher.RegisterPlatformSender("qq", p)
+	connectFixtureNotifications(t, "qq", a.output.dispatcher)
 	done := make(chan backgroundTestResult, 1)
 	go func() {
 		r, err := a.RunBackground(context.Background(), background.RunRequest{
@@ -193,6 +195,7 @@ func TestBackgroundTakeoverWaitsForAppendConfirmation(t *testing.T) {
 	f := &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"discarded", "confirmed foreground result"}}
 	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
 	a.output.dispatcher.RegisterPlatformSender("qq", p)
+	connectFixtureNotifications(t, "qq", a.output.dispatcher)
 	done := startTakeoverTest(a)
 	select {
 	case <-block.started:
@@ -233,6 +236,7 @@ func TestBackgroundCompactHandoff(t *testing.T) {
 			f := &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"compressed history", "finished after compact"}}
 			a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
 			a.output.dispatcher.RegisterPlatformSender("qq", p)
+			connectFixtureNotifications(t, "qq", a.output.dispatcher)
 			req := background.RunRequest{
 				Kind:     background.KindCron,
 				Name:     "compact",
@@ -318,6 +322,7 @@ func TestBackgroundTakeoverStopRecordsCancellation(t *testing.T) {
 	f := &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"never returned"}}
 	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
 	a.output.dispatcher.RegisterPlatformSender("qq", p)
+	connectFixtureNotifications(t, "qq", a.output.dispatcher)
 	done := startTakeoverTest(a)
 	select {
 	case <-block.started:
@@ -349,6 +354,7 @@ func TestLateInterruptedRequestCannotFinishResumedExecution(t *testing.T) {
 	f := &fakeLLM{chatBlocks: []fakeLLMBlock{old, next}, replies: []string{"late discarded answer", "current answer"}}
 	a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
 	a.output.dispatcher.RegisterPlatformSender("qq", p)
+	connectFixtureNotifications(t, "qq", a.output.dispatcher)
 	done := startTakeoverTest(a)
 	select {
 	case <-old.started:
@@ -467,6 +473,7 @@ func TestTakeoverRefreshesNextToolInSameBatch(t *testing.T) {
 		cfg.ToolRegistry = registry
 	})
 	a.output.dispatcher.RegisterPlatformSender("qq", p)
+	connectFixtureNotifications(t, "qq", a.output.dispatcher)
 	done := startTakeoverTest(a)
 	select {
 	case <-started:
@@ -553,6 +560,7 @@ func TestTakeoverPendingContinuesThroughAutomaticCompact(t *testing.T) {
 		cfg.ToolRegistry = registry
 	})
 	a.output.dispatcher.RegisterPlatformSender("qq", p)
+	connectFixtureNotifications(t, "qq", a.output.dispatcher)
 	a.execution.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: .8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
 	done := startTakeoverTest(a)
 	select {

@@ -414,6 +414,20 @@ func TestNoticeLevelPreservedInWideAndInlineLayouts(t *testing.T) {
 		t.Fatalf("inline content = %q", narrow.content)
 	}
 }
+
+func TestCommandNoticeStaysOutOfChat(t *testing.T) {
+	text := strings.Repeat("available model information\n", 400)
+	client := &RemoteClient{output: make(chan tea.Msg, 1)}
+	client.handleServerMessage(remoteMessage{Type: remoteMsgNotice, Text: text, Level: "INFO"})
+	m := tuiModel{input: newTUIInput(), width: 120, height: 20}
+	m.resizeViewports()
+	updated, _ := m.Update(<-client.output)
+	m = updated.(tuiModel)
+	if m.content != "" || len(m.notices) != 1 || m.notices[0].Text != strings.TrimSpace(text) {
+		t.Fatalf("chat=%q notices=%#v", m.content, m.notices)
+	}
+}
+
 func TestRefreshNoticesUsesSeparator(t *testing.T) {
 	m := tuiModel{input: newTUIInput(), width: 120, height: 20}
 	m.resizeViewports()
