@@ -119,7 +119,13 @@ func BenchmarkSignalForward(b *testing.B) {
 	defer up.Close(context.Background())
 	defer down.Close(context.Background())
 	_, _ = down.Connect(func(_ context.Context, n int) (int, error) { return n, nil }, ConnectOptions{})
-	_, _ = up.ConnectForward(func(ctx context.Context, n int) (*Emission[int], error) { return down.EmitAsync(ctx, n) }, ConnectOptions{})
+	_, _ = up.ConnectForward(func(ctx context.Context, n int) *Emission[int] {
+		e, err := down.EmitAsync(ctx, n)
+		if e == nil {
+			return Resolved(Result[int]{Err: err})
+		}
+		return e
+	}, ConnectOptions{})
 	b.ReportAllocs()
 	for b.Loop() {
 		if _, err := up.Emit(context.Background(), 1); err != nil {

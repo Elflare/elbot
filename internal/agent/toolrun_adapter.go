@@ -30,6 +30,7 @@ import (
 )
 
 type toolRunDeps struct {
+	status        ExecutionStatus
 	hooks         dialogue.Hooks
 	requests      *request.Manager
 	turns         *turn.Manager
@@ -101,7 +102,7 @@ func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName s
 		}
 		return ctx, time.Time{}, func() {}, logResult, err
 	}
-	d.output.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{
+	d.status.Record(ctx, runtimestatus.Snapshot{
 		SessionID:      sessionID,
 		Phase:          runtimestatus.PhaseTool,
 		RequestID:      toolReq.ID,
@@ -263,6 +264,7 @@ type ToolConfirmations interface {
 // ToolRunDeps declares the application bridge consumed by ToolRun. Per-turn
 // output and attempt remain private copies created by ForTurn.
 type ToolRunDeps struct {
+	Status        ExecutionStatus
 	Hooks         dialogue.Hooks
 	Requests      *request.Manager
 	Turns         *turn.Manager
@@ -279,6 +281,7 @@ type ToolRunDeps struct {
 
 func NewToolRunDeps(deps ToolRunDeps) dialogue.ToolDepsFactory {
 	return &toolRunDeps{
+		status:        deps.Status,
 		hooks:         deps.Hooks,
 		requests:      deps.Requests,
 		turns:         deps.Turns,

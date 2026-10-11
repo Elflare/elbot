@@ -21,6 +21,9 @@ import (
 )
 
 type Runner struct {
+	Status interface {
+		Record(context.Context, runtimestatus.Snapshot)
+	}
 	Calls    *CallProcessor
 	System   SystemPromptManager
 	Routes   LoopResolver
@@ -134,7 +137,7 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 		}
 		return result
 	}
-	out.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: in.Session.ID, Phase: runtimestatus.PhaseSending,
+	r.Status.Record(ctx, runtimestatus.Snapshot{SessionID: in.Session.ID, Phase: runtimestatus.PhaseSending,
 		Provider: result.Selection.Provider, Model: result.Selection.Model, Mode: in.Session.Mode, RequestID: in.RequestID,
 		Kind: request.KindTurn, Label: "chat", TurnStartedAt: result.StartedAt, StageStartedAt: storage.Now()})
 	result.Committed, err = r.Replies.Commit(ctx, requestCtx, loop.Commit, out)
@@ -150,6 +153,9 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 
 // RunnerDeps contains external capabilities needed to build the common single-turn collaborators.
 type RunnerDeps struct {
+	Status interface {
+		Record(context.Context, runtimestatus.Snapshot)
+	}
 	Routes          LoopResolver
 	Dialogues       storage.DialogueRepository
 	MessageRows     storage.MessageRepository
@@ -176,7 +182,7 @@ type RunnerDeps struct {
 }
 
 func NewRunner(deps RunnerDeps) (*Runner, error) {
-	if deps.Routes == nil || deps.Dialogues == nil || deps.MessageRows == nil || deps.Sessions == nil || deps.Turns == nil || deps.Contexts == nil || deps.Identity == nil || deps.Hooks == nil || deps.Output == nil || deps.ToolManager == nil || deps.ToolDeps == nil {
+	if deps.Routes == nil || deps.Dialogues == nil || deps.MessageRows == nil || deps.Sessions == nil || deps.Turns == nil || deps.Contexts == nil || deps.Identity == nil || deps.Hooks == nil || deps.Output == nil || deps.ToolManager == nil || deps.ToolDeps == nil || deps.Status == nil {
 		return nil, fmt.Errorf("dialogue collaborators are required")
 	}
 	if deps.MaxRounds <= 0 {
@@ -202,6 +208,6 @@ func NewRunner(deps RunnerDeps) (*Runner, error) {
 	system.AddSource(BackgroundPathsSystemPromptSource{})
 	system.AddSource(ResidentMemorySystemPromptSource{Store: deps.Memory})
 	system.AddSource(ConversationMetaSystemPromptSource{})
-	return &Runner{Routes: deps.Routes, Preparer: preparer, Messages: messages, Replies: replies, Turns: deps.Turns, View: deps.View, Calls: calls, System: system}, nil
+	return &Runner{Status: deps.Status, Routes: deps.Routes, Preparer: preparer, Messages: messages, Replies: replies, Turns: deps.Turns, View: deps.View, Calls: calls, System: system}, nil
 }
 func (r *Runner) OriginFor(provider string) (llm.Origin, error) { return r.Routes.OriginFor(provider) }

@@ -52,7 +52,7 @@ flowchart TD
 | `internal/events` | 全局信号及数据契约，不持有业务管理器、文件、配置或数据库，不反向依赖业务和日志中心 |
 | 来源模块 | 确定业务事实和结果，发布事件，维护自身实例事件及日志回调 |
 | 订阅模块／中心 | 自行连接、处理事件，持有并清理自己的连接与队列 |
-| App | 服务装配、启动和关闭协调，以及自身通知和状态订阅，不转发全局日志或平台连接事实 |
+| App | 服务装配、启动和关闭协调；通知归所属业务、状态展示归 CLI，不转发全局日志或平台连接事实 |
 
 业务和中心共同依赖显式的全局契约，不建立“字符串事件名 + 任意载荷”的通用事件注册表。使用 `Signal[T,R]`、`Emit`、`EmitAsync`、`Connect`、`Observe`、`Disconnect` 和显式生命周期。
 
@@ -80,7 +80,8 @@ flowchart TD
 | `Emit(ctx,payload)` | 等待每个订阅的实际结果，返回注册顺序的 `[]Result[R]` 和合并错误 |
 | `EmitAsync(ctx,payload)` | 立即返回入队错误及 `Emission[R]`；非 nil Emission 可通过 `Wait`／`Done` 取得最终结果；多订阅者可能部分入队 |
 | `Result` | `Value` 为真实业务结果或部分回执，`Err` 为入队／执行／超时错误，`Started` 表示终端回调是否已经进入 |
-| `ConnectForward`／`MapResults` | 用完成回调转交下游结果，不留 goroutine 或上游 worker 等待；转发目标为单个接收者，映射本身必须短且不阻塞 |
+| `ConnectForward` | 回调只返回一个 `*Emission[R]`，采用下游唯一结果，保留部分回执、错误和 Started；nil 或多个接收者属于契约错误；不留 goroutine 或上游 worker 等待 |
+| `Resolved(Result[R])`／`MapResults` | 前者构造包含一个结果的已完成 Emission，表达立即失败或跳过；后者用短且不阻塞的完成回调映射结果 |
 | `Disconnect`／`Connection.Close` | 前者移除未来快照；后者另取消已接纳回调并等待其真实退出 |
 | `CancelPending`／`Drain` | 关闭时取消或排空；超出关闭预算返回错误，不宣称仍运行的回调已经退出 |
 
@@ -88,7 +89,9 @@ flowchart TD
 
 超时完成的是调用方的结果，并取消执行 context。Go 无法强制终止任意回调，因此直到回调真实返回才释放执行槽和 key；超时也不能证明消息未送达，不能据此自动重发。被卡住的信号可以耗尽自己的容量，后续调用得到拒绝或超时，其他信号拥有独立并发额度。不得在信号回调中执行大文件传输或无期限后台任务；Hook／Cron 平台连接回调只把任务交给业务自己的工作队列。
 
-调用方选择 context 的生命周期：临时进度跟随原业务取消，需要保留的失败／结束事实由来源显式 `context.WithoutCancel`。模型重试事实带 `CallContext`，日志不受调用取消影响，面向用户的重试提示仍跟随真实模型调用结束。
+调用方选择 context 的生命周期：通用 Notify、工具预览等临时进度跟随原业务取消，需要保留的失败／结束事实由来源显式 `context.WithoutCancel`。StatusRecorder 保存后的状态与 Session 提交后的绑定变化在最终发布处解除请求取消。模型重试事实带 `CallContext`，日志不受调用取消影响，面向用户的重试提示仍跟随真实模型调用结束。
+
+转发遇到 `EmitAsync` 返回 nil 时，将接纳错误包装为 `Resolved`；返回非 nil Emission 时直接采用其结果，不再重复合并接纳错误。
 
 ## 统一通知
 

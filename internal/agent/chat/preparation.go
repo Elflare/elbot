@@ -55,7 +55,7 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in dialogue
 	userMessage, userSegments, loaded := p.materials.UserMessage, p.materials.Input.Segments, p.materials.Loaded
 	messages := append(append([]storage.Message{}, loaded.Messages...), *userMessage)
 	compactSeedOnCurrentUser, summaryOnCurrentUser := p.compactSeedOnCurrentUser, p.summaryOnCurrentUser
-	s.output.PublishRuntimeStatus(s.ctx, runtimestatus.Snapshot{
+	r.Status.Record(s.ctx, runtimestatus.Snapshot{
 		SessionID:      s.session.ID,
 		Phase:          runtimestatus.PhasePreparing,
 		Provider:       s.selection.Provider,
@@ -85,7 +85,7 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in dialogue
 		return nil, err
 	}
 	s.tools = tools
-	s.output.PublishRuntimeStatus(s.ctx, runtimestatus.Snapshot{
+	r.Status.Record(s.ctx, runtimestatus.Snapshot{
 		SessionID:      s.session.ID,
 		Phase:          runtimestatus.PhasePreparing,
 		Provider:       s.selection.Provider,

@@ -9,10 +9,10 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/platform"
-	runtimestatus "elbot/internal/runtime"
 )
 
 type Output interface {
+	StartReasoning(context.Context) ReasoningStream
 	StartStream(ctx context.Context) delivery.MessageStream
 	FinishIntermediate(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string, streaming bool) error
 	ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, events.LogResult, error)
@@ -22,8 +22,14 @@ type Output interface {
 	SendOutputs(ctx context.Context, outputs []delivery.Output) (events.LogResult, error)
 	Notify(ctx context.Context, level slog.Level, text string)
 	SendPreview(ctx context.Context, text string)
-	SendReasoning(ctx context.Context, text string)
-	PublishRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot)
+}
+
+// ReasoningStream consumes raw model deltas in order for one call. Presentation
+// failures are isolated from the business result. Finish closes any opened view,
+// including on error or cancellation; implementations must tolerate repetition.
+type ReasoningStream interface {
+	Append(context.Context, string)
+	Finish(context.Context)
 }
 
 func BufferAssistantOutput(ctx context.Context) bool {

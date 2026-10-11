@@ -79,7 +79,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		}
 		stream := s.output.StartStream(s.requestCtx)
 		llmStageStartedAt := storage.Now()
-		s.output.PublishRuntimeStatus(s.ctx, runtimestatus.Snapshot{
+		r.Status.Record(s.ctx, runtimestatus.Snapshot{
 			SessionID:      s.session.ID,
 			Phase:          runtimestatus.PhaseLLM,
 			Provider:       s.selection.Provider,
@@ -108,7 +108,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		if result.Usage != nil {
 			s.usage = result.Usage
 		}
-		s.output.PublishRuntimeStatus(s.ctx, runtimestatus.Snapshot{
+		r.Status.Record(s.ctx, runtimestatus.Snapshot{
 			SessionID:      s.session.ID,
 			Phase:          runtimestatus.PhaseLLM,
 			Provider:       s.selection.Provider,

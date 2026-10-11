@@ -134,12 +134,10 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		}
 		return result, err
 	}
-	reasoningOpen := false
-	defer func() {
-		if reasoningOpen {
-			s.output.SendReasoning(ctx, "[/thinking]\n\n")
-		}
-	}()
+	reasoning := s.output.StartReasoning(ctx)
+	if reasoning != nil {
+		defer reasoning.Finish(ctx)
+	}
 	for event := range events {
 		if event.Response != nil {
 			result.Response = event.Response
@@ -274,12 +272,8 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 				}
 			}
 		case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
-			if s.route.Calls.Identity.IsCLI(ctx) && event.Delta != "" {
-				if !reasoningOpen {
-					s.output.SendReasoning(ctx, "[thinking] ")
-					reasoningOpen = true
-				}
-				s.output.SendReasoning(ctx, event.Delta)
+			if reasoning != nil && event.Delta != "" {
+				reasoning.Append(ctx, event.Delta)
 			}
 		case "response.completed":
 			status = "completed"

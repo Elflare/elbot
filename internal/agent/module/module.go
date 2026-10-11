@@ -25,12 +25,14 @@ import (
 	"elbot/internal/modelmgr"
 	"elbot/internal/request"
 	"elbot/internal/session"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
 
 // Module owns the foreground business line and its independently managed Session, Request and Turn state.
 type Module struct {
+	statusChanged   *signal.Signal[agentevents.StatusChangedEvent, signal.Empty]
 	ctx             context.Context
 	cancel          context.CancelFunc
 	sessions        *session.Service
@@ -64,6 +66,8 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 	m.commands = command.NewRouter(deps.Prefixes)
 	sessionCommands := commandbuiltin.NewSessionCommandState(deps.PageSize, deps.RetentionDays)
 	signals := agentevents.NewSignals()
+	m.statusChanged = signals.StatusChanged
+	view := dialogue.ExecutionView{Sessions: deps.Store.Sessions(), Providers: m.routes}
 	identity, err := agent.NewIdentityResolver(agent.IdentityResolverDeps{PlatformName: deps.PlatformName, ActorID: "cli:local", ScopeID: "local", Policy: deps.Policy})
 	if err != nil {
 		return m, err
@@ -81,11 +85,11 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		return m, err
 	}
 	m.bridge = bridge
-	status, err := agent.NewStatusRecorder(agent.StatusRecorderDeps{Turns: m.turns, Changed: signals.StatusChanged})
+	status, err := agent.NewStatusRecorder(agent.StatusRecorderDeps{View: view, Turns: m.turns, Changed: signals.StatusChanged})
 	if err != nil {
 		return m, err
 	}
-	output, err := agent.NewOutputSender(agent.OutputSenderDeps{Dispatcher: deps.Dispatcher, Hooks: bridge, Identity: identity})
+	output, err := agent.NewOutputSender(agent.OutputSenderDeps{Dispatcher: deps.Dispatcher, Hooks: bridge, Reasoning: deps.Reasoning})
 	if err != nil {
 		return m, err
 	}
@@ -109,8 +113,8 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 	if err != nil {
 		return m, err
 	}
-	view := dialogue.ExecutionView{Sessions: deps.Store.Sessions(), Providers: m.routes}
 	toolDeps := agent.NewToolRunDeps(agent.ToolRunDeps{
+		Status:        status,
 		Hooks:         bridge,
 		Requests:      m.requests,
 		Turns:         m.turns,
@@ -125,6 +129,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		View:          view,
 	})
 	runner, err := dialogue.NewRunner(dialogue.RunnerDeps{
+		Status:          status,
 		Routes:          m.routes,
 		Dialogues:       deps.Store.Dialogues(),
 		MessageRows:     deps.Store.Messages(),
@@ -152,6 +157,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		return m, err
 	}
 	chat, err := chatroute.NewLoop(chatroute.LoopDeps{
+		Status:   status,
 		Store:    deps.Store,
 		Contexts: m.contexts,
 		Models:   deps.Models,
@@ -167,6 +173,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		return m, err
 	}
 	response, err := responseroute.NewLoop(responseroute.LoopDeps{
+		Status:     status,
 		Repository: deps.Store.Dialogues(),
 		Media:      deps.Media,
 		Models:     deps.Models,
@@ -298,9 +305,6 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 	if err := bindings.connectAgentNotifications(signals); err != nil {
 		return m, err
 	}
-	if err := bindings.connectStatus(signals, m.sessions, deps.Dispatcher); err != nil {
-		return m, err
-	}
 	if err := bindings.connectSession(m.sessions, deps.Files.Manager); err != nil {
 		return m, err
 	}
@@ -323,7 +327,10 @@ func (m *Module) Start() error {
 	m.sessions.StartNaming(m.ctx)
 	return m.bridge.StartPlatformEvents(m.ctx)
 }
-func (m *Module) Handler() *agent.MessageHandler         { return m.handler }
+func (m *Module) Handler() *agent.MessageHandler { return m.handler }
+func (m *Module) StatusChanged() *signal.Signal[agentevents.StatusChangedEvent, signal.Empty] {
+	return m.statusChanged
+}
 func (m *Module) Completion() *completion.Service        { return m.completion }
 func (m *Module) Commands() *command.Router              { return m.commands }
 func (m *Module) Sessions() *session.Service             { return m.sessions }

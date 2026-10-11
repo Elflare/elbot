@@ -5,17 +5,20 @@ import (
 	"log/slog"
 
 	agentevents "elbot/internal/agent/events"
-	"elbot/internal/delivery/dispatch"
 	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/notification/rules"
+	"elbot/internal/platform"
+	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/signal"
 )
 
 // Unit fixtures consume facts synchronously for deterministic assertions. The
 // app tests exercise the production queues, shutdown and asynchronous delivery.
 type assembleObserverOptions struct {
-	dispatcher *dispatch.Router
+	display interface {
+		SetRuntimeStatus(context.Context, runtimestatus.Snapshot) error
+	}
 }
 
 func connectTestObservers(a *agentFixture, opts assembleObserverOptions) {
@@ -34,8 +37,13 @@ func connectTestObservers(a *agentFixture, opts assembleObserverOptions) {
 		return nil
 	}, signal.ConnectOptions{})
 	_, _ = a.signals.StatusChanged.Observe(func(ctx context.Context, e agentevents.StatusChangedEvent) error {
-		if e.Display {
-			return opts.dispatcher.SetRuntimeStatus(ctx, e.Snapshot)
+		if msg, ok := platform.MessageContextFrom(ctx); ok {
+			if suppressed, ok := msg.Sender.(interface{ NotificationsSuppressed() bool }); ok && suppressed.NotificationsSuppressed() {
+				return nil
+			}
+		}
+		if opts.display != nil {
+			return opts.display.SetRuntimeStatus(ctx, e.Snapshot)
 		}
 		return nil
 	}, signal.ConnectOptions{})

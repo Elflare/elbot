@@ -13,7 +13,6 @@ import (
 // partial startup failures. BeginClose wakes producers before waiting for exit.
 type signalBindings struct {
 	connections []*signal.Connection
-	displays    []*statusDisplay
 }
 
 func (b *signalBindings) connectSession(sessions *session.Service, rollback *fileops.RollbackManager) error {
@@ -37,23 +36,13 @@ func (b *signalBindings) BeginClose() {
 	for _, connection := range b.connections {
 		connection.BeginClose()
 	}
-	for _, display := range b.displays {
-		display.BeginClose()
-	}
 }
 
 func (b *signalBindings) Close(ctx context.Context) error {
 	b.BeginClose()
-	results := make(chan error, len(b.displays))
-	for _, display := range b.displays {
-		go func() { results <- display.Close(ctx) }()
-	}
 	var errs []error
 	for _, connection := range b.connections {
 		errs = append(errs, connection.Close(ctx))
-	}
-	for range len(b.displays) {
-		errs = append(errs, <-results)
 	}
 	return errors.Join(errs...)
 }
@@ -63,11 +52,6 @@ func (b *signalBindings) stopped() bool {
 		select {
 		case <-connection.Done():
 		default:
-			return false
-		}
-	}
-	for _, display := range b.displays {
-		if !display.stopped() {
 			return false
 		}
 	}

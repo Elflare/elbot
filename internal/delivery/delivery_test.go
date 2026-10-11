@@ -120,7 +120,7 @@ func TestManagerSendsTargetedChat(t *testing.T) {
 	image := ImagePath("pic.png")
 	image.Name = "pic"
 	if _, _, err := manager.SendTo(context.Background(), Target{}, []Output{{Kind: KindText, Text: "hello"}, image}); err != nil {
-		t.Fatalf("SendNotices: %v", err)
+		t.Fatalf("SendTo: %v", err)
 	}
 	if len(sender.targeted) != 1 || len(sender.targeted[0]) != 2 || sender.targeted[0][0].Text != "hello" || sender.targeted[0][1].Name != "pic" {
 		t.Fatalf("targeted = %#v", sender.targeted)
@@ -132,13 +132,13 @@ func TestManagerPreservesChatTarget(t *testing.T) {
 	manager := NewManager(sender)
 	noticeTarget, noticeOutputs := Target{Platform: "cli", PrivateUserID: "one"}, []Output{Text("careful")}
 	if _, _, err := manager.SendTo(context.Background(), noticeTarget, noticeOutputs); err != nil {
-		t.Fatalf("SendNotice: %v", err)
+		t.Fatalf("SendTo: %v", err)
 	}
 	if len(sender.targeted) != 1 || sender.targeted[0][0].Target != noticeTarget {
 		t.Fatalf("targeted = %#v", sender.targeted)
 	}
 }
-func TestManagerWrapsNoticeOutputErrorWithHookName(t *testing.T) {
+func TestManagerWrapsChatOutputErrorWithHookName(t *testing.T) {
 	boom := errors.New("boom")
 	sender := &fakeSender{err: boom}
 	manager := NewManager(sender)
@@ -154,19 +154,19 @@ func TestManagerWrapsNoticeOutputErrorWithHookName(t *testing.T) {
 		return err
 	}()
 	if !errors.Is(err, boom) {
-		t.Fatalf("SendNotice error = %v, want wrapped boom", err)
+		t.Fatalf("SendTo error = %v, want wrapped boom", err)
 	}
 	if !strings.Contains(err.Error(), "hook notify.connected output") {
-		t.Fatalf("SendNotice error = %q, want hook name", err.Error())
+		t.Fatalf("SendTo error = %q, want hook name", err.Error())
 	}
 }
 
-type independentNoticeSender struct {
+type independentChatSender struct {
 	fakeSender
 	logResult events.LogResult
 }
 
-func (s independentNoticeSender) SendTo(context.Context, Target, []Output) (Receipt, events.LogResult, error) {
+func (s independentChatSender) SendTo(context.Context, Target, []Output) (Receipt, events.LogResult, error) {
 	return Receipt{PlatformMessageIDs: []string{"sent"}}, s.logResult, s.err
 }
 
@@ -182,7 +182,7 @@ func TestManagerKeepsBusinessErrorIndependentOfLogResult(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			source := events.LogResult{ResultStatus: tc.status, Content: "source declared body"}
-			manager := NewManager(&independentNoticeSender{fakeSender: fakeSender{err: tc.err}, logResult: source})
+			manager := NewManager(&independentChatSender{fakeSender: fakeSender{err: tc.err}, logResult: source})
 			receipt, logResult, err := manager.SendTo(context.Background(), Target{}, []Output{Text("hello")})
 			if err != tc.err || logResult != source || len(receipt.PlatformMessageIDs) != 1 {
 				t.Fatalf("receipt=%#v log result=%#v error=%v", receipt, logResult, err)

@@ -112,11 +112,6 @@ func (p *fakePlatform) SendTo(_ context.Context, noticeTarget delivery.Target, n
 	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
-func (p *fakePlatform) SendReasoning(ctx context.Context, text string) error {
-	p.reasoning.WriteString(text)
-	return nil
-}
-
 func (p *fakePlatform) SetRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) error {
 	p.statusMu.Lock()
 	defer p.statusMu.Unlock()

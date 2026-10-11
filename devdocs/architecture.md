@@ -46,7 +46,7 @@ flowchart TB
     S["session/service.go<br/>会话、绑定及命名生命周期"]
     RE["request/manager.go<br/>独立请求状态"]
     TU["turn/manager.go<br/>独立执行状态"]
-    O["agent/module/signals.go、agent_status.go<br/>通知订阅与状态投影"]
+    O["agent/module/signals.go<br/>通知与会话清理订阅"]
     A --> W
     A --> F
     A --> L
@@ -86,7 +86,7 @@ flowchart TB
 <!-- locator:signal -->
 ## 信号与订阅
 
-来源模块拥有业务实例信号及事件类型，并在实际操作处确定日志结果。Agent 的输入、超时、确认、拒绝、模型、工具、回复及持久化在操作来源直接组织日志；没有业务消费者的日志中转事件和投影连接已删除。Session 命名和 Model Manager 重试自行维护同步日志连接；Dialogue 管理通知与状态订阅，App 统一调度五条业务线生命周期。公共日志入口为 `internal/events.EmitLog`，日志中心自行订阅并持有分类队列。契约见[信号与日志系统设计](signals-and-logging.md)，实施进度与待办见[任务清单](tasks.md#信号与日志系统整改)。权限、可改写 Hook、Usage、工具记录和关键提交同步完成；信号发布观察事实。
+来源模块拥有业务实例信号及事件类型，并在实际操作处确定日志结果。Agent 的输入、超时、确认、拒绝、模型、工具、回复及持久化在操作来源直接组织日志；没有业务消费者的日志中转事件和投影连接已删除。Session 命名和 Model Manager 重试自行维护同步日志连接；Dialogue 管理通知订阅，CLI 管理状态展示订阅，App 统一调度五条业务线生命周期。公共日志入口为 `internal/events.EmitLog`，日志中心自行订阅并持有分类队列。契约见[信号与日志系统设计](signals-and-logging.md)，实施进度与待办见[任务清单](tasks.md#信号与日志系统整改)。权限、可改写 Hook、Usage、工具记录和关键提交同步完成；信号发布观察事实。
 
 - `Signal[T,R]` 使用原子订阅快照，连接变更时复制。`Emit` 等待实际结果，`EmitAsync` 返回入队错误与可等待的 `Emission[R]`；结果按订阅顺序排列。`Observe` 用于无业务返回值的事实消费者。
 - 每个信号独立调度，默认 8 个执行槽、256 个等待项、30 秒总期限；满时拒绝。按 key 串行，不同 key 并发，等待同一 key 不占执行槽。超时取消 context 并完成调用方结果，回调实际退出前不释放执行槽或 key；不配合取消的回调最多占满自身信号，不能借超时不断增生 goroutine。
@@ -149,7 +149,7 @@ flowchart TB
 `llm/chatcompletions` 与 `llm/responses` 各自编码请求和消费原生流；`llm/httpclient` 提供传输。`agent/chat` 与 `agent/responses` 各自实现业务 Loop、Compactor 和材料准备，路线之间不互相导入。
 
 - 公共 `llm.Client` 提供模型列表与独立 `GenerateText`；`Selection` 固定 Provider、Model、Client。命名和 Chat 摘要可使用任一文本客户端，独立文本不续接主会话或执行工具。
-- 公共 `llm.Usage` 的四项 token 计数为可空 `int64`：nil 表示未知，非 nil 的零表示明确零；不推算缺失总量。Agent、contextmgr 和 App 状态队列的用量快照逐项复制计数指针，发布后只读。Chat 和 Responses 解析保留整数精度，非法用量不使模型响应失败；Chat 的非法或 null 别名继续回退，明确零立即采用。状态展示分别保留总量与缓存计数的已知／未知状态，明确零作为已知值参与上下文比例判断。
+- 公共 `llm.Usage` 的四项 token 计数为可空 `int64`：nil 表示未知，非 nil 的零表示明确零；不推算缺失总量。Agent、contextmgr 和 CLI 状态队列的用量快照逐项复制计数指针，发布后只读。Chat 和 Responses 解析保留整数精度，非法用量不使模型响应失败；Chat 的非法或 null 别名继续回退，明确零立即采用。状态展示分别保留总量与缓存计数的已知／未知状态，明确零作为已知值参与上下文比例判断。
 - `routes.Registry` 按 provider 绑定 Origin、Client、Loop、Compactor、Material，并独立登记源协议能力。查询由 dialogue／contextmgr／session 的窄接口完成；重复绑定、错误接线、封闭前查询及封闭后修改报错。
 - CallObservation 分别持有业务 Event 和日志 LogRecord。Chat／Responses 在操作分支填写独立错误与整体结果，本地保存失败不标为上游错误；Chat 取消时保留部分输出。实际模型请求各写一条 llm_usage，失败与取消另保留 llm_error，准备失败不计调用。视觉回退和 Responses 重放各自结束观察，HTTP 内部重试通过独立重试信号记录。
 - 主对话按目标 provider 查询 Loop，压缩与分支按持久化源 Origin 查询能力；不从摘要目标或当前配置推断来源。缺失主对话能力在压缩、保存输入和模型请求前拒绝。
@@ -254,7 +254,7 @@ flowchart LR
 - Turn 管 Session 当前阶段、pending、确认和工具计数；Execution 管跨追加确认与压缩的 RunID、接管来源和一次性结果。attempt 防止迟到完成覆盖新执行，续接间隙的 pending 保持忙碌状态。
 - Session、Execution、attempt、Request 分别承担归属、逻辑执行、尝试隔离和取消职责；接管、确认续跑与压缩交接保留这些独立边界，由组合场景测试约束状态转换。
 - 风险确认先在锁内登记 attempt 与响应通道，再锁外发提示；响应、取消和迟到清理只操作固定等待对象。追加确认同样固定 AppendWait，等待及过期提示受应用生命周期管理。
-- 状态同步校验归属、保存并发布单调版本。app 按 Session 和实际目标合并展示，远程 CLI 连接分别处理；终态不依赖后续事件唤醒，后台仅记录，绑定失效清理积压。
+- StatusRecorder 同步校验执行归属、保存状态并发布单调版本；发布已提交事实时解除请求取消。记录能力直接注入执行协调器、协议路线和工具桥接，不属于输出接口，也不携带展示开关。CLI 按 Session 和原始展示目标合并更新，远程连接分别处理；后台没有 CLI 私有目标，因此只记录状态。绑定失效清理积压，接管只展示之后的状态与增量。
 
 <!-- locator:tool-flow -->
 ## 工具调用链路
@@ -375,6 +375,23 @@ flowchart TD
 
 平台负责输入归一化、历史记录和输出落地，支持本地／远程 CLI、QQ OneBot、QQ Official、Telegram 与 headless。
 
+CLI 拥有展示目标、订阅、更新合并和格式化。`platform/module/ui.go` 在所有组件构造后、平台启动前连接实例状态信号；关闭停止准入、取消展示并等待真实退出。应用整体退出不承诺向已关闭 UI 补发终态。
+
+思考与正文保留两个直接接口：`dialogue.ReasoningStream` 只接收原始增量与结束边界，展示错误不改变业务结果；`delivery.MessageStream` 保留追加、替换、结束及正文回执。每次模型调用独立持有思考流，CLI 在首个有效增量时打开展示，在正常结束、失败或取消时收尾。执行层逐增量刷新接管来源，不重放历史增量；展示固定原连接。高频增量不经过信号队列。
+
+```mermaid
+flowchart LR
+    B["agent/status.go<br/>执行归属、同步保存与版本"] --> S["agent/events/events.go<br/>实例 StatusChanged 事实"]
+    S --> U["platform/cli/ui.go、status.go<br/>私有目标、订阅、版本与更新合并"]
+    U --> F["platform/cli/status_format.go<br/>CLI 状态文案"]
+    F --> P["platform/cli/cli.go、remote_server.go<br/>本地 TUI 或原远程连接"]
+    E["agent/execution_output.go<br/>逐增量刷新接管来源"] --> R["platform/cli/reasoning.go<br/>直接思考流、展示开始与结束"]
+    R --> P
+    C["delivery.MessageStream<br/>正文顺序、错误与回执"] --> P
+    A["platform/module/ui.go<br/>能力装配与生命周期协调"] -.-> U
+    A -.-> R
+```
+
 - 原始有序 segments 写入 Chat History，去除敏感／临时来源；只在唤起或 waiting continuation 时物化媒体。Telegram／OneBot 按需解析，QQ Official 的 URL 直接导入中心。
 - 引用按输出索引 → Chat History → 平台能力恢复媒体。相同 actor／platform／scope 的最后一条 assistant 触发 Resume，较早回复触发 Fork；即使 current 被清除也能恢复来源。
 - OneBot 私聊直收或显式引用 forward 共用一层展开，嵌套及非图文使用占位；未引用群聊 forward 和历史保留占位。展开只进入 Context／DisplaySegments，原始媒体位置不变；去唤醒词或工具指令保持图文顺序。
@@ -386,7 +403,7 @@ flowchart TD
 
 - Session 唯一管理 current 与 Binding。切离后原 binding 永久失效，切回获得新 binding；删除失效全部相关绑定。输入、工具、确认及提交沿用原 binding。
 - 准入锁顺序为 Scope → 排序 SessionID → 状态锁；模型、工具、Hook、发送及信号均在锁外。执行中禁止普通切离／删除，维护跳过忙碌项并复核归档、置顶及时间。
-- BindingChanged 在状态及准入锁外发布，覆盖 current 变化；app 异步清理旧绑定，延迟不影响同步失效。一般字段更新不发布绑定变化。
+- BindingChanged 在状态及准入锁外解除请求取消并发布已提交变化；Dialogue 清理旧绑定的撤销记录，CLI 清理展示积压，清理延迟不影响同步失效。一般字段更新不发布绑定变化。
 - `llm_origin` 在首次主对话准入保存 protocol、provider、base_url，不含模型或凭据；保存失败拒绝调用。已有完整归属固定，压缩／Fork／后台副本继承。
 - 后台准备不激活 current，复用拒绝已接管会话。后台仅所属用户同平台私聊与 CLI 管理入口可恢复；永久接管改为前台 Scope／work，保留历史与 workspace，运行中的 Execution 同步刷新来源但不重启在途请求或工具。
 - Cron／Elnis 等待接管后 Execution 的真实结果，记录接管并停止 JSON 修正、自动报告与未开始补投递；不直接算作后台任务成功。

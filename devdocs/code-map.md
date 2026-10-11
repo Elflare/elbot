@@ -24,7 +24,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/app/platforms.go`：Platform 上层工厂与运行模式映射。`internal/app/integrations.go`：跨线回调、入口、补全和目录接线，以及成功后的统一启动顺序。
 - `internal/app/lifecycle.go`：按 Platform → Background → Dialogue → Hook → Tool 关闭各组，再释放共享模型；活跃组未退出则保留后续依赖。
 - `internal/agent/module/{module,deps,lifecycle}.go`：Dialogue 上层构造、外部依赖声明、所属资源关闭；组合 Input／Execution／命令和单轮协议，拥有 Session／Request／Turn，安装线内同步回调。
-- `internal/agent/module/signals.go`、`agent_notifications.go`、`agent_status.go`、`model_signals.go`：Dialogue 所属订阅、通知实体组装和状态投影。
+- `internal/agent/module/signals.go`、`agent_notifications.go`、`model_signals.go`：Dialogue 通知、重试与会话清理订阅。
 - `internal/tool/module/{module,deps,lifecycle}.go`：唯一工具目录、核心 Manager、预加载／状态、Skill／Memory／文件服务的构造及所属后台加载等待；不依赖其他上层模块。
 - `internal/hook/module/{module,deps,lifecycle}.go`：Hook 核心、控制与插件进程，初次 Reload 在跨线回调接好后启动；Dialogue 自行创建 Request／身份适配的 HookBridge。
 - `internal/platform/module/{module,deps,lifecycle}.go`、`platform_caller.go`：平台适配器、发送／通知、运行和关闭，平台 API 能力解析与补全／目录对接。
@@ -42,7 +42,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:signal -->
 ## 信号与订阅
 
-- `internal/signal/signal.go`、`executor.go`：`Signal[T,R]`、原子订阅快照、每信号并发／容量／超时选项、同步和异步发布。`result.go`：实际结果、部分回执、无等待 worker 的完成转交。
+- `internal/signal/signal.go`、`executor.go`：`Signal[T,R]`、原子订阅快照、每信号并发／容量／超时选项、同步和异步发布。`result.go`：实际结果、部分回执、`Resolved` 单结果构造及无等待 worker 的完成转交。
 - `internal/signal/queue.go`：有界并发、按 key 排队、取消回收容量；`connection.go`、`shutdown.go`：断开、取消和真实退出；`diagnostics.go`：独立有界 stderr 诊断。
 - `internal/events/notification.go`：纯文本通知实体、目标、回执及全局 `NotificationRequested`。
 - `internal/events/logging.go`：九字段公共日志契约、整数枚举、`LogIdentity`、`LogSubmitted` 和 `EmitLog`；发布入口验证契约，仅复制业务填写的身份，不从 context 补值。
@@ -53,7 +53,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/platform_signals.go`、`internal/cron/platform_signals.go`：Hook 协调模块与 Cron 自行订阅、按平台排队并关闭；`StartPlatformEvents` 在装配完成后启动订阅，`BeginClose`／`Close`／`Done` 管理退出。
 - `internal/agent/logging.go`：复制来源显式提供的固定身份并提交完整记录，不维护日志投影订阅。输入、超时、确认、权限拒绝、模型、工具、持久化和回复均在实际操作来源组织日志。`internal/session/naming_logging.go`、`internal/modelmgr/logging.go` 保留有实际消费者的来源事件及同步日志回调，独立于通知订阅。
 - `internal/session/naming_signals.go`：Scheduled／Completed 两种命名信号，完整终态字段定义在 `types.go`；`naming_lifecycle.go` 等待生产者退出后断开日志连接。`internal/modelmgr/signals.go` 的重试事件固定 Identity 并携带 HTTP 来源声明的尝试结果。
-- `internal/agent/module/signals.go`、`internal/agent/module/agent_notifications.go`、`internal/agent/module/agent_status.go`、`internal/agent/module/model_signals.go`：Dialogue 通知、状态与重试通知订阅及其生命周期；`connectSignal` 归 `signals.go`，通知不另建观察队列。模型通知跟随事件中的 CallContext，状态投影入队时深复制用量。
+- `internal/agent/module/signals.go`、`agent_notifications.go`、`model_signals.go`：Dialogue 通知、模型重试与会话清理订阅及生命周期；模型提示跟随 CallContext，失败事实由来源解除取消。CLI 展示订阅归 `platform/cli/ui.go`。
 
 <!-- locator:config -->
 ## 配置、资产与日志
@@ -109,7 +109,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/execution_admission.go`、`internal/agent/execution_input.go`：准入、输入、追加确认与续跑。
 - `internal/agent/execution_lifecycle.go`：追加确认等待及关闭。
 - `internal/agent/confirmation.go`、`internal/agent/risk_confirmation.go`：风险确认协调、来源日志与文案；`internal/turn/manager.go` 的 RiskConfirmationWait.Wait 在实际状态转换处返回明确 ResultStatus，保留业务响应／接受 bool，区分失效等待、取消和超时。
-- `internal/runtime/`、`internal/agent/status.go`：状态类型、同步保存与观察事件。
+- `internal/runtime/`：状态数据与耗时计算；`internal/agent/status.go`：同步校验执行归属、保存、发布已提交状态，接管后刷新来源。CLI 文案归 `platform/cli/status_format.go`。
 
 <!-- locator:tool -->
 ## Tool Runtime、工具状态与文件
@@ -165,13 +165,15 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/platform/{cli,qq-onebot,qqofficial,telegram}/notifications.go`：各平台只连接通知信号、发送纯文本并返回回执；CLI 负责等级、原远端连接和部分发送错误。
 - `internal/agent/output.go`、`internal/agent/turn_output.go`、`internal/agent/execution_output.go`：发送 Hook、前后台策略与接管输出；SendOutputs 传递独立 LogResult 和原始错误；正文与流式发送另外保留业务 Receipt，发送来源在 Content 中保留消息及输出索引，独立于工具调用日志。流替换与结束回执合并去重，保留部分成功和独立切片。
 - `internal/agent/dialogue/reply_commit.go`：最终回复落库、发送顺序与正文业务回执关联；准备、发送、保存和关联分别返回 LogResult；附加输出使用独立 LogResult；终态日志接收实际操作结果，关联及部分送达继续使用 Receipt，不从最终合并错误反推。
+- `internal/agent/dialogue/output.go`：正文输出与可选 `ReasoningStream` 消费契约；思考只接收原始增量和结束边界，状态记录独立注入执行组件。`execution_output.go` 每个思考增量刷新接管来源，CLI 实现展示策略。
 
 <!-- locator:platform -->
 ## 平台适配
 
 - `internal/platform/platform.go`、`internal/platform/builtin/`：公共契约与装配；连接成功直接发布 `events.PlatformConnected`，不暴露实例连接信号。
 - `internal/platform/media.go`、`internal/platform/refcontext/`：历史 segments、敏感来源清洗和引用恢复。
-- `internal/platform/cli/`：本地／远程 CLI 与 TUI。
+- `internal/platform/cli/`：本地／远程 CLI 与 TUI；`ui.go` 管私有展示目标、状态订阅及关闭，`status.go` 按目标校验版本与合并更新，`reasoning.go` 实现每调用的直接思考流与开始／结束边界，`status_format.go` 格式化状态。
+- `internal/platform/module/ui.go`：启动前连接 CLI 状态信号，并提供可选的 `StartReasoning` 能力；平台生命周期协调关闭 UI。
 - `internal/platform/qq-onebot/`：协议转换、forward 展开、长消息转发及回执。
 - `internal/platform/qqofficial/`、`internal/platform/telegram/`、`internal/platform/headless/`：各平台 runtime。
 

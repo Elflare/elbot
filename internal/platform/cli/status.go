@@ -1,4 +1,4 @@
-package module
+package cli
 
 import (
 	"context"
@@ -9,14 +9,16 @@ import (
 
 	agentevents "elbot/internal/agent/events"
 	"elbot/internal/contextinfo"
-	"elbot/internal/delivery/dispatch"
 	globalevents "elbot/internal/events"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
 	"elbot/internal/signal"
 )
 
-type statusTarget struct{ SessionID, Platform, ScopeID, ConversationID, Display string }
+type statusTarget struct {
+	SessionID, Platform, ScopeID, ConversationID string
+	Display                                      messageData
+}
 type statusProjection struct {
 	ctx   context.Context
 	event agentevents.StatusChangedEvent
@@ -26,37 +28,36 @@ type statusProjection struct {
 // statusDisplay coalesces per destination. A level-triggered wake channel is
 // independent of queue capacity; pending values stay in the map until consumed.
 type statusDisplay struct {
-	mu         sync.Mutex
-	latest     map[statusTarget]*statusProjection
-	wake       chan struct{}
-	ctx        context.Context
-	cancel     context.CancelFunc
-	done       chan struct{}
-	dispatcher *dispatch.Router
+	send   func(context.Context, messageData, runtimestatus.Snapshot) error
+	mu     sync.Mutex
+	latest map[statusTarget]*statusProjection
+	wake   chan struct{}
+	ctx    context.Context
+	cancel context.CancelFunc
+	done   chan struct{}
 
 	closed bool
 }
 
-func newStatusDisplay(dispatcher *dispatch.Router) *statusDisplay {
+func newStatusDisplay() *statusDisplay {
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &statusDisplay{
-		latest:     make(map[statusTarget]*statusProjection),
-		wake:       make(chan struct{}, 1),
-		ctx:        ctx,
-		cancel:     cancel,
-		done:       make(chan struct{}),
-		dispatcher: dispatcher,
+		send: func(ctx context.Context, target messageData, snapshot runtimestatus.Snapshot) error {
+			return target.setRuntimeStatus(ctx, snapshot)
+		},
+		latest: make(map[statusTarget]*statusProjection),
+		wake:   make(chan struct{}, 1),
+		ctx:    ctx,
+		cancel: cancel,
+		done:   make(chan struct{}),
 	}
 	go d.run()
 	return d
 }
 func (d *statusDisplay) receive(ctx context.Context, event agentevents.StatusChangedEvent) error {
-	if !event.Display {
+	display := uiTarget(ctx)
+	if display == (messageData{}) {
 		return nil
-	}
-	display, err := d.dispatcher.RuntimeStatusTarget(ctx)
-	if err != nil || display == "" {
-		return err
 	}
 	info, _ := contextinfo.ConversationFromContext(ctx)
 	key := statusTarget{
@@ -126,7 +127,7 @@ func (d *statusDisplay) run() {
 			binding, bound := session.BindingFromContext(ctx)
 			var err error
 			if !bound || binding.Valid() {
-				err = d.dispatcher.SetRuntimeStatus(ctx, selected.event.Snapshot)
+				err = d.send(ctx, key.Display, selected.event.Snapshot)
 			}
 			stop()
 			cancel()
@@ -136,7 +137,7 @@ func (d *statusDisplay) run() {
 						Category:     globalevents.LogRuntime,
 						Level:        slog.LevelError,
 						EventName:    "status_display_failed",
-						Module:       "app",
+						Module:       "cli",
 						Type:         globalevents.ContentText,
 						Content:      fmt.Sprintf("status display failed\nerror=%v", err),
 						ContentLimit: 4096,
@@ -146,7 +147,7 @@ func (d *statusDisplay) run() {
 						record.ResultStatus = globalevents.ResultCanceled
 						record.Level = slog.LevelInfo
 					}
-					facts, _ := contextinfo.ExecutionFromContext(d.ctx)
+					facts, _ := contextinfo.ExecutionFromContext(selected.ctx)
 					if facts.SessionID != "" {
 						record.Identity.SessionID = &facts.SessionID
 					}
@@ -203,13 +204,4 @@ func (d *statusDisplay) stopped() bool {
 	default:
 		return false
 	}
-}
-
-func (b *signalBindings) connectStatus(events agentevents.Signals, sessions *session.Service, dispatcher *dispatch.Router) error {
-	display := newStatusDisplay(dispatcher)
-	b.displays = append(b.displays, display)
-	if err := connectSignal(b, events.StatusChanged, display.receive, signal.ConnectOptions{}); err != nil {
-		return err
-	}
-	return connectSignal(b, sessions.BindingChanged(), display.forget, signal.ConnectOptions{})
 }

@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/mattn/go-isatty"
@@ -16,7 +15,6 @@ import (
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/platform"
-	runtimestatus "elbot/internal/runtime"
 )
 
 // Adapter is a CLI platform adapter that reads from stdin.
@@ -58,7 +56,7 @@ func (a *Adapter) StopAppOnExit() bool {
 // Run starts the stdin read loop. It handles /exit locally and forwards
 // all other input to the handler.
 func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) error {
-	handler = localMessageHandler{next: handler}
+	handler = localMessageHandler{next: handler, adapter: a}
 	a.notifyConnected(ctx)
 	if !isatty.IsTerminal(os.Stdin.Fd()) {
 		return a.runScanner(ctx, handler)
@@ -137,19 +135,6 @@ func (s cliMessageStream) Replace(ctx context.Context, text string) (delivery.Re
 func (s cliMessageStream) Finish(ctx context.Context) (delivery.Receipt, globalevents.LogResult, error) {
 	s.adapter.sendTUIMessage(tuiFinishAssistantMsg{}, "\n")
 	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
-}
-
-func (a *Adapter) SetRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) error {
-	a.sendTUIMessage(tuiStatusMsg(snapshot), runtimestatus.FormatCompact(snapshot, time.Now(), 0))
-	return nil
-}
-
-func (a *Adapter) SendReasoning(ctx context.Context, text string) error {
-	if text == "" {
-		return nil
-	}
-	a.sendTUIMessage(tuiReasoningMsg(text), text)
-	return nil
 }
 
 func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {

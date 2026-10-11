@@ -34,11 +34,11 @@ type ExecutionSender interface {
 	SendOutputs(context.Context, []delivery.Output) (events.LogResult, error)
 	Notify(context.Context, slog.Level, string)
 	Preview(context.Context, string)
-	Reasoning(context.Context, string)
+	StartReasoning(context.Context) dialogue.ReasoningStream
 }
 
 type ExecutionStatus interface {
-	Record(context.Context, runtimestatus.Snapshot, bool)
+	Record(context.Context, runtimestatus.Snapshot)
 	Snapshot(string) runtimestatus.Snapshot
 }
 

@@ -183,7 +183,7 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 	}
 	messages := &dialogue.MessageStore{Dialogues: replyTestDialogues{DialogueRepository: store.Dialogues(), repo: f.repo}}
 	f.committer = &dialogue.ReplyCommitter{Messages: f.repo, Persistence: messages.Committer("append_assistant_message"), Output: sender}
-	f.out = foregroundTurnOutput{sender: sender, status: &StatusRecorder{}}
+	f.out = foregroundTurnOutput{sender: sender}
 	f.in = dialogue.ReplyCommitInput{Session: row, Text: "history", RawText: "raw", PlatformText: "visible", Outputs: []delivery.Output{delivery.Text("later")}}
 	return f
 }
@@ -382,7 +382,7 @@ func TestReplyCommitEmptyAndBackground(t *testing.T) {
 				f.in.Text, f.in.RawText, f.in.PlatformText, f.in.Outputs = "", "", "", nil
 				if strings.HasPrefix(mode, "background") {
 					f.in.Session.Mode = storage.SessionModeBackground
-					f.out = backgroundTurnOutput{status: &StatusRecorder{}}
+					f.out = backgroundTurnOutput{}
 				}
 				if mode == "background_reply" {
 					f.in.Text, f.in.RawText, f.in.PlatformText = "raw", "raw", "visible"

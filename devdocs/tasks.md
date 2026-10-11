@@ -8,7 +8,17 @@
 - [x] 通知实体、现有 Manager 全局订阅与每平台信号；平台只订阅发送，满队列 WARN，保留原来源和部分回执。
 - [x] 业务全局信号发布；删除旧通知对象、发送入口及通知依赖注入；Chat 承接 Hook 正文、Cron／Elnis 报告和媒体。
 - [x] 原子订阅快照、精简重复 context／结果分配、独立有界诊断；正确性、取消、隔离、资源上限与性能测试覆盖。
-- [x] 全仓正常回归及 race 通过；最终诊断、平台和 Hook 取消改动另做定向 race 回归。完成独立性能复测，结果如下。
+- [x] 信号与通知统一阶段的全仓正常回归及 race 通过；最终诊断、平台和 Hook 取消改动另做定向 race 回归，并完成独立性能复测。
+
+### CLI 展示分离与 Review 修复
+
+- [x] 状态记录独立于输出对象；已提交状态与 BindingChanged 解除请求取消后发布，保留执行归属、版本和绑定校验。
+- [x] CLI 自有状态订阅、更新合并、格式与生命周期；启动前装配，本地目标与原远程连接由 CLI 私有来源确定。
+- [x] 正文使用 `delivery.MessageStream`，思考使用 `dialogue.ReasoningStream`；高频增量直接调用，CLI 管开始／结束，接管只处理新增量。
+- [x] `ConnectForward` 只返回 Emission；立即失败／跳过使用 Resolved，保留部分回执，移除重复错误通道。
+- [x] 通用 Notify、预览和重试尊重请求取消；超时和失败事实在业务来源明确解除取消。
+- [x] 删除 Agent 状态展示文件、Display 参数、PublishRuntimeStatus 和 Router UI 方法；状态格式移至 CLI，更新旧发送测试名称。
+- 本轮验证：全仓普通回归、相关包 race 均通过；Agent 首次因 SQLite 测试初始化超过 3 分钟预算，单独放宽至 10 分钟后通过。新增 Chat／Responses 思考流、原连接隔离、取消与关闭回归通过。依用户确认，不追加流式与信号性能对比；未自动提交。
 
 
 ## 信号与日志系统整改
@@ -154,7 +164,7 @@
 - `go test -race ./internal/agent/... ./internal/app ./internal/toolrun ./internal/elnis ./internal/platform/cli` 通过。最新回执合并、模型保存失败、取消计数与工具批次测试另行通过针对性 race 回归；命令身份变更通过 builtin race 回归。
 - 工具真实入口覆盖成功、部分失败、取消、拒绝、确认超时、取消／拒绝伴随独立保存失败；批次失败不伪造逐工具完成。
 - Chat 覆盖流关闭但未发送错误块的取消，保留部分输出及空错误返回，实际请求仍计入 llm_usage；Responses 覆盖上游成功但终态保存失败，保留输出且不标为 ProviderError。回复覆盖取消发送伴随保存失败，以及 Replace／Finish 部分回执去重、输出索引合并和切片副本。
-- App 状态测试先暴露可空用量浅拷贝问题，再验证深复制修复；Agent 身份、命名终态、日志与通知独立、依赖边界和真实 JSONL 查询回归通过。
+- CLI 状态测试先暴露可空用量浅拷贝问题，再验证深复制修复；Agent 身份、命名终态、日志与通知独立、依赖边界和真实 JSONL 查询回归通过。
 - logging、builtin、hook／runtime、cron、Telegram、dispatch、SQLite、通知、维护、QQ 官方、OneBot、Hook 规则／内置模块、session、contextmgr、modelmgr、LLM 协议及 runtime 的相关 race 回归通过；覆盖损坏行、查询前过滤、raw、未知用量、大整数、别名回退、保存组合失败和身份。
 - 已运行 gofmt 与 `git diff --check`；测试结果不能替代文档与实现的一致性复审，未自动提交。
 

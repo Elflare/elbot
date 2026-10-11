@@ -19,7 +19,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
-	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/security"
 )
 
@@ -51,8 +50,6 @@ type remoteClientConn struct {
 	conn   *websocket.Conn
 	server *RemoteServer
 }
-
-type messageData struct{ client *remoteClientConn }
 
 func originalClient(ctx context.Context) (*remoteClientConn, bool) {
 	info, ok := contextinfo.ConversationFromContext(ctx)
@@ -205,32 +202,6 @@ func (s *RemoteServer) SendTo(ctx context.Context, target delivery.Target, outpu
 		logResult, err := s.writeClients(ctx, clients, msg)
 		return delivery.Receipt{}, logResult, err
 	}
-}
-
-func (s *RemoteServer) SetRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) error {
-	if client, ok := originalClient(ctx); ok && client != nil {
-		_, err := client.write(ctx, remoteMessage{Type: remoteMsgStatus, Snapshot: snapshot})
-		return err
-	}
-	return nil
-}
-
-func (s *RemoteServer) RuntimeStatusTarget(ctx context.Context) string {
-	if client, ok := originalClient(ctx); ok {
-		return fmt.Sprintf("cli.remote:%p", client)
-	}
-	return ""
-}
-
-func (s *RemoteServer) SendReasoning(ctx context.Context, text string) error {
-	if strings.TrimSpace(text) == "" {
-		return nil
-	}
-	if client, ok := originalClient(ctx); ok && client != nil {
-		_, err := client.write(ctx, remoteMessage{Type: remoteMsgReasoning, Text: text})
-		return err
-	}
-	return nil
 }
 
 func (s *RemoteServer) StartStream(ctx context.Context) (delivery.MessageStream, error) {

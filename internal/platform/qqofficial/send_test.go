@@ -43,7 +43,7 @@ func TestSendChatUsesGroupMessageAPI(t *testing.T) {
 	}
 }
 
-func TestSendNoticeUploadsGroupMediaToGroupAPI(t *testing.T) {
+func TestSendToUploadsGroupMediaToGroupAPI(t *testing.T) {
 	var paths []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.Path)
@@ -65,7 +65,7 @@ func TestSendNoticeUploadsGroupMediaToGroupAPI(t *testing.T) {
 		[]delivery.Output{out},
 	)
 	if err != nil {
-		t.Fatalf("SendNotice: %v", err)
+		t.Fatalf("send: %v", err)
 	}
 	if len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "sent-media" {
 		t.Fatalf("receipt = %#v", receipt)
@@ -78,7 +78,7 @@ func TestSendNoticeUploadsGroupMediaToGroupAPI(t *testing.T) {
 	}
 }
 
-func TestSendNoticeSkipsGroupToolPreview(t *testing.T) {
+func TestNotificationSkipsGroupToolPreview(t *testing.T) {
 	var calls atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls.Add(1)
@@ -102,7 +102,7 @@ func TestSendNoticeSkipsGroupToolPreview(t *testing.T) {
 	}
 	r, err := events.NotificationRequested.Emit(ctx, events.NewNotification(ctx, slog.LevelDebug, "[tool] 正在调用 shell：{}"))
 	if err != nil {
-		t.Fatalf("SendNotice: %v", err)
+		t.Fatalf("send: %v", err)
 	}
 	if len(r[0].Value.PlatformMessageIDs) != 0 || calls.Load() != 0 {
 		t.Fatalf("receipt/calls = %#v/%d", r, calls.Load())

@@ -25,7 +25,7 @@ func testTargetContext(t target) context.Context {
 	return contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ScopeID: oneBotTargetScope(t), ConversationKind: contextinfo.ConversationKind(t.MessageType), ConversationID: fmt.Sprint(id)}})
 }
 
-func TestSendNoticeSkipsGroupToolPreview(t *testing.T) {
+func TestNotificationSkipsGroupToolPreview(t *testing.T) {
 	var calls atomic.Int64
 	transport := newTestTransport(t, func(req request) response {
 		calls.Add(1)
@@ -37,7 +37,7 @@ func TestSendNoticeSkipsGroupToolPreview(t *testing.T) {
 
 	receipt, err := emitTestNotification(t, adapter, ctx, "[tool] 正在调用 shell：{}")
 	if err != nil {
-		t.Fatalf("SendNotice: %v", err)
+		t.Fatalf("notification: %v", err)
 	}
 	if len(receipt.PlatformMessageIDs) != 0 {
 		t.Fatalf("receipt = %#v", receipt)
@@ -47,7 +47,7 @@ func TestSendNoticeSkipsGroupToolPreview(t *testing.T) {
 	}
 }
 
-func TestSendNoticeKeepsPrivateToolPreview(t *testing.T) {
+func TestNotificationKeepsPrivateToolPreview(t *testing.T) {
 	var action string
 	transport := newTestTransport(t, func(req request) response {
 		action = req.Action
@@ -59,7 +59,7 @@ func TestSendNoticeKeepsPrivateToolPreview(t *testing.T) {
 
 	receipt, err := emitTestNotification(t, adapter, ctx, "[tool] 正在调用 shell：{}")
 	if err != nil {
-		t.Fatalf("SendNotice: %v", err)
+		t.Fatalf("notification: %v", err)
 	}
 	if len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "88" {
 		t.Fatalf("receipt = %#v", receipt)

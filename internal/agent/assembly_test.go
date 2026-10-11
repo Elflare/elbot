@@ -26,6 +26,7 @@ import (
 	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/platform"
 	"elbot/internal/request"
+	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/signal"
@@ -120,7 +121,10 @@ func mustNewWithOptions(t *testing.T, cfg testAgentOptions, configure ...func(*t
 	if err != nil {
 		t.Fatal(err)
 	}
-	connectTestObservers(a, assembleObserverOptions{dispatcher: a.output.dispatcher})
+	display, _ := opts.Platform.(interface {
+		SetRuntimeStatus(context.Context, runtimestatus.Snapshot) error
+	})
+	connectTestObservers(a, assembleObserverOptions{display: display})
 	opts.Sessions.SetForegroundActivation(a.AdoptForeground)
 	opts.Sessions.StartNaming(context.Background())
 	ownedSessions := opts.Sessions

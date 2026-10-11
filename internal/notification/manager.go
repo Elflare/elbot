@@ -59,13 +59,13 @@ func (m *Manager) AddPlatform(name string) (*signal.Signal[events.Notification, 
 	m.platforms[name] = s
 	return s, nil
 }
-func (m *Manager) route(ctx context.Context, n events.Notification) (*signal.Emission[events.NotificationReceipt], error) {
+func (m *Manager) route(ctx context.Context, n events.Notification) *signal.Emission[events.NotificationReceipt] {
 	if strings.TrimSpace(n.Text) == "" {
-		return nil, errors.New("notification text is empty")
+		return signal.Resolved(signal.Result[events.NotificationReceipt]{Err: errors.New("notification text is empty")})
 	}
 	if msg, ok := platform.MessageContextFrom(ctx); ok {
 		if suppressed, ok := msg.Sender.(interface{ NotificationsSuppressed() bool }); ok && suppressed.NotificationsSuppressed() {
-			return nil, nil
+			return signal.Resolved(signal.Result[events.NotificationReceipt]{})
 		}
 	}
 	if n.Origin != nil {
@@ -88,7 +88,7 @@ func (m *Manager) route(ctx context.Context, n events.Notification) (*signal.Emi
 	if n.Target.Platform == "service" && n.Target.ID == "" {
 		logged, err := events.EmitLogAsync(ctx, events.LogRecord{Category: events.LogRuntime, Level: n.Level, EventName: "runtime_notification", Module: "notification", Type: events.ContentText, Content: n.Text, ContentLimit: 4096})
 		if logged == nil {
-			return nil, err
+			return signal.Resolved(signal.Result[events.NotificationReceipt]{Err: err})
 		}
 		return signal.MapResults(logged, func(results []signal.Result[signal.Empty]) signal.Result[events.NotificationReceipt] {
 			var errs []error
@@ -98,16 +98,16 @@ func (m *Manager) route(ctx context.Context, n events.Notification) (*signal.Emi
 				started = started || r.Started
 			}
 			return signal.Result[events.NotificationReceipt]{Started: started, Err: errors.Join(errs...)}
-		}), err
+		})
 	}
 	if n.Target.Platform != "cli" {
 		if n.Target.ID == "" {
-			return nil, errors.New("notification target ID is empty")
+			return signal.Resolved(signal.Result[events.NotificationReceipt]{Err: errors.New("notification target ID is empty")})
 		}
 		switch n.Target.Kind {
 		case contextinfo.ConversationPrivate, contextinfo.ConversationGroup, contextinfo.ConversationChannel:
 		default:
-			return nil, errors.New("notification conversation kind is invalid")
+			return signal.Resolved(signal.Result[events.NotificationReceipt]{Err: errors.New("notification conversation kind is invalid")})
 		}
 	}
 	m.mu.Lock()
@@ -115,10 +115,10 @@ func (m *Manager) route(ctx context.Context, n events.Notification) (*signal.Emi
 	closed := m.closed
 	m.mu.Unlock()
 	if closed {
-		return nil, signal.ErrClosed
+		return signal.Resolved(signal.Result[events.NotificationReceipt]{Err: signal.ErrClosed})
 	}
 	if s == nil {
-		return nil, fmt.Errorf("notification platform %q is not configured", n.Target.Platform)
+		return signal.Resolved(signal.Result[events.NotificationReceipt]{Err: fmt.Errorf("notification platform %q is not configured", n.Target.Platform)})
 	}
 	e, err := s.EmitAsync(ctx, n)
 	if errors.Is(err, signal.ErrQueueFull) {
@@ -126,7 +126,10 @@ func (m *Manager) route(ctx context.Context, n events.Notification) (*signal.Emi
 		// the logger here: a congested platform must not monopolize routing.
 		_, _ = events.EmitLogAsync(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_queue_full", Module: "notification", Type: events.ContentText, Content: fmt.Sprintf("notification queue full: platform=%s kind=%s target=%s", n.Target.Platform, n.Target.Kind, n.Target.ID), ContentLimit: 4096, ResultStatus: events.ResultFailed})
 	}
-	return e, err
+	if e == nil {
+		return signal.Resolved(signal.Result[events.NotificationReceipt]{Err: err})
+	}
+	return e
 }
 func (m *Manager) BeginClose() {
 	m.mu.Lock()

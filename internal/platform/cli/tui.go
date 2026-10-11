@@ -1075,7 +1075,7 @@ func (m tuiModel) runtimeStatusText() string {
 	if width > 24 {
 		width -= 24
 	}
-	return runtimestatus.FormatCompact(m.runtimeStatus, now, width)
+	return FormatCompact(m.runtimeStatus, now, width)
 }
 
 func waitTUIOutput(output <-chan tea.Msg) tea.Cmd {

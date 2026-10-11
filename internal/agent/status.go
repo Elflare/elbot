@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"elbot/internal/agent/dialogue"
 	agentevents "elbot/internal/agent/events"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/signal"
@@ -22,13 +23,15 @@ type StatusRecorder struct {
 	version   uint64
 	turns     *turn.Manager
 	changed   *signal.Signal[agentevents.StatusChangedEvent, signal.Empty]
+	view      dialogue.ExecutionView
 }
 
-func (r *StatusRecorder) Record(ctx context.Context, snapshot runtimestatus.Snapshot, display bool) {
+func (r *StatusRecorder) Record(ctx context.Context, snapshot runtimestatus.Snapshot) {
 	// Status subscribers only update in-memory projections. Serialize publication
 	// so a retired target cannot be recreated by an older concurrent emission.
 	r.publishMu.Lock()
 	defer r.publishMu.Unlock()
+	ctx = r.view.Context(ctx)
 	if snapshot.SessionID == "" {
 		return
 	}
@@ -59,7 +62,8 @@ func (r *StatusRecorder) Record(ctx context.Context, snapshot runtimestatus.Snap
 	version := r.version
 	r.mu.Unlock()
 	snapshot.Usage = agentevents.CloneUsage(snapshot.Usage)
-	agentevents.Emit(ctx, r.changed, agentevents.StatusChangedEvent{Snapshot: snapshot, Version: version, Display: display})
+	// This snapshot is committed. Publish it even when the request just ended.
+	agentevents.Emit(context.WithoutCancel(ctx), r.changed, agentevents.StatusChangedEvent{Snapshot: snapshot, Version: version})
 }
 
 func (r *StatusRecorder) Snapshot(sessionID string) runtimestatus.Snapshot {
@@ -112,6 +116,7 @@ func runtimeDoneStatus(base runtimestatus.Snapshot, usageUpdatedAt time.Time) ru
 
 // StatusRecorderDeps declares only the capabilities consumed by StatusRecorder.
 type StatusRecorderDeps struct {
+	View    dialogue.ExecutionView // Refreshes source facts after foreground adoption.
 	Turns   *turn.Manager
 	Changed *signal.Signal[agentevents.StatusChangedEvent, signal.Empty]
 }
@@ -122,6 +127,7 @@ func NewStatusRecorder(deps StatusRecorderDeps) (*StatusRecorder, error) {
 		return nil, fmt.Errorf("StatusRecorder turns is required")
 	}
 	return &StatusRecorder{
+		view:    deps.View,
 		turns:   deps.Turns,
 		changed: deps.Changed,
 	}, nil

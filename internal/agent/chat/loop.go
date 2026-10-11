@@ -9,12 +9,16 @@ import (
 	"elbot/internal/contextmgr"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
+	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
 
 type Loop struct {
+	Status interface {
+		Record(context.Context, runtimestatus.Snapshot)
+	}
 	compactor     contextmgr.Compactor
 	Contexts      *contextmgr.Service
 	Models        *modelmgr.Service
@@ -49,6 +53,9 @@ type chatTurnState struct {
 
 // LoopDeps contains protocol collaborators, never another protocol implementation.
 type LoopDeps struct {
+	Status interface {
+		Record(context.Context, runtimestatus.Snapshot)
+	}
 	Store    storage.Store
 	Contexts *contextmgr.Service
 	Models   *modelmgr.Service
@@ -62,6 +69,9 @@ type LoopDeps struct {
 }
 
 func NewLoop(deps LoopDeps) (*Loop, error) {
+	if deps.Status == nil {
+		return nil, fmt.Errorf("Status is required")
+	}
 	if deps.Store == nil {
 		return nil, fmt.Errorf("Store is required")
 	}
@@ -87,6 +97,7 @@ func NewLoop(deps LoopDeps) (*Loop, error) {
 		return nil, fmt.Errorf("Calls is required")
 	}
 	return &Loop{
+		Status:        deps.Status,
 		Contexts:      deps.Contexts,
 		Models:        deps.Models,
 		Turns:         deps.Turns,

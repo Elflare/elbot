@@ -19,7 +19,7 @@ import (
 type OutputSender struct {
 	dispatcher *dispatch.Router
 	hooks      dialogue.Hooks
-	identity   dialogue.Identity
+	reasoning  func(context.Context) dialogue.ReasoningStream
 }
 
 func (o *OutputSender) SendOutputs(ctx context.Context, outputs []delivery.Output) (globalevents.LogResult, error) {
@@ -133,7 +133,7 @@ func (o *OutputSender) Notify(ctx context.Context, level slog.Level, text string
 	if strings.TrimSpace(text) == "" {
 		return
 	}
-	_, _ = globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, level, text))
+	_, _ = globalevents.NotificationRequested.EmitAsync(ctx, globalevents.NewNotification(ctx, level, text))
 }
 
 func (o *OutputSender) Preview(ctx context.Context, text string) {
@@ -251,10 +251,11 @@ func (o *OutputSender) StartStream(ctx context.Context) delivery.MessageStream {
 	return stream
 }
 
-func (o *OutputSender) Reasoning(ctx context.Context, text string) {
-	if o.identity.IsCLI(ctx) && text != "" {
-		_ = o.dispatcher.SendReasoning(ctx, text)
+func (o *OutputSender) StartReasoning(ctx context.Context) dialogue.ReasoningStream {
+	if o.reasoning == nil {
+		return nil
 	}
+	return o.reasoning(ctx)
 }
 
 // NewOutputSender initializes OutputSender without installing cross-service callbacks.
@@ -265,12 +266,9 @@ func NewOutputSender(deps OutputSenderDeps) (*OutputSender, error) {
 	if deps.Hooks == nil {
 		return nil, fmt.Errorf("OutputSender hooks is required")
 	}
-	if deps.Identity == nil {
-		return nil, fmt.Errorf("OutputSender identity is required")
-	}
 	return &OutputSender{
 		dispatcher: deps.Dispatcher,
 		hooks:      deps.Hooks,
-		identity:   deps.Identity,
+		reasoning:  deps.Reasoning,
 	}, nil
 }
