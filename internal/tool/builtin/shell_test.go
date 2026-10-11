@@ -94,7 +94,7 @@ func TestShellToolOutputLimit(t *testing.T) {
 			}
 			ctx := workspacepath.WithWorkspaceStore(t.Context(), &testWorkspaceStore{dir: dir})
 			args, _ := json.Marshal(map[string]any{"cmd": "cat stdout.txt & cat stderr.txt >&2 & wait; exit 7"})
-			result, _, err := NewShellTool().Call(ctx, tool.CallRequest{Arguments: args})
+			result, logContent, err := NewShellTool().Call(ctx, tool.CallRequest{Arguments: args})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -104,6 +104,9 @@ func TestShellToolOutputLimit(t *testing.T) {
 			want := out + "\nstderr:\n" + errText + "\nexit_code: 7"
 			if result.Content != want {
 				t.Fatalf("output mismatch: got %d bytes, want %d; truncations=%d", len(result.Content), len(want), strings.Count(result.Content, notice))
+			}
+			if !strings.HasPrefix(logContent, "exit_code=7\nstderr:\ne") || len([]rune(logContent)) != 256 || !strings.HasSuffix(logContent, "…") {
+				t.Fatalf("large stdout hid diagnostics: %q", logContent)
 			}
 		})
 	}

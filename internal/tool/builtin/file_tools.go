@@ -146,7 +146,8 @@ func readFileBuilder() *tool.Builder {
 		Integer("max_matches", "grep/ast/ast_function 模式最大匹配数，默认 20，范围 1-100。")
 }
 
-func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
 	var args readFileArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
@@ -183,10 +184,7 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 				logContent = result.Content
 			}
 			if callErr != nil {
-				if logContent != "" {
-					logContent += "\n"
-				}
-				logContent += callErr.Error()
+				logContent = callErr.Error() + "\n" + logContent
 			}
 			return result, logContent, callErr
 		}
@@ -222,10 +220,7 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 				logContent = result.Content
 			}
 			if callErr != nil {
-				if logContent != "" {
-					logContent += "\n"
-				}
-				logContent += callErr.Error()
+				logContent = callErr.Error() + "\n" + logContent
 			}
 			return result, logContent, callErr
 		}
@@ -237,10 +232,7 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 				logContent = result.Content
 			}
 			if callErr != nil {
-				if logContent != "" {
-					logContent += "\n"
-				}
-				logContent += callErr.Error()
+				logContent = callErr.Error() + "\n" + logContent
 			}
 			return result, logContent, callErr
 		}
@@ -252,10 +244,7 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 				logContent = result.Content
 			}
 			if callErr != nil {
-				if logContent != "" {
-					logContent += "\n"
-				}
-				logContent += callErr.Error()
+				logContent = callErr.Error() + "\n" + logContent
 			}
 			return result, logContent, callErr
 		}
@@ -275,7 +264,7 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 		b.WriteString("content:\n")
 		{
 			result := &tool.Result{Content: b.String(), Warnings: warnings}
-			return result, result.Content, nil
+			return result, fmt.Sprintf("file=%s mode=%s lines=0/0 empty=true", file.Path, mode), nil
 		}
 	}
 
@@ -288,7 +277,7 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 	}
 	{
 		result := &tool.Result{Content: b.String(), Warnings: warnings}
-		return result, result.Content, nil
+		return result, fmt.Sprintf("file=%s mode=%s lines=%d-%d/%d truncated=%t\n%s", file.Path, mode, start, end, len(lines), truncated, strings.Join(lines[start-1:end], "\n")), nil
 	}
 }
 
@@ -584,7 +573,8 @@ func fileToolEditOptions() fileops.EditFileOptions {
 		DetailedDiffMaxBytes: fileToolDetailedMaxBytes,
 	}
 }
-func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 	var args editFileArgs
 	if len(req.Arguments) > 0 {
 		if err := decodeStrictFileArgs(req.Arguments, &args); err != nil {
@@ -607,8 +597,8 @@ func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 		resolved.Warnings = append(resolved.Warnings, "文件已编辑，但撤销备份因会话失效或容量限制未保留。")
 	}
 	{
-		result := &tool.Result{Content: content, Warnings: resolved.Warnings}
-		return result, result.Content, nil
+		logContent = fmt.Sprintf("edited=%s created=%t dry_run=%t rollback_available=%t\ndiff:\n%s", result.Path, result.Created, result.DryRun, result.RollbackAvailable, result.Diff)
+		return &tool.Result{Content: content, Warnings: resolved.Warnings}, logContent, nil
 	}
 }
 

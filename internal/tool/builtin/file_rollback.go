@@ -78,7 +78,8 @@ func (t RollbackFileTool) RiskDetail(ctx context.Context, req tool.CallRequest) 
 	return fmt.Sprintf("文件：%s\n操作：%s\n预检 diff:\n%s", preview.Path, action, preview.Diff), nil
 }
 
-func (t RollbackFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t RollbackFileTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 	args, err := decodeRollbackArgs(req)
 	if err != nil {
 		return nil, err.Error(), err

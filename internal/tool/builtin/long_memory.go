@@ -152,10 +152,11 @@ func (t LongMemoryTool) Info() tool.Info {
 func (t LongMemoryTool) Schema() llm.ToolSchema {
 	return longMemoryBuilder(t.Name(), t.Info().Description).BuildSchema()
 }
-func (t LongMemoryTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t LongMemoryTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
 	{
 		result := textResult("long_memory 是长期记忆入口。请按需调用 long_memory_search 或 long_memory_write。long_memory_search 不传 keywords/category 时会返回分类目录。")
-		return result, result.Content, nil
+		return result, "long_memory guide returned", nil
 	}
 }
 
@@ -172,7 +173,8 @@ func (t LongMemorySearchTool) Schema() llm.ToolSchema {
 		Integer("limit", "最大结果数，默认 3，上限 10。").
 		BuildSchema()
 }
-func (t LongMemorySearchTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t LongMemorySearchTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
 	var args longMemorySearchArgs
 	if err := lmDecodeArgs(req.Arguments, &args, t.Name()); err != nil {
 		return nil, err.Error(), err
@@ -290,7 +292,8 @@ func longMemoryUpdateArgsFromWrite(args longMemoryWriteArgs) longMemoryUpdateArg
 	return update
 }
 
-func (t LongMemoryWriteTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t LongMemoryWriteTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 	args, err := t.decodeWriteArgs(req)
 	if err != nil {
 		return nil, err.Error(), err

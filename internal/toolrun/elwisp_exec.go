@@ -36,11 +36,9 @@ func executeELwispTool(ctx context.Context, call llm.ToolCallRequest, resolved R
 	defer func() {
 		// The remote source supplies its own log body, independently of segments.
 		if result.Error != nil {
-			if result.LogResult.Content != "" {
-				result.LogResult.Content += "\n"
-			}
-			result.LogResult.Content += result.Error.Error()
+			result.LogResult.Content = result.Error.Error() + "\n" + result.LogResult.Content
 		}
+		result.LogResult.Content = tool.TruncateLogContent(result.LogResult.Content, 256)
 		if result.Error != nil {
 			if errors.Is(result.Error, context.Canceled) {
 				result.ResultStatus = events.ResultCanceled

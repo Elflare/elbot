@@ -139,26 +139,22 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 		}
 		logResult := result.LogResult
 		content := map[string]any{"tool": call.Name, "tool_call_id": call.ID, "actor_id": req.Actor.ID, "source": string(resolved.Source), "run_source": runSource, "risk": risk, "arguments": call.Arguments, "result": logResult.Content, "execution_started": result.ExecutionStarted, "elapsed_ms": time.Since(startedAt).Milliseconds()}
-		// Limit source JSON by Unicode characters before encoding; byte slicing
-		// would corrupt multibyte diagnostics. Every string in this source's
-		// fixed content schema is bounded, including caller-supplied names/IDs.
+		// Tools own their result summaries. Bound the parameter preview and
+		// caller-supplied metadata without changing the actual call arguments.
 		for key, value := range content {
 			text, ok := value.(string)
-			if !ok {
+			if !ok || key == "result" {
 				continue
 			}
-			runes := []rune(text)
-			if len(runes) > 2048 {
-				text = string(runes[:2047]) + "…"
+			if key == "arguments" {
+				content[key] = tool.TruncateLogContent(text, 256)
+			} else {
+				content[key] = tool.TruncateLogContent(text, 2048)
 			}
-			content[key] = text
 		}
 		data, _ := json.Marshal(content)
 		record := newRecord(ctx, "tool_call", logResult)
 		record.Category, record.Type, record.ContentLimit, record.Content = events.LogAudit, events.ContentJSON, 0, string(data)
-		logTool(ctx, record)
-		record.Category, record.Type, record.ContentLimit = events.LogRuntime, events.ContentText, 4096
-		record.Content = fmt.Sprintf("run_source=%s tool=%s tool_call_id=%s source=%s risk=%s execution_started=%t elapsed_ms=%d\n%s", runSource, call.Name, call.ID, resolved.Source, risk, result.ExecutionStarted, content["elapsed_ms"], logResult.Content)
 		logTool(ctx, record)
 	}
 	head := deps.ToolCallMessage(sessionID, req.AssistantText, req.AssistantRawText, req.Calls)

@@ -162,7 +162,7 @@ func (t *argumentLoggingTool) Call(_ context.Context, call tool.CallRequest) (*t
 }
 
 func TestRulesJSONTruncationPreservesUnicodeMarkerAndBusinessData(t *testing.T) {
-	for _, length := range []int{2047, 2048, 2049} {
+	for _, length := range []int{255, 256, 257, 2049} {
 		t.Run(fmt.Sprint(length), func(t *testing.T) {
 			body := strings.Repeat("雪", length)
 			registry := tool.NewRegistry()
@@ -181,11 +181,12 @@ func TestRulesJSONTruncationPreservesUnicodeMarkerAndBusinessData(t *testing.T) 
 				t.Fatal(err)
 			}
 			want := body
-			if length > 2048 {
-				want = strings.Repeat("雪", 2047) + "…"
+			if length > 256 {
+				want = strings.Repeat("雪", 255) + "…"
 			}
-			if content["arguments"] != want || content["result"] != want {
-				t.Fatal(content)
+			// The publishing layer limits arguments, not a tool's independent body.
+			if content["arguments"] != want || content["result"] != body {
+				t.Fatalf("arguments length=%d result length=%d", len([]rune(content["arguments"])), len([]rune(content["result"])))
 			}
 			if len((*records)[0].Content) > 64*1024 {
 				t.Fatal("oversized JSON")

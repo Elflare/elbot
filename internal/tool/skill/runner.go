@@ -82,6 +82,7 @@ func (r GoRunner) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.Ri
 }
 
 func (r GoRunner) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, logContent string, callErr error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 
 	var args goRunnerArgs
 	if len(req.Arguments) > 0 {
@@ -115,10 +116,7 @@ func (r GoRunner) Call(ctx context.Context, req tool.CallRequest) (result *tool.
 		err := mediaCall.Close()
 		callErr = errors.Join(callErr, err)
 		if err != nil {
-			if logContent != "" {
-				logContent += "\n"
-			}
-			logContent += fmt.Sprintf("media_cleanup_error=%v", err)
+			logContent = fmt.Sprintf("media_cleanup_error=%v\n%s", err, logContent)
 		}
 	}()
 	payload, err := prepareGoMedia(runCtx, args.Payload, mediaCall, record.Root)
@@ -138,10 +136,7 @@ func (r GoRunner) Call(ctx context.Context, req tool.CallRequest) (result *tool.
 			logContent = result.Content
 		}
 		if callErr != nil {
-			if logContent != "" {
-				logContent += "\n"
-			}
-			logContent += callErr.Error()
+			logContent = callErr.Error() + "\n" + logContent
 		}
 		return result, logContent, callErr
 	}

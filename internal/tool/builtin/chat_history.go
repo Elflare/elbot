@@ -133,7 +133,8 @@ func replyChatHistoryBuilder() *tool.Builder {
 		String("message", "引用该历史消息时要发送到当前聊天的回复内容。", tool.Required())
 }
 
-func (t SearchChatHistoryTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t SearchChatHistoryTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
 	if t.history == nil {
 		{
 			callErr := fmt.Errorf("chat history storage is not configured")
@@ -198,11 +199,12 @@ func (t SearchChatHistoryTool) Call(ctx context.Context, req tool.CallRequest) (
 	}
 	{
 		result := &tool.Result{Content: chatHistoryResultLines(lines)}
-		return result, result.Content, nil
+		return result, fmt.Sprintf("returned=%d", len(rows)), nil
 	}
 }
 
-func (t GetChatHistoryAroundTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t GetChatHistoryAroundTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
 	if t.history == nil {
 		{
 			callErr := fmt.Errorf("chat history storage is not configured")
@@ -261,7 +263,7 @@ func (t GetChatHistoryAroundTool) Call(ctx context.Context, req tool.CallRequest
 	}
 	{
 		result := &tool.Result{Content: chatHistoryResultLines(lines)}
-		return result, result.Content, nil
+		return result, fmt.Sprintf("message_id=%s returned=%d", messageID, len(rows)), nil
 	}
 }
 
@@ -275,7 +277,8 @@ func viewImageHistoryHint(ctx context.Context, center *media.Manager) string {
 	return ""
 }
 
-func (t ReplyToChatHistoryMessageTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t ReplyToChatHistoryMessageTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 	if t.history == nil {
 		{
 			callErr := fmt.Errorf("chat history storage is not configured")

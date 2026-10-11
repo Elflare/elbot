@@ -41,7 +41,8 @@ func (GetMediaTool) Schema() llm.ToolSchema {
 	return schema
 }
 
-func (t GetMediaTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t GetMediaTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 	var args getMediaArgs
 	if err := json.Unmarshal(req.Arguments, &args); err != nil {
 		{
@@ -112,6 +113,7 @@ func (t GetMediaTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 		if err != nil {
 			if err == storage.ErrNotFound {
 				lines = append(lines, fmt.Sprintf("[#%s] 当前聊天没有该消息。", id))
+				logContent += lines[len(lines)-1] + "\n"
 				continue
 			}
 			return nil, err.Error(), err
@@ -140,10 +142,16 @@ func (t GetMediaTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Res
 			text = historyMediaLabel(media.HistorySegments(request.Message)[request.Index-1].Type, result.Media.ID)
 		}
 		lines[positions[i]] += text
+		if result.Err != nil {
+			logContent += lines[positions[i]] + "\n"
+		}
 	}
 	{
 		result := &tool.Result{Content: strings.Join(lines, "\n")}
-		return result, result.Content, nil
+		if logContent == "" {
+			logContent = result.Content
+		}
+		return result, logContent, nil
 	}
 }
 

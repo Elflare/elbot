@@ -81,12 +81,15 @@ func TestWebSearchToolSendsDefaults(t *testing.T) {
 
 	search := NewWebSearchTool()
 	search.endpoint = server.URL
-	result, _, err := search.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"query":"elbot"}`)})
+	result, logContent, err := search.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"query":"elbot"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(result.Content, "answer") || !strings.Contains(result.Content, "https://example.com") {
 		t.Fatalf("content = %q", result.Content)
+	}
+	if !strings.Contains(logContent, "results=1") || !strings.Contains(logContent, "Title https://example.com") || strings.Contains(logContent, "summary") || strings.Contains(logContent, "answer") || len([]rune(logContent)) > 128 {
+		t.Fatalf("search log should retain sources without body: %q", logContent)
 	}
 }
 
@@ -127,12 +130,15 @@ func TestWebExtractToolSlicesAndCaches(t *testing.T) {
 	extract := NewWebExtractTool()
 	extract.client = server.Client()
 	extract.endpoint = server.URL
-	first, _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)})
+	first, logContent, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(first.Content, "Source: jina") || !strings.Contains(first.Content, "Title: Example") || !strings.Contains(first.Content, "Next offset: 8000") || !strings.Contains(first.Content, "Cached: false") {
 		t.Fatalf("first content = %q", first.Content)
+	}
+	if len([]rune(logContent)) != 128 || !strings.HasSuffix(logContent, "…") || !strings.Contains(logContent, "range=0-8000/10000 cached=false") {
+		t.Fatalf("extract log=%q", logContent)
 	}
 
 	second, _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page","offset":8000}`)})

@@ -77,13 +77,14 @@ func (t ResidentMemoryTool) Info() tool.Info {
 func (t ResidentMemoryTool) Schema() llm.ToolSchema {
 	return tool.NewBuilder(t.Name()).Description(t.Info().Description).BuildSchema()
 }
-func (t ResidentMemoryTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t ResidentMemoryTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
 	if err := validateMemoryStore(t.Store); err != nil {
 		return nil, err.Error(), err
 	}
 	{
 		result := &tool.Result{Content: "resident_memory 是常驻记忆管理入口。请调用 resident_memory_read、resident_memory_normal 或 resident_memory_core。"}
-		return result, result.Content, nil
+		return result, "resident_memory guide returned", nil
 	}
 }
 
@@ -96,7 +97,8 @@ func (t ResidentMemoryReadTool) Schema() llm.ToolSchema {
 		String("section", "读取范围：all、core 或 normal。默认 all。").
 		BuildSchema()
 }
-func (t ResidentMemoryReadTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t ResidentMemoryReadTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
 	scope, err := memoryScope(ctx, t.Store)
 	if err != nil {
 		return nil, err.Error(), err
@@ -128,17 +130,11 @@ func (t ResidentMemoryReadTool) Call(ctx context.Context, req tool.CallRequest) 
 	if section == "all" || section == "normal" {
 		result.Normal = memory.Normal
 	}
+	logContent = fmt.Sprintf("section=%s core_bytes=%d normal_bytes=%d", section, len(result.Core), len(result.Normal))
 	{
 		result, callErr := memoryJSONResult(result)
-		logContent := ""
-		if result != nil {
-			logContent = result.Content
-		}
 		if callErr != nil {
-			if logContent != "" {
-				logContent += "\n"
-			}
-			logContent += callErr.Error()
+			logContent = callErr.Error()
 		}
 		return result, logContent, callErr
 	}
@@ -154,7 +150,8 @@ func (t ResidentMemoryNormalTool) Schema() llm.ToolSchema {
 		String("content", "append/write 时使用。write 会覆盖完整 normal，使用前必须先调用 resident_memory_read 读取 normal 或 all。delete 不需要 content。").
 		BuildSchema()
 }
-func (t ResidentMemoryNormalTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t ResidentMemoryNormalTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 	scope, err := memoryScope(ctx, t.Store)
 	if err != nil {
 		return nil, err.Error(), err
@@ -217,7 +214,8 @@ func (t ResidentMemoryCoreTool) Schema() llm.ToolSchema {
 		String("content", "完整 core 内容。允许空字符串，表示清空 core。", tool.Required()).
 		BuildSchema()
 }
-func (t ResidentMemoryCoreTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t ResidentMemoryCoreTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 	scope, err := memoryScope(ctx, t.Store)
 	if err != nil {
 		return nil, err.Error(), err

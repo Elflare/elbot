@@ -49,7 +49,8 @@ func (t discoverTool) Schema() llm.ToolSchema {
 		BuildSchema()
 }
 
-func (t discoverTool) Call(ctx context.Context, req CallRequest) (*Result, string, error) {
+func (t discoverTool) Call(ctx context.Context, req CallRequest) (_ *Result, logContent string, _ error) {
+	defer func() { logContent = TruncateLogContent(logContent, 128) }()
 	if err := ctx.Err(); err != nil {
 		return nil, err.Error(), err
 	}
@@ -128,9 +129,16 @@ func (t discoverTool) Call(ctx context.Context, req CallRequest) (*Result, strin
 	}
 	// 普通工具的完整 schema 通过 Data 交给工具状态服务，协议路线负责发送。
 	// tool message 独立保留发现说明，不重复展开完整 schema。
+	logContent = fmt.Sprintf("found=%d errors=%d", len(result.Tools), len(result.Errors))
+	for _, failure := range result.Errors {
+		logContent += fmt.Sprintf("\n%s: %s", failure.Name, failure.Reason)
+	}
+	for _, discovered := range result.Tools {
+		logContent += "\n" + discovered.Info.Name
+	}
 	{
 		result := &Result{Content: content, Data: data, Metadata: metadata}
-		return result, result.Content, nil
+		return result, logContent, nil
 	}
 }
 

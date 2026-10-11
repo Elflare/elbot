@@ -56,14 +56,15 @@ func (ElwispCreatorTool) Schema() llm.ToolSchema {
 		BuildSchema()
 }
 
-func (t ElwispCreatorTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t ElwispCreatorTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
 	_ = req
 	if err := ctx.Err(); err != nil {
 		return nil, err.Error(), err
 	}
 	{
 		result := &tool.Result{Content: buildElwispCreatorGuide(loadElwispCreatorConfig(t.info))}
-		return result, result.Content, nil
+		return result, "elwisp_creator guide returned", nil
 	}
 }
 
