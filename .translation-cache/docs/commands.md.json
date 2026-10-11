@@ -112,14 +112,6 @@
       "translation": "Explicit zeros are counted normally, and other known items are unaffected.",
       "updated_at": 1791708235
     },
-    "docs/commands.md:list:129dcb355b61d82b28869258271a3ce132b1f9128b0befb5a612849702036228": {
-      "kind": "list",
-      "source": "若目标仍在运行，会接入原执行：工具阶段追加 pending，LLM 阶段进入追加确认，压缩阶段拒绝新输入；",
-      "source_file": "docs/commands.md",
-      "source_hash": "129dcb355b61d82b28869258271a3ce132b1f9128b0befb5a612849702036228",
-      "translation": "If the target is still running, it will connect to the original execution: pending is appended during the tool stage, additional confirmation is entered during the LLM stage, and new input is rejected during the compaction stage;",
-      "updated_at": 1791193592
-    },
     "docs/commands.md:list:184cff66666bbc12475709d9a2de0e36a43d1f1430698bc732c362722f37a713": {
       "kind": "list",
       "source": "已有历史的 work Session 不能直接切到 chat；需要先 __ELBOT_CODE_0__，再 __ELBOT_CODE_1__。",
@@ -144,28 +136,12 @@
       "translation": "Use __ELBOT_CODE_0__ to cancel",
       "updated_at": 1791193592
     },
-    "docs/commands.md:list:3745deb94f9bc6ef9e79683058fe2d069b7ad029b2eeb34fdc0a3903c7b2a61d": {
-      "kind": "list",
-      "source": "首次恢复后台会话会永久转为当前前台归属，保留历史和原工作目录。",
-      "source_file": "docs/commands.md",
-      "source_hash": "3745deb94f9bc6ef9e79683058fe2d069b7ad029b2eeb34fdc0a3903c7b2a61d",
-      "translation": "The first time a background Session is restored, it will be permanently transferred to the current foreground ownership, preserving history and the original working directory.",
-      "updated_at": 1791193592
-    },
     "docs/commands.md:list:41547d18f46d3f0d9a96bb972a7498fbc0757fd06c612c4abc66ff0e9470baab": {
       "kind": "list",
       "source": "压缩会保留历史用户原话、忽略工具返回值，成功后创建并切换到独立的 __ELBOT_CODE_0__ Session；",
       "source_file": "docs/commands.md",
       "source_hash": "41547d18f46d3f0d9a96bb972a7498fbc0757fd06c612c4abc66ff0e9470baab",
       "translation": "Context compaction preserves historical user utterances and ignores tool return values; upon success, it creates and switches to an independent __ELBOT_CODE_0__ Session;",
-      "updated_at": 1791193592
-    },
-    "docs/commands.md:list:4727d8c961a162a387d6e9a3db13853c3b64fa98a0dc796b826b177d65612eeb": {
-      "kind": "list",
-      "source": "切走不会恢复后台身份。",
-      "source_file": "docs/commands.md",
-      "source_hash": "4727d8c961a162a387d6e9a3db13853c3b64fa98a0dc796b826b177d65612eeb",
-      "translation": "Switching away will not restore the background identity.",
       "updated_at": 1791193592
     },
     "docs/commands.md:list:4a1867b2d4d09bf4e640b43485624cedc9e18b5b6717c49ab8cd4955e12dc015": {
@@ -280,13 +256,13 @@
       "translation": "__ELBOT_CODE_0__ mode enables tool discovery and tool calling.",
       "updated_at": 1781514917
     },
-    "docs/commands.md:list:cd098146a5166c86f4f43369ee142d6afa951594733581afd3aa97f29454e7c4": {
+    "docs/commands.md:list:df75b658523845bd57df0abc1d6890d0c4fd12f854c179191ad91e81f4750cc2": {
       "kind": "list",
-      "source": "后续输出直接发到前台。",
+      "source": "首次恢复后台会话会永久转为当前前台归属，切走不会恢复后台身份。",
       "source_file": "docs/commands.md",
-      "source_hash": "cd098146a5166c86f4f43369ee142d6afa951594733581afd3aa97f29454e7c4",
-      "translation": "Subsequent output will be sent directly to the foreground.",
-      "updated_at": 1791193592
+      "source_hash": "df75b658523845bd57df0abc1d6890d0c4fd12f854c179191ad91e81f4750cc2",
+      "translation": "The first time a background Session is restored, it will be permanently transferred to the current foreground ownership; switching away will not restore its background identity.",
+      "updated_at": 1791725974
     },
     "docs/commands.md:list:f09b27469f6c5b3a4aed39e01ef19ff88d1b7b67a2a7234105026a61371182d4": {
       "kind": "list",
@@ -1498,8 +1474,8 @@
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "c5ddd9889a9bb0b1d4aa03187329ebe9675ef6a7e983c6264b068a00dcd0c1e3",
+  "source_hash": "fac7b2aa63ed778f0bfa484a9fbcf0e29b892aba3ae8a8f9f78f5598c7dcfad7",
   "target": "docs.en/commands.md",
-  "updated_at": 1791712563,
+  "updated_at": 1791725974,
   "version": 2
 }

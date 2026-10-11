@@ -114,7 +114,7 @@ Note:
 - CLI serves as a local high-privilege entry point and can view Sessions across platforms; non-CLI platforms view Sessions under the current platform and scope by default.
 - Deletion is a permanent operation and requires explicit `--confirm`; Sessions currently executing cannot be deleted and will be skipped by automatic cleanup.
 - Cron/Elnis background Sessions can only be restored by the owning user via private chat on the same platform or through the CLI management entry; they are not displayed in group chats or channels, and cannot be bypassed via direct ID, message quoting, or unarchiving.
-- The first time a background Session is restored, it will be permanently transferred to the current foreground ownership, preserving history and the original working directory. If the target is still running, it will connect to the original execution: pending is appended during the tool stage, additional confirmation is entered during the LLM stage, and new input is rejected during the compaction stage; Subsequent output will be sent directly to the foreground. Switching away will not restore the background identity.
+- The first time a background Session is restored, it will be permanently transferred to the current foreground ownership; switching away will not restore its background identity.
 
 ## Fork
 
