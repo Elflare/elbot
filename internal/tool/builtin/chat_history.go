@@ -134,18 +134,17 @@ func replyChatHistoryBuilder() *tool.Builder {
 }
 
 func (t SearchChatHistoryTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
 	if t.history == nil {
 		{
 			callErr := fmt.Errorf("chat history storage is not configured")
-			return nil, callErr.Error(), callErr
+			return nil, tool.TruncateLogContent(callErr.Error(), 256), callErr
 		}
 	}
 	chatCtx, err := currentChatHistoryContext(ctx)
 	if err != nil {
 		{
 			result := &tool.Result{Content: err.Error()}
-			return result, result.Content, nil
+			return result, tool.TruncateLogContent(result.Content, 256), nil
 		}
 	}
 	var args searchChatHistoryArgs
@@ -153,7 +152,7 @@ func (t SearchChatHistoryTool) Call(ctx context.Context, req tool.CallRequest) (
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
 			{
 				callErr := fmt.Errorf("parse search_chat_history arguments: %w", err)
-				return nil, callErr.Error(), callErr
+				return nil, tool.TruncateLogContent(callErr.Error(), 256), callErr
 			}
 		}
 	}
@@ -162,7 +161,7 @@ func (t SearchChatHistoryTool) Call(ctx context.Context, req tool.CallRequest) (
 	if userErr != "" {
 		{
 			result := &tool.Result{Content: userErr}
-			return result, result.Content, nil
+			return result, tool.TruncateLogContent(result.Content, 256), nil
 		}
 	}
 	rows, err := t.history.Search(ctx, storage.ChatHistorySearchRequest{
@@ -177,19 +176,19 @@ func (t SearchChatHistoryTool) Call(ctx context.Context, req tool.CallRequest) (
 		Limit:           clampChatHistoryLimit(args.Limit),
 	})
 	if err != nil {
-		return nil, err.Error(), err
+		return nil, tool.TruncateLogContent(err.Error(), 256), err
 	}
 	if len(rows) == 0 {
 		{
 			result := &tool.Result{Content: "没有查到符合条件的当前聊天历史记录。"}
-			return result, result.Content, nil
+			return result, "returned=0\ncontent:\n" + tool.TruncateLogContent(result.Content, 256), nil
 		}
 	}
 	lines := []string{fmt.Sprintf("当前聊天历史查询结果：返回 %d 条。", len(rows))}
 	for _, row := range rows {
 		line, err := formatChatHistoryMedia(ctx, row, "", t.center)
 		if err != nil {
-			return nil, err.Error(), err
+			return nil, tool.TruncateLogContent(err.Error(), 256), err
 		}
 		lines = append(lines, line)
 	}
@@ -199,23 +198,22 @@ func (t SearchChatHistoryTool) Call(ctx context.Context, req tool.CallRequest) (
 	}
 	{
 		result := &tool.Result{Content: chatHistoryResultLines(lines)}
-		return result, fmt.Sprintf("returned=%d", len(rows)), nil
+		return result, fmt.Sprintf("returned=%d\ncontent:\n%s", len(rows), tool.TruncateLogContent(result.Content, 256)), nil
 	}
 }
 
 func (t GetChatHistoryAroundTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
 	if t.history == nil {
 		{
 			callErr := fmt.Errorf("chat history storage is not configured")
-			return nil, callErr.Error(), callErr
+			return nil, tool.TruncateLogContent(callErr.Error(), 256), callErr
 		}
 	}
 	chatCtx, err := currentChatHistoryContext(ctx)
 	if err != nil {
 		{
 			result := &tool.Result{Content: err.Error()}
-			return result, result.Content, nil
+			return result, tool.TruncateLogContent(result.Content, 256), nil
 		}
 	}
 	var args aroundChatHistoryArgs
@@ -223,7 +221,7 @@ func (t GetChatHistoryAroundTool) Call(ctx context.Context, req tool.CallRequest
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
 			{
 				callErr := fmt.Errorf("parse get_chat_history_around arguments: %w", err)
-				return nil, callErr.Error(), callErr
+				return nil, tool.TruncateLogContent(callErr.Error(), 256), callErr
 			}
 		}
 	}
@@ -231,7 +229,7 @@ func (t GetChatHistoryAroundTool) Call(ctx context.Context, req tool.CallRequest
 	if messageID == "" {
 		{
 			result := &tool.Result{Content: "message_id 必须是 search_chat_history 返回的 #message_id 或纯平台消息 ID。"}
-			return result, result.Content, nil
+			return result, tool.TruncateLogContent(result.Content, 256), nil
 		}
 	}
 	rows, err := t.history.Around(ctx, storage.ChatHistoryAroundRequest{
@@ -245,16 +243,16 @@ func (t GetChatHistoryAroundTool) Call(ctx context.Context, req tool.CallRequest
 		if err == storage.ErrNotFound {
 			{
 				result := &tool.Result{Content: fmt.Sprintf("没有在当前聊天找到 message_id 为 %s 的历史记录。", messageID)}
-				return result, result.Content, nil
+				return result, fmt.Sprintf("message_id=%s returned=0\ncontent:\n%s", messageID, tool.TruncateLogContent(result.Content, 256)), nil
 			}
 		}
-		return nil, err.Error(), err
+		return nil, tool.TruncateLogContent(err.Error(), 256), err
 	}
 	lines := []string{fmt.Sprintf("当前聊天消息 #%s 附近上下文：返回 %d 条。", messageID, len(rows))}
 	for _, row := range rows {
 		line, err := formatChatHistoryMedia(ctx, row, messageID, t.center)
 		if err != nil {
-			return nil, err.Error(), err
+			return nil, tool.TruncateLogContent(err.Error(), 256), err
 		}
 		lines = append(lines, line)
 	}
@@ -263,7 +261,7 @@ func (t GetChatHistoryAroundTool) Call(ctx context.Context, req tool.CallRequest
 	}
 	{
 		result := &tool.Result{Content: chatHistoryResultLines(lines)}
-		return result, fmt.Sprintf("message_id=%s returned=%d", messageID, len(rows)), nil
+		return result, fmt.Sprintf("message_id=%s returned=%d\ncontent:\n%s", messageID, len(rows), tool.TruncateLogContent(result.Content, 256)), nil
 	}
 }
 

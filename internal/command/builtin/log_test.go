@@ -492,10 +492,10 @@ func TestLogRawIndependentOfLevelAndContentRendering(t *testing.T) {
 	}
 }
 func TestLogUnspecifiedResultAndHelp(t *testing.T) {
-	service := &fakeLogService{entries: []logging.LogEntry{{Content: "plain", EventName: "progress"}}}
+	service := &fakeLogService{entries: []logging.LogEntry{{Level: "INFO", Content: "plain", EventName: "progress"}}}
 	handler := NewLog(Deps{Logs: service})
 	result, err := handler.Handle(t.Context(), command.Request{})
-	if err != nil || !strings.Contains(result.Content, "未声明") {
+	if err != nil || strings.Contains(result.Content, "未声明") || !strings.Contains(result.Content, "  INFO  progress\nplain") {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 	result, err = handler.Handle(t.Context(), command.Request{Args: "-h"})

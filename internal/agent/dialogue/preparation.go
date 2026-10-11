@@ -37,11 +37,24 @@ func (p *Preparer) LoadMaterials(ctx context.Context, in TurnInput) (TurnMateria
 		EventName:    "user_message",
 		Module:       "agent",
 		Type:         events.ContentText,
-		Content:      message.Content,
 		ContentLimit: 4096,
 		Identity:     events.LogIdentity{SessionID: &in.Session.ID},
 		ResultStatus: events.ResultUnspecified,
 	}
+	conversation, _ := contextinfo.ConversationFromContext(ctx)
+	if conversation.Source.Platform != "" {
+		record.Content += "platform=" + conversation.Source.Platform + "\n"
+	}
+	if conversation.Identity.PlatformUserID != "" {
+		record.Content += "platform_user_id=" + conversation.Identity.PlatformUserID + "\n"
+	}
+	if conversation.Source.ScopeID != "" {
+		record.Content += "scope_id=" + conversation.Source.ScopeID + "\n"
+	}
+	if conversation.PlatformMessageID != "" {
+		record.Content += "platform_message_id=" + conversation.PlatformMessageID + "\n"
+	}
+	record.Content += "text=" + message.Content
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	if facts.RunID != "" {
 		record.Identity.RunID = &facts.RunID

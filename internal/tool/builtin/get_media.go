@@ -113,10 +113,6 @@ func (t GetMediaTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.R
 		if err != nil {
 			if err == storage.ErrNotFound {
 				lines = append(lines, fmt.Sprintf("[#%s] 当前聊天没有该消息。", id))
-				if logContent != "" {
-					logContent += "\n"
-				}
-				logContent += lines[len(lines)-1]
 				continue
 			}
 			return nil, err.Error(), err
@@ -145,19 +141,10 @@ func (t GetMediaTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.R
 			text = historyMediaLabel(media.HistorySegments(request.Message)[request.Index-1].Type, result.Media.ID)
 		}
 		lines[positions[i]] += text
-		if result.Err != nil {
-			if logContent != "" {
-				logContent += "\n"
-			}
-			logContent += lines[positions[i]]
-		}
 	}
 	{
 		result := &tool.Result{Content: strings.Join(lines, "\n")}
-		if logContent == "" {
-			logContent = result.Content
-		}
-		return result, logContent, nil
+		return result, result.Content, nil
 	}
 }
 
