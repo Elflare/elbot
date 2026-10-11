@@ -16,31 +16,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Provider added `api_mode="chat"/"response"`; if omitted, Chat Completions will still be used.
 - `edit_file` keeps an in-memory backup of each file before its most recent edit. Added `/rollback [编号]` and tool `rollback_file` available only to superadmins, which automatically expand when file read/write tools are discovered; Records become invalid after switching Sessions, restarting, or capacity eviction. Does not overwrite modifications made by Shell or external programs.
 - Added a chat command `/doctor` available only to superadmins, which performs a read-only check for missing items in the current configuration, TOML errors, unknown fields in the main configuration, and differences in built-in Skills; Lists issues by file and generates ElBot processing requests accompanied by configuration instructions and default template addresses. Returns `Everything is OK` when there are no issues, and will not automatically modify files.
+- `/log`, `/audit`, and `/elwisp` now have an independent `--raw` flag. Corrupted log lines will no longer interrupt queries, and the number of corrupted lines scanned will be prompted.
 
 ### Changed
 
+- Significantly refactored the underlying architecture, optimizing the responsibilities and boundaries of each package
+- Refactor the log system
+- Refactor the notification system
+- Optimize CLI UI logic
+- Tool calls are now only recorded in the audit log; removed `/log -t`. Log records for tool content will be streamlined.
 - Platform connection events have been changed from adapter instance signals and App forwarding to directly publishing global signals; The Hook coordination module and Cron now subscribe independently, queue by platform, and manage shutdown, while maintaining the original connection triggers, catch-up execution, and 30-second exit budget.
-- Log severity is unified as WARN for client retries and ERROR for final operation failures; Active cancellation and normal policy rejection are now handled separately. Hook tool call audit has been unified from three names to `hook_tool_call`, using `source` and `status` to distinguish source and result; help and completion have been updated synchronously.
-- Audit and Elnis logs have been changed from a shared runtime level to being retained independently; `runtime.log_level=warn/error` no longer filters usage facts required by `/usage`. Signal facility failures are now reported directly to stderr instead of via the business Logger, making them unaffected by the runtime level.
-- All business logs have been changed from Logger/Audit injection and App relay to being delivered to the log center via global signals; Log projections for Agent, naming, and retries are now maintained by the source module, and upstream failure details now use a general diagnostic contract.
-- The runtime log body has been changed to a summary of up to 256 characters; details are only preserved in DEBUG mode; After centralized desensitization, single item details are limited to 8 KiB and single records to 64 KiB. Startup duration has been changed from direct output to DEBUG logs.
 - Tools now support restricting discovery, completion, preloading, and execution by API type.
 - The stdout/stderr return limit for `shell` has been increased from 16 KiB each to 256 KiB each; if exceeded, a note about truncation due to length will be added to the end of the corresponding output.
 - Responses tool definitions have been changed from the top-level of each round `tools` to incremental `additional_tools` in native input; playback retains the original position; Current invocation permissions are separately restricted by `tool_choice`. Old Responses Sessions and changes to tool definitions with the same name require creating a new Session.
 - Background path descriptions have been moved from the schema of the four path tools to the system prompt; frontend takeover no longer changes tool definitions.
 - Compaction is dispatched by Session protocol: Chat continues to use an independent summary model, while Responses use the current model and fully preserve the native return window; both share the same compaction threshold.
 - The read-only `llm.tools` for tool definitions and Hooks has been changed from Chat's `type/function` wrapper to the `name/description/parameters` business structure, with protocol clients respectively generating the required API wrappers.
-- Significantly refactored the underlying architecture, optimizing the responsibilities and boundaries of each package
 - QQ OneBot messages exceeding 3000 characters will be converted to merged messages
 - Cron/Elnis now permanently convert to ordinary foreground Sessions upon the first recovery in a private chat on the same platform as the owner or via CLI, and reconnect to the original execution. Subsequent output, permissions, and confirmations now use foreground rules; the original task waits for the final result and records the takeover, while JSON correction, automatic reporting, and unstarted supplementary deliveries are stopped. Group chats and channels no longer list or allow the restoration of background Sessions.
-- Media cleanup has been changed from deleting objects one by one using a global media lock to processing up to 4 objects simultaneously with mutual exclusion based on media ID; Import and on-demand upload of different media no longer wait for a full cleanup cycle; for the same media, overlaps between upload, deletion, and re-import are still prevented. Records are retained for subsequent retries after deletion failure or cancellation.
+- Media cleanup now processes up to 4 objects simultaneously and is mutually exclusive by media ID; Import and on-demand upload of different media no longer wait for a full cleanup cycle; for the same media, overlaps between upload, deletion, and re-import are still prevented. Records are retained for subsequent retries after deletion failure or cancellation.
+- The timeout for fetching model information has been relaxed from 5 seconds to 30 seconds.
 
 ### Fixed
 
-- Fixed an issue where upstream failure details for automatic naming were lost in non-DEBUG configurations, and where fallback title save failures overwrote the original error; diagnostics are now independently preserved via ERROR audit logs.
-- Fixed log event identifiers.
-- Fixed issues where audit matching fabricated `event=hook` and runtime logs omitted records without the `hook` field; these no longer overwrite the original filter when combined with conditions such as event names.
-- Fixed issues where model retry logs depended on notification subscriptions and Hook original failures were recorded repeatedly.
+- Fix a bug where ordinary log queries such as `/audit` directly displayed JSON escapes.
 - Fixed an issue where `shell` cached all output and only truncated it after completion, causing memory usage to grow with the output volume during execution; capacity is now limited during collection, and any excess is drained and discarded.
 - Fixed the high-risk confirmation bug.
 - Fixed the additional confirmation wait bug.
@@ -48,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - QQ OneBot long text pagination now only adds ellipses to non-last pages.
 - Fixed an issue where the Agent would merge all text segments and disrupt the positioning of text and images when removing wake words or tool commands.
 - Fixed a tool caching bug in background tasks.
+- Fixed meaningless log desensitization (since no sensitive information was recorded anyway. Previously, a brain-dead GPT performed redundant defensive programming with excessive regex matching, wasting performance).
 - Tools can no longer be passed into chat mode.
 - Fixed a bug where regular users could stop requests from other users.
 - Fixed a bug where tools could be preloaded during compaction.
