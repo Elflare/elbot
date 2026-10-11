@@ -599,7 +599,7 @@ func formatAuditEntries(raw bool) func([]logging.LogEntry) string {
 			if i > 0 {
 				sb.WriteString("\n\n")
 			}
-			result := "未声明"
+			result := ""
 			switch entry.ResultStatus {
 			case events.ResultSucceeded:
 				result = "成功"
@@ -612,11 +612,11 @@ func formatAuditEntries(raw bool) func([]logging.LogEntry) string {
 			case events.ResultSkipped:
 				result = "已跳过"
 			}
-			level := entry.Level
-			if level == "" {
-				level = "未声明"
+			fmt.Fprintf(&sb, "%s  %s  %s", formatLogEntryTime(entry), entry.Level, entry.EventName)
+			if result != "" {
+				sb.WriteString("  " + result)
 			}
-			fmt.Fprintf(&sb, "%s  %s  %s  %s\n", formatLogEntryTime(entry), level, entry.EventName, result)
+			sb.WriteByte('\n')
 			sb.WriteString(formatLogContent(entry))
 			if entry.LegacyFields != nil {
 				appendRuntimeLogFields(&sb, entry.LegacyFields)
@@ -637,7 +637,7 @@ func formatRuntimeLogEntries(raw bool) func([]logging.LogEntry) string {
 			if i > 0 {
 				sb.WriteString("\n\n")
 			}
-			result := "未声明"
+			result := ""
 			switch entry.ResultStatus {
 			case events.ResultSucceeded:
 				result = "成功"
@@ -650,11 +650,11 @@ func formatRuntimeLogEntries(raw bool) func([]logging.LogEntry) string {
 			case events.ResultSkipped:
 				result = "已跳过"
 			}
-			level := entry.Level
-			if level == "" {
-				level = "未声明"
+			fmt.Fprintf(&sb, "%s  %s  %s", formatLogEntryTime(entry), entry.Level, entry.EventName)
+			if result != "" {
+				sb.WriteString("  " + result)
 			}
-			fmt.Fprintf(&sb, "%s  %s  %s  %s\n", formatLogEntryTime(entry), level, entry.EventName, result)
+			sb.WriteByte('\n')
 			sb.WriteString(formatLogContent(entry))
 			if entry.LegacyFields != nil {
 				appendRuntimeLogFields(&sb, entry.LegacyFields)
@@ -675,7 +675,7 @@ func formatElwispLogEntries(raw bool) func([]logging.LogEntry) string {
 			if i > 0 {
 				sb.WriteString("\n\n")
 			}
-			result := "未声明"
+			result := ""
 			switch entry.ResultStatus {
 			case events.ResultSucceeded:
 				result = "成功"
@@ -688,11 +688,11 @@ func formatElwispLogEntries(raw bool) func([]logging.LogEntry) string {
 			case events.ResultSkipped:
 				result = "已跳过"
 			}
-			level := entry.Level
-			if level == "" {
-				level = "未声明"
+			fmt.Fprintf(&sb, "%s  %s  %s", formatLogEntryTime(entry), entry.Level, entry.EventName)
+			if result != "" {
+				sb.WriteString("  " + result)
 			}
-			fmt.Fprintf(&sb, "%s  %s  %s  %s\n", formatLogEntryTime(entry), level, entry.EventName, result)
+			sb.WriteByte('\n')
 			sb.WriteString(formatLogContent(entry))
 			if entry.LegacyFields != nil {
 				appendRuntimeLogFields(&sb, entry.LegacyFields)

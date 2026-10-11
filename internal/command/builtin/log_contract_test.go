@@ -82,13 +82,14 @@ func TestLogQueriesPutToolBelowHeader(t *testing.T) {
 	for _, event := range []string{"tool_call", "hook_tool_call"} {
 		for _, format := range []func(bool) func([]logging.LogEntry) string{formatAuditEntries, formatRuntimeLogEntries, formatElwispLogEntries} {
 			entry := logging.LogEntry{
+				Level:     "INFO",
 				EventName: event,
 				Type:      events.ContentJSON,
 				Content:   `{"tool":"shell","result":"done","actor_id":"user","nested":{"tool":"nested","actor_id":"inner"}}`,
 				Raw:       "ORIGINAL_PHYSICAL_RECORD",
 			}
 			content := format(false)([]logging.LogEntry{entry})
-			_, body, found := strings.Cut(content, formatLogEntryTime(entry)+"  未声明  "+event+"  未声明\n")
+			_, body, found := strings.Cut(content, formatLogEntryTime(entry)+"  INFO  "+event+"\n")
 			want := "tool: shell\nresult: done\nactor_id: user\nnested: \n  tool: nested\n  actor_id: inner"
 			if !found || strings.TrimSpace(body) != want {
 				t.Fatalf("unexpected field order for %s: %s", event, content)
@@ -103,6 +104,26 @@ func TestLogQueriesPutToolBelowHeader(t *testing.T) {
 	entry := logging.LogEntry{Type: events.ContentJSON, Content: `{"result":"done","actor_id":"user"}`}
 	if content := formatLogContent(entry); content != "result: done\nactor_id: user" {
 		t.Fatalf("non-tool field order changed: %s", content)
+	}
+}
+
+func TestLogQueryResultHeaders(t *testing.T) {
+	for _, format := range []func(bool) func([]logging.LogEntry) string{formatAuditEntries, formatRuntimeLogEntries, formatElwispLogEntries} {
+		for _, tc := range []struct {
+			status events.ResultStatus
+			suffix string
+		}{
+			{events.ResultUnspecified, ""}, {events.ResultSucceeded, "  成功"},
+			{events.ResultFailed, "  失败"}, {events.ResultCanceled, "  已取消"},
+			{events.ResultRejected, "  已拒绝"}, {events.ResultSkipped, "  已跳过"},
+		} {
+			entry := logging.LogEntry{Level: "INFO", EventName: "event", ResultStatus: tc.status, Content: "body"}
+			got := format(false)([]logging.LogEntry{entry})
+			want := formatLogEntryTime(entry) + "  INFO  event" + tc.suffix + "\nbody"
+			if !strings.HasSuffix(got, want) || strings.Contains(got, "未声明") {
+				t.Fatalf("got=%q want suffix=%q", got, want)
+			}
+		}
 	}
 }
 
