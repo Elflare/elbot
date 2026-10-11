@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -11,9 +12,9 @@ import (
 	"elbot/internal/turn"
 )
 
-// statusRecorder is the synchronous source of runtime snapshots. Display
+// StatusRecorder is the synchronous source of runtime snapshots. Display
 // delivery happens after Record returns and never while its mutex is held.
-type statusRecorder struct {
+type StatusRecorder struct {
 	publishMu sync.Mutex
 	mu        sync.Mutex
 	snapshots map[string]runtimestatus.Snapshot
@@ -23,7 +24,7 @@ type statusRecorder struct {
 	changed   *signal.Signal[agentevents.StatusChangedEvent]
 }
 
-func (r *statusRecorder) Record(ctx context.Context, snapshot runtimestatus.Snapshot, display bool) {
+func (r *StatusRecorder) Record(ctx context.Context, snapshot runtimestatus.Snapshot, display bool) {
 	// Status subscribers only update in-memory projections. Serialize publication
 	// so a retired target cannot be recreated by an older concurrent emission.
 	r.publishMu.Lock()
@@ -61,16 +62,12 @@ func (r *statusRecorder) Record(ctx context.Context, snapshot runtimestatus.Snap
 	agentevents.Emit(ctx, r.changed, agentevents.StatusChangedEvent{Snapshot: snapshot, Version: version, Display: display})
 }
 
-func (r *statusRecorder) Snapshot(sessionID string) runtimestatus.Snapshot {
+func (r *StatusRecorder) Snapshot(sessionID string) runtimestatus.Snapshot {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	snapshot := r.snapshots[sessionID]
 	snapshot.Usage = agentevents.CloneUsage(snapshot.Usage)
 	return snapshot
-}
-
-func (a *Agent) RuntimeStatus(sessionID string) runtimestatus.Snapshot {
-	return a.status.Snapshot(sessionID)
 }
 
 func mergeRuntimeStatus(previous, next runtimestatus.Snapshot) runtimestatus.Snapshot {
@@ -111,4 +108,21 @@ func runtimeDoneStatus(base runtimestatus.Snapshot, usageUpdatedAt time.Time) ru
 	base.FinishedAt = usageUpdatedAt
 	base.Error = ""
 	return base
+}
+
+// StatusRecorderDeps declares only the capabilities consumed by StatusRecorder.
+type StatusRecorderDeps struct {
+	Turns   *turn.Manager
+	Changed *signal.Signal[agentevents.StatusChangedEvent]
+}
+
+// NewStatusRecorder initializes StatusRecorder without installing cross-service callbacks.
+func NewStatusRecorder(deps StatusRecorderDeps) (*StatusRecorder, error) {
+	if deps.Turns == nil {
+		return nil, fmt.Errorf("StatusRecorder turns is required")
+	}
+	return &StatusRecorder{
+		turns:   deps.Turns,
+		changed: deps.Changed,
+	}, nil
 }

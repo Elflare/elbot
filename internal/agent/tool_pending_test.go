@@ -2,6 +2,11 @@ package agent
 
 import (
 	"context"
+	"errors"
+	"strings"
+	"testing"
+	"time"
+
 	"elbot/internal/config"
 	"elbot/internal/events"
 	"elbot/internal/hook"
@@ -10,10 +15,6 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
-	"errors"
-	"strings"
-	"testing"
-	"time"
 )
 
 func TestChatToolMaxRoundsPerTurnRequestsSummary(t *testing.T) {

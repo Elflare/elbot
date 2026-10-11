@@ -2,196 +2,26 @@ package app
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
-	"errors"
-	"fmt"
-	"log/slog"
-	"sync"
 
-	"elbot/internal/agent"
-	"elbot/internal/command"
-	"elbot/internal/completion"
-	"elbot/internal/delivery"
-	globalevents "elbot/internal/events"
-	"elbot/internal/platform"
-	platformbuiltin "elbot/internal/platform/builtin"
+	platformmodule "elbot/internal/platform/module"
 )
 
 type defaultPlatformFactory struct{}
 
-func (defaultPlatformFactory) Build(req PlatformRequest) (PlatformComponents, error) {
-	foundation := req.Foundation
-	bundle, err := platformbuiltin.New(platformbuiltin.Options{Mode: platformMode(req.Mode)}, foundation.Config, foundation.Store, foundation.ChatHistory)
-	if err != nil {
-		return PlatformComponents{}, err
-	}
+func (defaultPlatformFactory) Build(ctx context.Context, req PlatformRequest) (*platformmodule.Module, error) {
+	m, err := platformmodule.NewModule(ctx, platformmodule.ModuleDeps{
+		ConfigPath:         req.Foundation.Config.ConfigPath,
+		Platform:           req.Foundation.Config.Platform,
+		Superadmins:        req.Foundation.Config.Security.Superadmins,
+		Prefixes:           req.Foundation.Config.Commands.Prefixes,
+		SandboxRoot:        req.Foundation.Config.Sandbox.Root,
+		Files:              req.Foundation.Config.PlatformFiles,
+		Mode:               platformMode(req.Mode),
+		Store:              req.Foundation.Store,
+		ChatHistory:        req.Foundation.ChatHistory,
+		Media:              req.Media,
+		MediaRetentionDays: req.Foundation.Config.Maintenance.SandboxCleanup.RetentionDays,
+	})
 	req.Profiler.Mark("platform init")
-	return PlatformComponents{Primary: bundle.Primary, Runtimes: bundle.Runtimes}, nil
-}
-
-type defaultPlatformExecutor struct{}
-
-func (defaultPlatformExecutor) Run(ctx context.Context, req PlatformRunRequest) error {
-	return runPlatforms(ctx, req.Handler, req.Runtimes, req.AfterStart, req.Stop)
-}
-
-type platformRuntime = platform.Runtime
-
-type platformLifecycle interface {
-	StopAppOnExit() bool
-}
-
-type completionPlatform interface {
-	SetCompleter(*completion.Service)
-}
-
-type commandCatalogPlatform interface {
-	SetCommandCatalog([]command.Info)
-}
-
-func registerCompletionPlatforms(agt *agent.Agent, adapters []platformRuntime) {
-	if agt == nil {
-		return
-	}
-	for _, adapter := range adapters {
-		if adapter == nil {
-			continue
-		}
-		if completer, ok := adapter.(completionPlatform); ok {
-			completer.SetCompleter(agt.CompletionService())
-		}
-	}
-}
-
-func registerCommandCatalogs(router *command.Router, adapters []platformRuntime) {
-	if router == nil {
-		return
-	}
-	commands := router.Commands()
-	for _, adapter := range adapters {
-		if adapter == nil {
-			continue
-		}
-		if catalog, ok := adapter.(commandCatalogPlatform); ok {
-			catalog.SetCommandCatalog(commands)
-		}
-	}
-}
-
-func platformStopsAppOnExit(adapter platformRuntime) bool {
-	lifecycle, ok := adapter.(platformLifecycle)
-	return ok && lifecycle.StopAppOnExit()
-}
-
-func runPlatforms(ctx context.Context, handler platform.PlatformHandler, adapters []platformRuntime, afterStart func(context.Context), stop context.CancelFunc) error {
-	runCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	var wg sync.WaitGroup
-	for _, adapter := range adapters {
-		adapter := adapter
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := adapter.Run(runCtx, handler); err != nil && !errors.Is(err, context.Canceled) {
-				{
-					record := globalevents.LogRecord{
-						Category:     globalevents.LogRuntime,
-						Level:        slog.LevelError,
-						EventName:    "platform_stopped_with_error",
-						Module:       "app",
-						Type:         globalevents.ContentText,
-						Content:      fmt.Sprintf("platform stopped with error\nplatform=%v\nerror=%v", adapter.Name(), err.Error()),
-						ContentLimit: 4096,
-						ResultStatus: globalevents.ResultFailed,
-					}
-					if errors.Is(err, context.Canceled) {
-						record.ResultStatus = globalevents.ResultCanceled
-						record.Level = slog.LevelInfo
-					}
-					facts, _ := contextinfo.ExecutionFromContext(runCtx)
-					if facts.SessionID != "" {
-						record.Identity.SessionID = &facts.SessionID
-					}
-					if facts.RunID != "" {
-						record.Identity.RunID = &facts.RunID
-					}
-					if facts.Attempt != "" {
-						record.Identity.Attempt = &facts.Attempt
-					}
-					if facts.RequestID != "" {
-						record.Identity.RequestID = &facts.RequestID
-					}
-					if facts.RootRequestID != "" {
-						record.Identity.RootRequestID = &facts.RootRequestID
-					}
-					_ = globalevents.EmitLog(runCtx, record)
-				}
-			}
-			if platformStopsAppOnExit(adapter) {
-				cancel()
-				if stop != nil {
-					stop()
-				}
-			}
-		}()
-	}
-	if afterStart != nil {
-		afterStart(runCtx)
-	}
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-	select {
-	case <-ctx.Done():
-		cancel()
-		<-done
-		return ctx.Err()
-	case <-done:
-		return nil
-	}
-}
-
-type elnisRuntimeAdapter struct {
-	runtime interface {
-		Run(context.Context) error
-	}
-}
-
-func (a elnisRuntimeAdapter) Name() string { return "elnis" }
-
-func (a elnisRuntimeAdapter) Run(ctx context.Context, _ platform.PlatformHandler) error {
-	return a.runtime.Run(ctx)
-}
-
-func (a elnisRuntimeAdapter) SendChat(context.Context, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
-	{
-		err := fmt.Errorf("elnis cannot send chat output")
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
-		if err != nil {
-			logResult.ResultStatus = globalevents.ResultFailed
-			logResult.Content = err.Error()
-			if err == context.Canceled {
-				logResult.ResultStatus = globalevents.ResultCanceled
-			}
-		}
-		return delivery.Receipt{}, logResult, err
-	}
-}
-
-func (a elnisRuntimeAdapter) SendNotice(context.Context, delivery.Notice) (delivery.Receipt, globalevents.LogResult, error) {
-	{
-		err := fmt.Errorf("elnis cannot send notice output")
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
-		if err != nil {
-			logResult.ResultStatus = globalevents.ResultFailed
-			logResult.Content = err.Error()
-			if err == context.Canceled {
-				logResult.ResultStatus = globalevents.ResultCanceled
-			}
-		}
-		return delivery.Receipt{}, logResult, err
-	}
+	return m, err
 }

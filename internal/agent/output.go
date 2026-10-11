@@ -2,13 +2,13 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
 	"fmt"
 	"log/slog"
 	"slices"
 	"strings"
 
 	"elbot/internal/agent/dialogue"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	globalevents "elbot/internal/events"
@@ -17,18 +17,27 @@ import (
 	"elbot/internal/notification"
 )
 
-type outputSender struct {
+type OutputSender struct {
 	dispatcher    *dispatch.Router
 	notifications *notification.Manager
-	hooks         *hookBridge
-	identity      *identityResolver
+	hooks         dialogue.Hooks
+	identity      dialogue.Identity
 }
 
-func (o *outputSender) SendOutputs(ctx context.Context, outputs []delivery.Output) (globalevents.LogResult, error) {
+func (o *OutputSender) SendOutputs(ctx context.Context, outputs []delivery.Output) (globalevents.LogResult, error) {
 	_, logResult, err := o.dispatcher.SendNotice(ctx, delivery.Notice{Outputs: outputs})
 	if len(outputs) > 0 || err != nil {
 		// This source records only the send operation, never the overall tool result.
-		record := globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, EventName: "reply_delivered", Module: "agent", Type: globalevents.ContentText, ContentLimit: 4096, Content: "operation=send_outputs\n" + logResult.Content, ResultStatus: logResult.ResultStatus}
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogRuntime,
+			Level:        slog.LevelInfo,
+			EventName:    "reply_delivered",
+			Module:       "agent",
+			Type:         globalevents.ContentText,
+			ContentLimit: 4096,
+			Content:      "operation=send_outputs\n" + logResult.Content,
+			ResultStatus: logResult.ResultStatus,
+		}
 		if logResult.ResultStatus == globalevents.ResultFailed {
 			record.Level = slog.LevelError
 		}
@@ -52,16 +61,16 @@ func (o *outputSender) SendOutputs(ctx context.Context, outputs []delivery.Outpu
 	}
 	return logResult, err
 }
-func (o *outputSender) SendChat(ctx context.Context, text string) {
+func (o *OutputSender) SendChat(ctx context.Context, text string) {
 	_, _, _ = o.SendAssistant(ctx, text)
 }
 
-func (o *outputSender) SendNotice(ctx context.Context, notice delivery.Notice) error {
+func (o *OutputSender) SendNotice(ctx context.Context, notice delivery.Notice) error {
 	_, _, err := o.dispatcher.SendNotice(ctx, notice)
 	return err
 }
 
-func (o *outputSender) PrepareAssistant(ctx context.Context, point hook.Point, text string) (string, globalevents.LogResult, error) {
+func (o *OutputSender) PrepareAssistant(ctx context.Context, point hook.Point, text string) (string, globalevents.LogResult, error) {
 	event, logResult, err := o.hooks.Run(ctx, hook.Event{Point: point, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(text)}})
 	if err != nil {
 		return "", logResult, err
@@ -69,7 +78,7 @@ func (o *outputSender) PrepareAssistant(ctx context.Context, point hook.Point, t
 	return llm.SegmentsTextOnly(event.Message.Segments), logResult, nil
 }
 
-func (o *outputSender) SendAssistant(ctx context.Context, text string) (delivery.Receipt, globalevents.LogResult, error) {
+func (o *OutputSender) SendAssistant(ctx context.Context, text string) (delivery.Receipt, globalevents.LogResult, error) {
 	if strings.TrimSpace(text) == "" && dialogue.BufferAssistantOutput(ctx) {
 		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "assistant output is buffered and empty"}, nil
 	}
@@ -122,11 +131,11 @@ func (o *outputSender) SendAssistant(ctx context.Context, text string) (delivery
 	return receipt, logResult, nil
 }
 
-func (o *outputSender) TextNotice(ctx context.Context, level slog.Level, text string) {
+func (o *OutputSender) TextNotice(ctx context.Context, level slog.Level, text string) {
 	o.notifications.Text(ctx, level, text)
 }
 
-func (o *outputSender) Preview(ctx context.Context, text string) {
+func (o *OutputSender) Preview(ctx context.Context, text string) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return
@@ -152,7 +161,7 @@ func formatToolPreview(text string) string {
 	return strings.Join(lines, "\n")
 }
 
-func (o *outputSender) FinishIntermediate(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string, streaming bool) error {
+func (o *OutputSender) FinishIntermediate(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string, streaming bool) error {
 	if streaming {
 		if strings.TrimSpace(text) != "" {
 			if err := o.replaceStreamOutput(ctx, streamCtx, stream, text); err != nil {
@@ -171,7 +180,7 @@ func (o *outputSender) FinishIntermediate(ctx context.Context, streamCtx context
 	return nil
 }
 
-func (o *outputSender) ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (receipt delivery.Receipt, logResult globalevents.LogResult, err error) {
+func (o *OutputSender) ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (receipt delivery.Receipt, logResult globalevents.LogResult, err error) {
 	defer func() {
 		logResult.Content += fmt.Sprintf("\nplatform_message_ids=%v", receipt.PlatformMessageIDs)
 		for _, sent := range receipt.SentMessages {
@@ -220,7 +229,7 @@ func (o *outputSender) ReplaceAndFinishStream(ctx context.Context, streamCtx con
 	return receipt, logResult, err
 }
 
-func (o *outputSender) replaceStreamOutput(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) error {
+func (o *OutputSender) replaceStreamOutput(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) error {
 	prepared, _, err := o.PrepareAssistant(ctx, hook.PointAgentOutputPrepared, text)
 	if err != nil {
 		return err
@@ -231,7 +240,7 @@ func (o *outputSender) replaceStreamOutput(ctx context.Context, streamCtx contex
 	return nil
 }
 
-func (o *outputSender) StartStream(ctx context.Context) delivery.MessageStream {
+func (o *OutputSender) StartStream(ctx context.Context) delivery.MessageStream {
 	if dialogue.BufferAssistantOutput(ctx) {
 		return nil
 	}
@@ -242,16 +251,30 @@ func (o *outputSender) StartStream(ctx context.Context) delivery.MessageStream {
 	return stream
 }
 
-func (o *outputSender) Reasoning(ctx context.Context, text string) {
+func (o *OutputSender) Reasoning(ctx context.Context, text string) {
 	if o.identity.IsCLI(ctx) && text != "" {
 		_ = o.dispatcher.SendReasoning(ctx, text)
 	}
 }
 
-// NotificationSender exposes the output component, never the Agent execution
-// entrypoint. Notice consumers retain normal output Hooks and physical routing.
-func (a *Agent) NotificationSender() interface {
-	SendAssistant(context.Context, string) (delivery.Receipt, globalevents.LogResult, error)
-} {
-	return a.output
+// NewOutputSender initializes OutputSender without installing cross-service callbacks.
+func NewOutputSender(deps OutputSenderDeps) (*OutputSender, error) {
+	if deps.Dispatcher == nil {
+		return nil, fmt.Errorf("OutputSender dispatcher is required")
+	}
+	if deps.Notifications == nil {
+		return nil, fmt.Errorf("OutputSender notifications is required")
+	}
+	if deps.Hooks == nil {
+		return nil, fmt.Errorf("OutputSender hooks is required")
+	}
+	if deps.Identity == nil {
+		return nil, fmt.Errorf("OutputSender identity is required")
+	}
+	return &OutputSender{
+		dispatcher:    deps.Dispatcher,
+		notifications: deps.Notifications,
+		hooks:         deps.Hooks,
+		identity:      deps.Identity,
+	}, nil
 }

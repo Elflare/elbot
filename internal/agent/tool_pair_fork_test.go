@@ -14,7 +14,10 @@ import (
 func TestChatForkFromToolPairIncludesOnlyResultsAtBoundary(t *testing.T) {
 	store := newTestStore(t)
 	model := &fakeLLM{chunks: [][]chatcompletions.Chunk{
-		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{Index: 0, ID: "first", Name: "once", Args: `{}`}, {Index: 1, ID: "later", Name: "once", Args: `{"later":true}`}}, FinishReason: "tool_calls"}},
+		{{
+			ToolCallDeltas: []chatcompletions.ToolCallDelta{{Index: 0, ID: "first", Name: "once", Args: `{}`}, {Index: 1, ID: "later", Name: "once", Args: `{"later":true}`}},
+			FinishReason:   "tool_calls",
+		}},
 		{{DeltaContent: "later source answer"}},
 		{{DeltaContent: "branch answer"}},
 	}}

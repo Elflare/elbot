@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"elbot/internal/events"
 	"encoding/json"
 	"errors"
 	"go/ast"
@@ -17,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
@@ -28,17 +28,24 @@ func TestProductionGlobalLogsKeepUsageAndBoundBodies(t *testing.T) {
 	for _, level := range []string{"info", "debug", "warn", "error"} {
 		t.Run(level, func(t *testing.T) {
 			req, _, model := runtimeAssemblyFixtureWithLogLevel(t, level)
-			model.chunks = [][]chatcompletions.Chunk{{{DeltaContent: "assembled answer", Usage: &llm.Usage{PromptTokens: func() *int64 { n := int64(10); return &n }(), CompletionTokens: func() *int64 { n := int64(5); return &n }(), TotalTokens: func() *int64 { n := int64(15); return &n }()}}}}
-			runtime, err := (defaultRuntimeFactory{}).Build(context.Background(), req)
+			model.chunks = [][]chatcompletions.Chunk{{{
+				DeltaContent: "assembled answer",
+				Usage: &llm.Usage{
+					PromptTokens:     func() *int64 { n := int64(10); return &n }(),
+					CompletionTokens: func() *int64 { n := int64(5); return &n }(),
+					TotalTokens:      func() *int64 { n := int64(15); return &n }(),
+				},
+			}}}
+			runtime, err := (defaultWiringFactory{}).Build(context.Background(), req)
 			if err != nil {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { closeAssembledRuntime(t, runtime) })
 			body := strings.Repeat("正文", 300) + "end-marker"
-			if err := runtime.Agent.HandleMessage(context.Background(), body); err != nil {
+			if err := runtime.Dialogue.Handler().HandleMessage(context.Background(), body); err != nil {
 				t.Fatal(err)
 			}
-			notices := notification.New(runtime.Dispatcher, true)
+			notices := notification.New(runtime.Platform.Dispatcher(), true)
 			notices.Text(context.Background(), slog.LevelWarn, "background notice")
 			manager := hook.NewManager()
 			if err := manager.Register(hook.Registration{Point: hook.PointErrorOccurred, Name: "audit-hook", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {

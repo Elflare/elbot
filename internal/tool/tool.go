@@ -280,6 +280,45 @@ func (r *Registry) Register(tool Tool) error {
 	return nil
 }
 
+// RegisterOwned registers one owner's tools atomically and returns an idempotent release.
+// The release removes only these exact registrations, including builtin business tools.
+func (r *Registry) RegisterOwned(tools ...Tool) (func(), error) {
+	type registration struct{ Tool }
+	entries := make(map[string]*registration, len(tools))
+	for _, t := range tools {
+		if t == nil {
+			return nil, fmt.Errorf("tool is nil")
+		}
+		name := strings.TrimSpace(t.Name())
+		if name == "" {
+			return nil, fmt.Errorf("tool name is required")
+		}
+		if _, exists := entries[name]; exists {
+			return nil, fmt.Errorf("tool %q already registered", name)
+		}
+		entries[name] = &registration{Tool: t}
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for name := range entries {
+		if _, exists := r.tools[name]; exists {
+			return nil, fmt.Errorf("tool %q already registered", name)
+		}
+	}
+	for name, t := range entries {
+		r.tools[name] = t
+	}
+	return func() {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		for name, t := range entries {
+			if r.tools[name] == t {
+				delete(r.tools, name)
+			}
+		}
+	}, nil
+}
+
 // ReplaceSources atomically replaces every tool owned by the selected sources.
 // Existing tools from other sources are preserved and may not be shadowed.
 func (r *Registry) ReplaceSources(sources []Source, replacements []Tool) error {

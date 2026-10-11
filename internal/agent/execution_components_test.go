@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/events"
 	"errors"
 	"reflect"
 	"testing"
@@ -12,6 +11,7 @@ import (
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/config"
 	"elbot/internal/contextmgr"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
@@ -24,13 +24,13 @@ import (
 	"elbot/internal/turn"
 )
 
-// Build the execution graph directly: none of these participants need Agent.
+// Build the execution graph directly: none of these participants need agentFixture.
 type executionFixture struct {
 	opts          testAssembly
-	execution     *executionCoordinator
+	execution     *ExecutionCoordinator
 	chat          *chatroute.Loop
 	runner        *dialogue.Runner
-	confirmations *confirmationCoordinator
+	confirmations *ConfirmationCoordinator
 	hooks         *hook.DefaultManager
 	out           dialogue.Output
 }
@@ -45,41 +45,89 @@ func newExecutionFixture(t *testing.T, client llm.Client, store storage.Store) *
 		}, DefaultMode: storage.SessionModeWork,
 	})
 	opts := assembleTestOptions(testAgentOptions{Models: models, Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{DefaultMode: storage.SessionModeWork}})
-	identity := &identityResolver{platformName: "cli", actorID: "cli:local", scopeID: "local", policy: opts.SecurityPolicy}
+	identity := &IdentityResolver{platformName: "cli", actorID: "cli:local", scopeID: "local", policy: opts.SecurityPolicy}
 	hooks := hook.NewManager()
-	bridge := &hookBridge{manager: hooks, requests: opts.Requests, identity: identity, dispatcher: opts.Dispatcher}
-	status := &statusRecorder{}
-	output := &outputSender{dispatcher: opts.Dispatcher, notifications: opts.Notifications, hooks: bridge, identity: identity}
+	bridge := &HookBridge{manager: hooks, requests: opts.Requests, identity: identity, dispatcher: opts.Dispatcher}
+	status := &StatusRecorder{}
+	output := &OutputSender{dispatcher: opts.Dispatcher, notifications: opts.Notifications, hooks: bridge, identity: identity}
 	view := dialogue.ExecutionView{Sessions: store.Sessions(), Providers: opts.Routes}
-	policy := &confirmationPolicy{identity: identity, userConfirmationTimeout: time.Second}
-	confirmations := &confirmationCoordinator{
+	policy := &ConfirmationPolicy{identity: identity, userConfirmationTimeout: time.Second}
+	confirmations := &ConfirmationCoordinator{
 		sessions: opts.Sessions, requests: opts.Requests, turns: opts.Turns, commands: opts.Commands,
 		identity: identity, output: output, policy: policy,
 		autoConfirmSession: map[string]bool{}, autoConfirmTools: map[string]map[string]bool{},
 	}
-	runtime := toolRuntimeState{provider: dialogue.NoopToolSchemaProvider{}, defaultProvider: true, manager: opts.ToolRunner}
+	runtime := ToolRuntimeState{provider: dialogue.NoopToolSchemaProvider{}, defaultProvider: true, manager: opts.ToolRunner}
 	deps := &toolRunDeps{hooks: bridge, requests: opts.Requests, turns: opts.Turns, identity: identity,
-		state: opts.ToolState, runtime: &runtime, sessions: opts.Sessions, store: store, confirmations: confirmations, view: view}
-	tools := &dialogue.ToolExecutor{Manager: opts.ToolRunner, State: opts.ToolState, Registry: opts.ToolRegistry, Provider: runtime.provider, DefaultProvider: true, Identity: identity, Deps: deps, MaxRounds: opts.ToolsConfig.MaxRoundsPerTurn}
+		state: opts.ToolState, runtime: &runtime, sessions: opts.Sessions, sessionRows: store.Sessions(), toolCalls: store.ToolCalls(), confirmations: confirmations, view: view}
+	tools := &dialogue.ToolExecutor{
+		Manager:         opts.ToolRunner,
+		State:           opts.ToolState,
+		Registry:        opts.ToolRegistry,
+		Provider:        runtime.provider,
+		DefaultProvider: true,
+		Identity:        identity,
+		Deps:            deps,
+		MaxRounds:       opts.ToolsConfig.MaxRoundsPerTurn,
+	}
 	messages := &dialogue.MessageStore{Dialogues: store.Dialogues(), Gate: &dialogue.CommitGate{Sessions: opts.Sessions, Turns: opts.Turns, View: view}}
 	tools.Messages = messages
 	preparer := &dialogue.Preparer{Contexts: opts.Contexts, Identity: identity, Hooks: bridge, Tools: tools}
 	calls := &dialogue.CallProcessor{Messages: messages, Hooks: bridge, Identity: identity, Tools: tools}
-	chat := &chatroute.Loop{Contexts: opts.Contexts, Models: models, Turns: opts.Turns, View: view, Preparer: preparer, Tools: tools, Messages: messages, Caller: &chatroute.Caller{Calls: calls}, PromptBuilder: chatroute.PromptBuilder{System: dialogue.NewSystemPromptManager(dialogue.SoulSystemPromptSource{Soul: dialogue.StaticSoulProvider{Prompt: "test"}})}}
+	chat := &chatroute.Loop{
+		Contexts:      opts.Contexts,
+		Models:        models,
+		Turns:         opts.Turns,
+		View:          view,
+		Preparer:      preparer,
+		Tools:         tools,
+		Messages:      messages,
+		Caller:        &chatroute.Caller{Calls: calls},
+		PromptBuilder: chatroute.PromptBuilder{System: dialogue.NewSystemPromptManager(dialogue.SoulSystemPromptSource{Soul: dialogue.StaticSoulProvider{Prompt: "test"}})},
+	}
 	if err := bindProviderRoutes(opts.Routes, models, chat, nil, &chatroute.Compactor{Store: store, Models: models, Contexts: opts.Contexts, Loader: contextmgr.Loader{Store: store}}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	runner := &dialogue.Runner{Routes: opts.Routes, Preparer: preparer, Messages: messages, Replies: &dialogue.ReplyCommitter{Messages: store.Messages(), Persistence: messages.Committer("append_assistant_message"), Output: output}, Turns: opts.Turns, View: view}
-	execution := &executionCoordinator{sessions: opts.Sessions, sessionRows: store.Sessions(), turns: opts.Turns, requests: opts.Requests, contexts: opts.Contexts, models: models, dialogue: runner, identity: identity, view: view, output: output, status: status, waitPolicy: policy, appendWaits: newAppendWaitLifecycle(t.Context())}
+	runner := &dialogue.Runner{
+		Routes:   opts.Routes,
+		Preparer: preparer,
+		Messages: messages,
+		Replies:  &dialogue.ReplyCommitter{Messages: store.Messages(), Persistence: messages.Committer("append_assistant_message"), Output: output},
+		Turns:    opts.Turns,
+		View:     view,
+	}
+	execution := &ExecutionCoordinator{
+		sessions:    opts.Sessions,
+		sessionRows: store.Sessions(),
+		turns:       opts.Turns,
+		requests:    opts.Requests,
+		contexts:    opts.Contexts,
+		models:      models,
+		dialogue:    runner,
+		identity:    identity,
+		view:        view,
+		output:      output,
+		status:      status,
+		waitPolicy:  policy,
+		appendWaits: newAppendWaitLifecycle(t.Context()),
+	}
 	opts.Sessions.SetForegroundActivation(execution.AdoptForeground)
 	t.Cleanup(opts.Turns.StopAll)
 	t.Cleanup(func() { _ = opts.Sessions.Close(context.Background()) })
-	return &executionFixture{opts: opts, execution: execution, chat: chat, runner: runner, confirmations: confirmations, hooks: hooks, out: foregroundTurnOutput{sender: output, status: status}}
+	return &executionFixture{
+		opts:          opts,
+		execution:     execution,
+		chat:          chat,
+		runner:        runner,
+		confirmations: confirmations,
+		hooks:         hooks,
+		out:           foregroundTurnOutput{sender: output, status: status},
+	}
 }
 
 func (f *executionFixture) begin(t *testing.T) (context.Context, context.Context, dialogue.TurnInput, *turn.Execution) {
 	t.Helper()
-	ctx, row, err := f.execution.resolveInput(context.Background(), "hello")
+	ctx, row, err := f.execution.ResolveInput(context.Background(), "hello")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +235,7 @@ func TestDialogueRunnerStructuredOutcomes(t *testing.T) {
 
 func TestExecutionCommitDuringAppendKeepsUsage(t *testing.T) {
 	f := newExecutionFixture(t, &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: "committed", Usage: &llm.Usage{TotalTokens: func() *int64 { n := int64(7); return &n }()}}}}}, newTestStore(t))
-	ctx, row, err := f.execution.resolveInput(context.Background(), "hello")
+	ctx, row, err := f.execution.ResolveInput(context.Background(), "hello")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +351,7 @@ func TestExecutionRequestBoundaryAndCleanup(t *testing.T) {
 				}
 				return e
 			})
-			ctx, row, err := f.execution.resolveInput(context.Background(), "hello")
+			ctx, row, err := f.execution.ResolveInput(context.Background(), "hello")
 			if err != nil {
 				t.Fatal(err)
 			}

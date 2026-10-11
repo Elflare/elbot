@@ -2,13 +2,13 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/events"
-	"elbot/internal/llm/chatcompletions"
 	"testing"
 
 	"elbot/internal/config"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -64,7 +64,7 @@ func TestChatModeIgnoresForcedHookToolsAndModelCalls(t *testing.T) {
 		if len(requests) != 1 || len(requests[0].Tools) != 0 {
 			t.Fatalf("chat sent tools or entered tool loop: requests=%+v", requests)
 		}
-		messages, err := a.execution.dialogue.Replies.Messages.ListBySession(ctx, id)
+		messages, err := a.dialogue.Replies.Messages.ListBySession(ctx, id)
 		if err != nil {
 			t.Fatal(err)
 		}

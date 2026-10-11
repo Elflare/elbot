@@ -3,7 +3,6 @@ package agent
 import (
 	"bytes"
 	"context"
-	"elbot/internal/events"
 	"io"
 	"log/slog"
 	"net/http"
@@ -15,6 +14,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
@@ -190,7 +190,11 @@ func TestHandleMessageSendsFallbackForEmptyLLMResponse(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{}}}
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq-onebot", ScopeID: "private:test"}}, Sender: p, BufferAssistantOutput: true})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Conversation:          contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq-onebot", ScopeID: "private:test"}},
+		Sender:                p,
+		BufferAssistantOutput: true,
+	})
 
 	if err := a.HandleMessage(ctx, "hello"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -227,7 +231,18 @@ func TestDynamicProviderClientUsesAgentLogger(t *testing.T) {
 		t.Fatalf("create zhipu client: %v", err)
 	}
 	captureLogs(t, slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	a := mustNewWithOptions(t, testAgentOptions{Platform: &fakePlatform{}, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.Client{"deepseek": &fakeLLM{}, "zhipu": zhipu}, ModeModels: modeModels, Providers: providers, DefaultMode: storage.SessionModeWork}), Store: newTestStore(t), CommandPrefixes: []string{"/"}, SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork}})
+	a := mustNewWithOptions(t, testAgentOptions{
+		Platform: &fakePlatform{},
+		Models: newTestModels(t, modelmgr.Options{
+			Clients:     map[string]llm.Client{"deepseek": &fakeLLM{}, "zhipu": zhipu},
+			ModeModels:  modeModels,
+			Providers:   providers,
+			DefaultMode: storage.SessionModeWork,
+		}),
+		Store:           newTestStore(t),
+		CommandPrefixes: []string{"/"},
+		SessionConfig:   session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork},
+	})
 
 	ch, err := a.execution.models.ClientForProvider("zhipu").(chatcompletions.Streamer).Stream(context.Background(), chatcompletions.Request{
 		Model:    "glm-4-flash",
@@ -255,7 +270,9 @@ func TestMapSentAssistantMessageUsesOnlyCompleteReceiptSources(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ScopeID: "group:9"}, Identity: contextinfo.Identity{PlatformUserID: "1"}}})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ScopeID: "group:9"}, Identity: contextinfo.Identity{PlatformUserID: "1"}},
+	})
 	session, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "mapped"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
@@ -270,8 +287,8 @@ func TestMapSentAssistantMessageUsesOnlyCompleteReceiptSources(t *testing.T) {
 		{Platform: "telegram", ScopeID: "private:1", PlatformMessageID: "101"},
 		{Platform: "telegram", ScopeID: "supergroup:-2", PlatformMessageID: "101"},
 	}
-	a.execution.dialogue.Replies.AssociateReceipt(ctx, session.ID, assistant.ID, delivery.Receipt{SentMessages: sent})
-	a.execution.dialogue.Replies.AssociateReceipt(ctx, session.ID, assistant.ID, delivery.Receipt{PlatformMessageIDs: []string{"legacy"}, SentMessages: []delivery.SentMessage{
+	a.dialogue.Replies.AssociateReceipt(ctx, session.ID, assistant.ID, delivery.Receipt{SentMessages: sent})
+	a.dialogue.Replies.AssociateReceipt(ctx, session.ID, assistant.ID, delivery.Receipt{PlatformMessageIDs: []string{"legacy"}, SentMessages: []delivery.SentMessage{
 		{Platform: "qqonebot", PlatformMessageID: "incomplete"},
 		{ScopeID: "group:9", PlatformMessageID: "incomplete"},
 		{Platform: "qqonebot", ScopeID: "group:9"},

@@ -6,20 +6,15 @@ import (
 	"io"
 	"time"
 
-	"elbot/internal/agent"
-	"elbot/internal/command"
+	dialoguemodule "elbot/internal/agent/module"
+	backgroundmodule "elbot/internal/background/module"
 	"elbot/internal/config"
-	elcron "elbot/internal/cron"
-	"elbot/internal/delivery/dispatch"
-	"elbot/internal/elvena"
+	hookmodule "elbot/internal/hook/module"
 	"elbot/internal/llm"
-	"elbot/internal/maintenance"
 	"elbot/internal/media"
-	"elbot/internal/modelmgr"
-	"elbot/internal/notification"
-	"elbot/internal/platform"
+	platformmodule "elbot/internal/platform/module"
 	"elbot/internal/storage"
-	"elbot/internal/toolrun"
+	toolmodule "elbot/internal/tool/module"
 )
 
 type StartupProfiler interface {
@@ -38,7 +33,15 @@ type Lifecycle interface {
 	Close(context.Context) error
 }
 
+type ModuleLifecycle interface {
+	Lifecycle
+	BeginClose()
+	Done() <-chan struct{}
+}
+
 type LogManager interface {
+	CleanupOldLogs() error
+	RetentionDays() int
 	LogDir() string
 	BeginClose()
 	Close(context.Context) error
@@ -56,16 +59,12 @@ type FoundationRequest struct {
 }
 
 type FoundationComponents struct {
-	Maintenance *maintenance.Service
-	Config      *config.Config
-	Logs        LogManager
+	Config *config.Config
+	Logs   LogManager
 
 	Store            storage.Store
 	ChatHistoryStore ChatHistoryStore
 	ChatHistory      storage.ChatHistoryRepository
-	CronManager      *elcron.Manager
-	StartCron        func(context.Context, *elcron.Service)
-	StopCron         func(context.Context) error
 	Lifecycle        Lifecycle
 }
 
@@ -90,89 +89,48 @@ type ModelFactory interface {
 type PlatformRequest struct {
 	Foundation *FoundationComponents
 	Mode       RunMode
+	Media      *media.Manager
 	Profiler   StartupProfiler
 }
-
-type PlatformComponents struct {
-	Primary  platform.PlatformAdapter
-	Runtimes []platform.Runtime
-}
-
 type PlatformFactory interface {
-	Build(PlatformRequest) (PlatformComponents, error)
+	Build(context.Context, PlatformRequest) (*platformmodule.Module, error)
 }
-
-type RuntimeRequest struct {
+type WiringRequest struct {
 	Foundation *FoundationComponents
 	Models     ModelClients
-	Platforms  PlatformComponents
-	Profiler   StartupProfiler
-}
-
-type RuntimeComponents struct {
-	Commands      *command.Router
-	Dispatcher    *dispatch.Router
-	Notifications *notification.Manager
-	Models        *modelmgr.Service
-	Signals       *signalBindings
-	Media         *media.Manager
-	Agent         *agent.Agent
-	ToolPreloader *toolrun.PreloadService
-	Handler       platform.PlatformHandler
-	CronService   *elcron.Service
-	ElvenaBus     *elvena.Bus
-	Lifecycle     Lifecycle
-}
-
-type RuntimeFactory interface {
-	// Build returns acquired lifecycle resources even when construction fails.
-	Build(context.Context, RuntimeRequest) (*RuntimeComponents, error)
-}
-
-type IntegrationRequest struct {
-	Foundation *FoundationComponents
-	Runtime    *RuntimeComponents
-	Platforms  PlatformComponents
+	Platforms  PlatformFactory
 	Mode       RunMode
 	Profiler   StartupProfiler
 }
-
-type IntegrationFactory interface {
-	Attach(context.Context, IntegrationRequest) (PlatformComponents, error)
+type WiringComponents struct {
+	Platform   *platformmodule.Module
+	Tool       *toolmodule.Module
+	Hook       *hookmodule.Module
+	Dialogue   *dialoguemodule.Module
+	Background *backgroundmodule.Module
+	Lifecycle  ModuleLifecycle
 }
 
-type PlatformRunRequest struct {
-	Handler platform.PlatformHandler
-
-	Runtimes   []platform.Runtime
-	AfterStart func(context.Context)
-	// Stop requests application shutdown, including its shared shutdown budget.
-	Stop context.CancelFunc
-}
-
-type PlatformExecutor interface {
-	Run(context.Context, PlatformRunRequest) error
+type WiringFactory interface {
+	// Build returns acquired lifecycle resources even when construction fails.
+	Build(context.Context, WiringRequest) (*WiringComponents, error)
 }
 
 type Dependencies struct {
-	Environment  Environment
-	Foundation   FoundationFactory
-	Models       ModelFactory
-	Platforms    PlatformFactory
-	Runtime      RuntimeFactory
-	Integrations IntegrationFactory
-	Executor     PlatformExecutor
+	Environment Environment
+	Foundation  FoundationFactory
+	Models      ModelFactory
+	Platforms   PlatformFactory
+	Wiring      WiringFactory
 }
 
 func DefaultDependencies() Dependencies {
 	return Dependencies{
-		Environment:  defaultEnvironment{},
-		Foundation:   defaultFoundationFactory{},
-		Models:       defaultModelFactory{},
-		Platforms:    defaultPlatformFactory{},
-		Runtime:      defaultRuntimeFactory{},
-		Integrations: defaultIntegrationFactory{},
-		Executor:     defaultPlatformExecutor{},
+		Environment: defaultEnvironment{},
+		Foundation:  defaultFoundationFactory{},
+		Models:      defaultModelFactory{},
+		Platforms:   defaultPlatformFactory{},
+		Wiring:      defaultWiringFactory{},
 	}
 }
 
@@ -190,9 +148,7 @@ func NewRunner(deps Dependencies) (*Runner, error) {
 		{name: "foundation factory", value: deps.Foundation},
 		{name: "model factory", value: deps.Models},
 		{name: "platform factory", value: deps.Platforms},
-		{name: "runtime factory", value: deps.Runtime},
-		{name: "integration factory", value: deps.Integrations},
-		{name: "platform executor", value: deps.Executor},
+		{name: "wiring factory", value: deps.Wiring},
 	}
 	for _, check := range checks {
 		if check.value == nil {

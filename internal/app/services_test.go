@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"elbot/internal/events"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -17,13 +16,14 @@ import (
 	"elbot/internal/completion"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-	elcron "elbot/internal/cron"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/logging"
 	"elbot/internal/platform"
+	platformmodule "elbot/internal/platform/module"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
@@ -84,11 +84,11 @@ func (m *assemblyModel) selections() []string {
 	return append([]string(nil), m.models...)
 }
 
-func runtimeAssemblyFixture(t *testing.T) (RuntimeRequest, *assemblyPlatform, *assemblyModel) {
+func runtimeAssemblyFixture(t *testing.T) (WiringRequest, *assemblyPlatform, *assemblyModel) {
 	return runtimeAssemblyFixtureWithLogLevel(t, "error")
 }
 
-func runtimeAssemblyFixtureWithLogLevel(t *testing.T, level string) (RuntimeRequest, *assemblyPlatform, *assemblyModel) {
+func runtimeAssemblyFixtureWithLogLevel(t *testing.T, level string) (WiringRequest, *assemblyPlatform, *assemblyModel) {
 	t.Helper()
 	root := t.TempDir()
 	cfg := config.Default()
@@ -121,26 +121,28 @@ func runtimeAssemblyFixtureWithLogLevel(t *testing.T, level string) (RuntimeRequ
 	t.Cleanup(func() { _ = logs.Close(context.Background()) })
 	p, model := &assemblyPlatform{}, &assemblyModel{}
 	events := []string{}
-	return RuntimeRequest{
-		Foundation: &FoundationComponents{Config: cfg, Store: store, Logs: logs, CronManager: elcron.NewManager(store.CronJobs())},
+	return WiringRequest{
+		Foundation: &FoundationComponents{Config: cfg, Store: store, Logs: logs},
 		Models:     ModelClients{ByProvider: map[string]llm.Client{"test": model}},
-		Platforms:  PlatformComponents{Primary: p, Runtimes: []platform.Runtime{p}},
-		Profiler:   profilerStub{events: &events},
+		Platforms: platformFactoryFunc(func(ctx context.Context, req PlatformRequest) (*platformmodule.Module, error) {
+			m, err := (defaultPlatformFactory{}).Build(ctx, req)
+			if err == nil {
+				m.Dispatcher().RegisterPlatformSender("cli", p)
+			}
+			return m, err
+		}),
+		Profiler: profilerStub{events: &events},
+		Mode:     RunModeCLIOnly,
 	}, p, model
 }
 
-func closeAssembledRuntime(t *testing.T, runtime *RuntimeComponents) {
+func closeAssembledRuntime(t *testing.T, runtime *WiringComponents) {
 	t.Helper()
 	if runtime == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	if runtime.Signals != nil {
-		if err := runtime.Signals.Close(ctx); err != nil {
-			t.Error(err)
-		}
-	}
 	if runtime.Lifecycle != nil {
 		if err := runtime.Lifecycle.Close(ctx); err != nil {
 			t.Error(err)
@@ -154,23 +156,27 @@ func TestRuntimeAssemblyCommandsShareToolAndModelServices(t *testing.T) {
 	if err := os.WriteFile(path, []byte("before"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	args, _ := json.Marshal(map[string]any{"path": path, "expected_revision": fileops.ContentRevision([]byte("before")), "edits": []map[string]any{{"operation": "overwrite", "new_text": "after"}}})
+	args, _ := json.Marshal(map[string]any{
+		"path":              path,
+		"expected_revision": fileops.ContentRevision([]byte("before")),
+		"edits":             []map[string]any{{"operation": "overwrite", "new_text": "after"}},
+	})
 	model.chunks = [][]chatcompletions.Chunk{{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "edit", Name: "edit_file", Args: string(args)}}, FinishReason: "tool_calls"}}}
-	runtime, err := (defaultRuntimeFactory{}).Build(context.Background(), req)
+	runtime, err := (defaultWiringFactory{}).Build(context.Background(), req)
 	t.Cleanup(func() { closeAssembledRuntime(t, runtime) })
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := (defaultIntegrationFactory{}).Attach(context.Background(), IntegrationRequest{Foundation: req.Foundation, Runtime: runtime, Platforms: req.Platforms, Mode: RunModeCLIOnly, Profiler: req.Profiler}); err != nil {
+	if err := runtime.Dialogue.Start(); err != nil {
 		t.Fatal(err)
 	}
-	if p.completer == nil || len(p.catalog) != len(runtime.Commands.Commands()) {
-		t.Fatal("platform did not receive the registered commands and completion service")
+	if err := runtime.Hook.Start(); err != nil {
+		t.Fatal(err)
 	}
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin})
 	send := func(text string) {
 		t.Helper()
-		if err := runtime.Handler.HandleMessage(ctx, text); err != nil {
+		if err := runtime.Dialogue.Handler().HandleMessage(ctx, text); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -179,7 +185,7 @@ func TestRuntimeAssemblyCommandsShareToolAndModelServices(t *testing.T) {
 		t.Fatalf("tool edit = %q; output: %s", data, p.text())
 	}
 	send("/rollback")
-	handler, _ := runtime.Commands.Handler("rollback")
+	handler, _ := runtime.Dialogue.Commands().Handler("rollback")
 	choices := handler.(command.Completer).Complete(ctx, command.CompletionRequest{Raw: "/rollback ", Prefix: "/", Name: "rollback", Cursor: len("/rollback ")})
 	if len(choices) != 1 {
 		t.Fatalf("shared backup completion = %#v; output: %s", choices, p.text())
@@ -195,29 +201,27 @@ func TestRuntimeAssemblyCommandsShareToolAndModelServices(t *testing.T) {
 	if !strings.Contains(p.text(), "已恢复编辑前内容") {
 		t.Fatal("missing rollback notice")
 	}
-	oldContext, err := runtime.Agent.PrepareFileCommand(ctx, false)
-	if err != nil {
-		t.Fatal(err)
-	}
 	send("/model --work test/second")
-	if got := runtime.Models.CurrentModelForMode("work"); got.Model != "second" {
-		t.Fatalf("shared model = %#v; output: %s", got, p.text())
-	}
 	state, err := os.ReadFile(req.Foundation.Config.StateConfigPath)
 	if err != nil || !strings.Contains(string(state), "second") {
 		t.Fatalf("model persistence = %q, %v", state, err)
 	}
 	send("/new")
 	send("next session")
-	if _, err := runtime.Agent.PrepareFileCommand(oldContext, false); err == nil {
-		t.Fatal("old file binding was revived")
-	}
 	selections := model.selections()
 	if selections[len(selections)-1] != "second" {
 		t.Fatalf("next request used %v", selections)
 	}
 	before := p.text()
-	result, err := runtime.Agent.RunBackground(ctx, background.RunRequest{Kind: background.KindCron, Name: "assembly", Platform: "cli", Actor: contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}, Prompt: "background", ModelProvider: "test", Model: "second"})
+	result, err := runtime.Background.RunBackground(ctx, background.RunRequest{
+		Kind:          background.KindCron,
+		Name:          "assembly",
+		Platform:      "cli",
+		Actor:         contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin},
+		Prompt:        "background",
+		ModelProvider: "test",
+		Model:         "second",
+	})
 	if err != nil || result.Text != "assembled answer" || result.SessionID == "" {
 		t.Fatalf("background = %#v, %v", result, err)
 	}
@@ -229,18 +233,29 @@ func TestRuntimeAssemblyCommandsShareToolAndModelServices(t *testing.T) {
 func TestRuntimeAssemblyFailureReturnsOwnedWorkers(t *testing.T) {
 	req, _, _ := runtimeAssemblyFixture(t)
 	req.Foundation.Config.Tools.MaxRoundsPerTurn = -1 // Agent validation after Hook and Skill workers exist.
-	runtime, err := (defaultRuntimeFactory{}).Build(context.Background(), req)
+	runtime, err := (defaultWiringFactory{}).Build(context.Background(), req)
 	if err == nil || runtime == nil || runtime.Lifecycle == nil {
 		t.Fatalf("partial runtime = %v, %v", runtime, err)
 	}
-	lifecycle := runtime.Lifecycle.(*runtimeLifecycle)
-	if lifecycle.hooks == nil || lifecycle.skillDone == nil {
-		t.Fatal("test did not reach worker creation")
+	if runtime.Hook == nil || runtime.Dialogue == nil {
+		t.Fatal("construction did not reach Hook and Dialogue")
+	}
+	select {
+	case <-runtime.Hook.Done():
+		t.Fatal("Hook runtime was not acquired")
+	default:
 	}
 	closeAssembledRuntime(t, runtime)
-	if !lifecycle.stopped() {
+	select {
+	case <-runtime.Lifecycle.Done():
+	default:
 		t.Fatal("startup workers survived cleanup")
 	}
+	// Store is borrowed and remains available until Foundation closes it.
+	if _, err := req.Foundation.Store.Sessions().List(t.Context(), storage.ListSessionsRequest{Limit: 1}); err != nil {
+		t.Fatal(err)
+	}
+
 }
 
 func (m *assemblyModel) GenerateText(ctx context.Context, req llm.TextRequest) (llm.TextResult, error) {

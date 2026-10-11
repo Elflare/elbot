@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"strings"
 	"testing"
@@ -12,6 +11,7 @@ import (
 	"elbot/internal/config"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/signal"
@@ -26,7 +26,7 @@ func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 		observed = append(observed, e)
 		return nil
 	}, signal.ConnectOptions{})
-	r := &statusRecorder{turns: turns, changed: events}
+	r := &StatusRecorder{turns: turns, changed: events}
 	old, current := turn.NewExecution("old"), turn.NewExecution("current")
 	oldCtx := turn.WithAttempt(turn.WithExecution(context.Background(), old), "old-attempt")
 	ctx := turn.WithAttempt(turn.WithExecution(context.Background(), current), "current-attempt")
@@ -62,7 +62,7 @@ func TestModelCompletionSnapshotAndObserverFailureDoNotChangeResult(t *testing.T
 		event = e
 		return errors.New("observer failed")
 	}, signal.ConnectOptions{})
-	ctx, row, err := a.execution.resolveInput(context.Background(), "hello")
+	ctx, row, err := a.execution.ResolveInput(context.Background(), "hello")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestReplyFactsPreservePartialSuccessAndReceiptSnapshot(t *testing.T) {
 
 func TestConfirmationPublishesAfterAdmissionRelease(t *testing.T) {
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t))
-	ctx, row, err := a.execution.resolveInput(context.Background(), "hello")
+	ctx, row, err := a.execution.ResolveInput(context.Background(), "hello")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestConfirmationPublishesAfterAdmissionRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer connection.Disconnect()
-	if err := a.message.input.confirmations.SubmitResponse(ctx, row.ID, "/confirm"); err != nil {
+	if err := a.input.confirmations.SubmitResponse(ctx, row.ID, "/confirm"); err != nil {
 		t.Fatal(err)
 	}
 	<-finished

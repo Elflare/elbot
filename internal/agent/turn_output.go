@@ -2,19 +2,19 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/events"
 	"log/slog"
 
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	runtimestatus "elbot/internal/runtime"
 )
 
 type foregroundTurnOutput struct {
-	sender *outputSender
-	status *statusRecorder
+	sender ExecutionSender
+	status ExecutionStatus
 }
 
-type backgroundTurnOutput struct{ status *statusRecorder }
+type backgroundTurnOutput struct{ status ExecutionStatus }
 
 func (o foregroundTurnOutput) StartStream(ctx context.Context) delivery.MessageStream {
 	return o.sender.StartStream(ctx)

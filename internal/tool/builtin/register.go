@@ -2,8 +2,6 @@ package builtin
 
 import (
 	"context"
-
-	elcron "elbot/internal/cron"
 	"elbot/internal/fileops"
 	"elbot/internal/memory/resident"
 	"elbot/internal/processenv"
@@ -17,7 +15,6 @@ type RegisterOptions struct {
 	RuntimeInfo         runtimeinfo.Info
 	ResidentMemoryStore *resident.Store
 	SkillManager        *skill.Manager
-	CronService         *elcron.Service
 	ChatHistory         storage.ChatHistoryRepository
 	LongMemoryDir       string
 	FileManager         *FileManager
@@ -54,14 +51,6 @@ func RegisterAll(registry *tool.Registry, opts RegisterOptions) error {
 	if longMemoryDir := opts.LongMemoryDir; longMemoryDir != "" {
 		for _, memoryTool := range NewLongMemoryTools(longMemoryDir) {
 			if err := registry.Register(memoryTool); err != nil {
-				return err
-			}
-		}
-	}
-	if opts.CronService != nil {
-
-		for _, cronTool := range NewCronTools(opts.CronService, info) {
-			if err := registry.Register(cronTool); err != nil {
 				return err
 			}
 		}

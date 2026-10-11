@@ -38,7 +38,11 @@ func TestReferencedOutputMediaReachesVisionAndCanonicalSession(t *testing.T) {
 	a := newTestMediaAgent(t, p, f, store, center)
 	a.output.dispatcher.RegisterPlatformSender("telegram", p)
 	resolver := &inboundMediaResolver{}
-	msg := platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram", ScopeID: "group:9", ConversationKind: contextinfo.ConversationGroup}, Identity: contextinfo.Identity{PlatformUserID: "1"}, ReplyToMessageID: "sent"}, MediaResolver: resolver,
+	msg := platform.MessageContext{Conversation: contextinfo.Conversation{
+		Source:           contextinfo.Source{Platform: "telegram", ScopeID: "group:9", ConversationKind: contextinfo.ConversationGroup},
+		Identity:         contextinfo.Identity{PlatformUserID: "1"},
+		ReplyToMessageID: "sent",
+	}, MediaResolver: resolver,
 		Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "看看"}}, ContextText: ref.Text, Reply: ref.Reply,
 		ContextSegments: append([]platform.MessageSegment{{Type: platform.SegmentText, Text: ref.Text}}, ref.ReferenceSegments...)}
 	ctx = platform.WithMessageContext(ctx, msg)

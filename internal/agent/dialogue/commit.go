@@ -2,9 +2,9 @@ package dialogue
 
 import (
 	"context"
-	"elbot/internal/events"
 	"fmt"
 
+	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/session"
 	"elbot/internal/storage"

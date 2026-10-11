@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"path/filepath"
 	"strings"
@@ -23,18 +24,14 @@ import (
 	"elbot/internal/toolrun"
 )
 
-type backgroundRunner struct {
+type BackgroundRunner struct {
 	sessions    *session.Service
 	sessionRows storage.SessionRepository
-	identity    *identityResolver
-	execution   *executionCoordinator
+	identity    BackgroundIdentity
+	execution   BackgroundExecution
 	preloader   *toolrun.PreloadService
 	toolState   *toolrun.StateService
 	sandboxRoot string
-}
-
-func (a *Agent) RunBackground(ctx context.Context, req background.RunRequest) (background.RunResult, error) {
-	return a.background.RunBackground(ctx, req)
 }
 
 type discardSender struct{}
@@ -47,7 +44,7 @@ func (discardSender) SendNotice(context.Context, delivery.Notice) (delivery.Rece
 	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
-func (r *backgroundRunner) RunBackground(ctx context.Context, req background.RunRequest) (background.RunResult, error) {
+func (r *BackgroundRunner) RunBackground(ctx context.Context, req background.RunRequest) (background.RunResult, error) {
 	actor := req.Actor
 	if actor.Role == "" {
 		actor.Role = contextinfo.RoleSuperadmin
@@ -57,14 +54,21 @@ func (r *backgroundRunner) RunBackground(ctx context.Context, req background.Run
 		platformName = actor.Platform
 	}
 	if platformName == "" {
-		platformName = r.identity.platformName
+		platformName = r.identity.PlatformName()
 	}
 	scopeID := req.ScopeID
 	if scopeID == "" {
 		scopeID = backgroundScopeID(req.Kind, req.Name)
 	}
-	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ScopeID: scopeID}, Identity: contextinfo.Identity{ActorID: actor.ID, PlatformUserID: actor.PlatformUserID, Nickname: actor.Nickname, GroupCard: actor.GroupCard, DisplayName: actor.DisplayName}}, Sender: discardSender{}, Segments: backgroundPromptSegments(req.PromptSegments)})
-	ctx = security.WithPolicy(contextinfo.WithActor(ctx, actor), r.identity.policy)
+	ctx = platform.WithMessageContext(ctx, platform.MessageContext{
+		Conversation: contextinfo.Conversation{
+			Source:   contextinfo.Source{Platform: platformName, ScopeID: scopeID},
+			Identity: contextinfo.Identity{ActorID: actor.ID, PlatformUserID: actor.PlatformUserID, Nickname: actor.Nickname, GroupCard: actor.GroupCard, DisplayName: actor.DisplayName},
+		},
+		Sender:   discardSender{},
+		Segments: backgroundPromptSegments(req.PromptSegments),
+	})
+	ctx = security.WithPolicy(contextinfo.WithActor(ctx, actor), r.identity.Policy())
 
 	sandboxRoot := r.sandboxRoot
 	if sandboxRoot == "" {
@@ -77,7 +81,12 @@ func (r *backgroundRunner) RunBackground(ctx context.Context, req background.Run
 	if sandboxSubdir == "" {
 		sandboxSubdir = "background"
 	}
-	ctx = sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{Root: sandboxRoot, Dir: filepath.Join(sandboxRoot, filepath.FromSlash(sandboxSubdir)), Background: true, BackgroundKind: toolBackgroundKind(req.Kind)})
+	ctx = sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{
+		Root:           sandboxRoot,
+		Dir:            filepath.Join(sandboxRoot, filepath.FromSlash(sandboxSubdir)),
+		Background:     true,
+		BackgroundKind: toolBackgroundKind(req.Kind),
+	})
 
 	if req.ModelProvider != "" || req.Model != "" {
 		ctx = modelmgr.WithSelectionOverride(ctx, config.ModelSelection{Provider: req.ModelProvider, Model: req.Model})
@@ -98,7 +107,7 @@ func (r *backgroundRunner) RunBackground(ctx context.Context, req background.Run
 	}
 	var preloaded backgroundPreloadResult
 	if req.SessionID == "" {
-		ctx, err = r.execution.modelContext(ctx, bgSession)
+		ctx, err = r.execution.ModelContext(ctx, bgSession)
 		if err != nil {
 			return background.RunResult{SessionID: bgSession.ID}, err
 		}
@@ -107,7 +116,15 @@ func (r *backgroundRunner) RunBackground(ctx context.Context, req background.Run
 	if preloaded.Err != nil {
 		return background.RunResult{SessionID: bgSession.ID}, preloaded.Err
 	}
-	record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, Module: "agent", Type: globalevents.ContentJSON, ContentLimit: 4096, Identity: globalevents.LogIdentity{SessionID: &bgSession.ID}, ResultStatus: globalevents.ResultSucceeded}
+	record := globalevents.LogRecord{
+		Category:     globalevents.LogAudit,
+		Level:        slog.LevelInfo,
+		Module:       "agent",
+		Type:         globalevents.ContentJSON,
+		ContentLimit: 4096,
+		Identity:     globalevents.LogIdentity{SessionID: &bgSession.ID},
+		ResultStatus: globalevents.ResultSucceeded,
+	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	if facts.RunID != "" {
 		record.Identity.RunID = &facts.RunID
@@ -133,7 +150,14 @@ func (r *backgroundRunner) RunBackground(ctx context.Context, req background.Run
 	}
 	prompt := backgroundPromptWithSkills(req.Prompt, preloaded.SkillPrompt)
 	result := r.execution.RunBackground(ctx, bgSession, prompt)
-	return background.RunResult{RunID: result.RunID, SessionID: result.SessionID, MessageID: result.MessageID, Text: result.Text, TakenOver: result.TakenOver, Outcome: result.Outcome}, result.Err
+	return background.RunResult{
+		RunID:     result.RunID,
+		SessionID: result.SessionID,
+		MessageID: result.MessageID,
+		Text:      result.Text,
+		TakenOver: result.TakenOver,
+		Outcome:   result.Outcome,
+	}, result.Err
 }
 
 func backgroundPromptSegments(segments []llm.MessageSegment) []platform.MessageSegment {
@@ -170,11 +194,11 @@ type backgroundPreloadResult struct {
 	SkillPrompt string
 }
 
-func (r *backgroundRunner) preloadBackgroundResources(ctx context.Context, row *storage.Session, names []string, initial []toolrun.CachedTool, allowed []string) backgroundPreloadResult {
+func (r *BackgroundRunner) preloadBackgroundResources(ctx context.Context, row *storage.Session, names []string, initial []toolrun.CachedTool, allowed []string) backgroundPreloadResult {
 	if row == nil || row.Mode != storage.SessionModeBackground {
 		return backgroundPreloadResult{}
 	}
-	preloadCtx := contextinfo.WithActor(security.WithPolicy(ctx, r.identity.policy), r.identity.Actor(ctx))
+	preloadCtx := contextinfo.WithActor(security.WithPolicy(ctx, r.identity.Policy()), r.identity.Actor(ctx))
 	prepared := r.preloader.PrepareBackground(preloadCtx, row.ID, names, allowed)
 	prepared.Update.Tools = append(toolrun.BackgroundCachedTools(ctx, initial), prepared.Update.Tools...)
 	prepared.Update.Tools = toolrun.BackgroundCachedTools(ctx, prepared.Update.Tools)
@@ -202,4 +226,38 @@ func toolBackgroundKind(kind background.Kind) sandboxctx.BackgroundKind {
 	default:
 		return sandboxctx.BackgroundKind(strings.TrimSpace(string(kind)))
 	}
+}
+
+// NewBackgroundRunner initializes BackgroundRunner without installing cross-service callbacks.
+func NewBackgroundRunner(deps BackgroundRunnerDeps) (*BackgroundRunner, error) {
+	if deps.Sessions == nil {
+		return nil, fmt.Errorf("BackgroundRunner sessions is required")
+	}
+	if deps.SessionRows == nil {
+		return nil, fmt.Errorf("BackgroundRunner sessionRows is required")
+	}
+	if deps.Identity == nil {
+		return nil, fmt.Errorf("BackgroundRunner identity is required")
+	}
+	if deps.Execution == nil {
+		return nil, fmt.Errorf("BackgroundRunner execution is required")
+	}
+	if deps.Preloader == nil {
+		return nil, fmt.Errorf("BackgroundRunner preloader is required")
+	}
+	if deps.ToolState == nil {
+		return nil, fmt.Errorf("BackgroundRunner toolState is required")
+	}
+	if strings.TrimSpace(deps.SandboxRoot) == "" {
+		return nil, fmt.Errorf("sandbox root is required")
+	}
+	return &BackgroundRunner{
+		sessions:    deps.Sessions,
+		sessionRows: deps.SessionRows,
+		identity:    deps.Identity,
+		execution:   deps.Execution,
+		preloader:   deps.Preloader,
+		toolState:   deps.ToolState,
+		sandboxRoot: filepath.Clean(strings.TrimSpace(deps.SandboxRoot)),
+	}, nil
 }

@@ -76,14 +76,15 @@ func TestSharedServicesStartupRecovery(t *testing.T) {
 				media:  startupRecoveryMedia{MediaRepository: store.Media(), before: before("media")},
 				events: startupRecoveryEvents{ElnisEventRepository: store.ElnisEvents(), before: before("elnis")},
 			}
-			services, err := buildSharedServices(ctx, req)
+			services, err := (defaultWiringFactory{}).Build(ctx, req)
+			t.Cleanup(func() { closeAssembledRuntime(t, services) })
 			wantCalls, wantStatus := "media,elnis", "failed"
 			if failAt == "" {
 				if err != nil || services == nil {
 					t.Fatalf("startup = %v, %v", services, err)
 				}
 			} else {
-				if !errors.Is(err, wantErr) || services != nil {
+				if !errors.Is(err, wantErr) {
 					t.Fatalf("startup must fail before publishing services: %v, %v", services, err)
 				}
 				wantStatus = "queued"

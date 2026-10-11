@@ -2,9 +2,6 @@ package agent
 
 import (
 	"context"
-
-	"elbot/internal/contextinfo"
-	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"os"
 	"path/filepath"
@@ -12,7 +9,9 @@ import (
 	"testing"
 
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
+	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -75,7 +74,7 @@ func TestDiscoveredToolsAreInjectedIntoTopLevelTools(t *testing.T) {
 	resumedAgent := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
 		cfg.ToolRegistry = registry
 	})
-	resumed, err := resumedAgent.execution.dialogue.Preparer.Tools.Schemas(context.Background(), sessionRecord)
+	resumed, err := resumedAgent.dialogue.Preparer.Tools.Schemas(context.Background(), sessionRecord)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -416,7 +415,7 @@ func TestAgentSkillCreatorNoticePreloads(t *testing.T) {
 				sessionRecord.Mode = storage.SessionModeWork
 				var content string
 				if entry == "directive" {
-					_, result, err := a.message.input.applyInputDirectives(ctx, sessionRecord, "@skill:docx")
+					_, result, err := a.input.applyInputDirectives(ctx, sessionRecord, "@skill:docx")
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -648,7 +647,10 @@ func TestSkillDiscoveryActivatesHiddenWrapperInSameTurn(t *testing.T) {
 	store := newTestStore(t)
 	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
 		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "discover_tool", Args: `{"name":"docx"}`}}, FinishReason: "tool_calls"}},
-		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_2", Name: "python_skill_run", Args: `{"skill":"docx","script":"scripts/a.py"}`}}, FinishReason: "tool_calls"}},
+		{{
+			ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_2", Name: "python_skill_run", Args: `{"skill":"docx","script":"scripts/a.py"}`}},
+			FinishReason:   "tool_calls",
+		}},
 		{{DeltaContent: "done"}},
 	}}
 

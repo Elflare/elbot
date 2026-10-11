@@ -20,7 +20,7 @@ func TestHookAdaptersPassFailedResultWithNilBusinessError(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	bridge := &hookBridge{manager: manager, identity: &identityResolver{scopeID: "test"}}
+	bridge := &HookBridge{manager: manager, identity: &IdentityResolver{scopeID: "test"}}
 	deps := toolRunDeps{hooks: bridge}
 	session := &storage.Session{ID: "session"}
 	call := llm.ToolCallRequest{ID: "call", Name: "shell", Arguments: `{}`}
@@ -32,7 +32,7 @@ func TestHookAdaptersPassFailedResultWithNilBusinessError(t *testing.T) {
 	if err != nil || llm.SegmentsTextOnly(segments) != "business body" || result != declared {
 		t.Fatalf("segments=%+v result=%+v err=%v", segments, result, err)
 	}
-	output := &outputSender{hooks: bridge}
+	output := &OutputSender{hooks: bridge}
 	text, result, err := output.PrepareAssistant(t.Context(), hook.PointAgentTurnOutputPrepared, "assistant business body")
 	if err != nil || text != "assistant business body" || result != declared {
 		t.Fatalf("text=%q result=%+v err=%v", text, result, err)

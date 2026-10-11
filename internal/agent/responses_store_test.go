@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/events"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -13,6 +12,7 @@ import (
 	"testing"
 
 	"elbot/internal/config"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	api "elbot/internal/llm/responses"
@@ -41,7 +41,11 @@ func configureNativeStore(t *testing.T, opts *testAgentOptions, scope string, va
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts.Models = newTestModels(t, modelmgr.Options{Clients: map[string]llm.Client{"native": client}, Providers: map[string]config.ProviderConfig{"native": {APIMode: "response", BaseURL: baseURL, Models: []string{"m"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "native", Model: "m"}}})
+	opts.Models = newTestModels(t, modelmgr.Options{
+		Clients:    map[string]llm.Client{"native": client},
+		Providers:  map[string]config.ProviderConfig{"native": {APIMode: "response", BaseURL: baseURL, Models: []string{"m"}}},
+		ModeModels: map[string]config.ModelSelection{"work": {Provider: "native", Model: "m"}},
+	})
 }
 
 func emitNativeStore(w http.ResponseWriter, id string, store bool, items ...string) {

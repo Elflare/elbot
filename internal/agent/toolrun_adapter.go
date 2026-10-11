@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/events"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,11 +14,13 @@ import (
 	agentevents "elbot/internal/agent/events"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
+	"elbot/internal/security"
 	sessionstate "elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -29,16 +30,17 @@ import (
 )
 
 type toolRunDeps struct {
-	hooks         *hookBridge
+	hooks         dialogue.Hooks
 	requests      *request.Manager
 	turns         *turn.Manager
-	identity      *identityResolver
+	identity      ToolIdentity
 	media         *media.Manager
 	state         *toolrun.StateService
-	runtime       *toolRuntimeState
+	runtime       *ToolRuntimeState
 	sessions      *sessionstate.Service
-	store         storage.Store
-	confirmations *confirmationCoordinator
+	sessionRows   storage.SessionRepository
+	toolCalls     storage.ToolCallRepository
+	confirmations ToolConfirmations
 	view          dialogue.ExecutionView
 	output        dialogue.Output
 	attempt       string
@@ -99,7 +101,15 @@ func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName s
 		}
 		return ctx, time.Time{}, func() {}, logResult, err
 	}
-	d.output.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{SessionID: sessionID, Phase: runtimestatus.PhaseTool, RequestID: toolReq.ID, Kind: request.KindTool, Label: toolName, ToolName: toolName, StageStartedAt: toolReq.StartedAt})
+	d.output.PublishRuntimeStatus(ctx, runtimestatus.Snapshot{
+		SessionID:      sessionID,
+		Phase:          runtimestatus.PhaseTool,
+		RequestID:      toolReq.ID,
+		Kind:           request.KindTool,
+		Label:          toolName,
+		ToolName:       toolName,
+		StageStartedAt: toolReq.StartedAt,
+	})
 	return toolCtx, toolReq.StartedAt, done, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "tool request started"}, nil
 }
 
@@ -115,7 +125,7 @@ func (d toolRunDeps) PrepareToolContext(ctx context.Context, session *storage.Se
 	if isBackgroundSession(session) {
 		return ctx
 	}
-	return workspace.WithWorkspaceStore(ctx, sessionstate.NewWorkspaceStore(d.sessions, d.store.Sessions(), session.ID))
+	return workspace.WithWorkspaceStore(ctx, sessionstate.NewWorkspaceStore(d.sessions, d.sessionRows, session.ID))
 }
 
 func (d toolRunDeps) ShouldSendPreview(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, assistantText string) bool {
@@ -128,7 +138,7 @@ func (d toolRunDeps) ConfirmToolCall(ctx context.Context, sessionID string, call
 
 func (d toolRunDeps) ConfirmBackgroundTool(ctx context.Context, sessionID string, call llm.ToolCallRequest, resolved toolrun.ResolvedTool, assessment tool.RiskAssessment) (toolrun.ConfirmResult, bool) {
 	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
-	allowed, handled := d.confirmations.confirmBackgroundSandboxShell(ctx, sessionID, call, assessment.Level, &message)
+	allowed, handled := d.confirmations.ConfirmBackgroundSandboxShell(ctx, sessionID, call, assessment.Level, &message)
 	if !handled {
 		return toolrun.ConfirmResult{}, false
 	}
@@ -160,9 +170,9 @@ func (d toolRunDeps) RecordToolCall(ctx context.Context, sessionID string, call 
 	}
 	logResult := events.LogResult{ResultStatus: events.ResultSkipped, Content: "tool call record store is not configured"}
 	var recordErr error
-	if d.store != nil && d.store.ToolCalls() != nil {
+	if d.toolCalls != nil {
 		logResult = events.LogResult{ResultStatus: events.ResultSucceeded, Content: "tool call record saved"}
-		recordErr = d.store.ToolCalls().Create(ctx, record)
+		recordErr = d.toolCalls.Create(ctx, record)
 		if recordErr != nil {
 			logResult.ResultStatus = events.ResultFailed
 			logResult.Content = fmt.Sprintf("record_error=%v", recordErr)
@@ -183,14 +193,24 @@ func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call
 		}
 	}
 	data, _ := json.Marshal(content)
-	emitAgentLog(ctx, agentevents.Meta(ctx, sessionID), events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: "permission_denied", Module: "agent", Type: events.ContentJSON, Content: string(data), ContentLimit: 0, Identity: events.LogIdentity{}, ResultStatus: events.ResultRejected})
+	emitAgentLog(ctx, agentevents.Meta(ctx, sessionID), events.LogRecord{
+		Category:     events.LogAudit,
+		Level:        slog.LevelInfo,
+		EventName:    "permission_denied",
+		Module:       "agent",
+		Type:         events.ContentJSON,
+		Content:      string(data),
+		ContentLimit: 0,
+		Identity:     events.LogIdentity{},
+		ResultStatus: events.ResultRejected,
+	})
 }
 
 func (d toolRunDeps) RememberDiscoveryResult(ctx context.Context, row *storage.Session, result *tool.Result) (events.LogResult, error) {
 	if row == nil {
 		return events.LogResult{ResultStatus: events.ResultSkipped, Content: "session is absent"}, nil
 	}
-	update, err := toolrun.DiscoveryStateUpdate(ctx, result, d.runtime.registry, d.identity.Actor(ctx), d.identity.policy)
+	update, err := toolrun.DiscoveryStateUpdate(ctx, result, d.runtime.registry, d.identity.Actor(ctx), d.identity.Policy())
 	if err != nil {
 		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
 		if errors.Is(err, context.Canceled) {
@@ -228,4 +248,48 @@ func (d toolRunDeps) PersistedToolMessage(message llm.LLMMessage) llm.LLMMessage
 
 func (d toolRunDeps) RefreshExecution(ctx context.Context, row *storage.Session) (context.Context, error) {
 	return d.view.RefreshSession(ctx, row)
+}
+
+type ToolIdentity interface {
+	dialogue.Identity
+	Policy() *security.Policy
+}
+
+type ToolConfirmations interface {
+	AwaitToolConfirmation(context.Context, string, llm.ToolCallRequest, tool.RiskAssessment, string) (toolrun.ConfirmResult, error)
+	ConfirmBackgroundSandboxShell(context.Context, string, llm.ToolCallRequest, tool.RiskLevel, *llm.LLMMessage) (bool, bool)
+}
+
+// ToolRunDeps declares the application bridge consumed by ToolRun. Per-turn
+// output and attempt remain private copies created by ForTurn.
+type ToolRunDeps struct {
+	Hooks         dialogue.Hooks
+	Requests      *request.Manager
+	Turns         *turn.Manager
+	Identity      ToolIdentity
+	Media         *media.Manager
+	State         *toolrun.StateService
+	Runtime       *ToolRuntimeState
+	Sessions      *sessionstate.Service
+	SessionRows   storage.SessionRepository
+	ToolCalls     storage.ToolCallRepository
+	Confirmations ToolConfirmations
+	View          dialogue.ExecutionView
+}
+
+func NewToolRunDeps(deps ToolRunDeps) dialogue.ToolDepsFactory {
+	return &toolRunDeps{
+		hooks:         deps.Hooks,
+		requests:      deps.Requests,
+		turns:         deps.Turns,
+		identity:      deps.Identity,
+		media:         deps.Media,
+		state:         deps.State,
+		runtime:       deps.Runtime,
+		sessions:      deps.Sessions,
+		sessionRows:   deps.SessionRows,
+		toolCalls:     deps.ToolCalls,
+		confirmations: deps.Confirmations,
+		view:          deps.View,
+	}
 }

@@ -7,15 +7,6 @@ import (
 	"elbot/internal/session"
 )
 
-// Config contains agent behavior, independently of shared services.
-type Config struct {
-	SoulPath              string
-	LLMRequestConfig      config.LLMRequestConfig
-	SessionIdleExpiration config.SessionIdleExpirationConfig
-	SandboxRoot           string
-	ToolsConfig           config.ToolsConfig
-}
-
 func responseTimeout(cfg config.LLMRequestConfig) time.Duration {
 	if cfg.ResponseTimeoutSeconds <= 0 {
 		return 0

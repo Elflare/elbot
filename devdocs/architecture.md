@@ -15,14 +15,56 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/architecture.md
 <!-- locator:startup -->
 ## 启动与装配
 
-`main → launcher → app.Run / Runner → 平台与后台 runtime`。
+`main → launcher → app.Run / Runner → 五条业务线 → 各自的中层组件`。
 
-- launcher 解析运行模式和参数；app 按 Environment、Foundation、Models、Platforms、Runtime、Integrations 阶段装配服务。
-- app 创建共享 Session、Request、Turn、模型、上下文、工具、文件、发送、通知及命令服务。`Agent.New(ctx, cfg, deps)` 注入必需依赖、组合执行组件；命令注册和外部接线归 app。
-- app 按 provider 配置创建客户端与注册表；Agent 校验并绑定协议业务能力、封闭注册表。Session／Hook 回调、订阅和补全接线成功后才开放平台入口；Cron 在平台启动后异步启动。
-- `NewRunner(Dependencies)` 支持替换分组工厂。工厂失败时交回已取得资源的 Lifecycle，由 Runner 清理部分装配结果。
-- 关闭先取消应用 context，再对日志中心及 App 订阅调用 `BeginClose`，停止接收并唤醒背压生产者；随后等待平台、Cron、订阅队列、追加确认、命名、Hook 和 Skill 加载退出，最后关闭 SQLite 与日志。日志中心的 `Close(ctx)` 使用同一退出预算。
-- 全部退出共享 30 秒预算。超时后保留仍在运行任务的依赖，交给进程退出；重复停止等待同一完成结果，关闭后不能重启调度。正常取消及预算耗尽不算应用失败，真实错误继续返回。
+- launcher 解析模式和参数；Runner 依次准备 Environment、Foundation、Models 和 Wiring。Foundation 只拥有配置、SQLite 与日志；`services.go` 创建共享模型、媒体、权限与诊断基础服务。
+- `wiring.go` 只创建 Platform、Tool、Hook、Dialogue、Background 五个上层模块，并按各自的 `ModuleDeps` 提供消费能力。每次 App 装配只创建一份共享实例；没有全局单例、Service Locator 或向下传递的全量依赖集合。
+- 每个组合包的 `module.go` 创建本业务线组件，`deps.go` 声明外部能力，`lifecycle.go` 只释放自己拥有的资源。中层继续用自身的窄 Deps 构造，各取所需；Session、Request、Turn 各自拥有状态，由 Dialogue 创建，Background 借用同一份实例。
+- Tool 只构造工具目录、执行核心、预加载／状态、Skill、Memory 与文件服务。Hook 和 Background 将各自业务工具注册到共享目录；Cron 工具的注册由 Background 持有，可独立回滚。工具调用编排属于调用方的 `toolrun.Runner`，Tool 的 `Manager` 提供核心能力，不接收其他上层模块。
+- `integrations.go` 只连接跨线回调、消息处理、补全与命令目录；模块间不导入兄弟组合包。构造依赖和入口回调分别连接，避免包循环。Dialogue 内部连接 Session／Execution，公共单轮自行构造消息、提交与 Prompt，Chat／Responses 自行构造协议内部对象及 Compactor。
+- 全部模块构造并接线成功后，按 Tool、Dialogue、Hook、Platform、Background 启动。Hook 首次 Reload 此时才执行，常驻任务启动前已有 Wakeup／Observer 回调；加载错误仍按原策略记录并提示。平台循环提交启动后再异步启动 Cron；CLI-only 不启动调度器和 Elnis，仍恢复中断状态。服务模式无前台平台时继续等待 Elnis 运行结束。
+- Runner 统一发起 `BeginClose` 并使用同一个 30 秒退出预算；按 Platform、Background、Dialogue、Hook、Tool 等待各业务线停止，再释放基础服务、SQLite、日志及服务标记。Hook 核心在 Dialogue 的最终追加确认输出和命名任务退出前保持可用。
+- 五条业务线使用明确的 `BeginClose / Close / Done` 契约；无独立资源的下层组件不增加空生命周期。部分构造失败也返回已取得资源的所有者。超时后保留仍被任务使用的依赖，不启动延后的清理链；重复关闭等待同一完成结果，关闭后不能重新启动。取消和预算耗尽按正常退出处理，真实错误继续返回。
+
+图中实线表示组合或消费关系，从组装／消费方指向依赖；虚线表示 App 在构造完成后连接的入口回调及生命周期调度。
+
+```mermaid
+flowchart TB
+    A["app/runner.go、dependencies.go<br/>阶段契约、发布与全局退出预算"]
+    W["app/wiring.go、integrations.go<br/>创建五条业务线、跨线接线"]
+    F["app/foundation.go、services.go<br/>存储、日志、模型、媒体等基础服务"]
+    L["app/lifecycle.go<br/>五组关闭顺序、确认退出后释放基础服务"]
+    P["platform/module/{module,deps,lifecycle}.go<br/>适配器、发送、通知与平台循环"]
+    T["tool/module/{module,deps,lifecycle}.go<br/>唯一工具目录、核心、预加载／状态及 Skill"]
+    H["hook/module/{module,deps,lifecycle}.go<br/>Hook 核心、插件加载与进程"]
+    D["agent/module/{module,deps,lifecycle}.go<br/>Dialogue 业务线内部构造与同步接线"]
+    B["background/module/{module,deps,lifecycle}.go<br/>后台 Runner、Cron、维护任务及 Elnis"]
+    I["agent/input.go、message.go、command_executor.go<br/>前台入口与命令"]
+    E["agent/execution.go<br/>执行、接管与追加确认等待"]
+    R["agent/dialogue/runner.go<br/>单轮组件与提交；使用 toolrun.Runner"]
+    Q["agent/chat/loop.go、responses/loop.go<br/>协议内部对象、Compactor 与材料能力"]
+    S["session/service.go<br/>会话、绑定及命名生命周期"]
+    RE["request/manager.go<br/>独立请求状态"]
+    TU["turn/manager.go<br/>独立执行状态"]
+    O["agent/module/signals.go、agent_status.go<br/>通知与状态观察队列"]
+    A --> W
+    A --> F
+    A --> L
+    W --> P & T & H & D & B
+    D --> T & H & P
+    H --> T & P
+    B --> D & T & P
+    D --> I & E & S & RE & TU & O
+    I --> E
+    E --> R
+    E --> S & RE & TU
+    I --> S & TU
+    R --> S & TU
+    R --> Q
+    B -->|借用同一会话服务| S
+    P -.->|消息入口、补全与目录| I
+    L -.->|停止并等待各组拥有的资源| P & B & D & H & T
+```
 
 <!-- locator:contextinfo -->
 ## 公共上下文事实
@@ -44,7 +86,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/architecture.md
 <!-- locator:signal -->
 ## 信号与订阅
 
-来源模块拥有业务实例信号及事件类型，并在实际操作处确定日志结果。Agent 的输入、超时、确认、拒绝、模型、工具、回复及持久化在操作来源直接组织日志；没有业务消费者的日志中转事件和投影连接已删除。Session 命名和 Model Manager 重试自行维护同步日志连接；App 管理通知、状态订阅及服务生命周期。公共日志入口为 `internal/events.EmitLog`，日志中心自行订阅并持有分类队列。契约见[信号与日志系统设计](signals-and-logging.md)，实施进度与待办见[任务清单](tasks.md#信号与日志系统整改)。权限、可改写 Hook、Usage、工具记录和关键提交同步完成；信号发布观察事实。
+来源模块拥有业务实例信号及事件类型，并在实际操作处确定日志结果。Agent 的输入、超时、确认、拒绝、模型、工具、回复及持久化在操作来源直接组织日志；没有业务消费者的日志中转事件和投影连接已删除。Session 命名和 Model Manager 重试自行维护同步日志连接；Dialogue 管理通知与状态订阅，App 统一调度五条业务线生命周期。公共日志入口为 `internal/events.EmitLog`，日志中心自行订阅并持有分类队列。契约见[信号与日志系统设计](signals-and-logging.md)，实施进度与待办见[任务清单](tasks.md#信号与日志系统整改)。权限、可改写 Hook、Usage、工具记录和关键提交同步完成；信号发布观察事实。
 
 - 发射时锁内取得订阅快照、锁外调用。断开不撤销已取得快照或已入队任务；一次性连接即使入队失败也被消耗。发布方固定可变数据及实际调用 context。
 - 异步连接选择 FollowEmit（继承取消）或 FollowExecutor（只保留值）；关闭选择 CancelPending 或 Drain，底层取消优先。
@@ -85,14 +127,14 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/architecture.md
 
 | 层 | 职责 |
 |---|---|
-| Agent 入口组件 | messageHandler 分发输入；inputCoordinator 准备与预加载；backgroundRunner 准备后台身份和资源；commandExecutor 编排命令 |
-| executionCoordinator | 前后台准入、attempt／Request、追加确认、pending 续跑、压缩交接和 Execution 完成 |
+| 独立入口组件 | MessageHandler 分发输入；InputCoordinator 准备与预加载；BackgroundRunner 准备后台身份和资源；CommandExecutor 编排命令 |
+| ExecutionCoordinator | 前后台准入、attempt／Request、追加确认、pending 续跑、压缩交接和 Execution 完成 |
 | dialogue.Runner | 登记前加载材料、登记后准备与保存用户输入、取得 Loop、收敛结果、提交回复 |
 | chat／responses Loop | 各自的上下文、模型／工具循环、pending 和接管刷新 |
 | dialogue 公共协作 | Prompt 来源、模型 Hook、ToolRun、消息事务和 ReplyCommitter |
 | 根包协作组件 | 身份、确认、Hook、发送及状态记录 |
 
-- Agent 为薄入口，组件按消费接口组合，不回调 Agent；构造参数直接注入所属消费者，共享层不保存协议私有状态。
+- 组件分别通过消费接口协作，不提供中心 Agent 门面，也不访问其他业务线的内部字段；依赖与配置按实际消费注入，共享层不保存协议私有状态。Session／Request／Turn 保留状态所有权，通知和展示只维护观察投影。
 - 准入先检查 provider 能力和模型兼容性，登记会话归属与 attempt。材料加载在 Request 登记前；Prompt、Hook、媒体归一及用户保存使用登记后的 Request context，检查取消。
 - 每轮固定 Selection。普通 `/model` 不影响在途循环；前台接管刷新模型、工具和来源。解除后台要求的合成 user 提示位于请求末尾，不写入 system prompt 或展示历史。
 - 工具阶段收到的输入进入 pending；下一次模型请求前合并，最终模型调用期间新收到的 pending 在本轮结束后自动开启下一轮。
@@ -162,7 +204,7 @@ flowchart LR
 
     subgraph EVENTS["业务实例信号与日志入口"]
         BUS["来源实例 Signal[T]<br/>业务和 notify 所需事实"]
-        OBSERVER["通知、状态展示<br/>App 管理订阅与生命周期"]
+        OBSERVER["通知、状态展示<br/>Dialogue 管理订阅与队列"]
         PROJECTION["命名、重试事实<br/>来源模块同步日志回调"]
         LOG["events.EmitLog<br/>日志中心订阅、排队、落盘"]
         BUS -.-> OBSERVER

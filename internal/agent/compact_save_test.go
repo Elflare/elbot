@@ -61,7 +61,14 @@ func TestCompactSaveFailureReleasesExecutionAndKeepsSource(t *testing.T) {
 			failure := errors.New("compact save rejected")
 			repo.failure = failure
 			if backgroundRun {
-				_, err = a.RunBackground(ctx, background.RunRequest{SessionID: source.ID, Kind: background.KindCron, Name: "save", Platform: "cli", Actor: contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}, Prompt: "next input"})
+				_, err = a.RunBackground(ctx, background.RunRequest{
+					SessionID: source.ID,
+					Kind:      background.KindCron,
+					Name:      "save",
+					Platform:  "cli",
+					Actor:     contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin},
+					Prompt:    "next input",
+				})
 			} else {
 				err = a.HandleMessage(ctx, "/compact")
 			}

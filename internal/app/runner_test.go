@@ -8,8 +8,27 @@ import (
 	"testing"
 	"time"
 
-	elcron "elbot/internal/cron"
+	platformmodule "elbot/internal/platform/module"
 )
+
+type closeFunc func() error
+
+func (f closeFunc) Close() error { return f() }
+
+type lifecycleFunc func(context.Context) error
+
+func (f lifecycleFunc) Close(ctx context.Context) error { return f(ctx) }
+
+type profilerStub struct{ events *[]string }
+
+func (profilerStub) SetEnabled(bool) {}
+func (profilerStub) Mark(string)     {}
+func (p profilerStub) Flush() time.Duration {
+	if p.events != nil {
+		*p.events = append(*p.events, "flush")
+	}
+	return time.Second
+}
 
 type environmentStub struct {
 	events    *[]string
@@ -22,39 +41,13 @@ func (s environmentStub) ResolveMode(RunMode) (RunMode, error) {
 	*s.events = append(*s.events, "resolve")
 	return s.mode, nil
 }
-
 func (s environmentStub) ClaimServiceMarker(RunMode) (io.Closer, error) {
 	*s.events = append(*s.events, "marker")
-	return closeFunc(func() error {
-		*s.events = append(*s.events, "marker-close")
-		return s.markerErr
-	}), nil
+	return closeFunc(func() error { *s.events = append(*s.events, "marker-close"); return s.markerErr }), nil
 }
-
 func (s environmentStub) NewStartupProfiler(time.Time) StartupProfiler {
 	*s.events = append(*s.events, "profiler")
 	return s.profiler
-}
-
-type closeFunc func() error
-
-func (f closeFunc) Close() error {
-	return f()
-}
-
-type lifecycleFunc func(context.Context) error
-
-func (f lifecycleFunc) Close(ctx context.Context) error { return f(ctx) }
-
-type profilerStub struct {
-	events *[]string
-}
-
-func (p profilerStub) SetEnabled(bool) {}
-func (p profilerStub) Mark(string)     {}
-func (p profilerStub) Flush() time.Duration {
-	*p.events = append(*p.events, "flush")
-	return time.Second
 }
 
 type foundationFactoryFunc func(context.Context, FoundationRequest) (*FoundationComponents, error)
@@ -67,272 +60,104 @@ type modelFactoryFunc func(ModelRequest) (ModelClients, error)
 
 func (f modelFactoryFunc) Build(req ModelRequest) (ModelClients, error) { return f(req) }
 
-type platformFactoryFunc func(PlatformRequest) (PlatformComponents, error)
+type platformFactoryFunc func(context.Context, PlatformRequest) (*platformmodule.Module, error)
 
-func (f platformFactoryFunc) Build(req PlatformRequest) (PlatformComponents, error) {
-	return f(req)
-}
-
-type runtimeFactoryFunc func(context.Context, RuntimeRequest) (*RuntimeComponents, error)
-
-func (f runtimeFactoryFunc) Build(ctx context.Context, req RuntimeRequest) (*RuntimeComponents, error) {
+func (f platformFactoryFunc) Build(ctx context.Context, req PlatformRequest) (*platformmodule.Module, error) {
 	return f(ctx, req)
 }
 
-type integrationFactoryFunc func(context.Context, IntegrationRequest) (PlatformComponents, error)
+type runtimeFactoryFunc func(context.Context, WiringRequest) (*WiringComponents, error)
 
-func (f integrationFactoryFunc) Attach(ctx context.Context, req IntegrationRequest) (PlatformComponents, error) {
+func (f runtimeFactoryFunc) Build(ctx context.Context, req WiringRequest) (*WiringComponents, error) {
 	return f(ctx, req)
 }
 
-type executorFunc func(context.Context, PlatformRunRequest) error
-
-func (f executorFunc) Run(ctx context.Context, req PlatformRunRequest) error { return f(ctx, req) }
-
-type handlerStub struct{}
-
-func (handlerStub) HandleMessage(context.Context, string) error { return nil }
-
-func TestRunnerRunOrdersStagesAndCleanup(t *testing.T) {
-	events := []string{}
-	runner := newTestRunner(t, &events, RunModeFull, "")
-
-	if err := runner.Run(context.Background(), Options{Mode: RunModeFull}); err != nil {
-		t.Fatalf("Run() error = %v", err)
-	}
-
-	want := []string{
-		"resolve", "marker", "profiler", "foundation", "models", "platforms", "runtime", "integrations",
-		"flush", "executor", "cron-start", "runtime-close", "foundation-close", "marker-close",
-	}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %#v, want %#v", events, want)
-	}
+type moduleLifecycleStub struct {
+	done  chan struct{}
+	begin func()
+	close func(context.Context) error
 }
 
-func TestRunnerRunSkipsCronInCLIOnlyMode(t *testing.T) {
-	events := []string{}
-	runner := newTestRunner(t, &events, RunModeCLIOnly, "")
-
-	if err := runner.Run(context.Background(), Options{Mode: RunModeCLIOnly}); err != nil {
-		t.Fatalf("Run() error = %v", err)
-	}
-	for _, event := range events {
-		if event == "cron-start" {
-			t.Fatal("CLI-only run started cron")
-		}
+func (s *moduleLifecycleStub) BeginClose() {
+	if s.begin != nil {
+		s.begin()
 	}
 }
-
-func TestRunnerRunCleansCompletedStagesAfterFailure(t *testing.T) {
-	for _, failAt := range []string{"foundation", "models", "platforms", "runtime", "integrations", "executor"} {
-		t.Run(failAt, func(t *testing.T) {
-			events := []string{}
-			runner := newTestRunner(t, &events, RunModeFull, failAt)
-
-			err := runner.Run(context.Background(), Options{Mode: RunModeFull})
-			if err == nil || err.Error() != "fail at "+failAt {
-				t.Fatalf("Run() error = %v", err)
+func (s *moduleLifecycleStub) Done() <-chan struct{}           { return s.done }
+func (s *moduleLifecycleStub) Close(ctx context.Context) error { return s.close(ctx) }
+func TestRunnerPartialConstructionUsesSharedBudgetAndReverseCleanup(t *testing.T) {
+	var events []string
+	failure := errors.New("construction failed")
+	closeFailure := errors.New("close failed")
+	var deadline time.Time
+	d := DefaultDependencies()
+	d.Environment = environmentStub{events: &events, mode: RunModeCLIOnly, profiler: profilerStub{events: &events}}
+	d.Foundation = foundationFactoryFunc(func(context.Context, FoundationRequest) (*FoundationComponents, error) {
+		return &FoundationComponents{Lifecycle: lifecycleFunc(func(ctx context.Context) error {
+			events = append(events, "foundation-close")
+			end, _ := ctx.Deadline()
+			if !end.Equal(deadline) {
+				t.Error("shutdown budget restarted")
 			}
-
-			wantTail := []string{"marker-close"}
-			if failAt == "models" || failAt == "platforms" || failAt == "runtime" {
-				wantTail = []string{"foundation-close", "marker-close"}
-			}
-			if failAt == "integrations" || failAt == "executor" {
-				wantTail = []string{"runtime-close", "foundation-close", "marker-close"}
-			}
-			if len(events) < len(wantTail) || !reflect.DeepEqual(events[len(events)-len(wantTail):], wantTail) {
-				t.Fatalf("events tail = %#v, want %#v; all events = %#v", events, wantTail, events)
-			}
-		})
-	}
-}
-
-func TestRunnerRunStopsBeforeEnvironmentWhenContextCanceled(t *testing.T) {
-	events := []string{}
-	runner := newTestRunner(t, &events, RunModeFull, "")
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	err := runner.Run(ctx, Options{})
-	if err != nil {
-		t.Fatalf("normal cancellation returned an error: %v", err)
-	}
-	if len(events) != 0 {
-		t.Fatalf("events = %#v, want none", events)
-	}
-}
-
-func TestRunnerRunJoinsExecutionAndCleanupErrors(t *testing.T) {
-	events := []string{}
-	runErr := errors.New("executor failed")
-	runtimeCloseErr := errors.New("runtime close failed")
-	foundationCloseErr := errors.New("foundation close failed")
-	markerCloseErr := errors.New("marker close failed")
-	runner := newLifecycleErrorRunner(t, &events, runErr, runtimeCloseErr, foundationCloseErr, markerCloseErr)
-
-	err := runner.Run(context.Background(), Options{Mode: RunModeFull})
-	for _, want := range []error{runErr, runtimeCloseErr, foundationCloseErr, markerCloseErr} {
-		if !errors.Is(err, want) {
-			t.Fatalf("Run() error = %v, want errors.Is(%v)", err, want)
-		}
-	}
-	wantTail := []string{"runtime-close", "foundation-close", "marker-close"}
-	if !reflect.DeepEqual(events[len(events)-len(wantTail):], wantTail) {
-		t.Fatalf("events = %#v, want tail %#v", events, wantTail)
-	}
-}
-
-func TestRunnerRunBoundsCleanupWithSharedTimeout(t *testing.T) {
-	events := []string{}
-	runner := newLifecycleErrorRunner(t, &events, nil, nil, nil, nil)
-	runner.shutdownTimeout = 20 * time.Millisecond
-	runner.deps.Runtime = runtimeFactoryFunc(func(context.Context, RuntimeRequest) (*RuntimeComponents, error) {
-		return &RuntimeComponents{
-			Handler: handlerStub{},
-			Lifecycle: lifecycleFunc(func(ctx context.Context) error {
-				events = append(events, "runtime-close")
-				<-ctx.Done()
-				return ctx.Err()
-			}),
-		}, nil
+			return nil
+		})}, nil
 	})
-
-	started := time.Now()
-	err := runner.Run(context.Background(), Options{Mode: RunModeFull})
-	if err != nil {
-		t.Fatalf("shutdown deadline returned a failure: %v", err)
-	}
-	if elapsed := time.Since(started); elapsed > time.Second {
-		t.Fatalf("Run() cleanup took %v", elapsed)
-	}
-	if events[len(events)-1] != "runtime-close" {
-		t.Fatalf("dependencies closed after deadline: %v", events)
-	}
-}
-
-func TestNewRunnerRejectsMissingDependencyGroup(t *testing.T) {
-	deps := DefaultDependencies()
-	deps.Models = nil
-	if _, err := NewRunner(deps); err == nil {
-		t.Fatal("NewRunner() error = nil")
-	}
-}
-
-func newTestRunner(t *testing.T, events *[]string, mode RunMode, failAt string) *Runner {
-	t.Helper()
-	fail := func(stage string) error {
-		if failAt == stage {
-			return errors.New("fail at " + stage)
+	d.Models = modelFactoryFunc(func(ModelRequest) (ModelClients, error) { return ModelClients{}, nil })
+	d.Wiring = runtimeFactoryFunc(func(context.Context, WiringRequest) (*WiringComponents, error) {
+		s := &moduleLifecycleStub{done: make(chan struct{}), begin: func() { events = append(events, "begin") }}
+		s.close = func(ctx context.Context) error {
+			deadline, _ = ctx.Deadline()
+			events = append(events, "module-close")
+			close(s.done)
+			return closeFailure
 		}
-		return nil
-	}
-	profiler := profilerStub{events: events}
-
-	deps := Dependencies{
-		Environment: environmentStub{events: events, mode: mode, profiler: profiler},
-		Foundation: foundationFactoryFunc(func(context.Context, FoundationRequest) (*FoundationComponents, error) {
-			*events = append(*events, "foundation")
-			if err := fail("foundation"); err != nil {
-				return nil, err
-			}
-			return &FoundationComponents{
-
-				StartCron: func(context.Context, *elcron.Service) {
-					*events = append(*events, "cron-start")
-				},
-				Lifecycle: lifecycleFunc(func(context.Context) error {
-					*events = append(*events, "foundation-close")
-					return nil
-				}),
-			}, nil
-		}),
-		Models: modelFactoryFunc(func(ModelRequest) (ModelClients, error) {
-			*events = append(*events, "models")
-			return ModelClients{}, fail("models")
-		}),
-		Platforms: platformFactoryFunc(func(PlatformRequest) (PlatformComponents, error) {
-			*events = append(*events, "platforms")
-			return PlatformComponents{}, fail("platforms")
-		}),
-		Runtime: runtimeFactoryFunc(func(context.Context, RuntimeRequest) (*RuntimeComponents, error) {
-			*events = append(*events, "runtime")
-			if err := fail("runtime"); err != nil {
-				return nil, err
-			}
-			return &RuntimeComponents{
-				Handler: handlerStub{},
-				Lifecycle: lifecycleFunc(func(context.Context) error {
-					*events = append(*events, "runtime-close")
-					return nil
-				}),
-			}, nil
-		}),
-		Integrations: integrationFactoryFunc(func(_ context.Context, req IntegrationRequest) (PlatformComponents, error) {
-			*events = append(*events, "integrations")
-			return req.Platforms, fail("integrations")
-		}),
-		Executor: executorFunc(func(_ context.Context, req PlatformRunRequest) error {
-			*events = append(*events, "executor")
-			if req.AfterStart != nil {
-				req.AfterStart(context.Background())
-			}
-			return fail("executor")
-		}),
-	}
-	runner, err := NewRunner(deps)
+		return &WiringComponents{Lifecycle: s}, failure
+	})
+	r, err := NewRunner(d)
 	if err != nil {
-		t.Fatalf("NewRunner() error = %v", err)
+		t.Fatal(err)
 	}
-	return runner
+	err = r.Run(t.Context(), Options{})
+	if !errors.Is(err, failure) || !errors.Is(err, closeFailure) {
+		t.Fatal(err)
+	}
+	if got := events[len(events)-4:]; !reflect.DeepEqual(got, []string{"begin", "module-close", "foundation-close", "marker-close"}) {
+		t.Fatal(events)
+	}
 }
-
-func newLifecycleErrorRunner(t *testing.T, events *[]string, runErr, runtimeCloseErr, foundationCloseErr, markerCloseErr error) *Runner {
-	t.Helper()
-	profiler := profilerStub{events: events}
-	deps := Dependencies{
-		Environment: environmentStub{events: events, mode: RunModeFull, profiler: profiler, markerErr: markerCloseErr},
-		Foundation: foundationFactoryFunc(func(context.Context, FoundationRequest) (*FoundationComponents, error) {
-			*events = append(*events, "foundation")
-			return &FoundationComponents{
-
-				Lifecycle: lifecycleFunc(func(context.Context) error {
-					*events = append(*events, "foundation-close")
-					return foundationCloseErr
-				}),
-			}, nil
-		}),
-		Models: modelFactoryFunc(func(ModelRequest) (ModelClients, error) {
-			*events = append(*events, "models")
-			return ModelClients{}, nil
-		}),
-		Platforms: platformFactoryFunc(func(PlatformRequest) (PlatformComponents, error) {
-			*events = append(*events, "platforms")
-			return PlatformComponents{}, nil
-		}),
-		Runtime: runtimeFactoryFunc(func(context.Context, RuntimeRequest) (*RuntimeComponents, error) {
-			*events = append(*events, "runtime")
-			return &RuntimeComponents{
-				Handler: handlerStub{},
-				Lifecycle: lifecycleFunc(func(context.Context) error {
-					*events = append(*events, "runtime-close")
-					return runtimeCloseErr
-				}),
-			}, nil
-		}),
-		Integrations: integrationFactoryFunc(func(_ context.Context, req IntegrationRequest) (PlatformComponents, error) {
-			*events = append(*events, "integrations")
-			return req.Platforms, nil
-		}),
-		Executor: executorFunc(func(context.Context, PlatformRunRequest) error {
-			*events = append(*events, "executor")
-			return runErr
-		}),
-	}
-	runner, err := NewRunner(deps)
+func TestRunnerTimeoutKeepsLiveModuleDependencies(t *testing.T) {
+	var events []string
+	failure := errors.New("construction failed")
+	done := make(chan struct{})
+	d := DefaultDependencies()
+	d.Environment = environmentStub{events: &events, profiler: profilerStub{}}
+	foundationClosed := false
+	d.Foundation = foundationFactoryFunc(func(context.Context, FoundationRequest) (*FoundationComponents, error) {
+		return &FoundationComponents{Lifecycle: lifecycleFunc(func(context.Context) error { foundationClosed = true; return nil })}, nil
+	})
+	d.Models = modelFactoryFunc(func(ModelRequest) (ModelClients, error) { return ModelClients{}, nil })
+	d.Wiring = runtimeFactoryFunc(func(context.Context, WiringRequest) (*WiringComponents, error) {
+		return &WiringComponents{Lifecycle: &moduleLifecycleStub{done: done, close: func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() }}}, failure
+	})
+	r, err := NewRunner(d)
 	if err != nil {
-		t.Fatalf("NewRunner() error = %v", err)
+		t.Fatal(err)
 	}
-	return runner
+	r.shutdownTimeout = 10 * time.Millisecond
+	if err := r.Run(t.Context(), Options{}); !errors.Is(err, failure) {
+		t.Fatal(err)
+	}
+	if foundationClosed {
+		t.Fatal("borrowed dependencies closed while module is alive")
+	}
+	close(done)
+	if foundationClosed {
+		t.Fatal("a cleanup chain continued after timeout")
+	}
+}
+func TestExpectedShutdownFilteringPreservesJoinedBusinessFailure(t *testing.T) {
+	failure := errors.New("business failure")
+	if got := withoutShutdownError(errors.Join(context.Canceled, failure), context.Canceled); !errors.Is(got, failure) || errors.Is(got, context.Canceled) {
+		t.Fatal(got)
+	}
 }

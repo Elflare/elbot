@@ -65,7 +65,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	repo := &toolStateFaultRepo{SessionRepository: store.Sessions(), failure: failure}
 	setTestToolState(a, toolrun.NewStateService(toolStateFaultStore{Store: store, repo: repo}))
 	input := "question @tool:worker @skill:doc"
-	tools, skills, err := a.message.input.applyInputDirectives(ctx, row, input)
+	tools, skills, err := a.input.applyInputDirectives(ctx, row, input)
 	if !errors.Is(err, failure) || repo.writes != 1 {
 		t.Fatalf("err=%v writes=%d", err, repo.writes)
 	}
@@ -73,13 +73,13 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	if row.Metadata != before || latest.Metadata != before || tools.Text != input || skills.Text != input || len(tools.Injected) > 0 || len(skills.Skills) > 0 {
 		t.Fatalf("failed commit leaked state: tools=%+v skills=%+v row=%s", tools, skills, row.Metadata)
 	}
-	schemas, err := a.execution.dialogue.Preparer.Tools.Schemas(ctx, row)
+	schemas, err := a.dialogue.Preparer.Tools.Schemas(ctx, row)
 	if err != nil || toolNames(schemas) != "discover_tool" {
 		t.Fatalf("failed schema published: %s %v", toolNames(schemas), err)
 	}
 
 	repo.failure = nil
-	tools, skills, err = a.message.input.applyInputDirectives(ctx, row, input)
+	tools, skills, err = a.input.applyInputDirectives(ctx, row, input)
 	if err != nil || repo.writes != 2 {
 		t.Fatalf("err=%v writes=%d", err, repo.writes)
 	}
@@ -153,7 +153,7 @@ func TestFailedDiscoveryMatchesTranscriptAndNextSchema(t *testing.T) {
 	if err != nil || successes["discovery"] {
 		t.Fatalf("failed discovery recorded success: %v %v", successes, err)
 	}
-	state, err := a.execution.dialogue.Preparer.Tools.State.Snapshot(ctx, row.ID)
+	state, err := a.dialogue.Preparer.Tools.State.Snapshot(ctx, row.ID)
 	if err != nil || len(state.ToolCache) != 0 {
 		t.Fatalf("state=%+v err=%v", state, err)
 	}
@@ -163,7 +163,10 @@ func TestForkKeepsHistoryWithoutCopyingToolOrUsageState(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, store)
-	source, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "source", Metadata: `{"tool_cache":[{"name":"old","source":"native","schema":{"type":"function","function":{"name":"old"}}}],"last_usage":{"TotalTokens":100}}`})
+	source, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{
+		Title:    "source",
+		Metadata: `{"tool_cache":[{"name":"old","source":"native","schema":{"type":"function","function":{"name":"old"}}}],"last_usage":{"TotalTokens":100}}`,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +178,7 @@ func TestForkKeepsHistoryWithoutCopyingToolOrUsageState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state, err := a.execution.dialogue.Preparer.Tools.State.Snapshot(ctx, fork.ID)
+	state, err := a.dialogue.Preparer.Tools.State.Snapshot(ctx, fork.ID)
 	if err != nil || len(state.ToolCache) != 0 || a.execution.usageForSession(t.Context(), fork) != nil {
 		t.Fatalf("fork inherited state: %+v err=%v", state, err)
 	}

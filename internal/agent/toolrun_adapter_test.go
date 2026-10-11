@@ -2,9 +2,9 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/events"
 	"testing"
 
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/storage"
@@ -26,7 +26,7 @@ func TestCompleteToolCallExposesNameAndAcceptsMultimodalSegments(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	deps := toolRunDeps{hooks: &hookBridge{manager: manager, identity: &identityResolver{scopeID: "default"}}}
+	deps := toolRunDeps{hooks: &HookBridge{manager: manager, identity: &IdentityResolver{scopeID: "default"}}}
 	segments, _, err := deps.CompleteToolCall(context.Background(), &storage.Session{ID: "s1"}, llm.ToolCallRequest{ID: "call_1", Name: "screenshot", Arguments: `{}`}, "low", llm.TextSegments("done"), nil)
 	if err != nil {
 		t.Fatalf("CompleteToolCall: %v", err)
@@ -51,7 +51,7 @@ func TestPrepareToolCallOnlyAcceptsArguments(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	deps := toolRunDeps{hooks: &hookBridge{manager: manager, identity: &identityResolver{scopeID: "default"}}}
+	deps := toolRunDeps{hooks: &HookBridge{manager: manager, identity: &IdentityResolver{scopeID: "default"}}}
 	call, _, err := deps.PrepareToolCall(context.Background(), &storage.Session{ID: "s1"}, llm.ToolCallRequest{ID: "call_1", Name: "search", Arguments: `{"q":"dog"}`})
 	if err != nil {
 		t.Fatalf("PrepareToolCall: %v", err)

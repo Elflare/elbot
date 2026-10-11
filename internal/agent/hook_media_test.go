@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/events"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -16,6 +15,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
@@ -186,7 +186,10 @@ func TestMediaReceiptKeepsDuplicatesAndPartialSuccess(t *testing.T) {
 		{Kind: delivery.KindImage, Source: delivery.Source{MediaID: item.ID}},
 		{Kind: delivery.KindImage, Source: delivery.Source{MediaID: item.ID}},
 	}
-	receipt := delivery.Receipt{PlatformMessageIDs: []string{"sent"}, SentMessages: []delivery.SentMessage{{PlatformMessageID: "sent", Platform: "qqonebot", ScopeID: "group:1", OutputIndexes: []int{0, 1}}}}
+	receipt := delivery.Receipt{
+		PlatformMessageIDs: []string{"sent"},
+		SentMessages:       []delivery.SentMessage{{PlatformMessageID: "sent", Platform: "qqonebot", ScopeID: "group:1", OutputIndexes: []int{0, 1}}},
+	}
 	sender := mediaSendFunc(func([]delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		{
 			err := fmt.Errorf("later output failed")

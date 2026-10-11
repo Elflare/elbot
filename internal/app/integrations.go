@@ -1,113 +1,28 @@
 package app
 
-import (
-	"context"
-	"elbot/internal/events"
-	"fmt"
-	"path/filepath"
-	"strings"
+import "context"
 
-	"elbot/internal/config"
-	"elbot/internal/delivery"
-	"elbot/internal/elnis"
-)
-
-type defaultIntegrationFactory struct{}
-
-func (defaultIntegrationFactory) Attach(ctx context.Context, req IntegrationRequest) (PlatformComponents, error) {
-	foundation := req.Foundation
-	runtime := req.Runtime
-	platforms := req.Platforms
-	cfg := foundation.Config
-	if runtime.Agent == nil {
-		return PlatformComponents{}, fmt.Errorf("app: integration runtime has no agent")
-	}
-
-	if cfg.Elnis.Enabled && req.Mode != RunModeCLIOnly {
-		if runtime.ElvenaBus == nil {
-			return PlatformComponents{}, fmt.Errorf("app: integration runtime has no elvena bus")
-		}
-		elnisTokens, err := resolveElnisTokens(cfg)
-		if err != nil {
-			return PlatformComponents{}, err
-		}
-		elnisService, err := elnis.NewService(elnis.Options{Media: runtime.Media, Config: cfg.Elnis, SandboxRoot: cfg.Sandbox.Root, Tokens: elnisTokens, Store: foundation.Store, EnabledPlatforms: runtimeNames(platforms.Runtimes), PlatformCallers: platformCallerResolver{runtimes: platforms.Runtimes}, Send: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-			return runtime.Dispatcher.SendNotice(ctx, delivery.Notice{Target: target, Outputs: outputs})
-		}, Runner: runtime.Agent, ToolPreloader: runtime.ToolPreloader, ResolveModel: func(slot string) config.ModelSelection {
-			return runtime.Models.ResolveMode(slot).ModelSelection
-		}})
-		if err != nil {
-			return PlatformComponents{}, err
-		}
-		runtime.ElvenaBus.SetDispatcher(elnisService)
-		platforms.Runtimes = append(platforms.Runtimes, elnisRuntimeAdapter{runtime: elnis.NewRuntime(cfg.Elnis.HTTP, elnisService)})
-		req.Profiler.Mark("elnis init")
-	}
-
-	registerCompletionPlatforms(runtime.Agent, platforms.Runtimes)
-	registerCommandCatalogs(runtime.Commands, platforms.Runtimes)
-	if runtime.Signals == nil {
-		return PlatformComponents{}, fmt.Errorf("app: runtime has no signal owner")
-	}
-	if runtime.Dispatcher == nil {
-		return PlatformComponents{}, fmt.Errorf("app: runtime has no dispatcher")
-	}
-	for _, adapter := range platforms.Runtimes {
-		if adapter != nil {
-			runtime.Dispatcher.RegisterPlatformSender(adapter.Name(), adapter)
-		}
-	}
-	if err := runtime.Agent.StartPlatformEvents(ctx); err != nil {
-		return PlatformComponents{}, err
-	}
-	if runtime.CronService != nil {
-		if err := runtime.CronService.StartPlatformEvents(ctx); err != nil {
-			return PlatformComponents{}, err
-		}
-	}
-	req.Profiler.Mark("platform hooks")
-	return platforms, nil
+// connectModules binds cross-line callbacks only, after every owner has constructed its children.
+func connectModules(c *WiringComponents) {
+	c.Hook.SetWakeup(c.Dialogue.Handler().HookWakeup)
+	c.Hook.SetObserver(c.Dialogue.ObserveHookRun())
+	c.Platform.SetCompleter(c.Dialogue.Completion())
+	c.Platform.SetCommandCatalog(c.Dialogue.Commands())
 }
 
-func resolveElnisTokens(cfg *config.Config) (map[string]string, error) {
-	if err := config.FirstError(cfg.Elnis.Validate()); err != nil {
-		return nil, err
+// Start publishes only the fully connected graph. Platform loops launch before background scheduling.
+func (c *WiringComponents) Start(stop context.CancelFunc) error {
+	if err := c.Tool.Start(); err != nil {
+		return err
 	}
-	out := map[string]string{}
-	configDir := filepath.Dir(cfg.ConfigPath)
-	for name, tokenCfg := range cfg.Elnis.Tokens {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			continue
-		}
-		for _, envName := range tokenCfg.TokenEnv {
-			envName = strings.TrimSpace(envName)
-			if envName == "" {
-				continue
-			}
-			value, ok, err := config.ConfigEnv(envName, configDir)
-			if err != nil {
-				return nil, fmt.Errorf("resolve elnis token %q from %s: %w", name, envName, err)
-			}
-			if ok && strings.TrimSpace(value) != "" {
-				out[name] = strings.TrimSpace(value)
-				break
-			}
-		}
+	if err := c.Dialogue.Start(); err != nil {
+		return err
 	}
-	return out, nil
-}
-
-func runtimeNames(runtimes []platformRuntime) []string {
-	out := []string{}
-	for _, runtime := range runtimes {
-		if runtime == nil {
-			continue
-		}
-		name := strings.TrimSpace(runtime.Name())
-		if name != "" && name != "elnis" {
-			out = append(out, name)
-		}
+	if err := c.Hook.Start(); err != nil {
+		return err
 	}
-	return out
+	if err := c.Platform.Start(c.Dialogue.Handler(), stop); err != nil {
+		return err
+	}
+	return c.Background.Start()
 }

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+
 	agentevents "elbot/internal/agent/events"
 	"elbot/internal/events"
 )

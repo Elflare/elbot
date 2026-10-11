@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	globalevents "elbot/internal/events"
 	"errors"
 	"sync"
 	"testing"
@@ -11,6 +10,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/platform"
 	"elbot/internal/storage"
@@ -60,11 +60,11 @@ func TestFinalLLMTakeoverUsesForegroundHookAndReceipt(t *testing.T) {
 			if outputEvent.Platform.ScopeID != "private:1" || outputEvent.Actor.ID != "qq:1" {
 				t.Errorf("output hook retained background identity: %#v / %#v", outputEvent.Platform, outputEvent.Actor)
 			}
-			mapped, err := a.execution.dialogue.Replies.Messages.FindByPlatformMessage(ctx, "qq", "private:1", "sent")
+			mapped, err := a.dialogue.Replies.Messages.FindByPlatformMessage(ctx, "qq", "private:1", "sent")
 			if err != nil || mapped.ID != result.MessageID {
 				t.Errorf("foreground mapping=%#v/%v", mapped, err)
 			}
-			if _, err := a.execution.dialogue.Replies.Messages.FindByPlatformMessage(ctx, "qq", "cron:takeover", "sent"); !errors.Is(err, storage.ErrNotFound) {
+			if _, err := a.dialogue.Replies.Messages.FindByPlatformMessage(ctx, "qq", "cron:takeover", "sent"); !errors.Is(err, storage.ErrNotFound) {
 				t.Errorf("background mapping remained: %v", err)
 			}
 		})
@@ -100,29 +100,37 @@ func TestConnectedHooksKeepAbsentChatIdentity(t *testing.T) {
 }
 
 func TestHookReadsPublicInfoWithoutPlatformExtension(t *testing.T) {
-	bridge := &hookBridge{identity: &identityResolver{platformName: "cli", actorID: "cli:local", scopeID: "local"}}
-	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "local"}, Identity: contextinfo.Identity{PlatformUserID: "local"}, PlatformMessageID: "incoming", ReplyToMessageID: "replied"})
-	e := bridge.fillContext(ctx, hook.Event{})
+	bridge := &HookBridge{identity: &IdentityResolver{platformName: "cli", actorID: "cli:local", scopeID: "local"}}
+	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{
+		Source:            contextinfo.Source{Platform: "cli", ScopeID: "local"},
+		Identity:          contextinfo.Identity{PlatformUserID: "local"},
+		PlatformMessageID: "incoming",
+		ReplyToMessageID:  "replied",
+	})
+	e := bridge.FillContext(ctx, hook.Event{})
 	if e.Platform.PlatformMessageID != "incoming" || e.Platform.ReplyToMessageID != "replied" || e.Actor.ID != "cli:local" {
 		t.Fatalf("event=%#v", e)
 	}
 }
 
 func TestHookKeepsExplicitFieldsAndDoesNotFillPartialSource(t *testing.T) {
-	bridge := &hookBridge{identity: &identityResolver{platformName: "cli", actorID: "cli:local", scopeID: "local"}}
+	bridge := &HookBridge{identity: &IdentityResolver{platformName: "cli", actorID: "cli:local", scopeID: "local"}}
 	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram"}})
-	e := bridge.fillContext(ctx, hook.Event{})
+	e := bridge.FillContext(ctx, hook.Event{})
 	if e.Platform.Name != "telegram" || e.Platform.ScopeID != "" || e.Platform.UserID != "" || e.Actor != (hook.ActorContext{}) {
 		t.Fatalf("platform-only Info invented identity: %#v", e)
 	}
 	actor := contextinfo.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: contextinfo.RoleUser}
 	ctx = contextinfo.WithActor(ctx, actor)
-	explicit := hook.Event{Platform: hook.PlatformContext{Name: "explicit", ScopeID: "explicit-scope", UserID: "explicit-user", PlatformMessageID: "explicit-message", ReplyToMessageID: "explicit-reply"}, Actor: hook.ActorContext{ID: "explicit-actor", Role: "explicit-role", DisplayName: "explicit-name"}}
-	e = bridge.fillContext(ctx, explicit)
+	explicit := hook.Event{
+		Platform: hook.PlatformContext{Name: "explicit", ScopeID: "explicit-scope", UserID: "explicit-user", PlatformMessageID: "explicit-message", ReplyToMessageID: "explicit-reply"},
+		Actor:    hook.ActorContext{ID: "explicit-actor", Role: "explicit-role", DisplayName: "explicit-name"},
+	}
+	e = bridge.FillContext(ctx, explicit)
 	if e.Platform != explicit.Platform || e.Actor != explicit.Actor {
 		t.Fatalf("explicit fields overwritten: %#v", e)
 	}
-	e = bridge.fillContext(contextinfo.WithActor(context.Background(), actor), hook.Event{})
+	e = bridge.FillContext(contextinfo.WithActor(context.Background(), actor), hook.Event{})
 	if e.Actor.ID != actor.ID || e.Actor.Role != string(actor.Role) || e.Platform.ScopeID != "" {
 		t.Fatalf("explicit security actor lost: %#v", e)
 	}

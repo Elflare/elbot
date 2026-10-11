@@ -83,7 +83,13 @@ type RunResult struct {
 	Stopped           bool
 }
 
-func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunResult {
+// Runner belongs to the caller's orchestration; Manager supplies independent tool capabilities.
+type Runner struct{ manager *Manager }
+
+func NewRunner(manager *Manager) *Runner { return &Runner{manager: manager} }
+
+func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunResult {
+	m := r.manager
 	if req.Session == nil || req.Session.Mode == storage.SessionModeChat || deps == nil {
 		return RunResult{}
 	}
@@ -263,7 +269,7 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 			if !batchPreviewSent && deps.ShouldSendPreview(ctx, req.Session, call, req.AssistantText) {
 				deps.SendPreview(ctx, fmt.Sprintf("正在调用 %s：%s", call.Name, previewArguments(call.Arguments)))
 			}
-			confirm, err := m.confirm(toolCtx, deps, req.Actor, sessionID, call, resolved, assessment)
+			confirm, err := r.confirm(toolCtx, deps, req.Actor, sessionID, call, resolved, assessment)
 			if !confirm.Allowed {
 				// Confirmation logs are emitted by the confirmation source. Stopped
 				// also covers expiry and stale waits, so it cannot define a log result.
@@ -411,7 +417,8 @@ func sendBatchToolPreview(ctx context.Context, deps RunnerDeps, req RunRequest) 
 	return true
 }
 
-func (m *Manager) confirm(ctx context.Context, deps RunnerDeps, actor contextinfo.Actor, sessionID string, call llm.ToolCallRequest, resolved ResolvedTool, assessment tool.RiskAssessment) (ConfirmResult, error) {
+func (r *Runner) confirm(ctx context.Context, deps RunnerDeps, actor contextinfo.Actor, sessionID string, call llm.ToolCallRequest, resolved ResolvedTool, assessment tool.RiskAssessment) (ConfirmResult, error) {
+	m := r.manager
 	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
 	if resolved.ResultStatus != events.ResultSucceeded {
 		message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s failed: %v", call.Name, resolved.Error))

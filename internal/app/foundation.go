@@ -6,13 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
-	"sync"
 
 	"elbot/internal/config"
-	elcron "elbot/internal/cron"
 	globalevents "elbot/internal/events"
 	"elbot/internal/logging"
-	"elbot/internal/maintenance"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/tool/builtin"
@@ -33,8 +30,8 @@ func (defaultFoundationFactory) Build(ctx context.Context, req FoundationRequest
 	if err != nil {
 		return nil, err
 	}
-	lifecycle := &foundationLifecycle{cfg: cfg, logs: logs}
-	partial := &FoundationComponents{Logs: logs, Lifecycle: lifecycle, StopCron: lifecycle.StopCron}
+	lifecycle := &foundationLifecycle{logs: logs}
+	partial := &FoundationComponents{Logs: logs, Lifecycle: lifecycle}
 
 	req.Profiler.Mark("logging.NewManager")
 	logStartupConfiguration(req.Options, cfg)
@@ -57,24 +54,12 @@ func (defaultFoundationFactory) Build(ctx context.Context, req FoundationRequest
 	req.Profiler.Mark("chat history sqlite.New")
 	chatHistory := chatHistoryStore.Repository()
 
-	maint := maintenance.NewServiceWithConfig(logs, store, chatHistory, cfg)
-	cronManager := elcron.NewManager(store.CronJobs())
-	lifecycle.cronManager = cronManager
-	if err = maint.RegisterCronHandlers(cronManager); err != nil {
-		return partial, err
-	}
-	req.Profiler.Mark("cron async prepared")
-
 	return &FoundationComponents{
-		Maintenance:      maint,
 		Config:           cfg,
 		Logs:             logs,
 		Store:            store,
 		ChatHistoryStore: chatHistoryStore,
 		ChatHistory:      chatHistory,
-		CronManager:      cronManager,
-		StartCron:        lifecycle.startCron,
-		StopCron:         lifecycle.StopCron,
 		Lifecycle:        lifecycle,
 	}, nil
 }
@@ -96,65 +81,12 @@ func logStartupConfiguration(opts Options, cfg *config.Config) {
 }
 
 type foundationLifecycle struct {
-	cfg              *config.Config
 	logs             LogManager
 	store            storage.Store
 	chatHistoryStore ChatHistoryStore
-	cronManager      *elcron.Manager
-	cronStartupDone  chan struct{}
-	cronScheduled    bool
-	cronMu           sync.Mutex
-	cronStopped      bool
-	cronCancel       context.CancelFunc
-}
-
-func (l *foundationLifecycle) startCron(ctx context.Context, service *elcron.Service) {
-	l.cronMu.Lock()
-	defer l.cronMu.Unlock()
-	if l.cronManager == nil || service == nil || l.cronScheduled || l.cronStopped {
-		return
-	}
-	ctx, l.cronCancel = context.WithCancel(ctx)
-	l.cronScheduled = true
-	l.cronStartupDone = make(chan struct{})
-	startCronAsync(ctx, l.cronManager, service, l.cfg, l.cronStartupDone)
-}
-
-// StopCron stops the producer before Runner releases runtime/Hook dependencies.
-// Every caller waits on the same startup and manager completion signals.
-func (l *foundationLifecycle) StopCron(ctx context.Context) error {
-	l.cronMu.Lock()
-	l.cronStopped = true
-	if l.cronCancel != nil {
-		l.cronCancel()
-	}
-	startupDone := l.cronStartupDone
-	var stopped context.Context
-	if l.cronManager != nil {
-		stopped = l.cronManager.Stop()
-	}
-	l.cronMu.Unlock()
-	if startupDone != nil {
-		select {
-		case <-startupDone:
-		case <-ctx.Done():
-			return fmt.Errorf("wait cron startup: %w", ctx.Err())
-		}
-	}
-	if stopped != nil {
-		select {
-		case <-stopped.Done():
-		case <-ctx.Done():
-			return fmt.Errorf("stop cron manager: %w", ctx.Err())
-		}
-	}
-	return nil
 }
 
 func (l *foundationLifecycle) Close(ctx context.Context) error {
-	if err := l.StopCron(ctx); err != nil {
-		return err
-	}
 	var errs []error
 	if l.chatHistoryStore != nil {
 		if err := l.chatHistoryStore.Close(); err != nil {

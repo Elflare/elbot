@@ -13,7 +13,7 @@ import (
 
 type toolRunPromptProvider struct {
 	tools    *toolrun.Manager
-	identity *identityResolver
+	identity dialogue.Identity
 }
 
 func (p toolRunPromptProvider) Schemas(ctx context.Context, mode string, session *storage.Session, scope session.Scope) ([]llm.ToolSchema, error) {

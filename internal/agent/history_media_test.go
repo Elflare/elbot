@@ -23,14 +23,18 @@ func TestInboundMediaAssociatesHistoryPositions(t *testing.T) {
 	root := t.TempDir()
 	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
 	center.History = history.Repository()
-	a := &messageHandler{media: center}
+	a := &MessageHandler{media: center}
 	resolver := &inboundMediaResolver{}
 	segments := []platform.MessageSegment{{Type: platform.SegmentImage, PlatformFileID: "bad", Size: center.MaxImportBytes + 1}, {Type: platform.SegmentText, Text: "hello"}, {Type: platform.SegmentImage, PlatformFileID: "good"}}
 	row := &storage.ChatMessage{Platform: "p", PlatformScopeID: "s", PlatformMessageID: "1", SenderID: "u", Segments: platform.MarshalChatSegments(segments)}
 	if err := center.History.Append(ctx, row); err != nil {
 		t.Fatal(err)
 	}
-	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ScopeID: "s"}, PlatformMessageID: "1"}, Segments: segments, MediaResolver: resolver})
+	ctx = platform.WithMessageContext(ctx, platform.MessageContext{
+		Conversation:  contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ScopeID: "s"}, PlatformMessageID: "1"},
+		Segments:      segments,
+		MediaResolver: resolver,
+	})
 	resolved, _ := platform.MessageContextFrom(a.materializePlatformMedia(ctx))
 	ids, err := center.HistoryIDs(ctx, *row)
 	if err != nil || len(ids) != 1 || ids[2] != resolved.Segments[2].MediaID {

@@ -2,6 +2,13 @@ package agent
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/hook"
@@ -14,12 +21,6 @@ import (
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/tool"
 	"elbot/internal/tool/builtin"
-	"errors"
-	"fmt"
-	"strings"
-	"sync"
-	"testing"
-	"time"
 )
 
 func newTestModels(t *testing.T, opts modelmgr.Options) *modelmgr.Service {

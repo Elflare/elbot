@@ -7,7 +7,7 @@ import (
 	"elbot/internal/turn"
 )
 
-func (c *executionCoordinator) ResumeAppend(ctx context.Context, row *storage.Session, text string) error {
+func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, row *storage.Session, text string) error {
 	locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), row.ID)
 	if err != nil {
 		return err
@@ -40,17 +40,19 @@ func (c *executionCoordinator) ResumeAppend(ctx context.Context, row *storage.Se
 	}
 }
 
-type inputDisposition uint8
+// InputDisposition directs prepared input to execution or risk confirmation.
+// It does not transfer ownership of the active Turn or its confirmation state.
+type InputDisposition uint8
 
 const (
-	inputHandled inputDisposition = iota
+	inputHandled InputDisposition = iota
 	inputRiskConfirmation
 )
 
 // AcceptInput revalidates the prepared input and dispatches under its original binding.
-// Risk responses return to the entrypoint for confirmationCoordinator to consume.
-func (c *executionCoordinator) AcceptInput(ctx context.Context, session *storage.Session, text string) (inputDisposition, error) {
-	locked, release, err := c.enterInput(ctx, session)
+// Risk responses return to the entrypoint for ConfirmationCoordinator to consume.
+func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage.Session, text string) (InputDisposition, error) {
+	locked, release, err := c.EnterInput(ctx, session)
 	if err != nil {
 		return inputHandled, err
 	}

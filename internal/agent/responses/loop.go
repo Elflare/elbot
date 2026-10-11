@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"elbot/internal/agent/dialogue"
+	"elbot/internal/contextmgr"
 	"elbot/internal/delivery"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -19,6 +20,7 @@ import (
 )
 
 type Loop struct {
+	compactor  contextmgr.Compactor
 	Repository storage.DialogueRepository
 	Context    *Context
 	Models     *modelmgr.Service
@@ -148,7 +150,13 @@ func businessMessage(row storage.Message) llm.LLMMessage {
 	if len(segments) == 0 {
 		segments = llm.TextSegments(text)
 	}
-	return llm.LLMMessage{Role: llm.MessageRole(row.Role), Segments: segments, Name: dialogue.ToolNameFromMetadata(row.Metadata), ToolCallID: row.ToolCallID, ToolCalls: metadata.ToolCalls}
+	return llm.LLMMessage{
+		Role:       llm.MessageRole(row.Role),
+		Segments:   segments,
+		Name:       dialogue.ToolNameFromMetadata(row.Metadata),
+		ToolCallID: row.ToolCallID,
+		ToolCalls:  metadata.ToolCalls,
+	}
 }
 
 func (s *turnState) instructions(ctx context.Context) (string, error) {
@@ -226,7 +234,17 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			}
 		}
 		stream := out.StartStream(s.requestCtx)
-		out.PublishRuntimeStatus(s.ctx, runtimestatus.Snapshot{SessionID: s.session.ID, Phase: runtimestatus.PhaseLLM, Provider: s.selection.Provider, Model: s.selection.Model, Mode: s.session.Mode, RequestID: in.RequestID, TurnStartedAt: in.StartedAt, StageStartedAt: storage.Now(), Usage: result.Usage})
+		out.PublishRuntimeStatus(s.ctx, runtimestatus.Snapshot{
+			SessionID:      s.session.ID,
+			Phase:          runtimestatus.PhaseLLM,
+			Provider:       s.selection.Provider,
+			Model:          s.selection.Model,
+			Mode:           s.session.Mode,
+			RequestID:      in.RequestID,
+			TurnStartedAt:  in.StartedAt,
+			StageStartedAt: storage.Now(),
+			Usage:          result.Usage,
+		})
 		final, err := s.call(s.requestCtx, pending, stream)
 		if err != nil {
 			return fail(err)
@@ -238,7 +256,15 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 				return fail(err)
 			}
 			result.Outcome = dialogue.Completed
-			result.Commit = dialogue.ReplyCommitInput{Persistence: replyCommitter{state: s}, Session: s.session, Text: s.sourceText, RawText: s.sourceText, PlatformText: final.Text, Stream: stream, Outputs: later}
+			result.Commit = dialogue.ReplyCommitInput{
+				Persistence:  replyCommitter{state: s},
+				Session:      s.session,
+				Text:         s.sourceText,
+				RawText:      s.sourceText,
+				PlatformText: final.Text,
+				Stream:       stream,
+				Outputs:      later,
+			}
 			return result
 		}
 		if err := out.FinishIntermediate(s.ctx, s.requestCtx, stream, final.Text, stream != nil); err != nil {
@@ -262,7 +288,12 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			}
 			s.tools = nil
 			out.SendPreview(s.ctx, fmt.Sprintf("已达到 max_rounds_per_turn=%d，正在请求模型总结当前进度。", s.route.Tools.MaxRoundsPerTurn()))
-			summaryInput := &storage.Message{ID: storage.NewID(), SessionID: s.session.ID, Role: storage.RoleUser, Content: "已达到工具调用轮数上限，请根据已有结果总结当前进度，不再调用工具。"}
+			summaryInput := &storage.Message{
+				ID:        storage.NewID(),
+				SessionID: s.session.ID,
+				Role:      storage.RoleUser,
+				Content:   "已达到工具调用轮数上限，请根据已有结果总结当前进度，不再调用工具。",
+			}
 			if _, err := (inputCommitter{state: s}).Commit(s.requestCtx, summaryInput); err != nil {
 				return fail(err)
 			}
@@ -288,7 +319,15 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 				return fail(err)
 			}
 			result.Outcome = dialogue.Completed
-			result.Commit = dialogue.ReplyCommitInput{Persistence: replyCommitter{state: s}, Session: s.session, Text: s.sourceText, RawText: s.sourceText, PlatformText: summary.Text, Stream: summaryStream, Outputs: later}
+			result.Commit = dialogue.ReplyCommitInput{
+				Persistence:  replyCommitter{state: s},
+				Session:      s.session,
+				Text:         s.sourceText,
+				RawText:      s.sourceText,
+				PlatformText: summary.Text,
+				Stream:       summaryStream,
+				Outputs:      later,
+			}
 			return result
 		}
 		if !toolPhase {
@@ -325,3 +364,44 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		}
 	}
 }
+
+func NewLoop(deps LoopDeps) (*Loop, error) {
+	if deps.Repository == nil {
+		return nil, fmt.Errorf("Repository is required")
+	}
+	if deps.Models == nil {
+		return nil, fmt.Errorf("Models is required")
+	}
+	if deps.Turns == nil {
+		return nil, fmt.Errorf("Turns is required")
+	}
+	if deps.Preparer == nil {
+		return nil, fmt.Errorf("Preparer is required")
+	}
+	if deps.Tools == nil {
+		return nil, fmt.Errorf("Tools is required")
+	}
+	if deps.Messages == nil {
+		return nil, fmt.Errorf("Messages is required")
+	}
+	if deps.Calls == nil {
+		return nil, fmt.Errorf("Calls is required")
+	}
+	nativeContext := &Context{Repository: deps.Repository, Media: deps.Media}
+	return &Loop{
+		Repository: deps.Repository,
+		Context:    nativeContext,
+		compactor:  &Compactor{Context: nativeContext, Messages: deps.Messages, View: deps.View, System: deps.System, Identity: deps.Preparer.Identity},
+		Models:     deps.Models,
+		Turns:      deps.Turns,
+		View:       deps.View,
+		Preparer:   deps.Preparer,
+		Tools:      deps.Tools,
+		Messages:   deps.Messages,
+		Calls:      deps.Calls,
+		System:     deps.System,
+	}, nil
+}
+
+func (r *Loop) Compactor() contextmgr.Compactor    { return r.compactor }
+func (r *Loop) Material() session.MaterialPreparer { return r.Context }

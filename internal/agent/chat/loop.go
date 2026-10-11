@@ -2,17 +2,20 @@ package chat
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/contextmgr"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
+	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
 
 type Loop struct {
+	compactor     contextmgr.Compactor
 	Contexts      *contextmgr.Service
 	Models        *modelmgr.Service
 	Turns         *turn.Manager
@@ -43,3 +46,59 @@ type chatTurnState struct {
 	tools      []llm.ToolSchema
 	usage      *llm.Usage
 }
+
+// LoopDeps contains protocol collaborators, never another protocol implementation.
+type LoopDeps struct {
+	Store    storage.Store
+	Contexts *contextmgr.Service
+	Models   *modelmgr.Service
+	Turns    *turn.Manager
+	View     dialogue.ExecutionView
+	Preparer *dialogue.Preparer
+	Tools    *dialogue.ToolExecutor
+	Messages *dialogue.MessageStore
+	Calls    *dialogue.CallProcessor
+	System   dialogue.SystemPromptManager
+}
+
+func NewLoop(deps LoopDeps) (*Loop, error) {
+	if deps.Store == nil {
+		return nil, fmt.Errorf("Store is required")
+	}
+	if deps.Contexts == nil {
+		return nil, fmt.Errorf("Contexts is required")
+	}
+	if deps.Models == nil {
+		return nil, fmt.Errorf("Models is required")
+	}
+	if deps.Turns == nil {
+		return nil, fmt.Errorf("Turns is required")
+	}
+	if deps.Preparer == nil {
+		return nil, fmt.Errorf("Preparer is required")
+	}
+	if deps.Tools == nil {
+		return nil, fmt.Errorf("Tools is required")
+	}
+	if deps.Messages == nil {
+		return nil, fmt.Errorf("Messages is required")
+	}
+	if deps.Calls == nil {
+		return nil, fmt.Errorf("Calls is required")
+	}
+	return &Loop{
+		Contexts:      deps.Contexts,
+		Models:        deps.Models,
+		Turns:         deps.Turns,
+		View:          deps.View,
+		Preparer:      deps.Preparer,
+		Tools:         deps.Tools,
+		Messages:      deps.Messages,
+		Caller:        &Caller{Calls: deps.Calls},
+		PromptBuilder: PromptBuilder{System: deps.System},
+		compactor:     &Compactor{Store: deps.Store, Models: deps.Models, Contexts: deps.Contexts, Loader: contextmgr.Loader{Store: deps.Store}},
+	}, nil
+}
+
+func (r *Loop) Compactor() contextmgr.Compactor    { return r.compactor }
+func (r *Loop) Material() session.MaterialPreparer { return session.DisplayMaterial{} }

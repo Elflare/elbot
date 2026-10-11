@@ -10,8 +10,8 @@ import (
 )
 
 func TestPublicChatInfoConsumersAndSecurityPrecedence(t *testing.T) {
-	identity := &identityResolver{platformName: "test", actorID: "local", scopeID: "local"}
-	bridge := &hookBridge{identity: identity}
+	identity := &IdentityResolver{platformName: "test", actorID: "local", scopeID: "local"}
+	bridge := &HookBridge{identity: identity}
 	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{
 		Source:   contextinfo.Source{Platform: "qqonebot", ScopeID: "group:9", ConversationKind: contextinfo.ConversationGroup, ConversationID: "9"},
 		Identity: contextinfo.Identity{ActorID: "cli:local", PlatformUserID: "qqonebot:123", Nickname: "昵称", GroupCard: "名片", DisplayName: "显示名"},
@@ -28,7 +28,7 @@ func TestPublicChatInfoConsumersAndSecurityPrecedence(t *testing.T) {
 	if err != nil || len(parts) != 1 || parts[0].Content != `meta: platform=qqonebot, conversation=group(id:9), display_name="名片"(id:123).` {
 		t.Fatalf("prompt meta = %+v, %v", parts, err)
 	}
-	event := bridge.fillContext(ctx, hook.Event{})
+	event := bridge.FillContext(ctx, hook.Event{})
 	if event.Platform.Name != "qqonebot" || event.Platform.ScopeID != "group:9" {
 		t.Fatalf("hook source = %+v", event.Platform)
 	}

@@ -2,11 +2,11 @@ package dialogue
 
 import (
 	"context"
-	"elbot/internal/events"
 	"errors"
 	"log/slog"
 
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"

@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 
+	"elbot/internal/agent/dialogue"
 	"elbot/internal/command"
 	"elbot/internal/completion"
 	"elbot/internal/contextinfo"
@@ -14,12 +15,28 @@ import (
 	"elbot/internal/turn"
 )
 
-// CompletionService exposes the structured completion service for platform adapters.
-func (a *Agent) CompletionService() *completion.Service {
-	return a.completion
+// CompletionDeps declares the query sources consumed by structured completion.
+type CompletionDeps struct {
+	Commands  *command.Router
+	Sessions  *session.Service
+	Turns     *turn.Manager
+	Store     storage.Store
+	Identity  CompletionIdentity
+	Registry  *tool.Registry
+	Preloader *toolrun.PreloadService
+	Execution CompletionExecution
+}
+type CompletionIdentity interface {
+	dialogue.Identity
+	Policy() *security.Policy
+}
+type CompletionExecution interface {
+	ModelContext(context.Context, *storage.Session) (context.Context, error)
 }
 
-func newCompletion(commands *command.Router, sessions *session.Service, turns *turn.Manager, store storage.Store, identity *identityResolver, registry *tool.Registry, preloader *toolrun.PreloadService, execution *executionCoordinator) *completion.Service {
+func NewCompletion(deps CompletionDeps) *completion.Service {
+	commands, sessions, turns, store, identity, registry, preloader, execution := deps.Commands, deps.Sessions, deps.Turns, deps.Store, deps.Identity, deps.Registry, deps.Preloader, deps.Execution
+
 	return completion.NewService(
 		completion.RiskConfirmationSource{Router: commands, Sessions: sessions, Turns: turns, Scope: identity.Scope, CommandNames: riskConfirmationCommandNames()},
 		completion.ForkMessageSource{Router: commands, Sessions: sessions, Store: store, Scope: identity.Scope},
@@ -29,7 +46,7 @@ func newCompletion(commands *command.Router, sessions *session.Service, turns *t
 				if err != nil && err != storage.ErrNotFound {
 					return contextinfo.WithoutModel(ctx)
 				}
-				prepared, err := execution.modelContext(ctx, row)
+				prepared, err := execution.ModelContext(ctx, row)
 				if err != nil {
 					return contextinfo.WithoutModel(ctx)
 				}
@@ -37,7 +54,7 @@ func newCompletion(commands *command.Router, sessions *session.Service, turns *t
 			},
 			Registry: func() *tool.Registry { return registry },
 			Actor:    identity.Actor,
-			Policy:   func() *security.Policy { return identity.policy },
+			Policy:   func() *security.Policy { return identity.Policy() },
 			Tags: func(ctx context.Context, _ *tool.Registry, actor contextinfo.Actor, policy *security.Policy) []string {
 				return preloader.Tags(contextinfo.WithActor(security.WithPolicy(ctx, policy), actor))
 			},

@@ -142,7 +142,7 @@ func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
 			if changed {
 				deps.duringConfirmation = func() { edit("after", "latest") }
 			}
-			result := manager.Run(base, deps, toolrun.RunRequest{Committer: deps,
+			result := toolrun.NewRunner(manager).Run(base, deps, toolrun.RunRequest{Committer: deps,
 				Session: &storage.Session{ID: "session", Mode: storage.SessionModeWork},
 				Actor:   actor,
 				Calls:   []llm.ToolCallRequest{{ID: "rollback", Name: "rollback_file", Arguments: `{"path":"file"}`}},
@@ -199,7 +199,7 @@ func TestRunEditPreservesConfirmationSnapshot(t *testing.T) {
 					}
 				}
 			}
-			manager.Run(contextinfo.WithActor(context.Background(), actor), deps, toolrun.RunRequest{Committer: deps,
+			toolrun.NewRunner(manager).Run(contextinfo.WithActor(context.Background(), actor), deps, toolrun.RunRequest{Committer: deps,
 				Session: &storage.Session{ID: "session", Mode: storage.SessionModeWork}, Actor: actor,
 				Calls: []llm.ToolCallRequest{{ID: "edit", Name: "edit_file", Arguments: `{"path":"file","edits":[{"operation":"replace_text","old_text":"before","new_text":"after"}]}`}},
 			})

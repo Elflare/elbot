@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/events"
 	"errors"
 	"strings"
 	"testing"
@@ -10,6 +9,7 @@ import (
 
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/request"
@@ -30,7 +30,7 @@ func TestTurnPreparationUsesRequestContext(t *testing.T) {
 			t.Run(stage+"/"+reason, func(t *testing.T) {
 				model := &fakeLLM{replies: []string{"unexpected"}}
 				f := newExecutionFixture(t, model, newTestStore(t))
-				f.hooks.SetObserver(f.chat.Preparer.Hooks.(*hookBridge).ObserveRun)
+				f.hooks.SetObserver(f.chat.Preparer.Hooks.(*HookBridge).ObserveRun)
 				ctx, reqCtx, in, _ := f.begin(t)
 				wantErr := context.Canceled
 				if reason == "timeout" {
@@ -114,7 +114,7 @@ func TestExecutionPreparationCancellationCleansUp(t *testing.T) {
 				}
 				return []dialogue.SystemPromptPart{{Content: "test"}}, nil
 			}))
-			ctx, row, err := f.execution.resolveInput(context.Background(), "hello")
+			ctx, row, err := f.execution.ResolveInput(context.Background(), "hello")
 			if err != nil {
 				t.Fatal(err)
 			}

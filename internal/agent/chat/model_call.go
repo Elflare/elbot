@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -14,6 +13,7 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
 	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/storage"
@@ -74,7 +74,11 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 		}
 		completed.ProviderError, completed.Err = true, err
 		completed.ElapsedMS = elapsedMillis(startedAt)
-		c.Calls.NotifyError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, ElapsedMS: elapsedMillis(startedAt)}}, err)
+		c.Calls.NotifyError(ctx, hook.Event{
+			Point:   hook.PointLLMResponseReceived,
+			Session: hook.SessionContext{ID: sessionID},
+			LLM:     hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, ElapsedMS: elapsedMillis(startedAt)},
+		}, err)
 		return llmCallResult{}, fmt.Errorf("chat: %w", err)
 	}
 	var assistant strings.Builder
@@ -103,7 +107,19 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 			}
 			completed.ProviderError, completed.Err = true, chunk.Error
 			completed.ElapsedMS = elapsedMillis(startedAt)
-			c.Calls.NotifyError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: sessionID}, LLM: hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, SourceText: assistant.String(), Text: assistant.String(), ToolCalls: toolCalls, Usage: usage, ElapsedMS: elapsedMillis(startedAt)}}, chunk.Error)
+			c.Calls.NotifyError(ctx, hook.Event{
+				Point:   hook.PointLLMResponseReceived,
+				Session: hook.SessionContext{ID: sessionID},
+				LLM: hook.LLMPayload{
+					Provider:   selection.Provider,
+					Model:      selection.Model,
+					SourceText: assistant.String(),
+					Text:       assistant.String(),
+					ToolCalls:  toolCalls,
+					Usage:      usage,
+					ElapsedMS:  elapsedMillis(startedAt),
+				},
+			}, chunk.Error)
 			out.SendNotice(ctx, slog.LevelError, notificationrules.ModelInterrupted(chunk.Error))
 
 			return llmCallResult{}, dialogue.MarkUserNotified(fmt.Errorf("chat stream: %w", chunk.Error))

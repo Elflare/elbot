@@ -81,9 +81,9 @@ func assembleTestOptions(opts testAgentOptions) testAssembly {
 		return nil
 	}, signal.ConnectOptions{})
 	registry := routes.New()
-	optsResult := testAssembly{RuntimeContext: opts.RuntimeContext, Config: Config{
+	optsResult := testAssembly{RuntimeContext: opts.RuntimeContext,
 		SoulPath: opts.SoulPath, LLMRequestConfig: defaults.LLMRequest, SessionIdleExpiration: defaults.Session.IdleExpiration, SandboxRoot: opts.SandboxRoot, ToolsConfig: opts.ToolsConfig,
-	}, Dependencies: Dependencies{
+
 		Routes: registry, Platform: opts.Platform, Models: opts.Models, Store: opts.Store, Media: opts.Media,
 		Sessions: session.NewServiceWithConfig(opts.Store, opts.SessionConfig, session.NewTitleGenerator(opts.Models)),
 		Commands: command.NewRouter(opts.CommandPrefixes), Requests: request.NewManager(0), Turns: turn.NewManager(),
@@ -92,7 +92,7 @@ func assembleTestOptions(opts testAgentOptions) testAssembly {
 		ToolPreloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: opts.ToolRegistry, TagsPath: opts.ToolTagsPath, Tags: opts.ToolTags}),
 		ToolRegistry:  opts.ToolRegistry, FileRollback: opts.FileRollback, Dispatcher: dispatcher, Notifications: notices, SecurityPolicy: opts.SecurityPolicy,
 		ToolProvider: opts.ToolProvider, HookManager: opts.HookManager, HookRuntime: opts.HookRuntime, ResidentMemoryStore: opts.ResidentMemoryStore,
-	}}
+	}
 
 	optsResult.ToolRunner.Media = opts.Media
 	if opts.SessionIdleExpiration != nil {
@@ -101,7 +101,7 @@ func assembleTestOptions(opts testAgentOptions) testAssembly {
 	return optsResult
 }
 
-func mustNewWithOptions(t *testing.T, cfg testAgentOptions, configure ...func(*testAgentOptions)) *Agent {
+func mustNewWithOptions(t *testing.T, cfg testAgentOptions, configure ...func(*testAgentOptions)) *agentFixture {
 	t.Helper()
 	for _, change := range configure {
 		change(&cfg)
@@ -111,7 +111,7 @@ func mustNewWithOptions(t *testing.T, cfg testAgentOptions, configure ...func(*t
 	if runtimeCtx == nil {
 		runtimeCtx = t.Context()
 	}
-	a, err := New(runtimeCtx, opts.Config, opts.Dependencies)
+	a, err := newTestAssembly(runtimeCtx, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func mustNewWithOptions(t *testing.T, cfg testAgentOptions, configure ...func(*t
 	return a
 }
 
-func newTestAgent(t *testing.T, p platform.PlatformAdapter, client llm.Client, model string, provider config.ProviderConfig, store storage.Store, configure ...func(*testAgentOptions)) *Agent {
+func newTestAgent(t *testing.T, p platform.PlatformAdapter, client llm.Client, model string, provider config.ProviderConfig, store storage.Store, configure ...func(*testAgentOptions)) *agentFixture {
 	t.Helper()
 	return newTestAgentWithPrefixes(t, p, client, map[string]config.ModelSelection{
 		storage.SessionModeWork: {Provider: "default", Model: model},
@@ -162,16 +162,21 @@ func newTestAgent(t *testing.T, p platform.PlatformAdapter, client llm.Client, m
 	}, provider, store, []string{"/"}, configure...)
 }
 
-func newTestAgentWithPrefixes(t *testing.T, p platform.PlatformAdapter, client llm.Client, modes map[string]config.ModelSelection, provider config.ProviderConfig, store storage.Store, prefixes []string, configure ...func(*testAgentOptions)) *Agent {
+func newTestAgentWithPrefixes(t *testing.T, p platform.PlatformAdapter, client llm.Client, modes map[string]config.ModelSelection, provider config.ProviderConfig, store storage.Store, prefixes []string, configure ...func(*testAgentOptions)) *agentFixture {
 	t.Helper()
 	return mustNewWithOptions(t, testAgentOptions{
-		Platform: p, Models: newTestModels(t, modelmgr.Options{Clients: map[string]llm.Client{"default": client}, Providers: map[string]config.ProviderConfig{"default": provider}, ModeModels: modes, DefaultMode: storage.SessionModeWork}),
+		Platform: p, Models: newTestModels(t, modelmgr.Options{
+			Clients:     map[string]llm.Client{"default": client},
+			Providers:   map[string]config.ProviderConfig{"default": provider},
+			ModeModels:  modes,
+			DefaultMode: storage.SessionModeWork,
+		}),
 		Providers: map[string]config.ProviderConfig{"default": provider}, Store: store, CommandPrefixes: prefixes,
 		SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork},
 	}, configure...)
 }
 
-func newTestMediaAgent(t *testing.T, p platform.PlatformAdapter, client llm.Client, store storage.Store, center *media.Manager, configure ...func(*testAgentOptions)) *Agent {
+func newTestMediaAgent(t *testing.T, p platform.PlatformAdapter, client llm.Client, store storage.Store, center *media.Manager, configure ...func(*testAgentOptions)) *agentFixture {
 	t.Helper()
 	return mustNewWithOptions(t, testAgentOptions{
 		Platform: p, Store: store, Media: center, CommandPrefixes: []string{"/"},
@@ -208,7 +213,7 @@ func completeTest(service *completion.Service, text string) []string {
 	return completion.Texts(service.Complete(context.Background(), completion.Request{Text: text}))
 }
 
-func listTestFileRollbacks(a *Agent, ctx context.Context) ([]fileops.RollbackInfo, error) {
+func listTestFileRollbacks(a *agentFixture, ctx context.Context) ([]fileops.RollbackInfo, error) {
 	ctx, err := a.PrepareFileCommand(ctx, false)
 	if errors.Is(err, storage.ErrNotFound) {
 		return nil, nil
@@ -219,7 +224,7 @@ func listTestFileRollbacks(a *Agent, ctx context.Context) ([]fileops.RollbackInf
 	return a.fileCommands.service.List(ctx)
 }
 
-func rollbackTestFile(a *Agent, ctx context.Context, id uint64) (fileops.RollbackResult, error) {
+func rollbackTestFile(a *agentFixture, ctx context.Context, id uint64) (fileops.RollbackResult, error) {
 	ctx, err := a.PrepareFileCommand(ctx, true)
 	if err != nil {
 		return fileops.RollbackResult{}, err
@@ -228,28 +233,53 @@ func rollbackTestFile(a *Agent, ctx context.Context, id uint64) (fileops.Rollbac
 }
 
 // Test fault injection must replace the shared service at every consumer.
-func setTestToolState(a *Agent, state *toolrun.StateService) {
-	a.message.input.toolState = state
+func setTestToolState(a *agentFixture, state *toolrun.StateService) {
+	a.input.toolState = state
 	a.background.toolState = state
 	testToolDeps(a).state = state
-	a.execution.dialogue.Preparer.Tools.State = state
-	a.execution.dialogue.Preparer.Tools.State = state
+	a.dialogue.Preparer.Tools.State = state
 }
 
 // Test assembly preserves fault-injection conveniences without a legacy constructor.
 type testAssembly struct {
-	Config
-	Dependencies
-	RuntimeContext context.Context
+	Routes              *routes.Registry
+	Commands            *command.Router
+	Sessions            *session.Service
+	Requests            *request.Manager
+	Turns               *turn.Manager
+	ToolRunner          *toolrun.Manager
+	ToolPreloader       *toolrun.PreloadService
+	Platform            platform.PlatformAdapter
+	Models              *modelmgr.Service
+	Contexts            *contextmgr.Service
+	ToolState           *toolrun.StateService
+	Store               storage.Store
+	Media               *media.Manager
+	ResidentMemoryStore *resident.Store
+	HookManager         hook.Manager
+	HookRuntime         HookRouter
+	Dispatcher          *dispatch.Router
+	Notifications       *notification.Manager
+
+	ToolRegistry          *tool.Registry
+	FileRollback          *fileops.Service
+	ToolProvider          dialogue.ToolSchemaProvider
+	SecurityPolicy        *security.Policy
+	SoulPath              string
+	LLMRequestConfig      config.LLMRequestConfig
+	SessionIdleExpiration config.SessionIdleExpirationConfig
+	SandboxRoot           string
+	ToolsConfig           config.ToolsConfig
+	RuntimeContext        context.Context
 }
 
-func testChatRoute(a *Agent) *chatroute.Loop {
-	loop, err := a.execution.dialogue.Routes.LoopFor(a.execution.models.ResolveMode(storage.SessionModeWork).Provider)
+func testChatRoute(a *agentFixture) *chatroute.Loop {
+	loop, err := a.dialogue.Routes.LoopFor(a.execution.models.ResolveMode(storage.SessionModeWork).Provider)
 	if err != nil {
 		panic(err)
 	}
 	return loop.(*chatroute.Loop)
 }
-func testToolDeps(a *Agent) *toolRunDeps {
-	return a.execution.dialogue.Preparer.Tools.Deps.(*toolRunDeps)
+func testToolDeps(a *agentFixture) *toolRunDeps {
+	return a.dialogue.Preparer.Tools.Deps.(*toolRunDeps)
 }

@@ -70,7 +70,7 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(connection.Disconnect)
-			result := manager.Run(ctx, deps, RunRequest{Committer: &testToolCommitter{}, Session: row, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "one", Name: "logging_tool", Arguments: "{}"}, {ID: "two", Name: "logging_tool", Arguments: "{}"}}})
+			result := NewRunner(manager).Run(ctx, deps, RunRequest{Committer: &testToolCommitter{}, Session: row, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "one", Name: "logging_tool", Arguments: "{}"}, {ID: "two", Name: "logging_tool", Arguments: "{}"}}})
 			if result.Err != nil || result.Stopped || len(records) != 4 {
 				t.Fatalf("result=%#v calls=%#v", result, records)
 			}
@@ -153,7 +153,7 @@ func TestRunnerRecordsInvocationBeforeCancellationStopsLaterOperations(t *testin
 	}
 	t.Cleanup(connection.Disconnect)
 	deps := &runnerTestDeps{}
-	result := manager.Run(ctx, deps, RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{ID: "cancel-during-call", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "logging_tool", Arguments: "{}"}}})
+	result := NewRunner(manager).Run(ctx, deps, RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{ID: "cancel-during-call", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "logging_tool", Arguments: "{}"}}})
 	if !result.Stopped || deps.completed != 0 || len(calls) != 1 || calls[0].ResultStatus != events.ResultSucceeded || calls[0].Level != slog.LevelInfo || !strings.Contains(calls[0].Content, "independent log body") {
 		t.Fatalf("result=%#v completed=%d invocation logs=%#v", result, deps.completed, calls)
 	}
@@ -173,7 +173,7 @@ func TestRunnerRecordsUnenteredCallFailure(t *testing.T) {
 	}
 	t.Cleanup(connection.Disconnect)
 	deps := &runnerTestDeps{}
-	manager.Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{ID: "missing", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "missing", Arguments: "{}"}}})
+	NewRunner(manager).Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{ID: "missing", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "missing", Arguments: "{}"}}})
 	if len(calls) != 1 || calls[0].ResultStatus != events.ResultFailed || calls[0].Level != slog.LevelError || !strings.Contains(calls[0].Content, "missing") || deps.completed != 0 {
 		t.Fatalf("invocation logs=%#v completed=%d", calls, deps.completed)
 	}
@@ -193,7 +193,7 @@ func TestRunnerPreservesExplicitEmptySessionIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(connection.Disconnect)
-	manager.Run(ctx, &runnerTestDeps{}, RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "missing", Arguments: "{}"}}})
+	NewRunner(manager).Run(ctx, &runnerTestDeps{}, RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "missing", Arguments: "{}"}}})
 	if len(records) < 4 {
 		t.Fatalf("call and persistence boundaries missing: %#v", records)
 	}
@@ -281,7 +281,7 @@ func TestRunnerBatchFailureDoesNotInventToolCompletions(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer connection.Disconnect()
-	result := manager.Run(context.Background(), &runnerTestDeps{}, RunRequest{Committer: committer, Session: &storage.Session{ID: "batch-session", Mode: storage.SessionModeWork}, Calls: []llm.ToolCallRequest{{ID: "one", Name: "one"}, {ID: "two", Name: "two"}}})
+	result := NewRunner(manager).Run(context.Background(), &runnerTestDeps{}, RunRequest{Committer: committer, Session: &storage.Session{ID: "batch-session", Mode: storage.SessionModeWork}, Calls: []llm.ToolCallRequest{{ID: "one", Name: "one"}, {ID: "two", Name: "two"}}})
 	if !errors.Is(result.Err, committer.beginErr) || len(records) != 1 || records[0].EventName != "tool_batch_prepare_failed" || records[0].ResultStatus != events.ResultFailed {
 		t.Fatalf("result = %+v, logs = %#v", result, records)
 	}
@@ -336,7 +336,7 @@ func TestRunnerUsesSourceSaveResult(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(connection.Disconnect)
-			result := manager.Run(context.Background(), deps, RunRequest{Committer: committer, Session: &storage.Session{ID: "save-source", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "logging_tool", Arguments: "{}"}}})
+			result := NewRunner(manager).Run(context.Background(), deps, RunRequest{Committer: committer, Session: &storage.Session{ID: "save-source", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "logging_tool", Arguments: "{}"}}})
 			if result.Err != nil || len(saves) != 2 {
 				t.Fatalf("business result=%#v logs=%#v", result, saves)
 			}
@@ -392,7 +392,7 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer connection.Disconnect()
-			manager.Run(context.Background(), deps, RunRequest{Committer: committer, Session: &storage.Session{ID: "session-log", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleUser}, Calls: []llm.ToolCallRequest{{ID: "call-log", Name: "logging_tool", Arguments: "{}"}}})
+			NewRunner(manager).Run(context.Background(), deps, RunRequest{Committer: committer, Session: &storage.Session{ID: "session-log", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleUser}, Calls: []llm.ToolCallRequest{{ID: "call-log", Name: "logging_tool", Arguments: "{}"}}})
 			if tc.reject || tc.confirmErr != nil {
 				if len(calls) != 0 {
 					t.Fatalf("tool never entered, invocation logs = %#v", calls)

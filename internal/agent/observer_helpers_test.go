@@ -18,7 +18,7 @@ type assembleObserverOptions struct {
 	dispatcher    *dispatch.Router
 }
 
-func connectTestObservers(a *Agent, opts assembleObserverOptions) {
+func connectTestObservers(a *agentFixture, opts assembleObserverOptions) {
 	vision := rules.NewVisionNotices(a.output)
 	_, _ = a.signals.VisionFallbackUsed.Connect(func(ctx context.Context, e agentevents.VisionFallbackUsedEvent) error {
 		return vision.Send(ctx, e.SessionID, e.Visible)

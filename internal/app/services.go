@@ -2,62 +2,36 @@ package app
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
 	"errors"
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"time"
 
-	"elbot/internal/agent"
-	"elbot/internal/agent/routes"
-	"elbot/internal/command"
-	commandbuiltin "elbot/internal/command/builtin"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+
 	"elbot/internal/config"
-	"elbot/internal/contextmgr"
-	"elbot/internal/delivery/dispatch"
+	"elbot/internal/contextinfo"
 	"elbot/internal/doctor"
-	"elbot/internal/elnis"
 	globalevents "elbot/internal/events"
-	"elbot/internal/fileops"
-	"elbot/internal/hook"
-	hookcontrol "elbot/internal/hook/control"
 	hookrules "elbot/internal/hook/rules"
-	"elbot/internal/logging"
 	"elbot/internal/media"
 	"elbot/internal/modelmgr"
-	"elbot/internal/notification"
 	platformbuiltin "elbot/internal/platform/builtin"
-	"elbot/internal/request"
 	"elbot/internal/security"
-	"elbot/internal/session"
-	toolbuiltin "elbot/internal/tool/builtin"
-	"elbot/internal/toolrun"
-	"elbot/internal/turn"
 )
 
-// sharedServices contains the single instances wired into all runtime consumers.
-// It owns no background workers; their lifetimes belong to runtimeLifecycle.
+// sharedServices owns only infrastructure shared across business lines.
 type sharedServices struct {
-	Routes          *routes.Registry
-	Models          *modelmgr.Service
-	Contexts        *contextmgr.Service
-	ToolState       *toolrun.StateService
-	ToolPreloader   *toolrun.PreloadService
-	Sessions        *session.Service
-	Requests        *request.Manager
-	Turns           *turn.Manager
-	Commands        *command.Router
-	SessionCommands *commandbuiltin.SessionCommandState
-	Files           *fileops.Service
-	Policy          *security.Policy
-	Media           *media.Manager
-	Dispatcher      *dispatch.Router
-	Notifications   *notification.Manager
-	Doctor          *doctor.Service
+	Models *modelmgr.Service
+	Policy *security.Policy
+	Media  *media.Manager
+	Doctor *doctor.Service
 }
 
-func buildSharedServices(ctx context.Context, req RuntimeRequest) (*sharedServices, error) {
+func buildSharedServices(ctx context.Context, req WiringRequest) (*sharedServices, error) {
 	foundation, cfg := req.Foundation, req.Foundation.Config
 	models, err := modelmgr.New(modelmgr.Options{
 		Clients: req.Models.ByProvider, Providers: cfg.Providers, ModeModels: cfg.ModeModels,
@@ -117,9 +91,6 @@ func buildSharedServices(ctx context.Context, req RuntimeRequest) (*sharedServic
 	if err := foundation.Store.Media().RecoverInterrupted(ctx); err != nil {
 		return nil, err
 	}
-	if err := elnis.RecoverInterrupted(ctx, foundation.Store.ElnisEvents()); err != nil {
-		return nil, err
-	}
 	mediaCenter.History = foundation.ChatHistory
 	if err := mediaCenter.ReconcileHistory(ctx); err != nil {
 		return nil, err
@@ -128,77 +99,46 @@ func buildSharedServices(ctx context.Context, req RuntimeRequest) (*sharedServic
 	mediaCenter.DownloadTimeout = time.Duration(cfg.PlatformFiles.DownloadTimeoutSecs) * time.Second
 	mediaCenter.Media = cfg.Media
 
-	dispatcher := dispatch.New(dispatch.Options{Primary: req.Platforms.Primary, Store: foundation.Store, Media: mediaCenter, MediaRetentionDays: cfg.Maintenance.SandboxCleanup.RetentionDays})
-	for _, adapter := range req.Platforms.Runtimes {
-		if adapter != nil {
-			dispatcher.RegisterPlatformSender(adapter.Name(), adapter)
-		}
-	}
-	notices := notification.New(dispatcher, req.Platforms.Primary != nil && req.Platforms.Primary.Name() == "service")
 	definitions := append(platformbuiltin.ConfigDefinitions(), hookrules.ConfigDefinition())
 	diagnostics, err := doctor.New(cfg.ConfigPath, config.NewInspector(definitions...))
 	if err != nil {
 		return nil, err
 	}
-	routeRegistry := routes.New()
-	s := &sharedServices{
-		Routes:    routeRegistry,
-		Models:    models,
-		Contexts:  contextmgr.New(contextmgr.Options{Compactors: routeRegistry, Store: foundation.Store, Models: models, Config: cfg.Context, Metadata: cfg.ModelMetadata, Providers: cfg.Providers}),
-		ToolState: toolrun.NewStateService(foundation.Store),
-		Sessions:  session.NewServiceWithConfig(foundation.Store, session.Config{NamingConfig: session.NamingConfig{TriggerStep: cfg.Session.Naming.TriggerStep}, DefaultMode: cfg.Session.DefaultMode}, session.NewTitleGenerator(models)),
-		Requests:  request.NewManager(0), Turns: turn.NewManager(),
-		Commands:        command.NewRouter(cfg.Commands.Prefixes),
-		SessionCommands: commandbuiltin.NewSessionCommandState(cfg.View.SessionListPageSize, cfg.Maintenance.SessionCleanup.RetentionDays),
-		Files:           fileops.NewService(nil),
-		Policy:          security.NewPolicy(cfg.Security.UserMaxToolRisk, cfg.Security.SuperadminConfirmRisk, cfg.Security.Superadmins),
-		Media:           mediaCenter, Dispatcher: dispatcher, Notifications: notices, Doctor: diagnostics,
-	}
-	if foundation.Maintenance != nil {
-		foundation.Maintenance.Media = s.Media
-		foundation.Maintenance.Sessions = s.Sessions
-	}
+	s := &sharedServices{Models: models, Policy: security.NewPolicy(cfg.Security.UserMaxToolRisk, cfg.Security.SuperadminConfirmRisk, cfg.Security.Superadmins), Media: mediaCenter, Doctor: diagnostics}
 	complete = true
 	return s, nil
 }
 
-func registerBuiltinCommands(foundation *FoundationComponents, s *sharedServices, agt *agent.Agent, tools *toolbuiltin.Runtime, hooks *hookcontrol.Service) error {
-	return commandbuiltin.RegisterDefaultModules(s.Commands, commandbuiltin.Deps{
-		Doctor:             s.Doctor,
-		Router:             s.Commands,
-		Sessions:           s.Sessions,
-		Requests:           s.Requests,
-		Turns:              s.Turns,
-		Store:              foundation.Store,
-		Scope:              agt.Scope,
-		Models:             s.Models,
-		Providers:          s.Routes,
-		Contexts:           s.Contexts,
-		Compact:            agt,
-		Tools:              tools.Registry,
-		Skills:             tools.SkillManager,
-		FileRollback:       s.Files,
-		PrepareFileContext: agt.PrepareFileCommand,
-		Hooks:              hooks,
-		SessionState:       s.SessionCommands,
-		Logs:               logging.Reader{Dir: foundation.Logs.LogDir()},
-		RuntimeStatus:      agt.RuntimeStatus,
-	})
-}
-
-// Execution participants run synchronously under their owners' contracts;
-// lifecycle notifications continue to use the separately owned signal bindings.
-func bindAgentExecution(s *sharedServices, agt *agent.Agent, hooks *hook.DefaultManager) {
-	s.Sessions.SetForegroundActivation(agt.AdoptForeground)
-	s.Sessions.SetActivitySource(func() []string {
-		var ids []string
-		for _, active := range s.Turns.SnapshotAll() {
-			if active.Phase != turn.PhaseIdle {
-				ids = append(ids, active.SessionID)
-			}
+func resolveFileDeliveryCredentials(cfg config.FileDeliveryConfig, configDir string) (aws.CredentialsProvider, error) {
+	backend := strings.TrimSpace(cfg.Backend)
+	if backend == "" {
+		backend = config.Default().FileDelivery.Backend
+	}
+	if backend != "s3" && backend != "hybrid" {
+		return nil, nil
+	}
+	resolve := func(name, label string) (string, error) {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return "", fmt.Errorf("%s environment variable name is empty", label)
 		}
-		return ids
-	})
-	hooks.SetWakeupFunc(agt.HookWakeup)
-	hooks.SetObserver(agt.ObserveHookRun)
+		value, ok, err := config.ConfigEnv(name, configDir)
+		if err != nil {
+			return "", fmt.Errorf("resolve %s environment variable %q: %w", label, name, err)
+		}
+		value = strings.TrimSpace(value)
+		if !ok || value == "" {
+			return "", fmt.Errorf("%s environment variable %q is not configured", label, name)
+		}
+		return value, nil
+	}
+	accessKey, err := resolve(cfg.S3AccessKeyEnv, "s3 access key")
+	if err != nil {
+		return nil, err
+	}
+	secretKey, err := resolve(cfg.S3SecretKeyEnv, "s3 secret key")
+	if err != nil {
+		return nil, err
+	}
+	return credentials.NewStaticCredentialsProvider(accessKey, secretKey, ""), nil
 }

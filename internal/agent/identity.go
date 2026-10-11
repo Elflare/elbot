@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"elbot/internal/contextinfo"
@@ -10,9 +11,9 @@ import (
 	"elbot/internal/session"
 )
 
-// identityResolver owns entry defaults and the policy used to resolve actors.
+// IdentityResolver owns entry defaults and the policy used to resolve actors.
 // SourceActor deliberately does not apply entry defaults to source-free Hooks.
-type identityResolver struct {
+type IdentityResolver struct {
 	platformName string
 	actorID      string
 	scopeID      string
@@ -20,9 +21,8 @@ type identityResolver struct {
 }
 
 // Scope resolves the same execution identity for commands and message handling.
-func (a *Agent) Scope(ctx context.Context) session.Scope { return a.identity.Scope(ctx) }
 
-func (r *identityResolver) Scope(ctx context.Context) session.Scope {
+func (r *IdentityResolver) Scope(ctx context.Context) session.Scope {
 	actor := r.Actor(ctx)
 	platformName := r.platformName
 	scopeID := r.scopeID
@@ -54,7 +54,7 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func (r *identityResolver) Actor(ctx context.Context) contextinfo.Actor {
+func (r *IdentityResolver) Actor(ctx context.Context) contextinfo.Actor {
 	if actor, ok := contextinfo.ActorFromContext(ctx); ok && (actor.ID != "" || actor.Role != "") {
 		return actor
 	}
@@ -88,7 +88,7 @@ func (r *identityResolver) Actor(ctx context.Context) contextinfo.Actor {
 	return actor
 }
 
-func (r *identityResolver) SourceActor(ctx context.Context) contextinfo.Actor {
+func (r *IdentityResolver) SourceActor(ctx context.Context) contextinfo.Actor {
 	actor, hasActor := contextinfo.ActorFromContext(ctx)
 	if info, ok := contextinfo.ConversationFromContext(ctx); ok && !hasActor && (info.Identity.PlatformUserID != "" || info.Identity.ActorID != "") {
 		policy := r.policy
@@ -104,9 +104,33 @@ func (r *identityResolver) SourceActor(ctx context.Context) contextinfo.Actor {
 	return actor
 }
 
-func (r *identityResolver) IsCLI(ctx context.Context) bool {
+func (r *IdentityResolver) IsCLI(ctx context.Context) bool {
 	if info, ok := contextinfo.ConversationFromContext(ctx); ok {
 		return info.Source.Platform == "cli"
 	}
 	return r.platformName == "cli"
 }
+
+// IdentityResolverDeps declares only the capabilities consumed by IdentityResolver.
+type IdentityResolverDeps struct {
+	PlatformName string
+	ActorID      string
+	ScopeID      string
+	Policy       *security.Policy
+}
+
+// NewIdentityResolver initializes IdentityResolver without installing cross-service callbacks.
+func NewIdentityResolver(deps IdentityResolverDeps) (*IdentityResolver, error) {
+	if deps.Policy == nil {
+		return nil, fmt.Errorf("IdentityResolver policy is required")
+	}
+	return &IdentityResolver{
+		platformName: deps.PlatformName,
+		actorID:      deps.ActorID,
+		scopeID:      deps.ScopeID,
+		policy:       deps.Policy,
+	}, nil
+}
+
+func (r *IdentityResolver) Policy() *security.Policy { return r.policy }
+func (r *IdentityResolver) PlatformName() string     { return r.platformName }

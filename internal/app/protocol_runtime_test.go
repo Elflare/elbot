@@ -50,7 +50,9 @@ func TestProductionRuntimeRunsBothHTTPProtocols(t *testing.T) {
 					}
 					delta, finish := map[string]any{"content": "assembled HTTP reply"}, "stop"
 					if index == 0 {
-						delta, finish = map[string]any{"tool_calls": []any{map[string]any{"index": 0, "id": "read", "type": "function", "function": map[string]any{"name": "read_file", "arguments": string(arguments)}}}}, "tool_calls"
+						delta, finish = map[string]any{
+							"tool_calls": []any{map[string]any{"index": 0, "id": "read", "type": "function", "function": map[string]any{"name": "read_file", "arguments": string(arguments)}}},
+						}, "tool_calls"
 					}
 					raw, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{"delta": delta, "finish_reason": finish}}})
 					fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", raw)
@@ -73,19 +75,22 @@ func TestProductionRuntimeRunsBothHTTPProtocols(t *testing.T) {
 				t.Fatal(err)
 			}
 			req.Models = models
-			runtime, err := (defaultRuntimeFactory{}).Build(t.Context(), req)
+			runtime, err := (defaultWiringFactory{}).Build(t.Context(), req)
 			t.Cleanup(func() { closeAssembledRuntime(t, runtime) })
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := (defaultIntegrationFactory{}).Attach(t.Context(), IntegrationRequest{Foundation: req.Foundation, Runtime: runtime, Platforms: req.Platforms, Mode: RunModeCLIOnly, Profiler: req.Profiler}); err != nil {
+			if err := runtime.Dialogue.Start(); err != nil {
+				t.Fatal(err)
+			}
+			if err := runtime.Hook.Start(); err != nil {
 				t.Fatal(err)
 			}
 			ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin})
-			if err := runtime.Handler.HandleMessage(ctx, "@tool:read_file read the file"); err != nil {
+			if err := runtime.Dialogue.Handler().HandleMessage(ctx, "@tool:read_file read the file"); err != nil {
 				t.Fatal(err)
 			}
-			if err := runtime.Handler.HandleMessage(ctx, "continue"); err != nil {
+			if err := runtime.Dialogue.Handler().HandleMessage(ctx, "continue"); err != nil {
 				t.Fatal(err)
 			}
 			mu.Lock()

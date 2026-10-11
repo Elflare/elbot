@@ -2,7 +2,6 @@ package responses
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"elbot/internal/agent/dialogue"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
@@ -69,7 +69,14 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 	if err != nil {
 		return final, err
 	}
-	request := api.Request{Model: s.selection.Model, Instructions: instructions, Input: items, AllowedTools: s.allowedToolNames(), Store: &store, Include: []string{"reasoning.encrypted_content"}}
+	request := api.Request{
+		Model:        s.selection.Model,
+		Instructions: instructions,
+		Input:        items,
+		AllowedTools: s.allowedToolNames(),
+		Store:        &store,
+		Include:      []string{"reasoning.encrypted_content"},
+	}
 	origin, err := s.route.View.Providers.OriginFor(s.selection.Provider)
 	if err != nil {
 		return final, err
@@ -162,7 +169,11 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 			final.Usage = result.Response.TokenUsage()
 		}
 		if ctx.Err() == nil {
-			s.route.Calls.NotifyError(ctx, hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: s.session.ID}, LLM: hook.LLMPayload{Provider: s.selection.Provider, Model: s.selection.Model}}, err)
+			s.route.Calls.NotifyError(ctx, hook.Event{
+				Point:   hook.PointLLMResponseReceived,
+				Session: hook.SessionContext{ID: s.session.ID},
+				LLM:     hook.LLMPayload{Provider: s.selection.Provider, Model: s.selection.Model},
+			}, err)
 		}
 		return final, err
 	}

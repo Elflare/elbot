@@ -29,7 +29,14 @@ func TestForwardDisplayReachesVendorInOrder(t *testing.T) {
 	}
 	defer history.Close()
 	original := []platform.MessageSegment{{Type: platform.SegmentText, Text: "[forward]"}}
-	row := &storage.ChatMessage{Platform: "qqonebot", PlatformScopeID: "group:9", PlatformMessageID: "987654321", Text: "[forward]", Segments: platform.MarshalChatSegments(original), CreatedAt: storage.Now()}
+	row := &storage.ChatMessage{
+		Platform:          "qqonebot",
+		PlatformScopeID:   "group:9",
+		PlatformMessageID: "987654321",
+		Text:              "[forward]",
+		Segments:          platform.MarshalChatSegments(original),
+		CreatedAt:         storage.Now(),
+	}
 	if err := history.Repository().Append(ctx, row); err != nil {
 		t.Fatal(err)
 	}
@@ -67,8 +74,12 @@ func TestForwardDisplayReachesVendorInOrder(t *testing.T) {
 	}
 	display = append(display, current...)
 	msg := platform.MessageContext{
-		Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ScopeID: "group:9", ConversationKind: contextinfo.ConversationGroup, ConversationID: "9"}, Identity: contextinfo.Identity{ActorID: "qqonebot:1", PlatformUserID: "1"}, ReplyToMessageID: row.PlatformMessageID},
-		Sender:       p, RawText: "芙莉丝 比较这些图片", Segments: current, ContextSegments: display, TriggerKeywords: []string{"芙莉丝"},
+		Conversation: contextinfo.Conversation{
+			Source:           contextinfo.Source{Platform: "qqonebot", ScopeID: "group:9", ConversationKind: contextinfo.ConversationGroup, ConversationID: "9"},
+			Identity:         contextinfo.Identity{ActorID: "qqonebot:1", PlatformUserID: "1"},
+			ReplyToMessageID: row.PlatformMessageID,
+		},
+		Sender: p, RawText: "芙莉丝 比较这些图片", Segments: current, ContextSegments: display, TriggerKeywords: []string{"芙莉丝"},
 		Reply: platform.ReplyContext{MessageID: row.PlatformMessageID, Text: "[forward]", Segments: original},
 	}
 	inputCtx := platform.WithMessageContext(ctx, msg)

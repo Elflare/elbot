@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/events"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +12,7 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/llm/responses"
@@ -39,7 +39,7 @@ func TestProviderAssemblyRejectsWrongNativeCapability(t *testing.T) {
 			opts := validConstructorOptions(t)
 			opts.Models = models
 			assembly := assembleTestOptions(opts)
-			if _, err := New(t.Context(), assembly.Config, assembly.Dependencies); err == nil || !strings.Contains(err.Error(), "api_mode") || !strings.Contains(err.Error(), "p") {
+			if _, err := newTestAssembly(t.Context(), assembly); err == nil || !strings.Contains(err.Error(), "api_mode") || !strings.Contains(err.Error(), "p") {
 				t.Fatalf("wrong native capability was accepted: %v", err)
 			}
 		})

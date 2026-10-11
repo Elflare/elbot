@@ -2,12 +2,12 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/events"
 	"log/slog"
 
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/background"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	runtimestatus "elbot/internal/runtime"
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/session"

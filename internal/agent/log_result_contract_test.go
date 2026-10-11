@@ -38,12 +38,15 @@ func TestSendOutputsUsesSourceLogResult(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(connection.Disconnect)
-			businessReceipt := delivery.Receipt{PlatformMessageIDs: []string{"sent"}, SentMessages: []delivery.SentMessage{{Platform: "test", ScopeID: "group:1", PlatformMessageID: "sent", OutputIndexes: []int{0}}}}
+			businessReceipt := delivery.Receipt{
+				PlatformMessageIDs: []string{"sent"},
+				SentMessages:       []delivery.SentMessage{{Platform: "test", ScopeID: "group:1", PlatformMessageID: "sent", OutputIndexes: []int{0}}},
+			}
 			backend := mediaSendFunc(func([]delivery.Output) (delivery.Receipt, events.LogResult, error) {
 				return businessReceipt, events.LogResult{ResultStatus: tc.status, Content: "source-specific diagnostic"}, tc.err
 			})
 			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Sender: backend})
-			sender := &outputSender{dispatcher: dispatch.New(dispatch.Options{})}
+			sender := &OutputSender{dispatcher: dispatch.New(dispatch.Options{})}
 			logResult, err := sender.SendOutputs(ctx, []delivery.Output{delivery.Text("business text")})
 			if err != tc.err || logResult.ResultStatus != tc.status || !strings.Contains(logResult.Content, "source-specific diagnostic") {
 				t.Fatalf("log result=%#v error=%v", logResult, err)

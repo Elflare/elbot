@@ -34,11 +34,11 @@ type skillDirectiveResult struct {
 	Invalid          []string
 }
 
-func (c *inputCoordinator) preloadContext(ctx context.Context) context.Context {
-	return contextinfo.WithActor(security.WithPolicy(ctx, c.identity.policy), c.identity.Actor(ctx))
+func (c *InputCoordinator) preloadContext(ctx context.Context) context.Context {
+	return contextinfo.WithActor(security.WithPolicy(ctx, c.identity.Policy()), c.identity.Actor(ctx))
 }
 
-func (c *inputCoordinator) prepareToolDirectives(ctx context.Context, row *storage.Session, text string) toolDirectiveResult {
+func (c *InputCoordinator) prepareToolDirectives(ctx context.Context, row *storage.Session, text string) toolDirectiveResult {
 	result := toolDirectiveResult{Text: text}
 	if row == nil || row.Mode != storage.SessionModeWork || c.registry == nil || !containsAny(text, directive.ToolPrefix, directive.ToolFullPrefix, directive.ToolShortPrefix, directive.ToolShortFull) {
 		return result
@@ -75,7 +75,7 @@ func (c *inputCoordinator) prepareToolDirectives(ctx context.Context, row *stora
 	return result
 }
 
-func (c *inputCoordinator) prepareSkillDirectives(ctx context.Context, row *storage.Session, text string) skillDirectiveResult {
+func (c *InputCoordinator) prepareSkillDirectives(ctx context.Context, row *storage.Session, text string) skillDirectiveResult {
 	result := skillDirectiveResult{Text: text}
 	if row == nil || row.Mode != storage.SessionModeWork || c.registry == nil || !containsAny(text, directive.SkillPrefix, directive.SkillFullPrefix, directive.SkillShortPrefix, directive.SkillShortFull) {
 		return result
@@ -120,7 +120,7 @@ func containsAny(text string, values ...string) bool {
 	return false
 }
 
-func (c *inputCoordinator) notifyToolDirectiveResult(ctx context.Context, result toolDirectiveResult) {
+func (c *InputCoordinator) notifyToolDirectiveResult(ctx context.Context, result toolDirectiveResult) {
 	parts := []string{}
 	if len(result.Injected) > 0 {
 		parts = append(parts, "已注入工具："+strings.Join(sortedUnique(result.Injected), ", "))
@@ -137,7 +137,7 @@ func (c *inputCoordinator) notifyToolDirectiveResult(ctx context.Context, result
 	c.output.SendChat(ctx, strings.Join(parts, "\n"))
 }
 
-func (c *inputCoordinator) notifySkillDirectiveResult(ctx context.Context, result skillDirectiveResult) {
+func (c *InputCoordinator) notifySkillDirectiveResult(ctx context.Context, result skillDirectiveResult) {
 	parts := []string{}
 	if len(result.Skills) > 0 {
 		parts = append(parts, "已注入 Skill："+strings.Join(sortedUnique(result.Skills), ", "))
@@ -169,14 +169,14 @@ func sortedUnique(values []string) []string {
 	sort.Strings(out)
 	return out
 }
-func (c *inputCoordinator) applyInputDirectives(ctx context.Context, row *storage.Session, text string) (toolDirectiveResult, skillDirectiveResult, error) {
-	locked, release, err := c.execution.enterInput(ctx, row)
+func (c *InputCoordinator) applyInputDirectives(ctx context.Context, row *storage.Session, text string) (toolDirectiveResult, skillDirectiveResult, error) {
+	locked, release, err := c.execution.EnterInput(ctx, row)
 	if err != nil {
 		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, err
 	}
 	ctx = locked
 	release()
-	ctx, err = c.execution.modelContext(ctx, row)
+	ctx, err = c.execution.ModelContext(ctx, row)
 	if err != nil {
 		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, err
 	}
@@ -192,7 +192,7 @@ func (c *inputCoordinator) applyInputDirectives(ctx context.Context, row *storag
 		Tools: append(append([]toolrun.CachedTool(nil), tools.update.Tools...), skills.update.Tools...),
 		Tags:  tools.update.Tags, ShownRuleCardFormats: skills.update.ShownRuleCardFormats,
 	}
-	locked, release, err = c.execution.enterInput(ctx, row)
+	locked, release, err = c.execution.EnterInput(ctx, row)
 	if err != nil {
 		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, err
 	}
