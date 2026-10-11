@@ -2,14 +2,44 @@ package builtin
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"elbot/internal/command"
 	"elbot/internal/events"
 	"elbot/internal/logging"
+	"elbot/internal/tool"
+	toolbuiltin "elbot/internal/tool/builtin"
 )
+
+func TestShellLogHasNoBlankLineBeforeRisk(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses POSIX shell commands")
+	}
+	result, logContent, err := toolbuiltin.NewShellTool().Call(t.Context(), tool.CallRequest{Arguments: json.RawMessage(`{"cmd":"printf 'Current directory: /home/test\\n'"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Content != "Current directory: /home/test\n" {
+		t.Fatalf("business output changed: %q", result.Content)
+	}
+	body, err := json.Marshal(struct {
+		Tool   string `json:"tool"`
+		Result string `json:"result"`
+		Risk   string `json:"risk"`
+	}{"shell", logContent, "low"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := formatLogContent(logging.LogEntry{Type: events.ContentJSON, Content: string(body)})
+	want := "tool: shell\nresult: \n  exit_code=0\n  stdout:\n  Current directory: /home/test\nrisk: low"
+	if content != want {
+		t.Fatalf("content=%q want=%q", content, want)
+	}
+}
 
 func TestUsageUnknownAndOverflowDoNotLoseCallsOrOtherTotals(t *testing.T) {
 	entries := []logging.LogEntry{

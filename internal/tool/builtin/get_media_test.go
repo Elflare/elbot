@@ -105,6 +105,26 @@ func TestGetMediaValidationAndFailureBudget(t *testing.T) {
 	}
 }
 
+func TestGetMediaErrorLogSeparators(t *testing.T) {
+	for _, args := range []string{
+		`{"message_id":["missing"]}`,
+		`{"message_id":["missing","other"]}`,
+		`{"message_id":["1"],"media_index":[[100]]}`,
+		`{"message_id":["missing","1"],"media_index":[[1],[100]]}`,
+	} {
+		t.Run(args, func(t *testing.T) {
+			ctx, tools, _ := newHistoryMediaToolTest(t)
+			result, logContent, err := tools.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(args)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if logContent == "" || logContent != result.Content || strings.HasSuffix(logContent, "\n") || strings.Contains(logContent, "\n\n") {
+				t.Fatalf("log=%q business=%q", logContent, result.Content)
+			}
+		})
+	}
+}
+
 func TestGetMediaSchemaAndHistoryIDTruncation(t *testing.T) {
 	schema := (GetMediaTool{}).Schema()
 	properties := schema.Parameters["properties"].(map[string]any)

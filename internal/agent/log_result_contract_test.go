@@ -90,14 +90,19 @@ func TestReplyCommitUsesSourceOutcomeWithoutChangingBusiness(t *testing.T) {
 
 func TestReplyCommitLogSpacingComesFromSources(t *testing.T) {
 	for _, mode := range []string{"direct", "buffered", "stream"} {
-		for _, diagnostic := range []string{"", "first paragraph\n\nsecond paragraph"} {
-			t.Run(fmt.Sprintf("%s/diagnostic=%t", mode, diagnostic != ""), func(t *testing.T) {
+		for _, tc := range []struct {
+			status     events.ResultStatus
+			level      slog.Level
+			diagnostic string
+		}{
+			{events.ResultSucceeded, slog.LevelDebug, ""},
+			{events.ResultFailed, slog.LevelError, "first paragraph\n\nsecond paragraph"},
+			{events.ResultCanceled, slog.LevelInfo, "send canceled"},
+		} {
+			t.Run(mode+"/"+tc.status.String(), func(t *testing.T) {
 				fixture := newReplyTestFixture(t, mode == "buffered")
 				fixture.in.Outputs = nil
-				status := events.ResultSucceeded
-				if diagnostic != "" {
-					status = events.ResultFailed
-				}
+				status, diagnostic := tc.status, tc.diagnostic
 				source := &events.LogResult{ResultStatus: status, Content: diagnostic}
 				fixture.platform.sendLogResult = source
 				if mode == "stream" {
@@ -122,10 +127,10 @@ func TestReplyCommitLogSpacingComesFromSources(t *testing.T) {
 					t.Fatalf("result=%+v err=%v records=%+v", result, err, records)
 				}
 				content := records[0].Content
-				if records[0].ResultStatus != status || !strings.Contains(content, "persisted=true\npreparation:") || !strings.Contains(content, "platform_message_ids=[sent]") {
+				if records[0].ResultStatus != status || records[0].Level != tc.level || !strings.Contains(content, "persisted=true\npreparation:") || !strings.Contains(content, "platform_message_ids=[sent]") {
 					t.Fatalf("reply facts changed: %+v", records[0])
 				}
-				for _, unwanted := range []string{"\nassociation:", "\nfinish:", "assistant_send:\n\n"} {
+				for _, unwanted := range []string{"\nassociation:", "\nfinish:", "\noutputs_send:", "assistant_send:\n\n"} {
 					if strings.Contains(content, unwanted) {
 						t.Fatalf("empty section or extra newline %q: %s", unwanted, content)
 					}

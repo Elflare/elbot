@@ -59,7 +59,7 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in ReplyCommitIn
 	var logResult events.LogResult
 	record := events.LogRecord{
 		Category:     events.LogRuntime,
-		Level:        slog.LevelInfo,
+		Level:        slog.LevelDebug,
 		EventName:    "reply_committed",
 		Module:       "agent",
 		Type:         events.ContentText,

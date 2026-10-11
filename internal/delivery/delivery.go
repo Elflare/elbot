@@ -248,7 +248,10 @@ func (m Manager) SendTo(ctx context.Context, target Target, outputs []Output) (R
 		}
 		return Receipt{}, logResult, err
 	}
-	if m.Sender == nil || len(outputs) == 0 {
+	if len(outputs) == 0 {
+		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped}, nil
+	}
+	if m.Sender == nil {
 		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "chat output is not sent"}, nil
 	}
 	if err := ValidateOutputs(outputs); err != nil {
