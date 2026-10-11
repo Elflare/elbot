@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refactor the log system
 - Refactor the notification system
 - Optimize CLI UI logic
+- Service mode no longer terminates when all messaging platforms exit.
 - Tool calls are now only recorded in the audit log; removed `/log -t`. Log records for tool content will be streamlined.
 - Platform connection events have been changed from adapter instance signals and App forwarding to directly publishing global signals; The Hook coordination module and Cron now subscribe independently, queue by platform, and manage shutdown, while maintaining the original connection triggers, catch-up execution, and 30-second exit budget.
 - Tools now support restricting discovery, completion, preloading, and execution by API type.

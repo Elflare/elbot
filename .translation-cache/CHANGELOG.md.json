@@ -1848,6 +1848,14 @@
       "translation": "__ELBOT_CODE_0__ high-risk tool call details now support custom plain text display for tools;",
       "updated_at": 1782631048
     },
+    "CHANGELOG.md:list:dc00349dc3372de3dca0bdcdd444cd8b6ec6cfeb5f7e74462f54264433dc7cf0": {
+      "kind": "list",
+      "source": "服务模式不再随全部消息平台退出而结束。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "dc00349dc3372de3dca0bdcdd444cd8b6ec6cfeb5f7e74462f54264433dc7cf0",
+      "translation": "Service mode no longer terminates when all messaging platforms exit.",
+      "updated_at": 1791726086
+    },
     "CHANGELOG.md:list:dc2cf953d3d9353592ba0c3cfdc1f5bd7eff01a1b55aac0fda1fabea161858db": {
       "kind": "list",
       "source": "修复查询聊天记录查不到纯图片的bug",
@@ -2146,8 +2154,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "d5db94b18ba11f2bc0c25e11a2114f917707fbb457abdbec5fa95e5fbe013b68",
+  "source_hash": "6372b1829c818946ef572b52e5df588469b2c897385fafd651e676c5e5ad9b77",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1791715549,
+  "updated_at": 1791726086,
   "version": 2
 }
