@@ -47,7 +47,8 @@ func (FinalizeElSkillTool) Schema() llm.ToolSchema {
 		BuildSchema()
 }
 
-func (t FinalizeElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t FinalizeElSkillTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 	var args finalizeElSkillArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
@@ -83,7 +84,7 @@ func (t FinalizeElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*t
 		fmt.Fprintf(&b, "ELyph: failed\n%s\n", err)
 		{
 			result := &tool.Result{Content: b.String()}
-			return result, result.Content, nil
+			return result, fmt.Sprintf("ELyph: failed\n%s", err), nil
 		}
 	}
 	b.WriteString("ELyph: ok\n")
@@ -105,7 +106,7 @@ func (t FinalizeElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*t
 		b.WriteString("reload: ok\n")
 		{
 			result := &tool.Result{Content: b.String()}
-			return result, result.Content, nil
+			return result, "text-only skill; reload: ok\n" + result.Content, nil
 		}
 	} else if err != nil {
 		{
@@ -124,7 +125,7 @@ func (t FinalizeElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*t
 		fmt.Fprintf(&b, "gofmt: failed\n%s\n", err)
 		{
 			result := &tool.Result{Content: b.String()}
-			return result, result.Content, nil
+			return result, fmt.Sprintf("gofmt: failed\n%s", err), nil
 		}
 	}
 	if formatted != file.Text {
@@ -139,7 +140,7 @@ func (t FinalizeElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*t
 		fmt.Fprintf(&b, "Go source validation: failed\n%s\n", err)
 		{
 			result := &tool.Result{Content: b.String()}
-			return result, result.Content, nil
+			return result, fmt.Sprintf("Go source validation: failed\n%s", err), nil
 		}
 	}
 	b.WriteString("Go source validation: ok\n")
@@ -154,7 +155,7 @@ func (t FinalizeElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*t
 		appendCommandOutput(&b, build.Stdout, build.Stderr)
 		{
 			result := &tool.Result{Content: b.String()}
-			return result, result.Content, nil
+			return result, fmt.Sprintf("go build: failed\n%v\nstderr:\n%s\nstdout:\n%s", build.Err, build.Stderr, build.Stdout), nil
 		}
 	}
 	b.WriteString("go build: ok\n")
@@ -169,7 +170,7 @@ func (t FinalizeElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*t
 	b.WriteString("reload: ok\n")
 	{
 		result := &tool.Result{Content: b.String()}
-		return result, result.Content, nil
+		return result, "go build: ok; reload: ok\n" + result.Content, nil
 	}
 }
 

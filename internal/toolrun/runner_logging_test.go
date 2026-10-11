@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/logging"
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/security"
 	"elbot/internal/signal"
@@ -24,6 +26,7 @@ type loggingTool struct {
 	runnerHighRiskTool
 	err    error
 	cancel context.CancelFunc
+	args   *string
 }
 
 type originLoggingDeps struct {
@@ -71,7 +74,7 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 			}
 			t.Cleanup(connection.Disconnect)
 			result := NewRunner(manager).Run(ctx, deps, RunRequest{Committer: &testToolCommitter{}, Session: row, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "one", Name: "logging_tool", Arguments: "{}"}, {ID: "two", Name: "logging_tool", Arguments: "{}"}}})
-			if result.Err != nil || result.Stopped || len(records) != 4 {
+			if result.Err != nil || result.Stopped || len(records) != 2 {
 				t.Fatalf("result=%#v calls=%#v", result, records)
 			}
 			want := initial
@@ -80,20 +83,20 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 			}
 			for i, record := range records {
 				wantRun := "before"
-				if i >= 2 {
+				if i >= 1 {
 					wantRun = "after"
 				}
 				if record.Identity.SessionID == nil || *record.Identity.SessionID != row.ID || record.Identity.RunID == nil || *record.Identity.RunID != wantRun {
 					t.Fatalf("identity did not follow the operation source: %#v", record.Identity)
 				}
-				if i < 2 {
+				if i < 1 {
 					if record.Identity.Attempt == nil || *record.Identity.Attempt != "attempt" || record.Identity.RequestID == nil || *record.Identity.RequestID != "request" || record.Identity.RootRequestID == nil || *record.Identity.RootRequestID != "root" {
 						t.Fatalf("source identity omitted: %#v", record.Identity)
 					}
 				} else if record.Identity.Attempt != nil || record.Identity.RequestID != nil || record.Identity.RootRequestID != nil {
 					t.Fatalf("stale identity retained after handoff: %#v", record.Identity)
 				}
-				if i >= 2 {
+				if i >= 1 {
 					want = "foreground"
 				}
 				if record.Category == events.LogAudit {
@@ -111,18 +114,21 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 					if got != want || implementation != string(SourceKindNative) {
 						t.Fatalf("origin/implementation changed: %s", record.Content)
 					}
-					if !strings.Contains(records[i+1].Content, "elapsed_ms="+string(content["elapsed_ms"])+"\n") {
-						t.Fatalf("audit/runtime elapsed time differed: %s / %s", record.Content, records[i+1].Content)
+					if content["elapsed_ms"] == nil {
+						t.Fatalf("elapsed time omitted: %s", record.Content)
 					}
-				} else if !strings.HasPrefix(record.Content, "run_source="+want+" ") {
-					t.Fatalf("runtime origin=%q want=%q", record.Content, want)
+				} else {
+					t.Fatalf("invocation duplicated outside audit: %#v", record)
 				}
 			}
 		})
 	}
 }
 
-func (t loggingTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
+func (t loggingTool) Call(_ context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+	if t.args != nil {
+		*t.args = string(req.Arguments)
+	}
 	logContent := "independent log body"
 	if t.cancel != nil {
 		t.cancel()
@@ -131,6 +137,66 @@ func (t loggingTool) Call(context.Context, tool.CallRequest) (*tool.Result, stri
 		logContent += "\n" + t.err.Error()
 	}
 	return &tool.Result{Content: "partial-result"}, logContent, t.err
+}
+
+func TestRunnerWritesOnlyAuditWithBoundedArgumentPreview(t *testing.T) {
+	center, err := logging.NewManager("debug", filepath.Join(t.TempDir(), "sessions.sqlite"), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = center.Close(context.Background()) })
+	var actualArgs string
+	registry := tool.NewRegistry()
+	if err := registry.Register(loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "logging_tool"}, args: &actualArgs}); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]string{"note": strings.Repeat("雪🔥", 200) + "ARGUMENT_TAIL"})
+	manager := NewManager(registry, security.NewPolicy("high", "high", nil))
+	result := NewRunner(manager).Run(t.Context(), &runnerTestDeps{}, RunRequest{
+		Committer: &testToolCommitter{}, Session: &storage.Session{ID: "bounded-audit", Mode: storage.SessionModeWork},
+		Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
+		Calls: []llm.ToolCallRequest{{ID: "call", Name: "logging_tool", Arguments: string(args)}},
+	})
+	if result.Err != nil || actualArgs != string(args) || len(result.Messages) != 1 || llm.SegmentsContentText(result.Messages[0].Segments) != "partial-result" {
+		t.Fatalf("execution changed: result=%+v args=%q", result, actualArgs)
+	}
+	if err := center.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	reader := logging.Reader{Dir: center.LogDir()}
+	for _, prefix := range []string{"audit", "elbot"} {
+		found, err := reader.Query(t.Context(), logging.LogQuery{Prefix: prefix, Days: 1, Limit: 10, MinLevel: "debug", Fields: map[string]string{"event": "tool_call"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if prefix == "elbot" {
+			if len(found.Entries) != 0 {
+				t.Fatalf("runtime duplicated tool calls: %+v", found.Entries)
+			}
+			continue
+		}
+		if len(found.Entries) != 1 || found.DamagedCount != 0 {
+			t.Fatalf("audit records=%+v", found)
+		}
+		entry := found.Entries[0]
+		if !json.Valid([]byte(entry.Raw)) || strings.Contains(entry.Raw, "\n") {
+			t.Fatalf("invalid physical JSONL: %s", entry.Raw)
+		}
+		var content map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(entry.Content), &content); err != nil {
+			t.Fatal(err)
+		}
+		var arguments, body string
+		if err := json.Unmarshal(content["arguments"], &arguments); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(content["result"], &body); err != nil {
+			t.Fatal(err)
+		}
+		if len([]rune(arguments)) != 256 || !strings.HasSuffix(arguments, "…") || strings.Contains(arguments, "ARGUMENT_TAIL") || body != "independent log body" {
+			t.Fatalf("audit body=%q arguments=%q", body, arguments)
+		}
+	}
 }
 
 func TestRunnerRecordsInvocationBeforeCancellationStopsLaterOperations(t *testing.T) {
@@ -194,7 +260,7 @@ func TestRunnerPreservesExplicitEmptySessionIdentity(t *testing.T) {
 	}
 	t.Cleanup(connection.Disconnect)
 	NewRunner(manager).Run(ctx, &runnerTestDeps{}, RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "missing", Arguments: "{}"}}})
-	if len(records) < 4 {
+	if len(records) < 3 {
 		t.Fatalf("call and persistence boundaries missing: %#v", records)
 	}
 	for _, record := range records {

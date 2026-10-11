@@ -29,12 +29,15 @@ func TestResidentMemoryToolsUseActorScope(t *testing.T) {
 	if _, _, err := normalTool.Call(ctx, tool.CallRequest{Arguments: raw(`{"action":"write","content":"用户喜欢短回复。"}`)}); err != nil {
 		t.Fatalf("write normal: %v", err)
 	}
-	result, _, err := readTool.Call(ctx, tool.CallRequest{Arguments: raw(`{"section":"all"}`)})
+	result, logContent, err := readTool.Call(ctx, tool.CallRequest{Arguments: raw(`{"section":"all"}`)})
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
 	if !strings.Contains(result.Content, "用户喜欢被称为娅娅。") || !strings.Contains(result.Content, "用户喜欢短回复。") {
 		t.Fatalf("content = %q", result.Content)
+	}
+	if !strings.Contains(logContent, "section=all") || strings.Contains(logContent, "用户喜欢") || len([]rune(logContent)) > 128 {
+		t.Fatalf("memory read should log scope and size: %q", logContent)
 	}
 
 	otherCtx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "qqonebot:2", Platform: "qqonebot", PlatformUserID: "2", Role: contextinfo.RoleUser})

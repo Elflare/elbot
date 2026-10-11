@@ -292,9 +292,11 @@ Responses 在现有 `internal/llm/responses/response.go` 中以 `ResponseUsage.U
 
 具体工具的 `Call(ctx, req)` 分别返回 `result *Result`、`logContent string`、`callErr error`；工具只填写独立日志正文，不填写日志结果或等级。业务 Result.Content／Segments 保持给业务与模型使用，含义一致的 Content 可以直接复用。两处 ExecutionResult 以 `LogResult.Content` 传递正文；未进入调用时，执行入口填写明确结果和已知原因；已进入调用的日志结果和等级由 Runner 按 ExecutionStarted 统一填写，不从 Message／Segments、业务 ResultStatus 或原始 error 推导。
 
+工具自行组织摘要并调用 `tool.TruncateLogContent`：读取／搜索／说明类结果最多 128 个 Unicode 字符，执行／编辑／写入及媒体类最多 256 字符，省略号计入预算。有现成元信息就优先使用，只有大段正文时直接截断；shell 优先退出码及 stderr，编辑优先目标和 diff。辅助函数只处理字符，不自动介入执行；Runner 不再次截断工具结果。参数日志由 Runner、Hook 等调用记录来源统一限为 256 字符，实际参数不改写。
+
 普通工具调用记录只表达工具是否实际调用起来。已调用起来的业务错误、缺 key 和 shell 非零使用 INFO／succeeded；未调用起来的调用故障使用 ERROR／failed。正常拒绝、取消和跳过按控制事实使用 INFO。中间层保留调用事实，工具未进入调用时填写明确 LogResult 和已知原因；正文不能用来反推调用结果。
 
-Runner 在 Execute 返回后，按实际调用事实统一组织等级、结果、关联身份、已有查询事实及完整九字段记录，并控制来源正文体积；局部函数 `newRecord` 统一基础九字段与当次身份，`recordCall` 补调用正文和查询事实，两类调用记录共用一次耗时计算，发布早于后续发送、完成 Hook 和保存。Execute 只执行并返回事实，不发布调用日志。发布归 `internal/toolrun/logging.go`：`logTool(ctx context.Context, record events.LogRecord)` 只接收完整记录并调用 `events.EmitLog`，不接收工具、Actor、风险或错误对象，不重组正文或反推结果。Runner 在准备、发送、保存等所属操作返回处组织独立操作记录；具体工具只返回业务结果、独立正文及原始错误。其余操作的日志结果继续使用完整 LogResult，迁移进度见[步骤 3.1](#31-其他-bug-修复)。
+Runner 在 Execute 返回后，按实际调用事实统一组织等级、结果、关联身份、已有查询事实及完整九字段记录，并控制来源正文体积；局部函数 `newRecord` 统一基础九字段与当次身份，`recordCall` 补调用正文和查询事实，调用只发布一份 audit JSON，发布早于后续发送、完成 Hook 和保存。Execute 只执行并返回事实，不发布调用日志。发布归 `internal/toolrun/logging.go`：`logTool(ctx context.Context, record events.LogRecord)` 只接收完整记录并调用 `events.EmitLog`，不接收工具、Actor、风险或错误对象，不重组正文或反推结果。Runner 在准备、发送、保存等所属操作返回处组织独立操作记录；具体工具只返回业务结果、独立正文及原始错误。其余操作的日志结果继续使用完整 LogResult，迁移进度见[步骤 3.1](#31-其他-bug-修复)。
 
 工具调用、后续发送、完成 Hook 及保存按各自操作记录，部分结果和原始错误保留；后续失败不把已经运行的调用改成未调用成功。RunnerDeps 的请求登记、调用记录保存和发现状态保存，以及 ToolCommitter 的 Begin／Prepared／Started／Result，分别返回独立 LogResult 与原始 error；实际操作来源声明结果和正文，Runner 直接组织所属操作记录。维护清理方法及媒体清理同样返回 LogResult，Cron Handler 直接传递，不从最终合并错误推导。实际保存的日志等保存返回后记录。批次准备失败只记录 tool_batch_prepare_failed，不为未调用工具伪造调用记录。
 
@@ -367,7 +369,7 @@ Reader 遇到无法解析的 JSONL 行时继续查询。正常展示跳过损坏
 - `/log`、`/audit`、`/elwisp` 使用 `--raw` 开启原始记录展示，只改变展示方式，不改变等级筛选或实际日志记录等级。
 - `--level` 按 Level（DEBUG／INFO／WARN／ERROR）设置最低查询等级，不按 ResultStatus 筛选；`-d/-i/-w/-e` 分别是最低等级的快捷方式，均不自动开启原始展示。选项顺序不改变等级与展示方式相互独立的含义。
 - 普通展示统一包含时间、等级、事件、内容和结果，不显示 Type。时间、等级、事件和结果集中展示，正文独立排版；text 展示解码后的文本，JSON 正文格式化展示。结果采用便于阅读的说明，零值或历史记录缺少结果时显示“未声明”，不默认成功。Type 仍用于内部解析，原始模式保留文件里的完整物理记录。
-- `/log` 的 `-u`、`-a`、`--system` 行为保持；`-t` 只筛选 event=tool_call。`--run_source <foreground|cron|elnis>` 独立筛选调用来源，可与 -t、等级、时间、正文及 --raw 组合，所有条件匹配后计入数量。缺值或非法值在命令解析处返回错误；帮助和补全提供该选项及三个值。旧记录缺少来源时不补造 foreground。
+- `/log` 提供 `-u`、`-a`、`--system`，不提供工具调用筛选。`/audit -t` 筛选 event=tool_call；`/audit --run_source <foreground|cron|elnis>` 独立筛选调用来源，可与 -t、等级、时间、正文及 --raw 组合，匹配后计入数量。缺值或非法值返回错误；帮助和补全提供三个来源值，缺失来源不补造 foreground。
 - `/audit` 不提供 `-u`、`-a`；`--event` 按真实事件名筛选。
 - `/log --hook`、`/audit --hook` 按 `module=hook` 与其他条件取交集；帮助与补全使用实际事件，不虚构 `hook` 事件。
 - Hook 工具调用使用 `hook_tool_call`，发送单独使用 `hook_tool_log`，两者通过实际 `tool_call_id` 关联；`source=rules|plugin` 表达来源。已进入调用为 INFO／succeeded，独立正文由工具提供；发送使用发送来源 ResultStatus，不回改调用记录。
@@ -446,6 +448,8 @@ type LogQuery struct {
 ```
 
 JSON Content 直接作为原生 JSON 值写入，避免整段重复转义；text 中的引号和换行仍按 JSON 标准转义。命令展示解码后的内容，原始模式保留物理记录。
+
+`internal/command/builtin/log.go` 的 `formatLogContent` 统一服务三种日志查询：JSON 对象按字段名排序，数组按原顺序展示，字符串只解码一次并呈现真实换行／制表符，保留字面量反斜杠及数值精度。日志中心继续负责正确编码，平台只发送格式化后的文本；`--raw` 不经过这一展示转换。
 
 #### 组合记录示意
 
@@ -577,10 +581,10 @@ flowchart TD
 - 沿用现有调用中间层：toolrun.Manager.Execute 负责原生／远程路由，tool.Executor.Execute 负责原生执行入口。中间层继续做业务，保留原始结果、错误和实际调用事实。
 - 具体工具返回业务结果与独立正文：Tool.Call(ctx, req) 返回 (result *Result, logContent string, callErr error)，不填写 Status 或 Level。两处 ExecutionResult 通过 LogResult.Content 传递正文，保留原始业务结果、错误和 ExecutionStarted；业务 Result.Content 和 Segments 的用途不变，相同文本可以直接复用，不从业务 Message 或 Segments 自动提取正文。
 - 未进入调用时，执行入口在明确分支填写 LogResult 的结果和原因。进入调用后，Runner 统一填写 INFO／succeeded，Content 使用具体工具返回的正文；不猜测正文含义，不从业务 ResultStatus、错误类型、文案或合并错误树判断调用结果。
-- internal/toolrun/logging.go 沿用 toolrun 包。logTool 统一发布各条独立记录，只接收 ctx 与完整 record。Runner 的局部函数 newRecord(ctx context.Context, eventName string, logResult events.LogResult) events.LogRecord 统一 Runtime/text 基础记录、来源等级及当次身份，供 record、recordCall 和批次失败分支复用；recordCall 补调用查询事实、Audit JSON 与 Runtime text 正文及体积控制，两类记录共用一次耗时；Execute 不发布日志。调用记录在 Execute 返回后、后续发送／完成 Hook／保存之前发布，不能因调用后 context 取消而漏记。新文件只调用 events.EmitLog，不接业务对象、不重组正文；其他操作按来源 LogResult 组织独立记录。不新增队列、中心或 Logger 注入。
+- internal/toolrun/logging.go 沿用 toolrun 包。logTool 统一发布各条独立记录，只接收 ctx 与完整 record。Runner 的局部函数 newRecord(ctx context.Context, eventName string, logResult events.LogResult) events.LogRecord 统一 Runtime/text 基础记录、来源等级及当次身份，供 record、recordCall 和批次失败分支复用；recordCall 补调用查询事实、唯一 Audit JSON，参数日志限 256 字符，保留工具自行精简的结果；Execute 不发布日志。调用记录在 Execute 返回后、后续发送／完成 Hook／保存之前发布，不能因调用后 context 取消而漏记。新文件只调用 events.EmitLog，不接业务对象、不重组正文；其他操作按来源 LogResult 组织独立记录。不新增队列、中心或 Logger 注入。
 - 普通工具已实际调用起来，包括缺 key、shell 非零和工具业务返回错误，工具调用日志为 INFO／succeeded；具体业务结果与原因写正文。工具不存在或入口故障等根本未调用起来的调用故障为 ERROR／failed。执行前正常拒绝、取消、跳过按对应控制事实使用 INFO；不因日志结果改写业务 error、ResultStatus 或停止规则。
 - 工具调用、发送、保存分别记录各自操作。发送或保存失败不会把已经运行起来的工具调用改成未调用成功；各自的错误和部分回执继续保留。实际保存操作的日志等待保存返回，未执行的操作不补结果；批次准备失败不伪造逐工具调用。
-- 工具名、调用 ID、actor_id、风险、参数、工具实现来源、run_source 和耗时等已有查询事实由 Runner 组织进 Content，落盘键使用 snake_case；具体工具的日志正文保持来源含义。既有 text／JSON、脱敏、限长和整数精度契约保持。
+- 工具名、调用 ID、actor_id、风险、256 字符参数预览、工具实现来源、run_source 和耗时等已有查询事实由 Runner 组织进 Content，落盘键使用 snake_case；具体工具的日志正文保持来源含义。既有 text／JSON、脱敏、限长和整数精度契约保持。
 - 日志发布方法只接收完整九字段记录，不引入错误分类类型、传入工具的日志对象、庞大中转事件或类型化 Content 包装。Hook 日志迁移仍归 3.2，本节不扩大其业务规则；logTool 只接收 ctx 和 record events.LogRecord。
 
 ```mermaid
@@ -588,8 +592,8 @@ flowchart TD
     A["toolrun 业务编排<br/>internal/toolrun/runner.go<br/>Manager.Run：确认、请求、输出、保存等流程"]
     A --> B["业务调用中间层<br/>internal/toolrun/toolrun.go：Manager.Execute，原生／远程路由<br/>internal/tool/executor.go：Executor.Execute，原生执行入口"]
     B --> C["具体工具实现<br/>原生：各工具实现文件，如 internal/tool/builtin/shell.go、web_search.go<br/>远程：internal/toolrun/elwisp_exec.go<br/>执行业务，提供业务结果、独立日志正文和原始错误"]
-    C -->|"工具只填 logContent<br/>相同 Content 可复用；Segments 仅供业务"| B
-    B -->|"返回 ExecutionStarted、正文及未执行结果"| D["Runner 组织调用记录<br/>internal/toolrun/runner.go：newRecord／recordCall<br/>已进入调用统一 INFO／succeeded<br/>未进入使用入口声明的结果和原因<br/>调用前固定 runSource，写入 Content<br/>填齐九字段、控制正文体积"]
+    C -->|"工具自行精简 logContent 至 128／256 字符<br/>业务 Content／Segments 保持原样"| B
+    B -->|"返回 ExecutionStarted、正文及未执行结果"| D["Runner 组织调用记录<br/>internal/toolrun/runner.go：newRecord／recordCall<br/>已进入调用统一 INFO／succeeded<br/>未进入使用入口声明的结果和原因<br/>调用前固定 runSource，写入 Content<br/>填齐九字段、参数限 256 字符、仅写 audit"]
     D --> E["工具日志发布<br/>internal/toolrun/logging.go：logTool<br/>只接收完整九字段 LogRecord<br/>调用 events.EmitLog"]
     E --> S["公共信号入口<br/>internal/events/logging.go<br/>校验契约、复制身份、发射 LogSubmitted"]
     S --> F["全局日志中心<br/>internal/logging/signals.go：记时、排队、过滤、写盘<br/>internal/logging/record.go：脱敏、限长、JSONL 编码<br/>internal/logging/logging.go：初始化、文件资源及关闭"]
@@ -603,8 +607,8 @@ flowchart TD
 - Cron Handler 的触发终态直接使用 runDirect／runLLM 的来源 LogResult，failed 与 nil error 并存时仍保留失败原因，原始业务 error 单独返回。Elnis direct、目标发送、报告投递及恢复轮次分别返回 LogResult 与原始业务 error；发送 failed 不因 nil error 丢失，保存取消不覆盖已知发送失败，保存独立失败不被先前取消覆盖。Receipt 继续只用于消息关联与投递存档，业务完成、接管、报告重试与补执行规则不读取日志结果；这些记录只描述各自所属操作，不汇总或重发 Dialogue、模型与工具日志。
 - 来源可以复用同一份 Content、身份快照及完整记录发布到不同类别，但各记录独立；身份与发生时点不同时重新由来源填写。删除重复编码、重复身份填写及仅为日志搬运的业务返回，不建立通用 Merge 或错误分类设施。
 - Elnis 的 failReportDelivery／releaseReport 接收已有 LogResult，保留发送事实，在实际失败状态写入或报告释放处补该操作的结果和 persistence_error，再返回原业务错误；恢复来源不从最终包装错误重新判断。
-- 工具调用的 Content.run_source 使用 foreground、cron、elnis；Runner 从每次刷新后的实际 context 固定局部 runSource，再交 recordCall 写入 JSON 和运行 text 正文。source 仍表示 native／elwisp 等工具实现来源，两者不混用。具体工具和 logging.go 不判断调用来源。
-- 运行 text 正文以 run_source=<值> 开头，后面保留原工具查询事实和独立正文。Reader 只对 module=toolrun、event=tool_call 的该固定标记做来源筛选，不从正文、当前 Session 或历史 metadata 反推。来源无法确定时保留空标记，不冒充 foreground，有来源条件时不匹配。
+- 工具调用的 Content.run_source 使用 foreground、cron、elnis；Runner 从每次刷新后的实际 context 固定局部 runSource，再交 recordCall 写入 audit JSON。source 仍表示 native／elwisp 等工具实现来源，两者不混用。具体工具和 logging.go 不判断调用来源。
+- 工具调用只写 audit JSON，参数日志最多 256 个 Unicode 字符。Reader 可匹配 JSON 来源键，也保留对 module=toolrun、event=tool_call 的既有 text 固定开头标记的读取；不扫描任意正文或推断缺失来源。
 - 已开始的调用保留开始时来源；前台接管后新开始的调用为 foreground，不在完成后读取当前 Session 改写。前台、Cron 和 Elnis 工具日志都走 toolrun，所属入口不改变日志归属。
 
 ```mermaid
@@ -639,7 +643,7 @@ flowchart TD
 - PrepareToolCall、CompleteToolCall 增加 LogResult；PrepareAssistant 透传来源结果。Agent、Dialogue、Runner 使用来源结果；仅业务消费者显式丢弃。runtime／rules 发送接口及 sendProtocolOutput 返回 Receipt、LogResult、error，App 直接传递；一次性 handleProtocolRequest 同时返回来源 LogResult，readV2Response 在响应写入前保留它，写入独立失败不被发送取消覆盖；Receipt 只用于业务响应、关联和部分送达，业务不读取日志正文控制流程。
 - 工具调用与输出发送各记一条 Audit JSON：`hook_tool_call` 只记录调用，`hook_tool_log` 独立记录发送，使用同一实际 `tool_call_id` 关联。runtime 沿用现有 ID 生成方式，rules 每次使用 `storage.NewID()`，传入工具及日志的 ID 相同。独立 output.send 没有实际工具调用时不补造 tool_call_id，正文保留 rule、point、source；协议请求 ID 仅用于协议关联。
 - 实际进入 Tool.Call 后立即发布 INFO／succeeded，正文使用工具返回的 logContent；业务错误、缺 key、非零退出码或调用后取消不改写调用日志。未进入调用的宿主故障、正常拒绝和取消由明确分支声明；参数解析失败、工具名为空属于调用方输入拒绝，仍发布 INFO／rejected 的 hook_tool_call，正文说明未进入 Tool.Call，未得到的工具名或调用 ID 不补造。发送使用来源 LogResult，failed 与 nil error 并存仍失败；无需发送、提前返回和未执行分支不补造成功，发送准备失败说明未进入发送。
-- 来源不预截断日志 text，只提供完整正文及 ContentLimit，由中心统一脱敏和按 Unicode 字符截断。JSON 由来源控制可能膨胀的字符串；Hook 工具参数、结果及平台诊断沿用 2048 字符预算，超限保留前 2047 字符并追加 …，业务数据和 LogResult 的原始正文不改写。JSON 编码后仍遵守整条记录含行尾的 64 KiB 上限；中心不按 ContentLimit 截断 JSON，超限报告设施失败，不写半条记录。业务使用的协议诊断选取和 stderr 尾部采集预算保留原用途。
+- 普通 text 记录由中心脱敏并按 ContentLimit 截断；工具的独立日志正文作为 audit JSON 的 result，由工具自行精简至读取类 128／执行修改类 256 字符。Runner 和 Hook 调用入口只将参数日志限制为 256 字符，不二次截断工具结果；业务数据和实际执行参数不变。其他 JSON 诊断的既有预算保持。JSON 编码后遵守整条记录含行尾的 64 KiB 上限，中心不按 ContentLimit 截断 JSON，超限报告设施失败。
 - exec 的 cancelRequested 只保存本次取消回调实际终止进程的事实，execExitCanceled 在既有平台文件核对原生退出状态；Unix 核对 SIGKILL，Windows 核对宿主终止及对应退出码，不接收或遍历 error。纯取消为 canceled，超时及独立退出、信号崩溃、IO／协议故障为 failed，正文保留同时已知的取消事实；原业务错误和进程树清理流程不改写。Worker 在同一次加锁中先固定退出状态与原因，再关闭 pending／done；请求和启动等待的取消分支读取已固定的故障事实，不等待未来故障改写已有记录。
 - `actor_id` 在授权默认值注入前固定：有 Session 跟随触发 Session 的执行 Actor，无 Session 取原始 contextinfo；缺失不补造。业务权限主体保留原用途。
 - 全部 Hook 发布点改走 LogHook：流水线、rules、waiting continuation、注册／配置、进程／重载、主动日志、stderr、协议写入、桥接及自身媒体释放。continuation 的点记录由 runtime/routes.go 组织，避免绕过普通 Manager 后丢失结果。重载 commit 返回 LogResult、error；control/service.go 透传 runtime/manager.go 的 ReplacePlugin 来源结果，worker.runReload 使用声明结果，不从回调 error 判定。来源保留组装职责；删除旧发布方法、重复转发及仅用于日志的错误分类，保留业务通知和原始错误。

@@ -72,12 +72,12 @@ func TestLogCommandDefaultsToDebugAndFiveEntries(t *testing.T) {
 	}
 }
 
-func TestLogCommandRunSourceFilterAndCompletion(t *testing.T) {
+func TestAuditCommandRunSourceFilterAndCompletion(t *testing.T) {
 	for _, source := range []string{"foreground", "cron", "elnis"} {
 		for _, args := range []string{"-t --run_source " + source + " -i --raw -n 3", "--run_source " + source + " -t -n 3 --raw -i", "--run_source " + source} {
 			service := &fakeLogService{}
-			_, err := NewLog(Deps{Logs: service}).Handle(t.Context(), command.Request{Args: args})
-			if err != nil || service.query.ContentFields["run_source"] != source {
+			_, err := NewAudit(Deps{Logs: service}).Handle(t.Context(), command.Request{Args: args})
+			if err != nil || service.query.Prefix != "audit" || service.query.ContentFields["run_source"] != source {
 				t.Fatalf("args=%q query=%#v err=%v", args, service.query, err)
 			}
 			if strings.Contains(args, "-t") && (service.query.Fields["event"] != "tool_call" || !service.query.Raw || service.query.Limit != 3 || service.query.MinLevel != "info") {
@@ -89,16 +89,16 @@ func TestLogCommandRunSourceFilterAndCompletion(t *testing.T) {
 		}
 	}
 	for _, args := range []string{"--run_source", "--run_source other", "--run_source \"\""} {
-		if _, err := parseRuntimeLogQuery(args); err == nil {
+		if _, err := parseAuditQuery(args); err == nil {
 			t.Fatalf("invalid source accepted: %q", args)
 		}
 	}
-	cmd := NewLog(Deps{})
+	cmd := NewAudit(Deps{})
 	if !strings.Contains(cmd.Info().Help, "--run_source") {
 		t.Fatal("help omits run source")
 	}
-	for _, raw := range []string{"/log --run_", "/log --run_source "} {
-		got := cmd.(command.Completer).Complete(t.Context(), command.CompletionRequest{Raw: raw, Prefix: "/", Name: "log", Args: strings.TrimPrefix(raw, "/log "), Cursor: len(raw)})
+	for _, raw := range []string{"/audit --run_", "/audit --run_source "} {
+		got := cmd.(command.Completer).Complete(t.Context(), command.CompletionRequest{Raw: raw, Prefix: "/", Name: "audit", Args: strings.TrimPrefix(raw, "/audit "), Cursor: len(raw)})
 		var values []string
 		for _, completion := range got {
 			values = append(values, completion.Text)
@@ -245,12 +245,15 @@ func TestLogCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 		}
 	}
 
-	_, err = NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `-t`})
-	if err != nil {
-		t.Fatalf("log handle -t: %v", err)
+	for _, args := range []string{"-t", "--run_source cron"} {
+		if _, err = NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: args}); err == nil {
+			t.Fatalf("runtime accepted migrated tool option: %s", args)
+		}
 	}
-	if service.query.Fields["event"] != "tool_call" {
-		t.Fatalf("query = %#v", service.query)
+	for _, option := range logCompletionOptions(false, false) {
+		if option.Text == "-t" || option.Text == "--run_source" {
+			t.Fatalf("runtime still offers migrated tool option: %s", option.Text)
+		}
 	}
 
 	_, err = NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `--hook`})
@@ -482,7 +485,7 @@ func TestLogRawIndependentOfLevelAndContentRendering(t *testing.T) {
 			if service.query.Raw != wantRaw || strings.Contains(result.Content, "ORIGINAL_PHYSICAL_RECORD") != wantRaw {
 				t.Fatalf("args=%q query=%+v content=%s", args, service.query, result.Content)
 			}
-			if !wantRaw && (!strings.Contains(result.Content, "失败") || !strings.Contains(result.Content, "WARN") || !strings.Contains(result.Content, "\n  \"tool\": \"shell\"") || strings.Contains(result.Content, "type=")) {
+			if !wantRaw && (!strings.Contains(result.Content, "失败") || !strings.Contains(result.Content, "WARN") || !strings.Contains(result.Content, "\ntool: shell") || !strings.Contains(result.Content, "9007199254740993") || strings.Contains(result.Content, "type=")) {
 				t.Fatalf("normal content=%s", result.Content)
 			}
 		}

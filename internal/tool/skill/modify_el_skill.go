@@ -92,7 +92,8 @@ func (ReadElSkillTool) Schema() llm.ToolSchema {
 	}
 }
 
-func (t ReadElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t ReadElSkillTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
 	if err := ctx.Err(); err != nil {
 		return nil, err.Error(), err
 	}
@@ -135,7 +136,7 @@ func (t ReadElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*tool.
 	}
 	{
 		result := &tool.Result{Content: strings.TrimRight(b.String(), "\n")}
-		return result, result.Content, nil
+		return result, fmt.Sprintf("skill=%s target=%s lines=%d-%d/%d", args.Name, args.Target, start, end, len(lines)), nil
 	}
 }
 
@@ -193,7 +194,8 @@ func (t ModifyElSkillTool) RiskDetail(ctx context.Context, req tool.CallRequest)
 	return strings.TrimRight(b.String(), "\n"), nil
 }
 
-func (t ModifyElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t ModifyElSkillTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 	preview, err := t.preview(ctx, req)
 	if err != nil {
 		return nil, err.Error(), err
@@ -204,13 +206,10 @@ func (t ModifyElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*too
 			result, callErr := t.modifyElyph(preview)
 			logContent := ""
 			if result != nil {
-				logContent = result.Content
+				logContent = fmt.Sprintf("modified=%s target=%s\ndiff:\n%s", preview.Name, preview.Target, preview.Diff)
 			}
 			if callErr != nil {
-				if logContent != "" {
-					logContent += "\n"
-				}
-				logContent += callErr.Error()
+				logContent = callErr.Error() + "\n" + logContent
 			}
 			return result, logContent, callErr
 		}
@@ -219,13 +218,10 @@ func (t ModifyElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*too
 			result, callErr := t.modifyCodeSource(preview)
 			logContent := ""
 			if result != nil {
-				logContent = result.Content
+				logContent = fmt.Sprintf("modified=%s target=%s\ndiff:\n%s", preview.Name, preview.Target, preview.Diff)
 			}
 			if callErr != nil {
-				if logContent != "" {
-					logContent += "\n"
-				}
-				logContent += callErr.Error()
+				logContent = callErr.Error() + "\n" + logContent
 			}
 			return result, logContent, callErr
 		}

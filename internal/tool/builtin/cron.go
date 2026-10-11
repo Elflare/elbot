@@ -86,11 +86,12 @@ func (t CronTool) Info() tool.Info {
 func (t CronTool) Schema() llm.ToolSchema {
 	return cronBuilder(t.Name(), t.Info().Description).BuildSchema()
 }
-func (t CronTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t CronTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
 	now := t.info.CurrentTime().Format("2006-01-02 15:04:05")
 	{
 		result := textResult("cron 是定时任务管理入口。当前本地时间：" + now + "。请调用 cron_query 或 cron_write。cron_query 不传 name 时列出 cron，传 name 时查询单个 cron。")
-		return result, result.Content, nil
+		return result, "cron guide returned; current_time=" + now, nil
 	}
 }
 
@@ -112,7 +113,8 @@ func (t CronQueryTool) Schema() llm.ToolSchema {
 		Boolean("include_completed", "列出 cron 时是否显示已完成的 cron。默认 false；想查看历史一次性任务时设为 true。 ").
 		BuildSchema()
 }
-func (t CronQueryTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t CronQueryTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
 	var args cronQueryArgs
 	if err := decodeArgs(req.Arguments, &args); err != nil {
 		return nil, err.Error(), err
@@ -124,15 +126,9 @@ func (t CronQueryTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Re
 		}
 		{
 			result, callErr := jsonResult(view)
-			logContent := ""
-			if result != nil {
-				logContent = result.Content
-			}
+			logContent := fmt.Sprintf("name=%s enabled=%t completed=%t", view.Job.Name, view.Job.Enabled, view.Delivery.TaskCompleted)
 			if callErr != nil {
-				if logContent != "" {
-					logContent += "\n"
-				}
-				logContent += callErr.Error()
+				logContent = callErr.Error()
 			}
 			return result, logContent, callErr
 		}
@@ -143,15 +139,12 @@ func (t CronQueryTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Re
 	}
 	{
 		result, callErr := jsonResult(views)
-		logContent := ""
-		if result != nil {
-			logContent = result.Content
+		logContent := fmt.Sprintf("returned=%d", len(views))
+		for _, view := range views {
+			logContent += fmt.Sprintf("\nname=%s enabled=%t completed=%t", view.Job.Name, view.Job.Enabled, view.Delivery.TaskCompleted)
 		}
 		if callErr != nil {
-			if logContent != "" {
-				logContent += "\n"
-			}
-			logContent += callErr.Error()
+			logContent = callErr.Error()
 		}
 		return result, logContent, callErr
 	}
@@ -183,7 +176,8 @@ func (t CronWriteTool) Schema() llm.ToolSchema {
 		Boolean("enabled", "create：创建后是否启用，默认 true；update：是否启用。false 表示停用但保留记录。 ").
 		BuildSchema()
 }
-func (t CronWriteTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t CronWriteTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 	var args cronWriteArgs
 	if err := decodeArgs(req.Arguments, &args); err != nil {
 		return nil, err.Error(), err

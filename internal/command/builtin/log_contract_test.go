@@ -45,3 +45,29 @@ func TestDamagedLogsAreReportedWithoutMatchedEntries(t *testing.T) {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }
+
+func TestLogQueriesRenderDecodedJSONStrings(t *testing.T) {
+	for _, factory := range []func(Deps) command.Handler{NewLog, NewAudit, NewElwisp} {
+		service := &fakeLogService{entries: []logging.LogEntry{{
+			Type:    events.ContentJSON,
+			Content: `{"result":"first\n\tsecond","literal":"printf '\\n'","nested":{"items":["line one\nline two",9007199254740993]},"empty":[],"flag":false,"none":null}`,
+			Raw:     "ORIGINAL_PHYSICAL_RECORD",
+		}}}
+		result, err := factory(Deps{Logs: service}).Handle(t.Context(), command.Request{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{"first\n", "\tsecond", "line one\n", "line two", `printf '\n'`, "9007199254740993", "false", "null", "[]"} {
+			if !strings.Contains(result.Content, want) {
+				t.Errorf("missing decoded value %q in %s", want, result.Content)
+			}
+		}
+		if strings.Contains(result.Content, `first\n\tsecond`) || strings.Contains(result.Content, `line one\nline two`) {
+			t.Errorf("JSON escapes leaked into normal display: %s", result.Content)
+		}
+		result, err = factory(Deps{Logs: service}).Handle(t.Context(), command.Request{Args: "--raw"})
+		if err != nil || !strings.Contains(result.Content, service.entries[0].Raw) {
+			t.Fatalf("raw display changed: result=%+v err=%v", result, err)
+		}
+	}
+}

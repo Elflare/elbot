@@ -1,7 +1,6 @@
 package builtin
 
 import (
-	"bytes"
 	"context"
 	"elbot/internal/events"
 	"encoding/json"
@@ -29,6 +28,7 @@ func auditInfo() command.Info {
   -d, -i, -w, -e       Shorthand for --level debug/info/warn/error.
   --raw                Show original physical log records.
   -t                   Filter tool events.
+  --run_source <name>   Filter tool run source: foreground, cron, elnis.
   --hook               Filter records from the hook module.
   --since <time>        Show events after a time, e.g. 2h, 30m, 2026-06-03, 2026-06-03T15:04:05.
 
@@ -44,6 +44,7 @@ func auditInfo() command.Info {
 Examples:
   /audit
   /audit --event tool_call --risk high -n 10
+  /audit -t --run_source cron -n 20
   /audit -d --contains "hello"
   /audit --actor cli:local --since 24h`),
 	}
@@ -103,8 +104,7 @@ func logInfo() command.Info {
   --level <level>       Minimum level: debug, info, warn, error. Default: debug.
   -d, -i, -w, -e       Shorthand for --level debug/info/warn/error.
   --raw                Show original physical log records.
-  -u, -a, -t           Filter user/assistant/tool events.
-  --run_source <name>   Filter tool run source: foreground, cron, elnis.
+  -u, -a               Filter user/assistant events.
   -s, --system         Filter system prompt events.
   --hook               Filter records from the hook module.
   --since <time>        Show logs after a time, e.g. 2h, 30m, 2026-06-03, 2026-06-03T15:04:05.
@@ -117,7 +117,7 @@ Examples:
   /log
   /log -w -n 10
   /log --msg startup --days 3
-  /log -t --run_source cron -n 20`),
+  /log -u -n 20`),
 	}
 }
 
@@ -163,7 +163,7 @@ func (c logCommand) Complete(ctx context.Context, req command.CompletionRequest)
 	_ = ctx
 	token := currentCompletionToken(req)
 	previous := previousLogToken(req.Raw, token.Start)
-	if !c.audit && !c.elwisp && previous == "--run_source" {
+	if c.audit && previous == "--run_source" {
 		return completeStringOptions([]string{"foreground", "cron", "elnis"}, token.Text, token.Start, token.End, "run_source")
 	}
 	if previous == "--level" {
@@ -205,13 +205,11 @@ func logCompletionOptions(audit, elwisp bool) []completionOption {
 	}
 	if !elwisp {
 		options = append(options,
-			completionOption{Text: "-t", Description: "Tool events"},
 			completionOption{Text: "--hook", Description: "Hook module records"},
 		)
 	}
 	if !audit && !elwisp {
 		options = append(options,
-			completionOption{Text: "--run_source", Description: "Tool run source: foreground, cron, elnis"},
 			completionOption{Text: "-u", Description: "User events"},
 			completionOption{Text: "-a", Description: "Assistant events"},
 			completionOption{Text: "-s", Description: "System prompt events"},
@@ -220,6 +218,8 @@ func logCompletionOptions(audit, elwisp bool) []completionOption {
 	}
 	if audit {
 		options = append(options,
+			completionOption{Text: "-t", Description: "Tool events"},
+			completionOption{Text: "--run_source", Description: "Tool run source: foreground, cron, elnis"},
 			completionOption{Text: "--event", Description: "Filter audit event"},
 			completionOption{Text: "--risk", Description: "Filter risk level"},
 			completionOption{Text: "--actor", Description: "Filter actor ID"},
@@ -298,6 +298,13 @@ func parseAuditQuery(args string) (logging.LogQuery, error) {
 			fields["session_id"] = value
 		case "tool":
 			query.ContentFields["tool"] = value
+		case "run_source":
+			switch value {
+			case "foreground", "cron", "elnis":
+				query.ContentFields["run_source"] = value
+			default:
+				return fmt.Errorf("invalid --run_source %q: expected foreground, cron or elnis", value)
+			}
 		default:
 			return fmt.Errorf("unknown option: --%s", name)
 		}
@@ -314,16 +321,7 @@ func parseRuntimeLogQuery(args string) (logging.LogQuery, error) {
 	query.MinLevel = "debug"
 	fields := map[string]string{}
 	if err := parseLogArgsWithOptions(args, &query, fields, func(name, value string) error {
-		if name != "run_source" {
-			return fmt.Errorf("unknown option: --%s", name)
-		}
-		switch value {
-		case "foreground", "cron", "elnis":
-			query.ContentFields["run_source"] = value
-			return nil
-		default:
-			return fmt.Errorf("invalid --run_source %q: expected foreground, cron or elnis", value)
-		}
+		return fmt.Errorf("unknown option: --%s", name)
 	}, logArgOptions{eventFilters: true, messageFilters: true, systemFilter: true}); err != nil {
 		return query, err
 	}
@@ -461,7 +459,7 @@ func parseLogArgsWithOptions(args string, query *logging.LogQuery, fields map[st
 			}
 			fields["event"] = "assistant_message"
 		case "-t":
-			if !opts.eventFilters {
+			if !opts.eventFilters || opts.messageFilters {
 				return fmt.Errorf("unknown option: %s", name)
 			}
 			fields["event"] = "tool_call"
@@ -619,14 +617,7 @@ func formatAuditEntries(raw bool) func([]logging.LogEntry) string {
 				level = "未声明"
 			}
 			fmt.Fprintf(&sb, "%s  %s  %s  %s\n", formatLogEntryTime(entry), level, entry.EventName, result)
-			content := entry.Content
-			if entry.Type == events.ContentJSON {
-				var body bytes.Buffer
-				if err := json.Indent(&body, []byte(content), "", "  "); err == nil {
-					content = body.String()
-				}
-			}
-			sb.WriteString(content)
+			sb.WriteString(formatLogContent(entry))
 			if entry.LegacyFields != nil {
 				appendRuntimeLogFields(&sb, entry.LegacyFields)
 			}
@@ -664,14 +655,7 @@ func formatRuntimeLogEntries(raw bool) func([]logging.LogEntry) string {
 				level = "未声明"
 			}
 			fmt.Fprintf(&sb, "%s  %s  %s  %s\n", formatLogEntryTime(entry), level, entry.EventName, result)
-			content := entry.Content
-			if entry.Type == events.ContentJSON {
-				var body bytes.Buffer
-				if err := json.Indent(&body, []byte(content), "", "  "); err == nil {
-					content = body.String()
-				}
-			}
-			sb.WriteString(content)
+			sb.WriteString(formatLogContent(entry))
 			if entry.LegacyFields != nil {
 				appendRuntimeLogFields(&sb, entry.LegacyFields)
 			}
@@ -709,20 +693,73 @@ func formatElwispLogEntries(raw bool) func([]logging.LogEntry) string {
 				level = "未声明"
 			}
 			fmt.Fprintf(&sb, "%s  %s  %s  %s\n", formatLogEntryTime(entry), level, entry.EventName, result)
-			content := entry.Content
-			if entry.Type == events.ContentJSON {
-				var body bytes.Buffer
-				if err := json.Indent(&body, []byte(content), "", "  "); err == nil {
-					content = body.String()
-				}
-			}
-			sb.WriteString(content)
+			sb.WriteString(formatLogContent(entry))
 			if entry.LegacyFields != nil {
 				appendRuntimeLogFields(&sb, entry.LegacyFields)
 			}
 		}
 		return sb.String()
 	}
+}
+
+// formatLogContent renders JSON values as readable fields. Strings are decoded
+// once, so real newlines display normally while literal backslashes survive.
+func formatLogContent(entry logging.LogEntry) string {
+	if entry.Type != events.ContentJSON {
+		return entry.Content
+	}
+	decoder := json.NewDecoder(strings.NewReader(entry.Content))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return entry.Content
+	}
+	var render func(any, string) string
+	render = func(value any, indent string) string {
+		switch value := value.(type) {
+		case map[string]any:
+			if len(value) == 0 {
+				return "{}"
+			}
+			keys := make([]string, 0, len(value))
+			for key := range value {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
+			var body strings.Builder
+			for i, key := range keys {
+				if i > 0 {
+					body.WriteString("\n" + indent)
+				}
+				body.WriteString(key + ": ")
+				content := render(value[key], indent+"  ")
+				if strings.Contains(content, "\n") {
+					body.WriteString("\n" + indent + "  ")
+				}
+				body.WriteString(content)
+			}
+			return body.String()
+		case []any:
+			if len(value) == 0 {
+				return "[]"
+			}
+			var body strings.Builder
+			for i, item := range value {
+				if i > 0 {
+					body.WriteString("\n" + indent)
+				}
+				body.WriteString("- " + render(item, indent+"  "))
+			}
+			return body.String()
+		case string:
+			return strings.ReplaceAll(value, "\n", "\n"+indent)
+		case nil:
+			return "null"
+		default:
+			return fmt.Sprint(value)
+		}
+	}
+	return render(value, "")
 }
 
 func appendRuntimeLogFields(sb *strings.Builder, fields map[string]string) {

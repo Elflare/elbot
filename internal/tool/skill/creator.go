@@ -66,7 +66,8 @@ func (CreateElSkillTool) Schema() llm.ToolSchema {
 		BuildSchema()
 }
 
-func (t CreateElSkillTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t CreateElSkillTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 	var args createElSkillArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {

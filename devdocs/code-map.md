@@ -96,7 +96,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/command/`、`internal/command/builtin/register.go`：Router、命令契约与注册。
 - `internal/command/builtin/`：内置命令；`internal/agent/command_executor.go`：权限、冲突、命令结果的同步通知及发送成功后的 Continuation。
-- `internal/command/builtin/log.go`：运行、审计及 Elwisp 日志的筛选、展示、帮助和补全；raw 与等级独立，坏行提示，Hook 按模块筛选；/log --run_source 提供解析、校验及三个来源值补全，复用 ContentFields。`usage.go` 按 Content 聚合 llm_usage，未知或溢出按项传播。
+- `internal/command/builtin/log.go`：运行、审计及 Elwisp 日志的筛选、展示、帮助和补全；formatLogContent 共用 JSON 字段展示，解码字符串并保留整数精度，raw 与等级独立。工具调用由 /audit -t 和 --run_source 查询；/log 不提供工具筛选。Hook 按模块筛选，坏行单独提示。`usage.go` 按 Content 聚合 llm_usage，未知或溢出按项传播。
 - `internal/completion/`、`internal/agent/completion.go`：公共结构化补全与专属查询依赖；平台直接接收补全服务。
 - `internal/agent/file_rollback.go`：文件命令准入；`internal/command/builtin/rollback.go`：撤销命令。
 - [命令文档](../docs/commands.md)。
@@ -114,7 +114,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:tool -->
 ## Tool Runtime、工具状态与文件
 
-- `internal/tool/`、`internal/tool/builtin/`：注册、schema、Runtime 执行器与内置工具。
+- `internal/tool/`、`internal/tool/builtin/`：注册、schema、Runtime 执行器与内置工具。各工具自行组织日志摘要并选择 128／256 字符预算；`internal/tool/tool.go` 的 TruncateLogContent 仅提供调用方主动使用的 Unicode 截断，不自动处理结果。
 - `internal/toolrun/`：视图、路由、权限风险、确认及调用参数媒体引用。
 - `internal/toolrun/state.go`、`internal/toolrun/preload.go`、`internal/toolrun/background.go`：状态提交、预加载与后台白名单；预载失败与跳过由来源记录身份、原因和结果。
 - `internal/agent/tool_directive.go`、`internal/agent/tool_cache.go`：输入指令和状态提交编排。
@@ -127,7 +127,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/agent/dialogue/tool_execution.go`：路线共用的 ToolRun 入口与协议提交器，批次准备失败只记批次日志。
 - `internal/agent/toolrun_adapter.go`：Hook、子请求、确认、调用记录与状态提交桥接；请求登记、RecordToolCall 和发现状态保存各自返回独立 LogResult 与原始错误，Runner 不再推导这些操作的结果。
-- `internal/toolrun/runner.go`：调用方创建的 Runner，借用共享 Manager 编排单工具确认、请求、输出及实际保存；newRecord 复用基础九字段与当次身份，recordCall 在 Execute 返回后统一填写调用日志结果和等级、组装九字段及控制正文体积，再交 logging.go 的 logTool 发布；调用开始前从刷新 context 固定 runSource，分别写入 JSON run_source 与 text 首部标记，接管不改写已开始调用。工具只提供正文；后续操作接收来源 LogResult，分别组织记录。
+- `internal/toolrun/runner.go`：Runner 借用共享 Manager 编排单工具确认、请求、输出及实际保存；newRecord 复用基础九字段与当次身份，recordCall 在 Execute 返回后填写调用日志结果、等级和查询事实，仅发布一份 audit JSON。参数日志限 256 字符，工具返回的独立摘要不再截断。调用前固定 runSource 写入 JSON，接管不改写已开始调用；后续操作分别使用所属来源 LogResult。
 - `internal/toolrun/toolrun.go`：工具业务解析及原生／远程调用中间层，Execute 保留业务结果、原始错误、ExecutionStarted 和独立正文；未进入调用时声明明确结果及原因，不组装或发布调用日志。
 - `internal/toolrun/logging.go`：logTool 统一接收 ctx 和完整 LogRecord，直接 EmitLog；工具调用记录和编排操作记录均由 Runner 来源组装；全局队列、脱敏和落盘仍归 internal/logging。
 - `internal/tool/executor.go`、`internal/toolrun/elwisp_exec.go`：原生／远程执行入口，保留业务 Result、原始 error 与真实 ExecutionStarted；LogResult.Content 传递工具独立正文；未进入调用的结果在入口明确，已进入调用的日志结果交 Runner 统一填写。PolicyDeniedError 只表达业务拒绝事实。

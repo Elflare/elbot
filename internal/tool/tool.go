@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
@@ -61,8 +62,19 @@ type Tool interface {
 	// Call returns the business result, an independent log body, and the original
 	// business error. The runner declares the invocation log status and level
 	// from actual call entry; tools only supply logContent, including diagnostics.
-	// Result.Content may be explicitly reused when its meaning matches.
+	// Tools summarize or truncate their own log bodies: read/lookup results use
+	// 128 Unicode characters, execution/mutation results use 256, including ….
 	Call(ctx context.Context, req CallRequest) (result *Result, logContent string, callErr error)
+}
+
+// TruncateLogContent bounds a log-only string to a positive Unicode character
+// limit, including the ellipsis. Callers choose the content and limit; business
+// results and execution arguments must remain unchanged.
+func TruncateLogContent(text string, limit int) string {
+	if utf8.RuneCountInString(text) <= limit {
+		return text
+	}
+	return string([]rune(text)[:limit-1]) + "…"
 }
 
 type RiskAssessment struct {

@@ -59,7 +59,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	callCtx := w.manager.rootCtx
 	actor, _ := contextinfo.ActorFromContext(callCtx)
 	// Keep the trigger actor separate from the permission principal below.
-	content := map[string]any{"source": "plugin", "hook": w.config.ID, "arguments": string(params.Arguments)}
+	content := map[string]any{"source": "plugin", "hook": w.config.ID, "arguments": tool.TruncateLogContent(string(params.Arguments), 256)}
 	if name != "" {
 		content["tool"] = name
 	}
@@ -93,6 +93,9 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 			content["user_id"] = actor.PlatformUserID
 		}
 		for key, value := range content {
+			if key == "arguments" || (key == "result" && eventName == "hook_tool_call") {
+				continue
+			}
 			if value, ok := value.(string); ok && len([]rune(value)) > 2048 {
 				content[key] = string([]rune(value)[:2047]) + "…"
 			}

@@ -68,7 +68,8 @@ func workspaceBuilder() *tool.Builder {
 		Boolean("reset", "为 true 时重置为默认工作目录。")
 }
 
-func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
 	var args workspaceArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
@@ -85,6 +86,7 @@ func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resu
 			return nil, err.Error(), err
 		}
 		content := fmt.Sprintf("workspace reset.\ncurrent workspace: %s", dir)
+		logContent = content
 		if hasStore {
 			if noticeStore, ok := store.(workspace.WorkspaceAgentNoticeStore); ok {
 				instructions, markNotice, err := workspaceAgentInstructions(ctx, noticeStore, dir)
@@ -102,7 +104,7 @@ func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resu
 				}
 				{
 					result := &tool.Result{Content: content}
-					return result, result.Content, nil
+					return result, logContent, nil
 				}
 			}
 			if err := store.ClearWorkspaceDir(ctx); err != nil {
@@ -114,7 +116,7 @@ func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resu
 		}
 		{
 			result := &tool.Result{Content: content}
-			return result, result.Content, nil
+			return result, logContent, nil
 		}
 	}
 	if path := strings.TrimSpace(args.Path); path != "" {
@@ -129,6 +131,7 @@ func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resu
 			return nil, err.Error(), err
 		}
 		content := fmt.Sprintf("workspace set.\ncurrent workspace: %s", dir)
+		logContent = content
 		markNotice := false
 		if noticeStore, ok := store.(workspace.WorkspaceAgentNoticeStore); ok {
 			instructions, mark, err := workspaceAgentInstructions(ctx, noticeStore, dir)
@@ -147,7 +150,7 @@ func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resu
 			}
 			{
 				result := &tool.Result{Content: content}
-				return result, result.Content, nil
+				return result, logContent, nil
 			}
 		}
 		if err := store.SetWorkspaceDir(ctx, dir); err != nil {
@@ -158,7 +161,7 @@ func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resu
 		}
 		{
 			result := &tool.Result{Content: content}
-			return result, result.Content, nil
+			return result, logContent, nil
 		}
 	}
 	dir, err := workspace.CurrentWorkspaceDir(ctx)

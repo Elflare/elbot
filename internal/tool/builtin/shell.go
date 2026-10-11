@@ -133,6 +133,7 @@ func (t ShellTool) PreflightConfirmation(ctx context.Context, req tool.CallReque
 }
 
 func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, logContent string, callErr error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 
 	args, cmdText, err := decodeShellArgs(req)
 	if err != nil {
@@ -164,10 +165,7 @@ func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (result *tool
 			err := mediaCall.Close()
 			callErr = errors.Join(callErr, err)
 			if err != nil {
-				if logContent != "" {
-					logContent += "\n"
-				}
-				logContent += fmt.Sprintf("media_cleanup_error=%v", err)
+				logContent = fmt.Sprintf("media_cleanup_error=%v\n%s", err, logContent)
 			}
 		}()
 		variables := make(map[string]string, len(args.MediaInputs))
@@ -201,9 +199,16 @@ func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (result *tool
 		}
 	}
 	data := shellData{Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: exitCode}
+	logContent = fmt.Sprintf("exit_code=%d", exitCode)
+	if data.Stderr != "" {
+		logContent += "\nstderr:\n" + data.Stderr
+	}
+	if data.Stdout != "" {
+		logContent += "\nstdout:\n" + data.Stdout
+	}
 	{
 		result := &tool.Result{Content: formatShellContent(data), Warnings: advice.warnings}
-		return result, result.Content, nil
+		return result, logContent, nil
 	}
 }
 

@@ -242,7 +242,7 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 	arguments := render(action.Arguments, event, state)
 	call := llm.ToolCallRequest{ID: storage.NewID(), Name: name, Arguments: arguments}
 	record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: "hook_tool_call", Module: "hook", Type: globalevents.ContentJSON, ContentLimit: 0}
-	content := map[string]any{"source": "rules", "tool": name, "point": string(event.Point), "tool_call_id": call.ID, "arguments": arguments}
+	content := map[string]any{"source": "rules", "tool": name, "point": string(event.Point), "tool_call_id": call.ID, "arguments": tool.TruncateLogContent(arguments, 256)}
 	if event.Session.ID != "" {
 		if event.Actor.ID != "" {
 			content["actor_id"] = event.Actor.ID
@@ -300,6 +300,9 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 	}
 	content["result"] = logResult.Content
 	for key, value := range content {
+		if key == "arguments" || key == "result" {
+			continue
+		}
 		if value, ok := value.(string); ok && len([]rune(value)) > 2048 {
 			content[key] = string([]rune(value)[:2047]) + "…"
 		}

@@ -249,24 +249,16 @@ LLM 在 work 模式下可以通过 `discover_tool` 按需发现工具详情。�
 
 | 选项 | 作用 |
 | --- | --- |
-| `-u`、`-a`、`-t` | 分别筛选用户、助手、工具事件。 |
+| `-u`、`-a` | 分别筛选用户、助手事件。 |
 | `-s, --system` | 筛选并显示 `system prompt` 日志。 |
 | `--hook` | 筛选 `module=hook` 的运行记录。 |
-| `--run_source <来源>` | 按工具调用来源筛选：`foreground`、`cron`、`elnis`；可与 `-t` 和其他条件组合。 |
-
-工具调用正文会注明 `run_source`，表示本次调用开始时的来源；与表示 native／elwisp 等工具实现来源的 `source` 分开。前台接管后新开始的调用为 `foreground`，已开始的调用保留原来源。缺少来源标记的旧记录不会被推断为前台调用，使用来源筛选时不匹配。
-
-```text
-/log -t --run_source cron -n 20
-/log -t --run_source elnis --raw
-/log -t --run_source foreground -i
-```
 
 `/audit` 额外支持：
 
 | 选项 | 作用 |
 | --- | --- |
 | `-t` | 筛选 `event=tool_call` 的工具审计。 |
+| `--run_source <来源>` | 按工具调用来源筛选：`foreground`、`cron`、`elnis`；可与 `-t` 和其他条件组合。 |
 | `--hook` | 筛选 `module=hook` 的审计，可与 `--event` 等条件同时使用。 |
 | `--event <name>` | 按审计事件过滤，例如 `tool_call`、`llm_usage`、`permission_denied`。 |
 | `--risk <level>` | 按风险等级过滤。 |
@@ -303,10 +295,15 @@ LLM 在 work 模式下可以通过 `discover_tool` 按需发现工具详情。�
 /audit --hook --event hook_tool_log
 /audit --hook --tool shell --contains <tool_call_id>
 /audit --event llm_error -d
+/audit -t --run_source cron -n 20
+/audit -t --run_source elnis --raw
+/audit -t --run_source foreground -i
 /elwisp
 /elwisp server-watchdog -n 20
 /elwisp --source minecraft-main --mode llm --since 2h
 ```
+
+> 工具参数日志最多 256 个 Unicode 字符；读取／查询／说明类最多 128 字符，执行／编辑／写入及媒体类最多 256 字符。实际调用参数和返回给模型的结果不受日志限长影响。
 
 ## Token 消耗统计
 

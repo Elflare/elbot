@@ -52,7 +52,7 @@ func (d Descriptor) Schema() llm.ToolSchema {
 func (d Descriptor) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
 	{
 		callErr := fmt.Errorf("skill %q is a document skill; query it with discover_tool", d.Record.Name)
-		return nil, callErr.Error(), callErr
+		return nil, tool.TruncateLogContent(callErr.Error(), 128), callErr
 	}
 }
 

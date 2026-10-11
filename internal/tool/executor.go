@@ -102,5 +102,5 @@ func (e Executor) Execute(ctx context.Context, call llm.ToolCallRequest) Executi
 func executionError(call llm.ToolCallRequest, message llm.LLMMessage, err error, resultStatus events.ResultStatus) ExecutionResult {
 	content := fmt.Sprintf("tool call %s failed: %v", call.Name, err)
 	message.Segments = llm.TextSegments(content)
-	return ExecutionResult{Call: call, Message: message, Error: err, ResultStatus: resultStatus, LogResult: events.LogResult{ResultStatus: resultStatus, Content: content}}
+	return ExecutionResult{Call: call, Message: message, Error: err, ResultStatus: resultStatus, LogResult: events.LogResult{ResultStatus: resultStatus, Content: TruncateLogContent(content, 256)}}
 }

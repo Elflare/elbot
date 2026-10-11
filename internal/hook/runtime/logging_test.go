@@ -107,6 +107,41 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 	}
 }
 
+func TestPluginToolArgumentPreviewDoesNotChangeInvocation(t *testing.T) {
+	records := captureHookRecords(t)
+	args, _ := json.Marshal(map[string]string{"value": strings.Repeat("雪🔥", 200)})
+	registry := tool.NewRegistry()
+	if err := registry.Register(loggingTool{run: func(_ context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+		if string(req.Arguments) != string(args) {
+			t.Error("execution arguments were truncated")
+		}
+		return &tool.Result{Content: "business result"}, "source summary", nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(Options{Registry: registry})
+	defer manager.Close(context.Background())
+	worker := newWorker(manager, Config{ID: "test", EventTimeoutSeconds: 10, Tools: ToolsConfig{Allow: []string{"logging_tool"}}})
+	token := manager.putToolContext("test", t.Context(), hook.Event{}, time.Minute)
+	raw, _ := json.Marshal(map[string]any{"name": "logging_tool", "tool_context": token, "arguments": json.RawMessage(args)})
+	if _, err := worker.callTool(raw); err != nil {
+		t.Fatal(err)
+	}
+	if len(*records) != 1 {
+		t.Fatalf("records=%+v", records)
+	}
+	var content map[string]json.RawMessage
+	if err := json.Unmarshal([]byte((*records)[0].Content), &content); err != nil {
+		t.Fatal(err)
+	}
+	var arguments, result string
+	json.Unmarshal(content["arguments"], &arguments)
+	json.Unmarshal(content["result"], &result)
+	if len([]rune(arguments)) != 256 || !strings.HasSuffix(arguments, "…") || result != "source summary" {
+		t.Fatalf("arguments=%q result=%q", arguments, result)
+	}
+}
+
 func TestToolAuditUsesTriggerActorAndKeepsEnteredCancellation(t *testing.T) {
 	for _, tc := range []struct{ name, sessionActor, sessionID, expected string }{
 		{"session", "trigger", "session", "trigger"},

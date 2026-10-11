@@ -111,7 +111,8 @@ func webSearchBuilder() *tool.Builder {
 		Boolean("exact_match", "是否只返回包含查询中引号短语的精确匹配结果。")
 }
 
-func (t WebSearchTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t WebSearchTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
 	if err := ctx.Err(); err != nil {
 		return nil, err.Error(), err
 	}
@@ -188,7 +189,11 @@ func (t WebSearchTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Re
 	}
 	{
 		result := &tool.Result{Content: formatTavilyContent(data)}
-		return result, result.Content, nil
+		logContent = fmt.Sprintf("results=%d", len(data.Results))
+		for _, item := range data.Results {
+			logContent += fmt.Sprintf("\n%s %s", item.Title, item.URL)
+		}
+		return result, logContent, nil
 	}
 }
 

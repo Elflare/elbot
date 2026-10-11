@@ -72,15 +72,20 @@ func (t AgentSkillTool) RiskDetail(ctx context.Context, req tool.CallRequest) (s
 	return fmt.Sprintf("写入 AgentSkill %s 的 %s\n文件：%s", preview.Name, AgentSkillConfigFile, preview.Path), nil
 }
 
-func (t AgentSkillTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t AgentSkillTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
 	preview, err := t.preview(ctx, req)
+	limit := 256
+	if preview.Action == "read" {
+		limit = 128
+	}
+	defer func() { logContent = tool.TruncateLogContent(logContent, limit) }()
 	if err != nil {
 		return nil, err.Error(), err
 	}
 	if preview.Action == "read" {
 		{
 			result := &tool.Result{Content: preview.ReadContent}
-			return result, result.Content, nil
+			return result, preview.ReadContent, nil
 		}
 	}
 	if err := t.Manager.WriteAgentSkillConfig(ctx, preview.Name, preview.Toml); err != nil {

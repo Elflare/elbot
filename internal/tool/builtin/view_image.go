@@ -133,7 +133,8 @@ func (t ViewImageTool) PreflightConfirmation(ctx context.Context, req tool.CallR
 	return err
 }
 
-func (t ViewImageTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t ViewImageTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 	args, err := parseViewImageArgs(req)
 	if err != nil {
 		return nil, err.Error(), err
@@ -155,10 +156,7 @@ func (t ViewImageTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Re
 				logContent = fmt.Sprintf("view_image message_id=%v media_index=%v", args.MessageIDs, args.MediaIndex)
 			}
 			if callErr != nil {
-				if logContent != "" {
-					logContent += "\n"
-				}
-				logContent += callErr.Error()
+				logContent = callErr.Error() + "\n" + logContent
 			}
 			return result, logContent, callErr
 		}

@@ -82,7 +82,8 @@ func (t SendFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (too
 	return tool.RiskAssessment{Level: tool.RiskMedium}, nil
 }
 
-func (t SendFileTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t SendFileTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 	args, err := parseSendFileArgs(req)
 	if err != nil {
 		return nil, err.Error(), err

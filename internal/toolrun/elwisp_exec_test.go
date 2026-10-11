@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"elbot/internal/events"
@@ -66,5 +67,20 @@ func TestExecuteELwispToolPartialAndPreparationFacts(t *testing.T) {
 	result = executeELwispTool(context.Background(), llm.ToolCallRequest{Name: "remote", Arguments: `{invalid`}, ResolvedTool{Cached: &CachedTool{Endpoint: server.URL}})
 	if result.Error == nil || result.ExecutionStarted || result.ResultStatus != events.ResultFailed {
 		t.Fatalf("preparation facts = %#v", result)
+	}
+}
+
+func TestELwispLogKeepsErrorAheadOfLongPartialResult(t *testing.T) {
+	body := strings.Repeat("雪🔥", 200) + "BUSINESS_TAIL"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(elwispToolResponse{Content: body, Error: "second action failed"})
+	}))
+	defer server.Close()
+	result := executeELwispTool(t.Context(), llm.ToolCallRequest{Name: "remote", Arguments: `{}`}, ResolvedTool{Cached: &CachedTool{Endpoint: server.URL}})
+	if result.Error == nil || result.Result == nil || result.Result.Content != body || llm.SegmentsContentText(result.Message.Segments) != body {
+		t.Fatalf("partial business result changed: %+v", result)
+	}
+	if !strings.HasPrefix(result.LogResult.Content, "ELwisp tool error: second action failed\n") || len([]rune(result.LogResult.Content)) != 256 || !strings.HasSuffix(result.LogResult.Content, "…") {
+		t.Fatalf("log=%q", result.LogResult.Content)
 	}
 }

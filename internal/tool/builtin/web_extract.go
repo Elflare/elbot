@@ -130,7 +130,8 @@ func webExtractBuilder() *tool.Builder {
 		Boolean("force_refresh", "是否跳过缓存并重新获取网页，默认 false；刷新成功后会覆盖对应缓存。")
 }
 
-func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
 	if err := ctx.Err(); err != nil {
 		return nil, err.Error(), err
 	}
@@ -196,7 +197,7 @@ func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (*tool.
 	data := sliceExtract(entry, args.Offset, args.MaxChars, cached)
 	{
 		result := &tool.Result{Content: formatExtractContent(data)}
-		return result, result.Content, nil
+		return result, fmt.Sprintf("url=%s range=%d-%d/%d cached=%t source=%s\n%s\n%s", data.URL, data.Offset, data.Offset+data.ReturnedChars, data.TotalChars, data.Cached, data.Source, data.Title, data.Content), nil
 	}
 }
 

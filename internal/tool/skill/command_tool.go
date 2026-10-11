@@ -65,6 +65,7 @@ func (t CommandTool) ActivateTools() []string {
 }
 
 func (t CommandTool) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, logContent string, callErr error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 
 	timeout := defaultRunnerTimeout
 	if t.Manifest.TimeoutSeconds > 0 {
@@ -77,10 +78,7 @@ func (t CommandTool) Call(ctx context.Context, req tool.CallRequest) (result *to
 		err := mediaCall.Close()
 		callErr = errors.Join(callErr, err)
 		if err != nil {
-			if logContent != "" {
-				logContent += "\n"
-			}
-			logContent += fmt.Sprintf("media_cleanup_error=%v", err)
+			logContent = fmt.Sprintf("media_cleanup_error=%v\n%s", err, logContent)
 		}
 	}()
 	raw, err := prepareCommandMedia(runCtx, req.Arguments, t.Manifest, mediaCall, t.Record.Root)
@@ -102,10 +100,7 @@ func (t CommandTool) Call(ctx context.Context, req tool.CallRequest) (result *to
 			logContent = result.Content
 		}
 		if callErr != nil {
-			if logContent != "" {
-				logContent += "\n"
-			}
-			logContent += callErr.Error()
+			logContent = callErr.Error() + "\n" + logContent
 		}
 		return result, logContent, callErr
 	}
