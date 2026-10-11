@@ -8,7 +8,6 @@ import (
 	"elbot/internal/background"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	runtimestatus "elbot/internal/runtime"
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/session"
 	"elbot/internal/turn"
@@ -103,11 +102,21 @@ func (o executionTurnOutput) SendPreview(ctx context.Context, text string) {
 	ctx, out := o.target(ctx)
 	out.SendPreview(ctx, text)
 }
-func (o executionTurnOutput) SendReasoning(ctx context.Context, text string) {
-	ctx, out := o.target(ctx)
-	out.SendReasoning(ctx, text)
+func (o executionTurnOutput) StartReasoning(ctx context.Context) dialogue.ReasoningStream {
+	stream := o.foreground.StartReasoning(ctx)
+	if stream == nil {
+		return nil
+	}
+	return executionReasoningStream{view: o.view, stream: stream}
 }
-func (o executionTurnOutput) PublishRuntimeStatus(ctx context.Context, v runtimestatus.Snapshot) {
-	ctx, out := o.target(ctx)
-	out.PublishRuntimeStatus(ctx, v)
+
+// Resolve foreground context for each new delta, including adoption mid-call.
+type executionReasoningStream struct {
+	view   dialogue.ExecutionView
+	stream dialogue.ReasoningStream
 }
+
+func (s executionReasoningStream) Append(ctx context.Context, text string) {
+	s.stream.Append(s.view.Context(ctx), text)
+}
+func (s executionReasoningStream) Finish(ctx context.Context) { s.stream.Finish(ctx) }

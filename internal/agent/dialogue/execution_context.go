@@ -59,7 +59,7 @@ func (v ExecutionView) Context(ctx context.Context) context.Context {
 		return ctx
 	}
 	// Replace the entire routing snapshot, including an absent platform context.
-	// Local CLI supplies only public facts; inheriting a background discard sender
+	// Local CLI has no message sender; inheriting a background discard sender
 	// would silently lose every subsequent foreground output.
 	if msg, ok := platform.MessageContextFrom(foreground); ok {
 		ctx = platform.WithMessageContext(ctx, msg)

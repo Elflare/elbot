@@ -50,7 +50,7 @@ func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, te
 		execution = turn.NewExecution(storage.NewID())
 		ctx = turn.WithExecution(ctx, execution)
 	}
-	out = executionTurnOutput{view: c.view, sessions: c.sessions, foreground: foregroundTurnOutput{sender: c.output, status: c.status}, execution: execution, fallback: out}
+	out = executionTurnOutput{view: c.view, sessions: c.sessions, foreground: foregroundTurnOutput{sender: c.output}, execution: execution, fallback: out}
 	for {
 		next, pending, err := c.runAttempt(ctx, row, text, out)
 		if err != nil {
@@ -86,7 +86,7 @@ func (c *ExecutionCoordinator) RunBackground(ctx context.Context, row *storage.S
 	execution := turn.NewExecution(storage.NewID())
 	execution.SetResult(row.ID, "", "")
 	ctx = turn.WithExecution(ctx, execution)
-	if err := c.Run(ctx, row, text, backgroundTurnOutput{status: c.status}); err != nil {
+	if err := c.Run(ctx, row, text, backgroundTurnOutput{}); err != nil {
 		execution.Finish(err)
 	}
 	result := execution.Wait(ctx)

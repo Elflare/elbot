@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"elbot/internal/agent"
+	"elbot/internal/agent/dialogue"
 	commandbuiltin "elbot/internal/command/builtin"
 	"elbot/internal/config"
 	"elbot/internal/delivery/dispatch"
@@ -23,6 +24,7 @@ import (
 
 // ModuleDeps declares external capabilities, never sibling modules or their complete dependency sets.
 type ModuleDeps struct {
+	Reasoning    func(context.Context) dialogue.ReasoningStream // Optional direct reasoning display.
 	PlatformName string
 	Store        storage.Store
 	Models       *modelmgr.Service

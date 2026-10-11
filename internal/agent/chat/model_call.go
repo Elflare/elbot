@@ -84,8 +84,10 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 	var assistant strings.Builder
 	var usage *llm.Usage
 	var toolCalls []llm.ToolCallRequest
-	showReasoning := c.Calls.Identity.IsCLI(ctx)
-	reasoningOpen := false
+	reasoning := out.StartReasoning(ctx)
+	if reasoning != nil {
+		defer reasoning.Finish(ctx)
+	}
 	for chunk := range ch {
 		if chunk.Error != nil {
 			completed.Err = chunk.Error
@@ -100,6 +102,9 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 				return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls, Messages: baseMessages, Stream: stream}, nil
 			}
 			if shouldFallbackVision(requestMessages, chunk.Error) {
+				if reasoning != nil {
+					reasoning.Finish(ctx)
+				}
 				completed.Err, completed.VisionFallback = chunk.Error, true
 				publishCompleted()
 				c.Calls.RecordVisionFallback(ctx, session)
@@ -120,19 +125,15 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 					ElapsedMS:  elapsedMillis(startedAt),
 				},
 			}, chunk.Error)
-			out.Notify(ctx, slog.LevelError, notificationrules.ModelInterrupted(chunk.Error))
+			out.Notify(context.WithoutCancel(ctx), slog.LevelError, notificationrules.ModelInterrupted(chunk.Error))
 
 			return llmCallResult{}, dialogue.MarkUserNotified(fmt.Errorf("chat stream: %w", chunk.Error))
 		}
 		if chunk.Usage != nil {
 			usage = chunk.Usage
 		}
-		if chunk.DeltaReasoningContent != "" && showReasoning {
-			if !reasoningOpen {
-				out.SendReasoning(ctx, "[thinking] ")
-				reasoningOpen = true
-			}
-			out.SendReasoning(ctx, chunk.DeltaReasoningContent)
+		if chunk.DeltaReasoningContent != "" && reasoning != nil {
+			reasoning.Append(ctx, chunk.DeltaReasoningContent)
 		}
 		if toolsEnabled {
 			for _, delta := range chunk.ToolCallDeltas {
@@ -153,8 +154,8 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 			}
 		}
 	}
-	if reasoningOpen {
-		out.SendReasoning(ctx, "[/thinking]\n\n")
+	if reasoning != nil {
+		reasoning.Finish(ctx)
 	}
 	elapsedMs := elapsedMillis(startedAt)
 	completed.ElapsedMS = elapsedMs

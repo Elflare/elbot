@@ -27,7 +27,7 @@ func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, row *storage.Se
 		}
 		ctx = withInboundTurnInput(ctx, merged)
 		release()
-		return c.Run(ctx, row, merged.Text, foregroundTurnOutput{sender: c.output, status: c.status})
+		return c.Run(ctx, row, merged.Text, foregroundTurnOutput{sender: c.output})
 	case turn.IsCancel(text):
 		c.turns.CancelAppend(row.ID)
 		release()
@@ -95,6 +95,6 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 		return inputHandled, nil
 	default:
 		release()
-		return inputHandled, c.Run(ctx, session, text, foregroundTurnOutput{sender: c.output, status: c.status})
+		return inputHandled, c.Run(ctx, session, text, foregroundTurnOutput{sender: c.output})
 	}
 }

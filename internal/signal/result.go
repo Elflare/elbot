@@ -31,6 +31,13 @@ type Emission[R any] struct {
 	singleStarted  [1]atomic.Bool
 }
 
+// Resolved creates a completed emission containing one immutable result.
+func Resolved[R any](result Result[R]) *Emission[R] {
+	e := newEmission[R](func() {}, 1)
+	e.finish(0, result)
+	return e
+}
+
 func newEmission[R any](cancel context.CancelFunc, n int) *Emission[R] {
 	e := &Emission[R]{cancel: cancel, remaining: n, done: make(chan struct{})}
 	if n <= 1 {

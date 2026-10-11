@@ -17,7 +17,7 @@ var ErrRecursive = errors.New("signal: recursive dependency")
 type Handler[T, R any] func(context.Context, T) (R, error)
 type slot[T, R any] struct {
 	handler    Handler[T, R]
-	forward    func(context.Context, T) (*Emission[R], error)
+	forward    func(context.Context, T) *Emission[R]
 	options    ConnectOptions
 	claimed    atomic.Bool
 	connection *Connection
@@ -79,7 +79,8 @@ func (s *Signal[T, R]) Observe(h func(context.Context, T) error, o ConnectOption
 
 // ConnectForward adopts a single downstream receiver's completion. The forwarder
 // must emit with ctx so the operation retains its original deadline and path.
-func (s *Signal[T, R]) ConnectForward(h func(context.Context, T) (*Emission[R], error), o ConnectOptions) (*Connection, error) {
+// Immediate failures and skips use Resolved; nil is a contract error.
+func (s *Signal[T, R]) ConnectForward(h func(context.Context, T) *Emission[R], o ConnectOptions) (*Connection, error) {
 	if h == nil {
 		return nil, errors.New("signal: nil forwarder")
 	}
@@ -189,9 +190,9 @@ func (s *Signal[T, R]) EmitAsync(ctx context.Context, event T) (*Emission[R], er
 				}
 			}
 			if entry.forward != nil {
-				child, err := entry.forward(taskCtx, event)
+				child := entry.forward(taskCtx, event)
 				if child == nil {
-					return err
+					return errors.New("signal: nil forwarded emission")
 				}
 				if len(child.results) != 1 {
 					return errors.New("signal: forwarding requires one downstream receiver")

@@ -8,11 +8,13 @@ import (
 	"testing"
 	"time"
 
+	agentevents "elbot/internal/agent/events"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/events"
 	"elbot/internal/notification"
+	runtimestatus "elbot/internal/runtime"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"log/slog"
@@ -106,10 +108,9 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 		}
 	}
 	router := dispatch.New(dispatch.Options{Primary: s})
-	firstTarget, firstTargetErr := router.RuntimeStatusTarget(firstCtx)
-	secondTarget, secondTargetErr := router.RuntimeStatusTarget(secondCtx)
-	if firstTargetErr != nil || secondTargetErr != nil || firstTarget == "" || firstTarget == secondTarget {
-		t.Fatalf("status targets merged original CLI connections: %q / %q", firstTarget, secondTarget)
+	firstTarget, secondTarget := uiTarget(firstCtx), uiTarget(secondCtx)
+	if firstTarget == (messageData{}) || firstTarget == secondTarget {
+		t.Fatalf("status targets merged original CLI connections: %+v / %+v", firstTarget, secondTarget)
 	}
 	read := func(conn *websocket.Conn, want string) {
 		var msg remoteMessage
@@ -133,6 +134,28 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 	}
 	read(one, "both")
 	read(two, "both")
+	u, status := testUI(t)
+	requestCtx, cancelRequest := context.WithCancel(firstCtx)
+	stream := u.StartReasoning(requestCtx)
+	stream.Append(requestCtx, "original-only")
+	read(one, "[thinking] original-only")
+	cancelRequest()
+	stream.Finish(secondCtx) // Closing keeps the view that actually received deltas.
+	read(one, "[/thinking]\n\n")
+	if _, err := status.Emit(context.WithoutCancel(requestCtx), agentevents.StatusChangedEvent{Snapshot: runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseDone}, Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	var terminal remoteMessage
+	if err := wsjson.Read(ctx, one, &terminal); err != nil {
+		t.Fatal(err)
+	}
+	if terminal.Type != remoteMsgStatus || terminal.Snapshot.Phase != runtimestatus.PhaseDone {
+		t.Fatal(terminal)
+	}
+	if _, _, err := router.SendChat(secondCtx, []delivery.Output{delivery.Text("second-barrier")}); err != nil {
+		t.Fatal(err)
+	}
+	read(two, "second-barrier") // Neither reasoning nor status leaked to the same user's other connection.
 	first.conn.CloseNow()
 	if _, err := events.NotificationRequested.Emit(ctx, events.Notification{Target: events.NotificationTarget{Platform: "cli", Kind: contextinfo.ConversationPrivate, ID: "same-user"}, Text: "partial-notice"}); err == nil {
 		t.Fatal("notification partial failure reported success")

@@ -13,14 +13,14 @@ import (
 	"elbot/internal/delivery"
 )
 
-func TestSendNoticeAcceptsCLITarget(t *testing.T) {
+func TestSendToAcceptsCLITarget(t *testing.T) {
 	adapter := New()
 	if _, _, err := adapter.SendTo(context.Background(), delivery.Target{Platform: "cli", Superadmins: true}, []delivery.Output{delivery.ImagePath("pic.png")}); err != nil {
-		t.Fatalf("SendNotice: %v", err)
+		t.Fatalf("SendTo: %v", err)
 	}
 }
 
-func TestSendNoticeRejectsOtherPlatform(t *testing.T) {
+func TestSendToRejectsOtherPlatform(t *testing.T) {
 	adapter := New()
 	if _, _, err := adapter.SendTo(context.Background(), delivery.Target{Platform: "qqonebot"}, []delivery.Output{delivery.Text("hello")}); err == nil {
 		t.Fatal("expected platform mismatch error")

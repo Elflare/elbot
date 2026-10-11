@@ -35,9 +35,8 @@ type ModelCallCompletedEvent struct {
 }
 
 type StatusChangedEvent struct {
-	Snapshot runtimestatus.Snapshot
-	Version  uint64
-	Display  bool
+	Snapshot runtimestatus.Snapshot // Committed execution state, independent of presentation.
+	Version  uint64                 // Monotonic publication order within the recorder.
 }
 type VisionFallbackUsedEvent struct {
 	EventMeta

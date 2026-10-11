@@ -142,5 +142,6 @@ func (s *Service) publishChange(ctx context.Context, event BindingChangedEvent) 
 		outer.mu.Unlock()
 		return
 	}
-	_, _ = s.changed.Emit(ctx, event)
+	// The binding change is committed; request cancellation cannot retract it.
+	_, _ = s.changed.Emit(context.WithoutCancel(ctx), event)
 }

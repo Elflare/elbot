@@ -372,7 +372,7 @@ func TestRunBackgroundPreloadsToolListNamesWithoutDiscoverTool(t *testing.T) {
 	}
 }
 
-func TestRunBackgroundToolPhaseDoesNotPublishRuntimeStatus(t *testing.T) {
+func TestRunBackgroundToolPhaseDoesNotDisplayRuntimeStatus(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	platform := &fakePlatform{}

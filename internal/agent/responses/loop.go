@@ -20,6 +20,9 @@ import (
 )
 
 type Loop struct {
+	Status interface {
+		Record(context.Context, runtimestatus.Snapshot)
+	}
 	compactor  contextmgr.Compactor
 	Repository storage.DialogueRepository
 	Context    *Context
@@ -234,7 +237,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			}
 		}
 		stream := out.StartStream(s.requestCtx)
-		out.PublishRuntimeStatus(s.ctx, runtimestatus.Snapshot{
+		s.route.Status.Record(s.ctx, runtimestatus.Snapshot{
 			SessionID:      s.session.ID,
 			Phase:          runtimestatus.PhaseLLM,
 			Provider:       s.selection.Provider,
@@ -366,6 +369,9 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 }
 
 func NewLoop(deps LoopDeps) (*Loop, error) {
+	if deps.Status == nil {
+		return nil, fmt.Errorf("Status is required")
+	}
 	if deps.Repository == nil {
 		return nil, fmt.Errorf("Repository is required")
 	}
@@ -389,6 +395,7 @@ func NewLoop(deps LoopDeps) (*Loop, error) {
 	}
 	nativeContext := &Context{Repository: deps.Repository, Media: deps.Media}
 	return &Loop{
+		Status:     deps.Status,
 		Repository: deps.Repository,
 		Context:    nativeContext,
 		compactor:  &Compactor{Context: nativeContext, Messages: deps.Messages, View: deps.View, System: deps.System, Identity: deps.Preparer.Identity},

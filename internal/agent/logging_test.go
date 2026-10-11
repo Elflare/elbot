@@ -57,7 +57,7 @@ func TestChatSilentCancellationPreservesPartialOutputLog(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer connection.Disconnect()
-	out := foregroundTurnOutput{sender: a.output, status: a.status}
+	out := foregroundTurnOutput{sender: a.output}
 	result, err := testChatRoute(a).Caller.Call(ctx, row, modelmgr.SelectionForTurn(ctx, a.execution.models, row), nil, nil, nil, nil, out)
 	if err != nil || result.Text != "partial-before-cancel" {
 		t.Fatalf("result = %+v, error = %v", result, err)
@@ -228,7 +228,7 @@ func TestTurnTimeoutSeverity(t *testing.T) {
 		return nil
 	}, signal.ConnectOptions{})
 	defer connection.Disconnect()
-	a.execution.handleTurnContextDone(context.Background(), "timeout-session", context.DeadlineExceeded, foregroundTurnOutput{sender: a.output, status: a.status})
+	a.execution.handleTurnContextDone(context.Background(), "timeout-session", context.DeadlineExceeded, foregroundTurnOutput{sender: a.output})
 	if len(records) != 1 || records[0].Level != slog.LevelError || records[0].ResultStatus != globalevents.ResultFailed {
 		t.Fatalf("records = %#v", records)
 	}

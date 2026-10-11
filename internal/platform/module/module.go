@@ -16,9 +16,11 @@ import (
 	"elbot/internal/notification"
 	"elbot/internal/platform"
 	platformbuiltin "elbot/internal/platform/builtin"
+	"elbot/internal/platform/cli"
 )
 
 type Module struct {
+	ui              *cli.UI
 	primary         platform.PlatformAdapter
 	runtimes        []platform.Runtime
 	dispatcher      *dispatch.Router
@@ -59,6 +61,9 @@ func (m *Module) Start(handler platform.PlatformHandler, stop context.CancelFunc
 	launched := make(chan struct{})
 	go func() {
 		err := runPlatforms(m.ctx, handler, m.runtimes, func(context.Context) { close(launched) }, stop)
+		if m.ui != nil {
+			err = errors.Join(err, m.ui.Close(context.Background()))
+		}
 		if m.notifications != nil {
 			err = errors.Join(err, m.notifications.Close(context.Background()))
 		}

@@ -112,10 +112,13 @@ func (o *testOutput) SendAssistant(ctx context.Context, text string) (delivery.R
 func (*testOutput) SendOutputs(context.Context, []delivery.Output) (events.LogResult, error) {
 	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
-func (*testOutput) Notify(context.Context, slog.Level, string)                   {}
-func (*testOutput) SendPreview(context.Context, string)                          {}
-func (*testOutput) SendReasoning(context.Context, string)                        {}
-func (*testOutput) PublishRuntimeStatus(context.Context, runtimestatus.Snapshot) {}
+func (*testOutput) Notify(context.Context, slog.Level, string)              {}
+func (*testOutput) SendPreview(context.Context, string)                     {}
+func (*testOutput) StartReasoning(context.Context) dialogue.ReasoningStream { return nil }
+
+type testStatus struct{}
+
+func (testStatus) Record(context.Context, runtimestatus.Snapshot) {}
 
 func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	ctx := t.Context()
@@ -150,7 +153,7 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	}
 	contexts := contextmgr.New(contextmgr.Options{Store: store, Compactors: registry})
 	out := &testOutput{t: t, messages: store.Messages()}
-	runner := &dialogue.Runner{Routes: registry, Preparer: &dialogue.Preparer{Contexts: contexts},
+	runner := &dialogue.Runner{Status: testStatus{}, Routes: registry, Preparer: &dialogue.Preparer{Contexts: contexts},
 		Messages: loop.messages,
 		Replies:  &dialogue.ReplyCommitter{Messages: store.Messages(), Persistence: loop.messages.Committer("append_assistant_message"), Output: out},
 		Turns:    turn.NewManager(), View: dialogue.ExecutionView{Sessions: store.Sessions(), Providers: registry}}

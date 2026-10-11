@@ -153,15 +153,15 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 	if err != nil {
 		return nil, err
 	}
-	status, err := NewStatusRecorder(StatusRecorderDeps{Turns: turns, Changed: signals.StatusChanged})
-	if err != nil {
-		return nil, err
-	}
-	output, err := NewOutputSender(OutputSenderDeps{Dispatcher: opts.Dispatcher, Hooks: hooks, Identity: identity})
-	if err != nil {
-		return nil, err
-	}
 	view := dialogue.ExecutionView{Sessions: store.Sessions(), Providers: opts.Routes}
+	status, err := NewStatusRecorder(StatusRecorderDeps{View: view, Turns: turns, Changed: signals.StatusChanged})
+	if err != nil {
+		return nil, err
+	}
+	output, err := NewOutputSender(OutputSenderDeps{Dispatcher: opts.Dispatcher, Hooks: hooks})
+	if err != nil {
+		return nil, err
+	}
 	sessions.SetForegroundCheck(func(_ context.Context, source *storage.Session) error {
 		return view.CheckSelection(source, opts.Models.ResolveMode(storage.SessionModeWork))
 	})
@@ -182,20 +182,20 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 	} else if opts.ToolProvider != nil {
 		toolRuntime.provider, toolRuntime.defaultProvider = opts.ToolProvider, false
 	}
-	toolDeps := &toolRunDeps{
+	toolDeps := &toolRunDeps{status: status,
 		hooks: hooks, requests: requests, turns: turns, identity: identity, media: opts.Media,
 		state: opts.ToolState, runtime: toolRuntime, sessions: sessions, sessionRows: store.Sessions(), toolCalls: store.ToolCalls(),
 		confirmations: confirmations, view: view,
 	}
-	runner, err := dialogue.NewRunner(dialogue.RunnerDeps{Routes: opts.Routes, Dialogues: store.Dialogues(), MessageRows: store.Messages(), Sessions: sessions, Turns: turns, Contexts: opts.Contexts, Media: opts.Media, Identity: identity, Hooks: hooks, Output: output, ToolManager: opts.ToolRunner, ToolRegistry: opts.ToolRegistry, ToolState: opts.ToolState, ToolDeps: toolDeps, ToolProvider: toolRuntime.provider, DefaultProvider: toolRuntime.defaultProvider, MaxRounds: opts.ToolsConfig.MaxRoundsPerTurn, SoulPath: opts.SoulPath, Memory: opts.ResidentMemoryStore, Preloader: opts.ToolPreloader, Signals: signals, View: view})
+	runner, err := dialogue.NewRunner(dialogue.RunnerDeps{Status: status, Routes: opts.Routes, Dialogues: store.Dialogues(), MessageRows: store.Messages(), Sessions: sessions, Turns: turns, Contexts: opts.Contexts, Media: opts.Media, Identity: identity, Hooks: hooks, Output: output, ToolManager: opts.ToolRunner, ToolRegistry: opts.ToolRegistry, ToolState: opts.ToolState, ToolDeps: toolDeps, ToolProvider: toolRuntime.provider, DefaultProvider: toolRuntime.defaultProvider, MaxRounds: opts.ToolsConfig.MaxRoundsPerTurn, SoulPath: opts.SoulPath, Memory: opts.ResidentMemoryStore, Preloader: opts.ToolPreloader, Signals: signals, View: view})
 	if err != nil {
 		return nil, err
 	}
-	chat, err := chatroute.NewLoop(chatroute.LoopDeps{Store: store, Contexts: opts.Contexts, Models: opts.Models, Turns: turns, View: view, Preparer: runner.Preparer, Tools: runner.Preparer.Tools, Messages: runner.Messages, Calls: runner.Calls, System: runner.System})
+	chat, err := chatroute.NewLoop(chatroute.LoopDeps{Status: status, Store: store, Contexts: opts.Contexts, Models: opts.Models, Turns: turns, View: view, Preparer: runner.Preparer, Tools: runner.Preparer.Tools, Messages: runner.Messages, Calls: runner.Calls, System: runner.System})
 	if err != nil {
 		return nil, err
 	}
-	response, err := responseroute.NewLoop(responseroute.LoopDeps{Repository: store.Dialogues(), Media: opts.Media, Models: opts.Models, Turns: turns, View: view, Preparer: runner.Preparer, Tools: runner.Preparer.Tools, Messages: runner.Messages, Calls: runner.Calls, System: runner.System})
+	response, err := responseroute.NewLoop(responseroute.LoopDeps{Status: status, Repository: store.Dialogues(), Media: opts.Media, Models: opts.Models, Turns: turns, View: view, Preparer: runner.Preparer, Tools: runner.Preparer.Tools, Messages: runner.Messages, Calls: runner.Calls, System: runner.System})
 	if err != nil {
 		return nil, err
 	}

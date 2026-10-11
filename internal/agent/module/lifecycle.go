@@ -34,9 +34,6 @@ func (m *Module) BeginClose() {
 		for _, connection := range m.bindings.connections {
 			<-connection.Done()
 		}
-		for _, d := range m.bindings.displays {
-			<-d.done
-		}
 		close(m.done)
 	}()
 }

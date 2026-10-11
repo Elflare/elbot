@@ -31,12 +31,12 @@ func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 	oldCtx := turn.WithAttempt(turn.WithExecution(context.Background(), old), "old-attempt")
 	ctx := turn.WithAttempt(turn.WithExecution(context.Background(), current), "current-attempt")
 	turns.StartExecution("s", turn.Input{}, old, "old-attempt")
-	r.Record(oldCtx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseLLM}, true)
+	r.Record(oldCtx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseLLM})
 	turns.StopSession("s", "old-attempt")
 	turns.StartExecution("s", turn.Input{}, current, "current-attempt")
 	usage := &llm.Usage{TotalTokens: func() *int64 { n := int64(42); return &n }()}
-	r.Record(ctx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseTool, Usage: usage}, true)
-	r.Record(oldCtx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseError}, true)
+	r.Record(ctx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseTool, Usage: usage})
+	r.Record(oldCtx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseError})
 	*usage.TotalTokens = 900
 	copy := r.Snapshot("s")
 	*copy.Usage.TotalTokens = 901
@@ -44,11 +44,11 @@ func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 		t.Fatalf("old attempt/snapshot leaked: %+v", observed)
 	}
 	turns.StopSession("s", "current-attempt")
-	r.Record(ctx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseDone}, true)
+	r.Record(ctx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseDone})
 	if r.Snapshot("s").Phase != runtimestatus.PhaseDone {
 		t.Fatal("matching terminal rejected after turn cleanup")
 	}
-	r.Record(oldCtx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseDone}, true)
+	r.Record(oldCtx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseDone})
 	if len(observed) != 3 {
 		t.Fatal("old terminal accepted")
 	}
@@ -66,7 +66,7 @@ func TestModelCompletionSnapshotAndObserverFailureDoNotChangeResult(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	out := foregroundTurnOutput{sender: a.output, status: a.status}
+	out := foregroundTurnOutput{sender: a.output}
 	result, err := testChatRoute(a).Caller.Call(ctx, row, modelmgr.SelectionForTurn(ctx, a.execution.models, row), nil, nil, nil, nil, out)
 	if err != nil || result.Text != "source" || !event.OutputReady {
 		t.Fatalf("observation changed result: %+v / %v", result, err)

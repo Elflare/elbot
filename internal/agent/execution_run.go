@@ -98,13 +98,13 @@ func (c *ExecutionCoordinator) finishAttempt(ctx context.Context, session *stora
 		status.Phase = runtimestatus.PhaseError
 		status.FinishedAt = storage.Now()
 		status.Error = err.Error()
-		out.PublishRuntimeStatus(ctx, status)
+		c.status.Record(ctx, status)
 		c.turns.StopSession(session.ID, attempt)
 		return err
 	}
 	status := c.status.Snapshot(session.ID)
 	if status.Running() && (c.turns.Snapshot(session.ID).Phase == turn.PhaseIdle || c.turns.MatchesAttempt(session.ID, attempt)) {
-		out.PublishRuntimeStatus(ctx, runtimeDoneStatus(status, storage.Now()))
+		c.status.Record(ctx, runtimeDoneStatus(status, storage.Now()))
 	}
 	return nil
 }
@@ -203,7 +203,7 @@ func (c *ExecutionCoordinator) finishCompletedTurn(ctx context.Context, session 
 		StageStartedAt: turnStartedAt,
 		Usage:          usage,
 	}, storage.Now())
-	out.PublishRuntimeStatus(ctx, doneStatus)
+	c.status.Record(ctx, doneStatus)
 	nextSelection := modelmgr.SelectionForTurn(ctx, c.models, session)
 	if c.shouldCompact(ctx, session, nextSelection) {
 		_, _, _ = out.SendAssistant(ctx, "compact status: will compact before next request")
@@ -241,6 +241,6 @@ func (c *ExecutionCoordinator) handleTurnContextDone(ctx context.Context, sessio
 		content, _ := json.Marshal(map[string]string{"error": fmt.Sprintf("%.2048v", err)})
 		record.Category, record.Type, record.Content = events.LogAudit, events.ContentJSON, string(content)
 		emitAgentLog(ctx, agentevents.Meta(ctx, sessionID), record)
-		out.Notify(ctx, slog.LevelWarn, notificationrules.TurnTimeout)
+		out.Notify(context.WithoutCancel(ctx), slog.LevelWarn, notificationrules.TurnTimeout)
 	}
 }

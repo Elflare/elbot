@@ -49,7 +49,7 @@ func newExecutionFixture(t *testing.T, client llm.Client, store storage.Store) *
 	hooks := hook.NewManager()
 	bridge := &HookBridge{manager: hooks, requests: opts.Requests, identity: identity, dispatcher: opts.Dispatcher}
 	status := &StatusRecorder{}
-	output := &OutputSender{dispatcher: opts.Dispatcher, hooks: bridge, identity: identity}
+	output := &OutputSender{dispatcher: opts.Dispatcher, hooks: bridge}
 	view := dialogue.ExecutionView{Sessions: store.Sessions(), Providers: opts.Routes}
 	policy := &ConfirmationPolicy{identity: identity, userConfirmationTimeout: time.Second}
 	confirmations := &ConfirmationCoordinator{
@@ -58,7 +58,7 @@ func newExecutionFixture(t *testing.T, client llm.Client, store storage.Store) *
 		autoConfirmSession: map[string]bool{}, autoConfirmTools: map[string]map[string]bool{},
 	}
 	runtime := ToolRuntimeState{provider: dialogue.NoopToolSchemaProvider{}, defaultProvider: true, manager: opts.ToolRunner}
-	deps := &toolRunDeps{hooks: bridge, requests: opts.Requests, turns: opts.Turns, identity: identity,
+	deps := &toolRunDeps{status: status, hooks: bridge, requests: opts.Requests, turns: opts.Turns, identity: identity,
 		state: opts.ToolState, runtime: &runtime, sessions: opts.Sessions, sessionRows: store.Sessions(), toolCalls: store.ToolCalls(), confirmations: confirmations, view: view}
 	tools := &dialogue.ToolExecutor{
 		Manager:         opts.ToolRunner,
@@ -74,7 +74,7 @@ func newExecutionFixture(t *testing.T, client llm.Client, store storage.Store) *
 	tools.Messages = messages
 	preparer := &dialogue.Preparer{Contexts: opts.Contexts, Identity: identity, Hooks: bridge, Tools: tools}
 	calls := &dialogue.CallProcessor{Messages: messages, Hooks: bridge, Identity: identity, Tools: tools}
-	chat := &chatroute.Loop{
+	chat := &chatroute.Loop{Status: status,
 		Contexts:      opts.Contexts,
 		Models:        models,
 		Turns:         opts.Turns,
@@ -88,7 +88,7 @@ func newExecutionFixture(t *testing.T, client llm.Client, store storage.Store) *
 	if err := bindProviderRoutes(opts.Routes, models, chat, nil, &chatroute.Compactor{Store: store, Models: models, Contexts: opts.Contexts, Loader: contextmgr.Loader{Store: store}}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	runner := &dialogue.Runner{
+	runner := &dialogue.Runner{Status: status,
 		Routes:   opts.Routes,
 		Preparer: preparer,
 		Messages: messages,
@@ -121,7 +121,7 @@ func newExecutionFixture(t *testing.T, client llm.Client, store storage.Store) *
 		runner:        runner,
 		confirmations: confirmations,
 		hooks:         hooks,
-		out:           foregroundTurnOutput{sender: output, status: status},
+		out:           foregroundTurnOutput{sender: output},
 	}
 }
 

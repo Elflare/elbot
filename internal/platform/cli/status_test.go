@@ -1,4 +1,4 @@
-package module
+package cli
 
 import (
 	"context"
@@ -6,14 +6,12 @@ import (
 	"time"
 
 	agentevents "elbot/internal/agent/events"
-	"elbot/internal/delivery/dispatch"
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
-	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
 )
 
 type slowStatusPlatform struct {
-	assemblyPlatform
 	sent  chan runtimestatus.Snapshot
 	gates []chan struct{}
 	calls int
@@ -46,14 +44,17 @@ func nextStatus(t *testing.T, sent <-chan runtimestatus.Snapshot) runtimestatus.
 func TestStatusCoalescesTerminalAndUpdatesDuringSend(t *testing.T) {
 	first, second := make(chan struct{}), make(chan struct{})
 	p := &slowStatusPlatform{sent: make(chan runtimestatus.Snapshot, 10), gates: []chan struct{}{first, second}}
-	d := newStatusDisplay(dispatch.New(dispatch.Options{Primary: p}))
+	d := newStatusDisplay()
+	d.send = func(ctx context.Context, _ messageData, snapshot runtimestatus.Snapshot) error {
+		return p.SetRuntimeStatus(ctx, snapshot)
+	}
 	t.Cleanup(func() { _ = d.Close(context.Background()) })
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: messageData{adapter: New()}}))
 	defer cancel()
 	emit := func(version uint64, phase runtimestatus.Phase, tokens int) {
 		t.Helper()
 		usage := &llm.Usage{TotalTokens: func() *int64 { n := int64(tokens); return &n }()}
-		if err := d.receive(ctx, agentevents.StatusChangedEvent{Snapshot: runtimestatus.Snapshot{SessionID: "s", Phase: phase, Usage: usage}, Version: version, Display: true}); err != nil {
+		if err := d.receive(ctx, agentevents.StatusChangedEvent{Snapshot: runtimestatus.Snapshot{SessionID: "s", Phase: phase, Usage: usage}, Version: version}); err != nil {
 			t.Fatal(err)
 		}
 		*usage.TotalTokens = -1
@@ -94,27 +95,42 @@ func TestStatusCoalescesTerminalAndUpdatesDuringSend(t *testing.T) {
 }
 
 func TestStatusTargetsKeepDistinctSendersAndBackgroundIsSilent(t *testing.T) {
-	one, two := &slowStatusPlatform{sent: make(chan runtimestatus.Snapshot, 3)}, &slowStatusPlatform{sent: make(chan runtimestatus.Snapshot, 3)}
-	d := newStatusDisplay(dispatch.New(dispatch.Options{Primary: one}))
+	one, two := New(), New()
+	d := newStatusDisplay()
+	sent := make(chan messageData, 2)
+	d.send = func(_ context.Context, target messageData, _ runtimestatus.Snapshot) error {
+		sent <- target
+		return nil
+	}
 	t.Cleanup(func() { _ = d.Close(context.Background()) })
-	e := agentevents.StatusChangedEvent{Snapshot: runtimestatus.Snapshot{SessionID: "same", Phase: runtimestatus.PhaseDone}, Version: 1, Display: true}
-	for _, p := range []*slowStatusPlatform{one, two} {
-		ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Sender: p})
+	e := agentevents.StatusChangedEvent{Snapshot: runtimestatus.Snapshot{SessionID: "same", Phase: runtimestatus.PhaseDone}, Version: 1}
+	for _, a := range []*Adapter{one, two} {
+		ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: messageData{adapter: a}})
 		if err := d.receive(ctx, e); err != nil {
 			t.Fatal(err)
 		}
 	}
-	nextStatus(t, one.sent)
-	nextStatus(t, two.sent)
-	e.Display = false
+	targets := map[messageData]bool{}
+	for range 2 {
+		select {
+		case target := <-sent:
+			targets[target] = true
+		case <-time.After(time.Second):
+			t.Fatal("display missing")
+		}
+	}
+	if len(targets) != 2 {
+		t.Fatal("original targets merged")
+	}
 	e.Version++
-	if err := d.receive(context.Background(), e); err != nil {
+	background := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli"}})
+	if err := d.receive(background, e); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(one.sent) != 0 || len(two.sent) != 0 {
+	if len(sent) != 0 {
 		t.Fatal("background status escaped")
 	}
 }

@@ -90,7 +90,7 @@ func TestExecutionConstructionKeepsBorrowedCallbacksAndServices(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	output, err := NewOutputSender(OutputSenderDeps{Dispatcher: opts.Dispatcher, Hooks: constructorHooks{}, Identity: identity})
+	output, err := NewOutputSender(OutputSenderDeps{Dispatcher: opts.Dispatcher, Hooks: constructorHooks{}})
 	if err != nil {
 		t.Fatal(err)
 	}

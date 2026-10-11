@@ -12,7 +12,6 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/media"
 	"elbot/internal/platform"
-	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/storage"
 )
 
@@ -116,54 +115,4 @@ func (r *Router) StartStream(ctx context.Context) (delivery.MessageStream, error
 		return streaming.StartStream(ctx)
 	}
 	return nil, nil
-}
-
-func (r *Router) SendReasoning(ctx context.Context, text string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	sender, err := r.sender(ctx, delivery.Target{})
-	if err != nil {
-		return err
-	}
-	if reasoning, ok := sender.(interface {
-		SendReasoning(context.Context, string) error
-	}); ok {
-		return reasoning.SendReasoning(ctx, text)
-	}
-	return nil
-}
-
-func (r *Router) SetRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	sender, err := r.sender(ctx, delivery.Target{})
-	if err != nil {
-		return err
-	}
-	if status, ok := sender.(interface {
-		SetRuntimeStatus(context.Context, runtimestatus.Snapshot) error
-	}); ok {
-		return status.SetRuntimeStatus(ctx, snapshot)
-	}
-	return nil
-}
-
-// RuntimeStatusTarget identifies the actual display without doing platform I/O.
-// Remote adapters include their original connection, rather than just a user ID.
-func (r *Router) RuntimeStatusTarget(ctx context.Context) (string, error) {
-	sender, err := r.sender(ctx, delivery.Target{})
-	if err != nil {
-		return "", err
-	}
-	if _, ok := sender.(interface {
-		SetRuntimeStatus(context.Context, runtimestatus.Snapshot) error
-	}); !ok {
-		return "", nil
-	}
-	if target, ok := sender.(interface{ RuntimeStatusTarget(context.Context) string }); ok {
-		return target.RuntimeStatusTarget(ctx), nil
-	}
-	return fmt.Sprintf("%T:%p", sender, sender), nil
 }

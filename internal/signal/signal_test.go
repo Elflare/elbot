@@ -140,11 +140,16 @@ func TestForwardingReleasesUpstreamWorkerAndPreservesDeadline(t *testing.T) {
 	defer close(release)
 	connect(t, slow, func(ctx context.Context, _ int) (int, error) { close(started); <-release; return 1, ctx.Err() }, ConnectOptions{})
 	connect(t, fast, func(_ context.Context, n int) (int, error) { return n, nil }, ConnectOptions{})
-	_, err := up.ConnectForward(func(ctx context.Context, n int) (*Emission[int], error) {
+	_, err := up.ConnectForward(func(ctx context.Context, n int) *Emission[int] {
+		down := fast
 		if n == 0 {
-			return slow.EmitAsync(ctx, n)
+			down = slow
 		}
-		return fast.EmitAsync(ctx, n)
+		e, err := down.EmitAsync(ctx, n)
+		if e == nil {
+			return Resolved(Result[int]{Err: err})
+		}
+		return e
 	}, ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

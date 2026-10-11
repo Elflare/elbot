@@ -2,19 +2,18 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/agent/dialogue"
 	"log/slog"
 
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	runtimestatus "elbot/internal/runtime"
 )
 
 type foregroundTurnOutput struct {
 	sender ExecutionSender
-	status ExecutionStatus
 }
 
-type backgroundTurnOutput struct{ status ExecutionStatus }
+type backgroundTurnOutput struct{}
 
 func (o foregroundTurnOutput) StartStream(ctx context.Context) delivery.MessageStream {
 	return o.sender.StartStream(ctx)
@@ -44,12 +43,8 @@ func (o foregroundTurnOutput) SendPreview(ctx context.Context, text string) {
 	o.sender.Preview(ctx, text)
 }
 
-func (o foregroundTurnOutput) SendReasoning(ctx context.Context, text string) {
-	o.sender.Reasoning(ctx, text)
-}
-
-func (o foregroundTurnOutput) PublishRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) {
-	o.status.Record(ctx, snapshot, true)
+func (o foregroundTurnOutput) StartReasoning(ctx context.Context) dialogue.ReasoningStream {
+	return o.sender.StartReasoning(ctx)
 }
 
 func (o backgroundTurnOutput) StartStream(ctx context.Context) delivery.MessageStream { return nil }
@@ -74,8 +69,4 @@ func (o backgroundTurnOutput) Notify(ctx context.Context, level slog.Level, text
 
 func (o backgroundTurnOutput) SendPreview(ctx context.Context, text string) {}
 
-func (o backgroundTurnOutput) SendReasoning(ctx context.Context, text string) {}
-
-func (o backgroundTurnOutput) PublishRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) {
-	o.status.Record(ctx, snapshot, false)
-}
+func (o backgroundTurnOutput) StartReasoning(context.Context) dialogue.ReasoningStream { return nil }

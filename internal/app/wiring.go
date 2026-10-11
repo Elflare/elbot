@@ -74,6 +74,7 @@ func (defaultWiringFactory) Build(ctx context.Context, req WiringRequest) (*Wiri
 	}
 	req.Profiler.Mark("hook register")
 	c.Dialogue, err = dialoguemodule.NewModule(ctx, dialoguemodule.ModuleDeps{
+		Reasoning:       c.Platform.StartReasoning,
 		PlatformName:    c.Platform.PrimaryName(),
 		Store:           f.Store,
 		Models:          services.Models,
@@ -134,6 +135,5 @@ func (defaultWiringFactory) Build(ctx context.Context, req WiringRequest) (*Wiri
 	if err != nil {
 		return c, err
 	}
-	connectModules(c)
-	return c, nil
+	return c, connectModules(c)
 }

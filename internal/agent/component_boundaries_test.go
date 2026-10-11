@@ -12,7 +12,6 @@ import (
 	agentevents "elbot/internal/agent/events"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-	"elbot/internal/delivery/dispatch"
 	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -38,49 +37,39 @@ func (p *statusReadingPlatform) SetRuntimeStatus(_ context.Context, sent runtime
 	return errors.New("display unavailable")
 }
 
-func TestComponentStatusRecordedBeforeDisplayAndBackgroundStaysSilent(t *testing.T) {
+func TestComponentStatusCommittedBeforeObserversAndCancellation(t *testing.T) {
 	recorder := &StatusRecorder{changed: signal.New[agentevents.StatusChangedEvent, signal.Empty]("test.status")}
-	p := &statusReadingPlatform{recorder: recorder, observed: make(chan runtimestatus.Snapshot, 2)}
-	foreground := foregroundTurnOutput{sender: &OutputSender{dispatcher: dispatch.New(dispatch.Options{Primary: p})}, status: recorder}
-	_, err := recorder.changed.Observe(func(ctx context.Context, event agentevents.StatusChangedEvent) error {
-		if event.Display {
-			return foreground.sender.(*OutputSender).dispatcher.SetRuntimeStatus(ctx, event.Snapshot)
+	t.Cleanup(func() { _ = recorder.changed.Close(context.Background()) })
+	started := time.Now()
+	recorder.Record(context.Background(), runtimestatus.Snapshot{SessionID: "s1", Model: "model", TurnStartedAt: started, Phase: runtimestatus.PhaseLLM})
+	p := &statusReadingPlatform{recorder: recorder, observed: make(chan runtimestatus.Snapshot, 1)}
+	connection, err := recorder.changed.Observe(func(ctx context.Context, event agentevents.StatusChangedEvent) error {
+		if ctx.Err() != nil {
+			t.Error("committed fact inherited cancellation")
 		}
-		return nil
+		return p.SetRuntimeStatus(ctx, event.Snapshot)
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	background := backgroundTurnOutput{status: recorder}
-	started := time.Now()
-	background.PublishRuntimeStatus(context.Background(), runtimestatus.Snapshot{SessionID: "s1", Model: "model", TurnStartedAt: started, Phase: runtimestatus.PhaseLLM})
-	if len(p.observed) != 0 || recorder.Snapshot("s1").Model != "model" {
-		t.Fatal("background must record without displaying")
-	}
-	done := make(chan struct{})
-	go func() {
-		foreground.PublishRuntimeStatus(context.Background(), runtimestatus.Snapshot{SessionID: "s1", Phase: runtimestatus.PhaseDone})
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("display callback blocked reading the recorded snapshot")
-	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	recorder.Record(ctx, runtimestatus.Snapshot{SessionID: "s1", Phase: runtimestatus.PhaseDone})
 	got := <-p.observed
 	if got.Phase != runtimestatus.PhaseDone || got.Model != "model" || !got.TurnStartedAt.Equal(started) {
-		t.Fatalf("display read stale or unmerged state: %+v", got)
+		t.Fatalf("stale snapshot: %+v", got)
 	}
 	if recorder.Snapshot("s1").Phase != runtimestatus.PhaseDone {
-		t.Fatal("display failure changed local state")
+		t.Fatal("observer failure changed committed state")
 	}
-	// Concurrent sessions use the same recorder without sharing a state lock
-	// with display delivery. Race detection covers both reads and merges.
+	if err := connection.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	var wg sync.WaitGroup
 	for _, id := range []string{"s1", "s2", "s3"} {
 		wg.Go(func() {
 			for range 30 {
-				recorder.Record(context.Background(), runtimestatus.Snapshot{SessionID: id, Phase: runtimestatus.PhaseLLM}, false)
+				recorder.Record(context.Background(), runtimestatus.Snapshot{SessionID: id, Phase: runtimestatus.PhaseLLM})
 				_ = recorder.Snapshot(id)
 			}
 		})
@@ -220,7 +209,7 @@ func TestMigratedComponentsPublishFactsWithoutLogger(t *testing.T) {
 	}
 	defer connection.Disconnect()
 	_, _ = a.signals.ModelCallCompleted.Observe(func(context.Context, agentevents.ModelCallCompletedEvent) error { counts["model"]++; return nil }, signal.ConnectOptions{})
-	out := foregroundTurnOutput{sender: a.output, status: a.status}
+	out := foregroundTurnOutput{sender: a.output}
 	if _, err := a.dialogue.PrepareTurn(ctx, dialogue.TurnInput{Session: row, Text: "input", Selection: modelmgr.SelectionForTurn(ctx, a.execution.models, row)}); err != nil {
 		t.Fatal(err)
 	}
