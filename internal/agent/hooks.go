@@ -32,22 +32,22 @@ type HookRouter interface {
 	RouteHookID(hook.Event) string
 }
 
-type hookBridge struct {
+type HookBridge struct {
 	manager        hookRunner
 	router         HookRouter
 	requests       *request.Manager
-	identity       *identityResolver
+	identity       HookIdentity
 	media          *media.Manager
 	failed         *signal.Signal[agentevents.HookFailedEvent]
 	dispatcher     *dispatch.Router
 	platformEvents platformSubscriptions
 }
 
-func (h *hookBridge) CancelRoute(event hook.Event) bool {
+func (h *HookBridge) CancelRoute(event hook.Event) bool {
 	return h.router != nil && h.router.Cancel(event)
 }
 
-func (h *hookBridge) Route(ctx context.Context, event hook.Event) (hook.Event, bool, error) {
+func (h *HookBridge) Route(ctx context.Context, event hook.Event) (hook.Event, bool, error) {
 	if h.router == nil {
 		return event, false, nil
 	}
@@ -59,44 +59,44 @@ func (h *hookBridge) Route(ctx context.Context, event hook.Event) (hook.Event, b
 	return h.router.Route(ctx, event)
 }
 
-func (h *hookBridge) Run(ctx context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
+func (h *HookBridge) Run(ctx context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
 	manager := h.manager
 	if manager == nil {
 		manager = hook.NoopManager{}
 	}
-	event = h.fillContext(ctx, event)
+	event = h.FillContext(ctx, event)
 	before := hook.SnapshotCalls(event)
 	updated, logResult, err := manager.Run(ctx, event)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return event, logResult, err
 		}
-		h.notifyError(ctx, event, err)
+		h.NotifyError(ctx, event, err)
 		h.publishFailure(ctx, event, err, true)
 		return before, logResult, err
 	}
 	return updated, logResult, nil
 }
 
-func (h *hookBridge) Notify(ctx context.Context, event hook.Event) {
+func (h *HookBridge) Notify(ctx context.Context, event hook.Event) {
 	manager := h.manager
 	if manager == nil {
 		manager = hook.NoopManager{}
 	}
-	event = h.fillContext(ctx, event)
+	event = h.FillContext(ctx, event)
 	if _, err := manager.Notify(ctx, event); err != nil {
 		h.publishFailure(ctx, event, err, !errors.Is(err, context.Canceled) && event.Point != hook.PointErrorOccurred)
 		if errors.Is(err, context.Canceled) {
 			return
 		}
 		if event.Point != hook.PointErrorOccurred {
-			h.notifyError(ctx, event, err)
+			h.NotifyError(ctx, event, err)
 		}
 	}
 }
 
 // ObserveRun participates synchronously in request tracking.
-func (h *hookBridge) ObserveRun(ctx context.Context, event hook.Event, info hook.ObserverInfo) (context.Context, func()) {
+func (h *HookBridge) ObserveRun(ctx context.Context, event hook.Event, info hook.ObserverInfo) (context.Context, func()) {
 	if h == nil || h.requests == nil {
 		return ctx, func() {}
 	}
@@ -157,7 +157,7 @@ func (h *hookBridge) ObserveRun(ctx context.Context, event hook.Event, info hook
 	return reqCtx, done
 }
 
-func (h *hookBridge) notifyError(ctx context.Context, source hook.Event, err error) {
+func (h *HookBridge) NotifyError(ctx context.Context, source hook.Event, err error) {
 	if source.Point == hook.PointErrorOccurred {
 		return
 	}
@@ -167,11 +167,11 @@ func (h *hookBridge) notifyError(ctx context.Context, source hook.Event, err err
 	h.Notify(ctx, event)
 }
 
-func (h *hookBridge) publishFailure(ctx context.Context, event hook.Event, err error, notice bool) {
+func (h *HookBridge) publishFailure(ctx context.Context, event hook.Event, err error, notice bool) {
 	agentevents.Emit(ctx, h.failed, agentevents.HookFailedEvent{EventMeta: agentevents.Meta(ctx, event.Session.ID), Point: event.Point, Platform: event.Platform, Err: err, Notice: notice})
 }
 
-func (h *hookBridge) handlePlatformConnected(ctx context.Context, platformName string) {
+func (h *HookBridge) handlePlatformConnected(ctx context.Context, platformName string) {
 	if err := notificationrules.PlatformConnected(ctx, platformName, h.Run, h.dispatcher); err != nil {
 		h.publishFailure(ctx, hook.Event{Point: hook.PointPlatformConnected, Platform: hook.PlatformContext{Name: platformName}}, err, false)
 	}
@@ -184,7 +184,7 @@ func hookSession(session *storage.Session) hook.SessionContext {
 	return hook.SessionContext{ID: session.ID, Mode: session.Mode, Title: session.Title, Status: session.Status}
 }
 
-func (h *hookBridge) fillContext(ctx context.Context, event hook.Event) hook.Event {
+func (h *HookBridge) FillContext(ctx context.Context, event hook.Event) hook.Event {
 	if h.media != nil {
 		event.Media = h.media
 	}
@@ -241,12 +241,42 @@ func (h *hookBridge) fillContext(ctx context.Context, event hook.Event) hook.Eve
 }
 
 func actorContext(actor contextinfo.Actor) hook.ActorContext {
-	return hook.ActorContext{ID: actor.ID, Role: string(actor.Role), GroupRole: string(actor.GroupRole), UserID: actor.PlatformUserID, Nickname: actor.Nickname, GroupCard: actor.GroupCard, DisplayName: actor.DisplayName}
+	return hook.ActorContext{
+		ID:          actor.ID,
+		Role:        string(actor.Role),
+		GroupRole:   string(actor.GroupRole),
+		UserID:      actor.PlatformUserID,
+		Nickname:    actor.Nickname,
+		GroupCard:   actor.GroupCard,
+		DisplayName: actor.DisplayName,
+	}
 }
 
-func (a *Agent) ObserveHookRun(ctx context.Context, event hook.Event, info hook.ObserverInfo) (context.Context, func()) {
-	if a == nil || a.hooks == nil {
-		return ctx, func() {}
+// NewHookBridge initializes HookBridge without installing cross-service callbacks.
+func NewHookBridge(deps HookBridgeDeps) (*HookBridge, error) {
+	if deps.Requests == nil {
+		return nil, fmt.Errorf("HookBridge requests is required")
 	}
-	return a.hooks.ObserveRun(ctx, event, info)
+	if deps.Identity == nil {
+		return nil, fmt.Errorf("HookBridge identity is required")
+	}
+	if deps.Dispatcher == nil {
+		return nil, fmt.Errorf("HookBridge dispatcher is required")
+	}
+	if deps.Manager == nil {
+		deps.Manager = hook.NoopManager{}
+	}
+	return &HookBridge{
+		manager:    deps.Manager,
+		router:     deps.Router,
+		requests:   deps.Requests,
+		identity:   deps.Identity,
+		media:      deps.Media,
+		failed:     deps.Failed,
+		dispatcher: deps.Dispatcher,
+	}, nil
+}
+
+func (h *HookBridge) HasRoute(event hook.Event) bool {
+	return h.router != nil && h.router.RouteHookID(event) != ""
 }

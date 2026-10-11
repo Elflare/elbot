@@ -2,13 +2,13 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/events"
 	"errors"
 	"net/http"
 	"strings"
 	"sync/atomic"
 	"testing"
 
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/session"
 	"elbot/internal/storage"

@@ -2,8 +2,6 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/events"
-	"elbot/internal/llm/chatcompletions"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,8 +9,10 @@ import (
 	"testing"
 
 	"elbot/internal/agent/dialogue"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/media"
 	"elbot/internal/platform"
 	"elbot/internal/storage"
@@ -34,7 +34,9 @@ func TestMediaCanonicalPersistenceAndSessionRestore(t *testing.T) {
 	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
 	f := &fakeLLM{replies: []string{"first"}}
 	a := newTestMediaAgent(t, p, f, store, center)
-	input := platform.WithMessageContext(ctx, platform.MessageContext{Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "看图"}, {Type: platform.SegmentImage, URL: server.URL + "/cat.png", Name: "cat.png"}}})
+	input := platform.WithMessageContext(ctx, platform.MessageContext{
+		Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "看图"}, {Type: platform.SegmentImage, URL: server.URL + "/cat.png", Name: "cat.png"}},
+	})
 	if err := a.HandleMessage(input, "看图"); err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +82,9 @@ func TestToolResultMediaPersistsID(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	p := &fakePlatform{}
-	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "prepared_args", Args: `{"q":"test"}`}}, FinishReason: "tool_calls"}}, {{DeltaContent: "done"}}}}
+	f := &fakeLLM{
+		chunks: [][]chatcompletions.Chunk{{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "prepared_args", Args: `{"q":"test"}`}}, FinishReason: "tool_calls"}}, {{DeltaContent: "done"}}},
+	}
 	root := t.TempDir()
 
 	registry := tool.NewRegistry()

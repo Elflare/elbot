@@ -2,6 +2,12 @@ package agent
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
@@ -16,11 +22,6 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
-	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
-	"testing"
 )
 
 type preparedArgumentTool struct {
@@ -430,7 +431,9 @@ func TestNonCLIChatToolCallWithAssistantTextSkipsToolArgumentPreview(t *testing.
 		cfg.ToolRegistry = registry
 	})
 	a.output.dispatcher.RegisterPlatformSender("qq", p)
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq", ScopeID: "private:1"}, Identity: contextinfo.Identity{PlatformUserID: "1", ActorID: "qq:1"}}})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq", ScopeID: "private:1"}, Identity: contextinfo.Identity{PlatformUserID: "1", ActorID: "qq:1"}},
+	})
 
 	if err := a.HandleMessage(ctx, "看看目录"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -542,7 +545,10 @@ actions = [
 func TestChatExecutesAllToolCallsInSameRound(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
-		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}, {ID: "call_2", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
+		{{
+			ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}, {ID: "call_2", Name: "shell", Args: `{"cmd":"ls"}`}},
+			FinishReason:   "tool_calls",
+		}},
 		{{DeltaContent: "done"}},
 	}}
 

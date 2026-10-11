@@ -28,9 +28,13 @@ func TestUnregisteredNativeDialogueRejectsBeforeCompactionAndInputWrite(t *testi
 	}
 	store := newTestStore(t)
 	fixture := newExecutionFixture(t, &fakeLLM{}, store)
-	models := newTestModels(t, modelmgr.Options{Clients: map[string]llm.Client{"native": client}, Providers: map[string]config.ProviderConfig{"native": {APIMode: "response"}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "native", Model: "m"}, "chat": {Provider: "native", Model: "m"}}})
+	models := newTestModels(t, modelmgr.Options{
+		Clients:    map[string]llm.Client{"native": client},
+		Providers:  map[string]config.ProviderConfig{"native": {APIMode: "response"}},
+		ModeModels: map[string]config.ModelSelection{"work": {Provider: "native", Model: "m"}, "chat": {Provider: "native", Model: "m"}},
+	})
 	fixture.execution.models = models
-	ctx, row, err := fixture.execution.resolveInput(context.Background(), "incoming")
+	ctx, row, err := fixture.execution.ResolveInput(context.Background(), "incoming")
 	if err != nil {
 		t.Fatal(err)
 	}

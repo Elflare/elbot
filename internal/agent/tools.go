@@ -1,14 +1,15 @@
 package agent
 
 import (
+	"fmt"
+
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/fileops"
-	"elbot/internal/memory/resident"
 	"elbot/internal/tool"
 	"elbot/internal/toolrun"
 )
 
-type toolRuntimeState struct {
+type ToolRuntimeState struct {
 	provider        dialogue.ToolSchemaProvider
 	manager         *toolrun.Manager
 	registry        *tool.Registry
@@ -16,20 +17,36 @@ type toolRuntimeState struct {
 	defaultProvider bool
 }
 
-func buildSystemPrompt(soulPath string, memory *resident.Store, provider dialogue.ToolSchemaProvider, preloader *toolrun.PreloadService) dialogue.SystemPromptManager {
-	soul := dialogue.SoulProvider(dialogue.StaticSoulProvider{Prompt: "You are a helpful assistant."})
-	if soulPath != "" {
-		soul = &dialogue.FileSoulProvider{Path: soulPath}
-	}
-	manager := dialogue.NewSystemPromptManager(dialogue.SoulSystemPromptSource{Soul: soul})
-	if nameProvider, ok := provider.(dialogue.ToolNameProvider); ok {
-		manager.AddSource(dialogue.ToolNamesSystemPromptSource{Tools: nameProvider})
-	}
-	if preloader != nil {
-		manager.AddSource(dialogue.ToolTagsSystemPromptSource{Preloader: preloader})
-	}
-	manager.AddSource(dialogue.BackgroundPathsSystemPromptSource{})
-	manager.AddSource(dialogue.ResidentMemorySystemPromptSource{Store: memory})
-	manager.AddSource(dialogue.ConversationMetaSystemPromptSource{})
-	return manager
+// ToolRuntimeStateDeps declares only the capabilities consumed by ToolRuntimeState.
+type ToolRuntimeStateDeps struct {
+	Identity     dialogue.Identity
+	Provider     dialogue.ToolSchemaProvider
+	Manager      *toolrun.Manager
+	Registry     *tool.Registry
+	FileRollback *fileops.Service
 }
+
+// NewToolRuntimeState initializes ToolRuntimeState without installing cross-service callbacks.
+func NewToolRuntimeState(deps ToolRuntimeStateDeps) (*ToolRuntimeState, error) {
+	if deps.Manager == nil {
+		return nil, fmt.Errorf("ToolRuntimeState manager is required")
+	}
+	runtime := &ToolRuntimeState{
+		provider:     deps.Provider,
+		manager:      deps.Manager,
+		registry:     deps.Registry,
+		fileRollback: deps.FileRollback,
+	}
+	runtime.provider = dialogue.NoopToolSchemaProvider{}
+	runtime.defaultProvider = true
+	if deps.Registry != nil {
+		runtime.provider = toolRunPromptProvider{tools: deps.Manager, identity: deps.Identity}
+	} else if deps.Provider != nil {
+		runtime.provider = deps.Provider
+		runtime.defaultProvider = false
+	}
+	return runtime, nil
+}
+
+func (r *ToolRuntimeState) Provider() dialogue.ToolSchemaProvider { return r.provider }
+func (r *ToolRuntimeState) DefaultProvider() bool                 { return r.defaultProvider }

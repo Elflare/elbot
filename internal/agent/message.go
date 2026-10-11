@@ -2,11 +2,14 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/contextinfo"
+	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
@@ -15,29 +18,25 @@ import (
 	"elbot/internal/storage"
 )
 
-type messageHandler struct {
-	identity  *identityResolver
-	hooks     *hookBridge
-	output    *outputSender
-	commands  *commandExecutor
-	input     *inputCoordinator
+type MessageHandler struct {
+	identity  MessageIdentity
+	hooks     MessageHooks
+	output    MessageOutput
+	commands  MessageCommands
+	input     MessageInput
 	media     *media.Manager
 	messages  storage.MessageRepository
 	mediaRows storage.MediaRepository
 }
 
-func (a *Agent) HandleMessage(ctx context.Context, text string) error {
-	return a.message.HandleMessage(ctx, text)
-}
-
 // HandleMessage dispatches commands and chat messages.
-func (h *messageHandler) HandleMessage(ctx context.Context, text string) (err error) {
+func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err error) {
 	actor := h.identity.Actor(ctx)
-	ctx = security.WithPolicy(contextinfo.WithActor(ctx, actor), h.identity.policy)
+	ctx = security.WithPolicy(contextinfo.WithActor(ctx, actor), h.identity.Policy())
 	segments := inboundSegments(ctx, text)
 	defer func() {
 		if err != nil {
-			h.hooks.notifyError(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}}, err)
+			h.hooks.NotifyError(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}}, err)
 			if dialogue.ShouldNotifyUserError(err) {
 				h.output.SendChat(ctx, notificationrules.ExecutionFailure(err))
 			}
@@ -46,18 +45,18 @@ func (h *messageHandler) HandleMessage(ctx context.Context, text string) (err er
 	woken := h.messageWakeup(ctx, llm.SegmentsTextOnly(segments))
 	ctx = withMessageWakeup(ctx, woken)
 	if strings.TrimSpace(llm.SegmentsTextOnly(segments)) == "/cancel" {
-		cancelEvent := h.hooks.fillContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
+		cancelEvent := h.hooks.FillContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
 		if h.hooks.CancelRoute(cancelEvent) {
 			h.output.SendChat(ctx, "已取消当前 Hook 会话。")
 			return nil
 		}
 	}
-	event := h.hooks.fillContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
-	waiting := h.hooks.router != nil && h.hooks.router.RouteHookID(event) != ""
+	event := h.hooks.FillContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
+	waiting := h.hooks.HasRoute(event)
 	if woken || waiting {
 		ctx = h.materializePlatformMedia(ctx)
 		segments = inboundSegments(ctx, text)
-		event = h.hooks.fillContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
+		event = h.hooks.FillContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
 	}
 	event, routed, routeErr := h.hooks.Route(ctx, event)
 	if routeErr != nil {
@@ -96,12 +95,82 @@ func (h *messageHandler) HandleMessage(ctx context.Context, text string) (err er
 	segments = replaceInboundTextSegments(ctx, text)
 	ctx = withInboundSegments(ctx, segments)
 	if !hasForkFromMessage(ctx) {
-		if err := h.input.expireIdleCurrentSession(ctx); err != nil {
+		if err := h.input.ExpireIdleCurrentSession(ctx); err != nil {
 			return err
 		}
 	}
 	if handled, err := h.commands.Handle(ctx, text); handled {
 		return err
 	}
-	return h.input.handleInput(ctx, text)
+	return h.input.HandleInput(ctx, text)
+}
+
+type MessageIdentity interface {
+	dialogue.Identity
+	Policy() *security.Policy
+}
+
+type MessageHooks interface {
+	dialogue.Hooks
+	FillContext(context.Context, hook.Event) hook.Event
+	NotifyError(context.Context, hook.Event, error)
+	CancelRoute(hook.Event) bool
+	Route(context.Context, hook.Event) (hook.Event, bool, error)
+	HasRoute(hook.Event) bool
+}
+
+type MessageOutput interface {
+	SendChat(context.Context, string)
+	SendOutputs(context.Context, []delivery.Output) (events.LogResult, error)
+}
+
+type MessageCommands interface {
+	Handle(context.Context, string) (bool, error)
+	IsCommand(string) bool
+}
+
+type MessageInput interface {
+	HandleInput(context.Context, string) error
+	ExpireIdleCurrentSession(context.Context) error
+}
+
+// MessageHandlerDeps declares only the capabilities consumed by MessageHandler.
+type MessageHandlerDeps struct {
+	Identity  MessageIdentity
+	Hooks     MessageHooks
+	Output    MessageOutput
+	Commands  MessageCommands
+	Input     MessageInput
+	Media     *media.Manager
+	Messages  storage.MessageRepository
+	MediaRows storage.MediaRepository
+}
+
+// NewMessageHandler initializes MessageHandler without installing cross-service callbacks.
+func NewMessageHandler(deps MessageHandlerDeps) (*MessageHandler, error) {
+	if deps.Identity == nil {
+		return nil, fmt.Errorf("MessageHandler identity is required")
+	}
+	if deps.Hooks == nil {
+		return nil, fmt.Errorf("MessageHandler hooks is required")
+	}
+	if deps.Output == nil {
+		return nil, fmt.Errorf("MessageHandler output is required")
+	}
+	if deps.Commands == nil {
+		return nil, fmt.Errorf("MessageHandler commands is required")
+	}
+	if deps.Input == nil {
+		return nil, fmt.Errorf("MessageHandler input is required")
+	}
+	return &MessageHandler{
+		identity:  deps.Identity,
+		hooks:     deps.Hooks,
+		output:    deps.Output,
+		commands:  deps.Commands,
+		input:     deps.Input,
+		media:     deps.Media,
+		messages:  deps.Messages,
+		mediaRows: deps.MediaRows,
+	}, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"elbot/internal/agent/dialogue"
 	"elbot/internal/contextinfo"
 	"elbot/internal/fileops"
 	"elbot/internal/request"
@@ -13,20 +14,16 @@ import (
 	"elbot/internal/workspace"
 )
 
-type fileCommandPreparer struct {
+type FileCommandPreparer struct {
 	service     *fileops.Service
 	sessions    *session.Service
 	sessionRows storage.SessionRepository
 	turns       *turn.Manager
 	requests    *request.Manager
-	identity    *identityResolver
+	identity    dialogue.Identity
 }
 
-func (a *Agent) PrepareFileCommand(ctx context.Context, idleOnly bool) (context.Context, error) {
-	return a.fileCommands.PrepareFileCommand(ctx, idleOnly)
-}
-
-func fileRollbackContext(ctx context.Context, service *fileops.Service, sessions *session.Service, turns *turn.Manager, requests *request.Manager, identity *identityResolver, row *storage.Session, idleOnly ...bool) context.Context {
+func fileRollbackContext(ctx context.Context, service *fileops.Service, sessions *session.Service, turns *turn.Manager, requests *request.Manager, identity dialogue.Identity, row *storage.Session, idleOnly ...bool) context.Context {
 	if row == nil || service == nil {
 		return ctx
 	}
@@ -57,7 +54,7 @@ func fileRollbackContext(ctx context.Context, service *fileops.Service, sessions
 
 // PrepareFileCommand captures the original binding and execution admission for
 // file commands. The file service owns record lookup and the actual operation.
-func (p *fileCommandPreparer) PrepareFileCommand(ctx context.Context, idleOnly bool) (context.Context, error) {
+func (p *FileCommandPreparer) PrepareFileCommand(ctx context.Context, idleOnly bool) (context.Context, error) {
 	if p.identity.Actor(ctx).Role != contextinfo.RoleSuperadmin {
 		return ctx, fmt.Errorf("rollback requires superadmin role")
 	}
@@ -85,4 +82,41 @@ func (p *fileCommandPreparer) PrepareFileCommand(ctx context.Context, idleOnly b
 	// still reject a write if a Turn begins while it waits for the target lock.
 	ctx = fileRollbackContext(ctx, p.service, p.sessions, p.turns, p.requests, p.identity, row, true)
 	return workspace.WithWorkspaceStore(ctx, session.NewWorkspaceStore(p.sessions, p.sessionRows, row.ID)), nil
+}
+
+// FileCommandPreparerDeps declares only the capabilities consumed by FileCommandPreparer.
+type FileCommandPreparerDeps struct {
+	Service     *fileops.Service
+	Sessions    *session.Service
+	SessionRows storage.SessionRepository
+	Turns       *turn.Manager
+	Requests    *request.Manager
+	Identity    dialogue.Identity
+}
+
+// NewFileCommandPreparer initializes FileCommandPreparer without installing cross-service callbacks.
+func NewFileCommandPreparer(deps FileCommandPreparerDeps) (*FileCommandPreparer, error) {
+	if deps.Sessions == nil {
+		return nil, fmt.Errorf("FileCommandPreparer sessions is required")
+	}
+	if deps.SessionRows == nil {
+		return nil, fmt.Errorf("FileCommandPreparer sessionRows is required")
+	}
+	if deps.Turns == nil {
+		return nil, fmt.Errorf("FileCommandPreparer turns is required")
+	}
+	if deps.Requests == nil {
+		return nil, fmt.Errorf("FileCommandPreparer requests is required")
+	}
+	if deps.Identity == nil {
+		return nil, fmt.Errorf("FileCommandPreparer identity is required")
+	}
+	return &FileCommandPreparer{
+		service:     deps.Service,
+		sessions:    deps.Sessions,
+		sessionRows: deps.SessionRows,
+		turns:       deps.Turns,
+		requests:    deps.Requests,
+		identity:    deps.Identity,
+	}, nil
 }

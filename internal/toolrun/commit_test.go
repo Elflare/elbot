@@ -79,7 +79,7 @@ func TestToolCommitFailureStopsBeforeNextSideEffect(t *testing.T) {
 			manager := NewManager(registry, security.NewPolicy("low", "critical", nil))
 			failure := errors.New("commit failed")
 			sink := &failingToolCommitter{failure: failure, phase: phase}
-			result := manager.Run(t.Context(), &runnerTestDeps{}, RunRequest{Committer: sink, Session: &storage.Session{ID: "s", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "one", Name: "count", Arguments: "{}"}, {ID: "two", Name: "count", Arguments: "{}"}}})
+			result := NewRunner(manager).Run(t.Context(), &runnerTestDeps{}, RunRequest{Committer: sink, Session: &storage.Session{ID: "s", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "one", Name: "count", Arguments: "{}"}, {ID: "two", Name: "count", Arguments: "{}"}}})
 			want := 0
 			if phase == "result" {
 				want = 1

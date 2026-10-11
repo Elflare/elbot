@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"testing"
+
 	"elbot/internal/completion"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
@@ -15,7 +17,6 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/tool"
 	"elbot/internal/tool/builtin"
-	"testing"
 )
 
 func TestReviewCompactRejectsDirectiveBeforeStateMutation(t *testing.T) {
@@ -40,7 +41,7 @@ func TestReviewCompactRejectsDirectiveBeforeStateMutation(t *testing.T) {
 	if err := a.HandleMessage(ctx, "@tool:web_search"); err != nil {
 		t.Fatal(err)
 	}
-	state, err := a.execution.dialogue.Preparer.Tools.State.Snapshot(ctx, row.ID)
+	state, err := a.dialogue.Preparer.Tools.State.Snapshot(ctx, row.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +56,9 @@ func TestStopCompletionUsesResolvedActorAndCurrentSession(t *testing.T) {
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "m", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
 	})
-	user := platform.WithMessageContext(ctx, platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "user"}, Identity: contextinfo.Identity{PlatformUserID: "user"}}})
+	user := platform.WithMessageContext(ctx, platform.MessageContext{
+		Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "user"}, Identity: contextinfo.Identity{PlatformUserID: "user"}},
+	})
 	row, err := a.execution.sessions.Create(user, a.identity.Scope(user), session.CreateRequest{})
 	if err != nil {
 		t.Fatal(err)
@@ -90,7 +93,11 @@ func TestReviewTurnHookReadonlySelection(t *testing.T) {
 func testReadonlyHookSelection(t *testing.T, point hook.Point) {
 	old := &fakeLLM{replies: []string{"old"}}
 	next := &fakeLLM{replies: []string{"next"}}
-	models := newTestModels(t, modelmgr.Options{Clients: map[string]llm.Client{"old": old, "next": next}, Providers: map[string]config.ProviderConfig{"old": {Models: []string{"first"}}, "next": {Models: []string{"second"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "old", Model: "first"}}})
+	models := newTestModels(t, modelmgr.Options{
+		Clients:    map[string]llm.Client{"old": old, "next": next},
+		Providers:  map[string]config.ProviderConfig{"old": {Models: []string{"first"}}, "next": {Models: []string{"second"}}},
+		ModeModels: map[string]config.ModelSelection{"work": {Provider: "old", Model: "first"}},
+	})
 	opts := validConstructorOptions(t)
 	opts.Models = models
 	opts.SessionConfig.NamingConfig.TriggerStep = 100
@@ -135,7 +142,9 @@ func TestReviewStopCannotCancelOtherUsersRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer done()
-	attacker := platform.WithMessageContext(ctx, platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "attacker"}, Identity: contextinfo.Identity{PlatformUserID: "attacker"}}})
+	attacker := platform.WithMessageContext(ctx, platform.MessageContext{
+		Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "attacker"}, Identity: contextinfo.Identity{PlatformUserID: "attacker"}},
+	})
 	if err := a.HandleMessage(attacker, "/stop 1"); err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +188,7 @@ func TestReviewOldInputCannotCommitToolsAfterBindingSwitch(t *testing.T) {
 	if err := <-done; err == nil {
 		t.Fatal("stale input was accepted")
 	}
-	state, err := a.execution.dialogue.Preparer.Tools.State.Snapshot(ctx, row.ID)
+	state, err := a.dialogue.Preparer.Tools.State.Snapshot(ctx, row.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

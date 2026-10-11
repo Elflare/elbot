@@ -12,7 +12,7 @@ import (
 	"elbot/internal/tool"
 )
 
-func (c *confirmationCoordinator) confirmBackgroundSandboxShell(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, message *llm.LLMMessage) (bool, bool) {
+func (c *ConfirmationCoordinator) ConfirmBackgroundSandboxShell(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, message *llm.LLMMessage) (bool, bool) {
 	sandbox, ok := sandboxctx.SandboxContextFromContext(ctx)
 	if !ok || !sandbox.Background || call.Name != "shell" {
 		return false, false
@@ -29,7 +29,17 @@ func (c *confirmationCoordinator) confirmBackgroundSandboxShell(ctx context.Cont
 		}
 	}
 	data, _ := json.Marshal(content)
-	record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: "background_shell_auto_confirmed", Module: "agent", Type: events.ContentJSON, Content: string(data), ContentLimit: 0, Identity: events.LogIdentity{}, ResultStatus: events.ResultSucceeded}
+	record := events.LogRecord{
+		Category:     events.LogAudit,
+		Level:        slog.LevelInfo,
+		EventName:    "background_shell_auto_confirmed",
+		Module:       "agent",
+		Type:         events.ContentJSON,
+		Content:      string(data),
+		ContentLimit: 0,
+		Identity:     events.LogIdentity{},
+		ResultStatus: events.ResultSucceeded,
+	}
 	if risk == tool.RiskCritical {
 		record.EventName, record.ResultStatus = "background_shell_rejected", events.ResultRejected
 		emitAgentLog(ctx, agentevents.Meta(ctx, sessionID), record)

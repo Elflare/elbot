@@ -78,39 +78,7 @@ func (l *appendWaitLifecycle) Close(ctx context.Context) error {
 	}
 }
 
-// BeginClose stops the Agent's event consumers and append-confirmation workers.
-// Foreground/background request producers remain owned by their entrypoints.
-func (a *Agent) BeginClose() {
-	a.hooks.beginClosePlatformEvents()
-	a.execution.appendWaits.beginClose()
-}
-
-// Close waits for owned workers before their dependencies may be released.
-func (a *Agent) Close(ctx context.Context) error {
-	a.BeginClose()
-	select {
-	case <-a.Done():
-		return nil
-	default:
-	}
-	select {
-	case <-a.Done():
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-// Done includes both append-expiry output and platform Hook execution.
-func (a *Agent) Done() <-chan struct{} {
-	a.doneOnce.Do(func() {
-		a.done = make(chan struct{})
-		go func() {
-			<-a.execution.appendWaits.done
-			a.hooks.beginClosePlatformEvents()
-			<-a.hooks.platformEventsDone()
-			close(a.done)
-		}()
-	})
-	return a.done
-}
+// Execution shutdown owns append waits; entrypoints own foreground/background producers.
+func (c *ExecutionCoordinator) BeginClose()                     { c.appendWaits.beginClose() }
+func (c *ExecutionCoordinator) Done() <-chan struct{}           { return c.appendWaits.done }
+func (c *ExecutionCoordinator) Close(ctx context.Context) error { return c.appendWaits.Close(ctx) }

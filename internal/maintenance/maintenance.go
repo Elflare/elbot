@@ -20,9 +20,12 @@ import (
 )
 
 type Service struct {
-	Sessions           *session.Service
-	Media              *media.Manager
-	logs               *logging.Manager
+	Sessions *session.Service
+	Media    *media.Manager
+	logs     interface {
+		CleanupOldLogs() error
+		RetentionDays() int
+	}
 	store              storage.Store
 	chatHistory        storage.ChatHistoryRepository
 	sessionCleanup     config.MaintenanceCleanupConfig
@@ -35,12 +38,15 @@ func NewService(logs *logging.Manager, store storage.Store, sessionCleanup confi
 	return &Service{Sessions: session.NewService(store), logs: logs, store: store, sessionCleanup: sessionCleanup}
 }
 
-func NewServiceWithConfig(logs *logging.Manager, store storage.Store, chatHistory storage.ChatHistoryRepository, cfg *config.Config) *Service {
+func NewServiceWithConfig(logs interface {
+	CleanupOldLogs() error
+	RetentionDays() int
+}, store storage.Store, chatHistory storage.ChatHistoryRepository, cfg *config.Config, sessions *session.Service) *Service {
 	if cfg == nil {
-		return NewService(logs, store, config.MaintenanceCleanupConfig{})
+		return &Service{Sessions: sessions, logs: logs, store: store}
 	}
 	return &Service{
-		Sessions:           session.NewService(store),
+		Sessions:           sessions,
 		logs:               logs,
 		store:              store,
 		chatHistory:        chatHistory,

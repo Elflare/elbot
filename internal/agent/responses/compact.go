@@ -95,7 +95,19 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 		checkpointID = cp.ID
 	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	exchange := &storage.NativeExchange{SessionID: row.ID, APIType: string(target.APIType), Provider: target.Provider, BaseURL: target.BaseURL, Model: selection.Model, RequestID: facts.RequestID, RunID: facts.RunID, Attempt: facts.Attempt, PreviousCheckpointID: checkpointID, RequestJSON: string(request.JSON()), InputIDsJSON: "[]"}
+	exchange := &storage.NativeExchange{
+		SessionID:            row.ID,
+		APIType:              string(target.APIType),
+		Provider:             target.Provider,
+		BaseURL:              target.BaseURL,
+		Model:                selection.Model,
+		RequestID:            facts.RequestID,
+		RunID:                facts.RunID,
+		Attempt:              facts.Attempt,
+		PreviousCheckpointID: checkpointID,
+		RequestJSON:          string(request.JSON()),
+		InputIDsJSON:         "[]",
+	}
 	locked, leave, err := c.Messages.Gate.Enter(ctx, row.ID)
 	if err != nil {
 		return nil, err
@@ -153,7 +165,16 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 		return nil, err
 	}
 	title, generation, base := contextmgr.NextCompactedTitle(row, state.Compact)
-	compact := &contextmgr.CompactState{Pending: true, SeedID: seed.ID, SourceSessionID: row.ID, Provider: selection.Provider, Model: selection.Model, TriggerReason: reason, Generation: generation, BaseTitle: base}
+	compact := &contextmgr.CompactState{
+		Pending:         true,
+		SeedID:          seed.ID,
+		SourceSessionID: row.ID,
+		Provider:        selection.Provider,
+		Model:           selection.Model,
+		TriggerReason:   reason,
+		Generation:      generation,
+		BaseTitle:       base,
+	}
 	if usage := result.TokenUsage(); usage != nil {
 		compact.SourceTokens, compact.SummaryTokens, compact.TotalTokens, compact.CacheHitTokens = usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens, usage.CacheHitTokens
 	}

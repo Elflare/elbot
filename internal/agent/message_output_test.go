@@ -2,6 +2,12 @@ package agent
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
@@ -11,11 +17,6 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/platform"
-	"os"
-	"path/filepath"
-	"regexp"
-	"strings"
-	"testing"
 )
 
 func TestPlatformMessageReceivedHookSendsOutputs(t *testing.T) {
@@ -267,7 +268,12 @@ func TestPlatformMessageReceivedHookMatchesCurrentTextWithReplyContext(t *testin
 		Segments:        []platform.MessageSegment{{Type: platform.SegmentText, Text: "撤回"}},
 		ContextText:     "[引用：通知]：通知内容\n\n撤回",
 		ContextSegments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "[引用：通知]：通知内容\n\n撤回"}},
-		Reply:           platform.ReplyContext{MessageID: "notice-1", SenderID: "bot", Text: "通知内容", Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "通知内容"}}},
+		Reply: platform.ReplyContext{
+			MessageID: "notice-1",
+			SenderID:  "bot",
+			Text:      "通知内容",
+			Segments:  []platform.MessageSegment{{Type: platform.SegmentText, Text: "通知内容"}},
+		},
 	})
 
 	if err := a.HandleMessage(ctx, "撤回"); err != nil {

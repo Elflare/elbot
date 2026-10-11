@@ -2,6 +2,11 @@ package agent
 
 import (
 	"context"
+	"regexp"
+	"strings"
+	"testing"
+	"time"
+
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
@@ -13,10 +18,6 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
-	"regexp"
-	"strings"
-	"testing"
-	"time"
 )
 
 func TestConfirmationWaitTimeoutUsesSessionTTLAsUpperBound(t *testing.T) {
@@ -27,11 +28,35 @@ func TestConfirmationWaitTimeoutUsesSessionTTLAsUpperBound(t *testing.T) {
 		cfg     config.SessionIdleExpirationConfig
 		want    time.Duration
 	}{
-		{name: "user without session TTL", role: contextinfo.RoleUser, scopeID: "private:1", cfg: config.SessionIdleExpirationConfig{}, want: 10 * time.Minute},
-		{name: "user shorter session TTL", role: contextinfo.RoleUser, scopeID: "group:1", cfg: config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 5}, want: 5 * time.Minute},
-		{name: "user longer session TTL", role: contextinfo.RoleUser, scopeID: "group:1", cfg: config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 20}, want: 10 * time.Minute},
+		{
+			name:    "user without session TTL",
+			role:    contextinfo.RoleUser,
+			scopeID: "private:1",
+			cfg:     config.SessionIdleExpirationConfig{},
+			want:    10 * time.Minute,
+		},
+		{
+			name:    "user shorter session TTL",
+			role:    contextinfo.RoleUser,
+			scopeID: "group:1",
+			cfg:     config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 5},
+			want:    5 * time.Minute,
+		},
+		{
+			name:    "user longer session TTL",
+			role:    contextinfo.RoleUser,
+			scopeID: "group:1",
+			cfg:     config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 20},
+			want:    10 * time.Minute,
+		},
 		{name: "superadmin without session TTL", role: contextinfo.RoleSuperadmin, scopeID: "private:1", cfg: config.SessionIdleExpirationConfig{}, want: 0},
-		{name: "superadmin session TTL", role: contextinfo.RoleSuperadmin, scopeID: "group:1", cfg: config.SessionIdleExpirationConfig{GroupSuperadminTTLMinutes: 20}, want: 20 * time.Minute},
+		{
+			name:    "superadmin session TTL",
+			role:    contextinfo.RoleSuperadmin,
+			scopeID: "group:1",
+			cfg:     config.SessionIdleExpirationConfig{GroupSuperadminTTLMinutes: 20},
+			want:    20 * time.Minute,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -40,7 +65,9 @@ func TestConfirmationWaitTimeoutUsesSessionTTLAsUpperBound(t *testing.T) {
 				idleExpiration := tt.cfg
 				cfg.SessionIdleExpiration = &idleExpiration
 			})
-			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ScopeID: tt.scopeID}, Identity: contextinfo.Identity{PlatformUserID: "1"}}})
+			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+				Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ScopeID: tt.scopeID}, Identity: contextinfo.Identity{PlatformUserID: "1"}},
+			})
 			ctx = contextinfo.WithActor(ctx, contextinfo.Actor{ID: "test:1", Role: tt.role})
 			if got := a.execution.waitPolicy.WaitTimeout(ctx); got != tt.want {
 				t.Fatalf("confirmation timeout = %s, want %s", got, tt.want)
@@ -207,24 +234,24 @@ func TestActiveTurnBlocksNewSessionCommand(t *testing.T) {
 	tests := []struct {
 		name  string
 		phase turn.Phase
-		start func(*testing.T, *Agent, string)
+		start func(*testing.T, *agentFixture, string)
 	}{
-		{name: "llm", phase: turn.PhaseLLM, start: func(t *testing.T, a *Agent, sessionID string) {
+		{name: "llm", phase: turn.PhaseLLM, start: func(t *testing.T, a *agentFixture, sessionID string) {
 			if !a.execution.turns.StartLLM(sessionID, "input") {
 				t.Fatal("StartLLM returned false")
 			}
 		}},
-		{name: "tool", phase: turn.PhaseTool, start: func(t *testing.T, a *Agent, sessionID string) {
+		{name: "tool", phase: turn.PhaseTool, start: func(t *testing.T, a *agentFixture, sessionID string) {
 			if !a.execution.turns.StartLLM(sessionID, "input") || !a.execution.turns.StartToolPhase(sessionID) {
 				t.Fatal("failed to enter tool phase")
 			}
 		}},
-		{name: "await_append_confirm", phase: turn.PhaseAwaitAppendConfirm, start: func(t *testing.T, a *Agent, sessionID string) {
+		{name: "await_append_confirm", phase: turn.PhaseAwaitAppendConfirm, start: func(t *testing.T, a *agentFixture, sessionID string) {
 			if !a.execution.turns.StartLLM(sessionID, "input") || !a.execution.turns.InterruptLLM(sessionID, "more") {
 				t.Fatal("failed to enter append confirmation phase")
 			}
 		}},
-		{name: "await_risk_confirm", phase: turn.PhaseAwaitRiskConfirm, start: func(t *testing.T, a *Agent, sessionID string) {
+		{name: "await_risk_confirm", phase: turn.PhaseAwaitRiskConfirm, start: func(t *testing.T, a *agentFixture, sessionID string) {
 			if !a.execution.turns.StartLLM(sessionID, "input") || !a.execution.turns.StartToolPhase(sessionID) {
 				t.Fatal("failed to enter tool phase")
 			}
@@ -249,7 +276,7 @@ func TestActiveTurnBlocksNewSessionCommand(t *testing.T) {
 				}
 			})
 		}},
-		{name: "compact", phase: turn.PhaseCompact, start: func(t *testing.T, a *Agent, sessionID string) {
+		{name: "compact", phase: turn.PhaseCompact, start: func(t *testing.T, a *agentFixture, sessionID string) {
 			if !a.execution.turns.StartCompact(sessionID) {
 				t.Fatal("StartCompact returned false")
 			}
@@ -325,7 +352,9 @@ func TestStopAllowsSessionSwitchAfterActiveTurn(t *testing.T) {
 		idleExpiration := config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 10}
 		cfg.SessionIdleExpiration = &idleExpiration
 	})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "group:9"}, Identity: contextinfo.Identity{PlatformUserID: "1"}}})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "group:9"}, Identity: contextinfo.Identity{PlatformUserID: "1"}},
+	})
 	current, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "current"})
 	if err != nil {
 		t.Fatal(err)

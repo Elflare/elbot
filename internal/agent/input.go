@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"elbot/internal/agent/dialogue"
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
@@ -24,21 +25,21 @@ import (
 
 const defaultUserConfirmationTimeout = 10 * time.Minute
 
-// inputCoordinator prepares input outside admission and delegates execution state
-// changes to executionCoordinator and the existing Session/Turn services.
-type inputCoordinator struct {
+// InputCoordinator prepares input outside admission and delegates execution state
+// changes to ExecutionCoordinator and the existing Session/Turn services.
+type InputCoordinator struct {
 	sessions      *session.Service
 	sessionRows   storage.SessionRepository
 	turns         *turn.Manager
-	identity      *identityResolver
-	hooks         *hookBridge
-	output        *outputSender
-	execution     *executionCoordinator
-	confirmations *confirmationCoordinator
+	identity      InputIdentity
+	hooks         dialogue.Hooks
+	output        InputOutput
+	execution     InputExecution
+	confirmations InputConfirmations
 	registry      *tool.Registry
 	preloader     *toolrun.PreloadService
 	toolState     *toolrun.StateService
-	waitPolicy    *confirmationPolicy
+	waitPolicy    InputWaitPolicy
 }
 
 var errInputCompacting = errors.New("正在压缩上下文，请稍后再发送。可使用 /stop 取消当前请求。")
@@ -67,15 +68,15 @@ func activeTurnCommandBlockedText() string {
 	return "当前会话处理中，暂不支持切换。如有必要，请先使用 /stop 结束当前处理。"
 }
 
-func (c *inputCoordinator) handleInput(ctx context.Context, text string) error {
-	ctx, session, err := c.execution.resolveInput(ctx, text)
+func (c *InputCoordinator) HandleInput(ctx context.Context, text string) error {
+	ctx, session, err := c.execution.ResolveInput(ctx, text)
 	if err != nil {
 		return err
 	}
 	return c.handleSessionInput(ctx, session, text)
 }
 
-func (c *inputCoordinator) continueCommandInput(ctx context.Context, continuation command.Continuation) error {
+func (c *InputCoordinator) ContinueCommandInput(ctx context.Context, continuation command.Continuation) error {
 	locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), continuation.SessionID)
 	if err != nil {
 		return err
@@ -95,8 +96,8 @@ func (c *inputCoordinator) continueCommandInput(ctx context.Context, continuatio
 	return c.handleSessionInput(ctx, row, continuation.Text)
 }
 
-func (c *inputCoordinator) handleSessionInput(ctx context.Context, session *storage.Session, text string) error {
-	locked, release, err := c.execution.enterInput(ctx, session)
+func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *storage.Session, text string) error {
+	locked, release, err := c.execution.EnterInput(ctx, session)
 	if errors.Is(err, errInputCompacting) || errors.Is(err, errInputArchived) {
 		c.output.SendChat(ctx, err.Error())
 		return nil
@@ -106,7 +107,11 @@ func (c *inputCoordinator) handleSessionInput(ctx context.Context, session *stor
 	}
 	ctx = locked
 	release()
-	event, _, err := c.hooks.Run(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Session: hookSession(session), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: inboundSegments(ctx, text)}})
+	event, _, err := c.hooks.Run(ctx, hook.Event{
+		Point:   hook.PointAgentInputPrepared,
+		Session: hookSession(session),
+		Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: inboundSegments(ctx, text)},
+	})
 	if err != nil {
 		return err
 	}
@@ -147,7 +152,7 @@ func (c *inputCoordinator) handleSessionInput(ctx context.Context, session *stor
 	return nil
 }
 
-func (c *inputCoordinator) expireIdleCurrentSession(ctx context.Context) error {
+func (c *InputCoordinator) ExpireIdleCurrentSession(ctx context.Context) error {
 	current, err := c.sessions.Current(ctx, c.identity.Scope(ctx))
 	if errors.Is(err, storage.ErrNotFound) {
 		return nil
@@ -162,7 +167,7 @@ func (c *inputCoordinator) expireIdleCurrentSession(ctx context.Context) error {
 	result, err := c.sessions.ExpireIdleCurrent(ctx, session.ExpireIdleRequest{
 		Scope:        c.identity.Scope(ctx),
 		IsSuperadmin: actor.Role == contextinfo.RoleSuperadmin,
-		Config:       c.waitPolicy.idleExpiration,
+		Config:       c.waitPolicy.IdleExpiration(),
 		Now:          time.Now(),
 	})
 	if err != nil {
@@ -207,4 +212,55 @@ func (c *inputCoordinator) expireIdleCurrentSession(ctx context.Context) error {
 func hasForkFromMessage(ctx context.Context) bool {
 	msg, ok := platform.MessageContextFrom(ctx)
 	return ok && msg.ForkFromMessageID != ""
+}
+
+// NewInputCoordinator initializes InputCoordinator without installing cross-service callbacks.
+func NewInputCoordinator(deps InputCoordinatorDeps) (*InputCoordinator, error) {
+	if deps.Sessions == nil {
+		return nil, fmt.Errorf("InputCoordinator sessions is required")
+	}
+	if deps.SessionRows == nil {
+		return nil, fmt.Errorf("InputCoordinator sessionRows is required")
+	}
+	if deps.Turns == nil {
+		return nil, fmt.Errorf("InputCoordinator turns is required")
+	}
+	if deps.Identity == nil {
+		return nil, fmt.Errorf("InputCoordinator identity is required")
+	}
+	if deps.Hooks == nil {
+		return nil, fmt.Errorf("InputCoordinator hooks is required")
+	}
+	if deps.Output == nil {
+		return nil, fmt.Errorf("InputCoordinator output is required")
+	}
+	if deps.Execution == nil {
+		return nil, fmt.Errorf("InputCoordinator execution is required")
+	}
+	if deps.Confirmations == nil {
+		return nil, fmt.Errorf("InputCoordinator confirmations is required")
+	}
+	if deps.Preloader == nil {
+		return nil, fmt.Errorf("InputCoordinator preloader is required")
+	}
+	if deps.ToolState == nil {
+		return nil, fmt.Errorf("InputCoordinator toolState is required")
+	}
+	if deps.WaitPolicy == nil {
+		return nil, fmt.Errorf("InputCoordinator waitPolicy is required")
+	}
+	return &InputCoordinator{
+		sessions:      deps.Sessions,
+		sessionRows:   deps.SessionRows,
+		turns:         deps.Turns,
+		identity:      deps.Identity,
+		hooks:         deps.Hooks,
+		output:        deps.Output,
+		execution:     deps.Execution,
+		confirmations: deps.Confirmations,
+		registry:      deps.Registry,
+		preloader:     deps.Preloader,
+		toolState:     deps.ToolState,
+		waitPolicy:    deps.WaitPolicy,
+	}, nil
 }

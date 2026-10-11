@@ -40,7 +40,7 @@ func (c *cancelLoggingLLM) Stream(context.Context, chatcompletions.Request) (<-c
 func TestChatSilentCancellationPreservesPartialOutputLog(t *testing.T) {
 	client := &cancelLoggingLLM{}
 	a := newTestAgent(t, &fakePlatform{}, client, "model", config.ProviderConfig{}, newTestStore(t))
-	ctx, row, err := a.execution.resolveInput(context.Background(), "hello")
+	ctx, row, err := a.execution.ResolveInput(context.Background(), "hello")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,14 @@ func TestAgentLogSourcePreservesExplicitIdentity(t *testing.T) {
 	}
 	defer connection.Disconnect()
 	ctx := contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "wrong", RequestID: "wrong"})
-	emitAgentLog(ctx, agentevents.EventMeta{SessionID: "source"}, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, EventName: "identity_test", Module: "agent", Type: globalevents.ContentText, Content: "hello"})
+	emitAgentLog(ctx, agentevents.EventMeta{SessionID: "source"}, globalevents.LogRecord{
+		Category:  globalevents.LogRuntime,
+		Level:     slog.LevelInfo,
+		EventName: "identity_test",
+		Module:    "agent",
+		Type:      globalevents.ContentText,
+		Content:   "hello",
+	})
 	if len(records) != 1 || records[0].Identity.SessionID == nil || *records[0].Identity.SessionID != "source" || records[0].Identity.RequestID != nil {
 		t.Fatalf("records = %#v", records)
 	}

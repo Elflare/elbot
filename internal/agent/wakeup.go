@@ -23,11 +23,8 @@ func messageWakeupFromContext(ctx context.Context) (bool, bool) {
 }
 
 // HookWakeup exposes the message wakeup decision for app's Hook wiring.
-func (a *Agent) HookWakeup(ctx context.Context, event hook.Event) bool {
-	return a.message.HookWakeup(ctx, event)
-}
 
-func (h *messageHandler) HookWakeup(ctx context.Context, event hook.Event) bool {
+func (h *MessageHandler) HookWakeup(ctx context.Context, event hook.Event) bool {
 	if woken, ok := messageWakeupFromContext(ctx); ok {
 		return woken
 	}
@@ -38,7 +35,7 @@ func (h *messageHandler) HookWakeup(ctx context.Context, event hook.Event) bool 
 	return h.messageWakeup(ctx, text)
 }
 
-func (h *messageHandler) messageWakeup(ctx context.Context, text string) bool {
+func (h *MessageHandler) messageWakeup(ctx context.Context, text string) bool {
 	msg, ok := platform.MessageContextFrom(ctx)
 	if !ok {
 		return true
@@ -46,7 +43,7 @@ func (h *messageHandler) messageWakeup(ctx context.Context, text string) bool {
 	if msg.Conversation.Source.ConversationKind == "" || msg.Conversation.Source.ConversationKind == contextinfo.ConversationUnknown || msg.Conversation.Source.ConversationKind == contextinfo.ConversationPrivate {
 		return true
 	}
-	if h.commands.router != nil && h.commands.router.IsCommand(text) {
+	if h.commands != nil && h.commands.IsCommand(text) {
 		return true
 	}
 	if _, ok := platform.StripTriggerKeyword(text, msg.TriggerKeywords); ok {
@@ -121,7 +118,7 @@ func stripBotMention(text string, msg platform.MessageContext) string {
 	return strings.TrimSpace(strings.Join(kept, " "))
 }
 
-func (h *messageHandler) isReplyToBot(ctx context.Context, msg platform.MessageContext) bool {
+func (h *MessageHandler) isReplyToBot(ctx context.Context, msg platform.MessageContext) bool {
 	if strings.TrimSpace(msg.ReplyToSenderID) != "" && strings.TrimSpace(msg.ReplyToSenderID) == strings.TrimSpace(msg.Bot.UserID) {
 		return true
 	}

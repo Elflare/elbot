@@ -66,7 +66,12 @@ func TestFactoryNativeClientsServeNamingAndChatTextCompaction(t *testing.T) {
 	if _, ok := clients.ByProvider["native"].(responses.Streamer); !ok {
 		t.Fatal("response provider is not native")
 	}
-	models, err := modelmgr.New(modelmgr.Options{Clients: clients.ByProvider, Providers: cfg.Providers, ModeModels: map[string]config.ModelSelection{"work": {Provider: "chat", Model: "m"}, "chat": {Provider: "chat", Model: "m"}}, NamingModel: config.ModelSelection{Provider: "native", Model: "m"}})
+	models, err := modelmgr.New(modelmgr.Options{
+		Clients:     clients.ByProvider,
+		Providers:   cfg.Providers,
+		ModeModels:  map[string]config.ModelSelection{"work": {Provider: "chat", Model: "m"}, "chat": {Provider: "chat", Model: "m"}},
+		NamingModel: config.ModelSelection{Provider: "native", Model: "m"},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +96,10 @@ func TestFactoryNativeClientsServeNamingAndChatTextCompaction(t *testing.T) {
 
 func TestFactoryRejectsInvalidAPIMode(t *testing.T) {
 	events := []string{}
-	_, err := (defaultModelFactory{}).Build(ModelRequest{Foundation: &FoundationComponents{Config: &config.Config{Providers: map[string]config.ProviderConfig{"bad": {APIMode: "responses"}}}}, Profiler: profilerStub{events: &events}})
+	_, err := (defaultModelFactory{}).Build(ModelRequest{
+		Foundation: &FoundationComponents{Config: &config.Config{Providers: map[string]config.ProviderConfig{"bad": {APIMode: "responses"}}}},
+		Profiler:   profilerStub{events: &events},
+	})
 	if err == nil || !strings.Contains(err.Error(), "api_mode") || !strings.Contains(err.Error(), "bad") {
 		t.Fatalf("error=%v", err)
 	}
@@ -134,7 +142,11 @@ func TestNamingUsesTokenLimitOnlyWhenConfigured(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				models, err := modelmgr.New(modelmgr.Options{Clients: clients.ByProvider, Providers: cfg.Providers, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}, "chat": {Provider: "p", Model: "m"}}})
+				models, err := modelmgr.New(modelmgr.Options{
+					Clients:    clients.ByProvider,
+					Providers:  cfg.Providers,
+					ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}, "chat": {Provider: "p", Model: "m"}},
+				})
 				if err != nil {
 					t.Fatal(err)
 				}

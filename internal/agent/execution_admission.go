@@ -13,7 +13,9 @@ import (
 var errSessionBindingChanged = errors.New("当前会话已切换，请重新发送消息")
 
 // Existing execution contexts keep their original binding across confirmation.
-func captureSessionBinding(ctx context.Context, sessions *session.Service, identity *identityResolver, row *storage.Session) (context.Context, error) {
+func captureSessionBinding(ctx context.Context, sessions *session.Service, identity interface {
+	Scope(context.Context) session.Scope
+}, row *storage.Session) (context.Context, error) {
 	current, binding, err := sessions.CurrentBound(ctx, identity.Scope(ctx))
 	if err != nil {
 		return ctx, err
@@ -30,7 +32,7 @@ func captureSessionBinding(ctx context.Context, sessions *session.Service, ident
 	return session.WithBinding(ctx, binding), nil
 }
 
-func (c *executionCoordinator) resolveInput(ctx context.Context, text string) (context.Context, *storage.Session, error) {
+func (c *ExecutionCoordinator) ResolveInput(ctx context.Context, text string) (context.Context, *storage.Session, error) {
 	// Fork prepares native/media material outside scope admission. Capture the
 	// newly activated binding afterward, with the same final identity check.
 	if msg, ok := platform.MessageContextFrom(ctx); ok && msg.ResumeSessionID == "" && msg.ForkFromMessageID != "" {
@@ -59,7 +61,7 @@ func (c *executionCoordinator) resolveInput(ctx context.Context, text string) (c
 	return locked, row, err
 }
 
-func (c *executionCoordinator) enterTurn(ctx context.Context, row *storage.Session) (context.Context, func(), error) {
+func (c *ExecutionCoordinator) enterTurn(ctx context.Context, row *storage.Session) (context.Context, func(), error) {
 	ctx = c.view.Context(ctx)
 	scope := c.identity.Scope(ctx)
 	background := isBackgroundSession(row)
@@ -106,7 +108,7 @@ func (c *executionCoordinator) enterTurn(ctx context.Context, row *storage.Sessi
 	return locked, release, nil
 }
 
-func (c *executionCoordinator) enterInput(ctx context.Context, row *storage.Session) (context.Context, func(), error) {
+func (c *ExecutionCoordinator) EnterInput(ctx context.Context, row *storage.Session) (context.Context, func(), error) {
 	locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), row.ID)
 	if err != nil {
 		return ctx, nil, err
@@ -121,7 +123,7 @@ func (c *executionCoordinator) enterInput(ctx context.Context, row *storage.Sess
 				err = errors.New("当前会话模式已切换，请重新发送消息")
 			case latest.ArchivedAt != nil:
 				err = errInputArchived
-			case c.compactActive(row.ID):
+			case c.CompactActive(row.ID):
 				err = errInputCompacting
 			}
 		}
@@ -136,7 +138,7 @@ func (c *executionCoordinator) enterInput(ctx context.Context, row *storage.Sess
 	return locked, release, nil
 }
 
-func (c *executionCoordinator) sessionForInput(ctx context.Context, text string) (*storage.Session, error) {
+func (c *ExecutionCoordinator) sessionForInput(ctx context.Context, text string) (*storage.Session, error) {
 	if msg, ok := platform.MessageContextFrom(ctx); ok {
 		if msg.ResumeSessionID != "" {
 			return c.sessions.Resume(ctx, c.identity.Scope(ctx), msg.ResumeSessionID)

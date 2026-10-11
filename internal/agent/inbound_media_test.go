@@ -70,7 +70,14 @@ func TestPlatformMediaMaterializesOnlyWhenConsumed(t *testing.T) {
 				conversation = contextinfo.ConversationPrivate
 			}
 			segment := platform.MessageSegment{Type: platform.SegmentImage, PlatformFileID: "file", Name: "image.png"}
-			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram", ScopeID: "group:1", ConversationKind: conversation}, Identity: contextinfo.Identity{PlatformUserID: "1"}}, MediaResolver: resolver, Segments: []platform.MessageSegment{segment, segment}})
+			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+				Conversation: contextinfo.Conversation{
+					Source:   contextinfo.Source{Platform: "telegram", ScopeID: "group:1", ConversationKind: conversation},
+					Identity: contextinfo.Identity{PlatformUserID: "1"},
+				},
+				MediaResolver: resolver,
+				Segments:      []platform.MessageSegment{segment, segment},
+			})
 			if err := a.HandleMessage(ctx, ""); err != nil {
 				t.Fatal(err)
 			}
@@ -87,7 +94,7 @@ func TestPlatformMediaMaterializesOnlyWhenConsumed(t *testing.T) {
 func TestPlatformMediaUnavailableAndMetadata(t *testing.T) {
 	store := newTestStore(t)
 	root := t.TempDir()
-	a := &messageHandler{media: media.NewManager(store, root, &media.LocalBackend{Root: root})}
+	a := &MessageHandler{media: media.NewManager(store, root, &media.LocalBackend{Root: root})}
 	resolver := &inboundMediaResolver{}
 	msg := platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram"}}, MediaResolver: resolver}
 	segment := platform.MessageSegment{Type: platform.SegmentImage, PlatformFileID: "image"}
@@ -112,7 +119,7 @@ func TestPlatformMediaUnavailableAndMetadata(t *testing.T) {
 func TestPlatformMediaCopiesShareResolutionWithoutDroppingPositions(t *testing.T) {
 	store := newTestStore(t)
 	root := t.TempDir()
-	a := &messageHandler{media: media.NewManager(store, root, &media.LocalBackend{Root: root})}
+	a := &MessageHandler{media: media.NewManager(store, root, &media.LocalBackend{Root: root})}
 	a.media.Media.LLMImageMaxLength = 32
 	var data bytes.Buffer
 	if err := png.Encode(&data, image.NewNRGBA(image.Rect(0, 0, 80, 40))); err != nil {

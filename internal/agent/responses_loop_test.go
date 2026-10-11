@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/events"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +17,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	api "elbot/internal/llm/responses"
@@ -41,7 +41,7 @@ type nativeTestRequest struct {
 	Include            []string          `json:"include"`
 }
 type nativeFixture struct {
-	agent    *Agent
+	agent    *agentFixture
 	store    storage.Store
 	platform *fakePlatform
 	mu       sync.Mutex
@@ -85,7 +85,11 @@ func newNativeFixture(t *testing.T, respond func(int, nativeTestRequest, http.Re
 	opts.Store = f.store
 	opts.Platform = f.platform
 	opts.SessionConfig.NamingConfig.TriggerStep = 100
-	opts.Models = newTestModels(t, modelmgr.Options{Clients: map[string]llm.Client{"native": client}, Providers: map[string]config.ProviderConfig{"native": {APIMode: "response", BaseURL: server.URL, Models: []string{"m", "new-model", "task-model"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "native", Model: "m"}, "chat": {Provider: "native", Model: "m"}}})
+	opts.Models = newTestModels(t, modelmgr.Options{
+		Clients:    map[string]llm.Client{"native": client},
+		Providers:  map[string]config.ProviderConfig{"native": {APIMode: "response", BaseURL: server.URL, Models: []string{"m", "new-model", "task-model"}}},
+		ModeModels: map[string]config.ModelSelection{"work": {Provider: "native", Model: "m"}, "chat": {Provider: "native", Model: "m"}},
+	})
 	f.agent = mustNewWithOptions(t, opts, configure...)
 	return f
 }
@@ -263,7 +267,16 @@ func TestResponsesBackgroundTakeoverSharesPendingAndChangesTaskModel(t *testing.
 	f.agent.output.dispatcher.RegisterPlatformSender("qq", f.platform)
 	done := make(chan backgroundTestResult, 1)
 	go func() {
-		result, err := f.agent.RunBackground(context.Background(), background.RunRequest{Kind: background.KindCron, Name: "native", Platform: "qq", Actor: contextinfo.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: contextinfo.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"slow"}, ModelProvider: "native", Model: "task-model"})
+		result, err := f.agent.RunBackground(context.Background(), background.RunRequest{
+			Kind:          background.KindCron,
+			Name:          "native",
+			Platform:      "qq",
+			Actor:         contextinfo.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: contextinfo.RoleSuperadmin},
+			Prompt:        "run",
+			ToolListNames: []string{"slow"},
+			ModelProvider: "native",
+			Model:         "task-model",
+		})
 		done <- backgroundTestResult{result, err}
 	}()
 	awaitModelBarrier(t, started)

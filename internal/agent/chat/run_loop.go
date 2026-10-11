@@ -79,7 +79,19 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		}
 		stream := s.output.StartStream(s.requestCtx)
 		llmStageStartedAt := storage.Now()
-		s.output.PublishRuntimeStatus(s.ctx, runtimestatus.Snapshot{SessionID: s.session.ID, Phase: runtimestatus.PhaseLLM, Provider: s.selection.Provider, Model: s.selection.Model, Mode: s.session.Mode, RequestID: s.requestID, Kind: request.KindTurn, Label: "chat", TurnStartedAt: s.startedAt, StageStartedAt: llmStageStartedAt, Usage: s.usage})
+		s.output.PublishRuntimeStatus(s.ctx, runtimestatus.Snapshot{
+			SessionID:      s.session.ID,
+			Phase:          runtimestatus.PhaseLLM,
+			Provider:       s.selection.Provider,
+			Model:          s.selection.Model,
+			Mode:           s.session.Mode,
+			RequestID:      s.requestID,
+			Kind:           request.KindTurn,
+			Label:          "chat",
+			TurnStartedAt:  s.startedAt,
+			StageStartedAt: llmStageStartedAt,
+			Usage:          s.usage,
+		})
 		result, err := r.Caller.Call(s.requestCtx, s.session, s.selection, s.messages, s.tools, pending, stream, s.output)
 		if len(result.Messages) > 0 {
 			s.messages = result.Messages
@@ -96,7 +108,19 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		if result.Usage != nil {
 			s.usage = result.Usage
 		}
-		s.output.PublishRuntimeStatus(s.ctx, runtimestatus.Snapshot{SessionID: s.session.ID, Phase: runtimestatus.PhaseLLM, Provider: s.selection.Provider, Model: s.selection.Model, Mode: s.session.Mode, RequestID: s.requestID, Kind: request.KindTurn, Label: "chat", TurnStartedAt: s.startedAt, StageStartedAt: llmStageStartedAt, Usage: s.usage})
+		s.output.PublishRuntimeStatus(s.ctx, runtimestatus.Snapshot{
+			SessionID:      s.session.ID,
+			Phase:          runtimestatus.PhaseLLM,
+			Provider:       s.selection.Provider,
+			Model:          s.selection.Model,
+			Mode:           s.session.Mode,
+			RequestID:      s.requestID,
+			Kind:           request.KindTurn,
+			Label:          "chat",
+			TurnStartedAt:  s.startedAt,
+			StageStartedAt: llmStageStartedAt,
+			Usage:          s.usage,
+		})
 		immediateOutputs, laterOutputs := delivery.SplitByDeliveryTiming(result.Outputs)
 		if len(result.ToolCalls) == 0 {
 			deferredOutputs = append(deferredOutputs, laterOutputs...)
@@ -142,7 +166,10 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			s.messages = append(s.messages, skipped...)
 			var summaryPending *dialogue.PendingUserMessage
 			s.messages, summaryPending = drainPendingUserInput(r.Turns, s.session.ID, s.messages, turn.AttemptFromContext(s.ctx))
-			s.messages = append(s.messages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments("工具调用轮次已达到上限，可以询问用户是否继续或者基于已有工具结果和当前上下文总结当前进度。")})
+			s.messages = append(s.messages, llm.LLMMessage{
+				Role:     llm.RoleUser,
+				Segments: llm.TextSegments("工具调用轮次已达到上限，可以询问用户是否继续或者基于已有工具结果和当前上下文总结当前进度。"),
+			})
 			s.tools = nil
 			stream := s.output.StartStream(s.requestCtx)
 			summary, err := r.Caller.Call(s.requestCtx, s.session, s.selection, s.messages, s.tools, summaryPending, stream, s.output)
@@ -202,7 +229,15 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 
 	return dialogue.LoopResult{
 		Outcome: dialogue.Completed,
-		Commit:  dialogue.ReplyCommitInput{Persistence: r.Messages.Committer("append_assistant_message"), Session: s.session, Text: finalText, RawText: finalRawText, PlatformText: platformFinalText, Stream: finalStream, Outputs: deferredOutputs},
+		Commit: dialogue.ReplyCommitInput{
+			Persistence:  r.Messages.Committer("append_assistant_message"),
+			Session:      s.session,
+			Text:         finalText,
+			RawText:      finalRawText,
+			PlatformText: platformFinalText,
+			Stream:       finalStream,
+			Outputs:      deferredOutputs,
+		},
 	}
 }
 

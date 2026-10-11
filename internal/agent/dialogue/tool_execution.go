@@ -47,7 +47,16 @@ func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storag
 	}
 	cached, logResult, err := CachedToolsForSession(ctx, r.State, r.Registry, session)
 	if err != nil {
-		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "tool_batch_prepare_failed", Module: "agent", Type: events.ContentText, Content: logResult.Content, ContentLimit: 4096, ResultStatus: logResult.ResultStatus}
+		record := events.LogRecord{
+			Category:     events.LogRuntime,
+			Level:        slog.LevelError,
+			EventName:    "tool_batch_prepare_failed",
+			Module:       "agent",
+			Type:         events.ContentText,
+			Content:      logResult.Content,
+			ContentLimit: 4096,
+			ResultStatus: logResult.ResultStatus,
+		}
 		record.Identity.SessionID = &session.ID
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		if facts.RunID != "" {
@@ -81,7 +90,12 @@ func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storag
 			}
 		}
 		for _, call := range calls {
-			message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments(fmt.Sprintf("tool call %s failed: load tool state: %v", call.Name, err))}
+			message := llm.LLMMessage{
+				Role:       llm.RoleTool,
+				Name:       call.Name,
+				ToolCallID: call.ID,
+				Segments:   llm.TextSegments(fmt.Sprintf("tool call %s failed: load tool state: %v", call.Name, err)),
+			}
 			messages = append(messages, message)
 		}
 		for i := range messages {
@@ -99,7 +113,7 @@ func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storag
 		}
 		return toolrun.RunResult{Messages: messages, PreparedCalls: calls}
 	}
-	return r.Manager.Run(ctx, r.Deps.ForTurn(out, turn.AttemptFromContext(ctx)), toolrun.RunRequest{
+	return toolrun.NewRunner(r.Manager).Run(ctx, r.Deps.ForTurn(out, turn.AttemptFromContext(ctx)), toolrun.RunRequest{
 		Session:          session,
 		Calls:            calls,
 		AssistantText:    assistantText,

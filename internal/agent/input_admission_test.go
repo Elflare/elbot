@@ -2,13 +2,13 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/events"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"elbot/internal/config"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -51,7 +51,10 @@ func TestInputPreloadRechecksAdmissionAfterPreparation(t *testing.T) {
 				for _, candidate := range []tool.Tool{
 					inputBlockingTool{agentWrapperTool: agentWrapperTool{name: "alpha"}, prepare: block},
 					agentWrapperTool{name: "wrapper", hidden: true},
-					inputBlockingSkill{agentDetailTool: agentDetailTool{name: "doc", source: tool.SourceSkillAgent, detail: "DETAIL", format: "elyph", ruleCard: "RULE", activate: []string{"wrapper"}}, prepare: block},
+					inputBlockingSkill{
+						agentDetailTool: agentDetailTool{name: "doc", source: tool.SourceSkillAgent, detail: "DETAIL", format: "elyph", ruleCard: "RULE", activate: []string{"wrapper"}},
+						prepare:         block,
+					},
 				} {
 					if err := registry.Register(candidate); err != nil {
 						t.Fatal(err)

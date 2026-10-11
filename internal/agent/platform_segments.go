@@ -24,7 +24,14 @@ func platformSegmentsToLLM(segments []platform.MessageSegment, fallbackText stri
 			}
 		case platform.SegmentFile:
 			// TODO: 后续支持语音、视频和普通文件的真实模型输入；当前统一回滚为文本描述。
-			out = append(out, llm.MessageSegment{Type: llm.SegmentFile, MediaID: segment.MediaID, URL: segment.URL, Text: fileSegmentText(segment.Name, segment.Text), MIMEType: segment.MIMEType, Name: segment.Name})
+			out = append(out, llm.MessageSegment{
+				Type:     llm.SegmentFile,
+				MediaID:  segment.MediaID,
+				URL:      segment.URL,
+				Text:     fileSegmentText(segment.Name, segment.Text),
+				MIMEType: segment.MIMEType,
+				Name:     segment.Name,
+			})
 		}
 	}
 	if len(out) == 0 {

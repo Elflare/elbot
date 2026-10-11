@@ -20,7 +20,11 @@ type Registry struct {
 }
 
 func New() *Registry {
-	return &Registry{providers: make(map[string]Binding), compactors: make(map[llm.APIType]contextmgr.Compactor), materials: make(map[llm.APIType]session.MaterialPreparer)}
+	return &Registry{
+		providers:  make(map[string]Binding),
+		compactors: make(map[llm.APIType]contextmgr.Compactor),
+		materials:  make(map[llm.APIType]session.MaterialPreparer),
+	}
 }
 
 func (r *Registry) Register(binding Binding) error {

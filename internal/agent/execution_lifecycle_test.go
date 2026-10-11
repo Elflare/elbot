@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/events"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,6 +11,7 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/request"
@@ -19,9 +19,9 @@ import (
 	"elbot/internal/turn"
 )
 
-func startAppendWait(t *testing.T, a *Agent, ctx context.Context) (context.Context, *storage.Session, *turn.Execution) {
+func startAppendWait(t *testing.T, a *agentFixture, ctx context.Context) (context.Context, *storage.Session, *turn.Execution) {
 	t.Helper()
-	ctx, row, err := a.execution.resolveInput(ctx, "first")
+	ctx, row, err := a.execution.ResolveInput(ctx, "first")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestAppendExpiryCloseWaitsForOutput(t *testing.T) {
 	}
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(opts *testAgentOptions) { opts.HookManager = hooks })
 	t.Cleanup(func() { unblock.Do(func() { close(release) }) })
-	a.execution.waitPolicy.userConfirmationTimeout = 10 * time.Millisecond
+	a.execution.waitPolicy.(*ConfirmationPolicy).userConfirmationTimeout = 10 * time.Millisecond
 	startAppendWait(t, a, contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "cli:review", Role: contextinfo.RoleUser}))
 	select {
 	case <-started:

@@ -2,13 +2,13 @@ package dialogue
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 
+	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/storage"
@@ -133,7 +133,15 @@ func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit
 			logResult.ResultStatus = events.ResultCanceled
 		}
 		content, _ := json.Marshal(map[string]string{"operation": operation, "error": fmt.Sprintf("%.2048s", err.Error())})
-		record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelError, EventName: "persistence_error", Module: "agent", Type: events.ContentJSON, Content: string(content), ResultStatus: logResult.ResultStatus}
+		record := events.LogRecord{
+			Category:     events.LogAudit,
+			Level:        slog.LevelError,
+			EventName:    "persistence_error",
+			Module:       "agent",
+			Type:         events.ContentJSON,
+			Content:      string(content),
+			ResultStatus: logResult.ResultStatus,
+		}
 		record.Identity.SessionID = &commit.SessionID
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		if facts.RunID != "" {

@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/events"
 	"encoding/json"
 	"errors"
 	"os"
@@ -15,6 +14,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/platform"
@@ -33,12 +33,24 @@ type backgroundTestResult struct {
 }
 
 func takeoverPrivateContext() context.Context {
-	return platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq", ScopeID: "private:1", ConversationKind: contextinfo.ConversationPrivate}, Identity: contextinfo.Identity{ActorID: "qq:1", PlatformUserID: "1"}}})
+	return platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Conversation: contextinfo.Conversation{
+			Source:   contextinfo.Source{Platform: "qq", ScopeID: "private:1", ConversationKind: contextinfo.ConversationPrivate},
+			Identity: contextinfo.Identity{ActorID: "qq:1", PlatformUserID: "1"},
+		},
+	})
 }
-func startTakeoverTest(a *Agent) <-chan backgroundTestResult {
+func startTakeoverTest(a *agentFixture) <-chan backgroundTestResult {
 	done := make(chan backgroundTestResult, 1)
 	go func() {
-		r, err := a.RunBackground(context.Background(), background.RunRequest{Kind: background.KindCron, Name: "takeover", Platform: "qq", Actor: contextinfo.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: contextinfo.RoleSuperadmin}, Prompt: "original background task", ToolListNames: []string{"slow"}})
+		r, err := a.RunBackground(context.Background(), background.RunRequest{
+			Kind:          background.KindCron,
+			Name:          "takeover",
+			Platform:      "qq",
+			Actor:         contextinfo.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: contextinfo.RoleSuperadmin},
+			Prompt:        "original background task",
+			ToolListNames: []string{"slow"},
+		})
 		done <- backgroundTestResult{r, err}
 	}()
 	return done
@@ -142,7 +154,15 @@ func TestBackgroundTakeoverSwitchesTaskModelToWork(t *testing.T) {
 	a.output.dispatcher.RegisterPlatformSender("qq", p)
 	done := make(chan backgroundTestResult, 1)
 	go func() {
-		r, err := a.RunBackground(context.Background(), background.RunRequest{Kind: background.KindCron, Name: "models", Platform: "qq", Actor: contextinfo.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: contextinfo.RoleSuperadmin}, Prompt: "run", ToolListNames: []string{"slow"}, Model: "task-model"})
+		r, err := a.RunBackground(context.Background(), background.RunRequest{
+			Kind:          background.KindCron,
+			Name:          "models",
+			Platform:      "qq",
+			Actor:         contextinfo.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: contextinfo.RoleSuperadmin},
+			Prompt:        "run",
+			ToolListNames: []string{"slow"},
+			Model:         "task-model",
+		})
 		done <- backgroundTestResult{r, err}
 	}()
 	select {
@@ -213,14 +233,20 @@ func TestBackgroundCompactHandoff(t *testing.T) {
 			f := &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"compressed history", "finished after compact"}}
 			a := newTestAgent(t, p, f, "model", config.ProviderConfig{}, newTestStore(t))
 			a.output.dispatcher.RegisterPlatformSender("qq", p)
-			req := background.RunRequest{Kind: background.KindCron, Name: "compact", Platform: "qq", Actor: contextinfo.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: contextinfo.RoleSuperadmin}, Prompt: "accepted input"}
+			req := background.RunRequest{
+				Kind:     background.KindCron,
+				Name:     "compact",
+				Platform: "qq",
+				Actor:    contextinfo.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: contextinfo.RoleSuperadmin},
+				Prompt:   "accepted input",
+			}
 			row, err := a.execution.sessions.PrepareBackground(context.Background(), session.Scope{ActorID: "qq:1", Platform: "qq", PlatformScopeID: "cron:compact"}, session.BackgroundRequest{Kind: string(req.Kind), Name: req.Name})
 			if err != nil {
 				t.Fatal(err)
 			}
 			req.SessionID = row.ID
 			for _, m := range []*storage.Message{{SessionID: row.ID, Role: storage.RoleUser, Content: "history"}, {SessionID: row.ID, Role: storage.RoleAssistant, Content: "old answer"}} {
-				if err := a.execution.dialogue.Replies.Messages.Append(context.Background(), m); err != nil {
+				if err := a.dialogue.Replies.Messages.Append(context.Background(), m); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -425,7 +451,10 @@ func TestTakeoverRefreshesNextToolInSameBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
-		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{Index: 0, ID: "slow-call", Name: "slow", Args: "{}"}, {Index: 1, ID: "probe-call", Name: "foreground_probe", Args: "{}"}}, FinishReason: "tool_calls"}},
+		{{
+			ToolCallDeltas: []chatcompletions.ToolCallDelta{{Index: 0, ID: "slow-call", Name: "slow", Args: "{}"}, {Index: 1, ID: "probe-call", Name: "foreground_probe", Args: "{}"}},
+			FinishReason:   "tool_calls",
+		}},
 		{{DeltaContent: "done"}},
 	}}
 

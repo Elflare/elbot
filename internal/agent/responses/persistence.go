@@ -2,11 +2,11 @@ package responses
 
 import (
 	"context"
-	"elbot/internal/events"
 	"errors"
 	"fmt"
 
 	"elbot/internal/agent/dialogue"
+	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/storage"
 )
@@ -36,7 +36,11 @@ func (c inputCommitter) Commit(ctx context.Context, message *storage.Message) (e
 		}
 		return logResult, err
 	}
-	return c.state.commit(ctx, storage.DialogueCommit{SessionID: message.SessionID, Messages: []*storage.Message{message}, Native: &storage.NativeCommit{ExpectedCheckpointID: c.state.checkpointID(), Inputs: []storage.NativeInput{input}}}, "append_user_message")
+	return c.state.commit(ctx, storage.DialogueCommit{
+		SessionID: message.SessionID,
+		Messages:  []*storage.Message{message},
+		Native:    &storage.NativeCommit{ExpectedCheckpointID: c.state.checkpointID(), Inputs: []storage.NativeInput{input}},
+	}, "append_user_message")
 }
 
 func (s *turnState) checkpointID() string {
@@ -63,7 +67,11 @@ func (s *turnState) commit(ctx context.Context, commit storage.DialogueCommit, o
 
 func (s *turnState) advance(messageID string) storage.NativeCommit {
 	parent := s.checkpointID()
-	native := storage.NativeCommit{ExpectedCheckpointID: parent, Checkpoint: storage.NativeCheckpoint{ID: storage.NewID(), SessionID: s.session.ID, ParentID: parent, ExchangeID: s.exchange.ID, ResponseID: s.response.ID, MessageID: messageID}, ConsumedInputs: append([]string(nil), s.consumed...)}
+	native := storage.NativeCommit{
+		ExpectedCheckpointID: parent,
+		Checkpoint:           storage.NativeCheckpoint{ID: storage.NewID(), SessionID: s.session.ID, ParentID: parent, ExchangeID: s.exchange.ID, ResponseID: s.response.ID, MessageID: messageID},
+		ConsumedInputs:       append([]string(nil), s.consumed...),
+	}
 	if s.seed != nil {
 		native.Checkpoint.SeedID = s.seed.ID
 		if !s.seed.Consumed {

@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -12,6 +11,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
+	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/memory/resident"
 	"elbot/internal/platform"
 	"elbot/internal/security"
@@ -25,8 +25,10 @@ import (
 func TestRiskConfirmationExpiresAndStopsToolFlow(t *testing.T) {
 	p := &fakePlatform{}
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t))
-	a.execution.waitPolicy.userConfirmationTimeout = 20 * time.Millisecond
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "private:regular"}, Identity: contextinfo.Identity{PlatformUserID: "regular"}}})
+	a.execution.waitPolicy.(*ConfirmationPolicy).userConfirmationTimeout = 20 * time.Millisecond
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "private:regular"}, Identity: contextinfo.Identity{PlatformUserID: "regular"}},
+	})
 	ctx = contextinfo.WithActor(ctx, contextinfo.Actor{ID: "cli:regular", Platform: "cli", PlatformUserID: "regular", Role: contextinfo.RoleUser})
 	s, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "expiring confirmation"})
 	if err != nil {
@@ -123,7 +125,13 @@ func TestRiskConfirmationDetailUsesToolProvidedDetail(t *testing.T) {
 	}
 	done := make(chan turn.RiskConfirmationResponse, 1)
 	go func() {
-		resp, _ := a.execution.turns.AwaitRiskConfirmation(session.ID, turn.RiskConfirmation{ID: "call_1", ToolName: "edit_file", Arguments: `{"path":"a.txt"}`, Risk: "high", Detail: "文件：a.txt\n编辑 1/1：替换行\n新内容：\n  line 1\n  line 2"})
+		resp, _ := a.execution.turns.AwaitRiskConfirmation(session.ID, turn.RiskConfirmation{
+			ID:        "call_1",
+			ToolName:  "edit_file",
+			Arguments: `{"path":"a.txt"}`,
+			Risk:      "high",
+			Detail:    "文件：a.txt\n编辑 1/1：替换行\n新内容：\n  line 1\n  line 2",
+		})
 		done <- resp
 	}()
 	deadline := time.Now().Add(time.Second)
@@ -224,7 +232,10 @@ func TestRegularUserMustConfirmHighRiskOwnerScopedTool(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
-		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "resident_memory_core", Args: `{"content":"我喜欢咖啡"}`}}, FinishReason: "tool_calls"}},
+		{{
+			ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "resident_memory_core", Args: `{"content":"我喜欢咖啡"}`}},
+			FinishReason:   "tool_calls",
+		}},
 		{{DeltaContent: "已记下"}},
 	}}
 
@@ -242,7 +253,9 @@ func TestRegularUserMustConfirmHighRiskOwnerScopedTool(t *testing.T) {
 		cfg.SecurityPolicy = security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
 		cfg.ToolRegistry = registry
 	})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "shared"}, Identity: contextinfo.Identity{PlatformUserID: "regular"}}})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "shared"}, Identity: contextinfo.Identity{PlatformUserID: "regular"}},
+	})
 
 	done := make(chan error, 1)
 	go func() { done <- a.HandleMessage(ctx, "更新我的核心记忆为：我喜欢咖啡") }()
@@ -266,7 +279,9 @@ func TestRegularUserMustConfirmHighRiskOwnerScopedTool(t *testing.T) {
 		t.Fatalf("core memory changed before confirmation: %v", err)
 	}
 
-	otherCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "shared"}, Identity: contextinfo.Identity{PlatformUserID: "other"}}})
+	otherCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "shared"}, Identity: contextinfo.Identity{PlatformUserID: "other"}},
+	})
 	if err := a.HandleMessage(otherCtx, "/confirm"); err != nil {
 		t.Fatalf("other user confirm: %v", err)
 	}
@@ -300,7 +315,10 @@ func TestRegularUserMustConfirmHighRiskOwnerScopedTool(t *testing.T) {
 func TestRegularUserCanUpdateNormalMemoryWithoutConfirmation(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
-		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "resident_memory_normal", Args: `{"action":"write","content":"用户喜欢短回复。"}`}}, FinishReason: "tool_calls"}},
+		{{
+			ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "resident_memory_normal", Args: `{"action":"write","content":"用户喜欢短回复。"}`}},
+			FinishReason:   "tool_calls",
+		}},
 		{{DeltaContent: "已记下"}},
 	}}
 
@@ -318,7 +336,9 @@ func TestRegularUserCanUpdateNormalMemoryWithoutConfirmation(t *testing.T) {
 		cfg.SecurityPolicy = security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
 		cfg.ToolRegistry = registry
 	})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: contextinfo.Identity{PlatformUserID: "regular"}}})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: contextinfo.Identity{PlatformUserID: "regular"}},
+	})
 
 	if err := a.HandleMessage(ctx, "更新我的普通记忆"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
@@ -340,7 +360,10 @@ func TestRegularUserCannotCallSuperadminOnlyTool(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
-		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "long_memory_write", Args: `{"category":"x","title":"t","summary":"s","content":"c"}`}}, FinishReason: "tool_calls"}},
+		{{
+			ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "long_memory_write", Args: `{"category":"x","title":"t","summary":"s","content":"c"}`}},
+			FinishReason:   "tool_calls",
+		}},
 		{{DeltaContent: "fallback"}},
 	}}
 
@@ -357,7 +380,9 @@ func TestRegularUserCannotCallSuperadminOnlyTool(t *testing.T) {
 		cfg.SecurityPolicy = security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
 		cfg.ToolRegistry = registry
 	})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: contextinfo.Identity{PlatformUserID: "regular"}}})
+	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+		Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "regular"}, Identity: contextinfo.Identity{PlatformUserID: "regular"}},
+	})
 
 	if err := a.HandleMessage(ctx, "写长期记忆"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)

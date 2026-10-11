@@ -29,7 +29,7 @@ import (
 
 type statusReadingPlatform struct {
 	fakePlatform
-	recorder *statusRecorder
+	recorder *StatusRecorder
 	observed chan runtimestatus.Snapshot
 }
 
@@ -39,12 +39,12 @@ func (p *statusReadingPlatform) SetRuntimeStatus(_ context.Context, sent runtime
 }
 
 func TestComponentStatusRecordedBeforeDisplayAndBackgroundStaysSilent(t *testing.T) {
-	recorder := &statusRecorder{changed: signal.New[agentevents.StatusChangedEvent]("test.status")}
+	recorder := &StatusRecorder{changed: signal.New[agentevents.StatusChangedEvent]("test.status")}
 	p := &statusReadingPlatform{recorder: recorder, observed: make(chan runtimestatus.Snapshot, 2)}
-	foreground := foregroundTurnOutput{sender: &outputSender{dispatcher: dispatch.New(dispatch.Options{Primary: p})}, status: recorder}
+	foreground := foregroundTurnOutput{sender: &OutputSender{dispatcher: dispatch.New(dispatch.Options{Primary: p})}, status: recorder}
 	_, err := recorder.changed.Connect(func(ctx context.Context, event agentevents.StatusChangedEvent) error {
 		if event.Display {
-			return foreground.sender.dispatcher.SetRuntimeStatus(ctx, event.Snapshot)
+			return foreground.sender.(*OutputSender).dispatcher.SetRuntimeStatus(ctx, event.Snapshot)
 		}
 		return nil
 	}, signal.ConnectOptions{})
@@ -111,9 +111,9 @@ func TestComponentPolicyOptionsReachHookAndPrompt(t *testing.T) {
 			cfg.ToolRegistry = registry
 			cfg.SecurityPolicy = security.NewPolicy("low", "high", admins)
 		})
-		provider := a.execution.dialogue.Preparer.Tools.Provider.(toolRunPromptProvider)
+		provider := a.dialogue.Preparer.Tools.Provider.(toolRunPromptProvider)
 		actor := a.identity.Actor(ctx)
-		event := a.hooks.fillContext(ctx, hook.Event{})
+		event := a.hooks.FillContext(ctx, hook.Event{})
 		if (actor.Role == contextinfo.RoleSuperadmin) != admin || event.Actor.Role != string(actor.Role) {
 			t.Fatalf("identity and Hook disagree with configured policy: %+v / %+v", actor, event.Actor)
 		}
@@ -121,7 +121,7 @@ func TestComponentPolicyOptionsReachHookAndPrompt(t *testing.T) {
 		if err != nil || slices.Contains(names.Tools, "admin_only") != admin {
 			t.Fatalf("Prompt did not use configured identity: %+v / %v", names, err)
 		}
-		if sourceFree := a.hooks.fillContext(context.Background(), hook.Event{}); sourceFree.Actor.ID != "" {
+		if sourceFree := a.hooks.FillContext(context.Background(), hook.Event{}); sourceFree.Actor.ID != "" {
 			t.Fatal("configured policy introduced a default Hook identity")
 		}
 	}
@@ -161,7 +161,11 @@ func TestExecutionViewKeepsRequestCancellationAndClearsBackgroundOverrides(t *te
 	requestCtx, cancelRequest := context.WithCancel(context.Background())
 	defer cancelRequest()
 	ctx := turn.WithAttempt(turn.WithExecution(requestCtx, execution), "attempt")
-	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq", ScopeID: "cron:1"}}, Sender: &fakePlatform{}, BufferAssistantOutput: true})
+	ctx = platform.WithMessageContext(ctx, platform.MessageContext{
+		Conversation:          contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq", ScopeID: "cron:1"}},
+		Sender:                &fakePlatform{},
+		BufferAssistantOutput: true,
+	})
 	ctx = sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{Root: "/background", Dir: "/background/task"})
 	ctx = modelmgr.WithSelectionOverride(ctx, config.ModelSelection{Provider: "task", Model: "task"})
 	foreground, cancelForeground := context.WithCancel(contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "remote:original"}}))
@@ -194,7 +198,7 @@ func TestExecutionViewKeepsRequestCancellationAndClearsBackgroundOverrides(t *te
 
 func TestMigratedComponentsPublishFactsWithoutLogger(t *testing.T) {
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{replies: []string{"one"}}, "model", config.ProviderConfig{}, newTestStore(t))
-	ctx, row, err := a.execution.resolveInput(context.Background(), "logging")
+	ctx, row, err := a.execution.ResolveInput(context.Background(), "logging")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +221,7 @@ func TestMigratedComponentsPublishFactsWithoutLogger(t *testing.T) {
 	defer connection.Disconnect()
 	_, _ = a.signals.ModelCallCompleted.Connect(func(context.Context, agentevents.ModelCallCompletedEvent) error { counts["model"]++; return nil }, signal.ConnectOptions{})
 	out := foregroundTurnOutput{sender: a.output, status: a.status}
-	if _, err := a.execution.dialogue.PrepareTurn(ctx, dialogue.TurnInput{Session: row, Text: "input", Selection: modelmgr.SelectionForTurn(ctx, a.execution.models, row)}); err != nil {
+	if _, err := a.dialogue.PrepareTurn(ctx, dialogue.TurnInput{Session: row, Text: "input", Selection: modelmgr.SelectionForTurn(ctx, a.execution.models, row)}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := testChatRoute(a).Caller.Call(ctx, row, modelmgr.SelectionForTurn(ctx, a.execution.models, row), nil, nil, nil, nil, out); err != nil {
@@ -225,7 +229,7 @@ func TestMigratedComponentsPublishFactsWithoutLogger(t *testing.T) {
 	}
 	call := llm.ToolCallRequest{ID: "call", Name: "test_tool", Arguments: "{}"}
 	testToolDeps(a).RecordToolCall(ctx, row.ID, call, "low", storage.Now(), "done", nil)
-	a.message.input.confirmations.publishConfirmationWait(ctx, row.ID, call, tool.RiskHigh, nil)
+	a.input.confirmations.(*ConfirmationCoordinator).publishConfirmationWait(ctx, row.ID, call, tool.RiskHigh, nil)
 	a.execution.handleTurnContextDone(ctx, row.ID, context.DeadlineExceeded, out)
 	for _, event := range []string{"input", "model", "timeout"} {
 		if counts[event] != 1 {

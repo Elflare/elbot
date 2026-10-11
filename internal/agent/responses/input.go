@@ -84,7 +84,15 @@ func queuedInput(sessionID, messageID, exchangeID, callID string, segments []llm
 	if err != nil {
 		return storage.NativeInput{}, err
 	}
-	return storage.NativeInput{ID: storage.NewID(), SessionID: sessionID, MessageID: messageID, ExchangeID: exchangeID, CallID: callID, ItemJSON: string(raw), MediaJSON: string(media)}, nil
+	return storage.NativeInput{
+		ID:         storage.NewID(),
+		SessionID:  sessionID,
+		MessageID:  messageID,
+		ExchangeID: exchangeID,
+		CallID:     callID,
+		ItemJSON:   string(raw),
+		MediaJSON:  string(media),
+	}, nil
 }
 
 func inputSegments(input storage.NativeInput) ([]llm.MessageSegment, error) {

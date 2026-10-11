@@ -13,7 +13,7 @@ import (
 	"elbot/internal/turn"
 )
 
-func (c *executionCoordinator) CompactCurrent(ctx context.Context, triggerReason string) (string, error) {
+func (c *ExecutionCoordinator) CompactCurrent(ctx context.Context, triggerReason string) (string, error) {
 	current, err := c.sessions.Current(ctx, c.identity.Scope(ctx))
 	if err != nil {
 		return "", err
@@ -22,7 +22,7 @@ func (c *executionCoordinator) CompactCurrent(ctx context.Context, triggerReason
 	return content, err
 }
 
-func (c *executionCoordinator) compactSession(ctx context.Context, current *storage.Session, triggerReason string, fallback modelmgr.Selection) (*storage.Session, string, error) {
+func (c *ExecutionCoordinator) compactSession(ctx context.Context, current *storage.Session, triggerReason string, fallback modelmgr.Selection) (*storage.Session, string, error) {
 	next, err := c.runCompact(ctx, current, c.identity.Scope(ctx), triggerReason, fallback)
 	if err != nil {
 		return nil, "", err
@@ -30,7 +30,7 @@ func (c *executionCoordinator) compactSession(ctx context.Context, current *stor
 	return next, fmt.Sprintf("上下文压缩完成。\nnew session: %s", next.ID), nil
 }
 
-func (c *executionCoordinator) runCompact(ctx context.Context, current *storage.Session, scope sessionpkg.Scope, triggerReason string, selection modelmgr.Selection) (*storage.Session, error) {
+func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.Session, scope sessionpkg.Scope, triggerReason string, selection modelmgr.Selection) (*storage.Session, error) {
 	locked, scope, release, err := c.enterCompact(ctx, current, scope)
 	if err != nil {
 		return nil, err
@@ -105,7 +105,7 @@ func (c *executionCoordinator) runCompact(ctx context.Context, current *storage.
 	return next, nil
 }
 
-func (c *executionCoordinator) enterCompact(ctx context.Context, row *storage.Session, scope sessionpkg.Scope, targets ...string) (context.Context, sessionpkg.Scope, func(), error) {
+func (c *ExecutionCoordinator) enterCompact(ctx context.Context, row *storage.Session, scope sessionpkg.Scope, targets ...string) (context.Context, sessionpkg.Scope, func(), error) {
 	for {
 		if e := turn.ExecutionFromContext(ctx); e != nil && e.Foreground() != nil {
 			if binding, ok := sessionpkg.BindingFromContext(e.Foreground()); ok {
@@ -164,11 +164,11 @@ func compactActive(turns *turn.Manager, requests *request.Manager, sessionID str
 	return false
 }
 
-func (c *executionCoordinator) compactActive(sessionID string) bool {
+func (c *ExecutionCoordinator) CompactActive(sessionID string) bool {
 	return compactActive(c.turns, c.requests, sessionID)
 }
 
-func (c *executionCoordinator) compactBeforeTurn(ctx context.Context, session *storage.Session, text string, out dialogue.Output, selection modelmgr.Selection) (context.Context, *storage.Session, error) {
+func (c *ExecutionCoordinator) compactBeforeTurn(ctx context.Context, session *storage.Session, text string, out dialogue.Output, selection modelmgr.Selection) (context.Context, *storage.Session, error) {
 	if c.turns.CanCompact(session.ID, turn.ExecutionFromContext(ctx)) && c.shouldCompact(ctx, session, selection) {
 		next, content, err := c.compactSession(withInboundTurnInput(ctx, inboundTurnInput(ctx, text)), session, "auto", selection)
 		if err != nil {

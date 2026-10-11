@@ -2,8 +2,6 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +9,8 @@ import (
 
 	"elbot/internal/agent/dialogue"
 	agentevents "elbot/internal/agent/events"
+	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"elbot/internal/modelmgr"
 	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/request"
@@ -20,14 +20,14 @@ import (
 	"elbot/internal/turn"
 )
 
-// modelContext supplies the prospective main-dialogue target to tool views.
+// ModelContext supplies the prospective main-dialogue target to tool views.
 // Execution still resolves and checks its fixed selection at admission.
-func (c *executionCoordinator) modelContext(ctx context.Context, row *storage.Session) (context.Context, error) {
+func (c *ExecutionCoordinator) ModelContext(ctx context.Context, row *storage.Session) (context.Context, error) {
 	selected := modelmgr.SelectionForTurn(ctx, c.models, row)
 	return c.view.WithModel(ctx, selected)
 }
 
-func (c *executionCoordinator) runAttempt(ctx context.Context, session *storage.Session, text string, out dialogue.Output) (*storage.Session, turn.Input, error) {
+func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.Session, text string, out dialogue.Output) (*storage.Session, turn.Input, error) {
 	ctx, release, err := c.enterTurn(ctx, session)
 	if err != nil {
 		return session, turn.Input{}, err
@@ -46,7 +46,7 @@ func (c *executionCoordinator) runAttempt(ctx context.Context, session *storage.
 		release()
 		return session, turn.Input{}, err
 	}
-	origin, err := c.dialogue.Routes.OriginFor(selection.Provider)
+	origin, err := c.dialogue.OriginFor(selection.Provider)
 	if err == nil {
 		var latest *storage.Session
 		latest, err = c.sessions.RegisterOrigin(ctx, session.ID, origin)
@@ -86,7 +86,7 @@ func (c *executionCoordinator) runAttempt(ctx context.Context, session *storage.
 	return session, pending, nil
 }
 
-func (c *executionCoordinator) finishAttempt(ctx context.Context, session *storage.Session, out dialogue.Output, result dialogue.TurnResult) error {
+func (c *ExecutionCoordinator) finishAttempt(ctx context.Context, session *storage.Session, out dialogue.Output, result dialogue.TurnResult) error {
 	attempt := turn.AttemptFromContext(ctx)
 	execution := turn.ExecutionFromContext(ctx)
 	if err := result.Err; err != nil && !result.QuietCancellation {
@@ -109,7 +109,7 @@ func (c *executionCoordinator) finishAttempt(ctx context.Context, session *stora
 	return nil
 }
 
-func (c *executionCoordinator) runTurn(ctx context.Context, session *storage.Session, text string, out dialogue.Output, selection modelmgr.Selection) (dialogue.TurnResult, turn.Input) {
+func (c *ExecutionCoordinator) runTurn(ctx context.Context, session *storage.Session, text string, out dialogue.Output, selection modelmgr.Selection) (dialogue.TurnResult, turn.Input) {
 	prepared, err := c.dialogue.PrepareTurn(ctx, dialogue.TurnInput{Session: session, Text: text, Input: inboundTurnInput(ctx, text), ReplyToPlatformMessageID: inboundReplyMessageID(ctx), Selection: selection})
 	if err != nil {
 		result := dialogue.TurnResult{Outcome: dialogue.Failed, Err: err}
@@ -159,12 +159,20 @@ func (c *executionCoordinator) runTurn(ctx context.Context, session *storage.Ses
 	return result, pending
 }
 
-func (c *executionCoordinator) finishCompletedTurn(ctx context.Context, session *storage.Session, out dialogue.Output, result dialogue.TurnResult) (turn.Input, error) {
+func (c *ExecutionCoordinator) finishCompletedTurn(ctx context.Context, session *storage.Session, out dialogue.Output, result dialogue.TurnResult) (turn.Input, error) {
 	ctx = c.view.Context(ctx)
 	selection, usage, turnStartedAt, committed := result.Selection, result.Usage, result.StartedAt, result.Committed
 	if err := c.sessions.Touch(ctx, session); err != nil {
 		content, _ := json.Marshal(map[string]string{"operation": "touch_session", "error": fmt.Sprintf("%.2048s", err.Error())})
-		record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelError, EventName: "persistence_error", Module: "agent", Type: events.ContentJSON, Content: string(content), ResultStatus: events.ResultFailed}
+		record := events.LogRecord{
+			Category:     events.LogAudit,
+			Level:        slog.LevelError,
+			EventName:    "persistence_error",
+			Module:       "agent",
+			Type:         events.ContentJSON,
+			Content:      string(content),
+			ResultStatus: events.ResultFailed,
+		}
 		record.Identity.SessionID = &session.ID
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		if facts.RunID != "" {
@@ -186,7 +194,15 @@ func (c *executionCoordinator) finishCompletedTurn(ctx context.Context, session 
 		return turn.Input{}, err
 	}
 	c.recordUsage(ctx, session.ID, usage)
-	doneStatus := runtimeDoneStatus(runtimestatus.Snapshot{SessionID: session.ID, Provider: selection.Provider, Model: selection.Model, Mode: session.Mode, TurnStartedAt: turnStartedAt, StageStartedAt: turnStartedAt, Usage: usage}, storage.Now())
+	doneStatus := runtimeDoneStatus(runtimestatus.Snapshot{
+		SessionID:      session.ID,
+		Provider:       selection.Provider,
+		Model:          selection.Model,
+		Mode:           session.Mode,
+		TurnStartedAt:  turnStartedAt,
+		StageStartedAt: turnStartedAt,
+		Usage:          usage,
+	}, storage.Now())
 	out.PublishRuntimeStatus(ctx, doneStatus)
 	nextSelection := modelmgr.SelectionForTurn(ctx, c.models, session)
 	if c.shouldCompact(ctx, session, nextSelection) {
@@ -203,14 +219,24 @@ func (c *executionCoordinator) finishCompletedTurn(ctx context.Context, session 
 	return pending, nil
 }
 
-func (c *executionCoordinator) handleTurnContextDone(ctx context.Context, sessionID string, err error, out dialogue.Output) {
+func (c *ExecutionCoordinator) handleTurnContextDone(ctx context.Context, sessionID string, err error, out dialogue.Output) {
 	if c.turns.Execution(sessionID) != turn.ExecutionFromContext(ctx) || (c.turns.Snapshot(sessionID).Phase != turn.PhaseAwaitAppendConfirm && c.turns.MatchesAttempt(sessionID, turn.AttemptFromContext(ctx))) {
 		if e := turn.ExecutionFromContext(ctx); e != nil {
 			e.Finish(err)
 		}
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "turn_response_timeout", Module: "agent", Type: events.ContentText, Content: fmt.Sprintf("turn response timeout: %v", err), ContentLimit: 4096, Identity: events.LogIdentity{}, ResultStatus: events.ResultFailed}
+		record := events.LogRecord{
+			Category:     events.LogRuntime,
+			Level:        slog.LevelError,
+			EventName:    "turn_response_timeout",
+			Module:       "agent",
+			Type:         events.ContentText,
+			Content:      fmt.Sprintf("turn response timeout: %v", err),
+			ContentLimit: 4096,
+			Identity:     events.LogIdentity{},
+			ResultStatus: events.ResultFailed,
+		}
 		emitAgentLog(ctx, agentevents.Meta(ctx, sessionID), record)
 		content, _ := json.Marshal(map[string]string{"error": fmt.Sprintf("%.2048v", err)})
 		record.Category, record.Type, record.Content = events.LogAudit, events.ContentJSON, string(content)

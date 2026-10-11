@@ -120,7 +120,10 @@ func (BackgroundPathsSystemPromptSource) Parts(ctx context.Context, _ SystemProm
 	if !ok || !sandbox.Background {
 		return nil, nil
 	}
-	return []SystemPromptPart{{Name: "background_paths", Content: "后台文件与 Shell 工具（shell、read_file、edit_file、send_file）：" + sandboxctx.BackgroundPathInstruction()}}, nil
+	return []SystemPromptPart{{
+		Name:    "background_paths",
+		Content: "后台文件与 Shell 工具（shell、read_file、edit_file、send_file）：" + sandboxctx.BackgroundPathInstruction(),
+	}}, nil
 }
 
 func (s ToolNamesSystemPromptSource) Parts(ctx context.Context, req SystemPromptRequest) ([]SystemPromptPart, error) {

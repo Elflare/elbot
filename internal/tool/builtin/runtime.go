@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 
 	"elbot/internal/config"
-	elcron "elbot/internal/cron"
 	"elbot/internal/fileops"
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
@@ -28,7 +27,6 @@ type RuntimeOptions struct {
 	FileRollback           *fileops.Service
 	ConfigDir              string
 	RuntimeInfo            runtimeinfo.Info
-	CronService            *elcron.Service
 	ChatHistory            storage.ChatHistoryRepository
 	Store                  storage.Store
 	Media                  *media.Manager
@@ -69,7 +67,6 @@ func NewRuntime(opts RuntimeOptions) (*Runtime, error) {
 		FileRollback:        runtime.FileRollback,
 		ResidentMemoryStore: residentStore,
 		SkillManager:        skillManager,
-		CronService:         opts.CronService,
 		ChatHistory:         opts.ChatHistory,
 		LongMemoryDir:       filepath.Join(opts.ConfigDir, "long_memory"),
 		FileManager:         fileManager,

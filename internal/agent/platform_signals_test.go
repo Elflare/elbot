@@ -17,7 +17,7 @@ import (
 	"elbot/internal/storage"
 )
 
-func newPlatformEventAgent(t *testing.T, handler hook.HandlerFunc) *Agent {
+func newPlatformEventAgent(t *testing.T, handler hook.HandlerFunc) *agentFixture {
 	t.Helper()
 	manager := hook.NewManager()
 	if err := manager.Register(hook.Registration{Point: hook.PointPlatformConnected, Name: "connection", Match: hook.Always(), Handler: handler}); err != nil {

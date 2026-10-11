@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/events"
 	"errors"
 	"reflect"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
@@ -148,7 +148,7 @@ func (s *replyTestStream) Finish(ctx context.Context) (delivery.Receipt, events.
 	}
 }
 
-// The fixture uses the real output adapters and SQLite without constructing Agent.
+// The fixture uses the real output adapters and SQLite without constructing agentFixture.
 type replyTestFixture struct {
 	events          []string
 	ctx, requestCtx context.Context
@@ -177,10 +177,13 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 	f.requestCtx, cancel = context.WithCancel(f.ctx)
 	t.Cleanup(cancel)
 	f.hooks = hook.NewManager()
-	sender := &outputSender{dispatcher: dispatch.New(dispatch.Options{Primary: f.platform}), hooks: &hookBridge{manager: f.hooks, identity: &identityResolver{platformName: "cli"}}}
+	sender := &OutputSender{
+		dispatcher: dispatch.New(dispatch.Options{Primary: f.platform}),
+		hooks:      &HookBridge{manager: f.hooks, identity: &IdentityResolver{platformName: "cli"}},
+	}
 	messages := &dialogue.MessageStore{Dialogues: replyTestDialogues{DialogueRepository: store.Dialogues(), repo: f.repo}}
 	f.committer = &dialogue.ReplyCommitter{Messages: f.repo, Persistence: messages.Committer("append_assistant_message"), Output: sender}
-	f.out = foregroundTurnOutput{sender: sender, status: &statusRecorder{}}
+	f.out = foregroundTurnOutput{sender: sender, status: &StatusRecorder{}}
 	f.in = dialogue.ReplyCommitInput{Session: row, Text: "history", RawText: "raw", PlatformText: "visible", Outputs: []delivery.Output{delivery.Text("later")}}
 	return f
 }
@@ -350,9 +353,15 @@ func TestReplyCommitStreamFailureRetainsReceipt(t *testing.T) {
 func TestReplyCommitMergesReplaceAndFinishReceipts(t *testing.T) {
 	f := newReplyTestFixture(t, false)
 	s := &replyTestStream{events: &f.events, wantCtx: f.requestCtx, t: t,
-		replaceReceipt: delivery.Receipt{PlatformMessageIDs: []string{"first"}, SentMessages: []delivery.SentMessage{{Platform: "telegram", ScopeID: "scope", PlatformMessageID: "first", OutputIndexes: []int{0}}}},
-		finishReceipt:  delivery.Receipt{PlatformMessageIDs: []string{"first", "second"}, SentMessages: []delivery.SentMessage{{Platform: "telegram", ScopeID: "scope", PlatformMessageID: "first", OutputIndexes: []int{0, 1}}, {Platform: "telegram", ScopeID: "scope", PlatformMessageID: "second", OutputIndexes: []int{2}}}},
-		finishErr:      errors.New("finish partially failed"),
+		replaceReceipt: delivery.Receipt{
+			PlatformMessageIDs: []string{"first"},
+			SentMessages:       []delivery.SentMessage{{Platform: "telegram", ScopeID: "scope", PlatformMessageID: "first", OutputIndexes: []int{0}}},
+		},
+		finishReceipt: delivery.Receipt{
+			PlatformMessageIDs: []string{"first", "second"},
+			SentMessages:       []delivery.SentMessage{{Platform: "telegram", ScopeID: "scope", PlatformMessageID: "first", OutputIndexes: []int{0, 1}}, {Platform: "telegram", ScopeID: "scope", PlatformMessageID: "second", OutputIndexes: []int{2}}},
+		},
+		finishErr: errors.New("finish partially failed"),
 	}
 	f.in.Stream = s
 	got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
@@ -373,7 +382,7 @@ func TestReplyCommitEmptyAndBackground(t *testing.T) {
 				f.in.Text, f.in.RawText, f.in.PlatformText, f.in.Outputs = "", "", "", nil
 				if strings.HasPrefix(mode, "background") {
 					f.in.Session.Mode = storage.SessionModeBackground
-					f.out = backgroundTurnOutput{status: &statusRecorder{}}
+					f.out = backgroundTurnOutput{status: &StatusRecorder{}}
 				}
 				if mode == "background_reply" {
 					f.in.Text, f.in.RawText, f.in.PlatformText = "raw", "raw", "visible"

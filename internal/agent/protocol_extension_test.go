@@ -77,7 +77,10 @@ type extensionCompactor struct{ calls int }
 
 func (c *extensionCompactor) Prepare(_ context.Context, row *storage.Session, reason string, selection modelmgr.Selection) (*contextmgr.PreparedCompact, error) {
 	c.calls++
-	return &contextmgr.PreparedCompact{Title: "extension compact", State: &contextmgr.CompactState{SourceSessionID: row.ID, TriggerReason: reason, Provider: selection.Provider, Model: selection.Model, Summary: "extension summary"}}, nil
+	return &contextmgr.PreparedCompact{
+		Title: "extension compact",
+		State: &contextmgr.CompactState{SourceSessionID: row.ID, TriggerReason: reason, Provider: selection.Provider, Model: selection.Model, Summary: "extension summary"},
+	}, nil
 }
 
 func TestRegisteredProtocolUsesActualAgentAdmissionPersistenceAndSessionCapabilities(t *testing.T) {
@@ -100,11 +103,11 @@ func TestRegisteredProtocolUsesActualAgentAdmissionPersistenceAndSessionCapabili
 	if err := assembled.Routes.Register(routes.Binding{Origin: llm.Origin{Provider: "extension-provider", APIType: "extension"}, Client: client, Loop: loop, Compactor: compactor, Material: material}); err != nil {
 		t.Fatal(err)
 	}
-	a, err := New(t.Context(), assembled.Config, assembled.Dependencies)
+	a, err := newTestAssembly(t.Context(), assembled)
 	if err != nil {
 		t.Fatal(err)
 	}
-	loop.messages = a.execution.dialogue.Messages
+	loop.messages = a.dialogue.Messages
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()

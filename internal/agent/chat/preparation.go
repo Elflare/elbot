@@ -37,7 +37,16 @@ func (p *preparedLoop) InputCommitter() dialogue.MessageCommitter {
 
 func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in dialogue.LoopInput, out dialogue.Output) (*storage.Message, error) {
 	r := p.route
-	s := &chatTurnState{ctx: ctx, requestCtx: requestCtx, session: in.Session, text: in.Text, output: out, selection: in.Selection, requestID: in.RequestID, startedAt: in.StartedAt}
+	s := &chatTurnState{
+		ctx:        ctx,
+		requestCtx: requestCtx,
+		session:    in.Session,
+		text:       in.Text,
+		output:     out,
+		selection:  in.Selection,
+		requestID:  in.RequestID,
+		startedAt:  in.StartedAt,
+	}
 	p.state = s
 	ctx = s.requestCtx
 	if err := ctx.Err(); err != nil {
@@ -46,7 +55,15 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in dialogue
 	userMessage, userSegments, loaded := p.materials.UserMessage, p.materials.Input.Segments, p.materials.Loaded
 	messages := append(append([]storage.Message{}, loaded.Messages...), *userMessage)
 	compactSeedOnCurrentUser, summaryOnCurrentUser := p.compactSeedOnCurrentUser, p.summaryOnCurrentUser
-	s.output.PublishRuntimeStatus(s.ctx, runtimestatus.Snapshot{SessionID: s.session.ID, Phase: runtimestatus.PhasePreparing, Provider: s.selection.Provider, Model: s.selection.Model, Mode: s.session.Mode, TurnStartedAt: s.startedAt, StageStartedAt: s.startedAt})
+	s.output.PublishRuntimeStatus(s.ctx, runtimestatus.Snapshot{
+		SessionID:      s.session.ID,
+		Phase:          runtimestatus.PhasePreparing,
+		Provider:       s.selection.Provider,
+		Model:          s.selection.Model,
+		Mode:           s.session.Mode,
+		TurnStartedAt:  s.startedAt,
+		StageStartedAt: s.startedAt,
+	})
 	scope := r.Preparer.Identity.Scope(ctx)
 	var err error
 	s.messages, err = r.PromptBuilder.Build(ctx, PromptBuildRequest{Session: s.session, Scope: scope, Messages: messages, Summary: loaded.Summary})
@@ -68,7 +85,15 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in dialogue
 		return nil, err
 	}
 	s.tools = tools
-	s.output.PublishRuntimeStatus(s.ctx, runtimestatus.Snapshot{SessionID: s.session.ID, Phase: runtimestatus.PhasePreparing, Provider: s.selection.Provider, Model: s.selection.Model, Mode: s.session.Mode, TurnStartedAt: s.startedAt, StageStartedAt: s.startedAt})
+	s.output.PublishRuntimeStatus(s.ctx, runtimestatus.Snapshot{
+		SessionID:      s.session.ID,
+		Phase:          runtimestatus.PhasePreparing,
+		Provider:       s.selection.Provider,
+		Model:          s.selection.Model,
+		Mode:           s.session.Mode,
+		TurnStartedAt:  s.startedAt,
+		StageStartedAt: s.startedAt,
+	})
 	promptUserSegments := canonicalUserSegments
 	if compactSeedOnCurrentUser || summaryOnCurrentUser {
 		promptUserSegments = llm.PrependSegmentText(promptUserSegments, summaryUserPrefix(loaded.Summary.Summary))

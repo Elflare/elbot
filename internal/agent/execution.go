@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"elbot/internal/agent/dialogue"
@@ -15,24 +16,17 @@ import (
 )
 
 // AdoptForeground is installed by app as Session's synchronous execution participant.
-func (a *Agent) AdoptForeground(ctx context.Context, row *storage.Session, binding *session.Binding) {
-	a.execution.AdoptForeground(ctx, row, binding)
-}
 
-func (a *Agent) CompactCurrent(ctx context.Context, triggerReason string) (string, error) {
-	return a.execution.CompactCurrent(ctx, triggerReason)
-}
-
-func (c *executionCoordinator) AdoptForeground(ctx context.Context, row *storage.Session, binding *session.Binding) {
+func (c *ExecutionCoordinator) AdoptForeground(ctx context.Context, row *storage.Session, binding *session.Binding) {
 	if execution := c.turns.Execution(row.ID); execution != nil {
 		ctx = contextinfo.WithActor(ctx, c.identity.Actor(ctx))
 		execution.Adopt(session.WithBinding(ctx, binding))
 	}
 }
 
-// executionCoordinator owns cross-turn admission and handoffs; domain managers
+// ExecutionCoordinator owns cross-turn admission and handoffs; domain managers
 // remain the source of truth for requests, attempts and logical execution state.
-type executionCoordinator struct {
+type ExecutionCoordinator struct {
 	// Context usage diagnostics.
 	sessions        *session.Service
 	sessionRows     storage.SessionRepository
@@ -40,17 +34,17 @@ type executionCoordinator struct {
 	requests        *request.Manager
 	contexts        *contextmgr.Service
 	models          *modelmgr.Service
-	dialogue        *dialogue.Runner
-	identity        *identityResolver
+	dialogue        ExecutionDialogue
+	identity        dialogue.Identity
 	view            dialogue.ExecutionView
-	output          *outputSender
-	status          *statusRecorder
-	waitPolicy      *confirmationPolicy
+	output          ExecutionSender
+	status          ExecutionStatus
+	waitPolicy      ConfirmationWaitPolicy
 	appendWaits     *appendWaitLifecycle
 	responseTimeout time.Duration
 }
 
-func (c *executionCoordinator) Run(ctx context.Context, row *storage.Session, text string, out dialogue.Output) error {
+func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, text string, out dialogue.Output) error {
 	execution := turn.ExecutionFromContext(ctx)
 	if execution == nil {
 		execution = turn.NewExecution(storage.NewID())
@@ -88,7 +82,7 @@ func (c *executionCoordinator) Run(ctx context.Context, row *storage.Session, te
 	}
 }
 
-func (c *executionCoordinator) RunBackground(ctx context.Context, row *storage.Session, text string) turn.Result {
+func (c *ExecutionCoordinator) RunBackground(ctx context.Context, row *storage.Session, text string) turn.Result {
 	execution := turn.NewExecution(storage.NewID())
 	execution.SetResult(row.ID, "", "")
 	ctx = turn.WithExecution(ctx, execution)
@@ -110,4 +104,60 @@ func (c *executionCoordinator) RunBackground(ctx context.Context, row *storage.S
 		}
 	}
 	return result
+}
+
+// NewExecutionCoordinator initializes ExecutionCoordinator without installing cross-service callbacks.
+func NewExecutionCoordinator(ctx context.Context, deps ExecutionCoordinatorDeps) (*ExecutionCoordinator, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("runtime context is required")
+	}
+	if deps.Sessions == nil {
+		return nil, fmt.Errorf("ExecutionCoordinator sessions is required")
+	}
+	if deps.SessionRows == nil {
+		return nil, fmt.Errorf("ExecutionCoordinator sessionRows is required")
+	}
+	if deps.Turns == nil {
+		return nil, fmt.Errorf("ExecutionCoordinator turns is required")
+	}
+	if deps.Requests == nil {
+		return nil, fmt.Errorf("ExecutionCoordinator requests is required")
+	}
+	if deps.Contexts == nil {
+		return nil, fmt.Errorf("ExecutionCoordinator contexts is required")
+	}
+	if deps.Models == nil {
+		return nil, fmt.Errorf("ExecutionCoordinator models is required")
+	}
+	if deps.Dialogue == nil {
+		return nil, fmt.Errorf("ExecutionCoordinator dialogue is required")
+	}
+	if deps.Identity == nil {
+		return nil, fmt.Errorf("ExecutionCoordinator identity is required")
+	}
+	if deps.Output == nil {
+		return nil, fmt.Errorf("ExecutionCoordinator output is required")
+	}
+	if deps.Status == nil {
+		return nil, fmt.Errorf("ExecutionCoordinator status is required")
+	}
+	if deps.WaitPolicy == nil {
+		return nil, fmt.Errorf("ExecutionCoordinator waitPolicy is required")
+	}
+	return &ExecutionCoordinator{
+		sessions:        deps.Sessions,
+		sessionRows:     deps.SessionRows,
+		turns:           deps.Turns,
+		requests:        deps.Requests,
+		contexts:        deps.Contexts,
+		models:          deps.Models,
+		dialogue:        deps.Dialogue,
+		identity:        deps.Identity,
+		view:            deps.View,
+		output:          deps.Output,
+		status:          deps.Status,
+		waitPolicy:      deps.WaitPolicy,
+		responseTimeout: deps.ResponseTimeout,
+		appendWaits:     newAppendWaitLifecycle(ctx),
+	}, nil
 }

@@ -2,18 +2,18 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
 	"errors"
 	"fmt"
 	"log/slog"
 
+	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/storage"
 )
 
-func (c *executionCoordinator) recordUsage(ctx context.Context, id string, usage *llm.Usage) {
+func (c *ExecutionCoordinator) recordUsage(ctx context.Context, id string, usage *llm.Usage) {
 	if err := c.contexts.RecordUsage(context.WithoutCancel(ctx), id, usage); err != nil {
 		{
 			record := globalevents.LogRecord{
@@ -51,7 +51,7 @@ func (c *executionCoordinator) recordUsage(ctx context.Context, id string, usage
 		}
 	}
 }
-func (c *executionCoordinator) usageForSession(ctx context.Context, row *storage.Session) *llm.Usage {
+func (c *ExecutionCoordinator) usageForSession(ctx context.Context, row *storage.Session) *llm.Usage {
 	usage, err := c.contexts.Usage(row)
 	if err != nil {
 		{
@@ -91,6 +91,6 @@ func (c *executionCoordinator) usageForSession(ctx context.Context, row *storage
 	}
 	return usage
 }
-func (c *executionCoordinator) shouldCompact(ctx context.Context, row *storage.Session, selection modelmgr.Selection) bool {
+func (c *ExecutionCoordinator) shouldCompact(ctx context.Context, row *storage.Session, selection modelmgr.Selection) bool {
 	return row != nil && c.contexts.ReachedCompactThreshold(ctx, c.usageForSession(ctx, row), selection.ModelSelection)
 }

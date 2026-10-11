@@ -20,7 +20,7 @@ import (
 	"elbot/internal/tool/builtin"
 )
 
-func rollbackAgentFixture(t *testing.T) (*Agent, *fakePlatform, context.Context, *storage.Session, string) {
+func rollbackAgentFixture(t *testing.T) (*agentFixture, *fakePlatform, context.Context, *storage.Session, string) {
 	t.Helper()
 	opts := validConstructorOptions(t)
 	p := &fakePlatform{}
@@ -43,7 +43,7 @@ func rollbackAgentFixture(t *testing.T) (*Agent, *fakePlatform, context.Context,
 	return a, p, ctx, row, filepath.Join(dir, "file")
 }
 
-func editForRollback(t *testing.T, a *Agent, ctx context.Context, row *storage.Session, path, text string) {
+func editForRollback(t *testing.T, a *agentFixture, ctx context.Context, row *storage.Session, path, text string) {
 	t.Helper()
 	args := map[string]any{"path": path, "create": true, "edits": []map[string]any{{"operation": "overwrite", "new_text": text}}}
 	absolute := path
@@ -60,7 +60,7 @@ func editForRollback(t *testing.T, a *Agent, ctx context.Context, row *storage.S
 	raw, _ := json.Marshal(args)
 	call := llm.ToolCallRequest{ID: "edit", Name: "edit_file", Arguments: string(raw)}
 	ctx = testToolDeps(a).PrepareToolContext(ctx, row, call)
-	editor, _ := a.execution.dialogue.Preparer.Tools.Registry.Get("edit_file")
+	editor, _ := a.dialogue.Preparer.Tools.Registry.Get("edit_file")
 	if _, _, err := editor.Call(ctx, tool.CallRequest{ID: call.ID, Arguments: raw}); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestRollbackCommandUsesSharedRecordsWithoutLLM(t *testing.T) {
 	if !strings.Contains(p.out.String(), path) || !strings.Contains(p.out.String(), fmt.Sprint(id)) {
 		t.Fatalf("list: %s", p.out.String())
 	}
-	completer, _ := a.message.commands.router.Handler("rollback")
+	completer, _ := a.message.commands.(*CommandExecutor).router.Handler("rollback")
 	completions := completer.(command.Completer).Complete(ctx, command.CompletionRequest{Raw: "/rollback ", Prefix: "/", Name: "rollback", Cursor: len("/rollback ")})
 	if len(completions) != 1 || completions[0].Text != fmt.Sprint(id) {
 		t.Fatalf("completion: %+v", completions)

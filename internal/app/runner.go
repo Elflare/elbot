@@ -2,12 +2,12 @@ package app
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
 	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
+	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 )
 
@@ -23,18 +23,14 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 	ctx, cancel := context.WithCancel(ctx)
 	var shutdownCtx context.Context
 	var shutdownCancel context.CancelFunc
-	var bindings *signalBindings
 	var logs LogManager
-	var beginRuntimeClose func()
+	var beginWiringClose func()
 	beginShutdown := func() {
-		if beginRuntimeClose != nil {
-			beginRuntimeClose()
+		if beginWiringClose != nil {
+			beginWiringClose()
 		}
 		if logs != nil {
 			logs.BeginClose()
-		}
-		if bindings != nil {
-			bindings.BeginClose()
 		}
 		if shutdownCtx != nil {
 			return
@@ -45,25 +41,12 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 		}
 		shutdownCtx, shutdownCancel = context.WithTimeout(context.Background(), timeout)
 	}
-	platformsStopped := true
 	var cleanups []cleanupStep
-	var stopCron func(context.Context) error
 	defer func() {
 		runErr = withoutShutdownError(runErr, ctx.Err())
 		cancel()
 		beginShutdown()
 		defer shutdownCancel()
-		if stopCron != nil {
-			if err := stopCron(shutdownCtx); err != nil {
-				if err = withoutShutdownError(err, shutdownCtx.Err()); err != nil {
-					runErr = errors.Join(runErr, fmt.Errorf("stop cron: %w", err))
-				}
-				return
-			}
-		}
-		if !platformsStopped {
-			return
-		}
 		for i := len(cleanups) - 1; i >= 0; i-- {
 			if shutdownCtx.Err() != nil {
 				break
@@ -102,7 +85,6 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 	foundation, err := r.deps.Foundation.Build(ctx, FoundationRequest{Options: opts, Mode: mode, Profiler: profiler})
 	if foundation != nil {
 		logs = foundation.Logs
-		stopCron = foundation.StopCron
 	}
 	if foundation != nil && foundation.Lifecycle != nil {
 		cleanups = append(cleanups, cleanupStep{name: "foundation", close: foundation.Lifecycle.Close})
@@ -121,51 +103,30 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 	if err != nil {
 		return err
 	}
-	platforms, err := r.deps.Platforms.Build(PlatformRequest{Foundation: foundation, Mode: mode, Profiler: profiler})
-	if err != nil {
-		return err
-	}
-	runtime, err := r.deps.Runtime.Build(ctx, RuntimeRequest{Foundation: foundation, Models: models, Platforms: platforms, Profiler: profiler})
-	if runtime != nil {
-		bindings = runtime.Signals
-		if runtime.Lifecycle != nil {
-			if lifecycle, ok := runtime.Lifecycle.(interface{ BeginClose() }); ok {
-				beginRuntimeClose = lifecycle.BeginClose
+	wiring, err := r.deps.Wiring.Build(ctx, WiringRequest{Foundation: foundation, Models: models, Platforms: r.deps.Platforms, Mode: mode, Profiler: profiler})
+	if wiring != nil && wiring.Lifecycle != nil {
+		beginWiringClose = wiring.Lifecycle.BeginClose
+		cleanups = append(cleanups, cleanupStep{name: "wiring", close: wiring.Lifecycle.Close, stopped: func() bool {
+			select {
+			case <-wiring.Lifecycle.Done():
+				return true
+			default:
+				return false
 			}
-			step := cleanupStep{name: "runtime", close: runtime.Lifecycle.Close}
-			if lifecycle, ok := runtime.Lifecycle.(interface{ stopped() bool }); ok {
-				step.stopped = lifecycle.stopped
-			}
-			cleanups = append(cleanups, step)
-		}
-		if runtime.Signals != nil {
-			cleanups = append(cleanups, cleanupStep{name: "signals", close: runtime.Signals.Close, stopped: runtime.Signals.stopped})
-		}
+		}})
 	}
 	if err != nil {
 		return err
 	}
-	if runtime == nil {
-		return fmt.Errorf("app: runtime factory returned incomplete components")
+	if wiring == nil {
+		return fmt.Errorf("app: wiring factory returned incomplete components")
 	}
-	if runtime.Lifecycle == nil {
-		return fmt.Errorf("app: runtime factory returned incomplete components")
+	if wiring.Lifecycle == nil {
+		return fmt.Errorf("app: wiring factory returned incomplete components")
 	}
-	if runtime.Handler == nil {
-		return fmt.Errorf("app: runtime factory returned incomplete components")
-	}
-
-	platforms, err = r.deps.Integrations.Attach(ctx, IntegrationRequest{
-		Foundation: foundation,
-		Runtime:    runtime,
-		Platforms:  platforms,
-		Mode:       mode,
-		Profiler:   profiler,
-	})
-	if err != nil {
+	if err := wiring.Start(cancel); err != nil {
 		return err
 	}
-
 	startupDuration := profiler.Flush()
 	{
 		record := globalevents.LogRecord{
@@ -196,29 +157,34 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 		}
 		_ = globalevents.EmitLog(ctx, record)
 	}
-	var afterStart func(context.Context)
-	if shouldStartCron(mode) && foundation.StartCron != nil {
-		afterStart = func(ctx context.Context) {
-			foundation.StartCron(ctx, runtime.CronService)
-		}
-	}
-	done := make(chan error, 1)
-	platformsStopped = false
-	go func() {
-		done <- r.deps.Executor.Run(ctx, PlatformRunRequest{Handler: runtime.Handler, Runtimes: platforms.Runtimes, AfterStart: afterStart, Stop: cancel})
-	}()
-	select {
-	case err := <-done:
-		platformsStopped = true
+	if err := wiring.Platform.Wait(ctx); err != nil {
 		return err
-	case <-ctx.Done():
-		beginShutdown()
-		select {
-		case err := <-done:
-			platformsStopped = true
-			return err
-		case <-shutdownCtx.Done():
-			return ctx.Err()
-		}
 	}
+	return wiring.Background.Wait(ctx)
+}
+
+// withoutShutdownError removes expected cancellation leaves, not entire joined
+// errors. In particular, a failed startup must survive a simultaneous shutdown.
+func withoutShutdownError(err, expected error) error {
+	if err == nil || expected == nil {
+		return err
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		var kept []error
+		for _, child := range joined.Unwrap() {
+			kept = append(kept, withoutShutdownError(child, expected))
+		}
+		return errors.Join(kept...)
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok && wrapped.Unwrap() != nil {
+		// Keep the original wrapper when it contains no expected cancellation.
+		if !errors.Is(err, expected) {
+			return err
+		}
+		return withoutShutdownError(wrapped.Unwrap(), expected)
+	}
+	if errors.Is(err, expected) {
+		return nil
+	}
+	return err
 }

@@ -2,9 +2,6 @@ package agent
 
 import (
 	"context"
-
-	"elbot/internal/contextinfo"
-	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"reflect"
 	"strings"
@@ -12,7 +9,9 @@ import (
 
 	"elbot/internal/background"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
+	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/tool"
 	"elbot/internal/toolrun"
 )
@@ -45,7 +44,7 @@ func TestBackgroundStateFreezesInitialTools(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			before, err := a.execution.dialogue.Preparer.Tools.State.Snapshot(ctx, first.SessionID)
+			before, err := a.dialogue.Preparer.Tools.State.Snapshot(ctx, first.SessionID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -57,7 +56,7 @@ func TestBackgroundStateFreezesInitialTools(t *testing.T) {
 			if _, err := a.RunBackground(ctx, req); err != nil {
 				t.Fatal(err)
 			}
-			after, err := a.execution.dialogue.Preparer.Tools.State.Snapshot(ctx, first.SessionID)
+			after, err := a.dialogue.Preparer.Tools.State.Snapshot(ctx, first.SessionID)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -2,18 +2,18 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 
+	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/media"
 	"elbot/internal/platform"
 )
 
-func (h *messageHandler) materializePlatformMedia(ctx context.Context) context.Context {
+func (h *MessageHandler) materializePlatformMedia(ctx context.Context) context.Context {
 	msg, ok := platform.MessageContextFrom(ctx)
 	if !ok || h.media == nil {
 		return ctx
@@ -44,7 +44,7 @@ func (h *messageHandler) materializePlatformMedia(ctx context.Context) context.C
 	return platform.WithMessageContext(ctx, msg)
 }
 
-func (h *messageHandler) materializePlatformSegment(ctx context.Context, msg platform.MessageContext, segment platform.MessageSegment) platform.MessageSegment {
+func (h *MessageHandler) materializePlatformSegment(ctx context.Context, msg platform.MessageContext, segment platform.MessageSegment) platform.MessageSegment {
 	item, err := h.media.ImportPlatform(ctx, msg.Conversation.Source.Platform, msg.MediaResolver, segment)
 	if err != nil {
 		return unavailablePlatformSegment(segment)
@@ -58,7 +58,7 @@ func (h *messageHandler) materializePlatformSegment(ctx context.Context, msg pla
 	return segment
 }
 
-func (h *messageHandler) associateInboundHistory(ctx context.Context, msg platform.MessageContext, messageID string, original, resolved []platform.MessageSegment) {
+func (h *MessageHandler) associateInboundHistory(ctx context.Context, msg platform.MessageContext, messageID string, original, resolved []platform.MessageSegment) {
 	if h.media.History == nil || messageID == "" {
 		return
 	}

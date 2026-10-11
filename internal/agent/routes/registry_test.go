@@ -2,7 +2,6 @@ package routes_test
 
 import (
 	"context"
-	"elbot/internal/events"
 	"log/slog"
 	"path/filepath"
 	"strings"
@@ -14,6 +13,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
@@ -79,7 +79,10 @@ type testCompactor struct{ calls int }
 
 func (c *testCompactor) Prepare(_ context.Context, row *storage.Session, reason string, selection modelmgr.Selection) (*contextmgr.PreparedCompact, error) {
 	c.calls++
-	return &contextmgr.PreparedCompact{Title: "compacted test", State: &contextmgr.CompactState{SourceSessionID: row.ID, TriggerReason: reason, Provider: selection.Provider, Model: selection.Model, Summary: "test seed"}}, nil
+	return &contextmgr.PreparedCompact{
+		Title: "compacted test",
+		State: &contextmgr.CompactState{SourceSessionID: row.ID, TriggerReason: reason, Provider: selection.Provider, Model: selection.Model, Summary: "test seed"},
+	}, nil
 }
 
 type testOutput struct {
@@ -151,7 +154,11 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 		Messages: loop.messages,
 		Replies:  &dialogue.ReplyCommitter{Messages: store.Messages(), Persistence: loop.messages.Committer("append_assistant_message"), Output: out},
 		Turns:    turn.NewManager(), View: dialogue.ExecutionView{Sessions: store.Sessions(), Providers: registry}}
-	in := dialogue.TurnInput{Session: row, Text: "incoming", Selection: modelmgr.Selection{ModelSelection: config.ModelSelection{Provider: origin.Provider, Model: "m"}, Client: client}}
+	in := dialogue.TurnInput{
+		Session:   row,
+		Text:      "incoming",
+		Selection: modelmgr.Selection{ModelSelection: config.ModelSelection{Provider: origin.Provider, Model: "m"}, Client: client},
+	}
 	in.Prepared, err = runner.PrepareTurn(ctx, in)
 	if err != nil {
 		t.Fatal(err)

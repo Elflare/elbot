@@ -597,7 +597,18 @@ func (w *nativeWindow) Seed(continuation []api.Item, calls []storage.NativeCall,
 	if w.Checkpoint != nil {
 		source = w.Checkpoint.ID
 	}
-	return &storage.NativeSeed{APIType: string(w.Origin.APIType), Provider: w.Origin.Provider, BaseURL: w.Origin.BaseURL, ResponseID: responseID, SourceCheckpointID: source, ItemsJSON: string(items), MaterialsJSON: string(materials), ContinuationJSON: string(more), CallsJSON: string(snapshot), MediaIDs: w.mediaIDs()}, nil
+	return &storage.NativeSeed{
+		APIType:            string(w.Origin.APIType),
+		Provider:           w.Origin.Provider,
+		BaseURL:            w.Origin.BaseURL,
+		ResponseID:         responseID,
+		SourceCheckpointID: source,
+		ItemsJSON:          string(items),
+		MaterialsJSON:      string(materials),
+		ContinuationJSON:   string(more),
+		CallsJSON:          string(snapshot),
+		MediaIDs:           w.mediaIDs(),
+	}, nil
 }
 
 func checkWindowTarget(w *nativeWindow, target llm.Origin) error {

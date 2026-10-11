@@ -3,6 +3,7 @@ package dialogue
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
@@ -11,7 +12,6 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/storage"
-	"log/slog"
 )
 
 type Preparer struct {
@@ -31,7 +31,17 @@ func (p *Preparer) LoadMaterials(ctx context.Context, in TurnInput) (TurnMateria
 	message := &storage.Message{ID: storage.NewID(), SessionID: in.Session.ID, Role: storage.RoleUser,
 		Content: llm.SegmentsContentText(segments), Segments: StoredMessageSegments(segments), ReplyToPlatformMessageID: in.ReplyToPlatformMessageID}
 	input.Segments = segments
-	record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelInfo, EventName: "user_message", Module: "agent", Type: events.ContentText, Content: message.Content, ContentLimit: 4096, Identity: events.LogIdentity{SessionID: &in.Session.ID}, ResultStatus: events.ResultUnspecified}
+	record := events.LogRecord{
+		Category:     events.LogRuntime,
+		Level:        slog.LevelInfo,
+		EventName:    "user_message",
+		Module:       "agent",
+		Type:         events.ContentText,
+		Content:      message.Content,
+		ContentLimit: 4096,
+		Identity:     events.LogIdentity{SessionID: &in.Session.ID},
+		ResultStatus: events.ResultUnspecified,
+	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	if facts.RunID != "" {
 		record.Identity.RunID = &facts.RunID

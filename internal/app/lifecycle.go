@@ -4,120 +4,88 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
-	elcron "elbot/internal/cron"
-	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/modelmgr"
-	"elbot/internal/session"
 )
 
-type runtimeLifecycle struct {
-	cancel context.CancelFunc
-	agent  interface {
-		Close(context.Context) error
-		Done() <-chan struct{}
-	}
-	skillDone <-chan struct{}
-	hooks     *hookruntime.Manager
-	sessions  *session.Service
-	models    *modelmgr.Service
-	cron      *elcron.Service
+type wiringLifecycle struct {
+	components *WiringComponents
+	models     *modelmgr.Service
+	done       chan struct{}
+	mu         sync.Mutex
+	closed     bool
 }
 
-// BeginClose stops consumer admission before waiting for producers or queues.
-func (l *runtimeLifecycle) BeginClose() {
-	l.cancel()
-	if l.cron != nil {
-		l.cron.BeginClose()
+func (l *wiringLifecycle) groups() []struct {
+	name  string
+	owner ModuleLifecycle
+} {
+	var groups []struct {
+		name  string
+		owner ModuleLifecycle
 	}
-	if agent, ok := l.agent.(interface{ BeginClose() }); ok {
-		agent.BeginClose()
+	c := l.components
+	if c.Platform != nil {
+		groups = append(groups, struct {
+			name  string
+			owner ModuleLifecycle
+		}{"platform", c.Platform})
+	}
+	if c.Background != nil {
+		groups = append(groups, struct {
+			name  string
+			owner ModuleLifecycle
+		}{"background", c.Background})
+	}
+	if c.Dialogue != nil {
+		groups = append(groups, struct {
+			name  string
+			owner ModuleLifecycle
+		}{"dialogue", c.Dialogue})
+	}
+	if c.Hook != nil {
+		groups = append(groups, struct {
+			name  string
+			owner ModuleLifecycle
+		}{"hook", c.Hook})
+	}
+	if c.Tool != nil {
+		groups = append(groups, struct {
+			name  string
+			owner ModuleLifecycle
+		}{"tool", c.Tool})
+	}
+	return groups
+}
+func (l *wiringLifecycle) BeginClose() {
+	for _, g := range l.groups() {
+		g.owner.BeginClose()
 	}
 }
-
-func (l *runtimeLifecycle) Close(ctx context.Context) error {
+func (l *wiringLifecycle) Done() <-chan struct{} { return l.done }
+func (l *wiringLifecycle) Close(ctx context.Context) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed {
+		return nil
+	}
 	l.BeginClose()
 	var errs []error
-	// Recovery can still be using Agent, Hook, models and storage.
-	if l.cron != nil {
-		if err := l.cron.Close(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("close cron connection recovery: %w", err))
+	for _, g := range l.groups() {
+		if err := g.owner.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("close %s: %w", g.name, err))
 		}
 		select {
-		case <-l.cron.Done():
+		case <-g.owner.Done():
 		default:
 			return errors.Join(errs...)
-		}
-	}
-	if l.agent != nil {
-		if err := l.agent.Close(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("close agent workers: %w", err))
-		}
-		select {
-		case <-l.agent.Done():
-		default:
-			// Expiry output may still be using Hooks, storage or senders.
-			return errors.Join(errs...)
-		}
-	}
-	if l.sessions != nil {
-		if err := l.sessions.Close(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("close session naming: %w", err))
-		}
-	}
-	if l.hooks != nil {
-		if err := l.hooks.Close(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("close hook runtime: %w", err))
-		}
-	}
-	if l.skillDone != nil {
-		select {
-		case <-l.skillDone:
-		case <-ctx.Done():
-			errs = append(errs, fmt.Errorf("wait skill loading: %w", ctx.Err()))
 		}
 	}
 	if l.models != nil {
 		errs = append(errs, l.models.Close())
 	}
+	l.closed = true
+	close(l.done)
 	return errors.Join(errs...)
-}
-
-func (l *runtimeLifecycle) stopped() bool {
-	if l.cron != nil {
-		select {
-		case <-l.cron.Done():
-		default:
-			return false
-		}
-	}
-	if l.agent != nil {
-		select {
-		case <-l.agent.Done():
-		default:
-			return false
-		}
-	}
-	if l.sessions != nil {
-		select {
-		case <-l.sessions.Done():
-		default:
-			return false
-		}
-	}
-	if l.hooks != nil {
-		select {
-		case <-l.hooks.Done():
-		default:
-			return false
-		}
-	}
-	if l.skillDone != nil {
-		select {
-		case <-l.skillDone:
-		default:
-			return false
-		}
-	}
-	return true
 }

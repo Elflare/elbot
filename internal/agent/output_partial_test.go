@@ -2,13 +2,13 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/events"
 	"errors"
 	"testing"
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/platform"
 )
 
@@ -28,10 +28,17 @@ func TestPartialAssistantSendKeepsMessageAssociation(t *testing.T) {
 							logResult.ResultStatus = events.ResultCanceled
 						}
 					}
-					return delivery.Receipt{PlatformMessageIDs: []string{"first-page"}, SentMessages: []delivery.SentMessage{{Platform: "test", ScopeID: "group:old", PlatformMessageID: "first-page"}}}, logResult, wantErr
+					return delivery.Receipt{
+						PlatformMessageIDs: []string{"first-page"},
+						SentMessages:       []delivery.SentMessage{{Platform: "test", ScopeID: "group:old", PlatformMessageID: "first-page"}},
+					}, logResult, wantErr
 				}
 			})
-			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ScopeID: "group:old"}, Identity: contextinfo.Identity{PlatformUserID: "user"}}, Sender: sender, BufferAssistantOutput: buffered})
+			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+				Conversation:          contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ScopeID: "group:old"}, Identity: contextinfo.Identity{PlatformUserID: "user"}},
+				Sender:                sender,
+				BufferAssistantOutput: buffered,
+			})
 			if err := a.HandleMessage(ctx, "question"); !errors.Is(err, wantErr) {
 				t.Fatalf("send error=%v", err)
 			}

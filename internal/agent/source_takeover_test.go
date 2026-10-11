@@ -2,13 +2,13 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/llm/chatcompletions"
 	"strings"
 	"testing"
 	"time"
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/tool"
 )
 

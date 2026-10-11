@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/events"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +17,7 @@ import (
 	"elbot/internal/background"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
@@ -241,7 +241,10 @@ func emitCompact(w http.ResponseWriter, items ...string) {
 		output = append(output, json.RawMessage(item))
 		fmt.Fprintf(w, "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":%d,\"item\":%s}\n\n", index, item)
 	}
-	raw, _ := json.Marshal(map[string]any{"type": "response.completed", "response": map[string]any{"id": "compact-result", "status": "completed", "output": output, "usage": map[string]int{"input_tokens": 7, "output_tokens": 2, "total_tokens": 9}}})
+	raw, _ := json.Marshal(map[string]any{
+		"type":     "response.completed",
+		"response": map[string]any{"id": "compact-result", "status": "completed", "output": output, "usage": map[string]int{"input_tokens": 7, "output_tokens": 2, "total_tokens": 9}},
+	})
 	fmt.Fprintf(w, "event: response.completed\ndata: %s\n\n", raw)
 }
 
@@ -560,7 +563,15 @@ func TestResponsesIncompatibleTakeoverKeepsBackgroundExecutionAndForegroundBindi
 	}
 	done := make(chan error, 1)
 	go func() {
-		_, err := f.agent.RunBackground(t.Context(), background.RunRequest{Kind: background.KindCron, Name: "takeover", Actor: contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}, Platform: "cli", Prompt: "task input", ModelProvider: "native", Model: "m"})
+		_, err := f.agent.RunBackground(t.Context(), background.RunRequest{
+			Kind:          background.KindCron,
+			Name:          "takeover",
+			Actor:         contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin},
+			Platform:      "cli",
+			Prompt:        "task input",
+			ModelProvider: "native",
+			Model:         "m",
+		})
 		done <- err
 	}()
 	select {

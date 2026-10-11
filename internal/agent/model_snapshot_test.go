@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/llm/chatcompletions"
 	"errors"
 	"strings"
 	"sync"
@@ -11,6 +10,7 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/llm"
+	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
 	"elbot/internal/security"
 	"elbot/internal/session"
@@ -188,7 +188,7 @@ func TestCompactUsesOriginalSelectionDuringModelSwitch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.execution.dialogue.Replies.Messages.Append(ctx, &storage.Message{SessionID: source.ID, Role: storage.RoleUser, Content: "keep me"}); err != nil {
+	if err := a.dialogue.Replies.Messages.Append(ctx, &storage.Message{SessionID: source.ID, Role: storage.RoleUser, Content: "keep me"}); err != nil {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)

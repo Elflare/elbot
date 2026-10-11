@@ -2,15 +2,15 @@ package dialogue
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -57,7 +57,15 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in ReplyCommitIn
 	}
 	result.RawText = in.RawText
 	var logResult events.LogResult
-	record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelInfo, EventName: "reply_committed", Module: "agent", Type: events.ContentText, ContentLimit: 4096, ResultStatus: events.ResultSucceeded}
+	record := events.LogRecord{
+		Category:     events.LogRuntime,
+		Level:        slog.LevelInfo,
+		EventName:    "reply_committed",
+		Module:       "agent",
+		Type:         events.ContentText,
+		ContentLimit: 4096,
+		ResultStatus: events.ResultSucceeded,
+	}
 	defer func() {
 		record.Identity.SessionID = &in.Session.ID
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
@@ -227,8 +235,23 @@ func (c *ReplyCommitter) AssociateReceipt(ctx context.Context, sessionID, messag
 			logResult.ResultStatus = events.ResultSucceeded
 		}
 		if err := c.Messages.MapPlatformMessage(ctx, mapping); err != nil {
-			content, _ := json.Marshal(map[string]string{"operation": "map_platform_message", "platform": platformName, "scope_id": scopeID, "platform_message_id": platformMessageID, "message_id": messageID, "error": fmt.Sprintf("%.2048s", err.Error())})
-			record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelError, EventName: "persistence_error", Module: "agent", Type: events.ContentJSON, Content: string(content), ResultStatus: events.ResultFailed}
+			content, _ := json.Marshal(map[string]string{
+				"operation":           "map_platform_message",
+				"platform":            platformName,
+				"scope_id":            scopeID,
+				"platform_message_id": platformMessageID,
+				"message_id":          messageID,
+				"error":               fmt.Sprintf("%.2048s", err.Error()),
+			})
+			record := events.LogRecord{
+				Category:     events.LogAudit,
+				Level:        slog.LevelError,
+				EventName:    "persistence_error",
+				Module:       "agent",
+				Type:         events.ContentJSON,
+				Content:      string(content),
+				ResultStatus: events.ResultFailed,
+			}
 			record.Identity.SessionID = &sessionID
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
 			if facts.RunID != "" {
@@ -261,7 +284,15 @@ func (c *ReplyCommitter) AssociateReceipt(ctx context.Context, sessionID, messag
 }
 
 func (c *ReplyCommitter) observeDelivery(ctx context.Context, sessionID, operation string, buffered bool, logResult events.LogResult, err error) {
-	record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelDebug, EventName: "reply_delivered", Module: "agent", Type: events.ContentText, ContentLimit: 4096, ResultStatus: events.ResultSucceeded}
+	record := events.LogRecord{
+		Category:     events.LogRuntime,
+		Level:        slog.LevelDebug,
+		EventName:    "reply_delivered",
+		Module:       "agent",
+		Type:         events.ContentText,
+		ContentLimit: 4096,
+		ResultStatus: events.ResultSucceeded,
+	}
 	record.Identity.SessionID = &sessionID
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	if facts.RunID != "" {

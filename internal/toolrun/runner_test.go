@@ -292,7 +292,7 @@ func TestRunConfirmsOnlyAuthorizedHighRiskToolsForRegularUsers(t *testing.T) {
 			}
 			manager := NewManager(registry, security.NewPolicy(tt.userMaxRisk, "high", nil))
 			deps := &runnerTestDeps{}
-			result := manager.Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{},
+			result := NewRunner(manager).Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{},
 				Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 				Actor:   contextinfo.Actor{Role: contextinfo.RoleUser},
 				Calls:   []llm.ToolCallRequest{{ID: "call-1", Name: toolName, Arguments: "{}"}},
@@ -313,7 +313,7 @@ func TestRunPreservesMultimodalToolSegments(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(registry, security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
-	result := manager.Run(context.Background(), &runnerTestDeps{}, RunRequest{Committer: &testToolCommitter{},
+	result := NewRunner(manager).Run(context.Background(), &runnerTestDeps{}, RunRequest{Committer: &testToolCommitter{},
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls:   []llm.ToolCallRequest{{ID: "call-1", Name: "image_tool", Arguments: `{}`}},
@@ -330,7 +330,7 @@ func TestRunSkipsConfirmationWhenPreflightFails(t *testing.T) {
 	}
 	manager := NewManager(registry, security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
 	deps := &runnerTestDeps{}
-	result := manager.Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{},
+	result := NewRunner(manager).Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{},
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{
@@ -364,7 +364,7 @@ func TestRunSkipsConfirmationWhenShellPreflightFails(t *testing.T) {
 	}
 	manager := NewManager(registry, security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
 	deps := &runnerTestDeps{}
-	result := manager.Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{},
+	result := NewRunner(manager).Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{},
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{
@@ -397,7 +397,7 @@ func TestRunPreparesToolContextBeforePreflightAndExecution(t *testing.T) {
 	deps := &runnerTestDeps{prepareContext: func(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context {
 		return context.WithValue(ctx, runnerContextKey{}, "prepared")
 	}}
-	result := manager.Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{},
+	result := NewRunner(manager).Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{},
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{
@@ -427,7 +427,7 @@ func TestRunPreservesPolicyDenialFact(t *testing.T) {
 			if reject {
 				role = contextinfo.RoleSuperadmin
 			}
-			result := manager.Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: role}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "risky", Arguments: `{}`}}})
+			result := NewRunner(manager).Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: role}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "risky", Arguments: `{}`}}})
 			if result.Err != nil || len(deps.recorded) != 1 || deps.completed != 0 {
 				t.Fatalf("result=%+v deps=%+v", result, deps)
 			}
@@ -446,7 +446,7 @@ func TestRunKeepsNonEditFileAssessRiskBehavior(t *testing.T) {
 	}
 	manager := NewManager(registry, security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
 	deps := &runnerTestDeps{}
-	result := manager.Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{},
+	result := NewRunner(manager).Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{},
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{

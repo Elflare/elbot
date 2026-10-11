@@ -2,11 +2,11 @@ package chat
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
 	"errors"
 	"fmt"
 	"log/slog"
 
+	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/storage"
 )

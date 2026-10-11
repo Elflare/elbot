@@ -2,17 +2,27 @@ package dialogue
 
 import (
 	"context"
-	"elbot/internal/modelmgr"
 	"errors"
 	"fmt"
 
+	"elbot/internal/agent/events"
+	"elbot/internal/contextmgr"
+	"elbot/internal/llm"
+	"elbot/internal/media"
+	"elbot/internal/memory/resident"
+	"elbot/internal/modelmgr"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
+	"elbot/internal/session"
 	"elbot/internal/storage"
+	"elbot/internal/tool"
+	"elbot/internal/toolrun"
 	"elbot/internal/turn"
 )
 
 type Runner struct {
+	Calls    *CallProcessor
+	System   SystemPromptManager
 	Routes   LoopResolver
 	Preparer *Preparer
 	Messages *MessageStore
@@ -137,3 +147,61 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 	}
 	return result
 }
+
+// RunnerDeps contains external capabilities needed to build the common single-turn collaborators.
+type RunnerDeps struct {
+	Routes          LoopResolver
+	Dialogues       storage.DialogueRepository
+	MessageRows     storage.MessageRepository
+	Sessions        *session.Service
+	Turns           *turn.Manager
+	Contexts        *contextmgr.Service
+	Media           *media.Manager
+	Identity        Identity
+	Hooks           Hooks
+	Output          AssistantPreparer
+	ToolManager     *toolrun.Manager
+	ToolRegistry    *tool.Registry
+	ToolState       *toolrun.StateService
+	ToolDeps        ToolDepsFactory
+	ToolProvider    ToolSchemaProvider
+	DefaultProvider bool
+	// MaxRounds bounds tool batches within one turn.
+	MaxRounds int
+	SoulPath  string
+	Memory    *resident.Store
+	Preloader *toolrun.PreloadService
+	Signals   events.Signals
+	View      ExecutionView
+}
+
+func NewRunner(deps RunnerDeps) (*Runner, error) {
+	if deps.Routes == nil || deps.Dialogues == nil || deps.MessageRows == nil || deps.Sessions == nil || deps.Turns == nil || deps.Contexts == nil || deps.Identity == nil || deps.Hooks == nil || deps.Output == nil || deps.ToolManager == nil || deps.ToolDeps == nil {
+		return nil, fmt.Errorf("dialogue collaborators are required")
+	}
+	if deps.MaxRounds <= 0 {
+		return nil, fmt.Errorf("tools max rounds per turn must be positive")
+	}
+	tools := &ToolExecutor{Manager: deps.ToolManager, State: deps.ToolState, Registry: deps.ToolRegistry, Provider: deps.ToolProvider, DefaultProvider: deps.DefaultProvider, Identity: deps.Identity, Deps: deps.ToolDeps, MaxRounds: deps.MaxRounds}
+	messages := &MessageStore{Dialogues: deps.Dialogues, Gate: &CommitGate{Sessions: deps.Sessions, Turns: deps.Turns, View: deps.View}, Media: deps.Media}
+	tools.Messages = messages
+	replies := &ReplyCommitter{Messages: deps.MessageRows, Output: deps.Output, Persistence: messages.Committer("append_assistant_message")}
+	preparer := &Preparer{Contexts: deps.Contexts, Media: deps.Media, Identity: deps.Identity, Hooks: deps.Hooks, Tools: tools}
+	calls := &CallProcessor{Messages: messages, Media: deps.Media, Hooks: deps.Hooks, Identity: deps.Identity, Tools: tools, Completed: deps.Signals.ModelCallCompleted, Vision: deps.Signals.VisionFallbackUsed}
+	soul := SoulProvider(StaticSoulProvider{Prompt: "You are a helpful assistant."})
+	if deps.SoulPath != "" {
+		soul = &FileSoulProvider{Path: deps.SoulPath}
+	}
+	system := NewSystemPromptManager(SoulSystemPromptSource{Soul: soul})
+	if names, ok := deps.ToolProvider.(ToolNameProvider); ok {
+		system.AddSource(ToolNamesSystemPromptSource{Tools: names})
+	}
+	if deps.Preloader != nil {
+		system.AddSource(ToolTagsSystemPromptSource{Preloader: deps.Preloader})
+	}
+	system.AddSource(BackgroundPathsSystemPromptSource{})
+	system.AddSource(ResidentMemorySystemPromptSource{Store: deps.Memory})
+	system.AddSource(ConversationMetaSystemPromptSource{})
+	return &Runner{Routes: deps.Routes, Preparer: preparer, Messages: messages, Replies: replies, Turns: deps.Turns, View: deps.View, Calls: calls, System: system}, nil
+}
+func (r *Runner) OriginFor(provider string) (llm.Origin, error) { return r.Routes.OriginFor(provider) }

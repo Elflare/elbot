@@ -23,7 +23,7 @@ type platformSubscriptions struct {
 
 // startPlatformEvents subscribes after dependencies are ready and before adapters start.
 // Repeated starts do not duplicate subscriptions; a closed consumer cannot restart.
-func (h *hookBridge) startPlatformEvents(ctx context.Context) error {
+func (h *HookBridge) startPlatformEvents(ctx context.Context) error {
 	p := &h.platformEvents
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -47,7 +47,7 @@ func (h *hookBridge) startPlatformEvents(ctx context.Context) error {
 	return nil
 }
 
-func (h *hookBridge) enqueuePlatformConnected(ctx context.Context, event globalevents.PlatformConnectedEvent) error {
+func (h *HookBridge) enqueuePlatformConnected(ctx context.Context, event globalevents.PlatformConnectedEvent) error {
 	p := &h.platformEvents
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -80,7 +80,7 @@ func (h *hookBridge) enqueuePlatformConnected(ctx context.Context, event globale
 }
 
 // beginClosePlatformEvents disconnects and cancels workers without waiting for their callbacks.
-func (h *hookBridge) beginClosePlatformEvents() {
+func (h *HookBridge) beginClosePlatformEvents() {
 	p := &h.platformEvents
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -115,7 +115,7 @@ func (h *hookBridge) beginClosePlatformEvents() {
 }
 
 // platformEventsDone closes only after admission has stopped and every callback has exited.
-func (h *hookBridge) platformEventsDone() <-chan struct{} {
+func (h *HookBridge) platformEventsDone() <-chan struct{} {
 	p := &h.platformEvents
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -126,6 +126,24 @@ func (h *hookBridge) platformEventsDone() <-chan struct{} {
 }
 
 // StartPlatformEvents starts the Hook coordinator's global event subscription.
-func (a *Agent) StartPlatformEvents(ctx context.Context) error {
-	return a.hooks.startPlatformEvents(ctx)
+
+// StartPlatformEvents connects only after application wiring is complete.
+func (h *HookBridge) StartPlatformEvents(ctx context.Context) error {
+	return h.startPlatformEvents(ctx)
+}
+func (h *HookBridge) BeginClose()           { h.beginClosePlatformEvents() }
+func (h *HookBridge) Done() <-chan struct{} { return h.platformEventsDone() }
+func (h *HookBridge) Close(ctx context.Context) error {
+	h.BeginClose()
+	select {
+	case <-h.Done():
+		return nil
+	default:
+	}
+	select {
+	case <-h.Done():
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }

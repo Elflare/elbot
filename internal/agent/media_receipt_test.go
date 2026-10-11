@@ -2,13 +2,14 @@ package agent
 
 import (
 	"context"
+	"testing"
+	"time"
+
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/events"
 	"elbot/internal/media"
 	"elbot/internal/platform"
-	"testing"
-	"time"
 )
 
 func TestMediaReceiptDoesNotGuessFallbackOrRetryCacheFailure(t *testing.T) {
@@ -34,7 +35,10 @@ func TestMediaReceiptDoesNotGuessFallbackOrRetryCacheFailure(t *testing.T) {
 		if err := store.Close(); err != nil {
 			t.Fatal(err)
 		}
-		return delivery.Receipt{PlatformMessageIDs: []string{"sent"}, SentMessages: []delivery.SentMessage{{Platform: "telegram", ScopeID: "group:9", PlatformMessageID: "sent", OutputIndexes: []int{0}}}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+		return delivery.Receipt{
+			PlatformMessageIDs: []string{"sent"},
+			SentMessages:       []delivery.SentMessage{{Platform: "telegram", ScopeID: "group:9", PlatformMessageID: "sent", OutputIndexes: []int{0}}},
+		}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	})
 	receipt, _, err := router.SendChat(platform.WithMessageContext(ctx, platform.MessageContext{Sender: sender}), outputs)
 	if err != nil || calls != 1 || len(receipt.PlatformMessageIDs) != 1 {
