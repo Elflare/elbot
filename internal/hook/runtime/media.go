@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	hookoutput "elbot/internal/hook/output"
 	"elbot/internal/media"
@@ -179,31 +181,45 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 	return result, nil
 }
 
-func (b *mediaBridge) prune(ctx context.Context, now time.Time, closeAll bool) error {
+func (b *mediaBridge) prune(ctx context.Context, now time.Time, closeAll bool) (events.LogResult, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if closeAll {
 		b.closed = true
 	}
 	var failures []string
+	logResult := events.LogResult{ResultStatus: events.ResultSkipped, Content: "no Hook media leases due"}
 	for id, lease := range b.leases {
 		if !closeAll && now.Before(lease.expires) {
 			continue
 		}
+		if logResult.ResultStatus == events.ResultSkipped {
+			logResult = events.LogResult{ResultStatus: events.ResultSucceeded, Content: "Hook media lease release"}
+		}
 		if err := b.api.RemoveReference(ctx, lease.reference); err != nil {
 			failures = append(failures, err.Error())
+			if !errors.Is(err, context.Canceled) {
+				logResult.ResultStatus = events.ResultFailed
+			} else if logResult.ResultStatus != events.ResultFailed {
+				logResult.ResultStatus = events.ResultCanceled
+			}
+			logResult.Content += fmt.Sprintf("\nmedia_id=%s reference_release_error=%v", id, err)
 			continue
 		}
+		logResult.Content += "\nmedia_id=" + id + " reference_released"
 		if lease.dir != "" {
 			if err := os.RemoveAll(lease.dir); err != nil {
 				failures = append(failures, err.Error())
+				logResult.ResultStatus = events.ResultFailed
+				logResult.Content += fmt.Sprintf("\nmedia_id=%s directory_release_error=%v", id, err)
 				continue
 			}
 		}
 		delete(b.leases, id)
+		logResult.Content += "\nmedia_id=" + id + " released"
 	}
 	if len(failures) > 0 {
-		return fmt.Errorf("release hook media: %s", strings.Join(failures, "; "))
+		return logResult, fmt.Errorf("release hook media: %s", strings.Join(failures, "; "))
 	}
-	return nil
+	return logResult, nil
 }

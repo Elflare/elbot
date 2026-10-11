@@ -7,6 +7,7 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/security"
 )
@@ -213,26 +214,30 @@ func validateActionTiming(timing string) error {
 	return delivery.ValidateDeliveryTiming(timing)
 }
 
-func (m Module) runRule(ctx context.Context, rule Rule, event hook.Event) (hook.Event, error) {
+func (m Module) runRule(ctx context.Context, rule Rule, event hook.Event) (hook.Event, globalevents.LogResult, error) {
 	if !rule.matchRoles(event) {
-		return event, nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "role did not match"}, nil
 	}
 	before := hook.SnapshotCalls(event)
 	state := state{Actions: map[string]actionResult{}}
 	var passThrough *bool
 	var err error
+	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no action executed"}
 	for index, action := range rule.Actions {
 		action.source = rule.source
 		var result actionResult
-		event, result, err = m.runAction(ctx, event, action, state)
+		event, result, logResult, err = m.runAction(ctx, event, action, state)
 		if err == nil {
 			err = hook.ValidateCalls(ctx, before, event)
+			if err != nil {
+				logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+			}
 		}
 		if err != nil {
-			return event, fmt.Errorf("rule %q action %d %s: %w", rule.Name, index+1, action.Type, err)
+			return event, logResult, fmt.Errorf("rule %q action %d %s: %w", rule.Name, index+1, action.Type, err)
 		}
 		if result.Matched != nil && !*result.Matched {
-			return before, nil
+			return before, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "plugin did not match"}, nil
 		}
 		if result.PassThrough != nil {
 			value := *result.PassThrough
@@ -254,7 +259,7 @@ func (m Module) runRule(ctx context.Context, rule Rule, event hook.Event) (hook.
 			event.Control.StopPropagation = true
 		}
 	}
-	return event, nil
+	return event, logResult, nil
 }
 
 func (r Rule) matchRoles(event hook.Event) bool {

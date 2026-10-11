@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/events"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -141,18 +142,18 @@ func TestHooksReadFixedModelAndActualRequestFacts(t *testing.T) {
 	var earlyModel bool
 	var models []contextinfo.Model
 	var executions []contextinfo.Execution
-	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "before-selection", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "before-selection", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		_, earlyModel = contextinfo.ModelFromContext(ctx)
-		return event, nil
+		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatal(err)
 	}
-	if err := manager.Register(hook.Registration{Point: hook.PointLLMRequestPrepared, Name: "after-selection", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+	if err := manager.Register(hook.Registration{Point: hook.PointLLMRequestPrepared, Name: "after-selection", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		model, _ := contextinfo.ModelFromContext(ctx)
 		execution, _ := contextinfo.ExecutionFromContext(ctx)
 		models = append(models, model)
 		executions = append(executions, execution)
-		return event, nil
+		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatal(err)
 	}

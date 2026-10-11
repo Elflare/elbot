@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"reflect"
 	"testing"
@@ -109,8 +110,8 @@ func (f *executionFixture) begin(t *testing.T) (context.Context, context.Context
 
 func (f *executionFixture) on(t *testing.T, point hook.Point, fn func(hook.Event) hook.Event) {
 	t.Helper()
-	if err := f.hooks.Register(hook.Registration{Point: point, Name: string(point), Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, error) {
-		return fn(e), nil
+	if err := f.hooks.Register(hook.Registration{Point: point, Name: string(point), Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
+		return fn(e), events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatal(err)
 	}

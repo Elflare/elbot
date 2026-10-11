@@ -36,7 +36,7 @@ type worker struct {
 	restartDelay time.Duration
 	done         chan struct{}
 	active       int
-	reload       func() error
+	reload       func() (globalevents.LogResult, error)
 	reloadArmed  bool
 	reloadPrep   bool
 	writeMu      sync.Mutex
@@ -55,7 +55,7 @@ func (w *worker) start() error {
 	return w.manager.startWorker(w)
 }
 
-func (w *worker) waitReady(ctx context.Context) error {
+func (w *worker) waitReady(ctx context.Context) (globalevents.LogResult, error) {
 	timeout := time.Duration(w.config.StartupTimeoutSeconds) * time.Second
 	if timeout <= 0 {
 		timeout = time.Second
@@ -70,18 +70,29 @@ func (w *worker) waitReady(ctx context.Context) error {
 		w.mu.Unlock()
 		switch status {
 		case StatusReady, StatusRunning:
-			return nil
+			return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "worker ready"}, nil
 		case StatusFailed, StatusDegraded:
 			if detail == "" {
 				detail = string(status)
 			}
-			return fmt.Errorf("hook worker %q failed to start: %s", w.config.ID, detail)
+			return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook worker %q failed to start: %s", w.config.ID, detail)}, fmt.Errorf("hook worker %q failed to start: %s", w.config.ID, detail)
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: ctx.Err().Error()}
+			if ctx.Err() == context.Canceled {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+			w.mu.Lock()
+			status, detail := w.status, w.detail
+			w.mu.Unlock()
+			if status == StatusFailed || status == StatusDegraded {
+				logResult.ResultStatus = globalevents.ResultFailed
+				logResult.Content += "\nworker_fault=" + detail
+			}
+			return logResult, ctx.Err()
 		case <-deadline.C:
-			return fmt.Errorf("hook worker %q startup timed out", w.config.ID)
+			return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook worker %q startup timed out", w.config.ID)}, fmt.Errorf("hook worker %q startup timed out", w.config.ID)
 		case <-ticker.C:
 		}
 	}
@@ -171,7 +182,7 @@ func (w *worker) run() {
 	ctx, cancel := context.WithTimeout(w.manager.rootCtx, time.Duration(w.config.StartupTimeoutSeconds)*time.Second)
 	defer cancel()
 	init := systemInit{Version: protocolVersion, Hook: systemHook{ID: w.config.ID, Description: w.config.Description, Dir: w.config.Dir, Cwd: cwd, SharedDir: w.manager.opts.SharedDir}, Tools: w.schemas()}
-	if _, err := w.request(ctx, "system.init", init); err != nil {
+	if _, _, err := w.request(ctx, "system.init", init); err != nil {
 		w.setStatus(StatusFailed, err.Error())
 		w.kill()
 		return
@@ -197,6 +208,21 @@ func (w *worker) waitLoop(cmd *exec.Cmd) {
 	err := cmd.Wait()
 	w.mu.Lock()
 	stopping := w.stopping
+	manualStop := w.manualStop
+	// Publish exit facts under the same lock before waking pending requests.
+	if !stopping && !manualStop {
+		if w.status != StatusFailed && w.status != StatusDegraded {
+			w.status = StatusDegraded
+			w.detail = "hook process exited"
+			if err != nil {
+				w.detail = strings.TrimSpace(err.Error())
+			}
+		}
+	} else {
+		w.stopping = false
+		w.status = StatusStopped
+		w.detail = ""
+	}
 	w.cmd = nil
 	w.stdin = nil
 	for id, pending := range w.pending {
@@ -207,15 +233,7 @@ func (w *worker) waitLoop(cmd *exec.Cmd) {
 		close(w.done)
 	}
 	w.mu.Unlock()
-	w.mu.Lock()
-	manualStop := w.manualStop
-	w.mu.Unlock()
 	if !stopping && !manualStop {
-		detail := "hook process exited"
-		if err != nil {
-			detail = err.Error()
-		}
-		w.setStatus(StatusDegraded, detail)
 		w.manager.mu.Lock()
 		w.manager.clearRoutesLocked(w.config.ID)
 		for key, transient := range w.manager.transient {
@@ -229,11 +247,6 @@ func (w *worker) waitLoop(cmd *exec.Cmd) {
 		}
 		return
 	}
-	w.mu.Lock()
-	w.stopping = false
-	w.status = StatusStopped
-	w.detail = ""
-	w.mu.Unlock()
 }
 
 func (w *worker) shouldRestart() bool {
@@ -271,19 +284,23 @@ func (w *worker) restartLater() {
 	}
 }
 
-func (w *worker) stop(ctx context.Context) error {
+func (w *worker) stop(ctx context.Context) (globalevents.LogResult, error) {
 	w.mu.Lock()
 	if w.stopping {
 		done := w.done
 		w.mu.Unlock()
 		if done == nil {
-			return nil
+			return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "worker stopped"}, nil
 		}
 		select {
 		case <-done:
-			return nil
+			return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "worker stopped"}, nil
 		case <-ctx.Done():
-			return ctx.Err()
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: ctx.Err().Error()}
+			if ctx.Err() == context.Canceled {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+			return logResult, ctx.Err()
 		}
 	}
 	w.stopping = true
@@ -297,11 +314,11 @@ func (w *worker) stop(ctx context.Context) error {
 		w.status = StatusStopped
 		w.detail = ""
 		w.mu.Unlock()
-		return nil
+		return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "worker was not running"}, nil
 	}
 	w.setStatus(StatusStopping, "")
 	shutdownCtx, cancel := context.WithTimeout(ctx, time.Duration(w.config.ShutdownTimeoutSeconds)*time.Second)
-	_, _ = w.request(shutdownCtx, "system.shutdown", map[string]any{})
+	_, _, _ = w.request(shutdownCtx, "system.shutdown", map[string]any{})
 	cancel()
 	graceful := true
 	timer := time.NewTimer(time.Duration(w.config.ShutdownTimeoutSeconds) * time.Second)
@@ -310,7 +327,11 @@ func (w *worker) stop(ctx context.Context) error {
 	case <-done:
 	case <-ctx.Done():
 		w.kill()
-		return ctx.Err()
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: ctx.Err().Error()}
+		if ctx.Err() == context.Canceled {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return logResult, ctx.Err()
 	case <-timer.C:
 		graceful = false
 		w.kill()
@@ -319,18 +340,18 @@ func (w *worker) stop(ctx context.Context) error {
 		select {
 		case <-done:
 		case <-ctx.Done():
-			return ctx.Err()
+			return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "graceful shutdown timed out; " + ctx.Err().Error()}, ctx.Err()
 		case <-killTimer.C:
-			return fmt.Errorf("hook worker %q did not exit after kill", w.config.ID)
+			return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook worker %q did not exit after kill", w.config.ID)}, fmt.Errorf("hook worker %q did not exit after kill", w.config.ID)
 		}
 	}
 	w.mu.Lock()
 	w.stopping = false
 	w.mu.Unlock()
 	if !graceful {
-		return fmt.Errorf("hook worker %q graceful shutdown timed out", w.config.ID)
+		return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook worker %q graceful shutdown timed out", w.config.ID)}, fmt.Errorf("hook worker %q graceful shutdown timed out", w.config.ID)
 	}
-	return nil
+	return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "worker stopped"}, nil
 }
 func (w *worker) kill() {
 	w.mu.Lock()
@@ -341,11 +362,15 @@ func (w *worker) kill() {
 	}
 }
 
-func (w *worker) handle(ctx context.Context, event hook.Event, continuation bool, defaults hook.Control) (hook.Event, error) {
+func (w *worker) handle(ctx context.Context, event hook.Event, continuation bool, defaults hook.Control) (hook.Event, globalevents.LogResult, error) {
 	key := routeKeyFor(event)
 	unlock, err := w.lockRoute(ctx, key)
 	if err != nil {
-		return event, err
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if err == context.Canceled {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return event, logResult, err
 	}
 	defer unlock()
 	w.mu.Lock()
@@ -355,7 +380,7 @@ func (w *worker) handle(ctx context.Context, event hook.Event, continuation bool
 	}
 	w.mu.Unlock()
 	if status != StatusReady && status != StatusRunning {
-		return event, fmt.Errorf("hook worker %q is %s", w.config.ID, status)
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook worker %q is %s", w.config.ID, status)}, fmt.Errorf("hook worker %q is %s", w.config.ID, status)
 	}
 	defer w.finishHandle()
 	w.setStatus(StatusRunning, "")
@@ -376,37 +401,37 @@ func (w *worker) handle(ctx context.Context, event hook.Event, continuation bool
 		Continuation:      continuation,
 		ToolContext:       token,
 	}
-	response, err := w.request(requestCtx, "event.handle", params)
+	response, logResult, err := w.request(requestCtx, "event.handle", params)
 	if errors.Is(err, context.Canceled) {
 		w.notifyCancel(event.Platform.ConversationID)
 	}
 	if err != nil {
-		return event, err
+		return event, logResult, err
 	}
 	var result eventResult
 	if len(response) > 0 {
 		if err := hookoutput.DecodeJSON(response, &result); err != nil {
-			return event, fmt.Errorf("decode hook event response: %w", err)
+			return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "decode hook event response: " + err.Error()}, fmt.Errorf("decode hook event response: %w", err)
 		}
 	}
 	switch result.Status {
 	case "", "completed":
 	case "waiting":
 		if err := w.manager.setLease(w.config.ID, event, result, defaults); err != nil {
-			return event, err
+			return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 		}
 	default:
-		return event, fmt.Errorf("unsupported hook event status %q", result.Status)
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "unsupported hook event status: " + result.Status}, fmt.Errorf("unsupported hook event status %q", result.Status)
 	}
 	outputs, err := hookoutput.BuildGroup(result.Group, hookoutput.BuildOptions{BaseDir: w.config.Dir})
 	if err != nil {
-		return event, err
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
 	event.Outputs = append(event.Outputs, outputs...)
 	if result.Message != nil && result.Message.Segments != nil {
 		segments, err := hookoutput.BuildMessageSegments(*result.Message.Segments, w.config.Dir)
 		if err != nil {
-			return event, err
+			return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 		}
 		event.Message.Segments = segments
 		if event.Point == hook.PointToolCallCompleted {
@@ -433,7 +458,7 @@ func (w *worker) handle(ctx context.Context, event hook.Event, continuation bool
 	if continuation && result.Status != "waiting" {
 		w.manager.clearLease(w.config.ID, event)
 	}
-	return event, nil
+	return event, logResult, nil
 }
 
 func (w *worker) finishHandle() {
@@ -491,7 +516,7 @@ func (w *worker) discardReload() {
 	w.mu.Unlock()
 }
 
-func (w *worker) takeReloadLocked() func() error {
+func (w *worker) takeReloadLocked() func() (globalevents.LogResult, error) {
 	if !w.reloadArmed || w.active > 0 || w.reload == nil {
 		return nil
 	}
@@ -501,19 +526,25 @@ func (w *worker) takeReloadLocked() func() error {
 	return reload
 }
 
-func (w *worker) runReload(reload func() error) {
+func (w *worker) runReload(reload func() (globalevents.LogResult, error)) {
 	if reload == nil {
 		return
 	}
 	go func() {
-		if err := reload(); err != nil {
-			_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
+		if logResult, _ := reload(); logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled {
+			level := slog.LevelInfo
+			if logResult.ResultStatus == globalevents.ResultFailed {
+				level = slog.LevelError
+			}
+			hook.LogHook(context.Background(), globalevents.LogRecord{
 				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelError,
+				Level:        level,
 				EventName:    "hook_plugin_reload_failed",
 				Module:       "hook",
-				Content:      fmt.Sprintf("hook plugin reload failed: hook=%s error=%v", w.config.ID, err),
-				ResultStatus: globalevents.ResultFailed,
+				Type:         globalevents.ContentText,
+				ContentLimit: 4096,
+				Content:      fmt.Sprintf("hook plugin reload: hook=%s\n%s", w.config.ID, logResult.Content),
+				ResultStatus: logResult.ResultStatus,
 			})
 		}
 	}()
@@ -544,13 +575,13 @@ func (w *worker) notifyCancel(conversationID string) {
 	_ = w.write(frame{Type: "event", Method: "event.cancel", Params: mustJSON(params)})
 }
 
-func (w *worker) request(ctx context.Context, method string, params any) (json.RawMessage, error) {
+func (w *worker) request(ctx context.Context, method string, params any) (json.RawMessage, globalevents.LogResult, error) {
 	id := randomID("host")
 	response := make(chan frame, 1)
 	w.mu.Lock()
 	if w.stdin == nil {
 		w.mu.Unlock()
-		return nil, fmt.Errorf("hook process is not running")
+		return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "hook process is not running"}, fmt.Errorf("hook process is not running")
 	}
 	w.pending[id] = response
 	w.mu.Unlock()
@@ -561,25 +592,46 @@ func (w *worker) request(ctx context.Context, method string, params any) (json.R
 	}()
 	request, err := hookprotocol.NewRequest(id, method, params)
 	if err != nil {
-		return nil, err
+		return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
 	if err := w.write(request); err != nil {
-		return nil, err
+		return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: method + ": " + ctx.Err().Error()}
+		if ctx.Err() == context.Canceled {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		w.mu.Lock()
+		status, detail := w.status, w.detail
+		w.mu.Unlock()
+		if status == StatusFailed || status == StatusDegraded {
+			logResult.ResultStatus = globalevents.ResultFailed
+			logResult.Content += "\nworker_fault=" + detail
+		}
+		return nil, logResult, ctx.Err()
 	case value, ok := <-response:
 		if !ok {
-			return nil, fmt.Errorf("hook process exited while waiting for %s", method)
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "hook process exited while waiting for " + method}
+			w.mu.Lock()
+			status, detail := w.status, w.detail
+			w.mu.Unlock()
+			if status == StatusFailed || status == StatusDegraded {
+				logResult.Content += "\nworker_fault=" + detail
+			}
+			if ctx.Err() != nil {
+				logResult.Content += "\ncontext_error=" + ctx.Err().Error()
+			}
+			return nil, logResult, fmt.Errorf("hook process exited while waiting for %s", method)
 		}
 		if value.OK == nil || !*value.OK {
 			if value.Error == "" {
 				value.Error = "hook request failed"
 			}
-			return nil, errors.New(value.Error)
+			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: value.Error}, errors.New(value.Error)
 		}
-		return value.Result, nil
+		return value.Result, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: method + " completed"}, nil
 	}
 }
 
@@ -662,11 +714,13 @@ func (w *worker) deliverResponse(value frame) {
 
 func (w *worker) handlePluginEvent(value frame) {
 	if value.Method == "hook.log" {
-		_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
+		hook.LogHook(context.Background(), globalevents.LogRecord{
 			Category:     globalevents.LogRuntime,
 			Level:        slog.LevelInfo,
 			EventName:    "stateful_hook_event",
 			Module:       "hook",
+			Type:         globalevents.ContentText,
+			ResultStatus: globalevents.ResultUnspecified,
 			Content:      fmt.Sprintf("stateful hook event: hook=%s\n%s", w.config.ID, value.Params),
 			ContentLimit: 4096,
 		})
@@ -684,11 +738,13 @@ func (w *worker) handlePluginRequest(value frame) {
 	}
 	writeErr := w.write(response)
 	if writeErr != nil {
-		_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
+		hook.LogHook(context.Background(), globalevents.LogRecord{
 			Category:     globalevents.LogRuntime,
 			Level:        slog.LevelError,
 			EventName:    "write_hook_request_response_failed",
 			Module:       "hook",
+			Type:         globalevents.ContentText,
+			ContentLimit: 4096,
 			Content:      fmt.Sprintf("write hook request response failed: hook=%s method=%s error=%v", w.config.ID, value.Method, writeErr),
 			ResultStatus: globalevents.ResultFailed,
 		})

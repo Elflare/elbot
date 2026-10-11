@@ -89,7 +89,7 @@ func TestMediaProtocolImportReadExportAndLeases(t *testing.T) {
 	if err := center.AddReference(ctx, ref); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.media.prune(ctx, time.Now().Add(2*mediaLeaseTTL), false); err != nil {
+	if _, err := m.media.prune(ctx, time.Now().Add(2*mediaLeaseTTL), false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(exported.Path); !os.IsNotExist(err) {
@@ -177,7 +177,7 @@ func TestWorkerMediaProtocolRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForStatus(t, m, "media", StatusReady)
-	event, err := m.Handle(context.Background(), "media", hook.Event{Actor: hook.ActorContext{ID: "test:media"}}, hook.Control{})
+	event, _, err := m.Handle(context.Background(), "media", hook.Event{Actor: hook.ActorContext{ID: "test:media"}}, hook.Control{})
 	if err != nil {
 		t.Fatal(err)
 	}

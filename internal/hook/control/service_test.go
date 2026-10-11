@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"testing"
 
@@ -34,12 +35,12 @@ func (r *fakeRuntime) ValidatePlugin(config hookruntime.Config) error {
 	return nil
 }
 
-func (r *fakeRuntime) ReplacePlugin(config hookruntime.Config) error {
+func (r *fakeRuntime) ReplacePlugin(config hookruntime.Config) (events.LogResult, error) {
 	if r.applyErr != nil {
-		return r.applyErr
+		return events.LogResult{ResultStatus: events.ResultFailed, Content: r.applyErr.Error()}, r.applyErr
 	}
 	r.replaced = config.ID
-	return nil
+	return events.LogResult{ResultStatus: events.ResultSucceeded, Content: "replacement completed"}, nil
 }
 
 func (r *fakeRuntime) List() []hookruntime.Info { return r.infos }
@@ -128,10 +129,12 @@ func TestServiceDelegatesStatefulLifecycle(t *testing.T) {
 func registerTestHook(t *testing.T, registrar hook.Registrar, name string) {
 	t.Helper()
 	if err := registrar.Register(hook.Registration{
-		Point:   hook.PointAgentInputPrepared,
-		Name:    name,
-		Match:   hook.Always(),
-		Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) { return event, nil }),
+		Point: hook.PointAgentInputPrepared,
+		Name:  name,
+		Match: hook.Always(),
+		Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
+		}),
 	}); err != nil {
 		t.Fatalf("Register %s: %v", name, err)
 	}
@@ -177,7 +180,7 @@ func TestPreparePluginReloadReplacesOnlyRequestedPlugin(t *testing.T) {
 		t.Fatalf("PreparePluginReload: %v", err)
 	}
 	assertHookNames(t, active.List(), "old", "other")
-	if err := commit(); err != nil {
+	if _, err := commit(); err != nil {
 		t.Fatalf("commit: %v", err)
 	}
 	if runtime.replaced != "demo" {
@@ -200,7 +203,9 @@ func registerPluginTestHook(t *testing.T, registrar hook.Registrar, pluginID, na
 		PluginID: pluginID,
 		Name:     name,
 		Match:    hook.Always(),
-		Handler:  hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) { return event, nil }),
+		Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
+		}),
 	}); err != nil {
 		t.Fatalf("Register %s: %v", name, err)
 	}

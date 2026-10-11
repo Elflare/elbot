@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"net/http"
 	"strings"
@@ -40,9 +41,9 @@ func TestResponsesFirstCommitFailureCanContinueWithoutReprocessingOldInput(t *te
 	fail.Store(true)
 	var inputHooks atomic.Int32
 	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointLLMTurnPrepared, Name: "count-input", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) {
+	if err := manager.Register(hook.Registration{Point: hook.PointLLMTurnPrepared, Name: "count-input", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		inputHooks.Add(1)
-		return event, nil
+		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatal(err)
 	}

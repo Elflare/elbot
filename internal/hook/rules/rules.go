@@ -24,8 +24,9 @@ type Options struct {
 	ConfigDir string
 	Tools     *tool.Registry
 
-	Notify          func(context.Context, string)
-	Send            func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
+	Notify func(context.Context, string)
+	// Send returns business receipts, the delivery log outcome and the original error.
+	Send            func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)
 	PlatformCallers PlatformCallerResolver
 	Runtime         *hookruntime.Manager
 	ProcessEnv      hook.ProcessEnvironment
@@ -180,7 +181,7 @@ func NewModule(opts Options) (Module, error) {
 			ContentLimit: 4096,
 			ResultStatus: globalevents.ResultSucceeded,
 		}
-		_ = globalevents.EmitLog(context.Background(), record)
+		hook.LogHook(context.Background(), record)
 	}
 
 	return module, nil
@@ -217,7 +218,7 @@ func (m Module) RegisterHooks(registrar hook.Registrar) error {
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultSucceeded,
 			}
-			_ = globalevents.EmitLog(context.Background(), record)
+			hook.LogHook(context.Background(), record)
 		}
 
 		rule := rule
@@ -242,10 +243,10 @@ func (m Module) RegisterHooks(registrar hook.Registrar) error {
 				Block:       rule.source.Block,
 				Detail:      detail,
 				Wakeup:      rule.Wakeup,
-				Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+				Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
 					if rule.source.RuntimeID != "" {
 						if m.Opts.Runtime == nil {
-							return event, fmt.Errorf("stateful hook runtime is not configured")
+							return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "stateful hook runtime is not configured"}, fmt.Errorf("stateful hook runtime is not configured")
 						}
 						return m.Opts.Runtime.Handle(ctx, rule.source.RuntimeID, event, hook.Control{
 							Consume:         rule.Consume,

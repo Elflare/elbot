@@ -8,7 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"elbot/internal/contextinfo"
+	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
+	"log/slog"
 )
 
 const maxToolCallsPerInvocation = 32
@@ -28,7 +31,7 @@ func (m *Manager) hasLease(event hook.Event) bool {
 		delete(m.transient, key)
 		m.mu.Unlock()
 		if worker != nil {
-			go worker.stop(context.Background())
+			go func() { _, _ = worker.stop(context.Background()) }()
 		}
 		return false
 	}
@@ -67,7 +70,7 @@ func (m *Manager) Route(ctx context.Context, event hook.Event) (hook.Event, bool
 		delete(m.transient, key)
 		m.mu.Unlock()
 		if worker != nil {
-			go worker.stop(context.Background())
+			go func() { _, _ = worker.stop(context.Background()) }()
 		}
 		return event, false, nil
 	}
@@ -91,7 +94,34 @@ func (m *Manager) Route(ctx context.Context, event hook.Event) (hook.Event, bool
 		m.clearLease(lease.HookID, event)
 		return event, false, nil
 	}
-	updated, err := worker.handle(ctx, event, true, lease.Control)
+	updated, logResult, err := worker.handle(ctx, event, true, lease.Control)
+	// Continuations bypass DefaultManager; this source owns their point record.
+	record := globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, EventName: "hook_triggered", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: fmt.Sprintf("continuation: hook=%s point=%s\n%s", lease.HookID, event.Point, logResult.Content), ResultStatus: logResult.ResultStatus}
+	if logResult.ResultStatus == globalevents.ResultFailed {
+		record.Level, record.EventName = slog.LevelError, "hook_error"
+	}
+	if logResult.ResultStatus == globalevents.ResultCanceled {
+		record.EventName = "hook_canceled"
+	}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if event.Session.ID != "" {
+		record.Identity.SessionID = &event.Session.ID
+	} else if facts.SessionID != "" {
+		record.Identity.SessionID = &facts.SessionID
+	}
+	if facts.RunID != "" {
+		record.Identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		record.Identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		record.Identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		record.Identity.RootRequestID = &facts.RootRequestID
+	}
+	hook.LogHook(ctx, record)
 	if worker.config.ModeOrOnce() == ModeTransient && (err != nil || !m.hasLease(event)) {
 		m.stopTransient(key, worker)
 	}
@@ -220,7 +250,7 @@ func (m *Manager) clearRoutesLocked(id string) {
 			delete(m.routes, key)
 			if worker := m.transient[key]; worker != nil {
 				delete(m.transient, key)
-				go worker.stop(context.Background())
+				go func() { _, _ = worker.stop(context.Background()) }()
 			}
 		}
 	}

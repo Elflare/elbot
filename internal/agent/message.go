@@ -64,7 +64,7 @@ func (h *messageHandler) HandleMessage(ctx context.Context, text string) (err er
 		return routeErr
 	}
 	if !routed || !event.Control.StopPropagation {
-		event, err = h.hooks.Run(ctx, event)
+		event, _, err = h.hooks.Run(ctx, event)
 		if err != nil {
 			return err
 		}

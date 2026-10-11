@@ -4,6 +4,7 @@ import (
 	"context"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
@@ -95,9 +96,9 @@ func TestStreamingOutputAppendsRawAndReplacesHookText(t *testing.T) {
 	}}}
 
 	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "test.replace", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+	if err := manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "test.replace", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.LLM.Text = strings.ReplaceAll(event.LLM.Text, "[[wave]]", "world")
-		return event, nil
+		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatalf("Register response hook: %v", err)
 	}
@@ -127,9 +128,9 @@ func TestTurnOutputPreparedHookReplacesFinalStreamingMessage(t *testing.T) {
 	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: "猫"}}}}
 
 	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointAgentTurnOutputPrepared, Name: "test.turn_output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+	if err := manager.Register(hook.Registration{Point: hook.PointAgentTurnOutputPrepared, Name: "test.turn_output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.Message.Segments = llm.ReplaceSegmentText(event.Message.Segments, regexp.MustCompile("猫"), "狗", true)
-		return event, nil
+		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatalf("Register turn output hook: %v", err)
 	}

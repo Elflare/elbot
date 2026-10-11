@@ -22,8 +22,8 @@ import (
 )
 
 type hookRunner interface {
-	Run(context.Context, hook.Event) (hook.Event, error)
-	Notify(context.Context, hook.Event) error
+	Run(context.Context, hook.Event) (hook.Event, globalevents.LogResult, error)
+	Notify(context.Context, hook.Event) (globalevents.LogResult, error)
 }
 
 type HookRouter interface {
@@ -51,71 +51,31 @@ func (h *hookBridge) Route(ctx context.Context, event hook.Event) (hook.Event, b
 	if h.router == nil {
 		return event, false, nil
 	}
-	if id := h.router.RouteHookID(event); id != "" && h.requests != nil {
-		_, requestCtx, done, err := h.requests.Start(ctx, request.StartRequest{ParentID: contextinfo.RootRequestIDFromContext(ctx), Kind: request.KindHook, Label: id + " continuation"})
-		if err == nil {
-			defer done()
-			ctx = requestCtx
-		}
+	if id := h.router.RouteHookID(event); id != "" {
+		requestCtx, done := h.ObserveRun(ctx, event, hook.ObserverInfo{Name: id + " continuation", Point: event.Point})
+		defer done()
+		ctx = requestCtx
 	}
 	return h.router.Route(ctx, event)
 }
 
-func (h *hookBridge) Run(ctx context.Context, event hook.Event) (hook.Event, error) {
+func (h *hookBridge) Run(ctx context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
 	manager := h.manager
 	if manager == nil {
 		manager = hook.NoopManager{}
 	}
 	event = h.fillContext(ctx, event)
 	before := hook.SnapshotCalls(event)
-	updated, err := manager.Run(ctx, event)
-	if err == nil {
-		err = hook.ValidateCalls(ctx, before, updated)
-		if err != nil {
-			{
-				record := globalevents.LogRecord{
-					Category:     globalevents.LogRuntime,
-					Level:        slog.LevelError,
-					EventName:    "hook_call_validation_failed",
-					Module:       "hook",
-					Type:         globalevents.ContentText,
-					Content:      fmt.Sprintf("hook call validation failed\npoint=%v\nerror=%v", string(event.Point), err),
-					ContentLimit: 4096,
-					ResultStatus: globalevents.ResultFailed,
-				}
-				if errors.Is(err, context.Canceled) {
-					record.ResultStatus = globalevents.ResultCanceled
-					record.Level = slog.LevelInfo
-				}
-				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				if facts.SessionID != "" {
-					record.Identity.SessionID = &facts.SessionID
-				}
-				if facts.RunID != "" {
-					record.Identity.RunID = &facts.RunID
-				}
-				if facts.Attempt != "" {
-					record.Identity.Attempt = &facts.Attempt
-				}
-				if facts.RequestID != "" {
-					record.Identity.RequestID = &facts.RequestID
-				}
-				if facts.RootRequestID != "" {
-					record.Identity.RootRequestID = &facts.RootRequestID
-				}
-				_ = globalevents.EmitLog(ctx, record)
-			}
-		}
-	}
+	updated, logResult, err := manager.Run(ctx, event)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			return event, err
+			return event, logResult, err
 		}
 		h.notifyError(ctx, event, err)
 		h.publishFailure(ctx, event, err, true)
-		return before, err
+		return before, logResult, err
 	}
-	return updated, nil
+	return updated, logResult, nil
 }
 
 func (h *hookBridge) Notify(ctx context.Context, event hook.Event) {
@@ -124,7 +84,7 @@ func (h *hookBridge) Notify(ctx context.Context, event hook.Event) {
 		manager = hook.NoopManager{}
 	}
 	event = h.fillContext(ctx, event)
-	if err := manager.Notify(ctx, event); err != nil {
+	if _, err := manager.Notify(ctx, event); err != nil {
 		h.publishFailure(ctx, event, err, !errors.Is(err, context.Canceled) && event.Point != hook.PointErrorOccurred)
 		if errors.Is(err, context.Canceled) {
 			return
@@ -172,7 +132,9 @@ func (h *hookBridge) ObserveRun(ctx context.Context, event hook.Event, info hook
 				record.Level = slog.LevelInfo
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
+			if sessionID != "" {
+				record.Identity.SessionID = &sessionID
+			} else if facts.SessionID != "" {
 				record.Identity.SessionID = &facts.SessionID
 			}
 			if facts.RunID != "" {
@@ -187,7 +149,7 @@ func (h *hookBridge) ObserveRun(ctx context.Context, event hook.Event, info hook
 			if facts.RootRequestID != "" {
 				record.Identity.RootRequestID = &facts.RootRequestID
 			}
-			_ = globalevents.EmitLog(ctx, record)
+			hook.LogHook(ctx, record)
 		}
 
 		return ctx, func() {}

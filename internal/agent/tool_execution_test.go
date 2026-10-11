@@ -5,6 +5,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	hookbuiltin "elbot/internal/hook/builtin"
 	"elbot/internal/llm"
@@ -140,15 +141,15 @@ func TestPreparedToolArgumentsReachExecutionLLMAndTranscript(t *testing.T) {
 	_ = registry.Register(preparedArgumentTool{arguments: &executedArguments})
 
 	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointToolCallPrepared, Name: "test.arguments", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+	if err := manager.Register(hook.Registration{Point: hook.PointToolCallPrepared, Name: "test.arguments", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.Tool.Arguments = `{"q":"prepared"}`
-		return event, nil
+		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatalf("Register hook: %v", err)
 	}
-	if err := manager.Register(hook.Registration{Point: hook.PointToolCallCompleted, Name: "test.result-image", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+	if err := manager.Register(hook.Registration{Point: hook.PointToolCallCompleted, Name: "test.result-image", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.Message.Segments = append(event.Message.Segments, llm.MessageSegment{Type: llm.SegmentImage, URL: "https://example.com/result.png", Name: "result.png"})
-		return event, nil
+		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatalf("Register completed hook: %v", err)
 	}
@@ -255,9 +256,9 @@ func TestTurnHookCannotModifySystemDuringToolFollowup(t *testing.T) {
 	_ = registry.Register(newAgentShellTool())
 
 	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointLLMTurnPrepared, Name: "test.turn", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+	if err := manager.Register(hook.Registration{Point: hook.PointLLMTurnPrepared, Name: "test.turn", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.LLM.Messages = llm.AppendSystemSegmentText(event.LLM.Messages, "TURN_MEMORY")
-		return event, nil
+		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatalf("Register turn hook: %v", err)
 	}

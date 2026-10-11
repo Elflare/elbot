@@ -29,7 +29,7 @@ func TestGoHookMediaAPIAndCanonicalMessage(t *testing.T) {
 	root := t.TempDir()
 	hooks := hook.NewManager()
 	var id string
-	if err := hooks.Register(hook.Registration{Point: hook.PointAgentInputPrepared, Name: "media", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+	if err := hooks.Register(hook.Registration{Point: hook.PointAgentInputPrepared, Name: "media", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		if event.Media == nil {
 			t.Fatal("missing host API")
 		}
@@ -39,11 +39,11 @@ func TestGoHookMediaAPIAndCanonicalMessage(t *testing.T) {
 		}
 		metadata, err := event.Media.ImportBytes(ctx, []byte{0, 255, 128, 1}, media.Input{Name: "hook.png", MIMEType: "image/png"})
 		if err != nil {
-			return event, err
+			return event, events.LogResult{ResultStatus: events.ResultFailed, Content: "test source failed"}, err
 		}
 		id = metadata.ID
 		event.Message.Segments = append(event.Message.Segments, llm.MessageSegment{Type: llm.SegmentImage, MediaID: id})
-		return event, nil
+		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatal(err)
 	}
@@ -225,10 +225,10 @@ func TestHookMediaOutputDoesNotCreateSessionAndCleansExport(t *testing.T) {
 	}
 	hooks := hook.NewManager()
 	output := delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{MediaID: metadata.ID}}
-	if err := hooks.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+	if err := hooks.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.Outputs = []delivery.Output{output}
 		event.Control.Consume = true
-		return event, nil
+		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatal(err)
 	}

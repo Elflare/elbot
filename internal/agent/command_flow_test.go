@@ -5,6 +5,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/platform"
 	"elbot/internal/security"
@@ -20,10 +21,10 @@ func TestPlatformMessageReceivedHookConsumeSkipsCommandAndLLM(t *testing.T) {
 	f := &fakeLLM{replies: []string{"final"}}
 
 	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.received.consume", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.received.consume", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.Outputs = append(event.Outputs, delivery.Text("consumed"))
 		event.Control.Consume = true
-		return event, nil
+		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatalf("Register received hook: %v", err)
 	}

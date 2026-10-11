@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	hookruntime "elbot/internal/hook/runtime"
 )
@@ -17,7 +18,7 @@ type Loader func(hook.Registrar) (hook.ReloadReport, []hookruntime.Config, error
 type Runtime interface {
 	Apply([]hookruntime.Config) error
 	ValidatePlugin(hookruntime.Config) error
-	ReplacePlugin(hookruntime.Config) error
+	ReplacePlugin(hookruntime.Config) (events.LogResult, error)
 	List() []hookruntime.Info
 	Start(string) error
 	Stop(context.Context, string) (bool, error)
@@ -74,7 +75,8 @@ func (s *Service) hookReload() (hook.ReloadReport, error) {
 
 // PreparePluginReload validates a complete candidate snapshot immediately and
 // returns a commit that replaces only the requesting persistent plugin.
-func (s *Service) PreparePluginReload(id string) (func() error, error) {
+// The commit keeps its source log outcome separate from the business error.
+func (s *Service) PreparePluginReload(id string) (func() (events.LogResult, error), error) {
 	if s == nil || s.manager == nil || s.runtime == nil || s.loader == nil {
 		return nil, fmt.Errorf("hook plugin reloader is not configured")
 	}
@@ -107,14 +109,15 @@ func (s *Service) PreparePluginReload(id string) (func() error, error) {
 	if err := s.runtime.ValidatePlugin(*config); err != nil {
 		return nil, err
 	}
-	return func() error {
+	return func() (events.LogResult, error) {
 		s.reloadMu.Lock()
 		defer s.reloadMu.Unlock()
-		if err := s.runtime.ReplacePlugin(*config); err != nil {
-			return err
+		logResult, err := s.runtime.ReplacePlugin(*config)
+		if err != nil {
+			return logResult, err
 		}
 		s.manager.ReplacePlugin(id, candidate)
-		return nil
+		return logResult, nil
 	}, nil
 }
 

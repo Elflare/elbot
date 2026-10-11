@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/events"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -55,7 +56,10 @@ func TestResponsesRecoveryReplaysNativeFactsOnceWithoutHooksOrTools(t *testing.T
 		return &tool.Result{Content: "durable tool result"}, nil
 	}})
 	manager := hook.NewManager()
-	_ = manager.Register(hook.Registration{Point: hook.PointLLMRequestPrepared, Name: "count", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) { prepared.Add(1); return event, nil })})
+	_ = manager.Register(hook.Registration{Point: hook.PointLLMRequestPrepared, Name: "count", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+		prepared.Add(1)
+		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
+	})})
 	ids := make(chan string, 16)
 	f := newNativeFixture(t, func(index int, request nativeTestRequest, w http.ResponseWriter) {
 		switch index {

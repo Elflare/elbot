@@ -106,7 +106,7 @@ func (c *inputCoordinator) handleSessionInput(ctx context.Context, session *stor
 	}
 	ctx = locked
 	release()
-	event, err := c.hooks.Run(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Session: hookSession(session), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: inboundSegments(ctx, text)}})
+	event, _, err := c.hooks.Run(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Session: hookSession(session), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: inboundSegments(ctx, text)}})
 	if err != nil {
 		return err
 	}

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/events"
 	"elbot/internal/llm/chatcompletions"
 	"net/http"
 	"net/http/httptest"
@@ -88,9 +89,9 @@ func TestToolResultMediaPersistsID(t *testing.T) {
 	_ = registry.Register(preparedArgumentTool{arguments: &arguments})
 
 	hooks := hook.NewManager()
-	err := hooks.Register(hook.Registration{Point: hook.PointToolCallCompleted, Name: "test.media", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+	err := hooks.Register(hook.Registration{Point: hook.PointToolCallCompleted, Name: "test.media", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.Message.Segments = append(event.Message.Segments, llm.MessageSegment{Type: llm.SegmentImage, URL: "data:image/png;base64,AP+AAQ==", Name: "result.png"})
-		return event, nil
+		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 	})})
 	if err != nil {
 		t.Fatal(err)

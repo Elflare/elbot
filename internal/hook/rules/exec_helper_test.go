@@ -74,6 +74,10 @@ func TestExecHelperProcess(t *testing.T) {
 			{"type": "text", "text": "截图完成"},
 			{"type": "image", "base64": "aGVsbG8=", "mime_type": "image/png", "name": "result.png"},
 		}}})
+	case "done-wait-cancel":
+		writeProtocolTestResult(map[string]any{"status": "completed"})
+		fmt.Fprintln(os.Stderr, "waiting after response")
+		time.Sleep(30 * time.Second)
 	case "done-result":
 		result := "ok"
 		if marker+1 < len(os.Args) {

@@ -198,7 +198,7 @@ func normalizeLoadedRules(cfg *Config, opts Options) error {
 					ContentLimit: 4096,
 					ResultStatus: globalevents.ResultSucceeded,
 				}
-				_ = globalevents.EmitLog(context.Background(), record)
+				hook.LogHook(context.Background(), record)
 			}
 
 		}
@@ -248,7 +248,7 @@ func reportPluginConfigError(ctx context.Context, opts Options, name, path strin
 		if facts.RootRequestID != "" {
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
-		_ = globalevents.EmitLog(ctx, record)
+		hook.LogHook(ctx, record)
 	}
 
 	if opts.Notify != nil {
@@ -287,7 +287,7 @@ func reportPluginConfigWarning(ctx context.Context, opts Options, name, path, me
 		if facts.RootRequestID != "" {
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
-		_ = globalevents.EmitLog(ctx, record)
+		hook.LogHook(ctx, record)
 	}
 
 	if opts.Notify != nil {
@@ -327,7 +327,7 @@ func reportConfigError(ctx context.Context, opts Options, path string, err error
 		if facts.RootRequestID != "" {
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
-		_ = globalevents.EmitLog(ctx, record)
+		hook.LogHook(ctx, record)
 	}
 
 	if opts.Notify != nil {

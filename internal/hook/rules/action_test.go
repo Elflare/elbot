@@ -21,7 +21,7 @@ import (
 func TestSendActionSetsDeliveryTiming(t *testing.T) {
 	module := Module{}
 	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "done"}}
-	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "send", Text: "later", Timing: delivery.DeliveryAfterAssistant}}}, event)
+	got, _, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "send", Text: "later", Timing: delivery.DeliveryAfterAssistant}}}, event)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -36,7 +36,7 @@ func TestSendActionSetsDeliveryTiming(t *testing.T) {
 func TestTurnOutputPreparedAllowsMessageText(t *testing.T) {
 	module := Module{}
 	event := hook.Event{Point: hook.PointAgentTurnOutputPrepared, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments("猫")}}
-	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "replace", Field: "message.text", Match: "猫", Replace: "狗", All: true}}}, event)
+	got, _, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "replace", Field: "message.text", Match: "猫", Replace: "狗", All: true}}}, event)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestTextActionsKeepMediaSegmentsInPlace(t *testing.T) {
 		{Type: "append", Field: "message.text", Text: " post"},
 		{Type: "replace", Field: "message.text", Match: "cat", Replace: "dog"},
 	}}
-	got, err := module.runRule(context.Background(), rule, event)
+	got, _, err := module.runRule(context.Background(), rule, event)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestSendActionRendersMessagePlatformTextAndReplyFields(t *testing.T) {
 			},
 		},
 	}
-	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{
+	got, _, err := module.runRule(context.Background(), Rule{Actions: []Action{{
 		Type: "send",
 		Text: "{{message.platform_text}}/{{message.reply.message_id}}/{{message.reply.sender_id}}/{{message.reply.text}}/{{message.reply.display_text}}",
 	}}}, event)
@@ -110,14 +110,14 @@ func TestReplaceActionFirstAndAllAcrossTextSegments(t *testing.T) {
 			{Type: llm.SegmentText, Text: "cat two"},
 		}},
 	}
-	first, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "replace", Field: "message.text", Match: "cat", Replace: "dog"}}}, event)
+	first, _, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "replace", Field: "message.text", Match: "cat", Replace: "dog"}}}, event)
 	if err != nil {
 		t.Fatalf("first replace: %v", err)
 	}
 	if first.Message.Segments[0].Text != "dog one cat" || first.Message.Segments[2].Text != "cat two" {
 		t.Fatalf("first replace segments = %#v", first.Message.Segments)
 	}
-	all, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "replace", Field: "message.text", Match: "cat", Replace: "dog", All: true}}}, event)
+	all, _, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "replace", Field: "message.text", Match: "cat", Replace: "dog", All: true}}}, event)
 	if err != nil {
 		t.Fatalf("all replace: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestReplaceActionFirstAndAllAcrossTextSegments(t *testing.T) {
 func TestLLMResponseSourceTextCanMatchButCannotBeEdited(t *testing.T) {
 	module := Module{}
 	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "visible", SourceText: "raw token"}}
-	matched, err := module.runRule(context.Background(), Rule{
+	matched, _, err := module.runRule(context.Background(), Rule{
 		Match:   []hook.Condition{{Field: "llm.source_text", Op: hook.MatchContains, Value: "raw"}},
 		Actions: []Action{{Type: "append", Field: "llm.text", Text: " output"}},
 	}, event)
@@ -140,7 +140,7 @@ func TestLLMResponseSourceTextCanMatchButCannotBeEdited(t *testing.T) {
 		t.Fatalf("matched event = %#v", matched.LLM)
 	}
 
-	_, err = module.runRule(context.Background(), Rule{Actions: []Action{{Type: "append", Field: "llm.source_text", Text: " changed"}}}, event)
+	_, _, err = module.runRule(context.Background(), Rule{Actions: []Action{{Type: "append", Field: "llm.source_text", Text: " changed"}}}, event)
 	if err == nil || !strings.Contains(err.Error(), `field "llm.source_text" cannot be edited`) {
 		t.Fatalf("err = %v", err)
 	}
@@ -161,7 +161,7 @@ func TestRenderRegexCapture(t *testing.T) {
 		Message:  hook.MessagePayload{Segments: llm.TextSegments("mute alice 10")},
 		Metadata: map[string]any{"match": match},
 	}
-	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "send", Text: "{{match.regex.0.target}}/{{match.regex.0.group.2}}"}}}, event)
+	got, _, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "send", Text: "{{match.regex.0.target}}/{{match.regex.0.group.2}}"}}}, event)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestRenderRegexCapture(t *testing.T) {
 
 func TestRenderErrorMessage(t *testing.T) {
 	event := hook.Event{Point: hook.PointErrorOccurred, Error: fmt.Errorf("hook failed")}
-	got, err := Module{}.runRule(context.Background(), Rule{Actions: []Action{{Type: "send", Text: "err={{error.message}}"}}}, event)
+	got, _, err := Module{}.runRule(context.Background(), Rule{Actions: []Action{{Type: "send", Text: "err={{error.message}}"}}}, event)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -221,8 +221,8 @@ func TestRuleToolAuditOutcome(t *testing.T) {
 		level  slog.Level
 		status string
 	}{
-		{"success", nil, slog.LevelInfo, "succeeded"}, {"failure", errors.New("failed"), slog.LevelError, "failed"},
-		{"canceled", fmt.Errorf("wrapped: %w", context.Canceled), slog.LevelInfo, "canceled"}, {"timeout", context.DeadlineExceeded, slog.LevelError, "failed"},
+		{"success", nil, slog.LevelInfo, "succeeded"}, {"failure", errors.New("failed"), slog.LevelInfo, "succeeded"},
+		{"canceled", fmt.Errorf("wrapped: %w", context.Canceled), slog.LevelInfo, "succeeded"}, {"timeout", context.DeadlineExceeded, slog.LevelInfo, "succeeded"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var records []events.LogRecord
@@ -235,7 +235,7 @@ func TestRuleToolAuditOutcome(t *testing.T) {
 			if err := registry.Register(&hookActionTestTool{err: tc.err}); err != nil {
 				t.Fatal(err)
 			}
-			_, err = (Module{Opts: Options{Tools: registry}}).callTool(context.Background(), hook.Event{}, Action{Tool: "hook_test_critical", Arguments: `{}`}, state{})
+			_, _, err = (Module{Opts: Options{Tools: registry}}).callTool(context.Background(), hook.Event{}, Action{Tool: "hook_test_critical", Arguments: `{}`}, state{})
 			if !errors.Is(err, tc.err) {
 				t.Fatalf("business error changed: %v", err)
 			}
@@ -246,7 +246,7 @@ func TestRuleToolAuditOutcome(t *testing.T) {
 			if err := json.Unmarshal([]byte(records[0].Content), &fields); err != nil {
 				t.Fatal(err)
 			}
-			if fields["source"] != "rules" || records[0].ResultStatus.String() != tc.status || fields["result"] != "called" || (tc.err != nil && fields["error"] != tc.err.Error()) {
+			if fields["source"] != "rules" || records[0].ResultStatus.String() != tc.status || !strings.HasPrefix(fields["result"], "called") || (tc.err != nil && !strings.Contains(fields["result"], tc.err.Error())) {
 				t.Fatal(fields)
 			}
 		})
@@ -260,7 +260,7 @@ func TestRuleToolActionLeavesRiskAndAuthorizationToHook(t *testing.T) {
 		t.Fatalf("register tool: %v", err)
 	}
 
-	got, err := Module{Opts: Options{Tools: registry}}.runRule(context.Background(), Rule{Actions: []Action{
+	got, _, err := Module{Opts: Options{Tools: registry}}.runRule(context.Background(), Rule{Actions: []Action{
 		{ActionName: "critical", Type: "tool", Tool: "hook_test_critical", Arguments: `{}`},
 		{Type: "send", Text: "{{actions.critical.result}}"},
 	}}, hook.Event{Point: hook.PointLLMResponseReceived, Actor: hook.ActorContext{Role: "user"}})
@@ -285,7 +285,7 @@ func TestLatestUserTextActionWritesBoundMessage(t *testing.T) {
 			{Role: llm.RoleUser, Segments: llm.TextSegments("history")},
 		}},
 	}
-	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "prepend", Field: "llm.latest_user_text", Text: "pre "}}}, event)
+	got, _, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "prepend", Field: "llm.latest_user_text", Text: "pre "}}}, event)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -301,7 +301,7 @@ func TestLatestUserTextActionWritesBoundMessage(t *testing.T) {
 func TestSendActionWithOutputs(t *testing.T) {
 	module := Module{}
 	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "done"}}
-	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
+	got, _, err := module.runRule(context.Background(), Rule{Actions: []Action{
 		{Type: "send", Timing: delivery.DeliveryAfterAssistant, Outputs: []SegmentSpec{
 			{Kind: "text", Text: "检测到关键词"},
 			{Kind: "image", Path: "alert.png"},
@@ -333,7 +333,7 @@ func TestSendActionWithOutputs(t *testing.T) {
 func TestSendActionWithOutputsBase64(t *testing.T) {
 	module := Module{}
 	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "done"}}
-	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
+	got, _, err := module.runRule(context.Background(), Rule{Actions: []Action{
 		{Type: "send", Outputs: []SegmentSpec{
 			{Kind: "image", Base64: "aGVsbG8="},
 		}},
@@ -375,7 +375,7 @@ func TestBuildSegmentOutputRejectsLargeBase64(t *testing.T) {
 func TestSendActionFallbackToSingleOutput(t *testing.T) {
 	module := Module{}
 	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "done"}}
-	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
+	got, _, err := module.runRule(context.Background(), Rule{Actions: []Action{
 		{Type: "send", Kind: "text", Text: "fallback"},
 	}}, event)
 	if err != nil {

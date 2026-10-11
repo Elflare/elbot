@@ -173,7 +173,7 @@ func (c logCommand) Complete(ctx context.Context, req command.CompletionRequest)
 		return completeStringOptions([]string{"low", "medium", "high", "critical"}, token.Text, token.Start, token.End, "risk")
 	}
 	if c.audit && previous == "--event" {
-		return completeStringOptions([]string{"llm_usage", "llm_error", "session_naming_completed", "tool_call", "permission_denied", "session_resume", "session_fork", "hook_tool_call"}, token.Text, token.Start, token.End, "audit_event")
+		return completeStringOptions([]string{"llm_usage", "llm_error", "session_naming_completed", "tool_call", "permission_denied", "session_resume", "session_fork", "hook_tool_call", "hook_tool_log"}, token.Text, token.Start, token.End, "audit_event")
 	}
 	if c.audit && previous == "--tool" {
 		return completeToolNames(c.deps, token.Text, token.Start, token.End)

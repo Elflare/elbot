@@ -57,7 +57,7 @@ func (p *Preparer) PrepareInput(ctx context.Context, in LoopInput, user *storage
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	event, err := p.Hooks.Run(ctx, hook.Event{Point: hook.PointLLMTurnPrepared, Session: hook.SessionContext{ID: in.Session.ID},
+	event, _, err := p.Hooks.Run(ctx, hook.Event{Point: hook.PointLLMTurnPrepared, Session: hook.SessionContext{ID: in.Session.ID},
 		Message: hook.MessagePayload{ID: user.ID, Role: string(llm.RoleUser), PlatformText: platformText, Segments: append([]llm.MessageSegment(nil), segments...)},
 		LLM:     hook.LLMPayload{Provider: in.Selection.Provider, Model: in.Selection.Model, Messages: llm.CloneMessages(messages), Tools: tools}})
 	if err != nil {

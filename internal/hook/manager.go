@@ -57,8 +57,8 @@ type Module interface {
 // Manager runs handlers for hook points in priority order.
 type Manager interface {
 	Registrar
-	Run(ctx context.Context, event Event) (Event, error)
-	Notify(ctx context.Context, event Event) error
+	Run(ctx context.Context, event Event) (Event, globalevents.LogResult, error)
+	Notify(ctx context.Context, event Event) (globalevents.LogResult, error)
 	List() []Info
 }
 
@@ -67,11 +67,13 @@ type NoopManager struct{}
 
 func (NoopManager) Register(Registration) error { return nil }
 
-func (NoopManager) Run(_ context.Context, event Event) (Event, error) {
-	return prepareEvent(event), nil
+func (NoopManager) Run(_ context.Context, event Event) (Event, globalevents.LogResult, error) {
+	return prepareEvent(event), globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no Hook configured"}, nil
 }
 
-func (NoopManager) Notify(context.Context, Event) error { return nil }
+func (NoopManager) Notify(context.Context, Event) (globalevents.LogResult, error) {
+	return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no Hook configured"}, nil
+}
 
 func (NoopManager) List() []Info { return nil }
 
@@ -204,8 +206,9 @@ func (policy WakeupPolicy) Validate() error {
 	return validateWakeupPolicy(policy)
 }
 
-func (m *DefaultManager) Run(ctx context.Context, event Event) (Event, error) {
+func (m *DefaultManager) Run(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 	event = prepareEvent(event)
+	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no matching Hook"}
 	for _, reg := range m.handlersFor(event.Point) {
 		if reg.block.Blocks(event) {
 			continue
@@ -222,7 +225,7 @@ func (m *DefaultManager) Run(ctx context.Context, event Event) (Event, error) {
 		handlerCtx, cancel := context.WithCancel(ctx)
 		activeID := m.startActive(reg, cancel)
 		runCtx, done := m.observe(handlerCtx, event, reg, "run")
-		updated, err := func() (Event, error) {
+		updated, handlerResult, err := func() (Event, globalevents.LogResult, error) {
 			defer func() {
 				done()
 				m.finishActive(activeID)
@@ -232,23 +235,38 @@ func (m *DefaultManager) Run(ctx context.Context, event Event) (Event, error) {
 		delete(event.Metadata, "match")
 		if err == nil {
 			err = ValidateCalls(ctx, before, updated)
+			if err != nil {
+				handlerResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: handlerResult.Content + "\nvalidation_error=" + err.Error()}
+			}
+		}
+		if handlerResult.ResultStatus != globalevents.ResultSkipped {
+			if logResult.ResultStatus == globalevents.ResultSkipped {
+				logResult = handlerResult
+			} else {
+				logResult.Content += "\n" + handlerResult.Content
+				if logResult.ResultStatus != globalevents.ResultFailed && (logResult.ResultStatus != globalevents.ResultCanceled || handlerResult.ResultStatus == globalevents.ResultFailed) {
+					logResult.ResultStatus = handlerResult.ResultStatus
+				}
+			}
 		}
 		if err != nil {
-			m.logHook(runCtx, "run", reg, before, before, err)
-			return before, wrapHookError(reg, err)
+			m.logHook(runCtx, "run", reg, before, before, handlerResult)
+			return before, logResult, wrapHookError(reg, err)
 		}
 		updated = markHookOutputs(updated, len(before.Outputs), reg, "run")
 		event = prepareEvent(updated)
-		m.logHook(runCtx, "run", reg, before, event, nil)
+		m.logHook(runCtx, "run", reg, before, event, handlerResult)
+
 		if event.Control.StopPropagation {
 			break
 		}
 	}
-	return event, nil
+	return event, logResult, nil
 }
 
-func (m *DefaultManager) Notify(ctx context.Context, event Event) error {
+func (m *DefaultManager) Notify(ctx context.Context, event Event) (globalevents.LogResult, error) {
 	event = prepareEvent(event)
+	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no matching Hook"}
 	var joined error
 	for _, reg := range m.handlersFor(event.Point) {
 		if reg.block.Blocks(event) {
@@ -266,7 +284,7 @@ func (m *DefaultManager) Notify(ctx context.Context, event Event) error {
 		handlerCtx, cancel := context.WithCancel(ctx)
 		activeID := m.startActive(reg, cancel)
 		runCtx, done := m.observe(handlerCtx, event, reg, "notify")
-		updated, err := func() (Event, error) {
+		updated, handlerResult, err := func() (Event, globalevents.LogResult, error) {
 			defer func() {
 				done()
 				m.finishActive(activeID)
@@ -274,18 +292,28 @@ func (m *DefaultManager) Notify(ctx context.Context, event Event) error {
 			return reg.handler.HandleHook(runCtx, event)
 		}()
 		delete(event.Metadata, "match")
+		if handlerResult.ResultStatus != globalevents.ResultSkipped {
+			if logResult.ResultStatus == globalevents.ResultSkipped {
+				logResult = handlerResult
+			} else {
+				logResult.Content += "\n" + handlerResult.Content
+				if logResult.ResultStatus != globalevents.ResultFailed && (logResult.ResultStatus != globalevents.ResultCanceled || handlerResult.ResultStatus == globalevents.ResultFailed) {
+					logResult.ResultStatus = handlerResult.ResultStatus
+				}
+			}
+		}
 		if err != nil {
-			m.logHook(runCtx, "notify", reg, before, before, err)
+			m.logHook(runCtx, "notify", reg, before, before, handlerResult)
 			joined = errors.Join(joined, wrapHookError(reg, err))
 			continue
 		}
 		_ = markHookOutputs(updated, len(before.Outputs), reg, "notify")
-		m.logHook(runCtx, "notify", reg, before, before, nil)
+		m.logHook(runCtx, "notify", reg, before, before, handlerResult)
 		if updated.Control.StopPropagation {
 			break
 		}
 	}
-	return joined
+	return logResult, joined
 }
 
 func (m *DefaultManager) handlersFor(point Point) []registration {
@@ -539,30 +567,31 @@ func setOutputMeta(meta map[string]any, key, value string) {
 	meta[key] = value
 }
 
-func (m *DefaultManager) logHook(ctx context.Context, mode string, reg registration, before, after Event, err error) {
-	level, name, summary := slog.LevelInfo, "hook_triggered", "hook triggered"
-	resultStatus := globalevents.ResultSucceeded
-	if err != nil {
-		resultStatus = globalevents.ResultFailed
-		level, name, summary = slog.LevelError, "hook_error", "hook error"
-		if errors.Is(err, context.Canceled) {
-			resultStatus = globalevents.ResultCanceled
-			level, name, summary = slog.LevelInfo, "hook_canceled", "hook canceled"
-		}
+func (m *DefaultManager) logHook(ctx context.Context, mode string, reg registration, before, after Event, logResult globalevents.LogResult) {
+	level, name := slog.LevelInfo, "hook_triggered"
+	if logResult.ResultStatus == globalevents.ResultFailed {
+		level, name = slog.LevelError, "hook_error"
+	}
+	if logResult.ResultStatus == globalevents.ResultCanceled {
+		name = "hook_canceled"
 	}
 	record := globalevents.LogRecord{
 		Category:     globalevents.LogRuntime,
 		Level:        level,
 		EventName:    name,
 		Module:       "hook",
-		ResultStatus: resultStatus,
+		ResultStatus: logResult.ResultStatus,
+		Type:         globalevents.ContentText,
 		ContentLimit: 4096,
-		Content:      fmt.Sprintf("%s: point=%s hook=%s plugin=%s priority=%d order=%d mode=%s provider=%s model=%s tool=%s error=%v\nbefore_text=%s\nafter_text=%s\nsource_text=%s", summary, before.Point, reg.name, reg.pluginID, reg.priority, reg.order, mode, after.LLM.Provider, after.LLM.Model, after.Tool.Name, err, eventText(before), eventText(after), after.LLM.SourceText),
+		Content:      fmt.Sprintf("%s: point=%s hook=%s plugin=%s priority=%d order=%d mode=%s provider=%s model=%s tool=%s \nbefore_text=%s\nafter_text=%s\nsource_text=%s", logResult.Content, before.Point, reg.name, reg.pluginID, reg.priority, reg.order, mode, after.LLM.Provider, after.LLM.Model, after.Tool.Name, eventText(before), eventText(after), after.LLM.SourceText),
 	}
 	if before.Session.ID != "" {
 		record.Identity.SessionID = &before.Session.ID
 	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if before.Session.ID == "" && facts.SessionID != "" {
+		record.Identity.SessionID = &facts.SessionID
+	}
 	if facts.RunID != "" {
 		record.Identity.RunID = &facts.RunID
 	}
@@ -575,7 +604,7 @@ func (m *DefaultManager) logHook(ctx context.Context, mode string, reg registrat
 	if facts.RootRequestID != "" {
 		record.Identity.RootRequestID = &facts.RootRequestID
 	}
-	_ = globalevents.EmitLog(ctx, record)
+	LogHook(ctx, record)
 }
 
 func eventText(event Event) string {

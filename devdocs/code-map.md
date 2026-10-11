@@ -138,12 +138,13 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:hook -->
 ## Hook 与插件
 
-- `internal/hook/event.go`、`internal/hook/manager.go`：事件与普通 Hook 流水线；执行日志使用九字段，Hook 点、插件、工具及变更前后事实写入正文，业务事件保留专有字段。
-- `internal/hook/rules/`、`internal/hook/control/`：规则、一次性 exec 与管理入口；工具和平台调用审计使用 JSON 正文，日志结果由调用来源填写，工具返回错误时仍保留已取得的结果用于日志。
-- `internal/hook/runtime/`、`internal/hook/protocol/`：持久进程、RPC、waiting 和 hook.v2 帧。
+- `internal/hook/event.go`、`internal/hook/manager.go`：事件与普通 Hook 流水线；Handler／Run 返回 Event、LogResult、error，Notify 返回 LogResult、error，未处理 skipped。来源明确结果，流水线不从包装错误分类；点、插件和变更事实写入正文。
+- `internal/hook/logging.go`：LogHook 只接收完整九字段，解除取消后 EmitLog；不补身份、不组织正文、不判断业务。
+- `internal/hook/rules/`、`internal/hook/control/`：规则、一次性 exec 与管理入口；action.go 生成唯一工具调用 ID，接收独立 logContent 并立即发布调用记录；exec.go 使用发送来源 LogResult 发布独立 hook_tool_log，handleProtocolRequest／readV2Response 在包装错误前传递来源结果，响应写入失败保留此前取消事实；Receipt 仅业务使用。日志 text 交中心截断，JSON 字符串由来源限长；exec_process_unix.go／exec_process_windows.go 保留宿主终止事实，execExitCanceled 核对原生退出状态。配置、协议和 stderr 来源均交 LogHook 发布。
+- `internal/hook/runtime/`、`internal/hook/protocol/`：持久进程、RPC、waiting 和 hook.v2 帧。tool_bridge.go 分别记录调用和发送，输入无效仍记录 INFO／rejected，保留真实触发 Actor 与独立授权主体；worker.go 声明自身请求及停止结果，先固定退出事实再唤醒等待者，manager.go 透传并管理业务生命周期；routes.go 组织 continuation 点记录；重载 commit 独立返回 LogResult，worker 不从回调 error 判定；media.go 保留清理事实和调用方预算。
 - `internal/hook/call_policy.go`：消费方工具调用只读策略。
 - `internal/hook/media.go`、`internal/hook/output/`：媒体 API 与输出协议。
-- `internal/agent/hooks.go`、`internal/processenv/`：Agent 桥接与进程环境。
+- `internal/agent/hooks.go`、`internal/processenv/`：Agent 桥接与进程环境；Hook 结果独立透传，保留业务通知，桥接自身记录走 LogHook。toolrun_adapter.go 的准备／完成接口返回独立 LogResult，output.go 的 PrepareAssistant 透传来源结果。
 - [Hook 文档](../docs/hooks.md)。
 
 <!-- locator:output -->

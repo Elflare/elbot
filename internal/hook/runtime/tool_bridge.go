@@ -3,7 +3,6 @@ package runtime
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -12,6 +11,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
+	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/tool"
 )
@@ -53,32 +53,113 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		Background  bool            `json:"background"`
 		Target      delivery.Target `json:"target"`
 	}
-	if err := json.Unmarshal(raw, &params); err != nil {
+	err := json.Unmarshal(raw, &params)
+	name := strings.TrimSpace(params.Name)
+	call := tool.CallRequest{Name: name, Arguments: params.Arguments}
+	callCtx := w.manager.rootCtx
+	actor, _ := contextinfo.ActorFromContext(callCtx)
+	// Keep the trigger actor separate from the permission principal below.
+	content := map[string]any{"source": "plugin", "hook": w.config.ID, "arguments": string(params.Arguments)}
+	if name != "" {
+		content["tool"] = name
+	}
+	invocation := params.ToolContext
+	if params.Background {
+		invocation = params.Origin
+	}
+	content["invocation"] = invocation
+	// Read trigger facts without consuming the permission token. Guard failures
+	// must retain the same trigger identity as an entered call.
+	w.manager.mu.RLock()
+	contextValue, ok := w.manager.tokens[invocation]
+	w.manager.mu.RUnlock()
+	if ok && contextValue.HookID == w.config.ID {
+		callCtx = contextValue.Context
+		if contextValue.Event.Session.ID != "" {
+			actor = contextinfo.Actor{ID: contextValue.Event.Actor.ID, Platform: contextValue.Event.Platform.Name, PlatformUserID: contextValue.Event.Actor.UserID}
+		} else {
+			actor, _ = contextinfo.ActorFromContext(callCtx)
+		}
+	}
+	logHook := func(eventName string, logResult globalevents.LogResult) {
+		content["result"] = logResult.Content
+		if actor.ID != "" {
+			content["actor_id"] = actor.ID
+		}
+		if actor.Platform != "" {
+			content["platform"] = actor.Platform
+		}
+		if actor.PlatformUserID != "" {
+			content["user_id"] = actor.PlatformUserID
+		}
+		for key, value := range content {
+			if value, ok := value.(string); ok && len([]rune(value)) > 2048 {
+				content[key] = string([]rune(value)[:2047]) + "…"
+			}
+		}
+		data, _ := json.Marshal(content)
+		record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: eventName, Module: "hook", Type: globalevents.ContentJSON, Content: string(data), ContentLimit: 0, ResultStatus: logResult.ResultStatus}
+		if logResult.ResultStatus == globalevents.ResultFailed {
+			record.Level = slog.LevelError
+		}
+		facts, _ := contextinfo.ExecutionFromContext(callCtx)
+		if contextValue.HookID == w.config.ID && contextValue.Event.Session.ID != "" {
+			record.Identity.SessionID = &contextValue.Event.Session.ID
+		} else if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
+		}
+		if facts.RunID != "" {
+			record.Identity.RunID = &facts.RunID
+		}
+		if facts.Attempt != "" {
+			record.Identity.Attempt = &facts.Attempt
+		}
+		if facts.RequestID != "" {
+			record.Identity.RequestID = &facts.RequestID
+		}
+		if facts.RootRequestID != "" {
+			record.Identity.RootRequestID = &facts.RootRequestID
+		}
+		hook.LogHook(callCtx, record)
+	}
+	if err != nil {
+		logHook("hook_tool_call", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered; invalid parameters: " + err.Error()})
 		return nil, err
 	}
-	name := strings.TrimSpace(params.Name)
 	if name == "" {
-		return nil, fmt.Errorf("tool.call requires name")
+		err := fmt.Errorf("tool.call requires name")
+		logHook("hook_tool_call", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})
+		return nil, err
 	}
+	call.ID = randomID("plugin")
+	content["tool_call_id"] = call.ID
 	allowed := contains(w.config.Tools.Allow, name)
 	if params.Background {
 		allowed = contains(w.config.Tools.BackgroundAllow, name)
 	}
 	if !allowed {
-		return nil, fmt.Errorf("tool %q is not allowed for hook %q", name, w.config.ID)
+		err := fmt.Errorf("tool %q is not allowed for hook %q", name, w.config.ID)
+		logHook("hook_tool_call", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})
+		return nil, err
 	}
 	if w.manager.opts.Registry == nil {
-		return nil, fmt.Errorf("tool registry is not configured")
+		err := fmt.Errorf("tool registry is not configured")
+		logHook("hook_tool_call", globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()})
+		return nil, err
 	}
 	registered, ok := w.manager.opts.Registry.Get(name)
 	if !ok {
-		return nil, fmt.Errorf("tool %q not found", name)
+		err := fmt.Errorf("tool %q not found", name)
+		logHook("hook_tool_call", globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()})
+		return nil, err
 	}
 	if registered.Info().ForegroundOnly && params.Background {
-		return nil, fmt.Errorf("tool %q is foreground-only", name)
+		err := fmt.Errorf("tool %q is foreground-only", name)
+		logHook("hook_tool_call", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})
+		return nil, err
 	}
-	callCtx := context.Background()
-	actor := contextinfo.Actor{ID: "hook:" + w.config.ID, Role: contextinfo.RoleSuperadmin}
+	// Authorization may use the synthetic Hook principal; audit never does.
+	permissionActor := contextinfo.Actor{ID: "hook:" + w.config.ID, Role: contextinfo.RoleSuperadmin}
 	if !params.Background || strings.TrimSpace(params.Origin) != "" {
 		token := params.ToolContext
 		if params.Background {
@@ -86,91 +167,69 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		}
 		contextValue, ok := w.manager.takeToolContext(token, w.config.ID)
 		if !ok {
-			return nil, fmt.Errorf("invalid, expired or exhausted hook context")
+			err := fmt.Errorf("invalid, expired or exhausted hook context")
+			logHook("hook_tool_call", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})
+			return nil, err
 		}
 		callCtx = contextValue.Context
-		actor = contextinfo.Actor{ID: contextValue.Event.Actor.ID, Platform: contextValue.Event.Platform.Name, PlatformUserID: contextValue.Event.Actor.UserID, Nickname: contextValue.Event.Actor.Nickname, GroupCard: contextValue.Event.Actor.GroupCard, Role: contextinfo.Role(contextValue.Event.Actor.Role), GroupRole: contextinfo.GroupRole(contextValue.Event.Actor.GroupRole), DisplayName: contextValue.Event.Actor.DisplayName}
+		permissionActor = contextinfo.Actor{ID: contextValue.Event.Actor.ID, Platform: contextValue.Event.Platform.Name, PlatformUserID: contextValue.Event.Actor.UserID, Nickname: contextValue.Event.Actor.Nickname, GroupCard: contextValue.Event.Actor.GroupCard, Role: contextinfo.Role(contextValue.Event.Actor.Role), GroupRole: contextinfo.GroupRole(contextValue.Event.Actor.GroupRole), DisplayName: contextValue.Event.Actor.DisplayName}
+		if contextValue.Event.Session.ID != "" {
+			actor = permissionActor
+		} else {
+			actor, _ = contextinfo.ActorFromContext(callCtx)
+		}
 	} else if params.Target.Empty() {
-		return nil, fmt.Errorf("background tool output requires an explicit target")
+		err := fmt.Errorf("background tool output requires an explicit target")
+		logHook("hook_tool_call", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})
+		return nil, err
 	} else {
+		// Standalone background execution retains its independent timeout.
 		var cancel context.CancelFunc
-		callCtx, cancel = context.WithTimeout(callCtx, time.Duration(w.config.EventTimeoutSeconds)*time.Second)
+		callCtx, cancel = context.WithTimeout(context.Background(), time.Duration(w.config.EventTimeoutSeconds)*time.Second)
 		defer cancel()
 	}
-	callCtx = contextinfo.WithActor(callCtx, actor)
+	callCtx = contextinfo.WithActor(callCtx, permissionActor)
+	if err := callCtx.Err(); err != nil {
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()}
+		if err == context.Canceled {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		logHook("hook_tool_call", logResult)
+		return nil, err
+	}
 	started := time.Now()
-	result, _, err := registered.Call(callCtx, tool.CallRequest{ID: randomID("plugin"), Name: name, Arguments: params.Arguments})
-
-	level := slog.LevelInfo
-	status := globalevents.ResultSucceeded
-	if err != nil {
-		status = globalevents.ResultFailed
-		level = slog.LevelError
-		if errors.Is(err, context.Canceled) {
-			level = slog.LevelInfo
-			status = globalevents.ResultCanceled
-		}
-	}
-	invocation := params.ToolContext
-	if params.Background {
-		invocation = params.Origin
-	}
-	content := map[string]any{"source": "plugin", "hook": w.config.ID, "invocation": invocation, "tool": name, "elapsed_ms": time.Since(started).Milliseconds(), "platform": actor.Platform, "user_id": actor.PlatformUserID, "actor_id": actor.ID}
-	if err != nil {
-		content["error"] = err.Error()
-	}
-	if result != nil {
-		content["result"] = llm.SegmentsContentText(result.LLMSegments())
-	}
-	content["arguments"] = string(params.Arguments)
-	for _, key := range []string{"arguments", "result", "error"} {
-		if text, ok := content[key].(string); ok && len([]rune(text)) > 2048 {
-			content[key] = string([]rune(text)[:2047]) + "…"
-		}
-	}
-	data, _ := json.Marshal(content)
-	record := globalevents.LogRecord{
-		Category:     globalevents.LogAudit,
-		Level:        level,
-		EventName:    "hook_tool_call",
-		Module:       "hook",
-		Type:         globalevents.ContentJSON,
-		Content:      string(data),
-		ResultStatus: status,
-	}
-	facts, _ := contextinfo.ExecutionFromContext(callCtx)
-	if facts.SessionID != "" {
-		record.Identity.SessionID = &facts.SessionID
-	}
-	if facts.RunID != "" {
-		record.Identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		record.Identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		record.Identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		record.Identity.RootRequestID = &facts.RootRequestID
-	}
-	_ = globalevents.EmitLog(callCtx, record)
-
+	result, logContent, err := registered.Call(callCtx, call)
+	content["elapsed_ms"] = time.Since(started).Milliseconds()
+	logHook("hook_tool_call", globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: logContent})
 	if err != nil {
 		return nil, err
 	}
 	if result == nil {
 		return map[string]any{"content": "", "segments": []llm.MessageSegment{}, "warnings": []string{}, "receipts": []delivery.Receipt{}}, nil
 	}
+	if len(result.Outputs) == 0 {
+		return map[string]any{"content": result.Content, "segments": result.Segments, "warnings": result.Warnings, "receipts": []delivery.Receipt{}}, nil
+	}
+	delete(content, "arguments")
+	delete(content, "elapsed_ms")
 	if w.manager.opts.Send == nil {
-		return nil, fmt.Errorf("hook output sender is not configured")
+		err := fmt.Errorf("hook output sender is not configured")
+		logHook("hook_tool_log", globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "send not entered: " + err.Error()})
+		return nil, err
 	}
 	if !params.Target.Empty() {
 		for i := range result.Outputs {
 			result.Outputs[i].Target = params.Target
 		}
 	}
-	receipt, err := w.manager.opts.Send(callCtx, params.Target, result.Outputs)
+	receipt, logResult, err := w.manager.opts.Send(callCtx, params.Target, result.Outputs)
+	content["platform_message_ids"] = receipt.PlatformMessageIDs
+	content["sent_messages"] = []map[string]any{}
+	for _, sent := range receipt.SentMessages {
+		content["sent_messages"] = append(content["sent_messages"].([]map[string]any), map[string]any{"platform": sent.Platform, "scope_id": sent.ScopeID, "platform_message_id": sent.PlatformMessageID, "output_indexes": sent.OutputIndexes})
+	}
+	content["output_count"] = len(result.Outputs)
+	logHook("hook_tool_log", logResult)
 	if err != nil {
 		return nil, err
 	}

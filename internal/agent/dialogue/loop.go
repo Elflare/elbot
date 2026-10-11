@@ -6,6 +6,7 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
@@ -20,7 +21,7 @@ type Identity interface {
 	IsCLI(context.Context) bool
 }
 type Hooks interface {
-	Run(context.Context, hook.Event) (hook.Event, error)
+	Run(context.Context, hook.Event) (hook.Event, events.LogResult, error)
 	Notify(context.Context, hook.Event)
 }
 

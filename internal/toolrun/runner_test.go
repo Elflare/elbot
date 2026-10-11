@@ -56,8 +56,8 @@ func (d *runnerTestDeps) RefreshExecution(ctx context.Context, _ *storage.Sessio
 	return ctx, nil
 }
 
-func (d *runnerTestDeps) PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error) {
-	return call, nil
+func (d *runnerTestDeps) PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, events.LogResult, error) {
+	return call, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 }
 
 func (d *runnerTestDeps) ShouldSendPreview(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, assistantText string) bool {
@@ -87,9 +87,9 @@ func (d *runnerTestDeps) PrepareToolContext(ctx context.Context, session *storag
 	return ctx
 }
 
-func (d *runnerTestDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, error) {
+func (d *runnerTestDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, events.LogResult, error) {
 	d.completed++
-	return segments, nil
+	return segments, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 }
 
 func (d *runnerTestDeps) SendPreview(ctx context.Context, text string) {}

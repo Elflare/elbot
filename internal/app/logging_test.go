@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"elbot/internal/events"
 	"encoding/json"
 	"errors"
 	"go/ast"
@@ -40,12 +41,12 @@ func TestProductionGlobalLogsKeepUsageAndBoundBodies(t *testing.T) {
 			notices := notification.New(runtime.Dispatcher, true)
 			notices.Text(context.Background(), slog.LevelWarn, "background notice")
 			manager := hook.NewManager()
-			if err := manager.Register(hook.Registration{Point: hook.PointErrorOccurred, Name: "audit-hook", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) {
-				return event, errors.New("hook failure")
+			if err := manager.Register(hook.Registration{Point: hook.PointErrorOccurred, Name: "audit-hook", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+				return event, events.LogResult{ResultStatus: events.ResultFailed, Content: "test source failed"}, errors.New("hook failure")
 			})}); err != nil {
 				t.Fatal(err)
 			}
-			_ = manager.Notify(context.Background(), hook.Event{Point: hook.PointErrorOccurred})
+			_, _ = manager.Notify(context.Background(), hook.Event{Point: hook.PointErrorOccurred})
 			profiler := newStartupProfiler(time.Now())
 			profiler.SetEnabled(true)
 			profiler.Mark("test-stage")
