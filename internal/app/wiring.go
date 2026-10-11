@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -60,7 +59,7 @@ func (defaultWiringFactory) Build(ctx context.Context, req WiringRequest) (*Wiri
 	}
 	req.Profiler.Mark("builtin tools register")
 	send := func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-		return c.Platform.Dispatcher().SendNotice(ctx, delivery.Notice{Target: target, Outputs: outputs})
+		return c.Platform.Dispatcher().SendTo(ctx, target, outputs)
 	}
 	c.Hook, err = hookmodule.NewModule(ctx, hookmodule.ModuleDeps{
 		ConfigPath:      cfg.ConfigPath,
@@ -68,7 +67,6 @@ func (defaultWiringFactory) Build(ctx context.Context, req WiringRequest) (*Wiri
 		Media:           services.Media,
 		ProcessEnv:      hook.ProcessEnvironment(baseEnv),
 		PlatformCallers: c.Platform.HookCallers(),
-		Notify:          func(ctx context.Context, text string) { c.Platform.Notifications().Text(ctx, slog.LevelWarn, text) },
 		Send:            send,
 	})
 	if err != nil {
@@ -82,7 +80,6 @@ func (defaultWiringFactory) Build(ctx context.Context, req WiringRequest) (*Wiri
 		Policy:          services.Policy,
 		Media:           services.Media,
 		Dispatcher:      c.Platform.Dispatcher(),
-		Notifications:   c.Platform.Notifications(),
 		Doctor:          services.Doctor,
 		Registry:        c.Tool.Registry(),
 		ToolManager:     c.Tool.Manager(),

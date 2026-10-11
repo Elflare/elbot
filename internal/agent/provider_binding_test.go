@@ -38,7 +38,7 @@ func TestProviderAssemblyRejectsWrongNativeCapability(t *testing.T) {
 			})
 			opts := validConstructorOptions(t)
 			opts.Models = models
-			assembly := assembleTestOptions(opts)
+			assembly := assembleTestOptions(t, opts)
 			if _, err := newTestAssembly(t.Context(), assembly); err == nil || !strings.Contains(err.Error(), "api_mode") || !strings.Contains(err.Error(), "p") {
 				t.Fatalf("wrong native capability was accepted: %v", err)
 			}

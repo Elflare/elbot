@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"elbot/internal/config"
@@ -22,7 +21,6 @@ type Module struct {
 	manager         *hook.DefaultManager
 	runtime         *hookruntime.Manager
 	control         *hookcontrol.Service
-	notify          func(context.Context, string)
 	mu              sync.Mutex
 	started, closed bool
 }
@@ -36,12 +34,11 @@ func NewModule(_ context.Context, deps ModuleDeps) (*Module, error) {
 		SharedDir:  filepath.Join(config.PluginConfigDir(deps.ConfigPath), "_shared"),
 		ProcessEnv: deps.ProcessEnv,
 	})
-	notifyHookIssue, sendNotice, hookProcessEnv := deps.Notify, deps.Send, deps.ProcessEnv
+	sendChat, hookProcessEnv := deps.Send, deps.ProcessEnv
 	hookOpts := hookbuiltin.Options{
 		ConfigDir:       config.PluginConfigDir(deps.ConfigPath),
 		Tools:           deps.Registry,
-		Notify:          notifyHookIssue,
-		Send:            sendNotice,
+		Send:            sendChat,
 		PlatformCallers: deps.PlatformCallers,
 		Runtime:         hookRuntime,
 		ProcessEnv:      hookProcessEnv,
@@ -50,18 +47,13 @@ func NewModule(_ context.Context, deps ModuleDeps) (*Module, error) {
 	loadHooks := func(registrar hook.Registrar) (hook.ReloadReport, []hookruntime.Config, error) {
 		var notices []string
 		loadOpts := hookOpts
-		loadOpts.Notify = func(_ context.Context, text string) {
-			text = strings.TrimSpace(text)
-			if text != "" {
-				notices = append(notices, text)
-			}
-		}
+		loadOpts.Notices = &notices
 		configs, err := hookbuiltin.RegisterAll(registrar, loadOpts)
 		return hook.ReloadReport{Notices: notices}, configs, err
 	}
 	hookService := hookcontrol.New(hooks, hookRuntime, loadHooks)
 	hookRuntime.SetPluginReloadPreparer(hookService.PreparePluginReload)
-	return &Module{manager: hooks, runtime: hookRuntime, control: hookService, notify: deps.Notify}, nil
+	return &Module{manager: hooks, runtime: hookRuntime, control: hookService}, nil
 }
 func (m *Module) Start() error {
 	m.mu.Lock()
@@ -75,7 +67,7 @@ func (m *Module) Start() error {
 	m.started = true
 	report, err := m.control.HookReload()
 	for _, notice := range report.Notices {
-		m.notify(context.Background(), notice)
+		_, _ = globalevents.NotificationRequested.EmitAsync(context.Background(), globalevents.Notification{Text: notice, Level: slog.LevelWarn})
 	}
 	if err != nil {
 		{
@@ -95,7 +87,7 @@ func (m *Module) Start() error {
 			}
 			_ = globalevents.EmitLog(context.Background(), record)
 		}
-		m.notify(context.Background(), fmt.Sprintf("Hook 注册失败：%v", err))
+		_, _ = globalevents.NotificationRequested.EmitAsync(context.Background(), globalevents.Notification{Text: fmt.Sprintf("Hook 注册失败：%v", err), Level: slog.LevelWarn})
 	}
 
 	return nil

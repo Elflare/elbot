@@ -10,7 +10,7 @@ import (
 )
 
 func (s *Service) connectLogSignals() error {
-	connection, err := s.retrying.Connect(logModelRetry, signal.ConnectOptions{})
+	connection, err := s.retrying.Observe(logModelRetry, signal.ConnectOptions{})
 	if err != nil {
 		return err
 	}

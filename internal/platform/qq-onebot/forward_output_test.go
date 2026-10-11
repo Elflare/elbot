@@ -33,15 +33,15 @@ func TestForwardTextSendingPaths(t *testing.T) {
 					case "chat":
 						receipt, _, err = a.SendChat(ctx, outputs)
 					case "context notice":
-						receipt, _, err = a.SendNotice(ctx, delivery.Notice{Outputs: outputs})
+						receipt, _, err = a.SendTo(ctx, delivery.Target{}, outputs)
 					case "explicit notice":
 						// The explicit target must win over a different source conversation.
 						ctx = testTargetContext(qqTargetForTest("private", 777))
-						receipt, _, err = a.SendNotice(ctx, delivery.Notice{Target: delivery.Target{ScopeID: oneBotTargetScope(target)}, Outputs: outputs})
+						receipt, _, err = a.SendTo(ctx, delivery.Target{ScopeID: oneBotTargetScope(target)}, outputs)
 					case "temporary notice":
-						receipt, _, err = a.SendNotice(delivery.WithTemporaryConnection(context.Background()), delivery.Notice{Target: delivery.Target{ScopeID: oneBotTargetScope(target)}, Outputs: outputs})
+						receipt, _, err = a.SendTo(delivery.WithTemporaryConnection(context.Background()), delivery.Target{ScopeID: oneBotTargetScope(target)}, outputs)
 					case "temporary context":
-						receipt, _, err = a.SendNotice(delivery.WithTemporaryConnection(ctx), delivery.Notice{Outputs: outputs})
+						receipt, _, err = a.SendTo(delivery.WithTemporaryConnection(ctx), delivery.Target{}, outputs)
 					}
 					if err != nil {
 						t.Fatal(err)
@@ -164,7 +164,7 @@ func TestForwardAdminNoticesKeepPartialReceipts(t *testing.T) {
 			if temporary {
 				ctx = delivery.WithTemporaryConnection(ctx)
 			}
-			receipt, _, err := a.SendNotice(ctx, delivery.Notice{Target: delivery.Target{Superadmins: true}, Outputs: []delivery.Output{delivery.Text(strings.Repeat("a", 3001))}})
+			receipt, _, err := a.SendTo(ctx, delivery.Target{Superadmins: true}, []delivery.Output{delivery.Text(strings.Repeat("a", 3001))})
 			if err == nil || calls.Load() != 2 || len(receipt.PlatformMessageIDs) != 1 || len(receipt.SentMessages) != 1 || receipt.SentMessages[0].ScopeID != "private:1" {
 				t.Fatalf("receipt=%#v error=%v calls=%d", receipt, err, calls.Load())
 			}

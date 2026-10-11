@@ -20,7 +20,7 @@ func TestTextReceiptsKeepActualTarget(t *testing.T) {
 			var receipt delivery.Receipt
 			var err error
 			if explicit {
-				receipt, _, err = a.SendNotice(context.Background(), delivery.Notice{Target: delivery.Target{ScopeID: oneBotTargetScope(target)}, Outputs: []delivery.Output{delivery.Reply("old", "report")}})
+				receipt, _, err = a.SendTo(context.Background(), delivery.Target{ScopeID: oneBotTargetScope(target)}, []delivery.Output{delivery.Reply("old", "report")})
 			} else {
 				receipt, _, err = a.SendChat(ctx, []delivery.Output{delivery.Text("report")})
 			}

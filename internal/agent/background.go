@@ -40,7 +40,8 @@ func (discardSender) SendChat(ctx context.Context, outputs []delivery.Output) (d
 	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
-func (discardSender) SendNotice(context.Context, delivery.Notice) (delivery.Receipt, globalevents.LogResult, error) {
+func (discardSender) NotificationsSuppressed() bool { return true }
+func (discardSender) SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 

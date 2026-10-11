@@ -28,7 +28,7 @@ func newPlatformEventAgent(t *testing.T, handler hook.HandlerFunc) *agentFixture
 
 func emitPlatformConnection(t *testing.T, ctx context.Context, name string) {
 	t.Helper()
-	if err := globalevents.PlatformConnected.Emit(ctx, globalevents.PlatformConnectedEvent{Platform: name}); err != nil {
+	if _, err := globalevents.PlatformConnected.Emit(ctx, globalevents.PlatformConnectedEvent{Platform: name}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -68,7 +68,7 @@ func TestGlobalPlatformHooksIsolatePlatformsAndCancelPending(t *testing.T) {
 		}
 	}
 	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), valueKey{}, "retained"))
-	cancel()
+	defer cancel()
 	emitPlatformConnection(t, ctx, "one")
 	awaitPlatformEvent(t, started)
 	emitPlatformConnection(t, ctx, "one") // Pending work must be discarded on close.
@@ -202,7 +202,7 @@ func TestPlatformHookParentCancellationAndConcurrentClose(t *testing.T) {
 				go func() {
 					defer wg.Done()
 					for range 50 {
-						if err := globalevents.PlatformConnected.Emit(context.Background(), globalevents.PlatformConnectedEvent{Platform: "one"}); err != nil {
+						if _, err := globalevents.PlatformConnected.Emit(context.Background(), globalevents.PlatformConnectedEvent{Platform: "one"}); err != nil {
 							t.Error(err)
 						}
 					}
@@ -225,11 +225,11 @@ func TestPlatformHookParentCancellationAndConcurrentClose(t *testing.T) {
 
 type platformOutputSender struct {
 	fakePlatform
-	sent chan delivery.Notice
+	sent chan []delivery.Output
 }
 
-func (p *platformOutputSender) SendNotice(_ context.Context, notice delivery.Notice) (delivery.Receipt, globalevents.LogResult, error) {
-	p.sent <- notice
+func (p *platformOutputSender) SendTo(_ context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+	p.sent <- noticeOutputs
 	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 func TestGlobalPlatformHookSendsOutput(t *testing.T) {
@@ -240,7 +240,7 @@ func TestGlobalPlatformHookSendsOutput(t *testing.T) {
 	})}); err != nil {
 		t.Fatal(err)
 	}
-	p := &platformOutputSender{sent: make(chan delivery.Notice, 2)}
+	p := &platformOutputSender{sent: make(chan []delivery.Output, 2)}
 	a := newTestAgent(t, p, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(opts *testAgentOptions) { opts.HookManager = manager })
 	if err := a.StartPlatformEvents(t.Context()); err != nil {
 		t.Fatal(err)
@@ -249,7 +249,7 @@ func TestGlobalPlatformHookSendsOutput(t *testing.T) {
 		emitPlatformConnection(t, context.Background(), "cli")
 		select {
 		case notice := <-p.sent:
-			if delivery.FallbackOutput(notice.Outputs).Text != "connected" {
+			if delivery.FallbackOutput(notice).Text != "connected" {
 				t.Fatalf("notice=%#v", notice)
 			}
 		case <-time.After(time.Second):
@@ -259,18 +259,29 @@ func TestGlobalPlatformHookSendsOutput(t *testing.T) {
 }
 
 func TestPlatformConsumersRejectCapturedSnapshotAfterClose(t *testing.T) {
-	captured, release := make(chan struct{}), make(chan struct{})
+	captured, release := make(chan struct{}, 8), make(chan struct{})
 	var releaseOnce sync.Once
-	// Registration order pauses Emit after its snapshot includes both consumers.
-	barrier, err := globalevents.PlatformConnected.Connect(func(context.Context, globalevents.PlatformConnectedEvent) error {
-		close(captured)
-		<-release
+	// Occupy every execution slot; registration order does not serialize callbacks.
+	barrier, err := globalevents.PlatformConnected.Observe(func(_ context.Context, e globalevents.PlatformConnectedEvent) error {
+		if e.Platform == "barrier" {
+			captured <- struct{}{}
+			<-release
+		}
 		return nil
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer barrier.Disconnect()
+	defer releaseOnce.Do(func() { close(release) })
+	for range 8 {
+		if _, err := globalevents.PlatformConnected.EmitAsync(context.Background(), globalevents.PlatformConnectedEvent{Platform: "barrier"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for range 8 {
+		awaitPlatformEvent(t, captured)
+	}
 	var hookCalls atomic.Int32
 	a := newPlatformEventAgent(t, func(_ context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
 		hookCalls.Add(1)
@@ -286,11 +297,10 @@ func TestPlatformConsumersRejectCapturedSnapshotAfterClose(t *testing.T) {
 	if err := cron.StartPlatformEvents(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	emitted := make(chan error, 1)
-	go func() {
-		emitted <- globalevents.PlatformConnected.Emit(context.Background(), globalevents.PlatformConnectedEvent{Platform: "late"})
-	}()
-	awaitPlatformEvent(t, captured)
+	emitted, err := globalevents.PlatformConnected.EmitAsync(context.Background(), globalevents.PlatformConnectedEvent{Platform: "late"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	if err := a.Close(ctx); err != nil {
@@ -300,13 +310,8 @@ func TestPlatformConsumersRejectCapturedSnapshotAfterClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	releaseOnce.Do(func() { close(release) })
-	select {
-	case err := <-emitted:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-ctx.Done():
-		t.Fatal("late snapshot did not return")
+	if _, err := emitted.Wait(ctx); err != nil {
+		t.Fatal(err)
 	}
 	if hookCalls.Load() != 0 {
 		t.Fatal("late snapshot started Hook")

@@ -64,7 +64,7 @@ func TestExecProtocolKeepsSendCancellationAndIndependentWriteFailure(t *testing.
 func collectRecords(t *testing.T) *[]events.LogRecord {
 	t.Helper()
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 		if record.Module == "hook" {
 			records = append(records, record)
 		}
@@ -237,7 +237,7 @@ func TestExecProtocolFailureKeepsFullTextDiagnostic(t *testing.T) {
 func TestExecHostCancellationAfterResponse(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 		if record.EventName == "hook_exec_stderr" && strings.Contains(record.Content, "waiting after response") {
 			cancel()
 		}

@@ -56,7 +56,7 @@ func TestPartialTextSendKeepsReceiptWithoutRestartingFallback(t *testing.T) {
 			defer server.Close()
 			adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: format}, nil, nil)
 			ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ConversationKind: contextinfo.ConversationGroup, ConversationID: "-19", ScopeID: "group:-19"}})
-			receipt, _, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(strings.Repeat("a", telegramRichTextRunes+1))}})
+			receipt, _, err := adapter.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(strings.Repeat("a", telegramRichTextRunes+1))})
 			if err == nil || len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "71" || calls != 2 {
 				t.Fatalf("receipt=%#v error=%v calls=%d", receipt, err, calls)
 			}
@@ -445,7 +445,7 @@ func TestRunPublishesGlobalConnectionsOnReconnect(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	calls := 0
-	connection, err := globalevents.PlatformConnected.Connect(func(_ context.Context, e globalevents.PlatformConnectedEvent) error {
+	connection, err := globalevents.PlatformConnected.Observe(func(_ context.Context, e globalevents.PlatformConnectedEvent) error {
 		if e.Platform != "telegram" {
 			t.Errorf("platform=%q", e.Platform)
 		}

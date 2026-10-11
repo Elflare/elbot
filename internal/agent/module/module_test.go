@@ -11,7 +11,6 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
-	"elbot/internal/notification"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -46,7 +45,7 @@ func isolatedModuleDeps(t *testing.T) ModuleDeps {
 	registry := tool.NewRegistry()
 	policy := security.DefaultPolicy()
 	sender := dispatch.New(dispatch.Options{Primary: &assemblyPlatform{}, Store: store})
-	return ModuleDeps{PlatformName: "cli", Store: store, Models: models, Policy: policy, Dispatcher: sender, Notifications: notification.New(sender, false), Registry: registry, ToolManager: toolrun.NewManager(registry, policy), Preloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}), ToolState: toolrun.NewStateService(store), Files: fileops.NewService(nil), Session: config.SessionConfig{DefaultMode: "work", Naming: config.SessionNamingConfig{TriggerStep: 100}}, MaxRounds: 2, Prefixes: []string{"/"}, PageSize: 10}
+	return ModuleDeps{PlatformName: "cli", Store: store, Models: models, Policy: policy, Dispatcher: sender, Registry: registry, ToolManager: toolrun.NewManager(registry, policy), Preloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}), ToolState: toolrun.NewStateService(store), Files: fileops.NewService(nil), Session: config.SessionConfig{DefaultMode: "work", Naming: config.SessionNamingConfig{TriggerStep: 100}}, MaxRounds: 2, Prefixes: []string{"/"}, PageSize: 10}
 }
 func TestStandaloneDialogueOwnsStateAndBorrowsOnlyCapabilities(t *testing.T) {
 	deps := isolatedModuleDeps(t)

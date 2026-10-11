@@ -25,7 +25,9 @@ type BindingChangedEvent struct {
 	Reason ChangeReason
 }
 
-func (s *Service) BindingChanged() *signal.Signal[BindingChangedEvent] { return s.changed }
+func (s *Service) BindingChanged() *signal.Signal[BindingChangedEvent, signal.Empty] {
+	return s.changed
+}
 
 func (s *Service) setCurrent(ctx context.Context, scope Scope, id string, reason ChangeReason) {
 	s.mu.Lock()

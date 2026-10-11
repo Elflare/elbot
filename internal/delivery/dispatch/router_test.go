@@ -15,22 +15,22 @@ import (
 )
 
 type testSender struct {
-	send func(context.Context, delivery.Notice) (delivery.Receipt, events.LogResult, error)
+	send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
 }
 
 func (s testSender) Name() string                                        { return "primary" }
 func (s testSender) Run(context.Context, platform.PlatformHandler) error { return nil }
 func (s testSender) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-	return s.send(ctx, delivery.Notice{Outputs: outputs})
+	return s.send(ctx, delivery.Target{}, outputs)
 }
-func (s testSender) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, events.LogResult, error) {
-	return s.send(ctx, notice)
+func (s testSender) SendTo(ctx context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	return s.send(ctx, noticeTarget, noticeOutputs)
 }
 
 func TestRouterPreservesConcurrentSourceSnapshots(t *testing.T) {
 	var mu sync.Mutex
 	seen := map[string]contextinfo.Conversation{}
-	sender := testSender{send: func(ctx context.Context, notice delivery.Notice) (delivery.Receipt, events.LogResult, error) {
+	sender := testSender{send: func(ctx context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		info, ok := contextinfo.ConversationFromContext(ctx)
 		if !ok {
 			{
@@ -47,7 +47,7 @@ func TestRouterPreservesConcurrentSourceSnapshots(t *testing.T) {
 			}
 		}
 		mu.Lock()
-		seen[notice.Outputs[0].Text] = info
+		seen[noticeOutputs[0].Text] = info
 		mu.Unlock()
 		return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	}}
@@ -61,7 +61,7 @@ func TestRouterPreservesConcurrentSourceSnapshots(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			ctx := contextinfo.WithConversation(context.Background(), info)
-			if _, _, err := router.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(id)}}); err != nil {
+			if _, _, err := router.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(id)}); err != nil {
 				t.Error(err)
 			}
 		}()
@@ -80,10 +80,10 @@ func TestRouterPreservesConcurrentSourceSnapshots(t *testing.T) {
 func TestRouterExplicitTargetOverridesSenderAndKeepsPartialReceipt(t *testing.T) {
 	wantErr := errors.New("second output failed")
 	primaryCalls, overrideCalls := 0, 0
-	primary := testSender{send: func(_ context.Context, n delivery.Notice) (delivery.Receipt, events.LogResult, error) {
+	primary := testSender{send: func(_ context.Context, nTarget delivery.Target, nOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		primaryCalls++
-		if n.Target.PrivateUserID != "other" {
-			t.Fatalf("target lost: %#v", n.Target)
+		if nTarget.PrivateUserID != "other" {
+			t.Fatalf("target lost: %#v", nTarget)
 		}
 		{
 			logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
@@ -97,19 +97,19 @@ func TestRouterExplicitTargetOverridesSenderAndKeepsPartialReceipt(t *testing.T)
 			return delivery.Receipt{PlatformMessageIDs: []string{"sent"}}, logResult, wantErr
 		}
 	}}
-	override := testSender{send: func(_ context.Context, n delivery.Notice) (delivery.Receipt, events.LogResult, error) {
+	override := testSender{send: func(_ context.Context, nTarget delivery.Target, nOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		overrideCalls++
-		if !n.Target.Empty() {
+		if !nTarget.Empty() {
 			t.Fatal("default target became explicit")
 		}
 		return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	}}
 	router := New(Options{Primary: primary})
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Sender: override})
-	if _, _, err := router.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("reply")}}); err != nil {
+	if _, _, err := router.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("reply")}); err != nil {
 		t.Fatal(err)
 	}
-	got, logResult, err := router.SendNotice(ctx, delivery.Notice{Target: delivery.Target{PrivateUserID: "other"}, Outputs: []delivery.Output{delivery.Text("explicit")}})
+	got, logResult, err := router.SendTo(ctx, delivery.Target{PrivateUserID: "other"}, []delivery.Output{delivery.Text("explicit")})
 	if !errors.Is(err, wantErr) || logResult.ResultStatus != events.ResultFailed || !strings.Contains(logResult.Content, wantErr.Error()) || len(got.PlatformMessageIDs) != 1 || primaryCalls != 1 || overrideCalls != 1 {
 		t.Fatalf("receipt=%#v error=%v calls=%d/%d", got, err, primaryCalls, overrideCalls)
 	}

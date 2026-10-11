@@ -8,4 +8,4 @@ type PlatformConnectedEvent struct{ Platform string }
 
 // PlatformConnected is stable for the process lifetime and does not replay events.
 // Publishers emit directly; consumers own their subscriptions and execution.
-var PlatformConnected = signal.New[PlatformConnectedEvent]("platform.connected")
+var PlatformConnected = signal.New[PlatformConnectedEvent, signal.Empty]("platform.connected")

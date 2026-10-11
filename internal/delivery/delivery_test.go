@@ -4,15 +4,14 @@ import (
 	"context"
 	"elbot/internal/events"
 	"errors"
-	"log/slog"
 	"strings"
 	"testing"
 )
 
 type fakeSender struct {
-	chats   [][]Output
-	notices []Notice
-	err     error
+	chats    [][]Output
+	targeted [][]Output
+	err      error
 }
 
 func (s *fakeSender) SendChat(_ context.Context, outputs []Output) (Receipt, events.LogResult, error) {
@@ -32,7 +31,7 @@ func (s *fakeSender) SendChat(_ context.Context, outputs []Output) (Receipt, eve
 	s.chats = append(s.chats, outputs)
 	return Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
-func (s *fakeSender) SendNotice(_ context.Context, notice Notice) (Receipt, events.LogResult, error) {
+func (s *fakeSender) SendTo(_ context.Context, noticeTarget Target, noticeOutputs []Output) (Receipt, events.LogResult, error) {
 	if s.err != nil {
 		{
 			logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
@@ -46,13 +45,13 @@ func (s *fakeSender) SendNotice(_ context.Context, notice Notice) (Receipt, even
 			return Receipt{}, logResult, s.err
 		}
 	}
-	if !notice.Target.Empty() {
-		notice.Outputs = append([]Output(nil), notice.Outputs...)
-		for i := range notice.Outputs {
-			notice.Outputs[i].Target = notice.Target
+	if !noticeTarget.Empty() {
+		noticeOutputs = append([]Output(nil), noticeOutputs...)
+		for i := range noticeOutputs {
+			noticeOutputs[i].Target = noticeTarget
 		}
 	}
-	s.notices = append(s.notices, notice)
+	s.targeted = append(s.targeted, noticeOutputs)
 	return Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
@@ -115,28 +114,28 @@ func TestManagerSendsChat(t *testing.T) {
 	}
 }
 
-func TestManagerSendsNotices(t *testing.T) {
+func TestManagerSendsTargetedChat(t *testing.T) {
 	sender := &fakeSender{}
 	manager := NewManager(sender)
 	image := ImagePath("pic.png")
 	image.Name = "pic"
-	if err := manager.SendNotices(context.Background(), []Output{{Kind: KindText, Text: "hello"}, image}); err != nil {
+	if _, _, err := manager.SendTo(context.Background(), Target{}, []Output{{Kind: KindText, Text: "hello"}, image}); err != nil {
 		t.Fatalf("SendNotices: %v", err)
 	}
-	if len(sender.notices) != 1 || sender.notices[0].Level != slog.LevelInfo || len(sender.notices[0].Outputs) != 2 || sender.notices[0].Outputs[0].Text != "hello" || sender.notices[0].Outputs[1].Name != "pic" {
-		t.Fatalf("notices = %#v", sender.notices)
+	if len(sender.targeted) != 1 || len(sender.targeted[0]) != 2 || sender.targeted[0][0].Text != "hello" || sender.targeted[0][1].Name != "pic" {
+		t.Fatalf("targeted = %#v", sender.targeted)
 	}
 }
 
-func TestManagerPreservesNoticeLevel(t *testing.T) {
+func TestManagerPreservesChatTarget(t *testing.T) {
 	sender := &fakeSender{}
 	manager := NewManager(sender)
-	notice := Notice{Outputs: []Output{Text("careful")}, Level: slog.LevelWarn}
-	if _, _, err := manager.SendNotice(context.Background(), notice); err != nil {
+	noticeTarget, noticeOutputs := Target{Platform: "cli", PrivateUserID: "one"}, []Output{Text("careful")}
+	if _, _, err := manager.SendTo(context.Background(), noticeTarget, noticeOutputs); err != nil {
 		t.Fatalf("SendNotice: %v", err)
 	}
-	if len(sender.notices) != 1 || sender.notices[0].Level != slog.LevelWarn {
-		t.Fatalf("notices = %#v", sender.notices)
+	if len(sender.targeted) != 1 || sender.targeted[0][0].Target != noticeTarget {
+		t.Fatalf("targeted = %#v", sender.targeted)
 	}
 }
 func TestManagerWrapsNoticeOutputErrorWithHookName(t *testing.T) {
@@ -144,14 +143,14 @@ func TestManagerWrapsNoticeOutputErrorWithHookName(t *testing.T) {
 	sender := &fakeSender{err: boom}
 	manager := NewManager(sender)
 	err := func() error {
-		_, _, err := manager.SendNotice(context.Background(), Notice{Target: Target{Platform: "qqonebot", PrivateUserID: "123"}, Outputs: []Output{{
+		_, _, err := manager.SendTo(context.Background(), Target{Platform: "qqonebot", PrivateUserID: "123"}, []Output{{
 			Kind: KindText,
 			Text: "hello",
 			Meta: map[string]any{
 				MetaHookName:  "notify.connected",
 				MetaHookPoint: "platform.connected",
 			},
-		}}})
+		}})
 		return err
 	}()
 	if !errors.Is(err, boom) {
@@ -167,7 +166,7 @@ type independentNoticeSender struct {
 	logResult events.LogResult
 }
 
-func (s independentNoticeSender) SendNotice(context.Context, Notice) (Receipt, events.LogResult, error) {
+func (s independentNoticeSender) SendTo(context.Context, Target, []Output) (Receipt, events.LogResult, error) {
 	return Receipt{PlatformMessageIDs: []string{"sent"}}, s.logResult, s.err
 }
 
@@ -184,7 +183,7 @@ func TestManagerKeepsBusinessErrorIndependentOfLogResult(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			source := events.LogResult{ResultStatus: tc.status, Content: "source declared body"}
 			manager := NewManager(&independentNoticeSender{fakeSender: fakeSender{err: tc.err}, logResult: source})
-			receipt, logResult, err := manager.SendNotice(context.Background(), Notice{Outputs: []Output{Text("hello")}})
+			receipt, logResult, err := manager.SendTo(context.Background(), Target{}, []Output{Text("hello")})
 			if err != tc.err || logResult != source || len(receipt.PlatformMessageIDs) != 1 {
 				t.Fatalf("receipt=%#v log result=%#v error=%v", receipt, logResult, err)
 			}

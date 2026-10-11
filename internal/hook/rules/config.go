@@ -251,12 +251,17 @@ func reportPluginConfigError(ctx context.Context, opts Options, name, path strin
 		hook.LogHook(ctx, record)
 	}
 
-	if opts.Notify != nil {
+	{
 		label := strings.TrimSpace(name)
 		if label == "" {
 			label = path
 		}
-		opts.Notify(ctx, fmt.Sprintf("Hook 插件 %s 已跳过：%v", label, err))
+		text := fmt.Sprintf("Hook 插件 %s 已跳过：%v", label, err)
+		if opts.Notices != nil {
+			*opts.Notices = append(*opts.Notices, text)
+		} else {
+			_, _ = globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
+		}
 	}
 }
 
@@ -290,12 +295,17 @@ func reportPluginConfigWarning(ctx context.Context, opts Options, name, path, me
 		hook.LogHook(ctx, record)
 	}
 
-	if opts.Notify != nil {
+	{
 		label := strings.TrimSpace(name)
 		if label == "" {
 			label = path
 		}
-		opts.Notify(ctx, fmt.Sprintf("Hook 插件 %s 警告：%s", label, message))
+		text := fmt.Sprintf("Hook 插件 %s 警告：%s", label, message)
+		if opts.Notices != nil {
+			*opts.Notices = append(*opts.Notices, text)
+		} else {
+			_, _ = globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
+		}
 	}
 }
 
@@ -330,8 +340,11 @@ func reportConfigError(ctx context.Context, opts Options, path string, err error
 		hook.LogHook(ctx, record)
 	}
 
-	if opts.Notify != nil {
-		opts.Notify(ctx, fmt.Sprintf("Hook rules 配置错误：%v", err))
+	text := fmt.Sprintf("Hook rules 配置错误：%v", err)
+	if opts.Notices != nil {
+		*opts.Notices = append(*opts.Notices, text)
+	} else {
+		_, _ = globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
 	}
 }
 

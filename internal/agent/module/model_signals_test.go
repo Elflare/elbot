@@ -15,7 +15,6 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
-	"elbot/internal/notification"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 )
@@ -58,13 +57,13 @@ type retryNoticePlatform struct {
 	retryNotices chan string
 }
 
-func (p *retryNoticePlatform) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, events.LogResult, error) {
-	text := delivery.FallbackOutput(notice.Outputs).Text
+func (p *retryNoticePlatform) SendTo(ctx context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	text := delivery.FallbackOutput(noticeOutputs).Text
 	if strings.Contains(text, "正在重试") {
 		info, _ := contextinfo.ConversationFromContext(ctx)
 		p.retryNotices <- info.Source.ScopeID
 	}
-	return p.assemblyPlatform.SendNotice(ctx, notice)
+	return p.assemblyPlatform.SendTo(ctx, noticeTarget, noticeOutputs)
 }
 
 func TestSharedRetrySubscriptionCoversChatCompactAndNaming(t *testing.T) {
@@ -80,7 +79,7 @@ func TestSharedRetrySubscriptionCoversChatCompactAndNaming(t *testing.T) {
 	defer models.Close()
 	deps.Models = models
 	deps.Dispatcher = dispatch.New(dispatch.Options{Primary: p, Store: deps.Store})
-	deps.Notifications = notification.New(deps.Dispatcher, false)
+	connectTestNotifications(t, deps.Dispatcher)
 	runtime, err := NewModule(t.Context(), deps)
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
 	if err != nil {
@@ -133,29 +132,12 @@ func TestSharedRetrySubscriptionCoversChatCompactAndNaming(t *testing.T) {
 	if len(p.retryNotices) != 0 {
 		t.Fatal("duplicate retries")
 	}
-	// Delay a retry until its own call finishes while the parent remains alive.
-	// Hold every observer queue so this barrier does not depend on assembly order.
-	releases := make([]func(), 0, len(runtime.bindings.queues))
-	for _, queue := range runtime.bindings.queues {
-		releases = append(releases, holdObserverQueue(t, queue))
-	}
-	stream, err := deps.Models.ClientForProvider("p").(chatcompletions.Streamer).Stream(ctx, chatcompletions.Request{Model: "m"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	call := <-model.calls
-	close(call.release)
-	for range stream {
-	}
-	<-call.ctx.Done()
+	// A retry belonging to a finished call must not reach a platform.
+	finished, cancel := context.WithCancel(ctx)
+	cancel()
+	model.notify(finished, llm.RetryEvent{Attempt: 1, MaxRetries: 2, Err: errors.New("retryable")})
 	if ctx.Err() != nil {
 		t.Fatal("test canceled parent instead of call")
-	}
-	for _, release := range releases {
-		release()
-	}
-	for _, queue := range runtime.bindings.queues {
-		flushObserverQueue(t, queue)
 	}
 	if len(p.retryNotices) != 0 {
 		t.Fatal("finished call displayed stale retry")

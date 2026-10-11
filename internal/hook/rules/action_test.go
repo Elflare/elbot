@@ -226,7 +226,7 @@ func TestRuleToolAuditOutcome(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var records []events.LogRecord
-			connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error { records = append(records, record); return nil }, signal.ConnectOptions{})
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error { records = append(records, record); return nil }, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)
 			}

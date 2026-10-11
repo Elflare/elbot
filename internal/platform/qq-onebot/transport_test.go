@@ -247,7 +247,7 @@ func TestAdapterPublishesGlobalConnectionsOnReconnect(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	calls := 0
-	connection, err := globalevents.PlatformConnected.Connect(func(_ context.Context, e globalevents.PlatformConnectedEvent) error {
+	connection, err := globalevents.PlatformConnected.Observe(func(_ context.Context, e globalevents.PlatformConnectedEvent) error {
 		if e.Platform != "qqonebot" {
 			t.Errorf("platform=%q", e.Platform)
 		}

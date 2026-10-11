@@ -42,7 +42,7 @@ func TestTextReportMapsRealTelegramPartialReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc := NewService(Options{Store: store, SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-		return router.SendNotice(ctx, delivery.Notice{Target: target, Outputs: outputs})
+		return router.SendTo(ctx, target, outputs)
 	}})
 	_, err := svc.sendOutputsToPlatformTarget(ctx, "task", "telegram", delivery.Target{Platform: "telegram", Superadmins: true}, []delivery.Output{delivery.Text("report")}, row.ID, "report")
 	if err == nil {

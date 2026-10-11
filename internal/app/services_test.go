@@ -43,8 +43,8 @@ func (p *assemblyPlatform) SendChat(_ context.Context, outputs []delivery.Output
 	p.outputs = append(p.outputs, delivery.FallbackOutput(outputs).Text)
 	return delivery.Receipt{PlatformMessageIDs: []string{fmt.Sprint(len(p.outputs))}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
-func (p *assemblyPlatform) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, events.LogResult, error) {
-	return p.SendChat(ctx, notice.Outputs)
+func (p *assemblyPlatform) SendTo(ctx context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	return p.SendChat(ctx, noticeOutputs)
 }
 func (p *assemblyPlatform) SetCommandCatalog(infos []command.Info)   { p.catalog = infos }
 func (p *assemblyPlatform) SetCompleter(service *completion.Service) { p.completer = service }

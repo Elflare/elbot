@@ -39,10 +39,10 @@ func (p *statusReadingPlatform) SetRuntimeStatus(_ context.Context, sent runtime
 }
 
 func TestComponentStatusRecordedBeforeDisplayAndBackgroundStaysSilent(t *testing.T) {
-	recorder := &StatusRecorder{changed: signal.New[agentevents.StatusChangedEvent]("test.status")}
+	recorder := &StatusRecorder{changed: signal.New[agentevents.StatusChangedEvent, signal.Empty]("test.status")}
 	p := &statusReadingPlatform{recorder: recorder, observed: make(chan runtimestatus.Snapshot, 2)}
 	foreground := foregroundTurnOutput{sender: &OutputSender{dispatcher: dispatch.New(dispatch.Options{Primary: p})}, status: recorder}
-	_, err := recorder.changed.Connect(func(ctx context.Context, event agentevents.StatusChangedEvent) error {
+	_, err := recorder.changed.Observe(func(ctx context.Context, event agentevents.StatusChangedEvent) error {
 		if event.Display {
 			return foreground.sender.(*OutputSender).dispatcher.SetRuntimeStatus(ctx, event.Snapshot)
 		}
@@ -135,11 +135,11 @@ func TestHookFailureIsRecordedOnceAndStillNotifies(t *testing.T) {
 		t.Fatal(err)
 	}
 	records := make(chan globalevents.LogRecord, 32)
-	connection, _ := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error { records <- record; return nil }, signal.ConnectOptions{})
+	connection, _ := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error { records <- record; return nil }, signal.ConnectOptions{})
 	defer connection.Disconnect()
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) { cfg.HookManager = manager })
 	facts := 0
-	_, _ = a.Signals().HookFailed.Connect(func(context.Context, agentevents.HookFailedEvent) error { facts++; return nil }, signal.ConnectOptions{})
+	_, _ = a.Signals().HookFailed.Observe(func(context.Context, agentevents.HookFailedEvent) error { facts++; return nil }, signal.ConnectOptions{})
 	a.hooks.Notify(context.Background(), hook.Event{Point: hook.PointErrorOccurred})
 	count := 0
 	for len(records) > 0 {
@@ -203,7 +203,7 @@ func TestMigratedComponentsPublishFactsWithoutLogger(t *testing.T) {
 		t.Fatal(err)
 	}
 	counts := map[string]int{}
-	connection, err := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
 		if record.Category != globalevents.LogRuntime || record.Identity.SessionID == nil || *record.Identity.SessionID != row.ID {
 			return nil
 		}
@@ -219,7 +219,7 @@ func TestMigratedComponentsPublishFactsWithoutLogger(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer connection.Disconnect()
-	_, _ = a.signals.ModelCallCompleted.Connect(func(context.Context, agentevents.ModelCallCompletedEvent) error { counts["model"]++; return nil }, signal.ConnectOptions{})
+	_, _ = a.signals.ModelCallCompleted.Observe(func(context.Context, agentevents.ModelCallCompletedEvent) error { counts["model"]++; return nil }, signal.ConnectOptions{})
 	out := foregroundTurnOutput{sender: a.output, status: a.status}
 	if _, err := a.dialogue.PrepareTurn(ctx, dialogue.TurnInput{Session: row, Text: "input", Selection: modelmgr.SelectionForTurn(ctx, a.execution.models, row)}); err != nil {
 		t.Fatal(err)

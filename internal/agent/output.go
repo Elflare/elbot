@@ -14,18 +14,16 @@ import (
 	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
-	"elbot/internal/notification"
 )
 
 type OutputSender struct {
-	dispatcher    *dispatch.Router
-	notifications *notification.Manager
-	hooks         dialogue.Hooks
-	identity      dialogue.Identity
+	dispatcher *dispatch.Router
+	hooks      dialogue.Hooks
+	identity   dialogue.Identity
 }
 
 func (o *OutputSender) SendOutputs(ctx context.Context, outputs []delivery.Output) (globalevents.LogResult, error) {
-	_, logResult, err := o.dispatcher.SendNotice(ctx, delivery.Notice{Outputs: outputs})
+	_, logResult, err := o.dispatcher.SendTo(ctx, delivery.Target{}, outputs)
 	if len(outputs) > 0 || err != nil {
 		// This source records only the send operation, never the overall tool result.
 		record := globalevents.LogRecord{
@@ -65,8 +63,8 @@ func (o *OutputSender) SendChat(ctx context.Context, text string) {
 	_, _, _ = o.SendAssistant(ctx, text)
 }
 
-func (o *OutputSender) SendNotice(ctx context.Context, notice delivery.Notice) error {
-	_, _, err := o.dispatcher.SendNotice(ctx, notice)
+func (o *OutputSender) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) error {
+	_, _, err := o.dispatcher.SendTo(ctx, target, outputs)
 	return err
 }
 
@@ -131,8 +129,11 @@ func (o *OutputSender) SendAssistant(ctx context.Context, text string) (delivery
 	return receipt, logResult, nil
 }
 
-func (o *OutputSender) TextNotice(ctx context.Context, level slog.Level, text string) {
-	o.notifications.Text(ctx, level, text)
+func (o *OutputSender) Notify(ctx context.Context, level slog.Level, text string) {
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+	_, _ = globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, level, text))
 }
 
 func (o *OutputSender) Preview(ctx context.Context, text string) {
@@ -149,8 +150,7 @@ func (o *OutputSender) Preview(ctx context.Context, text string) {
 		return
 	}
 	preview := formatToolPreview(body)
-	o.dispatcher.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text(preview)}, Level: slog.LevelDebug})
-	o.hooks.Notify(ctx, hook.Event{Point: hook.PointPlatformMessageSent, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(preview)}})
+	o.Notify(ctx, slog.LevelDebug, preview)
 }
 
 func formatToolPreview(text string) string {
@@ -262,9 +262,6 @@ func NewOutputSender(deps OutputSenderDeps) (*OutputSender, error) {
 	if deps.Dispatcher == nil {
 		return nil, fmt.Errorf("OutputSender dispatcher is required")
 	}
-	if deps.Notifications == nil {
-		return nil, fmt.Errorf("OutputSender notifications is required")
-	}
 	if deps.Hooks == nil {
 		return nil, fmt.Errorf("OutputSender hooks is required")
 	}
@@ -272,9 +269,8 @@ func NewOutputSender(deps OutputSenderDeps) (*OutputSender, error) {
 		return nil, fmt.Errorf("OutputSender identity is required")
 	}
 	return &OutputSender{
-		dispatcher:    deps.Dispatcher,
-		notifications: deps.Notifications,
-		hooks:         deps.Hooks,
-		identity:      deps.Identity,
+		dispatcher: deps.Dispatcher,
+		hooks:      deps.Hooks,
+		identity:   deps.Identity,
 	}, nil
 }

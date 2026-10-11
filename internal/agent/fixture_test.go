@@ -107,6 +107,7 @@ func (a *agentFixture) ObserveHookRun(ctx context.Context, event hook.Event, inf
 func (a *agentFixture) Scope(ctx context.Context) session.Scope { return a.identity.Scope(ctx) }
 
 func (a *agentFixture) HandleMessage(ctx context.Context, text string) error {
+	ctx = context.WithValue(ctx, fixtureNotificationRouteKey{}, a.output.dispatcher)
 	return a.message.HandleMessage(ctx, text)
 }
 
@@ -156,7 +157,7 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 	if err != nil {
 		return nil, err
 	}
-	output, err := NewOutputSender(OutputSenderDeps{Dispatcher: opts.Dispatcher, Notifications: opts.Notifications, Hooks: hooks, Identity: identity})
+	output, err := NewOutputSender(OutputSenderDeps{Dispatcher: opts.Dispatcher, Hooks: hooks, Identity: identity})
 	if err != nil {
 		return nil, err
 	}

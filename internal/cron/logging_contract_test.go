@@ -30,7 +30,7 @@ func TestDeliveryUsesSourceFailureWithSuccessfulBusinessReturn(t *testing.T) {
 		return delivery.Receipt{PlatformMessageIDs: []string{"received"}}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "one destination failed"}, nil
 	}})
 	var records []globalevents.LogRecord
-	connection, err := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
 		if record.EventName == "cron.send_failed" || record.EventName == "cron.send_completed" {
 			records = append(records, record)
 		}
@@ -68,7 +68,7 @@ func TestHandlerUsesDeclaredDeliveryResult(t *testing.T) {
 				return delivery.Receipt{PlatformMessageIDs: []string{"received"}}, globalevents.LogResult{ResultStatus: tc.status, Content: "source delivery diagnostic"}, tc.err
 			}})
 			var records []globalevents.LogRecord
-			connection, err := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+			connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
 				if record.EventName == "cron.trigger_failed" || record.EventName == "cron_trigger_failed" || record.EventName == "cron.trigger_completed" || record.EventName == "cron_trigger_completed" {
 					records = append(records, record)
 				}
@@ -138,7 +138,7 @@ func TestRunJobLogsFinalResultAfterStateSave(t *testing.T) {
 				t.Fatal(err)
 			}
 			var final []globalevents.LogRecord
-			connection, err := globalevents.LogSubmitted.Connect(func(_ context.Context, record globalevents.LogRecord) error {
+			connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
 				if record.EventName == "cron_job_completed" || record.EventName == "cron_job_failed" {
 					if !repo.saved {
 						t.Error("final result emitted before state save")

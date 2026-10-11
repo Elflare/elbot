@@ -21,7 +21,7 @@ func (c *retryClient) SetRetryNotifier(fn func(context.Context, llm.RetryEvent))
 
 func TestRetryLogsWithoutNotificationSubscriber(t *testing.T) {
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 		records = append(records, record)
 		return nil
 	}, signal.ConnectOptions{})

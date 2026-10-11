@@ -60,7 +60,7 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 				return ctx, nil
 			}}
 			var records []events.LogRecord
-			connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error {
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 				if record.Module == "toolrun" && record.EventName == "tool_call" {
 					records = append(records, record)
 				}
@@ -142,7 +142,7 @@ func TestRunnerRecordsInvocationBeforeCancellationStopsLaterOperations(t *testin
 	}
 	manager := NewManager(registry, security.NewPolicy("high", "high", nil))
 	var calls []events.LogRecord
-	connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 		if record.EventName == "tool_call" && record.Category == events.LogAudit {
 			calls = append(calls, record)
 		}
@@ -162,7 +162,7 @@ func TestRunnerRecordsInvocationBeforeCancellationStopsLaterOperations(t *testin
 func TestRunnerRecordsUnenteredCallFailure(t *testing.T) {
 	manager := NewManager(tool.NewRegistry(), security.DefaultPolicy())
 	var calls []events.LogRecord
-	connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 		if record.EventName == "tool_call" && record.Category == events.LogAudit {
 			calls = append(calls, record)
 		}
@@ -183,7 +183,7 @@ func TestRunnerPreservesExplicitEmptySessionIdentity(t *testing.T) {
 	ctx := contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "context-only-session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"})
 	manager := NewManager(tool.NewRegistry(), security.DefaultPolicy())
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 		if record.Module == "toolrun" {
 			records = append(records, record)
 		}
@@ -271,7 +271,7 @@ func TestRunnerBatchFailureDoesNotInventToolCompletions(t *testing.T) {
 	manager := NewManager(tool.NewRegistry(), security.NewPolicy("high", "high", nil))
 	committer := &loggingCommitter{beginErr: errors.New("batch save failed")}
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Connect(func(_ context.Context, r events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
 		if r.Module == "toolrun" {
 			records = append(records, r)
 		}
@@ -326,7 +326,7 @@ func TestRunnerUsesSourceSaveResult(t *testing.T) {
 			deps := &loggingDeps{recordErr: tc.err, recordLogResult: &source}
 			committer := &loggingCommitter{resultLogResult: &source}
 			var saves []events.LogRecord
-			connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error {
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 				if record.Module == "toolrun" && (record.EventName == "tool_record_save" || record.EventName == "tool_transcript_save") {
 					saves = append(saves, record)
 				}
@@ -374,7 +374,7 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 			deps := &loggingDeps{runnerTestDeps: runnerTestDeps{reject: tc.reject}, recordErr: tc.recordErr, confirmErr: tc.confirmErr}
 			var calls []events.LogRecord
 			operations := map[string]events.LogRecord{}
-			connection, err := events.LogSubmitted.Connect(func(_ context.Context, r events.LogRecord) error {
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
 				if r.Module != "toolrun" || r.Identity.SessionID == nil || *r.Identity.SessionID != "session-log" {
 					return nil
 				}

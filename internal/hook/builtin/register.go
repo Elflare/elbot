@@ -18,7 +18,7 @@ type Options struct {
 	ConfigDir string
 	Tools     *tool.Registry
 
-	Notify func(context.Context, string)
+	Notices *[]string // Optional reload report collector; never a sending dependency.
 	// Send preserves the independent delivery outcome alongside business receipts.
 	Send            func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)
 	PlatformCallers rules.PlatformCallerResolver
@@ -30,7 +30,7 @@ func RegisterAll(registrar hook.Registrar, opts Options) ([]hookruntime.Config, 
 	if registrar == nil {
 		return nil, nil
 	}
-	rulesModule, err := rules.NewModule(rules.Options{ConfigDir: opts.ConfigDir, Tools: opts.Tools, Notify: opts.Notify, Send: opts.Send, PlatformCallers: opts.PlatformCallers, Runtime: opts.Runtime, ProcessEnv: opts.ProcessEnv})
+	rulesModule, err := rules.NewModule(rules.Options{ConfigDir: opts.ConfigDir, Tools: opts.Tools, Notices: opts.Notices, Send: opts.Send, PlatformCallers: opts.PlatformCallers, Runtime: opts.Runtime, ProcessEnv: opts.ProcessEnv})
 	if err == nil {
 		if err := registerModule(registrar, opts, "rules", rulesModule); err != nil {
 			return nil, err
@@ -69,7 +69,10 @@ func reportPluginError(opts Options, name string, err error) {
 		hook.LogHook(context.Background(), record)
 	}
 
-	if opts.Notify != nil {
-		opts.Notify(context.Background(), fmt.Sprintf("Hook 插件 %s 已禁用：%v", name, err))
+	text := fmt.Sprintf("Hook 插件 %s 已禁用：%v", name, err)
+	if opts.Notices != nil {
+		*opts.Notices = append(*opts.Notices, text)
+	} else {
+		_, _ = globalevents.NotificationRequested.EmitAsync(context.Background(), globalevents.Notification{Text: text, Level: slog.LevelWarn})
 	}
 }

@@ -62,43 +62,6 @@ func TestQueueCapacityFIFOAndErrorContinuation(t *testing.T) {
 	}
 }
 
-func TestQueueLifetimeAndDisconnect(t *testing.T) {
-	type key struct{}
-	q := testQueue(t, 4)
-	started := make(chan struct{})
-	release := make(chan struct{})
-	submit(t, q, context.Background(), func(context.Context) error { close(started); <-release; return nil })
-	<-started
-	s := New[int]("lifetime")
-	var requestCalls atomic.Int32
-	got := make(chan int, 1)
-	request := connect(t, s, func(context.Context, int) error { requestCalls.Add(1); return nil }, ConnectOptions{Executor: q, Lifetime: FollowEmit, Shutdown: Drain})
-	service := connect(t, s, func(ctx context.Context, n int) error {
-		if ctx.Err() != nil {
-			t.Error(ctx.Err())
-		}
-		got <- ctx.Value(key{}).(int) + n
-		return nil
-	}, ConnectOptions{Executor: q, Lifetime: FollowExecutor, Shutdown: Drain})
-	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), key{}, 40))
-	if err := s.Emit(ctx, 2); err != nil {
-		t.Fatal(err)
-	}
-	cancel()
-	request.Disconnect()
-	service.Disconnect()
-	close(release)
-	if err := q.Close(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if requestCalls.Load() != 0 {
-		t.Fatal("cancelled request ran")
-	}
-	if value := <-got; value != 42 {
-		t.Fatal(value)
-	}
-}
-
 func TestQueueTimeoutCancelsButDoesNotClaimStopped(t *testing.T) {
 	q := testQueue(t, 2)
 	started := make(chan struct{})
@@ -119,7 +82,7 @@ func TestQueueTimeoutCancelsButDoesNotClaimStopped(t *testing.T) {
 		t.Fatal("reported stopped while callback running")
 	default:
 	}
-	if len(q.jobs) != 0 {
+	if q.pending != 0 {
 		t.Fatal("retained pending jobs")
 	}
 	close(release)
@@ -138,8 +101,8 @@ func TestQueueIsolationAndDefaults(t *testing.T) {
 	}
 	a := testQueue(t, 0)
 	b := testQueue(t, 1)
-	if cap(a.jobs) != 256 {
-		t.Fatal(cap(a.jobs))
+	if a.capacity != 256 {
+		t.Fatal(a.capacity)
 	}
 	started := make(chan struct{})
 	release := make(chan struct{})

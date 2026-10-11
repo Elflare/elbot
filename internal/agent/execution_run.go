@@ -241,6 +241,6 @@ func (c *ExecutionCoordinator) handleTurnContextDone(ctx context.Context, sessio
 		content, _ := json.Marshal(map[string]string{"error": fmt.Sprintf("%.2048v", err)})
 		record.Category, record.Type, record.Content = events.LogAudit, events.ContentJSON, string(content)
 		emitAgentLog(ctx, agentevents.Meta(ctx, sessionID), record)
-		out.SendNotice(ctx, slog.LevelWarn, notificationrules.TurnTimeout)
+		out.Notify(ctx, slog.LevelWarn, notificationrules.TurnTimeout)
 	}
 }

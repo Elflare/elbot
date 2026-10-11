@@ -31,7 +31,7 @@ func startCronPlatformEvents(t *testing.T, s *Service) {
 // repository only after recovery has finished, without sleeps or polling.
 func emitCronPlatformAndWait(t *testing.T, s *Service, name string) {
 	t.Helper()
-	if err := globalevents.PlatformConnected.Emit(context.Background(), globalevents.PlatformConnectedEvent{Platform: name}); err != nil {
+	if _, err := globalevents.PlatformConnected.Emit(context.Background(), globalevents.PlatformConnectedEvent{Platform: name}); err != nil {
 		t.Fatal(err)
 	}
 	s.platformEvents.mu.Lock()
@@ -87,10 +87,10 @@ func TestCronPlatformSubscriptionsIsolateAndCancel(t *testing.T) {
 	}
 	emit := func(name string) {
 		ctx, cancel := context.WithCancel(context.WithValue(context.Background(), key{}, name))
-		cancel()
-		if err := globalevents.PlatformConnected.Emit(ctx, globalevents.PlatformConnectedEvent{Platform: name}); err != nil {
+		if _, err := globalevents.PlatformConnected.Emit(ctx, globalevents.PlatformConnectedEvent{Platform: name}); err != nil {
 			t.Fatal(err)
 		}
+		cancel()
 	}
 	emit("one")
 	select {
@@ -127,11 +127,11 @@ func TestCronPlatformSubscriptionsIsolateAndCancel(t *testing.T) {
 func TestCronPlatformSubscriptionRejectsBlankAndDoesNotReplay(t *testing.T) {
 	var calls atomic.Int32
 	s := NewService(Options{Store: connectionStore{repo: connectionRepo{list: func(context.Context) ([]storage.CronJob, error) { calls.Add(1); return nil, nil }}}})
-	if err := globalevents.PlatformConnected.Emit(context.Background(), globalevents.PlatformConnectedEvent{Platform: "before"}); err != nil {
+	if _, err := globalevents.PlatformConnected.Emit(context.Background(), globalevents.PlatformConnectedEvent{Platform: "before"}); err != nil {
 		t.Fatal(err)
 	}
 	startCronPlatformEvents(t, s)
-	if err := globalevents.PlatformConnected.Emit(context.Background(), globalevents.PlatformConnectedEvent{Platform: " "}); err == nil {
+	if _, err := globalevents.PlatformConnected.Emit(context.Background(), globalevents.PlatformConnectedEvent{Platform: " "}); err == nil {
 		t.Fatal("blank platform accepted")
 	}
 	emitCronPlatformAndWait(t, s, "after")
@@ -153,7 +153,7 @@ func TestCronPlatformSubscriptionParentCancellationRacesEmission(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range 50 {
-				if err := globalevents.PlatformConnected.Emit(context.Background(), globalevents.PlatformConnectedEvent{Platform: "one"}); err != nil {
+				if _, err := globalevents.PlatformConnected.Emit(context.Background(), globalevents.PlatformConnectedEvent{Platform: "one"}); err != nil {
 					t.Error(err)
 				}
 			}

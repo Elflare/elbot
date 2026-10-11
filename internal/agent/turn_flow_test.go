@@ -84,10 +84,7 @@ func TestTurnResponseTimeoutNotifiesUser(t *testing.T) {
 	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
 	}
-	got := p.out.String()
-	if !strings.Contains(got, "本轮处理已超时停止") {
-		t.Fatalf("platform output = %q, want timeout notice", got)
-	}
+	awaitNotificationText(t, &p.out, "本轮处理已超时停止")
 }
 
 func TestTurnResponseTimeoutZeroAllowsLongTurn(t *testing.T) {

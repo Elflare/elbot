@@ -37,8 +37,8 @@ func (a *Adapter) Name() string { return platformName }
 func (a *Adapter) Enabled() bool { return a.cfg.Enabled }
 
 func (a *Adapter) notifyConnected(ctx context.Context) {
-	// Consumers own execution; Emit reports dispatch failures through signal diagnostics.
-	_ = globalevents.PlatformConnected.Emit(ctx, globalevents.PlatformConnectedEvent{Platform: a.Name()})
+	// Subscribers hand background work to their own business queues.
+	_, _ = globalevents.PlatformConnected.Emit(ctx, globalevents.PlatformConnectedEvent{Platform: a.Name()})
 }
 
 func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) error {
@@ -107,12 +107,7 @@ func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (deli
 	return a.sendContextOutput(ctx, outputs)
 }
 
-func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, globalevents.LogResult, error) {
-	target := notice.Target
-	outputs := notice.Outputs
-	if target.Empty() && isGroupToolPreviewNotice(ctx, outputs) {
-		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
-	}
+func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	if target.Empty() {
 		return a.SendChat(ctx, outputs)
 	}

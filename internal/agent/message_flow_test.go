@@ -113,8 +113,8 @@ func TestHandleMessageSendsLLMErrorToPlatform(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "fake stream error") {
 		t.Fatalf("HandleMessage err = %v", err)
 	}
-	got := p.out.String()
-	if !strings.Contains(got, "LLM 响应中断：") || !strings.Contains(got, "fake stream error") {
+	got := awaitNotificationText(t, &p.out, "LLM 响应中断：")
+	if !strings.Contains(got, "fake stream error") {
 		t.Fatalf("platform output missing error: %q", got)
 	}
 }

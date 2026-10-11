@@ -156,8 +156,8 @@ func (a *Adapter) Name() string { return "qqonebot" }
 func (a *Adapter) Enabled() bool { return a.cfg.Enabled }
 
 func (a *Adapter) notifyConnected(ctx context.Context) {
-	// Consumers own execution; Emit reports dispatch failures through signal diagnostics.
-	_ = globalevents.PlatformConnected.Emit(ctx, globalevents.PlatformConnectedEvent{Platform: a.Name()})
+	// Subscribers hand background work to their own business queues.
+	_, _ = globalevents.PlatformConnected.Emit(ctx, globalevents.PlatformConnectedEvent{Platform: a.Name()})
 }
 
 func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) error {
@@ -320,7 +320,7 @@ func (a *Adapter) CallPlatformAPI(ctx context.Context, api string, params map[st
 	return resp.Data, nil
 }
 
-func (a *Adapter) sendTemporaryNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, globalevents.LogResult, error) {
+func (a *Adapter) sendTemporary(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	transport := &Transport{URL: a.cfg.URL, AccessToken: a.cfg.AccessToken, Timeout: time.Duration(a.cfg.APITimeoutSeconds) * time.Second}
 	if err := transport.Connect(ctx); err != nil {
 		{
@@ -337,8 +337,8 @@ func (a *Adapter) sendTemporaryNotice(ctx context.Context, notice delivery.Notic
 	}
 	defer transport.Close(websocket.StatusNormalClosure, "temporary elnis delivery done")
 	go transport.readResponses(ctx)
-	t, err := targetToQQ(notice.Target)
-	if notice.Target.Empty() {
+	t, err := targetToQQ(target)
+	if target.Empty() {
 		t, err = contextTarget(ctx)
 	}
 	if err != nil {
@@ -348,10 +348,10 @@ func (a *Adapter) sendTemporaryNotice(ctx context.Context, notice delivery.Notic
 		}
 		return delivery.Receipt{}, logResult, err
 	}
-	if text, ok := textOutputs(notice.Outputs); ok {
+	if text, ok := textOutputs(outputs); ok {
 		return sendText(ctx, transport, t, text)
 	}
-	segments, err := outputSegments(a.cfg.SendFileMode, notice.Outputs...)
+	segments, err := outputSegments(a.cfg.SendFileMode, outputs...)
 	if err != nil {
 		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
 		if errors.Is(err, context.Canceled) {
@@ -378,16 +378,12 @@ func (a *Adapter) sendTemporaryNotice(ctx context.Context, notice delivery.Notic
 				logResult.ResultStatus = globalevents.ResultCanceled
 			}
 		}
-		return oneBotReceipt(receipt, t, notice.Outputs), logResult, err
+		return oneBotReceipt(receipt, t, outputs), logResult, err
 	}
 }
 
-func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, globalevents.LogResult, error) {
-	outTarget := notice.Target
-	outputs := notice.Outputs
-	if outTarget.Empty() && isGroupToolPreviewNotice(ctx, outputs) {
-		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
-	}
+func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+	outTarget := target
 	if outTarget.Superadmins {
 		if len(a.cfg.Superadmins) == 0 {
 			{
@@ -414,8 +410,7 @@ func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (deliv
 			copyTarget.PrivateUserID = id
 			copyTarget.GroupID = ""
 			copyTarget.ScopeID = ""
-			notice.Target = copyTarget
-			sent, logResult, err := a.SendNotice(ctx, notice)
+			sent, logResult, err := a.SendTo(ctx, copyTarget, outputs)
 			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
 			receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
 			if err != nil {
@@ -425,7 +420,7 @@ func (a *Adapter) SendNotice(ctx context.Context, notice delivery.Notice) (deliv
 		return receipt, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	}
 	if delivery.UseTemporaryConnection(ctx) {
-		return a.sendTemporaryNotice(ctx, notice)
+		return a.sendTemporary(ctx, target, outputs)
 	}
 	if outTarget.Empty() {
 		return a.SendChat(ctx, outputs)
@@ -579,7 +574,7 @@ func (a *Adapter) sendSegments(ctx context.Context, t target, segments []Segment
 }
 
 func (a *Adapter) sendTarget(ctx context.Context, outTarget delivery.Target, out delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
-	return a.SendNotice(ctx, delivery.Notice{Target: outTarget, Outputs: []delivery.Output{out}})
+	return a.SendTo(ctx, outTarget, []delivery.Output{out})
 }
 
 func receiptWithMessageID(id string) delivery.Receipt {

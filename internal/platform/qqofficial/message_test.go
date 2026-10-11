@@ -468,7 +468,7 @@ func newQQOfficialTestStore(t *testing.T) storage.Store {
 
 func TestReadyPublishesGlobalConnectionWithoutAddingResumeEvent(t *testing.T) {
 	calls := 0
-	connection, err := globalevents.PlatformConnected.Connect(func(_ context.Context, e globalevents.PlatformConnectedEvent) error {
+	connection, err := globalevents.PlatformConnected.Observe(func(_ context.Context, e globalevents.PlatformConnectedEvent) error {
 		calls++
 		if e.Platform != "qqofficial" {
 			t.Errorf("platform=%q", e.Platform)

@@ -78,8 +78,8 @@ func (r *Router) SendChat(ctx context.Context, outputs []delivery.Output) (deliv
 	return delivery.NewManager(rawSender{r}).SendChat(ctx, outputs)
 }
 
-func (r *Router) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, events.LogResult, error) {
-	return delivery.NewManager(rawSender{r}).SendNotice(ctx, notice)
+func (r *Router) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	return delivery.NewManager(rawSender{r}).SendTo(ctx, target, outputs)
 }
 
 type rawSender struct{ router *Router }
@@ -94,14 +94,13 @@ func (s rawSender) SendChat(ctx context.Context, outputs []delivery.Output) (del
 	})
 }
 
-func (s rawSender) SendNotice(ctx context.Context, notice delivery.Notice) (delivery.Receipt, events.LogResult, error) {
-	sender, err := s.router.sender(ctx, notice.Target)
+func (s rawSender) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	sender, err := s.router.sender(ctx, target)
 	if err != nil {
 		return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}, err
 	}
-	return s.router.sendPreparedMedia(ctx, notice.Outputs, func(resolved []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-		notice.Outputs = resolved
-		return sender.SendNotice(ctx, notice)
+	return s.router.sendPreparedMedia(ctx, outputs, func(resolved []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+		return sender.SendTo(ctx, target, resolved)
 	})
 }
 

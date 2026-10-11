@@ -104,8 +104,8 @@ func (p *fakePlatform) SendChat(_ context.Context, outputs []delivery.Output) (d
 	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
-func (p *fakePlatform) SendNotice(_ context.Context, notice delivery.Notice) (delivery.Receipt, events.LogResult, error) {
-	outputs := notice.Outputs
+func (p *fakePlatform) SendTo(_ context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	outputs := noticeOutputs
 	text := delivery.FallbackOutput(outputs).Text
 	p.out.WriteString(text)
 	p.preview.WriteString(text)

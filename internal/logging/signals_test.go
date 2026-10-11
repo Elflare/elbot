@@ -251,6 +251,9 @@ func captureStderr(t *testing.T) func() string {
 	os.Stderr = file
 	t.Cleanup(func() { os.Stderr = old; _ = file.Close() })
 	return func() string {
+		if err := signal.FlushDiagnostics(t.Context()); err != nil {
+			t.Fatal(err)
+		}
 		data, err := os.ReadFile(file.Name())
 		if err != nil {
 			t.Fatal(err)
@@ -280,7 +283,7 @@ func TestGlobalWriteFailureReportsToStderrAndContinues(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = m.Close(context.Background()) })
 			var publications atomic.Int32
-			connection, err := events.LogSubmitted.Connect(func(context.Context, events.LogRecord) error { publications.Add(1); return nil }, signal.ConnectOptions{Shutdown: signal.CancelPending})
+			connection, err := events.LogSubmitted.Observe(func(context.Context, events.LogRecord) error { publications.Add(1); return nil }, signal.ConnectOptions{Shutdown: signal.CancelPending})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -357,7 +360,7 @@ func TestManagerRecordsTimeBeforeCapacityWait(t *testing.T) {
 		// Wait until the publisher is blocked inside the full queue. The fake
 		// clock then advances without relying on real scheduler timing.
 		synctest.Wait()
-		time.Sleep(2 * time.Second)
+		time.Sleep(250 * time.Millisecond)
 		select {
 		case err := <-done:
 			t.Fatalf("full queue did not block publication: %v", err)

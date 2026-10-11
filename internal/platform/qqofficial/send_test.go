@@ -11,6 +11,9 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
+	"elbot/internal/notification"
+	"log/slog"
 )
 
 func TestSendChatUsesGroupMessageAPI(t *testing.T) {
@@ -57,10 +60,10 @@ func TestSendNoticeUploadsGroupMediaToGroupAPI(t *testing.T) {
 
 	adapter := newQQOfficialSendTestAdapter(server)
 	out := delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/image.png"}}
-	receipt, _, err := adapter.SendNotice(context.Background(), delivery.Notice{
-		Target:  delivery.Target{Platform: platformName, GroupID: "group-1"},
-		Outputs: []delivery.Output{out},
-	})
+	receipt, _, err := adapter.SendTo(context.Background(),
+		delivery.Target{Platform: platformName, GroupID: "group-1"},
+		[]delivery.Output{out},
+	)
 	if err != nil {
 		t.Fatalf("SendNotice: %v", err)
 	}
@@ -85,12 +88,24 @@ func TestSendNoticeSkipsGroupToolPreview(t *testing.T) {
 
 	adapter := newQQOfficialSendTestAdapter(server)
 	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ConversationKind: contextinfo.ConversationGroup, ConversationID: "group-1"}})
-	receipt, _, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("[tool] 正在调用 shell：{}")}})
+	m, err := notification.New(adapter.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close(context.Background())
+	s, err := m.AddPlatform(adapter.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adapter.ConnectNotifications(s); err != nil {
+		t.Fatal(err)
+	}
+	r, err := events.NotificationRequested.Emit(ctx, events.NewNotification(ctx, slog.LevelDebug, "[tool] 正在调用 shell：{}"))
 	if err != nil {
 		t.Fatalf("SendNotice: %v", err)
 	}
-	if len(receipt.PlatformMessageIDs) != 0 || calls.Load() != 0 {
-		t.Fatalf("receipt/calls = %#v/%d", receipt, calls.Load())
+	if len(r[0].Value.PlatformMessageIDs) != 0 || calls.Load() != 0 {
+		t.Fatalf("receipt/calls = %#v/%d", r, calls.Load())
 	}
 }
 
@@ -138,10 +153,10 @@ func TestExplicitNoticeDoesNotReuseReplySnapshot(t *testing.T) {
 	adapter := newQQOfficialSendTestAdapter(server)
 	info := contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ScopeID: "group:original"}, PlatformMessageID: "original-message", PlatformData: messageData{EventID: "event"}}
 	ctx := contextinfo.WithConversation(context.Background(), info)
-	if _, _, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("reply")}}); err != nil {
+	if _, _, err := adapter.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("reply")}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := adapter.SendNotice(ctx, delivery.Notice{Target: delivery.Target{GroupID: "other"}, Outputs: []delivery.Output{delivery.Text("proactive")}}); err != nil {
+	if _, _, err := adapter.SendTo(ctx, delivery.Target{GroupID: "other"}, []delivery.Output{delivery.Text("proactive")}); err != nil {
 		t.Fatal(err)
 	}
 	if len(bodies) != 2 || bodies[0].MsgID != "original-message" || bodies[0].EventID != "" || bodies[1].MsgID != "" || bodies[1].EventID != "" {

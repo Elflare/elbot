@@ -46,7 +46,7 @@ func TestElnisEventFailureDoesNotReclassifyDialogueError(t *testing.T) {
 		t.Fatal(err)
 	}
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 		if record.Module == "elnis" && (record.EventName == "elnis.llm_failed" || record.EventName == "elnis_llm_failed") {
 			records = append(records, record)
 		}
@@ -99,7 +99,7 @@ func TestElnisLogsMediaFailureAndSuccessfulRunSaveFailure(t *testing.T) {
 				queued.Event.Request.Segments = []Segment{{Kind: SegmentKindImage, URL: "https://example.invalid/image.png"}}
 			}
 			var records []events.LogRecord
-			connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error {
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 				if record.Category == events.LogElnis && record.EventName == "elnis_llm_failed" {
 					records = append(records, record)
 				}
@@ -190,7 +190,7 @@ func TestElnisDeliveryPreservesSourceLogResultAndBusinessState(t *testing.T) {
 					t.Cleanup(cleanup)
 				}
 				var records []events.LogRecord
-				connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error {
+				connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 					if record.Module == "elnis" && strings.Contains(record.Content, "source diagnostic") {
 						records = append(records, record)
 					}
@@ -256,7 +256,7 @@ func TestElnisRecoveryKeepsDeclaredFailureWithNilBusinessError(t *testing.T) {
 		t.Fatalf("initial error=%v", err)
 	}
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 		if record.EventName == "recover_elnis_report_failed" {
 			records = append(records, record)
 		}
@@ -291,7 +291,7 @@ func TestElnisReportPreservesIndependentFailureAcrossCancellation(t *testing.T) 
 			})
 			service.store = elnisRepositoryStore{Store: service.store, repo: failingReportReceiptRepository{ElnisEventRepository: service.store.ElnisEvents(), err: tc.saveErr}}
 			var records []events.LogRecord
-			connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error {
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 				if record.EventName == "elnis_llm_report_delivery_failed" {
 					records = append(records, record)
 				}

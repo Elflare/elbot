@@ -23,7 +23,7 @@ func TestMultiTargetKeepsPartiallySuccessfulTargetReceipt(t *testing.T) {
 	defer server.Close()
 	a := New(Config{BotToken: "token", APIBaseURL: server.URL, Superadmins: []string{"1", "2"}}, nil, nil)
 	out := delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/image.png"}}
-	receipt, _, err := a.SendNotice(context.Background(), delivery.Notice{Target: delivery.Target{Superadmins: true}, Outputs: []delivery.Output{out, out}})
+	receipt, _, err := a.SendTo(context.Background(), delivery.Target{Superadmins: true}, []delivery.Output{out, out})
 	if err == nil || len(receipt.SentMessages) != 3 || len(receipt.PlatformMessageIDs) != 3 {
 		t.Fatalf("partial receipt = %#v %v", receipt, err)
 	}

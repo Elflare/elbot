@@ -12,7 +12,7 @@ import (
 
 func TestLogBackgroundPublishesSourceRecordAfterCancellation(t *testing.T) {
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Connect(func(ctx context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(ctx context.Context, record events.LogRecord) error {
 		if ctx.Err() != nil {
 			t.Fatalf("publication retained canceled context: %v", ctx.Err())
 		}

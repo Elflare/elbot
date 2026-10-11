@@ -35,7 +35,7 @@ func (t loggingTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resu
 func captureHookRecords(t *testing.T) *[]events.LogRecord {
 	t.Helper()
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 		if record.Module == "hook" {
 			records = append(records, record)
 		}
@@ -227,7 +227,7 @@ func TestToolWithoutOutputsDoesNotInvokeSenderOrLogSend(t *testing.T) {
 func TestWorkerReloadUsesDeclaredResultWithNilError(t *testing.T) {
 	for _, status := range []events.ResultStatus{events.ResultFailed, events.ResultCanceled} {
 		received := make(chan events.LogRecord, 1)
-		connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error {
+		connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 			if record.EventName == "hook_plugin_reload_failed" {
 				received <- record
 			}

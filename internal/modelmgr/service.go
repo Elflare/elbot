@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
@@ -36,7 +37,7 @@ type Service struct {
 	clients        map[string]llm.Client
 	origins        map[string]llm.Origin
 	providers      map[string]*providerCatalog
-	retrying       *signal.Signal[ModelRetryingEvent]
+	retrying       *signal.Signal[ModelRetryingEvent, signal.Empty]
 	logConnections []*signal.Connection
 }
 
@@ -68,7 +69,7 @@ func New(opts Options) (*Service, error) {
 		clients:      make(map[string]llm.Client, len(opts.Providers)),
 		origins:      make(map[string]llm.Origin, len(opts.Providers)),
 		providers:    make(map[string]*providerCatalog, len(opts.Providers)),
-		retrying:     signal.New[ModelRetryingEvent]("model.retrying"),
+		retrying:     signal.New[ModelRetryingEvent, signal.Empty]("model.retrying"),
 	}
 	for name, provider := range opts.Providers {
 		client := opts.Clients[name]
@@ -90,7 +91,7 @@ func New(opts Options) (*Service, error) {
 		if notifier, ok := client.(llm.RetryNotifier); ok {
 			notifier.SetRetryNotifier(func(ctx context.Context, event llm.RetryEvent) {
 				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				record := ModelRetryingEvent{Provider: provider, Retry: event}
+				record := ModelRetryingEvent{Provider: provider, Retry: event, CallContext: ctx}
 				if facts.SessionID != "" {
 					record.Identity.SessionID = &facts.SessionID
 				}
@@ -106,7 +107,7 @@ func New(opts Options) (*Service, error) {
 				if facts.RootRequestID != "" {
 					record.Identity.RootRequestID = &facts.RootRequestID
 				}
-				_ = s.retrying.Emit(ctx, record)
+				_, _ = s.retrying.Emit(context.WithoutCancel(ctx), record)
 			})
 		}
 	}
@@ -136,10 +137,13 @@ func (s *Service) ProviderOrigins() []llm.Origin {
 	return origins
 }
 
-// Close releases only this instance's synchronous projections.
+// Close stops this instance's retry signal before releasing its projections.
 func (s *Service) Close() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	err := s.retrying.Close(ctx)
 	for _, connection := range s.logConnections {
 		connection.Disconnect()
 	}
-	return nil
+	return err
 }

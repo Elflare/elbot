@@ -97,7 +97,7 @@ type fakeNamingNotifier struct {
 
 func (n *fakeNamingNotifier) connect(t *testing.T, svc *Service) {
 	t.Helper()
-	c, err := svc.NamingSignals().Completed.Connect(func(ctx context.Context, event NamingCompletedEvent) error {
+	c, err := svc.NamingSignals().Completed.Observe(func(ctx context.Context, event NamingCompletedEvent) error {
 		select {
 		case n.failures <- event:
 		default:

@@ -273,7 +273,7 @@ func (s *Service) notifyNamingScheduled(ctx context.Context, event NamingSchedul
 			*value = &copy
 		}
 	}
-	_ = s.namingSignals.Scheduled.Emit(ctx, event)
+	_, _ = s.namingSignals.Scheduled.Emit(ctx, event)
 }
 
 func (s *Service) notifyNamingCompleted(ctx context.Context, event NamingCompletedEvent) {
@@ -291,7 +291,7 @@ func (s *Service) notifyNamingCompleted(ctx context.Context, event NamingComplet
 		copy := *event.TitleValid
 		event.TitleValid = &copy
 	}
-	_ = s.namingSignals.Completed.Emit(ctx, event)
+	_, _ = s.namingSignals.Completed.Emit(context.WithoutCancel(ctx), event)
 }
 
 func filterConversationMessages(messages []storage.Message) []storage.Message {

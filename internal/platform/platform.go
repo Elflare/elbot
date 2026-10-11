@@ -3,9 +3,12 @@ package platform
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
+	"elbot/internal/signal"
 )
 
 // PlatformAdapter is the interface for message platform adapters (CLI, QQ, etc.).
@@ -25,6 +28,38 @@ type Runtime interface {
 	Name() string
 	Run(ctx context.Context, handler PlatformHandler) error
 	delivery.MessageSender
+}
+
+// NotificationReceiver only connects a sender; scheduling belongs to the signal.
+type NotificationReceiver interface {
+	ConnectNotifications(*signal.Signal[events.Notification, events.NotificationReceipt]) (*signal.Connection, error)
+}
+
+// NotificationTarget retains native reply routing when the destination matches
+// the captured origin. Explicit destinations use the existing platform protocol.
+func NotificationTarget(n events.Notification) delivery.Target {
+	if n.Origin != nil {
+		origin := n.Origin.Source
+		kind, id := origin.ConversationKind, origin.ConversationID
+		if k, v, ok := strings.Cut(origin.ScopeID, ":"); ok {
+			if kind == "" || kind == contextinfo.ConversationUnknown {
+				kind = contextinfo.ConversationKind(k)
+			}
+			if id == "" {
+				id = v
+			}
+		}
+		if n.Target.Platform == origin.Platform && n.Target.ID == id && n.Target.Kind == kind && (n.Target.ScopeID == "" || n.Target.ScopeID == origin.ScopeID) {
+			return delivery.Target{}
+		}
+	}
+	t := delivery.Target{Platform: n.Target.Platform, ScopeID: n.Target.ScopeID}
+	if n.Target.Kind == contextinfo.ConversationPrivate {
+		t.PrivateUserID = n.Target.ID
+	} else {
+		t.GroupID = n.Target.ID
+	}
+	return t
 }
 
 type MessageSegmentType string

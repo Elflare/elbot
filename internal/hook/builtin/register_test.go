@@ -1,7 +1,6 @@
 package builtin
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -26,9 +25,7 @@ text = "!"
 	notices := []string{}
 	configs, err := RegisterAll(manager, Options{
 		ConfigDir: dir,
-		Notify: func(ctx context.Context, text string) {
-			notices = append(notices, text)
-		},
+		Notices:   &notices,
 	})
 	if err == nil {
 		t.Fatal("expected root Hook config error")

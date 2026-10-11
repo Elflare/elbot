@@ -36,7 +36,7 @@ func (s *Service) StartPlatformEvents(ctx context.Context) error {
 	if p.platformConnection != nil {
 		return nil
 	}
-	connection, err := globalevents.PlatformConnected.Connect(s.enqueuePlatformConnected, signal.ConnectOptions{})
+	connection, err := globalevents.PlatformConnected.Observe(s.enqueuePlatformConnected, signal.ConnectOptions{})
 	if err != nil {
 		return err
 	}
@@ -68,7 +68,7 @@ func (s *Service) enqueuePlatformConnected(ctx context.Context, event globaleven
 		}
 		p.platformQueues[event.Platform] = queue
 	}
-	// Match FollowExecutor: retain emission values, but cancellation belongs to
+	// Retain emission values, but cancellation belongs to
 	// this consumer. Submit is bounded and never waits for capacity or business work.
 	return queue.Submit(context.WithoutCancel(ctx), signal.Task{
 		Shutdown: signal.CancelPending,

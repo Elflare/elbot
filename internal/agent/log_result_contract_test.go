@@ -28,7 +28,7 @@ func TestSendOutputsUsesSourceLogResult(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var records []events.LogRecord
-			connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error {
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 				if record.EventName == "reply_delivered" && strings.HasPrefix(record.Content, "operation=send_outputs") {
 					records = append(records, record)
 				}
@@ -67,7 +67,7 @@ func TestReplyCommitUsesSourceOutcomeWithoutChangingBusiness(t *testing.T) {
 			fixture := newReplyTestFixture(t, buffered)
 			fixture.platform.outputsLogResult = &events.LogResult{ResultStatus: events.ResultFailed, Content: "one destination failed; another received the output"}
 			var records []events.LogRecord
-			connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error {
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 				if record.EventName == "reply_committed" {
 					records = append(records, record)
 				}
@@ -95,7 +95,7 @@ func TestReplyCommitKeepsFailureBeforeLaterCancellation(t *testing.T) {
 			fixture.platform.sendLogResult = &events.LogResult{ResultStatus: events.ResultFailed, Content: "one assistant destination failed"}
 			fixture.platform.outputsLogResult = &events.LogResult{ResultStatus: events.ResultCanceled, Content: "later outputs canceled"}
 			var records []events.LogRecord
-			connection, err := events.LogSubmitted.Connect(func(_ context.Context, record events.LogRecord) error {
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 				if record.EventName == "reply_committed" {
 					records = append(records, record)
 				}

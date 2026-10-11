@@ -12,6 +12,9 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
+	"elbot/internal/notification"
+	"log/slog"
 )
 
 func testTargetContext(t target) context.Context {
@@ -32,7 +35,7 @@ func TestSendNoticeSkipsGroupToolPreview(t *testing.T) {
 	adapter.transport = transport
 	ctx := testTargetContext(target{MessageType: "group", GroupID: 9})
 
-	receipt, _, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("[tool] 正在调用 shell：{}")}})
+	receipt, err := emitTestNotification(t, adapter, ctx, "[tool] 正在调用 shell：{}")
 	if err != nil {
 		t.Fatalf("SendNotice: %v", err)
 	}
@@ -54,7 +57,7 @@ func TestSendNoticeKeepsPrivateToolPreview(t *testing.T) {
 	adapter.transport = transport
 	ctx := testTargetContext(target{MessageType: "private", UserID: 1})
 
-	receipt, _, err := adapter.SendNotice(ctx, delivery.Notice{Outputs: []delivery.Output{delivery.Text("[tool] 正在调用 shell：{}")}})
+	receipt, err := emitTestNotification(t, adapter, ctx, "[tool] 正在调用 shell：{}")
 	if err != nil {
 		t.Fatalf("SendNotice: %v", err)
 	}
@@ -65,6 +68,27 @@ func TestSendNoticeKeepsPrivateToolPreview(t *testing.T) {
 		t.Fatalf("action = %q", action)
 	}
 }
+func emitTestNotification(t *testing.T, adapter *Adapter, ctx context.Context, text string) (events.NotificationReceipt, error) {
+	t.Helper()
+	m, err := notification.New(adapter.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close(context.Background())
+	s, err := m.AddPlatform(adapter.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adapter.ConnectNotifications(s); err != nil {
+		t.Fatal(err)
+	}
+	r, err := events.NotificationRequested.Emit(ctx, events.NewNotification(ctx, slog.LevelDebug, text))
+	if len(r) == 0 {
+		return events.NotificationReceipt{}, err
+	}
+	return r[0].Value, err
+}
+
 func TestOutputSegmentsFileUsesBase64ForPlainPath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "report.txt")
 	if err := os.WriteFile(path, []byte("hello"), 0o644); err != nil {

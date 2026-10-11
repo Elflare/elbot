@@ -22,7 +22,7 @@ func TestLLMTextReportMapsRealTelegramAdminReceipts(t *testing.T) {
 	router := dispatch.New(dispatch.Options{Primary: adapter})
 	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"done"}`}
 	s, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-		return router.SendNotice(ctx, delivery.Notice{Target: target, Outputs: outputs})
+		return router.SendTo(ctx, target, outputs)
 	})
 	defer cleanup()
 	s.enabledPlatforms = append(s.enabledPlatforms, "telegram")

@@ -24,7 +24,7 @@ type Options struct {
 	ConfigDir string
 	Tools     *tool.Registry
 
-	Notify func(context.Context, string)
+	Notices *[]string // Optional reload report collector; never a sending dependency.
 	// Send returns business receipts, the delivery log outcome and the original error.
 	Send            func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)
 	PlatformCallers PlatformCallerResolver
