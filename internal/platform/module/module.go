@@ -170,7 +170,7 @@ func (m *Module) runPlatforms(ctx context.Context, handler platform.PlatformHand
 			m.mu.Lock()
 			delete(m.running, adapter.Name())
 			m.mu.Unlock()
-			if err != nil && !(runCtx.Err() != nil && err == runCtx.Err()) {
+			if err != nil && !(runCtx.Err() != nil && errors.Is(err, runCtx.Err())) {
 				{
 					record := globalevents.LogRecord{
 						Category:     globalevents.LogRuntime,
