@@ -125,7 +125,7 @@ func mustNewWithOptions(t *testing.T, cfg testAgentOptions, configure ...func(*t
 		SetRuntimeStatus(context.Context, runtimestatus.Snapshot) error
 	})
 	connectTestObservers(a, assembleObserverOptions{display: display})
-	opts.Sessions.SetForegroundActivation(a.AdoptForeground)
+	connectTestForeground(t, opts.Sessions, a.AdoptForeground)
 	opts.Sessions.StartNaming(context.Background())
 	ownedSessions := opts.Sessions
 	t.Cleanup(func() {

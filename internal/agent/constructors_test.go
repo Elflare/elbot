@@ -95,7 +95,7 @@ func TestExecutionConstructionKeepsBorrowedCallbacksAndServices(t *testing.T) {
 		t.Fatal(err)
 	}
 	activations := 0
-	opts.Sessions.SetForegroundActivation(func(context.Context, *storage.Session, *session.Binding) { activations++ })
+	connectTestForeground(t, opts.Sessions, func(context.Context, *storage.Session, *session.Binding) { activations++ })
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	deps := ExecutionCoordinatorDeps{

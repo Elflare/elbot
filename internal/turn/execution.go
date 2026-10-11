@@ -6,18 +6,20 @@ import (
 	"sync"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/storage"
 )
 
 // Execution spans individual requests and append-confirmation continuations.
 // Its completion is independent of a canceled model request.
 type Execution struct {
-	ID         string
-	mu         sync.Mutex
-	foreground context.Context
-	result     Result
-	done       chan struct{}
-	once       sync.Once
-	finished   bool
+	ID                string
+	mu                sync.Mutex
+	foreground        context.Context
+	foregroundSession storage.Session // Immutable committed handoff snapshot, paired with foreground under mu.
+	result            Result
+	done              chan struct{}
+	once              sync.Once
+	finished          bool
 }
 
 type Result struct {
@@ -33,9 +35,10 @@ type Result struct {
 func NewExecution(id string) *Execution {
 	return &Execution{ID: id, done: make(chan struct{}), result: Result{RunID: id}}
 }
-func (e *Execution) Adopt(ctx context.Context) {
+func (e *Execution) Adopt(ctx context.Context, row storage.Session) {
 	e.mu.Lock()
 	e.foreground = context.WithoutCancel(ctx)
+	e.foregroundSession = row
 	e.result.TakenOver = true
 	e.mu.Unlock()
 }
@@ -43,6 +46,13 @@ func (e *Execution) Foreground() context.Context {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.foreground
+}
+
+// ForegroundState reads routing and session facts from the same handoff.
+func (e *Execution) ForegroundState() (context.Context, storage.Session) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.foreground, e.foregroundSession
 }
 func (e *Execution) SetResult(sessionID, messageID, text string) {
 	e.mu.Lock()

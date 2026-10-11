@@ -15,12 +15,12 @@ import (
 	"elbot/internal/turn"
 )
 
-// AdoptForeground is installed by app as Session's synchronous execution participant.
+// AdoptForeground consumes the committed handoff without changing an active tool call.
 
 func (c *ExecutionCoordinator) AdoptForeground(ctx context.Context, row *storage.Session, binding *session.Binding) {
 	if execution := c.turns.Execution(row.ID); execution != nil {
 		ctx = contextinfo.WithActor(ctx, c.identity.Actor(ctx))
-		execution.Adopt(session.WithBinding(ctx, binding))
+		execution.Adopt(session.WithBinding(ctx, binding), *row)
 	}
 }
 

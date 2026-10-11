@@ -248,7 +248,7 @@ func (d toolRunDeps) PersistedToolMessage(message llm.LLMMessage) llm.LLMMessage
 }
 
 func (d toolRunDeps) RefreshExecution(ctx context.Context, row *storage.Session) (context.Context, error) {
-	return d.view.RefreshSession(ctx, row)
+	return d.view.RefreshExecution(ctx, row)
 }
 
 type ToolIdentity interface {

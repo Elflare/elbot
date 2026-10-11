@@ -305,7 +305,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 	if err := bindings.connectAgentNotifications(signals); err != nil {
 		return m, err
 	}
-	if err := bindings.connectSession(m.sessions, deps.Files.Manager); err != nil {
+	if err := bindings.connectSession(m.sessions, deps.Files.Manager, execution); err != nil {
 		return m, err
 	}
 	if err := m.bindings.connectModels(deps.Models); err != nil {
@@ -344,7 +344,6 @@ func wireExecution(ctx context.Context, deps agent.ExecutionCoordinatorDeps) (*a
 	if err != nil {
 		return nil, err
 	}
-	deps.Sessions.SetForegroundActivation(execution.AdoptForeground)
 	deps.Sessions.SetActivitySource(func() []string {
 		var ids []string
 		for _, active := range deps.Turns.SnapshotAll() {

@@ -265,13 +265,20 @@ func (m Manager) SendTo(ctx context.Context, target Target, outputs []Output) (R
 		target = configuredTarget
 	}
 	receipt, logResult, err := m.Sender.SendTo(ctx, target, outputs)
+	LogSendResult(ctx, target, outputs[0], logResult)
+	return receipt, logResult, wrapOutputSourceError(outputs[0], err)
+}
+
+// LogSendResult publishes the sending source's result. Native notification
+// senders use this boundary when their protocol cannot use ordinary chat output.
+func LogSendResult(ctx context.Context, target Target, out Output, logResult globalevents.LogResult) {
 	if logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled {
 
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		record := globalevents.LogRecord{
 			Category: globalevents.LogRuntime, Level: slog.LevelError,
 			EventName: "chat_output_failed", Module: "delivery", ResultStatus: logResult.ResultStatus,
-			Content: fmt.Sprintf("chat output failed: platform=%s hook=%q hook_point=%q hook_mode=%q\n%s", target.Platform, outputMetaString(outputs[0], MetaHookName), outputMetaString(outputs[0], MetaHookPoint), outputMetaString(outputs[0], MetaHookMode), logResult.Content),
+			Content: fmt.Sprintf("chat output failed: platform=%s hook=%q hook_point=%q hook_mode=%q\n%s", target.Platform, outputMetaString(out, MetaHookName), outputMetaString(out, MetaHookPoint), outputMetaString(out, MetaHookMode), logResult.Content),
 		}
 		if logResult.ResultStatus == globalevents.ResultCanceled {
 			record.Level = slog.LevelInfo
@@ -292,9 +299,8 @@ func (m Manager) SendTo(ctx context.Context, target Target, outputs []Output) (R
 		if facts.RootRequestID != "" {
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
-		_ = globalevents.EmitLog(ctx, record)
+		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 	}
-	return receipt, logResult, wrapOutputSourceError(outputs[0], err)
 }
 
 func wrapOutputSourceError(out Output, err error) error {

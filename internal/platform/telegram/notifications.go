@@ -10,7 +10,7 @@ import (
 
 func (a *Adapter) ConnectNotifications(s *signal.Signal[events.Notification, events.NotificationReceipt]) (*signal.Connection, error) {
 	return s.Connect(func(ctx context.Context, n events.Notification) (events.NotificationReceipt, error) {
-		r, _, err := a.SendTo(ctx, platform.NotificationTarget(n), []delivery.Output{delivery.Text(n.Text)})
+		r, _, err := delivery.NewManager(a).SendTo(ctx, platform.NotificationTarget(n), []delivery.Output{delivery.Text(n.Text)})
 		return events.NotificationReceipt{PlatformMessageIDs: r.PlatformMessageIDs}, err
 	}, signal.ConnectOptions{})
 }

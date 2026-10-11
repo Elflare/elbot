@@ -159,7 +159,7 @@ func TestExecutionViewKeepsRequestCancellationAndClearsBackgroundOverrides(t *te
 	ctx = modelmgr.WithSelectionOverride(ctx, config.ModelSelection{Provider: "task", Model: "task"})
 	foreground, cancelForeground := context.WithCancel(contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "remote:original"}}))
 	actor := contextinfo.Actor{ID: "cli:owner", Role: contextinfo.RoleSuperadmin}
-	execution.Adopt(contextinfo.WithActor(foreground, actor))
+	execution.Adopt(contextinfo.WithActor(foreground, actor), storage.Session{})
 	cancelForeground()
 	view := dialogue.ExecutionView{}
 	refreshed := view.Context(ctx)

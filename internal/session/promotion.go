@@ -41,13 +41,6 @@ func (scope Scope) acceptsBackground() bool {
 	return scope.IsCLI || scope.ConversationKind == contextinfo.ConversationPrivate
 }
 
-// SetForegroundActivation installs the execution participant before startup.
-// It runs synchronously under admission after commit and must not do I/O or
-// acquire session/scope admission. Lifecycle consumers use BindingChanged.
-func (s *Service) SetForegroundActivation(adopt func(context.Context, *storage.Session, *Binding)) {
-	s.foregroundActivation = adopt
-}
-
 // The checker reads immutable provider facts and a model snapshot only. It runs
 // before permanent promotion under admission and must not perform I/O.
 func (s *Service) SetForegroundCheck(check func(context.Context, *storage.Session) error) {
@@ -102,11 +95,14 @@ func (s *Service) activateExisting(ctx context.Context, scope Scope, id string, 
 		return nil, err
 	}
 	s.setCurrent(ctx, scope, row.ID, ChangeResume)
-	if promoted && s.foregroundActivation != nil {
+	if promoted {
 		s.mu.Lock()
 		binding := s.current[scope.Key()]
 		s.mu.Unlock()
-		s.foregroundActivation(ctx, row, binding)
+		// The commit cannot be retracted by cancellation of the activating request.
+		if _, err := s.foregroundActivated.Emit(context.WithoutCancel(ctx), ForegroundActivatedEvent{Session: *row, Binding: binding}); err != nil {
+			return row, err
+		}
 	}
 	return row, nil
 }

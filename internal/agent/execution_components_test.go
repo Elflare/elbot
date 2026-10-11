@@ -111,7 +111,7 @@ func newExecutionFixture(t *testing.T, client llm.Client, store storage.Store) *
 		waitPolicy:  policy,
 		appendWaits: newAppendWaitLifecycle(t.Context()),
 	}
-	opts.Sessions.SetForegroundActivation(execution.AdoptForeground)
+	connectTestForeground(t, opts.Sessions, execution.AdoptForeground)
 	t.Cleanup(opts.Turns.StopAll)
 	t.Cleanup(func() { _ = opts.Sessions.Close(context.Background()) })
 	return &executionFixture{

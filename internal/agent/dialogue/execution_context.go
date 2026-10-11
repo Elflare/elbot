@@ -54,7 +54,10 @@ func (v ExecutionView) Context(ctx context.Context) context.Context {
 	if e == nil {
 		return ctx
 	}
-	foreground := e.Foreground()
+	return foregroundContext(ctx, e.Foreground())
+}
+
+func foregroundContext(ctx, foreground context.Context) context.Context {
 	if foreground == nil {
 		return ctx
 	}
@@ -84,6 +87,40 @@ func (v ExecutionView) Context(ctx context.Context) context.Context {
 	ctx = sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{})
 	ctx = modelmgr.WithSelectionOverride(ctx, config.ModelSelection{})
 	return ctx
+}
+
+// RefreshExecution applies only the committed handoff facts at a tool-call
+// boundary. Tool state written since adoption remains owned by the caller.
+func (v ExecutionView) RefreshExecution(ctx context.Context, row *storage.Session) (context.Context, error) {
+	e := turn.ExecutionFromContext(ctx)
+	if e == nil {
+		return ctx, nil
+	}
+	foreground, latest := e.ForegroundState()
+	if foreground == nil {
+		return ctx, nil
+	}
+	ctx = foregroundContext(ctx, foreground)
+	if row.Mode == latest.Mode && session.WasPromoted(row) {
+		return ctx, nil
+	}
+	fields, err := storage.DecodeSessionMetadata(row.Metadata)
+	if err != nil {
+		return ctx, err
+	}
+	promoted, err := storage.DecodeSessionMetadata(latest.Metadata)
+	if err != nil {
+		return ctx, err
+	}
+	fields["foreground_origin"] = promoted["foreground_origin"]
+	delete(fields, "background_kind")
+	metadata, err := fields.Encode()
+	if err != nil {
+		return ctx, err
+	}
+	row.OwnerID, row.Platform, row.PlatformScopeID = latest.OwnerID, latest.Platform, latest.PlatformScopeID
+	row.Mode, row.Metadata = latest.Mode, metadata
+	return ctx, nil
 }
 
 func (v ExecutionView) RefreshSession(ctx context.Context, row *storage.Session) (context.Context, error) {

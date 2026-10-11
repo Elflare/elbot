@@ -64,7 +64,7 @@ func TestPlatformDeadlineReportsLiveWorkersAndRepeatedCloseJoinsSameDone(t *test
 	}
 }
 func TestStopAppOnExitCancelsPeersAndNotifiesUpperOwner(t *testing.T) {
-	m, err := NewModule(t.Context(), ModuleDeps{Mode: platformbuiltin.ModeService})
+	m, err := NewModule(t.Context(), ModuleDeps{Mode: platformbuiltin.ModeCLIOnly})
 	if err != nil {
 		t.Fatal(err)
 	}

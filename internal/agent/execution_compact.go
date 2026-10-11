@@ -100,7 +100,7 @@ func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.
 		if err != nil {
 			return nil, err
 		}
-		e.Adopt(sessionpkg.WithBinding(e.Foreground(), nextBinding))
+		e.Adopt(sessionpkg.WithBinding(e.Foreground(), nextBinding), *next)
 	}
 	return next, nil
 }

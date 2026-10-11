@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"elbot/internal/agent"
 	"elbot/internal/fileops"
 	"elbot/internal/session"
 	"elbot/internal/signal"
@@ -15,7 +16,13 @@ type signalBindings struct {
 	connections []*signal.Connection
 }
 
-func (b *signalBindings) connectSession(sessions *session.Service, rollback *fileops.RollbackManager) error {
+func (b *signalBindings) connectSession(sessions *session.Service, rollback *fileops.RollbackManager, execution *agent.ExecutionCoordinator) error {
+	if err := connectSignal(b, sessions.ForegroundActivated(), func(ctx context.Context, event session.ForegroundActivatedEvent) error {
+		execution.AdoptForeground(ctx, &event.Session, event.Binding)
+		return nil
+	}, signal.ConnectOptions{}); err != nil {
+		return err
+	}
 	if rollback == nil {
 		return nil
 	}

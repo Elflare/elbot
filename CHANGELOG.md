@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 重构日志系统
 - 重构通知系统
 - 优化CLI UI逻辑
+- 服务模式不再随全部消息平台退出而结束。
 - 工具调现在仅记录 audit；移除 `/log -t`。日志会精简工具内容记录。
 - 平台连接事件从适配器实例信号及 App 转发改为直接发布全局信号；Hook 协调模块和 Cron 自行订阅、按平台排队并管理关闭，保持原有连接触发、补执行及 30 秒退出预算。
 - 工具支持按 API 类型限制发现、补全、预载和执行。
