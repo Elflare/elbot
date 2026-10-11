@@ -360,6 +360,14 @@
       "translation": "If using other Providers, you need to synchronously modify __ELBOT_CODE_0__ and __ELBOT_CODE_1__.\n",
       "updated_at": 1781515975
     },
+    "docs/getting-started.md:paragraph:172e996a8220bb173868d383d8e388706221e6839ee02147275d7e68733c7066": {
+      "kind": "paragraph",
+      "source": "直接启动的交互 CLI 退出时会结束所属应用进程。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "172e996a8220bb173868d383d8e388706221e6839ee02147275d7e68733c7066",
+      "translation": "When an interactively started CLI exits, it will terminate the associated application process.\n",
+      "updated_at": 1791726027
+    },
     "docs/getting-started.md:paragraph:1764c45ccdf9752d90fb85d4f8f10eac4884ee3a0f2b04a849a6afcf60213beb": {
       "kind": "paragraph",
       "source": "到期后停止等待并退出。",
@@ -488,6 +496,14 @@
       "translation": "This document is used to get ElBot up and running and complete your first CLI conversation.\n",
       "updated_at": 1781515975
     },
+    "docs/getting-started.md:paragraph:9715b7c9671379915f1ccb6a905ad22be9ac761f4e8e95c9992912b02fa1055b": {
+      "kind": "paragraph",
+      "source": "服务模式下，远程 CLI 服务和其他消息平台独立运行：单个平台退出不会停止其他平台或后台任务；",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "9715b7c9671379915f1ccb6a905ad22be9ac761f4e8e95c9992912b02fa1055b",
+      "translation": "In service mode, the remote CLI service and other messaging platforms run independently: exiting a single platform will not stop other platforms or background tasks;",
+      "updated_at": 1791726027
+    },
     "docs/getting-started.md:paragraph:9b0c1147a651a1dbbb1367c6e9951c9f39626a4f42c34d0952eb5d63cfcf94f9": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 是独立本地进程，会使用同一套配置和 SQLite 数据，但不会接管 service 进程中的当前请求、确认状态或内存里的当前 Session。",
@@ -519,6 +535,14 @@
       "source_hash": "a18886edfbefc7fdb7a8a2ee214bc38c9b5854fde15969e995574e2fae1102a8",
       "translation": "During the first run, if __ELBOT_CODE_0__ does not exist in the platform configuration directory, __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__, __ELBOT_CODE_5__, and __ELBOT_CODE_6__ will be automatically generated in the platform configuration directory;",
       "updated_at": 1781854929
+    },
+    "docs/getting-started.md:paragraph:a297e0e15e07adbf7f6ea8ab46e76c9050ccdf392971b7bd431943a58449aa15": {
+      "kind": "paragraph",
+      "source": "没有配置消息平台、或全部平台均已退出时，服务仍保持运行，直到外部停止。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "a297e0e15e07adbf7f6ea8ab46e76c9050ccdf392971b7bd431943a58449aa15",
+      "translation": "When no messaging platforms are configured or all platforms have exited, the service remains running until it is stopped externally.",
+      "updated_at": 1791726027
     },
     "docs/getting-started.md:paragraph:a611d499cca4918706780e022d66f0e1543051cc10c1a4b98af5341d36626dc7": {
       "kind": "paragraph",
@@ -642,8 +666,8 @@
     }
   },
   "source": "docs/getting-started.md",
-  "source_hash": "ad6b5e3c04d80bfb141869fc6100478b9e6bd0e80bfb4ca3dae84a7cb73e96f1",
+  "source_hash": "63d2b25959e1c7ae0d863f5647cf73b0e8c0fabd937a012d3ae2a8c813313290",
   "target": "docs.en/getting-started.md",
-  "updated_at": 1791194071,
+  "updated_at": 1791726027,
   "version": 2
 }
