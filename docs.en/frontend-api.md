@@ -79,15 +79,17 @@ The server responds with `complete_result`.
 {"type": "chat", "text": "你好！有什么可以帮你的？"}
 ```
 
-The complete reply message sent after the Agent finishes processing.
+Complete conversation output, including Agent replies, Hook body, and Cron/Elnis background reports. Background reports also enter the chat area.
 
 ### notice — Notification
 
 ```json
-{"type": "notice", "level": "INFO", "text": "Cron 任务已完成"}
+{"type": "notice", "level": "WARN", "text": "模型调用失败，正在重试…"}
 ```
 
-Notification messages for non-dialogue scenarios, such as Cron results, Hook output, Elnis event reports, etc. `level` can be `DEBUG`, `INFO`, `WARN`, or `ERROR`; When omitted, it is handled as `INFO`.
+Plain text notifications, including command return results, as well as runtime prompts such as retries, visual fallbacks, Hook failures, and configuration warnings. Command results use `INFO` and can contain multi-line long text. `level` can be `DEBUG`, `INFO`, `WARN`, or `ERROR`; When omitted, it is handled as `INFO`. Notifications do not carry files, media, or background reports.
+
+Notifications are queued independently by platform and sent sequentially to the same target. A warning is logged when the queue is full; it is not automatically resent; Notifications wait for a maximum of 30 seconds by default. Reply notifications from the original remote connection will not be migrated to a new connection for the same user. Queued tool previews and retry prompts are cancelled along with the request; Failure and timeout prompts that have already occurred are retained based on their source.
 
 ### reasoning — Reasoning Process
 
@@ -95,7 +97,7 @@ Notification messages for non-dialogue scenarios, such as Cron results, Hook out
 {"type": "reasoning", "text": "用户在问天气，我需要调用搜索工具..."}
 ```
 
-Reasoning text pushed by models that support reasoning output during the generation process. The frontend can choose to display or hide it.
+Reasoning text pushed by models that support reasoning output during the generation process. The frontend can choose to display or hide it. The CLI adds `[thinking] ` before the first valid increment, closes the active display when the call ends normally, fails, or is cancelled, and sends `[/thinking]` followed by a newline; Empty markers are not sent when there are no increments. The display is fixed to the original connection and is not transferred to other connections of the same user. After a background task takes over, only newly generated reasoning increments are displayed; previous content is not replayed.
 
 ### status — Runtime Status
 
@@ -121,7 +123,7 @@ Reasoning text pushed by models that support reasoning output during the generat
 }
 ```
 
-A snapshot of the runtime status, which the frontend can use for status bar display. Possible values for `phase`: 
+A runtime status snapshot, which the frontend can use for status bar display. The submitted final state is still published after the request is cancelled; Background tasks have no frontend display target; only new states are displayed after takeover. Status updates will be merged; if the application is closed entirely, there is no guarantee that the final state will be re-sent to the closed frontend. `phase` values:
 
 | Phase | Description |
 |-------|------|
@@ -129,6 +131,7 @@ A snapshot of the runtime status, which the frontend can use for status bar disp
 | preparing | Preparing |
 | llm | LLM generating |
 | tool | Tool executing |
+| sending | Reply sending |
 | done | Completed |
 | error | Error |
 
