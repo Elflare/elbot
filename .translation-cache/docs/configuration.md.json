@@ -1480,14 +1480,6 @@
       "translation": "When no workspace is set, the process working directory is used.",
       "updated_at": 1791193831
     },
-    "docs/configuration.md:paragraph:133f1abe4d0bee05418c8a9e07d5238c411dcf1409cf8a7a9e753d503e0ea1be": {
-      "kind": "paragraph",
-      "source": "__ELBOT_CODE_0__ 的查询等级和 __ELBOT_CODE_1__ 的记录等级相互独立：查询只显示已有记录，不改变配置或补回缺失详情。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "133f1abe4d0bee05418c8a9e07d5238c411dcf1409cf8a7a9e753d503e0ea1be",
-      "translation": "The query level of __ELBOT_CODE_0__ and the recording level of __ELBOT_CODE_1__ are independent: queries only display existing records and do not change configurations or recover missing details.",
-      "updated_at": 1791376733
-    },
     "docs/configuration.md:paragraph:1348de618f0e0d0ee6e02cf28f370260454080fe4e7f5dbbe87c54feefef6abc": {
       "kind": "paragraph",
       "source": "自动附带的说明文件最大为 64 KiB。超过限制时不会读取内容，也不会标记为已附带，工具结果会提示需要缩短或拆分该文件后再切换 workspace。\n",
@@ -2079,6 +2071,14 @@
       "source_hash": "8c4eebb0b83b05db1efd340dc243af01c2e623b918bc51403087fc0d841ee374",
       "translation": "Media cleanup is enabled independently and is not affected by the sandbox cleanup switch.",
       "updated_at": 1790860491
+    },
+    "docs/configuration.md:paragraph:8cf6163d14a9b8cdf9cf408621c6b1e7fcb8e91dc1334e2949f87d6edbc4002f": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 的查询等级和 __ELBOT_CODE_1__ 的记录等级相互独立：查询只显示已有记录，不改变配置或补回未记录的内容。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "8cf6163d14a9b8cdf9cf408621c6b1e7fcb8e91dc1334e2949f87d6edbc4002f",
+      "translation": "The query level of __ELBOT_CODE_0__ and the logging level of __ELBOT_CODE_1__ are independent: queries only display existing records and do not change the configuration or backfill unrecorded content.",
+      "updated_at": 1791708294
     },
     "docs/configuration.md:paragraph:8d4a3aa5a1bce6c9306825b96e3358b7ec0651b63fe2ddf04b9e478e09012931": {
       "kind": "paragraph",
@@ -2946,8 +2946,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "49ba7a6367d27f70a50c14779489bce46c1f8b381a8f72e7272216ac97151c30",
+  "source_hash": "13ca9c4517f41fa23908999785f8d0a6a2c56fc722900f5a7cbc322e6fd6532f",
   "target": "docs.en/configuration.md",
-  "updated_at": 1791376733,
+  "updated_at": 1791708294,
   "version": 2
 }
