@@ -251,24 +251,16 @@ Common options:
 
 | Option | Function |
 | --- | --- |
-| `-u`、`-a`、`-t` | Filter user, assistant, and tool events respectively. |
+| `-u`、`-a` | Filter user and assistant events separately. |
 | `-s, --system` | Filter and display `system prompt` logs. |
 | `--hook` | Filter runtime logs for `module=hook`. |
-| `--run_source <来源>` | Filter by tool call source: `foreground`, `cron`, `elnis`; can be combined with `-t` and other conditions. |
-
-The tool call body will be marked with `run_source`, indicating the source at the start of this call; This is separate from `source`, which represents the tool implementation source such as native/Elwisp. Calls newly started after foreground takeover are `foreground`, while calls already in progress retain their original source. Old records missing source markers will not be inferred as foreground calls and will not match when using source filters.
-
-```text
-/log -t --run_source cron -n 20
-/log -t --run_source elnis --raw
-/log -t --run_source foreground -i
-```
 
 `/audit` additionally supports:
 
 | Option | Function |
 | --- | --- |
 | `-t` | Filter tool audits for `event=tool_call`. |
+| `--run_source <来源>` | Filter by tool call source: `foreground`, `cron`, `elnis`; can be combined with `-t` and other conditions. |
 | `--hook` | Filter audits for `module=hook`, which can be used simultaneously with conditions such as `--event`. |
 | `--event <name>` | Filter by audit event, e.g., `tool_call`, `llm_usage`, `permission_denied`. |
 | `--risk <level>` | Filter by risk level. |
@@ -305,10 +297,15 @@ Example:
 /audit --hook --event hook_tool_log
 /audit --hook --tool shell --contains <tool_call_id>
 /audit --event llm_error -d
+/audit -t --run_source cron -n 20
+/audit -t --run_source elnis --raw
+/audit -t --run_source foreground -i
 /elwisp
 /elwisp server-watchdog -n 20
 /elwisp --source minecraft-main --mode llm --since 2h
 ```
+
+> Tool parameter logs are limited to a maximum of 256 Unicode characters; Read/Query/Description types are limited to 128 characters, while Execute/Edit/Write and Media types are limited to 256 characters. Actual call parameters and results returned to the model are not affected by the log length limit.
 
 ## Token Consumption Statistics
 

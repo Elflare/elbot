@@ -408,14 +408,6 @@
       "translation": "Successful switches will be saved to `state.toml`.\n",
       "updated_at": 1791193592
     },
-    "docs/commands.md:paragraph:3529facd6139ba15af34263730e2de63b2e1031a9615165060e8b04531c3fffe": {
-      "kind": "paragraph",
-      "source": "与表示 native／elwisp 等工具实现来源的 __ELBOT_CODE_0__ 分开。",
-      "source_file": "docs/commands.md",
-      "source_hash": "3529facd6139ba15af34263730e2de63b2e1031a9615165060e8b04531c3fffe",
-      "translation": "This is separate from __ELBOT_CODE_0__, which represents the tool implementation source such as native/Elwisp.",
-      "updated_at": 1791708235
-    },
     "docs/commands.md:paragraph:38158497f1311894f2e6163e2e42c9256c78e250e52acd61c7b9063fa800b62f": {
       "kind": "paragraph",
       "source": "重启同样失效。",
@@ -536,14 +528,6 @@
       "translation": "IDs are bound to specific modifications: editing the same file again will generate a new ID, and the old ID will become invalid;",
       "updated_at": 1791193592
     },
-    "docs/commands.md:paragraph:acb22695d618baf34989eb4041f434791c7c52f57389241d9c9c8be960b8a656": {
-      "kind": "paragraph",
-      "source": "缺少来源标记的旧记录不会被推断为前台调用，使用来源筛选时不匹配。\n",
-      "source_file": "docs/commands.md",
-      "source_hash": "acb22695d618baf34989eb4041f434791c7c52f57389241d9c9c8be960b8a656",
-      "translation": "Old records missing source markers will not be inferred as foreground calls and will not match when using source filters.\n",
-      "updated_at": 1791708235
-    },
     "docs/commands.md:paragraph:b14afe6a70f51142e0bae242dcc2ce09ddf662a9e7ffc2fc3edc636f27af2569": {
       "kind": "paragraph",
       "source": "当工具调用触发高风险确认时，Agent 会提示可用确认命令，例如：\n",
@@ -592,14 +576,6 @@
       "translation": "An actual undo requires that the current Session has no running tasks or compaction; you can wait for them to complete or use __ELBOT_CODE_0__ first.\n",
       "updated_at": 1791193592
     },
-    "docs/commands.md:paragraph:d7af38e91681b795d7e4943d938592bcebad5fd2d73458270cd0281862793fb1": {
-      "kind": "paragraph",
-      "source": "工具调用正文会注明 __ELBOT_CODE_0__，表示本次调用开始时的来源；",
-      "source_file": "docs/commands.md",
-      "source_hash": "d7af38e91681b795d7e4943d938592bcebad5fd2d73458270cd0281862793fb1",
-      "translation": "The tool call body will be marked with __ELBOT_CODE_0__, indicating the source at the start of this call;",
-      "updated_at": 1791708235
-    },
     "docs/commands.md:paragraph:d92add9bf20314c848464de8d5e45f4459a7b4a9041a4c845f46462c7d7b7bcb": {
       "kind": "paragraph",
       "source": "选项：\n",
@@ -623,14 +599,6 @@
       "source_hash": "ddb13a11f02d71f9a3be3c24e9ec08e74d9ace7dd15f78c4bb15ce5d27a62575",
       "translation": "Send __ELBOT_CODE_0__ in the chat window; no parameters required.",
       "updated_at": 1790906605
-    },
-    "docs/commands.md:paragraph:e374265c04659adb25bf7d073e0d9e7cd54b61fbbc81186ce71e87185693e364": {
-      "kind": "paragraph",
-      "source": "前台接管后新开始的调用为 __ELBOT_CODE_0__，已开始的调用保留原来源。",
-      "source_file": "docs/commands.md",
-      "source_hash": "e374265c04659adb25bf7d073e0d9e7cd54b61fbbc81186ce71e87185693e364",
-      "translation": "Calls newly started after foreground takeover are __ELBOT_CODE_0__, while calls already in progress retain their original source.",
-      "updated_at": 1791708235
     },
     "docs/commands.md:paragraph:e7932001652119b40b574cb73e5e8b1f152e2d6278e9f792cdc19eeaf16918eb": {
       "kind": "paragraph",
@@ -711,6 +679,30 @@
       "source_hash": "febcc98ceb9ca369f9a5d03b6ff9f5bd0c579a94ede70ffada5ea87611fd60a2",
       "translation": "Checks the main configuration path selected when starting the current service; separate configurations are located according to __ELBOT_CODE_0__ in the main file.",
       "updated_at": 1790906605
+    },
+    "docs/commands.md:quote:0077f3b69c1eb7c3ecc69b8b7c85925e08641bc1d1807770f9bf69ba7ac66ac9": {
+      "kind": "quote",
+      "source": "读取／查询／说明类最多 128 字符，执行／编辑／写入及媒体类最多 256 字符。",
+      "source_file": "docs/commands.md",
+      "source_hash": "0077f3b69c1eb7c3ecc69b8b7c85925e08641bc1d1807770f9bf69ba7ac66ac9",
+      "translation": "Read/Query/Description types are limited to 128 characters, while Execute/Edit/Write and Media types are limited to 256 characters.",
+      "updated_at": 1791712563
+    },
+    "docs/commands.md:quote:617de1dc68268099343524929079470e7aadc32826edd41cfaa2a5f4fb5ffb95": {
+      "kind": "quote",
+      "source": "工具参数日志最多 256 个 Unicode 字符；",
+      "source_file": "docs/commands.md",
+      "source_hash": "617de1dc68268099343524929079470e7aadc32826edd41cfaa2a5f4fb5ffb95",
+      "translation": "Tool parameter logs are limited to a maximum of 256 Unicode characters;",
+      "updated_at": 1791712563
+    },
+    "docs/commands.md:quote:b9768afbd60a3d931fd5663400a16545a5e23b3ebf3c244d8deb45bf22ac7b4a": {
+      "kind": "quote",
+      "source": "实际调用参数和返回给模型的结果不受日志限长影响。",
+      "source_file": "docs/commands.md",
+      "source_hash": "b9768afbd60a3d931fd5663400a16545a5e23b3ebf3c244d8deb45bf22ac7b4a",
+      "translation": "Actual call parameters and results returned to the model are not affected by the log length limit.",
+      "updated_at": 1791712563
     },
     "docs/commands.md:table:03af39065d441408d43be4c157c84c77736fa517eedfac00caa9a31d9f4fa872": {
       "kind": "table",
@@ -863,14 +855,6 @@
       "source_hash": "315d4f29d42ddb97732491d1df02b84065560501b4251beb55b9bc330423aa56",
       "translation": "Filter by Elnis event key.",
       "updated_at": 1781752948
-    },
-    "docs/commands.md:table:33ca20a4e06855fffb447d197531d0cd845c6165cf4bf703fbb76e9fce95421c": {
-      "kind": "table",
-      "source": "分别筛选用户、助手、工具事件。",
-      "source_file": "docs/commands.md",
-      "source_hash": "33ca20a4e06855fffb447d197531d0cd845c6165cf4bf703fbb76e9fce95421c",
-      "translation": "Filter user, assistant, and tool events respectively.",
-      "updated_at": 1784127033
     },
     "docs/commands.md:table:3638a4c91c9acad148e26b0e79bd50766ca7688e1d59e23c29e03b2276ba38be": {
       "kind": "table",
@@ -1039,6 +1023,14 @@
       "source_hash": "662180bb3357d0b97297639a4fa15e277afffa7d24630a4aa8343a9db12e49c8",
       "translation": "View active requests in the current process, including turn, LLM, tool, and hook requests; turns will display the execution stage and the time spent on each stage.",
       "updated_at": 1783571608
+    },
+    "docs/commands.md:table:6810ca79f5f7958064764a4e14c199f2d8f0de6f08af8f0ac69b114413ef6f4b": {
+      "kind": "table",
+      "source": "分别筛选用户、助手事件。",
+      "source_file": "docs/commands.md",
+      "source_hash": "6810ca79f5f7958064764a4e14c199f2d8f0de6f08af8f0ac69b114413ef6f4b",
+      "translation": "Filter user and assistant events separately.",
+      "updated_at": 1791712563
     },
     "docs/commands.md:table:70476364080553c045a709f5595354aef3df1078ec909e8e882936dbc101e861": {
       "kind": "table",
@@ -1506,8 +1498,8 @@
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "f05be1ecfcf061ed19f9b76b814aab7e03cd097719bb8377b6a4b7eb5ad98252",
+  "source_hash": "c5ddd9889a9bb0b1d4aa03187329ebe9675ef6a7e983c6264b068a00dcd0c1e3",
   "target": "docs.en/commands.md",
-  "updated_at": 1791708235,
+  "updated_at": 1791712563,
   "version": 2
 }
