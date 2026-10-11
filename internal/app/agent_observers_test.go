@@ -72,10 +72,13 @@ func TestProductionAssemblyObservesConversationExactlyOnce(t *testing.T) {
 	for len(records) > 0 {
 		counts[recordAttrs(<-records)["event"].(string)]++
 	}
-	for _, message := range []string{"user_message", "assistant_message", "reply_delivered", "reply_committed"} {
+	for _, message := range []string{"user_message", "assistant_message", "reply_delivered"} {
 		if counts[message] != 1 {
 			t.Fatalf("%s: %d records", message, counts[message])
 		}
+	}
+	if counts["reply_committed"] != 0 {
+		t.Fatalf("retired reply summary emitted: %v", counts)
 	}
 }
 

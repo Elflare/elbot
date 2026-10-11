@@ -90,7 +90,7 @@ func TestReplyLogPreservesCanceledSendAndIndependentSaveFailure(t *testing.T) {
 	f.repo.appendErr = errors.New("independent save failure")
 	var records []globalevents.LogRecord
 	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, r globalevents.LogRecord) error {
-		if r.EventName == "reply_committed" {
+		if r.EventName == "reply_delivered" || r.EventName == "persistence_error" {
 			records = append(records, r)
 		}
 		return nil
@@ -103,13 +103,16 @@ func TestReplyLogPreservesCanceledSendAndIndependentSaveFailure(t *testing.T) {
 	if !errors.Is(err, f.repo.appendErr) || !errors.Is(result.SendErr, context.Canceled) || len(result.Receipt.SentMessages) != 1 {
 		t.Fatalf("result = %+v, error = %v", result, err)
 	}
-	if len(records) != 1 || records[0].ResultStatus != globalevents.ResultFailed || records[0].Level != slog.LevelError {
+	if len(records) != 2 || records[0].ResultStatus != globalevents.ResultCanceled || records[0].Level != slog.LevelInfo || records[1].ResultStatus != globalevents.ResultFailed || records[1].Level != slog.LevelError {
 		t.Fatalf("records = %#v", records)
 	}
-	for _, fact := range []string{"send_error=context canceled", "persistence_error=independent save failure", "platform_message_id=sent"} {
+	for _, fact := range []string{"context canceled", "platform_message_id=sent"} {
 		if !strings.Contains(records[0].Content, fact) {
 			t.Errorf("missing %q: %s", fact, records[0].Content)
 		}
+	}
+	if !strings.Contains(records[1].Content, "independent save failure") {
+		t.Fatalf("save diagnostic missing: %s", records[1].Content)
 	}
 }
 

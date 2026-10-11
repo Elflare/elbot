@@ -126,7 +126,12 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 		record := o.LogRecord
 		record.Category, record.Type, record.EventName = events.LogRuntime, events.ContentText, "assistant_message"
 		record.ContentLimit = 4096
-		record.Content = fmt.Sprintf("provider=%s\nmodel=%s\nelapsed_ms=%d\ntext=%s\nraw_text=%s\ntool_call_count=%d", o.Event.Provider, o.Event.Model, o.Event.ElapsedMS, o.Event.Text, o.Event.SourceText, o.Event.ToolCallCount)
+		record.Content = fmt.Sprintf("provider=%s\nmodel=%s\nelapsed_ms=%d\ntext=%s", o.Event.Provider, o.Event.Model, o.Event.ElapsedMS, o.Event.Text)
+		if o.Event.Text != o.Event.SourceText {
+			record.Content += "\nraw_text=" + o.Event.SourceText
+		}
+		record.Content += fmt.Sprintf("\ntool_call_count=%d", o.Event.ToolCallCount)
+		record.Content = tool.TruncateLogContent(record.Content, 512)
 		_ = events.EmitLog(context.WithoutCancel(ctx), record)
 	}
 	agentevents.Emit(ctx, o.processor.Completed, o.Event)

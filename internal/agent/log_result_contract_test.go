@@ -8,12 +8,138 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/events"
 	"elbot/internal/platform"
 	"elbot/internal/signal"
 )
+
+func TestReplyDeliveryRecordsOncePerSend(t *testing.T) {
+	for _, mode := range []string{"direct", "buffered", "stream"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newReplyTestFixture(t, mode == "buffered")
+			f.ctx = contextinfo.WithExecution(f.ctx, contextinfo.Execution{SessionID: f.in.Session.ID, RequestID: "delivery-request"})
+			f.platform.outputsReceipt = delivery.Receipt{
+				PlatformMessageIDs: []string{"emoticon"},
+				SentMessages:       []delivery.SentMessage{{Platform: "telegram", ScopeID: "private:actual", PlatformMessageID: "emoticon", OutputIndexes: []int{0}}},
+			}
+			if mode == "stream" {
+				f.in.Stream = &replyTestStream{events: &f.events, wantCtx: f.requestCtx, t: t, replaceReceipt: f.platform.receipt}
+			}
+			var records []events.LogRecord
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
+				if r.EventName == "reply_delivered" || r.EventName == "reply_committed" {
+					records = append(records, r)
+				}
+				return nil
+			}, signal.ConnectOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(connection.Disconnect)
+			if _, err := f.out.SendOutputs(f.ctx, nil); err != nil || len(records) != 0 {
+				t.Fatalf("empty outputs logged: err=%v records=%+v", err, records)
+			}
+			result, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
+			if err != nil || !result.Persisted || len(records) != 2 {
+				t.Fatalf("result=%+v err=%v records=%+v", result, err, records)
+			}
+			for i, r := range records {
+				if r.EventName != "reply_delivered" || r.Level != slog.LevelDebug || r.ResultStatus != events.ResultSucceeded || r.Identity.SessionID == nil || *r.Identity.SessionID != f.in.Session.ID || r.Identity.RequestID == nil || *r.Identity.RequestID != "delivery-request" {
+					t.Fatalf("delivery record=%+v", r)
+				}
+				want := []string{"platform_message_ids=[sent]", "platform_message_ids=[emoticon]"}[i]
+				if !strings.Contains(r.Content, want) {
+					t.Fatalf("missing %q: %s", want, r.Content)
+				}
+			}
+		})
+	}
+}
+
+func TestIntermediateStreamDeliveryLogsOnce(t *testing.T) {
+	for _, tc := range []struct {
+		name, text            string
+		replaceErr, finishErr error
+		status                events.ResultStatus
+		level                 slog.Level
+	}{
+		{"text", "visible", nil, nil, events.ResultSucceeded, slog.LevelDebug},
+		{"empty", "", nil, nil, events.ResultSucceeded, slog.LevelDebug},
+		{"replace_failure", "visible", errors.New("replace failed"), nil, events.ResultFailed, slog.LevelError},
+		{"finish_canceled", "visible", nil, context.Canceled, events.ResultCanceled, slog.LevelInfo},
+		{"empty_finish_failure", "", nil, errors.New("finish failed"), events.ResultFailed, slog.LevelError},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newReplyTestFixture(t, false)
+			stream := &replyTestStream{events: &f.events, wantCtx: f.requestCtx, t: t,
+				replaceReceipt: f.platform.receipt, finishReceipt: f.platform.receipt,
+				replaceErr: tc.replaceErr, finishErr: tc.finishErr,
+			}
+			var records []events.LogRecord
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
+				if r.EventName == "reply_delivered" {
+					records = append(records, r)
+				}
+				return nil
+			}, signal.ConnectOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(connection.Disconnect)
+			err = f.out.FinishIntermediate(f.ctx, f.requestCtx, stream, tc.text, true)
+			if (tc.replaceErr != nil && !errors.Is(err, tc.replaceErr)) || (tc.replaceErr == nil && !errors.Is(err, tc.finishErr)) {
+				t.Fatalf("business error changed: %v", err)
+			}
+			if len(records) != 1 || records[0].ResultStatus != tc.status || records[0].Level != tc.level || !strings.Contains(records[0].Content, "platform_message_ids=[sent]") {
+				t.Fatalf("stream records=%+v", records)
+			}
+			wantCalls := "replace,finish"
+			if tc.replaceErr != nil {
+				wantCalls = "replace"
+			} else if tc.text == "" {
+				wantCalls = "finish"
+			}
+			if strings.Join(f.events, ",") != wantCalls {
+				t.Fatalf("stream calls changed: %v", f.events)
+			}
+		})
+	}
+}
+
+func TestBufferedSendFailureKeepsAudit(t *testing.T) {
+	for _, sendErr := range []error{errors.New("send failed"), context.Canceled} {
+		t.Run(sendErr.Error(), func(t *testing.T) {
+			f := newReplyTestFixture(t, true)
+			f.platform.sendErr = sendErr
+			var records []events.LogRecord
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
+				if r.EventName == "platform_send_error" {
+					records = append(records, r)
+				}
+				return nil
+			}, signal.ConnectOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(connection.Disconnect)
+			result, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
+			if !errors.Is(err, sendErr) || !result.Persisted || len(records) != 1 {
+				t.Fatalf("result=%+v err=%v audit=%+v", result, err, records)
+			}
+			status, level := events.ResultFailed, slog.LevelError
+			if sendErr == context.Canceled {
+				status, level = events.ResultCanceled, slog.LevelInfo
+			}
+			r := records[0]
+			if r.Category != events.LogAudit || r.ResultStatus != status || r.Level != level || r.Identity.SessionID == nil || *r.Identity.SessionID != f.in.Session.ID || !strings.Contains(r.Content, sendErr.Error()) {
+				t.Fatalf("audit lost: %+v", r)
+			}
+		})
+	}
+}
 
 func TestSendOutputsUsesSourceLogResult(t *testing.T) {
 	for _, tc := range []struct {
@@ -22,6 +148,7 @@ func TestSendOutputsUsesSourceLogResult(t *testing.T) {
 		err    error
 		level  slog.Level
 	}{
+		{"success", events.ResultSucceeded, nil, slog.LevelDebug},
 		{"wrapped_cancellation", events.ResultCanceled, fmt.Errorf("transport: %w", context.Canceled), slog.LevelInfo},
 		{"partial_fanout_failure_without_business_error", events.ResultFailed, nil, slog.LevelError},
 		{"mixed_failure", events.ResultFailed, errors.Join(context.Canceled, errors.New("independent send failure")), slog.LevelError},
@@ -68,7 +195,7 @@ func TestReplyCommitUsesSourceOutcomeWithoutChangingBusiness(t *testing.T) {
 			fixture.platform.outputsLogResult = &events.LogResult{ResultStatus: events.ResultFailed, Content: "one destination failed; another received the output"}
 			var records []events.LogRecord
 			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-				if record.EventName == "reply_committed" {
+				if record.EventName == "reply_delivered" && strings.HasPrefix(record.Content, "operation=send_outputs") {
 					records = append(records, record)
 				}
 				return nil
@@ -113,7 +240,7 @@ func TestReplyCommitLogSpacingComesFromSources(t *testing.T) {
 				}
 				var records []events.LogRecord
 				connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-					if record.EventName == "reply_committed" {
+					if record.EventName == "reply_delivered" {
 						records = append(records, record)
 					}
 					return nil
@@ -127,7 +254,7 @@ func TestReplyCommitLogSpacingComesFromSources(t *testing.T) {
 					t.Fatalf("result=%+v err=%v records=%+v", result, err, records)
 				}
 				content := records[0].Content
-				if records[0].ResultStatus != status || records[0].Level != tc.level || !strings.Contains(content, "persisted=true\npreparation:") || !strings.Contains(content, "platform_message_ids=[sent]") {
+				if records[0].ResultStatus != status || records[0].Level != tc.level || !strings.HasPrefix(content, "operation=send_assistant_message\n") || !strings.Contains(content, "platform_message_ids=[sent]") {
 					t.Fatalf("reply facts changed: %+v", records[0])
 				}
 				for _, unwanted := range []string{"\nassociation:", "\nfinish:", "\noutputs_send:", "assistant_send:\n\n"} {
@@ -155,7 +282,7 @@ func TestReplyCommitKeepsFailureBeforeLaterCancellation(t *testing.T) {
 			fixture.platform.outputsLogResult = &events.LogResult{ResultStatus: events.ResultCanceled, Content: "later outputs canceled"}
 			var records []events.LogRecord
 			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-				if record.EventName == "reply_committed" {
+				if record.EventName == "reply_delivered" {
 					records = append(records, record)
 				}
 				return nil
@@ -168,11 +295,11 @@ func TestReplyCommitKeepsFailureBeforeLaterCancellation(t *testing.T) {
 			if err != nil || !result.Persisted || len(result.Receipt.PlatformMessageIDs) != 1 {
 				t.Fatalf("business result=%#v error=%v", result, err)
 			}
-			if len(records) != 1 || records[0].ResultStatus != events.ResultFailed || records[0].Level != slog.LevelError {
+			if len(records) != 2 || records[0].ResultStatus != events.ResultFailed || records[0].Level != slog.LevelError || records[1].ResultStatus != events.ResultCanceled || records[1].Level != slog.LevelInfo {
 				t.Fatalf("later cancellation hid an independent failure: %#v", records)
 			}
-			if strings.Contains(records[0].Content, "association:\nlater outputs canceled") {
-				t.Fatalf("outputs mislabeled as association: %s", records[0].Content)
+			if !strings.Contains(records[1].Content, "operation=send_outputs\nlater outputs canceled") {
+				t.Fatalf("outputs mislabeled: %s", records[1].Content)
 			}
 		})
 	}

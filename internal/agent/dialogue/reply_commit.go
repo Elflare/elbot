@@ -47,7 +47,7 @@ type ReplyCommitResult struct {
 
 // Commit requires contexts and Session refreshed through executionView by the
 // caller. streamCtx retains the model request's original cancellation chain.
-func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in ReplyCommitInput, out Output) (result ReplyCommitResult, commitErr error) {
+func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in ReplyCommitInput, out Output) (result ReplyCommitResult, _ error) {
 	persistence := in.Persistence
 	if persistence == nil {
 		persistence = c.Persistence
@@ -56,43 +56,6 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in ReplyCommitIn
 		return result, fmt.Errorf("reply persistence is required")
 	}
 	result.RawText = in.RawText
-	var logResult events.LogResult
-	record := events.LogRecord{
-		Category:     events.LogRuntime,
-		Level:        slog.LevelDebug,
-		EventName:    "reply_committed",
-		Module:       "agent",
-		Type:         events.ContentText,
-		ContentLimit: 4096,
-		ResultStatus: events.ResultSucceeded,
-	}
-	defer func() {
-		record.Identity.SessionID = &in.Session.ID
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		record.Content = fmt.Sprintf("message_id=%s\npersisted=%t", result.MessageID, result.Persisted) + record.Content
-		if result.SendErr != nil {
-			record.Content += fmt.Sprintf("\nsend_error=%v", result.SendErr)
-		}
-		if result.PersistErr != nil {
-			record.Content += fmt.Sprintf("\npersistence_error=%v", result.PersistErr)
-		}
-		if commitErr != nil {
-			record.Content += fmt.Sprintf("\nerror=%v", commitErr)
-		}
-		_ = events.EmitLog(context.WithoutCancel(ctx), record)
-	}()
 	buffered := BufferAssistantOutput(ctx)
 	text := in.PlatformText
 	empty := strings.TrimSpace(text) == "" && strings.TrimSpace(in.Text) == "" && len(in.Outputs) == 0
@@ -101,32 +64,15 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in ReplyCommitIn
 	}
 	if strings.TrimSpace(text) != "" {
 		var err error
-		text, logResult, err = c.Output.PrepareAssistant(ctx, hook.PointAgentTurnOutputPrepared, text)
-		if logResult.Content != "" {
-			record.Content += "\npreparation:\n" + logResult.Content
-		}
-		if logResult.ResultStatus == events.ResultFailed {
-			record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
-		} else if logResult.ResultStatus == events.ResultCanceled && record.ResultStatus != events.ResultFailed {
-			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
-		}
+		text, _, err = c.Output.PrepareAssistant(ctx, hook.PointAgentTurnOutputPrepared, text)
 		if err != nil {
 			return result, fmt.Errorf("turn output hook: %w", err)
 		}
 		if !buffered {
 			if in.Stream != nil {
-				result.Receipt, logResult, result.SendErr = out.ReplaceAndFinishStream(ctx, streamCtx, in.Stream, text)
+				result.Receipt, _, result.SendErr = out.ReplaceAndFinishStream(ctx, streamCtx, in.Stream, text)
 			} else {
-				result.Receipt, logResult, result.SendErr = out.SendAssistant(ctx, text)
-			}
-			c.observeDelivery(ctx, in.Session.ID, "send_assistant_message", buffered, logResult, result.SendErr)
-			if logResult.Content != "" {
-				record.Content += "\nassistant_send:\n" + logResult.Content
-			}
-			if logResult.ResultStatus == events.ResultFailed {
-				record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
-			} else if logResult.ResultStatus == events.ResultCanceled && record.ResultStatus != events.ResultFailed {
-				record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
+				result.Receipt, _, result.SendErr = out.SendAssistant(ctx, text)
 			}
 			if result.SendErr != nil && !HasReplyReceipt(result.Receipt) {
 				return result, result.SendErr
@@ -134,16 +80,7 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in ReplyCommitIn
 		}
 	}
 	if !buffered && result.SendErr == nil {
-		logResult, result.SendErr = out.SendOutputs(ctx, in.Outputs)
-		if logResult.Content != "" {
-			record.Content += "\noutputs_send:\n" + logResult.Content
-		}
-
-		if logResult.ResultStatus == events.ResultFailed {
-			record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
-		} else if logResult.ResultStatus == events.ResultCanceled && record.ResultStatus != events.ResultFailed {
-			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
-		}
+		_, result.SendErr = out.SendOutputs(ctx, in.Outputs)
 		if result.SendErr != nil && !HasReplyReceipt(result.Receipt) {
 			return result, result.SendErr
 		}
@@ -160,15 +97,7 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in ReplyCommitIn
 		if empty {
 			toSave = nil
 		}
-		logResult, result.PersistErr = persistence.Commit(ctx, toSave)
-		if logResult.Content != "" {
-			record.Content += "\npersistence:\n" + logResult.Content
-		}
-		if logResult.ResultStatus == events.ResultFailed {
-			record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
-		} else if logResult.ResultStatus == events.ResultCanceled && record.ResultStatus != events.ResultFailed {
-			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
-		}
+		_, result.PersistErr = persistence.Commit(ctx, toSave)
 		if result.PersistErr != nil {
 			return result, result.PersistErr
 		}
@@ -179,51 +108,45 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in ReplyCommitIn
 	}
 	if buffered {
 		if strings.TrimSpace(text) != "" {
+			var logResult events.LogResult
 			result.Receipt, logResult, result.SendErr = out.SendAssistant(ctx, text)
-			c.observeDelivery(ctx, in.Session.ID, "send_assistant_message", buffered, logResult, result.SendErr)
-			if logResult.Content != "" {
-				record.Content += "\nassistant_send:\n" + logResult.Content
-			}
-			if logResult.ResultStatus == events.ResultFailed {
-				record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
-			} else if logResult.ResultStatus == events.ResultCanceled && record.ResultStatus != events.ResultFailed {
-				record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
-			}
-			if result.Persisted {
-				result.AssociationErrors, logResult = c.AssociateReceipt(ctx, in.Session.ID, result.MessageID, result.Receipt)
-				if logResult.Content != "" {
-					record.Content += "\nassociation:\n" + logResult.Content
+			if result.SendErr != nil {
+				content, _ := json.Marshal(map[string]string{"operation": "send_assistant_message", "error": fmt.Sprintf("%.2048s", result.SendErr.Error())})
+				record := events.LogRecord{
+					Category: events.LogAudit, Level: slog.LevelDebug, EventName: "platform_send_error", Module: "agent",
+					Type: events.ContentJSON, Content: string(content), ContentLimit: 4096, ResultStatus: logResult.ResultStatus,
 				}
 				if logResult.ResultStatus == events.ResultFailed {
-					record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
-				} else if logResult.ResultStatus == events.ResultCanceled && record.ResultStatus != events.ResultFailed {
-					record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
+					record.Level = slog.LevelError
+				} else if logResult.ResultStatus == events.ResultCanceled {
+					record.Level = slog.LevelInfo
 				}
+				record.Identity.SessionID = &in.Session.ID
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				_ = events.EmitLog(context.WithoutCancel(ctx), record)
+			}
+			if result.Persisted {
+				result.AssociationErrors, _ = c.AssociateReceipt(ctx, in.Session.ID, result.MessageID, result.Receipt)
 			}
 			if result.SendErr != nil {
 				return result, result.SendErr
 			}
 		}
-		logResult, result.SendErr = out.SendOutputs(ctx, in.Outputs)
-		if logResult.Content != "" {
-			record.Content += "\noutputs_send:\n" + logResult.Content
-		}
-
-		if logResult.ResultStatus == events.ResultFailed {
-			record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
-		} else if logResult.ResultStatus == events.ResultCanceled && record.ResultStatus != events.ResultFailed {
-			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
-		}
+		_, result.SendErr = out.SendOutputs(ctx, in.Outputs)
 	} else if result.Persisted {
-		result.AssociationErrors, logResult = c.AssociateReceipt(ctx, in.Session.ID, result.MessageID, result.Receipt)
-		if logResult.Content != "" {
-			record.Content += "\nassociation:\n" + logResult.Content
-		}
-		if logResult.ResultStatus == events.ResultFailed {
-			record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
-		} else if logResult.ResultStatus == events.ResultCanceled && record.ResultStatus != events.ResultFailed {
-			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
-		}
+		result.AssociationErrors, _ = c.AssociateReceipt(ctx, in.Session.ID, result.MessageID, result.Receipt)
 	}
 	return result, result.SendErr
 }
@@ -300,43 +223,4 @@ func (c *ReplyCommitter) AssociateReceipt(ctx context.Context, sessionID, messag
 		}
 	}
 	return failures, logResult
-}
-
-func (c *ReplyCommitter) observeDelivery(ctx context.Context, sessionID, operation string, buffered bool, logResult events.LogResult, err error) {
-	record := events.LogRecord{
-		Category:     events.LogRuntime,
-		Level:        slog.LevelDebug,
-		EventName:    "reply_delivered",
-		Module:       "agent",
-		Type:         events.ContentText,
-		ContentLimit: 4096,
-		ResultStatus: events.ResultSucceeded,
-	}
-	record.Identity.SessionID = &sessionID
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if facts.RunID != "" {
-		record.Identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		record.Identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		record.Identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		record.Identity.RootRequestID = &facts.RootRequestID
-	}
-	record.Content = "operation=" + operation + "\n" + logResult.Content
-	record.ResultStatus = logResult.ResultStatus
-	if logResult.ResultStatus == events.ResultFailed {
-		record.Level = slog.LevelError
-	} else if logResult.ResultStatus == events.ResultCanceled {
-		record.Level = slog.LevelInfo
-	}
-	_ = events.EmitLog(context.WithoutCancel(ctx), record)
-	if err != nil && buffered && operation == "send_assistant_message" {
-		content, _ := json.Marshal(map[string]string{"operation": operation, "error": fmt.Sprintf("%.2048s", err.Error())})
-		record.Category, record.Type, record.EventName, record.Content = events.LogAudit, events.ContentJSON, "platform_send_error", string(content)
-		_ = events.EmitLog(context.WithoutCancel(ctx), record)
-	}
 }
