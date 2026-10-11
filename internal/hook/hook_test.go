@@ -19,7 +19,7 @@ import (
 )
 
 func TestNoopManagerRunPreparesEvent(t *testing.T) {
-	event, err := NoopManager{}.Run(context.Background(), Event{Point: PointAgentInputPrepared})
+	event, _, err := NoopManager{}.Run(context.Background(), Event{Point: PointAgentInputPrepared})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
@@ -78,21 +78,21 @@ func TestManagerSkipsBlockedPluginAndContinues(t *testing.T) {
 		reg.Point = PointPlatformMessageReceived
 		reg.Match = Always()
 		name := reg.Name
-		reg.Handler = HandlerFunc(func(_ context.Context, event Event) (Event, error) {
+		reg.Handler = HandlerFunc(func(_ context.Context, event Event) (Event, globalevents.LogResult, error) {
 			runs = append(runs, name)
-			return event, nil
+			return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 		})
 		if err := manager.Register(reg); err != nil {
 			t.Fatalf("Register %s: %v", name, err)
 		}
 	}
-	if _, err := manager.Run(context.Background(), Event{Point: PointPlatformMessageReceived, Platform: PlatformContext{Name: "qqonebot", ScopeID: "group:123"}}); err != nil {
+	if _, _, err := manager.Run(context.Background(), Event{Point: PointPlatformMessageReceived, Platform: PlatformContext{Name: "qqonebot", ScopeID: "group:123"}}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if len(runs) != 1 || runs[0] != "other" {
 		t.Fatalf("runs = %#v, want other only", runs)
 	}
-	if err := manager.Notify(context.Background(), Event{Point: PointPlatformMessageReceived, Platform: PlatformContext{Name: "qqonebot", ScopeID: "group:123"}}); err != nil {
+	if _, err := manager.Notify(context.Background(), Event{Point: PointPlatformMessageReceived, Platform: PlatformContext{Name: "qqonebot", ScopeID: "group:123"}}); err != nil {
 		t.Fatalf("Notify: %v", err)
 	}
 	if len(runs) != 2 || runs[1] != "other" {
@@ -101,7 +101,7 @@ func TestManagerSkipsBlockedPluginAndContinues(t *testing.T) {
 }
 
 func TestPreparedErrorEventExposesMessage(t *testing.T) {
-	event, err := NoopManager{}.Run(context.Background(), Event{
+	event, _, err := NoopManager{}.Run(context.Background(), Event{
 		Point: PointErrorOccurred,
 		Error: errors.New("boom"),
 	})
@@ -143,20 +143,20 @@ func TestMatchMessageIntentText(t *testing.T) {
 func TestManagerRunsByPriorityAndRegistrationOrder(t *testing.T) {
 	manager := NewManager()
 	var got []string
-	manager.Register(Registration{Point: PointAgentInputPrepared, Priority: 10, Name: "late", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+	manager.Register(Registration{Point: PointAgentInputPrepared, Priority: 10, Name: "late", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 		got = append(got, "late")
-		return event, nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
-	manager.Register(Registration{Point: PointAgentInputPrepared, Priority: 0, Name: "first", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+	manager.Register(Registration{Point: PointAgentInputPrepared, Priority: 0, Name: "first", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 		got = append(got, "first")
-		return event, nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
-	manager.Register(Registration{Point: PointAgentInputPrepared, Priority: 0, Name: "second", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+	manager.Register(Registration{Point: PointAgentInputPrepared, Priority: 0, Name: "second", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 		got = append(got, "second")
-		return event, nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
 
-	if _, err := manager.Run(context.Background(), Event{Point: PointAgentInputPrepared}); err != nil {
+	if _, _, err := manager.Run(context.Background(), Event{Point: PointAgentInputPrepared}); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	want := []string{"first", "second", "late"}
@@ -167,16 +167,16 @@ func TestManagerRunsByPriorityAndRegistrationOrder(t *testing.T) {
 
 func TestManagerPassesUpdatedEventToNextHandler(t *testing.T) {
 	manager := NewManager()
-	manager.Register(Registration{Point: PointLLMResponseReceived, Priority: 0, Name: "clean", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+	manager.Register(Registration{Point: PointLLMResponseReceived, Priority: 0, Name: "clean", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 		event.LLM.Text = "cleaned"
-		return event, nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
-	manager.Register(Registration{Point: PointLLMResponseReceived, Priority: 1, Name: "append", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+	manager.Register(Registration{Point: PointLLMResponseReceived, Priority: 1, Name: "append", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 		event.LLM.Text += " response"
-		return event, nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
 
-	event, err := manager.Run(context.Background(), Event{Point: PointLLMResponseReceived, LLM: LLMPayload{Text: "raw"}})
+	event, _, err := manager.Run(context.Background(), Event{Point: PointLLMResponseReceived, LLM: LLMPayload{Text: "raw"}})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
@@ -214,16 +214,16 @@ func TestManagerStopsOnRunError(t *testing.T) {
 	manager := NewManager()
 	boom := errors.New("boom")
 	called := false
-	manager.Register(Registration{Point: PointAgentInputPrepared, Priority: 0, Name: "boom", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+	manager.Register(Registration{Point: PointAgentInputPrepared, Priority: 0, Name: "boom", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 		event.Message.Segments = llm.ReplaceSegmentText(event.Message.Segments, regexp.MustCompile(".*"), "changed", false)
-		return event, boom
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "test source failed"}, boom
 	})})
-	manager.Register(Registration{Point: PointAgentInputPrepared, Priority: 1, Name: "later", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+	manager.Register(Registration{Point: PointAgentInputPrepared, Priority: 1, Name: "later", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 		called = true
-		return event, nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
 
-	event, err := manager.Run(context.Background(), Event{Point: PointAgentInputPrepared, Message: MessagePayload{Segments: llm.TextSegments("original")}})
+	event, _, err := manager.Run(context.Background(), Event{Point: PointAgentInputPrepared, Message: MessagePayload{Segments: llm.TextSegments("original")}})
 	if !errors.Is(err, boom) {
 		t.Fatalf("error = %v, want %v", err, boom)
 	}
@@ -248,11 +248,11 @@ func TestManagerObserverWrapsMatchedHookContext(t *testing.T) {
 		Priority: 7,
 		Name:     "observed",
 		Match:    Always(),
-		Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+		Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 			if got, _ := ctx.Value(contextKey{}).(string); got != "wrapped" {
 				t.Fatalf("observer context value = %q, want wrapped", got)
 			}
-			return event, nil
+			return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 		}),
 	}); err != nil {
 		t.Fatalf("Register: %v", err)
@@ -265,7 +265,7 @@ func TestManagerObserverWrapsMatchedHookContext(t *testing.T) {
 		return context.WithValue(ctx, contextKey{}, "wrapped"), func() { done = true }
 	})
 
-	if _, err := manager.Run(context.Background(), Event{Point: PointAgentInputPrepared}); err != nil {
+	if _, _, err := manager.Run(context.Background(), Event{Point: PointAgentInputPrepared}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if !observed || !done {
@@ -282,9 +282,9 @@ func TestManagerObserverSkipsUnmatchedAndWakeupSkippedHooks(t *testing.T) {
 		Name:   "unmatched",
 		Match:  Contains("llm.text", "[["),
 		Wakeup: WakeupAny,
-		Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+		Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 			called++
-			return event, nil
+			return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 		}),
 	}); err != nil {
 		t.Fatalf("Register unmatched: %v", err)
@@ -293,9 +293,9 @@ func TestManagerObserverSkipsUnmatchedAndWakeupSkippedHooks(t *testing.T) {
 		Point: PointLLMResponseReceived,
 		Name:  "wakeup-skipped",
 		Match: Always(),
-		Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+		Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 			called++
-			return event, nil
+			return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 		}),
 	}); err != nil {
 		t.Fatalf("Register wakeup-skipped: %v", err)
@@ -306,7 +306,7 @@ func TestManagerObserverSkipsUnmatchedAndWakeupSkippedHooks(t *testing.T) {
 		return ctx, func() {}
 	})
 
-	if _, err := manager.Run(context.Background(), Event{Point: PointLLMResponseReceived, LLM: LLMPayload{Text: "plain"}}); err != nil {
+	if _, _, err := manager.Run(context.Background(), Event{Point: PointLLMResponseReceived, LLM: LLMPayload{Text: "plain"}}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if observed != 0 || called != 0 {
@@ -322,19 +322,19 @@ func TestManagerLogsCanceledHookAsInfo(t *testing.T) {
 		Point: PointAgentInputPrepared,
 		Name:  "cancel",
 		Match: Always(),
-		Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
-			return event, context.Canceled
+		Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
+			return event, globalevents.LogResult{ResultStatus: globalevents.ResultCanceled, Content: "test source canceled"}, context.Canceled
 		}),
 	}); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 
-	_, err := manager.Run(context.Background(), Event{Point: PointAgentInputPrepared})
+	_, _, err := manager.Run(context.Background(), Event{Point: PointAgentInputPrepared})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Run error = %v, want context canceled", err)
 	}
 	logs := buf.String()
-	if !strings.Contains(logs, "level=INFO") || !strings.Contains(logs, "hook canceled") {
+	if !strings.Contains(logs, "level=INFO") || !strings.Contains(logs, "event=hook_canceled") {
 		t.Fatalf("logs missing info cancellation:\n%s", logs)
 	}
 	if strings.Contains(logs, "hook error") || strings.Contains(logs, "level=WARN") {
@@ -347,16 +347,16 @@ func TestNotifyRunsAllHandlersAndJoinsErrors(t *testing.T) {
 	first := errors.New("first")
 	second := errors.New("second")
 	calls := 0
-	manager.Register(Registration{Point: PointErrorOccurred, Priority: 0, Name: "first", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+	manager.Register(Registration{Point: PointErrorOccurred, Priority: 0, Name: "first", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 		calls++
-		return event, first
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "test source failed"}, first
 	})})
-	manager.Register(Registration{Point: PointErrorOccurred, Priority: 1, Name: "second", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+	manager.Register(Registration{Point: PointErrorOccurred, Priority: 1, Name: "second", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 		calls++
-		return event, second
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "test source failed"}, second
 	})})
 
-	err := manager.Notify(context.Background(), Event{Point: PointErrorOccurred})
+	_, err := manager.Notify(context.Background(), Event{Point: PointErrorOccurred})
 	if !errors.Is(err, first) || !errors.Is(err, second) {
 		t.Fatalf("joined error = %v, want both errors", err)
 	}
@@ -372,16 +372,16 @@ func TestManagerLogsNamedHook(t *testing.T) {
 	var buf bytes.Buffer
 	manager := NewManager()
 	captureLogs(t, slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	manager.Register(Registration{Point: PointLLMResponseReceived, Priority: 5, Name: "test.logger", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+	manager.Register(Registration{Point: PointLLMResponseReceived, Priority: 5, Name: "test.logger", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 		event.LLM.Text = "after"
-		return event, nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
 
-	if _, err := manager.Run(context.Background(), Event{Point: PointLLMResponseReceived, LLM: LLMPayload{Text: "before", SourceText: "raw"}}); err != nil {
+	if _, _, err := manager.Run(context.Background(), Event{Point: PointLLMResponseReceived, LLM: LLMPayload{Text: "before", SourceText: "raw"}}); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	logs := buf.String()
-	for _, want := range []string{"hook triggered", "test.logger", "before_text=before", "after_text=after", "source_text=raw"} {
+	for _, want := range []string{"test source completed", "test.logger", "before_text=before", "after_text=after", "source_text=raw"} {
 		if !strings.Contains(logs, want) {
 			t.Fatalf("logs missing %q:\n%s", want, logs)
 		}
@@ -398,15 +398,15 @@ func TestManagerSkipsUnmatchedHookAndLogsNothing(t *testing.T) {
 		Priority: 0,
 		Name:     "test.unmatched",
 		Match:    Contains("llm.text", "[["),
-		Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+		Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 			called = true
-			return event, nil
+			return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 		}),
 	}); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 
-	if _, err := manager.Run(context.Background(), Event{Point: PointLLMResponseReceived, LLM: LLMPayload{Text: "plain text"}}); err != nil {
+	if _, _, err := manager.Run(context.Background(), Event{Point: PointLLMResponseReceived, LLM: LLMPayload{Text: "plain text"}}); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	if called {
@@ -419,8 +419,8 @@ func TestManagerSkipsUnmatchedHookAndLogsNothing(t *testing.T) {
 
 func TestManagerRejectsRegistrationWithoutExplicitMatch(t *testing.T) {
 	manager := NewManager()
-	err := manager.Register(Registration{Point: PointAgentInputPrepared, Name: "test.no-match", Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
-		return event, nil
+	err := manager.Register(Registration{Point: PointAgentInputPrepared, Name: "test.no-match", Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
 	if err == nil {
 		t.Fatal("expected registration without match to fail")
@@ -434,15 +434,15 @@ func TestManagerPassesRegexMatchContext(t *testing.T) {
 		Point: PointAgentInputPrepared,
 		Name:  "test.regex",
 		Match: Regex("message.text", `^mute (?P<target>\S+) (?P<minutes>\d+)$`),
-		Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+		Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 			got, _ = event.Metadata["match"].(MatchContext)
-			return event, nil
+			return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 		}),
 	}); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 
-	if _, err := manager.Run(context.Background(), Event{Point: PointAgentInputPrepared, Message: MessagePayload{Segments: llm.TextSegments("mute alice 10")}}); err != nil {
+	if _, _, err := manager.Run(context.Background(), Event{Point: PointAgentInputPrepared, Message: MessagePayload{Segments: llm.TextSegments("mute alice 10")}}); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	if len(got.Regex) != 1 {
@@ -459,30 +459,30 @@ func TestManagerFiltersByWakeupPolicy(t *testing.T) {
 	woken := false
 	manager.SetWakeupFunc(func(context.Context, Event) bool { return woken })
 	calls := []string{}
-	if err := manager.Register(Registration{Point: PointPlatformMessageReceived, Name: "default", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+	if err := manager.Register(Registration{Point: PointPlatformMessageReceived, Name: "default", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 		calls = append(calls, "default")
-		return event, nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatalf("Register default: %v", err)
 	}
-	if err := manager.Register(Registration{Point: PointPlatformMessageReceived, Name: "any", Match: Always(), Wakeup: WakeupAny, Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+	if err := manager.Register(Registration{Point: PointPlatformMessageReceived, Name: "any", Match: Always(), Wakeup: WakeupAny, Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 		calls = append(calls, "any")
-		return event, nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatalf("Register any: %v", err)
 	}
-	if err := manager.Register(Registration{Point: PointPlatformMessageReceived, Name: "forbidden", Match: Always(), Wakeup: WakeupForbidden, Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+	if err := manager.Register(Registration{Point: PointPlatformMessageReceived, Name: "forbidden", Match: Always(), Wakeup: WakeupForbidden, Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 		calls = append(calls, "forbidden")
-		return event, nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatalf("Register forbidden: %v", err)
 	}
 
-	if _, err := manager.Run(context.Background(), Event{Point: PointPlatformMessageReceived}); err != nil {
+	if _, _, err := manager.Run(context.Background(), Event{Point: PointPlatformMessageReceived}); err != nil {
 		t.Fatalf("Run unwoken message: %v", err)
 	}
 	woken = true
-	if _, err := manager.Run(context.Background(), Event{Point: PointPlatformMessageReceived}); err != nil {
+	if _, _, err := manager.Run(context.Background(), Event{Point: PointPlatformMessageReceived}); err != nil {
 		t.Fatalf("Run woken message: %v", err)
 	}
 	if !reflect.DeepEqual(calls, []string{"any", "forbidden", "default", "any"}) {
@@ -492,8 +492,8 @@ func TestManagerFiltersByWakeupPolicy(t *testing.T) {
 
 func TestManagerRejectsUnsupportedWakeupPolicy(t *testing.T) {
 	manager := NewManager()
-	err := manager.Register(Registration{Point: PointPlatformMessageReceived, Name: "invalid", Match: Always(), Wakeup: "sometimes", Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
-		return event, nil
+	err := manager.Register(Registration{Point: PointPlatformMessageReceived, Name: "invalid", Match: Always(), Wakeup: "sometimes", Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
 	if err == nil || !strings.Contains(err.Error(), `unsupported wakeup policy "sometimes"`) {
 		t.Fatalf("err = %v", err)
@@ -503,14 +503,14 @@ func TestManagerRejectsUnsupportedWakeupPolicy(t *testing.T) {
 func TestManagerRunsWakeupRequiredHookWhenWakeupUnknown(t *testing.T) {
 	manager := NewManager()
 	called := false
-	if err := manager.Register(Registration{Point: PointPlatformConnected, Name: "connected", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+	if err := manager.Register(Registration{Point: PointPlatformConnected, Name: "connected", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 		called = true
-		return event, nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 
-	if _, err := manager.Run(context.Background(), Event{Point: PointPlatformConnected}); err != nil {
+	if _, _, err := manager.Run(context.Background(), Event{Point: PointPlatformConnected}); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	if !called {
@@ -521,21 +521,21 @@ func TestManagerRunsWakeupRequiredHookWhenWakeupUnknown(t *testing.T) {
 func TestManagerStopsPropagation(t *testing.T) {
 	manager := NewManager()
 	calls := 0
-	if err := manager.Register(Registration{Point: PointAgentInputPrepared, Name: "first", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+	if err := manager.Register(Registration{Point: PointAgentInputPrepared, Name: "first", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 		calls++
 		event.Control.StopPropagation = true
-		return event, nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatalf("Register first: %v", err)
 	}
-	if err := manager.Register(Registration{Point: PointAgentInputPrepared, Priority: 1, Name: "second", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+	if err := manager.Register(Registration{Point: PointAgentInputPrepared, Priority: 1, Name: "second", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 		calls++
-		return event, nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatalf("Register second: %v", err)
 	}
 
-	got, err := manager.Run(context.Background(), Event{Point: PointAgentInputPrepared})
+	got, _, err := manager.Run(context.Background(), Event{Point: PointAgentInputPrepared})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
@@ -545,14 +545,14 @@ func TestManagerStopsPropagation(t *testing.T) {
 }
 func TestManagerMarksHookOutputs(t *testing.T) {
 	manager := NewManager()
-	if err := manager.Register(Registration{Point: PointPlatformConnected, Priority: 0, Name: "notify.connected", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, error) {
+	if err := manager.Register(Registration{Point: PointPlatformConnected, Priority: 0, Name: "notify.connected", Match: Always(), Handler: HandlerFunc(func(ctx context.Context, event Event) (Event, globalevents.LogResult, error) {
 		event.Outputs = append(event.Outputs, delivery.Text("connected"))
-		return event, nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 
-	event, err := manager.Run(context.Background(), Event{Point: PointPlatformConnected})
+	event, _, err := manager.Run(context.Background(), Event{Point: PointPlatformConnected})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}

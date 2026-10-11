@@ -49,23 +49,23 @@ func (d toolRunDeps) ForTurn(out dialogue.Output, attempt string) toolrun.Runner
 	return d
 }
 
-func (d toolRunDeps) PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error) {
-	event, err := d.hooks.Run(ctx, hook.Event{
+func (d toolRunDeps) PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, events.LogResult, error) {
+	event, logResult, err := d.hooks.Run(ctx, hook.Event{
 		Point:   hook.PointToolCallPrepared,
 		Session: hookSession(session),
 		Tool:    hook.ToolPayload{ID: call.ID, Name: call.Name, Arguments: call.Arguments},
 	})
 	if err != nil {
-		return call, err
+		return call, logResult, err
 	}
 	call.Arguments = event.Tool.Arguments
-	return call, nil
+	return call, logResult, nil
 }
 
-func (d toolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, error) {
+func (d toolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, events.LogResult, error) {
 	original := append([]llm.MessageSegment(nil), segments...)
 	resultText := llm.SegmentsTextOnly(original)
-	event, err := d.hooks.Run(ctx, hook.Event{
+	event, logResult, err := d.hooks.Run(ctx, hook.Event{
 		Point:   hook.PointToolCallCompleted,
 		Session: hookSession(session),
 		Message: hook.MessagePayload{Role: string(llm.RoleTool), Segments: original},
@@ -79,15 +79,15 @@ func (d toolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Sess
 		},
 	})
 	if err != nil {
-		return nil, err
+		return nil, logResult, err
 	}
 	if !reflect.DeepEqual(event.Message.Segments, original) {
-		return materializeMedia(ctx, d.media, event.Message.Segments), nil
+		return materializeMedia(ctx, d.media, event.Message.Segments), logResult, nil
 	}
 	if event.Tool.Result != resultText {
-		return materializeMedia(ctx, d.media, llm.SetSegmentText(original, event.Tool.Result)), nil
+		return materializeMedia(ctx, d.media, llm.SetSegmentText(original, event.Tool.Result)), logResult, nil
 	}
-	return materializeMedia(ctx, d.media, original), nil
+	return materializeMedia(ctx, d.media, original), logResult, nil
 }
 
 func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), events.LogResult, error) {

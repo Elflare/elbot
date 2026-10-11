@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"fmt"
 	"strings"
@@ -113,15 +114,15 @@ func TestAppendExpiryCloseWaitsForOutput(t *testing.T) {
 	started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	var unblock sync.Once
 	hooks := hook.NewManager()
-	if err := hooks.Register(hook.Registration{Point: hook.PointAgentOutputPrepared, Name: "blocked expiry", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, e hook.Event) (hook.Event, error) {
+	if err := hooks.Register(hook.Registration{Point: hook.PointAgentOutputPrepared, Name: "blocked expiry", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
 		if strings.Contains(llm.SegmentsTextOnly(e.Message.Segments), "追加确认已过期") {
 			close(started)
 			<-ctx.Done()
 			close(canceled)
 			<-release
-			return e, ctx.Err()
+			return e, events.LogResult{ResultStatus: events.ResultCanceled, Content: "test source canceled"}, ctx.Err()
 		}
-		return e, nil
+		return e, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatal(err)
 	}

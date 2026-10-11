@@ -8,6 +8,7 @@ import (
 	"time"
 
 	globalevents "elbot/internal/events"
+	"elbot/internal/hook"
 	hookprotocol "elbot/internal/hook/protocol"
 	"elbot/internal/llm"
 )
@@ -49,7 +50,7 @@ type stderrLogger struct {
 func (l stderrLogger) Write(data []byte) (int, error) {
 	line := strings.TrimSpace(string(data))
 	if line != "" {
-		_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
+		hook.LogHook(context.Background(), globalevents.LogRecord{
 			Category:     globalevents.LogRuntime,
 			Level:        slog.LevelInfo,
 			EventName:    "stateful_hook_stderr",

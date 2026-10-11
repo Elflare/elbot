@@ -120,7 +120,7 @@ path = "assets/pic.png"
 	if len(cfg.Rules) != 1 || cfg.Rules[0].source.PluginName != "demo" || cfg.Rules[0].source.BaseDir != pluginDir {
 		t.Fatalf("rules = %#v", cfg.Rules)
 	}
-	got, err := Module{}.runRule(context.Background(), cfg.Rules[0], hook.Event{Point: hook.PointLLMResponseReceived})
+	got, _, err := Module{}.runRule(context.Background(), cfg.Rules[0], hook.Event{Point: hook.PointLLMResponseReceived})
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -356,7 +356,7 @@ text = "continued"
 	if err := module.RegisterHooks(manager); err != nil {
 		t.Fatalf("RegisterHooks: %v", err)
 	}
-	event, err := manager.Run(context.Background(), hook.Event{
+	event, _, err := manager.Run(context.Background(), hook.Event{
 		Point:    hook.PointPlatformMessageReceived,
 		Platform: hook.PlatformContext{Name: "qqonebot", ScopeID: "group:123"},
 	})
@@ -442,7 +442,7 @@ text = "user rule"
 	if err := (Module{Rules: cfg.Rules}).RegisterHooks(manager); err != nil {
 		t.Fatalf("RegisterHooks: %v", err)
 	}
-	allowed, err := manager.Run(context.Background(), hook.Event{
+	allowed, _, err := manager.Run(context.Background(), hook.Event{
 		Point:    hook.PointPlatformMessageReceived,
 		Platform: hook.PlatformContext{Name: "qqonebot", ScopeID: "group:999"},
 		Actor:    hook.ActorContext{UserID: "42"},
@@ -453,7 +453,7 @@ text = "user rule"
 	if len(allowed.Outputs) != 2 {
 		t.Fatalf("allowed outputs = %#v", allowed.Outputs)
 	}
-	blocked, err := manager.Run(context.Background(), hook.Event{
+	blocked, _, err := manager.Run(context.Background(), hook.Event{
 		Point:    hook.PointPlatformMessageReceived,
 		Platform: hook.PlatformContext{Name: "qqonebot", ScopeID: "group:123"},
 	})

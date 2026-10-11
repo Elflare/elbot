@@ -94,10 +94,7 @@ func (defaultRuntimeFactory) Build(ctx context.Context, req RuntimeRequest) (*Ru
 		services.Notifications.Text(ctx, slog.LevelWarn, text)
 	}
 
-	hookRuntime := hookruntime.NewManager(hookruntime.Options{Media: services.Media, Registry: toolRuntime.Registry, Send: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
-		receipt, _, err := sendNotice(ctx, target, outputs)
-		return receipt, err
-	}, SharedDir: filepath.Join(config.PluginConfigDir(cfg.ConfigPath), "_shared"), ProcessEnv: hookProcessEnv})
+	hookRuntime := hookruntime.NewManager(hookruntime.Options{Media: services.Media, Registry: toolRuntime.Registry, Send: sendNotice, SharedDir: filepath.Join(config.PluginConfigDir(cfg.ConfigPath), "_shared"), ProcessEnv: hookProcessEnv})
 
 	lifecycle.hooks = hookRuntime
 	hookService := buildHookService(foundation, req.Platforms, toolRuntime, hooks, hookRuntime, hookProcessEnv, notifyHookIssue, sendNotice)
@@ -207,13 +204,10 @@ func buildHookService(
 ) *hookcontrol.Service {
 	cfg := foundation.Config
 	hookOpts := hookbuiltin.Options{
-		ConfigDir: config.PluginConfigDir(cfg.ConfigPath),
-		Tools:     toolRuntime.Registry,
-		Notify:    notifyHookIssue,
-		Send: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
-			receipt, _, err := sendNotice(ctx, target, outputs)
-			return receipt, err
-		},
+		ConfigDir:       config.PluginConfigDir(cfg.ConfigPath),
+		Tools:           toolRuntime.Registry,
+		Notify:          notifyHookIssue,
+		Send:            sendNotice,
 		PlatformCallers: hookPlatformCallerResolver{runtimes: platforms.Runtimes},
 		Runtime:         hookRuntime,
 		ProcessEnv:      hookProcessEnv,

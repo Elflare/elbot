@@ -230,7 +230,7 @@ func TestRuleRoleGatesAndControl(t *testing.T) {
 		Actor:   hook.ActorContext{Role: "user", GroupRole: "admin"},
 		Message: hook.MessagePayload{Segments: llm.TextSegments("hello")},
 	}
-	got, err := module.runRule(context.Background(), Rule{
+	got, _, err := module.runRule(context.Background(), Rule{
 		Roles:           []string{"admin"},
 		ActorRoles:      []string{"user"},
 		GroupRoles:      []string{"admin"},
@@ -248,7 +248,7 @@ func TestRuleRoleGatesAndControl(t *testing.T) {
 		t.Fatalf("control = %#v", got.Control)
 	}
 
-	blocked, err := module.runRule(context.Background(), Rule{GroupRoles: []string{"owner"}, Actions: []Action{{Type: "append", Field: "message.text", Text: "?"}}}, event)
+	blocked, _, err := module.runRule(context.Background(), Rule{GroupRoles: []string{"owner"}, Actions: []Action{{Type: "append", Field: "message.text", Text: "?"}}}, event)
 	if err != nil {
 		t.Fatalf("blocked runRule: %v", err)
 	}

@@ -274,11 +274,18 @@ Runtime 管注册、schema、权限与执行器；ToolRun 管当前工具视图�
 普通 Manager 按事件点与优先级串行执行。`hook/control` 管列表和 reload；持久 Runtime 管进程、双向 RPC、waiting 和 SharedState。协议与配置见 [hooks.md](../docs/hooks.md)。
 
 - 规则与持久配置先构建候选，校验通过才替换活动索引和 handler；进程异步启动，启动失败由 runtime 重启策略处理。
-- exec 使用 hook.v2 单次 Pipe，默认直接启动 argv；超时／取消终止整棵进程树。进程环境在启动时固定，系统环境优先补 .env，PATH 同时用于解析 argv。
+- exec 使用 hook.v2 单次 Pipe，默认直接启动 argv；超时／取消终止整棵进程树。取消结果结合本次宿主终止事实与原生退出状态，不以已取消 context 覆盖独立进程故障。Worker 先固定退出状态与原因，再唤醒等待者。进程环境在启动时固定，系统环境优先补 .env，PATH 同时用于解析 argv。
 - Hook 来源保留显式值，再从公共事实补缺失；无聊天来源的事件保留空 Scope／Actor。唤起状态在入口计算一次，不因正文改写重新推断。
 - llm.messages 深拷贝且只读；turn Hook 只改当前初始 user，request Hook 只改新 drain 的 pending。当前消息 segments 在请求前保存，工具完成 Hook 改写进入工具结果。
 - Hook 返回控制字段和输出意图；waiting 消息在平台 Hook 后、命令与主模型前路由，/cancel 仅取消路由执行。
-- Go Hook 使用宿主 MediaAPI，进程 Hook 使用媒体 RPC；临时引用随租约或 runtime 释放，外部 Hook 不接触媒体根目录、数据库或 S3 凭据。
+- Go Hook 使用宿主 MediaAPI，进程 Hook 使用媒体 RPC；临时引用随租约或 runtime 释放，媒体清理使用调用方关闭预算，进程保留自身配置的关闭流程，全局媒体清理归维护任务。
+- Handler／Run 返回 Event、LogResult、原始 error，Notify 返回 LogResult、error；未处理明确 skipped。continuation 在 runtime/routes.go 记录所属点结果；重载 commit 独立返回 LogResult、error，worker 使用来源结果。来源先声明所属操作事实，再包装业务错误；Agent／Runner 不重复发布 Hook 记录。
+- internal/hook/logging.go 的 LogHook 只解除取消并发布完整九字段。manager、rules、runtime 和 Agent 桥接各自组装记录；发布处不接业务对象、不补身份、不猜结果。
+- rules/action.go 与 runtime/tool_bridge.go 在 Tool.Call 返回后立即发布 hook_tool_call，等级 INFO、结果 succeeded、正文使用独立 logContent；工具业务错误仍按原业务流程返回。输出发送独立发布 hook_tool_log，使用发送来源 LogResult 和同一实际 tool_call_id。rules 使用 storage.NewID，runtime 沿用现有生成方式；没有实际工具调用的 output.send 不补造工具 ID。
+- 工具请求参数无效或工具名为空仍发布 INFO／rejected 调用记录，未进入调用不补造 ID。来源提供完整日志 text，由中心限长；JSON 高膨胀字符串在来源按 Unicode 字符限长并保留 …，业务数据不改写，中心检查整条 64 KiB 上限。
+- 工具审计 actor_id 在授权默认值注入前固定：有 Session 使用触发 Session 的执行 Actor，无 Session 使用原始 contextinfo；默认 Hook 权限主体不充当日志 Actor。
+
+Hook 日志职责图见[Hook 统一发布](signals-and-logging.md#32-hook-结果判定与日志统一整理)。
 
 <!-- locator:output -->
 <!-- locator:notification -->

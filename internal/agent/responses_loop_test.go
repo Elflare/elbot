@@ -314,9 +314,9 @@ func TestResponsesBackgroundTakeoverSharesPendingAndChangesTaskModel(t *testing.
 
 func TestResponsesItemDoneAndRefusalKeepNativeFactsSeparateFromDisplay(t *testing.T) {
 	manager := hook.NewManager()
-	_ = manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "display", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, error) {
+	_ = manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "display", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
 		e.LLM.Text, e.LLM.SourceText = "visible", "changed source"
-		return e, nil
+		return e, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 	})})
 	f := newNativeFixture(t, func(_ int, _ nativeTestRequest, w http.ResponseWriter) {
 		fmt.Fprint(w, "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"reasoning\",\"encrypted_content\":\"opaque\",\"future\":true}}\n\n")
@@ -546,21 +546,21 @@ func TestResponsesRejectsToolArgumentHookButKeepsDisplayAndResultHooks(t *testin
 			}})
 			manager := hook.NewManager()
 			if rewrite {
-				_ = manager.Register(hook.Registration{Point: hook.PointToolCallPrepared, Name: "rewrite", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, error) {
+				_ = manager.Register(hook.Registration{Point: hook.PointToolCallPrepared, Name: "rewrite", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
 					e.Tool.Arguments = `{"changed":true}`
-					return e, nil
+					return e, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 				})})
 			} else {
-				_ = manager.Register(hook.Registration{Point: hook.PointToolCallCompleted, Name: "result", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, error) {
+				_ = manager.Register(hook.Registration{Point: hook.PointToolCallCompleted, Name: "result", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
 					e.Message.Segments = llm.TextSegments("changed result")
-					return e, nil
+					return e, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 				})})
 			}
-			_ = manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "display", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, error) {
+			_ = manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "display", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
 				if len(e.LLM.ToolCalls) == 0 {
 					e.LLM.Text = "visible reply"
 				}
-				return e, nil
+				return e, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 			})})
 			f := newNativeFixture(t, func(index int, _ nativeTestRequest, w http.ResponseWriter) {
 				if index == 0 {

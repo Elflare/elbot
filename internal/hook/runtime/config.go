@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/tool"
 )
@@ -136,7 +137,8 @@ type Options struct {
 	Media    hook.MediaAPI
 	Registry *tool.Registry
 
-	Send       func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
+	// Send keeps delivery receipts separate from the source-owned log outcome.
+	Send       func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
 	SharedDir  string
 	ProcessEnv hook.ProcessEnvironment
 }

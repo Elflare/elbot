@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"testing"
 
@@ -58,26 +59,26 @@ func TestBuildAgentInstallsExecutionParticipants(t *testing.T) {
 	called := 0
 	if err := hooks.Register(hook.Registration{
 		Point: hook.PointLLMResponseReceived, Name: "assembly-observer", Match: hook.Always(),
-		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 			called++
 			active := services.Requests.ListBySession(row.ID)
 			if len(active) != 1 || active[0].Kind != request.KindHook || active[0].Label != "assembly-observer" {
 				t.Fatalf("missing hook request tracking: %#v", active)
 			}
-			return event, nil
+			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	event := hook.Event{Point: hook.PointLLMResponseReceived, Session: hook.SessionContext{ID: row.ID}, Message: hook.MessagePayload{Segments: llm.TextSegments("ordinary group message")}}
 	groupCtx := platform.WithMessageContext(ctx, platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{ConversationKind: contextinfo.ConversationGroup}}})
-	if _, err := hooks.Run(groupCtx, event); err != nil {
+	if _, _, err := hooks.Run(groupCtx, event); err != nil {
 		t.Fatal(err)
 	}
 	if called != 0 {
 		t.Fatal("unwoken group message ran the hook")
 	}
-	if _, err := hooks.Run(ctx, event); err != nil {
+	if _, _, err := hooks.Run(ctx, event); err != nil {
 		t.Fatal(err)
 	}
 	if called != 1 || len(services.Requests.List()) != 0 {

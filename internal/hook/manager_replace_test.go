@@ -2,6 +2,7 @@ package hook
 
 import (
 	"context"
+	"elbot/internal/events"
 	"testing"
 )
 
@@ -27,16 +28,16 @@ func TestManagerReplaceSwapsHandlersAndKeepsRuntimeIntegrations(t *testing.T) {
 		Point: PointAgentInputPrepared,
 		Name:  "replacement",
 		Match: Always(),
-		Handler: HandlerFunc(func(_ context.Context, event Event) (Event, error) {
+		Handler: HandlerFunc(func(_ context.Context, event Event) (Event, events.LogResult, error) {
 			runs++
-			return event, nil
+			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
 	}); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 
 	active.Replace(candidate)
-	if _, err := active.Run(context.Background(), Event{Point: PointAgentInputPrepared}); err != nil {
+	if _, _, err := active.Run(context.Background(), Event{Point: PointAgentInputPrepared}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if runs != 1 || observed != 1 {
@@ -44,7 +45,7 @@ func TestManagerReplaceSwapsHandlersAndKeepsRuntimeIntegrations(t *testing.T) {
 	}
 
 	woken = false
-	if _, err := active.Run(context.Background(), Event{Point: PointAgentInputPrepared}); err != nil {
+	if _, _, err := active.Run(context.Background(), Event{Point: PointAgentInputPrepared}); err != nil {
 		t.Fatalf("Run while sleeping: %v", err)
 	}
 	if runs != 1 {
@@ -61,11 +62,11 @@ func TestManagerReplaceKeepsInFlightSnapshot(t *testing.T) {
 		Point: PointAgentInputPrepared,
 		Name:  "old.blocking",
 		Match: Always(),
-		Handler: HandlerFunc(func(_ context.Context, event Event) (Event, error) {
+		Handler: HandlerFunc(func(_ context.Context, event Event) (Event, events.LogResult, error) {
 			close(entered)
 			<-release
 			runs <- "old.blocking"
-			return event, nil
+			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
 	}); err != nil {
 		t.Fatalf("Register old.blocking: %v", err)
@@ -74,9 +75,9 @@ func TestManagerReplaceKeepsInFlightSnapshot(t *testing.T) {
 		Point: PointAgentInputPrepared,
 		Name:  "old.second",
 		Match: Always(),
-		Handler: HandlerFunc(func(_ context.Context, event Event) (Event, error) {
+		Handler: HandlerFunc(func(_ context.Context, event Event) (Event, events.LogResult, error) {
 			runs <- "old.second"
-			return event, nil
+			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
 	}); err != nil {
 		t.Fatalf("Register old.second: %v", err)
@@ -84,7 +85,7 @@ func TestManagerReplaceKeepsInFlightSnapshot(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := active.Run(context.Background(), Event{Point: PointAgentInputPrepared})
+		_, _, err := active.Run(context.Background(), Event{Point: PointAgentInputPrepared})
 		done <- err
 	}()
 	<-entered
@@ -94,9 +95,9 @@ func TestManagerReplaceKeepsInFlightSnapshot(t *testing.T) {
 		Point: PointAgentInputPrepared,
 		Name:  "new",
 		Match: Always(),
-		Handler: HandlerFunc(func(_ context.Context, event Event) (Event, error) {
+		Handler: HandlerFunc(func(_ context.Context, event Event) (Event, events.LogResult, error) {
 			runs <- "new"
-			return event, nil
+			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
 	}); err != nil {
 		t.Fatalf("Register new: %v", err)
@@ -110,7 +111,7 @@ func TestManagerReplaceKeepsInFlightSnapshot(t *testing.T) {
 		t.Fatalf("in-flight handlers = %q, %q", first, second)
 	}
 
-	if _, err := active.Run(context.Background(), Event{Point: PointAgentInputPrepared}); err != nil {
+	if _, _, err := active.Run(context.Background(), Event{Point: PointAgentInputPrepared}); err != nil {
 		t.Fatalf("new Run: %v", err)
 	}
 	if got := <-runs; got != "new" {
@@ -129,9 +130,9 @@ func TestManagerReplacePluginLeavesOtherRegistrationsUntouched(t *testing.T) {
 			PluginID: pluginID,
 			Name:     name,
 			Match:    Always(),
-			Handler: HandlerFunc(func(_ context.Context, event Event) (Event, error) {
+			Handler: HandlerFunc(func(_ context.Context, event Event) (Event, events.LogResult, error) {
 				runs = append(runs, name)
-				return event, nil
+				return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 			}),
 		}); err != nil {
 			t.Fatalf("Register %s: %v", name, err)
@@ -143,7 +144,7 @@ func TestManagerReplacePluginLeavesOtherRegistrationsUntouched(t *testing.T) {
 	register(candidate, "unrelated", "unrelated")
 
 	active.ReplacePlugin("demo", candidate)
-	if _, err := active.Run(context.Background(), Event{Point: PointAgentInputPrepared}); err != nil {
+	if _, _, err := active.Run(context.Background(), Event{Point: PointAgentInputPrepared}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if len(runs) != 2 || runs[0] != "new" || runs[1] != "other" {

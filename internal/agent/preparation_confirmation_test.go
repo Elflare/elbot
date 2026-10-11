@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"strings"
 	"testing"
@@ -67,9 +68,9 @@ func TestTurnPreparationUsesRequestContext(t *testing.T) {
 						// must still stop before persisting the new user message.
 						return []dialogue.SystemPromptPart{{Content: "test"}}, nil
 					}))
-				} else if err := f.hooks.Register(hook.Registration{Point: hook.PointLLMTurnPrepared, Name: "preparation.cancel", Match: hook.Always(), Handler: hook.HandlerFunc(func(hctx context.Context, event hook.Event) (hook.Event, error) {
+				} else if err := f.hooks.Register(hook.Registration{Point: hook.PointLLMTurnPrepared, Name: "preparation.cancel", Match: hook.Always(), Handler: hook.HandlerFunc(func(hctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 					observe(hctx)
-					return event, nil
+					return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 				})}); err != nil {
 					t.Fatal(err)
 				}
@@ -145,7 +146,7 @@ func TestRiskConfirmationAcceptsResponseDuringPrompt(t *testing.T) {
 				t.Fatal("start tool phase")
 			}
 			var promptSeen, pending bool
-			if err := f.hooks.Register(hook.Registration{Point: hook.PointPlatformMessageSent, Name: "confirmation.fast", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) {
+			if err := f.hooks.Register(hook.Registration{Point: hook.PointPlatformMessageSent, Name: "confirmation.fast", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 				if strings.Contains(llm.SegmentsTextOnly(event.Message.Segments), "高风险工具调用等待确认") {
 					promptSeen = true
 					_, pending = f.opts.Turns.PendingRiskConfirmation(in.Session.ID)
@@ -155,7 +156,7 @@ func TestRiskConfirmationAcceptsResponseDuringPrompt(t *testing.T) {
 						t.Error(err)
 					}
 				}
-				return event, nil
+				return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 			})}); err != nil {
 				t.Fatal(err)
 			}
@@ -178,9 +179,9 @@ func TestRiskConfirmationPromptFailureClearsWait(t *testing.T) {
 	f.opts.Turns.StartToolPhase(in.Session.ID, "attempt")
 	failure := errors.New("prompt send failed")
 	var pending bool
-	if err := f.hooks.Register(hook.Registration{Point: hook.PointAgentOutputPrepared, Name: "confirmation.fail", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) {
+	if err := f.hooks.Register(hook.Registration{Point: hook.PointAgentOutputPrepared, Name: "confirmation.fail", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		_, pending = f.opts.Turns.PendingRiskConfirmation(in.Session.ID)
-		return event, failure
+		return event, events.LogResult{ResultStatus: events.ResultFailed, Content: "test source failed"}, failure
 	})}); err != nil {
 		t.Fatal(err)
 	}

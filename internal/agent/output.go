@@ -62,15 +62,11 @@ func (o *outputSender) SendNotice(ctx context.Context, notice delivery.Notice) e
 }
 
 func (o *outputSender) PrepareAssistant(ctx context.Context, point hook.Point, text string) (string, globalevents.LogResult, error) {
-	event, err := o.hooks.Run(ctx, hook.Event{Point: point, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(text)}})
+	event, logResult, err := o.hooks.Run(ctx, hook.Event{Point: point, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(text)}})
 	if err != nil {
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		if err == context.Canceled {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
 		return "", logResult, err
 	}
-	return llm.SegmentsTextOnly(event.Message.Segments), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+	return llm.SegmentsTextOnly(event.Message.Segments), logResult, nil
 }
 
 func (o *outputSender) SendAssistant(ctx context.Context, text string) (delivery.Receipt, globalevents.LogResult, error) {
@@ -135,7 +131,7 @@ func (o *outputSender) Preview(ctx context.Context, text string) {
 	if text == "" {
 		return
 	}
-	event, err := o.hooks.Run(ctx, hook.Event{Point: hook.PointAgentOutputPrepared, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(text)}})
+	event, _, err := o.hooks.Run(ctx, hook.Event{Point: hook.PointAgentOutputPrepared, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(text)}})
 	if err != nil {
 		return
 	}

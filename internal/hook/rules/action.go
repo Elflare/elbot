@@ -4,7 +4,6 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -15,6 +14,7 @@ import (
 	"elbot/internal/hook"
 	hookoutput "elbot/internal/hook/output"
 	"elbot/internal/llm"
+	"elbot/internal/storage"
 	"elbot/internal/tool"
 )
 
@@ -29,34 +29,45 @@ type actionResult struct {
 	PassThrough *bool
 }
 
-func (m Module) runAction(ctx context.Context, event hook.Event, action Action, state state) (hook.Event, actionResult, error) {
+func (m Module) runAction(ctx context.Context, event hook.Event, action Action, state state) (hook.Event, actionResult, globalevents.LogResult, error) {
+	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "action=" + action.Type}
 	switch strings.TrimSpace(action.Type) {
 	case "prepend", "append", "replace", "delete":
 		updated, err := applyTextAction(event, action, state)
-		return updated, actionResult{}, err
+		if err != nil {
+			logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		}
+		return updated, actionResult{}, logResult, err
 	case "send":
 		outputs, err := makeOutputs(action, event, state)
 		if err != nil {
-			return event, actionResult{}, err
+			return event, actionResult{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "output preparation failed; send not entered: " + err.Error()}, err
 		}
 		event.Outputs = append(event.Outputs, outputs...)
-		return event, actionResult{}, nil
+		logResult.Content = "outputs prepared for business delivery"
+		return event, actionResult{}, logResult, nil
 	case "exec":
-		updated, result, err := m.runExec(ctx, event, action, state)
+		updated, result, logResult, err := m.runExec(ctx, event, action, state)
 		key := firstNonEmpty(strings.TrimSpace(action.ActionName), "exec")
 		if key != "" {
 			state.Actions[key] = result
 		}
-		return updated, result, err
+		return updated, result, logResult, err
 	case "tool":
-		result, err := m.callTool(ctx, event, action, state)
+		result, logResult, err := m.callTool(ctx, event, action, state)
+		// The invocation has its own audit record; the rule reports only its action stage.
+		logResult.Content = "tool action: " + action.Tool + " status=" + logResult.ResultStatus.String()
+		if err != nil {
+			logResult.Content += "; business_error=" + err.Error()
+		}
 		key := firstNonEmpty(strings.TrimSpace(action.ActionName), strings.TrimSpace(action.Tool))
 		if key != "" {
 			state.Actions[key] = result
 		}
-		return event, result, err
+		return event, result, logResult, err
 	default:
-		return event, actionResult{}, fmt.Errorf("unsupported action type %q", action.Type)
+		err := fmt.Errorf("unsupported action type %q", action.Type)
+		return event, actionResult{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
 }
 
@@ -226,55 +237,27 @@ func segmentSpecSet(spec SegmentSpec) bool {
 
 // callTool invokes a registered tool without Agent risk or confirmation gates.
 // Hook authors own authorization and risk decisions for Hook-triggered calls.
-func (m Module) callTool(ctx context.Context, event hook.Event, action Action, state state) (actionResult, error) {
-	if m.Opts.Tools == nil {
-		return actionResult{Error: "tool registry is not configured"}, fmt.Errorf("tool registry is not configured")
-	}
+func (m Module) callTool(ctx context.Context, event hook.Event, action Action, state state) (actionResult, globalevents.LogResult, error) {
 	name := strings.TrimSpace(action.Tool)
-	if name == "" {
-		return actionResult{Error: "tool is required"}, fmt.Errorf("tool is required")
-	}
 	arguments := render(action.Arguments, event, state)
-	call := llm.ToolCallRequest{ID: "hook:" + name, Name: name, Arguments: arguments}
-	registered, ok := m.Opts.Tools.Get(name)
-	if !ok {
-		return actionResult{Error: "tool not found"}, fmt.Errorf("tool %q not found", name)
-	}
-	toolResult, _, err := registered.Call(ctx, tool.CallRequest{ID: call.ID, Name: name, Arguments: json.RawMessage(arguments)})
-
-	record := globalevents.LogRecord{
-		Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: "hook_tool_call",
-		Module: "hook", Type: globalevents.ContentJSON, ResultStatus: globalevents.ResultSucceeded,
-	}
-	content := map[string]any{
-		"source": "rules", "tool": name, "point": string(event.Point),
-		"arguments": fmt.Sprintf("%.2048s", arguments),
-	}
-	// Audit identity describes the execution that triggered this Hook, not the
-	// Session owner or the permission principal used to authorize the action.
-	if event.Session.ID != "" && event.Actor.ID != "" {
-		content["actor_id"] = event.Actor.ID
-	} else if actor, ok := contextinfo.ActorFromContext(ctx); ok && actor.ID != "" {
-		content["actor_id"] = actor.ID
-	}
-	if toolResult != nil {
-		content["result"] = fmt.Sprintf("%.2048s", llm.SegmentsContentText(toolResult.LLMSegments()))
-	}
-	if err != nil {
-		content["error"] = fmt.Sprintf("%.2048s", err.Error())
-		record.Level = slog.LevelError
-		record.ResultStatus = globalevents.ResultFailed
-		if errors.Is(err, context.Canceled) {
-			record.Level = slog.LevelInfo
-			record.ResultStatus = globalevents.ResultCanceled
+	call := llm.ToolCallRequest{ID: storage.NewID(), Name: name, Arguments: arguments}
+	record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: "hook_tool_call", Module: "hook", Type: globalevents.ContentJSON, ContentLimit: 0}
+	content := map[string]any{"source": "rules", "tool": name, "point": string(event.Point), "tool_call_id": call.ID, "arguments": arguments}
+	if event.Session.ID != "" {
+		if event.Actor.ID != "" {
+			content["actor_id"] = event.Actor.ID
+		}
+		record.Identity.SessionID = &event.Session.ID
+	} else {
+		if actor, ok := contextinfo.ActorFromContext(ctx); ok && actor.ID != "" {
+			content["actor_id"] = actor.ID
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if facts.SessionID != "" {
+			record.Identity.SessionID = &facts.SessionID
 		}
 	}
-	data, _ := json.Marshal(content)
-	record.Content = string(data)
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if facts.SessionID != "" {
-		record.Identity.SessionID = &facts.SessionID
-	}
 	if facts.RunID != "" {
 		record.Identity.RunID = &facts.RunID
 	}
@@ -287,18 +270,50 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 	if facts.RootRequestID != "" {
 		record.Identity.RootRequestID = &facts.RootRequestID
 	}
-	if event.Session.ID != "" {
-		record.Identity.SessionID = &event.Session.ID
+	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+	var toolResult *tool.Result
+	var err error
+	switch {
+	case m.Opts.Tools == nil:
+		err = fmt.Errorf("tool registry is not configured")
+		logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()}
+	case name == "":
+		err = fmt.Errorf("tool is required")
+		logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()}
+	default:
+		registered, ok := m.Opts.Tools.Get(name)
+		if !ok {
+			err = fmt.Errorf("tool %q not found", name)
+			logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()}
+		} else if err = ctx.Err(); err != nil {
+			logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()}
+			if err == context.Canceled {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+		} else {
+			toolResult, logResult.Content, err = registered.Call(ctx, tool.CallRequest{ID: call.ID, Name: name, Arguments: json.RawMessage(arguments)})
+		}
 	}
-	_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
-
+	record.ResultStatus = logResult.ResultStatus
+	if logResult.ResultStatus == globalevents.ResultFailed {
+		record.Level = slog.LevelError
+	}
+	content["result"] = logResult.Content
+	for key, value := range content {
+		if value, ok := value.(string); ok && len([]rune(value)) > 2048 {
+			content[key] = string([]rune(value)[:2047]) + "…"
+		}
+	}
+	data, _ := json.Marshal(content)
+	record.Content = string(data)
+	hook.LogHook(ctx, record)
 	if err != nil {
-		return actionResult{Error: err.Error()}, err
+		return actionResult{Error: err.Error()}, logResult, err
 	}
 	if toolResult != nil {
-		return actionResult{Result: llm.SegmentsContentText(toolResult.LLMSegments())}, nil
+		return actionResult{Result: llm.SegmentsContentText(toolResult.LLMSegments())}, logResult, nil
 	}
-	return actionResult{}, nil
+	return actionResult{}, logResult, nil
 }
 
 func render(text string, event hook.Event, state state) string {

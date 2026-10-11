@@ -2,7 +2,7 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/events"
+	globalevents "elbot/internal/events"
 	"errors"
 	"sync"
 	"testing"
@@ -26,9 +26,9 @@ func TestFinalLLMTakeoverUsesForegroundHookAndReceipt(t *testing.T) {
 
 			manager := hook.NewManager()
 			var outputEvent hook.Event
-			if err := manager.Register(hook.Registration{Point: hook.PointAgentTurnOutputPrepared, Name: "capture", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, error) {
+			if err := manager.Register(hook.Registration{Point: hook.PointAgentTurnOutputPrepared, Name: "capture", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, globalevents.LogResult, error) {
 				outputEvent = e
-				return e, nil
+				return e, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 			})}); err != nil {
 				t.Fatal(err)
 			}
@@ -45,8 +45,8 @@ func TestFinalLLMTakeoverUsesForegroundHookAndReceipt(t *testing.T) {
 			ctx := takeoverPrivateContext()
 			msg, _ := platform.MessageContextFrom(ctx)
 			msg.BufferAssistantOutput = buffered
-			msg.Sender = mediaSendFunc(func([]delivery.Output) (delivery.Receipt, events.LogResult, error) {
-				return delivery.Receipt{PlatformMessageIDs: []string{"sent"}, SentMessages: []delivery.SentMessage{{Platform: "qq", ScopeID: "private:1", PlatformMessageID: "sent"}}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+			msg.Sender = mediaSendFunc(func([]delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+				return delivery.Receipt{PlatformMessageIDs: []string{"sent"}, SentMessages: []delivery.SentMessage{{Platform: "qq", ScopeID: "private:1", PlatformMessageID: "sent"}}}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 			})
 			ctx = platform.WithMessageContext(ctx, msg)
 			if err := a.HandleMessage(ctx, "/resume "+id); err != nil {
@@ -75,12 +75,12 @@ func TestConnectedHooksKeepAbsentChatIdentity(t *testing.T) {
 	manager := hook.NewManager()
 	var events []hook.Event
 	for _, point := range []hook.Point{hook.PointPlatformConnected, hook.PointErrorOccurred} {
-		if err := manager.Register(hook.Registration{Point: point, Name: string(point), Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, error) {
+		if err := manager.Register(hook.Registration{Point: point, Name: string(point), Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, globalevents.LogResult, error) {
 			events = append(events, e)
 			if e.Point == hook.PointPlatformConnected {
-				return e, errors.New("connection hook failed")
+				return e, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "test source failed"}, errors.New("connection hook failed")
 			}
-			return e, nil
+			return e, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 		})}); err != nil {
 			t.Fatal(err)
 		}

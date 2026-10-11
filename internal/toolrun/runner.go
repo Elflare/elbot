@@ -21,7 +21,8 @@ import (
 
 type RunnerDeps interface {
 	RefreshExecution(context.Context, *storage.Session) (context.Context, error)
-	PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error)
+	// Hook sources publish their own records; Runner consumes only the business return.
+	PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, events.LogResult, error)
 	ShouldSendPreview(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, assistantText string) bool
 	ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail string) (ConfirmResult, error)
 	ConfirmBackgroundTool(ctx context.Context, sessionID string, call llm.ToolCallRequest, resolved ResolvedTool, assessment tool.RiskAssessment) (ConfirmResult, bool)
@@ -29,7 +30,8 @@ type RunnerDeps interface {
 	// the business context, start time, cleanup function and original error.
 	StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), events.LogResult, error)
 	PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context
-	CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, error)
+	// CompleteToolCall also exposes the declared Hook outcome separately from segments.
+	CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, events.LogResult, error)
 	SendPreview(ctx context.Context, text string)
 	// SendOutputs returns the source logging result and body, including partial
 	// delivery facts, separately from its original business error.
@@ -200,13 +202,8 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 			}
 			startedAt := storage.Now()
 
-			call, err := deps.PrepareToolCall(ctx, req.Session, original)
+			call, _, err := deps.PrepareToolCall(ctx, req.Session, original)
 			if err != nil {
-				resultStatus := events.ResultFailed
-				if err == context.Canceled {
-					resultStatus = events.ResultCanceled
-				}
-				record(ctx, original, "tool_prepare", events.LogResult{ResultStatus: resultStatus, Content: fmt.Sprintf("prepare_error=%v", err)})
 				preparedCalls = append(preparedCalls, original)
 				message := toolMessage(original.Name, original.ID, fmt.Sprintf("tool call %s failed: hook: %v", original.Name, err))
 				messages = append(messages, message)
@@ -363,13 +360,8 @@ func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunR
 				}
 			}
 			if result.ExecutionStarted {
-				completedSegments, hookErr := deps.CompleteToolCall(ctx, req.Session, call, riskText, result.Message.Segments, result.Error)
+				completedSegments, _, hookErr := deps.CompleteToolCall(ctx, req.Session, call, riskText, result.Message.Segments, result.Error)
 				if hookErr != nil {
-					resultStatus := events.ResultFailed
-					if hookErr == context.Canceled {
-						resultStatus = events.ResultCanceled
-					}
-					record(ctx, call, "tool_completion_hook", events.LogResult{ResultStatus: resultStatus, Content: fmt.Sprintf("hook_error=%v", hookErr)})
 					result.Error = errors.Join(result.Error, hookErr)
 					result.Message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s failed: hook: %v", call.Name, hookErr))
 				} else {

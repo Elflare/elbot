@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"context"
+	"elbot/internal/events"
 	"io"
 	"log/slog"
 	"net/http"
@@ -46,7 +47,7 @@ func TestTurnHookMultimodalUserMessagePersistsWithoutChangingPlatformText(t *tes
 
 	manager := hook.NewManager()
 	var platformText string
-	if err := manager.Register(hook.Registration{Point: hook.PointLLMTurnPrepared, Name: "test.user_segments", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+	if err := manager.Register(hook.Registration{Point: hook.PointLLMTurnPrepared, Name: "test.user_segments", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		if platformText == "" {
 			platformText = event.Message.PlatformText
 			event.Message.Segments = []llm.MessageSegment{
@@ -57,7 +58,7 @@ func TestTurnHookMultimodalUserMessagePersistsWithoutChangingPlatformText(t *tes
 		if len(event.LLM.Messages) > 0 && len(event.LLM.Messages[0].Segments) > 0 {
 			event.LLM.Messages[0].Segments[0].Text = "不应修改系统提示词"
 		}
-		return event, nil
+		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatalf("Register turn hook: %v", err)
 	}

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/events"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm/chatcompletions"
@@ -138,7 +139,7 @@ func TestBackgroundHooksCannotExpandTools(t *testing.T) {
 
 			manager := hook.NewManager()
 			responseInjected := false
-			if err := manager.Register(hook.Registration{Point: point, Name: "expand", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) {
+			if err := manager.Register(hook.Registration{Point: point, Name: "expand", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 				switch point {
 				case hook.PointToolCallPrepared:
 					event.Tool.Name = candidate.Name()
@@ -150,7 +151,7 @@ func TestBackgroundHooksCannotExpandTools(t *testing.T) {
 				default:
 					event.LLM.Tools = []llm.ToolSchema{candidate.Schema()}
 				}
-				return event, nil
+				return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 			})}); err != nil {
 				t.Fatal(err)
 			}

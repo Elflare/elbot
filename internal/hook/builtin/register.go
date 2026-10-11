@@ -18,8 +18,9 @@ type Options struct {
 	ConfigDir string
 	Tools     *tool.Registry
 
-	Notify          func(context.Context, string)
-	Send            func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
+	Notify func(context.Context, string)
+	// Send preserves the independent delivery outcome alongside business receipts.
+	Send            func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)
 	PlatformCallers rules.PlatformCallerResolver
 	Runtime         *hookruntime.Manager
 	ProcessEnv      hook.ProcessEnvironment
@@ -65,7 +66,7 @@ func reportPluginError(opts Options, name string, err error) {
 			ContentLimit: 4096,
 			ResultStatus: globalevents.ResultFailed,
 		}
-		_ = globalevents.EmitLog(context.Background(), record)
+		hook.LogHook(context.Background(), record)
 	}
 
 	if opts.Notify != nil {

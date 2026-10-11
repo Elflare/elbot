@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"strings"
 	"testing"
@@ -82,8 +83,8 @@ func TestRunHookErrorSendsFailureNotice(t *testing.T) {
 		Point: hook.PointAgentInputPrepared,
 		Name:  "test.boom",
 		Match: hook.Always(),
-		Handler: hook.HandlerFunc(func(context.Context, hook.Event) (hook.Event, error) {
-			return hook.Event{}, errors.New("boom")
+		Handler: hook.HandlerFunc(func(context.Context, hook.Event) (hook.Event, events.LogResult, error) {
+			return hook.Event{}, events.LogResult{ResultStatus: events.ResultFailed, Content: "test source failed"}, errors.New("boom")
 		}),
 	}); err != nil {
 		t.Fatalf("register hook: %v", err)
@@ -96,7 +97,7 @@ func TestRunHookErrorSendsFailureNotice(t *testing.T) {
 		ScopeID: "private:test"}}, Sender: p,
 	})
 
-	_, err := a.hooks.Run(ctx, hook.Event{Point: hook.PointAgentInputPrepared})
+	_, _, err := a.hooks.Run(ctx, hook.Event{Point: hook.PointAgentInputPrepared})
 	if err == nil {
 		t.Fatal("expected hook error")
 	}
@@ -124,7 +125,7 @@ func TestHookObserverTracksHookRequestUnderTurn(t *testing.T) {
 		Point: hook.PointAgentInputPrepared,
 		Name:  "test.hook_status",
 		Match: hook.Always(),
-		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 			var hookReq request.Request
 			for _, req := range requests.List() {
 				if req.Kind == request.KindHook {
@@ -138,13 +139,13 @@ func TestHookObserverTracksHookRequestUnderTurn(t *testing.T) {
 			if hookReq.ParentID != parent.ID || hookReq.SessionID != "s1" || hookReq.Label != "test.hook_status" {
 				t.Fatalf("hook request = %#v", hookReq)
 			}
-			return event, nil
+			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
 	}); err != nil {
 		t.Fatalf("register hook: %v", err)
 	}
 
-	if _, err := manager.Run(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Session: hook.SessionContext{ID: "s1"}}); err != nil {
+	if _, _, err := manager.Run(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Session: hook.SessionContext{ID: "s1"}}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	for _, req := range requests.List() {
@@ -164,10 +165,10 @@ func TestStopCanCancelTrackedHookRequest(t *testing.T) {
 		Point: hook.PointAgentInputPrepared,
 		Name:  "test.cancel_hook",
 		Match: hook.Always(),
-		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 			close(entered)
 			<-ctx.Done()
-			return event, ctx.Err()
+			return event, events.LogResult{ResultStatus: events.ResultCanceled, Content: "test source canceled"}, ctx.Err()
 		}),
 	}); err != nil {
 		t.Fatalf("register hook: %v", err)
@@ -175,7 +176,7 @@ func TestStopCanCancelTrackedHookRequest(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		_, err := manager.Run(context.Background(), hook.Event{Point: hook.PointAgentInputPrepared, Session: hook.SessionContext{ID: "s1"}})
+		_, _, err := manager.Run(context.Background(), hook.Event{Point: hook.PointAgentInputPrepared, Session: hook.SessionContext{ID: "s1"}})
 		errCh <- err
 	}()
 	select {

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/events"
 	"testing"
 
 	"elbot/internal/hook"
@@ -15,18 +16,18 @@ func TestCompleteToolCallExposesNameAndAcceptsMultimodalSegments(t *testing.T) {
 		Point: hook.PointToolCallCompleted,
 		Name:  "test.tool-image",
 		Match: hook.Always(),
-		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 			if event.Tool.Name != "screenshot" || event.Tool.ID != "call_1" || event.Message.Role != string(llm.RoleTool) {
 				t.Fatalf("event = %#v", event)
 			}
 			event.Message.Segments = append(event.Message.Segments, llm.MessageSegment{Type: llm.SegmentImage, URL: "https://example.com/result.png"})
-			return event, nil
+			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	deps := toolRunDeps{hooks: &hookBridge{manager: manager, identity: &identityResolver{scopeID: "default"}}}
-	segments, err := deps.CompleteToolCall(context.Background(), &storage.Session{ID: "s1"}, llm.ToolCallRequest{ID: "call_1", Name: "screenshot", Arguments: `{}`}, "low", llm.TextSegments("done"), nil)
+	segments, _, err := deps.CompleteToolCall(context.Background(), &storage.Session{ID: "s1"}, llm.ToolCallRequest{ID: "call_1", Name: "screenshot", Arguments: `{}`}, "low", llm.TextSegments("done"), nil)
 	if err != nil {
 		t.Fatalf("CompleteToolCall: %v", err)
 	}
@@ -41,17 +42,17 @@ func TestPrepareToolCallOnlyAcceptsArguments(t *testing.T) {
 		Point: hook.PointToolCallPrepared,
 		Name:  "test.tool-arguments",
 		Match: hook.Always(),
-		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, error) {
+		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 			event.Tool.ID = "changed-id"
 			event.Tool.Name = "changed-name"
 			event.Tool.Arguments = `{"q":"cat"}`
-			return event, nil
+			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	deps := toolRunDeps{hooks: &hookBridge{manager: manager, identity: &identityResolver{scopeID: "default"}}}
-	call, err := deps.PrepareToolCall(context.Background(), &storage.Session{ID: "s1"}, llm.ToolCallRequest{ID: "call_1", Name: "search", Arguments: `{"q":"dog"}`})
+	call, _, err := deps.PrepareToolCall(context.Background(), &storage.Session{ID: "s1"}, llm.ToolCallRequest{ID: "call_1", Name: "search", Arguments: `{"q":"dog"}`})
 	if err != nil {
 		t.Fatalf("PrepareToolCall: %v", err)
 	}

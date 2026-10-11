@@ -46,7 +46,7 @@ func TestGlobalPlatformHooksIsolatePlatformsAndCancelPending(t *testing.T) {
 	type valueKey struct{}
 	started, second := make(chan struct{}, 1), make(chan struct{}, 2)
 	var firstCalls atomic.Int32
-	a := newPlatformEventAgent(t, func(ctx context.Context, event hook.Event) (hook.Event, error) {
+	a := newPlatformEventAgent(t, func(ctx context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
 		if ctx.Value(valueKey{}) != "retained" || ctx.Err() != nil {
 			t.Error("emission values or cancellation policy changed")
 		}
@@ -60,7 +60,7 @@ func TestGlobalPlatformHooksIsolatePlatformsAndCancelPending(t *testing.T) {
 		} else {
 			second <- struct{}{}
 		}
-		return event, nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})
 	for range 2 {
 		if err := a.StartPlatformEvents(t.Context()); err != nil {
@@ -121,17 +121,17 @@ func TestGlobalPlatformCronIndependentOfUserHooks(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			started := make(chan struct{})
 			var once sync.Once
-			a := newPlatformEventAgent(t, func(ctx context.Context, event hook.Event) (hook.Event, error) {
+			a := newPlatformEventAgent(t, func(ctx context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
 				once.Do(func() { close(started) })
 				switch mode {
 				case "stop":
 					event.Control.StopPropagation = true
 				case "error":
-					return event, errors.New("user failure")
+					return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "test source failed"}, errors.New("user failure")
 				case "block":
 					<-ctx.Done()
 				}
-				return event, nil
+				return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 			})
 			repo := &platformRecoveryRepo{seen: make(chan struct{}, 2)}
 			cron := elcron.NewService(elcron.Options{Store: platformRecoveryStore{repo: repo}})
@@ -157,10 +157,10 @@ func TestGlobalPlatformCronIndependentOfUserHooks(t *testing.T) {
 
 func TestPlatformHookCloseWaitsForActualExit(t *testing.T) {
 	started, release := make(chan struct{}), make(chan struct{})
-	a := newPlatformEventAgent(t, func(ctx context.Context, event hook.Event) (hook.Event, error) {
+	a := newPlatformEventAgent(t, func(ctx context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
 		close(started)
 		<-release
-		return event, nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})
 	var once sync.Once
 	t.Cleanup(func() { once.Do(func() { close(release) }) })
@@ -188,7 +188,9 @@ func TestPlatformHookCloseWaitsForActualExit(t *testing.T) {
 func TestPlatformHookParentCancellationAndConcurrentClose(t *testing.T) {
 	for _, mode := range []string{"parent", "close"} {
 		t.Run(mode, func(t *testing.T) {
-			a := newPlatformEventAgent(t, func(_ context.Context, event hook.Event) (hook.Event, error) { return event, nil })
+			a := newPlatformEventAgent(t, func(_ context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
+				return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
+			})
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			if err := a.StartPlatformEvents(ctx); err != nil {
@@ -232,9 +234,9 @@ func (p *platformOutputSender) SendNotice(_ context.Context, notice delivery.Not
 }
 func TestGlobalPlatformHookSendsOutput(t *testing.T) {
 	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointPlatformConnected, Name: "output", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, error) {
+	if err := manager.Register(hook.Registration{Point: hook.PointPlatformConnected, Name: "output", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, globalevents.LogResult, error) {
 		e.Outputs = []delivery.Output{delivery.Text("connected")}
-		return e, nil
+		return e, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatal(err)
 	}
@@ -270,9 +272,9 @@ func TestPlatformConsumersRejectCapturedSnapshotAfterClose(t *testing.T) {
 	}
 	defer barrier.Disconnect()
 	var hookCalls atomic.Int32
-	a := newPlatformEventAgent(t, func(_ context.Context, event hook.Event) (hook.Event, error) {
+	a := newPlatformEventAgent(t, func(_ context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
 		hookCalls.Add(1)
-		return event, nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})
 	repo := &platformRecoveryRepo{seen: make(chan struct{}, 1)}
 	cron := elcron.NewService(elcron.Options{Store: platformRecoveryStore{repo: repo}})

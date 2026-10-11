@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/events"
 	"net/http"
 	"strings"
 	"testing"
@@ -61,9 +62,9 @@ func TestChatHooksCannotEnableResponsesTool(t *testing.T) {
 	_ = registry.Register(candidate)
 	hooks := hook.NewManager()
 	for _, point := range []hook.Point{hook.PointLLMTurnPrepared, hook.PointLLMRequestPrepared} {
-		if err := hooks.Register(hook.Registration{Point: point, Name: "inject", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) {
+		if err := hooks.Register(hook.Registration{Point: point, Name: "inject", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 			event.LLM.Tools = append(event.LLM.Tools, candidate.Schema())
-			return event, nil
+			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		})}); err != nil {
 			t.Fatal(err)
 		}

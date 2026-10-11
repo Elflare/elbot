@@ -165,7 +165,7 @@ func (c *CallProcessor) PrepareProjection(ctx context.Context, session *storage.
 			Segments:     append([]llm.MessageSegment(nil), baseMessages[pending.MessageIndex].Segments...),
 		}
 	}
-	event, err := c.Hooks.Run(ctx, hook.Event{
+	event, logResult, err := c.Hooks.Run(ctx, hook.Event{
 		Point:   hook.PointLLMRequestPrepared,
 		Session: hook.SessionContext{ID: sessionID},
 		Message: hookMessage,
@@ -177,9 +177,10 @@ func (c *CallProcessor) PrepareProjection(ctx context.Context, session *storage.
 		},
 	})
 	if err != nil {
-		record.Content += fmt.Sprintf("\nrequest_hook_error=%v", err)
-		if errors.Is(err, context.Canceled) {
-			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
+		record.Content += "\nrequest_hook:\n" + logResult.Content
+		record.ResultStatus, record.Level = logResult.ResultStatus, slog.LevelInfo
+		if logResult.ResultStatus == events.ResultFailed {
+			record.Level = slog.LevelError
 		}
 		if pending != nil {
 			if logResult, persistErr := persistence.Commit(ctx, &pending.Message); persistErr != nil {
@@ -231,7 +232,7 @@ func (c *CallProcessor) PrepareProjection(ctx context.Context, session *storage.
 func (c *CallProcessor) CompleteCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, content string, usage *llm.Usage, toolCalls []llm.ToolCallRequest, elapsedMs int64) (CallOutput, error) {
 	sessionID := session.ID
 	toolsEnabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
-	event, err := c.Hooks.Run(ctx, hook.Event{
+	event, _, err := c.Hooks.Run(ctx, hook.Event{
 		Point:   hook.PointLLMResponseReceived,
 		Session: hook.SessionContext{ID: sessionID},
 		LLM: hook.LLMPayload{

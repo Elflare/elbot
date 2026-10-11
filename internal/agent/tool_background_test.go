@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/events"
 
 	"elbot/internal/background"
 	"elbot/internal/config"
@@ -345,9 +346,9 @@ func TestRunBackgroundReturnsRawAssistantTextForJSONParsing(t *testing.T) {
 	const raw = `{"completed":true,"need_report":true,"report":"ok"}`
 
 	hooks := hook.NewManager()
-	if err := hooks.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "visible-text", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) {
+	if err := hooks.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "visible-text", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.LLM.Text = "可见文本"
-		return event, nil
+		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatal(err)
 	}

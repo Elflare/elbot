@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/llm"
 )
 
@@ -156,14 +157,14 @@ type ToolPayload struct {
 	Error     error  `json:"error,omitempty"`
 }
 
-// Handler processes one hook event and may return an updated event.
+// Handler returns business changes, the source-declared log outcome and the original error.
 type Handler interface {
-	HandleHook(ctx context.Context, event Event) (Event, error)
+	HandleHook(ctx context.Context, event Event) (Event, events.LogResult, error)
 }
 
-type HandlerFunc func(ctx context.Context, event Event) (Event, error)
+type HandlerFunc func(ctx context.Context, event Event) (Event, events.LogResult, error)
 
-func (fn HandlerFunc) HandleHook(ctx context.Context, event Event) (Event, error) {
+func (fn HandlerFunc) HandleHook(ctx context.Context, event Event) (Event, events.LogResult, error) {
 	return fn(ctx, event)
 }
 

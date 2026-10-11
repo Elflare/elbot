@@ -24,7 +24,7 @@ func TestExecMediaProtocolRoundTrip(t *testing.T) {
 	runtime := hookruntime.NewManager(hookruntime.Options{Media: center})
 	defer runtime.Close(ctx)
 	module := Module{Opts: Options{Runtime: runtime}}
-	got, err := module.runRule(ctx, Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("media")}}}, hook.Event{Point: hook.PointAgentInputPrepared})
+	got, _, err := module.runRule(ctx, Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("media")}}}, hook.Event{Point: hook.PointAgentInputPrepared})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestRuleSendMediaID(t *testing.T) {
 		{Type: "send", Kind: "image", URL: id},
 		{Type: "send", Outputs: []SegmentSpec{{Kind: "image", URL: id}}},
 	} {
-		got, err := (Module{}).runRule(context.Background(), Rule{Actions: []Action{action}}, hook.Event{})
+		got, _, err := (Module{}).runRule(context.Background(), Rule{Actions: []Action{action}}, hook.Event{})
 		if err != nil || len(got.Outputs) != 1 || got.Outputs[0].Source.MediaID != id {
 			t.Fatalf("got=%#v err=%v", got, err)
 		}

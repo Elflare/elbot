@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/events"
 	"elbot/internal/llm/chatcompletions"
 	"testing"
 
@@ -29,13 +30,13 @@ func TestChatModeIgnoresForcedHookToolsAndModelCalls(t *testing.T) {
 
 		hooks := hook.NewManager()
 		for _, point := range []hook.Point{hook.PointLLMTurnPrepared, hook.PointLLMRequestPrepared, hook.PointLLMResponseReceived} {
-			if err := hooks.Register(hook.Registration{Point: point, Name: "force-tools", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, error) {
+			if err := hooks.Register(hook.Registration{Point: point, Name: "force-tools", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 				if event.Point == hook.PointLLMResponseReceived {
 					event.LLM.ToolCalls = append(event.LLM.ToolCalls, llm.ToolCallRequest{ID: "hook-call", Name: candidate.Name(), Arguments: "{}"})
 				} else {
 					event.LLM.Tools = []llm.ToolSchema{candidate.Schema()}
 				}
-				return event, nil
+				return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 			})}); err != nil {
 				t.Fatal(err)
 			}

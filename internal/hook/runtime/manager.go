@@ -28,7 +28,7 @@ type Manager struct {
 	media         *mediaBridge
 	sharedCancel  context.CancelFunc
 	sharedDone    chan struct{}
-	prepareReload func(string) (func() error, error)
+	prepareReload func(string) (func() (globalevents.LogResult, error), error)
 	rootCtx       context.Context
 	rootCancel    context.CancelFunc
 	closed        bool
@@ -75,8 +75,12 @@ func (m *Manager) cleanSharedState(ctx context.Context) {
 			return
 		case <-ticker.C:
 			m.shared.PruneExpired()
-			if err := m.media.prune(context.Background(), time.Now(), false); err != nil {
-				_ = globalevents.EmitLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "prune_hook_media", Module: "hook", Content: "prune hook media: " + err.Error(), ResultStatus: globalevents.ResultFailed})
+			if logResult, _ := m.media.prune(ctx, time.Now(), false); logResult.ResultStatus != globalevents.ResultSkipped {
+				level := slog.LevelInfo
+				if logResult.ResultStatus == globalevents.ResultFailed {
+					level = slog.LevelError
+				}
+				hook.LogHook(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: level, EventName: "prune_hook_media", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: logResult.Content, ResultStatus: logResult.ResultStatus})
 			}
 		}
 	}
@@ -89,7 +93,7 @@ func (m *Manager) SharedState() *SharedState {
 	return m.shared
 }
 
-func (m *Manager) SetPluginReloadPreparer(fn func(string) (func() error, error)) {
+func (m *Manager) SetPluginReloadPreparer(fn func(string) (func() (globalevents.LogResult, error), error)) {
 	if m == nil {
 		return
 	}
@@ -98,7 +102,7 @@ func (m *Manager) SetPluginReloadPreparer(fn func(string) (func() error, error))
 	m.mu.Unlock()
 }
 
-func (m *Manager) preparePluginReload(id string) (func() error, error) {
+func (m *Manager) preparePluginReload(id string) (func() (globalevents.LogResult, error), error) {
 	m.mu.RLock()
 	prepare := m.prepareReload
 	m.mu.RUnlock()
@@ -158,10 +162,10 @@ func (m *Manager) Apply(configs []Config) error {
 	m.mu.Unlock()
 
 	for _, old := range previous {
-		_ = old.stop(context.Background())
+		_, _ = old.stop(context.Background())
 	}
 	for _, old := range previousTransient {
-		_ = old.stop(context.Background())
+		_, _ = old.stop(context.Background())
 	}
 	for _, worker := range workers {
 		if err := m.startWorker(worker); err != nil {
@@ -221,15 +225,15 @@ func (m *Manager) ValidatePlugin(config Config) error {
 }
 
 // ReplacePlugin replaces one worker definition and restarts it when persistent.
-func (m *Manager) ReplacePlugin(config Config) error {
+func (m *Manager) ReplacePlugin(config Config) (globalevents.LogResult, error) {
 	if err := m.ValidatePlugin(config); err != nil {
-		return err
+		return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
 	id := strings.TrimSpace(config.ID)
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
-		return ErrClosed
+		return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: ErrClosed.Error()}, ErrClosed
 	}
 	old := m.workers[id]
 	m.configs[id] = config
@@ -248,14 +252,17 @@ func (m *Manager) ReplacePlugin(config Config) error {
 	m.mu.Unlock()
 
 	if old != nil {
-		if err := old.stop(context.Background()); err != nil {
-			return err
+		if logResult, err := old.stop(context.Background()); err != nil {
+			return logResult, err
 		}
 	}
 	if next != nil {
-		return m.startWorker(next)
+		err := m.startWorker(next)
+		if err != nil {
+			return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+		}
 	}
-	return nil
+	return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "Hook worker definition replaced; startup scheduled"}, nil
 }
 
 // Done closes after workers and shared resources actually finish shutting down.
@@ -288,7 +295,7 @@ func (m *Manager) Close(ctx context.Context) error {
 	if m.sharedCancel != nil {
 		m.sharedCancel()
 	}
-	go m.finishClose(workers)
+	go m.finishClose(ctx, workers)
 	return m.waitClose(ctx, m.closeDone)
 }
 
@@ -301,7 +308,7 @@ func (m *Manager) waitClose(ctx context.Context, done <-chan struct{}) error {
 	}
 }
 
-func (m *Manager) finishClose(workers []*worker) {
+func (m *Manager) finishClose(ctx context.Context, workers []*worker) {
 	workerErrs := make([]error, len(workers))
 	var wg sync.WaitGroup
 	for i, worker := range workers {
@@ -309,7 +316,7 @@ func (m *Manager) finishClose(workers []*worker) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			workerErrs[i] = worker.stop(context.Background())
+			_, workerErrs[i] = worker.stop(context.Background())
 		}()
 	}
 	wg.Wait()
@@ -318,8 +325,16 @@ func (m *Manager) finishClose(workers []*worker) {
 		<-m.sharedDone
 	}
 
+	logResult, err := m.media.prune(ctx, time.Now(), true)
+	if logResult.ResultStatus != globalevents.ResultSkipped {
+		level := slog.LevelInfo
+		if logResult.ResultStatus == globalevents.ResultFailed {
+			level = slog.LevelError
+		}
+		hook.LogHook(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: level, EventName: "prune_hook_media", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: logResult.Content, ResultStatus: logResult.ResultStatus})
+	}
 	m.mu.Lock()
-	m.closeErr = errors.Join(append(workerErrs, m.media.prune(context.Background(), time.Now(), true))...)
+	m.closeErr = errors.Join(append(workerErrs, err)...)
 	close(m.closeDone)
 	m.mu.Unlock()
 }
@@ -406,14 +421,15 @@ func (m *Manager) Start(id string) error {
 	if err := worker.start(); err != nil {
 		return err
 	}
-	return worker.waitReady(context.Background())
+	_, err := worker.waitReady(context.Background())
+	return err
 }
 
 func (m *Manager) Stop(ctx context.Context, id string) (bool, error) {
 	id = strings.TrimSpace(id)
 	persistent := m.worker(id)
 	if persistent != nil {
-		stopErr := persistent.stop(ctx)
+		_, stopErr := persistent.stop(ctx)
 		m.mu.Lock()
 		m.clearRoutesLocked(id)
 		m.mu.Unlock()
@@ -437,7 +453,7 @@ func (m *Manager) Stop(ctx context.Context, id string) (bool, error) {
 	m.mu.Unlock()
 	stopErrs := make([]error, len(workers))
 	for i, transient := range workers {
-		stopErrs[i] = transient.stop(ctx)
+		_, stopErrs[i] = transient.stop(ctx)
 	}
 	return true, errors.Join(stopErrs...)
 }
@@ -458,18 +474,18 @@ func (m *Manager) worker(id string) *worker {
 	return m.workers[strings.TrimSpace(id)]
 }
 
-func (m *Manager) Handle(ctx context.Context, id string, event hook.Event, defaults hook.Control) (hook.Event, error) {
+func (m *Manager) Handle(ctx context.Context, id string, event hook.Event, defaults hook.Control) (hook.Event, globalevents.LogResult, error) {
 	if m.hasLease(event) {
-		return event, nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "worker not dispatched"}, nil
 	}
 	if skipped, _ := event.Metadata[skipHookIDMetadataKey].(string); skipped == id {
-		return event, nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "worker not dispatched"}, nil
 	}
 	m.mu.RLock()
 	config, configured := m.configs[id]
 	m.mu.RUnlock()
 	if !configured {
-		return event, fmt.Errorf("hook worker %q is not configured", id)
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook worker %q is not configured", id)}, fmt.Errorf("hook worker %q is not configured", id)
 	}
 	var worker *worker
 	switch config.ModeOrOnce() {
@@ -477,20 +493,21 @@ func (m *Manager) Handle(ctx context.Context, id string, event hook.Event, defau
 		worker = m.worker(id)
 	case ModeTransient:
 		var err error
-		worker, err = m.startTransient(ctx, config, routeKeyFor(event))
+		var logResult globalevents.LogResult
+		worker, logResult, err = m.startTransient(ctx, config, routeKeyFor(event))
 		if err != nil {
-			return event, err
+			return event, logResult, err
 		}
 	default:
-		return event, fmt.Errorf("hook %q is not configured as a worker", id)
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook %q is not configured as a worker", id)}, fmt.Errorf("hook %q is not configured as a worker", id)
 	}
 	if worker == nil {
-		return event, fmt.Errorf("hook worker %q is not available", id)
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook worker %q is not available", id)}, fmt.Errorf("hook worker %q is not available", id)
 	}
 	if worker.config.Block.Blocks(event) {
-		return event, nil
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "worker not dispatched"}, nil
 	}
-	updated, err := worker.handle(ctx, event, false, defaults)
+	updated, logResult, err := worker.handle(ctx, event, false, defaults)
 	if config.ModeOrOnce() == ModeTransient && (err != nil || !m.hasLease(event)) {
 		m.stopTransient(routeKeyFor(event), worker)
 	}
@@ -500,14 +517,14 @@ func (m *Manager) Handle(ctx context.Context, id string, event hook.Event, defau
 		}
 		updated.Metadata[dispatchedMetadataKey] = true
 	}
-	return updated, err
+	return updated, logResult, err
 }
 
-func (m *Manager) startTransient(ctx context.Context, config Config, key routeKey) (*worker, error) {
+func (m *Manager) startTransient(ctx context.Context, config Config, key routeKey) (*worker, globalevents.LogResult, error) {
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
-		return nil, ErrClosed
+		return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: ErrClosed.Error()}, ErrClosed
 	}
 	worker := m.transient[key]
 	created := false
@@ -519,14 +536,15 @@ func (m *Manager) startTransient(ctx context.Context, config Config, key routeKe
 	m.mu.Unlock()
 	if created {
 		if err := m.startWorker(worker); err != nil {
-			return nil, err
+			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 		}
 	}
-	if err := worker.waitReady(ctx); err != nil {
+	logResult, err := worker.waitReady(ctx)
+	if err != nil {
 		m.stopTransient(key, worker)
-		return nil, err
+		return nil, logResult, err
 	}
-	return worker, nil
+	return worker, logResult, nil
 }
 
 func (m *Manager) stopTransient(key routeKey, wanted *worker) {
@@ -539,5 +557,5 @@ func (m *Manager) stopTransient(key routeKey, wanted *worker) {
 	delete(m.transient, key)
 	delete(m.routes, key)
 	m.mu.Unlock()
-	go func() { _ = worker.stop(context.Background()) }()
+	go func() { _, _ = worker.stop(context.Background()) }()
 }
