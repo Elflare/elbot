@@ -92,14 +92,14 @@ flowchart TB
 - 每个信号独立调度，默认 8 个执行槽、256 个等待项、30 秒总期限；满时拒绝。按 key 串行，不同 key 并发，等待同一 key 不占执行槽。超时取消 context 并完成调用方结果，回调实际退出前不释放执行槽或 key；不配合取消的回调最多占满自身信号，不能借超时不断增生 goroutine。
 - `Disconnect` 不撤销既有快照，`Connection.BeginClose/Close` 取消并等待本连接已接纳的回调。信号关闭采用 CancelPending 或 Drain，`Done` 表示所属队列回调实际退出。来源明确选择传入业务 context，或用 `context.WithoutCancel` 发布需要保留的终态事实。
 - 日志分类队列仍串行，容量 256，入队等待上限 500 毫秒，采用 Drain。公共发布解除请求取消；九字段契约由 `EmitLog`／`EmitLogAsync` 共用验证与身份复制。诊断 stderr 使用独立有界队列，阻塞时不占业务执行槽，诊断溢出合并计数。
-- `LogRecord` 是九字段封闭契约：Category、Level、EventName、Module、Type、Content、ContentLimit、Identity、ResultStatus。三个整数枚举验证合法性，ResultStatus 零值表示未声明，Level 与结果相互独立。契约验证集中于 EmitLog，消费端不重复校验；格式化仍负责脱敏、字符限长、整数精度和记录字节上限。
+- `LogRecord` 是九字段封闭契约：Category、Level、EventName、Module、Type、Content、ContentLimit、Identity、ResultStatus。三个整数枚举验证合法性，ResultStatus 零值表示未声明，Level 与结果相互独立。契约验证集中于 EmitLog，消费端不重复校验；格式化负责 text 字符限长、JSONL 编码和记录字节上限。
 - 业务事件和 notify 保留自身字段及原始对象；日志通过独立 LogRecord 发布，专有事实写入 Content。需要字段查询的审计和 Elnis 日志使用 JSON，普通说明使用 text。
 - 工具记录、持久化、回复送达及提交不保留无业务消费者的实例信号；实际保存和必要业务返回值保留，日志在操作来源组织并经所属管理口发布。日志等级和结果不改变业务停止、重试或权限判断。
 - 后台来源的独立记录由 internal/background/logging.go 的 LogBackground 发布；工具记录由 internal/toolrun/logging.go 的 logTool 发布。两者只接收完整九字段，不猜结果或补身份。Cron／Elnis 调用工具仍走 toolrun，模型和回复仍由 dialogue 记录；RunBackground 只传业务结果与 error，不为日志贯穿整个执行完成链。
 - Cron 触发与 Elnis direct／报告投递／恢复使用所属来源 LogResult，业务原始 error 和 Receipt 独立传递；nil error 不覆盖日志失败，取消不覆盖独立故障，不以日志结果改变补执行、接管或重试规则。
 - Identity 的五个 `*string` 由业务显式填写。`events.EmitLog` 验证契约并复制身份指针，不从 context 补值；nil 身份省略，显式空字符串保留。Content 是来源组织的唯一正文。
 - 日志中心接收时、等待入队前记时，并提交 runtime、audit、elnis 三个容量 256 的背压队列；解除请求取消的影响，按类别入队顺序排空。中心不替换全局信号实例，重复活动中心初始化被拒绝。
-- 消费者先按 Level 过滤，再按 Type 脱敏与格式化；runtime 使用配置等级，audit／elnis 独立保留。text 默认 256 个 Unicode 字符，ContentLimit 可指定长度，截断标记 `…` 计入上限。JSON 递归脱敏并保持数值精度，正文以原生 JSON 值写入。
+- 消费者先按 Level 过滤，再按 Type 格式化；runtime 使用配置等级，audit／elnis 独立保留。text 默认 256 个 Unicode 字符，ContentLimit 可指定长度，截断标记 `…` 计入上限。JSON 正文通过 RawMessage 作为原生值写入，保留来源的字段顺序和数值。
 - 文件统一写 JSONL，时间为 RFC 3339。编码后连同行尾最多 64 KiB，超限报告设施失败，不删除字段凑入上限。日志中心只处理公共契约及正文，不解释业务错误。
 - Signal／Queue 的设施故障直接写 stderr，不依赖业务 Logger 或全局日志信号；文件写入错误由队列检查并报告，短写按 `io.ErrShortWrite` 报告，后续记录继续处理。非法日志类别的诊断保留整数枚举值。中心关闭超时不关闭仍在使用的文件，也不释放活动中心名额，后续显式关闭可继续清理。
 - Reader 按日期和文件写入位置倒序查询，每块读取 64 KiB，满足条数立即停止；每次读取与逐行处理检查取消。打开文件后固定本次读取大小，支持跨块行及 LF／CRLF；单行上限 16 MiB，读取失败或超限返回错误。查询不改变日志记录等级。
@@ -348,7 +348,7 @@ flowchart TD
     B --> C["业务处理<br/>internal/agent/dialogue/reply_commit.go：保存与关联<br/>internal/cron/delivery.go：报告投递及关联<br/>internal/elnis/outbox.go：投递状态与存档<br/>按需使用业务 Receipt"]
     B --> D["日志来源<br/>internal/agent/output.go、dialogue/reply_commit.go<br/>internal/toolrun/runner.go<br/>接收 LogResult，组织完整九字段记录"]
     D --> E["公共日志入口<br/>internal/events/logging.go<br/>校验、复制身份、发射信号"]
-    E --> F["日志中心<br/>internal/logging<br/>记时、过滤、脱敏、排队、落盘"]
+    E --> F["日志中心<br/>internal/logging<br/>记时、过滤、排队、落盘"]
 ```
 
 - 最终 Hook 只改变展示文本，不改模型原文和历史正文。直接回复先发送及延迟 outputs 再落库；缓冲回复先落库再发送、关联和延迟 outputs。错误仍保留实际提交／回执，已成功内容不重发。

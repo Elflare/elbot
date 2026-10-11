@@ -1,6 +1,8 @@
 package builtin
 
 import (
+	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -43,6 +45,71 @@ func TestDamagedLogsAreReportedWithoutMatchedEntries(t *testing.T) {
 	result, err := NewLog(Deps{Logs: service}).Handle(t.Context(), command.Request{Args: "--raw -e"})
 	if err != nil || !strings.Contains(result.Content, "无法判断是否匹配筛选条件") || !strings.Contains(result.Content, "{broken") || !strings.Contains(result.Content, "11 条损坏记录未展示") {
 		t.Fatalf("result=%+v err=%v", result, err)
+	}
+}
+
+func TestLogQueriesPutToolBelowHeader(t *testing.T) {
+	for _, event := range []string{"tool_call", "hook_tool_call"} {
+		for _, format := range []func(bool) func([]logging.LogEntry) string{formatAuditEntries, formatRuntimeLogEntries, formatElwispLogEntries} {
+			entry := logging.LogEntry{
+				EventName: event,
+				Type:      events.ContentJSON,
+				Content:   `{"tool":"shell","result":"done","actor_id":"user","nested":{"tool":"nested","actor_id":"inner"}}`,
+				Raw:       "ORIGINAL_PHYSICAL_RECORD",
+			}
+			content := format(false)([]logging.LogEntry{entry})
+			_, body, found := strings.Cut(content, formatLogEntryTime(entry)+"  未声明  "+event+"  未声明\n")
+			want := "tool: shell\nresult: done\nactor_id: user\nnested: \n  tool: nested\n  actor_id: inner"
+			if !found || strings.TrimSpace(body) != want {
+				t.Fatalf("unexpected field order for %s: %s", event, content)
+			}
+			raw := format(true)([]logging.LogEntry{entry})
+			_, rawBody, found := strings.Cut(raw, "\n")
+			if !found || strings.TrimSpace(rawBody) != entry.Raw {
+				t.Fatalf("raw record changed: %s", raw)
+			}
+		}
+	}
+	entry := logging.LogEntry{Type: events.ContentJSON, Content: `{"result":"done","actor_id":"user"}`}
+	if content := formatLogContent(entry); content != "result: done\nactor_id: user" {
+		t.Fatalf("non-tool field order changed: %s", content)
+	}
+}
+
+func TestAuditPreservesSourceOrderThroughStorageAndFiltering(t *testing.T) {
+	center, err := logging.NewManager("debug", filepath.Join(t.TempDir(), "sessions.sqlite"), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = center.Close(context.Background()) })
+	body := `{"tool":"shell","run_source":"foreground","risk":"low","result":"first\nsecond","actor_id":"user","nested":{"z":9007199254740993,"a":[]}}`
+	if err := events.EmitLog(t.Context(), events.LogRecord{Category: events.LogAudit, EventName: "tool_call", Module: "toolrun", Type: events.ContentJSON, Content: body, ResultStatus: events.ResultSucceeded}); err != nil {
+		t.Fatal(err)
+	}
+	if err := center.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	reader := logging.Reader{Dir: center.LogDir()}
+	query, err := parseAuditQuery("-t --tool shell --run_source foreground --risk low")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := reader.Query(t.Context(), query)
+	if err != nil || len(entries.Entries) != 1 || entries.Entries[0].Content != body {
+		t.Fatalf("stored content changed: entries=%+v err=%v", entries, err)
+	}
+	result, err := NewAudit(Deps{Logs: reader}).Handle(t.Context(), command.Request{Args: "-t --tool shell --run_source foreground --risk low"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "\ntool: shell\nrun_source: foreground\nrisk: low\nresult: \n  first\n  second\nactor_id: user\nnested: \n  z: 9007199254740993\n  a: []"
+	if !strings.HasSuffix(result.Content, want) {
+		t.Fatalf("display order changed: %s", result.Content)
+	}
+	query.ContentFields["tool"] = "different"
+	entries, err = reader.Query(t.Context(), query)
+	if err != nil || len(entries.Entries) != 0 {
+		t.Fatalf("field filter failed: entries=%+v err=%v", entries, err)
 	}
 }
 
