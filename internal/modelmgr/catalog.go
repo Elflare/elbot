@@ -111,7 +111,7 @@ func (s *Service) providerModels(name string, fresh bool) ([]string, error) {
 	if strings.TrimSpace(p.apiKey) == "" && strings.TrimSpace(p.apiKeyEnv) != "" && strings.TrimSpace(p.baseURL) != "" {
 		fetchErr = fmt.Errorf("api_key_env %q is not set", p.apiKeyEnv)
 	} else if name == currentProvider || (p.baseURL != "" && p.apiKey != "") {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		fetched, err := s.clients[name].ListModels(ctx)
 		cancel()
 		fetchErr = err

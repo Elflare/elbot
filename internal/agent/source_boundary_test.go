@@ -35,6 +35,7 @@ func TestFinalLLMTakeoverUsesForegroundHookAndReceipt(t *testing.T) {
 			a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 				cfg.HookManager = manager
 			})
+			connectFixtureNotifications(t, "qq", a.output.dispatcher)
 			done := startTakeoverTest(a)
 			select {
 			case <-block.started:

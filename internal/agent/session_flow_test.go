@@ -118,6 +118,7 @@ func TestSessionIdleExpiration(t *testing.T) {
 				cfg.SessionIdleExpiration = &tt.cfg
 			})
 			a.output.dispatcher.RegisterPlatformSender("qq", p)
+			connectFixtureNotifications(t, "qq", a.output.dispatcher)
 			ctx := platform.WithMessageContext(context.Background(), tt.ctx)
 
 			oldSession, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "old"})
@@ -226,6 +227,7 @@ func TestLatestAssistantReferenceResumesExpiredOrResetCurrentSession(t *testing.
 		cfg.SessionIdleExpiration = &idleExpiration
 	})
 	a.output.dispatcher.RegisterPlatformSender("qq", p)
+	connectFixtureNotifications(t, "qq", a.output.dispatcher)
 	baseCtx := platform.WithMessageContext(context.Background(), platform.MessageContext{
 		Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: contextinfo.Identity{PlatformUserID: "1"}},
 	})
@@ -381,6 +383,7 @@ func TestMessageContextResumeStartsTargetSession(t *testing.T) {
 	f := &fakeLLM{replies: []string{"resume reply"}}
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	a.output.dispatcher.RegisterPlatformSender("qq", p)
+	connectFixtureNotifications(t, "qq", a.output.dispatcher)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
 		Conversation: contextinfo.Conversation{
 			Source:   contextinfo.Source{Platform: "qq", ScopeID: "private:1", ConversationKind: contextinfo.ConversationPrivate},
@@ -431,6 +434,7 @@ func TestMessageContextForkStartsForkSession(t *testing.T) {
 	f := &fakeLLM{replies: []string{"fork reply"}}
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
 	a.output.dispatcher.RegisterPlatformSender("qq", p)
+	connectFixtureNotifications(t, "qq", a.output.dispatcher)
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
 		Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq", ScopeID: "group:9"}, Identity: contextinfo.Identity{PlatformUserID: "1"}},
 	})

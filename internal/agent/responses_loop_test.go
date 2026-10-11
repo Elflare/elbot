@@ -265,6 +265,7 @@ func TestResponsesBackgroundTakeoverSharesPendingAndChangesTaskModel(t *testing.
 	}, func(opts *testAgentOptions) { opts.ToolRegistry = registry })
 	t.Cleanup(unblock)
 	f.agent.output.dispatcher.RegisterPlatformSender("qq", f.platform)
+	connectFixtureNotifications(t, "qq", f.agent.output.dispatcher)
 	done := make(chan backgroundTestResult, 1)
 	go func() {
 		result, err := f.agent.RunBackground(context.Background(), background.RunRequest{

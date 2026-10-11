@@ -95,7 +95,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 命令与补全
 
 - `internal/command/`、`internal/command/builtin/register.go`：Router、命令契约与注册。
-- `internal/command/builtin/`：内置命令；`internal/agent/command_executor.go`：权限、冲突和 Continuation。
+- `internal/command/builtin/`：内置命令；`internal/agent/command_executor.go`：权限、冲突、命令结果的同步通知及发送成功后的 Continuation。
 - `internal/command/builtin/log.go`：运行、审计及 Elwisp 日志的筛选、展示、帮助和补全；raw 与等级独立，坏行提示，Hook 按模块筛选；/log --run_source 提供解析、校验及三个来源值补全，复用 ContentFields。`usage.go` 按 Content 聚合 llm_usage，未知或溢出按项传播。
 - `internal/completion/`、`internal/agent/completion.go`：公共结构化补全与专属查询依赖；平台直接接收补全服务。
 - `internal/agent/file_rollback.go`：文件命令准入；`internal/command/builtin/rollback.go`：撤销命令。

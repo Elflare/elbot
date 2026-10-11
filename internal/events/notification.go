@@ -8,7 +8,7 @@ import (
 	"elbot/internal/signal"
 )
 
-// Notification is a short, plain-text runtime message, never a chat or media job.
+// Notification carries plain-text runtime hints and command results, never chat or media jobs.
 type Notification struct {
 	Target NotificationTarget        // Explicit destination; an empty target uses Origin.
 	Text   string                    // Plain text, independent of platform segments or media preparation.

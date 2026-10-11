@@ -373,6 +373,7 @@ func TestModelSwitchUsesMessagePlatformCurrentModeForGlobalState(t *testing.T) {
 		cfg.SecurityPolicy = security.NewPolicy("low", "high", map[string][]string{"qq": {"admin"}})
 	})
 	a.output.dispatcher.RegisterPlatformSender("qq", p)
+	connectFixtureNotifications(t, "qq", a.output.dispatcher)
 
 	qqSession, err := a.execution.sessions.Create(qqCtx, a.identity.Scope(qqCtx), session.CreateRequest{Title: "qq chat"})
 	if err != nil {
