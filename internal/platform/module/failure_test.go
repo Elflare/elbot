@@ -3,6 +3,7 @@ package module
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -30,6 +31,14 @@ func (r failingPlatformRuntime) Run(ctx context.Context, _ platform.PlatformHand
 
 // A service mode loop cannot acquire application ownership from this marker.
 func (failingPlatformRuntime) StopAppOnExit() bool { return true }
+
+type wrappedShutdownRuntime struct {
+	*runtimeWithShutdownGate
+}
+
+func (r wrappedShutdownRuntime) Run(ctx context.Context, handler platform.PlatformHandler) error {
+	return fmt.Errorf("platform receive loop: %w", r.runtimeWithShutdownGate.Run(ctx, handler))
+}
 
 func TestServicePlatformFailureIsolatedAndNotifiesOtherSuperadmins(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
@@ -70,7 +79,7 @@ func TestServicePlatformFailureIsolatedAndNotifiesOtherSuperadmins(t *testing.T)
 	defer c.Disconnect()
 	release := make(chan struct{})
 	peer := &runtimeWithShutdownGate{fakeRuntimeWithCaller: fakeRuntimeWithCaller{name: "healthy"}, started: make(chan struct{})}
-	m.runtimes = []platform.Runtime{peer, failingPlatformRuntime{fakeRuntimeWithCaller{"cli"}, release, errors.New("listener failed")}}
+	m.runtimes = []platform.Runtime{wrappedShutdownRuntime{peer}, failingPlatformRuntime{fakeRuntimeWithCaller{"cli"}, release, errors.New("listener failed")}}
 	stop := make(chan struct{}, 1)
 	if err := m.Start(nil, func() { stop <- struct{}{} }); err != nil {
 		t.Fatal(err)
