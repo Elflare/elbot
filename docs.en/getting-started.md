@@ -201,7 +201,7 @@ Check:
 
 - Whether `provider` in `state.toml` exists in `providers.toml`.
 - Whether the name `model` is supported by the Provider.
-- After starting, you can use `/models --fresh` or `/models --refresh` to refresh the model list.
+- After starting, you can use `/models --fresh` or `/models --refresh` to reload the provider configurations and refresh the model list.
 
 ### Do not want to enable tools by default
 

@@ -184,6 +184,14 @@
       "translation": "Whether the system environment variables or the configuration directory __ELBOT_CODE_0__ contain the corresponding Key.",
       "updated_at": 1781515975
     },
+    "docs/getting-started.md:list:21d36e7c461ab0b3f7d08a516330ff5a7a1d98bc1b2e86272e3072505fbfdc4e": {
+      "kind": "list",
+      "source": "可以启动后用 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__ 重载厂商配置并刷新模型列表。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "21d36e7c461ab0b3f7d08a516330ff5a7a1d98bc1b2e86272e3072505fbfdc4e",
+      "translation": "After starting, you can use __ELBOT_CODE_0__ or __ELBOT_CODE_1__ to reload the provider configurations and refresh the model list.",
+      "updated_at": 1791809335
+    },
     "docs/getting-started.md:list:2ceebaa4be6d81b2e457d69046e3fa2eac2b5b6ef7106b6e1799a406f497d253": {
       "kind": "list",
       "source": "当前 shell 是否能读取这些环境变量。",
@@ -279,14 +287,6 @@
       "source_hash": "ad2fbc4224ef34bbd570cdf3d780d40e7eaf4cf9dcaad5895b4b3eaf22f59ae6",
       "translation": "__ELBOT_CODE_0__ / __ELBOT_CODE_1__ / __ELBOT_CODE_2__ / __ELBOT_CODE_3__: Scroll chat output.",
       "updated_at": 1782117183
-    },
-    "docs/getting-started.md:list:cf8e65e5c3131db0a92f17cc70c72fde24253e12242164ff3955f59aaa8c3f0c": {
-      "kind": "list",
-      "source": "可以启动后用 __ELBOT_CODE_0__ 或 __ELBOT_CODE_1__ 刷新模型列表。",
-      "source_file": "docs/getting-started.md",
-      "source_hash": "cf8e65e5c3131db0a92f17cc70c72fde24253e12242164ff3955f59aaa8c3f0c",
-      "translation": "After starting, you can use __ELBOT_CODE_0__ or __ELBOT_CODE_1__ to refresh the model list.",
-      "updated_at": 1781580008
     },
     "docs/getting-started.md:list:da055f600dde151737e1dc8af0a47d237857c8e042d39efdd7fb4091b0c75e1c": {
       "kind": "list",
@@ -666,8 +666,8 @@
     }
   },
   "source": "docs/getting-started.md",
-  "source_hash": "63d2b25959e1c7ae0d863f5647cf73b0e8c0fabd937a012d3ae2a8c813313290",
+  "source_hash": "a4253aacb75bb65e60eb99cdf5bb32335be707dcebfc5af12b03de0e6334bfa9",
   "target": "docs.en/getting-started.md",
-  "updated_at": 1791726027,
+  "updated_at": 1791809335,
   "version": 2
 }
