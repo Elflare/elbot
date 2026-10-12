@@ -15,9 +15,9 @@ It supports general chat, tool calling, Hook extensions, long-term task scheduli
 
 | Metric           | Value                            |
 | -------------- | ------------------------------- |
-| Local startup time   | <10ms (tested on N5105, SATA SSD) |
+| Local startup time   | ~40ms (tested on N5105, SATA SSD) |
 | Resident memory       | ~30MB                           |
-| Binary file size | <30MB                           |
+| Binary file size | <20MB                           |
 
 **Token-efficient tool discovery**: Research shows that many ordinary users still primarily use LLM-like products as advanced search engines, writing assistants, and listening objects; frequent tool calls are not the norm for all conversations.
 Reference: Chatterji et al., _How People Use ChatGPT_, NBER, 2025;Yan et al., _ShareChat: A Dataset of Chatbot Conversations in the Wild_, arXiv:2512.17843, 2025。
