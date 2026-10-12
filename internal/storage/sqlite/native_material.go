@@ -97,6 +97,10 @@ func (r *SessionRepository) CreateMaterial(ctx context.Context, req storage.Sess
 				return fmt.Errorf("invalid native seed JSON")
 			}
 		}
+		// Persist every media list as an array; nil also means no media.
+		if seed.MediaIDs == nil {
+			seed.MediaIDs = []string{}
+		}
 		ids, err := json.Marshal(seed.MediaIDs)
 		if err != nil {
 			return err

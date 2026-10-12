@@ -602,6 +602,7 @@ flowchart TD
 
 - `internal/background/logging.go` 的 LogBackground 统一发布 Agent 后台准备及 Cron／Elnis 自身的独立记录。来源填写九字段、明确身份、等级和结果；管理口只调用 events.EmitLog(context.WithoutCancel(ctx), record)，不接业务对象、不补 context、不分类错误、不收集下层日志，也不创建队列。
 - 后台共同执行入口继续使用 internal/agent/background.go。RunBackground 保留业务 RunResult 与原始 error；Dialogue、ReplyCommitter 及 turn.Execution 不为了后台日志增加整条返回链。模型、回复、工具在所属模块记录，后台管理口不重复发布这些记录。
+- Cron 任务级运行正文通过 Handler 的 LogResult 返回，由调度器统一添加任务名、handler 和耗时，在状态保存后发布一份最终运行记录；结束事件为 `cron_job_completed.<handler>` 或 `cron_job_failed.<handler>`。maintenance 及用户任务不重复发布已上交的运行正文，不重复填写通用字段；正文连续非空行，业务独有字段在来源组织，调度器不解析正文去重。触发、逐目标投递审计独立保留，正常 Agent 执行链继续记录所属事实。连接恢复最终运行记录接收共享投递返回正文。
 - Cron／Elnis 调用工具仍经过 Dialogue、toolrun.Run 和 Runner 的 recordCall，交 logTool 发布；Elnis direct 的 Calls 是平台原始 API 调用，不能当作 Tool.Call。Cron 报告生成失败、Elnis 事件终态及状态保存是各自所属记录，不从下层错误树猜工具／模型结果，接管使尚未执行的报告生成或修正 skipped。
 - Cron Handler 的触发终态直接使用 runDirect／runLLM 的来源 LogResult，failed 与 nil error 并存时仍保留失败原因，原始业务 error 单独返回。Elnis direct、目标发送、报告投递及恢复轮次分别返回 LogResult 与原始业务 error；发送 failed 不因 nil error 丢失，保存取消不覆盖已知发送失败，保存独立失败不被先前取消覆盖。Receipt 继续只用于消息关联与投递存档，业务完成、接管、报告重试与补执行规则不读取日志结果；这些记录只描述各自所属操作，不汇总或重发 Dialogue、模型与工具日志。
 - 来源可以复用同一份 Content、身份快照及完整记录发布到不同类别，但各记录独立；身份与发生时点不同时重新由来源填写。删除重复编码、重复身份填写及仅为日志搬运的业务返回，不建立通用 Merge 或错误分类设施。

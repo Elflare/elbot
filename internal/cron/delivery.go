@@ -71,7 +71,9 @@ func (s *Service) deliverPrepared(ctx context.Context, job storage.CronJob, meta
 			}
 		}
 		if meta.Schedule.Mode == ScheduleOnce {
-			return s.disableCompletedDelivery(ctx, job.Name, job.DeliveryToken)
+			logResult, err := s.disableCompletedDelivery(ctx, job.Name, job.DeliveryToken)
+			logResult.Content = content + "\n" + logResult.Content
+			return logResult, err
 		}
 		return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: content}, nil
 	}
@@ -111,14 +113,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job storage.CronJob, meta
 					resultStatus = logResult.ResultStatus
 				}
 				if err != nil {
-					{
-						err := err
-						logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-						if err != nil {
-							logResult.Content += fmt.Sprintf("\nerror=%v", err)
-						}
-						return logResult, err
-					}
+					return globalevents.LogResult{ResultStatus: resultStatus, Content: content}, err
 				}
 				outputState.Status = DeliveryDelivered
 				active, err := s.persistDeliveryState(ctx, &job, state)
@@ -171,14 +166,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job storage.CronJob, meta
 					resultStatus = logResult.ResultStatus
 				}
 				if err != nil {
-					{
-						err := err
-						logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-						if err != nil {
-							logResult.Content += fmt.Sprintf("\nerror=%v", err)
-						}
-						return logResult, err
-					}
+					return globalevents.LogResult{ResultStatus: resultStatus, Content: content}, err
 				}
 				outputState.Status = DeliveryFallbackDelivered
 				active, err := s.persistDeliveryState(ctx, &job, state)
@@ -266,14 +254,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job storage.CronJob, meta
 				resultStatus = logResult.ResultStatus
 			}
 			if err != nil {
-				{
-					err := err
-					logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-					if err != nil {
-						logResult.Content += fmt.Sprintf("\nerror=%v", err)
-					}
-					return logResult, err
-				}
+				return globalevents.LogResult{ResultStatus: resultStatus, Content: content}, err
 			}
 			outputState.Status = DeliveryFallbackDelivered
 			active, err = s.persistDeliveryState(ctx, &job, state)
@@ -299,7 +280,9 @@ func (s *Service) deliverPrepared(ctx context.Context, job storage.CronJob, meta
 	}
 
 	if meta.Schedule.Mode == ScheduleOnce && s.deliveryComplete(meta, state) {
-		return s.disableCompletedDelivery(ctx, job.Name, job.DeliveryToken)
+		logResult, err := s.disableCompletedDelivery(ctx, job.Name, job.DeliveryToken)
+		logResult.Content = content + "\n" + logResult.Content
+		return logResult, err
 	}
 	return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: content}, nil
 }
@@ -545,7 +528,10 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 		identity.RootRequestID = &facts.RootRequestID
 	}
 
-	content := "operation=sendOutputsToPlatformTarget"
+	content := fmt.Sprintf("platform=%s target=%q", platformName, cronTargetLabel(target))
+	if sessionID != "" {
+		content += " session_id=" + sessionID
+	}
 	resultStatus := globalevents.ResultSucceeded
 	var errs []error
 	for _, out := range outputs {
@@ -558,10 +544,7 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 			}
 			{
 				err := errors.Join(append(errs, err)...)
-				logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-				if err != nil {
-					logResult.Content += fmt.Sprintf("\nerror=%v", err)
-				}
+				logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content + fmt.Sprintf("\ncontext_error=%q", ctx.Err().Error())}
 				return logResult, err
 			}
 		}
@@ -582,24 +565,11 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 			}
 			background.LogBackground(ctx, record)
 		}
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelInfo,
-				EventName:    "cron_send_started",
-				Module:       "cron",
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("cron send started\njob=%v\nplatform=%v\ntarget=%v\nkind=%v", jobName, platformName, cronTargetLabel(target), out.Kind),
-				ContentLimit: 4096,
-			}
-			record.Identity = identity
-			if sessionID != "" {
-				record.Identity.SessionID = &sessionID
-			}
-			background.LogBackground(ctx, record)
-		}
 		receipt, logResult, err := s.sendTarget(ctx, target, []delivery.Output{out})
-		content += "\n" + logResult.Content
+		content += fmt.Sprintf("\nkind=%s result=%s", out.Kind, logResult.ResultStatus.String())
+		if logResult.Content != "" {
+			content += "\n" + logResult.Content
+		}
 		if logResult.ResultStatus == globalevents.ResultFailed || (logResult.ResultStatus == globalevents.ResultCanceled && resultStatus != globalevents.ResultFailed) {
 			resultStatus = logResult.ResultStatus
 		}
@@ -633,35 +603,10 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 				}
 				background.LogBackground(ctx, record)
 			}
-			{
-				record := globalevents.LogRecord{
-					Category:     globalevents.LogRuntime,
-					Level:        slog.LevelError,
-					EventName:    "cron_send_failed",
-					Module:       "cron",
-					Type:         globalevents.ContentText,
-					Content:      fmt.Sprintf("cron send failed\njob=%v\nplatform=%v\ntarget=%v\nkind=%v\n%s", jobName, platformName, cronTargetLabel(target), out.Kind, logResult.Content),
-					ContentLimit: 4096,
-					ResultStatus: globalevents.ResultFailed,
-				}
-				record.ResultStatus = status
-				if status == globalevents.ResultCanceled {
-					record.Level = slog.LevelInfo
-				}
-
-				record.Identity = identity
-				if sessionID != "" {
-					record.Identity.SessionID = &sessionID
-				}
-				background.LogBackground(ctx, record)
-			}
 			if err != nil && ctx.Err() != nil {
 				{
 					err := errors.Join(errs...)
 					logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-					if err != nil {
-						logResult.Content += fmt.Sprintf("\nerror=%v", err)
-					}
 					return logResult, err
 				}
 			}
@@ -685,30 +630,10 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 			}
 			background.LogBackground(ctx, record)
 		}
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelInfo,
-				EventName:    "cron_send_completed",
-				Module:       "cron",
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("cron send completed\njob=%v\nplatform=%v\ntarget=%v\nkind=%v\n%s", jobName, platformName, cronTargetLabel(target), out.Kind, logResult.Content),
-				ContentLimit: 4096,
-				ResultStatus: logResult.ResultStatus,
-			}
-			record.Identity = identity
-			if sessionID != "" {
-				record.Identity.SessionID = &sessionID
-			}
-			background.LogBackground(ctx, record)
-		}
 	}
 	{
 		err := errors.Join(errs...)
 		logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-		if err != nil {
-			logResult.Content += fmt.Sprintf("\nerror=%v", err)
-		}
 		return logResult, err
 	}
 }
@@ -718,10 +643,7 @@ func (s *Service) sendOutputsToPlatformsMapped(ctx context.Context, jobName stri
 	if s.sendTarget == nil {
 		{
 			err := fmt.Errorf("cron target sender is not configured")
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: content}
-			if err != nil {
-				logResult.Content += fmt.Sprintf("\nerror=%v", err)
-			}
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: content + fmt.Sprintf("\nerror=%q", err.Error())}
 			return logResult, err
 		}
 	}
@@ -744,9 +666,6 @@ func (s *Service) sendOutputsToPlatformsMapped(ctx context.Context, jobName stri
 			{
 				err := errors.Join(errs...)
 				logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-				if err != nil {
-					logResult.Content += fmt.Sprintf("\nerror=%v", err)
-				}
 				return logResult, err
 			}
 		}
@@ -754,9 +673,6 @@ func (s *Service) sendOutputsToPlatformsMapped(ctx context.Context, jobName stri
 	{
 		err := errors.Join(errs...)
 		logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-		if err != nil {
-			logResult.Content += fmt.Sprintf("\nerror=%v", err)
-		}
 		return logResult, err
 	}
 }

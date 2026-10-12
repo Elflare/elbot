@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/events"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
@@ -19,6 +21,119 @@ type trackingDeleteBackend struct {
 	name  string
 	calls *[]string
 	fail  bool
+}
+
+func TestCleanupWithEmptyNativeSeedDeletesOrphans(t *testing.T) {
+	m := newConcurrentTestManager(t)
+	seed := &storage.NativeSeed{ID: "empty-root", APIType: "response", Provider: "p", ItemsJSON: `[]`, MaterialsJSON: `[]`, ContinuationJSON: `[]`, CallsJSON: `[]`}
+	row := &storage.Session{ID: "empty-session", Metadata: `{"llm_origin":{"protocol":"response","provider":"p"}}`}
+	if err := m.Store.Sessions().CreateMaterial(t.Context(), storage.SessionMaterialCreate{Session: row, Seed: seed}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.ImportBytes(t.Context(), []byte("orphan"), Input{}); err != nil {
+		t.Fatal(err)
+	}
+	m.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
+	result, err := m.Cleanup(t.Context())
+	if err != nil || result.ResultStatus != events.ResultSucceeded || !strings.Contains(result.Content, "claimed=1 deleted=1 skipped=0 failed=0 canceled=0 not_started=0") {
+		t.Fatalf("empty seed blocked cleanup: %#v, %v", result, err)
+	}
+	result, err = m.Cleanup(t.Context())
+	if err != nil || !strings.Contains(result.Content, "claimed=0 deleted=0 skipped=0 failed=0 canceled=0 not_started=0") {
+		t.Fatalf("empty cleanup: %#v, %v", result, err)
+	}
+}
+
+func TestCleanupSummaryCountsAndBoundsDetails(t *testing.T) {
+	m := newConcurrentTestManager(t)
+	data := seedCleanupMedia(t, m, 60)
+	failedIDs := map[string]bool{}
+	for id := range data {
+		if len(failedIDs) < 2 {
+			failedIDs[id] = true
+		}
+	}
+	failure := errors.New("remote error\n\nretry later")
+	m.Remote = &concurrentTestBackend{remove: func(_ context.Context, item *storage.Media) error {
+		if failedIDs[item.ID] {
+			return failure
+		}
+		return nil
+	}}
+	result, err := m.Cleanup(t.Context())
+	if !errors.Is(err, failure) || result.ResultStatus != events.ResultFailed || !strings.Contains(result.Content, "claimed=60 deleted=58 skipped=0 failed=2 canceled=0 not_started=0") {
+		t.Fatalf("partial cleanup: %#v, %v", result, err)
+	}
+	if len(strings.Split(result.Content, "\n")) > 50 || strings.Contains(result.Content, "\n\n") || !strings.Contains(result.Content, "truncated=true omitted_details=") {
+		t.Fatalf("unbounded or incomplete details: %q", result.Content)
+	}
+	for id := range data {
+		_, err := m.Store.Media().Get(t.Context(), id)
+		if failedIDs[id] {
+			if err != nil || !strings.Contains(result.Content, "media_id="+id+" result=failed") || !strings.Contains(result.Content, "stage=remote_delete") {
+				t.Fatalf("failed media detail lost: %s, %v, %q", id, err, result.Content)
+			}
+		} else if !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("deleted media survived: %s, %v", id, err)
+		}
+	}
+}
+
+func TestCleanupCountsUnavailableClaimAsSkipped(t *testing.T) {
+	m := newConcurrentTestManager(t)
+	item, err := m.ImportBytes(t.Context(), []byte("disappearing"), Input{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
+	unlock, err := m.objects.acquire(t.Context(), item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results := make(chan events.LogResult, 1)
+	go func() { result, _ := m.Cleanup(t.Context()); results <- result }()
+	waitObjectUsers(t, &m.objects, item.ID, 2)
+	if err := m.Store.Media().FinishDelete(t.Context(), item.ID); err != nil {
+		unlock()
+		t.Fatal(err)
+	}
+	unlock()
+	result := awaitMediaTest(t, results)
+	if result.ResultStatus != events.ResultSucceeded || !strings.Contains(result.Content, "claimed=1 deleted=0 skipped=1 failed=0 canceled=0 not_started=0") {
+		t.Fatalf("unavailable claim counts = %#v", result)
+	}
+}
+
+func TestCleanupMissingSeedReferenceIncludesOwnerAndMedia(t *testing.T) {
+	m := newConcurrentTestManager(t)
+	item, err := m.ImportBytes(t.Context(), []byte("referenced"), Input{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := &storage.NativeSeed{ID: "root", APIType: "response", Provider: "p", ItemsJSON: `[]`, MaterialsJSON: `[]`, ContinuationJSON: `[]`, CallsJSON: `[]`, MediaIDs: []string{item.ID}}
+	row := &storage.Session{ID: "child", Metadata: `{"llm_origin":{"protocol":"response","provider":"p"}}`}
+	if err := m.Store.Sessions().CreateMaterial(t.Context(), storage.SessionMaterialCreate{Session: row, Seed: seed}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Store.MediaReferences().Remove(t.Context(), storage.MediaReference{MediaID: item.ID, OwnerType: "native_seed", OwnerID: seed.ID, Purpose: "content"}); err != nil {
+		t.Fatal(err)
+	}
+	m.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
+	result, err := m.Cleanup(t.Context())
+	if err == nil || result.ResultStatus != events.ResultFailed {
+		t.Fatalf("missing reference cleanup = %#v, %v", result, err)
+	}
+	for _, value := range []string{"stage=reference_check", "owner_type=native_seed", "owner_id=root", "session_id=child", "media_id=" + item.ID} {
+		if !strings.Contains(result.Content, value) {
+			t.Fatalf("missing %q in %q", value, result.Content)
+		}
+	}
+	if strings.Contains(result.Content, "claimed=") {
+		t.Fatalf("reported a claim before validation passed: %q", result.Content)
+	}
+	if _, err := m.Store.Media().Get(t.Context(), item.ID); err != nil {
+		t.Fatalf("referenced media was deleted: %v", err)
+	}
 }
 
 func (b *trackingDeleteBackend) Remove(ctx context.Context, item *storage.Media) error {

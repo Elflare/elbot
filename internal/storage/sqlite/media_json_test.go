@@ -36,7 +36,7 @@ func TestMediaAuditDetectsMissingCronReference(t *testing.T) {
 		t.Fatal(err)
 	}
 	issues, err := store.Media().CheckReferences(ctx)
-	if err != nil || len(issues) != 1 || issues[0] != "missing cron reference: "+job.ID {
+	if err != nil || len(issues) != 1 || issues[0] != "issue=missing_reference owner_type=cron owner_id="+job.ID+" media_id="+id {
 		t.Fatalf("missing cron reference not detected: %v %v", issues, err)
 	}
 }

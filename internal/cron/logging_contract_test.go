@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
@@ -68,7 +69,11 @@ func TestHandlerUsesDeclaredDeliveryResult(t *testing.T) {
 				return delivery.Receipt{PlatformMessageIDs: []string{"received"}}, globalevents.LogResult{ResultStatus: tc.status, Content: "source delivery diagnostic"}, tc.err
 			}})
 			var records []globalevents.LogRecord
+			var runtimeRecords []globalevents.LogRecord
 			connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
+				if record.Category == globalevents.LogRuntime {
+					runtimeRecords = append(runtimeRecords, record)
+				}
 				if record.EventName == "cron.trigger_failed" || record.EventName == "cron_trigger_failed" || record.EventName == "cron.trigger_completed" || record.EventName == "cron_trigger_completed" {
 					records = append(records, record)
 				}
@@ -79,7 +84,7 @@ func TestHandlerUsesDeclaredDeliveryResult(t *testing.T) {
 			}
 			defer connection.Disconnect()
 			logResult, err := s.Handler(t.Context(), *job)
-			if !errors.Is(err, tc.err) || logResult.ResultStatus != tc.status || len(records) != 2 {
+			if !errors.Is(err, tc.err) || logResult.ResultStatus != tc.status || len(records) != 1 || len(runtimeRecords) != 0 {
 				t.Fatalf("source/business result changed: log=%#v error=%v records=%#v", logResult, err, records)
 			}
 			for _, record := range records {
@@ -139,7 +144,7 @@ func TestRunJobLogsFinalResultAfterStateSave(t *testing.T) {
 			}
 			var final []globalevents.LogRecord
 			connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
-				if record.EventName == "cron_job_completed" || record.EventName == "cron_job_failed" {
+				if record.EventName == "cron_job_completed.handler" || record.EventName == "cron_job_failed.handler" {
 					if !repo.saved {
 						t.Error("final result emitted before state save")
 					}
@@ -169,6 +174,89 @@ func TestRunJobLogsFinalResultAfterStateSave(t *testing.T) {
 				if err != nil && !strings.Contains(record.Content, err.Error()) {
 					t.Fatalf("missing error %v in %q", err, record.Content)
 				}
+			}
+		})
+	}
+}
+
+func TestRunJobPublishesHandlerContentOnlyOnce(t *testing.T) {
+	repo := &loggingCronRepo{fakeCronRepo: newFakeCronRepo()}
+	meta := Metadata{Kind: metadataKind, Version: 1, Title: "reminder", Schedule: CronSchedule{Mode: ScheduleCron}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "hello"}, Target: CronTarget{SourcePlatform: "cli"}}
+	job := upsertTestCronJob(t, repo.fakeCronRepo, meta)
+	s := NewService(Options{Store: fakeCronStore{cron: repo}, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "sent_once\n\nreceipt=one"}, nil
+	}})
+	manager := NewManager(repo)
+	manager.started, manager.runCtx = true, t.Context()
+	manager.handlers[job.Handler] = s.Handler
+	var records []globalevents.LogRecord
+	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
+		records = append(records, record)
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(connection.Disconnect)
+	manager.runJob(job.Name)
+	var runtimeCount, auditCount int
+	var final globalevents.LogRecord
+	for _, record := range records {
+		if record.Category == globalevents.LogRuntime {
+			runtimeCount++
+			if record.EventName == "cron_job_completed."+job.Handler {
+				final = record
+			}
+		} else if record.Category == globalevents.LogAudit {
+			auditCount++
+		}
+	}
+	if runtimeCount != 2 || auditCount != 4 || !repo.saved {
+		t.Fatalf("runtime=%d audit=%d saved=%v records=%#v", runtimeCount, auditCount, repo.saved, records)
+	}
+	if final.ResultStatus != globalevents.ResultSucceeded || strings.Count(final.Content, "job=") != 1 || strings.Count(final.Content, "handler=") != 1 || strings.Count(final.Content, "sent_once") != 1 || strings.Contains(final.Content, "\n\n") {
+		t.Fatalf("duplicate or incomplete final content: %#v", final)
+	}
+	if !strings.Contains(final.Content, "platform=cli") || !strings.Contains(final.Content, "kind=text result=succeeded") || !strings.HasPrefix(final.Content, "cron job finished\njob=") {
+		t.Fatalf("missing task metadata or target details: %q", final.Content)
+	}
+}
+
+func TestRecoveryPublishesReturnedDeliveryDetails(t *testing.T) {
+	for _, status := range []globalevents.ResultStatus{globalevents.ResultSucceeded, globalevents.ResultFailed} {
+		t.Run(status.String(), func(t *testing.T) {
+			repo := newFakeCronRepo()
+			meta := Metadata{Kind: metadataKind, Version: 1, Title: "reminder", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "hello"}, Target: CronTarget{SourcePlatform: "cli"}}
+			job := upsertTestCronJob(t, repo, meta)
+			s := NewService(Options{Store: fakeCronStore{cron: repo}, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+				return delivery.Receipt{}, globalevents.LogResult{ResultStatus: status, Content: "delivery_detail\n\nreceipt=one"}, nil
+			}})
+			s.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
+			var final []globalevents.LogRecord
+			connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
+				if record.EventName == "cron_missed_delivery_completed" || record.EventName == "missed_cron_run_failed" {
+					final = append(final, record)
+				}
+				return nil
+			}, signal.ConnectOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(connection.Disconnect)
+			s.runMissedOnceForPlatform(t.Context(), "cli")
+			if len(final) != 1 || final[0].ResultStatus != status || (final[0].Level == slog.LevelError) != (status == globalevents.ResultFailed) {
+				t.Fatalf("recovery outcome = %#v", final)
+			}
+			if strings.Count(final[0].Content, "delivery_detail") != 1 || strings.Contains(final[0].Content, "\n\n") || !strings.Contains(final[0].Content, "kind=text result="+status.String()) {
+				t.Fatalf("recovery lost delivery body: %q", final[0].Content)
+			}
+			for _, value := range []string{"recovery_platform=cli", "source_platform=cli", "target_platforms=cli", "target_all_enabled_platforms=false"} {
+				if !strings.Contains(final[0].Content, value) {
+					t.Fatalf("recovery lost %q: %q", value, final[0].Content)
+				}
+			}
+			if repo.jobs[job.Name].Enabled {
+				t.Fatal("completed once task was not disabled")
 			}
 		})
 	}

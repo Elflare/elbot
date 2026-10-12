@@ -457,6 +457,7 @@ contextmgr 管历史、窗口、用量、阈值及压缩分派；协议 Compacto
 - Session 字段修改使用 `Mutate` 在短事务读取最新行，只改负责字段；回调不做外部 I/O 或嵌套仓储操作。RawMessage 保留未知 metadata 和数值精度，损坏数据拒绝读写。
 - 多模态 segments 为结构来源，content 为文本投影；非空 segments 优先。ToolPair 保存调用／结果关联，复制消息时重映射 ID。
 - `native_exchanges`、`native_inputs`、`native_calls`、`native_checkpoints`、`native_seeds` 保存原生记录，Session metadata 只保存归属、版本和引用。关键提交比较旧 checkpoint，材料事务同时保存 Session、历史及媒体引用；查询保留平台隔离、归档与 Fork 范围。
+- `native_seeds.media_ids_json` 始终保存 JSON 数组，无媒体为 `[]`；持久化入口统一处理 nil slice，迁移修正已有 `null`。媒体引用校验直接按数组读取，不在清理入口推断空值含义。
 
 <!-- locator:elnis -->
 ## Elnis / Elvena / Elwisp
@@ -471,6 +472,9 @@ Elnis 接收并分发事件，Elvena 定义公共协议，Elwisp 提供外部事
 ## Cron 与后台任务
 
 Cron 管持久化任务、调度与运行，在实际状态保存返回后组织整体日志，独立读取／保存故障不能被调用取消覆盖；maintenance 集中注册维护任务。Cron 与 Elnis 共用 Agent 后台执行、sandbox 和 JSON 结果能力。
+
+- 维护任务和用户 Cron 通过 Handler 返回独立 `LogResult` 和原始 error；任务级运行正文只发布一次，由调度器在开头添加任务名、handler、耗时，结束事件名拼接 handler，正文连续非空行。业务在来源处组织独有字段和诊断，调度器不解析正文去重；触发、逐目标投递审计和正常 Agent 日志独立保留。
+- 媒体中心生成 `cleanup_id`，统计认领、删除、跳过、失败、取消和未执行对象；明细按异常优先排序，返回正文限制 50 行并注明省略数量。未进入认领阶段时只记录阶段和引用异常等实际事实；孤儿媒体不推断原 Session。连接恢复入口接收共享投递函数的返回正文，附到恢复最终运行记录。
 
 - 每次实际调度新建后台 Session，同轮 JSON 格式重试复用 Session、首轮工具状态和固定模型。后台 shell 非 critical 风险自动确认，critical 返回提醒。
 - 任务专用 provider／model 成对校验；省略更新保留、同时清空回到 work，不修改全局选择。

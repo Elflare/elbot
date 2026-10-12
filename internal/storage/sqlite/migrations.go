@@ -583,6 +583,11 @@ ON context_summaries(to_message_id);
 		name:    "remove_cron_last_error",
 		sql:     `ALTER TABLE cron_jobs DROP COLUMN last_error;`,
 	},
+	{
+		version: 23,
+		name:    "normalize_native_seed_media_ids",
+		sql:     `UPDATE native_seeds SET media_ids_json='[]' WHERE media_ids_json='null';`,
+	},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {

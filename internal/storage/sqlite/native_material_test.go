@@ -13,6 +13,73 @@ func materialSeed(id string) *storage.NativeSeed {
 	return &storage.NativeSeed{ID: id, APIType: "response", Provider: "p", ItemsJSON: `[{"type":"compaction","encrypted_content":"opaque"}]`, MaterialsJSON: `[]`, ContinuationJSON: `[]`, CallsJSON: `[]`}
 }
 
+func TestNativeSeedEmptyMediaIsAnArrayAndPassesAudit(t *testing.T) {
+	for _, ids := range [][]string{nil, {}} {
+		store, _ := nativeStorageFixture(t)
+		seed := materialSeed("empty-root")
+		seed.MediaIDs = ids
+		row := &storage.Session{ID: "empty-child", Metadata: `{"llm_origin":{"protocol":"response","provider":"p"}}`}
+		if err := store.Sessions().CreateMaterial(t.Context(), storage.SessionMaterialCreate{Session: row, Seed: seed}); err != nil {
+			t.Fatal(err)
+		}
+		var raw string
+		if err := store.db.QueryRow(`SELECT media_ids_json FROM native_seeds WHERE id=?`, seed.ID).Scan(&raw); err != nil {
+			t.Fatal(err)
+		}
+		if raw != "[]" {
+			t.Fatalf("empty media list = %s, want []", raw)
+		}
+		if issues, err := store.Media().CheckReferences(t.Context()); err != nil || len(issues) != 0 {
+			t.Fatalf("empty seed audit = %v, %v", issues, err)
+		}
+	}
+}
+
+func TestNativeSeedMediaMigrationRepairsNullAndPreservesReferences(t *testing.T) {
+	store, _ := nativeStorageFixture(t)
+	ctx := t.Context()
+	id := "media:" + strings.Repeat("b", 64)
+	if err := store.Media().Upsert(ctx, &storage.Media{ID: id, Backend: "local", MIMEType: "image/png"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"empty", "with-media"} {
+		seed := materialSeed(name)
+		if name == "with-media" {
+			seed.MediaIDs = []string{id}
+		}
+		row := &storage.Session{ID: name, Metadata: `{"llm_origin":{"protocol":"response","provider":"p"}}`}
+		if err := store.Sessions().CreateMaterial(ctx, storage.SessionMaterialCreate{Session: row, Seed: seed}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.db.Exec(`UPDATE native_seeds SET media_ids_json='null',consumed=1 WHERE id='empty'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(`DELETE FROM schema_migrations WHERE version=23`); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := runMigrations(ctx, store.db); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var raw string
+	var consumed bool
+	if err := store.db.QueryRow(`SELECT media_ids_json,consumed FROM native_seeds WHERE id='empty'`).Scan(&raw, &consumed); err != nil || raw != "[]" || !consumed {
+		t.Fatalf("migrated seed media=%s consumed=%v error=%v", raw, consumed, err)
+	}
+	if issues, err := store.Media().CheckReferences(ctx); err != nil || len(issues) != 0 {
+		t.Fatalf("migrated audit = %v, %v", issues, err)
+	}
+	if _, err := store.db.Exec(`DELETE FROM media_references WHERE owner_type='native_seed' AND owner_id='with-media'`); err != nil {
+		t.Fatal(err)
+	}
+	issues, err := store.Media().CheckReferences(ctx)
+	if err != nil || len(issues) != 1 || !strings.Contains(issues[0], "with-media") {
+		t.Fatalf("missing real reference audit = %v, %v", issues, err)
+	}
+}
+
 func TestNativeSessionMaterialCreateRollsBackSessionMessagesAndMedia(t *testing.T) {
 	store, _ := nativeStorageFixture(t)
 	ctx := t.Context()
