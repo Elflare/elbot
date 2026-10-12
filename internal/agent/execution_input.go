@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 
 	"elbot/internal/storage"
 	"elbot/internal/turn"
@@ -52,49 +53,56 @@ const (
 // AcceptInput revalidates the prepared input and dispatches under its original binding.
 // Risk responses return to the entrypoint for ConfirmationCoordinator to consume.
 func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage.Session, text string) (InputDisposition, error) {
-	locked, release, err := c.EnterInput(ctx, session)
-	if err != nil {
-		return inputHandled, err
-	}
-	ctx = locked
-	snapshot := c.turns.Snapshot(session.ID)
-	switch snapshot.Phase {
-	case turn.PhaseAwaitRiskConfirm:
-		release()
-		return inputRiskConfirmation, nil
-	case turn.PhaseAwaitAppendConfirm:
-		release()
-		return inputHandled, c.ResumeAppend(ctx, session, text)
-	case turn.PhaseLLM:
-		waitCtx, finishWait, accepted := c.appendWaits.begin(ctx)
-		if !accepted {
-			release()
-			return inputHandled, context.Canceled
+	for {
+		locked, release, err := c.EnterInput(ctx, session)
+		if err != nil {
+			return inputHandled, err
 		}
-		if !c.turns.InterruptLLMInput(session.ID, inboundTurnInput(ctx, text)) {
-			finishWait()
+		ctx = locked
+		snapshot := c.turns.Snapshot(session.ID)
+		switch snapshot.Phase {
+		case turn.PhaseAwaitRiskConfirm:
 			release()
-			return inputHandled, nil
-		}
-		wait := c.turns.AppendWait(session.ID)
-		c.requests.CancelSession(session.ID)
-		release()
-		timeout := c.waitPolicy.WaitTimeout(ctx)
-		c.output.SendChat(ctx, appendConfirmPromptText(timeout))
-		go func() {
-			defer finishWait()
-			if wait.Wait(waitCtx, timeout) {
-				c.output.SendChat(waitCtx, "追加确认已过期，待追加内容已丢弃，本轮处理已停止。")
+			return inputRiskConfirmation, nil
+		case turn.PhaseAwaitAppendConfirm:
+			release()
+			return inputHandled, c.ResumeAppend(ctx, session, text)
+		case turn.PhaseLLM:
+			waitCtx, finishWait, accepted := c.appendWaits.begin(ctx)
+			if !accepted {
+				release()
+				return inputHandled, context.Canceled
 			}
-		}()
-		return inputHandled, nil
-	case turn.PhaseTool:
-		c.turns.AppendPendingInput(session.ID, inboundTurnInput(ctx, text))
-		release()
-		c.output.SendChat(ctx, "已追加，将在当前流程下一次模型调用时带上。发送 /stop 可打断当前流程。")
-		return inputHandled, nil
-	default:
-		release()
-		return inputHandled, c.Run(ctx, session, text, foregroundTurnOutput{sender: c.output})
+			if !c.turns.InterruptLLMInput(session.ID, inboundTurnInput(ctx, text)) {
+				finishWait()
+				release()
+				return inputHandled, nil
+			}
+			wait := c.turns.AppendWait(session.ID)
+			c.requests.CancelSession(session.ID)
+			release()
+			timeout := c.waitPolicy.WaitTimeout(ctx)
+			c.output.SendChat(ctx, appendConfirmPromptText(timeout))
+			go func() {
+				defer finishWait()
+				if wait.Wait(waitCtx, timeout) {
+					c.output.SendChat(waitCtx, "追加确认已过期，待追加内容已丢弃，本轮处理已停止。")
+				}
+			}()
+			return inputHandled, nil
+		case turn.PhaseTool:
+			c.turns.AppendPendingInput(session.ID, inboundTurnInput(ctx, text))
+			release()
+			c.output.SendChat(ctx, "已追加，将在当前流程下一次模型调用时带上。发送 /stop 可打断当前流程。")
+			return inputHandled, nil
+		default:
+			release()
+			err = c.Run(ctx, session, text, foregroundTurnOutput{sender: c.output})
+			// A competing execution won after the idle snapshot. Revalidate the
+			// original binding and dispatch the prepared input by its latest phase.
+			if !errors.Is(err, errExecutionConflict) {
+				return inputHandled, err
+			}
+		}
 	}
 }

@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复普通消息并发启动时误报“请求失败”的问题。
 - 修复普通 `/audit` 等日志查询直接展示 JSON 转义的bug。
 - 修复 `shell` 先缓存全部输出、结束后才截断导致执行期间内存随输出量增长的问题；现在收集时限制容量，超出部分继续排空并丢弃。
 - 修复高风险确认的bug。

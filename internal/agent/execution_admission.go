@@ -12,6 +12,9 @@ import (
 
 var errSessionBindingChanged = errors.New("当前会话已切换，请重新发送消息")
 
+// errExecutionConflict marks input that has not started because another execution won admission.
+var errExecutionConflict = errors.New("当前会话已有其他执行，输入尚未开始处理")
+
 // Existing execution contexts keep their original binding across confirmation.
 func captureSessionBinding(ctx context.Context, sessions *session.Service, identity interface {
 	Scope(context.Context) session.Scope

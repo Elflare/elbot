@@ -2,7 +2,9 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"reflect"
 	"strings"
 
@@ -15,6 +17,7 @@ import (
 	"elbot/internal/media"
 	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/security"
+	"elbot/internal/session"
 	"elbot/internal/storage"
 )
 
@@ -35,6 +38,20 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 	ctx = security.WithPolicy(contextinfo.WithActor(ctx, actor), h.identity.Policy())
 	segments := inboundSegments(ctx, text)
 	defer func() {
+		if errors.Is(err, session.ErrSessionBusy) {
+			_ = events.EmitLog(ctx, events.LogRecord{
+				Category:     events.LogRuntime,
+				Level:        slog.LevelWarn,
+				EventName:    "session_switch_blocked",
+				Module:       "agent",
+				Type:         events.ContentText,
+				Content:      err.Error(),
+				ContentLimit: 4096,
+				ResultStatus: events.ResultRejected,
+			})
+			_, err = events.NotificationRequested.Emit(ctx, events.NewNotification(ctx, slog.LevelWarn, err.Error()))
+			return
+		}
 		if err != nil {
 			h.hooks.NotifyError(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}}, err)
 			if dialogue.ShouldNotifyUserError(err) {

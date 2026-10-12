@@ -64,10 +64,6 @@ func compactCommandBlockedText(command string) string {
 	return fmt.Sprintf("正在压缩当前会话，暂不执行 %s。请等待压缩完成，或先使用 /stop 取消。", command)
 }
 
-func activeTurnCommandBlockedText() string {
-	return "当前会话处理中，暂不支持切换。如有必要，请先使用 /stop 结束当前处理。"
-}
-
 func (c *InputCoordinator) HandleInput(ctx context.Context, text string) error {
 	ctx, session, err := c.execution.ResolveInput(ctx, text)
 	if err != nil {

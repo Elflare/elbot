@@ -320,7 +320,7 @@ func TestCompactBlocksSessionChangesAndStopCancels(t *testing.T) {
 	if !a.execution.shouldCompact(ctx, source, modelmgr.SelectionForTurn(ctx, a.execution.models, source)) {
 		t.Fatal("usage no longer triggers compact after cancellation")
 	}
-	if got := p.out.String(); !strings.Contains(got, activeTurnCommandBlockedText()) || !strings.Contains(got, "暂不执行 /delete") || !strings.Contains(got, "stopped 1 request") {
+	if got := p.out.String(); !strings.Contains(got, session.ErrSessionBusy.Error()) || !strings.Contains(got, "暂不执行 /delete") || !strings.Contains(got, "stopped 1 request") {
 		t.Fatalf("output = %q", got)
 	}
 }
