@@ -15,7 +15,6 @@ import (
 	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
-	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
@@ -75,7 +74,7 @@ func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.
 		if c.turns.Execution(session.ID) == execution {
 			return session, turn.Input{}, nil
 		}
-		return session, turn.Input{}, sessionpkg.ErrSessionBusy
+		return session, turn.Input{}, errExecutionConflict
 	}
 	defer c.turns.FinishRequest(session.ID, attempt)
 

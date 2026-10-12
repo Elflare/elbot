@@ -48,8 +48,7 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 		return true, e.confirmations.SubmitResponse(ctx, sessionRow.ID, text)
 	}
 	if sessionErr == nil && hasInfo && snapshot.Phase != turn.PhaseIdle && blocksDuringActiveTurn(info.SessionEffect) {
-		e.output.SendChat(ctx, activeTurnCommandBlockedText())
-		return true, nil
+		return true, session.ErrSessionBusy
 	}
 	if sessionErr == nil && hasInfo && e.execution.CompactActive(sessionRow.ID) && blocksDuringCompact(info.SessionEffect) {
 		e.output.SendChat(ctx, compactCommandBlockedText(text))

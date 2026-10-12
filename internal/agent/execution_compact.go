@@ -92,7 +92,7 @@ func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.
 	if e := turn.ExecutionFromContext(ctx); e != nil {
 		e.SetResult(next.ID, "", "")
 		if !c.turns.ReserveExecution(next.ID, inboundTurnInput(ctx, ""), e) {
-			return nil, sessionpkg.ErrSessionBusy
+			return nil, fmt.Errorf("上下文压缩已完成，但新会话已有其他执行，无法继续当前处理")
 		}
 	}
 	if e := turn.ExecutionFromContext(ctx); e != nil && e.Foreground() != nil {

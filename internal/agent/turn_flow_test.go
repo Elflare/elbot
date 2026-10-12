@@ -304,8 +304,8 @@ func TestActiveTurnBlocksNewSessionCommand(t *testing.T) {
 			if got := a.execution.turns.Snapshot(current.ID).Phase; got != test.phase {
 				t.Fatalf("turn phase = %s, want %s", got, test.phase)
 			}
-			if got := p.out.String(); got != activeTurnCommandBlockedText() {
-				t.Fatalf("output = %q, want %q", got, activeTurnCommandBlockedText())
+			if got := p.out.String(); got != session.ErrSessionBusy.Error() {
+				t.Fatalf("output = %q, want %q", got, session.ErrSessionBusy.Error())
 			}
 		})
 	}
@@ -335,8 +335,8 @@ func TestActiveTurnBlocksAllSessionSwitchCommands(t *testing.T) {
 			if after.ID != current.ID {
 				t.Fatalf("current session = %s, want %s", after.ID, current.ID)
 			}
-			if got := p.out.String(); got != activeTurnCommandBlockedText() {
-				t.Fatalf("output = %q, want %q", got, activeTurnCommandBlockedText())
+			if got := p.out.String(); got != session.ErrSessionBusy.Error() {
+				t.Fatalf("output = %q, want %q", got, session.ErrSessionBusy.Error())
 			}
 		})
 	}

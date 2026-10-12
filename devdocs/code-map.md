@@ -69,7 +69,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## Agent 对话
 
 - `internal/agent/*_deps.go`：各业务消费者的专属依赖与消费接口；较小组件的声明位于对应业务文件。中层业务构造不安装跨服务回调；线内接线归各业务线组合包，跨线接线归 App，不提供集中 Agent 构造。
-- `internal/agent/message.go`、`internal/agent/input.go`、`internal/agent/background.go`：消息分发、普通输入与后台准备；后台准备日志交 LogBackground，RunBackground 保留业务结果与 error。
+- `internal/agent/message.go`、`internal/agent/input.go`、`internal/agent/background.go`：消息分发、普通输入与后台准备；消息入口将正常切换拒绝统一记录为 Warn 并提示；后台准备日志交 LogBackground，RunBackground 保留业务结果与 error。
 - `internal/agent/dialogue/runner.go`、`internal/agent/dialogue/preparation.go`：公共单轮及内部 Preparer／ToolExecutor／MessageStore／提交／Prompt 构造，加载、准备与结果；`internal/agent/chat/loop.go`、`internal/agent/responses/loop_deps.go` 声明各自的协议构造输入。
 - `internal/agent/dialogue/model_call.go`、`internal/agent/dialogue/system_prompt.go`：共同模型 Hook 与 Prompt 来源；CallObservation 分别持有业务 Event 和日志 LogRecord，发布时固定身份和用量副本，Usage 整份缺失时仍写出四个 null 计数键。
 - `internal/agent/chat/`：Chat Loop、请求、历史、摘要与 seed；取消时保留部分输出。
@@ -106,7 +106,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/request/`、`internal/turn/`：请求树、取消、阶段、pending、确认与 Execution。
 - `internal/agent/execution.go`、`internal/agent/execution_run.go`：前后台执行与单轮收尾，消费 Session 接管事实；`internal/turn/execution.go` 保存一致的接管上下文及会话快照。
-- `internal/agent/execution_admission.go`、`internal/agent/execution_input.go`：准入、输入、追加确认与续跑。
+- `internal/agent/execution_admission.go`、`internal/agent/execution_input.go`：准入、输入、启动冲突后的重新分流、追加确认与续跑。
 - `internal/agent/execution_lifecycle.go`：追加确认等待及关闭。
 - `internal/agent/confirmation.go`、`internal/agent/risk_confirmation.go`：风险确认协调、来源日志与文案；`internal/turn/manager.go` 的 RiskConfirmationWait.Wait 在实际状态转换处返回明确 ResultStatus，保留业务响应／接受 bool，区分失效等待、取消和超时。
 - `internal/runtime/`：状态数据与耗时计算；`internal/agent/status.go`：同步校验执行归属、保存、发布已提交状态，接管后刷新来源。CLI 文案归 `platform/cli/status_format.go`。
