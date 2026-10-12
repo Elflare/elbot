@@ -13,9 +13,9 @@ ElBot 是一个使用 Go 编写的轻量级 Agent/Chatbot 框架，目标是在�
 
 | 指标           | 数值                            |
 | -------------- | ------------------------------- |
-| 本地启动耗时   | <10ms（N5105，SATA 固态上测试） |
+| 本地启动耗时   | ~40ms（N5105，SATA 固态上测试） |
 | 常驻内存       | ~30MB                           |
-| 二进制文件大小 | <30MB                           |
+| 二进制文件大小 | <20MB                           |
 
 **极致节省 Token 的工具发现**： 研究表明，许多普通用户仍主要将 LLM 类产品用作更高级的搜索引擎、写作助手和倾听对象，频繁工具调用并不是所有对话的常态。
 参考：Chatterji et al., _How People Use ChatGPT_, NBER, 2025；Yan et al., _ShareChat: A Dataset of Chatbot Conversations in the Wild_, arXiv:2512.17843, 2025。
