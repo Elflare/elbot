@@ -528,6 +528,14 @@
       "translation": "Elvena v3 action channel: Elnis supports __ELBOT_CODE_0__, initially supporting raw platform APIs as well as __ELBOT_CODE_1__, __ELBOT_CODE_2__, and __ELBOT_CODE_3__ capabilities; unsupported ones can directly call the messaging platform API.",
       "updated_at": 1782395477
     },
+    "CHANGELOG.md:list:43a1fb6427d01ddf74c5cd85cfe1bec456ff5d9bcbfd00fa2b2cc302ff0fec82": {
+      "kind": "list",
+      "source": "优化cron任务的日志",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "43a1fb6427d01ddf74c5cd85cfe1bec456ff5d9bcbfd00fa2b2cc302ff0fec82",
+      "translation": "Optimize cron task logs",
+      "updated_at": 1791790752
+    },
     "CHANGELOG.md:list:448f57190dce3ac30b1196dd0fd5e7d7a53196fbca432d4490c1c50121dd9277": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__、请求超时或上游取消现在会终止一次性 exec Hook 的完整进程树，避免 Hook 派生的子进程残留；",
@@ -711,6 +719,14 @@
       "source_hash": "583e72e902dd9f3a3ab36377879e8efe58d88eaff76871f60e024c3a725c6b4a",
       "translation": "Records become invalid after switching Sessions, restarting, or capacity eviction.",
       "updated_at": 1791194538
+    },
+    "CHANGELOG.md:list:58b3b2942febcc2a4c675dfbf47df36ea31a5c9d63f70d70e5697101031eb33c": {
+      "kind": "list",
+      "source": "修复普通消息并发启动时误报“请求失败”的问题。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "58b3b2942febcc2a4c675dfbf47df36ea31a5c9d63f70d70e5697101031eb33c",
+      "translation": "Fix the issue where 'request failed' was falsely reported when ordinary messages were started concurrently.",
+      "updated_at": 1791790752
     },
     "CHANGELOG.md:list:596d47758ef03bb54d3851c1b678f8eb5459a7effda0ffd3212b24fe71d2804c": {
       "kind": "list",
@@ -1448,6 +1464,14 @@
       "translation": "Update __ELBOT_CODE_0__ version to v3",
       "updated_at": 1782704139
     },
+    "CHANGELOG.md:list:a96d76900ca861f3bcba58763de9c7be5b5be28af964a0e23d830c4e76e0b936": {
+      "kind": "list",
+      "source": "修复无媒体 native seed 被序列化为 JSON __ELBOT_CODE_0__，导致媒体清理误报缺引用并中止的问题。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "a96d76900ca861f3bcba58763de9c7be5b5be28af964a0e23d830c4e76e0b936",
+      "translation": "Fix the issue where native seeds without media were serialized as JSON __ELBOT_CODE_0__, causing media cleanup to falsely report missing references and abort.",
+      "updated_at": 1791790752
+    },
     "CHANGELOG.md:list:a9d6da892e7e5b7ce145d29cb24cfd5cf97b4af2fdc44bdd550062d95d5ffbb6": {
       "kind": "list",
       "source": "常驻记忆不再注册为 Hook，普通 Hook 的 __ELBOT_CODE_0__ 明确为只读上下文。",
@@ -2154,8 +2178,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "6372b1829c818946ef572b52e5df588469b2c897385fafd651e676c5e5ad9b77",
+  "source_hash": "597d71fd644631eb4f138a40d81947bbf930b795bae2b13aad2a067588ca17dd",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1791726086,
+  "updated_at": 1791790752,
   "version": 2
 }
