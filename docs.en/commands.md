@@ -34,7 +34,7 @@ If no issues are found, only `Everything is OK` will be returned. For the check 
 | Command | Function |
 | --- | --- |
 | `/models` | View the model list. |
-| `/models --fresh` or `/models --refresh` | Force refresh the model list cache. |
+| `/models --fresh` or `/models --refresh` | Reload vendor configuration files and force refresh the model list. |
 | `/model <编号或名称>` | Switch the model used in the current Session mode. |
 | `/model --chat <模型>` | Switch the chat mode model. |
 | `/model --work <模型>` | Switch the work mode model. |
