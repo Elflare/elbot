@@ -1232,14 +1232,6 @@
       "translation": "Filter by model name.",
       "updated_at": 1782884118
     },
-    "docs/commands.md:table:c361507dc951fd06a7e7941d4ec575c1a625999ce479cb9ecc0f1b4793d43f24": {
-      "kind": "table",
-      "source": "强制刷新模型列表缓存。",
-      "source_file": "docs/commands.md",
-      "source_hash": "c361507dc951fd06a7e7941d4ec575c1a625999ce479cb9ecc0f1b4793d43f24",
-      "translation": "Force refresh the model list cache.",
-      "updated_at": 1781514917
-    },
     "docs/commands.md:table:c5c301c72b7eb5070f09f70029492a1eb5cd184198a35e13a9b4775cf10920f4": {
       "kind": "table",
       "source": "查看已归档 Session。",
@@ -1351,6 +1343,14 @@
       "source_hash": "e7769bf82e4e5a70c07aee36e670a2ab4923bebe2bd589e20093c0d7bdeec1ec",
       "translation": "Filter by decoded record content or raw records.",
       "updated_at": 1791708235
+    },
+    "docs/commands.md:table:e77e37ecf77167fdc0cde28bdd4df097fcaecbcb94a291410bafeea9f2f33884": {
+      "kind": "table",
+      "source": "重载厂商配置文件，再强制刷新模型列表。",
+      "source_file": "docs/commands.md",
+      "source_hash": "e77e37ecf77167fdc0cde28bdd4df097fcaecbcb94a291410bafeea9f2f33884",
+      "translation": "Reload vendor configuration files and force refresh the model list.",
+      "updated_at": 1791809200
     },
     "docs/commands.md:table:e77ee6064631d560c404992e0984beacf59b3027fde41b06891a6075098ba5f9": {
       "kind": "table",
@@ -1474,8 +1474,8 @@
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "fac7b2aa63ed778f0bfa484a9fbcf0e29b892aba3ae8a8f9f78f5598c7dcfad7",
+  "source_hash": "349bf3363bfcf165c28e7041e999fe5dbb1441265d497ff46c943eb9d0e7adb2",
   "target": "docs.en/commands.md",
-  "updated_at": 1791725974,
+  "updated_at": 1791809200,
   "version": 2
 }
