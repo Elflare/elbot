@@ -18,37 +18,28 @@ type Options struct {
 	Store      storage.Store
 	Models     *modelmgr.Service
 	Config     config.ContextConfig
-	Metadata   config.ModelMetadataConfig
-	Providers  map[string]config.ProviderConfig
 }
 
 type Service struct {
-	compactors     CompactorResolver
-	store          storage.Store
-	models         *modelmgr.Service
-	loader         Loader
-	mu             sync.Mutex
-	usageWriteMu   sync.Mutex
-	config         config.ContextConfig
-	modelMetadata  config.ModelMetadataConfig
-	windowResolver *WindowResolver
-	lastUsage      map[string]*llm.Usage
+	compactors   CompactorResolver
+	store        storage.Store
+	models       *modelmgr.Service
+	loader       Loader
+	mu           sync.Mutex
+	usageWriteMu sync.Mutex
+	config       config.ContextConfig
+	lastUsage    map[string]*llm.Usage
 }
 
 func New(opts Options) *Service {
 	s := &Service{compactors: opts.Compactors, store: opts.Store, models: opts.Models, loader: Loader{Store: opts.Store}, lastUsage: map[string]*llm.Usage{}}
-	s.Configure(opts.Config, opts.Metadata, opts.Providers)
+	s.Configure(opts.Config)
 	return s
 }
 
-func (s *Service) Configure(cfg config.ContextConfig, metadata config.ModelMetadataConfig, providers map[string]config.ProviderConfig) {
-	var clientFor ClientProvider
-	if s.models != nil {
-		clientFor = s.models.ClientForProvider
-	}
-	resolver := NewWindowResolver(metadata, providers, clientFor)
+func (s *Service) Configure(cfg config.ContextConfig) {
 	s.mu.Lock()
-	s.config, s.modelMetadata, s.windowResolver = cfg, metadata, resolver
+	s.config = cfg
 	s.mu.Unlock()
 }
 
@@ -135,18 +126,10 @@ func (s *Service) Usage(row *storage.Session) (*llm.Usage, error) {
 
 func (r *Service) Status(ctx context.Context, usage *llm.Usage, selection config.ModelSelection) string {
 	r.mu.Lock()
-	resolver := r.windowResolver
-	metadata := r.modelMetadata
 	ctxCfg := r.config
 	r.mu.Unlock()
 
-	window := 0
-	if resolver != nil {
-		window = resolver.Resolve(ctx, selection.Provider, selection.Model)
-	}
-	if window <= 0 {
-		window = metadata.DefaultContextWindow
-	}
+	window := r.models.Resolve(selection).ContextWindow(ctx)
 	threshold := ctxCfg.CompactTriggerRatio
 	if threshold == 0 {
 		threshold = 0.8
@@ -181,15 +164,14 @@ func (r *Service) Status(ctx context.Context, usage *llm.Usage, selection config
 	return sb.String()
 }
 
-func (r *Service) ReachedCompactThreshold(ctx context.Context, usage *llm.Usage, selection config.ModelSelection) bool {
+func (r *Service) ReachedCompactThreshold(ctx context.Context, usage *llm.Usage, selection modelmgr.Selection) bool {
 	r.mu.Lock()
 	ctxCfg := r.config
-	resolver := r.windowResolver
 	r.mu.Unlock()
-	if !ctxCfg.CompactEnabled || usage == nil || usage.TotalTokens == nil || *usage.TotalTokens < 0 || resolver == nil {
+	if !ctxCfg.CompactEnabled || usage == nil || usage.TotalTokens == nil || *usage.TotalTokens < 0 {
 		return false
 	}
-	window := resolver.Resolve(ctx, selection.Provider, selection.Model)
+	window := selection.ContextWindow(ctx)
 	state := UsageState{Usage: usage, ContextWindow: window, TriggerRatio: ctxCfg.CompactTriggerRatio}
 	return state.ReachedThreshold()
 }

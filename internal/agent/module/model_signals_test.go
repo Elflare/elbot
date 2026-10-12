@@ -69,7 +69,6 @@ func (p *retryNoticePlatform) SendTo(ctx context.Context, noticeTarget delivery.
 func TestSharedRetrySubscriptionCoversChatCompactAndNaming(t *testing.T) {
 	deps := isolatedModuleDeps(t)
 	deps.Context = config.Default().Context
-	deps.Metadata = config.Default().ModelMetadata
 	model := &retryModel{calls: make(chan retryCall, 4)}
 	p := &retryNoticePlatform{retryNotices: make(chan string, 5)}
 	models, err := modelmgr.New(modelmgr.Options{Clients: map[string]llm.Client{"p": model}, Providers: map[string]config.ProviderConfig{"p": {Models: []string{"m"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}, DefaultMode: "work"})

@@ -107,7 +107,7 @@ func TestExecutionConstructionKeepsBorrowedCallbacksAndServices(t *testing.T) {
 		Models:      opts.Models,
 		Dialogue:    &dialogue.Runner{Routes: opts.Routes},
 		Identity:    identity,
-		View:        dialogue.ExecutionView{Sessions: opts.Store.Sessions(), Providers: opts.Routes},
+		View:        dialogue.ExecutionView{Sessions: opts.Store.Sessions()},
 		Output:      output,
 		Status:      status,
 		WaitPolicy:  policy,

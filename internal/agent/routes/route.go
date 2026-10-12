@@ -7,11 +7,10 @@ import (
 	"elbot/internal/session"
 )
 
-// Binding is a provider registration, not a runtime dependency container.
-// A provider without dialogue capabilities still supports Client.GenerateText.
+// Binding registers the business capabilities of a protocol, independently of
+// configured providers and their clients.
 type Binding struct {
-	Origin    llm.Origin
-	Client    llm.Client
+	APIType   llm.APIType // Protocol whose conversation material these capabilities handle.
 	Loop      dialogue.Loop
 	Compactor contextmgr.Compactor
 	Material  session.MaterialPreparer

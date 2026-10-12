@@ -7,7 +7,6 @@ import (
 
 	"elbot/internal/agent/events"
 	"elbot/internal/contextmgr"
-	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/modelmgr"
@@ -37,15 +36,15 @@ type PreparedTurn struct{ loop PreparedLoop }
 
 // CheckSelection validates route availability before compaction or input writes.
 func (r *Runner) CheckSelection(selection modelmgr.Selection) error {
-	_, err := r.Routes.LoopFor(selection.Provider)
+	loop, err := r.Routes.LoopFor(selection.Origin.APIType)
 	if err != nil {
 		return fmt.Errorf("provider %q 主对话尚未接入或接线无效：%w", selection.Provider, err)
 	}
-	return nil
+	return loop.CheckSelection(selection)
 }
 
 func (r *Runner) PrepareTurn(ctx context.Context, in TurnInput) (*PreparedTurn, error) {
-	route, err := r.Routes.LoopFor(in.Selection.Provider)
+	route, err := r.Routes.LoopFor(in.Selection.Origin.APIType)
 	if err != nil {
 		return nil, err
 	}
@@ -210,4 +209,3 @@ func NewRunner(deps RunnerDeps) (*Runner, error) {
 	system.AddSource(ConversationMetaSystemPromptSource{})
 	return &Runner{Status: deps.Status, Routes: deps.Routes, Preparer: preparer, Messages: messages, Replies: replies, Turns: deps.Turns, View: deps.View, Calls: calls, System: system}, nil
 }
-func (r *Runner) OriginFor(provider string) (llm.Origin, error) { return r.Routes.OriginFor(provider) }

@@ -47,8 +47,6 @@ type ModuleDeps struct {
 	HookControl     commandbuiltin.HookService
 	Session         config.SessionConfig
 	Context         config.ContextConfig
-	Metadata        config.ModelMetadataConfig
-	Providers       map[string]config.ProviderConfig
 	Prefixes        []string
 	PageSize        int           // Session command list page size.
 	RetentionDays   int           // Session cleanup retention exposed by session commands.

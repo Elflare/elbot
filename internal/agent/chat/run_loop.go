@@ -40,6 +40,9 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		if sessionpkg.WasPromoted(s.session) && !foregroundPrepared {
 			foregroundPrepared = true
 			s.selection = modelmgr.SelectionForTurn(s.requestCtx, r.Models, s.session)
+			if err := r.CheckSelection(s.selection); err != nil {
+				return failedLoop(err)
+			}
 			var modelErr error
 			s.requestCtx, modelErr = r.View.WithModel(s.requestCtx, s.selection)
 			if modelErr == nil {

@@ -6,7 +6,6 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
 	sandboxctx "elbot/internal/sandbox"
@@ -17,12 +16,7 @@ import (
 
 // ExecutionView reads the existing execution identity; it owns no adoption state.
 type ExecutionView struct {
-	Sessions  storage.SessionRepository
-	Providers ProviderIdentityResolver
-}
-
-type ProviderIdentityResolver interface {
-	OriginFor(string) (llm.Origin, error)
+	Sessions storage.SessionRepository
 }
 
 func (v ExecutionView) CheckSelection(row *storage.Session, selection modelmgr.Selection) error {
@@ -30,22 +24,14 @@ func (v ExecutionView) CheckSelection(row *storage.Session, selection modelmgr.S
 	if err != nil {
 		return err
 	}
-	target, err := v.Providers.OriginFor(selection.Provider)
-	if err != nil {
-		return err
-	}
-	return modelmgr.CanSwitch(source, target)
+	return modelmgr.CanSwitch(source, selection.Origin)
 }
 
 func (v ExecutionView) WithModel(ctx context.Context, selection modelmgr.Selection) (context.Context, error) {
-	if v.Providers == nil {
-		return ctx, fmt.Errorf("provider identity bindings are not configured")
+	if selection.Client == nil {
+		return ctx, fmt.Errorf("model provider %q not found", selection.Provider)
 	}
-	origin, err := v.Providers.OriginFor(selection.Provider)
-	if err != nil {
-		return ctx, err
-	}
-	return contextinfo.WithModel(ctx, contextinfo.Model{Provider: selection.Provider, Model: selection.Model, APIType: string(origin.APIType)}), nil
+	return contextinfo.WithModel(ctx, contextinfo.Model{Provider: selection.Provider, Model: selection.Model, APIType: string(selection.Origin.APIType)}), nil
 }
 
 // Rebuild semantic values on the request context, retaining its cancellation.

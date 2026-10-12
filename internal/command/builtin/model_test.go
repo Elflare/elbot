@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"elbot/internal/command"
+	"elbot/internal/config"
 	"elbot/internal/modelmgr"
 )
 
@@ -155,3 +156,8 @@ func (s *recordingModelService) CommitModelForMode(mode string, option modelmgr.
 	s.mode = mode
 	return option, nil
 }
+
+func (s fakeModelService) Resolve(selected config.ModelSelection) modelmgr.Selection {
+	return modelmgr.Selection{ModelSelection: selected}
+}
+func (s fakeModelService) ReloadProviders(context.Context) error { return nil }

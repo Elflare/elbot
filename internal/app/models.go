@@ -15,27 +15,31 @@ type defaultModelFactory struct{}
 
 func (defaultModelFactory) Build(req ModelRequest) (ModelClients, error) {
 	cfg := req.Foundation.Config
+	buildClient := func(_ string, provider config.ProviderConfig) (llm.Client, error) {
+		return buildModelClient(provider, cfg.LLMRequest)
+	}
 	clients := make(map[string]llm.Client, len(cfg.Providers))
 	for name, provider := range cfg.Providers {
-		// Protocol clients are selected only at composition, never by model name.
-		var client llm.Client
-		var err error
-		opts := appLLMRequestOptions(cfg.LLMRequest, provider.Proxy)
-		switch provider.EffectiveAPIMode() {
-		case "chat":
-			client, err = chatcompletions.New(provider.BaseURL, provider.APIKey, provider.ExtraPayload, modelExtraPayloads(provider.ModelConfigs), opts)
-		case "response":
-			client, err = responses.New(provider.BaseURL, provider.APIKey, provider.ExtraPayload, modelExtraPayloads(provider.ModelConfigs), opts)
-		default:
-			err = fmt.Errorf("invalid api_mode %q: expected chat or response", provider.APIMode)
-		}
+		client, err := buildClient(name, provider)
 		if err != nil {
 			return ModelClients{}, fmt.Errorf("create provider %q client: %w", name, err)
 		}
 		clients[name] = client
 	}
 	req.Profiler.Mark("llm adapters")
-	return ModelClients{ByProvider: clients}, nil
+	return ModelClients{ByProvider: clients, BuildClient: buildClient}, nil
+}
+
+func buildModelClient(provider config.ProviderConfig, request config.LLMRequestConfig) (llm.Client, error) {
+	opts := appLLMRequestOptions(request, provider.Proxy)
+	switch provider.EffectiveAPIMode() {
+	case "chat":
+		return chatcompletions.New(provider.BaseURL, provider.APIKey, provider.ExtraPayload, modelExtraPayloads(provider.ModelConfigs), opts)
+	case "response":
+		return responses.New(provider.BaseURL, provider.APIKey, provider.ExtraPayload, modelExtraPayloads(provider.ModelConfigs), opts)
+	default:
+		return nil, fmt.Errorf("invalid api_mode %q: expected chat or response", provider.APIMode)
+	}
 }
 
 func appLLMRequestOptions(cfg config.LLMRequestConfig, proxy string) httpclient.Options {

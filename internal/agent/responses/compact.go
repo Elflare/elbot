@@ -24,10 +24,7 @@ type Compactor struct {
 }
 
 func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason string, selection modelmgr.Selection) (prepared *contextmgr.PreparedCompact, err error) {
-	target, err := c.View.Providers.OriginFor(selection.Provider)
-	if err != nil {
-		return nil, err
-	}
+	target := selection.Origin
 	source, _, err := session.Origin(row)
 	if err != nil {
 		return nil, err

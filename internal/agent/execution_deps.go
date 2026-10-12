@@ -9,7 +9,6 @@ import (
 	"elbot/internal/contextmgr"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
@@ -20,7 +19,6 @@ import (
 
 type ExecutionDialogue interface {
 	CheckSelection(modelmgr.Selection) error
-	OriginFor(string) (llm.Origin, error)
 	PrepareTurn(context.Context, dialogue.TurnInput) (*dialogue.PreparedTurn, error)
 	RunTurn(context.Context, context.Context, dialogue.TurnInput, dialogue.Output) dialogue.TurnResult
 }

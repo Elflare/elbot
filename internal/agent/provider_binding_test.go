@@ -21,7 +21,7 @@ import (
 	"elbot/internal/storage"
 )
 
-func TestProviderAssemblyRejectsWrongNativeCapability(t *testing.T) {
+func TestProtocolAdmissionRejectsWrongNativeCapability(t *testing.T) {
 	for _, mode := range []string{"chat", "response"} {
 		t.Run(mode, func(t *testing.T) {
 			var client llm.Client = &fakeLLM{}
@@ -38,9 +38,17 @@ func TestProviderAssemblyRejectsWrongNativeCapability(t *testing.T) {
 			})
 			opts := validConstructorOptions(t)
 			opts.Models = models
-			assembly := assembleTestOptions(t, opts)
-			if _, err := newTestAssembly(t.Context(), assembly); err == nil || !strings.Contains(err.Error(), "api_mode") || !strings.Contains(err.Error(), "p") {
+			a := mustNewWithOptions(t, opts)
+			if err := a.HandleMessage(t.Context(), "must not be saved"); err == nil || !strings.Contains(err.Error(), "streaming") || !strings.Contains(err.Error(), "p") {
 				t.Fatalf("wrong native capability was accepted: %v", err)
+			}
+			row, err := a.execution.sessions.Current(t.Context(), a.Scope(t.Context()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			messages, err := opts.Store.Messages().ListBySession(t.Context(), row.ID)
+			if err != nil || len(messages) != 0 || len(a.execution.requests.List()) != 0 {
+				t.Fatalf("invalid client reached input persistence: %v / %v", messages, err)
 			}
 		})
 	}

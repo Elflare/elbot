@@ -19,10 +19,7 @@ import (
 	"elbot/internal/contextmgr"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
-	"elbot/internal/llm/chatcompletions"
-	"elbot/internal/llm/responses"
 	"elbot/internal/logging"
-	"elbot/internal/modelmgr"
 	"elbot/internal/request"
 	"elbot/internal/session"
 	"elbot/internal/signal"
@@ -62,12 +59,12 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 	m.sessions = session.NewServiceWithConfig(deps.Store, session.Config{NamingConfig: session.NamingConfig{TriggerStep: deps.Session.Naming.TriggerStep}, DefaultMode: deps.Session.DefaultMode}, session.NewTitleGenerator(deps.Models))
 	m.requests = request.NewManager(0)
 	m.turns = turn.NewManager()
-	m.contexts = contextmgr.New(contextmgr.Options{Compactors: m.routes, Store: deps.Store, Models: deps.Models, Config: deps.Context, Metadata: deps.Metadata, Providers: deps.Providers})
+	m.contexts = contextmgr.New(contextmgr.Options{Compactors: m.routes, Store: deps.Store, Models: deps.Models, Config: deps.Context})
 	m.commands = command.NewRouter(deps.Prefixes)
 	sessionCommands := commandbuiltin.NewSessionCommandState(deps.PageSize, deps.RetentionDays)
 	signals := agentevents.NewSignals()
 	m.statusChanged = signals.StatusChanged
-	view := dialogue.ExecutionView{Sessions: deps.Store.Sessions(), Providers: m.routes}
+	view := dialogue.ExecutionView{Sessions: deps.Store.Sessions()}
 	identity, err := agent.NewIdentityResolver(agent.IdentityResolverDeps{PlatformName: deps.PlatformName, ActorID: "cli:local", ScopeID: "local", Policy: deps.Policy})
 	if err != nil {
 		return m, err
@@ -188,7 +185,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 	if err != nil {
 		return m, err
 	}
-	if err := bindProviderRoutes(m.routes, deps.Models, chat, response, chat.Compactor(), response.Compactor(), chat.Material(), response.Material()); err != nil {
+	if err := bindProtocolRoutes(m.routes, chat, response); err != nil {
 		return m, err
 	}
 	m.sessions.SetMaterials(m.routes)
@@ -263,7 +260,6 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		Store:              deps.Store,
 		Scope:              identity.Scope,
 		Models:             deps.Models,
-		Providers:          m.routes,
 		Contexts:           m.contexts,
 		Compact:            execution,
 		Tools:              deps.Registry,
@@ -375,51 +371,12 @@ func wireCommands(deps agent.CommandExecutorDeps, modules commandbuiltin.Deps) (
 	}
 	return executor, nil
 }
-func bindProviderRoutes(registry *routes.Registry, models *modelmgr.Service, chat, response dialogue.Loop, compactor, nativeCompactor contextmgr.Compactor, display, material session.MaterialPreparer) error {
-	if err := registry.RegisterCompactor(llm.APITypeChat, compactor); err != nil {
+func bindProtocolRoutes(registry *routes.Registry, chat *chatroute.Loop, response *responseroute.Loop) error {
+	if err := registry.Register(routes.Binding{APIType: llm.APITypeChat, Loop: chat, Compactor: chat.Compactor(), Material: chat.Material()}); err != nil {
 		return err
 	}
-	if err := registry.RegisterMaterial(llm.APITypeChat, display); err != nil {
+	if err := registry.Register(routes.Binding{APIType: llm.APITypeResponse, Loop: response, Compactor: response.Compactor(), Material: response.Material()}); err != nil {
 		return err
-	}
-	if nativeCompactor != nil {
-		if err := registry.RegisterCompactor(llm.APITypeResponse, nativeCompactor); err != nil {
-			return err
-		}
-	}
-	if material != nil {
-		if err := registry.RegisterMaterial(llm.APITypeResponse, material); err != nil {
-			return err
-		}
-	}
-	for _, origin := range models.ProviderOrigins() {
-		client := models.ClientForProvider(origin.Provider)
-		registered, err := registry.CheckProviderBinding(origin, client)
-		if err != nil {
-			return err
-		}
-		if registered {
-			continue
-		}
-		binding := routes.Binding{Origin: origin, Client: client}
-		switch origin.APIType {
-		case llm.APITypeChat:
-			if _, ok := client.(chatcompletions.Streamer); !ok {
-				return fmt.Errorf("provider %q api_mode %q requires the Chat streaming capability", origin.Provider, origin.APIType)
-			}
-			binding.Loop, binding.Compactor = chat, compactor
-			binding.Material = display
-		case llm.APITypeResponse:
-			if _, ok := client.(responses.Streamer); !ok {
-				return fmt.Errorf("provider %q api_mode %q requires the Responses streaming capability", origin.Provider, origin.APIType)
-			}
-			binding.Loop, binding.Compactor, binding.Material = response, nativeCompactor, material
-		default:
-			return fmt.Errorf("provider %q has unsupported api_mode %q", origin.Provider, origin.APIType)
-		}
-		if err := registry.Register(binding); err != nil {
-			return err
-		}
 	}
 	return registry.Seal()
 }

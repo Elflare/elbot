@@ -87,7 +87,7 @@ func TestAutoCompactCreatesStableFirstUserContext(t *testing.T) {
 			t.Fatalf("append message: %v", err)
 		}
 	}
-	a.execution.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
+	configureTestContext(t, a, config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
 	a.execution.recordUsage(t.Context(), source.ID, &llm.Usage{TotalTokens: func() *int64 { n := int64(80); return &n }()})
 
 	if err := a.HandleMessage(ctx, "J"); err != nil {
@@ -274,7 +274,7 @@ func TestCompactBlocksSessionChangesAndStopCancels(t *testing.T) {
 			t.Fatalf("append message: %v", err)
 		}
 	}
-	a.execution.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
+	configureTestContext(t, a, config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
 	a.execution.recordUsage(t.Context(), source.ID, &llm.Usage{TotalTokens: func() *int64 { n := int64(80); return &n }()})
 
 	done := make(chan error, 1)
@@ -338,7 +338,7 @@ func TestAutoCompactFailureKeepsSourceSession(t *testing.T) {
 			t.Fatalf("append message: %v", err)
 		}
 	}
-	a.execution.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
+	configureTestContext(t, a, config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
 	a.execution.recordUsage(t.Context(), source.ID, &llm.Usage{TotalTokens: func() *int64 { n := int64(80); return &n }()})
 	if err := a.HandleMessage(ctx, "J"); err == nil {
 		t.Fatal("auto compact unexpectedly succeeded")
@@ -420,7 +420,7 @@ func TestModelSwitchReevaluatesCompactWindow(t *testing.T) {
 		},
 	}
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{models: []string{"small", "large"}}, "small", provider, newTestStore(t))
-	a.execution.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, map[string]config.ProviderConfig{"default": provider})
+	configureTestContext(t, a, config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, map[string]config.ProviderConfig{"default": provider})
 	current, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "model window"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)

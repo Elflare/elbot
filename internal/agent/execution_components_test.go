@@ -9,6 +9,7 @@ import (
 
 	chatroute "elbot/internal/agent/chat"
 	"elbot/internal/agent/dialogue"
+	"elbot/internal/agent/routes"
 	"elbot/internal/config"
 	"elbot/internal/contextmgr"
 	"elbot/internal/events"
@@ -50,7 +51,7 @@ func newExecutionFixture(t *testing.T, client llm.Client, store storage.Store) *
 	bridge := &HookBridge{manager: hooks, requests: opts.Requests, identity: identity, dispatcher: opts.Dispatcher}
 	status := &StatusRecorder{}
 	output := &OutputSender{dispatcher: opts.Dispatcher, hooks: bridge}
-	view := dialogue.ExecutionView{Sessions: store.Sessions(), Providers: opts.Routes}
+	view := dialogue.ExecutionView{Sessions: store.Sessions()}
 	policy := &ConfirmationPolicy{identity: identity, userConfirmationTimeout: time.Second}
 	confirmations := &ConfirmationCoordinator{
 		sessions: opts.Sessions, requests: opts.Requests, turns: opts.Turns, commands: opts.Commands,
@@ -85,7 +86,10 @@ func newExecutionFixture(t *testing.T, client llm.Client, store storage.Store) *
 		Caller:        &chatroute.Caller{Calls: calls},
 		PromptBuilder: chatroute.PromptBuilder{System: dialogue.NewSystemPromptManager(dialogue.SoulSystemPromptSource{Soul: dialogue.StaticSoulProvider{Prompt: "test"}})},
 	}
-	if err := bindProviderRoutes(opts.Routes, models, chat, nil, &chatroute.Compactor{Store: store, Models: models, Contexts: opts.Contexts, Loader: contextmgr.Loader{Store: store}}, nil, nil); err != nil {
+	if err := opts.Routes.Register(routes.Binding{APIType: llm.APITypeChat, Loop: chat, Compactor: &chatroute.Compactor{Store: store, Models: models, Contexts: opts.Contexts, Loader: contextmgr.Loader{Store: store}}, Material: session.DisplayMaterial{}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := opts.Routes.Seal(); err != nil {
 		t.Fatal(err)
 	}
 	runner := &dialogue.Runner{Status: status,
@@ -131,10 +135,7 @@ func (f *executionFixture) begin(t *testing.T) (context.Context, context.Context
 	if err != nil {
 		t.Fatal(err)
 	}
-	origin, err := f.opts.Routes.OriginFor("default")
-	if err != nil {
-		t.Fatal(err)
-	}
+	origin := f.opts.Models.ResolveMode("work").Origin
 	row, err = f.opts.Sessions.RegisterOrigin(ctx, row.ID, origin)
 	if err != nil {
 		t.Fatal(err)

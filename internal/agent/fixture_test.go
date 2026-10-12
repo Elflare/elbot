@@ -14,14 +14,10 @@ import (
 	"elbot/internal/agent/routes"
 	"elbot/internal/background"
 	"elbot/internal/completion"
-	"elbot/internal/contextmgr"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
-	"elbot/internal/llm/chatcompletions"
-	"elbot/internal/llm/responses"
-	"elbot/internal/modelmgr"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -153,7 +149,7 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 	if err != nil {
 		return nil, err
 	}
-	view := dialogue.ExecutionView{Sessions: store.Sessions(), Providers: opts.Routes}
+	view := dialogue.ExecutionView{Sessions: store.Sessions()}
 	status, err := NewStatusRecorder(StatusRecorderDeps{View: view, Turns: turns, Changed: signals.StatusChanged})
 	if err != nil {
 		return nil, err
@@ -199,7 +195,7 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 	if err != nil {
 		return nil, err
 	}
-	if err := bindProviderRoutes(opts.Routes, opts.Models, chat, response, chat.Compactor(), response.Compactor(), response.Material()); err != nil {
+	if err := bindProtocolRoutes(opts.Routes, chat, response); err != nil {
 		return nil, err
 	}
 	sessions.SetMaterials(opts.Routes)
@@ -302,52 +298,12 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 	a.Done() // Join owned workers on application cancellation, even without Close.
 	return a, nil
 }
-func bindProviderRoutes(registry *routes.Registry, models *modelmgr.Service, chat, response dialogue.Loop, compactor, nativeCompactor contextmgr.Compactor, material session.MaterialPreparer) error {
-	if err := registry.RegisterCompactor(llm.APITypeChat, compactor); err != nil {
+func bindProtocolRoutes(registry *routes.Registry, chat *chatroute.Loop, response *responseroute.Loop) error {
+	if err := registry.Register(routes.Binding{APIType: llm.APITypeChat, Loop: chat, Compactor: chat.Compactor(), Material: chat.Material()}); err != nil {
 		return err
 	}
-	display := session.DisplayMaterial{}
-	if err := registry.RegisterMaterial(llm.APITypeChat, display); err != nil {
+	if err := registry.Register(routes.Binding{APIType: llm.APITypeResponse, Loop: response, Compactor: response.Compactor(), Material: response.Material()}); err != nil {
 		return err
-	}
-	if nativeCompactor != nil {
-		if err := registry.RegisterCompactor(llm.APITypeResponse, nativeCompactor); err != nil {
-			return err
-		}
-	}
-	if material != nil {
-		if err := registry.RegisterMaterial(llm.APITypeResponse, material); err != nil {
-			return err
-		}
-	}
-	for _, origin := range models.ProviderOrigins() {
-		client := models.ClientForProvider(origin.Provider)
-		registered, err := registry.CheckProviderBinding(origin, client)
-		if err != nil {
-			return err
-		}
-		if registered {
-			continue
-		}
-		binding := routes.Binding{Origin: origin, Client: client}
-		switch origin.APIType {
-		case llm.APITypeChat:
-			if _, ok := client.(chatcompletions.Streamer); !ok {
-				return fmt.Errorf("provider %q api_mode %q requires the Chat streaming capability", origin.Provider, origin.APIType)
-			}
-			binding.Loop, binding.Compactor = chat, compactor
-			binding.Material = display
-		case llm.APITypeResponse:
-			if _, ok := client.(responses.Streamer); !ok {
-				return fmt.Errorf("provider %q api_mode %q requires the Responses streaming capability", origin.Provider, origin.APIType)
-			}
-			binding.Loop, binding.Compactor, binding.Material = response, nativeCompactor, material
-		default:
-			return fmt.Errorf("provider %q has unsupported api_mode %q", origin.Provider, origin.APIType)
-		}
-		if err := registry.Register(binding); err != nil {
-			return err
-		}
 	}
 	return registry.Seal()
 }

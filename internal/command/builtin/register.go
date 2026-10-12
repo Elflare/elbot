@@ -42,6 +42,8 @@ func (g CommandGroup) RegisterCommands(registrar Registrar, deps Deps) error {
 }
 
 type ModelService interface {
+	Resolve(config.ModelSelection) modelmgr.Selection
+	ReloadProviders(context.Context) error
 	CurrentModelForMode(mode string) modelmgr.ModelOption
 	CurrentCompactModel(mode string) modelmgr.ModelOption
 	PrepareModel(arg string) (modelmgr.ModelOption, error)
@@ -88,17 +90,14 @@ type DoctorService interface {
 }
 
 type Deps struct {
-	Doctor    DoctorService
-	Router    *command.Router
-	Sessions  *session.Service
-	Requests  *request.Manager
-	Turns     *turn.Manager
-	Store     storage.Store
-	Scope     func(context.Context) session.Scope
-	Models    ModelService
-	Providers interface {
-		OriginFor(string) (llm.Origin, error)
-	}
+	Doctor   DoctorService
+	Router   *command.Router
+	Sessions *session.Service
+	Requests *request.Manager
+	Turns    *turn.Manager
+	Store    storage.Store
+	Scope    func(context.Context) session.Scope
+	Models   ModelService
 	Compact  CompactService
 	Contexts ContextService
 

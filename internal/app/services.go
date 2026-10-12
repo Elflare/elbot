@@ -37,6 +37,14 @@ func buildSharedServices(ctx context.Context, req WiringRequest) (*sharedService
 		Clients: req.Models.ByProvider, Providers: cfg.Providers, ModeModels: cfg.ModeModels,
 		CompactModel: cfg.CompactModel, NamingModel: cfg.NamingModel,
 		StatePath: cfg.StateConfigPath, DefaultMode: cfg.Session.DefaultMode,
+		Metadata: cfg.ModelMetadata,
+		LoadProviders: func(ctx context.Context) (config.ProviderFile, error) {
+			if err := ctx.Err(); err != nil {
+				return config.ProviderFile{}, err
+			}
+			return config.LoadProviders(cfg.ProvidersConfigPath, filepath.Dir(cfg.ConfigPath))
+		},
+		BuildClient: req.Models.BuildClient,
 	})
 	if err != nil {
 		return nil, err

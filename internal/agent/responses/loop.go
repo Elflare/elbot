@@ -40,6 +40,15 @@ type preparedLoop struct {
 	state     *turnState
 	materials dialogue.TurnMaterials
 }
+
+// CheckSelection validates the native capability before any turn input is saved.
+func (r *Loop) CheckSelection(selection modelmgr.Selection) error {
+	if _, ok := selection.Client.(api.Streamer); !ok {
+		return fmt.Errorf("provider %q does not provide Responses streaming", selection.Provider)
+	}
+	return nil
+}
+
 type turnState struct {
 	route           *Loop
 	session         *storage.Session
@@ -201,6 +210,9 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		if session.WasPromoted(s.session) && !foregroundPrepared {
 			foregroundPrepared = true
 			s.selection = modelmgr.SelectionForTurn(s.requestCtx, s.route.Models, s.session)
+			if err := s.route.CheckSelection(s.selection); err != nil {
+				return fail(err)
+			}
 			s.requestCtx, err = s.route.View.WithModel(s.requestCtx, s.selection)
 			if err == nil {
 				s.ctx, err = s.route.View.WithModel(s.ctx, s.selection)

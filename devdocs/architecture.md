@@ -76,7 +76,7 @@ flowchart TB
 | Conversation | 平台、平台会话、发送者、消息／回复 ID 与平台私有扩展，由入口提供 |
 | Actor | ElBot 身份、角色及平台群角色，由 security 解析 |
 | Execution | Session／当前、父、根 Request／Run／Attempt ID，由对应服务建立关联时提供 |
-| Model | 固定 Selection 与 provider 绑定确定的 provider、model、protocol |
+| Model | 固定 Selection 及其 Origin 确定的 provider、model、protocol |
 
 - 平台会话 ID 与 ElBot Session ID 分别表达。角色事实不授予权限，执行 ID 不替代 binding／attempt 有效性校验；公共包不持有凭据、配置、服务或原生载荷。
 - `MessageContext` 安装公共 Conversation，私有 context 保存正文与 Sender，读取时重建投影。`PlatformData` 由平台提供不可变快照，公共层不解释或序列化。
@@ -117,6 +117,7 @@ flowchart TB
 - `state.toml` 保存模型状态，命令修改后持久化，不自动重载外部修改；`tool_tags.toml` 保存工具标签。
 - 用户资产位于配置目录的 `memories.toml`、`long_memory/`、`skills/` 和 `plugins/`。Hook 入口为 `plugins/hooks.toml`，插件配置为 `plugins/<plugin-id>/hook.toml`。
 - `api_key_env` 优先读取系统环境，再读取配置目录 `.env`。
+- `/models --fresh`／`--refresh` 使用启动时确定的厂商文件路径，重读 providers／model_metadata 和密钥环境，再刷新模型目录；不重读主配置或 state.toml。配置准备失败保留原厂商快照，远端目录失败按厂商报告；删除已选厂商不拦截重载、不改选择，后续使用正常报错。
 - 配置要求由所属模块声明，平台和 Hook 定义由 app 装配。`Load` 与 `Inspector` 共用读取、默认值、合并和校验；配置包不依赖具体业务模块。
 - `/doctor` 仅超管可用，检查磁盘配置与内置资产并按文件报告；不读取密钥、不初始化文件、不启动 runtime。内容比较忽略 CR/LF，TOML 按原文解析。
 
@@ -148,13 +149,13 @@ flowchart TB
 
 `llm/chatcompletions` 与 `llm/responses` 各自编码请求和消费原生流；`llm/httpclient` 提供传输。`agent/chat` 与 `agent/responses` 各自实现业务 Loop、Compactor 和材料准备，路线之间不互相导入。
 
-- 公共 `llm.Client` 提供模型列表与独立 `GenerateText`；`Selection` 固定 Provider、Model、Client。命名和 Chat 摘要可使用任一文本客户端，独立文本不续接主会话或执行工具。
+- 公共 `llm.Client` 提供模型列表与独立 `GenerateText`；`Selection` 固定 Provider、Model、Client、Origin 和窗口配置快照。命名和 Chat 摘要可使用任一文本客户端，独立文本不续接主会话或执行工具。
 - 公共 `llm.Usage` 的四项 token 计数为可空 `int64`：nil 表示未知，非 nil 的零表示明确零；不推算缺失总量。Agent、contextmgr 和 CLI 状态队列的用量快照逐项复制计数指针，发布后只读。Chat 和 Responses 解析保留整数精度，非法用量不使模型响应失败；Chat 的非法或 null 别名继续回退，明确零立即采用。状态展示分别保留总量与缓存计数的已知／未知状态，明确零作为已知值参与上下文比例判断。
-- `routes.Registry` 按 provider 绑定 Origin、Client、Loop、Compactor、Material，并独立登记源协议能力。查询由 dialogue／contextmgr／session 的窄接口完成；重复绑定、错误接线、封闭前查询及封闭后修改报错。
+- `routes.Registry` 按 APIType 登记 Loop、Compactor、Material，Module 每种协议装配一次，不保存厂商配置或客户端；厂商重载不修改注册表。查询由 dialogue／contextmgr／session 的窄接口完成，重复登记、封闭前查询及封闭后修改报错。
 - CallObservation 分别持有业务 Event 和日志 LogRecord。Chat／Responses 在操作分支填写独立错误与整体结果，本地保存失败不标为上游错误；Chat 取消时保留部分输出。实际模型请求各写一条 llm_usage，失败与取消另保留 llm_error，准备失败不计调用。视觉回退和 Responses 重放各自结束观察，HTTP 内部重试通过独立重试信号记录。
-- 主对话按目标 provider 查询 Loop，压缩与分支按持久化源 Origin 查询能力；不从摘要目标或当前配置推断来源。缺失主对话能力在压缩、保存输入和模型请求前拒绝。
+- 主对话按 Selection.Origin.APIType 查询 Loop，协议 Loop 检查客户端能力；压缩与分支按持久化源 Origin.APIType 查询能力，不从摘要目标或当前配置推断来源。缺失主对话能力在压缩、保存输入和模型请求前拒绝。
 - `CanSwitch` 纯比较身份：Chat 可跨 Chat provider，同一 provider 节点的 Responses 可换模型；跨协议及涉及 Responses 的跨 provider 切换拒绝。命令提交选择前预检，执行及接管后的调用再次检查；永久接管在变更 metadata 前检查 work 模型。
-- provider 节点名确定厂商身份，base_url 用于续链地址校验。注册表不持有执行状态或完整依赖容器。
+- provider 节点名确定厂商身份，同名厂商的 URL／密钥等变化不使 Responses 会话失效；base_url 用于续链地址校验，地址变化按已有材料重放。当前来源取自 Selection，Session 和原生记录保留各自的历史来源。
 
 ### 主调用链
 
@@ -164,9 +165,13 @@ flowchart TB
 flowchart TB
     ENTRY["公共执行入口<br/>单轮、压缩、准入、取消"]
     INFO["contextinfo<br/>Conversation / Actor<br/>Execution / Model"]
-    BIND["provider 能力绑定<br/>Loop / Compactor / Material"]
+    BIND["agent/routes/registry.go<br/>按协议登记 Loop / Compactor / Material"]
+    MODELS["modelmgr/providers.go、selection.go<br/>重载厂商并提供本轮固定快照"]
+    WINDOW["modelmgr/context_window.go<br/>解析和缓存模型窗口"]
 
     ENTRY -->|"读取"| INFO
+    ENTRY -->|"取得 Selection"| MODELS
+    MODELS --> WINDOW
     ENTRY --> BIND
 
     subgraph CHAT["Chat"]
@@ -431,16 +436,17 @@ flowchart LR
 <!-- locator:llm -->
 ## 模型服务与客户端
 
-- `modelmgr.Service` 唯一持有模式／槽位、compact／naming 选择、provider 客户端和模型目录；不依赖 Agent／Session。后台默认 work，Elnis 可用 elwisp1/2/3，Cron 可指定任务模型。
+- `modelmgr.Service` 唯一持有模式／槽位、compact／naming 选择、厂商运行时和模型目录／窗口缓存；不依赖 Agent／Session 服务。后台默认 work，Elnis 可用 elwisp1/2/3，Cron 可指定任务模型。
+- 厂商重载串行读取配置、构造全部客户端后一次发布，新快照拥有独立缓存；网络请求和配置读取不占用发布锁。当前轮继续使用旧快照，新一轮取新快照，旧目录请求不能写入新缓存。App 注入配置加载与客户端创建能力，modelmgr 不装配协议业务 Loop。
 - 模型目录并行查询各 provider，合并配置项，编号在筛选前分配；目录及选择返回独立快照。
 - 切换串行构建候选，原子保存 state.toml 后才发布内存状态，失败保留旧选择；保存时不阻塞读取旧快照。命名和摘要固定各自的选择与 fallback，Prepared Hook 不改模型身份。
 - httpclient 负责 HTTP、代理、可取消初始交换重试、SSE 分帧及超时；鉴权、编解码及终态归客户端，断流不重放请求。Extra 只能补字段，覆盖或重名发送前拒绝。
-- HTTP 来源填写重试结果，Model Manager 固定 Identity 并发布 ModelRetrying；同步日志独立于 App 通知订阅，对话／压缩／命名共用通知接线。通知跟随调用 context，客户端配置启动后固定。
+- HTTP 来源填写重试结果，Model Manager 固定 Identity 并发布 ModelRetrying；同步日志独立于 App 通知订阅，对话／压缩／命名共用通知接线。通知跟随调用 context，每个客户端实例的配置固定，重载发布新实例。
 
 <!-- locator:context -->
 ## 上下文与压缩
 
-contextmgr 管历史、窗口、用量、阈值及压缩分派；协议 Compactor 准备结果，executionCoordinator 管 Request／Turn 与交接，Session 保存并激活新会话。
+contextmgr 管历史、用量、阈值及压缩分派，通过 Selection 查询本轮模型窗口；窗口配置与缓存归 modelmgr。协议 Compactor 准备结果，executionCoordinator 管 Request／Turn 与交接，Session 保存并激活新会话。
 
 - 手动和自动压缩共用 compact_enabled／compact_trigger_ratio 及当前模型窗口。压缩中拒绝输入、允许停止；交接复核取消、原绑定、接管和源 checkpoint，先保存新 Session，再更新前台 current。后台保持无 current，继承 workspace 与命名信息，清除旧用量。
 - Chat 用独立文字摘要模型或对话 fallback。新 Session 暂存文字 seed，首条输入保存为“摘要＋历史用户原话＋当前输入”后消费 seed。

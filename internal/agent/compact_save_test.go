@@ -56,7 +56,7 @@ func TestCompactSaveFailureReleasesExecutionAndKeepsSource(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			a.execution.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: .8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
+			configureTestContext(t, a, config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: .8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
 			a.execution.recordUsage(t.Context(), source.ID, &llm.Usage{TotalTokens: func() *int64 { n := int64(80); return &n }()})
 			failure := errors.New("compact save rejected")
 			repo.failure = failure

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"elbot/internal/command"
+	"elbot/internal/config"
 	"elbot/internal/modelmgr"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -93,14 +94,8 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 			source, known, originErr := session.Origin(current)
 			err = originErr
 			if err == nil && known {
-				if deps.Providers == nil {
-					return nil, fmt.Errorf("provider bindings are required for model compatibility")
-				}
-				targetOrigin, targetErr := deps.Providers.OriginFor(selected.Provider)
-				err = targetErr
-				if err == nil {
-					err = modelmgr.CanSwitch(source, targetOrigin)
-				}
+				targetOrigin := deps.Models.Resolve(config.ModelSelection{Provider: selected.Provider, Model: selected.Model}).Origin
+				err = modelmgr.CanSwitch(source, targetOrigin)
 			}
 		}
 		if err == nil {
@@ -232,7 +227,7 @@ func NewCheckModel(deps Deps) command.Handler {
 		Description: "List or search available models.",
 		Aliases:     []string{"models"},
 		Help: strings.TrimSpace(`Options:
-  --fresh, --refresh    Refresh provider model lists before showing results.
+  --fresh, --refresh    Reload provider configuration and refresh model lists.
 
 Examples:
   /models
@@ -241,6 +236,11 @@ Examples:
   /models --refresh`),
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		args, fresh := parseModelListArgs(req.Args)
+		if fresh {
+			if err := deps.Models.ReloadProviders(ctx); err != nil {
+				return nil, fmt.Errorf("reload provider configuration: %w", err)
+			}
+		}
 		result := deps.Models.ModelList(args, modelmgr.ModelListOptions{Fresh: fresh})
 
 		models := result.Options
