@@ -214,7 +214,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/storage/storage.go`、`internal/storage/session_metadata.go`：领域模型、repository 契约及 metadata 保留。
 - `internal/storage/sqlite/`、`internal/storage/sqlite/migrations.go`：存储实现与数据库迁移；`nullable_context_summary_tokens` 保留摘要数据、外键及索引，使未知用量可保存为 NULL。
 - `internal/storage/dialogue.go`、`internal/storage/sqlite/dialogue_repository.go`：ToolPair／原生提交事务与 checkpoint 比较。
-- `internal/storage/sqlite/native_snapshot.go`、`internal/storage/sqlite/native_material.go`：不可变调用快照、seed 与新 Session 原子保存。
+- `internal/storage/sqlite/native_snapshot.go`、`internal/storage/sqlite/native_material.go`：不可变调用快照、seed 与新 Session 原子保存；seed 空媒体列表统一写 `[]`，`normalize_native_seed_media_ids` 迁移修正已有 `null`。
 - `internal/storage/sqlite/media_history.go`、`internal/storage/sqlite/media_lifecycle.go`：历史媒体关联、媒体临时引用恢复与清理认领。
 
 <!-- locator:elnis -->
@@ -231,7 +231,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 媒体中心
 
 - `internal/media/`：导入、图片处理、请求／发送解析、引用与清理。
-- `internal/media/lifecycle.go`：清理轮次与逐对象删除；分别返回来源 LogResult 和原始业务 error，保留实际对象 ID，先组合独立结果再合并并行错误；取消不覆盖独立删除失败。
+- `internal/media/lifecycle.go`：清理轮次与逐对象删除；生成 cleanup_id 和完整分类计数，异常优先的明细正文最多 50 行；返回来源 LogResult 和原始 error，先保留逐对象结果再合并并行错误，取消不覆盖独立删除失败。
 - `internal/media/reference.go`：媒体引用与存活持有；RetainSessionToolArguments 返回事务来源 LogResult 和原始 error，无引用声明 skipped，Runner 不二次分类。
 - `internal/media/platform.go`、`internal/media/history.go`：平台媒体、历史批量获取（缓存、去重与尝试预算）及跨库历史对账。
 - `internal/tool/builtin/chat_history.go`、`internal/tool/builtin/get_media.go`：历史查询与显式媒体获取。
@@ -242,9 +242,9 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## Cron 与维护
 
 - `internal/cron/`：任务 CRUD、调度、执行、报告与投递恢复。
-- `internal/cron/service.go`、`internal/cron/manager.go`：来源构造九字段记录并交 LogBackground；运行说明用 text，可筛选审计用 JSON。调度执行的最终结果在状态保存后发布，正文保留执行、重新读取和保存的独立错误。Cron 的运行状态不保存 LastError；错误原因写入日志，补执行依据任务及 DeliveryState／DeliveryToken。Handler 返回独立 LogResult 与原始 error，调度器直接接收来源结果及正文；发送聚合在错误包装、合并前保留各操作结果。
-- `internal/cron/models.go`、`internal/cron/delivery.go`、`internal/cron/recovery.go`：任务模型、逐项投递及连接恢复。
-- `internal/maintenance/`：维护任务；清理方法返回独立 LogResult 与原始 error，Cron Handler 直接传递；清理日志直接填写结果、text 正文和已有执行身份，取消与超时区分。媒体清理在并行删除错误合并前保留各自日志结果，独立失败不被取消覆盖。
+- `internal/cron/service.go`、`internal/cron/manager.go`：用户任务通过 Handler 返回独立 LogResult 和原始 error，业务正文不重复发布运行记录；调度器统一添加任务名、handler、耗时并组织九字段记录，结束事件名拼接 handler，正文连续非空行。最终结果在状态保存后发布，保留重新读取和保存的独立错误；触发和投递审计仍用 JSON 独立记录。补执行依据任务及 DeliveryState／DeliveryToken，日志结果不反向控制业务。
+- `internal/cron/models.go`、`internal/cron/delivery.go`、`internal/cron/recovery.go`：任务模型、逐项投递及连接恢复；共享投递函数返回目标和来源诊断，恢复入口在最终运行记录中保留正文，逐目标审计独立发布。
+- `internal/maintenance/`：维护任务；清理方法组织独立结果、text 正文和原始 error，Cron Handler 直接传递，由调度器统一发布运行记录；取消与超时区分。媒体清理在并行删除错误合并前保留各自结果，独立失败不被取消覆盖。
 - `internal/agent/background.go`、`internal/agent/background_tools.go`：公共后台执行与确认。
 - `internal/tool/builtin/cron.go`、`internal/storage/sqlite/cron_job_repository.go`：工具入口与仓储。
 

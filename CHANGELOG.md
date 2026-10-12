@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 重构通知系统
 - 优化CLI UI逻辑
 - 服务模式不再随全部消息平台退出而结束。
+- 优化cron任务的日志
 - 工具调现在仅记录 audit；移除 `/log -t`。日志会精简工具内容记录。
 - 平台连接事件从适配器实例信号及 App 转发改为直接发布全局信号；Hook 协调模块和 Cron 自行订阅、按平台排队并管理关闭，保持原有连接触发、补执行及 30 秒退出预算。
 - 工具支持按 API 类型限制发现、补全、预载和执行。
@@ -38,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复无媒体 native seed 被序列化为 JSON `null`，导致媒体清理误报缺引用并中止的问题。
 - 修复普通消息并发启动时误报“请求失败”的问题。
 - 修复普通 `/audit` 等日志查询直接展示 JSON 转义的bug。
 - 修复 `shell` 先缓存全部输出、结束后才截断导致执行期间内存随输出量增长的问题；现在收集时限制容量，超出部分继续排空并丢弃。

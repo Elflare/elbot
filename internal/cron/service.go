@@ -118,51 +118,34 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) (logResult g
 	}
 
 	logResult.ResultStatus = globalevents.ResultFailed
-	logResult.Content = fmt.Sprintf("job=%s handler=%s", job.Name, job.Handler)
-	defer func() {
-		if err != nil {
-			logResult.Content += fmt.Sprintf("\nerror=%v", err)
-		}
-	}()
+	logResult.Content = "stage=lock"
 	unlock, err := s.lockDeliveryJob(ctx, job.Name)
 	if err != nil {
 		if err == context.Canceled {
 			logResult.ResultStatus = globalevents.ResultCanceled
 		}
-		return globalevents.LogResult{ResultStatus: logResult.ResultStatus, Content: logResult.Content}, err
+		return globalevents.LogResult{ResultStatus: logResult.ResultStatus, Content: logResult.Content + fmt.Sprintf("\nerror=%q", err.Error())}, err
 	}
 	defer unlock()
+	logResult.Content = "stage=load"
 	latest, err := s.store.CronJobs().GetByName(ctx, job.Name)
 	if err != nil {
 		if err == context.Canceled {
 			logResult.ResultStatus = globalevents.ResultCanceled
 		}
-		return globalevents.LogResult{ResultStatus: logResult.ResultStatus, Content: logResult.Content}, err
+		return globalevents.LogResult{ResultStatus: logResult.ResultStatus, Content: logResult.Content + fmt.Sprintf("\nerror=%q", err.Error())}, err
 	}
 	if !latest.Enabled {
-		return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: logResult.Content + "\njob is disabled"}, nil
+		return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "reason=disabled"}, nil
 	}
 	job = *latest
+	logResult.Content = "stage=metadata"
 	meta, err := decodeMetadata(job.Metadata)
 	if err != nil {
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelError,
-				EventName:    "cron_metadata_parse_failed",
-				Module:       "cron",
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("cron metadata parse failed\njob=%v\nerror=%v", job.Name, err),
-				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultFailed,
-			}
-			record.Identity = identity
-			background.LogBackground(ctx, record)
-		}
 		if err == context.Canceled {
 			logResult.ResultStatus = globalevents.ResultCanceled
 		}
-		return globalevents.LogResult{ResultStatus: logResult.ResultStatus, Content: logResult.Content}, err
+		return globalevents.LogResult{ResultStatus: logResult.ResultStatus, Content: logResult.Content + fmt.Sprintf("\nerror=%q", err.Error())}, err
 	}
 	{
 		content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": meta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms": meta.Target.AllEnabledPlatforms, "trigger_mode": meta.Trigger.Mode, "schedule_mode": meta.Schedule.Mode})
@@ -178,20 +161,7 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) (logResult g
 		record.Identity = identity
 		background.LogBackground(ctx, record)
 	}
-	{
-		record := globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
-			Level:        slog.LevelInfo,
-			EventName:    "cron_trigger_started",
-			Module:       "cron",
-			Type:         globalevents.ContentText,
-			Content:      fmt.Sprintf("cron trigger started\njob=%v\nsource_platform=%v\ntarget_platforms=%v\ntarget_all_enabled_platforms=%v\ntrigger_mode=%v\nschedule_mode=%v", job.Name, meta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(meta), ","), meta.Target.AllEnabledPlatforms, meta.Trigger.Mode, meta.Schedule.Mode),
-			ContentLimit: 4096,
-		}
-		record.Identity = identity
-		background.LogBackground(ctx, record)
-	}
-	logResult.Content += fmt.Sprintf("\nsource_platform=%s target_platforms=%s trigger_mode=%s schedule_mode=%s", meta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(meta), ","), meta.Trigger.Mode, meta.Schedule.Mode)
+	logResult.Content = fmt.Sprintf("source_platform=%s target_platforms=%s target_all_enabled_platforms=%t trigger_mode=%s schedule_mode=%s", meta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(meta), ","), meta.Target.AllEnabledPlatforms, meta.Trigger.Mode, meta.Schedule.Mode)
 	content := logResult.Content
 	logResult.Content = ""
 	var runErr error
@@ -225,24 +195,6 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) (logResult g
 			record.Identity = identity
 			background.LogBackground(ctx, record)
 		}
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelError,
-				EventName:    "cron_trigger_failed",
-				Module:       "cron",
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("cron trigger failed\njob=%v\nsource_platform=%v\ntarget_platforms=%v\ntarget_all_enabled_platforms=%v\n%s", job.Name, meta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(meta), ","), meta.Target.AllEnabledPlatforms, logResult.Content),
-				ContentLimit: 4096,
-				ResultStatus: logResult.ResultStatus,
-			}
-			if logResult.ResultStatus == globalevents.ResultCanceled {
-				record.Level = slog.LevelInfo
-			}
-
-			record.Identity = identity
-			background.LogBackground(ctx, record)
-		}
 		return globalevents.LogResult{ResultStatus: logResult.ResultStatus, Content: logResult.Content}, runErr
 	}
 	{
@@ -254,20 +206,6 @@ func (s *Service) Handler(ctx context.Context, job storage.CronJob) (logResult g
 			Module:       "cron",
 			Type:         globalevents.ContentJSON,
 			Content:      string(content),
-			ContentLimit: 4096,
-			ResultStatus: logResult.ResultStatus,
-		}
-		record.Identity = identity
-		background.LogBackground(ctx, record)
-	}
-	{
-		record := globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
-			Level:        slog.LevelInfo,
-			EventName:    "cron_trigger_completed",
-			Module:       "cron",
-			Type:         globalevents.ContentText,
-			Content:      fmt.Sprintf("cron trigger completed\njob=%v\nsource_platform=%v\ntarget_platforms=%v\ntarget_all_enabled_platforms=%v\n%s", job.Name, meta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(meta), ","), meta.Target.AllEnabledPlatforms, logResult.Content),
 			ContentLimit: 4096,
 			ResultStatus: logResult.ResultStatus,
 		}

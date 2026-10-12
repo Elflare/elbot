@@ -59,9 +59,11 @@ type NativeSeed struct {
 	ID, SessionID, APIType, Provider, BaseURL             string
 	ResponseID, SourceCheckpointID                        string
 	ItemsJSON, MaterialsJSON, ContinuationJSON, CallsJSON string
-	MediaIDs                                              []string
-	Consumed                                              bool
-	CreatedAt                                             time.Time
+	// MediaIDs retains the root window's media. Nil and empty mean no references;
+	// persistence stores both as a JSON empty array.
+	MediaIDs  []string
+	Consumed  bool
+	CreatedAt time.Time
 }
 
 // SessionMaterialCreate is the narrow atomic boundary for a new session and

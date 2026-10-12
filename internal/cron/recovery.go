@@ -282,11 +282,16 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 					EventName:    "missed_cron_run_failed",
 					Module:       "cron",
 					Type:         globalevents.ContentText,
-					Content:      fmt.Sprintf("missed cron run failed\njob=%v\nplatform=%v\nerror=%v", job.Name, platformName, deliverErr),
+					Content:      fmt.Sprintf("missed cron run failed\njob=%s\nrecovery_platform=%s\nsource_platform=%s\ntarget_platforms=%s\ntarget_all_enabled_platforms=%t", job.Name, platformName, latestMeta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(latestMeta), ","), latestMeta.Target.AllEnabledPlatforms),
 					ContentLimit: 4096,
 					ResultStatus: globalevents.ResultFailed,
 				}
 				record.ResultStatus = resultStatus
+				for _, line := range strings.Split(logResult.Content, "\n") {
+					if strings.TrimSpace(line) != "" {
+						record.Content += "\n" + line
+					}
+				}
 				if resultStatus == globalevents.ResultCanceled {
 					record.Level = slog.LevelInfo
 				}
@@ -324,9 +329,18 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 				EventName:    "cron_missed_delivery_completed",
 				Module:       "cron",
 				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("cron missed delivery completed\njob=%v\nsource_platform=%v\ntarget_platforms=%v\ntarget_all_enabled_platforms=%v\nplatform=%v", job.Name, latestMeta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(latestMeta), ","), latestMeta.Target.AllEnabledPlatforms, platformName),
+				Content:      fmt.Sprintf("cron missed delivery completed\njob=%s\nrecovery_platform=%s\nsource_platform=%s\ntarget_platforms=%s\ntarget_all_enabled_platforms=%t", job.Name, platformName, latestMeta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(latestMeta), ","), latestMeta.Target.AllEnabledPlatforms),
 				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultSucceeded,
+				ResultStatus: resultStatus,
+			}
+			for _, line := range strings.Split(logResult.Content, "\n") {
+				if strings.TrimSpace(line) != "" {
+					record.Content += "\n" + line
+				}
+			}
+			if resultStatus == globalevents.ResultFailed {
+				record.Level = slog.LevelError
+				record.EventName = "missed_cron_run_failed"
 			}
 			record.Identity = identity
 			background.LogBackground(ctx, record)
@@ -343,9 +357,6 @@ func (s *Service) deliverMissedOnce(ctx context.Context, job storage.CronJob, me
 		{
 			err := prepareErr
 			logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-			if err != nil {
-				logResult.Content += fmt.Sprintf("\nerror=%v", err)
-			}
 			return logResult, err
 		}
 	}
@@ -360,9 +371,6 @@ func (s *Service) deliverMissedOnce(ctx context.Context, job storage.CronJob, me
 	{
 		err := errors.Join(prepareErr, deliverErr)
 		logResult := globalevents.LogResult{ResultStatus: status, Content: content}
-		if err != nil {
-			logResult.Content += fmt.Sprintf("\nerror=%v", err)
-		}
 		return logResult, err
 	}
 }

@@ -63,7 +63,7 @@ func TestForkMediaReferencesRespectCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	issues, err := store.Media().CheckReferences(ctx)
-	if err != nil || len(issues) != 1 || issues[0] != "missing fork reference: "+nested.ID {
+	if err != nil || len(issues) != 1 || issues[0] != "issue=missing_reference owner_type=session_fork owner_id="+nested.ID+" session_id="+nested.ID+" media_id=media:"+strings.Repeat("a", 64) {
 		t.Fatalf("missing fork reference not detected: %v %v", issues, err)
 	}
 }

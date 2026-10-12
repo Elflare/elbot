@@ -6,6 +6,7 @@ import (
 	"elbot/internal/contextinfo"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -457,7 +458,7 @@ func (m *Manager) runJob(name string) {
 		background.LogBackground(ctx, record)
 	}
 	logResult, _ := handler(ctx, *job)
-	resultStatus, content := logResult.ResultStatus, logResult.Content
+	resultStatus := logResult.ResultStatus
 	duration := time.Since(startedAt)
 	// Deadline expiry is a failure; only explicit cancellation is canceled in logs.
 	record := globalevents.LogRecord{
@@ -466,8 +467,10 @@ func (m *Manager) runJob(name string) {
 		Content:      fmt.Sprintf("cron job finished\njob=%s\nhandler=%s\nduration=%s", job.Name, job.Handler, duration),
 		ContentLimit: 4096, ResultStatus: resultStatus,
 	}
-	if content != "" {
-		record.Content += "\n" + content
+	for _, line := range strings.Split(logResult.Content, "\n") {
+		if strings.TrimSpace(line) != "" {
+			record.Content += "\n" + line
+		}
 	}
 	if resultStatus == globalevents.ResultFailed {
 		record.Level = slog.LevelError
@@ -477,6 +480,7 @@ func (m *Manager) runJob(name string) {
 		if record.ResultStatus == globalevents.ResultFailed {
 			record.EventName = "cron_job_failed"
 		}
+		record.EventName += "." + job.Handler
 		background.LogBackground(ctx, record)
 	}()
 	// Final bookkeeping remains part of the tracked invocation after cancel.
@@ -494,7 +498,7 @@ func (m *Manager) runJob(name string) {
 	if latest, err := m.repo.GetByName(ctx, job.Name); err == nil {
 		stateJob = latest
 	} else {
-		record.Content += fmt.Sprintf("\nreload_error=%v", err)
+		record.Content += fmt.Sprintf("\nreload_error=%q", err.Error())
 		record.ResultStatus = globalevents.ResultFailed
 		record.Level = slog.LevelError
 		{
@@ -533,7 +537,7 @@ func (m *Manager) runJob(name string) {
 		Enabled:   enabled,
 		UpdatedAt: time.Now(),
 	}); err != nil {
-		record.Content += fmt.Sprintf("\nstate_save_error=%v", err)
+		record.Content += fmt.Sprintf("\nstate_save_error=%q", err.Error())
 		record.ResultStatus = globalevents.ResultFailed
 		record.Level = slog.LevelError
 		{

@@ -234,13 +234,18 @@ func TestCleanupCancellationRetainsPendingObjectsForRetry(t *testing.T) {
 		return ctx.Err()
 	}}
 	done := make(chan error, 1)
-	go func() { _, err := m.Cleanup(ctx); done <- err }()
+	results := make(chan events.LogResult, 1)
+	go func() { result, err := m.Cleanup(ctx); results <- result; done <- err }()
 	for range 4 {
 		awaitMediaTest(t, started)
 	}
 	cancel()
 	if err := awaitMediaTest(t, done); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cleanup cancellation = %v", err)
+	}
+	result := awaitMediaTest(t, results)
+	if result.ResultStatus != events.ResultCanceled || !strings.Contains(result.Content, "claimed=7 deleted=0 skipped=0 failed=0 canceled=4 not_started=3") {
+		t.Fatalf("cancellation counts = %#v", result)
 	}
 	if len(started) != 0 {
 		t.Fatal("dispatched additional deletes after cancellation")

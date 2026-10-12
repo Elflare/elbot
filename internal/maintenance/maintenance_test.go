@@ -12,6 +12,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/events"
 	"elbot/internal/session"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
@@ -108,6 +109,15 @@ func TestCleanupUsesInjectedLiveSessionService(t *testing.T) {
 }
 
 func TestSandboxCleanupReturnsSourceResult(t *testing.T) {
+	var records []events.LogRecord
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+		records = append(records, record)
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(connection.Disconnect)
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "file"), []byte("data"), 0600); err != nil {
 		t.Fatal(err)
@@ -134,5 +144,8 @@ func TestSandboxCleanupReturnsSourceResult(t *testing.T) {
 				t.Fatalf("source result=%#v error=%v", logResult, err)
 			}
 		})
+	}
+	if len(records) != 0 {
+		t.Fatalf("maintenance published handler content twice: %#v", records)
 	}
 }
