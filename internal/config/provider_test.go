@@ -8,6 +8,52 @@ import (
 	"testing"
 )
 
+func TestLoadProvidersUsesSelectedFileAndReloadsConfigEnv(t *testing.T) {
+	dir, external := t.TempDir(), t.TempDir()
+	path := filepath.Join(external, "custom-providers.toml")
+	write := func(path, text string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(text), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(dir, "app.toml"), "invalid main config = [")
+	write(filepath.Join(dir, "state.toml"), "invalid state = [")
+	write(path, "[providers.p]\napi_key_env='ELBOT_RELOAD_TEST_KEY'\nmodels=['m']\n[providers.p.model_configs.m]\ncontext_window=123\n[model_metadata]\ndefault_context_window=456\n")
+	t.Setenv("ELBOT_RELOAD_TEST_KEY", "")
+	for _, key := range []string{"first", "second"} {
+		write(filepath.Join(dir, ".env"), "ELBOT_RELOAD_TEST_KEY="+key)
+		file, err := LoadProviders(path, dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		provider := file.Providers["p"]
+		if provider.APIKey != key || provider.APIMode != "chat" || provider.ModelConfigs["m"].ContextWindow != 123 || file.ModelMetadata.DefaultContextWindow != 456 {
+			t.Fatal("provider file or dotenv was not reloaded")
+		}
+	}
+	t.Setenv("ELBOT_RELOAD_TEST_KEY", "process")
+	file, err := LoadProviders(path, dir)
+	if err != nil || file.Providers["p"].APIKey != "process" {
+		t.Fatal("process environment precedence changed", err)
+	}
+	for _, invalid := range []string{"[", "[providers.p]\napi_mode='invalid'"} {
+		write(path, invalid)
+		if _, err := LoadProviders(path, dir); err == nil {
+			t.Fatal("invalid provider file accepted")
+		}
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadProviders(path, dir); err == nil {
+		t.Fatal("missing provider file accepted")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("missing provider file was recreated")
+	}
+}
+
 func TestProviderAPIModeDefaultsAndValidationInLoadAndInspection(t *testing.T) {
 	for _, mode := range []string{"", "chat", "response", "responses", "CHAT"} {
 		t.Run("mode="+mode, func(t *testing.T) {

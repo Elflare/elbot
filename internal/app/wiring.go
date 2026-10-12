@@ -94,8 +94,6 @@ func (defaultWiringFactory) Build(ctx context.Context, req WiringRequest) (*Wiri
 		HookControl:     c.Hook.Control(),
 		Session:         cfg.Session,
 		Context:         cfg.Context,
-		Metadata:        cfg.ModelMetadata,
-		Providers:       cfg.Providers,
 		Prefixes:        cfg.Commands.Prefixes,
 		PageSize:        cfg.View.SessionListPageSize,
 		RetentionDays:   cfg.Maintenance.SessionCleanup.RetentionDays,

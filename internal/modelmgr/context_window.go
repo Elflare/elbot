@@ -1,4 +1,4 @@
-package contextmgr
+package modelmgr
 
 import (
 	"context"
@@ -11,9 +11,9 @@ import (
 type ClientProvider func(provider string) llm.Client
 
 type WindowResolver struct {
-	DefaultWindow int
-	ManualWindows map[string]int
-	ClientFor     ClientProvider
+	DefaultWindow int            // Fallback when neither remote nor configured metadata gives a window.
+	ManualWindows map[string]int // Configured windows keyed by provider/model.
+	ClientFor     ClientProvider // Resolves clients within this configuration generation.
 	mu            sync.RWMutex
 	cache         map[string]int
 }

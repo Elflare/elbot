@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/hook"
@@ -22,6 +23,8 @@ import (
 	"elbot/internal/tool"
 	"elbot/internal/tool/builtin"
 )
+
+var testProviderFiles sync.Map
 
 func newTestModels(t *testing.T, opts modelmgr.Options) *modelmgr.Service {
 	t.Helper()
@@ -38,11 +41,36 @@ func newTestModels(t *testing.T, opts modelmgr.Options) *modelmgr.Service {
 		}
 	}
 
+	file := &config.ProviderFile{Providers: opts.Providers, ModelMetadata: opts.Metadata}
+	if opts.LoadProviders == nil {
+		opts.LoadProviders = func(context.Context) (config.ProviderFile, error) { return *file, nil }
+	}
+	if opts.BuildClient == nil {
+		opts.BuildClient = func(name string, _ config.ProviderConfig) (llm.Client, error) { return opts.Clients[name], nil }
+	}
 	models, err := modelmgr.New(opts)
 	if err != nil {
 		t.Fatalf("modelmgr.New: %v", err)
 	}
+	testProviderFiles.Store(models, file)
+	t.Cleanup(func() { testProviderFiles.Delete(models); _ = models.Close() })
 	return models
+}
+func configureTestContext(t *testing.T, a *agentFixture, cfg config.ContextConfig, metadata config.ModelMetadataConfig, providers map[string]config.ProviderConfig) {
+	t.Helper()
+	value, ok := testProviderFiles.Load(a.execution.models)
+	if !ok {
+		t.Fatal("missing test provider file")
+	}
+	file := value.(*config.ProviderFile)
+	file.ModelMetadata = metadata
+	if providers != nil {
+		file.Providers = providers
+	}
+	if err := a.execution.models.ReloadProviders(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	a.execution.contexts.Configure(cfg)
 }
 
 type fakePlatform struct {

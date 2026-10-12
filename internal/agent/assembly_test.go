@@ -93,7 +93,7 @@ func assembleTestOptions(t *testing.T, opts testAgentOptions) testAssembly {
 		Routes: registry, Platform: opts.Platform, Models: opts.Models, Store: opts.Store, Media: opts.Media,
 		Sessions: session.NewServiceWithConfig(opts.Store, opts.SessionConfig, session.NewTitleGenerator(opts.Models)),
 		Commands: command.NewRouter(opts.CommandPrefixes), Requests: request.NewManager(0), Turns: turn.NewManager(),
-		Contexts:  contextmgr.New(contextmgr.Options{Compactors: registry, Store: opts.Store, Models: opts.Models, Config: defaults.Context, Metadata: defaults.ModelMetadata, Providers: opts.Providers}),
+		Contexts:  contextmgr.New(contextmgr.Options{Compactors: registry, Store: opts.Store, Models: opts.Models, Config: defaults.Context}),
 		ToolState: toolrun.NewStateService(opts.Store), ToolRunner: toolrun.NewManager(opts.ToolRegistry, opts.SecurityPolicy),
 		ToolPreloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: opts.ToolRegistry, TagsPath: opts.ToolTagsPath, Tags: opts.ToolTags}),
 		ToolRegistry:  opts.ToolRegistry, FileRollback: opts.FileRollback, Dispatcher: dispatcher, SecurityPolicy: opts.SecurityPolicy,
@@ -149,7 +149,7 @@ func mustNewWithOptions(t *testing.T, cfg testAgentOptions, configure ...func(*t
 	})
 	if err := commandbuiltin.RegisterDefaultModules(opts.Commands, commandbuiltin.Deps{
 		Router: opts.Commands, Sessions: opts.Sessions, Requests: opts.Requests, Turns: opts.Turns, Store: opts.Store,
-		Scope: a.Scope, Models: opts.Models, Providers: opts.Routes, Contexts: opts.Contexts, Compact: a,
+		Scope: a.Scope, Models: opts.Models, Contexts: opts.Contexts, Compact: a,
 		Tools: testToolRegistry{opts.ToolRegistry}, FileRollback: opts.FileRollback, PrepareFileContext: a.PrepareFileCommand,
 		SessionState:  commandbuiltin.NewSessionCommandState(config.Default().View.SessionListPageSize, 30),
 		RuntimeStatus: a.RuntimeStatus,
@@ -282,7 +282,7 @@ type testAssembly struct {
 }
 
 func testChatRoute(a *agentFixture) *chatroute.Loop {
-	loop, err := a.dialogue.Routes.LoopFor(a.execution.models.ResolveMode(storage.SessionModeWork).Provider)
+	loop, err := a.dialogue.Routes.LoopFor(a.execution.models.ResolveMode(storage.SessionModeWork).Origin.APIType)
 	if err != nil {
 		panic(err)
 	}

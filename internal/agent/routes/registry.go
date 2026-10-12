@@ -11,33 +11,26 @@ import (
 	"elbot/internal/session"
 )
 
+// Registry contains protocol capabilities only. Provider reloads do not change it.
 type Registry struct {
-	mu         sync.RWMutex
-	sealed     bool
-	providers  map[string]Binding
-	compactors map[llm.APIType]contextmgr.Compactor
-	materials  map[llm.APIType]session.MaterialPreparer
+	mu        sync.RWMutex
+	sealed    bool
+	protocols map[llm.APIType]Binding
 }
 
-func New() *Registry {
-	return &Registry{
-		providers:  make(map[string]Binding),
-		compactors: make(map[llm.APIType]contextmgr.Compactor),
-		materials:  make(map[llm.APIType]session.MaterialPreparer),
-	}
-}
+func New() *Registry { return &Registry{protocols: make(map[llm.APIType]Binding)} }
 
 func (r *Registry) Register(binding Binding) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.sealed {
-		return fmt.Errorf("provider bindings are sealed")
+		return fmt.Errorf("protocol bindings are sealed")
 	}
-	if binding.Origin.Provider == "" || binding.Origin.APIType == "" || isNil(binding.Client) {
-		return fmt.Errorf("provider binding requires an identity and client")
+	if binding.APIType == "" {
+		return fmt.Errorf("protocol binding requires an API type")
 	}
-	if _, ok := r.providers[binding.Origin.Provider]; ok {
-		return fmt.Errorf("provider %q already registered", binding.Origin.Provider)
+	if _, exists := r.protocols[binding.APIType]; exists {
+		return fmt.Errorf("protocol %q already registered", binding.APIType)
 	}
 	if isNil(binding.Loop) {
 		binding.Loop = nil
@@ -48,44 +41,7 @@ func (r *Registry) Register(binding Binding) error {
 	if isNil(binding.Material) {
 		binding.Material = nil
 	}
-	r.providers[binding.Origin.Provider] = binding
-	return nil
-}
-
-// CheckProviderBinding lets composition retain an explicitly supplied route
-// only when it uses the exact configured identity and client.
-func (r *Registry) CheckProviderBinding(origin llm.Origin, client llm.Client) (bool, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	if r.sealed {
-		return false, fmt.Errorf("provider bindings are sealed")
-	}
-	binding, exists := r.providers[origin.Provider]
-	if !exists {
-		return false, nil
-	}
-	if binding.Origin != origin || isNil(client) || !reflect.TypeOf(client).Comparable() || binding.Client != client {
-		return false, fmt.Errorf("provider %q binding does not match configured identity and client", origin.Provider)
-	}
-	return true, nil
-}
-
-// RegisterCompactor installs the source-material capability independently of
-// configured provider aliases. In particular, migrated Chat material remains
-// compressible when its old provider has been removed or changed.
-func (r *Registry) RegisterCompactor(id llm.APIType, compactor contextmgr.Compactor) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.sealed {
-		return fmt.Errorf("provider bindings are sealed")
-	}
-	if id == "" || isNil(compactor) {
-		return fmt.Errorf("source compactor requires an identity and capability")
-	}
-	if _, ok := r.compactors[id]; ok {
-		return fmt.Errorf("source compactor %q already registered", id)
-	}
-	r.compactors[id] = compactor
+	r.protocols[binding.APIType] = binding
 	return nil
 }
 
@@ -93,101 +49,59 @@ func (r *Registry) Seal() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.sealed {
-		return fmt.Errorf("provider bindings are already sealed")
+		return fmt.Errorf("protocol bindings are already sealed")
 	}
-	if len(r.providers) == 0 {
-		return fmt.Errorf("no provider bindings registered")
-	}
-	for provider, binding := range r.providers {
-		if binding.Compactor != nil && r.compactors[binding.Origin.APIType] == nil {
-			return fmt.Errorf("provider %q source compactor is not registered", provider)
-		}
-		if binding.Material != nil && r.materials[binding.Origin.APIType] == nil {
-			return fmt.Errorf("provider %q source material capability is not registered", provider)
-		}
+	if len(r.protocols) == 0 {
+		return fmt.Errorf("no protocol bindings registered")
 	}
 	r.sealed = true
 	return nil
 }
 
-func (r *Registry) LoopFor(provider string) (dialogue.Loop, error) {
+func (r *Registry) binding(apiType llm.APIType) (Binding, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if !r.sealed {
-		return nil, fmt.Errorf("provider bindings are not sealed")
+		return Binding{}, fmt.Errorf("protocol bindings are not sealed")
 	}
-	binding, ok := r.providers[provider]
+	binding, ok := r.protocols[apiType]
 	if !ok {
-		return nil, fmt.Errorf("provider %q is not registered", provider)
+		return Binding{}, fmt.Errorf("protocol %q is not registered", apiType)
+	}
+	return binding, nil
+}
+
+func (r *Registry) LoopFor(apiType llm.APIType) (dialogue.Loop, error) {
+	binding, err := r.binding(apiType)
+	if err != nil {
+		return nil, err
 	}
 	if binding.Loop == nil {
-		return nil, fmt.Errorf("provider %q does not support main dialogue", provider)
+		return nil, fmt.Errorf("protocol %q does not support main dialogue", apiType)
 	}
 	return binding.Loop, nil
 }
 
-func (r *Registry) OriginFor(provider string) (llm.Origin, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	if !r.sealed {
-		return llm.Origin{}, fmt.Errorf("provider bindings are not sealed")
-	}
-	binding, ok := r.providers[provider]
-	if !ok {
-		return llm.Origin{}, fmt.Errorf("provider %q is not registered", provider)
-	}
-	return binding.Origin, nil
-}
-
 func (r *Registry) CompactorFor(origin llm.Origin) (contextmgr.Compactor, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	if !r.sealed {
-		return nil, fmt.Errorf("provider bindings are not sealed")
+	binding, err := r.binding(origin.APIType)
+	if err != nil {
+		return nil, err
 	}
-	if origin.APIType == "" {
-		return nil, fmt.Errorf("source session origin is missing")
-	}
-	if binding, ok := r.providers[origin.Provider]; ok && binding.Origin == origin && binding.Compactor != nil {
-		return binding.Compactor, nil
-	}
-	compactor := r.compactors[origin.APIType]
-	if compactor == nil {
+	if binding.Compactor == nil {
 		return nil, fmt.Errorf("source protocol %q does not support compaction", origin.APIType)
 	}
-	return compactor, nil
-}
-
-func (r *Registry) RegisterMaterial(id llm.APIType, preparer session.MaterialPreparer) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.sealed {
-		return fmt.Errorf("provider bindings are sealed")
-	}
-	if id == "" || isNil(preparer) {
-		return fmt.Errorf("source material requires an identity and capability")
-	}
-	if r.materials[id] != nil {
-		return fmt.Errorf("source material %q already registered", id)
-	}
-	r.materials[id] = preparer
-	return nil
+	return binding.Compactor, nil
 }
 
 func (r *Registry) MaterialFor(origin llm.Origin) (session.MaterialPreparer, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	if !r.sealed {
-		return nil, fmt.Errorf("provider bindings are not sealed")
+	binding, err := r.binding(origin.APIType)
+	if err != nil {
+		return nil, err
 	}
-	if binding, ok := r.providers[origin.Provider]; ok && binding.Origin == origin && binding.Material != nil {
-		return binding.Material, nil
-	}
-	preparer := r.materials[origin.APIType]
-	if preparer == nil {
+	if binding.Material == nil {
 		return nil, fmt.Errorf("source protocol %q does not support material branching", origin.APIType)
 	}
-	return preparer, nil
+	return binding.Material, nil
 }
 
 func isNil(value any) bool {

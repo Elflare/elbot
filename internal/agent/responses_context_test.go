@@ -527,7 +527,7 @@ func TestResponsesModelCommandPreflightsOnlyAffectedSlotAndRequestChecksGlobalCh
 	if len(requests) != 2 || requests[1].Model != "new-model" || requests[1].PreviousResponseID != "r1" {
 		t.Fatalf("same vendor switch=%+v", requests)
 	}
-	f.agent.execution.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.5}, config.ModelMetadataConfig{DefaultContextWindow: 10}, nil)
+	configureTestContext(t, f.agent, config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.5}, config.ModelMetadataConfig{DefaultContextWindow: 10}, nil)
 	if _, err := f.agent.execution.models.SelectModelForMode("work", "other/m"); err != nil {
 		t.Fatal(err)
 	}
@@ -627,7 +627,7 @@ func TestResponsesAutomaticCompactionUsesSharedThresholdAndPreservesAcceptedInpu
 		t.Fatal(err)
 	}
 	old := fixtureSession(t, f)
-	f.agent.execution.contexts.Configure(config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.5}, config.ModelMetadataConfig{DefaultContextWindow: 10}, nil)
+	configureTestContext(t, f.agent, config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.5}, config.ModelMetadataConfig{DefaultContextWindow: 10}, nil)
 	if err := f.agent.HandleMessage(t.Context(), "accepted second input"); err != nil {
 		t.Fatal(err)
 	}

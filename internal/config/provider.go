@@ -1,5 +1,29 @@
 package config
 
+// ProviderFile is the reloadable portion of the provider configuration file.
+type ProviderFile struct {
+	Providers     map[string]ProviderConfig `toml:"providers"`      // Named providers and their model settings.
+	ModelMetadata ModelMetadataConfig       `toml:"model_metadata"` // Default metadata for models without a known window.
+}
+
+// LoadProviders reads only the selected provider file. Secrets use the main
+// configuration directory, even when the provider file is stored elsewhere.
+func LoadProviders(path, configDir string) (ProviderFile, error) {
+	doc := readDocument(path, func() any { return &Config{} })
+	if doc.err != nil {
+		return ProviderFile{}, doc.err
+	}
+	cfg := doc.value.(*Config)
+	cfg.applyProviderDefaults()
+	if err := FirstError(cfg.ValidateProviders()); err != nil {
+		return ProviderFile{}, err
+	}
+	if err := cfg.resolveProviderAPIKeys(configDir); err != nil {
+		return ProviderFile{}, err
+	}
+	return ProviderFile{Providers: cfg.Providers, ModelMetadata: cfg.ModelMetadata}, nil
+}
+
 // EffectiveAPIMode also supports programmatically constructed providers.
 func (p ProviderConfig) EffectiveAPIMode() string {
 	if p.APIMode == "" {

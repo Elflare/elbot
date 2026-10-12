@@ -43,10 +43,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		return result, err
 	}
 	result.AllowedTools = prepared.AllowedTools()
-	origin, err := s.route.View.Providers.OriginFor(s.selection.Provider)
-	if err != nil {
-		return result, err
-	}
+	origin := s.selection.Origin
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	ids, err := json.Marshal(consumed)
 	if err != nil {

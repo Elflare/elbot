@@ -59,7 +59,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 配置、资产与日志
 
 - `internal/config/`：读取、默认资产、模块声明、provider／state／tag 及只读检查。
-- `internal/config/definition.go`、`internal/config/provider.go`：配置规则与客户端模式校验。
+- `internal/config/definition.go`、`internal/config/provider.go`：配置规则、客户端模式校验与独立厂商文件加载；重载沿用启动时的文件路径及主配置目录密钥解析规则。
 - `internal/doctor/`：配置诊断报告；`internal/command/builtin/doctor.go`：超管命令入口。
 - `internal/logging/`：日志中心订阅全局记录，分类排队、写入、轮转与读取；`signals.go` 按业务指定等级过滤，`record.go` 负责 text 的 Unicode 字符限长、JSON 正文按来源顺序原生嵌入、JSONL 编码及含行尾的 64 KiB 上限检查。文件写入器只由中心管理。
 - `internal/logging/reader.go`：反向分块兼读 JSONL／历史文本；外层与 Content 业务条件分别匹配后计入上限；run_source 对 JSON 键和 toolrun/tool_call 的固定 text 开头精确匹配，不扫描工具正文或补造旧来源；LogQueryResult 返回有效记录、扫描坏行数量及有界原文样本，保留读取范围、取消和单行上限。
@@ -83,8 +83,8 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:protocol-routing -->
 ## 协议路线
 
-- `internal/agent/routes/`：provider 能力绑定、源协议能力与封闭注册表。
-- `internal/agent/module/module.go`、`internal/app/models.go`：业务路线和客户端装配。
+- `internal/agent/routes/`：按 APIType 登记 Loop／Compactor／Material 的封闭注册表，不保存厂商或客户端。
+- `internal/agent/module/module.go`、`internal/app/models.go`：协议业务能力装配，以及启动／重载共用的具体客户端工厂；协议 Loop 在准入时检查客户端能力。
 - `internal/agent/dialogue/loop.go`、`internal/contextmgr/compact_contract.go`、`internal/session/material.go`：公共消费与材料交接契约。
 - `internal/llm/origin.go`、`internal/modelmgr/compatibility.go`：持久化归属与纯兼容判断。
 - `internal/llm/client.go`：独立文本调用契约与可空 int64 用量计数；`internal/llm/chatcompletions/response.go` 保留精确整数、明确零及别名回退。`internal/agent/events/events.go` 的 `CloneUsage` 复制用量指针快照。
@@ -201,7 +201,8 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:llm -->
 ## 模型服务与 LLM 客户端
 
-- `internal/modelmgr/`：固定选择、兼容性、目录缓存、状态保存与重试信号。
+- `internal/modelmgr/`：固定选择、兼容性、目录缓存、状态保存与重试信号；`selection.go` 的 Selection 固定客户端、Origin 及窗口快照。
+- `internal/modelmgr/providers.go`：厂商重载串行准备并一次发布，旧调用持有旧快照；`context_window.go`：模型窗口解析与快照所属缓存，供 contextmgr 查询。
 - `internal/llm/`：独立文本、模型目录、消息／工具／Usage 及 Extra 校验。
 - `internal/llm/httpclient/`：传输、重试、SSE 与超时。
 - `internal/llm/chatcompletions/`、`internal/llm/responses/`：独立协议客户端。

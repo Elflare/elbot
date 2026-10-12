@@ -44,8 +44,9 @@ type providerCatalog struct {
 
 func (s *Service) ModelList(query string, opts ModelListOptions) ModelListResult {
 	query = strings.ToLower(strings.TrimSpace(query))
-	providers := make([]string, 0, len(s.providers))
-	for name := range s.providers {
+	snapshot := s.providerSnapshot()
+	providers := make([]string, 0, len(snapshot.catalogs))
+	for name := range snapshot.catalogs {
 		providers = append(providers, name)
 	}
 	sort.Strings(providers)
@@ -54,7 +55,7 @@ func (s *Service) ModelList(query string, opts ModelListOptions) ModelListResult
 	var wg sync.WaitGroup
 	for i, name := range providers {
 		wg.Add(1)
-		go func() { defer wg.Done(); models[i], errs[i] = s.providerModels(name, opts.Fresh) }()
+		go func() { defer wg.Done(); models[i], errs[i] = s.providerModels(snapshot, name, opts.Fresh) }()
 	}
 	wg.Wait()
 	state := s.snapshot()
@@ -94,8 +95,8 @@ func (s *Service) ModelList(query string, opts ModelListOptions) ModelListResult
 	return result
 }
 
-func (s *Service) providerModels(name string, fresh bool) ([]string, error) {
-	p := s.providers[name]
+func (s *Service) providerModels(snapshot *providerSet, name string, fresh bool) ([]string, error) {
+	p := snapshot.catalogs[name]
 	// Serialize refreshes for this provider so a slower old fetch cannot replace
 	// a newer result. Other providers and model selections remain independent.
 	p.mu.Lock()
@@ -112,7 +113,7 @@ func (s *Service) providerModels(name string, fresh bool) ([]string, error) {
 		fetchErr = fmt.Errorf("api_key_env %q is not set", p.apiKeyEnv)
 	} else if name == currentProvider || (p.baseURL != "" && p.apiKey != "") {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		fetched, err := s.clients[name].ListModels(ctx)
+		fetched, err := snapshot.clients[name].ListModels(ctx)
 		cancel()
 		fetchErr = err
 		if err == nil {

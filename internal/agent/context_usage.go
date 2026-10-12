@@ -92,5 +92,5 @@ func (c *ExecutionCoordinator) usageForSession(ctx context.Context, row *storage
 	return usage
 }
 func (c *ExecutionCoordinator) shouldCompact(ctx context.Context, row *storage.Session, selection modelmgr.Selection) bool {
-	return row != nil && c.contexts.ReachedCompactThreshold(ctx, c.usageForSession(ctx, row), selection.ModelSelection)
+	return row != nil && c.contexts.ReachedCompactThreshold(ctx, c.usageForSession(ctx, row), selection)
 }

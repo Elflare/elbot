@@ -32,10 +32,7 @@ type llmCallResult struct {
 }
 
 func (c *Caller) Call(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *dialogue.PendingUserMessage, stream delivery.MessageStream, out dialogue.Output) (result llmCallResult, callErr error) {
-	client, ok := selection.Client.(chatcompletions.Streamer)
-	if !ok {
-		return llmCallResult{}, fmt.Errorf("provider %q does not provide the Chat streaming capability", selection.Provider)
-	}
+	client := selection.Client.(chatcompletions.Streamer)
 	sessionID := session.ID
 	toolsEnabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
 	startedAt := time.Now()

@@ -32,7 +32,7 @@ ElBot 的 slash 命令由 Agent Core 统一处理，CLI、QQ、后续平台共�
 | 命令 | 作用 |
 | --- | --- |
 | `/models` | 查看模型列表。 |
-| `/models --fresh` 或 `/models --refresh` | 强制刷新模型列表缓存。 |
+| `/models --fresh` 或 `/models --refresh` | 重载厂商配置文件，再强制刷新模型列表。 |
 | `/model <编号或名称>` | 切换当前 Session 模式使用的模型。 |
 | `/model --chat <模型>` | 切换 chat 模式模型。 |
 | `/model --work <模型>` | 切换 work 模式模型。 |

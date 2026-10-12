@@ -5,28 +5,29 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
 	"elbot/internal/config"
-	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/signal"
 )
 
 type Options struct {
-	Clients      map[string]llm.Client
-	Providers    map[string]config.ProviderConfig
-	ModeModels   map[string]config.ModelSelection
-	CompactModel config.ModelSelection
-	NamingModel  config.ModelSelection
-	StatePath    string
-	DefaultMode  string
+	Clients       map[string]llm.Client
+	Providers     map[string]config.ProviderConfig
+	ModeModels    map[string]config.ModelSelection
+	CompactModel  config.ModelSelection
+	NamingModel   config.ModelSelection
+	StatePath     string
+	DefaultMode   string
+	Metadata      config.ModelMetadataConfig                              // Initial model-window defaults.
+	LoadProviders func(context.Context) (config.ProviderFile, error)      // Reads and validates only the reloadable configuration.
+	BuildClient   func(string, config.ProviderConfig) (llm.Client, error) // Creates a new client for the named provider.
 }
 
-// Service publishes complete selection snapshots. Its provider configuration
-// and clients are immutable after construction; callers own their requests.
+// Service publishes complete selection snapshots. Reloading replaces provider
+// data as a unit; callers retain their snapshot for the lifetime of an operation.
 type Service struct {
 	mu             sync.RWMutex
 	state          runtimeState
@@ -34,9 +35,10 @@ type Service struct {
 	statePath      string
 	sessionState   config.StateSessionConfig
 	save           func(string, config.StateConfig) error
-	clients        map[string]llm.Client
-	origins        map[string]llm.Origin
-	providers      map[string]*providerCatalog
+	providers      *providerSet
+	reloadMu       sync.Mutex
+	loadProviders  func(context.Context) (config.ProviderFile, error)
+	buildClient    func(string, config.ProviderConfig) (llm.Client, error)
 	retrying       *signal.Signal[ModelRetryingEvent, signal.Empty]
 	logConnections []*signal.Connection
 }
@@ -62,54 +64,21 @@ func New(opts Options) (*Service, error) {
 		}
 	}
 	s := &Service{
-		state:        runtimeState{modes: cloneModes(opts.ModeModels), compact: opts.CompactModel, naming: opts.NamingModel, listProvider: opts.ModeModels["work"].Provider},
-		statePath:    opts.StatePath,
-		sessionState: config.StateSessionConfig{DefaultMode: opts.DefaultMode},
-		save:         config.SaveState,
-		clients:      make(map[string]llm.Client, len(opts.Providers)),
-		origins:      make(map[string]llm.Origin, len(opts.Providers)),
-		providers:    make(map[string]*providerCatalog, len(opts.Providers)),
-		retrying:     signal.New[ModelRetryingEvent, signal.Empty]("model.retrying"),
+		state:         runtimeState{modes: cloneModes(opts.ModeModels), compact: opts.CompactModel, naming: opts.NamingModel, listProvider: opts.ModeModels["work"].Provider},
+		statePath:     opts.StatePath,
+		sessionState:  config.StateSessionConfig{DefaultMode: opts.DefaultMode},
+		save:          config.SaveState,
+		loadProviders: opts.LoadProviders,
+		buildClient:   opts.BuildClient,
+		retrying:      signal.New[ModelRetryingEvent, signal.Empty]("model.retrying"),
 	}
-	for name, provider := range opts.Providers {
-		client := opts.Clients[name]
-		if client == nil {
-			return nil, fmt.Errorf("client not found for provider %q", name)
-		}
-		mode := provider.EffectiveAPIMode()
-		s.clients[name] = client
-		s.origins[name] = llm.Origin{Provider: name, APIType: llm.APIType(mode), BaseURL: strings.TrimRight(provider.BaseURL, "/")}
-		s.providers[name] = &providerCatalog{
-			baseURL: provider.BaseURL, apiKey: provider.APIKey, apiKeyEnv: provider.APIKeyEnv,
-			configured: append([]string(nil), provider.Models...),
-		}
+	var err error
+	s.providers, err = s.newProviderSet(config.ProviderFile{Providers: opts.Providers, ModelMetadata: opts.Metadata}, opts.Clients)
+	if err != nil {
+		return nil, err
 	}
 	if err := s.connectLogSignals(); err != nil {
 		return nil, err
-	}
-	for provider, client := range s.clients {
-		if notifier, ok := client.(llm.RetryNotifier); ok {
-			notifier.SetRetryNotifier(func(ctx context.Context, event llm.RetryEvent) {
-				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				record := ModelRetryingEvent{Provider: provider, Retry: event, CallContext: ctx}
-				if facts.SessionID != "" {
-					record.Identity.SessionID = &facts.SessionID
-				}
-				if facts.RunID != "" {
-					record.Identity.RunID = &facts.RunID
-				}
-				if facts.Attempt != "" {
-					record.Identity.Attempt = &facts.Attempt
-				}
-				if facts.RequestID != "" {
-					record.Identity.RequestID = &facts.RequestID
-				}
-				if facts.RootRequestID != "" {
-					record.Identity.RootRequestID = &facts.RootRequestID
-				}
-				_, _ = s.retrying.Emit(context.WithoutCancel(ctx), record)
-			})
-		}
 	}
 	return s, nil
 }
@@ -124,13 +93,16 @@ func validateSelection(name string, selected config.ModelSelection, providers ma
 	return nil
 }
 
-func (s *Service) ClientForProvider(provider string) llm.Client { return s.clients[provider] }
+func (s *Service) ClientForProvider(provider string) llm.Client {
+	return s.providerSnapshot().clients[provider]
+}
 
-// ProviderOrigins supplies immutable configuration facts for composition. Model
-// selection does not choose business routes or inspect native client interfaces.
+// ProviderOrigins returns independent source facts from the current generation.
+// Operations use Selection.Origin to keep these facts paired with their client.
 func (s *Service) ProviderOrigins() []llm.Origin {
-	origins := make([]llm.Origin, 0, len(s.origins))
-	for _, origin := range s.origins {
+	snapshot := s.providerSnapshot()
+	origins := make([]llm.Origin, 0, len(snapshot.origins))
+	for _, origin := range snapshot.origins {
 		origins = append(origins, origin)
 	}
 	sort.Slice(origins, func(i, j int) bool { return origins[i].Provider < origins[j].Provider })

@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `/models --fresh`／`--refresh` 现在可刷新配置文件。
 - 大幅重构底层，优化各包职责与边界
 - 重构日志系统
 - 重构通知系统

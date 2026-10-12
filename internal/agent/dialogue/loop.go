@@ -61,6 +61,7 @@ type LoopInput struct {
 
 // Each prepared loop keeps its own typed protocol state for this turn.
 type Loop interface {
+	CheckSelection(modelmgr.Selection) error
 	PrepareTurn(context.Context, TurnMaterials) (PreparedLoop, error)
 }
 type PreparedLoop interface {
@@ -69,8 +70,7 @@ type PreparedLoop interface {
 	RunLoop(context.Context, context.Context, LoopInput, Output) LoopResult
 }
 type LoopResolver interface {
-	LoopFor(string) (Loop, error)
-	OriginFor(string) (llm.Origin, error)
+	LoopFor(llm.APIType) (Loop, error)
 }
 
 type LoopResult struct {

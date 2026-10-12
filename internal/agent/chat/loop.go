@@ -8,6 +8,7 @@ import (
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/contextmgr"
 	"elbot/internal/llm"
+	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
@@ -37,6 +38,15 @@ type preparedLoop struct {
 	compactSeedOnCurrentUser bool
 	summaryOnCurrentUser     bool
 }
+
+// CheckSelection validates the native capability before any turn input is saved.
+func (r *Loop) CheckSelection(selection modelmgr.Selection) error {
+	if _, ok := selection.Client.(chatcompletions.Streamer); !ok {
+		return fmt.Errorf("provider %q does not provide the Chat streaming capability", selection.Provider)
+	}
+	return nil
+}
+
 type chatTurnState struct {
 	ctx        context.Context
 	requestCtx context.Context

@@ -1,4 +1,4 @@
-package contextmgr
+package modelmgr
 
 import (
 	"context"

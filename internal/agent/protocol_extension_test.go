@@ -35,6 +35,8 @@ type extensionPrepared struct {
 	user *storage.Message
 }
 
+func (*extensionLoop) CheckSelection(modelmgr.Selection) error { return nil }
+
 func (l *extensionLoop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials) (dialogue.PreparedLoop, error) {
 	model, ok := contextinfo.ModelFromContext(ctx)
 	if !ok || model.APIType != "extension" || model.Provider != "extension-provider" || contextinfo.RootRequestIDFromContext(ctx) != "" {
@@ -94,13 +96,7 @@ func TestRegisteredProtocolUsesActualAgentAdmissionPersistenceAndSessionCapabili
 	assembled := assembleTestOptions(t, opts)
 	loop := &extensionLoop{t: t, store: opts.Store}
 	compactor, material := &extensionCompactor{}, &extensionMaterial{}
-	if err := assembled.Routes.RegisterCompactor("extension", compactor); err != nil {
-		t.Fatal(err)
-	}
-	if err := assembled.Routes.RegisterMaterial("extension", material); err != nil {
-		t.Fatal(err)
-	}
-	if err := assembled.Routes.Register(routes.Binding{Origin: llm.Origin{Provider: "extension-provider", APIType: "extension"}, Client: client, Loop: loop, Compactor: compactor, Material: material}); err != nil {
+	if err := assembled.Routes.Register(routes.Binding{APIType: "extension", Loop: loop, Compactor: compactor, Material: material}); err != nil {
 		t.Fatal(err)
 	}
 	a, err := newTestAssembly(t.Context(), assembled)

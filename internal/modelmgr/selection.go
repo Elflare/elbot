@@ -1,6 +1,7 @@
 package modelmgr
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -12,7 +13,9 @@ import (
 // Selection fixes both the model identity and its client for one operation.
 type Selection struct {
 	config.ModelSelection
-	Client llm.Client
+	Client    llm.Client
+	Origin    llm.Origin   // Configured source paired with Client for this operation.
+	providers *providerSet // Retains this operation's configuration and window caches.
 }
 
 type NamingSelection struct {
@@ -29,8 +32,19 @@ func (state runtimeState) mode(mode string) config.ModelSelection {
 }
 
 func (s *Service) Resolve(selected config.ModelSelection) Selection {
-	client := s.clients[selected.Provider]
-	return Selection{ModelSelection: selected, Client: client}
+	return s.providerSnapshot().resolve(selected)
+}
+
+func (p *providerSet) resolve(selected config.ModelSelection) Selection {
+	return Selection{ModelSelection: selected, Client: p.clients[selected.Provider], Origin: p.origins[selected.Provider], providers: p}
+}
+
+// ContextWindow uses the same provider generation as the selected client.
+func (s Selection) ContextWindow(ctx context.Context) int {
+	if s.providers == nil {
+		return config.DefaultContextWindow
+	}
+	return s.providers.windows.Resolve(ctx, s.Provider, s.Model)
 }
 
 // ValidateSelection checks an explicit task choice without changing shared state.
@@ -38,7 +52,7 @@ func (s *Service) ValidateSelection(selected config.ModelSelection) error {
 	if selected.Provider == "" || selected.Model == "" {
 		return fmt.Errorf("model provider/model must both be set")
 	}
-	if s.clients[selected.Provider] == nil {
+	if s.ClientForProvider(selected.Provider) == nil {
 		return fmt.Errorf("model provider %q not found", selected.Provider)
 	}
 	return nil
@@ -47,8 +61,9 @@ func (s *Service) ValidateSelection(selected config.ModelSelection) error {
 func (s *Service) ResolveMode(mode string) Selection {
 	s.mu.RLock()
 	selected := s.state.mode(mode)
+	providers := s.providers
 	s.mu.RUnlock()
-	return s.Resolve(selected)
+	return providers.resolve(selected)
 }
 
 func (s *Service) ResolveCompact(fallback Selection) Selection {
@@ -58,14 +73,15 @@ func (s *Service) ResolveCompact(fallback Selection) Selection {
 	if selected.Provider == "" || selected.Model == "" {
 		return fallback
 	}
-	return s.Resolve(selected)
+	return fallback.providers.resolve(selected)
 }
 
 func (s *Service) ResolveNaming() NamingSelection {
 	s.mu.RLock()
 	naming, fallback := s.state.naming, s.state.mode("work")
+	providers := s.providers
 	s.mu.RUnlock()
-	return NamingSelection{Naming: s.Resolve(naming), Fallback: s.Resolve(fallback)}
+	return NamingSelection{Naming: providers.resolve(naming), Fallback: providers.resolve(fallback)}
 }
 
 func (s *Service) CurrentModelForMode(mode string) ModelOption {

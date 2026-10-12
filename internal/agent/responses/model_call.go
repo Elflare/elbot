@@ -22,10 +22,7 @@ import (
 )
 
 func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessage, stream delivery.MessageStream) (final dialogue.CallOutput, err error) {
-	client, ok := s.selection.Client.(api.Streamer)
-	if !ok {
-		return final, fmt.Errorf("provider %q does not provide Responses streaming", s.selection.Provider)
-	}
+	client := s.selection.Client.(api.Streamer)
 	ctx = hook.WithReadOnlyCalls(ctx)
 	observation := s.route.Calls.Begin(s.session.ID, s.selection)
 	defer func() {
@@ -77,10 +74,7 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 		Store:        &store,
 		Include:      []string{"reasoning.encrypted_content"},
 	}
-	origin, err := s.route.View.Providers.OriginFor(s.selection.Provider)
-	if err != nil {
-		return final, err
-	}
+	origin := s.selection.Origin
 	baseURL := origin.BaseURL
 	if s.checkpoint != nil {
 		request.PreviousResponseID = s.checkpoint.ResponseID

@@ -79,7 +79,8 @@ type ModelRequest struct {
 }
 
 type ModelClients struct {
-	ByProvider map[string]llm.Client
+	ByProvider  map[string]llm.Client
+	BuildClient func(string, config.ProviderConfig) (llm.Client, error) // Reuses the startup adapter factory for provider reloads.
 }
 
 type ModelFactory interface {

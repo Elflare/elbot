@@ -45,13 +45,9 @@ func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.
 		release()
 		return session, turn.Input{}, err
 	}
-	origin, err := c.dialogue.OriginFor(selection.Provider)
+	latest, err := c.sessions.RegisterOrigin(ctx, session.ID, selection.Origin)
 	if err == nil {
-		var latest *storage.Session
-		latest, err = c.sessions.RegisterOrigin(ctx, session.ID, origin)
-		if err == nil {
-			*session = *latest
-		}
+		*session = *latest
 	}
 	release()
 	if err != nil {
