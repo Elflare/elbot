@@ -672,6 +672,14 @@
       "translation": "Resident memory",
       "updated_at": 1783238361
     },
+    "README.zh-CN.md:table:9c7f11653928784a6bc055802c5481ce674231255532fd4934edf6faad85eb9c": {
+      "kind": "table",
+      "source": "~40ms（N5105，SATA 固态上测试）",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "9c7f11653928784a6bc055802c5481ce674231255532fd4934edf6faad85eb9c",
+      "translation": "~40ms (Tested on N5105, SATA SSD)",
+      "updated_at": 1791790691
+    },
     "README.zh-CN.md:table:a683b9e9a5e0df6abfa23dfa49a96fbf1da2f7c700be0959e3d5b1839b10fe93": {
       "kind": "table",
       "source": "不注入",
@@ -696,14 +704,6 @@
       "translation": "Value",
       "updated_at": 1783238361
     },
-    "README.zh-CN.md:table:f49365618a4d710bfb55d24874004f0124006a0b0d307cdd70444e813b601527": {
-      "kind": "table",
-      "source": "<10ms（N5105，SATA 固态上测试）",
-      "source_file": "README.zh-CN.md",
-      "source_hash": "f49365618a4d710bfb55d24874004f0124006a0b0d307cdd70444e813b601527",
-      "translation": "<10ms (tested on N5105, SATA SSD)",
-      "updated_at": 1783238675
-    },
     "README.zh-CN.md:table:fbb169a5376de755bf402f921702e72099bbe8c347d17316176a37b3452f2ce9": {
       "kind": "table",
       "source": "二进制文件大小",
@@ -714,8 +714,8 @@
     }
   },
   "source": "README.zh-CN.md",
-  "source_hash": "cd50d74de9b6716c4300c86f8721f31a76124cb6819ac85bba3fbfa042470ecc",
+  "source_hash": "74007dd39a22ce915ef53a8b1531ff79d4ed2adbb9be50d1f155c0b1e7d5d9c7",
   "target": "README.md",
-  "updated_at": 1791357972,
+  "updated_at": 1791790691,
   "version": 2
 }
