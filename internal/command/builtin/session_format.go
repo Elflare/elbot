@@ -195,8 +195,8 @@ func formatSessionsWithOffset(sessions []storage.SessionSummary, currentID strin
 			title = "(untitled)"
 		}
 		sb.WriteString(fmt.Sprintf("  [%d] %s%s\n      id: %s\n      platform: %s/%s\n      updated: %s\n      messages: %d\n", numberOffset+i+1, title, sessionMarkers(s, currentID), s.ID, s.Platform, s.PlatformScopeID, formatTime(s.UpdatedAt), s.MessageCount))
-		if s.MessagePreview != "" {
-			sb.WriteString(fmt.Sprintf("      preview: %s\n", s.MessagePreview))
+		if preview := sessionMessagePreview(s.Messages); preview != "" {
+			sb.WriteString(fmt.Sprintf("      preview: %s\n", preview))
 		}
 	}
 	return trimTrailingNewlines(sb.String())
@@ -253,4 +253,39 @@ func emptyTODO(s string) string {
 		return "TODO"
 	}
 	return s
+}
+
+func sessionMessagePreview(messages []storage.Message) string {
+	var parts []string
+	for i, message := range messages {
+		if i == 4 {
+			break
+		}
+		content := strings.TrimSpace(strings.ReplaceAll(message.Content, "\n", " "))
+		if content == "" {
+			continue
+		}
+		runes := []rune(content)
+		if len(runes) > 24 {
+			content = string(runes[:24]) + "..."
+		}
+		role := "u"
+		if message.Role == storage.RoleAssistant {
+			role = "b"
+		}
+		parts = append(parts, role+": "+content)
+	}
+	if len(parts) > 0 && len(messages) > 4 {
+		parts = append(parts, "...")
+	}
+	return strings.Join(parts, " / ")
+}
+
+func sessionStatusPreview(text string) string {
+	text = strings.TrimSpace(strings.ReplaceAll(text, "\n", " "))
+	runes := []rune(text)
+	if len(runes) > 80 {
+		return string(runes[:80]) + "..."
+	}
+	return text
 }

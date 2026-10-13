@@ -27,9 +27,13 @@ func (p *Preparer) LoadMaterials(ctx context.Context, in TurnInput) (TurnMateria
 	if len(input.Segments) == 0 {
 		input.Segments = llm.TextSegments(in.Text)
 	}
-	segments := materialize(ctx, p.Media, input.Segments)
+	archived, err := p.ArchiveMaterials(ctx, []llm.LLMMessage{{Segments: input.Segments}})
+	if err != nil {
+		return TurnMaterials{}, err
+	}
+	segments := archived[0].Segments
 	message := &storage.Message{ID: storage.NewID(), SessionID: in.Session.ID, Role: storage.RoleUser,
-		Content: llm.SegmentsContentText(segments), Segments: StoredMessageSegments(segments), ReplyToPlatformMessageID: in.ReplyToPlatformMessageID}
+		Content: MessageContent(segments), Segments: StoredMessageSegments(segments), ReplyToPlatformMessageID: in.ReplyToPlatformMessageID}
 	input.Segments = segments
 	record := events.LogRecord{
 		Category:     events.LogRuntime,
@@ -92,12 +96,9 @@ func (p *Preparer) PrepareInput(ctx context.Context, in LoopInput, user *storage
 	if in.Session.Mode == storage.SessionModeWork || in.Session.Mode == storage.SessionModeBackground {
 		tools = event.LLM.Tools
 	}
-	return materialize(ctx, p.Media, event.Message.Segments), tools, nil
-}
-
-func materialize(ctx context.Context, manager *media.Manager, segments []llm.MessageSegment) []llm.MessageSegment {
-	if manager == nil {
-		return append([]llm.MessageSegment(nil), segments...)
+	archived, err := p.ArchiveMaterials(ctx, []llm.LLMMessage{{Segments: event.Message.Segments}})
+	if err != nil {
+		return nil, nil, err
 	}
-	return manager.Materialize(ctx, segments)
+	return archived[0].Segments, tools, nil
 }

@@ -64,7 +64,7 @@ func TestServiceCreateCurrentResumeListStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}
-	if status.MessageCount != 2 || status.LastUserPreview != "hello" || status.LastAnswerPreview != "hi" {
+	if status.MessageCount != 2 || status.LastUserContent != "hello" || status.LastAnswerContent != "hi" {
 		t.Fatalf("status = %#v", status)
 	}
 

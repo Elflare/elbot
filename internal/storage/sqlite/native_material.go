@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 
 	"elbot/internal/storage"
 )
@@ -205,11 +204,6 @@ func (r *DialogueRepository) InputsForExchange(ctx context.Context, exchangeID s
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
-	}
-	if manifest == "" {
-		// Version 19 submitted completed tool outputs before user inputs.
-		sort.SliceStable(inputs, func(i, j int) bool { return inputs[i].CallID != "" && inputs[j].CallID == "" })
-		return inputs, nil
 	}
 	var ids []string
 	if err := json.Unmarshal([]byte(manifest), &ids); err != nil {

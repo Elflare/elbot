@@ -22,6 +22,7 @@ func (s *Service) ListPage(ctx context.Context, scope Scope, query string, limit
 		Query:                         query,
 		Limit:                         limit,
 		Offset:                        offset,
+		MessageLimit:                  5,
 	})
 }
 
@@ -43,6 +44,7 @@ func (s *Service) ListResumablePage(ctx context.Context, scope Scope, limit, off
 		OrderByUpdatedAt:              true,
 		Limit:                         limit,
 		Offset:                        offset,
+		MessageLimit:                  5,
 	})
 }
 
@@ -60,15 +62,15 @@ func (s *Service) Status(ctx context.Context, scope Scope) (*Status, error) {
 		message := messages[i]
 		switch message.Role {
 		case storage.RoleUser:
-			if status.LastUserPreview == "" {
-				status.LastUserPreview = preview(message.Content)
+			if status.LastUserContent == "" {
+				status.LastUserContent = message.Content
 			}
 		case storage.RoleAssistant:
-			if status.LastAnswerPreview == "" {
-				status.LastAnswerPreview = preview(message.Content)
+			if status.LastAnswerContent == "" {
+				status.LastAnswerContent = message.Content
 			}
 		}
-		if status.LastUserPreview != "" && status.LastAnswerPreview != "" {
+		if status.LastUserContent != "" && status.LastAnswerContent != "" {
 			break
 		}
 	}

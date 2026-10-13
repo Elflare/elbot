@@ -588,6 +588,11 @@ ON context_summaries(to_message_id);
 		name:    "normalize_native_seed_media_ids",
 		sql:     `UPDATE native_seeds SET media_ids_json='[]' WHERE media_ids_json='null';`,
 	},
+	{
+		version: 24,
+		name:    "remove_tool_result_preview",
+		sql:     `ALTER TABLE tool_call_records DROP COLUMN result_preview;`,
+	},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {

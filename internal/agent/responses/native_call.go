@@ -26,6 +26,32 @@ type nativeCallResult struct {
 	AllowedTools  []string
 }
 
+// inputReference identifies one ordered input in an immutable record. Synthetic
+// items (branch closure/compaction trigger) are frozen inline; never media data.
+type inputReference struct {
+	Kind  string          `json:"kind"`
+	ID    string          `json:"id,omitempty"`
+	Index int             `json:"index,omitempty"`
+	Item  json.RawMessage `json:"item,omitempty"`
+}
+
+func requestAudit(parameters json.RawMessage, refs []inputReference) (string, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(parameters, &fields); err != nil {
+		return "", err
+	}
+	if refs == nil {
+		refs = []inputReference{}
+	}
+	raw, err := json.Marshal(refs)
+	if err != nil {
+		return "", err
+	}
+	fields["input_refs"] = raw
+	encoded, err := json.Marshal(fields)
+	return string(encoded), err
+}
+
 // Each actual HTTP attempt gets its own immutable request and terminal facts.
 // Local hooks/inputs are prepared by the caller once, outside recovery retries.
 func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request api.Request, consumed []string, stream delivery.MessageStream, observation *dialogue.CallObservation) (result nativeCallResult, err error) {
@@ -43,6 +69,10 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		return result, err
 	}
 	result.AllowedTools = prepared.AllowedTools()
+	audit, err := requestAudit(prepared.ParametersJSON(), s.requestReferences)
+	if err != nil {
+		return result, err
+	}
 	origin := s.selection.Origin
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	ids, err := json.Marshal(consumed)
@@ -59,7 +89,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		RunID:                facts.RunID,
 		Attempt:              facts.Attempt,
 		PreviousCheckpointID: s.checkpointID(),
-		RequestJSON:          string(prepared.JSON()),
+		RequestJSON:          audit,
 		InputIDsJSON:         string(ids),
 	}
 	locked, release, err := s.route.Messages.Gate.Enter(ctx, s.session.ID)

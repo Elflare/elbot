@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"elbot/internal/storage"
 )
@@ -193,8 +192,8 @@ func (r *SessionRepository) List(ctx context.Context, req storage.ListSessionsRe
 SELECT s.id, s.owner_id, s.platform, s.platform_scope_id, s.title, s.mode, s.status,
        s.created_at, s.updated_at, s.archived_at, s.pinned_at,
        COUNT(m.id) AS message_count,
-       COALESCE((SELECT content FROM messages WHERE session_id = s.id AND role = 'user' ORDER BY created_at DESC, rowid DESC LIMIT 1), '') AS last_user_preview,
-       COALESCE((SELECT content FROM messages WHERE session_id = s.id AND role = 'assistant' ORDER BY created_at DESC, rowid DESC LIMIT 1), '') AS last_bot_preview
+       COALESCE((SELECT content FROM messages WHERE session_id = s.id AND role = 'user' ORDER BY created_at DESC, rowid DESC LIMIT 1), '') AS last_user_content,
+       COALESCE((SELECT content FROM messages WHERE session_id = s.id AND role = 'assistant' ORDER BY created_at DESC, rowid DESC LIMIT 1), '') AS last_assistant_content
 FROM sessions s
 LEFT JOIN messages m ON m.session_id = s.id
 WHERE %s
@@ -226,8 +225,8 @@ LIMIT ? OFFSET ?`, strings.Join(where, " AND "), orderBy)
 			&archivedAt,
 			&pinnedAt,
 			&summary.MessageCount,
-			&summary.LastUserPreview,
-			&summary.LastBotPreview,
+			&summary.LastUserContent,
+			&summary.LastAssistantContent,
 		); err != nil {
 			return nil, fmt.Errorf("scan session summary: %w", err)
 		}
@@ -260,67 +259,33 @@ LIMIT ? OFFSET ?`, strings.Join(where, " AND "), orderBy)
 		return nil, fmt.Errorf("close session rows: %w", err)
 	}
 	for i := range sessions {
-		sessions[i].MessagePreview = r.messagePreview(ctx, sessions[i].ID)
+		if req.MessageLimit > 0 {
+			sessions[i].Messages, err = r.messageExcerpts(ctx, sessions[i].ID, req.MessageLimit)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 	return sessions, nil
 }
 
-func (r *SessionRepository) messagePreview(ctx context.Context, sessionID string) string {
-	rows, err := r.db.QueryContext(ctx, `
-SELECT role, content
-FROM messages
-WHERE session_id = ? AND role IN ('user', 'assistant')
-ORDER BY created_at ASC, rowid ASC
-LIMIT 4`, sessionID)
+func (r *SessionRepository) messageExcerpts(ctx context.Context, sessionID string, limit int) ([]storage.Message, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id, role, content FROM messages
+ WHERE session_id = ? AND role IN ('user', 'assistant')
+ ORDER BY created_at ASC, rowid ASC LIMIT ?`, sessionID, limit)
 	if err != nil {
-		return ""
+		return nil, err
 	}
 	defer rows.Close()
-
-	parts := []string{}
+	var messages []storage.Message
 	for rows.Next() {
-		var role, content string
-		if err := rows.Scan(&role, &content); err != nil {
-			return ""
+		message := storage.Message{SessionID: sessionID}
+		if err := rows.Scan(&message.ID, &message.Role, &message.Content); err != nil {
+			return nil, err
 		}
-		if strings.TrimSpace(content) == "" {
-			continue
-		}
-		parts = append(parts, rolePrefix(role)+": "+shortPreview(content, 24))
+		messages = append(messages, message)
 	}
-	if len(parts) == 0 || rows.Err() != nil {
-		return ""
-	}
-
-	preview := strings.Join(parts, " / ")
-	// TODO: 如果未来列表支持展开详情，可以在这里改成返回结构化片段而不是纯文本。
-	var total int
-	if err := r.db.QueryRowContext(ctx, `
-SELECT COUNT(*)
-FROM messages
-WHERE session_id = ? AND role IN ('user', 'assistant')`, sessionID).Scan(&total); err != nil {
-		return preview
-	}
-	if total > len(parts) {
-		preview += " / ..."
-	}
-	return preview
-}
-
-func rolePrefix(role string) string {
-	if role == storage.RoleAssistant {
-		return "b"
-	}
-	return "u"
-}
-
-func shortPreview(text string, maxRunes int) string {
-	text = strings.TrimSpace(strings.ReplaceAll(text, "\n", " "))
-	if utf8.RuneCountInString(text) <= maxRunes {
-		return text
-	}
-	runes := []rune(text)
-	return string(runes[:maxRunes]) + "..."
+	return messages, rows.Err()
 }
 
 func (r *SessionRepository) Delete(ctx context.Context, id string) error {

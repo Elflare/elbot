@@ -13,7 +13,6 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
-	"elbot/internal/media"
 	"elbot/internal/modelmgr"
 	"elbot/internal/session"
 	"elbot/internal/signal"
@@ -24,7 +23,7 @@ import (
 
 type CallProcessor struct {
 	Messages  *MessageStore
-	Media     *media.Manager
+	Preparer  *Preparer
 	Hooks     Hooks
 	Identity  Identity
 	Tools     *ToolExecutor
@@ -146,27 +145,10 @@ func (c *CallProcessor) NotifyError(ctx context.Context, event hook.Event, err e
 	event.Error = err
 	c.Hooks.Notify(ctx, event)
 }
-func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *PendingUserMessage, record *events.LogRecord) (CallInput, func(), error) {
-	input, err := c.PrepareProjection(ctx, session, selection, messages, tools, pending, c.Messages.Committer("append_pending_user_message"), record)
-	if err != nil {
-		return CallInput{}, func() {}, err
-	}
-	cleanup := func() {}
-	if c.Media != nil {
-		input.RequestMessages, cleanup, err = c.Media.AcquireForLLM(ctx, input.RequestMessages)
-		if err != nil {
-			record.Content += fmt.Sprintf("\nmedia_error=%v", err)
-			if errors.Is(err, context.Canceled) {
-				record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
-			}
-		}
-	}
-	return input, cleanup, err
-}
 
-// PrepareProjection applies common hooks and authorization to business views.
-// Native routes acquire only their new wire input, not old display history.
-func (c *CallProcessor) PrepareProjection(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *PendingUserMessage, persistence MessageCommitter, record *events.LogRecord) (CallInput, error) {
+// PrepareCall applies common hooks and authorization to canonical business
+// material. PrepareMaterials expands only the material selected for this call.
+func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *PendingUserMessage, persistence MessageCommitter, record *events.LogRecord) (CallInput, error) {
 	sessionID := session.ID
 	toolsEnabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
 	if !toolsEnabled {
@@ -246,10 +228,14 @@ func (c *CallProcessor) PrepareProjection(ctx context.Context, session *storage.
 		tools = nil
 	}
 	if pending != nil {
-		segments := materialize(ctx, c.Media, event.Message.Segments)
+		archived, err := c.Preparer.ArchiveMaterials(ctx, []llm.LLMMessage{{Segments: event.Message.Segments}})
+		if err != nil {
+			return CallInput{}, err
+		}
+		segments := archived[0].Segments
 		baseMessages[pending.MessageIndex].Segments = segments
 		requestMessages[pending.MessageIndex].Segments = segments
-		pending.Message.Content = llm.SegmentsContentText(segments)
+		pending.Message.Content = MessageContent(segments)
 		pending.Message.Segments = StoredMessageSegments(segments)
 		if _, err := persistence.Commit(ctx, &pending.Message); err != nil {
 			return CallInput{}, err

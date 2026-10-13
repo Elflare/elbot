@@ -31,7 +31,7 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 		}
 		observation.Publish(ctx, err)
 	}()
-	projection, err := s.route.Calls.PrepareProjection(ctx, s.session, s.selection, s.projection, s.tools, pending, inputCommitter{state: s}, &observation.LogRecord)
+	projection, err := s.route.Calls.PrepareCall(ctx, s.session, s.selection, s.projection, s.tools, pending, inputCommitter{state: s}, &observation.LogRecord)
 	if err != nil {
 		return final, err
 	}
@@ -55,8 +55,10 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 	}
 	defer cleanup()
 	var consumed []string
+	s.requestReferences = nil
 	for _, input := range inputs {
 		consumed = append(consumed, input.ID)
+		s.requestReferences = append(s.requestReferences, inputReference{Kind: "input", ID: input.ID})
 	}
 	instructions, err := s.instructions(ctx)
 	if err != nil {
@@ -130,12 +132,17 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 			}
 			defer release()
 			request.Input = append(prefix, items...)
+			var refs []inputReference
+			for i := range prefix {
+				refs = append(refs, inputReference{Kind: "continuation", ID: s.seed.ID, Index: i})
+			}
+			s.requestReferences = append(refs, s.requestReferences...)
 		}
 	}
 	replay := !store && (s.checkpoint != nil || s.seed != nil) || request.PreviousResponseID == "" && s.seed != nil || request.PreviousResponseID != "" && baseURL != origin.BaseURL
 	if replay {
 		var release func()
-		request, release, err = s.replayRequest(ctx, request, items, origin)
+		request, release, err = s.replayRequest(ctx, request, items, consumed, origin)
 		if err != nil {
 			return final, err
 		}
@@ -147,7 +154,7 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 		observation.Publish(ctx, err)
 		observation = s.route.Calls.Begin(s.session.ID, s.selection)
 		var release func()
-		request, release, err = s.replayRequest(ctx, request, items, origin)
+		request, release, err = s.replayRequest(ctx, request, items, consumed, origin)
 		if err != nil {
 			return final, err
 		}
@@ -208,7 +215,7 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 	return final, nil
 }
 
-func (s *turnState) replayRequest(ctx context.Context, request api.Request, inputs []api.Item, target llm.Origin) (api.Request, func(), error) {
+func (s *turnState) replayRequest(ctx context.Context, request api.Request, inputs []api.Item, consumed []string, target llm.Origin) (api.Request, func(), error) {
 	if s.route.Context == nil {
 		return request, func() {}, fmt.Errorf("Responses 原生材料能力未配置")
 	}
@@ -225,6 +232,13 @@ func (s *turnState) replayRequest(ctx context.Context, request api.Request, inpu
 	}
 	request.PreviousResponseID = ""
 	request.Input = append(prefix, inputs...)
+	// A retry replaces the actual-input manifest while the consumed-input list
+	// remains the same. Replayed prefixes never become newly consumed inputs.
+	refs := append([]inputReference(nil), w.References...)
+	for _, id := range consumed {
+		refs = append(refs, inputReference{Kind: "input", ID: id})
+	}
+	s.requestReferences = refs
 	if err := validateCallLinks(request.Input, false); err != nil {
 		release()
 		return request, func() {}, err

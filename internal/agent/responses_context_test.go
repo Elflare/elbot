@@ -380,14 +380,21 @@ func TestResponsesCompactionFailureKeepsOriginalSession(t *testing.T) {
 	}
 }
 
-func TestResponsesRecoveryRefusesMissingMedia(t *testing.T) {
+func TestResponsesRecoveryUsesPlaceholderWithoutChangingArchive(t *testing.T) {
 	var center *media.Manager
 	var id string
 	registry := tool.NewRegistry()
 	_ = registry.Register(nativeTool{name: "image", run: func(context.Context, tool.CallRequest) (*tool.Result, error) {
 		return &tool.Result{Segments: []llm.MessageSegment{{Type: llm.SegmentImage, MediaID: id}}}, nil
 	}})
-	f := newNativeFixture(t, func(index int, _ nativeTestRequest, w http.ResponseWriter) {
+	f := newNativeFixture(t, func(index int, req nativeTestRequest, w http.ResponseWriter) {
+		if index == 3 {
+			if !strings.Contains(inputJSON(req), "媒体不可用") || strings.Contains(inputJSON(req), "base64,") {
+				t.Fatalf("missing media request=%s", inputJSON(req))
+			}
+			emitNative(w, "recovered", "completed", nativeText("continued"))
+			return
+		}
 		if index == 0 {
 			emitNative(w, "head", "completed", nativeCall("call", "image", `{}`))
 			return
@@ -413,10 +420,10 @@ func TestResponsesRecoveryRefusesMissingMedia(t *testing.T) {
 	if err := os.Remove(item.LocalPath); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.agent.HandleMessage(t.Context(), "new input"); err == nil {
-		t.Fatal("missing media was converted to text")
+	if err := f.agent.HandleMessage(t.Context(), "new input"); err != nil {
+		t.Fatal(err)
 	}
-	if len(f.captured()) != 3 {
+	if len(f.captured()) != 4 {
 		t.Fatalf("attempts=%d", len(f.captured()))
 	}
 }

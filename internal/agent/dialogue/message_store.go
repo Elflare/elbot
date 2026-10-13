@@ -6,13 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"elbot/internal/llm"
-	"elbot/internal/media"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
 )
 
 type AssistantMetadata struct {
@@ -30,7 +29,7 @@ func ToolCallStorageMessage(sessionID, content, rawText string, calls []llm.Tool
 }
 
 func StoredMessageSegments(segments []llm.MessageSegment) string {
-	if len(segments) == 0 || segmentsTextOnly(segments) {
+	if len(segments) == 0 || (len(segments) == 1 && segments[0].Text != "" && segments[0] == (llm.MessageSegment{Type: llm.SegmentText, Text: segments[0].Text})) {
 		return ""
 	}
 	segments = append([]llm.MessageSegment(nil), segments...)
@@ -64,7 +63,7 @@ func ToolResultStorageMessage(sessionID string, message llm.LLMMessage) storage.
 	return storage.Message{
 		SessionID:  sessionID,
 		Role:       storage.RoleTool,
-		Content:    llm.SegmentsContentText(message.Segments),
+		Content:    MessageContent(message.Segments),
 		ToolCallID: message.ToolCallID,
 		Segments:   StoredMessageSegments(message.Segments),
 		Metadata:   ToolNameMetadata(message.Name),
@@ -79,30 +78,11 @@ func ToolNameMetadata(name string) string {
 	return string(data)
 }
 
-func PersistedToolMessage(message llm.LLMMessage) llm.LLMMessage {
-	content := llm.SegmentsContentText(message.Segments)
-	if message.Name != "discover_tool" || content == "" {
-		return message
-	}
-	var result tool.DiscoveryResult
-	if err := json.Unmarshal([]byte(content), &result); err != nil {
-		return message
-	}
-	names := make([]string, 0, len(result.Tools))
-	for _, discovered := range result.Tools {
-		if discovered.Info.Name != "" {
-			names = append(names, discovered.Info.Name)
-		}
-	}
-	message.Segments = llm.TextSegments(fmt.Sprintf("discover_tool found tools: %s", JoinNames(names)))
-	return message
-}
-
 // MessageStore is the single dialogue-message write boundary.
 type MessageStore struct {
 	Dialogues storage.DialogueRepository
 	Gate      *CommitGate
-	Media     *media.Manager
+	Preparer  *Preparer
 }
 
 func (s *MessageStore) Append(ctx context.Context, message *storage.Message, operation string) (events.LogResult, error) {
@@ -114,10 +94,14 @@ func (s *MessageStore) Append(ctx context.Context, message *storage.Message, ope
 
 func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit, operation string) (events.LogResult, error) {
 	for _, message := range commit.MessageRows() {
-		if message != nil && s.Media != nil && message.Segments != "" {
-			segments := s.Media.Materialize(ctx, MessageSegmentsFromStorage(message.Segments))
+		if message != nil && message.Segments != "" {
+			archived, err := s.Preparer.ArchiveMaterials(ctx, []llm.LLMMessage{MessageFromStorage(*message)})
+			if err != nil {
+				return events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}, err
+			}
+			segments := archived[0].Segments
 			message.Segments = StoredMessageSegments(segments)
-			message.Content = llm.SegmentsContentText(segments)
+			message.Content = MessageContent(segments)
 		}
 	}
 	logResult := events.LogResult{ResultStatus: events.ResultSucceeded, Content: fmt.Sprintf("operation=%s session_id=%s", operation, commit.SessionID)}
@@ -196,4 +180,17 @@ func JoinNames(names []string) string {
 		out += ", " + name
 	}
 	return out
+}
+
+// MessageContent preserves pure text verbatim. Multimodal segments remain the
+// complete source; their content field is a searchable textual representation.
+func MessageContent(segments []llm.MessageSegment) string {
+	if !segmentsTextOnly(segments) {
+		return llm.SegmentsContentText(segments)
+	}
+	var text strings.Builder
+	for _, segment := range segments {
+		text.WriteString(segment.Text)
+	}
+	return text.String()
 }

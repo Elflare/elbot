@@ -50,21 +50,22 @@ func (r *Loop) CheckSelection(selection modelmgr.Selection) error {
 }
 
 type turnState struct {
-	route           *Loop
-	session         *storage.Session
-	ctx, requestCtx context.Context
-	selection       modelmgr.Selection
-	output          dialogue.Output
-	projection      []llm.LLMMessage
-	tools           []llm.ToolSchema
-	definitions     toolDefinitions
-	checkpoint      *storage.NativeCheckpoint
-	seed            *storage.NativeSeed
-	exchange        *storage.NativeExchange
-	response        *api.Response
-	sourceText      string
-	consumed        []string
-	calls           []llm.ToolCallRequest
+	requestReferences []inputReference
+	route             *Loop
+	session           *storage.Session
+	ctx, requestCtx   context.Context
+	selection         modelmgr.Selection
+	output            dialogue.Output
+	projection        []llm.LLMMessage
+	tools             []llm.ToolSchema
+	definitions       toolDefinitions
+	checkpoint        *storage.NativeCheckpoint
+	seed              *storage.NativeSeed
+	exchange          *storage.NativeExchange
+	response          *api.Response
+	sourceText        string
+	consumed          []string
+	calls             []llm.ToolCallRequest
 }
 
 func (r *Loop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials) (dialogue.PreparedLoop, error) {
@@ -134,7 +135,7 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in dialogue
 	}
 	s.projection = []llm.LLMMessage{{Role: llm.RoleSystem, Segments: llm.TextSegments(instructions)}}
 	for _, row := range p.materials.Loaded.Messages {
-		s.projection = append(s.projection, businessMessage(row))
+		s.projection = append(s.projection, dialogue.MessageFromStorage(row))
 	}
 	user := p.materials.UserMessage
 	s.projection = append(s.projection, llm.LLMMessage{Role: llm.RoleUser, Segments: p.materials.Input.Segments})
@@ -147,28 +148,9 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in dialogue
 		return nil, err
 	}
 	s.tools = tools
-	user.Content, user.Segments = llm.SegmentsContentText(segments), dialogue.StoredMessageSegments(segments)
+	user.Content, user.Segments = dialogue.MessageContent(segments), dialogue.StoredMessageSegments(segments)
 	s.projection[len(s.projection)-1].Segments = segments
 	return user, nil
-}
-
-func businessMessage(row storage.Message) llm.LLMMessage {
-	segments := dialogue.MessageSegmentsFromStorage(row.Segments)
-	metadata := dialogue.AssistantMessageMetadata(row.Metadata)
-	text := row.Content
-	if row.Role == storage.RoleAssistant && metadata.RawText != "" {
-		text = metadata.RawText
-	}
-	if len(segments) == 0 {
-		segments = llm.TextSegments(text)
-	}
-	return llm.LLMMessage{
-		Role:       llm.MessageRole(row.Role),
-		Segments:   segments,
-		Name:       dialogue.ToolNameFromMetadata(row.Metadata),
-		ToolCallID: row.ToolCallID,
-		ToolCalls:  metadata.ToolCalls,
-	}
 }
 
 func (s *turnState) instructions(ctx context.Context) (string, error) {
@@ -312,7 +294,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			if _, err := (inputCommitter{state: s}).Commit(s.requestCtx, summaryInput); err != nil {
 				return fail(err)
 			}
-			s.projection = append(s.projection, businessMessage(*summaryInput))
+			s.projection = append(s.projection, dialogue.MessageFromStorage(*summaryInput))
 			pending = dialogue.DrainPending(s.route.Turns, s.session.ID, turn.AttemptFromContext(s.ctx))
 			if pending != nil {
 				pending.MessageIndex = len(s.projection)
@@ -364,14 +346,12 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			result.Outcome = dialogue.Stopped
 			return result
 		}
-		s.projection = append(s.projection, llm.LLMMessage{Role: llm.RoleAssistant, Segments: llm.TextSegments(s.sourceText), ToolCalls: append([]llm.ToolCallRequest(nil), s.calls...)})
-		s.projection = append(s.projection, execution.Messages...)
 		if execution.ConfirmationExtra != "" {
 			message := &storage.Message{ID: storage.NewID(), SessionID: s.session.ID, Role: storage.RoleUser, Content: "补充：" + execution.ConfirmationExtra}
 			if _, err := (inputCommitter{state: s}).Commit(s.requestCtx, message); err != nil {
 				return fail(err)
 			}
-			s.projection = append(s.projection, businessMessage(*message))
+			s.projection = append(s.projection, dialogue.MessageFromStorage(*message))
 		}
 		s.tools, err = s.route.Tools.Schemas(s.requestCtx, s.session)
 		if err != nil {
@@ -405,7 +385,7 @@ func NewLoop(deps LoopDeps) (*Loop, error) {
 	if deps.Calls == nil {
 		return nil, fmt.Errorf("Calls is required")
 	}
-	nativeContext := &Context{Repository: deps.Repository, Media: deps.Media}
+	nativeContext := &Context{Repository: deps.Repository, Preparer: deps.Preparer}
 	return &Loop{
 		Status:     deps.Status,
 		Repository: deps.Repository,

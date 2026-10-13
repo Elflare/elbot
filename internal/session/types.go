@@ -43,8 +43,8 @@ type ActivateModeResult struct {
 type Status struct {
 	Session           *storage.Session
 	MessageCount      int
-	LastUserPreview   string
-	LastAnswerPreview string
+	LastUserContent   string
+	LastAnswerContent string
 }
 
 type NamingConfig struct {

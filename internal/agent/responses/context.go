@@ -1,15 +1,13 @@
 package responses
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
+	"elbot/internal/agent/dialogue"
 	"elbot/internal/llm"
 	api "elbot/internal/llm/responses"
-	"elbot/internal/media"
 	"elbot/internal/modelmgr"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -18,13 +16,10 @@ import (
 // Context owns Responses material, never execution or session activation.
 type Context struct {
 	Repository storage.DialogueRepository
-	Media      *media.Manager
+	Preparer   *dialogue.Preparer
 }
 
-type material struct {
-	ItemIndex int                  `json:"item_index"`
-	Segments  []llm.MessageSegment `json:"segments"`
-}
+type material = dialogue.Material
 
 type nativeWindow struct {
 	Items            []api.Item
@@ -33,6 +28,7 @@ type nativeWindow struct {
 	Checkpoint       *storage.NativeCheckpoint
 	RetainedMediaIDs []string
 	completedOutputs []api.Item
+	References       []inputReference
 }
 
 func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *storage.NativeCheckpoint) (*nativeWindow, error) {
@@ -56,8 +52,12 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 		if err != nil {
 			return nil, err
 		}
-		if err := json.Unmarshal([]byte(seed.MaterialsJSON), &w.Materials); err != nil {
+		w.Materials, err = dialogue.DecodeMaterials(seed.MaterialsJSON)
+		if err != nil {
 			return nil, err
+		}
+		for i := range w.Items {
+			w.References = append(w.References, inputReference{Kind: "seed", ID: seed.ID, Index: i})
 		}
 		w.RetainedMediaIDs = append([]string(nil), seed.MediaIDs...)
 		w.Origin.BaseURL = seed.BaseURL
@@ -111,43 +111,16 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 		if err != nil {
 			return nil, err
 		}
-		var request struct {
-			Input []api.Item `json:"input"`
-		}
-		if err := json.Unmarshal([]byte(exchange.RequestJSON), &request); err != nil {
-			return nil, err
-		}
-		if len(request.Input) < len(inputs) {
-			return nil, fmt.Errorf("原生请求输入不完整")
-		}
-		// Recovery/seed prefixes already belong to the root or prior checkpoints.
-		// The durable ordered manifest identifies only this exchange's new inputs.
-		for j, input := range inputs {
-			item := request.Input[len(request.Input)-len(inputs)+j]
+		for _, input := range inputs {
 			if input.SessionID != row.ID || input.ConsumedBy != exchange.ID {
 				return nil, fmt.Errorf("原生输入关联不完整")
 			}
-			canonical, segments, err := decodeQueuedInput(input)
+			item, segments, err := decodeQueuedInput(input)
 			if err != nil {
 				return nil, err
 			}
-			if canonical.Type != item.Type {
-				return nil, fmt.Errorf("原生输入类型不匹配")
-			}
+			w.References = append(w.References, inputReference{Kind: "input", ID: input.ID})
 			if item.Type == "additional_tools" {
-				definitions, err := api.AdditionalToolDefinitions(item)
-				if err != nil {
-					return nil, err
-				}
-				storedDefinitions, err := api.AdditionalToolDefinitions(canonical)
-				if err != nil {
-					return nil, err
-				}
-				actual, _ := json.Marshal(definitions)
-				expected, _ := json.Marshal(storedDefinitions)
-				if !bytes.Equal(actual, expected) {
-					return nil, fmt.Errorf("原生工具定义与已提交输入不匹配")
-				}
 				w.Items = append(w.Items, item)
 				continue
 			}
@@ -161,7 +134,7 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 			if (input.CallID != "" && (item.Type != "function_call_output" || input.CallID != header.CallID)) || (input.CallID == "" && (item.Type != "message" || header.Role != "user")) {
 				return nil, fmt.Errorf("原生输入顺序或调用关联不匹配")
 			}
-			w.Materials = append(w.Materials, material{ItemIndex: len(w.Items), Segments: segments})
+			w.Materials = append(w.Materials, material{Index: len(w.Items), MessageID: input.MessageID, Segments: segments})
 			w.Items = append(w.Items, item)
 		}
 		var output []api.Item
@@ -169,6 +142,9 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 			return nil, err
 		}
 		w.Items = append(w.Items, output...)
+		for i := range output {
+			w.References = append(w.References, inputReference{Kind: "output", ID: exchange.ID, Index: i})
+		}
 		w.Origin.BaseURL = exchange.BaseURL
 	}
 	var calls []storage.NativeCall
@@ -196,8 +172,9 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 		if err != nil {
 			return nil, err
 		}
-		w.Materials = append(w.Materials, material{ItemIndex: len(w.Items), Segments: segments})
+		w.Materials = append(w.Materials, material{Index: len(w.Items), MessageID: input.MessageID, Segments: segments})
 		w.Items = append(w.Items, item)
+		w.References = append(w.References, inputReference{Kind: "input", ID: input.ID})
 		w.completedOutputs = append(w.completedOutputs, item)
 	}
 	return w, nil
@@ -209,13 +186,13 @@ func (c *Context) Validate(ctx context.Context, w *nativeWindow) error {
 	}
 	materials := make(map[int]material, len(w.Materials))
 	for _, m := range w.Materials {
-		if m.ItemIndex < 0 || m.ItemIndex >= len(w.Items) {
+		if m.Index < 0 || m.Index >= len(w.Items) {
 			return fmt.Errorf("原生素材位置缺失")
 		}
-		if _, duplicate := materials[m.ItemIndex]; duplicate {
+		if _, duplicate := materials[m.Index]; duplicate {
 			return fmt.Errorf("原生素材位置重复")
 		}
-		materials[m.ItemIndex] = m
+		materials[m.Index] = m
 	}
 	for i, item := range w.Items {
 		parts, err := nativeContent(item)
@@ -230,25 +207,21 @@ func (c *Context) Validate(ctx context.Context, w *nativeWindow) error {
 		}
 		count := 0
 		for _, part := range parts {
-			var header struct{ Type, ImageURL, FileURL, FileID, FileData string }
+			var header struct{ Type string }
 			var fields map[string]json.RawMessage
 			if err := json.Unmarshal(part, &fields); err != nil {
 				return err
 			}
 			_ = json.Unmarshal(fields["type"], &header.Type)
-			_ = json.Unmarshal(fields["image_url"], &header.ImageURL)
-			_ = json.Unmarshal(fields["file_url"], &header.FileURL)
-			_ = json.Unmarshal(fields["file_id"], &header.FileID)
-			_ = json.Unmarshal(fields["file_data"], &header.FileData)
 			if header.Type != "input_image" && header.Type != "input_file" {
 				continue
 			}
-			if count < len(mediaSegments) && mediaSegments[count].MediaID != "" {
+			if count < len(mediaSegments) {
 				segment := mediaSegments[count]
 				if (header.Type == "input_image") != (segment.Type == llm.SegmentImage) {
 					return fmt.Errorf("原生素材类型不匹配")
 				}
-			} else if !strings.HasPrefix(header.ImageURL, "data:") && header.FileData == "" {
+			} else {
 				return fmt.Errorf("原生媒体只有服务端引用或临时 URL，缺少完整素材")
 			}
 			count++
@@ -257,19 +230,7 @@ func (c *Context) Validate(ctx context.Context, w *nativeWindow) error {
 			return fmt.Errorf("原生媒体与素材关联不完整")
 		}
 	}
-	for _, id := range w.mediaIDs() {
-		if c.Media == nil {
-			return fmt.Errorf("原生素材需要媒体中心")
-		}
-		reader, _, err := c.Media.Open(ctx, id)
-		if err != nil {
-			return fmt.Errorf("原生素材 %s 不可用: %w", id, err)
-		}
-		if err := reader.Close(); err != nil {
-			return err
-		}
-	}
-	return nil
+	return ctx.Err()
 }
 
 func validateItems(items []api.Item) error {
@@ -376,171 +337,57 @@ func validateCallLinks(items []api.Item, allowOpen bool) error {
 }
 
 func (w *nativeWindow) mediaIDs() []string {
-	seen := map[string]bool{}
-	var ids []string
-	add := func(id string) {
-		if id != "" && !seen[id] {
-			seen[id] = true
-			ids = append(ids, id)
-		}
-	}
-	for _, id := range w.RetainedMediaIDs {
-		add(id)
-	}
-	for _, m := range w.Materials {
-		for _, segment := range m.Segments {
-			add(segment.MediaID)
-		}
-	}
+	var arguments []string
 	for _, item := range w.Items {
 		if item.Type == "function_call" {
-			for _, id := range media.ArgumentMediaIDs(item.Arguments) {
-				add(id)
-			}
+			arguments = append(arguments, item.Arguments)
 		}
 	}
-	return ids
+	return dialogue.MaterialMediaIDs(w.Materials, arguments, w.RetainedMediaIDs)
 }
 
+// Resolve obtains protocol-neutral prepared material before assembling input
+// items. Native outputs/reasoning remain opaque and are never media-scanned.
 func (c *Context) Resolve(ctx context.Context, w *nativeWindow) ([]api.Item, func(), error) {
 	if err := c.Validate(ctx, w); err != nil {
 		return nil, func() {}, err
 	}
-	items := append([]api.Item(nil), w.Items...)
-	var messages []llm.LLMMessage
-	var mediaMaterials []material
-	for _, m := range w.Materials {
-		if !hasLocalMedia(m.Segments) {
-			continue
-		}
-		messages = append(messages, llm.LLMMessage{Segments: m.Segments})
-		mediaMaterials = append(mediaMaterials, m)
+	messages := make([]llm.LLMMessage, len(w.Materials))
+	for i, material := range w.Materials {
+		messages[i] = llm.LLMMessage{Segments: material.Segments}
 	}
-	if len(messages) == 0 {
-		return items, func() {}, nil
-	}
-	if c.Media == nil {
-		return nil, func() {}, fmt.Errorf("原生素材需要媒体中心")
-	}
-	resolved, cleanup, err := c.Media.AcquireForLLM(ctx, messages)
+	prepared, release, err := c.Preparer.PrepareMaterials(ctx, messages)
 	if err != nil {
-		return nil, cleanup, err
+		return nil, release, err
 	}
-	for i, m := range mediaMaterials {
-		var urls []llm.MessageSegment
-		for j, segment := range m.Segments {
-			if segment.Type != llm.SegmentImage && segment.Type != llm.SegmentFile {
-				continue
-			}
-			next := resolved[i].Segments[j]
-			if next.Type != segment.Type || next.MediaID != segment.MediaID || next.URL == "" {
-				cleanup()
-				return nil, func() {}, fmt.Errorf("原生素材不可用，禁止退成文字")
-			}
-			urls = append(urls, next)
-		}
-		item, err := replaceNativeMedia(items[m.ItemIndex], urls)
-		if err != nil {
-			cleanup()
+	items := append([]api.Item(nil), w.Items...)
+	for i, material := range w.Materials {
+		original := items[material.Index]
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(original.Raw, &fields); err != nil {
+			release()
 			return nil, func() {}, err
 		}
-		items[m.ItemIndex] = item
-	}
-	return items, cleanup, nil
-}
-
-func hasLocalMedia(segments []llm.MessageSegment) bool {
-	for _, segment := range segments {
-		if segment.MediaID != "" && (segment.Type == llm.SegmentImage || segment.Type == llm.SegmentFile) {
-			return true
-		}
-	}
-	return false
-}
-
-func replaceNativeMedia(item api.Item, segments []llm.MessageSegment) (api.Item, error) {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(item.Raw, &fields); err != nil {
-		return api.Item{}, err
-	}
-	parts, err := nativeContent(item)
-	if err != nil {
-		return api.Item{}, err
-	}
-	index := 0
-	for i, raw := range parts {
-		var part map[string]json.RawMessage
-		if err := json.Unmarshal(raw, &part); err != nil {
-			return api.Item{}, err
-		}
-		var kind string
-		_ = json.Unmarshal(part["type"], &kind)
-		if kind != "input_image" && kind != "input_file" {
-			continue
-		}
-		if index >= len(segments) {
-			return api.Item{}, fmt.Errorf("原生媒体关联不完整")
-		}
-		segment := segments[index]
-		index++
-		value, _ := json.Marshal(segment.URL)
-		if kind == "input_image" {
-			part["image_url"] = value
-		} else {
-			delete(part, "file_id")
-			delete(part, "file_url")
-			delete(part, "file_data")
-			if strings.HasPrefix(segment.URL, "data:") {
-				part["file_data"] = value
-				if _, ok := part["filename"]; !ok {
-					name := segment.Name
-					if name == "" {
-						name = "file"
-					}
-					part["filename"], _ = json.Marshal(name)
-				}
-			} else {
-				part["file_url"] = value
+		var callID string
+		if original.Type == "function_call_output" {
+			if err := json.Unmarshal(fields["call_id"], &callID); err != nil {
+				release()
+				return nil, func() {}, err
 			}
 		}
-		parts[i], err = json.Marshal(part)
+		items[material.Index], err = nativeItem(callID, prepared[i].Segments)
 		if err != nil {
-			return api.Item{}, err
+			release()
+			return nil, func() {}, err
 		}
 	}
-	if index != len(segments) {
-		return api.Item{}, fmt.Errorf("原生媒体关联不完整")
-	}
-	key := "content"
-	if item.Type == "function_call_output" {
-		key = "output"
-	}
-	fields[key], err = json.Marshal(parts)
-	if err != nil {
-		return api.Item{}, err
-	}
-	raw, err := json.Marshal(fields)
-	if err != nil {
-		return api.Item{}, err
-	}
-	return api.ParseItem(raw)
+	return items, release, nil
 }
 
-func checkpointCalls(cp *storage.NativeCheckpoint, items []api.Item) ([]storage.NativeCall, error) {
-	if cp.CallsJSON != "" {
-		var calls []storage.NativeCall
-		err := json.Unmarshal([]byte(cp.CallsJSON), &calls)
-		return calls, err
-	}
-	// Version 19 checkpoints were committed at the call header, before any
-	// execution. Derive that immutable state from the original output only.
+func checkpointCalls(cp *storage.NativeCheckpoint) ([]storage.NativeCall, error) {
 	var calls []storage.NativeCall
-	for _, item := range items {
-		if item.Type == "function_call" {
-			calls = append(calls, storage.NativeCall{ExchangeID: cp.ExchangeID, CallID: item.CallID, Name: item.Name, Arguments: item.Arguments, Ordinal: len(calls), Status: "pending"})
-		}
-	}
-	return calls, nil
+	err := json.Unmarshal([]byte(cp.CallsJSON), &calls)
+	return calls, err
 }
 
 func closeBranchCalls(w *nativeWindow, calls []storage.NativeCall) ([]api.Item, error) {
@@ -559,6 +406,7 @@ func closeBranchCalls(w *nativeWindow, calls []storage.NativeCall) ([]api.Item, 
 			return nil, err
 		}
 		w.Items = append(w.Items, item)
+		w.References = append(w.References, inputReference{Kind: "synthetic", Item: item.Raw})
 		continuation = append(continuation, item)
 	}
 	return continuation, nil
@@ -581,7 +429,7 @@ func (w *nativeWindow) Seed(continuation []api.Item, calls []storage.NativeCall,
 	if err != nil {
 		return nil, err
 	}
-	materials, err := json.Marshal(w.Materials)
+	materials, err := dialogue.EncodeMaterials(w.Materials)
 	if err != nil {
 		return nil, err
 	}

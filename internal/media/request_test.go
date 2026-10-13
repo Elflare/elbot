@@ -11,7 +11,7 @@ import (
 )
 
 func TestAcquireForLLMReleasesHoldsOnSuccessAndFailure(t *testing.T) {
-	for _, mode := range []string{"success", "hold failure", "resolve failure"} {
+	for _, mode := range []string{"success", "missing media", "resolve failure"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
@@ -28,17 +28,20 @@ func TestAcquireForLLMReleasesHoldsOnSuccessAndFailure(t *testing.T) {
 			}
 			segment := llm.MessageSegment{Type: llm.SegmentFile, MediaID: item.ID}
 			messages := []llm.LLMMessage{{Role: llm.RoleUser, Segments: []llm.MessageSegment{segment, segment}}}
-			if mode == "hold failure" {
+			if mode == "missing media" {
 				messages[0].Segments = append(messages[0].Segments, llm.MessageSegment{Type: llm.SegmentFile, MediaID: IDPrefix + strings.Repeat("f", 64)})
 			}
 			if mode == "resolve failure" {
 				manager.FileDelivery.MaxDirectBase64Bytes = 1
 			}
 			resolved, release, err := manager.AcquireForLLM(ctx, messages)
-			if (mode != "success") != (err != nil) {
+			if (mode == "resolve failure") != (err != nil) {
 				t.Fatalf("mode=%s error=%v", mode, err)
 			}
-			if mode == "success" {
+			if mode == "missing media" && (resolved[0].Segments[2].Type != llm.SegmentText || messages[0].Segments[2].MediaID == "") {
+				t.Fatal("missing media must only change the request copy")
+			}
+			if mode != "resolve failure" {
 				refs, err := store.MediaReferences().ListMediaIDs(ctx, item.ID)
 				if err != nil || len(refs) != 1 || refs[0].OwnerType != "request" {
 					t.Fatalf("duplicate holds or missing request ownership: %+v / %v", refs, err)

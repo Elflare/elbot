@@ -9,7 +9,7 @@ import (
 	"elbot/internal/storage"
 )
 
-const inputFormatVersion = 1
+const inputFormatVersion = 2
 const inputFormatKey = "responses_input_version"
 
 func sessionInputVersion(row *storage.Session) (int, error) {

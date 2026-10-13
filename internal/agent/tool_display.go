@@ -26,19 +26,6 @@ func riskReasonsText(reasons []string) string {
 	return sb.String()
 }
 
-func previewLogText(text string) string {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return ""
-	}
-	const maxPreviewRunes = 120
-	if len([]rune(text)) <= maxPreviewRunes {
-		return text
-	}
-	runes := []rune(text)
-	return string(runes[:maxPreviewRunes]) + "..."
-}
-
 func joinToolNames(calls []llm.ToolCallRequest) string {
 	names := make([]string, 0, len(calls))
 	for _, call := range calls {

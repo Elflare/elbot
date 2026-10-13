@@ -150,8 +150,6 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			}
 			inToolPhase = true
 		}
-		assistantToolCallIndex := len(s.messages)
-		s.messages = append(s.messages, llm.LLMMessage{Role: llm.RoleAssistant, Segments: llm.TextSegments(assistantRawText), ToolCalls: result.ToolCalls})
 		if toolRounds >= r.Tools.MaxRoundsPerTurn() {
 			s.output.SendPreview(s.ctx, fmt.Sprintf("已达到 max_rounds_per_turn=%d，后续工具调用未执行，正在请求模型总结当前进度。", r.Tools.MaxRoundsPerTurn()))
 			skipped := skippedToolMessages(result.ToolCalls, r.Tools.MaxRoundsPerTurn())
@@ -166,13 +164,14 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 					return failedLoop(err)
 				}
 			}
-			s.messages = append(s.messages, skipped...)
+			s.messages = append(s.messages, committer.Committed...)
 			var summaryPending *dialogue.PendingUserMessage
 			s.messages, summaryPending = drainPendingUserInput(r.Turns, s.session.ID, s.messages, turn.AttemptFromContext(s.ctx))
-			s.messages = append(s.messages, llm.LLMMessage{
-				Role:     llm.RoleUser,
-				Segments: llm.TextSegments("工具调用轮次已达到上限，可以询问用户是否继续或者基于已有工具结果和当前上下文总结当前进度。"),
-			})
+			summaryInput := &storage.Message{SessionID: s.session.ID, Role: storage.RoleUser, Content: "工具调用轮次已达到上限，可以询问用户是否继续或者基于已有工具结果和当前上下文总结当前进度。"}
+			if _, err := r.Messages.Append(s.requestCtx, summaryInput, "append_summary_input"); err != nil {
+				return failedLoop(err)
+			}
+			s.messages = append(s.messages, dialogue.MessageFromStorage(*summaryInput))
 			s.tools = nil
 			stream := s.output.StartStream(s.requestCtx)
 			summary, err := r.Caller.Call(s.requestCtx, s.session, s.selection, s.messages, s.tools, summaryPending, stream, s.output)
@@ -206,7 +205,8 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			break
 		}
 		toolRounds++
-		execution := r.Tools.Execute(s.requestCtx, s.session, result.ToolCalls, assistantRawText, assistantRawText, s.output)
+		committer := &dialogue.ToolTranscriptCommitter{Messages: r.Tools.Messages}
+		execution := r.Tools.ExecuteWithCommitter(s.requestCtx, s.session, result.ToolCalls, assistantRawText, assistantRawText, s.output, committer)
 		if execution.Err != nil {
 			return failedLoop(execution.Err)
 		}
@@ -216,14 +216,17 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			}
 			return dialogue.LoopResult{Outcome: dialogue.Stopped}
 		}
-		s.messages[assistantToolCallIndex].ToolCalls = append([]llm.ToolCallRequest(nil), execution.PreparedCalls...)
-		s.messages = append(s.messages, execution.Messages...)
+		s.messages = append(s.messages, committer.Committed...)
 		s.tools, err = r.Tools.Schemas(s.ctx, s.session)
 		if err != nil {
 			return failedLoop(err)
 		}
 		if execution.ConfirmationExtra != "" {
-			s.messages = append(s.messages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments("补充：" + execution.ConfirmationExtra)})
+			message := &storage.Message{SessionID: s.session.ID, Role: storage.RoleUser, Content: "补充：" + execution.ConfirmationExtra}
+			if _, err := r.Messages.Append(s.requestCtx, message, "append_confirmation_input"); err != nil {
+				return failedLoop(err)
+			}
+			s.messages = append(s.messages, dialogue.MessageFromStorage(*message))
 		}
 	}
 	if err := s.requestCtx.Err(); err != nil {

@@ -119,10 +119,13 @@ func (s *Service) materializeSegments(ctx context.Context, segments []Segment, e
 				out[i].Name += exts[0]
 			}
 		}
-		resolved := s.media.MaterializeWithLimits(ctx, []llm.MessageSegment{out[i]}, media.ImportLimits{
+		resolved, err := s.media.MaterializeWithLimits(ctx, []llm.MessageSegment{out[i]}, media.ImportLimits{
 			MaxImportBytes:  s.cfg.Segment.MaxFileBytes,
 			DownloadTimeout: time.Duration(s.cfg.Segment.DownloadTimeoutSecs) * time.Second,
 		})
+		if err != nil {
+			return nil, fmt.Errorf("segment %d: %w", i, err)
+		}
 		if len(resolved) != 1 || resolved[0].MediaID == "" {
 			return nil, fmt.Errorf("segment %d media unavailable", i)
 		}

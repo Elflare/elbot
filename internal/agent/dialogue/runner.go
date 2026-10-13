@@ -32,7 +32,10 @@ type Runner struct {
 	Turns    *turn.Manager
 	View     ExecutionView
 }
-type PreparedTurn struct{ loop PreparedLoop }
+type PreparedTurn struct {
+	route Loop
+	input TurnInput
+}
 
 // CheckSelection validates route availability before compaction or input writes.
 func (r *Runner) CheckSelection(selection modelmgr.Selection) error {
@@ -52,15 +55,7 @@ func (r *Runner) PrepareTurn(ctx context.Context, in TurnInput) (*PreparedTurn, 
 	if err != nil {
 		return nil, err
 	}
-	materials, err := r.Preparer.LoadMaterials(ctx, in)
-	if err != nil {
-		return nil, err
-	}
-	prepared, err := route.PrepareTurn(ctx, materials)
-	if err != nil {
-		return nil, err
-	}
-	return &PreparedTurn{loop: prepared}, nil
+	return &PreparedTurn{route: route, input: in}, nil
 }
 
 func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Output) (result TurnResult) {
@@ -91,8 +86,15 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 		return result
 	}
 	loopIn := LoopInput{Session: in.Session, Text: in.Text, Selection: in.Selection, RequestID: in.RequestID, StartedAt: result.StartedAt}
-	prepared := in.Prepared.loop
-	user, err := prepared.PrepareInput(ctx, requestCtx, loopIn, out)
+	materials, err := r.Preparer.LoadMaterials(requestCtx, in.Prepared.input)
+	var prepared PreparedLoop
+	if err == nil {
+		prepared, err = in.Prepared.route.PrepareTurn(requestCtx, materials)
+	}
+	var user *storage.Message
+	if err == nil {
+		user, err = prepared.PrepareInput(ctx, requestCtx, loopIn, out)
+	}
 	if err == nil {
 		err = requestCtx.Err()
 	}
@@ -188,11 +190,12 @@ func NewRunner(deps RunnerDeps) (*Runner, error) {
 		return nil, fmt.Errorf("tools max rounds per turn must be positive")
 	}
 	tools := &ToolExecutor{Manager: deps.ToolManager, State: deps.ToolState, Registry: deps.ToolRegistry, Provider: deps.ToolProvider, DefaultProvider: deps.DefaultProvider, Identity: deps.Identity, Deps: deps.ToolDeps, MaxRounds: deps.MaxRounds}
-	messages := &MessageStore{Dialogues: deps.Dialogues, Gate: &CommitGate{Sessions: deps.Sessions, Turns: deps.Turns, View: deps.View}, Media: deps.Media}
+	messages := &MessageStore{Dialogues: deps.Dialogues, Gate: &CommitGate{Sessions: deps.Sessions, Turns: deps.Turns, View: deps.View}}
 	tools.Messages = messages
 	replies := &ReplyCommitter{Messages: deps.MessageRows, Output: deps.Output, Persistence: messages.Committer("append_assistant_message")}
 	preparer := &Preparer{Contexts: deps.Contexts, Media: deps.Media, Identity: deps.Identity, Hooks: deps.Hooks, Tools: tools}
-	calls := &CallProcessor{Messages: messages, Media: deps.Media, Hooks: deps.Hooks, Identity: deps.Identity, Tools: tools, Completed: deps.Signals.ModelCallCompleted, Vision: deps.Signals.VisionFallbackUsed}
+	messages.Preparer = preparer
+	calls := &CallProcessor{Messages: messages, Preparer: preparer, Hooks: deps.Hooks, Identity: deps.Identity, Tools: tools, Completed: deps.Signals.ModelCallCompleted, Vision: deps.Signals.VisionFallbackUsed}
 	soul := SoulProvider(StaticSoulProvider{Prompt: "You are a helpful assistant."})
 	if deps.SoulPath != "" {
 		soul = &FileSoulProvider{Path: deps.SoulPath}

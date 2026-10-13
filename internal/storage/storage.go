@@ -76,18 +76,17 @@ type ContextSummary struct {
 }
 
 type ToolCallRecord struct {
-	ID            string
-	SessionID     string
-	ToolCallID    string
-	ToolName      string
-	ActorID       string
-	RiskLevel     string
-	Success       bool
-	Error         string
-	ResultPreview string
-	StartedAt     time.Time
-	FinishedAt    time.Time
-	CreatedAt     time.Time
+	ID         string
+	SessionID  string
+	ToolCallID string
+	ToolName   string
+	ActorID    string
+	RiskLevel  string
+	Success    bool
+	Error      string
+	StartedAt  time.Time
+	FinishedAt time.Time
+	CreatedAt  time.Time
 }
 
 type CronJob struct {
@@ -317,24 +316,27 @@ type ListSessionsRequest struct {
 	Query                         string
 	Limit                         int
 	Offset                        int
+	// MessageLimit bounds the ordered, unmodified message excerpts returned per session.
+	MessageLimit int
 }
 
 type SessionSummary struct {
-	ID              string
-	OwnerID         string
-	Platform        string
-	PlatformScopeID string
-	Title           string
-	Mode            string
-	Status          string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-	ArchivedAt      *time.Time
-	PinnedAt        *time.Time
-	MessageCount    int
-	LastUserPreview string
-	LastBotPreview  string
-	MessagePreview  string
+	ID                   string
+	OwnerID              string
+	Platform             string
+	PlatformScopeID      string
+	Title                string
+	Mode                 string
+	Status               string
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+	ArchivedAt           *time.Time
+	PinnedAt             *time.Time
+	MessageCount         int
+	LastUserContent      string
+	LastAssistantContent string
+	// Messages contains original role/content excerpts, with no display formatting.
+	Messages []Message
 }
 
 type Store interface {

@@ -71,15 +71,22 @@ func (c messageCommitter) Commit(ctx context.Context, message *storage.Message) 
 	return c.store.Append(ctx, message, c.operation)
 }
 
-// ToolTranscriptCommitter commits each completed display-history pair.
+// ToolTranscriptCommitter commits complete business facts and exposes only the
+// successfully committed projection to the active loop.
 type ToolTranscriptCommitter struct {
 	Messages  *MessageStore
 	SessionID string
+	Committed []llm.LLMMessage
 }
 
 func (c *ToolTranscriptCommitter) Begin(ctx context.Context, head *storage.Message) (events.LogResult, error) {
 	c.SessionID = head.SessionID
-	return c.Messages.Append(ctx, ToolBatchText(head), "append_tool_transcript")
+	message := ToolBatchText(head)
+	result, err := c.Messages.Append(ctx, message, "append_tool_transcript")
+	if err == nil && message != nil {
+		c.Committed = append(c.Committed, MessageFromStorage(*message))
+	}
+	return result, err
 }
 func (c *ToolTranscriptCommitter) Prepared(context.Context, int, llm.ToolCallRequest) (events.LogResult, error) {
 	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
@@ -88,7 +95,12 @@ func (c *ToolTranscriptCommitter) Started(context.Context, int, llm.ToolCallRequ
 	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
 }
 func (c *ToolTranscriptCommitter) Result(ctx context.Context, _ int, call llm.ToolCallRequest, _ llm.LLMMessage, stored *storage.Message) (events.LogResult, error) {
-	return c.Messages.Commit(ctx, storage.DialogueCommit{SessionID: c.SessionID, ToolPair: NewToolPair(c.SessionID, call, stored)}, "append_tool_transcript")
+	pair := NewToolPair(c.SessionID, call, stored)
+	result, err := c.Messages.Commit(ctx, storage.DialogueCommit{SessionID: c.SessionID, ToolPair: pair}, "append_tool_transcript")
+	if err == nil {
+		c.Committed = append(c.Committed, MessageFromStorage(*pair.Call), MessageFromStorage(*pair.Result))
+	}
+	return result, err
 }
 
 func ToolBatchText(head *storage.Message) *storage.Message {

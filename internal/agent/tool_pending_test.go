@@ -115,7 +115,7 @@ func TestToolPhasePendingInputInjectedBeforeFollowupLLM(t *testing.T) {
 			pendingPlatformText = event.Message.PlatformText
 			event.Message.Segments = []llm.MessageSegment{
 				{Type: llm.SegmentText, Text: "这是猫"},
-				{Type: llm.SegmentImage, URL: "https://example.com/cat.png", Name: "cat.png"},
+				{Type: llm.SegmentImage, URL: "data:image/png;base64,Y2F0", Name: "cat.png"},
 			}
 		}
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
@@ -181,7 +181,7 @@ func TestToolPhasePendingInputInjectedBeforeFollowupLLM(t *testing.T) {
 	}
 	var persistedPending bool
 	for _, msg := range messages {
-		if msg.Role == storage.RoleUser && strings.Contains(msg.Content, "这是猫 [图片 1；名称：cat.png；引用 URL：https://example.com/cat.png]") && strings.Contains(msg.Segments, `"type":"image"`) && !strings.Contains(msg.Segments, "reference_text") {
+		if msg.Role == storage.RoleUser && strings.Contains(msg.Content, "这是猫 [图片 1；名称：cat.png；媒体 ID：media:") && strings.Contains(msg.Segments, `"type":"image"`) && !strings.Contains(msg.Segments, "reference_text") && !strings.Contains(msg.Segments, "base64,") {
 			persistedPending = true
 		}
 	}

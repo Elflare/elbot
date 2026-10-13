@@ -105,7 +105,7 @@ func TestResponseBindingRunsNativeDialogueAndContinuesCheckpoint(t *testing.T) {
 		t.Fatalf("checkpoint=%+v %v", checkpoint, err)
 	}
 	exchange, err := opts.Store.Dialogues().GetExchange(ctx, checkpoint.ExchangeID)
-	if err != nil || !strings.Contains(exchange.ResponseJSON, "encrypted_content") || !strings.Contains(exchange.ItemsJSON, "unknown") || !strings.Contains(exchange.RequestJSON, "second") {
+	if err != nil || !strings.Contains(exchange.ResponseJSON, "encrypted_content") || !strings.Contains(exchange.ItemsJSON, "unknown") || !strings.Contains(exchange.RequestJSON, "input_refs") || strings.Contains(exchange.RequestJSON, `"input":`) {
 		t.Fatalf("exchange=%+v %v", exchange, err)
 	}
 }

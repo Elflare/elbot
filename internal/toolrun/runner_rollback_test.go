@@ -91,7 +91,6 @@ func (d *runnerTestDeps) ToolResultMessage(id string, message llm.LLMMessage) st
 func (d *runnerTestDeps) ToolCallMessage(id, content, _ string, _ []llm.ToolCallRequest) storage.Message {
 	return storage.Message{SessionID: id, Role: storage.RoleAssistant, Content: content}
 }
-func (d *runnerTestDeps) PersistedToolMessage(message llm.LLMMessage) llm.LLMMessage { return message }
 
 type rollbackConfirmDeps struct {
 	runnerTestDeps

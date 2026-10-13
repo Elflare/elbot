@@ -130,13 +130,13 @@ flowchart TB
 |---|---|
 | 独立入口组件 | MessageHandler 分发输入；InputCoordinator 准备与预加载；BackgroundRunner 准备后台身份和资源；CommandExecutor 编排命令 |
 | ExecutionCoordinator | 前后台准入、attempt／Request、追加确认、pending 续跑、压缩交接和 Execution 完成 |
-| dialogue.Runner | 登记前加载材料、登记后准备与保存用户输入、取得 Loop、收敛结果、提交回复 |
+| dialogue.Runner | 登记前选择路线；登记后加载材料、准备与保存用户输入、收敛 Loop 结果、提交回复 |
 | chat／responses Loop | 各自的上下文、模型／工具循环、pending 和接管刷新 |
 | dialogue 公共协作 | Prompt 来源、模型 Hook、ToolRun、消息事务和 ReplyCommitter |
 | 根包协作组件 | 身份、确认、Hook、发送及状态记录 |
 
 - 组件分别通过消费接口协作，不提供中心 Agent 门面，也不访问其他业务线的内部字段；依赖与配置按实际消费注入，共享层不保存协议私有状态。Session／Request／Turn 保留状态所有权，通知和展示只维护观察投影。
-- 准入先检查 provider 能力和模型兼容性，登记会话归属与 attempt。材料加载在 Request 登记前；Prompt、Hook、媒体归一及用户保存使用登记后的 Request context，检查取消。
+- 准入先检查 provider 能力和模型兼容性，登记会话归属与 attempt。材料加载、Prompt、Hook、媒体归一及用户保存均使用登记后的 Request context，检查取消。
 - 每轮固定 Selection。普通 `/model` 不影响在途循环；前台接管刷新模型、工具和来源。解除后台要求的合成 user 提示位于请求末尾，不写入 system prompt 或展示历史。
 - 工具阶段收到的输入进入 pending；下一次模型请求前合并，最终模型调用期间新收到的 pending 在本轮结束后自动开启下一轮。
 - 用户／pending 和工具 transcript 通过共同提交口保存。每个实际调用与结果组成不可变 ToolPair，保存真实参数及媒体引用，同事务成功后才进入下一工具；没有结果不预写展示调用头。
@@ -231,16 +231,16 @@ flowchart LR
 
 ### Responses
 
-展示消息用于业务观察，原生 items、推理材料和 checkpoint 用于真实续接；二者通过业务消息关联，不能互相替代。
+业务消息保存完整正文、segments、参数和结果；Responses 额外保存原生 items、推理材料和 checkpoint。两者通过消息／输入关联，各自按职责重建。
 
-- HTTP 请求前归档实际编码 JSON，显式请求 `reasoning.encrypted_content`，完整保存响应及未知 items。失败、取消、incomplete、提前 EOF 不推进 checkpoint；本地关键提交成功才消费输入与推进游标。
+- HTTP 请求前归档合并后的参数与有序 `input_refs`（输入记录、原生输出、seed 或固定合成项）；`InputIDsJSON` 只记录本次新消费的输入，不包含重放前缀。请求审计不保存展开后的正文；显式请求 `reasoning.encrypted_content`，完整保存响应及未知 items。失败、取消、incomplete、提前 EOF 不推进 checkpoint；本地关键提交成功才消费输入与推进游标。
 - 每次调用重新构建 instructions。默认沿 `previous_response_id` 只发送新增输入与工具输出；实际请求或响应表明 `store=false` 时，发送完整窗口且不带旧链 ID。主对话默认 store=true，独立文本固定 false。
-- 目标 base_url 与来源 checkpoint／seed 的地址不同时重建窗口。明确旧链失效且尚无新内容时，以同厂商完整材料重试一次；网络、鉴权、含糊错误及部分流不触发恢复。复用已准备的输入、Hook 结果与 Selection，不重跑历史工具。缺推理、原生记录或素材时拒绝。
+- 目标 base_url 与来源 checkpoint／seed 的地址不同时重建窗口。明确旧链失效且尚无新内容时，以同厂商完整材料重试一次；网络、鉴权、含糊错误及部分流不触发恢复。复用已准备的输入、Hook 结果与 Selection，不重跑历史工具。缺推理或原生记录时拒绝；实体缺失的媒体由公共资料准备产生请求占位文字并通知。
 - schema 以 developer `additional_tools` 输入冻结，新增定义持久化；相同定义不重复，同名变化要求新会话。定义按历史位置回放，新增定义位于工具输出／用户输入之后、接管提示之前。
 - 请求不发送顶层 tools；当前权限与 tool_choice 相交生成允许集合，响应调用再次校验。历史定义不恢复工具权限。只使用 ElBot function 工具。
 - 工具调用集合、ID、名称和参数对 Hook 只读，改写在副作用前报错；Chat 允许参数改写。公共 Hook 通过注入策略校验，不识别协议。
 - 工具副作用前保存原生响应和调用状态；结果与展示 ToolPair、原生输出及不可变历史快照同事务提交。历史快照不推进活动游标，Fork 只读当时结果；中断调用仅在原生材料补未执行／结果未知输出。
-- 窗口由 seed 根、checkpoint 链和有序输入／输出重建，媒体重新解析并持有。首次调用失败后可复用完整待提交输入；格式版本、归档、定义或素材不一致时拒绝。
+- 窗口由 seed 根、checkpoint 链和已提交的有序输入／输出重建，不读取历史 HTTP 正文。公共片段由 Dialogue 解码与展开，Responses 只组装自身 items；媒体持有覆盖发送过程。首次调用失败后可复用完整待提交输入；格式版本、归档、定义或素材不一致时拒绝。
 
 <!-- locator:commands -->
 ## 命令链路
@@ -297,10 +297,35 @@ Runtime 管注册、schema、权限与执行器；ToolRun 管当前工具视图�
 - /stop、切换、删除和清理与提交互斥，先提交则完成操作，先取消／失效则拒绝。外部进程不参与这些锁。
 - 撤销按 Scope／当前 Session／目标保存原始字节，仅成功写入后登记，内存上限 256 MiB／1024 条；执行时复核备份、路径和 revision。后台编辑共用目标锁但不登记前台备份。
 
+### 公共资料与媒体边界
+
+数据库是已提交会话的唯一事实来源。`dialogue/materials.go` 负责公共消息投影、公共片段编解码、归档规范化和发送副本准备；不导入 Chat 或 Responses 类型。归档只导入新增实体，已有 ID 不读取、不重导入。请求前调用 `PrepareMaterials` 取得完整 URL/base64，发送后丢弃副本，不把整份 HTTP 请求反向扫描回媒体 ID。Chat 与 Responses 保留各自的循环和原生状态。
+
+工具结果不在入库前摘要或截断；单段文本保留空白，多段文本保留分段。工具提交成功后，活跃上下文按同一已提交记录投影，失败不进入下一次请求。工具输出发送或完成 Hook 失败时保留已有结果并追加失败说明。列表与状态截断在 `command/builtin/session_format.go`，仓储只返回原文。
+
+```mermaid
+flowchart TB
+    DB["storage/sqlite/*repository.go<br/>完整事实、事务与媒体引用"]
+    PUBLIC["agent/dialogue/materials.go<br/>公共资料投影、归档、发送副本"]
+    CENTER["media/resolver.go、request.go<br/>ID 与实体转换、请求持有及批内复用"]
+    CHAT["agent/chat/model_call.go、transcript.go<br/>Chat 消息与独立循环"]
+    RES["agent/responses/context.go、input.go<br/>Responses items 与原生恢复"]
+    AUDIT["agent/responses/native_call.go、compact.go<br/>参数、有序输入引用、响应事实"]
+    DB --> PUBLIC
+    PUBLIC <--> CENTER
+    PUBLIC -->|"准备好的公共内容"| CHAT
+    PUBLIC -->|"准备好的公共内容"| RES
+    CHAT -->|"新增业务事实"| PUBLIC
+    RES -->|"新增业务事实"| PUBLIC
+    PUBLIC --> DB
+    RES --> AUDIT --> DB
+```
+
 ### 媒体引用与清理
 
 - 本体按 SHA-256 去重，`media_references` 是引用事实来源。消息、工具参数、Fork、Cron、Elnis、outbox 和输出关联通过事务维护引用，读取／发送另持临时引用。
 - 工具通过确认后、实际执行前，递归关联最终 JSON 参数中完整有效的媒体 ID 到 Session；不扫描自由文本。执行失败保留引用，执行前拒绝不建立引用。
+- 会话消息、原生输入及 seed 公共片段只保存稳定媒体 ID 与描述；请求展开结果不回写。重复 ID 在一次准备中复用读取／签名。缺失或不可读对象只在发送副本变成占位文字，并发布去重日志与全局通知；取消、超时、数据库及其他运行错误继续返回错误。Fork／后台副本的原生 seed 独立保留公共片段及引用，生成时不打开媒体实体。
 - 中心统一清洗名称和来源敏感信息；下载使用原始参数。图片入库前按大小／边长限制转白底 JPEG，ID 对应实际保存内容。LLM 请求副本按配置选择 base64／S3／hybrid，S3 按需初始化。
 - Chat History 查询不下载；get_media 与 view_image 限当前平台／scope。媒体中心 `GetHistoryMediaBatch` 统一处理缓存、去重、下载预算及关联，同次最多尝试 5 个未缓存位置，失败计数，缓存不占次数，超限后仍返回缓存。主库按历史内部 ID 和媒体位置保存关联，历史删除后释放引用；跨库对账故障保守停止。
 - 媒体中心负责导入与图片校验。结果使用稳定 MediaID 的 Segments，经原生 function_call_output 输出图片并随工具结果保存，不产生 delivery.Outputs。消息默认取首张图片，显式序号沿用全部媒体编号。

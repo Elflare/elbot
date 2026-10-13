@@ -3,6 +3,7 @@ package responses
 import (
 	"bytes"
 	"context"
+	"elbot/internal/agent/dialogue"
 	"encoding/json"
 	"fmt"
 
@@ -34,14 +35,14 @@ func (c *Context) resolveContinuation(ctx context.Context, seed *storage.NativeS
 			return nil, noop, fmt.Errorf("原生分支续接材料与窗口不匹配")
 		}
 	}
-	var materials []material
-	if err := json.Unmarshal([]byte(seed.MaterialsJSON), &materials); err != nil {
+	materials, err := dialogue.DecodeMaterials(seed.MaterialsJSON)
+	if err != nil {
 		return nil, noop, err
 	}
 	w := &nativeWindow{Items: continuation}
 	for _, m := range materials {
-		if m.ItemIndex >= start {
-			m.ItemIndex -= start
+		if m.Index >= start {
+			m.Index -= start
 			w.Materials = append(w.Materials, m)
 		}
 	}

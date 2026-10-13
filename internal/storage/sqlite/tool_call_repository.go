@@ -31,8 +31,8 @@ func (r *ToolCallRepository) Create(ctx context.Context, record *storage.ToolCal
 	_, err := r.db.ExecContext(ctx, `
 INSERT INTO tool_call_records (
     id, session_id, tool_call_id, tool_name, actor_id, risk_level, success, error,
-    result_preview, started_at, finished_at, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    started_at, finished_at, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		record.ID,
 		record.SessionID,
 		record.ToolCallID,
@@ -41,7 +41,6 @@ INSERT INTO tool_call_records (
 		record.RiskLevel,
 		boolInt(record.Success),
 		nullString(record.Error),
-		nullString(record.ResultPreview),
 		storage.FormatTime(record.StartedAt),
 		storage.FormatTime(record.FinishedAt),
 		storage.FormatTime(record.CreatedAt),

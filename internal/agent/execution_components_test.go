@@ -73,8 +73,9 @@ func newExecutionFixture(t *testing.T, client llm.Client, store storage.Store) *
 	}
 	messages := &dialogue.MessageStore{Dialogues: store.Dialogues(), Gate: &dialogue.CommitGate{Sessions: opts.Sessions, Turns: opts.Turns, View: view}}
 	tools.Messages = messages
-	preparer := &dialogue.Preparer{Contexts: opts.Contexts, Identity: identity, Hooks: bridge, Tools: tools}
-	calls := &dialogue.CallProcessor{Messages: messages, Hooks: bridge, Identity: identity, Tools: tools}
+	preparer := &dialogue.Preparer{Media: opts.Media, Contexts: opts.Contexts, Identity: identity, Hooks: bridge, Tools: tools}
+	messages.Preparer = preparer
+	calls := &dialogue.CallProcessor{Messages: messages, Preparer: preparer, Hooks: bridge, Identity: identity, Tools: tools}
 	chat := &chatroute.Loop{Status: status,
 		Contexts:      opts.Contexts,
 		Models:        models,
@@ -326,8 +327,8 @@ func TestExecutionRequestBoundaryAndCleanup(t *testing.T) {
 			failure := errors.New("persistence failure")
 			repo := executionTimingMessages{MessageRepository: store.Messages(), load: func() error {
 				events = append(events, "load")
-				if len(f.opts.Requests.List()) != 0 {
-					t.Fatal("request registered before material loading")
+				if len(f.opts.Requests.List()) != 1 {
+					t.Fatal("material loading must run within the registered request")
 				}
 				if failureAt == "load" {
 					return failure

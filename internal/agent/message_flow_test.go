@@ -18,6 +18,7 @@ import (
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
+	"elbot/internal/media"
 	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
 	"elbot/internal/session"
@@ -31,7 +32,7 @@ func TestInboundTurnInputRoundTripWithoutPlatformContext(t *testing.T) {
 		PlatformText: "这是狗",
 		Segments: []llm.MessageSegment{
 			{Type: llm.SegmentText, Text: "这是猫"},
-			{Type: llm.SegmentImage, URL: "https://example.com/cat.png"},
+			{Type: llm.SegmentImage, URL: "data:image/png;base64,Y2F0"},
 		},
 	}
 	got := inboundTurnInput(withInboundTurnInput(context.Background(), want), "fallback")
@@ -52,7 +53,7 @@ func TestTurnHookMultimodalUserMessagePersistsWithoutChangingPlatformText(t *tes
 			platformText = event.Message.PlatformText
 			event.Message.Segments = []llm.MessageSegment{
 				{Type: llm.SegmentText, Text: "这是猫"},
-				{Type: llm.SegmentImage, URL: "https://example.com/cat.png", Name: "cat.png"},
+				{Type: llm.SegmentImage, URL: "data:image/png;base64,Y2F0", Name: "cat.png"},
 			}
 		}
 		if len(event.LLM.Messages) > 0 && len(event.LLM.Messages[0].Segments) > 0 {
@@ -100,7 +101,7 @@ func TestTurnHookMultimodalUserMessagePersistsWithoutChangingPlatformText(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages) == 0 || !strings.Contains(messages[0].Content, "这是猫 [图片 1；名称：cat.png；引用 URL：https://example.com/cat.png]") || !strings.Contains(messages[0].Segments, `"type":"image"`) || strings.Contains(messages[0].Segments, "reference_text") {
+	if len(messages) == 0 || !strings.Contains(messages[0].Content, "这是猫 [图片 1；名称：cat.png；媒体 ID：media:") || !strings.Contains(messages[0].Segments, `"type":"image"`) || strings.Contains(messages[0].Segments, "reference_text") || strings.Contains(messages[0].Segments, "base64,") {
 		t.Fatalf("stored user message = %#v", messages)
 	}
 }
@@ -123,9 +124,13 @@ func TestHandleMessageImageOnlyInputReachesLLM(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"ok"}}
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	image, err := a.dialogue.Preparer.Media.ImportBytes(t.Context(), []byte("image"), media.Input{MIMEType: "image/png"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqofficial",
 		ScopeID: "c2c:user-1"}}, Sender: p,
-		Segments: []platform.MessageSegment{{Type: platform.SegmentImage, URL: "data:image/png;base64,abc", MIMEType: "image/png", Name: "image.png"}},
+		Segments: []platform.MessageSegment{{Type: platform.SegmentImage, MediaID: image.ID, MIMEType: "image/png", Name: "image.png"}},
 	})
 
 	if err := a.HandleMessage(ctx, ""); err != nil {
@@ -144,7 +149,7 @@ func TestHandleMessageImageOnlyInputReachesLLM(t *testing.T) {
 func TestReplaceInboundTextSegmentsPreservesImage(t *testing.T) {
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Segments: []platform.MessageSegment{
 		{Type: platform.SegmentText, Text: "@tool:web 看看"},
-		{Type: platform.SegmentImage, URL: "data:image/png;base64,abc", MIMEType: "image/png"},
+		{Type: platform.SegmentImage, URL: "data:image/png;base64,YWJj", MIMEType: "image/png"},
 	}})
 
 	segments := replaceInboundTextSegments(ctx, "看看")

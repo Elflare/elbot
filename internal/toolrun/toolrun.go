@@ -260,9 +260,6 @@ func (m *Manager) Execute(ctx context.Context, call llm.ToolCallRequest, resolve
 	}
 	{
 		result := tool.Executor{Registry: registry, Actor: actor, Policy: policyForManager(ctx, policy)}.Execute(ctx, call)
-		if result.Result != nil && m != nil && m.Media != nil {
-			result.Message.Segments = m.Media.Materialize(ctx, result.Message.Segments)
-		}
 		return ExecutionResult{Call: call, Message: result.Message, Result: result.Result, LogResult: result.LogResult, Error: result.Error, ResultStatus: result.ResultStatus, ExecutionStarted: result.ExecutionStarted}
 	}
 }

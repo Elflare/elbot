@@ -2,10 +2,8 @@ package responses
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
-	api "elbot/internal/llm/responses"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 )
@@ -30,11 +28,7 @@ func (c *Context) PrepareFork(ctx context.Context, source *storage.Session, mess
 	if err != nil {
 		return nil, err
 	}
-	var output []api.Item
-	if err := json.Unmarshal([]byte(exchange.ItemsJSON), &output); err != nil {
-		return nil, err
-	}
-	calls, err := checkpointCalls(cp, output)
+	calls, err := checkpointCalls(cp)
 	if err != nil {
 		return nil, err
 	}
@@ -86,11 +80,7 @@ func (c *Context) PrepareCopy(ctx context.Context, source *storage.Session) (*se
 		if err != nil {
 			return nil, err
 		}
-		var output []api.Item
-		if err := json.Unmarshal([]byte(exchange.ItemsJSON), &output); err != nil {
-			return nil, err
-		}
-		calls, err = checkpointCalls(cp, output)
+		calls, err = checkpointCalls(cp)
 		if err != nil {
 			return nil, err
 		}
