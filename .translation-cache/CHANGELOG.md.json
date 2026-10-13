@@ -1840,6 +1840,14 @@
       "translation": "__ELBOT_CODE_0__/__ELBOT_CODE_1__ can now refresh configuration files.",
       "updated_at": 1791856974
     },
+    "CHANGELOG.md:list:d23068974d8547778eb307af8e486af2c7dbf0ee069a27f8447ba91be3b9454b": {
+      "kind": "list",
+      "source": "工具结果不再在入库前精简。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "d23068974d8547778eb307af8e486af2c7dbf0ee069a27f8447ba91be3b9454b",
+      "translation": "Tool results are no longer simplified before storage.",
+      "updated_at": 1791882448
+    },
     "CHANGELOG.md:list:d3908641b559bc54ede96c20cd1c652257d818385b70144f4cdcd75c3cfecf17": {
       "kind": "list",
       "source": "可用 __ELBOT_CODE_0__ 取消长时间运行的 Hook，手动取消按正常取消记录。",
@@ -2218,8 +2226,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "f5b78078a454976be4d4ace9881528a35222f6dff4d2c075e2fa67ec3d51923b",
+  "source_hash": "c4aec6e37453c4f2c6801b686bbabbd2a0944d7fa205d64fd029c0cbe3392034",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1791856974,
+  "updated_at": 1791882448,
   "version": 2
 }

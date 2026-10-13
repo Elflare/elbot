@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Tool results are no longer simplified before storage.
 - `/models --fresh`/`--refresh` can now refresh configuration files.
 - AgentSkill TOML commands now share a base environment with Go Skills and read the skill root directory `.env` together with Go Skills before each execution; The priority for ordinary variables is skill `.env` > ElBot process environment > configuration root `.env`, with PATH appended and deduplicated in order. Modifications to skill `.env` will take effect on the next call, without requiring a reload or restart.
 - Significantly refactored the underlying architecture, optimizing the responsibilities and boundaries of each package
