@@ -61,7 +61,7 @@ These paths will all be resolved to the directory where the main configuration f
 ElBot uses the following environment sources:
 
 - ElBot process environment: provided by the terminal, service manager, or container at startup.
-- Configuration root `.env`: located in the same directory as the main configuration file, used for Provider Keys, platform Secrets, CLI/Elnis tokens, built-in tool variables, and LLM Shell.
+- Each Skill's own root directory `.env`: used for variables exclusive to that Skill, read by AgentSkill TOML commands and Go Skills before each execution.
 - `plugins/.env`: an environment layer shared by all Hooks.
 - `plugins/<plugin-id>/.env`: an environment layer for individual plugin execs and Workers.
 
@@ -86,13 +86,16 @@ ELNIS_HOME_TOKEN=your-elnis-token
 
 All variables in the configuration root `.env` will also be supplemented to the LLM Shell; therefore, related tools should only be enabled when the current model and Shell permission policies are trusted.
 
-### Shell and Hook Environments
+### Shell, Skill, and Hook Environments
 
 | Process Entry Point | Environment Source and Priority |
 | --- | --- |
-| Built-in tools and Go Skills (including LLM Shell) | Based on the ElBot process environment, the configuration root `.env` only supplements ordinary variables that do not yet exist. |
+| Built-in tools (including LLM Shell) | Based on the ElBot process environment, the configuration root `.env` only supplements ordinary variables that do not yet exist. |
+| AgentSkill TOML commands and Go Skills | The priority for ordinary variables is Skill `.env` > ElBot process environment > configuration root `.env`. Null values in Skill `.env` will also override variables with the same name in the base environment. |
 | Root Hook Rules | Based on the ElBot process environment, `plugins/.env` overrides ordinary variables with the same name. |
 | Plugin exec and Worker | Based on the root Hook environment, the `.env` in the same directory as the plugin configuration file further overrides ordinary variables with the same name. |
+
+The working directory for Skill execution is each Skill's own root directory. ElBot will pass the merged results to the current subprocess. Scripts can be used directly without needing to load `.env` manually. The Go Skill compilation phase uses the basic environment and does not load the skill `.env`.
 
 When ElBot reads configuration files on its own, the configuration root `.env` will not inject Hooks. Proxies, tool paths, or variables shared by all Hooks should be placed in `plugins/.env`, while variables used only by a single plugin should be placed in that plugin's `.env`. One-time exec, Persistent Worker, and Transient Worker follow the same rules.
 
@@ -107,6 +110,8 @@ NO_PROXY=localhost,127.0.0.1,::1
 ### PATH Rules and systemd
 
 When ElBot merges the above environment layers, `PATH` is not overridden like ordinary variables, but is instead appended sequentially by layer and deduplicated. The base PATH here is the process PATH that ElBot has already obtained upon startup; For subsequent `.env`, only fill in the absolute directories to be added:
+
+The PATH order during skill execution is the ElBot process PATH, the configuration root `.env` PATH, and the skill `.env` PATH. The AgentSkill command also uses the merged PATH to look for executable files.
 
 ```dotenv
 PATH=/home/elbot/.local/bin:/usr/local/go/bin
