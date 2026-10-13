@@ -71,7 +71,9 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 				return err
 			}
 			var materials []struct {
-				MediaID string `json:"media"`
+				Segments []struct {
+					MediaID string `json:"media"`
+				} `json:"segments"`
 			}
 			if input.MediaJSON != "" {
 				if err := json.Unmarshal([]byte(input.MediaJSON), &materials); err != nil {
@@ -80,8 +82,10 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 			}
 			var ids []string
 			for _, material := range materials {
-				if material.MediaID != "" {
-					ids = append(ids, material.MediaID)
+				for _, segment := range material.Segments {
+					if segment.MediaID != "" {
+						ids = append(ids, segment.MediaID)
+					}
 				}
 			}
 			if err := nativeMediaReferences(ctx, tx, "native_input", input.ID, input.SessionID, ids); err != nil {

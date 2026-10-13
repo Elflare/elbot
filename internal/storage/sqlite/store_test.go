@@ -188,7 +188,7 @@ func TestSessionRepositoryArchivePinAndCleanup(t *testing.T) {
 		}
 	}
 
-	listed, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "u1", Platform: "cli", PlatformScopeID: "local"})
+	listed, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", MessageLimit: 5})
 	if err != nil {
 		t.Fatalf("list active: %v", err)
 	}
@@ -249,7 +249,7 @@ func TestSessionRepositoryArchivePinAndCleanup(t *testing.T) {
 	}
 }
 
-func TestSessionListPreviewSkipsBlankMessages(t *testing.T) {
+func TestSessionListExcerptsPreserveBlankMessages(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
@@ -268,19 +268,19 @@ func TestSessionListPreviewSkipsBlankMessages(t *testing.T) {
 		}
 	}
 
-	sessions, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "u1", Platform: "cli", PlatformScopeID: "local"})
+	sessions, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", MessageLimit: 5})
 	if err != nil {
 		t.Fatalf("list sessions: %v", err)
 	}
 	if len(sessions) != 1 {
 		t.Fatalf("session count = %d", len(sessions))
 	}
-	if sessions[0].MessagePreview != "u: hello / b: hi / ..." {
-		t.Fatalf("preview = %q", sessions[0].MessagePreview)
+	if got := sessions[0].Messages; len(got) != 4 || got[0].Content != "" || got[2].Content != "  \n\t  " || got[3].Content != "hi" {
+		t.Fatalf("original excerpts = %+v", got)
 	}
 }
 
-func TestSessionListPreviewUsesInsertionOrderForEqualTimestamps(t *testing.T) {
+func TestSessionListExcerptsUsesInsertionOrderForEqualTimestamps(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
@@ -308,11 +308,13 @@ func TestSessionListPreviewUsesInsertionOrderForEqualTimestamps(t *testing.T) {
 	if len(sessions) != 1 {
 		t.Fatalf("session count = %d", len(sessions))
 	}
-	if sessions[0].LastUserPreview != "second" || sessions[0].LastBotPreview != "fourth" {
-		t.Fatalf("last previews = %q / %q", sessions[0].LastUserPreview, sessions[0].LastBotPreview)
+	if sessions[0].LastUserContent != "second" || sessions[0].LastAssistantContent != "fourth" {
+		t.Fatalf("last previews = %q / %q", sessions[0].LastUserContent, sessions[0].LastAssistantContent)
 	}
-	if sessions[0].MessagePreview != "u: first / u: second / b: third / b: fourth" {
-		t.Fatalf("message preview = %q", sessions[0].MessagePreview)
+	for i, message := range sessions[0].Messages {
+		if message.ID != messages[i].ID || message.Content != messages[i].Content {
+			t.Fatalf("excerpt %d = %+v", i, message)
+		}
 	}
 }
 
@@ -498,7 +500,7 @@ func TestToolCallRepositoryUsageBySession(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 	for _, record := range []*storage.ToolCallRecord{
-		{SessionID: session.ID, ToolCallID: "call_1", ToolName: "shell", ActorID: "u1", RiskLevel: "low", Success: true, ResultPreview: "ok"},
+		{SessionID: session.ID, ToolCallID: "call_1", ToolName: "shell", ActorID: "u1", RiskLevel: "low", Success: true},
 		{SessionID: session.ID, ToolCallID: "call_2", ToolName: "shell", ActorID: "u1", RiskLevel: "low", Success: false, Error: "boom"},
 		{SessionID: session.ID, ToolCallID: "call_3", ToolName: "web_search", ActorID: "u1", RiskLevel: "low", Success: true},
 	} {

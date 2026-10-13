@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"elbot/internal/agent/dialogue"
-	"elbot/internal/media"
 	"elbot/internal/modelmgr"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/storage"
@@ -17,7 +16,6 @@ type LoopDeps struct {
 		Record(context.Context, runtimestatus.Snapshot)
 	}
 	Repository storage.DialogueRepository
-	Media      *media.Manager
 	Models     *modelmgr.Service
 	Turns      *turn.Manager
 	View       dialogue.ExecutionView

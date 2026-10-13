@@ -7,7 +7,6 @@ import (
 	"reflect"
 
 	"elbot/internal/agent/dialogue"
-	"elbot/internal/llm"
 	api "elbot/internal/llm/responses"
 	"elbot/internal/storage"
 )
@@ -62,7 +61,7 @@ func (r *Loop) validateInitialInputs(ctx context.Context, row *storage.Session, 
 		if err != nil {
 			return err
 		}
-		if llm.SegmentsContentText(segments) != message.Content || dialogue.StoredMessageSegments(segments) != message.Segments {
+		if dialogue.MessageContent(segments) != message.Content || dialogue.StoredMessageSegments(segments) != message.Segments {
 			return missing()
 		}
 		item, err := api.ParseItem([]byte(input.ItemJSON))

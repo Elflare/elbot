@@ -39,7 +39,7 @@ func (*extensionLoop) CheckSelection(modelmgr.Selection) error { return nil }
 
 func (l *extensionLoop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials) (dialogue.PreparedLoop, error) {
 	model, ok := contextinfo.ModelFromContext(ctx)
-	if !ok || model.APIType != "extension" || model.Provider != "extension-provider" || contextinfo.RootRequestIDFromContext(ctx) != "" {
+	if !ok || model.APIType != "extension" || model.Provider != "extension-provider" || contextinfo.RootRequestIDFromContext(ctx) == "" {
 		l.t.Fatalf("common admission/preparation facts=%+v", model)
 	}
 	l.prepared++

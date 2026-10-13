@@ -126,3 +126,34 @@ func TestMediaJSONReferenceTransactions(t *testing.T) {
 	}
 	assertOwner("cron", job.ID, "")
 }
+
+func TestNativePublicMaterialsRetainMediaAndAuditMissingReferences(t *testing.T) {
+	ctx := t.Context()
+	store := newTestStore(t)
+	id := "media:" + strings.Repeat("d", 64)
+	if err := store.Media().Upsert(ctx, &storage.Media{ID: id, MIMEType: "image/png", Backend: "local"}); err != nil {
+		t.Fatal(err)
+	}
+	row := &storage.Session{OwnerID: "u", Platform: "test"}
+	if err := store.Sessions().Create(ctx, row); err != nil {
+		t.Fatal(err)
+	}
+	input := storage.NativeInput{ID: "input", SessionID: row.ID, ItemJSON: `{"type":"message","role":"user","content":[]}`, MediaJSON: `[{"index":0,"segments":[{"type":"image","media":"` + id + `"}]}]`}
+	if err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: row.ID, Native: &storage.NativeCommit{Inputs: []storage.NativeInput{input}}}); err != nil {
+		t.Fatal(err)
+	}
+	refs, err := store.MediaReferences().ListByOwner(ctx, "native_input", input.ID)
+	if err != nil || len(refs) != 1 || refs[0].MediaID != id {
+		t.Fatalf("refs=%+v err=%v", refs, err)
+	}
+	if issues, err := store.Media().CheckReferences(ctx); err != nil || len(issues) != 0 {
+		t.Fatalf("issues=%v err=%v", issues, err)
+	}
+	if _, err := store.db.ExecContext(ctx, `DELETE FROM media_references WHERE owner_type='native_input' AND owner_id=?`, input.ID); err != nil {
+		t.Fatal(err)
+	}
+	issues, err := store.Media().CheckReferences(ctx)
+	if err != nil || len(issues) != 1 || !strings.Contains(issues[0], "owner_type=native_input") {
+		t.Fatalf("missing reference ignored: %v %v", issues, err)
+	}
+}

@@ -17,7 +17,6 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
-	"elbot/internal/media"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/security"
@@ -35,7 +34,6 @@ type toolRunDeps struct {
 	requests      *request.Manager
 	turns         *turn.Manager
 	identity      ToolIdentity
-	media         *media.Manager
 	state         *toolrun.StateService
 	runtime       *ToolRuntimeState
 	sessions      *sessionstate.Service
@@ -85,12 +83,12 @@ func (d toolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Sess
 		return nil, logResult, err
 	}
 	if !reflect.DeepEqual(event.Message.Segments, original) {
-		return materializeMedia(ctx, d.media, event.Message.Segments), logResult, nil
+		return event.Message.Segments, logResult, nil
 	}
 	if event.Tool.Result != resultText {
-		return materializeMedia(ctx, d.media, llm.SetSegmentText(original, event.Tool.Result)), logResult, nil
+		return llm.SetSegmentText(original, event.Tool.Result), logResult, nil
 	}
-	return materializeMedia(ctx, d.media, original), logResult, nil
+	return original, logResult, nil
 }
 
 func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), events.LogResult, error) {
@@ -156,15 +154,14 @@ func (d toolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output)
 
 func (d toolRunDeps) RecordToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk string, startedAt time.Time, result string, callErr error) (events.LogResult, error) {
 	record := &storage.ToolCallRecord{
-		SessionID:     sessionID,
-		ToolCallID:    call.ID,
-		ToolName:      call.Name,
-		ActorID:       d.identity.Actor(ctx).ID,
-		RiskLevel:     risk,
-		Success:       callErr == nil,
-		ResultPreview: previewLogText(result),
-		StartedAt:     startedAt,
-		FinishedAt:    storage.Now(),
+		SessionID:  sessionID,
+		ToolCallID: call.ID,
+		ToolName:   call.Name,
+		ActorID:    d.identity.Actor(ctx).ID,
+		RiskLevel:  risk,
+		Success:    callErr == nil,
+		StartedAt:  startedAt,
+		FinishedAt: storage.Now(),
 	}
 	if callErr != nil {
 		record.Error = callErr.Error()
@@ -243,10 +240,6 @@ func (d toolRunDeps) ToolCallMessage(sessionID, content, rawText string, calls [
 	return dialogue.ToolCallStorageMessage(sessionID, content, rawText, calls)
 }
 
-func (d toolRunDeps) PersistedToolMessage(message llm.LLMMessage) llm.LLMMessage {
-	return dialogue.PersistedToolMessage(message)
-}
-
 func (d toolRunDeps) RefreshExecution(ctx context.Context, row *storage.Session) (context.Context, error) {
 	return d.view.RefreshExecution(ctx, row)
 }
@@ -269,7 +262,6 @@ type ToolRunDeps struct {
 	Requests      *request.Manager
 	Turns         *turn.Manager
 	Identity      ToolIdentity
-	Media         *media.Manager
 	State         *toolrun.StateService
 	Runtime       *ToolRuntimeState
 	Sessions      *sessionstate.Service
@@ -286,7 +278,6 @@ func NewToolRunDeps(deps ToolRunDeps) dialogue.ToolDepsFactory {
 		requests:      deps.Requests,
 		turns:         deps.Turns,
 		identity:      deps.Identity,
-		media:         deps.Media,
 		state:         deps.State,
 		runtime:       deps.Runtime,
 		sessions:      deps.Sessions,

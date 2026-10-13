@@ -41,39 +41,16 @@ func (b PromptBuilder) Build(ctx context.Context, req PromptBuildRequest) ([]llm
 		if role != llm.RoleUser && role != llm.RoleAssistant && role != llm.RoleTool && role != llm.RoleSystem {
 			continue
 		}
-		content := message.Content
-		metadata := dialogue.AssistantMessageMetadata(message.Metadata)
-		if role == llm.RoleAssistant && metadata.RawText != "" {
-			content = metadata.RawText
-		}
-		segments := messageSegments(content, message)
+		projected := dialogue.MessageFromStorage(message)
 		// 摘要固定在 checkpoint 后的第一条 user 消息中，形成稳定的新上下文起点。
 		// 仍保留原 user 的图片/文件 segments，避免破坏多模态输入结构。
 		if req.Summary != nil && !summaryInjected && role == llm.RoleUser {
-			segments = llm.PrependSegmentText(segments, summaryUserPrefix(req.Summary.Summary))
+			projected.Segments = llm.PrependSegmentText(projected.Segments, summaryUserPrefix(req.Summary.Summary))
 			summaryInjected = true
 		}
-		out = append(out, storageMessageToLLM(role, segments, message))
+		out = append(out, projected)
 	}
 	return out, nil
-}
-
-func storageMessageToLLM(role llm.MessageRole, segments []llm.MessageSegment, message storage.Message) llm.LLMMessage {
-	out := llm.LLMMessage{Role: role, Segments: segments, ToolCallID: message.ToolCallID}
-	if role == llm.RoleTool {
-		out.Name = dialogue.ToolNameFromMetadata(message.Metadata)
-	}
-	if role == llm.RoleAssistant {
-		out.ToolCalls = dialogue.AssistantMessageMetadata(message.Metadata).ToolCalls
-	}
-	return out
-}
-
-func messageSegments(content string, message storage.Message) []llm.MessageSegment {
-	if segments := dialogue.MessageSegmentsFromStorage(message.Segments); len(segments) > 0 {
-		return segments
-	}
-	return llm.TextSegments(content)
 }
 
 func summaryUserPrefix(summary string) string {

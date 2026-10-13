@@ -44,8 +44,8 @@ type testLoop struct {
 func (*testLoop) CheckSelection(modelmgr.Selection) error { return nil }
 
 func (l *testLoop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials) (dialogue.PreparedLoop, error) {
-	if contextinfo.RootRequestIDFromContext(ctx) != "" {
-		l.t.Fatal("materials loaded after request registration")
+	if contextinfo.RootRequestIDFromContext(ctx) == "" {
+		l.t.Fatal("materials loaded without request registration")
 	}
 	if model, ok := contextinfo.ModelFromContext(ctx); !ok || model.APIType != string(testProtocol) || model.Provider != "test-provider" {
 		l.t.Fatalf("preparation model facts = %+v, %v", model, ok)

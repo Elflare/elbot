@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"elbot/internal/agent/dialogue"
 	"elbot/internal/llm"
 	api "elbot/internal/llm/responses"
 	"elbot/internal/storage"
@@ -55,7 +56,7 @@ func nativeItem(callID string, segments []llm.MessageSegment) (api.Item, error) 
 		}
 	}
 	if textOnly {
-		output, err = json.Marshal(llm.SegmentsContentText(segments))
+		output, err = json.Marshal(dialogue.MessageContent(segments))
 	} else {
 		output, err = json.Marshal(content)
 	}
@@ -74,13 +75,7 @@ func queuedInput(sessionID, messageID, exchangeID, callID string, segments []llm
 	if err != nil {
 		return storage.NativeInput{}, err
 	}
-	canonical := append([]llm.MessageSegment(nil), segments...)
-	for i := range canonical {
-		if canonical[i].MediaID != "" {
-			canonical[i].URL = ""
-		}
-	}
-	media, err := json.Marshal(canonical)
+	materials, err := dialogue.EncodeMaterials([]dialogue.Material{{MessageID: messageID, Segments: segments}})
 	if err != nil {
 		return storage.NativeInput{}, err
 	}
@@ -91,16 +86,22 @@ func queuedInput(sessionID, messageID, exchangeID, callID string, segments []llm
 		ExchangeID: exchangeID,
 		CallID:     callID,
 		ItemJSON:   string(raw),
-		MediaJSON:  string(media),
+		MediaJSON:  materials,
 	}, nil
 }
 
 func inputSegments(input storage.NativeInput) ([]llm.MessageSegment, error) {
-	var segments []llm.MessageSegment
-	if err := json.Unmarshal([]byte(input.MediaJSON), &segments); err != nil {
-		return nil, fmt.Errorf("decode native input material: %w", err)
+	materials, err := dialogue.DecodeMaterials(input.MediaJSON)
+	if err != nil {
+		return nil, err
 	}
-	return segments, nil
+	if len(materials) == 0 {
+		return nil, nil
+	}
+	if len(materials) != 1 || materials[0].MessageID != input.MessageID {
+		return nil, fmt.Errorf("原生输入公共资料关联不匹配")
+	}
+	return materials[0].Segments, nil
 }
 
 // Definitions have no display message, tool call, or media material. Keep them
@@ -158,13 +159,9 @@ func (s *turnState) resolveInputs(ctx context.Context, inputs []storage.NativeIn
 			messages = append(messages, llm.LLMMessage{Role: llm.RoleUser, Segments: segments})
 		}
 	}
-	resolved, cleanup := messages, noop
-	if s.route.Calls.Media != nil && len(messages) > 0 {
-		var err error
-		resolved, cleanup, err = s.route.Calls.Media.AcquireForLLM(ctx, messages)
-		if err != nil {
-			return nil, cleanup, err
-		}
+	resolved, cleanup, err := s.route.Preparer.PrepareMaterials(ctx, messages)
+	if err != nil {
+		return nil, cleanup, err
 	}
 	for j, i := range positions {
 		item, err := nativeItem(inputs[i].CallID, resolved[j].Segments)

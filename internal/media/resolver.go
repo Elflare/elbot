@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -12,16 +14,18 @@ import (
 
 	"elbot/internal/llm"
 	"elbot/internal/storage"
+
+	"github.com/aws/smithy-go"
 )
 
 // Materialize replaces new inbound media sources with stable references.
-func (m *Manager) Materialize(ctx context.Context, segments []llm.MessageSegment) []llm.MessageSegment {
+func (m *Manager) Materialize(ctx context.Context, segments []llm.MessageSegment) ([]llm.MessageSegment, error) {
 	return m.MaterializeWithLimits(ctx, segments, ImportLimits{})
 }
 
 // MaterializeWithLimits materializes segments using per-call import limits
 // without changing the shared manager.
-func (m *Manager) MaterializeWithLimits(ctx context.Context, segments []llm.MessageSegment, limits ImportLimits) []llm.MessageSegment {
+func (m *Manager) MaterializeWithLimits(ctx context.Context, segments []llm.MessageSegment, limits ImportLimits) ([]llm.MessageSegment, error) {
 	if limits.MaxImportBytes <= 0 || limits.MaxImportBytes > m.MaxImportBytes {
 		limits.MaxImportBytes = m.MaxImportBytes
 	}
@@ -33,6 +37,10 @@ func (m *Manager) MaterializeWithLimits(ctx context.Context, segments []llm.Mess
 		if segment.Type != llm.SegmentImage && segment.Type != llm.SegmentFile {
 			continue
 		}
+		if segment.MediaID != "" {
+			out[i].URL = ""
+			continue
+		}
 		if segment.Name != "" {
 			segment.Name = sanitizeMediaName(segment.Name)
 		}
@@ -40,12 +48,6 @@ func (m *Manager) MaterializeWithLimits(ctx context.Context, segments []llm.Mess
 		var err error
 		input := Input{Name: segment.Name, MIMEType: segment.MIMEType}
 		switch {
-		case segment.MediaID != "":
-			if !ValidID(segment.MediaID) {
-				err = fmt.Errorf("invalid media ID")
-			} else {
-				metadata, err = m.Metadata(ctx, segment.MediaID)
-			}
 		case strings.HasPrefix(segment.URL, "data:"):
 			header, body, ok := strings.Cut(segment.URL, ",")
 			if !ok || !strings.HasSuffix(header, ";base64") {
@@ -85,11 +87,10 @@ func (m *Manager) MaterializeWithLimits(ctx context.Context, segments []llm.Mess
 			}
 			metadata, err = m.importFile(ctx, filepath.FromSlash(path), input, limits.MaxImportBytes)
 		default:
-			continue
+			err = fmt.Errorf("media source is empty")
 		}
 		if err != nil {
-			out[i] = unavailable(segment)
-			continue
+			return nil, fmt.Errorf("archive media segment %d: %w", i, err)
 		}
 		if segment.MediaID == "" {
 			segment.Name = metadata.Name
@@ -104,7 +105,7 @@ func (m *Manager) MaterializeWithLimits(ctx context.Context, segments []llm.Mess
 		}
 		out[i] = segment
 	}
-	return out
+	return out, ctx.Err()
 }
 
 func unavailable(segment llm.MessageSegment) llm.MessageSegment {
@@ -137,10 +138,15 @@ func (m *Manager) ResolveForLLM(ctx context.Context, messages []llm.LLMMessage) 
 				var err error
 				metadata, err = m.Metadata(ctx, segment.MediaID)
 				if err != nil {
-					out[i].Segments[j] = unavailable(segment)
-					continue
+					if !errors.Is(err, storage.ErrNotFound) {
+						return nil, cleanup, err
+					}
 				}
 				mediaByID[segment.MediaID] = metadata
+			}
+			if metadata == nil {
+				out[i].Segments[j] = unavailable(segment)
+				continue
 			}
 			if out[i].Segments[j].Name == "" {
 				out[i].Segments[j].Name = metadata.Name
@@ -173,10 +179,24 @@ func (m *Manager) ResolveForLLM(ctx context.Context, messages []llm.LLMMessage) 
 					}
 				}
 				if err != nil {
-					out[i].Segments[j] = unavailable(segment)
-					continue
+					if ctx.Err() != nil {
+						return nil, cleanup, ctx.Err()
+					}
+					if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+						return nil, cleanup, err
+					}
+					var remoteErr smithy.APIError
+					missing := errors.Is(err, fs.ErrNotExist) || errors.Is(err, fs.ErrPermission) || errors.Is(err, storage.ErrNotFound) || (errors.As(err, &remoteErr) && (remoteErr.ErrorCode() == "NoSuchKey" || remoteErr.ErrorCode() == "NotFound"))
+					if !missing {
+						return nil, cleanup, err
+					}
+					value = ""
 				}
 				urls[segment.MediaID] = value
+			}
+			if value == "" {
+				out[i].Segments[j] = unavailable(segment)
+				continue
 			}
 			out[i].Segments[j].URL = value
 		}

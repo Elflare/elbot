@@ -32,12 +32,19 @@ type Streamer interface {
 // PreparedRequest freezes the fully merged native body without credentials.
 type PreparedRequest struct {
 	body         []byte
+	parameters   []byte
 	model        string
 	inputs       int
 	allowedTools []string
 }
 
-func (p PreparedRequest) JSON() json.RawMessage  { return append(json.RawMessage(nil), p.body...) }
+func (p PreparedRequest) JSON() json.RawMessage { return append(json.RawMessage(nil), p.body...) }
+
+// ParametersJSON is the frozen request configuration without conversation input.
+// The dialogue owner records ordered durable input references separately.
+func (p PreparedRequest) ParametersJSON() json.RawMessage {
+	return append(json.RawMessage(nil), p.parameters...)
+}
 func (p PreparedRequest) AllowedTools() []string { return append([]string(nil), p.allowedTools...) }
 
 type Client struct {
@@ -135,13 +142,19 @@ func (c *Client) prepareRequest(req Request, compact bool) (PreparedRequest, err
 		return PreparedRequest{}, err
 	}
 	body["tool_choice"] = choice
+	parameters := maps.Clone(body)
+	delete(parameters, "input")
+	parameterJSON, err := json.Marshal(parameters)
+	if err != nil {
+		return PreparedRequest{}, fmt.Errorf("marshal response parameters: %w", err)
+	}
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)
 	encoder.SetEscapeHTML(false)
 	if err = encoder.Encode(body); err != nil {
 		return PreparedRequest{}, fmt.Errorf("marshal response request: %w", err)
 	}
-	return PreparedRequest{body: append([]byte(nil), buf.Bytes()...), model: req.Model, inputs: len(input), allowedTools: allowed}, nil
+	return PreparedRequest{body: append([]byte(nil), buf.Bytes()...), parameters: parameterJSON, model: req.Model, inputs: len(input), allowedTools: allowed}, nil
 }
 
 // StoreForModel exposes the configured preference to the native dialogue loop.

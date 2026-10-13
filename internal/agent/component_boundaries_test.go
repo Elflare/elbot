@@ -210,7 +210,7 @@ func TestMigratedComponentsPublishFactsWithoutLogger(t *testing.T) {
 	defer connection.Disconnect()
 	_, _ = a.signals.ModelCallCompleted.Observe(func(context.Context, agentevents.ModelCallCompletedEvent) error { counts["model"]++; return nil }, signal.ConnectOptions{})
 	out := foregroundTurnOutput{sender: a.output}
-	if _, err := a.dialogue.PrepareTurn(ctx, dialogue.TurnInput{Session: row, Text: "input", Selection: modelmgr.SelectionForTurn(ctx, a.execution.models, row)}); err != nil {
+	if _, err := a.dialogue.Preparer.LoadMaterials(ctx, dialogue.TurnInput{Session: row, Text: "input", Selection: modelmgr.SelectionForTurn(ctx, a.execution.models, row)}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := testChatRoute(a).Caller.Call(ctx, row, modelmgr.SelectionForTurn(ctx, a.execution.models, row), nil, nil, nil, nil, out); err != nil {

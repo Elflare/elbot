@@ -20,7 +20,8 @@ type Compactor interface {
 
 type PreparedCompactRequest struct{ request PreparedRequest }
 
-func (p PreparedCompactRequest) JSON() json.RawMessage { return p.request.JSON() }
+func (p PreparedCompactRequest) JSON() json.RawMessage           { return p.request.JSON() }
+func (p PreparedCompactRequest) ParametersJSON() json.RawMessage { return p.request.ParametersJSON() }
 
 // Response retains the real terminal response and all completed output for audit.
 // Only Compaction becomes the next session's context root.

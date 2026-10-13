@@ -149,7 +149,7 @@ func TestPreparedToolArgumentsReachExecutionLLMAndTranscript(t *testing.T) {
 		t.Fatalf("Register hook: %v", err)
 	}
 	if err := manager.Register(hook.Registration{Point: hook.PointToolCallCompleted, Name: "test.result-image", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
-		event.Message.Segments = append(event.Message.Segments, llm.MessageSegment{Type: llm.SegmentImage, URL: "https://example.com/result.png", Name: "result.png"})
+		event.Message.Segments = append(event.Message.Segments, llm.MessageSegment{Type: llm.SegmentImage, URL: "data:image/png;base64,aW1hZ2U=", Name: "result.png"})
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 	})}); err != nil {
 		t.Fatalf("Register completed hook: %v", err)

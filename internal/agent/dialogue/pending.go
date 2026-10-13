@@ -26,7 +26,7 @@ func DrainPending(turns *turn.Manager, sessionID string, expected ...string) *Pe
 		ID:        storage.NewID(),
 		SessionID: sessionID,
 		Role:      storage.RoleUser,
-		Content:   llm.SegmentsContentText(segments),
+		Content:   MessageContent(segments),
 		Segments:  StoredMessageSegments(segments),
 	}
 	return &PendingUserMessage{Message: message, PlatformText: pending.PlatformText, Segments: segments}

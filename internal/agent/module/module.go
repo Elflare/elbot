@@ -116,7 +116,6 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		Requests:      m.requests,
 		Turns:         m.turns,
 		Identity:      identity,
-		Media:         deps.Media,
 		State:         deps.ToolState,
 		Runtime:       toolRuntime,
 		Sessions:      m.sessions,
@@ -172,7 +171,6 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 	response, err := responseroute.NewLoop(responseroute.LoopDeps{
 		Status:     status,
 		Repository: deps.Store.Dialogues(),
-		Media:      deps.Media,
 		Models:     deps.Models,
 		Turns:      m.turns,
 		View:       view,

@@ -187,13 +187,3 @@ func defaultTitle(text string) string {
 	runes := []rune(text)
 	return string(runes[:maxRunes]) + "..."
 }
-
-func preview(text string) string {
-	text = strings.TrimSpace(strings.ReplaceAll(text, "\n", " "))
-	const maxRunes = 80
-	if utf8.RuneCountInString(text) <= maxRunes {
-		return text
-	}
-	runes := []rune(text)
-	return string(runes[:maxRunes]) + "..."
-}

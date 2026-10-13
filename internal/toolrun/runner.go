@@ -46,7 +46,6 @@ type RunnerDeps interface {
 	AddToolUse(sessionID, toolName string)
 	ToolResultMessage(sessionID string, message llm.LLMMessage) storage.Message
 	ToolCallMessage(sessionID, content, rawText string, calls []llm.ToolCallRequest) storage.Message
-	PersistedToolMessage(message llm.LLMMessage) llm.LLMMessage
 }
 
 type ConfirmResult struct {
@@ -177,10 +176,19 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 	}
 	persistResult := func(index int, call llm.ToolCallRequest) error {
 		message := messages[len(messages)-1]
-		stored := deps.ToolResultMessage(sessionID, deps.PersistedToolMessage(message))
+		stored := deps.ToolResultMessage(sessionID, message)
 		logResult, err := req.Committer.Result(ctx, index, call, message, &stored)
 		if logResult.ResultStatus != events.ResultSkipped {
 			record(ctx, call, "tool_transcript_save", logResult)
+		}
+		if err == nil {
+			canonical := llm.TextSegments(stored.Content)
+			if stored.Segments != "" {
+				if err := json.Unmarshal([]byte(stored.Segments), &canonical); err != nil {
+					return err
+				}
+			}
+			messages[len(messages)-1].Segments = canonical
 		}
 		return err
 	}
@@ -361,21 +369,21 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 			}
 			if err := toolErr; err != nil {
 				result.Error = errors.Join(result.Error, err)
-				result.Message = toolMessage(call.Name, call.ID, fmt.Sprintf("tool call %s canceled by user", call.Name))
+				result.Message.Segments = append(result.Message.Segments, llm.TextSegments(fmt.Sprintf("\ntool call %s canceled by user", call.Name))...)
 			}
 			if result.Result != nil && len(result.Result.Outputs) > 0 {
 				logResult, err := deps.SendOutputs(ctx, result.Result.Outputs)
 				record(ctx, call, "tool_outputs", logResult)
 				if err != nil {
 					result.Error = errors.Join(result.Error, err)
-					result.Message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s failed: output: %v", call.Name, err))
+					result.Message.Segments = append(result.Message.Segments, llm.TextSegments(fmt.Sprintf("\ntool call %s failed: output: %v", call.Name, err))...)
 				}
 			}
 			if result.ExecutionStarted {
 				completedSegments, _, hookErr := deps.CompleteToolCall(ctx, req.Session, call, riskText, result.Message.Segments, result.Error)
 				if hookErr != nil {
 					result.Error = errors.Join(result.Error, hookErr)
-					result.Message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s failed: hook: %v", call.Name, hookErr))
+					result.Message.Segments = append(result.Message.Segments, llm.TextSegments(fmt.Sprintf("\ntool call %s failed: hook: %v", call.Name, hookErr))...)
 				} else {
 					result.Message.Segments = completedSegments
 				}
@@ -387,7 +395,7 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 				}
 				if stateErr != nil {
 					result.Error = errors.Join(result.Error, stateErr)
-					result.Message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s: tool state was not saved; completed actions were not rolled back: %v", call.Name, result.Error))
+					result.Message.Segments = append(result.Message.Segments, llm.TextSegments(fmt.Sprintf("\ntool call %s: tool state was not saved; completed actions were not rolled back: %v", call.Name, result.Error))...)
 				}
 			}
 			resultText := llm.SegmentsContentText(result.Message.Segments)

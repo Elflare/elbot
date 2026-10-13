@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 工具结果不再在入库前精简。
 - `/models --fresh`／`--refresh` 现在可刷新配置文件。
 - AgentSkill TOML 命令改为与 Go Skill 共用基础环境，并与 Go Skill 一起在每次执行前读取技能根目录 `.env`；普通变量优先级为技能 `.env` > ElBot 进程环境 > 配置根 `.env`，PATH 依次追加去重。技能 `.env` 修改后下次调用生效，无需重载或重启。
 - 大幅重构底层，优化各包职责与边界

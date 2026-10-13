@@ -63,9 +63,12 @@ func TestResponsesRepeatedCompactionArchivesExtraOutputWithoutExecutingIt(t *tes
 			!strings.Contains(exchange.ResponseJSON, "audit only") || !strings.Contains(exchange.ItemsJSON, "function_call") {
 			t.Fatalf("compact audit=%+v err=%v", exchange, err)
 		}
-		var request nativeTestRequest
-		if err := json.Unmarshal([]byte(exchange.RequestJSON), &request); err != nil || inputJSON(request) != inputJSON(f.captured()[i]) {
-			t.Fatalf("request audit differs from wire: %s err=%v", exchange.RequestJSON, err)
+		var audit struct {
+			Input      []json.RawMessage `json:"input"`
+			References []json.RawMessage `json:"input_refs"`
+		}
+		if err := json.Unmarshal([]byte(exchange.RequestJSON), &audit); err != nil || len(audit.Input) != 0 || len(audit.References) != len(f.captured()[i].Input) {
+			t.Fatalf("request audit must reference every wire item: %s err=%v", exchange.RequestJSON, err)
 		}
 		seed, err := f.store.Dialogues().Seed(t.Context(), after.ID)
 		if err != nil || seed.Consumed || strings.Contains(seed.ItemsJSON, "audit only") || strings.Contains(seed.ItemsJSON, "function_call") || strings.Contains(seed.ItemsJSON, "additional_tools") || strings.Contains(seed.ItemsJSON, "compaction_trigger") {

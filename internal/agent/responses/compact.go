@@ -58,9 +58,10 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 			return nil, err
 		}
 		if item.Type != "additional_tools" {
-			w.Materials = append(w.Materials, material{ItemIndex: len(w.Items), Segments: segments})
+			w.Materials = append(w.Materials, material{Index: len(w.Items), MessageID: input.MessageID, Segments: segments})
 		}
 		w.Items = append(w.Items, item)
+		w.References = append(w.References, inputReference{Kind: "input", ID: input.ID})
 	}
 	if cp != nil {
 		calls, err := c.Context.Repository.Calls(ctx, cp.ExchangeID)
@@ -92,6 +93,11 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 		checkpointID = cp.ID
 	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	refs := append(append([]inputReference(nil), w.References...), inputReference{Kind: "synthetic", Item: json.RawMessage(`{"type":"compaction_trigger"}`)})
+	audit, err := requestAudit(request.ParametersJSON(), refs)
+	if err != nil {
+		return nil, err
+	}
 	exchange := &storage.NativeExchange{
 		SessionID:            row.ID,
 		APIType:              string(target.APIType),
@@ -102,7 +108,7 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 		RunID:                facts.RunID,
 		Attempt:              facts.Attempt,
 		PreviousCheckpointID: checkpointID,
-		RequestJSON:          string(request.JSON()),
+		RequestJSON:          audit,
 		InputIDsJSON:         "[]",
 	}
 	locked, leave, err := c.Messages.Gate.Enter(ctx, row.ID)

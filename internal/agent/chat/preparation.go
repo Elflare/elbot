@@ -100,10 +100,10 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in dialogue
 	}
 	s.messages = llm.SetLatestUserSegments(s.messages, promptUserSegments)
 	if compactSeedOnCurrentUser {
-		userMessage.Content = llm.SegmentsContentText(promptUserSegments)
+		userMessage.Content = dialogue.MessageContent(promptUserSegments)
 		userMessage.Segments = dialogue.StoredMessageSegments(promptUserSegments)
 	} else {
-		userMessage.Content = llm.SegmentsContentText(canonicalUserSegments)
+		userMessage.Content = dialogue.MessageContent(canonicalUserSegments)
 		userMessage.Segments = dialogue.StoredMessageSegments(canonicalUserSegments)
 	}
 	if err := ctx.Err(); err != nil {

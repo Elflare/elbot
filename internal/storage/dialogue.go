@@ -10,14 +10,17 @@ import (
 type NativeExchange struct {
 	ID, SessionID, APIType, Provider, BaseURL, Model string
 	RequestID, RunID, Attempt, PreviousCheckpointID  string
-	RequestJSON, ResponseJSON, ItemsJSON             string
-	InputIDsJSON                                     string
-	Status, Error                                    string
-	CreatedAt                                        time.Time
+	// RequestJSON contains frozen parameters and ordered durable input references,
+	// never the expanded HTTP input. ResponseJSON/ItemsJSON retain native facts.
+	RequestJSON, ResponseJSON, ItemsJSON string
+	// InputIDsJSON lists only newly consumed inputs, independently of replay input.
+	InputIDsJSON  string
+	Status, Error string
+	CreatedAt     time.Time
 }
 
 // NativeInput holds route-owned canonical input and local material references.
-// The exact resolved input sent over the wire is retained in NativeExchange.
+// NativeExchange references canonical inputs; media entities live outside SQLite.
 type NativeInput struct {
 	ID, SessionID, MessageID, ExchangeID, CallID string
 	ItemJSON, MediaJSON, ConsumedBy              string
@@ -35,7 +38,7 @@ type NativeCheckpoint struct {
 	CreatedAt                                                  time.Time
 }
 
-// ToolPair is one immutable display-history unit, committed atomically.
+// ToolPair is one immutable complete business call/result, committed atomically.
 type ToolPair struct {
 	Call, Result *Message
 }

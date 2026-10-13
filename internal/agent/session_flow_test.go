@@ -11,6 +11,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
+	"elbot/internal/media"
 	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
@@ -611,11 +612,15 @@ func TestModeCommandContinuationPreservesNonTextSegments(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"described"}}
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+	image, err := a.dialogue.Preparer.Media.ImportBytes(t.Context(), []byte("image"), media.Input{MIMEType: "image/png"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli",
 		ScopeID: "local"}}, Sender: p,
 		Segments: []platform.MessageSegment{
 			{Type: platform.SegmentText, Text: "/chat describe this"},
-			{Type: platform.SegmentImage, URL: "data:image/png;base64,abc", MIMEType: "image/png"},
+			{Type: platform.SegmentImage, MediaID: image.ID, MIMEType: "image/png"},
 		},
 	})
 

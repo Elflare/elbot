@@ -40,12 +40,16 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 	completed := &observation.Event
 	publishCompleted := func() { observation.Publish(ctx, callErr) }
 	defer publishCompleted()
-	input, cleanup, err := c.Calls.PrepareCall(ctx, session, selection, messages, tools, pending, &observation.LogRecord)
+	input, err := c.Calls.PrepareCall(ctx, session, selection, messages, tools, pending, c.Calls.Messages.Committer("append_pending_user_message"), &observation.LogRecord)
+	if err != nil {
+		return llmCallResult{}, err
+	}
+	requestMessages, cleanup, err := c.Calls.Preparer.PrepareMaterials(ctx, input.RequestMessages)
 	if err != nil {
 		return llmCallResult{}, err
 	}
 	defer cleanup()
-	baseMessages, requestMessages, tools := input.Messages, input.RequestMessages, input.Tools
+	baseMessages, tools := input.Messages, input.Tools
 	req := chatcompletions.Request{
 		Model:     selection.Model,
 		SessionID: sessionID,

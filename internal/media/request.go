@@ -2,8 +2,10 @@ package media
 
 import (
 	"context"
+	"errors"
 
 	"elbot/internal/llm"
+	"elbot/internal/storage"
 )
 
 // AcquireForLLM owns all holds and temporary request material until release.
@@ -22,6 +24,9 @@ func (m *Manager) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) 
 			}
 			seen[segment.MediaID] = true
 			done, err := m.Hold(ctx, segment.MediaID)
+			if errors.Is(err, storage.ErrNotFound) {
+				continue // Resolution reports unavailable media in the request copy.
+			}
 			if err != nil {
 				release()
 				return nil, func() {}, err

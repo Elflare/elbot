@@ -52,6 +52,10 @@ func (m *Manager) importURL(ctx context.Context, rawURL string, input Input, lim
 	}
 	response, err := (&http.Client{Timeout: limits.DownloadTimeout}).Do(request)
 	if err != nil {
+		var downloadError *url.Error
+		if errors.As(err, &downloadError) {
+			err = downloadError.Err
+		}
 		return nil, fmt.Errorf("download media: %w", err)
 	}
 	defer response.Body.Close()

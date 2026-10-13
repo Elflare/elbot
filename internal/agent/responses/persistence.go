@@ -121,6 +121,9 @@ func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) (event
 		return logResult, err
 	}
 	s.consumed = nil
+	if text != nil {
+		s.projection = append(s.projection, dialogue.MessageFromStorage(*text))
+	}
 	return logResult, nil
 }
 func (c *toolCommitter) Prepared(ctx context.Context, index int, call llm.ToolCallRequest) (events.LogResult, error) {
@@ -149,10 +152,12 @@ func (c *toolCommitter) Result(ctx context.Context, index int, request llm.ToolC
 	if stored.ID == "" {
 		stored.ID = storage.NewID()
 	}
-	segments := message.Segments
-	if s.route.Calls.Media != nil {
-		segments = s.route.Calls.Media.Materialize(ctx, segments)
+	archived, err := s.route.Preparer.ArchiveMaterials(ctx, []llm.LLMMessage{message})
+	if err != nil {
+		return events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}, err
 	}
+	segments := archived[0].Segments
+	stored.Content, stored.Segments = dialogue.MessageContent(segments), dialogue.StoredMessageSegments(segments)
 	input, err := queuedInput(s.session.ID, stored.ID, s.exchange.ID, c.calls[index].CallID, segments)
 	if err != nil {
 		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
@@ -174,6 +179,7 @@ func (c *toolCommitter) Result(ctx context.Context, index int, request llm.ToolC
 		return logResult, err
 	}
 	c.calls[index] = call
+	s.projection = append(s.projection, dialogue.MessageFromStorage(*pair.Call), dialogue.MessageFromStorage(*pair.Result))
 	return logResult, nil
 }
 

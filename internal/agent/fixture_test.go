@@ -179,7 +179,7 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 		toolRuntime.provider, toolRuntime.defaultProvider = opts.ToolProvider, false
 	}
 	toolDeps := &toolRunDeps{status: status,
-		hooks: hooks, requests: requests, turns: turns, identity: identity, media: opts.Media,
+		hooks: hooks, requests: requests, turns: turns, identity: identity,
 		state: opts.ToolState, runtime: toolRuntime, sessions: sessions, sessionRows: store.Sessions(), toolCalls: store.ToolCalls(),
 		confirmations: confirmations, view: view,
 	}
@@ -191,7 +191,7 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 	if err != nil {
 		return nil, err
 	}
-	response, err := responseroute.NewLoop(responseroute.LoopDeps{Status: status, Repository: store.Dialogues(), Media: opts.Media, Models: opts.Models, Turns: turns, View: view, Preparer: runner.Preparer, Tools: runner.Preparer.Tools, Messages: runner.Messages, Calls: runner.Calls, System: runner.System})
+	response, err := responseroute.NewLoop(responseroute.LoopDeps{Status: status, Repository: store.Dialogues(), Models: opts.Models, Turns: turns, View: view, Preparer: runner.Preparer, Tools: runner.Preparer.Tools, Messages: runner.Messages, Calls: runner.Calls, System: runner.System})
 	if err != nil {
 		return nil, err
 	}

@@ -72,18 +72,18 @@ func TestMaterializeWithLimitsIsolation(t *testing.T) {
 		for _, limit := range []int64{-1, 0, 1, 3, 4, 8} {
 			t.Run(fmt.Sprintf("%s/%d", source, limit), func(t *testing.T) {
 				t.Parallel()
-				out := m.MaterializeWithLimits(ctx, []llm.MessageSegment{{Type: llm.SegmentFile, URL: url}}, ImportLimits{MaxImportBytes: limit})
+				out, err := m.MaterializeWithLimits(ctx, []llm.MessageSegment{{Type: llm.SegmentFile, URL: url}}, ImportLimits{MaxImportBytes: limit})
 				wantOK := limit <= 0 || limit >= 4
-				if len(out) != 1 || (out[0].MediaID != "") != wantOK {
+				if (err == nil) != wantOK || (wantOK && (len(out) != 1 || out[0].MediaID == "")) {
 					t.Fatalf("limit %d: %#v", limit, out)
 				}
 				// A restricted call must not affect default imports on the same manager.
-				defaultOut := m.Materialize(ctx, []llm.MessageSegment{{Type: llm.SegmentFile, URL: url}})
-				if len(defaultOut) != 1 || defaultOut[0].MediaID == "" {
+				defaultOut, err := m.Materialize(ctx, []llm.MessageSegment{{Type: llm.SegmentFile, URL: url}})
+				if err != nil || len(defaultOut) != 1 || defaultOut[0].MediaID == "" {
 					t.Fatalf("default import failed: %#v", defaultOut)
 				}
-				existing := m.MaterializeWithLimits(ctx, defaultOut, ImportLimits{MaxImportBytes: 1})
-				if len(existing) != 1 || existing[0].MediaID != defaultOut[0].MediaID {
+				existing, err := m.MaterializeWithLimits(ctx, defaultOut, ImportLimits{MaxImportBytes: 1})
+				if err != nil || len(existing) != 1 || existing[0].MediaID != defaultOut[0].MediaID {
 					t.Fatalf("existing ID rejected: %#v", existing)
 				}
 				if m.MaxImportBytes != 4 || m.DownloadTimeout != time.Second {
@@ -93,8 +93,8 @@ func TestMaterializeWithLimitsIsolation(t *testing.T) {
 		}
 	}
 	t.Run("cannot increase global limit", func(t *testing.T) {
-		out := m.MaterializeWithLimits(ctx, []llm.MessageSegment{{Type: llm.SegmentFile, URL: "data:text/plain;base64,MTIzNDU="}}, ImportLimits{MaxImportBytes: 8})
-		if len(out) != 1 || out[0].MediaID != "" {
+		out, err := m.MaterializeWithLimits(ctx, []llm.MessageSegment{{Type: llm.SegmentFile, URL: "data:text/plain;base64,MTIzNDU="}}, ImportLimits{MaxImportBytes: 8})
+		if err == nil || len(out) != 0 {
 			t.Fatalf("global limit bypassed: %#v", out)
 		}
 	})
@@ -119,15 +119,15 @@ func TestMaterializeWithLimitsDownloadTimeout(t *testing.T) {
 		_, _ = io.WriteString(w, "ok")
 	}))
 	defer server.Close()
-	out := m.MaterializeWithLimits(ctx, []llm.MessageSegment{{Type: llm.SegmentFile, URL: server.URL + "/stall"}}, ImportLimits{DownloadTimeout: 25 * time.Millisecond})
-	if len(out) != 1 || out[0].MediaID != "" {
+	out, err := m.MaterializeWithLimits(ctx, []llm.MessageSegment{{Type: llm.SegmentFile, URL: server.URL + "/stall"}}, ImportLimits{DownloadTimeout: 25 * time.Millisecond})
+	if err == nil || len(out) != 0 {
 		t.Fatalf("stalled download accepted: %#v", out)
 	}
 	if m.DownloadTimeout != time.Second {
 		t.Fatal("shared timeout changed")
 	}
-	out = m.Materialize(ctx, []llm.MessageSegment{{Type: llm.SegmentFile, URL: server.URL}})
-	if len(out) != 1 || out[0].MediaID == "" {
+	out, err = m.Materialize(ctx, []llm.MessageSegment{{Type: llm.SegmentFile, URL: server.URL}})
+	if err != nil || len(out) != 1 || out[0].MediaID == "" {
 		t.Fatalf("default download failed: %#v", out)
 	}
 }
@@ -220,7 +220,7 @@ func TestImportCompressionAndResolverReuse(t *testing.T) {
 	m := NewManager(store, root, &LocalBackend{Root: root})
 	m.Media = config.MediaConfig{LLMImageCompressionThresholdBytes: 1024 * 1024, LLMImageMaxLength: 32}
 	data := testPNG(t, 80, 40)
-	materialized := m.Materialize(ctx, []llm.MessageSegment{{Type: llm.SegmentImage, Name: "large.png", MIMEType: "image/png", URL: "data:image/png;base64," + base64.StdEncoding.EncodeToString(data)}})
+	materialized, err := m.Materialize(ctx, []llm.MessageSegment{{Type: llm.SegmentImage, Name: "large.png", MIMEType: "image/png", URL: "data:image/png;base64," + base64.StdEncoding.EncodeToString(data)}})
 	segment := materialized[0]
 	if segment.MediaID == "" || segment.Name != "large.jpg" || segment.MIMEType != "image/jpeg" || segment.URL != "" {
 		t.Fatalf("materialized = %#v", segment)
@@ -448,8 +448,8 @@ func TestImportURLUnknownSizeAndLimits(t *testing.T) {
 			t.Fatalf("accepted %s", source)
 		}
 	}
-	invalid := m.Materialize(ctx, []llm.MessageSegment{{Type: llm.SegmentImage, URL: "data:image/png;base64,%%%"}})
-	if !strings.Contains(llm.SegmentsContentText(invalid), "媒体不可用") {
+	invalid, err := m.Materialize(ctx, []llm.MessageSegment{{Type: llm.SegmentImage, URL: "data:image/png;base64,%%%"}})
+	if err == nil || len(invalid) != 0 {
 		t.Fatal(invalid)
 	}
 }
@@ -582,12 +582,12 @@ func TestMaterializeAndResolveSanitizeMediaNames(t *testing.T) {
 	m := NewManager(store, root, &LocalBackend{Root: root})
 
 	sourceName := "https://example.com/private/photo.png?rkey=name-secret"
-	materialized := m.Materialize(ctx, []llm.MessageSegment{{
+	materialized, err := m.Materialize(ctx, []llm.MessageSegment{{
 		Type: llm.SegmentImage,
 		URL:  "data:image/png;base64,aW1hZ2U=",
 		Name: sourceName,
 	}})
-	if len(materialized) != 1 || materialized[0].MediaID == "" || materialized[0].URL != "" || materialized[0].Name != "photo.png" {
+	if err != nil || len(materialized) != 1 || materialized[0].MediaID == "" || materialized[0].URL != "" || materialized[0].Name != "photo.png" {
 		t.Fatalf("materialized = %#v", materialized)
 	}
 

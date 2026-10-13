@@ -3,6 +3,7 @@ package toolrun
 import (
 	"context"
 	"elbot/internal/events"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -113,14 +114,13 @@ func (d *runnerTestDeps) RememberDiscoveryResult(ctx context.Context, session *s
 func (d *runnerTestDeps) AddToolUse(sessionID, toolName string) {}
 
 func (d *runnerTestDeps) ToolResultMessage(sessionID string, message llm.LLMMessage) storage.Message {
-	return storage.Message{SessionID: sessionID, Role: storage.RoleTool, Content: llm.SegmentsContentText(message.Segments), ToolCallID: message.ToolCallID}
+	raw, _ := json.Marshal(message.Segments)
+	return storage.Message{SessionID: sessionID, Role: storage.RoleTool, Content: llm.SegmentsContentText(message.Segments), Segments: string(raw), ToolCallID: message.ToolCallID}
 }
 
 func (d *runnerTestDeps) ToolCallMessage(sessionID, content, rawText string, calls []llm.ToolCallRequest) storage.Message {
 	return storage.Message{SessionID: sessionID, Role: storage.RoleAssistant, Content: content}
 }
-
-func (d *runnerTestDeps) PersistedToolMessage(message llm.LLMMessage) llm.LLMMessage { return message }
 
 type runnerPreflightTool struct{}
 

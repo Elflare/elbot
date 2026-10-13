@@ -41,7 +41,7 @@ func TestUserMessageLogSourceIdentity(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(connection.Disconnect)
-			if _, err := a.dialogue.PrepareTurn(ctx, dialogue.TurnInput{Session: row, Text: "hello", Selection: modelmgr.SelectionForTurn(ctx, a.execution.models, row)}); err != nil {
+			if _, err := a.dialogue.Preparer.LoadMaterials(ctx, dialogue.TurnInput{Session: row, Text: "hello", Selection: modelmgr.SelectionForTurn(ctx, a.execution.models, row)}); err != nil {
 				t.Fatal(err)
 			}
 			if len(records) != 1 {

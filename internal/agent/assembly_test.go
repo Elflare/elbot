@@ -173,6 +173,7 @@ func newTestAgent(t *testing.T, p platform.PlatformAdapter, client llm.Client, m
 
 func newTestAgentWithPrefixes(t *testing.T, p platform.PlatformAdapter, client llm.Client, modes map[string]config.ModelSelection, provider config.ProviderConfig, store storage.Store, prefixes []string, configure ...func(*testAgentOptions)) *agentFixture {
 	t.Helper()
+	root := t.TempDir()
 	return mustNewWithOptions(t, testAgentOptions{
 		Platform: p, Models: newTestModels(t, modelmgr.Options{
 			Clients:     map[string]llm.Client{"default": client},
@@ -180,7 +181,7 @@ func newTestAgentWithPrefixes(t *testing.T, p platform.PlatformAdapter, client l
 			ModeModels:  modes,
 			DefaultMode: storage.SessionModeWork,
 		}),
-		Providers: map[string]config.ProviderConfig{"default": provider}, Store: store, CommandPrefixes: prefixes,
+		Providers: map[string]config.ProviderConfig{"default": provider}, Store: store, CommandPrefixes: prefixes, Media: media.NewManager(store, root, &media.LocalBackend{Root: root}),
 		SessionConfig: session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork},
 	}, configure...)
 }
