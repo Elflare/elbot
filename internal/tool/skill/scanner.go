@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"elbot/internal/elyph"
+	"elbot/internal/processenv"
 	"elbot/internal/tool"
 )
 
@@ -20,6 +21,8 @@ type FilesystemScanner struct {
 	Media   *tool.MediaRuntime
 	Root    string
 	Catalog *Catalog
+	// ProcessEnv 传给扫描及重载产生的命令工具，作为技能 .env 的基础环境。
+	ProcessEnv processenv.Environment
 }
 
 func NewFilesystemScanner(root string) FilesystemScanner {
@@ -242,6 +245,7 @@ func (s FilesystemScanner) toolForRecord(record Record) tool.Tool {
 	target := toolForRecord(record)
 	if command, ok := target.(CommandTool); ok {
 		command.Media = s.Media
+		command.ProcessEnv = s.ProcessEnv
 		return command
 	}
 	return target

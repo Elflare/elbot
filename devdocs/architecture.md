@@ -312,6 +312,7 @@ Runtime 管注册、schema、权限与执行器；ToolRun 管当前工具视图�
 ## Skill
 
 - AgentSkill 使用 `SKILL.md` 和可选 `ELBOT_SKILL.toml`；原生 EL／Go Skill 使用 `SKILL.elyph`，Go runner 可配编译产物。
+- AgentSkill TOML 命令和 Go runner 每次执行前读取技能根目录 `.env`；普通变量按技能 `.env` > 进程环境 > 配置根 `.env` 合并，PATH 按进程、配置根、技能顺序追加去重。基础环境在启动时固定，经 Manager／scanner 传给命令工具；局部合并仅用于本次子进程。执行 cwd 为技能根目录，Go 编译阶段仍使用基础环境。
 - scanner 构建 catalog；discover_tool 展示详情或激活 wrapper。原生 Skill finalize 执行 lint、gofmt、build、reload。
 - reload 串行验证完整候选，在 registry 单次替换后更新 catalog；失败保留活动快照。AgentSkill manifest 写入后 reload 失败则恢复原文件。
 - 媒体只在执行阶段准备：shell 使用 media_inputs／ELBOT_MEDIA_N，Go 使用 payload.media_inputs，TOML 使用顶层 type=media 参数。stdout 媒体经 os.Root 校验和中心导入；普通文本 ID 不转换。
@@ -347,6 +348,7 @@ Chat 使用 `业务输出 → delivery/dispatch.Router → 平台发送器 → R
 - `events.Notification` 统一纯文本、等级、平台、会话类型、目标 ID／ScopeID 和可选 Origin；不接媒体或大文件。`notification.Manager` 连接全局信号并持有各平台发送信号；平台仅连接并返回实际回执和错误。重试通知随真实模型调用取消，失败事实通知明确解除请求取消。无来源本地提示走 CLI，service 提示交日志中心。
 - 平台通知的发送失败归 Delivery：消息平台调用 Delivery.Manager，CLI 保留专用通知协议并复用 LogSendResult。日志使用发送来源的 LogResult，保留部分送达事实；通知发布方不重复记录失败。
 - 全局通知路由只有一个短处理槽，用于保持投递顺序；它只转交完成结果，不等待平台网络发送。各平台独立使用 8 个发送槽、256 个等待项，相同目标按接纳顺序串行；平台队列满时返回错误并写 WARN，不重试。默认 30 秒覆盖路由、排队及发送，不在各层重新延长期限。
+- 工具提示通过 SendPreview／Preview 可变参数传递，每个参数对应一条完整工具提示，多行正文留在同一段；通用流程提示占一段。OutputSender 跳过空白段，为每段开头添加一次 `[tool]`，保留段内换行与缩进，合并后调用一次 agent.output.prepared Hook，再直接发送 Hook 返回的正文。批量调用仍是一条通知。
 - 发送前归一为 MediaID，临时解析发送副本。成功回执提供真实 platform／scope／message ID／output indexes；部分失败同时返回成功项和 error，关联失败记录但不重发。
 - 业务与日志分开返回：需要两者的接口返回 Receipt、LogResult、error；仅业务保留业务结果与 error；仅日志结果的 Toolrun／Dialogue SendOutputs 返回 LogResult、error。LogResult 仅含来源明确的 ResultStatus、Content，上层不从错误或回执猜结果。正文与流式回执用于业务关联和部分送达；发送来源在 Content 中保留消息及媒体索引，不改变重发规则。
 

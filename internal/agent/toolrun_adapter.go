@@ -146,8 +146,8 @@ func (d toolRunDeps) ConfirmBackgroundTool(ctx context.Context, sessionID string
 	return toolrun.ConfirmResult{Allowed: allowed, Message: message}, true
 }
 
-func (d toolRunDeps) SendPreview(ctx context.Context, text string) {
-	d.output.SendPreview(ctx, text)
+func (d toolRunDeps) SendPreview(ctx context.Context, text ...string) {
+	d.output.SendPreview(ctx, text...)
 }
 
 func (d toolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) (events.LogResult, error) {

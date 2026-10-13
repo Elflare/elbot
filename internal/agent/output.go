@@ -147,12 +147,23 @@ func (o *OutputSender) Notify(ctx context.Context, level slog.Level, text string
 	_, _ = globalevents.NotificationRequested.EmitAsync(ctx, globalevents.NewNotification(ctx, level, text))
 }
 
-func (o *OutputSender) Preview(ctx context.Context, text string) {
-	text = strings.TrimSpace(text)
-	if text == "" {
+// Preview treats each text argument as one complete tool-call notice, including
+// any multiline body. General workflow notices also occupy one argument.
+// It prefixes each nonblank notice once, joins them, and runs the output Hook once.
+func (o *OutputSender) Preview(ctx context.Context, text ...string) {
+	lines := make([]string, 0, len(text))
+	for _, line := range text {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		lines = append(lines, formatToolPreview(line))
+	}
+	if len(lines) == 0 {
 		return
 	}
-	event, _, err := o.hooks.Run(ctx, hook.Event{Point: hook.PointAgentOutputPrepared, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(text)}})
+	preview := strings.Join(lines, "\n")
+	event, _, err := o.hooks.Run(ctx, hook.Event{Point: hook.PointAgentOutputPrepared, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(preview)}})
 	if err != nil {
 		return
 	}
@@ -160,16 +171,11 @@ func (o *OutputSender) Preview(ctx context.Context, text string) {
 	if body == "" {
 		return
 	}
-	preview := formatToolPreview(body)
-	o.Notify(ctx, slog.LevelDebug, preview)
+	o.Notify(ctx, slog.LevelDebug, body)
 }
 
 func formatToolPreview(text string) string {
-	lines := strings.Split(strings.TrimSpace(text), "\n")
-	for i, line := range lines {
-		lines[i] = "[tool] " + strings.TrimSpace(line)
-	}
-	return strings.Join(lines, "\n")
+	return "[tool] " + text
 }
 
 func (o *OutputSender) FinishIntermediate(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string, streaming bool) error {

@@ -32,7 +32,9 @@ type RunnerDeps interface {
 	PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context
 	// CompleteToolCall also exposes the declared Hook outcome separately from segments.
 	CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, events.LogResult, error)
-	SendPreview(ctx context.Context, text string)
+	// SendPreview takes one complete notice per tool call, including multiline
+	// bodies. Pass batch notices separately so each receives one display prefix.
+	SendPreview(ctx context.Context, text ...string)
 	// SendOutputs returns the source logging result and body, including partial
 	// delivery facts, separately from its original business error.
 	SendOutputs(ctx context.Context, outputs []delivery.Output) (events.LogResult, error)
@@ -417,7 +419,7 @@ func sendBatchToolPreview(ctx context.Context, deps RunnerDeps, req RunRequest) 
 	for _, call := range req.Calls {
 		lines = append(lines, fmt.Sprintf("正在调用 %s：%s", call.Name, previewArguments(call.Arguments)))
 	}
-	deps.SendPreview(ctx, strings.Join(lines, "\n"))
+	deps.SendPreview(ctx, lines...)
 	return true
 }
 

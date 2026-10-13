@@ -101,6 +101,8 @@ text = "你好呀"
 
 最终 assistant 文本通常先经过 `agent.turn.output.prepared`，再经过 `agent.output.prepared`。不要在两个点配置同一 append/prepend 规则，否则文本会被处理两次。
 
+工具提示先按工具分别添加一次 `[tool]` 前缀，再合并为一条通知，整体经过一次 `agent.output.prepared`。Hook 收到的是带前缀的完整文本，可以修改前缀和正文；发送时直接使用 Hook 返回的文本。
+
 ### 匹配条件与角色
 
 条件可写单条件简写，或写 AND 数组，二者不能混用：

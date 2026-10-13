@@ -115,7 +115,7 @@ func (*testOutput) SendOutputs(context.Context, []delivery.Output) (events.LogRe
 	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 func (*testOutput) Notify(context.Context, slog.Level, string)              {}
-func (*testOutput) SendPreview(context.Context, string)                     {}
+func (*testOutput) SendPreview(context.Context, ...string)                  {}
 func (*testOutput) StartReasoning(context.Context) dialogue.ReasoningStream { return nil }
 
 type testStatus struct{}

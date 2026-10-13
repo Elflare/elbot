@@ -21,7 +21,11 @@ type Output interface {
 	// partial delivery facts belong to the source log body, not a returned receipt.
 	SendOutputs(ctx context.Context, outputs []delivery.Output) (events.LogResult, error)
 	Notify(ctx context.Context, level slog.Level, text string)
-	SendPreview(ctx context.Context, text string)
+	// SendPreview takes one complete notice per tool call, including multiline
+	// bodies; pass batch notices separately rather than joining them. General
+	// workflow notices occupy one argument. Nonblank notices get one prefix each
+	// and are joined before a single output Hook and notification.
+	SendPreview(ctx context.Context, text ...string)
 }
 
 // ReasoningStream consumes raw model deltas in order for one call. Presentation

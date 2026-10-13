@@ -59,7 +59,7 @@ path = "SOUL.md"
 ElBot 使用以下环境来源：
 
 - ElBot 进程环境：由终端、服务管理器或容器在启动时提供。
-- 配置根 `.env`：与主配置文件同目录，用于 Provider Key、平台 Secret、CLI/Elnis token、内置工具变量和 LLM Shell。
+- 每个技能自己的根目录 `.env`：用于该技能的专属变量，AgentSkill TOML 命令和 Go Skill 在每次执行前读取。
 - `plugins/.env`：所有 Hook 共用的环境层。
 - `plugins/<plugin-id>/.env`：单个插件 exec 和 Worker 的环境层。
 
@@ -84,13 +84,16 @@ ELNIS_HOME_TOKEN=your-elnis-token
 
 配置根 `.env` 中的全部变量还会补充给 LLM Shell，因此只有在信任当前模型及 Shell 权限策略时才应启用相关工具。
 
-### Shell 与 Hook 环境
+### Shell、Skill 与 Hook 环境
 
 | 进程入口 | 环境来源与优先级 |
 | --- | --- |
-| 内置工具与 Go Skill（含 LLM Shell） | ElBot 进程环境为基础，配置根 `.env` 只补充尚不存在的普通变量。 |
+| 内置工具（含 LLM Shell） | ElBot 进程环境为基础，配置根 `.env` 只补充尚不存在的普通变量。 |
+| AgentSkill TOML 命令与 Go Skill | 普通变量优先级为技能 `.env` > ElBot 进程环境 > 配置根 `.env`。技能 `.env` 中的空值也会覆盖基础环境中的同名变量。 |
 | 根 Hook 规则 | ElBot 进程环境为基础，`plugins/.env` 覆盖同名普通变量。 |
 | 插件 exec 与 Worker | 根 Hook 环境为基础，插件配置文件同目录的 `.env` 再覆盖同名普通变量。 |
+
+技能执行的工作目录是每个技能自己的根目录。ElBot 将合并结果传给本次子进程。脚本可直接使用，无需自行加载 `.env`。Go Skill 编译阶段使用基础环境，不加载技能 `.env`。
 
 ElBot 自行读取配置文件时，配置根 `.env` 不会注入 Hook。所有 Hook 共用的代理、工具路径或变量应放在 `plugins/.env`，仅供单个插件使用的变量应放在该插件的 `.env`。一次性 exec、Persistent Worker 和 Transient Worker 使用相同规则。
 
@@ -105,6 +108,8 @@ NO_PROXY=localhost,127.0.0.1,::1
 ### PATH 规则与 systemd
 
 ElBot 自行合并上述环境层时，`PATH` 不按普通变量覆盖，而是按照层级依次追加并去重。这里的基础 PATH 是 ElBot 启动时已经获得的进程 PATH；后续 `.env` 只需填写要增加的绝对目录：
+
+技能执行时的 PATH 顺序为 ElBot 进程 PATH、配置根 `.env` PATH、技能 `.env` PATH。AgentSkill 命令也使用合并后的 PATH 查找可执行文件。
 
 ```dotenv
 PATH=/home/elbot/.local/bin:/usr/local/go/bin
