@@ -165,14 +165,6 @@ func (a *Adapter) targets(target delivery.Target) ([]sendTarget, error) {
 	return nil, fmt.Errorf("qqofficial target missing private_user_id, group_id or scope_id")
 }
 
-func isGroupToolPreviewNotice(ctx context.Context, outputs []delivery.Output) bool {
-	if len(outputs) != 1 || outputs[0].Kind != delivery.KindText || !strings.HasPrefix(strings.TrimSpace(outputs[0].Text), "[tool]") {
-		return false
-	}
-	info, ok := contextinfo.ConversationFromContext(ctx)
-	return ok && info.Source.Platform == platformName && info.Source.ConversationKind == contextinfo.ConversationGroup
-}
-
 func (a *Adapter) nextMsgSeq(msgID string) int {
 	msgID = strings.TrimSpace(msgID)
 	if msgID == "" {

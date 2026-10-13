@@ -1,14 +1,12 @@
 package rules
 
 import (
-	"context"
 	"elbot/internal/hook"
-	"errors"
 	"strings"
 )
 
 func HookFailure(event hook.Event, err error) string {
-	if err == nil || event.Point == hook.PointErrorOccurred || errors.Is(err, context.Canceled) {
+	if err == nil {
 		return ""
 	}
 	point := strings.TrimSpace(string(event.Point))

@@ -7,18 +7,19 @@ import (
 	"errors"
 	"fmt"
 
+	"elbot/internal/events"
 	"elbot/internal/storage"
 )
 
 type DialogueRepository struct{ db *sql.DB }
 
-func (r *DialogueRepository) Commit(ctx context.Context, commit storage.DialogueCommit) error {
+func (r *DialogueRepository) Commit(ctx context.Context, commit storage.DialogueCommit) (events.LogResult, error) {
 	if commit.SessionID == "" {
-		return fmt.Errorf("dialogue commit requires a session")
+		return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("dialogue commit requires a session")
 	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return events.LogResult{ResultStatus: events.ResultFailed}, err
 	}
 	defer tx.Rollback()
 	var fields storage.SessionMetadata
@@ -26,40 +27,40 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 		var raw sql.NullString
 		if err := tx.QueryRowContext(ctx, `SELECT metadata FROM sessions WHERE id=?`, commit.SessionID).Scan(&raw); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return storage.ErrNotFound
+				return events.LogResult{ResultStatus: events.ResultSkipped}, storage.ErrNotFound
 			}
-			return err
+			return events.LogResult{ResultStatus: events.ResultFailed}, err
 		}
 		fields, err = storage.DecodeSessionMetadata(raw.String)
 		if err != nil {
-			return err
+			return events.LogResult{ResultStatus: events.ResultSkipped}, err
 		}
 		var current string
 		if value, ok := fields["llm_checkpoint"]; ok {
 			if err := json.Unmarshal(value, &current); err != nil {
-				return err
+				return events.LogResult{ResultStatus: events.ResultSkipped}, err
 			}
 		}
 		if current != commit.Native.ExpectedCheckpointID {
-			return fmt.Errorf("native checkpoint changed")
+			return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("native checkpoint changed")
 		}
 	}
 	if err := validateToolPair(commit); err != nil {
-		return err
+		return events.LogResult{ResultStatus: events.ResultSkipped}, err
 	}
 	for _, message := range commit.MessageRows() {
 		if message == nil || message.SessionID != commit.SessionID {
-			return fmt.Errorf("dialogue message session mismatch")
+			return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("dialogue message session mismatch")
 		}
-		if err := appendMessageTx(ctx, tx, message); err != nil {
-			return err
+		if logResult, err := appendMessageTx(ctx, tx, message); err != nil {
+			return logResult, err
 		}
 	}
 	if native := commit.Native; native != nil {
 		for i := range native.Inputs {
 			input := &native.Inputs[i]
 			if input.SessionID != commit.SessionID || !json.Valid([]byte(input.ItemJSON)) || (input.MediaJSON != "" && !json.Valid([]byte(input.MediaJSON))) {
-				return fmt.Errorf("invalid native input")
+				return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("invalid native input")
 			}
 			if input.ID == "" {
 				input.ID = storage.NewID()
@@ -68,7 +69,7 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 				input.CreatedAt = storage.Now()
 			}
 			if _, err := tx.ExecContext(ctx, `INSERT INTO native_inputs(id,session_id,message_id,exchange_id,call_id,item_json,media_json,consumed_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, input.ID, input.SessionID, input.MessageID, input.ExchangeID, input.CallID, input.ItemJSON, input.MediaJSON, input.ConsumedBy, storage.FormatTime(input.CreatedAt)); err != nil {
-				return err
+				return events.LogResult{ResultStatus: events.ResultFailed}, err
 			}
 			var materials []struct {
 				Segments []struct {
@@ -77,7 +78,7 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 			}
 			if input.MediaJSON != "" {
 				if err := json.Unmarshal([]byte(input.MediaJSON), &materials); err != nil {
-					return err
+					return events.LogResult{ResultStatus: events.ResultSkipped}, err
 				}
 			}
 			var ids []string
@@ -88,42 +89,46 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 					}
 				}
 			}
-			if err := nativeMediaReferences(ctx, tx, "native_input", input.ID, input.SessionID, ids); err != nil {
-				return err
+			if logResult, err := nativeMediaReferences(ctx, tx, "native_input", input.ID, input.SessionID, ids); err != nil {
+				return logResult, err
 			}
 		}
 		for _, call := range native.Calls {
 			var owner string
 			if err := tx.QueryRowContext(ctx, `SELECT session_id FROM native_exchanges WHERE id=?`, call.ExchangeID).Scan(&owner); err != nil {
-				return err
+				return events.LogResult{ResultStatus: events.ResultFailed}, err
 			}
 			if owner != commit.SessionID || call.CallID == "" {
-				return fmt.Errorf("native call session mismatch")
+				return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("native call session mismatch")
 			}
 			result, err := tx.ExecContext(ctx, `INSERT INTO native_calls(exchange_id,call_id,ordinal,name,arguments,status,result_input_id) VALUES(?,?,?,?,?,?,?) ON CONFLICT(exchange_id,call_id) DO UPDATE SET status=excluded.status,result_input_id=excluded.result_input_id WHERE native_calls.ordinal=excluded.ordinal AND native_calls.name=excluded.name AND native_calls.arguments=excluded.arguments`, call.ExchangeID, call.CallID, call.Ordinal, call.Name, call.Arguments, call.Status, call.ResultInputID)
 			if err != nil {
-				return err
+				return events.LogResult{ResultStatus: events.ResultFailed}, err
 			}
-			if n, err := result.RowsAffected(); err != nil || n != 1 {
-				return fmt.Errorf("native call identity changed")
+			n, err := result.RowsAffected()
+			if err != nil {
+				return events.LogResult{ResultStatus: events.ResultFailed}, err
+			}
+			if n != 1 {
+				return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("native call identity changed")
 			}
 		}
 		if native.Snapshot != nil {
-			if err := appendNativeSnapshot(ctx, tx, commit); err != nil {
-				return err
+			if logResult, err := appendNativeSnapshot(ctx, tx, commit); err != nil {
+				return logResult, err
 			}
 		}
 		checkpoint := &native.Checkpoint
 		if checkpoint.ID != "" {
 			if checkpoint.SessionID != commit.SessionID || checkpoint.ParentID != native.ExpectedCheckpointID || checkpoint.ResponseID == "" {
-				return fmt.Errorf("invalid native checkpoint")
+				return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("invalid native checkpoint")
 			}
 			var owner, status string
 			if err := tx.QueryRowContext(ctx, `SELECT session_id,status FROM native_exchanges WHERE id=?`, checkpoint.ExchangeID).Scan(&owner, &status); err != nil {
-				return err
+				return events.LogResult{ResultStatus: events.ResultFailed}, err
 			}
 			if owner != commit.SessionID || status != "completed" {
-				return fmt.Errorf("checkpoint requires a completed exchange")
+				return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("checkpoint requires a completed exchange")
 			}
 			if checkpoint.CreatedAt.IsZero() {
 				checkpoint.CreatedAt = storage.Now()
@@ -131,11 +136,11 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 			var seedID string
 			if raw, ok := fields["llm_seed"]; ok {
 				if err := json.Unmarshal(raw, &seedID); err != nil {
-					return err
+					return events.LogResult{ResultStatus: events.ResultSkipped}, err
 				}
 			}
 			if checkpoint.SeedID != seedID {
-				return fmt.Errorf("native checkpoint seed changed")
+				return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("native checkpoint seed changed")
 			}
 			calls := native.Calls
 			if calls == nil {
@@ -143,76 +148,87 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 			}
 			snapshot, err := json.Marshal(calls)
 			if err != nil {
-				return err
+				return events.LogResult{ResultStatus: events.ResultSkipped}, err
 			}
 			checkpoint.CallsJSON = string(snapshot)
 			if _, err := tx.ExecContext(ctx, `INSERT INTO native_checkpoints(id,session_id,parent_id,exchange_id,response_id,message_id,seed_id,calls_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, checkpoint.ID, checkpoint.SessionID, checkpoint.ParentID, checkpoint.ExchangeID, checkpoint.ResponseID, checkpoint.MessageID, checkpoint.SeedID, checkpoint.CallsJSON, storage.FormatTime(checkpoint.CreatedAt)); err != nil {
-				return err
+				return events.LogResult{ResultStatus: events.ResultFailed}, err
 			}
 			if err := fields.Set("llm_checkpoint", checkpoint.ID); err != nil {
-				return err
+				return events.LogResult{ResultStatus: events.ResultSkipped}, err
 			}
 			encoded, err := fields.Encode()
 			if err != nil {
-				return err
+				return events.LogResult{ResultStatus: events.ResultSkipped}, err
 			}
 			if _, err := tx.ExecContext(ctx, `UPDATE sessions SET metadata=? WHERE id=?`, encoded, commit.SessionID); err != nil {
-				return err
+				return events.LogResult{ResultStatus: events.ResultFailed}, err
 			}
 		}
 		for _, id := range native.ConsumedInputs {
 			if checkpoint.ID == "" {
-				return fmt.Errorf("input consumption requires a checkpoint")
+				return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("input consumption requires a checkpoint")
 			}
 			result, err := tx.ExecContext(ctx, `UPDATE native_inputs SET consumed_by=? WHERE id=? AND session_id=? AND consumed_by=''`, checkpoint.ExchangeID, id, commit.SessionID)
 			if err != nil {
-				return err
+				return events.LogResult{ResultStatus: events.ResultFailed}, err
 			}
-			if n, err := result.RowsAffected(); err != nil || n != 1 {
-				return fmt.Errorf("native input already consumed or absent")
+			n, err := result.RowsAffected()
+			if err != nil {
+				return events.LogResult{ResultStatus: events.ResultFailed}, err
+			}
+			if n != 1 {
+				return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("native input already consumed or absent")
 			}
 		}
 		if native.ConsumeSeedID != "" {
 			if checkpoint.ID == "" || checkpoint.SeedID != native.ConsumeSeedID {
-				return fmt.Errorf("seed consumption requires its checkpoint")
+				return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("seed consumption requires its checkpoint")
 			}
 			result, err := tx.ExecContext(ctx, `UPDATE native_seeds SET consumed=1 WHERE id=? AND session_id=? AND consumed=0`, native.ConsumeSeedID, commit.SessionID)
 			if err != nil {
-				return err
+				return events.LogResult{ResultStatus: events.ResultFailed}, err
 			}
-			if n, err := result.RowsAffected(); err != nil || n != 1 {
-				return fmt.Errorf("native seed already consumed or absent")
+			n, err := result.RowsAffected()
+			if err != nil {
+				return events.LogResult{ResultStatus: events.ResultFailed}, err
+			}
+			if n != 1 {
+				return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("native seed already consumed or absent")
 			}
 			if raw, ok := fields["context_compact"]; ok {
 				var state storage.SessionMetadata
 				if err := json.Unmarshal(raw, &state); err != nil {
-					return err
+					return events.LogResult{ResultStatus: events.ResultSkipped}, err
 				}
 				var id string
 				if raw, ok := state["seed_id"]; ok {
 					if err := json.Unmarshal(raw, &id); err != nil {
-						return err
+						return events.LogResult{ResultStatus: events.ResultSkipped}, err
 					}
 				}
 				if id == native.ConsumeSeedID {
 					if err := state.Set("pending", false); err != nil {
-						return err
+						return events.LogResult{ResultStatus: events.ResultSkipped}, err
 					}
 					if err := fields.Set("context_compact", state); err != nil {
-						return err
+						return events.LogResult{ResultStatus: events.ResultSkipped}, err
 					}
 					encoded, err := fields.Encode()
 					if err != nil {
-						return err
+						return events.LogResult{ResultStatus: events.ResultSkipped}, err
 					}
 					if _, err := tx.ExecContext(ctx, `UPDATE sessions SET metadata=? WHERE id=?`, encoded, commit.SessionID); err != nil {
-						return err
+						return events.LogResult{ResultStatus: events.ResultFailed}, err
 					}
 				}
 			}
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return events.LogResult{ResultStatus: events.ResultFailed}, err
+	}
+	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
 func (r *DialogueRepository) CreateExchange(ctx context.Context, row *storage.NativeExchange) error {

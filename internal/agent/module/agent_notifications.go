@@ -6,6 +6,7 @@ import (
 	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/notification/rules"
+	"elbot/internal/session"
 	"elbot/internal/signal"
 	"errors"
 	"log/slog"
@@ -31,7 +32,7 @@ func (b *signalBindings) connectAgentNotifications(events agentevents.Signals) e
 				n.Target.ScopeID = e.Platform.ScopeID
 				n.Target.ID = e.Platform.ConversationID
 			}
-			_, err := globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(ctx), n)
+			_, err := globalevents.NotificationRequested.EmitAsync(session.WithBinding(context.WithoutCancel(ctx), nil), n)
 			return err
 		}, signal.ConnectOptions{}),
 	)

@@ -390,6 +390,9 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 			}
 			if call.Name == "discover_tool" && result.Result != nil {
 				logResult, stateErr := deps.RememberDiscoveryResult(ctx, req.Session, result.Result)
+				if stateErr != nil && logResult.ResultStatus == events.ResultSkipped {
+					return &RunResult{Messages: messages, PreparedCalls: preparedCalls, Err: stateErr}
+				}
 				if logResult.ResultStatus != events.ResultSkipped {
 					record(ctx, call, "tool_discovery_save", logResult)
 				}

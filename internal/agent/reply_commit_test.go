@@ -477,11 +477,11 @@ type replyTestDialogues struct {
 	repo *replyTestRepository
 }
 
-func (r replyTestDialogues) Commit(ctx context.Context, commit storage.DialogueCommit) error {
+func (r replyTestDialogues) Commit(ctx context.Context, commit storage.DialogueCommit) (events.LogResult, error) {
 	for _, msg := range commit.Messages {
 		*r.repo.events = append(*r.repo.events, "save")
 		if msg.Role == storage.RoleAssistant && r.repo.appendErr != nil {
-			return r.repo.appendErr
+			return events.LogResult{ResultStatus: events.ResultFailed}, r.repo.appendErr
 		}
 	}
 	return r.DialogueRepository.Commit(ctx, commit)

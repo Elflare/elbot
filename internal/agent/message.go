@@ -2,9 +2,7 @@ package agent
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log/slog"
 	"reflect"
 	"strings"
 
@@ -15,9 +13,7 @@ import (
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/security"
-	"elbot/internal/session"
 	"elbot/internal/storage"
 )
 
@@ -37,28 +33,6 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 	actor := h.identity.Actor(ctx)
 	ctx = security.WithPolicy(contextinfo.WithActor(ctx, actor), h.identity.Policy())
 	segments := inboundSegments(ctx, text)
-	defer func() {
-		if errors.Is(err, session.ErrSessionBusy) {
-			_ = events.EmitLog(ctx, events.LogRecord{
-				Category:     events.LogRuntime,
-				Level:        slog.LevelWarn,
-				EventName:    "session_switch_blocked",
-				Module:       "agent",
-				Type:         events.ContentText,
-				Content:      err.Error(),
-				ContentLimit: 4096,
-				ResultStatus: events.ResultRejected,
-			})
-			_, err = events.NotificationRequested.Emit(ctx, events.NewNotification(ctx, slog.LevelWarn, err.Error()))
-			return
-		}
-		if err != nil {
-			h.hooks.NotifyError(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}}, err)
-			if dialogue.ShouldNotifyUserError(err) {
-				h.output.SendChat(ctx, notificationrules.ExecutionFailure(err))
-			}
-		}
-	}()
 	woken := h.messageWakeup(ctx, llm.SegmentsTextOnly(segments))
 	ctx = withMessageWakeup(ctx, woken)
 	if strings.TrimSpace(llm.SegmentsTextOnly(segments)) == "/cancel" {
@@ -130,7 +104,6 @@ type MessageIdentity interface {
 type MessageHooks interface {
 	dialogue.Hooks
 	FillContext(context.Context, hook.Event) hook.Event
-	NotifyError(context.Context, hook.Event, error)
 	CancelRoute(hook.Event) bool
 	Route(context.Context, hook.Event) (hook.Event, bool, error)
 	HasRoute(hook.Event) bool

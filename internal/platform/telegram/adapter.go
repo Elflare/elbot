@@ -413,41 +413,7 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 	}
 	messageCtx.Segments = finalMessageSegments(text, normalized.Segments, nil)
 	msgCtx = platform.WithMessageContext(ctx, messageCtx)
-	if err := handler.HandleMessage(msgCtx, text); err != nil {
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelError,
-				EventName:    "handle_telegram_message_failed",
-				Module:       "telegram",
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("handle telegram message failed\nerror=%v\nmessage_id=%v", err, msg.MessageID),
-				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultFailed,
-			}
-			if errors.Is(err, context.Canceled) {
-				record.ResultStatus = globalevents.ResultCanceled
-				record.Level = slog.LevelInfo
-			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
-		}
-	}
+	_ = handler.HandleMessage(msgCtx, text)
 }
 
 func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {

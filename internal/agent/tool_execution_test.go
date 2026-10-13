@@ -446,6 +446,62 @@ func TestNonCLIChatToolCallWithAssistantTextSkipsToolArgumentPreview(t *testing.
 	}
 }
 
+func TestToolPreviewConversationPolicyThroughChat(t *testing.T) {
+	for _, name := range []string{"qqonebot", "qqofficial", "telegram"} {
+		for _, kind := range []contextinfo.ConversationKind{contextinfo.ConversationPrivate, contextinfo.ConversationGroup} {
+			for _, prose := range []string{"", "我先看一下。"} {
+				for _, count := range []int{1, 2} {
+					t.Run(fmt.Sprintf("%s/%s/prose=%t/calls=%d", name, kind, prose != "", count), func(t *testing.T) {
+						p := &fakePlatform{}
+						calls := make([]chatcompletions.ToolCallDelta, count)
+						for i := range calls {
+							calls[i] = chatcompletions.ToolCallDelta{ID: fmt.Sprintf("call_%d", i), Name: "shell", Args: `{"cmd":"ls"}`}
+						}
+						client := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+							{{DeltaContent: prose}, {ToolCallDeltas: calls, FinishReason: "tool_calls"}},
+							{{DeltaContent: "看完了"}},
+						}}
+						registry := tool.NewRegistry()
+						if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
+							t.Fatal(err)
+						}
+						if err := registry.Register(newAgentShellTool()); err != nil {
+							t.Fatal(err)
+						}
+						a := newTestAgent(t, p, client, "model", config.ProviderConfig{}, newTestStore(t), func(opts *testAgentOptions) {
+							opts.ToolRegistry = registry
+							opts.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{name: {"1"}})
+						})
+						a.output.dispatcher.RegisterPlatformSender(name, p)
+						connectFixtureNotifications(t, name, a.output.dispatcher)
+						ctx := platform.WithMessageContext(t.Context(), platform.MessageContext{Bot: platform.Identity{UserID: "bot"}, Mentions: []platform.Mention{{UserID: "bot"}}, Conversation: contextinfo.Conversation{
+							Source:   contextinfo.Source{Platform: name, ScopeID: string(kind) + ":1", ConversationKind: kind, ConversationID: "1"},
+							Identity: contextinfo.Identity{PlatformUserID: "1", ActorID: name + ":1"},
+						}})
+						if err := a.HandleMessage(ctx, "看看目录"); err != nil {
+							t.Fatal(err)
+						}
+						if _, err := events.NotificationRequested.Emit(ctx, events.NewNotification(ctx, 0, "barrier")); err != nil {
+							t.Fatal(err)
+						}
+						output := p.out.String()
+						want := 0
+						if kind == contextinfo.ConversationPrivate && prose == "" {
+							want = count
+						}
+						if got := strings.Count(output, "正在调用 shell"); got != want {
+							t.Fatalf("preview=%d want=%d output=%q", got, want, output)
+						}
+						if !strings.Contains(output, "看完了") || prose != "" && !strings.Contains(output, prose) {
+							t.Fatalf("missing prose: %q", output)
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
 func TestToolCallAssistantEmoticonSendsBeforeFinalResponse(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{

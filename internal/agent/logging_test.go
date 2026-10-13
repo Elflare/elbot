@@ -62,7 +62,7 @@ func TestChatSilentCancellationPreservesPartialOutputLog(t *testing.T) {
 	if err != nil || result.Text != "partial-before-cancel" {
 		t.Fatalf("result = %+v, error = %v", result, err)
 	}
-	if len(records) != 3 || records[0].EventName != "llm_usage" {
+	if len(records) != 2 || records[0].EventName != "llm_usage" || records[1].EventName != "assistant_message" {
 		t.Fatalf("records = %#v", records)
 	}
 	for _, r := range records {
@@ -70,7 +70,7 @@ func TestChatSilentCancellationPreservesPartialOutputLog(t *testing.T) {
 			t.Fatalf("record = %#v", r)
 		}
 	}
-	if !strings.Contains(records[2].Content, "partial-before-cancel") {
+	if !strings.Contains(records[1].Content, "partial-before-cancel") {
 		t.Fatal("partial output missing from log")
 	}
 	var content map[string]json.RawMessage
@@ -147,7 +147,7 @@ func TestResponsesSuccessfulCallWithSaveFailureKeepsSourceFacts(t *testing.T) {
 	if event.ProviderError || !event.OutputReady || event.Text != "upstream-success" {
 		t.Fatalf("business event = %+v", event)
 	}
-	if len(records) != 1 || records[0].ResultStatus != globalevents.ResultFailed || !strings.Contains(records[0].Content, "persistence_error=terminal audit storage failed") {
+	if len(records) != 1 || records[0].ResultStatus != globalevents.ResultSucceeded || strings.Contains(records[0].Content, "terminal audit storage failed") {
 		t.Fatalf("logs = %#v", records)
 	}
 }
@@ -191,6 +191,7 @@ func TestModelObservationPreservesExplicitResultAndUsage(t *testing.T) {
 	observation.Event.Usage = &llm.Usage{TotalTokens: &tokens}
 	observation.Event.OutputReady, observation.Event.Text = true, "partial output"
 	observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultFailed, slog.LevelError
+	observation.LogRecord.EventName = "llm_usage"
 	observation.LogRecord.Content = "call_error=context canceled\npersistence_error=disk full"
 	observation.Publish(context.Background(), errors.Join(context.Canceled, errors.New("disk full")))
 	observation.Publish(context.Background(), nil)

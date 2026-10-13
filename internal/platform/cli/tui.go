@@ -774,12 +774,7 @@ func (m tuiModel) submitInput() (tea.Model, tea.Cmd) {
 	m.clearInput()
 	m.appendUserContent(text)
 	go func() {
-		if err := m.handler.HandleMessage(m.ctx, sendText); err != nil {
-			select {
-			case m.output <- tuiNoticeMsg{Text: "error: " + err.Error(), Level: slog.LevelError}:
-			case <-m.ctx.Done():
-			}
-		}
+		_ = m.handler.HandleMessage(m.ctx, sendText)
 	}()
 	return m, nil
 }

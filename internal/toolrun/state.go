@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 
+	"elbot/internal/events"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 )
@@ -59,17 +60,24 @@ func DecodeState(raw string) (State, error) {
 	return state, nil
 }
 
+// Load reads the persisted row without decoding tool metadata.
+func (s *StateService) Load(ctx context.Context, id string) (*storage.Session, error) {
+	return s.store.Sessions().Get(ctx, id)
+}
+
 func (s *StateService) Snapshot(ctx context.Context, id string) (State, error) {
-	row, err := s.store.Sessions().Get(ctx, id)
+	row, err := s.Load(ctx, id)
 	if err != nil {
 		return State{}, err
 	}
 	return DecodeState(row.Metadata)
 }
 
-func (s *StateService) Commit(ctx context.Context, id string, update StateUpdate) (StateCommit, error) {
+func (s *StateService) Commit(ctx context.Context, id string, update StateUpdate) (StateCommit, events.LogResult, error) {
 	var result StateCommit
-	row, err := s.store.Sessions().Mutate(ctx, id, func(row *storage.Session) error {
+	var callbackErr error
+	row, err := s.store.Sessions().Mutate(ctx, id, func(row *storage.Session) (err error) {
+		defer func() { callbackErr = err }()
 		state, err := DecodeState(row.Metadata)
 		if err != nil {
 			return err
@@ -123,10 +131,13 @@ func (s *StateService) Commit(ctx context.Context, id string, update StateUpdate
 		return err
 	})
 	if err != nil {
-		return StateCommit{}, fmt.Errorf("save tool state: %w", err)
+		if callbackErr != nil || ctx.Err() != nil {
+			return StateCommit{}, events.LogResult{ResultStatus: events.ResultSkipped}, err
+		}
+		return StateCommit{}, events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("save tool state: %v", err)}, err
 	}
 	result.Metadata = row.Metadata
-	return result, nil
+	return result, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "tool discovery state saved"}, nil
 }
 
 func (s State) Names() map[string]bool {

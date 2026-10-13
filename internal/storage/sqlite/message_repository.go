@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 
+	"elbot/internal/events"
 	"elbot/internal/storage"
 )
 
@@ -20,13 +21,13 @@ func (r *MessageRepository) Append(ctx context.Context, message *storage.Message
 		return err
 	}
 	defer tx.Rollback()
-	if err := appendMessageTx(ctx, tx, message); err != nil {
+	if _, err := appendMessageTx(ctx, tx, message); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-func appendMessageTx(ctx context.Context, tx *sql.Tx, message *storage.Message) error {
+func appendMessageTx(ctx context.Context, tx *sql.Tx, message *storage.Message) (events.LogResult, error) {
 	if message.ID == "" {
 		message.ID = storage.NewID()
 	}
@@ -52,14 +53,14 @@ INSERT INTO messages (
 		storage.FormatTime(message.CreatedAt),
 	)
 	if err != nil {
-		return fmt.Errorf("append message: %w", err)
+		return events.LogResult{ResultStatus: events.ResultFailed}, fmt.Errorf("append message: %w", err)
 	}
 	var segments []struct {
 		MediaID string `json:"media"`
 	}
 	if message.Segments != "" {
 		if err := json.Unmarshal([]byte(message.Segments), &segments); err != nil {
-			return fmt.Errorf("decode message segments: %w", err)
+			return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("decode message segments: %w", err)
 		}
 	}
 	ownerType := "message"
@@ -71,10 +72,10 @@ INSERT INTO messages (
 			continue
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO media_references(media_id, owner_type, owner_id, purpose, session_id, created_at) VALUES (?, ?, ?, 'content', ?, ?) ON CONFLICT DO NOTHING`, segment.MediaID, ownerType, message.ID, message.SessionID, storage.FormatTime(message.CreatedAt)); err != nil {
-			return fmt.Errorf("append message media reference: %w", err)
+			return events.LogResult{ResultStatus: events.ResultFailed}, fmt.Errorf("append message media reference: %w", err)
 		}
 	}
-	return nil
+	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
 func (r *MessageRepository) Get(ctx context.Context, id string) (*storage.Message, error) {

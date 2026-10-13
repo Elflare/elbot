@@ -145,8 +145,11 @@ func TestResponsesRefreshAllowsNewURLAndRejectsRenamedProvider(t *testing.T) {
 	if err := f.agent.HandleMessage(t.Context(), "missing provider"); err == nil {
 		t.Fatal("deleted provider remained usable")
 	}
-	if err := f.agent.HandleMessage(t.Context(), "/model renamed/m"); err == nil {
-		t.Fatal("Responses accepted renamed provider")
+	if err := f.agent.HandleMessage(t.Context(), "/model renamed/m"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.platform.out.String(), "不兼容") {
+		t.Fatal("Responses did not explain incompatible provider")
 	}
 	if _, err := f.agent.execution.models.SelectModelForMode("work", "renamed/m"); err != nil {
 		t.Fatal(err)

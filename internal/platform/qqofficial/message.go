@@ -181,41 +181,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 		msgCtx = platform.WithMessageContext(ctx, messageCtx)
 	}
 	a.recordChatMessage(ctx, msg, conversation, senderID, scopeID, text, replyID, messageCtx.Reply)
-	if err := handler.HandleMessage(msgCtx, text); err != nil {
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelError,
-				EventName:    "handle_qqofficial_message_failed",
-				Module:       "qqofficial",
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("handle qqofficial message failed\nerror=%v\nmessage_id=%v", err, msg.ID),
-				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultFailed,
-			}
-			if errors.Is(err, context.Canceled) {
-				record.ResultStatus = globalevents.ResultCanceled
-				record.Level = slog.LevelInfo
-			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
-		}
-	}
+	_ = handler.HandleMessage(msgCtx, text)
 }
 
 func inboundRoute(msg inboundMessage, conversation contextinfo.ConversationKind) (senderID, scopeID string, kind sendTargetKind, targetID string) {

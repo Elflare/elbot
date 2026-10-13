@@ -289,10 +289,10 @@ type executionTimingDialogues struct {
 	append func(storage.Message) error
 }
 
-func (r executionTimingDialogues) Commit(ctx context.Context, commit storage.DialogueCommit) error {
+func (r executionTimingDialogues) Commit(ctx context.Context, commit storage.DialogueCommit) (events.LogResult, error) {
 	for _, row := range commit.Messages {
 		if err := r.append(*row); err != nil {
-			return err
+			return events.LogResult{ResultStatus: events.ResultFailed}, err
 		}
 	}
 	return r.DialogueRepository.Commit(ctx, commit)

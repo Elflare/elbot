@@ -82,7 +82,7 @@ func (s *Service) CreateCompacted(ctx context.Context, scope Scope, sourceID str
 		Status: storage.SessionStatusActive, Metadata: metadata}
 	var saveErr error
 	if req.Seed != nil {
-		saveErr = s.store.Sessions().CreateMaterial(ctx, storage.SessionMaterialCreate{Session: next, Seed: req.Seed, SourceSessionID: sourceID, ExpectedCheckpointID: req.ExpectedCheckpointID})
+		_, saveErr = s.store.Sessions().CreateMaterial(ctx, storage.SessionMaterialCreate{Session: next, Seed: req.Seed, SourceSessionID: sourceID, ExpectedCheckpointID: req.ExpectedCheckpointID})
 	} else {
 		saveErr = s.store.Sessions().Create(ctx, next)
 	}

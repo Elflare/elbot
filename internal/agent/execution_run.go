@@ -15,6 +15,7 @@ import (
 	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
+	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
@@ -32,12 +33,18 @@ func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.
 		return session, turn.Input{}, err
 	}
 	selection := modelmgr.SelectionForTurn(ctx, c.models, session)
-	if err := c.dialogue.CheckSelection(selection); err != nil {
+	source, _, err := sessionpkg.Origin(session)
+	if err != nil {
 		release()
 		return session, turn.Input{}, err
 	}
-	if err := c.view.CheckSelection(session, selection); err != nil {
+	err = c.dialogue.CheckSelection(selection)
+	if err == nil {
+		err = modelmgr.CanSwitch(source, selection.Origin)
+	}
+	if err != nil {
 		release()
+		out.Notify(context.WithoutCancel(ctx), slog.LevelError, err.Error())
 		return session, turn.Input{}, err
 	}
 	ctx, err = c.view.WithModel(ctx, selection)
@@ -108,7 +115,7 @@ func (c *ExecutionCoordinator) runTurn(ctx context.Context, session *storage.Ses
 	prepared, err := c.dialogue.PrepareTurn(ctx, dialogue.TurnInput{Session: session, Text: text, Input: inboundTurnInput(ctx, text), ReplyToPlatformMessageID: inboundReplyMessageID(ctx), Selection: selection})
 	if err != nil {
 		result := dialogue.TurnResult{Outcome: dialogue.Failed, Err: err}
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		if ctx.Err() != nil {
 			result.Outcome = dialogue.Canceled
 		}
 		return result, turn.Input{}
@@ -116,7 +123,7 @@ func (c *ExecutionCoordinator) runTurn(ctx context.Context, session *storage.Ses
 	locked, releaseRequest, err := c.sessions.EnterSessions(ctx, session.ID)
 	if err != nil {
 		result := dialogue.TurnResult{Outcome: dialogue.Failed, Err: err}
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		if ctx.Err() != nil {
 			result.Outcome = dialogue.Canceled
 		}
 		return result, turn.Input{}
@@ -129,7 +136,7 @@ func (c *ExecutionCoordinator) runTurn(ctx context.Context, session *storage.Ses
 	releaseRequest()
 	if err != nil {
 		result := dialogue.TurnResult{Outcome: dialogue.Failed, Err: err}
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		if ctx.Err() != nil {
 			result.Outcome = dialogue.Canceled
 		}
 		return result, turn.Input{}
@@ -138,7 +145,7 @@ func (c *ExecutionCoordinator) runTurn(ctx context.Context, session *storage.Ses
 
 	result := c.dialogue.RunTurn(ctx, reqCtx, dialogue.TurnInput{Session: session, Text: text, Selection: selection, RequestID: reqCtxInfo.ID, Prepared: prepared}, out)
 	if result.QuietCancellation {
-		c.handleTurnContextDone(ctx, session.ID, result.Err, out)
+		c.handleTurnContextDone(ctx, session.ID, reqCtx.Err(), out)
 		return result, turn.Input{}
 	}
 	if result.Outcome != dialogue.Completed {
@@ -147,7 +154,7 @@ func (c *ExecutionCoordinator) runTurn(ctx context.Context, session *storage.Ses
 	pending, err := c.finishCompletedTurn(ctx, session, out, result)
 	if err != nil {
 		result.Outcome, result.Err = dialogue.Failed, err
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		if ctx.Err() != nil {
 			result.Outcome = dialogue.Canceled
 		}
 	}

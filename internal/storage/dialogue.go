@@ -3,6 +3,8 @@ package storage
 import (
 	"context"
 	"time"
+
+	"elbot/internal/events"
 )
 
 // NativeExchange is an immutable request and the terminal facts of one API call.
@@ -95,7 +97,8 @@ func (c DialogueCommit) MessageRows() []*Message {
 }
 
 type DialogueRepository interface {
-	Commit(context.Context, DialogueCommit) error
+	// Commit distinguishes storage IO failures from internal validation errors.
+	Commit(context.Context, DialogueCommit) (events.LogResult, error)
 	CreateExchange(context.Context, *NativeExchange) error
 	FinishExchange(context.Context, string, string, string, string, string) error
 	GetExchange(context.Context, string) (*NativeExchange, error)

@@ -78,7 +78,7 @@ func TestSendToUploadsGroupMediaToGroupAPI(t *testing.T) {
 	}
 }
 
-func TestNotificationSkipsGroupToolPreview(t *testing.T) {
+func TestNotificationDeliversExplicitGroupToolText(t *testing.T) {
 	var calls atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls.Add(1)
@@ -104,7 +104,7 @@ func TestNotificationSkipsGroupToolPreview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("send: %v", err)
 	}
-	if len(r[0].Value.PlatformMessageIDs) != 0 || calls.Load() != 0 {
+	if len(r[0].Value.PlatformMessageIDs) != 1 || calls.Load() != 1 {
 		t.Fatalf("receipt/calls = %#v/%d", r, calls.Load())
 	}
 }

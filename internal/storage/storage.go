@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"time"
 )
@@ -354,7 +355,7 @@ type Store interface {
 
 type SessionRepository interface {
 	Create(ctx context.Context, session *Session) error
-	CreateMaterial(context.Context, SessionMaterialCreate) error
+	CreateMaterial(context.Context, SessionMaterialCreate) (events.LogResult, error)
 	Get(ctx context.Context, id string) (*Session, error)
 	Mutate(ctx context.Context, id string, update func(*Session) error) (*Session, error)
 	List(ctx context.Context, req ListSessionsRequest) ([]SessionSummary, error)

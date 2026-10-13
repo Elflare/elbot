@@ -25,7 +25,7 @@ func testTargetContext(t target) context.Context {
 	return contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ScopeID: oneBotTargetScope(t), ConversationKind: contextinfo.ConversationKind(t.MessageType), ConversationID: fmt.Sprint(id)}})
 }
 
-func TestNotificationSkipsGroupToolPreview(t *testing.T) {
+func TestNotificationDeliversExplicitGroupToolText(t *testing.T) {
 	var calls atomic.Int64
 	transport := newTestTransport(t, func(req request) response {
 		calls.Add(1)
@@ -39,10 +39,10 @@ func TestNotificationSkipsGroupToolPreview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("notification: %v", err)
 	}
-	if len(receipt.PlatformMessageIDs) != 0 {
+	if len(receipt.PlatformMessageIDs) != 1 {
 		t.Fatalf("receipt = %#v", receipt)
 	}
-	if got := calls.Load(); got != 0 {
+	if got := calls.Load(); got != 1 {
 		t.Fatalf("transport calls = %d", got)
 	}
 }

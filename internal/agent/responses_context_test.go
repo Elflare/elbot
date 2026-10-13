@@ -514,8 +514,12 @@ func TestResponsesModelCommandPreflightsOnlyAffectedSlotAndRequestChecksGlobalCh
 	}
 	row := fixtureSession(t, f)
 	for _, arg := range []string{"/model other/m", "/model chat/chat-model"} {
-		if err := f.agent.HandleMessage(t.Context(), arg); err == nil {
-			t.Fatalf("accepted incompatible command %s", arg)
+		before := f.platform.out.String()
+		if err := f.agent.HandleMessage(t.Context(), arg); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(strings.TrimPrefix(f.platform.out.String(), before), "不兼容") {
+			t.Fatalf("missing rejection for command %s", arg)
 		}
 		if selected := f.agent.execution.models.ResolveMode("work"); selected.Provider != "native" || selected.Model != "m" {
 			t.Fatalf("failed command changed selection=%+v", selected)
@@ -841,9 +845,9 @@ type nativeCreateFailureRepository struct {
 	fail *atomic.Bool
 }
 
-func (r nativeCreateFailureRepository) CreateMaterial(ctx context.Context, req storage.SessionMaterialCreate) error {
+func (r nativeCreateFailureRepository) CreateMaterial(ctx context.Context, req storage.SessionMaterialCreate) (events.LogResult, error) {
 	if r.fail.Load() {
-		return errors.New("native seed save failed")
+		return events.LogResult{ResultStatus: events.ResultFailed}, errors.New("native seed save failed")
 	}
 	return r.SessionRepository.CreateMaterial(ctx, req)
 }

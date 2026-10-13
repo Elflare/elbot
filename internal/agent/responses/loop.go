@@ -2,8 +2,8 @@ package responses
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"elbot/internal/agent/dialogue"
@@ -170,8 +170,8 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 	result := dialogue.LoopResult{Selection: in.Selection}
 	fail := func(err error) dialogue.LoopResult {
 		result.Outcome = dialogue.Failed
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			result.Outcome = dialogue.Canceled
+		if s.requestCtx.Err() != nil {
+			result.Outcome, result.QuietCancellation = dialogue.Canceled, true
 		}
 		result.Err = err
 		result.QuietCancellation = s.requestCtx.Err() != nil
@@ -193,6 +193,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			foregroundPrepared = true
 			s.selection = modelmgr.SelectionForTurn(s.requestCtx, s.route.Models, s.session)
 			if err := s.route.CheckSelection(s.selection); err != nil {
+				out.Notify(context.WithoutCancel(s.requestCtx), slog.LevelError, err.Error())
 				return fail(err)
 			}
 			s.requestCtx, err = s.route.View.WithModel(s.requestCtx, s.selection)

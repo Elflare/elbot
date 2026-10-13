@@ -368,6 +368,8 @@ flowchart TB
 Chat 使用 `业务输出 → delivery/dispatch.Router → 平台发送器 → Receipt、LogResult、error`。`SendChat` 回复原会话，`SendTo(ctx, Target, []Output)` 发送到明确目标；正文、媒体、Hook 输出及 Cron／Elnis 报告均为 Chat。最终对话提交归 ReplyCommitter。命令的 `result.Content` 通过 `NotificationRequested.Emit` 同步发送，成功后才执行 Continuation；发送时清除旧 Session binding，保留原会话和连接，允许切换会话的命令返回结果。
 
 - App 为 Chat 注入共享 Router。通知业务只依赖 `events.NotificationRequested` 和通知实体，不注入通知管理器。显式目标优先，否则使用捕获的原 Conversation；后台通知抑制及原 context 的 binding 校验由通知管理器执行，不从当前 Session 重建历史目标。
+- 失败通知由负责该操作的业务组件发布：模型调用负责恢复后的最终失败，输入／命令／Hook／准备／消息保存／输出各自负责自身失败。错误继续正常返回，纯转交错误的上层不补发通知；MessageHandler 不设通用错误兜底，也没有“已通知”错误包装。共享传输、媒体和协议材料算法只返回错误，由实际业务调用点完成通知。
+- 生命周期取消依据请求 context 的真实状态判定，不能根据返回错误匹配 `DeadlineExceeded` 或 `Canceled` 就静默处理；HTTP 响应头超时仍是调用失败。整轮超时由执行生命周期通知，主动停止和执行替换由发起操作反馈。失败事实通知解除请求取消，并清除旧 binding，保留捕获的原会话；工具进度提示继续受在途请求和 binding 约束。
 - `events.Notification` 统一纯文本、等级、平台、会话类型、目标 ID／ScopeID 和可选 Origin；不接媒体或大文件。`notification.Manager` 连接全局信号并持有各平台发送信号；平台仅连接并返回实际回执和错误。重试通知随真实模型调用取消，失败事实通知明确解除请求取消。无来源本地提示走 CLI，service 提示交日志中心。
 - 平台通知的发送失败归 Delivery：消息平台调用 Delivery.Manager，CLI 保留专用通知协议并复用 LogSendResult。日志使用发送来源的 LogResult，保留部分送达事实；通知发布方不重复记录失败。
 - 全局通知路由只有一个短处理槽，用于保持投递顺序；它只转交完成结果，不等待平台网络发送。各平台独立使用 8 个发送槽、256 个等待项，相同目标按接纳顺序串行；平台队列满时返回错误并写 WARN，不重试。默认 30 秒覆盖路由、排队及发送，不在各层重新延长期限。

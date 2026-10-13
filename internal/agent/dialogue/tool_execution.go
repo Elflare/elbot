@@ -2,7 +2,6 @@ package dialogue
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 
@@ -47,6 +46,9 @@ func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storag
 	}
 	cached, logResult, err := CachedToolsForSession(ctx, r.State, r.Registry, session)
 	if err != nil {
+		if logResult.ResultStatus == events.ResultSkipped || ctx.Err() != nil {
+			return toolrun.RunResult{Err: err}
+		}
 		record := events.LogRecord{
 			Category:     events.LogRuntime,
 			Level:        slog.LevelError,
@@ -131,8 +133,12 @@ func (r *ToolExecutor) Schemas(ctx context.Context, session *storage.Session) ([
 	if session.Mode == storage.SessionModeWork && r.Provider != nil && !r.DefaultProvider {
 		return r.Provider.Schemas(ctx, session.Mode, session, r.Identity.Scope(ctx))
 	}
-	cached, _, err := CachedToolsForSession(ctx, r.State, r.Registry, session)
+	cached, logResult, err := CachedToolsForSession(ctx, r.State, r.Registry, session)
 	if err != nil {
+		if logResult.ResultStatus == events.ResultFailed {
+			_ = events.EmitLog(context.WithoutCancel(ctx), events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "tool_batch_prepare_failed", Module: "agent", Content: logResult.Content, ResultStatus: logResult.ResultStatus})
+			_, _ = events.NotificationRequested.EmitAsync(sessionpkg.WithBinding(context.WithoutCancel(ctx), nil), events.NewNotification(ctx, slog.LevelError, "工具准备失败："+err.Error()))
+		}
 		return nil, err
 	}
 	return r.Manager.Schemas(ctx, toolrun.Context{Mode: session.Mode, Session: session, Scope: r.Identity.Scope(ctx), Actor: r.Identity.Actor(ctx), DisableBaseTools: sessionpkg.IsBackground(session)}, cached)
@@ -142,13 +148,17 @@ func CachedToolsForSession(ctx context.Context, service *toolrun.StateService, r
 	if row == nil {
 		return nil, events.LogResult{ResultStatus: events.ResultSkipped, Content: "session is absent"}, nil
 	}
-	state, err := service.Snapshot(ctx, row.ID)
+	loaded, err := service.Load(ctx, row.ID)
 	if err != nil {
 		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("tool_state_error=%v", err)}
-		if errors.Is(err, context.Canceled) {
+		if ctx.Err() != nil {
 			logResult.ResultStatus = events.ResultCanceled
 		}
 		return nil, logResult, err
+	}
+	state, err := toolrun.DecodeState(loaded.Metadata)
+	if err != nil {
+		return nil, events.LogResult{ResultStatus: events.ResultSkipped}, err
 	}
 	return state.CachedTools(registry, sessionpkg.IsBackground(row)), events.LogResult{ResultStatus: events.ResultSucceeded, Content: "tool state loaded"}, nil
 }

@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"strings"
 	"testing"
@@ -75,8 +76,8 @@ type compactFailCreateRepo struct {
 }
 
 func (r compactFailCreateRepo) Create(context.Context, *storage.Session) error { return r.err }
-func (r compactFailCreateRepo) CreateMaterial(context.Context, storage.SessionMaterialCreate) error {
-	return r.err
+func (r compactFailCreateRepo) CreateMaterial(context.Context, storage.SessionMaterialCreate) (events.LogResult, error) {
+	return events.LogResult{ResultStatus: events.ResultFailed}, r.err
 }
 
 func TestCreateCompactedFailureKeepsSourceAndBinding(t *testing.T) {

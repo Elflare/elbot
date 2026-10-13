@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -18,6 +19,49 @@ func TestFormatToolPreviewPreservesMultilineBody(t *testing.T) {
 	want := "[tool] " + text
 	if got := formatToolPreview(text); got != want {
 		t.Fatalf("preview = %q, want %q", got, want)
+	}
+}
+
+func TestPreviewConversationPolicyPrecedesHookAndSignal(t *testing.T) {
+	for _, platform := range []string{"qqonebot", "qqofficial", "telegram", "cli"} {
+		for _, kind := range []contextinfo.ConversationKind{contextinfo.ConversationPrivate, contextinfo.ConversationGroup, contextinfo.ConversationChannel, contextinfo.ConversationUnknown} {
+			for _, batch := range []bool{false, true} {
+				t.Run(platform+"/"+string(kind)+"/"+map[bool]string{false: "single", true: "batch"}[batch], func(t *testing.T) {
+					var seen []string
+					connection, err := events.NotificationRequested.Observe(func(_ context.Context, notice events.Notification) error {
+						if notice.Text != "barrier" {
+							seen = append(seen, notice.Text)
+						}
+						return nil
+					}, signal.ConnectOptions{})
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer connection.Disconnect()
+					hooks := &previewTestHooks{rewrite: true, output: "rewritten without tool prefix"}
+					out := &OutputSender{hooks: hooks}
+					ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platform, ConversationKind: kind}})
+					text := []string{"正在调用 first"}
+					if batch {
+						text = append(text, "正在调用 second")
+					}
+					out.Preview(ctx, text...)
+					if _, err := events.NotificationRequested.Emit(ctx, events.Notification{Text: "barrier"}); err != nil {
+						t.Fatal(err)
+					}
+					want := 1
+					if kind == contextinfo.ConversationGroup {
+						want = 0
+					}
+					if hooks.calls != want || len(seen) != want {
+						t.Fatalf("hooks=%d notices=%v", hooks.calls, seen)
+					}
+					if want == 1 && seen[0] != hooks.output {
+						t.Fatalf("notice=%q", seen[0])
+					}
+				})
+			}
+		}
 	}
 }
 

@@ -2,7 +2,6 @@ package responses
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"elbot/internal/agent/dialogue"
@@ -16,12 +15,7 @@ type inputCommitter struct{ state *turnState }
 func (c inputCommitter) Commit(ctx context.Context, message *storage.Message) (events.LogResult, error) {
 	if message == nil {
 		err := fmt.Errorf("native input message is required")
-		logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
-		if err != nil {
-			logResult.ResultStatus = events.ResultFailed
-			logResult.Content = err.Error()
-		}
-		return logResult, err
+		return events.LogResult{ResultStatus: events.ResultSkipped}, err
 	}
 	segments := dialogue.MessageSegmentsFromStorage(message.Segments)
 	if len(segments) == 0 {
@@ -29,12 +23,7 @@ func (c inputCommitter) Commit(ctx context.Context, message *storage.Message) (e
 	}
 	input, err := queuedInput(message.SessionID, message.ID, "", "", segments)
 	if err != nil {
-		logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
-		if err != nil {
-			logResult.ResultStatus = events.ResultFailed
-			logResult.Content = err.Error()
-		}
-		return logResult, err
+		return events.LogResult{ResultStatus: events.ResultSkipped}, err
 	}
 	return c.state.commit(ctx, storage.DialogueCommit{
 		SessionID: message.SessionID,
@@ -129,7 +118,7 @@ func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) (event
 func (c *toolCommitter) Prepared(ctx context.Context, index int, call llm.ToolCallRequest) (events.LogResult, error) {
 	if index < 0 || index >= len(c.calls) || call.ID != c.calls[index].CallID || call.Name != c.calls[index].Name || call.Arguments != c.calls[index].Arguments {
 		err := fmt.Errorf("native tool calls are read-only")
-		return events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}, err
+		return events.LogResult{ResultStatus: events.ResultSkipped}, err
 	}
 	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
 }
@@ -154,17 +143,13 @@ func (c *toolCommitter) Result(ctx context.Context, index int, request llm.ToolC
 	}
 	archived, err := s.route.Preparer.ArchiveMaterials(ctx, []llm.LLMMessage{message})
 	if err != nil {
-		return events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}, err
+		return events.LogResult{ResultStatus: events.ResultSkipped}, err
 	}
 	segments := archived[0].Segments
 	stored.Content, stored.Segments = dialogue.MessageContent(segments), dialogue.StoredMessageSegments(segments)
 	input, err := queuedInput(s.session.ID, stored.ID, s.exchange.ID, c.calls[index].CallID, segments)
 	if err != nil {
-		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = events.ResultCanceled
-		}
-		return logResult, err
+		return events.LogResult{ResultStatus: events.ResultSkipped}, err
 	}
 	call := c.calls[index]
 	call.Status = "completed"
