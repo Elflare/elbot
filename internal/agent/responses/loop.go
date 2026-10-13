@@ -284,6 +284,9 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 					return fail(err)
 				}
 			}
+			if _, err := committer.Flush(s.requestCtx); err != nil {
+				return fail(err)
+			}
 			s.tools = nil
 			out.SendPreview(s.ctx, fmt.Sprintf("已达到 max_rounds_per_turn=%d，正在请求模型总结当前进度。", s.route.Tools.MaxRoundsPerTurn()))
 			summaryInput := &storage.Message{

@@ -45,7 +45,7 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 			return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("native checkpoint changed")
 		}
 	}
-	if err := validateToolPair(commit); err != nil {
+	if err := validateToolBatch(commit); err != nil {
 		return events.LogResult{ResultStatus: events.ResultSkipped}, err
 	}
 	for _, message := range commit.MessageRows() {

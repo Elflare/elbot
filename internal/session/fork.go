@@ -21,15 +21,15 @@ func (s *Service) Fork(ctx context.Context, scope Scope, fromMessageID string) (
 		return nil, fmt.Errorf("can only fork from assistant messages")
 	}
 	boundary := message.ID
-	if resultID, err := storage.ToolResultMessageID(*message); err != nil {
+	if resultIDs, err := storage.ToolResultMessageIDs(*message); err != nil {
 		return nil, err
-	} else if resultID != "" {
-		result, err := s.store.Messages().Get(ctx, resultID)
+	} else if len(resultIDs) > 0 {
+		result, err := s.store.Messages().Get(ctx, resultIDs[len(resultIDs)-1])
 		if err != nil {
 			return nil, err
 		}
 		if result.SessionID != message.SessionID || result.Role != storage.RoleTool {
-			return nil, fmt.Errorf("invalid tool pair fork boundary")
+			return nil, fmt.Errorf("invalid tool batch fork boundary")
 		}
 		boundary = result.ID
 	}

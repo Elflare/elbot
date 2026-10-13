@@ -641,7 +641,7 @@ func TestResponsesIncompleteAndEOFDoNotAdvanceCheckpoint(t *testing.T) {
 	}
 }
 
-func TestResponsesStoppedToolRoundKeepsCompletedResultsWithoutReexecution(t *testing.T) {
+func TestResponsesStoppedToolBatchKeepsUnknownOutcomesWithoutReexecution(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
 	var first, second int
@@ -693,7 +693,7 @@ func TestResponsesStoppedToolRoundKeepsCompletedResultsWithoutReexecution(t *tes
 	if first != 1 || second != 1 || len(requests) != 2 || requests[1].PreviousResponseID != "r1" || len(requests[1].Input) != 3 {
 		t.Fatalf("replayed tools %d/%d requests=%+v", first, second, requests)
 	}
-	if !strings.Contains(string(requests[1].Input[0]), "saved first") || !strings.Contains(string(requests[1].Input[1]), "outcome is unknown") {
+	if !strings.Contains(string(requests[1].Input[0]), "outcome is unknown") || !strings.Contains(string(requests[1].Input[1]), "outcome is unknown") {
 		t.Fatalf("lost stopped results: %+v", requests[1])
 	}
 	row := fixtureSession(t, f)
@@ -701,24 +701,10 @@ func TestResponsesStoppedToolRoundKeepsCompletedResultsWithoutReexecution(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	var pairs int
-	for i, message := range messages {
-		if strings.Contains(message.Metadata, `"ID":"two"`) || message.ToolCallID == "two" {
-			t.Fatalf("native closure leaked into display history: %+v", messages)
+	for _, message := range messages {
+		if message.Role == storage.RoleTool || strings.Contains(message.Metadata, "tool_calls") {
+			t.Fatalf("stopped batch partially saved: %+v", messages)
 		}
-		if message.ToolCallID == "one" {
-			pairs++
-			if i == 0 {
-				t.Fatal("orphan tool result")
-			}
-			id, err := storage.ToolResultMessageID(messages[i-1])
-			if err != nil || id != message.ID {
-				t.Fatalf("unpaired result: %+v", messages)
-			}
-		}
-	}
-	if pairs != 1 {
-		t.Fatalf("completed pairs=%d", pairs)
 	}
 }
 

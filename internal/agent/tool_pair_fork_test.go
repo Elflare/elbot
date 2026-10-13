@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"elbot/internal/config"
@@ -11,7 +12,7 @@ import (
 	"elbot/internal/tool"
 )
 
-func TestChatForkFromToolPairIncludesOnlyResultsAtBoundary(t *testing.T) {
+func TestChatForkIncludesWholeToolBatchAndExcludesLaterAnswer(t *testing.T) {
 	store := newTestStore(t)
 	model := &fakeLLM{chunks: [][]chatcompletions.Chunk{
 		{{
@@ -21,10 +22,10 @@ func TestChatForkFromToolPairIncludesOnlyResultsAtBoundary(t *testing.T) {
 		{{DeltaContent: "later source answer"}},
 		{{DeltaContent: "branch answer"}},
 	}}
-	executions := 0
+	var executions atomic.Int32
 	registry := tool.NewRegistry()
 	_ = registry.Register(nativeTool{name: "once", run: func(_ context.Context, request tool.CallRequest) (*tool.Result, error) {
-		executions++
+		executions.Add(1)
 		if strings.Contains(string(request.Arguments), "later") {
 			return &tool.Result{Content: "later source result"}, nil
 		}
@@ -39,7 +40,7 @@ func TestChatForkFromToolPairIncludesOnlyResultsAtBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows, err := store.Messages().ListBySession(t.Context(), source.ID)
-	if err != nil || len(rows) != 6 {
+	if err != nil || len(rows) != 5 {
 		t.Fatalf("source=%+v %v", rows, err)
 	}
 	if _, err := a.execution.sessions.Fork(t.Context(), a.Scope(t.Context()), rows[1].ID); err != nil {
@@ -49,28 +50,28 @@ func TestChatForkFromToolPairIncludesOnlyResultsAtBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	requests := model.chatRequests()
-	if len(requests) != 3 || executions != 2 {
-		t.Fatalf("requests=%d executions=%d", len(requests), executions)
+	if len(requests) != 3 || executions.Load() != 2 {
+		t.Fatalf("requests=%d executions=%d", len(requests), executions.Load())
 	}
 	calls, results := 0, 0
 	for _, message := range requests[2].Messages {
 		for _, call := range message.ToolCalls {
 			calls++
-			if call.ID != "first" {
+			if call.ID != "first" && call.ID != "later" {
 				t.Fatalf("future call=%+v", call)
 			}
 		}
 		if message.Role == llm.RoleTool {
 			results++
-			if message.ToolCallID != "first" || !strings.Contains(llm.SegmentsContentText(message.Segments), "result at fork") {
+			if message.ToolCallID != "first" && message.ToolCallID != "later" {
 				t.Fatalf("wrong fork result=%+v", message)
 			}
 		}
-		if strings.Contains(llm.SegmentsContentText(message.Segments), "later source") {
+		if strings.Contains(llm.SegmentsContentText(message.Segments), "later source answer") {
 			t.Fatalf("future history=%+v", message)
 		}
 	}
-	if calls != 1 || results != 1 {
+	if calls != 2 || results != 2 {
 		t.Fatalf("calls/results=%d/%d", calls, results)
 	}
 }

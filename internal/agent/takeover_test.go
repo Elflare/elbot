@@ -426,7 +426,7 @@ func (t foregroundContextProbe) Call(ctx context.Context, _ tool.CallRequest) (*
 	}
 }
 
-func TestTakeoverRefreshesNextToolInSameBatch(t *testing.T) {
+func TestTakeoverRefreshesToolsInNextBatch(t *testing.T) {
 	origins := map[string]string{}
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 		if record.Module == "toolrun" && record.EventName == "tool_call" && record.Category == events.LogAudit {
@@ -458,9 +458,10 @@ func TestTakeoverRefreshesNextToolInSameBatch(t *testing.T) {
 	}
 	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
 		{{
-			ToolCallDeltas: []chatcompletions.ToolCallDelta{{Index: 0, ID: "slow-call", Name: "slow", Args: "{}"}, {Index: 1, ID: "probe-call", Name: "foreground_probe", Args: "{}"}},
+			ToolCallDeltas: []chatcompletions.ToolCallDelta{{Index: 0, ID: "slow-call", Name: "slow", Args: "{}"}},
 			FinishReason:   "tool_calls",
 		}},
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{Index: 0, ID: "probe-call", Name: "foreground_probe", Args: "{}"}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 	}}
 
@@ -507,7 +508,7 @@ func TestTakeoverRefreshesNextToolInSameBatch(t *testing.T) {
 		t.Fatal("foreground-only tool was not executed after adoption")
 	}
 	requests := f.chatRequests()
-	if len(requests) != 2 || !strings.Contains(llm.SegmentsTextOnly(requests[1].Messages[0].Segments), "conversation=private") || !strings.Contains(llm.SegmentsTextOnly(requests[1].Messages[0].Segments), "tools: foreground_probe") {
+	if len(requests) != 3 || !strings.Contains(llm.SegmentsTextOnly(requests[1].Messages[0].Segments), "conversation=private") || !strings.Contains(llm.SegmentsTextOnly(requests[1].Messages[0].Segments), "tools: foreground_probe") {
 		t.Fatal("foreground prompt was not rebuilt")
 	}
 }

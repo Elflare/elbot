@@ -36,7 +36,8 @@ func TestTakeoverKeepsActivePermissionsButRoutesItsOutputToForeground(t *testing
 	started, release := make(chan struct{}), make(chan struct{})
 	observed := make(chan context.Context, 1)
 	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
-		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{Index: 0, ID: "slow", Name: "slow", Args: "{}"}, {Index: 1, ID: "next", Name: "foreground_probe", Args: "{}"}}, FinishReason: "tool_calls"}},
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{Index: 0, ID: "slow", Name: "slow", Args: "{}"}}, FinishReason: "tool_calls"}},
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{Index: 0, ID: "next", Name: "foreground_probe", Args: "{}"}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 	}}
 	registry := tool.NewRegistry()

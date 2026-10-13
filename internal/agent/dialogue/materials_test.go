@@ -128,6 +128,9 @@ func TestToolTranscriptMirrorMatchesFullDatabaseFacts(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if _, err := committer.Flush(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	rows, err := store.Messages().ListBySession(t.Context(), row.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -136,7 +139,7 @@ func TestToolTranscriptMirrorMatchesFullDatabaseFacts(t *testing.T) {
 	for _, row := range rows {
 		restored = append(restored, MessageFromStorage(row))
 	}
-	if !reflect.DeepEqual(restored, committer.Committed) || len(restored) != 5 || restored[2].Segments[0].Text != full {
+	if !reflect.DeepEqual(restored, committer.Committed) || len(restored) != 3 || restored[2].Segments[0].Text != full {
 		t.Fatal("committed mirror differs from complete restored transcript")
 	}
 	before := len(committer.Committed)
@@ -144,8 +147,11 @@ func TestToolTranscriptMirrorMatchesFullDatabaseFacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	stored := ToolResultStorageMessage(row.ID, llm.LLMMessage{Role: llm.RoleTool, Segments: llm.TextSegments("unsaved")})
-	if _, err := committer.Result(t.Context(), 2, calls[0], llm.LLMMessage{}, &stored); err == nil || len(committer.Committed) != before {
-		t.Fatal("failed commit entered active context")
+	if _, err := committer.Result(t.Context(), 0, calls[0], llm.LLMMessage{}, &stored); err != nil || len(committer.Committed) != before {
+		t.Fatal("result collection failed")
+	}
+	if _, err := committer.Flush(t.Context()); err == nil || len(committer.Committed) != before {
+		t.Fatal("failed batch entered active context")
 	}
 }
 

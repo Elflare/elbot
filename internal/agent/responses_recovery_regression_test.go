@@ -72,7 +72,7 @@ func TestResponsesFirstCommitFailureCanContinueWithoutReprocessingOldInput(t *te
 	}
 }
 
-func TestResponsesPairCommitFailureKeepsUnknownNativeOutcomeAndStopsBatch(t *testing.T) {
+func TestResponsesBatchCommitFailureKeepsAllUnknownOutcomesWithoutReexecution(t *testing.T) {
 	var executions atomic.Int32
 	registry := tool.NewRegistry()
 	_ = registry.Register(nativeTool{name: "once", run: func(context.Context, tool.CallRequest) (*tool.Result, error) {
@@ -87,14 +87,14 @@ func TestResponsesPairCommitFailureKeepsUnknownNativeOutcomeAndStopsBatch(t *tes
 			return
 		}
 		body := inputJSON(request)
-		if request.PreviousResponseID != "head" || !strings.Contains(body, "outcome is unknown") || !strings.Contains(body, "was not executed") || strings.Contains(body, "uncommitted result") {
+		if request.PreviousResponseID != "head" || strings.Count(body, "outcome is unknown") != 2 || strings.Contains(body, "uncommitted result") {
 			t.Errorf("unsafe continuation=%+v", request)
 		}
 		emitNative(w, "continued", "completed", nativeText("done"))
 	}, func(opts *testAgentOptions) {
 		opts.ToolRegistry = registry
 		opts.Store = nativeCommitFaultStore{Store: opts.Store, fault: func(commit storage.DialogueCommit) error {
-			if commit.ToolPair != nil && fail.Swap(false) {
+			if commit.ToolBatch != nil && fail.Swap(false) {
 				return errors.New("pair write failed")
 			}
 			return nil
@@ -103,13 +103,13 @@ func TestResponsesPairCommitFailureKeepsUnknownNativeOutcomeAndStopsBatch(t *tes
 	if err := f.agent.HandleMessage(t.Context(), "@tool:once run"); err == nil || !strings.Contains(err.Error(), "pair write failed") {
 		t.Fatalf("first error=%v", err)
 	}
-	if executions.Load() != 1 {
-		t.Fatalf("batch continued after commit failure: %d", executions.Load())
+	if executions.Load() != 2 {
+		t.Fatalf("batch did not finish before commit failure: %d", executions.Load())
 	}
 	if err := f.agent.HandleMessage(t.Context(), "continue"); err != nil {
 		t.Fatal(err)
 	}
-	if executions.Load() != 1 {
+	if executions.Load() != 2 {
 		t.Fatalf("historical tool replayed: %d", executions.Load())
 	}
 	rows, err := f.store.Messages().ListBySession(t.Context(), fixtureSession(t, f).ID)

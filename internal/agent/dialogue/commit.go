@@ -71,58 +71,61 @@ func (c messageCommitter) Commit(ctx context.Context, message *storage.Message) 
 	return c.store.Append(ctx, message, c.operation)
 }
 
-// ToolTranscriptCommitter commits complete business facts and exposes only the
-// successfully committed projection to the active loop.
+// ToolTranscriptCommitter buffers one complete batch before publishing its projection.
 type ToolTranscriptCommitter struct {
 	Messages  *MessageStore
 	SessionID string
 	Committed []llm.LLMMessage
+	head      *storage.Message
+	calls     []llm.ToolCallRequest
+	results   []*storage.Message
 }
 
-func (c *ToolTranscriptCommitter) Begin(ctx context.Context, head *storage.Message) (events.LogResult, error) {
-	c.SessionID = head.SessionID
-	message := ToolBatchText(head)
-	result, err := c.Messages.Append(ctx, message, "append_tool_transcript")
-	if err == nil && message != nil {
-		c.Committed = append(c.Committed, MessageFromStorage(*message))
-	}
-	return result, err
+func (c *ToolTranscriptCommitter) Begin(_ context.Context, head *storage.Message) (events.LogResult, error) {
+	c.SessionID, c.head = head.SessionID, head
+	c.calls = append([]llm.ToolCallRequest(nil), AssistantMessageMetadata(head.Metadata).ToolCalls...)
+	c.results = make([]*storage.Message, len(c.calls))
+	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
 }
-func (c *ToolTranscriptCommitter) Prepared(context.Context, int, llm.ToolCallRequest) (events.LogResult, error) {
+func (c *ToolTranscriptCommitter) Prepared(_ context.Context, index int, call llm.ToolCallRequest) (events.LogResult, error) {
+	c.calls[index] = call
 	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
 }
 func (c *ToolTranscriptCommitter) Started(context.Context, int, llm.ToolCallRequest) (events.LogResult, error) {
 	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
 }
-func (c *ToolTranscriptCommitter) Result(ctx context.Context, _ int, call llm.ToolCallRequest, _ llm.LLMMessage, stored *storage.Message) (events.LogResult, error) {
-	pair := NewToolPair(c.SessionID, call, stored)
-	result, err := c.Messages.Commit(ctx, storage.DialogueCommit{SessionID: c.SessionID, ToolPair: pair}, "append_tool_transcript")
+func (c *ToolTranscriptCommitter) Result(_ context.Context, index int, call llm.ToolCallRequest, _ llm.LLMMessage, stored *storage.Message) (events.LogResult, error) {
+	c.calls[index], c.results[index] = call, stored
+	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
+}
+func (c *ToolTranscriptCommitter) Flush(ctx context.Context) (events.LogResult, error) {
+	batch := NewToolBatch(c.head, c.calls, c.results)
+	result, err := c.Messages.Commit(ctx, storage.DialogueCommit{SessionID: c.SessionID, ToolBatch: batch}, "append_tool_transcript")
 	if err == nil {
-		c.Committed = append(c.Committed, MessageFromStorage(*pair.Call), MessageFromStorage(*pair.Result))
+		c.Committed = append(c.Committed, MessageFromStorage(*batch.Call))
+		for _, stored := range batch.Results {
+			c.Committed = append(c.Committed, MessageFromStorage(*stored))
+		}
 	}
 	return result, err
 }
 
-func ToolBatchText(head *storage.Message) *storage.Message {
-	if head.Content == "" {
-		return nil
+// NewToolBatch retains one assistant call array and ordered call/result links.
+func NewToolBatch(head *storage.Message, calls []llm.ToolCallRequest, results []*storage.Message) *storage.ToolBatch {
+	if head.ID == "" {
+		head.ID = storage.NewID()
 	}
-	metadata := AssistantMessageMetadata(head.Metadata)
-	message := ToolCallStorageMessage(head.SessionID, head.Content, metadata.RawText, nil)
-	message.ID = storage.NewID()
-	return &message
-}
-
-func NewToolPair(sessionID string, call llm.ToolCallRequest, result *storage.Message) *storage.ToolPair {
-	if result.ID == "" {
-		result.ID = storage.NewID()
-	}
-	head := ToolCallStorageMessage(sessionID, "", "", []llm.ToolCallRequest{call})
-	head.ID = storage.NewID()
-	fields, _ := storage.DecodeSessionMetadata(head.Metadata)
-	_ = fields.Set(storage.ToolResultMessageKey, result.ID)
-	head.Metadata, _ = fields.Encode()
 	head.CreatedAt = storage.Now()
-	result.CreatedAt = head.CreatedAt
-	return &storage.ToolPair{Call: &head, Result: result}
+	ids := make([]string, len(results))
+	for i, result := range results {
+		if result.ID == "" {
+			result.ID = storage.NewID()
+		}
+		ids[i] = result.ID
+	}
+	fields, _ := storage.DecodeSessionMetadata(head.Metadata)
+	_ = fields.Set("tool_calls", calls)
+	_ = fields.Set(storage.ToolResultMessageKey, ids)
+	head.Metadata, _ = fields.Encode()
+	return &storage.ToolBatch{Call: head, Results: results}
 }

@@ -139,7 +139,7 @@ flowchart TB
 - 准入先检查 provider 能力和模型兼容性，登记会话归属与 attempt。材料加载、Prompt、Hook、媒体归一及用户保存均使用登记后的 Request context，检查取消。
 - 每轮固定 Selection。普通 `/model` 不影响在途循环；前台接管刷新模型、工具和来源。解除后台要求的合成 user 提示位于请求末尾，不写入 system prompt 或展示历史。
 - 工具阶段收到的输入进入 pending；下一次模型请求前合并，最终模型调用期间新收到的 pending 在本轮结束后自动开启下一轮。
-- 用户／pending 和工具 transcript 通过共同提交口保存。每个实际调用与结果组成不可变 ToolPair，保存真实参数及媒体引用，同事务成功后才进入下一工具；没有结果不预写展示调用头。
+- 用户／pending 和工具 transcript 通过共同提交口保存。ToolBatch 保存一条 assistant 调用数组及按原调用顺序排列的结果；失败结果属于对应调用。整批结果与媒体引用同事务提交，提交成功后才续跑模型；执行期间不预写展示调用头。
 - CommitGate 在本地事务内复核原 binding、活跃 Execution／attempt；Responses 同时比较预期 checkpoint 并提交原生状态。API 审计事实独立归档。
 - 回复前再次刷新接管来源，发布 sending 状态，由 ReplyCommitter 提交；发送／落库顺序见[输出链路](#output)。
 - 单轮结果保留 Outcome、Usage 和实际提交事实。协调器负责 Touch、用量、状态、压缩提示、pending、Execution 结果与命名，Runner 不结束跨轮 Execution。
@@ -239,7 +239,7 @@ flowchart LR
 - schema 以 developer `additional_tools` 输入冻结，新增定义持久化；相同定义不重复，同名变化要求新会话。定义按历史位置回放，新增定义位于工具输出／用户输入之后、接管提示之前。
 - 请求不发送顶层 tools；当前权限与 tool_choice 相交生成允许集合，响应调用再次校验。历史定义不恢复工具权限。只使用 ElBot function 工具。
 - 工具调用集合、ID、名称和参数对 Hook 只读，改写在副作用前报错；Chat 允许参数改写。公共 Hook 通过注入策略校验，不识别协议。
-- 工具副作用前保存原生响应和调用状态；结果与展示 ToolPair、原生输出及不可变历史快照同事务提交。历史快照不推进活动游标，Fork 只读当时结果；中断调用仅在原生材料补未执行／结果未知输出。
+- 工具副作用前保存原生响应和调用状态；整批结果与展示 ToolBatch、原生输出及一个不可变历史快照同事务提交。历史快照不推进活动游标，Fork 包含整批结果；中断调用仅在原生材料补未执行／结果未知输出。
 - 窗口由 seed 根、checkpoint 链和已提交的有序输入／输出重建，不读取历史 HTTP 正文。公共片段由 Dialogue 解码与展开，Responses 只组装自身 items；媒体持有覆盖发送过程。首次调用失败后可复用完整待提交输入；格式版本、归档、定义或素材不一致时拒绝。
 
 <!-- locator:commands -->
@@ -265,15 +265,24 @@ flowchart LR
 <!-- locator:tool-flow -->
 ## 工具调用链路
 
-`路线 → ToolExecutor → ToolRun → Tool Runtime → 完成 Hook → ToolPair 提交 → 路线续跑`。
+`路线 → ToolExecutor → ToolRun 准备／确认 → 并发 Tool Runtime → 有序完成 Hook → ToolBatch Flush → 路线续跑`。
 
-- ToolRun 使用 prepared Hook 后的真实参数，做命名解析、可见性、权限、风险确认和请求登记；Runtime 兜底检查 Actor／Policy。
+```mermaid
+flowchart LR
+    R["toolrun/runner.go<br/>顺序准备与确认、通过即启动"] --> W["tool/executor.go、toolrun/elwisp_exec.go<br/>独立上下文并发执行"]
+    W --> R
+    R --> C["dialogue/commit.go、responses/persistence.go<br/>有序收集与 Flush、原生批次快照"]
+    C --> S["storage/dialogue.go、sqlite/tool_batch.go<br/>单调用消息、结果数组、原子校验与保存"]
+    S --> F["session/fork.go、background_copy.go<br/>完整批次边界、结果 ID 数组重映射"]
+```
+
+- ToolRun 顺序使用 prepared Hook 后的真实参数完成解析、权限、风险确认和请求登记，通过一个即启动一个 worker。worker 固定调用上下文、Session 快照、Actor 和来源；Runtime 兜底检查 Actor／Policy。结果、完成 Hook、发现状态及输出按模型调用顺序处理，Result 仅收集，Flush 整批提交。普通调用失败、拒绝或单工具超时不停止其他调用；整轮取消和确认过期取消并等待所有 worker。
 - 工具业务解析保留原始结果、Error 与拒绝事实。原生／远程执行的 ExecutionStarted 记录进入调用边界，不证明业务副作用已完成；业务 ResultStatus 和日志调用结果分别表达，不直接投影。
 - 完成 Hook 只处理已实际执行的结果；预检失败或拒绝不触发。结果以 Content／Segments 回灌模型，Data 仅供内部消费；输出意图交发送层。
 - 工具业务与日志分离：Tool.Call 分别返回业务 Result、独立 logContent 和原始 error，具体工具不填写日志结果或等级。执行入口保留真实 ExecutionStarted，把正文放入 ExecutionResult.LogResult.Content；未进入调用时声明明确结果及原因。Runner 在调用前从刷新后的 context 固定 run_source，在 Execute 返回后由 newRecord 复用基础九字段与当次身份，recordCall 填写调用结果、正文及查询事实，参数日志限 256 字符，仅发布 audit，早于后续发送／完成 Hook／保存发布；已进入调用统一 INFO／succeeded。internal/toolrun/logging.go 只接收完整记录并发布，Execute 不发布调用日志。请求登记、媒体引用准备、调用记录和 transcript 保存、发现状态保存等其他操作分别返回独立 LogResult 与原始 error，Runner 直接使用所属来源结果；后续失败不回改调用结果，Segments 不自动成为日志正文。进度见[3.1](tasks.md#31-其他-bug-修复)。
 - 普通工具已运行的调用日志为 INFO／succeeded，缺 key、shell 非零及业务返回错误在正文说明；调用故障导致根本未运行时为 ERROR／failed。发送、完成 Hook、保存记录各自操作，不回改调用事实；实际保存日志等返回后记录，批次失败不伪造逐工具调用。
 - 工具发现状态成功提交后才更新调用快照；已完成工具动作不因状态保存失败回滚或重跑。
-- 每次工具准备前从 Execution 内存快照应用接管变化，不读取数据库；只合并归属、模式及接管元数据，保留后续工具状态提交。本次调用的权限、沙箱和调用日志来源固定，输出由 executionTurnOutput 在发送时选择当前去向；刷新错误通过 RunResult.Err 返回。
+- 每次工具准备及有序完成前从 Execution 内存快照应用接管变化，不读取数据库；只合并归属、模式及接管元数据，保留后续工具状态提交。本次调用的权限、沙箱和调用日志来源固定，输出由 executionTurnOutput 在发送时选择当前去向；刷新错误通过 RunResult.Err 返回。
 - Chat 的 tool message 只发文本，工具图片在同批 tool messages 后生成 user 多模态输入；图片标签和该派生消息不持久化。Responses 私有路线编码原生结果。
 - 风险与确认供内部权限判断，不暴露给 LLM。文件调用在预检时固定目标、参数和 revision，执行前变化或绑定失效即拒绝。
 
@@ -488,7 +497,7 @@ contextmgr 管历史、用量、阈值及压缩分派，通过 Selection 查询�
 - storage 定义领域模型和 repository 契约，SQLite 实现消息、Session、聊天历史、工具记录、Cron、Elnis 和原生状态事务。
 - 主库使用单连接，工具状态随整份 Session metadata 在事务内合并更新，以保持事务与状态合并简单可靠；实测出现连接等待或编码瓶颈后再调整存储与并发方式。
 - Session 字段修改使用 `Mutate` 在短事务读取最新行，只改负责字段；回调不做外部 I/O 或嵌套仓储操作。RawMessage 保留未知 metadata 和数值精度，损坏数据拒绝读写。
-- 多模态 segments 为结构来源，content 为文本投影；非空 segments 优先。ToolPair 保存调用／结果关联，复制消息时重映射 ID。
+- 多模态 segments 为结构来源，content 为文本投影；非空 segments 优先。ToolBatch 以 tool_result_message_ids 保存调用数组／结果数组的有序关联，复制消息时重映射全部 ID；Fork 从调用消息延伸至最后一个结果。
 - `native_exchanges`、`native_inputs`、`native_calls`、`native_checkpoints`、`native_seeds` 保存原生记录，Session metadata 只保存归属、版本和引用。关键提交比较旧 checkpoint，材料事务同时保存 Session、历史及媒体引用；查询保留平台隔离、归档与 Fork 范围。
 - `native_seeds.media_ids_json` 始终保存 JSON 数组，无媒体为 `[]`；持久化入口统一处理 nil slice，迁移修正已有 `null`。媒体引用校验直接按数组读取，不在清理入口推断空值含义。
 

@@ -53,6 +53,10 @@ func (*runnerTestDeps) Result(context.Context, int, llm.ToolCallRequest, llm.LLM
 	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
+func (*runnerTestDeps) Flush(context.Context) (events.LogResult, error) {
+	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+}
+
 func (d *runnerTestDeps) PrepareToolCall(_ context.Context, _ *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, events.LogResult, error) {
 	return call, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 }

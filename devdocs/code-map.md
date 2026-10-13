@@ -78,7 +78,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/responses/native_call.go`：实际原生调用、冻结参数与有序输入引用及终态保存；按输出项、内容索引保留 text／refusal 增量与原生字段，完成事实覆盖对应部分，中断内容不成为完成响应或可执行工具调用。
 - `internal/agent/responses/context.go`、`internal/agent/responses/persistence.go`：从已提交输入／输出重建原生窗口与原子提交，不从历史 HTTP 请求恢复；公共内容交 Dialogue 处理，原生 items 由 Responses 组装。
 - `internal/agent/responses/tool_inputs.go`、`internal/agent/responses/input_format.go`：冻结工具定义与输入／seed 格式。
-- `internal/agent/dialogue/commit.go`、`internal/agent/dialogue/reply_commit.go`：消息事务准入、ToolPair 与最终回复。
+- `internal/agent/dialogue/commit.go`、`internal/agent/dialogue/reply_commit.go`：消息事务准入、ToolBatch 与最终回复。
 - `internal/agent/segments.go`、`internal/agent/inbound_media.go`：有序图文与入站媒体。
 
 <!-- locator:protocol-routing -->
@@ -128,11 +128,11 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/agent/dialogue/tool_execution.go`：路线共用的 ToolRun 入口与协议提交器，批次准备失败只记批次日志。
 - `internal/agent/toolrun_adapter.go`：Hook、子请求、确认、调用记录与状态提交桥接；请求登记、RecordToolCall 和发现状态保存各自返回独立 LogResult 与原始错误，Runner 不再推导这些操作的结果。
-- `internal/toolrun/runner.go`：Runner 借用共享 Manager 编排单工具确认、请求、输出及实际保存；newRecord 复用基础九字段与当次身份，recordCall 在 Execute 返回后填写调用日志结果、等级和查询事实，仅发布一份 audit JSON。参数日志限 256 字符，工具返回的独立摘要不再截断。调用前固定 runSource 写入 JSON，接管不改写已开始调用；后续操作分别使用所属来源 LogResult。
+- `internal/toolrun/runner.go`：Runner 借用共享 Manager 顺序准备和确认、并发执行、按原调用顺序处理完成并 Flush 整批保存；newRecord 复用基础九字段与当次身份，recordCall 在 Execute 返回后填写调用日志结果、等级和查询事实，仅发布一份 audit JSON。参数日志限 256 字符，工具返回的独立摘要不再截断。调用前固定 runSource 写入 JSON，接管不改写已开始调用；后续操作分别使用所属来源 LogResult。
 - `internal/toolrun/toolrun.go`：工具业务解析及原生／远程调用中间层，Execute 保留业务结果、原始错误、ExecutionStarted 和独立正文；未进入调用时声明明确结果及原因，不组装或发布调用日志。
 - `internal/toolrun/logging.go`：logTool 统一接收 ctx 和完整 LogRecord，直接 EmitLog；工具调用记录和编排操作记录均由 Runner 来源组装；全局队列和落盘归 internal/logging。
 - `internal/tool/executor.go`、`internal/toolrun/elwisp_exec.go`：原生／远程执行入口，保留业务 Result、原始 error 与真实 ExecutionStarted；LogResult.Content 传递工具独立正文；未进入调用的结果在入口明确，已进入调用的日志结果交 Runner 统一填写。PolicyDeniedError 只表达业务拒绝事实。
-- `internal/agent/dialogue/message_store.go`：对话写入边界，返回独立 LogResult 和原始 error；来源声明保存结果，ToolCommitter 各阶段继续传递 LogResult，业务提交及检查点规则不解析日志正文。`internal/storage/tool_pair.go`：transcript 与调用／结果关联。
+- `internal/agent/dialogue/message_store.go`：对话写入边界，返回独立 LogResult 和原始 error；来源声明保存结果，ToolCommitter 各阶段继续传递 LogResult，业务提交及检查点规则不解析日志正文。`internal/storage/tool_batch.go`、`internal/storage/sqlite/tool_batch.go`：调用数组／结果数组关联和完整批次校验。
 - `internal/storage/sqlite/tool_call_repository.go`：调用记录持久化。
 
 <!-- locator:skill -->
@@ -216,7 +216,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/storage/storage.go`、`internal/storage/session_metadata.go`：领域模型、repository 契约及 metadata 保留。
 - `internal/storage/sqlite/`、`internal/storage/sqlite/migrations.go`：存储实现与数据库迁移；`nullable_context_summary_tokens` 保留摘要数据、外键及索引，使未知用量可保存为 NULL。
-- `internal/storage/dialogue.go`、`internal/storage/sqlite/dialogue_repository.go`：ToolPair／原生提交事务与 checkpoint 比较。
+- `internal/storage/dialogue.go`、`internal/storage/sqlite/dialogue_repository.go`：ToolBatch／原生提交事务与 checkpoint 比较。
 - `internal/storage/sqlite/native_snapshot.go`、`internal/storage/sqlite/native_material.go`：不可变调用快照、seed 与新 Session 原子保存；seed 空媒体列表统一写 `[]`，`normalize_native_seed_media_ids` 迁移修正已有 `null`。
 - `internal/storage/sqlite/media_history.go`、`internal/storage/sqlite/media_lifecycle.go`：历史媒体关联、媒体临时引用恢复与清理认领。
 
