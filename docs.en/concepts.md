@@ -101,7 +101,7 @@ Long conversations will gradually approach the model's context window. Chat Sess
 
 After successful compression, it will switch to a completely independent new Session with the title `原标题 compacted-N`. Chat will merge the compressed content with the next user message for saving; Responses start a new chain from the native window, and subsequent interactions continue along the new chain. Both protocols share the automatic compression switch and threshold, and both support `/compact`.。
 
-When the Responses server explicitly reports that the old chain has expired and no new content has been generated, it will automatically recover once using a complete local native window from the same provider. Recovery will not rerun historical tools or repeat the execution of the current round's Hook; An error will be reported if reasoning or materials are missing, instead of continuing with text history.
+When the Responses server explicitly reports that the old chain has expired and no new content has been generated, it will automatically recover once using a complete local native window from the same provider. Recovery will not rerun historical tools or repeat the execution of the current round's Hook; An error will be reported when reasoning or native records are missing. When media entities are missing, an explicit missing prompt is used and a notification is sent only for the current transmission, while historical media references are preserved; Cancellation, timeout, or database errors will abort the preparation.
 
 ## Prompt and Soul
 
@@ -109,7 +109,7 @@ Soul is the Agent's basic System Prompt, used to define personality, behavioral 
 
 The Prompt actually sent to the LLM contains not only Soul but also dynamically combines platform information, user identity, memory, tool hints, compaction summaries, and Session history based on the current Session.
 
-Messages containing images will send both the images and the text labels adjacent to the images to the vision model; Labels are numbered according to their order within the message and include the original HTTP(S) URL when reusable, allowing the model to accurately reference images during tool calls such as uploading or editing. Embedded images are only marked as having no reusable URL, and base64 data will not be expanded into the text; The behavior remains the same after restoring the Session.
+Messages containing images will send both the images and the text labels adjacent to the images to the vision model; Tags are numbered according to the order within the message and include stable media IDs for reference by media tools. The Session only saves media references; the sent copy is converted to base64 or temporary URLs according to the configuration; The same original materials are used after restoring the Session.
 
 Therefore, Soul is only suitable for stable rules; dynamic information such as tool discovery, time, platform context, and temporary states should not be hard-coded into it.
 
