@@ -912,6 +912,14 @@
       "translation": "__ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__ now have an independent `--raw` flag. Corrupted log lines will no longer interrupt queries, and the number of corrupted lines scanned will be prompted.",
       "updated_at": 1791715549
     },
+    "CHANGELOG.md:list:70b66310392de116be835a9087c2e4c6d9ada084c05c3519db8542b7727c2442": {
+      "kind": "list",
+      "source": "现在支持并发执行工具",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "70b66310392de116be835a9087c2e4c6d9ada084c05c3519db8542b7727c2442",
+      "translation": "Now supports concurrent tool execution",
+      "updated_at": 1791902935
+    },
     "CHANGELOG.md:list:70f1550f6bf2f281c0cb0927e41c0bb07572e4e28e171b808ba30dfe69f1597f": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 同时统一为 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__ 三种读取模式。",
@@ -2226,8 +2234,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "c4aec6e37453c4f2c6801b686bbabbd2a0944d7fa205d64fd029c0cbe3392034",
+  "source_hash": "1e91206c747d1103a8ec6b90c8d920a5e264afe51204f42ef129179d8e36f0b1",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1791882448,
+  "updated_at": 1791902935,
   "version": 2
 }
