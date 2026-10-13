@@ -103,6 +103,8 @@ Although `send` action can create an output intent at all Hook points, only the 
 
 The final assistant text usually passes through `agent.turn.output.prepared` first, and then through `agent.output.prepared`. Do not configure the same append/prepend rule at two different points; otherwise, the text will be processed twice.
 
+Tool hints first add the `[tool]` prefix separately for each tool, then merge into a single notification, and the whole thing passes through `agent.output.prepared` once. The Hook receives the full text with the prefix, and can modify both the prefix and the body; The text returned by the Hook is used directly when sending.
+
 ### Matching Conditions and Roles
 
 Conditions can be written as a single condition shorthand or as an AND array; the two cannot be used interchangeably:
