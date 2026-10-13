@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `/models --fresh`/`--refresh` can now refresh configuration files.
+- AgentSkill TOML commands now share a base environment with Go Skills and read the skill root directory `.env` together with Go Skills before each execution; The priority for ordinary variables is skill `.env` > ElBot process environment > configuration root `.env`, with PATH appended and deduplicated in order. Modifications to skill `.env` will take effect on the next call, without requiring a reload or restart.
 - Significantly refactored the underlying architecture, optimizing the responsibilities and boundaries of each package
 - Refactor the log system
 - Refactor the notification system
@@ -45,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix the issue where 'request failed' was falsely reported when ordinary messages were started concurrently.
 - Fix a bug where ordinary log queries such as `/audit` directly displayed JSON escapes.
 - Fixed an issue where `shell` cached all output and only truncated it after completion, causing memory usage to grow with the output volume during execution; capacity is now limited during collection, and any excess is drained and discarded.
+- Fixed the issue where `[tool]` was repeatedly added line by line in tool multi-line prompts.
 - Fixed the high-risk confirmation bug.
 - Fixed the additional confirmation wait bug.
 - QQ OneBot: LLM can now see merged messages in quoted replies, expanding only one level of content.

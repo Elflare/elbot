@@ -376,6 +376,14 @@
       "translation": "Direct calls-only requests will not send additional messages.",
       "updated_at": 1782395477
     },
+    "CHANGELOG.md:list:31ad8f6a861c87148e85fdde674834fa186fba529c72903aabe2d9244785b5bc": {
+      "kind": "list",
+      "source": "普通变量优先级为技能 __ELBOT_CODE_0__ > ElBot 进程环境 > 配置根 __ELBOT_CODE_1__，PATH 依次追加去重。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "31ad8f6a861c87148e85fdde674834fa186fba529c72903aabe2d9244785b5bc",
+      "translation": "The priority for ordinary variables is skill __ELBOT_CODE_0__ > ElBot process environment > configuration root __ELBOT_CODE_1__, with PATH appended and deduplicated in order.",
+      "updated_at": 1791856974
+    },
     "CHANGELOG.md:list:31e1b19552361d185e88961542f7ecdbf799d5e3cc7d6a34196458c6ff69f3bc": {
       "kind": "list",
       "source": "Provider 配置重构：删除未使用的 __ELBOT_CODE_0__，删除 __ELBOT_CODE_1__ 全局模型窗口表；",
@@ -519,6 +527,14 @@
       "source_hash": "40c02f479f2e6b57124b75dcc7cc55618de3b111ba80eaef6af4bf49626c6d0c",
       "translation": "AgentSkill startup scan no longer caches __ELBOT_CODE_0__ body permanently, keeping only summaries and paths;",
       "updated_at": 1783775610
+    },
+    "CHANGELOG.md:list:41f0e0053d75c1c72048c44bbea3816f55ffef7430145b9eefe72ab285a51e1c": {
+      "kind": "list",
+      "source": "AgentSkill TOML 命令改为与 Go Skill 共用基础环境，并与 Go Skill 一起在每次执行前读取技能根目录 __ELBOT_CODE_0__；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "41f0e0053d75c1c72048c44bbea3816f55ffef7430145b9eefe72ab285a51e1c",
+      "translation": "AgentSkill TOML commands now share a base environment with Go Skills and read the skill root directory __ELBOT_CODE_0__ together with Go Skills before each execution;",
+      "updated_at": 1791856974
     },
     "CHANGELOG.md:list:423439494f92faf1b2877f3d54114488603b875cb08f29295101899fef57e0a8": {
       "kind": "list",
@@ -1816,6 +1832,14 @@
       "translation": "Pre-hooks for user input and tool pending support using __ELBOT_CODE_0__ to simultaneously rewrite text and attach images; the final multimodal content will be written to the Session history before the request.",
       "updated_at": 1784467084
     },
+    "CHANGELOG.md:list:d075d901783aa31bdac6dfd1c9eea2c780b90a32b035ddd1f19f1d07ce0daf3e": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__／__ELBOT_CODE_1__ 现在可刷新配置文件。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "d075d901783aa31bdac6dfd1c9eea2c780b90a32b035ddd1f19f1d07ce0daf3e",
+      "translation": "__ELBOT_CODE_0__/__ELBOT_CODE_1__ can now refresh configuration files.",
+      "updated_at": 1791856974
+    },
     "CHANGELOG.md:list:d3908641b559bc54ede96c20cd1c652257d818385b70144f4cdcd75c3cfecf17": {
       "kind": "list",
       "source": "可用 __ELBOT_CODE_0__ 取消长时间运行的 Hook，手动取消按正常取消记录。",
@@ -1839,6 +1863,14 @@
       "source_hash": "d408cf85360e0661ed43f8e27b1c93b23ea162bb86b523ef7ac4e8bdfce07e49",
       "translation": "Fixed an issue where parameters rewritten by the tool prepared Hook were not synchronized to the current LLM context, and in-process Hooks could rewrite tool IDs/names;",
       "updated_at": 1784467084
+    },
+    "CHANGELOG.md:list:d4c4441cdd63a9f6381b3b90cc563248624ef1ca1c6d2fff695cea4c635210c9": {
+      "kind": "list",
+      "source": "修复工具多行提示逐行重复添加 __ELBOT_CODE_0__ 的问题。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "d4c4441cdd63a9f6381b3b90cc563248624ef1ca1c6d2fff695cea4c635210c9",
+      "translation": "Fixed the issue where __ELBOT_CODE_0__ was repeatedly added line by line in tool multi-line prompts.",
+      "updated_at": 1791856974
     },
     "CHANGELOG.md:list:d61719b795c624caee4d83ed8a8a44cf2ed9659b71fc67926033f77654881552": {
       "kind": "list",
@@ -2144,6 +2176,14 @@
       "translation": "Fixed the issue where __ELBOT_CODE_0__ fails during the write confirmation stage when creating a new file using __ELBOT_CODE_1__ if the target parent directory does not exist.",
       "updated_at": 1782644646
     },
+    "CHANGELOG.md:list:face2a536d23deacbab481f1af8c19a6a9ef941158d557cc48cfd448c385f74b": {
+      "kind": "list",
+      "source": "技能 __ELBOT_CODE_0__ 修改后下次调用生效，无需重载或重启。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "face2a536d23deacbab481f1af8c19a6a9ef941158d557cc48cfd448c385f74b",
+      "translation": "Modifications to skill __ELBOT_CODE_0__ will take effect on the next call, without requiring a reload or restart.",
+      "updated_at": 1791856974
+    },
     "CHANGELOG.md:list:fdcc1bb80493caf955c15fb8fb062f834010b24265bf816c6bd42884904fb10a": {
       "kind": "list",
       "source": "补全默认 __ELBOT_CODE_0__ 中缺失的 __ELBOT_CODE_1__。",
@@ -2178,8 +2218,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "597d71fd644631eb4f138a40d81947bbf930b795bae2b13aad2a067588ca17dd",
+  "source_hash": "f5b78078a454976be4d4ace9881528a35222f6dff4d2c075e2fa67ec3d51923b",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1791790752,
+  "updated_at": 1791856974,
   "version": 2
 }
