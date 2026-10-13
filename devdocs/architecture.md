@@ -86,7 +86,7 @@ flowchart TB
 <!-- locator:signal -->
 ## 信号与订阅
 
-来源模块拥有业务实例信号及事件类型，并在实际操作处确定日志结果。Agent 的输入、超时、确认、拒绝、模型、工具、回复及持久化在操作来源直接组织日志；没有业务消费者的日志中转事件和投影连接已删除。Session 命名和 Model Manager 重试自行维护同步日志连接；Dialogue 管理通知订阅，CLI 管理状态展示订阅，App 统一调度五条业务线生命周期。公共日志入口为 `internal/events.EmitLog`，日志中心自行订阅并持有分类队列。契约见[信号与日志系统设计](signals-and-logging.md)，实施进度与待办见[任务清单](tasks.md#信号与日志系统整改)。权限、可改写 Hook、Usage、工具记录和关键提交同步完成；信号发布观察事实。
+来源模块拥有业务实例信号及事件类型，并在实际操作处确定日志结果。Agent 的输入、超时、确认、拒绝、模型、工具、回复及持久化在操作来源直接组织日志；没有业务消费者的日志中转事件和投影连接已删除。Session 命名和 Model Manager 重试自行维护同步日志连接；Dialogue 管理通知订阅，CLI 管理状态展示订阅，App 统一调度五条业务线生命周期。公共日志入口为 `internal/events.EmitLog`，日志中心自行订阅并持有分类队列。权限、可改写 Hook、Usage、工具记录和关键提交同步完成；信号发布观察事实。
 
 - `Signal[T,R]` 使用原子订阅快照，连接变更时复制。`Emit` 等待实际结果，`EmitAsync` 返回入队错误与可等待的 `Emission[R]`；结果按订阅顺序排列。`Observe` 用于无业务返回值的事实消费者。
 - 每个信号独立调度，默认 8 个执行槽、256 个等待项、30 秒总期限；满时拒绝。按 key 串行，不同 key 并发，等待同一 key 不占执行槽。超时取消 context 并完成调用方结果，回调实际退出前不释放执行槽或 key；不配合取消的回调最多占满自身信号，不能借超时不断增生 goroutine。
@@ -334,8 +334,6 @@ Runtime 管注册、schema、权限与执行器；ToolRun 管当前工具视图�
 - rules/action.go 与 runtime/tool_bridge.go 在 Tool.Call 返回后立即发布 hook_tool_call，等级 INFO、结果 succeeded、正文使用独立 logContent；工具业务错误仍按原业务流程返回。输出发送独立发布 hook_tool_log，使用发送来源 LogResult 和同一实际 tool_call_id。rules 使用 storage.NewID，runtime 沿用现有生成方式；没有实际工具调用的 output.send 不补造工具 ID。
 - 工具请求参数无效或工具名为空仍发布 INFO／rejected 调用记录，未进入调用不补造 ID。来源提供完整日志 text，由中心限长；JSON 高膨胀字符串在来源按 Unicode 字符限长并保留 …，业务数据不改写，中心检查整条 64 KiB 上限。
 - 工具审计 actor_id 在授权默认值注入前固定：有 Session 使用触发 Session 的执行 Actor，无 Session 使用原始 contextinfo；默认 Hook 权限主体不充当日志 Actor。
-
-Hook 日志职责图见[Hook 统一发布](signals-and-logging.md#32-hook-结果判定与日志统一整理)。
 
 <!-- locator:output -->
 <!-- locator:notification -->
