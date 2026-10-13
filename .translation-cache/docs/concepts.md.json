@@ -440,6 +440,14 @@
       "translation": "Configurations and commands may change.",
       "updated_at": 1781515483
     },
+    "docs/concepts.md:paragraph:0245e4aa0697ee10ef30368187b6c6509e7547f63c334900dca6af95e0701090": {
+      "kind": "paragraph",
+      "source": "媒体实体缺失时，仅本次发送使用明确的缺失提示并发出通知，历史媒体引用保留；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "0245e4aa0697ee10ef30368187b6c6509e7547f63c334900dca6af95e0701090",
+      "translation": "When media entities are missing, an explicit missing prompt is used and a notification is sent only for the current transmission, while historical media references are preserved;",
+      "updated_at": 1791882368
+    },
     "docs/concepts.md:paragraph:024673ee2a5e18f2afcd0ed47801e43d3689ef254e037db5dd8869dc406e425a": {
       "kind": "paragraph",
       "source": "完整介绍见 [Elnis 监听枢纽](elnis.md)，配置和请求示例见 [Elnis 配置与使用](elnis-usage.md)。\n",
@@ -495,6 +503,14 @@
       "source_hash": "0bf9e24bfc3d6d504621b21f04a8fcc8169c21c15a40ff94d9a3cf2a4cc0813f",
       "translation": "Tools can restrict the applicable API types; discovery, completion, preloading, and execution are all filtered by the current conversation model. Background tasks are determined by the model they have selected.\n",
       "updated_at": 1791358203
+    },
+    "docs/concepts.md:paragraph:0d374ca441b2bba4b7381fba10f0979f80ff41357f00e0ac978941506a5bf73e": {
+      "kind": "paragraph",
+      "source": "取消、超时或数据库错误会中止准备。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "0d374ca441b2bba4b7381fba10f0979f80ff41357f00e0ac978941506a5bf73e",
+      "translation": "Cancellation, timeout, or database errors will abort the preparation.\n",
+      "updated_at": 1791882368
     },
     "docs/concepts.md:paragraph:100216e1add448f480dd0ac48fc11d44e266b3b4c63311c30702a7dd5421e8f2": {
       "kind": "paragraph",
@@ -575,6 +591,14 @@
       "source_hash": "1df96174092e6f5d58987488e8d13c536ac35d2edfb40cf4f270a692d23126d8",
       "translation": "For an example of AgentSkill toolization configuration, see [Configuration Guide: AgentSkill Toolization Configuration](configuration.md#agentskill-工具化配置).",
       "updated_at": 1783077374
+    },
+    "docs/concepts.md:paragraph:1e691747f07996dcb1e9652c338c3d916578c9ad0197746f5b6bff183cec1523": {
+      "kind": "paragraph",
+      "source": "恢复 Session 后使用同一份原始资料。\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "1e691747f07996dcb1e9652c338c3d916578c9ad0197746f5b6bff183cec1523",
+      "translation": "The same original materials are used after restoring the Session.\n",
+      "updated_at": 1791882368
     },
     "docs/concepts.md:paragraph:24011e3f0c0b5da3048f2d715f882af65f02b130b3a0cdf6ff563f75d2f66bc7": {
       "kind": "paragraph",
@@ -688,13 +712,13 @@
       "translation": "Cache hits also refresh the file access time, and idle copies are cleaned up by the existing sandbox retention period.",
       "updated_at": 1789009687
     },
-    "docs/concepts.md:paragraph:3b68e81bf0a07d8e849737fc469f4f200c5695785e0424457835e7ee538dc83b": {
+    "docs/concepts.md:paragraph:3aaab0292c47eaaf1f9ca7cd29fa817c2bc8441d31cf1b05880e0b74c539ac4a": {
       "kind": "paragraph",
-      "source": "内嵌图片只标明没有可复用 URL，不会把 base64 展开进文本；",
+      "source": "标签按消息内顺序编号，并包含稳定媒体 ID，供媒体工具引用。",
       "source_file": "docs/concepts.md",
-      "source_hash": "3b68e81bf0a07d8e849737fc469f4f200c5695785e0424457835e7ee538dc83b",
-      "translation": "Embedded images are only marked as having no reusable URL, and base64 data will not be expanded into the text;",
-      "updated_at": 1786545111
+      "source_hash": "3aaab0292c47eaaf1f9ca7cd29fa817c2bc8441d31cf1b05880e0b74c539ac4a",
+      "translation": "Tags are numbered according to the order within the message and include stable media IDs for reference by media tools.",
+      "updated_at": 1791882368
     },
     "docs/concepts.md:paragraph:3c4bfe321d096ce2e0ac525853661003b04e9c1e00ecf881beba062d5946ef36": {
       "kind": "paragraph",
@@ -719,6 +743,14 @@
       "source_hash": "41dc3010f0e4d9de5b40b994f67ae81a6d982e590bbf3e6dfb3227208f1a7dee",
       "translation": "Go Skill uses the same input list in __ELBOT_CODE_1__ of __ELBOT_CODE_0__.",
       "updated_at": 1789009687
+    },
+    "docs/concepts.md:paragraph:44f5ddc4c96ce1ba18c967d95213dbe7cf63b6fccef38a88c906df6ebf6b53ca": {
+      "kind": "paragraph",
+      "source": "会话只保存媒体引用，发送副本按配置转换为 base64 或临时 URL；",
+      "source_file": "docs/concepts.md",
+      "source_hash": "44f5ddc4c96ce1ba18c967d95213dbe7cf63b6fccef38a88c906df6ebf6b53ca",
+      "translation": "The Session only saves media references; the sent copy is converted to base64 or temporary URLs according to the configuration;",
+      "updated_at": 1791882368
     },
     "docs/concepts.md:paragraph:47691711f4310b0174021bb1517e2d782d81fe55aadd358875f955655f6776cb": {
       "kind": "paragraph",
@@ -831,6 +863,14 @@
       "source_hash": "5920982e3b2aa9950b0dff04425cfa7662f4a1dbf00e078041f5d8cbfe78edff",
       "translation": "ElBot does not inject the full schema of all tools by default in every round of work conversation.\n",
       "updated_at": 1781515483
+    },
+    "docs/concepts.md:paragraph:5939f754149be39e54566f8429a811610e70a52a304afe5322e9f82b0cd1a825": {
+      "kind": "paragraph",
+      "source": "推理或原生记录缺失时会报错。",
+      "source_file": "docs/concepts.md",
+      "source_hash": "5939f754149be39e54566f8429a811610e70a52a304afe5322e9f82b0cd1a825",
+      "translation": "An error will be reported when reasoning or native records are missing.",
+      "updated_at": 1791882368
     },
     "docs/concepts.md:paragraph:59640ea55d8a8f25512bd37b5be650c8b01882ddaf6a75f60af4caee991effdb": {
       "kind": "paragraph",
@@ -1160,14 +1200,6 @@
       "translation": "Recovery will not rerun historical tools or repeat the execution of the current round's Hook;",
       "updated_at": 1791301387
     },
-    "docs/concepts.md:paragraph:b39eb495df6a025e3e7e3154f13448ef5f514702757e3924fe9e91d728dcd822": {
-      "kind": "paragraph",
-      "source": "标签按消息内顺序编号，并在可复用时包含原始 HTTP(S) URL，方便模型在上传、编辑等工具调用中准确引用图片。",
-      "source_file": "docs/concepts.md",
-      "source_hash": "b39eb495df6a025e3e7e3154f13448ef5f514702757e3924fe9e91d728dcd822",
-      "translation": "Labels are numbered according to their order within the message and include the original HTTP(S) URL when reusable, allowing the model to accurately reference images during tool calls such as uploading or editing.",
-      "updated_at": 1786545111
-    },
     "docs/concepts.md:paragraph:b3cd62c608e5f8925137106b7bc9fb0377bbc148bda1352666e0eee33b20f02e": {
       "kind": "paragraph",
       "source": "媒体使用稳定标识 __ELBOT_CODE_0__。普通文档型 Skill 可以指导 Agent 将标识传给支持媒体的工具。\n",
@@ -1319,14 +1351,6 @@
       "source_hash": "c80b27e50bcd682e039be9634d567850c31a8f311dc9e8f347c7b5b919a77d58",
       "translation": "Tools can be preloaded using __ELBOT_CODE_0__ or the shorthand __ELBOT_CODE_1__, and Skills can be preloaded using __ELBOT_CODE_2__ or the shorthand __ELBOT_CODE_3__;",
       "updated_at": 1783240887
-    },
-    "docs/concepts.md:paragraph:cc809e7a6b1eea5e1564f183b2d3130fd21743138526eb0563cc8b5e1023564e": {
-      "kind": "paragraph",
-      "source": "恢复 Session 后行为相同。\n",
-      "source_file": "docs/concepts.md",
-      "source_hash": "cc809e7a6b1eea5e1564f183b2d3130fd21743138526eb0563cc8b5e1023564e",
-      "translation": "The behavior remains the same after restoring the Session.\n",
-      "updated_at": 1786545111
     },
     "docs/concepts.md:paragraph:d01dd6b9b007c1c478e3ca11cb4d84ab22fb3ddfe73b8193f6a649b115e9ecfe": {
       "kind": "paragraph",
@@ -1520,14 +1544,6 @@
       "translation": "ELyph Task Notation is a structured representation used by ElBot to describe reusable tasks.",
       "updated_at": 1783077374
     },
-    "docs/concepts.md:paragraph:fd30bbfb3c88676d772c502a32da1e3fd98542131b185cf1fe8567ea3e8acdda": {
-      "kind": "paragraph",
-      "source": "推理或素材缺失时会报错，不改用文字历史继续。\n",
-      "source_file": "docs/concepts.md",
-      "source_hash": "fd30bbfb3c88676d772c502a32da1e3fd98542131b185cf1fe8567ea3e8acdda",
-      "translation": "An error will be reported if reasoning or materials are missing, instead of continuing with text history.\n",
-      "updated_at": 1791301387
-    },
     "docs/concepts.md:paragraph:ffed157c866ec8765be1b40969a89ebf76fc1cc2d6f1f5a419820bf20e716d6c": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 支持 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__；",
@@ -1706,8 +1722,8 @@
     }
   },
   "source": "docs/concepts.md",
-  "source_hash": "61bac27b02ba5df7ccd4eecec91a8c92efb029ae811e8575ad3c9ab47202b1af",
+  "source_hash": "d2cf3d35d040b841f26f33b7457157df67451d09e3a886b45a71095993ccd0fa",
   "target": "docs.en/concepts.md",
-  "updated_at": 1791358203,
+  "updated_at": 1791882368,
   "version": 2
 }
