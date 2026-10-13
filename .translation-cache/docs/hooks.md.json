@@ -1136,6 +1136,14 @@
       "translation": "__ELBOT_CODE_0__ and __ELBOT_CODE_1__ in the tool preparation event are read-only.",
       "updated_at": 1791301786
     },
+    "docs/hooks.md:paragraph:60a999c9e1385240dd11489e00d62088dcc0e311cfd6beab61674c8524c3717d": {
+      "kind": "paragraph",
+      "source": "Hook 收到的是带前缀的完整文本，可以修改前缀和正文；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "60a999c9e1385240dd11489e00d62088dcc0e311cfd6beab61674c8524c3717d",
+      "translation": "The Hook receives the full text with the prefix, and can modify both the prefix and the body;",
+      "updated_at": 1791856849
+    },
     "docs/hooks.md:paragraph:6139d824bfbb6500580740e49bfaed3e2350fced53ad58295294253dead9a383": {
       "kind": "paragraph",
       "source": "trigger rule 已匹配的首次调用通常无需重复校验同一指令；",
@@ -1448,6 +1456,14 @@
       "translation": "When there is no origin in the background, the calling entity is __ELBOT_CODE_0__, and plugins should handle authorization with particular caution.\n",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:paragraph:89c7985508128e014cf1d2454bb564d5ea50ecd8e5efc6552845d626e9bc1a22": {
+      "kind": "paragraph",
+      "source": "工具提示先按工具分别添加一次 __ELBOT_CODE_0__ 前缀，再合并为一条通知，整体经过一次 __ELBOT_CODE_1__。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "89c7985508128e014cf1d2454bb564d5ea50ecd8e5efc6552845d626e9bc1a22",
+      "translation": "Tool hints first add the __ELBOT_CODE_0__ prefix separately for each tool, then merge into a single notification, and the whole thing passes through __ELBOT_CODE_1__ once.",
+      "updated_at": 1791856849
+    },
     "docs/hooks.md:paragraph:8a86e191352e60f2a8cd7a66e450286c6004b9ef3e828b5dd54935121c3c5c4a": {
       "kind": "paragraph",
       "source": "媒体相对路径按声明规则的插件目录解析；",
@@ -1727,6 +1743,14 @@
       "source_hash": "b0650ac499fb7955c25a983c741f55782568a9aa2bf68e72d22220524e5de07d",
       "translation": "Transient Workers start when a trigger rule is matched.",
       "updated_at": 1784025692
+    },
+    "docs/hooks.md:paragraph:b06e4c3622ac6cc87e2c01f7c70bf1f088140b15f13463b1b7edc1675dadb2af": {
+      "kind": "paragraph",
+      "source": "发送时直接使用 Hook 返回的文本。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "b06e4c3622ac6cc87e2c01f7c70bf1f088140b15f13463b1b7edc1675dadb2af",
+      "translation": "The text returned by the Hook is used directly when sending.\n",
+      "updated_at": 1791856849
     },
     "docs/hooks.md:paragraph:b093eb0d54a4ebfd18dd83ca3dd6ec8bd22b15a13c100a3bd741974c7c3c907b": {
       "kind": "paragraph",
@@ -3610,8 +3634,8 @@
     }
   },
   "source": "docs/hooks.md",
-  "source_hash": "813f8764b55a284c224bc338a6d9f2eeb8839de916aa7979c2c8551c0ccff51e",
+  "source_hash": "519e312429c6bd6771e4f6cb7d653b75d35c24288ce7505145274272e32809ef",
   "target": "docs.en/hooks.md",
-  "updated_at": 1791708757,
+  "updated_at": 1791856849,
   "version": 2
 }
