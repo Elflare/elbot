@@ -88,6 +88,14 @@
       "translation": "Effective Timing",
       "updated_at": 1785918785
     },
+    "docs/configuration.md:heading:2edde80f74693ce65f23542a61605af4f23ba729a3220100ca3ea50d41f6e44a": {
+      "kind": "heading",
+      "source": "Shell、Skill 与 Hook 环境",
+      "source_file": "docs/configuration.md",
+      "source_hash": "2edde80f74693ce65f23542a61605af4f23ba729a3220100ca3ea50d41f6e44a",
+      "translation": "Shell, Skill, and Hook Environments",
+      "updated_at": 1791856747
+    },
     "docs/configuration.md:heading:3c00a5ebfe834864604e4404c946c7385c677f7a4936eb513ccce615e516c279": {
       "kind": "heading",
       "source": "存储与运行数据",
@@ -279,14 +287,6 @@
       "source_hash": "dec6da93f9f3bdfdc16ab13c6803e8501885a66f2885135b855428f179c4043d",
       "translation": "Workspace Tools",
       "updated_at": 1783178826
-    },
-    "docs/configuration.md:heading:e2a04e290c4e38d4a85698de4be9553f2c1fcd399ab9845721496106611532c0": {
-      "kind": "heading",
-      "source": "Shell 与 Hook 环境",
-      "source_file": "docs/configuration.md",
-      "source_hash": "e2a04e290c4e38d4a85698de4be9553f2c1fcd399ab9845721496106611532c0",
-      "translation": "Shell and Hook Environments",
-      "updated_at": 1785918785
     },
     "docs/configuration.md:heading:e3f25be706484952acdb4e98fe76ae28bdfb03f9936abd75c415a71fa85c31a8": {
       "kind": "heading",
@@ -1040,14 +1040,6 @@
       "translation": "__ELBOT_CODE_0__ is the default client connection address; when connecting to other machines, enter the remote WebSocket address in __ELBOT_CODE_1__.",
       "updated_at": 1781962094
     },
-    "docs/configuration.md:list:adc85ca5506daae063b42a81203c756a9e9201cbd3c01d5d6308e1bbde155330": {
-      "kind": "list",
-      "source": "配置根 __ELBOT_CODE_0__：与主配置文件同目录，用于 Provider Key、平台 Secret、CLI/Elnis token、内置工具变量和 LLM Shell。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "adc85ca5506daae063b42a81203c756a9e9201cbd3c01d5d6308e1bbde155330",
-      "translation": "Configuration root __ELBOT_CODE_0__: located in the same directory as the main configuration file, used for Provider Keys, platform Secrets, CLI/Elnis tokens, built-in tool variables, and LLM Shell.",
-      "updated_at": 1785918785
-    },
     "docs/configuration.md:list:b33076ceb8803e198e53a280166c00b5fade9de12dbbe8a949a94b17fc65b1b4": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__：可选，__ELBOT_CODE_1__ 表示只有 ElBot 超级管理员能发现、预载或调用该 Skill。",
@@ -1199,6 +1191,14 @@
       "source_hash": "cf7eddd7a224ea51aed16f2d053820de607268d3e15169de46e6dc74feeb25a3",
       "translation": "__ELBOT_CODE_0__: Rule Hook configuration.",
       "updated_at": 1781515756
+    },
+    "docs/configuration.md:list:d174ba687af04ec775c8f950b086291256c68149e3ec955ea838b4c8a9a39e04": {
+      "kind": "list",
+      "source": "每个技能自己的根目录 __ELBOT_CODE_0__：用于该技能的专属变量，AgentSkill TOML 命令和 Go Skill 在每次执行前读取。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "d174ba687af04ec775c8f950b086291256c68149e3ec955ea838b4c8a9a39e04",
+      "translation": "Each Skill's own root directory __ELBOT_CODE_0__: used for variables exclusive to that Skill, read by AgentSkill TOML commands and Go Skills before each execution.",
+      "updated_at": 1791856747
     },
     "docs/configuration.md:list:d331edccb8c6af201cbc6e5894d92be741f88d46055210432f2ad48a8a9cb15e": {
       "kind": "list",
@@ -1384,6 +1384,14 @@
       "translation": "__ELBOT_CODE_0__ prioritizes Jina Reader by default.",
       "updated_at": 1784024475
     },
+    "docs/configuration.md:paragraph:09cb97c67865a07a5170f6d3bd604f2b86b86fda6383921426a6589efe7e7cc7": {
+      "kind": "paragraph",
+      "source": "AgentSkill 命令也使用合并后的 PATH 查找可执行文件。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "09cb97c67865a07a5170f6d3bd604f2b86b86fda6383921426a6589efe7e7cc7",
+      "translation": "The AgentSkill command also uses the merged PATH to look for executable files.\n",
+      "updated_at": 1791856747
+    },
     "docs/configuration.md:paragraph:09ee1cae2b678d97bc9906680269b4382b3ec23d437053e096c9b03d02da55c5": {
       "kind": "paragraph",
       "source": "启用后，ElBot 会启动本地 HTTP ingress，接收 Elwisp 按 Elvena 协议投递的事件。",
@@ -1535,6 +1543,14 @@
       "source_hash": "1c00d1332f8daefcc3d731ec842a99e61c60e7fc5695c36ba7cefb9290988402",
       "translation": "__ELBOT_CODE_0__ takes precedence over __ELBOT_CODE_1__.\n",
       "updated_at": 1783178826
+    },
+    "docs/configuration.md:paragraph:1c2d826a633a4d74329b0ea666009eb35e4f5ebdf1d2e0a7a99be0b1d44bb332": {
+      "kind": "paragraph",
+      "source": "脚本可直接使用，无需自行加载 __ELBOT_CODE_0__。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "1c2d826a633a4d74329b0ea666009eb35e4f5ebdf1d2e0a7a99be0b1d44bb332",
+      "translation": "Scripts can be used directly without needing to load __ELBOT_CODE_0__ manually.",
+      "updated_at": 1791856747
     },
     "docs/configuration.md:paragraph:1c2e4c580c0dc1cb1cf1260d0e55df4efd872860d85be29e28af440a01b51359": {
       "kind": "paragraph",
@@ -1727,6 +1743,14 @@
       "source_hash": "3ce631dcd503591d75654e5600602523721958fdb1ac22b2a9d352551f63b81e",
       "translation": "The Provider or model-level __ELBOT_CODE_0__ of Responses can use __ELBOT_CODE_1__ to disable server-side storage, and subsequent full native history will be sent;",
       "updated_at": 1791338570
+    },
+    "docs/configuration.md:paragraph:3d6c82dd801c68135b1c7ad2a29e10e3efd320621b046445cebb4c7083f2e388": {
+      "kind": "paragraph",
+      "source": "ElBot 将合并结果传给本次子进程。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "3d6c82dd801c68135b1c7ad2a29e10e3efd320621b046445cebb4c7083f2e388",
+      "translation": "ElBot will pass the merged results to the current subprocess.",
+      "updated_at": 1791856747
     },
     "docs/configuration.md:paragraph:3ec24d449c7a33eb474c1fe8d8afbd73b0b7db98587e8214c7d884a64f1b6f6e": {
       "kind": "paragraph",
@@ -2528,6 +2552,14 @@
       "translation": "__ELBOT_CODE_0__ points to the environment variable name that stores the Access Token;",
       "updated_at": 1785918785
     },
+    "docs/configuration.md:paragraph:d0947c8b205735c0e087aedcd88fe217dc4e9aa1623e9c423d1c217d6ad37184": {
+      "kind": "paragraph",
+      "source": "技能执行的工作目录是每个技能自己的根目录。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "d0947c8b205735c0e087aedcd88fe217dc4e9aa1623e9c423d1c217d6ad37184",
+      "translation": "The working directory for Skill execution is each Skill's own root directory.",
+      "updated_at": 1791856747
+    },
     "docs/configuration.md:paragraph:d1e0b2740beb17f8a27ddbf19fe744c4ac50e8e3f32846c0caa19eaa36ea8f80": {
       "kind": "paragraph",
       "source": "原图字节数超过阈值或任一边长达到限制时，等比例压缩图片。\n",
@@ -2551,6 +2583,14 @@
       "source_hash": "d43f096208f1054da824c70c2f731293b37a7a8f539fd424033039d2d55c82d9",
       "translation": "All configuration files are automatically generated from the program's built-in assets to the platform configuration directory upon the first run; existing files will not be overwritten, and the __ELBOT_CODE_0__ directory is no longer retained in the source code.\n",
       "updated_at": 1782353866
+    },
+    "docs/configuration.md:paragraph:d4472c0ba1dd0720c7776d2b90aa2488c5a940b2fc782c79f8fff3e93ec28d0f": {
+      "kind": "paragraph",
+      "source": "Go Skill 编译阶段使用基础环境，不加载技能 __ELBOT_CODE_0__。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "d4472c0ba1dd0720c7776d2b90aa2488c5a940b2fc782c79f8fff3e93ec28d0f",
+      "translation": "The Go Skill compilation phase uses the basic environment and does not load the skill __ELBOT_CODE_0__.\n",
+      "updated_at": 1791856747
     },
     "docs/configuration.md:paragraph:d4ce783a2526a9d747417ddb4fdc28255725027487b358e8d28942e05ef90dff": {
       "kind": "paragraph",
@@ -2663,6 +2703,14 @@
       "source_hash": "f33bc6cac2bc75cd57b4cd0b8212ed73fd5e9478e974b82e2ee770b6aebd09a0",
       "translation": "__ELBOT_CODE_0__ is a standalone configuration file, with its path specified by __ELBOT_CODE_1__.",
       "updated_at": 1781779407
+    },
+    "docs/configuration.md:paragraph:f3889ad978ecf7b9dbb89d2aed9dbb76a3f399be8b7a4b7fcc505981134da85d": {
+      "kind": "paragraph",
+      "source": "技能执行时的 PATH 顺序为 ElBot 进程 PATH、配置根 __ELBOT_CODE_0__ PATH、技能 __ELBOT_CODE_1__ PATH。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "f3889ad978ecf7b9dbb89d2aed9dbb76a3f399be8b7a4b7fcc505981134da85d",
+      "translation": "The PATH order during skill execution is the ElBot process PATH, the configuration root __ELBOT_CODE_0__ PATH, and the skill __ELBOT_CODE_1__ PATH.",
+      "updated_at": 1791856747
     },
     "docs/configuration.md:paragraph:f3a345c7c757fe681fc399ee57bc2f252b36dddfb25c11bfe32bb95c5adbef8e": {
       "kind": "paragraph",
@@ -2800,6 +2848,14 @@
       "translation": "Configuration file for adding tags and prompts to tools.",
       "updated_at": 1782312356
     },
+    "docs/configuration.md:table:35f2e6c4e52742f1bed8069c339daa653b977c38b4fd9b066c658823552360fc": {
+      "kind": "table",
+      "source": "普通变量优先级为技能 __ELBOT_CODE_0__ > ElBot 进程环境 > 配置根 __ELBOT_CODE_1__。技能 __ELBOT_CODE_2__ 中的空值也会覆盖基础环境中的同名变量。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "35f2e6c4e52742f1bed8069c339daa653b977c38b4fd9b066c658823552360fc",
+      "translation": "The priority for ordinary variables is Skill __ELBOT_CODE_0__ > ElBot process environment > configuration root __ELBOT_CODE_1__. Null values in Skill __ELBOT_CODE_2__ will also override variables with the same name in the base environment.",
+      "updated_at": 1791856747
+    },
     "docs/configuration.md:table:36e0613f17513857d328b7df8c7edd74fda4403b18c450fab3a6e6d813f31569": {
       "kind": "table",
       "source": "文件或目录",
@@ -2856,6 +2912,14 @@
       "translation": "Responsibility",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:table:6ee306c684e660a247e48715dbaad682b6cd10e8c478bc2bb9cf318dc60b6920": {
+      "kind": "table",
+      "source": "内置工具（含 LLM Shell）",
+      "source_file": "docs/configuration.md",
+      "source_hash": "6ee306c684e660a247e48715dbaad682b6cd10e8c478bc2bb9cf318dc60b6920",
+      "translation": "Built-in tools (including LLM Shell)",
+      "updated_at": 1791856747
+    },
     "docs/configuration.md:table:735a88422174d572d4f8131fe53eb8895a419db828b6019b9673d36ef930bf18": {
       "kind": "table",
       "source": "用户侧 Skill 目录，默认位于配置目录下；",
@@ -2888,13 +2952,13 @@
       "translation": "Based on the ElBot process environment, the configuration root __ELBOT_CODE_0__ only supplements ordinary variables that do not yet exist.",
       "updated_at": 1785918785
     },
-    "docs/configuration.md:table:a8fbaaa890233ec808c0f6e85dca70e4e5de218aeea221d5a6b94413a9ae5a34": {
+    "docs/configuration.md:table:9f62cba3bfe1c9313397e7907c7fbe173484107a8e7e6c060a889f4a28aa6073": {
       "kind": "table",
-      "source": "内置工具与 Go Skill（含 LLM Shell）",
+      "source": "AgentSkill TOML 命令与 Go Skill",
       "source_file": "docs/configuration.md",
-      "source_hash": "a8fbaaa890233ec808c0f6e85dca70e4e5de218aeea221d5a6b94413a9ae5a34",
-      "translation": "Built-in tools and Go Skills (including LLM Shell)",
-      "updated_at": 1787058728
+      "source_hash": "9f62cba3bfe1c9313397e7907c7fbe173484107a8e7e6c060a889f4a28aa6073",
+      "translation": "AgentSkill TOML commands and Go Skills",
+      "updated_at": 1791856747
     },
     "docs/configuration.md:table:b1b88f35e0e28fc7b8c194e90b2ea2189033bce3f388067b502deef56a04f550": {
       "kind": "table",
@@ -2946,8 +3010,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "13ca9c4517f41fa23908999785f8d0a6a2c56fc722900f5a7cbc322e6fd6532f",
+  "source_hash": "f44e69a56de836966448a6c5ba53979e6d671d364f9f90ba77387205b13f5715",
   "target": "docs.en/configuration.md",
-  "updated_at": 1791708294,
+  "updated_at": 1791856747,
   "version": 2
 }
