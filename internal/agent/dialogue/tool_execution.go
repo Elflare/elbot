@@ -113,7 +113,8 @@ func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storag
 				return toolrun.RunResult{Err: err}
 			}
 		}
-		return toolrun.RunResult{Messages: messages, PreparedCalls: calls}
+		_, err = committer.Flush(ctx)
+		return toolrun.RunResult{Messages: messages, PreparedCalls: calls, Err: err}
 	}
 	return toolrun.NewRunner(r.Manager).Run(ctx, r.Deps.ForTurn(out, turn.AttemptFromContext(ctx)), toolrun.RunRequest{
 		Session:          session,

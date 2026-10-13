@@ -40,9 +40,12 @@ type NativeCheckpoint struct {
 	CreatedAt                                                  time.Time
 }
 
-// ToolPair is one immutable complete business call/result, committed atomically.
-type ToolPair struct {
-	Call, Result *Message
+// ToolBatch retains one assistant call array and its ordered results atomically.
+type ToolBatch struct {
+	// Call is the assistant message containing the complete ordered call array.
+	Call *Message
+	// Results follow the original tool-call order, including failed calls.
+	Results []*Message
 }
 
 // NativeCommit advances only a locally committed cursor. ExpectedCheckpointID
@@ -84,14 +87,15 @@ type SessionMaterialCreate struct {
 type DialogueCommit struct {
 	SessionID string
 	Messages  []*Message
-	ToolPair  *ToolPair
+	ToolBatch *ToolBatch
 	Native    *NativeCommit
 }
 
 func (c DialogueCommit) MessageRows() []*Message {
 	rows := append([]*Message(nil), c.Messages...)
-	if c.ToolPair != nil {
-		rows = append(rows, c.ToolPair.Call, c.ToolPair.Result)
+	if c.ToolBatch != nil {
+		rows = append(rows, c.ToolBatch.Call)
+		rows = append(rows, c.ToolBatch.Results...)
 	}
 	return rows
 }

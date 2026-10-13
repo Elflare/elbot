@@ -170,6 +170,9 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 					return failedLoop(err)
 				}
 			}
+			if _, err := committer.Flush(s.requestCtx); err != nil {
+				return failedLoop(err)
+			}
 			s.messages = append(s.messages, committer.Committed...)
 			var summaryPending *dialogue.PendingUserMessage
 			s.messages, summaryPending = drainPendingUserInput(r.Turns, s.session.ID, s.messages, turn.AttemptFromContext(s.ctx))

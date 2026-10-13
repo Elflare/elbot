@@ -11,12 +11,12 @@ import (
 	"elbot/internal/storage"
 )
 
-// A snapshot freezes the current exchange at a completed display pair. It is
+// A snapshot freezes the current exchange at a completed tool batch. It is
 // deliberately off the live cursor path and consumes neither inputs nor seeds.
 func appendNativeSnapshot(ctx context.Context, tx *sql.Tx, commit storage.DialogueCommit) (events.LogResult, error) {
-	native, pair := commit.Native, commit.ToolPair
+	native, batch := commit.Native, commit.ToolBatch
 	snapshot := native.Snapshot
-	if native.Checkpoint.ID != "" || len(native.ConsumedInputs) != 0 || native.ConsumeSeedID != "" || pair == nil || snapshot.ID == "" || snapshot.SessionID != commit.SessionID || snapshot.MessageID != pair.Call.ID {
+	if native.Checkpoint.ID != "" || len(native.ConsumedInputs) != 0 || native.ConsumeSeedID != "" || batch == nil || snapshot.ID == "" || snapshot.SessionID != commit.SessionID || snapshot.MessageID != batch.Call.ID {
 		return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("invalid native message snapshot")
 	}
 	var parent, exchange, response, seed, owner string

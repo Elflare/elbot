@@ -167,7 +167,7 @@ func TestResponsesRecoveryRejectsMissingReasoningAndDoesNotRetryOtherErrors(t *t
 	}
 }
 
-func TestResponsesForkToolCheckpointExcludesLaterResultsAndKeepsNativeRoot(t *testing.T) {
+func TestResponsesForkToolBatchIncludesAllResultsAndKeepsNativeRoot(t *testing.T) {
 	var executed atomic.Int32
 	registry := tool.NewRegistry()
 	_ = registry.Register(nativeTool{name: "once", run: func(_ context.Context, request tool.CallRequest) (*tool.Result, error) {
@@ -184,13 +184,13 @@ func TestResponsesForkToolCheckpointExcludesLaterResultsAndKeepsNativeRoot(t *te
 		case 1:
 			emitNative(w, "source-final", "completed", nativeText("future source answer"))
 		case 2:
-			if request.PreviousResponseID != "head" || !strings.Contains(inputJSON(request), "not executed in this branch") || strings.Contains(inputJSON(request), "future source") || strings.Count(inputJSON(request), "saved at fork") != 1 {
+			if request.PreviousResponseID != "head" || strings.Contains(inputJSON(request), "not executed in this branch") || !strings.Contains(inputJSON(request), "future source result") || strings.Contains(inputJSON(request), "future source answer") || strings.Count(inputJSON(request), "saved at fork") != 1 {
 				t.Errorf("branch=%+v", request)
 			}
 			nativeChainError(w)
 		case 3:
 			body := inputJSON(request)
-			if request.PreviousResponseID != "" || !strings.Contains(body, "opaque-at-head") || !strings.Contains(body, "not executed in this branch") || strings.Contains(body, "future source") || strings.Count(body, "branch question") != 1 || strings.Count(body, "saved at fork") != 1 {
+			if request.PreviousResponseID != "" || !strings.Contains(body, "opaque-at-head") || strings.Contains(body, "not executed in this branch") || !strings.Contains(body, "future source result") || strings.Contains(body, "future source answer") || strings.Count(body, "branch question") != 1 || strings.Count(body, "saved at fork") != 1 {
 				t.Errorf("branch replay=%+v", request)
 			}
 			emitNative(w, "branch-final", "completed", nativeText("branch answer"))
@@ -208,18 +208,18 @@ func TestResponsesForkToolCheckpointExcludesLaterResultsAndKeepsNativeRoot(t *te
 	}
 	head := messages[1]
 	cp, err := f.store.Dialogues().CheckpointForMessage(t.Context(), source.ID, head.ID)
-	if err != nil || !strings.Contains(cp.CallsJSON, "completed") || !strings.Contains(cp.CallsJSON, "pending") {
+	if err != nil || !strings.Contains(cp.CallsJSON, "completed") || strings.Contains(cp.CallsJSON, "pending") || strings.Count(cp.CallsJSON, "completed") != 2 {
 		t.Fatalf("mutable snapshot=%+v %v", cp, err)
 	}
 	fork, err := f.agent.execution.sessions.Fork(t.Context(), f.agent.Scope(t.Context()), head.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fork.ForkFromMessageID != messages[2].ID {
+	if fork.ForkFromMessageID != messages[3].ID {
 		t.Fatalf("fork cut through completed pair: %+v", fork)
 	}
 	seed, err := f.store.Dialogues().Seed(t.Context(), fork.ID)
-	if err != nil || seed.ResponseID != "head" || seed.Consumed || strings.Contains(seed.ItemsJSON, "future source") || strings.Count(seed.ItemsJSON, "saved at fork") != 1 {
+	if err != nil || seed.ResponseID != "head" || seed.Consumed || !strings.Contains(seed.ItemsJSON, "future source result") || strings.Contains(seed.ItemsJSON, "future source answer") || strings.Count(seed.ItemsJSON, "saved at fork") != 1 {
 		t.Fatalf("seed=%+v %v", seed, err)
 	}
 	if err := f.store.Sessions().Delete(t.Context(), source.ID); err != nil {

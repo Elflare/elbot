@@ -37,6 +37,10 @@ func (*testToolCommitter) Started(context.Context, int, llm.ToolCallRequest) (ev
 }
 func (c *testToolCommitter) Result(_ context.Context, _ int, _ llm.ToolCallRequest, _ llm.LLMMessage, row *storage.Message) (events.LogResult, error) {
 	c.results = append(c.results, *row)
+	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
+}
+
+func (*testToolCommitter) Flush(context.Context) (events.LogResult, error) {
 	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 

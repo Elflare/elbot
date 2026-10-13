@@ -24,14 +24,14 @@ func TestNativeMessageSnapshotCommitsWithPairWithoutAdvancingCursor(t *testing.T
 					t.Fatal(err)
 				}
 			}
-			pair := &storage.ToolPair{
-				Call:   &storage.Message{ID: "head", SessionID: "s", Role: storage.RoleAssistant, Metadata: `{"tool_calls":[{"ID":"one","Name":"tool","Arguments":"{}"}],"tool_result_message_id":"result"}`},
-				Result: &storage.Message{ID: "result", SessionID: "s", Role: storage.RoleTool, ToolCallID: "one", Content: "done"},
+			pair := &storage.ToolBatch{
+				Call:    &storage.Message{ID: "head", SessionID: "s", Role: storage.RoleAssistant, Metadata: `{"tool_calls":[{"ID":"one","Name":"tool","Arguments":"{}"}],"tool_result_message_ids":["result"]}`},
+				Results: []*storage.Message{{ID: "result", SessionID: "s", Role: storage.RoleTool, ToolCallID: "one", Content: "done"}},
 			}
 			call := initial.Native.Calls[0]
 			call.Status, call.ResultInputID = "completed", "output"
 			input := storage.NativeInput{ID: "output", SessionID: "s", MessageID: "result", ExchangeID: "exchange", CallID: "one", ItemJSON: `{"type":"function_call_output","call_id":"one","output":"done"}`, MediaJSON: `[]`}
-			commit := storage.DialogueCommit{SessionID: "s", ToolPair: pair, Native: &storage.NativeCommit{ExpectedCheckpointID: "live", Calls: []storage.NativeCall{call}, Inputs: []storage.NativeInput{input}, Snapshot: &storage.NativeCheckpoint{ID: "snapshot", SessionID: "s", ExchangeID: "exchange", ResponseID: "r", MessageID: "head"}}}
+			commit := storage.DialogueCommit{SessionID: "s", ToolBatch: pair, Native: &storage.NativeCommit{ExpectedCheckpointID: "live", Calls: []storage.NativeCall{call}, Inputs: []storage.NativeInput{input}, Snapshot: &storage.NativeCheckpoint{ID: "snapshot", SessionID: "s", ExchangeID: "exchange", ResponseID: "r", MessageID: "head"}}}
 			_, err := store.Dialogues().Commit(ctx, commit)
 			if (err != nil) != fail {
 				t.Fatalf("snapshot error=%v", err)

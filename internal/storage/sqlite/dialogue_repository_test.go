@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -63,6 +64,52 @@ func TestNativeCheckpointCommitRollsBackMessageAndInputOnFailure(t *testing.T) {
 	}
 	if exchange, err := store.Dialogues().GetExchange(t.Context(), "exchange"); err != nil || exchange.Status != "completed" || !strings.Contains(exchange.ResponseJSON, "opaque") {
 		t.Fatalf("lost API facts=%+v %v", exchange, err)
+	}
+}
+
+func TestToolBatchLastResultFailureRollsBackEveryMessageAndMediaReference(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		t.Run(fmt.Sprint(fail), func(t *testing.T) {
+			store, _ := nativeStorageFixture(t)
+			ctx := t.Context()
+			if fail {
+				if _, err := store.db.ExecContext(ctx, `CREATE TRIGGER reject_last_tool BEFORE INSERT ON messages WHEN NEW.tool_call_id='C' BEGIN SELECT RAISE(ABORT,'last result failed'); END`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			mediaID := "media:" + strings.Repeat("c", 64)
+			if err := store.Media().Upsert(ctx, &storage.Media{ID: mediaID, MIMEType: "image/png", Backend: "local"}); err != nil {
+				t.Fatal(err)
+			}
+			batch := &storage.ToolBatch{Call: &storage.Message{ID: "batch", SessionID: "s", Role: storage.RoleAssistant,
+				Metadata: `{"tool_calls":[{"ID":"A"},{"ID":"B"},{"ID":"C"}],"tool_result_message_ids":["result-A","result-B","result-C"]}`}}
+			for _, id := range []string{"A", "B", "C"} {
+				batch.Results = append(batch.Results, &storage.Message{ID: "result-" + id, SessionID: "s", Role: storage.RoleTool, ToolCallID: id, Content: id,
+					Segments: `[{"type":"image","media":"` + mediaID + `"}]`})
+			}
+			_, err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", ToolBatch: batch})
+			if (err != nil) != fail {
+				t.Fatalf("commit error=%v", err)
+			}
+			rows, err := store.Messages().ListBySession(ctx, "s")
+			want := 4
+			if fail {
+				want = 0
+			}
+			if err != nil || len(rows) != want {
+				t.Fatalf("partial batch=%+v err=%v", rows, err)
+			}
+			for _, result := range batch.Results {
+				refs, err := store.MediaReferences().ListByOwner(ctx, "tool_result", result.ID)
+				want := 1
+				if fail {
+					want = 0
+				}
+				if err != nil || len(refs) != want {
+					t.Fatalf("partial media refs=%+v err=%v", refs, err)
+				}
+			}
+		})
 	}
 }
 
@@ -156,17 +203,17 @@ func TestDialogueToolPairIsAtomic(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			pair := &storage.ToolPair{
-				Call:   &storage.Message{ID: "head", SessionID: "s", Role: storage.RoleAssistant, Metadata: `{"tool_calls":[{"ID":"one","Name":"tool","Arguments":"{}"}],"tool_result_message_id":"result"}`},
-				Result: &storage.Message{ID: "result", SessionID: "s", Role: storage.RoleTool, ToolCallID: "one", Content: "done"},
+			pair := &storage.ToolBatch{
+				Call:    &storage.Message{ID: "head", SessionID: "s", Role: storage.RoleAssistant, Metadata: `{"tool_calls":[{"ID":"one","Name":"tool","Arguments":"{}"}],"tool_result_message_ids":["result"]}`},
+				Results: []*storage.Message{{ID: "result", SessionID: "s", Role: storage.RoleTool, ToolCallID: "one", Content: "done"}},
 			}
 			mediaID := "media:" + strings.Repeat("b", 64)
 			if err := store.Media().Upsert(ctx, &storage.Media{ID: mediaID, MIMEType: "image/png", Backend: "local"}); err != nil {
 				t.Fatal(err)
 			}
 			pair.Call.Segments = `[{"type":"image","media":"` + mediaID + `"}]`
-			pair.Result.Segments = pair.Call.Segments
-			_, err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", ToolPair: pair})
+			pair.Results[0].Segments = pair.Call.Segments
+			_, err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", ToolBatch: pair})
 			if (err != nil) != fail {
 				t.Fatalf("commit error=%v", err)
 			}
@@ -178,7 +225,7 @@ func TestDialogueToolPairIsAtomic(t *testing.T) {
 			if err != nil || len(rows) != want {
 				t.Fatalf("partial tool pair=%+v error=%v", rows, err)
 			}
-			for owner, id := range map[string]string{"message": pair.Call.ID, "tool_result": pair.Result.ID} {
+			for owner, id := range map[string]string{"message": pair.Call.ID, "tool_result": pair.Results[0].ID} {
 				refs, err := store.MediaReferences().ListByOwner(ctx, owner, id)
 				wantRefs := 1
 				if fail {

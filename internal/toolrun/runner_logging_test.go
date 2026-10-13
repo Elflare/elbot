@@ -73,7 +73,13 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(connection.Disconnect)
-			result := NewRunner(manager).Run(ctx, deps, RunRequest{Committer: &testToolCommitter{}, Session: row, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "one", Name: "logging_tool", Arguments: "{}"}, {ID: "two", Name: "logging_tool", Arguments: "{}"}}})
+			var result RunResult
+			for _, id := range []string{"one", "two"} {
+				result = NewRunner(manager).Run(ctx, deps, RunRequest{Committer: &testToolCommitter{}, Session: row, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: id, Name: "logging_tool", Arguments: "{}"}}})
+				if result.Err != nil {
+					t.Fatal(result.Err)
+				}
+			}
 			if result.Err != nil || result.Stopped || len(records) != 2 {
 				t.Fatalf("result=%#v calls=%#v", result, records)
 			}
@@ -356,7 +362,7 @@ func TestRunnerBatchFailureDoesNotInventToolCompletions(t *testing.T) {
 	}
 }
 
-func (c *loggingCommitter) Result(context.Context, int, llm.ToolCallRequest, llm.LLMMessage, *storage.Message) (events.LogResult, error) {
+func (c *loggingCommitter) Flush(context.Context) (events.LogResult, error) {
 	c.finished = true
 	if c.resultLogResult != nil {
 		return *c.resultLogResult, c.err

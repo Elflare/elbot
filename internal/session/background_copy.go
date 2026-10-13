@@ -106,19 +106,22 @@ func (s *Service) CopyBackground(ctx context.Context, target Scope, req Backgrou
 	for _, original := range messages {
 		msg := original
 		msg.ID, msg.SessionID = ids[original.ID], row.ID
-		resultID, err := storage.ToolResultMessageID(original)
+		resultIDs, err := storage.ToolResultMessageIDs(original)
 		if err != nil {
 			return nil, err
 		}
-		if resultID != "" {
-			if ids[resultID] == "" {
-				return nil, fmt.Errorf("copied tool result is missing")
+		if len(resultIDs) > 0 {
+			for i, resultID := range resultIDs {
+				if ids[resultID] == "" {
+					return nil, fmt.Errorf("copied tool result is missing")
+				}
+				resultIDs[i] = ids[resultID]
 			}
 			fields, err := storage.DecodeSessionMetadata(msg.Metadata)
 			if err != nil {
 				return nil, err
 			}
-			if err := fields.Set(storage.ToolResultMessageKey, ids[resultID]); err != nil {
+			if err := fields.Set(storage.ToolResultMessageKey, resultIDs); err != nil {
 				return nil, err
 			}
 			msg.Metadata, err = fields.Encode()

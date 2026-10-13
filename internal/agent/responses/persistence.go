@@ -88,31 +88,28 @@ func (c replyCommitter) Commit(ctx context.Context, message *storage.Message) (e
 }
 
 type toolCommitter struct {
-	state *turnState
-	calls []storage.NativeCall
+	state   *turnState
+	calls   []storage.NativeCall
+	head    *storage.Message
+	results []*storage.Message
+	inputs  []storage.NativeInput
 }
 
 func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) (events.LogResult, error) {
 	s := c.state
-	text := dialogue.ToolBatchText(head)
-	var rows []*storage.Message
-	id := ""
-	if text != nil {
-		rows, id = []*storage.Message{text}, text.ID
-	}
-	native := s.advance(id)
+	c.head = head
+	c.results = make([]*storage.Message, len(s.calls))
+	c.inputs = make([]storage.NativeInput, len(s.calls))
+	native := s.advance("")
 	for i, call := range s.calls {
 		c.calls = append(c.calls, storage.NativeCall{ExchangeID: s.exchange.ID, CallID: call.ID, Name: call.Name, Arguments: call.Arguments, Ordinal: i, Status: "pending"})
 	}
 	native.Calls = append([]storage.NativeCall(nil), c.calls...)
-	logResult, err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, Messages: rows, Native: &native}, "append_tool_transcript")
+	logResult, err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, Native: &native}, "append_tool_transcript")
 	if err != nil {
 		return logResult, err
 	}
 	s.consumed = nil
-	if text != nil {
-		s.projection = append(s.projection, dialogue.MessageFromStorage(*text))
-	}
 	return logResult, nil
 }
 func (c *toolCommitter) Prepared(ctx context.Context, index int, call llm.ToolCallRequest) (events.LogResult, error) {
@@ -154,18 +151,25 @@ func (c *toolCommitter) Result(ctx context.Context, index int, request llm.ToolC
 	call := c.calls[index]
 	call.Status = "completed"
 	call.ResultInputID = input.ID
-	pair := dialogue.NewToolPair(s.session.ID, request, stored)
+	c.calls[index], c.results[index], c.inputs[index] = call, stored, input
+	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
+}
+
+func (c *toolCommitter) Flush(ctx context.Context) (events.LogResult, error) {
+	s := c.state
+	batch := dialogue.NewToolBatch(c.head, s.calls, c.results)
 	snapshot := *s.checkpoint
-	snapshot.ID, snapshot.MessageID = storage.NewID(), pair.Call.ID
-	snapshot.CreatedAt = pair.Call.CreatedAt
-	native := storage.NativeCommit{ExpectedCheckpointID: s.checkpointID(), Inputs: []storage.NativeInput{input}, Calls: []storage.NativeCall{call}, Snapshot: &snapshot}
-	logResult, err = s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, ToolPair: pair, Native: &native}, "append_tool_transcript")
-	if err != nil {
-		return logResult, err
+	snapshot.ID, snapshot.MessageID = storage.NewID(), batch.Call.ID
+	snapshot.CreatedAt = batch.Call.CreatedAt
+	native := storage.NativeCommit{ExpectedCheckpointID: s.checkpointID(), Inputs: c.inputs, Calls: c.calls, Snapshot: &snapshot}
+	logResult, err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, ToolBatch: batch, Native: &native}, "append_tool_transcript")
+	if err == nil {
+		s.projection = append(s.projection, dialogue.MessageFromStorage(*batch.Call))
+		for _, stored := range batch.Results {
+			s.projection = append(s.projection, dialogue.MessageFromStorage(*stored))
+		}
 	}
-	c.calls[index] = call
-	s.projection = append(s.projection, dialogue.MessageFromStorage(*pair.Call), dialogue.MessageFromStorage(*pair.Result))
-	return logResult, nil
+	return logResult, err
 }
 
 // Close interrupted local tool rounds without executing historical calls.

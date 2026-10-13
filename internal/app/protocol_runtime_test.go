@@ -111,8 +111,8 @@ func TestProductionRuntimeRunsBothHTTPProtocols(t *testing.T) {
 			if err != nil || len(messages) != 6 || messages[1].Role != storage.RoleAssistant || messages[2].Role != storage.RoleTool {
 				t.Fatalf("history=%+v %v", messages, err)
 			}
-			resultID, err := storage.ToolResultMessageID(messages[1])
-			if err != nil || resultID != messages[2].ID {
+			resultID, err := storage.ToolResultMessageIDs(messages[1])
+			if err != nil || len(resultID) != 1 || resultID[0] != messages[2].ID {
 				t.Fatalf("tool pair=%+v %v", messages, err)
 			}
 			if mode == "response" && captured[2]["previous_response_id"] != "r1" {
