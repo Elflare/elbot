@@ -11,6 +11,7 @@ import (
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
+	"elbot/internal/session"
 	"elbot/internal/storage"
 )
 
@@ -22,7 +23,13 @@ type Preparer struct {
 	Tools    *ToolExecutor
 }
 
-func (p *Preparer) LoadMaterials(ctx context.Context, in TurnInput) (TurnMaterials, error) {
+func (p *Preparer) LoadMaterials(ctx context.Context, in TurnInput) (materials TurnMaterials, err error) {
+	defer func() {
+		if err != nil && ctx.Err() == nil {
+			_ = events.EmitLog(context.WithoutCancel(ctx), events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "persistence_error", Module: "dialogue", Content: err.Error(), ResultStatus: events.ResultFailed})
+			_, _ = events.NotificationRequested.EmitAsync(session.WithBinding(context.WithoutCancel(ctx), nil), events.NewNotification(ctx, slog.LevelError, "对话上下文读取失败："+err.Error()))
+		}
+	}()
 	input := in.Input
 	if len(input.Segments) == 0 {
 		input.Segments = llm.TextSegments(in.Text)

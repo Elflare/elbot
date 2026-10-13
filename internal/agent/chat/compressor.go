@@ -3,9 +3,12 @@ package chat
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
+	"elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/session"
 )
 
 type CompactRequest struct {
@@ -56,14 +59,18 @@ func (c Compressor) Compact(ctx context.Context, req CompactRequest) (*CompactRe
 		Instructions: compactSystemPrompt,
 		Input:        compactPrompt(req.Messages, req.UserInputs),
 	})
+	if err == nil && strings.TrimSpace(result.Text) == "" {
+		err = fmt.Errorf("压缩模型返回空摘要")
+	}
 	if err != nil {
+		if ctx.Err() == nil {
+			_ = events.EmitLog(context.WithoutCancel(ctx), events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "compact_error", Module: "agent", Content: err.Error(), ResultStatus: events.ResultFailed})
+			_, _ = events.NotificationRequested.EmitAsync(session.WithBinding(context.WithoutCancel(ctx), nil), events.NewNotification(ctx, slog.LevelError, "上下文压缩失败："+err.Error()))
+		}
 		return nil, fmt.Errorf("调用压缩模型: %w", err)
 	}
 
 	summaryText := strings.TrimSpace(result.Text)
-	if summaryText == "" {
-		return nil, fmt.Errorf("压缩模型返回空摘要")
-	}
 
 	return &CompactResult{Summary: summaryText, AssembledSummary: assembleSummary(summaryText, req.UserInputs), Usage: result.Usage}, nil
 }

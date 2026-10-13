@@ -29,9 +29,9 @@ type nativeCommitFaultRepository struct {
 	fault func(storage.DialogueCommit) error
 }
 
-func (r nativeCommitFaultRepository) Commit(ctx context.Context, commit storage.DialogueCommit) error {
+func (r nativeCommitFaultRepository) Commit(ctx context.Context, commit storage.DialogueCommit) (events.LogResult, error) {
 	if err := r.fault(commit); err != nil {
-		return err
+		return events.LogResult{ResultStatus: events.ResultFailed}, err
 	}
 	return r.DialogueRepository.Commit(ctx, commit)
 }

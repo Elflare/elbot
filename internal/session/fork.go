@@ -100,7 +100,7 @@ func (s *Service) Fork(ctx context.Context, scope Scope, fromMessageID string) (
 		return nil, err
 	}
 	if prepared != nil {
-		err = s.store.Sessions().CreateMaterial(locked, materialCreate(fork, latest, prepared, nil))
+		_, err = s.store.Sessions().CreateMaterial(locked, materialCreate(fork, latest, prepared, nil))
 	} else {
 		err = s.store.Sessions().Create(locked, fork)
 	}

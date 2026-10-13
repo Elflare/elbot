@@ -27,7 +27,7 @@ func TestCleanupWithEmptyNativeSeedDeletesOrphans(t *testing.T) {
 	m := newConcurrentTestManager(t)
 	seed := &storage.NativeSeed{ID: "empty-root", APIType: "response", Provider: "p", ItemsJSON: `[]`, MaterialsJSON: `[]`, ContinuationJSON: `[]`, CallsJSON: `[]`}
 	row := &storage.Session{ID: "empty-session", Metadata: `{"llm_origin":{"protocol":"response","provider":"p"}}`}
-	if err := m.Store.Sessions().CreateMaterial(t.Context(), storage.SessionMaterialCreate{Session: row, Seed: seed}); err != nil {
+	if _, err := m.Store.Sessions().CreateMaterial(t.Context(), storage.SessionMaterialCreate{Session: row, Seed: seed}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := m.ImportBytes(t.Context(), []byte("orphan"), Input{}); err != nil {
@@ -112,7 +112,7 @@ func TestCleanupMissingSeedReferenceIncludesOwnerAndMedia(t *testing.T) {
 	}
 	seed := &storage.NativeSeed{ID: "root", APIType: "response", Provider: "p", ItemsJSON: `[]`, MaterialsJSON: `[]`, ContinuationJSON: `[]`, CallsJSON: `[]`, MediaIDs: []string{item.ID}}
 	row := &storage.Session{ID: "child", Metadata: `{"llm_origin":{"protocol":"response","provider":"p"}}`}
-	if err := m.Store.Sessions().CreateMaterial(t.Context(), storage.SessionMaterialCreate{Session: row, Seed: seed}); err != nil {
+	if _, err := m.Store.Sessions().CreateMaterial(t.Context(), storage.SessionMaterialCreate{Session: row, Seed: seed}); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.Store.MediaReferences().Remove(t.Context(), storage.MediaReference{MediaID: item.ID, OwnerType: "native_seed", OwnerID: seed.ID, Purpose: "content"}); err != nil {

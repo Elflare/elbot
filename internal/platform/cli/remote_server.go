@@ -154,9 +154,7 @@ func (s *RemoteServer) handleClientMessage(ctx context.Context, handler platform
 			return
 		}
 		go func() {
-			if err := handler.HandleMessage(ctx, text); err != nil {
-				_, _ = client.write(context.Background(), remoteMessage{Type: remoteMsgError, Text: err.Error()})
-			}
+			_ = handler.HandleMessage(ctx, text)
 		}()
 	case remoteMsgComplete:
 		items := []completion.Item{}

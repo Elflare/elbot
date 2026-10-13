@@ -458,14 +458,6 @@ func textOutputs(outputs []delivery.Output) (string, bool) {
 	}
 	return text.String(), true
 }
-func isGroupToolPreviewNotice(ctx context.Context, outputs []delivery.Output) bool {
-	if len(outputs) != 1 || outputs[0].Kind != delivery.KindText || !strings.HasPrefix(strings.TrimSpace(outputs[0].Text), "[tool]") {
-		return false
-	}
-	t, err := contextTarget(ctx)
-	return err == nil && t.MessageType == "group"
-}
-
 func (a *Adapter) sendContextText(ctx context.Context, text string) (delivery.Receipt, globalevents.LogResult, error) {
 	if strings.TrimSpace(text) == "" {
 		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
@@ -880,41 +872,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 	if strings.TrimSpace(text) == "" && len(currentSegments) == 0 {
 		return
 	}
-	if err := handler.HandleMessage(msgCtx, text); err != nil {
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelError,
-				EventName:    "handle_qq_message_failed",
-				Module:       "qq-onebot",
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("handle qq message failed\nerror=%v\nmessage_id=%v", err, event.MessageID),
-				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultFailed,
-			}
-			if errors.Is(err, context.Canceled) {
-				record.ResultStatus = globalevents.ResultCanceled
-				record.Level = slog.LevelInfo
-			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
-		}
-	}
+	_ = handler.HandleMessage(msgCtx, text)
 }
 
 func (a *Adapter) resolveAtSegments(ctx context.Context, event Event, msg NormalizedMessage) NormalizedMessage {

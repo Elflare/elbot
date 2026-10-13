@@ -40,6 +40,27 @@ func (c *Config) ValidateProviders() []Issue {
 		if mode != "chat" && mode != "response" {
 			issues = append(issues, Issue{Field: []string{"providers", name, "api_mode"}, Level: LevelError, Message: "api_mode 必须为 chat 或 response，当前为 " + mode + "。"})
 		}
+		if mode != "response" {
+			continue
+		}
+		store, configured := provider.ExtraPayload["store"]
+		if configured {
+			if _, ok := store.(bool); !ok {
+				issues = append(issues, Issue{Field: []string{"providers", name, "extra_payload", "store"}, Level: LevelError, Message: "store from provider extra_payload must be a boolean"})
+			}
+		}
+		for model, cfg := range provider.ModelConfigs {
+			store, exists := cfg.ExtraPayload["store"]
+			if !exists {
+				continue
+			}
+			field := []string{"providers", name, "model_configs", model, "extra_payload", "store"}
+			if configured {
+				issues = append(issues, Issue{Field: field, Level: LevelError, Message: "store from model extra_payload conflicts with provider extra_payload"})
+			} else if _, ok := store.(bool); !ok {
+				issues = append(issues, Issue{Field: field, Level: LevelError, Message: "store from model extra_payload must be a boolean"})
+			}
+		}
 	}
 	return issues
 }

@@ -196,7 +196,7 @@ func (c *InputCoordinator) applyInputDirectives(ctx context.Context, row *storag
 	if err != nil {
 		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, err
 	}
-	committed, err := commitToolState(locked, c.toolState, row, update)
+	committed, _, err := commitToolState(locked, c.toolState, row, update)
 	release()
 	if err != nil {
 		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, err

@@ -69,12 +69,12 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## Agent 对话
 
 - `internal/agent/*_deps.go`：各业务消费者的专属依赖与消费接口；较小组件的声明位于对应业务文件。中层业务构造不安装跨服务回调；线内接线归各业务线组合包，跨线接线归 App，不提供集中 Agent 构造。
-- `internal/agent/message.go`、`internal/agent/input.go`、`internal/agent/background.go`：消息分发、普通输入与后台准备；消息入口将正常切换拒绝统一记录为 Warn 并提示；后台准备日志交 LogBackground，RunBackground 保留业务结果与 error。
+- `internal/agent/message.go`、`internal/agent/input.go`、`internal/agent/background.go`：消息分发、普通输入与后台准备；输入和命令业务自行记录切换拒绝并提示，消息入口只分发和返回错误；后台准备日志交 LogBackground，RunBackground 保留业务结果与 error。
 - `internal/agent/dialogue/runner.go`、`internal/agent/dialogue/preparation.go`：公共单轮及内部 Preparer／ToolExecutor／MessageStore／提交／Prompt 构造，加载、准备与结果；`internal/agent/chat/loop.go`、`internal/agent/responses/loop_deps.go` 声明各自的协议构造输入。
 - `internal/agent/dialogue/materials.go`：协议无关的完整消息投影、公共片段 codec、ArchiveMaterials／PrepareMaterials；稳定 ID 归档与临时请求副本分离，缺图通知；`message_store.go` 保留完整正文与 segments，`commit.go` 只把已提交投影交给循环。
 - `internal/agent/dialogue/model_call.go`、`internal/agent/dialogue/system_prompt.go`：共同模型 Hook 与 Prompt 来源；CallObservation 分别持有业务 Event 和日志 LogRecord，发布时固定身份和用量副本，Usage 整份缺失时仍写出四个 null 计数键。
-- `internal/agent/chat/`：Chat Loop、请求、历史、摘要与 seed；取消时保留部分输出。
-- `internal/agent/responses/loop.go`、`internal/agent/responses/model_call.go`：Responses Loop、续链、pending／接管及恢复。
+- `internal/agent/chat/`：Chat Loop、请求、历史、摘要与 seed；调用业务负责建连与流中断的最终失败通知，取消时保留部分输出。
+- `internal/agent/responses/loop.go`、`internal/agent/responses/model_call.go`：Responses Loop、续链、pending／接管及恢复；准备和调用业务自行通知失败，恢复耗尽后报告最终原因。
 - `internal/agent/responses/native_call.go`：实际原生调用、冻结参数与有序输入引用及终态保存；按输出项、内容索引保留 text／refusal 增量与原生字段，完成事实覆盖对应部分，中断内容不成为完成响应或可执行工具调用。
 - `internal/agent/responses/context.go`、`internal/agent/responses/persistence.go`：从已提交输入／输出重建原生窗口与原子提交，不从历史 HTTP 请求恢复；公共内容交 Dialogue 处理，原生 items 由 Responses 组装。
 - `internal/agent/responses/tool_inputs.go`、`internal/agent/responses/input_format.go`：冻结工具定义与输入／seed 格式。

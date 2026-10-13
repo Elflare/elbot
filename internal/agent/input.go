@@ -16,7 +16,7 @@ import (
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
-	"elbot/internal/session"
+	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/toolrun"
@@ -28,7 +28,7 @@ const defaultUserConfirmationTimeout = 10 * time.Minute
 // InputCoordinator prepares input outside admission and delegates execution state
 // changes to ExecutionCoordinator and the existing Session/Turn services.
 type InputCoordinator struct {
-	sessions      *session.Service
+	sessions      *sessionpkg.Service
 	sessionRows   storage.SessionRepository
 	turns         *turn.Manager
 	identity      InputIdentity
@@ -67,6 +67,12 @@ func compactCommandBlockedText(command string) string {
 func (c *InputCoordinator) HandleInput(ctx context.Context, text string) error {
 	ctx, session, err := c.execution.ResolveInput(ctx, text)
 	if err != nil {
+		if errors.Is(err, sessionpkg.ErrSessionBusy) {
+			_, err = globalevents.NotificationRequested.Emit(sessionpkg.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelWarn, err.Error()))
+		} else if ctx.Err() == nil && !errors.Is(err, errSessionBindingChanged) {
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "session_prepare_failed", Module: "agent", Content: err.Error(), ResultStatus: globalevents.ResultFailed})
+			_, _ = globalevents.NotificationRequested.EmitAsync(sessionpkg.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelError, "会话准备失败："+err.Error()))
+		}
 		return err
 	}
 	return c.handleSessionInput(ctx, session, text)
@@ -81,7 +87,7 @@ func (c *InputCoordinator) ContinueCommandInput(ctx context.Context, continuatio
 	if err == nil {
 		_, binding, bindErr := c.sessions.CurrentBound(locked, c.identity.Scope(ctx))
 		err = bindErr
-		ctx = session.WithBinding(locked, binding)
+		ctx = sessionpkg.WithBinding(locked, binding)
 	}
 	release()
 	if err != nil {
@@ -160,7 +166,7 @@ func (c *InputCoordinator) ExpireIdleCurrentSession(ctx context.Context) error {
 		return nil
 	}
 	actor := c.identity.Actor(ctx)
-	result, err := c.sessions.ExpireIdleCurrent(ctx, session.ExpireIdleRequest{
+	result, err := c.sessions.ExpireIdleCurrent(ctx, sessionpkg.ExpireIdleRequest{
 		Scope:        c.identity.Scope(ctx),
 		IsSuperadmin: actor.Role == contextinfo.RoleSuperadmin,
 		Config:       c.waitPolicy.IdleExpiration(),

@@ -55,10 +55,16 @@ func requestAudit(parameters json.RawMessage, refs []inputReference) (string, er
 // Each actual HTTP attempt gets its own immutable request and terminal facts.
 // Local hooks/inputs are prepared by the caller once, outside recovery retries.
 func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request api.Request, consumed []string, stream delivery.MessageStream, observation *dialogue.CallObservation) (result nativeCallResult, err error) {
-	if err := ctx.Err(); err != nil {
-		if errors.Is(err, context.Canceled) {
-			observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultCanceled, slog.LevelInfo
+	var saveErr error
+	defer func() {
+		if saveErr != nil && ctx.Err() == nil {
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelError, EventName: "persistence_error", Module: "agent", Content: saveErr.Error(), ResultStatus: globalevents.ResultFailed})
+			if !observation.Event.ProviderError {
+				s.output.Notify(context.WithoutCancel(ctx), slog.LevelError, "对话保存失败："+saveErr.Error())
+			}
 		}
+	}()
+	if err := ctx.Err(); err != nil {
 		return result, err
 	}
 	if err := s.route.View.CheckSelection(s.session, s.selection); err != nil {
@@ -99,6 +105,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 	err = s.route.Repository.CreateExchange(locked, exchange)
 	release()
 	if err != nil {
+		saveErr = err
 		return result, fmt.Errorf("save native request: %w", err)
 	}
 	result.Exchange = exchange
@@ -120,17 +127,14 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		if result.Response != nil {
 			observation.Event.Usage = result.Response.TokenUsage()
 		}
-		if err != nil {
-			observation.LogRecord.Content += fmt.Sprintf("\ncall_error=%v", err)
+		if observation.Event.ProviderError {
 			var failure *api.APIError
-			if errors.As(err, &failure) {
+			if errors.As(observation.Event.Err, &failure) {
 				observation.LogRecord.Content += "\nupstream_detail=" + failure.Detail
 			}
 		}
 		encoded, encodeErr := json.Marshal(result.Items)
 		if encodeErr != nil {
-			observation.LogRecord.Content += fmt.Sprintf("\npersistence_error=%v", encodeErr)
-			observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultFailed, slog.LevelError
 			err = errors.Join(err, encodeErr)
 			return
 		}
@@ -138,9 +142,8 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		if err != nil {
 			failure = err.Error()
 		}
-		if saveErr := s.route.Repository.FinishExchange(context.WithoutCancel(s.ctx), exchange.ID, status, raw, string(encoded), failure); saveErr != nil {
-			observation.LogRecord.Content += fmt.Sprintf("\npersistence_error=%v", saveErr)
-			observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultFailed, slog.LevelError
+		saveErr = s.route.Repository.FinishExchange(context.WithoutCancel(s.ctx), exchange.ID, status, raw, string(encoded), failure)
+		if saveErr != nil {
 			err = errors.Join(err, fmt.Errorf("save native response: %w", saveErr))
 		} else {
 			result.FactsSaved = true
@@ -149,16 +152,16 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 	callCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	observation.LogRecord.EventName = "llm_usage"
+	observation.LogRecord.ResultStatus = globalevents.ResultCanceled
 	events, err := client.StreamPrepared(callCtx, prepared)
 	if err != nil {
-		observation.Event.ProviderError = true
-		if errors.Is(err, context.Canceled) {
-			observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultCanceled, slog.LevelInfo
-		}
 		if ctx.Err() != nil {
+			observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultCanceled, slog.LevelInfo
 			status = "canceled"
 			return result, errors.Join(err, ctx.Err())
 		}
+		observation.Event.ProviderError, observation.Event.Err = true, err
+		observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultFailed, slog.LevelError
 		return result, err
 	}
 	reasoning := s.output.StartReasoning(ctx)
@@ -179,17 +182,16 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 			completed[event.OutputIndex] = *event.Item
 		}
 		if event.Error != nil {
-			observation.Event.ProviderError = true
-			if errors.Is(event.Error, context.Canceled) {
-				observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultCanceled, slog.LevelInfo
-			}
 			if event.Type != "" {
 				status = event.Type
 			}
 			if ctx.Err() != nil {
+				observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultCanceled, slog.LevelInfo
 				status = "canceled"
 				return result, errors.Join(event.Error, ctx.Err())
 			}
+			observation.Event.ProviderError, observation.Event.Err = true, event.Error
+			observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultFailed, slog.LevelError
 			return result, event.Error
 		}
 		switch event.Type {
@@ -291,10 +293,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		case "response.output_text.delta", "response.refusal.delta":
 			if stream != nil && event.Delta != "" {
 				if err := stream.Append(ctx, event.Delta); err != nil {
-					observation.LogRecord.Content += fmt.Sprintf("\nstream_error=%v", err)
-					if errors.Is(err, context.Canceled) {
-						observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultCanceled, slog.LevelInfo
-					}
+					observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultCanceled, slog.LevelInfo
 					return result, err
 				}
 			}
@@ -307,14 +306,15 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		if errors.Is(err, context.Canceled) {
-			observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultCanceled, slog.LevelInfo
-		}
+		observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultCanceled, slog.LevelInfo
 		status = "canceled"
 		return result, err
 	}
 	if status != "completed" || result.Response == nil || result.Response.Status != "completed" || result.Response.ID == "" {
-		return result, fmt.Errorf("responses stream: %w", io.ErrUnexpectedEOF)
+		err = fmt.Errorf("responses stream: %w", io.ErrUnexpectedEOF)
+		observation.Event.ProviderError, observation.Event.Err = true, err
+		observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultFailed, slog.LevelError
+		return result, err
 	}
 	observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultSucceeded, slog.LevelInfo
 	return result, nil

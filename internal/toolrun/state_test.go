@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"elbot/internal/contextmgr"
+	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -42,7 +43,7 @@ func TestStateCommitRestoresAndDetachesSchemas(t *testing.T) {
 	item.CanonicalName = "wisp/external"
 	item.Endpoint = "http://example.invalid/tool"
 	item.TimeoutSeconds = 7
-	committed, err := service.Commit(ctx, row.ID, StateUpdate{Tools: []CachedTool{item}, Tags: []string{"tag"}, ShownRuleCardFormats: []string{"elyph"}})
+	committed, _, err := service.Commit(ctx, row.ID, StateUpdate{Tools: []CachedTool{item}, Tags: []string{"tag"}, ShownRuleCardFormats: []string{"elyph"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +76,7 @@ func TestStateCommitRestoresAndDetachesSchemas(t *testing.T) {
 			t.Fatalf("missing %s in %s", want, latest.Metadata)
 		}
 	}
-	repeat, err := service.Commit(ctx, row.ID, StateUpdate{Tools: []CachedTool{stateTestTool("external")}})
+	repeat, _, err := service.Commit(ctx, row.ID, StateUpdate{Tools: []CachedTool{stateTestTool("external")}})
 	if err != nil || len(repeat.Injected) != 0 || strings.Join(repeat.Existing, ",") != "external" {
 		t.Fatalf("repeat=%+v err=%v", repeat, err)
 	}
@@ -88,9 +89,12 @@ func TestStateCommitFailureKeepsAllFields(t *testing.T) {
 			store, row := stateTestStore(t, metadata)
 			invalid := stateTestTool("new")
 			invalid.Schema.Parameters["invalid"] = make(chan int)
-			result, err := NewStateService(store).Commit(ctx, row.ID, StateUpdate{Tools: []CachedTool{invalid}, Tags: []string{"new"}, ShownRuleCardFormats: []string{"new"}})
+			result, logResult, err := NewStateService(store).Commit(ctx, row.ID, StateUpdate{Tools: []CachedTool{invalid}, Tags: []string{"new"}, ShownRuleCardFormats: []string{"new"}})
 			if err == nil || result.Metadata != "" || len(result.Injected) != 0 {
 				t.Fatalf("failure published state: %+v %v", result, err)
+			}
+			if logResult.ResultStatus != events.ResultSkipped {
+				t.Fatalf("internal error reported as IO: %+v", logResult)
 			}
 			latest, _ := store.Sessions().Get(ctx, row.ID)
 			if latest.Metadata != metadata {
@@ -101,7 +105,7 @@ func TestStateCommitFailureKeepsAllFields(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	store, row := stateTestStore(t, "")
-	_, err := NewStateService(store).Commit(ctx, row.ID, StateUpdate{Tools: []CachedTool{stateTestTool("canceled")}})
+	_, _, err := NewStateService(store).Commit(ctx, row.ID, StateUpdate{Tools: []CachedTool{stateTestTool("canceled")}})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancel error=%v", err)
 	}
@@ -125,7 +129,7 @@ func TestStateConcurrentUpdatesPreserveOtherOwners(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			<-start
-			_, err := service.Commit(ctx, row.ID, StateUpdate{Tools: []CachedTool{stateTestTool(fmt.Sprintf("t%d", i))}, Tags: []string{fmt.Sprintf("tag%d", i)}})
+			_, _, err := service.Commit(ctx, row.ID, StateUpdate{Tools: []CachedTool{stateTestTool(fmt.Sprintf("t%d", i))}, Tags: []string{fmt.Sprintf("tag%d", i)}})
 			errs <- err
 		}(i)
 		go func(i int) {

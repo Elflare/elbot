@@ -16,7 +16,7 @@ func TestNativeMessageSnapshotCommitsWithPairWithoutAdvancingCursor(t *testing.T
 			initial.Messages = nil
 			initial.Native.Checkpoint.MessageID = ""
 			initial.Native.Calls = []storage.NativeCall{{ExchangeID: "exchange", CallID: "one", Name: "tool", Arguments: "{}", Status: "started"}, {ExchangeID: "exchange", CallID: "two", Name: "tool", Arguments: "{}", Status: "pending", Ordinal: 1}}
-			if err := store.Dialogues().Commit(ctx, initial); err != nil {
+			if _, err := store.Dialogues().Commit(ctx, initial); err != nil {
 				t.Fatal(err)
 			}
 			if fail {
@@ -32,7 +32,7 @@ func TestNativeMessageSnapshotCommitsWithPairWithoutAdvancingCursor(t *testing.T
 			call.Status, call.ResultInputID = "completed", "output"
 			input := storage.NativeInput{ID: "output", SessionID: "s", MessageID: "result", ExchangeID: "exchange", CallID: "one", ItemJSON: `{"type":"function_call_output","call_id":"one","output":"done"}`, MediaJSON: `[]`}
 			commit := storage.DialogueCommit{SessionID: "s", ToolPair: pair, Native: &storage.NativeCommit{ExpectedCheckpointID: "live", Calls: []storage.NativeCall{call}, Inputs: []storage.NativeInput{input}, Snapshot: &storage.NativeCheckpoint{ID: "snapshot", SessionID: "s", ExchangeID: "exchange", ResponseID: "r", MessageID: "head"}}}
-			err := store.Dialogues().Commit(ctx, commit)
+			_, err := store.Dialogues().Commit(ctx, commit)
 			if (err != nil) != fail {
 				t.Fatalf("snapshot error=%v", err)
 			}
@@ -66,7 +66,7 @@ func TestNativeMessageSnapshotCommitsWithPairWithoutAdvancingCursor(t *testing.T
 				t.Fatalf("snapshot=%+v %v", cp, err)
 			}
 			calls[1].Status = "started"
-			if err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", Native: &storage.NativeCommit{ExpectedCheckpointID: "live", Calls: []storage.NativeCall{calls[1]}}}); err != nil {
+			if _, err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", Native: &storage.NativeCommit{ExpectedCheckpointID: "live", Calls: []storage.NativeCall{calls[1]}}}); err != nil {
 				t.Fatal(err)
 			}
 			frozen, err := store.Dialogues().GetCheckpoint(ctx, cp.ID)

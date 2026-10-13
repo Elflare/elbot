@@ -79,9 +79,7 @@ func (a *Adapter) runScanner(ctx context.Context, handler platform.PlatformHandl
 			return nil
 		}
 
-		if err := handler.HandleMessage(ctx, text); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		}
+		_ = handler.HandleMessage(ctx, text)
 
 		fmt.Print("> ")
 	}

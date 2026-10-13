@@ -203,7 +203,7 @@ func (r *BackgroundRunner) preloadBackgroundResources(ctx context.Context, row *
 	prepared := r.preloader.PrepareBackground(preloadCtx, row.ID, names, allowed)
 	prepared.Update.Tools = append(toolrun.BackgroundCachedTools(ctx, initial), prepared.Update.Tools...)
 	prepared.Update.Tools = toolrun.BackgroundCachedTools(ctx, prepared.Update.Tools)
-	committed, err := commitToolState(ctx, r.toolState, row, prepared.Update)
+	committed, _, err := commitToolState(ctx, r.toolState, row, prepared.Update)
 	if err != nil {
 		return backgroundPreloadResult{Err: err}
 	}

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 
+	"elbot/internal/events"
 	"elbot/internal/storage"
 )
 
@@ -22,26 +23,26 @@ func checkpointRef(raw string) (string, error) {
 	return id, err
 }
 
-func (r *SessionRepository) CreateMaterial(ctx context.Context, req storage.SessionMaterialCreate) error {
+func (r *SessionRepository) CreateMaterial(ctx context.Context, req storage.SessionMaterialCreate) (events.LogResult, error) {
 	if req.Session == nil {
-		return fmt.Errorf("new session is required")
+		return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("new session is required")
 	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return events.LogResult{ResultStatus: events.ResultFailed}, err
 	}
 	defer tx.Rollback()
 	if req.SourceSessionID != "" {
 		var raw sql.NullString
 		if err := tx.QueryRowContext(ctx, `SELECT metadata FROM sessions WHERE id=?`, req.SourceSessionID).Scan(&raw); err != nil {
-			return err
+			return events.LogResult{ResultStatus: events.ResultFailed}, err
 		}
 		id, err := checkpointRef(raw.String)
 		if err != nil {
-			return err
+			return events.LogResult{ResultStatus: events.ResultSkipped}, err
 		}
 		if id != req.ExpectedCheckpointID {
-			return fmt.Errorf("source native checkpoint changed")
+			return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("source native checkpoint changed")
 		}
 	}
 	if req.Seed != nil {
@@ -55,45 +56,45 @@ func (r *SessionRepository) CreateMaterial(ctx context.Context, req storage.Sess
 		seed.SessionID = req.Session.ID
 		fields, err := storage.DecodeSessionMetadata(req.Session.Metadata)
 		if err != nil {
-			return err
+			return events.LogResult{ResultStatus: events.ResultSkipped}, err
 		}
 		var origin struct {
 			APIType  string `json:"protocol"`
 			Provider string `json:"provider"`
 		}
 		if err := json.Unmarshal(fields["llm_origin"], &origin); err != nil {
-			return fmt.Errorf("native seed requires saved origin: %w", err)
+			return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("native seed requires saved origin: %w", err)
 		}
 		if seed.APIType != origin.APIType || seed.Provider != origin.Provider {
-			return fmt.Errorf("native seed origin mismatch")
+			return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("native seed origin mismatch")
 		}
 		delete(fields, "llm_checkpoint")
 		if err := fields.Set("llm_seed", seed.ID); err != nil {
-			return err
+			return events.LogResult{ResultStatus: events.ResultSkipped}, err
 		}
 		req.Session.Metadata, err = fields.Encode()
 		if err != nil {
-			return err
+			return events.LogResult{ResultStatus: events.ResultSkipped}, err
 		}
 	}
 	if err := createSession(ctx, tx, req.Session); err != nil {
-		return err
+		return events.LogResult{ResultStatus: events.ResultFailed}, err
 	}
 	for _, message := range req.Messages {
 		if message == nil || message.SessionID != req.Session.ID {
-			return fmt.Errorf("copied message session mismatch")
+			return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("copied message session mismatch")
 		}
-		if err := appendMessageTx(ctx, tx, message); err != nil {
-			return err
+		if logResult, err := appendMessageTx(ctx, tx, message); err != nil {
+			return logResult, err
 		}
 	}
 	if seed := req.Seed; seed != nil {
 		if seed.APIType == "" || seed.Provider == "" || seed.Consumed {
-			return fmt.Errorf("invalid native seed identity")
+			return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("invalid native seed identity")
 		}
 		for _, value := range []string{seed.ItemsJSON, seed.MaterialsJSON, seed.ContinuationJSON, seed.CallsJSON} {
 			if !json.Valid([]byte(value)) {
-				return fmt.Errorf("invalid native seed JSON")
+				return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("invalid native seed JSON")
 			}
 		}
 		// Persist every media list as an array; nil also means no media.
@@ -102,29 +103,32 @@ func (r *SessionRepository) CreateMaterial(ctx context.Context, req storage.Sess
 		}
 		ids, err := json.Marshal(seed.MediaIDs)
 		if err != nil {
-			return err
+			return events.LogResult{ResultStatus: events.ResultSkipped}, err
 		}
 		seed.CreatedAt = storage.Now()
 		if _, err := tx.ExecContext(ctx, `INSERT INTO native_seeds(id,session_id,protocol,provider,base_url,response_id,source_checkpoint_id,items_json,materials_json,continuation_json,calls_json,media_ids_json,consumed,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0,?)`, seed.ID, seed.SessionID, seed.APIType, seed.Provider, seed.BaseURL, seed.ResponseID, seed.SourceCheckpointID, seed.ItemsJSON, seed.MaterialsJSON, seed.ContinuationJSON, seed.CallsJSON, string(ids), storage.FormatTime(seed.CreatedAt)); err != nil {
-			return err
+			return events.LogResult{ResultStatus: events.ResultFailed}, err
 		}
-		if err := nativeMediaReferences(ctx, tx, "native_seed", seed.ID, seed.SessionID, seed.MediaIDs); err != nil {
-			return err
+		if logResult, err := nativeMediaReferences(ctx, tx, "native_seed", seed.ID, seed.SessionID, seed.MediaIDs); err != nil {
+			return logResult, err
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return events.LogResult{ResultStatus: events.ResultFailed}, err
+	}
+	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
-func nativeMediaReferences(ctx context.Context, tx *sql.Tx, ownerType, ownerID, sessionID string, ids []string) error {
+func nativeMediaReferences(ctx context.Context, tx *sql.Tx, ownerType, ownerID, sessionID string, ids []string) (events.LogResult, error) {
 	for _, id := range ids {
 		if id == "" {
-			return fmt.Errorf("empty native media reference")
+			return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("empty native media reference")
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO media_references(media_id,owner_type,owner_id,purpose,session_id,created_at) VALUES(?,?,?,'content',?,?) ON CONFLICT DO NOTHING`, id, ownerType, ownerID, sessionID, storage.FormatTime(storage.Now())); err != nil {
-			return err
+			return events.LogResult{ResultStatus: events.ResultFailed}, err
 		}
 	}
-	return nil
+	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
 func (r *DialogueRepository) Seed(ctx context.Context, sessionID string) (*storage.NativeSeed, error) {

@@ -200,7 +200,7 @@ func TestSessionSwitchBusyIsWarnNotification(t *testing.T) {
 			if p.out.String() != session.ErrSessionBusy.Error() {
 				t.Fatalf("notification output: %q", p.out.String())
 			}
-			if len(records) != 1 || records[0].Level != slog.LevelWarn || records[0].ResultStatus != events.ResultRejected {
+			if len(records) != 0 {
 				t.Fatalf("busy log records: %+v", records)
 			}
 		})

@@ -2,8 +2,8 @@ package chat
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"log/slog"
 
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/delivery"
@@ -21,7 +21,12 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 	if p.compactSeedOnCurrentUser {
 		r.consumeContextCompactSeed(s.requestCtx, s.session)
 	}
-	defer func() { result.Usage, result.Selection = s.usage, s.selection }()
+	defer func() {
+		result.Usage, result.Selection = s.usage, s.selection
+		if result.Err != nil && s.requestCtx.Err() != nil {
+			result.Outcome, result.QuietCancellation = dialogue.Canceled, true
+		}
+	}()
 	var finalText string
 	var finalRawText string
 	var platformFinalText string
@@ -41,6 +46,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			foregroundPrepared = true
 			s.selection = modelmgr.SelectionForTurn(s.requestCtx, r.Models, s.session)
 			if err := r.CheckSelection(s.selection); err != nil {
+				s.output.Notify(context.WithoutCancel(s.requestCtx), slog.LevelError, err.Error())
 				return failedLoop(err)
 			}
 			var modelErr error
@@ -248,9 +254,5 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 }
 
 func failedLoop(err error) dialogue.LoopResult {
-	result := dialogue.LoopResult{Outcome: dialogue.Failed, Err: err}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		result.Outcome = dialogue.Canceled
-	}
-	return result
+	return dialogue.LoopResult{Outcome: dialogue.Failed, Err: err}
 }

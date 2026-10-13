@@ -48,7 +48,8 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 		return true, e.confirmations.SubmitResponse(ctx, sessionRow.ID, text)
 	}
 	if sessionErr == nil && hasInfo && snapshot.Phase != turn.PhaseIdle && blocksDuringActiveTurn(info.SessionEffect) {
-		return true, session.ErrSessionBusy
+		_, err := globalevents.NotificationRequested.Emit(session.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelWarn, session.ErrSessionBusy.Error()))
+		return true, err
 	}
 	if sessionErr == nil && hasInfo && e.execution.CompactActive(sessionRow.ID) && blocksDuringCompact(info.SessionEffect) {
 		e.output.SendChat(ctx, compactCommandBlockedText(text))

@@ -3,7 +3,6 @@ package dialogue
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/session"
 	"elbot/internal/storage"
 )
 
@@ -97,7 +97,7 @@ func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit
 		if message != nil && message.Segments != "" {
 			archived, err := s.Preparer.ArchiveMaterials(ctx, []llm.LLMMessage{MessageFromStorage(*message)})
 			if err != nil {
-				return events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}, err
+				return events.LogResult{ResultStatus: events.ResultSkipped}, err
 			}
 			segments := archived[0].Segments
 			message.Segments = StoredMessageSegments(segments)
@@ -106,16 +106,17 @@ func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit
 	}
 	logResult := events.LogResult{ResultStatus: events.ResultSucceeded, Content: fmt.Sprintf("operation=%s session_id=%s", operation, commit.SessionID)}
 	locked, release, err := s.Gate.Enter(ctx, commit.SessionID)
-	if err == nil {
-		defer release()
-		err = s.Dialogues.Commit(locked, commit)
+	if err != nil {
+		return events.LogResult{ResultStatus: events.ResultSkipped}, err
+	}
+	defer release()
+	result, err := s.Dialogues.Commit(locked, commit)
+	if err != nil && (ctx.Err() != nil || result.ResultStatus != events.ResultFailed) {
+		return events.LogResult{ResultStatus: events.ResultSkipped}, err
 	}
 	if err != nil {
 		logResult.ResultStatus = events.ResultFailed
 		logResult.Content += fmt.Sprintf("\npersistence_error=%v", err)
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = events.ResultCanceled
-		}
 		content, _ := json.Marshal(map[string]string{"operation": operation, "error": fmt.Sprintf("%.2048s", err.Error())})
 		record := events.LogRecord{
 			Category:     events.LogAudit,
@@ -140,10 +141,8 @@ func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit
 		if facts.RootRequestID != "" {
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
-		if logResult.ResultStatus == events.ResultCanceled {
-			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
-		}
 		_ = events.EmitLog(context.WithoutCancel(ctx), record)
+		_, _ = events.NotificationRequested.EmitAsync(session.WithBinding(context.WithoutCancel(ctx), nil), events.NewNotification(ctx, slog.LevelError, "对话保存失败："+err.Error()))
 	}
 	return logResult, err
 }

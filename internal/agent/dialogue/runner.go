@@ -2,7 +2,6 @@ package dialogue
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"elbot/internal/agent/events"
@@ -80,8 +79,8 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 	if err != nil {
 		result.Outcome, result.Err = Failed, err
 		// Business lifecycle cancellation is independent of the source log result.
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			result.Outcome = Canceled
+		if requestCtx.Err() != nil {
+			result.Outcome, result.QuietCancellation = Canceled, true
 		}
 		return result
 	}
@@ -104,10 +103,9 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 	if err != nil {
 		result.Outcome, result.Err = Failed, err
 		// Business lifecycle cancellation is independent of the source log result.
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			result.Outcome = Canceled
+		if requestCtx.Err() != nil {
+			result.Outcome, result.QuietCancellation = Canceled, true
 		}
-		result.QuietCancellation = requestCtx.Err() != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded))
 		return result
 	}
 	loop := prepared.RunLoop(ctx, requestCtx, loopIn, out)
@@ -120,8 +118,8 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 	if err != nil {
 		result.Outcome, result.Err = Failed, err
 		// Business lifecycle cancellation is independent of the source log result.
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			result.Outcome = Canceled
+		if requestCtx.Err() != nil {
+			result.Outcome, result.QuietCancellation = Canceled, true
 		}
 		return result
 	}
@@ -133,8 +131,8 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 	if err != nil {
 		result.Outcome, result.Err = Failed, err
 		// Business lifecycle cancellation is independent of the source log result.
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			result.Outcome = Canceled
+		if requestCtx.Err() != nil {
+			result.Outcome, result.QuietCancellation = Canceled, true
 		}
 		return result
 	}
@@ -145,8 +143,8 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 	if err != nil {
 		result.Outcome, result.Err = Failed, err
 		// Business lifecycle cancellation is independent of the source log result.
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			result.Outcome = Canceled
+		if requestCtx.Err() != nil {
+			result.Outcome, result.QuietCancellation = Canceled, true
 		}
 	}
 	return result

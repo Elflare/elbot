@@ -139,7 +139,7 @@ func TestNativePublicMaterialsRetainMediaAndAuditMissingReferences(t *testing.T)
 		t.Fatal(err)
 	}
 	input := storage.NativeInput{ID: "input", SessionID: row.ID, ItemJSON: `{"type":"message","role":"user","content":[]}`, MediaJSON: `[{"index":0,"segments":[{"type":"image","media":"` + id + `"}]}]`}
-	if err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: row.ID, Native: &storage.NativeCommit{Inputs: []storage.NativeInput{input}}}); err != nil {
+	if _, err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: row.ID, Native: &storage.NativeCommit{Inputs: []storage.NativeInput{input}}}); err != nil {
 		t.Fatal(err)
 	}
 	refs, err := store.MediaReferences().ListByOwner(ctx, "native_input", input.ID)

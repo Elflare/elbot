@@ -7,6 +7,7 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/events"
+	"elbot/internal/session"
 )
 
 type foregroundTurnOutput struct {
@@ -36,7 +37,9 @@ func (o foregroundTurnOutput) SendOutputs(ctx context.Context, outputs []deliver
 }
 
 func (o foregroundTurnOutput) Notify(ctx context.Context, level slog.Level, text string) {
-	o.sender.Notify(ctx, level, text)
+	// A business result belongs to its captured conversation even after the
+	// session changes. Live tool previews retain binding validation separately.
+	o.sender.Notify(session.WithBinding(ctx, nil), level, text)
 }
 
 func (o foregroundTurnOutput) SendPreview(ctx context.Context, text ...string) {

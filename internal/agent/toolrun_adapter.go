@@ -210,21 +210,9 @@ func (d toolRunDeps) RememberDiscoveryResult(ctx context.Context, row *storage.S
 	}
 	update, err := toolrun.DiscoveryStateUpdate(ctx, result, d.runtime.registry, d.identity.Actor(ctx), d.identity.Policy())
 	if err != nil {
-		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = events.ResultCanceled
-		}
-		return logResult, err
+		return events.LogResult{ResultStatus: events.ResultSkipped}, err
 	}
-	_, err = commitToolState(ctx, d.state, row, update)
-	logResult := events.LogResult{ResultStatus: events.ResultSucceeded, Content: "tool discovery state saved"}
-	if err != nil {
-		logResult.ResultStatus = events.ResultFailed
-		logResult.Content = err.Error()
-		if err == context.Canceled {
-			logResult.ResultStatus = events.ResultCanceled
-		}
-	}
+	_, logResult, err := commitToolState(ctx, d.state, row, update)
 	return logResult, err
 }
 

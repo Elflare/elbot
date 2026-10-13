@@ -132,7 +132,7 @@ func (s *Service) CopyBackground(ctx context.Context, target Scope, req Backgrou
 	if err := locked.Err(); err != nil {
 		return nil, err
 	}
-	if err := s.store.Sessions().CreateMaterial(locked, materialCreate(row, latest, prepared, copies)); err != nil {
+	if _, err := s.store.Sessions().CreateMaterial(locked, materialCreate(row, latest, prepared, copies)); err != nil {
 		return nil, err
 	}
 	return row, nil

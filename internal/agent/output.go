@@ -151,6 +151,10 @@ func (o *OutputSender) Notify(ctx context.Context, level slog.Level, text string
 // any multiline body. General workflow notices also occupy one argument.
 // It prefixes each nonblank notice once, joins them, and runs the output Hook once.
 func (o *OutputSender) Preview(ctx context.Context, text ...string) {
+	info, _ := contextinfo.ConversationFromContext(ctx)
+	if info.Source.ConversationKind == contextinfo.ConversationGroup {
+		return
+	}
 	lines := make([]string, 0, len(text))
 	for _, line := range text {
 		line = strings.TrimSpace(line)

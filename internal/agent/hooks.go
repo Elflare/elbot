@@ -2,9 +2,7 @@ package agent
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	agentevents "elbot/internal/agent/events"
@@ -51,12 +49,18 @@ func (h *HookBridge) Route(ctx context.Context, event hook.Event) (hook.Event, b
 	if h.router == nil {
 		return event, false, nil
 	}
+	parent := ctx
 	if id := h.router.RouteHookID(event); id != "" {
 		requestCtx, done := h.ObserveRun(ctx, event, hook.ObserverInfo{Name: id + " continuation", Point: event.Point})
 		defer done()
 		ctx = requestCtx
 	}
-	return h.router.Route(ctx, event)
+	updated, routed, err := h.router.Route(ctx, event)
+	if err != nil && parent.Err() == nil {
+		h.NotifyError(ctx, event, err)
+		h.publishFailure(ctx, event, err, true)
+	}
+	return updated, routed, err
 }
 
 func (h *HookBridge) Run(ctx context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
@@ -68,7 +72,7 @@ func (h *HookBridge) Run(ctx context.Context, event hook.Event) (hook.Event, glo
 	before := hook.SnapshotCalls(event)
 	updated, logResult, err := manager.Run(ctx, event)
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
+		if ctx.Err() != nil {
 			return event, logResult, err
 		}
 		h.NotifyError(ctx, event, err)
@@ -85,8 +89,8 @@ func (h *HookBridge) Notify(ctx context.Context, event hook.Event) {
 	}
 	event = h.FillContext(ctx, event)
 	if _, err := manager.Notify(ctx, event); err != nil {
-		h.publishFailure(ctx, event, err, !errors.Is(err, context.Canceled) && event.Point != hook.PointErrorOccurred)
-		if errors.Is(err, context.Canceled) {
+		h.publishFailure(ctx, event, err, false)
+		if ctx.Err() != nil {
 			return
 		}
 		if event.Point != hook.PointErrorOccurred {
@@ -115,43 +119,6 @@ func (h *HookBridge) ObserveRun(ctx context.Context, event hook.Event, info hook
 		Label:     label,
 	})
 	if err != nil {
-
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelError,
-				EventName:    "hook_request_tracking_failed",
-				Module:       "hook",
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("hook request tracking failed\nhook=%v\npoint=%v\nerror=%v", label, string(info.Point), err.Error()),
-				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultFailed,
-			}
-			if errors.Is(err, context.Canceled) {
-				record.ResultStatus = globalevents.ResultCanceled
-				record.Level = slog.LevelInfo
-			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if sessionID != "" {
-				record.Identity.SessionID = &sessionID
-			} else if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			hook.LogHook(ctx, record)
-		}
-
 		return ctx, func() {}
 	}
 	return reqCtx, done

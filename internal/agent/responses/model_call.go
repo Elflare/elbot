@@ -3,7 +3,6 @@ package responses
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -18,6 +17,7 @@ import (
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	api "elbot/internal/llm/responses"
+	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/storage"
 )
 
@@ -26,9 +26,6 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 	ctx = hook.WithReadOnlyCalls(ctx)
 	observation := s.route.Calls.Begin(s.session.ID, s.selection)
 	defer func() {
-		if err != nil && observation.LogRecord.ResultStatus == globalevents.ResultSucceeded {
-			observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultFailed, slog.LevelError
-		}
 		observation.Publish(ctx, err)
 	}()
 	projection, err := s.route.Calls.PrepareCall(ctx, s.session, s.selection, s.projection, s.tools, pending, inputCommitter{state: s}, &observation.LogRecord)
@@ -169,12 +166,13 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 		if result.Response != nil {
 			final.Usage = result.Response.TokenUsage()
 		}
-		if ctx.Err() == nil {
+		if observation.Event.ProviderError && ctx.Err() == nil {
 			s.route.Calls.NotifyError(ctx, hook.Event{
 				Point:   hook.PointLLMResponseReceived,
 				Session: hook.SessionContext{ID: s.session.ID},
 				LLM:     hook.LLMPayload{Provider: s.selection.Provider, Model: s.selection.Model},
-			}, err)
+			}, observation.Event.Err)
+			s.output.Notify(context.WithoutCancel(ctx), slog.LevelError, notificationrules.ModelInterrupted(observation.Event.Err))
 		}
 		return final, err
 	}
@@ -202,10 +200,6 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 	observation.Event.ElapsedMS = elapsed
 	final, err = s.route.Calls.CompleteCall(ctx, s.session, s.selection, text, result.Response.TokenUsage(), calls, elapsed)
 	if err != nil {
-		observation.LogRecord.Content += fmt.Sprintf("\nresponse_hook_error=%v", err)
-		if errors.Is(err, context.Canceled) {
-			observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultCanceled, slog.LevelInfo
-		}
 		return final, err
 	}
 	observation.Event.OutputReady = true

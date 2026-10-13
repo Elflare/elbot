@@ -14,7 +14,7 @@ import (
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
-	"elbot/internal/session"
+	sessionpkg "elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -60,11 +60,10 @@ func (c *CallProcessor) Begin(sessionID string, selected modelmgr.Selection) *Ca
 		Event:     agentevents.ModelCallCompletedEvent{Provider: selected.Provider, Model: selected.Model, ElapsedMS: -1},
 		LogRecord: events.LogRecord{
 			Category:     events.LogAudit,
-			Level:        slog.LevelError,
-			EventName:    "llm_error",
+			Level:        slog.LevelInfo,
 			Module:       "agent",
 			Type:         events.ContentJSON,
-			ResultStatus: events.ResultFailed,
+			ResultStatus: events.ResultSkipped,
 		},
 	}
 }
@@ -96,7 +95,7 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 	if o.LogRecord.Content != "" {
 		content["detail"] = fmt.Sprintf("%.8192s", o.LogRecord.Content)
 	}
-	if o.Event.Err != nil {
+	if o.Event.ProviderError && o.Event.Err != nil {
 		content["error"] = fmt.Sprintf("%.2048s", o.Event.Err.Error())
 	}
 	if usage := o.Event.Usage; usage != nil {
@@ -117,8 +116,10 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 	if o.Event.RootRequestID != "" {
 		o.LogRecord.Identity.RootRequestID = &o.Event.RootRequestID
 	}
-	_ = events.EmitLog(context.WithoutCancel(ctx), o.LogRecord)
-	if o.LogRecord.EventName == "llm_usage" && o.LogRecord.ResultStatus != events.ResultSucceeded {
+	if o.LogRecord.EventName != "" {
+		_ = events.EmitLog(context.WithoutCancel(ctx), o.LogRecord)
+	}
+	if o.Event.ProviderError && o.LogRecord.ResultStatus == events.ResultFailed {
 		record := o.LogRecord
 		record.EventName = "llm_error"
 		_ = events.EmitLog(context.WithoutCancel(ctx), record)
@@ -138,7 +139,7 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 	agentevents.Emit(ctx, o.processor.Completed, o.Event)
 }
 func (c *CallProcessor) RecordVisionFallback(ctx context.Context, row *storage.Session) {
-	agentevents.Emit((ExecutionView{}).Context(ctx), c.Vision, agentevents.VisionFallbackUsedEvent{EventMeta: agentevents.Meta(ctx, row.ID), Visible: c.Identity.IsCLI(ctx) && !session.IsBackground(row)})
+	agentevents.Emit((ExecutionView{}).Context(ctx), c.Vision, agentevents.VisionFallbackUsedEvent{EventMeta: agentevents.Meta(ctx, row.ID), Visible: c.Identity.IsCLI(ctx) && !sessionpkg.IsBackground(row)})
 }
 func (c *CallProcessor) NotifyError(ctx context.Context, event hook.Event, err error) {
 	event.Point = hook.PointErrorOccurred

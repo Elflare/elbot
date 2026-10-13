@@ -2,7 +2,6 @@ package dialogue
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 
 	"elbot/internal/delivery"
@@ -20,6 +19,8 @@ type Output interface {
 	// SendOutputs returns the source log result and original business error;
 	// partial delivery facts belong to the source log body, not a returned receipt.
 	SendOutputs(ctx context.Context, outputs []delivery.Output) (events.LogResult, error)
+	// Notify publishes a business fact to its captured conversation; callers
+	// choose its lifetime. SendPreview remains tied to the active operation.
 	Notify(ctx context.Context, level slog.Level, text string)
 	// SendPreview takes one complete notice per tool call, including multiline
 	// bodies; pass batch notices separately rather than joining them. General
@@ -39,21 +40,6 @@ type ReasoningStream interface {
 func BufferAssistantOutput(ctx context.Context) bool {
 	msg, ok := platform.MessageContextFrom(ctx)
 	return ok && msg.BufferAssistantOutput
-}
-
-type userNotifiedError struct{ err error }
-
-func (e userNotifiedError) Error() string { return e.err.Error() }
-func (e userNotifiedError) Unwrap() error { return e.err }
-func MarkUserNotified(err error) error {
-	if err == nil {
-		return nil
-	}
-	return userNotifiedError{err: err}
-}
-func ShouldNotifyUserError(err error) bool {
-	var notified userNotifiedError
-	return err != nil && !errors.As(err, &notified) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
 }
 
 type AssistantPreparer interface {

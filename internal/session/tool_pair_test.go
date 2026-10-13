@@ -26,7 +26,7 @@ func TestToolForkBoundaryIncludesResultAndExcludesLaterPairs(t *testing.T) {
 	}
 	first := sessionTestToolPair(source.ID, "first")
 	for _, pair := range []*storage.ToolPair{first, sessionTestToolPair(source.ID, "later")} {
-		if err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: source.ID, ToolPair: pair}); err != nil {
+		if _, err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: source.ID, ToolPair: pair}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -52,7 +52,7 @@ func TestBackgroundCopyRemapsToolPairLinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	pair := sessionTestToolPair(source.ID, "source")
-	if err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: source.ID, ToolPair: pair}); err != nil {
+	if _, err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: source.ID, ToolPair: pair}); err != nil {
 		t.Fatal(err)
 	}
 	copy, err := svc.CopyBackground(ctx, scope, BackgroundCopyRequest{SourceSessionID: source.ID, Kind: "cron", Name: "copy"})

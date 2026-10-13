@@ -60,7 +60,7 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 	}
 	args, target, err := parseModelArgs(req.Args)
 	if err != nil {
-		return nil, err
+		return &command.Result{Content: err.Error()}, nil
 	}
 	var selected modelmgr.ModelOption
 	switch target {
@@ -92,8 +92,10 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 		selected, err = deps.Models.PrepareModel(args)
 		if err == nil && current != nil && mode == currentMode {
 			source, known, originErr := session.Origin(current)
-			err = originErr
-			if err == nil && known {
+			if originErr != nil {
+				return nil, originErr
+			}
+			if known {
 				targetOrigin := deps.Models.Resolve(config.ModelSelection{Provider: selected.Provider, Model: selected.Model}).Origin
 				err = modelmgr.CanSwitch(source, targetOrigin)
 			}
@@ -103,7 +105,7 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 		}
 	}
 	if err != nil {
-		return nil, err
+		return &command.Result{Content: err.Error()}, nil
 	}
 	switch target {
 	case modelTargetChat:

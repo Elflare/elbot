@@ -54,6 +54,38 @@ func TestLoadProvidersUsesSelectedFileAndReloadsConfigEnv(t *testing.T) {
 	}
 }
 
+func TestResponsesStoreValidationAtStartupAndReload(t *testing.T) {
+	for _, test := range []struct {
+		name, payload string
+		invalid       bool
+	}{
+		{"provider_false", "[providers.p.extra_payload]\nstore=false\n", false},
+		{"model_true", "[providers.p.model_configs.m.extra_payload]\nstore=true\n", false},
+		{"provider_string", "[providers.p.extra_payload]\nstore='false'\n", true},
+		{"model_number", "[providers.p.model_configs.m.extra_payload]\nstore=1\n", true},
+		{"duplicate", "[providers.p.extra_payload]\nstore=false\n[providers.p.model_configs.m.extra_payload]\nstore=false\n", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			main := filepath.Join(dir, "app.toml")
+			provider := filepath.Join(dir, "providers.toml")
+			if err := os.WriteFile(main, []byte("[mode_models.work]\nprovider='p'\nmodel='m'\n[mode_models.chat]\nprovider='p'\nmodel='m'\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(provider, []byte("[providers.p]\napi_mode='response'\nmodels=['m']\n"+test.payload), 0600); err != nil {
+				t.Fatal(err)
+			}
+			_, startupErr := Load(main)
+			_, reloadErr := LoadProviders(provider, dir)
+			for _, err := range []error{startupErr, reloadErr} {
+				if (err != nil) != test.invalid || err != nil && !strings.Contains(err.Error(), "store") {
+					t.Fatalf("startup=%v reload=%v", startupErr, reloadErr)
+				}
+			}
+		})
+	}
+}
+
 func TestProviderAPIModeDefaultsAndValidationInLoadAndInspection(t *testing.T) {
 	for _, mode := range []string{"", "chat", "response", "responses", "CHAT"} {
 		t.Run("mode="+mode, func(t *testing.T) {
