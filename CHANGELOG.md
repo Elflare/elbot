@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `/models --fresh`／`--refresh` 现在可刷新配置文件。
+- AgentSkill TOML 命令改为与 Go Skill 共用基础环境，并与 Go Skill 一起在每次执行前读取技能根目录 `.env`；普通变量优先级为技能 `.env` > ElBot 进程环境 > 配置根 `.env`，PATH 依次追加去重。技能 `.env` 修改后下次调用生效，无需重载或重启。
 - 大幅重构底层，优化各包职责与边界
 - 重构日志系统
 - 重构通知系统
@@ -44,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 修复普通消息并发启动时误报“请求失败”的问题。
 - 修复普通 `/audit` 等日志查询直接展示 JSON 转义的bug。
 - 修复 `shell` 先缓存全部输出、结束后才截断导致执行期间内存随输出量增长的问题；现在收集时限制容量，超出部分继续排空并丢弃。
+- 修复工具多行提示逐行重复添加 `[tool]` 的问题。
 - 修复高风险确认的bug。
 - 修复追加确认等待的bug。
 - QQ OneBot：llm现在能看到引用回复的合并消息了，只展开一层内容。

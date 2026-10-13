@@ -71,7 +71,7 @@ func (d *runnerTestDeps) PrepareToolContext(ctx context.Context, s *storage.Sess
 func (d *runnerTestDeps) CompleteToolCall(_ context.Context, _ *storage.Session, _ llm.ToolCallRequest, _ string, segments []llm.MessageSegment, _ error) ([]llm.MessageSegment, events.LogResult, error) {
 	return segments, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 }
-func (d *runnerTestDeps) SendPreview(context.Context, string) {}
+func (d *runnerTestDeps) SendPreview(context.Context, ...string) {}
 func (d *runnerTestDeps) SendOutputs(context.Context, []delivery.Output) (events.LogResult, error) {
 	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }

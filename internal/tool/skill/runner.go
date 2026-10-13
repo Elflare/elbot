@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"elbot/internal/config"
 	"elbot/internal/llm"
 	"elbot/internal/processenv"
 	"elbot/internal/tool"
@@ -108,6 +109,12 @@ func (r GoRunner) Call(ctx context.Context, req tool.CallRequest) (result *tool.
 			return nil, callErr.Error(), callErr
 		}
 	}
+	dotEnv, err := config.LoadEnvFile(filepath.Join(record.Root, ".env"))
+	if err != nil {
+		callErr := fmt.Errorf("load Go skill environment: %w", err)
+		return nil, callErr.Error(), callErr
+	}
+	environment := r.ProcessEnv.Overlay(dotEnv)
 	timeout := runnerTimeout(args.TimeoutMS)
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -126,7 +133,7 @@ func (r GoRunner) Call(ctx context.Context, req tool.CallRequest) (result *tool.
 			return nil, callErr.Error(), callErr
 		}
 	}
-	cmd := r.ProcessEnv.CommandContext(runCtx, record.BinaryPath)
+	cmd := environment.CommandContext(runCtx, record.BinaryPath)
 	cmd.Dir = record.Root
 	cmd.Stdin = bytes.NewReader(payload)
 	{

@@ -98,9 +98,9 @@ func (o executionTurnOutput) Notify(ctx context.Context, l slog.Level, text stri
 	ctx, out := o.target(ctx)
 	out.Notify(ctx, l, text)
 }
-func (o executionTurnOutput) SendPreview(ctx context.Context, text string) {
+func (o executionTurnOutput) SendPreview(ctx context.Context, text ...string) {
 	ctx, out := o.target(ctx)
-	out.SendPreview(ctx, text)
+	out.SendPreview(ctx, text...)
 }
 func (o executionTurnOutput) StartReasoning(ctx context.Context) dialogue.ReasoningStream {
 	stream := o.foreground.StartReasoning(ctx)

@@ -31,7 +31,9 @@ type ExecutionSender interface {
 	SendAssistant(context.Context, string) (delivery.Receipt, events.LogResult, error)
 	SendOutputs(context.Context, []delivery.Output) (events.LogResult, error)
 	Notify(context.Context, slog.Level, string)
-	Preview(context.Context, string)
+	// Preview takes one complete notice per tool call; multiline bodies stay in
+	// one argument. General workflow notices also occupy one argument.
+	Preview(context.Context, ...string)
 	StartReasoning(context.Context) dialogue.ReasoningStream
 }
 

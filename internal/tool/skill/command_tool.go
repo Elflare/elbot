@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"elbot/internal/config"
 	"elbot/internal/llm"
+	"elbot/internal/processenv"
 	"elbot/internal/tool"
 )
 
@@ -19,6 +21,8 @@ type CommandTool struct {
 	Media    *tool.MediaRuntime
 	Record   Record
 	Manifest AgentSkillManifest
+	// ProcessEnv 保存启动时已合并配置目录 .env 的基础子进程环境。
+	ProcessEnv processenv.Environment
 }
 
 func NewCommandTool(record Record) CommandTool {
@@ -67,6 +71,13 @@ func (t CommandTool) ActivateTools() []string {
 func (t CommandTool) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, logContent string, callErr error) {
 	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 
+	dotEnv, err := config.LoadEnvFile(filepath.Join(t.Record.Root, ".env"))
+	if err != nil {
+		callErr := fmt.Errorf("load AgentSkill environment: %w", err)
+		return nil, callErr.Error(), callErr
+	}
+	environment := t.ProcessEnv.Overlay(dotEnv)
+
 	timeout := defaultRunnerTimeout
 	if t.Manifest.TimeoutSeconds > 0 {
 		timeout = time.Duration(t.Manifest.TimeoutSeconds) * time.Second
@@ -91,7 +102,7 @@ func (t CommandTool) Call(ctx context.Context, req tool.CallRequest) (result *to
 	}
 	command := append([]string(nil), t.Manifest.Command...)
 	command = append(command, args...)
-	cmd := exec.CommandContext(runCtx, command[0], command[1:]...)
+	cmd := environment.CommandContext(runCtx, command[0], command[1:]...)
 	cmd.Dir = t.Record.Root
 	{
 		result, callErr := runMediaCommand(runCtx, "AgentSkill command", cmd, mediaCall)

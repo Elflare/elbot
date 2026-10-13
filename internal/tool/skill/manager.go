@@ -35,6 +35,7 @@ func NewManager(root string, registry *tool.Registry, environment ...processenv.
 		processEnv = environment[0]
 	}
 	scanner := NewFilesystemScanner(root)
+	scanner.ProcessEnv = processEnv
 	return &Manager{Root: scanner.Root, Catalog: scanner.Catalog, Scanner: scanner, Registry: registry, ProcessEnv: processEnv}
 }
 

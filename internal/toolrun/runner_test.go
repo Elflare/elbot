@@ -92,7 +92,7 @@ func (d *runnerTestDeps) CompleteToolCall(ctx context.Context, session *storage.
 	return segments, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 }
 
-func (d *runnerTestDeps) SendPreview(ctx context.Context, text string) {}
+func (d *runnerTestDeps) SendPreview(ctx context.Context, text ...string) {}
 
 func (d *runnerTestDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) (events.LogResult, error) {
 	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
