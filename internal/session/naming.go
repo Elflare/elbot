@@ -42,6 +42,9 @@ func (s *Service) MaybeScheduleNaming(ctx context.Context, sessionID string) {
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	facts.SessionID = sessionID
 	workerCtx = contextinfo.WithExecution(workerCtx, facts)
+	if model, ok := contextinfo.ModelFromContext(ctx); ok {
+		workerCtx = contextinfo.WithModel(workerCtx, model)
+	}
 	event := NamingCompletedEvent{Identity: events.LogIdentity{SessionID: &facts.SessionID}, TriggeredAt: storage.Now(), MaxFailures: maxNamingFailures}
 	if facts.RunID != "" {
 		event.Identity.RunID = &facts.RunID

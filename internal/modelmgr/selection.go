@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 )
 
@@ -76,12 +77,13 @@ func (s *Service) ResolveCompact(fallback Selection) Selection {
 	return fallback.providers.resolve(selected)
 }
 
-func (s *Service) ResolveNaming() NamingSelection {
+func (s *Service) ResolveNaming(ctx context.Context) NamingSelection {
+	fallback, _ := contextinfo.ModelFromContext(ctx)
 	s.mu.RLock()
-	naming, fallback := s.state.naming, s.state.mode("work")
+	naming := s.state.naming
 	providers := s.providers
 	s.mu.RUnlock()
-	return NamingSelection{Naming: providers.resolve(naming), Fallback: providers.resolve(fallback)}
+	return NamingSelection{Naming: providers.resolve(naming), Fallback: providers.resolve(config.ModelSelection{Provider: fallback.Provider, Model: fallback.Model})}
 }
 
 func (s *Service) CurrentModelForMode(mode string) ModelOption {

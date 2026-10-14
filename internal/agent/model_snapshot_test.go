@@ -9,11 +9,13 @@ import (
 	"time"
 
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
 	"elbot/internal/security"
 	"elbot/internal/session"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 )
@@ -123,21 +125,86 @@ func (c *failingNamingClient) Stream(ctx context.Context, req chatcompletions.Re
 	}
 }
 
-func TestNamingFallbackKeepsOriginalWorkSelectionAcrossSwitch(t *testing.T) {
+func TestChatNamingUsesTurnModelAcrossSwitch(t *testing.T) {
+	started, release, unblock := modelBarrier(t)
+	current := &fakeLLM{chatBlocks: []fakeLLMBlock{{started: started, release: release}}, replies: []string{"main reply"}, titleReplies: []string{"current title"}}
+	work := &fakeLLM{titleReplies: []string{"wrong work title"}}
+	next := &fakeLLM{titleReplies: []string{"wrong next title"}}
+	models := newTestModels(t, modelmgr.Options{
+		Clients: map[string]llm.Client{"deepseek": current, "native": work, "next": next},
+		Providers: map[string]config.ProviderConfig{
+			"deepseek": {Models: []string{"deepseek-chat"}},
+			"native":   {APIMode: "response", Models: []string{"gpt"}},
+			"next":     {Models: []string{"second"}},
+		},
+		ModeModels: map[string]config.ModelSelection{
+			storage.SessionModeChat: {Provider: "deepseek", Model: "deepseek-chat"},
+			storage.SessionModeWork: {Provider: "native", Model: "gpt"},
+		},
+		DefaultMode: storage.SessionModeChat,
+	})
+	opts := validConstructorOptions(t)
+	opts.Models, opts.Platform = models, &fakePlatform{}
+	opts.SessionConfig.DefaultMode = storage.SessionModeChat
+	opts.SessionConfig.NamingConfig.TriggerStep = 1
+	a := mustNewWithOptions(t, opts)
+	completed := make(chan session.NamingCompletedEvent, 1)
+	connection, err := a.execution.sessions.NamingSignals().Completed.Observe(func(_ context.Context, event session.NamingCompletedEvent) error {
+		completed <- event
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(connection.Disconnect)
+	done := make(chan error, 1)
+	go func() { done <- a.HandleMessage(t.Context(), "name this chat") }()
+	awaitModelBarrier(t, started)
+	if _, err := models.SelectModelForMode(storage.SessionModeChat, "next/second"); err != nil {
+		t.Fatal(err)
+	}
+	unblock()
+	awaitModelDone(t, done)
+	select {
+	case event := <-completed:
+		if event.Provider != "deepseek" || event.Model != "deepseek-chat" || event.GeneratedTitleRaw != "current title" {
+			t.Fatalf("naming used another model: %+v", event)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("naming did not complete")
+	}
+	if work.requestCount() != 0 || next.requestCount() != 0 {
+		t.Fatalf("naming called work or next model: work=%d next=%d", work.requestCount(), next.requestCount())
+	}
+}
+
+func TestNamingFallbackKeepsContextSelectionAcrossSwitchAndReload(t *testing.T) {
 	started, release, unblock := modelBarrier(t)
 	naming := &failingNamingClient{started: started, release: release, request: make(chan chatcompletions.Request, 1)}
 	old := &fakeLLM{titleReplies: []string{"old title"}}
 	next := &fakeLLM{titleReplies: []string{"new title"}}
+	clients := map[string]llm.Client{"naming": naming, "old": old, "next": next}
+	providers := map[string]config.ProviderConfig{"naming": {Models: []string{"title"}}, "old": {Models: []string{"first"}}, "next": {Models: []string{"second"}}}
 	models := newTestModels(t, modelmgr.Options{
-		Clients:     map[string]llm.Client{"naming": naming, "old": old, "next": next},
-		Providers:   map[string]config.ProviderConfig{"naming": {Models: []string{"title"}}, "old": {Models: []string{"first"}}, "next": {Models: []string{"second"}}},
+		Clients:     clients,
+		Providers:   providers,
 		ModeModels:  map[string]config.ModelSelection{storage.SessionModeWork: {Provider: "old", Model: "first"}},
 		NamingModel: config.ModelSelection{Provider: "naming", Model: "title"},
+		LoadProviders: func(context.Context) (config.ProviderFile, error) {
+			return config.ProviderFile{Providers: providers}, nil
+		},
+		BuildClient: func(name string, _ config.ProviderConfig) (llm.Client, error) {
+			if name == "old" {
+				return next, nil
+			}
+			return clients[name], nil
+		},
 	})
 	g := session.NewTitleGenerator(models)
 	messages := []storage.Message{{Role: storage.RoleUser, Content: "name this"}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	ctx = contextinfo.WithModel(ctx, contextinfo.Model{Provider: "old", Model: "first", APIType: "chat"})
 	done := make(chan error, 1)
 	go func() {
 		result, err := g.GenerateTitle(ctx, messages)
@@ -151,6 +218,9 @@ func TestNamingFallbackKeepsOriginalWorkSelectionAcrossSwitch(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := models.SelectNamingModel("next/second"); err != nil {
+		t.Fatal(err)
+	}
+	if err := models.ReloadProviders(ctx); err != nil {
 		t.Fatal(err)
 	}
 	unblock()
