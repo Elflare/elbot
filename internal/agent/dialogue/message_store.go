@@ -3,6 +3,7 @@ package dialogue
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -95,7 +96,11 @@ func (s *MessageStore) Append(ctx context.Context, message *storage.Message, ope
 func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit, operation string) (events.LogResult, error) {
 	for _, message := range commit.MessageRows() {
 		if message != nil && message.Segments != "" {
-			archived, err := s.Preparer.ArchiveMaterials(ctx, []llm.LLMMessage{MessageFromStorage(*message)})
+			projected, err := MessageFromStorage(*message)
+			if err != nil {
+				return events.LogResult{ResultStatus: events.ResultSkipped}, err
+			}
+			archived, err := s.Preparer.ArchiveMaterials(ctx, []llm.LLMMessage{projected})
 			if err != nil {
 				return events.LogResult{ResultStatus: events.ResultSkipped}, err
 			}
@@ -111,10 +116,13 @@ func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit
 	}
 	defer release()
 	result, err := s.Dialogues.Commit(locked, commit)
-	if err != nil && (ctx.Err() != nil || result.ResultStatus != events.ResultFailed) {
+	if err != nil && result.ResultStatus != events.ResultFailed {
 		return events.LogResult{ResultStatus: events.ResultSkipped}, err
 	}
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return events.LogResult{ResultStatus: events.ResultCanceled, Content: err.Error()}, err
+		}
 		logResult.ResultStatus = events.ResultFailed
 		logResult.Content += fmt.Sprintf("\npersistence_error=%v", err)
 		content, _ := json.Marshal(map[string]string{"operation": operation, "error": fmt.Sprintf("%.2048s", err.Error())})
@@ -147,27 +155,35 @@ func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit
 	return logResult, err
 }
 
-func MessageSegmentsFromStorage(raw string) []llm.MessageSegment {
+func MessageSegmentsFromStorage(raw string) ([]llm.MessageSegment, error) {
 	if raw == "" {
-		return nil
+		return nil, nil
 	}
 	var segments []llm.MessageSegment
 	if err := json.Unmarshal([]byte(raw), &segments); err != nil {
-		return nil
+		return nil, err
 	}
-	return segments
+	return segments, nil
 }
 
-func AssistantMessageMetadata(raw string) AssistantMetadata {
+func AssistantMessageMetadata(raw string) (AssistantMetadata, error) {
 	var value AssistantMetadata
-	_ = json.Unmarshal([]byte(raw), &value)
-	return value
+	if raw == "" {
+		return value, nil
+	}
+	err := json.Unmarshal([]byte(raw), &value)
+	return value, err
 }
 
-func ToolNameFromMetadata(raw string) string {
+func ToolNameFromMetadata(raw string) (string, error) {
+	if raw == "" {
+		return "", nil
+	}
 	var value map[string]string
-	_ = json.Unmarshal([]byte(raw), &value)
-	return value["name"]
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return "", err
+	}
+	return value["name"], nil
 }
 
 func JoinNames(names []string) string {

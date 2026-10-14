@@ -271,45 +271,25 @@ func TestDynamicProviderClientUsesAgentLogger(t *testing.T) {
 }
 
 func TestMapSentAssistantMessageUsesOnlyCompleteReceiptSources(t *testing.T) {
-	p := &fakePlatform{}
-	store := newTestStore(t)
-	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
-		Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ScopeID: "group:9"}, Identity: contextinfo.Identity{PlatformUserID: "1"}},
-	})
-	session, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "mapped"})
-	if err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-	assistant := &storage.Message{SessionID: session.ID, Role: storage.RoleAssistant, Content: "long answer"}
-	if err := store.Messages().Append(ctx, assistant); err != nil {
-		t.Fatalf("append assistant: %v", err)
-	}
-
+	f := newReplyTestFixture(t, false)
 	sent := []delivery.SentMessage{
 		{Platform: "qqofficial", ScopeID: "c2c:1", PlatformMessageID: "101"},
 		{Platform: "telegram", ScopeID: "private:1", PlatformMessageID: "101"},
 		{Platform: "telegram", ScopeID: "supergroup:-2", PlatformMessageID: "101"},
 	}
-	a.dialogue.Replies.AssociateReceipt(ctx, session.ID, assistant.ID, delivery.Receipt{SentMessages: sent})
-	a.dialogue.Replies.AssociateReceipt(ctx, session.ID, assistant.ID, delivery.Receipt{PlatformMessageIDs: []string{"legacy"}, SentMessages: []delivery.SentMessage{
-		{Platform: "qqonebot", PlatformMessageID: "incomplete"},
-		{ScopeID: "group:9", PlatformMessageID: "incomplete"},
-		{Platform: "qqonebot", ScopeID: "group:9"},
-	}})
+	f.platform.receipt = delivery.Receipt{SentMessages: sent}
+	result, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, message := range sent {
-		got, err := store.Messages().FindByPlatformMessage(ctx, message.Platform, message.ScopeID, message.PlatformMessageID)
-		if err != nil {
-			t.Fatalf("find platform message %#v: %v", message, err)
-		}
-		if got.ID != assistant.ID {
-			t.Fatalf("platform message %#v mapped to %s, want %s", message, got.ID, assistant.ID)
+		got, err := f.repo.FindByPlatformMessage(f.ctx, message.Platform, message.ScopeID, message.PlatformMessageID)
+		if err != nil || got.ID != result.MessageID {
+			t.Fatal(got, err)
 		}
 	}
-	for _, id := range []string{"101", "legacy", "incomplete", ""} {
-		if _, err := store.Messages().FindByPlatformMessage(ctx, "qqonebot", "group:9", id); err == nil {
-			t.Fatalf("invented mapping from context for %q", id)
-		}
+	if _, err := f.repo.FindByPlatformMessage(f.ctx, "cli", "local", "101"); err == nil {
+		t.Fatal("invented mapping from context")
 	}
 }
 

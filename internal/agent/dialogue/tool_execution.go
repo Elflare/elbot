@@ -30,12 +30,7 @@ type ToolExecutor struct {
 	MaxRounds       int
 }
 
-func (r *ToolExecutor) MaxRoundsPerTurn() int {
-	if r.MaxRounds <= 0 {
-		return 2
-	}
-	return r.MaxRounds
-}
+func (r *ToolExecutor) MaxRoundsPerTurn() int { return r.MaxRounds }
 func (r *ToolExecutor) Execute(ctx context.Context, session *storage.Session, calls []llm.ToolCallRequest, assistantText, assistantRawText string, out Output) toolrun.RunResult {
 	return r.ExecuteWithCommitter(ctx, session, calls, assistantText, assistantRawText, out, &ToolTranscriptCommitter{Messages: r.Messages})
 }

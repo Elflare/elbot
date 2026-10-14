@@ -54,9 +54,6 @@ func (p *ConfirmationPolicy) WaitTimeout(ctx context.Context) time.Duration {
 		return sessionTimeout
 	}
 	userTimeout := p.userConfirmationTimeout
-	if userTimeout <= 0 {
-		userTimeout = defaultUserConfirmationTimeout
-	}
 	if sessionTimeout > 0 && sessionTimeout < userTimeout {
 		return sessionTimeout
 	}
@@ -92,8 +89,7 @@ func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 	if !c.commands.IsCommand(text) {
 		observed = confirmationAction(ctx, sessionID, "invalid_text", confirmation, "")
 		release()
-		c.output.SendChat(ctx, riskConfirmationWaitingText())
-		return nil
+		return c.output.SendChat(ctx, riskConfirmationWaitingText())
 	}
 
 	parsed := c.commands.Parse(text)
@@ -105,7 +101,7 @@ func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 		}
 		observed = confirmationAction(ctx, sessionID, "detail", confirmation, "")
 		release()
-		c.output.SendChat(ctx, riskConfirmationDetailText(confirmation))
+		return c.output.SendChat(ctx, riskConfirmationDetailText(confirmation))
 	case "confirm", "c":
 		observed = confirmationAction(ctx, sessionID, "confirm", confirmation, parsed.Args)
 		c.turns.ResolveRiskConfirmation(sessionID, turn.RiskConfirmationResponse{Confirmed: true, Extra: parsed.Args})
@@ -124,13 +120,13 @@ func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 		c.requests.CancelSession(sessionID)
 		c.turns.ResolveRiskConfirmation(sessionID, turn.RiskConfirmationResponse{Stopped: true})
 		release()
-		c.output.SendChat(ctx, "stopped")
+		return c.output.SendChat(context.WithoutCancel(ctx), "stopped")
 	default:
 		if hasConfirmation {
 			observed = confirmationAction(ctx, sessionID, "invalid_command", confirmation, parsed.Name)
 		}
 		release()
-		c.output.SendChat(ctx, riskConfirmationWaitingText())
+		return c.output.SendChat(ctx, riskConfirmationWaitingText())
 
 	}
 	release()
@@ -272,13 +268,13 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	resp, ok, resultStatus := wait.Wait(ctx, timeout)
 	if resp.Expired {
 		c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "expire", resp.Extra, "confirmation wait expired", events.ResultFailed, slog.LevelInfo)
-		c.output.SendChat(context.WithoutCancel(ctx), "高风险工具确认已过期，当前处理已停止。")
+		err := c.output.SendChat(context.WithoutCancel(ctx), "高风险工具确认已过期，当前处理已停止。")
 		return toolrun.ConfirmResult{
 			Allowed: false,
 			Extra:   resp.Extra,
 			Message: llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments(fmt.Sprintf("tool call %s confirmation expired", call.Name))},
 			Stopped: true,
-		}, nil
+		}, err
 	}
 	if !ok || resp.Stopped {
 		action, reason := "skip", "confirmation wait is no longer current"
@@ -301,11 +297,15 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	}
 	if resp.ConfirmTool {
 		c.setToolAutoConfirmed(sessionID, call.Name)
-		c.output.SendChat(ctx, fmt.Sprintf("已为当前 Session 自动确认后续 %s 工具调用。", call.Name))
+		if err := c.output.SendChat(ctx, fmt.Sprintf("已为当前 Session 自动确认后续 %s 工具调用。", call.Name)); err != nil {
+			return toolrun.ConfirmResult{Allowed: true, Extra: resp.Extra}, err
+		}
 	}
 	if resp.ConfirmAll {
 		c.setSessionAutoConfirmed(sessionID)
-		c.output.SendChat(ctx, "已为当前 Session 自动确认后续高风险工具调用。")
+		if err := c.output.SendChat(ctx, "已为当前 Session 自动确认后续高风险工具调用。"); err != nil {
+			return toolrun.ConfirmResult{Allowed: true, Extra: resp.Extra}, err
+		}
 	}
 	if resp.Rejected {
 		reason := strings.TrimSpace(resp.Reason)
@@ -336,28 +336,7 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 }
 
 // NewConfirmationCoordinator initializes ConfirmationCoordinator without installing cross-service callbacks.
-func NewConfirmationCoordinator(deps ConfirmationCoordinatorDeps) (*ConfirmationCoordinator, error) {
-	if deps.Sessions == nil {
-		return nil, fmt.Errorf("ConfirmationCoordinator sessions is required")
-	}
-	if deps.Requests == nil {
-		return nil, fmt.Errorf("ConfirmationCoordinator requests is required")
-	}
-	if deps.Turns == nil {
-		return nil, fmt.Errorf("ConfirmationCoordinator turns is required")
-	}
-	if deps.Commands == nil {
-		return nil, fmt.Errorf("ConfirmationCoordinator commands is required")
-	}
-	if deps.Identity == nil {
-		return nil, fmt.Errorf("ConfirmationCoordinator identity is required")
-	}
-	if deps.Output == nil {
-		return nil, fmt.Errorf("ConfirmationCoordinator output is required")
-	}
-	if deps.Policy == nil {
-		return nil, fmt.Errorf("ConfirmationCoordinator policy is required")
-	}
+func NewConfirmationCoordinator(deps ConfirmationCoordinatorDeps) *ConfirmationCoordinator {
 	return &ConfirmationCoordinator{
 		sessions:           deps.Sessions,
 		requests:           deps.Requests,
@@ -367,19 +346,16 @@ func NewConfirmationCoordinator(deps ConfirmationCoordinatorDeps) (*Confirmation
 		output:             deps.Output,
 		policy:             deps.Policy,
 		autoConfirmSession: map[string]bool{}, autoConfirmTools: map[string]map[string]bool{},
-	}, nil
+	}
 }
 
 // NewConfirmationPolicy initializes ConfirmationPolicy without installing cross-service callbacks.
-func NewConfirmationPolicy(deps ConfirmationPolicyDeps) (*ConfirmationPolicy, error) {
-	if deps.Identity == nil {
-		return nil, fmt.Errorf("ConfirmationPolicy identity is required")
-	}
+func NewConfirmationPolicy(deps ConfirmationPolicyDeps) *ConfirmationPolicy {
 	return &ConfirmationPolicy{
 		identity:                deps.Identity,
 		idleExpiration:          deps.IdleExpiration,
 		userConfirmationTimeout: deps.UserConfirmationTimeout,
-	}, nil
+	}
 }
 
 func (p *ConfirmationPolicy) IdleExpiration() session.IdleExpirationConfig { return p.idleExpiration }

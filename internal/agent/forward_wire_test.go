@@ -176,7 +176,10 @@ func TestForwardDisplayReachesVendorInOrder(t *testing.T) {
 	var saved []llm.MessageSegment
 	for _, message := range messages {
 		if message.Role == storage.RoleUser {
-			saved = dialogue.MessageSegmentsFromStorage(message.Segments)
+			saved, err = dialogue.MessageSegmentsFromStorage(message.Segments)
+			if err != nil {
+				t.Fatal(err)
+			}
 			break
 		}
 	}

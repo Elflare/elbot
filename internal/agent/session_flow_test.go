@@ -350,14 +350,11 @@ func TestStatusDoesNotShowRequestsFromAnotherUserWithoutCurrentSession(t *testin
 	if err != nil {
 		t.Fatalf("create active session: %v", err)
 	}
-	_, _, done, err := a.execution.requests.Start(context.Background(), request.StartRequest{
+	_, _, done := a.execution.requests.Start(context.Background(), request.StartRequest{
 		SessionID: activeSession.ID,
 		Kind:      request.KindTurn,
 		Label:     "other-user-turn",
 	})
-	if err != nil {
-		t.Fatalf("start active request: %v", err)
-	}
 	defer done()
 
 	if err := a.HandleMessage(activeCtx, "/status"); err != nil {

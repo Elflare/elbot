@@ -306,9 +306,6 @@ func (w *RiskConfirmationWait) Wait(ctx context.Context, timeout time.Duration) 
 	if w == nil {
 		return RiskConfirmationResponse{Stopped: true}, false, events.ResultSkipped
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	defer w.Cancel()
 	if ctx.Err() != nil {
 		resultStatus := events.ResultCanceled

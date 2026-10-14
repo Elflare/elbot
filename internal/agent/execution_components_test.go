@@ -9,6 +9,7 @@ import (
 
 	chatroute "elbot/internal/agent/chat"
 	"elbot/internal/agent/dialogue"
+	agentevents "elbot/internal/agent/events"
 	"elbot/internal/agent/routes"
 	"elbot/internal/config"
 	"elbot/internal/contextmgr"
@@ -50,7 +51,7 @@ func newExecutionFixture(t *testing.T, client llm.Client, store storage.Store) *
 	hooks := newTestHookManager()
 
 	bridge := &HookBridge{manager: hooks, requests: opts.Requests, identity: identity, dispatcher: opts.Dispatcher}
-	status := &StatusRecorder{}
+	status := NewStatusRecorder(StatusRecorderDeps{Turns: opts.Turns, View: dialogue.ExecutionView{Sessions: store.Sessions()}, Changed: agentevents.NewSignals().StatusChanged})
 	output := &OutputSender{dispatcher: opts.Dispatcher, hooks: bridge}
 	view := dialogue.ExecutionView{Sessions: store.Sessions()}
 	policy := &ConfirmationPolicy{identity: identity, userConfirmationTimeout: time.Second}
@@ -59,7 +60,7 @@ func newExecutionFixture(t *testing.T, client llm.Client, store storage.Store) *
 		identity: identity, output: output, policy: policy,
 		autoConfirmSession: map[string]bool{}, autoConfirmTools: map[string]map[string]bool{},
 	}
-	runtime := ToolRuntimeState{provider: dialogue.NoopToolSchemaProvider{}, defaultProvider: true, manager: opts.ToolRunner}
+	runtime := ToolRuntimeState{provider: toolRunPromptProvider{tools: opts.ToolRunner, identity: identity}, defaultProvider: true, manager: opts.ToolRunner}
 	deps := &toolRunDeps{status: status, hooks: bridge, requests: opts.Requests, turns: opts.Turns, identity: identity,
 		state: opts.ToolState, runtime: &runtime, sessions: opts.Sessions, sessionRows: store.Sessions(), toolCalls: store.ToolCalls(), confirmations: confirmations, view: view}
 	tools := &dialogue.ToolExecutor{
@@ -88,17 +89,12 @@ func newExecutionFixture(t *testing.T, client llm.Client, store storage.Store) *
 		Caller:        &chatroute.Caller{Calls: calls},
 		PromptBuilder: chatroute.PromptBuilder{System: dialogue.NewSystemPromptManager(dialogue.SoulSystemPromptSource{Soul: dialogue.StaticSoulProvider{Prompt: "test"}})},
 	}
-	if err := opts.Routes.Register(routes.Binding{APIType: llm.APITypeChat, Loop: chat, Compactor: &chatroute.Compactor{Store: store, Models: models, Contexts: opts.Contexts, Loader: contextmgr.Loader{Store: store}}, Material: session.DisplayMaterial{}}); err != nil {
-		t.Fatal(err)
-	}
-	if err := opts.Routes.Seal(); err != nil {
-		t.Fatal(err)
-	}
+	opts.Routes.Register(routes.Binding{APIType: llm.APITypeChat, Loop: chat, Compactor: &chatroute.Compactor{Store: store, Models: models, Contexts: opts.Contexts, Loader: contextmgr.Loader{Store: store}}, Material: session.DisplayMaterial{}})
 	runner := &dialogue.Runner{Status: status,
 		Routes:   opts.Routes,
 		Preparer: preparer,
 		Messages: messages,
-		Replies:  &dialogue.ReplyCommitter{Messages: store.Messages(), Persistence: messages.Committer("append_assistant_message"), Output: output},
+		Replies:  &dialogue.ReplyCommitter{Persistence: messages.Committer("append_assistant_message"), Output: output},
 		Turns:    opts.Turns,
 		View:     view,
 	}
@@ -151,10 +147,7 @@ func (f *executionFixture) begin(t *testing.T) (context.Context, context.Context
 	if err != nil {
 		t.Fatal(err)
 	}
-	info, requestCtx, done, err := f.opts.Requests.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn})
-	if err != nil {
-		t.Fatal(err)
-	}
+	info, requestCtx, done := f.opts.Requests.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn})
 	t.Cleanup(done)
 	return ctx, requestCtx, dialogue.TurnInput{Session: row, Text: "hello", Selection: modelmgr.SelectionForTurn(ctx, f.opts.Models, row), RequestID: info.ID, Prepared: prepared}, execution
 }

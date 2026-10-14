@@ -124,7 +124,7 @@ func containsAny(text string, values ...string) bool {
 	return false
 }
 
-func (c *InputCoordinator) notifyToolDirectiveResult(ctx context.Context, result toolDirectiveResult) {
+func (c *InputCoordinator) notifyToolDirectiveResult(ctx context.Context, result toolDirectiveResult) error {
 	parts := []string{}
 	if len(result.Injected) > 0 {
 		parts = append(parts, "已注入工具："+strings.Join(sortedUnique(result.Injected), ", "))
@@ -136,12 +136,12 @@ func (c *InputCoordinator) notifyToolDirectiveResult(ctx context.Context, result
 		parts = append(parts, "未找到或不可用的工具："+strings.Join(sortedUnique(result.Invalid), ", "))
 	}
 	if len(parts) == 0 {
-		return
+		return nil
 	}
-	c.output.SendChat(ctx, strings.Join(parts, "\n"))
+	return c.output.SendChat(ctx, strings.Join(parts, "\n"))
 }
 
-func (c *InputCoordinator) notifySkillDirectiveResult(ctx context.Context, result skillDirectiveResult) {
+func (c *InputCoordinator) notifySkillDirectiveResult(ctx context.Context, result skillDirectiveResult) error {
 	parts := []string{}
 	if len(result.Skills) > 0 {
 		parts = append(parts, "已注入 Skill："+strings.Join(sortedUnique(result.Skills), ", "))
@@ -156,9 +156,9 @@ func (c *InputCoordinator) notifySkillDirectiveResult(ctx context.Context, resul
 		parts = append(parts, "未找到或不可用的 Skill："+strings.Join(sortedUnique(result.Invalid), ", "))
 	}
 	if len(parts) == 0 {
-		return
+		return nil
 	}
-	c.output.SendChat(ctx, strings.Join(parts, "\n"))
+	return c.output.SendChat(ctx, strings.Join(parts, "\n"))
 }
 func sortedUnique(values []string) []string {
 	seen := map[string]bool{}

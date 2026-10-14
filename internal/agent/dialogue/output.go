@@ -12,7 +12,7 @@ import (
 
 type Output interface {
 	StartReasoning(context.Context) ReasoningStream
-	StartStream(ctx context.Context) delivery.MessageStream
+	StartStream(ctx context.Context) (delivery.MessageStream, error)
 	FinishIntermediate(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string, streaming bool) error
 	ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, events.LogResult, error)
 	SendAssistant(ctx context.Context, text string) (delivery.Receipt, events.LogResult, error)

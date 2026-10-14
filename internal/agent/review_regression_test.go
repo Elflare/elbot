@@ -63,15 +63,9 @@ func TestStopCompletionUsesResolvedActorAndCurrentSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	foreign, _, done, err := a.execution.requests.Start(ctx, request.StartRequest{SessionID: "foreign", Kind: request.KindTurn})
-	if err != nil {
-		t.Fatal(err)
-	}
+	foreign, _, done := a.execution.requests.Start(ctx, request.StartRequest{SessionID: "foreign", Kind: request.KindTurn})
 	defer done()
-	current, _, done, err := a.execution.requests.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn})
-	if err != nil {
-		t.Fatal(err)
-	}
+	current, _, done := a.execution.requests.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn})
 	defer done()
 	query := completion.Request{Text: "/stop "}
 	adminItems, _ := a.CompletionService().Complete(ctx, query)
@@ -136,10 +130,7 @@ func TestReviewStopCannotCancelOtherUsersRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, victimCtx, done, err := a.execution.requests.Start(ctx, request.StartRequest{SessionID: victim.ID, Kind: request.KindTurn, Label: "victim"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	_, victimCtx, done := a.execution.requests.Start(ctx, request.StartRequest{SessionID: victim.ID, Kind: request.KindTurn, Label: "victim"})
 	defer done()
 	attacker := platform.WithMessageContext(ctx, platform.MessageContext{
 		Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "attacker"}, Identity: contextinfo.Identity{PlatformUserID: "attacker"}},

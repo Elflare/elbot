@@ -40,9 +40,6 @@ type Compressor struct {
 }
 
 func (c Compressor) Compact(ctx context.Context, req CompactRequest) (*CompactResult, error) {
-	if c.ClientFor == nil {
-		return nil, fmt.Errorf("compressor is not configured")
-	}
 	if len(req.Messages) == 0 {
 		return nil, fmt.Errorf("没有可压缩的历史消息")
 	}

@@ -19,9 +19,6 @@ func NewTitleGenerator(models *modelmgr.Service) TitleGenerator {
 }
 
 func (g *titleGenerator) GenerateTitle(ctx context.Context, messages []storage.Message) (TitleResult, error) {
-	if g == nil || g.models == nil {
-		return TitleResult{}, fmt.Errorf("no title model available")
-	}
 	selected := g.models.ResolveNaming(ctx)
 	naming, namingModel := selected.Naming.Client, selected.Naming.Model
 	primary, primaryModel := selected.Fallback.Client, selected.Fallback.Model

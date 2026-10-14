@@ -52,21 +52,15 @@ func (i *constructorInput) ExpireIdleCurrentSession(context.Context) error {
 
 type constructorOutput struct{}
 
-func (constructorOutput) SendChat(context.Context, string) {}
+func (constructorOutput) SendChat(context.Context, string) error { return nil }
 func (constructorOutput) SendOutputs(context.Context, []delivery.Output) (events.LogResult, error) {
 	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
 }
 
 func TestMessageEntryConstructsWithOnlyConsumptionCapabilities(t *testing.T) {
-	identity, err := NewIdentityResolver(IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Policy: security.DefaultPolicy()})
-	if err != nil {
-		t.Fatal(err)
-	}
+	identity := NewIdentityResolver(IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Policy: security.DefaultPolicy()})
 	input := &constructorInput{}
-	entry, err := NewMessageHandler(MessageHandlerDeps{Identity: identity, Hooks: constructorHooks{}, Output: constructorOutput{}, Commands: constructorCommands{}, Input: input})
-	if err != nil {
-		t.Fatal(err)
-	}
+	entry := NewMessageHandler(MessageHandlerDeps{Identity: identity, Hooks: constructorHooks{}, Output: constructorOutput{}, Commands: constructorCommands{}, Input: input})
 	if err := entry.HandleMessage(t.Context(), "plain input"); err != nil {
 		t.Fatal(err)
 	}
@@ -78,22 +72,10 @@ func TestMessageEntryConstructsWithOnlyConsumptionCapabilities(t *testing.T) {
 func TestExecutionConstructionKeepsBorrowedCallbacksAndServices(t *testing.T) {
 	opts := assembleTestOptions(t, validConstructorOptions(t))
 	defer opts.Sessions.Close(context.Background())
-	identity, err := NewIdentityResolver(IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Policy: opts.SecurityPolicy})
-	if err != nil {
-		t.Fatal(err)
-	}
-	policy, err := NewConfirmationPolicy(ConfirmationPolicyDeps{Identity: identity})
-	if err != nil {
-		t.Fatal(err)
-	}
-	status, err := NewStatusRecorder(StatusRecorderDeps{Turns: opts.Turns})
-	if err != nil {
-		t.Fatal(err)
-	}
-	output, err := NewOutputSender(OutputSenderDeps{Dispatcher: opts.Dispatcher, Hooks: constructorHooks{}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	identity := NewIdentityResolver(IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Policy: opts.SecurityPolicy})
+	policy := NewConfirmationPolicy(ConfirmationPolicyDeps{Identity: identity})
+	status := NewStatusRecorder(StatusRecorderDeps{Turns: opts.Turns})
+	output := NewOutputSender(OutputSenderDeps{Dispatcher: opts.Dispatcher, Hooks: constructorHooks{}})
 	activations := 0
 	connectTestForeground(t, opts.Sessions, func(context.Context, *storage.Session, *session.Binding) { activations++ })
 	ctx, cancel := context.WithCancel(t.Context())
@@ -112,14 +94,7 @@ func TestExecutionConstructionKeepsBorrowedCallbacksAndServices(t *testing.T) {
 		Status:      status,
 		WaitPolicy:  policy,
 	}
-	execution, err := NewExecutionCoordinator(ctx, deps)
-	if err != nil {
-		t.Fatal(err)
-	}
-	deps.Models = nil
-	if failed, err := NewExecutionCoordinator(ctx, deps); err == nil || failed != nil {
-		t.Fatalf("missing dependency: %v %v", failed, err)
-	}
+	execution := NewExecutionCoordinator(ctx, deps)
 	scope := identity.Scope(t.Context())
 	row, err := opts.Sessions.PrepareBackground(t.Context(), scope, session.BackgroundRequest{Kind: "cron", Name: "borrowed"})
 	if err != nil {

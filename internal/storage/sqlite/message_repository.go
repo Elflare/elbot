@@ -169,6 +169,10 @@ ORDER BY created_at ASC, rowid ASC`, sessionID, afterCreatedAt, afterCreatedAt, 
 }
 
 func (r *MessageRepository) MapPlatformMessage(ctx context.Context, mapping storage.PlatformMessageMap) error {
+	return mapPlatformMessage(ctx, r.db, mapping)
+}
+
+func mapPlatformMessage(ctx context.Context, writer sessionWriter, mapping storage.PlatformMessageMap) error {
 	if mapping.ID == "" {
 		mapping.ID = storage.NewID()
 	}
@@ -176,7 +180,7 @@ func (r *MessageRepository) MapPlatformMessage(ctx context.Context, mapping stor
 		mapping.CreatedAt = storage.Now()
 	}
 
-	_, err := r.db.ExecContext(ctx, `
+	_, err := writer.ExecContext(ctx, `
 INSERT INTO platform_message_map (
     id, platform, platform_scope_id, platform_message_id, message_id, session_id, created_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?)`,

@@ -41,7 +41,7 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 	publishCompleted := func() { observation.Publish(ctx, callErr) }
 	defer publishCompleted()
 	defer func() {
-		if completed.ProviderError && ctx.Err() == nil {
+		if completed.ProviderError {
 			out.Notify(context.WithoutCancel(ctx), slog.LevelError, notificationrules.ModelInterrupted(completed.Err))
 		}
 	}()
@@ -67,10 +67,10 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 	if err != nil {
 		completed.Err = err
 		observation.LogRecord.Content = fmt.Sprintf("call_error=%v", err)
-		if ctx.Err() != nil {
+		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			observation.LogRecord.ResultStatus, observation.LogRecord.Level = events.ResultCanceled, slog.LevelInfo
 		}
-		if errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			return llmCallResult{Messages: baseMessages, Stream: stream}, nil
 		}
 		if shouldFallbackVision(requestMessages, err) {
@@ -103,10 +103,10 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 			completed.Text, completed.SourceText, completed.Usage, completed.ToolCallCount = assistant.String(), assistant.String(), usage, len(toolCalls)
 			completed.OutputReady = assistant.Len() > 0 || len(toolCalls) > 0
 			observation.LogRecord.Content = fmt.Sprintf("call_error=%v", chunk.Error)
-			if ctx.Err() != nil {
+			if ctx.Err() != nil && errors.Is(chunk.Error, ctx.Err()) {
 				observation.LogRecord.ResultStatus, observation.LogRecord.Level = events.ResultCanceled, slog.LevelInfo
 			}
-			if errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			if ctx.Err() != nil && errors.Is(chunk.Error, ctx.Err()) {
 				content := assistant.String()
 				return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls, Messages: baseMessages, Stream: stream}, nil
 			}

@@ -96,9 +96,7 @@ func TestRegisteredProtocolUsesActualAgentAdmissionPersistenceAndSessionCapabili
 	assembled := assembleTestOptions(t, opts)
 	loop := &extensionLoop{t: t, store: opts.Store}
 	compactor, material := &extensionCompactor{}, &extensionMaterial{}
-	if err := assembled.Routes.Register(routes.Binding{APIType: "extension", Loop: loop, Compactor: compactor, Material: material}); err != nil {
-		t.Fatal(err)
-	}
+	assembled.Routes.Register(routes.Binding{APIType: "extension", Loop: loop, Compactor: compactor, Material: material})
 	a, err := newTestAssembly(t.Context(), assembled)
 	if err != nil {
 		t.Fatal(err)

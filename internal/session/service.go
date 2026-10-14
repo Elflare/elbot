@@ -39,15 +39,6 @@ func NewServiceWithNaming(store storage.Store, cfg NamingConfig, titleGen TitleG
 }
 
 func NewServiceWithConfig(store storage.Store, cfg Config, titleGen TitleGenerator) *Service {
-	if cfg.TriggerStep <= 0 {
-		cfg.TriggerStep = 1
-	}
-	if cfg.DefaultMode == "" {
-		cfg.DefaultMode = storage.SessionModeWork
-	}
-	if err := validateMode(cfg.DefaultMode); err != nil {
-		cfg.DefaultMode = storage.SessionModeWork
-	}
 	s := &Service{
 		store:               store,
 		current:             map[string]*Binding{},

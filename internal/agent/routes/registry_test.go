@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"elbot/internal/agent/dialogue"
@@ -16,6 +15,7 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
+	"elbot/internal/media"
 	"elbot/internal/modelmgr"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
@@ -96,7 +96,7 @@ type testOutput struct {
 func (o *testOutput) PrepareAssistant(_ context.Context, _ hook.Point, text string) (string, events.LogResult, error) {
 	return text, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
-func (*testOutput) StartStream(context.Context) delivery.MessageStream { return nil }
+func (*testOutput) StartStream(context.Context) (delivery.MessageStream, error) { return nil, nil }
 func (*testOutput) FinishIntermediate(context.Context, context.Context, delivery.MessageStream, string, bool) error {
 	return nil
 }
@@ -134,27 +134,22 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry := routes.New()
-	loop, compactor := &testLoop{t: t, messages: &dialogue.MessageStore{Dialogues: store.Dialogues()}}, &testCompactor{}
+	sessions := session.NewService(store)
+	turns := turn.NewManager()
+	loop, compactor := &testLoop{t: t, messages: &dialogue.MessageStore{Dialogues: store.Dialogues(), Gate: &dialogue.CommitGate{Sessions: sessions, Turns: turns, View: dialogue.ExecutionView{Sessions: store.Sessions()}}}}, &testCompactor{}
 	origin := llm.Origin{Provider: "test-provider", APIType: testProtocol, BaseURL: "https://test.invalid"}
 	client := &testClient{}
-	if err := registry.Register(routes.Binding{APIType: testProtocol, Loop: loop, Compactor: compactor}); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.Register(routes.Binding{APIType: llm.APITypeChat, Loop: &testLoop{t: t}}); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.Seal(); err != nil {
-		t.Fatal(err)
-	}
-	row, err = session.NewService(store).RegisterOrigin(ctx, row.ID, origin)
+	registry.Register(routes.Binding{APIType: testProtocol, Loop: loop, Compactor: compactor})
+	registry.Register(routes.Binding{APIType: llm.APITypeChat, Loop: &testLoop{t: t}})
+	row, err = sessions.RegisterOrigin(ctx, row.ID, origin)
 	if err != nil {
 		t.Fatal(err)
 	}
 	contexts := contextmgr.New(contextmgr.Options{Store: store, Compactors: registry})
 	out := &testOutput{t: t, messages: store.Messages()}
-	runner := &dialogue.Runner{Status: testStatus{}, Routes: registry, Preparer: &dialogue.Preparer{Contexts: contexts},
+	runner := &dialogue.Runner{Status: testStatus{}, Routes: registry, Preparer: &dialogue.Preparer{Contexts: contexts, Media: media.NewManager(store, t.TempDir(), &media.LocalBackend{Root: t.TempDir()})},
 		Messages: loop.messages,
-		Replies:  &dialogue.ReplyCommitter{Messages: store.Messages(), Persistence: loop.messages.Committer("append_assistant_message"), Output: out},
+		Replies:  &dialogue.ReplyCommitter{Persistence: loop.messages.Committer("append_assistant_message"), Output: out},
 		Turns:    turn.NewManager(), View: dialogue.ExecutionView{Sessions: store.Sessions()}}
 	in := dialogue.TurnInput{
 		Session:   row,
@@ -166,10 +161,7 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	requests := request.NewManager(0)
-	info, requestCtx, done, err := requests.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn})
-	if err != nil {
-		t.Fatal(err)
-	}
+	info, requestCtx, done := requests.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn})
 	defer done()
 	in.RequestID = info.ID
 	result := runner.RunTurn(ctx, requestCtx, in, out)
@@ -180,8 +172,12 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 		t.Fatalf("wrong route or delivery: prepared=%d ran=%d sent=%v", loop.prepared, loop.ran, out.sent)
 	}
 	rows, err := store.Messages().ListBySession(ctx, row.ID)
-	if err != nil || len(rows) != 2 || rows[1].Content != "stored reply" || dialogue.AssistantMessageMetadata(rows[1].Metadata).RawText != "source reply" {
+	if err != nil || len(rows) != 2 || rows[1].Content != "stored reply" {
 		t.Fatalf("common commit lost canonical reply: %+v / %v", rows, err)
+	}
+	metadata, err := dialogue.AssistantMessageMetadata(rows[1].Metadata)
+	if err != nil || metadata.RawText != "source reply" {
+		t.Fatal(metadata, err)
 	}
 	// Source ownership chooses the compactor even when the target selection
 	// belongs to a different provider and wire protocol.
@@ -191,52 +187,17 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	}
 }
 
-func TestRegistryRejectsInvalidWiringAndMutation(t *testing.T) {
+func TestRegistryRejectsUnknownProtocol(t *testing.T) {
 	registry := routes.New()
-	if err := registry.Seal(); err == nil {
-		t.Fatal("empty registry accepted")
-	}
-	if err := registry.Register(routes.Binding{}); err == nil {
-		t.Fatal("missing protocol accepted")
-	}
-	entry := routes.Binding{APIType: testProtocol, Loop: &testLoop{t: t}}
-	if err := registry.Register(entry); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.Register(entry); err == nil {
-		t.Fatal("duplicate protocol accepted")
-	}
-	if _, err := registry.LoopFor(testProtocol); err == nil {
-		t.Fatal("execution allowed before sealing")
-	}
-	if err := registry.Seal(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := registry.LoopFor(testProtocol); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := registry.CompactorFor(llm.Origin{APIType: testProtocol}); err == nil || !strings.Contains(err.Error(), "does not support compaction") {
-		t.Fatalf("missing compactor: %v", err)
-	}
 	if _, err := registry.LoopFor("unknown"); err == nil {
 		t.Fatal("unknown protocol accepted")
-	}
-	if err := registry.Register(routes.Binding{APIType: "late"}); err == nil {
-		t.Fatal("sealed registry modified")
 	}
 }
 func TestProtocolRoutesKeepHistoricalSourceCapabilities(t *testing.T) {
 	registry := routes.New()
 	loop, compactor := &testLoop{t: t}, &testCompactor{}
-	if err := registry.Register(routes.Binding{APIType: llm.APITypeChat, Loop: loop, Compactor: compactor, Material: session.DisplayMaterial{}}); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.Register(routes.Binding{APIType: llm.APITypeResponse}); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.Seal(); err != nil {
-		t.Fatal(err)
-	}
+	registry.Register(routes.Binding{APIType: llm.APITypeChat, Loop: loop, Compactor: compactor, Material: session.DisplayMaterial{}})
+	registry.Register(routes.Binding{APIType: llm.APITypeResponse})
 	for _, origin := range []llm.Origin{
 		{APIType: llm.APITypeChat},
 		{Provider: "removed", APIType: llm.APITypeChat, BaseURL: "https://old.invalid"},
@@ -254,25 +215,5 @@ func TestProtocolRoutesKeepHistoricalSourceCapabilities(t *testing.T) {
 	}
 	if _, err := registry.CompactorFor(llm.Origin{}); err == nil {
 		t.Fatal("missing source defaulted to a protocol")
-	}
-	if _, err := registry.LoopFor(llm.APITypeResponse); err == nil {
-		t.Fatal("missing dialogue capability accepted")
-	}
-}
-func TestRegistryTreatsTypedNilCapabilitiesAsAbsent(t *testing.T) {
-	registry := routes.New()
-	var loop *testLoop
-	var compactor *testCompactor
-	if err := registry.Register(routes.Binding{APIType: testProtocol, Loop: loop, Compactor: compactor}); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.Seal(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := registry.LoopFor(testProtocol); err == nil {
-		t.Fatal("typed nil loop accepted")
-	}
-	if _, err := registry.CompactorFor(llm.Origin{APIType: testProtocol}); err == nil {
-		t.Fatal("typed nil compactor accepted")
 	}
 }

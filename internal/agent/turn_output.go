@@ -16,7 +16,7 @@ type foregroundTurnOutput struct {
 
 type backgroundTurnOutput struct{}
 
-func (o foregroundTurnOutput) StartStream(ctx context.Context) delivery.MessageStream {
+func (o foregroundTurnOutput) StartStream(ctx context.Context) (delivery.MessageStream, error) {
 	return o.sender.StartStream(ctx)
 }
 
@@ -50,7 +50,9 @@ func (o foregroundTurnOutput) StartReasoning(ctx context.Context) dialogue.Reaso
 	return o.sender.StartReasoning(ctx)
 }
 
-func (o backgroundTurnOutput) StartStream(ctx context.Context) delivery.MessageStream { return nil }
+func (o backgroundTurnOutput) StartStream(ctx context.Context) (delivery.MessageStream, error) {
+	return nil, nil
+}
 
 func (o backgroundTurnOutput) FinishIntermediate(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string, streaming bool) error {
 	return nil

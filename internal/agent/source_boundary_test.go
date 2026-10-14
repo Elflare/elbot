@@ -60,11 +60,11 @@ func TestFinalLLMTakeoverUsesForegroundHookAndReceipt(t *testing.T) {
 			if outputEvent.Platform.ScopeID != "private:1" || outputEvent.Actor.ID != "qq:1" {
 				t.Errorf("output hook retained background identity: %#v / %#v", outputEvent.Platform, outputEvent.Actor)
 			}
-			mapped, err := a.dialogue.Replies.Messages.FindByPlatformMessage(ctx, "qq", "private:1", "sent")
+			mapped, err := a.message.messages.FindByPlatformMessage(ctx, "qq", "private:1", "sent")
 			if err != nil || mapped.ID != result.MessageID {
 				t.Errorf("foreground mapping=%#v/%v", mapped, err)
 			}
-			if _, err := a.dialogue.Replies.Messages.FindByPlatformMessage(ctx, "qq", "cron:takeover", "sent"); !errors.Is(err, storage.ErrNotFound) {
+			if _, err := a.message.messages.FindByPlatformMessage(ctx, "qq", "cron:takeover", "sent"); !errors.Is(err, storage.ErrNotFound) {
 				t.Errorf("background mapping remained: %v", err)
 			}
 		})

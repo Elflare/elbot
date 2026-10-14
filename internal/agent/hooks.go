@@ -96,7 +96,7 @@ func (h *HookBridge) ObserveRun(ctx context.Context, event hook.Event, info hook
 		sessionID = strings.TrimSpace(event.Request.SessionID)
 	}
 	label := strings.TrimSpace(info.Name)
-	_, reqCtx, done, _ := h.requests.Start(ctx, request.StartRequest{
+	_, reqCtx, done := h.requests.Start(ctx, request.StartRequest{
 		ParentID:  contextinfo.RootRequestIDFromContext(ctx),
 		SessionID: sessionID,
 		Kind:      request.KindHook,

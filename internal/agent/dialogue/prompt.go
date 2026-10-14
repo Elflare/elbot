@@ -89,18 +89,6 @@ type ToolNameProvider interface {
 	ToolNames(ctx context.Context, mode string, session *storage.Session, scope session.Scope) (PromptToolNames, error)
 }
 
-type NoopToolSchemaProvider struct{}
-
-func (NoopToolSchemaProvider) Schemas(context.Context, string, *storage.Session, session.Scope) ([]llm.ToolSchema, error) {
-	// Tool Runtime 未配置时不注入工具 schema；实际实现由 tool.SchemaProvider 提供。
-	return nil, nil
-}
-
-func (NoopToolSchemaProvider) ToolNames(context.Context, string, *storage.Session, session.Scope) (PromptToolNames, error) {
-	// Tool Runtime 未配置时不注入工具名称；实际实现由 tool.SchemaProvider 提供。
-	return PromptToolNames{}, nil
-}
-
 func ToolNamesText(names PromptToolNames) string {
 	parts := make([]string, 0, 3)
 	if len(names.Tools) > 0 {

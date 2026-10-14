@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"elbot/internal/contextinfo"
@@ -78,9 +77,6 @@ func (r *IdentityResolver) Actor(ctx context.Context) contextinfo.Actor {
 		platformUserID = strings.TrimPrefix(platformUserID, prefix)
 	}
 	policy := r.policy
-	if policy == nil {
-		policy = security.DefaultPolicy()
-	}
 	actor := policy.Actor(identity.ActorID, platformName, platformUserID, identity.DisplayName)
 	actor.Nickname = identity.Nickname
 	actor.GroupCard = identity.GroupCard
@@ -92,9 +88,6 @@ func (r *IdentityResolver) SourceActor(ctx context.Context) contextinfo.Actor {
 	actor, hasActor := contextinfo.ActorFromContext(ctx)
 	if info, ok := contextinfo.ConversationFromContext(ctx); ok && !hasActor && (info.Identity.PlatformUserID != "" || info.Identity.ActorID != "") {
 		policy := r.policy
-		if policy == nil {
-			policy = security.DefaultPolicy()
-		}
 		actor = policy.Actor(info.Identity.ActorID, info.Source.Platform, info.Identity.PlatformUserID, info.Identity.DisplayName)
 		actor.Nickname, actor.GroupCard = info.Identity.Nickname, info.Identity.GroupCard
 		if msg, ok := platform.MessageContextFrom(ctx); ok {
@@ -120,16 +113,13 @@ type IdentityResolverDeps struct {
 }
 
 // NewIdentityResolver initializes IdentityResolver without installing cross-service callbacks.
-func NewIdentityResolver(deps IdentityResolverDeps) (*IdentityResolver, error) {
-	if deps.Policy == nil {
-		return nil, fmt.Errorf("IdentityResolver policy is required")
-	}
+func NewIdentityResolver(deps IdentityResolverDeps) *IdentityResolver {
 	return &IdentityResolver{
 		platformName: deps.PlatformName,
 		actorID:      deps.ActorID,
 		scopeID:      deps.ScopeID,
 		policy:       deps.Policy,
-	}, nil
+	}
 }
 
 func (r *IdentityResolver) Policy() *security.Policy { return r.policy }

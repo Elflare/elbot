@@ -131,7 +131,10 @@ func TestPlatformMediaCopiesShareResolutionWithoutDroppingPositions(t *testing.T
 		Segments: []platform.MessageSegment{segment, segment}, ContextSegments: []platform.MessageSegment{segment},
 		Reply: platform.ReplyContext{Segments: []platform.MessageSegment{segment}},
 	}
-	ctx := a.materializePlatformMedia(platform.WithMessageContext(context.Background(), original))
+	ctx, err := a.materializePlatformMedia(platform.WithMessageContext(context.Background(), original))
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, _ := platform.MessageContextFrom(ctx)
 	if resolver.calls != 1 || len(got.Segments) != 2 || len(got.ContextSegments) != 1 || len(got.Reply.Segments) != 1 {
 		t.Fatalf("resolution calls = %d, message = %#v", resolver.calls, got)

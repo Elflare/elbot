@@ -78,34 +78,7 @@ type LoopDeps struct {
 	System   dialogue.SystemPromptManager
 }
 
-func NewLoop(deps LoopDeps) (*Loop, error) {
-	if deps.Status == nil {
-		return nil, fmt.Errorf("Status is required")
-	}
-	if deps.Store == nil {
-		return nil, fmt.Errorf("Store is required")
-	}
-	if deps.Contexts == nil {
-		return nil, fmt.Errorf("Contexts is required")
-	}
-	if deps.Models == nil {
-		return nil, fmt.Errorf("Models is required")
-	}
-	if deps.Turns == nil {
-		return nil, fmt.Errorf("Turns is required")
-	}
-	if deps.Preparer == nil {
-		return nil, fmt.Errorf("Preparer is required")
-	}
-	if deps.Tools == nil {
-		return nil, fmt.Errorf("Tools is required")
-	}
-	if deps.Messages == nil {
-		return nil, fmt.Errorf("Messages is required")
-	}
-	if deps.Calls == nil {
-		return nil, fmt.Errorf("Calls is required")
-	}
+func NewLoop(deps LoopDeps) *Loop {
 	return &Loop{
 		Status:        deps.Status,
 		Contexts:      deps.Contexts,
@@ -118,7 +91,7 @@ func NewLoop(deps LoopDeps) (*Loop, error) {
 		Caller:        &Caller{Calls: deps.Calls},
 		PromptBuilder: PromptBuilder{System: deps.System},
 		compactor:     &Compactor{Store: deps.Store, Models: deps.Models, Contexts: deps.Contexts, Loader: contextmgr.Loader{Store: deps.Store}},
-	}, nil
+	}
 }
 
 func (r *Loop) Compactor() contextmgr.Compactor    { return r.compactor }

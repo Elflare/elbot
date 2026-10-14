@@ -24,7 +24,7 @@ type FileCommandPreparer struct {
 }
 
 func fileRollbackContext(ctx context.Context, service *fileops.Service, sessions *session.Service, turns *turn.Manager, requests *request.Manager, identity dialogue.Identity, row *storage.Session, idleOnly ...bool) context.Context {
-	if row == nil || service == nil {
+	if row == nil {
 		return ctx
 	}
 	if isBackgroundSession(row) {
@@ -57,9 +57,6 @@ func fileRollbackContext(ctx context.Context, service *fileops.Service, sessions
 func (p *FileCommandPreparer) PrepareFileCommand(ctx context.Context, idleOnly bool) (context.Context, error) {
 	if p.identity.Actor(ctx).Role != contextinfo.RoleSuperadmin {
 		return ctx, fmt.Errorf("rollback requires superadmin role")
-	}
-	if p.service == nil {
-		return ctx, fmt.Errorf("file rollback is not configured")
 	}
 	row, binding, err := p.sessions.CurrentBound(ctx, p.identity.Scope(ctx))
 	if err != nil {
@@ -95,22 +92,7 @@ type FileCommandPreparerDeps struct {
 }
 
 // NewFileCommandPreparer initializes FileCommandPreparer without installing cross-service callbacks.
-func NewFileCommandPreparer(deps FileCommandPreparerDeps) (*FileCommandPreparer, error) {
-	if deps.Sessions == nil {
-		return nil, fmt.Errorf("FileCommandPreparer sessions is required")
-	}
-	if deps.SessionRows == nil {
-		return nil, fmt.Errorf("FileCommandPreparer sessionRows is required")
-	}
-	if deps.Turns == nil {
-		return nil, fmt.Errorf("FileCommandPreparer turns is required")
-	}
-	if deps.Requests == nil {
-		return nil, fmt.Errorf("FileCommandPreparer requests is required")
-	}
-	if deps.Identity == nil {
-		return nil, fmt.Errorf("FileCommandPreparer identity is required")
-	}
+func NewFileCommandPreparer(deps FileCommandPreparerDeps) *FileCommandPreparer {
 	return &FileCommandPreparer{
 		service:     deps.Service,
 		sessions:    deps.Sessions,
@@ -118,5 +100,5 @@ func NewFileCommandPreparer(deps FileCommandPreparerDeps) (*FileCommandPreparer,
 		turns:       deps.Turns,
 		requests:    deps.Requests,
 		identity:    deps.Identity,
-	}, nil
+	}
 }

@@ -19,7 +19,7 @@ type ConfirmationIdentity interface {
 }
 
 type ConfirmationOutput interface {
-	SendChat(context.Context, string)
+	SendChat(context.Context, string) error
 	SendAssistant(context.Context, string) (delivery.Receipt, events.LogResult, error)
 }
 

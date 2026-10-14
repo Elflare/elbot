@@ -114,10 +114,7 @@ func TestHookObserverTracksHookRequestUnderTurn(t *testing.T) {
 	requests := request.NewManager(time.Minute)
 	bridge := &HookBridge{requests: requests}
 	manager.SetObserver(bridge.ObserveRun)
-	parent, parentCtx, parentDone, err := requests.Start(context.Background(), request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
-	if err != nil {
-		t.Fatalf("start turn: %v", err)
-	}
+	parent, parentCtx, parentDone := requests.Start(context.Background(), request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
 	defer parentDone()
 	ctx := parentCtx
 

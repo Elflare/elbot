@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
+	"elbot/internal/storage/sqlite"
 	"elbot/internal/tool"
 	"elbot/internal/toolrun"
 	"elbot/internal/turn"
@@ -82,6 +84,26 @@ func assembleTestOptions(t *testing.T, opts testAgentOptions) testAssembly {
 	if opts.Media == nil {
 		root := t.TempDir()
 		opts.Media = media.NewManager(opts.Store, root, &media.LocalBackend{Root: root})
+	}
+	if opts.ResidentMemoryStore == nil {
+		opts.ResidentMemoryStore = resident.NewStore(filepath.Join(t.TempDir(), "memory.toml"))
+	}
+	if opts.FileRollback == nil {
+		opts.FileRollback = fileops.NewService(nil)
+	}
+	if opts.SessionConfig.DefaultMode == "" {
+		opts.SessionConfig.DefaultMode = defaults.Session.DefaultMode
+	}
+	if opts.SessionConfig.TriggerStep <= 0 {
+		opts.SessionConfig.TriggerStep = defaults.Session.Naming.TriggerStep
+	}
+	if opts.Media.History == nil {
+		history, err := sqlite.NewChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = history.Close() })
+		opts.Media.History = history.Repository()
 	}
 	dispatcher := dispatch.New(dispatch.Options{Primary: opts.Platform, Store: opts.Store, Media: opts.Media, MediaRetentionDays: defaults.Maintenance.SandboxCleanup.RetentionDays})
 	connectFixtureNotifications(t, opts.Platform.Name(), dispatcher)

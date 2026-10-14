@@ -43,11 +43,7 @@ func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.
 		release()
 		return nil, err
 	}
-	info, reqCtx, done, err := c.requests.Start(locked, request.StartRequest{SessionID: current.ID, Kind: request.KindCompress, Label: "compact"})
-	if err != nil {
-		release()
-		return nil, err
-	}
+	info, reqCtx, done := c.requests.Start(locked, request.StartRequest{SessionID: current.ID, Kind: request.KindCompress, Label: "compact"})
 	if !c.turns.StartCompactRun(current.ID, info.ID, turn.ExecutionFromContext(ctx)) {
 		done()
 		release()

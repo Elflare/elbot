@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -27,13 +28,16 @@ type CommandExecutor struct {
 }
 
 func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error) {
-	if e == nil || e.router == nil || !e.router.IsCommand(text) {
+	if !e.router.IsCommand(text) {
 		return false, nil
 	}
 
 	parsed := e.router.Parse(text)
 	info, hasInfo := e.router.CommandInfo(parsed.Name)
 	sessionRow, binding, sessionErr := e.sessions.CurrentBound(ctx, e.identity.Scope(ctx))
+	if sessionErr != nil && !errors.Is(sessionErr, storage.ErrNotFound) {
+		return true, sessionErr
+	}
 	if sessionErr == nil {
 		ctx = session.WithBinding(ctx, binding)
 	}
@@ -52,8 +56,7 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 		return true, err
 	}
 	if sessionErr == nil && hasInfo && e.execution.CompactActive(sessionRow.ID) && blocksDuringCompact(info.SessionEffect) {
-		e.output.SendChat(ctx, compactCommandBlockedText(text))
-		return true, nil
+		return true, e.output.SendChat(ctx, compactCommandBlockedText(text))
 	}
 
 	actor, _ := contextinfo.ActorFromContext(ctx)
@@ -88,8 +91,7 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 			}
 			_ = globalevents.EmitLog(ctx, record)
 		}
-		e.output.SendChat(ctx, fmt.Sprintf("命令 %s%s 需要超级管理员权限。", parsed.Prefix, parsed.Name))
-		return true, nil
+		return true, e.output.SendChat(ctx, fmt.Sprintf("命令 %s%s 需要超级管理员权限。", parsed.Prefix, parsed.Name))
 	}
 
 	if parsed.Name == "tools" {
@@ -135,7 +137,7 @@ type CommandExecution interface {
 }
 
 type CommandOutput interface {
-	SendChat(context.Context, string)
+	SendChat(context.Context, string) error
 }
 
 type CommandConfirmations interface {
@@ -159,31 +161,7 @@ type CommandExecutorDeps struct {
 }
 
 // NewCommandExecutor initializes CommandExecutor without installing cross-service callbacks.
-func NewCommandExecutor(deps CommandExecutorDeps) (*CommandExecutor, error) {
-	if deps.Router == nil {
-		return nil, fmt.Errorf("CommandExecutor router is required")
-	}
-	if deps.Sessions == nil {
-		return nil, fmt.Errorf("CommandExecutor sessions is required")
-	}
-	if deps.Turns == nil {
-		return nil, fmt.Errorf("CommandExecutor turns is required")
-	}
-	if deps.Identity == nil {
-		return nil, fmt.Errorf("CommandExecutor identity is required")
-	}
-	if deps.Execution == nil {
-		return nil, fmt.Errorf("CommandExecutor execution is required")
-	}
-	if deps.Output == nil {
-		return nil, fmt.Errorf("CommandExecutor output is required")
-	}
-	if deps.Confirmations == nil {
-		return nil, fmt.Errorf("CommandExecutor confirmations is required")
-	}
-	if deps.Input == nil {
-		return nil, fmt.Errorf("CommandExecutor input is required")
-	}
+func NewCommandExecutor(deps CommandExecutorDeps) *CommandExecutor {
 	return &CommandExecutor{
 		router:        deps.Router,
 		sessions:      deps.Sessions,
@@ -193,7 +171,7 @@ func NewCommandExecutor(deps CommandExecutorDeps) (*CommandExecutor, error) {
 		output:        deps.Output,
 		confirmations: deps.Confirmations,
 		input:         deps.Input,
-	}, nil
+	}
 }
 
 func (e *CommandExecutor) IsCommand(text string) bool { return e.router.IsCommand(text) }

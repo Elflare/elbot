@@ -45,7 +45,10 @@ func TestMediaCanonicalPersistenceAndSessionRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	segments := dialogue.MessageSegmentsFromStorage(messages[0].Segments)
+	segments, err := dialogue.MessageSegmentsFromStorage(messages[0].Segments)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(segments) != 2 || !media.ValidID(segments[1].MediaID) || segments[1].URL != "" {
 		t.Fatalf("stored segments: %#v", segments)
 	}

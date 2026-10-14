@@ -52,9 +52,6 @@ type Module struct {
 func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	m := &Module{ctx: ctx, cancel: cancel, bindings: &signalBindings{}, done: make(chan struct{})}
-	if deps.Store == nil || deps.Models == nil {
-		return m, fmt.Errorf("dialogue store and models are required")
-	}
 	m.routes = routes.New()
 	m.sessions = session.NewServiceWithConfig(deps.Store, session.Config{NamingConfig: session.NamingConfig{TriggerStep: deps.Session.Naming.TriggerStep}, DefaultMode: deps.Session.DefaultMode}, session.NewTitleGenerator(deps.Models))
 	m.requests = request.NewManager(0)
@@ -65,10 +62,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 	signals := agentevents.NewSignals()
 	m.statusChanged = signals.StatusChanged
 	view := dialogue.ExecutionView{Sessions: deps.Store.Sessions()}
-	identity, err := agent.NewIdentityResolver(agent.IdentityResolverDeps{PlatformName: deps.PlatformName, ActorID: "cli:local", ScopeID: "local", Policy: deps.Policy})
-	if err != nil {
-		return m, err
-	}
+	identity := agent.NewIdentityResolver(agent.IdentityResolverDeps{PlatformName: deps.PlatformName, ActorID: "cli:local", ScopeID: "local", Policy: deps.Policy})
 	bridge := agent.NewHookBridge(agent.HookBridgeDeps{
 		Manager:    deps.HookRunner,
 		Router:     deps.HookRouter,
@@ -79,19 +73,10 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		Dispatcher: deps.Dispatcher,
 	})
 	m.bridge = bridge
-	status, err := agent.NewStatusRecorder(agent.StatusRecorderDeps{View: view, Turns: m.turns, Changed: signals.StatusChanged})
-	if err != nil {
-		return m, err
-	}
-	output, err := agent.NewOutputSender(agent.OutputSenderDeps{Dispatcher: deps.Dispatcher, Hooks: bridge, Reasoning: deps.Reasoning})
-	if err != nil {
-		return m, err
-	}
-	policy, err := agent.NewConfirmationPolicy(agent.ConfirmationPolicyDeps{Identity: identity, IdleExpiration: sessionIdleExpirationConfig(deps.Session.IdleExpiration), UserConfirmationTimeout: 10 * time.Minute})
-	if err != nil {
-		return m, err
-	}
-	confirmations, err := agent.NewConfirmationCoordinator(agent.ConfirmationCoordinatorDeps{
+	status := agent.NewStatusRecorder(agent.StatusRecorderDeps{View: view, Turns: m.turns, Changed: signals.StatusChanged})
+	output := agent.NewOutputSender(agent.OutputSenderDeps{Dispatcher: deps.Dispatcher, Hooks: bridge, Reasoning: deps.Reasoning})
+	policy := agent.NewConfirmationPolicy(agent.ConfirmationPolicyDeps{Identity: identity, IdleExpiration: sessionIdleExpirationConfig(deps.Session.IdleExpiration), UserConfirmationTimeout: 10 * time.Minute})
+	confirmations := agent.NewConfirmationCoordinator(agent.ConfirmationCoordinatorDeps{
 		Sessions: m.sessions,
 		Requests: m.requests,
 		Turns:    m.turns,
@@ -100,13 +85,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		Output:   output,
 		Policy:   policy,
 	})
-	if err != nil {
-		return m, err
-	}
-	toolRuntime, err := agent.NewToolRuntimeState(agent.ToolRuntimeStateDeps{Provider: nil, Manager: deps.ToolManager, Registry: deps.Registry, FileRollback: deps.Files, Identity: identity})
-	if err != nil {
-		return m, err
-	}
+	toolRuntime := agent.NewToolRuntimeState(agent.ToolRuntimeStateDeps{Provider: nil, Manager: deps.ToolManager, Registry: deps.Registry, FileRollback: deps.Files, Identity: identity})
 	toolDeps := agent.NewToolRunDeps(agent.ToolRunDeps{
 		Status:        status,
 		Hooks:         bridge,
@@ -121,11 +100,10 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		Confirmations: confirmations,
 		View:          view,
 	})
-	runner, err := dialogue.NewRunner(dialogue.RunnerDeps{
+	runner := dialogue.NewRunner(dialogue.RunnerDeps{
 		Status:          status,
 		Routes:          m.routes,
 		Dialogues:       deps.Store.Dialogues(),
-		MessageRows:     deps.Store.Messages(),
 		Sessions:        m.sessions,
 		Turns:           m.turns,
 		Contexts:        m.contexts,
@@ -146,10 +124,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		Signals:         signals,
 		View:            view,
 	})
-	if err != nil {
-		return m, err
-	}
-	chat, err := chatroute.NewLoop(chatroute.LoopDeps{
+	chat := chatroute.NewLoop(chatroute.LoopDeps{
 		Status:   status,
 		Store:    deps.Store,
 		Contexts: m.contexts,
@@ -162,10 +137,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		Calls:    runner.Calls,
 		System:   runner.System,
 	})
-	if err != nil {
-		return m, err
-	}
-	response, err := responseroute.NewLoop(responseroute.LoopDeps{
+	response := responseroute.NewLoop(responseroute.LoopDeps{
 		Status:     status,
 		Repository: deps.Store.Dialogues(),
 		Models:     deps.Models,
@@ -177,12 +149,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		Calls:      runner.Calls,
 		System:     runner.System,
 	})
-	if err != nil {
-		return m, err
-	}
-	if err := bindProtocolRoutes(m.routes, chat, response); err != nil {
-		return m, err
-	}
+	bindProtocolRoutes(m.routes, chat, response)
 	m.sessions.SetMaterials(m.routes)
 	if err := m.contexts.CheckCompaction(llm.Origin{APIType: llm.APITypeChat}); err != nil {
 		return m, fmt.Errorf("context compaction wiring: %w", err)
@@ -190,7 +157,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 	m.sessions.SetForegroundCheck(func(_ context.Context, source *storage.Session) error {
 		return view.CheckSelection(source, deps.Models.ResolveMode(storage.SessionModeWork))
 	})
-	execution, err := wireExecution(ctx, agent.ExecutionCoordinatorDeps{
+	execution := wireExecution(ctx, agent.ExecutionCoordinatorDeps{
 		Sessions:        m.sessions,
 		SessionRows:     deps.Store.Sessions(),
 		Turns:           m.turns,
@@ -205,11 +172,8 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		WaitPolicy:      policy,
 		ResponseTimeout: deps.ResponseTimeout,
 	})
-	if err != nil {
-		return m, err
-	}
 	m.execution = execution
-	input, err := agent.NewInputCoordinator(agent.InputCoordinatorDeps{
+	input := agent.NewInputCoordinator(agent.InputCoordinatorDeps{
 		Sessions:      m.sessions,
 		SessionRows:   deps.Store.Sessions(),
 		Turns:         m.turns,
@@ -223,10 +187,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		ToolState:     deps.ToolState,
 		WaitPolicy:    policy,
 	})
-	if err != nil {
-		return m, err
-	}
-	fileCommands, err := agent.NewFileCommandPreparer(agent.FileCommandPreparerDeps{
+	fileCommands := agent.NewFileCommandPreparer(agent.FileCommandPreparerDeps{
 		Service:     deps.Files,
 		Sessions:    m.sessions,
 		SessionRows: deps.Store.Sessions(),
@@ -234,9 +195,6 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		Requests:    m.requests,
 		Identity:    identity,
 	})
-	if err != nil {
-		return m, err
-	}
 	commands, err := wireCommands(agent.CommandExecutorDeps{
 		Router:        m.commands,
 		Sessions:      m.sessions,
@@ -269,7 +227,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 	if err != nil {
 		return m, err
 	}
-	handler, err := agent.NewMessageHandler(agent.MessageHandlerDeps{
+	handler := agent.NewMessageHandler(agent.MessageHandlerDeps{
 		Identity:  identity,
 		Hooks:     bridge,
 		Output:    output,
@@ -279,9 +237,6 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		Messages:  deps.Store.Messages(),
 		MediaRows: deps.Store.Media(),
 	})
-	if err != nil {
-		return m, err
-	}
 	completion := agent.NewCompletion(agent.CompletionDeps{
 		Commands:  m.commands,
 		Sessions:  m.sessions,
@@ -330,11 +285,8 @@ func (m *Module) Identity() agent.BackgroundIdentity     { return m.identity }
 func (m *Module) ObserveHookRun() hook.Observer          { return m.bridge.ObserveRun }
 
 // wireExecution installs synchronous participants on this assembly's private Sessions.
-func wireExecution(ctx context.Context, deps agent.ExecutionCoordinatorDeps) (*agent.ExecutionCoordinator, error) {
-	execution, err := agent.NewExecutionCoordinator(ctx, deps)
-	if err != nil {
-		return nil, err
-	}
+func wireExecution(ctx context.Context, deps agent.ExecutionCoordinatorDeps) *agent.ExecutionCoordinator {
+	execution := agent.NewExecutionCoordinator(ctx, deps)
 	deps.Sessions.SetActivitySource(func() []string {
 		var ids []string
 		for _, active := range deps.Turns.SnapshotAll() {
@@ -344,7 +296,7 @@ func wireExecution(ctx context.Context, deps agent.ExecutionCoordinatorDeps) (*a
 		}
 		return ids
 	})
-	return execution, nil
+	return execution
 }
 func sessionIdleExpirationConfig(cfg config.SessionIdleExpirationConfig) session.IdleExpirationConfig {
 	return session.IdleExpirationConfig{
@@ -357,21 +309,13 @@ func sessionIdleExpirationConfig(cfg config.SessionIdleExpirationConfig) session
 
 // wireCommands constructs the command consumer and registers its modules.
 func wireCommands(deps agent.CommandExecutorDeps, modules commandbuiltin.Deps) (*agent.CommandExecutor, error) {
-	executor, err := agent.NewCommandExecutor(deps)
-	if err != nil {
-		return nil, err
-	}
+	executor := agent.NewCommandExecutor(deps)
 	if err := commandbuiltin.RegisterDefaultModules(deps.Router, modules); err != nil {
 		return nil, err
 	}
 	return executor, nil
 }
-func bindProtocolRoutes(registry *routes.Registry, chat *chatroute.Loop, response *responseroute.Loop) error {
-	if err := registry.Register(routes.Binding{APIType: llm.APITypeChat, Loop: chat, Compactor: chat.Compactor(), Material: chat.Material()}); err != nil {
-		return err
-	}
-	if err := registry.Register(routes.Binding{APIType: llm.APITypeResponse, Loop: response, Compactor: response.Compactor(), Material: response.Material()}); err != nil {
-		return err
-	}
-	return registry.Seal()
+func bindProtocolRoutes(registry *routes.Registry, chat *chatroute.Loop, response *responseroute.Loop) {
+	registry.Register(routes.Binding{APIType: llm.APITypeChat, Loop: chat, Compactor: chat.Compactor(), Material: chat.Material()})
+	registry.Register(routes.Binding{APIType: llm.APITypeResponse, Loop: response, Compactor: response.Compactor(), Material: response.Material()})
 }

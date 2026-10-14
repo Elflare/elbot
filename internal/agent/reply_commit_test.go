@@ -17,6 +17,8 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
+	"elbot/internal/security"
+	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
@@ -33,14 +35,6 @@ func (r *replyTestRepository) Append(ctx context.Context, msg *storage.Message) 
 		return r.appendErr
 	}
 	return r.MessageRepository.Append(ctx, msg)
-}
-
-func (r *replyTestRepository) MapPlatformMessage(ctx context.Context, m storage.PlatformMessageMap) error {
-	*r.events = append(*r.events, "map")
-	if r.mapErr != nil {
-		return r.mapErr
-	}
-	return r.MessageRepository.MapPlatformMessage(ctx, m)
 }
 
 type replyTestPlatform struct {
@@ -181,10 +175,10 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 
 	sender := &OutputSender{
 		dispatcher: dispatch.New(dispatch.Options{Primary: f.platform}),
-		hooks:      &HookBridge{manager: f.hooks, identity: &IdentityResolver{platformName: "cli"}},
+		hooks:      &HookBridge{manager: f.hooks, identity: &IdentityResolver{platformName: "cli", policy: security.DefaultPolicy()}},
 	}
-	messages := &dialogue.MessageStore{Dialogues: replyTestDialogues{DialogueRepository: store.Dialogues(), repo: f.repo}}
-	f.committer = &dialogue.ReplyCommitter{Messages: f.repo, Persistence: messages.Committer("append_assistant_message"), Output: sender}
+	messages := &dialogue.MessageStore{Dialogues: replyTestDialogues{DialogueRepository: store.Dialogues(), repo: f.repo}, Gate: &dialogue.CommitGate{Sessions: session.NewService(store), Turns: turn.NewManager(), View: dialogue.ExecutionView{Sessions: store.Sessions()}}}
+	f.committer = &dialogue.ReplyCommitter{Persistence: messages.Committer("append_assistant_message"), Output: sender}
 	f.out = foregroundTurnOutput{sender: sender}
 	f.in = dialogue.ReplyCommitInput{Session: row, Text: "history", RawText: "raw", PlatformText: "visible", Outputs: []delivery.Output{delivery.Text("later")}}
 	return f
@@ -211,14 +205,11 @@ func TestReplyCommitOrderAndTextSeparation(t *testing.T) {
 			f := newReplyTestFixture(t, mode == "buffered")
 			f.captureHooks(t)
 			var stream *replyTestStream
-			wantOrder := []string{"/turn", "/send", "send", "outputs", "save", "map"}
-			if mode == "buffered" {
-				wantOrder = []string{"/turn", "save", "/send", "send", "map", "outputs"}
-			}
+			wantOrder := []string{"/turn", "/send", "send", "save", "map", "outputs"}
 			if mode == "stream" {
 				stream = &replyTestStream{events: &f.events, replaceReceipt: f.platform.receipt, wantCtx: f.requestCtx, t: t}
 				f.in.Stream = stream
-				wantOrder = []string{"/turn", "/send", "replace", "finish", "outputs", "save", "map"}
+				wantOrder = []string{"/turn", "/send", "replace", "finish", "save", "map", "outputs"}
 			}
 			got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
 			if err != nil || !got.Persisted || got.MessageID == "" || got.RawText != "raw" {
@@ -259,38 +250,48 @@ func TestReplyCommitFailureKeepsFactsAndDoesNotRetry(t *testing.T) {
 					f.platform.sendErr = sendErr
 					f.platform.receipt = delivery.Receipt{}
 					wantReceipt = false
-					wantPersisted = buffered
+					wantPersisted = false
 				case "partial":
 					f.platform.sendErr = sendErr
 				case "save":
 					f.repo.appendErr = saveErr
 					wantErr = saveErr
 					wantPersisted = false
-					wantReceipt = !buffered
+					wantReceipt = true
 				case "partial_and_save":
 					f.platform.sendErr = sendErr
 					f.repo.appendErr = saveErr
 					wantErr = saveErr
 					wantPersisted = false
-					wantReceipt = !buffered
+					wantReceipt = true
 				case "outputs":
 					f.platform.outputsErr = sendErr
 				case "map":
 					f.repo.mapErr = mapErr
-					wantErr = nil
+					wantErr = mapErr
+					wantPersisted = false
 				}
 				got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
 				if !errors.Is(err, wantErr) || got.Persisted != wantPersisted || dialogue.HasReplyReceipt(got.Receipt) != wantReceipt {
 					t.Fatalf("result=%+v err=%v events=%v", got, err, f.events)
 				}
-				if !errors.Is(got.PersistErr, f.repo.appendErr) {
+				if failure != "map" && !errors.Is(got.PersistErr, f.repo.appendErr) {
 					t.Fatalf("lost save failure: %+v", got)
 				}
 				if failure == "partial_and_save" && !buffered && !errors.Is(got.SendErr, sendErr) {
 					t.Fatalf("lost earlier send failure: %+v", got)
 				}
-				if failure == "map" && (len(got.AssociationErrors) != 1 || !errors.Is(got.AssociationErrors[0], mapErr)) {
+				if failure == "map" && !errors.Is(got.PersistErr, mapErr) {
 					t.Fatalf("lost association failure: %+v", got)
+				}
+				if failure == "map" {
+					rows, err := f.repo.ListBySession(f.ctx, f.in.Session.ID)
+					if err != nil || len(rows) != 0 {
+						t.Fatalf("failed transaction retained history: %+v %v", rows, err)
+					}
+					if _, err := f.repo.FindByPlatformMessage(f.ctx, "telegram", "private:actual", "sent"); !errors.Is(err, storage.ErrNotFound) {
+						t.Fatalf("failed transaction retained mapping: %v", err)
+					}
 				}
 				sends, maps := 0, 0
 				for _, event := range f.events {
@@ -302,10 +303,7 @@ func TestReplyCommitFailureKeepsFactsAndDoesNotRetry(t *testing.T) {
 					}
 				}
 				wantSends := 1
-				if buffered && f.repo.appendErr != nil {
-					wantSends = 0
-				}
-				if sends != wantSends || (maps > 0) != (wantPersisted && wantReceipt) {
+				if sends != wantSends || (maps > 0) != (wantReceipt && f.repo.appendErr == nil) {
 					t.Fatalf("unexpected retry/association: %v", f.events)
 				}
 				if wantPersisted && wantReceipt && failure != "map" {
@@ -479,7 +477,17 @@ func (r replyTestDialogues) Commit(ctx context.Context, commit storage.DialogueC
 			return events.LogResult{ResultStatus: events.ResultFailed}, r.repo.appendErr
 		}
 	}
-	return r.DialogueRepository.Commit(ctx, commit)
+	for range commit.PlatformMessageMaps {
+		*r.repo.events = append(*r.repo.events, "map")
+	}
+	if r.repo.mapErr != nil && len(commit.PlatformMessageMaps) > 0 {
+		commit.PlatformMessageMaps = append(commit.PlatformMessageMaps, commit.PlatformMessageMaps[0])
+	}
+	logResult, err := r.DialogueRepository.Commit(ctx, commit)
+	if err != nil && r.repo.mapErr != nil {
+		err = errors.Join(err, r.repo.mapErr)
+	}
+	return logResult, err
 }
 
 func TestChatReplySaveFailureKeepsExecutionFailed(t *testing.T) {
@@ -521,9 +529,6 @@ func TestChatReplySaveFailureKeepsExecutionFailed(t *testing.T) {
 				}
 			}
 			wantAnswers := 1
-			if buffered {
-				wantAnswers = 0
-			}
 			if answers != wantAnswers {
 				t.Fatalf("assistant sends=%d want=%d texts=%q", answers, wantAnswers, p.texts)
 			}

@@ -2,6 +2,7 @@ package module
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
+	"elbot/internal/media"
+	"elbot/internal/memory/resident"
 	"elbot/internal/modelmgr"
 	"elbot/internal/security"
 	"elbot/internal/storage"
@@ -53,7 +56,9 @@ func isolatedModuleDeps(t *testing.T) ModuleDeps {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = router.Close(context.Background()) })
-	return ModuleDeps{HookRunner: hooks, HookRouter: router, PlatformName: "cli", Store: store, Models: models, Policy: policy, Dispatcher: sender, Registry: registry, ToolManager: toolrun.NewManager(registry, policy), Preloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}), ToolState: toolrun.NewStateService(store), Files: fileops.NewService(nil), Session: config.SessionConfig{DefaultMode: "work", Naming: config.SessionNamingConfig{TriggerStep: 100}}, MaxRounds: 2, Prefixes: []string{"/"}, PageSize: 10}
+	root := t.TempDir()
+	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
+	return ModuleDeps{Media: center, Memory: resident.NewStore(filepath.Join(t.TempDir(), "memory.toml")), HookRunner: hooks, HookRouter: router, PlatformName: "cli", Store: store, Models: models, Policy: policy, Dispatcher: sender, Registry: registry, ToolManager: toolrun.NewManager(registry, policy), Preloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}), ToolState: toolrun.NewStateService(store), Files: fileops.NewService(nil), Session: config.SessionConfig{DefaultMode: "work", Naming: config.SessionNamingConfig{TriggerStep: 100}}, MaxRounds: 2, Prefixes: []string{"/"}, PageSize: 10}
 }
 func TestStandaloneDialogueOwnsStateAndBorrowsOnlyCapabilities(t *testing.T) {
 	deps := isolatedModuleDeps(t)
@@ -103,7 +108,9 @@ func TestStandaloneDialogueOwnsStateAndBorrowsOnlyCapabilities(t *testing.T) {
 }
 func TestDialoguePartialConstructionCleansOwnedState(t *testing.T) {
 	deps := isolatedModuleDeps(t)
-	deps.MaxRounds = 0
+	if err := deps.Models.ModelRetrying().Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	m, err := NewModule(t.Context(), deps)
 	if err == nil || m == nil || m.sessions == nil {
 		t.Fatal(m, err)

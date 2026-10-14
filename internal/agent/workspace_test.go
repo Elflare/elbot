@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"testing"
 
+	"elbot/internal/fileops"
 	"elbot/internal/llm"
+	"elbot/internal/security"
+	"elbot/internal/session"
 	sessionstate "elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/toolrun"
@@ -158,7 +161,7 @@ func TestAgentToolRunDepsInjectsWorkspaceStoreForForegroundOnly(t *testing.T) {
 	store := newTestStore(t)
 	foreground := newWorkspaceTestSession(t, ctx, store, "")
 	background := newWorkspaceTestSession(t, ctx, store, `{"background_kind":"cron"}`)
-	deps := toolRunDeps{sessionRows: store.Sessions(), toolCalls: store.ToolCalls(), runtime: &ToolRuntimeState{}}
+	deps := toolRunDeps{sessions: session.NewService(store), sessionRows: store.Sessions(), toolCalls: store.ToolCalls(), identity: &IdentityResolver{policy: security.DefaultPolicy()}, runtime: &ToolRuntimeState{fileRollback: fileops.NewService(nil)}}
 	withStore := deps.PrepareToolContext(ctx, foreground, llm.ToolCallRequest{Name: "read_file"})
 	if _, ok := workspace.WorkspaceStoreFromContext(withStore); !ok {
 		t.Fatal("expected foreground workspace store")

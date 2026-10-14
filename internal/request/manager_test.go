@@ -8,10 +8,7 @@ import (
 
 func TestManagerStartListAndDone(t *testing.T) {
 	m := NewManager(time.Minute)
-	req, _, done, err := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM, Label: "chat"})
-	if err != nil {
-		t.Fatalf("Start: %v", err)
-	}
+	req, _, done := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM, Label: "chat"})
 
 	requests := m.List()
 	if len(requests) != 1 || requests[0].ID != req.ID {
@@ -30,10 +27,7 @@ func TestManagerStartListAndDone(t *testing.T) {
 
 func TestManagerCancel(t *testing.T) {
 	m := NewManager(time.Minute)
-	req, ctx, _, err := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM})
-	if err != nil {
-		t.Fatalf("Start: %v", err)
-	}
+	req, ctx, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM})
 	got, ok := m.Get(req.ID)
 	if !ok || got.ID != req.ID {
 		t.Fatalf("Get = %#v, %v; want request %s", got, ok, req.ID)
@@ -53,9 +47,9 @@ func TestManagerCancel(t *testing.T) {
 
 func TestManagerCancelSession(t *testing.T) {
 	m := NewManager(time.Minute)
-	parent, ctx1, _, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindTurn})
-	child, ctx2, _, _ := m.Start(ctx1, StartRequest{ParentID: parent.ID, SessionID: "s1", Kind: KindTool})
-	_, ctx3, _, _ := m.Start(context.Background(), StartRequest{SessionID: "s2", Kind: KindLLM})
+	parent, ctx1, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindTurn})
+	child, ctx2, _ := m.Start(ctx1, StartRequest{ParentID: parent.ID, SessionID: "s1", Kind: KindTool})
+	_, ctx3, _ := m.Start(context.Background(), StartRequest{SessionID: "s2", Kind: KindLLM})
 	if child.ParentID != parent.ID {
 		t.Fatalf("child parent = %q, want %q", child.ParentID, parent.ID)
 	}
@@ -77,8 +71,8 @@ func TestManagerCancelSession(t *testing.T) {
 
 func TestManagerCancelAll(t *testing.T) {
 	m := NewManager(time.Minute)
-	_, ctx1, _, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM})
-	_, ctx2, _, _ := m.Start(context.Background(), StartRequest{SessionID: "s2", Kind: KindTool})
+	_, ctx1, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM})
+	_, ctx2, _ := m.Start(context.Background(), StartRequest{SessionID: "s2", Kind: KindTool})
 
 	if got := m.CancelAll(); got != 2 {
 		t.Fatalf("CancelAll = %d, want 2", got)
@@ -92,10 +86,7 @@ func TestManagerCancelAll(t *testing.T) {
 
 func TestManagerTimeoutCleansRequest(t *testing.T) {
 	m := NewManager(10 * time.Millisecond)
-	_, ctx, _, err := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM})
-	if err != nil {
-		t.Fatalf("Start: %v", err)
-	}
+	_, ctx, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM})
 	assertCanceled(t, ctx)
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {

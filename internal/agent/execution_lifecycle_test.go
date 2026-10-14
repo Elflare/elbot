@@ -29,10 +29,7 @@ func startAppendWait(t *testing.T, a *agentFixture, ctx context.Context) (contex
 	if !a.execution.turns.StartExecution(row.ID, turn.Input{Text: "first"}, execution, "attempt") {
 		t.Fatal("start execution")
 	}
-	_, requestCtx, done, err := a.execution.requests.Start(ctx, request.StartRequest{SessionID: row.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
+	_, requestCtx, done := a.execution.requests.Start(ctx, request.StartRequest{SessionID: row.ID})
 	t.Cleanup(done)
 	if _, err := a.execution.AcceptInput(ctx, row, "more"); err != nil {
 		t.Fatal(err)

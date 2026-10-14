@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 	"strings"
 
@@ -38,14 +37,16 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 	if strings.TrimSpace(llm.SegmentsTextOnly(segments)) == "/cancel" {
 		cancelEvent := h.hooks.FillContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
 		if h.hooks.CancelRoute(cancelEvent) {
-			h.output.SendChat(ctx, "已取消当前 Hook 会话。")
-			return nil
+			return h.output.SendChat(ctx, "已取消当前 Hook 会话。")
 		}
 	}
 	event := h.hooks.FillContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
 	waiting := h.hooks.HasRoute(event)
 	if woken || waiting {
-		ctx = h.materializePlatformMedia(ctx)
+		ctx, err = h.materializePlatformMedia(ctx)
+		if err != nil {
+			return err
+		}
 		segments = inboundSegments(ctx, text)
 		event = h.hooks.FillContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: actorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
 	}
@@ -76,8 +77,7 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 	ctx = withInboundSegments(ctx, segments)
 	text = llm.SegmentsTextOnly(segments)
 	if strings.TrimSpace(text) == "/cancel" && h.hooks.CancelRoute(event) {
-		h.output.SendChat(ctx, "已取消当前 Hook 会话。")
-		return nil
+		return h.output.SendChat(ctx, "已取消当前 Hook 会话。")
 	}
 	if !woken {
 		return nil
@@ -110,7 +110,7 @@ type MessageHooks interface {
 }
 
 type MessageOutput interface {
-	SendChat(context.Context, string)
+	SendChat(context.Context, string) error
 	SendOutputs(context.Context, []delivery.Output) (events.LogResult, error)
 }
 
@@ -137,22 +137,7 @@ type MessageHandlerDeps struct {
 }
 
 // NewMessageHandler initializes MessageHandler without installing cross-service callbacks.
-func NewMessageHandler(deps MessageHandlerDeps) (*MessageHandler, error) {
-	if deps.Identity == nil {
-		return nil, fmt.Errorf("MessageHandler identity is required")
-	}
-	if deps.Hooks == nil {
-		return nil, fmt.Errorf("MessageHandler hooks is required")
-	}
-	if deps.Output == nil {
-		return nil, fmt.Errorf("MessageHandler output is required")
-	}
-	if deps.Commands == nil {
-		return nil, fmt.Errorf("MessageHandler commands is required")
-	}
-	if deps.Input == nil {
-		return nil, fmt.Errorf("MessageHandler input is required")
-	}
+func NewMessageHandler(deps MessageHandlerDeps) *MessageHandler {
 	return &MessageHandler{
 		identity:  deps.Identity,
 		hooks:     deps.Hooks,
@@ -162,5 +147,5 @@ func NewMessageHandler(deps MessageHandlerDeps) (*MessageHandler, error) {
 		media:     deps.Media,
 		messages:  deps.Messages,
 		mediaRows: deps.MediaRows,
-	}, nil
+	}
 }

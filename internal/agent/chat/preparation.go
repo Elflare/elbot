@@ -23,7 +23,9 @@ func (r *Loop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials
 			loaded.Summary = &storage.ContextSummary{Summary: seed.Summary}
 			compactSeedOnCurrentUser = true
 		} else {
-			r.consumeContextCompactSeed(ctx, session)
+			if err := r.consumeContextCompactSeed(ctx, session); err != nil {
+				return nil, err
+			}
 		}
 	}
 	summaryOnCurrentUser := loaded.Summary != nil && !hasUserHistory && !compactSeedOnCurrentUser

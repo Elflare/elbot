@@ -36,10 +36,7 @@ func backgroundDeps(t *testing.T) ModuleDeps {
 	t.Cleanup(func() { _ = store.Close() })
 	sessions := session.NewService(store)
 	t.Cleanup(func() { _ = sessions.Close(context.Background()) })
-	identity, err := agent.NewIdentityResolver(agent.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Policy: security.DefaultPolicy()})
-	if err != nil {
-		t.Fatal(err)
-	}
+	identity := agent.NewIdentityResolver(agent.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Policy: security.DefaultPolicy()})
 	registry := tool.NewRegistry()
 	return ModuleDeps{Store: store, Sessions: sessions, Identity: identity, Execution: &backgroundExecutionStub{}, Registry: registry, Preloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}), ToolState: toolrun.NewStateService(store), SandboxRoot: t.TempDir(), Maintenance: config.Default().Maintenance}
 }

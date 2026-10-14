@@ -195,7 +195,7 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 			record.Level = slog.LevelError
 		}
 		if pending != nil {
-			if logResult, persistErr := persistence.Commit(ctx, &pending.Message); persistErr != nil {
+			if logResult, persistErr := persistence.Commit(ctx, &pending.Message, nil); persistErr != nil {
 				record.Content += "\npersistence:\n" + logResult.Content
 				record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
 				err = errors.Join(err, persistErr)
@@ -238,7 +238,7 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 		requestMessages[pending.MessageIndex].Segments = segments
 		pending.Message.Content = MessageContent(segments)
 		pending.Message.Segments = StoredMessageSegments(segments)
-		if _, err := persistence.Commit(ctx, &pending.Message); err != nil {
+		if _, err := persistence.Commit(ctx, &pending.Message, nil); err != nil {
 			return CallInput{}, err
 		}
 	}
