@@ -23,13 +23,12 @@ func TestPlatformMessageReceivedHookSendsOutputs(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"final"}}
 
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.received.output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.received.output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.Outputs = append(event.Outputs, delivery.Text("received output"))
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatalf("Register received hook: %v", err)
-	}
+	})})
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})
@@ -47,13 +46,12 @@ func TestUnwokenGroupMessageSkipsLLMButAllowsPassiveHook(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"final"}}
 
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.passive", Match: hook.Always(), Wakeup: hook.WakeupAny, Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.passive", Match: hook.Always(), Wakeup: hook.WakeupAny, Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.Outputs = append(event.Outputs, delivery.Text("passive output"))
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatalf("Register passive hook: %v", err)
-	}
+	})})
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})
@@ -79,13 +77,12 @@ func TestUnwokenGroupMessageSkipsDefaultHook(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"final"}}
 
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.default", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.default", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.Outputs = append(event.Outputs, delivery.Text("default output"))
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatalf("Register default hook: %v", err)
-	}
+	})})
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})
@@ -111,14 +108,13 @@ func TestWokenGroupMessageSkipsForbiddenHookAndRunsLLM(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"final"}}
 
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.passive-only", Match: hook.Always(), Wakeup: hook.WakeupForbidden, Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.passive-only", Match: hook.Always(), Wakeup: hook.WakeupForbidden, Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.Outputs = append(event.Outputs, delivery.Text("plugin output"))
 		event.Control.Consume = true
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatalf("Register passive-only hook: %v", err)
-	}
+	})})
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})
@@ -145,8 +141,9 @@ func TestPrefixWokenGroupMessageRunsTurnOutputHook(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"final"}}
 
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{
 		Point: hook.PointAgentTurnOutputPrepared,
 		Name:  "test.turn.output",
 		Match: hook.Always(),
@@ -154,9 +151,7 @@ func TestPrefixWokenGroupMessageRunsTurnOutputHook(t *testing.T) {
 			event.Message.Segments = llm.AppendSegmentText(event.Message.Segments, "suffix")
 			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
-	}); err != nil {
-		t.Fatalf("Register turn output hook: %v", err)
-	}
+	})
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})
@@ -181,13 +176,12 @@ func TestPassiveHookCannotWakeLLMByEditingMessage(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"final"}}
 
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.edit", Match: hook.Always(), Wakeup: hook.WakeupAny, Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.edit", Match: hook.Always(), Wakeup: hook.WakeupAny, Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.Message.Segments = llm.TextSegments("芙莉丝 hello")
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatalf("Register passive hook: %v", err)
-	}
+	})})
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})
@@ -235,8 +229,9 @@ func TestPlatformMessageReceivedHookMatchesCurrentTextWithReplyContext(t *testin
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"final"}}
 
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{
 		Point:  hook.PointPlatformMessageReceived,
 		Name:   "test.recall.reply",
 		Wakeup: hook.WakeupAny,
@@ -255,9 +250,7 @@ func TestPlatformMessageReceivedHookMatchesCurrentTextWithReplyContext(t *testin
 			event.Control.Consume = true
 			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
-	}); err != nil {
-		t.Fatalf("Register recall hook: %v", err)
-	}
+	})
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})
@@ -291,8 +284,9 @@ func TestWaitingContinuationPassThroughReachesLaterHooksAndLLM(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"final"}}
 
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{
 		Point: hook.PointPlatformMessageReceived,
 		Name:  "test.after.waiting",
 		Match: hook.Always(),
@@ -300,9 +294,7 @@ func TestWaitingContinuationPassThroughReachesLaterHooksAndLLM(t *testing.T) {
 			event.Outputs = append(event.Outputs, delivery.Text("later hook"))
 			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
-	}); err != nil {
-		t.Fatalf("Register hook: %v", err)
-	}
+	})
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookRuntime = &fakeHookRouter{routed: true}
 		cfg.HookManager = manager
@@ -323,13 +315,12 @@ func TestStreamingOutputPreparedHookReplacesFinalMessage(t *testing.T) {
 	p := &fakeStreamingPlatform{}
 	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: "猫"}}}}
 
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointAgentOutputPrepared, Name: "test.output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{Point: hook.PointAgentOutputPrepared, Name: "test.output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.Message.Segments = llm.ReplaceSegmentText(event.Message.Segments, regexp.MustCompile("猫"), "狗", true)
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatalf("Register output hook: %v", err)
-	}
+	})})
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})
@@ -352,13 +343,12 @@ func TestNonStreamingPlatformSendsOnlyHookText(t *testing.T) {
 		{DeltaContent: "[[wave]]"},
 	}}}
 
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "test.replace", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "test.replace", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.LLM.Text = strings.ReplaceAll(event.LLM.Text, "[[wave]]", "world")
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatalf("Register response hook: %v", err)
-	}
+	})})
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})
@@ -376,16 +366,15 @@ func TestAfterAssistantOutputsAreSentAfterFinalText(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"final text"}}
 
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "test.outputs", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "test.outputs", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.Outputs = append(event.Outputs,
 			delivery.Text("immediate"),
 			delivery.WithDeliveryTiming(delivery.Text("after"), delivery.DeliveryAfterAssistant),
 		)
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatalf("Register response hook: %v", err)
-	}
+	})})
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})
@@ -407,13 +396,12 @@ func TestLLMResponseHookRewritesOutputButPersistsRawAssistantContent(t *testing.
 	f := &fakeLLM{replies: []string{"raw response"}}
 	store := newTestStore(t)
 
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Priority: 0, Name: "test.clean-response", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Priority: 0, Name: "test.clean-response", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.LLM.Text = "cleaned response"
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatalf("Register: %v", err)
-	}
+	})})
 	a := newTestAgent(t, p, f, "m", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})
@@ -442,15 +430,14 @@ func TestAgentOutputHookCanRewritePlatformOutput(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"raw"}}
 
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointAgentOutputPrepared, Priority: 0, Name: "test.output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{Point: hook.PointAgentOutputPrepared, Priority: 0, Name: "test.output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		if llm.SegmentsTextOnly(event.Message.Segments) == "raw" {
 			event.Message.Segments = llm.ReplaceSegmentText(event.Message.Segments, regexp.MustCompile(regexp.QuoteMeta("raw")), "visible", false)
 		}
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatalf("Register: %v", err)
-	}
+	})})
 	a := newTestAgent(t, p, f, "m", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})
@@ -468,7 +455,8 @@ func TestEmoticonHookSendsSeparateOutputAndCleansPersistedContent(t *testing.T) 
 	f := &fakeLLM{replies: []string{"[[微笑]] 像这样~"}}
 	store := newTestStore(t)
 
-	manager := hook.NewManager()
+	manager := newTestHookManager()
+
 	configDir := t.TempDir()
 	emoticonDir := filepath.Join(configDir, "emoticons", "微笑")
 	if err := os.MkdirAll(emoticonDir, 0o755); err != nil {

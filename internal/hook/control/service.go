@@ -16,9 +16,9 @@ import (
 type Loader func(hook.Registrar) (hook.ReloadReport, []hookruntime.Config, error)
 
 type Runtime interface {
-	Apply([]hookruntime.Config) error
+	Apply([]hookruntime.Config, func(string)) error
 	ValidatePlugin(hookruntime.Config) error
-	ReplacePlugin(hookruntime.Config) (events.LogResult, error)
+	ReplacePlugin(string, *hookruntime.Config, func()) (events.LogResult, error)
 	List() []hookruntime.Info
 	Start(string) error
 	Stop(context.Context, string) (bool, error)
@@ -37,49 +37,48 @@ func New(manager *hook.DefaultManager, runtime Runtime, loader Loader) *Service 
 }
 
 func (s *Service) HookList() []hook.Info {
-	if s == nil || s.manager == nil {
-		return nil
-	}
 	return s.manager.List()
 }
 
 func (s *Service) HookReload() (hook.ReloadReport, error) {
-	if s == nil {
-		return hook.ReloadReport{}, fmt.Errorf("hook reloader is not configured")
-	}
 	s.reloadMu.Lock()
 	defer s.reloadMu.Unlock()
 	return s.hookReload()
 }
 
 func (s *Service) hookReload() (hook.ReloadReport, error) {
-	if s == nil || s.manager == nil || s.loader == nil {
-		return hook.ReloadReport{}, fmt.Errorf("hook reloader is not configured")
-	}
 	candidate := hook.NewManager()
 	report, configs, err := s.loader(candidate)
 	if err != nil {
 		return report, err
 	}
-	if len(configs) > 0 && s.runtime == nil {
-		return report, fmt.Errorf("stateful hook runtime is not configured")
+	runtimeIDs := map[string]bool{}
+	for _, info := range s.runtime.List() {
+		runtimeIDs[info.ID] = true
 	}
-	if s.runtime != nil {
-		if err := s.runtime.Apply(configs); err != nil {
-			return report, err
+	for _, config := range configs {
+		runtimeIDs[config.ID] = true
+	}
+	ids := map[string]bool{}
+	for _, info := range s.manager.List() {
+		ids[info.PluginID] = true
+	}
+	for _, info := range candidate.List() {
+		ids[info.PluginID] = true
+	}
+	for id := range ids {
+		if !runtimeIDs[id] {
+			s.manager.ReplacePlugin(id, candidate)
 		}
 	}
-	s.manager.Replace(candidate)
-	return report, nil
+	err = s.runtime.Apply(configs, func(id string) { s.manager.ReplacePlugin(id, candidate) })
+	return report, err
 }
 
 // PreparePluginReload validates a complete candidate snapshot immediately and
 // returns a commit that replaces only the requesting persistent plugin.
 // The commit keeps its source log outcome separate from the business error.
 func (s *Service) PreparePluginReload(id string) (func() (events.LogResult, error), error) {
-	if s == nil || s.manager == nil || s.runtime == nil || s.loader == nil {
-		return nil, fmt.Errorf("hook plugin reloader is not configured")
-	}
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return nil, fmt.Errorf("hook plugin id is required")
@@ -112,26 +111,20 @@ func (s *Service) PreparePluginReload(id string) (func() (events.LogResult, erro
 	return func() (events.LogResult, error) {
 		s.reloadMu.Lock()
 		defer s.reloadMu.Unlock()
-		logResult, err := s.runtime.ReplacePlugin(*config)
-		if err != nil {
-			return logResult, err
+		if err := s.runtime.ValidatePlugin(*config); err != nil {
+			return events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}, err
 		}
-		s.manager.ReplacePlugin(id, candidate)
-		return logResult, nil
+		return s.runtime.ReplacePlugin(id, config, func() { s.manager.ReplacePlugin(id, candidate) })
 	}, nil
 }
 
 func (s *Service) StatefulHooks() []hookruntime.Info {
-	if s == nil || s.runtime == nil {
-		return nil
-	}
 	return s.runtime.List()
 }
 
 func (s *Service) StartStatefulHook(id string) error {
-	if s == nil || s.runtime == nil {
-		return fmt.Errorf("stateful hook runtime is not configured")
-	}
+	s.reloadMu.Lock()
+	defer s.reloadMu.Unlock()
 	return s.runtime.Start(id)
 }
 
@@ -141,25 +134,20 @@ func (s *Service) StopStatefulHook(ctx context.Context, id string) error {
 }
 
 func (s *Service) StopHook(ctx context.Context, id string) (bool, error) {
-	if s == nil || s.manager == nil {
-		return false, fmt.Errorf("hook service is not configured")
-	}
+	s.reloadMu.Lock()
+	defer s.reloadMu.Unlock()
 	matched := s.manager.Matches(id)
 	stopped := s.manager.Stop(id)
-	if s.runtime != nil {
-		runtimeStopped, err := s.runtime.Stop(ctx, id)
-		if err == nil {
-			matched = matched || runtimeStopped
-		} else if !matched {
-			return false, err
-		}
+	runtimeStopped, err := s.runtime.Stop(ctx, id)
+	if err != nil && (runtimeStopped || !matched) {
+		return matched || runtimeStopped || stopped > 0, err
 	}
+	matched = matched || runtimeStopped
 	return matched || stopped > 0, nil
 }
 
 func (s *Service) RestartStatefulHook(ctx context.Context, id string) error {
-	if s == nil || s.runtime == nil {
-		return fmt.Errorf("stateful hook runtime is not configured")
-	}
+	s.reloadMu.Lock()
+	defer s.reloadMu.Unlock()
 	return s.runtime.Restart(ctx, id)
 }

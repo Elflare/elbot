@@ -150,9 +150,10 @@ func TestBackgroundHooksCannotExpandTools(t *testing.T) {
 				{{DeltaContent: "done"}},
 			}}
 
-			manager := hook.NewManager()
+			manager := newTestHookManager()
+
 			responseInjected := false
-			if err := manager.Register(hook.Registration{Point: point, Name: "expand", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+			manager.Register(hook.Registration{Point: point, Name: "expand", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 				switch point {
 				case hook.PointToolCallPrepared:
 					event.Tool.Name = candidate.Name()
@@ -165,9 +166,7 @@ func TestBackgroundHooksCannotExpandTools(t *testing.T) {
 					event.LLM.Tools = []llm.ToolSchema{candidate.Schema()}
 				}
 				return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-			})}); err != nil {
-				t.Fatal(err)
-			}
+			})})
 			a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 				cfg.SandboxRoot = t.TempDir()
 				cfg.ToolRegistry = registry

@@ -130,9 +130,6 @@ func buildMessageImage(spec MessageSegment, baseDir string) (llm.MessageSegment,
 			return llm.MessageSegment{}, fmt.Errorf("decode base64 image: %w", err)
 		}
 	}
-	if len(data) > MaxBase64Bytes {
-		return llm.MessageSegment{}, fmt.Errorf("image exceeds 10 MiB decoded limit")
-	}
 	if segment.MIMEType == "" {
 		segment.MIMEType = http.DetectContentType(data)
 	}
@@ -172,9 +169,6 @@ func decodeImageDataURL(value string) (string, []byte, error) {
 	data, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
 		return "", nil, fmt.Errorf("decode image data URL: %w", err)
-	}
-	if len(data) > MaxBase64Bytes {
-		return "", nil, fmt.Errorf("image data URL exceeds 10 MiB decoded limit")
 	}
 	return mimeType, data, nil
 }

@@ -92,14 +92,12 @@ func TestToolResultMediaPersistsID(t *testing.T) {
 	var arguments string
 	_ = registry.Register(preparedArgumentTool{arguments: &arguments})
 
-	hooks := hook.NewManager()
-	err := hooks.Register(hook.Registration{Point: hook.PointToolCallCompleted, Name: "test.media", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	hooks := newTestHookManager()
+
+	hooks.Register(hook.Registration{Point: hook.PointToolCallCompleted, Name: "test.media", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.Message.Segments = append(event.Message.Segments, llm.MessageSegment{Type: llm.SegmentImage, URL: "data:image/png;base64,AP+AAQ==", Name: "result.png"})
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 	})})
-	if err != nil {
-		t.Fatal(err)
-	}
 	a := newTestMediaAgent(t, p, f, store, media.NewManager(store, root, &media.LocalBackend{Root: root}), func(cfg *testAgentOptions) {
 		cfg.ToolRegistry = registry
 		cfg.HookManager = hooks

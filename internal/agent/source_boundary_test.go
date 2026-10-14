@@ -24,14 +24,13 @@ func TestFinalLLMTakeoverUsesForegroundHookAndReceipt(t *testing.T) {
 			t.Cleanup(func() { release.Do(func() { close(block.release) }) })
 			f := &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"foreground final"}}
 
-			manager := hook.NewManager()
+			manager := newTestHookManager()
+
 			var outputEvent hook.Event
-			if err := manager.Register(hook.Registration{Point: hook.PointAgentTurnOutputPrepared, Name: "capture", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, globalevents.LogResult, error) {
+			manager.Register(hook.Registration{Point: hook.PointAgentTurnOutputPrepared, Name: "capture", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, globalevents.LogResult, error) {
 				outputEvent = e
 				return e, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
-			})}); err != nil {
-				t.Fatal(err)
-			}
+			})})
 			a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 				cfg.HookManager = manager
 			})
@@ -73,18 +72,17 @@ func TestFinalLLMTakeoverUsesForegroundHookAndReceipt(t *testing.T) {
 }
 
 func TestConnectedHooksKeepAbsentChatIdentity(t *testing.T) {
-	manager := hook.NewManager()
+	manager := newTestHookManager()
+
 	var events []hook.Event
 	for _, point := range []hook.Point{hook.PointPlatformConnected, hook.PointErrorOccurred} {
-		if err := manager.Register(hook.Registration{Point: point, Name: string(point), Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, globalevents.LogResult, error) {
+		manager.Register(hook.Registration{Point: point, Name: string(point), Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, globalevents.LogResult, error) {
 			events = append(events, e)
 			if e.Point == hook.PointPlatformConnected {
 				return e, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "test source failed"}, errors.New("connection hook failed")
 			}
 			return e, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
-		})}); err != nil {
-			t.Fatal(err)
-		}
+		})})
 	}
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager

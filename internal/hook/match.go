@@ -23,9 +23,6 @@ type MatchContext struct {
 }
 
 func EventMatchContext(event Event) MatchContext {
-	if event.Metadata == nil {
-		return MatchContext{}
-	}
 	match, _ := event.Metadata["match"].(MatchContext)
 	return match
 }
@@ -249,10 +246,7 @@ func (c Condition) match(event Event) (bool, *RegexMatch) {
 }
 
 func regexMatchContext(field, pattern, value string) (RegexMatch, bool) {
-	re, err := regexp.Compile(pattern)
-	if err != nil {
-		return RegexMatch{}, false
-	}
+	re := regexp.MustCompile(pattern)
 	indexes := re.FindStringSubmatchIndex(value)
 	if indexes == nil {
 		return RegexMatch{}, false

@@ -130,14 +130,17 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 	requests, turns, sessions := opts.Requests, opts.Turns, opts.Sessions
 	hookManager := hookRunner(opts.HookManager)
 	if hookManager == nil {
-		hookManager = hook.NoopManager{}
+		hookManager = newTestHookManager()
+	}
+	if opts.HookRuntime == nil {
+		opts.HookRuntime = &fakeHookRouter{}
 	}
 	signals := agentevents.NewSignals()
 	identity, err := NewIdentityResolver(IdentityResolverDeps{PlatformName: opts.Platform.Name(), ActorID: "cli:local", ScopeID: "local", Policy: opts.SecurityPolicy})
 	if err != nil {
 		return nil, err
 	}
-	hooks, err := NewHookBridge(HookBridgeDeps{
+	hooks := NewHookBridge(HookBridgeDeps{
 		Manager:    hookManager,
 		Router:     opts.HookRuntime,
 		Requests:   requests,
@@ -146,9 +149,6 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 		Failed:     signals.HookFailed,
 		Dispatcher: opts.Dispatcher,
 	})
-	if err != nil {
-		return nil, err
-	}
 	view := dialogue.ExecutionView{Sessions: store.Sessions()}
 	status, err := NewStatusRecorder(StatusRecorderDeps{View: view, Turns: turns, Changed: signals.StatusChanged})
 	if err != nil {

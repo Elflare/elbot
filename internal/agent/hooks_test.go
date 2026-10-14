@@ -78,17 +78,16 @@ func TestFillHookContextAddsIntentTextWithoutWakeupPrefix(t *testing.T) {
 
 func TestRunHookErrorSendsFailureNotice(t *testing.T) {
 	p := &fakePlatform{}
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{
 		Point: hook.PointAgentInputPrepared,
 		Name:  "test.boom",
 		Match: hook.Always(),
 		Handler: hook.HandlerFunc(func(context.Context, hook.Event) (hook.Event, events.LogResult, error) {
 			return hook.Event{}, events.LogResult{ResultStatus: events.ResultFailed, Content: "test source failed"}, errors.New("boom")
 		}),
-	}); err != nil {
-		t.Fatalf("register hook: %v", err)
-	}
+	})
 
 	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
@@ -110,7 +109,8 @@ func TestRunHookErrorSendsFailureNotice(t *testing.T) {
 }
 
 func TestHookObserverTracksHookRequestUnderTurn(t *testing.T) {
-	manager := hook.NewManager()
+	manager := newTestHookManager()
+
 	requests := request.NewManager(time.Minute)
 	bridge := &HookBridge{requests: requests}
 	manager.SetObserver(bridge.ObserveRun)
@@ -121,7 +121,7 @@ func TestHookObserverTracksHookRequestUnderTurn(t *testing.T) {
 	defer parentDone()
 	ctx := parentCtx
 
-	if err := manager.Register(hook.Registration{
+	manager.Register(hook.Registration{
 		Point: hook.PointAgentInputPrepared,
 		Name:  "test.hook_status",
 		Match: hook.Always(),
@@ -141,9 +141,7 @@ func TestHookObserverTracksHookRequestUnderTurn(t *testing.T) {
 			}
 			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
-	}); err != nil {
-		t.Fatalf("register hook: %v", err)
-	}
+	})
 
 	if _, _, err := manager.Run(ctx, hook.Event{Point: hook.PointAgentInputPrepared, Session: hook.SessionContext{ID: "s1"}}); err != nil {
 		t.Fatalf("Run: %v", err)
@@ -156,12 +154,13 @@ func TestHookObserverTracksHookRequestUnderTurn(t *testing.T) {
 }
 
 func TestStopCanCancelTrackedHookRequest(t *testing.T) {
-	manager := hook.NewManager()
+	manager := newTestHookManager()
+
 	requests := request.NewManager(time.Minute)
 	bridge := &HookBridge{requests: requests}
 	manager.SetObserver(bridge.ObserveRun)
 	entered := make(chan struct{})
-	if err := manager.Register(hook.Registration{
+	manager.Register(hook.Registration{
 		Point: hook.PointAgentInputPrepared,
 		Name:  "test.cancel_hook",
 		Match: hook.Always(),
@@ -170,9 +169,7 @@ func TestStopCanCancelTrackedHookRequest(t *testing.T) {
 			<-ctx.Done()
 			return event, events.LogResult{ResultStatus: events.ResultCanceled, Content: "test source canceled"}, ctx.Err()
 		}),
-	}); err != nil {
-		t.Fatalf("register hook: %v", err)
-	}
+	})
 
 	errCh := make(chan error, 1)
 	go func() {

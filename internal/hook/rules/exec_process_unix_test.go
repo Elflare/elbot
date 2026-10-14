@@ -50,7 +50,7 @@ func TestExecIndependentSignalSurvivesLaterCancellation(t *testing.T) {
 	}
 	defer connection.Disconnect()
 	_, _, result, err := (Module{}).runExec(ctx, hook.Event{}, Action{Command: []string{executable, "-test.run=^TestExecIndependentSignalHelper$"}}, state{})
-	if !errors.Is(err, context.Canceled) || result.ResultStatus != events.ResultFailed || !strings.Contains(result.Content, "signal: killed") || !strings.Contains(result.Content, "context canceled") {
+	if errors.Is(err, context.Canceled) || result.ResultStatus != events.ResultFailed || !strings.Contains(result.Content, "signal: killed") || !strings.Contains(result.Content, "context canceled") {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }

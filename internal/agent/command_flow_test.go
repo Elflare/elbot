@@ -21,14 +21,13 @@ func TestPlatformMessageReceivedHookConsumeSkipsCommandAndLLM(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{replies: []string{"final"}}
 
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.received.consume", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "test.received.consume", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.Outputs = append(event.Outputs, delivery.Text("consumed"))
 		event.Control.Consume = true
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatalf("Register received hook: %v", err)
-	}
+	})})
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})

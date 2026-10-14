@@ -578,3 +578,12 @@ func mustChatClient(t *testing.T, baseURL, key string, extras map[string]any) *c
 	}
 	return client
 }
+
+func newTestHookManager() *hook.DefaultManager {
+	manager := hook.NewManager()
+	manager.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
+	manager.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
+		return ctx, func() {}
+	})
+	return manager
+}

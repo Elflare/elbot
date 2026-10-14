@@ -29,7 +29,10 @@ func testMediaRuntime(t *testing.T) (*Manager, *media.Manager, string) {
 	t.Cleanup(func() { _ = store.Close() })
 	root := t.TempDir()
 	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
-	manager := NewManager(Options{Media: center})
+	manager, err := NewManager(Options{SharedDir: t.TempDir(), Media: center})
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		if err := manager.Close(ctx); err != nil {
 			t.Error(err)
@@ -173,7 +176,7 @@ func TestMediaProtocolRejectsSymlinkEscape(t *testing.T) {
 func TestWorkerMediaProtocolRoundTrip(t *testing.T) {
 	m, _, dir := testMediaRuntime(t)
 	cfg := Config{ID: "media", Dir: dir, Mode: ModePersistent, Command: runtimeHelperCommand(), Cwd: ".", StartupTimeoutSeconds: 5, ShutdownTimeoutSeconds: 2, EventTimeoutSeconds: 5, MaxWaitSeconds: 30, Restart: RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1}}
-	if err := m.Apply([]Config{cfg}); err != nil {
+	if err := m.Apply([]Config{cfg}, func(string) {}); err != nil {
 		t.Fatal(err)
 	}
 	waitForStatus(t, m, "media", StatusReady)

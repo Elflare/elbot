@@ -46,9 +46,10 @@ func TestTurnHookMultimodalUserMessagePersistsWithoutChangingPlatformText(t *tes
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"first", "second"}}
 
-	manager := hook.NewManager()
+	manager := newTestHookManager()
+
 	var platformText string
-	if err := manager.Register(hook.Registration{Point: hook.PointLLMTurnPrepared, Name: "test.user_segments", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	manager.Register(hook.Registration{Point: hook.PointLLMTurnPrepared, Name: "test.user_segments", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		if platformText == "" {
 			platformText = event.Message.PlatformText
 			event.Message.Segments = []llm.MessageSegment{
@@ -60,9 +61,7 @@ func TestTurnHookMultimodalUserMessagePersistsWithoutChangingPlatformText(t *tes
 			event.LLM.Messages[0].Segments[0].Text = "不应修改系统提示词"
 		}
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatalf("Register turn hook: %v", err)
-	}
+	})})
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})

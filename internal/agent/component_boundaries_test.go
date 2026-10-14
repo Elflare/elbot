@@ -117,12 +117,11 @@ func TestComponentPolicyOptionsReachHookAndPrompt(t *testing.T) {
 }
 
 func TestHookFailureIsRecordedOnceAndStillNotifies(t *testing.T) {
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointErrorOccurred, Name: "failing", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{Point: hook.PointErrorOccurred, Name: "failing", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "test source failed"}, errors.New("hook failure")
-	})}); err != nil {
-		t.Fatal(err)
-	}
+	})})
 	records := make(chan globalevents.LogRecord, 32)
 	connection, _ := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error { records <- record; return nil }, signal.ConnectOptions{})
 	defer connection.Disconnect()

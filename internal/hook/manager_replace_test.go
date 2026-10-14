@@ -7,8 +7,9 @@ import (
 )
 
 func TestManagerReplaceSwapsHandlersAndKeepsRuntimeIntegrations(t *testing.T) {
-	active := NewManager()
-	candidate := NewManager()
+	active := newTestManager()
+
+	candidate := newTestManager()
 
 	woken := true
 	active.SetWakeupFunc(func(context.Context, Event) bool { return woken })
@@ -24,7 +25,7 @@ func TestManagerReplaceSwapsHandlersAndKeepsRuntimeIntegrations(t *testing.T) {
 	})
 
 	runs := 0
-	if err := candidate.Register(Registration{
+	candidate.Register(Registration{
 		Point: PointAgentInputPrepared,
 		Name:  "replacement",
 		Match: Always(),
@@ -32,9 +33,7 @@ func TestManagerReplaceSwapsHandlersAndKeepsRuntimeIntegrations(t *testing.T) {
 			runs++
 			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
-	}); err != nil {
-		t.Fatalf("Register: %v", err)
-	}
+	})
 
 	active.Replace(candidate)
 	if _, _, err := active.Run(context.Background(), Event{Point: PointAgentInputPrepared}); err != nil {
@@ -54,11 +53,12 @@ func TestManagerReplaceSwapsHandlersAndKeepsRuntimeIntegrations(t *testing.T) {
 }
 
 func TestManagerReplaceKeepsInFlightSnapshot(t *testing.T) {
-	active := NewManager()
+	active := newTestManager()
+
 	entered := make(chan struct{})
 	release := make(chan struct{})
 	runs := make(chan string, 3)
-	if err := active.Register(Registration{
+	active.Register(Registration{
 		Point: PointAgentInputPrepared,
 		Name:  "old.blocking",
 		Match: Always(),
@@ -68,10 +68,8 @@ func TestManagerReplaceKeepsInFlightSnapshot(t *testing.T) {
 			runs <- "old.blocking"
 			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
-	}); err != nil {
-		t.Fatalf("Register old.blocking: %v", err)
-	}
-	if err := active.Register(Registration{
+	})
+	active.Register(Registration{
 		Point: PointAgentInputPrepared,
 		Name:  "old.second",
 		Match: Always(),
@@ -79,9 +77,7 @@ func TestManagerReplaceKeepsInFlightSnapshot(t *testing.T) {
 			runs <- "old.second"
 			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
-	}); err != nil {
-		t.Fatalf("Register old.second: %v", err)
-	}
+	})
 
 	done := make(chan error, 1)
 	go func() {
@@ -90,8 +86,9 @@ func TestManagerReplaceKeepsInFlightSnapshot(t *testing.T) {
 	}()
 	<-entered
 
-	candidate := NewManager()
-	if err := candidate.Register(Registration{
+	candidate := newTestManager()
+
+	candidate.Register(Registration{
 		Point: PointAgentInputPrepared,
 		Name:  "new",
 		Match: Always(),
@@ -99,9 +96,7 @@ func TestManagerReplaceKeepsInFlightSnapshot(t *testing.T) {
 			runs <- "new"
 			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
-	}); err != nil {
-		t.Fatalf("Register new: %v", err)
-	}
+	})
 	active.Replace(candidate)
 	close(release)
 	if err := <-done; err != nil {
@@ -120,12 +115,14 @@ func TestManagerReplaceKeepsInFlightSnapshot(t *testing.T) {
 }
 
 func TestManagerReplacePluginLeavesOtherRegistrationsUntouched(t *testing.T) {
-	active := NewManager()
-	candidate := NewManager()
+	active := newTestManager()
+
+	candidate := newTestManager()
+
 	runs := []string{}
 	register := func(manager *DefaultManager, pluginID, name string) {
 		t.Helper()
-		if err := manager.Register(Registration{
+		manager.Register(Registration{
 			Point:    PointAgentInputPrepared,
 			PluginID: pluginID,
 			Name:     name,
@@ -134,9 +131,7 @@ func TestManagerReplacePluginLeavesOtherRegistrationsUntouched(t *testing.T) {
 				runs = append(runs, name)
 				return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 			}),
-		}); err != nil {
-			t.Fatalf("Register %s: %v", name, err)
-		}
+		})
 	}
 	register(active, "demo", "old")
 	register(active, "other", "other")

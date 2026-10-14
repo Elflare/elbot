@@ -49,14 +49,13 @@ func TestInputStartConflictRedispatchesPreparedMessage(t *testing.T) {
 			t.Run(input+"/"+string(phase), func(t *testing.T) {
 				p := &fakePlatform{}
 				model := &fakeLLM{replies: []string{"normal reply"}}
-				hooks := hook.NewManager()
+				hooks := newTestHookManager()
+
 				prepared := 0
-				if err := hooks.Register(hook.Registration{Point: hook.PointAgentInputPrepared, Name: "count prepared input", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
+				hooks.Register(hook.Registration{Point: hook.PointAgentInputPrepared, Name: "count prepared input", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
 					prepared++
 					return e, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
-				})}); err != nil {
-					t.Fatal(err)
-				}
+				})})
 				a := newTestAgent(t, p, model, "model", config.ProviderConfig{}, newTestStore(t), func(opts *testAgentOptions) {
 					opts.CommandPrefixes = []string{"-"}
 					opts.HookManager = hooks

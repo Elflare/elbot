@@ -124,6 +124,10 @@ func TestValidateRuleRejectsUnsupportedWakeupPolicy(t *testing.T) {
 
 func TestRegisterHooksUsesRuleNamesAndDescriptions(t *testing.T) {
 	manager := hook.NewManager()
+	manager.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
+	manager.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
+		return ctx, func() {}
+	})
 	module := Module{Rules: []Rule{
 		{
 			Name:        "greet",
@@ -140,9 +144,12 @@ func TestRegisterHooksUsesRuleNamesAndDescriptions(t *testing.T) {
 			Actions: []Action{{Type: "send", Text: "ok"}},
 		},
 	}}
-	if err := module.RegisterHooks(manager); err != nil {
-		t.Fatalf("RegisterHooks: %v", err)
+	cfg := Config{Rules: module.Rules}
+	if err := cfg.normalize(); err != nil {
+		t.Fatal(err)
 	}
+	module.Rules = cfg.Rules
+	module.RegisterHooks(manager)
 	infos := manager.List()
 	byName := map[string]hook.Info{}
 	for _, info := range infos {
@@ -191,9 +198,11 @@ text = "ok"
 		t.Fatalf("loadConfig: %v", err)
 	}
 	manager := hook.NewManager()
-	if err := (Module{Rules: cfg.Rules}).RegisterHooks(manager); err != nil {
-		t.Fatalf("RegisterHooks: %v", err)
-	}
+	manager.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
+	manager.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
+		return ctx, func() {}
+	})
+	(Module{Rules: cfg.Rules}).RegisterHooks(manager)
 	infos := manager.List()
 	if len(infos) != 1 || infos[0].PluginID != "demo" || infos[0].Name != "emit_file" || infos[0].Description != "demo plugin" || strings.Contains(infos[0].Detail, "description:") || !strings.Contains(infos[0].Detail, "on: llm.response.received") {
 		t.Fatalf("infos = %#v", infos)

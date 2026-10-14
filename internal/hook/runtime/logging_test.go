@@ -68,18 +68,21 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 			}}); err != nil {
 				t.Fatal(err)
 			}
-			manager := NewManager(Options{Registry: registry, Send: func(_ context.Context, _ delivery.Target, _ []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+			manager, err := NewManager(Options{SharedDir: t.TempDir(), Registry: registry, Send: func(_ context.Context, _ delivery.Target, _ []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 				if len(*records) != 1 || (*records)[0].EventName != "hook_tool_call" {
 					t.Fatalf("call record was delayed until send: %+v", *records)
 				}
 				return delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "cli", PlatformMessageID: "delivered"}}}, tc.send, tc.err
 			}})
+			if err != nil {
+				t.Fatal(err)
+			}
 			defer manager.Close(context.Background())
 			worker := newWorker(manager, Config{ID: "test", EventTimeoutSeconds: 10, Tools: ToolsConfig{Allow: []string{"logging_tool"}}})
 			ctx := contextinfo.WithActor(contextinfo.WithExecution(t.Context(), contextinfo.Execution{SessionID: "context-session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}), contextinfo.Actor{ID: "context-actor"})
 			token := manager.putToolContext("test", ctx, hook.Event{Session: hook.SessionContext{ID: "trigger-session"}, Actor: hook.ActorContext{ID: "trigger-actor"}}, time.Minute)
 			raw, _ := json.Marshal(map[string]any{"name": "logging_tool", "tool_context": token})
-			_, err := worker.callTool(raw)
+			_, err = worker.callTool(raw)
 			if !errors.Is(err, tc.err) || len(*records) != 2 {
 				t.Fatalf("err=%v records=%+v", err, *records)
 			}
@@ -127,12 +130,15 @@ func TestPluginToolArgumentPreviewDoesNotChangeInvocation(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(Options{Registry: registry})
+	manager, err := NewManager(Options{SharedDir: t.TempDir(), Registry: registry})
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer manager.Close(context.Background())
 	worker := newWorker(manager, Config{ID: "test", EventTimeoutSeconds: 10, Tools: ToolsConfig{Allow: []string{"logging_tool"}}})
 	token := manager.putToolContext("test", t.Context(), hook.Event{}, time.Minute)
 	raw, _ := json.Marshal(map[string]any{"name": "logging_tool", "tool_context": token, "arguments": json.RawMessage(args)})
-	if _, err := worker.callTool(raw); err != nil {
+	if _, err = worker.callTool(raw); err != nil {
 		t.Fatal(err)
 	}
 	if len(*records) != 1 {
@@ -170,12 +176,15 @@ func TestToolAuditUsesTriggerActorAndKeepsEnteredCancellation(t *testing.T) {
 			}}); err != nil {
 				t.Fatal(err)
 			}
-			manager := NewManager(Options{Registry: registry})
+			manager, err := NewManager(Options{SharedDir: t.TempDir(), Registry: registry})
+			if err != nil {
+				t.Fatal(err)
+			}
 			defer manager.Close(context.Background())
 			worker := newWorker(manager, Config{ID: "test", EventTimeoutSeconds: 10, Tools: ToolsConfig{Allow: []string{"logging_tool"}}})
 			token := manager.putToolContext("test", ctx, hook.Event{Session: hook.SessionContext{ID: tc.sessionID}, Actor: hook.ActorContext{ID: tc.sessionActor}}, time.Minute)
 			raw, _ := json.Marshal(map[string]any{"name": "logging_tool", "tool_context": token})
-			_, err := worker.callTool(raw)
+			_, err = worker.callTool(raw)
 			if !errors.Is(err, context.Canceled) || len(*records) != 1 || (*records)[0].ResultStatus != events.ResultSucceeded || (*records)[0].Level != slog.LevelInfo {
 				t.Fatalf("err=%v records=%+v", err, *records)
 			}
@@ -195,12 +204,15 @@ func TestToolAuditUsesTriggerActorAndKeepsEnteredCancellation(t *testing.T) {
 func TestUnenteredToolCallRecordsFailureOrRejection(t *testing.T) {
 	for _, allowed := range []bool{false, true} {
 		records := captureHookRecords(t)
-		manager := NewManager(Options{Registry: tool.NewRegistry()})
+		manager, err := NewManager(Options{SharedDir: t.TempDir(), Registry: tool.NewRegistry()})
+		if err != nil {
+			t.Fatal(err)
+		}
 		worker := newWorker(manager, Config{ID: "test"})
 		if allowed {
 			worker.config.Tools.BackgroundAllow = []string{"missing"}
 		}
-		_, err := worker.callTool(json.RawMessage(`{"name":"missing","background":true,"target":{"platform":"cli"}}`))
+		_, err = worker.callTool(json.RawMessage(`{"name":"missing","background":true,"target":{"platform":"cli"}}`))
 		if err == nil || len(*records) != 1 || !strings.Contains((*records)[0].Content, "not entered") {
 			t.Fatalf("err=%v records=%+v", err, *records)
 		}
@@ -255,10 +267,13 @@ func TestToolWithoutOutputsDoesNotInvokeSenderOrLogSend(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(Options{Registry: registry, Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	manager, err := NewManager(Options{SharedDir: t.TempDir(), Registry: registry, Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		t.Fatal("unneeded send entered")
 		return delivery.Receipt{}, events.LogResult{}, nil
 	}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer manager.Close(context.Background())
 	worker := newWorker(manager, Config{ID: "test", EventTimeoutSeconds: 10, Tools: ToolsConfig{BackgroundAllow: []string{"logging_tool"}}})
 	result, err := worker.callTool(json.RawMessage(`{"name":"logging_tool","background":true,"target":{"platform":"cli"}}`))
@@ -299,13 +314,16 @@ func TestInvalidToolParametersAreInfoCallRecords(t *testing.T) {
 	for _, raw := range []string{"{", `{"name":42}`, `{"name":"  "}`} {
 		t.Run(raw, func(t *testing.T) {
 			records := captureHookRecords(t)
-			manager := NewManager(Options{Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+			manager, err := NewManager(Options{SharedDir: t.TempDir(), Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 				t.Fatal("invalid call entered sender")
 				return delivery.Receipt{}, events.LogResult{}, nil
 			}})
+			if err != nil {
+				t.Fatal(err)
+			}
 			defer manager.Close(context.Background())
 			worker := newWorker(manager, Config{ID: "invalid"})
-			_, err := worker.callTool(json.RawMessage(raw))
+			_, err = worker.callTool(json.RawMessage(raw))
 			if err == nil || len(*records) != 1 {
 				t.Fatalf("err=%v records=%+v", err, *records)
 			}
@@ -337,7 +355,10 @@ func TestWorkerExitFactsPrecedeCanceledWaiters(t *testing.T) {
 	}
 	for _, priorFault := range []bool{false, true} {
 		t.Run(fmt.Sprintf("prior_fault_%t", priorFault), func(t *testing.T) {
-			manager := NewManager(Options{})
+			manager, err := NewManager(Options{SharedDir: t.TempDir()})
+			if err != nil {
+				t.Fatal(err)
+			}
 			defer manager.Close(context.Background())
 			cmd := exec.Command(executable, "-test.run=^TestWorkerExitFactHelper$")
 			cmd.Env = append(os.Environ(), "ELBOT_WORKER_EXIT_FACT_TEST=1")

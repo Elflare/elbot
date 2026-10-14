@@ -111,6 +111,23 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Dir) == "" {
 		return fmt.Errorf("runtime plugin directory is required")
 	}
+	seen := map[string]bool{}
+	for _, name := range c.Tools.Allow {
+		if name == "" || seen[name] {
+			return fmt.Errorf("runtime tools.allow contains an empty or duplicate tool name")
+		}
+		seen[name] = true
+	}
+	for _, name := range c.Tools.BackgroundAllow {
+		if !seen[name] {
+			return fmt.Errorf("runtime tools.background_allow tool %q must also appear in tools.allow", name)
+		}
+	}
+	for _, seconds := range []int{c.StartupTimeoutSeconds, c.ShutdownTimeoutSeconds, c.EventTimeoutSeconds, c.MaxWaitSeconds, c.Restart.InitialDelaySeconds, c.Restart.MaxDelaySeconds} {
+		if int64(seconds) > int64((1<<63-1)/1_000_000_000) {
+			return fmt.Errorf("runtime duration exceeds time.Duration limit")
+		}
+	}
 	return nil
 }
 
@@ -138,9 +155,8 @@ type Options struct {
 	Registry *tool.Registry
 
 	// Send keeps delivery receipts separate from the source-owned log outcome.
-	Send       func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
-	SharedDir  string
-	ProcessEnv hook.ProcessEnvironment
+	Send      func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
+	SharedDir string
 }
 
 func resolveCwd(dir, cwd string) (string, error) {

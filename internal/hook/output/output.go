@@ -194,9 +194,6 @@ func buildMediaSource(spec Segment, baseDir string) (delivery.Source, error) {
 	if err != nil {
 		return source, fmt.Errorf("decode base64 output: %w", err)
 	}
-	if len(data) > MaxBase64Bytes {
-		return source, fmt.Errorf("base64 output exceeds 10 MiB decoded limit; write large media to a file and return outputs[].path or outputs[].url instead")
-	}
 	source.Data = data
 	return source, nil
 }

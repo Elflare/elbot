@@ -47,7 +47,8 @@ func newExecutionFixture(t *testing.T, client llm.Client, store storage.Store) *
 	})
 	opts := assembleTestOptions(t, testAgentOptions{Models: models, Store: store, CommandPrefixes: []string{"/"}, SessionConfig: session.Config{DefaultMode: storage.SessionModeWork}})
 	identity := &IdentityResolver{platformName: "cli", actorID: "cli:local", scopeID: "local", policy: opts.SecurityPolicy}
-	hooks := hook.NewManager()
+	hooks := newTestHookManager()
+
 	bridge := &HookBridge{manager: hooks, requests: opts.Requests, identity: identity, dispatcher: opts.Dispatcher}
 	status := &StatusRecorder{}
 	output := &OutputSender{dispatcher: opts.Dispatcher, hooks: bridge}
@@ -160,11 +161,9 @@ func (f *executionFixture) begin(t *testing.T) (context.Context, context.Context
 
 func (f *executionFixture) on(t *testing.T, point hook.Point, fn func(hook.Event) hook.Event) {
 	t.Helper()
-	if err := f.hooks.Register(hook.Registration{Point: point, Name: string(point), Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
+	f.hooks.Register(hook.Registration{Point: point, Name: string(point), Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
 		return fn(e), events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatal(err)
-	}
+	})})
 }
 
 func TestDialogueRunnerStructuredOutcomes(t *testing.T) {

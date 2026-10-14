@@ -327,8 +327,9 @@ func TestResponsesBackgroundTakeoverSharesPendingAndChangesTaskModel(t *testing.
 }
 
 func TestResponsesItemDoneAndRefusalKeepNativeFactsSeparateFromDisplay(t *testing.T) {
-	manager := hook.NewManager()
-	_ = manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "display", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "display", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
 		e.LLM.Text, e.LLM.SourceText = "visible", "changed source"
 		return e, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 	})})
@@ -558,19 +559,20 @@ func TestResponsesRejectsToolArgumentHookButKeepsDisplayAndResultHooks(t *testin
 				executed = true
 				return &tool.Result{Content: "original result"}, nil
 			}})
-			manager := hook.NewManager()
+			manager := newTestHookManager()
+
 			if rewrite {
-				_ = manager.Register(hook.Registration{Point: hook.PointToolCallPrepared, Name: "rewrite", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
+				manager.Register(hook.Registration{Point: hook.PointToolCallPrepared, Name: "rewrite", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
 					e.Tool.Arguments = `{"changed":true}`
 					return e, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 				})})
 			} else {
-				_ = manager.Register(hook.Registration{Point: hook.PointToolCallCompleted, Name: "result", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
+				manager.Register(hook.Registration{Point: hook.PointToolCallCompleted, Name: "result", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
 					e.Message.Segments = llm.TextSegments("changed result")
 					return e, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 				})})
 			}
-			_ = manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "display", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
+			manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "display", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
 				if len(e.LLM.ToolCalls) == 0 {
 					e.LLM.Text = "visible reply"
 				}

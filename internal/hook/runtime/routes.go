@@ -19,9 +19,6 @@ const dispatchedMetadataKey = "hook.runtime.dispatched"
 const skipHookIDMetadataKey = "hook.runtime.skip_id"
 
 func (m *Manager) hasLease(event hook.Event) bool {
-	if m == nil {
-		return false
-	}
 	key := routeKeyFor(event)
 	m.mu.Lock()
 	lease, ok := m.routes[key]
@@ -40,9 +37,6 @@ func (m *Manager) hasLease(event hook.Event) bool {
 }
 
 func (m *Manager) RouteHookID(event hook.Event) string {
-	if m == nil {
-		return ""
-	}
 	key := routeKeyFor(event)
 	m.mu.RLock()
 	lease, ok := m.routes[key]
@@ -55,9 +49,6 @@ func (m *Manager) RouteHookID(event hook.Event) string {
 
 // LLM processing. The caller owns normal Hook execution before calling Route.
 func (m *Manager) Route(ctx context.Context, event hook.Event) (hook.Event, bool, error) {
-	if m == nil {
-		return event, false, nil
-	}
 	if dispatched, _ := event.Metadata[dispatchedMetadataKey].(bool); dispatched {
 		return event, false, nil
 	}
@@ -135,9 +126,6 @@ func (m *Manager) Route(ctx context.Context, event hook.Event) (hook.Event, bool
 }
 
 func (m *Manager) Cancel(event hook.Event) bool {
-	if m == nil {
-		return false
-	}
 	key := routeKeyFor(event)
 	m.mu.Lock()
 	lease, ok := m.routes[key]
@@ -150,7 +138,7 @@ func (m *Manager) Cancel(event hook.Event) bool {
 	if !ok && !runningOK {
 		return false
 	}
-	if runningOK && running.Cancel != nil {
+	if runningOK {
 		running.Cancel()
 	}
 	hookID := lease.HookID
@@ -209,9 +197,6 @@ func (m *Manager) endInvocation(key routeKey, cancel context.CancelFunc) {
 }
 
 func (m *Manager) setLease(id string, event hook.Event, result eventResult, defaults hook.Control) error {
-	if result.Status != "waiting" {
-		return nil
-	}
 	if strings.TrimSpace(result.ConversationID) == "" {
 		return fmt.Errorf("hook waiting response requires conversation_id")
 	}
@@ -256,9 +241,7 @@ func (m *Manager) clearRoutesLocked(id string) {
 	}
 	for key, running := range m.running {
 		if running.HookID == id {
-			if running.Cancel != nil {
-				running.Cancel()
-			}
+			running.Cancel()
 			delete(m.running, key)
 		}
 	}
@@ -295,8 +278,6 @@ func (m *Manager) takeToolContext(token, hookID string) (toolContext, bool) {
 
 func randomID(prefix string) string {
 	var data [12]byte
-	if _, err := rand.Read(data[:]); err != nil {
-		return fmt.Sprintf("%s:%d", prefix, time.Now().UnixNano())
-	}
+	_, _ = rand.Read(data[:])
 	return prefix + ":" + hex.EncodeToString(data[:])
 }

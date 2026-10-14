@@ -39,9 +39,9 @@ type Manager struct {
 
 var ErrClosed = errors.New("hook runtime manager is closed")
 
-func NewManager(opts Options) *Manager {
-	if strings.TrimSpace(opts.SharedDir) != "" {
-		_ = os.MkdirAll(opts.SharedDir, 0o755)
+func NewManager(opts Options) (*Manager, error) {
+	if err := os.MkdirAll(opts.SharedDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create shared hook directory: %w", err)
 	}
 	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
 	rootCtx, rootCancel := context.WithCancel(context.Background())
@@ -62,7 +62,7 @@ func NewManager(opts Options) *Manager {
 		closeDone:    make(chan struct{}),
 	}
 	go m.cleanSharedState(cleanupCtx)
-	return m
+	return m, nil
 }
 
 func (m *Manager) cleanSharedState(ctx context.Context) {
@@ -87,16 +87,10 @@ func (m *Manager) cleanSharedState(ctx context.Context) {
 }
 
 func (m *Manager) SharedState() *SharedState {
-	if m == nil {
-		return nil
-	}
 	return m.shared
 }
 
 func (m *Manager) SetPluginReloadPreparer(fn func(string) (func() (globalevents.LogResult, error), error)) {
-	if m == nil {
-		return
-	}
 	m.mu.Lock()
 	m.prepareReload = fn
 	m.mu.Unlock()
@@ -106,106 +100,55 @@ func (m *Manager) preparePluginReload(id string) (func() (globalevents.LogResult
 	m.mu.RLock()
 	prepare := m.prepareReload
 	m.mu.RUnlock()
-	if prepare == nil {
-		return nil, fmt.Errorf("hook plugin reload is not configured")
-	}
 	return prepare(id)
 }
 
 // Apply reconciles configured workers. Persistent workers start immediately;
 // transient worker definitions are retained until a trigger rule matches.
-func (m *Manager) Apply(configs []Config) error {
-	if m == nil {
-		return nil
+func (m *Manager) Apply(configs []Config, commit func(string)) error {
+	next := make(map[string]*Config, len(configs))
+	for i := range configs {
+		next[configs[i].ID] = &configs[i]
 	}
-	next := map[string]Config{}
-	for _, config := range configs {
-		if err := m.validateConfig(config); err != nil {
-			return err
-		}
-		if _, exists := next[config.ID]; exists {
-			return fmt.Errorf("duplicate hook worker %q", config.ID)
-		}
-		next[config.ID] = config
-	}
-	nextWorkers := make(map[string]*worker, len(next))
-	workers := make([]*worker, 0, len(next))
-	for id, config := range next {
-		if config.ModeOrOnce() != ModePersistent {
-			continue
-		}
-		worker := newWorker(m, config)
-		nextWorkers[id] = worker
-		workers = append(workers, worker)
-	}
-
-	m.mu.Lock()
+	m.mu.RLock()
 	if m.closed {
-		m.mu.Unlock()
+		m.mu.RUnlock()
 		return ErrClosed
 	}
-	previous := m.workers
-	previousTransient := m.transient
-	m.workers = nextWorkers
-	m.transient = map[routeKey]*worker{}
-	m.configs = next
-	previousIDs := make(map[string]bool, len(previous))
-	for id := range previous {
-		previousIDs[id] = true
-		m.clearRoutesLocked(id)
-	}
-	for token, value := range m.tokens {
-		if previousIDs[value.HookID] {
-			delete(m.tokens, token)
+	for id := range m.configs {
+		if _, ok := next[id]; !ok {
+			next[id] = nil
 		}
 	}
-	m.mu.Unlock()
-
-	for _, old := range previous {
-		_, _ = old.stop(context.Background())
+	m.mu.RUnlock()
+	ids := make([]string, 0, len(next))
+	for id := range next {
+		ids = append(ids, id)
 	}
-	for _, old := range previousTransient {
-		_, _ = old.stop(context.Background())
+	sort.Strings(ids)
+	failures := make([]error, len(ids))
+	var wg sync.WaitGroup
+	for i, id := range ids {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, failures[i] = m.ReplacePlugin(id, next[id], func() { commit(id) })
+		}()
 	}
-	for _, worker := range workers {
-		if err := m.startWorker(worker); err != nil {
-			return err
-		}
-	}
-	return nil
+	wg.Wait()
+	return errors.Join(failures...)
 }
 
 func (m *Manager) validateConfig(config Config) error {
-	if err := config.Validate(); err != nil {
-		return err
-	}
-	seen := map[string]bool{}
 	for _, name := range config.Tools.Allow {
-		name = strings.TrimSpace(name)
-		if name == "" || seen[name] {
-			return fmt.Errorf("runtime tools.allow contains an empty or duplicate tool name")
-		}
-		seen[name] = true
-		if m.opts.Registry == nil {
-			return fmt.Errorf("runtime tool registry is not configured")
-		}
 		if _, ok := m.opts.Registry.Get(name); !ok {
 			return fmt.Errorf("runtime tools.allow references unknown tool %q", name)
-		}
-	}
-	for _, name := range config.Tools.BackgroundAllow {
-		name = strings.TrimSpace(name)
-		if name == "" || !seen[name] {
-			return fmt.Errorf("runtime tools.background_allow tool %q must also appear in tools.allow", name)
 		}
 	}
 	return nil
 }
 
 func (m *Manager) ValidatePlugin(config Config) error {
-	if m == nil {
-		return fmt.Errorf("hook runtime is not configured")
-	}
 	if !config.IsWorker() {
 		return fmt.Errorf("hook %q is not a worker", config.ID)
 	}
@@ -224,54 +167,88 @@ func (m *Manager) ValidatePlugin(config Config) error {
 	return nil
 }
 
-// ReplacePlugin replaces one worker definition and restarts it when persistent.
-func (m *Manager) ReplacePlugin(config Config) (globalevents.LogResult, error) {
-	if err := m.ValidatePlugin(config); err != nil {
-		return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+// ReplacePlugin stops this plugin's old workers before publishing its candidate.
+// A nil config removes the worker definition. commit publishes its ordinary rules.
+func (m *Manager) ReplacePlugin(id string, config *Config, commit func()) (globalevents.LogResult, error) {
+	if config != nil {
+		if err := m.validateConfig(*config); err != nil {
+			_, _ = globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(m.rootCtx), globalevents.Notification{Text: fmt.Sprintf("Hook %s 配置应用失败：%v", id, err), Level: slog.LevelWarn})
+			return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, fmt.Errorf("hook %s config: %w", id, err)
+		}
 	}
-	id := strings.TrimSpace(config.ID)
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
-		return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: ErrClosed.Error()}, ErrClosed
+		return globalevents.LogResult{ResultStatus: globalevents.ResultCanceled, Content: ErrClosed.Error()}, ErrClosed
 	}
-	old := m.workers[id]
-	m.configs[id] = config
+	workers := make([]*worker, 0)
+	if old := m.workers[id]; old != nil {
+		workers = append(workers, old)
+	}
+	for _, old := range m.transient {
+		if old.config.ID == id {
+			workers = append(workers, old)
+		}
+	}
+	// Keep old workers indexed while stopping; their own stop state blocks new dispatch.
+	for _, old := range workers {
+		old.mu.Lock()
+		old.manualStop = true
+		old.mu.Unlock()
+	}
+	if len(workers) > 0 {
+		m.mu.Unlock()
+		failures := make([]error, len(workers))
+		var wg sync.WaitGroup
+		for i, old := range workers {
+			wg.Add(1)
+			go func() { defer wg.Done(); _, failures[i] = old.stop(context.Background()) }()
+		}
+		wg.Wait()
+		if err := errors.Join(failures...); err != nil {
+			return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook %s stop: %v", id, err)}, fmt.Errorf("hook %s stop: %w", id, err)
+		}
+		m.mu.Lock()
+		if m.closed {
+			m.mu.Unlock()
+			return globalevents.LogResult{ResultStatus: globalevents.ResultCanceled, Content: ErrClosed.Error()}, ErrClosed
+		}
+	}
+	for key, old := range m.transient {
+		if old.config.ID == id {
+			delete(m.transient, key)
+		}
+	}
 	m.clearRoutesLocked(id)
 	for token, value := range m.tokens {
 		if value.HookID == id {
 			delete(m.tokens, token)
 		}
 	}
-	if config.ModeOrOnce() == ModePersistent {
-		m.workers[id] = newWorker(m, config)
+	delete(m.workers, id)
+	if config == nil {
+		delete(m.configs, id)
 	} else {
-		delete(m.workers, id)
+		m.configs[id] = *config
+		if config.ModeOrOnce() == ModePersistent {
+			m.workers[id] = newWorker(m, *config)
+		}
 	}
 	next := m.workers[id]
+	commit()
 	m.mu.Unlock()
-
-	if old != nil {
-		if logResult, err := old.stop(context.Background()); err != nil {
-			return logResult, err
-		}
-	}
 	if next != nil {
-		err := m.startWorker(next)
-		if err != nil {
-			return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+		if err := m.startWorker(next); err != nil {
+			return globalevents.LogResult{ResultStatus: globalevents.ResultCanceled, Content: err.Error()}, err
 		}
 	}
-	return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "Hook worker definition replaced; startup scheduled"}, nil
+	return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "Hook definition published; persistent startup scheduled"}, nil
 }
 
 // Done closes after workers and shared resources actually finish shutting down.
 func (m *Manager) Done() <-chan struct{} { return m.closeDone }
 
 func (m *Manager) Close(ctx context.Context) error {
-	if m == nil {
-		return nil
-	}
 	m.mu.Lock()
 	if m.closed {
 		done := m.closeDone
@@ -292,9 +269,7 @@ func (m *Manager) Close(ctx context.Context) error {
 	m.tokens = map[string]toolContext{}
 	m.mu.Unlock()
 
-	if m.sharedCancel != nil {
-		m.sharedCancel()
-	}
+	m.sharedCancel()
 	go m.finishClose(ctx, workers)
 	return m.waitClose(ctx, m.closeDone)
 }
@@ -321,9 +296,7 @@ func (m *Manager) finishClose(ctx context.Context, workers []*worker) {
 	}
 	wg.Wait()
 	m.startWG.Wait()
-	if m.sharedDone != nil {
-		<-m.sharedDone
-	}
+	<-m.sharedDone
 
 	logResult, err := m.media.prune(ctx, time.Now(), true)
 	if logResult.ResultStatus != globalevents.ResultSkipped {
@@ -340,9 +313,6 @@ func (m *Manager) finishClose(ctx context.Context, workers []*worker) {
 }
 
 func (m *Manager) startWorker(worker *worker) error {
-	if m == nil || worker == nil {
-		return nil
-	}
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
@@ -358,18 +328,12 @@ func (m *Manager) startWorker(worker *worker) error {
 }
 
 func (m *Manager) isClosed() bool {
-	if m == nil {
-		return true
-	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.closed
 }
 
 func (m *Manager) List() []Info {
-	if m == nil {
-		return nil
-	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	itemsByID := map[string]Info{}
@@ -379,11 +343,9 @@ func (m *Manager) List() []Info {
 	for id, worker := range m.workers {
 		itemsByID[id] = worker.info()
 	}
-	for key, worker := range m.transient {
+	for _, worker := range m.transient {
 		info := itemsByID[worker.config.ID]
-		if info.ID == "" {
-			info = Info{ID: worker.config.ID, Description: worker.config.Description, Mode: ModeTransient}
-		}
+
 		workerInfo := worker.info()
 		info.Active += workerInfo.Active
 		if workerInfo.Status == StatusRunning {
@@ -392,7 +354,6 @@ func (m *Manager) List() []Info {
 			info.Status = workerInfo.Status
 		}
 		itemsByID[worker.config.ID] = info
-		_ = key
 	}
 	for _, lease := range m.routes {
 		info := itemsByID[lease.HookID]
@@ -466,9 +427,6 @@ func (m *Manager) Restart(ctx context.Context, id string) error {
 }
 
 func (m *Manager) worker(id string) *worker {
-	if m == nil {
-		return nil
-	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.workers[strings.TrimSpace(id)]
@@ -525,6 +483,25 @@ func (m *Manager) startTransient(ctx context.Context, config Config, key routeKe
 	if m.closed {
 		m.mu.Unlock()
 		return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: ErrClosed.Error()}, ErrClosed
+	}
+	current, ok := m.configs[config.ID]
+	if !ok {
+		m.mu.Unlock()
+		err := fmt.Errorf("hook worker %q is no longer configured", config.ID)
+		return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+	}
+	config = current
+	for _, old := range m.transient {
+		if old.config.ID == config.ID {
+			old.mu.Lock()
+			stopping := old.manualStop || old.stopping
+			old.mu.Unlock()
+			if stopping {
+				m.mu.Unlock()
+				err := fmt.Errorf("hook worker %q is stopping", config.ID)
+				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: err.Error()}, err
+			}
+		}
 	}
 	worker := m.transient[key]
 	created := false

@@ -49,11 +49,10 @@ func TestManagerUsesDeclaredOutcomeIndependentlyOfBusinessError(t *testing.T) {
 		{"canceled_without_error", events.ResultCanceled, nil, slog.LevelInfo},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			manager := NewManager()
+			manager := newTestManager()
+
 			declared := events.LogResult{ResultStatus: tc.status, Content: "explicit source facts"}
-			if err := manager.Register(Registration{Name: "source", Point: PointAgentInputPrepared, Match: Always(), Handler: HandlerFunc(func(_ context.Context, event Event) (Event, events.LogResult, error) { return event, declared, tc.err })}); err != nil {
-				t.Fatal(err)
-			}
+			manager.Register(Registration{Name: "source", Point: PointAgentInputPrepared, Match: Always(), Handler: HandlerFunc(func(_ context.Context, event Event) (Event, events.LogResult, error) { return event, declared, tc.err })})
 			var records []events.LogRecord
 			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error { records = append(records, record); return nil }, signal.ConnectOptions{})
 			if err != nil {
@@ -70,11 +69,10 @@ func TestManagerUsesDeclaredOutcomeIndependentlyOfBusinessError(t *testing.T) {
 
 func TestManagerRetainsFailureAcrossSamePointHandlers(t *testing.T) {
 	for _, notify := range []bool{false, true} {
-		manager := NewManager()
+		manager := newTestManager()
+
 		for i, outcome := range []events.LogResult{{ResultStatus: events.ResultCanceled, Content: "canceled stage"}, {ResultStatus: events.ResultFailed, Content: "independent failure"}, {ResultStatus: events.ResultSucceeded, Content: "completed stage"}} {
-			if err := manager.Register(Registration{Name: outcome.Content, Point: PointAgentInputPrepared, Priority: i, Match: Always(), Handler: HandlerFunc(func(_ context.Context, event Event) (Event, events.LogResult, error) { return event, outcome, nil })}); err != nil {
-				t.Fatal(err)
-			}
+			manager.Register(Registration{Name: outcome.Content, Point: PointAgentInputPrepared, Priority: i, Match: Always(), Handler: HandlerFunc(func(_ context.Context, event Event) (Event, events.LogResult, error) { return event, outcome, nil })})
 		}
 		var outcome events.LogResult
 		var err error

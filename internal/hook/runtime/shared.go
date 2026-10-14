@@ -116,11 +116,8 @@ func (s *SharedState) HandleRequest(method string, params json.RawMessage) (any,
 }
 
 func (s *SharedState) Get(key string) (json.RawMessage, bool) {
-	if s == nil {
-		return nil, false
-	}
 	key = strings.TrimSpace(key)
-	now := s.currentTime()
+	now := s.now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	entry, ok := s.items[key]
@@ -141,9 +138,6 @@ func (s *SharedState) Set(key string, value json.RawMessage) error {
 }
 
 func (s *SharedState) SetWithTTL(key string, value json.RawMessage, ttl time.Duration) error {
-	if s == nil {
-		return fmt.Errorf("hook shared state is not configured")
-	}
 	key, value, err := normalizeSharedValue(key, value)
 	if err != nil {
 		return err
@@ -151,7 +145,7 @@ func (s *SharedState) SetWithTTL(key string, value json.RawMessage, ttl time.Dur
 	if ttl < 0 {
 		return fmt.Errorf("shared ttl must not be negative")
 	}
-	now := s.currentTime()
+	now := s.now()
 	entry := sharedEntry{value: value, ttl: ttl, lastAccess: now}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -168,11 +162,8 @@ func (s *SharedState) SetWithTTL(key string, value json.RawMessage, ttl time.Dur
 }
 
 func (s *SharedState) Delete(key string) bool {
-	if s == nil {
-		return false
-	}
 	key = strings.TrimSpace(key)
-	now := s.currentTime()
+	now := s.now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	entry, ok := s.items[key]
@@ -184,11 +175,8 @@ func (s *SharedState) Delete(key string) bool {
 }
 
 func (s *SharedState) List(prefix string) []string {
-	if s == nil {
-		return nil
-	}
 	prefix = strings.TrimSpace(prefix)
-	now := s.currentTime()
+	now := s.now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.pruneExpiredLocked(now)
@@ -209,9 +197,6 @@ func (s *SharedState) CompareAndSwap(key string, expected, value json.RawMessage
 }
 
 func (s *SharedState) CompareAndSwapWithTTL(key string, expected, value json.RawMessage, ttl time.Duration) (bool, error) {
-	if s == nil {
-		return false, fmt.Errorf("hook shared state is not configured")
-	}
 	key, value, err := normalizeSharedValue(key, value)
 	if err != nil {
 		return false, err
@@ -225,7 +210,7 @@ func (s *SharedState) CompareAndSwapWithTTL(key string, expected, value json.Raw
 		}
 		expected = compactJSON(expected)
 	}
-	now := s.currentTime()
+	now := s.now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	current, exists := s.items[key]
@@ -253,10 +238,7 @@ func (s *SharedState) CompareAndSwapWithTTL(key string, expected, value json.Raw
 }
 
 func (s *SharedState) PruneExpired() int {
-	if s == nil {
-		return 0
-	}
-	now := s.currentTime()
+	now := s.now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.pruneExpiredLocked(now)
@@ -298,10 +280,7 @@ func (s *SharedState) makeRoomLocked(key string, incoming sharedEntry) error {
 		return candidates[i].lastAccess.Before(candidates[j].lastAccess)
 	})
 	for _, candidate := range candidates {
-		entry, ok := s.items[candidate.key]
-		if !ok {
-			continue
-		}
+		entry := s.items[candidate.key]
 		s.deleteLocked(candidate.key, entry)
 		if fits() {
 			return nil
@@ -326,13 +305,6 @@ func (s *SharedState) deleteLocked(key string, entry sharedEntry) {
 	s.size -= sharedEntrySize(key, entry)
 }
 
-func (s *SharedState) currentTime() time.Time {
-	if s.now == nil {
-		return time.Now()
-	}
-	return s.now()
-}
-
 func (entry sharedEntry) expired(now time.Time) bool {
 	return entry.ttl > 0 && !now.Before(entry.lastAccess.Add(entry.ttl))
 }
@@ -353,9 +325,7 @@ func normalizeSharedValue(key string, value json.RawMessage) (string, json.RawMe
 		return "", nil, fmt.Errorf("shared value must be valid JSON")
 	}
 	var compact bytes.Buffer
-	if err := json.Compact(&compact, value); err != nil {
-		return "", nil, fmt.Errorf("compact shared value: %w", err)
-	}
+	_ = json.Compact(&compact, value)
 	if compact.Len() > maxSharedValueBytes {
 		return "", nil, fmt.Errorf("shared value exceeds %d MiB limit", maxSharedValueBytes>>20)
 	}
@@ -364,9 +334,7 @@ func normalizeSharedValue(key string, value json.RawMessage) (string, json.RawMe
 
 func compactJSON(value json.RawMessage) []byte {
 	var compact bytes.Buffer
-	if json.Compact(&compact, value) != nil {
-		return value
-	}
+	_ = json.Compact(&compact, value)
 	return compact.Bytes()
 }
 

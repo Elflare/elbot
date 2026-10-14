@@ -56,7 +56,10 @@ func TestRuntimeCloseUsesCallerMediaCleanupContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.WithValue(t.Context(), "cleanup-budget", "caller"))
 	cancel()
 	observed := make(chan context.Context, 1)
-	manager := NewManager(Options{Media: releaseMediaAPI{release: func(ctx context.Context, _ storage.MediaReference) error { observed <- ctx; return ctx.Err() }}})
+	manager, err := NewManager(Options{SharedDir: t.TempDir(), Media: releaseMediaAPI{release: func(ctx context.Context, _ storage.MediaReference) error { observed <- ctx; return ctx.Err() }}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	manager.media.leases["lease"] = &mediaLease{}
 	records := captureHookRecords(t)
 	manager.Close(ctx)

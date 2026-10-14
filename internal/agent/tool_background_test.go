@@ -411,13 +411,12 @@ func TestRunBackgroundReturnsRawAssistantTextForJSONParsing(t *testing.T) {
 	ctx := context.Background()
 	const raw = `{"completed":true,"need_report":true,"report":"ok"}`
 
-	hooks := hook.NewManager()
-	if err := hooks.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "visible-text", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	hooks := newTestHookManager()
+
+	hooks.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "visible-text", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.LLM.Text = "可见文本"
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatal(err)
-	}
+	})})
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: raw}}}}, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.SandboxRoot = t.TempDir()
 		cfg.HookManager = hooks
