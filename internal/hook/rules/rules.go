@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
@@ -187,25 +186,16 @@ func NewModule(opts Options) (Module, error) {
 	return module, nil
 }
 
-func (m Module) RegisterHooks(registrar hook.Registrar) error {
-	for index, rule := range m.Rules {
+func (m Module) RegisterHooks(registrar hook.Registrar) {
+	for _, rule := range m.Rules {
 		if !rule.enabled() {
 			continue
-		}
-		if err := validateRule(rule); err != nil {
-			return err
 		}
 		priority := rule.Priority
 		if priority == 0 {
 			priority = DefaultPriority
 		}
-		name := strings.TrimSpace(rule.source.FinalName)
-		if name == "" {
-			name = strings.TrimSpace(rule.Name)
-		}
-		if name == "" {
-			name = fmt.Sprintf("rule.%d", index+1)
-		}
+		name := rule.source.FinalName
 
 		{
 			record := globalevents.LogRecord{
@@ -233,7 +223,7 @@ func (m Module) RegisterHooks(registrar hook.Registrar) error {
 			if len(registrations) > 1 {
 				detail = fmt.Sprintf("%s\n\n(role partition %d/%d)", detail, roleIndex+1, len(registrations))
 			}
-			if err := registrar.Register(hook.Registration{
+			registrar.Register(hook.Registration{
 				Point:       hook.Point(rule.On),
 				Priority:    priority,
 				PluginID:    rule.source.PluginName,
@@ -245,9 +235,6 @@ func (m Module) RegisterHooks(registrar hook.Registrar) error {
 				Wakeup:      rule.Wakeup,
 				Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
 					if rule.source.RuntimeID != "" {
-						if m.Opts.Runtime == nil {
-							return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "stateful hook runtime is not configured"}, fmt.Errorf("stateful hook runtime is not configured")
-						}
 						return m.Opts.Runtime.Handle(ctx, rule.source.RuntimeID, event, hook.Control{
 							Consume:         rule.Consume,
 							StopPropagation: rule.StopPropagation,
@@ -255,10 +242,7 @@ func (m Module) RegisterHooks(registrar hook.Registrar) error {
 					}
 					return m.runRule(ctx, rule, event)
 				}),
-			}); err != nil {
-				return err
-			}
+			})
 		}
 	}
-	return nil
 }

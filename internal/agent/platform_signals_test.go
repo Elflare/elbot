@@ -19,10 +19,9 @@ import (
 
 func newPlatformEventAgent(t *testing.T, handler hook.HandlerFunc) *agentFixture {
 	t.Helper()
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointPlatformConnected, Name: "connection", Match: hook.Always(), Handler: handler}); err != nil {
-		t.Fatal(err)
-	}
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{Point: hook.PointPlatformConnected, Name: "connection", Match: hook.Always(), Handler: handler})
 	return newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(opts *testAgentOptions) { opts.HookManager = manager })
 }
 
@@ -233,13 +232,12 @@ func (p *platformOutputSender) SendTo(_ context.Context, noticeTarget delivery.T
 	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 func TestGlobalPlatformHookSendsOutput(t *testing.T) {
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointPlatformConnected, Name: "output", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, globalevents.LogResult, error) {
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{Point: hook.PointPlatformConnected, Name: "output", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, globalevents.LogResult, error) {
 		e.Outputs = []delivery.Output{delivery.Text("connected")}
 		return e, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatal(err)
-	}
+	})})
 	p := &platformOutputSender{sent: make(chan []delivery.Output, 2)}
 	a := newTestAgent(t, p, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(opts *testAgentOptions) { opts.HookManager = manager })
 	if err := a.StartPlatformEvents(t.Context()); err != nil {

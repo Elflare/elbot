@@ -154,11 +154,6 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		logHook("hook_tool_call", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})
 		return nil, err
 	}
-	if w.manager.opts.Registry == nil {
-		err := fmt.Errorf("tool registry is not configured")
-		logHook("hook_tool_call", globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()})
-		return nil, err
-	}
 	registered, ok := w.manager.opts.Registry.Get(name)
 	if !ok {
 		err := fmt.Errorf("tool %q not found", name)
@@ -225,11 +220,6 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	}
 	content.Arguments = nil
 	content.ElapsedMS = nil
-	if w.manager.opts.Send == nil {
-		err := fmt.Errorf("hook output sender is not configured")
-		logHook("hook_tool_log", globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "send not entered: " + err.Error()})
-		return nil, err
-	}
 	if !params.Target.Empty() {
 		for i := range result.Outputs {
 			result.Outputs[i].Target = params.Target
@@ -251,17 +241,16 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	return map[string]any{"content": result.Content, "segments": result.Segments, "warnings": result.Warnings, "receipts": []delivery.Receipt{receipt}}, nil
 }
 
-func (w *worker) schemas() []llm.ToolSchema {
-	if w.manager.opts.Registry == nil {
-		return nil
-	}
+func (w *worker) schemas() ([]llm.ToolSchema, error) {
 	out := make([]llm.ToolSchema, 0, len(w.config.Tools.Allow))
 	for _, name := range w.config.Tools.Allow {
-		if registered, ok := w.manager.opts.Registry.Get(name); ok {
-			out = append(out, registered.Schema())
+		registered, ok := w.manager.opts.Registry.Get(name)
+		if !ok {
+			return nil, fmt.Errorf("tool %q no longer exists", name)
 		}
+		out = append(out, registered.Schema())
 	}
-	return out
+	return out, nil
 }
 
 func contains(values []string, target string) bool {

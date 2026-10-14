@@ -39,9 +39,6 @@ func (c hooksCommand) Info() command.Info {
 
 func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
 	deps := c.deps
-	if deps.Hooks == nil {
-		return &command.Result{Content: "hook service is not configured"}, nil
-	}
 	fields := strings.Fields(req.Args)
 	if len(fields) == 0 {
 		return &command.Result{Content: formatHookList(deps)}, nil
@@ -50,7 +47,7 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 	case "reload":
 		report, err := deps.Hooks.HookReload()
 		if err != nil {
-			return &command.Result{Content: fmt.Sprintf("hook reload failed: %v", err)}, nil
+			return &command.Result{Content: fmt.Sprintf("hook reload finished; errors:\n%v", err) + "\n" + strings.Join(report.Notices, "\n")}, nil
 		}
 		return &command.Result{Content: formatHookReloadResult(report)}, nil
 	case "start", "stop", "restart":
@@ -78,9 +75,6 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 
 func (c hooksCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
 	_ = ctx
-	if c.deps.Hooks == nil {
-		return nil
-	}
 	token := currentCompletionToken(req)
 	if isFirstArg(req, token) {
 		options := []completionOption{{Text: "reload", Description: "Reload all hooks"}, {Text: "start", Description: "Start a stateful hook"}, {Text: "stop", Description: "Stop a stateful hook"}, {Text: "restart", Description: "Restart a stateful hook"}}

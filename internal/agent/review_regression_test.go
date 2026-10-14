@@ -102,15 +102,14 @@ func testReadonlyHookSelection(t *testing.T, point hook.Point) {
 	opts.Models = models
 	opts.SessionConfig.NamingConfig.TriggerStep = 100
 
-	h := hook.NewManager()
-	if err := h.Register(hook.Registration{Point: point, Name: "review", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
+	h := newTestHookManager()
+
+	h.Register(hook.Registration{Point: point, Name: "review", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
 		e.LLM.Provider = "next"
 		e.LLM.Model = "second"
 		e.Message.Segments = llm.TextSegments("hook message")
 		return e, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatal(err)
-	}
+	})})
 	a := mustNewWithOptions(t, opts, func(cfg *testAgentOptions) {
 		cfg.HookManager = h
 	})
@@ -162,14 +161,13 @@ func TestReviewOldInputCannotCommitToolsAfterBindingSwitch(t *testing.T) {
 		t.Fatal(err)
 	}
 	started, release, unblock := modelBarrier(t)
-	h := hook.NewManager()
-	if err := h.Register(hook.Registration{Point: hook.PointAgentInputPrepared, Name: "review.block", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
+	h := newTestHookManager()
+
+	h.Register(hook.Registration{Point: hook.PointAgentInputPrepared, Name: "review.block", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
 		close(started)
 		<-release
 		return e, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatal(err)
-	}
+	})})
 	a := newTestAgent(t, p, &fakeLLM{}, "m", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.ToolRegistry = registry
 		cfg.HookManager = h

@@ -12,13 +12,12 @@ import (
 
 func TestHookAdaptersPassFailedResultWithNilBusinessError(t *testing.T) {
 	declared := events.LogResult{ResultStatus: events.ResultFailed, Content: "source failure independent of business return"}
-	manager := hook.NewManager()
+	manager := newTestHookManager()
+
 	for _, point := range []hook.Point{hook.PointToolCallPrepared, hook.PointToolCallCompleted, hook.PointAgentTurnOutputPrepared} {
-		if err := manager.Register(hook.Registration{Name: string(point), Point: point, Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+		manager.Register(hook.Registration{Name: string(point), Point: point, Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 			return event, declared, nil
-		})}); err != nil {
-			t.Fatal(err)
-		}
+		})})
 	}
 	bridge := &HookBridge{manager: manager, identity: &IdentityResolver{scopeID: "test"}}
 	deps := toolRunDeps{hooks: bridge}

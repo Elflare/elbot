@@ -37,7 +37,7 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 	for i, arg := range action.Command {
 		argv[i] = render(arg, event, state)
 	}
-	if len(argv) == 0 || strings.TrimSpace(argv[0]) == "" {
+	if strings.TrimSpace(argv[0]) == "" {
 		return event, actionResult{Error: "command is required"}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "command is required; process not started"}, fmt.Errorf("command is required")
 	}
 	runCtx := ctx
@@ -50,10 +50,7 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 	if err != nil {
 		return event, actionResult{Error: err.Error()}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
-	processEnv := m.Opts.ProcessEnv
-	if action.source.ProcessEnv.Configured() {
-		processEnv = action.source.ProcessEnv
-	}
+	processEnv := action.source.ProcessEnv
 	cmd := processEnv.CommandContext(runCtx, argv[0], argv[1:]...)
 	configureExecHookProcess(cmd)
 	killOnce := sync.OnceValue(func() bool { return killExecHookProcessTree(cmd) })
@@ -97,12 +94,9 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 	}
 	fail := func(result actionResult, logResult globalevents.LogResult, source error) (hook.Event, actionResult, globalevents.LogResult, error) {
 		killProcessTree()
-		waitErr := waitExec()
+		_ = waitExec()
 		if contextErr := execContextError(runCtx, action); contextErr != nil {
-			source = contextErr
 			logResult.Content += "\ncontext_error=" + contextErr.Error()
-		} else if source == nil {
-			source = execProcessError(runCtx, action, waitErr)
 		}
 		source = withExecStderr(source, stderrTail.String())
 		result.Error = source.Error()
@@ -152,20 +146,23 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 		if runCtx.Err() != nil {
 			logResult.Content += "\ncontext_error=" + runCtx.Err().Error()
 		}
-		if runCtx.Err() == context.Canceled {
-			if err == context.Canceled {
-				logResult.ResultStatus = globalevents.ResultCanceled
-			} else {
-				select {
-				case cancelRequested := <-cancelRequested:
-					if execExitCanceled(cmd, cancelRequested) {
-						logResult.ResultStatus = globalevents.ResultCanceled
-					}
-				default:
+		if runCtx.Err() != nil {
+			select {
+			case cancelRequested := <-cancelRequested:
+				if execExitCanceled(cmd, cancelRequested) {
+					err = execContextError(runCtx, action)
+				}
+			default:
+				if err == runCtx.Err() {
+					err = execContextError(runCtx, action)
 				}
 			}
 		}
-		err = withExecStderr(execProcessError(runCtx, action, err), stderrTail.String())
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		err = execProcessError(err)
+		err = withExecStderr(err, stderrTail.String())
 		return event, actionResult{Error: err.Error()}, logResult, err
 	}
 	return event, result, logResult, nil
@@ -198,7 +195,7 @@ func (m Module) readV2Response(ctx context.Context, reader *bufio.Reader, stdin 
 				if ctx.Err() == context.Canceled {
 					logResult.ResultStatus = globalevents.ResultCanceled
 				}
-				return nil, logResult, err
+				return nil, logResult, execContextError(ctx, action)
 			}
 			if errors.Is(err, io.EOF) {
 				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook.v2 plugin closed stdout while waiting for response %q", wantedID)}, fmt.Errorf("hook.v2 plugin closed stdout while waiting for response %q", wantedID)
@@ -376,9 +373,6 @@ func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, act
 		return result, logResult, err
 	}
 	if strings.HasPrefix(method, "shared.") {
-		if m.Opts.Runtime == nil {
-			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook runtime is not configured")}, fmt.Errorf("hook runtime is not configured")
-		}
 		result, err := m.Opts.Runtime.SharedState().HandleRequest(method, params)
 		if err != nil {
 			logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
@@ -391,25 +385,28 @@ func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, act
 		if err != nil {
 			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 		}
-		platformName := strings.TrimSpace(rawString(paramsMap["platform"]))
+		platformName, err := rawString(paramsMap["platform"])
+		if err != nil {
+			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+		}
 		if platformName == "" {
 			platformName = event.Platform.Name
 		}
 		if event.Platform.Name != "" && platformName != event.Platform.Name {
 			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("platform.call can only call current platform %q", event.Platform.Name)}, fmt.Errorf("platform.call can only call current platform %q", event.Platform.Name)
 		}
-		api := rawString(paramsMap["api"])
+		api, err := rawString(paramsMap["api"])
+		if err != nil {
+			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+		}
 		callParams := map[string]any{}
 		if raw := paramsMap["params"]; len(raw) > 0 {
 			if err := json.Unmarshal(raw, &callParams); err != nil {
 				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 			}
 		}
-		if m.Opts.PlatformCallers == nil {
-			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("platform callers are not configured")}, fmt.Errorf("platform callers are not configured")
-		}
 		caller, ok := m.Opts.PlatformCallers.PlatformCaller(platformName)
-		if !ok || caller == nil {
+		if !ok {
 			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("platform %q does not support api calls", platformName)}, fmt.Errorf("platform %q does not support api calls", platformName)
 		}
 		resp, err := caller.CallPlatformAPI(ctx, api, callParams)
@@ -528,7 +525,7 @@ func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, act
 			logHook(nil, delivery.Receipt{}, logResult)
 			return nil, logResult, err
 		}
-		receipt, logResult, err := m.sendProtocolOutput(ctx, event, outputs)
+		receipt, logResult, err := m.Opts.Send(ctx, delivery.Target{}, outputs)
 		logHook(outputs, receipt, logResult)
 		if err != nil {
 			return nil, logResult, err
@@ -593,7 +590,11 @@ func protocolOutputsFromMap(values map[string]json.RawMessage, action Action, de
 			return nil, fmt.Errorf("invalid field \"target\": %w", err)
 		}
 	}
-	return hookoutput.BuildGroup(hookoutput.Group{Outputs: specs, Target: target, Timing: rawString(values["timing"])}, hookoutput.BuildOptions{BaseDir: action.sourceBaseDir(), DefaultTarget: defaultTarget, DefaultTiming: defaultTiming})
+	timing, err := rawString(values["timing"])
+	if err != nil {
+		return nil, err
+	}
+	return hookoutput.BuildGroup(hookoutput.Group{Outputs: specs, Target: target, Timing: timing}, hookoutput.BuildOptions{BaseDir: action.sourceBaseDir(), DefaultTarget: defaultTarget, DefaultTiming: defaultTiming})
 }
 
 func renderedActionTarget(action Action, event hook.Event, state state) hookoutput.Target {
@@ -601,13 +602,6 @@ func renderedActionTarget(action Action, event hook.Event, state state) hookoutp
 		Platform: render(action.Target.Platform, event, state), ScopeID: render(action.Target.ScopeID, event, state),
 		PrivateUserID: render(action.Target.PrivateUserID, event, state), GroupID: render(action.Target.GroupID, event, state), Superadmins: action.Target.Superadmins,
 	}
-}
-
-func (m Module) sendProtocolOutput(ctx context.Context, event hook.Event, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
-	if m.Opts.Send != nil {
-		return m.Opts.Send(ctx, delivery.Target{}, outputs)
-	}
-	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "send not entered: output sender is not configured"}, fmt.Errorf("output sender is not configured")
 }
 
 func rawObject(raw json.RawMessage) (map[string]json.RawMessage, error) {
@@ -618,10 +612,15 @@ func rawObject(raw json.RawMessage) (map[string]json.RawMessage, error) {
 	return out, nil
 }
 
-func rawString(raw json.RawMessage) string {
+func rawString(raw json.RawMessage) (string, error) {
+	if len(raw) == 0 {
+		return "", nil
+	}
 	var value string
-	_ = json.Unmarshal(raw, &value)
-	return strings.TrimSpace(value)
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(value), nil
 }
 
 func writeProtocolFrame(w io.Writer, frame any) error {
@@ -637,36 +636,29 @@ func writeProtocolFrame(w io.Writer, frame any) error {
 }
 
 func pluginStdinWriteError(frame string, err error) error {
-	frame = strings.TrimSpace(frame)
-	if frame == "" {
-		frame = "protocol"
-	}
 	return fmt.Errorf("write hook plugin stdin %s frame failed; plugin may have exited early or closed stdin: %w", frame, err)
 }
 
-func execProcessError(ctx context.Context, action Action, err error) error {
-	if ctxErr := execContextError(ctx, action); ctxErr != nil {
-		return ctxErr
-	}
-	if err != nil {
-		return fmt.Errorf("hook plugin exec failed: %w", err)
-	}
-	return fmt.Errorf("hook plugin exec failed")
+func execProcessError(err error) error {
+	return fmt.Errorf("hook plugin exec failed: %w", err)
 }
 
 func execContextError(ctx context.Context, action Action) error {
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return fmt.Errorf("hook plugin exec canceled: %w", context.Canceled)
 	}
-	if action.TimeoutSeconds > 0 && errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return fmt.Errorf("hook plugin exec timed out after %ds: %w", action.TimeoutSeconds, context.DeadlineExceeded)
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		if action.TimeoutSeconds > 0 {
+			return fmt.Errorf("hook plugin exec timed out after %ds: %w", action.TimeoutSeconds, context.DeadlineExceeded)
+		}
+		return context.DeadlineExceeded
 	}
 	return nil
 }
 
 func withExecStderr(err error, stderr string) error {
 	stderr = strings.TrimSpace(stderr)
-	if err == nil || stderr == "" {
+	if stderr == "" {
 		return err
 	}
 	return fmt.Errorf("%w\nstderr:\n%s", err, stderr)
@@ -765,9 +757,7 @@ func (w *execStderrLogger) Flush() {
 
 func (w *execStderrLogger) emitLocked(line string) {
 	line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
-	if w.tail != nil {
-		w.tail.Add(line)
-	}
+	w.tail.Add(line)
 	if line != "" {
 		{
 			record := globalevents.LogRecord{

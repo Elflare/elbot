@@ -188,14 +188,13 @@ func TestPersistenceFailureNotifiesAtMessageStore(t *testing.T) {
 }
 
 func TestMessageEntryDoesNotRepeatModelErrorHook(t *testing.T) {
-	manager := hook.NewManager()
+	manager := newTestHookManager()
+
 	var calls atomic.Int32
-	if err := manager.Register(hook.Registration{Point: hook.PointErrorOccurred, Name: "failure.observer", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	manager.Register(hook.Registration{Point: hook.PointErrorOccurred, Name: "failure.observer", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		calls.Add(1)
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
-	})}); err != nil {
-		t.Fatal(err)
-	}
+	})})
 	p := &fakePlatform{}
 	a := newTestAgent(t, p, &fakeLLM{replies: []string{"__ERR__"}}, "model", config.ProviderConfig{}, newTestStore(t), func(opts *testAgentOptions) { opts.HookManager = manager })
 	if err := a.HandleMessage(t.Context(), "hello"); err == nil {
@@ -210,12 +209,11 @@ func TestMessageEntryDoesNotRepeatModelErrorHook(t *testing.T) {
 func TestHookErrorTypesDoNotSuppressBusinessFailures(t *testing.T) {
 	for _, want := range []error{context.Canceled, context.DeadlineExceeded} {
 		t.Run(want.Error(), func(t *testing.T) {
-			manager := hook.NewManager()
-			if err := manager.Register(hook.Registration{Point: hook.PointAgentInputPrepared, Name: "failure.hook", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+			manager := newTestHookManager()
+
+			manager.Register(hook.Registration{Point: hook.PointAgentInputPrepared, Name: "failure.hook", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 				return event, events.LogResult{ResultStatus: events.ResultFailed}, want
-			})}); err != nil {
-				t.Fatal(err)
-			}
+			})})
 			p := &fakePlatform{}
 			a := newTestAgent(t, p, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(opts *testAgentOptions) { opts.HookManager = manager })
 			_, _, err := a.hooks.Run(t.Context(), hook.Event{Point: hook.PointAgentInputPrepared})
@@ -231,14 +229,13 @@ func TestHookErrorTypesDoNotSuppressBusinessFailures(t *testing.T) {
 }
 
 func TestErrorHookFailureDoesNotNotifyOrRecurse(t *testing.T) {
-	manager := hook.NewManager()
+	manager := newTestHookManager()
+
 	var calls atomic.Int32
-	if err := manager.Register(hook.Registration{Point: hook.PointErrorOccurred, Name: "failure.error_hook", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	manager.Register(hook.Registration{Point: hook.PointErrorOccurred, Name: "failure.error_hook", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		calls.Add(1)
 		return event, events.LogResult{ResultStatus: events.ResultFailed}, errors.New("error hook failed")
-	})}); err != nil {
-		t.Fatal(err)
-	}
+	})})
 	p := &fakePlatform{}
 	a := newTestAgent(t, p, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(opts *testAgentOptions) { opts.HookManager = manager })
 	a.hooks.NotifyError(t.Context(), hook.Event{Point: hook.PointLLMResponseReceived}, errors.New("upstream failed"))

@@ -69,7 +69,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 	if err != nil {
 		return m, err
 	}
-	bridge, err := agent.NewHookBridge(agent.HookBridgeDeps{
+	bridge := agent.NewHookBridge(agent.HookBridgeDeps{
 		Manager:    deps.HookRunner,
 		Router:     deps.HookRouter,
 		Requests:   m.requests,
@@ -78,9 +78,6 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		Failed:     signals.HookFailed,
 		Dispatcher: deps.Dispatcher,
 	})
-	if err != nil {
-		return m, err
-	}
 	m.bridge = bridge
 	status, err := agent.NewStatusRecorder(agent.StatusRecorderDeps{View: view, Turns: m.turns, Changed: signals.StatusChanged})
 	if err != nil {

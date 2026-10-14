@@ -141,19 +141,16 @@ func TestPreparedToolArgumentsReachExecutionLLMAndTranscript(t *testing.T) {
 	var executedArguments string
 	_ = registry.Register(preparedArgumentTool{arguments: &executedArguments})
 
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointToolCallPrepared, Name: "test.arguments", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{Point: hook.PointToolCallPrepared, Name: "test.arguments", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.Tool.Arguments = `{"q":"prepared"}`
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatalf("Register hook: %v", err)
-	}
-	if err := manager.Register(hook.Registration{Point: hook.PointToolCallCompleted, Name: "test.result-image", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	})})
+	manager.Register(hook.Registration{Point: hook.PointToolCallCompleted, Name: "test.result-image", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.Message.Segments = append(event.Message.Segments, llm.MessageSegment{Type: llm.SegmentImage, URL: "data:image/png;base64,aW1hZ2U=", Name: "result.png"})
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatalf("Register completed hook: %v", err)
-	}
+	})})
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
 		cfg.ToolRegistry = registry
 		cfg.HookManager = manager
@@ -256,13 +253,12 @@ func TestTurnHookCannotModifySystemDuringToolFollowup(t *testing.T) {
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(newAgentShellTool())
 
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointLLMTurnPrepared, Name: "test.turn", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{Point: hook.PointLLMTurnPrepared, Name: "test.turn", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.LLM.Messages = llm.AppendSystemSegmentText(event.LLM.Messages, "TURN_MEMORY")
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatalf("Register turn hook: %v", err)
-	}
+	})})
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
 		cfg.ToolRegistry = registry
@@ -514,7 +510,8 @@ func TestToolCallAssistantEmoticonSendsBeforeFinalResponse(t *testing.T) {
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(newAgentShellTool())
 
-	manager := hook.NewManager()
+	manager := newTestHookManager()
+
 	configDir := t.TempDir()
 	emoticonDir := filepath.Join(configDir, "emoticons", "微笑")
 	if err := os.MkdirAll(emoticonDir, 0o755); err != nil {

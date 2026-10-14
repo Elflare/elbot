@@ -10,9 +10,6 @@ import (
 func configureExecHookProcess(cmd *exec.Cmd) {}
 
 func killExecHookProcessTree(cmd *exec.Cmd) bool {
-	if cmd == nil || cmd.Process == nil {
-		return false
-	}
 	if err := exec.Command("taskkill", "/T", "/F", "/PID", fmt.Sprint(cmd.Process.Pid)).Run(); err == nil {
 		_ = cmd.Process.Kill()
 		return true

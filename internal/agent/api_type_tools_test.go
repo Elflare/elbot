@@ -60,14 +60,13 @@ func TestChatHooksCannotEnableResponsesTool(t *testing.T) {
 	}}}
 	registry := tool.NewRegistry()
 	_ = registry.Register(candidate)
-	hooks := hook.NewManager()
+	hooks := newTestHookManager()
+
 	for _, point := range []hook.Point{hook.PointLLMTurnPrepared, hook.PointLLMRequestPrepared} {
-		if err := hooks.Register(hook.Registration{Point: point, Name: "inject", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+		hooks.Register(hook.Registration{Point: point, Name: "inject", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 			event.LLM.Tools = append(event.LLM.Tools, candidate.Schema())
 			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-		})}); err != nil {
-			t.Fatal(err)
-		}
+		})})
 	}
 	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
 		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "forced", Name: candidate.Name(), Args: "{}"}}}},

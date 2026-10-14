@@ -54,9 +54,6 @@ func newMediaBridge(api hook.MediaAPI) *mediaBridge {
 
 // MediaRequest is shared by once-exec and Worker Hook RPC dispatchers.
 func (m *Manager) MediaRequest(ctx context.Context, baseDir, method string, raw json.RawMessage) (any, error) {
-	if m == nil || m.media == nil || m.media.api == nil {
-		return nil, fmt.Errorf("hook media API is not configured")
-	}
 	if m.isClosed() {
 		return nil, ErrClosed
 	}
@@ -116,7 +113,10 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 			}
 			defer file.Close()
 			info, statErr := file.Stat()
-			if statErr != nil || !info.Mode().IsRegular() {
+			if statErr != nil {
+				return nil, fmt.Errorf("stat plugin media: %w", statErr)
+			}
+			if !info.Mode().IsRegular() {
 				return nil, fmt.Errorf("media.import requires a regular file")
 			}
 			if input.Name == "" {

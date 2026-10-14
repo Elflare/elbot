@@ -68,11 +68,11 @@ func TestTurnPreparationUsesRequestContext(t *testing.T) {
 						// must still stop before persisting the new user message.
 						return []dialogue.SystemPromptPart{{Content: "test"}}, nil
 					}))
-				} else if err := f.hooks.Register(hook.Registration{Point: hook.PointLLMTurnPrepared, Name: "preparation.cancel", Match: hook.Always(), Handler: hook.HandlerFunc(func(hctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
-					observe(hctx)
-					return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-				})}); err != nil {
-					t.Fatal(err)
+				} else {
+					f.hooks.Register(hook.Registration{Point: hook.PointLLMTurnPrepared, Name: "preparation.cancel", Match: hook.Always(), Handler: hook.HandlerFunc(func(hctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+						observe(hctx)
+						return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
+					})})
 				}
 				result := f.runner.RunTurn(ctx, reqCtx, in, f.out)
 				if observedID != in.RequestID || !errors.Is(observedErr, wantErr) {
@@ -146,7 +146,7 @@ func TestRiskConfirmationAcceptsResponseDuringPrompt(t *testing.T) {
 				t.Fatal("start tool phase")
 			}
 			var promptSeen, pending bool
-			if err := f.hooks.Register(hook.Registration{Point: hook.PointPlatformMessageSent, Name: "confirmation.fast", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+			f.hooks.Register(hook.Registration{Point: hook.PointPlatformMessageSent, Name: "confirmation.fast", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 				if strings.Contains(llm.SegmentsTextOnly(event.Message.Segments), "高风险工具调用等待确认") {
 					promptSeen = true
 					_, pending = f.opts.Turns.PendingRiskConfirmation(in.Session.ID)
@@ -157,9 +157,7 @@ func TestRiskConfirmationAcceptsResponseDuringPrompt(t *testing.T) {
 					}
 				}
 				return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-			})}); err != nil {
-				t.Fatal(err)
-			}
+			})})
 			result, err := f.confirmations.AwaitToolConfirmation(reqCtx, in.Session.ID, llm.ToolCallRequest{ID: "call", Name: "danger", Arguments: "{}"}, tool.RiskAssessment{Level: tool.RiskHigh}, "detail")
 			if !promptSeen || !pending || err != nil || result.Allowed != (command == "/confirm") || result.Stopped != (command == "/stop") {
 				t.Fatalf("promptSeen=%v pending=%v result=%+v err=%v", promptSeen, pending, result, err)
@@ -179,12 +177,10 @@ func TestRiskConfirmationPromptFailureClearsWait(t *testing.T) {
 	f.opts.Turns.StartToolPhase(in.Session.ID, "attempt")
 	failure := errors.New("prompt send failed")
 	var pending bool
-	if err := f.hooks.Register(hook.Registration{Point: hook.PointAgentOutputPrepared, Name: "confirmation.fail", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	f.hooks.Register(hook.Registration{Point: hook.PointAgentOutputPrepared, Name: "confirmation.fail", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		_, pending = f.opts.Turns.PendingRiskConfirmation(in.Session.ID)
 		return event, events.LogResult{ResultStatus: events.ResultFailed, Content: "test source failed"}, failure
-	})}); err != nil {
-		t.Fatal(err)
-	}
+	})})
 	_, err := f.confirmations.AwaitToolConfirmation(reqCtx, in.Session.ID, llm.ToolCallRequest{ID: "call", Name: "danger", Arguments: "{}"}, tool.RiskAssessment{Level: tool.RiskHigh}, "detail")
 	if !pending || !errors.Is(err, failure) || f.opts.Turns.Snapshot(in.Session.ID).Phase != turn.PhaseIdle {
 		t.Fatalf("pendingAtSend=%v phase=%s err=%v", pending, f.opts.Turns.Snapshot(in.Session.ID).Phase, err)

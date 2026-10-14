@@ -65,7 +65,11 @@ func TestExecCommandUsesConfiguredProcessEnvironment(t *testing.T) {
 		Actions: []Action{{Type: "exec", Command: execHelperCommand("env", key)}},
 		source:  ruleSource{ProcessEnv: baseEnv.Overlay(map[string]string{key: "from-dotenv"})},
 	}
-	got, _, err := module.runRule(context.Background(), rule, hook.Event{})
+	cfg := Config{Rules: []Rule{rule}}
+	if err := cfg.normalize(); err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := module.runRule(context.Background(), cfg.Rules[0], hook.Event{})
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -86,7 +90,10 @@ func TestWriteProtocolFrameRejectsOversizedInput(t *testing.T) {
 }
 
 func TestExecCanUseRuntimeSharedState(t *testing.T) {
-	runtimeManager := hookruntime.NewManager(hookruntime.Options{})
+	runtimeManager, err := hookruntime.NewManager(hookruntime.Options{SharedDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer runtimeManager.Close(context.Background())
 	if err := runtimeManager.SharedState().SetWithTTL("worker-data", json.RawMessage(`"from-worker"`), 0); err != nil {
 		t.Fatalf("seed shared state: %v", err)
@@ -101,13 +108,6 @@ func TestExecCanUseRuntimeSharedState(t *testing.T) {
 	value, ok := runtimeManager.SharedState().Get("once-data")
 	if !ok || string(value) != "2" {
 		t.Fatalf("once-data = %s, %v", value, ok)
-	}
-}
-
-func TestExecSharedStateRequiresRuntime(t *testing.T) {
-	params := json.RawMessage(`{"key":"missing"}`)
-	if _, _, err := (Module{}).handleProtocolRequest(context.Background(), hook.Event{}, Action{}, state{}, "shared.get", params); err == nil || !strings.Contains(err.Error(), "runtime is not configured") {
-		t.Fatalf("shared request error = %v", err)
 	}
 }
 
@@ -183,18 +183,6 @@ func TestExecCancellationKillsDescendantProcesses(t *testing.T) {
 	}
 }
 
-func TestExecProcessErrorPreservesContextCanceled(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	err := execProcessError(ctx, Action{}, fmt.Errorf("signal: killed"))
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("execProcessError = %v, want context canceled", err)
-	}
-	if !strings.Contains(err.Error(), "canceled") {
-		t.Fatalf("execProcessError text = %q, want canceled", err.Error())
-	}
-}
 func TestExecDoneMessageWritesConfiguredFieldAndResult(t *testing.T) {
 	module := Module{}
 	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "old"}}

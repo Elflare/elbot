@@ -21,7 +21,10 @@ func TestExecMediaProtocolRoundTrip(t *testing.T) {
 	defer store.Close()
 	root := t.TempDir()
 	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
-	runtime := hookruntime.NewManager(hookruntime.Options{Media: center})
+	runtime, err := hookruntime.NewManager(hookruntime.Options{SharedDir: t.TempDir(), Media: center})
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer runtime.Close(ctx)
 	module := Module{Opts: Options{Runtime: runtime}}
 	got, _, err := module.runRule(ctx, Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("media")}}}, hook.Event{Point: hook.PointAgentInputPrepared})

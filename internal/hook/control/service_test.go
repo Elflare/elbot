@@ -20,11 +20,14 @@ type fakeRuntime struct {
 	replaced  string
 }
 
-func (r *fakeRuntime) Apply(configs []hookruntime.Config) error {
+func (r *fakeRuntime) Apply(configs []hookruntime.Config, commit func(string)) error {
 	if r.applyErr != nil {
 		return r.applyErr
 	}
 	r.applied = append([]hookruntime.Config(nil), configs...)
+	for _, config := range configs {
+		commit(config.ID)
+	}
 	return nil
 }
 
@@ -35,11 +38,12 @@ func (r *fakeRuntime) ValidatePlugin(config hookruntime.Config) error {
 	return nil
 }
 
-func (r *fakeRuntime) ReplacePlugin(config hookruntime.Config) (events.LogResult, error) {
+func (r *fakeRuntime) ReplacePlugin(id string, config *hookruntime.Config, commit func()) (events.LogResult, error) {
 	if r.applyErr != nil {
 		return events.LogResult{ResultStatus: events.ResultFailed, Content: r.applyErr.Error()}, r.applyErr
 	}
-	r.replaced = config.ID
+	r.replaced = id
+	commit()
 	return events.LogResult{ResultStatus: events.ResultSucceeded, Content: "replacement completed"}, nil
 }
 
@@ -59,6 +63,10 @@ func (r *fakeRuntime) Restart(_ context.Context, id string) error {
 
 func TestReloadKeepsActiveHooksWhenLoaderFails(t *testing.T) {
 	active := hook.NewManager()
+	active.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
+	active.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
+		return ctx, func() {}
+	})
 	registerTestHook(t, active, "old")
 	service := New(active, &fakeRuntime{}, func(candidate hook.Registrar) (hook.ReloadReport, []hookruntime.Config, error) {
 		registerTestHook(t, candidate, "new")
@@ -72,10 +80,14 @@ func TestReloadKeepsActiveHooksWhenLoaderFails(t *testing.T) {
 	assertHookNames(t, active.List(), "old")
 }
 
-func TestReloadKeepsActiveHooksWhenRuntimeApplyFails(t *testing.T) {
+func TestReloadPublishesIndependentRulesWhenRuntimeApplyFails(t *testing.T) {
 	active := hook.NewManager()
+	active.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
+	active.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
+		return ctx, func() {}
+	})
 	registerTestHook(t, active, "old")
-	runtime := &fakeRuntime{applyErr: errors.New("invalid runtime")}
+	runtime := &fakeRuntime{applyErr: errors.New("old worker shutdown failed")}
 	service := New(active, runtime, func(candidate hook.Registrar) (hook.ReloadReport, []hookruntime.Config, error) {
 		registerTestHook(t, candidate, "new")
 		return hook.ReloadReport{}, []hookruntime.Config{{ID: "demo"}}, nil
@@ -84,11 +96,15 @@ func TestReloadKeepsActiveHooksWhenRuntimeApplyFails(t *testing.T) {
 	if _, err := service.HookReload(); err == nil {
 		t.Fatal("expected runtime apply error")
 	}
-	assertHookNames(t, active.List(), "old")
+	assertHookNames(t, active.List(), "new")
 }
 
 func TestReloadReplacesHooksAndAppliesRuntimeConfig(t *testing.T) {
 	active := hook.NewManager()
+	active.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
+	active.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
+		return ctx, func() {}
+	})
 	registerTestHook(t, active, "old")
 	runtime := &fakeRuntime{}
 	service := New(active, runtime, func(candidate hook.Registrar) (hook.ReloadReport, []hookruntime.Config, error) {
@@ -128,16 +144,14 @@ func TestServiceDelegatesStatefulLifecycle(t *testing.T) {
 
 func registerTestHook(t *testing.T, registrar hook.Registrar, name string) {
 	t.Helper()
-	if err := registrar.Register(hook.Registration{
+	registrar.Register(hook.Registration{
 		Point: hook.PointAgentInputPrepared,
 		Name:  name,
 		Match: hook.Always(),
 		Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
-	}); err != nil {
-		t.Fatalf("Register %s: %v", name, err)
-	}
+	})
 }
 
 func assertHookNames(t *testing.T, infos []hook.Info, want ...string) {
@@ -152,20 +166,12 @@ func assertHookNames(t *testing.T, infos []hook.Info, want ...string) {
 	}
 }
 
-func TestServiceReportsMissingRuntime(t *testing.T) {
-	service := New(hook.NewManager(), nil, func(hook.Registrar) (hook.ReloadReport, []hookruntime.Config, error) {
-		return hook.ReloadReport{}, []hookruntime.Config{{ID: "demo"}}, nil
-	})
-	if _, err := service.HookReload(); err == nil {
-		t.Fatal("expected missing runtime error")
-	}
-	if err := service.StartStatefulHook("demo"); err == nil {
-		t.Fatal("expected missing runtime start error")
-	}
-}
-
 func TestPreparePluginReloadReplacesOnlyRequestedPlugin(t *testing.T) {
 	active := hook.NewManager()
+	active.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
+	active.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
+		return ctx, func() {}
+	})
 	registerPluginTestHook(t, active, "demo", "old")
 	registerPluginTestHook(t, active, "other", "other")
 	runtime := &fakeRuntime{}
@@ -198,7 +204,7 @@ func TestPreparePluginReloadReplacesOnlyRequestedPlugin(t *testing.T) {
 
 func registerPluginTestHook(t *testing.T, registrar hook.Registrar, pluginID, name string) {
 	t.Helper()
-	if err := registrar.Register(hook.Registration{
+	registrar.Register(hook.Registration{
 		Point:    hook.PointAgentInputPrepared,
 		PluginID: pluginID,
 		Name:     name,
@@ -206,7 +212,5 @@ func registerPluginTestHook(t *testing.T, registrar hook.Registrar, pluginID, na
 		Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
-	}); err != nil {
-		t.Fatalf("Register %s: %v", name, err)
-	}
+	})
 }

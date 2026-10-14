@@ -177,7 +177,8 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 	var cancel context.CancelFunc
 	f.requestCtx, cancel = context.WithCancel(f.ctx)
 	t.Cleanup(cancel)
-	f.hooks = hook.NewManager()
+	f.hooks = newTestHookManager()
+
 	sender := &OutputSender{
 		dispatcher: dispatch.New(dispatch.Options{Primary: f.platform}),
 		hooks:      &HookBridge{manager: f.hooks, identity: &IdentityResolver{platformName: "cli"}},
@@ -192,7 +193,7 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 func (f *replyTestFixture) captureHooks(t *testing.T) {
 	t.Helper()
 	for _, point := range []hook.Point{hook.PointAgentTurnOutputPrepared, hook.PointAgentOutputPrepared} {
-		if err := f.hooks.Register(hook.Registration{Point: point, Name: string(point), Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
+		f.hooks.Register(hook.Registration{Point: point, Name: string(point), Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
 			suffix := "/send"
 			if point == hook.PointAgentTurnOutputPrepared {
 				suffix = "/turn"
@@ -200,9 +201,7 @@ func (f *replyTestFixture) captureHooks(t *testing.T) {
 			f.events = append(f.events, suffix)
 			e.Message.Segments = llm.AppendSegmentText(e.Message.Segments, suffix)
 			return e, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-		})}); err != nil {
-			t.Fatal(err)
-		}
+		})})
 	}
 }
 
@@ -410,11 +409,9 @@ func TestReplyCommitFinalHookFailureDoesNotSaveOrSend(t *testing.T) {
 	for _, buffered := range []bool{false, true} {
 		t.Run(map[bool]string{false: "direct", true: "buffered"}[buffered], func(t *testing.T) {
 			f := newReplyTestFixture(t, buffered)
-			if err := f.hooks.Register(hook.Registration{Point: hook.PointAgentTurnOutputPrepared, Name: "cancel", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
+			f.hooks.Register(hook.Registration{Point: hook.PointAgentTurnOutputPrepared, Name: "cancel", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
 				return e, events.LogResult{ResultStatus: events.ResultCanceled, Content: "test source canceled"}, context.Canceled
-			})}); err != nil {
-				t.Fatal(err)
-			}
+			})})
 			got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
 			if !errors.Is(err, context.Canceled) || got.Persisted || dialogue.HasReplyReceipt(got.Receipt) || len(f.events) != 0 {
 				t.Fatalf("result=%+v err=%v events=%v", got, err, f.events)
@@ -428,13 +425,11 @@ func TestReplyCommitHookSuppressesDisplayWithoutChangingHistory(t *testing.T) {
 		t.Run(map[bool]string{false: "direct", true: "buffered"}[buffered], func(t *testing.T) {
 			f := newReplyTestFixture(t, buffered)
 			for _, point := range []hook.Point{hook.PointAgentTurnOutputPrepared, hook.PointAgentOutputPrepared} {
-				if err := f.hooks.Register(hook.Registration{Point: point, Name: string(point), Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
+				f.hooks.Register(hook.Registration{Point: point, Name: string(point), Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
 					f.events = append(f.events, string(point))
 					e.Message.Segments = nil
 					return e, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-				})}); err != nil {
-					t.Fatal(err)
-				}
+				})})
 			}
 			got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
 			if err != nil || !got.Persisted || f.platform.text != "" {

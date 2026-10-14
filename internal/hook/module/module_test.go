@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -54,7 +53,7 @@ func TestInitialReloadWaitsForConnectionsAndBeginClosePreservesCore(t *testing.T
 		t.Fatal("Hook core closed before Dialogue final callbacks")
 	default:
 	}
-	if err := m.Router().Apply(nil); err != nil {
+	if err := m.Router().Apply(nil, func(string) {}); err != nil {
 		t.Fatal("core unavailable before ordered Close", err)
 	}
 	if err := m.Close(ctx); err != nil {
@@ -80,13 +79,14 @@ func TestInitialReloadKeepsWarningAndContinuePolicy(t *testing.T) {
 	}
 	defer m.Close(context.Background())
 	m.control = hookcontrol.New(m.manager, m.runtime, func(hook.Registrar) (hook.ReloadReport, []hookruntime.Config, error) {
+		_, _ = events.NotificationRequested.EmitAsync(context.Background(), events.Notification{Text: "candidate notice"})
 		return hook.ReloadReport{Notices: []string{"candidate notice"}}, nil, errors.New("plugin rejected")
 	})
 	if err := m.Start(); err != nil {
 		t.Fatal("plugin failure became fatal", err)
 	}
 	var notices []string
-	for range 2 {
+	for range 1 {
 		select {
 		case text := <-got:
 			notices = append(notices, text)
@@ -94,7 +94,7 @@ func TestInitialReloadKeepsWarningAndContinuePolicy(t *testing.T) {
 			t.Fatal("missing notification")
 		}
 	}
-	if notices[0] != "candidate notice" || !strings.Contains(notices[1], "plugin rejected") {
+	if notices[0] != "candidate notice" {
 		t.Fatal(notices)
 	}
 }

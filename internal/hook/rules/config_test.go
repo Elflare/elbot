@@ -353,9 +353,11 @@ text = "continued"
 		t.Fatalf("NewModule: %v", err)
 	}
 	manager := hook.NewManager()
-	if err := module.RegisterHooks(manager); err != nil {
-		t.Fatalf("RegisterHooks: %v", err)
-	}
+	manager.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
+	manager.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
+		return ctx, func() {}
+	})
+	module.RegisterHooks(manager)
 	event, _, err := manager.Run(context.Background(), hook.Event{
 		Point:    hook.PointPlatformMessageReceived,
 		Platform: hook.PlatformContext{Name: "qqonebot", ScopeID: "group:123"},
@@ -437,9 +439,11 @@ text = "user rule"
 		}
 	}
 	manager := hook.NewManager()
-	if err := (Module{Rules: cfg.Rules}).RegisterHooks(manager); err != nil {
-		t.Fatalf("RegisterHooks: %v", err)
-	}
+	manager.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
+	manager.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
+		return ctx, func() {}
+	})
+	(Module{Rules: cfg.Rules}).RegisterHooks(manager)
 	allowed, _, err := manager.Run(context.Background(), hook.Event{
 		Point:    hook.PointPlatformMessageReceived,
 		Platform: hook.PlatformContext{Name: "qqonebot", ScopeID: "group:999"},

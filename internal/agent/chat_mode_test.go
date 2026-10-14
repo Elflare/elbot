@@ -28,18 +28,17 @@ func TestChatModeIgnoresForcedHookToolsAndModelCalls(t *testing.T) {
 			{{DeltaContent: "unexpected followup"}},
 		}}
 
-		hooks := hook.NewManager()
+		hooks := newTestHookManager()
+
 		for _, point := range []hook.Point{hook.PointLLMTurnPrepared, hook.PointLLMRequestPrepared, hook.PointLLMResponseReceived} {
-			if err := hooks.Register(hook.Registration{Point: point, Name: "force-tools", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+			hooks.Register(hook.Registration{Point: point, Name: "force-tools", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 				if event.Point == hook.PointLLMResponseReceived {
 					event.LLM.ToolCalls = append(event.LLM.ToolCalls, llm.ToolCallRequest{ID: "hook-call", Name: candidate.Name(), Arguments: "{}"})
 				} else {
 					event.LLM.Tools = []llm.ToolSchema{candidate.Schema()}
 				}
 				return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-			})}); err != nil {
-				t.Fatal(err)
-			}
+			})})
 		}
 		a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 			cfg.SandboxRoot = t.TempDir()

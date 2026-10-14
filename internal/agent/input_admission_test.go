@@ -137,13 +137,12 @@ func TestCompactingInputSkipsInputHookAndPreparation(t *testing.T) {
 		t.Run(input, func(t *testing.T) {
 			ctx := context.Background()
 
-			hooks := hook.NewManager()
-			if err := hooks.Register(hook.Registration{Point: hook.PointAgentInputPrepared, Name: "must-not-run", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
+			hooks := newTestHookManager()
+
+			hooks.Register(hook.Registration{Point: hook.PointAgentInputPrepared, Name: "must-not-run", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
 				t.Error("input hook ran during compaction")
 				return e, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-			})}); err != nil {
-				t.Fatal(err)
-			}
+			})})
 
 			registry := tool.NewRegistry()
 			block := func() { t.Error("preparation ran during compaction") }

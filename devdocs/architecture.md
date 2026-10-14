@@ -362,7 +362,7 @@ flowchart TB
 - Hook 来源保留显式值，再从公共事实补缺失；无聊天来源的事件保留空 Scope／Actor。唤起状态在入口计算一次，不因正文改写重新推断。
 - llm.messages 深拷贝且只读；turn Hook 只改当前初始 user，request Hook 只改新 drain 的 pending。当前消息 segments 在请求前保存，工具完成 Hook 改写进入工具结果。
 - Hook 返回控制字段和输出意图；waiting 消息在平台 Hook 后、命令与主模型前路由，/cancel 仅取消路由执行。
-- Go Hook 使用宿主 MediaAPI，进程 Hook 使用媒体 RPC；临时引用随租约或 runtime 释放，媒体清理使用调用方关闭预算，进程保留自身配置的关闭流程，全局媒体清理归维护任务。
+- 进程 Hook 使用媒体 RPC；临时引用随租约或 runtime 释放，媒体清理使用调用方关闭预算，进程保留自身配置的关闭流程，全局媒体清理归维护任务。
 - Handler／Run 返回 Event、LogResult、原始 error，Notify 返回 LogResult、error；未处理明确 skipped。continuation 在 runtime/routes.go 记录所属点结果；重载 commit 独立返回 LogResult、error，worker 使用来源结果。来源先声明所属操作事实，再包装业务错误；Agent／Runner 不重复发布 Hook 记录。
 - internal/hook/logging.go 的 LogHook 只解除取消并发布完整九字段。manager、rules、runtime 和 Agent 桥接各自组装记录；发布处不接业务对象、不补身份、不猜结果。
 - rules/action.go 与 runtime/tool_bridge.go 在 Tool.Call 返回后立即发布 hook_tool_call，等级 INFO、结果 succeeded、正文使用独立 logContent；工具业务错误仍按原业务流程返回。输出发送独立发布 hook_tool_log，使用发送来源 LogResult 和同一实际 tool_call_id。rules 使用 storage.NewID，runtime 沿用现有生成方式；没有实际工具调用的 output.send 不补造工具 ID。

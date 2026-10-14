@@ -11,8 +11,9 @@ import (
 )
 
 func TestCompleteToolCallExposesNameAndAcceptsMultimodalSegments(t *testing.T) {
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{
 		Point: hook.PointToolCallCompleted,
 		Name:  "test.tool-image",
 		Match: hook.Always(),
@@ -23,9 +24,7 @@ func TestCompleteToolCallExposesNameAndAcceptsMultimodalSegments(t *testing.T) {
 			event.Message.Segments = append(event.Message.Segments, llm.MessageSegment{Type: llm.SegmentImage, URL: "https://example.com/result.png"})
 			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
 	deps := toolRunDeps{hooks: &HookBridge{manager: manager, identity: &IdentityResolver{scopeID: "default"}}}
 	segments, _, err := deps.CompleteToolCall(context.Background(), &storage.Session{ID: "s1"}, llm.ToolCallRequest{ID: "call_1", Name: "screenshot", Arguments: `{}`}, "low", llm.TextSegments("done"), nil)
 	if err != nil {
@@ -37,8 +36,9 @@ func TestCompleteToolCallExposesNameAndAcceptsMultimodalSegments(t *testing.T) {
 }
 
 func TestPrepareToolCallOnlyAcceptsArguments(t *testing.T) {
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{
 		Point: hook.PointToolCallPrepared,
 		Name:  "test.tool-arguments",
 		Match: hook.Always(),
@@ -48,9 +48,7 @@ func TestPrepareToolCallOnlyAcceptsArguments(t *testing.T) {
 			event.Tool.Arguments = `{"q":"cat"}`
 			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
 	deps := toolRunDeps{hooks: &HookBridge{manager: manager, identity: &IdentityResolver{scopeID: "default"}}}
 	call, _, err := deps.PrepareToolCall(context.Background(), &storage.Session{ID: "s1"}, llm.ToolCallRequest{ID: "call_1", Name: "search", Arguments: `{"q":"dog"}`})
 	if err != nil {

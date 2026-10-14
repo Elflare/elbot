@@ -27,9 +27,10 @@ func TestGoHookMediaAPIAndCanonicalMessage(t *testing.T) {
 	store := newTestStore(t)
 	p := &fakePlatform{}
 	root := t.TempDir()
-	hooks := hook.NewManager()
+	hooks := newTestHookManager()
+
 	var id string
-	if err := hooks.Register(hook.Registration{Point: hook.PointAgentInputPrepared, Name: "media", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	hooks.Register(hook.Registration{Point: hook.PointAgentInputPrepared, Name: "media", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		if event.Media == nil {
 			t.Fatal("missing host API")
 		}
@@ -44,9 +45,7 @@ func TestGoHookMediaAPIAndCanonicalMessage(t *testing.T) {
 		id = metadata.ID
 		event.Message.Segments = append(event.Message.Segments, llm.MessageSegment{Type: llm.SegmentImage, MediaID: id})
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatal(err)
-	}
+	})})
 	a := newTestMediaAgent(t, p, &fakeLLM{replies: []string{"done"}}, store, media.NewManager(store, root, &media.LocalBackend{Root: root}), func(cfg *testAgentOptions) {
 		cfg.HookManager = hooks
 	})
@@ -226,15 +225,14 @@ func TestHookMediaOutputDoesNotCreateSessionAndCleansExport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hooks := hook.NewManager()
+	hooks := newTestHookManager()
+
 	output := delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{MediaID: metadata.ID}}
-	if err := hooks.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	hooks.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.Outputs = []delivery.Output{output}
 		event.Control.Consume = true
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatal(err)
-	}
+	})})
 	a := newTestMediaAgent(t, p, &fakeLLM{}, store, center, func(cfg *testAgentOptions) {
 		cfg.HookManager = hooks
 	})

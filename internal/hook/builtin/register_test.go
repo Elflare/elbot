@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,6 +23,10 @@ text = "!"
 		t.Fatalf("write rules config: %v", err)
 	}
 	manager := hook.NewManager()
+	manager.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
+	manager.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
+		return ctx, func() {}
+	})
 	notices := []string{}
 	configs, err := RegisterAll(manager, Options{
 		ConfigDir: dir,

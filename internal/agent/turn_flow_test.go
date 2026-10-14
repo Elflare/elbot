@@ -119,13 +119,12 @@ func TestStreamingOutputAppendsRawAndReplacesHookText(t *testing.T) {
 		{DeltaContent: "[[wave]]"},
 	}}}
 
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "test.replace", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{Point: hook.PointLLMResponseReceived, Name: "test.replace", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.LLM.Text = strings.ReplaceAll(event.LLM.Text, "[[wave]]", "world")
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatalf("Register response hook: %v", err)
-	}
+	})})
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})
@@ -151,13 +150,12 @@ func TestTurnOutputPreparedHookReplacesFinalStreamingMessage(t *testing.T) {
 	p := &fakeStreamingPlatform{}
 	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: "猫"}}}}
 
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointAgentTurnOutputPrepared, Name: "test.turn_output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{Point: hook.PointAgentTurnOutputPrepared, Name: "test.turn_output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		event.Message.Segments = llm.ReplaceSegmentText(event.Message.Segments, regexp.MustCompile("猫"), "狗", true)
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatalf("Register turn output hook: %v", err)
-	}
+	})})
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
 		cfg.HookManager = manager
 	})

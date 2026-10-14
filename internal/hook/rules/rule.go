@@ -224,7 +224,6 @@ func (m Module) runRule(ctx context.Context, rule Rule, event hook.Event) (hook.
 	var err error
 	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no action executed"}
 	for index, action := range rule.Actions {
-		action.source = rule.source
 		var result actionResult
 		event, result, logResult, err = m.runAction(ctx, event, action, state)
 		if err == nil {

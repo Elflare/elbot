@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	agentevents "elbot/internal/agent/events"
@@ -42,13 +41,10 @@ type HookBridge struct {
 }
 
 func (h *HookBridge) CancelRoute(event hook.Event) bool {
-	return h.router != nil && h.router.Cancel(event)
+	return h.router.Cancel(event)
 }
 
 func (h *HookBridge) Route(ctx context.Context, event hook.Event) (hook.Event, bool, error) {
-	if h.router == nil {
-		return event, false, nil
-	}
 	parent := ctx
 	if id := h.router.RouteHookID(event); id != "" {
 		requestCtx, done := h.ObserveRun(ctx, event, hook.ObserverInfo{Name: id + " continuation", Point: event.Point})
@@ -65,9 +61,6 @@ func (h *HookBridge) Route(ctx context.Context, event hook.Event) (hook.Event, b
 
 func (h *HookBridge) Run(ctx context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
 	manager := h.manager
-	if manager == nil {
-		manager = hook.NoopManager{}
-	}
 	event = h.FillContext(ctx, event)
 	before := hook.SnapshotCalls(event)
 	updated, logResult, err := manager.Run(ctx, event)
@@ -84,9 +77,6 @@ func (h *HookBridge) Run(ctx context.Context, event hook.Event) (hook.Event, glo
 
 func (h *HookBridge) Notify(ctx context.Context, event hook.Event) {
 	manager := h.manager
-	if manager == nil {
-		manager = hook.NoopManager{}
-	}
 	event = h.FillContext(ctx, event)
 	if _, err := manager.Notify(ctx, event); err != nil {
 		h.publishFailure(ctx, event, err, false)
@@ -101,26 +91,17 @@ func (h *HookBridge) Notify(ctx context.Context, event hook.Event) {
 
 // ObserveRun participates synchronously in request tracking.
 func (h *HookBridge) ObserveRun(ctx context.Context, event hook.Event, info hook.ObserverInfo) (context.Context, func()) {
-	if h == nil || h.requests == nil {
-		return ctx, func() {}
-	}
 	sessionID := strings.TrimSpace(event.Session.ID)
 	if sessionID == "" {
 		sessionID = strings.TrimSpace(event.Request.SessionID)
 	}
 	label := strings.TrimSpace(info.Name)
-	if label == "" {
-		label = strings.TrimSpace(string(info.Point))
-	}
-	_, reqCtx, done, err := h.requests.Start(ctx, request.StartRequest{
+	_, reqCtx, done, _ := h.requests.Start(ctx, request.StartRequest{
 		ParentID:  contextinfo.RootRequestIDFromContext(ctx),
 		SessionID: sessionID,
 		Kind:      request.KindHook,
 		Label:     label,
 	})
-	if err != nil {
-		return ctx, func() {}
-	}
 	return reqCtx, done
 }
 
@@ -156,9 +137,7 @@ func hookSession(session *storage.Session) hook.SessionContext {
 }
 
 func (h *HookBridge) FillContext(ctx context.Context, event hook.Event) hook.Event {
-	if h.media != nil {
-		event.Media = h.media
-	}
+	event.Media = h.media
 	// Connection and other source-free events must not inherit the Agent's
 	// default local identity. Only message facts or an explicit actor apply.
 	actor := h.identity.SourceActor(ctx)
@@ -224,19 +203,7 @@ func actorContext(actor contextinfo.Actor) hook.ActorContext {
 }
 
 // NewHookBridge initializes HookBridge without installing cross-service callbacks.
-func NewHookBridge(deps HookBridgeDeps) (*HookBridge, error) {
-	if deps.Requests == nil {
-		return nil, fmt.Errorf("HookBridge requests is required")
-	}
-	if deps.Identity == nil {
-		return nil, fmt.Errorf("HookBridge identity is required")
-	}
-	if deps.Dispatcher == nil {
-		return nil, fmt.Errorf("HookBridge dispatcher is required")
-	}
-	if deps.Manager == nil {
-		deps.Manager = hook.NoopManager{}
-	}
+func NewHookBridge(deps HookBridgeDeps) *HookBridge {
 	return &HookBridge{
 		manager:    deps.Manager,
 		router:     deps.Router,
@@ -245,9 +212,9 @@ func NewHookBridge(deps HookBridgeDeps) (*HookBridge, error) {
 		media:      deps.Media,
 		failed:     deps.Failed,
 		dispatcher: deps.Dispatcher,
-	}, nil
+	}
 }
 
 func (h *HookBridge) HasRoute(event hook.Event) bool {
-	return h.router != nil && h.router.RouteHookID(event) != ""
+	return h.router.RouteHookID(event) != ""
 }

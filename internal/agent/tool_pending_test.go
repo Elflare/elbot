@@ -102,9 +102,10 @@ func TestToolPhasePendingInputInjectedBeforeFollowupLLM(t *testing.T) {
 		{{DeltaContent: "final"}},
 	}}
 
-	manager := hook.NewManager()
+	manager := newTestHookManager()
+
 	var pendingPlatformText string
-	if err := manager.Register(hook.Registration{Point: hook.PointLLMRequestPrepared, Name: "test.pending", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	manager.Register(hook.Registration{Point: hook.PointLLMRequestPrepared, Name: "test.pending", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		for i := len(event.LLM.Messages) - 1; i >= 0; i-- {
 			if event.LLM.Messages[i].Role == llm.RoleUser && len(event.LLM.Messages[i].Segments) > 0 {
 				event.LLM.Messages[i].Segments[0].Text = "不应写回历史"
@@ -119,9 +120,7 @@ func TestToolPhasePendingInputInjectedBeforeFollowupLLM(t *testing.T) {
 			}
 		}
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatalf("Register request hook: %v", err)
-	}
+	})})
 
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -206,15 +205,14 @@ func TestToolPhasePendingInputPersistsWhenRequestHookFails(t *testing.T) {
 		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "slow", Args: `{}`}}, FinishReason: "tool_calls"}},
 	}}
 
-	manager := hook.NewManager()
-	if err := manager.Register(hook.Registration{Point: hook.PointLLMRequestPrepared, Name: "test.fail-pending", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	manager := newTestHookManager()
+
+	manager.Register(hook.Registration{Point: hook.PointLLMRequestPrepared, Name: "test.fail-pending", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		if event.Message.Role == string(llm.RoleUser) {
 			return event, events.LogResult{ResultStatus: events.ResultFailed, Content: "test source failed"}, errors.New("request hook failed")
 		}
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatalf("Register request hook: %v", err)
-	}
+	})})
 
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -277,17 +275,16 @@ func TestToolChildRequestCancelReturnsToolMessageAndContinuesTurn(t *testing.T) 
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(slowTool{started: started, release: release})
 
-	manager := hook.NewManager()
+	manager := newTestHookManager()
+
 	completedCalls := 0
-	if err := manager.Register(hook.Registration{Point: hook.PointToolCallCompleted, Name: "test.cancel-result", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+	manager.Register(hook.Registration{Point: hook.PointToolCallCompleted, Name: "test.cancel-result", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 		completedCalls++
 		if event.Tool.Error != nil {
 			event.Message.Segments = llm.TextSegments("HOOK_CANCELED")
 		}
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatalf("Register completed hook: %v", err)
-	}
+	})})
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
 		cfg.ToolRegistry = registry
 		cfg.HookManager = manager

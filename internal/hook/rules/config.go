@@ -17,9 +17,6 @@ import (
 
 func loadConfig(opts Options) (Config, string, error) {
 	configDir := strings.TrimSpace(opts.ConfigDir)
-	if configDir == "" {
-		return Config{}, "", nil
-	}
 	path := filepath.Join(configDir, ConfigFile)
 	var cfg Config
 	if err := decodeTOMLFile(path, &cfg); err != nil {
@@ -46,6 +43,12 @@ func loadConfig(opts Options) (Config, string, error) {
 		cfg.Rules[i].source = source
 	}
 
+	if err := normalizeLoadedRules(&cfg, opts); err != nil {
+		return Config{}, path, fmt.Errorf("parse hook rule config %q: %w", path, err)
+	}
+	if err := validateLoadedRules(cfg.Rules); err != nil {
+		return Config{}, path, fmt.Errorf("parse hook rule config %q: %w", path, err)
+	}
 	for _, ref := range cfg.Plugins {
 		if !ref.enabled() {
 			continue
@@ -89,12 +92,18 @@ func loadConfig(opts Options) (Config, string, error) {
 			runtimeConfig.ConfigPath = pluginPath
 			runtimeConfig.Block = block
 			runtimeConfig.ProcessEnv = pluginProcessEnv
+			for i, name := range runtimeConfig.Tools.Allow {
+				runtimeConfig.Tools.Allow[i] = strings.TrimSpace(name)
+			}
+			for i, name := range runtimeConfig.Tools.BackgroundAllow {
+				runtimeConfig.Tools.BackgroundAllow[i] = strings.TrimSpace(name)
+			}
 			if runtimeConfig.IsWorker() {
 				if err := runtimeConfig.Validate(); err != nil {
 					reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
 					continue
 				}
-				cfg.Runtimes = append(cfg.Runtimes, runtimeConfig)
+				pcfg.Plugin.Runtime = &runtimeConfig
 				runtimeID = runtimeConfig.ID
 			}
 		}
@@ -120,11 +129,31 @@ func loadConfig(opts Options) (Config, string, error) {
 			reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
 			continue
 		}
-		cfg.Rules = append(cfg.Rules, pcfg.Rules...)
+		if runtimeID != "" {
+			cfg.Runtimes = append(cfg.Runtimes, *pcfg.Plugin.Runtime)
+		}
+		cfg.Rules = append(cfg.Rules, pluginRules.Rules...)
 	}
 
-	if err := normalizeLoadedRules(&cfg, opts); err != nil {
-		return Config{}, path, fmt.Errorf("parse hook rule config %q: %w", path, err)
+	seen := map[string]int{}
+	for _, config := range cfg.Runtimes {
+		if seen[config.ID] > 0 {
+			return Config{}, path, fmt.Errorf("duplicate hook worker %q", config.ID)
+		}
+		seen[config.ID]++
+	}
+	clear(seen)
+	for i := range cfg.Rules {
+		rule := &cfg.Rules[i]
+		original := rule.source.OriginalName
+		rule.source.FinalName = original
+		if count := seen[original]; count > 0 {
+			rule.source.FinalName = fmt.Sprintf("%s.%d", original, count)
+		}
+		seen[original]++
+		for j := range rule.Actions {
+			rule.Actions[j].source = rule.source
+		}
 	}
 	return cfg, path, nil
 }
@@ -259,9 +288,8 @@ func reportPluginConfigError(ctx context.Context, opts Options, name, path strin
 		text := fmt.Sprintf("Hook 插件 %s 已跳过：%v", label, err)
 		if opts.Notices != nil {
 			*opts.Notices = append(*opts.Notices, text)
-		} else {
-			_, _ = globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
 		}
+		_, _ = globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
 	}
 }
 
@@ -303,9 +331,8 @@ func reportPluginConfigWarning(ctx context.Context, opts Options, name, path, me
 		text := fmt.Sprintf("Hook 插件 %s 警告：%s", label, message)
 		if opts.Notices != nil {
 			*opts.Notices = append(*opts.Notices, text)
-		} else {
-			_, _ = globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
 		}
+		_, _ = globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
 	}
 }
 
@@ -343,9 +370,8 @@ func reportConfigError(ctx context.Context, opts Options, path string, err error
 	text := fmt.Sprintf("Hook rules 配置错误：%v", err)
 	if opts.Notices != nil {
 		*opts.Notices = append(*opts.Notices, text)
-	} else {
-		_, _ = globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
 	}
+	_, _ = globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
 }
 
 func (c *Config) normalize() error {

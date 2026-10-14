@@ -8,6 +8,8 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/fileops"
+	"elbot/internal/hook"
+	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
@@ -45,7 +47,13 @@ func isolatedModuleDeps(t *testing.T) ModuleDeps {
 	registry := tool.NewRegistry()
 	policy := security.DefaultPolicy()
 	sender := dispatch.New(dispatch.Options{Primary: &assemblyPlatform{}, Store: store})
-	return ModuleDeps{PlatformName: "cli", Store: store, Models: models, Policy: policy, Dispatcher: sender, Registry: registry, ToolManager: toolrun.NewManager(registry, policy), Preloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}), ToolState: toolrun.NewStateService(store), Files: fileops.NewService(nil), Session: config.SessionConfig{DefaultMode: "work", Naming: config.SessionNamingConfig{TriggerStep: 100}}, MaxRounds: 2, Prefixes: []string{"/"}, PageSize: 10}
+	hooks := hook.NewManager()
+	router, err := hookruntime.NewManager(hookruntime.Options{SharedDir: t.TempDir(), Registry: registry})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = router.Close(context.Background()) })
+	return ModuleDeps{HookRunner: hooks, HookRouter: router, PlatformName: "cli", Store: store, Models: models, Policy: policy, Dispatcher: sender, Registry: registry, ToolManager: toolrun.NewManager(registry, policy), Preloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}), ToolState: toolrun.NewStateService(store), Files: fileops.NewService(nil), Session: config.SessionConfig{DefaultMode: "work", Naming: config.SessionNamingConfig{TriggerStep: 100}}, MaxRounds: 2, Prefixes: []string{"/"}, PageSize: 10}
 }
 func TestStandaloneDialogueOwnsStateAndBorrowsOnlyCapabilities(t *testing.T) {
 	deps := isolatedModuleDeps(t)

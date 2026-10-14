@@ -49,9 +49,7 @@ func (m Module) runAction(ctx context.Context, event hook.Event, action Action, 
 	case "exec":
 		updated, result, logResult, err := m.runExec(ctx, event, action, state)
 		key := firstNonEmpty(strings.TrimSpace(action.ActionName), "exec")
-		if key != "" {
-			state.Actions[key] = result
-		}
+		state.Actions[key] = result
 		return updated, result, logResult, err
 	case "tool":
 		result, logResult, err := m.callTool(ctx, event, action, state)
@@ -78,27 +76,27 @@ func applyTextAction(event hook.Event, action Action, state state) (hook.Event, 
 	}
 	switch strings.TrimSpace(action.Type) {
 	case "prepend":
-		return prependTextField(event, field, render(action.Text, event, state))
+		return prependTextField(event, field, render(action.Text, event, state)), nil
 	case "append":
-		return appendTextField(event, field, render(action.Text, event, state))
+		return appendTextField(event, field, render(action.Text, event, state)), nil
 	case "replace":
 		pattern, err := regexp.Compile(render(action.Match, event, state))
 		if err != nil {
 			return event, err
 		}
-		return replaceTextField(event, field, pattern, render(action.Replace, event, state), action.All)
+		return replaceTextField(event, field, pattern, render(action.Replace, event, state), action.All), nil
 	case "delete":
 		pattern, err := regexp.Compile(render(firstNonEmpty(action.Match, action.Text), event, state))
 		if err != nil {
 			return event, err
 		}
-		return replaceTextField(event, field, pattern, "", true)
+		return replaceTextField(event, field, pattern, "", true), nil
 	default:
 		return event, fmt.Errorf("unsupported text action %q", action.Type)
 	}
 }
 
-func prependTextField(event hook.Event, field, value string) (hook.Event, error) {
+func prependTextField(event hook.Event, field, value string) hook.Event {
 	switch field {
 	case "message.text":
 		event.Message.Segments = llm.PrependSegmentText(event.Message.Segments, value)
@@ -111,13 +109,11 @@ func prependTextField(event hook.Event, field, value string) (hook.Event, error)
 	case "tool.result":
 		event.Message.Segments = llm.PrependSegmentText(toolResultSegments(event), value)
 		event.Tool.Result = llm.SegmentsTextOnly(event.Message.Segments)
-	default:
-		return event, fmt.Errorf("unsupported prepend field %q", field)
 	}
-	return event, nil
+	return event
 }
 
-func appendTextField(event hook.Event, field, value string) (hook.Event, error) {
+func appendTextField(event hook.Event, field, value string) hook.Event {
 	switch field {
 	case "message.text":
 		event.Message.Segments = llm.AppendSegmentText(event.Message.Segments, value)
@@ -130,13 +126,11 @@ func appendTextField(event hook.Event, field, value string) (hook.Event, error) 
 	case "tool.result":
 		event.Message.Segments = llm.AppendSegmentText(toolResultSegments(event), value)
 		event.Tool.Result = llm.SegmentsTextOnly(event.Message.Segments)
-	default:
-		return event, fmt.Errorf("unsupported append field %q", field)
 	}
-	return event, nil
+	return event
 }
 
-func replaceTextField(event hook.Event, field string, pattern *regexp.Regexp, replacement string, all bool) (hook.Event, error) {
+func replaceTextField(event hook.Event, field string, pattern *regexp.Regexp, replacement string, all bool) hook.Event {
 	switch field {
 	case "message.text":
 		event.Message.Segments = llm.ReplaceSegmentText(event.Message.Segments, pattern, replacement, all)
@@ -149,10 +143,8 @@ func replaceTextField(event hook.Event, field string, pattern *regexp.Regexp, re
 	case "tool.result":
 		event.Message.Segments = llm.ReplaceSegmentText(toolResultSegments(event), pattern, replacement, all)
 		event.Tool.Result = llm.SegmentsTextOnly(event.Message.Segments)
-	default:
-		return event, fmt.Errorf("unsupported replace field %q", field)
 	}
-	return event, nil
+	return event
 }
 
 func replaceString(text string, pattern *regexp.Regexp, replacement string, all bool) string {
@@ -288,9 +280,6 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 	var toolResult *tool.Result
 	var err error
 	switch {
-	case m.Opts.Tools == nil:
-		err = fmt.Errorf("tool registry is not configured")
-		logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()}
 	case name == "":
 		err = fmt.Errorf("tool is required")
 		logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()}
@@ -386,8 +375,6 @@ func setTextField(event hook.Event, field, value string) (hook.Event, error) {
 	case "tool.result":
 		event.Tool.Result = value
 		event.Message.Segments = llm.SetSegmentText(toolResultSegments(event), value)
-	default:
-		return event, fmt.Errorf("unsupported set field %q", field)
 	}
 	return event, nil
 }

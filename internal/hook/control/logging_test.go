@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	"testing"
 
 	"elbot/internal/events"
@@ -13,13 +14,18 @@ type declaredReloadRuntime struct {
 	result events.LogResult
 }
 
-func (r *declaredReloadRuntime) ReplacePlugin(config hookruntime.Config) (events.LogResult, error) {
-	r.replaced = config.ID
+func (r *declaredReloadRuntime) ReplacePlugin(id string, config *hookruntime.Config, commit func()) (events.LogResult, error) {
+	r.replaced = id
+	commit()
 	return r.result, nil
 }
 
 func TestPluginReloadCommitKeepsFailedResultSeparateFromBusiness(t *testing.T) {
 	active := hook.NewManager()
+	active.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
+	active.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
+		return ctx, func() {}
+	})
 	registerPluginTestHook(t, active, "demo", "old")
 	declared := events.LogResult{ResultStatus: events.ResultFailed, Content: "source reload facts"}
 	runtime := &declaredReloadRuntime{result: declared}

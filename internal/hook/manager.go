@@ -46,12 +46,7 @@ type ReloadReport struct {
 
 // Registrar registers hook handlers for modules.
 type Registrar interface {
-	Register(reg Registration) error
-}
-
-// Module contributes one or more handlers to a hook registrar.
-type Module interface {
-	RegisterHooks(registrar Registrar) error
+	Register(reg Registration)
 }
 
 // Manager runs handlers for hook points in priority order.
@@ -61,21 +56,6 @@ type Manager interface {
 	Notify(ctx context.Context, event Event) (globalevents.LogResult, error)
 	List() []Info
 }
-
-// NoopManager is used when no hooks are configured.
-type NoopManager struct{}
-
-func (NoopManager) Register(Registration) error { return nil }
-
-func (NoopManager) Run(_ context.Context, event Event) (Event, globalevents.LogResult, error) {
-	return prepareEvent(event), globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no Hook configured"}, nil
-}
-
-func (NoopManager) Notify(context.Context, Event) (globalevents.LogResult, error) {
-	return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no Hook configured"}, nil
-}
-
-func (NoopManager) List() []Info { return nil }
 
 type DefaultManager struct {
 	mu       sync.RWMutex
@@ -147,10 +127,7 @@ func (m *DefaultManager) SetObserver(fn Observer) {
 	m.observer = fn
 }
 
-func (m *DefaultManager) Register(reg Registration) error {
-	if err := validateRegistration(reg); err != nil {
-		return err
-	}
+func (m *DefaultManager) Register(reg Registration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.next++
@@ -163,26 +140,6 @@ func (m *DefaultManager) Register(reg Registration) error {
 		}
 		return left.priority < right.priority
 	})
-	return nil
-}
-
-func validateRegistration(reg Registration) error {
-	if reg.Point == "" {
-		return fmt.Errorf("hook point is required")
-	}
-	if strings.TrimSpace(reg.Name) == "" {
-		return fmt.Errorf("hook name is required")
-	}
-	if reg.Handler == nil {
-		return fmt.Errorf("hook handler is required")
-	}
-	if err := validateWakeupPolicy(reg.Wakeup); err != nil {
-		return fmt.Errorf("hook %q: %w", reg.Name, err)
-	}
-	if err := reg.Match.Validate(); err != nil {
-		return fmt.Errorf("hook %q match: %w", reg.Name, err)
-	}
-	return nil
 }
 
 func normalizeWakeupPolicy(policy WakeupPolicy) WakeupPolicy {
@@ -330,9 +287,6 @@ func (m *DefaultManager) skipForWakeup(ctx context.Context, event Event, reg reg
 		return false
 	}
 	wakeup := m.wakeupForRun()
-	if wakeup == nil {
-		return false
-	}
 	switch reg.wakeup {
 	case WakeupForbidden:
 		return wakeup(ctx, event)
@@ -349,16 +303,7 @@ func (m *DefaultManager) wakeupForRun() WakeupFunc {
 
 func (m *DefaultManager) observe(ctx context.Context, event Event, reg registration, mode string) (context.Context, func()) {
 	observer := m.observerForRun()
-	if observer == nil {
-		return ctx, func() {}
-	}
 	runCtx, done := observer(ctx, event, ObserverInfo{Point: event.Point, Name: reg.name, Priority: reg.priority, Mode: mode})
-	if runCtx == nil {
-		runCtx = ctx
-	}
-	if done == nil {
-		done = func() {}
-	}
 	return runCtx, done
 }
 
@@ -445,9 +390,6 @@ func (m *DefaultManager) List() []Info {
 // Runtime integrations such as wakeup checks and observers remain
 // attached to the receiving manager.
 func (m *DefaultManager) Replace(next *DefaultManager) {
-	if m == nil || next == nil || m == next {
-		return
-	}
 	next.mu.RLock()
 	handlers := make(map[Point][]registration, len(next.handlers))
 	for point, items := range next.handlers {
@@ -464,15 +406,17 @@ func (m *DefaultManager) Replace(next *DefaultManager) {
 
 // ReplacePlugin atomically replaces only registrations owned by pluginID.
 func (m *DefaultManager) ReplacePlugin(pluginID string, next *DefaultManager) {
-	if m == nil || next == nil || m == next {
-		return
-	}
 	pluginID = strings.TrimSpace(pluginID)
-	if pluginID == "" {
-		return
-	}
 	next.mu.RLock()
 	replacements := make(map[Point][]registration)
+	order := map[string]int{}
+	for _, items := range next.handlers {
+		for _, reg := range items {
+			if previous, ok := order[reg.pluginID]; !ok || reg.order < previous {
+				order[reg.pluginID] = reg.order
+			}
+		}
+	}
 	for point, items := range next.handlers {
 		for _, reg := range items {
 			if reg.pluginID == pluginID {
@@ -509,9 +453,8 @@ func (m *DefaultManager) ReplacePlugin(pluginID string, next *DefaultManager) {
 		kept = append(kept, make([]registration, len(replacements[point]))...)
 		copy(kept[insertAt+len(replacements[point]):], kept[insertAt:len(kept)-len(replacements[point])])
 		copy(kept[insertAt:], replacements[point])
-		for i := range kept {
-			m.next++
-			kept[i].order = m.next
+		for _, reg := range kept {
+			m.next = max(m.next, reg.order)
 		}
 		if len(kept) == 0 {
 			delete(m.handlers, point)
@@ -519,6 +462,16 @@ func (m *DefaultManager) ReplacePlugin(pluginID string, next *DefaultManager) {
 		}
 		sort.SliceStable(kept, func(i, j int) bool {
 			if kept[i].priority == kept[j].priority {
+				if kept[i].pluginID != kept[j].pluginID {
+					left, leftOK := order[kept[i].pluginID]
+					right, rightOK := order[kept[j].pluginID]
+					if leftOK && rightOK {
+						return left < right
+					}
+					if leftOK != rightOK {
+						return leftOK
+					}
+				}
 				return kept[i].order < kept[j].order
 			}
 			return kept[i].priority < kept[j].priority
@@ -528,19 +481,10 @@ func (m *DefaultManager) ReplacePlugin(pluginID string, next *DefaultManager) {
 }
 
 func wrapHookError(reg registration, err error) error {
-	if err == nil {
-		return nil
-	}
-	if strings.TrimSpace(reg.name) == "" {
-		return err
-	}
 	return fmt.Errorf("hook %s: %w", reg.name, err)
 }
 
 func markHookOutputs(event Event, start int, reg registration, mode string) Event {
-	if start < 0 {
-		start = 0
-	}
 	if start > len(event.Outputs) {
 		start = len(event.Outputs)
 	}
@@ -558,9 +502,6 @@ func markHookOutputs(event Event, start int, reg registration, mode string) Even
 }
 
 func setOutputMeta(meta map[string]any, key, value string) {
-	if strings.TrimSpace(value) == "" {
-		return
-	}
 	if _, exists := meta[key]; exists {
 		return
 	}

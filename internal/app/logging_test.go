@@ -48,11 +48,13 @@ func TestProductionGlobalLogsKeepUsageAndBoundBodies(t *testing.T) {
 				t.Fatal(err)
 			}
 			manager := hook.NewManager()
-			if err := manager.Register(hook.Registration{Point: hook.PointErrorOccurred, Name: "audit-hook", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+			manager.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
+			manager.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
+				return ctx, func() {}
+			})
+			manager.Register(hook.Registration{Point: hook.PointErrorOccurred, Name: "audit-hook", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
 				return event, events.LogResult{ResultStatus: events.ResultFailed, Content: "test source failed"}, errors.New("hook failure")
-			})}); err != nil {
-				t.Fatal(err)
-			}
+			})})
 			_, _ = manager.Notify(context.Background(), hook.Event{Point: hook.PointErrorOccurred})
 			profiler := newStartupProfiler(time.Now())
 			profiler.SetEnabled(true)

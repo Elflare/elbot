@@ -2,14 +2,10 @@ package module
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"log/slog"
 	"path/filepath"
 	"sync"
 
 	"elbot/internal/config"
-	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 	hookbuiltin "elbot/internal/hook/builtin"
 	hookcontrol "elbot/internal/hook/control"
@@ -27,21 +23,22 @@ type Module struct {
 
 func NewModule(_ context.Context, deps ModuleDeps) (*Module, error) {
 	hooks := hook.NewManager()
-	hookRuntime := hookruntime.NewManager(hookruntime.Options{
-		Media:      deps.Media,
-		Registry:   deps.Registry,
-		Send:       deps.Send,
-		SharedDir:  filepath.Join(config.PluginConfigDir(deps.ConfigPath), "_shared"),
-		ProcessEnv: deps.ProcessEnv,
+	hookRuntime, err := hookruntime.NewManager(hookruntime.Options{
+		Media:     deps.Media,
+		Registry:  deps.Registry,
+		Send:      deps.Send,
+		SharedDir: filepath.Join(config.PluginConfigDir(deps.ConfigPath), "_shared"),
 	})
-	sendChat, hookProcessEnv := deps.Send, deps.ProcessEnv
+	if err != nil {
+		return nil, err
+	}
 	hookOpts := hookbuiltin.Options{
 		ConfigDir:       config.PluginConfigDir(deps.ConfigPath),
 		Tools:           deps.Registry,
-		Send:            sendChat,
+		Send:            deps.Send,
 		PlatformCallers: deps.PlatformCallers,
 		Runtime:         hookRuntime,
-		ProcessEnv:      hookProcessEnv,
+		ProcessEnv:      deps.ProcessEnv,
 	}
 
 	loadHooks := func(registrar hook.Registrar) (hook.ReloadReport, []hookruntime.Config, error) {
@@ -65,30 +62,7 @@ func (m *Module) Start() error {
 		return nil
 	}
 	m.started = true
-	report, err := m.control.HookReload()
-	for _, notice := range report.Notices {
-		_, _ = globalevents.NotificationRequested.EmitAsync(context.Background(), globalevents.Notification{Text: notice, Level: slog.LevelWarn})
-	}
-	if err != nil {
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelError,
-				EventName:    "hook_registration_failed",
-				Module:       "app",
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("hook registration failed\nerror=%v", err),
-				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultFailed,
-			}
-			if errors.Is(err, context.Canceled) {
-				record.ResultStatus = globalevents.ResultCanceled
-				record.Level = slog.LevelInfo
-			}
-			_ = globalevents.EmitLog(context.Background(), record)
-		}
-		_, _ = globalevents.NotificationRequested.EmitAsync(context.Background(), globalevents.Notification{Text: fmt.Sprintf("Hook 注册失败：%v", err), Level: slog.LevelWarn})
-	}
+	_, _ = m.control.HookReload()
 
 	return nil
 }

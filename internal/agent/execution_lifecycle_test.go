@@ -113,8 +113,9 @@ func TestAppendWaitShutdownIsSilent(t *testing.T) {
 func TestAppendExpiryCloseWaitsForOutput(t *testing.T) {
 	started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	var unblock sync.Once
-	hooks := hook.NewManager()
-	if err := hooks.Register(hook.Registration{Point: hook.PointAgentOutputPrepared, Name: "blocked expiry", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
+	hooks := newTestHookManager()
+
+	hooks.Register(hook.Registration{Point: hook.PointAgentOutputPrepared, Name: "blocked expiry", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
 		if strings.Contains(llm.SegmentsTextOnly(e.Message.Segments), "追加确认已过期") {
 			close(started)
 			<-ctx.Done()
@@ -123,9 +124,7 @@ func TestAppendExpiryCloseWaitsForOutput(t *testing.T) {
 			return e, events.LogResult{ResultStatus: events.ResultCanceled, Content: "test source canceled"}, ctx.Err()
 		}
 		return e, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})}); err != nil {
-		t.Fatal(err)
-	}
+	})})
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(opts *testAgentOptions) { opts.HookManager = hooks })
 	t.Cleanup(func() { unblock.Do(func() { close(release) }) })
 	a.execution.waitPolicy.(*ConfirmationPolicy).userConfirmationTimeout = 10 * time.Millisecond

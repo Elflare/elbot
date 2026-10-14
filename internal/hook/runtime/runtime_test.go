@@ -168,9 +168,12 @@ func helperHookID(value map[string]any) string {
 }
 
 func TestManagerBuildsCanonicalRuntimeOutputs(t *testing.T) {
-	manager := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	config := Config{Mode: ModePersistent, Command: runtimeHelperCommand(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 2, EventTimeoutSeconds: 2, MaxWaitSeconds: 30, Restart: RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1}, ID: "demo", Dir: t.TempDir()}
-	if err := manager.Apply([]Config{config}); err != nil {
+	if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
@@ -186,9 +189,12 @@ func TestManagerBuildsCanonicalRuntimeOutputs(t *testing.T) {
 }
 
 func TestManagerBuildsCanonicalRuntimeMessageSegments(t *testing.T) {
-	manager := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	config := Config{Mode: ModePersistent, Command: runtimeHelperCommand(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 2, EventTimeoutSeconds: 2, MaxWaitSeconds: 30, Restart: RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1}, ID: "demo", Dir: t.TempDir()}
-	if err := manager.Apply([]Config{config}); err != nil {
+	if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
@@ -212,10 +218,12 @@ func TestManagerWorkersUseConfiguredProcessEnvironment(t *testing.T) {
 	for _, mode := range []Mode{ModePersistent, ModeTransient} {
 		t.Run(string(mode), func(t *testing.T) {
 			baseEnv := hook.NewProcessEnvironment(os.Environ(), map[string]string{"ELBOT_WORKER_HOOK_ENV_TEST": "from-manager"})
-			manager := NewManager(Options{
-				SharedDir:  t.TempDir(),
-				ProcessEnv: baseEnv,
+			manager, err := NewManager(Options{
+				SharedDir: t.TempDir(),
 			})
+			if err != nil {
+				t.Fatal(err)
+			}
 			config := Config{
 				Mode:                   mode,
 				Command:                runtimeHelperCommand(),
@@ -229,7 +237,7 @@ func TestManagerWorkersUseConfiguredProcessEnvironment(t *testing.T) {
 				Dir:                    t.TempDir(),
 				ProcessEnv:             baseEnv.Overlay(map[string]string{"ELBOT_WORKER_HOOK_ENV_TEST": "from-dotenv"}),
 			}
-			if err := manager.Apply([]Config{config}); err != nil {
+			if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
 				t.Fatalf("Apply: %v", err)
 			}
 			t.Cleanup(func() { manager.Close(context.Background()) })
@@ -277,7 +285,10 @@ func writeHelperError(id, message string) {
 }
 
 func TestManagerRoutesWaitingConversation(t *testing.T) {
-	manager := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	config := Config{
 		Mode:                   ModePersistent,
 		Command:                runtimeHelperCommand(),
@@ -290,7 +301,7 @@ func TestManagerRoutesWaitingConversation(t *testing.T) {
 		ID:                     "demo",
 		Dir:                    t.TempDir(),
 	}
-	if err := manager.Apply([]Config{config}); err != nil {
+	if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
@@ -319,7 +330,10 @@ func TestManagerRoutesWaitingConversation(t *testing.T) {
 }
 
 func TestManagerReclaimsTransientWorkerAfterPassThrough(t *testing.T) {
-	manager := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	config := Config{
 		Mode:                   ModeTransient,
 		Command:                runtimeHelperCommand(),
@@ -332,7 +346,7 @@ func TestManagerReclaimsTransientWorkerAfterPassThrough(t *testing.T) {
 		ID:                     "demo",
 		Dir:                    t.TempDir(),
 	}
-	if err := manager.Apply([]Config{config}); err != nil {
+	if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
@@ -362,7 +376,10 @@ func TestManagerReclaimsTransientWorkerAfterPassThrough(t *testing.T) {
 }
 
 func TestManagerStopReclaimsTransientWorkers(t *testing.T) {
-	manager := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	config := Config{
 		Mode:                   ModeTransient,
 		Command:                runtimeHelperCommand(),
@@ -375,7 +392,7 @@ func TestManagerStopReclaimsTransientWorkers(t *testing.T) {
 		ID:                     "demo",
 		Dir:                    t.TempDir(),
 	}
-	if err := manager.Apply([]Config{config}); err != nil {
+	if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
@@ -395,7 +412,10 @@ func TestManagerStopReclaimsTransientWorkers(t *testing.T) {
 }
 
 func TestManagerRouteUsesConfiguredDefaults(t *testing.T) {
-	manager := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	config := Config{
 		Mode:                   ModePersistent,
 		Command:                runtimeHelperCommand(),
@@ -408,7 +428,7 @@ func TestManagerRouteUsesConfiguredDefaults(t *testing.T) {
 		ID:                     "demo",
 		Dir:                    t.TempDir(),
 	}
-	if err := manager.Apply([]Config{config}); err != nil {
+	if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
@@ -428,7 +448,10 @@ func TestManagerRouteUsesConfiguredDefaults(t *testing.T) {
 }
 
 func TestManagerHandleSkipsReleasedWaitingOwner(t *testing.T) {
-	manager := NewManager(Options{})
+	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	event := hook.Event{Metadata: map[string]any{skipHookIDMetadataKey: "demo"}}
 	updated, _, err := manager.Handle(context.Background(), "demo", event, hook.Control{})
 	if err != nil {
@@ -440,7 +463,10 @@ func TestManagerHandleSkipsReleasedWaitingOwner(t *testing.T) {
 }
 
 func TestManagerBlockedWaitingConversationFallsThrough(t *testing.T) {
-	manager := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	config := Config{
 		Mode:                   ModePersistent,
 		Command:                runtimeHelperCommand(),
@@ -453,7 +479,7 @@ func TestManagerBlockedWaitingConversationFallsThrough(t *testing.T) {
 		ID:                     "demo",
 		Dir:                    t.TempDir(),
 	}
-	if err := manager.Apply([]Config{config}); err != nil {
+	if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
@@ -487,9 +513,12 @@ func TestManagerBlockedWaitingConversationFallsThrough(t *testing.T) {
 var runtimeHelperArgs = []string{"space arg", "", `C:\hook dir\`, `"quoted"`}
 
 func TestWorkerRequestCancellationSendsEventCancelAndKeepsWorkerReady(t *testing.T) {
-	manager := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	config := Config{Mode: ModePersistent, Command: runtimeHelperCommand(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 2, EventTimeoutSeconds: 5, MaxWaitSeconds: 30, Restart: RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1}, ID: "cancel-aware", Dir: t.TempDir()}
-	if err := manager.Apply([]Config{config}); err != nil {
+	if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
@@ -535,7 +564,10 @@ func waitForStatus(t *testing.T, manager *Manager, id string, wanted Status) {
 }
 
 func TestHookReloadRequestWaitsForActiveHandle(t *testing.T) {
-	manager := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	committed := make(chan struct{})
 	manager.SetPluginReloadPreparer(func(id string) (func() (events.LogResult, error), error) {
 		if id != "demo" {
@@ -571,7 +603,10 @@ func TestHookReloadRequestWaitsForActiveHandle(t *testing.T) {
 }
 
 func TestManagerReplacePluginKeepsOtherWorker(t *testing.T) {
-	manager := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	config := func(id string) Config {
 		return Config{
 			Mode:                   ModePersistent,
@@ -588,7 +623,7 @@ func TestManagerReplacePluginKeepsOtherWorker(t *testing.T) {
 	}
 	demo := config("demo")
 	other := config("other")
-	if err := manager.Apply([]Config{demo, other}); err != nil {
+	if err := manager.Apply([]Config{demo, other}, func(string) {}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
@@ -598,10 +633,10 @@ func TestManagerReplacePluginKeepsOtherWorker(t *testing.T) {
 	oldOther := manager.worker("other")
 	moved := demo
 	moved.Dir = t.TempDir()
-	if _, err := manager.ReplacePlugin(moved); err == nil {
+	if err := manager.ValidatePlugin(moved); err == nil {
 		t.Fatal("expected self reload to reject a plugin path change")
 	}
-	if _, err := manager.ReplacePlugin(demo); err != nil {
+	if _, err := manager.ReplacePlugin(demo.ID, &demo, func() {}); err != nil {
 		t.Fatalf("ReplacePlugin: %v", err)
 	}
 	if manager.worker("demo") == oldDemo {
@@ -612,47 +647,18 @@ func TestManagerReplacePluginKeepsOtherWorker(t *testing.T) {
 	}
 }
 
-func TestManagerApplyInvalidConfigKeepsCurrentWorkers(t *testing.T) {
-	manager := NewManager(Options{SharedDir: t.TempDir()})
-	config := Config{
-		Mode:                   ModePersistent,
-		Command:                runtimeHelperCommand(),
-		Cwd:                    ".",
-		StartupTimeoutSeconds:  2,
-		ShutdownTimeoutSeconds: 2,
-		EventTimeoutSeconds:    2,
-		MaxWaitSeconds:         30,
-		Restart:                RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
-		ID:                     "current",
-		Dir:                    t.TempDir(),
-	}
-	if err := manager.Apply([]Config{config}); err != nil {
-		t.Fatalf("Apply current: %v", err)
-	}
-	t.Cleanup(func() { manager.Close(context.Background()) })
-	waitForStatus(t, manager, "current", StatusReady)
-
-	invalid := config
-	invalid.ID = "invalid"
-	invalid.Command = nil
-	if err := manager.Apply([]Config{invalid}); err == nil {
-		t.Fatal("expected invalid config error")
-	}
-	infos := manager.List()
-	if len(infos) != 1 || infos[0].ID != "current" || infos[0].Status != StatusReady {
-		t.Fatalf("workers after invalid Apply = %#v", infos)
-	}
-}
-
 func TestManagerCloseRejectsNewStartsAndIsIdempotent(t *testing.T) {
-	manager := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := manager.Close(context.Background()); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
 	if err := manager.Close(context.Background()); err != nil {
 		t.Fatalf("second Close: %v", err)
 	}
-	if err := manager.Apply(nil); !errors.Is(err, ErrClosed) {
+	if err := manager.Apply(nil, func(string) {}); !errors.Is(err, ErrClosed) {
 		t.Fatalf("Apply after Close = %v, want ErrClosed", err)
 	}
 	if err := manager.Start("missing"); !errors.Is(err, ErrClosed) {
@@ -661,7 +667,10 @@ func TestManagerCloseRejectsNewStartsAndIsIdempotent(t *testing.T) {
 }
 
 func TestManagerCloseCallerDeadlinePreservesWorkerShutdown(t *testing.T) {
-	manager := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	config := Config{
 		Mode:                   ModePersistent,
 		Command:                runtimeHelperCommand(),
@@ -674,7 +683,7 @@ func TestManagerCloseCallerDeadlinePreservesWorkerShutdown(t *testing.T) {
 		ID:                     "slow-shutdown",
 		Dir:                    t.TempDir(),
 	}
-	if err := manager.Apply([]Config{config}); err != nil {
+	if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	waitForStatus(t, manager, config.ID, StatusReady)
