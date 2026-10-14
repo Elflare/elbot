@@ -1016,6 +1016,14 @@
       "translation": "Fixed an issue where __ELBOT_CODE_0__ could temporarily rewrite the initial input or historical messages of the current turn, and pending images were lost during queuing while Hook modifications were not persisted;",
       "updated_at": 1784467084
     },
+    "CHANGELOG.md:list:7a29bdf12603f31dec753886538601dbafa762f8ab5d18076878e5ce5e87944f": {
+      "kind": "list",
+      "source": "新增Responses api接口，支持完整Responses能力",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "7a29bdf12603f31dec753886538601dbafa762f8ab5d18076878e5ce5e87944f",
+      "translation": "Added Responses API interface, supporting full Responses capabilities",
+      "updated_at": 1791947426
+    },
     "CHANGELOG.md:list:7c1e36327d1415f3bf9903c836c196ad46b734daed1aaa5fe58fdb9b99df34ee": {
       "kind": "list",
       "source": "无问题时返回 __ELBOT_CODE_0__，不会自动修改文件。",
@@ -2234,8 +2242,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "4e888280eefa17b8133c0eb452326279031add87321bb5e8dfaa4fbe36a8016d",
+  "source_hash": "fe2330a0b90cf751a349bf4dc6a2d9fd35c48c2f0cee982429638cb402f941b5",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1791945772,
+  "updated_at": 1791947426,
   "version": 2
 }

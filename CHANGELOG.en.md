@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added Responses API interface, supporting full Responses capabilities
 - Concurrent execution of tools is now supported.
 - Added a dedicated `view_image` for Responses: reads media IDs, URLs, local images, or images from the current chat history; images are fed back into the model, and local paths are only available to superadmins.
 - Provider added `api_mode="chat"/"response"`; if omitted, Chat Completions will still be used.
