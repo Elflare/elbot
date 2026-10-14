@@ -51,7 +51,7 @@ func TestRouterPreservesConcurrentSourceSnapshots(t *testing.T) {
 		mu.Unlock()
 		return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	}}
-	router := New(Options{})
+	router := New(Options{Primary: sender})
 	router.RegisterPlatformSender("test", sender)
 	var wg sync.WaitGroup
 	for i := range 24 {

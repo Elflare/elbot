@@ -125,15 +125,15 @@ func (c Config) httpTimeout() time.Duration {
 }
 
 func (c Config) allowProactive() bool {
-	return c.AllowProactive == nil || *c.AllowProactive
+	return *c.AllowProactive
 }
 
 func (c Config) markdownByDefault() bool {
-	return c.MarkdownByDefault == nil || *c.MarkdownByDefault
+	return *c.MarkdownByDefault
 }
 
 func (c Config) enableKeyboard() bool {
-	return c.EnableKeyboard == nil || *c.EnableKeyboard
+	return *c.EnableKeyboard
 }
 
 func (c Config) reconnectInterval() time.Duration {

@@ -141,7 +141,7 @@ func TestOutputMediaSourcesAreCanonicalAndReceiptOrderPersists(t *testing.T) {
 	}))
 	defer server.Close()
 
-	dispatcher := dispatch.New(dispatch.Options{Store: store, Media: center, MediaRetentionDays: 7})
+	dispatcher := dispatch.New(dispatch.Options{Primary: &fakePlatform{}, Store: store, Media: center, MediaRetentionDays: 7})
 	sender := &orderedMediaSender{t: t}
 	messageCtx := platform.WithMessageContext(ctx, platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ScopeID: "group:9"}}, Sender: sender})
 	outputs := []delivery.Output{
@@ -177,7 +177,7 @@ func TestMediaReceiptKeepsDuplicatesAndPartialSuccess(t *testing.T) {
 	store := newTestStore(t)
 	root := t.TempDir()
 	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
-	dispatcher := dispatch.New(dispatch.Options{Store: store, Media: center, MediaRetentionDays: 7})
+	dispatcher := dispatch.New(dispatch.Options{Primary: &fakePlatform{}, Store: store, Media: center, MediaRetentionDays: 7})
 	item, err := center.ImportBytes(ctx, []byte("same"), media.Input{Name: "same.png", MIMEType: "image/png"})
 	if err != nil {
 		t.Fatal(err)

@@ -76,6 +76,10 @@ func assembleTestOptions(t *testing.T, opts testAgentOptions) testAssembly {
 	if opts.ToolsConfig.MaxRoundsPerTurn <= 0 {
 		opts.ToolsConfig = defaults.Tools
 	}
+	if opts.Media == nil {
+		root := t.TempDir()
+		opts.Media = media.NewManager(opts.Store, root, &media.LocalBackend{Root: root})
+	}
 	dispatcher := dispatch.New(dispatch.Options{Primary: opts.Platform, Store: opts.Store, Media: opts.Media, MediaRetentionDays: defaults.Maintenance.SandboxCleanup.RetentionDays})
 	connectFixtureNotifications(t, opts.Platform.Name(), dispatcher)
 	_, _ = opts.Models.ModelRetrying().Observe(func(ctx context.Context, event modelmgr.ModelRetryingEvent) error {

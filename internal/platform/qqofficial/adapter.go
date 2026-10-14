@@ -65,10 +65,6 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 						ContentLimit: 4096,
 						ResultStatus: globalevents.ResultFailed,
 					}
-					if errors.Is(err, context.Canceled) {
-						record.ResultStatus = globalevents.ResultCanceled
-						record.Level = slog.LevelInfo
-					}
 					facts, _ := contextinfo.ExecutionFromContext(ctx)
 					if facts.SessionID != "" {
 						record.Identity.SessionID = &facts.SessionID

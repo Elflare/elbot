@@ -256,10 +256,13 @@ func TestLatestAssistantReferenceResumesExpiredOrResetCurrentSession(t *testing.
 		t.Fatalf("age target session: %v", err)
 	}
 
-	reference := refcontext.Apply(baseCtx, refcontext.Options{
+	reference, err := refcontext.Apply(baseCtx, refcontext.Options{
 		Store: store, Platform: "qq", ScopeID: "group:9", ActorID: "qq:1",
 		ReplyID: "old-answer", Text: "continue here",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if reference.ResumeSessionID != target.ID || reference.ForkFromMessageID != "" {
 		t.Fatalf("reference action = %#v", reference)
 	}
@@ -294,10 +297,13 @@ func TestLatestAssistantReferenceResumesExpiredOrResetCurrentSession(t *testing.
 	}); err != nil {
 		t.Fatalf("map continued assistant message: %v", err)
 	}
-	reference = refcontext.Apply(resumeCtx, refcontext.Options{
+	reference, err = refcontext.Apply(resumeCtx, refcontext.Options{
 		Store: store, Platform: "qq", ScopeID: "group:9", ActorID: "qq:1",
 		ReplyID: "continued-answer", Text: "continue after new",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if reference.ResumeSessionID != target.ID || reference.ForkFromMessageID != "" {
 		t.Fatalf("reference after /new = %#v", reference)
 	}

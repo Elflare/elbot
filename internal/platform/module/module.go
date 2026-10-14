@@ -71,9 +71,7 @@ func (m *Module) Start(handler platform.PlatformHandler, stop context.CancelFunc
 		if m.ui != nil {
 			err = errors.Join(err, m.ui.Close(context.Background()))
 		}
-		if m.notifications != nil {
-			err = errors.Join(err, m.notifications.Close(context.Background()))
-		}
+		err = errors.Join(err, m.notifications.Close(context.Background()))
 		m.mu.Lock()
 		m.result = err
 		close(m.done)
@@ -123,13 +121,7 @@ type commandCatalogPlatform interface {
 }
 
 func registerCompletionPlatforms(service *completion.Service, adapters []platform.Runtime) {
-	if service == nil {
-		return
-	}
 	for _, adapter := range adapters {
-		if adapter == nil {
-			continue
-		}
 		if completer, ok := adapter.(completionPlatform); ok {
 			completer.SetCompleter(service)
 		}
@@ -137,14 +129,8 @@ func registerCompletionPlatforms(service *completion.Service, adapters []platfor
 }
 
 func registerCommandCatalogs(router *command.Router, adapters []platform.Runtime) {
-	if router == nil {
-		return
-	}
 	commands := router.Commands()
 	for _, adapter := range adapters {
-		if adapter == nil {
-			continue
-		}
 		if catalog, ok := adapter.(commandCatalogPlatform); ok {
 			catalog.SetCommandCatalog(commands)
 		}

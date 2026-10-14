@@ -31,20 +31,23 @@ func TestEnrichHistoryReferencePreservesOriginalMediaPositions(t *testing.T) {
 		original[1],
 	}
 	calls := 0
-	result := Apply(ctx, Options{
+	result, err := Apply(ctx, Options{Store: newRefTestStore(t),
 		ChatHistory: history.Repository(), Platform: "qqonebot", ScopeID: "group:9", ReplyID: "123", Text: "问题",
-		Fetch: func(context.Context, string) (ReferencedMessage, bool) {
+		Fetch: func(context.Context, string) (ReferencedMessage, bool, error) {
 			t.Fatal("history unexpectedly bypassed")
-			return ReferencedMessage{}, false
+			return ReferencedMessage{}, false, nil
 		},
-		Enrich: func(_ context.Context, id string, ref ReferencedMessage) []platform.MessageSegment {
+		Enrich: func(_ context.Context, id string, ref ReferencedMessage) ([]platform.MessageSegment, error) {
 			calls++
 			if id != "123" || ref.Text != "[forward]" || ref.CanonicalContent || !reflect.DeepEqual(ref.Segments, original) {
 				t.Fatalf("enrichment input=%#v, id=%s", ref, id)
 			}
-			return display
+			return display, nil
 		},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if calls != 1 || !reflect.DeepEqual(result.DisplaySegments, display) {
 		t.Fatalf("display=%#v calls=%d", result.DisplaySegments, calls)
 	}
@@ -74,18 +77,21 @@ func TestEnrichCanonicalAssistantKeepsReferenceDecisions(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
-			result := Apply(ctx, Options{Store: store, Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: tc.actor, ReplyID: tc.reply, Text: tc.text, CommandPrefixes: []string{"/"},
-				Fetch: func(context.Context, string) (ReferencedMessage, bool) {
-					return ReferencedMessage{Text: "[forward]", Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "[forward]"}}}, true
+			result, err := Apply(ctx, Options{ChatHistory: newRefTestHistory(t), Store: store, Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: tc.actor, ReplyID: tc.reply, Text: tc.text, CommandPrefixes: []string{"/"},
+				Fetch: func(context.Context, string) (ReferencedMessage, bool, error) {
+					return ReferencedMessage{Text: "[forward]", Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "[forward]"}}}, true, nil
 				},
-				Enrich: func(_ context.Context, _ string, ref ReferencedMessage) []platform.MessageSegment {
+				Enrich: func(_ context.Context, _ string, ref ReferencedMessage) ([]platform.MessageSegment, error) {
 					calls++
 					if !ref.CanonicalContent || ref.Text != first.Content {
 						t.Fatalf("missing canonical answer: %#v", ref)
 					}
-					return []platform.MessageSegment{{Type: platform.SegmentText, Text: "<forward_message>\n" + ref.Text + "\n</forward_message>"}}
+					return []platform.MessageSegment{{Type: platform.SegmentText, Text: "<forward_message>\n" + ref.Text + "\n</forward_message>"}}, nil
 				},
 			})
+			if err != nil {
+				t.Fatal(err)
+			}
 			if (calls == 1) != tc.enrich {
 				t.Fatalf("enrichment calls=%d", calls)
 			}

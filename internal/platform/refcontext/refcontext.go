@@ -3,6 +3,7 @@ package refcontext
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -41,10 +42,10 @@ type Options struct {
 	ReplyID         string
 	Text            string
 	CommandPrefixes []string
-	Fetch           func(context.Context, string) (ReferencedMessage, bool)
+	Fetch           func(context.Context, string) (ReferencedMessage, bool, error)
 	// Enrich optionally renders an ordered reference view. It must not mutate the
 	// original segments, whose media positions belong to the source history row.
-	Enrich func(context.Context, string, ReferencedMessage) []platform.MessageSegment
+	Enrich func(context.Context, string, ReferencedMessage) ([]platform.MessageSegment, error)
 }
 
 type Result struct {
@@ -58,16 +59,19 @@ type Result struct {
 	Reply           platform.ReplyContext
 }
 
-func Apply(ctx context.Context, opts Options) Result {
+func Apply(ctx context.Context, opts Options) (Result, error) {
 	result := Result{Text: opts.Text}
 	replyID := strings.TrimSpace(opts.ReplyID)
 	if replyID == "" {
-		return result
+		return result, nil
 	}
 	result.Reply.MessageID = replyID
 
-	stored, hasStored := referencedMessage(ctx, opts, replyID)
-	if stored != nil {
+	stored, hasStored, err := referencedMessage(ctx, opts, replyID)
+	if err != nil {
+		return Result{}, err
+	}
+	if hasStored {
 		result.Reply.Text = strings.TrimSpace(stored.Content)
 		if result.Reply.Text != "" {
 			result.Reply.Segments = []platform.MessageSegment{{Type: platform.SegmentText, Text: result.Reply.Text}}
@@ -75,101 +79,94 @@ func Apply(ctx context.Context, opts Options) Result {
 	}
 	trimmed := strings.TrimSpace(opts.Text)
 	if platform.HasCommandPrefix(trimmed, opts.CommandPrefixes) {
-		if stored != nil && stored.Role == storage.RoleAssistant {
+		if hasStored && stored.Role == storage.RoleAssistant {
 			if name, ok := platform.CommandName(trimmed, opts.CommandPrefixes); ok && name == "fork" {
 				result.Text = "/fork " + stored.ID
 			}
 		}
-		return result
+		return result, nil
 	}
 
-	if stored != nil && stored.Role == storage.RoleAssistant {
-		session, ok := referencedSession(ctx, opts, stored)
+	if hasStored && stored.Role == storage.RoleAssistant {
+		session, ok, err := referencedSession(ctx, opts, stored)
+		if err != nil {
+			return Result{}, err
+		}
 		if ok && opts.IsSuperadmin && isBackgroundSession(session) {
 			result.ResumeSessionID = session.ID
-			_, result.ReferenceSegments, result.Reply, _ = fallbackReferenceText(ctx, opts, replyID, stored, hasStored)
-			return result
+			_, result.ReferenceSegments, result.Reply, _, err = fallbackReferenceText(ctx, opts, replyID, stored, hasStored)
+			return result, err
 		}
 		if ok && isOwnPlatformSession(opts, session) {
-			if isLatestAssistant(ctx, opts.Store, stored) {
+			latest, err := isLatestAssistant(ctx, opts.Store, stored)
+			if err != nil {
+				return Result{}, err
+			}
+			if latest {
 				result.ResumeSessionID = session.ID
 				result.Reply = platform.ReplyContext{MessageID: replyID}
-				return result
+				return result, nil
 			}
 			result.ForkFromMessageID = stored.ID
-			_, result.ReferenceSegments, result.Reply, _ = fallbackReferenceText(ctx, opts, replyID, stored, hasStored)
-			return result
+			_, result.ReferenceSegments, result.Reply, _, err = fallbackReferenceText(ctx, opts, replyID, stored, hasStored)
+			return result, err
 		}
 	}
-	text, segments, reply, display := fallbackReferenceText(ctx, opts, replyID, stored, hasStored)
-	if reply.MessageID != "" {
-		result.Reply = reply
-	}
-	result.Text = text
-	result.ReferenceSegments = segments
-	result.DisplaySegments = display
-	return result
+	result.Text, result.ReferenceSegments, result.Reply, result.DisplaySegments, err = fallbackReferenceText(ctx, opts, replyID, stored, hasStored)
+	return result, err
 }
 
-func referencedMessage(ctx context.Context, opts Options, replyID string) (*storage.Message, bool) {
-	if opts.Store == nil {
-		return nil, false
-	}
+func referencedMessage(ctx context.Context, opts Options, replyID string) (*storage.Message, bool, error) {
 	msg, err := opts.Store.Messages().FindByPlatformMessage(ctx, strings.TrimSpace(opts.Platform), strings.TrimSpace(opts.ScopeID), replyID)
-	if err != nil {
-		return nil, false
+	if errors.Is(err, storage.ErrNotFound) {
+		return nil, false, nil
 	}
-	return msg, true
+	return msg, err == nil, err
 }
 
 func isOwnPlatformSession(opts Options, session *storage.Session) bool {
-	if session == nil || isBackgroundSession(session) {
+	if isBackgroundSession(session) {
 		return false
 	}
 	return session.OwnerID == strings.TrimSpace(opts.ActorID) && session.Platform == strings.TrimSpace(opts.Platform) && session.PlatformScopeID == strings.TrimSpace(opts.ScopeID)
 }
 
-func referencedSession(ctx context.Context, opts Options, msg *storage.Message) (*storage.Session, bool) {
-	if opts.Store == nil || opts.Store.Sessions() == nil || msg == nil {
-		return nil, false
-	}
+func referencedSession(ctx context.Context, opts Options, msg *storage.Message) (*storage.Session, bool, error) {
 	session, err := opts.Store.Sessions().Get(ctx, msg.SessionID)
-	if err != nil {
-		return nil, false
+	if errors.Is(err, storage.ErrNotFound) {
+		return nil, false, nil
 	}
-	return session, true
+	return session, err == nil, err
 }
 
 func isBackgroundSession(session *storage.Session) bool {
-	if session == nil {
-		return false
-	}
 	scopeID := strings.TrimSpace(session.PlatformScopeID)
 	return strings.HasPrefix(scopeID, "cron:") || strings.HasPrefix(scopeID, "elnis:")
 }
 
-func isLatestAssistant(ctx context.Context, store storage.Store, msg *storage.Message) bool {
-	if store == nil || msg == nil {
-		return true
-	}
+func isLatestAssistant(ctx context.Context, store storage.Store, msg *storage.Message) (bool, error) {
 	messages, err := store.Messages().ListBySession(ctx, msg.SessionID)
 	if err != nil {
-		return true
+		return false, err
 	}
 	for i := len(messages) - 1; i >= 0; i-- {
 		if messages[i].Role == storage.RoleAssistant {
-			return messages[i].ID == msg.ID
+			return messages[i].ID == msg.ID, nil
 		}
 	}
-	return true
+	return false, nil
 }
 
-func fallbackReferenceText(ctx context.Context, opts Options, replyID string, stored *storage.Message, hasStored bool) (string, []platform.MessageSegment, platform.ReplyContext, []platform.MessageSegment) {
+func fallbackReferenceText(ctx context.Context, opts Options, replyID string, stored *storage.Message, hasStored bool) (string, []platform.MessageSegment, platform.ReplyContext, []platform.MessageSegment, error) {
 	label := "引用"
 	content := ""
 	var segments []platform.MessageSegment
 	reply := platform.ReplyContext{MessageID: replyID}
-	if ref, ok := referenceSource(ctx, opts, replyID); ok {
+	ref, ok, err := referenceSource(ctx, opts, replyID)
+	if err != nil {
+		return "", nil, platform.ReplyContext{}, nil, err
+	}
+	if ok {
 		if strings.TrimSpace(ref.Label) != "" {
 			label = strings.TrimSpace(ref.Label)
 		}
@@ -202,11 +199,14 @@ func fallbackReferenceText(ctx context.Context, opts Options, replyID string, st
 	// A mapped assistant already has its canonical content. In particular,
 	// enriching it must not duplicate the text of an automatic resume or fork.
 	if opts.Enrich != nil {
-		display := opts.Enrich(ctx, replyID, ReferencedMessage{
+		display, err := opts.Enrich(ctx, replyID, ReferencedMessage{
 			SenderID: reply.SenderID, SenderName: reply.SenderName, Label: label,
 			Text: content, Segments: reply.Segments,
 			CanonicalContent: hasStored && stored.Role == storage.RoleAssistant && strings.TrimSpace(stored.Content) != "",
 		})
+		if err != nil {
+			return "", nil, platform.ReplyContext{}, nil, err
+		}
 		if len(display) > 0 {
 			var text strings.Builder
 			for _, segment := range display {
@@ -217,13 +217,13 @@ func fallbackReferenceText(ctx context.Context, opts Options, replyID string, st
 			if strings.TrimSpace(opts.Text) != "" {
 				text.WriteString("\n\n" + opts.Text)
 			}
-			return strings.TrimSpace(text.String()), segments, reply, display
+			return strings.TrimSpace(text.String()), segments, reply, display, nil
 		}
 	}
 	if content == "" {
-		return opts.Text, segments, reply, nil
+		return opts.Text, segments, reply, nil, nil
 	}
-	return FormatReferenceText(opts.Platform, reply, opts.Text), segments, reply, nil
+	return FormatReferenceText(opts.Platform, reply, opts.Text), segments, reply, nil, nil
 }
 
 func FormatReferenceText(platformName string, reply platform.ReplyContext, currentText string) string {
@@ -300,14 +300,11 @@ func referenceIDKind(platformName string) string {
 	}
 }
 
-func restoreHistoryMedia(ctx context.Context, opts Options, row storage.ChatMessage, segments []platform.MessageSegment) []platform.MessageSegment {
+func restoreHistoryMedia(ctx context.Context, opts Options, row storage.ChatMessage, segments []platform.MessageSegment) ([]platform.MessageSegment, error) {
 	out := append([]platform.MessageSegment(nil), segments...)
-	if opts.Store == nil || opts.Store.Media() == nil {
-		return out
-	}
 	associations, err := opts.Store.Media().FindHistory(ctx, row.Platform, row.PlatformScopeID, row.PlatformMessageID)
 	if err != nil {
-		return out
+		return nil, err
 	}
 	byIndex := make(map[int]storage.HistoryMedia, len(associations))
 	for _, association := range associations {
@@ -327,44 +324,55 @@ func restoreHistoryMedia(ctx context.Context, opts Options, row storage.ChatMess
 			continue
 		}
 		item, err := opts.Store.Media().Get(ctx, association.MediaID)
-		if err != nil || item.Deleting {
+		if errors.Is(err, storage.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if item.Deleting {
 			continue
 		}
 		segment.MediaID = association.MediaID
 	}
-	return out
+	return out, nil
 }
 
-func referenceSource(ctx context.Context, opts Options, replyID string) (ReferencedMessage, bool) {
-	if opts.Store != nil && opts.Store.Media() != nil {
-		outputs, err := opts.Store.Media().FindOutputs(ctx, opts.Platform, opts.ScopeID, replyID, time.Now())
-		if err == nil && len(outputs) > 0 {
-			ref := ReferencedMessage{Label: "引用：bot"}
-			for _, output := range outputs {
-				kind := platform.SegmentFile
-				if output.Kind == "image" {
-					kind = platform.SegmentImage
-				}
-				ref.Segments = append(ref.Segments, platform.MessageSegment{Type: kind, MediaID: output.MediaID})
-			}
-			return ref, true
-		}
+func referenceSource(ctx context.Context, opts Options, replyID string) (ReferencedMessage, bool, error) {
+	outputs, err := opts.Store.Media().FindOutputs(ctx, opts.Platform, opts.ScopeID, replyID, time.Now())
+	if err != nil {
+		return ReferencedMessage{}, false, err
 	}
-	if opts.ChatHistory != nil {
-		row, err := opts.ChatHistory.GetByPlatformMessage(ctx, opts.Platform, opts.ScopeID, replyID)
-		if err == nil && row != nil {
-			segments := restoreHistoryMedia(ctx, opts, *row, platform.UnmarshalChatSegments(row.Segments))
-			if len(segments) > 0 || strings.TrimSpace(row.Text) != "" {
-				label := "引用"
-				if row.SenderName != "" {
-					label += "：" + row.SenderName
-				}
-				return ReferencedMessage{SenderID: row.SenderID, SenderName: row.SenderName, Label: label, Text: row.Text, Segments: segments}, true
+	if len(outputs) > 0 {
+		ref := ReferencedMessage{Label: "引用：bot"}
+		for _, output := range outputs {
+			kind := platform.SegmentFile
+			if output.Kind == "image" {
+				kind = platform.SegmentImage
 			}
+			ref.Segments = append(ref.Segments, platform.MessageSegment{Type: kind, MediaID: output.MediaID})
+		}
+		return ref, true, nil
+	}
+	row, err := opts.ChatHistory.GetByPlatformMessage(ctx, opts.Platform, opts.ScopeID, replyID)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return ReferencedMessage{}, false, err
+	}
+	if err == nil {
+		segments, err := restoreHistoryMedia(ctx, opts, *row, platform.UnmarshalChatSegments(row.Segments))
+		if err != nil {
+			return ReferencedMessage{}, false, err
+		}
+		if len(segments) > 0 || strings.TrimSpace(row.Text) != "" {
+			label := "引用"
+			if row.SenderName != "" {
+				label += "：" + row.SenderName
+			}
+			return ReferencedMessage{SenderID: row.SenderID, SenderName: row.SenderName, Label: label, Text: row.Text, Segments: segments}, true, nil
 		}
 	}
 	if opts.Fetch != nil {
 		return opts.Fetch(ctx, replyID)
 	}
-	return ReferencedMessage{}, false
+	return ReferencedMessage{}, false, nil
 }

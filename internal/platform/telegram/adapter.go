@@ -193,10 +193,6 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 						ContentLimit: 4096,
 						ResultStatus: globalevents.ResultFailed,
 					}
-					if errors.Is(err, context.Canceled) {
-						record.ResultStatus = globalevents.ResultCanceled
-						record.Level = slog.LevelInfo
-					}
 					facts, _ := contextinfo.ExecutionFromContext(ctx)
 					if facts.SessionID != "" {
 						record.Identity.SessionID = &facts.SessionID
@@ -386,7 +382,7 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 
 	var referenceSegments []platform.MessageSegment
 	if normalized.ReplyID != "" {
-		ref := refcontext.Apply(msgCtx, refcontext.Options{
+		ref, err := refcontext.Apply(msgCtx, refcontext.Options{
 			Store:           a.store,
 			ChatHistory:     a.chatHistory,
 			Platform:        a.Name(),
@@ -398,6 +394,20 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 			CommandPrefixes: a.cfg.CommandPrefixes,
 			Fetch:           a.referenceFetcher(msg, normalized),
 		})
+		if err != nil {
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "platform_context_failed",
+				Module:       "telegram",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("prepare platform context failed: %v", err),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(msgCtx), record)
+			return
+		}
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
 		messageCtx.ResumeSessionID = ref.ResumeSessionID
 		messageCtx.ContextText = ref.Text
@@ -421,9 +431,6 @@ func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (deli
 }
 
 func (a *Adapter) CallPlatformAPI(ctx context.Context, api string, params map[string]any) (json.RawMessage, error) {
-	if a.client == nil {
-		return nil, fmt.Errorf("telegram api client is not configured")
-	}
 	return a.client.callRaw(ctx, strings.TrimSpace(api), params)
 }
 
@@ -439,9 +446,6 @@ func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Outp
 	t, err := contextTarget(ctx)
 	if err != nil {
 		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
 		return delivery.Receipt{}, logResult, err
 	}
 	return a.sendOutputs(ctx, t, outputs)
@@ -475,14 +479,7 @@ func (a *Adapter) sendTarget(ctx context.Context, outTarget delivery.Target, out
 		if len(a.cfg.Superadmins) == 0 {
 			{
 				err := fmt.Errorf("telegram superadmins are not configured")
-				logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
-				if err != nil {
-					logResult.ResultStatus = globalevents.ResultFailed
-					logResult.Content = err.Error()
-					if errors.Is(err, context.Canceled) {
-						logResult.ResultStatus = globalevents.ResultCanceled
-					}
-				}
+				logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
 				return delivery.Receipt{}, logResult, err
 			}
 		}
@@ -550,7 +547,10 @@ func (a *Adapter) sendToTarget(ctx context.Context, t target, out delivery.Outpu
 	case delivery.KindText:
 		return a.sendText(ctx, t, out.Text, 0, shouldAttachRiskKeyboard(out.Text))
 	case delivery.KindReply:
-		replyID, _ := strconv.ParseInt(strings.TrimSpace(out.ReplyToPlatformMessageID), 10, 64)
+		replyID, err := strconv.ParseInt(strings.TrimSpace(out.ReplyToPlatformMessageID), 10, 64)
+		if err != nil {
+			return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+		}
 		return a.sendText(ctx, t, out.Text, replyID, shouldAttachRiskKeyboard(out.Text))
 	case delivery.KindEmoticon:
 		return a.sendSticker(ctx, t, out, 0)
@@ -570,44 +570,7 @@ func (a *Adapter) sendText(ctx context.Context, t target, text string, replyTo i
 	}
 	switch a.cfg.format() {
 	case "rich":
-		receipt, logResult, err := a.sendRichText(ctx, t, text, replyTo, keyboard)
-		if err == nil || len(receipt.PlatformMessageIDs) > 0 {
-			return receipt, logResult, err
-		}
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelWarn,
-				EventName:    "telegram_rich_message_failed_fallback_to_html",
-				Module:       "telegram",
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("telegram rich message failed, fallback to html\nerror=%v", err),
-				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultFailed,
-			}
-			if errors.Is(err, context.Canceled) {
-				record.ResultStatus = globalevents.ResultCanceled
-				record.Level = slog.LevelInfo
-			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
-		}
-		return a.sendHTMLText(ctx, t, text, replyTo, keyboard)
+		return a.sendRichText(ctx, t, text, replyTo, keyboard)
 	case "plain":
 		return a.sendPlainText(ctx, t, text, replyTo, keyboard)
 	default:
@@ -644,44 +607,7 @@ func (a *Adapter) sendRichText(ctx context.Context, t target, text string, reply
 }
 
 func (a *Adapter) sendHTMLText(ctx context.Context, t target, text string, replyTo int64, keyboard bool) (delivery.Receipt, globalevents.LogResult, error) {
-	receipt, logResult, err := a.sendFormattedText(ctx, t, telegramHTMLFromMarkdown(text), "HTML", replyTo, keyboard)
-	if err == nil || len(receipt.PlatformMessageIDs) > 0 {
-		return receipt, logResult, err
-	}
-	{
-		record := globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
-			Level:        slog.LevelWarn,
-			EventName:    "telegram_html_message_failed_fallback_to_plain",
-			Module:       "telegram",
-			Type:         globalevents.ContentText,
-			Content:      fmt.Sprintf("telegram html message failed, fallback to plain\nerror=%v", err),
-			ContentLimit: 4096,
-			ResultStatus: globalevents.ResultFailed,
-		}
-		if logResult.ResultStatus == globalevents.ResultCanceled {
-			record.ResultStatus = globalevents.ResultCanceled
-			record.Level = slog.LevelInfo
-		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
-	}
-	return a.sendPlainText(ctx, t, text, replyTo, keyboard)
+	return a.sendFormattedText(ctx, t, telegramHTMLFromMarkdown(text), "HTML", replyTo, keyboard)
 }
 
 func (a *Adapter) sendPlainText(ctx context.Context, t target, text string, replyTo int64, keyboard bool) (delivery.Receipt, globalevents.LogResult, error) {
@@ -720,9 +646,6 @@ func (a *Adapter) sendPhoto(ctx context.Context, t target, out delivery.Output, 
 	if err != nil {
 		logResult.ResultStatus = globalevents.ResultFailed
 		logResult.Content = err.Error()
-		if logResult.ResultStatus == globalevents.ResultCanceled {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
 	}
 	return receiptWithMessageID(msg.MessageID), logResult, err
 }

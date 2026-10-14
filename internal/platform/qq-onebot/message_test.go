@@ -235,7 +235,7 @@ func TestHandleEventMediaRemainsRaw(t *testing.T) {
 			`[{"type":"image","data":{"file":"image-id"}}]`,
 			`[{"type":"file","data":{"file":"test.txt","file_id":"id-1"}}]`,
 		} {
-			adapter := New(Config{Enabled: true, Superadmins: []string{"1"}}, nil, nil)
+			adapter := newTestAdapter(t, Config{Enabled: true, Superadmins: []string{"1"}}, nil, nil)
 			adapter.transport = newTestTransport(t, func(req request) response {
 				t.Errorf("unexpected eager API call: %s", req.Action)
 				return response{Status: "failed", Echo: req.Echo}
@@ -292,7 +292,7 @@ func TestResolveMediaUsesPlatformOnlyOnDemand(t *testing.T) {
 }
 
 func TestHandleEventDeliversPlainGroupMessage(t *testing.T) {
-	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/", TriggerKeywords: []string{"芙莉丝"}}, nil, nil)
+	adapter := newTestAdapter(t, Config{Enabled: true, URL: "ws://127.0.0.1:6700/", TriggerKeywords: []string{"芙莉丝"}}, nil, nil)
 	handler := &captureHandler{}
 
 	adapter.handleEvent(context.Background(), handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, RawMessage: "hello"})
@@ -310,7 +310,7 @@ func TestHandleEventDeliversPlainGroupMessage(t *testing.T) {
 }
 
 func TestHandleEventKeepsPlatformMessageForHooks(t *testing.T) {
-	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/"}, nil, nil)
+	adapter := newTestAdapter(t, Config{Enabled: true, URL: "ws://127.0.0.1:6700/"}, nil, nil)
 	handler := &captureHandler{}
 	raw := []byte(`[{"type":"json","data":{"data":"{\"app\":\"miniapp\"}"}}]`)
 
@@ -326,7 +326,7 @@ func TestHandleEventKeepsPlatformMessageForHooks(t *testing.T) {
 }
 
 func TestHandleEventKeepsTriggerKeywordForUpperLayers(t *testing.T) {
-	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/", TriggerKeywords: []string{"芙莉丝"}}, nil, nil)
+	adapter := newTestAdapter(t, Config{Enabled: true, URL: "ws://127.0.0.1:6700/", TriggerKeywords: []string{"芙莉丝"}}, nil, nil)
 	handler := &captureHandler{}
 	adapter.handleEvent(context.Background(), handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, RawMessage: "芙莉丝，你好"})
 	if handler.text != "芙莉丝，你好" {
@@ -341,7 +341,7 @@ func TestHandleEventAtUsesGroupMemberCard(t *testing.T) {
 		}
 		return response{Status: "ok", Data: []byte(`{"user_id":2,"card":"群昵称","nickname":"普通昵称"}`), Echo: req.Echo}
 	})
-	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil)
+	adapter := newTestAdapter(t, Config{Enabled: true, URL: transport.URL}, nil, nil)
 	adapter.transport = transport
 	handler := &captureHandler{}
 
@@ -366,7 +366,7 @@ func TestHandleEventAtFallsBackToNickname(t *testing.T) {
 		}
 		return response{Status: "ok", Data: []byte(`{"user_id":2,"nickname":"普通昵称"}`), Echo: req.Echo}
 	})
-	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil)
+	adapter := newTestAdapter(t, Config{Enabled: true, URL: transport.URL}, nil, nil)
 	adapter.transport = transport
 	handler := &captureHandler{}
 
@@ -427,7 +427,21 @@ func TestForkableReferenceMessageIDRequiresOwnAssistantSession(t *testing.T) {
 		}
 	}
 
-	adapter := New(Config{Enabled: true, URL: "ws://127.0.0.1:6700/"}, store, nil)
+	adapter := newTestAdapter(t, Config{Enabled: true, URL: "ws://127.0.0.1:6700/"}, store, nil)
+	for _, mapping := range maps {
+		msg, err := store.Messages().Get(ctx, mapping.MessageID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := adapter.chatHistory.Append(ctx, &storage.ChatMessage{
+			Platform:          mapping.Platform,
+			PlatformScopeID:   mapping.PlatformScopeID,
+			PlatformMessageID: mapping.PlatformMessageID,
+			Text:              msg.Content,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	handler := &captureHandler{}
 	adapter.handleEvent(ctx, handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, Message: []byte(`[{"type":"reply","data":{"id":"first-assistant"}},{"type":"text","data":{"text":"继续"}}]`)})
@@ -537,7 +551,7 @@ func TestHandleEventStoresReferenceSnapshot(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	adapter := New(Config{}, nil, repo)
+	adapter := newTestAdapter(t, Config{}, nil, repo)
 	handler := &captureHandler{}
 	adapter.handleEvent(ctx, handler, Event{
 		MessageType: "group", SelfID: 9999, UserID: 2002, GroupID: 9, MessageID: 84,
@@ -574,7 +588,7 @@ func TestHandleEventFillsReplyToSenderID(t *testing.T) {
 		}
 		return response{}
 	})
-	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil)
+	adapter := newTestAdapter(t, Config{Enabled: true, URL: transport.URL}, nil, nil)
 	adapter.transport = transport
 	handler := &captureHandler{}
 
@@ -615,7 +629,10 @@ func TestWithReferenceUsesGetMessageImageWhenStoreHasText(t *testing.T) {
 	adapter := New(Config{Enabled: true, URL: transport.URL}, store, nil)
 	adapter.transport = transport
 
-	ref, ok := adapter.referenceFetcher(Event{MessageType: "group", SelfID: 1000, GroupID: 9})(ctx, "77")
+	ref, ok, err := adapter.referenceFetcher(Event{MessageType: "group", SelfID: 1000, GroupID: 9})(ctx, "77")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok {
 		t.Fatal("missing reference")
 	}
@@ -677,4 +694,25 @@ func newTestTransport(t *testing.T, handle func(request) response) *Transport {
 		transport.Close(websocket.StatusNormalClosure, "test done")
 	})
 	return transport
+}
+
+func newTestAdapter(t *testing.T, cfg Config, store storage.Store, history storage.ChatHistoryRepository) *Adapter {
+	t.Helper()
+	if store == nil {
+		db, err := sqlite.New(context.Background(), filepath.Join(t.TempDir(), "store.db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = db.Close() })
+		store = db
+	}
+	if history == nil {
+		db, err := sqlite.NewChatHistory(context.Background(), filepath.Join(t.TempDir(), "history.db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = db.Close() })
+		history = db.Repository()
+	}
+	return New(cfg, store, history)
 }

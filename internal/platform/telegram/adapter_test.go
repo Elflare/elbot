@@ -212,7 +212,7 @@ func TestSendTextUsesHTMLByDefault(t *testing.T) {
 	}
 }
 
-func TestSendTextRichFallback(t *testing.T) {
+func TestSendTextRichFailure(t *testing.T) {
 	calls := []string{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
@@ -228,13 +228,10 @@ func TestSendTextRichFallback(t *testing.T) {
 	defer server.Close()
 	adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: "rich"}, nil, nil)
 	receipt, _, err := adapter.sendText(context.Background(), target{ChatID: 1}, "# bad", 0, false)
-	if err != nil {
-		t.Fatal(err)
+	if err == nil || len(receipt.PlatformMessageIDs) != 0 {
+		t.Fatalf("receipt=%#v err=%v", receipt, err)
 	}
-	if len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "8" {
-		t.Fatalf("receipt = %#v", receipt)
-	}
-	if len(calls) != 2 || calls[0] != "sendRichMessage" || calls[1] != "sendMessage" {
+	if len(calls) != 1 || calls[0] != "sendRichMessage" {
 		t.Fatalf("calls = %#v", calls)
 	}
 }

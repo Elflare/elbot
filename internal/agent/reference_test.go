@@ -29,10 +29,13 @@ func TestReferencedOutputMediaReachesVisionAndCanonicalSession(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	ref := refcontext.Apply(ctx, refcontext.Options{Store: store, Platform: "telegram", ScopeID: "group:9", ReplyID: "sent", Text: "看看", Fetch: func(context.Context, string) (refcontext.ReferencedMessage, bool) {
+	ref, err := refcontext.Apply(ctx, refcontext.Options{Store: store, Platform: "telegram", ScopeID: "group:9", ReplyID: "sent", Text: "看看", Fetch: func(context.Context, string) (refcontext.ReferencedMessage, bool, error) {
 		t.Fatal("output reference must not access platform")
-		return refcontext.ReferencedMessage{}, false
+		return refcontext.ReferencedMessage{}, false, nil
 	}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	f := &fakeLLM{replies: []string{"done"}}
 	p := &fakePlatform{}
 	a := newTestMediaAgent(t, p, f, store, center)

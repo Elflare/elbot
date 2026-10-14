@@ -20,7 +20,7 @@ func TestPureMediaHistoryPreservesOrderWithoutCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer history.Close()
-	a := New(Config{}, nil, history.Repository())
+	a := newTestAdapter(t, Config{}, nil, history.Repository())
 	raw := `[{"type":"image","data":{"file":"image-id","url":"https://example.com/image?rkey=secret"}},{"type":"file","data":{"file_id":"file-id","name":"file.txt"}},{"type":"image","data":{"file":"image-id","url":"https://example.com/image?rkey=secret"}}]`
 	handler := &captureHandler{}
 	a.handleEvent(ctx, handler, Event{MessageType: "group", MessageID: 1, GroupID: 9, UserID: 1, Message: []byte(raw), RawMessage: raw})
@@ -53,7 +53,7 @@ func TestOutputReferenceDoesNotFetchPlatform(t *testing.T) {
 	if err := store.Media().SaveOutput(ctx, storage.MediaOutput{Platform: "qqonebot", ScopeID: "group:9", MessageID: "sent", Kind: "image", MediaID: item.ID, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
-	a := New(Config{}, store, nil)
+	a := newTestAdapter(t, Config{}, store, nil)
 	a.transport = newTestTransport(t, func(req request) response {
 		t.Errorf("unexpected reference API: %s", req.Action)
 		return response{Status: "failed", Echo: req.Echo}
