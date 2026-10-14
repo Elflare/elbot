@@ -22,7 +22,7 @@ func (g *titleGenerator) GenerateTitle(ctx context.Context, messages []storage.M
 	if g == nil || g.models == nil {
 		return TitleResult{}, fmt.Errorf("no title model available")
 	}
-	selected := g.models.ResolveNaming()
+	selected := g.models.ResolveNaming(ctx)
 	naming, namingModel := selected.Naming.Client, selected.Naming.Model
 	primary, primaryModel := selected.Fallback.Client, selected.Fallback.Model
 	var actual TitleResult

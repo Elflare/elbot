@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 )
 
@@ -106,13 +107,15 @@ func TestSelectionsPersistAndRestoreWithFallbacks(t *testing.T) {
 	opts.StatePath = filepath.Join(t.TempDir(), "state.toml")
 	s := newTestService(t, opts)
 	work := s.ResolveMode("work")
+	chat := s.ResolveMode("chat")
+	ctx := contextinfo.WithModel(t.Context(), contextinfo.Model{Provider: chat.Provider, Model: chat.Model, APIType: string(chat.Origin.APIType)})
 	if got := s.ResolveMode("elwisp2"); got != work {
 		t.Fatalf("unconfigured slot = %#v", got)
 	}
 	if got := s.ResolveCompact(s.ResolveMode("chat")); got.Model != "z" {
 		t.Fatalf("compact fallback = %#v", got)
 	}
-	if got := s.ResolveNaming(); got.Naming.Client != nil || got.Fallback != work {
+	if got := s.ResolveNaming(ctx); got.Naming.Client != nil || got.Fallback != chat {
 		t.Fatalf("naming fallback = %#v", got)
 	}
 	for _, mode := range []string{"work", "chat", "elwisp1", "elwisp2", "elwisp3"} {
@@ -143,8 +146,8 @@ func TestSelectionsPersistAndRestoreWithFallbacks(t *testing.T) {
 	if got := restored.ResolveCompact(work); got.Model != "c" {
 		t.Fatalf("compact override = %#v", got)
 	}
-	naming := restored.ResolveNaming()
-	if naming.Naming.Model != "z" || naming.Fallback.Model != "b" {
+	naming := restored.ResolveNaming(ctx)
+	if naming.Naming.Model != "z" || naming.Fallback.Provider != "q" || naming.Fallback.Model != "z" {
 		t.Fatalf("restored naming = %#v", naming)
 	}
 	// Old values remain useful snapshots after every mode has changed.
@@ -221,7 +224,8 @@ func TestConcurrentCommitsPublishOnlySavedSnapshots(t *testing.T) {
 			waitSignal(t, entered)
 			go func() { _, err := s.SelectNamingModel("p/c"); second <- err }()
 			read := make(chan NamingSelection, 1)
-			go func() { read <- s.ResolveNaming() }()
+			ctx := contextinfo.WithModel(t.Context(), contextinfo.Model{Provider: "p", Model: "a", APIType: "chat"})
+			go func() { read <- s.ResolveNaming(ctx) }()
 			select {
 			case got := <-read:
 				if got.Fallback.Model != "a" || got.Naming.Model != "" {
@@ -249,7 +253,7 @@ func TestConcurrentCommitsPublishOnlySavedSnapshots(t *testing.T) {
 			if state.ModeModels["work"].Model != wantWork || state.NamingModel.Model != "c" {
 				t.Fatalf("lost update or leaked failed update: %#v", state)
 			}
-			if got := s.ResolveNaming(); got.Fallback.Model != wantWork || got.Naming.Model != "c" {
+			if got := s.ResolveNaming(ctx); got.Fallback.Model != "a" || got.Naming.Model != "c" {
 				t.Fatalf("disk/memory mismatch: %#v", got)
 			}
 		})
@@ -258,6 +262,7 @@ func TestConcurrentCommitsPublishOnlySavedSnapshots(t *testing.T) {
 
 func TestConcurrentReadersSwitchesAndCatalogRefresh(t *testing.T) {
 	s := newTestService(t, testOptions())
+	ctx := contextinfo.WithModel(t.Context(), contextinfo.Model{Provider: "p", Model: "a", APIType: "chat"})
 	var wg sync.WaitGroup
 	for i := 0; i < 12; i++ {
 		wg.Add(1)
@@ -279,8 +284,8 @@ func TestConcurrentReadersSwitchesAndCatalogRefresh(t *testing.T) {
 					if len(result.Options[0].ModeMarks) > 0 {
 						result.Options[0].ModeMarks[0] = "caller mutation"
 					}
-					naming := s.ResolveNaming()
-					if naming.Fallback.Client == nil || naming.Fallback.Model != "a" && naming.Fallback.Model != "b" {
+					naming := s.ResolveNaming(ctx)
+					if naming.Fallback.Client == nil || naming.Fallback.Model != "a" {
 						t.Errorf("invalid snapshot: %#v", naming)
 					}
 				}

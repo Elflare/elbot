@@ -13,6 +13,7 @@ import (
 
 	chatroute "elbot/internal/agent/chat"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/llm/responses"
@@ -150,7 +151,8 @@ func TestNamingUsesTokenLimitOnlyWhenConfigured(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				title, err := session.NewTitleGenerator(models).GenerateTitle(context.Background(), []storage.Message{{Role: storage.RoleUser, Content: "hello"}})
+				ctx := contextinfo.WithModel(t.Context(), contextinfo.Model{Provider: "p", Model: "m", APIType: mode})
+				title, err := session.NewTitleGenerator(models).GenerateTitle(ctx, []storage.Message{{Role: storage.RoleUser, Content: "hello"}})
 				if err != nil || title.RawTitle != "title" || calls.Load() != 1 {
 					t.Fatalf("title=%+v error=%v calls=%d", title, err, calls.Load())
 				}

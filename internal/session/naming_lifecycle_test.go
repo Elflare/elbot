@@ -162,12 +162,17 @@ func TestNamingOutlivesTurnButStopsWithApplication(t *testing.T) {
 			t.Cleanup(func() { unblock.Do(func() { close(release) }); _ = svc.Close(context.Background()) })
 			row := namingRow(t, svc, store)
 			turnCtx, stopTurn := context.WithCancel(context.Background())
+			model := contextinfo.Model{Provider: "deepseek", Model: "deepseek-chat", APIType: "chat"}
+			turnCtx = contextinfo.WithModel(turnCtx, model)
 			svc.MaybeScheduleNaming(turnCtx, row.ID)
 			var workerCtx context.Context
 			select {
 			case workerCtx = <-started:
 			case <-time.After(time.Second):
 				t.Fatal("no worker")
+			}
+			if got, ok := contextinfo.ModelFromContext(workerCtx); !ok || got != model {
+				t.Fatalf("worker model = %+v, present = %v", got, ok)
 			}
 			stopTurn()
 			if workerCtx.Err() != nil {

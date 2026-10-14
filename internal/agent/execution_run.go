@@ -217,6 +217,7 @@ func (c *ExecutionCoordinator) finishCompletedTurn(ctx context.Context, session 
 	if execution := turn.ExecutionFromContext(ctx); execution != nil {
 		execution.SetResult(session.ID, committed.MessageID, committed.RawText)
 	}
+	ctx = contextinfo.WithModel(ctx, contextinfo.Model{Provider: selection.Provider, Model: selection.Model, APIType: string(selection.Origin.APIType)})
 	c.sessions.MaybeScheduleNaming(ctx, session.ID)
 	return pending, nil
 }
