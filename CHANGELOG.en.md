@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Now supports concurrent tool execution
+- Concurrent execution of tools is now supported.
 - Added a dedicated `view_image` for Responses: reads media IDs, URLs, local images, or images from the current chat history; images are fed back into the model, and local paths are only available to superadmins.
 - Provider added `api_mode="chat"/"response"`; if omitted, Chat Completions will still be used.
 - `edit_file` keeps an in-memory backup of each file before its most recent edit. Added `/rollback [编号]` and tool `rollback_file` available only to superadmins, which automatically expand when file read/write tools are discovered; Records become invalid after switching Sessions, restarting, or capacity eviction. Does not overwrite modifications made by Shell or external programs.
@@ -21,15 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Tool results are no longer simplified before storage.
-- `/models --fresh`/`--refresh` can now refresh configuration files.
-- AgentSkill TOML commands now share a base environment with Go Skills and read the skill root directory `.env` together with Go Skills before each execution; The priority for ordinary variables is skill `.env` > ElBot process environment > configuration root `.env`, with PATH appended and deduplicated in order. Modifications to skill `.env` will take effect on the next call, without requiring a reload or restart.
 - Significantly refactored the underlying architecture, optimizing the responsibilities and boundaries of each package
 - Refactor the log system
 - Refactor the notification system
 - Optimize CLI UI logic
 - Service mode no longer terminates when all messaging platforms exit.
 - Optimize cron task logs
+- AgentSkill TOML commands now share a base environment with Go Skills and read the skill root directory `.env` together with Go Skills before each execution; The priority for ordinary variables is skill `.env` > ElBot process environment > configuration root `.env`, with PATH appended and deduplicated in order. Modifications to skill `.env` will take effect on the next call, without requiring a reload or restart.
+- `/models --fresh`/`--refresh` can now refresh configuration files.
+- Tool results are no longer simplified before being stored; the database is now the single source of truth.
 - Tool calls are now only recorded in the audit log; removed `/log -t`. Log records for tool content will be streamlined.
 - Platform connection events have been changed from adapter instance signals and App forwarding to directly publishing global signals; The Hook coordination module and Cron now subscribe independently, queue by platform, and manage shutdown, while maintaining the original connection triggers, catch-up execution, and 30-second exit budget.
 - Tools now support restricting discovery, completion, preloading, and execution by API type.

@@ -848,6 +848,14 @@
       "translation": "The read-only __ELBOT_CODE_0__ for tool definitions and Hooks has been changed from Chat's __ELBOT_CODE_1__ wrapper to the __ELBOT_CODE_2__ business structure, with protocol clients respectively generating the required API wrappers.",
       "updated_at": 1791301828
     },
+    "CHANGELOG.md:list:69182cf30ff6f9ffa5eeadcc17e0fffb7a19ea33c5d067ee551229909dc52b53": {
+      "kind": "list",
+      "source": "工具结果不再在入库前精简，以数据库为唯一来源。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "69182cf30ff6f9ffa5eeadcc17e0fffb7a19ea33c5d067ee551229909dc52b53",
+      "translation": "Tool results are no longer simplified before being stored; the database is now the single source of truth.",
+      "updated_at": 1791945772
+    },
     "CHANGELOG.md:list:6970168418b00124c98288e227a6831f798c18ed573c05cb7a6f07fd850812c6": {
       "kind": "list",
       "source": "兼容 agentskills.io 风格外置 AgentSkill（附带 Python 脚本）。",
@@ -911,14 +919,6 @@
       "source_hash": "6e87985abde11dc8f4bcef0cf334323f039cb6dbb014a0c15f241ef7601e273b",
       "translation": "__ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__ now have an independent `--raw` flag. Corrupted log lines will no longer interrupt queries, and the number of corrupted lines scanned will be prompted.",
       "updated_at": 1791715549
-    },
-    "CHANGELOG.md:list:70b66310392de116be835a9087c2e4c6d9ada084c05c3519db8542b7727c2442": {
-      "kind": "list",
-      "source": "现在支持并发执行工具",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "70b66310392de116be835a9087c2e4c6d9ada084c05c3519db8542b7727c2442",
-      "translation": "Now supports concurrent tool execution",
-      "updated_at": 1791902935
     },
     "CHANGELOG.md:list:70f1550f6bf2f281c0cb0927e41c0bb07572e4e28e171b808ba30dfe69f1597f": {
       "kind": "list",
@@ -1848,13 +1848,13 @@
       "translation": "__ELBOT_CODE_0__/__ELBOT_CODE_1__ can now refresh configuration files.",
       "updated_at": 1791856974
     },
-    "CHANGELOG.md:list:d23068974d8547778eb307af8e486af2c7dbf0ee069a27f8447ba91be3b9454b": {
+    "CHANGELOG.md:list:d1b4d37f44d7c569d7bd61e2fd67ddb56a34fd14a49153e5d312720a0224c8e8": {
       "kind": "list",
-      "source": "工具结果不再在入库前精简。",
+      "source": "现在支持并发执行工具。",
       "source_file": "CHANGELOG.md",
-      "source_hash": "d23068974d8547778eb307af8e486af2c7dbf0ee069a27f8447ba91be3b9454b",
-      "translation": "Tool results are no longer simplified before storage.",
-      "updated_at": 1791882448
+      "source_hash": "d1b4d37f44d7c569d7bd61e2fd67ddb56a34fd14a49153e5d312720a0224c8e8",
+      "translation": "Concurrent execution of tools is now supported.",
+      "updated_at": 1791945772
     },
     "CHANGELOG.md:list:d3908641b559bc54ede96c20cd1c652257d818385b70144f4cdcd75c3cfecf17": {
       "kind": "list",
@@ -2234,8 +2234,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "1e91206c747d1103a8ec6b90c8d920a5e264afe51204f42ef129179d8e36f0b1",
+  "source_hash": "4e888280eefa17b8133c0eb452326279031add87321bb5e8dfaa4fbe36a8016d",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1791902935,
+  "updated_at": 1791945772,
   "version": 2
 }
