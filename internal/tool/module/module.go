@@ -31,7 +31,7 @@ type Module struct {
 func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	m := &Module{ctx: ctx, cancel: cancel, done: make(chan struct{})}
-	catalog, err := builtin.NewRuntime(builtin.RuntimeOptions{FileRollback: fileops.NewService(nil), ConfigDir: deps.ConfigDir, RuntimeInfo: deps.RuntimeInfo, ChatHistory: deps.ChatHistory, Store: deps.Store, Media: deps.Media, ResidentMemoryMaxUnits: deps.ResidentMemoryLimits, ProcessEnv: deps.ProcessEnv})
+	catalog, err := builtin.NewRuntime(builtin.RuntimeOptions{FileRollback: fileops.NewService(nil), ConfigDir: deps.ConfigDir, RuntimeInfo: deps.RuntimeInfo, ChatHistory: deps.ChatHistory, Media: deps.Media, ResidentMemoryMaxUnits: deps.ResidentMemoryLimits, ProcessEnv: deps.ProcessEnv})
 	if err != nil {
 		return m, err
 	}

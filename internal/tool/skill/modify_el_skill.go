@@ -295,9 +295,6 @@ func existingFileMode(path string) os.FileMode {
 }
 
 func elSkillTargetPath(manager *Manager, name, target string) (string, string, error) {
-	if manager == nil || manager.Registry == nil {
-		return "", "", fmt.Errorf("skill manager is not configured")
-	}
 	if err := validateSkillName(name); err != nil {
 		return "", "", err
 	}

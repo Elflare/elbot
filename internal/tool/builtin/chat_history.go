@@ -134,12 +134,6 @@ func replyChatHistoryBuilder() *tool.Builder {
 }
 
 func (t SearchChatHistoryTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	if t.history == nil {
-		{
-			callErr := fmt.Errorf("chat history storage is not configured")
-			return nil, tool.TruncateLogContent(callErr.Error(), 256), callErr
-		}
-	}
 	chatCtx, err := currentChatHistoryContext(ctx)
 	if err != nil {
 		{
@@ -203,12 +197,6 @@ func (t SearchChatHistoryTool) Call(ctx context.Context, req tool.CallRequest) (
 }
 
 func (t GetChatHistoryAroundTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	if t.history == nil {
-		{
-			callErr := fmt.Errorf("chat history storage is not configured")
-			return nil, tool.TruncateLogContent(callErr.Error(), 256), callErr
-		}
-	}
 	chatCtx, err := currentChatHistoryContext(ctx)
 	if err != nil {
 		{
@@ -277,12 +265,6 @@ func viewImageHistoryHint(ctx context.Context, center *media.Manager) string {
 
 func (t ReplyToChatHistoryMessageTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
 	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
-	if t.history == nil {
-		{
-			callErr := fmt.Errorf("chat history storage is not configured")
-			return nil, callErr.Error(), callErr
-		}
-	}
 	chatCtx, err := currentChatHistoryContext(ctx)
 	if err != nil {
 		{

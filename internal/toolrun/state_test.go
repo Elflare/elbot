@@ -12,8 +12,10 @@ import (
 	"elbot/internal/contextmgr"
 	"elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/tool"
 )
 
 func stateTestStore(t *testing.T, metadata string) (storage.Store, *storage.Session) {
@@ -178,13 +180,13 @@ func TestStateConcurrentUpdatesPreserveOtherOwners(t *testing.T) {
 
 func TestSchemasAreDetachedForPreparedHook(t *testing.T) {
 	item := stateTestTool("tool")
-	manager := NewManager(nil, nil)
-	schemas, err := manager.Schemas(context.Background(), Context{Mode: storage.SessionModeWork}, []CachedTool{item})
+	manager := NewManager(tool.NewRegistry(), security.DefaultPolicy())
+	schemas, err := manager.Schemas(context.Background(), Context{Mode: storage.SessionModeWork, DisableBaseTools: true}, []CachedTool{item})
 	if err != nil {
 		t.Fatal(err)
 	}
 	schemas[0].Parameters["properties"].(map[string]any)["path"].(map[string]any)["type"] = "number"
-	next, err := manager.Schemas(context.Background(), Context{Mode: storage.SessionModeWork}, []CachedTool{item})
+	next, err := manager.Schemas(context.Background(), Context{Mode: storage.SessionModeWork, DisableBaseTools: true}, []CachedTool{item})
 	if err != nil {
 		t.Fatal(err)
 	}

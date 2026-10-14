@@ -50,7 +50,11 @@ func (s *Service) authorizeElwisp(event Event) error {
 func (s *Service) authorizeInternalTools(ctx context.Context, event Event) error {
 	allowed := s.allowedInternalTools(event.Request.Elwisp.Name)
 	ctx = contextinfo.WithActor(ctx, elnisActor(event))
-	for _, selection := range s.toolPreloader.BackgroundSelections(ctx, event.Request.ToolListNames) {
+	selections, err := s.toolPreloader.BackgroundSelections(ctx, event.Request.ToolListNames)
+	if err != nil {
+		return err
+	}
+	for _, selection := range selections {
 		for _, name := range selection.Names {
 			if !allowed[name] {
 				return fmt.Errorf("tool %q is not allowed for elwisp %q", name, event.Request.Elwisp.Name)

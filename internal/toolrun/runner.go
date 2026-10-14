@@ -93,11 +93,8 @@ func NewRunner(manager *Manager) *Runner { return &Runner{manager: manager} }
 
 func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunResult {
 	m := r.manager
-	if req.Session == nil || req.Session.Mode == storage.SessionModeChat || deps == nil {
+	if req.Session.Mode == storage.SessionModeChat {
 		return RunResult{}
-	}
-	if req.Committer == nil {
-		return RunResult{Err: fmt.Errorf("tool transcript committer is required")}
 	}
 	sessionID := req.Session.ID
 	messages := make([]llm.LLMMessage, len(req.Calls))
@@ -242,7 +239,16 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 			continue
 		}
 		toolCtx := deps.PrepareToolContext(ctx, &snapshot, call)
-		assessment, riskText := m.assessForRun(toolCtx, resolved, call)
+		assessment, riskText, err := m.assessForRun(toolCtx, resolved, call)
+		if err != nil {
+			resultStatus := events.ResultFailed
+			if errors.Is(err, context.Canceled) {
+				resultStatus = events.ResultCanceled
+			}
+			record(ctx, call, "tool_prepare", events.LogResult{ResultStatus: resultStatus, Content: fmt.Sprintf("assess risk: %v", err)})
+			fail(call, err, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
+			continue
+		}
 		task.risk = riskText
 		deps.AddToolUse(sessionID, call.Name)
 		if err := m.PreflightConfirmation(toolCtx, resolved, call); err != nil {
@@ -282,7 +288,7 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 			continue
 		}
 		runToolCtx = deps.PrepareToolContext(runToolCtx, &snapshot, call)
-		if m.Media != nil {
+		{
 			logResult, err := m.Media.RetainSessionToolArguments(runToolCtx, sessionID, call.Arguments)
 			if logResult.ResultStatus == events.ResultFailed || logResult.ResultStatus == events.ResultCanceled {
 				record(runToolCtx, call, "tool_prepare", logResult)
@@ -405,18 +411,10 @@ func sendBatchToolPreview(ctx context.Context, deps RunnerDeps, req RunRequest) 
 func (r *Runner) confirm(ctx context.Context, deps RunnerDeps, actor contextinfo.Actor, sessionID string, call llm.ToolCallRequest, resolved ResolvedTool, assessment tool.RiskAssessment) (ConfirmResult, error) {
 	m := r.manager
 	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
-	if resolved.ResultStatus != events.ResultSucceeded {
-		message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s failed: %v", call.Name, resolved.Error))
-		return ConfirmResult{Message: message}, resolved.Error
-	}
 	if resolved.Source == SourceKindELwisp {
 		return ConfirmResult{Allowed: true}, nil
 	}
-	policy := policyForManager(ctx, m.Policy)
-	if resolved.Native == nil {
-		message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s failed: native tool unavailable", call.Name))
-		return ConfirmResult{Message: message}, fmt.Errorf("native tool unavailable")
-	}
+	policy := m.Policy
 	info := resolved.Native.Info()
 	if info.SuperadminOnly && actor.Role != contextinfo.RoleSuperadmin {
 		deps.AuditToolDenied(ctx, sessionID, call, assessment.Level, "tool_requires_superadmin")
@@ -434,15 +432,17 @@ func (r *Runner) confirm(ctx context.Context, deps RunnerDeps, actor contextinfo
 	if !policy.NeedsToolConfirmation(actor, assessment.Level) {
 		return ConfirmResult{Allowed: true}, nil
 	}
-	return deps.ConfirmToolCall(ctx, sessionID, call, assessment, m.RiskDetail(ctx, resolved, call))
+	detail, err := m.RiskDetail(ctx, resolved, call)
+	if err != nil {
+		message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s failed: %v", call.Name, err))
+		return ConfirmResult{Message: message}, err
+	}
+	return deps.ConfirmToolCall(ctx, sessionID, call, assessment, detail)
 }
 
-func (m *Manager) assessForRun(ctx context.Context, resolved ResolvedTool, call llm.ToolCallRequest) (tool.RiskAssessment, string) {
+func (m *Manager) assessForRun(ctx context.Context, resolved ResolvedTool, call llm.ToolCallRequest) (tool.RiskAssessment, string, error) {
 	assessment, err := m.AssessRisk(ctx, resolved, call.Arguments)
-	if err != nil || assessment.Level == "" {
-		return tool.RiskAssessment{Level: tool.RiskLow}, "unknown"
-	}
-	return assessment, string(assessment.Level)
+	return assessment, string(assessment.Level), err
 }
 
 func toolMessage(name, id, content string) llm.LLMMessage {

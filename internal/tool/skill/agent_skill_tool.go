@@ -118,9 +118,6 @@ func (t AgentSkillTool) preview(ctx context.Context, req tool.CallRequest) (agen
 			return agentSkillPreview{}, fmt.Errorf("parse agent_skill arguments: %w", err)
 		}
 	}
-	if t.Manager == nil || t.Manager.Catalog == nil {
-		return agentSkillPreview{}, fmt.Errorf("skill manager is not configured")
-	}
 	name := strings.TrimSpace(args.Name)
 	if err := validateSkillName(name); err != nil {
 		return agentSkillPreview{}, err

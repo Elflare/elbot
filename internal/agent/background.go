@@ -200,7 +200,10 @@ func (r *BackgroundRunner) preloadBackgroundResources(ctx context.Context, row *
 		return backgroundPreloadResult{}
 	}
 	preloadCtx := contextinfo.WithActor(security.WithPolicy(ctx, r.identity.Policy()), r.identity.Actor(ctx))
-	prepared := r.preloader.PrepareBackground(preloadCtx, row.ID, names, allowed)
+	prepared, err := r.preloader.PrepareBackground(preloadCtx, row.ID, names, allowed)
+	if err != nil {
+		return backgroundPreloadResult{Err: err}
+	}
 	prepared.Update.Tools = append(toolrun.BackgroundCachedTools(ctx, initial), prepared.Update.Tools...)
 	prepared.Update.Tools = toolrun.BackgroundCachedTools(ctx, prepared.Update.Tools)
 	committed, _, err := commitToolState(ctx, r.toolState, row, prepared.Update)

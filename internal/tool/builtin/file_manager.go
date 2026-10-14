@@ -9,7 +9,6 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/media"
-	"elbot/internal/storage"
 )
 
 type FileManager struct {
@@ -26,39 +25,11 @@ type preparedFile struct {
 }
 
 func NewFileManager(sandboxRoot string, cfg config.FileDeliveryConfig) *FileManager {
-	if strings.TrimSpace(sandboxRoot) == "" {
-		sandboxRoot = config.Default().Sandbox.Root
-	}
-	defaults := config.Default().FileDelivery
-	if cfg.MaxDirectBase64Bytes <= 0 {
-		cfg.MaxDirectBase64Bytes = defaults.MaxDirectBase64Bytes
-	}
-	if strings.TrimSpace(cfg.Backend) == "" {
-		cfg.Backend = defaults.Backend
-	}
-	if strings.TrimSpace(cfg.S3Region) == "" {
-		cfg.S3Region = defaults.S3Region
-	}
 	return &FileManager{SandboxRoot: filepath.Clean(sandboxRoot), Config: cfg}
 }
 
-func NewFileManagerWithMedia(sandboxRoot string, cfg config.FileDeliveryConfig, store storage.Store) *FileManager {
-	manager := NewFileManager(sandboxRoot, cfg)
-	if store != nil {
-		root := filepath.Join(manager.SandboxRoot, ".media")
-		manager.Media = media.NewManager(store, root, &media.LocalBackend{Root: root})
-	}
-	return manager
-}
-
 func (m *FileManager) Prepare(sourcePath, name, mimeType string) (preparedFile, error) {
-	if m == nil {
-		return preparedFile{}, fmt.Errorf("file manager is not configured")
-	}
 	source := filepath.Clean(strings.TrimSpace(sourcePath))
-	if source == "" {
-		return preparedFile{}, fmt.Errorf("path is required")
-	}
 	info, err := os.Stat(source)
 	if err != nil {
 		return preparedFile{}, fmt.Errorf("stat file %q: %w", source, err)
@@ -80,11 +51,11 @@ func (m *FileManager) Prepare(sourcePath, name, mimeType string) (preparedFile, 
 }
 
 func (m *FileManager) checkSize(source string, info os.FileInfo) error {
-	if m.Config.MaxDirectBase64Bytes <= 0 || info.Size() <= m.Config.MaxDirectBase64Bytes {
+	if info.Size() <= m.Config.MaxDirectBase64Bytes {
 		return nil
 	}
 	switch strings.TrimSpace(m.Config.Backend) {
-	case "", "base64":
+	case "base64":
 		return fmt.Errorf("file %q is %d bytes, exceeds file_delivery.max_direct_base64_bytes=%d; configure future s3/r2 backend for large files", source, info.Size(), m.Config.MaxDirectBase64Bytes)
 	default:
 		return fmt.Errorf("file delivery backend %q is not implemented yet", m.Config.Backend)

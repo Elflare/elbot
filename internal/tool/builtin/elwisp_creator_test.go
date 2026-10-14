@@ -9,6 +9,7 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/elyph"
+	"elbot/internal/fileops"
 	"elbot/internal/tool"
 )
 
@@ -144,10 +145,11 @@ func writeElwispCreatorTestFile(t *testing.T, path, content string) {
 }
 
 func TestRegisterAllIncludesElwispCreator(t *testing.T) {
-	registry := tool.NewRegistry()
-	if err := RegisterAll(registry, RegisterOptions{}); err != nil {
+	runtime, err := NewRuntime(RuntimeOptions{ConfigDir: t.TempDir(), FileRollback: fileops.NewService(nil)})
+	if err != nil {
 		t.Fatal(err)
 	}
+	registry := runtime.Registry
 	registered, ok := registry.Get(ElwispCreatorName)
 	if !ok {
 		t.Fatal("elwisp_creator not registered")

@@ -36,9 +36,6 @@ type fileRollbackCall struct {
 // WithBinding preserves the original lease and preview when a tool request
 // context is derived after confirmation. A switched-away lease cannot revive.
 func (s *Service) WithBinding(ctx context.Context, binding Binding, admission ...CommitAdmission) context.Context {
-	if s == nil || s.Manager == nil {
-		return ctx
-	}
 	if previous, ok := ctx.Value(fileRollbackContextKey{}).(*fileRollbackCall); ok && previous.service == s {
 		return ctx
 	}
@@ -73,9 +70,6 @@ func (s *Service) current(ctx context.Context) (*fileRollbackCall, error) {
 	actor, ok := contextinfo.ActorFromContext(ctx)
 	if !ok || actor.Role != contextinfo.RoleSuperadmin {
 		return nil, fmt.Errorf("rollback requires superadmin role")
-	}
-	if s == nil || s.Manager == nil {
-		return nil, fmt.Errorf("file rollback is not configured")
 	}
 	call, ok := ctx.Value(fileRollbackContextKey{}).(*fileRollbackCall)
 	if !ok || call.service != s || call.session == nil {

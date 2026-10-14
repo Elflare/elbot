@@ -124,11 +124,10 @@ type longMemoryStore struct {
 	memoriesDir string
 	indexPath   string
 
-	mu           sync.Mutex
-	db           *sql.DB
-	ftsAvailable bool
-	initialized  bool
-	lastSync     time.Time
+	mu          sync.Mutex
+	db          *sql.DB
+	initialized bool
+	lastSync    time.Time
 }
 
 func NewLongMemoryTools(rootDir string) []tool.Tool {
@@ -353,7 +352,11 @@ func (s *longMemoryStore) save(ctx context.Context, args longMemorySaveArgs) (lo
 		return longMemoryRecord{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	record.ID = s.nextIDLocked(ctx)
+	id, err := s.nextIDLocked(ctx)
+	if err != nil {
+		return longMemoryRecord{}, err
+	}
+	record.ID = id
 	record.CreatedAt = now
 	record.UpdatedAt = now
 	record.FilePath = filepath.Join(s.memoriesDir, fmt.Sprintf("%06d-%s.md", record.ID, slugLongMemoryTitle(record.Title)))
@@ -393,19 +396,19 @@ func (s *longMemoryStore) search(ctx context.Context, args longMemorySearchArgs)
 	if err := s.syncLocked(ctx, false); err != nil {
 		return "", err
 	}
-	invalids, _ := s.invalidFilesLocked(ctx, 5)
+	invalids, err := s.invalidFilesLocked(ctx, 5)
+	if err != nil {
+		return "", err
+	}
 	overview, err := s.categoryOverviewLocked(ctx)
 	if err != nil {
 		return "", err
 	}
 	records, err := s.searchFTSLocked(ctx, keywords, category, matchMode, limit)
-	if err != nil || !s.ftsAvailable {
-		records, err = s.searchLikeLocked(ctx, keywords, category, matchMode, limit)
-	}
 	if err != nil {
 		return "", err
 	}
-	return s.formatSearchResult(ctx, invalids, overview, records, briefOnly), nil
+	return s.formatSearchResult(ctx, invalids, overview, records, briefOnly)
 }
 
 func (s *longMemoryStore) categories(ctx context.Context) (string, error) {
@@ -628,7 +631,6 @@ func (s *longMemoryStore) close() error {
 	err := s.db.Close()
 	s.db = nil
 	s.initialized = false
-	s.ftsAvailable = false
 	return err
 }
 
@@ -676,10 +678,9 @@ func (s *longMemoryStore) ensureLocked(ctx context.Context) error {
 		_ = db.Close()
 		return fmt.Errorf("create long memory invalid table: %w", err)
 	}
-	if _, err := db.ExecContext(ctx, `CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(category, title, summary, keywords, content_tokens, content_id UNINDEXED)`); err == nil {
-		s.ftsAvailable = true
-	} else {
-		s.ftsAvailable = false
+	if _, err := db.ExecContext(ctx, `CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(category, title, summary, keywords, content_tokens, content_id UNINDEXED)`); err != nil {
+		_ = db.Close()
+		return fmt.Errorf("create long memory FTS table: %w", err)
 	}
 	s.db = db
 	s.initialized = true
@@ -710,10 +711,17 @@ func (s *longMemoryStore) syncLocked(ctx context.Context, force bool) error {
 		mtimeNS := info.ModTime().UnixNano()
 		size := info.Size()
 		indexed, err := s.fileStateByPathLocked(ctx, path)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
 		if err == nil && indexed.FileMTimeNS == mtimeNS && indexed.FileSize == size {
 			continue
 		}
-		parsed, err := parseLongMemoryFile(path)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read long memory file %q: %w", path, err)
+		}
+		parsed, err := parseLongMemoryText(string(data))
 		if err != nil {
 			if writeErr := s.upsertInvalidLocked(ctx, path, err.Error(), mtimeNS, size); writeErr != nil {
 				return writeErr
@@ -796,12 +804,11 @@ func (s *longMemoryStore) indexRecordLocked(ctx context.Context, record longMemo
 	if err != nil {
 		return fmt.Errorf("index long memory metadata: %w", err)
 	}
-	if s.ftsAvailable {
-		_, _ = s.db.ExecContext(ctx, `DELETE FROM memory_fts WHERE content_id = ?`, record.ID)
-		_, err = s.db.ExecContext(ctx, `INSERT INTO memory_fts (category, title, summary, keywords, content_tokens, content_id) VALUES (?, ?, ?, ?, ?, ?)`, tokenizeLongMemory(record.Category), tokenizeLongMemory(record.Title), tokenizeLongMemory(record.Summary), strings.Join(splitLongMemoryKeywords(record.Keywords), " "), tokenizeLongMemory(record.Content), record.ID)
-		if err != nil {
-			s.ftsAvailable = false
-		}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM memory_fts WHERE content_id = ?`, record.ID); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO memory_fts (category, title, summary, keywords, content_tokens, content_id) VALUES (?, ?, ?, ?, ?, ?)`, tokenizeLongMemory(record.Category), tokenizeLongMemory(record.Title), tokenizeLongMemory(record.Summary), strings.Join(splitLongMemoryKeywords(record.Keywords), " "), tokenizeLongMemory(record.Content), record.ID); err != nil {
+		return err
 	}
 	_, err = s.db.ExecContext(ctx, `DELETE FROM memory_invalid_files WHERE file_path = ?`, record.FilePath)
 	if err != nil {
@@ -811,8 +818,8 @@ func (s *longMemoryStore) indexRecordLocked(ctx context.Context, record longMemo
 }
 
 func (s *longMemoryStore) deleteIndexLocked(ctx context.Context, id int64, path string) error {
-	if s.ftsAvailable {
-		_, _ = s.db.ExecContext(ctx, `DELETE FROM memory_fts WHERE content_id = ?`, id)
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM memory_fts WHERE content_id = ?`, id); err != nil {
+		return err
 	}
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM memory_files WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("delete long memory metadata: %w", err)
@@ -917,9 +924,6 @@ func (s *longMemoryStore) categoryOverviewLocked(ctx context.Context) (string, e
 }
 
 func (s *longMemoryStore) searchFTSLocked(ctx context.Context, keywords, category, matchMode string, limit int) ([]longMemoryRecord, error) {
-	if !s.ftsAvailable {
-		return nil, fmt.Errorf("long memory FTS is unavailable")
-	}
 	tokens := longMemorySearchTokens(keywords)
 	sqlText := `SELECT f.id, f.file_path, f.category, f.title, f.summary, f.keywords, f.created_at, f.updated_at, f.file_mtime_ns, f.file_size FROM memory_files f JOIN memory_fts x ON x.content_id = f.id WHERE 1=1`
 	params := []any{}
@@ -939,45 +943,13 @@ func (s *longMemoryStore) searchFTSLocked(ctx context.Context, keywords, categor
 	params = append(params, limit)
 	rows, err := s.db.QueryContext(ctx, sqlText, params...)
 	if err != nil {
-		s.ftsAvailable = false
 		return nil, err
 	}
 	defer rows.Close()
 	return scanLongMemoryRecords(rows)
 }
 
-func (s *longMemoryStore) searchLikeLocked(ctx context.Context, keywords, category, matchMode string, limit int) ([]longMemoryRecord, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, file_path, category, title, summary, keywords, created_at, updated_at, file_mtime_ns, file_size FROM memory_files WHERE (? = '' OR category = ?) ORDER BY updated_at DESC`, category, category)
-	if err != nil {
-		return nil, fmt.Errorf("query long memory fallback: %w", err)
-	}
-	defer rows.Close()
-	candidates, err := scanLongMemoryRecords(rows)
-	if err != nil {
-		return nil, err
-	}
-	tokens := longMemorySearchTokens(keywords)
-	var matched []longMemoryRecord
-	for _, record := range candidates {
-		if len(tokens) == 0 {
-			matched = append(matched, record)
-		} else {
-			content := record.Category + " " + record.Title + " " + record.Summary + " " + record.Keywords
-			if parsed, err := parseLongMemoryFile(record.FilePath); err == nil {
-				content += " " + parsed.Content
-			}
-			if longMemoryTextMatches(content, tokens, matchMode) {
-				matched = append(matched, record)
-			}
-		}
-		if len(matched) >= limit {
-			break
-		}
-	}
-	return matched, nil
-}
-
-func (s *longMemoryStore) formatSearchResult(ctx context.Context, invalids []longMemoryInvalidFile, overview string, records []longMemoryRecord, briefOnly bool) string {
+func (s *longMemoryStore) formatSearchResult(ctx context.Context, invalids []longMemoryInvalidFile, overview string, records []longMemoryRecord, briefOnly bool) (string, error) {
 	var out strings.Builder
 	writeInvalidLongMemoryWarning(&out, invalids)
 	if overview == "" {
@@ -991,7 +963,7 @@ func (s *longMemoryStore) formatSearchResult(ctx context.Context, invalids []lon
 	out.WriteString("\n")
 	if len(records) == 0 {
 		out.WriteString("长期记忆库中未找到相关内容。建议检查关键词是否过于严格，尝试 match_mode=OR，或参考分类概览调整分类。")
-		return strings.TrimSpace(out.String())
+		return strings.TrimSpace(out.String()), nil
 	}
 	out.WriteString(fmt.Sprintf("成功检索到%d条记录\n", len(records)))
 	invalidSet := map[string]bool{}
@@ -1004,26 +976,34 @@ func (s *longMemoryStore) formatSearchResult(ctx context.Context, invalids []lon
 			out.WriteString("注意：该文件当前格式损坏，以上元数据可能来自上次成功索引。\n")
 		}
 		if !briefOnly {
-			if parsed, err := parseLongMemoryFile(record.FilePath); err == nil {
-				out.WriteString("详细内容（正文行号从 1 开始，可用于 content_edits）：\n")
-				writeNumberedLongMemoryContent(&out, parsed.Content)
-			} else {
+			if invalidSet[record.FilePath] {
 				out.WriteString("详细内容：文件格式损坏，无法安全读取正文。请按格式警告修复。\n")
+				continue
 			}
+			parsed, err := parseLongMemoryFile(record.FilePath)
+			if err != nil {
+				return "", err
+			}
+			out.WriteString("详细内容（正文行号从 1 开始，可用于 content_edits）：\n")
+			writeNumberedLongMemoryContent(&out, parsed.Content)
 		}
 	}
-	return strings.TrimSpace(out.String())
+	return strings.TrimSpace(out.String()), nil
 }
-
-func (s *longMemoryStore) nextIDLocked(ctx context.Context) int64 {
+func (s *longMemoryStore) nextIDLocked(ctx context.Context) (int64, error) {
 	var maxID sql.NullInt64
-	_ = s.db.QueryRowContext(ctx, `SELECT MAX(id) FROM memory_files`).Scan(&maxID)
+	if err := s.db.QueryRowContext(ctx, `SELECT MAX(id) FROM memory_files`).Scan(&maxID); err != nil {
+		return 0, err
+	}
 	id := maxID.Int64 + 1
 	for {
 		pathGlob := filepath.Join(s.memoriesDir, fmt.Sprintf("%06d-*.md", id))
-		matches, _ := filepath.Glob(pathGlob)
+		matches, err := filepath.Glob(pathGlob)
+		if err != nil {
+			return 0, err
+		}
 		if len(matches) == 0 {
-			return id
+			return id, nil
 		}
 		id++
 	}
@@ -1177,24 +1157,6 @@ func longMemoryFTSQuery(tokens []string, matchMode string) string {
 		operator = " AND "
 	}
 	return strings.Join(parts, operator)
-}
-
-func longMemoryTextMatches(text string, tokens []string, matchMode string) bool {
-	text = strings.ToLower(text)
-	if matchMode == "AND" {
-		for _, token := range tokens {
-			if !strings.Contains(text, strings.ToLower(token)) {
-				return false
-			}
-		}
-		return true
-	}
-	for _, token := range tokens {
-		if strings.Contains(text, strings.ToLower(token)) {
-			return true
-		}
-	}
-	return len(tokens) == 0
 }
 
 func tokenizeLongMemory(text string) string {

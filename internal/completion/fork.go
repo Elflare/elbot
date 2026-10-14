@@ -19,21 +19,21 @@ type ForkMessageSource struct {
 	Scope    ScopeFunc
 }
 
-func (s ForkMessageSource) Complete(ctx context.Context, req Request) []Item {
+func (s ForkMessageSource) Complete(ctx context.Context, req Request) ([]Item, error) {
 	if s.Router == nil || s.Sessions == nil || s.Store == nil || s.Scope == nil {
-		return nil
+		return nil, nil
 	}
 	parsed := s.Router.Parse(req.Text)
 	if !parsed.OK || parsed.Name != "fork" || !hasForkArgs(req.Text, parsed.Prefix) {
-		return nil
+		return nil, nil
 	}
 	sess, err := s.Sessions.Current(ctx, s.Scope(ctx))
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	loaded, err := (contextmgr.Loader{Store: s.Store}).Load(ctx, sess.ID)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	prefix := strings.TrimSpace(parsed.Args)
 	out := []Item{}
@@ -46,7 +46,7 @@ func (s ForkMessageSource) Complete(ctx context.Context, req Request) []Item {
 			out = append(out, Item{Text: text, Label: message.ID, Kind: KindForkMessage})
 		}
 	}
-	return out
+	return out, nil
 }
 
 func hasForkArgs(text, prefix string) bool {

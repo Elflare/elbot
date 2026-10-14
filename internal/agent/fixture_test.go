@@ -173,10 +173,10 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 		manager: opts.ToolRunner, registry: opts.ToolRegistry,
 		fileRollback: opts.FileRollback, provider: dialogue.NoopToolSchemaProvider{}, defaultProvider: true,
 	}
-	if opts.ToolRegistry != nil {
-		toolRuntime.provider = toolRunPromptProvider{tools: toolRuntime.manager, identity: identity}
-	} else if opts.ToolProvider != nil {
+	if opts.ToolProvider != nil {
 		toolRuntime.provider, toolRuntime.defaultProvider = opts.ToolProvider, false
+	} else {
+		toolRuntime.provider = toolRunPromptProvider{tools: toolRuntime.manager, identity: identity}
 	}
 	toolDeps := &toolRunDeps{status: status,
 		hooks: hooks, requests: requests, turns: turns, identity: identity,

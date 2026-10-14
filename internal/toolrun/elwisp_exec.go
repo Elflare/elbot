@@ -50,11 +50,6 @@ func executeELwispTool(ctx context.Context, call llm.ToolCallRequest, resolved R
 		result.Message = message
 	}()
 	cached := resolved.Cached
-	if cached == nil {
-		result.LogResult.ResultStatus = events.ResultFailed
-		result.Error = fmt.Errorf("ELwisp tool metadata is missing")
-		return result
-	}
 	timeout := time.Duration(cached.TimeoutSeconds) * time.Second
 	if timeout <= 0 {
 		timeout = 10 * time.Second

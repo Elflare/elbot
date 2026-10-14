@@ -578,7 +578,7 @@ func TestSkillDirectiveInvalidStaysAsText(t *testing.T) {
 	}
 }
 
-func TestSkillDirectiveLazyDetailFailureStaysAsText(t *testing.T) {
+func TestSkillDirectiveLazyDetailFailureReturnsError(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"done"}}
@@ -593,19 +593,11 @@ func TestSkillDirectiveLazyDetailFailureStaysAsText(t *testing.T) {
 		cfg.ToolRegistry = registry
 	})
 
-	if err := a.HandleMessage(context.Background(), "hello @skill:broken"); err != nil {
-		t.Fatalf("HandleMessage: %v", err)
+	if err := a.HandleMessage(context.Background(), "hello @skill:broken"); err == nil || !strings.Contains(err.Error(), "read SKILL.md: missing") {
+		t.Fatalf("HandleMessage error = %v", err)
 	}
-	requests := f.chatRequests()
-	if len(requests) != 1 {
-		t.Fatalf("chat requests = %d", len(requests))
-	}
-	content := llm.SegmentsContentText(requests[0].Messages[len(requests[0].Messages)-1].Segments)
-	if content != "hello @skill:broken" {
-		t.Fatalf("latest user content = %q", content)
-	}
-	if !strings.Contains(p.out.String(), "未找到或不可用的 Skill：broken") {
-		t.Fatalf("missing invalid skill notice: %q", p.out.String())
+	if requests := f.chatRequests(); len(requests) != 0 {
+		t.Fatalf("failed preload reached model: %d requests", len(requests))
 	}
 }
 

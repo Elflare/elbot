@@ -116,9 +116,6 @@ func (t SendFileTool) buildOutput(ctx context.Context, args sendFileArgs, source
 		if !media.ValidID(source) {
 			return delivery.Output{}, nil, "", fmt.Errorf("invalid media ID")
 		}
-		if t.files == nil || t.files.Media == nil {
-			return delivery.Output{}, nil, "", fmt.Errorf("media center is not configured")
-		}
 		item, err := t.files.Media.Metadata(ctx, source)
 		if err != nil {
 			return delivery.Output{}, nil, "", err

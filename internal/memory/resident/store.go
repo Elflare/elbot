@@ -144,7 +144,7 @@ func (s *Store) DeleteNormal(ctx context.Context, scope session.Scope) error {
 }
 
 func (s *Store) LimitsOrDefault() Limits {
-	return normalizeLimits(s.Limits)
+	return s.Limits
 }
 
 type validatePart func(ResidentMemory, Limits) error

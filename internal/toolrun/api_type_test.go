@@ -72,7 +72,10 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 				}
 			}
 			// Authorization expands the full tag even before API facts are known.
-			roots := preloader.BackgroundSelections(ctx, []string{"pictures"})
+			roots, err := preloader.BackgroundSelections(ctx, []string{"pictures"})
+			if err != nil {
+				t.Fatal(err)
+			}
 			if len(roots) != 1 || len(roots[0].Names) != 1 || roots[0].Names[0] != "image" {
 				t.Fatalf("roots=%+v", roots)
 			}

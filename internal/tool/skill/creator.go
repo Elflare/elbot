@@ -77,12 +77,6 @@ func (t CreateElSkillTool) Call(ctx context.Context, req tool.CallRequest) (_ *t
 			}
 		}
 	}
-	if t.Manager == nil || t.Manager.Registry == nil {
-		{
-			callErr := fmt.Errorf("skill manager is not configured")
-			return nil, callErr.Error(), callErr
-		}
-	}
 	name := strings.TrimSpace(args.Name)
 	if err := validateSkillName(name); err != nil {
 		return nil, err.Error(), err

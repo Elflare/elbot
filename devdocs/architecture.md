@@ -276,7 +276,7 @@ flowchart LR
     S --> F["session/fork.go、background_copy.go<br/>完整批次边界、结果 ID 数组重映射"]
 ```
 
-- ToolRun 顺序使用 prepared Hook 后的真实参数完成解析、权限、风险确认和请求登记，通过一个即启动一个 worker。worker 固定调用上下文、Session 快照、Actor 和来源；Runtime 兜底检查 Actor／Policy。结果、完成 Hook、发现状态及输出按模型调用顺序处理，Result 仅收集，Flush 整批提交。普通调用失败、拒绝或单工具超时不停止其他调用；整轮取消和确认过期取消并等待所有 worker。
+- ToolRun 顺序使用 prepared Hook 后的真实参数完成解析、权限、风险确认和请求登记，通过一个即启动一个 worker。worker 固定调用上下文、Session 快照、Actor 和来源；结果、完成 Hook、发现状态及输出按模型调用顺序处理，Result 仅收集，Flush 整批提交。普通调用失败、拒绝或单工具超时不停止其他调用；整轮取消和确认过期取消并等待所有 worker。
 - 工具业务解析保留原始结果、Error 与拒绝事实。原生／远程执行的 ExecutionStarted 记录进入调用边界，不证明业务副作用已完成；业务 ResultStatus 和日志调用结果分别表达，不直接投影。
 - 完成 Hook 只处理已实际执行的结果；预检失败或拒绝不触发。结果以 Content／Segments 回灌模型，Data 仅供内部消费；输出意图交发送层。
 - 工具业务与日志分离：Tool.Call 分别返回业务 Result、独立 logContent 和原始 error，具体工具不填写日志结果或等级。执行入口保留真实 ExecutionStarted，把正文放入 ExecutionResult.LogResult.Content；未进入调用时声明明确结果及原因。Runner 在调用前从刷新后的 context 固定 run_source，在 Execute 返回后由 newRecord 复用基础九字段与当次身份，recordCall 填写调用结果、正文及查询事实，参数日志限 256 字符，仅发布 audit，早于后续发送／完成 Hook／保存发布；已进入调用统一 INFO／succeeded。internal/toolrun/logging.go 只接收完整记录并发布，Execute 不发布调用日志。请求登记、媒体引用准备、调用记录和 transcript 保存、发现状态保存等其他操作分别返回独立 LogResult 与原始 error，Runner 直接使用所属来源结果；后续失败不回改调用结果，Segments 不自动成为日志正文。进度见[3.1](tasks.md#31-其他-bug-修复)。

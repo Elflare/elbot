@@ -31,7 +31,7 @@ type RemoteClient struct {
 	conn      *websocket.Conn
 	seq       atomic.Uint64
 	pendingMu sync.Mutex
-	pending   map[string]chan []completion.Item
+	pending   map[string]chan remoteMessage
 	output    chan tea.Msg
 }
 
@@ -45,7 +45,7 @@ func NewRemoteClient(opts RemoteClientOptions) (*RemoteClient, error) {
 	if strings.TrimSpace(client.URL) == "" {
 		return nil, fmt.Errorf("cli client %q url is empty", profile)
 	}
-	return &RemoteClient{cfg: cfg, configDir: opts.ConfigDir, profile: profile, client: client, pending: map[string]chan []completion.Item{}, output: make(chan tea.Msg, 256)}, nil
+	return &RemoteClient{cfg: cfg, configDir: opts.ConfigDir, profile: profile, client: client, pending: map[string]chan remoteMessage{}, output: make(chan tea.Msg, 256)}, nil
 }
 
 func (c *RemoteClient) URL() string {
@@ -84,23 +84,26 @@ func (c *RemoteClient) HandleMessage(ctx context.Context, text string) error {
 	return c.write(ctx, remoteMessage{Type: remoteMsgInput, Text: text})
 }
 
-func (c *RemoteClient) Complete(ctx context.Context, req completion.Request) []completion.Item {
+func (c *RemoteClient) Complete(ctx context.Context, req completion.Request) ([]completion.Item, error) {
 	id := fmt.Sprintf("c-%d", c.seq.Add(1))
-	ch := make(chan []completion.Item, 1)
+	ch := make(chan remoteMessage, 1)
 	c.pendingMu.Lock()
 	c.pending[id] = ch
 	c.pendingMu.Unlock()
 	defer c.removePending(id)
 	if err := c.write(ctx, remoteMessage{Type: remoteMsgComplete, ID: id, Text: req.Text, Cursor: req.Cursor}); err != nil {
-		return nil
+		return nil, err
 	}
 	select {
-	case items := <-ch:
-		return items
+	case msg := <-ch:
+		if msg.Type == remoteMsgError {
+			return nil, fmt.Errorf("%s", msg.Text)
+		}
+		return msg.Items, nil
 	case <-ctx.Done():
-		return nil
+		return nil, ctx.Err()
 	case <-time.After(2 * time.Second):
-		return nil
+		return nil, context.DeadlineExceeded
 	}
 }
 
@@ -131,18 +134,17 @@ func (c *RemoteClient) handleServerMessage(msg remoteMessage) {
 		c.sendTUI(tuiReplaceAssistantMsg(msg.Text))
 	case remoteMsgStreamFinish:
 		c.sendTUI(tuiFinishAssistantMsg{})
-	case remoteMsgCompleteResult:
+	case remoteMsgCompleteResult, remoteMsgError:
+		if msg.Type == remoteMsgError && msg.ID == "" {
+			c.sendTUI(tuiNoticeMsg{Text: "error: " + msg.Text, Level: slog.LevelError})
+			return
+		}
 		c.pendingMu.Lock()
 		ch := c.pending[msg.ID]
 		c.pendingMu.Unlock()
 		if ch != nil {
-			select {
-			case ch <- msg.Items:
-			default:
-			}
+			ch <- msg
 		}
-	case remoteMsgError:
-		c.sendTUI(tuiNoticeMsg{Text: "error: " + msg.Text, Level: slog.LevelError})
 	}
 }
 

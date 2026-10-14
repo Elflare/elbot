@@ -30,7 +30,7 @@ func TestRiskConfirmationSourceCompletesOnlyDuringRiskPhase(t *testing.T) {
 		Scope:        func(context.Context) session.Scope { return testScope() },
 		CommandNames: []string{"confirm", "c", "reject"},
 	}
-	if got := source.Complete(ctx, Request{Text: "/c"}); len(got) != 0 {
+	if got, _ := source.Complete(ctx, Request{Text: "/c"}); len(got) != 0 {
 		t.Fatalf("Complete before risk phase = %#v", got)
 	}
 	if !turns.StartLLM(sess.ID, "run") || !turns.StartToolPhase(sess.ID) {
@@ -43,7 +43,7 @@ func TestRiskConfirmationSourceCompletesOnlyDuringRiskPhase(t *testing.T) {
 	}()
 	waitForRiskPhase(t, turns, sess.ID)
 
-	got := source.Complete(ctx, Request{Text: "/c"})
+	got, _ := source.Complete(ctx, Request{Text: "/c"})
 	if len(got) != 2 || got[0].Text != "/confirm" || got[1].Text != "/c" {
 		t.Fatalf("Complete during risk phase = %#v", got)
 	}
@@ -75,7 +75,7 @@ func TestForkMessageSourceCompletesAssistantMessageIDs(t *testing.T) {
 		Store:    store,
 		Scope:    func(context.Context) session.Scope { return testScope() },
 	}
-	got := source.Complete(ctx, Request{Text: "/fork abc"})
+	got, _ := source.Complete(ctx, Request{Text: "/fork abc"})
 	if len(got) != 1 || got[0].Text != "/fork abcdef-message" || got[0].Kind != KindForkMessage {
 		t.Fatalf("Complete = %#v", got)
 	}

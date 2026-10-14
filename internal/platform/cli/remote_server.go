@@ -23,7 +23,7 @@ import (
 )
 
 type CompletionProvider interface {
-	Complete(context.Context, completion.Request) []completion.Item
+	Complete(context.Context, completion.Request) ([]completion.Item, error)
 }
 
 type RemoteServerOptions struct {
@@ -157,7 +157,11 @@ func (s *RemoteServer) handleClientMessage(ctx context.Context, handler platform
 			_ = handler.HandleMessage(ctx, text)
 		}()
 	case remoteMsgComplete:
-		items := s.completer.Complete(ctx, completion.Request{Text: msg.Text, Cursor: msg.Cursor})
+		items, err := s.completer.Complete(ctx, completion.Request{Text: msg.Text, Cursor: msg.Cursor})
+		if err != nil {
+			_, _ = client.write(context.Background(), remoteMessage{Type: remoteMsgError, ID: msg.ID, Text: err.Error()})
+			return
+		}
 		_, _ = client.write(context.Background(), remoteMessage{Type: remoteMsgCompleteResult, ID: msg.ID, Items: items})
 	}
 }
