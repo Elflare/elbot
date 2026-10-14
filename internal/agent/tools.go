@@ -1,8 +1,6 @@
 package agent
 
 import (
-	"fmt"
-
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/fileops"
 	"elbot/internal/tool"
@@ -27,25 +25,19 @@ type ToolRuntimeStateDeps struct {
 }
 
 // NewToolRuntimeState initializes ToolRuntimeState without installing cross-service callbacks.
-func NewToolRuntimeState(deps ToolRuntimeStateDeps) (*ToolRuntimeState, error) {
-	if deps.Manager == nil {
-		return nil, fmt.Errorf("ToolRuntimeState manager is required")
-	}
+func NewToolRuntimeState(deps ToolRuntimeStateDeps) *ToolRuntimeState {
 	runtime := &ToolRuntimeState{
-		provider:     deps.Provider,
 		manager:      deps.Manager,
 		registry:     deps.Registry,
 		fileRollback: deps.FileRollback,
 	}
-	runtime.provider = dialogue.NoopToolSchemaProvider{}
+	runtime.provider = toolRunPromptProvider{tools: deps.Manager, identity: deps.Identity}
 	runtime.defaultProvider = true
-	if deps.Registry != nil {
-		runtime.provider = toolRunPromptProvider{tools: deps.Manager, identity: deps.Identity}
-	} else if deps.Provider != nil {
+	if deps.Provider != nil {
 		runtime.provider = deps.Provider
 		runtime.defaultProvider = false
 	}
-	return runtime, nil
+	return runtime
 }
 
 func (r *ToolRuntimeState) Provider() dialogue.ToolSchemaProvider { return r.provider }

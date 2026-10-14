@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -37,23 +36,18 @@ func (r *StatusRecorder) Record(ctx context.Context, snapshot runtimestatus.Snap
 	}
 	r.mu.Lock()
 	owner := agentevents.Meta(ctx, snapshot.SessionID)
-	if r.turns != nil {
-		e, attempt, active := r.turns.ExecutionAttempt(snapshot.SessionID)
-		previous := r.owners[snapshot.SessionID]
-		terminal := snapshot.Phase == runtimestatus.PhaseDone || snapshot.Phase == runtimestatus.PhaseError
-		valid := active && e == turn.ExecutionFromContext(ctx) && attempt == owner.Attempt
-		if !active {
-			valid = terminal && owner.Attempt != "" && previous.Attempt == owner.Attempt && previous.RunID == owner.RunID
-		}
-		if !valid {
-			r.mu.Unlock()
-			return
-		}
+	e, attempt, active := r.turns.ExecutionAttempt(snapshot.SessionID)
+	previous := r.owners[snapshot.SessionID]
+	terminal := snapshot.Phase == runtimestatus.PhaseDone || snapshot.Phase == runtimestatus.PhaseError
+	valid := active && e == turn.ExecutionFromContext(ctx) && attempt == owner.Attempt
+	if !active {
+		valid = terminal && owner.Attempt != "" && previous.Attempt == owner.Attempt && previous.RunID == owner.RunID
 	}
-	if r.snapshots == nil {
-		r.snapshots = make(map[string]runtimestatus.Snapshot)
-		r.owners = make(map[string]agentevents.EventMeta)
+	if !valid {
+		r.mu.Unlock()
+		return
 	}
+
 	snapshot = mergeRuntimeStatus(r.snapshots[snapshot.SessionID], snapshot)
 	snapshot.Usage = agentevents.CloneUsage(snapshot.Usage)
 	r.snapshots[snapshot.SessionID] = snapshot
@@ -122,13 +116,12 @@ type StatusRecorderDeps struct {
 }
 
 // NewStatusRecorder initializes StatusRecorder without installing cross-service callbacks.
-func NewStatusRecorder(deps StatusRecorderDeps) (*StatusRecorder, error) {
-	if deps.Turns == nil {
-		return nil, fmt.Errorf("StatusRecorder turns is required")
-	}
+func NewStatusRecorder(deps StatusRecorderDeps) *StatusRecorder {
 	return &StatusRecorder{
-		view:    deps.View,
-		turns:   deps.Turns,
-		changed: deps.Changed,
-	}, nil
+		view:      deps.View,
+		turns:     deps.Turns,
+		changed:   deps.Changed,
+		snapshots: make(map[string]runtimestatus.Snapshot),
+		owners:    make(map[string]agentevents.EventMeta),
+	}
 }

@@ -94,9 +94,6 @@ func (r *Compactor) CompactMessages(ctx context.Context, loaded *contextmgr.Load
 	}
 	successful := map[string]bool{}
 	if len(callIDs) > 0 {
-		if r.Store == nil || r.Store.ToolCalls() == nil {
-			return nil, fmt.Errorf("tool call repository is not configured")
-		}
 		var err error
 		successful, err = r.Store.ToolCalls().SuccessfulIDs(ctx, callIDs)
 		if err != nil {

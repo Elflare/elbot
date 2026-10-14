@@ -17,9 +17,6 @@ type appendWaitLifecycle struct {
 }
 
 func newAppendWaitLifecycle(parent context.Context) *appendWaitLifecycle {
-	if parent == nil {
-		parent = context.Background()
-	}
 	ctx, cancel := context.WithCancel(parent)
 	l := &appendWaitLifecycle{ctx: ctx, cancel: cancel, done: make(chan struct{})}
 	context.AfterFunc(ctx, l.beginClose)

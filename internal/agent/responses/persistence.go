@@ -12,12 +12,15 @@ import (
 
 type inputCommitter struct{ state *turnState }
 
-func (c inputCommitter) Commit(ctx context.Context, message *storage.Message) (events.LogResult, error) {
+func (c inputCommitter) Commit(ctx context.Context, message *storage.Message, mappings []storage.PlatformMessageMap) (events.LogResult, error) {
 	if message == nil {
 		err := fmt.Errorf("native input message is required")
 		return events.LogResult{ResultStatus: events.ResultSkipped}, err
 	}
-	segments := dialogue.MessageSegmentsFromStorage(message.Segments)
+	segments, err := dialogue.MessageSegmentsFromStorage(message.Segments)
+	if err != nil {
+		return events.LogResult{ResultStatus: events.ResultSkipped}, err
+	}
 	if len(segments) == 0 {
 		segments = llm.TextSegments(message.Content)
 	}
@@ -26,9 +29,10 @@ func (c inputCommitter) Commit(ctx context.Context, message *storage.Message) (e
 		return events.LogResult{ResultStatus: events.ResultSkipped}, err
 	}
 	return c.state.commit(ctx, storage.DialogueCommit{
-		SessionID: message.SessionID,
-		Messages:  []*storage.Message{message},
-		Native:    &storage.NativeCommit{ExpectedCheckpointID: c.state.checkpointID(), Inputs: []storage.NativeInput{input}},
+		SessionID:           message.SessionID,
+		Messages:            []*storage.Message{message},
+		PlatformMessageMaps: mappings,
+		Native:              &storage.NativeCommit{ExpectedCheckpointID: c.state.checkpointID(), Inputs: []storage.NativeInput{input}},
 	}, "append_user_message")
 }
 
@@ -72,7 +76,7 @@ func (s *turnState) advance(messageID string) storage.NativeCommit {
 
 type replyCommitter struct{ state *turnState }
 
-func (c replyCommitter) Commit(ctx context.Context, message *storage.Message) (events.LogResult, error) {
+func (c replyCommitter) Commit(ctx context.Context, message *storage.Message, mappings []storage.PlatformMessageMap) (events.LogResult, error) {
 	s := c.state
 	var rows []*storage.Message
 	id := ""
@@ -84,7 +88,7 @@ func (c replyCommitter) Commit(ctx context.Context, message *storage.Message) (e
 		rows = []*storage.Message{message}
 	}
 	native := s.advance(id)
-	return s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, Messages: rows, Native: &native}, "append_assistant_message")
+	return s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, Messages: rows, Native: &native, PlatformMessageMaps: mappings}, "append_assistant_message")
 }
 
 type toolCommitter struct {
@@ -157,16 +161,22 @@ func (c *toolCommitter) Result(ctx context.Context, index int, request llm.ToolC
 
 func (c *toolCommitter) Flush(ctx context.Context) (events.LogResult, error) {
 	s := c.state
-	batch := dialogue.NewToolBatch(c.head, s.calls, c.results)
+	batch, err := dialogue.NewToolBatch(c.head, s.calls, c.results)
+	if err != nil {
+		return events.LogResult{ResultStatus: events.ResultSkipped}, err
+	}
 	snapshot := *s.checkpoint
 	snapshot.ID, snapshot.MessageID = storage.NewID(), batch.Call.ID
 	snapshot.CreatedAt = batch.Call.CreatedAt
 	native := storage.NativeCommit{ExpectedCheckpointID: s.checkpointID(), Inputs: c.inputs, Calls: c.calls, Snapshot: &snapshot}
 	logResult, err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, ToolBatch: batch, Native: &native}, "append_tool_transcript")
 	if err == nil {
-		s.projection = append(s.projection, dialogue.MessageFromStorage(*batch.Call))
-		for _, stored := range batch.Results {
-			s.projection = append(s.projection, dialogue.MessageFromStorage(*stored))
+		for _, stored := range append([]*storage.Message{batch.Call}, batch.Results...) {
+			projected, err := dialogue.MessageFromStorage(*stored)
+			if err != nil {
+				return logResult, err
+			}
+			s.projection = append(s.projection, projected)
 		}
 	}
 	return logResult, err

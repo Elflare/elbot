@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"fmt"
 
 	"elbot/internal/llm"
 	"elbot/internal/storage"
@@ -39,9 +38,6 @@ func (s *Service) prepareMaterial(ctx context.Context, source *storage.Session, 
 	origin, known, err := Origin(source)
 	if err != nil || !known {
 		return nil, err
-	}
-	if s.materials == nil {
-		return nil, fmt.Errorf("source session material capabilities are not configured")
 	}
 	preparer, err := s.materials.MaterialFor(origin)
 	if err != nil {

@@ -23,9 +23,6 @@ func (b *signalBindings) connectSession(sessions *session.Service, rollback *fil
 	}, signal.ConnectOptions{}); err != nil {
 		return err
 	}
-	if rollback == nil {
-		return nil
-	}
 	connection, err := sessions.BindingChanged().Observe(func(ctx context.Context, event session.BindingChangedEvent) error {
 		if event.Old != nil {
 			rollback.Forget(event.Old)

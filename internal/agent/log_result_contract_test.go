@@ -305,18 +305,6 @@ func TestReplyCommitKeepsFailureBeforeLaterCancellation(t *testing.T) {
 	}
 }
 
-func TestAssociateReceiptDeclaresWrappedCancellation(t *testing.T) {
-	fixture := newReplyTestFixture(t, false)
-	fixture.repo.mapErr = fmt.Errorf("database: %w", context.Canceled)
-	failures, logResult := fixture.committer.AssociateReceipt(fixture.ctx, fixture.in.Session.ID, "local-message", fixture.platform.receipt)
-	if len(failures) != 1 || !errors.Is(failures[0], context.Canceled) || logResult.ResultStatus != events.ResultCanceled {
-		t.Fatalf("failures=%v log result=%#v", failures, logResult)
-	}
-	if !strings.HasPrefix(logResult.Content, "platform=") || strings.Contains(logResult.Content, "\n\n") {
-		t.Fatalf("association source introduced blank lines: %q", logResult.Content)
-	}
-}
-
 func TestStreamKeepsSourceFailureBeforeFinishCancellation(t *testing.T) {
 	fixture := newReplyTestFixture(t, false)
 	stream := &replyTestStream{

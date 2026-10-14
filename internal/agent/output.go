@@ -69,8 +69,9 @@ func (o *OutputSender) observeDelivery(ctx context.Context, operation string, lo
 	_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 }
 
-func (o *OutputSender) SendChat(ctx context.Context, text string) {
-	_, _, _ = o.SendAssistant(ctx, text)
+func (o *OutputSender) SendChat(ctx context.Context, text string) error {
+	_, _, err := o.SendAssistant(ctx, text)
+	return err
 }
 
 func (o *OutputSender) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) error {
@@ -269,15 +270,11 @@ func (o *OutputSender) ReplaceAndFinishStream(ctx context.Context, streamCtx con
 	return receipt, logResult, err
 }
 
-func (o *OutputSender) StartStream(ctx context.Context) delivery.MessageStream {
+func (o *OutputSender) StartStream(ctx context.Context) (delivery.MessageStream, error) {
 	if dialogue.BufferAssistantOutput(ctx) {
-		return nil
+		return nil, nil
 	}
-	stream, err := o.dispatcher.StartStream(ctx)
-	if err != nil {
-		return nil
-	}
-	return stream
+	return o.dispatcher.StartStream(ctx)
 }
 
 func (o *OutputSender) StartReasoning(ctx context.Context) dialogue.ReasoningStream {
@@ -288,16 +285,10 @@ func (o *OutputSender) StartReasoning(ctx context.Context) dialogue.ReasoningStr
 }
 
 // NewOutputSender initializes OutputSender without installing cross-service callbacks.
-func NewOutputSender(deps OutputSenderDeps) (*OutputSender, error) {
-	if deps.Dispatcher == nil {
-		return nil, fmt.Errorf("OutputSender dispatcher is required")
-	}
-	if deps.Hooks == nil {
-		return nil, fmt.Errorf("OutputSender hooks is required")
-	}
+func NewOutputSender(deps OutputSenderDeps) *OutputSender {
 	return &OutputSender{
 		dispatcher: deps.Dispatcher,
 		hooks:      deps.Hooks,
 		reasoning:  deps.Reasoning,
-	}, nil
+	}
 }

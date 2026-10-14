@@ -225,6 +225,11 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 			}
 		}
 	}
+	for _, mapping := range commit.PlatformMessageMaps {
+		if err := mapPlatformMessage(ctx, tx, mapping); err != nil {
+			return events.LogResult{ResultStatus: events.ResultFailed}, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return events.LogResult{ResultStatus: events.ResultFailed}, err
 	}

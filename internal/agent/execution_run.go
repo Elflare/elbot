@@ -115,7 +115,7 @@ func (c *ExecutionCoordinator) runTurn(ctx context.Context, session *storage.Ses
 	prepared, err := c.dialogue.PrepareTurn(ctx, dialogue.TurnInput{Session: session, Text: text, Input: inboundTurnInput(ctx, text), ReplyToPlatformMessageID: inboundReplyMessageID(ctx), Selection: selection})
 	if err != nil {
 		result := dialogue.TurnResult{Outcome: dialogue.Failed, Err: err}
-		if ctx.Err() != nil {
+		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			result.Outcome = dialogue.Canceled
 		}
 		return result, turn.Input{}
@@ -123,7 +123,7 @@ func (c *ExecutionCoordinator) runTurn(ctx context.Context, session *storage.Ses
 	locked, releaseRequest, err := c.sessions.EnterSessions(ctx, session.ID)
 	if err != nil {
 		result := dialogue.TurnResult{Outcome: dialogue.Failed, Err: err}
-		if ctx.Err() != nil {
+		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			result.Outcome = dialogue.Canceled
 		}
 		return result, turn.Input{}
@@ -132,15 +132,8 @@ func (c *ExecutionCoordinator) runTurn(ctx context.Context, session *storage.Ses
 		releaseRequest()
 		return dialogue.TurnResult{Outcome: dialogue.Canceled, Err: context.Canceled}, turn.Input{}
 	}
-	reqCtxInfo, reqCtx, done, err := c.requests.Start(locked, request.StartRequest{SessionID: session.ID, Kind: request.KindTurn, Label: "chat", Timeout: c.responseTimeout})
+	reqCtxInfo, reqCtx, done := c.requests.Start(locked, request.StartRequest{SessionID: session.ID, Kind: request.KindTurn, Label: "chat", Timeout: c.responseTimeout})
 	releaseRequest()
-	if err != nil {
-		result := dialogue.TurnResult{Outcome: dialogue.Failed, Err: err}
-		if ctx.Err() != nil {
-			result.Outcome = dialogue.Canceled
-		}
-		return result, turn.Input{}
-	}
 	defer done()
 
 	result := c.dialogue.RunTurn(ctx, reqCtx, dialogue.TurnInput{Session: session, Text: text, Selection: selection, RequestID: reqCtxInfo.ID, Prepared: prepared}, out)
@@ -154,7 +147,7 @@ func (c *ExecutionCoordinator) runTurn(ctx context.Context, session *storage.Ses
 	pending, err := c.finishCompletedTurn(ctx, session, out, result)
 	if err != nil {
 		result.Outcome, result.Err = dialogue.Failed, err
-		if ctx.Err() != nil {
+		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			result.Outcome = dialogue.Canceled
 		}
 	}

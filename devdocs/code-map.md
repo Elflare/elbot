@@ -84,7 +84,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:protocol-routing -->
 ## 协议路线
 
-- `internal/agent/routes/`：按 APIType 登记 Loop／Compactor／Material 的封闭注册表，不保存厂商或客户端。
+- `internal/agent/routes/`：按 APIType 登记 Loop／Compactor／Material 的注册表，不保存厂商或客户端。
 - `internal/agent/module/module.go`、`internal/app/models.go`：协议业务能力装配，以及启动／重载共用的具体客户端工厂；协议 Loop 在准入时检查客户端能力。
 - `internal/agent/dialogue/loop.go`、`internal/contextmgr/compact_contract.go`、`internal/session/material.go`：公共消费与材料交接契约。
 - `internal/llm/origin.go`、`internal/modelmgr/compatibility.go`：持久化归属与纯兼容判断。

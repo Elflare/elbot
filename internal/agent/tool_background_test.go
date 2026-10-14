@@ -434,7 +434,7 @@ func TestRunBackgroundReturnsRawAssistantTextForJSONParsing(t *testing.T) {
 	if result.Text != raw || result.MessageID == "" || result.RunID == "" {
 		t.Fatalf("result=%+v", result)
 	}
-	messages, err := a.dialogue.Replies.Messages.ListBySession(ctx, result.SessionID)
+	messages, err := a.message.messages.ListBySession(ctx, result.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -250,7 +250,7 @@ func TestBackgroundCompactHandoff(t *testing.T) {
 			}
 			req.SessionID = row.ID
 			for _, m := range []*storage.Message{{SessionID: row.ID, Role: storage.RoleUser, Content: "history"}, {SessionID: row.ID, Role: storage.RoleAssistant, Content: "old answer"}} {
-				if err := a.dialogue.Replies.Messages.Append(context.Background(), m); err != nil {
+				if err := a.message.messages.Append(context.Background(), m); err != nil {
 					t.Fatal(err)
 				}
 			}

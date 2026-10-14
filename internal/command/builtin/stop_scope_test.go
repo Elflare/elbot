@@ -24,10 +24,7 @@ func TestStopUserScopeResolutionAndChildren(t *testing.T) {
 			}
 			requests := request.NewManager(0)
 			start := func(sessionID, parentID string, kind request.Kind) (request.Request, context.Context) {
-				r, run, done, err := requests.Start(ctx, request.StartRequest{SessionID: sessionID, ParentID: parentID, Kind: kind})
-				if err != nil {
-					t.Fatal(err)
-				}
+				r, run, done := requests.Start(ctx, request.StartRequest{SessionID: sessionID, ParentID: parentID, Kind: kind})
 				t.Cleanup(done)
 				return r, run
 			}
@@ -99,10 +96,7 @@ func TestStopRejectsMissingOrExpiredCurrent(t *testing.T) {
 				t.Fatal(err)
 			}
 			requests := request.NewManager(0)
-			r, running, done, err := requests.Start(ctx, request.StartRequest{SessionID: source.ID, Kind: request.KindTurn})
-			if err != nil {
-				t.Fatal(err)
-			}
+			r, running, done := requests.Start(ctx, request.StartRequest{SessionID: source.ID, Kind: request.KindTurn})
 			defer done()
 			if err := svc.ResetCurrent(ctx, scope); err != nil {
 				t.Fatal(err)

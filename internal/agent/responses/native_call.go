@@ -57,11 +57,9 @@ func requestAudit(parameters json.RawMessage, refs []inputReference) (string, er
 func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request api.Request, consumed []string, stream delivery.MessageStream, observation *dialogue.CallObservation) (result nativeCallResult, err error) {
 	var saveErr error
 	defer func() {
-		if saveErr != nil && ctx.Err() == nil {
+		if saveErr != nil && !errors.Is(saveErr, context.Canceled) && !errors.Is(saveErr, context.DeadlineExceeded) {
 			_ = globalevents.EmitLog(context.WithoutCancel(ctx), globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelError, EventName: "persistence_error", Module: "agent", Content: saveErr.Error(), ResultStatus: globalevents.ResultFailed})
-			if !observation.Event.ProviderError {
-				s.output.Notify(context.WithoutCancel(ctx), slog.LevelError, "对话保存失败："+saveErr.Error())
-			}
+			s.output.Notify(context.WithoutCancel(ctx), slog.LevelError, "对话保存失败："+saveErr.Error())
 		}
 	}()
 	if err := ctx.Err(); err != nil {
@@ -155,7 +153,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 	observation.LogRecord.ResultStatus = globalevents.ResultCanceled
 	events, err := client.StreamPrepared(callCtx, prepared)
 	if err != nil {
-		if ctx.Err() != nil {
+		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultCanceled, slog.LevelInfo
 			status = "canceled"
 			return result, errors.Join(err, ctx.Err())
@@ -185,7 +183,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 			if event.Type != "" {
 				status = event.Type
 			}
-			if ctx.Err() != nil {
+			if ctx.Err() != nil && errors.Is(event.Error, ctx.Err()) {
 				observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultCanceled, slog.LevelInfo
 				status = "canceled"
 				return result, errors.Join(event.Error, ctx.Err())

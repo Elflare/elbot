@@ -40,9 +40,6 @@ func (s *Service) CheckCompaction(origin llm.Origin) error {
 }
 
 func (s *Service) resolveCompactor(origin llm.Origin) (Compactor, error) {
-	if s.compactors == nil {
-		return nil, fmt.Errorf("compaction routes are not configured")
-	}
 	return s.compactors.CompactorFor(origin)
 }
 

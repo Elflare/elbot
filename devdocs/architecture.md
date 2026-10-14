@@ -151,7 +151,7 @@ flowchart TB
 
 - 公共 `llm.Client` 提供模型列表与独立 `GenerateText`；`Selection` 固定 Provider、Model、Client、Origin 和窗口配置快照。命名和 Chat 摘要可使用任一文本客户端，独立文本不续接主会话或执行工具。
 - 公共 `llm.Usage` 的四项 token 计数为可空 `int64`：nil 表示未知，非 nil 的零表示明确零；不推算缺失总量。Agent、contextmgr 和 CLI 状态队列的用量快照逐项复制计数指针，发布后只读。Chat 和 Responses 解析保留整数精度，非法用量不使模型响应失败；Chat 的非法或 null 别名继续回退，明确零立即采用。状态展示分别保留总量与缓存计数的已知／未知状态，明确零作为已知值参与上下文比例判断。
-- `routes.Registry` 按 APIType 登记 Loop、Compactor、Material，Module 每种协议装配一次，不保存厂商配置或客户端；厂商重载不修改注册表。查询由 dialogue／contextmgr／session 的窄接口完成，重复登记、封闭前查询及封闭后修改报错。
+- `routes.Registry` 按 APIType 登记 Loop、Compactor、Material，Module 每种协议装配一次，不保存厂商配置或客户端；厂商重载不修改注册表。查询由 dialogue／contextmgr／session 的窄接口完成。
 - CallObservation 分别持有业务 Event 和日志 LogRecord。Chat／Responses 在操作分支填写独立错误与整体结果，本地保存失败不标为上游错误；Chat 取消时保留部分输出。实际模型请求各写一条 llm_usage，失败与取消另保留 llm_error，准备失败不计调用。视觉回退和 Responses 重放各自结束观察，HTTP 内部重试通过独立重试信号记录。
 - 主对话按 Selection.Origin.APIType 查询 Loop，协议 Loop 检查客户端能力；压缩与分支按持久化源 Origin.APIType 查询能力，不从摘要目标或当前配置推断来源。缺失主对话能力在压缩、保存输入和模型请求前拒绝。
 - `CanSwitch` 纯比较身份：Chat 可跨 Chat provider，同一 provider 节点的 Responses 可换模型；跨协议及涉及 Responses 的跨 provider 切换拒绝。命令提交选择前预检，执行及接管后的调用再次检查；永久接管在变更 metadata 前检查 work 模型。
@@ -383,7 +383,7 @@ Chat 使用 `业务输出 → delivery/dispatch.Router → 平台发送器 → R
 - 平台通知的发送失败归 Delivery：消息平台调用 Delivery.Manager，CLI 保留专用通知协议并复用 LogSendResult。日志使用发送来源的 LogResult，保留部分送达事实；通知发布方不重复记录失败。
 - 全局通知路由只有一个短处理槽，用于保持投递顺序；它只转交完成结果，不等待平台网络发送。各平台独立使用 8 个发送槽、256 个等待项，相同目标按接纳顺序串行；平台队列满时返回错误并写 WARN，不重试。默认 30 秒覆盖路由、排队及发送，不在各层重新延长期限。
 - 工具提示通过 SendPreview／Preview 可变参数传递，每个参数对应一条完整工具提示，多行正文留在同一段；通用流程提示占一段。OutputSender 跳过空白段，为每段开头添加一次 `[tool]`，保留段内换行与缩进，合并后调用一次 agent.output.prepared Hook，再直接发送 Hook 返回的正文。批量调用仍是一条通知。
-- 发送前归一为 MediaID，临时解析发送副本。成功回执提供真实 platform／scope／message ID／output indexes；部分失败同时返回成功项和 error，关联失败记录但不重发。
+- 发送前归一为 MediaID，临时解析发送副本。成功回执提供真实 platform／scope／message ID／output indexes；部分失败同时返回成功项和 error。
 - 业务与日志分开返回：需要两者的接口返回 Receipt、LogResult、error；仅业务保留业务结果与 error；仅日志结果的 Toolrun／Dialogue SendOutputs 返回 LogResult、error。LogResult 仅含来源明确的 ResultStatus、Content，上层不从错误或回执猜结果。正文与流式回执用于业务关联和部分送达；发送来源在 Content 中保留消息及媒体索引，不改变重发规则。
 
 ```mermaid
@@ -395,7 +395,7 @@ flowchart TD
     E --> F["日志中心<br/>internal/logging<br/>记时、过滤、排队、落盘"]
 ```
 
-- 最终 Hook 只改变展示文本，不改模型原文和历史正文。直接回复先发送及延迟 outputs 再落库；缓冲回复先落库再发送、关联和延迟 outputs。错误仍保留实际提交／回执，已成功内容不重发。
+- 最终 Hook 只改变展示文本，不改模型原文和历史正文。错误仍保留实际提交／回执，已成功内容不重发。
 - 流式回复合并 Replace 与 Finish 的回执：平台消息 ID 去重，实际消息按平台、scope、消息 ID 合并并合并输出索引；保留 Finish 部分失败时已经发出的消息，合并结果不共享平台回执中的切片。
 - 状态与发送观察事实在同步保存或实际提交后发布；通知失败不再触发通知。发送必须等待实际回执，入队不算成功。
 - 发送后的媒体回执缓存失败记录 WARN，保留实际发送结果和部分回执，不触发重发；无来源通知直接组织 text 日志，不把通知对象传入日志信号。

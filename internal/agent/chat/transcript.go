@@ -41,7 +41,10 @@ func (b PromptBuilder) Build(ctx context.Context, req PromptBuildRequest) ([]llm
 		if role != llm.RoleUser && role != llm.RoleAssistant && role != llm.RoleTool && role != llm.RoleSystem {
 			continue
 		}
-		projected := dialogue.MessageFromStorage(message)
+		projected, err := dialogue.MessageFromStorage(message)
+		if err != nil {
+			return nil, err
+		}
 		// 摘要固定在 checkpoint 后的第一条 user 消息中，形成稳定的新上下文起点。
 		// 仍保留原 user 的图片/文件 segments，避免破坏多模态输入结构。
 		if req.Summary != nil && !summaryInjected && role == llm.RoleUser {

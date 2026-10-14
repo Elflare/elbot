@@ -19,13 +19,12 @@ import (
 func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.LoopInput, out dialogue.Output) (result dialogue.LoopResult) {
 	r, s := p.route, p.state
 	if p.compactSeedOnCurrentUser {
-		r.consumeContextCompactSeed(s.requestCtx, s.session)
+		if err := r.consumeContextCompactSeed(s.requestCtx, s.session); err != nil {
+			return failedLoop(err)
+		}
 	}
 	defer func() {
 		result.Usage, result.Selection = s.usage, s.selection
-		if result.Err != nil && s.requestCtx.Err() != nil {
-			result.Outcome, result.QuietCancellation = dialogue.Canceled, true
-		}
 	}()
 	var finalText string
 	var finalRawText string
@@ -86,7 +85,10 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		if inToolPhase {
 			s.messages, pending = drainPendingUserInput(r.Turns, s.session.ID, s.messages, turn.AttemptFromContext(s.ctx))
 		}
-		stream := s.output.StartStream(s.requestCtx)
+		stream, err := s.output.StartStream(s.requestCtx)
+		if err != nil {
+			return failedLoop(err)
+		}
 		llmStageStartedAt := storage.Now()
 		r.Status.Record(s.ctx, runtimestatus.Snapshot{
 			SessionID:      s.session.ID,
@@ -180,9 +182,16 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			if _, err := r.Messages.Append(s.requestCtx, summaryInput, "append_summary_input"); err != nil {
 				return failedLoop(err)
 			}
-			s.messages = append(s.messages, dialogue.MessageFromStorage(*summaryInput))
+			projected, err := dialogue.MessageFromStorage(*summaryInput)
+			if err != nil {
+				return failedLoop(err)
+			}
+			s.messages = append(s.messages, projected)
 			s.tools = nil
-			stream := s.output.StartStream(s.requestCtx)
+			stream, err := s.output.StartStream(s.requestCtx)
+			if err != nil {
+				return failedLoop(err)
+			}
 			summary, err := r.Caller.Call(s.requestCtx, s.session, s.selection, s.messages, s.tools, summaryPending, stream, s.output)
 			if err != nil {
 				return failedLoop(err)
@@ -235,7 +244,11 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			if _, err := r.Messages.Append(s.requestCtx, message, "append_confirmation_input"); err != nil {
 				return failedLoop(err)
 			}
-			s.messages = append(s.messages, dialogue.MessageFromStorage(*message))
+			projected, err := dialogue.MessageFromStorage(*message)
+			if err != nil {
+				return failedLoop(err)
+			}
+			s.messages = append(s.messages, projected)
 		}
 	}
 	if err := s.requestCtx.Err(); err != nil {

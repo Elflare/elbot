@@ -29,7 +29,7 @@ func (o executionTurnOutput) target(ctx context.Context) (context.Context, dialo
 	}
 	return ctx, o.fallback
 }
-func (o executionTurnOutput) StartStream(ctx context.Context) delivery.MessageStream {
+func (o executionTurnOutput) StartStream(ctx context.Context) (delivery.MessageStream, error) {
 	ctx, out := o.target(ctx)
 	return out.StartStream(ctx)
 }

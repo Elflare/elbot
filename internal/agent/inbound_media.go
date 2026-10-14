@@ -11,12 +11,13 @@ import (
 	globalevents "elbot/internal/events"
 	"elbot/internal/media"
 	"elbot/internal/platform"
+	"elbot/internal/storage"
 )
 
-func (h *MessageHandler) materializePlatformMedia(ctx context.Context) context.Context {
+func (h *MessageHandler) materializePlatformMedia(ctx context.Context) (context.Context, error) {
 	msg, ok := platform.MessageContextFrom(ctx)
-	if !ok || h.media == nil {
-		return ctx
+	if !ok {
+		return ctx, nil
 	}
 	cache := map[platform.MessageSegment]platform.MessageSegment{}
 	resolve := func(segments []platform.MessageSegment) []platform.MessageSegment {
@@ -39,9 +40,13 @@ func (h *MessageHandler) materializePlatformMedia(ctx context.Context) context.C
 	msg.Segments = resolve(msg.Segments)
 	msg.ContextSegments = resolve(msg.ContextSegments)
 	msg.Reply.Segments = resolve(msg.Reply.Segments)
-	h.associateInboundHistory(ctx, msg, msg.PlatformMessageID, original.Segments, msg.Segments)
-	h.associateInboundHistory(ctx, msg, msg.Reply.MessageID, original.Reply.Segments, msg.Reply.Segments)
-	return platform.WithMessageContext(ctx, msg)
+	if err := h.associateInboundHistory(ctx, msg, msg.PlatformMessageID, original.Segments, msg.Segments); err != nil {
+		return ctx, err
+	}
+	if err := h.associateInboundHistory(ctx, msg, msg.Reply.MessageID, original.Reply.Segments, msg.Reply.Segments); err != nil {
+		return ctx, err
+	}
+	return platform.WithMessageContext(ctx, msg), nil
 }
 
 func (h *MessageHandler) materializePlatformSegment(ctx context.Context, msg platform.MessageContext, segment platform.MessageSegment) platform.MessageSegment {
@@ -58,14 +63,18 @@ func (h *MessageHandler) materializePlatformSegment(ctx context.Context, msg pla
 	return segment
 }
 
-func (h *MessageHandler) associateInboundHistory(ctx context.Context, msg platform.MessageContext, messageID string, original, resolved []platform.MessageSegment) {
-	if h.media.History == nil || messageID == "" {
-		return
+func (h *MessageHandler) associateInboundHistory(ctx context.Context, msg platform.MessageContext, messageID string, original, resolved []platform.MessageSegment) error {
+	if messageID == "" {
+		return nil
 	}
 	row, err := h.media.History.GetByPlatformMessage(ctx, msg.Conversation.Source.Platform, msg.Conversation.Source.ScopeID, messageID)
-	if err != nil {
-		return
+	if errors.Is(err, storage.ErrNotFound) {
+		return nil
 	}
+	if err != nil {
+		return err
+	}
+	var failures []error
 	index := 0
 	for i, raw := range original {
 		if raw.Type != platform.SegmentImage && raw.Type != platform.SegmentFile {
@@ -76,6 +85,7 @@ func (h *MessageHandler) associateInboundHistory(ctx context.Context, msg platfo
 			continue
 		}
 		if err := h.media.AssociateHistory(ctx, *row, index, raw.Type, resolved[i].MediaID); err != nil {
+			failures = append(failures, err)
 			{
 				record := globalevents.LogRecord{
 					Category:     globalevents.LogRuntime,
@@ -111,6 +121,7 @@ func (h *MessageHandler) associateInboundHistory(ctx context.Context, msg platfo
 			}
 		}
 	}
+	return errors.Join(failures...)
 }
 func unavailablePlatformSegment(segment platform.MessageSegment) platform.MessageSegment {
 	label := strings.TrimSpace(segment.Name)

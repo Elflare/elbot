@@ -19,7 +19,7 @@ type InputIdentity interface {
 }
 
 type InputOutput interface {
-	SendChat(context.Context, string)
+	SendChat(context.Context, string) error
 }
 
 type InputExecution interface {

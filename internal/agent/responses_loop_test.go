@@ -710,7 +710,7 @@ func TestResponsesStoppedToolBatchKeepsUnknownOutcomesWithoutReexecution(t *test
 	}
 }
 
-func TestResponsesEmptyReplyAndBufferedSendFailureKeepLocalCheckpoint(t *testing.T) {
+func TestResponsesSendFailureDoesNotAdvanceLocalCheckpoint(t *testing.T) {
 	for _, empty := range []bool{false, true} {
 		t.Run(fmt.Sprint(empty), func(t *testing.T) {
 			f := newNativeFixture(t, func(_ int, _ nativeTestRequest, w http.ResponseWriter) {
@@ -743,11 +743,8 @@ func TestResponsesEmptyReplyAndBufferedSendFailureKeepLocalCheckpoint(t *testing
 				t.Fatal(err)
 			}
 			checkpoint, err := f.store.Dialogues().CurrentCheckpoint(ctx, row.ID)
-			if err != nil || checkpoint == nil || checkpoint.ResponseID != "r" {
+			if err != nil || checkpoint != nil {
 				t.Fatalf("lost local checkpoint=%+v %v", checkpoint, err)
-			}
-			if empty && checkpoint.MessageID != "" {
-				t.Fatalf("invented empty display message: %+v", checkpoint)
 			}
 		})
 	}

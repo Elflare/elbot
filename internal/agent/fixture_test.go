@@ -136,10 +136,7 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 		opts.HookRuntime = &fakeHookRouter{}
 	}
 	signals := agentevents.NewSignals()
-	identity, err := NewIdentityResolver(IdentityResolverDeps{PlatformName: opts.Platform.Name(), ActorID: "cli:local", ScopeID: "local", Policy: opts.SecurityPolicy})
-	if err != nil {
-		return nil, err
-	}
+	identity := NewIdentityResolver(IdentityResolverDeps{PlatformName: opts.Platform.Name(), ActorID: "cli:local", ScopeID: "local", Policy: opts.SecurityPolicy})
 	hooks := NewHookBridge(HookBridgeDeps{
 		Manager:    hookManager,
 		Router:     opts.HookRuntime,
@@ -150,28 +147,16 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 		Dispatcher: opts.Dispatcher,
 	})
 	view := dialogue.ExecutionView{Sessions: store.Sessions()}
-	status, err := NewStatusRecorder(StatusRecorderDeps{View: view, Turns: turns, Changed: signals.StatusChanged})
-	if err != nil {
-		return nil, err
-	}
-	output, err := NewOutputSender(OutputSenderDeps{Dispatcher: opts.Dispatcher, Hooks: hooks})
-	if err != nil {
-		return nil, err
-	}
+	status := NewStatusRecorder(StatusRecorderDeps{View: view, Turns: turns, Changed: signals.StatusChanged})
+	output := NewOutputSender(OutputSenderDeps{Dispatcher: opts.Dispatcher, Hooks: hooks})
 	sessions.SetForegroundCheck(func(_ context.Context, source *storage.Session) error {
 		return view.CheckSelection(source, opts.Models.ResolveMode(storage.SessionModeWork))
 	})
-	waitPolicy, err := NewConfirmationPolicy(ConfirmationPolicyDeps{Identity: identity, IdleExpiration: sessionIdleExpirationConfig(opts.SessionIdleExpiration), UserConfirmationTimeout: defaultUserConfirmationTimeout})
-	if err != nil {
-		return nil, err
-	}
-	confirmations, err := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{Sessions: sessions, Requests: requests, Turns: turns, Commands: opts.Commands, Identity: identity, Output: output, Policy: waitPolicy})
-	if err != nil {
-		return nil, err
-	}
+	waitPolicy := NewConfirmationPolicy(ConfirmationPolicyDeps{Identity: identity, IdleExpiration: sessionIdleExpirationConfig(opts.SessionIdleExpiration), UserConfirmationTimeout: defaultUserConfirmationTimeout})
+	confirmations := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{Sessions: sessions, Requests: requests, Turns: turns, Commands: opts.Commands, Identity: identity, Output: output, Policy: waitPolicy})
 	toolRuntime := &ToolRuntimeState{
 		manager: opts.ToolRunner, registry: opts.ToolRegistry,
-		fileRollback: opts.FileRollback, provider: dialogue.NoopToolSchemaProvider{}, defaultProvider: true,
+		fileRollback: opts.FileRollback, defaultProvider: true,
 	}
 	if opts.ToolProvider != nil {
 		toolRuntime.provider, toolRuntime.defaultProvider = opts.ToolProvider, false
@@ -183,26 +168,15 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 		state: opts.ToolState, runtime: toolRuntime, sessions: sessions, sessionRows: store.Sessions(), toolCalls: store.ToolCalls(),
 		confirmations: confirmations, view: view,
 	}
-	runner, err := dialogue.NewRunner(dialogue.RunnerDeps{Status: status, Routes: opts.Routes, Dialogues: store.Dialogues(), MessageRows: store.Messages(), Sessions: sessions, Turns: turns, Contexts: opts.Contexts, Media: opts.Media, Identity: identity, Hooks: hooks, Output: output, ToolManager: opts.ToolRunner, ToolRegistry: opts.ToolRegistry, ToolState: opts.ToolState, ToolDeps: toolDeps, ToolProvider: toolRuntime.provider, DefaultProvider: toolRuntime.defaultProvider, MaxRounds: opts.ToolsConfig.MaxRoundsPerTurn, SoulPath: opts.SoulPath, Memory: opts.ResidentMemoryStore, Preloader: opts.ToolPreloader, Signals: signals, View: view})
-	if err != nil {
-		return nil, err
-	}
-	chat, err := chatroute.NewLoop(chatroute.LoopDeps{Status: status, Store: store, Contexts: opts.Contexts, Models: opts.Models, Turns: turns, View: view, Preparer: runner.Preparer, Tools: runner.Preparer.Tools, Messages: runner.Messages, Calls: runner.Calls, System: runner.System})
-	if err != nil {
-		return nil, err
-	}
-	response, err := responseroute.NewLoop(responseroute.LoopDeps{Status: status, Repository: store.Dialogues(), Models: opts.Models, Turns: turns, View: view, Preparer: runner.Preparer, Tools: runner.Preparer.Tools, Messages: runner.Messages, Calls: runner.Calls, System: runner.System})
-	if err != nil {
-		return nil, err
-	}
-	if err := bindProtocolRoutes(opts.Routes, chat, response); err != nil {
-		return nil, err
-	}
+	runner := dialogue.NewRunner(dialogue.RunnerDeps{Status: status, Routes: opts.Routes, Dialogues: store.Dialogues(), Sessions: sessions, Turns: turns, Contexts: opts.Contexts, Media: opts.Media, Identity: identity, Hooks: hooks, Output: output, ToolManager: opts.ToolRunner, ToolRegistry: opts.ToolRegistry, ToolState: opts.ToolState, ToolDeps: toolDeps, ToolProvider: toolRuntime.provider, DefaultProvider: toolRuntime.defaultProvider, MaxRounds: opts.ToolsConfig.MaxRoundsPerTurn, SoulPath: opts.SoulPath, Memory: opts.ResidentMemoryStore, Preloader: opts.ToolPreloader, Signals: signals, View: view})
+	chat := chatroute.NewLoop(chatroute.LoopDeps{Status: status, Store: store, Contexts: opts.Contexts, Models: opts.Models, Turns: turns, View: view, Preparer: runner.Preparer, Tools: runner.Preparer.Tools, Messages: runner.Messages, Calls: runner.Calls, System: runner.System})
+	response := responseroute.NewLoop(responseroute.LoopDeps{Status: status, Repository: store.Dialogues(), Models: opts.Models, Turns: turns, View: view, Preparer: runner.Preparer, Tools: runner.Preparer.Tools, Messages: runner.Messages, Calls: runner.Calls, System: runner.System})
+	bindProtocolRoutes(opts.Routes, chat, response)
 	sessions.SetMaterials(opts.Routes)
 	if err := opts.Contexts.CheckCompaction(llm.Origin{APIType: llm.APITypeChat}); err != nil {
 		return nil, fmt.Errorf("context compaction wiring: %w", err)
 	}
-	execution, err := NewExecutionCoordinator(ctx, ExecutionCoordinatorDeps{
+	execution := NewExecutionCoordinator(ctx, ExecutionCoordinatorDeps{
 		Sessions:        sessions,
 		SessionRows:     store.Sessions(),
 		Turns:           turns,
@@ -217,10 +191,7 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 		WaitPolicy:      waitPolicy,
 		ResponseTimeout: responseTimeout(opts.LLMRequestConfig),
 	})
-	if err != nil {
-		return nil, err
-	}
-	input, err := NewInputCoordinator(InputCoordinatorDeps{
+	input := NewInputCoordinator(InputCoordinatorDeps{
 		Sessions:      sessions,
 		SessionRows:   store.Sessions(),
 		Turns:         turns,
@@ -234,10 +205,7 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 		ToolState:     opts.ToolState,
 		WaitPolicy:    waitPolicy,
 	})
-	if err != nil {
-		return nil, err
-	}
-	commands, err := NewCommandExecutor(CommandExecutorDeps{
+	commands := NewCommandExecutor(CommandExecutorDeps{
 		Router:        opts.Commands,
 		Sessions:      sessions,
 		Turns:         turns,
@@ -247,10 +215,7 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 		Confirmations: confirmations,
 		Input:         input,
 	})
-	if err != nil {
-		return nil, err
-	}
-	message, err := NewMessageHandler(MessageHandlerDeps{
+	message := NewMessageHandler(MessageHandlerDeps{
 		Identity:  identity,
 		Hooks:     hooks,
 		Output:    output,
@@ -260,9 +225,6 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 		Messages:  store.Messages(),
 		MediaRows: store.Media(),
 	})
-	if err != nil {
-		return nil, err
-	}
 	background, err := NewBackgroundRunner(BackgroundRunnerDeps{
 		Sessions:    sessions,
 		SessionRows: store.Sessions(),
@@ -275,10 +237,7 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 	if err != nil {
 		return nil, err
 	}
-	fileCommands, err := NewFileCommandPreparer(FileCommandPreparerDeps{Service: opts.FileRollback, Sessions: sessions, SessionRows: store.Sessions(), Turns: turns, Requests: requests, Identity: identity})
-	if err != nil {
-		return nil, err
-	}
+	fileCommands := NewFileCommandPreparer(FileCommandPreparerDeps{Service: opts.FileRollback, Sessions: sessions, SessionRows: store.Sessions(), Turns: turns, Requests: requests, Identity: identity})
 	a := &agentFixture{
 		message:      message,
 		background:   background,
@@ -298,12 +257,7 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 	a.Done() // Join owned workers on application cancellation, even without Close.
 	return a, nil
 }
-func bindProtocolRoutes(registry *routes.Registry, chat *chatroute.Loop, response *responseroute.Loop) error {
-	if err := registry.Register(routes.Binding{APIType: llm.APITypeChat, Loop: chat, Compactor: chat.Compactor(), Material: chat.Material()}); err != nil {
-		return err
-	}
-	if err := registry.Register(routes.Binding{APIType: llm.APITypeResponse, Loop: response, Compactor: response.Compactor(), Material: response.Material()}); err != nil {
-		return err
-	}
-	return registry.Seal()
+func bindProtocolRoutes(registry *routes.Registry, chat *chatroute.Loop, response *responseroute.Loop) {
+	registry.Register(routes.Binding{APIType: llm.APITypeChat, Loop: chat, Compactor: chat.Compactor(), Material: chat.Material()})
+	registry.Register(routes.Binding{APIType: llm.APITypeResponse, Loop: response, Compactor: response.Compactor(), Material: response.Material()})
 }

@@ -35,7 +35,11 @@ func TestInboundMediaAssociatesHistoryPositions(t *testing.T) {
 		Segments:      segments,
 		MediaResolver: resolver,
 	})
-	resolved, _ := platform.MessageContextFrom(a.materializePlatformMedia(ctx))
+	prepared, err := a.materializePlatformMedia(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, _ := platform.MessageContextFrom(prepared)
 	ids, err := center.HistoryIDs(ctx, *row)
 	if err != nil || len(ids) != 1 || ids[2] != resolved.Segments[2].MediaID {
 		t.Fatalf("position association = %#v %v", ids, err)

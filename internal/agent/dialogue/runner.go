@@ -2,6 +2,7 @@ package dialogue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"elbot/internal/agent/events"
@@ -61,6 +62,29 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 	result.StartedAt = storage.Now()
 	result.Selection = in.Selection
 	defer func() {
+		if result.Err != nil && requestCtx.Err() != nil {
+			result.QuietCancellation = true
+			pending := []error{result.Err}
+			for len(pending) > 0 {
+				err := pending[len(pending)-1]
+				pending = pending[:len(pending)-1]
+				if joined, ok := err.(interface{ Unwrap() []error }); ok {
+					pending = append(pending, joined.Unwrap()...)
+					continue
+				}
+				if cause := errors.Unwrap(err); cause != nil {
+					pending = append(pending, cause)
+					continue
+				}
+				if !errors.Is(err, requestCtx.Err()) {
+					result.QuietCancellation = false
+					break
+				}
+			}
+			if result.QuietCancellation {
+				result.Outcome = Canceled
+			}
+		}
 		if result.Outcome == Completed {
 			return
 		}
@@ -78,10 +102,6 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 	}
 	if err != nil {
 		result.Outcome, result.Err = Failed, err
-		// Business lifecycle cancellation is independent of the source log result.
-		if requestCtx.Err() != nil {
-			result.Outcome, result.QuietCancellation = Canceled, true
-		}
 		return result
 	}
 	loopIn := LoopInput{Session: in.Session, Text: in.Text, Selection: in.Selection, RequestID: in.RequestID, StartedAt: result.StartedAt}
@@ -98,14 +118,10 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 		err = requestCtx.Err()
 	}
 	if err == nil {
-		_, err = prepared.InputCommitter().Commit(requestCtx, user)
+		_, err = prepared.InputCommitter().Commit(requestCtx, user, nil)
 	}
 	if err != nil {
 		result.Outcome, result.Err = Failed, err
-		// Business lifecycle cancellation is independent of the source log result.
-		if requestCtx.Err() != nil {
-			result.Outcome, result.QuietCancellation = Canceled, true
-		}
 		return result
 	}
 	loop := prepared.RunLoop(ctx, requestCtx, loopIn, out)
@@ -117,10 +133,6 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 	requestCtx, err = r.View.RefreshSession(requestCtx, in.Session)
 	if err != nil {
 		result.Outcome, result.Err = Failed, err
-		// Business lifecycle cancellation is independent of the source log result.
-		if requestCtx.Err() != nil {
-			result.Outcome, result.QuietCancellation = Canceled, true
-		}
 		return result
 	}
 	ctx = r.View.Context(ctx)
@@ -130,10 +142,6 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 	}
 	if err != nil {
 		result.Outcome, result.Err = Failed, err
-		// Business lifecycle cancellation is independent of the source log result.
-		if requestCtx.Err() != nil {
-			result.Outcome, result.QuietCancellation = Canceled, true
-		}
 		return result
 	}
 	r.Status.Record(ctx, runtimestatus.Snapshot{SessionID: in.Session.ID, Phase: runtimestatus.PhaseSending,
@@ -142,10 +150,6 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 	result.Committed, err = r.Replies.Commit(ctx, requestCtx, loop.Commit, out)
 	if err != nil {
 		result.Outcome, result.Err = Failed, err
-		// Business lifecycle cancellation is independent of the source log result.
-		if requestCtx.Err() != nil {
-			result.Outcome, result.QuietCancellation = Canceled, true
-		}
 	}
 	return result
 }
@@ -157,7 +161,6 @@ type RunnerDeps struct {
 	}
 	Routes          LoopResolver
 	Dialogues       storage.DialogueRepository
-	MessageRows     storage.MessageRepository
 	Sessions        *session.Service
 	Turns           *turn.Manager
 	Contexts        *contextmgr.Service
@@ -180,17 +183,11 @@ type RunnerDeps struct {
 	View      ExecutionView
 }
 
-func NewRunner(deps RunnerDeps) (*Runner, error) {
-	if deps.Routes == nil || deps.Dialogues == nil || deps.MessageRows == nil || deps.Sessions == nil || deps.Turns == nil || deps.Contexts == nil || deps.Identity == nil || deps.Hooks == nil || deps.Output == nil || deps.ToolManager == nil || deps.ToolDeps == nil || deps.Status == nil {
-		return nil, fmt.Errorf("dialogue collaborators are required")
-	}
-	if deps.MaxRounds <= 0 {
-		return nil, fmt.Errorf("tools max rounds per turn must be positive")
-	}
+func NewRunner(deps RunnerDeps) *Runner {
 	tools := &ToolExecutor{Manager: deps.ToolManager, State: deps.ToolState, Registry: deps.ToolRegistry, Provider: deps.ToolProvider, DefaultProvider: deps.DefaultProvider, Identity: deps.Identity, Deps: deps.ToolDeps, MaxRounds: deps.MaxRounds}
 	messages := &MessageStore{Dialogues: deps.Dialogues, Gate: &CommitGate{Sessions: deps.Sessions, Turns: deps.Turns, View: deps.View}}
 	tools.Messages = messages
-	replies := &ReplyCommitter{Messages: deps.MessageRows, Output: deps.Output, Persistence: messages.Committer("append_assistant_message")}
+	replies := &ReplyCommitter{Output: deps.Output, Persistence: messages.Committer("append_assistant_message")}
 	preparer := &Preparer{Contexts: deps.Contexts, Media: deps.Media, Identity: deps.Identity, Hooks: deps.Hooks, Tools: tools}
 	messages.Preparer = preparer
 	calls := &CallProcessor{Messages: messages, Preparer: preparer, Hooks: deps.Hooks, Identity: deps.Identity, Tools: tools, Completed: deps.Signals.ModelCallCompleted, Vision: deps.Signals.VisionFallbackUsed}
@@ -202,11 +199,10 @@ func NewRunner(deps RunnerDeps) (*Runner, error) {
 	if names, ok := deps.ToolProvider.(ToolNameProvider); ok {
 		system.AddSource(ToolNamesSystemPromptSource{Tools: names})
 	}
-	if deps.Preloader != nil {
-		system.AddSource(ToolTagsSystemPromptSource{Preloader: deps.Preloader})
-	}
+	system.AddSource(ToolTagsSystemPromptSource{Preloader: deps.Preloader})
+
 	system.AddSource(BackgroundPathsSystemPromptSource{})
 	system.AddSource(ResidentMemorySystemPromptSource{Store: deps.Memory})
 	system.AddSource(ConversationMetaSystemPromptSource{})
-	return &Runner{Status: deps.Status, Routes: deps.Routes, Preparer: preparer, Messages: messages, Replies: replies, Turns: deps.Turns, View: deps.View, Calls: calls, System: system}, nil
+	return &Runner{Status: deps.Status, Routes: deps.Routes, Preparer: preparer, Messages: messages, Replies: replies, Turns: deps.Turns, View: deps.View, Calls: calls, System: system}
 }

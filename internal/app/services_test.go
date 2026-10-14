@@ -244,34 +244,6 @@ func TestRuntimeAssemblyCommandsShareToolAndModelServices(t *testing.T) {
 	}
 }
 
-func TestRuntimeAssemblyFailureReturnsOwnedWorkers(t *testing.T) {
-	req, _, _ := runtimeAssemblyFixture(t)
-	req.Foundation.Config.Tools.MaxRoundsPerTurn = -1 // Agent validation after Hook and Skill workers exist.
-	runtime, err := (defaultWiringFactory{}).Build(context.Background(), req)
-	if err == nil || runtime == nil || runtime.Lifecycle == nil {
-		t.Fatalf("partial runtime = %v, %v", runtime, err)
-	}
-	if runtime.Hook == nil || runtime.Dialogue == nil {
-		t.Fatal("construction did not reach Hook and Dialogue")
-	}
-	select {
-	case <-runtime.Hook.Done():
-		t.Fatal("Hook runtime was not acquired")
-	default:
-	}
-	closeAssembledRuntime(t, runtime)
-	select {
-	case <-runtime.Lifecycle.Done():
-	default:
-		t.Fatal("startup workers survived cleanup")
-	}
-	// Store is borrowed and remains available until Foundation closes it.
-	if _, err := req.Foundation.Store.Sessions().List(t.Context(), storage.ListSessionsRequest{Limit: 1}); err != nil {
-		t.Fatal(err)
-	}
-
-}
-
 func (m *assemblyModel) GenerateText(ctx context.Context, req llm.TextRequest) (llm.TextResult, error) {
 	messages := []llm.LLMMessage{}
 	if req.Instructions != "" {

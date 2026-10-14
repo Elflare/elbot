@@ -92,14 +92,7 @@ func (d toolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Sess
 }
 
 func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), events.LogResult, error) {
-	toolReq, toolCtx, done, err := d.requests.Start(ctx, request.StartRequest{ParentID: contextinfo.RootRequestIDFromContext(ctx), SessionID: sessionID, Kind: request.KindTool, Label: toolName})
-	if err != nil {
-		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = events.ResultCanceled
-		}
-		return ctx, time.Time{}, func() {}, logResult, err
-	}
+	toolReq, toolCtx, done := d.requests.Start(ctx, request.StartRequest{ParentID: contextinfo.RootRequestIDFromContext(ctx), SessionID: sessionID, Kind: request.KindTool, Label: toolName})
 	d.status.Record(ctx, runtimestatus.Snapshot{
 		SessionID:      sessionID,
 		Phase:          runtimestatus.PhaseTool,
@@ -166,19 +159,16 @@ func (d toolRunDeps) RecordToolCall(ctx context.Context, sessionID string, call 
 	if callErr != nil {
 		record.Error = callErr.Error()
 	}
-	logResult := events.LogResult{ResultStatus: events.ResultSkipped, Content: "tool call record store is not configured"}
-	var recordErr error
-	if d.toolCalls != nil {
-		logResult = events.LogResult{ResultStatus: events.ResultSucceeded, Content: "tool call record saved"}
-		recordErr = d.toolCalls.Create(ctx, record)
-		if recordErr != nil {
-			logResult.ResultStatus = events.ResultFailed
-			logResult.Content = fmt.Sprintf("record_error=%v", recordErr)
-			if errors.Is(recordErr, context.Canceled) {
-				logResult.ResultStatus = events.ResultCanceled
-			}
+	logResult := events.LogResult{ResultStatus: events.ResultSucceeded, Content: "tool call record saved"}
+	recordErr := d.toolCalls.Create(ctx, record)
+	if recordErr != nil {
+		logResult.ResultStatus = events.ResultFailed
+		logResult.Content = fmt.Sprintf("record_error=%v", recordErr)
+		if errors.Is(recordErr, context.Canceled) {
+			logResult.ResultStatus = events.ResultCanceled
 		}
 	}
+
 	return logResult, recordErr
 }
 

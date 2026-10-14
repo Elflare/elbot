@@ -11,10 +11,7 @@ import (
 	"elbot/internal/storage"
 )
 
-func (r *Loop) consumeContextCompactSeed(ctx context.Context, session *storage.Session) {
-	if r.Contexts == nil || session == nil {
-		return
-	}
+func (r *Loop) consumeContextCompactSeed(ctx context.Context, session *storage.Session) error {
 	latest, err := r.Contexts.ConsumeSeed(ctx, session.ID)
 	if err != nil {
 
@@ -53,7 +50,8 @@ func (r *Loop) consumeContextCompactSeed(ctx context.Context, session *storage.S
 			_ = globalevents.EmitLog(ctx, record)
 		}
 
-		return
+		return err
 	}
 	session.Metadata = latest.Metadata
+	return nil
 }

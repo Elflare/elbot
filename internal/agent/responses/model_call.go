@@ -166,7 +166,7 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 		if result.Response != nil {
 			final.Usage = result.Response.TokenUsage()
 		}
-		if observation.Event.ProviderError && ctx.Err() == nil {
+		if observation.Event.ProviderError {
 			s.route.Calls.NotifyError(ctx, hook.Event{
 				Point:   hook.PointLLMResponseReceived,
 				Session: hook.SessionContext{ID: s.session.ID},
@@ -210,9 +210,6 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 }
 
 func (s *turnState) replayRequest(ctx context.Context, request api.Request, inputs []api.Item, consumed []string, target llm.Origin) (api.Request, func(), error) {
-	if s.route.Context == nil {
-		return request, func() {}, fmt.Errorf("Responses 原生材料能力未配置")
-	}
 	w, err := s.route.Context.Load(ctx, s.session, s.checkpoint)
 	if err != nil {
 		return request, func() {}, err

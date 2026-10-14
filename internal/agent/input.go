@@ -101,8 +101,7 @@ func (c *InputCoordinator) ContinueCommandInput(ctx context.Context, continuatio
 func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *storage.Session, text string) error {
 	locked, release, err := c.execution.EnterInput(ctx, session)
 	if errors.Is(err, errInputCompacting) || errors.Is(err, errInputArchived) {
-		c.output.SendChat(ctx, err.Error())
-		return nil
+		return c.output.SendChat(ctx, err.Error())
 	}
 	if err != nil {
 		return err
@@ -127,18 +126,24 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 			return err
 		}
 		if len(directives.Injected) > 0 || len(directives.Existing) > 0 || len(directives.Invalid) > 0 {
-			c.notifyToolDirectiveResult(ctx, directives)
+			if err := c.notifyToolDirectiveResult(ctx, directives); err != nil {
+				return err
+			}
 		}
 		if len(skillDirectives.Skills) > 0 || len(skillDirectives.InjectedWrappers) > 0 || len(skillDirectives.ExistingWrappers) > 0 || len(skillDirectives.Invalid) > 0 {
-			c.notifySkillDirectiveResult(ctx, skillDirectives)
+			if err := c.notifySkillDirectiveResult(ctx, skillDirectives); err != nil {
+				return err
+			}
 		}
 		text = skillDirectives.Text
 		ctx = withInboundSegments(ctx, replaceInboundTextSegments(ctx, text))
 		if strings.TrimSpace(text) == "" && !hasInboundNonTextSegment(ctx) {
 			if len(directives.Injected) > 0 || len(skillDirectives.InjectedWrappers) > 0 {
-				if latest, err := c.sessionRows.Get(ctx, session.ID); err == nil {
-					*session = *latest
+				latest, err := c.sessionRows.Get(ctx, session.ID)
+				if err != nil {
+					return err
 				}
+				*session = *latest
 			}
 			return nil
 		}
@@ -217,40 +222,7 @@ func hasForkFromMessage(ctx context.Context) bool {
 }
 
 // NewInputCoordinator initializes InputCoordinator without installing cross-service callbacks.
-func NewInputCoordinator(deps InputCoordinatorDeps) (*InputCoordinator, error) {
-	if deps.Sessions == nil {
-		return nil, fmt.Errorf("InputCoordinator sessions is required")
-	}
-	if deps.SessionRows == nil {
-		return nil, fmt.Errorf("InputCoordinator sessionRows is required")
-	}
-	if deps.Turns == nil {
-		return nil, fmt.Errorf("InputCoordinator turns is required")
-	}
-	if deps.Identity == nil {
-		return nil, fmt.Errorf("InputCoordinator identity is required")
-	}
-	if deps.Hooks == nil {
-		return nil, fmt.Errorf("InputCoordinator hooks is required")
-	}
-	if deps.Output == nil {
-		return nil, fmt.Errorf("InputCoordinator output is required")
-	}
-	if deps.Execution == nil {
-		return nil, fmt.Errorf("InputCoordinator execution is required")
-	}
-	if deps.Confirmations == nil {
-		return nil, fmt.Errorf("InputCoordinator confirmations is required")
-	}
-	if deps.Preloader == nil {
-		return nil, fmt.Errorf("InputCoordinator preloader is required")
-	}
-	if deps.ToolState == nil {
-		return nil, fmt.Errorf("InputCoordinator toolState is required")
-	}
-	if deps.WaitPolicy == nil {
-		return nil, fmt.Errorf("InputCoordinator waitPolicy is required")
-	}
+func NewInputCoordinator(deps InputCoordinatorDeps) *InputCoordinator {
 	return &InputCoordinator{
 		sessions:      deps.Sessions,
 		sessionRows:   deps.SessionRows,
@@ -264,5 +236,5 @@ func NewInputCoordinator(deps InputCoordinatorDeps) (*InputCoordinator, error) {
 		preloader:     deps.Preloader,
 		toolState:     deps.ToolState,
 		waitPolicy:    deps.WaitPolicy,
-	}, nil
+	}
 }

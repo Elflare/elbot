@@ -20,16 +20,10 @@ type Loader struct {
 const maxForkDepth = 32
 
 func (l Loader) Load(ctx context.Context, sessionID string) (*LoadedContext, error) {
-	if l.Store == nil {
-		return nil, fmt.Errorf("store is required")
-	}
 	return l.load(ctx, sessionID, "", 0)
 }
 
 func (l Loader) LoadRawMessages(ctx context.Context, sessionID string) ([]storage.Message, error) {
-	if l.Store == nil {
-		return nil, fmt.Errorf("store is required")
-	}
 	return l.loadRawMessages(ctx, sessionID, "", 0)
 }
 

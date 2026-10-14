@@ -13,9 +13,11 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/media"
+	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/turn"
 )
 
 type materialBackend struct {
@@ -114,7 +116,7 @@ func TestToolTranscriptMirrorMatchesFullDatabaseFacts(t *testing.T) {
 	if err := store.Sessions().Create(t.Context(), row); err != nil {
 		t.Fatal(err)
 	}
-	committer := &ToolTranscriptCommitter{Messages: &MessageStore{Dialogues: store.Dialogues()}}
+	committer := &ToolTranscriptCommitter{Messages: &MessageStore{Dialogues: store.Dialogues(), Gate: &CommitGate{Sessions: session.NewService(store), Turns: turn.NewManager(), View: ExecutionView{Sessions: store.Sessions()}}}}
 	calls := []llm.ToolCallRequest{{ID: "one", Name: "discover_tool", Arguments: `{"names":["one","two"]}`}, {ID: "two", Name: "large", Arguments: `{"all":true}`}}
 	head := ToolCallStorageMessage(row.ID, "calling", "calling", calls)
 	if _, err := committer.Begin(t.Context(), &head); err != nil {
@@ -137,7 +139,11 @@ func TestToolTranscriptMirrorMatchesFullDatabaseFacts(t *testing.T) {
 	}
 	var restored []llm.LLMMessage
 	for _, row := range rows {
-		restored = append(restored, MessageFromStorage(row))
+		message, err := MessageFromStorage(row)
+		if err != nil {
+			t.Fatal(err)
+		}
+		restored = append(restored, message)
 	}
 	if !reflect.DeepEqual(restored, committer.Committed) || len(restored) != 3 || restored[2].Segments[0].Text != full {
 		t.Fatal("committed mirror differs from complete restored transcript")
@@ -163,7 +169,7 @@ func TestTextSegmentsRestoreWithoutWhitespaceOrBoundaryChanges(t *testing.T) {
 	} {
 		message := llm.LLMMessage{Role: llm.RoleTool, Name: "tool", ToolCallID: "id", Segments: segments}
 		stored := ToolResultStorageMessage("session", message)
-		if got := MessageFromStorage(stored); !reflect.DeepEqual(got, message) {
+		if got, err := MessageFromStorage(stored); err != nil || !reflect.DeepEqual(got, message) {
 			t.Fatalf("restored=%#v want=%#v", got, message)
 		}
 	}

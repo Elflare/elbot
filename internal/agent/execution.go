@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"elbot/internal/agent/dialogue"
@@ -107,43 +106,7 @@ func (c *ExecutionCoordinator) RunBackground(ctx context.Context, row *storage.S
 }
 
 // NewExecutionCoordinator initializes ExecutionCoordinator without installing cross-service callbacks.
-func NewExecutionCoordinator(ctx context.Context, deps ExecutionCoordinatorDeps) (*ExecutionCoordinator, error) {
-	if ctx == nil {
-		return nil, fmt.Errorf("runtime context is required")
-	}
-	if deps.Sessions == nil {
-		return nil, fmt.Errorf("ExecutionCoordinator sessions is required")
-	}
-	if deps.SessionRows == nil {
-		return nil, fmt.Errorf("ExecutionCoordinator sessionRows is required")
-	}
-	if deps.Turns == nil {
-		return nil, fmt.Errorf("ExecutionCoordinator turns is required")
-	}
-	if deps.Requests == nil {
-		return nil, fmt.Errorf("ExecutionCoordinator requests is required")
-	}
-	if deps.Contexts == nil {
-		return nil, fmt.Errorf("ExecutionCoordinator contexts is required")
-	}
-	if deps.Models == nil {
-		return nil, fmt.Errorf("ExecutionCoordinator models is required")
-	}
-	if deps.Dialogue == nil {
-		return nil, fmt.Errorf("ExecutionCoordinator dialogue is required")
-	}
-	if deps.Identity == nil {
-		return nil, fmt.Errorf("ExecutionCoordinator identity is required")
-	}
-	if deps.Output == nil {
-		return nil, fmt.Errorf("ExecutionCoordinator output is required")
-	}
-	if deps.Status == nil {
-		return nil, fmt.Errorf("ExecutionCoordinator status is required")
-	}
-	if deps.WaitPolicy == nil {
-		return nil, fmt.Errorf("ExecutionCoordinator waitPolicy is required")
-	}
+func NewExecutionCoordinator(ctx context.Context, deps ExecutionCoordinatorDeps) *ExecutionCoordinator {
 	return &ExecutionCoordinator{
 		sessions:        deps.Sessions,
 		sessionRows:     deps.SessionRows,
@@ -159,5 +122,5 @@ func NewExecutionCoordinator(ctx context.Context, deps ExecutionCoordinatorDeps)
 		waitPolicy:      deps.WaitPolicy,
 		responseTimeout: deps.ResponseTimeout,
 		appendWaits:     newAppendWaitLifecycle(ctx),
-	}, nil
+	}
 }

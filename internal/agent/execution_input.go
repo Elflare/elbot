@@ -32,8 +32,7 @@ func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, row *storage.Se
 	case turn.IsCancel(text):
 		c.turns.CancelAppend(row.ID)
 		release()
-		c.output.SendChat(ctx, "已取消追加，本轮处理已停止。")
-		return nil
+		return c.output.SendChat(ctx, "已取消追加，本轮处理已停止。")
 	default:
 		c.turns.AppendPendingInput(row.ID, inboundTurnInput(ctx, text))
 		release()
@@ -82,19 +81,18 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 			c.requests.CancelSession(session.ID)
 			release()
 			timeout := c.waitPolicy.WaitTimeout(ctx)
-			c.output.SendChat(ctx, appendConfirmPromptText(timeout))
+			err := c.output.SendChat(ctx, appendConfirmPromptText(timeout))
 			go func() {
 				defer finishWait()
 				if wait.Wait(waitCtx, timeout) {
-					c.output.SendChat(waitCtx, "追加确认已过期，待追加内容已丢弃，本轮处理已停止。")
+					_ = c.output.SendChat(waitCtx, "追加确认已过期，待追加内容已丢弃，本轮处理已停止。")
 				}
 			}()
-			return inputHandled, nil
+			return inputHandled, err
 		case turn.PhaseTool:
 			c.turns.AppendPendingInput(session.ID, inboundTurnInput(ctx, text))
 			release()
-			c.output.SendChat(ctx, "已追加，将在当前流程下一次模型调用时带上。发送 /stop 可打断当前流程。")
-			return inputHandled, nil
+			return inputHandled, c.output.SendChat(ctx, "已追加，将在当前流程下一次模型调用时带上。发送 /stop 可打断当前流程。")
 		default:
 			release()
 			err = c.Run(ctx, session, text, foregroundTurnOutput{sender: c.output})

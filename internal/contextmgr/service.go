@@ -83,9 +83,6 @@ func (s *Service) RecordUsage(ctx context.Context, id string, usage *llm.Usage) 
 	s.mu.Lock()
 	s.lastUsage[id] = usage
 	s.mu.Unlock()
-	if s.store == nil {
-		return nil
-	}
 	_, err := s.store.Sessions().Mutate(ctx, id, func(row *storage.Session) error {
 		if _, err := DecodeState(row.Metadata); err != nil {
 			return err
@@ -131,9 +128,6 @@ func (r *Service) Status(ctx context.Context, usage *llm.Usage, selection config
 
 	window := r.models.Resolve(selection).ContextWindow(ctx)
 	threshold := ctxCfg.CompactTriggerRatio
-	if threshold == 0 {
-		threshold = 0.8
-	}
 	var sb strings.Builder
 	sb.WriteString("  ")
 	sb.WriteString(FormatTokens(usage))

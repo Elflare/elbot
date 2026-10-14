@@ -26,7 +26,7 @@ func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 		observed = append(observed, e)
 		return nil
 	}, signal.ConnectOptions{})
-	r := &StatusRecorder{turns: turns, changed: events}
+	r := NewStatusRecorder(StatusRecorderDeps{Turns: turns, Changed: events})
 	old, current := turn.NewExecution("old"), turn.NewExecution("current")
 	oldCtx := turn.WithAttempt(turn.WithExecution(context.Background(), old), "old-attempt")
 	ctx := turn.WithAttempt(turn.WithExecution(context.Background(), current), "current-attempt")
@@ -95,7 +95,7 @@ func TestReplyFactsPreservePartialSuccessAndReceiptSnapshot(t *testing.T) {
 	}
 	defer connection.Disconnect()
 	result, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-	if err == nil || !result.Persisted || result.SendErr == nil || len(result.AssociationErrors) != 1 || len(records) != 1 || records[0].EventName != "reply_delivered" {
+	if err == nil || result.Persisted || result.SendErr == nil || !errors.Is(result.PersistErr, f.repo.mapErr) || len(records) != 1 || records[0].EventName != "reply_delivered" {
 		t.Fatalf("partial facts lost: %+v / %+v / %v", result, records, err)
 	}
 	f.platform.receipt.PlatformMessageIDs[0] = "changed"

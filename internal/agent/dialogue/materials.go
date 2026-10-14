@@ -35,9 +35,6 @@ func (p *Preparer) ArchiveMaterials(ctx context.Context, messages []llm.LLMMessa
 				out[i].Segments[j].URL = ""
 				continue
 			}
-			if p == nil || p.Media == nil {
-				return nil, fmt.Errorf("media center is required to archive media")
-			}
 			imported, err := p.Media.Materialize(ctx, []llm.MessageSegment{segment})
 			if err != nil {
 				return nil, err
@@ -54,16 +51,6 @@ func (p *Preparer) ArchiveMaterials(ctx context.Context, messages []llm.LLMMessa
 func (p *Preparer) PrepareMaterials(ctx context.Context, messages []llm.LLMMessage) ([]llm.LLMMessage, func(), error) {
 	if err := ctx.Err(); err != nil {
 		return nil, func() {}, err
-	}
-	if p == nil || p.Media == nil {
-		for _, message := range messages {
-			for _, segment := range message.Segments {
-				if segment.MediaID != "" {
-					return nil, func() {}, fmt.Errorf("media center is required to prepare media")
-				}
-			}
-		}
-		return llm.CloneMessages(messages), func() {}, nil
 	}
 	resolved, release, err := p.Media.AcquireForLLM(ctx, messages)
 	if err != nil {
@@ -91,17 +78,34 @@ func (p *Preparer) PrepareMaterials(ctx context.Context, messages []llm.LLMMessa
 }
 
 // MessageFromStorage is the sole projection of archived business messages.
-func MessageFromStorage(row storage.Message) llm.LLMMessage {
-	segments := MessageSegmentsFromStorage(row.Segments)
-	metadata := AssistantMessageMetadata(row.Metadata)
+func MessageFromStorage(row storage.Message) (llm.LLMMessage, error) {
+	segments, err := MessageSegmentsFromStorage(row.Segments)
+	if err != nil {
+		return llm.LLMMessage{}, fmt.Errorf("message %s segments: %w", row.ID, err)
+	}
+	message := llm.LLMMessage{Role: llm.MessageRole(row.Role), ToolCallID: row.ToolCallID}
 	text := row.Content
-	if row.Role == storage.RoleAssistant && metadata.RawText != "" {
-		text = metadata.RawText
+	switch row.Role {
+	case storage.RoleAssistant:
+		metadata, err := AssistantMessageMetadata(row.Metadata)
+		if err != nil {
+			return llm.LLMMessage{}, fmt.Errorf("message %s metadata: %w", row.ID, err)
+		}
+		if metadata.RawText != "" {
+			text = metadata.RawText
+		}
+		message.ToolCalls = metadata.ToolCalls
+	case storage.RoleTool:
+		message.Name, err = ToolNameFromMetadata(row.Metadata)
+		if err != nil {
+			return llm.LLMMessage{}, fmt.Errorf("message %s metadata: %w", row.ID, err)
+		}
 	}
 	if len(segments) == 0 {
 		segments = llm.TextSegments(text)
 	}
-	return llm.LLMMessage{Role: llm.MessageRole(row.Role), Segments: segments, Name: ToolNameFromMetadata(row.Metadata), ToolCallID: row.ToolCallID, ToolCalls: metadata.ToolCalls}
+	message.Segments = segments
+	return message, nil
 }
 
 // MaterialMediaIDs collects retention references without opening media entities.

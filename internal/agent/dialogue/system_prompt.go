@@ -36,9 +36,6 @@ func NewSystemPromptManager(sources ...SystemPromptSource) SystemPromptManager {
 }
 
 func (m *SystemPromptManager) AddSource(source SystemPromptSource) {
-	if source == nil {
-		return
-	}
 	m.sources = append(m.sources, source)
 }
 

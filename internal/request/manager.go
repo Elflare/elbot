@@ -56,11 +56,7 @@ func NewManager(defaultTimeout time.Duration) *Manager {
 	}
 }
 
-func (m *Manager) Start(parent context.Context, start StartRequest) (Request, context.Context, func(), error) {
-	if parent == nil {
-		parent = context.Background()
-	}
-
+func (m *Manager) Start(parent context.Context, start StartRequest) (Request, context.Context, func()) {
 	timeout := start.Timeout
 	if timeout == 0 {
 		timeout = m.defaultTimeout
@@ -114,7 +110,7 @@ func (m *Manager) Start(parent context.Context, start StartRequest) (Request, co
 		m.finish(req.ID, false)
 	}()
 
-	return req, ctx, done, nil
+	return req, ctx, done
 }
 
 func (m *Manager) List() []Request {

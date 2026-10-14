@@ -38,10 +38,17 @@ func (p *statusReadingPlatform) SetRuntimeStatus(_ context.Context, sent runtime
 }
 
 func TestComponentStatusCommittedBeforeObserversAndCancellation(t *testing.T) {
-	recorder := &StatusRecorder{changed: signal.New[agentevents.StatusChangedEvent, signal.Empty]("test.status")}
+	turns := turn.NewManager()
+	contexts := map[string]context.Context{}
+	for _, id := range []string{"s1", "s2", "s3"} {
+		execution := turn.NewExecution(id)
+		contexts[id] = turn.WithAttempt(turn.WithExecution(t.Context(), execution), "attempt")
+		turns.StartExecution(id, turn.Input{}, execution, "attempt")
+	}
+	recorder := NewStatusRecorder(StatusRecorderDeps{Turns: turns, Changed: signal.New[agentevents.StatusChangedEvent, signal.Empty]("test.status")})
 	t.Cleanup(func() { _ = recorder.changed.Close(context.Background()) })
 	started := time.Now()
-	recorder.Record(context.Background(), runtimestatus.Snapshot{SessionID: "s1", Model: "model", TurnStartedAt: started, Phase: runtimestatus.PhaseLLM})
+	recorder.Record(contexts["s1"], runtimestatus.Snapshot{SessionID: "s1", Model: "model", TurnStartedAt: started, Phase: runtimestatus.PhaseLLM})
 	p := &statusReadingPlatform{recorder: recorder, observed: make(chan runtimestatus.Snapshot, 1)}
 	connection, err := recorder.changed.Observe(func(ctx context.Context, event agentevents.StatusChangedEvent) error {
 		if ctx.Err() != nil {
@@ -52,7 +59,7 @@ func TestComponentStatusCommittedBeforeObserversAndCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(contexts["s1"])
 	cancel()
 	recorder.Record(ctx, runtimestatus.Snapshot{SessionID: "s1", Phase: runtimestatus.PhaseDone})
 	got := <-p.observed
@@ -69,7 +76,7 @@ func TestComponentStatusCommittedBeforeObserversAndCancellation(t *testing.T) {
 	for _, id := range []string{"s1", "s2", "s3"} {
 		wg.Go(func() {
 			for range 30 {
-				recorder.Record(context.Background(), runtimestatus.Snapshot{SessionID: id, Phase: runtimestatus.PhaseLLM})
+				recorder.Record(contexts[id], runtimestatus.Snapshot{SessionID: id, Phase: runtimestatus.PhaseLLM})
 				_ = recorder.Snapshot(id)
 			}
 		})

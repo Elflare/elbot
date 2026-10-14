@@ -89,6 +89,8 @@ type DialogueCommit struct {
 	Messages  []*Message
 	ToolBatch *ToolBatch
 	Native    *NativeCommit
+	// PlatformMessageMaps are committed atomically with messages and native state.
+	PlatformMessageMaps []PlatformMessageMap
 }
 
 func (c DialogueCommit) MessageRows() []*Message {

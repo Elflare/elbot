@@ -76,9 +76,6 @@ type ResidentMemorySystemPromptSource struct {
 }
 
 func (s ResidentMemorySystemPromptSource) Parts(ctx context.Context, req SystemPromptRequest) ([]SystemPromptPart, error) {
-	if s.Store == nil {
-		return nil, nil
-	}
 	memory, err := s.Store.Read(ctx, req.Scope)
 	if errors.Is(err, resident.ErrNotFound) {
 		return nil, nil
@@ -94,9 +91,6 @@ func (s ResidentMemorySystemPromptSource) Parts(ctx context.Context, req SystemP
 }
 
 func (s SoulSystemPromptSource) Parts(ctx context.Context, req SystemPromptRequest) ([]SystemPromptPart, error) {
-	if s.Soul == nil {
-		return nil, nil
-	}
 	mode := req.Mode
 	if mode == "" {
 		mode = storage.SessionModeWork
@@ -127,7 +121,7 @@ func (BackgroundPathsSystemPromptSource) Parts(ctx context.Context, _ SystemProm
 }
 
 func (s ToolNamesSystemPromptSource) Parts(ctx context.Context, req SystemPromptRequest) ([]SystemPromptPart, error) {
-	if s.Tools == nil || req.Session == nil {
+	if req.Session == nil {
 		return nil, nil
 	}
 	if sandbox, ok := sandboxctx.SandboxContextFromContext(ctx); ok && sandbox.Background {

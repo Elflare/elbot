@@ -135,7 +135,11 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in dialogue
 	}
 	s.projection = []llm.LLMMessage{{Role: llm.RoleSystem, Segments: llm.TextSegments(instructions)}}
 	for _, row := range p.materials.Loaded.Messages {
-		s.projection = append(s.projection, dialogue.MessageFromStorage(row))
+		projected, err := dialogue.MessageFromStorage(row)
+		if err != nil {
+			return nil, err
+		}
+		s.projection = append(s.projection, projected)
 	}
 	user := p.materials.UserMessage
 	s.projection = append(s.projection, llm.LLMMessage{Role: llm.RoleUser, Segments: p.materials.Input.Segments})
@@ -170,11 +174,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 	result := dialogue.LoopResult{Selection: in.Selection}
 	fail := func(err error) dialogue.LoopResult {
 		result.Outcome = dialogue.Failed
-		if s.requestCtx.Err() != nil {
-			result.Outcome, result.QuietCancellation = dialogue.Canceled, true
-		}
 		result.Err = err
-		result.QuietCancellation = s.requestCtx.Err() != nil
 		return result
 	}
 	if err := s.closeInterruptedCalls(s.requestCtx); err != nil {
@@ -231,7 +231,10 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 				s.projection = append(s.projection, llm.LLMMessage{Role: llm.RoleUser, Segments: pending.Segments})
 			}
 		}
-		stream := out.StartStream(s.requestCtx)
+		stream, err := out.StartStream(s.requestCtx)
+		if err != nil {
+			return fail(err)
+		}
 		s.route.Status.Record(s.ctx, runtimestatus.Snapshot{
 			SessionID:      s.session.ID,
 			Phase:          runtimestatus.PhaseLLM,
@@ -295,10 +298,14 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 				Role:      storage.RoleUser,
 				Content:   "已达到工具调用轮数上限，请根据已有结果总结当前进度，不再调用工具。",
 			}
-			if _, err := (inputCommitter{state: s}).Commit(s.requestCtx, summaryInput); err != nil {
+			if _, err := (inputCommitter{state: s}).Commit(s.requestCtx, summaryInput, nil); err != nil {
 				return fail(err)
 			}
-			s.projection = append(s.projection, dialogue.MessageFromStorage(*summaryInput))
+			projected, err := dialogue.MessageFromStorage(*summaryInput)
+			if err != nil {
+				return fail(err)
+			}
+			s.projection = append(s.projection, projected)
 			pending = dialogue.DrainPending(s.route.Turns, s.session.ID, turn.AttemptFromContext(s.ctx))
 			if pending != nil {
 				pending.MessageIndex = len(s.projection)
@@ -306,7 +313,10 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			}
 			// The next request retains all calls and their explicit skip outputs.
 			// It sends no tools, so another function call is a provider error.
-			summaryStream := out.StartStream(s.requestCtx)
+			summaryStream, err := out.StartStream(s.requestCtx)
+			if err != nil {
+				return fail(err)
+			}
 			summary, err := s.call(s.requestCtx, pending, summaryStream)
 			if err != nil {
 				return fail(err)
@@ -352,10 +362,14 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		}
 		if execution.ConfirmationExtra != "" {
 			message := &storage.Message{ID: storage.NewID(), SessionID: s.session.ID, Role: storage.RoleUser, Content: "补充：" + execution.ConfirmationExtra}
-			if _, err := (inputCommitter{state: s}).Commit(s.requestCtx, message); err != nil {
+			if _, err := (inputCommitter{state: s}).Commit(s.requestCtx, message, nil); err != nil {
 				return fail(err)
 			}
-			s.projection = append(s.projection, dialogue.MessageFromStorage(*message))
+			projected, err := dialogue.MessageFromStorage(*message)
+			if err != nil {
+				return fail(err)
+			}
+			s.projection = append(s.projection, projected)
 		}
 		s.tools, err = s.route.Tools.Schemas(s.requestCtx, s.session)
 		if err != nil {
@@ -364,31 +378,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 	}
 }
 
-func NewLoop(deps LoopDeps) (*Loop, error) {
-	if deps.Status == nil {
-		return nil, fmt.Errorf("Status is required")
-	}
-	if deps.Repository == nil {
-		return nil, fmt.Errorf("Repository is required")
-	}
-	if deps.Models == nil {
-		return nil, fmt.Errorf("Models is required")
-	}
-	if deps.Turns == nil {
-		return nil, fmt.Errorf("Turns is required")
-	}
-	if deps.Preparer == nil {
-		return nil, fmt.Errorf("Preparer is required")
-	}
-	if deps.Tools == nil {
-		return nil, fmt.Errorf("Tools is required")
-	}
-	if deps.Messages == nil {
-		return nil, fmt.Errorf("Messages is required")
-	}
-	if deps.Calls == nil {
-		return nil, fmt.Errorf("Calls is required")
-	}
+func NewLoop(deps LoopDeps) *Loop {
 	nativeContext := &Context{Repository: deps.Repository, Preparer: deps.Preparer}
 	return &Loop{
 		Status:     deps.Status,
@@ -403,7 +393,7 @@ func NewLoop(deps LoopDeps) (*Loop, error) {
 		Messages:   deps.Messages,
 		Calls:      deps.Calls,
 		System:     deps.System,
-	}, nil
+	}
 }
 
 func (r *Loop) Compactor() contextmgr.Compactor    { return r.compactor }
