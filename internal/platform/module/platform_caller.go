@@ -18,7 +18,7 @@ func (r platformCallerResolver) PlatformCaller(name string) (elvena.PlatformAPIC
 		return nil, false
 	}
 	for _, runtime := range r.runtimes {
-		if runtime == nil || runtime.Name() != name {
+		if runtime.Name() != name {
 			continue
 		}
 		caller, ok := runtime.(elvena.PlatformAPICaller)
@@ -37,7 +37,7 @@ func (r hookPlatformCallerResolver) PlatformCaller(name string) (rules.PlatformA
 		return nil, false
 	}
 	for _, runtime := range r.runtimes {
-		if runtime == nil || runtime.Name() != name {
+		if runtime.Name() != name {
 			continue
 		}
 		caller, ok := runtime.(rules.PlatformAPICaller)

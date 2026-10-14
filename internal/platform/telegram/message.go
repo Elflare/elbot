@@ -55,9 +55,6 @@ func normalizeMessage(msg message) normalizedMessage {
 			out.Text = "[文件]"
 		}
 	}
-	if len(out.Segments) == 0 && out.Text != "" {
-		out.Segments = append(out.Segments, platform.MessageSegment{Type: platform.SegmentText, Text: out.Text})
-	}
 	return out
 }
 
@@ -134,10 +131,10 @@ func mentionsFromText(text string) []platform.Mention {
 	return mentions
 }
 
-func (a *Adapter) referenceFetcher(msg message, normalized normalizedMessage) func(context.Context, string) (refcontext.ReferencedMessage, bool) {
-	return func(ctx context.Context, replyID string) (refcontext.ReferencedMessage, bool) {
+func (a *Adapter) referenceFetcher(msg message, normalized normalizedMessage) func(context.Context, string) (refcontext.ReferencedMessage, bool, error) {
+	return func(ctx context.Context, replyID string) (refcontext.ReferencedMessage, bool, error) {
 		if normalized.ReplyMessage == nil || normalized.ReplyID != strings.TrimSpace(replyID) {
-			return refcontext.ReferencedMessage{}, false
+			return refcontext.ReferencedMessage{}, false, nil
 		}
 		ref := normalizeMessage(*normalized.ReplyMessage)
 		label := "引用"
@@ -146,12 +143,12 @@ func (a *Adapter) referenceFetcher(msg message, normalized normalizedMessage) fu
 			senderName = displayName(*normalized.ReplyMessage.From)
 			label = "引用：" + senderName
 		}
-		return refcontext.ReferencedMessage{SenderID: userIDString(normalized.ReplyMessage.From), SenderName: senderName, Label: label, Text: ref.Text, Segments: appendNonTextSegments(nil, ref.Segments)}, true
+		return refcontext.ReferencedMessage{SenderID: userIDString(normalized.ReplyMessage.From), SenderName: senderName, Label: label, Text: ref.Text, Segments: appendNonTextSegments(nil, ref.Segments)}, true, nil
 	}
 }
 
 func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized normalizedMessage, reply platform.ReplyContext) {
-	if a.chatHistory == nil || (strings.TrimSpace(normalized.Text) == "" && len(normalized.Segments) == 0) || msg.MessageID == 0 {
+	if (strings.TrimSpace(normalized.Text) == "" && len(normalized.Segments) == 0) || msg.MessageID == 0 {
 		return
 	}
 	createdAt := storage.Now()

@@ -35,7 +35,10 @@ func TestForwardReferenceReadsMessageNodeBodies(t *testing.T) {
 			return response{Status: "failed", Retcode: 1}
 		}
 	})
-	got := a.expandForwardReference(Event{})(context.Background(), "123", refcontext.ReferencedMessage{Text: "[forward]"})
+	got, err := a.expandForwardReference(Event{})(context.Background(), "123", refcontext.ReferencedMessage{Text: "[forward]"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if text := forwardSegmentsForTest(got); text != twoTextForwardDisplay {
 		t.Fatalf("display=%q, want %q", text, twoTextForwardDisplay)
 	}
@@ -48,7 +51,7 @@ func TestPrivateForwardExpandsWithoutReference(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer history.Close()
-	a := New(Config{}, nil, history.Repository())
+	a := newTestAdapter(t, Config{}, nil, history.Repository())
 	calls := 0
 	a.transport = newTestTransport(t, func(req request) response {
 		calls++
@@ -107,7 +110,7 @@ func TestForwardNodeBodyFields(t *testing.T) {
 func TestPrivateForwardMixedContentAndReferences(t *testing.T) {
 	for _, reference := range []string{"none", "ordinary", "forward"} {
 		t.Run(reference, func(t *testing.T) {
-			a := New(Config{}, nil, nil)
+			a := newTestAdapter(t, Config{}, nil, nil)
 			calls := map[string]int{}
 			a.transport = newTestTransport(t, func(req request) response {
 				if req.Action == "get_msg" && reference != "none" {
@@ -126,8 +129,8 @@ func TestPrivateForwardMixedContentAndReferences(t *testing.T) {
 				switch resource {
 				case "current":
 					return response{Data: []byte(`{"messages":[{"sender":{"nickname":"节点"},"message":[{"type":"text","data":{"text":"节点前\n"}},{"type":"image","data":{"file":"inside"}},{"type":"text","data":{"text":"节点后"}},{"type":"forward","data":{"id":"nested"}},{"type":"record","data":{"file":"voice"}}]}]}`)}
-				case "failed":
-					return response{Status: "failed", Retcode: 1}
+				case "empty":
+					return response{Data: []byte(`{"messages":[]}`)}
 				case "quoted":
 					return response{Data: []byte(`{"messages":[{"message":[{"type":"text","data":{"text":"引用正文"}}]}]}`)}
 				default:
@@ -135,7 +138,7 @@ func TestPrivateForwardMixedContentAndReferences(t *testing.T) {
 					return response{Status: "failed", Retcode: 1}
 				}
 			})
-			raw := `[{"type":"text","data":{"text":"外层前\n"}},{"type":"forward","data":{"id":"current"}},{"type":"text","data":{"text":"中间"}},{"type":"forward","data":{"id":"failed"}},{"type":"image","data":{"file":"outside"}},{"type":"text","data":{"text":"外层后"}}]`
+			raw := `[{"type":"text","data":{"text":"外层前\n"}},{"type":"forward","data":{"id":"current"}},{"type":"text","data":{"text":"中间"}},{"type":"forward","data":{"id":"empty"}},{"type":"image","data":{"file":"outside"}},{"type":"text","data":{"text":"外层后"}}]`
 			if reference != "none" {
 				raw = `[{"type":"reply","data":{"id":"42"}},` + raw[1:]
 			}
@@ -152,7 +155,7 @@ func TestPrivateForwardMixedContentAndReferences(t *testing.T) {
 			if got := forwardSegmentsForTest(msg.ContextSegments); got != want {
 				t.Fatalf("display=%q want=%q", got, want)
 			}
-			if calls["current"] != 1 || calls["failed"] != 1 || calls["nested"] != 0 {
+			if calls["current"] != 1 || calls["empty"] != 1 || calls["nested"] != 0 {
 				t.Fatalf("forward calls=%v", calls)
 			}
 			if reference == "forward" && calls["quoted"] != 1 {
@@ -187,7 +190,7 @@ func TestPrivateForwardKeepsAssistantResumeAndFork(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	a := New(Config{}, store, nil)
+	a := newTestAdapter(t, Config{}, store, nil)
 	a.transport = newTestTransport(t, func(req request) response {
 		if req.Action == "get_forward_msg" {
 			return response{Data: []byte(twoTextForwardResponse)}
@@ -215,7 +218,7 @@ func TestPrivateForwardTextAndCommandsDoNotFetch(t *testing.T) {
 		`[{"type":"text","data":{"text":"[forward]"}}]`,
 		`[{"type":"text","data":{"text":"/new "}},{"type":"forward","data":{"id":"resource"}}]`,
 	} {
-		a := New(Config{}, nil, nil)
+		a := newTestAdapter(t, Config{}, nil, nil)
 		a.transport = newTestTransport(t, func(req request) response {
 			t.Errorf("unexpected API %s", req.Action)
 			return response{Status: "failed", Retcode: 1}

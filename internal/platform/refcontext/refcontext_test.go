@@ -12,14 +12,17 @@ import (
 )
 
 func TestApplyFallsBackToReferencedText(t *testing.T) {
-	result := Apply(context.Background(), Options{
+	result, err := Apply(context.Background(), Options{Store: newRefTestStore(t), ChatHistory: newRefTestHistory(t),
 		Platform: "qqonebot",
 		ReplyID:  "notice-1",
 		Text:     "说：收到",
-		Fetch: func(context.Context, string) (ReferencedMessage, bool) {
-			return ReferencedMessage{SenderID: "123456", SenderName: "通知", Label: "引用：通知", Text: "已保存附件：attachment-1", Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "已保存附件：attachment-1"}}}, true
+		Fetch: func(context.Context, string) (ReferencedMessage, bool, error) {
+			return ReferencedMessage{SenderID: "123456", SenderName: "通知", Label: "引用：通知", Text: "已保存附件：attachment-1", Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "已保存附件：attachment-1"}}}, true, nil
 		},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	want := "[引用#notice-1：通知(qq:123456):已保存附件：attachment-1]\n\n说：收到"
 	if result.Text != want {
 		t.Fatalf("text = %q, want %q", result.Text, want)
@@ -36,7 +39,10 @@ func TestApplyForksOwnOlderAssistantReference(t *testing.T) {
 	first, _ := createAssistantMessages(t, ctx, store, scope)
 	mapPlatformMessage(t, ctx, store, scope, "p-old", first)
 
-	result := Apply(ctx, Options{Store: store, Platform: "qqofficial", ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-old", Text: "继续"})
+	result, err := Apply(ctx, Options{ChatHistory: newRefTestHistory(t), Store: store, Platform: "qqofficial", ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-old", Text: "继续"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if result.ForkFromMessageID != first.ID || result.ResumeSessionID != "" {
 		t.Fatalf("fork = %q, want %q", result.ForkFromMessageID, first.ID)
 	}
@@ -52,7 +58,10 @@ func TestApplyLatestOwnAssistantReferenceResumes(t *testing.T) {
 	_, latest := createAssistantMessages(t, ctx, store, scope)
 	mapPlatformMessage(t, ctx, store, scope, "p-latest", latest)
 
-	result := Apply(ctx, Options{Store: store, Platform: "qqofficial", ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-latest", Text: "继续"})
+	result, err := Apply(ctx, Options{ChatHistory: newRefTestHistory(t), Store: store, Platform: "qqofficial", ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-latest", Text: "继续"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if result.ResumeSessionID != latest.SessionID || result.ForkFromMessageID != "" {
 		t.Fatalf("result = %#v, want resume %q", result, latest.SessionID)
 	}
@@ -75,7 +84,10 @@ func TestApplySuperadminBackgroundReferenceResumes(t *testing.T) {
 	}
 	mapPlatformMessage(t, ctx, store, scope, "p-bg", msg)
 
-	result := Apply(ctx, Options{Store: store, Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, IsSuperadmin: true, ReplyID: "p-bg", Text: "继续"})
+	result, err := Apply(ctx, Options{ChatHistory: newRefTestHistory(t), Store: store, Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, IsSuperadmin: true, ReplyID: "p-bg", Text: "继续"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if result.ResumeSessionID != bg.ID {
 		t.Fatalf("resume = %q, want %q", result.ResumeSessionID, bg.ID)
 	}
@@ -98,7 +110,10 @@ func TestApplyUserBackgroundReferenceFallsBack(t *testing.T) {
 	}
 	mapPlatformMessage(t, ctx, store, scope, "p-bg-user", msg)
 
-	result := Apply(ctx, Options{Store: store, Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-bg-user", Text: "继续"})
+	result, err := Apply(ctx, Options{ChatHistory: newRefTestHistory(t), Store: store, Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-bg-user", Text: "继续"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	want := "[引用#p-bg-user：bot:report]\n\n继续"
 	if result.Text != want {
 		t.Fatalf("text = %q, want %q", result.Text, want)
@@ -115,7 +130,10 @@ func TestApplyOtherSessionAssistantReferenceFallsBack(t *testing.T) {
 	msg, _ := createAssistantMessages(t, ctx, store, otherScope)
 	mapPlatformMessage(t, ctx, store, otherScope, "p-other", msg)
 
-	result := Apply(ctx, Options{Store: store, Platform: "qqofficial", ScopeID: otherScope.PlatformScopeID, ActorID: "qqofficial:user-1", ReplyID: "p-other", Text: "继续"})
+	result, err := Apply(ctx, Options{ChatHistory: newRefTestHistory(t), Store: store, Platform: "qqofficial", ScopeID: otherScope.PlatformScopeID, ActorID: "qqofficial:user-1", ReplyID: "p-other", Text: "继续"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	want := "[引用#p-other：bot:old]\n\n继续"
 	if result.Text != want {
 		t.Fatalf("text = %q, want %q", result.Text, want)
@@ -134,7 +152,10 @@ func TestApplyOtherScopeAssistantReferenceFallsBack(t *testing.T) {
 	msg, _ := createAssistantMessages(t, ctx, store, otherScope)
 	mapPlatformMessage(t, ctx, store, currentScope, "p-other-scope", msg)
 
-	result := Apply(ctx, Options{Store: store, Platform: currentScope.Platform, ScopeID: currentScope.PlatformScopeID, ActorID: currentScope.ActorID, ReplyID: "p-other-scope", Text: "继续"})
+	result, err := Apply(ctx, Options{ChatHistory: newRefTestHistory(t), Store: store, Platform: currentScope.Platform, ScopeID: currentScope.PlatformScopeID, ActorID: currentScope.ActorID, ReplyID: "p-other-scope", Text: "继续"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	want := "[引用#p-other-scope：bot:old]\n\n继续"
 	if result.Text != want || result.ResumeSessionID != "" || result.ForkFromMessageID != "" {
 		t.Fatalf("result = %#v, want fallback %q", result, want)
@@ -148,7 +169,10 @@ func TestApplyForkCommandUsesReferencedAssistantID(t *testing.T) {
 	msg, _ := createAssistantMessages(t, ctx, store, scope)
 	mapPlatformMessage(t, ctx, store, scope, "p-old", msg)
 
-	result := Apply(ctx, Options{Store: store, Platform: "qqofficial", ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-old", Text: "/fork", CommandPrefixes: []string{"/"}})
+	result, err := Apply(ctx, Options{ChatHistory: newRefTestHistory(t), Store: store, Platform: "qqofficial", ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-old", Text: "/fork", CommandPrefixes: []string{"/"}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	want := "/fork " + msg.ID
 	if result.Text != want {
 		t.Fatalf("text = %q, want %q", result.Text, want)
@@ -215,4 +239,14 @@ func newRefTestStore(t *testing.T) storage.Store {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	return store
+}
+
+func newRefTestHistory(t *testing.T) storage.ChatHistoryRepository {
+	t.Helper()
+	history, err := sqlite.NewChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = history.Close() })
+	return history.Repository()
 }

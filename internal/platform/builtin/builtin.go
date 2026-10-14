@@ -55,7 +55,7 @@ func New(opts Options, cfg *config.Config, store storage.Store, chatHistory stor
 		bundle.Primary = cliAdapter
 		bundle.Runtimes = append(bundle.Runtimes, cliAdapter)
 	}
-	if cfg != nil && mode == ModeService {
+	if mode == ModeService {
 		cliCfg, err := cli.NewConfigFromPlatformConfig(cfg.Platform["cli"])
 		if err != nil {
 			return Bundle{}, err
@@ -68,7 +68,7 @@ func New(opts Options, cfg *config.Config, store storage.Store, chatHistory stor
 			bundle.Runtimes = append(bundle.Runtimes, adapter)
 		}
 	}
-	if cfg == nil || mode == ModeCLIOnly {
+	if mode == ModeCLIOnly {
 		return bundle, nil
 	}
 	if raw, ok := cfg.Platform["qqofficial"]; ok {

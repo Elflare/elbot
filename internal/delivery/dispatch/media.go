@@ -18,15 +18,6 @@ import (
 func (a *Router) prepareMediaOutputs(ctx context.Context, outputs []delivery.Output) ([]delivery.Output, globalevents.LogResult, error) {
 	// The owning delivery.Manager validates outputs before entering rawSender.
 	prepared := append([]delivery.Output(nil), outputs...)
-	if a.media == nil {
-		for _, out := range prepared {
-			if out.Source.MediaID != "" {
-				err := fmt.Errorf("media center is not configured")
-				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
-			}
-		}
-		return prepared, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
-	}
 	for i, out := range prepared {
 		if out.Kind != delivery.KindImage && out.Kind != delivery.KindFile && out.Kind != delivery.KindRecord {
 			continue
@@ -145,7 +136,7 @@ func (a *Router) sendPreparedMedia(ctx context.Context, outputs []delivery.Outpu
 }
 
 func (a *Router) cacheMediaReceipt(ctx context.Context, outputs []delivery.Output, receipt delivery.Receipt) error {
-	if a.store == nil || a.store.Media() == nil || a.mediaRetentionDays <= 0 {
+	if a.mediaRetentionDays <= 0 {
 		return nil
 	}
 	sent := receipt.SentMessages
@@ -160,9 +151,6 @@ func (a *Router) cacheMediaReceipt(ctx context.Context, outputs []delivery.Outpu
 		}
 		segmentIndex := 0
 		for _, outputIndex := range message.OutputIndexes {
-			if outputIndex < 0 || outputIndex >= len(outputs) {
-				continue
-			}
 			out := outputs[outputIndex]
 			if out.Source.MediaID == "" || !isMediaOutputKind(out.Kind) {
 				continue

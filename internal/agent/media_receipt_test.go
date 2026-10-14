@@ -16,7 +16,7 @@ func TestMediaReceiptDoesNotGuessFallbackOrRetryCacheFailure(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	root := t.TempDir()
-	router := dispatch.New(dispatch.Options{Store: store, Media: media.NewManager(store, root, &media.LocalBackend{Root: root}), MediaRetentionDays: 7})
+	router := dispatch.New(dispatch.Options{Primary: &fakePlatform{}, Store: store, Media: media.NewManager(store, root, &media.LocalBackend{Root: root}), MediaRetentionDays: 7})
 	outputs := []delivery.Output{{Kind: delivery.KindImage, Source: delivery.Source{Data: []byte("image")}}}
 	sender := mediaSendFunc(func([]delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		return delivery.Receipt{PlatformMessageIDs: []string{"fallback"}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil

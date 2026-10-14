@@ -39,22 +39,31 @@ func TestReferenceMediaOutputHistoryAndFallbackPriority(t *testing.T) {
 		}
 	}
 	calls := 0
-	opts := Options{Store: store, ChatHistory: history.Repository(), Platform: "telegram", ScopeID: "group:9", Text: "看看", Fetch: func(context.Context, string) (ReferencedMessage, bool) {
+	opts := Options{Store: store, ChatHistory: history.Repository(), Platform: "telegram", ScopeID: "group:9", Text: "看看", Fetch: func(context.Context, string) (ReferencedMessage, bool, error) {
 		calls++
-		return ReferencedMessage{Segments: raw}, true
+		return ReferencedMessage{Segments: raw}, true, nil
 	}}
 	opts.ReplyID = "output"
-	got := Apply(ctx, opts)
+	got, err := Apply(ctx, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if calls != 0 || len(got.ReferenceSegments) != 3 || got.ReferenceSegments[0].MediaID != item.ID || got.ReferenceSegments[1].Type != platform.SegmentFile || got.ReferenceSegments[2].MediaID != item.ID {
 		t.Fatalf("output priority = %#v, calls=%d", got, calls)
 	}
 	opts.ReplyID = "history"
-	got = Apply(ctx, opts)
+	got, err = Apply(ctx, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if calls != 0 || len(got.ReferenceSegments) != 3 || got.ReferenceSegments[0].PlatformFileID != "raw-image" || got.ReferenceSegments[1].PlatformFileID != "raw-file" || got.ReferenceSegments[2] != got.ReferenceSegments[0] {
 		t.Fatalf("history order = %#v, calls=%d", got, calls)
 	}
 	opts.ReplyID = "missing"
-	got = Apply(ctx, opts)
+	got, err = Apply(ctx, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if calls != 1 || len(got.ReferenceSegments) != 3 {
 		t.Fatalf("platform fallback = %#v, calls=%d", got, calls)
 	}
@@ -68,21 +77,30 @@ func TestLatestAssistantResumesWithoutMediaAndOlderForkRestores(t *testing.T) {
 	mapPlatformMessage(t, ctx, store, scope, "old", first)
 	mapPlatformMessage(t, ctx, store, scope, "latest", latest)
 	calls := 0
-	opts := Options{Store: store, Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "latest", Text: "继续", Fetch: func(context.Context, string) (ReferencedMessage, bool) {
+	opts := Options{ChatHistory: newRefTestHistory(t), Store: store, Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "latest", Text: "继续", Fetch: func(context.Context, string) (ReferencedMessage, bool, error) {
 		calls++
-		return ReferencedMessage{Segments: []platform.MessageSegment{{Type: platform.SegmentImage, PlatformFileID: "image"}}}, true
+		return ReferencedMessage{Segments: []platform.MessageSegment{{Type: platform.SegmentImage, PlatformFileID: "image"}}}, true, nil
 	}}
-	got := Apply(ctx, opts)
+	got, err := Apply(ctx, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if calls != 0 || got.ResumeSessionID != latest.SessionID || got.Text != "继续" || len(got.ReferenceSegments) != 0 || len(got.Reply.Segments) != 0 || got.Reply.Text != "" {
 		t.Fatalf("latest injected reference = %#v", got)
 	}
 	opts.ReplyID = "old"
-	got = Apply(ctx, opts)
+	got, err = Apply(ctx, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if calls != 1 || got.ForkFromMessageID != first.ID || got.ResumeSessionID != "" || len(got.ReferenceSegments) != 1 || got.Text != "继续" {
 		t.Fatalf("older media fork = %#v", got)
 	}
 	opts.ReplyID = "latest"
-	got = Apply(ctx, opts)
+	got, err = Apply(ctx, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if calls != 1 || got.ResumeSessionID != latest.SessionID || got.ForkFromMessageID != "" || len(got.ReferenceSegments) != 0 || got.Text != "继续" {
 		t.Fatalf("same owner other session = %#v", got)
 	}
@@ -144,14 +162,17 @@ func TestReferenceHistoryRestoresStableMediaAssociations(t *testing.T) {
 	}
 
 	fetchCalls := 0
-	got := Apply(ctx, Options{
+	got, err := Apply(ctx, Options{
 		Store: store, ChatHistory: history.Repository(),
 		Platform: row.Platform, ScopeID: row.PlatformScopeID, ReplyID: row.PlatformMessageID,
-		Text: "看看", Fetch: func(context.Context, string) (ReferencedMessage, bool) {
+		Text: "看看", Fetch: func(context.Context, string) (ReferencedMessage, bool, error) {
 			fetchCalls++
-			return ReferencedMessage{}, false
+			return ReferencedMessage{}, false, nil
 		},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if fetchCalls != 0 {
 		t.Fatalf("platform fetch called %d times", fetchCalls)
 	}

@@ -173,7 +173,7 @@ func TestSendOutputsUsesSourceLogResult(t *testing.T) {
 				return businessReceipt, events.LogResult{ResultStatus: tc.status, Content: "source-specific diagnostic"}, tc.err
 			})
 			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Sender: backend})
-			sender := &OutputSender{dispatcher: dispatch.New(dispatch.Options{})}
+			sender := &OutputSender{dispatcher: dispatch.New(dispatch.Options{Primary: &fakePlatform{}})}
 			logResult, err := sender.SendOutputs(ctx, []delivery.Output{delivery.Text("business text")})
 			if err != tc.err || logResult.ResultStatus != tc.status || !strings.Contains(logResult.Content, "source-specific diagnostic") {
 				t.Fatalf("log result=%#v error=%v", logResult, err)

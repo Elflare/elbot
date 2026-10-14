@@ -2,62 +2,37 @@ package qqonebot
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
-	"errors"
-	"fmt"
-	"log/slog"
 	"strings"
 
-	globalevents "elbot/internal/events"
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
 )
 
 // expandForwardReference restores the original protocol segments for explicit
 // references. Private direct messages already have them and use expandForwardSegments.
-func (a *Adapter) expandForwardReference(event Event) func(context.Context, string, refcontext.ReferencedMessage) []platform.MessageSegment {
-	return func(ctx context.Context, replyID string, ref refcontext.ReferencedMessage) []platform.MessageSegment {
+func (a *Adapter) expandForwardReference(event Event) func(context.Context, string, refcontext.ReferencedMessage) ([]platform.MessageSegment, error) {
+	return func(ctx context.Context, replyID string, ref refcontext.ReferencedMessage) ([]platform.MessageSegment, error) {
 		hasForward := strings.Contains(ref.Text, "[forward]")
 		for _, segment := range ref.Segments {
 			hasForward = hasForward || (segment.Type == platform.SegmentText && strings.Contains(segment.Text, "[forward]"))
 		}
 		if !hasForward {
-			return nil
+			return nil, nil
 		}
 		if ref.CanonicalContent {
-			return []platform.MessageSegment{textSegment("<forward_message>\n" + ref.Text + "\n</forward_message>")}
-		}
-		fallback := append([]platform.MessageSegment(nil), ref.Segments...)
-		if len(fallback) == 0 {
-			fallback = []platform.MessageSegment{textSegment(ref.Text)}
-		}
-		if a.transport == nil {
-			return fallback
+			return []platform.MessageSegment{textSegment("<forward_message>\n" + ref.Text + "\n</forward_message>")}, nil
 		}
 		message, err := a.transport.GetMessage(ctx, replyID)
 		if err != nil {
-			{
-				record := globalevents.LogRecord{
-					Category:     globalevents.LogRuntime,
-					Level:        slog.LevelWarn,
-					EventName:    "fetch_forward_reference_failed",
-					Module:       "qq-onebot",
-					Type:         globalevents.ContentText,
-					Content:      fmt.Sprintf("fetch forward reference failed\nerror=%v", err),
-					ContentLimit: 4096,
-					ResultStatus: globalevents.ResultFailed,
-				}
-				if errors.Is(err, context.Canceled) {
-					record.ResultStatus = globalevents.ResultCanceled
-					record.Level = slog.LevelInfo
-				}
-				_ = globalevents.EmitLog(context.Background(), record)
-			}
-			return fallback
+			return nil, err
 		}
 		segments, ok := decodeMessageSegments(message.Message)
 		if !ok || len(segments) == 0 {
-			return fallback
+			fallback := append([]platform.MessageSegment(nil), ref.Segments...)
+			if len(fallback) == 0 {
+				fallback = []platform.MessageSegment{textSegment(ref.Text)}
+			}
+			return fallback, nil
 		}
 		return a.expandForwardSegments(ctx, segments, event.SelfID, ref.Segments)
 	}
@@ -65,13 +40,13 @@ func (a *Adapter) expandForwardReference(event Event) func(context.Context, stri
 
 // expandForwardSegments renders one layer without changing source media indexes.
 // Only actual protocol segments can supply a resource ID; literal text never does.
-func (a *Adapter) expandForwardSegments(ctx context.Context, segments []Segment, selfID int64, original []platform.MessageSegment) []platform.MessageSegment {
+func (a *Adapter) expandForwardSegments(ctx context.Context, segments []Segment, selfID int64, original []platform.MessageSegment) ([]platform.MessageSegment, error) {
 	found := false
 	for _, segment := range segments {
 		found = found || segment.Type == "forward"
 	}
 	if !found {
-		return nil
+		return nil, nil
 	}
 	var display []platform.MessageSegment
 	var originalMedia []platform.MessageSegment
@@ -99,54 +74,18 @@ func (a *Adapter) expandForwardSegments(ctx context.Context, segments []Segment,
 			continue
 		}
 		display = append(display, textSegment("<forward_message>\n"))
-		var content []platform.MessageSegment
-		if a.transport != nil {
-			nodes, err := a.transport.GetForwardMessage(ctx, segmentDataString(segment.Data, "id"))
-			if err == nil {
-				content = normalizeForwardNodes(nodes)
-			} else {
-				{
-					record := globalevents.LogRecord{
-						Category:     globalevents.LogRuntime,
-						Level:        slog.LevelWarn,
-						EventName:    "fetch_forward_content_failed",
-						Module:       "qq-onebot",
-						Type:         globalevents.ContentText,
-						Content:      fmt.Sprintf("fetch forward content failed\nerror=%v", err),
-						ContentLimit: 4096,
-						ResultStatus: globalevents.ResultFailed,
-					}
-					if errors.Is(err, context.Canceled) {
-						record.ResultStatus = globalevents.ResultCanceled
-						record.Level = slog.LevelInfo
-					}
-					facts, _ := contextinfo.ExecutionFromContext(ctx)
-					if facts.SessionID != "" {
-						record.Identity.SessionID = &facts.SessionID
-					}
-					if facts.RunID != "" {
-						record.Identity.RunID = &facts.RunID
-					}
-					if facts.Attempt != "" {
-						record.Identity.Attempt = &facts.Attempt
-					}
-					if facts.RequestID != "" {
-						record.Identity.RequestID = &facts.RequestID
-					}
-					if facts.RootRequestID != "" {
-						record.Identity.RootRequestID = &facts.RootRequestID
-					}
-					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
-				}
-			}
+		nodes, err := a.transport.GetForwardMessage(ctx, segmentDataString(segment.Data, "id"))
+		if err != nil {
+			return nil, err
 		}
+		content := normalizeForwardNodes(nodes)
 		if len(content) == 0 {
 			content = []platform.MessageSegment{textSegment("[forward]")}
 		}
 		display = append(display, content...)
 		display = append(display, textSegment("\n</forward_message>"))
 	}
-	return display
+	return display, nil
 }
 
 func normalizeForwardNodes(nodes []forwardNode) []platform.MessageSegment {

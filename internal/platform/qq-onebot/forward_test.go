@@ -22,7 +22,7 @@ func TestGroupForwardHistoryKeepsPlaceholderWithoutFetching(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer history.Close()
-	a := New(Config{}, nil, history.Repository())
+	a := newTestAdapter(t, Config{}, nil, history.Repository())
 	a.transport = newTestTransport(t, func(req request) response {
 		t.Errorf("unquoted forward called %s", req.Action)
 		return response{Status: "failed", Retcode: 1}
@@ -81,7 +81,7 @@ func TestForwardReferenceExpandsOneLayerInOrder(t *testing.T) {
 						return response{Status: "failed", Retcode: 1}
 					}
 				})
-				a := New(Config{}, nil, repo)
+				a := newTestAdapter(t, Config{}, nil, repo)
 				a.transport = transport
 				if withHistory {
 					a.recordChatMessage(ctx, original, normalizeMessage(original.Message, "", original.SelfID), platform.ReplyContext{})
@@ -124,7 +124,7 @@ func TestForwardReferenceExpandsOneLayerInOrder(t *testing.T) {
 	}
 }
 
-func TestForwardReferenceFallbacks(t *testing.T) {
+func TestForwardReferenceErrorsAndEmptyContent(t *testing.T) {
 	for _, failure := range []string{"get_msg", "get_forward_msg", "empty", "malformed", "missing resource"} {
 		t.Run(failure, func(t *testing.T) {
 			var calls atomic.Int32
@@ -146,8 +146,16 @@ func TestForwardReferenceFallbacks(t *testing.T) {
 				return response{Data: []byte(`{"messages":[]}`)}
 			})
 			ref := refcontext.ReferencedMessage{Text: "前[forward]后", Segments: []platform.MessageSegment{textSegment("前"), textSegment("[forward]"), textSegment("后")}}
-			got := forwardSegmentsForTest(a.expandForwardReference(Event{})(context.Background(), "987654321", ref))
-			if !strings.Contains(got, "[forward]") || !strings.HasPrefix(got, "前") || !strings.HasSuffix(got, "后") || strings.Contains(got, "987654321") || strings.Contains(got, "secret-resource") {
+			segments, err := a.expandForwardReference(Event{})(context.Background(), "987654321", ref)
+			got := forwardSegmentsForTest(segments)
+			if failure != "empty" {
+				if err == nil || len(segments) != 0 {
+					t.Fatalf("failed expansion returned content: segments=%#v err=%v", segments, err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			if failure == "empty" && (!strings.Contains(got, "[forward]") || !strings.HasPrefix(got, "前") || !strings.HasSuffix(got, "后") || strings.Contains(got, "987654321") || strings.Contains(got, "secret-resource")) {
 				t.Fatalf("fallback=%q", got)
 			}
 			wantCalls := int32(2)
@@ -161,7 +169,7 @@ func TestForwardReferenceFallbacks(t *testing.T) {
 	}
 }
 
-func TestMultipleForwardsKeepOrderAndPartialContent(t *testing.T) {
+func TestMultipleForwardsRejectPartialContent(t *testing.T) {
 	a := New(Config{}, nil, nil)
 	var calls atomic.Int32
 	a.transport = newTestTransport(t, func(req request) response {
@@ -174,10 +182,9 @@ func TestMultipleForwardsKeepOrderAndPartialContent(t *testing.T) {
 		}
 		return response{Status: "failed", Retcode: 1}
 	})
-	got := a.expandForwardReference(Event{})(context.Background(), "123", refcontext.ReferencedMessage{Text: "[forward]中间[forward]"})
-	want := "<forward_message>\n成功的正文[forward]\n</forward_message>中间<forward_message>\n[forward]\n</forward_message>"
-	if text := forwardSegmentsForTest(got); text != want || calls.Load() != 2 {
-		t.Fatalf("display=%q calls=%d", text, calls.Load())
+	got, err := a.expandForwardReference(Event{})(context.Background(), "123", refcontext.ReferencedMessage{Text: "[forward]中间[forward]"})
+	if err == nil || len(got) != 0 || calls.Load() != 2 {
+		t.Fatalf("display=%#v err=%v calls=%d", got, err, calls.Load())
 	}
 }
 
@@ -188,7 +195,10 @@ func TestCanonicalForwardReferenceDoesNotFetchAgain(t *testing.T) {
 		return response{Status: "failed", Retcode: 1}
 	})
 	ref := refcontext.ReferencedMessage{Text: "完整 assistant 正文", Segments: []platform.MessageSegment{textSegment("[forward]")}, CanonicalContent: true}
-	got := a.expandForwardReference(Event{})(context.Background(), "123", ref)
+	got, err := a.expandForwardReference(Event{})(context.Background(), "123", ref)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if text := forwardSegmentsForTest(got); text != "<forward_message>\n完整 assistant 正文\n</forward_message>" {
 		t.Fatal(text)
 	}

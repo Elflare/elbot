@@ -151,14 +151,7 @@ func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []
 	if platformName := strings.TrimSpace(target.Platform); platformName != "" && platformName != a.Name() {
 		{
 			err := fmt.Errorf("cli cannot send to platform %q", platformName)
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
-			if err != nil {
-				logResult.ResultStatus = globalevents.ResultFailed
-				logResult.Content = err.Error()
-				if err == context.Canceled {
-					logResult.ResultStatus = globalevents.ResultCanceled
-				}
-			}
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
 			return delivery.Receipt{}, logResult, err
 		}
 	}
@@ -174,7 +167,7 @@ func (a *Adapter) sendTUIMessage(msg tea.Msg, fallback string) error {
 	output := a.output
 	program := a.program
 	a.mu.Unlock()
-	if output == nil || !isatty.IsTerminal(os.Stdin.Fd()) {
+	if !isatty.IsTerminal(os.Stdin.Fd()) {
 		_, err := fmt.Fprintln(os.Stdout, strings.TrimSuffix(fallback, "\n"))
 		return err
 	}

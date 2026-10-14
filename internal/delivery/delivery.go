@@ -230,10 +230,6 @@ func (m Manager) SendChat(ctx context.Context, outputs []Output) (Receipt, globa
 		}
 		return Receipt{}, logResult, err
 	}
-	if m.Sender == nil {
-		err := fmt.Errorf("output sender is not configured")
-		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
-	}
 	if err := ValidateOutputs(outputs); err != nil {
 		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
@@ -251,18 +247,16 @@ func (m Manager) SendTo(ctx context.Context, target Target, outputs []Output) (R
 	if len(outputs) == 0 {
 		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped}, nil
 	}
-	if m.Sender == nil {
-		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "chat output is not sent"}, nil
-	}
 	if err := ValidateOutputs(outputs); err != nil {
 		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
-	configuredTarget, err := ValidateOutputsTarget(outputs)
-	if err != nil {
-		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
-	}
 	if target.Empty() {
-		target = configuredTarget
+		for _, out := range outputs {
+			if !out.Target.Empty() {
+				target = out.Target
+				break
+			}
+		}
 	}
 	receipt, logResult, err := m.Sender.SendTo(ctx, target, outputs)
 	LogSendResult(ctx, target, outputs[0], logResult)

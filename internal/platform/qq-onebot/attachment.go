@@ -18,7 +18,7 @@ func (a *Adapter) ResolveMedia(ctx context.Context, segment platform.MessageSegm
 		return delivery.Source{URL: segment.URL, MIMEType: segment.MIMEType}, nil
 	}
 	file := firstNonEmpty(segment.PlatformFileID, segment.Name)
-	if file == "" || a.transport == nil {
+	if file == "" {
 		return delivery.Source{}, fmt.Errorf("onebot media source unavailable")
 	}
 	var path, url string

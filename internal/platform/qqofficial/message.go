@@ -158,7 +158,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 	}
 	msgCtx := platform.WithMessageContext(ctx, messageCtx)
 	if replyID != "" {
-		ref := refcontext.Apply(msgCtx, refcontext.Options{
+		ref, err := refcontext.Apply(msgCtx, refcontext.Options{
 			Store:           a.store,
 			ChatHistory:     a.chatHistory,
 			Platform:        a.Name(),
@@ -170,6 +170,20 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 			CommandPrefixes: a.cfg.CommandPrefixes,
 			Fetch:           inboundReferenceFetcher(msg),
 		})
+		if err != nil {
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "platform_context_failed",
+				Module:       "qqofficial",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("prepare platform context failed: %v", err),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(msgCtx), record)
+			return
+		}
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
 		messageCtx.ResumeSessionID = ref.ResumeSessionID
 		messageCtx.ContextText = ref.Text
@@ -210,7 +224,7 @@ func inboundReplyID(msg inboundMessage) string {
 }
 
 func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, conversation contextinfo.ConversationKind, senderID, scopeID, text, replyID string, reply platform.ReplyContext) {
-	if a.chatHistory == nil || (strings.TrimSpace(text) == "" && len(msg.Attachments) == 0) || strings.TrimSpace(msg.ID) == "" {
+	if (strings.TrimSpace(text) == "" && len(msg.Attachments) == 0) || strings.TrimSpace(msg.ID) == "" {
 		return
 	}
 	createdAt := storage.Now()
@@ -287,16 +301,16 @@ func isConfiguredSuperadmin(superadmins []string, id string) bool {
 	return false
 }
 
-func inboundReferenceFetcher(msg inboundMessage) func(context.Context, string) (refcontext.ReferencedMessage, bool) {
-	return func(_ context.Context, replyID string) (refcontext.ReferencedMessage, bool) {
+func inboundReferenceFetcher(msg inboundMessage) func(context.Context, string) (refcontext.ReferencedMessage, bool, error) {
+	return func(_ context.Context, replyID string) (refcontext.ReferencedMessage, bool, error) {
 		if msg.MessageReference == nil || strings.TrimSpace(msg.MessageReference.MessageID) != strings.TrimSpace(replyID) {
-			return refcontext.ReferencedMessage{}, false
+			return refcontext.ReferencedMessage{}, false, nil
 		}
 		text := strings.TrimSpace(msg.MessageReference.Content)
 		if text == "" {
-			return refcontext.ReferencedMessage{}, false
+			return refcontext.ReferencedMessage{}, false, nil
 		}
-		return refcontext.ReferencedMessage{Label: "引用", Text: text, Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: text}}}, true
+		return refcontext.ReferencedMessage{Label: "引用", Text: text, Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: text}}}, true, nil
 	}
 }
 

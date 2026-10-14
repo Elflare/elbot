@@ -2,10 +2,8 @@ package telegram
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -55,11 +53,10 @@ func (s *messageStream) Append(ctx context.Context, text string) error {
 			return nil
 		}
 		if err := s.adapter.client.sendRichMessageDraft(ctx, sendRichMessageDraftRequest{ChatID: s.target.ChatID, DraftID: s.draftID, RichMessage: inputRichMessage{Markdown: preview}}); err != nil {
-			s.useDraft = false
-		} else {
-			s.lastEdit = time.Now()
-			return nil
+			return err
 		}
+		s.lastEdit = time.Now()
+		return nil
 	}
 	if s.message == 0 {
 		sent, err := s.adapter.client.sendMessage(ctx, sendMessageRequest{ChatID: s.target.ChatID, Text: previewText, ParseMode: previewParseMode})
@@ -98,42 +95,8 @@ func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Rece
 			_, _ = s.adapter.client.editMessageText(ctx, editMessageTextRequest{ChatID: s.target.ChatID, MessageID: s.message, Text: "回复已生成："})
 		}
 		receipt, logResult, err := s.adapter.sendRichText(ctx, s.target, text, 0, false)
-		if err == nil || len(receipt.PlatformMessageIDs) > 0 {
-			s.finished = true
-			return telegramReceipt(receipt, s.target), logResult, err
-		}
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelWarn,
-				EventName:    "telegram_rich_stream_final_failed_fallback_to_sendmessage",
-				Module:       "telegram",
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("telegram rich stream final failed, fallback to sendMessage\nerror=%v", err),
-				ContentLimit: 4096,
-				ResultStatus: logResult.ResultStatus,
-			}
-			if logResult.ResultStatus == globalevents.ResultCanceled {
-				record.Level = slog.LevelInfo
-			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
-		}
+		s.finished = true
+		return telegramReceipt(receipt, s.target), logResult, err
 	}
 	pages := telegramTextPages(text)
 	if s.message == 0 {
@@ -150,17 +113,11 @@ func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Rece
 	} else {
 		pageText, pageParseMode := s.adapter.streamPreviewPayload(pages[0])
 		if _, err := s.adapter.client.editMessageText(ctx, editMessageTextRequest{ChatID: s.target.ChatID, MessageID: s.message, Text: pageText, ParseMode: pageParseMode}); err != nil {
-			{
-				logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
-				if err != nil {
-					logResult.ResultStatus = globalevents.ResultFailed
-					logResult.Content = err.Error()
-					if errors.Is(err, context.Canceled) {
-						logResult.ResultStatus = globalevents.ResultCanceled
-					}
-				}
-				return delivery.Receipt{}, logResult, err
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+			if errors.Is(err, context.Canceled) {
+				logResult.ResultStatus = globalevents.ResultCanceled
 			}
+			return delivery.Receipt{}, logResult, err
 		}
 	}
 	receipt := delivery.Receipt{PlatformMessageIDs: []string{formatMessageID(s.message)}}
@@ -169,17 +126,11 @@ func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Rece
 		sent, err := s.adapter.client.sendMessage(ctx, sendMessageRequest{ChatID: s.target.ChatID, Text: pageText, ParseMode: pageParseMode})
 		if err != nil {
 			s.finished = true
-			{
-				logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
-				if err != nil {
-					logResult.ResultStatus = globalevents.ResultFailed
-					logResult.Content = err.Error()
-					if errors.Is(err, context.Canceled) {
-						logResult.ResultStatus = globalevents.ResultCanceled
-					}
-				}
-				return telegramReceipt(receipt, s.target), logResult, err
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+			if errors.Is(err, context.Canceled) {
+				logResult.ResultStatus = globalevents.ResultCanceled
 			}
+			return telegramReceipt(receipt, s.target), logResult, err
 		}
 		if sent.MessageID != 0 {
 			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, formatMessageID(sent.MessageID))

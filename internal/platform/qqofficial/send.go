@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"elbot/internal/contextinfo"
@@ -34,9 +33,6 @@ func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Outp
 	t, err := a.contextTarget(ctx)
 	if err != nil {
 		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
 		return delivery.Receipt{}, logResult, err
 	}
 	return a.sendOutputs(ctx, t, outputs)
@@ -129,67 +125,20 @@ func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string) 
 		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	}
 	if target.Proactive && !a.cfg.allowProactive() {
-		{
-			err := fmt.Errorf("qqofficial proactive messages are disabled")
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
-			if err != nil {
-				logResult.ResultStatus = globalevents.ResultFailed
-				logResult.Content = err.Error()
-				if errors.Is(err, context.Canceled) {
-					logResult.ResultStatus = globalevents.ResultCanceled
-				}
-			}
-			return delivery.Receipt{}, logResult, err
-		}
+		err := fmt.Errorf("qqofficial proactive messages are disabled")
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
+	msg := a.baseMessage(target)
 	if a.cfg.markdownByDefault() {
-		msg := a.baseMessage(target)
 		msg.MsgType = msgTypeMarkdown
 		msg.Markdown = &messageMarkdown{Content: text}
 		if a.cfg.enableKeyboard() && shouldAttachRiskKeyboard(text) {
 			msg.Keyboard = riskKeyboard(a.cfg.AppID)
 		}
-		resp, err := a.client.sendMessage(ctx, target, msg)
-		if err == nil {
-			return receiptWithMessageID(resp.ID), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
-		}
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelWarn,
-				EventName:    "qqofficial_markdown_send_failed_fallback_to_text",
-				Module:       "qqofficial",
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("qqofficial markdown send failed, fallback to text\nerror=%v", err),
-				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultFailed,
-			}
-			if errors.Is(err, context.Canceled) {
-				record.ResultStatus = globalevents.ResultCanceled
-				record.Level = slog.LevelInfo
-			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
-		}
+	} else {
+		msg.MsgType = msgTypeText
+		msg.Content = text
 	}
-	msg := a.baseMessage(target)
-	msg.MsgType = msgTypeText
-	msg.Content = text
 	resp, err := a.client.sendMessage(ctx, target, msg)
 	if err != nil {
 		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
@@ -205,14 +154,7 @@ func (a *Adapter) sendMedia(ctx context.Context, target sendTarget, out delivery
 	if target.Proactive && !a.cfg.allowProactive() {
 		{
 			err := fmt.Errorf("qqofficial proactive messages are disabled")
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
-			if err != nil {
-				logResult.ResultStatus = globalevents.ResultFailed
-				logResult.Content = err.Error()
-				if errors.Is(err, context.Canceled) {
-					logResult.ResultStatus = globalevents.ResultCanceled
-				}
-			}
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
 			return delivery.Receipt{}, logResult, err
 		}
 	}
@@ -261,14 +203,7 @@ func (a *Adapter) sendArk(ctx context.Context, target sendTarget, ark messageArk
 	if !a.cfg.EnableArk {
 		{
 			err := fmt.Errorf("qqofficial ark is disabled")
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
-			if err != nil {
-				logResult.ResultStatus = globalevents.ResultFailed
-				logResult.Content = err.Error()
-				if errors.Is(err, context.Canceled) {
-					logResult.ResultStatus = globalevents.ResultCanceled
-				}
-			}
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
 			return delivery.Receipt{}, logResult, err
 		}
 	}

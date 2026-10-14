@@ -164,9 +164,6 @@ func prepareSource(urlValue, path string, data []byte) (preparedSource, error) {
 		return preparedSource{Data: data}, nil
 	}
 	path = strings.TrimSpace(path)
-	if path == "" {
-		return preparedSource{}, fmt.Errorf("source path is empty")
-	}
 	fileData, err := os.ReadFile(path)
 	if err != nil {
 		return preparedSource{}, fmt.Errorf("read source %q: %w", path, err)

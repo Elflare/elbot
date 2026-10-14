@@ -33,17 +33,12 @@ type Router struct {
 
 func New(opts Options) *Router {
 	r := &Router{primary: opts.Primary, senders: make(map[string]delivery.MessageSender), store: opts.Store, media: opts.Media, mediaRetentionDays: opts.MediaRetentionDays}
-	if opts.Primary != nil {
-		r.RegisterPlatformSender(opts.Primary.Name(), opts.Primary)
-	}
+	r.RegisterPlatformSender(opts.Primary.Name(), opts.Primary)
 	return r
 }
 
 func (r *Router) RegisterPlatformSender(name string, sender delivery.MessageSender) {
 	name = strings.TrimSpace(name)
-	if name == "" || sender == nil {
-		return
-	}
 	r.mu.Lock()
 	r.senders[name] = sender
 	r.mu.Unlock()
@@ -61,7 +56,7 @@ func (r *Router) sender(ctx context.Context, target delivery.Target) (delivery.M
 			name = strings.TrimSpace(info.Source.Platform)
 		}
 	}
-	if name == "" && r.primary != nil {
+	if name == "" {
 		name = r.primary.Name()
 	}
 	r.mu.RLock()

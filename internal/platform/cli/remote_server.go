@@ -157,16 +157,13 @@ func (s *RemoteServer) handleClientMessage(ctx context.Context, handler platform
 			_ = handler.HandleMessage(ctx, text)
 		}()
 	case remoteMsgComplete:
-		items := []completion.Item{}
-		if s.completer != nil {
-			items = s.completer.Complete(ctx, completion.Request{Text: msg.Text, Cursor: msg.Cursor})
-		}
+		items := s.completer.Complete(ctx, completion.Request{Text: msg.Text, Cursor: msg.Cursor})
 		_, _ = client.write(context.Background(), remoteMessage{Type: remoteMsgCompleteResult, ID: msg.ID, Items: items})
 	}
 }
 
 func (s *RemoteServer) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-	if client, ok := originalClient(ctx); ok && client != nil {
+	if client, ok := originalClient(ctx); ok {
 		{
 			logResult, err := client.write(ctx, outputMessage(remoteMsgChat, delivery.FallbackOutput(outputs)))
 			return delivery.Receipt{}, logResult, err
@@ -174,14 +171,7 @@ func (s *RemoteServer) SendChat(ctx context.Context, outputs []delivery.Output) 
 	}
 	{
 		err := fmt.Errorf("cli chat target missing")
-		logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
-		if err != nil {
-			logResult.ResultStatus = events.ResultFailed
-			logResult.Content = err.Error()
-			if err == context.Canceled {
-				logResult.ResultStatus = events.ResultCanceled
-			}
-		}
+		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
 		return delivery.Receipt{}, logResult, err
 	}
 }
@@ -204,7 +194,7 @@ func (s *RemoteServer) SendTo(ctx context.Context, target delivery.Target, outpu
 
 func (s *RemoteServer) StartStream(ctx context.Context) (delivery.MessageStream, error) {
 	client, ok := originalClient(ctx)
-	if !ok || client == nil {
+	if !ok {
 		return nil, fmt.Errorf("cli stream target missing")
 	}
 	return remoteMessageStream{client: client}, nil
@@ -261,7 +251,7 @@ func (s *RemoteServer) targetClients(ctx context.Context, target delivery.Target
 		return nil, fmt.Errorf("cli cannot send to platform %q", platformName)
 	}
 	if target.Empty() {
-		if client, ok := originalClient(ctx); ok && client != nil {
+		if client, ok := originalClient(ctx); ok {
 			return []*remoteClientConn{client}, nil
 		}
 		return nil, fmt.Errorf("cli target missing")
@@ -313,12 +303,7 @@ func (s *RemoteServer) writeClients(ctx context.Context, clients []*remoteClient
 	}
 	logResult.Content += fmt.Sprintf("\nsent=%d targets=%d", sent, len(clients))
 	if sent == 0 {
-		if len(errs) > 0 {
-			return logResult, fmt.Errorf("send cli message failed: %s", strings.Join(errs, "; "))
-		}
-		logResult.ResultStatus = events.ResultFailed
-		logResult.Content += "\nno matching cli clients are connected"
-		return logResult, fmt.Errorf("no matching cli clients are connected")
+		return logResult, fmt.Errorf("send cli message failed: %s", strings.Join(errs, "; "))
 	}
 	return logResult, nil
 }

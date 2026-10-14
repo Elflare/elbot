@@ -24,14 +24,7 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	{
 		err := fmt.Errorf("service platform cannot send chat output without a target platform")
-		logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
-		if err != nil {
-			logResult.ResultStatus = events.ResultFailed
-			logResult.Content = err.Error()
-			if err == context.Canceled {
-				logResult.ResultStatus = events.ResultCanceled
-			}
-		}
+		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
 		return delivery.Receipt{}, logResult, err
 	}
 }

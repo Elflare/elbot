@@ -304,9 +304,6 @@ func multipartMediaBody(chatID int64, field string, source mediaSource, replyTo 
 		}
 	} else {
 		path := strings.TrimSpace(source.Path)
-		if path == "" {
-			return nil, "", fmt.Errorf("telegram media source is empty")
-		}
 		file, err := os.Open(path)
 		if err != nil {
 			return nil, "", fmt.Errorf("open media source %q: %w", path, err)

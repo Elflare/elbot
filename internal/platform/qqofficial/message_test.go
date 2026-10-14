@@ -32,7 +32,7 @@ func (h *captureHandler) HandleMessage(ctx context.Context, text string) error {
 
 func TestHandleGroupAtMessageBuildsGroupContext(t *testing.T) {
 	raw := json.RawMessage(`{"id":"msg-1","group_openid":"group-1"}`)
-	adapter := New(Config{AppID: "bot-app", TriggerKeywords: []string{"芙莉丝"}}, nil, nil)
+	adapter := newTestAdapter(t, Config{AppID: "bot-app", TriggerKeywords: []string{"芙莉丝"}}, nil, nil)
 	handler := &captureHandler{}
 	adapter.handleGroupMessage(context.Background(), handler, payload{ID: "event-1", Type: eventGroupAtMessageCreate, Data: raw}, inboundMessage{
 		ID:          "msg-1",
@@ -70,7 +70,7 @@ func TestHandleGroupAtMessageBuildsGroupContext(t *testing.T) {
 }
 
 func TestHandleOrdinaryGroupMessageKeepsWakeupInputs(t *testing.T) {
-	adapter := New(Config{AppID: "bot-app", TriggerKeywords: []string{"芙莉丝"}}, nil, nil)
+	adapter := newTestAdapter(t, Config{AppID: "bot-app", TriggerKeywords: []string{"芙莉丝"}}, nil, nil)
 	handler := &captureHandler{}
 	adapter.handleGroupMessage(context.Background(), handler, payload{Type: eventGroupMessageCreate}, inboundMessage{
 		ID:          "msg-1",
@@ -99,7 +99,7 @@ func TestHandleGroupMessageRecordsChatHistoryBeforeWakeup(t *testing.T) {
 	}
 	defer historyStore.Close()
 	history := historyStore.Repository()
-	adapter := New(Config{}, nil, history)
+	adapter := newTestAdapter(t, Config{}, nil, history)
 	handler := &captureHandler{}
 	adapter.handleGroupMessage(ctx, handler, payload{Type: eventGroupMessageCreate}, inboundMessage{
 		ID:          "msg-1",
@@ -136,7 +136,7 @@ func TestHandleGroupMessageAppliesAssistantReference(t *testing.T) {
 	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: platformName, PlatformScopeID: scope.PlatformScopeID, PlatformMessageID: "assistant-1", MessageID: first.ID, SessionID: first.SessionID}); err != nil {
 		t.Fatalf("map assistant: %v", err)
 	}
-	adapter := New(Config{}, store, nil)
+	adapter := newTestAdapter(t, Config{}, store, nil)
 	handler := &captureHandler{}
 	adapter.handleGroupMessage(ctx, handler, payload{Type: eventGroupMessageCreate}, inboundMessage{
 		ID:          "msg-1",
@@ -168,7 +168,7 @@ func (h *asyncCaptureHandler) HandleMessage(ctx context.Context, _ string) error
 }
 
 func TestHandleDispatchRoutesOrdinaryGroupMessage(t *testing.T) {
-	adapter := New(Config{}, nil, nil)
+	adapter := newTestAdapter(t, Config{}, nil, nil)
 	handler := &asyncCaptureHandler{result: make(chan platform.MessageContext, 1)}
 	data := json.RawMessage(`{"id":"msg-1","group_openid":"group-1","author":{"member_openid":"member-1"},"content":"hello"}`)
 	if err := adapter.handleDispatch(context.Background(), handler, payload{Type: eventGroupMessageCreate, Data: data}, &gatewayState{}); err != nil {
@@ -185,7 +185,7 @@ func TestHandleDispatchRoutesOrdinaryGroupMessage(t *testing.T) {
 }
 
 func TestHandleC2CMessageUsesCanonicalActorID(t *testing.T) {
-	adapter := New(Config{}, nil, nil)
+	adapter := newTestAdapter(t, Config{}, nil, nil)
 	handler := &captureHandler{}
 	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
 		ID:      "msg-1",
@@ -205,7 +205,7 @@ func TestHandleC2CMessageUsesCanonicalActorID(t *testing.T) {
 }
 
 func TestHandleC2CMessageAddsFallbackReferenceText(t *testing.T) {
-	adapter := New(Config{}, nil, nil)
+	adapter := newTestAdapter(t, Config{}, nil, nil)
 	handler := &captureHandler{}
 	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
 		ID:      "msg-1",
@@ -236,7 +236,7 @@ func TestHandleC2CMessageAddsFallbackReferenceText(t *testing.T) {
 func TestHandleC2CMessageForksOwnOlderAssistantReference(t *testing.T) {
 	ctx := context.Background()
 	store := newQQOfficialTestStore(t)
-	adapter := New(Config{}, store, nil)
+	adapter := newTestAdapter(t, Config{}, store, nil)
 	svc := session.NewService(store)
 	scope := session.Scope{ActorID: "qqofficial:user-1", Platform: platformName, PlatformScopeID: "c2c:user-1"}
 	s, err := svc.Create(ctx, scope, session.CreateRequest{Title: "source"})
@@ -276,7 +276,7 @@ func TestHandleC2CMessageForksOwnOlderAssistantReference(t *testing.T) {
 
 func TestHandleC2CMessageImageAttachmentReachesHandler(t *testing.T) {
 	imageURL := "https://example.com/image.png"
-	adapter := New(Config{}, nil, nil)
+	adapter := newTestAdapter(t, Config{}, nil, nil)
 	handler := &captureHandler{}
 	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
 		ID:     "msg-1",
@@ -313,7 +313,7 @@ func TestHandleC2CMessageImageAttachmentReachesHandler(t *testing.T) {
 }
 
 func TestHandleC2CMessageStickerAttachmentStripsFaceFallback(t *testing.T) {
-	adapter := New(Config{}, nil, nil)
+	adapter := newTestAdapter(t, Config{}, nil, nil)
 	handler := &captureHandler{}
 	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
 		ID:      "msg-1",
@@ -341,7 +341,7 @@ func TestHandleC2CMessageStickerAttachmentStripsFaceFallback(t *testing.T) {
 }
 
 func TestHandleC2CMessageTextAndStickerStripsOnlyFaceFallback(t *testing.T) {
-	adapter := New(Config{}, nil, nil)
+	adapter := newTestAdapter(t, Config{}, nil, nil)
 	handler := &captureHandler{}
 	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
 		ID:      "msg-1",
@@ -413,7 +413,7 @@ func TestPrepareSourceUsesStructuredSources(t *testing.T) {
 func TestHandleC2CMessageResumesLatestAssistantReference(t *testing.T) {
 	ctx := context.Background()
 	store := newQQOfficialTestStore(t)
-	adapter := New(Config{}, store, nil)
+	adapter := newTestAdapter(t, Config{}, store, nil)
 	scope := session.Scope{ActorID: "qqofficial:user-1", Platform: platformName, PlatformScopeID: "c2c:user-1"}
 	_, latest := createQQOfficialAssistantMessages(t, ctx, store, scope)
 	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: platformName, PlatformScopeID: scope.PlatformScopeID, PlatformMessageID: "platform-latest", MessageID: latest.ID, SessionID: latest.SessionID}); err != nil {
@@ -479,7 +479,7 @@ func TestReadyPublishesGlobalConnectionWithoutAddingResumeEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer connection.Disconnect()
-	adapter := New(Config{}, nil, nil)
+	adapter := newTestAdapter(t, Config{}, nil, nil)
 	state := &gatewayState{}
 	for _, kind := range []string{eventReady, eventResumed, eventReady} {
 		if err := adapter.handleDispatch(context.Background(), nil, payload{Type: kind, Data: json.RawMessage(`{"session_id":"test","user":{"id":"bot","username":"test"}}`)}, state); err != nil {
@@ -489,4 +489,25 @@ func TestReadyPublishesGlobalConnectionWithoutAddingResumeEvent(t *testing.T) {
 	if calls != 2 {
 		t.Fatalf("connections=%d", calls)
 	}
+}
+
+func newTestAdapter(t *testing.T, cfg Config, store storage.Store, history storage.ChatHistoryRepository) *Adapter {
+	t.Helper()
+	if store == nil {
+		db, err := sqlite.New(context.Background(), filepath.Join(t.TempDir(), "store.db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = db.Close() })
+		store = db
+	}
+	if history == nil {
+		db, err := sqlite.NewChatHistory(context.Background(), filepath.Join(t.TempDir(), "history.db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = db.Close() })
+		history = db.Repository()
+	}
+	return New(cfg, store, history)
 }
