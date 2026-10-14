@@ -1,10 +1,8 @@
 package builtin
 
 import (
-	"fmt"
 	"path/filepath"
 
-	"elbot/internal/config"
 	"elbot/internal/fileops"
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
@@ -28,39 +26,20 @@ type RuntimeOptions struct {
 	ConfigDir              string
 	RuntimeInfo            runtimeinfo.Info
 	ChatHistory            storage.ChatHistoryRepository
-	Store                  storage.Store
 	Media                  *media.Manager
-	SandboxRoot            string
-	FileDelivery           config.FileDeliveryConfig
 	ResidentMemoryMaxUnits resident.Limits
 	ProcessEnv             processenv.Environment
 }
 
 func NewRuntime(opts RuntimeOptions) (*Runtime, error) {
-	if opts.FileRollback == nil {
-		return nil, fmt.Errorf("builtin file service is required")
-	}
-	if opts.ConfigDir == "" {
-		return nil, fmt.Errorf("builtin runtime config dir is required")
-	}
 	info := opts.RuntimeInfo
-	if info.ConfigDir == "" {
-		info.ConfigDir = opts.ConfigDir
-	}
-	if info.SandboxRoot == "" {
-		info.SandboxRoot = opts.SandboxRoot
-	}
-	if info.FileDelivery == (config.FileDeliveryConfig{}) {
-		info.FileDelivery = opts.FileDelivery
-	}
+	info.ConfigDir = opts.ConfigDir
 	info = info.Normalize()
 	registry := tool.NewRegistry()
 	residentStore := resident.NewStoreWithLimits(filepath.Join(opts.ConfigDir, "memories.toml"), opts.ResidentMemoryMaxUnits)
 	skillManager := skill.NewManager(filepath.Join(opts.ConfigDir, "skills"), registry, opts.ProcessEnv)
-	fileManager := NewFileManagerWithMedia(info.SandboxRoot, info.FileDelivery, opts.Store)
-	if opts.Media != nil {
-		fileManager.Media = opts.Media
-	}
+	fileManager := NewFileManager(info.SandboxRoot, info.FileDelivery)
+	fileManager.Media = opts.Media
 	runtime := &Runtime{Registry: registry, ResidentMemoryStore: residentStore, SkillManager: skillManager, FileManager: fileManager, FileRollback: opts.FileRollback}
 	if err := RegisterAll(registry, RegisterOptions{
 		RuntimeInfo:         info,

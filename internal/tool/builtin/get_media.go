@@ -94,12 +94,6 @@ func (t GetMediaTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.R
 			return result, result.Content, nil
 		}
 	}
-	if t.history == nil || t.center == nil {
-		{
-			callErr := fmt.Errorf("history media is not configured")
-			return nil, callErr.Error(), callErr
-		}
-	}
 	msg, _ := platform.MessageContextFrom(ctx)
 	var lines []string
 	var requests []media.HistoryMediaRequest
@@ -136,6 +130,7 @@ func (t GetMediaTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.R
 			text = "[媒体未下载：达到本次 5 个下载尝试上限]"
 		case result.Err != nil:
 			text = "[媒体获取失败：来源不可用、超限或关联保存失败]"
+			logContent += fmt.Sprintf("\n[#%s] %d: %v", requests[i].Message.PlatformMessageID, requests[i].Index, result.Err)
 		default:
 			request := requests[i]
 			text = historyMediaLabel(media.HistorySegments(request.Message)[request.Index-1].Type, result.Media.ID)
@@ -144,7 +139,7 @@ func (t GetMediaTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.R
 	}
 	{
 		result := &tool.Result{Content: strings.Join(lines, "\n")}
-		return result, result.Content, nil
+		return result, result.Content + logContent, nil
 	}
 }
 

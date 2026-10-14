@@ -50,10 +50,7 @@ func (i Info) Normalize() Info {
 }
 
 func (i Info) CurrentTime() time.Time {
-	if i.Now != nil {
-		return i.Now()
-	}
-	return time.Now()
+	return i.Now()
 }
 
 func ElyphRuleCard() string {

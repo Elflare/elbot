@@ -36,7 +36,7 @@ func validateGoMainSource(source string) error {
 	if err != nil {
 		return fmt.Errorf("parse Go source: %w", err)
 	}
-	if file.Name == nil || file.Name.Name != "main" {
+	if file.Name.Name != "main" {
 		return fmt.Errorf("go source must declare package main")
 	}
 	return nil

@@ -93,10 +93,10 @@ func (m *Manager) ToolInfos(ctx context.Context, view Context) ([]tool.Info, err
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if view.DisableBaseTools || view.Mode != storage.SessionModeWork || m == nil || m.Native == nil {
+	if view.DisableBaseTools || view.Mode != storage.SessionModeWork {
 		return nil, nil
 	}
-	return m.Native.ToolInfos(ctx, actorForView(ctx, view), policyForManager(ctx, m.Policy)), nil
+	return m.Native.ToolInfos(ctx, actorForView(ctx, view), m.Policy), nil
 }
 
 func (m *Manager) ToolNames(ctx context.Context, view Context) ([]string, error) {
@@ -115,7 +115,7 @@ func (m *Manager) BaseSchemas(ctx context.Context, view Context) ([]llm.ToolSche
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if view.DisableBaseTools || view.Mode != storage.SessionModeWork || m == nil || m.Native == nil {
+	if view.DisableBaseTools || view.Mode != storage.SessionModeWork {
 		return nil, nil
 	}
 	return m.Native.BaseSchemas(ctx), nil
@@ -175,32 +175,25 @@ func (m *Manager) Resolve(ctx context.Context, name string, cached []CachedTool,
 			return ResolvedTool{Name: name, Source: cachedCopy.Source, Cached: &cachedCopy, ResultStatus: events.ResultRejected, Error: tool.PolicyDeniedError("tool is unavailable in this context")}
 		}
 		source := cachedCopy.Source
-		if source == "" {
-			source = SourceKindNative
-		}
 		if source == SourceKindELwisp {
 			if cachedCopy.Endpoint == "" {
 				return ResolvedTool{Name: name, Source: source, Cached: &cachedCopy, ResultStatus: events.ResultFailed, Error: fmt.Errorf("ELwisp tool endpoint is missing")}
 			}
 			return ResolvedTool{Name: cachedCopy.CanonicalName, Source: source, Cached: &cachedCopy, ResultStatus: events.ResultSucceeded}
 		}
-		if m != nil && m.Native != nil {
-			if nativeTool, ok := m.Native.Get(cachedCopy.Name); ok {
-				return ResolvedTool{Name: cachedCopy.Name, Source: SourceKindNative, Native: nativeTool, Cached: &cachedCopy, ResultStatus: events.ResultSucceeded}
-			}
+		if nativeTool, ok := m.Native.Get(cachedCopy.Name); ok {
+			return ResolvedTool{Name: cachedCopy.Name, Source: SourceKindNative, Native: nativeTool, Cached: &cachedCopy, ResultStatus: events.ResultSucceeded}
 		}
 		return ResolvedTool{Name: cachedCopy.Name, Source: SourceKindNative, Cached: &cachedCopy, ResultStatus: events.ResultFailed, Error: fmt.Errorf("native tool is no longer available")}
 	}
 	if mode == storage.SessionModeBackground {
 		return ResolvedTool{Name: name, ResultStatus: events.ResultRejected, Error: tool.PolicyDeniedError("tool is not allowed in this background task")}
 	}
-	if m != nil && m.Native != nil {
-		if nativeTool, ok := m.Native.Get(name); ok {
-			if !AvailableInContext(ctx, nativeTool.Info()) {
-				return ResolvedTool{Name: name, Source: SourceKindNative, Native: nativeTool, ResultStatus: events.ResultRejected, Error: tool.PolicyDeniedError(unavailableReason(ctx, nativeTool.Info()))}
-			}
-			return ResolvedTool{Name: name, Source: SourceKindNative, Native: nativeTool, ResultStatus: events.ResultSucceeded}
+	if nativeTool, ok := m.Native.Get(name); ok {
+		if !AvailableInContext(ctx, nativeTool.Info()) {
+			return ResolvedTool{Name: name, Source: SourceKindNative, Native: nativeTool, ResultStatus: events.ResultRejected, Error: tool.PolicyDeniedError(unavailableReason(ctx, nativeTool.Info()))}
 		}
+		return ResolvedTool{Name: name, Source: SourceKindNative, Native: nativeTool, ResultStatus: events.ResultSucceeded}
 	}
 	return ResolvedTool{Name: name, ResultStatus: events.ResultFailed, Error: fmt.Errorf("tool %q not found", name)}
 }
@@ -209,14 +202,11 @@ func (m *Manager) AssessRisk(ctx context.Context, resolved ResolvedTool, argumen
 	if resolved.Source == SourceKindELwisp {
 		return tool.RiskAssessment{Level: tool.RiskLow}, nil
 	}
-	if resolved.ResultStatus != events.ResultSucceeded || resolved.Native == nil {
-		return tool.RiskAssessment{Level: tool.RiskLow}, nil
-	}
 	return tool.AssessRisk(ctx, resolved.Native, tool.CallRequest{Name: resolved.Name, Arguments: json.RawMessage(arguments)})
 }
 
 func (m *Manager) PreflightConfirmation(ctx context.Context, resolved ResolvedTool, call llm.ToolCallRequest) error {
-	if resolved.Source == SourceKindELwisp || resolved.ResultStatus != events.ResultSucceeded || resolved.Native == nil {
+	if resolved.Source == SourceKindELwisp {
 		return nil
 	}
 	provider, ok := resolved.Native.(tool.ConfirmationPreflightProvider)
@@ -226,22 +216,19 @@ func (m *Manager) PreflightConfirmation(ctx context.Context, resolved ResolvedTo
 	return provider.PreflightConfirmation(ctx, tool.CallRequest{ID: call.ID, Name: resolved.Name, Arguments: json.RawMessage(call.Arguments)})
 }
 
-func (m *Manager) RiskDetail(ctx context.Context, resolved ResolvedTool, call llm.ToolCallRequest) string {
-	if resolved.Source == SourceKindELwisp || resolved.ResultStatus != events.ResultSucceeded || resolved.Native == nil {
-		return ""
+func (m *Manager) RiskDetail(ctx context.Context, resolved ResolvedTool, call llm.ToolCallRequest) (string, error) {
+	if resolved.Source == SourceKindELwisp {
+		return "", nil
 	}
 	provider, ok := resolved.Native.(tool.RiskDetailProvider)
 	if !ok {
-		return ""
+		return "", nil
 	}
 	detail, err := provider.RiskDetail(ctx, tool.CallRequest{ID: call.ID, Name: resolved.Name, Arguments: json.RawMessage(call.Arguments)})
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(detail)
+	return strings.TrimSpace(detail), err
 }
 
-func (m *Manager) Execute(ctx context.Context, call llm.ToolCallRequest, resolved ResolvedTool, actor contextinfo.Actor) (result ExecutionResult) {
+func (m *Manager) Execute(ctx context.Context, call llm.ToolCallRequest, resolved ResolvedTool, actor contextinfo.Actor) ExecutionResult {
 
 	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
 	if resolved.ResultStatus != events.ResultSucceeded {
@@ -250,18 +237,8 @@ func (m *Manager) Execute(ctx context.Context, call llm.ToolCallRequest, resolve
 	if resolved.Source == SourceKindELwisp {
 		return executeELwispTool(ctx, call, resolved)
 	}
-	registry := (*tool.Registry)(nil)
-	if m != nil && m.Native != nil {
-		registry = m.Native.Registry
-	}
-	policy := (*security.Policy)(nil)
-	if m != nil {
-		policy = m.Policy
-	}
-	{
-		result := tool.Executor{Registry: registry, Actor: actor, Policy: policyForManager(ctx, policy)}.Execute(ctx, call)
-		return ExecutionResult{Call: call, Message: result.Message, Result: result.Result, LogResult: result.LogResult, Error: result.Error, ResultStatus: result.ResultStatus, ExecutionStarted: result.ExecutionStarted}
-	}
+	result := tool.Executor{Registry: m.Native.Registry, Actor: actor, Policy: m.Policy}.Execute(ctx, call)
+	return ExecutionResult{Call: call, Message: result.Message, Result: result.Result, LogResult: result.LogResult, Error: result.Error, ResultStatus: result.ResultStatus, ExecutionStarted: result.ExecutionStarted}
 }
 
 func NativeCachedToolsFromDiscovery(result *tool.DiscoveryResult) []CachedTool {
@@ -307,10 +284,7 @@ func actorForView(ctx context.Context, view Context) contextinfo.Actor {
 	return contextinfo.Actor{ID: view.Scope.ActorID, Platform: view.Scope.Platform, PlatformUserID: view.Scope.ActorID, Role: contextinfo.RoleUser}
 }
 
-func policyForManager(ctx context.Context, configured *security.Policy) *security.Policy {
-	if configured != nil {
-		return configured
-	}
+func policyForManager(ctx context.Context) *security.Policy {
 	if policy, ok := security.PolicyFromContext(ctx); ok && policy != nil {
 		return policy
 	}

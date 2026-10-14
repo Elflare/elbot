@@ -49,9 +49,6 @@ func (e Executor) Execute(ctx context.Context, call llm.ToolCallRequest) Executi
 		Name:       call.Name,
 		ToolCallID: call.ID,
 	}
-	if e.Registry == nil {
-		return executionError(call, message, fmt.Errorf("tool registry is not configured"), events.ResultFailed)
-	}
 	tool, ok := e.Registry.Get(call.Name)
 	if !ok {
 		return executionError(call, message, fmt.Errorf("tool %q not found", call.Name), events.ResultFailed)
@@ -68,13 +65,7 @@ func (e Executor) Execute(ctx context.Context, call llm.ToolCallRequest) Executi
 		return executionError(call, message, err, resultStatus)
 	}
 	policy := e.Policy
-	if policy == nil {
-		policy = security.DefaultPolicy()
-	}
 	actor := e.Actor
-	if actor.Role == "" {
-		actor = contextinfo.Actor{Role: contextinfo.RoleUser}
-	}
 	info := tool.Info()
 	if info.SuperadminOnly && actor.Role != contextinfo.RoleSuperadmin {
 		return executionError(call, message, PolicyDeniedError(fmt.Sprintf("tool %q requires superadmin role", call.Name)), events.ResultRejected)

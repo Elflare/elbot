@@ -94,7 +94,11 @@ func (c *InputCoordinator) prepareSkillDirectives(ctx context.Context, row *stor
 	for i, match := range matches {
 		names[i] = match.Name
 	}
-	prepared := c.preloader.PrepareSkills(ctx, row.ID, names)
+	prepared, err := c.preloader.PrepareSkills(ctx, row.ID, names)
+	if err != nil {
+		result.Err = err
+		return result
+	}
 	result.Invalid = prepared.Invalid
 	if len(prepared.Names) == 0 {
 		return result

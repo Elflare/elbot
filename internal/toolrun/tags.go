@@ -36,35 +36,32 @@ func newToolTagConfigSource(path string, initial config.ToolTagsConfig) *toolTag
 	return &toolTagConfigSource{path: strings.TrimSpace(path), cache: toolTagConfigCache{loaded: path == "", config: normalizeToolTagsConfig(initial)}}
 }
 
-func (s *toolTagConfigSource) configuredTags(ctx context.Context) []string {
+func (s *toolTagConfigSource) configuredTags(ctx context.Context) ([]string, error) {
 	cfg, err := s.load(ctx)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	out := make([]string, 0, len(cfg.Tags))
 	for tag := range cfg.Tags {
 		out = append(out, tag)
 	}
 	sort.Strings(out)
-	return out
+	return out, nil
 }
 
-func (s *toolTagConfigSource) configuredToolNamesByTag(ctx context.Context, tag string) []string {
+func (s *toolTagConfigSource) configuredToolNamesByTag(ctx context.Context, tag string) ([]string, error) {
 	tag = normalizeToolTag(tag)
 	if tag == "" {
-		return nil
+		return nil, nil
 	}
 	cfg, err := s.load(ctx)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return append([]string(nil), cfg.Tags[tag].Tools...)
+	return append([]string(nil), cfg.Tags[tag].Tools...), nil
 }
 
 func (s *toolTagConfigSource) load(ctx context.Context) (config.ToolTagsConfig, error) {
-	if s == nil {
-		return config.ToolTagsConfig{}, nil
-	}
 	if err := ctx.Err(); err != nil {
 		return config.ToolTagsConfig{}, err
 	}
@@ -150,7 +147,7 @@ type TagPrompt struct {
 }
 
 func (s *PreloadService) TagPrompts(ctx context.Context, tags []string) ([]TagPrompt, error) {
-	if s == nil || len(tags) == 0 {
+	if len(tags) == 0 {
 		return nil, nil
 	}
 	cfg, err := s.tags.load(ctx)
@@ -167,30 +164,36 @@ func (s *PreloadService) TagPrompts(ctx context.Context, tags []string) ([]TagPr
 }
 
 // ToolNamesByTag uses the same configured and built-in tags for discovery and completion.
-func (s *PreloadService) ToolNamesByTag(ctx context.Context, tag string, allowed func(tool.Tool) bool) []string {
-	if s == nil || s.registry == nil {
-		return nil
-	}
+func (s *PreloadService) ToolNamesByTag(ctx context.Context, tag string, allowed func(tool.Tool) bool) ([]string, error) {
 	names := s.registry.NamesByTag(tag, allowed)
-	for _, name := range s.tags.configuredToolNamesByTag(ctx, tag) {
+	configured, err := s.tags.configuredToolNamesByTag(ctx, tag)
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range configured {
 		candidate, ok := s.registry.Get(name)
 		if ok && (allowed == nil || allowed(candidate)) {
 			names = append(names, name)
 		}
 	}
-	return uniqueNames(names)
+	return uniqueNames(names), nil
 }
 
-func (s *PreloadService) Tags(ctx context.Context) []string {
-	if s == nil || s.registry == nil {
-		return nil
+func (s *PreloadService) Tags(ctx context.Context) ([]string, error) {
+	configured, err := s.tags.configuredTags(ctx)
+	if err != nil {
+		return nil, err
 	}
-	tags := append(s.registry.Tags(), s.tags.configuredTags(ctx)...)
+	tags := append(s.registry.Tags(), configured...)
 	var result []string
 	for _, tag := range uniqueNames(tags) {
-		if len(s.ToolNamesByTag(ctx, tag, func(candidate tool.Tool) bool { return canPreloadTool(ctx, candidate) })) > 0 {
+		names, err := s.ToolNamesByTag(ctx, tag, func(candidate tool.Tool) bool { return canPreloadTool(ctx, candidate) })
+		if err != nil {
+			return nil, err
+		}
+		if len(names) > 0 {
 			result = append(result, tag)
 		}
 	}
-	return result
+	return result, nil
 }

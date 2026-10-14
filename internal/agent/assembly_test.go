@@ -64,6 +64,9 @@ type testAgentOptions struct {
 
 func assembleTestOptions(t *testing.T, opts testAgentOptions) testAssembly {
 	defaults := config.Default()
+	if opts.ToolRegistry == nil {
+		opts.ToolRegistry = tool.NewRegistry()
+	}
 	if opts.Platform == nil {
 		opts.Platform = &fakePlatform{}
 	}
@@ -224,7 +227,8 @@ func (r testToolRegistry) Unregister(name string) error {
 }
 
 func completeTest(service *completion.Service, text string) []string {
-	return completion.Texts(service.Complete(context.Background(), completion.Request{Text: text}))
+	items, _ := service.Complete(context.Background(), completion.Request{Text: text})
+	return completion.Texts(items)
 }
 
 func listTestFileRollbacks(a *agentFixture, ctx context.Context) ([]fileops.RollbackInfo, error) {

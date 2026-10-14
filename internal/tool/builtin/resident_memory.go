@@ -79,9 +79,6 @@ func (t ResidentMemoryTool) Schema() llm.ToolSchema {
 }
 func (t ResidentMemoryTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
 	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
-	if err := validateMemoryStore(t.Store); err != nil {
-		return nil, err.Error(), err
-	}
 	{
 		result := &tool.Result{Content: "resident_memory 是常驻记忆管理入口。请调用 resident_memory_read、resident_memory_normal 或 resident_memory_core。"}
 		return result, "resident_memory guide returned", nil
@@ -162,7 +159,7 @@ func (t ResidentMemoryNormalTool) Call(ctx context.Context, req tool.CallRequest
 	}
 	switch strings.ToLower(strings.TrimSpace(args.Action)) {
 	case "append", "add":
-		if args.Content == nil || strings.TrimSpace(*args.Content) == "" {
+		if args.Content == nil {
 			{
 				callErr := fmt.Errorf("normal content is required")
 				return nil, callErr.Error(), callErr
@@ -254,23 +251,10 @@ func coreDescription(store *resident.Store) string {
 }
 
 func memoryLimits(store *resident.Store) resident.Limits {
-	if store == nil {
-		return resident.Limits{Core: resident.DefaultCoreMaxUnits, Normal: resident.DefaultNormalMaxUnits}
-	}
 	return store.LimitsOrDefault()
 }
 
-func validateMemoryStore(store *resident.Store) error {
-	if store == nil {
-		return fmt.Errorf("resident memory store is not configured")
-	}
-	return nil
-}
-
 func memoryScope(ctx context.Context, store *resident.Store) (session.Scope, error) {
-	if err := validateMemoryStore(store); err != nil {
-		return session.Scope{}, err
-	}
 	actor, ok := contextinfo.ActorFromContext(ctx)
 	if !ok {
 		return session.Scope{}, fmt.Errorf("resident memory actor is not available")

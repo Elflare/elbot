@@ -66,9 +66,6 @@ func (s FilesystemScanner) Reload(ctx context.Context, registry *tool.Registry) 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if registry == nil {
-		return nil
-	}
 	records, err := s.scanRecords(ctx)
 	if err != nil {
 		return err
@@ -80,18 +77,13 @@ func (s FilesystemScanner) Reload(ctx context.Context, registry *tool.Registry) 
 	if err := registry.ReplaceSources([]tool.Source{tool.SourceSkillAgent, tool.SourceSkillGo}, replacements); err != nil {
 		return err
 	}
-	if s.Catalog != nil {
-		s.Catalog.Replace(records)
-	}
+	s.Catalog.Replace(records)
 	return nil
 }
 
 func (s FilesystemScanner) Remove(ctx context.Context, registry *tool.Registry, name string) error {
 	if err := ctx.Err(); err != nil {
 		return err
-	}
-	if s.Catalog == nil {
-		return fmt.Errorf("skill catalog is not configured")
 	}
 	record, ok := s.Catalog.Get(name)
 	if !ok {
@@ -186,7 +178,7 @@ func (s FilesystemScanner) readGoRecord(root, dirName string) (Record, bool, err
 	}
 	header, err := elyph.ParseHeader(string(data))
 	if err != nil {
-		return Record{}, false, nil
+		return Record{}, false, fmt.Errorf("parse %s in %q: %w", elyph.SkillFileName, root, err)
 	}
 	binary, _, err := findGoBinary(root, dirName, header.Name)
 	if err != nil {
@@ -201,7 +193,7 @@ func (s FilesystemScanner) readAgentRecord(root, dirName string) (Record, bool, 
 	if data, err := os.ReadFile(filepath.Join(root, elyph.SkillFileName)); err == nil {
 		header, err := elyph.ParseHeader(string(data))
 		if err != nil {
-			return Record{}, false, nil
+			return Record{}, false, fmt.Errorf("parse %s in %q: %w", elyph.SkillFileName, root, err)
 		}
 		detail := strings.TrimSpace(string(data))
 		record := Record{Name: header.Name, Description: header.Description, Detail: detail, Format: elyph.Format, Risk: tool.RiskSafe, Kind: KindAgent, Root: root}

@@ -20,7 +20,8 @@ func TestSendFileMediaIDBuildsLocalOutput(t *testing.T) {
 	}
 	defer store.Close()
 	root := filepath.Join(t.TempDir(), "sandbox")
-	files := NewFileManagerWithMedia(root, DefaultFileDeliveryConfigForTest(), store)
+	files := NewFileManager(root, DefaultFileDeliveryConfigForTest())
+	files.Media = media.NewManager(store, root, &media.LocalBackend{Root: root})
 	resource, err := files.Media.ImportBytes(ctx, []byte("hello"), media.Input{Name: "hello.txt", MIMEType: "text/plain"})
 	if err != nil {
 		t.Fatalf("import media: %v", err)

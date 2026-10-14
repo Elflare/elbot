@@ -139,27 +139,8 @@ func (t ViewImageTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.
 	if err != nil {
 		return nil, err.Error(), err
 	}
-	if t.center == nil {
-		{
-			callErr := fmt.Errorf("media center is not configured")
-			return nil, callErr.Error(), callErr
-		}
-	}
 	if args.Source == "" {
-		{
-			result, callErr := t.viewMessages(ctx, args)
-			logContent := ""
-			if result != nil {
-				logContent = result.Content
-			}
-			if logContent == "" {
-				logContent = fmt.Sprintf("view_image message_id=%v media_index=%v", args.MessageIDs, args.MediaIndex)
-			}
-			if callErr != nil {
-				logContent = callErr.Error() + "\n" + logContent
-			}
-			return result, logContent, callErr
-		}
+		return t.viewMessages(ctx, args)
 	}
 	path, err := t.sourcePath(ctx, args.Source)
 	if err != nil {
@@ -175,29 +156,11 @@ func (t ViewImageTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.
 		item, err = t.center.ImportFile(ctx, path.Path, media.Input{})
 	}
 	if err != nil {
-		if ctx.Err() != nil {
-			{
-				callErr := ctx.Err()
-				return nil, callErr.Error(), callErr
-			}
-		}
-		{
-			callErr := fmt.Errorf("图片获取失败：来源不可用或超限")
-			return nil, callErr.Error(), callErr
-		}
+		return nil, err.Error(), err
 	}
 	item, err = t.center.ImageMetadata(ctx, item.ID)
 	if err != nil {
-		if ctx.Err() != nil {
-			{
-				callErr := ctx.Err()
-				return nil, callErr.Error(), callErr
-			}
-		}
-		{
-			callErr := fmt.Errorf("媒体不是有效或支持的图片")
-			return nil, callErr.Error(), callErr
-		}
+		return nil, err.Error(), err
 	}
 	{
 		result := &tool.Result{Segments: []llm.MessageSegment{imageResultSegment(item)}, Warnings: path.Warnings}
@@ -205,25 +168,22 @@ func (t ViewImageTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.
 	}
 }
 
-func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (*tool.Result, error) {
+func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (_ *tool.Result, logContent string, _ error) {
 	chat, err := currentChatHistoryContext(ctx)
 	if err != nil {
-		return nil, err
-	}
-	if t.history == nil {
-		return nil, fmt.Errorf("chat history storage is not configured")
+		return nil, err.Error(), err
 	}
 	var requests []media.HistoryMediaRequest
 	for i, id := range args.MessageIDs {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
 		row, err := t.history.GetByPlatformMessage(ctx, chat.Platform, chat.ScopeID, id)
 		if errors.Is(err, storage.ErrNotFound) {
-			return nil, fmt.Errorf("[#%s] 当前聊天没有该消息", id)
+			return nil, "", fmt.Errorf("[#%s] 当前聊天没有该消息", id)
 		}
 		if err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
 		segments := media.HistorySegments(*row)
 		var images []int
@@ -233,7 +193,7 @@ func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (*t
 			}
 		}
 		if len(images) == 0 {
-			return nil, fmt.Errorf("[#%s] 没有图片", id)
+			return nil, "", fmt.Errorf("[#%s] 没有图片", id)
 		}
 		indexes := images[:1]
 		if args.MediaIndex != nil {
@@ -241,7 +201,7 @@ func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (*t
 		}
 		for _, index := range indexes {
 			if index > len(segments) || segments[index-1].Type != platform.SegmentImage {
-				return nil, fmt.Errorf("[#%s] 序号 %d 不是图片；可选图片序号：%v", id, index, images)
+				return nil, "", fmt.Errorf("[#%s] 序号 %d 不是图片；可选图片序号：%v", id, index, images)
 			}
 			requests = append(requests, media.HistoryMediaRequest{Message: *row, Index: index})
 		}
@@ -249,12 +209,12 @@ func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (*t
 	msg, _ := platform.MessageContextFrom(ctx)
 	results, err := t.center.GetHistoryMediaBatch(ctx, requests, msg.MediaResolver, media.HistoryFetchOptions{MaxFetchAttempts: getMediaDownloadLimit})
 	if err != nil {
-		return nil, err
+		return nil, err.Error(), err
 	}
 	var segments []llm.MessageSegment
 	for i, result := range results {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, err.Error(), err
 		}
 		request := requests[i]
 		label := fmt.Sprintf("[#%s] %d.", request.Message.PlatformMessageID, request.Index)
@@ -263,10 +223,12 @@ func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (*t
 			label += " 达到本次 5 个下载尝试上限"
 		case result.Err != nil:
 			label += " 图片获取失败"
+			logContent += fmt.Sprintf("\n%s %v", label, result.Err)
 		default:
 			item, err := t.center.ImageMetadata(ctx, result.Media.ID)
 			if err != nil {
 				label += " 媒体不是有效或支持的图片"
+				logContent += fmt.Sprintf("\n%s %v", label, err)
 			} else {
 				segments = append(segments, llm.MessageSegment{Type: llm.SegmentText, Text: label}, imageResultSegment(item))
 				continue
@@ -274,7 +236,7 @@ func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (*t
 		}
 		segments = append(segments, llm.MessageSegment{Type: llm.SegmentText, Text: label})
 	}
-	return &tool.Result{Segments: segments}, ctx.Err()
+	return &tool.Result{Segments: segments}, fmt.Sprintf("view_image message_id=%v media_index=%v", args.MessageIDs, args.MediaIndex) + logContent, ctx.Err()
 }
 
 func imageResultSegment(item *storage.Media) llm.MessageSegment {

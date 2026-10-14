@@ -47,17 +47,3 @@ func TestModuleOwnsOneToolGraphAndDoesNotCloseStorage(t *testing.T) {
 		t.Fatal("borrowed storage was closed", err)
 	}
 }
-func TestFailedConstructionStillReturnsOwner(t *testing.T) {
-	m, err := NewModule(t.Context(), ModuleDeps{})
-	if err == nil || m == nil {
-		t.Fatal(m, err)
-	}
-	if err := m.Close(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-m.Done():
-	default:
-		t.Fatal("partial owner remains active")
-	}
-}

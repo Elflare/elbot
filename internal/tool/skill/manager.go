@@ -40,9 +40,6 @@ func NewManager(root string, registry *tool.Registry, environment ...processenv.
 }
 
 func (m *Manager) Reload(ctx context.Context) error {
-	if m == nil || m.Scanner.Catalog == nil {
-		return nil
-	}
 	m.reloadMu.Lock()
 	err := m.Scanner.Reload(ctx, m.Registry)
 	m.setReloadResult(err)
@@ -58,9 +55,6 @@ func (m *Manager) setReloadResult(err error) {
 }
 
 func (m *Manager) EnsureLoaded(ctx context.Context) error {
-	if m == nil {
-		return nil
-	}
 	m.mu.Lock()
 	if m.loaded {
 		err := m.lastErr
@@ -100,10 +94,6 @@ func (m *Manager) EnsureLoaded(ctx context.Context) error {
 
 func (m *Manager) StartDelayedReload(ctx context.Context, delay time.Duration) <-chan struct{} {
 	done := make(chan struct{})
-	if m == nil {
-		close(done)
-		return done
-	}
 	go func() {
 		defer close(done)
 		if delay > 0 {
@@ -121,9 +111,6 @@ func (m *Manager) StartDelayedReload(ctx context.Context, delay time.Duration) <
 }
 
 func (m *Manager) Remove(ctx context.Context, name string) error {
-	if m == nil {
-		return nil
-	}
 	m.reloadMu.Lock()
 	err := m.Scanner.Remove(ctx, m.Registry, name)
 	m.setReloadResult(err)
@@ -134,9 +121,6 @@ func (m *Manager) Remove(ctx context.Context, name string) error {
 // WriteAgentSkillConfig commits an AgentSkill manifest and rolls the file back
 // if the complete skill snapshot cannot be reloaded.
 func (m *Manager) WriteAgentSkillConfig(ctx context.Context, name, content string) error {
-	if m == nil || m.Catalog == nil || m.Registry == nil {
-		return fmt.Errorf("skill manager is not configured")
-	}
 	name = strings.TrimSpace(name)
 	if err := validateSkillName(name); err != nil {
 		return err

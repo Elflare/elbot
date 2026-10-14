@@ -56,9 +56,6 @@ func (r *MediaRuntime) NewCall() *MediaCall {
 }
 
 func (c *MediaCall) Retain(ctx context.Context, id string) (*storage.Media, error) {
-	if c.runtime == nil || c.runtime.Center == nil {
-		return nil, fmt.Errorf("media center is not configured")
-	}
 	if !media.ValidID(id) {
 		return nil, fmt.Errorf("invalid media")
 	}
@@ -183,9 +180,6 @@ func (c *MediaCall) CachedExport(ctx context.Context, id string) (string, error)
 
 // Import opens a regular output within the Skill cwd, including safe symlink resolution.
 func (c *MediaCall) Import(ctx context.Context, base, path string, input media.Input) (*storage.Media, error) {
-	if c.runtime == nil || c.runtime.Center == nil {
-		return nil, fmt.Errorf("media center is not configured")
-	}
 	slash := strings.ReplaceAll(path, "\\", "/")
 	if !filepath.IsLocal(path) || strings.Contains(slash, ":") || strings.HasPrefix(slash, "/") {
 		return nil, fmt.Errorf("skill media path must be relative")

@@ -18,6 +18,7 @@ import (
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/tool"
 	"elbot/internal/toolrun"
 )
 
@@ -1011,6 +1012,7 @@ func newTestServiceWithRunner(t *testing.T, runner background.Runner, send Sende
 		SandboxRoot:      filepath.Join(t.TempDir(), "sandbox"),
 		Tokens:           map[string]string{"home": "secret", "alt": "alt-secret"},
 		Store:            store,
+		ToolPreloader:    toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: tool.NewRegistry()}),
 		Send:             send,
 		Runner:           runner,
 		EnabledPlatforms: []string{"cli", "qqonebot"},

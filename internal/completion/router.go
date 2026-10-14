@@ -46,22 +46,22 @@ func (s RouterSource) actor(ctx context.Context) contextinfo.Actor {
 	actor, _ := contextinfo.ActorFromContext(ctx)
 	return actor
 }
-func (s RouterSource) Complete(ctx context.Context, req Request) []Item {
+func (s RouterSource) Complete(ctx context.Context, req Request) ([]Item, error) {
 	if s.Router == nil {
-		return nil
+		return nil, nil
 	}
 	actor := s.actor(ctx)
 	if items := s.completeArgs(ctx, req, actor); len(items) > 0 {
-		return items
+		return items, nil
 	}
 	texts := s.Router.CompleteForActor(req.Text, actor)
 	if len(texts) == 0 {
-		return nil
+		return nil, nil
 	}
 	items := make([]Item, 0, len(texts))
 	for _, text := range texts {
 		items = append(items, Item{Text: text, Label: strings.TrimLeft(text, "/-"), Kind: KindCommand})
 	}
-	return items
+	return items, nil
 
 }

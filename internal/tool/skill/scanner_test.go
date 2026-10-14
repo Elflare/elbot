@@ -436,19 +436,16 @@ func TestAgentSkillCreatorNoticeDiscovery(t *testing.T) {
 	}
 }
 
-func TestFilesystemScannerSkipsBrokenElyphWithoutFailing(t *testing.T) {
+func TestFilesystemScannerRejectsBrokenElyph(t *testing.T) {
 	root := t.TempDir()
 	brokenDir := filepath.Join(root, "go", "broken")
 	goodDir := filepath.Join(root, "go", "good")
 	writeElyphSkill(t, brokenDir, "missing header\n> do\n")
 	writeElyphSkill(t, goodDir, "#skill good - Good skill\n** risk low\n")
 	scanner := NewFilesystemScanner(root)
-	tools, err := scanner.Scan(context.Background())
-	if err != nil {
-		t.Fatalf("Scan: %v", err)
-	}
-	if len(tools) != 1 || tools[0].Name() != "good" {
-		t.Fatalf("tools = %#v, want only good", tools)
+	_, err := scanner.Scan(context.Background())
+	if err == nil || !strings.Contains(err.Error(), brokenDir) {
+		t.Fatalf("Scan error = %v", err)
 	}
 }
 

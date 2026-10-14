@@ -170,7 +170,7 @@ type tuiModel struct {
 }
 
 type completionProvider interface {
-	Complete(context.Context, completion.Request) []completion.Item
+	Complete(context.Context, completion.Request) ([]completion.Item, error)
 }
 
 func newTUIInput() textarea.Model {
@@ -578,7 +578,12 @@ func (m tuiModel) completeInput(delta int) (tea.Model, tea.Cmd) {
 		m.selectCompletion(delta)
 		return m, nil
 	}
-	items := m.complete(m.input.Value())
+	items, err := m.complete(m.input.Value())
+	if err != nil {
+		m.clearCompletion()
+		m.appendNoticeLevel("completion: "+err.Error(), slog.LevelError)
+		return m, nil
+	}
 	switch len(items) {
 	case 0:
 		m.clearCompletion()
@@ -598,19 +603,19 @@ func (m tuiModel) completeInput(delta int) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m tuiModel) complete(value string) []completion.Item {
+func (m tuiModel) complete(value string) ([]completion.Item, error) {
 	cursor := byteOffsetForRunePosition(value, textareaCursorRunePosition(m.input))
 	if resolver := m.localFileResolver(); resolver != nil {
 		items := resolver.Complete(m.ctx, completion.Request{Text: value, Cursor: cursor})
 		if len(items) > 0 {
-			return items
+			return items, nil
 		}
 	}
 	if m.completion != nil {
 		return m.completion.Complete(m.ctx, completion.Request{Text: value, Cursor: cursor})
 	}
 
-	return nil
+	return nil, nil
 }
 
 func (m tuiModel) localFileResolver() *localFileResolver {

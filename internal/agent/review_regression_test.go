@@ -74,11 +74,11 @@ func TestStopCompletionUsesResolvedActorAndCurrentSession(t *testing.T) {
 	}
 	defer done()
 	query := completion.Request{Text: "/stop "}
-	adminItems := a.CompletionService().Complete(ctx, query)
+	adminItems, _ := a.CompletionService().Complete(ctx, query)
 	if len(adminItems) != 2 {
 		t.Fatalf("admin completion lost global access: %+v", adminItems)
 	}
-	userItems := a.CompletionService().Complete(user, query)
+	userItems, _ := a.CompletionService().Complete(user, query)
 	if len(userItems) != 1 || userItems[0].Text != current.ID || userItems[0].Text == foreign.ID {
 		t.Fatalf("user completion=%+v", userItems)
 	}

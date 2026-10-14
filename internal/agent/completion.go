@@ -41,24 +41,24 @@ func NewCompletion(deps CompletionDeps) *completion.Service {
 		completion.RiskConfirmationSource{Router: commands, Sessions: sessions, Turns: turns, Scope: identity.Scope, CommandNames: riskConfirmationCommandNames()},
 		completion.ForkMessageSource{Router: commands, Sessions: sessions, Store: store, Scope: identity.Scope},
 		completion.ToolDirectiveSource{
-			Context: func(ctx context.Context) context.Context {
+			Context: func(ctx context.Context) (context.Context, error) {
 				row, err := sessions.Current(ctx, identity.Scope(ctx))
 				if err != nil && err != storage.ErrNotFound {
-					return contextinfo.WithoutModel(ctx)
+					return ctx, err
 				}
 				prepared, err := execution.ModelContext(ctx, row)
 				if err != nil {
-					return contextinfo.WithoutModel(ctx)
+					return ctx, err
 				}
-				return prepared
+				return prepared, nil
 			},
 			Registry: func() *tool.Registry { return registry },
 			Actor:    identity.Actor,
 			Policy:   func() *security.Policy { return identity.Policy() },
-			Tags: func(ctx context.Context, _ *tool.Registry, actor contextinfo.Actor, policy *security.Policy) []string {
+			Tags: func(ctx context.Context, _ *tool.Registry, actor contextinfo.Actor, policy *security.Policy) ([]string, error) {
 				return preloader.Tags(contextinfo.WithActor(security.WithPolicy(ctx, policy), actor))
 			},
-			ToolNamesByTag: func(ctx context.Context, _ *tool.Registry, tag string, allowed func(tool.Tool) bool) []string {
+			ToolNamesByTag: func(ctx context.Context, _ *tool.Registry, tag string, allowed func(tool.Tool) bool) ([]string, error) {
 				return preloader.ToolNamesByTag(ctx, tag, allowed)
 			},
 		},

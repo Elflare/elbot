@@ -26,10 +26,11 @@ func rollbackAgentFixture(t *testing.T) (*agentFixture, *fakePlatform, context.C
 	p := &fakePlatform{}
 	opts.Platform = p
 	opts.FileRollback = fileops.NewService(nil)
-	opts.ToolRegistry = tool.NewRegistry()
-	if err := builtin.RegisterAll(opts.ToolRegistry, builtin.RegisterOptions{FileRollback: opts.FileRollback}); err != nil {
+	runtime, err := builtin.NewRuntime(builtin.RuntimeOptions{ConfigDir: t.TempDir(), FileRollback: opts.FileRollback, Media: opts.Media})
+	if err != nil {
 		t.Fatal(err)
 	}
+	opts.ToolRegistry = runtime.Registry
 	a := mustNewWithOptions(t, opts)
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin})
 	row, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "files"})

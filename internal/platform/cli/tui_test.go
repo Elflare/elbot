@@ -696,8 +696,8 @@ func TestTextareaPasteHonorsCharacterLimit(t *testing.T) {
 
 type staticCompletionSource []completion.Item
 
-func (s staticCompletionSource) Complete(context.Context, completion.Request) []completion.Item {
-	return s
+func (s staticCompletionSource) Complete(context.Context, completion.Request) ([]completion.Item, error) {
+	return s, nil
 }
 
 func mustWriteFile(t *testing.T, root, rel, content string) {

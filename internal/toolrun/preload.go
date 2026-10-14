@@ -55,13 +55,13 @@ type BackgroundPreload struct {
 
 func (s *PreloadService) PrepareTools(ctx context.Context, names []string) (ToolPreload, error) {
 	result := ToolPreload{Accepted: make([]bool, len(names))}
-	if s == nil || s.registry == nil {
-		return result, nil
-	}
 	seen := map[string]bool{}
 	var content []string
 	for i, name := range names {
-		discovery, tag := s.discoverDirective(ctx, name)
+		discovery, tag, err := s.discoverDirective(ctx, name)
+		if err != nil {
+			return ToolPreload{}, err
+		}
 		if discovery == nil || len(discovery.Tools) == 0 {
 			result.Invalid = append(result.Invalid, name)
 			continue
@@ -83,7 +83,7 @@ func (s *PreloadService) PrepareTools(ctx context.Context, names []string) (Tool
 	return result, nil
 }
 
-func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, names []string) SkillPreload {
+func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, names []string) (SkillPreload, error) {
 	record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "tool", Identity: globalevents.LogIdentity{SessionID: &sessionID}}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	if facts.RunID != "" {
@@ -100,9 +100,6 @@ func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, na
 	}
 
 	result := SkillPreload{Accepted: make([]bool, len(names))}
-	if s == nil || s.registry == nil {
-		return result
-	}
 	seen := map[string]bool{}
 	var blocks []tool.DetailBlock
 	for i, name := range names {
@@ -129,7 +126,7 @@ func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, na
 				}
 				record.Content = fmt.Sprintf("skill preload failed: tool=%s error=%v", name, err)
 				_ = globalevents.EmitLog(ctx, record)
-				continue
+				return SkillPreload{}, err
 			}
 			seen[name] = true
 			result.Names = append(result.Names, name)
@@ -142,7 +139,7 @@ func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, na
 	}
 	result.Content = tool.RenderDetailBlocksWithContext(ctx, blocks)
 	result.Update.ShownRuleCardFormats = tool.NewRuleCardFormatsFromContext(ctx)
-	return result
+	return result, nil
 }
 
 // BackgroundSelection resolves task selectors before dependency expansion. The
@@ -152,14 +149,10 @@ type BackgroundSelection struct {
 	Tag   string
 }
 
-func (s *PreloadService) BackgroundSelections(ctx context.Context, names []string) []BackgroundSelection {
+func (s *PreloadService) BackgroundSelections(ctx context.Context, names []string) ([]BackgroundSelection, error) {
 	var selections []BackgroundSelection
 	for _, name := range uniqueNames(names) {
 		if name == "discover_tool" {
-			continue
-		}
-		if s == nil || s.registry == nil {
-			selections = append(selections, BackgroundSelection{Names: []string{name}})
 			continue
 		}
 		if _, ok := s.registry.Get(name); ok {
@@ -167,22 +160,25 @@ func (s *PreloadService) BackgroundSelections(ctx context.Context, names []strin
 			continue
 		}
 		tag := normalizeToolTag(name)
-		roots := s.ToolNamesByTag(ctx, tag, func(t tool.Tool) bool {
+		roots, err := s.ToolNamesByTag(ctx, tag, func(t tool.Tool) bool {
 			// Selection expands authorization roots before a model is chosen.
 			// Actual preload separately enforces current API availability.
 			info := t.Info()
 			_, skill := t.(tool.DetailProvider)
-			return !info.ForegroundOnly && !info.Hidden && !skill && t.Name() != "workspace" && tool.CanAccessTool(actorForView(ctx, Context{}), policyForManager(ctx, nil), info)
+			return !info.ForegroundOnly && !info.Hidden && !skill && t.Name() != "workspace" && tool.CanAccessTool(actorForView(ctx, Context{}), policyForManager(ctx), info)
 		})
+		if err != nil {
+			return nil, err
+		}
 		if len(roots) == 0 {
 			roots, tag = []string{name}, ""
 		}
 		selections = append(selections, BackgroundSelection{Names: roots, Tag: tag})
 	}
-	return selections
+	return selections, nil
 }
 
-func (s *PreloadService) PrepareBackground(ctx context.Context, sessionID string, selectors, allowed []string) BackgroundPreload {
+func (s *PreloadService) PrepareBackground(ctx context.Context, sessionID string, selectors, allowed []string) (BackgroundPreload, error) {
 	record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "tool", Identity: globalevents.LogIdentity{SessionID: &sessionID}}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	if facts.RunID != "" {
@@ -199,13 +195,14 @@ func (s *PreloadService) PrepareBackground(ctx context.Context, sessionID string
 	}
 
 	var result BackgroundPreload
-	if s == nil || s.registry == nil {
-		return result
-	}
 	seen := map[string]bool{}
 	var names []string
 	tags := map[string][]string{}
-	for _, selection := range s.BackgroundSelections(ctx, selectors) {
+	selections, err := s.BackgroundSelections(ctx, selectors)
+	if err != nil {
+		return BackgroundPreload{}, err
+	}
+	for _, selection := range selections {
 		for _, name := range selection.Names {
 			if allowed != nil && !slices.Contains(allowed, name) {
 				record.EventName = "background_preload_skipped"
@@ -249,11 +246,15 @@ func (s *PreloadService) PrepareBackground(ctx context.Context, sessionID string
 			block, err := skillDetailBlock(ctx, candidate, detailer)
 			if err != nil {
 				record.EventName = "background_preload_skipped"
-				record.Level = slog.LevelInfo
-				record.ResultStatus = globalevents.ResultSkipped
-				record.Content = fmt.Sprintf("background preload skipped: name=%s reason=skill_detail_failed error=%v", name, err)
+				record.Level = slog.LevelError
+				record.ResultStatus = globalevents.ResultFailed
+				if errors.Is(err, context.Canceled) {
+					record.Level = slog.LevelInfo
+					record.ResultStatus = globalevents.ResultCanceled
+				}
+				record.Content = fmt.Sprintf("background preload failed: name=%s error=%v", name, err)
 				_ = globalevents.EmitLog(ctx, record)
-				continue
+				return BackgroundPreload{}, err
 			}
 			detail := strings.TrimSpace(tool.RenderDetailBlocks([]tool.DetailBlock{block}))
 			if detail == "" {
@@ -287,11 +288,11 @@ func (s *PreloadService) PrepareBackground(ctx context.Context, sessionID string
 		}
 	}
 	result.SkillPrompt = strings.Join(sections, "\n\n---\n\n")
-	return result
+	return result, nil
 }
 
 func preloadAllowed(ctx context.Context, candidate tool.Tool) bool {
-	return tool.InfoAvailableInContext(ctx, candidate.Info()) && tool.CanAccessTool(actorForView(ctx, Context{}), policyForManager(ctx, nil), candidate.Info())
+	return tool.InfoAvailableInContext(ctx, candidate.Info()) && tool.CanAccessTool(actorForView(ctx, Context{}), policyForManager(ctx), candidate.Info())
 }
 
 func canPreloadTool(ctx context.Context, candidate tool.Tool) bool {
@@ -305,17 +306,20 @@ func canPreloadSkill(ctx context.Context, candidate tool.Tool) bool {
 	return skill && !candidate.Info().Hidden && preloadAllowed(ctx, candidate)
 }
 
-func (s *PreloadService) discoverDirective(ctx context.Context, name string) (*tool.DiscoveryResult, string) {
+func (s *PreloadService) discoverDirective(ctx context.Context, name string) (*tool.DiscoveryResult, string, error) {
 	name = strings.TrimSpace(name)
 	if candidate, ok := s.registry.Get(name); ok {
 		if !canPreloadTool(ctx, candidate) {
-			return nil, ""
+			return nil, "", nil
 		}
-		return s.discoverNames(ctx, []string{name}), ""
+		return s.discoverNames(ctx, []string{name}), "", nil
 	}
 	tag := normalizeToolTag(name)
-	names := s.ToolNamesByTag(ctx, tag, func(candidate tool.Tool) bool { return canPreloadTool(ctx, candidate) })
-	return s.discoverNames(ctx, names), tag
+	names, err := s.ToolNamesByTag(ctx, tag, func(candidate tool.Tool) bool { return canPreloadTool(ctx, candidate) })
+	if err != nil {
+		return nil, "", err
+	}
+	return s.discoverNames(ctx, names), tag, nil
 }
 
 func (s *PreloadService) discoverNames(ctx context.Context, names []string) *tool.DiscoveryResult {

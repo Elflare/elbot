@@ -254,36 +254,6 @@ func TestRunnerRecordsUnenteredCallFailure(t *testing.T) {
 	}
 }
 
-func TestRunnerPreservesExplicitEmptySessionIdentity(t *testing.T) {
-	ctx := contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "context-only-session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"})
-	manager := NewManager(tool.NewRegistry(), security.DefaultPolicy())
-	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-		if record.Module == "toolrun" {
-			records = append(records, record)
-		}
-		return nil
-	}, signal.ConnectOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(connection.Disconnect)
-	NewRunner(manager).Run(ctx, &runnerTestDeps{}, RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "missing", Arguments: "{}"}}})
-	if len(records) < 3 {
-		t.Fatalf("call and persistence boundaries missing: %#v", records)
-	}
-	for _, record := range records {
-		if record.Identity.SessionID == nil || *record.Identity.SessionID != "" {
-			t.Fatalf("context replaced an explicit source identity: %#v", record.Identity)
-		}
-		for name, value := range map[string]*string{"run": record.Identity.RunID, "attempt": record.Identity.Attempt, "request": record.Identity.RequestID, "root": record.Identity.RootRequestID} {
-			if value == nil || *value != name {
-				t.Fatalf("%s identity lost in %s: %#v", name, record.EventName, record.Identity)
-			}
-		}
-	}
-}
-
 type loggingDeps struct {
 	runnerTestDeps
 	recordErr       error

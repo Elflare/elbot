@@ -72,9 +72,6 @@ func (r GoRunner) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.Ri
 			return tool.RiskAssessment{}, fmt.Errorf("parse go_skill_run arguments: %w", err)
 		}
 	}
-	if r.Catalog == nil {
-		return tool.RiskAssessment{Level: tool.RiskHigh}, nil
-	}
 	record, ok := r.Catalog.Get(strings.TrimSpace(args.SkillName))
 	if !ok || record.Kind != KindGo {
 		return tool.RiskAssessment{Level: tool.RiskHigh}, nil
@@ -94,12 +91,6 @@ func (r GoRunner) Call(ctx context.Context, req tool.CallRequest) (result *tool.
 				callErr := fmt.Errorf("parse go_skill_run arguments: %w", err)
 				return nil, callErr.Error(), callErr
 			}
-		}
-	}
-	if r.Catalog == nil {
-		{
-			callErr := fmt.Errorf("skill catalog is not configured")
-			return nil, callErr.Error(), callErr
 		}
 	}
 	record, ok := r.Catalog.Get(strings.TrimSpace(args.SkillName))

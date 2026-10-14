@@ -21,17 +21,17 @@ type RiskConfirmationSource struct {
 	CommandNames []string
 }
 
-func (s RiskConfirmationSource) Complete(ctx context.Context, req Request) []Item {
+func (s RiskConfirmationSource) Complete(ctx context.Context, req Request) ([]Item, error) {
 	if s.Router == nil || s.Sessions == nil || s.Turns == nil || s.Scope == nil || len(s.CommandNames) == 0 {
-		return nil
+		return nil, nil
 	}
 	sess, err := s.Sessions.Current(ctx, s.Scope(ctx))
 	if err != nil || s.Turns.Snapshot(sess.ID).Phase != turn.PhaseAwaitRiskConfirm {
-		return nil
+		return nil, nil
 	}
 	parsed := s.Router.Parse(req.Text)
 	if !parsed.OK || hasAnyCommandArgs(req.Text, parsed.Prefix) {
-		return nil
+		return nil, nil
 	}
 	out := []Item{}
 	for _, name := range s.CommandNames {
@@ -39,7 +39,7 @@ func (s RiskConfirmationSource) Complete(ctx context.Context, req Request) []Ite
 			out = append(out, Item{Text: parsed.Prefix + name, Label: name, Kind: KindRiskConfirmation})
 		}
 	}
-	return out
+	return out, nil
 }
 
 func hasAnyCommandArgs(text, prefix string) bool {

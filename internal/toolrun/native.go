@@ -18,23 +18,14 @@ func NewNativeSource(registry *tool.Registry) *NativeSource {
 }
 
 func (s *NativeSource) Get(name string) (tool.Tool, bool) {
-	if s == nil || s.Registry == nil {
-		return nil, false
-	}
 	return s.Registry.Get(name)
 }
 
 func (s *NativeSource) BaseSchemas(ctx context.Context) []llm.ToolSchema {
-	if s == nil || s.Registry == nil {
-		return nil
-	}
 	return s.Registry.SchemasForContext(func(info tool.Info) bool { return AvailableInContext(ctx, info) })
 }
 
 func (s *NativeSource) ToolInfos(ctx context.Context, actor contextinfo.Actor, policy *security.Policy) []tool.Info {
-	if s == nil || s.Registry == nil {
-		return nil
-	}
 	infos := s.Registry.List()
 	available := make([]tool.Info, 0, len(infos))
 	for _, info := range infos {

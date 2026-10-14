@@ -188,10 +188,11 @@ func TestRollbackToolFileGuardChecksActualTarget(t *testing.T) {
 }
 
 func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
-	registry := tool.NewRegistry()
-	if err := RegisterAll(registry, RegisterOptions{}); err != nil {
+	runtime, err := NewRuntime(RuntimeOptions{ConfigDir: t.TempDir(), FileRollback: fileops.NewService(nil)})
+	if err != nil {
 		t.Fatal(err)
 	}
+	registry := runtime.Registry
 	rollback, ok := registry.Get("rollback_file")
 	if !ok {
 		t.Fatal("missing rollback tool")

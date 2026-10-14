@@ -45,27 +45,24 @@ func (s *Service) editPath(ctx context.Context, req EditRequest) (workspace.Reso
 	return resolved, target, nil
 }
 
-func (s *Service) editCall(ctx context.Context) (*fileRollbackCall, error) {
+func (s *Service) editCall(ctx context.Context) (*fileRollbackCall, *RollbackSession, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if s == nil || s.Manager == nil {
-		return nil, fmt.Errorf("file service is not configured")
+		return nil, nil, err
 	}
 	call, _ := ctx.Value(fileRollbackContextKey{}).(*fileRollbackCall)
 	if call != nil && call.service != s {
-		return nil, ErrRollbackExpired
+		return nil, nil, ErrRollbackExpired
 	}
 	lease, err := s.EditSession(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if lease != nil {
 		if err := lease.check(ctx); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
-	return call, nil
+	return call, lease, nil
 }
 
 func editArguments(req EditRequest) string {
@@ -92,7 +89,7 @@ func checkEditPreflight(preview *editPreflight, req EditRequest, path, target st
 // PreviewEdit pins the state that produced the confirmation diff. Repeated
 // preparation in the same call cannot silently replace it with a newer state.
 func (s *Service) PreviewEdit(ctx context.Context, req EditRequest) (EditResult, error) {
-	call, err := s.editCall(ctx)
+	call, _, err := s.editCall(ctx)
 	if err != nil {
 		return EditResult{}, err
 	}
@@ -131,7 +128,7 @@ func (s *Service) PreviewEdit(ctx context.Context, req EditRequest) (EditResult,
 // Edit uses the same target locks for recorded foreground and unrecorded
 // background operations. Temporary output is prepared before commit admission.
 func (s *Service) Edit(ctx context.Context, req EditRequest) (EditResult, workspace.ResolvedPath, error) {
-	call, err := s.editCall(ctx)
+	call, lease, err := s.editCall(ctx)
 	if err != nil {
 		return EditResult{}, workspace.ResolvedPath{}, err
 	}
@@ -140,10 +137,6 @@ func (s *Service) Edit(ctx context.Context, req EditRequest) (EditResult, worksp
 		defer call.mu.Unlock()
 	}
 	resolved, target, err := s.editPath(ctx, req)
-	if err != nil {
-		return EditResult{}, resolved, err
-	}
-	lease, err := s.EditSession(ctx)
 	if err != nil {
 		return EditResult{}, resolved, err
 	}

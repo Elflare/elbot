@@ -26,7 +26,7 @@ func (r Request) CursorOrEnd() int {
 }
 
 type Source interface {
-	Complete(ctx context.Context, req Request) []Item
+	Complete(ctx context.Context, req Request) ([]Item, error)
 }
 
 type Service struct {
@@ -43,17 +43,17 @@ func NewService(sources ...Source) *Service {
 	return &Service{sources: out}
 }
 
-func (s *Service) Complete(ctx context.Context, req Request) []Item {
-	if s == nil {
-		return nil
-	}
+func (s *Service) Complete(ctx context.Context, req Request) ([]Item, error) {
 	for _, source := range s.sources {
-		items := source.Complete(ctx, req)
+		items, err := source.Complete(ctx, req)
+		if err != nil {
+			return nil, err
+		}
 		if len(items) > 0 {
-			return items
+			return items, nil
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 func Texts(items []Item) []string {
