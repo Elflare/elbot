@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- 新增Responses api接口，支持完整Responses能力
 - 现在支持并发执行工具。
 - 新增 Responses 专用 `view_image`：读取媒体 ID、URL、本地图片或当前聊天历史图片；图片回灌模型，本地路径仅超管可用。
 - Provider 新增 `api_mode="chat"/"response"`，省略仍使用 Chat Completions。
