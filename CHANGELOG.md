@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- 现在支持并发执行工具
+- 现在支持并发执行工具。
 - 新增 Responses 专用 `view_image`：读取媒体 ID、URL、本地图片或当前聊天历史图片；图片回灌模型，本地路径仅超管可用。
 - Provider 新增 `api_mode="chat"/"response"`，省略仍使用 Chat Completions。
 - `edit_file` 为每个文件保留最近一次编辑前的内存备份。新增仅超管可用的 `/rollback [编号]` 和工具 `rollback_file`，发现读写文件工具时自动展开；切换 Session、重启或容量淘汰后记录失效。不覆盖 Shell 或外部程序的修改。
@@ -19,15 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- 工具结果不再在入库前精简。
-- `/models --fresh`／`--refresh` 现在可刷新配置文件。
-- AgentSkill TOML 命令改为与 Go Skill 共用基础环境，并与 Go Skill 一起在每次执行前读取技能根目录 `.env`；普通变量优先级为技能 `.env` > ElBot 进程环境 > 配置根 `.env`，PATH 依次追加去重。技能 `.env` 修改后下次调用生效，无需重载或重启。
 - 大幅重构底层，优化各包职责与边界
 - 重构日志系统
 - 重构通知系统
 - 优化CLI UI逻辑
 - 服务模式不再随全部消息平台退出而结束。
 - 优化cron任务的日志
+- AgentSkill TOML 命令改为与 Go Skill 共用基础环境，并与 Go Skill 一起在每次执行前读取技能根目录 `.env`；普通变量优先级为技能 `.env` > ElBot 进程环境 > 配置根 `.env`，PATH 依次追加去重。技能 `.env` 修改后下次调用生效，无需重载或重启。
+- `/models --fresh`／`--refresh` 现在可刷新配置文件。
+- 工具结果不再在入库前精简，以数据库为唯一来源。
 - 工具调现在仅记录 audit；移除 `/log -t`。日志会精简工具内容记录。
 - 平台连接事件从适配器实例信号及 App 转发改为直接发布全局信号；Hook 协调模块和 Cron 自行订阅、按平台排队并管理关闭，保持原有连接触发、补执行及 30 秒退出预算。
 - 工具支持按 API 类型限制发现、补全、预载和执行。
