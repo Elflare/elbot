@@ -49,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix the issue where native seeds without media were serialized as JSON `null`, causing media cleanup to falsely report missing references and abort.
 - Fix the issue where 'request failed' was falsely reported when ordinary messages were started concurrently.
 - Fix a bug where ordinary log queries such as `/audit` directly displayed JSON escapes.
+- Fixed media size limit check bug
 - Fixed an issue where `shell` cached all output and only truncated it after completion, causing memory usage to grow with the output volume during execution; capacity is now limited during collection, and any excess is drained and discarded.
 - Fixed the issue where `[tool]` was repeatedly added line by line in tool multi-line prompts.
 - Fixed the high-risk confirmation bug.

@@ -464,6 +464,14 @@
       "translation": "When there are multiple matches, the specific match can be selected via __ELBOT_CODE_0__; if __ELBOT_CODE_1__ is not provided, an error will be reported and all matching positions will be listed.",
       "updated_at": 1782298716
     },
+    "CHANGELOG.md:list:3765cecb942fdaf9532ba9a1bdab088d868bc9e9be449124ab12cf11d4e644b0": {
+      "kind": "list",
+      "source": "修复媒体size超限判断bug",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "3765cecb942fdaf9532ba9a1bdab088d868bc9e9be449124ab12cf11d4e644b0",
+      "translation": "Fixed media size limit check bug",
+      "updated_at": 1792049797
+    },
     "CHANGELOG.md:list:37d1b3ce5330e9258be430381efb3099ba1542f542eae9d94fc0586ef335848b": {
       "kind": "list",
       "source": "修复 OpenAI-compatible 流式请求使用单一 HTTP 超时导致模型首字慢或长输出超过 60 秒时被错误中断的问题。",
@@ -2250,8 +2258,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "181ba6929f429bbc29feb4daef73f206b0e9792e7f43c35d51f5f36e858cb815",
+  "source_hash": "d44588caf861f1384e4a8756e008b3ccbf100433951bebdb1cc8cce9c1b78a8c",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1792028872,
+  "updated_at": 1792049797,
   "version": 2
 }
