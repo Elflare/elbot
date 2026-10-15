@@ -119,11 +119,6 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 	if o.LogRecord.EventName != "" {
 		_ = events.EmitLog(context.WithoutCancel(ctx), o.LogRecord)
 	}
-	if o.Event.ProviderError && o.LogRecord.ResultStatus == events.ResultFailed {
-		record := o.LogRecord
-		record.EventName = "llm_error"
-		_ = events.EmitLog(context.WithoutCancel(ctx), record)
-	}
 	if o.Event.OutputReady {
 		record := o.LogRecord
 		record.Category, record.Type, record.EventName = events.LogRuntime, events.ContentText, "assistant_message"

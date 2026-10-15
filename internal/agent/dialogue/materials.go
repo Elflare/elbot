@@ -46,15 +46,17 @@ func (p *Preparer) ArchiveMaterials(ctx context.Context, messages []llm.LLMMessa
 	return out, ctx.Err()
 }
 
-// PrepareMaterials produces a disposable request view of committed content.
-// Its release belongs to the request lifecycle, including all HTTP retries.
+// PrepareMaterials is the shared media preparation boundary for Chat and Responses.
+// Callers supply all material in one actual request, including replay/continuation
+// prefixes, so the media manager chooses one delivery policy for the whole request.
+// Its release belongs to that request's lifecycle, including HTTP transport retries.
 func (p *Preparer) PrepareMaterials(ctx context.Context, messages []llm.LLMMessage) ([]llm.LLMMessage, func(), error) {
 	if err := ctx.Err(); err != nil {
 		return nil, func() {}, err
 	}
 	resolved, release, err := p.Media.AcquireForLLM(ctx, messages)
 	if err != nil {
-		return nil, release, err
+		return nil, release, fmt.Errorf("准备模型媒体: %w", err)
 	}
 	missing := map[string]bool{}
 	for i, message := range messages {

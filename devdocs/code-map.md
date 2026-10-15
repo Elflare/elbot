@@ -51,7 +51,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/events/`：Agent 实例事实信号。
 - `internal/events/platform.go`：平台连接全局事实契约；各适配器直接发布。
 - `internal/agent/platform_signals.go`、`internal/cron/platform_signals.go`：Hook 协调模块与 Cron 自行订阅、按平台排队并关闭；`StartPlatformEvents` 在装配完成后启动订阅，`BeginClose`／`Close`／`Done` 管理退出。
-- `internal/agent/logging.go`：复制来源显式提供的固定身份并提交完整记录，不维护日志投影订阅。输入、超时、确认、权限拒绝、模型、工具、持久化和回复均在实际操作来源组织日志。`internal/session/naming_logging.go`、`internal/modelmgr/logging.go` 保留有实际消费者的来源事件及同步日志回调，独立于通知订阅。
+- `internal/agent/logging.go`：复制来源显式提供的固定身份并提交完整记录，不维护日志投影订阅。输入、超时、确认、权限拒绝、模型、工具和回复在实际操作来源组织事实日志，主对话终止失败归 dialogue.Runner。`internal/session/naming_logging.go`、`internal/modelmgr/logging.go` 保留有实际消费者的来源事件及同步日志回调，独立于通知订阅。
 - `internal/session/naming_signals.go`：Scheduled／Completed 两种命名信号，完整终态字段定义在 `types.go`；`naming_lifecycle.go` 等待生产者退出后断开日志连接。`internal/modelmgr/signals.go` 的重试事件固定 Identity 并携带 HTTP 来源声明的尝试结果。
 - `internal/agent/module/signals.go`、`agent_notifications.go`、`model_signals.go`：Dialogue 通知、模型重试与会话清理订阅及生命周期；模型提示跟随 CallContext，失败事实由来源解除取消。CLI 展示订阅归 `platform/cli/ui.go`。
 
@@ -69,12 +69,12 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## Agent 对话
 
 - `internal/agent/*_deps.go`：各业务消费者的专属依赖与消费接口；较小组件的声明位于对应业务文件。中层业务构造不安装跨服务回调；线内接线归各业务线组合包，跨线接线归 App，不提供集中 Agent 构造。
-- `internal/agent/message.go`、`internal/agent/input.go`、`internal/agent/background.go`：消息分发、普通输入与后台准备；输入和命令业务自行记录切换拒绝并提示，消息入口只分发和返回错误；后台准备日志交 LogBackground，RunBackground 保留业务结果与 error。
-- `internal/agent/dialogue/runner.go`、`internal/agent/dialogue/preparation.go`：公共单轮及内部 Preparer／ToolExecutor／MessageStore／提交／Prompt 构造，加载、准备与结果；`internal/agent/chat/loop.go`、`internal/agent/responses/loop_deps.go` 声明各自的协议构造输入。
-- `internal/agent/dialogue/materials.go`：协议无关的完整消息投影、公共片段 codec、ArchiveMaterials／PrepareMaterials；稳定 ID 归档与临时请求副本分离，缺图通知；`message_store.go` 保留完整正文与 segments，`commit.go` 只把已提交投影交给循环。
+- `internal/agent/message.go`、`internal/agent/input.go`、`internal/agent/background.go`：消息分发、普通输入与后台准备；入站和输入入口仅为自己执行的准备操作报告失败，转交错误不补报；后台准备日志交 LogBackground，RunBackground 保留业务结果与 error。
+- `internal/agent/dialogue/runner.go`、`internal/agent/dialogue/preparation.go`：公共单轮及内部 Preparer／ToolExecutor／MessageStore／提交／Prompt 构造、加载与准备；Runner 归一取消、暂停和替换后，通过 ReportFailure 统一终态失败日志与通知，入口复用该报告函数；`internal/agent/chat/loop.go`、`internal/agent/responses/loop_deps.go` 声明各自的协议构造输入。
+- `internal/agent/dialogue/materials.go`：协议无关的完整消息投影、公共片段 codec、ArchiveMaterials／PrepareMaterials；Chat／Responses 共用完整请求的媒体解析入口，委托 media 统一统计总量及选择交付方式；稳定 ID 归档与临时请求副本分离，缺图通知；`message_store.go` 保留完整正文与 segments，`commit.go` 只把已提交投影交给循环。
 - `internal/agent/dialogue/model_call.go`、`internal/agent/dialogue/system_prompt.go`：共同模型 Hook 与 Prompt 来源；CallObservation 分别持有业务 Event 和日志 LogRecord，发布时固定身份和用量副本，Usage 整份缺失时仍写出四个 null 计数键。
-- `internal/agent/chat/`：Chat Loop、请求、历史、摘要与 seed；调用业务负责建连与流中断的最终失败通知，取消时保留部分输出。
-- `internal/agent/responses/loop.go`、`internal/agent/responses/model_call.go`：Responses Loop、续链、pending／接管及恢复；准备和调用业务自行通知失败，恢复耗尽后报告最终原因。
+- `internal/agent/chat/`：Chat Loop、请求、历史、摘要与 seed；完整请求的媒体统一交 Dialogue 解析，恢复耗尽返回最终原因，取消时保留部分输出。
+- `internal/agent/responses/loop.go`、`internal/agent/responses/model_call.go`：Responses Loop、续链、pending／接管及恢复；input.go 合并未展开的前缀与新增输入，context.go 将完整请求的公共材料一次性交给 Dialogue 解析，continuation.go 只提取未展开的续接片段。恢复重放重新解析完整请求，准备和调用终止失败返回 Dialogue。
 - `internal/agent/responses/native_call.go`：实际原生调用、冻结参数与有序输入引用及终态保存；按输出项、内容索引保留 text／refusal 增量与原生字段，完成事实覆盖对应部分，中断内容不成为完成响应或可执行工具调用。
 - `internal/agent/responses/context.go`、`internal/agent/responses/persistence.go`：从已提交输入／输出重建原生窗口与原子提交，不从历史 HTTP 请求恢复；公共内容交 Dialogue 处理，原生 items 由 Responses 组装。
 - `internal/agent/responses/tool_inputs.go`、`internal/agent/responses/input_format.go`：冻结工具定义与输入／seed 格式。
@@ -154,7 +154,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/hook/runtime/`、`internal/hook/protocol/`：持久进程、RPC、waiting 和 hook.v2 帧。tool_bridge.go 分别记录调用和发送，输入无效仍记录 INFO／rejected，保留真实触发 Actor 与独立授权主体；worker.go 声明自身请求及停止结果，先固定退出事实再唤醒等待者，manager.go 透传并管理业务生命周期；routes.go 组织 continuation 点记录；重载 commit 独立返回 LogResult，worker 不从回调 error 判定；media.go 保留清理事实和调用方预算。
 - `internal/hook/call_policy.go`：消费方工具调用只读策略。
 - `internal/hook/media.go`、`internal/hook/output/`：媒体 API 与输出协议。
-- `internal/agent/hooks.go`、`internal/processenv/`：Agent 桥接与进程环境；Hook 结果独立透传，保留业务通知，桥接自身记录走 LogHook。toolrun_adapter.go 的准备／完成接口返回独立 LogResult，output.go 的 PrepareAssistant 透传来源结果。
+- `internal/agent/hooks.go`、`internal/processenv/`：Agent 桥接与进程环境；同步 Hook 结果和错误返回调用方，不自行重复通知；独立异步 Hook 保留入口报告，桥接自身记录走 LogHook。toolrun_adapter.go 的准备／完成接口返回独立 LogResult，output.go 的 PrepareAssistant 透传来源结果。
 - [Hook 文档](../docs/hooks.md)。
 
 <!-- locator:output -->

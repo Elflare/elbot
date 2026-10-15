@@ -2,7 +2,6 @@ package responses
 
 import (
 	"bytes"
-	"context"
 	"elbot/internal/agent/dialogue"
 	"encoding/json"
 	"fmt"
@@ -12,32 +11,31 @@ import (
 )
 
 // A branch's continuation is the suffix added after its response checkpoint.
-// Resolve only that suffix; earlier media already belongs to the server chain.
-func (c *Context) resolveContinuation(ctx context.Context, seed *storage.NativeSeed) ([]api.Item, func(), error) {
-	noop := func() {}
+// Keep it unresolved until pending inputs join it; earlier media belongs to the server chain.
+func (c *Context) resolveContinuation(seed *storage.NativeSeed) (*nativeWindow, error) {
 	var continuation, items []api.Item
 	if err := json.Unmarshal([]byte(seed.ContinuationJSON), &continuation); err != nil {
-		return nil, noop, err
+		return nil, err
 	}
 	if len(continuation) == 0 {
-		return nil, noop, nil
+		return &nativeWindow{}, nil
 	}
 	items, err := decodeSeedInputs(seed)
 	if err != nil {
-		return nil, noop, err
+		return nil, err
 	}
 	start := len(items) - len(continuation)
 	if start < 0 {
-		return nil, noop, fmt.Errorf("原生分支续接材料缺失")
+		return nil, fmt.Errorf("原生分支续接材料缺失")
 	}
 	for i, item := range continuation {
 		if !bytes.Equal(item.Raw, items[start+i].Raw) {
-			return nil, noop, fmt.Errorf("原生分支续接材料与窗口不匹配")
+			return nil, fmt.Errorf("原生分支续接材料与窗口不匹配")
 		}
 	}
 	materials, err := dialogue.DecodeMaterials(seed.MaterialsJSON)
 	if err != nil {
-		return nil, noop, err
+		return nil, err
 	}
 	w := &nativeWindow{Items: continuation}
 	for _, m := range materials {
@@ -46,5 +44,5 @@ func (c *Context) resolveContinuation(ctx context.Context, seed *storage.NativeS
 			w.Materials = append(w.Materials, m)
 		}
 	}
-	return c.Resolve(ctx, w)
+	return w, nil
 }

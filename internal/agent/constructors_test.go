@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -51,6 +52,8 @@ func (i *constructorInput) ExpireIdleCurrentSession(context.Context) error {
 }
 
 type constructorOutput struct{}
+
+func (constructorOutput) Notify(context.Context, slog.Level, string) {}
 
 func (constructorOutput) SendChat(context.Context, string) error { return nil }
 func (constructorOutput) SendOutputs(context.Context, []delivery.Output) (events.LogResult, error) {

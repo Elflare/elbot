@@ -76,7 +76,7 @@ func TestFillHookContextAddsIntentTextWithoutWakeupPrefix(t *testing.T) {
 	}
 }
 
-func TestRunHookErrorSendsFailureNotice(t *testing.T) {
+func TestRunHookErrorReturnsToOwningEntry(t *testing.T) {
 	p := &fakePlatform{}
 	manager := newTestHookManager()
 
@@ -100,11 +100,9 @@ func TestRunHookErrorSendsFailureNotice(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected hook error")
 	}
-	got := p.out.String()
-	for _, want := range []string{"Hook 执行失败", "agent.input.prepared", "hook test.boom", "boom"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("notice = %q, want %q", got, want)
-		}
+	assertNoFailureNotification(t, p)
+	if !strings.Contains(err.Error(), "hook test.boom") || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("hook error lost its source: %v", err)
 	}
 }
 

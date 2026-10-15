@@ -143,33 +143,18 @@ func decodeQueuedInput(input storage.NativeInput) (api.Item, []llm.MessageSegmen
 	return item, segments, nil
 }
 
-func (s *turnState) resolveInputs(ctx context.Context, inputs []storage.NativeInput) ([]api.Item, func(), error) {
-	noop := func() {}
-	items := make([]api.Item, len(inputs))
-	var messages []llm.LLMMessage
-	var positions []int
-	for i, input := range inputs {
+// resolveInputs expands media once, after the actual request's prefix and pending
+// inputs have been assembled. The prefix contains only unresolved material.
+func (s *turnState) resolveInputs(ctx context.Context, inputs []storage.NativeInput, w *nativeWindow) ([]api.Item, func(), error) {
+	for _, input := range inputs {
 		item, segments, err := decodeQueuedInput(input)
 		if err != nil {
-			return nil, noop, err
+			return nil, func() {}, err
 		}
-		items[i] = item
 		if item.Type != "additional_tools" {
-			positions = append(positions, i)
-			messages = append(messages, llm.LLMMessage{Role: llm.RoleUser, Segments: segments})
+			w.Materials = append(w.Materials, material{Index: len(w.Items), MessageID: input.MessageID, Segments: segments})
 		}
+		w.Items = append(w.Items, item)
 	}
-	resolved, cleanup, err := s.route.Preparer.PrepareMaterials(ctx, messages)
-	if err != nil {
-		return nil, cleanup, err
-	}
-	for j, i := range positions {
-		item, err := nativeItem(inputs[i].CallID, resolved[j].Segments)
-		if err != nil {
-			cleanup()
-			return nil, noop, err
-		}
-		items[i] = item
-	}
-	return items, cleanup, nil
+	return s.route.Context.Resolve(ctx, w)
 }

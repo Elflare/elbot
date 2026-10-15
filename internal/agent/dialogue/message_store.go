@@ -5,13 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 
-	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"elbot/internal/llm"
-	"elbot/internal/session"
 	"elbot/internal/storage"
 )
 
@@ -125,34 +122,9 @@ func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit
 		}
 		logResult.ResultStatus = events.ResultFailed
 		logResult.Content += fmt.Sprintf("\npersistence_error=%v", err)
-		content, _ := json.Marshal(map[string]string{"operation": operation, "error": fmt.Sprintf("%.2048s", err.Error())})
-		record := events.LogRecord{
-			Category:     events.LogAudit,
-			Level:        slog.LevelError,
-			EventName:    "persistence_error",
-			Module:       "agent",
-			Type:         events.ContentJSON,
-			Content:      string(content),
-			ResultStatus: logResult.ResultStatus,
-		}
-		record.Identity.SessionID = &commit.SessionID
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		_ = events.EmitLog(context.WithoutCancel(ctx), record)
-		_, _ = events.NotificationRequested.EmitAsync(session.WithBinding(context.WithoutCancel(ctx), nil), events.NewNotification(ctx, slog.LevelError, "对话保存失败："+err.Error()))
+		return logResult, fmt.Errorf("%s: %w", operation, err)
 	}
-	return logResult, err
+	return logResult, nil
 }
 
 func MessageSegmentsFromStorage(raw string) ([]llm.MessageSegment, error) {

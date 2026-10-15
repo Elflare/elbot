@@ -109,7 +109,7 @@ func TestIntermediateStreamDeliveryLogsOnce(t *testing.T) {
 	}
 }
 
-func TestBufferedSendFailureKeepsAudit(t *testing.T) {
+func TestBufferedSendFailureKeepsReceiptAndReturnsWithoutTerminalReport(t *testing.T) {
 	for _, sendErr := range []error{errors.New("send failed"), context.Canceled} {
 		t.Run(sendErr.Error(), func(t *testing.T) {
 			f := newReplyTestFixture(t, true)
@@ -126,16 +126,8 @@ func TestBufferedSendFailureKeepsAudit(t *testing.T) {
 			}
 			t.Cleanup(connection.Disconnect)
 			result, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-			if !errors.Is(err, sendErr) || !result.Persisted || len(records) != 1 {
+			if !errors.Is(err, sendErr) || !result.Persisted || len(result.Receipt.SentMessages) != 1 || len(records) != 0 {
 				t.Fatalf("result=%+v err=%v audit=%+v", result, err, records)
-			}
-			status, level := events.ResultFailed, slog.LevelError
-			if sendErr == context.Canceled {
-				status, level = events.ResultCanceled, slog.LevelInfo
-			}
-			r := records[0]
-			if r.Category != events.LogAudit || r.ResultStatus != status || r.Level != level || r.Identity.SessionID == nil || *r.Identity.SessionID != f.in.Session.ID || !strings.Contains(r.Content, sendErr.Error()) {
-				t.Fatalf("audit lost: %+v", r)
 			}
 		})
 	}

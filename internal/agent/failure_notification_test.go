@@ -85,8 +85,8 @@ func TestModelHeaderTimeoutNotifiesWithoutMessageFallback(t *testing.T) {
 				if requests.Load() != 4 || retries.Load() != 3 {
 					t.Fatalf("requests=%d retries=%d", requests.Load(), retries.Load())
 				}
-				output := awaitNotificationText(t, &p.out, "LLM 响应中断：")
-				if strings.Count(output, "LLM 请求失败，正在重试") != 3 || strings.Count(output, "LLM 响应中断：") != 1 || !strings.Contains(output, "timeout awaiting response headers") || strings.Contains(output, "请求失败：") {
+				output := awaitNotificationText(t, &p.out, "对话处理失败：")
+				if strings.Count(output, "LLM 请求失败，正在重试") != 3 || strings.Count(output, "对话处理失败：") != 1 || !strings.Contains(output, "timeout awaiting response headers") || strings.Contains(output, "请求失败：") {
 					t.Fatalf("incorrect terminal notification: %q", output)
 				}
 			})
@@ -111,8 +111,8 @@ func TestModelStreamFailureNotifiesWithoutMessageFallback(t *testing.T) {
 			if err := a.input.HandleInput(t.Context(), "hello"); err == nil {
 				t.Fatal("stream failure was swallowed")
 			}
-			output := awaitNotificationText(t, &p.out, "LLM 响应中断：")
-			if strings.Count(output, "LLM 响应中断：") != 1 || strings.Contains(output, "请求失败：") {
+			output := awaitNotificationText(t, &p.out, "对话处理失败：")
+			if strings.Count(output, "对话处理失败：") != 1 || strings.Contains(output, "请求失败：") {
 				t.Fatalf("incorrect stream notification: %q", output)
 			}
 		})
@@ -141,7 +141,7 @@ func TestCommandFailureHasNoDispatcherFallback(t *testing.T) {
 	}
 }
 
-func TestPreparationErrorHasNoObserverFallback(t *testing.T) {
+func TestPreparationErrorReportedOnceByDialogue(t *testing.T) {
 	want := errors.New("prompt source unavailable")
 	p := &fakePlatform{}
 	a := newTestAgent(t, p, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t))
@@ -152,8 +152,11 @@ func TestPreparationErrorHasNoObserverFallback(t *testing.T) {
 	if err := a.input.HandleInput(t.Context(), "hello"); !errors.Is(err, want) {
 		t.Fatalf("err=%v", err)
 	}
-	assertNoFailureNotification(t, p)
-	if failures.Load() != 0 {
+	output := awaitNotificationText(t, &p.out, "对话处理失败：")
+	if strings.Count(output, "对话处理失败：") != 1 || !strings.Contains(output, want.Error()) {
+		t.Fatalf("notification=%q", output)
+	}
+	if failures.Load() != 1 {
 		t.Fatalf("fault logs=%d", failures.Load())
 	}
 }
@@ -167,7 +170,7 @@ func (r notificationFailingDialogues) Commit(context.Context, storage.DialogueCo
 	return events.LogResult{ResultStatus: events.ResultFailed}, r.err
 }
 
-func TestPersistenceFailureNotifiesAtMessageStore(t *testing.T) {
+func TestPersistenceFailureReturnsAtStoreAndNotifiesAtDialogue(t *testing.T) {
 	want := errors.New("dialogue disk full")
 	p := &fakePlatform{}
 	a := newTestAgent(t, p, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t))
@@ -181,8 +184,12 @@ func TestPersistenceFailureNotifiesAtMessageStore(t *testing.T) {
 	if !errors.Is(err, want) {
 		t.Fatalf("err=%v", err)
 	}
-	output := awaitNotificationText(t, &p.out, "对话保存失败：")
-	if strings.Count(output, "对话保存失败：") != 1 || !strings.Contains(output, want.Error()) {
+	assertNoFailureNotification(t, p)
+	if err := a.HandleMessage(t.Context(), "hello"); !errors.Is(err, want) {
+		t.Fatalf("dialogue err=%v", err)
+	}
+	output := awaitNotificationText(t, &p.out, "对话处理失败：")
+	if strings.Count(output, "对话处理失败：") != 1 || !strings.Contains(output, want.Error()) {
 		t.Fatalf("notification=%q", output)
 	}
 }
@@ -200,7 +207,7 @@ func TestMessageEntryDoesNotRepeatModelErrorHook(t *testing.T) {
 	if err := a.HandleMessage(t.Context(), "hello"); err == nil {
 		t.Fatal("model failure was swallowed")
 	}
-	awaitNotificationText(t, &p.out, "LLM 响应中断：")
+	awaitNotificationText(t, &p.out, "对话处理失败：")
 	if calls.Load() != 1 {
 		t.Fatalf("same error reclassified and reported %d times", calls.Load())
 	}
@@ -216,11 +223,11 @@ func TestHookErrorTypesDoNotSuppressBusinessFailures(t *testing.T) {
 			})})
 			p := &fakePlatform{}
 			a := newTestAgent(t, p, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(opts *testAgentOptions) { opts.HookManager = manager })
-			_, _, err := a.hooks.Run(t.Context(), hook.Event{Point: hook.PointAgentInputPrepared})
+			err := a.HandleMessage(t.Context(), "hello")
 			if !errors.Is(err, want) {
 				t.Fatalf("err=%v", err)
 			}
-			output := awaitNotificationText(t, &p.out, "Hook 执行失败")
+			output := awaitNotificationText(t, &p.out, "对话处理失败：")
 			if strings.Count(output, want.Error()) != 1 {
 				t.Fatalf("notification=%q", output)
 			}
@@ -298,8 +305,8 @@ func TestContextPreparationNotifiesOnceAtCore(t *testing.T) {
 	if err := a.HandleMessage(t.Context(), "hello"); !errors.Is(err, want) {
 		t.Fatalf("err=%v", err)
 	}
-	output := awaitNotificationText(t, &p.out, "对话上下文读取失败：")
-	if strings.Count(output, "对话上下文读取失败：") != 1 || !strings.Contains(output, want.Error()) {
+	output := awaitNotificationText(t, &p.out, "对话处理失败：")
+	if strings.Count(output, "对话处理失败：") != 1 || !strings.Contains(output, want.Error()) {
 		t.Fatalf("output=%q", output)
 	}
 }
@@ -322,7 +329,7 @@ func (s failureToolStateSessions) Get(context.Context, string) (*storage.Session
 	return s.row, s.err
 }
 
-func TestToolPreparationNotifiesAtCore(t *testing.T) {
+func TestToolPreparationReturnsAtCoreAndNotifiesAtDialogue(t *testing.T) {
 	p := &fakePlatform{}
 	store := newTestStore(t)
 	a := newTestAgent(t, p, &fakeLLM{}, "model", config.ProviderConfig{}, store)
@@ -336,8 +343,12 @@ func TestToolPreparationNotifiesAtCore(t *testing.T) {
 	if _, err := tools.Schemas(ctx, row); !errors.Is(err, want) {
 		t.Fatalf("err=%v", err)
 	}
-	output := awaitNotificationText(t, &p.out, "工具准备失败：")
-	if strings.Count(output, "工具准备失败：") != 1 || !strings.Contains(output, want.Error()) {
+	assertNoFailureNotification(t, p)
+	if err := a.HandleMessage(ctx, "hello"); !errors.Is(err, want) {
+		t.Fatalf("dialogue err=%v", err)
+	}
+	output := awaitNotificationText(t, &p.out, "对话处理失败：")
+	if strings.Count(output, "对话处理失败：") != 1 || !strings.Contains(output, want.Error()) {
 		t.Fatalf("output=%q", output)
 	}
 }
@@ -393,5 +404,59 @@ func TestTurnDeadlineNotifiesFromLifecycle(t *testing.T) {
 	output := awaitNotificationText(t, &p.out, rules.TurnTimeout)
 	if strings.Count(output, rules.TurnTimeout) != 1 || strings.Contains(output, "LLM 响应中断") || strings.Contains(output, "请求失败：") {
 		t.Fatalf("notification=%q", output)
+	}
+}
+
+func TestDialogueSynchronousHookFailuresHaveOneTerminalReport(t *testing.T) {
+	for _, protocol := range []string{"chat", "response"} {
+		for _, point := range []hook.Point{hook.PointLLMTurnPrepared, hook.PointLLMRequestPrepared, hook.PointLLMResponseReceived, hook.PointAgentTurnOutputPrepared, hook.PointAgentOutputPrepared} {
+			t.Run(protocol+"/"+string(point), func(t *testing.T) {
+				want := errors.New("injected synchronous hook failure")
+				manager := newTestHookManager()
+				manager.Register(hook.Registration{Point: point, Name: "failure.boundary", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+					return event, events.LogResult{ResultStatus: events.ResultFailed}, want
+				})})
+				configure := func(opts *testAgentOptions) { opts.HookManager = manager }
+				var a *agentFixture
+				var p *fakePlatform
+				var calls func() int
+				if protocol == "response" {
+					f := newNativeFixture(t, func(_ int, _ nativeTestRequest, w http.ResponseWriter) {
+						emitNative(w, "response", "completed", nativeText("answer"))
+					}, configure)
+					a, p, calls = f.agent, f.platform, func() int { return len(f.captured()) }
+				} else {
+					p = &fakePlatform{}
+					client := &fakeLLM{replies: []string{"answer"}}
+					a = newTestAgent(t, p, client, "model", config.ProviderConfig{}, newTestStore(t), configure)
+					calls = func() int { return len(client.chatRequests()) }
+				}
+				var failures atomic.Int32
+				connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+					if record.EventName == "dialogue_failed" {
+						failures.Add(1)
+					}
+					return nil
+				}, signal.ConnectOptions{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer connection.Disconnect()
+				if err := a.HandleMessage(t.Context(), "hello"); !errors.Is(err, want) {
+					t.Fatalf("error=%v", err)
+				}
+				output := awaitNotificationText(t, &p.out, "对话处理失败：")
+				if failures.Load() != 1 || strings.Count(output, "对话处理失败：") != 1 || strings.Contains(output, "Hook 执行失败") || !strings.Contains(output, want.Error()) {
+					t.Fatalf("failures=%d notification=%q", failures.Load(), output)
+				}
+				wantCalls := 1
+				if point == hook.PointLLMTurnPrepared || point == hook.PointLLMRequestPrepared {
+					wantCalls = 0
+				}
+				if calls() != wantCalls {
+					t.Fatalf("later model call was not stopped: calls=%d want=%d", calls(), wantCalls)
+				}
+			})
+		}
 	}
 }

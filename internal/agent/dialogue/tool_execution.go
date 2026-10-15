@@ -129,13 +129,9 @@ func (r *ToolExecutor) Schemas(ctx context.Context, session *storage.Session) ([
 	if session.Mode == storage.SessionModeWork && r.Provider != nil && !r.DefaultProvider {
 		return r.Provider.Schemas(ctx, session.Mode, session, r.Identity.Scope(ctx))
 	}
-	cached, logResult, err := CachedToolsForSession(ctx, r.State, r.Registry, session)
+	cached, _, err := CachedToolsForSession(ctx, r.State, r.Registry, session)
 	if err != nil {
-		if logResult.ResultStatus == events.ResultFailed {
-			_ = events.EmitLog(context.WithoutCancel(ctx), events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "tool_batch_prepare_failed", Module: "agent", Content: logResult.Content, ResultStatus: logResult.ResultStatus})
-			_, _ = events.NotificationRequested.EmitAsync(sessionpkg.WithBinding(context.WithoutCancel(ctx), nil), events.NewNotification(ctx, slog.LevelError, "工具准备失败："+err.Error()))
-		}
-		return nil, err
+		return nil, fmt.Errorf("准备工具: %w", err)
 	}
 	return r.Manager.Schemas(ctx, toolrun.Context{Mode: session.Mode, Session: session, Scope: r.Identity.Scope(ctx), Actor: r.Identity.Actor(ctx), DisableBaseTools: sessionpkg.IsBackground(session)}, cached)
 }

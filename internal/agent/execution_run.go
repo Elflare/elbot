@@ -30,12 +30,16 @@ func (c *ExecutionCoordinator) ModelContext(ctx context.Context, row *storage.Se
 func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.Session, text string, out dialogue.Output) (*storage.Session, turn.Input, error) {
 	ctx, release, err := c.enterTurn(ctx, session)
 	if err != nil {
+		if ctx.Err() == nil && !errors.Is(err, errSessionBindingChanged) && !errors.Is(err, errExecutionConflict) {
+			dialogue.ReportFailure(ctx, session.ID, err, out.Notify)
+		}
 		return session, turn.Input{}, err
 	}
 	selection := modelmgr.SelectionForTurn(ctx, c.models, session)
 	source, _, err := sessionpkg.Origin(session)
 	if err != nil {
 		release()
+		dialogue.ReportFailure(ctx, session.ID, err, out.Notify)
 		return session, turn.Input{}, err
 	}
 	err = c.dialogue.CheckSelection(selection)
@@ -44,12 +48,13 @@ func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.
 	}
 	if err != nil {
 		release()
-		out.Notify(context.WithoutCancel(ctx), slog.LevelError, err.Error())
+		dialogue.ReportFailure(ctx, session.ID, err, out.Notify)
 		return session, turn.Input{}, err
 	}
 	ctx, err = c.view.WithModel(ctx, selection)
 	if err != nil {
 		release()
+		dialogue.ReportFailure(ctx, session.ID, err, out.Notify)
 		return session, turn.Input{}, err
 	}
 	latest, err := c.sessions.RegisterOrigin(ctx, session.ID, selection.Origin)
@@ -58,14 +63,23 @@ func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.
 	}
 	release()
 	if err != nil {
+		if ctx.Err() == nil {
+			dialogue.ReportFailure(ctx, session.ID, fmt.Errorf("登记对话来源: %w", err), out.Notify)
+		}
 		return session, turn.Input{}, err
 	}
 	ctx, session, err = c.compactBeforeTurn(ctx, session, text, out, selection)
 	if err != nil {
+		if ctx.Err() == nil && !errors.Is(err, errSessionBindingChanged) {
+			dialogue.ReportFailure(ctx, session.ID, fmt.Errorf("轮前压缩: %w", err), out.Notify)
+		}
 		return session, turn.Input{}, err
 	}
 	ctx, release, err = c.enterTurn(ctx, session)
 	if err != nil {
+		if ctx.Err() == nil && !errors.Is(err, errSessionBindingChanged) && !errors.Is(err, errExecutionConflict) {
+			dialogue.ReportFailure(ctx, session.ID, err, out.Notify)
+		}
 		return session, turn.Input{}, err
 	}
 	attempt := storage.NewID()
@@ -117,6 +131,8 @@ func (c *ExecutionCoordinator) runTurn(ctx context.Context, session *storage.Ses
 		result := dialogue.TurnResult{Outcome: dialogue.Failed, Err: err}
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			result.Outcome = dialogue.Canceled
+		} else {
+			dialogue.ReportFailure(ctx, session.ID, err, out.Notify)
 		}
 		return result, turn.Input{}
 	}
@@ -125,6 +141,8 @@ func (c *ExecutionCoordinator) runTurn(ctx context.Context, session *storage.Ses
 		result := dialogue.TurnResult{Outcome: dialogue.Failed, Err: err}
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			result.Outcome = dialogue.Canceled
+		} else {
+			dialogue.ReportFailure(ctx, session.ID, err, out.Notify)
 		}
 		return result, turn.Input{}
 	}
@@ -149,6 +167,8 @@ func (c *ExecutionCoordinator) runTurn(ctx context.Context, session *storage.Ses
 		result.Outcome, result.Err = dialogue.Failed, err
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			result.Outcome = dialogue.Canceled
+		} else {
+			dialogue.ReportFailure(reqCtx, session.ID, err, out.Notify)
 		}
 	}
 	return result, pending
@@ -158,35 +178,7 @@ func (c *ExecutionCoordinator) finishCompletedTurn(ctx context.Context, session 
 	ctx = c.view.Context(ctx)
 	selection, usage, turnStartedAt, committed := result.Selection, result.Usage, result.StartedAt, result.Committed
 	if err := c.sessions.Touch(ctx, session); err != nil {
-		content, _ := json.Marshal(map[string]string{"operation": "touch_session", "error": fmt.Sprintf("%.2048s", err.Error())})
-		record := events.LogRecord{
-			Category:     events.LogAudit,
-			Level:        slog.LevelError,
-			EventName:    "persistence_error",
-			Module:       "agent",
-			Type:         events.ContentJSON,
-			Content:      string(content),
-			ResultStatus: events.ResultFailed,
-		}
-		record.Identity.SessionID = &session.ID
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		if errors.Is(err, context.Canceled) {
-			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
-		}
-		_ = events.EmitLog(context.WithoutCancel(ctx), record)
-		return turn.Input{}, err
+		return turn.Input{}, fmt.Errorf("更新会话活动时间: %w", err)
 	}
 	c.recordUsage(ctx, session.ID, usage)
 	doneStatus := runtimeDoneStatus(runtimestatus.Snapshot{

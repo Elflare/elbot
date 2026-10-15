@@ -5,11 +5,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
 	"image/png"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -31,6 +33,50 @@ import (
 type resolverRemote struct {
 	LocalBackend
 	puts int
+}
+
+type deniedMediaBackend struct{ LocalBackend }
+
+func (b *deniedMediaBackend) Open(context.Context, *storage.Media) (io.ReadCloser, error) {
+	return nil, fs.ErrPermission
+}
+
+func (b *deniedMediaBackend) PresignGet(context.Context, *storage.Media, time.Duration) (string, error) {
+	return "", fs.ErrPermission
+}
+
+func TestResolverPermissionFailureIsNotMissingMedia(t *testing.T) {
+	for _, backend := range []string{"base64", "hybrid", "s3"} {
+		t.Run(backend, func(t *testing.T) {
+			ctx := t.Context()
+			store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.Close()
+			root := t.TempDir()
+			m := NewManager(store, root, &LocalBackend{Root: root})
+			item, err := m.ImportBytes(ctx, []byte("1234"), Input{Name: "image.png", MIMEType: "image/png"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			m.local = &deniedMediaBackend{LocalBackend{Root: root}}
+			m.Remote = &deniedMediaBackend{LocalBackend{Root: t.TempDir()}}
+			m.FileDelivery.Backend = backend
+			if backend == "hybrid" {
+				m.FileDelivery.MaxDirectBase64Bytes = 1
+			}
+			resolved, release, err := m.AcquireForLLM(ctx, []llm.LLMMessage{{Segments: []llm.MessageSegment{{Type: llm.SegmentImage, MediaID: item.ID}}}})
+			release()
+			if !errors.Is(err, fs.ErrPermission) || resolved != nil {
+				t.Fatalf("permission failure became a placeholder: %v / %#v", err, resolved)
+			}
+			refs, err := store.MediaReferences().ListMediaIDs(ctx, item.ID)
+			if err != nil || len(refs) != 0 {
+				t.Fatalf("failed request retained media holds: %#v / %v", refs, err)
+			}
+		})
+	}
 }
 
 func (b *resolverRemote) Put(ctx context.Context, id string, r io.Reader, size int64, mime string) (string, error) {

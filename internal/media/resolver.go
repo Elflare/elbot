@@ -186,7 +186,7 @@ func (m *Manager) ResolveForLLM(ctx context.Context, messages []llm.LLMMessage) 
 						return nil, cleanup, err
 					}
 					var remoteErr smithy.APIError
-					missing := errors.Is(err, fs.ErrNotExist) || errors.Is(err, fs.ErrPermission) || errors.Is(err, storage.ErrNotFound) || (errors.As(err, &remoteErr) && (remoteErr.ErrorCode() == "NoSuchKey" || remoteErr.ErrorCode() == "NotFound"))
+					missing := errors.Is(err, fs.ErrNotExist) || errors.Is(err, storage.ErrNotFound) || (errors.As(err, &remoteErr) && (remoteErr.ErrorCode() == "NoSuchKey" || remoteErr.ErrorCode() == "NotFound"))
 					if !missing {
 						return nil, cleanup, err
 					}

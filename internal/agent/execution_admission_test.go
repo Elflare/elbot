@@ -137,7 +137,7 @@ func TestInputExecutionFailureStillReported(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "fake stream error") {
 		t.Fatalf("execution error was swallowed: %v", err)
 	}
-	output := awaitNotificationText(t, &p.out, "LLM 响应中断：")
+	output := awaitNotificationText(t, &p.out, "对话处理失败：")
 	if !strings.Contains(output, "fake stream error") || strings.Contains(output, "暂不支持切换") {
 		t.Fatalf("wrong failure notification: %q", output)
 	}
