@@ -13,6 +13,31 @@ type MediaRepository struct{ db *sql.DB }
 
 type MediaReferenceRepository struct{ db *sql.DB }
 
+func (r *MediaRepository) GetSignedURL(ctx context.Context, mediaID string) (*storage.MediaSignedURL, error) {
+	record := &storage.MediaSignedURL{MediaID: mediaID}
+	var expiresAt string
+	err := r.db.QueryRowContext(ctx, `SELECT url, expires_at FROM media_signed_urls WHERE media_id=?`, mediaID).Scan(&record.URL, &expiresAt)
+	if err == sql.ErrNoRows {
+		return nil, storage.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get media signed URL: %w", err)
+	}
+	record.ExpiresAt, err = storage.ParseTime(expiresAt)
+	if err != nil {
+		return nil, fmt.Errorf("parse media signed URL expiry: %w", err)
+	}
+	return record, nil
+}
+
+func (r *MediaRepository) UpsertSignedURL(ctx context.Context, record *storage.MediaSignedURL) error {
+	_, err := r.db.ExecContext(ctx, `INSERT INTO media_signed_urls (media_id, url, expires_at) VALUES (?, ?, ?) ON CONFLICT(media_id) DO UPDATE SET url=excluded.url, expires_at=excluded.expires_at`, record.MediaID, record.URL, storage.FormatTime(record.ExpiresAt))
+	if err != nil {
+		return fmt.Errorf("save media signed URL: %w", err)
+	}
+	return nil
+}
+
 func (r *MediaRepository) Get(ctx context.Context, id string) (*storage.Media, error) {
 	row := r.db.QueryRowContext(ctx, `SELECT id, name, mime_type, size, local_path, backend, object_key, source_platform, source_url, source_file_id, created_at, last_accessed_at, expires_at, deleting FROM media WHERE id = ?`, id)
 	var m storage.Media

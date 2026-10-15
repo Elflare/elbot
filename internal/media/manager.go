@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"mime"
 	"net/http"
 	"net/url"
@@ -18,10 +17,10 @@ import (
 	"time"
 
 	"elbot/internal/config"
-	"elbot/internal/contextinfo"
-	globalevents "elbot/internal/events"
 	"elbot/internal/storage"
 )
+
+const signedURLRefreshMargin = 5 * time.Minute
 
 func NewManager(store storage.Store, root string, backend Backend) *Manager {
 	defaults := config.Default()
@@ -263,7 +262,7 @@ func (m *Manager) PresignGet(ctx context.Context, id string, expiry time.Duratio
 		return "", err
 	}
 	defer unlock()
-	// Protect the object throughout upload, metadata persistence and signing.
+	// Protect the object throughout upload, signing and cache persistence.
 	release, err := m.Hold(ctx, id)
 	if err != nil {
 		return "", err
@@ -295,7 +294,24 @@ func (m *Manager) PresignGet(ctx context.Context, id string, expiry time.Duratio
 			return "", err
 		}
 	}
-	return backend.PresignGet(ctx, metadata, expiry)
+	cached, err := m.Store.Media().GetSignedURL(ctx, id)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return "", err
+	}
+	now := m.Now()
+	if err == nil && cached.ExpiresAt.After(now.Add(signedURLRefreshMargin)) {
+		return cached.URL, nil
+	}
+	// Start before signing and round down to avoid overstating the URL lifetime.
+	expiresAt := now.Truncate(time.Second).Add(expiry)
+	url, err := backend.PresignGet(ctx, metadata, expiry)
+	if err != nil {
+		return "", err
+	}
+	if err := m.Store.Media().UpsertSignedURL(ctx, &storage.MediaSignedURL{MediaID: id, URL: url, ExpiresAt: expiresAt}); err != nil {
+		return "", err
+	}
+	return url, nil
 }
 
 func sanitizeInput(input Input) Input {
@@ -402,33 +418,7 @@ func (m *Manager) remoteBackend(ctx context.Context) (Backend, error) {
 	}
 	backend, err := m.remoteFactory(ctx)
 	if err != nil {
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		record := globalevents.LogRecord{
-			Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "initialize_s3_media_backend_failed",
-			Module: "media", ResultStatus: globalevents.ResultFailed, Content: "initialize S3 media backend failed: " + err.Error(),
-		}
-		if errors.Is(err, context.Canceled) {
-			record.Level = slog.LevelInfo
-			record.ResultStatus = globalevents.ResultCanceled
-		}
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		_ = globalevents.EmitLog(ctx, record)
-
-		return nil, err
+		return nil, fmt.Errorf("initialize S3 media backend: %w", err)
 	}
 	m.Remote = backend
 	return backend, nil

@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,6 +26,7 @@ import (
 type dialogueMediaRemote struct {
 	media.LocalBackend
 	puts, signs int
+	signErr     error
 }
 
 func (r *dialogueMediaRemote) Put(ctx context.Context, id string, reader io.Reader, size int64, mime string) (string, error) {
@@ -34,7 +36,188 @@ func (r *dialogueMediaRemote) Put(ctx context.Context, id string, reader io.Read
 
 func (r *dialogueMediaRemote) PresignGet(_ context.Context, item *storage.Media, _ time.Duration) (string, error) {
 	r.signs++
-	return "https://s3.test/" + item.ID, nil
+	if r.signErr != nil {
+		return "", r.signErr
+	}
+	return fmt.Sprintf("https://s3.test/%s?signature=%d", item.ID, r.signs), nil
+}
+
+func TestDialogueReusesSignedURLAcrossTurnsAndSessions(t *testing.T) {
+	for _, protocol := range []string{"chat", "response"} {
+		t.Run(protocol, func(t *testing.T) {
+			var center *media.Manager
+			remote := &dialogueMediaRemote{LocalBackend: media.LocalBackend{Root: t.TempDir()}}
+			configure := func(opts *testAgentOptions) {
+				root := t.TempDir()
+				center = media.NewManager(opts.Store, root, &media.LocalBackend{Root: root})
+				center.Remote = remote
+				center.FileDelivery.Backend, center.FileDelivery.MaxDirectBase64Bytes = "hybrid", 1
+				opts.Media = center
+				if protocol == "response" {
+					configureNativeStore(t, opts, "provider", false)
+				}
+			}
+			var a *agentFixture
+			var requestCount func() int
+			var expectedURL string
+			if protocol == "response" {
+				f := newNativeFixture(t, func(index int, request nativeTestRequest, w http.ResponseWriter) {
+					body := inputJSON(request)
+					if strings.Contains(body, "data:") || !strings.Contains(body, expectedURL) {
+						t.Error("Responses did not reuse the remote URL")
+					}
+					emitNativeStore(w, fmt.Sprintf("r%d", index), false, nativeText("answer"))
+				}, configure)
+				a, requestCount = f.agent, func() int { return len(f.captured()) }
+			} else {
+				client := &fakeLLM{replies: []string{"answer", "answer", "answer"}}
+				a = newTestAgent(t, &fakePlatform{}, client, "model", config.ProviderConfig{}, newTestStore(t), configure)
+				requestCount = func() int {
+					requests := client.chatRequests()
+					for _, request := range requests {
+						images := 0
+						for _, message := range request.Messages {
+							for _, segment := range message.Segments {
+								if segment.Type == llm.SegmentImage {
+									images++
+									if segment.URL != expectedURL {
+										t.Error("Chat did not reuse the remote URL")
+									}
+								}
+							}
+						}
+						if images == 0 {
+							t.Error("Chat lost the image")
+						}
+					}
+					return len(requests)
+				}
+			}
+			item, err := center.ImportBytes(t.Context(), []byte("shared image"), media.Input{MIMEType: "image/png"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			expectedURL = "https://s3.test/" + item.ID + "?signature=1"
+			for index := range 3 {
+				if index == 2 {
+					if err := a.HandleMessage(t.Context(), "/new"); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := a.HandleMessage(mediaInputContext(t, "image", item.ID), "image"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if calls := requestCount(); calls != 3 || remote.puts != 1 || remote.signs != 1 {
+				t.Fatalf("requests=%d uploads=%d signatures=%d", calls, remote.puts, remote.signs)
+			}
+		})
+	}
+}
+
+type dialogueSignedURLFaults struct {
+	storage.MediaRepository
+	readErr, writeErr error
+}
+
+func (r *dialogueSignedURLFaults) GetSignedURL(ctx context.Context, id string) (*storage.MediaSignedURL, error) {
+	if r.readErr != nil {
+		return nil, r.readErr
+	}
+	return r.MediaRepository.GetSignedURL(ctx, id)
+}
+
+func (r *dialogueSignedURLFaults) UpsertSignedURL(ctx context.Context, record *storage.MediaSignedURL) error {
+	if r.writeErr != nil {
+		return r.writeErr
+	}
+	return r.MediaRepository.UpsertSignedURL(ctx, record)
+}
+
+type dialogueSignedURLStore struct {
+	storage.Store
+	repository storage.MediaRepository
+}
+
+func (s *dialogueSignedURLStore) Media() storage.MediaRepository { return s.repository }
+
+func TestResponsesMediaFailuresReportAtDialogue(t *testing.T) {
+	for _, stage := range []string{"initialize", "read", "sign", "write", "http", "stream"} {
+		t.Run(stage, func(t *testing.T) {
+			failure := errors.New("test " + stage + " failure")
+			want := failure.Error()
+			if stage == "initialize" {
+				want = "s3 credentials are not configured"
+			} else if stage == "http" || stage == "stream" {
+				want = "failed to download image: access denied"
+			}
+			var center *media.Manager
+			f := newNativeFixture(t, func(_ int, _ nativeTestRequest, w http.ResponseWriter) {
+				if stage == "http" {
+					w.WriteHeader(http.StatusBadRequest)
+					fmt.Fprintf(w, `{"error":{"code":"invalid_image_url","message":%q}}`, want)
+				} else {
+					fmt.Fprintf(w, "event: error\ndata: {\"type\":\"error\",\"code\":\"invalid_image_url\",\"message\":%q}\n\n", want)
+				}
+			}, func(opts *testAgentOptions) {
+				var err error
+				center, err = media.NewConfigured(t.Context(), opts.Store, t.TempDir(), config.FileDeliveryConfig{Backend: "hybrid", MaxDirectBase64Bytes: 1}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if stage != "initialize" {
+					remote := &dialogueMediaRemote{LocalBackend: media.LocalBackend{Root: t.TempDir()}}
+					if stage == "sign" {
+						remote.signErr = failure
+					}
+					center.Remote = remote
+				}
+				faults := &dialogueSignedURLFaults{MediaRepository: opts.Store.Media()}
+				if stage == "read" {
+					faults.readErr = failure
+				} else if stage == "write" {
+					faults.writeErr = failure
+				}
+				center.Store = &dialogueSignedURLStore{Store: opts.Store, repository: faults}
+				opts.Media = center
+			})
+			item, err := center.ImportBytes(t.Context(), []byte("synthetic image"), media.Input{MIMEType: "image/png"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var terminal, lower, missing atomic.Int32
+			logs, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+				switch {
+				case record.EventName == "dialogue_failed":
+					terminal.Add(1)
+				case record.Module == "media":
+					lower.Add(1)
+				case record.EventName == "dialogue_media_unavailable":
+					missing.Add(1)
+				}
+				return nil
+			}, signal.ConnectOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer logs.Disconnect()
+			err = f.agent.HandleMessage(mediaInputContext(t, "image", item.ID), "image")
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("failure lost: %v", err)
+			}
+			output := awaitNotificationText(t, &f.platform.out, "对话处理失败：")
+			if strings.Count(output, "对话处理失败：") != 1 || !strings.Contains(output, want) || terminal.Load() != 1 || lower.Load() != 0 || missing.Load() != 0 {
+				t.Fatalf("notification=%q terminal=%d lower=%d missing=%d", output, terminal.Load(), lower.Load(), missing.Load())
+			}
+			wantCalls := 0
+			if stage == "http" || stage == "stream" {
+				wantCalls = 1
+			}
+			if calls := len(f.captured()); calls != wantCalls {
+				t.Fatalf("unexpected request/retry count: %d", calls)
+			}
+		})
+	}
 }
 
 func mediaInputContext(t *testing.T, text string, ids ...string) context.Context {
