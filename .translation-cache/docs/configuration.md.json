@@ -464,6 +464,14 @@
       "translation": "If the platform configuration does not exist, a default configuration file will be automatically generated in the platform configuration directory.",
       "updated_at": 1781854884
     },
+    "docs/configuration.md:list:2c351dbe6f7a9d68454b2a8ffc94925bc22cf1ff99e50e834aed8e1c477f4357": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 是实验模式：使用 __ELBOT_CODE_1__ / 私聊 __ELBOT_CODE_2__；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "2c351dbe6f7a9d68454b2a8ffc94925bc22cf1ff99e50e834aed8e1c477f4357",
+      "translation": "__ELBOT_CODE_0__ is an experimental mode: use __ELBOT_CODE_1__ / private chat __ELBOT_CODE_2__;",
+      "updated_at": 1792028708
+    },
     "docs/configuration.md:list:2e202f83cb7bc886d1a67c0336e50c3b0c0fcc8f96e398dbb62e601787b67984": {
       "kind": "list",
       "source": "改变默认路径或启动行为时同步更新 [快速开始](getting-started.md) 和 README。",
@@ -543,14 +551,6 @@
       "source_hash": "37929a359e1a2b750bde2f110d3400a37ede64745d390665984cf3d267d9024f",
       "translation": "If a single Elwisp configures __ELBOT_CODE_0__, it will override the global default.",
       "updated_at": 1781749596
-    },
-    "docs/configuration.md:list:380a6a0590e121b23028e7c567f8e0f52d64440b5a953ebef80abf235b6b90ae": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__ 是实验模式：使用 __ELBOT_CODE_1__ / 私聊 __ELBOT_CODE_2__，Rich Message 失败时会自动退回 HTML；",
-      "source_file": "docs/configuration.md",
-      "source_hash": "380a6a0590e121b23028e7c567f8e0f52d64440b5a953ebef80abf235b6b90ae",
-      "translation": "__ELBOT_CODE_0__ is an experimental mode: uses __ELBOT_CODE_1__ / private chat __ELBOT_CODE_2__, and automatically falls back to HTML if Rich Message fails;",
-      "updated_at": 1781839376
     },
     "docs/configuration.md:list:3bde83cd85506c356fb56701e1e038418254cd3b12742b16d236087b00ea9f5f": {
       "kind": "list",
@@ -1072,6 +1072,14 @@
       "translation": "__ELBOT_CODE_0__ determines whether a new Session defaults to __ELBOT_CODE_1__ or __ELBOT_CODE_2__.",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:list:ba2544ced08823134fb95e8f93c8cabcefa926c8ab4130e81590f1abf11cbb2a": {
+      "kind": "list",
+      "source": "支持标题、引用、分割线、代码块和表格的可读渲染。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "ba2544ced08823134fb95e8f93c8cabcefa926c8ab4130e81590f1abf11cbb2a",
+      "translation": "Supports readable rendering of headings, quotes, horizontal rules, code blocks, and tables.",
+      "updated_at": 1792028708
+    },
     "docs/configuration.md:list:babcc563711a41279f1925397dbd2af3d7680faabe2a01a61bb5ac33cff3fc6e": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 是客户端 profile；",
@@ -1271,14 +1279,6 @@
       "source_hash": "dff21d3061cac34d317453e0703c9cf3e08b23b3be183595b454d1d7b1a11b80",
       "translation": "Check for missing files in the default asset manifest.",
       "updated_at": 1790906856
-    },
-    "docs/configuration.md:list:e00e58dc6a9eeaacae6b0b301501c5cce0cf41a69b86653f42487b9c9db59918": {
-      "kind": "list",
-      "source": "支持标题、引用、分割线、代码块和表格的可读渲染，失败时自动纯文本重试。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "e00e58dc6a9eeaacae6b0b301501c5cce0cf41a69b86653f42487b9c9db59918",
-      "translation": "Supports readable rendering of headings, quotes, horizontal rules, code blocks, and tables, with automatic plain text retry upon failure.",
-      "updated_at": 1781839376
     },
     "docs/configuration.md:list:e1359cf53ef874c7243bd986c265a0650d7953a060c9d8a0b0092b8c84531472": {
       "kind": "list",
@@ -3010,8 +3010,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "f44e69a56de836966448a6c5ba53979e6d671d364f9f90ba77387205b13f5715",
+  "source_hash": "15af86e11e7ff19b5be3b50e46c1811a1c7246283cdaab01f9a84ef056b3d3c9",
   "target": "docs.en/configuration.md",
-  "updated_at": 1791856747,
+  "updated_at": 1792028708,
   "version": 2
 }
