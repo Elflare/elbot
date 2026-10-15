@@ -1088,6 +1088,14 @@
       "translation": "__ELBOT_CODE_0__ is the client profile;",
       "updated_at": 1781962094
     },
+    "docs/configuration.md:list:badf5c45110c78230de3169d57ccb129b689dd297b642cc5ff447122180f6920": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：总量超过 __ELBOT_CODE_1__ 时停止请求，明确报告实际总量和配置上限。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "badf5c45110c78230de3169d57ccb129b689dd297b642cc5ff447122180f6920",
+      "translation": "__ELBOT_CODE_0__: Stop the request when the total exceeds __ELBOT_CODE_1__, and explicitly report the actual total and the configured limit.",
+      "updated_at": 1792049731
+    },
     "docs/configuration.md:list:bc8b019c627adc8fd01dd262f7dd9d54dd0c3d48c35d7930ad9f9d21d9c22291": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__：流式过程中两次事件之间的静默上限，默认 60 秒；每收到一个新事件都会重新计时。",
@@ -1328,6 +1336,14 @@
       "translation": "__ELBOT_CODE_0__ is the server listening address.",
       "updated_at": 1781962094
     },
+    "docs/configuration.md:list:f9d86c050704926f78b7b2cadbdde1b441476be6ded3d917c851aeca56b4c9c7": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：全部使用预签名下载链接。已有本地媒体在需要远程交付时上传，并复用已记录的对象键。S3 配置、上传或签名失败会明确报错，不回退成混合交付。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "f9d86c050704926f78b7b2cadbdde1b441476be6ded3d917c851aeca56b4c9c7",
+      "translation": "__ELBOT_CODE_0__: Use pre-signed download links for all. Existing local media will be uploaded when remote delivery is required, reusing the recorded object keys. S3 configuration, upload, or signing failures will result in explicit errors and will not fall back to hybrid delivery.",
+      "updated_at": 1792049731
+    },
     "docs/configuration.md:list:fe900b55ac012e73ee1c2a2c7e6974496e4d071ef8b7897ce263805101d2df50": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__：工具化时必填，扁平参数映射；__ELBOT_CODE_1__ 会把工具参数 __ELBOT_CODE_2__ 翻译成 __ELBOT_CODE_3__。",
@@ -1335,6 +1351,14 @@
       "source_hash": "fe900b55ac012e73ee1c2a2c7e6974496e4d071ef8b7897ce263805101d2df50",
       "translation": "__ELBOT_CODE_0__: Required for toolization; a flat parameter mapping. __ELBOT_CODE_1__ will translate tool parameter __ELBOT_CODE_2__ into __ELBOT_CODE_3__.",
       "updated_at": 1783479082
+    },
+    "docs/configuration.md:list:ff80114f4fe74b45de052504909af0e115058695ab34b613b751cb81b35b1fcf": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__：总量小于或等于上限时全部使用 base64；超过上限时全部使用 S3。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "ff80114f4fe74b45de052504909af0e115058695ab34b613b751cb81b35b1fcf",
+      "translation": "__ELBOT_CODE_0__: Use base64 for all if the total is less than or equal to the limit; use S3 for all if it exceeds the limit.",
+      "updated_at": 1792049731
     },
     "docs/configuration.md:paragraph:001e68adb30512aef5a23329a648a9e804678ff97a1473526953f8aae4ab2781": {
       "kind": "paragraph",
@@ -1367,6 +1391,14 @@
       "source_hash": "040ef778f70acf1d11f2bc36061f315ee3ce19decde1321f248181d75c2972ab",
       "translation": "Failed deletions will be recorded and retried in subsequent cleanups;",
       "updated_at": 1790860491
+    },
+    "docs/configuration.md:paragraph:043f6392b19e229b2d694568905c26e8b909269aa25c62da46909523845de6bd": {
+      "kind": "paragraph",
+      "source": "按本次实际发送的完整请求统计媒体原始字节总量，同一媒体出现多次会累计多次，但读取、上传和签名按媒体 ID 复用。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "043f6392b19e229b2d694568905c26e8b909269aa25c62da46909523845de6bd",
+      "translation": "The total raw bytes of media are calculated based on the complete request actually sent; if the same media appears multiple times, it will be counted multiple times, but reading, uploading, and signing are reused based on the media ID.\n",
+      "updated_at": 1792049731
     },
     "docs/configuration.md:paragraph:04a0ee5f6f9e11beac63c0016f34cd3c2127d739bfebc5bf4fc9a8e0215ee7f5": {
       "kind": "paragraph",
@@ -1520,14 +1552,6 @@
       "translation": "When a proxy is required, standard variables can be set in the corresponding environment layer; whether the child process uses them still depends on the specific program:\n",
       "updated_at": 1785918785
     },
-    "docs/configuration.md:paragraph:1a75e20e2c7f94bd96ece32b2c4f3597cfecd918928bbc5286d4c7fc57f9fca0": {
-      "kind": "paragraph",
-      "source": "切换到 S3 后，已有本地媒体会在需要远程交付时上传，并复用已记录的对象键。\n",
-      "source_file": "docs/configuration.md",
-      "source_hash": "1a75e20e2c7f94bd96ece32b2c4f3597cfecd918928bbc5286d4c7fc57f9fca0",
-      "translation": "After switching to S3, existing local media will be uploaded when remote delivery is required, reusing the recorded object keys.\n",
-      "updated_at": 1789023374
-    },
     "docs/configuration.md:paragraph:1b1d63f6451566b1447a2aaaf1cdca290b9ce605850c0452d71f600b3239679f": {
       "kind": "paragraph",
       "source": "查找顺序：\n",
@@ -1583,6 +1607,14 @@
       "source_hash": "1d56c1d5c9270bc2229d1ef895ca3cb4e8c604438f9eec03aa3d507d0bbaf119",
       "translation": "Minimum configuration example for the official QQ bot:\n",
       "updated_at": 1785810736
+    },
+    "docs/configuration.md:paragraph:1e5152d09bbd5b1e3d9fe36d4da3ae5af87a5abfd2342ab482dc8993b7e91d19": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 控制模型请求中的媒体交付。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "1e5152d09bbd5b1e3d9fe36d4da3ae5af87a5abfd2342ab482dc8993b7e91d19",
+      "translation": "__ELBOT_CODE_0__'s __ELBOT_CODE_1__ controls media delivery in model requests.",
+      "updated_at": 1792049731
     },
     "docs/configuration.md:paragraph:1ec87d4b5c7c2b92c42ede7bc9c709dfb495faa515e2855f4c3003e6a01040af": {
       "kind": "paragraph",
@@ -2207,14 +2239,6 @@
       "source_hash": "991c702563f873d81cf4a1320d04d97b09949da79441d99295e8e4c2127ec2fe",
       "translation": "Responses tool definitions are sent via __ELBOT_CODE_0__ in the native input, current invocation permissions are restricted via __ELBOT_CODE_1__, and __ELBOT_CODE_2__ is sent when no tools are available.",
       "updated_at": 1791341097
-    },
-    "docs/configuration.md:paragraph:9959859a45473cfd1afd30ad2e55dc67b5afdd71c76d1d1d3a2dbaca36a6eb7b": {
-      "kind": "paragraph",
-      "source": "__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 控制模型请求中的媒体交付：__ELBOT_CODE_2__ 使用内嵌数据，__ELBOT_CODE_3__ 使用预签名下载链接，__ELBOT_CODE_4__ 在请求媒体总大小超过 __ELBOT_CODE_5__ 时使用 S3。",
-      "source_file": "docs/configuration.md",
-      "source_hash": "9959859a45473cfd1afd30ad2e55dc67b5afdd71c76d1d1d3a2dbaca36a6eb7b",
-      "translation": "__ELBOT_CODE_1__ of __ELBOT_CODE_0__ controls media delivery in model requests: __ELBOT_CODE_2__ uses embedded data, __ELBOT_CODE_3__ uses pre-signed download links, and __ELBOT_CODE_4__ uses S3 when the total size of request media exceeds __ELBOT_CODE_5__.",
-      "updated_at": 1789023374
     },
     "docs/configuration.md:paragraph:9a346cc66eb715c06bb91c7dddf1f74d3d0b4ac36ad5129dd7ae71aa2337515b": {
       "kind": "paragraph",
@@ -3010,8 +3034,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "15af86e11e7ff19b5be3b50e46c1811a1c7246283cdaab01f9a84ef056b3d3c9",
+  "source_hash": "451dc6818efa55d9a2d917fd41f6c83844cf489ca39987e3e14c8868251645fe",
   "target": "docs.en/configuration.md",
-  "updated_at": 1792028708,
+  "updated_at": 1792049731,
   "version": 2
 }

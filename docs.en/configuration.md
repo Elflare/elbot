@@ -451,7 +451,11 @@ download_timeout_secs = 60
 
 ### Media Delivery
 
-`[file_delivery]` of `app.toml` controls media delivery in model requests: `base64` uses embedded data, `s3` uses pre-signed download links, and `hybrid` uses S3 when the total size of request media exceeds `max_direct_base64_bytes`. After switching to S3, existing local media will be uploaded when remote delivery is required, reusing the recorded object keys.
+`app.toml`'s `[file_delivery]` controls media delivery in model requests. The total raw bytes of media are calculated based on the complete request actually sent; if the same media appears multiple times, it will be counted multiple times, but reading, uploading, and signing are reused based on the media ID.
+
+- `base64`: Stop the request when the total exceeds `max_direct_base64_bytes`, and explicitly report the actual total and the configured limit.
+- `hybrid`: Use base64 for all if the total is less than or equal to the limit; use S3 for all if it exceeds the limit.
+- `s3`: Use pre-signed download links for all. Existing local media will be uploaded when remote delivery is required, reusing the recorded object keys. S3 configuration, upload, or signing failures will result in explicit errors and will not fall back to hybrid delivery.
 
 S3 delivery uses variables specified by `s3_endpoint`, `s3_region`, `s3_bucket`, as well as `s3_access_key_env` and `s3_secret_key_env`. The model service downloads objects via pre-signed URLs valid for 1 hour, and no additional keys are required. Cloudflare R2 can keep the bucket private without needing to enable public access; The model service or relay service that actually downloads the files must be able to access the link.
 
