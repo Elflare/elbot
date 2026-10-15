@@ -58,6 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - QQ OneBot: LLM can now see merged messages of quoted replies, expanding only one level of content.
 - QQ OneBot: Long text pagination now only adds ellipses to non-final pages.
 - Fixed an issue where the Agent would merge all text segments and disrupt the positioning of text and images when removing wake words or tool commands.
+- Fixed S3 URL signing logic error
 - Fixed a tool caching bug in background tasks.
 - Fixed meaningless log desensitization (since no sensitive information was recorded anyway. Previously, a brain-dead GPT performed redundant defensive programming with excessive regex matching, wasting performance).
 - Tools can no longer be passed into chat mode.
