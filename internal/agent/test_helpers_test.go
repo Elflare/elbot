@@ -53,7 +53,7 @@ func newTestModels(t *testing.T, opts modelmgr.Options) *modelmgr.Service {
 		t.Fatalf("modelmgr.New: %v", err)
 	}
 	testProviderFiles.Store(models, file)
-	t.Cleanup(func() { testProviderFiles.Delete(models); _ = models.Close() })
+	t.Cleanup(func() { testProviderFiles.Delete(models); _ = models.Close(context.Background()) })
 	return models
 }
 func configureTestContext(t *testing.T, a *agentFixture, cfg config.ContextConfig, metadata config.ModelMetadataConfig, providers map[string]config.ProviderConfig) {

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -9,6 +10,10 @@ import (
 
 const defaultRemoteAddr = "127.0.0.1:32172"
 const defaultRemotePath = "/cli/v1/ws"
+
+// ErrClientNotConfigured identifies an unavailable CLI client configuration.
+// A missing profile in a nonempty configuration remains a configuration error.
+var ErrClientNotConfigured = errors.New("cli client is not configured")
 
 type Config struct {
 	Enabled       bool                    `toml:"enabled"`
@@ -81,6 +86,9 @@ func applyConfigDefaults(cfg *Config) {
 }
 
 func (cfg Config) Client(name string) (string, ClientConfig, error) {
+	if len(cfg.Clients) == 0 {
+		return "", ClientConfig{}, ErrClientNotConfigured
+	}
 	name = strings.TrimSpace(name)
 	if name == "" {
 		name = strings.TrimSpace(cfg.DefaultClient)

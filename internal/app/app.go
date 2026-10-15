@@ -23,9 +23,6 @@ type Options struct {
 
 // Run starts ElBot with the production dependency set.
 func Run(ctx context.Context, opts Options) error {
-	runner, err := NewRunner(DefaultDependencies())
-	if err != nil {
-		return err
-	}
+	runner := NewRunner(DefaultDependencies())
 	return runner.Run(ctx, opts)
 }

@@ -2,8 +2,10 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,6 +18,10 @@ import (
 	"elbot/internal/completion"
 	"elbot/internal/config"
 )
+
+// ErrServerUnavailable marks a network dial failure before the CLI handshake.
+// Configuration, cancellation, HTTP and authentication errors retain their cause.
+var ErrServerUnavailable = errors.New("cli server is unavailable")
 
 type RemoteClientOptions struct {
 	Config     Config
@@ -57,8 +63,12 @@ func (c *RemoteClient) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	conn, _, err := websocket.Dial(ctx, c.client.URL, nil)
+	conn, response, err := websocket.Dial(ctx, c.client.URL, nil)
 	if err != nil {
+		var dialError *net.OpError
+		if response == nil && errors.As(err, &dialError) && dialError.Op == "dial" && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("connect cli server %s: %w: %w", c.client.URL, ErrServerUnavailable, err)
+		}
 		return fmt.Errorf("connect cli server %s: %w", c.client.URL, err)
 	}
 	c.conn = conn

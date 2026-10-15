@@ -112,10 +112,7 @@ func TestServiceWithoutForegroundPlatformsWaitsForElnis(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Disconnect()
-	r, err := NewRunner(d)
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := NewRunner(d)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	result := make(chan error, 1)

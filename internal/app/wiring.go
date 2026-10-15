@@ -98,7 +98,7 @@ func (defaultWiringFactory) Build(ctx context.Context, req WiringRequest) (*Wiri
 		PageSize:        cfg.View.SessionListPageSize,
 		RetentionDays:   cfg.Maintenance.SessionCleanup.RetentionDays,
 		MaxRounds:       cfg.Tools.MaxRoundsPerTurn,
-		ResponseTimeout: time.Duration(max(0, cfg.LLMRequest.ResponseTimeoutSeconds)) * time.Second,
+		ResponseTimeout: time.Duration(cfg.LLMRequest.ResponseTimeoutSeconds) * time.Second,
 		SoulPath:        cfg.Soul.Path,
 		LogDir:          f.Logs.LogDir(),
 	})

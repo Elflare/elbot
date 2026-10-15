@@ -32,14 +32,10 @@ func (defaultModelFactory) Build(req ModelRequest) (ModelClients, error) {
 
 func buildModelClient(provider config.ProviderConfig, request config.LLMRequestConfig) (llm.Client, error) {
 	opts := appLLMRequestOptions(request, provider.Proxy)
-	switch provider.EffectiveAPIMode() {
-	case "chat":
-		return chatcompletions.New(provider.BaseURL, provider.APIKey, provider.ExtraPayload, modelExtraPayloads(provider.ModelConfigs), opts)
-	case "response":
+	if provider.EffectiveAPIMode() == "response" {
 		return responses.New(provider.BaseURL, provider.APIKey, provider.ExtraPayload, modelExtraPayloads(provider.ModelConfigs), opts)
-	default:
-		return nil, fmt.Errorf("invalid api_mode %q: expected chat or response", provider.APIMode)
 	}
+	return chatcompletions.New(provider.BaseURL, provider.APIKey, provider.ExtraPayload, modelExtraPayloads(provider.ModelConfigs), opts)
 }
 
 func appLLMRequestOptions(cfg config.LLMRequestConfig, proxy string) httpclient.Options {

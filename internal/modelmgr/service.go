@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sort"
 	"sync"
-	"time"
 
 	"elbot/internal/config"
 	"elbot/internal/llm"
@@ -110,12 +109,12 @@ func (s *Service) ProviderOrigins() []llm.Origin {
 }
 
 // Close stops this instance's retry signal before releasing its projections.
-func (s *Service) Close() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	err := s.retrying.Close(ctx)
+func (s *Service) Close(ctx context.Context) error {
+	if err := s.retrying.Close(ctx); err != nil {
+		return err
+	}
 	for _, connection := range s.logConnections {
 		connection.Disconnect()
 	}
-	return err
+	return nil
 }

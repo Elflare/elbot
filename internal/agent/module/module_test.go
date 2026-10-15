@@ -46,7 +46,7 @@ func isolatedModuleDeps(t *testing.T) ModuleDeps {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = models.Close() })
+	t.Cleanup(func() { _ = models.Close(context.Background()) })
 	registry := tool.NewRegistry()
 	policy := security.DefaultPolicy()
 	sender := dispatch.New(dispatch.Options{Primary: &assemblyPlatform{}, Store: store})

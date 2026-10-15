@@ -36,7 +36,7 @@ func TestRetryLogsWithoutNotificationSubscriber(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = service.Close() })
+	t.Cleanup(func() { _ = service.Close(context.Background()) })
 	ctx, cancel := context.WithCancel(contextinfo.WithExecution(context.Background(), contextinfo.Execution{RequestID: "retry-request"}))
 	cancel()
 	client.notify(ctx, llm.RetryEvent{ResultStatus: events.ResultFailed})
@@ -50,7 +50,7 @@ func TestRetryLogsWithoutNotificationSubscriber(t *testing.T) {
 	if len(records) != 2 || records[1].Level != slog.LevelInfo {
 		t.Fatal("wrapped cancellation treated as retry failure")
 	}
-	_ = service.Close()
+	_ = service.Close(context.Background())
 	client.notify(ctx, llm.RetryEvent{})
 	if len(records) != 2 {
 		t.Fatal("retry subscription survived close")

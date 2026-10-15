@@ -75,7 +75,7 @@ func TestSharedRetrySubscriptionCoversChatCompactAndNaming(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer models.Close()
+	defer models.Close(context.Background())
 	deps.Models = models
 	deps.Dispatcher = dispatch.New(dispatch.Options{Primary: p, Store: deps.Store})
 	connectTestNotifications(t, deps.Dispatcher)
