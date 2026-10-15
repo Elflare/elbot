@@ -968,6 +968,14 @@
       "translation": "When __ELBOT_CODE_0__ is set, __ELBOT_CODE_1__ overwrites the corresponding fields; otherwise, the original text remains unchanged.",
       "updated_at": 1782376912
     },
+    "CHANGELOG.md:list:747f921884244103ec76429d7528c147b89ab373f83fcd222dd4f18c2b1a4ebf": {
+      "kind": "list",
+      "source": "修复s3的url签名逻辑错误",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "747f921884244103ec76429d7528c147b89ab373f83fcd222dd4f18c2b1a4ebf",
+      "translation": "Fixed S3 URL signing logic error",
+      "updated_at": 1792053937
+    },
     "CHANGELOG.md:list:74cc70f1fc05110e376f89105915e000dd86f27ff35078ec828df758295d929e": {
       "kind": "list",
       "source": "MCP 工具、子 Agent 与完整多模态（语音、视频、文件真实模型输入）尚未实现。",
@@ -2258,8 +2266,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "d44588caf861f1384e4a8756e008b3ccbf100433951bebdb1cc8cce9c1b78a8c",
+  "source_hash": "7b5a0a77e072c914560dfbe0aea1ac860a7c0cc1f495a4c7b1dcc28494ba5f6b",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1792049797,
+  "updated_at": 1792053937,
   "version": 2
 }
