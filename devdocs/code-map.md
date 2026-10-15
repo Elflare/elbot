@@ -234,6 +234,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 媒体中心
 
 - `internal/media/`：导入、图片处理、请求／发送解析、引用与清理。
+- `internal/media/manager.go`：媒体导入、读取、按需上传及 PresignGet；按媒体 ID 加锁复用签名 URL，临近到期刷新，错误交所属业务出口报告。`internal/storage/sqlite/media_repository.go`：媒体元数据与独立签名缓存读写；`media_signed_urls` 随媒体删除级联清理。
 - `internal/media/lifecycle.go`：清理轮次与逐对象删除；生成 cleanup_id 和完整分类计数，异常优先的明细正文最多 50 行；返回来源 LogResult 和原始 error，先保留逐对象结果再合并并行错误，取消不覆盖独立删除失败。
 - `internal/media/reference.go`：媒体引用与存活持有；RetainSessionToolArguments 返回事务来源 LogResult 和原始 error，无引用声明 skipped，Runner 不二次分类。
 - `internal/media/platform.go`、`internal/media/history.go`：平台媒体、历史批量获取（缓存、去重与尝试预算）及跨库历史对账。

@@ -56,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - QQ OneBot: llm现在能看到引用回复的合并消息了，只展开一层内容。
 - QQ OneBot: 长文本分页现在只有非末页添加省略号。
 - 修复 Agent 去除唤醒词或工具指令时会合并全部文字段、打乱图文位置的问题。
+- 修复s3的url签名逻辑错误
 - 修复后台任务工具缓存bug。
 - 修复日志无意义的脱敏操作（因为本来就没记录敏感信息。之前是智障GPT无脑防御性编程多此一举，大量正则匹配，浪费性能）
 - chat 模式不再能传入工具。

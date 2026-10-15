@@ -593,6 +593,18 @@ ON context_summaries(to_message_id);
 		name:    "remove_tool_result_preview",
 		sql:     `ALTER TABLE tool_call_records DROP COLUMN result_preview;`,
 	},
+	{
+		version: 25,
+		name:    "create_media_signed_urls",
+		sql: `
+CREATE TABLE media_signed_urls (
+    media_id TEXT PRIMARY KEY NOT NULL,
+    url TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    FOREIGN KEY(media_id) REFERENCES media(id) ON DELETE CASCADE
+);
+`,
+	},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {

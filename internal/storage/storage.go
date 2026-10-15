@@ -168,6 +168,14 @@ type ChatMessage struct {
 	CreatedAt                time.Time
 }
 
+// MediaSignedURL caches a download URL independently of the media's lifetime.
+type MediaSignedURL struct {
+	MediaID string
+	URL     string
+	// ExpiresAt is the URL's absolute expiry, not the media retention deadline.
+	ExpiresAt time.Time
+}
+
 type Media struct {
 	Deleting       bool
 	ID             string
@@ -393,6 +401,8 @@ type MediaRepository interface {
 	DeleteHistory(ctx context.Context, ownerID string) error
 	Get(ctx context.Context, id string) (*Media, error)
 	Upsert(ctx context.Context, media *Media) error
+	GetSignedURL(ctx context.Context, mediaID string) (*MediaSignedURL, error)
+	UpsertSignedURL(ctx context.Context, record *MediaSignedURL) error
 	DeleteOrphans(ctx context.Context, cutoff time.Time) ([]Media, error)
 	ClaimOrphans(ctx context.Context, cutoff time.Time) ([]Media, error)
 	FinishDelete(ctx context.Context, id string) error
