@@ -736,9 +736,9 @@ Note:
 
 - `bot_token_env` points to the environment variable name that stores the Bot Token; `bot_token` can also be used to write it directly into the configuration, but it is not recommended to commit actual tokens.
 - `proxy_url_env` points to the environment variable name that stores the proxy address; You can also use `proxy_url` to write the configuration directly. Proxy address examples: `http://127.0.0.1:7890`, `socks5://127.0.0.1:1080`.
-- `format="html"` is the default value: uses standard `sendMessage` + `parse_mode="HTML"`, and performs a lightweight conversion of common Markdown to Telegram HTML; Supports readable rendering of headings, quotes, horizontal rules, code blocks, and tables, with automatic plain text retry upon failure.
+- `format="html"` is the default value: uses standard `sendMessage` + `parse_mode="HTML"`, and performs a lightweight conversion of common Markdown to Telegram HTML; Supports readable rendering of headings, quotes, horizontal rules, code blocks, and tables.
 - `format="plain"` disables formatting and sends only plain text.
-- `format="rich"` is an experimental mode: uses `sendRichMessage` / private chat `sendRichMessageDraft`, and automatically falls back to HTML if Rich Message fails; Some clients may not be able to view Rich Messages.
+- `format="rich"` is an experimental mode: use `sendRichMessage` / private chat `sendRichMessageDraft`; Some clients may not be able to view Rich Messages.
 - `stream_edit_interval_milliseconds` controls the streaming refresh throttle interval, defaulting to 250ms, to avoid triggering platform rate limits.
 - After the connection is successfully established, ElBot will synchronize built-in slash commands to the Telegram bot command menu; only main command names are synchronized, not aliases.
 - In group chats/supergroups, command prefixes, trigger keywords, `@bot_username`, or replying to bot messages will all trigger processing. Private chats are processed by default.
