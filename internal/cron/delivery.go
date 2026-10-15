@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"elbot/internal/background"
 	"elbot/internal/delivery"
@@ -26,277 +27,157 @@ type resolvedCronTarget struct {
 }
 
 func (s *Service) deliverPrepared(ctx context.Context, job storage.CronJob, meta Metadata, state CronDeliveryState, platformFilter string, recovery bool) (logResult globalevents.LogResult, err error) {
-	content := "operation=deliverPrepared"
-	resultStatus := globalevents.ResultSucceeded
+	logResult = globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "operation=deliverPrepared"}
 	defer func() {
-		if resultStatus == globalevents.ResultFailed || (resultStatus == globalevents.ResultCanceled && logResult.ResultStatus != globalevents.ResultFailed) {
-			logResult.ResultStatus = resultStatus
+		if err != nil {
+			logResult.Content += fmt.Sprintf("\nerror=%v", err)
 		}
 	}()
 	if !state.ReportReady {
-		return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: content}, nil
+		return logResult, nil
 	}
-	if taken, err := background.SessionTakenOver(ctx, s.store, state.ReportSessionID); err != nil {
-		resultStatus := globalevents.ResultFailed
-		if err == context.Canceled {
-			resultStatus = globalevents.ResultCanceled
+	taken, err := background.SessionTakenOver(ctx, s.store, state.ReportSessionID)
+	if err != nil {
+		logResult.ResultStatus = globalevents.ResultFailed
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
 		}
-		{
-			err := err
-			logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-			if err != nil {
-				logResult.Content += fmt.Sprintf("\nerror=%v", err)
-			}
-			return logResult, err
-		}
-	} else if taken {
-		state.TakenOver = true
+		return logResult, err
 	}
+	state.TakenOver = state.TakenOver || taken
 	if state.TakenOver {
-		state.Report = ""
-		state.ReportSegments = nil
-		_, err := s.persistDeliveryState(ctx, &job, state)
-		if err != nil {
-			resultStatus := globalevents.ResultFailed
-			if err == context.Canceled {
-				resultStatus = globalevents.ResultCanceled
-			}
-			{
-				err := err
-				logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-				if err != nil {
-					logResult.Content += fmt.Sprintf("\nerror=%v", err)
-				}
-				return logResult, err
-			}
+		state.Report, state.ReportSegments = "", nil
+		if _, err := s.persistDeliveryState(ctx, &job, state, nil); err != nil {
+			logResult.ResultStatus = globalevents.ResultFailed
+			return logResult, err
 		}
 		if meta.Schedule.Mode == ScheduleOnce {
-			logResult, err := s.disableCompletedDelivery(ctx, job.Name, job.DeliveryToken)
-			logResult.Content = content + "\n" + logResult.Content
-			return logResult, err
+			return s.disableCompletedDelivery(ctx, job.Name, job.DeliveryToken)
 		}
-		return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: content}, nil
+		return logResult, nil
 	}
-	targets := s.resolveDeliveryTargets(meta, job.Name)
-	for _, resolved := range targets {
-		if taken, err := background.SessionTakenOver(ctx, s.store, state.ReportSessionID); err != nil {
-			resultStatus := globalevents.ResultFailed
-			if err == context.Canceled {
-				resultStatus = globalevents.ResultCanceled
-			}
-			{
-				err := err
-				logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-				if err != nil {
-					logResult.Content += fmt.Sprintf("\nerror=%v", err)
-				}
-				return logResult, err
-			}
-		} else if taken {
-			state.TakenOver = true
-			return s.deliverPrepared(ctx, job, meta, state, platformFilter, recovery)
-		}
+	for _, resolved := range s.resolveDeliveryTargets(meta, job.Name) {
 		if platformFilter != "" && resolved.platform != platformFilter {
 			continue
 		}
 		targetState := ensureDeliveryTargetState(&state, resolved.key)
-		if report := strings.TrimSpace(state.Report); report != "" {
-			outputState := ensureDeliveryOutputState(targetState, "text")
-			if !deliveryStatusDone(outputState.Status) {
-				text := report
-				if recovery {
-					text = missedOnceReportText(meta.Title, report)
-				}
-				logResult, err := s.sendDeliveryOutput(ctx, job.Name, resolved, delivery.Text(text), state)
-				content += "\n" + logResult.Content
-				if logResult.ResultStatus == globalevents.ResultFailed || (logResult.ResultStatus == globalevents.ResultCanceled && resultStatus != globalevents.ResultFailed) {
-					resultStatus = logResult.ResultStatus
-				}
-				if err != nil {
-					return globalevents.LogResult{ResultStatus: resultStatus, Content: content}, err
-				}
-				outputState.Status = DeliveryDelivered
-				active, err := s.persistDeliveryState(ctx, &job, state)
-				if err != nil || !active {
-					{
-						resultStatus := globalevents.ResultFailed
-						if err == nil {
-							resultStatus = globalevents.ResultSucceeded
-						} else if err == context.Canceled {
-							resultStatus = globalevents.ResultCanceled
-						}
-						{
-							err := err
-							logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-							if err != nil {
-								logResult.Content += fmt.Sprintf("\nerror=%v", err)
-							}
-							return logResult, err
-						}
+		for index, outputID := range deliveryOutputIDs(state) {
+			taken, err := background.SessionTakenOver(ctx, s.store, state.ReportSessionID)
+			if err != nil {
+				if logResult.ResultStatus != globalevents.ResultFailed {
+					logResult.ResultStatus = globalevents.ResultFailed
+					if errors.Is(err, context.Canceled) {
+						logResult.ResultStatus = globalevents.ResultCanceled
 					}
 				}
+				return logResult, err
 			}
-		}
-		for index, segment := range state.ReportSegments {
-			if taken, err := background.SessionTakenOver(ctx, s.store, state.ReportSessionID); err != nil {
-				resultStatus := globalevents.ResultFailed
-				if err == context.Canceled {
-					resultStatus = globalevents.ResultCanceled
-				}
-				{
-					err := err
-					logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-					if err != nil {
-						logResult.Content += fmt.Sprintf("\nerror=%v", err)
-					}
-					return logResult, err
-				}
-			} else if taken {
+			if taken {
 				state.TakenOver = true
-				return s.deliverPrepared(ctx, job, meta, state, platformFilter, recovery)
+				result, err := s.deliverPrepared(ctx, job, meta, state, platformFilter, recovery)
+				logResult.Content += "\n" + result.Content
+				if result.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus != globalevents.ResultFailed {
+					logResult.ResultStatus = result.ResultStatus
+				}
+				return logResult, err
 			}
-			outputState := ensureDeliveryOutputState(targetState, fmt.Sprintf("segment:%d", index))
+			outputState := ensureDeliveryOutputState(targetState, outputID)
 			if deliveryStatusDone(outputState.Status) {
 				continue
 			}
-			if outputState.Status == DeliveryFallbackPending {
-				logResult, err := s.sendDeliveryOutput(ctx, job.Name, resolved, delivery.Text(outputState.FallbackText), state)
-				content += "\n" + logResult.Content
-				if logResult.ResultStatus == globalevents.ResultFailed || (logResult.ResultStatus == globalevents.ResultCanceled && resultStatus != globalevents.ResultFailed) {
-					resultStatus = logResult.ResultStatus
-				}
-				if err != nil {
-					return globalevents.LogResult{ResultStatus: resultStatus, Content: content}, err
-				}
-				outputState.Status = DeliveryFallbackDelivered
-				active, err := s.persistDeliveryState(ctx, &job, state)
-				if err != nil || !active {
-					{
-						resultStatus := globalevents.ResultFailed
-						if err == nil {
-							resultStatus = globalevents.ResultSucceeded
-						} else if err == context.Canceled {
-							resultStatus = globalevents.ResultCanceled
-						}
-						{
-							err := err
-							logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-							if err != nil {
-								logResult.Content += fmt.Sprintf("\nerror=%v", err)
-							}
-							return logResult, err
-						}
-					}
-				}
-				continue
+			var out delivery.Output
+			var buildErr error
+			status := DeliveryDelivered
+			segmentIndex := index
+			if strings.TrimSpace(state.Report) != "" {
+				segmentIndex--
 			}
-
-			status := globalevents.ResultFailed
-			out, buildErr := background.BuildReportSegmentOutput(segment, s.cronSandbox(job.Name))
+			switch {
+			case outputID == "text":
+				text := strings.TrimSpace(state.Report)
+				if recovery {
+					text = missedOnceReportText(meta.Title, text)
+				}
+				out = delivery.Text(text)
+			case outputState.Status == DeliveryFallbackPending:
+				out, status = delivery.Text(outputState.FallbackText), DeliveryFallbackDelivered
+			default:
+				out, buildErr = background.BuildReportSegmentOutput(state.ReportSegments[segmentIndex], s.cronSandbox(job.Name))
+				if buildErr != nil && (!recovery || ctx.Err() != nil) {
+					logResult.ResultStatus = globalevents.ResultFailed
+				}
+			}
+			var receipt delivery.Receipt
 			if buildErr == nil {
-				logResult, buildErr = s.sendDeliveryOutput(ctx, job.Name, resolved, out, state)
-				status = logResult.ResultStatus
-				content += "\n" + logResult.Content
-				if status == globalevents.ResultFailed || (status == globalevents.ResultCanceled && resultStatus != globalevents.ResultFailed) {
-					resultStatus = status
+				var result globalevents.LogResult
+				receipt, result, buildErr = s.sendDeliveryOutput(ctx, job.Name, resolved, out, state)
+				logResult.Content += "\n" + result.Content
+				if result.ResultStatus == globalevents.ResultFailed || (result.ResultStatus == globalevents.ResultCanceled && logResult.ResultStatus != globalevents.ResultFailed) {
+					logResult.ResultStatus = result.ResultStatus
 				}
+			}
+			if buildErr != nil && outputID != "text" && status != DeliveryFallbackDelivered && recovery && ctx.Err() == nil {
+				logResult.Content += fmt.Sprintf("\nattachment_error=%v", buildErr)
+				outputState.Status = DeliveryFallbackPending
+				outputState.FallbackText = reportSegmentFallbackText(state.ReportSegments[segmentIndex])
+				active, saveErr := s.persistDeliveryState(ctx, &job, state, s.mapReportReceipt(state.ReportSessionID, state.ReportMessageID, receipt))
+				if saveErr != nil {
+					logResult.ResultStatus = globalevents.ResultFailed
+					return logResult, errors.Join(buildErr, saveErr)
+				}
+				if !active {
+					return logResult, buildErr
+				}
+				var result globalevents.LogResult
+				receipt, result, buildErr = s.sendDeliveryOutput(ctx, job.Name, resolved, delivery.Text(outputState.FallbackText), state)
+				logResult.Content += "\n" + result.Content
+				if result.ResultStatus == globalevents.ResultFailed || (result.ResultStatus == globalevents.ResultCanceled && logResult.ResultStatus != globalevents.ResultFailed) {
+					logResult.ResultStatus = result.ResultStatus
+				}
+				status = DeliveryFallbackDelivered
 			}
 			if buildErr == nil {
-				outputState.Status = DeliveryDelivered
-				active, err := s.persistDeliveryState(ctx, &job, state)
-				if err != nil || !active {
-					{
-						resultStatus := globalevents.ResultFailed
-						if err == nil {
-							resultStatus = globalevents.ResultSucceeded
-						} else if err == context.Canceled {
-							resultStatus = globalevents.ResultCanceled
-						}
-						{
-							err := err
-							logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-							if err != nil {
-								logResult.Content += fmt.Sprintf("\nerror=%v", err)
-							}
-							return logResult, err
-						}
-					}
-				}
-				continue
+				outputState.Status = status
 			}
-			if !recovery || ctx.Err() != nil {
-				{
-					err := buildErr
-					logResult := globalevents.LogResult{ResultStatus: status, Content: content}
-					if err != nil {
-						logResult.Content += fmt.Sprintf("\nerror=%v", err)
-					}
-					return logResult, err
+			if buildErr == nil || len(receipt.SentMessages) > 0 {
+				active, saveErr := s.persistDeliveryState(ctx, &job, state, s.mapReportReceipt(state.ReportSessionID, state.ReportMessageID, receipt))
+				if saveErr != nil {
+					logResult.ResultStatus = globalevents.ResultFailed
+					return logResult, errors.Join(buildErr, saveErr)
+				}
+				if !active {
+					return logResult, buildErr
 				}
 			}
-
-			outputState.Status = DeliveryFallbackPending
-			outputState.FallbackText = reportSegmentFallbackText(segment)
-			active, err := s.persistDeliveryState(ctx, &job, state)
-			if err != nil || !active {
-				{
-					err := errors.Join(buildErr, err)
-					logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: content}
-					if err != nil {
-						logResult.Content += fmt.Sprintf("\nerror=%v", err)
-					}
-					return logResult, err
-				}
-			}
-			logResult, err = s.sendDeliveryOutput(ctx, job.Name, resolved, delivery.Text(outputState.FallbackText), state)
-			content += "\n" + logResult.Content
-			if logResult.ResultStatus == globalevents.ResultFailed || (logResult.ResultStatus == globalevents.ResultCanceled && resultStatus != globalevents.ResultFailed) {
-				resultStatus = logResult.ResultStatus
-			}
-			if err != nil {
-				return globalevents.LogResult{ResultStatus: resultStatus, Content: content}, err
-			}
-			outputState.Status = DeliveryFallbackDelivered
-			active, err = s.persistDeliveryState(ctx, &job, state)
-			if err != nil || !active {
-				{
-					resultStatus := globalevents.ResultFailed
-					if err == nil {
-						resultStatus = globalevents.ResultSucceeded
-					} else if err == context.Canceled {
-						resultStatus = globalevents.ResultCanceled
-					}
-					{
-						err := err
-						logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-						if err != nil {
-							logResult.Content += fmt.Sprintf("\nerror=%v", err)
-						}
-						return logResult, err
-					}
-				}
+			if buildErr != nil {
+				return logResult, buildErr
 			}
 		}
 	}
-
 	if meta.Schedule.Mode == ScheduleOnce && s.deliveryComplete(meta, state) {
-		logResult, err := s.disableCompletedDelivery(ctx, job.Name, job.DeliveryToken)
-		logResult.Content = content + "\n" + logResult.Content
+		result, err := s.disableCompletedDelivery(ctx, job.Name, job.DeliveryToken)
+		logResult.Content += "\n" + result.Content
+		if result.ResultStatus == globalevents.ResultFailed || (result.ResultStatus == globalevents.ResultCanceled && logResult.ResultStatus != globalevents.ResultFailed) {
+			logResult.ResultStatus = result.ResultStatus
+		}
 		return logResult, err
 	}
-	return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: content}, nil
+	return logResult, nil
 }
 
-func (s *Service) sendDeliveryOutput(ctx context.Context, jobName string, resolved resolvedCronTarget, out delivery.Output, state CronDeliveryState) (globalevents.LogResult, error) {
-	return s.sendOutputsToPlatformTarget(ctx, jobName, resolved.platform, resolved.target, []delivery.Output{out}, state.ReportSessionID, state.ReportMessageID)
+func (s *Service) sendDeliveryOutput(ctx context.Context, jobName string, resolved resolvedCronTarget, out delivery.Output, state CronDeliveryState) (delivery.Receipt, globalevents.LogResult, error) {
+	return s.sendOutputsToPlatformTarget(ctx, jobName, resolved.platform, resolved.target, []delivery.Output{out}, state.ReportSessionID)
 }
 
-func (s *Service) persistDeliveryState(ctx context.Context, job *storage.CronJob, state CronDeliveryState) (bool, error) {
+func (s *Service) persistDeliveryState(ctx context.Context, job *storage.CronJob, state CronDeliveryState, mappings []storage.PlatformMessageMap) (bool, error) {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	ctx = cleanupCtx
 	encoded, err := encodeDeliveryState(state)
 	if err != nil {
 		return false, err
 	}
-	swapped, err := s.store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, job.DeliveryToken, job.DeliveryToken, encoded)
+	swapped, err := s.store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, job.DeliveryToken, job.DeliveryToken, encoded, mappings)
 	if err != nil || !swapped {
 		return swapped, err
 	}
@@ -305,43 +186,16 @@ func (s *Service) persistDeliveryState(ctx context.Context, job *storage.CronJob
 }
 
 func (s *Service) disableCompletedDelivery(ctx context.Context, jobName, deliveryToken string) (globalevents.LogResult, error) {
-	content := "operation=disableCompletedDelivery"
-	if s.manager != nil {
-		_, err := s.manager.DisableJobIfDeliveryToken(ctx, jobName, deliveryToken)
-		{
-			resultStatus := globalevents.ResultFailed
-			if err == nil {
-				resultStatus = globalevents.ResultSucceeded
-			} else if err == context.Canceled {
-				resultStatus = globalevents.ResultCanceled
-			}
-			{
-				err := err
-				logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-				if err != nil {
-					logResult.Content += fmt.Sprintf("\nerror=%v", err)
-				}
-				return logResult, err
-			}
+	_, err := s.manager.DisableJobIfDeliveryToken(ctx, jobName, deliveryToken)
+	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "operation=disableCompletedDelivery"}
+	if err != nil {
+		logResult.ResultStatus = globalevents.ResultFailed
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
 		}
+		logResult.Content += fmt.Sprintf("\nerror=%v", err)
 	}
-	_, err := s.store.CronJobs().DisableByNameIfDeliveryToken(ctx, jobName, deliveryToken)
-	{
-		resultStatus := globalevents.ResultFailed
-		if err == nil {
-			resultStatus = globalevents.ResultSucceeded
-		} else if err == context.Canceled {
-			resultStatus = globalevents.ResultCanceled
-		}
-		{
-			err := err
-			logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-			if err != nil {
-				logResult.Content += fmt.Sprintf("\nerror=%v", err)
-			}
-			return logResult, err
-		}
-	}
+	return logResult, err
 }
 
 func (s *Service) resolveDeliveryTargets(meta Metadata, jobName string) []resolvedCronTarget {
@@ -354,20 +208,13 @@ func (s *Service) resolveDeliveryTargets(meta Metadata, jobName string) []resolv
 	}
 	resolved := []resolvedCronTarget{}
 	for _, platform := range platforms {
-		platformName := strings.TrimSpace(platform.Name)
-		if platformName == "" {
-			continue
-		}
+		platformName := platform.Name
 		ids := uniqueStrings(platform.SuperadminIDs)
 		if len(ids) == 0 {
 			resolved = append(resolved, resolvedCronTarget{key: platformName + "|superadmins", platform: platformName, target: delivery.Target{Platform: platformName, Superadmins: true}})
 			continue
 		}
 		for _, id := range ids {
-			id = strings.TrimSpace(id)
-			if id == "" {
-				continue
-			}
 			resolved = append(resolved, resolvedCronTarget{key: platformName + "|private|" + id, platform: platformName, target: delivery.Target{Platform: platformName, PrivateUserID: id}})
 		}
 	}
@@ -505,11 +352,7 @@ func (s *Service) sendToPlatforms(ctx context.Context, jobName string, platforms
 	return s.sendOutputsToPlatforms(ctx, jobName, platforms, []delivery.Output{delivery.Text(text)})
 }
 
-func (s *Service) sendOutputsToPlatforms(ctx context.Context, jobName string, platforms []string, outputs []delivery.Output) (globalevents.LogResult, error) {
-	return s.sendOutputsToPlatformsMapped(ctx, jobName, platforms, outputs, "", "")
-}
-
-func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, platformName string, target delivery.Target, outputs []delivery.Output, sessionID, messageID string) (globalevents.LogResult, error) {
+func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, platformName string, target delivery.Target, outputs []delivery.Output, sessionID string) (delivery.Receipt, globalevents.LogResult, error) {
 	identity := globalevents.LogIdentity{}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	if facts.SessionID != "" {
@@ -534,6 +377,7 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 	}
 	resultStatus := globalevents.ResultSucceeded
 	var errs []error
+	var receipt delivery.Receipt
 	for _, out := range outputs {
 		if err := ctx.Err(); err != nil {
 			if resultStatus != globalevents.ResultFailed {
@@ -545,7 +389,7 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 			{
 				err := errors.Join(append(errs, err)...)
 				logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content + fmt.Sprintf("\ncontext_error=%q", ctx.Err().Error())}
-				return logResult, err
+				return receipt, logResult, err
 			}
 		}
 		{
@@ -565,7 +409,7 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 			}
 			background.LogBackground(ctx, record)
 		}
-		receipt, logResult, err := s.sendTarget(ctx, target, []delivery.Output{out})
+		sent, logResult, err := s.sendTarget(ctx, target, []delivery.Output{out})
 		content += fmt.Sprintf("\nkind=%s result=%s", out.Kind, logResult.ResultStatus.String())
 		if logResult.Content != "" {
 			content += "\n" + logResult.Content
@@ -573,7 +417,8 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 		if logResult.ResultStatus == globalevents.ResultFailed || (logResult.ResultStatus == globalevents.ResultCanceled && resultStatus != globalevents.ResultFailed) {
 			resultStatus = logResult.ResultStatus
 		}
-		s.mapReportReceipt(ctx, jobName, sessionID, messageID, receipt)
+		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
+		receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
 		if err != nil {
 			err = fmt.Errorf("send %s: %w", platformName, err)
 			errs = append(errs, err)
@@ -607,7 +452,7 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 				{
 					err := errors.Join(errs...)
 					logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-					return logResult, err
+					return receipt, logResult, err
 				}
 			}
 			continue
@@ -634,26 +479,20 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 	{
 		err := errors.Join(errs...)
 		logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-		return logResult, err
+		return receipt, logResult, err
 	}
 }
 
-func (s *Service) sendOutputsToPlatformsMapped(ctx context.Context, jobName string, platforms []string, outputs []delivery.Output, sessionID, messageID string) (globalevents.LogResult, error) {
-	content := "operation=sendOutputsToPlatformsMapped"
-	if s.sendTarget == nil {
-		{
-			err := fmt.Errorf("cron target sender is not configured")
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: content + fmt.Sprintf("\nerror=%q", err.Error())}
-			return logResult, err
-		}
-	}
+func (s *Service) sendOutputsToPlatforms(ctx context.Context, jobName string, platforms []string, outputs []delivery.Output) (globalevents.LogResult, error) {
+	content := "operation=sendOutputsToPlatforms"
+
 	resultStatus := globalevents.ResultSucceeded
 	var errs []error
 	for _, platformName := range uniqueStrings(platforms) {
 		if platformName == "" {
 			continue
 		}
-		logResult, err := s.sendOutputsToPlatformTarget(ctx, jobName, platformName, delivery.Target{Platform: platformName, Superadmins: true}, outputs, sessionID, messageID)
+		_, logResult, err := s.sendOutputsToPlatformTarget(ctx, jobName, platformName, delivery.Target{Platform: platformName, Superadmins: true}, outputs, "")
 		status := logResult.ResultStatus
 		content += "\n" + logResult.Content
 		if status == globalevents.ResultFailed || resultStatus == globalevents.ResultFailed {
@@ -677,75 +516,15 @@ func (s *Service) sendOutputsToPlatformsMapped(ctx context.Context, jobName stri
 	}
 }
 
-func (s *Service) mapReportReceipt(ctx context.Context, jobName, sessionID, messageID string, receipt delivery.Receipt) {
-	identity := globalevents.LogIdentity{}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if facts.SessionID != "" {
-		identity.SessionID = &facts.SessionID
+func (s *Service) mapReportReceipt(sessionID, messageID string, receipt delivery.Receipt) []storage.PlatformMessageMap {
+	if sessionID == "" || messageID == "" {
+		return nil
 	}
-	if facts.RunID != "" {
-		identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		identity.RootRequestID = &facts.RootRequestID
-	}
-
-	if sessionID == "" || messageID == "" || s.store == nil || s.store.Messages() == nil {
-		return
-	}
+	mappings := make([]storage.PlatformMessageMap, 0, len(receipt.SentMessages))
 	for _, sent := range receipt.SentMessages {
-		platformName, scopeID, platformMessageID := strings.TrimSpace(sent.Platform), strings.TrimSpace(sent.ScopeID), strings.TrimSpace(sent.PlatformMessageID)
-		if platformName == "" || scopeID == "" || platformMessageID == "" {
-			continue
-		}
-		mapping := storage.PlatformMessageMap{Platform: platformName, PlatformScopeID: scopeID, PlatformMessageID: platformMessageID, SessionID: sessionID, MessageID: messageID}
-		if err := s.store.Messages().MapPlatformMessage(ctx, mapping); err != nil {
-			if err == context.Canceled {
-				return
-			}
-			{
-				content, _ := json.Marshal(map[string]any{"job": jobName, "platform": platformName, "scope_id": scopeID, "platform_message_id": platformMessageID, "session_id": sessionID, "message_id": messageID, "error": err.Error()})
-				record := globalevents.LogRecord{
-					Category:     globalevents.LogAudit,
-					Level:        slog.LevelError,
-					EventName:    "cron.report_map_failed",
-					Module:       "cron",
-					Type:         globalevents.ContentJSON,
-					Content:      string(content),
-					ContentLimit: 4096,
-					ResultStatus: globalevents.ResultFailed,
-				}
-				record.Identity = identity
-				if sessionID != "" {
-					record.Identity.SessionID = &sessionID
-				}
-				background.LogBackground(ctx, record)
-			}
-			{
-				record := globalevents.LogRecord{
-					Category:     globalevents.LogRuntime,
-					Level:        slog.LevelError,
-					EventName:    "map_cron_report_message_failed",
-					Module:       "cron",
-					Type:         globalevents.ContentText,
-					Content:      fmt.Sprintf("map cron report message failed\njob=%v\nplatform=%v\nscope_id=%v\nplatform_message_id=%v\nsession_id=%v\nmessage_id=%v\nerror=%v", jobName, platformName, scopeID, platformMessageID, sessionID, messageID, err.Error()),
-					ContentLimit: 4096,
-					ResultStatus: globalevents.ResultFailed,
-				}
-				record.Identity = identity
-				if sessionID != "" {
-					record.Identity.SessionID = &sessionID
-				}
-				background.LogBackground(ctx, record)
-			}
-		}
+		mappings = append(mappings, storage.PlatformMessageMap{Platform: sent.Platform, PlatformScopeID: sent.ScopeID, PlatformMessageID: sent.PlatformMessageID, SessionID: sessionID, MessageID: messageID})
 	}
+	return mappings
 }
 
 func cronTargetLabel(target delivery.Target) string {
@@ -762,18 +541,12 @@ func cronTargetLabel(target delivery.Target) string {
 }
 
 func (s *Service) copySessionToBroadcastTargets(ctx context.Context, sourceSessionID string, meta Metadata, jobName string) error {
-	if sourceSessionID == "" || s.store == nil || s.store.Sessions() == nil || s.store.Messages() == nil {
-		return nil
-	}
 	source, err := s.store.Sessions().Get(ctx, sourceSessionID)
 	if err != nil {
 		return err
 	}
-	if s.sessions == nil {
-		return fmt.Errorf("cron session service is not configured")
-	}
 	for _, target := range s.enabledPlatforms {
-		if target.Name == "" || target.Name == source.Platform {
+		if target.Name == source.Platform {
 			continue
 		}
 		owner := targetOwnerID(target)

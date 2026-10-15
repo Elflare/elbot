@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"path/filepath"
 
 	"elbot/internal/background"
 	"elbot/internal/config"
@@ -62,12 +61,6 @@ type Service struct {
 }
 
 func NewService(opts Options) (*Service, error) {
-	if opts.SandboxRoot == "" {
-		opts.SandboxRoot = filepath.Join("data", "sandbox")
-	}
-	if opts.Store == nil || opts.Store.ElnisEvents() == nil {
-		return nil, fmt.Errorf("elnis event store is not configured")
-	}
 	if opts.Config.Enabled && len(opts.Tokens) == 0 {
 		return nil, fmt.Errorf("elnis enabled but no tokens are configured")
 	}
@@ -368,6 +361,9 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 				record.Category, record.EventName = globalevents.LogElnis, "elnis_direct_failed"
 				background.LogBackground(ctx, record)
 			}
+			if persistenceErr != nil {
+				err = errors.Join(err, persistenceErr)
+			}
 			return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
 		}
 		{
@@ -404,38 +400,40 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 			record.Category, record.EventName = globalevents.LogElnis, "elnis_llm_queued"
 			background.LogBackground(ctx, record)
 		}
-		if s.enqueueLLM != nil {
-			if err := s.enqueueLLM(ctx, QueuedLLMEvent{Event: event, EventID: record.ID}); err != nil {
-				persistenceErr := s.completeEvent(ctx, record.ID, event.ResolvedTargets, StatusFailed, "", err.Error())
-				{
-					content := map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID, "error": fmt.Sprintf("%.2048s", err.Error())}
-					if persistenceErr != nil {
-						content["persistence_error"] = fmt.Sprintf("%.2048s", persistenceErr.Error())
-					}
-					data, _ := json.Marshal(content)
-					record := globalevents.LogRecord{
-						Category:     globalevents.LogElnis,
-						Level:        slog.LevelError,
-						EventName:    "elnis_llm_enqueue_failed",
-						Module:       "elnis",
-						Type:         globalevents.ContentJSON,
-						Content:      string(data),
-						ResultStatus: globalevents.ResultFailed,
-					}
-					if errors.Is(err, context.Canceled) {
-						record.ResultStatus = globalevents.ResultCanceled
-						record.Level = slog.LevelInfo
-					}
-					record.Identity = identity
-					if persistenceErr != nil {
-						record.ResultStatus = globalevents.ResultFailed
-						record.Level = slog.LevelError
-					}
-					background.LogBackground(ctx, record)
+		if err := s.enqueueLLM(ctx, QueuedLLMEvent{Event: event, EventID: record.ID}); err != nil {
+			persistenceErr := s.completeEvent(ctx, record.ID, event.ResolvedTargets, StatusFailed, "", err.Error())
+			{
+				content := map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID, "error": fmt.Sprintf("%.2048s", err.Error())}
+				if persistenceErr != nil {
+					content["persistence_error"] = fmt.Sprintf("%.2048s", persistenceErr.Error())
 				}
-				return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
+				data, _ := json.Marshal(content)
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogElnis,
+					Level:        slog.LevelError,
+					EventName:    "elnis_llm_enqueue_failed",
+					Module:       "elnis",
+					Type:         globalevents.ContentJSON,
+					Content:      string(data),
+					ResultStatus: globalevents.ResultFailed,
+				}
+				if errors.Is(err, context.Canceled) {
+					record.ResultStatus = globalevents.ResultCanceled
+					record.Level = slog.LevelInfo
+				}
+				record.Identity = identity
+				if persistenceErr != nil {
+					record.ResultStatus = globalevents.ResultFailed
+					record.Level = slog.LevelError
+				}
+				background.LogBackground(ctx, record)
 			}
+			if persistenceErr != nil {
+				err = errors.Join(err, persistenceErr)
+			}
+			return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
 		}
+
 		return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusQueued}, nil
 	default:
 		return Response{}, fmt.Errorf("unsupported mode %q", req.Mode)

@@ -43,16 +43,13 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	cfg := &config.Config{ConfigPath: deps.ConfigPath, Maintenance: deps.Maintenance, Elnis: deps.Elnis, Sandbox: config.SandboxConfig{Root: deps.SandboxRoot}, Platform: deps.Platform, Security: config.SecurityConfig{Superadmins: deps.Superadmins}}
 	m := &Module{ctx: ctx, cancel: cancel, cfg: cfg, enableWorkers: deps.EnableWorkers, done: make(chan struct{})}
-	if deps.Store == nil {
-		return m, fmt.Errorf("background store is required")
-	}
 	m.cronManager = elcron.NewManager(deps.Store.CronJobs())
-	maint := maintenance.NewServiceWithConfig(deps.Logs, deps.Store, deps.ChatHistory, cfg, deps.Sessions)
+	maint := maintenance.NewServiceWithConfig(deps.Logs, deps.ChatHistory, cfg, deps.Sessions)
 	maint.Media = deps.Media
 	if err := maint.RegisterCronHandlers(m.cronManager); err != nil {
 		return m, err
 	}
-	runner, err := agent.NewBackgroundRunner(agent.BackgroundRunnerDeps{
+	runner := agent.NewBackgroundRunner(agent.BackgroundRunnerDeps{
 		Sessions:    deps.Sessions,
 		SessionRows: deps.Store.Sessions(),
 		Identity:    deps.Identity,
@@ -61,14 +58,8 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		ToolState:   deps.ToolState,
 		SandboxRoot: deps.SandboxRoot,
 	})
-	if err != nil {
-		return m, err
-	}
 	m.runner = runner
 	m.cron = elcron.NewService(elcron.Options{Manager: m.cronManager, Store: deps.Store, EnabledPlatforms: enabledCronPlatforms(cfg), SandboxRoot: deps.SandboxRoot, SendTarget: deps.Send, Models: deps.Models, Sessions: deps.Sessions})
-	if err := m.cron.MigrateLegacyDeliveryState(ctx); err != nil {
-		return m, err
-	}
 	if err := m.cronManager.RegisterHandler(elcron.UserHandlerName, m.cron.Handler); err != nil {
 		return m, err
 	}
@@ -116,7 +107,9 @@ func (m *Module) Start() error {
 		m.elnisDone = make(chan struct{})
 		go func() {
 			defer close(m.elnisDone)
-			if err := m.elnis.Run(m.ctx); err != nil && !errors.Is(err, context.Canceled) {
+			if err := m.elnis.Run(m.ctx); err != nil && err != context.Canceled {
+				_, notifyErr := globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(m.ctx), globalevents.NewNotification(m.ctx, slog.LevelError, "Elnis 服务异常退出："+err.Error()))
+				err = errors.Join(err, notifyErr)
 				_ = globalevents.EmitLog(m.ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "platform_stopped_with_error", Module: "app", Type: globalevents.ContentText, Content: fmt.Sprintf("platform stopped with error\nplatform=elnis\nerror=%v", err), ContentLimit: 4096, ResultStatus: globalevents.ResultFailed})
 			}
 		}()
@@ -140,10 +133,6 @@ func startCronAsync(ctx context.Context, manager *elcron.Manager, cfg *config.Co
 						ContentLimit: 4096,
 						ResultStatus: globalevents.ResultFailed,
 					}
-					if errors.Is(err, context.Canceled) {
-						record.ResultStatus = globalevents.ResultCanceled
-						record.Level = slog.LevelInfo
-					}
 					facts, _ := contextinfo.ExecutionFromContext(ctx)
 					if facts.SessionID != "" {
 						record.Identity.SessionID = &facts.SessionID
@@ -159,6 +148,10 @@ func startCronAsync(ctx context.Context, manager *elcron.Manager, cfg *config.Co
 					}
 					if facts.RootRequestID != "" {
 						record.Identity.RootRequestID = &facts.RootRequestID
+					}
+					_, notifyErr := globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelError, "Cron 启动失败："+err.Error()))
+					if notifyErr != nil {
+						record.Content += fmt.Sprintf("\nnotification_error=%v", notifyErr)
 					}
 					_ = globalevents.EmitLog(ctx, record)
 				}
@@ -204,9 +197,6 @@ func setupCron(ctx context.Context, manager *elcron.Manager, cfg *config.Config)
 }
 
 func enabledCronPlatforms(cfg *config.Config) []elcron.PlatformTarget {
-	if cfg == nil {
-		return nil
-	}
 	out := []elcron.PlatformTarget{}
 	for name, raw := range cfg.Platform {
 		if !platformConfigEnabled(raw) {
@@ -227,9 +217,6 @@ func platformConfigEnabled(raw map[string]any) bool {
 }
 
 func resolveElnisTokens(cfg *config.Config) (map[string]string, error) {
-	if err := config.FirstError(cfg.Elnis.Validate()); err != nil {
-		return nil, err
-	}
 	out := map[string]string{}
 	configDir := filepath.Dir(cfg.ConfigPath)
 	for name, tokenCfg := range cfg.Elnis.Tokens {

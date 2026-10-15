@@ -9,7 +9,7 @@ import (
 )
 
 func SessionTakenOver(ctx context.Context, store storage.Store, id string) (bool, error) {
-	if id == "" || store == nil || store.Sessions() == nil {
+	if id == "" {
 		return false, nil
 	}
 	row, err := store.Sessions().Get(ctx, id)

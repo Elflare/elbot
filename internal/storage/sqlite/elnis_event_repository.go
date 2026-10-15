@@ -203,7 +203,11 @@ WHERE id = ?`,
 	if err != nil {
 		return fmt.Errorf("prepare elnis report event: %w", err)
 	}
-	if n, rowsErr := res.RowsAffected(); rowsErr == nil && n == 0 {
+	n, rowsErr := res.RowsAffected()
+	if rowsErr != nil {
+		return fmt.Errorf("elnis affected rows: %w", rowsErr)
+	}
+	if n == 0 {
 		return storage.ErrNotFound
 	}
 	for ordinal, delivery := range req.Deliveries {
@@ -305,7 +309,11 @@ WHERE id = ? AND status = ?`,
 	if err != nil {
 		return fmt.Errorf("release elnis report: %w", err)
 	}
-	if n, rowsErr := res.RowsAffected(); rowsErr == nil && n == 0 {
+	n, rowsErr := res.RowsAffected()
+	if rowsErr != nil {
+		return fmt.Errorf("elnis affected rows: %w", rowsErr)
+	}
+	if n == 0 {
 		return storage.ErrNotFound
 	}
 	return nil
@@ -347,13 +355,17 @@ WHERE id = ? AND status != ?`,
 	if err != nil {
 		return fmt.Errorf("start elnis report delivery: %w", err)
 	}
-	if n, rowsErr := res.RowsAffected(); rowsErr == nil && n == 0 {
+	n, rowsErr := res.RowsAffected()
+	if rowsErr != nil {
+		return fmt.Errorf("elnis affected rows: %w", rowsErr)
+	}
+	if n == 0 {
 		return storage.ErrNotFound
 	}
 	return nil
 }
 
-func (r *ElnisEventRepository) MarkReportDeliveryFailed(ctx context.Context, eventID, deliveryID, resultReadyStatus, deliveryError string) error {
+func (r *ElnisEventRepository) MarkReportDeliveryFailed(ctx context.Context, eventID, deliveryID, resultReadyStatus, deliveryError, receipt string, mappings []storage.PlatformMessageMap) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin fail elnis report delivery: %w", err)
@@ -362,10 +374,11 @@ func (r *ElnisEventRepository) MarkReportDeliveryFailed(ctx context.Context, eve
 	now := storage.FormatTime(storage.Now())
 	res, err := tx.ExecContext(ctx, `
 UPDATE elnis_report_deliveries
-SET status = ?, error = ?, updated_at = ?
+SET status = ?, error = ?, receipt = ?, updated_at = ?
 WHERE id = ? AND event_id = ? AND status != ?`,
 		storage.ElnisReportDeliveryFailed,
 		nullString(deliveryError),
+		nullString(receipt),
 		now,
 		deliveryID,
 		eventID,
@@ -374,7 +387,11 @@ WHERE id = ? AND event_id = ? AND status != ?`,
 	if err != nil {
 		return fmt.Errorf("fail elnis report delivery: %w", err)
 	}
-	if n, rowsErr := res.RowsAffected(); rowsErr == nil && n == 0 {
+	n, rowsErr := res.RowsAffected()
+	if rowsErr != nil {
+		return fmt.Errorf("elnis affected rows: %w", rowsErr)
+	}
+	if n == 0 {
 		return storage.ErrNotFound
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -383,28 +400,48 @@ SET status = ?, error = ?, updated_at = ?
 WHERE id = ?`, resultReadyStatus, nullString(deliveryError), now, eventID); err != nil {
 		return fmt.Errorf("release failed elnis report: %w", err)
 	}
+	for _, mapping := range mappings {
+		if err := mapPlatformMessage(ctx, tx, mapping); err != nil {
+			return err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit failed elnis report delivery: %w", err)
 	}
 	return nil
 }
 
-func (r *ElnisEventRepository) MarkReportDeliveryDelivered(ctx context.Context, deliveryID, receipt string) error {
-	res, err := r.db.ExecContext(ctx, `
+func (r *ElnisEventRepository) MarkReportDeliveriesDelivered(ctx context.Context, deliveryIDs []string, receipt string, mappings []storage.PlatformMessageMap) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin complete elnis report deliveries: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, mapping := range mappings {
+		if err := mapPlatformMessage(ctx, tx, mapping); err != nil {
+			return err
+		}
+	}
+	for _, deliveryID := range deliveryIDs {
+		res, err := tx.ExecContext(ctx, `
 UPDATE elnis_report_deliveries
 SET status = ?, receipt = ?, error = NULL, updated_at = ?
 WHERE id = ? AND status != ?`,
-		storage.ElnisReportDeliveryDelivered,
-		nullString(receipt),
-		storage.FormatTime(storage.Now()),
-		deliveryID,
-		storage.ElnisReportDeliveryDelivered,
-	)
-	if err != nil {
-		return fmt.Errorf("complete elnis report delivery: %w", err)
+			storage.ElnisReportDeliveryDelivered, nullString(receipt), storage.FormatTime(storage.Now()),
+			deliveryID, storage.ElnisReportDeliveryDelivered)
+		if err != nil {
+			return fmt.Errorf("complete elnis report delivery: %w", err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("complete elnis report delivery rows: %w", err)
+		}
+		if n == 0 {
+			return storage.ErrNotFound
+		}
 	}
-	if n, rowsErr := res.RowsAffected(); rowsErr == nil && n == 0 {
-		return storage.ErrNotFound
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit elnis report deliveries: %w", err)
 	}
 	return nil
 }
@@ -428,7 +465,11 @@ WHERE id = ? AND status = ?
 	if err != nil {
 		return fmt.Errorf("complete elnis report: %w", err)
 	}
-	if n, rowsErr := res.RowsAffected(); rowsErr == nil && n == 0 {
+	n, rowsErr := res.RowsAffected()
+	if rowsErr != nil {
+		return fmt.Errorf("elnis affected rows: %w", rowsErr)
+	}
+	if n == 0 {
 		return fmt.Errorf("complete elnis report: deliveries are not complete")
 	}
 	return nil

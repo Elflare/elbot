@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -76,16 +75,12 @@ type Options struct {
 }
 
 func NewService(opts Options) *Service {
-	sandboxRoot := strings.TrimSpace(opts.SandboxRoot)
-	if sandboxRoot == "" {
-		sandboxRoot = filepath.Join("data", "sandbox")
-	}
 	s := &Service{
 		manager:            opts.Manager,
 		store:              opts.Store,
 		sendTarget:         opts.SendTarget,
 		runner:             opts.Runner,
-		sandboxRoot:        sandboxRoot,
+		sandboxRoot:        opts.SandboxRoot,
 		now:                time.Now,
 		connectedPlatforms: map[string]bool{},
 		deliveryGates:      map[string]chan struct{}{},
@@ -252,7 +247,7 @@ func (s *Service) Create(ctx context.Context, req UpsertRequest) (*storage.CronJ
 		}
 		return nil, err
 	}
-	meta := Metadata{Kind: metadataKind, Version: 1, Title: strings.TrimSpace(req.Title), CreatedBy: actorMetadata(req.Actor), Schedule: CronSchedule{Mode: req.ScheduleMode, RunAt: strings.TrimSpace(req.RunAt), CronExpr: strings.TrimSpace(req.CronExpr)}, Trigger: CronTrigger{Mode: req.TriggerMode, Message: strings.TrimSpace(req.Message)}, Target: CronTarget{AllEnabledPlatforms: req.AllEnabledPlatforms, SourcePlatform: firstNonEmpty(req.SourcePlatform, req.Actor.Platform)}, LLM: CronLLMMetadata{ToolListNames: normalizeToolListNames(req.ToolListNames), ModelProvider: strings.TrimSpace(req.ModelProvider), Model: strings.TrimSpace(req.Model)}}
+	meta := Metadata{Kind: metadataKind, Version: 2, Title: strings.TrimSpace(req.Title), CreatedBy: actorMetadata(req.Actor), Schedule: CronSchedule{Mode: req.ScheduleMode, RunAt: strings.TrimSpace(req.RunAt), CronExpr: strings.TrimSpace(req.CronExpr)}, Trigger: CronTrigger{Mode: req.TriggerMode, Message: strings.TrimSpace(req.Message)}, Target: CronTarget{AllEnabledPlatforms: req.AllEnabledPlatforms, SourcePlatform: firstNonEmpty(req.SourcePlatform, req.Actor.Platform)}, LLM: CronLLMMetadata{ToolListNames: normalizeToolListNames(req.ToolListNames), ModelProvider: strings.TrimSpace(req.ModelProvider), Model: strings.TrimSpace(req.Model)}}
 
 	if err := validateElyphCronTask(meta); err != nil {
 		return nil, err
@@ -435,13 +430,10 @@ func (s *Service) Disable(ctx context.Context, name string, actor contextinfo.Ac
 		return err
 	}
 	name = normalizeJobName(name)
-	if s.manager != nil {
-		if err := s.manager.DisableJob(ctx, name); err != nil {
-			return err
-		}
-	} else if err := s.store.CronJobs().DisableByName(ctx, name); err != nil {
+	if err := s.manager.DisableJob(ctx, name); err != nil {
 		return err
 	}
+
 	{
 		content, _ := json.Marshal(map[string]any{"job": name, "actor_id": actor.ID})
 		record := globalevents.LogRecord{
@@ -498,13 +490,10 @@ func (s *Service) Delete(ctx context.Context, name string, actor contextinfo.Act
 		return err
 	}
 	name = normalizeJobName(name)
-	if s.manager != nil {
-		if err := s.manager.DeleteJob(ctx, name); err != nil {
-			return err
-		}
-	} else if err := s.store.CronJobs().DeleteByName(ctx, name); err != nil {
+	if err := s.manager.DeleteJob(ctx, name); err != nil {
 		return err
 	}
+
 	{
 		content, _ := json.Marshal(map[string]any{"job": name, "actor_id": actor.ID})
 		record := globalevents.LogRecord{
@@ -612,13 +601,16 @@ func (s *Service) List(ctx context.Context, includeDisabled, includeCompleted bo
 	}
 	views := []JobView{}
 	for _, job := range jobs {
-		meta, err := decodeMetadata(job.Metadata)
-		if err != nil || meta.Kind != metadataKind {
+		if job.Handler != UserHandlerName {
 			continue
+		}
+		meta, err := decodeMetadata(job.Metadata)
+		if err != nil {
+			return nil, fmt.Errorf("decode cron %s metadata: %w", job.Name, err)
 		}
 		deliveryState, stateErr := decodeDeliveryState(job.DeliveryState)
 		if stateErr != nil {
-			continue
+			return nil, fmt.Errorf("decode cron %s delivery: %w", job.Name, stateErr)
 		}
 		if !includeCompleted && s.isCompletedCron(job, meta, deliveryState) {
 			continue
@@ -643,7 +635,7 @@ func (s *Service) validateUserSchedule(meta *Metadata) error {
 	// once cron 是分钟级调度：过去时间直接拒绝。
 	// 如果 run_at 落在当前分钟，中央 cron 本轮 tick 可能已经错过，
 	// 这里顺延到下一分钟，避免任务看似创建成功但不会准时触发。
-	if meta == nil || meta.Schedule.Mode != ScheduleOnce {
+	if meta.Schedule.Mode != ScheduleOnce {
 		return nil
 	}
 	runAt, err := parseRunAt(meta.Schedule.RunAt)
@@ -697,12 +689,6 @@ func (s *Service) upsert(ctx context.Context, name string, meta Metadata, enable
 	if meta.Title == "" {
 		meta.Title = strings.TrimPrefix(name, "user.cron.")
 	}
-	if meta.Kind == "" {
-		meta.Kind = metadataKind
-	}
-	if meta.Version < 2 {
-		meta.Version = 2
-	}
 	schedule, err := scheduleExpr(meta.Schedule)
 	if err != nil {
 		return nil, err
@@ -714,14 +700,8 @@ func (s *Service) upsert(ctx context.Context, name string, meta Metadata, enable
 	if err != nil {
 		return nil, err
 	}
-	if s.manager != nil {
-		return s.manager.UpsertJob(ctx, UpsertJobRequest{Name: name, Handler: UserHandlerName, Schedule: schedule, Enabled: enabled, Metadata: string(data), ResetDelivery: resetDelivery})
-	}
-	nextRun, err := computeNextRunAt(schedule, string(data), enabled, s.now())
-	if err != nil {
-		return nil, err
-	}
-	return s.store.CronJobs().Upsert(ctx, storage.UpsertCronJobRequest{Name: name, Handler: UserHandlerName, Schedule: schedule, Enabled: enabled, Metadata: string(data), NextRunAt: nextRun, ResetDelivery: resetDelivery})
+	return s.manager.UpsertJob(ctx, UpsertJobRequest{Name: name, Handler: UserHandlerName, Schedule: schedule, Enabled: enabled, Metadata: string(data), ResetDelivery: resetDelivery})
+
 }
 
 func normalizePlatformTargets(targets []PlatformTarget) []PlatformTarget {

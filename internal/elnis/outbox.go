@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"time"
 
 	"elbot/internal/background"
 	"elbot/internal/delivery"
@@ -29,17 +30,16 @@ func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resul
 	if len(resolved) == 0 {
 		return false, s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusCompleted, sessionID, resultJSON, "")
 	}
-	if s.media != nil {
-		result.ReportSegments, err = s.importReportSegments(ctx, result.ReportSegments, eventID, filepath.Join(s.sandboxRoot, filepath.FromSlash(elnisSandboxSubdir(event.Request.Elwisp.Name))))
-		if err != nil {
-			return false, err
-		}
-		encoded, err := json.Marshal(result)
-		if err != nil {
-			return false, err
-		}
-		resultJSON = string(encoded)
+	result.ReportSegments, err = s.importReportSegments(ctx, result.ReportSegments, eventID, filepath.Join(s.sandboxRoot, filepath.FromSlash(elnisSandboxSubdir(event.Request.Elwisp.Name))))
+	if err != nil {
+		return false, err
 	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		return false, err
+	}
+	resultJSON = string(encoded)
+
 	outputs, err := background.BuildReportOutputs(result.Report, result.ReportSegments, sandboxctx.SandboxContext{
 		Dir:            filepath.Join(s.sandboxRoot, filepath.FromSlash(elnisSandboxSubdir(event.Request.Elwisp.Name))),
 		Background:     true,
@@ -48,7 +48,7 @@ func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resul
 	if err != nil {
 		return false, err
 	}
-	if len(resolved) == 0 || len(outputs) == 0 {
+	if len(outputs) == 0 {
 		return false, s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusCompleted, sessionID, resultJSON, "")
 	}
 
@@ -109,9 +109,6 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) (logResult 
 			logResult.Content += fmt.Sprintf("\nreport_error=%v", err)
 		}
 	}()
-	if s.send == nil {
-		return logResult, fmt.Errorf("elnis sender is not configured")
-	}
 	repo := s.store.ElnisEvents()
 	claimed, err := repo.ClaimReport(ctx, eventID, StatusResultReady, StatusDelivering)
 	if err != nil {
@@ -167,7 +164,7 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) (logResult 
 		var target Target
 		if err := json.Unmarshal([]byte(item.Target), &target); err != nil {
 			logResult.ResultStatus = globalevents.ResultFailed
-			return s.failReportDelivery(ctx, eventID, item.ID, logResult, fmt.Errorf("decode elnis report target: %w", err))
+			return s.failReportDelivery(ctx, eventID, item.ID, logResult, fmt.Errorf("decode elnis report target: %w", err), delivery.Receipt{}, nil)
 		}
 		batch := []storage.ElnisReportDelivery{item}
 		index++
@@ -184,7 +181,7 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) (logResult 
 			var output delivery.Output
 			if err := json.Unmarshal([]byte(deliveryItem.Output), &output); err != nil {
 				logResult.ResultStatus = globalevents.ResultFailed
-				return s.failReportDelivery(ctx, eventID, deliveryItem.ID, logResult, fmt.Errorf("decode elnis report output: %w", err))
+				return s.failReportDelivery(ctx, eventID, deliveryItem.ID, logResult, fmt.Errorf("decode elnis report output: %w", err), delivery.Receipt{}, nil)
 			}
 			if err := repo.StartReportDelivery(ctx, deliveryItem.ID); err != nil {
 				if logResult.ResultStatus != globalevents.ResultFailed {
@@ -193,38 +190,37 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) (logResult 
 						logResult.ResultStatus = globalevents.ResultCanceled
 					}
 				}
-				return s.failReportDelivery(ctx, eventID, deliveryItem.ID, logResult, err)
+				return s.failReportDelivery(ctx, eventID, deliveryItem.ID, logResult, err, delivery.Receipt{}, nil)
 			}
 			outputs = append(outputs, output)
 		}
 		receipt, result, err := s.send(ctx, target.ToDeliveryTarget(), outputs)
-		s.mapReportReceipt(ctx, event.EventKey, event.SessionID, batch[0].MessageID, receipt)
+		mappings := s.mapReportReceipt(event.SessionID, batch[0].MessageID, receipt)
 		logResult.Content += "\nsend:\n" + result.Content
 		if result.ResultStatus == globalevents.ResultFailed ||
 			(result.ResultStatus == globalevents.ResultCanceled && logResult.ResultStatus != globalevents.ResultFailed) {
 			logResult.ResultStatus = result.ResultStatus
 		}
 		if err != nil {
-			return s.failReportDelivery(ctx, eventID, batch[0].ID, logResult, err)
+			return s.failReportDelivery(ctx, eventID, batch[0].ID, logResult, err, receipt, mappings)
 		}
-		receiptJSON, err := json.Marshal(receipt)
+		// Receipt contains only strings, integers and slices.
+		receiptJSON, _ := json.Marshal(receipt)
+		deliveryIDs := make([]string, 0, len(batch))
+		for _, deliveryItem := range batch {
+			deliveryIDs = append(deliveryIDs, deliveryItem.ID)
+		}
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		err = repo.MarkReportDeliveriesDelivered(cleanupCtx, deliveryIDs, string(receiptJSON), mappings)
+		cancel()
 		if err != nil {
 			logResult.ResultStatus = globalevents.ResultFailed
-			return s.failReportDelivery(ctx, eventID, batch[0].ID, logResult, fmt.Errorf("marshal elnis report receipt: %w", err))
-		}
-		for _, deliveryItem := range batch {
-			if err := repo.MarkReportDeliveryDelivered(ctx, deliveryItem.ID, string(receiptJSON)); err != nil {
-				if logResult.ResultStatus != globalevents.ResultFailed {
-					logResult.ResultStatus = globalevents.ResultFailed
-					if errors.Is(err, context.Canceled) {
-						logResult.ResultStatus = globalevents.ResultCanceled
-					}
-				}
-				return s.releaseReport(ctx, eventID, logResult, err)
-			}
+			return s.releaseReport(ctx, eventID, logResult, err)
 		}
 	}
-	if err := repo.CompleteReport(ctx, eventID, StatusDelivering, StatusCompleted); err != nil {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := repo.CompleteReport(cleanupCtx, eventID, StatusDelivering, StatusCompleted); err != nil {
 		if logResult.ResultStatus != globalevents.ResultFailed {
 			logResult.ResultStatus = globalevents.ResultFailed
 			if errors.Is(err, context.Canceled) {
@@ -246,8 +242,11 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) (logResult 
 	return logResult, nil
 }
 
-func (s *Service) failReportDelivery(ctx context.Context, eventID, deliveryID string, logResult globalevents.LogResult, deliveryErr error) (globalevents.LogResult, error) {
-	if err := s.store.ElnisEvents().MarkReportDeliveryFailed(ctx, eventID, deliveryID, StatusResultReady, deliveryErr.Error()); err != nil {
+func (s *Service) failReportDelivery(ctx context.Context, eventID, deliveryID string, logResult globalevents.LogResult, deliveryErr error, receipt delivery.Receipt, mappings []storage.PlatformMessageMap) (globalevents.LogResult, error) {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	receiptJSON, _ := json.Marshal(receipt)
+	if err := s.store.ElnisEvents().MarkReportDeliveryFailed(cleanupCtx, eventID, deliveryID, StatusResultReady, deliveryErr.Error(), string(receiptJSON), mappings); err != nil {
 		logResult.Content += fmt.Sprintf("\npersistence_error=%v", err)
 		if logResult.ResultStatus != globalevents.ResultFailed {
 			logResult.ResultStatus = globalevents.ResultFailed
@@ -255,13 +254,15 @@ func (s *Service) failReportDelivery(ctx context.Context, eventID, deliveryID st
 				logResult.ResultStatus = globalevents.ResultCanceled
 			}
 		}
-		return logResult, fmt.Errorf("%v; persist delivery failure: %w", deliveryErr, err)
+		return logResult, errors.Join(deliveryErr, fmt.Errorf("persist delivery failure: %w", err))
 	}
 	return logResult, deliveryErr
 }
 
 func (s *Service) releaseReport(ctx context.Context, eventID string, logResult globalevents.LogResult, deliveryErr error) (globalevents.LogResult, error) {
-	if err := s.store.ElnisEvents().ReleaseReport(ctx, eventID, StatusDelivering, StatusResultReady, deliveryErr.Error()); err != nil {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := s.store.ElnisEvents().ReleaseReport(cleanupCtx, eventID, StatusDelivering, StatusResultReady, deliveryErr.Error()); err != nil {
 		logResult.Content += fmt.Sprintf("\npersistence_error=%v", err)
 		if logResult.ResultStatus != globalevents.ResultFailed {
 			logResult.ResultStatus = globalevents.ResultFailed
@@ -269,7 +270,7 @@ func (s *Service) releaseReport(ctx context.Context, eventID string, logResult g
 				logResult.ResultStatus = globalevents.ResultCanceled
 			}
 		}
-		return logResult, fmt.Errorf("%v; release report claim: %w", deliveryErr, err)
+		return logResult, errors.Join(deliveryErr, fmt.Errorf("release report claim: %w", err))
 	}
 	return logResult, deliveryErr
 }
@@ -298,7 +299,7 @@ func (s *Service) recoverReports(ctx context.Context, resetDelivering bool) (glo
 		}
 		return logResult, err
 	}
-	var firstErr error
+	var errs []error
 	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSkipped}
 	for _, eventID := range ids {
 		result, err := s.deliverReport(ctx, eventID)
@@ -307,9 +308,7 @@ func (s *Service) recoverReports(ctx context.Context, resetDelivering bool) (glo
 			(result.ResultStatus == globalevents.ResultCanceled && logResult.ResultStatus != globalevents.ResultFailed) {
 			logResult.ResultStatus = result.ResultStatus
 		}
-		if err != nil && firstErr == nil {
-			firstErr = err
-		}
+		errs = append(errs, err)
 		if result.ResultStatus == globalevents.ResultFailed || result.ResultStatus == globalevents.ResultCanceled {
 			content, _ := json.Marshal(map[string]any{"event_id": eventID, "result": fmt.Sprintf("%.2048s", result.Content)})
 			record := globalevents.LogRecord{Category: globalevents.LogElnis, Level: slog.LevelWarn, EventName: "recover_elnis_report_failed", Module: "elnis", Type: globalevents.ContentJSON, Content: string(content), ResultStatus: result.ResultStatus}
@@ -335,5 +334,5 @@ func (s *Service) recoverReports(ctx context.Context, resetDelivering bool) (glo
 			background.LogBackground(ctx, record)
 		}
 	}
-	return logResult, firstErr
+	return logResult, errors.Join(errs...)
 }

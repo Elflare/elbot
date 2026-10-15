@@ -225,7 +225,7 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 		Messages:  store.Messages(),
 		MediaRows: store.Media(),
 	})
-	background, err := NewBackgroundRunner(BackgroundRunnerDeps{
+	background := NewBackgroundRunner(BackgroundRunnerDeps{
 		Sessions:    sessions,
 		SessionRows: store.Sessions(),
 		Identity:    identity,
@@ -234,9 +234,6 @@ func newTestAssembly(ctx context.Context, opts testAssembly) (*agentFixture, err
 		ToolState:   opts.ToolState,
 		SandboxRoot: filepath.Clean(strings.TrimSpace(opts.SandboxRoot)),
 	})
-	if err != nil {
-		return nil, err
-	}
 	fileCommands := NewFileCommandPreparer(FileCommandPreparerDeps{Service: opts.FileRollback, Sessions: sessions, SessionRows: store.Sessions(), Turns: turns, Requests: requests, Identity: identity})
 	a := &agentFixture{
 		message:      message,

@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"elbot/internal/config"
 	elcron "elbot/internal/cron"
 	globalevents "elbot/internal/events"
-	"elbot/internal/logging"
 	"elbot/internal/media"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -24,7 +24,6 @@ type Service struct {
 		CleanupOldLogs() error
 		RetentionDays() int
 	}
-	store              storage.Store
 	chatHistory        storage.ChatHistoryRepository
 	sessionCleanup     config.MaintenanceCleanupConfig
 	chatHistoryCleanup config.ChatHistoryCleanupConfig
@@ -32,21 +31,13 @@ type Service struct {
 	sandboxCleanup     config.MaintenanceCleanupConfig
 }
 
-func NewService(logs *logging.Manager, store storage.Store, sessionCleanup config.MaintenanceCleanupConfig) *Service {
-	return &Service{Sessions: session.NewService(store), logs: logs, store: store, sessionCleanup: sessionCleanup}
-}
-
 func NewServiceWithConfig(logs interface {
 	CleanupOldLogs() error
 	RetentionDays() int
-}, store storage.Store, chatHistory storage.ChatHistoryRepository, cfg *config.Config, sessions *session.Service) *Service {
-	if cfg == nil {
-		return &Service{Sessions: sessions, logs: logs, store: store}
-	}
+}, chatHistory storage.ChatHistoryRepository, cfg *config.Config, sessions *session.Service) *Service {
 	return &Service{
 		Sessions:           sessions,
 		logs:               logs,
-		store:              store,
 		chatHistory:        chatHistory,
 		sessionCleanup:     cfg.Maintenance.SessionCleanup,
 		chatHistoryCleanup: cfg.Maintenance.ChatHistoryCleanup,
@@ -56,42 +47,31 @@ func NewServiceWithConfig(logs interface {
 }
 
 func (s *Service) RegisterCronHandlers(manager *elcron.Manager) error {
-	if manager == nil {
-		return nil
-	}
 	if err := manager.RegisterHandler("maintenance.log_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
 		return s.RunLogCleanup(ctx)
 	}); err != nil {
 		return err
 	}
 	if err := manager.RegisterHandler("maintenance.session_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
-		if !s.sessionCleanup.Enabled {
-			return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "cleanup is not enabled or configured"}, nil
-		}
+
 		return s.RunSessionCleanup(ctx)
 	}); err != nil {
 		return err
 	}
 	if err := manager.RegisterHandler("maintenance.sandbox_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
-		if s.sandboxRoot == "" || s.sandboxCleanup.RetentionDays <= 0 {
-			return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "cleanup is not enabled or configured"}, nil
-		}
+
 		return s.RunSandboxCleanup(ctx)
 	}); err != nil {
 		return err
 	}
 	if err := manager.RegisterHandler("maintenance.media_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
-		if s.Media == nil {
-			return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "cleanup is not enabled or configured"}, nil
-		}
+
 		return s.Media.Cleanup(ctx)
 	}); err != nil {
 		return err
 	}
 	if err := manager.RegisterHandler("maintenance.chat_history_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
-		if !s.chatHistoryCleanup.Enabled || s.chatHistoryCleanup.RetentionDays <= 0 || s.chatHistory == nil {
-			return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "cleanup is not enabled or configured"}, nil
-		}
+
 		return s.RunChatHistoryCleanup(ctx)
 	}); err != nil {
 		return err
@@ -100,9 +80,6 @@ func (s *Service) RegisterCronHandlers(manager *elcron.Manager) error {
 }
 
 func SetupCron(ctx context.Context, manager *elcron.Manager, cfg *config.Config) error {
-	if manager == nil || cfg == nil {
-		return nil
-	}
 	if err := upsertOrDisable(ctx, manager, cfg.Maintenance.LogCleanup.Enabled, "system.maintenance.log_cleanup", "maintenance.log_cleanup", cfg.Maintenance.LogCleanup.Schedule); err != nil {
 		return err
 	}
@@ -162,13 +139,13 @@ func (s *Service) RunSessionCleanup(ctx context.Context) (logResult globalevents
 }
 
 func (s *Service) RunChatHistoryCleanup(ctx context.Context) (logResult globalevents.LogResult, err error) {
-	if !s.chatHistoryCleanup.Enabled || s.chatHistoryCleanup.RetentionDays <= 0 || s.chatHistory == nil {
+	if !s.chatHistoryCleanup.Enabled {
 		return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "cleanup is not enabled or configured"}, nil
 	}
 	cutoff := time.Now().AddDate(0, 0, -s.chatHistoryCleanup.RetentionDays)
 	deleted, err := s.chatHistory.DeleteBefore(ctx, cutoff)
 	logResult = globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: fmt.Sprintf("deleted=%d\nretention_days=%d", deleted, s.chatHistoryCleanup.RetentionDays)}
-	if err == nil && s.Media != nil {
+	if err == nil {
 		err = s.Media.ReconcileHistory(ctx)
 	}
 	if err != nil {
@@ -182,9 +159,6 @@ func (s *Service) RunChatHistoryCleanup(ctx context.Context) (logResult globalev
 }
 
 func (s *Service) RunSandboxCleanup(ctx context.Context) (logResult globalevents.LogResult, err error) {
-	if s.sandboxRoot == "" || s.sandboxCleanup.RetentionDays <= 0 {
-		return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "cleanup is not enabled or configured"}, nil
-	}
 	cutoff := time.Now().AddDate(0, 0, -s.sandboxCleanup.RetentionDays)
 	deleted, err := cleanupSandbox(ctx, s.sandboxRoot, cutoff)
 	logResult = globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: fmt.Sprintf("deleted=%d\nretention_days=%d", deleted, s.sandboxCleanup.RetentionDays)}
@@ -231,8 +205,7 @@ func cleanupSandbox(ctx context.Context, dir string, cutoff time.Time) (int, err
 	if err != nil {
 		return deleted, err
 	}
-	_ = removeEmptyDirs(dir)
-	return deleted, nil
+	return deleted, removeEmptyDirs(dir)
 }
 
 func removeEmptyDirs(root string) error {
@@ -246,8 +219,11 @@ func removeEmptyDirs(root string) error {
 	}); err != nil {
 		return err
 	}
+	var errs []error
 	for i := len(dirs) - 1; i >= 0; i-- {
-		_ = os.Remove(dirs[i])
+		if err := os.Remove(dirs[i]); err != nil && !errors.Is(err, syscall.ENOTEMPTY) {
+			errs = append(errs, err)
+		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
