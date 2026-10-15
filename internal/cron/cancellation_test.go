@@ -28,7 +28,7 @@ func (c *gateWaitContext) Done() <-chan struct{} {
 }
 
 func TestDeliveryGateWaitCanBeCancelled(t *testing.T) {
-	s := NewService(Options{})
+	s := newTestCronService(t, Options{})
 	unlock, err := s.lockDeliveryJob(context.Background(), "same")
 	if err != nil {
 		t.Fatal(err)
@@ -69,7 +69,7 @@ func TestRecoveryCancellationDoesNotSendFailureNotice(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	captureLogs(t, slog.New(slog.NewTextHandler(&logs, nil)))
-	s := NewService(Options{Store: fakeCronStore{cron: repo}, EnabledPlatforms: []PlatformTarget{{Name: "qqonebot"}}, SendTarget: func(_ context.Context, target delivery.Target, _ []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+	s := newTestCronService(t, Options{Store: fakeCronStore{cron: repo}, EnabledPlatforms: []PlatformTarget{{Name: "qqonebot"}}, SendTarget: func(_ context.Context, target delivery.Target, _ []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 		targets = append(targets, target.Platform)
 		cancel()
 		{
@@ -100,7 +100,7 @@ func TestDeliveryKeepsMixedFailureBeforeErrorWrapping(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	failure := errors.New("real failure")
-	s := NewService(Options{SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+	s := newTestCronService(t, Options{SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 		cancel()
 		{
 			err := fmt.Errorf("mixed: %w", errors.Join(context.Canceled, failure))
@@ -115,7 +115,7 @@ func TestDeliveryKeepsMixedFailureBeforeErrorWrapping(t *testing.T) {
 			return delivery.Receipt{}, logResult, err
 		}
 	}})
-	logResult, err := s.sendOutputsToPlatformTarget(ctx, "mixed", "cli", delivery.Target{Platform: "cli"}, []delivery.Output{delivery.Text("report")}, "", "")
+	_, logResult, err := s.sendOutputsToPlatformTarget(ctx, "mixed", "cli", delivery.Target{Platform: "cli"}, []delivery.Output{delivery.Text("report")}, "")
 	status := logResult.ResultStatus
 	if status != globalevents.ResultFailed || !errors.Is(err, failure) || !errors.Is(err, context.Canceled) {
 		t.Fatalf("status=%s error=%v", status, err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -35,30 +36,9 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		identity.RootRequestID = &facts.RootRequestID
 	}
 
-	if s.runner == nil {
-		err := fmt.Errorf("elnis background runner is not configured")
-		persistenceErr := s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
-		{
-			content := map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID, "error": fmt.Sprintf("%.2048s", err.Error())}
-			if persistenceErr != nil {
-				content["persistence_error"] = fmt.Sprintf("%.2048s", persistenceErr.Error())
-			}
-			data, _ := json.Marshal(content)
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogElnis,
-				Level:        slog.LevelError,
-				EventName:    "elnis_llm_failed",
-				Module:       "elnis",
-				Type:         globalevents.ContentJSON,
-				Content:      string(data),
-				ResultStatus: globalevents.ResultFailed,
-			}
-			record.Identity = identity
-			background.LogBackground(ctx, record)
-		}
-		return err
-	}
 	if err := s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusRunning, "", ""); err != nil {
+		content, _ := json.Marshal(map[string]string{"event_id": eventID, "persistence_error": err.Error()})
+		background.LogBackground(ctx, globalevents.LogRecord{Category: globalevents.LogElnis, Level: slog.LevelError, EventName: "elnis_llm_failed", Module: "elnis", Type: globalevents.ContentJSON, Content: string(content), Identity: identity, ResultStatus: globalevents.ResultFailed})
 		return err
 	}
 	{
@@ -92,6 +72,9 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		background.LogBackground(ctx, record)
 		record.Category, record.EventName = globalevents.LogAudit, "elnis.llm_failed"
 		background.LogBackground(ctx, record)
+		if persistenceErr != nil {
+			err = errors.Join(err, persistenceErr)
+		}
 		return err
 	}
 	model := s.modelForEvent(event)
@@ -122,7 +105,11 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	}
 	result, err := s.runner.RunBackground(ctx, runRequest)
 	if taken, lookupErr := background.SessionTakenOver(context.WithoutCancel(ctx), s.store, result.SessionID); lookupErr != nil {
-		return lookupErr
+		err = errors.Join(err, lookupErr)
+		persistenceErr := s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, result.Text, err.Error())
+		content, _ := json.Marshal(map[string]string{"event_id": eventID, "error": errors.Join(err, persistenceErr).Error()})
+		background.LogBackground(ctx, globalevents.LogRecord{Category: globalevents.LogElnis, Level: slog.LevelError, EventName: "elnis_llm_failed", Module: "elnis", Type: globalevents.ContentJSON, Content: string(content), Identity: identity, ResultStatus: globalevents.ResultFailed})
+		return errors.Join(err, persistenceErr)
 	} else if taken {
 		result.TakenOver = true
 	}
@@ -152,6 +139,9 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 			background.LogBackground(ctx, record)
 			record.Category, record.EventName = globalevents.LogElnis, "elnis_llm_failed"
 			background.LogBackground(ctx, record)
+		}
+		if persistenceErr != nil {
+			err = errors.Join(err, persistenceErr)
 		}
 		return err
 	}
@@ -186,6 +176,9 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 			record.Category, record.EventName = globalevents.LogElnis, "elnis_llm_format_failed"
 			background.LogBackground(ctx, record)
 		}
+		if persistenceErr != nil {
+			parseErr = errors.Join(parseErr, persistenceErr)
+		}
 		return parseErr
 	}
 	resultJSON, _ := json.Marshal(parsed)
@@ -211,6 +204,9 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 				record.Identity = identity
 				record.Identity.SessionID = &result.SessionID
 				background.LogBackground(ctx, record)
+			}
+			if persistenceErr != nil {
+				err = errors.Join(err, persistenceErr)
 			}
 			return err
 		}
@@ -342,9 +338,6 @@ func (s *Service) modelForEvent(event Event) config.ModelSelection {
 	if slot == "" {
 		slot = "work"
 	}
-	if s.resolveModel == nil {
-		return config.ModelSelection{}
-	}
 	selected := s.resolveModel(slot)
 	if (selected.Provider == "" || selected.Model == "") && slot != "work" {
 		selected = s.resolveModel("work")
@@ -361,8 +354,10 @@ func (s *Service) completeTakeover(ctx context.Context, eventID, resolved string
 	if runErr != nil {
 		message = runErr.Error()
 	}
-	if err := s.completeEventWithSession(context.WithoutCancel(ctx), eventID, resolved, StatusTakenOver, result.SessionID, string(payload), message); err != nil {
-		return err
+	if err := s.completeEventWithSession(ctx, eventID, resolved, StatusTakenOver, result.SessionID, string(payload), message); err != nil {
+		content, _ := json.Marshal(map[string]string{"event_id": eventID, "persistence_error": err.Error()})
+		background.LogBackground(ctx, globalevents.LogRecord{Category: globalevents.LogElnis, Level: slog.LevelError, EventName: "elnis_llm_failed", Module: "elnis", Type: globalevents.ContentJSON, Content: string(content), Identity: globalevents.LogIdentity{SessionID: &result.SessionID}, ResultStatus: globalevents.ResultFailed})
+		return errors.Join(runErr, err)
 	}
 	return runErr
 }

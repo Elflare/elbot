@@ -103,19 +103,6 @@ type CronDeliveryOutputState struct {
 	FallbackText string         `json:"fallback_text,omitempty"`
 }
 
-type legacyCronMetadata struct {
-	Delivery legacyCronDeliveryMetadata `json:"delivery"`
-}
-
-type legacyCronDeliveryMetadata struct {
-	Completed          bool                 `json:"completed,omitempty"`
-	Report             string               `json:"report,omitempty"`
-	ReportSegments     []llm.MessageSegment `json:"report_segments,omitempty"`
-	ReportSessionID    string               `json:"report_session_id,omitempty"`
-	ReportMessageID    string               `json:"report_message_id,omitempty"`
-	DeliveredPlatforms []string             `json:"delivered_platforms,omitempty"`
-}
-
 type UpsertRequest struct {
 	Name                string
 	Title               string
@@ -170,23 +157,6 @@ func decodeMetadata(raw string) (Metadata, error) {
 	return meta, nil
 }
 
-func decodeLegacyDeliveryMetadata(raw string) (legacyCronDeliveryMetadata, error) {
-	var meta legacyCronMetadata
-	if err := json.Unmarshal([]byte(raw), &meta); err != nil {
-		return legacyCronDeliveryMetadata{}, err
-	}
-	return meta.Delivery, nil
-}
-
-func hasLegacyDeliveryMetadata(delivery legacyCronDeliveryMetadata) bool {
-	return delivery.Completed ||
-		strings.TrimSpace(delivery.Report) != "" ||
-		len(delivery.ReportSegments) > 0 ||
-		strings.TrimSpace(delivery.ReportSessionID) != "" ||
-		strings.TrimSpace(delivery.ReportMessageID) != "" ||
-		len(delivery.DeliveredPlatforms) > 0
-}
-
 func validateMetadata(meta Metadata) error {
 	if strings.TrimSpace(meta.Trigger.Message) == "" {
 		return fmt.Errorf("message is required")
@@ -197,8 +167,7 @@ func validateMetadata(meta Metadata) error {
 	if meta.Target.SourcePlatform == "" {
 		return fmt.Errorf("source platform is required")
 	}
-	_, err := scheduleExpr(meta.Schedule)
-	return err
+	return nil
 }
 
 func scheduleExpr(schedule CronSchedule) (string, error) {

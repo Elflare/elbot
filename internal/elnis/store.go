@@ -34,7 +34,7 @@ func (s *Service) handleDuplicate(ctx context.Context, event Event, existing *st
 		identity.RootRequestID = &facts.RootRequestID
 	}
 
-	if existing != nil && existing.ContentHash != event.ContentHash {
+	if existing.ContentHash != event.ContentHash {
 		{
 			content, _ := json.Marshal(map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "existing_event_id": existing.ID})
 			record := globalevents.LogRecord{

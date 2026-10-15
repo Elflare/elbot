@@ -91,8 +91,7 @@ func TestCleanupUsesInjectedLiveSessionService(t *testing.T) {
 		}
 		return nil
 	})
-	svc := NewService(nil, store, config.MaintenanceCleanupConfig{Enabled: true, RetentionDays: 1})
-	svc.Sessions = live
+	svc := NewServiceWithConfig(nil, nil, &config.Config{Maintenance: config.MaintenanceConfig{SessionCleanup: config.MaintenanceCleanupConfig{Enabled: true, RetentionDays: 1}}}, live)
 	if logResult, err := svc.RunSessionCleanup(ctx); err != nil || logResult.ResultStatus != events.ResultSucceeded || !strings.Contains(logResult.Content, "deleted=0") {
 		t.Fatalf("cleanup=%#v error=%v", logResult, err)
 	}
@@ -129,7 +128,6 @@ func TestSandboxCleanupReturnsSourceResult(t *testing.T) {
 		want      events.ResultStatus
 		err       error
 	}{
-		{"skipped", context.Background(), 0, events.ResultSkipped, nil},
 		{"canceled", func() context.Context { ctx, cancel := context.WithCancel(context.Background()); cancel(); return ctx }(), 1, events.ResultCanceled, context.Canceled},
 		{"deadline", func() context.Context {
 			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))

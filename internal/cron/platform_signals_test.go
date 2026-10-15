@@ -71,7 +71,7 @@ func TestCronPlatformSubscriptionsIsolateAndCancel(t *testing.T) {
 	type key struct{}
 	first, second := make(chan struct{}, 1), make(chan struct{}, 1)
 	var calls atomic.Int32
-	s := NewService(Options{Store: connectionStore{repo: connectionRepo{list: func(ctx context.Context) ([]storage.CronJob, error) {
+	s := newTestCronService(t, Options{Store: connectionStore{repo: connectionRepo{list: func(ctx context.Context) ([]storage.CronJob, error) {
 		if ctx.Value(key{}) == "one" {
 			calls.Add(1)
 			first <- struct{}{}
@@ -126,7 +126,7 @@ func TestCronPlatformSubscriptionsIsolateAndCancel(t *testing.T) {
 
 func TestCronPlatformSubscriptionRejectsBlankAndDoesNotReplay(t *testing.T) {
 	var calls atomic.Int32
-	s := NewService(Options{Store: connectionStore{repo: connectionRepo{list: func(context.Context) ([]storage.CronJob, error) { calls.Add(1); return nil, nil }}}})
+	s := newTestCronService(t, Options{Store: connectionStore{repo: connectionRepo{list: func(context.Context) ([]storage.CronJob, error) { calls.Add(1); return nil, nil }}}})
 	if _, err := globalevents.PlatformConnected.Emit(context.Background(), globalevents.PlatformConnectedEvent{Platform: "before"}); err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestCronPlatformSubscriptionRejectsBlankAndDoesNotReplay(t *testing.T) {
 }
 
 func TestCronPlatformSubscriptionParentCancellationRacesEmission(t *testing.T) {
-	s := NewService(Options{Store: connectionStore{repo: connectionRepo{list: func(context.Context) ([]storage.CronJob, error) { return nil, nil }}}})
+	s := newTestCronService(t, Options{Store: connectionStore{repo: connectionRepo{list: func(context.Context) ([]storage.CronJob, error) { return nil, nil }}}})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	if err := s.StartPlatformEvents(ctx); err != nil {

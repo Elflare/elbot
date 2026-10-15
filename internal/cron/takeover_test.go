@@ -20,7 +20,7 @@ func TestTakeoverSuppressesRepairAndDelivery(t *testing.T) {
 	repo := newFakeCronRepo()
 	runner := &takeoverRunner{}
 	sent := 0
-	svc := NewService(Options{Store: fakeCronStore{cron: repo}, Runner: runner, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	svc := newTestCronService(t, Options{Store: fakeCronStore{cron: repo}, Runner: runner, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		sent++
 		return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	}})

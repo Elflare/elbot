@@ -166,7 +166,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/platform/module/notifications.go`：创建管理器、注册平台并连接适配器；平台退出告警按仍运行的平台和配置超管发布通知。模块 `lifecycle.go` 协调关闭。
 - `internal/platform/{cli,qq-onebot,qqofficial,telegram}/notifications.go`：各平台连接通知信号、发送纯文本并返回回执；消息平台经 Delivery.Manager 发送，CLI 保留通知协议并调用 Delivery.LogSendResult，保留等级、原远端连接和部分发送错误。
 - `internal/agent/output.go`、`internal/agent/turn_output.go`、`internal/agent/execution_output.go`：发送 Hook、前后台策略与接管输出；SendOutputs 传递独立 LogResult 和原始错误；正文与流式发送另外保留业务 Receipt，发送来源在 Content 中保留消息及输出索引，独立于工具调用日志。流替换与结束回执合并去重，保留部分成功和独立切片。
-- `internal/agent/dialogue/reply_commit.go`：最终回复落库、发送顺序与正文业务回执关联；准备、发送、保存和关联分别返回 LogResult；附加输出使用独立 LogResult；终态日志接收实际操作结果，关联及部分送达继续使用 Receipt，不从最终合并错误反推。
+- `internal/agent/dialogue/reply_commit.go`：最终回复落库、发送顺序与正文业务回执关联；附加输出使用独立 LogResult；终态日志接收实际操作结果，关联及部分送达继续使用 Receipt，不从最终合并错误反推。
 - `internal/agent/dialogue/output.go`：正文输出与可选 `ReasoningStream` 消费契约；SendPreview 可变参数按工具传递完整提示，多行正文不拆段，通用流程提示占一段；OutputSender 为每段加一次前缀，合并后执行一次输出 Hook 并发送通知。思考只接收原始增量和结束边界，状态记录独立注入执行组件。`execution_output.go` 每个思考增量刷新接管来源，CLI 实现展示策略。
 
 <!-- locator:platform -->

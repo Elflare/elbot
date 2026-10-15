@@ -461,11 +461,11 @@ func TestCronJobRepositoryDeliveryCASAndReset(t *testing.T) {
 		t.Fatalf("initial upsert: %v", err)
 	}
 
-	swapped, err := store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, "", "session-1", `{"report_ready":true}`)
+	swapped, err := store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, "", "session-1", `{"report_ready":true}`, nil)
 	if err != nil || !swapped {
 		t.Fatalf("claim delivery: swapped=%v err=%v", swapped, err)
 	}
-	if swapped, err = store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, "wrong", "session-2", `{}`); err != nil || swapped {
+	if swapped, err = store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, "wrong", "session-2", `{}`, nil); err != nil || swapped {
 		t.Fatalf("stale delivery swap: swapped=%v err=%v", swapped, err)
 	}
 

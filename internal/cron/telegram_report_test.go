@@ -41,10 +41,10 @@ func TestTextReportMapsRealTelegramPartialReceipt(t *testing.T) {
 	if err := store.Messages().Append(ctx, &storage.Message{ID: "report", SessionID: row.ID, Role: storage.RoleAssistant, Content: "report"}); err != nil {
 		t.Fatal(err)
 	}
-	svc := NewService(Options{Store: store, SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	svc := newTestCronService(t, Options{Store: store, SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		return router.SendTo(ctx, target, outputs)
 	}})
-	_, err := svc.sendOutputsToPlatformTarget(ctx, "task", "telegram", delivery.Target{Platform: "telegram", Superadmins: true}, []delivery.Output{delivery.Text("report")}, row.ID, "report")
+	_, err := deliverTestReport(t, svc, "telegram", row.ID, "report")
 	if err == nil {
 		t.Fatal("expected second target failure")
 	}

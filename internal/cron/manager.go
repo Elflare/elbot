@@ -4,6 +4,7 @@ import (
 	"context"
 	"elbot/internal/background"
 	"elbot/internal/contextinfo"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -53,12 +54,6 @@ func NewManager(repo storage.CronJobRepository) *Manager {
 }
 
 func (m *Manager) RegisterHandler(name string, handler Handler) error {
-	if name == "" {
-		return fmt.Errorf("cron handler name is empty")
-	}
-	if handler == nil {
-		return fmt.Errorf("cron handler %q is nil", name)
-	}
 	m.mu.Lock()
 	m.handlers[name] = handler
 	started := m.started
@@ -273,7 +268,7 @@ func (m *Manager) reloadEnabled(ctx context.Context) error {
 
 func (m *Manager) scheduleJob(job storage.CronJob) error {
 	m.mu.Lock()
-	if !m.started || m.scheduler == nil {
+	if !m.started {
 		m.mu.Unlock()
 		return nil
 	}
@@ -283,8 +278,7 @@ func (m *Manager) scheduleJob(job storage.CronJob) error {
 	}
 	if !job.Enabled {
 		m.mu.Unlock()
-		m.updateNextRunAt(context.Background(), job, nil)
-		return nil
+		return m.updateNextRunAt(context.Background(), job, nil)
 	}
 	if _, ok := m.handlers[job.Handler]; !ok {
 		m.mu.Unlock()
@@ -301,8 +295,7 @@ func (m *Manager) scheduleJob(job storage.CronJob) error {
 			}
 			background.LogBackground(context.Background(), record)
 		}
-		m.updateNextRunAt(context.Background(), job, nil)
-		return nil
+		return m.updateNextRunAt(context.Background(), job, nil)
 	}
 	nextRun, err := computeNextRunAt(job.Schedule, job.Metadata, true, time.Now())
 	if err != nil {
@@ -311,8 +304,7 @@ func (m *Manager) scheduleJob(job storage.CronJob) error {
 	}
 	if nextRun == nil {
 		m.mu.Unlock()
-		m.updateNextRunAt(context.Background(), job, nil)
-		return nil
+		return m.updateNextRunAt(context.Background(), job, nil)
 	}
 	entryID, err := m.scheduler.AddFunc(job.Schedule, func() {
 		m.runJob(job.Name)
@@ -323,7 +315,9 @@ func (m *Manager) scheduleJob(job storage.CronJob) error {
 	}
 	m.entries[job.Name] = entryID
 	m.mu.Unlock()
-	m.updateNextRunAt(context.Background(), job, nextRun)
+	if err := m.updateNextRunAt(context.Background(), job, nextRun); err != nil {
+		return err
+	}
 	{
 		record := globalevents.LogRecord{
 			Category:     globalevents.LogRuntime,
@@ -583,7 +577,7 @@ func validateUpsertRequest(req UpsertJobRequest) error {
 	return nil
 }
 
-func (m *Manager) updateNextRunAt(ctx context.Context, job storage.CronJob, nextRunAt *time.Time) {
+func (m *Manager) updateNextRunAt(ctx context.Context, job storage.CronJob, nextRunAt *time.Time) error {
 	if err := m.repo.UpdateNextRunAt(ctx, job.ID, nextRunAt, time.Now()); err != nil {
 		{
 			record := globalevents.LogRecord{
@@ -614,7 +608,9 @@ func (m *Manager) updateNextRunAt(ctx context.Context, job storage.CronJob, next
 			}
 			background.LogBackground(ctx, record)
 		}
+		return err
 	}
+	return nil
 }
 
 func computeNextRunAt(schedule, metadata string, enabled bool, now time.Time) (*time.Time, error) {
@@ -645,8 +641,11 @@ func userOnceRunAt(metadata string) (time.Time, bool, error) {
 	if metadata == "" {
 		return time.Time{}, false, nil
 	}
-	meta, err := decodeMetadata(metadata)
-	if err != nil || meta.Kind != metadataKind || meta.Schedule.Mode != ScheduleOnce {
+	var meta Metadata
+	if err := json.Unmarshal([]byte(metadata), &meta); err != nil {
+		return time.Time{}, false, err
+	}
+	if meta.Kind != metadataKind || meta.Schedule.Mode != ScheduleOnce {
 		return time.Time{}, false, nil
 	}
 	runAt, err := parseRunAt(meta.Schedule.RunAt)

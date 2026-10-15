@@ -2,6 +2,7 @@ package elnis
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -24,15 +25,12 @@ func (s *Service) ImportWorkspaceMedia(ctx context.Context, elwispName, path str
 		return nil, fmt.Errorf("invalid elwisp name")
 	}
 	call := (&tool.MediaRuntime{Center: s.media}).NewCall()
-	defer call.Close()
-	return call.Import(ctx, filepath.Join(s.sandboxRoot, "elnis", elwispName), path, input)
+	item, err := call.Import(ctx, filepath.Join(s.sandboxRoot, "elnis", elwispName), path, input)
+	return item, errors.Join(err, call.Close())
 }
 
 // ExportWorkspaceMedia creates a new file within this Elwisp's workspace.
 func (s *Service) ExportWorkspaceMedia(ctx context.Context, elwispName, id, path string) error {
-	if s.media == nil {
-		return fmt.Errorf("media center is not configured")
-	}
 	if !elwispNamePattern.MatchString(elwispName) || !filepath.IsLocal(path) || strings.Contains(path, ":") {
 		return fmt.Errorf("invalid workspace path")
 	}
@@ -65,11 +63,7 @@ func (s *Service) ExportWorkspaceMedia(ctx context.Context, elwispName, id, path
 	_, copyErr := io.Copy(file, reader)
 	closeErr := file.Close()
 	if copyErr != nil || closeErr != nil {
-		_ = root.Remove(path)
-		if copyErr != nil {
-			return copyErr
-		}
-		return closeErr
+		return errors.Join(copyErr, closeErr, root.Remove(path))
 	}
 	return nil
 }
@@ -102,9 +96,6 @@ func (s *Service) materializeSegments(ctx context.Context, segments []Segment, e
 	for i, seg := range segments {
 		if seg.Kind == SegmentKindText {
 			continue
-		}
-		if s.media == nil {
-			return nil, fmt.Errorf("elnis media center is not configured")
 		}
 		if media.ValidID(seg.URL) {
 			out[i].MediaID = seg.URL

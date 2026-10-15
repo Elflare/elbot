@@ -86,7 +86,7 @@ func (r *fakeCronRepo) UpdateRunState(ctx context.Context, id string, state stor
 	return storage.ErrNotFound
 }
 
-func (r *fakeCronRepo) CompareAndSwapDelivery(ctx context.Context, id, expectedToken, nextToken, deliveryState string) (bool, error) {
+func (r *fakeCronRepo) CompareAndSwapDelivery(ctx context.Context, id, expectedToken, nextToken, deliveryState string, mappings []storage.PlatformMessageMap) (bool, error) {
 	for _, job := range r.jobs {
 		if job.ID == id && job.Enabled && job.DeliveryToken == expectedToken {
 			job.DeliveryToken = nextToken

@@ -596,9 +596,15 @@ func TestRunLLMEventRetriesWhenReceiptPersistenceFails(t *testing.T) {
 	calls := 0
 	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 		calls++
-		return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+		return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}, SentMessages: []delivery.SentMessage{{Platform: "cli", ScopeID: "local", PlatformMessageID: "notice-1", OutputIndexes: []int{0}}}}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	})
 	defer cleanup()
+	if err := service.store.Sessions().Create(t.Context(), &storage.Session{ID: "bg-session", OwnerID: "cli:local", Platform: "cli", PlatformScopeID: "local", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.store.Messages().Append(t.Context(), &storage.Message{ID: "bg-message", SessionID: "bg-session", Role: storage.RoleAssistant, Content: "report"}); err != nil {
+		t.Fatal(err)
+	}
 	failingRepo := &failOnceReceiptRepository{ElnisEventRepository: service.store.ElnisEvents()}
 	service.store = elnisRepositoryStore{Store: service.store, repo: failingRepo}
 	var queued QueuedLLMEvent
@@ -622,6 +628,13 @@ func TestRunLLMEventRetriesWhenReceiptPersistenceFails(t *testing.T) {
 		t.Fatalf("record after receipt failure = %#v, calls = %d", record, calls)
 	}
 
+	if _, err := service.store.Messages().FindByPlatformMessage(t.Context(), "cli", "local", "notice-1"); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("mapping did not roll back: %v", err)
+	}
+	pending, err := service.store.ElnisEvents().ListReportDeliveries(t.Context(), queued.EventID)
+	if err != nil || len(pending) != 1 || pending[0].Status != storage.ElnisReportDeliveryPending || pending[0].Receipt != "" {
+		t.Fatalf("delivery did not roll back: %#v %v", pending, err)
+	}
 	if _, err := service.recoverReports(context.Background(), false); err != nil {
 		t.Fatalf("recoverReports: %v", err)
 	}
@@ -720,7 +733,7 @@ func TestRecoverReportsDoesNotResendPersistedReceipt(t *testing.T) {
 	if err := repo.StartReportDelivery(context.Background(), deliveries[0].ID); err != nil {
 		t.Fatalf("StartReportDelivery: %v", err)
 	}
-	if err := repo.MarkReportDeliveryDelivered(context.Background(), deliveries[0].ID, `{"PlatformMessageIDs":["notice-1"]}`); err != nil {
+	if err := repo.MarkReportDeliveriesDelivered(context.Background(), []string{deliveries[0].ID}, `{"PlatformMessageIDs":["notice-1"]}`, nil); err != nil {
 		t.Fatalf("MarkReportDeliveryDelivered: %v", err)
 	}
 
@@ -1023,6 +1036,8 @@ func newTestServiceWithRunner(t *testing.T, runner background.Runner, send Sende
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
+	enableMedia(t, service)
+	service.SetLLMEnqueuer(func(context.Context, QueuedLLMEvent) error { return nil })
 	return service, func() { _ = store.Close() }
 }
 
@@ -1090,12 +1105,14 @@ type failOnceReceiptRepository struct {
 	failed bool
 }
 
-func (r *failOnceReceiptRepository) MarkReportDeliveryDelivered(ctx context.Context, deliveryID, receipt string) error {
+func (r *failOnceReceiptRepository) MarkReportDeliveriesDelivered(ctx context.Context, deliveryIDs []string, receipt string, mappings []storage.PlatformMessageMap) error {
 	if !r.failed {
 		r.failed = true
-		return errors.New("receipt persistence failed")
+		mappings[0].ID = "duplicate-receipt-map"
+		mappings = append(mappings, mappings[0])
+		return r.ElnisEventRepository.MarkReportDeliveriesDelivered(ctx, deliveryIDs, receipt, mappings)
 	}
-	return r.ElnisEventRepository.MarkReportDeliveryDelivered(ctx, deliveryID, receipt)
+	return r.ElnisEventRepository.MarkReportDeliveriesDelivered(ctx, deliveryIDs, receipt, mappings)
 }
 
 func (r *fakeBackgroundRunner) RunBackground(ctx context.Context, req background.RunRequest) (background.RunResult, error) {

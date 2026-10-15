@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -26,7 +27,7 @@ func TestMediaAuditDetectsMissingCronReference(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ok, err := store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, "", "run", string(data)); err != nil || !ok {
+	if ok, err := store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, "", "run", string(data), nil); err != nil || !ok {
 		t.Fatalf("save report: %v %v", ok, err)
 	}
 	if issues, err := store.Media().CheckReferences(ctx); err != nil || len(issues) != 0 {
@@ -109,19 +110,22 @@ func TestMediaJSONReferenceTransactions(t *testing.T) {
 		}
 		return string(data)
 	}
-	if ok, err := store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, "", "first", state(ids[0])); err != nil || !ok {
+	if ok, err := store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, "", "first", state(ids[0]), nil); err != nil || !ok {
 		t.Fatalf("create delivery: %v %v", ok, err)
 	}
 	assertOwner("cron", job.ID, ids[0])
-	if ok, err := store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, "first", "second", state(ids[1])); err != nil || !ok {
+	if ok, err := store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, "first", "second", state(ids[1]), nil); err != nil || !ok {
 		t.Fatalf("replace delivery: %v %v", ok, err)
 	}
 	assertOwner("cron", job.ID, ids[1])
-	if _, err := store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, "second", "bad", state("media:missing")); err == nil {
+	if _, err := store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, "second", "bad", state("media:missing"), []storage.PlatformMessageMap{{Platform: "test", PlatformScopeID: "s", PlatformMessageID: "report", SessionID: session.ID, MessageID: msg.ID}}); err == nil {
 		t.Fatal("accepted missing cron media")
 	}
+	if _, err := store.Messages().FindByPlatformMessage(ctx, "test", "s", "report"); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("report mapping did not roll back: %v", err)
+	}
 	assertOwner("cron", job.ID, ids[1])
-	if ok, err := store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, "second", "", ""); err != nil || !ok {
+	if ok, err := store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, "second", "", "", nil); err != nil || !ok {
 		t.Fatalf("delivery token was not rolled back: %v %v", ok, err)
 	}
 	assertOwner("cron", job.ID, "")

@@ -35,7 +35,7 @@ func (m *taskModels) ValidateSelection(s config.ModelSelection) error {
 func TestCronTaskModelCRUD(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeCronRepo()
-	svc := NewService(Options{Store: fakeCronStore{cron: repo}, Models: &taskModels{}})
+	svc := newTestCronService(t, Options{Store: fakeCronStore{cron: repo}, Models: &taskModels{}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:04:30") }
 	actor := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
 	req := UpsertRequest{Name: "models", Title: "models", ScheduleMode: ScheduleOnce, RunAt: "2026-01-02 03:05:00", TriggerMode: TriggerLLM,
@@ -87,7 +87,7 @@ func TestCronModelSnapshotSurvivesFormatRetry(t *testing.T) {
 	for _, explicit := range []bool{false, true} {
 		models := &taskModels{current: config.ModelSelection{Provider: "provider", Model: "initial"}}
 		runner := &changingModelRunner{models: models, fakeCronRunner: fakeCronRunner{texts: []string{"invalid JSON", `{"completed":true,"need_report":false,"report":"ok"}`}}}
-		svc := NewService(Options{Store: fakeCronStore{cron: newFakeCronRepo()}, Models: models, Runner: runner})
+		svc := newTestCronService(t, Options{Store: fakeCronStore{cron: newFakeCronRepo()}, Models: models, Runner: runner})
 		meta := Metadata{LLM: CronLLMMetadata{ToolListNames: []string{"shell"}}}
 		want := "initial"
 		if explicit {

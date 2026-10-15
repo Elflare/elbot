@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"path/filepath"
 	"strings"
@@ -72,9 +71,6 @@ func (r *BackgroundRunner) RunBackground(ctx context.Context, req background.Run
 	ctx = security.WithPolicy(contextinfo.WithActor(ctx, actor), r.identity.Policy())
 
 	sandboxRoot := r.sandboxRoot
-	if sandboxRoot == "" {
-		sandboxRoot = filepath.Join("data", "sandbox")
-	}
 	sandboxSubdir := strings.TrimSpace(req.SandboxSubdir)
 	if sandboxSubdir == "" {
 		sandboxSubdir = strings.TrimSpace(string(req.Kind))
@@ -101,10 +97,8 @@ func (r *BackgroundRunner) RunBackground(ctx context.Context, req background.Run
 		}
 		return background.RunResult{}, err
 	}
-	if sandbox, ok := sandboxctx.SandboxContextFromContext(ctx); ok {
-		if err := session.NewWorkspaceStore(r.sessions, r.sessionRows, bgSession.ID).EnsureWorkspaceDir(ctx, sandbox.Dir); err != nil {
-			return background.RunResult{}, err
-		}
+	if err := session.NewWorkspaceStore(r.sessions, r.sessionRows, bgSession.ID).EnsureWorkspaceDir(ctx, filepath.Join(sandboxRoot, filepath.FromSlash(sandboxSubdir))); err != nil {
+		return background.RunResult{}, err
 	}
 	var preloaded backgroundPreloadResult
 	if req.SessionID == "" {
@@ -196,9 +190,6 @@ type backgroundPreloadResult struct {
 }
 
 func (r *BackgroundRunner) preloadBackgroundResources(ctx context.Context, row *storage.Session, names []string, initial []toolrun.CachedTool, allowed []string) backgroundPreloadResult {
-	if row == nil || row.Mode != storage.SessionModeBackground {
-		return backgroundPreloadResult{}
-	}
 	preloadCtx := contextinfo.WithActor(security.WithPolicy(ctx, r.identity.Policy()), r.identity.Actor(ctx))
 	prepared, err := r.preloader.PrepareBackground(preloadCtx, row.ID, names, allowed)
 	if err != nil {
@@ -233,35 +224,10 @@ func toolBackgroundKind(kind background.Kind) sandboxctx.BackgroundKind {
 }
 
 // NewBackgroundRunner initializes BackgroundRunner without installing cross-service callbacks.
-func NewBackgroundRunner(deps BackgroundRunnerDeps) (*BackgroundRunner, error) {
-	if deps.Sessions == nil {
-		return nil, fmt.Errorf("BackgroundRunner sessions is required")
-	}
-	if deps.SessionRows == nil {
-		return nil, fmt.Errorf("BackgroundRunner sessionRows is required")
-	}
-	if deps.Identity == nil {
-		return nil, fmt.Errorf("BackgroundRunner identity is required")
-	}
-	if deps.Execution == nil {
-		return nil, fmt.Errorf("BackgroundRunner execution is required")
-	}
-	if deps.Preloader == nil {
-		return nil, fmt.Errorf("BackgroundRunner preloader is required")
-	}
-	if deps.ToolState == nil {
-		return nil, fmt.Errorf("BackgroundRunner toolState is required")
-	}
-	if strings.TrimSpace(deps.SandboxRoot) == "" {
-		return nil, fmt.Errorf("sandbox root is required")
-	}
+func NewBackgroundRunner(deps BackgroundRunnerDeps) *BackgroundRunner {
 	return &BackgroundRunner{
-		sessions:    deps.Sessions,
-		sessionRows: deps.SessionRows,
-		identity:    deps.Identity,
-		execution:   deps.Execution,
-		preloader:   deps.Preloader,
-		toolState:   deps.ToolState,
-		sandboxRoot: filepath.Clean(strings.TrimSpace(deps.SandboxRoot)),
-	}, nil
+		sessions: deps.Sessions, sessionRows: deps.SessionRows, identity: deps.Identity,
+		execution: deps.Execution, preloader: deps.Preloader, toolState: deps.ToolState,
+		sandboxRoot: filepath.Clean(deps.SandboxRoot),
+	}
 }

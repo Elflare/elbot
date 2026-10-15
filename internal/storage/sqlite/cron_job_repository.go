@@ -166,8 +166,18 @@ WHERE id = ?`,
 	return nil
 }
 
-func (r *CronJobRepository) CompareAndSwapDelivery(ctx context.Context, id, expectedToken, nextToken, deliveryState string) (bool, error) {
-	res, err := r.db.ExecContext(ctx, `
+func (r *CronJobRepository) CompareAndSwapDelivery(ctx context.Context, id, expectedToken, nextToken, deliveryState string, mappings []storage.PlatformMessageMap) (bool, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin cron delivery commit: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, mapping := range mappings {
+		if err := mapPlatformMessage(ctx, tx, mapping); err != nil {
+			return false, err
+		}
+	}
+	res, err := tx.ExecContext(ctx, `
 UPDATE cron_jobs
 SET delivery_state = ?, delivery_token = ?, updated_at = ?
 WHERE id = ? AND enabled = 1 AND COALESCE(delivery_token, '') = ?`,
@@ -183,6 +193,9 @@ WHERE id = ? AND enabled = 1 AND COALESCE(delivery_token, '') = ?`,
 	n, err := res.RowsAffected()
 	if err != nil {
 		return false, fmt.Errorf("compare and swap cron delivery rows: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit cron delivery: %w", err)
 	}
 	return n > 0, nil
 }

@@ -27,29 +27,12 @@ type Runtime struct {
 
 const reportRecoveryInterval = 30 * time.Second
 
-const (
-	defaultReadHeaderTimeout = 5 * time.Second
-	defaultReadTimeout       = 30 * time.Second
-	defaultWriteTimeout      = 300 * time.Second
-	defaultIdleTimeout       = 60 * time.Second
-)
-
 func NewRuntime(cfg config.ElnisHTTPConfig, service *Service) *Runtime {
 	mux := http.NewServeMux()
-	queueSize := cfg.QueueSize
-	if queueSize <= 0 {
-		queueSize = 128
-	}
-	workers := cfg.Workers
-	if workers <= 0 {
-		workers = 1
-	}
-	r := &Runtime{service: service, queue: make(chan QueuedLLMEvent, queueSize), workers: workers}
+
+	r := &Runtime{service: service, queue: make(chan QueuedLLMEvent, cfg.QueueSize), workers: cfg.Workers}
 	service.SetLLMEnqueuer(r.enqueueLLM)
-	maxBodyBytes := cfg.MaxBodyBytes
-	if maxBodyBytes <= 0 {
-		maxBodyBytes = 1024 * 1024
-	}
+
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, req *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
@@ -60,7 +43,7 @@ func NewRuntime(cfg config.ElnisHTTPConfig, service *Service) *Runtime {
 		}
 		defer req.Body.Close()
 		var event Request
-		decoder := json.NewDecoder(http.MaxBytesReader(w, req.Body, maxBodyBytes))
+		decoder := json.NewDecoder(http.MaxBytesReader(w, req.Body, cfg.MaxBodyBytes))
 		if err := decodeSingleJSON(decoder, &event); err != nil {
 			writeJSON(w, http.StatusBadRequest, Response{Accepted: false, Status: StatusFailed, Error: fmt.Sprintf("invalid json: %v", err)})
 			return
@@ -77,26 +60,15 @@ func NewRuntime(cfg config.ElnisHTTPConfig, service *Service) *Runtime {
 	}
 	mux.HandleFunc("/elvena/v2/events", handler)
 	mux.HandleFunc("/elvena/v3/events", handler)
-	addr := strings.TrimSpace(cfg.Addr)
-	if addr == "" {
-		addr = "127.0.0.1:32170"
-	}
 	r.server = &http.Server{
-		Addr:              addr,
+		Addr:              cfg.Addr,
 		Handler:           mux,
-		ReadHeaderTimeout: configuredTimeout(cfg.ReadHeaderTimeoutSeconds, defaultReadHeaderTimeout),
-		ReadTimeout:       configuredTimeout(cfg.ReadTimeoutSeconds, defaultReadTimeout),
-		WriteTimeout:      configuredTimeout(cfg.WriteTimeoutSeconds, defaultWriteTimeout),
-		IdleTimeout:       configuredTimeout(cfg.IdleTimeoutSeconds, defaultIdleTimeout),
+		ReadHeaderTimeout: time.Duration(cfg.ReadHeaderTimeoutSeconds) * time.Second,
+		ReadTimeout:       time.Duration(cfg.ReadTimeoutSeconds) * time.Second,
+		WriteTimeout:      time.Duration(cfg.WriteTimeoutSeconds) * time.Second,
+		IdleTimeout:       time.Duration(cfg.IdleTimeoutSeconds) * time.Second,
 	}
 	return r
-}
-
-func configuredTimeout(seconds int, fallback time.Duration) time.Duration {
-	if seconds <= 0 {
-		return fallback
-	}
-	return time.Duration(seconds) * time.Second
 }
 
 func decodeSingleJSON(decoder *json.Decoder, target any) error {
@@ -127,10 +99,8 @@ func (r *Runtime) enqueueLLM(ctx context.Context, event QueuedLLMEvent) error {
 func (r *Runtime) Run(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	if r.service != nil {
-		if err := r.service.resetDeliveringReports(runCtx); err != nil {
-			return fmt.Errorf("reset interrupted elnis reports: %w", err)
-		}
+	if err := r.service.resetDeliveringReports(runCtx); err != nil {
+		return fmt.Errorf("reset interrupted elnis reports: %w", err)
 	}
 	var wg sync.WaitGroup
 	for i := 0; i < r.workers; i++ {
@@ -157,9 +127,12 @@ func (r *Runtime) Run(ctx context.Context) error {
 	case <-ctx.Done():
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
-		_ = r.server.Shutdown(shutdownCtx)
+		shutdownErr := r.server.Shutdown(shutdownCtx)
 		cancel()
 		wg.Wait()
+		if shutdownErr != nil {
+			return errors.Join(ctx.Err(), shutdownErr)
+		}
 		return ctx.Err()
 	case err := <-errCh:
 		cancel()
@@ -187,9 +160,6 @@ func (r *Runtime) reportWorker(ctx context.Context) {
 		identity.RootRequestID = &facts.RootRequestID
 	}
 
-	if r.service == nil {
-		return
-	}
 	if logResult, _ := r.service.recoverReports(ctx, false); logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled {
 		{
 			content, _ := json.Marshal(map[string]any{"result": fmt.Sprintf("%.2048s", logResult.Content)})
@@ -245,9 +215,8 @@ func (r *Runtime) worker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case event := <-r.queue:
-			if r.service != nil {
-				_ = r.service.RunLLMEvent(ctx, event.Event, event.EventID)
-			}
+			// RunLLMEvent records failures at their source.
+			_ = r.service.RunLLMEvent(ctx, event.Event, event.EventID)
 		}
 	}
 }

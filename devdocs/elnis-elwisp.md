@@ -41,7 +41,7 @@ Elnis 与 Cron 复用 `internal/background` 类型、JSON 结果解析和 Agent.
 
 - `elnis_events` 保存事件身份、内容 hash、目标、工具声明、状态、Session、结果与错误；`elnis_report_deliveries` 按 event_id／ordinal 保存有序投递项。
 - 结果和逐目标、逐 output 项同事务保存；报告保存后进入 result_ready，投递前 claim 为 delivering。
-- 按目标合并连续未完成项发送，先用实际回执建立消息关联，发送成功后逐项保存回执并标记 delivered。部分失败保留成功关联，该批未完成项仍待重试，可能重复发送；所有项 delivered 后事件才 completed。
+- 按目标合并连续未完成项发送，部分失败保留成功关联，该批未完成项仍待重试，可能重复发送；所有项 delivered 后事件才 completed。
 - Runtime 定时重试未完成项，启动将中断的 delivering 恢复为 result_ready。发送成功而 receipt 未落库时可能重复发送，语义为至少一次。
 - 事件终态和引用释放使用独立于调用取消的有界清理 context，同事务完成；不能因请求取消遗留持有引用的失败事件。
 
