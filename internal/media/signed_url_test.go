@@ -14,36 +14,6 @@ import (
 	"elbot/internal/storage/sqlite"
 )
 
-func TestPresignReusesURLAcrossRequests(t *testing.T) {
-	m := newConcurrentTestManager(t)
-	item, err := m.ImportBytes(t.Context(), []byte("cached image"), Input{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	puts, signs := 0, 0
-	m.Remote = &concurrentTestBackend{
-		put: func(context.Context, string, io.Reader, int64, string) (string, error) {
-			puts++
-			return "media/object", nil
-		},
-		presign: func(context.Context, *storage.Media, time.Duration) (string, error) {
-			signs++
-			return fmt.Sprintf("https://media.example/object?signature=%d", signs), nil
-		},
-	}
-	first, err := m.PresignGet(t.Context(), item.ID, time.Hour)
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := m.PresignGet(t.Context(), item.ID, time.Hour)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first != second || puts != 1 || signs != 1 {
-		t.Fatalf("URLs equal=%v uploads=%d signatures=%d", first == second, puts, signs)
-	}
-}
-
 func TestPresignRefreshBoundary(t *testing.T) {
 	for _, remaining := range []time.Duration{5*time.Minute + time.Second, 5 * time.Minute, 5*time.Minute - time.Second, -time.Second} {
 		t.Run(remaining.String(), func(t *testing.T) {

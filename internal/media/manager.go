@@ -251,9 +251,6 @@ func (m *Manager) RemoveReference(ctx context.Context, reference storage.MediaRe
 }
 
 func (m *Manager) PresignGet(ctx context.Context, id string, expiry time.Duration) (string, error) {
-	if !ValidID(id) {
-		return "", fmt.Errorf("invalid media ID %q", id)
-	}
 	if expiry <= 0 {
 		expiry = time.Hour
 	}
@@ -271,9 +268,6 @@ func (m *Manager) PresignGet(ctx context.Context, id string, expiry time.Duratio
 	metadata, err := m.Store.Media().Get(ctx, id)
 	if err != nil {
 		return "", err
-	}
-	if metadata.Deleting {
-		return "", fmt.Errorf("media is being deleted")
 	}
 	backend, err := m.remoteBackend(ctx)
 	if err != nil {

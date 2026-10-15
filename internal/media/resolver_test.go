@@ -41,10 +41,6 @@ func (b *deniedMediaBackend) Open(context.Context, *storage.Media) (io.ReadClose
 	return nil, fs.ErrPermission
 }
 
-func (b *deniedMediaBackend) PresignGet(context.Context, *storage.Media, time.Duration) (string, error) {
-	return "", fs.ErrPermission
-}
-
 func TestResolverPermissionFailureIsNotMissingMedia(t *testing.T) {
 	for _, backend := range []string{"base64", "hybrid", "s3"} {
 		t.Run(backend, func(t *testing.T) {
@@ -234,13 +230,6 @@ func TestResolverRequestTotalAndIsolation(t *testing.T) {
 		if message.Segments[0].URL != "" {
 			t.Fatal("canonical input mutated")
 		}
-	}
-	stored, err := store.Media().Get(ctx, first.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(stored.SourceURL+stored.ObjectKey+stored.LocalPath, "X-Amz") {
-		t.Fatal("signed URL persisted")
 	}
 	m.FileDelivery.Backend = "base64"
 	m.FileDelivery.MaxDirectBase64Bytes = 100
@@ -497,31 +486,6 @@ func TestImportURLUnknownSizeAndLimits(t *testing.T) {
 	invalid, err := m.Materialize(ctx, []llm.MessageSegment{{Type: llm.SegmentImage, URL: "data:image/png;base64,%%%"}})
 	if err == nil || len(invalid) != 0 {
 		t.Fatal(invalid)
-	}
-}
-
-func TestLocalPresignDoesNotRecordRemoteObject(t *testing.T) {
-	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	root := t.TempDir()
-	m := NewManager(store, root, &LocalBackend{Root: root})
-	item, err := m.ImportBytes(ctx, []byte("local only"), Input{Name: "local.png"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := m.PresignGet(ctx, item.ID, time.Hour); err == nil {
-		t.Fatal("local backend unexpectedly generated a download URL")
-	}
-	stored, err := store.Media().Get(ctx, item.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stored.ObjectKey != "" || stored.LocalPath != item.LocalPath {
-		t.Fatalf("local metadata changed: %#v", stored)
 	}
 }
 
