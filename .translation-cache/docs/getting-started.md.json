@@ -1,13 +1,5 @@
 {
   "segments": {
-    "docs/getting-started.md:code-comment:bash:130bae2a285a534300c83d222710f7341b2f89c66a2de9a3e1f6c70185cb6e0f": {
-      "kind": "code-comment:bash",
-      "source": "本地 CLI-only：只启动 CLI，不启动平台和 Cron",
-      "source_file": "docs/getting-started.md",
-      "source_hash": "130bae2a285a534300c83d222710f7341b2f89c66a2de9a3e1f6c70185cb6e0f",
-      "translation": "Local CLI-only: start CLI only, without platforms and Cron",
-      "updated_at": 1781710779
-    },
     "docs/getting-started.md:code-comment:bash:a2a87c263e0793e87dca8c128652941282fc018fff6c8c4cb6c97aba1c8f9798": {
       "kind": "code-comment:bash",
       "source": "Linux/headless 服务模式：不启动 CLI，启动已启用平台和 Cron",
@@ -392,14 +384,6 @@
       "translation": "`default_mode` is set manually; other settings can be configured using commands in the CLI.\n",
       "updated_at": 1781534482
     },
-    "docs/getting-started.md:paragraph:3e97c8a4c9446e8764d1ca5d0c848311f5ab7e560adbbb4cad042f9ff066e804": {
-      "kind": "paragraph",
-      "source": "需要继续历史会话时，可用 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__。\n",
-      "source_file": "docs/getting-started.md",
-      "source_hash": "3e97c8a4c9446e8764d1ca5d0c848311f5ab7e560adbbb4cad042f9ff066e804",
-      "translation": "When you need to continue a historical Session, you can use __ELBOT_CODE_0__ and __ELBOT_CODE_1__.\n",
-      "updated_at": 1781575108
-    },
     "docs/getting-started.md:paragraph:447a0b6ec8d5e3e1886ee9faff3b1dc56b70d4acc72769b0d3e5f0fac2e92d21": {
       "kind": "paragraph",
       "source": "需要工具时再输入 __ELBOT_CODE_0__。\n",
@@ -408,14 +392,6 @@
       "translation": "Enter __ELBOT_CODE_0__ when tools are needed.\n",
       "updated_at": 1781515975
     },
-    "docs/getting-started.md:paragraph:4b95664aa48d143632330cf84d78b59ad4c131df148633d0a3a5e384a3840a0f": {
-      "kind": "paragraph",
-      "source": "自动模式下，Linux 如果检测到当前用户已有 __ELBOT_CODE_0__ 在运行，会进入本地 CLI-only，避免重复连接平台或重复运行 Cron；",
-      "source_file": "docs/getting-started.md",
-      "source_hash": "4b95664aa48d143632330cf84d78b59ad4c131df148633d0a3a5e384a3840a0f",
-      "translation": "In automatic mode, if Linux detects that the current user already has __ELBOT_CODE_0__ running, it will enter local CLI-only mode to avoid duplicate platform connections or duplicate Cron executions;",
-      "updated_at": 1781575108
-    },
     "docs/getting-started.md:paragraph:56825f21d0020609b6800ca52ac2da0e9f6bd8d80f29875e20a63f7d62fb1ccf": {
       "kind": "paragraph",
       "source": "已有配置文件不会被覆盖。\n",
@@ -423,14 +399,6 @@
       "source_hash": "56825f21d0020609b6800ca52ac2da0e9f6bd8d80f29875e20a63f7d62fb1ccf",
       "translation": "Existing configuration files will not be overwritten.\n",
       "updated_at": 1781854929
-    },
-    "docs/getting-started.md:paragraph:6338ef010b6ba9a7bd197c70d3cb2b663ee751e9b8aff60004d449e3f6264688": {
-      "kind": "paragraph",
-      "source": "否则进入完整前台模式。",
-      "source_file": "docs/getting-started.md",
-      "source_hash": "6338ef010b6ba9a7bd197c70d3cb2b663ee751e9b8aff60004d449e3f6264688",
-      "translation": "Otherwise, it will enter full foreground mode.",
-      "updated_at": 1781575108
     },
     "docs/getting-started.md:paragraph:68d560c5bd914873c5becf526acf5148658b37581a10f1b69fbd54ea3e975f23": {
       "kind": "paragraph",
@@ -480,6 +448,14 @@
       "translation": "Upon normal exit, platform connection events will be stopped and corresponding processing will be canceled; components share a cleanup budget of up to 30 seconds;",
       "updated_at": 1791194071
     },
+    "docs/getting-started.md:paragraph:80347b12281a08576dfb099ddee2c500b6787e99556f13b463b75be0c844aa7f": {
+      "kind": "paragraph",
+      "source": "自动模式优先连接默认 CLI 服务；未配置客户端或默认本机服务不可达时才回退本地启动，配置和认证错误直接报告。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "80347b12281a08576dfb099ddee2c500b6787e99556f13b463b75be0c844aa7f",
+      "translation": "Automatic mode prioritizes connecting to the default CLI service; it falls back to local startup only when the client is not configured or the default local service is unreachable. Configuration and authentication errors are reported directly.\n",
+      "updated_at": 1792028798
+    },
     "docs/getting-started.md:paragraph:8429e5040d047904b63a1e7135a5b45e7348f29018bd9dd79f6cb7deca6c39bd": {
       "kind": "paragraph",
       "source": "运行数据默认进入平台数据目录，例如 SQLite、日志和 sandbox。具体规则见 [配置说明](configuration.md)。\n",
@@ -503,14 +479,6 @@
       "source_hash": "9715b7c9671379915f1ccb6a905ad22be9ac761f4e8e95c9992912b02fa1055b",
       "translation": "In service mode, the remote CLI service and other messaging platforms run independently: exiting a single platform will not stop other platforms or background tasks;",
       "updated_at": 1791726027
-    },
-    "docs/getting-started.md:paragraph:9b0c1147a651a1dbbb1367c6e9951c9f39626a4f42c34d0952eb5d63cfcf94f9": {
-      "kind": "paragraph",
-      "source": "__ELBOT_CODE_0__ 是独立本地进程，会使用同一套配置和 SQLite 数据，但不会接管 service 进程中的当前请求、确认状态或内存里的当前 Session。",
-      "source_file": "docs/getting-started.md",
-      "source_hash": "9b0c1147a651a1dbbb1367c6e9951c9f39626a4f42c34d0952eb5d63cfcf94f9",
-      "translation": "__ELBOT_CODE_0__ is an independent local process that uses the same set of configurations and SQLite data, but it will not take over current requests, confirmation states, or the current Session in memory from the service process.",
-      "updated_at": 1781575108
     },
     "docs/getting-started.md:paragraph:9c79075c1d42ffa41b8f0a6ac4efe5e40520193862e33bbf95520baa73dd4b14": {
       "kind": "paragraph",
@@ -575,14 +543,6 @@
       "source_hash": "b542c9d7ce8593d0cfb5a79002986f5e89617f64f638eea577bd7871bbaaebe1",
       "translation": "Default configuration lookup order:\n",
       "updated_at": 1781515975
-    },
-    "docs/getting-started.md:paragraph:b5f919c700ebb2b4dfb9cf4225fdc50cd0d3c2d566fd689f490dd37b1281ef02": {
-      "kind": "paragraph",
-      "source": "Windows 不做 service 检测，默认完整前台启动。\n",
-      "source_file": "docs/getting-started.md",
-      "source_hash": "b5f919c700ebb2b4dfb9cf4225fdc50cd0d3c2d566fd689f490dd37b1281ef02",
-      "translation": "Windows does not perform service detection and starts in full foreground mode by default.\n",
-      "updated_at": 1781575108
     },
     "docs/getting-started.md:paragraph:ca06fb90bcd4b3e173b5bd045a6bf8bbe420d845cff54311c73e663f331ba48b": {
       "kind": "paragraph",
@@ -666,8 +626,8 @@
     }
   },
   "source": "docs/getting-started.md",
-  "source_hash": "a4253aacb75bb65e60eb99cdf5bb32335be707dcebfc5af12b03de0e6334bfa9",
+  "source_hash": "403f43b0b04a83c2a51b132ea36e472da4d62aa199c22d0bec66d5ec4e27c2dd",
   "target": "docs.en/getting-started.md",
-  "updated_at": 1791809335,
+  "updated_at": 1792028798,
   "version": 2
 }

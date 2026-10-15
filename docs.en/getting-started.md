@@ -84,15 +84,12 @@ Common running modes:
 ```bash
 elbot              # Automatic mode
 elbot run          # Full foreground: CLI + enabled platforms + Cron
-elbot cli          # Local CLI-only: start CLI only, without platforms and Cron
+elbot cli
 elbot service run  # Linux/headless service mode: do not start CLI, start enabled platforms and Cron
 ```
 
-In automatic mode, if Linux detects that the current user already has `elbot service run` running, it will enter local CLI-only mode to avoid duplicate platform connections or duplicate Cron executions; Otherwise, it will enter full foreground mode. Windows does not perform service detection and starts in full foreground mode by default.
-
-`elbot cli` is an independent local process that uses the same set of configurations and SQLite data, but it will not take over current requests, confirmation states, or the current Session in memory from the service process. When you need to continue a historical Session, you can use `/list` and `/resume`.
-
-In service mode, the remote CLI service and other messaging platforms run independently: exiting a single platform will not stop other platforms or background tasks; When no messaging platforms are configured or all platforms have exited, the service remains running until it is stopped externally. When an interactively started CLI exits, it will terminate the associated application process.
+Automatic mode prioritizes connecting to the default CLI service; it falls back to local startup only when the client is not configured or the default local service is unreachable. Configuration and authentication errors are reported directly.
+ In service mode, the remote CLI service and other messaging platforms run independently: exiting a single platform will not stop other platforms or background tasks; When no messaging platforms are configured or all platforms have exited, the service remains running until it is stopped externally. When an interactively started CLI exits, it will terminate the associated application process.
 
 Upon normal exit, platform connection events will be stopped and corresponding processing will be canceled; components share a cleanup budget of up to 30 seconds; stop waiting and exit after the timeout expires. Expected cancellations and cleanup timeouts are not treated as application failures; actual runtime or shutdown errors will still be reported.
 
