@@ -70,6 +70,8 @@ type Adapter struct {
 	store       storage.Store
 	chatHistory storage.ChatHistoryRepository
 	transport   *Transport
+	// lastMessageID 记录上一条非零入站消息 ID，用于接收入口去重，断线重连时保留。
+	lastMessageID int64
 }
 
 type target struct {
@@ -715,6 +717,12 @@ func (a *Adapter) readLoop(ctx context.Context, handler platform.PlatformHandler
 			continue
 		}
 		if a.isMessageEvent(event) {
+			if event.MessageID != 0 {
+				if event.MessageID == a.lastMessageID {
+					continue
+				}
+				a.lastMessageID = event.MessageID
+			}
 			go a.handleEvent(ctx, handler, event)
 			continue
 		}

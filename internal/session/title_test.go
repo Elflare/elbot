@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -77,7 +78,7 @@ func TestTitleGeneratorUsesConfiguredOrContextModelProtocol(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { _ = models.Close() })
+			t.Cleanup(func() { _ = models.Close(context.Background()) })
 			ctx := t.Context()
 			if tc.current != "" {
 				ctx = contextinfo.WithModel(ctx, contextinfo.Model{Provider: tc.current, Model: "dialogue-" + tc.current, APIType: tc.current})

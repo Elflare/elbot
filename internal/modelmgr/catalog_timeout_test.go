@@ -22,7 +22,7 @@ func TestCatalogFetchDeadline(t *testing.T) {
 					}
 				}}
 				s := newTestService(t, opts)
-				defer s.Close()
+				defer s.Close(context.Background())
 				start := time.Now()
 				result := s.ModelList("slow-model", ModelListOptions{Fresh: true})
 				if delay < 30*time.Second {

@@ -31,13 +31,13 @@ func RunCLIClient(ctx context.Context, opts CLIClientOptions) error {
 func TryRunCLIClient(ctx context.Context, opts CLIClientOptions) error {
 	client, err := newCLIClient(opts)
 	if err != nil {
-		if opts.ClientName == "" {
+		if opts.ClientName == "" && errors.Is(err, cli.ErrClientNotConfigured) {
 			return ErrCLIClientFallback
 		}
 		return err
 	}
 	err = client.Run(ctx)
-	if err != nil && opts.ClientName == "" && isLocalCLIURL(client.URL()) {
+	if errors.Is(err, cli.ErrServerUnavailable) && opts.ClientName == "" && isLocalCLIURL(client.URL()) {
 		return ErrCLIClientFallback
 	}
 	return err
@@ -54,7 +54,7 @@ func newCLIClient(opts CLIClientOptions) (*cli.RemoteClient, error) {
 		return nil, err
 	}
 	if !cliCfg.Enabled {
-		return nil, fmt.Errorf("cli platform is disabled")
+		return nil, fmt.Errorf("cli platform is disabled: %w", cli.ErrClientNotConfigured)
 	}
 	return cli.NewRemoteClient(cli.RemoteClientOptions{Config: cliCfg, ConfigDir: filepath.Dir(cfg.ConfigPath), ClientName: opts.ClientName})
 }

@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"time"
 
@@ -140,21 +139,6 @@ type Runner struct {
 	shutdownTimeout time.Duration
 }
 
-func NewRunner(deps Dependencies) (*Runner, error) {
-	checks := []struct {
-		name  string
-		value any
-	}{
-		{name: "environment", value: deps.Environment},
-		{name: "foundation factory", value: deps.Foundation},
-		{name: "model factory", value: deps.Models},
-		{name: "platform factory", value: deps.Platforms},
-		{name: "wiring factory", value: deps.Wiring},
-	}
-	for _, check := range checks {
-		if check.value == nil {
-			return nil, fmt.Errorf("app: missing %s", check.name)
-		}
-	}
-	return &Runner{deps: deps, shutdownTimeout: defaultShutdownTimeout}, nil
+func NewRunner(deps Dependencies) *Runner {
+	return &Runner{deps: deps, shutdownTimeout: defaultShutdownTimeout}
 }

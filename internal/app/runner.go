@@ -35,11 +35,7 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 		if shutdownCtx != nil {
 			return
 		}
-		timeout := r.shutdownTimeout
-		if timeout <= 0 {
-			timeout = defaultShutdownTimeout
-		}
-		shutdownCtx, shutdownCancel = context.WithTimeout(context.Background(), timeout)
+		shutdownCtx, shutdownCancel = context.WithTimeout(context.Background(), r.shutdownTimeout)
 	}
 	var cleanups []cleanupStep
 	defer func() {
@@ -79,9 +75,6 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 	}
 
 	profiler := r.deps.Environment.NewStartupProfiler(opts.StartedAt)
-	if profiler == nil {
-		return fmt.Errorf("app: environment returned nil startup profiler")
-	}
 	foundation, err := r.deps.Foundation.Build(ctx, FoundationRequest{Options: opts, Mode: mode, Profiler: profiler})
 	if foundation != nil {
 		logs = foundation.Logs
@@ -91,12 +84,6 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 	}
 	if err != nil {
 		return err
-	}
-	if foundation == nil {
-		return fmt.Errorf("app: foundation factory returned incomplete components")
-	}
-	if foundation.Lifecycle == nil {
-		return fmt.Errorf("app: foundation factory returned incomplete components")
 	}
 
 	models, err := r.deps.Models.Build(ModelRequest{Foundation: foundation, Profiler: profiler})
@@ -117,12 +104,6 @@ func (r *Runner) Run(ctx context.Context, opts Options) (runErr error) {
 	}
 	if err != nil {
 		return err
-	}
-	if wiring == nil {
-		return fmt.Errorf("app: wiring factory returned incomplete components")
-	}
-	if wiring.Lifecycle == nil {
-		return fmt.Errorf("app: wiring factory returned incomplete components")
 	}
 	if err := wiring.Start(cancel); err != nil {
 		return err

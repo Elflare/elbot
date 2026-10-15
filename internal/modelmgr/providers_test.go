@@ -26,7 +26,7 @@ func TestReloadProvidersPublishesCompleteSnapshotAndRetainsSelection(t *testing.
 		return &testClient{}, nil
 	}
 	s := newTestService(t, opts)
-	t.Cleanup(func() { _ = s.Close() })
+	t.Cleanup(func() { _ = s.Close(context.Background()) })
 	old := s.ResolveMode("work")
 	if old.ContextWindow(t.Context()) != 100 {
 		t.Fatal("initial metadata missing")
@@ -91,7 +91,7 @@ func TestReloadIsIndependentOfOldCatalogFetch(t *testing.T) {
 		return &testClient{list: func(context.Context) ([]string, error) { return []string{"fresh"}, nil }}, nil
 	}
 	s := newTestService(t, opts)
-	t.Cleanup(func() { unblock(); waitSignal(t, done); _ = s.Close() })
+	t.Cleanup(func() { unblock(); waitSignal(t, done); _ = s.Close(context.Background()) })
 	go func() { s.ModelList("", ModelListOptions{}); close(done) }()
 	waitSignal(t, started)
 	if err := s.ReloadProviders(t.Context()); err != nil {
@@ -118,7 +118,7 @@ func TestConcurrentReloadsAndReadersUseMatchingProviderFacts(t *testing.T) {
 		return &testClient{list: func(context.Context) ([]string, error) { return []string{cfg.BaseURL}, nil }}, nil
 	}
 	s := newTestService(t, opts)
-	t.Cleanup(func() { _ = s.Close() })
+	t.Cleanup(func() { _ = s.Close(context.Background()) })
 	if err := s.ReloadProviders(t.Context()); err != nil {
 		t.Fatal(err)
 	}

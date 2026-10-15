@@ -83,7 +83,9 @@ func (l *wiringLifecycle) Close(ctx context.Context) error {
 		}
 	}
 	if l.models != nil {
-		errs = append(errs, l.models.Close())
+		if err := l.models.Close(ctx); err != nil {
+			return errors.Join(append(errs, err)...)
+		}
 	}
 	l.closed = true
 	close(l.done)

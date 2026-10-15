@@ -113,11 +113,8 @@ func TestRunnerPartialConstructionUsesSharedBudgetAndReverseCleanup(t *testing.T
 		}
 		return &WiringComponents{Lifecycle: s}, failure
 	})
-	r, err := NewRunner(d)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = r.Run(t.Context(), Options{})
+	r := NewRunner(d)
+	err := r.Run(t.Context(), Options{})
 	if !errors.Is(err, failure) || !errors.Is(err, closeFailure) {
 		t.Fatal(err)
 	}
@@ -139,10 +136,7 @@ func TestRunnerTimeoutKeepsLiveModuleDependencies(t *testing.T) {
 	d.Wiring = runtimeFactoryFunc(func(context.Context, WiringRequest) (*WiringComponents, error) {
 		return &WiringComponents{Lifecycle: &moduleLifecycleStub{done: done, close: func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() }}}, failure
 	})
-	r, err := NewRunner(d)
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := NewRunner(d)
 	r.shutdownTimeout = 10 * time.Millisecond
 	if err := r.Run(t.Context(), Options{}); !errors.Is(err, failure) {
 		t.Fatal(err)

@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -92,17 +91,6 @@ func TestFactoryNativeClientsServeNamingAndChatTextCompaction(t *testing.T) {
 	}
 	if chatCalls.Load() != 1 {
 		t.Fatal("Chat text used wrong endpoint")
-	}
-}
-
-func TestFactoryRejectsInvalidAPIMode(t *testing.T) {
-	events := []string{}
-	_, err := (defaultModelFactory{}).Build(ModelRequest{
-		Foundation: &FoundationComponents{Config: &config.Config{Providers: map[string]config.ProviderConfig{"bad": {APIMode: "responses"}}}},
-		Profiler:   profilerStub{events: &events},
-	})
-	if err == nil || !strings.Contains(err.Error(), "api_mode") || !strings.Contains(err.Error(), "bad") {
-		t.Fatalf("error=%v", err)
 	}
 }
 

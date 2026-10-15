@@ -52,7 +52,7 @@ func buildSharedServices(ctx context.Context, req WiringRequest) (*sharedService
 	complete := false
 	defer func() {
 		if !complete {
-			_ = models.Close()
+			_ = models.Close(context.WithoutCancel(ctx))
 		}
 	}()
 	credentials, err := resolveFileDeliveryCredentials(cfg.FileDelivery, filepath.Dir(cfg.ConfigPath))
@@ -119,9 +119,6 @@ func buildSharedServices(ctx context.Context, req WiringRequest) (*sharedService
 
 func resolveFileDeliveryCredentials(cfg config.FileDeliveryConfig, configDir string) (aws.CredentialsProvider, error) {
 	backend := strings.TrimSpace(cfg.Backend)
-	if backend == "" {
-		backend = config.Default().FileDelivery.Backend
-	}
 	if backend != "s3" && backend != "hybrid" {
 		return nil, nil
 	}

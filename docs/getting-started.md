@@ -82,14 +82,11 @@ go run ./cmd/elbot --config path/to/app.toml
 ```bash
 elbot              # 自动模式
 elbot run          # 完整前台：CLI + 已启用平台 + Cron
-elbot cli          # 本地 CLI-only：只启动 CLI，不启动平台和 Cron
+elbot cli
 elbot service run  # Linux/headless 服务模式：不启动 CLI，启动已启用平台和 Cron
 ```
 
-自动模式下，Linux 如果检测到当前用户已有 `elbot service run` 在运行，会进入本地 CLI-only，避免重复连接平台或重复运行 Cron；否则进入完整前台模式。Windows 不做 service 检测，默认完整前台启动。
-
-`elbot cli` 是独立本地进程，会使用同一套配置和 SQLite 数据，但不会接管 service 进程中的当前请求、确认状态或内存里的当前 Session。需要继续历史会话时，可用 `/list` 和 `/resume`。
-
+自动模式优先连接默认 CLI 服务；未配置客户端或默认本机服务不可达时才回退本地启动，配置和认证错误直接报告。
 服务模式下，远程 CLI 服务和其他消息平台独立运行：单个平台退出不会停止其他平台或后台任务；没有配置消息平台、或全部平台均已退出时，服务仍保持运行，直到外部停止。直接启动的交互 CLI 退出时会结束所属应用进程。
 
 正常退出时会停止平台连接事件并取消相应处理，组件共享最多 30 秒的收尾预算；到期后停止等待并退出。预期取消和收尾超时不作为应用失败，真实运行或关闭错误仍会报告。

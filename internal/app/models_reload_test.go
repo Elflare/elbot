@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -58,7 +59,7 @@ func TestModelsRefreshReloadsRealFileThroughAppWiring(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = services.Models.Close() })
+	t.Cleanup(func() { _ = services.Models.Close(context.Background()) })
 	handler := commandbuiltin.NewCheckModel(commandbuiltin.Deps{Models: services.Models})
 	run := func(args string) (*command.Result, error) {
 		return handler.Handle(t.Context(), command.Request{Name: "models", Args: args})
