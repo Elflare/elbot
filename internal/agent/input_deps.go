@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"elbot/internal/agent/dialogue"
@@ -20,6 +21,7 @@ type InputIdentity interface {
 
 type InputOutput interface {
 	SendChat(context.Context, string) error
+	Notify(context.Context, slog.Level, string)
 }
 
 type InputExecution interface {

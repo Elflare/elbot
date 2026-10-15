@@ -2,15 +2,11 @@ package dialogue
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 
-	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -62,38 +58,10 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in ReplyCommitIn
 		if err != nil {
 			return result, fmt.Errorf("turn output hook: %w", err)
 		}
-		var logResult events.LogResult
 		if in.Stream != nil {
-			result.Receipt, logResult, result.SendErr = out.ReplaceAndFinishStream(ctx, streamCtx, in.Stream, text)
+			result.Receipt, _, result.SendErr = out.ReplaceAndFinishStream(ctx, streamCtx, in.Stream, text)
 		} else {
-			result.Receipt, logResult, result.SendErr = out.SendAssistant(ctx, text)
-		}
-		if result.SendErr != nil {
-			content, _ := json.Marshal(map[string]string{"operation": "send_assistant_message", "error": fmt.Sprintf("%.2048s", result.SendErr.Error())})
-			record := events.LogRecord{
-				Category: events.LogAudit, Level: slog.LevelDebug, EventName: "platform_send_error", Module: "agent",
-				Type: events.ContentJSON, Content: string(content), ContentLimit: 4096, ResultStatus: logResult.ResultStatus,
-			}
-			if logResult.ResultStatus == events.ResultFailed {
-				record.Level = slog.LevelError
-			} else if logResult.ResultStatus == events.ResultCanceled {
-				record.Level = slog.LevelInfo
-			}
-			record.Identity.SessionID = &in.Session.ID
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = events.EmitLog(context.WithoutCancel(ctx), record)
+			result.Receipt, _, result.SendErr = out.SendAssistant(ctx, text)
 		}
 		if result.SendErr != nil && !HasReplyReceipt(result.Receipt) {
 			return result, result.SendErr

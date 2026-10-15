@@ -170,6 +170,10 @@ func (o *OutputSender) Preview(ctx context.Context, text ...string) {
 	preview := strings.Join(lines, "\n")
 	event, _, err := o.hooks.Run(ctx, hook.Event{Point: hook.PointAgentOutputPrepared, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(preview)}})
 	if err != nil {
+		if ctx.Err() == nil {
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			dialogue.ReportFailure(ctx, facts.SessionID, fmt.Errorf("准备工具预览: %w", err), o.Notify)
+		}
 		return
 	}
 	body := strings.TrimSpace(llm.SegmentsTextOnly(event.Message.Segments))

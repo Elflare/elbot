@@ -54,7 +54,7 @@ func (h *HookBridge) Route(ctx context.Context, event hook.Event) (hook.Event, b
 	updated, routed, err := h.router.Route(ctx, event)
 	if err != nil && parent.Err() == nil {
 		h.NotifyError(ctx, event, err)
-		h.publishFailure(ctx, event, err, true)
+		h.publishFailure(ctx, event, err, false)
 	}
 	return updated, routed, err
 }
@@ -69,7 +69,7 @@ func (h *HookBridge) Run(ctx context.Context, event hook.Event) (hook.Event, glo
 			return event, logResult, err
 		}
 		h.NotifyError(ctx, event, err)
-		h.publishFailure(ctx, event, err, true)
+		h.publishFailure(ctx, event, err, false)
 		return before, logResult, err
 	}
 	return updated, logResult, nil

@@ -11,7 +11,6 @@ import (
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	"elbot/internal/session"
 	"elbot/internal/storage"
 )
 
@@ -24,12 +23,6 @@ type Preparer struct {
 }
 
 func (p *Preparer) LoadMaterials(ctx context.Context, in TurnInput) (materials TurnMaterials, err error) {
-	defer func() {
-		if err != nil && ctx.Err() == nil {
-			_ = events.EmitLog(context.WithoutCancel(ctx), events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "persistence_error", Module: "dialogue", Content: err.Error(), ResultStatus: events.ResultFailed})
-			_, _ = events.NotificationRequested.EmitAsync(session.WithBinding(context.WithoutCancel(ctx), nil), events.NewNotification(ctx, slog.LevelError, "对话上下文读取失败："+err.Error()))
-		}
-	}()
 	input := in.Input
 	if len(input.Segments) == 0 {
 		input.Segments = llm.TextSegments(in.Text)
@@ -82,7 +75,7 @@ func (p *Preparer) LoadMaterials(ctx context.Context, in TurnInput) (materials T
 	_ = events.EmitLog(context.WithoutCancel(ctx), record)
 	loaded, err := p.Contexts.Load(ctx, in.Session.ID)
 	if err != nil {
-		return TurnMaterials{}, err
+		return TurnMaterials{}, fmt.Errorf("读取对话上下文: %w", err)
 	}
 	return TurnMaterials{Session: in.Session, Input: input, UserMessage: message, Loaded: loaded}, nil
 }

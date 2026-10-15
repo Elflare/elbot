@@ -15,7 +15,6 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
-	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/storage"
 )
 
@@ -40,11 +39,6 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 	completed := &observation.Event
 	publishCompleted := func() { observation.Publish(ctx, callErr) }
 	defer publishCompleted()
-	defer func() {
-		if completed.ProviderError {
-			out.Notify(context.WithoutCancel(ctx), slog.LevelError, notificationrules.ModelInterrupted(completed.Err))
-		}
-	}()
 	input, err := c.Calls.PrepareCall(ctx, session, selection, messages, tools, pending, c.Calls.Messages.Committer("append_pending_user_message"), &observation.LogRecord)
 	if err != nil {
 		return llmCallResult{}, err

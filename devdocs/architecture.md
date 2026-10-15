@@ -86,7 +86,7 @@ flowchart TB
 <!-- locator:signal -->
 ## 信号与订阅
 
-来源模块拥有业务实例信号及事件类型，并在实际操作处确定日志结果。Agent 的输入、超时、确认、拒绝、模型、工具、回复及持久化在操作来源直接组织日志；没有业务消费者的日志中转事件和投影连接已删除。Session 命名和 Model Manager 重试自行维护同步日志连接；Dialogue 管理通知订阅，CLI 管理状态展示订阅，App 统一调度五条业务线生命周期。公共日志入口为 `internal/events.EmitLog`，日志中心自行订阅并持有分类队列。权限、可改写 Hook、Usage、工具记录和关键提交同步完成；信号发布观察事实。
+来源模块拥有业务实例信号及事件类型，并在实际操作处确定日志结果。Agent 的输入、超时、确认、拒绝、模型、工具和回复在操作来源组织事实日志；主对话终止失败由 Dialogue 统一报告。没有业务消费者的日志中转事件和投影连接已删除。Session 命名和 Model Manager 重试自行维护同步日志连接；Dialogue 管理通知订阅，CLI 管理状态展示订阅，App 统一调度五条业务线生命周期。公共日志入口为 `internal/events.EmitLog`，日志中心自行订阅并持有分类队列。权限、可改写 Hook、Usage、工具记录和关键提交同步完成；信号发布观察事实。
 
 - `Signal[T,R]` 使用原子订阅快照，连接变更时复制。`Emit` 等待实际结果，`EmitAsync` 返回入队错误与可等待的 `Emission[R]`；结果按订阅顺序排列。`Observe` 用于无业务返回值的事实消费者。
 - 每个信号独立调度，默认 8 个执行槽、256 个等待项、30 秒总期限；满时拒绝。按 key 串行，不同 key 并发，等待同一 key 不占执行槽。超时取消 context 并完成调用方结果，回调实际退出前不释放执行槽或 key；不配合取消的回调最多占满自身信号，不能借超时不断增生 goroutine。
@@ -130,7 +130,7 @@ flowchart TB
 |---|---|
 | 独立入口组件 | MessageHandler 分发输入；InputCoordinator 准备与预加载；BackgroundRunner 准备后台身份和资源；CommandExecutor 编排命令 |
 | ExecutionCoordinator | 前后台准入、attempt／Request、追加确认、pending 续跑、压缩交接和 Execution 完成 |
-| dialogue.Runner | 登记前选择路线；登记后加载材料、准备与保存用户输入、收敛 Loop 结果、提交回复 |
+| dialogue.Runner | 登记前选择路线；登记后加载材料、准备与保存用户输入、收敛 Loop 结果、提交回复，统一报告终止失败 |
 | chat／responses Loop | 各自的上下文、模型／工具循环、pending 和接管刷新 |
 | dialogue 公共协作 | Prompt 来源、模型 Hook、ToolRun、消息事务和 ReplyCommitter |
 | 根包协作组件 | 身份、确认、Hook、发送及状态记录 |
@@ -152,7 +152,7 @@ flowchart TB
 - 公共 `llm.Client` 提供模型列表与独立 `GenerateText`；`Selection` 固定 Provider、Model、Client、Origin 和窗口配置快照。命名和 Chat 摘要可使用任一文本客户端，独立文本不续接主会话或执行工具。
 - 公共 `llm.Usage` 的四项 token 计数为可空 `int64`：nil 表示未知，非 nil 的零表示明确零；不推算缺失总量。Agent、contextmgr 和 CLI 状态队列的用量快照逐项复制计数指针，发布后只读。Chat 和 Responses 解析保留整数精度，非法用量不使模型响应失败；Chat 的非法或 null 别名继续回退，明确零立即采用。状态展示分别保留总量与缓存计数的已知／未知状态，明确零作为已知值参与上下文比例判断。
 - `routes.Registry` 按 APIType 登记 Loop、Compactor、Material，Module 每种协议装配一次，不保存厂商配置或客户端；厂商重载不修改注册表。查询由 dialogue／contextmgr／session 的窄接口完成。
-- CallObservation 分别持有业务 Event 和日志 LogRecord。Chat／Responses 在操作分支填写独立错误与整体结果，本地保存失败不标为上游错误；Chat 取消时保留部分输出。实际模型请求各写一条 llm_usage，失败与取消另保留 llm_error，准备失败不计调用。视觉回退和 Responses 重放各自结束观察，HTTP 内部重试通过独立重试信号记录。
+- CallObservation 分别持有业务 Event 和日志 LogRecord。Chat／Responses 在操作分支填写独立错误与整体结果，本地保存失败不标为上游错误；Chat 取消时保留部分输出。实际模型请求各写一条 llm_usage，含实际状态与错误；准备失败不计调用。视觉回退和 Responses 重放各自结束观察，HTTP 内部重试通过独立重试信号记录。恢复耗尽后的终止失败统一交给 Dialogue，不另写重复 llm_error。
 - 主对话按 Selection.Origin.APIType 查询 Loop，协议 Loop 检查客户端能力；压缩与分支按持久化源 Origin.APIType 查询能力，不从摘要目标或当前配置推断来源。缺失主对话能力在压缩、保存输入和模型请求前拒绝。
 - `CanSwitch` 纯比较身份：Chat 可跨 Chat provider，同一 provider 节点的 Responses 可换模型；跨协议及涉及 Responses 的跨 provider 切换拒绝。命令提交选择前预检，执行及接管后的调用再次检查；永久接管在变更 metadata 前检查 work 模型。
 - provider 节点名确定厂商身份，同名厂商的 URL／密钥等变化不使 Responses 会话失效；base_url 用于续链地址校验，地址变化按已有材料重放。当前来源取自 Selection，Session 和原生记录保留各自的历史来源。
@@ -334,8 +334,8 @@ flowchart TB
 
 - 本体按 SHA-256 去重，`media_references` 是引用事实来源。消息、工具参数、Fork、Cron、Elnis、outbox 和输出关联通过事务维护引用，读取／发送另持临时引用。
 - 工具通过确认后、实际执行前，递归关联最终 JSON 参数中完整有效的媒体 ID 到 Session；不扫描自由文本。执行失败保留引用，执行前拒绝不建立引用。
-- 会话消息、原生输入及 seed 公共片段只保存稳定媒体 ID 与描述；请求展开结果不回写。重复 ID 在一次准备中复用读取／签名。缺失或不可读对象只在发送副本变成占位文字，并发布去重日志与全局通知；取消、超时、数据库及其他运行错误继续返回错误。Fork／后台副本的原生 seed 独立保留公共片段及引用，生成时不打开媒体实体。
-- 中心统一清洗名称和来源敏感信息；下载使用原始参数。图片入库前按大小／边长限制转白底 JPEG，ID 对应实际保存内容。LLM 请求副本按配置选择 base64／S3／hybrid，S3 按需初始化。
+- 会话消息、原生输入及 seed 公共片段只保存稳定媒体 ID 与描述；请求展开结果不回写。重复 ID 在一次准备中复用读取／上传／签名。真正缺失的对象只在发送副本变成占位文字，并发布去重日志与全局通知；权限不足、取消、超时、数据库及其他运行错误继续返回错误。Fork／后台副本的原生 seed 独立保留公共片段及引用，生成时不打开媒体实体。
+- 中心统一清洗名称和来源敏感信息；下载使用原始参数。图片入库前按大小／边长限制转白底 JPEG，ID 对应实际保存内容。Chat／Responses 收集本次完整请求材料后，只调用一次 Dialogue.PrepareMaterials；媒体中心按实际出现次数累计存储字节数，hybrid 超限时全部 S3，否则全部 base64，纯 base64 超限返回错误。Responses 历史／续接与新增输入在未展开时合并，续链失效后的重放作为新请求重新解析。请求结束、失败和恢复重试均释放对应媒体持有。
 - Chat History 查询不下载；get_media 与 view_image 限当前平台／scope。媒体中心 `GetHistoryMediaBatch` 统一处理缓存、去重、下载预算及关联，同次最多尝试 5 个未缓存位置，失败计数，缓存不占次数，超限后仍返回缓存。主库按历史内部 ID 和媒体位置保存关联，历史删除后释放引用；跨库对账故障保守停止。
 - 媒体中心负责导入与图片校验。结果使用稳定 MediaID 的 Segments，经原生 function_call_output 输出图片并随工具结果保存，不产生 delivery.Outputs。消息默认取首张图片，显式序号沿用全部媒体编号。
 - Elnis 排队 URL 不下载，LLM 执行时物化，direct 实际发送才导入；outbox 保存稳定 ID。输出回执保留有序媒体位置，缓存期限使用 retention_days，非正值不缓存。
@@ -377,7 +377,7 @@ flowchart TB
 Chat 使用 `业务输出 → delivery/dispatch.Router → 平台发送器 → Receipt、LogResult、error`。`SendChat` 回复原会话，`SendTo(ctx, Target, []Output)` 发送到明确目标；正文、媒体、Hook 输出及 Cron／Elnis 报告均为 Chat。最终对话提交归 ReplyCommitter。命令的 `result.Content` 通过 `NotificationRequested.Emit` 同步发送，成功后才执行 Continuation；发送时清除旧 Session binding，保留原会话和连接，允许切换会话的命令返回结果。
 
 - App 为 Chat 注入共享 Router。通知业务只依赖 `events.NotificationRequested` 和通知实体，不注入通知管理器。显式目标优先，否则使用捕获的原 Conversation；后台通知抑制及原 context 的 binding 校验由通知管理器执行，不从当前 Session 重建历史目标。
-- 失败通知由负责该操作的业务组件发布：模型调用负责恢复后的最终失败，输入／命令／Hook／准备／消息保存／输出各自负责自身失败。错误继续正常返回，纯转交错误的上层不补发通知；MessageHandler 不设通用错误兜底，也没有“已通知”错误包装。共享传输、媒体和协议材料算法只返回错误，由实际业务调用点完成通知。
+- 主对话步骤失败立即返回错误，由 dialogue.Runner 在取消、暂停和执行替换归一后调用 ReportFailure，统一记录一条 dialogue_failed 并发送一次 Notify。错误正文保留原始原因，身份显式填入现有日志 Identity；不增加阶段字段或“已通知”包装。准备、同步 Hook、协议调用、保存和回复提交不自行发送终态通知。实际 API 用量、Hook 执行及工具结果、发送回执保留各自事实记录。进入 Dialogue 前的操作失败由直接负责该操作的入口使用同一报告函数；MessageHandler 仅报告自己的入站处理失败，不为下层转交的错误兜底。独立异步 Hook 保留自身入口报告，通知投递失败只记录投递日志，不递归通知。
 - 生命周期取消依据请求 context 的真实状态判定，不能根据返回错误匹配 `DeadlineExceeded` 或 `Canceled` 就静默处理；HTTP 响应头超时仍是调用失败。整轮超时由执行生命周期通知，主动停止和执行替换由发起操作反馈。失败事实通知解除请求取消，并清除旧 binding，保留捕获的原会话；工具进度提示继续受在途请求和 binding 约束。
 - `events.Notification` 统一纯文本、等级、平台、会话类型、目标 ID／ScopeID 和可选 Origin；不接媒体或大文件。`notification.Manager` 连接全局信号并持有各平台发送信号；平台仅连接并返回实际回执和错误。重试通知随真实模型调用取消，失败事实通知明确解除请求取消。无来源本地提示走 CLI，service 提示交日志中心。
 - 平台通知的发送失败归 Delivery：消息平台调用 Delivery.Manager，CLI 保留专用通知协议并复用 LogSendResult。日志使用发送来源的 LogResult，保留部分送达事实；通知发布方不重复记录失败。
@@ -390,7 +390,8 @@ Chat 使用 `业务输出 → delivery/dispatch.Router → 平台发送器 → R
 flowchart TD
     A["平台发送来源<br/>internal/platform 各适配文件<br/>执行发送，分别提供 Receipt 与 LogResult"] --> B["发送路由及媒体处理<br/>internal/delivery/dispatch/router.go、media.go<br/>传递明确结果，记录实际送达事实"]
     B --> C["业务处理<br/>internal/agent/dialogue/reply_commit.go：保存与关联<br/>internal/cron/delivery.go：报告投递及关联<br/>internal/elnis/outbox.go：投递状态与存档<br/>按需使用业务 Receipt"]
-    B --> D["日志来源<br/>internal/agent/output.go、dialogue/reply_commit.go<br/>internal/toolrun/runner.go<br/>接收 LogResult，组织完整九字段记录"]
+    B --> D["事实日志来源<br/>internal/agent/output.go、internal/toolrun/runner.go<br/>接收 LogResult，组织完整九字段记录"]
+    C --> E["对话终态<br/>internal/agent/dialogue/runner.go<br/>归一取消与替换，统一失败日志和 Notify"]
     D --> E["公共日志入口<br/>internal/events/logging.go<br/>校验、复制身份、发射信号"]
     E --> F["日志中心<br/>internal/logging<br/>记时、过滤、排队、落盘"]
 ```

@@ -70,8 +70,7 @@ func (c *InputCoordinator) HandleInput(ctx context.Context, text string) error {
 		if errors.Is(err, sessionpkg.ErrSessionBusy) {
 			_, err = globalevents.NotificationRequested.Emit(sessionpkg.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelWarn, err.Error()))
 		} else if ctx.Err() == nil && !errors.Is(err, errSessionBindingChanged) {
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "session_prepare_failed", Module: "agent", Content: err.Error(), ResultStatus: globalevents.ResultFailed})
-			_, _ = globalevents.NotificationRequested.EmitAsync(sessionpkg.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelError, "会话准备失败："+err.Error()))
+			dialogue.ReportFailure(ctx, "", fmt.Errorf("准备会话: %w", err), c.output.Notify)
 		}
 		return err
 	}
@@ -81,6 +80,9 @@ func (c *InputCoordinator) HandleInput(ctx context.Context, text string) error {
 func (c *InputCoordinator) ContinueCommandInput(ctx context.Context, continuation command.Continuation) error {
 	locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), continuation.SessionID)
 	if err != nil {
+		if ctx.Err() == nil {
+			dialogue.ReportFailure(ctx, continuation.SessionID, err, c.output.Notify)
+		}
 		return err
 	}
 	row, err := c.sessions.Resume(locked, c.identity.Scope(ctx), continuation.SessionID)
@@ -91,6 +93,9 @@ func (c *InputCoordinator) ContinueCommandInput(ctx context.Context, continuatio
 	}
 	release()
 	if err != nil {
+		if ctx.Err() == nil {
+			dialogue.ReportFailure(ctx, continuation.SessionID, err, c.output.Notify)
+		}
 		return err
 	}
 	segments := replaceInboundTextSegments(ctx, continuation.Text)
@@ -104,6 +109,9 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 		return c.output.SendChat(ctx, err.Error())
 	}
 	if err != nil {
+		if ctx.Err() == nil && !errors.Is(err, errSessionBindingChanged) {
+			dialogue.ReportFailure(ctx, session.ID, err, c.output.Notify)
+		}
 		return err
 	}
 	ctx = locked
@@ -114,6 +122,9 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 		Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: inboundSegments(ctx, text)},
 	})
 	if err != nil {
+		if ctx.Err() == nil {
+			dialogue.ReportFailure(ctx, session.ID, fmt.Errorf("agent input hook: %w", err), c.output.Notify)
+		}
 		return err
 	}
 	ctx = withInboundSegments(ctx, event.Message.Segments)
@@ -123,15 +134,24 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 	if snapshot.Phase != turn.PhaseAwaitRiskConfirm {
 		directives, skillDirectives, err := c.applyInputDirectives(ctx, session, text)
 		if err != nil {
+			if ctx.Err() == nil {
+				dialogue.ReportFailure(ctx, session.ID, fmt.Errorf("准备输入指令: %w", err), c.output.Notify)
+			}
 			return err
 		}
 		if len(directives.Injected) > 0 || len(directives.Existing) > 0 || len(directives.Invalid) > 0 {
 			if err := c.notifyToolDirectiveResult(ctx, directives); err != nil {
+				if ctx.Err() == nil {
+					dialogue.ReportFailure(ctx, session.ID, err, c.output.Notify)
+				}
 				return err
 			}
 		}
 		if len(skillDirectives.Skills) > 0 || len(skillDirectives.InjectedWrappers) > 0 || len(skillDirectives.ExistingWrappers) > 0 || len(skillDirectives.Invalid) > 0 {
 			if err := c.notifySkillDirectiveResult(ctx, skillDirectives); err != nil {
+				if ctx.Err() == nil {
+					dialogue.ReportFailure(ctx, session.ID, err, c.output.Notify)
+				}
 				return err
 			}
 		}
@@ -141,6 +161,9 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 			if len(directives.Injected) > 0 || len(skillDirectives.InjectedWrappers) > 0 {
 				latest, err := c.sessionRows.Get(ctx, session.ID)
 				if err != nil {
+					if ctx.Err() == nil {
+						dialogue.ReportFailure(ctx, session.ID, err, c.output.Notify)
+					}
 					return err
 				}
 				*session = *latest

@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"elbot/internal/agent/events"
+	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
+	globalevents "elbot/internal/events"
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/modelmgr"
@@ -94,6 +97,9 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 		} else if execution != nil && !r.Turns.MatchesAttempt(in.Session.ID, turn.AttemptFromContext(ctx)) {
 			result.Outcome = Superseded
 		}
+		if result.Outcome == Failed && result.Err != nil {
+			ReportFailure(requestCtx, in.Session.ID, result.Err, out.Notify)
+		}
 	}()
 	var err error
 	ctx, err = r.View.WithModel(ctx, in.Selection)
@@ -152,6 +158,36 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 		result.Outcome, result.Err = Failed, err
 	}
 	return result
+}
+
+// ReportFailure reports a terminal business failure at its owning entrypoint.
+// Callers settle cancellation, recovery and execution replacement before calling.
+// notify preserves foreground/background delivery policy without coupling steps
+// to notification transport or adding an "already reported" error marker.
+func ReportFailure(ctx context.Context, sessionID string, err error, notify func(context.Context, slog.Level, string)) {
+	record := globalevents.LogRecord{
+		Category: globalevents.LogRuntime, Level: slog.LevelError,
+		EventName: "dialogue_failed", Module: "dialogue", Type: globalevents.ContentText,
+		Content: err.Error(), ContentLimit: 8192, ResultStatus: globalevents.ResultFailed,
+	}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if sessionID != "" {
+		record.Identity.SessionID = &sessionID
+	}
+	if facts.RunID != "" {
+		record.Identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		record.Identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		record.Identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		record.Identity.RootRequestID = &facts.RootRequestID
+	}
+	_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+	notify(session.WithBinding(context.WithoutCancel(ctx), nil), slog.LevelError, "对话处理失败："+err.Error())
 }
 
 // RunnerDeps contains external capabilities needed to build the common single-turn collaborators.

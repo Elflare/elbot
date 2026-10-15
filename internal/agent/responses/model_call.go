@@ -17,7 +17,6 @@ import (
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	api "elbot/internal/llm/responses"
-	notificationrules "elbot/internal/notification/rules"
 	"elbot/internal/storage"
 )
 
@@ -46,11 +45,7 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 		return final, err
 	}
 	sort.SliceStable(inputs, func(i, j int) bool { return inputOrder(inputs[i]) < inputOrder(inputs[j]) })
-	items, cleanup, err := s.resolveInputs(ctx, inputs)
-	if err != nil {
-		return final, err
-	}
-	defer cleanup()
+	w := &nativeWindow{}
 	var consumed []string
 	s.requestReferences = nil
 	for _, input := range inputs {
@@ -68,7 +63,6 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 	request := api.Request{
 		Model:        s.selection.Model,
 		Instructions: instructions,
-		Input:        items,
 		AllowedTools: s.allowedToolNames(),
 		Store:        &store,
 		Include:      []string{"reasoning.encrypted_content"},
@@ -123,39 +117,38 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 	} else if s.seed != nil {
 		request.PreviousResponseID, baseURL = s.seed.ResponseID, s.seed.BaseURL
 		if store && request.PreviousResponseID != "" && baseURL == origin.BaseURL {
-			prefix, release, err := s.route.Context.resolveContinuation(ctx, s.seed)
+			w, err = s.route.Context.resolveContinuation(s.seed)
 			if err != nil {
 				return final, err
 			}
-			defer release()
-			request.Input = append(prefix, items...)
 			var refs []inputReference
-			for i := range prefix {
+			for i := range w.Items {
 				refs = append(refs, inputReference{Kind: "continuation", ID: s.seed.ID, Index: i})
 			}
 			s.requestReferences = append(refs, s.requestReferences...)
 		}
 	}
 	replay := !store && (s.checkpoint != nil || s.seed != nil) || request.PreviousResponseID == "" && s.seed != nil || request.PreviousResponseID != "" && baseURL != origin.BaseURL
+	var release func()
 	if replay {
-		var release func()
-		request, release, err = s.replayRequest(ctx, request, items, consumed, origin)
-		if err != nil {
-			return final, err
-		}
-		defer release()
+		request, release, err = s.replayRequest(ctx, request, inputs, consumed, origin)
+	} else {
+		request.Input, release, err = s.resolveInputs(ctx, inputs, w)
 	}
+	if err != nil {
+		return final, err
+	}
+	defer func() { release() }()
 	started := time.Now()
 	result, err := s.nativeCall(ctx, client, request, consumed, stream, observation)
 	if err != nil && request.PreviousResponseID != "" && !result.OutputStarted && result.FactsSaved && api.PreviousResponseUnavailable(err) {
 		observation.Publish(ctx, err)
 		observation = s.route.Calls.Begin(s.session.ID, s.selection)
-		var release func()
-		request, release, err = s.replayRequest(ctx, request, items, consumed, origin)
+		release()
+		request, release, err = s.replayRequest(ctx, request, inputs, consumed, origin)
 		if err != nil {
 			return final, err
 		}
-		defer release()
 		result, err = s.nativeCall(ctx, client, request, consumed, stream, observation)
 	}
 	if err != nil {
@@ -172,7 +165,6 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 				Session: hook.SessionContext{ID: s.session.ID},
 				LLM:     hook.LLMPayload{Provider: s.selection.Provider, Model: s.selection.Model},
 			}, observation.Event.Err)
-			s.output.Notify(context.WithoutCancel(ctx), slog.LevelError, notificationrules.ModelInterrupted(observation.Event.Err))
 		}
 		return final, err
 	}
@@ -209,7 +201,7 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 	return final, nil
 }
 
-func (s *turnState) replayRequest(ctx context.Context, request api.Request, inputs []api.Item, consumed []string, target llm.Origin) (api.Request, func(), error) {
+func (s *turnState) replayRequest(ctx context.Context, request api.Request, inputs []storage.NativeInput, consumed []string, target llm.Origin) (api.Request, func(), error) {
 	w, err := s.route.Context.Load(ctx, s.session, s.checkpoint)
 	if err != nil {
 		return request, func() {}, err
@@ -217,12 +209,7 @@ func (s *turnState) replayRequest(ctx context.Context, request api.Request, inpu
 	if err := checkWindowTarget(w, target); err != nil {
 		return request, func() {}, err
 	}
-	prefix, release, err := s.route.Context.Resolve(ctx, w)
-	if err != nil {
-		return request, release, err
-	}
 	request.PreviousResponseID = ""
-	request.Input = append(prefix, inputs...)
 	// A retry replaces the actual-input manifest while the consumed-input list
 	// remains the same. Replayed prefixes never become newly consumed inputs.
 	refs := append([]inputReference(nil), w.References...)
@@ -230,6 +217,11 @@ func (s *turnState) replayRequest(ctx context.Context, request api.Request, inpu
 		refs = append(refs, inputReference{Kind: "input", ID: id})
 	}
 	s.requestReferences = refs
+	var release func()
+	request.Input, release, err = s.resolveInputs(ctx, inputs, w)
+	if err != nil {
+		return request, release, err
+	}
 	if err := validateCallLinks(request.Input, false); err != nil {
 		release()
 		return request, func() {}, err

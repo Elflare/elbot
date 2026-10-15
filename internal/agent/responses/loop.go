@@ -3,7 +3,6 @@ package responses
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"elbot/internal/agent/dialogue"
@@ -193,7 +192,6 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			foregroundPrepared = true
 			s.selection = modelmgr.SelectionForTurn(s.requestCtx, s.route.Models, s.session)
 			if err := s.route.CheckSelection(s.selection); err != nil {
-				out.Notify(context.WithoutCancel(s.requestCtx), slog.LevelError, err.Error())
 				return fail(err)
 			}
 			s.requestCtx, err = s.route.View.WithModel(s.requestCtx, s.selection)

@@ -55,13 +55,6 @@ func requestAudit(parameters json.RawMessage, refs []inputReference) (string, er
 // Each actual HTTP attempt gets its own immutable request and terminal facts.
 // Local hooks/inputs are prepared by the caller once, outside recovery retries.
 func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request api.Request, consumed []string, stream delivery.MessageStream, observation *dialogue.CallObservation) (result nativeCallResult, err error) {
-	var saveErr error
-	defer func() {
-		if saveErr != nil && !errors.Is(saveErr, context.Canceled) && !errors.Is(saveErr, context.DeadlineExceeded) {
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelError, EventName: "persistence_error", Module: "agent", Content: saveErr.Error(), ResultStatus: globalevents.ResultFailed})
-			s.output.Notify(context.WithoutCancel(ctx), slog.LevelError, "对话保存失败："+saveErr.Error())
-		}
-	}()
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
@@ -103,7 +96,6 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 	err = s.route.Repository.CreateExchange(locked, exchange)
 	release()
 	if err != nil {
-		saveErr = err
 		return result, fmt.Errorf("save native request: %w", err)
 	}
 	result.Exchange = exchange
@@ -140,7 +132,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		if err != nil {
 			failure = err.Error()
 		}
-		saveErr = s.route.Repository.FinishExchange(context.WithoutCancel(s.ctx), exchange.ID, status, raw, string(encoded), failure)
+		saveErr := s.route.Repository.FinishExchange(context.WithoutCancel(s.ctx), exchange.ID, status, raw, string(encoded), failure)
 		if saveErr != nil {
 			err = errors.Join(err, fmt.Errorf("save native response: %w", saveErr))
 		} else {

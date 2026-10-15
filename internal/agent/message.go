@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"reflect"
 	"strings"
 
@@ -45,6 +47,9 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 	if woken || waiting {
 		ctx, err = h.materializePlatformMedia(ctx)
 		if err != nil {
+			if ctx.Err() == nil {
+				dialogue.ReportFailure(ctx, event.Session.ID, fmt.Errorf("接收媒体: %w", err), h.output.Notify)
+			}
 			return err
 		}
 		segments = inboundSegments(ctx, text)
@@ -52,16 +57,25 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 	}
 	event, routed, routeErr := h.hooks.Route(ctx, event)
 	if routeErr != nil {
+		if ctx.Err() == nil {
+			dialogue.ReportFailure(ctx, event.Session.ID, fmt.Errorf("入站 Hook 续接: %w", routeErr), h.output.Notify)
+		}
 		return routeErr
 	}
 	if !routed || !event.Control.StopPropagation {
 		event, _, err = h.hooks.Run(ctx, event)
 		if err != nil {
+			if ctx.Err() == nil {
+				dialogue.ReportFailure(ctx, event.Session.ID, fmt.Errorf("入站 Hook: %w", err), h.output.Notify)
+			}
 			return err
 		}
 	}
 	if len(event.Outputs) > 0 {
 		if _, err := h.output.SendOutputs(ctx, event.Outputs); err != nil {
+			if ctx.Err() == nil {
+				dialogue.ReportFailure(ctx, event.Session.ID, fmt.Errorf("发送入站 Hook 输出: %w", err), h.output.Notify)
+			}
 			return err
 		}
 	}
@@ -112,6 +126,7 @@ type MessageHooks interface {
 type MessageOutput interface {
 	SendChat(context.Context, string) error
 	SendOutputs(context.Context, []delivery.Output) (events.LogResult, error)
+	Notify(context.Context, slog.Level, string)
 }
 
 type MessageCommands interface {

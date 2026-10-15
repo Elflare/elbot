@@ -3,7 +3,6 @@ package chat
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/delivery"
@@ -45,7 +44,6 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			foregroundPrepared = true
 			s.selection = modelmgr.SelectionForTurn(s.requestCtx, r.Models, s.session)
 			if err := r.CheckSelection(s.selection); err != nil {
-				s.output.Notify(context.WithoutCancel(s.requestCtx), slog.LevelError, err.Error())
 				return failedLoop(err)
 			}
 			var modelErr error
