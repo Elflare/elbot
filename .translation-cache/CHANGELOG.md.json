@@ -640,14 +640,6 @@
       "translation": "Optimize CLI UI logic",
       "updated_at": 1791715549
     },
-    "CHANGELOG.md:list:4e4d8268e2dd23b0361e072fb908848596d76ef66e39cef03c7c046a02199110": {
-      "kind": "list",
-      "source": "QQ OneBot 长文本分页现在只有非末页添加省略号。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "4e4d8268e2dd23b0361e072fb908848596d76ef66e39cef03c7c046a02199110",
-      "translation": "QQ OneBot long text pagination now only adds ellipses to non-last pages.",
-      "updated_at": 1791081165
-    },
     "CHANGELOG.md:list:50e8edceef9ba9f05ab3e29be70643e7d1e29373c088d70a65ef6b30249494e3": {
       "kind": "list",
       "source": "默认 __ELBOT_CODE_0__ 和 __ELBOT_CODE_1__ Skill 会生成仅超管可见、低风险的 TOML。",
@@ -1336,14 +1328,6 @@
       "translation": "__ELBOT_CODE_0__ list changed from displaying plugin rules item by item to aggregating them by plugin name;",
       "updated_at": 1784858252
     },
-    "CHANGELOG.md:list:9a193930bfb84d1531bd6d20029f3b19bb5a4da0d310ade16ce897a0a0d28052": {
-      "kind": "list",
-      "source": "QQ OneBot：llm现在能看到引用回复的合并消息了，只展开一层内容。",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "9a193930bfb84d1531bd6d20029f3b19bb5a4da0d310ade16ce897a0a0d28052",
-      "translation": "QQ OneBot: LLM can now see merged messages in quoted replies, expanding only one level of content.",
-      "updated_at": 1791194538
-    },
     "CHANGELOG.md:list:9bf35b1265c7d9545bd7a1cebcea86dd66f5ba9b6e85f1025d73416e1f62718b": {
       "kind": "list",
       "source": "压缩交接现在先结束旧 Turn 再激活新会话，并校验取消与执行身份；后台压缩及接管后的续接保留正确身份，迟到请求不能结束新 Turn。",
@@ -1359,6 +1343,14 @@
       "source_hash": "9d5bd31f0053c4ae0a75ef9edef00162aa8c3f86f473d7a5b5a15df30dd4b93e",
       "translation": "Refactored hooks, see docs for details.",
       "updated_at": 1783334583
+    },
+    "CHANGELOG.md:list:9e777dc43434c01e517219789af7899651ba752a116f1e925adc6e35e3c6892f": {
+      "kind": "list",
+      "source": "QQ OneBot: 长文本分页现在只有非末页添加省略号。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "9e777dc43434c01e517219789af7899651ba752a116f1e925adc6e35e3c6892f",
+      "translation": "QQ OneBot: Long text pagination now only adds ellipses to non-final pages.",
+      "updated_at": 1792028872
     },
     "CHANGELOG.md:list:9ffa53ad5a88b16b4d40df38dffc95ed3c9714db43a39a7176b2fd6dbaed6dd6": {
       "kind": "list",
@@ -1904,6 +1896,14 @@
       "translation": "Now it is only appended for superadmins and hidden for regular users or when identity is missing.",
       "updated_at": 1790860573
     },
+    "CHANGELOG.md:list:d63cf6df21b159ae0ed9607c7118419bd1f24d34290d993896c6728b782789ba": {
+      "kind": "list",
+      "source": "QQ OneBot: llm现在能看到引用回复的合并消息了，只展开一层内容。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "d63cf6df21b159ae0ed9607c7118419bd1f24d34290d993896c6728b782789ba",
+      "translation": "QQ OneBot: LLM can now see merged messages of quoted replies, expanding only one level of content.",
+      "updated_at": 1792028872
+    },
     "CHANGELOG.md:list:d645cf77c4ee588c46e1393622a3b1673b35ad938b425f17eba22044d2bdc5a7": {
       "kind": "list",
       "source": "Hook rules 可通过 __ELBOT_CODE_0__ action 执行脚本，并用 __ELBOT_CODE_1__ 经内部 Elvena Bus 触发 Elnis direct/LLM/calls；",
@@ -1991,6 +1991,14 @@
       "source_hash": "dda9f80d869b591edf7f9696577d405bb57a881c2e08f7cee08483abdd6db5a7",
       "translation": "Executing Hooks will be displayed in __ELBOT_CODE_0__, and Hooks for the current Session will also be displayed in __ELBOT_CODE_1__;",
       "updated_at": 1783571675
+    },
+    "CHANGELOG.md:list:de05e677a2864b01398390f86e138339e16b29b3f63df7bec4a029ea9bfe2c74": {
+      "kind": "list",
+      "source": "QQ OneBot: 现在会过滤重复上报消息。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "de05e677a2864b01398390f86e138339e16b29b3f63df7bec4a029ea9bfe2c74",
+      "translation": "QQ OneBot: Now filters duplicate reported messages.",
+      "updated_at": 1792028872
     },
     "CHANGELOG.md:list:e03c11cbeaa6e58ce0ad4ee4ead359f83057de19807ef8393bca9bd67954a45c": {
       "kind": "list",
@@ -2242,8 +2250,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "fe2330a0b90cf751a349bf4dc6a2d9fd35c48c2f0cee982429638cb402f941b5",
+  "source_hash": "181ba6929f429bbc29feb4daef73f206b0e9792e7f43c35d51f5f36e858cb815",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1791947426,
+  "updated_at": 1792028872,
   "version": 2
 }

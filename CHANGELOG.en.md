@@ -53,8 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed the issue where `[tool]` was repeatedly added line by line in tool multi-line prompts.
 - Fixed the high-risk confirmation bug.
 - Fixed the additional confirmation wait bug.
-- QQ OneBot: LLM can now see merged messages in quoted replies, expanding only one level of content.
-- QQ OneBot long text pagination now only adds ellipses to non-last pages.
+- QQ OneBot: Now filters duplicate reported messages.
+- QQ OneBot: LLM can now see merged messages of quoted replies, expanding only one level of content.
+- QQ OneBot: Long text pagination now only adds ellipses to non-final pages.
 - Fixed an issue where the Agent would merge all text segments and disrupt the positioning of text and images when removing wake words or tool commands.
 - Fixed a tool caching bug in background tasks.
 - Fixed meaningless log desensitization (since no sensitive information was recorded anyway. Previously, a brain-dead GPT performed redundant defensive programming with excessive regex matching, wasting performance).
