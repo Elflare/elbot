@@ -166,15 +166,34 @@ func findShellASTFunctions(source, query string, variant syntax.LangVariant) ([]
 
 func detectASTLanguage(path, text string) (string, syntax.LangVariant, error) {
 	ext := strings.ToLower(filepath.Ext(path))
-	if ext == ".go" {
+	switch ext {
+	case ".go":
 		return "go", 0, nil
-	}
-	firstLine := strings.ToLower(strings.TrimSpace(strings.SplitN(text, "\n", 2)[0]))
-	if ext == ".mksh" || strings.Contains(firstLine, "mksh") {
+	case ".mksh":
 		return "shell", syntax.LangMirBSDKorn, nil
-	}
-	if ext == ".sh" || ext == ".bash" || ext == ".bats" || strings.HasPrefix(firstLine, "#!") && (strings.Contains(firstLine, "bash") || strings.Contains(firstLine, "/sh") || strings.Contains(firstLine, " dash") || strings.Contains(firstLine, " ash")) {
+	case ".sh", ".bash", ".bats":
 		return "shell", syntax.LangBash, nil
+	}
+	firstLine, _, _ := strings.Cut(text, "\n")
+	if strings.HasPrefix(firstLine, "#!") {
+		fields := strings.Fields(firstLine[2:])
+		if len(fields) > 0 && !strings.HasPrefix(fields[0], "/") {
+			fields = nil
+		}
+		if len(fields) > 0 && filepath.Base(fields[0]) == "env" {
+			fields = fields[1:]
+			if len(fields) > 0 && (fields[0] == "-S" || fields[0] == "--split-string") {
+				fields = fields[1:]
+			}
+		}
+		if len(fields) > 0 {
+			switch filepath.Base(fields[0]) {
+			case "mksh":
+				return "shell", syntax.LangMirBSDKorn, nil
+			case "sh", "bash", "dash", "ash":
+				return "shell", syntax.LangBash, nil
+			}
+		}
 	}
 	return "", 0, fmt.Errorf("AST search only supports Go and Shell files")
 }

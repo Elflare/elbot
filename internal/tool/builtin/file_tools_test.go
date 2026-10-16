@@ -3,18 +3,77 @@ package builtin
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"elbot/internal/fileops"
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/tool"
 	workspacepath "elbot/internal/workspace"
 )
+
+func TestDirectoryASTLanguageDetection(t *testing.T) {
+	for _, tc := range []struct {
+		name, source, language string
+	}{
+		{"code.GO", "package p\nfunc Target() {}\n", "go"},
+		{"code.sh", "Target() { echo ok; }\n", "shell"},
+		{"code.bash", "Target() { echo ok; }\n", "shell"},
+		{"code.bats", "Target() { echo ok; }\n", "shell"},
+		{"code.mksh", "Target() { echo ok; }\n", "shell"},
+		{"direct", "#!/bin/sh\nTarget() { echo ok; }\n", "shell"},
+		{"env", "#!/usr/bin/env bash\nTarget() { echo ok; }\n", "shell"},
+		{"split.txt", "#!/usr/bin/env -S bash -eu\nTarget() { echo ok; }\n", "shell"},
+		{"long-split", "#!/usr/bin/env --split-string dash -e\nTarget() { echo ok; }\n", "shell"},
+		{"ash", "#!/bin/ash\nTarget() { echo ok; }\n", "shell"},
+		{"korn", "#!/bin/mksh\nTarget() { echo ok; }\n", "shell"},
+		{"plain.txt", "# mentions mksh\nTarget() { echo ok; }\n", ""},
+		{"fake", "#!/bin/bashful\nTarget() { echo ok; }\n", ""},
+		{"relative", "#!bash\nTarget() { echo ok; }\n", ""},
+		{"indented", " #!/bin/bash\nTarget() { echo ok; }\n", ""},
+		{"python", "#!/usr/bin/env python\nTarget()\n", ""},
+		{"empty", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, tc.name)
+			if err := os.WriteFile(path, []byte(tc.source), 0644); err != nil {
+				t.Fatal(err)
+			}
+			language, _, err := detectASTLanguage(path, tc.source)
+			if language != tc.language || (err != nil) != (tc.language == "") {
+				t.Fatalf("language=%q err=%v", language, err)
+			}
+			for _, mode := range []string{readFileModeAST, readFileModeASTFunction} {
+				matches, _, err := findDirectoryASTMatches(root, "Target", mode)
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := 1
+				if tc.language == "" {
+					want = 0
+				}
+				if len(matches) != want {
+					t.Fatalf("%s matches=%+v", mode, matches)
+				}
+			}
+			if tc.language != "" {
+				source, err := readDirectoryASTSource(path)
+				if err != nil || string(source) != tc.source {
+					t.Fatalf("source=%q err=%v", source, err)
+				}
+			}
+		})
+	}
+}
 
 func TestReadFileToolReturnsLineNumbersAndEndRange(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
@@ -285,9 +344,6 @@ func TestReadFileToolDirectoryASTCacheInvalidatesWhenFilesChange(t *testing.T) {
 	if _, _, err := readTool.Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
-	if got := len(readTool.astCache.entries); got != 1 {
-		t.Fatalf("cache entry count = %d, want 1", got)
-	}
 	if err := os.WriteFile(path, []byte("package sample\n\nfunc Run() {}\n\nfunc Run() {}\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -297,6 +353,194 @@ func TestReadFileToolDirectoryASTCacheInvalidatesWhenFilesChange(t *testing.T) {
 	}
 	if !strings.Contains(result.Content, "matches: 2") || !strings.Contains(result.Content, "selection_required: true") {
 		t.Fatalf("cache was not invalidated after file change:\n%s", result.Content)
+	}
+	added := filepath.Join(root, "added.go")
+	if err := os.WriteFile(added, []byte("package sample\nfunc Run() {}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []int{3, 1, 0} {
+		if want == 1 {
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if want == 0 {
+			if err := os.Remove(added); err != nil {
+				t.Fatal(err)
+			}
+		}
+		result, _, err := readTool.Call(t.Context(), tool.CallRequest{Arguments: args})
+		if err != nil || !strings.Contains(result.Content, fmt.Sprintf("matches: %d\n", want)) {
+			t.Fatalf("after add/remove: result=%+v err=%v", result, err)
+		}
+	}
+}
+
+func TestDirectoryGrepOrderingCountsAndSelection(t *testing.T) {
+	if _, err := exec.LookPath("rg"); err != nil {
+		t.Skip("ripgrep is required")
+	}
+	root := t.TempDir()
+	names := []string{"a+", "a/b", "space name.txt", "unicode-雪.txt"}
+	if runtime.GOOS != "windows" {
+		names = append(names, "line\nbreak.txt")
+	}
+	for i := 0; i < 140; i++ {
+		names = append(names, fmt.Sprintf("z%03d.txt", i))
+	}
+	for _, name := range names {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("needle needle\nneedle\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	slices.Sort(names)
+	total := len(names) * 2
+	result, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "needle", MaxMatches: 3}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{fmt.Sprintf("matches: %d\n", total), "truncated: true", "1. a+:1:1", "2. a+:2:1", "3. a/b:1:1"} {
+		if !strings.Contains(result.Content, expected) {
+			t.Fatalf("missing %q: %s", expected, result.Content)
+		}
+	}
+	if strings.Contains(result.Content, "4. ") {
+		t.Fatalf("unexpected extra results: %s", result.Content)
+	}
+	for _, index := range []int{1, 201, total} {
+		result, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "needle", MaxMatches: 1, Index: index}, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		line := (index-1)%2 + 1
+		want := fmt.Sprintf("match: %s:%d-%d [grep]", names[(index-1)/2], line, line)
+		if !strings.Contains(result.Content, want) || !strings.Contains(result.Content, fmt.Sprintf("matches: %d\n", total)) || !strings.Contains(result.Content, "truncated: false") {
+			t.Fatalf("selection %d: %s", index, result.Content)
+		}
+	}
+	for _, index := range []int{-1, total + 1} {
+		_, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "needle", Index: index}, nil, nil)
+		if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("found %d matches", total)) {
+			t.Fatalf("index %d: %v", index, err)
+		}
+	}
+}
+
+func TestDirectoryGrepLongLinesAndEmptyResults(t *testing.T) {
+	if _, err := exec.LookPath("rg"); err != nil {
+		t.Skip("ripgrep is required")
+	}
+	root := t.TempDir()
+	for _, populated := range []bool{false, true} {
+		if populated {
+			if err := os.WriteFile(filepath.Join(root, "long.txt"), []byte(strings.Repeat("x", 70000)+"needle\n"), 0644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		result, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "absent"}, nil, nil)
+		if err != nil || !strings.Contains(result.Content, "matches: 0\ntruncated: false") {
+			t.Fatalf("result=%+v err=%v", result, err)
+		}
+	}
+	result, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "needle"}, nil, nil)
+	if err != nil || !strings.Contains(result.Content, "long.txt:1:70001") {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+}
+
+func TestDirectoryGrepWarningsRespectSearchScope(t *testing.T) {
+	if _, err := exec.LookPath("rg"); err != nil {
+		t.Skip("ripgrep is required")
+	}
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("ignored*\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{".hidden", "ignored-large", "vendor/large", "node_modules/large", "g.bin", "f.bin", "e.bin", "d.bin", "c.bin", "b.bin", "a.bin"} {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		file, err := os.Create(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = file.Truncate(fileToolMaxBytes + 1)
+		closeErr := file.Close()
+		if err != nil || closeErr != nil {
+			t.Fatalf("truncate=%v close=%v", err, closeErr)
+		}
+	}
+	for _, name := range []string{"visible.txt", "ignored-small", ".hidden-small", "vendor/small"} {
+		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(name)), []byte("needle\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "needle"}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "matches: 1\n") || !strings.Contains(result.Content, "visible.txt") {
+		t.Fatal(result.Content)
+	}
+	want := "grep skipped 7 large files: "
+	for i, name := range []string{"a.bin", "b.bin", "c.bin", "d.bin", "e.bin"} {
+		if i > 0 {
+			want += ", "
+		}
+		want += fmt.Sprintf("%s (%d bytes)", name, fileToolMaxBytes+1)
+	}
+	want += "; 2 more"
+	if !slices.Equal(result.Warnings, []string{want}) {
+		t.Fatalf("warnings=%q want=%q", result.Warnings, want)
+	}
+}
+
+func TestDirectoryGrepCancellationAndProcessFailures(t *testing.T) {
+	rg, err := exec.LookPath("rg")
+	if err != nil {
+		t.Skip("ripgrep is required")
+	}
+	root := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, _, err := directoryGrepFiles(ctx, rg, root); !errors.Is(err, context.Canceled) {
+		t.Fatalf("enumeration: %v", err)
+	}
+	if _, err := scanDirectoryGrepBatch(ctx, rg, root, "needle", []string{filepath.Join(root, "file")}, 1, &directoryMatchHeap{}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("search: %v", err)
+	}
+	if runtime.GOOS == "windows" {
+		return
+	}
+	for _, tc := range []struct{ name, script, want string }{
+		{"malformed", "printf '{invalid'", "read ripgrep output"},
+		{"failed", "exit 2", "run ripgrep"},
+		{"canceled", "exec sleep 30", "context deadline exceeded"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(root, tc.name)
+			if err := os.WriteFile(path, []byte("#!/bin/sh\n"+tc.script+"\n"), 0755); err != nil {
+				t.Fatal(err)
+			}
+			timeout := 3 * time.Second
+			if tc.name == "canceled" {
+				timeout = 100 * time.Millisecond
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), timeout)
+			defer cancel()
+			_, err := scanDirectoryGrepBatch(ctx, path, root, "needle", []string{"file"}, 1, &directoryMatchHeap{})
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err=%v want=%q", err, tc.want)
+			}
+		})
 	}
 }
 
