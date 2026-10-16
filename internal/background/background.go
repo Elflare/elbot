@@ -20,18 +20,20 @@ type Runner interface {
 }
 
 type RunRequest struct {
-	Kind           Kind
-	Name           string
-	Title          string
-	Platform       string
-	Actor          contextinfo.Actor
-	ScopeID        string
-	SessionID      string
-	ModelProvider  string
-	Model          string
-	PromptSegments []llm.MessageSegment
-	Prompt         string
-	RetryPrompt    string
+	// NeedsElyphRules declares a requirement of the task prompt, not session state.
+	NeedsElyphRules bool
+	Kind            Kind
+	Name            string
+	Title           string
+	Platform        string
+	Actor           contextinfo.Actor
+	ScopeID         string
+	SessionID       string
+	ModelProvider   string
+	Model           string
+	PromptSegments  []llm.MessageSegment
+	Prompt          string
+	RetryPrompt     string
 	// Tool inputs initialize new sessions only; continuations inherit committed state.
 	// AllowedToolNames optionally restricts root tools (nil means unrestricted).
 	ToolListNames    []string

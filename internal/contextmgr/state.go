@@ -106,5 +106,6 @@ func CompactedMetadata(raw string, state *CompactState) (string, error) {
 	delete(fields, "last_usage")
 	delete(fields, "llm_checkpoint")
 	delete(fields, "llm_seed")
+	delete(fields, "elyph_rules_shown")
 	return fields.Encode()
 }

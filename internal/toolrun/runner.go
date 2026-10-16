@@ -13,6 +13,7 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/elyph"
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	sandboxctx "elbot/internal/sandbox"
@@ -97,6 +98,11 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 		return RunResult{}
 	}
 	sessionID := req.Session.ID
+	state, err := DecodeState(req.Session.Metadata)
+	if err != nil {
+		return RunResult{Err: err}
+	}
+	elyphRulesShown := state.ElyphRulesShown
 	messages := make([]llm.LLMMessage, len(req.Calls))
 	preparedCalls := append([]llm.ToolCallRequest(nil), req.Calls...)
 	// Invocation and orchestration records are assembled at their own boundaries
@@ -134,6 +140,14 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 		// error. The tool supplies only its diagnostic log body.
 		// runSource was fixed before entry; source separately identifies the
 		// native/Elwisp implementation. Neither is inferred from diagnostics.
+		if result.Result != nil && result.ExecutionStarted && resolved.Native != nil {
+			result.Result.NeedsElyphRules = result.Result.NeedsElyphRules || resolved.Native.Info().NeedsElyphRules
+		}
+		if result.Result != nil && result.Result.DiscoveryText != nil {
+			// The hook processes business details; the summary and common rules
+			// are assembled once, after the hook, in model call order.
+			result.Message.Segments = llm.TextSegments(result.Result.DiscoveryText.Details)
+		}
 		if result.ExecutionStarted {
 			result.LogResult.ResultStatus = events.ResultSucceeded
 		}
@@ -366,6 +380,21 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 				result.Message.Segments = segments
 			}
 		}
+		ruleCard := ""
+		if result.Result != nil {
+			ruleCard = elyph.RuleCardIfNeeded(result.Result.NeedsElyphRules, elyphRulesShown)
+			var parts []string
+			if result.Result.DiscoveryText != nil && result.Result.DiscoveryText.Summary != "" {
+				parts = append(parts, result.Result.DiscoveryText.Summary)
+			}
+			if ruleCard != "" {
+				parts = append(parts, ruleCard)
+				elyphRulesShown = true
+			}
+			if len(parts) > 0 {
+				result.Message.Segments = append(llm.TextSegments(strings.Join(parts, "\n\n")+"\n\n"), result.Message.Segments...)
+			}
+		}
 		if call.Name == "discover_tool" && result.Result != nil {
 			logResult, stateErr := deps.RememberDiscoveryResult(ctx, req.Session, result.Result)
 			if logResult.ResultStatus != events.ResultSkipped {
@@ -382,6 +411,14 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 		}
 		messages[index] = result.Message
 		stored := deps.ToolResultMessage(sessionID, result.Message)
+		if ruleCard != "" {
+			fields, err := storage.DecodeSessionMetadata(stored.Metadata)
+			if err != nil {
+				return RunResult{Err: err}
+			}
+			_ = fields.Set("elyph_rules_shown", true)
+			stored.Metadata, _ = fields.Encode()
+		}
 		logResult, err = req.Committer.Result(ctx, index, call, result.Message, &stored)
 		if logResult.ResultStatus != events.ResultSkipped {
 			record(ctx, call, "tool_transcript_save", logResult)
@@ -397,6 +434,14 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 	logResult, err = req.Committer.Flush(ctx)
 	if logResult.ResultStatus != events.ResultSkipped {
 		logTool(ctx, newRecord(ctx, "tool_transcript_save", logResult))
+	}
+	if err == nil && elyphRulesShown && !state.ElyphRulesShown {
+		fields, decodeErr := storage.DecodeSessionMetadata(req.Session.Metadata)
+		if decodeErr != nil {
+			return RunResult{Err: decodeErr}
+		}
+		_ = fields.Set("elyph_rules_shown", true)
+		req.Session.Metadata, _ = fields.Encode()
 	}
 	return RunResult{Messages: messages, PreparedCalls: preparedCalls, ConfirmationExtra: confirmationExtra, Err: err}
 }

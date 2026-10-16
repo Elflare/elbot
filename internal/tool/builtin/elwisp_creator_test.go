@@ -55,7 +55,7 @@ func TestElwispCreatorToolCallReturnsGuide(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result == nil || !strings.Contains(result.Content, "#task create_elwisp") || !strings.Contains(result.Content, "Elvena v3") || !strings.Contains(result.Content, "elyph_rule_card") {
+	if result == nil || !strings.Contains(result.Content, "#task create_elwisp") || !strings.Contains(result.Content, "Elvena v3") || !result.NeedsElyphRules {
 		t.Fatalf("unexpected guide content: %#v", result)
 	}
 	if _, err := elyph.ParseTask(result.Content, "create_elwisp"); err != nil {
@@ -63,9 +63,6 @@ func TestElwispCreatorToolCallReturnsGuide(t *testing.T) {
 	}
 	if !strings.Contains(result.Content, "token 值请设置到系统环境变量或配置目录 .env") {
 		t.Fatalf("guide missing token setup hint: %s", result.Content)
-	}
-	if !strings.Contains(result.Content, "// "+strings.Split(elyph.RuleCard(), "\n")[0]) {
-		t.Fatalf("guide missing shared ELyph rule card: %s", result.Content)
 	}
 	for _, forbidden := range []string{"~ 硬编码 token", "~ 记录 token", "~ 编造 endpoint/token"} {
 		if !strings.Contains(result.Content, forbidden) {

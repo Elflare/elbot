@@ -16,7 +16,6 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/processenv"
 	"elbot/internal/tool"
-	"elbot/internal/tool/runtimeinfo"
 )
 
 const CreateElSkillName = "create_el_skill"
@@ -44,6 +43,7 @@ func (CreateElSkillTool) Name() string { return CreateElSkillName }
 
 func (CreateElSkillTool) Info() tool.Info {
 	return tool.NewBuilder(CreateElSkillName).
+		NeedsElyphRules().
 		Description("创建 ElBot 原生 ELyph skill。只有可复用经验、固定流程或稳定能力才应创建 skill；一次性任务不要创建。可只写 SKILL.elyph，也可附带 Go 源码并通过 go_skill_run 调用。").
 		Source(tool.SourceBuiltin).
 		Risk(tool.RiskHigh).
@@ -57,7 +57,7 @@ func (CreateElSkillTool) Schema() llm.ToolSchema {
 		String("name", "skill 名称，也是目录名和 binary 名；使用小写字母、数字、下划线或短横线。", tool.Required()).
 		String("description", "skill 的可复用能力简述。", tool.Required()).
 		String("risk", "风险等级：safe, low, medium, high, critical。", tool.Required()).
-		String("elyph", "完整 SKILL.elyph 内容。"+runtimeinfo.ElyphRuleCard(), tool.Required()).
+		String("elyph", "完整 SKILL.elyph 内容。", tool.Required()).
 		String(
 			"go_source",
 			"可选的 Go main 包源码。程序从 os.Stdin 读取 payload JSON，不使用 os.Args 或 ELBOT_MEDIA_N；媒体从 media_inputs.path 读取，输出写入 media_workspace，并通过 stdout segments 返回相对 path。不提供时创建纯 ELyph 文本 Skill。",

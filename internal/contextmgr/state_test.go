@@ -12,6 +12,16 @@ import (
 	"elbot/internal/storage/sqlite"
 )
 
+func TestCompactionResetsElyphRulesForNewSession(t *testing.T) {
+	raw, err := CompactedMetadata(`{"elyph_rules_shown":true,"tool_tags":["keep"],"unknown":9007199254740993}`, &CompactState{Pending: true, Summary: "summary"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(raw, "elyph_rules_shown") || !strings.Contains(raw, `"tool_tags":["keep"]`) || !strings.Contains(raw, "9007199254740993") {
+		t.Fatalf("new session state: %s", raw)
+	}
+}
+
 func TestUsageSnapshotsRestoreAndSaveFailure(t *testing.T) {
 	ctx := context.Background()
 	store, err := sqlite.New(ctx, t.TempDir()+"/usage.db")

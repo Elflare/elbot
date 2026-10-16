@@ -141,7 +141,10 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:skill -->
 ## Skill 与 ELyph
 
-- `internal/elyph/`：语言解析与 lint。
+- `internal/elyph/`：语言解析与 lint；`rules.go` 提供所有工具、技能和任务共用的规则卡及展示判定。
+- `internal/tool/detail.go`、`internal/tool/discover.go`：纯正文拼接、发现摘要与详情分离、汇总语言需求；`tool.Info.NeedsElyphRules` 声明工具需求，`tool.Result.NeedsElyphRules` 声明动态内容需求。
+- `internal/agent/dialogue/preparation.go`、`internal/agent/dialogue/model_call.go`、`internal/toolrun/runner.go`：输入及工具结果的规则卡组装；工具结果按调用顺序决定首次展示。
+- `internal/storage/dialogue.go`、`internal/storage/sqlite/dialogue_repository.go`：规则展示标记随消息原子提交；`internal/contextmgr/state.go` 在压缩新 Session 时清除标记。
 - `internal/tool/skill/`：扫描、catalog、创建、finalize、reload 和 runner。
 - `internal/tool/skill/command_tool.go`、`internal/tool/skill/runner.go`：执行 AgentSkill TOML 命令与 Go Skill，每次读取技能 `.env` 并合并基础子进程环境；Manager／scanner 为命令工具传递启动环境。
 - `internal/tool/skill/agent_manifest.go`、`internal/tool/skill/go_source.go`：AgentSkill manifest 与 Go 源码／编译。

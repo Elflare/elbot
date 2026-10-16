@@ -82,7 +82,7 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in dialogue
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	canonicalUserSegments, tools, err := r.Preparer.PrepareInput(ctx, in, userMessage, p.materials.Input.PlatformText, userSegments, s.messages, s.tools)
+	canonicalUserSegments, tools, err := r.Preparer.PrepareInput(ctx, in, userMessage, p.materials.Input.PlatformText, userSegments, s.messages, s.tools, p.materials.Input.NeedsElyphRules)
 	if err != nil {
 		return nil, err
 	}

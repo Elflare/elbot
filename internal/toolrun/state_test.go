@@ -45,14 +45,14 @@ func TestStateCommitRestoresAndDetachesSchemas(t *testing.T) {
 	item.CanonicalName = "wisp/external"
 	item.Endpoint = "http://example.invalid/tool"
 	item.TimeoutSeconds = 7
-	committed, _, err := service.Commit(ctx, row.ID, StateUpdate{Tools: []CachedTool{item}, Tags: []string{"tag"}, ShownRuleCardFormats: []string{"elyph"}})
+	committed, _, err := service.Commit(ctx, row.ID, StateUpdate{Tools: []CachedTool{item}, Tags: []string{"tag"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Join(committed.Injected, ",") != "external" {
 		t.Fatalf("commit=%+v", committed)
 	}
-	repeated, _, err := service.Commit(ctx, row.ID, StateUpdate{Tools: []CachedTool{item}, Tags: []string{"tag"}, ShownRuleCardFormats: []string{"elyph"}})
+	repeated, _, err := service.Commit(ctx, row.ID, StateUpdate{Tools: []CachedTool{item}, Tags: []string{"tag"}})
 	if err != nil || len(repeated.Injected) != 0 || strings.Join(repeated.Existing, ",") != "external" || !reflect.DeepEqual(repeated.State, committed.State) {
 		t.Fatalf("repeated commit=%+v err=%v", repeated, err)
 	}
@@ -95,7 +95,7 @@ func TestStateCommitFailureKeepsAllFields(t *testing.T) {
 			store, row := stateTestStore(t, metadata)
 			invalid := stateTestTool("new")
 			invalid.Schema.Parameters["invalid"] = make(chan int)
-			result, logResult, err := NewStateService(store).Commit(ctx, row.ID, StateUpdate{Tools: []CachedTool{invalid}, Tags: []string{"new"}, ShownRuleCardFormats: []string{"new"}})
+			result, logResult, err := NewStateService(store).Commit(ctx, row.ID, StateUpdate{Tools: []CachedTool{invalid}, Tags: []string{"new"}})
 			if err == nil || result.Metadata != "" || len(result.Injected) != 0 {
 				t.Fatalf("failure published state: %+v %v", result, err)
 			}

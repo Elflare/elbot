@@ -23,7 +23,7 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 	}
 	defer tx.Rollback()
 	var fields storage.SessionMetadata
-	if commit.Native != nil {
+	if commit.Native != nil || commit.ElyphRulesShown {
 		var raw sql.NullString
 		if err := tx.QueryRowContext(ctx, `SELECT metadata FROM sessions WHERE id=?`, commit.SessionID).Scan(&raw); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -35,6 +35,8 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 		if err != nil {
 			return events.LogResult{ResultStatus: events.ResultSkipped}, err
 		}
+	}
+	if commit.Native != nil {
 		var current string
 		if value, ok := fields["llm_checkpoint"]; ok {
 			if err := json.Unmarshal(value, &current); err != nil {
@@ -217,14 +219,17 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 				}
 			}
 		}
-		if checkpoint.ID != "" {
-			encoded, err := fields.Encode()
-			if err != nil {
-				return events.LogResult{ResultStatus: events.ResultSkipped}, err
-			}
-			if _, err := tx.ExecContext(ctx, `UPDATE sessions SET metadata=? WHERE id=?`, encoded, commit.SessionID); err != nil {
-				return events.LogResult{ResultStatus: events.ResultFailed}, err
-			}
+	}
+	if commit.ElyphRulesShown {
+		_ = fields.Set("elyph_rules_shown", true)
+	}
+	if commit.ElyphRulesShown || (commit.Native != nil && commit.Native.Checkpoint.ID != "") {
+		encoded, err := fields.Encode()
+		if err != nil {
+			return events.LogResult{ResultStatus: events.ResultSkipped}, err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET metadata=? WHERE id=?`, encoded, commit.SessionID); err != nil {
+			return events.LogResult{ResultStatus: events.ResultFailed}, err
 		}
 	}
 	for _, mapping := range commit.PlatformMessageMaps {

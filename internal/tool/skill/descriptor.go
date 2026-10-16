@@ -7,10 +7,8 @@ import (
 	"strings"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/elyph"
 	"elbot/internal/llm"
 	"elbot/internal/tool"
-	"elbot/internal/tool/runtimeinfo"
 )
 
 const (
@@ -123,9 +121,5 @@ func loadRecordDetail(record Record) (tool.DetailBlock, error) {
 		content = def.Detail
 		format = def.Format
 	}
-	block := tool.DetailBlock{Content: content, Format: format}
-	if format == elyph.Format {
-		block.RuleCard = runtimeinfo.ElyphRuleCard()
-	}
-	return block, nil
+	return tool.DetailBlock{Content: content, Format: format}, nil
 }

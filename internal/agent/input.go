@@ -157,6 +157,9 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 		}
 		text = skillDirectives.Text
 		ctx = withInboundSegments(ctx, replaceInboundTextSegments(ctx, text))
+		input := inboundTurnInput(ctx, text)
+		input.NeedsElyphRules = input.NeedsElyphRules || directives.NeedsElyphRules || skillDirectives.NeedsElyphRules
+		ctx = withInboundTurnInput(ctx, input)
 		if strings.TrimSpace(text) == "" && !hasInboundNonTextSegment(ctx) {
 			if len(directives.Injected) > 0 || len(skillDirectives.InjectedWrappers) > 0 {
 				latest, err := c.sessionRows.Get(ctx, session.ID)

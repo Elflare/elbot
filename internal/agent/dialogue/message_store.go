@@ -92,6 +92,19 @@ func (s *MessageStore) Append(ctx context.Context, message *storage.Message, ope
 
 func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit, operation string) (events.LogResult, error) {
 	for _, message := range commit.MessageRows() {
+		if message != nil {
+			fields, err := storage.DecodeSessionMetadata(message.Metadata)
+			if err != nil {
+				return events.LogResult{ResultStatus: events.ResultSkipped}, err
+			}
+			var elyphRulesShown bool
+			if raw, ok := fields["elyph_rules_shown"]; ok {
+				if err := json.Unmarshal(raw, &elyphRulesShown); err != nil {
+					return events.LogResult{ResultStatus: events.ResultSkipped}, err
+				}
+			}
+			commit.ElyphRulesShown = commit.ElyphRulesShown || elyphRulesShown
+		}
 		if message != nil && message.Segments != "" {
 			projected, err := MessageFromStorage(*message)
 			if err != nil {
@@ -151,11 +164,13 @@ func ToolNameFromMetadata(raw string) (string, error) {
 	if raw == "" {
 		return "", nil
 	}
-	var value map[string]string
+	var value struct {
+		Name string `json:"name"`
+	}
 	if err := json.Unmarshal([]byte(raw), &value); err != nil {
 		return "", err
 	}
-	return value["name"], nil
+	return value.Name, nil
 }
 
 func JoinNames(names []string) string {

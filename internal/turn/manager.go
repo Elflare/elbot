@@ -51,9 +51,11 @@ type Snapshot struct {
 }
 
 type Input struct {
-	Text         string
-	PlatformText string
-	Segments     []llm.MessageSegment
+	// NeedsElyphRules travels with queued input until its destination session is known.
+	NeedsElyphRules bool
+	Text            string
+	PlatformText    string
+	Segments        []llm.MessageSegment
 }
 
 type Manager struct {
@@ -586,12 +588,14 @@ func mergeInputs(inputs []Input) Input {
 	}
 	segments := llm.TextSegments("补充信息：")
 	platformTexts := make([]string, 0, len(clean))
+	needsElyphRules := false
 	for i, input := range clean {
+		needsElyphRules = needsElyphRules || input.NeedsElyphRules
 		segments = llm.AppendSegmentText(segments, fmt.Sprintf("\n%d. ", i+1))
 		segments = append(segments, input.Segments...)
 		platformTexts = append(platformTexts, input.PlatformText)
 	}
-	return Input{Text: llm.SegmentsTextOnly(segments), PlatformText: mergeTextInputs(platformTexts), Segments: segments}
+	return Input{Text: llm.SegmentsTextOnly(segments), PlatformText: mergeTextInputs(platformTexts), Segments: segments, NeedsElyphRules: needsElyphRules}
 }
 
 func textInput(text string) Input {

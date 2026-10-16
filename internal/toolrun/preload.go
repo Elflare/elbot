@@ -10,6 +10,7 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
+	"elbot/internal/elyph"
 	globalevents "elbot/internal/events"
 	"elbot/internal/tool"
 )
@@ -33,24 +34,30 @@ func NewPreloadService(opts PreloadOptions) *PreloadService {
 }
 
 type ToolPreload struct {
-	Update   StateUpdate
-	Accepted []bool
-	Invalid  []string
-	Content  string
+	// NeedsElyphRules is merged with other material before preparing the input.
+	NeedsElyphRules bool
+	Update          StateUpdate
+	Accepted        []bool
+	Invalid         []string
+	Content         string
 }
 
 type SkillPreload struct {
-	Update   StateUpdate
-	Accepted []bool
-	Names    []string
-	Invalid  []string
-	Content  string
+	// NeedsElyphRules reflects the actual formats of loaded skills.
+	NeedsElyphRules bool
+	Update          StateUpdate
+	Accepted        []bool
+	Names           []string
+	Invalid         []string
+	Content         string
 }
 
 type BackgroundPreload struct {
-	Update      StateUpdate
-	Skills      []string
-	SkillPrompt string
+	// NeedsElyphRules covers both preloaded tools and skills.
+	NeedsElyphRules bool
+	Update          StateUpdate
+	Skills          []string
+	SkillPrompt     string
 }
 
 func (s *PreloadService) PrepareTools(ctx context.Context, names []string) (ToolPreload, error) {
@@ -74,6 +81,9 @@ func (s *PreloadService) PrepareTools(ctx context.Context, names []string) (Tool
 			content = append(content, text)
 		}
 		result.Update.Tools = append(result.Update.Tools, NativeCachedToolsFromDiscovery(discovery)...)
+		for _, item := range discovery.Tools {
+			result.NeedsElyphRules = result.NeedsElyphRules || item.NeedsElyphRules
+		}
 		if tag != "" {
 			result.Update.Tags = append(result.Update.Tags, tag)
 		}
@@ -131,14 +141,14 @@ func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, na
 			seen[name] = true
 			result.Names = append(result.Names, name)
 			blocks = append(blocks, block)
+			result.NeedsElyphRules = result.NeedsElyphRules || (block.Format == elyph.Format && strings.TrimSpace(block.Content) != "")
 		}
 		for _, wrapper := range detailer.ActivateTools() {
 			result.Update.Tools = append(result.Update.Tools, s.preloadWrapper(ctx, sessionID, wrapper, false)...)
 		}
 		result.Accepted[i] = true
 	}
-	result.Content = tool.RenderDetailBlocksWithContext(ctx, blocks)
-	result.Update.ShownRuleCardFormats = tool.NewRuleCardFormatsFromContext(ctx)
+	result.Content = tool.RenderDetailBlocks(blocks)
 	return result, nil
 }
 
@@ -266,6 +276,7 @@ func (s *PreloadService) PrepareBackground(ctx context.Context, sessionID string
 				continue
 			}
 			result.Skills = append(result.Skills, name)
+			result.NeedsElyphRules = result.NeedsElyphRules || block.Format == elyph.Format
 			result.Update.Tags = append(result.Update.Tags, tags[name]...)
 			sections = append(sections, "## Skill: "+name+"\n\n"+detail)
 			for _, wrapper := range detailer.ActivateTools() {
@@ -281,7 +292,11 @@ func (s *PreloadService) PrepareBackground(ctx context.Context, sessionID string
 			_ = globalevents.EmitLog(ctx, record)
 			continue
 		}
-		tools := NativeCachedToolsFromDiscovery(s.discoverNames(ctx, []string{name}))
+		discovery := s.discoverNames(ctx, []string{name})
+		tools := NativeCachedToolsFromDiscovery(discovery)
+		for _, item := range discovery.Tools {
+			result.NeedsElyphRules = result.NeedsElyphRules || item.NeedsElyphRules
+		}
 		if len(tools) > 0 {
 			result.Update.Tools = append(result.Update.Tools, tools...)
 			result.Update.Tags = append(result.Update.Tags, tags[name]...)

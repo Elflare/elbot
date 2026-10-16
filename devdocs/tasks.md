@@ -29,8 +29,12 @@
   - `internal/tool/prepared.go`、`internal/tool/executor.go`、`internal/toolrun/toolrun.go`、`internal/fileops/binding.go`、`internal/fileops/commit.go`、`internal/fileops/rollback_service.go`、`internal/fileops/atomic_write.go`。
   - `internal/tool/builtin/file_tools.go`、`internal/tool/builtin/file_rollback.go`、`internal/fileops/rollback.go`、`internal/tool/builtin/long_memory.go`、`internal/tool/skill/modify_el_skill.go`、`internal/tool/skill/agent_skill_tool.go`。
 
-- [ ] 规则卡状态：单独讨论并拆分 context 中的 shown／new 状态，明确发现与渲染职责。
-  - `internal/tool/detail.go`、`internal/tool/discover.go`、`internal/toolrun/preload.go`、`internal/agent/toolrun_adapter.go`、`internal/agent/tool_directive.go`。
+- [x] 规则卡状态：ELyph 规则集中在公共包，工具、技能和后台任务共享 Session 首次展示状态；声明与最终组装分离，移除 context 中的 shown／new 集合，状态随消息原子提交。
+  - `internal/elyph/rules.go`、`internal/tool/tool.go`、`internal/tool/builder.go`、`internal/tool/detail.go`、`internal/tool/discover.go`。
+  - `internal/toolrun/preload.go`、`internal/toolrun/runner.go`、`internal/toolrun/state.go`、`internal/agent/toolrun_adapter.go`、`internal/agent/tool_directive.go`。
+  - `internal/tool/skill/descriptor.go`、`internal/tool/skill/creator.go`、`internal/tool/skill/modify_el_skill.go`、`internal/tool/builtin/cron.go`、`internal/tool/builtin/elwisp_creator.go`、`internal/tool/runtimeinfo/runtimeinfo.go`。
+  - `internal/background/background.go`、`internal/cron/execution.go`、`internal/elnis/llm.go`、`internal/agent/background.go`、`internal/agent/input.go`、`internal/turn/manager.go`。
+  - `internal/agent/dialogue/preparation.go`、`internal/agent/dialogue/model_call.go`、`internal/agent/dialogue/message_store.go`、`internal/storage/dialogue.go`、`internal/storage/sqlite/dialogue_repository.go`、`internal/contextmgr/state.go`。
 
 - [ ] 目录 AST：先筛选语言，再完整读取候选文件。
   - 当前先完整读取所有大小合格的文件，再判断是否支持语言，导致无关文件被读取后丢弃。

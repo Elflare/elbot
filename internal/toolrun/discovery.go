@@ -10,13 +10,13 @@ import (
 	"elbot/internal/tool"
 )
 
-// DiscoveryStateUpdate collects a discovery's schemas, activated wrappers and
-// shown rule cards so the caller can commit them together.
+// DiscoveryStateUpdate collects a discovery's schemas and activated wrappers
+// so the caller can commit them together.
 func DiscoveryStateUpdate(ctx context.Context, result *tool.Result, registry *tool.Registry, actor contextinfo.Actor, policy *security.Policy) (StateUpdate, error) {
 	if result == nil {
 		return StateUpdate{}, nil
 	}
-	update := StateUpdate{ShownRuleCardFormats: metadataToolNames(result.Metadata[tool.MetadataShownRuleCardFormats])}
+	update := StateUpdate{}
 	if len(result.Data) > 0 {
 		var discovery tool.DiscoveryResult
 		if err := json.Unmarshal(result.Data, &discovery); err != nil {

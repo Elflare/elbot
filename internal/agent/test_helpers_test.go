@@ -418,7 +418,6 @@ type agentDetailTool struct {
 	source   tool.Source
 	detail   string
 	format   string
-	ruleCard string
 	activate []string
 }
 
@@ -442,7 +441,7 @@ func (t agentDetailTool) Detail() string {
 }
 
 func (t agentDetailTool) DetailBlock() tool.DetailBlock {
-	return tool.DetailBlock{Content: t.detail, Format: t.format, RuleCard: t.ruleCard}
+	return tool.DetailBlock{Content: t.detail, Format: t.format}
 }
 
 func (t agentDetailTool) ActivateTools() []string { return t.activate }

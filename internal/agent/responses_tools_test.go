@@ -114,11 +114,11 @@ func TestResponsesDiscoverySeparatesDefinitionsFromFreshCronText(t *testing.T) {
 					}
 					expectNativeDefinitions(t, request, want...)
 					output := nativeToolOutput(t, request, "find-one")
-					if !strings.Contains(output, "已发现工具") || !strings.Contains(output, "2026-10-07 12:01:00") {
+					if !strings.Contains(output, "已发现：") || !strings.Contains(output, "2026-10-07 12:01:00") || strings.Count(output, "ELyph 规则：") != 1 {
 						t.Errorf("first discovery text=%q", output)
 					}
 					for _, definition := range nativeDefinitions(t, request) {
-						if strings.Contains(definition.Description, "12:01:00") {
+						if strings.Contains(definition.Description, "12:01:00") || strings.Contains(definition.Description, "ELyph v0.3规则") {
 							t.Error("dynamic discovery text entered the schema")
 						}
 					}
@@ -129,7 +129,7 @@ func TestResponsesDiscoverySeparatesDefinitionsFromFreshCronText(t *testing.T) {
 					} else {
 						expectNativeDefinitions(t, request)
 					}
-					if output := nativeToolOutput(t, request, "find-two"); !strings.Contains(output, "2026-10-07 12:02:00") {
+					if output := nativeToolOutput(t, request, "find-two"); !strings.Contains(output, "2026-10-07 12:02:00") || strings.Contains(output, "ELyph 规则：") {
 						t.Errorf("repeated discovery text was deduplicated: %q", output)
 					}
 					emitNativeStore(w, "final", !stateless, nativeText("ready"))

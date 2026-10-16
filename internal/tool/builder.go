@@ -3,19 +3,20 @@ package tool
 import "elbot/internal/llm"
 
 type Builder struct {
-	apiTypes       []llm.APIType
-	name           string
-	description    string
-	source         Source
-	risk           RiskLevel
-	superadminOnly bool
-	hidden         bool
-	ownerScoped    bool
-	foregroundOnly bool
-	tags           []string
-	dependsOn      []string
-	properties     map[string]any
-	required       []string
+	needsElyphRules bool
+	apiTypes        []llm.APIType
+	name            string
+	description     string
+	source          Source
+	risk            RiskLevel
+	superadminOnly  bool
+	hidden          bool
+	ownerScoped     bool
+	foregroundOnly  bool
+	tags            []string
+	dependsOn       []string
+	properties      map[string]any
+	required        []string
 }
 
 type ParamOption func(*paramConfig)
@@ -32,6 +33,11 @@ func NewBuilder(name string) *Builder {
 
 func (b *Builder) Description(description string) *Builder {
 	b.description = description
+	return b
+}
+
+func (b *Builder) NeedsElyphRules() *Builder {
+	b.needsElyphRules = true
 	return b
 }
 
@@ -127,7 +133,7 @@ func (b *Builder) ObjectArray(name, description string, properties map[string]an
 }
 
 func (b *Builder) BuildInfo() Info {
-	return Info{Name: b.name, APITypes: append([]llm.APIType(nil), b.apiTypes...), Description: b.description, Source: b.source, Risk: normalizeRisk(b.risk, RiskLow), SuperadminOnly: b.superadminOnly, Hidden: b.hidden, OwnerScoped: b.ownerScoped, ForegroundOnly: b.foregroundOnly, Tags: normalizeTags(b.tags), DependsOn: normalizeNames(b.dependsOn)}
+	return Info{Name: b.name, NeedsElyphRules: b.needsElyphRules, APITypes: append([]llm.APIType(nil), b.apiTypes...), Description: b.description, Source: b.source, Risk: normalizeRisk(b.risk, RiskLow), SuperadminOnly: b.superadminOnly, Hidden: b.hidden, OwnerScoped: b.ownerScoped, ForegroundOnly: b.foregroundOnly, Tags: normalizeTags(b.tags), DependsOn: normalizeNames(b.dependsOn)}
 }
 
 func (b *Builder) BuildSchema() llm.ToolSchema {

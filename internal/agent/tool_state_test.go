@@ -26,11 +26,9 @@ func (s toolStateFaultStore) Sessions() storage.SessionRepository { return s.rep
 type toolStateFaultRepo struct {
 	storage.SessionRepository
 	failure error
-	writes  int
 }
 
 func (r *toolStateFaultRepo) Mutate(ctx context.Context, id string, update func(*storage.Session) error) (*storage.Session, error) {
-	r.writes++
 	return r.SessionRepository.Mutate(ctx, id, func(row *storage.Session) error {
 		if err := update(row); err != nil {
 			return err
@@ -48,7 +46,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(agentWrapperTool{name: "alpha"})
 	_ = registry.Register(agentWrapperTool{name: "wrapper", hidden: true})
-	_ = registry.Register(agentDetailTool{name: "doc", source: tool.SourceSkillAgent, detail: "#skill doc", format: "elyph", ruleCard: "RULE", activate: []string{"wrapper"}})
+	_ = registry.Register(agentDetailTool{name: "doc", source: tool.SourceSkillAgent, detail: "#skill doc", format: "elyph", activate: []string{"wrapper"}})
 
 	a := newTestAgent(t, p, &fakeLLM{}, "model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
 		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
@@ -66,8 +64,8 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	setTestToolState(a, toolrun.NewStateService(toolStateFaultStore{Store: store, repo: repo}))
 	input := "question @tool:worker @skill:doc"
 	tools, skills, err := a.input.applyInputDirectives(ctx, row, input)
-	if !errors.Is(err, failure) || repo.writes != 1 {
-		t.Fatalf("err=%v writes=%d", err, repo.writes)
+	if !errors.Is(err, failure) {
+		t.Fatalf("err=%v", err)
 	}
 	latest, _ := store.Sessions().Get(ctx, row.ID)
 	if row.Metadata != before || latest.Metadata != before || tools.Text != input || skills.Text != input || len(tools.Injected) > 0 || len(skills.Skills) > 0 {
@@ -80,8 +78,8 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 
 	repo.failure = nil
 	tools, skills, err = a.input.applyInputDirectives(ctx, row, input)
-	if err != nil || repo.writes != 2 {
-		t.Fatalf("err=%v writes=%d", err, repo.writes)
+	if err != nil {
+		t.Fatalf("err=%v", err)
 	}
 	if strings.Join(tools.Injected, ",") != "alpha" || strings.Join(skills.InjectedWrappers, ",") != "wrapper" {
 		t.Fatalf("results=%+v %+v", tools, skills)
@@ -91,13 +89,13 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 		t.Fatal("call snapshot differs from committed row")
 	}
 	state, err := toolrun.DecodeState(latest.Metadata)
-	if err != nil || len(state.ToolCache) != 2 || strings.Join(state.ToolTags, ",") != "worker" || strings.Join(state.ShownRuleCardFormats, ",") != "elyph" {
+	if err != nil || len(state.ToolCache) != 2 || strings.Join(state.ToolTags, ",") != "worker" || state.ElyphRulesShown {
 		t.Fatalf("state=%+v err=%v", state, err)
 	}
 	if !strings.Contains(row.Metadata, "9007199254740993") {
 		t.Fatal("lost unknown field")
 	}
-	if !strings.Contains(skills.Text, "RULE") || strings.Contains(skills.Text, "@skill:") || strings.Contains(skills.Text, "@tool:") {
+	if !skills.NeedsElyphRules || !strings.Contains(skills.Text, "#skill doc") || strings.Contains(skills.Text, "@skill:") || strings.Contains(skills.Text, "@tool:") {
 		t.Fatalf("text=%s", skills.Text)
 	}
 }

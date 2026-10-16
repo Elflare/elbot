@@ -217,7 +217,7 @@ func TestDiscoverWorkspaceLoadsCurrentAgentInstructions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "已发现工具：workspace") || !strings.Contains(result.Content, "Loaded workspace instructions from AGENT.md:\ncurrent rules") {
+	if !strings.Contains(result.Content, "已发现：workspace") || !strings.Contains(result.Content, "Loaded workspace instructions from AGENT.md:\ncurrent rules") {
 		t.Fatalf("unexpected discovery result: %q", result.Content)
 	}
 

@@ -52,7 +52,7 @@ func TestInputPreloadRechecksAdmissionAfterPreparation(t *testing.T) {
 					inputBlockingTool{agentWrapperTool: agentWrapperTool{name: "alpha"}, prepare: block},
 					agentWrapperTool{name: "wrapper", hidden: true},
 					inputBlockingSkill{
-						agentDetailTool: agentDetailTool{name: "doc", source: tool.SourceSkillAgent, detail: "DETAIL", format: "elyph", ruleCard: "RULE", activate: []string{"wrapper"}},
+						agentDetailTool: agentDetailTool{name: "doc", source: tool.SourceSkillAgent, detail: "DETAIL", format: "elyph", activate: []string{"wrapper"}},
 						prepare:         block,
 					},
 				} {

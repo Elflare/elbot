@@ -42,6 +42,7 @@ func (ElwispCreatorTool) Name() string {
 
 func (ElwispCreatorTool) Info() tool.Info {
 	return tool.NewBuilder(ElwispCreatorName).
+		NeedsElyphRules().
 		Description("获取创建 Elwisp 监听器所需的精简 Elnis/Elvena/ELyph 说明，并附带当前 Elnis 配置摘要。").
 		Source(tool.SourceBuiltin).
 		Risk(tool.RiskLow).
@@ -63,7 +64,7 @@ func (t ElwispCreatorTool) Call(ctx context.Context, req tool.CallRequest) (_ *t
 		return nil, err.Error(), err
 	}
 	{
-		result := &tool.Result{Content: buildElwispCreatorGuide(loadElwispCreatorConfig(t.info))}
+		result := &tool.Result{Content: buildElwispCreatorGuide(loadElwispCreatorConfig(t.info)), NeedsElyphRules: true}
 		return result, "elwisp_creator guide returned", nil
 	}
 }
@@ -197,7 +198,6 @@ func buildElwispCreatorGuide(cfg elwispCreatorConfigSnapshot) string {
 // minimal_direct_calls_payload: {"version":"elvena.v3","elwisp":{"name":"example-elwisp"},"source":"example-source","id":"stable-event-id","mode":"direct","targets":[{"platform":"qqonebot","type":"group","id":"987654321"}],"calls":[{"kind":"capability","name":"message.recall","platform":"qqonebot","target":{"platform":"qqonebot","type":"group","id":"987654321"},"params":{"message_id":1024}}]}
 // minimal_llm_payload: {"version":"elvena.v3","elwisp":{"name":"example-elwisp","tags":["example"]},"source":"example-source","id":"stable-event-id","mode":"llm","title":"需要分析的事件","format":"elyph","content":"#task review_event - 判断事件是否需要通知\n<- $event:object!\n-> $report:str\n** 基于事件内容、meta 和工具结果判断\n~ 编造日志、指标或结论\n> 如果需要通知，给出原因和建议；否则说明无需打扰。","tool_list_names":[],"targets":[{"platform":"cli"}],"meta":{}}
 `)
-	writeGuideCommentBlock(&b, "elyph_rule_card", runtimeinfo.ElyphRuleCard())
 	b.WriteString(`** 如果 current_elnis 有 warning，先提醒用户处理。
 ** event id 在同一 source 内稳定且唯一。
 ** Elwisp 只上报事件，由 Elnis/ElBot 决定记录、通知、分析或调用工具。
