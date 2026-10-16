@@ -3,6 +3,7 @@ package skill
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,11 +11,120 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"elbot/internal/config"
 	"elbot/internal/processenv"
 	"elbot/internal/tool"
 )
+
+func TestRunMediaCommandOutputLimits(t *testing.T) {
+	dir := t.TempDir()
+	source := `package main
+import ("encoding/json"; "fmt"; "os"; "strings"; "sync"; "time")
+func main() {
+ mode := os.Args[1]
+ switch mode {
+ case "plain exact": fmt.Print(strings.Repeat("x", 1024*1024))
+ case "plain overflow": fmt.Print(strings.Repeat("x", 1024*1024+1))
+ case "json exact":
+  prefix, suffix := "{\"content\":\"", "\"}"
+  fmt.Print(prefix + strings.Repeat("x", 1024*1024-len(prefix)-len(suffix)) + suffix)
+ case "json overflow":
+  json.NewEncoder(os.Stdout).Encode(map[string]any{"content":strings.Repeat("x",1024*1024),"segments":[]any{map[string]string{"type":"file","path":"missing.txt"}}})
+ case "stderr overflow":
+  fmt.Fprint(os.Stderr,strings.Repeat("e",2*1024*1024)); fmt.Print("done")
+ case "failure", "timeout", "canceled":
+  var wg sync.WaitGroup
+  wg.Add(2)
+  go func(){ defer wg.Done(); fmt.Print("stdout-prefix"+strings.Repeat("o",2*1024*1024)) }()
+  go func(){ defer wg.Done(); fmt.Fprint(os.Stderr,"stderr-prefix"+strings.Repeat("e",2*1024*1024)) }()
+  wg.Wait()
+  if mode=="failure" { os.Exit(7) }
+  os.WriteFile(os.Args[2],[]byte("ready"),0600)
+  time.Sleep(30*time.Second)
+ }
+}`
+	sourcePath := filepath.Join(dir, "main.go")
+	if err := os.WriteFile(sourcePath, []byte(source), 0600); err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(dir, "output-helper")
+	if runtime.GOOS == "windows" {
+		binary += ".exe"
+	}
+	if out, err := exec.Command("go", "build", "-o", binary, sourcePath).CombinedOutput(); err != nil {
+		t.Fatalf("build: %v\n%s", err, out)
+	}
+	for _, mode := range []string{"plain exact", "plain overflow", "json exact", "json overflow", "stderr overflow", "failure", "timeout", "canceled"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			if mode == "timeout" {
+				var stop context.CancelFunc
+				ctx, stop = context.WithTimeout(ctx, time.Second)
+				defer stop()
+			}
+			ready := filepath.Join(t.TempDir(), "ready")
+			type outcome struct {
+				result *tool.Result
+				err    error
+			}
+			done := make(chan outcome, 1)
+			go func() {
+				cmd := exec.CommandContext(ctx, binary, mode, ready)
+				result, err := runMediaCommand(ctx, "test skill", cmd, nil)
+				done <- outcome{result, err}
+			}()
+			if mode == "canceled" {
+				for {
+					if _, err := os.Stat(ready); err == nil {
+						break
+					}
+					select {
+					case <-ctx.Done():
+						t.Fatal("helper did not produce output before cancellation")
+					case <-time.After(time.Millisecond):
+					}
+				}
+				cancel()
+			}
+			out := <-done
+			switch mode {
+			case "plain exact", "json exact":
+				if out.err != nil || out.result.Content != strings.Repeat("x", maxRunnerOutput)+"\n... output truncated ...\n" {
+					t.Fatalf("exact limit result: %v", out.err)
+				}
+			case "stderr overflow":
+				if out.err != nil || out.result.Content != "done" {
+					t.Fatalf("stderr changed success: %#v, %v", out.result, out.err)
+				}
+			case "plain overflow", "json overflow":
+				if out.result != nil || out.err == nil || !strings.Contains(out.err.Error(), "stdout exceeds 1048576 byte limit") {
+					t.Fatalf("overflow result: %#v, %v", out.result, out.err)
+				}
+			default:
+				if out.err == nil {
+					t.Fatal("expected process error")
+				}
+				if mode == "timeout" && !errors.Is(out.err, context.DeadlineExceeded) || mode == "canceled" && !errors.Is(out.err, context.Canceled) {
+					t.Fatalf("cancellation classification: %v", out.err)
+				}
+				for _, want := range []string{"stdout-prefix", "stderr-prefix", "output truncated"} {
+					if !strings.Contains(out.err.Error(), want) {
+						t.Fatalf("diagnostics missing %q", want)
+					}
+				}
+				if mode == "failure" && !strings.Contains(out.err.Error(), "exit code 7") {
+					t.Fatalf("exit error: %v", out.err)
+				}
+				if len(out.err.Error()) > 2*maxRunnerOutput+512 {
+					t.Fatal("diagnostic output exceeded display budget")
+				}
+			}
+		})
+	}
+}
 
 func TestSafeRelativePathRejectsEscape(t *testing.T) {
 	root := t.TempDir()

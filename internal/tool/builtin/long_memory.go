@@ -130,6 +130,9 @@ type longMemoryStore struct {
 	db          *sql.DB
 	initialized bool
 	lastSync    time.Time
+	// formatErrors remembers file-local validation failures for this open store.
+	// Reuse requires matching persisted error and file attributes; mu protects it.
+	formatErrors map[string]longMemoryInvalidFile
 }
 
 func NewLongMemoryTools(rootDir string) []tool.Tool {
@@ -374,6 +377,11 @@ func (s *longMemoryStore) save(ctx context.Context, args longMemorySaveArgs) (lo
 	if err := s.writeRecordFileLocked(record); err != nil {
 		return longMemoryRecord{}, err
 	}
+	info, err := os.Stat(record.FilePath)
+	if err != nil {
+		return longMemoryRecord{}, fmt.Errorf("stat long memory file %q: %w", record.FilePath, err)
+	}
+	record.FileMTimeNS, record.FileSize = info.ModTime().UnixNano(), info.Size()
 	if err := s.indexRecordLocked(ctx, record); err != nil {
 		return longMemoryRecord{}, err
 	}
@@ -463,6 +471,11 @@ func (s *longMemoryStore) update(ctx context.Context, preview longMemoryUpdatePr
 	if err := s.writeUpdatePreviewLocked(ctx, preview); err != nil {
 		return longMemoryRecord{}, err
 	}
+	info, err := os.Stat(preview.After.FilePath)
+	if err != nil {
+		return longMemoryRecord{}, fmt.Errorf("stat long memory file %q: %w", preview.After.FilePath, err)
+	}
+	preview.After.FileMTimeNS, preview.After.FileSize = info.ModTime().UnixNano(), info.Size()
 	if err := s.indexRecordLocked(ctx, preview.After); err != nil {
 		return longMemoryRecord{}, err
 	}
@@ -645,6 +658,8 @@ func (s *longMemoryStore) close() error {
 	err := s.db.Close()
 	s.db = nil
 	s.initialized = false
+	s.lastSync = time.Time{}
+	s.formatErrors = nil
 	return err
 }
 
@@ -705,83 +720,109 @@ func (s *longMemoryStore) syncLocked(ctx context.Context, force bool) error {
 	if !force && !s.lastSync.IsZero() && time.Since(s.lastSync) < longMemorySyncCooldown {
 		return nil
 	}
-	s.lastSync = time.Now()
+	// A failed forced sync must not leave a previous cooldown blocking retries.
+	s.lastSync = time.Time{}
 	entries, err := os.ReadDir(s.memoriesDir)
 	if err != nil {
 		return fmt.Errorf("read long memory directory %q: %w", s.memoriesDir, err)
 	}
-	seen := map[string]bool{}
+	indexed, err := s.indexedStatesLocked(ctx)
+	if err != nil {
+		return err
+	}
+	invalids, err := s.invalidStatesLocked(ctx)
+	if err != nil {
+		return err
+	}
+	seen := map[string]longMemoryRecord{}
 	seenIDs := map[int64]string{}
+	formatErrors := map[string]longMemoryInvalidFile{}
+	invalidFiles := map[string]longMemoryInvalidFile{}
+	var changed []longMemoryRecord
+	// ReadDir sorts names. Decide all ID ownership before changing the old index.
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".md") {
 			continue
 		}
 		path := filepath.Join(s.memoriesDir, entry.Name())
-		seen[path] = true
 		info, err := entry.Info()
 		if err != nil {
 			return fmt.Errorf("stat long memory file %q: %w", path, err)
 		}
 		mtimeNS := info.ModTime().UnixNano()
 		size := info.Size()
-		indexed, err := s.fileStateByPathLocked(ctx, path)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-		if err == nil && indexed.FileMTimeNS == mtimeNS && indexed.FileSize == size {
+		invalid, hasInvalid := invalids[path]
+		if cached, ok := s.formatErrors[path]; ok && hasInvalid && cached == invalid && invalid.FileMTimeNS == mtimeNS && invalid.FileSize == size {
+			formatErrors[path] = invalid
+			invalidFiles[path] = invalid
 			continue
 		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("read long memory file %q: %w", path, err)
-		}
-		parsed, err := parseLongMemoryText(string(data))
-		if err != nil {
-			if writeErr := s.upsertInvalidLocked(ctx, path, err.Error(), mtimeNS, size); writeErr != nil {
-				return writeErr
+		record, exists := indexed[path]
+		unchanged := exists && !hasInvalid && record.FileMTimeNS == mtimeNS && record.FileSize == size
+		if !unchanged {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return fmt.Errorf("read long memory file %q: %w", path, err)
 			}
-			continue
-		}
-		record := recordFromParsedFile(path, parsed, mtimeNS, size)
-		if err := validateLongMemoryRecord(record, false); err != nil {
-			if writeErr := s.upsertInvalidLocked(ctx, path, err.Error(), mtimeNS, size); writeErr != nil {
-				return writeErr
+			parsed, err := parseLongMemoryText(string(data))
+			if err == nil {
+				record = recordFromParsedFile(path, parsed, mtimeNS, size)
+				err = validateLongMemoryRecord(record, false)
 			}
-			continue
+			if err != nil {
+				invalid = longMemoryInvalidFile{FilePath: path, Error: err.Error(), FileMTimeNS: mtimeNS, FileSize: size}
+				formatErrors[path] = invalid
+				invalidFiles[path] = invalid
+				continue
+			}
 		}
 		if previous, ok := seenIDs[record.ID]; ok && previous != path {
-			if writeErr := s.upsertInvalidLocked(ctx, path, fmt.Sprintf("id %d 与文件 %s 重复", record.ID, previous), mtimeNS, size); writeErr != nil {
-				return writeErr
-			}
+			invalidFiles[path] = longMemoryInvalidFile{FilePath: path, Error: fmt.Sprintf("id %d 与文件 %s 重复", record.ID, previous), FileMTimeNS: mtimeNS, FileSize: size}
 			continue
 		}
 		seenIDs[record.ID] = path
+		seen[path] = record
+		if !unchanged {
+			changed = append(changed, record)
+		}
+	}
+	for path, record := range indexed {
+		if seen[path].ID != record.ID {
+			if err := s.deleteIndexLocked(ctx, record.ID, path); err != nil {
+				return err
+			}
+			delete(invalids, path)
+		}
+	}
+	for _, record := range changed {
 		if err := s.indexRecordLocked(ctx, record); err != nil {
 			return err
 		}
+		delete(invalids, record.FilePath)
 	}
-	paths, err := s.indexedPathsLocked(ctx)
-	if err != nil {
-		return err
-	}
-	for _, indexed := range paths {
-		if !seen[indexed.FilePath] {
-			if err := s.deleteIndexLocked(ctx, indexed.ID, indexed.FilePath); err != nil {
-				return err
-			}
-		}
-	}
-	invalidPaths, err := s.invalidPathsLocked(ctx)
-	if err != nil {
-		return err
-	}
-	for _, path := range invalidPaths {
-		if !seen[path] {
+	for path := range invalids {
+		if _, exists := invalidFiles[path]; !exists {
 			if _, err := s.db.ExecContext(ctx, `DELETE FROM memory_invalid_files WHERE file_path = ?`, path); err != nil {
 				return fmt.Errorf("delete stale invalid long memory %q: %w", path, err)
 			}
 		}
 	}
+	for path, invalid := range invalidFiles {
+		previous, exists := invalids[path]
+		if exists && previous.Error == invalid.Error && previous.FileMTimeNS == invalid.FileMTimeNS && previous.FileSize == invalid.FileSize {
+			invalid = previous
+		} else {
+			invalid.DetectedAt = time.Now().UTC().Format(time.RFC3339)
+			if err := s.upsertInvalidLocked(ctx, invalid); err != nil {
+				return err
+			}
+		}
+		if _, exists := formatErrors[path]; exists {
+			formatErrors[path] = invalid
+		}
+	}
+	s.formatErrors = formatErrors
+	s.lastSync = time.Now()
 	return nil
 }
 
@@ -805,13 +846,7 @@ func (s *longMemoryStore) writeRecordFileLocked(record longMemoryRecord) error {
 }
 
 func (s *longMemoryStore) indexRecordLocked(ctx context.Context, record longMemoryRecord) error {
-	info, err := os.Stat(record.FilePath)
-	if err != nil {
-		return fmt.Errorf("stat long memory file %q: %w", record.FilePath, err)
-	}
-	record.FileMTimeNS = info.ModTime().UnixNano()
-	record.FileSize = info.Size()
-	_, err = s.db.ExecContext(ctx, `INSERT INTO memory_files (id, file_path, category, title, summary, keywords, created_at, updated_at, file_mtime_ns, file_size)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO memory_files (id, file_path, category, title, summary, keywords, created_at, updated_at, file_mtime_ns, file_size)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET file_path=excluded.file_path, category=excluded.category, title=excluded.title, summary=excluded.summary, keywords=excluded.keywords, created_at=excluded.created_at, updated_at=excluded.updated_at, file_mtime_ns=excluded.file_mtime_ns, file_size=excluded.file_size`,
 		record.ID, record.FilePath, record.Category, record.Title, record.Summary, record.Keywords, record.CreatedAt, record.UpdatedAt, record.FileMTimeNS, record.FileSize)
@@ -828,6 +863,7 @@ func (s *longMemoryStore) indexRecordLocked(ctx context.Context, record longMemo
 	if err != nil {
 		return fmt.Errorf("clear long memory invalid state: %w", err)
 	}
+	delete(s.formatErrors, record.FilePath)
 	return nil
 }
 
@@ -841,14 +877,8 @@ func (s *longMemoryStore) deleteIndexLocked(ctx context.Context, id int64, path 
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM memory_invalid_files WHERE file_path = ?`, path); err != nil {
 		return fmt.Errorf("delete long memory invalid state: %w", err)
 	}
+	delete(s.formatErrors, path)
 	return nil
-}
-
-func (s *longMemoryStore) fileStateByPathLocked(ctx context.Context, path string) (longMemoryRecord, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT id, file_path, file_mtime_ns, file_size FROM memory_files WHERE file_path = ?`, path)
-	var record longMemoryRecord
-	err := row.Scan(&record.ID, &record.FilePath, &record.FileMTimeNS, &record.FileSize)
-	return record, err
 }
 
 func (s *longMemoryStore) recordByIDLocked(ctx context.Context, id int64) (longMemoryRecord, error) {
@@ -858,46 +888,46 @@ func (s *longMemoryStore) recordByIDLocked(ctx context.Context, id int64) (longM
 	return record, err
 }
 
-func (s *longMemoryStore) indexedPathsLocked(ctx context.Context) ([]longMemoryRecord, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, file_path FROM memory_files`)
+func (s *longMemoryStore) indexedStatesLocked(ctx context.Context) (map[string]longMemoryRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, file_path, file_mtime_ns, file_size FROM memory_files`)
 	if err != nil {
 		return nil, fmt.Errorf("list indexed long memory paths: %w", err)
 	}
 	defer rows.Close()
-	var records []longMemoryRecord
+	records := map[string]longMemoryRecord{}
 	for rows.Next() {
 		var record longMemoryRecord
-		if err := rows.Scan(&record.ID, &record.FilePath); err != nil {
+		if err := rows.Scan(&record.ID, &record.FilePath, &record.FileMTimeNS, &record.FileSize); err != nil {
 			return nil, err
 		}
-		records = append(records, record)
+		records[record.FilePath] = record
 	}
 	return records, rows.Err()
 }
 
-func (s *longMemoryStore) invalidPathsLocked(ctx context.Context) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT file_path FROM memory_invalid_files`)
+func (s *longMemoryStore) invalidStatesLocked(ctx context.Context) (map[string]longMemoryInvalidFile, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT file_path, error, detected_at, file_mtime_ns, file_size FROM memory_invalid_files`)
 	if err != nil {
 		return nil, fmt.Errorf("list invalid long memory paths: %w", err)
 	}
 	defer rows.Close()
-	var paths []string
+	files := map[string]longMemoryInvalidFile{}
 	for rows.Next() {
-		var path string
-		if err := rows.Scan(&path); err != nil {
+		var file longMemoryInvalidFile
+		if err := rows.Scan(&file.FilePath, &file.Error, &file.DetectedAt, &file.FileMTimeNS, &file.FileSize); err != nil {
 			return nil, err
 		}
-		paths = append(paths, path)
+		files[file.FilePath] = file
 	}
-	return paths, rows.Err()
+	return files, rows.Err()
 }
 
-func (s *longMemoryStore) upsertInvalidLocked(ctx context.Context, path, reason string, mtimeNS, size int64) error {
+func (s *longMemoryStore) upsertInvalidLocked(ctx context.Context, file longMemoryInvalidFile) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO memory_invalid_files (file_path, error, detected_at, file_mtime_ns, file_size)
 		VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT(file_path) DO UPDATE SET error=excluded.error, detected_at=excluded.detected_at, file_mtime_ns=excluded.file_mtime_ns, file_size=excluded.file_size`, path, reason, time.Now().UTC().Format(time.RFC3339), mtimeNS, size)
+		ON CONFLICT(file_path) DO UPDATE SET error=excluded.error, detected_at=excluded.detected_at, file_mtime_ns=excluded.file_mtime_ns, file_size=excluded.file_size`, file.FilePath, file.Error, file.DetectedAt, file.FileMTimeNS, file.FileSize)
 	if err != nil {
-		return fmt.Errorf("record invalid long memory %q: %w", path, err)
+		return fmt.Errorf("record invalid long memory %q: %w", file.FilePath, err)
 	}
 	return nil
 }
