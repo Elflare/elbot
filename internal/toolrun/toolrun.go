@@ -81,7 +81,7 @@ type ExecutionResult struct {
 	Error error
 	// ResultStatus is the explicit result supplied by the native or remote execution source.
 	ResultStatus events.ResultStatus
-	// ExecutionStarted records entry into Tool.Call or the remote HTTP send boundary.
+	// ExecutionStarted records entry into a tool call or the remote HTTP send boundary.
 	ExecutionStarted bool
 }
 
@@ -205,30 +205,18 @@ func (m *Manager) AssessRisk(ctx context.Context, resolved ResolvedTool, argumen
 	return tool.AssessRisk(ctx, resolved.Native, tool.CallRequest{Name: resolved.Name, Arguments: json.RawMessage(arguments)})
 }
 
-func (m *Manager) PreflightConfirmation(ctx context.Context, resolved ResolvedTool, call llm.ToolCallRequest) error {
+func (m *Manager) PrepareCall(ctx context.Context, resolved ResolvedTool, call llm.ToolCallRequest) (*tool.PreparedCall, error) {
 	if resolved.Source == SourceKindELwisp {
-		return nil
+		return nil, nil
 	}
-	provider, ok := resolved.Native.(tool.ConfirmationPreflightProvider)
-	if !ok {
-		return nil
-	}
-	return provider.PreflightConfirmation(ctx, tool.CallRequest{ID: call.ID, Name: resolved.Name, Arguments: json.RawMessage(call.Arguments)})
-}
-
-func (m *Manager) RiskDetail(ctx context.Context, resolved ResolvedTool, call llm.ToolCallRequest) (string, error) {
-	if resolved.Source == SourceKindELwisp {
-		return "", nil
-	}
-	provider, ok := resolved.Native.(tool.RiskDetailProvider)
-	if !ok {
-		return "", nil
-	}
-	detail, err := provider.RiskDetail(ctx, tool.CallRequest{ID: call.ID, Name: resolved.Name, Arguments: json.RawMessage(call.Arguments)})
-	return strings.TrimSpace(detail), err
+	return tool.PrepareCall(ctx, resolved.Native, tool.CallRequest{ID: call.ID, Name: call.Name, Arguments: json.RawMessage(call.Arguments)})
 }
 
 func (m *Manager) Execute(ctx context.Context, call llm.ToolCallRequest, resolved ResolvedTool, actor contextinfo.Actor) ExecutionResult {
+	return m.ExecutePrepared(ctx, call, resolved, actor, nil)
+}
+
+func (m *Manager) ExecutePrepared(ctx context.Context, call llm.ToolCallRequest, resolved ResolvedTool, actor contextinfo.Actor, prepared *tool.PreparedCall) ExecutionResult {
 
 	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
 	if resolved.ResultStatus != events.ResultSucceeded {
@@ -237,7 +225,7 @@ func (m *Manager) Execute(ctx context.Context, call llm.ToolCallRequest, resolve
 	if resolved.Source == SourceKindELwisp {
 		return executeELwispTool(ctx, call, resolved)
 	}
-	result := tool.Executor{Registry: m.Native.Registry, Actor: actor, Policy: m.Policy}.Execute(ctx, call)
+	result := tool.Executor{Registry: m.Native.Registry, Actor: actor, Policy: m.Policy}.ExecutePrepared(ctx, call, prepared)
 	return ExecutionResult{Call: call, Message: result.Message, Result: result.Result, LogResult: result.LogResult, Error: result.Error, ResultStatus: result.ResultStatus, ExecutionStarted: result.ExecutionStarted}
 }
 

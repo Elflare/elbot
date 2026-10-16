@@ -138,8 +138,8 @@ func (runnerPreflightTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "preflight_tool", Parameters: map[string]any{"type": "object"}}
 }
 
-func (runnerPreflightTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
-	return fmt.Errorf("preflight rejected")
+func (runnerPreflightTool) PrepareCall(ctx context.Context, req tool.CallRequest) (*tool.PreparedCall, error) {
+	return nil, fmt.Errorf("preflight rejected")
 }
 
 func (runnerPreflightTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
@@ -165,8 +165,8 @@ func (runnerShellPreflightTool) AssessRisk(ctx context.Context, req tool.CallReq
 	return tool.RiskAssessment{Level: tool.RiskHigh}, nil
 }
 
-func (runnerShellPreflightTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
-	return fmt.Errorf("protected file must use dedicated tool")
+func (runnerShellPreflightTool) PrepareCall(ctx context.Context, req tool.CallRequest) (*tool.PreparedCall, error) {
+	return nil, fmt.Errorf("protected file must use dedicated tool")
 }
 
 func (runnerShellPreflightTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
@@ -188,11 +188,11 @@ func (runnerContextPreflightTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "context_preflight", Parameters: map[string]any{"type": "object"}}
 }
 
-func (runnerContextPreflightTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
+func (runnerContextPreflightTool) PrepareCall(ctx context.Context, req tool.CallRequest) (*tool.PreparedCall, error) {
 	if ctx.Value(runnerContextKey{}) != "prepared" {
-		return fmt.Errorf("missing prepared context")
+		return nil, fmt.Errorf("missing prepared context")
 	}
-	return nil
+	return nil, nil
 }
 
 func (runnerContextPreflightTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {

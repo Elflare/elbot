@@ -407,10 +407,11 @@ func TestEditFileToolTruncatesLargeRiskDetailBlocks(t *testing.T) {
 			"new_text":  newText,
 		}},
 	})
-	detail, err := NewEditFileTool().RiskDetail(context.Background(), tool.CallRequest{Arguments: args})
+	prepared, err := NewEditFileTool().PrepareCall(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
+	detail := prepared.RiskDetail()
 	if !strings.Contains(detail, "已省略；原文") || strings.Contains(detail, newText) {
 		t.Fatalf("large detail was not truncated:\n%s", detail)
 	}
@@ -713,10 +714,11 @@ func TestEditFileToolRiskDetailFormatsEdits(t *testing.T) {
 			},
 		},
 	})
-	detail, err := NewEditFileTool().RiskDetail(context.Background(), tool.CallRequest{Arguments: args})
+	prepared, err := NewEditFileTool().PrepareCall(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
+	detail := prepared.RiskDetail()
 	for _, want := range []string{
 		"文件：" + path,
 		"模式：确认后写入；确认前已自动预检",
@@ -839,7 +841,7 @@ func TestEditFileToolPreflightRejectsInvalidEdits(t *testing.T) {
 			"new_text":  "MISSING",
 		}},
 	})
-	err := NewEditFileTool().PreflightConfirmation(context.Background(), tool.CallRequest{Arguments: args})
+	_, err := NewEditFileTool().PrepareCall(context.Background(), tool.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "preflight edit_file") || !strings.Contains(err.Error(), "old_text not found") {
 		t.Fatalf("expected preflight match error, got %v", err)
 	}
@@ -1110,7 +1112,7 @@ func TestEditFileToolRejectsElSkillFileBeforeWrite(t *testing.T) {
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "overwrite", "new_text": "changed"}}})
 	edit := NewEditFileTool(NewFileGuard(NewElSkillFileGuardRule(root)))
-	if err := edit.PreflightConfirmation(context.Background(), tool.CallRequest{Arguments: args}); err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
+	if _, err := edit.PrepareCall(context.Background(), tool.CallRequest{Arguments: args}); err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
 		t.Fatalf("expected preflight modify_el_skill error, got %v", err)
 	}
 	if _, _, err := edit.Call(context.Background(), tool.CallRequest{Arguments: args}); err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
@@ -1166,7 +1168,7 @@ func TestFileToolsProtectResidentMemoryFile(t *testing.T) {
 	}
 	editArgs, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "overwrite", "new_text": "changed"}}})
 	edit := NewEditFileTool(guard)
-	if err := edit.PreflightConfirmation(context.Background(), tool.CallRequest{Arguments: editArgs}); err == nil || !strings.Contains(err.Error(), "resident_memory_normal") {
+	if _, err := edit.PrepareCall(context.Background(), tool.CallRequest{Arguments: editArgs}); err == nil || !strings.Contains(err.Error(), "resident_memory_normal") {
 		t.Fatalf("expected resident memory preflight error, got %v", err)
 	}
 	if _, _, err := edit.Call(context.Background(), tool.CallRequest{Arguments: editArgs}); err == nil || !strings.Contains(err.Error(), "resident_memory_normal") {

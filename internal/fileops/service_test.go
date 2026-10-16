@@ -123,10 +123,11 @@ func TestEditConfirmationPinsState(t *testing.T) {
 					t.Skipf("symlinks unavailable: %v", err)
 				}
 			}
-			first, err := f.files.PreviewEdit(ctx, req)
+			prepared, err := f.files.PrepareEdit(ctx, req)
 			if err != nil {
 				t.Fatal(err)
 			}
+			first := prepared.Preview()
 			want, refuse := "after", false
 			switch scenario {
 			case "content":
@@ -152,9 +153,9 @@ func TestEditConfirmationPinsState(t *testing.T) {
 					want, refuse = "before", true
 				}
 			case "parameters":
-				req.Edits[0].NewText = new(string)
 				*req.Edits[0].NewText = "different"
-				want, refuse = "before", true
+				// The caller's argument and preview buffers cannot change the prepared edit.
+				first.NewBytes[0] = 'X'
 			case "appeared":
 				if err := os.WriteFile(f.path, nil, 0600); err != nil {
 					t.Fatal(err)
@@ -183,14 +184,11 @@ func TestEditConfirmationPinsState(t *testing.T) {
 			}
 			// Derived request contexts cannot refresh a pinned preflight.
 			derived := f.files.WithBinding(context.WithValue(ctx, struct{}{}, true), f.binding)
-			preview, previewErr := f.files.PreviewEdit(derived, req)
-			if (previewErr != nil) != refuse {
-				t.Fatalf("preview err=%v refuse=%t", previewErr, refuse)
-			}
-			if !refuse && preview.Diff != first.Diff {
+			preview := prepared.Preview()
+			if preview.Diff != first.Diff {
 				t.Fatal("confirmation diff changed")
 			}
-			_, _, err = f.files.Edit(derived, req)
+			_, _, err = prepared.Commit(derived)
 			if (err != nil) != refuse {
 				t.Fatalf("edit err=%v refuse=%t", err, refuse)
 			}

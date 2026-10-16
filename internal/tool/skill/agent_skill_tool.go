@@ -56,36 +56,46 @@ func agentSkillToolDescription() string {
 	return "读或写 AgentSkill 的 ELBOT_SKILL.toml。"
 }
 
-func (t AgentSkillTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
-	_, err := t.preview(ctx, req)
-	return err
-}
-
-func (t AgentSkillTool) RiskDetail(ctx context.Context, req tool.CallRequest) (string, error) {
+func (t AgentSkillTool) PrepareCall(ctx context.Context, req tool.CallRequest) (*tool.PreparedCall, error) {
 	preview, err := t.preview(ctx, req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
+	detail := fmt.Sprintf("写入 AgentSkill %s 的 %s\n文件：%s", preview.Name, AgentSkillConfigFile, preview.Path)
 	if preview.Action == "read" {
-		return fmt.Sprintf("读取 AgentSkill %s 的 %s", preview.Name, AgentSkillConfigFile), nil
+		detail = fmt.Sprintf("读取 AgentSkill %s 的 %s", preview.Name, AgentSkillConfigFile)
 	}
-	return fmt.Sprintf("写入 AgentSkill %s 的 %s\n文件：%s", preview.Name, AgentSkillConfigFile, preview.Path), nil
+	return tool.NewPreparedCall(t, req, detail, func(ctx context.Context) (*tool.Result, string, error) {
+		return t.call(ctx, preview)
+	}), nil
 }
 
 func (t AgentSkillTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
 	preview, err := t.preview(ctx, req)
+	if err != nil {
+		return nil, tool.TruncateLogContent(err.Error(), 256), err
+	}
+	return t.call(ctx, preview)
+}
+
+func (t AgentSkillTool) call(ctx context.Context, preview agentSkillPreview) (_ *tool.Result, logContent string, _ error) {
 	limit := 256
 	if preview.Action == "read" {
 		limit = 128
 	}
 	defer func() { logContent = tool.TruncateLogContent(logContent, limit) }()
-	if err != nil {
+	if err := ctx.Err(); err != nil {
+		return nil, err.Error(), err
+	}
+	record, ok := t.Manager.Catalog.Get(preview.Name)
+	if !ok || record.Kind != KindAgent || AgentSkillConfigPath(record.Root) != preview.Path {
+		err := fmt.Errorf("AgentSkill target changed after preflight")
 		return nil, err.Error(), err
 	}
 	if preview.Action == "read" {
 		{
-			result := &tool.Result{Content: preview.ReadContent}
-			return result, preview.ReadContent, nil
+			result := &tool.Result{Content: readAgentSkillConfig(record, preview.Path)}
+			return result, result.Content, nil
 		}
 	}
 	if err := t.Manager.WriteAgentSkillConfig(ctx, preview.Name, preview.Toml); err != nil {
@@ -101,11 +111,10 @@ func (t AgentSkillTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool
 }
 
 type agentSkillPreview struct {
-	Action      string
-	Name        string
-	Path        string
-	Toml        string
-	ReadContent string
+	Action string
+	Name   string
+	Path   string
+	Toml   string
 }
 
 func (t AgentSkillTool) preview(ctx context.Context, req tool.CallRequest) (agentSkillPreview, error) {
@@ -130,7 +139,7 @@ func (t AgentSkillTool) preview(ctx context.Context, req tool.CallRequest) (agen
 	action := strings.TrimSpace(args.Action)
 	switch action {
 	case "read":
-		return agentSkillPreview{Action: action, Name: name, Path: path, ReadContent: readAgentSkillConfig(record, path)}, nil
+		return agentSkillPreview{Action: action, Name: name, Path: path}, nil
 	case "write":
 		if strings.TrimSpace(args.Toml) == "" {
 			return agentSkillPreview{}, fmt.Errorf("toml is required for write")

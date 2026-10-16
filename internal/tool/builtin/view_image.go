@@ -128,9 +128,9 @@ func (t ViewImageTool) AssessRisk(ctx context.Context, req tool.CallRequest) (to
 	return tool.RiskAssessment{Level: tool.RiskLow}, nil
 }
 
-func (t ViewImageTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
+func (t ViewImageTool) PrepareCall(ctx context.Context, req tool.CallRequest) (*tool.PreparedCall, error) {
 	_, err := t.AssessRisk(ctx, req)
-	return err
+	return nil, err
 }
 
 func (t ViewImageTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {

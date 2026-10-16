@@ -48,12 +48,13 @@ type modifyElSkillArgs struct {
 }
 
 type modifyElSkillPreview struct {
-	Name   string
-	Target string
-	Path   string
-	Result fileops.EditResult
-	Next   string
-	Diff   string
+	// FileTarget pins the filesystem target separately from the skill target kind.
+	FileTarget string
+	Name       string
+	Target     string
+	Path       string
+	Result     fileops.EditResult
+	Diff       string
 }
 
 func NewReadElSkillTool(manager *Manager) ReadElSkillTool {
@@ -171,15 +172,10 @@ func (ModifyElSkillTool) Schema() llm.ToolSchema {
 	}
 }
 
-func (t ModifyElSkillTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
-	_, err := t.preview(ctx, req)
-	return err
-}
-
-func (t ModifyElSkillTool) RiskDetail(ctx context.Context, req tool.CallRequest) (string, error) {
+func (t ModifyElSkillTool) PrepareCall(ctx context.Context, req tool.CallRequest) (*tool.PreparedCall, error) {
 	preview, err := t.preview(ctx, req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "技能：%s\n", preview.Name)
@@ -191,19 +187,33 @@ func (t ModifyElSkillTool) RiskDetail(ctx context.Context, req tool.CallRequest)
 	if !strings.HasSuffix(preview.Diff, "\n") {
 		b.WriteString("\n")
 	}
-	return strings.TrimRight(b.String(), "\n"), nil
+	return tool.NewPreparedCall(t, req, strings.TrimRight(b.String(), "\n"), func(ctx context.Context) (*tool.Result, string, error) {
+		return t.call(ctx, preview)
+	}), nil
 }
 
 func (t ModifyElSkillTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 	preview, err := t.preview(ctx, req)
 	if err != nil {
+		return nil, tool.TruncateLogContent(err.Error(), 256), err
+	}
+	return t.call(ctx, preview)
+}
+
+func (t ModifyElSkillTool) call(ctx context.Context, preview modifyElSkillPreview) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
+	path, _, err := elSkillTargetPath(t.Manager, preview.Name, preview.Target)
+	if err != nil {
+		return nil, err.Error(), err
+	}
+	if path != preview.Path {
+		err := fmt.Errorf("skill target changed after preflight")
 		return nil, err.Error(), err
 	}
 	switch preview.Target {
 	case elSkillTargetElyph:
 		{
-			result, callErr := t.modifyElyph(preview)
+			result, callErr := t.modifyElyph(ctx, preview)
 			logContent := ""
 			if result != nil {
 				logContent = fmt.Sprintf("modified=%s target=%s\ndiff:\n%s", preview.Name, preview.Target, preview.Diff)
@@ -215,7 +225,7 @@ func (t ModifyElSkillTool) Call(ctx context.Context, req tool.CallRequest) (_ *t
 		}
 	case elSkillTargetCodeSource:
 		{
-			result, callErr := t.modifyCodeSource(preview)
+			result, callErr := t.modifyCodeSource(ctx, preview)
 			logContent := ""
 			if result != nil {
 				logContent = fmt.Sprintf("modified=%s target=%s\ndiff:\n%s", preview.Name, preview.Target, preview.Diff)
@@ -251,6 +261,10 @@ func (t ModifyElSkillTool) preview(ctx context.Context, req tool.CallRequest) (m
 	if len(args.Edits) == 0 {
 		return modifyElSkillPreview{}, fmt.Errorf("edits is required")
 	}
+	fileTarget, err := fileops.ResolveFileTarget(path, false)
+	if err != nil {
+		return modifyElSkillPreview{}, err
+	}
 	result, err := fileops.EditFile(path, args.Encoding, args.ExpectedRevision, false, true, args.ContextLines, args.Edits)
 	if err != nil {
 		return modifyElSkillPreview{}, err
@@ -264,18 +278,18 @@ func (t ModifyElSkillTool) preview(ctx context.Context, req tool.CallRequest) (m
 			return modifyElSkillPreview{}, err
 		}
 	}
-	return modifyElSkillPreview{Name: name, Target: target, Path: path, Result: result, Next: next, Diff: result.Diff}, nil
+	return modifyElSkillPreview{Name: name, Target: target, FileTarget: fileTarget, Path: path, Result: result, Diff: result.Diff}, nil
 }
 
-func (t ModifyElSkillTool) modifyElyph(preview modifyElSkillPreview) (*tool.Result, error) {
-	if err := fileops.AtomicWriteFile(preview.Path, preview.Result.NewBytes, existingFileMode(preview.Path)); err != nil {
+func (t ModifyElSkillTool) modifyElyph(ctx context.Context, preview modifyElSkillPreview) (*tool.Result, error) {
+	if err := fileops.WriteFileWithRevision(ctx, preview.Path, preview.FileTarget, preview.Result.RevisionBefore, preview.Result.NewBytes); err != nil {
 		return nil, err
 	}
 	return &tool.Result{Content: fmt.Sprintf("modified EL skill %s target %s\nrevision_after: %s\ndiff:\n%s\n\nSKILL.elyph 已写入但尚未 reload；完成修改后调用 finalize_el_skill。", preview.Name, elSkillTargetElyph, preview.Result.RevisionAfter, preview.Diff)}, nil
 }
 
-func (t ModifyElSkillTool) modifyCodeSource(preview modifyElSkillPreview) (*tool.Result, error) {
-	if err := fileops.AtomicWriteFile(preview.Path, preview.Result.NewBytes, existingFileMode(preview.Path)); err != nil {
+func (t ModifyElSkillTool) modifyCodeSource(ctx context.Context, preview modifyElSkillPreview) (*tool.Result, error) {
+	if err := fileops.WriteFileWithRevision(ctx, preview.Path, preview.FileTarget, preview.Result.RevisionBefore, preview.Result.NewBytes); err != nil {
 		return nil, err
 	}
 	return &tool.Result{Content: fmt.Sprintf("modified EL skill %s target %s\nrevision_after: %s\ndiff:\n%s\n\n源码已写入但尚未格式化/编译；完成修改后调用 finalize_el_skill。", preview.Name, elSkillTargetCodeSource, preview.Result.RevisionAfter, preview.Diff)}, nil

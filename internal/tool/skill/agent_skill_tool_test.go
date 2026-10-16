@@ -3,6 +3,7 @@ package skill
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,36 @@ import (
 
 	"elbot/internal/tool"
 )
+
+func TestPreparedAgentSkillReadUsesExecutionContent(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "agent", "docx")
+	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# DOCX")
+	writeAgentSkillConfig(t, dir, "risk = \"low\"\n")
+	manager := NewManager(root, tool.NewRegistry())
+	if err := manager.Reload(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	reader := NewAgentSkillTool(manager)
+	prepared, err := reader.PrepareCall(t.Context(), tool.CallRequest{Arguments: []byte(`{"action":"read","name":"docx"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeAgentSkillConfig(t, dir, "risk = \"high\"\n")
+	result, _, err := prepared.Call(t.Context())
+	if err != nil || !strings.Contains(result.Content, "risk = \"high\"") {
+		t.Fatalf("read = %+v, %v", result, err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, _, err := prepared.Call(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancel = %v", err)
+	}
+	manager.Catalog.Replace(nil)
+	if _, _, err := prepared.Call(t.Context()); err == nil {
+		t.Fatal("removed target was accepted")
+	}
+}
 
 func TestAgentSkillWriteRollsBackConfigWhenReloadFails(t *testing.T) {
 	for _, tc := range []struct {

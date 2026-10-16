@@ -251,7 +251,8 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 		}
 		task.risk = riskText
 		deps.AddToolUse(sessionID, call.Name)
-		if err := m.PreflightConfirmation(toolCtx, resolved, call); err != nil {
+		prepared, err := m.PrepareCall(toolCtx, resolved, call)
+		if err != nil {
 			resultStatus := events.ResultFailed
 			if errors.Is(err, context.Canceled) {
 				resultStatus = events.ResultCanceled
@@ -263,7 +264,11 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 		if !batchPreviewSent && deps.ShouldSendPreview(ctx, req.Session, call, req.AssistantText) {
 			deps.SendPreview(ctx, fmt.Sprintf("正在调用 %s：%s", call.Name, previewArguments(call.Arguments)))
 		}
-		confirm, err := r.confirm(toolCtx, deps, actor, sessionID, call, resolved, assessment)
+		detail := ""
+		if prepared != nil {
+			detail = prepared.RiskDetail()
+		}
+		confirm, err := r.confirm(toolCtx, deps, actor, sessionID, call, resolved, assessment, detail)
 		confirmationExtra = joinAssistantText(confirmationExtra, confirm.Extra)
 		if confirm.Stopped {
 			return RunResult{ConfirmationExtra: confirmationExtra, Stopped: true}
@@ -314,7 +319,7 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 		go func() {
 			defer workers.Done()
 			startedAt := time.Now()
-			result := m.Execute(runToolCtx, call, resolved, actor)
+			result := m.ExecutePrepared(runToolCtx, call, resolved, actor, prepared)
 			recordCall(runToolCtx, call, resolved, actor, riskText, runSource, startedAt, &result)
 			toolErr := runToolCtx.Err()
 			done()
@@ -408,7 +413,7 @@ func sendBatchToolPreview(ctx context.Context, deps RunnerDeps, req RunRequest) 
 	return true
 }
 
-func (r *Runner) confirm(ctx context.Context, deps RunnerDeps, actor contextinfo.Actor, sessionID string, call llm.ToolCallRequest, resolved ResolvedTool, assessment tool.RiskAssessment) (ConfirmResult, error) {
+func (r *Runner) confirm(ctx context.Context, deps RunnerDeps, actor contextinfo.Actor, sessionID string, call llm.ToolCallRequest, resolved ResolvedTool, assessment tool.RiskAssessment, detail string) (ConfirmResult, error) {
 	m := r.manager
 	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
 	if resolved.Source == SourceKindELwisp {
@@ -431,11 +436,6 @@ func (r *Runner) confirm(ctx context.Context, deps RunnerDeps, actor contextinfo
 	}
 	if !policy.NeedsToolConfirmation(actor, assessment.Level) {
 		return ConfirmResult{Allowed: true}, nil
-	}
-	detail, err := m.RiskDetail(ctx, resolved, call)
-	if err != nil {
-		message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s failed: %v", call.Name, err))
-		return ConfirmResult{Message: message}, err
 	}
 	return deps.ConfirmToolCall(ctx, sessionID, call, assessment, detail)
 }

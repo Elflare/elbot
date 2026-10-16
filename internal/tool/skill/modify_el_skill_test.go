@@ -268,7 +268,7 @@ func TestModifyElSkillPreflightRejectsInvalidPatchWithoutWriting(t *testing.T) {
 	original := "#skill guarded_preflight - Guarded.\n** risk low\n<- $text:str!\n-> $result:str\n"
 	writeTestSkill(t, root, "guarded_preflight", original)
 	modifier := NewModifyElSkillTool(NewManager(root, tool.NewRegistry()))
-	err := modifier.PreflightConfirmation(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"guarded_preflight","edits":[{"operation":"replace_text","old_text":"not found","new_text":"// x"}]}`)})
+	_, err := modifier.PrepareCall(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"guarded_preflight","edits":[{"operation":"replace_text","old_text":"not found","new_text":"// x"}]}`)})
 	if err == nil {
 		t.Fatal("expected preflight error")
 	}
@@ -290,7 +290,7 @@ func TestModifyElSkillPreflightRejectsInvalidElyphWithoutWriting(t *testing.T) {
 			"new_text":  "not a skill\n",
 		}},
 	})
-	err := modifier.PreflightConfirmation(context.Background(), tool.CallRequest{Arguments: args})
+	_, err := modifier.PrepareCall(context.Background(), tool.CallRequest{Arguments: args})
 	if err == nil {
 		t.Fatal("expected invalid ELyph preflight error")
 	}
@@ -313,13 +313,71 @@ func TestModifyElSkillRiskDetailIncludesDiff(t *testing.T) {
 			"new_text":  "#skill detailer - New.\n",
 		}},
 	})
-	detail, err := modifier.RiskDetail(context.Background(), tool.CallRequest{Arguments: args})
+	prepared, err := modifier.PrepareCall(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
+	detail := prepared.RiskDetail()
 	for _, want := range []string{"技能：detailer", "目标：skill_elyph", "模式：确认后写入；确认前已自动预检", "预检 diff:\n", "-#skill detailer - Old.", "+#skill detailer - New."} {
 		if !strings.Contains(detail, want) {
 			t.Fatalf("detail missing %q:\n%s", want, detail)
+		}
+	}
+}
+
+func TestPreparedSkillModificationPreservesConfirmation(t *testing.T) {
+	for _, target := range []string{elSkillTargetElyph, elSkillTargetCodeSource} {
+		for _, scenario := range []string{"unchanged", "content", "target", "canceled"} {
+			t.Run(target+"/"+scenario, func(t *testing.T) {
+				root := t.TempDir()
+				original := "#skill guarded - Old.\n** risk low\n<- $text:str!\n-> $result:str\n"
+				writeTestSkill(t, root, "guarded", original)
+				manager := NewManager(root, tool.NewRegistry())
+				path := filepath.Join(root, "go", "guarded", "SKILL.elyph")
+				if target == elSkillTargetCodeSource {
+					path = filepath.Join(root, "go", "guarded", "main.go")
+					original = "package main\n// Old.\n"
+					if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				raw, _ := json.Marshal(map[string]any{"name": "guarded", "target": target, "edits": []map[string]any{{"operation": "replace_text", "old_text": "Old.", "new_text": "New."}}})
+				prepared, err := NewModifyElSkillTool(manager).PrepareCall(t.Context(), tool.CallRequest{Arguments: raw})
+				if err != nil {
+					t.Fatal(err)
+				}
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				want := original
+				switch scenario {
+				case "content":
+					want = strings.ReplaceAll(original, "Old.", "Else")
+					if err := os.WriteFile(path, []byte(want), 0600); err != nil {
+						t.Fatal(err)
+					}
+				case "target":
+					other := filepath.Join(t.TempDir(), "other")
+					if err := os.Rename(path, other); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Symlink(other, path); err != nil {
+						t.Skipf("symlinks unavailable: %v", err)
+					}
+				case "canceled":
+					cancel()
+				}
+				_, _, err = prepared.Call(ctx)
+				if (err == nil) != (scenario == "unchanged") {
+					t.Fatalf("commit = %v", err)
+				}
+				if scenario == "unchanged" {
+					want = strings.ReplaceAll(original, "Old.", "New.")
+				}
+				current, err := os.ReadFile(path)
+				if err != nil || string(current) != want {
+					t.Fatalf("file = %q, %v; want %q", current, err, want)
+				}
+			})
 		}
 	}
 }
@@ -337,7 +395,7 @@ func TestModifyElSkillPreflightRejectsNoop(t *testing.T) {
 			"new_text":  original,
 		}},
 	})
-	err := modifier.PreflightConfirmation(context.Background(), tool.CallRequest{Arguments: args})
+	_, err := modifier.PrepareCall(context.Background(), tool.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "edit produced no changes") {
 		t.Fatalf("expected no-op preflight error, got %v", err)
 	}

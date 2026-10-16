@@ -287,6 +287,10 @@ flowchart LR
 - Chat 的 tool message 只发文本，工具图片在同批 tool messages 后生成 user 多模态输入；图片标签和该派生消息不持久化。Responses 私有路线编码原生结果。
 - 风险与确认供内部权限判断，不暴露给 LLM。文件调用在预检时固定目标、参数和 revision，执行前变化或绑定失效即拒绝。
 
+确认准备统一经 `tool.PrepareCall` 查询 `CallPreparer` 能力。需要复用预览的工具返回 `PreparedCall`，固定参数、确认详情和执行回调；Runner 仅在单次调用局部持有，并传给 worker。Executor 复核调用身份、工具可用性及权限，再使用执行阶段 context 调用。纯校验工具返回 nil；普通工具执行时解析当前注册项。直接调用工具保留自身执行路径，不额外生成确认预览。
+
+文件编辑／撤销、长期记忆更新和 Skill 修改复用准备结果，提交前仍核对目标及源内容 revision；长期记忆还核对索引记录路径。AgentSkill 读取仅准备目标和确认详情，正文在执行时读取。
+
 <!-- locator:tool -->
 ## Tool Runtime、工具状态与文件
 
@@ -302,6 +306,17 @@ Runtime 管注册、schema、权限与执行器；ToolRun 管当前工具视图�
 - shell 在收集时分别限制 stdout／stderr 为前 256 KiB，超出部分继续排空并丢弃，截断流尾部附说明；输出量不再决定收集缓冲区的增长。
 
 `fileops.Service` 统一处理工具与命令编辑／撤销，workspace 提供路径契约，sandbox 限制后台路径。
+
+```mermaid
+flowchart LR
+    B["fileops/binding.go<br/>服务、Session 和提交准入的 context 绑定"] --> E["fileops/edit_service.go<br/>编辑准备快照、预览与提交"]
+    B --> R["fileops/rollback_service.go<br/>撤销准备快照、预览与提交"]
+    E --> G["fileops/commit.go<br/>显式提交准入与校验"]
+    R --> G
+    G --> M["fileops/rollback.go<br/>目标锁、备份及实际提交"]
+```
+
+context 只携带绑定事实；准备对象保存原绑定和业务快照，提交校验通过 `commitGuard` 显式传递。等待确认期间不持有文件或锁，预览返回值不能修改内部快照。
 
 - 文件提交锁顺序：目标路径 → Scope → SessionID → 备份状态。读取、diff 和准备在 Session 准入外；提交内复核绑定、取消、权限、解析目标和文件身份后写入。
 - /stop、切换、删除和清理与提交互斥，先提交则完成操作，先取消／失效则拒绝。外部进程不参与这些锁。

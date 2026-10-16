@@ -399,24 +399,24 @@ func (t EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (too
 	return tool.RiskAssessment{Level: tool.RiskHigh, Reasons: []string{"文件内容写入操作需要确认"}}, nil
 }
 
-func (t EditFileTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
+func (t EditFileTool) PrepareCall(ctx context.Context, req tool.CallRequest) (*tool.PreparedCall, error) {
 	var args editFileArgs
 	if len(req.Arguments) > 0 {
 		if err := decodeStrictFileArgs(req.Arguments, &args); err != nil {
-			return fmt.Errorf("parse edit_file arguments: %w", err)
+			return nil, fmt.Errorf("parse edit_file arguments: %w", err)
 		}
 	}
-	_, err := previewEditFile(ctx, args, t.Rollback)
-	return err
+	prepared, err := t.Rollback.PrepareEdit(ctx, editServiceRequest(args))
+	if err != nil {
+		return nil, err
+	}
+	detail := editFileRiskDetail(args, prepared.Preview())
+	return tool.NewPreparedCall(t, req, detail, func(ctx context.Context) (*tool.Result, string, error) {
+		return t.call(ctx, args, prepared)
+	}), nil
 }
 
-func (t EditFileTool) RiskDetail(ctx context.Context, req tool.CallRequest) (string, error) {
-	var args editFileArgs
-	if len(req.Arguments) > 0 {
-		if err := decodeStrictFileArgs(req.Arguments, &args); err != nil {
-			return "", fmt.Errorf("parse edit_file arguments: %w", err)
-		}
-	}
+func editFileRiskDetail(args editFileArgs, preview fileops.EditResult) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "文件：%s\n", strings.TrimSpace(args.Path))
 	b.WriteString("模式：确认后写入；确认前已自动预检\n")
@@ -436,16 +436,12 @@ func (t EditFileTool) RiskDetail(ctx context.Context, req tool.CallRequest) (str
 		writeEditMatchDetail(&b, edit)
 		writeEditContentDetail(&b, edit)
 	}
-	preview, err := previewEditFile(ctx, args, t.Rollback)
-	if err != nil {
-		return "", err
-	}
 	b.WriteString("\n预检 diff:\n")
 	b.WriteString(preview.Diff)
 	if !strings.HasSuffix(preview.Diff, "\n") {
 		b.WriteString("\n")
 	}
-	return strings.TrimRight(b.String(), "\n"), nil
+	return strings.TrimRight(b.String(), "\n")
 }
 
 func fileToolBoolText(value bool) string {
@@ -574,17 +570,28 @@ func fileToolEditOptions() fileops.EditFileOptions {
 	}
 }
 func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 	var args editFileArgs
 	if len(req.Arguments) > 0 {
 		if err := decodeStrictFileArgs(req.Arguments, &args); err != nil {
 			{
 				callErr := fmt.Errorf("parse edit_file arguments: %w", err)
-				return nil, callErr.Error(), callErr
+				return nil, tool.TruncateLogContent(callErr.Error(), 256), callErr
 			}
 		}
 	}
-	result, resolved, err := t.Rollback.Edit(ctx, editServiceRequest(args))
+	return t.call(ctx, args, nil)
+}
+
+func (t EditFileTool) call(ctx context.Context, args editFileArgs, prepared *fileops.PreparedEdit) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
+	var result fileops.EditResult
+	var resolved workspace.ResolvedPath
+	var err error
+	if prepared != nil {
+		result, resolved, err = prepared.Commit(ctx)
+	} else {
+		result, resolved, err = t.Rollback.Edit(ctx, editServiceRequest(args))
+	}
 	if err != nil {
 		return nil, err.Error(), err
 	}
@@ -602,9 +609,6 @@ func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.R
 	}
 }
 
-func previewEditFile(ctx context.Context, args editFileArgs, service *fileops.Service) (fileops.EditResult, error) {
-	return service.PreviewEdit(ctx, editServiceRequest(args))
-}
 func editServiceRequest(args editFileArgs) fileops.EditRequest {
 	return fileops.EditRequest{Path: args.Path, Encoding: args.Encoding, ExpectedRevision: args.ExpectedRevision, Create: args.Create, ContextLines: args.ContextLines, Edits: args.Edits, Options: fileToolEditOptions()}
 }

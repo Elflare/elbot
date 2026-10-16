@@ -53,38 +53,43 @@ func decodeRollbackArgs(req tool.CallRequest) (rollbackFileArgs, error) {
 	return args, nil
 }
 
-func (t RollbackFileTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
+func (t RollbackFileTool) PrepareCall(ctx context.Context, req tool.CallRequest) (*tool.PreparedCall, error) {
 	args, err := decodeRollbackArgs(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	_, err = t.Service.Preview(ctx, args.Path)
-	return err
-}
-
-func (t RollbackFileTool) RiskDetail(ctx context.Context, req tool.CallRequest) (string, error) {
-	args, err := decodeRollbackArgs(req)
+	prepared, err := t.Service.PrepareRollback(ctx, args.Path)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	preview, err := t.Service.Preview(ctx, args.Path)
-	if err != nil {
-		return "", err
-	}
+	preview := prepared.Preview()
 	action := "恢复编辑前内容"
 	if preview.Created {
 		action = "删除本次新建文件（保留父目录）"
 	}
-	return fmt.Sprintf("文件：%s\n操作：%s\n预检 diff:\n%s", preview.Path, action, preview.Diff), nil
+	detail := fmt.Sprintf("文件：%s\n操作：%s\n预检 diff:\n%s", preview.Path, action, preview.Diff)
+	return tool.NewPreparedCall(t, req, detail, func(ctx context.Context) (*tool.Result, string, error) {
+		return t.call(ctx, args, prepared)
+	}), nil
 }
 
 func (t RollbackFileTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 	args, err := decodeRollbackArgs(req)
 	if err != nil {
-		return nil, err.Error(), err
+		return nil, tool.TruncateLogContent(err.Error(), 256), err
 	}
-	result, err := t.Service.Rollback(ctx, args.Path, 0)
+	return t.call(ctx, args, nil)
+}
+
+func (t RollbackFileTool) call(ctx context.Context, args rollbackFileArgs, prepared *fileops.PreparedRollback) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
+	var result fileops.RollbackResult
+	var err error
+	if prepared != nil {
+		result, err = prepared.Commit(ctx)
+	} else {
+		result, err = t.Service.Rollback(ctx, args.Path, 0)
+	}
 	if err != nil {
 		return nil, err.Error(), err
 	}

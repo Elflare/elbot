@@ -33,7 +33,7 @@ type ExecutionResult struct {
 	Error error
 	// ResultStatus is declared at the execution source, including pre-execution rejection.
 	ResultStatus events.ResultStatus
-	// ExecutionStarted becomes true only when Tool.Call is entered, even if it fails.
+	// ExecutionStarted records entry into Tool.Call or PreparedCall.Call, even if it fails.
 	ExecutionStarted bool
 }
 
@@ -44,6 +44,14 @@ type PolicyDeniedError string
 func (e PolicyDeniedError) Error() string { return string(e) }
 
 func (e Executor) Execute(ctx context.Context, call llm.ToolCallRequest) ExecutionResult {
+	return e.execute(ctx, call, nil)
+}
+
+func (e Executor) ExecutePrepared(ctx context.Context, call llm.ToolCallRequest, prepared *PreparedCall) ExecutionResult {
+	return e.execute(ctx, call, prepared)
+}
+
+func (e Executor) execute(ctx context.Context, call llm.ToolCallRequest, prepared *PreparedCall) ExecutionResult {
 	message := llm.LLMMessage{
 		Role:       llm.RoleTool,
 		Name:       call.Name,
@@ -52,6 +60,13 @@ func (e Executor) Execute(ctx context.Context, call llm.ToolCallRequest) Executi
 	tool, ok := e.Registry.Get(call.Name)
 	if !ok {
 		return executionError(call, message, fmt.Errorf("tool %q not found", call.Name), events.ResultFailed)
+	}
+	request := CallRequest{ID: call.ID, Name: call.Name, Arguments: json.RawMessage(call.Arguments)}
+	if prepared != nil {
+		if !prepared.matches(request) {
+			return executionError(call, message, fmt.Errorf("tool call changed after preparation"), events.ResultFailed)
+		}
+		tool = prepared.tool
 	}
 	if reason := UnavailableReason(ctx, tool.Info()); reason != "" {
 		return executionError(call, message, PolicyDeniedError(reason), events.ResultRejected)
@@ -73,7 +88,13 @@ func (e Executor) Execute(ctx context.Context, call llm.ToolCallRequest) Executi
 	if !policy.CanUseTool(actor, assessment.Level, info.OwnerScoped) {
 		return executionError(call, message, PolicyDeniedError(fmt.Sprintf("risk %s is above your allowed tool level", assessment.Level)), events.ResultRejected)
 	}
-	result, logContent, err := tool.Call(ctx, CallRequest{ID: call.ID, Name: call.Name, Arguments: json.RawMessage(call.Arguments)})
+	var result *Result
+	var logContent string
+	if prepared != nil {
+		result, logContent, err = prepared.Call(ctx)
+	} else {
+		result, logContent, err = tool.Call(ctx, request)
+	}
 	resultStatus := events.ResultSucceeded
 	if err != nil {
 		resultStatus = events.ResultFailed

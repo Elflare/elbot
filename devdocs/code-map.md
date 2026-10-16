@@ -120,6 +120,8 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/toolrun/state.go`、`internal/toolrun/preload.go`、`internal/toolrun/background.go`：状态提交、预加载与后台白名单；预载失败与跳过由来源记录身份、原因和结果。
 - `internal/agent/tool_directive.go`、`internal/agent/tool_cache.go`：输入指令和状态提交编排。
 - `internal/fileops/`：共享文件操作、编辑、目标锁和撤销备份。
+- `internal/fileops/binding.go`、`internal/fileops/commit.go`：context 中的服务／Session／准入绑定，以及显式传递的提交校验；context 不保存编辑或撤销预览。
+- `internal/fileops/edit_service.go`、`internal/fileops/rollback_service.go`：编辑／撤销准备对象、预览和提交；`internal/fileops/atomic_write.go` 提供带 revision 校验的写入。
 - `internal/workspace/`、`internal/session/workspace.go`、`internal/sandbox/`：工作目录、持久化与后台路径限制。
 - `internal/tool/media_runtime.go`：工具／Skill 媒体准备；MediaCall 集中管理调用内的元数据、临时引用和成功导出，Close 释放引用并清理私有目录。
 
@@ -130,6 +132,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/toolrun_adapter.go`：Hook、子请求、确认、调用记录与状态提交桥接；请求登记、RecordToolCall 和发现状态保存各自返回独立 LogResult 与原始错误，Runner 不再推导这些操作的结果。
 - `internal/toolrun/runner.go`：Runner 借用共享 Manager 顺序准备和确认、并发执行、按原调用顺序处理完成并 Flush 整批保存；newRecord 复用基础九字段与当次身份，recordCall 在 Execute 返回后填写调用日志结果、等级和查询事实，仅发布一份 audit JSON。参数日志限 256 字符，工具返回的独立摘要不再截断。调用前固定 runSource 写入 JSON，接管不改写已开始调用；后续操作分别使用所属来源 LogResult。
 - `internal/toolrun/toolrun.go`：工具业务解析及原生／远程调用中间层，Execute 保留业务结果、原始错误、ExecutionStarted 和独立正文；未进入调用时声明明确结果及原因，不组装或发布调用日志。
+- `internal/tool/prepared.go`：CallPreparer 能力入口与单次 PreparedCall，固定调用参数、确认详情和执行回调；Runner 以局部变量传给 worker，Executor 校验调用身份及权限后执行。无需保存准备结果的工具返回 nil，普通工具执行时使用当前注册项。
 - `internal/toolrun/logging.go`：logTool 统一接收 ctx 和完整 LogRecord，直接 EmitLog；工具调用记录和编排操作记录均由 Runner 来源组装；全局队列和落盘归 internal/logging。
 - `internal/tool/executor.go`、`internal/toolrun/elwisp_exec.go`：原生／远程执行入口，保留业务 Result、原始 error 与真实 ExecutionStarted；LogResult.Content 传递工具独立正文；未进入调用的结果在入口明确，已进入调用的日志结果交 Runner 统一填写。PolicyDeniedError 只表达业务拒绝事实。
 - `internal/agent/dialogue/message_store.go`：对话写入边界，返回独立 LogResult 和原始 error；来源声明保存结果，ToolCommitter 各阶段继续传递 LogResult，业务提交及检查点规则不解析日志正文。`internal/storage/tool_batch.go`、`internal/storage/sqlite/tool_batch.go`：调用数组／结果数组关联和完整批次校验。

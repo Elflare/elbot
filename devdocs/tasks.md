@@ -23,10 +23,14 @@
   - MediaCall 按 ID 集中保存元数据、引用及成功导出，OpenHeld 打开已持有的记录；输出导入直接登记持有，Go 参数准备复用完整条目及小文件 base64，保留参数顺序和重复项。
   - 复用限于同次调用；Shell 跨调用检查缓存并刷新时间，Go／TOML 使用调用专属目录。引用持续到 Close，失败结果不缓存，引用释放失败可重试。入口：[internal/tool/media_runtime.go](../internal/tool/media_runtime.go)、[internal/tool/skill/media.go](../internal/tool/skill/media.go)、[internal/media/manager.go](../internal/media/manager.go)。
 
-- [ ] 重复预览：复用同次调用在确认前生成的预览。
-  - 文件编辑／撤销、长期记忆和 Skill 管理工具在预检及确认详情阶段重复读取、计算预览；edit_file 虽保存预检结果，仍先重新读文件和计算 diff。
-  - 保留执行前的 revision、目标文件及绑定有效性校验。入口：[internal/fileops/edit_service.go](../internal/fileops/edit_service.go)、[internal/toolrun/runner.go](../internal/toolrun/runner.go)。
+- [x] 重复预览：复用同次调用在确认前生成的预览。
+  - Runner 局部持有 PreparedCall 并传给 worker；文件编辑／撤销、长期记忆和 Skill 修改复用准备快照，保留执行前的 revision、目标及绑定校验；AgentSkill 正文在执行时读取。
+  - 文件 context 只保留绑定，准备对象和提交校验显式传递。入口：[internal/fileops/edit_service.go](../internal/fileops/edit_service.go)、[internal/toolrun/runner.go](../internal/toolrun/runner.go)。
+  - `internal/tool/prepared.go`、`internal/tool/executor.go`、`internal/toolrun/toolrun.go`、`internal/fileops/binding.go`、`internal/fileops/commit.go`、`internal/fileops/rollback_service.go`、`internal/fileops/atomic_write.go`。
   - `internal/tool/builtin/file_tools.go`、`internal/tool/builtin/file_rollback.go`、`internal/fileops/rollback.go`、`internal/tool/builtin/long_memory.go`、`internal/tool/skill/modify_el_skill.go`、`internal/tool/skill/agent_skill_tool.go`。
+
+- [ ] 规则卡状态：单独讨论并拆分 context 中的 shown／new 状态，明确发现与渲染职责。
+  - `internal/tool/detail.go`、`internal/tool/discover.go`、`internal/toolrun/preload.go`、`internal/agent/toolrun_adapter.go`、`internal/agent/tool_directive.go`。
 
 - [ ] 目录 AST：先筛选语言，再完整读取候选文件。
   - 当前先完整读取所有大小合格的文件，再判断是否支持语言，导致无关文件被读取后丢弃。
