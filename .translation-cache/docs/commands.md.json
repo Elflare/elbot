@@ -656,22 +656,6 @@
       "translation": "Checks the main configuration path selected when starting the current service; separate configurations are located according to __ELBOT_CODE_0__ in the main file.",
       "updated_at": 1790906605
     },
-    "docs/commands.md:quote:0077f3b69c1eb7c3ecc69b8b7c85925e08641bc1d1807770f9bf69ba7ac66ac9": {
-      "kind": "quote",
-      "source": "读取／查询／说明类最多 128 字符，执行／编辑／写入及媒体类最多 256 字符。",
-      "source_file": "docs/commands.md",
-      "source_hash": "0077f3b69c1eb7c3ecc69b8b7c85925e08641bc1d1807770f9bf69ba7ac66ac9",
-      "translation": "Read/Query/Description types are limited to 128 characters, while Execute/Edit/Write and Media types are limited to 256 characters.",
-      "updated_at": 1791712563
-    },
-    "docs/commands.md:quote:617de1dc68268099343524929079470e7aadc32826edd41cfaa2a5f4fb5ffb95": {
-      "kind": "quote",
-      "source": "工具参数日志最多 256 个 Unicode 字符；",
-      "source_file": "docs/commands.md",
-      "source_hash": "617de1dc68268099343524929079470e7aadc32826edd41cfaa2a5f4fb5ffb95",
-      "translation": "Tool parameter logs are limited to a maximum of 256 Unicode characters;",
-      "updated_at": 1791712563
-    },
     "docs/commands.md:quote:b9768afbd60a3d931fd5663400a16545a5e23b3ebf3c244d8deb45bf22ac7b4a": {
       "kind": "quote",
       "source": "实际调用参数和返回给模型的结果不受日志限长影响。",
@@ -679,6 +663,22 @@
       "source_hash": "b9768afbd60a3d931fd5663400a16545a5e23b3ebf3c244d8deb45bf22ac7b4a",
       "translation": "Actual call parameters and results returned to the model are not affected by the log length limit.",
       "updated_at": 1791712563
+    },
+    "docs/commands.md:quote:ec6c197f98b7d204a57a0e6a2e903437eb2a028682b75cc8587dfd297783c906": {
+      "kind": "quote",
+      "source": "普通汉字按 1 rune 计算。",
+      "source_file": "docs/commands.md",
+      "source_hash": "ec6c197f98b7d204a57a0e6a2e903437eb2a028682b75cc8587dfd297783c906",
+      "translation": "Standard Chinese characters are counted as 1 rune.",
+      "updated_at": 1792140912
+    },
+    "docs/commands.md:quote:fa4e23a36c6bf46d6d17feb46439c7b969207c5816f316a286f674c186e47654": {
+      "kind": "quote",
+      "source": "工具参数日志最多 512 rune，各工具返回的日志摘要最多 1024 rune，截断省略号计入上限。",
+      "source_file": "docs/commands.md",
+      "source_hash": "fa4e23a36c6bf46d6d17feb46439c7b969207c5816f316a286f674c186e47654",
+      "translation": "Tool parameter logs are limited to 512 runes, and log summaries returned by each tool are limited to 1024 runes; truncation ellipses are counted towards the limit.",
+      "updated_at": 1792140912
     },
     "docs/commands.md:table:03af39065d441408d43be4c157c84c77736fa517eedfac00caa9a31d9f4fa872": {
       "kind": "table",
@@ -1474,8 +1474,8 @@
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "349bf3363bfcf165c28e7041e999fe5dbb1441265d497ff46c943eb9d0e7adb2",
+  "source_hash": "bc36a78049ce3da77f9459768b5fc72f70a4e0ac8f7e271e95fb0501194608a5",
   "target": "docs.en/commands.md",
-  "updated_at": 1791809200,
+  "updated_at": 1792140912,
   "version": 2
 }
