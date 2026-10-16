@@ -7,40 +7,12 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"elbot/internal/processenv"
 	"elbot/internal/tool"
 )
-
-func TestBuiltinEnvReadsOSEnvFirst(t *testing.T) {
-	t.Setenv("ELBOT_TEST_KEY", "from-os")
-	value, err := builtinEnv(context.Background(), "ELBOT_TEST_KEY")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if value != "from-os" {
-		t.Fatalf("value = %q", value)
-	}
-}
-
-func TestBuiltinEnvReadsConfigDotEnv(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("ELBOT_TEST_DOT='from-dotenv'\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	ctx := WithConfigEnvDir(context.Background(), dir)
-	value, err := builtinEnv(ctx, "ELBOT_TEST_DOT")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if value != "from-dotenv" {
-		t.Fatalf("value = %q", value)
-	}
-}
 
 func TestWebSearchToolReadsSharedEnvironment(t *testing.T) {
 	environment := processenv.New([]string{"TAVILY_API_KEY=tvly-configured"})

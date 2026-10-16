@@ -18,14 +18,12 @@ import (
 )
 
 type directorySearchMatch struct {
-	Path     string
-	Line     int
-	Column   int
-	EndLine  int
-	Kind     string
-	Label    string
-	Text     string
-	Language string
+	Path    string
+	Line    int
+	Column  int
+	EndLine int
+	Kind    string
+	Label   string
 }
 
 const (
@@ -192,9 +190,6 @@ func findDirectoryGrepMatches(ctx context.Context, root, query string) ([]direct
 					Text string `json:"text"`
 				} `json:"path"`
 				LineNumber int `json:"line_number"`
-				Lines      struct {
-					Text string `json:"text"`
-				} `json:"lines"`
 				Submatches []struct {
 					Start int `json:"start"`
 				} `json:"submatches"`
@@ -211,7 +206,7 @@ func findDirectoryGrepMatches(ctx context.Context, root, query string) ([]direct
 		if err != nil {
 			continue
 		}
-		matches = append(matches, directorySearchMatch{Path: filepath.ToSlash(path), Line: event.Data.LineNumber, Column: column, EndLine: event.Data.LineNumber, Kind: "grep", Text: strings.TrimSuffix(event.Data.Lines.Text, "\n")})
+		matches = append(matches, directorySearchMatch{Path: filepath.ToSlash(path), Line: event.Data.LineNumber, Column: column, EndLine: event.Data.LineNumber, Kind: "grep"})
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, nil, fmt.Errorf("read ripgrep output: %w", err)
@@ -309,7 +304,7 @@ func findDirectoryASTMatches(root, query, mode string) ([]directorySearchMatch, 
 				return nil
 			}
 			for _, function := range functions {
-				matches = append(matches, directorySearchMatch{Path: filepath.ToSlash(rel), Line: function.StartLine, EndLine: function.EndLine, Kind: function.Kind, Label: function.Name, Language: language})
+				matches = append(matches, directorySearchMatch{Path: filepath.ToSlash(rel), Line: function.StartLine, EndLine: function.EndLine, Kind: function.Kind, Label: function.Name})
 			}
 			return nil
 		}
@@ -323,7 +318,7 @@ func findDirectoryASTMatches(root, query, mode string) ([]directorySearchMatch, 
 			return nil
 		}
 		for _, identifier := range identifiers {
-			matches = append(matches, directorySearchMatch{Path: filepath.ToSlash(rel), Line: identifier.Line, Column: identifier.Column, EndLine: identifier.Line, Kind: identifier.Kind, Label: identifier.Container, Language: language})
+			matches = append(matches, directorySearchMatch{Path: filepath.ToSlash(rel), Line: identifier.Line, Column: identifier.Column, EndLine: identifier.Line, Kind: identifier.Kind, Label: identifier.Container})
 		}
 		return nil
 	})

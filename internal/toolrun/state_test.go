@@ -52,6 +52,10 @@ func TestStateCommitRestoresAndDetachesSchemas(t *testing.T) {
 	if strings.Join(committed.Injected, ",") != "external" {
 		t.Fatalf("commit=%+v", committed)
 	}
+	repeated, _, err := service.Commit(ctx, row.ID, StateUpdate{Tools: []CachedTool{item}, Tags: []string{"tag"}, ShownRuleCardFormats: []string{"elyph"}})
+	if err != nil || len(repeated.Injected) != 0 || strings.Join(repeated.Existing, ",") != "external" || !reflect.DeepEqual(repeated.State, committed.State) {
+		t.Fatalf("repeated commit=%+v err=%v", repeated, err)
+	}
 	item.Schema.Parameters["properties"].(map[string]any)["bad"] = true
 	committed.State.ToolCache[0].Schema.Parameters["bad"] = true
 	restored, err := NewStateService(store).Snapshot(ctx, row.ID)

@@ -201,9 +201,9 @@ func runMediaCommand(ctx context.Context, label string, cmd *exec.Cmd, mediaCall
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
-	out := truncateOutput(stdout.String())
-	errText := truncateOutput(stderr.String())
 	if err != nil {
+		out := truncateOutput(stdout.String())
+		errText := truncateOutput(stderr.String())
 		return nil, commandError(ctx, label, err, out, errText)
 	}
 	return resultFromStdoutWithMedia(ctx, stdout.String(), mediaCall, cmd.Dir)
@@ -234,10 +234,6 @@ func commandOutputSuffix(stdout, stderr string) string {
 		return ""
 	}
 	return "\n" + strings.Join(parts, "\n")
-}
-
-func resultFromStdout(out string) (*tool.Result, error) {
-	return resultFromStdoutWithMedia(context.Background(), out, nil, "")
 }
 
 func truncateOutput(text string) string {
