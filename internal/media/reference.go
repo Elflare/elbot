@@ -79,14 +79,22 @@ func ArgumentMediaIDs(arguments string) []string {
 
 // Hold keeps an in-flight consumer alive independently of persistent owners.
 func (m *Manager) Hold(ctx context.Context, id string) (func() error, error) {
-	ref := storage.MediaReference{MediaID: id, OwnerType: "request", OwnerID: storage.NewID(), Purpose: "temporary"}
-	if err := m.AddReference(ctx, &ref); err != nil {
+	metadata, err := m.Metadata(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return m.holdMedia(ctx, metadata)
+}
+
+func (m *Manager) holdMedia(ctx context.Context, metadata *storage.Media) (func() error, error) {
+	ref := storage.MediaReference{MediaID: metadata.ID, OwnerType: "request", OwnerID: storage.NewID(), Purpose: "temporary"}
+	if err := m.Store.MediaReferences().Add(ctx, &ref); err != nil {
 		return nil, err
 	}
 	return func() error {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		return m.RemoveReference(cleanupCtx, ref)
+		return m.Store.MediaReferences().Remove(cleanupCtx, ref)
 	}, nil
 }
 

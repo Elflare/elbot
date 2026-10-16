@@ -20,8 +20,6 @@ import (
 	"elbot/internal/storage"
 )
 
-const signedURLRefreshMargin = 5 * time.Minute
-
 func NewManager(store storage.Store, root string, backend Backend) *Manager {
 	defaults := config.Default()
 	root = filepath.Clean(root)
@@ -171,33 +169,32 @@ func (m *Manager) importReader(ctx context.Context, input io.Reader, size int64,
 }
 
 func (m *Manager) Open(ctx context.Context, id string) (io.ReadCloser, *storage.Media, error) {
-	if !ValidID(id) {
-		return nil, nil, fmt.Errorf("invalid media ID %q", id)
-	}
-	media, err := m.Store.Media().Get(ctx, id)
+	media, err := m.Metadata(ctx, id)
 	if err != nil {
 		return nil, nil, err
 	}
-	if media.Deleting {
-		return nil, nil, fmt.Errorf("media is being deleted")
-	}
-	backend, err := m.backendForStoredMedia(ctx, media)
+	release, err := m.holdMedia(ctx, media)
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := m.Store.Media().Touch(ctx, id, m.Now()); err != nil {
-		return nil, nil, err
-	}
-	release, err := m.Hold(ctx, id)
-	if err != nil {
-		return nil, nil, err
-	}
-	reader, err := backend.Open(ctx, media)
+	reader, err := m.openMedia(ctx, media)
 	if err != nil {
 		_ = release()
 		return nil, nil, err
 	}
-	return &referencedReader{ReadCloser: reader, release: release}, sanitizeMediaMetadata(media), nil
+	return &referencedReader{ReadCloser: reader, release: release}, media, nil
+}
+
+// openMedia opens an already held record without querying metadata or adding a hold.
+func (m *Manager) openMedia(ctx context.Context, media *storage.Media) (io.ReadCloser, error) {
+	backend, err := m.backendForStoredMedia(ctx, media)
+	if err != nil {
+		return nil, err
+	}
+	if err := m.Store.Media().Touch(ctx, media.ID, m.Now()); err != nil {
+		return nil, err
+	}
+	return backend.Open(ctx, media)
 }
 
 func (m *Manager) Read(ctx context.Context, id string) ([]byte, *storage.Media, error) {
@@ -248,64 +245,6 @@ func (m *Manager) RemoveReference(ctx context.Context, reference storage.MediaRe
 		return fmt.Errorf("invalid media reference")
 	}
 	return m.Store.MediaReferences().Remove(ctx, reference)
-}
-
-func (m *Manager) PresignGet(ctx context.Context, id string, expiry time.Duration) (string, error) {
-	if expiry <= 0 {
-		expiry = time.Hour
-	}
-	unlock, err := m.objects.acquire(ctx, id)
-	if err != nil {
-		return "", err
-	}
-	defer unlock()
-	// Protect the object throughout upload, signing and cache persistence.
-	release, err := m.Hold(ctx, id)
-	if err != nil {
-		return "", err
-	}
-	defer release()
-	metadata, err := m.Store.Media().Get(ctx, id)
-	if err != nil {
-		return "", err
-	}
-	backend, err := m.remoteBackend(ctx)
-	if err != nil {
-		return "", err
-	}
-	// Stored media may still be local after the configured backend switches to S3.
-	if metadata.ObjectKey == "" && metadata.Backend != "s3" {
-		reader, _, err := m.Open(ctx, id)
-		if err != nil {
-			return "", err
-		}
-		defer reader.Close()
-		metadata.ObjectKey, err = backend.Put(ctx, id, reader, metadata.Size, metadata.MIMEType)
-		if err != nil {
-			return "", err
-		}
-		if err := m.Store.Media().Upsert(ctx, metadata); err != nil {
-			return "", err
-		}
-	}
-	cached, err := m.Store.Media().GetSignedURL(ctx, id)
-	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return "", err
-	}
-	now := m.Now()
-	if err == nil && cached.ExpiresAt.After(now.Add(signedURLRefreshMargin)) {
-		return cached.URL, nil
-	}
-	// Start before signing and round down to avoid overstating the URL lifetime.
-	expiresAt := now.Truncate(time.Second).Add(expiry)
-	url, err := backend.PresignGet(ctx, metadata, expiry)
-	if err != nil {
-		return "", err
-	}
-	if err := m.Store.Media().UpsertSignedURL(ctx, &storage.MediaSignedURL{MediaID: id, URL: url, ExpiresAt: expiresAt}); err != nil {
-		return "", err
-	}
-	return url, nil
 }
 
 func sanitizeInput(input Input) Input {
