@@ -30,14 +30,14 @@ func TestReaderStopsBeforeOlderOversizedLine(t *testing.T) {
 func TestReaderEventSetFiltersBeforeLimit(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit-"+time.Now().Format("2006-01-02")+".log")
-	content := "level=INFO event=tool_call_start msg=start\n" +
-		"level=INFO event=hook_tool_call msg=hook\n" +
-		"level=INFO event=TOOL_CALL_END msg=end\n" +
-		"level=INFO event=tool_call_end_extra msg=unrelated\n"
+	content := "level=INFO event=tool_call_prepared msg=start\n" +
+		"level=INFO event=hook_tool_call_completed msg=hook\n" +
+		"level=INFO event=TOOL_CALL_COMPLETED msg=end\n" +
+		"level=INFO event=tool_call_completed_extra msg=unrelated\n"
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
-	query := LogQuery{Prefix: "audit", Limit: 2, Events: []string{"tool_call_start", "tool_call_end"}}
+	query := LogQuery{Prefix: "audit", Limit: 2, Events: []string{"tool_call_prepared", "tool_call_completed"}}
 	result, err := (Reader{Dir: dir}).Query(t.Context(), query)
 	if err != nil || len(result.Entries) != 2 {
 		t.Fatalf("result=%+v err=%v", result, err)
@@ -343,7 +343,7 @@ func TestReaderCrossDayFiltersAndPhysicalOrder(t *testing.T) {
 	paths := logPaths(dir, "audit", 3)
 	// Event timestamps need not be monotonic within a file. Keep write order.
 	line := func(hour, module, detail string) string {
-		return fmt.Sprintf("time=%q level=WARN msg=%q event=hook_tool_call module=%s detail=%q tags=%q\n", "2026-06-03 "+hour+":00:00", "摘要\n匹配", module, detail, `["tag"]`)
+		return fmt.Sprintf("time=%q level=WARN msg=%q event=hook_tool_call_completed module=%s detail=%q tags=%q\n", "2026-06-03 "+hour+":00:00", "摘要\n匹配", module, detail, `["tag"]`)
 	}
 	if err := os.WriteFile(paths[0], []byte(line("12", "hook", "详情\n目标")+line("11", "hook", "详情\n目标")+line("13", "agent", "详情\n目标")), 0o600); err != nil {
 		t.Fatal(err)
@@ -356,7 +356,7 @@ func TestReaderCrossDayFiltersAndPhysicalOrder(t *testing.T) {
 	until := since.Add(2 * time.Hour)
 	entries, err := (Reader{Dir: dir}).Query(context.Background(), LogQuery{
 		Prefix: "audit", Days: 3, Limit: 3, MinLevel: "warn", Since: &since, Until: &until,
-		Fields:               map[string]string{"module": "hook", "event": "hook_tool_call"},
+		Fields:               map[string]string{"module": "hook", "event": "hook_tool_call_completed"},
 		ContentFieldContains: map[string][]string{"tags": {"tag"}},
 		Contains:             "详情\n目标", ContentContains: "摘要\n匹配",
 	})

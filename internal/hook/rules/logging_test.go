@@ -41,13 +41,13 @@ func TestRuleToolStartPrecedesBodyAndEndHasElapsed(t *testing.T) {
 	records := collectRecords(t, true)
 	registry := tool.NewRegistry()
 	invoked := &bodyTestTool{onCall: func() {
-		if len(*records) != 1 || (*records)[0].EventName != "hook_tool_call_started" || strings.Contains((*records)[0].Content, `"result"`) {
+		if len(*records) != 1 || (*records)[0].EventName != "hook_tool_call_prepared" || strings.Contains((*records)[0].Content, `"result"`) {
 			t.Fatalf("start=%+v", *records)
 		}
 	}}
 	_ = registry.Register(invoked)
 	_, _, _ = (Module{Opts: Options{Tools: registry}}).callTool(t.Context(), hook.Event{}, Action{Tool: invoked.Name()}, state{})
-	if len(*records) != 2 || (*records)[1].EventName != "hook_tool_call" || !strings.Contains((*records)[1].Content, `"elapsed_ms"`) {
+	if len(*records) != 2 || (*records)[1].EventName != "hook_tool_call_completed" || !strings.Contains((*records)[1].Content, `"elapsed_ms"`) {
 		t.Fatalf("end=%+v", *records)
 	}
 }
@@ -87,7 +87,7 @@ func collectRecords(t *testing.T, includeStarts ...bool) *[]events.LogRecord {
 	var records []events.LogRecord
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 		// Terminal-fact tests omit starts; boundary tests include both explicitly.
-		if record.EventName == "hook_tool_call_started" && len(includeStarts) == 0 {
+		if record.EventName == "hook_tool_call_prepared" && len(includeStarts) == 0 {
 			return nil
 		}
 		if record.Module == "hook" {

@@ -63,7 +63,7 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 			}}
 			var records []events.LogRecord
 			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-				if record.Module == "toolrun" && record.EventName == "tool_call_end" {
+				if record.Module == "toolrun" && record.EventName == "tool_call_completed" {
 					records = append(records, record)
 				}
 				return nil
@@ -170,7 +170,7 @@ func TestRunnerWritesOnlyAuditWithBoundedArgumentPreview(t *testing.T) {
 	}
 	reader := logging.Reader{Dir: center.LogDir()}
 	for _, prefix := range []string{"audit", "elbot"} {
-		found, err := reader.Query(t.Context(), logging.LogQuery{Prefix: prefix, Days: 1, Limit: 10, MinLevel: "debug", Fields: map[string]string{"event": "tool_call_end"}})
+		found, err := reader.Query(t.Context(), logging.LogQuery{Prefix: prefix, Days: 1, Limit: 10, MinLevel: "debug", Fields: map[string]string{"event": "tool_call_completed"}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -217,7 +217,7 @@ func TestRunnerRecordsInvocationBeforeCancellationStopsLaterOperations(t *testin
 	manager := NewManager(registry, security.NewPolicy("high", "high", nil))
 	var calls []events.LogRecord
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-		if record.EventName == "tool_call_end" && record.Category == events.LogAudit {
+		if record.EventName == "tool_call_completed" && record.Category == events.LogAudit {
 			calls = append(calls, record)
 		}
 		return nil
@@ -237,7 +237,7 @@ func TestRunnerRecordsUnenteredCallFailure(t *testing.T) {
 	manager := NewManager(tool.NewRegistry(), security.DefaultPolicy())
 	var calls []events.LogRecord
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-		if record.EventName == "tool_call_end" && record.Category == events.LogAudit {
+		if record.EventName == "tool_call_completed" && record.Category == events.LogAudit {
 			calls = append(calls, record)
 		}
 		return nil
@@ -382,12 +382,12 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 				if r.Module != "toolrun" || r.Identity.SessionID == nil || *r.Identity.SessionID != "session-log" {
 					return nil
 				}
-				if r.EventName == "tool_call_end" && r.Category == events.LogAudit {
+				if r.EventName == "tool_call_completed" && r.Category == events.LogAudit {
 					if committer.finished {
 						t.Error("invocation log delayed until transcript save")
 					}
 					calls = append(calls, r)
-				} else if r.EventName != "tool_call_end" {
+				} else if r.EventName != "tool_call_completed" {
 					operations[r.EventName] = r
 				}
 				return nil

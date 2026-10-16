@@ -33,7 +33,7 @@ func auditInfo() command.Info {
   --since <time>        Show events after a time, e.g. 2h, 30m, 2026-06-03, 2026-06-03T15:04:05.
 
   --until <time>        Show events before a time.
-  --event <name>        Filter by event, e.g. tool_call_start, tool_call_end, llm_usage.
+  --event <name>        Filter by event, e.g. tool_call_prepared, tool_call_completed, llm_usage.
   --risk <level>        Filter by risk.
   --actor <id>          Filter by actor_id.
   --session <id>        Filter by session_id.
@@ -43,7 +43,7 @@ func auditInfo() command.Info {
 
 Examples:
   /audit
-  /audit --event tool_call_end --risk high -n 10
+  /audit --event tool_call_completed --risk high -n 10
   /audit -t --run_source cron -n 20
   /audit -d --contains "hello"
   /audit --actor cli:local --since 24h`),
@@ -173,7 +173,7 @@ func (c logCommand) Complete(ctx context.Context, req command.CompletionRequest)
 		return completeStringOptions([]string{"low", "medium", "high", "critical"}, token.Text, token.Start, token.End, "risk")
 	}
 	if c.audit && previous == "--event" {
-		return completeStringOptions([]string{"llm_usage", "llm_error", "session_naming_completed", "tool_call_start", "tool_call_end", "permission_denied", "session_resume", "session_fork", "hook_tool_call", "hook_tool_log"}, token.Text, token.Start, token.End, "audit_event")
+		return completeStringOptions([]string{"llm_usage", "llm_error", "session_naming_completed", "tool_call_prepared", "tool_call_completed", "permission_denied", "session_resume", "session_fork", "hook_tool_call_completed", "hook_tool_log"}, token.Text, token.Start, token.End, "audit_event")
 	}
 	if c.audit && previous == "--tool" && !strings.HasPrefix(token.Text, "-") {
 		return completeToolNames(c.deps, token.Text, token.Start, token.End)
@@ -467,7 +467,7 @@ func parseLogArgsWithOptions(args string, query *logging.LogQuery, fields map[st
 				continue
 			}
 			delete(fields, "event")
-			query.Events = []string{"tool_call_start", "tool_call_end"}
+			query.Events = []string{"tool_call_prepared", "tool_call_completed"}
 		case "-s", "--system":
 			if !opts.systemFilter {
 				return fmt.Errorf("unknown option: %s", name)

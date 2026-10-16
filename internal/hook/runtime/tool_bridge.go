@@ -103,10 +103,10 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	}
 	logHook := func(eventName string, logResult globalevents.LogResult) {
 		content.Result = &logResult.Content
-		if eventName == "hook_tool_call_started" {
+		if eventName == "hook_tool_call_prepared" {
 			content.Result = nil
 		}
-		if eventName != "hook_tool_call" {
+		if eventName != "hook_tool_call_completed" {
 			logResult.Content = tool.TruncateLogContent(logResult.Content, 2048)
 		}
 		content.ActorID = tool.TruncateLogContent(actor.ID, 2048)
@@ -138,12 +138,12 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		hook.LogHook(callCtx, record)
 	}
 	if err != nil {
-		logHook("hook_tool_call", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered; invalid parameters: " + err.Error()})
+		logHook("hook_tool_call_completed", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered; invalid parameters: " + err.Error()})
 		return nil, err
 	}
 	if name == "" {
 		err := fmt.Errorf("tool.call requires name")
-		logHook("hook_tool_call", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})
+		logHook("hook_tool_call_completed", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})
 		return nil, err
 	}
 	call.ID = randomID("plugin")
@@ -154,18 +154,18 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	}
 	if !allowed {
 		err := fmt.Errorf("tool %q is not allowed for hook %q", name, w.config.ID)
-		logHook("hook_tool_call", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})
+		logHook("hook_tool_call_completed", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})
 		return nil, err
 	}
 	registered, ok := w.manager.opts.Registry.Get(name)
 	if !ok {
 		err := fmt.Errorf("tool %q not found", name)
-		logHook("hook_tool_call", globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()})
+		logHook("hook_tool_call_completed", globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()})
 		return nil, err
 	}
 	if registered.Info().ForegroundOnly && params.Background {
 		err := fmt.Errorf("tool %q is foreground-only", name)
-		logHook("hook_tool_call", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})
+		logHook("hook_tool_call_completed", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})
 		return nil, err
 	}
 	// Authorization may use the synthetic Hook principal; audit never does.
@@ -178,7 +178,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		contextValue, ok := w.manager.takeToolContext(token, w.config.ID)
 		if !ok {
 			err := fmt.Errorf("invalid, expired or exhausted hook context")
-			logHook("hook_tool_call", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})
+			logHook("hook_tool_call_completed", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})
 			return nil, err
 		}
 		callCtx = contextValue.Context
@@ -190,7 +190,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		}
 	} else if params.Target.Empty() {
 		err := fmt.Errorf("background tool output requires an explicit target")
-		logHook("hook_tool_call", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})
+		logHook("hook_tool_call_completed", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})
 		return nil, err
 	} else {
 		// Standalone background execution retains its independent timeout.
@@ -204,15 +204,15 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		if err == context.Canceled {
 			logResult.ResultStatus = globalevents.ResultCanceled
 		}
-		logHook("hook_tool_call", logResult)
+		logHook("hook_tool_call_completed", logResult)
 		return nil, err
 	}
 	started := time.Now()
-	logHook("hook_tool_call_started", globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded})
+	logHook("hook_tool_call_prepared", globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded})
 	result, logContent, err := registered.Call(callCtx, call)
 	elapsedMS := time.Since(started).Milliseconds()
 	content.ElapsedMS = &elapsedMS
-	logHook("hook_tool_call", globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: logContent})
+	logHook("hook_tool_call_completed", globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: logContent})
 	if err != nil {
 		return nil, err
 	}

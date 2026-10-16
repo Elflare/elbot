@@ -171,7 +171,7 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 			ToolCallID: tool.TruncateLogContent(call.ID, 2048),
 		}
 		data, _ := json.Marshal(content)
-		record := newRecord(ctx, "tool_call_end", logResult)
+		record := newRecord(ctx, "tool_call_completed", logResult)
 		record.Category, record.Type, record.ContentLimit, record.Content = events.LogAudit, events.ContentJSON, 0, string(data)
 		logTool(ctx, record)
 	}
@@ -459,7 +459,7 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 				startedAt = time.Now()
 				task.startedAt = startedAt
 				content, _ := json.Marshal(map[string]string{"tool": call.Name, "tool_call_id": call.ID, "actor_id": actor.ID, "arguments": tool.TruncateLogContent(call.Arguments, 512), "risk": riskText, "run_source": runSource, "source": string(resolved.Source)})
-				record := newRecord(runToolCtx, "tool_call_start", events.LogResult{ResultStatus: events.ResultSucceeded})
+				record := newRecord(runToolCtx, "tool_call_prepared", events.LogResult{ResultStatus: events.ResultSucceeded})
 				record.Category, record.Type, record.ContentLimit, record.Content = events.LogAudit, events.ContentJSON, 0, string(content)
 				logTool(runToolCtx, record)
 			})

@@ -37,7 +37,7 @@ func captureHookRecords(t *testing.T, includeStarts ...bool) *[]events.LogRecord
 	var records []events.LogRecord
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 		// Existing assertions inspect terminal facts; boundary tests opt into starts.
-		if record.EventName == "hook_tool_call_started" && len(includeStarts) == 0 {
+		if record.EventName == "hook_tool_call_prepared" && len(includeStarts) == 0 {
 			return nil
 		}
 		if record.Module == "hook" {
@@ -56,7 +56,7 @@ func TestPluginToolStartPrecedesBodyAndEndHasElapsed(t *testing.T) {
 	records := captureHookRecords(t, true)
 	registry := tool.NewRegistry()
 	_ = registry.Register(loggingTool{run: func(context.Context, tool.CallRequest) (*tool.Result, string, error) {
-		if len(*records) != 1 || (*records)[0].EventName != "hook_tool_call_started" || strings.Contains((*records)[0].Content, `"result"`) {
+		if len(*records) != 1 || (*records)[0].EventName != "hook_tool_call_prepared" || strings.Contains((*records)[0].Content, `"result"`) {
 			t.Fatalf("start=%+v", *records)
 		}
 		return &tool.Result{Content: "business"}, "summary", nil
@@ -72,7 +72,7 @@ func TestPluginToolStartPrecedesBodyAndEndHasElapsed(t *testing.T) {
 	if _, err := worker.callTool(raw); err != nil {
 		t.Fatal(err)
 	}
-	if len(*records) != 2 || (*records)[1].EventName != "hook_tool_call" || !strings.Contains((*records)[1].Content, `"elapsed_ms"`) {
+	if len(*records) != 2 || (*records)[1].EventName != "hook_tool_call_completed" || !strings.Contains((*records)[1].Content, `"elapsed_ms"`) {
 		t.Fatalf("end=%+v", *records)
 	}
 }
@@ -98,7 +98,7 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 				t.Fatal(err)
 			}
 			manager, err := NewManager(Options{SharedDir: t.TempDir(), Registry: registry, Send: func(_ context.Context, _ delivery.Target, _ []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-				if len(*records) != 1 || (*records)[0].EventName != "hook_tool_call" {
+				if len(*records) != 1 || (*records)[0].EventName != "hook_tool_call_completed" {
 					t.Fatalf("call record was delayed until send: %+v", *records)
 				}
 				return delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "cli", PlatformMessageID: "delivered"}}}, tc.send, tc.err
@@ -306,7 +306,7 @@ func TestToolWithoutOutputsDoesNotInvokeSenderOrLogSend(t *testing.T) {
 	defer manager.Close(context.Background())
 	worker := newWorker(manager, Config{ID: "test", EventTimeoutSeconds: 10, Tools: ToolsConfig{BackgroundAllow: []string{"logging_tool"}}})
 	result, err := worker.callTool(json.RawMessage(`{"name":"logging_tool","background":true,"target":{"platform":"cli"}}`))
-	if err != nil || result == nil || len(*records) != 1 || (*records)[0].EventName != "hook_tool_call" {
+	if err != nil || result == nil || len(*records) != 1 || (*records)[0].EventName != "hook_tool_call_completed" {
 		t.Fatalf("result=%v err=%v records=%+v", result, err, *records)
 	}
 }
@@ -357,7 +357,7 @@ func TestInvalidToolParametersAreInfoCallRecords(t *testing.T) {
 				t.Fatalf("err=%v records=%+v", err, *records)
 			}
 			record := (*records)[0]
-			if record.EventName != "hook_tool_call" || record.Category != events.LogAudit || record.Level != slog.LevelInfo || record.ResultStatus != events.ResultRejected || !strings.Contains(record.Content, "not entered") {
+			if record.EventName != "hook_tool_call_completed" || record.Category != events.LogAudit || record.Level != slog.LevelInfo || record.ResultStatus != events.ResultRejected || !strings.Contains(record.Content, "not entered") {
 				t.Fatal(record)
 			}
 			var content map[string]json.RawMessage
