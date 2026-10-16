@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -105,6 +106,9 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		content.Result = &logResult.Content
 		if eventName == "hook_tool_call_prepared" {
 			content.Result = nil
+		}
+		if eventName == "hook_tool_call_completed" {
+			content.Arguments = nil
 		}
 		if eventName != "hook_tool_call_completed" {
 			logResult.Content = tool.TruncateLogContent(logResult.Content, 2048)
@@ -212,7 +216,14 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	result, logContent, err := registered.Call(callCtx, call)
 	elapsedMS := time.Since(started).Milliseconds()
 	content.ElapsedMS = &elapsedMS
-	logHook("hook_tool_call_completed", globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: logContent})
+	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: logContent}
+	if err != nil {
+		logResult.ResultStatus = globalevents.ResultFailed
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+	}
+	logHook("hook_tool_call_completed", logResult)
 	if err != nil {
 		return nil, err
 	}

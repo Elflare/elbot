@@ -4,6 +4,7 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -238,7 +239,7 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 	content := struct {
 		Tool       string  `json:"tool"`
 		ActorID    string  `json:"actor_id,omitempty"`
-		Arguments  string  `json:"arguments"`
+		Arguments  string  `json:"arguments,omitempty"`
 		Point      string  `json:"point"`
 		Result     *string `json:"result,omitempty"`
 		ElapsedMS  *int64  `json:"elapsed_ms,omitempty"`
@@ -302,6 +303,12 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 			start.EventName, start.Content, start.ResultStatus = "hook_tool_call_prepared", string(data), globalevents.ResultSucceeded
 			hook.LogHook(ctx, start)
 			toolResult, logResult.Content, err = registered.Call(ctx, tool.CallRequest{ID: call.ID, Name: name, Arguments: json.RawMessage(arguments)})
+			if err != nil {
+				logResult.ResultStatus = globalevents.ResultFailed
+				if errors.Is(err, context.Canceled) {
+					logResult.ResultStatus = globalevents.ResultCanceled
+				}
+			}
 			elapsed := time.Since(started).Milliseconds()
 			content.ElapsedMS = &elapsed
 		}
@@ -311,6 +318,7 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 		record.Level = slog.LevelError
 	}
 	content.Result = &logResult.Content
+	content.Arguments = ""
 	data, _ := json.Marshal(content)
 	record.Content = string(data)
 	hook.LogHook(ctx, record)

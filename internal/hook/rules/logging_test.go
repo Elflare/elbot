@@ -113,7 +113,7 @@ func TestRulesToolRecordsUseIndependentBodyUniqueIDAndActor(t *testing.T) {
 	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "context"})
 	for _, event := range []hook.Event{{Session: hook.SessionContext{ID: "session"}, Actor: hook.ActorContext{ID: "trigger"}}, {Session: hook.SessionContext{ID: "session"}}, {Actor: hook.ActorContext{ID: "permission"}}} {
 		_, outcome, err := module.callTool(ctx, event, Action{Tool: "body_test"}, state{})
-		if err == nil || outcome.ResultStatus != events.ResultSucceeded {
+		if err == nil || outcome.ResultStatus != events.ResultFailed {
 			t.Fatalf("outcome=%+v err=%v", outcome, err)
 		}
 	}
@@ -128,7 +128,7 @@ func TestRulesToolRecordsUseIndependentBodyUniqueIDAndActor(t *testing.T) {
 		if err := json.Unmarshal([]byte(record.Content), &content); err != nil {
 			t.Fatal(err)
 		}
-		if content["tool_call_id"] != invoked.ids[i] || invoked.ids[i] == "" || record.ResultStatus != events.ResultSucceeded || record.Level != slog.LevelInfo || content["result"] != "日志正文：9007199254740993" || strings.Contains(record.Content, "business segments") {
+		if content["tool_call_id"] != invoked.ids[i] || invoked.ids[i] == "" || record.ResultStatus != events.ResultFailed || record.Level != slog.LevelError || content["result"] != "日志正文：9007199254740993" || strings.Contains(record.Content, "business segments") {
 			t.Fatal(record)
 		}
 		if i > 0 && invoked.ids[i] == invoked.ids[i-1] {
@@ -199,9 +199,9 @@ func TestRulesJSONTruncationPreservesUnicodeMarkerAndBusinessData(t *testing.T) 
 				t.Fatal(err)
 			}
 			module := Module{Opts: Options{Tools: registry}}
-			records := collectRecords(t)
+			records := collectRecords(t, true)
 			_, _, err := module.callTool(t.Context(), hook.Event{}, Action{Tool: invoked.Name(), Arguments: body}, state{})
-			if err != nil || invoked.got != body || len(*records) != 1 {
+			if err != nil || invoked.got != body || len(*records) != 2 {
 				t.Fatalf("err=%v records=%+v", err, *records)
 			}
 			var content map[string]any
@@ -213,8 +213,15 @@ func TestRulesJSONTruncationPreservesUnicodeMarkerAndBusinessData(t *testing.T) 
 				want = strings.Repeat("雪", 511) + "…"
 			}
 			// The publishing layer limits arguments, not a tool's independent body.
-			if content["arguments"] != want || content["result"] != body {
-				t.Fatalf("arguments length=%d result length=%d", len([]rune(content["arguments"].(string))), len([]rune(content["result"].(string))))
+			if content["arguments"] != want {
+				t.Fatalf("prepared arguments=%v", content["arguments"])
+			}
+			content = nil
+			if err := json.Unmarshal([]byte((*records)[1].Content), &content); err != nil {
+				t.Fatal(err)
+			}
+			if content["result"] != body {
+				t.Fatalf("completed content=%v", content)
 			}
 			if len((*records)[0].Content) > 64*1024 {
 				t.Fatal("oversized JSON")

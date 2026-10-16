@@ -131,7 +131,7 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 					t.Fatalf("identity=%+v content=%s", record.Identity, record.Content)
 				}
 				if i == 0 {
-					if content["arguments"] == nil || content["elapsed_ms"] == nil || content["sent_messages"] != nil || content["output_count"] != nil {
+					if content["elapsed_ms"] == nil || content["sent_messages"] != nil || content["output_count"] != nil {
 						t.Fatalf("call fields changed: %s", record.Content)
 					}
 					if record.ResultStatus != events.ResultSucceeded || record.Level != slog.LevelInfo || body != "独立日志正文" || strings.Contains(record.Content, "business segments") {
@@ -148,7 +148,7 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 }
 
 func TestPluginToolArgumentPreviewDoesNotChangeInvocation(t *testing.T) {
-	records := captureHookRecords(t)
+	records := captureHookRecords(t, true)
 	args, _ := json.Marshal(map[string]string{"value": strings.Repeat("雪🔥", 400)})
 	registry := tool.NewRegistry()
 	if err := registry.Register(loggingTool{run: func(_ context.Context, req tool.CallRequest) (*tool.Result, string, error) {
@@ -170,7 +170,7 @@ func TestPluginToolArgumentPreviewDoesNotChangeInvocation(t *testing.T) {
 	if _, err = worker.callTool(raw); err != nil {
 		t.Fatal(err)
 	}
-	if len(*records) != 1 {
+	if len(*records) != 2 {
 		t.Fatalf("records=%+v", records)
 	}
 	var content map[string]json.RawMessage
@@ -179,6 +179,10 @@ func TestPluginToolArgumentPreviewDoesNotChangeInvocation(t *testing.T) {
 	}
 	var arguments, result string
 	json.Unmarshal(content["arguments"], &arguments)
+	content = nil
+	if err := json.Unmarshal([]byte((*records)[1].Content), &content); err != nil {
+		t.Fatal(err)
+	}
 	json.Unmarshal(content["result"], &result)
 	if len([]rune(arguments)) != 512 || !strings.HasSuffix(arguments, "…") || result != "source summary" {
 		t.Fatalf("arguments=%q result=%q", arguments, result)
@@ -214,7 +218,7 @@ func TestToolAuditUsesTriggerActorAndKeepsEnteredCancellation(t *testing.T) {
 			token := manager.putToolContext("test", ctx, hook.Event{Session: hook.SessionContext{ID: tc.sessionID}, Actor: hook.ActorContext{ID: tc.sessionActor}}, time.Minute)
 			raw, _ := json.Marshal(map[string]any{"name": "logging_tool", "tool_context": token})
 			_, err = worker.callTool(raw)
-			if !errors.Is(err, context.Canceled) || len(*records) != 1 || (*records)[0].ResultStatus != events.ResultSucceeded || (*records)[0].Level != slog.LevelInfo {
+			if !errors.Is(err, context.Canceled) || len(*records) != 1 || (*records)[0].ResultStatus != events.ResultCanceled || (*records)[0].Level != slog.LevelInfo {
 				t.Fatalf("err=%v records=%+v", err, *records)
 			}
 			var content map[string]any

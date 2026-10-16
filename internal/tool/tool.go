@@ -64,7 +64,7 @@ type Tool interface {
 	Schema() llm.ToolSchema
 	// Call returns the business result, an independent log body, and the original
 	// business error. The runner declares the invocation log status and level
-	// from actual call entry; tools only supply logContent, including diagnostics.
+	// from the execution outcome; tools supply logContent, including diagnostics.
 	// Tools summarize and truncate their own log bodies to 1024 runes,
 	// including the ellipsis. Business results remain unchanged.
 	Call(ctx context.Context, req CallRequest) (result *Result, logContent string, callErr error)
