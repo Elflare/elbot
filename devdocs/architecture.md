@@ -241,6 +241,7 @@ flowchart LR
 - 工具调用集合、ID、名称和参数对 Hook 只读，改写在副作用前报错；Chat 允许参数改写。公共 Hook 通过注入策略校验，不识别协议。
 - 工具副作用前保存原生响应和调用状态；整批结果与展示 ToolBatch、原生输出及一个不可变历史快照同事务提交。历史快照不推进活动游标，Fork 包含整批结果；中断调用仅在原生材料补未执行／结果未知输出。
 - 窗口由 seed 根、checkpoint 链和已提交的有序输入／输出重建，不读取历史 HTTP 正文。公共片段由 Dialogue 解码与展开，Responses 只组装自身 items；媒体持有覆盖发送过程。首次调用失败后可复用完整待提交输入；格式版本、归档、定义或素材不一致时拒绝。
+- `native_material.go` 的 `LoadNativeWindow` 在同一读取事务内批量取得目标 checkpoint 的祖先链、exchange、已消费输入及目标快照结果，复用已有 Session／checkpoint；`responses/context.go` 按清单顺序重建并校验。Turn 内保留未展开窗口及 exchange 终态，checkpoint 推进后释放窗口；重放在副本上追加待提交输入。
 
 <!-- locator:commands -->
 ## 命令链路
@@ -333,14 +334,15 @@ flowchart TB
 ### 媒体引用与清理
 
 - 本体按 SHA-256 去重，`media_references` 是引用事实来源。消息、工具参数、Fork、Cron、Elnis、outbox 和输出关联通过事务维护引用，读取／发送另持临时引用。
+- 工具 `MediaCall.Retain` 读取元数据后直接通过引用仓储建立临时持有，引用外键与删除保护触发器共同裁决可用性。
 - `media_signed_urls` 按媒体 ID 保存 URL 与绝对过期时间，外键随媒体删除级联清理，不混入媒体元数据或对话材料。`request.go` 的 `presignMedia` 复用请求已持有的记录，在逐对象锁内完成按需上传、缓存查询、签名和保存；只有尚无远端对象的本地记录需要在锁内重读，确认其他请求是否已上传。剩余超过 5 分钟直接复用，否则以 1 小时有效期刷新。到期时间从签名前按秒截断的时间保守计算，命中不延期，刷新不重新上传已有对象；无内存缓存、定时刷新或配置指纹。缓存读写、签名与后端初始化错误只返回，由所属业务出口报告；对话最终失败统一交 Dialogue，调用审计与用量事实独立保留。
 - 工具通过确认后、实际执行前，递归关联最终 JSON 参数中完整有效的媒体 ID 到 Session；不扫描自由文本。执行失败保留引用，执行前拒绝不建立引用。
 - 会话消息、原生输入及 seed 公共片段只保存稳定媒体 ID 与描述；请求展开结果不回写。重复 ID 在一次准备中复用读取／上传／签名。真正缺失的对象只在发送副本变成占位文字；权限不足、取消、超时、数据库及其他运行错误继续返回错误。Fork／后台副本的原生 seed 独立保留公共片段及引用，生成时不打开媒体实体。
 - 中心统一清洗名称和来源敏感信息；下载使用原始参数。图片入库前按大小／边长限制转白底 JPEG，ID 对应实际保存内容。Chat／Responses 收集本次完整请求材料后，只调用一次 Dialogue.PrepareMaterials，由 `request.go` 的 `AcquireForLLM` 统一准备：每个唯一 ID 读取一次元数据、建立一次临时持有，同时按实际出现次数累计记录中的 Size；总量确定后，hybrid 超限时全部 S3，否则全部 base64，纯 base64 超限返回错误。内容读取与签名复用该记录，不再通过按 ID 的公开接口重复查询或持有。Responses 历史／续接与新增输入在未展开时合并，续链失效后的重放作为新请求重新解析。准备失败即释放已取得的持有；准备成功的持有持续到模型 HTTP 请求结束，在结束、失败和恢复重试时释放。
-- Chat History 查询不下载；get_media 与 view_image 限当前平台／scope。媒体中心 `GetHistoryMediaBatch` 统一处理缓存、去重、下载预算及关联，同次最多尝试 5 个未缓存位置，失败计数，缓存不占次数，超限后仍返回缓存。主库按历史内部 ID 和媒体位置保存关联，历史删除后释放引用；跨库对账故障保守停止。
+- Chat History 查询不下载；get_media 与 view_image 限当前平台／scope。媒体中心 `GetHistoryMediaBatch` 统一处理缓存、去重、下载预算及关联，同次最多尝试 5 个未缓存位置，失败计数，缓存不占次数，超限后仍返回缓存。主库按历史内部 ID 和媒体位置保存关联，历史删除后释放引用；每轮跨库对账按平台、scope、消息 ID 复用已确认的历史行或缺失结果，故障保守停止，删除按关联 OwnerID 执行。
 - 媒体中心负责导入与图片校验。结果使用稳定 MediaID 的 Segments，经原生 function_call_output 输出图片并随工具结果保存，不产生 delivery.Outputs。消息默认取首张图片，显式序号沿用全部媒体编号。
 - Elnis 排队 URL 不下载，LLM 执行时物化，direct 实际发送才导入；outbox 保存稳定 ID。输出回执保留有序媒体位置，缓存期限使用 retention_days，非正值不缓存。
-- 最后引用释放后保留 1 小时。清理认领与新增引用互斥；物理删除按远端 → 本地 → 记录执行，失败保留可重试状态。同媒体 ID 的导入／上传／删除互斥，不同 ID 可并行，每轮最多清理 4 个对象。
+- 最后引用释放后保留 1 小时。清理认领与新增引用互斥，认领语句直接返回完整媒体记录供删除使用；物理删除按远端 → 本地 → 记录执行，失败保留可重试状态。同媒体 ID 的导入／上传／删除互斥，不同 ID 可并行，每轮最多清理 4 个对象。
 - 清理前检查缺失引用与悬空 owner，异常保守停止。应用启动在 worker／工具运行前依次清理媒体临时引用并调用 Elnis 恢复裁决，即使 Elnis 禁用也处理历史中断事件；任一步失败即停止启动，步骤可重复执行。事件状态与引用释放由事件仓储原子完成，持久化 outbox 保留；取消清理等待已启动任务退出。
 
 <!-- locator:skill -->
@@ -498,9 +500,9 @@ contextmgr 管历史、用量、阈值及压缩分派，通过 Selection 查询�
 
 - storage 定义领域模型和 repository 契约，SQLite 实现消息、Session、聊天历史、工具记录、Cron、Elnis 和原生状态事务。
 - 主库使用单连接，工具状态随整份 Session metadata 在事务内合并更新，以保持事务与状态合并简单可靠；实测出现连接等待或编码瓶颈后再调整存储与并发方式。
-- Session 字段修改使用 `Mutate` 在短事务读取最新行，只改负责字段；回调不做外部 I/O 或嵌套仓储操作。RawMessage 保留未知 metadata 和数值精度，损坏数据拒绝读写。
+- Session 字段修改使用 `Mutate` 在短事务读取最新行，只改负责字段；回调不做外部 I/O 或嵌套仓储操作。仓储按持久化字段比较前后值，无变化时只结束读取事务；可空时间按值比较，活动时间变化正常保存。RawMessage 保留未知 metadata 和数值精度，损坏数据拒绝读写。
 - 多模态 segments 为结构来源，content 为文本投影；非空 segments 优先。ToolBatch 以 tool_result_message_ids 保存调用数组／结果数组的有序关联，复制消息时重映射全部 ID；Fork 从调用消息延伸至最后一个结果。
-- `native_exchanges`、`native_inputs`、`native_calls`、`native_checkpoints`、`native_seeds` 保存原生记录，Session metadata 只保存归属、版本和引用。关键提交比较旧 checkpoint，材料事务同时保存 Session、历史及媒体引用；查询保留平台隔离、归档与 Fork 范围。
+- `native_exchanges`、`native_inputs`、`native_calls`、`native_checkpoints`、`native_seeds` 保存原生记录，Session metadata 只保存归属、版本和引用。关键提交比较旧 checkpoint，同一事务复用 exchange 归属与终态，checkpoint 与 seed 消费的 metadata 合并保存；材料事务同时保存 Session、历史及媒体引用。查询保留平台隔离、归档与 Fork 范围。
 - `native_seeds.media_ids_json` 始终保存 JSON 数组，无媒体为 `[]`；持久化入口统一处理 nil slice，迁移修正已有 `null`。媒体引用校验直接按数组读取，不在清理入口推断空值含义。
 
 <!-- locator:elnis -->

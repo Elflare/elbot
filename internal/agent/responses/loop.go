@@ -59,12 +59,14 @@ type turnState struct {
 	tools             []llm.ToolSchema
 	definitions       toolDefinitions
 	checkpoint        *storage.NativeCheckpoint
-	seed              *storage.NativeSeed
-	exchange          *storage.NativeExchange
-	response          *api.Response
-	sourceText        string
-	consumed          []string
-	calls             []llm.ToolCallRequest
+	// window retains unresolved material for the current immutable checkpoint.
+	window     *nativeWindow
+	seed       *storage.NativeSeed
+	exchange   *storage.NativeExchange
+	response   *api.Response
+	sourceText string
+	consumed   []string
+	calls      []llm.ToolCallRequest
 }
 
 func (r *Loop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials) (dialogue.PreparedLoop, error) {
@@ -72,10 +74,11 @@ func (r *Loop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials
 	if err != nil {
 		return nil, err
 	}
-	seed, err := r.Repository.Seed(ctx, materials.Session.ID)
+	records, err := r.Repository.LoadNativeWindow(ctx, materials.Session, checkpoint)
 	if err != nil {
 		return nil, err
 	}
+	seed := records.Seed
 	if checkpoint == nil && seed == nil {
 		if err := r.validateInitialInputs(ctx, materials.Session, materials.Loaded.Messages); err != nil {
 			return nil, err
@@ -102,8 +105,9 @@ func (r *Loop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials
 		return nil, fmt.Errorf("原生 checkpoint 的根材料不匹配")
 	}
 	definitions := toolDefinitions{}
+	var window *nativeWindow
 	if checkpoint != nil || seed != nil {
-		window, err := r.Context.Load(ctx, materials.Session, checkpoint)
+		window, err = r.Context.Load(ctx, materials.Session, checkpoint, records)
 		if err != nil {
 			return nil, err
 		}
@@ -112,7 +116,7 @@ func (r *Loop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials
 			return nil, err
 		}
 	}
-	return &preparedLoop{materials: materials, state: &turnState{route: r, session: materials.Session, checkpoint: checkpoint, seed: seed, definitions: definitions}}, nil
+	return &preparedLoop{materials: materials, state: &turnState{route: r, session: materials.Session, checkpoint: checkpoint, seed: seed, window: window, definitions: definitions}}, nil
 }
 
 func (p *preparedLoop) InputCommitter() dialogue.MessageCommitter {

@@ -65,7 +65,7 @@ func (c *MediaCall) Retain(ctx context.Context, id string) (*storage.Media, erro
 	}
 	if _, ok := c.refs[id]; !ok {
 		ref := storage.MediaReference{MediaID: id, OwnerType: "skill", OwnerID: c.owner, Purpose: "temporary"}
-		if err := c.runtime.Center.AddReference(ctx, &ref); err != nil {
+		if err := c.runtime.Center.Store.MediaReferences().Add(ctx, &ref); err != nil {
 			return nil, err
 		}
 		c.refs[id] = ref

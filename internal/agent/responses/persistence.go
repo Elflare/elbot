@@ -51,6 +51,7 @@ func (s *turnState) commit(ctx context.Context, commit storage.DialogueCommit, o
 	if commit.Native != nil && commit.Native.Checkpoint.ID != "" {
 		next := commit.Native.Checkpoint
 		s.checkpoint = &next
+		s.window = nil
 		if commit.Native.ConsumeSeedID != "" && s.seed != nil {
 			s.seed.Consumed = true
 		}

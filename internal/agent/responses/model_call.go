@@ -71,9 +71,9 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 	baseURL := origin.BaseURL
 	if s.checkpoint != nil {
 		request.PreviousResponseID = s.checkpoint.ResponseID
-		exchange, err := s.route.Repository.GetExchange(ctx, s.checkpoint.ExchangeID)
-		if err != nil {
-			return final, err
+		exchange := s.exchange
+		if s.window != nil {
+			exchange = s.window.exchange
 		}
 		baseURL = exchange.BaseURL
 		state, err := exchangeStorage(exchange)
@@ -202,11 +202,21 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 }
 
 func (s *turnState) replayRequest(ctx context.Context, request api.Request, inputs []storage.NativeInput, consumed []string, target llm.Origin) (api.Request, func(), error) {
-	w, err := s.route.Context.Load(ctx, s.session, s.checkpoint)
-	if err != nil {
-		return request, func() {}, err
+	if s.window == nil {
+		records, err := s.route.Repository.LoadNativeWindow(ctx, s.session, s.checkpoint)
+		if err != nil {
+			return request, func() {}, err
+		}
+		s.window, err = s.route.Context.Load(ctx, s.session, s.checkpoint, records)
+		if err != nil {
+			return request, func() {}, err
+		}
 	}
-	if err := checkWindowTarget(w, target); err != nil {
+	// resolveInputs appends pending inputs; preserve the cached committed prefix.
+	w := *s.window
+	w.Items = append([]api.Item(nil), w.Items...)
+	w.Materials = append([]material(nil), w.Materials...)
+	if err := checkWindowTarget(&w, target); err != nil {
 		return request, func() {}, err
 	}
 	request.PreviousResponseID = ""
@@ -218,7 +228,8 @@ func (s *turnState) replayRequest(ctx context.Context, request api.Request, inpu
 	}
 	s.requestReferences = refs
 	var release func()
-	request.Input, release, err = s.resolveInputs(ctx, inputs, w)
+	var err error
+	request.Input, release, err = s.resolveInputs(ctx, inputs, &w)
 	if err != nil {
 		return request, release, err
 	}

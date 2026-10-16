@@ -74,6 +74,18 @@ type NativeSeed struct {
 	CreatedAt time.Time
 }
 
+// NativeWindowRecords holds raw storage facts; protocol code rebuilds and validates the window.
+type NativeWindowRecords struct {
+	// Seed is the root selected by the supplied Session metadata, if present.
+	Seed *NativeSeed
+	// Checkpoints contains the target and its ancestors, keyed by checkpoint ID.
+	Checkpoints map[string]NativeCheckpoint
+	// Exchanges contains the calls referenced by that checkpoint chain, keyed by ID.
+	Exchanges map[string]NativeExchange
+	// Inputs contains consumed inputs and tool results referenced by the target snapshot.
+	Inputs map[string]NativeInput
+}
+
 // SessionMaterialCreate is the narrow atomic boundary for a new session and
 // its prepared material. It exposes neither a transaction nor callbacks.
 type SessionMaterialCreate struct {
@@ -111,7 +123,7 @@ type DialogueRepository interface {
 	CurrentCheckpoint(context.Context, string) (*NativeCheckpoint, error)
 	GetCheckpoint(context.Context, string) (*NativeCheckpoint, error)
 	CheckpointForMessage(context.Context, string, string) (*NativeCheckpoint, error)
-	InputsForExchange(context.Context, string) ([]NativeInput, error)
+	LoadNativeWindow(context.Context, *Session, *NativeCheckpoint) (*NativeWindowRecords, error)
 	GetInput(context.Context, string) (*NativeInput, error)
 	Seed(context.Context, string) (*NativeSeed, error)
 	PendingInputs(context.Context, string) ([]NativeInput, error)

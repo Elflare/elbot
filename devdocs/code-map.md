@@ -216,9 +216,10 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/storage/storage.go`、`internal/storage/session_metadata.go`：领域模型、repository 契约及 metadata 保留。
 - `internal/storage/sqlite/`、`internal/storage/sqlite/migrations.go`：存储实现与数据库迁移；`nullable_context_summary_tokens` 保留摘要数据、外键及索引，使未知用量可保存为 NULL。
-- `internal/storage/dialogue.go`、`internal/storage/sqlite/dialogue_repository.go`：ToolBatch／原生提交事务与 checkpoint 比较。
-- `internal/storage/sqlite/native_snapshot.go`、`internal/storage/sqlite/native_material.go`：不可变调用快照、seed 与新 Session 原子保存；seed 空媒体列表统一写 `[]`，`normalize_native_seed_media_ids` 迁移修正已有 `null`。
-- `internal/storage/sqlite/media_history.go`、`internal/storage/sqlite/media_lifecycle.go`：历史媒体关联、媒体临时引用恢复与清理认领。
+- `internal/storage/dialogue.go`、`internal/storage/sqlite/dialogue_repository.go`：ToolBatch／原生提交事务、checkpoint 比较及 NativeWindowRecords 原始材料契约；提交内复用 exchange 归属和终态，合并保存 checkpoint／seed metadata。
+- `internal/storage/sqlite/session_repository.go`：Session 仓储；Mutate 在事务内比较持久化字段，仅在值变化时 UPDATE。
+- `internal/storage/sqlite/native_snapshot.go`、`internal/storage/sqlite/native_material.go`：不可变调用快照、seed 与新 Session 原子保存；LoadNativeWindow 在同一读取事务批量取得目标祖先链及关联材料，供 Responses 重建；seed 空媒体列表统一写 `[]`，`normalize_native_seed_media_ids` 迁移修正已有 `null`。
+- `internal/storage/sqlite/media_history.go`、`internal/storage/sqlite/media_lifecycle.go`：历史媒体关联、媒体临时引用恢复与清理认领；认领直接返回完整媒体记录。
 
 <!-- locator:elnis -->
 ## Elnis / Elvena / Elwisp
@@ -240,7 +241,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/storage/sqlite/media_repository.go`：媒体元数据与独立签名缓存读写；`media_signed_urls` 随媒体删除级联清理。
 - `internal/media/lifecycle.go`：清理轮次与逐对象删除；生成 cleanup_id 和完整分类计数，异常优先的明细正文最多 50 行；返回来源 LogResult 和原始 error，先保留逐对象结果再合并并行错误，取消不覆盖独立删除失败。
 - `internal/media/reference.go`：媒体引用与存活持有；RetainSessionToolArguments 返回事务来源 LogResult 和原始 error，无引用声明 skipped，Runner 不二次分类。
-- `internal/media/platform.go`、`internal/media/history.go`：平台媒体、历史批量获取（缓存、去重与尝试预算）及跨库历史对账；loadHistoryMedia 按 ID 复用元数据与匹配的持久关联，历史命中不回写，输出缓存转历史关联仍保存。入站关联和历史展示在无媒体时跳过数据库查询。
+- `internal/media/platform.go`、`internal/media/history.go`：平台媒体、历史批量获取（缓存、去重与尝试预算）及跨库历史对账；loadHistoryMedia 按 ID 复用元数据与匹配的持久关联，历史命中不回写，输出缓存转历史关联仍保存。入站关联和历史展示在无媒体时跳过数据库查询；一轮对账按消息复用历史归属结果。
 - `internal/tool/builtin/chat_history.go`、`internal/tool/builtin/get_media.go`：历史查询与显式媒体获取。
 - `internal/tool/builtin/view_image.go`：Responses 看图工具，来源／图片序号选择、本地权限及多模态结果。
 - `internal/delivery/dispatch/media.go`：输出媒体准备和回执缓存；缓存失败发布 WARN 日志，保留实际发送回执和错误，不触发重发。
