@@ -21,7 +21,6 @@ type preparedFile struct {
 	Path     string
 	Name     string
 	MIMEType string
-	Size     int64
 }
 
 func NewFileManager(sandboxRoot string, cfg config.FileDeliveryConfig) *FileManager {
@@ -47,7 +46,7 @@ func (m *FileManager) Prepare(sourcePath, name, mimeType string) (preparedFile, 
 	if mimeType = strings.TrimSpace(mimeType); mimeType == "" {
 		mimeType = mime.TypeByExtension(filepath.Ext(fileName))
 	}
-	return preparedFile{Path: source, Name: fileName, MIMEType: mimeType, Size: info.Size()}, nil
+	return preparedFile{Path: source, Name: fileName, MIMEType: mimeType}, nil
 }
 
 func (m *FileManager) checkSize(source string, info os.FileInfo) error {

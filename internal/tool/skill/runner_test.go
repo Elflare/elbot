@@ -121,6 +121,10 @@ func TestCommandErrorIncludesSkillOutput(t *testing.T) {
 	}
 }
 
+func resultFromStdout(out string) (*tool.Result, error) {
+	return resultFromStdoutWithMedia(context.Background(), out, nil, "")
+}
+
 func TestResultFromStdoutHandlesTextAndJSON(t *testing.T) {
 	plain, err := resultFromStdout("ok")
 	if err != nil || plain.Content != "ok" || len(plain.Data) != 0 {

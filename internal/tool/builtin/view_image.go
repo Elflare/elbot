@@ -147,18 +147,19 @@ func (t ViewImageTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.
 		return nil, err.Error(), err
 	}
 	var item *storage.Media
-	switch {
-	case strings.HasPrefix(args.Source, media.IDPrefix):
-		item, err = t.center.Metadata(ctx, args.Source)
-	case delivery.IsHTTPMediaSource(args.Source):
-		item, err = t.center.ImportURL(ctx, args.Source, media.Input{})
-	default:
-		item, err = t.center.ImportFile(ctx, path.Path, media.Input{})
+	if strings.HasPrefix(args.Source, media.IDPrefix) {
+		item, err = t.center.ImageMetadata(ctx, args.Source)
+	} else {
+		if delivery.IsHTTPMediaSource(args.Source) {
+			item, err = t.center.ImportURL(ctx, args.Source, media.Input{})
+		} else {
+			item, err = t.center.ImportFile(ctx, path.Path, media.Input{})
+		}
+		if err != nil {
+			return nil, err.Error(), err
+		}
+		item, err = t.center.ImageMetadata(ctx, item.ID)
 	}
-	if err != nil {
-		return nil, err.Error(), err
-	}
-	item, err = t.center.ImageMetadata(ctx, item.ID)
 	if err != nil {
 		return nil, err.Error(), err
 	}

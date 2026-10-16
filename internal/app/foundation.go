@@ -5,14 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"path/filepath"
 
 	"elbot/internal/config"
 	globalevents "elbot/internal/events"
 	"elbot/internal/logging"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
-	"elbot/internal/tool/builtin"
 )
 
 type defaultFoundationFactory struct{}
@@ -24,7 +22,6 @@ func (defaultFoundationFactory) Build(ctx context.Context, req FoundationRequest
 	}
 	req.Profiler.SetEnabled(startupProfileEnabled(cfg.Runtime.LogLevel))
 	req.Profiler.Mark("config.Load")
-	ctx = builtin.WithConfigEnvDir(ctx, filepath.Dir(cfg.ConfigPath))
 
 	logs, err := logging.NewManager(cfg.Runtime.LogLevel, cfg.Storage.SessionsSQLitePath, cfg.Runtime.LogRetentionDays)
 	if err != nil {

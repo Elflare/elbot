@@ -165,11 +165,13 @@ func (s *Store) update(ctx context.Context, scope session.Scope, validate valida
 	}
 	now := storage.FormatTime(storage.Now())
 	idx := findMemory(file.ResidentMemories, scope)
-	if idx < 0 {
+	exists := idx >= 0
+	if !exists {
 		file.ResidentMemories = append(file.ResidentMemories, ResidentMemory{Platform: scope.Platform, ActorID: scope.ActorID, CreatedAt: now})
 		idx = len(file.ResidentMemories) - 1
 	}
 	memory := file.ResidentMemories[idx]
+	before := memory
 	update(&memory)
 	memory.Core = strings.TrimSpace(memory.Core)
 	memory.Normal = strings.TrimSpace(memory.Normal)
@@ -177,12 +179,18 @@ func (s *Store) update(ctx context.Context, scope session.Scope, validate valida
 		return err
 	}
 	if memory.Core == "" && memory.Normal == "" {
+		if !exists {
+			return nil
+		}
 		file.ResidentMemories = append(file.ResidentMemories[:idx], file.ResidentMemories[idx+1:]...)
 	} else {
-		memory.UpdatedAt = now
 		if memory.CreatedAt == "" {
 			memory.CreatedAt = now
 		}
+		if memory == before {
+			return nil
+		}
+		memory.UpdatedAt = now
 		file.ResidentMemories[idx] = memory
 	}
 	return s.saveLocked(file)

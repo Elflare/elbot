@@ -120,11 +120,14 @@ func (s *StateService) Commit(ctx context.Context, id string, update StateUpdate
 				return err
 			}
 		}
-		row.Metadata, err = fields.Encode()
+		metadata, err := fields.Encode()
 		if err != nil {
 			return err
 		}
-		row.UpdatedAt = storage.Now()
+		if metadata != row.Metadata {
+			row.Metadata = metadata
+			row.UpdatedAt = storage.Now()
+		}
 		// Decode the encoded form, so neither the input nor output aliases schemas.
 		result.State, err = DecodeState(row.Metadata)
 		result.Injected, result.Existing = uniqueNames(injected), uniqueNames(existing)

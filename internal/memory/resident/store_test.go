@@ -19,11 +19,23 @@ func TestStoreWriteReadAndDeleteNormal(t *testing.T) {
 	if _, err := store.Read(context.Background(), scope); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Read empty error = %v", err)
 	}
+	if err := store.DeleteNormal(context.Background(), scope); err != nil {
+		t.Fatalf("DeleteNormal absent: %v", err)
+	}
+	if _, err := store.Read(context.Background(), scope); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Read after absent delete error = %v", err)
+	}
 	if err := store.WriteCore(context.Background(), scope, "喜欢被称为娅娅"); err != nil {
 		t.Fatalf("WriteCore: %v", err)
 	}
 	if err := store.WriteNormal(context.Background(), scope, "喜欢简短回答"); err != nil {
 		t.Fatalf("WriteNormal: %v", err)
+	}
+	if err := store.WriteCore(context.Background(), scope, " 喜欢被称为娅娅 "); err != nil {
+		t.Fatalf("WriteCore existing content: %v", err)
+	}
+	if err := store.WriteNormal(context.Background(), scope, " 喜欢简短回答 "); err != nil {
+		t.Fatalf("WriteNormal existing content: %v", err)
 	}
 	memory, err := store.Read(context.Background(), scope)
 	if err != nil {
@@ -47,6 +59,56 @@ func TestStoreWriteReadAndDeleteNormal(t *testing.T) {
 	}
 	if _, err := store.Read(context.Background(), scope); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Read cleared error = %v", err)
+	}
+}
+
+func TestStoreClearsExistingEmptyRecord(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "memories.toml")
+	data := []byte("[[resident_memories]]\nplatform = \"cli\"\nactor_id = \"empty\"\ncore = \" \"\nnormal = \" \"\n\n[[resident_memories]]\nplatform = \"cli\"\nactor_id = \"other\"\nnormal = \"keep\"\n")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := NewStore(path)
+	scope := session.Scope{Platform: "cli", ActorID: "empty"}
+	if err := store.DeleteNormal(context.Background(), scope); err != nil {
+		t.Fatal(err)
+	}
+	reloaded := NewStore(path)
+	if _, err := reloaded.Read(context.Background(), scope); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("cleared empty record error = %v", err)
+	}
+	other, err := reloaded.Read(context.Background(), session.Scope{Platform: "cli", ActorID: "other"})
+	if err != nil || other.Normal != "keep" {
+		t.Fatalf("other memory = %#v, %v", other, err)
+	}
+}
+
+func TestStoreValidatesExistingContent(t *testing.T) {
+	for _, part := range []string{"core", "normal"} {
+		t.Run(part, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "memories.toml")
+			scope := session.Scope{Platform: "cli", ActorID: "local"}
+			store := NewStore(path)
+			write := store.WriteCore
+			if part == "normal" {
+				write = store.WriteNormal
+			}
+			if err := write(context.Background(), scope, "two words"); err != nil {
+				t.Fatal(err)
+			}
+			store = NewStoreWithLimits(path, Limits{Core: 1, Normal: 1})
+			write = store.WriteCore
+			if part == "normal" {
+				write = store.WriteNormal
+			}
+			if err := write(context.Background(), scope, "two words"); err == nil || !strings.Contains(err.Error(), "too long") {
+				t.Fatalf("existing content validation error = %v", err)
+			}
+			memory, err := store.Read(context.Background(), scope)
+			if err != nil || (part == "core" && memory.Core != "two words") || (part == "normal" && memory.Normal != "two words") {
+				t.Fatalf("memory after rejected write = %#v, %v", memory, err)
+			}
+		})
 	}
 }
 

@@ -78,18 +78,6 @@ func validateGoExecutable(path, source string) (string, error) {
 	return path, nil
 }
 
-func goSkillConfigDir(skillRoot string) string {
-	root := filepath.Clean(strings.TrimSpace(skillRoot))
-	if filepath.Base(root) == "skills" {
-		return filepath.Dir(root)
-	}
-	parent := filepath.Dir(root)
-	if filepath.Base(parent) == "go" && filepath.Base(filepath.Dir(parent)) == "skills" {
-		return filepath.Dir(filepath.Dir(parent))
-	}
-	return filepath.Dir(root)
-}
-
 func existingExecutable(path string) (string, bool) {
 	path = strings.TrimSpace(path)
 	if path == "" {
