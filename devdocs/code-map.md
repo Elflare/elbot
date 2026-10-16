@@ -97,9 +97,10 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:request-turn -->
 ## Request、Turn 与状态
 
-- `internal/request/`、`internal/turn/`：请求树、取消、阶段、pending、确认与 Execution。
+- `internal/request/`、`internal/turn/`：请求树、取消与执行确认清理、stopping／attempt 收尾通知、阶段、pending、确认与 Execution。
 - `internal/agent/execution.go`、`execution_run.go`：前后台执行、接管与跨轮收尾。
 - `internal/agent/execution_admission.go`、`execution_input.go`、`execution_lifecycle.go`：准入、输入、追加确认与关闭。
+- `internal/processenv/environment.go`、`process_unix.go`、`process_windows.go`：子进程环境和命令构造、平台进程组／树终止及实际退出判定；Skill、Shell、Hook、编译和文件搜索复用。
 - `internal/agent/confirmation.go`、`risk_confirmation.go`：风险确认、来源日志与提示。
 - `internal/runtime/`、`internal/agent/status.go`：运行状态、耗时、执行归属校验与状态发布。
 
@@ -151,7 +152,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/hook/call_policy.go`：工具调用只读策略。
 - `internal/hook/media.go`、`internal/hook/output/`：媒体 API 与输出协议。
 - `internal/hook/logging.go`：Hook 日志发布。
-- `internal/agent/hooks.go`、`internal/processenv/`：Agent 桥接与子进程环境。
+- `internal/agent/hooks.go`：Agent Hook 桥接与调用请求登记。
 - [Hook 文档](../docs/hooks.md)。
 
 <!-- locator:output -->

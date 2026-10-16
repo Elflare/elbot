@@ -146,13 +146,15 @@ func (c *ExecutionCoordinator) runTurn(ctx context.Context, session *storage.Ses
 		}
 		return result, turn.Input{}
 	}
-	if !c.turns.MatchesAttempt(session.ID, turn.AttemptFromContext(ctx)) {
+	if !c.turns.MatchesAttempt(session.ID, turn.AttemptFromContext(ctx)) || c.turns.Snapshot(session.ID).Phase == turn.PhaseStopping {
 		releaseRequest()
-		return dialogue.TurnResult{Outcome: dialogue.Canceled, Err: context.Canceled}, turn.Input{}
+		return dialogue.TurnResult{Outcome: dialogue.Canceled, Err: context.Canceled, QuietCancellation: true}, turn.Input{}
 	}
 	reqCtxInfo, reqCtx, done := c.requests.Start(locked, request.StartRequest{SessionID: session.ID, Kind: request.KindTurn, Label: "chat", Timeout: c.responseTimeout})
 	releaseRequest()
 	defer done()
+	stopObserver := c.observeRequestStop(reqCtx, session.ID, turn.AttemptFromContext(ctx))
+	defer stopObserver()
 
 	result := c.dialogue.RunTurn(ctx, reqCtx, dialogue.TurnInput{Session: session, Text: text, Selection: selection, RequestID: reqCtxInfo.ID, Prepared: prepared}, out)
 	if result.QuietCancellation {
@@ -172,6 +174,27 @@ func (c *ExecutionCoordinator) runTurn(ctx context.Context, session *storage.Ses
 		}
 	}
 	return result, pending
+}
+
+// observeRequestStop publishes cancellation without retiring the attempt. The
+// execution owner still finishes status and Turn after all synchronous work joins.
+func (c *ExecutionCoordinator) observeRequestStop(ctx context.Context, sessionID, attempt string) func() {
+	done := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		defer close(done)
+		if c.turns.Snapshot(sessionID).Phase == turn.PhaseAwaitAppendConfirm {
+			return
+		}
+		c.turns.StopSession(sessionID, attempt)
+		status := c.status.Snapshot(sessionID)
+		status.SessionID, status.Phase = sessionID, runtimestatus.PhaseStopping
+		c.status.Record(ctx, status)
+	})
+	return func() {
+		if !stop() {
+			<-done
+		}
+	}
 }
 
 func (c *ExecutionCoordinator) finishCompletedTurn(ctx context.Context, session *storage.Session, out dialogue.Output, result dialogue.TurnResult) (turn.Input, error) {

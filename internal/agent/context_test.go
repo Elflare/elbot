@@ -320,7 +320,7 @@ func TestCompactBlocksSessionChangesAndStopCancels(t *testing.T) {
 	if !a.execution.shouldCompact(ctx, source, modelmgr.SelectionForTurn(ctx, a.execution.models, source)) {
 		t.Fatal("usage no longer triggers compact after cancellation")
 	}
-	if got := p.out.String(); !strings.Contains(got, session.ErrSessionBusy.Error()) || !strings.Contains(got, "暂不执行 /delete") || !strings.Contains(got, "stopped 1 request") {
+	if got := p.out.String(); !strings.Contains(got, session.ErrSessionBusy.Error()) || !strings.Contains(got, "暂不执行 /delete") || !strings.Contains(got, "正在停止 1 个请求") {
 		t.Fatalf("output = %q", got)
 	}
 }
@@ -459,9 +459,8 @@ func TestCancelledCompactLateResultCannotSwitchNewCurrent(t *testing.T) {
 	if err := a.HandleMessage(ctx, "/stop"); err != nil {
 		t.Fatal(err)
 	}
-	next, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "new current"})
-	if err != nil {
-		t.Fatal(err)
+	if _, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "too early"}); !errors.Is(err, session.ErrSessionBusy) {
+		t.Fatalf("session switch before compact exit: %v", err)
 	}
 	close(block.release)
 	select {
@@ -471,6 +470,10 @@ func TestCancelledCompactLateResultCannotSwitchNewCurrent(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("compact did not stop")
+	}
+	next, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "new current"})
+	if err != nil {
+		t.Fatal(err)
 	}
 	current, err := a.execution.sessions.Current(ctx, a.identity.Scope(ctx))
 	if err != nil || current.ID != next.ID {

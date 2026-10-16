@@ -28,6 +28,8 @@ type Request struct {
 	Label     string
 	StartedAt time.Time
 	Deadline  *time.Time
+	// Stopping means cancellation was requested but execution has not acknowledged completion.
+	Stopping bool
 }
 
 type StartRequest struct {
@@ -47,6 +49,8 @@ type Manager struct {
 type activeRequest struct {
 	request Request
 	cancel  context.CancelFunc
+	// ctx exposes inherited cancellation without an asynchronous cleanup watcher.
+	ctx context.Context
 }
 
 func NewManager(defaultTimeout time.Duration) *Manager {
@@ -56,6 +60,8 @@ func NewManager(defaultTimeout time.Duration) *Manager {
 	}
 }
 
+// Start registers execution until its owner calls done, including after context
+// cancellation. The owner must join its work and release resources before done.
 func (m *Manager) Start(parent context.Context, start StartRequest) (Request, context.Context, func()) {
 	timeout := start.Timeout
 	if timeout == 0 {
@@ -99,16 +105,12 @@ func (m *Manager) Start(parent context.Context, start StartRequest) (Request, co
 	ctx = contextinfo.WithExecution(ctx, execution)
 
 	m.mu.Lock()
-	m.active[req.ID] = &activeRequest{request: req, cancel: cancel}
+	m.active[req.ID] = &activeRequest{request: req, cancel: cancel, ctx: ctx}
 	m.mu.Unlock()
 
 	done := sync.OnceFunc(func() {
-		m.finish(req.ID, true)
+		m.finish(req.ID)
 	})
-	go func() {
-		<-ctx.Done()
-		m.finish(req.ID, false)
-	}()
 
 	return req, ctx, done
 }
@@ -118,7 +120,7 @@ func (m *Manager) List() []Request {
 	defer m.mu.Unlock()
 	out := make([]Request, 0, len(m.active))
 	for _, active := range m.active {
-		out = append(out, active.request)
+		out = append(out, active.snapshot())
 	}
 	return out
 }
@@ -129,7 +131,7 @@ func (m *Manager) ListBySession(sessionID string) []Request {
 	out := []Request{}
 	for _, active := range m.active {
 		if active.request.SessionID == sessionID {
-			out = append(out, active.request)
+			out = append(out, active.snapshot())
 		}
 	}
 	return out
@@ -142,14 +144,15 @@ func (m *Manager) Get(id string) (Request, bool) {
 	if !ok {
 		return Request{}, false
 	}
-	return active.request, true
+	return active.snapshot(), true
 }
 
 func (m *Manager) Cancel(id string) bool {
 	m.mu.Lock()
 	active, ok := m.active[id]
+	ok = ok && !active.snapshot().Stopping
 	if ok {
-		delete(m.active, id)
+		active.request.Stopping = true
 	}
 	m.mu.Unlock()
 	if ok {
@@ -161,9 +164,9 @@ func (m *Manager) Cancel(id string) bool {
 func (m *Manager) CancelSession(sessionID string) int {
 	m.mu.Lock()
 	active := []*activeRequest{}
-	for id, req := range m.active {
-		if req.request.SessionID == sessionID {
-			delete(m.active, id)
+	for _, req := range m.active {
+		if req.request.SessionID == sessionID && !req.snapshot().Stopping {
+			req.request.Stopping = true
 			active = append(active, req)
 		}
 	}
@@ -177,9 +180,11 @@ func (m *Manager) CancelSession(sessionID string) int {
 func (m *Manager) CancelAll() int {
 	m.mu.Lock()
 	active := make([]*activeRequest, 0, len(m.active))
-	for id, req := range m.active {
-		delete(m.active, id)
-		active = append(active, req)
+	for _, req := range m.active {
+		if !req.snapshot().Stopping {
+			req.request.Stopping = true
+			active = append(active, req)
+		}
 	}
 	m.mu.Unlock()
 	for _, req := range active {
@@ -188,14 +193,20 @@ func (m *Manager) CancelAll() int {
 	return len(active)
 }
 
-func (m *Manager) finish(id string, cancel bool) {
+func (m *Manager) finish(id string) {
 	m.mu.Lock()
 	active, ok := m.active[id]
 	if ok {
 		delete(m.active, id)
 	}
 	m.mu.Unlock()
-	if ok && cancel {
+	if ok {
 		active.cancel()
 	}
+}
+
+func (r *activeRequest) snapshot() Request {
+	req := r.request
+	req.Stopping = req.Stopping || r.ctx.Err() != nil
+	return req
 }

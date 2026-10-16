@@ -17,6 +17,7 @@ const (
 	PhaseSending   Phase = "sending"
 	PhaseDone      Phase = "done"
 	PhaseError     Phase = "error"
+	PhaseStopping  Phase = "stopping"
 )
 
 type Snapshot struct {

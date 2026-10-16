@@ -114,8 +114,10 @@ func TestStopCommandCancelsNumberedChildRequest(t *testing.T) {
 func TestStopCommandCancelsNumberedTurnAndChildren(t *testing.T) {
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	manager := request.NewManager(time.Minute)
-	turnReq, turnCtx, _ := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
-	_, toolCtx, _ := manager.Start(turnCtx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindTool, Label: "shell"})
+	turnReq, turnCtx, turnDone := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
+	defer turnDone()
+	_, toolCtx, toolDone := manager.Start(turnCtx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindTool, Label: "shell"})
+	defer toolDone()
 
 	cmd := NewStop(Deps{Sessions: session.NewService(newCommandTestStore(t)), Requests: manager, Turns: turn.NewManager()})
 	if _, err := cmd.Handle(ctx, command.Request{Args: "1"}); err != nil {
@@ -123,6 +125,11 @@ func TestStopCommandCancelsNumberedTurnAndChildren(t *testing.T) {
 	}
 	assertCommandTestCanceled(t, turnCtx)
 	assertCommandTestCanceled(t, toolCtx)
+	if got := len(manager.List()); got != 2 {
+		t.Fatalf("stopping requests = %d, want 2", got)
+	}
+	toolDone()
+	turnDone()
 	if got := len(manager.List()); got != 0 {
 		t.Fatalf("active requests = %d, want 0", got)
 	}

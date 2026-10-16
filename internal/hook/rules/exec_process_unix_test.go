@@ -14,6 +14,7 @@ import (
 
 	"elbot/internal/events"
 	"elbot/internal/hook"
+	"elbot/internal/processenv"
 	"elbot/internal/signal"
 )
 
@@ -68,10 +69,10 @@ func TestExecExitCanceledChecksActualSignal(t *testing.T) {
 		if err := cmd.Run(); err == nil {
 			t.Fatal("expected process failure")
 		}
-		if got := execExitCanceled(cmd, true); got != tc.canceled {
+		if got := processenv.ExitCanceled(cmd, true); got != tc.canceled {
 			t.Fatalf("script=%s canceled=%t", tc.script, got)
 		}
-		if execExitCanceled(cmd, false) {
+		if processenv.ExitCanceled(cmd, false) {
 			t.Fatal("external termination became host cancellation")
 		}
 	}

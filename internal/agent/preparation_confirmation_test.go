@@ -182,7 +182,7 @@ func TestRiskConfirmationPromptFailureClearsWait(t *testing.T) {
 		return event, events.LogResult{ResultStatus: events.ResultFailed, Content: "test source failed"}, failure
 	})})
 	_, err := f.confirmations.AwaitToolConfirmation(reqCtx, in.Session.ID, llm.ToolCallRequest{ID: "call", Name: "danger", Arguments: "{}"}, tool.RiskAssessment{Level: tool.RiskHigh}, "detail")
-	if !pending || !errors.Is(err, failure) || f.opts.Turns.Snapshot(in.Session.ID).Phase != turn.PhaseIdle {
+	if !pending || !errors.Is(err, failure) || f.opts.Turns.Snapshot(in.Session.ID).Phase != turn.PhaseStopping {
 		t.Fatalf("pendingAtSend=%v phase=%s err=%v", pending, f.opts.Turns.Snapshot(in.Session.ID).Phase, err)
 	}
 }
@@ -191,6 +191,7 @@ func TestRiskConfirmationInvalidAttemptDoesNotSendPrompt(t *testing.T) {
 	f := newExecutionFixture(t, &fakeLLM{}, newTestStore(t))
 	_, reqCtx, in, _ := f.begin(t)
 	f.opts.Turns.StopSession(in.Session.ID, "attempt")
+	f.opts.Turns.FinishRequest(in.Session.ID, "attempt")
 	if !f.opts.Turns.StartExecution(in.Session.ID, turn.Input{Text: "new"}, turn.NewExecution("new"), "replacement") || !f.opts.Turns.StartToolPhase(in.Session.ID, "replacement") {
 		t.Fatal("start replacement attempt")
 	}

@@ -21,6 +21,7 @@ const (
 	PhaseAwaitRiskConfirm   Phase = "awaiting_risk_confirm"
 	PhaseAwaitAppendConfirm Phase = "awaiting_append_confirm"
 	PhaseCompact            Phase = "compact"
+	PhaseStopping           Phase = "stopping"
 )
 
 type RiskConfirmation struct {
@@ -48,6 +49,9 @@ type Snapshot struct {
 	Phase        Phase
 	PendingCount int
 	Tools        map[string]int
+	// AttemptDone closes when the current attempt has finished its actual work.
+	// It is nil when a confirmation is waiting without an active attempt.
+	AttemptDone <-chan struct{}
 }
 
 type Input struct {
@@ -76,6 +80,8 @@ type state struct {
 	waitRefresh   chan struct{}
 	appendDone    chan struct{}
 	tools         map[string]int
+	// attemptDone belongs to this attempt and survives cancellation until its owner finishes.
+	attemptDone chan struct{}
 }
 
 func NewManager() *Manager {
@@ -94,7 +100,7 @@ func (m *Manager) StartCompactRun(sessionID, runID string, execution ...*Executi
 			return false
 		}
 	}
-	m.turns[sessionID] = &state{phase: PhaseCompact, compactRun: runID, tools: map[string]int{}}
+	m.turns[sessionID] = &state{phase: PhaseCompact, compactRun: runID, tools: map[string]int{}, attemptDone: make(chan struct{})}
 	return true
 }
 
@@ -106,7 +112,7 @@ func (m *Manager) CompleteCompactRun(sessionID, runID string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn, ok := m.turns[sessionID]
-	if !ok || turn.phase != PhaseCompact || turn.compactRun != runID {
+	if !ok || (turn.phase != PhaseCompact && turn.phase != PhaseStopping) || turn.compactRun != runID {
 		return false
 	}
 	removeTurn(m.turns, sessionID, turn, true)
@@ -186,7 +192,7 @@ func (m *Manager) CancelAppend(sessionID string) bool {
 	if !ok || turn.phase != PhaseAwaitAppendConfirm {
 		return false
 	}
-	removeTurn(m.turns, sessionID, turn)
+	beginStopTurn(m.turns, sessionID, turn)
 	return true
 }
 
@@ -230,7 +236,7 @@ func (w *AppendWait) Wait(ctx context.Context, timeout time.Duration) bool {
 		defer m.mu.Unlock()
 		current := m.turns[w.sessionID]
 		if current == w.state && current.phase == PhaseAwaitAppendConfirm && current.appendDone == w.done {
-			removeTurn(m.turns, w.sessionID, current)
+			beginStopTurn(m.turns, w.sessionID, current)
 			return true
 		}
 		return false
@@ -296,7 +302,7 @@ func (w *RiskConfirmationWait) Cancel() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if current := m.turns[w.sessionID]; current == w.turn && current.phase == PhaseAwaitRiskConfirm && current.riskResponse == w.response {
-		removeTurn(m.turns, w.sessionID, current)
+		beginStopTurn(m.turns, w.sessionID, current)
 		return true
 	}
 	return false
@@ -330,12 +336,12 @@ func (w *RiskConfirmationWait) Wait(ctx context.Context, timeout time.Duration) 
 		case resp := <-w.response:
 			m.mu.Lock()
 			current := m.turns[w.sessionID]
-			if current != w.turn || current.phase != PhaseAwaitRiskConfirm || current.riskResponse != w.response {
+			if current != w.turn || (current.phase != PhaseAwaitRiskConfirm && current.phase != PhaseStopping) || current.riskResponse != w.response {
 				m.mu.Unlock()
 				return resp, false, events.ResultSkipped
 			}
-			if resp.Stopped || ctx.Err() != nil {
-				removeTurn(m.turns, w.sessionID, current)
+			if current.phase == PhaseStopping || resp.Stopped || ctx.Err() != nil {
+				beginStopTurn(m.turns, w.sessionID, current)
 				m.mu.Unlock()
 				resp.Stopped = true
 				resultStatus := events.ResultCanceled
@@ -442,6 +448,7 @@ func (m *Manager) CompleteLLMInput(sessionID string, expected ...string) (Input,
 	if turn.execution == nil {
 		removeTurn(m.turns, sessionID, turn)
 	} else if pending.Text != "" || len(pending.Segments) > 0 {
+		finishAttempt(turn)
 		m.turns[sessionID] = &state{phase: PhaseLLM, originalInput: pending, tools: map[string]int{}, execution: turn.execution, reserved: true, compactReady: true}
 	} else {
 		removeTurn(m.turns, sessionID, turn, true)
@@ -453,25 +460,33 @@ func (m *Manager) FinishRequest(sessionID string, expected ...string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn, ok := m.turns[sessionID]
-	if !ok || !matches(turn, expected) || turn.phase == PhaseAwaitAppendConfirm {
+	if !ok || !matches(turn, expected) {
+		return
+	}
+	if turn.phase == PhaseAwaitAppendConfirm {
+		finishAttempt(turn)
 		return
 	}
 	removeTurn(m.turns, sessionID, turn)
 }
 
+// StopSession keeps an active attempt reserved until its owner acknowledges
+// completion. Waiters use Snapshot.AttemptDone to join that attempt.
 func (m *Manager) StopSession(sessionID string, expected ...string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if matches(m.turns[sessionID], expected) {
-		removeTurn(m.turns, sessionID, m.turns[sessionID])
+	current := m.turns[sessionID]
+	if !matches(current, expected) {
+		return
 	}
+	beginStopTurn(m.turns, sessionID, current)
 }
 
 func (m *Manager) StopAll() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for sessionID, turn := range m.turns {
-		removeTurn(m.turns, sessionID, turn)
+		beginStopTurn(m.turns, sessionID, turn)
 	}
 }
 
@@ -665,12 +680,34 @@ func removeTurn(turns map[string]*state, sessionID string, turn *state, preserve
 	if turn.execution != nil && (len(preserve) == 0 || !preserve[0]) {
 		turn.execution.Finish(context.Canceled)
 	}
+	finishAttempt(turn)
 	stopTurn(turn)
 	if turn.appendDone != nil {
 		close(turn.appendDone)
 		turn.appendDone = nil
 	}
 	delete(turns, sessionID)
+}
+
+func finishAttempt(turn *state) {
+	if turn.attemptDone != nil {
+		close(turn.attemptDone)
+		turn.attemptDone = nil
+	}
+}
+
+func beginStopTurn(turns map[string]*state, sessionID string, turn *state) {
+	if turn.attemptDone == nil {
+		removeTurn(turns, sessionID, turn)
+		return
+	}
+	stopTurn(turn)
+	turn.phase = PhaseStopping
+	turn.pending = nil
+	if turn.appendDone != nil {
+		close(turn.appendDone)
+		turn.appendDone = nil
+	}
 }
 func stopTurn(turn *state) {
 	if turn == nil || turn.phase != PhaseAwaitRiskConfirm || turn.riskResponse == nil {
@@ -687,5 +724,5 @@ func snapshot(sessionID string, turn *state) Snapshot {
 	for name, count := range turn.tools {
 		tools[name] = count
 	}
-	return Snapshot{SessionID: sessionID, Phase: turn.phase, PendingCount: len(turn.pending), Tools: tools}
+	return Snapshot{SessionID: sessionID, Phase: turn.phase, PendingCount: len(turn.pending), Tools: tools, AttemptDone: turn.attemptDone}
 }

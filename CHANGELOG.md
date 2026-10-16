@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复 `/stop` 或超时仅终止 Skill 启动器、子进程仍继续执行和发送的问题。
 - 修复大量无用IO，提升性能
 - 修复无媒体 native seed 被序列化为 JSON `null`，导致媒体清理误报缺引用并中止的问题。
 - 修复普通消息并发启动时误报“请求失败”的问题。

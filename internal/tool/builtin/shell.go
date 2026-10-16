@@ -182,13 +182,12 @@ func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (result *tool
 		environment = environment.Overlay(variables)
 	}
 	cmd := shellCommand(runCtx, environment, cmdText)
-	configureShellProcess(cmd)
 	cmd.Dir = workDir
 	var stdout shellOutputBuffer
 	var stderr shellOutputBuffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	err = runShellCommand(runCtx, cmd)
+	err = cmd.Run()
 	exitCode := 0
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		exitCode = exitErr.ExitCode()
@@ -332,29 +331,6 @@ func resolveUnixShell() (string, []string) {
 		return "bash", []string{"--noprofile", "--norc", "-c"}
 	}
 	return "sh", []string{"-c"}
-}
-
-func runShellCommand(ctx context.Context, cmd *exec.Cmd) error {
-	errCh := make(chan error, 1)
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	go func() { errCh <- cmd.Wait() }()
-	select {
-	case err := <-errCh:
-		return err
-	case <-ctx.Done():
-		go killShellProcessTree(cmd)
-		select {
-		case err := <-errCh:
-			if err != nil {
-				return err
-			}
-			return ctx.Err()
-		case <-time.After(200 * time.Millisecond):
-			return ctx.Err()
-		}
-	}
 }
 
 func formatShellContent(data shellData) string {

@@ -155,8 +155,8 @@ Chat／Responses 共用 Dialogue 的 Prompt、Hook、ToolRun、媒体与提交�
 <!-- locator:request-turn -->
 ## Request、Turn 与状态
 
-- Request 拥有活动请求树、父子关系、取消、超时和清理；LLM、工具、压缩与后台请求均登记。
-- Turn 拥有阶段、pending、确认与工具计数；Execution 拥有跨确认／压缩的 RunID、接管快照和一次性结果，attempt 隔离迟到完成。续接间隙的 pending 仍保持忙碌。
+- Request 拥有活动请求树、父子关系、取消、超时和清理；LLM、工具、压缩与后台请求均登记。取消或超时只进入 stopping，由执行方的 done 确认工作退出后移除请求。
+- Turn 拥有阶段、pending、确认与工具计数；Execution 拥有跨确认／压缩的 RunID、接管快照和一次性结果，attempt 隔离迟到完成。stopping 保留执行归属，AttemptDone 在实际收尾后关闭；输入在会话锁外等待，重新核验 binding 后准入，不重复输入准备。追加确认的续跑同样等待旧 attempt 退出。续接间隙的 pending 仍保持忙碌。
 - 首次启动竞争时，AcceptInput 只对尚未执行的输入重新准入，保留 binding 与准备结果，不重跑 Hook；后续执行错误不触发输入重放。
 - 风险确认先在锁内登记等待对象，再锁外发提示；响应、取消及迟到清理固定同一等待对象。追加确认等待和过期提示受应用生命周期管理。
 - StatusRecorder 同步校验执行归属、保存并发布单调版本；CLI 按 Session 与原始展示目标合并状态，绑定失效清理积压。后台无 CLI 展示目标，接管仅展示之后的状态与增量。
@@ -173,10 +173,14 @@ flowchart LR
     R --> C["agent/dialogue/commit.go、responses/persistence.go<br/>整批提交与原生快照"]
     C --> S["storage/sqlite/tool_batch.go<br/>调用／结果关联及原子保存"]
     S --> F["session/fork.go、background_copy.go<br/>完整批次复制与 ID 重映射"]
+    W --> P["processenv/environment.go<br/>环境快照与受管命令构造"]
+    P --> U["processenv/process_unix.go<br/>独立进程组及整组终止"]
+    P --> V["processenv/process_windows.go<br/>进程树终止及退出判定"]
 ```
 
 - ToolRun 按 prepared Hook 后的参数顺序解析、授权、确认和登记，通过一个即启动一个 worker；结果、完成 Hook、发现状态和输出按原调用顺序处理，Flush 整批提交。
 - 单工具失败、拒绝或超时不停止其他调用；整轮取消或确认过期取消并等待所有 worker。完成 Hook 只处理实际执行的结果，Content／Segments 回灌模型，Data 供内部消费。
+- 请求拥有的外部命令统一通过 processenv 配置终止行为：Unix 使用独立进程组，Windows 使用 taskkill /T /F；取消后等待命令和 stdout／stderr 收集结束。Skill、Shell、编译、一次性 Hook 和 ripgrep 共用此行为；常驻 Hook 的单次调用仍使用 event.cancel，关闭其进程时复用进程树终止。主动脱离进程组的守护进程和已提交给远端的动作不在取消保证内。
 - Tool.Call 返回业务 Result、独立日志正文和原始 error。Runner 在执行返回后发布一份 audit 调用记录，调用前固定 run_source；已进入调用记 INFO／succeeded，业务错误保留在正文。后续发送、Hook、持久化使用各自来源的 LogResult，不改写调用事实。
 - 参数日志限 512 rune，工具自行将摘要限为 1024 rune；日志不截断业务结果，也不把 Segments 自动转成日志正文。
 - PrepareCall 查询 CallPreparer；PreparedCall 固定参数、确认详情与执行回调，仅由本次 Runner 局部持有。Executor 复核身份、可用性和权限后使用执行 context 调用。

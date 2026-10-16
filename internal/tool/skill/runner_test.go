@@ -136,6 +136,29 @@ func TestSafeRelativePathRejectsEscape(t *testing.T) {
 	}
 }
 
+func TestCommandErrorPreservesUnderlyingCancellationFailure(t *testing.T) {
+	for _, reason := range []error{context.Canceled, context.DeadlineExceeded} {
+		t.Run(reason.Error(), func(t *testing.T) {
+			var ctx context.Context
+			var cancel context.CancelFunc
+			if reason == context.Canceled {
+				ctx, cancel = context.WithCancel(t.Context())
+			} else {
+				ctx, cancel = context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+			}
+			cancel()
+			failure := errors.New("terminate process group failed")
+			err := commandError(ctx, "test skill", failure, "partial stdout", "partial stderr")
+			if !errors.Is(err, reason) || !errors.Is(err, failure) {
+				t.Fatalf("lost cancellation or termination failure: %v", err)
+			}
+			if !strings.Contains(err.Error(), "partial stdout") || !strings.Contains(err.Error(), "partial stderr") {
+				t.Fatalf("lost command output: %v", err)
+			}
+		})
+	}
+}
+
 func TestGoRunnerPassesPayloadJSONToBinary(t *testing.T) {
 	dir := t.TempDir()
 	source := filepath.Join(dir, "main.go")

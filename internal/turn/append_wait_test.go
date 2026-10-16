@@ -24,6 +24,7 @@ func TestAppendWaitCancellationDoesNotRemoveReplacement(t *testing.T) {
 	if got := m.Snapshot("session"); got.Phase != PhaseAwaitAppendConfirm || got.PendingCount != 1 {
 		t.Fatalf("replacement lost: %+v", got)
 	}
+	m.FinishRequest("session", "")
 	if m.AppendWait("session").Wait(ctx, 0) || m.Snapshot("session").Phase != PhaseIdle {
 		t.Fatal("application cancellation did not silently discard an unbounded wait")
 	}

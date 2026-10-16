@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-// appendWaitLifecycle owns append-confirmation waits and their expiry output.
+// appendWaitLifecycle owns confirmation waits, attempt joins and expiry output.
 // Their routing values survive a request, but cancellation belongs to the app.
 type appendWaitLifecycle struct {
 	mu     sync.Mutex

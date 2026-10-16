@@ -92,14 +92,17 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 			return &command.Result{Content: "request already stopped"}, nil
 		}
 		if stopped.Kind == request.KindTurn {
-			count := deps.Requests.CancelSession(stopped.SessionID)
 			deps.Turns.StopSession(stopped.SessionID)
-			return &command.Result{Content: fmt.Sprintf("stopped %d request%s", count, plural(count))}, nil
+			count := deps.Requests.CancelSession(stopped.SessionID)
+			return &command.Result{Content: fmt.Sprintf("正在停止 %d 个请求；执行收尾后移除。", count)}, nil
+		}
+		if latest.Stopping {
+			return &command.Result{Content: "请求正在停止，等待执行收尾。"}, nil
 		}
 		if !deps.Requests.Cancel(id) {
 			return &command.Result{Content: fmt.Sprintf("request not found: %s", arg)}, nil
 		}
-		return &command.Result{Content: "stopped 1 request"}, nil
+		return &command.Result{Content: "正在停止 1 个请求；执行收尾后移除。"}, nil
 	}
 
 	actor, _ := contextinfo.ActorFromContext(ctx)
@@ -119,9 +122,9 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 	if err != nil {
 		return nil, err
 	}
-	count := deps.Requests.CancelSession(current.ID)
 	deps.Turns.StopSession(current.ID)
-	return &command.Result{Content: fmt.Sprintf("stopped %d request%s", count, plural(count))}, nil
+	count := deps.Requests.CancelSession(current.ID)
+	return &command.Result{Content: fmt.Sprintf("正在停止 %d 个请求；执行收尾后移除。", count)}, nil
 }
 
 func (c stopCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -158,10 +161,10 @@ func NewStopAll(deps Deps) command.Handler {
 		defer release()
 		count := 0
 		for _, id := range ids {
-			count += deps.Requests.CancelSession(id)
 			deps.Turns.StopSession(id)
+			count += deps.Requests.CancelSession(id)
 		}
-		return &command.Result{Content: fmt.Sprintf("stopped %d request%s", count, plural(count))}, nil
+		return &command.Result{Content: fmt.Sprintf("正在停止 %d 个请求；执行收尾后移除。", count)}, nil
 	})
 }
 
@@ -200,6 +203,9 @@ func writeRequestLine(sb *strings.Builder, ctx context.Context, deps Deps, numbe
 		kind = "turn"
 	} else if label == "" {
 		label = "request"
+	}
+	if req.Stopping {
+		label += " stopping"
 	}
 	sb.WriteString(fmt.Sprintf("  %s[%s] %s %s request %s\n", prefix, number, label, kind, formatDuration(time.Since(req.StartedAt))))
 	if prefix == "" {

@@ -20,6 +20,7 @@ import (
 	hookoutput "elbot/internal/hook/output"
 	hookprotocol "elbot/internal/hook/protocol"
 	"elbot/internal/llm"
+	"elbot/internal/processenv"
 )
 
 const (
@@ -52,15 +53,14 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 	}
 	processEnv := action.source.ProcessEnv
 	cmd := processEnv.CommandContext(runCtx, argv[0], argv[1:]...)
-	configureExecHookProcess(cmd)
-	killOnce := sync.OnceValue(func() bool { return killExecHookProcessTree(cmd) })
-	killProcessTree := func() bool { return killOnce() }
+	killProcessTree := sync.OnceValue(func() error { return processenv.KillProcessTree(cmd) })
 	// Command.Wait joins its cancellation callback. Keep its termination fact
 	// separate from a canceled context and from cleanup after a protocol fault.
-	cancelRequested := make(chan bool, 1)
+	cancelRequested := make(chan error, 1)
 	cmd.Cancel = func() error {
-		cancelRequested <- killProcessTree()
-		return nil
+		err := killProcessTree()
+		cancelRequested <- err
+		return err
 	}
 	cmd.Dir = cwd
 	stdin, err := cmd.StdinPipe()
@@ -93,7 +93,7 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 		return err
 	}
 	fail := func(result actionResult, logResult globalevents.LogResult, source error) (hook.Event, actionResult, globalevents.LogResult, error) {
-		killProcessTree()
+		source = errors.Join(source, killProcessTree())
 		_ = waitExec()
 		if contextErr := execContextError(runCtx, action); contextErr != nil {
 			logResult.Content += "\ncontext_error=" + contextErr.Error()
@@ -148,8 +148,11 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 		}
 		if runCtx.Err() != nil {
 			select {
-			case cancelRequested := <-cancelRequested:
-				if execExitCanceled(cmd, cancelRequested) {
+			case cancelErr := <-cancelRequested:
+				if cancelErr != nil {
+					err = errors.Join(err, cancelErr)
+					logResult.Content += "\nterminate_error=" + cancelErr.Error()
+				} else if processenv.ExitCanceled(cmd, true) {
 					err = execContextError(runCtx, action)
 				}
 			default:

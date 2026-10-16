@@ -157,7 +157,7 @@ func (m *Manager) StartExecution(sessionID string, input Input, e *Execution, at
 	if old := m.turns[sessionID]; old != nil && !(old.reserved && old.execution == e && old.phase == PhaseLLM) {
 		return false
 	}
-	m.turns[sessionID] = &state{phase: PhaseLLM, originalInput: normalizeInput(input), tools: map[string]int{}, execution: e, compactRun: attempt}
+	m.turns[sessionID] = &state{phase: PhaseLLM, originalInput: normalizeInput(input), tools: map[string]int{}, execution: e, compactRun: attempt, attemptDone: make(chan struct{})}
 	return true
 }
 

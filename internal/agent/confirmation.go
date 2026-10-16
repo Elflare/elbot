@@ -117,10 +117,10 @@ func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 		c.turns.ResolveRiskConfirmation(sessionID, turn.RiskConfirmationResponse{Rejected: true, Reason: parsed.Args})
 	case "stop":
 		observed = confirmationAction(ctx, sessionID, "stop", confirmation, "")
+		c.turns.StopSession(sessionID)
 		c.requests.CancelSession(sessionID)
-		c.turns.ResolveRiskConfirmation(sessionID, turn.RiskConfirmationResponse{Stopped: true})
 		release()
-		return c.output.SendChat(context.WithoutCancel(ctx), "stopped")
+		return c.output.SendChat(context.WithoutCancel(ctx), "正在停止，等待执行收尾。")
 	default:
 		if hasConfirmation {
 			observed = confirmationAction(ctx, sessionID, "invalid_command", confirmation, parsed.Name)
