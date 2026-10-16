@@ -176,6 +176,14 @@
       "translation": "Fixed an issue where OpenAI-compatible upstreams returning HTTP 200 HTML/non-SSE pages were masked by Scanner's over-length token error;",
       "updated_at": 1789300308
     },
+    "CHANGELOG.md:list:15411d4f2f6f75ea78035a100075e6dcc5fda1d15fdaa301d345d1d613db5e02": {
+      "kind": "list",
+      "source": "修复 __ELBOT_CODE_0__ 或超时仅终止 Skill 启动器、子进程仍继续执行和发送的问题。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "15411d4f2f6f75ea78035a100075e6dcc5fda1d15fdaa301d345d1d613db5e02",
+      "translation": "Fixed the issue where __ELBOT_CODE_0__ or timeout only terminated the Skill launcher, while child processes continued to execute and send.",
+      "updated_at": 1792154535
+    },
     "CHANGELOG.md:list:172ce4a2b47495feea66fd71dd0d868f23fcc3fbe8c9aa01a58362342daddd52": {
       "kind": "list",
       "source": "qq heartbeat ack 和 qqofficial gateway resumed 不再记录log",
@@ -1448,6 +1456,14 @@
       "translation": "The unified sending pipeline now retains both success results and errors. For Telegram, if some pages have already been sent, it will no longer fallback to resending from the beginning, avoiding duplicate messages.",
       "updated_at": 1791194538
     },
+    "CHANGELOG.md:list:a6dd2e710025aa32964a00f760c02d358181a84f636e8435fe6c49ea869c788f": {
+      "kind": "list",
+      "source": "模型请求中的 S3／hybrid 远程媒体交付从逐个上传和签名改为每次请求最多 8 路并行。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "a6dd2e710025aa32964a00f760c02d358181a84f636e8435fe6c49ea869c788f",
+      "translation": "S3/hybrid remote media delivery in model requests has been changed from sequential upload and signing to up to 8 parallel paths per request.",
+      "updated_at": 1792154535
+    },
     "CHANGELOG.md:list:a702b552baa7d522668a76b859a98b2272294fa7c56518f23019ef1e2e4ee45e": {
       "kind": "list",
       "source": "QQ OneBot 私聊文件段缺少 __ELBOT_CODE_0__ 时会调用 __ELBOT_CODE_1__；",
@@ -2274,8 +2290,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "60e944ca8f8f45356c0170a5246348dc6511b990896b6f53015fa6ef24aae0cc",
+  "source_hash": "0653875b6b30f5cb79e6fb31d6e833fd4b58e5b2b135e254ffd78555232935a3",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1792132381,
+  "updated_at": 1792154535,
   "version": 2
 }
