@@ -63,7 +63,8 @@ func TestHistoryQueryLogIncludesResult(t *testing.T) {
 				t.Fatal(err)
 			}
 			summary, body, ok := strings.Cut(logContent, "\ncontent:\n")
-			if !ok || summary != tc.summary || logContent != tool.TruncateLogContent(tc.summary+"\ncontent:\n"+result.Content, 1024) {
+			want := strings.ReplaceAll(result.Content, "...[单条消息过长，已截断]", "…")
+			if !ok || summary != tc.summary || logContent != tool.TruncateLogContent(tc.summary+"\ncontent:\n"+want, 1024) {
 				t.Fatalf("log=%q result=%q", logContent, result.Content)
 			}
 			if !strings.HasPrefix(tc.name, "empty") && (utf8.RuneCountInString(result.Content) <= 1024 || utf8.RuneCountInString(logContent) != 1024 || !utf8.ValidString(body)) {

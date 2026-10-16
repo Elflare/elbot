@@ -134,7 +134,7 @@ func TestAuditPreservesSourceOrderThroughStorageAndFiltering(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = center.Close(context.Background()) })
 	body := `{"tool":"shell","run_source":"foreground","risk":"low","result":"first\nsecond","actor_id":"user","nested":{"z":9007199254740993,"a":[]}}`
-	if err := events.EmitLog(t.Context(), events.LogRecord{Category: events.LogAudit, EventName: "tool_call", Module: "toolrun", Type: events.ContentJSON, Content: body, ResultStatus: events.ResultSucceeded}); err != nil {
+	if err := events.EmitLog(t.Context(), events.LogRecord{Category: events.LogAudit, EventName: "tool_call_end", Module: "toolrun", Type: events.ContentJSON, Content: body, ResultStatus: events.ResultSucceeded}); err != nil {
 		t.Fatal(err)
 	}
 	if err := center.Close(t.Context()); err != nil {

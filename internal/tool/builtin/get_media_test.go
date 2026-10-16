@@ -136,7 +136,7 @@ func TestGetMediaSchemaAndHistoryIDTruncation(t *testing.T) {
 	}
 	id := "media:" + strings.Repeat("a", 64)
 	label := "  1. [图片 " + id + "]"
-	result := chatHistoryResultLines([]string{strings.Repeat("文", chatHistoryTextLimit-20), label})
+	result := chatHistoryResultLines([]string{strings.Repeat("文", chatHistoryTextLimit-20), label}, "...[查询结果过长，已截断]")
 	if strings.Contains(result, "media:") || !strings.Contains(result, "已截断") {
 		t.Fatalf("partial ID escaped truncation: %s", result)
 	}

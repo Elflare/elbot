@@ -16,7 +16,7 @@ func HookFailure(event hook.Event, err error) string {
 	body := []rune(strings.TrimSpace(err.Error()))
 	text := string(body)
 	if len(body) > 1200 {
-		text = string(body[:1200]) + "\n...（已截断）"
+		text = string(body[:1200]) + "\n…"
 	}
 	return "Hook 执行失败（" + point + "）：\n" + text
 }

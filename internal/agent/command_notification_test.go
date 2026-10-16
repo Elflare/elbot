@@ -80,6 +80,49 @@ func TestCommandResultsUseNotifications(t *testing.T) {
 	}
 }
 
+func TestCommandArgumentErrorsUseNotifications(t *testing.T) {
+	for _, text := range []string{"/log --warn", "/log --limit", "/audit --event", "/elwisp --limit", "/usage --days", "/fork --bad", "/resume --bad"} {
+		t.Run(text, func(t *testing.T) {
+			var notices []events.Notification
+			a, p := commandNotificationFixture(t, func(ctx context.Context, n events.Notification) error {
+				if _, ok := session.BindingFromContext(ctx); ok {
+					t.Error("error retained session binding")
+				}
+				notices = append(notices, n)
+				return nil
+			})
+			origin := contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "local", ConversationID: "local"}}
+			err := a.HandleMessage(contextinfo.WithConversation(t.Context(), origin), text)
+			if err == nil {
+				t.Fatal("expected command error")
+			}
+			if len(notices) != 1 || notices[0].Level != slog.LevelError || !strings.Contains(notices[0].Text, err.Error()) || !strings.HasPrefix(notices[0].Text, "命令 "+strings.Fields(text)[0]+" 执行失败：") {
+				t.Fatalf("err=%v notices=%+v", err, notices)
+			}
+			if notices[0].Origin == nil || notices[0].Origin.Source != origin.Source {
+				t.Fatalf("origin=%+v", notices[0].Origin)
+			}
+			if p.out.String() != "" {
+				t.Fatal("error sent as Chat")
+			}
+		})
+	}
+}
+
+func TestCommandFailurePreservesNotificationError(t *testing.T) {
+	want := errors.New("command failed")
+	deliveryErr := errors.New("notification failed")
+	a, _ := commandNotificationFixture(t, func(context.Context, events.Notification) error { return deliveryErr })
+	e := a.message.commands.(*CommandExecutor)
+	if err := e.router.Register(command.NewFunc(command.Info{Name: "failure"}, func(context.Context, command.Request) (*command.Result, error) { return nil, want })); err != nil {
+		t.Fatal(err)
+	}
+	_, err := e.Handle(contextinfo.WithActor(t.Context(), a.identity.Actor(t.Context())), "/failure")
+	if !errors.Is(err, want) || !errors.Is(err, deliveryErr) {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestCommandNotificationSurvivesSessionSwitch(t *testing.T) {
 	var notices []events.Notification
 	a, p := commandNotificationFixture(t, func(ctx context.Context, n events.Notification) error {
