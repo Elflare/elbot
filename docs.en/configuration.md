@@ -139,6 +139,10 @@ The maximum size for the automatically attached instruction file is 64 KiB. If t
 
 Undo backups for file editing are saved according to the absolute path of the actual target; Switching the workspace does not clear backups, but the same relative path will be resolved according to the new workspace. When undoing files in the original directory, you can switch back to the original workspace or pass the absolute path. When no workspace is set, the process working directory is used. For usage, see [Undo File Editing](commands.md#文件编辑撤销).
 
+`read_file`'s `ast`/`ast_function` mode supports single-file and directory queries. `.go` is parsed according to Go, and `.mksh` is parsed according to mksh; Other files recognize a valid Shell shebang on the first line, including direct interpreter paths and `env`, `env -S`, and `env --split-string` notations. When `.sh`, `.bash`, and `.bats` have no recognizable Shell shebang, the Bash dialect is used; when mksh is declared, the mksh dialect is used.
+
+`edit_file` generates editing results and a diff preview before confirmation, and submits the same result after confirmation. If the file content or target changes while waiting for confirmation, the submission will be rejected, and the edit must be prepared again.
+
 ## Resident Memory Configuration
 
 Resident memory data is saved by default in `memories.toml` of the configuration directory, and the file is generated when the program runs for the first time. The length limits for the two resident memory segments, core and normal, can be set in the main configuration:
