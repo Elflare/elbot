@@ -255,7 +255,7 @@ func TestBackgroundCompactHandoff(t *testing.T) {
 				}
 			}
 			configureTestContext(t, a, config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: .8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
-			a.execution.recordUsage(t.Context(), row.ID, &llm.Usage{TotalTokens: func() *int64 { n := int64(80); return &n }()})
+			a.execution.contexts.RecordTurn(t.Context(), row.ID, &llm.Usage{TotalTokens: func() *int64 { n := int64(80); return &n }()})
 			done := make(chan backgroundTestResult, 1)
 			go func() {
 				result, err := a.RunBackground(context.Background(), req)

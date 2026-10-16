@@ -71,19 +71,25 @@ func cloneUsage(usage *llm.Usage) *llm.Usage {
 	return &copy
 }
 
-// RecordUsage preserves the latest observed usage even when persistence fails.
-// Serializing writers prevents a late save from replacing a newer observation.
-func (s *Service) RecordUsage(ctx context.Context, id string, usage *llm.Usage) error {
-	if usage == nil || id == "" {
+// RecordTurn 在 Turn 的 loop 和回复提交成功后，一次保存活动时间与用量；nil 用量保留原值。
+// 串行保存防止旧观测覆盖新观测；持久化失败时仍保留内存中已观测的用量。
+func (s *Service) RecordTurn(ctx context.Context, id string, usage *llm.Usage) error {
+	if id == "" {
 		return nil
 	}
 	usage = cloneUsage(usage)
 	s.usageWriteMu.Lock()
 	defer s.usageWriteMu.Unlock()
-	s.mu.Lock()
-	s.lastUsage[id] = usage
-	s.mu.Unlock()
+	if usage != nil {
+		s.mu.Lock()
+		s.lastUsage[id] = usage
+		s.mu.Unlock()
+	}
 	_, err := s.store.Sessions().Mutate(ctx, id, func(row *storage.Session) error {
+		row.UpdatedAt = storage.Now()
+		if usage == nil {
+			return nil
+		}
 		if _, err := DecodeState(row.Metadata); err != nil {
 			return err
 		}
@@ -95,9 +101,6 @@ func (s *Service) RecordUsage(ctx context.Context, id string, usage *llm.Usage) 
 			return err
 		}
 		row.Metadata, err = fields.Encode()
-		if err == nil {
-			row.UpdatedAt = storage.Now()
-		}
 		return err
 	})
 	return err

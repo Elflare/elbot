@@ -63,8 +63,19 @@ func (h *MessageHandler) materializePlatformSegment(ctx context.Context, msg pla
 	return segment
 }
 
+// associateInboundHistory 只为成功物化的媒体保存历史位置，无可关联媒体时不查询历史库。
 func (h *MessageHandler) associateInboundHistory(ctx context.Context, msg platform.MessageContext, messageID string, original, resolved []platform.MessageSegment) error {
 	if messageID == "" {
+		return nil
+	}
+	hasMedia := false
+	for i, raw := range original {
+		if (raw.Type == platform.SegmentImage || raw.Type == platform.SegmentFile) && resolved[i].MediaID != "" {
+			hasMedia = true
+			break
+		}
+	}
+	if !hasMedia {
 		return nil
 	}
 	row, err := h.media.History.GetByPlatformMessage(ctx, msg.Conversation.Source.Platform, msg.Conversation.Source.ScopeID, messageID)

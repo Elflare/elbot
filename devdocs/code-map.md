@@ -106,7 +106,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## Request、Turn 与状态
 
 - `internal/request/`、`internal/turn/`：请求树、取消、阶段、pending、确认与 Execution。
-- `internal/agent/execution.go`、`internal/agent/execution_run.go`：前后台执行与单轮收尾，消费 Session 接管事实；`internal/turn/execution.go` 保存一致的接管上下文及会话快照。
+- `internal/agent/execution.go`、`internal/agent/execution_run.go`：前后台执行与单轮收尾，消费 Session 接管事实；loop 与回复提交完成后调用 contextmgr.RecordTurn 一次保存活动时间和用量，再处理状态与 pending；`internal/turn/execution.go` 保存一致的接管上下文及会话快照。
 - `internal/agent/execution_admission.go`、`internal/agent/execution_input.go`：准入、输入、启动冲突后的重新分流、追加确认与续跑。
 - `internal/agent/execution_lifecycle.go`：追加确认等待及关闭。
 - `internal/agent/confirmation.go`、`internal/agent/risk_confirmation.go`：风险确认协调、来源日志与文案；`internal/turn/manager.go` 的 RiskConfirmationWait.Wait 在实际状态转换处返回明确 ResultStatus，保留业务响应／接受 bool，区分失效等待、取消和超时。
@@ -187,13 +187,13 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/session/origin.go`、`internal/session/promotion.go`、`internal/session/background.go`：原生归属、前台接管与后台准备；promotion 提交后同步发布实例级 ForegroundActivated 信号，接收方仅更新执行内存。
 - `internal/session/fork.go`、`internal/session/background_copy.go`、`internal/session/material.go`：Fork、副本与源材料契约。
 - `internal/session/compact.go`、`internal/session/lifecycle.go`、`internal/session/expiration.go`：压缩结果创建、生命周期与过期。
-- `internal/session/naming.go`、`internal/session/naming_lifecycle.go`、`internal/session/title.go`：命名调度、退出与文本生成。
+- `internal/session/naming.go`、`internal/session/naming_lifecycle.go`、`internal/session/title.go`：命名调度、退出与文本生成；命名状态在读取数据库前占用，准备退出释放，已结束或进行中的任务不重复读取。
 - `internal/background/takeover.go`：后台修正／投递前的持久化接管检查。
 
 <!-- locator:context -->
 ## 上下文、Prompt 与压缩
 
-- `internal/contextmgr/`：历史、窗口、用量、seed 状态和压缩分派。
+- `internal/contextmgr/`：历史、窗口、用量、seed 状态和压缩分派；service.go 的 RecordTurn 合并保存 Turn 活动时间和最新用量，nil 用量保留原值，保存失败仍保留已观测用量。
 - `internal/agent/execution_compact.go`、`internal/agent/context_usage.go`：压缩生命周期、交接及用量。
 - `internal/agent/chat/compact.go`、`internal/agent/chat/compressor.go`：Chat 摘要实现。
 - `internal/agent/responses/compact.go`、`internal/agent/responses/branch.go`：原生压缩与分支材料。
@@ -240,7 +240,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/storage/sqlite/media_repository.go`：媒体元数据与独立签名缓存读写；`media_signed_urls` 随媒体删除级联清理。
 - `internal/media/lifecycle.go`：清理轮次与逐对象删除；生成 cleanup_id 和完整分类计数，异常优先的明细正文最多 50 行；返回来源 LogResult 和原始 error，先保留逐对象结果再合并并行错误，取消不覆盖独立删除失败。
 - `internal/media/reference.go`：媒体引用与存活持有；RetainSessionToolArguments 返回事务来源 LogResult 和原始 error，无引用声明 skipped，Runner 不二次分类。
-- `internal/media/platform.go`、`internal/media/history.go`：平台媒体、历史批量获取（缓存、去重与尝试预算）及跨库历史对账。
+- `internal/media/platform.go`、`internal/media/history.go`：平台媒体、历史批量获取（缓存、去重与尝试预算）及跨库历史对账；loadHistoryMedia 按 ID 复用元数据与匹配的持久关联，历史命中不回写，输出缓存转历史关联仍保存。入站关联和历史展示在无媒体时跳过数据库查询。
 - `internal/tool/builtin/chat_history.go`、`internal/tool/builtin/get_media.go`：历史查询与显式媒体获取。
 - `internal/tool/builtin/view_image.go`：Responses 看图工具，来源／图片序号选择、本地权限及多模态结果。
 - `internal/delivery/dispatch/media.go`：输出媒体准备和回执缓存；缓存失败发布 WARN 日志，保留实际发送回执和错误，不触发重发。

@@ -177,10 +177,9 @@ func (c *ExecutionCoordinator) runTurn(ctx context.Context, session *storage.Ses
 func (c *ExecutionCoordinator) finishCompletedTurn(ctx context.Context, session *storage.Session, out dialogue.Output, result dialogue.TurnResult) (turn.Input, error) {
 	ctx = c.view.Context(ctx)
 	selection, usage, turnStartedAt, committed := result.Selection, result.Usage, result.StartedAt, result.Committed
-	if err := c.sessions.Touch(ctx, session); err != nil {
-		return turn.Input{}, fmt.Errorf("更新会话活动时间: %w", err)
+	if err := c.contexts.RecordTurn(ctx, session.ID, usage); err != nil {
+		return turn.Input{}, fmt.Errorf("保存会话活动时间和用量: %w", err)
 	}
-	c.recordUsage(ctx, session.ID, usage)
 	doneStatus := runtimeDoneStatus(runtimestatus.Snapshot{
 		SessionID:      session.ID,
 		Provider:       selection.Provider,
