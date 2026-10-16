@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"elbot/internal/events"
+	"elbot/internal/llm"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
+	"github.com/aws/smithy-go"
 )
 
 type concurrentTestBackend struct {
@@ -575,5 +577,305 @@ func TestPresignUploadSerializesSameIDAndProtectsFromCleanup(t *testing.T) {
 	defer mu.Unlock()
 	if puts != 1 || removes != 0 {
 		t.Fatalf("uploads=%d deletes=%d", puts, removes)
+	}
+}
+
+func TestAcquireForLLMRemoteUploadsParallelAndPreservesOrder(t *testing.T) {
+	for _, mode := range []string{"s3", "hybrid"} {
+		t.Run(mode, func(t *testing.T) {
+			m := newConcurrentTestManager(t)
+			m.FileDelivery.Backend = mode
+			m.FileDelivery.MaxDirectBase64Bytes = 1
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			messages := []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("before")}, {Role: llm.RoleUser}}
+			gates := map[string]chan struct{}{}
+			for i := range 11 {
+				item, err := m.ImportBytes(ctx, []byte(fmt.Sprintf("parallel upload %d", i)), Input{Name: fmt.Sprintf("file-%d.txt", i)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				gates[item.ID] = make(chan struct{})
+				messages[i%2].Segments = append(messages[i%2].Segments, llm.MessageSegment{Type: llm.SegmentFile, MediaID: item.ID})
+			}
+			messages[1].Segments = append(messages[1].Segments, messages[0].Segments[1])
+			started := make(chan string, len(gates))
+			var mu sync.Mutex
+			active, peak := 0, 0
+			puts, signs := map[string]int{}, map[string]int{}
+			m.Remote = &concurrentTestBackend{
+				put: func(ctx context.Context, id string, _ io.Reader, _ int64, _ string) (string, error) {
+					mu.Lock()
+					active++
+					peak = max(peak, active)
+					puts[id]++
+					mu.Unlock()
+					defer func() { mu.Lock(); active--; mu.Unlock() }()
+					started <- id
+					select {
+					case <-gates[id]:
+						return "media/" + id, nil
+					case <-ctx.Done():
+						return "", ctx.Err()
+					}
+				},
+				presign: func(_ context.Context, item *storage.Media, _ time.Duration) (string, error) {
+					mu.Lock()
+					signs[item.ID]++
+					mu.Unlock()
+					return "https://media.example/" + item.ID, nil
+				},
+			}
+			type result struct {
+				messages []llm.LLMMessage
+				release  func()
+				err      error
+			}
+			done := make(chan result, 1)
+			go func() {
+				messages, release, err := m.AcquireForLLM(ctx, messages)
+				done <- result{messages, release, err}
+			}()
+			var first []string
+			for range 8 {
+				first = append(first, awaitMediaTest(t, started))
+			}
+			// Complete the first batch in reverse start order.
+			for i := len(first) - 1; i >= 0; i-- {
+				close(gates[first[i]])
+			}
+			for range 3 {
+				close(gates[awaitMediaTest(t, started)])
+			}
+			resolved := awaitMediaTest(t, done)
+			if resolved.err != nil {
+				t.Fatal(resolved.err)
+			}
+			defer resolved.release()
+			for i, message := range messages {
+				for j, original := range message.Segments {
+					got := resolved.messages[i].Segments[j]
+					if original.MediaID == "" {
+						if got != original {
+							t.Fatalf("text changed: %#v", got)
+						}
+						continue
+					}
+					if got.MediaID != original.MediaID || got.URL != "https://media.example/"+original.MediaID || original.URL != "" {
+						t.Fatalf("media order or request copy changed: %#v", got)
+					}
+				}
+			}
+			_, release, err := m.AcquireForLLM(ctx, messages)
+			if err != nil {
+				t.Fatal(err)
+			}
+			release()
+			mu.Lock()
+			if peak != 8 {
+				t.Errorf("peak uploads=%d, want 8", peak)
+			}
+			for id := range gates {
+				if puts[id] != 1 || signs[id] != 1 {
+					t.Errorf("media %s uploaded=%d signed=%d, want cached once", id, puts[id], signs[id])
+				}
+			}
+			mu.Unlock()
+			for id := range gates {
+				refs, err := m.Store.MediaReferences().ListMediaIDs(ctx, id)
+				if err != nil || len(refs) != 1 {
+					t.Fatalf("request hold missing or duplicated: %#v, %v", refs, err)
+				}
+			}
+			resolved.release()
+			for id := range gates {
+				refs, err := m.Store.MediaReferences().ListMediaIDs(ctx, id)
+				if err != nil || len(refs) != 0 {
+					t.Fatalf("request hold survived release: %#v, %v", refs, err)
+				}
+			}
+		})
+	}
+}
+
+func TestAcquireForLLMRemoteFailureCancelsAndWaitsBeforeReleasing(t *testing.T) {
+	for _, mode := range []string{"upload failure", "caller cancellation"} {
+		t.Run(mode, func(t *testing.T) {
+			m := newConcurrentTestManager(t)
+			m.FileDelivery.Backend = "s3"
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			var items []*storage.Media
+			var segments []llm.MessageSegment
+			for i := range 11 {
+				item, err := m.ImportBytes(ctx, []byte(fmt.Sprintf("cancel upload %d", i)), Input{Name: "file.txt"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				items = append(items, item)
+				segments = append(segments, llm.MessageSegment{Type: llm.SegmentFile, MediaID: item.ID})
+			}
+			failure := errors.New("remote upload failed")
+			fail, exit := make(chan struct{}), make(chan struct{})
+			var exitOnce sync.Once
+			defer exitOnce.Do(func() { close(exit) })
+			started, canceled := make(chan string, 11), make(chan string, 11)
+			m.Remote = &concurrentTestBackend{put: func(ctx context.Context, id string, _ io.Reader, _ int64, _ string) (string, error) {
+				started <- id
+				if mode == "upload failure" && id == items[0].ID {
+					select {
+					case <-fail:
+						return "", failure
+					case <-ctx.Done():
+						return "", ctx.Err()
+					}
+				}
+				<-ctx.Done()
+				canceled <- id
+				<-exit
+				return "", ctx.Err()
+			}}
+			done := make(chan error, 1)
+			go func() {
+				_, release, err := m.AcquireForLLM(ctx, []llm.LLMMessage{{Segments: segments}})
+				release()
+				done <- err
+			}()
+			for range 8 {
+				awaitMediaTest(t, started)
+			}
+			waiting := 8
+			if mode == "upload failure" {
+				close(fail)
+				waiting--
+			} else {
+				cancel()
+			}
+			for range waiting {
+				awaitMediaTest(t, canceled)
+			}
+			select {
+			case err := <-done:
+				t.Fatalf("request returned before uploads exited: %v", err)
+			default:
+			}
+			for _, item := range items {
+				refs, err := m.Store.MediaReferences().ListMediaIDs(t.Context(), item.ID)
+				if err != nil || len(refs) != 1 {
+					t.Fatalf("in-flight reference released: %#v, %v", refs, err)
+				}
+			}
+			exitOnce.Do(func() { close(exit) })
+			err := awaitMediaTest(t, done)
+			want := failure
+			if mode == "caller cancellation" {
+				want = context.Canceled
+			}
+			if !errors.Is(err, want) {
+				t.Fatalf("error=%v, want %v", err, want)
+			}
+			select {
+			case id := <-started:
+				t.Fatalf("queued upload started after cancellation: %s", id)
+			default:
+			}
+			for _, item := range items {
+				refs, err := m.Store.MediaReferences().ListMediaIDs(t.Context(), item.ID)
+				if err != nil || len(refs) != 0 {
+					t.Fatalf("failed request retained references: %#v, %v", refs, err)
+				}
+			}
+		})
+	}
+}
+
+func TestAcquireForLLMRemoteMissingDoesNotCancelOtherUploads(t *testing.T) {
+	m := newConcurrentTestManager(t)
+	m.FileDelivery.Backend = "s3"
+	var segments []llm.MessageSegment
+	for i := range 3 {
+		item, err := m.ImportBytes(t.Context(), []byte(fmt.Sprintf("missing upload %d", i)), Input{Name: "file.txt"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		segments = append(segments, llm.MessageSegment{Type: llm.SegmentFile, MediaID: item.ID})
+	}
+	m.Remote = &concurrentTestBackend{put: func(_ context.Context, id string, _ io.Reader, _ int64, _ string) (string, error) {
+		if id == segments[0].MediaID {
+			return "", &smithy.GenericAPIError{Code: "NoSuchKey", Message: "missing object"}
+		}
+		return "media/" + id, nil
+	}}
+	resolved, release, err := m.AcquireForLLM(t.Context(), []llm.LLMMessage{{Segments: segments}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if resolved[0].Segments[0].Type != llm.SegmentText || !strings.Contains(resolved[0].Segments[0].Text, "媒体不可用") {
+		t.Fatalf("missing media did not become a placeholder: %#v", resolved)
+	}
+	for _, segment := range resolved[0].Segments[1:] {
+		if segment.URL == "" || segment.Type != llm.SegmentFile {
+			t.Fatalf("independent upload was canceled: %#v", segment)
+		}
+	}
+}
+
+func TestAcquireForLLMRemoteRetryReusesSuccessfulUploads(t *testing.T) {
+	m := newConcurrentTestManager(t)
+	m.FileDelivery.Backend = "s3"
+	var segments []llm.MessageSegment
+	for i := range 2 {
+		item, err := m.ImportBytes(t.Context(), []byte(fmt.Sprintf("retry upload %d", i)), Input{Name: "file.txt"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		segments = append(segments, llm.MessageSegment{Type: llm.SegmentFile, MediaID: item.ID})
+	}
+	signed := make(chan struct{}, 1)
+	var mu sync.Mutex
+	puts := map[string]int{}
+	failure := errors.New("one upload failed")
+	m.Remote = &concurrentTestBackend{
+		put: func(ctx context.Context, id string, _ io.Reader, _ int64, _ string) (string, error) {
+			mu.Lock()
+			puts[id]++
+			attempt := puts[id]
+			mu.Unlock()
+			if id == segments[1].MediaID && attempt == 1 {
+				select {
+				case <-signed:
+					return "", failure
+				case <-ctx.Done():
+					return "", ctx.Err()
+				}
+			}
+			return "media/" + id, nil
+		},
+		presign: func(_ context.Context, item *storage.Media, _ time.Duration) (string, error) {
+			if item.ID == segments[0].MediaID {
+				select {
+				case signed <- struct{}{}:
+				default:
+				}
+			}
+			return "https://media.example/" + item.ID, nil
+		},
+	}
+	messages := []llm.LLMMessage{{Segments: segments}}
+	_, release, err := m.AcquireForLLM(t.Context(), messages)
+	release()
+	if !errors.Is(err, failure) {
+		t.Fatalf("first request error=%v", err)
+	}
+	_, release, err = m.AcquireForLLM(t.Context(), messages)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	mu.Lock()
+	defer mu.Unlock()
+	if puts[segments[0].MediaID] != 1 || puts[segments[1].MediaID] != 2 {
+		t.Fatalf("retry did not reuse completed upload: %#v", puts)
 	}
 }

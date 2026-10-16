@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"strings"
+	"sync"
 	"time"
 
 	"elbot/internal/llm"
@@ -16,6 +17,9 @@ import (
 )
 
 const signedURLRefreshMargin = 5 * time.Minute
+
+// requestUploadConcurrency bounds remote uploads and signing within one LLM request.
+const requestUploadConcurrency = 8
 
 func unavailable(segment llm.MessageSegment) llm.MessageSegment {
 	label := strings.TrimSpace(segment.Name)
@@ -44,6 +48,7 @@ func (m *Manager) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) 
 		}
 	}()
 	mediaByID := map[string]*storage.Media{}
+	var items []*storage.Media
 	var total int64
 	for i := range out {
 		for j, segment := range out[i].Segments {
@@ -68,6 +73,7 @@ func (m *Manager) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) 
 						return nil, cleanup, err
 					}
 					releases = append(releases, release)
+					items = append(items, metadata)
 				}
 				mediaByID[segment.MediaID] = metadata
 			}
@@ -87,6 +93,12 @@ func (m *Manager) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) 
 		return nil, cleanup, fmt.Errorf("media request is %d bytes, exceeds file_delivery.max_direct_base64_bytes=%d", total, m.FileDelivery.MaxDirectBase64Bytes)
 	}
 	urls := map[string]string{}
+	if remote {
+		urls, err = m.prepareRemoteURLs(ctx, items)
+		if err != nil {
+			return nil, cleanup, err
+		}
+	}
 	for i := range out {
 		for j, segment := range out[i].Segments {
 			metadata := mediaByID[segment.MediaID]
@@ -95,15 +107,9 @@ func (m *Manager) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) 
 			}
 			value, ok := urls[segment.MediaID]
 			if !ok {
-				var err error
-				if remote {
-					value, err = m.presignMedia(ctx, metadata)
-				} else {
-					var data []byte
-					data, err = m.readMedia(ctx, metadata)
-					if err == nil {
-						value = "data:" + metadata.MIMEType + ";base64," + base64.StdEncoding.EncodeToString(data)
-					}
+				data, err := m.readMedia(ctx, metadata)
+				if err == nil {
+					value = "data:" + metadata.MIMEType + ";base64," + base64.StdEncoding.EncodeToString(data)
 				}
 				if err != nil {
 					if ctx.Err() != nil {
@@ -129,6 +135,59 @@ func (m *Manager) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) 
 		}
 	}
 	return out, cleanup, nil
+}
+
+// prepareRemoteURLs resolves each distinct held media object in parallel.
+// Results are merged only after every worker exits, before references can release.
+func (m *Manager) prepareRemoteURLs(ctx context.Context, items []*storage.Media) (map[string]string, error) {
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	results := make([]string, len(items))
+	jobs := make(chan int)
+	var workers sync.WaitGroup
+	for range min(requestUploadConcurrency, len(items)) {
+		workers.Go(func() {
+			for i := range jobs {
+				if ctx.Err() != nil {
+					return
+				}
+				value, err := m.presignMedia(ctx, items[i])
+				if err != nil {
+					if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+						var remoteErr smithy.APIError
+						missing := errors.Is(err, fs.ErrNotExist) || errors.Is(err, storage.ErrNotFound) || (errors.As(err, &remoteErr) && (remoteErr.ErrorCode() == "NoSuchKey" || remoteErr.ErrorCode() == "NotFound"))
+						if missing {
+							continue
+						}
+					}
+					cancel(err)
+					return
+				}
+				results[i] = value
+			}
+		})
+	}
+dispatch:
+	for i := range items {
+		if ctx.Err() != nil {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			break dispatch
+		case jobs <- i:
+		}
+	}
+	close(jobs)
+	workers.Wait()
+	if err := context.Cause(ctx); err != nil {
+		return nil, err
+	}
+	urls := make(map[string]string, len(items))
+	for i, item := range items {
+		urls[item.ID] = results[i]
+	}
+	return urls, nil
 }
 
 func (m *Manager) readMedia(ctx context.Context, metadata *storage.Media) ([]byte, error) {
