@@ -13,16 +13,16 @@ import (
 
 // State is a detached view of the tool-owned session metadata.
 type State struct {
-	DiscoveredTools      []string
-	ToolCache            []CachedTool
-	ToolTags             []string
-	ShownRuleCardFormats []string
+	DiscoveredTools []string
+	ToolCache       []CachedTool
+	ToolTags        []string
+	// ElyphRulesShown is committed with dialogue messages, never by StateService.
+	ElyphRulesShown bool
 }
 
 type StateUpdate struct {
-	Tools                []CachedTool
-	Tags                 []string
-	ShownRuleCardFormats []string
+	Tools []CachedTool
+	Tags  []string
 }
 
 type StateCommit struct {
@@ -45,7 +45,7 @@ func DecodeState(raw string) (State, error) {
 	var state State
 	for key, target := range map[string]any{
 		"discovered_tools": &state.DiscoveredTools, "tool_cache": &state.ToolCache,
-		"tool_tags": &state.ToolTags, "shown_rule_card_formats": &state.ShownRuleCardFormats,
+		"tool_tags": &state.ToolTags, "elyph_rules_shown": &state.ElyphRulesShown,
 	} {
 		if raw, ok := fields[key]; ok {
 			if err := json.Unmarshal(raw, target); err != nil {
@@ -56,7 +56,6 @@ func DecodeState(raw string) (State, error) {
 	state.DiscoveredTools = uniqueNames(state.DiscoveredTools)
 	state.ToolCache = NormalizeCachedTools(state.ToolCache)
 	state.ToolTags = uniqueNames(state.ToolTags)
-	state.ShownRuleCardFormats = uniqueNames(state.ShownRuleCardFormats)
 	return state, nil
 }
 
@@ -98,14 +97,13 @@ func (s *StateService) Commit(ctx context.Context, id string, update StateUpdate
 		state.DiscoveredTools = uniqueNames(state.DiscoveredTools)
 		state.ToolCache = MergeCachedTools(state.ToolCache, update.Tools)
 		state.ToolTags = uniqueNames(append(state.ToolTags, update.Tags...))
-		state.ShownRuleCardFormats = uniqueNames(append(state.ShownRuleCardFormats, update.ShownRuleCardFormats...))
 		fields, err := storage.DecodeSessionMetadata(row.Metadata)
 		if err != nil {
 			return err
 		}
 		for key, value := range map[string]any{
 			"discovered_tools": state.DiscoveredTools, "tool_cache": state.ToolCache,
-			"tool_tags": state.ToolTags, "shown_rule_card_formats": state.ShownRuleCardFormats,
+			"tool_tags": state.ToolTags,
 		} {
 			empty := false
 			switch v := value.(type) {

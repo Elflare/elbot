@@ -10,6 +10,7 @@ import (
 
 	agentevents "elbot/internal/agent/events"
 	"elbot/internal/delivery"
+	"elbot/internal/elyph"
 	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -229,12 +230,31 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 			return CallInput{}, err
 		}
 		segments := archived[0].Segments
+		state, err := toolrun.DecodeState(session.Metadata)
+		if err != nil {
+			return CallInput{}, err
+		}
+		ruleCard := elyph.RuleCardIfNeeded(pending.NeedsElyphRules, state.ElyphRulesShown)
+		if ruleCard != "" {
+			segments = append(llm.TextSegments(ruleCard+"\n\n"), segments...)
+			fields, err := storage.DecodeSessionMetadata(pending.Message.Metadata)
+			if err != nil {
+				return CallInput{}, err
+			}
+			_ = fields.Set("elyph_rules_shown", true)
+			pending.Message.Metadata, _ = fields.Encode()
+		}
 		baseMessages[pending.MessageIndex].Segments = segments
 		requestMessages[pending.MessageIndex].Segments = segments
 		pending.Message.Content = MessageContent(segments)
 		pending.Message.Segments = StoredMessageSegments(segments)
 		if _, err := persistence.Commit(ctx, &pending.Message, nil); err != nil {
 			return CallInput{}, err
+		}
+		if ruleCard != "" {
+			fields, _ := storage.DecodeSessionMetadata(session.Metadata)
+			_ = fields.Set("elyph_rules_shown", true)
+			session.Metadata, _ = fields.Encode()
 		}
 	}
 	return CallInput{Messages: baseMessages, RequestMessages: requestMessages, Tools: tools}, nil

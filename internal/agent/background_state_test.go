@@ -60,8 +60,8 @@ func TestBackgroundStateFreezesInitialTools(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if repo.writes != 0 || !reflect.DeepEqual(before, after) {
-				t.Fatalf("retry changed tools: writes=%d before=%+v after=%+v", repo.writes, before, after)
+			if !reflect.DeepEqual(before, after) {
+				t.Fatalf("retry changed tools: before=%+v after=%+v", before, after)
 			}
 			requests := f.chatRequests()
 			if len(requests) != 2 {
@@ -97,8 +97,8 @@ func TestBackgroundStateFailureDoesNotPrewriteCache(t *testing.T) {
 	result, err := a.RunBackground(ctx, background.RunRequest{Kind: background.KindElnis, Name: "failure", Platform: "cli",
 		Actor: contextinfo.Actor{ID: "cli:local", Role: contextinfo.RoleSuperadmin}, Prompt: "run",
 		CachedTools: []toolrun.CachedTool{backgroundCachedTool("new", toolrun.SourceKindELwisp)}})
-	if !errors.Is(err, failure) || repo.writes != 1 {
-		t.Fatalf("err=%v commits=%d", err, repo.writes)
+	if !errors.Is(err, failure) {
+		t.Fatalf("err=%v", err)
 	}
 	after, err := toolrun.NewStateService(store).Snapshot(ctx, result.SessionID)
 	if err != nil {

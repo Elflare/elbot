@@ -344,8 +344,8 @@ func TestDiscoverToolDoesNotRepeatElyphRuleCardAcrossTurns(t *testing.T) {
 
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
-	_ = registry.Register(agentDetailTool{name: "alpha", source: tool.SourceSkillAgent, detail: "#skill alpha - A", format: "elyph", ruleCard: "ELyph RULE"})
-	_ = registry.Register(agentDetailTool{name: "beta", source: tool.SourceSkillAgent, detail: "#skill beta - B", format: "elyph", ruleCard: "ELyph RULE"})
+	_ = registry.Register(agentDetailTool{name: "alpha", source: tool.SourceSkillAgent, detail: "#skill alpha - A", format: "elyph"})
+	_ = registry.Register(agentDetailTool{name: "beta", source: tool.SourceSkillAgent, detail: "#skill beta - B", format: "elyph"})
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
 		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
 		cfg.ToolRegistry = registry
@@ -362,22 +362,22 @@ func TestDiscoverToolDoesNotRepeatElyphRuleCardAcrossTurns(t *testing.T) {
 		t.Fatalf("chat requests = %d", len(requests))
 	}
 	firstToolResult := llm.SegmentsContentText(requests[1].Messages[len(requests[1].Messages)-1].Segments)
-	if strings.Count(firstToolResult, "ELyph RULE") != 1 || !strings.Contains(firstToolResult, "#skill alpha - A") {
+	if strings.Count(firstToolResult, "ELyph 规则：") != 1 || !strings.Contains(firstToolResult, "#skill alpha - A") {
 		t.Fatalf("first discovery should include rule card and alpha detail: %q", firstToolResult)
 	}
 	secondToolResult := llm.SegmentsContentText(requests[3].Messages[len(requests[3].Messages)-1].Segments)
-	if strings.Contains(secondToolResult, "ELyph RULE") {
+	if strings.Contains(secondToolResult, "ELyph 规则：") {
 		t.Fatalf("second discovery should not repeat rule card: %q", secondToolResult)
 	}
 	if !strings.Contains(secondToolResult, "#skill beta - B") {
 		t.Fatalf("second discovery should include beta detail: %q", secondToolResult)
 	}
 	allSecondRequestText := chatRequestText(requests[3])
-	if strings.Count(allSecondRequestText, "ELyph RULE") != 1 {
+	if strings.Count(allSecondRequestText, "ELyph 规则：") != 1 {
 		t.Fatalf("previous rule card should remain in history exactly once: %q", allSecondRequestText)
 	}
 	sessionRecord := onlySession(t, store, p)
-	if !strings.Contains(sessionRecord.Metadata, `"shown_rule_card_formats":["elyph"]`) {
+	if !strings.Contains(sessionRecord.Metadata, `"elyph_rules_shown":true`) {
 		t.Fatalf("metadata should persist shown rule card format: %q", sessionRecord.Metadata)
 	}
 }

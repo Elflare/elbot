@@ -144,6 +144,9 @@ func (r *BackgroundRunner) RunBackground(ctx context.Context, req background.Run
 		background.LogBackground(ctx, record)
 	}
 	prompt := backgroundPromptWithSkills(req.Prompt, preloaded.SkillPrompt)
+	input := inboundTurnInput(ctx, prompt)
+	input.NeedsElyphRules = req.NeedsElyphRules || preloaded.NeedsElyphRules
+	ctx = withInboundTurnInput(ctx, input)
 	result := r.execution.RunBackground(ctx, bgSession, prompt)
 	return background.RunResult{
 		RunID:     result.RunID,
@@ -183,10 +186,11 @@ func backgroundScopeID(kind background.Kind, name string) string {
 }
 
 type backgroundPreloadResult struct {
-	Err         error
-	Tools       []string
-	Skills      []string
-	SkillPrompt string
+	NeedsElyphRules bool
+	Err             error
+	Tools           []string
+	Skills          []string
+	SkillPrompt     string
 }
 
 func (r *BackgroundRunner) preloadBackgroundResources(ctx context.Context, row *storage.Session, names []string, initial []toolrun.CachedTool, allowed []string) backgroundPreloadResult {
@@ -201,7 +205,7 @@ func (r *BackgroundRunner) preloadBackgroundResources(ctx context.Context, row *
 	if err != nil {
 		return backgroundPreloadResult{Err: err}
 	}
-	return backgroundPreloadResult{Tools: committed.Injected, Skills: prepared.Skills, SkillPrompt: prepared.SkillPrompt}
+	return backgroundPreloadResult{Tools: committed.Injected, Skills: prepared.Skills, SkillPrompt: prepared.SkillPrompt, NeedsElyphRules: prepared.NeedsElyphRules}
 }
 
 func backgroundPromptWithSkills(prompt, skillPrompt string) string {

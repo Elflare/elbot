@@ -53,7 +53,7 @@ func TestDiscoveredToolsAreInjectedIntoTopLevelTools(t *testing.T) {
 		t.Fatalf("discovered tools not stable: req2=%s", toolNames(requests[1].Tools))
 	}
 	latestToolContent := llm.SegmentsContentText(requests[1].Messages[len(requests[1].Messages)-1].Segments)
-	if !strings.Contains(latestToolContent, "已发现工具：web_search") {
+	if !strings.Contains(latestToolContent, "已发现：web_search") {
 		t.Fatalf("discover tool result should summarize found tool: %s", latestToolContent)
 	}
 	if strings.Contains(latestToolContent, `"schema"`) {
@@ -483,8 +483,8 @@ func TestSkillDirectiveDeduplicatesElyphRuleCards(t *testing.T) {
 
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
-	_ = registry.Register(agentDetailTool{name: "alpha", source: tool.SourceSkillAgent, detail: "#skill alpha - A", format: "elyph", ruleCard: "ELyph RULE"})
-	_ = registry.Register(agentDetailTool{name: "beta", source: tool.SourceSkillAgent, detail: "#skill beta - B", format: "elyph", ruleCard: "ELyph RULE"})
+	_ = registry.Register(agentDetailTool{name: "alpha", source: tool.SourceSkillAgent, detail: "#skill alpha - A", format: "elyph"})
+	_ = registry.Register(agentDetailTool{name: "beta", source: tool.SourceSkillAgent, detail: "#skill beta - B", format: "elyph"})
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
 		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
 		cfg.ToolRegistry = registry
@@ -498,7 +498,7 @@ func TestSkillDirectiveDeduplicatesElyphRuleCards(t *testing.T) {
 		t.Fatalf("chat requests = %d", len(requests))
 	}
 	content := llm.SegmentsContentText(requests[0].Messages[len(requests[0].Messages)-1].Segments)
-	if strings.Count(content, "ELyph RULE") != 1 {
+	if strings.Count(content, "ELyph 规则：") != 1 {
 		t.Fatalf("rule card should appear once: %q", content)
 	}
 	if !strings.Contains(content, "#skill alpha - A") || !strings.Contains(content, "#skill beta - B") {
@@ -513,8 +513,8 @@ func TestSkillDirectiveDoesNotRepeatElyphRuleCardAcrossTurns(t *testing.T) {
 
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
-	_ = registry.Register(agentDetailTool{name: "alpha", source: tool.SourceSkillAgent, detail: "#skill alpha - A", format: "elyph", ruleCard: "ELyph RULE"})
-	_ = registry.Register(agentDetailTool{name: "beta", source: tool.SourceSkillAgent, detail: "#skill beta - B", format: "elyph", ruleCard: "ELyph RULE"})
+	_ = registry.Register(agentDetailTool{name: "alpha", source: tool.SourceSkillAgent, detail: "#skill alpha - A", format: "elyph"})
+	_ = registry.Register(agentDetailTool{name: "beta", source: tool.SourceSkillAgent, detail: "#skill beta - B", format: "elyph"})
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
 		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
 		cfg.ToolRegistry = registry
@@ -531,18 +531,18 @@ func TestSkillDirectiveDoesNotRepeatElyphRuleCardAcrossTurns(t *testing.T) {
 		t.Fatalf("chat requests = %d", len(requests))
 	}
 	firstLatest := llm.SegmentsContentText(requests[0].Messages[len(requests[0].Messages)-1].Segments)
-	if strings.Count(firstLatest, "ELyph RULE") != 1 || !strings.Contains(firstLatest, "#skill alpha - A") {
+	if strings.Count(firstLatest, "ELyph 规则：") != 1 || !strings.Contains(firstLatest, "#skill alpha - A") {
 		t.Fatalf("first skill directive should include rule card and alpha detail: %q", firstLatest)
 	}
 	secondLatest := llm.SegmentsContentText(requests[1].Messages[len(requests[1].Messages)-1].Segments)
-	if strings.Contains(secondLatest, "ELyph RULE") {
+	if strings.Contains(secondLatest, "ELyph 规则：") {
 		t.Fatalf("second skill directive should not repeat rule card: %q", secondLatest)
 	}
 	if !strings.Contains(secondLatest, "#skill beta - B") {
 		t.Fatalf("second skill directive should include beta detail: %q", secondLatest)
 	}
 	sessionRecord := onlySession(t, store, p)
-	if !strings.Contains(sessionRecord.Metadata, `"shown_rule_card_formats":["elyph"]`) {
+	if !strings.Contains(sessionRecord.Metadata, `"elyph_rules_shown":true`) {
 		t.Fatalf("metadata should persist shown rule card format: %q", sessionRecord.Metadata)
 	}
 }

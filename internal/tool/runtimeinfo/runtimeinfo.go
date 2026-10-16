@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"elbot/internal/config"
-	"elbot/internal/elyph"
 )
 
 type Info struct {
@@ -51,8 +50,4 @@ func (i Info) Normalize() Info {
 
 func (i Info) CurrentTime() time.Time {
 	return i.Now()
-}
-
-func ElyphRuleCard() string {
-	return elyph.RuleCard()
 }

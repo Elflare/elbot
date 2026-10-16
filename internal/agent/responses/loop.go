@@ -150,7 +150,7 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in dialogue
 	if err != nil {
 		return nil, err
 	}
-	segments, tools, err := s.route.Preparer.PrepareInput(s.requestCtx, in, user, p.materials.Input.PlatformText, p.materials.Input.Segments, s.projection, s.tools)
+	segments, tools, err := s.route.Preparer.PrepareInput(s.requestCtx, in, user, p.materials.Input.PlatformText, p.materials.Input.Segments, s.projection, s.tools, p.materials.Input.NeedsElyphRules)
 	if err != nil {
 		return nil, err
 	}

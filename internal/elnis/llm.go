@@ -79,17 +79,18 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	}
 	model := s.modelForEvent(event)
 	runRequest := background.RunRequest{
-		Kind:           background.KindElnis,
-		Name:           event.EventKey,
-		Title:          firstNonEmpty(event.Request.Title, "Elnis: "+event.Request.Source),
-		Platform:       firstPlatform(event.ResolvedTargets),
-		Actor:          elnisActor(event),
-		ScopeID:        "elnis:" + event.EventKey,
-		ModelProvider:  model.Provider,
-		Model:          model.Model,
-		PromptSegments: segments,
-		Prompt:         s.llmPrompt(event),
-		SandboxSubdir:  elnisSandboxSubdir(event.Request.Elwisp.Name),
+		NeedsElyphRules: strings.TrimSpace(event.Request.Format) == elyph.Format,
+		Kind:            background.KindElnis,
+		Name:            event.EventKey,
+		Title:           firstNonEmpty(event.Request.Title, "Elnis: "+event.Request.Source),
+		Platform:        firstPlatform(event.ResolvedTargets),
+		Actor:           elnisActor(event),
+		ScopeID:         "elnis:" + event.EventKey,
+		ModelProvider:   model.Provider,
+		Model:           model.Model,
+		PromptSegments:  segments,
+		Prompt:          s.llmPrompt(event),
+		SandboxSubdir:   elnisSandboxSubdir(event.Request.Elwisp.Name),
 		Metadata: map[string]string{
 			"elnis_event_key": event.EventKey,
 			"elwisp_name":     event.Request.Elwisp.Name,
@@ -298,9 +299,6 @@ func (s *Service) llmPrompt(event Event) string {
 		format = "text"
 	}
 	parts := []string{"[系统 Elnis 后台事件任务]", ""}
-	if format == "elyph" {
-		parts = append(parts, elyph.RuleCard(), "")
-	}
 	parts = append(parts, "** 只能调用本任务提供的工具；没有提供工具时，基于已有信息完成或报告阻塞")
 	parts = append(parts,
 		"** 按事件内容自主处理，当前无人值守",

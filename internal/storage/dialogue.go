@@ -97,10 +97,12 @@ type SessionMaterialCreate struct {
 }
 
 type DialogueCommit struct {
-	SessionID string
-	Messages  []*Message
-	ToolBatch *ToolBatch
-	Native    *NativeCommit
+	// ElyphRulesShown records rules included in this commit's messages atomically.
+	ElyphRulesShown bool
+	SessionID       string
+	Messages        []*Message
+	ToolBatch       *ToolBatch
+	Native          *NativeCommit
 	// PlatformMessageMaps are committed atomically with messages and native state.
 	PlatformMessageMaps []PlatformMessageMap
 }

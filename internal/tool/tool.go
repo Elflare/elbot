@@ -11,6 +11,7 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/elyph"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 )
@@ -34,6 +35,8 @@ const (
 )
 
 type Info struct {
+	// NeedsElyphRules requests the shared rules when this tool is discovered.
+	NeedsElyphRules bool
 	// APITypes restricts model API availability; empty permits every API type.
 	APITypes       []llm.APIType
 	Name           string
@@ -102,6 +105,10 @@ type CallRequest struct {
 }
 
 type Result struct {
+	// NeedsElyphRules declares a language requirement of this result's content.
+	NeedsElyphRules bool
+	// DiscoveryText retains the insertion boundary between summary and details.
+	DiscoveryText *DiscoveryText
 	// Content is the text returned to the LLM for normal tool calls.
 	Content string
 	// Segments is the multimodal result returned to the LLM. Tools must use typed
@@ -194,16 +201,23 @@ type PublicInfo struct {
 }
 
 type DiscoveredTool struct {
-	Info        PublicInfo      `json:"info"`
-	Schema      *llm.ToolSchema `json:"schema,omitempty"`
-	Detail      string          `json:"detail,omitempty"`
-	DetailBlock DetailBlock     `json:"-"`
+	// NeedsElyphRules is internal presentation metadata, never part of the schema.
+	NeedsElyphRules bool            `json:"-"`
+	Info            PublicInfo      `json:"info"`
+	Schema          *llm.ToolSchema `json:"schema,omitempty"`
+	Detail          string          `json:"detail,omitempty"`
+	DetailBlock     DetailBlock     `json:"-"`
 }
 
 type DetailBlock struct {
-	Content  string
-	Format   string
-	RuleCard string
+	Content string
+	Format  string
+}
+
+// DiscoveryText keeps discovery presentation separate from session rule state.
+type DiscoveryText struct {
+	Summary string
+	Details string
 }
 
 type DetailProvider interface {
@@ -213,9 +227,8 @@ type DetailProvider interface {
 
 // DiscoveryContentProvider lets a tool customize the text shown when it is discovered
 // via discover_tool. The schema injection (Data) is unaffected.
-// override=true: the tool is excluded from the "已发现工具" line and its content
-// is rendered as a standalone block instead.
-// override=false: the tool stays in the "已发现工具" line and its content is
+// override=true: custom content is rendered as a standalone details block.
+// override=false: custom content is
 // appended after that line as a standalone block.
 type DiscoveryContentProvider interface {
 	DiscoveryContent() (content string, override bool)
@@ -250,8 +263,7 @@ type LazyDetailProvider interface {
 }
 
 const (
-	MetadataActivateTools        = "activate_tools"
-	MetadataShownRuleCardFormats = "shown_rule_card_formats"
+	MetadataActivateTools = "activate_tools"
 )
 
 type Registry struct {
@@ -541,7 +553,7 @@ func (r *Registry) addDiscoveryDetail(ctx context.Context, name string, root boo
 	visiting[name] = true
 	seen[name] = true
 	info := tool.Info()
-	discovered := DiscoveredTool{Info: publicInfo(info)}
+	discovered := DiscoveredTool{Info: publicInfo(info), NeedsElyphRules: info.NeedsElyphRules}
 	if loader, ok := tool.(LazyDetailProvider); ok {
 		block, err := loader.LoadDetail(ctx)
 		if err != nil {
@@ -563,6 +575,7 @@ func (r *Registry) addDiscoveryDetail(ctx context.Context, name string, root boo
 		schema := tool.Schema()
 		discovered.Schema = &schema
 	}
+	discovered.NeedsElyphRules = discovered.NeedsElyphRules || (discovered.Detail != "" && discovered.DetailBlock.Format == elyph.Format)
 	details = append(details, discovered)
 	for _, dep := range info.DependsOn {
 		details, errors = r.addDiscoveryDetail(ctx, dep, false, allowed, seen, visiting, details, errors)

@@ -126,6 +126,9 @@ func (t CronQueryTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.
 		}
 		{
 			result, callErr := jsonResult(view)
+			if result != nil {
+				result.NeedsElyphRules = view.Metadata.Trigger.Mode == elcron.TriggerLLM
+			}
 			logContent := fmt.Sprintf("name=%s enabled=%t completed=%t", view.Job.Name, view.Job.Enabled, view.Delivery.TaskCompleted)
 			if callErr != nil {
 				logContent = callErr.Error()
@@ -141,6 +144,9 @@ func (t CronQueryTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.
 		result, callErr := jsonResult(views)
 		logContent := fmt.Sprintf("returned=%d", len(views))
 		for _, view := range views {
+			if result != nil && view.Metadata.Trigger.Mode == elcron.TriggerLLM {
+				result.NeedsElyphRules = true
+			}
 			logContent += fmt.Sprintf("\nname=%s enabled=%t completed=%t", view.Job.Name, view.Job.Enabled, view.Delivery.TaskCompleted)
 		}
 		if callErr != nil {
@@ -152,7 +158,9 @@ func (t CronQueryTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.
 
 func (t CronWriteTool) Name() string { return "cron_write" }
 func (t CronWriteTool) Info() tool.Info {
-	return hiddenCronInfo(t.Name(), "创建、Patch 更新、停用或硬删除 cron。operation 为 create、update、disable 或 delete。", tool.RiskHigh)
+	info := hiddenCronInfo(t.Name(), "创建、Patch 更新、停用或硬删除 cron。operation 为 create、update、disable 或 delete。", tool.RiskHigh)
+	info.NeedsElyphRules = true
+	return info
 }
 func (t CronWriteTool) Schema() llm.ToolSchema {
 	return cronBuilder(t.Name(), cronWriteDescription()).
@@ -372,7 +380,7 @@ func resolveRunAtAt(runAt string, offset relativeOffset, now time.Time) (string,
 }
 
 func cronWriteDescription() string {
-	return "创建、Patch 更新、停用或硬删除 cron。\n\n" + runtimeinfo.ElyphRuleCard() + `
+	return "创建、Patch 更新、停用或硬删除 cron。\n\n" + `
 
 #task cron_write_desc - cron_write 总规则
 ** operation=create 时创建一次性或周期 cron；title、schedule_mode、trigger_mode、message 通常需要填写

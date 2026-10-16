@@ -109,10 +109,6 @@ func (d toolRunDeps) PrepareToolContext(ctx context.Context, session *storage.Se
 	if session == nil {
 		return ctx
 	}
-	state, err := toolrun.DecodeState(session.Metadata)
-	if err == nil {
-		ctx = tool.WithShownRuleCardFormats(ctx, state.ShownRuleCardFormats)
-	}
 	ctx = fileRollbackContext(ctx, d.runtime.fileRollback, d.sessions, d.turns, d.requests, d.identity, session)
 	if isBackgroundSession(session) {
 		return ctx

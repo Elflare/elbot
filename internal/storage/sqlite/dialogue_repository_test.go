@@ -35,6 +35,52 @@ func nativeStorageCommit(id, parent string) storage.DialogueCommit {
 	return storage.DialogueCommit{SessionID: "s", Messages: []*storage.Message{{ID: "message-" + id, SessionID: "s", Role: storage.RoleAssistant, Content: "reply"}}, Native: &storage.NativeCommit{ExpectedCheckpointID: parent, Checkpoint: storage.NativeCheckpoint{ID: id, SessionID: "s", ParentID: parent, ExchangeID: "exchange", ResponseID: "r", MessageID: "message-" + id}}}
 }
 
+func TestElyphRulesCommitWithMessageAndNativeState(t *testing.T) {
+	for _, native := range []bool{false, true} {
+		t.Run(fmt.Sprint(native), func(t *testing.T) {
+			store, _ := nativeStorageFixture(t)
+			ctx := t.Context()
+			commit := nativeStorageCommit("rules", "")
+			if !native {
+				commit.Native = nil
+			}
+			commit.ElyphRulesShown = true
+			commit.Messages[0].Content = "ELyph rules and business content"
+			if _, err := store.db.ExecContext(ctx, `CREATE TRIGGER reject_rules BEFORE UPDATE ON sessions BEGIN SELECT RAISE(ABORT,'reject rules state'); END`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.Dialogues().Commit(ctx, commit); err == nil {
+				t.Fatal("expected rejected transaction")
+			}
+			row, err := store.Sessions().Get(ctx, "s")
+			if err != nil || strings.Contains(row.Metadata, "elyph_rules_shown") {
+				t.Fatalf("failed commit marked rules: %+v %v", row, err)
+			}
+			messages, err := store.Messages().ListBySession(ctx, "s")
+			if err != nil || len(messages) != 0 {
+				t.Fatalf("partial messages: %+v %v", messages, err)
+			}
+			if _, err := store.db.ExecContext(ctx, `DROP TRIGGER reject_rules`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.Dialogues().Commit(ctx, commit); err != nil {
+				t.Fatal(err)
+			}
+			row, err = store.Sessions().Get(ctx, "s")
+			if err != nil || !strings.Contains(row.Metadata, `"elyph_rules_shown":true`) || !strings.Contains(row.Metadata, "9007199254740993") {
+				t.Fatalf("committed state: %+v %v", row, err)
+			}
+			messages, err = store.Messages().ListBySession(ctx, "s")
+			if err != nil || len(messages) != 1 || messages[0].Content != commit.Messages[0].Content {
+				t.Fatalf("committed messages: %+v %v", messages, err)
+			}
+			if native && !strings.Contains(row.Metadata, `"llm_checkpoint":"rules"`) {
+				t.Fatalf("checkpoint lost: %s", row.Metadata)
+			}
+		})
+	}
+}
+
 func TestNativeCheckpointCommitRollsBackMessageAndInputOnFailure(t *testing.T) {
 	store, _ := nativeStorageFixture(t)
 	if _, err := store.db.ExecContext(t.Context(), `CREATE TRIGGER reject_checkpoint BEFORE INSERT ON native_checkpoints BEGIN SELECT RAISE(ABORT,'checkpoint write failed'); END`); err != nil {

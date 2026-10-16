@@ -294,7 +294,22 @@ flowchart LR
 <!-- locator:tool -->
 ## Tool Runtime、工具状态与文件
 
-Runtime 管注册、schema、权限与执行器；ToolRun 管当前工具视图、路由及确认。`StateService` 唯一解释 Session 的工具缓存、发现、tag 和规则卡状态；`PreloadService` 只返回待提交状态与展示材料。
+Runtime 管注册、schema、权限与执行器；ToolRun 管当前工具视图、路由及确认。`StateService` 解释 Session 的工具缓存、发现和 tag；`PreloadService` 只返回待提交状态、展示材料与语言需求。
+
+ELyph 规则统一由 `internal/elyph/rules.go` 提供。工具通过 `Info.NeedsElyphRules` 声明需求，动态返回内容通过 `Result.NeedsElyphRules` 声明；默认 false 可省略。技能根据已加载正文的 Format 判断，Cron／Elnis 通过后台输入传递需求。schema 和技能正文不内嵌通用规则。
+
+输入准备和工具 Runner 在正文 Hook 后组装规则；发现结果按“已发现摘要、首次规则、详情”排列，并发结果按调用顺序组装。Session metadata 的 `elyph_rules_shown` 与携带规则的消息在同一 DialogueCommit 事务提交，成功后才推进内存状态。同一 Session 的工具、技能及后台任务共享此状态；压缩得到的新 Session 清除标记。context 不保存可变的 shown／new 集合。
+
+```mermaid
+flowchart LR
+    D["tool/discover.go、toolrun/preload.go<br/>发现材料与语言需求"] --> R["toolrun/runner.go<br/>按调用顺序组装摘要、规则与详情"]
+    B["cron/execution.go、elnis/llm.go<br/>声明任务语言需求"] --> P["agent/dialogue/preparation.go、model_call.go<br/>组装首轮及排队输入"]
+    E["elyph/rules.go<br/>共享规则与展示判定"] --> R
+    E --> P
+    R --> M["agent/dialogue/message_store.go<br/>汇集消息携带的规则标记"]
+    P --> M
+    M --> S["storage/sqlite/dialogue_repository.go<br/>原子保存消息、规则状态及原生检查点"]
+```
 
 预载日志由 PreloadService 显式填写身份和正文；普通包装工具与后台预载跳过分别使用 `skill_wrapper_preload_skipped`、`background_preload_skipped`，整体结果为 skipped，具体原因在 text 正文。
 

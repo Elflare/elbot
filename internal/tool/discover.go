@@ -120,12 +120,13 @@ func (t discoverTool) Call(ctx context.Context, req CallRequest) (_ *Result, log
 	if len(activateTools) > 0 {
 		metadata[MetadataActivateTools] = activateTools
 	}
-	content, err := discoveryContent(ctx, t.registry, result)
+	details, err := discoveryContent(ctx, t.registry, result)
 	if err != nil {
 		return nil, err.Error(), err
 	}
-	if formats := NewRuleCardFormatsFromContext(ctx); len(formats) > 0 {
-		metadata[MetadataShownRuleCardFormats] = formats
+	needsElyphRules := false
+	for _, discovered := range result.Tools {
+		needsElyphRules = needsElyphRules || discovered.NeedsElyphRules
 	}
 	// 普通工具的完整 schema 通过 Data 交给工具状态服务，协议路线负责发送。
 	// tool message 独立保留发现说明，不重复展开完整 schema。
@@ -137,7 +138,7 @@ func (t discoverTool) Call(ctx context.Context, req CallRequest) (_ *Result, log
 		logContent += "\n" + discovered.Info.Name
 	}
 	{
-		result := &Result{Content: content, Data: data, Metadata: metadata}
+		result := &Result{Content: strings.TrimSpace(details.Summary + "\n\n" + details.Details), DiscoveryText: &details, NeedsElyphRules: needsElyphRules, Data: data, Metadata: metadata}
 		return result, logContent, nil
 	}
 }
@@ -152,9 +153,9 @@ func marshalJSONNoEscape(value any) ([]byte, error) {
 	return bytes.TrimSpace(buf.Bytes()), nil
 }
 
-func discoveryContent(ctx context.Context, registry *Registry, result *DiscoveryResult) (string, error) {
+func discoveryContent(ctx context.Context, registry *Registry, result *DiscoveryResult) (DiscoveryText, error) {
 	if result == nil {
-		return "", nil
+		return DiscoveryText{}, nil
 	}
 	parts := []string{}
 	foundTools := []string{}
@@ -163,6 +164,7 @@ func discoveryContent(ctx context.Context, registry *Registry, result *Discovery
 	for _, discovered := range result.Tools {
 		name := strings.TrimSpace(discovered.Info.Name)
 		if discovered.Detail != "" {
+			foundTools = append(foundTools, name)
 			block := discovered.DetailBlock
 			if strings.TrimSpace(block.Content) == "" {
 				block = DetailBlock{Content: discovered.Detail}
@@ -171,35 +173,35 @@ func discoveryContent(ctx context.Context, registry *Registry, result *Discovery
 			continue
 		}
 		if discovered.Schema != nil && name != "" {
+			foundTools = append(foundTools, name)
 			if target, ok := registry.Get(name); ok {
 				content, override, supported, err := LoadDiscoveryContent(ctx, target)
 				if err != nil {
-					return "", fmt.Errorf("load discovery content for %s: %w", name, err)
+					return DiscoveryText{}, fmt.Errorf("load discovery content for %s: %w", name, err)
 				}
 				if supported {
 					if strings.TrimSpace(content) != "" {
 						if override {
 							parts = append(parts, content)
 						} else {
-							foundTools = append(foundTools, name)
 							appendedExtras = append(appendedExtras, content)
 						}
 						continue
 					}
 				}
 			}
-			foundTools = append(foundTools, name)
 			continue
 		}
 		if name != "" {
 			parts = append(parts, fmt.Sprintf("%s：%s", name, discovered.Info.Description))
 		}
 	}
+	summary := ""
 	if len(foundTools) > 0 {
-		parts = append([]string{fmt.Sprintf("已发现工具：%s。后续可直接调用。", strings.Join(foundTools, ", "))}, parts...)
+		summary = fmt.Sprintf("已发现：%s。后续可直接使用。", strings.Join(foundTools, "、"))
 	}
 	parts = append(parts, appendedExtras...)
-	if detailText := RenderDetailBlocksWithContext(ctx, detailBlocks); detailText != "" {
+	if detailText := RenderDetailBlocks(detailBlocks); detailText != "" {
 		parts = append(parts, detailText)
 	}
 	if len(result.Errors) > 0 {
@@ -218,7 +220,7 @@ func discoveryContent(ctx context.Context, registry *Registry, result *Discovery
 			parts = append(parts, "未发现工具："+strings.Join(errors, ", "))
 		}
 	}
-	return strings.Join(parts, "\n\n"), nil
+	return DiscoveryText{Summary: summary, Details: strings.Join(parts, "\n\n")}, nil
 }
 
 func discoverySecurity(ctx context.Context) (contextinfo.Actor, *security.Policy) {

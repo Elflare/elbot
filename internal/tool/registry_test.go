@@ -217,7 +217,7 @@ func TestDiscoverToolDoesNotExposeRisk(t *testing.T) {
 	if json.Valid(result.Data) == false {
 		t.Fatalf("discover result is not json: %s", result.Data)
 	}
-	if strings.Contains(result.Content, `"schema"`) || !strings.Contains(result.Content, "已发现工具：shell") {
+	if strings.Contains(result.Content, `"schema"`) || !strings.Contains(result.Content, "已发现：shell") {
 		t.Fatalf("discover content should summarize found tools without schema: %q", result.Content)
 	}
 }
@@ -331,12 +331,12 @@ func TestDiscoverToolSkillDetailDoesNotReturnSchemaAndActivatesWrapper(t *testin
 	}
 }
 
-func TestDiscoverToolDeduplicatesStructuredRuleCards(t *testing.T) {
+func TestDiscoverToolDeclaresSharedRulesForStructuredDetails(t *testing.T) {
 	registry := NewRegistry()
-	if err := registry.Register(fakeDetailTool{name: "alpha", source: SourceSkillAgent, detail: "#skill alpha", activate: []string{"python_skill_run"}, format: "elyph", ruleCard: "ELyph RULE"}); err != nil {
+	if err := registry.Register(fakeDetailTool{name: "alpha", source: SourceSkillAgent, detail: "#skill alpha", activate: []string{"python_skill_run"}, format: "elyph"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Register(fakeDetailTool{name: "beta", source: SourceSkillAgent, detail: "#skill beta", activate: []string{"python_skill_run"}, format: "elyph", ruleCard: "ELyph RULE"}); err != nil {
+	if err := registry.Register(fakeDetailTool{name: "beta", source: SourceSkillAgent, detail: "#skill beta", activate: []string{"python_skill_run"}, format: "elyph"}); err != nil {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string][]string{"names": []string{"alpha", "beta"}})
@@ -344,8 +344,8 @@ func TestDiscoverToolDeduplicatesStructuredRuleCards(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(result.Content, "ELyph RULE") != 1 {
-		t.Fatalf("rule card should appear once: %q", result.Content)
+	if !result.NeedsElyphRules || result.DiscoveryText == nil || !strings.Contains(result.DiscoveryText.Summary, "alpha、beta") {
+		t.Fatalf("missing discovery requirement or summary: %+v", result)
 	}
 	if strings.Contains(result.Content, "Skill alpha") || strings.Contains(result.Content, "Skill beta") {
 		t.Fatalf("discover should not add synthetic skill headers: %q", result.Content)
@@ -409,7 +409,6 @@ type fakeDetailTool struct {
 	source   Source
 	detail   string
 	format   string
-	ruleCard string
 	activate []string
 }
 
@@ -426,7 +425,7 @@ func (t fakeDetailTool) Call(context.Context, CallRequest) (*Result, string, err
 }
 func (t fakeDetailTool) Detail() string { return RenderDetailBlocks([]DetailBlock{t.DetailBlock()}) }
 func (t fakeDetailTool) DetailBlock() DetailBlock {
-	return DetailBlock{Content: t.detail, Format: t.format, RuleCard: t.ruleCard}
+	return DetailBlock{Content: t.detail, Format: t.format}
 }
 func (t fakeDetailTool) ActivateTools() []string { return t.activate }
 
@@ -454,7 +453,7 @@ func TestDiscoverToolDiscoveryContentAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "已发现工具：cron。后续可直接调用。") {
+	if !strings.Contains(result.Content, "已发现：cron。后续可直接使用。") {
 		t.Fatalf("append should keep tool in found line: %q", result.Content)
 	}
 	if !strings.Contains(result.Content, "当前本地时间：2099-01-01 00:00:00") {
@@ -476,8 +475,8 @@ func TestDiscoverToolDiscoveryContentOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(result.Content, "已发现工具") {
-		t.Fatalf("override should exclude tool from found line: %q", result.Content)
+	if !strings.Contains(result.Content, "已发现：special。") {
+		t.Fatalf("discovery should identify the tool before its custom details: %q", result.Content)
 	}
 	if !strings.Contains(result.Content, "自定义内容") {
 		t.Fatalf("override should show custom content: %q", result.Content)
@@ -508,8 +507,8 @@ func TestDiscoverToolDiscoveryContentMixed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "已发现工具：append_tool, plain_tool。后续可直接调用。") {
-		t.Fatalf("found line should include append and plain tools, exclude override: %q", result.Content)
+	if !strings.Contains(result.Content, "已发现：append_tool、override_tool、plain_tool。后续可直接使用。") {
+		t.Fatalf("found line should include all successfully discovered tools: %q", result.Content)
 	}
 	if !strings.Contains(result.Content, "追加文本") {
 		t.Fatalf("append content missing: %q", result.Content)

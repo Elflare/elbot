@@ -3,9 +3,26 @@ package turn
 import (
 	"context"
 	"elbot/internal/llm"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestMergedInputRetainsElyphRequirement(t *testing.T) {
+	for _, inputs := range [][]Input{
+		{{Text: "task", NeedsElyphRules: true}},
+		{{Text: "plain"}, {Text: "task", NeedsElyphRules: true}},
+		{{Text: "task", NeedsElyphRules: true}, {Text: "plain"}},
+	} {
+		merged := mergeInputs(inputs)
+		if !merged.NeedsElyphRules || !strings.Contains(merged.Text, "task") {
+			t.Fatalf("lost queued requirement: %+v", merged)
+		}
+	}
+	if mergeInputs([]Input{{Text: "plain"}}).NeedsElyphRules {
+		t.Fatal("plain input requested ELyph")
+	}
+}
 
 func TestDrainMergedInputPreservesMediaAndPlatformText(t *testing.T) {
 	m := NewManager()

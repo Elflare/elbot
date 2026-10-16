@@ -10,7 +10,6 @@ import (
 	"elbot/internal/background"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-	"elbot/internal/elyph"
 	globalevents "elbot/internal/events"
 	"elbot/internal/security"
 	"elbot/internal/session"
@@ -178,6 +177,7 @@ func (s *Service) runLLMReport(ctx context.Context, job storage.CronJob, meta Me
 	}
 	actor := contextinfo.Actor{ID: security.ActorID(meta.CreatedBy.Platform, meta.CreatedBy.PlatformUserID), Platform: meta.CreatedBy.Platform, PlatformUserID: meta.CreatedBy.PlatformUserID, DisplayName: meta.CreatedBy.DisplayName, Role: contextinfo.RoleSuperadmin}
 	runRequest := background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), Prompt: cronPrompt(meta.Trigger.Message), SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}}
+	runRequest.NeedsElyphRules = true
 	runRequest.ToolListNames = meta.LLM.ToolListNames
 	runRequest.ModelProvider, runRequest.Model = model.Provider, model.Model
 	result, err := s.runner.RunBackground(ctx, runRequest)
@@ -332,8 +332,6 @@ func cronParseFailedMessage(title, sessionID string, err error) string {
 
 func cronPrompt(message string) string {
 	return `[系统 Cron 后台任务]
-
-` + elyph.RuleCard() + `
 
 ** “Cron 任务内容”必须是 ELyph #task <name> - 描述 任务文本
 ** 按“Cron 任务内容”中的 ELyph 任务自主执行

@@ -107,7 +107,7 @@ func (t ReadElSkillTool) Call(ctx context.Context, req tool.CallRequest) (_ *too
 			}
 		}
 	}
-	path, _, err := elSkillTargetPath(t.Manager, strings.TrimSpace(args.Name), strings.TrimSpace(args.Target))
+	path, target, err := elSkillTargetPath(t.Manager, strings.TrimSpace(args.Name), strings.TrimSpace(args.Target))
 	if err != nil {
 		return nil, err.Error(), err
 	}
@@ -136,7 +136,7 @@ func (t ReadElSkillTool) Call(ctx context.Context, req tool.CallRequest) (_ *too
 		fmt.Fprintf(&b, "%d: %s\n", i, lines[i-1])
 	}
 	{
-		result := &tool.Result{Content: strings.TrimRight(b.String(), "\n")}
+		result := &tool.Result{Content: strings.TrimRight(b.String(), "\n"), NeedsElyphRules: target == elSkillTargetElyph}
 		return result, fmt.Sprintf("skill=%s target=%s lines=%d-%d/%d", args.Name, args.Target, start, end, len(lines)), nil
 	}
 }
@@ -285,7 +285,7 @@ func (t ModifyElSkillTool) modifyElyph(ctx context.Context, preview modifyElSkil
 	if err := fileops.WriteFileWithRevision(ctx, preview.Path, preview.FileTarget, preview.Result.RevisionBefore, preview.Result.NewBytes); err != nil {
 		return nil, err
 	}
-	return &tool.Result{Content: fmt.Sprintf("modified EL skill %s target %s\nrevision_after: %s\ndiff:\n%s\n\nSKILL.elyph 已写入但尚未 reload；完成修改后调用 finalize_el_skill。", preview.Name, elSkillTargetElyph, preview.Result.RevisionAfter, preview.Diff)}, nil
+	return &tool.Result{NeedsElyphRules: true, Content: fmt.Sprintf("modified EL skill %s target %s\nrevision_after: %s\ndiff:\n%s\n\nSKILL.elyph 已写入但尚未 reload；完成修改后调用 finalize_el_skill。", preview.Name, elSkillTargetElyph, preview.Result.RevisionAfter, preview.Diff)}, nil
 }
 
 func (t ModifyElSkillTool) modifyCodeSource(ctx context.Context, preview modifyElSkillPreview) (*tool.Result, error) {

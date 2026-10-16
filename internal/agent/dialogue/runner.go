@@ -130,6 +130,18 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 		result.Outcome, result.Err = Failed, err
 		return result
 	}
+	if user != nil {
+		fields, _ := storage.DecodeSessionMetadata(user.Metadata)
+		if string(fields["elyph_rules_shown"]) == "true" {
+			fields, err := storage.DecodeSessionMetadata(in.Session.Metadata)
+			if err != nil {
+				result.Outcome, result.Err = Failed, err
+				return result
+			}
+			_ = fields.Set("elyph_rules_shown", true)
+			in.Session.Metadata, _ = fields.Encode()
+		}
+	}
 	loop := prepared.RunLoop(ctx, requestCtx, loopIn, out)
 	result.Outcome, result.Err, result.QuietCancellation = loop.Outcome, loop.Err, loop.QuietCancellation
 	result.Usage, result.Selection = loop.Usage, loop.Selection

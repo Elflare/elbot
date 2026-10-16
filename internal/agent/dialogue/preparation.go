@@ -7,11 +7,13 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
+	"elbot/internal/elyph"
 	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/storage"
+	"elbot/internal/toolrun"
 )
 
 type Preparer struct {
@@ -80,7 +82,7 @@ func (p *Preparer) LoadMaterials(ctx context.Context, in TurnInput) (materials T
 	return TurnMaterials{Session: in.Session, Input: input, UserMessage: message, Loaded: loaded}, nil
 }
 
-func (p *Preparer) PrepareInput(ctx context.Context, in LoopInput, user *storage.Message, platformText string, segments []llm.MessageSegment, messages []llm.LLMMessage, tools []llm.ToolSchema) ([]llm.MessageSegment, []llm.ToolSchema, error) {
+func (p *Preparer) PrepareInput(ctx context.Context, in LoopInput, user *storage.Message, platformText string, segments []llm.MessageSegment, messages []llm.LLMMessage, tools []llm.ToolSchema, needsElyphRules bool) ([]llm.MessageSegment, []llm.ToolSchema, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
@@ -95,6 +97,28 @@ func (p *Preparer) PrepareInput(ctx context.Context, in LoopInput, user *storage
 	}
 	if in.Session.Mode == storage.SessionModeWork || in.Session.Mode == storage.SessionModeBackground {
 		tools = event.LLM.Tools
+	}
+	// A new session may inherit tool schemas after compaction. Their language
+	// requirements still apply even without a fresh discovery call.
+	if p.Tools != nil && p.Tools.Registry != nil {
+		for _, schema := range tools {
+			if candidate, ok := p.Tools.Registry.Get(schema.Name); ok {
+				needsElyphRules = needsElyphRules || candidate.Info().NeedsElyphRules
+			}
+		}
+	}
+	state, err := toolrun.DecodeState(in.Session.Metadata)
+	if err != nil {
+		return nil, nil, err
+	}
+	if ruleCard := elyph.RuleCardIfNeeded(needsElyphRules, state.ElyphRulesShown); ruleCard != "" {
+		event.Message.Segments = append(llm.TextSegments(ruleCard+"\n\n"), event.Message.Segments...)
+		fields, err := storage.DecodeSessionMetadata(user.Metadata)
+		if err != nil {
+			return nil, nil, err
+		}
+		_ = fields.Set("elyph_rules_shown", true)
+		user.Metadata, _ = fields.Encode()
 	}
 	archived, err := p.ArchiveMaterials(ctx, []llm.LLMMessage{{Segments: event.Message.Segments}})
 	if err != nil {

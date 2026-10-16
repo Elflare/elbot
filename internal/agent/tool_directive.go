@@ -10,21 +10,22 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
 	"elbot/internal/toolrun"
 	"elbot/internal/workspace"
 )
 
 type toolDirectiveResult struct {
-	update   toolrun.StateUpdate
-	Text     string
-	Injected []string
-	Existing []string
-	Invalid  []string
-	Err      error
+	NeedsElyphRules bool
+	update          toolrun.StateUpdate
+	Text            string
+	Injected        []string
+	Existing        []string
+	Invalid         []string
+	Err             error
 }
 
 type skillDirectiveResult struct {
+	NeedsElyphRules  bool
 	update           toolrun.StateUpdate
 	Err              error
 	Text             string
@@ -64,6 +65,7 @@ func (c *InputCoordinator) prepareToolDirectives(ctx context.Context, row *stora
 		return result
 	}
 	result.update = prepared.Update
+	result.NeedsElyphRules = prepared.NeedsElyphRules
 	result.Text = directive.StripToolMatches(text, matches, prepared.Accepted)
 	if prepared.Content != "" {
 		if strings.TrimSpace(result.Text) == "" {
@@ -84,12 +86,7 @@ func (c *InputCoordinator) prepareSkillDirectives(ctx context.Context, row *stor
 	if len(matches) == 0 {
 		return result
 	}
-	state, err := c.toolState.Snapshot(ctx, row.ID)
-	if err != nil {
-		result.Err = err
-		return result
-	}
-	ctx = tool.WithShownRuleCardFormats(c.preloadContext(ctx), state.ShownRuleCardFormats)
+	ctx = c.preloadContext(ctx)
 	names := make([]string, len(matches))
 	for i, match := range matches {
 		names[i] = match.Name
@@ -104,6 +101,7 @@ func (c *InputCoordinator) prepareSkillDirectives(ctx context.Context, row *stor
 		return result
 	}
 	result.Skills, result.update = prepared.Names, prepared.Update
+	result.NeedsElyphRules = prepared.NeedsElyphRules
 	result.Text = directive.StripToolMatches(text, matches, prepared.Accepted)
 	if prepared.Content != "" {
 		if strings.TrimSpace(result.Text) == "" {
@@ -194,7 +192,7 @@ func (c *InputCoordinator) applyInputDirectives(ctx context.Context, row *storag
 	}
 	update := toolrun.StateUpdate{
 		Tools: append(append([]toolrun.CachedTool(nil), tools.update.Tools...), skills.update.Tools...),
-		Tags:  tools.update.Tags, ShownRuleCardFormats: skills.update.ShownRuleCardFormats,
+		Tags:  tools.update.Tags,
 	}
 	locked, release, err = c.execution.EnterInput(ctx, row)
 	if err != nil {

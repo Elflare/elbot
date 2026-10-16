@@ -7,10 +7,12 @@ import (
 )
 
 type PendingUserMessage struct {
-	Message      storage.Message
-	MessageIndex int
-	PlatformText string
-	Segments     []llm.MessageSegment
+	// NeedsElyphRules is resolved after input hooks and before persistence.
+	NeedsElyphRules bool
+	Message         storage.Message
+	MessageIndex    int
+	PlatformText    string
+	Segments        []llm.MessageSegment
 }
 
 func DrainPending(turns *turn.Manager, sessionID string, expected ...string) *PendingUserMessage {
@@ -29,5 +31,5 @@ func DrainPending(turns *turn.Manager, sessionID string, expected ...string) *Pe
 		Content:   MessageContent(segments),
 		Segments:  StoredMessageSegments(segments),
 	}
-	return &PendingUserMessage{Message: message, PlatformText: pending.PlatformText, Segments: segments}
+	return &PendingUserMessage{Message: message, PlatformText: pending.PlatformText, Segments: segments, NeedsElyphRules: pending.NeedsElyphRules}
 }
