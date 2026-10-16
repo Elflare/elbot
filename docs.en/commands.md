@@ -305,7 +305,7 @@ Example:
 /elwisp --source minecraft-main --mode llm --since 2h
 ```
 
-> Tool parameter logs are limited to a maximum of 256 Unicode characters; Read/Query/Description types are limited to 128 characters, while Execute/Edit/Write and Media types are limited to 256 characters. Actual call parameters and results returned to the model are not affected by the log length limit.
+> Tool parameter logs are limited to 512 runes, and log summaries returned by each tool are limited to 1024 runes; truncation ellipses are counted towards the limit. Standard Chinese characters are counted as 1 rune. Actual call parameters and results returned to the model are not affected by the log length limit.
 
 ## Token Consumption Statistics
 
