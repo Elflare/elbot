@@ -22,7 +22,8 @@ func TestResponsesRepeatedCompactionArchivesExtraOutputWithoutExecutingIt(t *tes
 		executed.Add(1)
 		return &tool.Result{Content: "must not execute"}, nil
 	}})
-	f := newNativeFixture(t, func(index int, request nativeTestRequest, w http.ResponseWriter) {
+	store, auditDB := newNativeAuditDatabase(t)
+	f := newNativeFixtureWithStore(t, store, func(index int, request nativeTestRequest, w http.ResponseWriter) {
 		switch index {
 		case 0:
 			emitNative(w, "source", "completed", nativeText("source answer"))
@@ -58,10 +59,10 @@ func TestResponsesRepeatedCompactionArchivesExtraOutputWithoutExecutingIt(t *tes
 		if after.ID == before.ID {
 			t.Fatal("compaction did not create and activate a new session")
 		}
-		exchange, err := f.store.Dialogues().GetExchange(t.Context(), <-ids)
-		if err != nil || exchange.Status != "compacted" || !strings.Contains(exchange.RequestJSON, "compaction_trigger") ||
+		exchange := nativeExchangeAudit(t, auditDB, <-ids)
+		if exchange.Status != "compacted" || !strings.Contains(exchange.RequestJSON, "compaction_trigger") ||
 			!strings.Contains(exchange.ResponseJSON, "audit only") || !strings.Contains(exchange.ItemsJSON, "function_call") {
-			t.Fatalf("compact audit=%+v err=%v", exchange, err)
+			t.Fatalf("compact audit=%+v", exchange)
 		}
 		var audit struct {
 			Input      []json.RawMessage `json:"input"`
@@ -70,9 +71,9 @@ func TestResponsesRepeatedCompactionArchivesExtraOutputWithoutExecutingIt(t *tes
 		if err := json.Unmarshal([]byte(exchange.RequestJSON), &audit); err != nil || len(audit.Input) != 0 || len(audit.References) != len(f.captured()[i].Input) {
 			t.Fatalf("request audit must reference every wire item: %s err=%v", exchange.RequestJSON, err)
 		}
-		seed, err := f.store.Dialogues().Seed(t.Context(), after.ID)
-		if err != nil || seed.Consumed || strings.Contains(seed.ItemsJSON, "audit only") || strings.Contains(seed.ItemsJSON, "function_call") || strings.Contains(seed.ItemsJSON, "additional_tools") || strings.Contains(seed.ItemsJSON, "compaction_trigger") {
-			t.Fatalf("seed=%+v err=%v", seed, err)
+		seed := nativeWindowRecords(t, f.store, after.ID).Seed
+		if seed.Consumed || strings.Contains(seed.ItemsJSON, "audit only") || strings.Contains(seed.ItemsJSON, "function_call") || strings.Contains(seed.ItemsJSON, "additional_tools") || strings.Contains(seed.ItemsJSON, "compaction_trigger") {
+			t.Fatalf("seed=%+v", seed)
 		}
 	}
 	if executed.Load() != 0 {
@@ -126,9 +127,9 @@ func TestResponsesCompactedSeedSurvivesFailedFirstCheckpoint(t *testing.T) {
 			if err := f.agent.HandleMessage(t.Context(), "continue"); err == nil {
 				t.Fatal("expected first follow-up failure")
 			}
-			seed, err := f.store.Dialogues().Seed(t.Context(), row.ID)
-			if err != nil || seed.Consumed {
-				t.Fatalf("failed follow-up consumed seed: %+v %v", seed, err)
+			seed := nativeWindowRecords(t, f.store, row.ID).Seed
+			if seed.Consumed {
+				t.Fatalf("failed follow-up consumed seed: %+v", seed)
 			}
 			if checkpoint, err := f.store.Dialogues().CurrentCheckpoint(t.Context(), row.ID); err != nil || checkpoint != nil {
 				t.Fatalf("failed follow-up advanced checkpoint: %+v %v", checkpoint, err)
@@ -136,9 +137,9 @@ func TestResponsesCompactedSeedSurvivesFailedFirstCheckpoint(t *testing.T) {
 			if err := f.agent.HandleMessage(t.Context(), "retry"); err != nil {
 				t.Fatal(err)
 			}
-			seed, err = f.store.Dialogues().Seed(t.Context(), row.ID)
-			if err != nil || !seed.Consumed {
-				t.Fatalf("successful retry did not consume seed: %+v %v", seed, err)
+			seed = nativeWindowRecords(t, f.store, row.ID).Seed
+			if !seed.Consumed {
+				t.Fatalf("successful retry did not consume seed: %+v", seed)
 			}
 		})
 	}

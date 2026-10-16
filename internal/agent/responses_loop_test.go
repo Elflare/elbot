@@ -50,7 +50,12 @@ type nativeFixture struct {
 
 func newNativeFixture(t *testing.T, respond func(int, nativeTestRequest, http.ResponseWriter), configure ...func(*testAgentOptions)) *nativeFixture {
 	t.Helper()
-	f := &nativeFixture{store: newTestStore(t), platform: &fakePlatform{}}
+	return newNativeFixtureWithStore(t, newTestStore(t), respond, configure...)
+}
+
+func newNativeFixtureWithStore(t *testing.T, store storage.Store, respond func(int, nativeTestRequest, http.ResponseWriter), configure ...func(*testAgentOptions)) *nativeFixture {
+	t.Helper()
+	f := &nativeFixture{store: store, platform: &fakePlatform{}}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/models" {
 			fmt.Fprint(w, `{"data":[{"id":"m"},{"id":"new-model"},{"id":"task-model"}]}`)
@@ -352,9 +357,9 @@ func TestResponsesItemDoneAndRefusalKeepNativeFactsSeparateFromDisplay(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	exchange, err := f.store.Dialogues().GetExchange(t.Context(), checkpoint.ExchangeID)
-	if err != nil || !strings.Contains(exchange.ItemsJSON, "opaque") || !strings.Contains(exchange.ItemsJSON, "original refusal") || strings.Contains(exchange.ResponseJSON, "changed source") {
-		t.Fatalf("native facts=%+v %v", exchange, err)
+	exchange, ok := nativeWindowRecords(t, f.store, row.ID).Exchanges[checkpoint.ExchangeID]
+	if !ok || !strings.Contains(exchange.ItemsJSON, "opaque") || !strings.Contains(exchange.ItemsJSON, "original refusal") || strings.Contains(exchange.ResponseJSON, "changed source") {
+		t.Fatalf("native facts=%+v", exchange)
 	}
 	if !strings.Contains(f.platform.out.String(), "visible") {
 		t.Fatalf("display hook lost: %s", f.platform.out.String())
@@ -443,7 +448,8 @@ func (r nativeAuditRepository) CreateExchange(ctx context.Context, row *storage.
 func TestResponsesCanceledAPIKeepsAuditWithoutAdvancingCheckpoint(t *testing.T) {
 	started, release, unblock := modelBarrier(t)
 	created := make(chan string, 1)
-	f := newNativeFixture(t, func(index int, request nativeTestRequest, w http.ResponseWriter) {
+	store, auditDB := newNativeAuditDatabase(t)
+	f := newNativeFixtureWithStore(t, store, func(index int, request nativeTestRequest, w http.ResponseWriter) {
 		if index > 0 {
 			if request.PreviousResponseID != "" || len(request.Input) != 2 {
 				t.Errorf("canceled recovery=%+v", request)
@@ -476,9 +482,9 @@ func TestResponsesCanceledAPIKeepsAuditWithoutAdvancingCheckpoint(t *testing.T) 
 	}
 	unblock()
 	id := <-created
-	exchange, err := f.store.Dialogues().GetExchange(t.Context(), id)
-	if err != nil || exchange.Status != "canceled" {
-		t.Fatalf("canceled audit=%+v %v", exchange, err)
+	exchange := nativeExchangeAudit(t, auditDB, id)
+	if exchange.Status != "canceled" {
+		t.Fatalf("canceled audit=%+v", exchange)
 	}
 	checkpoint, err := f.store.Dialogues().CurrentCheckpoint(t.Context(), exchange.SessionID)
 	if err != nil || checkpoint != nil {
@@ -544,9 +550,9 @@ func TestResponsesUsesLocalToolsAndKeepsNativeCallIDs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	exchange, err := f.store.Dialogues().GetExchange(t.Context(), checkpoint.ExchangeID)
-	if err != nil || exchange.PreviousCheckpointID == "" {
-		t.Fatalf("exchange=%+v %v", exchange, err)
+	exchange, ok := nativeWindowRecords(t, f.store, row.ID).Exchanges[checkpoint.ExchangeID]
+	if !ok || exchange.PreviousCheckpointID == "" {
+		t.Fatalf("exchange=%+v", exchange)
 	}
 }
 

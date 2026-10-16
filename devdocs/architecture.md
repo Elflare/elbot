@@ -241,7 +241,7 @@ flowchart LR
 - 工具调用集合、ID、名称和参数对 Hook 只读，改写在副作用前报错；Chat 允许参数改写。公共 Hook 通过注入策略校验，不识别协议。
 - 工具副作用前保存原生响应和调用状态；整批结果与展示 ToolBatch、原生输出及一个不可变历史快照同事务提交。历史快照不推进活动游标，Fork 包含整批结果；中断调用仅在原生材料补未执行／结果未知输出。
 - 窗口由 seed 根、checkpoint 链和已提交的有序输入／输出重建，不读取历史 HTTP 正文。公共片段由 Dialogue 解码与展开，Responses 只组装自身 items；媒体持有覆盖发送过程。首次调用失败后可复用完整待提交输入；格式版本、归档、定义或素材不一致时拒绝。
-- `native_material.go` 的 `LoadNativeWindow` 在同一读取事务内批量取得目标 checkpoint 的祖先链、exchange、已消费输入及目标快照结果，复用已有 Session／checkpoint；`responses/context.go` 按清单顺序重建并校验。Turn 内保留未展开窗口及 exchange 终态，checkpoint 推进后释放窗口；重放在副本上追加待提交输入。
+- `native_material.go` 的 `LoadNativeWindow` 是原生窗口材料的批量读取入口，在同一读取事务内取得 seed、目标 checkpoint 的祖先链、exchange、已消费输入及目标快照结果，复用已有 Session／checkpoint；`responses/context.go` 按清单顺序重建并校验。Turn 内保留未展开窗口及 exchange 终态，checkpoint 推进后释放窗口；重放在副本上追加待提交输入。测试通过最新 Session 的窗口检查已提交材料，窗口外的失败、取消和压缩审计记录由测试侧 SQL 验证。
 
 <!-- locator:commands -->
 ## 命令链路
@@ -329,10 +329,13 @@ flowchart LR
     E --> G["fileops/commit.go<br/>显式提交准入与校验"]
     R --> G
     G --> M["fileops/rollback.go<br/>目标锁、备份及实际提交"]
+    E --> F["fileops/file.go<br/>编辑结果计算、准备结果复用与共用写入"]
+    M --> F
 ```
 
 context 只携带绑定事实；准备对象保存原绑定和业务快照，提交校验通过 `commitGuard` 显式传递。等待确认期间不持有文件或锁，预览返回值不能修改内部快照。
 
+- `PreparedEdit` 保留确认前生成的输出字节、revision 和 diff；`Preview()` 只返回展示字段，`NewBytes` 为空。`editFileWithResult` 共用普通编辑与准备结果的读写流程：普通编辑计算结果，准备结果提交核对源 revision 和存在状态后直接写入批准字节；提交返回的字节与准备快照独立。
 - 文件提交锁顺序：目标路径 → Scope → SessionID → 备份状态。读取、diff 和准备在 Session 准入外；提交内复核绑定、取消、权限、解析目标和文件身份后写入。
 - /stop、切换、删除和清理与提交互斥，先提交则完成操作，先取消／失效则拒绝。外部进程不参与这些锁。
 - 撤销按 Scope／当前 Session／目标保存原始字节，仅成功写入后登记，内存上限 256 MiB／1024 条；执行时复核备份、路径和 revision。后台编辑共用目标锁但不登记前台备份。

@@ -1,6 +1,7 @@
 package fileops
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -29,13 +30,14 @@ type File struct {
 }
 
 type EditResult struct {
-	DryRun            bool
-	Path              string
-	Created           bool
-	Encoding          string
-	RevisionBefore    string
-	RevisionAfter     string
-	Diff              string
+	DryRun         bool
+	Path           string
+	Created        bool
+	Encoding       string
+	RevisionBefore string
+	RevisionAfter  string
+	Diff           string
+	// NewBytes contains the edited file bytes; confirmation previews omit them.
 	NewBytes          []byte
 	RollbackAvailable bool
 	RollbackEvicted   int
@@ -102,8 +104,14 @@ func EditFile(path, requestedEncoding, expectedRevision string, create, dryRun b
 }
 
 func EditFileWithOptions(path, requestedEncoding, expectedRevision string, create, dryRun bool, contextLines int, edits []Edit, options EditFileOptions) (EditResult, error) {
+	return editFileWithResult(path, requestedEncoding, expectedRevision, create, dryRun, contextLines, edits, options, nil)
+}
+
+// editFileWithResult shares file reads and writes with ordinary edits, while a
+// prepared result supplies the approved output without repeating its calculation.
+func editFileWithResult(path, requestedEncoding, expectedRevision string, create, dryRun bool, contextLines int, edits []Edit, options EditFileOptions, prepared *EditResult) (EditResult, error) {
 	expectedRevision = strings.TrimSpace(expectedRevision)
-	if expectedRevision != "" {
+	if prepared == nil && expectedRevision != "" {
 		if len(expectedRevision) != contentRevisionBytes*2 {
 			return EditResult{}, fmt.Errorf("expected_revision must be %d hexadecimal characters", contentRevisionBytes*2)
 		}
@@ -116,39 +124,47 @@ func EditFileWithOptions(path, requestedEncoding, expectedRevision string, creat
 		return EditResult{}, err
 	}
 	oldRevision := ContentRevision(file.Bytes)
-	if expectedRevision != "" && !strings.EqualFold(expectedRevision, oldRevision) {
-		return EditResult{}, fmt.Errorf("file revision mismatch: current %s", oldRevision)
+	var result EditResult
+	if prepared != nil {
+		if prepared.Created != created || prepared.RevisionBefore != oldRevision {
+			return EditResult{}, fmt.Errorf("file changed after preflight")
+		}
+		result = *prepared
+	} else {
+		if expectedRevision != "" && !strings.EqualFold(expectedRevision, oldRevision) {
+			return EditResult{}, fmt.Errorf("file revision mismatch: current %s", oldRevision)
+		}
+		if !created && expectedRevision == "" && editsRequireRevision(edits) {
+			return EditResult{}, fmt.Errorf("expected_revision is required for replace, insert, delete, and overwrite on existing files")
+		}
+		oldText := NormalizeEditText(file.Text)
+		newText, err := ApplyEdits(oldText, edits)
+		if err != nil {
+			return EditResult{}, err
+		}
+		if newText == oldText {
+			return EditResult{}, fmt.Errorf("edit produced no changes")
+		}
+		outputText := RestoreLineEndings(newText, file.LineEnding)
+		newBytes, err := EncodeText(outputText, file.Encoding, file.BOM)
+		if err != nil {
+			return EditResult{}, err
+		}
+		if options.MaxOutputBytes > 0 && int64(len(newBytes)) > options.MaxOutputBytes {
+			return EditResult{}, fmt.Errorf("edited file too large: %d bytes exceeds %d", len(newBytes), options.MaxOutputBytes)
+		}
+		contextLines = NormalizeContextLines(contextLines)
+		result = EditResult{
+			Path:           file.Path,
+			Created:        created,
+			Encoding:       file.Encoding,
+			RevisionBefore: oldRevision,
+			RevisionAfter:  ContentRevision(newBytes),
+			Diff:           editDiff(file.Path, oldText, newText, len(file.Bytes), len(newBytes), contextLines, options.DetailedDiffMaxBytes),
+			NewBytes:       newBytes,
+		}
 	}
-	if !created && expectedRevision == "" && editsRequireRevision(edits) {
-		return EditResult{}, fmt.Errorf("expected_revision is required for replace, insert, delete, and overwrite on existing files")
-	}
-	oldText := NormalizeEditText(file.Text)
-	newText, err := ApplyEdits(oldText, edits)
-	if err != nil {
-		return EditResult{}, err
-	}
-	if newText == oldText {
-		return EditResult{}, fmt.Errorf("edit produced no changes")
-	}
-	outputText := RestoreLineEndings(newText, file.LineEnding)
-	newBytes, err := EncodeText(outputText, file.Encoding, file.BOM)
-	if err != nil {
-		return EditResult{}, err
-	}
-	if options.MaxOutputBytes > 0 && int64(len(newBytes)) > options.MaxOutputBytes {
-		return EditResult{}, fmt.Errorf("edited file too large: %d bytes exceeds %d", len(newBytes), options.MaxOutputBytes)
-	}
-	contextLines = NormalizeContextLines(contextLines)
-	result := EditResult{
-		DryRun:         dryRun,
-		Path:           file.Path,
-		Created:        created,
-		Encoding:       file.Encoding,
-		RevisionBefore: oldRevision,
-		RevisionAfter:  ContentRevision(newBytes),
-		Diff:           editDiff(file.Path, oldText, newText, len(file.Bytes), len(newBytes), contextLines, options.DetailedDiffMaxBytes),
-		NewBytes:       newBytes,
-	}
+	result.DryRun = dryRun
 	if dryRun {
 		return result, nil
 	}
@@ -164,13 +180,16 @@ func EditFileWithOptions(path, requestedEncoding, expectedRevision string, creat
 			return EditResult{}, fmt.Errorf("create parent directory: %w", err)
 		}
 	}
-	if err := atomicWriteFile(path, newBytes, mode, func() error {
+	if err := atomicWriteFile(path, result.NewBytes, mode, func() error {
 		if options.beforeWrite != nil {
 			return options.beforeWrite(file, created, mode)
 		}
 		return nil
 	}); err != nil {
 		return EditResult{}, fmt.Errorf("write file: %w", err)
+	}
+	if prepared != nil {
+		result.NewBytes = bytes.Clone(result.NewBytes)
 	}
 	return result, nil
 }

@@ -135,8 +135,9 @@ func TestNativeSeedConsumptionIsAtomicWithFirstCheckpoint(t *testing.T) {
 	if checkpoint, err := store.Dialogues().CurrentCheckpoint(ctx, row.ID); err != nil || checkpoint != nil {
 		t.Fatalf("partial checkpoint=%+v %v", checkpoint, err)
 	}
-	if current, err := store.Dialogues().Seed(ctx, row.ID); err != nil || current.Consumed {
-		t.Fatalf("consumed failed seed=%+v %v", current, err)
+	var consumed bool
+	if err := store.db.QueryRowContext(ctx, `SELECT consumed FROM native_seeds WHERE id=? AND session_id=?`, seed.ID, row.ID).Scan(&consumed); err != nil || consumed {
+		t.Fatalf("consumed failed seed=%t %v", consumed, err)
 	}
 	if messages, err := store.Messages().ListBySession(ctx, row.ID); err != nil || len(messages) != 0 {
 		t.Fatalf("partial reply=%+v %v", messages, err)
@@ -147,8 +148,8 @@ func TestNativeSeedConsumptionIsAtomicWithFirstCheckpoint(t *testing.T) {
 	if _, err := store.Dialogues().Commit(ctx, commit); err != nil {
 		t.Fatal(err)
 	}
-	if current, err := store.Dialogues().Seed(ctx, row.ID); err != nil || !current.Consumed {
-		t.Fatalf("unconsumed seed=%+v %v", current, err)
+	if err := store.db.QueryRowContext(ctx, `SELECT consumed FROM native_seeds WHERE id=? AND session_id=?`, seed.ID, row.ID).Scan(&consumed); err != nil || !consumed {
+		t.Fatalf("unconsumed seed=%t %v", consumed, err)
 	}
 	persisted, err := store.Sessions().Get(ctx, row.ID)
 	if err != nil || strings.Contains(persisted.Metadata, `"pending":true`) || !strings.Contains(persisted.Metadata, `"keep":true`) || !strings.Contains(persisted.Metadata, "9007199254740993") {

@@ -108,8 +108,9 @@ func TestNativeCheckpointCommitRollsBackMessageAndInputOnFailure(t *testing.T) {
 	if checkpoint, err := store.Dialogues().CurrentCheckpoint(t.Context(), "s"); err != nil || checkpoint != nil {
 		t.Fatalf("partial cursor=%+v %v", checkpoint, err)
 	}
-	if exchange, err := store.Dialogues().GetExchange(t.Context(), "exchange"); err != nil || exchange.Status != "completed" || !strings.Contains(exchange.ResponseJSON, "opaque") {
-		t.Fatalf("lost API facts=%+v %v", exchange, err)
+	var status, response string
+	if err := store.db.QueryRowContext(t.Context(), `SELECT status,response_json FROM native_exchanges WHERE id='exchange'`).Scan(&status, &response); err != nil || status != "completed" || !strings.Contains(response, "opaque") {
+		t.Fatalf("lost API facts: status=%s response=%s err=%v", status, response, err)
 	}
 }
 

@@ -171,8 +171,6 @@ func detectASTLanguage(path, text string) (string, syntax.LangVariant, error) {
 		return "go", 0, nil
 	case ".mksh":
 		return "shell", syntax.LangMirBSDKorn, nil
-	case ".sh", ".bash", ".bats":
-		return "shell", syntax.LangBash, nil
 	}
 	firstLine, _, _ := strings.Cut(text, "\n")
 	if strings.HasPrefix(firstLine, "#!") {
@@ -194,6 +192,10 @@ func detectASTLanguage(path, text string) (string, syntax.LangVariant, error) {
 				return "shell", syntax.LangBash, nil
 			}
 		}
+	}
+	switch ext {
+	case ".sh", ".bash", ".bats":
+		return "shell", syntax.LangBash, nil
 	}
 	return "", 0, fmt.Errorf("AST search only supports Go and Shell files")
 }
