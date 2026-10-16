@@ -578,6 +578,10 @@ func validateUpsertRequest(req UpsertJobRequest) error {
 }
 
 func (m *Manager) updateNextRunAt(ctx context.Context, job storage.CronJob, nextRunAt *time.Time) error {
+	if job.NextRunAt == nil && nextRunAt == nil ||
+		job.NextRunAt != nil && nextRunAt != nil && job.NextRunAt.Equal(*nextRunAt) {
+		return nil
+	}
 	if err := m.repo.UpdateNextRunAt(ctx, job.ID, nextRunAt, time.Now()); err != nil {
 		{
 			record := globalevents.LogRecord{

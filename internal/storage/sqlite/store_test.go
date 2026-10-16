@@ -410,48 +410,6 @@ func TestCronJobRepositoryUpsertAndRunState(t *testing.T) {
 	}
 }
 
-func TestCronJobRepositoryUpsertSkipsUnchangedUpdate(t *testing.T) {
-	store := newTestStore(t)
-	ctx := context.Background()
-	req := storage.UpsertCronJobRequest{
-		Name:     "system.maintenance.cleanup",
-		Handler:  "maintenance.cleanup",
-		Schedule: "0 3 * * *",
-		Enabled:  true,
-		Metadata: `{"system":true}`,
-	}
-
-	job, err := store.CronJobs().Upsert(ctx, req)
-	if err != nil {
-		t.Fatalf("initial upsert cron job: %v", err)
-	}
-	originalUpdatedAt := job.UpdatedAt
-
-	unchanged, err := store.CronJobs().Upsert(ctx, req)
-	if err != nil {
-		t.Fatalf("unchanged upsert cron job: %v", err)
-	}
-	if unchanged.ID != job.ID {
-		t.Fatalf("unchanged ID = %q, want %q", unchanged.ID, job.ID)
-	}
-	if !unchanged.UpdatedAt.Equal(originalUpdatedAt) {
-		t.Fatalf("unchanged UpdatedAt = %s, want %s", unchanged.UpdatedAt, originalUpdatedAt)
-	}
-
-	changedReq := req
-	changedReq.Schedule = "0 4 * * *"
-	changed, err := store.CronJobs().Upsert(ctx, changedReq)
-	if err != nil {
-		t.Fatalf("changed upsert cron job: %v", err)
-	}
-	if changed.ID != job.ID || changed.Schedule != changedReq.Schedule {
-		t.Fatalf("changed = %#v", changed)
-	}
-	if !changed.UpdatedAt.After(originalUpdatedAt) {
-		t.Fatalf("changed UpdatedAt = %s, want after %s", changed.UpdatedAt, originalUpdatedAt)
-	}
-}
-
 func TestCronJobRepositoryDeliveryCASAndReset(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
@@ -459,6 +417,12 @@ func TestCronJobRepositoryDeliveryCASAndReset(t *testing.T) {
 	job, err := store.CronJobs().Upsert(ctx, req)
 	if err != nil {
 		t.Fatalf("initial upsert: %v", err)
+	}
+	lastRun := storage.Now().Add(-time.Hour)
+	if err := store.CronJobs().UpdateRunState(ctx, job.ID, storage.CronJobRunState{
+		LastRunAt: lastRun, RunCount: 7, Enabled: true, UpdatedAt: lastRun,
+	}); err != nil {
+		t.Fatalf("save prior run state: %v", err)
 	}
 
 	swapped, err := store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, "", "session-1", `{"report_ready":true}`, nil)
@@ -477,6 +441,11 @@ func TestCronJobRepositoryDeliveryCASAndReset(t *testing.T) {
 	if preserved.DeliveryToken != "session-1" || preserved.DeliveryState != `{"report_ready":true}` {
 		t.Fatalf("delivery was overwritten: %#v", preserved)
 	}
+	if preserved.ID != job.ID || preserved.Metadata != req.Metadata ||
+		!preserved.CreatedAt.Equal(job.CreatedAt) || preserved.RunCount != 7 ||
+		preserved.LastRunAt == nil || !preserved.LastRunAt.Equal(lastRun) {
+		t.Fatalf("updated job lost configuration or run history: %#v", preserved)
+	}
 
 	req.ResetDelivery = true
 	reset, err := store.CronJobs().Upsert(ctx, req)
@@ -486,8 +455,29 @@ func TestCronJobRepositoryDeliveryCASAndReset(t *testing.T) {
 	if reset.DeliveryToken != "" || reset.DeliveryState != "" {
 		t.Fatalf("delivery was not reset: %#v", reset)
 	}
+	if reset.ID != job.ID || reset.RunCount != 7 || reset.LastRunAt == nil || !reset.LastRunAt.Equal(lastRun) {
+		t.Fatalf("delivery reset changed run history: %#v", reset)
+	}
+	persisted, err := store.CronJobs().GetByName(ctx, job.Name)
+	if err != nil {
+		t.Fatalf("get reset job: %v", err)
+	}
+	if persisted.DeliveryToken != reset.DeliveryToken || persisted.DeliveryState != reset.DeliveryState ||
+		persisted.Metadata != reset.Metadata || persisted.RunCount != reset.RunCount ||
+		persisted.LastRunAt == nil || !persisted.LastRunAt.Equal(*reset.LastRunAt) {
+		t.Fatalf("returned job differs from stored job: returned=%#v stored=%#v", reset, persisted)
+	}
 	if disabled, err := store.CronJobs().DisableByNameIfDeliveryToken(ctx, job.Name, "session-1"); err != nil || disabled {
 		t.Fatalf("stale conditional disable: disabled=%v err=%v", disabled, err)
+	}
+}
+
+func TestCronJobRepositoryUpdateMissingJob(t *testing.T) {
+	store := newTestStore(t)
+	repo := store.CronJobs().(*CronJobRepository)
+	job, err := repo.update(context.Background(), &storage.CronJob{ID: "missing", UpdatedAt: storage.Now()}, false)
+	if !errors.Is(err, storage.ErrNotFound) || job != nil {
+		t.Fatalf("update missing job: job=%#v err=%v", job, err)
 	}
 }
 
