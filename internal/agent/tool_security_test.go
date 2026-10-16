@@ -107,7 +107,7 @@ func TestRiskConfirmationStopUsesStopCommandWithoutToolError(t *testing.T) {
 	if strings.Contains(out, "should not continue") || strings.Contains(out, "stopped while waiting") || strings.Contains(out, "assistant: error") {
 		t.Fatalf("unexpected stop output: %q", out)
 	}
-	if !strings.Contains(p.out.String(), "stopped") {
+	if !strings.Contains(p.out.String(), "正在停止") {
 		t.Fatalf("missing stop command output: %q", p.out.String())
 	}
 }

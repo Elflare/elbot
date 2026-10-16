@@ -47,6 +47,9 @@ func (r *StatusRecorder) Record(ctx context.Context, snapshot runtimestatus.Snap
 		r.mu.Unlock()
 		return
 	}
+	if !terminal && r.turns.Snapshot(snapshot.SessionID).Phase == turn.PhaseStopping {
+		snapshot.Phase = runtimestatus.PhaseStopping
+	}
 
 	snapshot = mergeRuntimeStatus(r.snapshots[snapshot.SessionID], snapshot)
 	snapshot.Usage = agentevents.CloneUsage(snapshot.Usage)

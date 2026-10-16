@@ -9,34 +9,66 @@ import (
 )
 
 func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, row *storage.Session, text string) error {
-	locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), row.ID)
-	if err != nil {
-		return err
-	}
-	locked, err = captureSessionBinding(locked, c.sessions, c.identity, row)
-	if err != nil {
-		release()
-		return err
-	}
-	switch {
-	case turn.IsConfirm(text):
-		merged, execution, ok := c.turns.ResumeAppend(row.ID)
-		ctx = turn.WithExecution(locked, execution)
-		if !ok || (merged.Text == "" && len(merged.Segments) == 0) {
+	for {
+		locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), row.ID)
+		if err != nil {
+			return err
+		}
+		locked, err = captureSessionBinding(locked, c.sessions, c.identity, row)
+		if err != nil {
+			release()
+			return err
+		}
+		switch {
+		case turn.IsConfirm(text):
+			snapshot := c.turns.Snapshot(row.ID)
+			if snapshot.Phase != turn.PhaseAwaitAppendConfirm {
+				release()
+				return nil
+			}
+			if snapshot.AttemptDone != nil {
+				release()
+				if err := c.waitForAttempt(ctx, snapshot.AttemptDone); err != nil {
+					return err
+				}
+				continue
+			}
+			merged, execution, ok := c.turns.ResumeAppend(row.ID)
+			ctx = turn.WithExecution(locked, execution)
+			if !ok || (merged.Text == "" && len(merged.Segments) == 0) {
+				release()
+				return nil
+			}
+			ctx = withInboundTurnInput(ctx, merged)
+			release()
+			return c.Run(ctx, row, merged.Text, foregroundTurnOutput{sender: c.output})
+		case turn.IsCancel(text):
+			c.turns.CancelAppend(row.ID)
+			release()
+			return c.output.SendChat(ctx, "已取消追加，正在结束本轮处理。")
+		default:
+			c.turns.AppendPendingInput(row.ID, inboundTurnInput(ctx, text))
 			release()
 			return nil
 		}
-		ctx = withInboundTurnInput(ctx, merged)
-		release()
-		return c.Run(ctx, row, merged.Text, foregroundTurnOutput{sender: c.output})
-	case turn.IsCancel(text):
-		c.turns.CancelAppend(row.ID)
-		release()
-		return c.output.SendChat(ctx, "已取消追加，本轮处理已停止。")
-	default:
-		c.turns.AppendPendingInput(row.ID, inboundTurnInput(ctx, text))
-		release()
-		return nil
+	}
+}
+
+// waitForAttempt joins an old attempt outside admission locks. The input and
+// application lifetimes can both abandon this wait without replaying the input.
+func (c *ExecutionCoordinator) waitForAttempt(ctx context.Context, done <-chan struct{}) error {
+	waitCtx, finish, accepted := c.appendWaits.begin(ctx)
+	if !accepted {
+		return context.Canceled
+	}
+	defer finish()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-waitCtx.Done():
+		return waitCtx.Err()
+	case <-done:
+		return errors.Join(ctx.Err(), waitCtx.Err())
 	}
 }
 
@@ -60,6 +92,12 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 		ctx = locked
 		snapshot := c.turns.Snapshot(session.ID)
 		switch snapshot.Phase {
+		case turn.PhaseStopping:
+			release()
+			if err := c.waitForAttempt(ctx, snapshot.AttemptDone); err != nil {
+				return inputHandled, err
+			}
+			continue
 		case turn.PhaseAwaitRiskConfirm:
 			release()
 			return inputRiskConfirmation, nil

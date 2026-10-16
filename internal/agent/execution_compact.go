@@ -52,8 +52,12 @@ func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.
 	c.turns.AttachExecution(current.ID, info.ID, turn.ExecutionFromContext(ctx))
 	reqCtx = turn.WithAttempt(reqCtx, info.ID)
 	release()
-	defer done()
-	defer c.turns.CompleteCompactRun(current.ID, info.ID)
+	defer func() {
+		done()
+		c.turns.CompleteCompactRun(current.ID, info.ID)
+	}()
+	stopObserver := c.observeRequestStop(reqCtx, current.ID, info.ID)
+	defer stopObserver()
 	if err := reqCtx.Err(); err != nil {
 		return nil, err
 	}

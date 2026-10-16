@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"elbot/internal/fileops"
+	"elbot/internal/processenv"
 	"elbot/internal/tool"
 )
 
@@ -229,6 +230,7 @@ func findDirectoryGrepMatches(ctx context.Context, root, query string, keep int)
 // directoryGrepFiles uses ripgrep's ignore rules for both search and warnings.
 func directoryGrepFiles(ctx context.Context, rg, root string) ([]string, []string, error) {
 	cmd := exec.CommandContext(ctx, rg, "--files", "--null", "--no-messages", "--glob", "!**/.git/**", "--glob", "!**/node_modules/**", "--glob", "!**/vendor/**", "--", root)
+	processenv.ConfigureCommand(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, nil, err
@@ -308,6 +310,7 @@ func directoryGrepFiles(ctx context.Context, rg, root string) ([]string, []strin
 func scanDirectoryGrepBatch(ctx context.Context, rg, root, query string, files []string, keep int, matches *directoryMatchHeap) (int, error) {
 	args := []string{"--json", "--fixed-strings", "--no-messages", "--max-filesize", fmt.Sprintf("%d", fileToolMaxBytes), "--", query}
 	cmd := exec.CommandContext(ctx, rg, append(args, files...)...)
+	processenv.ConfigureCommand(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return 0, err

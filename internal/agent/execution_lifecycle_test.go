@@ -37,6 +37,9 @@ func startAppendWait(t *testing.T, a *agentFixture, ctx context.Context) (contex
 	if !errors.Is(requestCtx.Err(), context.Canceled) {
 		t.Fatal("original model request was not canceled")
 	}
+	// The fixture owns the simulated request and must acknowledge its exit.
+	done()
+	a.execution.turns.FinishRequest(row.ID, "attempt")
 	return ctx, row, execution
 }
 

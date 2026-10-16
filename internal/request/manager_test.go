@@ -27,7 +27,8 @@ func TestManagerStartListAndDone(t *testing.T) {
 
 func TestManagerCancel(t *testing.T) {
 	m := NewManager(time.Minute)
-	req, ctx, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM})
+	req, ctx, done := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM})
+	defer done()
 	got, ok := m.Get(req.ID)
 	if !ok || got.ID != req.ID {
 		t.Fatalf("Get = %#v, %v; want request %s", got, ok, req.ID)
@@ -37,19 +38,26 @@ func TestManagerCancel(t *testing.T) {
 		t.Fatal("Cancel returned false")
 	}
 	assertCanceled(t, ctx)
-	if got := len(m.List()); got != 0 {
-		t.Fatalf("active requests = %d, want 0", got)
+	if got, ok := m.Get(req.ID); !ok || !got.Stopping {
+		t.Fatalf("canceled request must remain stopping until done: %+v, %v", got, ok)
 	}
 	if m.Cancel(req.ID) {
-		t.Fatal("Cancel returned true for missing request")
+		t.Fatal("Cancel counted an already stopping request")
+	}
+	done()
+	if _, ok := m.Get(req.ID); ok {
+		t.Fatal("completed request remained registered")
 	}
 }
 
 func TestManagerCancelSession(t *testing.T) {
 	m := NewManager(time.Minute)
-	parent, ctx1, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindTurn})
-	child, ctx2, _ := m.Start(ctx1, StartRequest{ParentID: parent.ID, SessionID: "s1", Kind: KindTool})
-	_, ctx3, _ := m.Start(context.Background(), StartRequest{SessionID: "s2", Kind: KindLLM})
+	parent, ctx1, done1 := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindTurn})
+	defer done1()
+	child, ctx2, done2 := m.Start(ctx1, StartRequest{ParentID: parent.ID, SessionID: "s1", Kind: KindTool})
+	defer done2()
+	_, ctx3, done3 := m.Start(context.Background(), StartRequest{SessionID: "s2", Kind: KindLLM})
+	defer done3()
 	if child.ParentID != parent.ID {
 		t.Fatalf("child parent = %q, want %q", child.ParentID, parent.ID)
 	}
@@ -71,31 +79,36 @@ func TestManagerCancelSession(t *testing.T) {
 
 func TestManagerCancelAll(t *testing.T) {
 	m := NewManager(time.Minute)
-	_, ctx1, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM})
-	_, ctx2, _ := m.Start(context.Background(), StartRequest{SessionID: "s2", Kind: KindTool})
+	_, ctx1, done1 := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM})
+	defer done1()
+	_, ctx2, done2 := m.Start(context.Background(), StartRequest{SessionID: "s2", Kind: KindTool})
+	defer done2()
 
 	if got := m.CancelAll(); got != 2 {
 		t.Fatalf("CancelAll = %d, want 2", got)
 	}
 	assertCanceled(t, ctx1)
 	assertCanceled(t, ctx2)
-	if got := len(m.List()); got != 0 {
-		t.Fatalf("active requests = %d, want 0", got)
+	if got := len(m.List()); got != 2 {
+		t.Fatalf("stopping requests = %d, want 2", got)
+	}
+	if got := m.CancelAll(); got != 0 {
+		t.Fatalf("repeated CancelAll = %d, want 0", got)
 	}
 }
 
-func TestManagerTimeoutCleansRequest(t *testing.T) {
+func TestManagerTimeoutWaitsForExecutionCompletion(t *testing.T) {
 	m := NewManager(10 * time.Millisecond)
-	_, ctx, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM})
+	req, ctx, done := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM})
+	defer done()
 	assertCanceled(t, ctx)
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		if len(m.List()) == 0 {
-			return
-		}
-		time.Sleep(time.Millisecond)
+	if got, ok := m.Get(req.ID); !ok || !got.Stopping {
+		t.Fatalf("timed out request disappeared before execution completed: %+v, %v", got, ok)
 	}
-	t.Fatal("timed out waiting for request cleanup")
+	done()
+	if len(m.List()) != 0 {
+		t.Fatal("completed request remained registered")
+	}
 }
 
 func assertCanceled(t *testing.T, ctx context.Context) {

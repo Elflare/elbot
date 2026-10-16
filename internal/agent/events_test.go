@@ -33,6 +33,7 @@ func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 	turns.StartExecution("s", turn.Input{}, old, "old-attempt")
 	r.Record(oldCtx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseLLM})
 	turns.StopSession("s", "old-attempt")
+	turns.FinishRequest("s", "old-attempt")
 	turns.StartExecution("s", turn.Input{}, current, "current-attempt")
 	usage := &llm.Usage{TotalTokens: func() *int64 { n := int64(42); return &n }()}
 	r.Record(ctx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseTool, Usage: usage})
@@ -44,6 +45,7 @@ func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 		t.Fatalf("old attempt/snapshot leaked: %+v", observed)
 	}
 	turns.StopSession("s", "current-attempt")
+	turns.FinishRequest("s", "current-attempt")
 	r.Record(ctx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseDone})
 	if r.Snapshot("s").Phase != runtimestatus.PhaseDone {
 		t.Fatal("matching terminal rejected after turn cleanup")

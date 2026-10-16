@@ -347,7 +347,7 @@ func TestBackgroundTakeoverStopRecordsCancellation(t *testing.T) {
 	}
 }
 
-func TestLateInterruptedRequestCannotFinishResumedExecution(t *testing.T) {
+func TestInterruptedRequestExitsBeforeResumedExecutionStarts(t *testing.T) {
 	p := &fakePlatform{}
 	old := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{}), ignoreCancellation: true}
 	next := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
@@ -373,11 +373,16 @@ func TestLateInterruptedRequestCannotFinishResumedExecution(t *testing.T) {
 	go func() { resumed <- a.HandleMessage(ctx, "yes") }()
 	select {
 	case <-next.started:
-	case <-time.After(3 * time.Second):
-		t.Fatal("resumed request did not start")
+		t.Fatal("resumed attempt overlapped the interrupted request")
+	case <-time.After(30 * time.Millisecond):
 	}
 	execution := a.execution.turns.Execution(id)
 	close(old.release)
+	select {
+	case <-next.started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("resumed request did not start")
+	}
 	// Wait for the old registered request to finish while the replacement is blocked.
 	deadline := time.Now().Add(3 * time.Second)
 	for len(a.execution.requests.ListBySession(id)) > 1 && time.Now().Before(deadline) {

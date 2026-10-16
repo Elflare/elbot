@@ -241,9 +241,9 @@ func runMediaCommand(ctx context.Context, label string, cmd *exec.Cmd, mediaCall
 
 func commandError(ctx context.Context, label string, err error, stdout, stderr string) error {
 	if ctxErr := ctx.Err(); errors.Is(ctxErr, context.DeadlineExceeded) {
-		return fmt.Errorf("%s timed out: %w%s", label, ctxErr, commandOutputSuffix(stdout, stderr))
+		return fmt.Errorf("%s timed out: %w%s", label, errors.Join(ctxErr, err), commandOutputSuffix(stdout, stderr))
 	} else if errors.Is(ctxErr, context.Canceled) {
-		return fmt.Errorf("%s canceled: %w%s", label, ctxErr, commandOutputSuffix(stdout, stderr))
+		return fmt.Errorf("%s canceled: %w%s", label, errors.Join(ctxErr, err), commandOutputSuffix(stdout, stderr))
 	}
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {

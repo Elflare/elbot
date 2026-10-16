@@ -169,6 +169,7 @@ func (e Environment) CommandContext(ctx context.Context, name string, args ...st
 		cmd.Args[0] = name
 	}
 	cmd.Env = environ
+	ConfigureCommand(cmd)
 	return cmd
 }
 

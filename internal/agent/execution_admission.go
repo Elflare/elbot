@@ -126,7 +126,7 @@ func (c *ExecutionCoordinator) EnterInput(ctx context.Context, row *storage.Sess
 				err = errors.New("当前会话模式已切换，请重新发送消息")
 			case latest.ArchivedAt != nil:
 				err = errInputArchived
-			case c.CompactActive(row.ID):
+			case c.CompactActive(row.ID) && c.turns.Snapshot(row.ID).Phase != turn.PhaseStopping:
 				err = errInputCompacting
 			}
 		}

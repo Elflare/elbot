@@ -18,6 +18,7 @@ import (
 	hookoutput "elbot/internal/hook/output"
 	hookprotocol "elbot/internal/hook/protocol"
 	"elbot/internal/llm"
+	"elbot/internal/processenv"
 )
 
 type worker struct {
@@ -348,7 +349,7 @@ func (w *worker) kill() {
 	cmd := w.cmd
 	w.mu.Unlock()
 	if cmd != nil {
-		_ = cmd.Process.Kill()
+		_ = processenv.KillProcessTree(cmd)
 	}
 }
 
