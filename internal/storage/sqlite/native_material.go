@@ -131,27 +131,7 @@ func nativeMediaReferences(ctx context.Context, tx *sql.Tx, ownerType, ownerID, 
 	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
-func (r *DialogueRepository) Seed(ctx context.Context, sessionID string) (*storage.NativeSeed, error) {
-	var raw sql.NullString
-	if err := r.db.QueryRowContext(ctx, `SELECT metadata FROM sessions WHERE id=?`, sessionID).Scan(&raw); err != nil {
-		return nil, err
-	}
-	fields, err := storage.DecodeSessionMetadata(raw.String)
-	if err != nil {
-		return nil, err
-	}
-	ref, known := fields["llm_seed"]
-	if !known {
-		return nil, nil
-	}
-	var id string
-	if err := json.Unmarshal(ref, &id); err != nil {
-		return nil, err
-	}
-	return scanNativeSeed(r.db.QueryRowContext(ctx, `SELECT id,session_id,protocol,provider,base_url,response_id,source_checkpoint_id,items_json,materials_json,continuation_json,calls_json,media_ids_json,consumed,created_at FROM native_seeds WHERE id=? AND session_id=?`, id, sessionID))
-}
-
-// scanNativeSeed decodes the root material shared by single and window reads.
+// scanNativeSeed decodes the root material selected for a native window.
 func scanNativeSeed(row interface{ Scan(...any) error }) (*storage.NativeSeed, error) {
 	seed := &storage.NativeSeed{}
 	var created, ids string

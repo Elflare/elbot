@@ -137,6 +137,10 @@ systemd 用户服务没有显式设置 PATH 时，ElBot 使用服务管理器提
 
 文件编辑的撤销备份按实际目标的绝对路径保存；切换 workspace 不清空备份，但相同相对路径会按新的 workspace 解析。撤销原目录中的文件时，可以切回原 workspace 或传绝对路径。未设置 workspace 时沿用进程工作目录。使用方式见[文件编辑撤销](commands.md#文件编辑撤销)。
 
+`read_file` 的 `ast`／`ast_function` 模式支持单文件和目录查询。`.go` 按 Go 解析，`.mksh` 按 mksh 解析；其他文件识别首行有效的 Shell shebang，包括直接解释器路径及 `env`、`env -S`、`env --split-string` 写法。`.sh`、`.bash`、`.bats` 没有可识别的 Shell shebang 时使用 Bash 方言，声明 mksh 时使用 mksh 方言。
+
+`edit_file` 在确认前生成编辑结果和差异预览，确认后提交同一份结果。等待确认期间若文件内容或目标发生变化，提交会被拒绝，需要重新准备编辑。
+
 ## 常驻记忆配置
 
 常驻记忆数据默认保存在配置目录的 `memories.toml`，文件由程序首次运行时生成。主配置中可以设置 core/normal 两段常驻记忆的长度上限：

@@ -275,20 +275,6 @@ func (r *DialogueRepository) FinishExchange(ctx context.Context, id, status, res
 	return nil
 }
 
-func (r *DialogueRepository) GetExchange(ctx context.Context, id string) (*storage.NativeExchange, error) {
-	row := &storage.NativeExchange{}
-	var created string
-	err := r.db.QueryRowContext(ctx, `SELECT id,session_id,protocol,provider,base_url,model,request_id,run_id,attempt,previous_checkpoint_id,request_json,response_json,items_json,status,error,created_at,input_ids_json FROM native_exchanges WHERE id=?`, id).Scan(&row.ID, &row.SessionID, &row.APIType, &row.Provider, &row.BaseURL, &row.Model, &row.RequestID, &row.RunID, &row.Attempt, &row.PreviousCheckpointID, &row.RequestJSON, &row.ResponseJSON, &row.ItemsJSON, &row.Status, &row.Error, &created, &row.InputIDsJSON)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, storage.ErrNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-	row.CreatedAt, err = storage.ParseTime(created)
-	return row, err
-}
-
 func (r *DialogueRepository) CurrentCheckpoint(ctx context.Context, sessionID string) (*storage.NativeCheckpoint, error) {
 	var raw sql.NullString
 	if err := r.db.QueryRowContext(ctx, `SELECT metadata FROM sessions WHERE id=?`, sessionID).Scan(&raw); err != nil {

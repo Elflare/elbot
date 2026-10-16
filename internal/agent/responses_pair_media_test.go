@@ -78,9 +78,9 @@ func TestResponsesToolForkResolvesResultMediaForContinuationAndReplay(t *testing
 			if err != nil {
 				t.Fatal(err)
 			}
-			seed, err := f.store.Dialogues().Seed(t.Context(), branch.ID)
-			if err != nil || !strings.Contains(seed.MaterialsJSON, imageID) {
-				t.Fatalf("seed=%+v %v", seed, err)
+			seed := nativeWindowRecords(t, f.store, branch.ID).Seed
+			if !strings.Contains(seed.MaterialsJSON, imageID) {
+				t.Fatalf("seed=%+v", seed)
 			}
 			if stateless && seed.ResponseID != "" {
 				t.Fatalf("stateless fork retained response ID: %+v", seed)

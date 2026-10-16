@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"elbot/internal/events"
@@ -57,18 +56,4 @@ func appendNativeSnapshot(ctx context.Context, tx *sql.Tx, commit storage.Dialog
 		return events.LogResult{ResultStatus: events.ResultFailed}, err
 	}
 	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
-}
-
-func (r *DialogueRepository) GetInput(ctx context.Context, id string) (*storage.NativeInput, error) {
-	var row storage.NativeInput
-	var created string
-	err := r.db.QueryRowContext(ctx, `SELECT id,session_id,message_id,exchange_id,call_id,item_json,media_json,consumed_by,created_at FROM native_inputs WHERE id=?`, id).Scan(&row.ID, &row.SessionID, &row.MessageID, &row.ExchangeID, &row.CallID, &row.ItemJSON, &row.MediaJSON, &row.ConsumedBy, &created)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, storage.ErrNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-	row.CreatedAt, err = storage.ParseTime(created)
-	return &row, err
 }

@@ -155,10 +155,10 @@ func (s *RollbackSession) List() ([]RollbackInfo, error) {
 // EditFile captures bytes from the edit's own read and publishes a backup only
 // after the write succeeds. The caller must check access to both path and target.
 func (s *RollbackSession) EditFile(ctx context.Context, path, encoding, revision string, create bool, contextLines int, edits []Edit, options EditFileOptions, checkWrite func(string) error) (EditResult, error) {
-	return s.manager.editFile(ctx, s, path, encoding, revision, create, contextLines, edits, options, checkWrite, commitGuard{})
+	return s.manager.editFile(ctx, s, path, encoding, revision, create, contextLines, edits, options, checkWrite, commitGuard{}, nil)
 }
 
-func (m *RollbackManager) editFile(ctx context.Context, s *RollbackSession, path, encoding, revision string, create bool, contextLines int, edits []Edit, options EditFileOptions, checkWrite func(string) error, guard commitGuard) (EditResult, error) {
+func (m *RollbackManager) editFile(ctx context.Context, s *RollbackSession, path, encoding, revision string, create bool, contextLines int, edits []Edit, options EditFileOptions, checkWrite func(string) error, guard commitGuard, prepared *EditResult) (EditResult, error) {
 	if s != nil {
 		if err := s.check(ctx); err != nil {
 			return EditResult{}, err
@@ -229,7 +229,7 @@ func (m *RollbackManager) editFile(ctx context.Context, s *RollbackSession, path
 		before, mode = file, originalMode
 		return nil
 	}
-	result, err := EditFileWithOptions(path, encoding, revision, create, false, contextLines, edits, options)
+	result, err := editFileWithResult(path, encoding, revision, create, false, contextLines, edits, options, prepared)
 	if err != nil {
 		return EditResult{}, err
 	}

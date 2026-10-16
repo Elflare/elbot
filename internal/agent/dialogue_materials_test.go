@@ -47,10 +47,12 @@ func TestResponsesMediaReplayAuditContainsOnlyOrderedReferences(t *testing.T) {
 	if err := f.agent.HandleMessage(t.Context(), "continue"); err != nil {
 		t.Fatal(err)
 	}
+	records := nativeWindowRecords(t, f.store, fixtureSession(t, f).ID)
 	for attempt := 0; attempt < 2; attempt++ {
-		exchange, err := f.store.Dialogues().GetExchange(t.Context(), <-ids)
-		if err != nil {
-			t.Fatal(err)
+		id := <-ids
+		exchange, ok := records.Exchanges[id]
+		if !ok {
+			t.Fatalf("missing exchange %s", id)
 		}
 		var audit struct {
 			Input json.RawMessage `json:"input"`
@@ -69,9 +71,9 @@ func TestResponsesMediaReplayAuditContainsOnlyOrderedReferences(t *testing.T) {
 			if ref.Kind != "input" {
 				continue
 			}
-			input, err := f.store.Dialogues().GetInput(t.Context(), ref.ID)
-			if err != nil {
-				t.Fatal(err)
+			input, ok := records.Inputs[ref.ID]
+			if !ok {
+				t.Fatalf("missing input %s", ref.ID)
 			}
 			if strings.Contains(input.ItemJSON+input.MediaJSON, "base64,") {
 				t.Fatal("expanded entity persisted in native input")

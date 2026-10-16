@@ -1,10 +1,12 @@
 package fileops_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -128,6 +130,9 @@ func TestEditConfirmationPinsState(t *testing.T) {
 				t.Fatal(err)
 			}
 			first := prepared.Preview()
+			if first.NewBytes != nil {
+				t.Fatal("confirmation preview includes file bytes")
+			}
 			want, refuse := "after", false
 			switch scenario {
 			case "content":
@@ -154,8 +159,6 @@ func TestEditConfirmationPinsState(t *testing.T) {
 				}
 			case "parameters":
 				*req.Edits[0].NewText = "different"
-				// The caller's argument and preview buffers cannot change the prepared edit.
-				first.NewBytes[0] = 'X'
 			case "appeared":
 				if err := os.WriteFile(f.path, nil, 0600); err != nil {
 					t.Fatal(err)
@@ -188,17 +191,91 @@ func TestEditConfirmationPinsState(t *testing.T) {
 			if preview.Diff != first.Diff {
 				t.Fatal("confirmation diff changed")
 			}
-			_, _, err = prepared.Commit(derived)
+			result, _, err := prepared.Commit(derived)
 			if (err != nil) != refuse {
 				t.Fatalf("edit err=%v refuse=%t", err, refuse)
+			}
+			if !refuse && (result.DryRun || result.Diff != first.Diff || result.RevisionAfter != first.RevisionAfter || result.RevisionBefore != first.RevisionBefore) {
+				t.Fatalf("commit differs from preview: result=%+v preview=%+v", result, first)
 			}
 			readContent(t, f.path, want)
 		})
 	}
 }
 
+func TestPreparedEditPreservesEncodingAndRollback(t *testing.T) {
+	for _, tc := range []struct {
+		name, encoding, ending string
+		bom                    []byte
+		create                 bool
+	}{
+		{name: "utf8", encoding: "utf-8", ending: "\n"},
+		{name: "utf8-bom-crlf", encoding: "utf-8-bom", ending: "\r\n", bom: []byte{0xEF, 0xBB, 0xBF}},
+		{name: "utf16-crlf", encoding: "utf-16le", ending: "\r\n", bom: []byte{0xFF, 0xFE}},
+		{name: "create-bom", encoding: "utf-8-bom", ending: "\n", bom: []byte{0xEF, 0xBB, 0xBF}, create: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFileFixture(t)
+			ctx := f.call(f.ctx, nil)
+			original, err := fileops.EncodeText("before"+tc.ending, tc.encoding, tc.bom)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req := editRequest("file", "before", "after")
+			req.Encoding = tc.encoding
+			if tc.create {
+				if err := os.Remove(f.path); err != nil {
+					t.Fatal(err)
+				}
+				req.Create = true
+				text := "after\n"
+				req.Edits = []fileops.Edit{{Operation: "overwrite", NewText: &text}}
+			} else if err := os.WriteFile(f.path, original, 0600); err != nil {
+				t.Fatal(err)
+			}
+			prepared, err := f.files.PrepareEdit(ctx, req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			preview := prepared.Preview()
+			result, _, err := prepared.Commit(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := fileops.EncodeText("after"+tc.ending, tc.encoding, tc.bom)
+			if err != nil {
+				t.Fatal(err)
+			}
+			written, err := os.ReadFile(f.path)
+			if err != nil || !bytes.Equal(written, want) || !bytes.Equal(result.NewBytes, want) {
+				t.Fatalf("written=%x result=%x want=%x err=%v", written, result.NewBytes, want, err)
+			}
+			if preview.RevisionAfter != fileops.ContentRevision(written) || preview.Diff != result.Diff || !result.RollbackAvailable || result.Created != tc.create {
+				t.Fatalf("commit=%+v preview=%+v", result, preview)
+			}
+			if _, err := f.files.Rollback(ctx, "file", 0); err != nil {
+				t.Fatal(err)
+			}
+			if tc.create {
+				if _, err := os.Stat(f.path); !os.IsNotExist(err) {
+					t.Fatalf("created file survived rollback: %v", err)
+				}
+			} else {
+				restored, err := os.ReadFile(f.path)
+				if err != nil || !bytes.Equal(restored, original) {
+					t.Fatalf("restored=%x want=%x err=%v", restored, original, err)
+				}
+				info, err := os.Stat(f.path)
+				if err != nil || runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
+					t.Fatalf("original mode not restored: %v %v", info, err)
+				}
+			}
+		})
+	}
+}
+
 func TestFileCommitSerializesSessionTransitions(t *testing.T) {
-	for _, operation := range []string{"edit", "restore", "remove"} {
+	for _, operation := range []string{"edit", "prepared", "restore", "remove"} {
 		for _, transition := range []string{"switch", "delete", "stop"} {
 			for _, commitFirst := range []bool{false, true} {
 				name := operation + "/" + transition + "/transition_first"
@@ -207,7 +284,7 @@ func TestFileCommitSerializesSessionTransitions(t *testing.T) {
 				}
 				t.Run(name, func(t *testing.T) {
 					f := newFileFixture(t)
-					if operation != "edit" {
+					if operation != "edit" && operation != "prepared" {
 						if operation == "remove" {
 							if err := os.Remove(f.path); err != nil {
 								t.Fatal(err)
@@ -243,7 +320,13 @@ func TestFileCommitSerializesSessionTransitions(t *testing.T) {
 					ctx := f.call(base, admission)
 					done := make(chan error, 1)
 					go func() {
-						if operation == "edit" {
+						if operation == "prepared" {
+							prepared, err := f.files.PrepareEdit(ctx, editRequest("file", "before", "after"))
+							if err == nil {
+								_, _, err = prepared.Commit(ctx)
+							}
+							done <- err
+						} else if operation == "edit" {
 							_, _, err := f.files.Edit(ctx, editRequest("file", "before", "after"))
 							done <- err
 						} else {
@@ -296,7 +379,7 @@ func TestFileCommitSerializesSessionTransitions(t *testing.T) {
 						}
 					}
 					want := "before"
-					if operation != "edit" {
+					if operation != "edit" && operation != "prepared" {
 						want = "after"
 					}
 					if commitFirst {
@@ -305,7 +388,7 @@ func TestFileCommitSerializesSessionTransitions(t *testing.T) {
 								t.Fatalf("remove=%v", err)
 							}
 						} else {
-							if operation == "edit" {
+							if operation == "edit" || operation == "prepared" {
 								want = "after"
 							} else {
 								want = "before"

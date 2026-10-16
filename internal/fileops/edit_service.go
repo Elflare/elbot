@@ -1,10 +1,8 @@
 package fileops
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"os"
 
 	"elbot/internal/workspace"
 )
@@ -29,7 +27,7 @@ type PreparedEdit struct {
 	// resolved and target pin the workspace path and actual filesystem target.
 	resolved workspace.ResolvedPath
 	target   string
-	// result contains the original revision and confirmation diff.
+	// result retains the approved bytes, revisions and confirmation diff.
 	result EditResult
 }
 
@@ -46,21 +44,15 @@ func cloneEditRequest(req EditRequest) EditRequest {
 	return req
 }
 
+// Preview returns confirmation metadata without exposing the prepared bytes.
 func (p *PreparedEdit) Preview() EditResult {
 	result := p.result
-	result.NewBytes = bytes.Clone(result.NewBytes)
+	result.NewBytes = nil
 	return result
 }
 
 func (p *PreparedEdit) Commit(ctx context.Context) (EditResult, workspace.ResolvedPath, error) {
 	return p.service.edit(ctx, p.request, p)
-}
-
-func (p *PreparedEdit) check(file File, created bool) error {
-	if p.result.Created != created || p.result.RevisionBefore != ContentRevision(file.Bytes) {
-		return fmt.Errorf("file changed after preflight")
-	}
-	return nil
 }
 
 func (s *Service) editPath(ctx context.Context, req EditRequest) (workspace.ResolvedPath, string, error) {
@@ -147,12 +139,10 @@ func (s *Service) edit(ctx context.Context, req EditRequest, prepared *PreparedE
 	if binding != nil {
 		guard.admission = binding.admission
 	}
-	options := req.Options
+	var result *EditResult
 	if prepared != nil {
-		options.beforeWrite = func(file File, created bool, _ os.FileMode) error {
-			return prepared.check(file, created)
-		}
+		result = &prepared.result
 	}
-	result, err := s.Manager.editFile(ctx, lease, resolved.Path, req.Encoding, req.ExpectedRevision, req.Create, req.ContextLines, req.Edits, options, s.CheckWrite, guard)
-	return result, resolved, err
+	committed, err := s.Manager.editFile(ctx, lease, resolved.Path, req.Encoding, req.ExpectedRevision, req.Create, req.ContextLines, req.Edits, req.Options, s.CheckWrite, guard, result)
+	return committed, resolved, err
 }

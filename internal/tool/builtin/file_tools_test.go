@@ -18,7 +18,46 @@ import (
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/tool"
 	workspacepath "elbot/internal/workspace"
+
+	"mvdan.cc/sh/v3/syntax"
 )
+
+func TestShellASTUsesShebangDialect(t *testing.T) {
+	for _, tc := range []struct{ name, shebang string }{
+		{"direct.sh", "#!/bin/mksh"},
+		{"env.bash", "#!/usr/bin/env mksh"},
+		{"split.bats", "#!/usr/bin/env -S mksh -e"},
+		{"long-split.sh", "#!/usr/bin/env --split-string mksh -e"},
+		{"script", "#!/bin/mksh"},
+		{"script.txt", "#!/bin/mksh"},
+		{"script.mksh", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, tc.name)
+			source := tc.shebang + "\nTarget() { echo $((# 1 + 2)); }\n"
+			if err := os.WriteFile(path, []byte(source), 0644); err != nil {
+				t.Fatal(err)
+			}
+			language, variant, err := detectASTLanguage(path, source)
+			if err != nil || language != "shell" || variant != syntax.LangMirBSDKorn {
+				t.Fatalf("language=%q variant=%s err=%v", language, variant, err)
+			}
+			for _, target := range []string{path, root} {
+				for _, mode := range []string{readFileModeAST, readFileModeASTFunction} {
+					args, _ := json.Marshal(map[string]any{"path": target, "mode": mode, "query": "Target"})
+					result, _, err := NewReadFileTool().Call(t.Context(), tool.CallRequest{Arguments: args})
+					if err != nil {
+						t.Fatalf("%s %s: %v", target, mode, err)
+					}
+					if !strings.Contains(result.Content, "matches: 1") || strings.Contains(result.Content, "解析") {
+						t.Fatalf("%s %s: %s", target, mode, result.Content)
+					}
+				}
+			}
+		})
+	}
+}
 
 func TestDirectoryASTLanguageDetection(t *testing.T) {
 	for _, tc := range []struct {
@@ -48,9 +87,18 @@ func TestDirectoryASTLanguageDetection(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tc.source), 0644); err != nil {
 				t.Fatal(err)
 			}
-			language, _, err := detectASTLanguage(path, tc.source)
+			language, variant, err := detectASTLanguage(path, tc.source)
 			if language != tc.language || (err != nil) != (tc.language == "") {
 				t.Fatalf("language=%q err=%v", language, err)
+			}
+			if language == "shell" {
+				want := syntax.LangBash
+				if tc.name == "code.mksh" || tc.name == "korn" {
+					want = syntax.LangMirBSDKorn
+				}
+				if variant != want {
+					t.Fatalf("variant=%s want=%s", variant, want)
+				}
 			}
 			for _, mode := range []string{readFileModeAST, readFileModeASTFunction} {
 				matches, _, err := findDirectoryASTMatches(root, "Target", mode)

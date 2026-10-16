@@ -120,11 +120,12 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/toolrun/state.go`、`internal/toolrun/preload.go`、`internal/toolrun/background.go`：状态提交、预加载与后台白名单；预载失败与跳过由来源记录身份、原因和结果。
 - `internal/agent/tool_directive.go`、`internal/agent/tool_cache.go`：输入指令和状态提交编排。
 - `internal/fileops/`：共享文件操作、编辑、目标锁和撤销备份。
-- `internal/tool/builtin/file_tools_ast.go`：单文件与目录共用的扩展名／Shell shebang 识别及 AST 解析；`file_tools_directory.go`：目录 AST 候选读取与缓存、rg 文件枚举和分批流式搜索、有界匹配候选及排序选择。grep 大文件警告沿用 rg 的搜索范围。
+- `internal/tool/builtin/file_tools_ast.go`：单文件与目录共用的扩展名／Shell shebang 识别及 AST 解析；`.sh`／`.bash`／`.bats` 优先使用有效 shebang 声明的方言；`file_tools_directory.go`：目录 AST 候选读取与缓存、rg 文件枚举和分批流式搜索、有界匹配候选及排序选择。grep 大文件警告沿用 rg 的搜索范围。
 - `internal/tool/builtin/long_memory.go`：长期记忆文件与 SQLite／FTS 索引；同步批量加载正常及异常状态，按文件名决定重复 ID 归属，先清理失效索引再写入变化记录。格式错误分类仅在 store 内存中复用；读取时按 30 秒冷却同步，修改／删除找不到 ID 时强制同步。
 - `internal/tool/builtin/web_extract.go`：正文缓存与同键在途获取；共享请求独立于调用方取消，每个调用单独等待，无人等待时取消获取。强制刷新可加入在途请求，失败保留旧缓存，迟到结果不覆盖新请求。
 - `internal/fileops/binding.go`、`internal/fileops/commit.go`：context 中的服务／Session／准入绑定，以及显式传递的提交校验；context 不保存编辑或撤销预览。
 - `internal/fileops/edit_service.go`、`internal/fileops/rollback_service.go`：编辑／撤销准备对象、预览和提交；`internal/fileops/atomic_write.go` 提供带 revision 校验的写入。
+- `internal/fileops/file.go`：读取与编辑结果计算；`editFileWithResult` 共用普通编辑和已准备结果的写入流程，准备结果提交只核对源状态并复用输出字节、revision 和 diff；`internal/fileops/rollback.go` 管理目标锁、提交准入和成功写入后的撤销备份。
 - `internal/workspace/`、`internal/session/workspace.go`、`internal/sandbox/`：工作目录、持久化与后台路径限制。
 - `internal/tool/media_runtime.go`：工具／Skill 媒体准备；MediaCall 集中管理调用内的元数据、临时引用和成功导出，Close 释放引用并清理私有目录。
 
@@ -228,7 +229,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/storage/sqlite/`、`internal/storage/sqlite/migrations.go`：存储实现与数据库迁移；`nullable_context_summary_tokens` 保留摘要数据、外键及索引，使未知用量可保存为 NULL。
 - `internal/storage/dialogue.go`、`internal/storage/sqlite/dialogue_repository.go`：ToolBatch／原生提交事务、checkpoint 比较及 NativeWindowRecords 原始材料契约；提交内复用 exchange 归属和终态，合并保存 checkpoint／seed metadata。
 - `internal/storage/sqlite/session_repository.go`：Session 仓储；Mutate 在事务内比较持久化字段，仅在值变化时 UPDATE。
-- `internal/storage/sqlite/native_snapshot.go`、`internal/storage/sqlite/native_material.go`：不可变调用快照、seed 与新 Session 原子保存；LoadNativeWindow 在同一读取事务批量取得目标祖先链及关联材料，供 Responses 重建；seed 空媒体列表统一写 `[]`，`normalize_native_seed_media_ids` 迁移修正已有 `null`。
+- `internal/storage/sqlite/native_snapshot.go`、`internal/storage/sqlite/native_material.go`：不可变调用快照、seed 与新 Session 原子保存；LoadNativeWindow 是窗口材料的批量读取入口，在同一读取事务取得 seed、目标祖先链及关联材料，供 Responses 重建；seed 空媒体列表统一写 `[]`，`normalize_native_seed_media_ids` 迁移修正已有 `null`。
 - `internal/storage/sqlite/media_history.go`、`internal/storage/sqlite/media_lifecycle.go`：历史媒体关联、媒体临时引用恢复与清理认领；认领直接返回完整媒体记录。
 
 <!-- locator:elnis -->

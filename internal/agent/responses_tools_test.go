@@ -245,10 +245,11 @@ func TestResponsesFirstRequestFailureReusesPendingDefinitions(t *testing.T) {
 	if err := f.agent.HandleMessage(t.Context(), "retry"); err != nil {
 		t.Fatal(err)
 	}
+	records := nativeWindowRecords(t, f.store, row.ID)
 	for _, queued := range pending {
-		input, err := f.store.Dialogues().GetInput(t.Context(), queued.ID)
-		if err != nil || input.ConsumedBy == "" {
-			t.Fatalf("first request input not reused: %+v %v", input, err)
+		input, ok := records.Inputs[queued.ID]
+		if !ok || input.ConsumedBy == "" {
+			t.Fatalf("first request input not reused: %+v", input)
 		}
 	}
 }
@@ -325,9 +326,9 @@ func TestResponsesPendingDefinitionsSurviveRestartAndStatelessReplay(t *testing.
 	if err := f.agent.HandleMessage(t.Context(), "retry"); err != nil {
 		t.Fatal(err)
 	}
-	input, err := f.store.Dialogues().GetInput(t.Context(), pendingID)
-	if err != nil || input.ConsumedBy == "" {
-		t.Fatalf("original queued definition was not consumed: %+v %v", input, err)
+	input, ok := nativeWindowRecords(t, f.store, row.ID).Inputs[pendingID]
+	if !ok || input.ConsumedBy == "" {
+		t.Fatalf("original queued definition was not consumed: %+v", input)
 	}
 }
 

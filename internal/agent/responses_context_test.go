@@ -62,7 +62,8 @@ func TestResponsesRecoveryReplaysNativeFactsOnceWithoutHooksOrTools(t *testing.T
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 	})})
 	ids := make(chan string, 16)
-	f := newNativeFixture(t, func(index int, request nativeTestRequest, w http.ResponseWriter) {
+	store, auditDB := newNativeAuditDatabase(t)
+	f := newNativeFixtureWithStore(t, store, func(index int, request nativeTestRequest, w http.ResponseWriter) {
 		switch index {
 		case 0:
 			emitNative(w, "r1", "completed", `{"type":"reasoning","encrypted_content":"opaque-reasoning","vendor_value":9007199254740993}`, `{"type":"future_state","encrypted_content":"opaque-future"}`, nativeCall("call", "once", `{}`))
@@ -101,10 +102,7 @@ func TestResponsesRecoveryReplaysNativeFactsOnceWithoutHooksOrTools(t *testing.T
 	}
 	for i := 0; i < 4; i++ {
 		id := <-ids
-		exchange, err := f.store.Dialogues().GetExchange(t.Context(), id)
-		if err != nil {
-			t.Fatal(err)
-		}
+		exchange := nativeExchangeAudit(t, auditDB, id)
 		if i == 2 && exchange.Status != "failed" || i != 2 && exchange.Status != "completed" {
 			t.Fatalf("audit %d=%+v", i, exchange)
 		}
@@ -219,9 +217,9 @@ func TestResponsesForkToolBatchIncludesAllResultsAndKeepsNativeRoot(t *testing.T
 	if fork.ForkFromMessageID != messages[3].ID {
 		t.Fatalf("fork cut through completed pair: %+v", fork)
 	}
-	seed, err := f.store.Dialogues().Seed(t.Context(), fork.ID)
-	if err != nil || seed.ResponseID != "head" || seed.Consumed || !strings.Contains(seed.ItemsJSON, "future source result") || strings.Contains(seed.ItemsJSON, "future source answer") || strings.Count(seed.ItemsJSON, "saved at fork") != 1 {
-		t.Fatalf("seed=%+v %v", seed, err)
+	seed := nativeWindowRecords(t, f.store, fork.ID).Seed
+	if seed.ResponseID != "head" || seed.Consumed || !strings.Contains(seed.ItemsJSON, "future source result") || strings.Contains(seed.ItemsJSON, "future source answer") || strings.Count(seed.ItemsJSON, "saved at fork") != 1 {
+		t.Fatalf("seed=%+v", seed)
 	}
 	if err := f.store.Sessions().Delete(t.Context(), source.ID); err != nil {
 		t.Fatal(err)
@@ -229,9 +227,9 @@ func TestResponsesForkToolBatchIncludesAllResultsAndKeepsNativeRoot(t *testing.T
 	if err := f.agent.HandleMessage(t.Context(), "branch question"); err != nil {
 		t.Fatal(err)
 	}
-	seed, err = f.store.Dialogues().Seed(t.Context(), fork.ID)
-	if err != nil || !seed.Consumed || executed.Load() != 2 {
-		t.Fatalf("seed=%+v executions=%d err=%v", seed, executed.Load(), err)
+	seed = nativeWindowRecords(t, f.store, fork.ID).Seed
+	if !seed.Consumed || executed.Load() != 2 {
+		t.Fatalf("seed=%+v executions=%d", seed, executed.Load())
 	}
 }
 
@@ -310,9 +308,9 @@ func TestResponsesCompactionUsesCurrentModelAndOnlyCompactionThenStartsNewChain(
 			if next.ID == old.ID || next.ParentSessionID != "" || strings.Contains(next.Metadata, "llm_checkpoint") {
 				t.Fatalf("new session=%+v", next)
 			}
-			seed, err := f.store.Dialogues().Seed(t.Context(), next.ID)
-			if err != nil || seed.ResponseID != "" || seed.Consumed || !strings.Contains(seed.ItemsJSON, "compact-opaque") {
-				t.Fatalf("seed=%+v %v", seed, err)
+			seed := nativeWindowRecords(t, f.store, next.ID).Seed
+			if seed.ResponseID != "" || seed.Consumed || !strings.Contains(seed.ItemsJSON, "compact-opaque") {
+				t.Fatalf("seed=%+v", seed)
 			}
 			var saved struct{ Items []json.RawMessage }
 			if err := json.Unmarshal([]byte(seed.ItemsJSON), &saved); err != nil || len(saved.Items) != 1 {
@@ -321,9 +319,9 @@ func TestResponsesCompactionUsesCurrentModelAndOnlyCompactionThenStartsNewChain(
 			if err := f.agent.HandleMessage(t.Context(), "first after compact"); err != nil {
 				t.Fatal(err)
 			}
-			seed, err = f.store.Dialogues().Seed(t.Context(), next.ID)
-			if err != nil || !seed.Consumed {
-				t.Fatalf("seed=%+v %v", seed, err)
+			seed = nativeWindowRecords(t, f.store, next.ID).Seed
+			if !seed.Consumed {
+				t.Fatalf("seed=%+v", seed)
 			}
 			row, err := f.store.Sessions().Get(t.Context(), next.ID)
 			if err != nil || strings.Contains(row.Metadata, `"pending":true`) {
@@ -469,9 +467,9 @@ func TestResponsesBackgroundCopyContinuesNativeChainWithoutAdoptingCurrent(t *te
 			if err != nil || current.ID != foreground.ID || after != binding {
 				t.Fatalf("copy adopted foreground=%+v %v", current, err)
 			}
-			seed, err := f.store.Dialogues().Seed(t.Context(), copy.ID)
-			if err != nil || !strings.Contains(seed.ItemsJSON, "background-opaque") {
-				t.Fatalf("seed=%+v %v", seed, err)
+			seed := nativeWindowRecords(t, f.store, copy.ID).Seed
+			if !strings.Contains(seed.ItemsJSON, "background-opaque") {
+				t.Fatalf("seed=%+v", seed)
 			}
 			if stateless && seed.ResponseID != "" {
 				t.Fatalf("stateless copy response ID=%s", seed.ResponseID)
@@ -702,9 +700,9 @@ func TestResponsesForkAfterCompactionRetainsMediaAndHistoricalRootAfterSourceDel
 		t.Fatal(err)
 	}
 	root := fixtureSession(t, f)
-	rootSeed, err := f.store.Dialogues().Seed(t.Context(), root.ID)
-	if err != nil || len(rootSeed.MediaIDs) != 1 || rootSeed.MediaIDs[0] != image.ID || strings.Contains(rootSeed.ItemsJSON, "input_image") || strings.Contains(rootSeed.MaterialsJSON, image.ID) {
-		t.Fatalf("retained media seed=%+v %v", rootSeed, err)
+	rootSeed := nativeWindowRecords(t, f.store, root.ID).Seed
+	if len(rootSeed.MediaIDs) != 1 || rootSeed.MediaIDs[0] != image.ID || strings.Contains(rootSeed.ItemsJSON, "input_image") || strings.Contains(rootSeed.MaterialsJSON, image.ID) {
+		t.Fatalf("retained media seed=%+v", rootSeed)
 	}
 	if err := f.agent.HandleMessage(t.Context(), "anchor input"); err != nil {
 		t.Fatal(err)
@@ -721,9 +719,9 @@ func TestResponsesForkAfterCompactionRetainsMediaAndHistoricalRootAfterSourceDel
 	if err != nil {
 		t.Fatal(err)
 	}
-	seed, err := f.store.Dialogues().Seed(t.Context(), branch.ID)
-	if err != nil || strings.Contains(seed.ItemsJSON, "exclude later") {
-		t.Fatalf("historical seed=%+v %v", seed, err)
+	seed := nativeWindowRecords(t, f.store, branch.ID).Seed
+	if strings.Contains(seed.ItemsJSON, "exclude later") {
+		t.Fatalf("historical seed=%+v", seed)
 	}
 	for _, id := range []string{original.ID, root.ID} {
 		if err := f.store.Sessions().Delete(t.Context(), id); err != nil {

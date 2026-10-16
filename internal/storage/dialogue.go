@@ -121,13 +121,10 @@ type DialogueRepository interface {
 	Commit(context.Context, DialogueCommit) (events.LogResult, error)
 	CreateExchange(context.Context, *NativeExchange) error
 	FinishExchange(context.Context, string, string, string, string, string) error
-	GetExchange(context.Context, string) (*NativeExchange, error)
 	CurrentCheckpoint(context.Context, string) (*NativeCheckpoint, error)
 	GetCheckpoint(context.Context, string) (*NativeCheckpoint, error)
 	CheckpointForMessage(context.Context, string, string) (*NativeCheckpoint, error)
 	LoadNativeWindow(context.Context, *Session, *NativeCheckpoint) (*NativeWindowRecords, error)
-	GetInput(context.Context, string) (*NativeInput, error)
-	Seed(context.Context, string) (*NativeSeed, error)
 	PendingInputs(context.Context, string) ([]NativeInput, error)
 	Calls(context.Context, string) ([]NativeCall, error)
 }
