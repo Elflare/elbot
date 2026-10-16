@@ -207,7 +207,7 @@ func TestMediaExportFailureCanBeRetriedAndCanceled(t *testing.T) {
 	}
 }
 
-func TestMediaCallCloseRetriesFailedReferenceRelease(t *testing.T) {
+func TestMediaCallCloseFailureRecoveredAtStartup(t *testing.T) {
 	ctx := t.Context()
 	dbPath := filepath.Join(t.TempDir(), "store.db")
 	store, err := sqlite.New(ctx, dbPath)
@@ -233,21 +233,24 @@ func TestMediaCallCloseRetriesFailedReferenceRelease(t *testing.T) {
 	if err := call.Close(); err == nil {
 		t.Fatal("closed database did not report reference release failure")
 	}
-	if _, err := os.Stat(filepath.Join(base, path)); !os.IsNotExist(err) {
-		t.Fatalf("private file survived failed reference release: %v", err)
+	if _, err := os.Stat(filepath.Dir(filepath.Join(base, path))); !os.IsNotExist(err) {
+		t.Fatalf("private directory survived failed reference release: %v", err)
 	}
 	reopened, err := sqlite.New(ctx, dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	center.Store = reopened
-	if err := call.Close(); err != nil {
+	refs, err := reopened.MediaReferences().ListMediaIDs(ctx, item.ID)
+	if err != nil || len(refs) != 1 {
+		t.Fatalf("failed release did not leave its temporary reference: %v %v", refs, err)
+	}
+	if err := reopened.Media().RecoverInterrupted(ctx); err != nil {
 		t.Fatal(err)
 	}
-	refs, err := reopened.MediaReferences().ListMediaIDs(ctx, item.ID)
+	refs, err = reopened.MediaReferences().ListMediaIDs(ctx, item.ID)
 	if err != nil || len(refs) != 0 {
-		t.Fatalf("references survived cleanup retry: %v %v", refs, err)
+		t.Fatalf("references survived startup recovery: %v %v", refs, err)
 	}
 }
 
