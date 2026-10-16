@@ -203,7 +203,7 @@ func TestResolverRequestTotalAndIsolation(t *testing.T) {
 	} {
 		t.Run(tc.backend+"/"+time.Duration(tc.limit).String(), func(t *testing.T) {
 			m.FileDelivery.Backend, m.FileDelivery.MaxDirectBase64Bytes = tc.backend, tc.limit
-			out, cleanup, err := m.ResolveForLLM(ctx, input)
+			out, cleanup, err := m.AcquireForLLM(ctx, input)
 			cleanup()
 			if (err != nil) != tc.wantError {
 				t.Fatalf("error = %v", err)
@@ -234,7 +234,7 @@ func TestResolverRequestTotalAndIsolation(t *testing.T) {
 	m.FileDelivery.Backend = "base64"
 	m.FileDelivery.MaxDirectBase64Bytes = 100
 	missing := llm.LLMMessage{Role: llm.RoleUser, Segments: []llm.MessageSegment{{Type: llm.SegmentImage, MediaID: IDPrefix + strings.Repeat("0", 64)}}}
-	out, cleanup, err := m.ResolveForLLM(ctx, []llm.LLMMessage{missing})
+	out, cleanup, err := m.AcquireForLLM(ctx, []llm.LLMMessage{missing})
 	cleanup()
 	if err != nil {
 		t.Fatal(err)
@@ -281,7 +281,7 @@ func TestImportCompressionAndResolverReuse(t *testing.T) {
 		m.FileDelivery.Backend = mode
 		m.FileDelivery.MaxDirectBase64Bytes = item.Size * 2
 		for attempt := 0; attempt < 2; attempt++ {
-			out, cleanup, err := m.ResolveForLLM(ctx, input)
+			out, cleanup, err := m.AcquireForLLM(ctx, input)
 			cleanup()
 			cleanup()
 			if err != nil {
@@ -298,7 +298,7 @@ func TestImportCompressionAndResolverReuse(t *testing.T) {
 		}
 	}
 	m.FileDelivery.Backend, m.FileDelivery.MaxDirectBase64Bytes = "hybrid", item.Size*2-1
-	out, cleanup, err := m.ResolveForLLM(ctx, input)
+	out, cleanup, err := m.AcquireForLLM(ctx, input)
 	cleanup()
 	if err != nil || !strings.HasPrefix(out[0].Segments[0].URL, "https://s3.test/"+item.ID) || remote.puts != 1 {
 		t.Fatalf("remote reuse = %#v, uploads %d, error %v", out, remote.puts, err)
@@ -388,7 +388,7 @@ func TestResolverDoesNotCompressExistingMedia(t *testing.T) {
 	}
 	m.Media = config.MediaConfig{LLMImageCompressionThresholdBytes: 1, LLMImageMaxLength: 1}
 	input := []llm.LLMMessage{{Role: llm.RoleUser, Segments: []llm.MessageSegment{{Type: llm.SegmentImage, MediaID: item.ID}}}}
-	out, cleanup, err := m.ResolveForLLM(ctx, input)
+	out, cleanup, err := m.AcquireForLLM(ctx, input)
 	cleanup()
 	if err != nil {
 		t.Fatal(err)
@@ -553,7 +553,7 @@ func TestResolverUploadsLocalMediaAfterBackendChange(t *testing.T) {
 			remote.presign = s3.NewPresignClient(remote.client)
 			input := []llm.LLMMessage{{Role: llm.RoleUser, Segments: []llm.MessageSegment{{Type: llm.SegmentImage, MediaID: item.ID}}}}
 			for i := 0; i < 2; i++ {
-				out, cleanup, err := m.ResolveForLLM(ctx, input)
+				out, cleanup, err := m.AcquireForLLM(ctx, input)
 				cleanup()
 				if err != nil {
 					t.Fatal(err)
@@ -608,7 +608,7 @@ func TestMaterializeAndResolveSanitizeMediaNames(t *testing.T) {
 	}}}}
 	m.FileDelivery.Backend = "base64"
 	m.FileDelivery.MaxDirectBase64Bytes = 1024
-	resolved, cleanup, err := m.ResolveForLLM(ctx, input)
+	resolved, cleanup, err := m.AcquireForLLM(ctx, input)
 	cleanup()
 	if err != nil {
 		t.Fatal(err)
@@ -625,7 +625,7 @@ func TestMaterializeAndResolveSanitizeMediaNames(t *testing.T) {
 		MediaID: IDPrefix + strings.Repeat("f", 64),
 		Name:    "https://example.com/missing.png?rkey=missing-secret",
 	}}}}
-	resolved, cleanup, err = m.ResolveForLLM(ctx, missing)
+	resolved, cleanup, err = m.AcquireForLLM(ctx, missing)
 	cleanup()
 	if err != nil {
 		t.Fatal(err)

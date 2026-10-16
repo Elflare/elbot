@@ -150,6 +150,7 @@ func seedCleanupMedia(t *testing.T, m *Manager, count int) map[string][]byte {
 
 func TestCleanupParallelAllowsOtherMediaAndSameIDReimport(t *testing.T) {
 	m := newConcurrentTestManager(t)
+	m.FileDelivery.Backend = "s3"
 	data := seedCleanupMedia(t, m, 8)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
@@ -195,7 +196,7 @@ func TestCleanupParallelAllowsOtherMediaAndSameIDReimport(t *testing.T) {
 	if body, _, err := m.Read(ctx, other.ID); err != nil || string(body) != "unrelated new media" {
 		t.Fatalf("unrelated read = %q, %v", body, err)
 	}
-	if _, err := m.PresignGet(ctx, other.ID, time.Hour); err != nil {
+	if _, err := acquireTestURL(ctx, m, other.ID); err != nil {
 		t.Fatalf("unrelated upload blocked or failed: %v", err)
 	}
 
@@ -462,6 +463,7 @@ func TestConcurrentImportsDeduplicateOnlySameID(t *testing.T) {
 
 func TestPresignExistingObjectHoldsReferenceUntilSigningFinishes(t *testing.T) {
 	m := newConcurrentTestManager(t)
+	m.FileDelivery.Backend = "s3"
 	data := seedCleanupMedia(t, m, 1)
 	var id string
 	for key := range data {
@@ -487,7 +489,7 @@ func TestPresignExistingObjectHoldsReferenceUntilSigningFinishes(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() {
-		_, err := m.PresignGet(ctx, id, time.Hour)
+		_, err := acquireTestURL(ctx, m, id)
 		done <- err
 	}()
 	awaitMediaTest(t, started)
@@ -505,6 +507,7 @@ func TestPresignExistingObjectHoldsReferenceUntilSigningFinishes(t *testing.T) {
 
 func TestPresignUploadSerializesSameIDAndProtectsFromCleanup(t *testing.T) {
 	m := newConcurrentTestManager(t)
+	m.FileDelivery.Backend = "s3"
 	item, err := m.ImportBytes(t.Context(), []byte("upload me"), Input{Name: "sample.bin"})
 	if err != nil {
 		t.Fatal(err)
@@ -539,12 +542,12 @@ func TestPresignUploadSerializesSameIDAndProtectsFromCleanup(t *testing.T) {
 	}
 	done := make(chan error, 3)
 	go func() {
-		_, err := m.PresignGet(ctx, item.ID, time.Hour)
+		_, err := acquireTestURL(ctx, m, item.ID)
 		done <- err
 	}()
 	awaitMediaTest(t, started)
 	go func() {
-		_, err := m.PresignGet(ctx, item.ID, time.Hour)
+		_, err := acquireTestURL(ctx, m, item.ID)
 		done <- err
 	}()
 	go func() {

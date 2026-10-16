@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"elbot/internal/events"
+	"elbot/internal/llm"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
@@ -32,7 +33,7 @@ func TestPresignRefreshBoundary(t *testing.T) {
 				return sign(ctx, item, expiry)
 			}
 			started := now
-			got, err := m.PresignGet(t.Context(), id, time.Hour)
+			got, err := acquireTestURL(t.Context(), m, id)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -63,12 +64,13 @@ func TestPresignSurvivesDatabaseReopen(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	m := NewManager(store, root, &LocalBackend{Root: root})
+	m.FileDelivery.Backend = "s3"
 	item, err := m.ImportBytes(ctx, []byte("survive restart"), Input{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	m.Remote = &concurrentTestBackend{Backend: &LocalBackend{Root: t.TempDir()}}
-	first, err := m.PresignGet(ctx, item.ID, time.Hour)
+	first, err := acquireTestURL(ctx, m, item.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,6 +83,7 @@ func TestPresignSurvivesDatabaseReopen(t *testing.T) {
 	}
 	defer reopened.Close()
 	m = NewManager(reopened, root, &LocalBackend{Root: root})
+	m.FileDelivery.Backend = "s3"
 	m.Remote = &concurrentTestBackend{
 		put: func(context.Context, string, io.Reader, int64, string) (string, error) {
 			return "", errors.New("restart must not upload")
@@ -89,7 +92,7 @@ func TestPresignSurvivesDatabaseReopen(t *testing.T) {
 			return "", errors.New("restart must not sign")
 		},
 	}
-	if got, err := m.PresignGet(ctx, item.ID, time.Hour); err != nil || got != first {
+	if got, err := acquireTestURL(ctx, m, item.ID); err != nil || got != first {
 		t.Fatalf("restart URL equal=%v err=%v", got == first, err)
 	}
 }
@@ -115,7 +118,7 @@ func TestPresignConcurrentRefresh(t *testing.T) {
 	defer cancel()
 	urls, errs := make(chan string, 2), make(chan error, 2)
 	call := func() {
-		url, err := m.PresignGet(ctx, id, time.Hour)
+		url, err := acquireTestURL(ctx, m, id)
 		urls <- url
 		errs <- err
 	}
@@ -192,7 +195,7 @@ func TestPresignFailuresKeepCacheAndReleaseHold(t *testing.T) {
 					return "", failure
 				}
 			}
-			if url, err := m.PresignGet(ctx, id, time.Hour); !errors.Is(err, failure) || url != "" {
+			if url, err := acquireTestURL(ctx, m, id); !errors.Is(err, failure) || url != "" {
 				t.Fatalf("failure returned URL=%q err=%v", url, err)
 			}
 			cached, err := repository.GetSignedURL(t.Context(), id)
@@ -206,7 +209,7 @@ func TestPresignFailuresKeepCacheAndReleaseHold(t *testing.T) {
 			fault.readErr, fault.writeErr, remote.presign = nil, nil, sign
 			retryCtx, retryCancel := context.WithTimeout(t.Context(), time.Second)
 			defer retryCancel()
-			if _, err := m.PresignGet(retryCtx, id, time.Hour); err != nil {
+			if _, err := acquireTestURL(retryCtx, m, id); err != nil {
 				t.Fatalf("retry failed or object lock leaked: %v", err)
 			}
 		})
@@ -229,6 +232,7 @@ type signedURLCounts struct{ puts, signs int }
 func newSignedURLFixture(t *testing.T) (*Manager, string, *signedURLCounts) {
 	t.Helper()
 	m := newConcurrentTestManager(t)
+	m.FileDelivery.Backend = "s3"
 	item, err := m.ImportBytes(t.Context(), []byte("existing remote media"), Input{})
 	if err != nil {
 		t.Fatal(err)
@@ -249,4 +253,13 @@ func newSignedURLFixture(t *testing.T) (*Manager, string, *signedURLCounts) {
 		},
 	}
 	return m, item.ID, counts
+}
+
+func acquireTestURL(ctx context.Context, m *Manager, id string) (string, error) {
+	messages, release, err := m.AcquireForLLM(ctx, []llm.LLMMessage{{Role: llm.RoleUser, Segments: []llm.MessageSegment{{Type: llm.SegmentFile, MediaID: id}}}})
+	defer release()
+	if err != nil {
+		return "", err
+	}
+	return messages[0].Segments[0].URL, nil
 }

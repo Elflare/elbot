@@ -4,18 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
-	"io/fs"
 	"net/url"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"elbot/internal/llm"
 	"elbot/internal/storage"
-
-	"github.com/aws/smithy-go"
 )
 
 // Materialize replaces new inbound media sources with stable references.
@@ -106,100 +101,4 @@ func (m *Manager) MaterializeWithLimits(ctx context.Context, segments []llm.Mess
 		out[i] = segment
 	}
 	return out, ctx.Err()
-}
-
-func unavailable(segment llm.MessageSegment) llm.MessageSegment {
-	label := strings.TrimSpace(segment.Name)
-	if label != "" {
-		label = sanitizeMediaName(label)
-	}
-	if segment.MediaID != "" {
-		label += "；媒体 ID：" + segment.MediaID
-	}
-	return llm.MessageSegment{Type: llm.SegmentText, Text: "[媒体不可用；" + label + "]"}
-}
-
-// ResolveForLLM only changes a request copy and uses media as stored.
-func (m *Manager) ResolveForLLM(ctx context.Context, messages []llm.LLMMessage) ([]llm.LLMMessage, func(), error) {
-	out := llm.CloneMessages(messages)
-	cleanup := func() {}
-	mediaByID := map[string]*storage.Media{}
-	var total int64
-	for i := range out {
-		for j, segment := range out[i].Segments {
-			if (segment.Type == llm.SegmentImage || segment.Type == llm.SegmentFile) && segment.Name != "" {
-				out[i].Segments[j].Name = sanitizeMediaName(segment.Name)
-			}
-			if segment.MediaID == "" {
-				continue
-			}
-			metadata, ok := mediaByID[segment.MediaID]
-			if !ok {
-				var err error
-				metadata, err = m.Metadata(ctx, segment.MediaID)
-				if err != nil {
-					if !errors.Is(err, storage.ErrNotFound) {
-						return nil, cleanup, err
-					}
-				}
-				mediaByID[segment.MediaID] = metadata
-			}
-			if metadata == nil {
-				out[i].Segments[j] = unavailable(segment)
-				continue
-			}
-			if out[i].Segments[j].Name == "" {
-				out[i].Segments[j].Name = metadata.Name
-			}
-			out[i].Segments[j].MIMEType = metadata.MIMEType
-			total += metadata.Size
-		}
-	}
-	remote := m.FileDelivery.Backend == "s3" || (m.FileDelivery.Backend == "hybrid" && total > m.FileDelivery.MaxDirectBase64Bytes)
-	if !remote && total > m.FileDelivery.MaxDirectBase64Bytes {
-		return nil, cleanup, fmt.Errorf("media request is %d bytes, exceeds file_delivery.max_direct_base64_bytes=%d", total, m.FileDelivery.MaxDirectBase64Bytes)
-	}
-	urls := map[string]string{}
-	for i := range out {
-		for j, segment := range out[i].Segments {
-			metadata := mediaByID[segment.MediaID]
-			if segment.MediaID == "" || metadata == nil {
-				continue
-			}
-			value, ok := urls[segment.MediaID]
-			if !ok {
-				var err error
-				if remote {
-					value, err = m.PresignGet(ctx, segment.MediaID, time.Hour)
-				} else {
-					var data []byte
-					data, _, err = m.Read(ctx, segment.MediaID)
-					if err == nil {
-						value = "data:" + metadata.MIMEType + ";base64," + base64.StdEncoding.EncodeToString(data)
-					}
-				}
-				if err != nil {
-					if ctx.Err() != nil {
-						return nil, cleanup, ctx.Err()
-					}
-					if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-						return nil, cleanup, err
-					}
-					var remoteErr smithy.APIError
-					missing := errors.Is(err, fs.ErrNotExist) || errors.Is(err, storage.ErrNotFound) || (errors.As(err, &remoteErr) && (remoteErr.ErrorCode() == "NoSuchKey" || remoteErr.ErrorCode() == "NotFound"))
-					if !missing {
-						return nil, cleanup, err
-					}
-					value = ""
-				}
-				urls[segment.MediaID] = value
-			}
-			if value == "" {
-				out[i].Segments[j] = unavailable(segment)
-				continue
-			}
-			out[i].Segments[j].URL = value
-		}
-	}
-	return out, cleanup, nil
 }
