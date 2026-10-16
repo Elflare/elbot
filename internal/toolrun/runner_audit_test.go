@@ -76,10 +76,10 @@ func TestAuditShowsStartBeforeToolReturns(t *testing.T) {
 				t.Fatal(err)
 			}
 			text := result.Content
-			if !end && strings.Contains(text, "tool_call_end") {
+			if !end && strings.Contains(text, "tool_call_completed") {
 				t.Fatalf("premature end: %s", text)
 			}
-			if strings.Contains(text, "tool_call_start") && strings.Contains(text, "audit-live-call") && (!end || strings.Contains(text, "tool_call_end") && strings.Count(text, "audit-live-call") == 2) {
+			if strings.Contains(text, "tool_call_prepared") && strings.Contains(text, "audit-live-call") && (!end || strings.Contains(text, "tool_call_completed") && strings.Count(text, "audit-live-call") == 2) {
 				return
 			}
 			if time.Now().After(deadline) {

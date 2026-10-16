@@ -434,7 +434,7 @@ func (t foregroundContextProbe) Call(ctx context.Context, _ tool.CallRequest) (*
 func TestTakeoverRefreshesToolsInNextBatch(t *testing.T) {
 	origins := map[string]string{}
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-		if record.Module == "toolrun" && record.EventName == "tool_call_end" && record.Category == events.LogAudit {
+		if record.Module == "toolrun" && record.EventName == "tool_call_completed" && record.Category == events.LogAudit {
 			var content map[string]json.RawMessage
 			if err := json.Unmarshal([]byte(record.Content), &content); err != nil {
 				return err

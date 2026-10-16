@@ -234,7 +234,7 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 	name := strings.TrimSpace(action.Tool)
 	arguments := render(action.Arguments, event, state)
 	call := llm.ToolCallRequest{ID: storage.NewID(), Name: name, Arguments: arguments}
-	record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: "hook_tool_call", Module: "hook", Type: globalevents.ContentJSON, ContentLimit: 0}
+	record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: "hook_tool_call_completed", Module: "hook", Type: globalevents.ContentJSON, ContentLimit: 0}
 	content := struct {
 		Tool       string  `json:"tool"`
 		ActorID    string  `json:"actor_id,omitempty"`
@@ -299,7 +299,7 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 			started := time.Now()
 			data, _ := json.Marshal(content)
 			start := record
-			start.EventName, start.Content, start.ResultStatus = "hook_tool_call_started", string(data), globalevents.ResultSucceeded
+			start.EventName, start.Content, start.ResultStatus = "hook_tool_call_prepared", string(data), globalevents.ResultSucceeded
 			hook.LogHook(ctx, start)
 			toolResult, logResult.Content, err = registered.Call(ctx, tool.CallRequest{ID: call.ID, Name: name, Arguments: json.RawMessage(arguments)})
 			elapsed := time.Since(started).Milliseconds()

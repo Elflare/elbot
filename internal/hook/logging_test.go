@@ -16,7 +16,7 @@ func TestLogHookPreservesSourceRecordAfterCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "context-session"}))
 	cancel()
 	identity := ""
-	record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: "hook_tool_call", Module: "hook", Type: events.ContentJSON, Content: `{"result":"来源正文"}`, ContentLimit: 0, Identity: events.LogIdentity{SessionID: &identity}, ResultStatus: events.ResultFailed}
+	record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: "hook_tool_call_completed", Module: "hook", Type: events.ContentJSON, Content: `{"result":"来源正文"}`, ContentLimit: 0, Identity: events.LogIdentity{SessionID: &identity}, ResultStatus: events.ResultFailed}
 	var received events.LogRecord
 	connection, err := events.LogSubmitted.Observe(func(ctx context.Context, value events.LogRecord) error {
 		if ctx.Err() != nil {

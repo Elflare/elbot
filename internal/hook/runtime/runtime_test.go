@@ -46,7 +46,7 @@ func TestPluginToolAuditOutcome(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var records []events.LogRecord
 			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-				if record.EventName == "hook_tool_call" {
+				if record.EventName == "hook_tool_call_completed" {
 					records = append(records, record)
 				}
 				return nil
@@ -64,7 +64,7 @@ func TestPluginToolAuditOutcome(t *testing.T) {
 			if !errors.Is(err, tc.err) {
 				t.Fatalf("business error changed: %v", err)
 			}
-			if len(records) != 1 || records[0].EventName != "hook_tool_call" || records[0].Category != events.LogAudit || records[0].Level != tc.level {
+			if len(records) != 1 || records[0].EventName != "hook_tool_call_completed" || records[0].Category != events.LogAudit || records[0].Level != tc.level {
 				t.Fatalf("records: %+v", records)
 			}
 			fields := map[string]any{}

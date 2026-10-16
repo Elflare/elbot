@@ -19,14 +19,14 @@ import (
 // an independent content filter.
 func TestAuditToolEventSelectors(t *testing.T) {
 	for _, tc := range []struct{ args, events, event, tool, level string }{
-		{"-t", "tool_call_start,tool_call_end", "", "", "debug"},
-		{"--tool", "tool_call_start,tool_call_end", "", "", "debug"},
-		{"--tool -w", "tool_call_start,tool_call_end", "", "", "warn"},
+		{"-t", "tool_call_prepared,tool_call_completed", "", "", "debug"},
+		{"--tool", "tool_call_prepared,tool_call_completed", "", "", "debug"},
+		{"--tool -w", "tool_call_prepared,tool_call_completed", "", "", "warn"},
 		{"--tool shell", "", "", "shell", "debug"},
-		{"--event llm_usage -t", "tool_call_start,tool_call_end", "", "", "debug"},
+		{"--event llm_usage -t", "tool_call_prepared,tool_call_completed", "", "", "debug"},
 		{"-t --event llm_usage", "", "llm_usage", "", "debug"},
-		{"--tool --event tool_call_end", "", "tool_call_end", "", "debug"},
-		{"--tool shell -t", "tool_call_start,tool_call_end", "", "shell", "debug"},
+		{"--tool --event tool_call_completed", "", "tool_call_completed", "", "debug"},
+		{"--tool shell -t", "tool_call_prepared,tool_call_completed", "", "shell", "debug"},
 	} {
 		t.Run(tc.args, func(t *testing.T) {
 			q, err := parseAuditQuery(tc.args)
@@ -61,19 +61,19 @@ func (s *fakeLogService) Query(ctx context.Context, query logging.LogQuery) (log
 func TestAuditCommandParsesFilters(t *testing.T) {
 	service := &fakeLogService{entries: []logging.LogEntry{{
 		Time:         time.Date(2026, 6, 3, 15, 0, 0, 0, time.Local),
-		LegacyFields: map[string]string{"event": "tool_call", "risk": "high", "tool": "shell"},
+		LegacyFields: map[string]string{"event": "tool_call_completed", "risk": "high", "tool": "shell"},
 	}}}
-	result, err := NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: "--event tool_call --risk high --tool shell -n 3 --days 2"})
+	result, err := NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: "--event tool_call_completed --risk high --tool shell -n 3 --days 2"})
 	if err != nil {
 		t.Fatalf("audit handle: %v", err)
 	}
 	if service.query.Prefix != "audit" || service.query.Limit != 3 || service.query.Days != 2 || strings.ToLower(service.query.MinLevel) != "debug" {
 		t.Fatalf("query = %#v", service.query)
 	}
-	if service.query.Fields["event"] != "tool_call" || service.query.ContentFields["risk"] != "high" || service.query.ContentFields["tool"] != "shell" {
+	if service.query.Fields["event"] != "tool_call_completed" || service.query.ContentFields["risk"] != "high" || service.query.ContentFields["tool"] != "shell" {
 		t.Fatalf("fields = %#v", service.query.Fields)
 	}
-	if !strings.Contains(result.Content, "tool_call") || !strings.Contains(result.Content, "tool=shell") {
+	if !strings.Contains(result.Content, "tool_call_completed") || !strings.Contains(result.Content, "tool=shell") {
 		t.Fatalf("content = %q", result.Content)
 	}
 }
@@ -105,7 +105,7 @@ func TestAuditCommandRunSourceFilterAndCompletion(t *testing.T) {
 			if err != nil || service.query.Prefix != "audit" || service.query.ContentFields["run_source"] != source {
 				t.Fatalf("args=%q query=%#v err=%v", args, service.query, err)
 			}
-			if strings.Contains(args, "-t") && (strings.Join(service.query.Events, ",") != "tool_call_start,tool_call_end" || !service.query.Raw || service.query.Limit != 3 || service.query.MinLevel != "info") {
+			if strings.Contains(args, "-t") && (strings.Join(service.query.Events, ",") != "tool_call_prepared,tool_call_completed" || !service.query.Raw || service.query.Limit != 3 || service.query.MinLevel != "info") {
 				t.Fatalf("independent filters changed: %#v", service.query)
 			}
 			if !strings.Contains(args, "-t") && service.query.Fields["event"] != "" {
@@ -291,12 +291,12 @@ func TestLogCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 }
 
 func TestAuditCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
-	service := &fakeLogService{entries: []logging.LogEntry{{Content: "audit event", LegacyFields: map[string]string{"event": "tool_call", "arguments": "hello world"}}}}
+	service := &fakeLogService{entries: []logging.LogEntry{{Content: "audit event", LegacyFields: map[string]string{"event": "tool_call_completed", "arguments": "hello world"}}}}
 	_, err := NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `-t --contains "hello world"`})
 	if err != nil {
 		t.Fatalf("audit handle: %v", err)
 	}
-	if strings.Join(service.query.Events, ",") != "tool_call_start,tool_call_end" || service.query.Contains != "hello world" || service.query.Raw {
+	if strings.Join(service.query.Events, ",") != "tool_call_prepared,tool_call_completed" || service.query.Contains != "hello world" || service.query.Raw {
 		t.Fatalf("query = %#v", service.query)
 	}
 
@@ -336,9 +336,9 @@ func TestAuditCommandRemovedOptionsAndHookCombinations(t *testing.T) {
 			t.Fatalf("%s: %v", option, err)
 		}
 	}
-	for _, args := range []string{"--hook --event hook_tool_call", "--event hook_tool_call --hook"} {
+	for _, args := range []string{"--hook --event hook_tool_call_completed", "--event hook_tool_call_completed --hook"} {
 		_, err := NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: args})
-		if err != nil || service.query.Fields["module"] != "hook" || service.query.Fields["event"] != "hook_tool_call" {
+		if err != nil || service.query.Fields["module"] != "hook" || service.query.Fields["event"] != "hook_tool_call_completed" {
 			t.Fatalf("%s: query=%+v err=%v", args, service.query, err)
 		}
 	}
@@ -357,7 +357,7 @@ func TestAuditCommandRemovedOptionsAndHookCombinations(t *testing.T) {
 		want, absent []string
 	}{
 		{"/audit ", []string{"-t", "--hook"}, []string{"-u", "-a"}},
-		{"/audit --event ", []string{"llm_usage", "hook_tool_call", "session_naming_completed"}, []string{"user_input", "assistant_output", "user_message", "assistant_message", "hook", "hook_tool_error", "hook.tool_call"}},
+		{"/audit --event ", []string{"llm_usage", "hook_tool_call_completed", "session_naming_completed"}, []string{"user_input", "assistant_output", "user_message", "assistant_message", "hook", "hook_tool_error", "hook.tool_call"}},
 	} {
 		completions := cmd.(command.Completer).Complete(context.Background(), command.CompletionRequest{Raw: tc.raw, Prefix: "/", Name: "audit", Cursor: len(tc.raw)})
 		var names []string
@@ -409,7 +409,7 @@ func TestLogCommandsQueryGlobalRecords(t *testing.T) {
 			for _, module := range []string{"hook", "agent", ""} {
 				for _, category := range []events.LogCategory{events.LogRuntime, events.LogAudit} {
 					// A hook field alone must not imply module=hook.
-					publish(events.LogRecord{Category: category, Level: slog.LevelError, EventName: "hook_tool_call", Module: module, Content: "hook tool call: hook=sample"})
+					publish(events.LogRecord{Category: category, Level: slog.LevelError, EventName: "hook_tool_call_completed", Module: module, Content: "hook tool call: hook=sample"})
 				}
 			}
 			closeCenter()
@@ -441,12 +441,12 @@ func TestLogCommandsQueryGlobalRecords(t *testing.T) {
 			}
 			for _, handler := range []command.Handler{NewLog(deps), NewAudit(deps)} {
 				content := query(handler, "--hook")
-				if strings.Count(content, "hook_tool_call") != 1 {
+				if strings.Count(content, "hook_tool_call_completed") != 1 {
 					t.Fatalf("hook selection: %s", content)
 				}
 			}
-			content := query(NewAudit(deps), "--hook --event hook_tool_call")
-			if strings.Count(content, "hook_tool_call") != 1 {
+			content := query(NewAudit(deps), "--hook --event hook_tool_call_completed")
+			if strings.Count(content, "hook_tool_call_completed") != 1 {
 				t.Fatalf("combined hook selection: %s", content)
 			}
 			if query(NewAudit(deps), "--hook --event llm_usage") != "no log entries found" {
@@ -501,7 +501,7 @@ func TestLogAndAuditCommandsCompleteOptionsAndValues(t *testing.T) {
 func TestLogRawIndependentOfLevelAndContentRendering(t *testing.T) {
 	for _, factory := range []func(Deps) command.Handler{NewLog, NewAudit, NewElwisp} {
 		for _, args := range []string{"-d", "--level debug", "--raw -w", "-w --raw", "--raw --level debug", "--level error --raw"} {
-			service := &fakeLogService{entries: []logging.LogEntry{{Level: "WARN", EventName: "tool_call", Content: `{"tool":"shell","count":9007199254740993}`, Type: events.ContentJSON, ResultStatus: events.ResultFailed, Raw: "ORIGINAL_PHYSICAL_RECORD"}}}
+			service := &fakeLogService{entries: []logging.LogEntry{{Level: "WARN", EventName: "tool_call_completed", Content: `{"tool":"shell","count":9007199254740993}`, Type: events.ContentJSON, ResultStatus: events.ResultFailed, Raw: "ORIGINAL_PHYSICAL_RECORD"}}}
 			result, err := factory(Deps{Logs: service}).Handle(t.Context(), command.Request{Args: args})
 			if err != nil {
 				t.Fatal(err)
