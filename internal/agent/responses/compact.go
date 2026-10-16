@@ -46,7 +46,11 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 	if err != nil {
 		return nil, err
 	}
-	w, err := c.Context.Load(ctx, row, cp)
+	records, err := c.Context.Repository.LoadNativeWindow(ctx, row, cp)
+	if err != nil {
+		return nil, err
+	}
+	w, err := c.Context.Load(ctx, row, cp, records)
 	if err != nil {
 		return nil, err
 	}

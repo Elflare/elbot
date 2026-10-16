@@ -148,9 +148,14 @@ func (r *DialogueRepository) Seed(ctx context.Context, sessionID string) (*stora
 	if err := json.Unmarshal(ref, &id); err != nil {
 		return nil, err
 	}
+	return scanNativeSeed(r.db.QueryRowContext(ctx, `SELECT id,session_id,protocol,provider,base_url,response_id,source_checkpoint_id,items_json,materials_json,continuation_json,calls_json,media_ids_json,consumed,created_at FROM native_seeds WHERE id=? AND session_id=?`, id, sessionID))
+}
+
+// scanNativeSeed decodes the root material shared by single and window reads.
+func scanNativeSeed(row interface{ Scan(...any) error }) (*storage.NativeSeed, error) {
 	seed := &storage.NativeSeed{}
 	var created, ids string
-	err = r.db.QueryRowContext(ctx, `SELECT id,session_id,protocol,provider,base_url,response_id,source_checkpoint_id,items_json,materials_json,continuation_json,calls_json,media_ids_json,consumed,created_at FROM native_seeds WHERE id=? AND session_id=?`, id, sessionID).Scan(&seed.ID, &seed.SessionID, &seed.APIType, &seed.Provider, &seed.BaseURL, &seed.ResponseID, &seed.SourceCheckpointID, &seed.ItemsJSON, &seed.MaterialsJSON, &seed.ContinuationJSON, &seed.CallsJSON, &ids, &seed.Consumed, &created)
+	err := row.Scan(&seed.ID, &seed.SessionID, &seed.APIType, &seed.Provider, &seed.BaseURL, &seed.ResponseID, &seed.SourceCheckpointID, &seed.ItemsJSON, &seed.MaterialsJSON, &seed.ContinuationJSON, &seed.CallsJSON, &ids, &seed.Consumed, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("native seed reference is missing")
 	}
@@ -188,48 +193,135 @@ func (r *DialogueRepository) CheckpointForMessage(ctx context.Context, sessionID
 	return scanCheckpoint(r.db.QueryRowContext(ctx, `SELECT `+checkpointColumns+` FROM native_checkpoints WHERE session_id=? AND message_id=? ORDER BY rowid DESC LIMIT 1`, sessionID, messageID))
 }
 
-func (r *DialogueRepository) InputsForExchange(ctx context.Context, exchangeID string) ([]storage.NativeInput, error) {
-	var manifest string
-	if err := r.db.QueryRowContext(ctx, `SELECT input_ids_json FROM native_exchanges WHERE id=?`, exchangeID).Scan(&manifest); err != nil {
-		return nil, err
-	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id,session_id,message_id,exchange_id,call_id,item_json,media_json,consumed_by,created_at FROM native_inputs WHERE consumed_by=? ORDER BY created_at,rowid`, exchangeID)
+// LoadNativeWindow reads only the target's ancestry and associated raw material.
+// All database reads share a snapshot; supplied Session/checkpoint values are reused.
+func (r *DialogueRepository) LoadNativeWindow(ctx context.Context, session *storage.Session, checkpoint *storage.NativeCheckpoint) (*storage.NativeWindowRecords, error) {
+	fields, err := storage.DecodeSessionMetadata(session.Metadata)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var inputs []storage.NativeInput
-	for rows.Next() {
-		input, err := scanNativeInput(rows)
+	var seedID string
+	raw, hasSeed := fields["llm_seed"]
+	if hasSeed {
+		if err := json.Unmarshal(raw, &seedID); err != nil {
+			return nil, err
+		}
+	}
+	records := &storage.NativeWindowRecords{
+		Checkpoints: map[string]storage.NativeCheckpoint{},
+		Exchanges:   map[string]storage.NativeExchange{},
+		Inputs:      map[string]storage.NativeInput{},
+	}
+	if checkpoint == nil && !hasSeed {
+		return records, nil
+	}
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if hasSeed {
+		records.Seed, err = scanNativeSeed(tx.QueryRowContext(ctx, `SELECT id,session_id,protocol,provider,base_url,response_id,source_checkpoint_id,items_json,materials_json,continuation_json,calls_json,media_ids_json,consumed,created_at FROM native_seeds WHERE id=? AND session_id=?`, seedID, session.ID))
 		if err != nil {
 			return nil, err
 		}
-		inputs = append(inputs, input)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	var ids []string
-	if err := json.Unmarshal([]byte(manifest), &ids); err != nil {
-		return nil, err
-	}
-	if len(ids) != len(inputs) {
-		return nil, fmt.Errorf("native input manifest is incomplete")
-	}
-	byID := make(map[string]storage.NativeInput, len(inputs))
-	for _, input := range inputs {
-		byID[input.ID] = input
-	}
-	ordered := make([]storage.NativeInput, 0, len(ids))
-	for _, id := range ids {
-		input, ok := byID[id]
-		if !ok {
-			return nil, fmt.Errorf("native input manifest has an absent or duplicate input")
+	if checkpoint != nil {
+		records.Checkpoints[checkpoint.ID] = *checkpoint
+		if checkpoint.ParentID != "" {
+			// UNION terminates cyclic ancestry; the protocol reports the broken chain.
+			rows, err := tx.QueryContext(ctx, `WITH RECURSIVE chain AS (
+ SELECT `+checkpointColumns+` FROM native_checkpoints WHERE id=?
+ UNION
+ SELECT p.id,p.session_id,p.parent_id,p.exchange_id,p.response_id,p.message_id,p.seed_id,p.calls_json,p.created_at
+ FROM native_checkpoints p JOIN chain c ON p.id=c.parent_id
+) SELECT `+checkpointColumns+` FROM chain`, checkpoint.ParentID)
+			if err != nil {
+				return nil, err
+			}
+			for rows.Next() {
+				cp, err := scanCheckpoint(rows)
+				if err != nil {
+					rows.Close()
+					return nil, err
+				}
+				records.Checkpoints[cp.ID] = *cp
+			}
+			err = rows.Err()
+			rows.Close()
+			if err != nil {
+				return nil, err
+			}
 		}
-		ordered = append(ordered, input)
-		delete(byID, id)
+		ids := make([]string, 0, len(records.Checkpoints))
+		for _, cp := range records.Checkpoints {
+			ids = append(ids, cp.ExchangeID)
+		}
+		encoded, err := json.Marshal(ids)
+		if err != nil {
+			return nil, err
+		}
+		rows, err := tx.QueryContext(ctx, `SELECT id,session_id,protocol,provider,base_url,model,request_id,run_id,attempt,previous_checkpoint_id,request_json,response_json,items_json,status,error,created_at,input_ids_json FROM native_exchanges WHERE id IN (SELECT value FROM json_each(?))`, string(encoded))
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var row storage.NativeExchange
+			var created string
+			if err := rows.Scan(&row.ID, &row.SessionID, &row.APIType, &row.Provider, &row.BaseURL, &row.Model, &row.RequestID, &row.RunID, &row.Attempt, &row.PreviousCheckpointID, &row.RequestJSON, &row.ResponseJSON, &row.ItemsJSON, &row.Status, &row.Error, &created, &row.InputIDsJSON); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			row.CreatedAt, err = storage.ParseTime(created)
+			if err != nil {
+				rows.Close()
+				return nil, err
+			}
+			records.Exchanges[row.ID] = row
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
+		var calls []storage.NativeCall
+		if checkpoint.CallsJSON != "" {
+			if err := json.Unmarshal([]byte(checkpoint.CallsJSON), &calls); err != nil {
+				return nil, err
+			}
+		}
+		ids = ids[:0]
+		for _, call := range calls {
+			if call.ResultInputID != "" {
+				ids = append(ids, call.ResultInputID)
+			}
+		}
+		results, err := json.Marshal(ids)
+		if err != nil {
+			return nil, err
+		}
+		rows, err = tx.QueryContext(ctx, `SELECT id,session_id,message_id,exchange_id,call_id,item_json,media_json,consumed_by,created_at FROM native_inputs WHERE consumed_by IN (SELECT value FROM json_each(?)) OR id IN (SELECT value FROM json_each(?))`, string(encoded), string(results))
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			input, err := scanNativeInput(rows)
+			if err != nil {
+				rows.Close()
+				return nil, err
+			}
+			records.Inputs[input.ID] = input
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
 	}
-	return ordered, nil
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return records, nil
 }
 
 func scanNativeInput(row interface{ Scan(...any) error }) (storage.NativeInput, error) {

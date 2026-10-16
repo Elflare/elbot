@@ -40,6 +40,11 @@ func (r *MediaRepository) UpsertSignedURL(ctx context.Context, record *storage.M
 
 func (r *MediaRepository) Get(ctx context.Context, id string) (*storage.Media, error) {
 	row := r.db.QueryRowContext(ctx, `SELECT id, name, mime_type, size, local_path, backend, object_key, source_platform, source_url, source_file_id, created_at, last_accessed_at, expires_at, deleting FROM media WHERE id = ?`, id)
+	return scanMedia(row)
+}
+
+// scanMedia reads the metadata shared by ordinary reads and orphan claiming.
+func scanMedia(row interface{ Scan(...any) error }) (*storage.Media, error) {
 	var m storage.Media
 	var name, localPath, objectKey, sourcePlatform, sourceURL, sourceFileID, createdAt, lastAccessedAt sql.NullString
 	var expiresAt sql.NullString

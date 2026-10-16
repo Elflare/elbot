@@ -103,6 +103,15 @@ FROM sessions WHERE id = ?`, id))
 	if err != nil {
 		return nil, fmt.Errorf("load session for update: %w", err)
 	}
+	before := *session
+	if before.ArchivedAt != nil {
+		value := *before.ArchivedAt
+		before.ArchivedAt = &value
+	}
+	if before.PinnedAt != nil {
+		value := *before.PinnedAt
+		before.PinnedAt = &value
+	}
 	if err := update(session); err != nil {
 		return nil, err
 	}
@@ -112,36 +121,49 @@ FROM sessions WHERE id = ?`, id))
 	if session.UpdatedAt.IsZero() {
 		session.UpdatedAt = storage.Now()
 	}
-	res, err := tx.ExecContext(ctx, `
+	if !sessionValuesEqual(&before, session) {
+		res, err := tx.ExecContext(ctx, `
 UPDATE sessions
 SET parent_session_id = ?, fork_from_message_id = ?, owner_id = ?, platform = ?, platform_scope_id = ?,
     mode = ?, title = ?, status = ?, metadata = ?, created_at = ?, updated_at = ?, archived_at = ?, pinned_at = ?
 WHERE id = ?`,
-		nullString(session.ParentSessionID),
-		nullString(session.ForkFromMessageID),
-		session.OwnerID,
-		session.Platform,
-		session.PlatformScopeID,
-		session.Mode,
-		nullString(session.Title),
-		session.Status,
-		nullString(session.Metadata),
-		storage.FormatTime(session.CreatedAt),
-		storage.FormatTime(session.UpdatedAt),
-		nullTime(session.ArchivedAt),
-		nullTime(session.PinnedAt),
-		session.ID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("update session: %w", err)
-	}
-	if n, err := res.RowsAffected(); err == nil && n == 0 {
-		return nil, storage.ErrNotFound
+			nullString(session.ParentSessionID),
+			nullString(session.ForkFromMessageID),
+			session.OwnerID,
+			session.Platform,
+			session.PlatformScopeID,
+			session.Mode,
+			nullString(session.Title),
+			session.Status,
+			nullString(session.Metadata),
+			storage.FormatTime(session.CreatedAt),
+			storage.FormatTime(session.UpdatedAt),
+			nullTime(session.ArchivedAt),
+			nullTime(session.PinnedAt),
+			session.ID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("update session: %w", err)
+		}
+		if n, err := res.RowsAffected(); err == nil && n == 0 {
+			return nil, storage.ErrNotFound
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit session update: %w", err)
 	}
 	return session, nil
+}
+
+// sessionValuesEqual compares persisted values, including nullable timestamps.
+func sessionValuesEqual(a, b *storage.Session) bool {
+	return a.ID == b.ID && a.ParentSessionID == b.ParentSessionID &&
+		a.ForkFromMessageID == b.ForkFromMessageID && a.OwnerID == b.OwnerID &&
+		a.Platform == b.Platform && a.PlatformScopeID == b.PlatformScopeID &&
+		a.Mode == b.Mode && a.Title == b.Title && a.Status == b.Status &&
+		a.Metadata == b.Metadata && a.CreatedAt.Equal(b.CreatedAt) &&
+		a.UpdatedAt.Equal(b.UpdatedAt) && optionalTimeEqual(a.ArchivedAt, b.ArchivedAt) &&
+		optionalTimeEqual(a.PinnedAt, b.PinnedAt)
 }
 
 func (r *SessionRepository) List(ctx context.Context, req storage.ListSessionsRequest) ([]storage.SessionSummary, error) {

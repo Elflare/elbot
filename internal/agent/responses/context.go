@@ -29,9 +29,12 @@ type nativeWindow struct {
 	RetainedMediaIDs []string
 	completedOutputs []api.Item
 	References       []inputReference
+	// exchange is the already loaded terminal call at this window's checkpoint.
+	exchange *storage.NativeExchange
 }
 
-func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *storage.NativeCheckpoint) (*nativeWindow, error) {
+// Load reconstructs protocol state from one batch of raw storage records.
+func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *storage.NativeCheckpoint, records *storage.NativeWindowRecords) (*nativeWindow, error) {
 	origin, known, err := session.Origin(row)
 	if err != nil {
 		return nil, err
@@ -40,10 +43,7 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 		return nil, fmt.Errorf("Responses 原生归属不完整")
 	}
 	w := &nativeWindow{Origin: origin, Checkpoint: checkpoint}
-	seed, err := c.Repository.Seed(ctx, row.ID)
-	if err != nil {
-		return nil, err
-	}
+	seed := records.Seed
 	if seed != nil {
 		if seed.APIType != string(origin.APIType) || seed.Provider != origin.Provider {
 			return nil, fmt.Errorf("原生 seed 厂商或协议不匹配")
@@ -86,16 +86,24 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 		if cp.ParentID == "" {
 			break
 		}
-		cp, err = c.Repository.GetCheckpoint(ctx, cp.ParentID)
-		if err != nil {
-			return nil, fmt.Errorf("原生 checkpoint 前序缺失: %w", err)
+		parent, ok := records.Checkpoints[cp.ParentID]
+		if !ok {
+			return nil, fmt.Errorf("原生 checkpoint 前序缺失: %w", storage.ErrNotFound)
 		}
+		cp = &parent
+	}
+	consumed := map[string]map[string]storage.NativeInput{}
+	for _, input := range records.Inputs {
+		if consumed[input.ConsumedBy] == nil {
+			consumed[input.ConsumedBy] = map[string]storage.NativeInput{}
+		}
+		consumed[input.ConsumedBy][input.ID] = input
 	}
 	for i := len(path) - 1; i >= 0; i-- {
 		cp := path[i]
-		exchange, err := c.Repository.GetExchange(ctx, cp.ExchangeID)
-		if err != nil {
-			return nil, err
+		exchange, ok := records.Exchanges[cp.ExchangeID]
+		if !ok {
+			return nil, storage.ErrNotFound
 		}
 		if exchange.SessionID != row.ID || exchange.Status != "completed" || exchange.PreviousCheckpointID != cp.ParentID || exchange.APIType != string(origin.APIType) || exchange.Provider != origin.Provider {
 			return nil, fmt.Errorf("原生 checkpoint 的已提交响应不完整")
@@ -107,11 +115,20 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 		if response.ID != cp.ResponseID || response.Status != "completed" {
 			return nil, fmt.Errorf("原生响应终态与 checkpoint 不匹配")
 		}
-		inputs, err := c.Repository.InputsForExchange(ctx, exchange.ID)
-		if err != nil {
+		var ids []string
+		if err := json.Unmarshal([]byte(exchange.InputIDsJSON), &ids); err != nil {
 			return nil, err
 		}
-		for _, input := range inputs {
+		inputs := consumed[exchange.ID]
+		if len(ids) != len(inputs) {
+			return nil, fmt.Errorf("native input manifest is incomplete")
+		}
+		for _, id := range ids {
+			input, ok := inputs[id]
+			if !ok {
+				return nil, fmt.Errorf("native input manifest has an absent or duplicate input")
+			}
+			delete(inputs, id)
 			if input.SessionID != row.ID || input.ConsumedBy != exchange.ID {
 				return nil, fmt.Errorf("原生输入关联不完整")
 			}
@@ -146,6 +163,7 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 			w.References = append(w.References, inputReference{Kind: "output", ID: exchange.ID, Index: i})
 		}
 		w.Origin.BaseURL = exchange.BaseURL
+		w.exchange = &exchange
 	}
 	var calls []storage.NativeCall
 	if checkpoint.CallsJSON != "" {
@@ -157,9 +175,9 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 		if call.ResultInputID == "" {
 			continue
 		}
-		input, err := c.Repository.GetInput(ctx, call.ResultInputID)
-		if err != nil {
-			return nil, err
+		input, ok := records.Inputs[call.ResultInputID]
+		if !ok {
+			return nil, storage.ErrNotFound
 		}
 		if input.SessionID != row.ID || input.ExchangeID != checkpoint.ExchangeID || input.CallID != call.CallID {
 			return nil, fmt.Errorf("原生分支结果关联不匹配")
@@ -168,7 +186,7 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 		if err != nil {
 			return nil, err
 		}
-		segments, err := inputSegments(*input)
+		segments, err := inputSegments(input)
 		if err != nil {
 			return nil, err
 		}

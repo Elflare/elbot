@@ -20,11 +20,11 @@ func (c *Context) PrepareFork(ctx context.Context, source *storage.Session, mess
 	if err != nil {
 		return nil, fmt.Errorf("指定回复没有完整原生 checkpoint: %w", err)
 	}
-	w, err := c.Load(ctx, source, cp)
+	records, err := c.Repository.LoadNativeWindow(ctx, source, cp)
 	if err != nil {
 		return nil, err
 	}
-	exchange, err := c.Repository.GetExchange(ctx, cp.ExchangeID)
+	w, err := c.Load(ctx, source, cp, records)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +42,7 @@ func (c *Context) PrepareFork(ctx context.Context, source *storage.Session, mess
 	if err := c.Validate(ctx, w); err != nil {
 		return nil, err
 	}
-	state, err := exchangeStorage(exchange)
+	state, err := exchangeStorage(w.exchange)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +62,11 @@ func (c *Context) PrepareCopy(ctx context.Context, source *storage.Session) (*se
 	if err != nil {
 		return nil, err
 	}
-	w, err := c.Load(ctx, source, cp)
+	records, err := c.Repository.LoadNativeWindow(ctx, source, cp)
+	if err != nil {
+		return nil, err
+	}
+	w, err := c.Load(ctx, source, cp, records)
 	if err != nil {
 		return nil, err
 	}
@@ -76,15 +80,11 @@ func (c *Context) PrepareCopy(ctx context.Context, source *storage.Session) (*se
 	var calls []storage.NativeCall
 	responseID, expected := "", ""
 	if cp != nil {
-		exchange, err := c.Repository.GetExchange(ctx, cp.ExchangeID)
-		if err != nil {
-			return nil, err
-		}
 		calls, err = checkpointCalls(cp)
 		if err != nil {
 			return nil, err
 		}
-		state, err := exchangeStorage(exchange)
+		state, err := exchangeStorage(w.exchange)
 		if err != nil {
 			return nil, err
 		}

@@ -196,3 +196,67 @@ func TestNativeMaterialCreateRechecksSourceCheckpoint(t *testing.T) {
 		t.Fatalf("late child=%v", err)
 	}
 }
+
+func TestLoadNativeWindowKeepsTargetAncestryAndSnapshotResults(t *testing.T) {
+	store, _ := nativeStorageFixture(t)
+	ctx := t.Context()
+	root := nativeStorageCommit("root", "")
+	call := storage.NativeCall{ExchangeID: "exchange", CallID: "call", Name: "once", Arguments: `{}`, Status: "completed", ResultInputID: "original-result"}
+	root.Native.Calls = []storage.NativeCall{call}
+	root.Native.Inputs = []storage.NativeInput{
+		{ID: "consumed", SessionID: "s", ItemJSON: `{"type":"message","role":"user","content":[]}`, MediaJSON: `[]`, ConsumedBy: "exchange"},
+		{ID: call.ResultInputID, SessionID: "s", ExchangeID: "exchange", CallID: call.CallID, ItemJSON: `{"type":"function_call_output","call_id":"call","output":"original"}`, MediaJSON: `[]`},
+	}
+	if _, err := store.Dialogues().Commit(ctx, root); err != nil {
+		t.Fatal(err)
+	}
+	call.ResultInputID = "later-result"
+	if _, err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", Native: &storage.NativeCommit{ExpectedCheckpointID: "root", Calls: []storage.NativeCall{call}, Inputs: []storage.NativeInput{{ID: call.ResultInputID, SessionID: "s", ExchangeID: "exchange", CallID: call.CallID, ItemJSON: `{"type":"function_call_output","call_id":"call","output":"later"}`, MediaJSON: `[]`}}}}); err != nil {
+		t.Fatal(err)
+	}
+	nextExchange := &storage.NativeExchange{ID: "next-exchange", SessionID: "s", APIType: "response", Provider: "p", RequestJSON: `{}`, InputIDsJSON: `[]`, PreviousCheckpointID: "root"}
+	if err := store.Dialogues().CreateExchange(ctx, nextExchange); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Dialogues().FinishExchange(ctx, nextExchange.ID, "completed", `{"id":"next-response","status":"completed"}`, `[]`, ""); err != nil {
+		t.Fatal(err)
+	}
+	next := nativeStorageCommit("next", "root")
+	next.Native.Checkpoint.ExchangeID, next.Native.Checkpoint.ResponseID = nextExchange.ID, "next-response"
+	if _, err := store.Dialogues().Commit(ctx, next); err != nil {
+		t.Fatal(err)
+	}
+	row, err := store.Sessions().Get(ctx, "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"root", "next"} {
+		checkpoint, err := store.Dialogues().GetCheckpoint(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		records, err := store.Dialogues().LoadNativeWindow(ctx, row, checkpoint)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := records.Checkpoints["root"]; !ok || records.Inputs["consumed"].ConsumedBy != "exchange" {
+			t.Fatalf("lost ancestry/input: %+v", records)
+		}
+		if id == "root" {
+			if _, ok := records.Checkpoints["next"]; ok {
+				t.Fatal("historical target included its descendant")
+			}
+			if _, ok := records.Exchanges[nextExchange.ID]; ok {
+				t.Fatal("historical target included a later exchange")
+			}
+			if records.Inputs["original-result"].ItemJSON == "" {
+				t.Fatal("historical target lost its original result")
+			}
+			if _, ok := records.Inputs["later-result"]; ok {
+				t.Fatal("historical target followed mutable live call state")
+			}
+		} else if records.Exchanges[nextExchange.ID].ResponseJSON == "" {
+			t.Fatal("latest target lost its own exchange")
+		}
+	}
+}

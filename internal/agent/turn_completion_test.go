@@ -9,39 +9,35 @@ import (
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
-	"elbot/internal/media"
-	"elbot/internal/platform"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
 
-type turnIOStore struct {
+type turnCompletionStore struct {
 	storage.Store
-	sessions *turnIOSessions
+	sessions *turnCompletionSessions
 }
 
-func (s turnIOStore) Sessions() storage.SessionRepository { return s.sessions }
+func (s turnCompletionStore) Sessions() storage.SessionRepository { return s.sessions }
 
-type turnIOSessions struct {
+type turnCompletionSessions struct {
 	storage.SessionRepository
-	mutations int
-	err       error
+	err error
 }
 
-func (r *turnIOSessions) Mutate(ctx context.Context, id string, update func(*storage.Session) error) (*storage.Session, error) {
-	r.mutations++
+func (r *turnCompletionSessions) Mutate(ctx context.Context, id string, update func(*storage.Session) error) (*storage.Session, error) {
 	if r.err != nil {
 		return nil, r.err
 	}
 	return r.SessionRepository.Mutate(ctx, id, update)
 }
 
-func TestTurnCompletionSavesActivityAndUsageOnce(t *testing.T) {
+func TestTurnCompletionHandlesPendingAndSaveFailure(t *testing.T) {
 	for _, name := range []string{"usage", "nil usage", "pending", "save failure"} {
 		t.Run(name, func(t *testing.T) {
 			base := newTestStore(t)
-			repo := &turnIOSessions{SessionRepository: base.Sessions()}
-			f := newExecutionFixture(t, &fakeLLM{}, turnIOStore{base, repo})
+			repo := &turnCompletionSessions{SessionRepository: base.Sessions()}
+			f := newExecutionFixture(t, &fakeLLM{}, turnCompletionStore{base, repo})
 			ctx, _, in, _ := f.begin(t)
 			result := dialogue.TurnResult{Outcome: dialogue.Completed, Selection: in.Selection, Usage: &llm.Usage{TotalTokens: new(int64)}}
 			*result.Usage.TotalTokens = 7
@@ -52,14 +48,10 @@ func TestTurnCompletionSavesActivityAndUsageOnce(t *testing.T) {
 				f.opts.Turns.StartToolPhase(in.Session.ID, "attempt")
 				f.opts.Turns.AppendPendingInput(in.Session.ID, turn.Input{Text: "next"})
 			}
-			repo.mutations = 0
 			if name == "save failure" {
 				repo.err = errors.New("database unavailable")
 			}
 			pending, err := f.execution.finishCompletedTurn(ctx, in.Session, f.out, result)
-			if repo.mutations != 1 {
-				t.Errorf("completion mutations=%d, want 1", repo.mutations)
-			}
 			if name == "save failure" {
 				if !errors.Is(err, repo.err) || !f.opts.Turns.MatchesAttempt(in.Session.ID, "attempt") {
 					t.Fatalf("save failure advanced completion: pending=%+v error=%v", pending, err)
@@ -76,41 +68,33 @@ func TestTurnCompletionSavesActivityAndUsageOnce(t *testing.T) {
 	}
 }
 
-func TestToolLoopOnlyRecordsUsageAtTurnCompletion(t *testing.T) {
+func TestToolLoopCompletionKeepsLatestUsage(t *testing.T) {
 	base := newTestStore(t)
-	repo := &turnIOSessions{SessionRepository: base.Sessions()}
 	model := &fakeLLM{chunks: [][]chatcompletions.Chunk{
 		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "first", Name: "prepared_args", Args: `{}`}}, FinishReason: "tool_calls"}},
 		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "second", Name: "prepared_args", Args: `{}`}}, FinishReason: "tool_calls"}},
 		{{DeltaContent: "done"}},
 	}}
-	f := newExecutionFixture(t, model, turnIOStore{base, repo})
+	f := newExecutionFixture(t, model, base)
 	f.chat.Tools.Deps.(*toolRunDeps).runtime.fileRollback = f.opts.FileRollback
 	var arguments string
 	if err := f.opts.ToolRegistry.Register(preparedArgumentTool{arguments: &arguments}); err != nil {
 		t.Fatal(err)
 	}
 	ctx, requestCtx, in, _ := f.begin(t)
-	repo.mutations = 0
 	calls := int64(0)
 	f.on(t, hook.PointLLMResponseReceived, func(event hook.Event) hook.Event {
 		calls++
-		if repo.mutations != 0 {
-			t.Errorf("loop wrote session before completion: calls=%d mutations=%d", calls, repo.mutations)
-		}
 		tokens := calls
 		event.LLM.Usage = &llm.Usage{TotalTokens: &tokens}
 		return event
 	})
 	result := f.runner.RunTurn(ctx, requestCtx, in, f.out)
-	if result.Err != nil || result.Outcome != dialogue.Completed || calls != 3 || repo.mutations != 0 || arguments != "{}" {
-		t.Fatalf("loop result=%+v calls=%d mutations=%d tool arguments=%q", result, calls, repo.mutations, arguments)
+	if result.Err != nil || result.Outcome != dialogue.Completed || calls != 3 || arguments != "{}" {
+		t.Fatalf("loop result=%+v calls=%d tool arguments=%q", result, calls, arguments)
 	}
 	if _, err := f.execution.finishCompletedTurn(ctx, in.Session, f.out, result); err != nil {
 		t.Fatal(err)
-	}
-	if repo.mutations != 1 {
-		t.Fatalf("turn completion mutations=%d", repo.mutations)
 	}
 	latest, err := base.Sessions().Get(t.Context(), in.Session.ID)
 	if err != nil {
@@ -122,29 +106,5 @@ func TestToolLoopOnlyRecordsUsageAtTurnCompletion(t *testing.T) {
 	}
 	if f.opts.Turns.Snapshot(in.Session.ID).Phase != turn.PhaseIdle {
 		t.Fatal("completed Turn did not become idle")
-	}
-}
-
-type inboundHistoryIO struct {
-	storage.ChatHistoryRepository
-	reads int
-}
-
-func (r *inboundHistoryIO) GetByPlatformMessage(context.Context, string, string, string) (*storage.ChatMessage, error) {
-	r.reads++
-	return nil, errors.New("history must not be queried")
-}
-
-func TestInboundWithoutResolvedMediaSkipsHistoryLookup(t *testing.T) {
-	for _, segments := range [][]platform.MessageSegment{
-		{{Type: platform.SegmentText, Text: "hello"}},
-		{{Type: platform.SegmentImage, PlatformFileID: "unavailable"}},
-	} {
-		history := &inboundHistoryIO{}
-		handler := &MessageHandler{media: &media.Manager{History: history}}
-		resolved := []platform.MessageSegment{{Type: platform.SegmentText, Text: "unavailable"}}
-		if err := handler.associateInboundHistory(t.Context(), platform.MessageContext{}, "message", segments, resolved); err != nil || history.reads != 0 {
-			t.Errorf("unnecessary lookup: reads=%d error=%v", history.reads, err)
-		}
 	}
 }

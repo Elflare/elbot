@@ -92,3 +92,63 @@ func TestHistoryReconciliationAfterInterruptedDeletion(t *testing.T) {
 		t.Fatal("new row inherited old reference", refs)
 	}
 }
+
+func TestHistoryReconciliationHandlesAttachmentsAcrossPages(t *testing.T) {
+	for _, name := range []string{"present", "missing", "replacement", "offline"} {
+		t.Run(name, func(t *testing.T) {
+			ctx := t.Context()
+			store, err := sqlite.New(ctx, ":memory:")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = store.Close() })
+			history, err := sqlite.NewChatHistory(ctx, ":memory:")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = history.Close() })
+			root := t.TempDir()
+			manager := NewManager(store, root, &LocalBackend{Root: root})
+			manager.History = history.Repository()
+			message := &storage.ChatMessage{Platform: "p", PlatformScopeID: "s", PlatformMessageID: "m", CreatedAt: time.Now().Add(-time.Hour)}
+			if err := manager.History.Append(ctx, message); err != nil {
+				t.Fatal(err)
+			}
+			item, err := manager.ImportBytes(ctx, []byte("shared attachments"), Input{Name: "image.png"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for index := 1; index <= 105; index++ {
+				if err := store.Media().SaveHistory(ctx, storage.HistoryMedia{HistoryID: message.ID, Platform: "p", ScopeID: "s", MessageID: "m", MediaIndex: index, Kind: "image", MediaID: item.ID}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if name == "missing" || name == "replacement" {
+				if _, err := manager.History.DeleteBefore(ctx, time.Now()); err != nil {
+					t.Fatal(err)
+				}
+				if name == "replacement" {
+					message.ID = ""
+					if err := manager.History.Append(ctx, message); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if name == "offline" {
+				manager.History = brokenHistory{}
+			}
+			err = manager.ReconcileHistory(ctx)
+			if (err != nil) != (name == "offline") {
+				t.Fatalf("reconcile error=%v", err)
+			}
+			want := 0
+			if name == "present" || name == "offline" {
+				want = 105
+			}
+			refs, err := store.MediaReferences().ListMediaIDs(ctx, item.ID)
+			if err != nil || len(refs) != want {
+				t.Fatalf("remaining owners=%d want=%d error=%v", len(refs), want, err)
+			}
+		})
+	}
+}

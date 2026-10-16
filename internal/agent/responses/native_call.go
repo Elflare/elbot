@@ -136,6 +136,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		if saveErr != nil {
 			err = errors.Join(err, fmt.Errorf("save native response: %w", saveErr))
 		} else {
+			exchange.Status, exchange.ResponseJSON, exchange.ItemsJSON, exchange.Error = status, raw, string(encoded), failure
 			result.FactsSaved = true
 		}
 	}()

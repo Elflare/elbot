@@ -11,33 +11,21 @@ import (
 func (r *MediaRepository) ClaimOrphans(ctx context.Context, cutoff time.Time) ([]storage.Media, error) {
 	// A single SQLite write serializes claiming against all reference inserts.
 	rows, err := r.db.QueryContext(ctx, `UPDATE media SET deleting=1 WHERE deleting=1 OR
- (orphaned_at IS NOT NULL AND julianday(orphaned_at)<=julianday(?) AND NOT EXISTS(SELECT 1 FROM media_references WHERE media_id=media.id)) RETURNING id`, storage.FormatTime(cutoff))
+ (orphaned_at IS NOT NULL AND julianday(orphaned_at)<=julianday(?) AND NOT EXISTS(SELECT 1 FROM media_references WHERE media_id=media.id))
+ RETURNING id, name, mime_type, size, local_path, backend, object_key, source_platform, source_url, source_file_id, created_at, last_accessed_at, expires_at, deleting`, storage.FormatTime(cutoff))
 	if err != nil {
 		return nil, err
 	}
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return nil, err
-	}
+	defer rows.Close()
 	var items []storage.Media
-	for _, id := range ids {
-		item, err := r.Get(ctx, id)
+	for rows.Next() {
+		item, err := scanMedia(rows)
 		if err != nil {
 			return nil, err
 		}
 		items = append(items, *item)
 	}
-	return items, nil
+	return items, rows.Err()
 }
 func (r *MediaRepository) Touch(ctx context.Context, id string, now time.Time) error {
 	res, err := r.db.ExecContext(ctx, `UPDATE media SET last_accessed_at=?,orphaned_at=CASE WHEN orphaned_at IS NOT NULL THEN ? ELSE NULL END WHERE id=? AND deleting=0`, storage.FormatTime(now), storage.FormatTime(now), id)

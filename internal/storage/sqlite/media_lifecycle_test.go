@@ -14,7 +14,8 @@ func TestSharedMediaSessionsForkAndCleanupClaim(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	id := "media:" + strings.Repeat("a", 64)
-	if err := store.Media().Upsert(ctx, &storage.Media{ID: id, Backend: "local", MIMEType: "image/png", CreatedAt: time.Now().Add(-24 * time.Hour)}); err != nil {
+	expires := time.Now().UTC().Add(time.Hour)
+	if err := store.Media().Upsert(ctx, &storage.Media{ID: id, Name: "image.png", Backend: "local", LocalPath: "objects/image.png", MIMEType: "image/png", Size: 42, SourcePlatform: "p", SourceFileID: "file", CreatedAt: time.Now().Add(-24 * time.Hour), ExpiresAt: &expires}); err != nil {
 		t.Fatal(err)
 	}
 	var checkpoint string
@@ -56,6 +57,8 @@ func TestSharedMediaSessionsForkAndCleanupClaim(t *testing.T) {
 	}
 	if items, err := store.Media().ClaimOrphans(ctx, time.Now().Add(time.Hour)); err != nil || len(items) != 1 {
 		t.Fatalf("claim %v %v", items, err)
+	} else if item := items[0]; !item.Deleting || item.ID != id || item.Name != "image.png" || item.LocalPath != "objects/image.png" || item.Size != 42 || item.SourceFileID != "file" || item.ExpiresAt == nil || !item.ExpiresAt.Equal(expires) {
+		t.Fatalf("incomplete claimed metadata: %+v", item)
 	}
 	if err := store.MediaReferences().Add(ctx, &storage.MediaReference{MediaID: id, OwnerType: "test", OwnerID: "late", Purpose: "input"}); err == nil {
 		t.Fatal("reference added after cleanup claim")
