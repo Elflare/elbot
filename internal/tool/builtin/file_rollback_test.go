@@ -107,16 +107,17 @@ func TestRollbackToolPreflightPinsRecordAndWorkspace(t *testing.T) {
 	f.write(t, "file", "one")
 	ctx := f.ctx()
 	req := rollbackRequest("file")
-	if err := f.rollback.PreflightConfirmation(ctx, req); err != nil {
+	prepared, err := f.rollback.PrepareCall(ctx, req)
+	if err != nil {
 		t.Fatal(err)
 	}
-	detail, err := f.rollback.RiskDetail(ctx, req)
-	if err != nil || !strings.Contains(detail, "删除本次新建文件") {
-		t.Fatalf("detail: %s %v", detail, err)
+	detail := prepared.RiskDetail()
+	if !strings.Contains(detail, "删除本次新建文件") {
+		t.Fatalf("detail: %s", detail)
 	}
 	f.write(t, "file", "two")
 	derived := f.service.WithBinding(context.WithValue(ctx, struct{}{}, "request"), f.binding)
-	if _, _, err := f.rollback.Call(derived, req); !errors.Is(err, fileops.ErrRollbackNotFound) {
+	if _, _, err := prepared.Call(derived); !errors.Is(err, fileops.ErrRollbackNotFound) {
 		t.Fatalf("stale preflight: %v", err)
 	}
 	data, _ := os.ReadFile(filepath.Join(f.workspace.dir, "file"))
@@ -124,12 +125,13 @@ func TestRollbackToolPreflightPinsRecordAndWorkspace(t *testing.T) {
 		t.Fatalf("data: %q", data)
 	}
 	ctx = f.ctx()
-	if err := f.rollback.PreflightConfirmation(ctx, req); err != nil {
+	prepared, err = f.rollback.PrepareCall(ctx, req)
+	if err != nil {
 		t.Fatal(err)
 	}
 	f.workspace.dir = t.TempDir()
 	f.write(t, "file", "other")
-	if _, _, err := f.rollback.Call(ctx, req); err == nil {
+	if _, _, err := prepared.Call(ctx); err == nil {
 		t.Fatal("workspace switch silently changed target")
 	}
 }

@@ -117,19 +117,19 @@ func (t ShellTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.R
 	return assessment, nil
 }
 
-func (t ShellTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
+func (t ShellTool) PrepareCall(ctx context.Context, req tool.CallRequest) (*tool.PreparedCall, error) {
 	_, cmdText, err := decodeShellArgs(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := rejectShellDirectoryChange(cmdText); err != nil {
-		return err
+		return nil, err
 	}
 	workDir, err := resolveShellWorkDir(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return analyzeShellAdvice(cmdText, workDir, t.FileGuard).blockErr
+	return nil, analyzeShellAdvice(cmdText, workDir, t.FileGuard).blockErr
 }
 
 func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, logContent string, callErr error) {

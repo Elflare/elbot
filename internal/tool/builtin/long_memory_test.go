@@ -2,11 +2,70 @@ package builtin
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 
 	"elbot/internal/tool"
 )
+
+func TestPreparedLongMemoryUpdatePreservesConfirmation(t *testing.T) {
+	for _, scenario := range []string{"unchanged", "external edit", "newer update", "canceled"} {
+		t.Run(scenario, func(t *testing.T) {
+			store := newLongMemoryStore(t.TempDir())
+			t.Cleanup(func() { _ = store.close() })
+			writer := LongMemoryWriteTool{store: store}
+			record, err := store.save(t.Context(), longMemorySaveArgs{Category: "测试", Title: "测试记忆", Summary: "摘要", Keywords: "alpha", Content: "原文"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			prepared, err := writer.PrepareCall(t.Context(), tool.CallRequest{Arguments: []byte(`{"operation":"update","id":1,"content":"已确认正文"}`)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			original, err := os.ReadFile(record.FilePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := string(original)
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			switch scenario {
+			case "external edit":
+				want = strings.ReplaceAll(want, "原文", "外部")
+				if err := os.WriteFile(record.FilePath, []byte(want), 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "newer update":
+				if _, _, err := writer.Call(ctx, tool.CallRequest{Arguments: []byte(`{"operation":"update","id":1,"content":"其他调用写入"}`)}); err != nil {
+					t.Fatal(err)
+				}
+				current, err := os.ReadFile(record.FilePath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				want = string(current)
+			case "canceled":
+				cancel()
+			}
+			_, _, err = prepared.Call(ctx)
+			if (err == nil) != (scenario == "unchanged") {
+				t.Fatalf("commit = %v", err)
+			}
+			current, err := os.ReadFile(record.FilePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if scenario == "unchanged" {
+				if !strings.Contains(string(current), "已确认正文") {
+					t.Fatalf("content = %s", current)
+				}
+			} else if string(current) != want {
+				t.Fatalf("refused update changed file: %s", current)
+			}
+		})
+	}
+}
 
 func TestLongMemoryToolsHaveAgentTag(t *testing.T) {
 	for _, memoryTool := range NewLongMemoryTools(t.TempDir()) {
@@ -107,19 +166,17 @@ func TestLongMemoryUpdateContentEditsAndRiskDetail(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := []byte(`{"operation":"update","id":1,"summary":"新摘要","content_edits":[{"operation":"replace","line":2,"new_text":"第二行已更新\n"}]}`)
-	if err := writeTool.PreflightConfirmation(ctx, tool.CallRequest{Arguments: args}); err != nil {
-		t.Fatal(err)
-	}
-	detail, err := writeTool.RiskDetail(ctx, tool.CallRequest{Arguments: args})
+	prepared, err := writeTool.PrepareCall(ctx, tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
+	detail := prepared.RiskDetail()
 	for _, want := range []string{"操作：更新长期记忆", "字段变化：", "摘要：摘要 -> 新摘要", "正文编辑：content_edits", "-第二行", "+第二行已更新"} {
 		if !strings.Contains(detail, want) {
 			t.Fatalf("risk detail missing %q:\n%s", want, detail)
 		}
 	}
-	if _, _, err := writeTool.Call(ctx, tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := prepared.Call(ctx); err != nil {
 		t.Fatal(err)
 	}
 	result, _, err := searchTool.Call(ctx, tool.CallRequest{Arguments: []byte(`{"keywords":"已更新","brief_only":false}`)})
@@ -168,7 +225,7 @@ func TestLongMemoryUpdateRejectsNoChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = writeTool.PreflightConfirmation(ctx, tool.CallRequest{Arguments: []byte(`{"operation":"update","id":1,"summary":"摘要"}`)})
+	_, err = writeTool.PrepareCall(ctx, tool.CallRequest{Arguments: []byte(`{"operation":"update","id":1,"summary":"摘要"}`)})
 	if err == nil || !strings.Contains(err.Error(), "edit produced no changes") {
 		t.Fatalf("expected no-op error, got %v", err)
 	}
@@ -185,7 +242,7 @@ func TestLongMemoryUpdateRejectsContentAndContentEditsTogether(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := []byte(`{"operation":"update","id":1,"content":"整段正文","content_edits":[{"operation":"insert","line":2,"new_text":"追加"}]}`)
-	err = writeTool.PreflightConfirmation(ctx, tool.CallRequest{Arguments: args})
+	_, err = writeTool.PrepareCall(ctx, tool.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "content and content_edits cannot be used together") {
 		t.Fatalf("expected conflict error, got %v", err)
 	}

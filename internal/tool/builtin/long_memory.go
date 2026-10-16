@@ -73,6 +73,8 @@ type longMemoryWriteArgs struct {
 }
 
 type longMemoryUpdatePreview struct {
+	// Target pins the real file addressed by the confirmation snapshot.
+	Target      string
 	Before      longMemoryRecord
 	After       longMemoryRecord
 	File        fileops.File
@@ -215,30 +217,25 @@ func (t LongMemoryWriteTool) Schema() llm.ToolSchema {
 		BuildSchema()
 }
 
-func (t LongMemoryWriteTool) PreflightConfirmation(ctx context.Context, req tool.CallRequest) error {
+func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req tool.CallRequest) (*tool.PreparedCall, error) {
 	args, err := t.decodeWriteArgs(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if strings.ToLower(strings.TrimSpace(args.Operation)) != "update" {
-		return nil
-	}
-	_, err = t.store.previewUpdate(ctx, longMemoryUpdateArgsFromWrite(args))
-	return err
-}
-
-func (t LongMemoryWriteTool) RiskDetail(ctx context.Context, req tool.CallRequest) (string, error) {
-	args, err := t.decodeWriteArgs(req)
-	if err != nil {
-		return "", err
-	}
-	if strings.ToLower(strings.TrimSpace(args.Operation)) != "update" {
-		return "", nil
+		return nil, nil
 	}
 	preview, err := t.store.previewUpdate(ctx, longMemoryUpdateArgsFromWrite(args))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
+	detail := longMemoryUpdateRiskDetail(args, preview)
+	return tool.NewPreparedCall(t, req, detail, func(ctx context.Context) (*tool.Result, string, error) {
+		return t.call(ctx, args, &preview)
+	}), nil
+}
+
+func longMemoryUpdateRiskDetail(args longMemoryWriteArgs, preview longMemoryUpdatePreview) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "操作：更新长期记忆\n")
 	fmt.Fprintf(&b, "ID：%d\n", preview.After.ID)
@@ -260,7 +257,7 @@ func (t LongMemoryWriteTool) RiskDetail(ctx context.Context, req tool.CallReques
 	if !strings.HasSuffix(preview.Diff, "\n") {
 		b.WriteString("\n")
 	}
-	return strings.TrimRight(b.String(), "\n"), nil
+	return strings.TrimRight(b.String(), "\n")
 }
 
 func (t LongMemoryWriteTool) decodeWriteArgs(req tool.CallRequest) (longMemoryWriteArgs, error) {
@@ -292,11 +289,15 @@ func longMemoryUpdateArgsFromWrite(args longMemoryWriteArgs) longMemoryUpdateArg
 }
 
 func (t LongMemoryWriteTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 	args, err := t.decodeWriteArgs(req)
 	if err != nil {
-		return nil, err.Error(), err
+		return nil, tool.TruncateLogContent(err.Error(), 256), err
 	}
+	return t.call(ctx, args, nil)
+}
+
+func (t LongMemoryWriteTool) call(ctx context.Context, args longMemoryWriteArgs, preview *longMemoryUpdatePreview) (_ *tool.Result, logContent string, _ error) {
+	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
 	switch strings.ToLower(strings.TrimSpace(args.Operation)) {
 	case "save":
 		record, err := t.store.save(ctx, longMemorySaveArgs{Category: args.Category, Title: args.Title, Summary: args.Summary, Keywords: args.Keywords, Content: args.Content})
@@ -308,7 +309,14 @@ func (t LongMemoryWriteTool) Call(ctx context.Context, req tool.CallRequest) (_ 
 			return result, result.Content, nil
 		}
 	case "update":
-		record, err := t.store.update(ctx, longMemoryUpdateArgsFromWrite(args))
+		if preview == nil {
+			result, err := t.store.previewUpdate(ctx, longMemoryUpdateArgsFromWrite(args))
+			if err != nil {
+				return nil, err.Error(), err
+			}
+			preview = &result
+		}
+		record, err := t.store.update(ctx, *preview)
 		if err != nil {
 			return nil, err.Error(), err
 		}
@@ -439,15 +447,18 @@ func (s *longMemoryStore) categories(ctx context.Context) (string, error) {
 	return strings.TrimSpace(out.String()), nil
 }
 
-func (s *longMemoryStore) update(ctx context.Context, args longMemoryUpdateArgs) (longMemoryRecord, error) {
+func (s *longMemoryStore) update(ctx context.Context, preview longMemoryUpdatePreview) (longMemoryRecord, error) {
 	if err := ctx.Err(); err != nil {
 		return longMemoryRecord{}, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	preview, err := s.previewUpdateLocked(ctx, args)
+	record, err := s.recordByIDLocked(ctx, preview.Before.ID)
 	if err != nil {
 		return longMemoryRecord{}, err
+	}
+	if record.FilePath != preview.Before.FilePath {
+		return longMemoryRecord{}, fmt.Errorf("memory target changed after preflight")
 	}
 	if err := s.writeUpdatePreviewLocked(ctx, preview); err != nil {
 		return longMemoryRecord{}, err
@@ -491,6 +502,10 @@ func (s *longMemoryStore) previewUpdateLocked(ctx context.Context, args longMemo
 		if errors.Is(err, sql.ErrNoRows) {
 			return longMemoryUpdatePreview{}, fmt.Errorf("未找到 ID 为 %d 的长期记忆", args.ID)
 		}
+		return longMemoryUpdatePreview{}, err
+	}
+	target, err := fileops.ResolveFileTarget(record.FilePath, false)
+	if err != nil {
 		return longMemoryUpdatePreview{}, err
 	}
 	file, err := fileops.ReadFile(record.FilePath, "")
@@ -557,7 +572,7 @@ func (s *longMemoryStore) previewUpdateLocked(ctx context.Context, args longMemo
 	if oldText == newText {
 		return longMemoryUpdatePreview{}, fmt.Errorf("edit produced no changes")
 	}
-	return longMemoryUpdatePreview{Before: record, After: next, File: file, FullContent: string(data), Diff: fileops.UnifiedDiff(record.FilePath, fileops.SplitLines(oldText), fileops.SplitLines(newText), 3), Changes: changes}, nil
+	return longMemoryUpdatePreview{Target: target, Before: record, After: next, File: file, FullContent: string(data), Diff: fileops.UnifiedDiff(record.FilePath, fileops.SplitLines(oldText), fileops.SplitLines(newText), 3), Changes: changes}, nil
 }
 
 func (args longMemoryUpdateArgs) hasChanges() bool {
@@ -580,12 +595,11 @@ func longMemoryInlineValue(value string) string {
 }
 
 func (s *longMemoryStore) writeUpdatePreviewLocked(ctx context.Context, preview longMemoryUpdatePreview) error {
-	edit := fileops.Edit{Operation: "overwrite", NewText: &preview.FullContent}
-	_, err := fileops.EditFile(preview.After.FilePath, preview.File.Encoding, fileops.ContentRevision(preview.File.Bytes), false, false, 3, []fileops.Edit{edit})
+	result, err := fileops.EncodeText(fileops.RestoreLineEndings(fileops.NormalizeEditText(preview.FullContent), preview.File.LineEnding), preview.File.Encoding, preview.File.BOM)
 	if err != nil {
 		return err
 	}
-	return ctx.Err()
+	return fileops.WriteFileWithRevision(ctx, preview.After.FilePath, preview.Target, fileops.ContentRevision(preview.File.Bytes), result)
 }
 
 func (s *longMemoryStore) delete(ctx context.Context, id int64) (string, error) {

@@ -155,10 +155,10 @@ func (s *RollbackSession) List() ([]RollbackInfo, error) {
 // EditFile captures bytes from the edit's own read and publishes a backup only
 // after the write succeeds. The caller must check access to both path and target.
 func (s *RollbackSession) EditFile(ctx context.Context, path, encoding, revision string, create bool, contextLines int, edits []Edit, options EditFileOptions, checkWrite func(string) error) (EditResult, error) {
-	return s.manager.editFile(ctx, s, path, encoding, revision, create, contextLines, edits, options, checkWrite)
+	return s.manager.editFile(ctx, s, path, encoding, revision, create, contextLines, edits, options, checkWrite, commitGuard{})
 }
 
-func (m *RollbackManager) editFile(ctx context.Context, s *RollbackSession, path, encoding, revision string, create bool, contextLines int, edits []Edit, options EditFileOptions, checkWrite func(string) error) (EditResult, error) {
+func (m *RollbackManager) editFile(ctx context.Context, s *RollbackSession, path, encoding, revision string, create bool, contextLines int, edits []Edit, options EditFileOptions, checkWrite func(string) error, guard commitGuard) (EditResult, error) {
 	if s != nil {
 		if err := s.check(ctx); err != nil {
 			return EditResult{}, err
@@ -199,7 +199,7 @@ func (m *RollbackManager) editFile(ctx context.Context, s *RollbackSession, path
 				return err
 			}
 		}
-		locked, leave, err := enterCommit(ctx)
+		locked, leave, err := guard.enter(ctx)
 		if err != nil {
 			return err
 		}
@@ -331,6 +331,10 @@ func (s *RollbackSession) Preview(ctx context.Context, path string, expectedID u
 }
 
 func (s *RollbackSession) Rollback(ctx context.Context, path string, expectedID uint64, checkWrite func(string) error) (RollbackResult, error) {
+	return s.rollback(ctx, path, expectedID, checkWrite, commitGuard{})
+}
+
+func (s *RollbackSession) rollback(ctx context.Context, path string, expectedID uint64, checkWrite func(string) error, guard commitGuard) (RollbackResult, error) {
 	record, _, unlock, err := s.prepare(ctx, path, expectedID, checkWrite)
 	if err != nil {
 		return RollbackResult{}, err
@@ -354,7 +358,7 @@ func (s *RollbackSession) Rollback(ctx context.Context, path string, expectedID 
 		if err != nil {
 			return err
 		}
-		locked, leave, err := enterCommit(ctx)
+		locked, leave, err := guard.enter(ctx)
 		if err != nil {
 			return err
 		}

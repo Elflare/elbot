@@ -1,8 +1,8 @@
 package fileops
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 
@@ -19,11 +19,48 @@ type EditRequest struct {
 	Options          EditFileOptions
 }
 
-type editPreflight struct {
-	arguments string
-	path      string
-	target    string
-	result    EditResult
+// PreparedEdit holds one confirmation snapshot without holding a target lock.
+type PreparedEdit struct {
+	// service and binding retain the original operation authority.
+	service *Service
+	binding *fileBinding
+	// request is an independent copy of the approved edit arguments.
+	request EditRequest
+	// resolved and target pin the workspace path and actual filesystem target.
+	resolved workspace.ResolvedPath
+	target   string
+	// result contains the original revision and confirmation diff.
+	result EditResult
+}
+
+func cloneEditRequest(req EditRequest) EditRequest {
+	req.Edits = append([]Edit(nil), req.Edits...)
+	for i := range req.Edits {
+		if req.Edits[i].NewText != nil {
+			req.Edits[i].NewText = new(*req.Edits[i].NewText)
+		}
+		if req.Edits[i].Index != nil {
+			req.Edits[i].Index = new(*req.Edits[i].Index)
+		}
+	}
+	return req
+}
+
+func (p *PreparedEdit) Preview() EditResult {
+	result := p.result
+	result.NewBytes = bytes.Clone(result.NewBytes)
+	return result
+}
+
+func (p *PreparedEdit) Commit(ctx context.Context) (EditResult, workspace.ResolvedPath, error) {
+	return p.service.edit(ctx, p.request, p)
+}
+
+func (p *PreparedEdit) check(file File, created bool) error {
+	if p.result.Created != created || p.result.RevisionBefore != ContentRevision(file.Bytes) {
+		return fmt.Errorf("file changed after preflight")
+	}
+	return nil
 }
 
 func (s *Service) editPath(ctx context.Context, req EditRequest) (workspace.ResolvedPath, string, error) {
@@ -45,102 +82,59 @@ func (s *Service) editPath(ctx context.Context, req EditRequest) (workspace.Reso
 	return resolved, target, nil
 }
 
-func (s *Service) editCall(ctx context.Context) (*fileRollbackCall, *RollbackSession, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, nil, err
-	}
-	call, _ := ctx.Value(fileRollbackContextKey{}).(*fileRollbackCall)
-	if call != nil && call.service != s {
-		return nil, nil, ErrRollbackExpired
-	}
-	lease, err := s.EditSession(ctx)
+func (s *Service) PrepareEdit(ctx context.Context, req EditRequest) (*PreparedEdit, error) {
+	binding, lease, err := s.editBinding(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	if lease != nil {
-		if err := lease.check(ctx); err != nil {
-			return nil, nil, err
-		}
+	if binding != nil {
+		binding = &fileBinding{service: s, session: lease, admission: binding.admission}
 	}
-	return call, lease, nil
-}
-
-func editArguments(req EditRequest) string {
-	raw, _ := json.Marshal(req)
-	return string(raw)
-}
-
-func checkEditPreflight(preview *editPreflight, req EditRequest, path, target string, created bool, revision string) error {
-	if preview == nil {
-		return nil
-	}
-	if preview.arguments != editArguments(req) {
-		return fmt.Errorf("edit arguments changed after preflight")
-	}
-	if preview.path != path || preview.target != target {
-		return fmt.Errorf("edit target changed after preflight")
-	}
-	if preview.result.Created != created || preview.result.RevisionBefore != revision {
-		return fmt.Errorf("file changed after preflight")
-	}
-	return nil
-}
-
-// PreviewEdit pins the state that produced the confirmation diff. Repeated
-// preparation in the same call cannot silently replace it with a newer state.
-func (s *Service) PreviewEdit(ctx context.Context, req EditRequest) (EditResult, error) {
-	call, _, err := s.editCall(ctx)
-	if err != nil {
-		return EditResult{}, err
-	}
-	if call != nil {
-		call.mu.Lock()
-		defer call.mu.Unlock()
-	}
+	req = cloneEditRequest(req)
 	resolved, target, err := s.editPath(ctx, req)
 	if err != nil {
-		return EditResult{}, err
+		return nil, err
 	}
 	unlock, err := s.Manager.lockTarget(ctx, target)
 	if err != nil {
-		return EditResult{}, err
+		return nil, err
 	}
 	defer unlock()
 	result, err := EditFileWithOptions(resolved.Path, req.Encoding, req.ExpectedRevision, req.Create, true, req.ContextLines, req.Edits, req.Options)
 	if err != nil {
-		return EditResult{}, fmt.Errorf("preflight edit_file: %w", err)
+		return nil, fmt.Errorf("preflight edit_file: %w", err)
 	}
 	if err := checkFileTarget(resolved.Path, target, result.Created); err != nil {
-		return EditResult{}, err
+		return nil, err
 	}
-	if call != nil {
-		if err := checkEditPreflight(call.edit, req, resolved.Path, target, result.Created, result.RevisionBefore); err != nil {
-			return EditResult{}, err
-		}
-		if call.edit == nil {
-			call.edit = &editPreflight{arguments: editArguments(req), path: resolved.Path, target: target, result: result}
-		}
-		return call.edit.result, nil
-	}
-	return result, nil
+	return &PreparedEdit{service: s, binding: binding, request: req, resolved: resolved, target: target, result: result}, nil
 }
 
-// Edit uses the same target locks for recorded foreground and unrecorded
-// background operations. Temporary output is prepared before commit admission.
+// Edit directly commits an edit without building a confirmation preview.
 func (s *Service) Edit(ctx context.Context, req EditRequest) (EditResult, workspace.ResolvedPath, error) {
-	call, lease, err := s.editCall(ctx)
+	return s.edit(ctx, req, nil)
+}
+
+func (s *Service) edit(ctx context.Context, req EditRequest, prepared *PreparedEdit) (EditResult, workspace.ResolvedPath, error) {
+	binding, lease, err := s.editBinding(ctx)
 	if err != nil {
 		return EditResult{}, workspace.ResolvedPath{}, err
 	}
-	if call != nil {
-		call.mu.Lock()
-		defer call.mu.Unlock()
+	if prepared != nil {
+		binding = prepared.binding
+		lease = nil
+		if binding != nil {
+			lease = binding.session
+		}
 	}
 	resolved, target, err := s.editPath(ctx, req)
 	if err != nil {
 		return EditResult{}, resolved, err
 	}
-	ctx = withCommitValidation(ctx, func(locked context.Context) error {
+	if prepared != nil && (prepared.resolved.Path != resolved.Path || prepared.target != target) {
+		return EditResult{}, resolved, fmt.Errorf("edit target changed after preflight")
+	}
+	guard := commitGuard{validate: func(locked context.Context) error {
 		latest, currentTarget, err := s.editPath(locked, req)
 		if err != nil {
 			return err
@@ -149,14 +143,16 @@ func (s *Service) Edit(ctx context.Context, req EditRequest) (EditResult, worksp
 			return fmt.Errorf("edit target changed before commit")
 		}
 		return nil
-	})
-	options := req.Options
-	options.beforeWrite = func(file File, created bool, _ os.FileMode) error {
-		if call != nil {
-			return checkEditPreflight(call.edit, req, resolved.Path, target, created, ContentRevision(file.Bytes))
-		}
-		return nil
+	}}
+	if binding != nil {
+		guard.admission = binding.admission
 	}
-	result, err := s.Manager.editFile(ctx, lease, resolved.Path, req.Encoding, req.ExpectedRevision, req.Create, req.ContextLines, req.Edits, options, s.CheckWrite)
+	options := req.Options
+	if prepared != nil {
+		options.beforeWrite = func(file File, created bool, _ os.FileMode) error {
+			return prepared.check(file, created)
+		}
+	}
+	result, err := s.Manager.editFile(ctx, lease, resolved.Path, req.Encoding, req.ExpectedRevision, req.Create, req.ContextLines, req.Edits, options, s.CheckWrite, guard)
 	return result, resolved, err
 }

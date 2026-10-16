@@ -28,9 +28,9 @@ func (p backgroundBoundaryProbe) AssessRisk(context.Context, tool.CallRequest) (
 	return tool.RiskAssessment{Level: tool.RiskLow}, nil
 }
 
-func (p backgroundBoundaryProbe) PreflightConfirmation(context.Context, tool.CallRequest) error {
+func (p backgroundBoundaryProbe) PrepareCall(context.Context, tool.CallRequest) (*tool.PreparedCall, error) {
 	*p.preflight = true
-	return nil
+	return nil, nil
 }
 
 func TestBackgroundRejectsUndeclaredNativeTool(t *testing.T) {
