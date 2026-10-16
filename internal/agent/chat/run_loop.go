@@ -17,6 +17,21 @@ import (
 
 func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.LoopInput, out dialogue.Output) (result dialogue.LoopResult) {
 	r, s := p.route, p.state
+	for i := range p.materials.Loaded.Messages {
+		head := &p.materials.Loaded.Messages[i]
+		fields, err := storage.DecodeSessionMetadata(head.Metadata)
+		if err != nil {
+			return failedLoop(err)
+		}
+		if string(fields["tool_batch_status"]) != `"pending"` {
+			continue
+		}
+		_ = fields.Set("tool_batch_status", "interrupted")
+		head.Metadata, _ = fields.Encode()
+		if _, err := r.Messages.Commit(s.requestCtx, storage.DialogueCommit{SessionID: s.session.ID, ToolResult: &storage.ToolResultCommit{Call: head}}, "close_interrupted_tools"); err != nil {
+			return failedLoop(err)
+		}
+	}
 	if p.compactSeedOnCurrentUser {
 		if err := r.consumeContextCompactSeed(s.requestCtx, s.session); err != nil {
 			return failedLoop(err)
@@ -166,7 +181,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			}
 			for i, message := range skipped {
 				stored := dialogue.ToolResultStorageMessage(s.session.ID, message)
-				if _, err := committer.Result(s.requestCtx, i, result.ToolCalls[i], message, &stored); err != nil {
+				if _, err := committer.Result(s.requestCtx, i, result.ToolCalls[i], message, &storage.ToolResultCommit{Result: &stored}); err != nil {
 					return failedLoop(err)
 				}
 			}

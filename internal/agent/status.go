@@ -7,8 +7,11 @@ import (
 
 	"elbot/internal/agent/dialogue"
 	agentevents "elbot/internal/agent/events"
+	"elbot/internal/contextmgr"
+	"elbot/internal/llm"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/signal"
+	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
 
@@ -26,6 +29,17 @@ type StatusRecorder struct {
 }
 
 func (r *StatusRecorder) Record(ctx context.Context, snapshot runtimestatus.Snapshot) {
+	r.record(ctx, snapshot, false)
+}
+
+// RecordUsage publishes provider usage without changing the current phase or request.
+func (r *StatusRecorder) RecordUsage(ctx context.Context, sessionID string, usage *llm.Usage) {
+	if usage != nil {
+		r.record(ctx, runtimestatus.Snapshot{SessionID: sessionID, Usage: usage}, true)
+	}
+}
+
+func (r *StatusRecorder) record(ctx context.Context, snapshot runtimestatus.Snapshot, usageOnly bool) {
 	// Status subscribers only update in-memory projections. Serialize publication
 	// so a retired target cannot be recreated by an older concurrent emission.
 	r.publishMu.Lock()
@@ -47,11 +61,19 @@ func (r *StatusRecorder) Record(ctx context.Context, snapshot runtimestatus.Snap
 		r.mu.Unlock()
 		return
 	}
+	if usageOnly {
+		usage := snapshot.Usage
+		previous := r.snapshots[snapshot.SessionID]
+		previous.SessionID, previous.Usage = snapshot.SessionID, usage
+		snapshot = previous
+	} else {
+		// Phase changes never overwrite the last provider observation.
+		snapshot.Usage = r.snapshots[snapshot.SessionID].Usage
+		snapshot = mergeRuntimeStatus(r.snapshots[snapshot.SessionID], snapshot)
+	}
 	if !terminal && r.turns.Snapshot(snapshot.SessionID).Phase == turn.PhaseStopping {
 		snapshot.Phase = runtimestatus.PhaseStopping
 	}
-
-	snapshot = mergeRuntimeStatus(r.snapshots[snapshot.SessionID], snapshot)
 	snapshot.Usage = agentevents.CloneUsage(snapshot.Usage)
 	r.snapshots[snapshot.SessionID] = snapshot
 	r.owners[snapshot.SessionID] = owner
@@ -61,6 +83,25 @@ func (r *StatusRecorder) Record(ctx context.Context, snapshot runtimestatus.Snap
 	snapshot.Usage = agentevents.CloneUsage(snapshot.Usage)
 	// This snapshot is committed. Publish it even when the request just ended.
 	agentevents.Emit(context.WithoutCancel(ctx), r.changed, agentevents.StatusChangedEvent{Snapshot: snapshot, Version: version})
+}
+
+// Usage restores the durable snapshot once; fresh observations always win.
+func (r *StatusRecorder) Usage(row *storage.Session) (*llm.Usage, error) {
+	if row == nil {
+		return nil, nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	snapshot, ok := r.snapshots[row.ID]
+	if !ok {
+		state, err := contextmgr.DecodeState(row.Metadata)
+		if err != nil {
+			return nil, err
+		}
+		snapshot.SessionID, snapshot.Usage = row.ID, agentevents.CloneUsage(state.LastUsage)
+		r.snapshots[row.ID] = snapshot
+	}
+	return agentevents.CloneUsage(snapshot.Usage), nil
 }
 
 func (r *StatusRecorder) Snapshot(sessionID string) runtimestatus.Snapshot {

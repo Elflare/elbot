@@ -3,6 +3,7 @@ package toolrun_test
 import (
 	"context"
 	"elbot/internal/events"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,10 +47,12 @@ func (*runnerTestDeps) Begin(context.Context, *storage.Message) (events.LogResul
 func (*runnerTestDeps) Prepared(context.Context, int, llm.ToolCallRequest) (events.LogResult, error) {
 	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
 }
-func (*runnerTestDeps) Started(context.Context, int, llm.ToolCallRequest) (events.LogResult, error) {
-	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
-}
-func (*runnerTestDeps) Result(context.Context, int, llm.ToolCallRequest, llm.LLMMessage, *storage.Message) (events.LogResult, error) {
+func (d *runnerTestDeps) Result(_ context.Context, _ int, _ llm.ToolCallRequest, _ llm.LLMMessage, update *storage.ToolResultCommit) (events.LogResult, error) {
+	var err error
+	if update.Record.Error != "" {
+		err = errors.New(update.Record.Error)
+	}
+	d.recorded = append(d.recorded, struct{ err error }{err})
 	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
@@ -79,14 +82,7 @@ func (d *runnerTestDeps) SendPreview(context.Context, ...string) {}
 func (d *runnerTestDeps) SendOutputs(context.Context, []delivery.Output) (events.LogResult, error) {
 	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
-func (d *runnerTestDeps) RecordToolCall(_ context.Context, _ string, _ llm.ToolCallRequest, _ string, _ time.Time, _ string, err error) (events.LogResult, error) {
-	d.recorded = append(d.recorded, struct{ err error }{err})
-	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
-}
 func (d *runnerTestDeps) AuditToolDenied(context.Context, string, llm.ToolCallRequest, tool.RiskLevel, string) {
-}
-func (d *runnerTestDeps) RememberDiscoveryResult(context.Context, *storage.Session, *tool.Result) (events.LogResult, error) {
-	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 func (d *runnerTestDeps) AddToolUse(string, string) {}
 func (d *runnerTestDeps) ToolResultMessage(id string, message llm.LLMMessage) storage.Message {

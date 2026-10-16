@@ -108,12 +108,12 @@ func TestRunConcurrentFailuresKeepOriginalResultOrderAndFlushOnce(t *testing.T) 
 			t.Fatalf("result=%+v committer=%+v", result, committer)
 		}
 		for i, id := range []string{"A", "B", "C"} {
-			if result.Messages[i].ToolCallID != id || committer.results[i].ToolCallID != id {
+			if result.Messages[i].ToolCallID != id || committer.results[i].ToolCallID != []string{"C", "B", "A"}[i] {
 				t.Fatalf("result order=%+v saved=%+v", result.Messages, committer.results)
 			}
 		}
-		if !strings.Contains(llm.SegmentsContentText(result.Messages[0].Segments), "A failed") || llm.SegmentsContentText(result.Messages[1].Segments) != "B succeeded" || llm.SegmentsContentText(result.Messages[2].Segments) != "C succeeded" || deps.recorded[0].err == nil || deps.recorded[1].err != nil || deps.recorded[2].err != nil {
-			t.Fatalf("independent outcomes=%+v records=%+v", result.Messages, deps.recorded)
+		if !strings.Contains(llm.SegmentsContentText(result.Messages[0].Segments), "A failed") || llm.SegmentsContentText(result.Messages[1].Segments) != "B succeeded" || llm.SegmentsContentText(result.Messages[2].Segments) != "C succeeded" || committer.records["A"].Success || !committer.records["B"].Success || !committer.records["C"].Success {
+			t.Fatalf("independent outcomes=%+v records=%+v", result.Messages, committer.records)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("batch did not finish")
@@ -174,8 +174,75 @@ func TestRunSingleToolTimeoutDoesNotCancelSiblingTools(t *testing.T) {
 		return &tool.Result{Content: req.ID}, req.ID, nil
 	}})
 	deps := &timeoutToolDeps{}
-	result := NewRunner(NewManager(registry, nil)).Run(t.Context(), deps, concurrentRunRequest(&testToolCommitter{}))
-	if result.Err != nil || result.Stopped || len(result.Messages) != 3 || !errors.Is(deps.recorded[0].err, context.DeadlineExceeded) || deps.recorded[1].err != nil || deps.recorded[2].err != nil {
-		t.Fatalf("result=%+v records=%+v", result, deps.recorded)
+	committer := &testToolCommitter{}
+	result := NewRunner(NewManager(registry, nil)).Run(t.Context(), deps, concurrentRunRequest(committer))
+	if result.Err != nil || result.Stopped || len(result.Messages) != 3 || !strings.Contains(committer.records["A"].Error, context.DeadlineExceeded.Error()) || !committer.records["B"].Success || !committer.records["C"].Success {
+		t.Fatalf("result=%+v records=%+v", result, committer.records)
+	}
+}
+
+type blockedPreparationDeps struct {
+	runnerTestDeps
+	waiting chan struct{}
+	release chan struct{}
+}
+
+func (d *blockedPreparationDeps) PrepareToolCall(ctx context.Context, _ *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, events.LogResult, error) {
+	if call.ID == "B" {
+		close(d.waiting)
+		select {
+		case <-d.release:
+		case <-ctx.Done():
+			return call, events.LogResult{}, ctx.Err()
+		}
+	}
+	return call, events.LogResult{}, nil
+}
+
+type notifyingCommitter struct {
+	testToolCommitter
+	saved chan string
+}
+
+func (c *notifyingCommitter) Result(ctx context.Context, index int, call llm.ToolCallRequest, message llm.LLMMessage, result *storage.ToolResultCommit) (events.LogResult, error) {
+	log, err := c.testToolCommitter.Result(ctx, index, call, message, result)
+	c.saved <- call.ID
+	return log, err
+}
+
+func TestCompletedToolPersistsWhileLaterPreparationWaits(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	deps := &blockedPreparationDeps{waiting: make(chan struct{}), release: make(chan struct{})}
+	registry := tool.NewRegistry()
+	_ = registry.Register(concurrentTool{run: func(ctx context.Context, call tool.CallRequest) (*tool.Result, string, error) {
+		if call.ID == "A" {
+			select {
+			case <-deps.waiting:
+			case <-ctx.Done():
+				return nil, "", ctx.Err()
+			}
+		}
+		return &tool.Result{Content: call.ID}, call.ID, nil
+	}})
+	committer := &notifyingCommitter{saved: make(chan string, 3)}
+	done := make(chan RunResult, 1)
+	go func() { done <- NewRunner(NewManager(registry, nil)).Run(ctx, deps, concurrentRunRequest(committer)) }()
+	select {
+	case id := <-committer.saved:
+		if id != "A" {
+			t.Fatalf("saved=%s", id)
+		}
+	case <-ctx.Done():
+		t.Fatal("completed result blocked behind preparation")
+	}
+	close(deps.release)
+	select {
+	case result := <-done:
+		if result.Err != nil {
+			t.Fatal(result.Err)
+		}
+	case <-ctx.Done():
+		t.Fatal("runner did not finish")
 	}
 }

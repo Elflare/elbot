@@ -116,8 +116,20 @@ func TestFailedDiscoveryMatchesTranscriptAndNextSchema(t *testing.T) {
 		cfg.ToolRegistry = registry
 	})
 	failure := errors.New("tool state commit rejected")
-	setTestToolState(a, toolrun.NewStateService(toolStateFaultStore{Store: store, repo: &toolStateFaultRepo{SessionRepository: store.Sessions(), failure: failure}}))
-	if err := a.HandleMessage(ctx, "discover"); err != nil {
+	a.dialogue.Preparer.Tools.Messages.Dialogues = nativeCommitFaultRepository{DialogueRepository: store.Dialogues(), fault: func(commit storage.DialogueCommit) error {
+		if commit.ToolResult != nil && len(commit.ToolResult.Metadata) != 0 {
+			return failure
+		}
+		return nil
+	}}
+	if err := a.HandleMessage(ctx, "discover"); !errors.Is(err, failure) {
+		t.Fatalf("failed result must stop the model loop: %v", err)
+	}
+	if len(f.chatRequests()) != 1 {
+		t.Fatal("continued after result transaction failed")
+	}
+	a.dialogue.Preparer.Tools.Messages.Dialogues = store.Dialogues()
+	if err := a.HandleMessage(ctx, "continue"); err != nil {
 		t.Fatal(err)
 	}
 	requests := f.chatRequests()
@@ -135,7 +147,7 @@ func TestFailedDiscoveryMatchesTranscriptAndNextSchema(t *testing.T) {
 			transcript = message.Content
 		}
 	}
-	if !strings.Contains(transcript, failure.Error()) || !strings.Contains(transcript, "not saved") {
+	if !strings.Contains(transcript, "outcome is unknown") {
 		t.Fatalf("transcript=%s", transcript)
 	}
 	lastTool := ""

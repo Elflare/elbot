@@ -72,7 +72,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		OutputCount        *int              `json:"output_count,omitempty"`
 		Platform           string            `json:"platform,omitempty"`
 		PlatformMessageIDs *[]string         `json:"platform_message_ids,omitempty"`
-		Result             string            `json:"result"`
+		Result             *string           `json:"result,omitempty"`
 		SentMessages       *[]map[string]any `json:"sent_messages,omitempty"`
 		Source             string            `json:"source"`
 		ToolCallID         string            `json:"tool_call_id,omitempty"`
@@ -102,9 +102,12 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		}
 	}
 	logHook := func(eventName string, logResult globalevents.LogResult) {
-		content.Result = logResult.Content
+		content.Result = &logResult.Content
+		if eventName == "hook_tool_call_started" {
+			content.Result = nil
+		}
 		if eventName != "hook_tool_call" {
-			content.Result = tool.TruncateLogContent(content.Result, 2048)
+			logResult.Content = tool.TruncateLogContent(logResult.Content, 2048)
 		}
 		content.ActorID = tool.TruncateLogContent(actor.ID, 2048)
 		content.Platform = tool.TruncateLogContent(actor.Platform, 2048)
@@ -205,6 +208,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		return nil, err
 	}
 	started := time.Now()
+	logHook("hook_tool_call_started", globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded})
 	result, logContent, err := registered.Call(callCtx, call)
 	elapsedMS := time.Since(started).Milliseconds()
 	content.ElapsedMS = &elapsedMS

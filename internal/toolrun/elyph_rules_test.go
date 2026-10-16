@@ -16,9 +16,8 @@ import (
 )
 
 type ruleDetailTool struct {
-	name    string
-	wait    <-chan struct{}
-	release chan<- struct{}
+	name string
+	wait <-chan struct{}
 }
 
 func (t ruleDetailTool) Name() string          { return t.name }
@@ -27,9 +26,6 @@ func (ruleDetailTool) Schema() llm.ToolSchema  { return llm.ToolSchema{} }
 func (t ruleDetailTool) Detail() string        { return "#skill " + t.name + " - body" }
 func (ruleDetailTool) ActivateTools() []string { return nil }
 func (t ruleDetailTool) LoadDetail(ctx context.Context) (tool.DetailBlock, error) {
-	if t.release != nil {
-		close(t.release)
-	}
 	if t.wait != nil {
 		select {
 		case <-t.wait:
@@ -46,26 +42,35 @@ func (t ruleDetailTool) Call(context.Context, tool.CallRequest) (*tool.Result, s
 type ruleCommitter struct {
 	testToolCommitter
 	failure error
+	saved   chan struct{}
 }
 
-func (c *ruleCommitter) Flush(context.Context) (events.LogResult, error) {
-	return events.LogResult{}, c.failure
+func (c *ruleCommitter) Result(ctx context.Context, index int, call llm.ToolCallRequest, message llm.LLMMessage, update *storage.ToolResultCommit) (events.LogResult, error) {
+	if c.failure != nil && call.ID == "a" {
+		return events.LogResult{ResultStatus: events.ResultFailed}, c.failure
+	}
+	logResult, err := c.testToolCommitter.Result(ctx, index, call, message, update)
+	if c.saved != nil {
+		close(c.saved)
+		c.saved = nil
+	}
+	return logResult, err
 }
 
-func TestRuleCardFollowsCallOrderAndCommittedSession(t *testing.T) {
+func TestRuleCardFollowsCompletionOrderAndSurvivesLaterCommitFailure(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	secondFinished := make(chan struct{})
 	registry := tool.NewRegistry()
-	for _, candidate := range []tool.Tool{tool.NewDiscoverTool(registry), ruleDetailTool{name: "alpha", wait: secondFinished}, ruleDetailTool{name: "beta", release: secondFinished}} {
+	for _, candidate := range []tool.Tool{tool.NewDiscoverTool(registry), ruleDetailTool{name: "alpha", wait: secondFinished}, ruleDetailTool{name: "beta"}} {
 		if err := registry.Register(candidate); err != nil {
 			t.Fatal(err)
 		}
 	}
 	runner := NewRunner(NewManager(registry, security.DefaultPolicy()))
 	row := &storage.Session{ID: "s", Mode: storage.SessionModeWork}
-	failure := errors.New("batch rejected")
-	committer := &ruleCommitter{failure: failure}
+	failure := errors.New("result rejected")
+	committer := &ruleCommitter{failure: failure, saved: secondFinished}
 	result := runner.Run(ctx, &runnerTestDeps{}, RunRequest{Session: row, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Committer: committer,
 		Calls: []llm.ToolCallRequest{{ID: "a", Name: "discover_tool", Arguments: `{"name":"alpha"}`}, {ID: "b", Name: "discover_tool", Arguments: `{"name":"beta"}`}}})
 	if !errors.Is(result.Err, failure) || len(result.Messages) != 2 {
@@ -73,25 +78,21 @@ func TestRuleCardFollowsCallOrderAndCommittedSession(t *testing.T) {
 	}
 	first := llm.SegmentsContentText(result.Messages[0].Segments)
 	second := llm.SegmentsContentText(result.Messages[1].Segments)
-	if !strings.HasPrefix(first, "已发现：alpha。") || strings.Count(first, "ELyph 规则：") != 1 || strings.Index(first, "ELyph 规则：") > strings.Index(first, "#skill alpha") || strings.Contains(second, "ELyph 规则：") {
+	if !strings.HasPrefix(first, "已发现：alpha。") || strings.Contains(first, "ELyph 规则：") || strings.Count(second, "ELyph 规则：") != 1 || strings.Index(second, "ELyph 规则：") > strings.Index(second, "#skill beta") {
 		t.Fatalf("wrong ordered presentation:\n%s\n%s", first, second)
 	}
-	if strings.Contains(row.Metadata, "elyph_rules_shown") {
-		t.Fatalf("failed batch advanced state: %s", row.Metadata)
+	if !strings.Contains(row.Metadata, "elyph_rules_shown") {
+		t.Fatalf("committed results lost state after later failure: %s", row.Metadata)
 	}
 	if !strings.Contains(committer.results[0].Metadata, `"elyph_rules_shown":true`) {
 		t.Fatal("rules must travel with the stored message")
 	}
-	// Retry through a dynamic ordinary result, then reuse the committed session.
-	for attempt := 0; attempt < 2; attempt++ {
-		result = runner.Run(ctx, &runnerTestDeps{}, RunRequest{Session: row, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Committer: &ruleCommitter{}, Calls: []llm.ToolCallRequest{{ID: "retry", Name: "alpha", Arguments: `{}`}}})
-		if result.Err != nil || len(result.Messages) != 1 {
-			t.Fatalf("retry: %+v", result)
-		}
-		text := llm.SegmentsContentText(result.Messages[0].Segments)
-		if strings.Contains(text, "ELyph 规则：") != (attempt == 0) {
-			t.Fatalf("attempt %d: %s", attempt, text)
-		}
+	result = runner.Run(ctx, &runnerTestDeps{}, RunRequest{Session: row, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Committer: &ruleCommitter{}, Calls: []llm.ToolCallRequest{{ID: "retry", Name: "alpha", Arguments: `{}`}}})
+	if result.Err != nil || len(result.Messages) != 1 {
+		t.Fatalf("retry: %+v", result)
+	}
+	if text := llm.SegmentsContentText(result.Messages[0].Segments); strings.Contains(text, "ELyph 规则：") {
+		t.Fatalf("committed rule card repeated: %s", text)
 	}
 }
 

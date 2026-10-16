@@ -34,7 +34,8 @@ func TestUsageSnapshotsRestoreAndSaveFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := New(Options{Store: store})
-	restored, err := service.Usage(row)
+	state, err := DecodeState(row.Metadata)
+	restored := state.LastUsage
 	if err != nil || restored.TotalTokens == nil || *restored.TotalTokens != 3 {
 		t.Fatalf("restored=%v err=%v", restored, err)
 	}
@@ -44,17 +45,20 @@ func TestUsageSnapshotsRestoreAndSaveFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	*usage.TotalTokens = 999
-	snapshot, _ := service.Usage(row)
+	latest, _ := store.Sessions().Get(ctx, row.ID)
+	state, _ = DecodeState(latest.Metadata)
+	snapshot := state.LastUsage
 	if snapshot.TotalTokens == nil || *snapshot.TotalTokens != 12 {
 		t.Fatal("usage aliases input")
 	}
 	*snapshot.TotalTokens = 888
-	snapshot, _ = service.Usage(row)
+	state, _ = DecodeState(latest.Metadata)
+	snapshot = state.LastUsage
 	if snapshot.TotalTokens == nil || *snapshot.TotalTokens != 12 {
 		t.Fatal("usage aliases output")
 	}
-	latest, _ := store.Sessions().Get(ctx, row.ID)
-	restored, _ = New(Options{Store: store}).Usage(latest)
+	state, _ = DecodeState(latest.Metadata)
+	restored = state.LastUsage
 	if restored.TotalTokens == nil || *restored.TotalTokens != 12 || !strings.Contains(latest.Metadata, `"tool_tags":["keep"]`) {
 		t.Fatalf("restore=%v metadata=%s", restored, latest.Metadata)
 	}
@@ -64,10 +68,9 @@ func TestUsageSnapshotsRestoreAndSaveFailure(t *testing.T) {
 	if err := service.RecordTurn(canceled, row.ID, &llm.Usage{TotalTokens: &total}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("save error=%v", err)
 	}
-	observed, _ := service.Usage(row)
 	persisted, _ := store.Sessions().Get(ctx, row.ID)
-	if observed.TotalTokens == nil || *observed.TotalTokens != 20 || persisted.Metadata != latest.Metadata || !persisted.UpdatedAt.Equal(latest.UpdatedAt) {
-		t.Fatalf("observation=%v persisted=%s", observed, persisted.Metadata)
+	if persisted.Metadata != latest.Metadata || !persisted.UpdatedAt.Equal(latest.UpdatedAt) {
+		t.Fatalf("failed save changed persisted metadata=%s", persisted.Metadata)
 	}
 }
 
@@ -89,7 +92,8 @@ func TestRecordTurnWithoutUsagePreservesStoredAndObservedUsage(t *testing.T) {
 	if err != nil || !latest.UpdatedAt.After(row.UpdatedAt) || latest.Metadata != row.Metadata {
 		t.Fatalf("activity update changed metadata: %+v error=%v", latest, err)
 	}
-	usage, err := service.Usage(latest)
+	state, err := DecodeState(latest.Metadata)
+	usage := state.LastUsage
 	if err != nil || usage == nil || usage.TotalTokens == nil || *usage.TotalTokens != 3 {
 		t.Fatalf("stored usage lost: %+v error=%v", usage, err)
 	}
@@ -104,8 +108,9 @@ func TestRecordTurnWithoutUsagePreservesStoredAndObservedUsage(t *testing.T) {
 	if err != nil || !strings.Contains(latest.Metadata, "9007199254740993") {
 		t.Fatalf("unknown metadata lost: %+v error=%v", latest, err)
 	}
-	for _, restored := range []*Service{service, New(Options{Store: store})} {
-		usage, err := restored.Usage(latest)
+	{
+		state, err := DecodeState(latest.Metadata)
+		usage := state.LastUsage
 		if err != nil || usage == nil || usage.TotalTokens == nil || *usage.TotalTokens != 9 {
 			t.Fatalf("nil usage erased snapshot: %+v error=%v", usage, err)
 		}
@@ -130,10 +135,6 @@ func TestRecordTurnInvalidContextRollsBackActivityAndUsage(t *testing.T) {
 	latest, err := store.Sessions().Get(t.Context(), row.ID)
 	if err != nil || latest.Metadata != row.Metadata || !latest.UpdatedAt.Equal(row.UpdatedAt) {
 		t.Fatalf("failed transaction changed session: %+v error=%v", latest, err)
-	}
-	usage, err := service.Usage(latest)
-	if err != nil || usage == nil || usage.TotalTokens == nil || *usage.TotalTokens != 9 {
-		t.Fatalf("observed usage lost after rollback: %+v error=%v", usage, err)
 	}
 }
 

@@ -223,6 +223,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		SessionState:       sessionCommands,
 		Logs:               logging.Reader{Dir: deps.LogDir},
 		RuntimeStatus:      status.Snapshot,
+		Usage:              status.Usage,
 	})
 	if err != nil {
 		return m, err

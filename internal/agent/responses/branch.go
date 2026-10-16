@@ -62,6 +62,36 @@ func (c *Context) PrepareCopy(ctx context.Context, source *storage.Session) (*se
 	if err != nil {
 		return nil, err
 	}
+	pending, err := c.Repository.PendingInputs(ctx, source.ID)
+	if err != nil {
+		return nil, err
+	}
+	if len(pending) > 0 {
+		if cp == nil || cp.MessageID == "" {
+			return nil, fmt.Errorf("后台副本需要完整提交的原生窗口")
+		}
+		snapshot, err := c.Repository.CheckpointForMessage(ctx, source.ID, cp.MessageID)
+		if err != nil {
+			return nil, err
+		}
+		calls, err := checkpointCalls(snapshot)
+		if err != nil {
+			return nil, err
+		}
+		ids := map[string]bool{}
+		for _, call := range calls {
+			if call.Status == "pending" {
+				return nil, fmt.Errorf("后台副本不能包含未封存的工具批次")
+			}
+			ids[call.ResultInputID] = true
+		}
+		for _, input := range pending {
+			if !ids[input.ID] {
+				return nil, fmt.Errorf("后台副本需要完整提交的原生窗口")
+			}
+		}
+		return c.PrepareFork(ctx, source, &storage.Message{ID: cp.MessageID})
+	}
 	records, err := c.Repository.LoadNativeWindow(ctx, source, cp)
 	if err != nil {
 		return nil, err
@@ -69,13 +99,6 @@ func (c *Context) PrepareCopy(ctx context.Context, source *storage.Session) (*se
 	w, err := c.Load(ctx, source, cp, records)
 	if err != nil {
 		return nil, err
-	}
-	pending, err := c.Repository.PendingInputs(ctx, source.ID)
-	if err != nil {
-		return nil, err
-	}
-	if len(pending) > 0 {
-		return nil, fmt.Errorf("后台副本需要完整提交的原生窗口")
 	}
 	var calls []storage.NativeCall
 	responseID, expected := "", ""

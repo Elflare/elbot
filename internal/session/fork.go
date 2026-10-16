@@ -21,6 +21,13 @@ func (s *Service) Fork(ctx context.Context, scope Scope, fromMessageID string) (
 		return nil, fmt.Errorf("can only fork from assistant messages")
 	}
 	boundary := message.ID
+	fields, err := storage.DecodeSessionMetadata(message.Metadata)
+	if err != nil {
+		return nil, err
+	}
+	if string(fields["tool_batch_status"]) == `"pending"` {
+		return nil, fmt.Errorf("cannot fork an unfinished tool batch; continue the session to seal interrupted results first")
+	}
 	if resultIDs, err := storage.ToolResultMessageIDs(*message); err != nil {
 		return nil, err
 	} else if len(resultIDs) > 0 {

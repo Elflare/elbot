@@ -23,7 +23,7 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 	}
 	defer tx.Rollback()
 	var fields storage.SessionMetadata
-	if commit.Native != nil || commit.ElyphRulesShown {
+	if commit.Native != nil || commit.ElyphRulesShown || commit.ToolResult != nil && len(commit.ToolResult.Metadata) > 0 {
 		var raw sql.NullString
 		if err := tx.QueryRowContext(ctx, `SELECT metadata FROM sessions WHERE id=?`, commit.SessionID).Scan(&raw); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -58,6 +58,11 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 			return logResult, err
 		}
 	}
+	if commit.ToolResult != nil {
+		if logResult, err := commitToolResult(ctx, tx, commit, fields); err != nil {
+			return logResult, err
+		}
+	}
 	if native := commit.Native; native != nil {
 		// Exchange ownership and terminal status are stable within this transaction.
 		exchanges := map[string]struct{ owner, status string }{}
@@ -72,8 +77,12 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 			if input.CreatedAt.IsZero() {
 				input.CreatedAt = storage.Now()
 			}
-			if _, err := tx.ExecContext(ctx, `INSERT INTO native_inputs(id,session_id,message_id,exchange_id,call_id,item_json,media_json,consumed_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, input.ID, input.SessionID, input.MessageID, input.ExchangeID, input.CallID, input.ItemJSON, input.MediaJSON, input.ConsumedBy, storage.FormatTime(input.CreatedAt)); err != nil {
+			result, err := tx.ExecContext(ctx, `INSERT INTO native_inputs(id,session_id,message_id,exchange_id,call_id,item_json,media_json,consumed_by,created_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET item_json=excluded.item_json,media_json=excluded.media_json WHERE native_inputs.consumed_by='' AND native_inputs.session_id=excluded.session_id AND native_inputs.message_id=excluded.message_id AND native_inputs.exchange_id=excluded.exchange_id AND native_inputs.call_id=excluded.call_id AND EXISTS(SELECT 1 FROM native_calls WHERE exchange_id=native_inputs.exchange_id AND call_id=native_inputs.call_id AND result_input_id=native_inputs.id AND status='pending')`, input.ID, input.SessionID, input.MessageID, input.ExchangeID, input.CallID, input.ItemJSON, input.MediaJSON, input.ConsumedBy, storage.FormatTime(input.CreatedAt))
+			if err != nil {
 				return events.LogResult{ResultStatus: events.ResultFailed}, err
+			}
+			if count, err := result.RowsAffected(); err != nil || count != 1 {
+				return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("native result is already sealed or consumed")
 			}
 			var materials []struct {
 				Segments []struct {
@@ -223,7 +232,7 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 	if commit.ElyphRulesShown {
 		_ = fields.Set("elyph_rules_shown", true)
 	}
-	if commit.ElyphRulesShown || (commit.Native != nil && commit.Native.Checkpoint.ID != "") {
+	if commit.ElyphRulesShown || (commit.Native != nil && commit.Native.Checkpoint.ID != "") || (commit.ToolResult != nil && len(commit.ToolResult.Metadata) != 0) {
 		encoded, err := fields.Encode()
 		if err != nil {
 			return events.LogResult{ResultStatus: events.ResultSkipped}, err
@@ -234,6 +243,11 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 	}
 	for _, mapping := range commit.PlatformMessageMaps {
 		if err := mapPlatformMessage(ctx, tx, mapping); err != nil {
+			return events.LogResult{ResultStatus: events.ResultFailed}, err
+		}
+	}
+	for _, reference := range commit.MediaReferences {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO media_references(media_id,owner_type,owner_id,purpose,session_id,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT DO NOTHING`, reference.MediaID, reference.OwnerType, reference.OwnerID, reference.Purpose, commit.SessionID, storage.FormatTime(reference.CreatedAt)); err != nil {
 			return events.LogResult{ResultStatus: events.ResultFailed}, err
 		}
 	}

@@ -48,6 +48,15 @@ type ToolBatch struct {
 	Results []*Message
 }
 
+// ToolResultCommit replaces a preallocated result without changing its position.
+// All attached facts are committed in the same transaction.
+type ToolResultCommit struct {
+	Call     *Message        // Updated batch header, including prepared arguments and batch status.
+	Result   *Message        // Final body in the original slot; nil seals remaining unknown slots on recovery.
+	Record   *ToolCallRecord // Raw invocation outcome, unaffected by completion Hooks.
+	Metadata SessionMetadata // Tool-owned session fields to merge with the latest row.
+}
+
 // NativeCommit advances only a locally committed cursor. ExpectedCheckpointID
 // is checked even for the first (empty) cursor, independently of caller gates.
 type NativeCommit struct {
@@ -102,9 +111,12 @@ type DialogueCommit struct {
 	SessionID       string
 	Messages        []*Message
 	ToolBatch       *ToolBatch
+	ToolResult      *ToolResultCommit
 	Native          *NativeCommit
 	// PlatformMessageMaps are committed atomically with messages and native state.
 	PlatformMessageMaps []PlatformMessageMap
+	// MediaReferences retain tool arguments in the same transaction as their calls/results.
+	MediaReferences []MediaReference
 }
 
 func (c DialogueCommit) MessageRows() []*Message {

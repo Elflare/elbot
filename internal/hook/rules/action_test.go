@@ -226,7 +226,12 @@ func TestRuleToolAuditOutcome(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var records []events.LogRecord
-			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error { records = append(records, record); return nil }, signal.ConnectOptions{})
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+				if record.EventName == "hook_tool_call" {
+					records = append(records, record)
+				}
+				return nil
+			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -242,11 +247,11 @@ func TestRuleToolAuditOutcome(t *testing.T) {
 			if len(records) != 1 || records[0].EventName != "hook_tool_call" || records[0].Category != events.LogAudit || records[0].Level != tc.level {
 				t.Fatalf("records: %+v", records)
 			}
-			fields := map[string]string{}
+			fields := map[string]any{}
 			if err := json.Unmarshal([]byte(records[0].Content), &fields); err != nil {
 				t.Fatal(err)
 			}
-			if fields["source"] != "rules" || records[0].ResultStatus.String() != tc.status || !strings.HasPrefix(fields["result"], "called") || (tc.err != nil && !strings.Contains(fields["result"], tc.err.Error())) {
+			if fields["source"] != "rules" || records[0].ResultStatus.String() != tc.status || !strings.HasPrefix(fields["result"].(string), "called") || (tc.err != nil && !strings.Contains(fields["result"].(string), tc.err.Error())) {
 				t.Fatal(fields)
 			}
 		})

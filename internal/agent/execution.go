@@ -44,6 +44,9 @@ type ExecutionCoordinator struct {
 }
 
 func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, text string, out dialogue.Output) error {
+	if _, err := c.status.Usage(row); err != nil {
+		return err
+	}
 	execution := turn.ExecutionFromContext(ctx)
 	if execution == nil {
 		execution = turn.NewExecution(storage.NewID())

@@ -172,7 +172,7 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 		}
 	}
 	for _, call := range calls {
-		if call.ResultInputID == "" {
+		if call.ResultInputID == "" || call.Status == "pending" {
 			continue
 		}
 		input, ok := records.Inputs[call.ResultInputID]

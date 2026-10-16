@@ -93,7 +93,7 @@ func TestResponsesBatchCommitFailureKeepsAllUnknownOutcomesWithoutReexecution(t 
 	}, func(opts *testAgentOptions) {
 		opts.ToolRegistry = registry
 		opts.Store = nativeCommitFaultStore{Store: opts.Store, fault: func(commit storage.DialogueCommit) error {
-			if commit.ToolBatch != nil && fail.Swap(false) {
+			if commit.ToolResult != nil && commit.ToolResult.Result != nil && fail.Swap(false) {
 				return errors.New("pair write failed")
 			}
 			return nil
@@ -102,23 +102,31 @@ func TestResponsesBatchCommitFailureKeepsAllUnknownOutcomesWithoutReexecution(t 
 	if err := f.agent.HandleMessage(t.Context(), "@tool:once run"); err == nil || !strings.Contains(err.Error(), "pair write failed") {
 		t.Fatalf("first error=%v", err)
 	}
-	if executions.Load() != 2 {
-		t.Fatalf("batch did not finish before commit failure: %d", executions.Load())
+	before := executions.Load()
+	if before < 1 || before > 2 {
+		t.Fatalf("executions=%d", before)
 	}
 	if err := f.agent.HandleMessage(t.Context(), "continue"); err != nil {
 		t.Fatal(err)
 	}
-	if executions.Load() != 2 {
+	if executions.Load() != before {
 		t.Fatalf("historical tool replayed: %d", executions.Load())
 	}
 	rows, err := f.store.Messages().ListBySession(t.Context(), fixtureSession(t, f).ID)
 	if err != nil {
 		t.Fatal(err)
 	}
+	var results int
 	for _, row := range rows {
-		if row.Role == storage.RoleTool || strings.Contains(row.Metadata, "tool_calls") {
-			t.Fatalf("unpaired/fictional display history=%+v", rows)
+		if row.Role == storage.RoleTool {
+			results++
+			if !strings.Contains(row.Content, "outcome is unknown") {
+				t.Fatalf("fictional result: %+v", row)
+			}
 		}
+	}
+	if results != 2 {
+		t.Fatalf("missing preallocated results: %+v", rows)
 	}
 }
 

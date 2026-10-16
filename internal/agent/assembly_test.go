@@ -182,6 +182,7 @@ func mustNewWithOptions(t *testing.T, cfg testAgentOptions, configure ...func(*t
 		Tools: testToolRegistry{opts.ToolRegistry}, FileRollback: opts.FileRollback, PrepareFileContext: a.PrepareFileCommand,
 		SessionState:  commandbuiltin.NewSessionCommandState(config.Default().View.SessionListPageSize, 30),
 		RuntimeStatus: a.RuntimeStatus,
+		Usage:         a.status.Usage,
 	}); err != nil {
 		t.Fatal(err)
 	}

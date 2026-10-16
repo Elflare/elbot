@@ -381,7 +381,7 @@ func TestTurnRequestCancelLeavesNoUnpairedCallAndCanContinue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages) != 1 || messages[0].Role != storage.RoleUser {
+	if len(messages) != 3 || messages[0].Role != storage.RoleUser || messages[2].ToolCallID != "call_1" || !strings.Contains(messages[2].Content, "outcome is unknown") {
 		t.Fatalf("unpaired call persisted: %+v", messages)
 	}
 	if err := a.HandleMessage(ctx, "继续"); err != nil {
@@ -391,15 +391,15 @@ func TestTurnRequestCancelLeavesNoUnpairedCallAndCanContinue(t *testing.T) {
 	if len(requests) != 2 {
 		t.Fatalf("requests = %d", len(requests))
 	}
+	var calls, results int
 	for _, message := range requests[1].Messages {
-		if len(message.ToolCalls) != 0 || message.Role == llm.RoleTool {
-			t.Fatalf("unpaired historical tool: %+v", message)
+		calls += len(message.ToolCalls)
+		if message.Role == llm.RoleTool && message.ToolCallID == "call_1" && strings.Contains(llm.SegmentsContentText(message.Segments), "outcome is unknown") {
+			results++
 		}
 	}
-	for _, msg := range messages {
-		if msg.Role == storage.RoleTool && msg.ToolCallID == "call_1" {
-			t.Fatalf("tool transcript persisted after turn stop: %#v", messages)
-		}
+	if calls != 1 || results != 1 {
+		t.Fatalf("interrupted batch lost associations: %+v", requests[1].Messages)
 	}
 }
 

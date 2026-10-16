@@ -97,7 +97,7 @@ func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storag
 		}
 		for i := range messages {
 			stored := ToolResultStorageMessage(session.ID, messages[i])
-			logResult, err := committer.Result(ctx, i, calls[i], messages[i], &stored)
+			logResult, err := committer.Result(ctx, i, calls[i], messages[i], &storage.ToolResultCommit{Result: &stored})
 			record.Content += "\npersistence:\n" + logResult.Content
 			if logResult.ResultStatus == events.ResultFailed {
 				record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError

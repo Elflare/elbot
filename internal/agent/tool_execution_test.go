@@ -111,7 +111,7 @@ func TestChatExecutesToolAndFollowsUp(t *testing.T) {
 	if err := a.HandleMessage(ctx, "/status"); err != nil {
 		t.Fatalf("status: %v", err)
 	}
-	if !strings.Contains(p.out.String(), "tool usage: shell x1") {
+	if !strings.Contains(p.out.String(), "tool usage: persisted: shell x1") {
 		t.Fatalf("status missing tool usage: %q", p.out.String())
 	}
 
@@ -123,7 +123,7 @@ func TestChatExecutesToolAndFollowsUp(t *testing.T) {
 	if err := resumedAgent.HandleMessage(ctx, "/status"); err != nil {
 		t.Fatalf("resumed status: %v", err)
 	}
-	if !strings.Contains(p.out.String(), "tool usage: shell x1") {
+	if !strings.Contains(p.out.String(), "tool usage: persisted: shell x1") {
 		t.Fatalf("resumed status missing tool usage: %q", p.out.String())
 	}
 }

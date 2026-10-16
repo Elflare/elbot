@@ -21,14 +21,35 @@ import (
 	"elbot/internal/tool"
 )
 
-type bodyTestTool struct{ ids []string }
+type bodyTestTool struct {
+	ids    []string
+	onCall func()
+}
 
 func (*bodyTestTool) Name() string           { return "body_test" }
 func (*bodyTestTool) Info() tool.Info        { return tool.Info{Name: "body_test"} }
 func (*bodyTestTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "body_test"} }
 func (t *bodyTestTool) Call(_ context.Context, call tool.CallRequest) (*tool.Result, string, error) {
+	if t.onCall != nil {
+		t.onCall()
+	}
 	t.ids = append(t.ids, call.ID)
 	return &tool.Result{Segments: llm.TextSegments("business segments")}, "日志正文：9007199254740993", errors.New("business result")
+}
+
+func TestRuleToolStartPrecedesBodyAndEndHasElapsed(t *testing.T) {
+	records := collectRecords(t, true)
+	registry := tool.NewRegistry()
+	invoked := &bodyTestTool{onCall: func() {
+		if len(*records) != 1 || (*records)[0].EventName != "hook_tool_call_started" || strings.Contains((*records)[0].Content, `"result"`) {
+			t.Fatalf("start=%+v", *records)
+		}
+	}}
+	_ = registry.Register(invoked)
+	_, _, _ = (Module{Opts: Options{Tools: registry}}).callTool(t.Context(), hook.Event{}, Action{Tool: invoked.Name()}, state{})
+	if len(*records) != 2 || (*records)[1].EventName != "hook_tool_call" || !strings.Contains((*records)[1].Content, `"elapsed_ms"`) {
+		t.Fatalf("end=%+v", *records)
+	}
 }
 
 type failedProtocolWriter struct{}
@@ -61,10 +82,14 @@ func TestExecProtocolKeepsSendCancellationAndIndependentWriteFailure(t *testing.
 	}
 }
 
-func collectRecords(t *testing.T) *[]events.LogRecord {
+func collectRecords(t *testing.T, includeStarts ...bool) *[]events.LogRecord {
 	t.Helper()
 	var records []events.LogRecord
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+		// Terminal-fact tests omit starts; boundary tests include both explicitly.
+		if record.EventName == "hook_tool_call_started" && len(includeStarts) == 0 {
+			return nil
+		}
 		if record.Module == "hook" {
 			records = append(records, record)
 		}
@@ -99,7 +124,7 @@ func TestRulesToolRecordsUseIndependentBodyUniqueIDAndActor(t *testing.T) {
 		if !strings.HasPrefix(record.Content, `{"tool":"body_test",`) {
 			t.Fatalf("tool must be first at source: %s", record.Content)
 		}
-		var content map[string]string
+		var content map[string]any
 		if err := json.Unmarshal([]byte(record.Content), &content); err != nil {
 			t.Fatal(err)
 		}
@@ -110,7 +135,7 @@ func TestRulesToolRecordsUseIndependentBodyUniqueIDAndActor(t *testing.T) {
 			t.Fatal("reused call ID")
 		}
 		wantActor := []string{"trigger", "", "context"}[i]
-		if content["actor_id"] != wantActor {
+		if content["actor_id"] != wantActor && !(wantActor == "" && content["actor_id"] == nil) {
 			t.Fatal(content)
 		}
 	}
@@ -179,7 +204,7 @@ func TestRulesJSONTruncationPreservesUnicodeMarkerAndBusinessData(t *testing.T) 
 			if err != nil || invoked.got != body || len(*records) != 1 {
 				t.Fatalf("err=%v records=%+v", err, *records)
 			}
-			var content map[string]string
+			var content map[string]any
 			if err := json.Unmarshal([]byte((*records)[0].Content), &content); err != nil {
 				t.Fatal(err)
 			}
@@ -189,7 +214,7 @@ func TestRulesJSONTruncationPreservesUnicodeMarkerAndBusinessData(t *testing.T) 
 			}
 			// The publishing layer limits arguments, not a tool's independent body.
 			if content["arguments"] != want || content["result"] != body {
-				t.Fatalf("arguments length=%d result length=%d", len([]rune(content["arguments"])), len([]rune(content["result"])))
+				t.Fatalf("arguments length=%d result length=%d", len([]rune(content["arguments"].(string))), len([]rune(content["result"].(string))))
 			}
 			if len((*records)[0].Content) > 64*1024 {
 				t.Fatal("oversized JSON")

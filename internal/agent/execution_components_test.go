@@ -77,7 +77,7 @@ func newExecutionFixture(t *testing.T, client llm.Client, store storage.Store) *
 	tools.Messages = messages
 	preparer := &dialogue.Preparer{Media: opts.Media, Contexts: opts.Contexts, Identity: identity, Hooks: bridge, Tools: tools}
 	messages.Preparer = preparer
-	calls := &dialogue.CallProcessor{Messages: messages, Preparer: preparer, Hooks: bridge, Identity: identity, Tools: tools}
+	calls := &dialogue.CallProcessor{Status: status, Messages: messages, Preparer: preparer, Hooks: bridge, Identity: identity, Tools: tools}
 	chat := &chatroute.Loop{Status: status,
 		Contexts:      opts.Contexts,
 		Models:        models,

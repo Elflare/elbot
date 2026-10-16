@@ -9,6 +9,7 @@ import (
 
 	"elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/media"
 	"elbot/internal/storage"
 )
 
@@ -91,7 +92,27 @@ func (s *MessageStore) Append(ctx context.Context, message *storage.Message, ope
 }
 
 func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit, operation string) (events.LogResult, error) {
-	for _, message := range commit.MessageRows() {
+	if commit.ToolBatch != nil {
+		metadata, err := AssistantMessageMetadata(commit.ToolBatch.Call.Metadata)
+		if err != nil {
+			return events.LogResult{ResultStatus: events.ResultSkipped}, err
+		}
+		seen := map[string]bool{}
+		for _, call := range metadata.ToolCalls {
+			for _, id := range media.ArgumentMediaIDs(call.Arguments) {
+				if seen[id] {
+					continue
+				}
+				seen[id] = true
+				commit.MediaReferences = append(commit.MediaReferences, storage.MediaReference{MediaID: id, OwnerType: "session_tool", OwnerID: commit.SessionID, SessionID: commit.SessionID, Purpose: "input", CreatedAt: storage.Now()})
+			}
+		}
+	}
+	rows := commit.MessageRows()
+	if commit.ToolResult != nil {
+		rows = append(rows, commit.ToolResult.Result)
+	}
+	for _, message := range rows {
 		if message != nil {
 			fields, err := storage.DecodeSessionMetadata(message.Metadata)
 			if err != nil {
@@ -105,7 +126,7 @@ func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit
 			}
 			commit.ElyphRulesShown = commit.ElyphRulesShown || elyphRulesShown
 		}
-		if message != nil && message.Segments != "" {
+		if message != nil && message.Segments != "" && !(commit.ToolResult != nil && commit.Native != nil) {
 			projected, err := MessageFromStorage(*message)
 			if err != nil {
 				return events.LogResult{ResultStatus: events.ResultSkipped}, err

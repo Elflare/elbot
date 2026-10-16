@@ -213,19 +213,19 @@ func (m *Manager) PrepareCall(ctx context.Context, resolved ResolvedTool, call l
 }
 
 func (m *Manager) Execute(ctx context.Context, call llm.ToolCallRequest, resolved ResolvedTool, actor contextinfo.Actor) ExecutionResult {
-	return m.ExecutePrepared(ctx, call, resolved, actor, nil)
+	return m.ExecutePrepared(ctx, call, resolved, actor, nil, nil)
 }
 
-func (m *Manager) ExecutePrepared(ctx context.Context, call llm.ToolCallRequest, resolved ResolvedTool, actor contextinfo.Actor, prepared *tool.PreparedCall) ExecutionResult {
+func (m *Manager) ExecutePrepared(ctx context.Context, call llm.ToolCallRequest, resolved ResolvedTool, actor contextinfo.Actor, prepared *tool.PreparedCall, onStarted func()) ExecutionResult {
 
 	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
 	if resolved.ResultStatus != events.ResultSucceeded {
 		return executionError(call, message, resolved.Error, resolved.ResultStatus)
 	}
 	if resolved.Source == SourceKindELwisp {
-		return executeELwispTool(ctx, call, resolved)
+		return executeELwispTool(ctx, call, resolved, onStarted)
 	}
-	result := tool.Executor{Registry: m.Native.Registry, Actor: actor, Policy: m.Policy}.ExecutePrepared(ctx, call, prepared)
+	result := tool.Executor{Registry: m.Native.Registry, Actor: actor, Policy: m.Policy, OnStarted: onStarted}.ExecutePrepared(ctx, call, prepared)
 	return ExecutionResult{Call: call, Message: result.Message, Result: result.Result, LogResult: result.LogResult, Error: result.Error, ResultStatus: result.ResultStatus, ExecutionStarted: result.ExecutionStarted}
 }
 

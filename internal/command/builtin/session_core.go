@@ -72,7 +72,7 @@ func formatContextStatus(ctx context.Context, deps Deps, row *storage.Session, m
 	if deps.Contexts == nil {
 		return ""
 	}
-	usage, err := deps.Contexts.Usage(row)
+	usage, err := deps.Usage(row)
 	if err != nil {
 		record := globalevents.LogRecord{
 			Category:     globalevents.LogRuntime,
@@ -112,13 +112,12 @@ func formatToolUsage(ctx context.Context, deps Deps, sessionID string, live map[
 			}
 		}
 	}
-	for name, count := range live {
-		if count > 0 {
-			usage[name] += count
-		}
+	persisted, current := turn.ToolsString(usage), turn.ToolsString(live)
+	if persisted == "" {
+		persisted = "none"
 	}
-	if out := turn.ToolsString(usage); out != "" {
-		return out
+	if current == "" {
+		current = "none"
 	}
-	return "none"
+	return fmt.Sprintf("persisted: %s; current turn: %s", persisted, current)
 }

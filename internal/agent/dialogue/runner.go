@@ -10,6 +10,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	globalevents "elbot/internal/events"
+	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/modelmgr"
@@ -206,6 +207,7 @@ func ReportFailure(ctx context.Context, sessionID string, err error, notify func
 type RunnerDeps struct {
 	Status interface {
 		Record(context.Context, runtimestatus.Snapshot)
+		RecordUsage(context.Context, string, *llm.Usage)
 	}
 	Routes          LoopResolver
 	Dialogues       storage.DialogueRepository
@@ -238,7 +240,7 @@ func NewRunner(deps RunnerDeps) *Runner {
 	replies := &ReplyCommitter{Output: deps.Output, Persistence: messages.Committer("append_assistant_message")}
 	preparer := &Preparer{Contexts: deps.Contexts, Media: deps.Media, Identity: deps.Identity, Hooks: deps.Hooks, Tools: tools}
 	messages.Preparer = preparer
-	calls := &CallProcessor{Messages: messages, Preparer: preparer, Hooks: deps.Hooks, Identity: deps.Identity, Tools: tools, Completed: deps.Signals.ModelCallCompleted, Vision: deps.Signals.VisionFallbackUsed}
+	calls := &CallProcessor{Status: deps.Status, Messages: messages, Preparer: preparer, Hooks: deps.Hooks, Identity: deps.Identity, Tools: tools, Completed: deps.Signals.ModelCallCompleted, Vision: deps.Signals.VisionFallbackUsed}
 	soul := SoulProvider(StaticSoulProvider{Prompt: "You are a helpful assistant."})
 	if deps.SoulPath != "" {
 		soul = &FileSoulProvider{Path: deps.SoulPath}

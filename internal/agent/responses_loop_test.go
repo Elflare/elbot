@@ -682,6 +682,28 @@ func TestResponsesStoppedToolBatchKeepsUnknownOutcomesWithoutReexecution(t *test
 	case <-time.After(time.Second):
 		t.Fatal("second tool did not start")
 	}
+	// Wait for the first final result, independently of the still-running second call.
+	deadline := time.Now().Add(time.Second)
+	for {
+		row := fixtureSession(t, f)
+		rows, err := f.store.Messages().ListBySession(t.Context(), row.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		saved := false
+		for _, row := range rows {
+			if row.ToolCallID == "one" && row.Content == "saved first" {
+				saved = true
+			}
+		}
+		if saved {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("first result waited for unfinished sibling")
+		}
+		time.Sleep(time.Millisecond)
+	}
 	if err := f.agent.HandleMessage(t.Context(), "/stop 1"); err != nil {
 		t.Fatal(err)
 	}
@@ -701,7 +723,7 @@ func TestResponsesStoppedToolBatchKeepsUnknownOutcomesWithoutReexecution(t *test
 	if first != 1 || second != 1 || len(requests) != 2 || requests[1].PreviousResponseID != "r1" || len(requests[1].Input) != 3 {
 		t.Fatalf("replayed tools %d/%d requests=%+v", first, second, requests)
 	}
-	if !strings.Contains(string(requests[1].Input[0]), "outcome is unknown") || !strings.Contains(string(requests[1].Input[1]), "outcome is unknown") {
+	if !strings.Contains(string(requests[1].Input[0]), "saved first") || !strings.Contains(string(requests[1].Input[1]), "outcome is unknown") {
 		t.Fatalf("lost stopped results: %+v", requests[1])
 	}
 	row := fixtureSession(t, f)
@@ -709,10 +731,17 @@ func TestResponsesStoppedToolBatchKeepsUnknownOutcomesWithoutReexecution(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
+	var results int
 	for _, message := range messages {
-		if message.Role == storage.RoleTool || strings.Contains(message.Metadata, "tool_calls") {
-			t.Fatalf("stopped batch partially saved: %+v", messages)
+		if message.Role == storage.RoleTool {
+			results++
 		}
+		if strings.Contains(message.Metadata, `"tool_batch_status":"pending"`) {
+			t.Fatal("recovery did not seal batch")
+		}
+	}
+	if results != 2 {
+		t.Fatalf("missing fixed result slots: %+v", messages)
 	}
 }
 

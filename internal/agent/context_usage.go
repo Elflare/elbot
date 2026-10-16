@@ -14,7 +14,7 @@ import (
 )
 
 func (c *ExecutionCoordinator) usageForSession(ctx context.Context, row *storage.Session) *llm.Usage {
-	usage, err := c.contexts.Usage(row)
+	usage, err := c.status.Usage(row)
 	if err != nil {
 		{
 			record := globalevents.LogRecord{

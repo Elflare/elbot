@@ -16,6 +16,7 @@ import (
 	"elbot/internal/elyph"
 	"elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/media"
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -40,11 +41,7 @@ type RunnerDeps interface {
 	// SendOutputs returns the source logging result and body, including partial
 	// delivery facts, separately from its original business error.
 	SendOutputs(ctx context.Context, outputs []delivery.Output) (events.LogResult, error)
-	// RecordToolCall saves the full business tool record and separately returns
-	// the source persistence log result and original persistence error.
-	RecordToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk string, startedAt time.Time, result string, callErr error) (events.LogResult, error)
 	AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reason string)
-	RememberDiscoveryResult(ctx context.Context, session *storage.Session, result *tool.Result) (events.LogResult, error)
 	AddToolUse(sessionID, toolName string)
 	ToolResultMessage(sessionID string, message llm.LLMMessage) storage.Message
 	ToolCallMessage(sessionID, content, rawText string, calls []llm.ToolCallRequest) storage.Message
@@ -58,14 +55,13 @@ type ConfirmResult struct {
 }
 
 // ToolCommitter is synchronous persistence owned by the consuming dialogue.
-// Started precedes external effects; Result collects each outcome and Flush commits the batch.
+// Begin reserves slots; Result persists one outcome; Flush publishes the projection.
 // Each operation returns its source log result separately from the business error;
 // phases without an actual write declare skipped instead of inventing a save.
 type ToolCommitter interface {
 	Begin(context.Context, *storage.Message) (events.LogResult, error)
 	Prepared(context.Context, int, llm.ToolCallRequest) (events.LogResult, error)
-	Started(context.Context, int, llm.ToolCallRequest) (events.LogResult, error)
-	Result(context.Context, int, llm.ToolCallRequest, llm.LLMMessage, *storage.Message) (events.LogResult, error)
+	Result(context.Context, int, llm.ToolCallRequest, llm.LLMMessage, *storage.ToolResultCommit) (events.LogResult, error)
 	Flush(context.Context) (events.LogResult, error)
 }
 
@@ -182,15 +178,15 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 	ctx, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
 	defer func() { cancel(); workers.Wait() }()
-	// Preparation and completion belong to this goroutine. Workers receive only
-	// frozen call contexts and return one independent outcome through ready.
+	// The coordinator owns session state; workers return independent outcomes
+	// through a shared completion queue.
 	tasks := make([]struct {
-		ctx       context.Context
-		risk      string
-		startedAt time.Time
-		result    ExecutionResult
-		// ready carries the result of an actually started worker.
-		ready <-chan ExecutionResult
+		ctx        context.Context
+		risk       string
+		actor      contextinfo.Actor
+		startedAt  time.Time
+		result     ExecutionResult
+		finishedAt time.Time
 	}, len(req.Calls))
 	head := deps.ToolCallMessage(sessionID, req.AssistantText, req.AssistantRawText, req.Calls)
 	logResult, err := req.Committer.Begin(ctx, &head)
@@ -200,169 +196,28 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 	if err != nil {
 		return RunResult{Err: err}
 	}
-	var confirmationExtra string
-	batchPreviewSent := sendBatchToolPreview(ctx, deps, req)
-	for index, original := range req.Calls {
-		if ctx.Err() != nil {
-			return RunResult{Stopped: true}
-		}
-		updated, err := deps.RefreshExecution(ctx, req.Session)
-		if err != nil {
-			return RunResult{Err: err}
-		}
-		ctx = updated
-		actor := req.Actor
-		if current, ok := contextinfo.ActorFromContext(ctx); ok {
-			actor = current
-		}
-		// Session snapshots keep later handoffs and discovery writes out of workers.
-		snapshot := *req.Session
-		task := &tasks[index]
-		task.ctx, task.startedAt = ctx, storage.Now()
-		fail := func(call llm.ToolCallRequest, err error, content string) {
-			task.result = ExecutionResult{Call: call, Message: toolMessage(call.Name, call.ID, content), Error: err}
-		}
-		call, _, err := deps.PrepareToolCall(ctx, req.Session, original)
-		if err != nil {
-			fail(original, err, fmt.Sprintf("tool call %s failed: hook: %v", original.Name, err))
-			continue
-		}
-		preparedCalls[index] = call
-		logResult, err := req.Committer.Prepared(ctx, index, call)
-		if logResult.ResultStatus == events.ResultFailed || logResult.ResultStatus == events.ResultCanceled {
-			record(ctx, call, "tool_transcript_save", logResult)
-		}
-		if err != nil {
-			preparedCalls[index] = original
-			fail(original, err, fmt.Sprintf("tool call %s was not executed: prepare transcript: %v", original.Name, err))
-			continue
-		}
-		resolved := m.Resolve(ctx, call.Name, req.CachedTools, snapshot.Mode)
-		runSource := "foreground"
-		if sandbox, ok := sandboxctx.SandboxContextFromContext(ctx); ok && (sandbox.Background || sandbox.BackgroundKind != "") {
-			runSource = ""
-			switch sandbox.BackgroundKind {
-			case sandboxctx.BackgroundKindCron, sandboxctx.BackgroundKindElnis:
-				runSource = string(sandbox.BackgroundKind)
-			}
-		}
-		if resolved.ResultStatus != events.ResultSucceeded {
-			startedAt := time.Now()
-			task.result = m.Execute(ctx, call, resolved, actor)
-			recordCall(ctx, call, resolved, actor, "", runSource, startedAt, &task.result)
-			continue
-		}
-		toolCtx := deps.PrepareToolContext(ctx, &snapshot, call)
-		assessment, riskText, err := m.assessForRun(toolCtx, resolved, call)
-		if err != nil {
-			resultStatus := events.ResultFailed
-			if errors.Is(err, context.Canceled) {
-				resultStatus = events.ResultCanceled
-			}
-			record(ctx, call, "tool_prepare", events.LogResult{ResultStatus: resultStatus, Content: fmt.Sprintf("assess risk: %v", err)})
-			fail(call, err, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
-			continue
-		}
-		task.risk = riskText
-		deps.AddToolUse(sessionID, call.Name)
-		prepared, err := m.PrepareCall(toolCtx, resolved, call)
-		if err != nil {
-			resultStatus := events.ResultFailed
-			if errors.Is(err, context.Canceled) {
-				resultStatus = events.ResultCanceled
-			}
-			record(ctx, call, "tool_prepare", events.LogResult{ResultStatus: resultStatus, Content: fmt.Sprintf("prepare_error=%v", err)})
-			fail(call, err, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
-			continue
-		}
-		if !batchPreviewSent && deps.ShouldSendPreview(ctx, req.Session, call, req.AssistantText) {
-			deps.SendPreview(ctx, fmt.Sprintf("正在调用 %s：%s", call.Name, previewArguments(call.Arguments)))
-		}
-		detail := ""
-		if prepared != nil {
-			detail = prepared.RiskDetail()
-		}
-		confirm, err := r.confirm(toolCtx, deps, actor, sessionID, call, resolved, assessment, detail)
-		confirmationExtra = joinAssistantText(confirmationExtra, confirm.Extra)
-		if confirm.Stopped {
-			return RunResult{ConfirmationExtra: confirmationExtra, Stopped: true}
-		}
-		if !confirm.Allowed {
-			if err == nil {
-				err = tool.PolicyDeniedError("tool confirmation rejected")
-			}
-			message := confirm.Message
-			if len(message.Segments) == 0 {
-				message = toolMessage(call.Name, call.ID, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
-			}
-			task.result = ExecutionResult{Call: call, Message: message, Error: err}
-			continue
-		}
-		runToolCtx, _, done, logResult, err := deps.StartToolRequest(toolCtx, sessionID, call.Name)
-		if logResult.ResultStatus == events.ResultFailed || logResult.ResultStatus == events.ResultCanceled {
-			record(ctx, call, "tool_prepare", logResult)
-		}
-		if err != nil {
-			fail(call, err, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
-			continue
-		}
-		runToolCtx = deps.PrepareToolContext(runToolCtx, &snapshot, call)
-		{
-			logResult, err := m.Media.RetainSessionToolArguments(runToolCtx, sessionID, call.Arguments)
-			if logResult.ResultStatus == events.ResultFailed || logResult.ResultStatus == events.ResultCanceled {
-				record(runToolCtx, call, "tool_prepare", logResult)
-			}
-			if err != nil {
-				done()
-				fail(call, err, fmt.Sprintf("tool call %s failed: retain media arguments: %v", call.Name, err))
-				continue
-			}
-		}
-		logResult, err = req.Committer.Started(runToolCtx, index, call)
-		if logResult.ResultStatus == events.ResultFailed || logResult.ResultStatus == events.ResultCanceled {
-			record(ctx, call, "tool_transcript_save", logResult)
-		}
-		if err != nil {
-			done()
-			fail(call, err, fmt.Sprintf("tool call %s was not executed: record start: %v", call.Name, err))
-			continue
-		}
-		ready := make(chan ExecutionResult, 1)
-		task.ready = ready
-		workers.Add(1)
-		go func() {
-			defer workers.Done()
-			startedAt := time.Now()
-			result := m.ExecutePrepared(runToolCtx, call, resolved, actor, prepared)
-			recordCall(runToolCtx, call, resolved, actor, riskText, runSource, startedAt, &result)
-			toolErr := runToolCtx.Err()
-			done()
-			if toolErr != nil {
-				result.Error = errors.Join(result.Error, toolErr)
-				result.Message.Segments = append(result.Message.Segments, llm.TextSegments(fmt.Sprintf("\ntool call %s canceled by user", call.Name))...)
-			}
-			ready <- result
-		}()
-	}
+	ready := make(chan int, len(req.Calls))
+	completed := 0
 	var resultErr error
-	for index, task := range tasks {
+	complete := func(index int) error {
+		defer func() { completed++ }()
+		task := &tasks[index]
 		result := task.result
-		if task.ready != nil {
-			select {
-			case result = <-task.ready:
-			case <-ctx.Done():
-				return RunResult{Stopped: true}
-			}
-		}
 		if ctx.Err() != nil {
-			return RunResult{Stopped: true}
+			return ctx.Err()
 		}
 		updated, err := deps.RefreshExecution(ctx, req.Session)
 		if err != nil {
-			return RunResult{Err: err}
+			return err
 		}
 		ctx = updated
 		call := preparedCalls[index]
+		actor := task.actor
+		rawRecord := &storage.ToolCallRecord{SessionID: sessionID, ToolCallID: call.ID, ToolName: call.Name, ActorID: actor.ID, RiskLevel: task.risk, StartedAt: task.startedAt, FinishedAt: task.finishedAt, Success: result.Error == nil}
+		if result.Error != nil {
+			rawRecord.Error = result.Error.Error()
+		}
+		metadata := storage.SessionMetadata{}
 		if result.Result != nil && len(result.Result.Outputs) > 0 {
 			logResult, err := deps.SendOutputs(ctx, result.Result.Outputs)
 			record(ctx, call, "tool_outputs", logResult)
@@ -396,36 +251,239 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 			}
 		}
 		if call.Name == "discover_tool" && result.Result != nil {
-			logResult, stateErr := deps.RememberDiscoveryResult(ctx, req.Session, result.Result)
-			if logResult.ResultStatus != events.ResultSkipped {
-				record(ctx, call, "tool_discovery_save", logResult)
+			update, err := DiscoveryStateUpdate(ctx, result.Result, m.Native.Registry, actor, m.Policy)
+			if err != nil {
+				return err
 			}
-			if stateErr != nil {
-				result.Error = errors.Join(result.Error, stateErr)
-				result.Message.Segments = append(result.Message.Segments, llm.TextSegments(fmt.Sprintf("\ntool call %s: tool state was not saved; completed actions were not rolled back: %v", call.Name, stateErr))...)
+			state, err := DecodeState(req.Session.Metadata)
+			if err != nil {
+				return err
 			}
-		}
-		logResult, _ := deps.RecordToolCall(task.ctx, sessionID, call, task.risk, task.startedAt, llm.SegmentsContentText(result.Message.Segments), result.Error)
-		if logResult.ResultStatus != events.ResultSkipped {
-			record(task.ctx, call, "tool_record_save", logResult)
+			for _, item := range update.Tools {
+				state.DiscoveredTools = append(state.DiscoveredTools, item.Name)
+			}
+			_ = metadata.Set("discovered_tools", uniqueNames(state.DiscoveredTools))
+			_ = metadata.Set("tool_cache", MergeCachedTools(state.ToolCache, update.Tools))
+			_ = metadata.Set("tool_tags", uniqueNames(append(state.ToolTags, update.Tags...)))
 		}
 		messages[index] = result.Message
 		stored := deps.ToolResultMessage(sessionID, result.Message)
 		if ruleCard != "" {
 			fields, err := storage.DecodeSessionMetadata(stored.Metadata)
 			if err != nil {
-				return RunResult{Err: err}
+				return err
 			}
 			_ = fields.Set("elyph_rules_shown", true)
 			stored.Metadata, _ = fields.Encode()
 		}
-		logResult, err = req.Committer.Result(ctx, index, call, result.Message, &stored)
+		logResult, err = req.Committer.Result(ctx, index, call, result.Message, &storage.ToolResultCommit{Result: &stored, Record: rawRecord, Metadata: metadata})
 		if logResult.ResultStatus != events.ResultSkipped {
 			record(ctx, call, "tool_transcript_save", logResult)
 		}
-		resultErr = errors.Join(resultErr, err)
+		if err != nil {
+			return err
+		}
+		if ruleCard != "" {
+			_ = metadata.Set("elyph_rules_shown", true)
+		}
+		if len(metadata) != 0 {
+			fields, err := storage.DecodeSessionMetadata(req.Session.Metadata)
+			if err != nil {
+				return err
+			}
+			for key, value := range metadata {
+				fields[key] = value
+			}
+			req.Session.Metadata, _ = fields.Encode()
+		}
 		if result.Error != nil {
 			deps.SendPreview(ctx, fmt.Sprintf("%s 调用失败：%v", call.Name, result.Error))
+		}
+		return nil
+	}
+	// Blocking preparation receives a detached snapshot; completed tools can be
+	// persisted while a later Hook or confirmation is waiting.
+	await := func(run func()) {
+		done := make(chan struct{})
+		go func() { defer close(done); run() }()
+		for {
+			select {
+			case <-done:
+				return
+			case index := <-ready:
+				if err := complete(index); err != nil {
+					resultErr = errors.Join(resultErr, err)
+					cancel()
+				}
+			}
+		}
+	}
+	var confirmationExtra string
+	batchPreviewSent := sendBatchToolPreview(ctx, deps, req)
+	for index, original := range req.Calls {
+		if ctx.Err() != nil {
+			return RunResult{Stopped: true, Err: resultErr}
+		}
+		updated, err := deps.RefreshExecution(ctx, req.Session)
+		if err != nil {
+			return RunResult{Err: err}
+		}
+		ctx = updated
+		actor := req.Actor
+		if current, ok := contextinfo.ActorFromContext(ctx); ok {
+			actor = current
+		}
+		// Session snapshots keep later handoffs and discovery writes out of workers.
+		snapshot := *req.Session
+		task := &tasks[index]
+		task.ctx, task.startedAt = ctx, storage.Now()
+		task.actor = actor
+		fail := func(call llm.ToolCallRequest, err error, content string) {
+			task.result = ExecutionResult{Call: call, Message: toolMessage(call.Name, call.ID, content), Error: err}
+			task.finishedAt = storage.Now()
+			ready <- index
+		}
+		var call llm.ToolCallRequest
+		prepareCtx := ctx
+		await(func() { call, _, err = deps.PrepareToolCall(prepareCtx, &snapshot, original) })
+		if err != nil {
+			fail(original, err, fmt.Sprintf("tool call %s failed: hook: %v", original.Name, err))
+			continue
+		}
+		preparedCalls[index] = call
+		logResult, err := req.Committer.Prepared(ctx, index, call)
+		if logResult.ResultStatus == events.ResultFailed || logResult.ResultStatus == events.ResultCanceled {
+			record(ctx, call, "tool_transcript_save", logResult)
+		}
+		if err != nil {
+			preparedCalls[index] = original
+			fail(original, err, fmt.Sprintf("tool call %s was not executed: prepare transcript: %v", original.Name, err))
+			continue
+		}
+		resolved := m.Resolve(ctx, call.Name, req.CachedTools, snapshot.Mode)
+		runSource := "foreground"
+		if sandbox, ok := sandboxctx.SandboxContextFromContext(ctx); ok && (sandbox.Background || sandbox.BackgroundKind != "") {
+			runSource = ""
+			switch sandbox.BackgroundKind {
+			case sandboxctx.BackgroundKindCron, sandboxctx.BackgroundKindElnis:
+				runSource = string(sandbox.BackgroundKind)
+			}
+		}
+		if resolved.ResultStatus != events.ResultSucceeded {
+			startedAt := time.Now()
+			task.result = m.Execute(ctx, call, resolved, actor)
+			recordCall(ctx, call, resolved, actor, "", runSource, startedAt, &task.result)
+			task.finishedAt = storage.Now()
+			ready <- index
+			continue
+		}
+		toolCtx := deps.PrepareToolContext(ctx, &snapshot, call)
+		assessment, riskText, err := m.assessForRun(toolCtx, resolved, call)
+		if err != nil {
+			resultStatus := events.ResultFailed
+			if errors.Is(err, context.Canceled) {
+				resultStatus = events.ResultCanceled
+			}
+			record(ctx, call, "tool_prepare", events.LogResult{ResultStatus: resultStatus, Content: fmt.Sprintf("assess risk: %v", err)})
+			fail(call, err, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
+			continue
+		}
+		task.risk = riskText
+		deps.AddToolUse(sessionID, call.Name)
+		var prepared *tool.PreparedCall
+		await(func() { prepared, err = m.PrepareCall(toolCtx, resolved, call) })
+		if err != nil {
+			resultStatus := events.ResultFailed
+			if errors.Is(err, context.Canceled) {
+				resultStatus = events.ResultCanceled
+			}
+			record(ctx, call, "tool_prepare", events.LogResult{ResultStatus: resultStatus, Content: fmt.Sprintf("prepare_error=%v", err)})
+			fail(call, err, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
+			continue
+		}
+		if !batchPreviewSent && deps.ShouldSendPreview(ctx, req.Session, call, req.AssistantText) {
+			deps.SendPreview(ctx, fmt.Sprintf("正在调用 %s：%s", call.Name, previewArguments(call.Arguments)))
+		}
+		detail := ""
+		if prepared != nil {
+			detail = prepared.RiskDetail()
+		}
+		var confirm ConfirmResult
+		await(func() { confirm, err = r.confirm(toolCtx, deps, actor, sessionID, call, resolved, assessment, detail) })
+		confirmationExtra = joinAssistantText(confirmationExtra, confirm.Extra)
+		if resultErr != nil {
+			return RunResult{Err: resultErr}
+		}
+		if confirm.Stopped {
+			return RunResult{ConfirmationExtra: confirmationExtra, Stopped: true}
+		}
+		if !confirm.Allowed {
+			if err == nil {
+				err = tool.PolicyDeniedError("tool confirmation rejected")
+			}
+			message := confirm.Message
+			if len(message.Segments) == 0 {
+				message = toolMessage(call.Name, call.ID, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
+			}
+			task.result = ExecutionResult{Call: call, Message: message, Error: err}
+			task.finishedAt = storage.Now()
+			ready <- index
+			continue
+		}
+		runToolCtx, _, done, logResult, err := deps.StartToolRequest(toolCtx, sessionID, call.Name)
+		if logResult.ResultStatus == events.ResultFailed || logResult.ResultStatus == events.ResultCanceled {
+			record(ctx, call, "tool_prepare", logResult)
+		}
+		if err != nil {
+			fail(call, err, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
+			continue
+		}
+		runToolCtx = deps.PrepareToolContext(runToolCtx, &snapshot, call)
+		// Validate prepared argument references without opening another write transaction.
+		for _, id := range media.ArgumentMediaIDs(call.Arguments) {
+			_, err = m.Media.Metadata(runToolCtx, id)
+			if err != nil {
+				break
+			}
+		}
+		if err != nil {
+			done()
+			fail(call, err, fmt.Sprintf("tool call %s failed: retain media arguments: %v", call.Name, err))
+			continue
+		}
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			startedAt := time.Now()
+			result := m.ExecutePrepared(runToolCtx, call, resolved, actor, prepared, func() {
+				startedAt = time.Now()
+				task.startedAt = startedAt
+				content, _ := json.Marshal(map[string]string{"tool": call.Name, "tool_call_id": call.ID, "actor_id": actor.ID, "arguments": tool.TruncateLogContent(call.Arguments, 512), "risk": riskText, "run_source": runSource, "source": string(resolved.Source)})
+				record := newRecord(runToolCtx, "tool_call_started", events.LogResult{ResultStatus: events.ResultSucceeded})
+				record.Category, record.Type, record.ContentLimit, record.Content = events.LogAudit, events.ContentJSON, 0, string(content)
+				logTool(runToolCtx, record)
+			})
+			recordCall(runToolCtx, call, resolved, actor, riskText, runSource, startedAt, &result)
+			task.finishedAt = storage.Now()
+			toolErr := runToolCtx.Err()
+			done()
+			if toolErr != nil {
+				result.Error = errors.Join(result.Error, toolErr)
+				result.Message.Segments = append(result.Message.Segments, llm.TextSegments(fmt.Sprintf("\ntool call %s canceled by user", call.Name))...)
+			}
+			task.result = result
+			ready <- index
+		}()
+	}
+	for completed < len(tasks) {
+		select {
+		case index := <-ready:
+			if err := complete(index); err != nil {
+				resultErr = errors.Join(resultErr, err)
+				cancel()
+			}
+		case <-ctx.Done():
+			return RunResult{Stopped: true, Err: resultErr}
 		}
 	}
 	if resultErr != nil {
@@ -434,14 +492,6 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 	logResult, err = req.Committer.Flush(ctx)
 	if logResult.ResultStatus != events.ResultSkipped {
 		logTool(ctx, newRecord(ctx, "tool_transcript_save", logResult))
-	}
-	if err == nil && elyphRulesShown && !state.ElyphRulesShown {
-		fields, decodeErr := storage.DecodeSessionMetadata(req.Session.Metadata)
-		if decodeErr != nil {
-			return RunResult{Err: decodeErr}
-		}
-		_ = fields.Set("elyph_rules_shown", true)
-		req.Session.Metadata, _ = fields.Encode()
 	}
 	return RunResult{Messages: messages, PreparedCalls: preparedCalls, ConfirmationExtra: confirmationExtra, Err: err}
 }

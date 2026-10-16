@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"elbot/internal/storage"
@@ -72,7 +73,21 @@ func (s *Service) CopyBackground(ctx context.Context, target Scope, req Backgrou
 			return nil, err
 		}
 		if len(pending) > 0 {
-			return nil, fmt.Errorf("background copy requires a complete committed native window")
+			var calls []storage.NativeCall
+			if err := json.Unmarshal([]byte(prepared.Seed.CallsJSON), &calls); err != nil {
+				return nil, err
+			}
+			ids := map[string]bool{}
+			for _, call := range calls {
+				if call.Status != "pending" {
+					ids[call.ResultInputID] = true
+				}
+			}
+			for _, input := range pending {
+				if !ids[input.ID] {
+					return nil, fmt.Errorf("background copy requires a complete committed native window")
+				}
+			}
 		}
 	}
 	messages, err := s.store.Messages().ListBySession(locked, source.ID)
@@ -101,6 +116,13 @@ func (s *Service) CopyBackground(ctx context.Context, target Scope, req Backgrou
 	copies := make([]*storage.Message, 0, len(messages))
 	ids := make(map[string]string, len(messages))
 	for _, message := range messages {
+		fields, err := storage.DecodeSessionMetadata(message.Metadata)
+		if err != nil {
+			return nil, err
+		}
+		if string(fields["tool_batch_status"]) == `"pending"` {
+			return nil, fmt.Errorf("cannot copy an unfinished tool batch; continue the session to seal interrupted results first")
+		}
 		ids[message.ID] = storage.NewID()
 	}
 	for _, original := range messages {
