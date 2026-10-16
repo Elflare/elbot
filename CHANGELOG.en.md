@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Provider added `api_mode="chat"/"response"`; if omitted, Chat Completions will still be used.
 - `edit_file` keeps an in-memory backup of each file before its most recent edit. Added `/rollback [编号]` and tool `rollback_file` available only to superadmins, which automatically expand when file read/write tools are discovered; Records become invalid after switching Sessions, restarting, or capacity eviction. Does not overwrite modifications made by Shell or external programs.
 - Added a chat command `/doctor` available only to superadmins, which performs a read-only check for missing items in the current configuration, TOML errors, unknown fields in the main configuration, and differences in built-in Skills; Lists issues by file and generates ElBot processing requests accompanied by configuration instructions and default template addresses. Returns `Everything is OK` when there are no issues, and will not automatically modify files.
+- `search_chat_history` and `get_chat_history_around` added an optional boolean parameter `full`, defaulting to `false`; Passing `true` removes the 300-character limit for single messages and referenced content, while the overall result still retains the 6000-character limit and the Chinese truncation notice.
 - `/log`, `/audit`, and `/elwisp` now have an independent `--raw` flag. Corrupted log lines will no longer interrupt queries, and the number of corrupted lines scanned will be prompted.
 
 ### Changed

@@ -408,6 +408,14 @@
       "translation": "`__ELBOT_CODE_0__` tool removed the `__ELBOT_CODE_1__` parameter; commands are executed in the current workspace by default, while background tasks remain restricted to their respective sandboxes.",
       "updated_at": 1782958962
     },
+    "CHANGELOG.md:list:326c03afc5288fc10843f47f82d3acd0477f99520426ca156a8a8dfd7b46efcd": {
+      "kind": "list",
+      "source": "传 __ELBOT_CODE_0__ 解除单条消息及引用内容的 300 字限制，整份结果仍保留 6000 字限制和中文截断说明。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "326c03afc5288fc10843f47f82d3acd0477f99520426ca156a8a8dfd7b46efcd",
+      "translation": "Passing __ELBOT_CODE_0__ removes the 300-character limit for single messages and referenced content, while the overall result still retains the 6000-character limit and the Chinese truncation notice.",
+      "updated_at": 1792165690
+    },
     "CHANGELOG.md:list:327080305dd2ec0ee8ffd29a6cd134dbb8031f298cc73cb5bdfcf9f7a52cfa28": {
       "kind": "list",
       "source": "当前调用权限单独受 __ELBOT_CODE_0__ 限制。",
@@ -1135,6 +1143,14 @@
       "source_hash": "822601c04dd2e1f7bd5e0cefdd67a0a251d1376750c0f73c61636f8d4ffe244e",
       "translation": "Tools can no longer be passed into chat mode.",
       "updated_at": 1791194538
+    },
+    "CHANGELOG.md:list:823351d10b1d8372c408989dae987e1b0c5806df797d0e648f3e418a8483b0cb": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__、__ELBOT_CODE_1__ 新增可选布尔参数 __ELBOT_CODE_2__，默认 __ELBOT_CODE_3__；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "823351d10b1d8372c408989dae987e1b0c5806df797d0e648f3e418a8483b0cb",
+      "translation": "__ELBOT_CODE_0__ and __ELBOT_CODE_1__ added an optional boolean parameter __ELBOT_CODE_2__, defaulting to __ELBOT_CODE_3__;",
+      "updated_at": 1792165690
     },
     "CHANGELOG.md:list:83aa655090903e728d1214292cfd1dd5bdd99b5ae467bc2329b6108a14d1a622": {
       "kind": "list",
@@ -2290,8 +2306,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "0653875b6b30f5cb79e6fb31d6e833fd4b58e5b2b135e254ffd78555232935a3",
+  "source_hash": "8f76d7457050e26c2162bd18825f51f74a993aa871e04545bc1d654f6c350338",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1792154535,
+  "updated_at": 1792165690,
   "version": 2
 }
