@@ -48,10 +48,7 @@ func (r *CronJobRepository) Upsert(ctx context.Context, req storage.UpsertCronJo
 	job.Metadata = req.Metadata
 	job.NextRunAt = req.NextRunAt
 	job.UpdatedAt = now
-	if err := r.update(ctx, job, req.ResetDelivery); err != nil {
-		return nil, err
-	}
-	return r.GetByName(ctx, req.Name)
+	return r.update(ctx, job, req.ResetDelivery)
 }
 
 func cronJobMatchesUpsert(job *storage.CronJob, req storage.UpsertCronJobRequest) bool {
@@ -265,7 +262,7 @@ INSERT INTO cron_jobs (
 	return nil
 }
 
-func (r *CronJobRepository) update(ctx context.Context, job *storage.CronJob, resetDelivery bool) error {
+func (r *CronJobRepository) update(ctx context.Context, job *storage.CronJob, resetDelivery bool) (*storage.CronJob, error) {
 	query := `
 UPDATE cron_jobs
 SET handler = ?, schedule = ?, enabled = ?, metadata = ?, next_run_at = ?, updated_at = ?`
@@ -280,16 +277,19 @@ SET handler = ?, schedule = ?, enabled = ?, metadata = ?, next_run_at = ?, updat
 	if resetDelivery {
 		query += ", delivery_state = NULL, delivery_token = NULL"
 	}
-	query += "\nWHERE id = ?"
+	query += `
+WHERE id = ?
+RETURNING id, name, handler, schedule, enabled, metadata, last_run_at, next_run_at,
+          run_count, created_at, updated_at, delivery_state, delivery_token`
 	args = append(args, job.ID)
-	res, err := r.db.ExecContext(ctx, query, args...)
+	job, err := scanCronJob(r.db.QueryRowContext(ctx, query, args...))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, storage.ErrNotFound
+	}
 	if err != nil {
-		return fmt.Errorf("update cron job: %w", err)
+		return nil, fmt.Errorf("update cron job: %w", err)
 	}
-	if n, err := res.RowsAffected(); err == nil && n == 0 {
-		return storage.ErrNotFound
-	}
-	return nil
+	return job, nil
 }
 
 func scanCronJob(row interface{ Scan(dest ...any) error }) (*storage.CronJob, error) {

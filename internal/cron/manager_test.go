@@ -201,6 +201,83 @@ func TestManagerUpsertStoresAndDisableClearsNextRunAt(t *testing.T) {
 	}
 }
 
+func TestManagerSchedulesNextRunState(t *testing.T) {
+	future := time.Now().In(time.Local).Add(48 * time.Hour).Truncate(time.Minute)
+	past := future.Add(-96 * time.Hour)
+	onceMetadata := func(runAt time.Time) string {
+		t.Helper()
+		data, err := json.Marshal(Metadata{
+			Kind: metadataKind, Version: 1,
+			Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: runAt.Format(timeLayout)},
+		})
+		if err != nil {
+			t.Fatalf("marshal once metadata: %v", err)
+		}
+		return string(data)
+	}
+	futureMetadata := onceMetadata(future)
+	for _, tt := range []struct {
+		name       string
+		enabled    bool
+		registered bool
+		metadata   string
+		initial    *time.Time
+		want       *time.Time
+		scheduled  bool
+	}{
+		{name: "recurring replaces old time", enabled: true, registered: true, initial: &past, scheduled: true},
+		{name: "once without stored time", enabled: true, registered: true, metadata: futureMetadata, want: &future, scheduled: true},
+		{name: "once correct time in another zone", enabled: true, registered: true, metadata: futureMetadata, initial: timePtr(future.In(time.FixedZone("other", -7*60*60))), want: &future, scheduled: true},
+		{name: "once replaces old time", enabled: true, registered: true, metadata: futureMetadata, initial: &past, want: &future, scheduled: true},
+		{name: "disabled clears stored time", registered: true, initial: &future},
+		{name: "missing handler clears stored time", enabled: true, initial: &future},
+		{name: "expired once clears stored time", enabled: true, registered: true, metadata: onceMetadata(past), initial: &future},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := newFakeCronRepo()
+			manager := NewManager(repo)
+			if tt.registered {
+				if err := manager.RegisterHandler("test.handler", func(context.Context, storage.CronJob) (globalevents.LogResult, error) {
+					return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+				}); err != nil {
+					t.Fatalf("register handler: %v", err)
+				}
+			}
+			if err := manager.Start(context.Background()); err != nil {
+				t.Fatalf("start manager: %v", err)
+			}
+			defer func() { <-manager.Stop().Done() }()
+			job := storage.CronJob{
+				ID: "job", Name: "test.job", Handler: "test.handler", Schedule: "0 3 * * *",
+				Enabled: tt.enabled, Metadata: tt.metadata, NextRunAt: tt.initial,
+			}
+			repo.jobs[job.Name] = &job
+			before := time.Now()
+			if err := manager.scheduleJob(job); err != nil {
+				t.Fatalf("schedule job: %v", err)
+			}
+			got := repo.jobs[job.Name].NextRunAt
+			if tt.want != nil {
+				if got == nil || !got.Equal(*tt.want) {
+					t.Fatalf("next run = %v, want %v", got, tt.want)
+				}
+			} else if tt.scheduled {
+				if got == nil || !got.After(before) || got.Hour() != 3 || got.Minute() != 0 {
+					t.Fatalf("recurring next run = %v", got)
+				}
+			} else if got != nil {
+				t.Fatalf("unscheduled next run = %v, want nil", got)
+			}
+			manager.mu.Lock()
+			_, scheduled := manager.entries[job.Name]
+			manager.mu.Unlock()
+			if scheduled != tt.scheduled {
+				t.Fatalf("scheduled = %v, want %v", scheduled, tt.scheduled)
+			}
+		})
+	}
+}
+
 func TestManagerRunJobDoesNotReenableJobDisabledByHandler(t *testing.T) {
 	repo := newFakeCronRepo()
 	manager := NewManager(repo)

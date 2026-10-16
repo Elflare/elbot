@@ -254,7 +254,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/cron/models.go`、`internal/cron/delivery.go`、`internal/cron/recovery.go`：任务模型、逐项投递及连接恢复；共享投递函数返回目标和来源诊断，恢复入口在最终运行记录中保留正文，逐目标审计独立发布。
 - `internal/maintenance/`：维护任务；清理方法组织独立结果、text 正文和原始 error，Cron Handler 直接传递，由调度器统一发布运行记录；取消与超时区分。媒体清理在并行删除错误合并前保留各自结果，独立失败不被取消覆盖。
 - `internal/agent/background.go`、`internal/agent/background_tools.go`：公共后台执行与确认。
-- `internal/tool/builtin/cron.go`、`internal/storage/sqlite/cron_job_repository.go`：工具入口与仓储。
+- `internal/tool/builtin/cron.go`、`internal/storage/sqlite/cron_job_repository.go`：工具入口与仓储；配置更新直接返回完整任务记录。`internal/cron/manager.go` 安排调度时比较下一次运行时间，仅在时间值变化时保存。
 
 <!-- locator:docs -->
 ## 文档
