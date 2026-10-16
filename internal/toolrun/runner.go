@@ -132,8 +132,7 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 		logTool(ctx, record)
 	}
 	recordCall := func(ctx context.Context, call llm.ToolCallRequest, resolved ResolvedTool, actor contextinfo.Actor, risk string, runSource string, startedAt time.Time, result *ExecutionResult) {
-		// Call entry declares invocation success, independently of the tool business
-		// error. The tool supplies only its diagnostic log body.
+		// The execution source declares the outcome; tools supply their diagnostic body.
 		// runSource was fixed before entry; source separately identifies the
 		// native/Elwisp implementation. Neither is inferred from diagnostics.
 		if result.Result != nil && result.ExecutionStarted && resolved.Native != nil {
@@ -144,15 +143,12 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 			// are assembled once, after the hook, in model call order.
 			result.Message.Segments = llm.TextSegments(result.Result.DiscoveryText.Details)
 		}
-		if result.ExecutionStarted {
-			result.LogResult.ResultStatus = events.ResultSucceeded
-		}
 		logResult := result.LogResult
+		logResult.ResultStatus = result.ResultStatus
 		// Declaration order is display order; tools own their result summaries.
 		content := struct {
 			Tool       string `json:"tool"`
 			ActorID    string `json:"actor_id"`
-			Arguments  string `json:"arguments"`
 			ElapsedMS  int64  `json:"elapsed_ms"`
 			Result     string `json:"result"`
 			Risk       string `json:"risk"`
@@ -162,7 +158,6 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 		}{
 			Tool:       tool.TruncateLogContent(call.Name, 2048),
 			ActorID:    tool.TruncateLogContent(actor.ID, 2048),
-			Arguments:  tool.TruncateLogContent(call.Arguments, 512),
 			ElapsedMS:  time.Since(startedAt).Milliseconds(),
 			Result:     logResult.Content,
 			Risk:       tool.TruncateLogContent(risk, 2048),

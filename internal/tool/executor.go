@@ -29,7 +29,7 @@ type ExecutionResult struct {
 	Result *Result
 	// LogResult.Content carries the independent tool log body. Before call entry,
 	// the execution source declares ResultStatus and the reason; after entry,
-	// the runner declares the invocation log status, independent of business errors.
+	// the runner uses ResultStatus for the invocation log outcome.
 	LogResult events.LogResult
 	// Error is the original execution or preparation error; nil does not declare success.
 	Error error

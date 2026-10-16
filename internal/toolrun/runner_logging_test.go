@@ -170,7 +170,7 @@ func TestRunnerWritesOnlyAuditWithBoundedArgumentPreview(t *testing.T) {
 	}
 	reader := logging.Reader{Dir: center.LogDir()}
 	for _, prefix := range []string{"audit", "elbot"} {
-		found, err := reader.Query(t.Context(), logging.LogQuery{Prefix: prefix, Days: 1, Limit: 10, MinLevel: "debug", Fields: map[string]string{"event": "tool_call_completed"}})
+		found, err := reader.Query(t.Context(), logging.LogQuery{Prefix: prefix, Days: 1, Limit: 10, MinLevel: "debug", Events: []string{"tool_call_prepared", "tool_call_completed"}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -180,7 +180,7 @@ func TestRunnerWritesOnlyAuditWithBoundedArgumentPreview(t *testing.T) {
 			}
 			continue
 		}
-		if len(found.Entries) != 1 || found.DamagedCount != 0 {
+		if len(found.Entries) != 2 || found.DamagedCount != 0 {
 			t.Fatalf("audit records=%+v", found)
 		}
 		entry := found.Entries[0]
@@ -195,10 +195,14 @@ func TestRunnerWritesOnlyAuditWithBoundedArgumentPreview(t *testing.T) {
 			t.Fatal(err)
 		}
 		var arguments, body string
-		if err := json.Unmarshal(content["arguments"], &arguments); err != nil {
+		if err := json.Unmarshal(content["result"], &body); err != nil {
 			t.Fatal(err)
 		}
-		if err := json.Unmarshal(content["result"], &body); err != nil {
+		var prepared map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(found.Entries[1].Content), &prepared); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(prepared["arguments"], &arguments); err != nil {
 			t.Fatal(err)
 		}
 		if arguments != tool.TruncateLogContent(string(args), 512) || len([]rune(arguments)) != 512 || !strings.HasSuffix(arguments, "…") || strings.Contains(arguments, "ARGUMENT_TAIL") || body != "independent log body" {
@@ -228,7 +232,7 @@ func TestRunnerRecordsInvocationBeforeCancellationStopsLaterOperations(t *testin
 	t.Cleanup(connection.Disconnect)
 	deps := &runnerTestDeps{}
 	result := NewRunner(manager).Run(ctx, deps, RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{ID: "cancel-during-call", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "logging_tool", Arguments: "{}"}}})
-	if !result.Stopped || deps.completed != 0 || len(calls) != 1 || calls[0].ResultStatus != events.ResultSucceeded || calls[0].Level != slog.LevelInfo || !strings.Contains(calls[0].Content, "independent log body") {
+	if !result.Stopped || deps.completed != 0 || len(calls) != 1 || calls[0].ResultStatus != events.ResultCanceled || calls[0].Level != slog.LevelInfo || !strings.Contains(calls[0].Content, "independent log body") {
 		t.Fatalf("result=%#v completed=%d invocation logs=%#v", result, deps.completed, calls)
 	}
 }
@@ -363,6 +367,8 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 		{name: "success"},
 		{name: "tool business failure", callErr: errors.New("execution failed")},
 		{name: "tool business cancellation", callErr: context.Canceled},
+		{name: "wrapped tool cancellation", callErr: fmt.Errorf("tool: %w", context.Canceled)},
+		{name: "tool timeout", callErr: context.DeadlineExceeded},
 		{name: "cancel and save failure", callErr: context.Canceled, saveErr: errors.New("transcript failed")},
 		{name: "rejected", reject: true},
 		{name: "rejected and save failure", reject: true, saveErr: errors.New("transcript failed")},
@@ -402,7 +408,14 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 					t.Fatalf("tool never entered, invocation logs = %#v", calls)
 				}
 			} else {
-				if len(calls) != 1 || calls[0].ResultStatus != events.ResultSucceeded || calls[0].Level != slog.LevelInfo {
+				status, level := events.ResultSucceeded, slog.LevelInfo
+				if tc.callErr != nil {
+					status, level = events.ResultFailed, slog.LevelError
+					if errors.Is(tc.callErr, context.Canceled) {
+						status, level = events.ResultCanceled, slog.LevelInfo
+					}
+				}
+				if len(calls) != 1 || calls[0].ResultStatus != status || calls[0].Level != level {
 					t.Fatalf("invocation logs = %#v", calls)
 				}
 				var content map[string]any
