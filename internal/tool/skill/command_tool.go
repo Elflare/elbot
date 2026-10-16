@@ -69,7 +69,7 @@ func (t CommandTool) ActivateTools() []string {
 }
 
 func (t CommandTool) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, logContent string, callErr error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
+	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 
 	dotEnv, err := config.LoadEnvFile(filepath.Join(t.Record.Root, ".env"))
 	if err != nil {

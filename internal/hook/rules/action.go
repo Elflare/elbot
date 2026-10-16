@@ -244,7 +244,7 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 		ToolCallID string `json:"tool_call_id"`
 	}{
 		Tool:       tool.TruncateLogContent(name, 2048),
-		Arguments:  tool.TruncateLogContent(arguments, 256),
+		Arguments:  tool.TruncateLogContent(arguments, 512),
 		Point:      tool.TruncateLogContent(string(event.Point), 2048),
 		Source:     "rules",
 		ToolCallID: call.ID,

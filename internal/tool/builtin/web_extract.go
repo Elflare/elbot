@@ -145,7 +145,7 @@ func webExtractBuilder() *tool.Builder {
 }
 
 func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
+	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 	if err := ctx.Err(); err != nil {
 		return nil, err.Error(), err
 	}

@@ -115,7 +115,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:tool -->
 ## Tool Runtime、工具状态与文件
 
-- `internal/tool/`、`internal/tool/builtin/`：注册、schema、Runtime 执行器与内置工具。各工具自行组织日志摘要并选择 128／256 字符预算；`internal/tool/tool.go` 的 TruncateLogContent 仅提供调用方主动使用的 Unicode 截断，不自动处理结果。
+- `internal/tool/`、`internal/tool/builtin/`：注册、schema、Runtime 执行器与内置工具。各工具自行组织日志摘要并按 1024 rune 预算截断；`internal/tool/tool.go` 的 TruncateLogContent 仅提供调用方主动使用的 Unicode 截断，不自动处理结果。
 - `internal/toolrun/`：视图、路由、权限风险、确认及调用参数媒体引用。
 - `internal/toolrun/state.go`、`internal/toolrun/preload.go`、`internal/toolrun/background.go`：状态提交、预加载与后台白名单；预载失败与跳过由来源记录身份、原因和结果。
 - `internal/agent/tool_directive.go`、`internal/agent/tool_cache.go`：输入指令和状态提交编排。
@@ -134,7 +134,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/agent/dialogue/tool_execution.go`：路线共用的 ToolRun 入口与协议提交器，批次准备失败只记批次日志。
 - `internal/agent/toolrun_adapter.go`：Hook、子请求、确认、调用记录与状态提交桥接；请求登记、RecordToolCall 和发现状态保存各自返回独立 LogResult 与原始错误，Runner 不再推导这些操作的结果。
-- `internal/toolrun/runner.go`：Runner 借用共享 Manager 顺序准备和确认、并发执行、按原调用顺序处理完成并 Flush 整批保存；newRecord 复用基础九字段与当次身份，recordCall 在 Execute 返回后填写调用日志结果、等级和查询事实，仅发布一份 audit JSON。参数日志限 256 字符，工具返回的独立摘要不再截断。调用前固定 runSource 写入 JSON，接管不改写已开始调用；后续操作分别使用所属来源 LogResult。
+- `internal/toolrun/runner.go`：Runner 借用共享 Manager 顺序准备和确认、并发执行、按原调用顺序处理完成并 Flush 整批保存；newRecord 复用基础九字段与当次身份，recordCall 在 Execute 返回后填写调用日志结果、等级和查询事实，仅发布一份 audit JSON。参数日志限 512 rune，工具返回的独立摘要由来源限 1024 rune，Runner 不再截断。调用前固定 runSource 写入 JSON，接管不改写已开始调用；后续操作分别使用所属来源 LogResult。
 - `internal/toolrun/toolrun.go`：工具业务解析及原生／远程调用中间层，Execute 保留业务结果、原始错误、ExecutionStarted 和独立正文；未进入调用时声明明确结果及原因，不组装或发布调用日志。
 - `internal/tool/prepared.go`：CallPreparer 能力入口与单次 PreparedCall，固定调用参数、确认详情和执行回调；Runner 以局部变量传给 worker，Executor 校验调用身份及权限后执行。无需保存准备结果的工具返回 nil，普通工具执行时使用当前注册项。
 - `internal/toolrun/logging.go`：logTool 统一接收 ctx 和完整 LogRecord，直接 EmitLog；工具调用记录和编排操作记录均由 Runner 来源组装；全局队列和落盘归 internal/logging。

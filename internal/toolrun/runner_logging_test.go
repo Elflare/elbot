@@ -156,7 +156,7 @@ func TestRunnerWritesOnlyAuditWithBoundedArgumentPreview(t *testing.T) {
 	if err := registry.Register(loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "logging_tool"}, args: &actualArgs}); err != nil {
 		t.Fatal(err)
 	}
-	args, _ := json.Marshal(map[string]string{"note": strings.Repeat("雪🔥", 200) + "ARGUMENT_TAIL"})
+	args, _ := json.Marshal(map[string]string{"note": strings.Repeat("雪🔥", 400) + "ARGUMENT_TAIL"})
 	manager := NewManager(registry, security.NewPolicy("high", "high", nil))
 	result := NewRunner(manager).Run(t.Context(), &runnerTestDeps{}, RunRequest{
 		Committer: &testToolCommitter{}, Session: &storage.Session{ID: "bounded-audit", Mode: storage.SessionModeWork},
@@ -202,7 +202,7 @@ func TestRunnerWritesOnlyAuditWithBoundedArgumentPreview(t *testing.T) {
 		if err := json.Unmarshal(content["result"], &body); err != nil {
 			t.Fatal(err)
 		}
-		if len([]rune(arguments)) != 256 || !strings.HasSuffix(arguments, "…") || strings.Contains(arguments, "ARGUMENT_TAIL") || body != "independent log body" {
+		if arguments != tool.TruncateLogContent(string(args), 512) || len([]rune(arguments)) != 512 || !strings.HasSuffix(arguments, "…") || strings.Contains(arguments, "ARGUMENT_TAIL") || body != "independent log body" {
 			t.Fatalf("audit body=%q arguments=%q", body, arguments)
 		}
 	}

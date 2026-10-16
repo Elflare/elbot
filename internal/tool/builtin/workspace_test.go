@@ -135,7 +135,7 @@ func TestWorkspaceToolLoadsAgentInstructionsOnce(t *testing.T) {
 	if !strings.Contains(result.Content, "Loaded workspace instructions from AGENTS.md:\nwork rules") {
 		t.Fatalf("instructions not loaded: %q", result.Content)
 	}
-	if strings.Contains(logContent, "work rules") || strings.Contains(logContent, "AGENTS.md") || !strings.Contains(logContent, "workspace set.") || len([]rune(logContent)) > 128 {
+	if strings.Contains(logContent, "work rules") || strings.Contains(logContent, "AGENTS.md") || !strings.Contains(logContent, "workspace set.") || len([]rune(logContent)) > 1024 {
 		t.Fatalf("workspace log included instructions: %q", logContent)
 	}
 	if len(store.noticeDirs) != 1 || store.noticeDirs[0] != filepath.Clean(dir) {

@@ -142,7 +142,7 @@ func TestShellToolOutputLimit(t *testing.T) {
 			if result.Content != want {
 				t.Fatalf("output mismatch: got %d bytes, want %d; truncations=%d", len(result.Content), len(want), strings.Count(result.Content, notice))
 			}
-			if !strings.HasPrefix(logContent, "exit_code=7\nstderr:\ne") || len([]rune(logContent)) != 256 || !strings.HasSuffix(logContent, "…") {
+			if !strings.HasPrefix(logContent, "exit_code=7\nstderr:\ne") || len([]rune(logContent)) != 1024 || !strings.HasSuffix(logContent, "…") {
 				t.Fatalf("large stdout hid diagnostics: %q", logContent)
 			}
 		})

@@ -87,7 +87,7 @@ func (t CronTool) Schema() llm.ToolSchema {
 	return cronBuilder(t.Name(), t.Info().Description).BuildSchema()
 }
 func (t CronTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
+	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 	now := t.info.CurrentTime().Format("2006-01-02 15:04:05")
 	{
 		result := textResult("cron 是定时任务管理入口。当前本地时间：" + now + "。请调用 cron_query 或 cron_write。cron_query 不传 name 时列出 cron，传 name 时查询单个 cron。")
@@ -114,7 +114,7 @@ func (t CronQueryTool) Schema() llm.ToolSchema {
 		BuildSchema()
 }
 func (t CronQueryTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
+	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 	var args cronQueryArgs
 	if err := decodeArgs(req.Arguments, &args); err != nil {
 		return nil, err.Error(), err
@@ -185,7 +185,7 @@ func (t CronWriteTool) Schema() llm.ToolSchema {
 		BuildSchema()
 }
 func (t CronWriteTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
+	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 	var args cronWriteArgs
 	if err := decodeArgs(req.Arguments, &args); err != nil {
 		return nil, err.Error(), err

@@ -120,7 +120,7 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 
 func TestPluginToolArgumentPreviewDoesNotChangeInvocation(t *testing.T) {
 	records := captureHookRecords(t)
-	args, _ := json.Marshal(map[string]string{"value": strings.Repeat("雪🔥", 200)})
+	args, _ := json.Marshal(map[string]string{"value": strings.Repeat("雪🔥", 400)})
 	registry := tool.NewRegistry()
 	if err := registry.Register(loggingTool{run: func(_ context.Context, req tool.CallRequest) (*tool.Result, string, error) {
 		if string(req.Arguments) != string(args) {
@@ -151,7 +151,7 @@ func TestPluginToolArgumentPreviewDoesNotChangeInvocation(t *testing.T) {
 	var arguments, result string
 	json.Unmarshal(content["arguments"], &arguments)
 	json.Unmarshal(content["result"], &result)
-	if len([]rune(arguments)) != 256 || !strings.HasSuffix(arguments, "…") || result != "source summary" {
+	if len([]rune(arguments)) != 512 || !strings.HasSuffix(arguments, "…") || result != "source summary" {
 		t.Fatalf("arguments=%q result=%q", arguments, result)
 	}
 }

@@ -42,7 +42,7 @@ func (GetMediaTool) Schema() llm.ToolSchema {
 }
 
 func (t GetMediaTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
+	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 	var args getMediaArgs
 	if err := json.Unmarshal(req.Arguments, &args); err != nil {
 		{

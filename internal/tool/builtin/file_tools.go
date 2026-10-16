@@ -147,7 +147,7 @@ func readFileBuilder() *tool.Builder {
 }
 
 func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
+	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 	var args readFileArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
@@ -575,7 +575,7 @@ func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.R
 		if err := decodeStrictFileArgs(req.Arguments, &args); err != nil {
 			{
 				callErr := fmt.Errorf("parse edit_file arguments: %w", err)
-				return nil, tool.TruncateLogContent(callErr.Error(), 256), callErr
+				return nil, tool.TruncateLogContent(callErr.Error(), 1024), callErr
 			}
 		}
 	}
@@ -583,7 +583,7 @@ func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.R
 }
 
 func (t EditFileTool) call(ctx context.Context, args editFileArgs, prepared *fileops.PreparedEdit) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
+	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 	var result fileops.EditResult
 	var resolved workspace.ResolvedPath
 	var err error

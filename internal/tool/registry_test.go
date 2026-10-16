@@ -228,7 +228,7 @@ func TestDiscoverToolSkillDetailReturnsReadableContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]string{"name": "zrlong"})
-	result, _, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
+	result, logContent, err := NewDiscoverTool(registry).Call(context.Background(), CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,6 +237,9 @@ func TestDiscoverToolSkillDetailReturnsReadableContent(t *testing.T) {
 	}
 	if strings.Contains(string(result.Data), `\u003c`) || strings.Contains(string(result.Data), `\u003e`) {
 		t.Fatalf("discovery data should not html-escape ELyph symbols: %s", result.Data)
+	}
+	if logContent != "found=1 errors=0\nzrlong" {
+		t.Fatalf("discovery log should retain only its summary: %q", logContent)
 	}
 }
 

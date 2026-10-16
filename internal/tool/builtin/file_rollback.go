@@ -76,13 +76,13 @@ func (t RollbackFileTool) PrepareCall(ctx context.Context, req tool.CallRequest)
 func (t RollbackFileTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
 	args, err := decodeRollbackArgs(req)
 	if err != nil {
-		return nil, tool.TruncateLogContent(err.Error(), 256), err
+		return nil, tool.TruncateLogContent(err.Error(), 1024), err
 	}
 	return t.call(ctx, args, nil)
 }
 
 func (t RollbackFileTool) call(ctx context.Context, args rollbackFileArgs, prepared *fileops.PreparedRollback) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
+	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 	var result fileops.RollbackResult
 	var err error
 	if prepared != nil {
