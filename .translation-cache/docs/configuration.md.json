@@ -1544,6 +1544,14 @@
       "translation": "To restrict the visibility of a documentation-type Skill, or to register __ELBOT_CODE_0__ as a regular tool, add __ELBOT_CODE_1__ to the root directory of that Skill.",
       "updated_at": 1783479082
     },
+    "docs/configuration.md:paragraph:15c72da0522038996744b6b29964b272497364ca7096318f0dc6f10702271758": {
+      "kind": "paragraph",
+      "source": "其他文件识别首行有效的 Shell shebang，包括直接解释器路径及 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__ 写法。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "15c72da0522038996744b6b29964b272497364ca7096318f0dc6f10702271758",
+      "translation": "Other files recognize a valid Shell shebang on the first line, including direct interpreter paths and __ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__ notations.",
+      "updated_at": 1792135101
+    },
     "docs/configuration.md:paragraph:1995c538b813456f6f180052ecbc654bfea600bc28943887c51c919bf83d3e09": {
       "kind": "paragraph",
       "source": "需要代理时，可在对应环境层设置标准变量；子进程是否使用仍取决于具体程序：\n",
@@ -1960,6 +1968,14 @@
       "translation": "Relative paths are resolved based on the directory of the main configuration file by default.\n",
       "updated_at": 1781515756
     },
+    "docs/configuration.md:paragraph:701201b08cf4c9155755abde98290541332ca7b2ca6354d7a0f98fe3fe11ae38": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 在确认前生成编辑结果和差异预览，确认后提交同一份结果。等待确认期间若文件内容或目标发生变化，提交会被拒绝，需要重新准备编辑。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "701201b08cf4c9155755abde98290541332ca7b2ca6354d7a0f98fe3fe11ae38",
+      "translation": "__ELBOT_CODE_0__ generates editing results and a diff preview before confirmation, and submits the same result after confirmation. If the file content or target changes while waiting for confirmation, the submission will be rejected, and the edit must be prepared again.\n",
+      "updated_at": 1792135101
+    },
     "docs/configuration.md:paragraph:70cf66b1773b9b52236590db1f99369215636c296efca6a81690f976e80a6b00": {
       "kind": "paragraph",
       "source": "发送仍会同步等待平台回执。\n",
@@ -2071,6 +2087,14 @@
       "source_hash": "8788206be7b0af8f2678fe6ee78fced25b2abf43e64f8df0908da647cc95f183",
       "translation": "The PATH within it is handled according to the append rules mentioned above.",
       "updated_at": 1785918785
+    },
+    "docs/configuration.md:paragraph:881a89ddd8a992d62b26d4bc52d7cf4ad53fcd086eb16f60766a780687bcaa96": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__／__ELBOT_CODE_2__ 模式支持单文件和目录查询。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "881a89ddd8a992d62b26d4bc52d7cf4ad53fcd086eb16f60766a780687bcaa96",
+      "translation": "__ELBOT_CODE_0__'s __ELBOT_CODE_1__/__ELBOT_CODE_2__ mode supports single-file and directory queries.",
+      "updated_at": 1792135101
     },
     "docs/configuration.md:paragraph:89503fe405578d70f42a08631eb474cc589aaed90d82ccbcdc0bcba933863085": {
       "kind": "paragraph",
@@ -2448,6 +2472,14 @@
       "translation": "When injecting the Prompt, the two segments will be merged into a single piece of natural text.\n",
       "updated_at": 1782206047
     },
+    "docs/configuration.md:paragraph:bbe3c8c30871bbb6b83272aa2fa61cdb507a499400f0ae1a51d755f1e620eed1": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__ 没有可识别的 Shell shebang 时使用 Bash 方言，声明 mksh 时使用 mksh 方言。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "bbe3c8c30871bbb6b83272aa2fa61cdb507a499400f0ae1a51d755f1e620eed1",
+      "translation": "When __ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__ have no recognizable Shell shebang, the Bash dialect is used; when mksh is declared, the mksh dialect is used.\n",
+      "updated_at": 1792135101
+    },
     "docs/configuration.md:paragraph:bd4044e2e31741854ecaef63e70289d046ac2ae08fa264f24d5a570e71b7aa0c": {
       "kind": "paragraph",
       "source": "QQ 官方机器人、QQ OneBot 和 Telegram 配置在示例中默认注释。",
@@ -2816,6 +2848,14 @@
       "translation": "S3 delivery uses variables specified by __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__, as well as __ELBOT_CODE_3__ and __ELBOT_CODE_4__.",
       "updated_at": 1789043218
     },
+    "docs/configuration.md:paragraph:fbb1b092bc9d74ed158ee6a906904a6bd55cdb9b595aecad601feb1329c81b84": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 按 Go 解析，__ELBOT_CODE_1__ 按 mksh 解析；",
+      "source_file": "docs/configuration.md",
+      "source_hash": "fbb1b092bc9d74ed158ee6a906904a6bd55cdb9b595aecad601feb1329c81b84",
+      "translation": "__ELBOT_CODE_0__ is parsed according to Go, and __ELBOT_CODE_1__ is parsed according to mksh;",
+      "updated_at": 1792135101
+    },
     "docs/configuration.md:paragraph:fd16041846ef78c1e35cde0ac959f8294920c1612453cac05c10d264a3e97833": {
       "kind": "paragraph",
       "source": "若 reload 失败，会恢复原有 TOML，原先没有该文件时则删除本次新建文件。\n",
@@ -3034,8 +3074,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "451dc6818efa55d9a2d917fd41f6c83844cf489ca39987e3e14c8868251645fe",
+  "source_hash": "0d61502e0db89ab93ab2e0e019264396d674c3fef3c73ba977025305444e9277",
   "target": "docs.en/configuration.md",
-  "updated_at": 1792049731,
+  "updated_at": 1792135101,
   "version": 2
 }
