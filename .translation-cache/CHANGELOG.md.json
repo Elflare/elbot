@@ -2192,6 +2192,14 @@
       "translation": "__ELBOT_CODE_0__ keeps an in-memory backup of each file before its most recent edit.",
       "updated_at": 1791194538
     },
+    "CHANGELOG.md:list:f2e746f804097ebb8b7da7760143bb69e518d02828d627084fb43f8963bab9dc": {
+      "kind": "list",
+      "source": "修复大量无用IO，提升性能",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "f2e746f804097ebb8b7da7760143bb69e518d02828d627084fb43f8963bab9dc",
+      "translation": "Fixed excessive redundant IO to improve performance",
+      "updated_at": 1792132381
+    },
     "CHANGELOG.md:list:f30c1f6215fda12d9c6de69678731a7ae9e80e445b8e26883a71d06252f052de": {
       "kind": "list",
       "source": "获取模型信息超时从 5 秒放宽到 30 秒。",
@@ -2266,8 +2274,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "7b5a0a77e072c914560dfbe0aea1ac860a7c0cc1f495a4c7b1dcc28494ba5f6b",
+  "source_hash": "60e944ca8f8f45356c0170a5246348dc6511b990896b6f53015fa6ef24aae0cc",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1792053937,
+  "updated_at": 1792132381,
   "version": 2
 }
