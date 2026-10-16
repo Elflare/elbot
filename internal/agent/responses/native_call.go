@@ -106,11 +106,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 	// Keep only observed content indices; a sparse upstream index must not
 	// allocate placeholders or turn an otherwise received delta into a failure.
 	parts := map[int]map[int]json.RawMessage{}
-	defer func() {
-		raw := ""
-		if result.Response != nil {
-			raw = string(result.Response.Raw)
-		}
+	publish := func() {
 		result.Items = outputItems(result.Response, completed)
 		observation.Event.Text, observation.Event.SourceText = outputText(result.Items), outputText(result.Items)
 		observation.Event.OutputReady = len(result.Items) > 0
@@ -122,6 +118,19 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 			if errors.As(observation.Event.Err, &failure) {
 				observation.LogRecord.Content += "\nupstream_detail=" + failure.Detail
 			}
+		}
+		observation.Event.ToolCallCount = 0
+		for _, item := range result.Items {
+			if item.Type == "function_call" {
+				observation.Event.ToolCallCount++
+			}
+		}
+		observation.Publish(ctx, err)
+	}
+	defer func() {
+		raw := ""
+		if result.Response != nil {
+			raw = string(result.Response.Raw)
 		}
 		encoded, encodeErr := json.Marshal(result.Items)
 		if encodeErr != nil {
@@ -149,16 +158,19 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultCanceled, slog.LevelInfo
 			status = "canceled"
+			publish()
 			return result, errors.Join(err, ctx.Err())
 		}
 		observation.Event.ProviderError, observation.Event.Err = true, err
 		observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultFailed, slog.LevelError
+		publish()
 		return result, err
 	}
 	reasoning := s.output.StartReasoning(ctx)
 	if reasoning != nil {
 		defer reasoning.Finish(ctx)
 	}
+	defer publish()
 	for event := range events {
 		if event.Response != nil {
 			result.Response = event.Response
@@ -294,6 +306,10 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 			}
 		case "response.completed":
 			status = "completed"
+			if result.Response != nil && result.Response.Status == "completed" && result.Response.ID != "" {
+				observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultSucceeded, slog.LevelInfo
+				return result, nil
+			}
 		}
 	}
 	if err := ctx.Err(); err != nil {

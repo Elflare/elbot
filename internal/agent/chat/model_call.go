@@ -77,6 +77,7 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 		completed.ProviderError, completed.Err = true, err
 		observation.LogRecord.ResultStatus, observation.LogRecord.Level = events.ResultFailed, slog.LevelError
 		completed.ElapsedMS = elapsedMillis(startedAt)
+		publishCompleted()
 		c.Calls.NotifyError(ctx, hook.Event{
 			Point:   hook.PointLLMResponseReceived,
 			Session: hook.SessionContext{ID: sessionID},
@@ -117,6 +118,7 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 			completed.ProviderError, completed.Err = true, chunk.Error
 			observation.LogRecord.ResultStatus, observation.LogRecord.Level = events.ResultFailed, slog.LevelError
 			completed.ElapsedMS = elapsedMillis(startedAt)
+			publishCompleted()
 			c.Calls.NotifyError(ctx, hook.Event{
 				Point:   hook.PointLLMResponseReceived,
 				Session: hook.SessionContext{ID: sessionID},
@@ -155,9 +157,6 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 			}
 		}
 	}
-	if reasoning != nil {
-		reasoning.Finish(ctx)
-	}
 	elapsedMs := elapsedMillis(startedAt)
 	completed.ElapsedMS = elapsedMs
 	content := assistant.String()
@@ -169,13 +168,14 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 		return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls, Messages: baseMessages, Stream: stream}, nil
 	}
 	observation.LogRecord.ResultStatus, observation.LogRecord.Level = events.ResultSucceeded, slog.LevelInfo
+	publishCompleted()
+	if reasoning != nil {
+		reasoning.Finish(ctx)
+	}
 	final, err := c.Calls.CompleteCall(ctx, session, selection, content, usage, toolCalls, elapsedMs)
 	if err != nil {
 		return llmCallResult{}, err
 	}
-	observation.LogRecord.ResultStatus, observation.LogRecord.Level, observation.LogRecord.EventName = events.ResultSucceeded, slog.LevelInfo, "llm_usage"
-	completed.OutputReady = true
-	completed.Text, completed.SourceText, completed.ToolCallCount, completed.Usage = final.Text, final.SourceText, len(final.ToolCalls), final.Usage
 	return llmCallResult{Text: final.Text, RawText: content, Usage: final.Usage, ToolCalls: final.ToolCalls, Outputs: final.Outputs, Messages: baseMessages, Stream: stream}, nil
 }
 

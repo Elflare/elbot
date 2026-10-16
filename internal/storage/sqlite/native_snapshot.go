@@ -15,7 +15,14 @@ import (
 func appendNativeSnapshot(ctx context.Context, tx *sql.Tx, commit storage.DialogueCommit) (events.LogResult, error) {
 	native, batch := commit.Native, commit.ToolBatch
 	snapshot := native.Snapshot
-	if native.Checkpoint.ID != "" || len(native.ConsumedInputs) != 0 || native.ConsumeSeedID != "" || batch == nil || snapshot.ID == "" || snapshot.SessionID != commit.SessionID || snapshot.MessageID != batch.Call.ID {
+	var head *storage.Message
+	if batch != nil {
+		head = batch.Call
+	}
+	if commit.ToolResult != nil {
+		head = commit.ToolResult.Call
+	}
+	if native.Checkpoint.ID != "" || len(native.ConsumedInputs) != 0 || native.ConsumeSeedID != "" || head == nil || snapshot.ID == "" || snapshot.SessionID != commit.SessionID || snapshot.MessageID != head.ID {
 		return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("invalid native message snapshot")
 	}
 	var parent, exchange, response, seed, owner string

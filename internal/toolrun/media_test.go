@@ -48,7 +48,7 @@ func (failingMediaTool) Call(context.Context, tool.CallRequest) (*tool.Result, s
 	}
 }
 
-func TestRunRetainsExactMediaArgumentsForSession(t *testing.T) {
+func TestRunValidatesExactMediaArgumentsWithoutSeparateReferenceWrite(t *testing.T) {
 	ctx := context.Background()
 	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
@@ -86,7 +86,7 @@ func TestRunRetainsExactMediaArgumentsForSession(t *testing.T) {
 		t.Fatalf("tool arguments = %q", recorder.received)
 	}
 	refs, err := store.MediaReferences().ListByOwner(ctx, "session_tool", session.ID)
-	if err != nil || len(refs) != 1 || refs[0].MediaID != item.ID {
+	if err != nil || len(refs) != 0 {
 		t.Fatalf("session tool references = %#v, %v", refs, err)
 	}
 
@@ -98,7 +98,7 @@ func TestRunRetainsExactMediaArgumentsForSession(t *testing.T) {
 	if len(result.Messages) != 1 || !strings.Contains(llm.SegmentsContentText(result.Messages[0].Segments), "tool failed") {
 		t.Fatalf("failed tool result = %#v", result.Messages)
 	}
-	if refs, err := store.MediaReferences().ListByOwner(ctx, "session_tool", failedSession.ID); err != nil || len(refs) != 1 {
+	if refs, err := store.MediaReferences().ListByOwner(ctx, "session_tool", failedSession.ID); err != nil || len(refs) != 0 {
 		t.Fatalf("failed tool references = %#v, %v", refs, err)
 	}
 }

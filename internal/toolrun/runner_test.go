@@ -4,7 +4,6 @@ import (
 	"context"
 	"elbot/internal/events"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -23,6 +22,7 @@ type runnerContextKey struct{}
 type testToolCommitter struct {
 	head    *storage.Message
 	results []storage.Message
+	records map[string]storage.ToolCallRecord
 }
 
 func (c *testToolCommitter) Begin(_ context.Context, head *storage.Message) (events.LogResult, error) {
@@ -32,29 +32,26 @@ func (c *testToolCommitter) Begin(_ context.Context, head *storage.Message) (eve
 func (*testToolCommitter) Prepared(context.Context, int, llm.ToolCallRequest) (events.LogResult, error) {
 	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
 }
-func (*testToolCommitter) Started(context.Context, int, llm.ToolCallRequest) (events.LogResult, error) {
-	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
-}
-func (c *testToolCommitter) Result(_ context.Context, _ int, _ llm.ToolCallRequest, _ llm.LLMMessage, row *storage.Message) (events.LogResult, error) {
-	c.results = append(c.results, *row)
+func (c *testToolCommitter) Result(_ context.Context, _ int, _ llm.ToolCallRequest, _ llm.LLMMessage, row *storage.ToolResultCommit) (events.LogResult, error) {
+	c.results = append(c.results, *row.Result)
+	if row.Record != nil {
+		if c.records == nil {
+			c.records = map[string]storage.ToolCallRecord{}
+		}
+		c.records[row.Record.ToolCallID] = *row.Record
+	}
 	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
 }
 
 func (*testToolCommitter) Flush(context.Context) (events.LogResult, error) {
-	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
 }
 
 type runnerTestDeps struct {
 	confirmed      bool
 	completed      int
-	recorded       []runnerTestRecord
 	prepareContext func(context.Context, *storage.Session, llm.ToolCallRequest) context.Context
 	reject         bool
-}
-
-type runnerTestRecord struct {
-	tool string
-	err  error
 }
 
 func (d *runnerTestDeps) RefreshExecution(ctx context.Context, _ *storage.Session) (context.Context, error) {
@@ -103,16 +100,7 @@ func (d *runnerTestDeps) SendOutputs(ctx context.Context, outputs []delivery.Out
 	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
-func (d *runnerTestDeps) RecordToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk string, startedAt time.Time, result string, callErr error) (events.LogResult, error) {
-	d.recorded = append(d.recorded, runnerTestRecord{tool: call.Name, err: callErr})
-	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
-}
-
 func (d *runnerTestDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reason string) {
-}
-
-func (d *runnerTestDeps) RememberDiscoveryResult(ctx context.Context, session *storage.Session, result *tool.Result) (events.LogResult, error) {
-	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
 func (d *runnerTestDeps) AddToolUse(sessionID, toolName string) {}
@@ -334,7 +322,8 @@ func TestRunSkipsConfirmationWhenPreflightFails(t *testing.T) {
 	}
 	manager := NewManager(registry, security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
 	deps := &runnerTestDeps{}
-	result := NewRunner(manager).Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{},
+	committer := &testToolCommitter{}
+	result := NewRunner(manager).Run(context.Background(), deps, RunRequest{Committer: committer,
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{
@@ -356,8 +345,8 @@ func TestRunSkipsConfirmationWhenPreflightFails(t *testing.T) {
 	if !strings.Contains(text, "tool call preflight_tool failed") || !strings.Contains(text, "preflight rejected") {
 		t.Fatalf("unexpected tool message: %s", text)
 	}
-	if len(deps.recorded) != 1 || deps.recorded[0].err == nil {
-		t.Fatalf("expected recorded preflight error, got %#v", deps.recorded)
+	if len(committer.records) != 1 || committer.records["call-1"].Success {
+		t.Fatalf("expected recorded preflight error, got %#v", committer.records)
 	}
 }
 
@@ -368,7 +357,8 @@ func TestRunSkipsConfirmationWhenShellPreflightFails(t *testing.T) {
 	}
 	manager := NewManager(registry, security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
 	deps := &runnerTestDeps{}
-	result := NewRunner(manager).Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{},
+	committer := &testToolCommitter{}
+	result := NewRunner(manager).Run(context.Background(), deps, RunRequest{Committer: committer,
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{
@@ -387,8 +377,8 @@ func TestRunSkipsConfirmationWhenShellPreflightFails(t *testing.T) {
 	if !strings.Contains(text, "tool call shell failed") || !strings.Contains(text, "dedicated tool") {
 		t.Fatalf("unexpected tool message: %s", text)
 	}
-	if len(deps.recorded) != 1 || deps.recorded[0].err == nil {
-		t.Fatalf("expected recorded shell preflight error, got %#v", deps.recorded)
+	if len(committer.records) != 1 || committer.records["call-1"].Success {
+		t.Fatalf("expected recorded shell preflight error, got %#v", committer.records)
 	}
 }
 
@@ -431,13 +421,13 @@ func TestRunPreservesPolicyDenialFact(t *testing.T) {
 			if reject {
 				role = contextinfo.RoleSuperadmin
 			}
-			result := NewRunner(manager).Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: role}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "risky", Arguments: `{}`}}})
-			if result.Err != nil || len(deps.recorded) != 1 || deps.completed != 0 {
+			committer := &testToolCommitter{}
+			result := NewRunner(manager).Run(context.Background(), deps, RunRequest{Committer: committer, Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: role}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "risky", Arguments: `{}`}}})
+			if result.Err != nil || len(committer.records) != 1 || deps.completed != 0 {
 				t.Fatalf("result=%+v deps=%+v", result, deps)
 			}
-			var denied tool.PolicyDeniedError
-			if !errors.As(deps.recorded[0].err, &denied) {
-				t.Fatalf("missing denial fact: %v", deps.recorded[0].err)
+			if committer.records["call"].Success || committer.records["call"].Error == "" {
+				t.Fatalf("missing denial fact: %v", committer.records)
 			}
 		})
 	}

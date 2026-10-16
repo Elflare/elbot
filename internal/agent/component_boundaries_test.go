@@ -223,7 +223,6 @@ func TestMigratedComponentsPublishFactsWithoutLogger(t *testing.T) {
 		t.Fatal(err)
 	}
 	call := llm.ToolCallRequest{ID: "call", Name: "test_tool", Arguments: "{}"}
-	testToolDeps(a).RecordToolCall(ctx, row.ID, call, "low", storage.Now(), "done", nil)
 	a.input.confirmations.(*ConfirmationCoordinator).publishConfirmationWait(ctx, row.ID, call, tool.RiskHigh, nil)
 	a.execution.handleTurnContextDone(ctx, row.ID, context.DeadlineExceeded, out)
 	for _, event := range []string{"input", "model", "timeout"} {

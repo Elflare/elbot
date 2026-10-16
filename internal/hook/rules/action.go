@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
+	"time"
 
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
@@ -235,13 +236,14 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 	call := llm.ToolCallRequest{ID: storage.NewID(), Name: name, Arguments: arguments}
 	record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: "hook_tool_call", Module: "hook", Type: globalevents.ContentJSON, ContentLimit: 0}
 	content := struct {
-		Tool       string `json:"tool"`
-		ActorID    string `json:"actor_id,omitempty"`
-		Arguments  string `json:"arguments"`
-		Point      string `json:"point"`
-		Result     string `json:"result"`
-		Source     string `json:"source"`
-		ToolCallID string `json:"tool_call_id"`
+		Tool       string  `json:"tool"`
+		ActorID    string  `json:"actor_id,omitempty"`
+		Arguments  string  `json:"arguments"`
+		Point      string  `json:"point"`
+		Result     *string `json:"result,omitempty"`
+		ElapsedMS  *int64  `json:"elapsed_ms,omitempty"`
+		Source     string  `json:"source"`
+		ToolCallID string  `json:"tool_call_id"`
 	}{
 		Tool:       tool.TruncateLogContent(name, 2048),
 		Arguments:  tool.TruncateLogContent(arguments, 512),
@@ -294,14 +296,21 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 				logResult.ResultStatus = globalevents.ResultCanceled
 			}
 		} else {
+			started := time.Now()
+			data, _ := json.Marshal(content)
+			start := record
+			start.EventName, start.Content, start.ResultStatus = "hook_tool_call_started", string(data), globalevents.ResultSucceeded
+			hook.LogHook(ctx, start)
 			toolResult, logResult.Content, err = registered.Call(ctx, tool.CallRequest{ID: call.ID, Name: name, Arguments: json.RawMessage(arguments)})
+			elapsed := time.Since(started).Milliseconds()
+			content.ElapsedMS = &elapsed
 		}
 	}
 	record.ResultStatus = logResult.ResultStatus
 	if logResult.ResultStatus == globalevents.ResultFailed {
 		record.Level = slog.LevelError
 	}
-	content.Result = logResult.Content
+	content.Result = &logResult.Content
 	data, _ := json.Marshal(content)
 	record.Content = string(data)
 	hook.LogHook(ctx, record)

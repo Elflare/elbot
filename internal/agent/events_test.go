@@ -36,7 +36,8 @@ func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 	turns.FinishRequest("s", "old-attempt")
 	turns.StartExecution("s", turn.Input{}, current, "current-attempt")
 	usage := &llm.Usage{TotalTokens: func() *int64 { n := int64(42); return &n }()}
-	r.Record(ctx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseTool, Usage: usage})
+	r.RecordUsage(ctx, "s", usage)
+	r.RecordUsage(oldCtx, "s", &llm.Usage{})
 	r.Record(oldCtx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseError})
 	*usage.TotalTokens = 900
 	copy := r.Snapshot("s")

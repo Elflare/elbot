@@ -7,6 +7,39 @@ import (
 	"elbot/internal/storage"
 )
 
+func TestToolResultStatisticsFailureRollsBackSlots(t *testing.T) {
+	store, _ := nativeStorageFixture(t)
+	ctx := t.Context()
+	head := &storage.Message{ID: "head", SessionID: "s", Role: storage.RoleAssistant, Metadata: `{"tool_calls":[{"ID":"one"}],"tool_result_message_ids":["result"],"tool_batch_status":"pending"}`}
+	result := &storage.Message{ID: "result", SessionID: "s", Role: storage.RoleTool, ToolCallID: "one", Content: "unknown", Metadata: `{"tool_result_status":"pending"}`}
+	if _, err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", ToolBatch: &storage.ToolBatch{Call: head, Results: []*storage.Message{result}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx, `CREATE TRIGGER reject_tool_statistics BEFORE INSERT ON tool_call_records BEGIN SELECT RAISE(ABORT,'statistics failed'); END`); err != nil {
+		t.Fatal(err)
+	}
+	head.Metadata = strings.ReplaceAll(head.Metadata, "pending", "completed")
+	result.Content, result.Metadata = "done", `{"tool_result_status":"completed"}`
+	commit := storage.DialogueCommit{SessionID: "s", ToolResult: &storage.ToolResultCommit{Call: head, Result: result, Record: &storage.ToolCallRecord{ToolCallID: "one", ToolName: "tool", Success: true, StartedAt: storage.Now(), FinishedAt: storage.Now()}}}
+	if _, err := store.Dialogues().Commit(ctx, commit); err == nil {
+		t.Fatal("expected statistics failure")
+	}
+	rows, err := store.Messages().ListBySession(ctx, "s")
+	if err != nil || len(rows) != 2 || rows[1].Content != "unknown" || !strings.Contains(rows[0].Metadata, `"tool_batch_status":"pending"`) {
+		t.Fatalf("partially committed result: %+v %v", rows, err)
+	}
+	if _, err := store.db.ExecContext(ctx, `DROP TRIGGER reject_tool_statistics`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Dialogues().Commit(ctx, commit); err != nil {
+		t.Fatal(err)
+	}
+	usage, err := store.ToolCalls().UsageBySession(ctx, "s")
+	if err != nil || len(usage) != 1 {
+		t.Fatalf("statistics=%+v %v", usage, err)
+	}
+}
+
 func TestNativeMessageSnapshotCommitsWithPairWithoutAdvancingCursor(t *testing.T) {
 	for _, fail := range []bool{false, true} {
 		t.Run(map[bool]string{false: "commit", true: "rollback"}[fail], func(t *testing.T) {

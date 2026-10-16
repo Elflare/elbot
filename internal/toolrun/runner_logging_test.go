@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
@@ -256,27 +255,7 @@ func TestRunnerRecordsUnenteredCallFailure(t *testing.T) {
 
 type loggingDeps struct {
 	runnerTestDeps
-	recordErr       error
-	confirmErr      error
-	recordLogResult *events.LogResult
-}
-
-func (d *loggingDeps) RecordToolCall(context.Context, string, llm.ToolCallRequest, string, time.Time, string, error) (events.LogResult, error) {
-	if d.recordLogResult != nil {
-		return *d.recordLogResult, d.recordErr
-	}
-	{
-		err := d.recordErr
-		logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
-		if err != nil {
-			logResult.ResultStatus = events.ResultFailed
-			logResult.Content = err.Error()
-			if err == context.Canceled {
-				logResult.ResultStatus = events.ResultCanceled
-			}
-		}
-		return logResult, err
-	}
+	confirmErr error
 }
 
 func (d *loggingDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail string) (ConfirmResult, error) {
@@ -296,18 +275,7 @@ type loggingCommitter struct {
 
 func (c *loggingCommitter) Begin(ctx context.Context, head *storage.Message) (events.LogResult, error) {
 	if c.beginErr != nil {
-		{
-			err := c.beginErr
-			logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
-			if err != nil {
-				logResult.ResultStatus = events.ResultFailed
-				logResult.Content = err.Error()
-				if err == context.Canceled {
-					logResult.ResultStatus = events.ResultCanceled
-				}
-			}
-			return logResult, err
-		}
+		return events.LogResult{ResultStatus: events.ResultFailed, Content: c.beginErr.Error()}, c.beginErr
 	}
 	return c.testToolCommitter.Begin(ctx, head)
 }
@@ -332,23 +300,15 @@ func TestRunnerBatchFailureDoesNotInventToolCompletions(t *testing.T) {
 	}
 }
 
-func (c *loggingCommitter) Flush(context.Context) (events.LogResult, error) {
+func (c *loggingCommitter) Result(context.Context, int, llm.ToolCallRequest, llm.LLMMessage, *storage.ToolResultCommit) (events.LogResult, error) {
 	c.finished = true
 	if c.resultLogResult != nil {
 		return *c.resultLogResult, c.err
 	}
-	{
-		err := c.err
-		logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
-		if err != nil {
-			logResult.ResultStatus = events.ResultFailed
-			logResult.Content = err.Error()
-			if err == context.Canceled {
-				logResult.ResultStatus = events.ResultCanceled
-			}
-		}
-		return logResult, err
+	if c.err != nil {
+		return events.LogResult{ResultStatus: events.ResultFailed, Content: c.err.Error()}, c.err
 	}
+	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
 func TestRunnerUsesSourceSaveResult(t *testing.T) {
@@ -368,11 +328,11 @@ func TestRunnerUsesSourceSaveResult(t *testing.T) {
 			}
 			manager := NewManager(registry, security.NewPolicy("high", "high", nil))
 			source := events.LogResult{ResultStatus: tc.status, Content: "storage source diagnostic"}
-			deps := &loggingDeps{recordErr: tc.err, recordLogResult: &source}
-			committer := &loggingCommitter{resultLogResult: &source}
+			deps := &loggingDeps{}
+			committer := &loggingCommitter{err: tc.err, resultLogResult: &source}
 			var saves []events.LogRecord
 			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-				if record.Module == "toolrun" && (record.EventName == "tool_record_save" || record.EventName == "tool_transcript_save") {
+				if record.Module == "toolrun" && record.EventName == "tool_transcript_save" {
 					saves = append(saves, record)
 				}
 				return nil
@@ -382,7 +342,7 @@ func TestRunnerUsesSourceSaveResult(t *testing.T) {
 			}
 			t.Cleanup(connection.Disconnect)
 			result := NewRunner(manager).Run(context.Background(), deps, RunRequest{Committer: committer, Session: &storage.Session{ID: "save-source", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "logging_tool", Arguments: "{}"}}})
-			if result.Err != nil || len(saves) != 2 {
+			if !errors.Is(result.Err, tc.err) || len(saves) != 1 {
 				t.Fatalf("business result=%#v logs=%#v", result, saves)
 			}
 			for _, record := range saves {
@@ -396,15 +356,14 @@ func TestRunnerUsesSourceSaveResult(t *testing.T) {
 
 func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 	for _, tc := range []struct {
-		name                                    string
-		callErr, recordErr, saveErr, confirmErr error
-		reject                                  bool
+		name                         string
+		callErr, saveErr, confirmErr error
+		reject                       bool
 	}{
 		{name: "success"},
 		{name: "tool business failure", callErr: errors.New("execution failed")},
 		{name: "tool business cancellation", callErr: context.Canceled},
 		{name: "cancel and save failure", callErr: context.Canceled, saveErr: errors.New("transcript failed")},
-		{name: "cancel and record failure", callErr: context.Canceled, recordErr: errors.New("record failed")},
 		{name: "rejected", reject: true},
 		{name: "rejected and save failure", reject: true, saveErr: errors.New("transcript failed")},
 		{name: "confirmation timeout", confirmErr: context.DeadlineExceeded},
@@ -416,7 +375,7 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 			}
 			manager := NewManager(registry, security.NewPolicy("high", "high", nil))
 			committer := &loggingCommitter{err: tc.saveErr}
-			deps := &loggingDeps{runnerTestDeps: runnerTestDeps{reject: tc.reject}, recordErr: tc.recordErr, confirmErr: tc.confirmErr}
+			deps := &loggingDeps{runnerTestDeps: runnerTestDeps{reject: tc.reject}, confirmErr: tc.confirmErr}
 			var calls []events.LogRecord
 			operations := map[string]events.LogRecord{}
 			connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
@@ -461,13 +420,10 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 					t.Fatalf("internal execution state leaked into log: %s", calls[0].Content)
 				}
 			}
-			for eventName, failure := range map[string]error{"tool_record_save": tc.recordErr, "tool_transcript_save": tc.saveErr} {
-				if failure == nil {
-					continue
-				}
-				r, ok := operations[eventName]
-				if !ok || r.ResultStatus != events.ResultFailed || r.Level != slog.LevelError || !strings.Contains(r.Content, failure.Error()) {
-					t.Fatalf("independent failure lost: %s = %#v", eventName, r)
+			if tc.saveErr != nil {
+				r, ok := operations["tool_transcript_save"]
+				if !ok || r.ResultStatus != events.ResultFailed || r.Level != slog.LevelError || !strings.Contains(r.Content, tc.saveErr.Error()) {
+					t.Fatalf("result commit failure lost: %#v", r)
 				}
 			}
 		})

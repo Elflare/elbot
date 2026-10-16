@@ -93,11 +93,12 @@ func (c replyCommitter) Commit(ctx context.Context, message *storage.Message, ma
 }
 
 type toolCommitter struct {
-	state   *turnState
-	calls   []storage.NativeCall
-	head    *storage.Message
-	results []*storage.Message
-	inputs  []storage.NativeInput
+	state     *turnState
+	calls     []storage.NativeCall
+	head      *storage.Message
+	results   []*storage.Message
+	inputs    []storage.NativeInput
+	remaining int
 }
 
 func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) (events.LogResult, error) {
@@ -105,12 +106,37 @@ func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) (event
 	c.head = head
 	c.results = make([]*storage.Message, len(s.calls))
 	c.inputs = make([]storage.NativeInput, len(s.calls))
+	c.remaining = len(s.calls)
 	native := s.advance("")
 	for i, call := range s.calls {
-		c.calls = append(c.calls, storage.NativeCall{ExchangeID: s.exchange.ID, CallID: call.ID, Name: call.Name, Arguments: call.Arguments, Ordinal: i, Status: "pending"})
+		message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments("tool outcome is unknown: result has not been saved; do not assume success or retry automatically")}
+		stored := dialogue.ToolResultStorageMessage(s.session.ID, message)
+		stored.ID = storage.NewID()
+		fields, _ := storage.DecodeSessionMetadata(stored.Metadata)
+		_ = fields.Set("tool_result_status", "pending")
+		stored.Metadata, _ = fields.Encode()
+		c.results[i] = &stored
+		input, err := queuedInput(s.session.ID, stored.ID, s.exchange.ID, call.ID, message.Segments)
+		if err != nil {
+			return events.LogResult{ResultStatus: events.ResultSkipped}, err
+		}
+		c.inputs[i] = input
+		c.calls = append(c.calls, storage.NativeCall{ExchangeID: s.exchange.ID, CallID: call.ID, Name: call.Name, Arguments: call.Arguments, Ordinal: i, Status: "pending", ResultInputID: input.ID})
 	}
+	batch, err := dialogue.NewToolBatch(head, s.calls, c.results)
+	if err != nil {
+		return events.LogResult{ResultStatus: events.ResultSkipped}, err
+	}
+	fields, _ := storage.DecodeSessionMetadata(head.Metadata)
+	_ = fields.Set("tool_batch_status", "pending")
+	head.Metadata, _ = fields.Encode()
+	for i := range c.inputs {
+		c.inputs[i].CreatedAt = head.CreatedAt
+	}
+	native.Inputs = c.inputs
+	native.Checkpoint.MessageID = head.ID
 	native.Calls = append([]storage.NativeCall(nil), c.calls...)
-	logResult, err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, Native: &native}, "append_tool_transcript")
+	logResult, err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, ToolBatch: batch, Native: &native}, "begin_tool_transcript")
 	if err != nil {
 		return logResult, err
 	}
@@ -124,25 +150,10 @@ func (c *toolCommitter) Prepared(ctx context.Context, index int, call llm.ToolCa
 	}
 	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
 }
-func (c *toolCommitter) Started(ctx context.Context, index int, _ llm.ToolCallRequest) (events.LogResult, error) {
-	call := c.calls[index]
-	call.Status = "started"
-	logResult, err := c.state.commit(ctx, storage.DialogueCommit{SessionID: c.state.session.ID, Native: &storage.NativeCommit{ExpectedCheckpointID: c.state.checkpointID(), Calls: []storage.NativeCall{call}}}, "start_native_tool")
-	if err != nil {
-		return logResult, err
-	}
-	c.calls[index] = call
-	return logResult, nil
-}
-func (c *toolCommitter) Result(ctx context.Context, index int, request llm.ToolCallRequest, message llm.LLMMessage, stored *storage.Message) (events.LogResult, error) {
+func (c *toolCommitter) Result(ctx context.Context, index int, _ llm.ToolCallRequest, message llm.LLMMessage, update *storage.ToolResultCommit) (events.LogResult, error) {
 	s := c.state
-	logResult, err := c.Prepared(ctx, index, request)
-	if err != nil {
-		return logResult, err
-	}
-	if stored.ID == "" {
-		stored.ID = storage.NewID()
-	}
+	stored := update.Result
+	stored.ID, stored.CreatedAt = c.results[index].ID, c.results[index].CreatedAt
 	archived, err := s.route.Preparer.ArchiveMaterials(ctx, []llm.LLMMessage{message})
 	if err != nil {
 		return events.LogResult{ResultStatus: events.ResultSkipped}, err
@@ -155,36 +166,46 @@ func (c *toolCommitter) Result(ctx context.Context, index int, request llm.ToolC
 	}
 	call := c.calls[index]
 	call.Status = "completed"
-	call.ResultInputID = input.ID
+	input.ID, input.CreatedAt = c.inputs[index].ID, c.inputs[index].CreatedAt
 	c.calls[index], c.results[index], c.inputs[index] = call, stored, input
-	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
-}
-
-func (c *toolCommitter) Flush(ctx context.Context) (events.LogResult, error) {
-	s := c.state
-	batch, err := dialogue.NewToolBatch(c.head, s.calls, c.results)
-	if err != nil {
-		return events.LogResult{ResultStatus: events.ResultSkipped}, err
+	fields, _ := storage.DecodeSessionMetadata(stored.Metadata)
+	_ = fields.Set("tool_result_status", "completed")
+	stored.Metadata, _ = fields.Encode()
+	native := storage.NativeCommit{ExpectedCheckpointID: s.checkpointID(), Inputs: []storage.NativeInput{input}, Calls: []storage.NativeCall{call}}
+	if c.remaining == 1 {
+		fields, _ := storage.DecodeSessionMetadata(c.head.Metadata)
+		_ = fields.Set("tool_batch_status", "completed")
+		c.head.Metadata, _ = fields.Encode()
+		snapshot := *s.checkpoint
+		snapshot.ID, snapshot.MessageID, snapshot.CreatedAt = storage.NewID(), c.head.ID, c.head.CreatedAt
+		native.Snapshot = &snapshot
 	}
-	snapshot := *s.checkpoint
-	snapshot.ID, snapshot.MessageID = storage.NewID(), batch.Call.ID
-	snapshot.CreatedAt = batch.Call.CreatedAt
-	native := storage.NativeCommit{ExpectedCheckpointID: s.checkpointID(), Inputs: c.inputs, Calls: c.calls, Snapshot: &snapshot}
-	logResult, err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, ToolBatch: batch, Native: &native}, "append_tool_transcript")
+	update.Call = c.head
+	logResult, err := s.commit(context.WithoutCancel(ctx), storage.DialogueCommit{SessionID: s.session.ID, ToolResult: update, Native: &native}, "save_tool_result")
 	if err == nil {
-		for _, stored := range append([]*storage.Message{batch.Call}, batch.Results...) {
-			projected, err := dialogue.MessageFromStorage(*stored)
-			if err != nil {
-				return logResult, err
-			}
-			s.projection = append(s.projection, projected)
-		}
+		c.remaining--
 	}
 	return logResult, err
 }
 
+func (c *toolCommitter) Flush(ctx context.Context) (events.LogResult, error) {
+	s := c.state
+	logResult := events.LogResult{ResultStatus: events.ResultSkipped}
+	if c.remaining != 0 {
+		return logResult, fmt.Errorf("tool batch has unfinished results")
+	}
+	for _, stored := range append([]*storage.Message{c.head}, c.results...) {
+		projected, err := dialogue.MessageFromStorage(*stored)
+		if err != nil {
+			return logResult, err
+		}
+		s.projection = append(s.projection, projected)
+	}
+	return logResult, nil
+}
+
 // Close interrupted local tool rounds without executing historical calls.
-func (s *turnState) closeInterruptedCalls(ctx context.Context) error {
+func (s *turnState) closeInterruptedCalls(ctx context.Context, messages []storage.Message) error {
 	if s.checkpoint == nil {
 		return nil
 	}
@@ -192,25 +213,32 @@ func (s *turnState) closeInterruptedCalls(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	var pending []storage.NativeCall
 	for _, call := range calls {
-		if call.ResultInputID != "" {
+		if call.Status == "pending" {
+			call.Status = "interrupted"
+			pending = append(pending, call)
+		}
+	}
+	if len(pending) == 0 {
+		return nil
+	}
+	for i := range messages {
+		head := &messages[i]
+		if head.ID != s.checkpoint.MessageID {
 			continue
 		}
-		text := fmt.Sprintf("tool call %s was not executed: previous turn stopped", call.Name)
-		if call.Status == "started" {
-			text = fmt.Sprintf("tool call %s outcome is unknown: previous turn stopped before its result was saved; do not assume it succeeded", call.Name)
-		}
-		message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.CallID, Segments: llm.TextSegments(text)}
-		input, err := queuedInput(s.session.ID, "", call.ExchangeID, call.CallID, message.Segments)
+		fields, err := storage.DecodeSessionMetadata(head.Metadata)
 		if err != nil {
 			return err
 		}
-		call.Status = "interrupted"
-		call.ResultInputID = input.ID
-		native := storage.NativeCommit{ExpectedCheckpointID: s.checkpointID(), Inputs: []storage.NativeInput{input}, Calls: []storage.NativeCall{call}}
-		if _, err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, Native: &native}, "close_interrupted_native_tool"); err != nil {
-			return err
-		}
+		_ = fields.Set("tool_batch_status", "interrupted")
+		head.Metadata, _ = fields.Encode()
+		snapshot := *s.checkpoint
+		snapshot.ID, snapshot.CreatedAt = storage.NewID(), storage.Now()
+		native := storage.NativeCommit{ExpectedCheckpointID: s.checkpointID(), Calls: pending, Snapshot: &snapshot}
+		_, err = s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, ToolResult: &storage.ToolResultCommit{Call: head}, Native: &native}, "close_interrupted_native_tool")
+		return err
 	}
-	return nil
+	return fmt.Errorf("interrupted tool batch header is missing")
 }

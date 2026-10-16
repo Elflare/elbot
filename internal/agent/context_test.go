@@ -19,6 +19,18 @@ import (
 	"elbot/internal/turn"
 )
 
+func recordTestUsage(t *testing.T, a *agentFixture, id string, usage *llm.Usage) {
+	t.Helper()
+	if err := a.execution.contexts.RecordTurn(t.Context(), id, usage); err != nil {
+		t.Fatal(err)
+	}
+	a.status.mu.Lock()
+	snapshot := a.status.snapshots[id]
+	snapshot.SessionID, snapshot.Usage = id, usage
+	a.status.snapshots[id] = snapshot
+	a.status.mu.Unlock()
+}
+
 func TestCompactMessagesFiltersToolResultsAndFailedCalls(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
@@ -88,7 +100,7 @@ func TestAutoCompactCreatesStableFirstUserContext(t *testing.T) {
 		}
 	}
 	configureTestContext(t, a, config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
-	a.execution.contexts.RecordTurn(t.Context(), source.ID, &llm.Usage{TotalTokens: func() *int64 { n := int64(80); return &n }()})
+	recordTestUsage(t, a, source.ID, &llm.Usage{TotalTokens: func() *int64 { n := int64(80); return &n }()})
 
 	if err := a.HandleMessage(ctx, "J"); err != nil {
 		t.Fatalf("first message after compact: %v", err)
@@ -162,7 +174,7 @@ func TestAutoCompactCreatesStableFirstUserContext(t *testing.T) {
 		t.Fatalf("compact metadata = %#v", compactMetadata)
 	}
 
-	a.execution.contexts.RecordTurn(t.Context(), compacted.ID, &llm.Usage{TotalTokens: func() *int64 { n := int64(80); return &n }()})
+	recordTestUsage(t, a, compacted.ID, &llm.Usage{TotalTokens: func() *int64 { n := int64(80); return &n }()})
 	if err := a.HandleMessage(ctx, "M"); err != nil {
 		t.Fatalf("message after repeated compact: %v", err)
 	}
@@ -275,7 +287,7 @@ func TestCompactBlocksSessionChangesAndStopCancels(t *testing.T) {
 		}
 	}
 	configureTestContext(t, a, config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
-	a.execution.contexts.RecordTurn(t.Context(), source.ID, &llm.Usage{TotalTokens: func() *int64 { n := int64(80); return &n }()})
+	recordTestUsage(t, a, source.ID, &llm.Usage{TotalTokens: func() *int64 { n := int64(80); return &n }()})
 
 	done := make(chan error, 1)
 	go func() { done <- a.HandleMessage(ctx, "/compact") }()
@@ -339,7 +351,7 @@ func TestAutoCompactFailureKeepsSourceSession(t *testing.T) {
 		}
 	}
 	configureTestContext(t, a, config.ContextConfig{CompactEnabled: true, CompactTriggerRatio: 0.8}, config.ModelMetadataConfig{DefaultContextWindow: 100}, nil)
-	a.execution.contexts.RecordTurn(t.Context(), source.ID, &llm.Usage{TotalTokens: func() *int64 { n := int64(80); return &n }()})
+	recordTestUsage(t, a, source.ID, &llm.Usage{TotalTokens: func() *int64 { n := int64(80); return &n }()})
 	if err := a.HandleMessage(ctx, "J"); err == nil {
 		t.Fatal("auto compact unexpectedly succeeded")
 	}
@@ -425,7 +437,7 @@ func TestModelSwitchReevaluatesCompactWindow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	a.execution.contexts.RecordTurn(t.Context(), current.ID, &llm.Usage{TotalTokens: func() *int64 { n := int64(80); return &n }()})
+	recordTestUsage(t, a, current.ID, &llm.Usage{TotalTokens: func() *int64 { n := int64(80); return &n }()})
 	if !a.execution.shouldCompact(ctx, current, modelmgr.SelectionForTurn(ctx, a.execution.models, current)) {
 		t.Fatal("small model did not trigger compact")
 	}

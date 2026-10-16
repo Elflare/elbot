@@ -28,11 +28,10 @@ type Service struct {
 	mu           sync.Mutex
 	usageWriteMu sync.Mutex
 	config       config.ContextConfig
-	lastUsage    map[string]*llm.Usage
 }
 
 func New(opts Options) *Service {
-	s := &Service{compactors: opts.Compactors, store: opts.Store, models: opts.Models, loader: Loader{Store: opts.Store}, lastUsage: map[string]*llm.Usage{}}
+	s := &Service{compactors: opts.Compactors, store: opts.Store, models: opts.Models, loader: Loader{Store: opts.Store}}
 	s.Configure(opts.Config)
 	return s
 }
@@ -72,7 +71,7 @@ func cloneUsage(usage *llm.Usage) *llm.Usage {
 }
 
 // RecordTurn 在 Turn 的 loop 和回复提交成功后，一次保存活动时间与用量；nil 用量保留原值。
-// 串行保存防止旧观测覆盖新观测；持久化失败时仍保留内存中已观测的用量。
+// 当前用量由 StatusRecorder 持有；这里仅持久化调用方提供的快照。
 func (s *Service) RecordTurn(ctx context.Context, id string, usage *llm.Usage) error {
 	if id == "" {
 		return nil
@@ -80,11 +79,6 @@ func (s *Service) RecordTurn(ctx context.Context, id string, usage *llm.Usage) e
 	usage = cloneUsage(usage)
 	s.usageWriteMu.Lock()
 	defer s.usageWriteMu.Unlock()
-	if usage != nil {
-		s.mu.Lock()
-		s.lastUsage[id] = usage
-		s.mu.Unlock()
-	}
 	_, err := s.store.Sessions().Mutate(ctx, id, func(row *storage.Session) error {
 		row.UpdatedAt = storage.Now()
 		if usage == nil {
@@ -104,24 +98,6 @@ func (s *Service) RecordTurn(ctx context.Context, id string, usage *llm.Usage) e
 		return err
 	})
 	return err
-}
-
-func (s *Service) Usage(row *storage.Session) (*llm.Usage, error) {
-	if row == nil {
-		return nil, nil
-	}
-	s.mu.Lock()
-	usage := cloneUsage(s.lastUsage[row.ID])
-	s.mu.Unlock()
-	if usage != nil {
-		return usage, nil
-	}
-	state, err := DecodeState(row.Metadata)
-	if err != nil {
-		return nil, err
-	}
-	// Restored snapshots must not overwrite a concurrent observation.
-	return cloneUsage(state.LastUsage), nil
 }
 
 func (r *Service) Status(ctx context.Context, usage *llm.Usage, selection config.ModelSelection) string {

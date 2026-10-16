@@ -36,6 +36,11 @@ func TestSandboxMediaCacheRefreshAndExpiry(t *testing.T) {
 	if err := os.Chtimes(path, old, old); err != nil {
 		t.Fatal(err)
 	}
+	// Each invocation refreshes once; repeated reads within it reuse the path.
+	if err := call.Close(); err != nil {
+		t.Fatal(err)
+	}
+	call = bridge.NewCall()
 	if _, err := call.CachedExport(ctx, item.ID); err != nil {
 		t.Fatal(err)
 	}

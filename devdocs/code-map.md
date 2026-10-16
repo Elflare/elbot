@@ -102,7 +102,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/execution_admission.go`、`execution_input.go`、`execution_lifecycle.go`：准入、输入、追加确认与关闭。
 - `internal/processenv/environment.go`、`process_unix.go`、`process_windows.go`：子进程环境和命令构造、平台进程组／树终止及实际退出判定；Skill、Shell、Hook、编译和文件搜索复用。
 - `internal/agent/confirmation.go`、`risk_confirmation.go`：风险确认、来源日志与提示。
-- `internal/runtime/`、`internal/agent/status.go`：运行状态、耗时、执行归属校验与状态发布。
+- `internal/runtime/`、`internal/agent/status.go`：运行状态、usage 唯一内存事实、恢复快照、执行归属校验与状态发布。
 
 <!-- locator:tool -->
 ## Tool Runtime、工具状态与文件
@@ -123,12 +123,13 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 工具调用链路
 
 - `internal/agent/dialogue/tool_execution.go`：协议共用的 ToolRun 入口与提交器。
-- `internal/agent/toolrun_adapter.go`：Hook、子请求、确认、调用记录与状态提交桥接。
-- `internal/toolrun/runner.go`：顺序准备和确认、并发执行、有序完成、批次提交与日志组装。
+- `internal/agent/toolrun_adapter.go`：Hook、子请求、确认与状态桥接。
+- `internal/toolrun/runner.go`：顺序准备和确认、并发执行、完成队列、逐项提交与开始／结束日志组装。
+- `internal/agent/dialogue/commit.go`、`internal/agent/responses/persistence.go`：固定结果槽、逐项最终结果、批次封存与原生恢复快照。
 - `internal/toolrun/toolrun.go`、`elwisp_exec.go`：调用解析、原生／远程路由与执行结果。
 - `internal/tool/prepared.go`、`executor.go`：准备能力、调用快照及执行阶段校验。
 - `internal/toolrun/logging.go`：完整工具日志发布。
-- `internal/storage/tool_batch.go`、`internal/storage/sqlite/tool_batch.go`、`tool_call_repository.go`：批次关联、校验与调用记录。
+- `internal/storage/tool_batch.go`、`internal/storage/sqlite/tool_batch.go`、`dialogue_repository.go`：稳定批次关联、原槽更新、结果／统计／媒体／发现状态原子提交；`tool_call_repository.go` 提供调用统计查询。
 
 <!-- locator:skill -->
 ## Skill 与 ELyph

@@ -189,14 +189,10 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 	text := outputText(result.Items)
 	s.sourceText = text
 	elapsed := time.Since(started).Milliseconds()
-	observation.Event.ElapsedMS = elapsed
 	final, err = s.route.Calls.CompleteCall(ctx, s.session, s.selection, text, result.Response.TokenUsage(), calls, elapsed)
 	if err != nil {
 		return final, err
 	}
-	observation.Event.OutputReady = true
-	observation.LogRecord.ResultStatus, observation.LogRecord.Level, observation.LogRecord.EventName = globalevents.ResultSucceeded, slog.LevelInfo, "llm_usage"
-	observation.Event.Text, observation.Event.SourceText, observation.Event.ToolCallCount, observation.Event.Usage = final.Text, text, len(calls), final.Usage
 	s.exchange, s.response, s.consumed, s.calls = result.Exchange, result.Response, consumed, calls
 	return final, nil
 }

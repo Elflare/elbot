@@ -180,7 +180,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		result.Err = err
 		return result
 	}
-	if err := s.closeInterruptedCalls(s.requestCtx); err != nil {
+	if err := s.closeInterruptedCalls(s.requestCtx, p.materials.Loaded.Messages); err != nil {
 		return fail(err)
 	}
 	toolPhase, foregroundPrepared := false, false
@@ -285,7 +285,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			for i, call := range s.calls {
 				message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments("tool call was not executed: max_rounds_per_turn reached")}
 				row := dialogue.ToolResultStorageMessage(s.session.ID, message)
-				if _, err := committer.Result(s.requestCtx, i, call, message, &row); err != nil {
+				if _, err := committer.Result(s.requestCtx, i, call, message, &storage.ToolResultCommit{Result: &row}); err != nil {
 					return fail(err)
 				}
 			}

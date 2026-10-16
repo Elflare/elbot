@@ -173,8 +173,7 @@ func TestStateConcurrentUpdatesPreserveOtherOwners(t *testing.T) {
 	if err != nil || contextsState.LastUsage == nil || contextsState.Compact == nil || contextsState.Compact.Summary != "seed" {
 		t.Fatalf("context=%+v err=%v", contextsState, err)
 	}
-	usage, _ := contexts.Usage(latest)
-	if !reflect.DeepEqual(usage, contextsState.LastUsage) || !strings.Contains(latest.Metadata, "9007199254740993") {
+	if !strings.Contains(latest.Metadata, "9007199254740993") {
 		t.Fatalf("lost committed state: %s", latest.Metadata)
 	}
 	if strings.Contains(latest.Metadata, "reader") {

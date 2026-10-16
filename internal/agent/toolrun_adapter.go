@@ -3,8 +3,6 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"log/slog"
 	"reflect"
 	"strings"
@@ -141,33 +139,6 @@ func (d toolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output)
 	return d.output.SendOutputs(ctx, outputs)
 }
 
-func (d toolRunDeps) RecordToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk string, startedAt time.Time, result string, callErr error) (events.LogResult, error) {
-	record := &storage.ToolCallRecord{
-		SessionID:  sessionID,
-		ToolCallID: call.ID,
-		ToolName:   call.Name,
-		ActorID:    d.identity.Actor(ctx).ID,
-		RiskLevel:  risk,
-		Success:    callErr == nil,
-		StartedAt:  startedAt,
-		FinishedAt: storage.Now(),
-	}
-	if callErr != nil {
-		record.Error = callErr.Error()
-	}
-	logResult := events.LogResult{ResultStatus: events.ResultSucceeded, Content: "tool call record saved"}
-	recordErr := d.toolCalls.Create(ctx, record)
-	if recordErr != nil {
-		logResult.ResultStatus = events.ResultFailed
-		logResult.Content = fmt.Sprintf("record_error=%v", recordErr)
-		if errors.Is(recordErr, context.Canceled) {
-			logResult.ResultStatus = events.ResultCanceled
-		}
-	}
-
-	return logResult, recordErr
-}
-
 func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reason string) {
 	content := map[string]string{"actor_id": d.identity.Actor(ctx).ID, "tool": call.Name, "risk": string(risk), "reason": reason}
 	for key, value := range content {
@@ -188,18 +159,6 @@ func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call
 		Identity:     events.LogIdentity{},
 		ResultStatus: events.ResultRejected,
 	})
-}
-
-func (d toolRunDeps) RememberDiscoveryResult(ctx context.Context, row *storage.Session, result *tool.Result) (events.LogResult, error) {
-	if row == nil {
-		return events.LogResult{ResultStatus: events.ResultSkipped, Content: "session is absent"}, nil
-	}
-	update, err := toolrun.DiscoveryStateUpdate(ctx, result, d.runtime.registry, d.identity.Actor(ctx), d.identity.Policy())
-	if err != nil {
-		return events.LogResult{ResultStatus: events.ResultSkipped}, err
-	}
-	_, logResult, err := commitToolState(ctx, d.state, row, update)
-	return logResult, err
 }
 
 func (d toolRunDeps) AddToolUse(sessionID, toolName string) {

@@ -199,7 +199,11 @@ func (c *ExecutionCoordinator) observeRequestStop(ctx context.Context, sessionID
 
 func (c *ExecutionCoordinator) finishCompletedTurn(ctx context.Context, session *storage.Session, out dialogue.Output, result dialogue.TurnResult) (turn.Input, error) {
 	ctx = c.view.Context(ctx)
-	selection, usage, turnStartedAt, committed := result.Selection, result.Usage, result.StartedAt, result.Committed
+	selection, turnStartedAt, committed := result.Selection, result.StartedAt, result.Committed
+	usage, err := c.status.Usage(session)
+	if err != nil {
+		return turn.Input{}, err
+	}
 	if err := c.contexts.RecordTurn(ctx, session.ID, usage); err != nil {
 		return turn.Input{}, fmt.Errorf("保存会话活动时间和用量: %w", err)
 	}

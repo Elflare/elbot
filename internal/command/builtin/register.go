@@ -54,7 +54,6 @@ type ModelService interface {
 }
 
 type ContextService interface {
-	Usage(*storage.Session) (*llm.Usage, error)
 	Status(context.Context, *llm.Usage, config.ModelSelection) string
 }
 
@@ -110,6 +109,7 @@ type Deps struct {
 
 	Logs          LogService
 	RuntimeStatus func(sessionID string) runtimestatus.Snapshot
+	Usage         func(*storage.Session) (*llm.Usage, error)
 }
 
 func RegisterFactories(registrar Registrar, deps Deps, factories ...HandlerFactory) error {

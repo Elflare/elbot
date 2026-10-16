@@ -23,6 +23,10 @@ import (
 )
 
 type CallProcessor struct {
+	// Status owns the latest raw provider usage, independently of response Hooks.
+	Status interface {
+		RecordUsage(context.Context, string, *llm.Usage)
+	}
 	Messages  *MessageStore
 	Preparer  *Preparer
 	Hooks     Hooks
@@ -78,6 +82,9 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 		o.Event.ElapsedMS = time.Since(o.startedAt).Milliseconds()
 	}
 	o.Event.Usage = agentevents.CloneUsage(o.Event.Usage)
+	if o.processor.Status != nil {
+		o.processor.Status.RecordUsage(ctx, o.sessionID, o.Event.Usage)
+	}
 	if o.Event.Err == nil {
 		o.Event.Err = err
 	}

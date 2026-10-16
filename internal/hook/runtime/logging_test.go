@@ -32,10 +32,14 @@ func (t loggingTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Resu
 	return t.run(ctx, req)
 }
 
-func captureHookRecords(t *testing.T) *[]events.LogRecord {
+func captureHookRecords(t *testing.T, includeStarts ...bool) *[]events.LogRecord {
 	t.Helper()
 	var records []events.LogRecord
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+		// Existing assertions inspect terminal facts; boundary tests opt into starts.
+		if record.EventName == "hook_tool_call_started" && len(includeStarts) == 0 {
+			return nil
+		}
 		if record.Module == "hook" {
 			records = append(records, record)
 		}
@@ -46,6 +50,31 @@ func captureHookRecords(t *testing.T) *[]events.LogRecord {
 	}
 	t.Cleanup(func() { connection.Disconnect() })
 	return &records
+}
+
+func TestPluginToolStartPrecedesBodyAndEndHasElapsed(t *testing.T) {
+	records := captureHookRecords(t, true)
+	registry := tool.NewRegistry()
+	_ = registry.Register(loggingTool{run: func(context.Context, tool.CallRequest) (*tool.Result, string, error) {
+		if len(*records) != 1 || (*records)[0].EventName != "hook_tool_call_started" || strings.Contains((*records)[0].Content, `"result"`) {
+			t.Fatalf("start=%+v", *records)
+		}
+		return &tool.Result{Content: "business"}, "summary", nil
+	}})
+	manager, err := NewManager(Options{SharedDir: t.TempDir(), Registry: registry})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close(t.Context())
+	worker := newWorker(manager, Config{ID: "test", Tools: ToolsConfig{Allow: []string{"logging_tool"}}})
+	token := manager.putToolContext("test", t.Context(), hook.Event{}, time.Minute)
+	raw, _ := json.Marshal(map[string]string{"name": "logging_tool", "tool_context": token})
+	if _, err := worker.callTool(raw); err != nil {
+		t.Fatal(err)
+	}
+	if len(*records) != 2 || (*records)[1].EventName != "hook_tool_call" || !strings.Contains((*records)[1].Content, `"elapsed_ms"`) {
+		t.Fatalf("end=%+v", *records)
+	}
 }
 
 func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {

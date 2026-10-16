@@ -9,6 +9,7 @@ import (
 	"elbot/internal/contextmgr"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
+	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
@@ -40,6 +41,7 @@ type ExecutionSender interface {
 type ExecutionStatus interface {
 	Record(context.Context, runtimestatus.Snapshot)
 	Snapshot(string) runtimestatus.Snapshot
+	Usage(*storage.Session) (*llm.Usage, error)
 }
 
 type ConfirmationWaitPolicy interface {

@@ -25,21 +25,21 @@ import (
 
 type dialogueMediaRemote struct {
 	media.LocalBackend
-	puts, signs int
+	puts, signs atomic.Int64
 	signErr     error
 }
 
 func (r *dialogueMediaRemote) Put(ctx context.Context, id string, reader io.Reader, size int64, mime string) (string, error) {
-	r.puts++
+	r.puts.Add(1)
 	return r.LocalBackend.Put(ctx, id, reader, size, mime)
 }
 
 func (r *dialogueMediaRemote) PresignGet(_ context.Context, item *storage.Media, _ time.Duration) (string, error) {
-	r.signs++
+	signs := r.signs.Add(1)
 	if r.signErr != nil {
 		return "", r.signErr
 	}
-	return fmt.Sprintf("https://s3.test/%s?signature=%d", item.ID, r.signs), nil
+	return fmt.Sprintf("https://s3.test/%s?signature=%d", item.ID, signs), nil
 }
 
 func TestDialogueReusesSignedURLAcrossTurnsAndSessions(t *testing.T) {
@@ -108,8 +108,8 @@ func TestDialogueReusesSignedURLAcrossTurnsAndSessions(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if calls := requestCount(); calls != 3 || remote.puts != 1 || remote.signs != 1 {
-				t.Fatalf("requests=%d uploads=%d signatures=%d", calls, remote.puts, remote.signs)
+			if calls := requestCount(); calls != 3 || remote.puts.Load() != 1 || remote.signs.Load() != 1 {
+				t.Fatalf("requests=%d uploads=%d signatures=%d", calls, remote.puts.Load(), remote.signs.Load())
 			}
 		})
 	}
@@ -300,8 +300,8 @@ func TestDialogueMediaTotalAcrossHistoryAndPending(t *testing.T) {
 					if strings.Count(output, "对话处理失败：") != 1 || !strings.Contains(output, "file_delivery.max_direct_base64_bytes=8388608") {
 						t.Fatalf("notification=%q", output)
 					}
-				} else if err != nil || calls() != 2 || failed.Load() != 0 || remote.puts != 6 || remote.signs != 6 {
-					t.Fatalf("err=%v requests=%d failures=%d uploads=%d signs=%d", err, calls(), failed.Load(), remote.puts, remote.signs)
+				} else if err != nil || calls() != 2 || failed.Load() != 0 || remote.puts.Load() != 6 || remote.signs.Load() != 6 {
+					t.Fatalf("err=%v requests=%d failures=%d uploads=%d signs=%d", err, calls(), failed.Load(), remote.puts.Load(), remote.signs.Load())
 				}
 				for _, id := range ids {
 					refs, err := center.Store.MediaReferences().ListMediaIDs(t.Context(), id)
@@ -351,8 +351,8 @@ func TestResponsesRecoveryRecomputesWholeMediaTotal(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if len(f.captured()) != 3 || remote.puts != 2 || remote.signs != 2 || strings.Contains(f.platform.out.String(), "对话处理失败") {
-		t.Fatalf("requests=%d uploads=%d signs=%d", len(f.captured()), remote.puts, remote.signs)
+	if len(f.captured()) != 3 || remote.puts.Load() != 2 || remote.signs.Load() != 2 || strings.Contains(f.platform.out.String(), "对话处理失败") {
+		t.Fatalf("requests=%d uploads=%d signs=%d", len(f.captured()), remote.puts.Load(), remote.signs.Load())
 	}
 }
 
@@ -410,8 +410,8 @@ func TestResponsesBranchContinuationUsesWholeMediaTotal(t *testing.T) {
 			if err := f.agent.HandleMessage(mediaInputContext(t, "compare", small.ID), "compare"); err != nil {
 				t.Fatal(err)
 			}
-			if len(f.captured()) != 3 || executed != 1 || remote.puts != 2 || remote.signs != 2 {
-				t.Fatalf("requests=%d tools=%d uploads=%d signs=%d", len(f.captured()), executed, remote.puts, remote.signs)
+			if len(f.captured()) != 3 || executed != 1 || remote.puts.Load() != 2 || remote.signs.Load() != 2 {
+				t.Fatalf("requests=%d tools=%d uploads=%d signs=%d", len(f.captured()), executed, remote.puts.Load(), remote.signs.Load())
 			}
 		})
 	}

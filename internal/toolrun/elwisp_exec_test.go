@@ -27,7 +27,7 @@ func TestExecuteELwispToolPostsArguments(t *testing.T) {
 	defer server.Close()
 
 	call := llm.ToolCallRequest{ID: "call-1", Name: "elwisp_watcher_server_status", Arguments: `{"detail":true}`}
-	result := executeELwispTool(context.Background(), call, ResolvedTool{Cached: &CachedTool{Name: "server_status", CanonicalName: call.Name, Source: SourceKindELwisp, EventKey: "watcher/source/id", Endpoint: server.URL}})
+	result := executeELwispTool(context.Background(), call, ResolvedTool{Cached: &CachedTool{Name: "server_status", CanonicalName: call.Name, Source: SourceKindELwisp, EventKey: "watcher/source/id", Endpoint: server.URL}}, nil)
 	if result.Error != nil {
 		t.Fatalf("executeELwispTool: %v", result.Error)
 	}
@@ -46,7 +46,7 @@ func TestExecuteELwispToolReturnsHTTPError(t *testing.T) {
 	defer server.Close()
 
 	call := llm.ToolCallRequest{ID: "call-1", Name: "elwisp_watcher_server_status", Arguments: `{}`}
-	result := executeELwispTool(context.Background(), call, ResolvedTool{Cached: &CachedTool{Name: "server_status", CanonicalName: call.Name, Source: SourceKindELwisp, Endpoint: server.URL}})
+	result := executeELwispTool(context.Background(), call, ResolvedTool{Cached: &CachedTool{Name: "server_status", CanonicalName: call.Name, Source: SourceKindELwisp, Endpoint: server.URL}}, nil)
 	if result.Error == nil {
 		t.Fatal("expected HTTP error")
 	}
@@ -60,11 +60,11 @@ func TestExecuteELwispToolPartialAndPreparationFacts(t *testing.T) {
 		_, _ = w.Write([]byte(`{"content":"first action saved","error":"second action failed"}`))
 	}))
 	defer server.Close()
-	result := executeELwispTool(context.Background(), llm.ToolCallRequest{Name: "remote", Arguments: `{}`}, ResolvedTool{Cached: &CachedTool{Endpoint: server.URL}})
+	result := executeELwispTool(context.Background(), llm.ToolCallRequest{Name: "remote", Arguments: `{}`}, ResolvedTool{Cached: &CachedTool{Endpoint: server.URL}}, nil)
 	if result.Error == nil || !result.ExecutionStarted || result.ResultStatus != events.ResultFailed || result.Result == nil || result.Result.Content != "first action saved" {
 		t.Fatalf("partial facts = %#v", result)
 	}
-	result = executeELwispTool(context.Background(), llm.ToolCallRequest{Name: "remote", Arguments: `{invalid`}, ResolvedTool{Cached: &CachedTool{Endpoint: server.URL}})
+	result = executeELwispTool(context.Background(), llm.ToolCallRequest{Name: "remote", Arguments: `{invalid`}, ResolvedTool{Cached: &CachedTool{Endpoint: server.URL}}, nil)
 	if result.Error == nil || result.ExecutionStarted || result.ResultStatus != events.ResultFailed {
 		t.Fatalf("preparation facts = %#v", result)
 	}
@@ -76,7 +76,7 @@ func TestELwispLogKeepsErrorAheadOfLongPartialResult(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(elwispToolResponse{Content: body, Error: "second action failed"})
 	}))
 	defer server.Close()
-	result := executeELwispTool(t.Context(), llm.ToolCallRequest{Name: "remote", Arguments: `{}`}, ResolvedTool{Cached: &CachedTool{Endpoint: server.URL}})
+	result := executeELwispTool(t.Context(), llm.ToolCallRequest{Name: "remote", Arguments: `{}`}, ResolvedTool{Cached: &CachedTool{Endpoint: server.URL}}, nil)
 	if result.Error == nil || result.Result == nil || result.Result.Content != body || llm.SegmentsContentText(result.Message.Segments) != body {
 		t.Fatalf("partial business result changed: %+v", result)
 	}

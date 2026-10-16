@@ -29,7 +29,7 @@ type elwispToolResponse struct {
 	Error   string `json:"error"`
 }
 
-func executeELwispTool(ctx context.Context, call llm.ToolCallRequest, resolved ResolvedTool) (result ExecutionResult) {
+func executeELwispTool(ctx context.Context, call llm.ToolCallRequest, resolved ResolvedTool, onStarted func()) (result ExecutionResult) {
 	result.Call = call
 	result.ResultStatus = events.ResultFailed
 	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
@@ -75,6 +75,9 @@ func executeELwispTool(ctx context.Context, call llm.ToolCallRequest, resolved R
 	}
 	req.Header.Set("Content-Type", "application/json")
 	result.ExecutionStarted = true
+	if onStarted != nil {
+		onStarted()
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		result.Error = err

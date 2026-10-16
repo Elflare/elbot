@@ -16,6 +16,8 @@ type Executor struct {
 	Registry *Registry
 	Actor    contextinfo.Actor
 	Policy   *security.Policy
+	// OnStarted runs after authorization, immediately before the tool body.
+	OnStarted func()
 }
 
 type ExecutionResult struct {
@@ -90,6 +92,9 @@ func (e Executor) execute(ctx context.Context, call llm.ToolCallRequest, prepare
 	}
 	var result *Result
 	var logContent string
+	if e.OnStarted != nil {
+		e.OnStarted()
+	}
 	if prepared != nil {
 		result, logContent, err = prepared.Call(ctx)
 	} else {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/hook"
@@ -16,6 +17,46 @@ import (
 type turnCompletionStore struct {
 	storage.Store
 	sessions *turnCompletionSessions
+}
+
+func TestProviderUsageIsVisibleWhileResponseHookWaits(t *testing.T) {
+	base := newTestStore(t)
+	tokens := int64(43)
+	model := &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: "raw", Usage: &llm.Usage{TotalTokens: &tokens}}}}}
+	f := newExecutionFixture(t, model, base)
+	ctx, requestCtx, in, _ := f.begin(t)
+	entered, release := make(chan struct{}), make(chan struct{})
+	f.on(t, hook.PointLLMResponseReceived, func(event hook.Event) hook.Event {
+		close(entered)
+		<-release
+		changed := int64(999)
+		event.LLM.Usage = &llm.Usage{TotalTokens: &changed}
+		return event
+	})
+	done := make(chan dialogue.TurnResult, 1)
+	go func() { done <- f.runner.RunTurn(ctx, requestCtx, in, f.out) }()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("Hook did not start")
+	}
+	usage, err := f.execution.status.Usage(in.Session)
+	close(release)
+	if err != nil || usage == nil || usage.TotalTokens == nil || *usage.TotalTokens != tokens {
+		t.Fatalf("provider usage delayed: %+v %v", usage, err)
+	}
+	select {
+	case result := <-done:
+		if result.Err != nil {
+			t.Fatal(result.Err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("turn did not finish")
+	}
+	usage, _ = f.execution.status.Usage(in.Session)
+	if *usage.TotalTokens != tokens {
+		t.Fatal("response Hook overwrote provider fact")
+	}
 }
 
 func (s turnCompletionStore) Sessions() storage.SessionRepository { return s.sessions }
@@ -70,10 +111,11 @@ func TestTurnCompletionHandlesPendingAndSaveFailure(t *testing.T) {
 
 func TestToolLoopCompletionKeepsLatestUsage(t *testing.T) {
 	base := newTestStore(t)
+	providerTokens := int64(17)
 	model := &fakeLLM{chunks: [][]chatcompletions.Chunk{
 		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "first", Name: "prepared_args", Args: `{}`}}, FinishReason: "tool_calls"}},
 		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "second", Name: "prepared_args", Args: `{}`}}, FinishReason: "tool_calls"}},
-		{{DeltaContent: "done"}},
+		{{DeltaContent: "done", Usage: &llm.Usage{TotalTokens: &providerTokens}}},
 	}}
 	f := newExecutionFixture(t, model, base)
 	f.chat.Tools.Deps.(*toolRunDeps).runtime.fileRollback = f.opts.FileRollback
@@ -100,8 +142,8 @@ func TestToolLoopCompletionKeepsLatestUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	usage, err := f.opts.Contexts.Usage(latest)
-	if err != nil || usage == nil || usage.TotalTokens == nil || *usage.TotalTokens != 3 {
+	usage, err := f.execution.status.Usage(latest)
+	if err != nil || usage == nil || usage.TotalTokens == nil || *usage.TotalTokens != providerTokens {
 		t.Fatalf("last call usage=%+v error=%v", usage, err)
 	}
 	if f.opts.Turns.Snapshot(in.Session.ID).Phase != turn.PhaseIdle {
