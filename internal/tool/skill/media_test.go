@@ -152,26 +152,38 @@ func main(){
 	if err != nil {
 		t.Fatal(err)
 	}
-	largeRaw, _ := json.Marshal(map[string]any{"media_inputs": []tool.MediaInput{{MediaID: large.ID}}})
+	largeRaw, _ := json.Marshal(map[string]any{"media_inputs": []tool.MediaInput{{MediaID: large.ID}, {MediaID: item.ID}, {MediaID: large.ID}, {MediaID: item.ID}}})
 	prepared, err := prepareGoMedia(ctx, largeRaw, call, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var payload struct {
 		Inputs []struct {
-			Path   string `json:"path"`
-			Base64 string `json:"base64"`
-			Size   int64  `json:"size"`
+			MediaID  string `json:"media"`
+			Path     string `json:"path"`
+			Name     string `json:"name"`
+			MIMEType string `json:"mime_type"`
+			Base64   string `json:"base64"`
+			Size     int64  `json:"size"`
 		} `json:"media_inputs"`
 	}
 	if err := json.Unmarshal(prepared, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if len(payload.Inputs) != 1 || payload.Inputs[0].Base64 != "" || payload.Inputs[0].Size != large.Size {
-		t.Fatalf("large input %#v", payload)
+	if len(payload.Inputs) != 4 || payload.Inputs[0] != payload.Inputs[2] || payload.Inputs[1] != payload.Inputs[3] {
+		t.Fatalf("input order or duplicate entries changed: %#v", payload)
 	}
-	if info, err := os.Stat(filepath.Join(dir, payload.Inputs[0].Path)); err != nil || info.Size() != large.Size {
-		t.Fatalf("large export %v %v", info, err)
+	for i, metadata := range []*storage.Media{large, item} {
+		input := payload.Inputs[i]
+		if input.MediaID != metadata.ID || input.Name != metadata.Name || input.MIMEType != metadata.MIMEType || input.Size != metadata.Size {
+			t.Fatalf("input metadata %#v, want %#v", input, metadata)
+		}
+		if data, err := os.ReadFile(filepath.Join(dir, input.Path)); err != nil || int64(len(data)) != metadata.Size || (i == 1 && string(data) != "input") {
+			t.Fatalf("exported input size=%d error=%v", len(data), err)
+		}
+	}
+	if payload.Inputs[0].Base64 != "" || payload.Inputs[1].Base64 != "aW5wdXQ=" {
+		t.Fatal("incorrect base64 preparation")
 	}
 	known, err := resultFromStdoutWithMedia(ctx, fmt.Sprintf(`{"segments":[{"type":"file","media":%q}]}`, item.ID), call, dir)
 	if err != nil || known.Segments[0].MediaID != item.ID {

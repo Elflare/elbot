@@ -132,7 +132,7 @@ func (m *Manager) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) 
 }
 
 func (m *Manager) readMedia(ctx context.Context, metadata *storage.Media) ([]byte, error) {
-	reader, err := m.openMedia(ctx, metadata)
+	reader, err := m.OpenHeld(ctx, metadata)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +165,7 @@ func (m *Manager) presignMedia(ctx context.Context, metadata *storage.Media) (st
 	}
 	// Stored media may still be local after the configured backend switches to S3.
 	if metadata.ObjectKey == "" && metadata.Backend != "s3" {
-		reader, err := m.openMedia(ctx, metadata)
+		reader, err := m.OpenHeld(ctx, metadata)
 		if err != nil {
 			return "", err
 		}

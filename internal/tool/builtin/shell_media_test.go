@@ -29,10 +29,10 @@ func TestShellMediaInputsAndCleanup(t *testing.T) {
 	}
 	shell := NewShellTool()
 	shell.Media = &tool.MediaRuntime{Center: center, SandboxRoot: t.TempDir()}
-	command := `cat "$ELBOT_MEDIA_1"`
+	command := `cat "$ELBOT_MEDIA_1" "$ELBOT_MEDIA_2"`
 	slow := "sleep 10"
 	if isPowerShellEnv() {
-		command = `Get-Content -LiteralPath $env:ELBOT_MEDIA_1`
+		command = `Get-Content -LiteralPath $env:ELBOT_MEDIA_1,$env:ELBOT_MEDIA_2`
 		slow = "Start-Sleep -Seconds 10"
 	}
 	for _, test := range []struct {
@@ -49,10 +49,10 @@ func TestShellMediaInputsAndCleanup(t *testing.T) {
 				cancel()
 				runCtx = canceled
 			}
-			raw, _ := json.Marshal(map[string]any{"cmd": test.cmd, "timeout_ms": test.timeout, "media_inputs": []tool.MediaInput{{MediaID: item.ID}}})
+			raw, _ := json.Marshal(map[string]any{"cmd": test.cmd, "timeout_ms": test.timeout, "media_inputs": []tool.MediaInput{{MediaID: item.ID}, {MediaID: item.ID}}})
 			original := string(raw)
 			result, _, err := shell.Call(runCtx, tool.CallRequest{Arguments: raw})
-			if test.name == "success" && (err != nil || !strings.Contains(result.Content, "shell-media-content")) {
+			if test.name == "success" && (err != nil || strings.Count(result.Content, "shell-media-content") != 2) {
 				t.Fatalf("result %#v %v", result, err)
 			}
 			if test.name == "failure" && (err != nil || !strings.Contains(result.Content, "exit_code: 7")) {

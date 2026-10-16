@@ -19,9 +19,9 @@
   - Skill 执行：错误输出摘要只在失败分支计算，成功路径直接处理结果。入口：[internal/tool/skill/runner.go](../internal/tool/skill/runner.go)。
   - 不新增生产文件、函数或公共接口；比较逻辑放在现有函数内，新增局部变量已确认使用 metadata、before、exists，其余命名沿用现有。
 
-- [ ] 工具媒体：复用已持有媒体的元数据和导出结果。
-  - 已持有媒体在导出时仍经 Open 重读元数据并建立额外临时持有；重复媒体参数还会重复复制文件，小文件 base64 准备也会重复读取。
-  - 单独明确同次调用内的复用范围、工作目录、引用生命周期及失败清理。入口：[internal/tool/media_runtime.go](../internal/tool/media_runtime.go)、[internal/tool/skill/media.go](../internal/tool/skill/media.go)、[internal/media/manager.go](../internal/media/manager.go)。
+- [x] 工具媒体：复用已持有媒体的元数据和导出结果，已完成。
+  - MediaCall 按 ID 集中保存元数据、引用及成功导出，OpenHeld 打开已持有的记录；输出导入直接登记持有，Go 参数准备复用完整条目及小文件 base64，保留参数顺序和重复项。
+  - 复用限于同次调用；Shell 跨调用检查缓存并刷新时间，Go／TOML 使用调用专属目录。引用持续到 Close，失败结果不缓存，引用释放失败可重试。入口：[internal/tool/media_runtime.go](../internal/tool/media_runtime.go)、[internal/tool/skill/media.go](../internal/tool/skill/media.go)、[internal/media/manager.go](../internal/media/manager.go)。
 
 - [ ] 重复预览：复用同次调用在确认前生成的预览。
   - 文件编辑／撤销、长期记忆和 Skill 管理工具在预检及确认详情阶段重复读取、计算预览；edit_file 虽保存预检结果，仍先重新读文件和计算 diff。

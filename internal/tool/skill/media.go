@@ -38,7 +38,15 @@ func prepareGoMedia(ctx context.Context, raw json.RawMessage, call *tool.MediaCa
 		Base64   string `json:"base64,omitempty"`
 	}
 	prepared := make([]preparedInput, 0, len(inputs))
+	preparedByID := make(map[string]preparedInput, len(inputs))
 	for _, input := range inputs {
+		if entry, ok := preparedByID[input.MediaID]; ok {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			prepared = append(prepared, entry)
+			continue
+		}
 		path, metadata, err := call.Export(ctx, input.MediaID, base)
 		if err != nil {
 			return nil, err
@@ -51,6 +59,7 @@ func prepareGoMedia(ctx context.Context, raw json.RawMessage, call *tool.MediaCa
 			}
 			entry.Base64 = base64.StdEncoding.EncodeToString(data)
 		}
+		preparedByID[input.MediaID] = entry
 		prepared = append(prepared, entry)
 	}
 	workspace, err := call.Workspace(base)
