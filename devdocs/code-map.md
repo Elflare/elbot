@@ -120,6 +120,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/toolrun/state.go`、`internal/toolrun/preload.go`、`internal/toolrun/background.go`：状态提交、预加载与后台白名单；预载失败与跳过由来源记录身份、原因和结果。
 - `internal/agent/tool_directive.go`、`internal/agent/tool_cache.go`：输入指令和状态提交编排。
 - `internal/fileops/`：共享文件操作、编辑、目标锁和撤销备份。
+- `internal/tool/builtin/file_tools_ast.go`：单文件与目录共用的扩展名／Shell shebang 识别及 AST 解析；`file_tools_directory.go`：目录 AST 候选读取与缓存、rg 文件枚举和分批流式搜索、有界匹配候选及排序选择。grep 大文件警告沿用 rg 的搜索范围。
 - `internal/fileops/binding.go`、`internal/fileops/commit.go`：context 中的服务／Session／准入绑定，以及显式传递的提交校验；context 不保存编辑或撤销预览。
 - `internal/fileops/edit_service.go`、`internal/fileops/rollback_service.go`：编辑／撤销准备对象、预览和提交；`internal/fileops/atomic_write.go` 提供带 revision 校验的写入。
 - `internal/workspace/`、`internal/session/workspace.go`、`internal/sandbox/`：工作目录、持久化与后台路径限制。

@@ -36,13 +36,13 @@
   - `internal/background/background.go`、`internal/cron/execution.go`、`internal/elnis/llm.go`、`internal/agent/background.go`、`internal/agent/input.go`、`internal/turn/manager.go`。
   - `internal/agent/dialogue/preparation.go`、`internal/agent/dialogue/model_call.go`、`internal/agent/dialogue/message_store.go`、`internal/storage/dialogue.go`、`internal/storage/sqlite/dialogue_repository.go`、`internal/contextmgr/state.go`。
 
-- [ ] 目录 AST：先筛选语言，再完整读取候选文件。
-  - 当前先完整读取所有大小合格的文件，再判断是否支持语言，导致无关文件被读取后丢弃。
-  - 使用扩展名及少量文件头筛选，保留无扩展名 Shell、现有排序、选择和缓存失效行为。入口：[internal/tool/builtin/file_tools_directory.go](../internal/tool/builtin/file_tools_directory.go)、[internal/tool/builtin/file_tools_ast.go](../internal/tool/builtin/file_tools_ast.go)。
+- [x] 目录 AST：先按扩展名或标准 Shell shebang 筛选，再完整读取候选文件。
+  - 无扩展名及其他扩展名脚本通过 shebang 识别；普通文本中的 mksh 不参与识别。命中后从同一读取流继续读取，保留排序、选择、大小警告和缓存失效行为。
+  - `internal/tool/builtin/file_tools_directory.go`、`internal/tool/builtin/file_tools_ast.go`、`internal/tool/builtin/file_tools_test.go`。
 
-- [ ] 目录 grep：减少重复目录遍历和输出缓存。
-  - 当前为大文件警告先遍历目录并取文件属性，随后 rg 再遍历搜索；匹配输出全部收集后才截取展示。
-  - 合并文件枚举并流式处理结果，保持匹配总数、排序、index 选择和大文件提示语义。入口：[internal/tool/builtin/file_tools_directory.go](../internal/tool/builtin/file_tools_directory.go)。
+- [x] 目录 grep：由 rg 统一枚举候选文件，按明确文件列表分批搜索，流式解码输出。
+  - 大文件警告与搜索范围一致；完整统计匹配行数，最大堆只保留展示或 index 需要的候选，按完整相对路径及行号排序。空结果、长行、特殊文件名、进程失败及取消均保持明确结果。
+  - `internal/tool/builtin/file_tools_directory.go`、`internal/tool/builtin/file_tools_test.go`。
 
 - [ ] 长期记忆同步：批量读取并复用索引状态。
   - 当前逐文件查询索引状态，末尾又查询完整路径列表；未变化的损坏文件仍重复读取、解析并保存错误记录。

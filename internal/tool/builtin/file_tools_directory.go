@@ -2,9 +2,11 @@ package builtin
 
 import (
 	"bufio"
+	"container/heap"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -133,11 +135,16 @@ func readFileDirectorySearch(ctx context.Context, root, mode string, args readFi
 		return nil, fmt.Errorf("query is required when mode is %s", mode)
 	}
 	var matches []directorySearchMatch
+	total := 0
 	var err error
 	switch mode {
 	case readFileModeGrep:
 		var grepWarnings []string
-		matches, grepWarnings, err = findDirectoryGrepMatches(ctx, root, query)
+		keep := fileops.NormalizeMaxMatches(args.MaxMatches)
+		if args.Index > 0 {
+			keep = args.Index
+		}
+		matches, total, grepWarnings, err = findDirectoryGrepMatches(ctx, root, query, keep)
 		warnings = append(warnings, grepWarnings...)
 	case readFileModeAST, readFileModeASTFunction:
 		if cached, cachedWarnings, ok := astCache.load(root, mode, query); ok {
@@ -155,39 +162,170 @@ func readFileDirectorySearch(ctx context.Context, root, mode string, args readFi
 	if err != nil {
 		return nil, err
 	}
+	if mode != readFileModeGrep {
+		total = len(matches)
+	}
 	sort.Slice(matches, func(i, j int) bool {
 		if matches[i].Path == matches[j].Path {
 			return matches[i].Line < matches[j].Line
 		}
 		return matches[i].Path < matches[j].Path
 	})
-	return formatDirectorySearchMatches(root, mode, query, matches, args.ContextLines, args.MaxMatches, args.Index, warnings)
+	return formatDirectorySearchMatches(root, mode, query, matches, total, args.ContextLines, args.MaxMatches, args.Index, warnings)
 }
 
-func findDirectoryGrepMatches(ctx context.Context, root, query string) ([]directorySearchMatch, []string, error) {
-	warnings, err := directoryLargeFileWarnings(root, fileToolMaxBytes, "grep")
+// directoryMatchHeap keeps the last match in path/line order at the root,
+// retaining a bounded prefix while every match is counted.
+type directoryMatchHeap []directorySearchMatch
+
+func (h directoryMatchHeap) Len() int { return len(h) }
+func (h directoryMatchHeap) Less(i, j int) bool {
+	if h[i].Path == h[j].Path {
+		return h[i].Line > h[j].Line
+	}
+	return h[i].Path > h[j].Path
+}
+func (h directoryMatchHeap) Swap(i, j int)   { h[i], h[j] = h[j], h[i] }
+func (h *directoryMatchHeap) Push(value any) { *h = append(*h, value.(directorySearchMatch)) }
+func (h *directoryMatchHeap) Pop() any {
+	last := len(*h) - 1
+	value := (*h)[last]
+	(*h)[last] = directorySearchMatch{}
+	*h = (*h)[:last]
+	return value
+}
+
+func findDirectoryGrepMatches(ctx context.Context, root, query string, keep int) ([]directorySearchMatch, int, []string, error) {
+	rg, err := exec.LookPath("rg")
+	if err != nil {
+		return nil, 0, nil, fmt.Errorf("directory grep requires ripgrep (rg), but rg was not found in PATH. Ask the user to install ripgrep and make `rg` available in PATH")
+	}
+	files, warnings, err := directoryGrepFiles(ctx, rg, root)
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	matches := directoryMatchHeap{}
+	total := 0
+	for start := 0; start < len(files); {
+		end, size := start, 0
+		for end < len(files) && end-start < 128 {
+			next := len(files[end]) + 1
+			if end > start && size+next > 16*1024 {
+				break
+			}
+			size += next
+			end++
+		}
+		count, err := scanDirectoryGrepBatch(ctx, rg, root, query, files[start:end], keep, &matches)
+		if err != nil {
+			return nil, 0, nil, err
+		}
+		total += count
+		start = end
+	}
+	return []directorySearchMatch(matches), total, warnings, nil
+}
+
+// directoryGrepFiles uses ripgrep's ignore rules for both search and warnings.
+func directoryGrepFiles(ctx context.Context, rg, root string) ([]string, []string, error) {
+	cmd := exec.CommandContext(ctx, rg, "--files", "--null", "--no-messages", "--glob", "!**/.git/**", "--glob", "!**/node_modules/**", "--glob", "!**/vendor/**", "--", root)
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, nil, err
 	}
-	rg, err := exec.LookPath("rg")
+	defer stdout.Close()
+	if err := cmd.Start(); err != nil {
+		return nil, nil, fmt.Errorf("enumerate ripgrep files: %w", err)
+	}
+	files := []string{}
+	large := []struct {
+		Path string
+		Size int64
+	}{}
+	count := 0
+	reader := bufio.NewReader(stdout)
+	var readErr error
+	for {
+		path, err := reader.ReadString(0)
+		if err == io.EOF && path == "" {
+			break
+		}
+		if err != nil {
+			readErr = err
+			break
+		}
+		path = strings.TrimSuffix(path, "\x00")
+		info, err := os.Stat(path)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		if info.Size() <= fileToolMaxBytes {
+			files = append(files, path)
+			continue
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			readErr = err
+			break
+		}
+		count++
+		large = append(large, struct {
+			Path string
+			Size int64
+		}{filepath.ToSlash(rel), info.Size()})
+		sort.Slice(large, func(i, j int) bool { return large[i].Path < large[j].Path })
+		if len(large) > 5 {
+			large = large[:5]
+		}
+	}
+	if readErr != nil {
+		_ = cmd.Process.Kill()
+	}
+	waitErr := cmd.Wait()
+	if ctx.Err() != nil {
+		return nil, nil, ctx.Err()
+	}
+	if readErr != nil {
+		return nil, nil, fmt.Errorf("read ripgrep files: %w", readErr)
+	}
+	if exitError, ok := waitErr.(*exec.ExitError); waitErr != nil && (!ok || exitError.ExitCode() != 1) {
+		return nil, nil, fmt.Errorf("enumerate ripgrep files: %w", waitErr)
+	}
+	if count == 0 {
+		return files, nil, nil
+	}
+	preview := make([]string, 0, len(large))
+	for _, file := range large {
+		preview = append(preview, fmt.Sprintf("%s (%d bytes)", file.Path, file.Size))
+	}
+	extra := ""
+	if count > len(large) {
+		extra = fmt.Sprintf("; %d more", count-len(large))
+	}
+	return files, []string{fmt.Sprintf("grep skipped %d large files: %s%s", count, strings.Join(preview, ", "), extra)}, nil
+}
+
+func scanDirectoryGrepBatch(ctx context.Context, rg, root, query string, files []string, keep int, matches *directoryMatchHeap) (int, error) {
+	args := []string{"--json", "--fixed-strings", "--no-messages", "--max-filesize", fmt.Sprintf("%d", fileToolMaxBytes), "--", query}
+	cmd := exec.CommandContext(ctx, rg, append(args, files...)...)
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, nil, fmt.Errorf("directory grep requires ripgrep (rg), but rg was not found in PATH. Ask the user to install ripgrep and make `rg` available in PATH")
+		return 0, err
 	}
-	cmd := exec.CommandContext(ctx, rg, "--json", "--fixed-strings", "--no-messages", "--max-filesize", fmt.Sprintf("%d", fileToolMaxBytes), "--glob", "!**/.git/**", "--glob", "!**/node_modules/**", "--glob", "!**/vendor/**", "--", query, root)
-	output, err := cmd.Output()
-	if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() != 1 {
-		return nil, nil, fmt.Errorf("run ripgrep: %w", err)
-	} else if err != nil && !ok {
-		return nil, nil, fmt.Errorf("run ripgrep: %w", err)
+	defer stdout.Close()
+	if err := cmd.Start(); err != nil {
+		return 0, fmt.Errorf("run ripgrep: %w", err)
 	}
-	matches := make([]directorySearchMatch, 0)
-	scanner := bufio.NewScanner(strings.NewReader(string(output)))
-	for scanner.Scan() {
+	decoder := json.NewDecoder(stdout)
+	total := 0
+	var readErr error
+	for {
 		var event struct {
 			Type string `json:"type"`
 			Data struct {
 				Path struct {
-					Text string `json:"text"`
+					Text  string `json:"text"`
+					Bytes []byte `json:"bytes"`
 				} `json:"path"`
 				LineNumber int `json:"line_number"`
 				Submatches []struct {
@@ -195,68 +333,81 @@ func findDirectoryGrepMatches(ctx context.Context, root, query string) ([]direct
 				} `json:"submatches"`
 			} `json:"data"`
 		}
-		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil || event.Type != "match" {
+		if err := decoder.Decode(&event); err != nil {
+			if err != io.EOF {
+				readErr = err
+			}
+			break
+		}
+		if event.Type != "match" {
 			continue
+		}
+		path := event.Data.Path.Text
+		if path == "" {
+			path = string(event.Data.Path.Bytes)
+		}
+		path, err = filepath.Rel(root, path)
+		if err != nil {
+			readErr = err
+			break
 		}
 		column := 1
 		if len(event.Data.Submatches) > 0 {
 			column += event.Data.Submatches[0].Start
 		}
-		path, err := filepath.Rel(root, event.Data.Path.Text)
-		if err != nil {
-			continue
+		match := directorySearchMatch{Path: filepath.ToSlash(path), Line: event.Data.LineNumber, Column: column, EndLine: event.Data.LineNumber, Kind: "grep"}
+		total++
+		if matches.Len() < keep {
+			heap.Push(matches, match)
+		} else if match.Path < (*matches)[0].Path || (match.Path == (*matches)[0].Path && match.Line < (*matches)[0].Line) {
+			(*matches)[0] = match
+			heap.Fix(matches, 0)
 		}
-		matches = append(matches, directorySearchMatch{Path: filepath.ToSlash(path), Line: event.Data.LineNumber, Column: column, EndLine: event.Data.LineNumber, Kind: "grep"})
 	}
-	if err := scanner.Err(); err != nil {
-		return nil, nil, fmt.Errorf("read ripgrep output: %w", err)
+	if readErr != nil {
+		_ = cmd.Process.Kill()
 	}
-	return matches, warnings, nil
+	waitErr := cmd.Wait()
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
+	if readErr != nil {
+		return 0, fmt.Errorf("read ripgrep output: %w", readErr)
+	}
+	if exitError, ok := waitErr.(*exec.ExitError); waitErr != nil && (!ok || exitError.ExitCode() != 1) {
+		return 0, fmt.Errorf("run ripgrep: %w", waitErr)
+	}
+	return total, nil
 }
 
-func directoryLargeFileWarnings(root string, maxBytes int64, mode string) ([]string, error) {
-	const previewLimit = 5
-	large := make([]string, 0, previewLimit)
-	count := 0
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			switch entry.Name() {
-			case ".git", "node_modules", "vendor":
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return nil
-		}
-		if info.Size() <= maxBytes {
-			return nil
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return nil
-		}
-		count++
-		if len(large) < previewLimit {
-			large = append(large, fmt.Sprintf("%s (%d bytes)", filepath.ToSlash(rel), info.Size()))
-		}
-		return nil
-	})
+// readDirectoryASTSource reads unsupported extensions only far enough to identify
+// a shell shebang, retaining the same reader when the remaining source is needed.
+func readDirectoryASTSource(path string) ([]byte, error) {
+	if _, _, err := detectASTLanguage(path, ""); err == nil {
+		return os.ReadFile(path)
+	}
+	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	if count == 0 {
-		return nil, nil
+	defer file.Close()
+	reader := bufio.NewReader(file)
+	prefix, err := reader.Peek(2)
+	if err != nil || string(prefix) != "#!" {
+		return nil, fmt.Errorf("AST search only supports Go and Shell files")
 	}
-	extra := ""
-	if count > len(large) {
-		extra = fmt.Sprintf("; %d more", count-len(large))
+	firstLine, err := reader.ReadString('\n')
+	if err != nil && err != io.EOF {
+		return nil, err
 	}
-	return []string{fmt.Sprintf("%s skipped %d large files: %s%s", mode, count, strings.Join(large, ", "), extra)}, nil
+	if _, _, err := detectASTLanguage(path, firstLine); err != nil {
+		return nil, err
+	}
+	text, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+	return append([]byte(firstLine), text...), nil
 }
 
 func findDirectoryASTMatches(root, query, mode string) ([]directorySearchMatch, []directoryASTFileState, error) {
@@ -285,7 +436,7 @@ func findDirectoryASTMatches(root, query, mode string) ([]directorySearchMatch, 
 		if info.Size() > fileToolDetailedMaxBytes {
 			return nil
 		}
-		text, err := os.ReadFile(path)
+		text, err := readDirectoryASTSource(path)
 		if err != nil {
 			return nil
 		}
@@ -361,12 +512,12 @@ func directoryASTFilesMatch(root string, cached []directoryASTFileState) bool {
 	return true
 }
 
-func formatDirectorySearchMatches(root, mode, query string, matches []directorySearchMatch, contextLines, maxMatches, index int, warnings []string) (*tool.Result, error) {
+func formatDirectorySearchMatches(root, mode, query string, matches []directorySearchMatch, total, contextLines, maxMatches, index int, warnings []string) (*tool.Result, error) {
 	maxMatches = fileops.NormalizeMaxMatches(maxMatches)
-	if index > len(matches) || index < 0 {
-		return nil, fmt.Errorf("index %d is out of range; found %d matches", index, len(matches))
+	if index > total || index < 0 {
+		return nil, fmt.Errorf("index %d is out of range; found %d matches", index, total)
 	}
-	truncated := index == 0 && len(matches) > maxMatches
+	truncated := index == 0 && total > maxMatches
 	shown := matches
 	if index > 0 {
 		shown = matches[index-1 : index]
@@ -374,7 +525,7 @@ func formatDirectorySearchMatches(root, mode, query string, matches []directoryS
 		shown = matches[:maxMatches]
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "path: %s\nmode: %s\nquery: %q\nmatches: %d\ntruncated: %t\n", root, mode, query, len(matches), truncated)
+	fmt.Fprintf(&b, "path: %s\nmode: %s\nquery: %q\nmatches: %d\ntruncated: %t\n", root, mode, query, total, truncated)
 	if len(matches) == 0 {
 		b.WriteString("content:\n")
 		return &tool.Result{Content: b.String(), Warnings: warnings}, nil
