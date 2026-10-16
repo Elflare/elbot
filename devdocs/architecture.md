@@ -142,7 +142,7 @@ flowchart TB
 - 用户／pending 和工具 transcript 通过共同提交口保存。ToolBatch 保存一条 assistant 调用数组及按原调用顺序排列的结果；失败结果属于对应调用。整批结果与媒体引用同事务提交，提交成功后才续跑模型；执行期间不预写展示调用头。
 - CommitGate 在本地事务内复核原 binding、活跃 Execution／attempt；Responses 同时比较预期 checkpoint 并提交原生状态。API 审计事实独立归档。
 - 回复前再次刷新接管来源，发布 sending 状态，由 ReplyCommitter 提交；发送／落库顺序见[输出链路](#output)。
-- 单轮结果保留 Outcome、Usage 和实际提交事实。协调器负责 Touch、用量、状态、压缩提示、pending、Execution 结果与命名，Runner 不结束跨轮 Execution。
+- 单轮结果保留 Outcome、Usage 和实际提交事实。协调器在 loop 和回复提交成功后调用 contextmgr.RecordTurn，以一次 Session.Mutate 同时保存活动时间和本轮返回的用量；无用量时仅更新时间，保存失败返回终态错误。保存成功后组织状态、压缩提示、pending、Execution 结果与命名，Runner 不结束跨轮 Execution。
 
 <!-- locator:protocol-routing -->
 ## 协议路线与原生上下文
@@ -490,7 +490,7 @@ contextmgr 管历史、用量、阈值及压缩分派，通过 Selection 查询�
 - Chat 用独立文字摘要模型或对话 fallback。新 Session 暂存文字 seed，首条输入保存为“摘要＋历史用户原话＋当前输入”后消费 seed。
 - Responses 固定当前模型，完整窗口末尾加 compaction_trigger，使用普通 Responses 流，store=false、tool_choice=none、不带旧链 ID 或正文格式要求。终态必须含唯一非空加密 compaction，新 seed 仅保存该项与素材引用，不拼历史原话或续旧链；首个本地 checkpoint 成功才消费 seed，根材料保留供恢复。
 - 原生压缩不支持、材料缺失或提交失败时报错，不降为文字摘要，也不切换当前会话。自动压缩交接后继续已接收输入，手动压缩不自动聊天。
-- Soul、记忆、工具和 tag 提示由共同 Prompt 来源组合；Chat 每轮构建一次 system message，不入历史。Usage 按 Session 返回副本并更新所属 metadata，保存失败仍保留已观测值。
+- Soul、记忆、工具和 tag 提示由共同 Prompt 来源组合；Chat 每轮构建一次 system message，不入历史。Usage 按 Session 返回副本，与活动时间在 Turn 收尾时合并更新所属 metadata，保存失败仍保留内存中的已观测值。
 - 压缩状态及摘要记录的四项 token 计数同样为可空 int64；SQLite 保存未知值为 NULL，明确零为 0。数据库迁移保留既有数值，不将历史零值推断成未知。
 
 <!-- locator:storage -->

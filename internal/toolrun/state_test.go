@@ -138,7 +138,7 @@ func TestStateConcurrentUpdatesPreserveOtherOwners(t *testing.T) {
 			defer wg.Done()
 			<-start
 			tokens := int64(i + 1)
-			errs <- contexts.RecordUsage(ctx, row.ID, &llm.Usage{TotalTokens: &tokens})
+			errs <- contexts.RecordTurn(ctx, row.ID, &llm.Usage{TotalTokens: &tokens})
 		}(i)
 		go func() {
 			defer wg.Done()

@@ -124,11 +124,6 @@ func (s *Service) Current(ctx context.Context, scope Scope) (*storage.Session, e
 	return row, err
 }
 
-func (s *Service) Touch(ctx context.Context, session *storage.Session) error {
-	_, err := s.store.Sessions().Mutate(ctx, session.ID, func(row *storage.Session) error { row.UpdatedAt = storage.Now(); return nil })
-	return err
-}
-
 func (s *Service) ResetCurrent(ctx context.Context, scope Scope) error {
 	ctx, release, err := s.EnterActivation(ctx, scope)
 	if err != nil {

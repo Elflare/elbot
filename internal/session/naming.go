@@ -19,6 +19,7 @@ type namingState struct {
 	failures int
 }
 
+// MaybeScheduleNaming 在读取数据库前占用命名状态，已结束或已有准备／生成任务时直接跳过。
 func (s *Service) MaybeScheduleNaming(ctx context.Context, sessionID string) {
 	if s.titleGen == nil {
 		return
@@ -27,16 +28,29 @@ func (s *Service) MaybeScheduleNaming(ctx context.Context, sessionID string) {
 	if !ok {
 		return
 	}
+	if !s.markNamingInFlight(sessionID) {
+		finish()
+		return
+	}
 	ctx, cancelPreparation := context.WithCancel(ctx)
 	stopPreparation := context.AfterFunc(workerCtx, cancelPreparation)
 	defer func() { stopPreparation(); cancelPreparation() }()
 	scheduled := false
 	defer func() {
 		if !scheduled {
+			s.mu.Lock()
+			state := s.namingStates[sessionID]
+			state.inFlight = false
+			s.namingStates[sessionID] = state
+			s.mu.Unlock()
 			finish()
 		}
 	}()
-	if ctx.Err() != nil || s.titleRenamed(ctx, sessionID) {
+	if ctx.Err() != nil {
+		return
+	}
+	if s.titleRenamed(ctx, sessionID) {
+		s.markNamingDone(sessionID)
 		return
 	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
@@ -76,7 +90,7 @@ func (s *Service) MaybeScheduleNaming(ctx context.Context, sessionID string) {
 		return
 	}
 	namingMessages := append([]storage.Message(nil), conversationMessages[:s.namingConfig.TriggerStep]...)
-	if workerCtx.Err() != nil || !s.markNamingInFlight(sessionID) {
+	if workerCtx.Err() != nil {
 		return
 	}
 

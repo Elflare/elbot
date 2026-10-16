@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"elbot/internal/llm"
 	"elbot/internal/storage"
@@ -29,7 +30,7 @@ func TestUsageSnapshotsRestoreAndSaveFailure(t *testing.T) {
 	}
 	total, cache := int64(12), int64(4)
 	usage := &llm.Usage{TotalTokens: &total, CacheHitTokens: &cache}
-	if err := service.RecordUsage(ctx, row.ID, usage); err != nil {
+	if err := service.RecordTurn(ctx, row.ID, usage); err != nil {
 		t.Fatal(err)
 	}
 	*usage.TotalTokens = 999
@@ -50,13 +51,79 @@ func TestUsageSnapshotsRestoreAndSaveFailure(t *testing.T) {
 	canceled, cancel := context.WithCancel(ctx)
 	cancel()
 	total = 20
-	if err := service.RecordUsage(canceled, row.ID, &llm.Usage{TotalTokens: &total}); !errors.Is(err, context.Canceled) {
+	if err := service.RecordTurn(canceled, row.ID, &llm.Usage{TotalTokens: &total}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("save error=%v", err)
 	}
 	observed, _ := service.Usage(row)
 	persisted, _ := store.Sessions().Get(ctx, row.ID)
-	if observed.TotalTokens == nil || *observed.TotalTokens != 20 || persisted.Metadata != latest.Metadata {
+	if observed.TotalTokens == nil || *observed.TotalTokens != 20 || persisted.Metadata != latest.Metadata || !persisted.UpdatedAt.Equal(latest.UpdatedAt) {
 		t.Fatalf("observation=%v persisted=%s", observed, persisted.Metadata)
+	}
+}
+
+func TestRecordTurnWithoutUsagePreservesStoredAndObservedUsage(t *testing.T) {
+	store, err := sqlite.New(t.Context(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	row := &storage.Session{OwnerID: "u", Platform: "cli", PlatformScopeID: "local", Metadata: `{"unknown":9007199254740993,"last_usage":{"TotalTokens":3}}`, UpdatedAt: time.Now().Add(-time.Hour)}
+	if err := store.Sessions().Create(t.Context(), row); err != nil {
+		t.Fatal(err)
+	}
+	service := New(Options{Store: store})
+	if err := service.RecordTurn(t.Context(), row.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	latest, err := store.Sessions().Get(t.Context(), row.ID)
+	if err != nil || !latest.UpdatedAt.After(row.UpdatedAt) || latest.Metadata != row.Metadata {
+		t.Fatalf("activity update changed metadata: %+v error=%v", latest, err)
+	}
+	usage, err := service.Usage(latest)
+	if err != nil || usage == nil || usage.TotalTokens == nil || *usage.TotalTokens != 3 {
+		t.Fatalf("stored usage lost: %+v error=%v", usage, err)
+	}
+	tokens := int64(9)
+	if err := service.RecordTurn(t.Context(), row.ID, &llm.Usage{TotalTokens: &tokens}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.RecordTurn(t.Context(), row.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	latest, err = store.Sessions().Get(t.Context(), row.ID)
+	if err != nil || !strings.Contains(latest.Metadata, "9007199254740993") {
+		t.Fatalf("unknown metadata lost: %+v error=%v", latest, err)
+	}
+	for _, restored := range []*Service{service, New(Options{Store: store})} {
+		usage, err := restored.Usage(latest)
+		if err != nil || usage == nil || usage.TotalTokens == nil || *usage.TotalTokens != 9 {
+			t.Fatalf("nil usage erased snapshot: %+v error=%v", usage, err)
+		}
+	}
+}
+
+func TestRecordTurnInvalidContextRollsBackActivityAndUsage(t *testing.T) {
+	store, err := sqlite.New(t.Context(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	row := &storage.Session{OwnerID: "u", Platform: "cli", PlatformScopeID: "local", Metadata: `{"context_compact":"invalid","last_usage":{"TotalTokens":3}}`, UpdatedAt: time.Now().Add(-time.Hour)}
+	if err := store.Sessions().Create(t.Context(), row); err != nil {
+		t.Fatal(err)
+	}
+	service := New(Options{Store: store})
+	tokens := int64(9)
+	if err := service.RecordTurn(t.Context(), row.ID, &llm.Usage{TotalTokens: &tokens}); err == nil {
+		t.Fatal("invalid context was accepted")
+	}
+	latest, err := store.Sessions().Get(t.Context(), row.ID)
+	if err != nil || latest.Metadata != row.Metadata || !latest.UpdatedAt.Equal(row.UpdatedAt) {
+		t.Fatalf("failed transaction changed session: %+v error=%v", latest, err)
+	}
+	usage, err := service.Usage(latest)
+	if err != nil || usage == nil || usage.TotalTokens == nil || *usage.TotalTokens != 9 {
+		t.Fatalf("observed usage lost after rollback: %+v error=%v", usage, err)
 	}
 }
 

@@ -422,8 +422,13 @@ func clampChatHistoryWindow(value int) int {
 	return clampChatHistoryLimit(value)
 }
 
+// formatChatHistoryMedia 展示消息及媒体序号，纯文字消息不读取媒体关联或输出缓存。
 func formatChatHistoryMedia(ctx context.Context, row storage.ChatMessage, targetID string, center *media.Manager) (string, error) {
 	line := formatChatHistoryLine(row, targetID)
+	segments := media.HistorySegments(row)
+	if len(segments) == 0 {
+		return line, nil
+	}
 	var ids map[int]string
 	if center != nil {
 		var err error
@@ -432,7 +437,7 @@ func formatChatHistoryMedia(ctx context.Context, row storage.ChatMessage, target
 			return "", err
 		}
 	}
-	for i, segment := range media.HistorySegments(row) {
+	for i, segment := range segments {
 		line += fmt.Sprintf("\n  %d. %s", i+1, historyMediaLabel(segment.Type, ids[i+1]))
 	}
 	return line, nil

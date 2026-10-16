@@ -58,7 +58,39 @@ func HistorySegments(row storage.ChatMessage) []platform.MessageSegment {
 
 // HistoryIDs consults local associations only and never downloads a source.
 func (m *Manager) HistoryIDs(ctx context.Context, row storage.ChatMessage) (map[int]string, error) {
+	entries, err := m.loadHistoryMedia(ctx, row)
+	if err != nil {
+		return nil, err
+	}
 	ids := map[int]string{}
+	for index, entry := range entries {
+		ids[index] = entry.media.ID
+	}
+	return ids, nil
+}
+
+type historyMediaEntry struct {
+	// media 是本次查询已读取且可用的媒体记录，供批量获取直接复用。
+	media *storage.Media
+	// association 仅在历史行身份和当前媒体匹配时保留；输出缓存单独命中时为 nil。
+	association *storage.HistoryMedia
+}
+
+// loadHistoryMedia 合并历史关联与有效输出缓存，按媒体 ID 去重读取，并保留匹配的持久关联以跳过重复保存。
+func (m *Manager) loadHistoryMedia(ctx context.Context, row storage.ChatMessage) (map[int]historyMediaEntry, error) {
+	entries := map[int]historyMediaEntry{}
+	mediaByID := map[string]*storage.Media{}
+	lookup := func(id string) (*storage.Media, error) {
+		if item, ok := mediaByID[id]; ok {
+			return item, nil
+		}
+		item, err := m.Metadata(ctx, id)
+		if err != nil && !errors.Is(err, storage.ErrNotFound) {
+			return nil, err
+		}
+		mediaByID[id] = item
+		return item, nil
+	}
 	associations, err := m.Store.Media().FindHistory(ctx, row.Platform, row.PlatformScopeID, row.PlatformMessageID)
 	if err != nil {
 		return nil, err
@@ -67,12 +99,12 @@ func (m *Manager) HistoryIDs(ctx context.Context, row storage.ChatMessage) (map[
 		if association.HistoryID != row.ID {
 			continue
 		}
-		if item, err := m.Metadata(ctx, association.MediaID); err == nil {
-			if !item.Deleting {
-				ids[association.MediaIndex] = association.MediaID
-			}
-		} else if err != storage.ErrNotFound {
+		item, err := lookup(association.MediaID)
+		if err != nil {
 			return nil, err
+		}
+		if item != nil && !item.Deleting {
+			entries[association.MediaIndex] = historyMediaEntry{media: item, association: &association}
 		}
 	}
 	outputs, err := m.Store.Media().FindOutputs(ctx, row.Platform, row.PlatformScopeID, row.PlatformMessageID, m.Now())
@@ -80,15 +112,21 @@ func (m *Manager) HistoryIDs(ctx context.Context, row storage.ChatMessage) (map[
 		return nil, err
 	}
 	for _, output := range outputs {
-		if item, err := m.Metadata(ctx, output.MediaID); err == nil {
-			if !item.Deleting {
-				ids[output.SegmentIndex+1] = output.MediaID
-			}
-		} else if err != storage.ErrNotFound {
+		item, err := lookup(output.MediaID)
+		if err != nil {
 			return nil, err
 		}
+		if item != nil && !item.Deleting {
+			index := output.SegmentIndex + 1
+			entry := entries[index]
+			if entry.media == nil || entry.media.ID != item.ID {
+				entry.association = nil
+			}
+			entry.media = item
+			entries[index] = entry
+		}
 	}
-	return ids, nil
+	return entries, nil
 }
 
 func (m *Manager) AssociateHistory(ctx context.Context, row storage.ChatMessage, index int, kind platform.MessageSegmentType, id string) error {
@@ -130,7 +168,7 @@ func (m *Manager) GetHistoryMediaBatch(ctx context.Context, requests []HistoryMe
 		messageKey
 		index int
 	}
-	known := map[messageKey]map[int]string{}
+	known := map[messageKey]map[int]historyMediaEntry{}
 	seen := map[position]HistoryMediaResult{}
 	results := make([]HistoryMediaResult, 0, len(requests))
 	attempts := 0
@@ -150,30 +188,28 @@ func (m *Manager) GetHistoryMediaBatch(ctx context.Context, requests []HistoryMe
 		if index < 1 || index > len(segments) {
 			result.Err = fmt.Errorf("%w: %d (message has %d media)", ErrHistoryMediaIndex, index, len(segments))
 		} else {
-			ids, ok := known[key]
+			entries, ok := known[key]
 			if !ok {
 				var err error
-				ids, err = m.HistoryIDs(ctx, row)
+				entries, err = m.loadHistoryMedia(ctx, row)
 				if err != nil {
 					return nil, err
 				}
-				known[key] = ids
+				known[key] = entries
 			}
-			if ids[index] == "" && opts.MaxFetchAttempts > 0 && attempts >= opts.MaxFetchAttempts {
+			entry := entries[index]
+			segment := segments[index-1]
+			if entry.media != nil {
+				result.Media = entry.media
+			} else if opts.MaxFetchAttempts > 0 && attempts >= opts.MaxFetchAttempts {
 				result.Err = ErrHistoryFetchLimit
 			} else {
-				if ids[index] == "" {
-					attempts++
-				}
-				segment := segments[index-1]
-				segment.MediaID = ids[index]
+				attempts++
+				segment.MediaID = ""
 				result.Media, result.Err = m.ImportPlatform(ctx, row.Platform, resolver, segment)
-				if result.Err == nil {
-					result.Err = m.AssociateHistory(ctx, row, index, segment.Type, result.Media.ID)
-					if result.Err == nil {
-						ids[index] = result.Media.ID
-					}
-				}
+			}
+			if result.Err == nil && (entry.association == nil || entry.association.Kind != string(segment.Type)) {
+				result.Err = m.AssociateHistory(ctx, row, index, segment.Type, result.Media.ID)
 			}
 		}
 		if err := ctx.Err(); err != nil {
