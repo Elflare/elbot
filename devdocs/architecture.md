@@ -334,7 +334,7 @@ flowchart TB
 ### 媒体引用与清理
 
 - 本体按 SHA-256 去重，`media_references` 是引用事实来源。消息、工具参数、Fork、Cron、Elnis、outbox 和输出关联通过事务维护引用，读取／发送另持临时引用。
-- 工具 `MediaCall.Retain` 读取元数据后直接通过引用仓储建立临时持有，引用外键与删除保护触发器共同裁决可用性。
+- 工具 MediaCall 按媒体 ID 集中保存调用内的元数据、临时引用和成功导出。Retain 首次读取记录并通过引用仓储建立持有，输出 Import 直接持有导入返回的记录；重复使用复用已有记录。导出通过 `Manager.OpenHeld` 打开已持有记录，引用外键与删除保护触发器裁决可用性。各调用独立管理状态，同一调用串行使用，引用持续到 Close；释放失败保留待重试记录。
 - `media_signed_urls` 按媒体 ID 保存 URL 与绝对过期时间，外键随媒体删除级联清理，不混入媒体元数据或对话材料。`request.go` 的 `presignMedia` 复用请求已持有的记录，在逐对象锁内完成按需上传、缓存查询、签名和保存；只有尚无远端对象的本地记录需要在锁内重读，确认其他请求是否已上传。剩余超过 5 分钟直接复用，否则以 1 小时有效期刷新。到期时间从签名前按秒截断的时间保守计算，命中不延期，刷新不重新上传已有对象；无内存缓存、定时刷新或配置指纹。缓存读写、签名与后端初始化错误只返回，由所属业务出口报告；对话最终失败统一交 Dialogue，调用审计与用量事实独立保留。
 - 工具通过确认后、实际执行前，递归关联最终 JSON 参数中完整有效的媒体 ID 到 Session；不扫描自由文本。执行失败保留引用，执行前拒绝不建立引用。
 - 会话消息、原生输入及 seed 公共片段只保存稳定媒体 ID 与描述；请求展开结果不回写。重复 ID 在一次准备中复用读取／上传／签名。真正缺失的对象只在发送副本变成占位文字；权限不足、取消、超时、数据库及其他运行错误继续返回错误。Fork／后台副本的原生 seed 独立保留公共片段及引用，生成时不打开媒体实体。
@@ -353,7 +353,7 @@ flowchart TB
 - scanner 构建 catalog；discover_tool 展示详情或激活 wrapper。原生 Skill finalize 执行 lint、gofmt、build、reload。
 - reload 串行验证完整候选，在 registry 单次替换后更新 catalog；失败保留活动快照。AgentSkill manifest 写入后 reload 失败则恢复原文件。
 - 媒体只在执行阶段准备：shell 使用 media_inputs／ELBOT_MEDIA_N，Go 使用 payload.media_inputs，TOML 使用顶层 type=media 参数。stdout 媒体经 os.Root 校验和中心导入；普通文本 ID 不转换。
-- shell 导出缓存复用 sandbox 清理；Go／TOML 使用 Skill cwd 下的调用专属目录，执行后释放临时文件与引用。
+- shell 导出缓存复用 sandbox 清理，每次调用首次使用时检查文件并刷新时间，调用内复用成功路径。Go／TOML 使用 Skill cwd 下的调用专属目录，重复媒体参数复用成功导出；Go 参数准备同时复用小文件 base64，保留参数顺序及重复项。准备失败不缓存失败结果，执行后清理私有目录并释放引用。
 
 <!-- locator:hook -->
 ## Hook

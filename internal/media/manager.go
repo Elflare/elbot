@@ -177,7 +177,7 @@ func (m *Manager) Open(ctx context.Context, id string) (io.ReadCloser, *storage.
 	if err != nil {
 		return nil, nil, err
 	}
-	reader, err := m.openMedia(ctx, media)
+	reader, err := m.OpenHeld(ctx, media)
 	if err != nil {
 		_ = release()
 		return nil, nil, err
@@ -185,8 +185,9 @@ func (m *Manager) Open(ctx context.Context, id string) (io.ReadCloser, *storage.
 	return &referencedReader{ReadCloser: reader, release: release}, media, nil
 }
 
-// openMedia opens an already held record without querying metadata or adding a hold.
-func (m *Manager) openMedia(ctx context.Context, media *storage.Media) (io.ReadCloser, error) {
+// OpenHeld opens an already held record without querying metadata or adding a hold.
+// The caller must keep its reference alive until it closes the returned reader.
+func (m *Manager) OpenHeld(ctx context.Context, media *storage.Media) (io.ReadCloser, error) {
 	backend, err := m.backendForStoredMedia(ctx, media)
 	if err != nil {
 		return nil, err

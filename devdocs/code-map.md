@@ -121,7 +121,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/tool_directive.go`、`internal/agent/tool_cache.go`：输入指令和状态提交编排。
 - `internal/fileops/`：共享文件操作、编辑、目标锁和撤销备份。
 - `internal/workspace/`、`internal/session/workspace.go`、`internal/sandbox/`：工作目录、持久化与后台路径限制。
-- `internal/tool/media_runtime.go`：工具／Skill 媒体准备与导出缓存。
+- `internal/tool/media_runtime.go`：工具／Skill 媒体准备；MediaCall 集中管理调用内的元数据、临时引用和成功导出，Close 释放引用并清理私有目录。
 
 <!-- locator:tool-flow -->
 ## 工具调用链路
@@ -142,7 +142,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/tool/skill/`：扫描、catalog、创建、finalize、reload 和 runner。
 - `internal/tool/skill/command_tool.go`、`internal/tool/skill/runner.go`：执行 AgentSkill TOML 命令与 Go Skill，每次读取技能 `.env` 并合并基础子进程环境；Manager／scanner 为命令工具传递启动环境。
 - `internal/tool/skill/agent_manifest.go`、`internal/tool/skill/go_source.go`：AgentSkill manifest 与 Go 源码／编译。
-- `internal/tool/skill/media.go`：媒体参数与 stdout 媒体。
+- `internal/tool/skill/media.go`：媒体参数与 stdout 媒体，Go 参数准备按媒体 ID 复用路径、元数据和小文件 base64，保留参数顺序及重复项。
 - `internal/config/assets.go`：内置 Skill 说明。
 
 <!-- locator:hook -->
@@ -235,7 +235,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 媒体中心
 
 - `internal/media/`：导入、图片处理、请求／发送解析、引用与清理。
-- `internal/media/manager.go`：媒体导入与公开读取接口；`openMedia` 直接打开已持有的媒体记录，不重复查询或持有。
+- `internal/media/manager.go`：媒体导入与公开读取接口；`OpenHeld` 直接打开调用方已持有的媒体记录，调用方负责维持引用直到关闭 reader。
 - `internal/media/request.go`：`AcquireForLLM` 统一准备完整模型请求，按 ID 去重读取元数据和持有，按出现次数累计大小，再统一展开 base64／S3；`presignMedia` 在逐对象锁内按需上传、复用或刷新签名 URL，错误交所属业务出口报告。
 - `internal/media/resolver.go`：`Materialize`／`MaterializeWithLimits` 将入站媒体物化为稳定引用。
 - `internal/storage/sqlite/media_repository.go`：媒体元数据与独立签名缓存读写；`media_signed_urls` 随媒体删除级联清理。

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -137,6 +138,45 @@ func TestLocalManagerImportReadExportAndDeduplicatesBinary(t *testing.T) {
 	}
 	if string(exported) != string(data) {
 		t.Fatalf("exported bytes = %v, want %v", exported, data)
+	}
+}
+
+func TestOpenHeldReadsWithinCallerReferenceLifetime(t *testing.T) {
+	manager := newConcurrentTestManager(t)
+	ctx := t.Context()
+	item, err := manager.ImportBytes(ctx, []byte("held content"), Input{Name: "held.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	release, err := manager.Hold(ctx, item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	reader, err := manager.OpenHeld(ctx, item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reader.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "held content" {
+		t.Fatalf("held content = %q", data)
+	}
+	refs, err := manager.Store.MediaReferences().ListMediaIDs(ctx, item.ID)
+	if err != nil || len(refs) == 0 {
+		t.Fatalf("reader closed caller's hold: %v %v", refs, err)
+	}
+	if err := release(); err != nil {
+		t.Fatal(err)
+	}
+	refs, err = manager.Store.MediaReferences().ListMediaIDs(ctx, item.ID)
+	if err != nil || len(refs) != 0 {
+		t.Fatalf("caller hold survived release: %v %v", refs, err)
 	}
 }
 
