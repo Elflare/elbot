@@ -42,10 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - QQ OneBot messages exceeding 3000 characters will be converted to merged messages
 - Cron/Elnis now permanently convert to ordinary foreground Sessions upon the first recovery in a private chat on the same platform as the owner or via CLI, and reconnect to the original execution. Subsequent output, permissions, and confirmations now use foreground rules; the original task waits for the final result and records the takeover, while JSON correction, automatic reporting, and unstarted supplementary deliveries are stopped. Group chats and channels no longer list or allow the restoration of background Sessions.
 - Media cleanup now processes up to 4 objects simultaneously and is mutually exclusive by media ID; Import and on-demand upload of different media no longer wait for a full cleanup cycle; for the same media, overlaps between upload, deletion, and re-import are still prevented. Records are retained for subsequent retries after deletion failure or cancellation.
+- S3/hybrid remote media delivery in model requests has been changed from sequential upload and signing to up to 8 parallel paths per request.
 - The timeout for fetching model information has been relaxed from 5 seconds to 30 seconds.
 
 ### Fixed
 
+- Fixed the issue where `/stop` or timeout only terminated the Skill launcher, while child processes continued to execute and send.
 - Fixed excessive redundant IO to improve performance
 - Fix the issue where native seeds without media were serialized as JSON `null`, causing media cleanup to falsely report missing references and abort.
 - Fix the issue where 'request failed' was falsely reported when ordinary messages were started concurrently.
