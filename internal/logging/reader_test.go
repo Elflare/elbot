@@ -27,6 +27,31 @@ func TestReaderStopsBeforeOlderOversizedLine(t *testing.T) {
 	}
 }
 
+func TestReaderEventSetFiltersBeforeLimit(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit-"+time.Now().Format("2006-01-02")+".log")
+	content := "level=INFO event=tool_call_start msg=start\n" +
+		"level=INFO event=hook_tool_call msg=hook\n" +
+		"level=INFO event=TOOL_CALL_END msg=end\n" +
+		"level=INFO event=tool_call_end_extra msg=unrelated\n"
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	query := LogQuery{Prefix: "audit", Limit: 2, Events: []string{"tool_call_start", "tool_call_end"}}
+	result, err := (Reader{Dir: dir}).Query(t.Context(), query)
+	if err != nil || len(result.Entries) != 2 {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	if result.Entries[0].Content != "end" || result.Entries[1].Content != "start" {
+		t.Fatalf("order=%+v", result.Entries)
+	}
+	query.Limit = 1
+	result, err = (Reader{Dir: dir}).Query(t.Context(), query)
+	if err != nil || len(result.Entries) != 1 || result.Entries[0].Content != "end" {
+		t.Fatalf("limit result=%+v err=%v", result, err)
+	}
+}
+
 func TestReaderParsesAndFiltersTextLogs(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit-"+time.Now().Format("2006-01-02")+".log")

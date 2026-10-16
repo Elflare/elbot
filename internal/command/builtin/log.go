@@ -27,23 +27,23 @@ func auditInfo() command.Info {
   --level <level>       Minimum level: debug, info, warn, error. Default: debug.
   -d, -i, -w, -e       Shorthand for --level debug/info/warn/error.
   --raw                Show original physical log records.
-  -t                   Filter tool events.
+  -t                   Filter tool start and end events.
   --run_source <name>   Filter tool run source: foreground, cron, elnis.
   --hook               Filter records from the hook module.
   --since <time>        Show events after a time, e.g. 2h, 30m, 2026-06-03, 2026-06-03T15:04:05.
 
   --until <time>        Show events before a time.
-  --event <name>        Filter by event, e.g. tool_call, llm_usage, permission_denied.
+  --event <name>        Filter by event, e.g. tool_call_start, tool_call_end, llm_usage.
   --risk <level>        Filter by risk.
   --actor <id>          Filter by actor_id.
   --session <id>        Filter by session_id.
-  --tool <name>         Filter by tool.
+  --tool [name]         Filter by tool name; without a name, same as -t.
   --msg <text>          Filter decoded log content.
   --contains <text>     Search decoded content and raw records.
 
 Examples:
   /audit
-  /audit --event tool_call --risk high -n 10
+  /audit --event tool_call_end --risk high -n 10
   /audit -t --run_source cron -n 20
   /audit -d --contains "hello"
   /audit --actor cli:local --since 24h`),
@@ -173,9 +173,9 @@ func (c logCommand) Complete(ctx context.Context, req command.CompletionRequest)
 		return completeStringOptions([]string{"low", "medium", "high", "critical"}, token.Text, token.Start, token.End, "risk")
 	}
 	if c.audit && previous == "--event" {
-		return completeStringOptions([]string{"llm_usage", "llm_error", "session_naming_completed", "tool_call", "permission_denied", "session_resume", "session_fork", "hook_tool_call", "hook_tool_log"}, token.Text, token.Start, token.End, "audit_event")
+		return completeStringOptions([]string{"llm_usage", "llm_error", "session_naming_completed", "tool_call_start", "tool_call_end", "permission_denied", "session_resume", "session_fork", "hook_tool_call", "hook_tool_log"}, token.Text, token.Start, token.End, "audit_event")
 	}
-	if c.audit && previous == "--tool" {
+	if c.audit && previous == "--tool" && !strings.HasPrefix(token.Text, "-") {
 		return completeToolNames(c.deps, token.Text, token.Start, token.End)
 	}
 	if c.elwisp && previous == "--mode" {
@@ -218,13 +218,13 @@ func logCompletionOptions(audit, elwisp bool) []completionOption {
 	}
 	if audit {
 		options = append(options,
-			completionOption{Text: "-t", Description: "Tool events"},
+			completionOption{Text: "-t", Description: "Tool start and end events"},
 			completionOption{Text: "--run_source", Description: "Tool run source: foreground, cron, elnis"},
 			completionOption{Text: "--event", Description: "Filter audit event"},
 			completionOption{Text: "--risk", Description: "Filter risk level"},
 			completionOption{Text: "--actor", Description: "Filter actor ID"},
 			completionOption{Text: "--session", Description: "Filter session ID"},
-			completionOption{Text: "--tool", Description: "Filter tool name"},
+			completionOption{Text: "--tool", Description: "Tool events or filter tool name"},
 		)
 	}
 	if elwisp {
@@ -290,14 +290,13 @@ func parseAuditQuery(args string) (logging.LogQuery, error) {
 		switch name {
 		case "event":
 			fields["event"] = value
+			query.Events = nil
 		case "risk":
 			query.ContentFields["risk"] = value
 		case "actor":
 			query.ContentFields["actor_id"] = value
 		case "session":
 			fields["session_id"] = value
-		case "tool":
-			query.ContentFields["tool"] = value
 		case "run_source":
 			switch value {
 			case "foreground", "cron", "elnis":
@@ -458,11 +457,17 @@ func parseLogArgsWithOptions(args string, query *logging.LogQuery, fields map[st
 				return fmt.Errorf("unknown option: %s", name)
 			}
 			fields["event"] = "assistant_message"
-		case "-t":
+		case "-t", "--tool":
 			if !opts.eventFilters || opts.messageFilters {
 				return fmt.Errorf("unknown option: %s", name)
 			}
-			fields["event"] = "tool_call"
+			if name == "--tool" && i+1 < len(parts) && !strings.HasPrefix(parts[i+1], "-") {
+				i++
+				query.ContentFields["tool"] = parts[i]
+				continue
+			}
+			delete(fields, "event")
+			query.Events = []string{"tool_call_start", "tool_call_end"}
 		case "-s", "--system":
 			if !opts.systemFilter {
 				return fmt.Errorf("unknown option: %s", name)

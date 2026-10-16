@@ -88,7 +88,7 @@ func errorSummary(text string, limit int) string {
 }
 
 func limitErrorText(text string, limit int) string {
-	const suffix = "...[truncated]"
+	const suffix = "…"
 	if len(text) <= limit {
 		return text
 	}

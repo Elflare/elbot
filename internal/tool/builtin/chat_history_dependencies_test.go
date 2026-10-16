@@ -59,7 +59,7 @@ func TestFormatChatHistoryLineIncludesReferenceContext(t *testing.T) {
 	want := `=> [#84] 2026-09-12 15:04:05 回复者(2002): [引用#42：被引用者(qq:1001):被引用内容]
 
 本次发送的内容`
-	if got := formatChatHistoryLine(row, "84"); got != want {
+	if got := formatChatHistoryLine(row, "84", false, "...[单条消息过长，已截断]"); got != want {
 		t.Fatalf("line = %q, want %q", got, want)
 	}
 }

@@ -119,7 +119,7 @@ func TestModelStreamFailureNotifiesWithoutMessageFallback(t *testing.T) {
 	}
 }
 
-func TestCommandFailureHasNoDispatcherFallback(t *testing.T) {
+func TestCommandFailureReportsOnceWithoutFaultLog(t *testing.T) {
 	want := errors.New("command storage unavailable")
 	p := &fakePlatform{}
 	a := newTestAgent(t, p, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t))
@@ -135,7 +135,10 @@ func TestCommandFailureHasNoDispatcherFallback(t *testing.T) {
 	if !handled || !errors.Is(err, want) {
 		t.Fatalf("handled=%v err=%v", handled, err)
 	}
-	assertNoFailureNotification(t, p)
+	output := awaitNotificationText(t, &p.out, "命令 /failure 执行失败：")
+	if strings.Count(output, "命令 /failure 执行失败：") != 1 || !strings.Contains(output, want.Error()) {
+		t.Fatalf("incorrect command notification: %q", output)
+	}
 	if failures.Load() != 0 {
 		t.Fatalf("fault logs=%d", failures.Load())
 	}

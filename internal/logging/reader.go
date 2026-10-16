@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -34,6 +35,8 @@ type LogQuery struct {
 	Until *time.Time
 	// Fields matches outer public fields; content cannot overwrite these values.
 	Fields map[string]string
+	// Events matches any listed event name exactly, case-insensitively; empty matches all.
+	Events []string
 	// ContentFields matches JSON business values or historical attributes. Toolrun
 	// text calls also expose their fixed leading run_source marker, not tool output.
 	ContentFields map[string]string
@@ -427,6 +430,11 @@ func parseTextValue(line string, start int) (string, int) {
 }
 
 func matchLogEntry(entry LogEntry, query LogQuery) bool {
+	if len(query.Events) != 0 && !slices.ContainsFunc(query.Events, func(event string) bool {
+		return strings.EqualFold(entry.EventName, event)
+	}) {
+		return false
+	}
 	if query.Since != nil && !entry.Time.IsZero() && entry.Time.Before(*query.Since) {
 		return false
 	}

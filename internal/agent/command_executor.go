@@ -104,7 +104,8 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 	}
 	result, err := e.router.Dispatch(ctx, text)
 	if err != nil {
-		return true, err
+		_, notifyErr := globalevents.NotificationRequested.Emit(session.WithBinding(ctx, nil), globalevents.NewNotification(ctx, slog.LevelError, fmt.Sprintf("命令 %s%s 执行失败：%v", parsed.Prefix, parsed.Name, err)))
+		return true, errors.Join(err, notifyErr)
 	}
 	if result == nil {
 		return true, nil

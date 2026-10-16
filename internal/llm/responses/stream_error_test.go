@@ -100,10 +100,10 @@ func TestStreamErrorRedactionAndLimits(t *testing.T) {
 	longMessage := strings.Repeat("错误详情", 3000)
 	raw = fmt.Sprintf(`{"type":"error","code":"long","message":%q}`, longMessage)
 	apiErr = streamErrorForTest(t, "error", raw)
-	if len(apiErr.Detail) > maxErrorDetailBytes || !utf8.ValidString(apiErr.Detail) || !strings.HasSuffix(apiErr.Detail, "...[truncated]") {
+	if len(apiErr.Detail) > maxErrorDetailBytes || !utf8.ValidString(apiErr.Detail) || !strings.HasSuffix(apiErr.Detail, "…") {
 		t.Fatalf("invalid detail truncation: length=%d valid=%v", len(apiErr.Detail), utf8.ValidString(apiErr.Detail))
 	}
-	if len(apiErr.Error()) > 300 || !utf8.ValidString(apiErr.Error()) || !strings.HasSuffix(apiErr.Error(), "...[truncated]") {
+	if len(apiErr.Error()) > 300 || !utf8.ValidString(apiErr.Error()) || !strings.HasSuffix(apiErr.Error(), "…") {
 		t.Fatalf("invalid summary truncation: %s", apiErr.Error())
 	}
 }

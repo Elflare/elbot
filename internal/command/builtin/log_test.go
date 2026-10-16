@@ -15,6 +15,31 @@ import (
 	"elbot/internal/tool"
 )
 
+// Both event selectors replace the previous selector; named --tool remains
+// an independent content filter.
+func TestAuditToolEventSelectors(t *testing.T) {
+	for _, tc := range []struct{ args, events, event, tool, level string }{
+		{"-t", "tool_call_start,tool_call_end", "", "", "debug"},
+		{"--tool", "tool_call_start,tool_call_end", "", "", "debug"},
+		{"--tool -w", "tool_call_start,tool_call_end", "", "", "warn"},
+		{"--tool shell", "", "", "shell", "debug"},
+		{"--event llm_usage -t", "tool_call_start,tool_call_end", "", "", "debug"},
+		{"-t --event llm_usage", "", "llm_usage", "", "debug"},
+		{"--tool --event tool_call_end", "", "tool_call_end", "", "debug"},
+		{"--tool shell -t", "tool_call_start,tool_call_end", "", "shell", "debug"},
+	} {
+		t.Run(tc.args, func(t *testing.T) {
+			q, err := parseAuditQuery(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Join(q.Events, ",") != tc.events || q.Fields["event"] != tc.event || q.ContentFields["tool"] != tc.tool || q.MinLevel != tc.level {
+				t.Fatalf("query=%+v", q)
+			}
+		})
+	}
+}
+
 type fakeLogService struct {
 	query        logging.LogQuery
 	entries      []logging.LogEntry
@@ -80,7 +105,7 @@ func TestAuditCommandRunSourceFilterAndCompletion(t *testing.T) {
 			if err != nil || service.query.Prefix != "audit" || service.query.ContentFields["run_source"] != source {
 				t.Fatalf("args=%q query=%#v err=%v", args, service.query, err)
 			}
-			if strings.Contains(args, "-t") && (service.query.Fields["event"] != "tool_call" || !service.query.Raw || service.query.Limit != 3 || service.query.MinLevel != "info") {
+			if strings.Contains(args, "-t") && (strings.Join(service.query.Events, ",") != "tool_call_start,tool_call_end" || !service.query.Raw || service.query.Limit != 3 || service.query.MinLevel != "info") {
 				t.Fatalf("independent filters changed: %#v", service.query)
 			}
 			if !strings.Contains(args, "-t") && service.query.Fields["event"] != "" {
@@ -271,7 +296,7 @@ func TestAuditCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 	if err != nil {
 		t.Fatalf("audit handle: %v", err)
 	}
-	if service.query.Fields["event"] != "tool_call" || service.query.Contains != "hello world" || service.query.Raw {
+	if strings.Join(service.query.Events, ",") != "tool_call_start,tool_call_end" || service.query.Contains != "hello world" || service.query.Raw {
 		t.Fatalf("query = %#v", service.query)
 	}
 

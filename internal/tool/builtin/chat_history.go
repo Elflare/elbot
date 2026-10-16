@@ -44,6 +44,8 @@ type ReplyToChatHistoryMessageTool struct {
 }
 
 type searchChatHistoryArgs struct {
+	// Full 只解除单条消息限长，查询结果总量仍受限制。
+	Full      bool   `json:"full"`
 	Limit     int    `json:"limit"`
 	Query     string `json:"query"`
 	QueryMode string `json:"query_mode"`
@@ -55,6 +57,8 @@ type searchChatHistoryArgs struct {
 }
 
 type aroundChatHistoryArgs struct {
+	// Full 只解除单条消息及引用内容限长，查询结果总量仍受限制。
+	Full      bool   `json:"full"`
 	MessageID string `json:"message_id"`
 	Before    int    `json:"before"`
 	After     int    `json:"after"`
@@ -107,7 +111,8 @@ func searchChatHistoryBuilder() *tool.Builder {
 		String("until", "结束时间。格式同 since；留空表示不限制。").
 		Integer("hours", "查询最近多少小时。since 为空时生效；0 表示不限制。").
 		Integer("days", "查询最近多少天。since 和 hours 为空时生效；0 表示不限制。").
-		Integer("limit", "返回记录数量，默认 10，最大 50。")
+		Integer("limit", "返回记录数量，默认 10，最大 50。").
+		Boolean("full", "是否完整显示单条消息及引用内容，默认 false，可省略；true 只解除单条 300 字限制，整份结果仍受 6000 字限制，过长的行可能被整体省略。")
 }
 
 func aroundChatHistoryBuilder() *tool.Builder {
@@ -119,7 +124,8 @@ func aroundChatHistoryBuilder() *tool.Builder {
 		DependsOn("search_chat_history", "reply_to_chat_history_message", "get_media").
 		String("message_id", "search_chat_history 返回结果中的平台消息 ID，可传 # 开头或纯 ID。", tool.Required()).
 		Integer("before", "向该消息之前查询多少条当前聊天记录，默认 10，最大 50。").
-		Integer("after", "向该消息之后查询多少条当前聊天记录，默认 10，最大 50。")
+		Integer("after", "向该消息之后查询多少条当前聊天记录，默认 10，最大 50。").
+		Boolean("full", "是否完整显示单条消息及引用内容，默认 false，可省略；true 只解除单条 300 字限制，整份结果仍受 6000 字限制，过长的行可能被整体省略。")
 }
 
 func replyChatHistoryBuilder() *tool.Builder {
@@ -180,20 +186,24 @@ func (t SearchChatHistoryTool) Call(ctx context.Context, req tool.CallRequest) (
 		}
 	}
 	lines := []string{fmt.Sprintf("当前聊天历史查询结果：返回 %d 条。", len(rows))}
+	logLines := []string{lines[0]}
 	for _, row := range rows {
-		line, err := formatChatHistoryMedia(ctx, row, "", t.center)
+		line, logContent, err := formatChatHistoryMedia(ctx, row, "", t.center, args.Full)
 		if err != nil {
 			return nil, err.Error(), err
 		}
 		lines = append(lines, line)
+		logLines = append(logLines, logContent)
 	}
 	lines = append(lines, "仅在需要媒体时调用 get_media(message_id=[\"...\"], media_index=[[1]]) 获取媒体 ID；可用 get_chat_history_around(message_id=\"...\") 查看附近上下文；可用 reply_to_chat_history_message(message_id=\"...\", message=\"...\") 引用回复。")
+	logLines = append(logLines, lines[len(lines)-1])
 	if hint := viewImageHistoryHint(ctx, t.center); hint != "" {
 		lines = append(lines, hint)
+		logLines = append(logLines, hint)
 	}
 	{
-		result := &tool.Result{Content: chatHistoryResultLines(lines)}
-		return result, fmt.Sprintf("returned=%d\ncontent:\n%s", len(rows), result.Content), nil
+		result := &tool.Result{Content: chatHistoryResultLines(lines, "...[查询结果过长，已截断]")}
+		return result, fmt.Sprintf("returned=%d\ncontent:\n%s", len(rows), chatHistoryResultLines(logLines, "…")), nil
 	}
 }
 
@@ -239,19 +249,22 @@ func (t GetChatHistoryAroundTool) Call(ctx context.Context, req tool.CallRequest
 		return nil, err.Error(), err
 	}
 	lines := []string{fmt.Sprintf("当前聊天消息 #%s 附近上下文：返回 %d 条。", messageID, len(rows))}
+	logLines := []string{lines[0]}
 	for _, row := range rows {
-		line, err := formatChatHistoryMedia(ctx, row, messageID, t.center)
+		line, logContent, err := formatChatHistoryMedia(ctx, row, messageID, t.center, args.Full)
 		if err != nil {
 			return nil, err.Error(), err
 		}
 		lines = append(lines, line)
+		logLines = append(logLines, logContent)
 	}
 	if hint := viewImageHistoryHint(ctx, t.center); hint != "" {
 		lines = append(lines, hint)
+		logLines = append(logLines, hint)
 	}
 	{
-		result := &tool.Result{Content: chatHistoryResultLines(lines)}
-		return result, fmt.Sprintf("message_id=%s returned=%d\ncontent:\n%s", messageID, len(rows), result.Content), nil
+		result := &tool.Result{Content: chatHistoryResultLines(lines, "...[查询结果过长，已截断]")}
+		return result, fmt.Sprintf("message_id=%s returned=%d\ncontent:\n%s", messageID, len(rows), chatHistoryResultLines(logLines, "…")), nil
 	}
 }
 
@@ -309,10 +322,11 @@ func (t ReplyToChatHistoryMessageTool) Call(ctx context.Context, req tool.CallRe
 	}
 	{
 		result := &tool.Result{
-			Content: fmt.Sprintf("已引用回复 [#%s] %s(%s): %s\n回复内容已发送到当前聊天，请不要重复发送。", target.PlatformMessageID, target.SenderName, target.SenderID, truncateChatHistoryMessage(target.Text)),
+			Content: fmt.Sprintf("已引用回复 [#%s] %s(%s): %s\n回复内容已发送到当前聊天，请不要重复发送。", target.PlatformMessageID, target.SenderName, target.SenderID, truncateChatHistoryMessage(target.Text, false, "...[单条消息过长，已截断]")),
 			Outputs: []delivery.Output{delivery.Reply(messageID, replyText)},
 		}
-		return result, result.Content, nil
+		logContent = fmt.Sprintf("已引用回复 [#%s] %s(%s): %s\n回复内容已发送到当前聊天，请不要重复发送。", target.PlatformMessageID, target.SenderName, target.SenderID, truncateChatHistoryMessage(target.Text, false, "…"))
+		return result, logContent, nil
 	}
 }
 
@@ -425,40 +439,43 @@ func clampChatHistoryWindow(value int) int {
 }
 
 // formatChatHistoryMedia 展示消息及媒体序号，纯文字消息不读取媒体关联或输出缓存。
-func formatChatHistoryMedia(ctx context.Context, row storage.ChatMessage, targetID string, center *media.Manager) (string, error) {
-	line := formatChatHistoryLine(row, targetID)
+func formatChatHistoryMedia(ctx context.Context, row storage.ChatMessage, targetID string, center *media.Manager, full bool) (string, string, error) {
+	line := formatChatHistoryLine(row, targetID, full, "...[单条消息过长，已截断]")
+	logContent := formatChatHistoryLine(row, targetID, false, "…")
 	segments := media.HistorySegments(row)
 	if len(segments) == 0 {
-		return line, nil
+		return line, logContent, nil
 	}
 	var ids map[int]string
 	if center != nil {
 		var err error
 		ids, err = center.HistoryIDs(ctx, row)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 	}
 	for i, segment := range segments {
-		line += fmt.Sprintf("\n  %d. %s", i+1, historyMediaLabel(segment.Type, ids[i+1]))
+		label := fmt.Sprintf("\n  %d. %s", i+1, historyMediaLabel(segment.Type, ids[i+1]))
+		line += label
+		logContent += label
 	}
-	return line, nil
+	return line, logContent, nil
 }
 
 // Truncate only at line boundaries, never in the middle of a media ID.
-func chatHistoryResultLines(blocks []string) string {
+func chatHistoryResultLines(blocks []string, marker string) string {
 	var lines []string
 	size := 0
 	for _, line := range strings.Split(strings.Join(blocks, "\n"), "\n") {
 		if size+len([]rune(line))+1 > chatHistoryTextLimit {
-			return strings.Join(lines, "\n") + "\n...[查询结果过长，已截断]"
+			return strings.Join(lines, "\n") + "\n" + marker
 		}
 		lines = append(lines, line)
 		size += len([]rune(line)) + 1
 	}
 	return strings.Join(lines, "\n")
 }
-func formatChatHistoryLine(row storage.ChatMessage, targetID string) string {
+func formatChatHistoryLine(row storage.ChatMessage, targetID string, full bool, marker string) string {
 	prefix := ""
 	if targetID != "" && row.PlatformMessageID == targetID {
 		prefix = "=> "
@@ -467,29 +484,29 @@ func formatChatHistoryLine(row storage.ChatMessage, targetID string) string {
 	if name == "" {
 		name = row.SenderID
 	}
-	body := truncateChatHistoryMessage(row.Text)
+	body := truncateChatHistoryMessage(row.Text, full, marker)
 	if strings.TrimSpace(row.ReplyToPlatformMessageID) != "" {
-		body = truncateChatHistoryReference(refcontext.FormatReferenceText(row.Platform, refcontext.ChatMessageReply(row), row.Text))
+		body = truncateChatHistoryReference(refcontext.FormatReferenceText(row.Platform, refcontext.ChatMessageReply(row), row.Text), full, marker)
 	}
 	return fmt.Sprintf("%s[#%s] %s %s(%s): %s", prefix, row.PlatformMessageID, row.CreatedAt.Format("2006-01-02 15:04:05"), name, row.SenderID, body)
 }
 
-func truncateChatHistoryReference(text string) string {
+func truncateChatHistoryReference(text string, full bool, marker string) string {
 	text = strings.TrimSpace(strings.ReplaceAll(text, "\r", ""))
-	if len([]rune(text)) <= chatHistoryMessageLimit {
+	if full || len([]rune(text)) <= chatHistoryMessageLimit {
 		return text
 	}
 	runes := []rune(text)
-	return string(runes[:chatHistoryMessageLimit]) + "...[单条消息过长，已截断]"
+	return string(runes[:chatHistoryMessageLimit]) + marker
 }
 
-func truncateChatHistoryMessage(text string) string {
+func truncateChatHistoryMessage(text string, full bool, marker string) string {
 	text = strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(text, "\r", " "), "\n", " "))
-	if len([]rune(text)) <= chatHistoryMessageLimit {
+	if full || len([]rune(text)) <= chatHistoryMessageLimit {
 		return text
 	}
 	runes := []rune(text)
-	return string(runes[:chatHistoryMessageLimit]) + "...[单条消息过长，已截断]"
+	return string(runes[:chatHistoryMessageLimit]) + marker
 }
 
 func isDigits(value string) bool {
