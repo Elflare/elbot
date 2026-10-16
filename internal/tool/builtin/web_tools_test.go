@@ -252,8 +252,8 @@ func TestWebExtractConcurrentPaginationAndCancellation(t *testing.T) {
 				}
 			}))
 			defer server.Close()
-			// Exercise lazy cache initialization concurrently as well.
-			extract := &WebExtractTool{client: server.Client()}
+			extract := NewWebExtractTool()
+			extract.client = server.Client()
 			firstCtx, firstCancel := context.WithCancel(t.Context())
 			defer firstCancel()
 			secondCtx, secondCancel := context.WithCancel(t.Context())
@@ -281,9 +281,9 @@ func TestWebExtractConcurrentPaginationAndCancellation(t *testing.T) {
 			}
 			first := call(firstCtx, true)
 			key := extractCacheKey("direct", server.URL, defaultRemoveSelector, extractProxyConfig{cacheKey: "disabled"})
-			waitForExtractWaiters(t, extract.extractCache(), key, 1)
+			waitForExtractWaiters(t, extract.cache, key, 1)
 			second := call(secondCtx, false)
-			waitForExtractWaiters(t, extract.extractCache(), key, 2)
+			waitForExtractWaiters(t, extract.cache, key, 2)
 			read := func(out <-chan outcome) outcome {
 				t.Helper()
 				select {

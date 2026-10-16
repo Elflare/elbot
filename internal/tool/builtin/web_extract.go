@@ -29,11 +29,9 @@ const (
 )
 
 type WebExtractTool struct {
-	client   *http.Client
-	endpoint string
-	cache    *extractCache
-	// cacheOnce protects lazy initialization, including tools constructed without NewWebExtractTool.
-	cacheOnce  sync.Once
+	client     *http.Client
+	endpoint   string
+	cache      *extractCache
 	processEnv processenv.Environment
 }
 
@@ -175,7 +173,7 @@ func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (_ *too
 	if err != nil {
 		return nil, err.Error(), err
 	}
-	cache := t.extractCache()
+	cache := t.cache
 	useJina := true
 	if args.Jina != nil {
 		useJina = *args.Jina
@@ -482,15 +480,6 @@ func (t *WebExtractTool) extractEndpoint() string {
 		return t.endpoint
 	}
 	return defaultExtractEndpoint
-}
-
-func (t *WebExtractTool) extractCache() *extractCache {
-	t.cacheOnce.Do(func() {
-		if t.cache == nil {
-			t.cache = newExtractCache()
-		}
-	})
-	return t.cache
 }
 
 func newExtractCache() *extractCache {
