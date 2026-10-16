@@ -50,7 +50,7 @@ func (t discoverTool) Schema() llm.ToolSchema {
 }
 
 func (t discoverTool) Call(ctx context.Context, req CallRequest) (_ *Result, logContent string, _ error) {
-	defer func() { logContent = TruncateLogContent(logContent, 128) }()
+	defer func() { logContent = TruncateLogContent(logContent, 1024) }()
 	if err := ctx.Err(); err != nil {
 		return nil, err.Error(), err
 	}

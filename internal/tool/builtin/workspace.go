@@ -69,7 +69,7 @@ func workspaceBuilder() *tool.Builder {
 }
 
 func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
+	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 	var args workspaceArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {

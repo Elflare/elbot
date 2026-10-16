@@ -71,7 +71,7 @@ func TestExecuteELwispToolPartialAndPreparationFacts(t *testing.T) {
 }
 
 func TestELwispLogKeepsErrorAheadOfLongPartialResult(t *testing.T) {
-	body := strings.Repeat("雪🔥", 200) + "BUSINESS_TAIL"
+	body := strings.Repeat("雪🔥", 700) + "BUSINESS_TAIL"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(elwispToolResponse{Content: body, Error: "second action failed"})
 	}))
@@ -80,7 +80,7 @@ func TestELwispLogKeepsErrorAheadOfLongPartialResult(t *testing.T) {
 	if result.Error == nil || result.Result == nil || result.Result.Content != body || llm.SegmentsContentText(result.Message.Segments) != body {
 		t.Fatalf("partial business result changed: %+v", result)
 	}
-	if !strings.HasPrefix(result.LogResult.Content, "ELwisp tool error: second action failed\n") || len([]rune(result.LogResult.Content)) != 256 || !strings.HasSuffix(result.LogResult.Content, "…") {
+	if !strings.HasPrefix(result.LogResult.Content, "ELwisp tool error: second action failed\n") || len([]rune(result.LogResult.Content)) != 1024 || !strings.HasSuffix(result.LogResult.Content, "…") {
 		t.Fatalf("log=%q", result.LogResult.Content)
 	}
 }

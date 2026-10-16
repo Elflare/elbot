@@ -133,7 +133,7 @@ func (t ShellTool) PrepareCall(ctx context.Context, req tool.CallRequest) (*tool
 }
 
 func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, logContent string, callErr error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
+	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 
 	args, cmdText, err := decodeShellArgs(req)
 	if err != nil {

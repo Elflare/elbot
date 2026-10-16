@@ -38,7 +38,7 @@ func executeELwispTool(ctx context.Context, call llm.ToolCallRequest, resolved R
 		if result.Error != nil {
 			result.LogResult.Content = result.Error.Error() + "\n" + result.LogResult.Content
 		}
-		result.LogResult.Content = tool.TruncateLogContent(result.LogResult.Content, 256)
+		result.LogResult.Content = tool.TruncateLogContent(result.LogResult.Content, 1024)
 		if result.Error != nil {
 			if errors.Is(result.Error, context.Canceled) {
 				result.ResultStatus = events.ResultCanceled

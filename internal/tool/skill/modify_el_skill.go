@@ -94,7 +94,7 @@ func (ReadElSkillTool) Schema() llm.ToolSchema {
 }
 
 func (t ReadElSkillTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
+	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 	if err := ctx.Err(); err != nil {
 		return nil, err.Error(), err
 	}
@@ -195,13 +195,13 @@ func (t ModifyElSkillTool) PrepareCall(ctx context.Context, req tool.CallRequest
 func (t ModifyElSkillTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
 	preview, err := t.preview(ctx, req)
 	if err != nil {
-		return nil, tool.TruncateLogContent(err.Error(), 256), err
+		return nil, tool.TruncateLogContent(err.Error(), 1024), err
 	}
 	return t.call(ctx, preview)
 }
 
 func (t ModifyElSkillTool) call(ctx context.Context, preview modifyElSkillPreview) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
+	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 	path, _, err := elSkillTargetPath(t.Manager, preview.Name, preview.Target)
 	if err != nil {
 		return nil, err.Error(), err

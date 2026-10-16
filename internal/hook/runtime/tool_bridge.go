@@ -59,7 +59,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	callCtx := w.manager.rootCtx
 	actor, _ := contextinfo.ActorFromContext(callCtx)
 	// Keep the trigger actor separate from the permission principal below.
-	arguments := tool.TruncateLogContent(string(params.Arguments), 256)
+	arguments := tool.TruncateLogContent(string(params.Arguments), 512)
 	// Pointer fields distinguish absent operation facts from explicit empty or
 	// zero values. Declaration order fixes the log body's display order.
 	content := struct {

@@ -73,17 +73,13 @@ func (t AgentSkillTool) PrepareCall(ctx context.Context, req tool.CallRequest) (
 func (t AgentSkillTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
 	preview, err := t.preview(ctx, req)
 	if err != nil {
-		return nil, tool.TruncateLogContent(err.Error(), 256), err
+		return nil, tool.TruncateLogContent(err.Error(), 1024), err
 	}
 	return t.call(ctx, preview)
 }
 
 func (t AgentSkillTool) call(ctx context.Context, preview agentSkillPreview) (_ *tool.Result, logContent string, _ error) {
-	limit := 256
-	if preview.Action == "read" {
-		limit = 128
-	}
-	defer func() { logContent = tool.TruncateLogContent(logContent, limit) }()
+	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 	if err := ctx.Err(); err != nil {
 		return nil, err.Error(), err
 	}

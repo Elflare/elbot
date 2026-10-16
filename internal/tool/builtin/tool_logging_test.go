@@ -30,11 +30,11 @@ func (r failingHistoryLogRepository) Around(context.Context, storage.ChatHistory
 
 func TestHistoryQueryErrorLogPreservesBusinessError(t *testing.T) {
 	ctx, _, _ := newHistoryMediaToolTest(t)
-	callErr := errors.New(strings.Repeat("雪🔥", 200))
+	callErr := errors.New(strings.Repeat("雪🔥", 700))
 	repository := failingHistoryLogRepository{err: callErr}
 	for _, value := range []tool.Tool{NewSearchChatHistoryTool(repository), NewGetChatHistoryAroundTool(repository)} {
 		result, logContent, err := value.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":"1"}`)})
-		if result != nil || err != callErr || logContent != tool.TruncateLogContent(callErr.Error(), 256) || utf8.RuneCountInString(logContent) != 256 {
+		if result != nil || err != callErr || logContent != tool.TruncateLogContent(callErr.Error(), 1024) || utf8.RuneCountInString(logContent) != 1024 {
 			t.Fatalf("%s: result=%+v log=%q err=%v", value.Name(), result, logContent, err)
 		}
 	}
@@ -42,16 +42,18 @@ func TestHistoryQueryErrorLogPreservesBusinessError(t *testing.T) {
 
 func TestHistoryQueryLogIncludesResult(t *testing.T) {
 	ctx, mediaTool, _ := newHistoryMediaToolTest(t)
-	if err := mediaTool.history.Append(ctx, &storage.ChatMessage{Platform: "p", PlatformScopeID: "s", PlatformMessageID: "long", SenderID: "u", Text: strings.Repeat("雪🔥", 180)}); err != nil {
-		t.Fatal(err)
+	for _, messageID := range []string{"long", "longer"} {
+		if err := mediaTool.history.Append(ctx, &storage.ChatMessage{Platform: "p", PlatformScopeID: "s", PlatformMessageID: messageID, SenderID: "u", Text: strings.Repeat("雪🔥", 700)}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for _, tc := range []struct {
 		name          string
 		value         tool.Tool
 		args, summary string
 	}{
-		{"search", NewSearchChatHistoryTool(mediaTool.history), `{}`, "returned=3"},
-		{"around", NewGetChatHistoryAroundTool(mediaTool.history), `{"message_id":"long"}`, "message_id=long returned=3"},
+		{"search", NewSearchChatHistoryTool(mediaTool.history), `{}`, "returned=4"},
+		{"around", NewGetChatHistoryAroundTool(mediaTool.history), `{"message_id":"long"}`, "message_id=long returned=4"},
 		{"empty", NewSearchChatHistoryTool(mediaTool.history), `{"query":"no-match"}`, "returned=0"},
 		{"empty_around", NewGetChatHistoryAroundTool(mediaTool.history), `{"message_id":"missing"}`, "message_id=missing returned=0"},
 	} {
@@ -61,10 +63,10 @@ func TestHistoryQueryLogIncludesResult(t *testing.T) {
 				t.Fatal(err)
 			}
 			summary, body, ok := strings.Cut(logContent, "\ncontent:\n")
-			if !ok || summary != tc.summary || body != tool.TruncateLogContent(result.Content, 256) {
+			if !ok || summary != tc.summary || logContent != tool.TruncateLogContent(tc.summary+"\ncontent:\n"+result.Content, 1024) {
 				t.Fatalf("log=%q result=%q", logContent, result.Content)
 			}
-			if !strings.HasPrefix(tc.name, "empty") && (utf8.RuneCountInString(result.Content) <= 256 || utf8.RuneCountInString(body) != 256 || !utf8.ValidString(body)) {
+			if !strings.HasPrefix(tc.name, "empty") && (utf8.RuneCountInString(result.Content) <= 1024 || utf8.RuneCountInString(logContent) != 1024 || !utf8.ValidString(body)) {
 				t.Fatalf("result/log budget: %q / %q", result.Content, body)
 			}
 		})
@@ -79,7 +81,7 @@ func TestGetMediaLogIncludesAllResults(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if logContent != tool.TruncateLogContent(result.Content, 256) {
+			if logContent != tool.TruncateLogContent(result.Content, 1024) {
 				t.Fatalf("log=%q result=%q", logContent, result.Content)
 			}
 		})
@@ -88,7 +90,7 @@ func TestGetMediaLogIncludesAllResults(t *testing.T) {
 
 func TestFileLogs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "a.txt")
-	body := strings.Repeat("雪🔥", 200) + "BUSINESS_TAIL"
+	body := strings.Repeat("雪🔥", 700) + "BUSINESS_TAIL"
 	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +99,7 @@ func TestFileLogs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, body) || strings.Contains(logContent, "BUSINESS_TAIL") || !strings.Contains(logContent, "lines=1-1/1") || !strings.HasSuffix(logContent, "…") || !utf8.ValidString(logContent) || utf8.RuneCountInString(logContent) != 128 {
+	if !strings.Contains(result.Content, body) || strings.Contains(logContent, "BUSINESS_TAIL") || !strings.Contains(logContent, "lines=1-1/1") || !strings.Contains(logContent, strings.Repeat("雪🔥", 200)) || !strings.HasSuffix(logContent, "…") || !utf8.ValidString(logContent) || utf8.RuneCountInString(logContent) != 1024 {
 		t.Fatalf("read log=%q business bytes=%d", logContent, len(result.Content))
 	}
 	args, _ = json.Marshal(map[string]any{"path": path, "expected_revision": fileops.ContentRevision([]byte(body)), "edits": []map[string]any{{"operation": "overwrite", "new_text": body + "EDIT_TAIL"}}})
@@ -109,7 +111,7 @@ func TestFileLogs(t *testing.T) {
 	if err != nil || string(written) != body+"EDIT_TAIL" || !strings.Contains(result.Content, "EDIT_TAIL") {
 		t.Fatalf("business edit changed: err=%v result=%+v", err, result)
 	}
-	if !strings.Contains(logContent, "diff:") || strings.Contains(logContent, "revision_before") || !strings.HasSuffix(logContent, "…") || !utf8.ValidString(logContent) || utf8.RuneCountInString(logContent) != 256 {
+	if !strings.Contains(logContent, "diff:") || strings.Contains(logContent, "revision_before") || !strings.HasSuffix(logContent, "…") || !utf8.ValidString(logContent) || utf8.RuneCountInString(logContent) != 1024 {
 		t.Fatalf("edit log=%q", logContent)
 	}
 }

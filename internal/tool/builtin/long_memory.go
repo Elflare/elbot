@@ -157,7 +157,7 @@ func (t LongMemoryTool) Schema() llm.ToolSchema {
 	return longMemoryBuilder(t.Name(), t.Info().Description).BuildSchema()
 }
 func (t LongMemoryTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
+	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 	{
 		result := textResult("long_memory 是长期记忆入口。请按需调用 long_memory_search 或 long_memory_write。long_memory_search 不传 keywords/category 时会返回分类目录。")
 		return result, "long_memory guide returned", nil
@@ -178,7 +178,7 @@ func (t LongMemorySearchTool) Schema() llm.ToolSchema {
 		BuildSchema()
 }
 func (t LongMemorySearchTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
+	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 	var args longMemorySearchArgs
 	if err := lmDecodeArgs(req.Arguments, &args, t.Name()); err != nil {
 		return nil, err.Error(), err
@@ -294,13 +294,13 @@ func longMemoryUpdateArgsFromWrite(args longMemoryWriteArgs) longMemoryUpdateArg
 func (t LongMemoryWriteTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
 	args, err := t.decodeWriteArgs(req)
 	if err != nil {
-		return nil, tool.TruncateLogContent(err.Error(), 256), err
+		return nil, tool.TruncateLogContent(err.Error(), 1024), err
 	}
 	return t.call(ctx, args, nil)
 }
 
 func (t LongMemoryWriteTool) call(ctx context.Context, args longMemoryWriteArgs, preview *longMemoryUpdatePreview) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
+	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 	switch strings.ToLower(strings.TrimSpace(args.Operation)) {
 	case "save":
 		record, err := t.store.save(ctx, longMemorySaveArgs{Category: args.Category, Title: args.Title, Summary: args.Summary, Keywords: args.Keywords, Content: args.Content})

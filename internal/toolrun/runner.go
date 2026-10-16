@@ -166,7 +166,7 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 		}{
 			Tool:       tool.TruncateLogContent(call.Name, 2048),
 			ActorID:    tool.TruncateLogContent(actor.ID, 2048),
-			Arguments:  tool.TruncateLogContent(call.Arguments, 256),
+			Arguments:  tool.TruncateLogContent(call.Arguments, 512),
 			ElapsedMS:  time.Since(startedAt).Milliseconds(),
 			Result:     logResult.Content,
 			Risk:       tool.TruncateLogContent(risk, 2048),

@@ -78,7 +78,7 @@ func (t ResidentMemoryTool) Schema() llm.ToolSchema {
 	return tool.NewBuilder(t.Name()).Description(t.Info().Description).BuildSchema()
 }
 func (t ResidentMemoryTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
+	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 	{
 		result := &tool.Result{Content: "resident_memory 是常驻记忆管理入口。请调用 resident_memory_read、resident_memory_normal 或 resident_memory_core。"}
 		return result, "resident_memory guide returned", nil
@@ -95,7 +95,7 @@ func (t ResidentMemoryReadTool) Schema() llm.ToolSchema {
 		BuildSchema()
 }
 func (t ResidentMemoryReadTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 128) }()
+	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 	scope, err := memoryScope(ctx, t.Store)
 	if err != nil {
 		return nil, err.Error(), err
@@ -148,7 +148,7 @@ func (t ResidentMemoryNormalTool) Schema() llm.ToolSchema {
 		BuildSchema()
 }
 func (t ResidentMemoryNormalTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
+	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 	scope, err := memoryScope(ctx, t.Store)
 	if err != nil {
 		return nil, err.Error(), err
@@ -212,7 +212,7 @@ func (t ResidentMemoryCoreTool) Schema() llm.ToolSchema {
 		BuildSchema()
 }
 func (t ResidentMemoryCoreTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 256) }()
+	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 	scope, err := memoryScope(ctx, t.Store)
 	if err != nil {
 		return nil, err.Error(), err

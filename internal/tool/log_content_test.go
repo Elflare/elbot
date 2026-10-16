@@ -7,7 +7,7 @@ import (
 )
 
 func TestTruncateLogContentUnicodeBoundaries(t *testing.T) {
-	for _, limit := range []int{128, 256} {
+	for _, limit := range []int{512, 1024} {
 		for _, length := range []int{0, limit - 1, limit, limit + 1} {
 			text := strings.Repeat("🔥", length)
 			got := TruncateLogContent(text, limit)
