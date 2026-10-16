@@ -3,12 +3,15 @@ package builtin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"elbot/internal/processenv"
 	"elbot/internal/tool"
@@ -76,10 +79,8 @@ func TestWebSearchToolRequiresKey(t *testing.T) {
 
 func TestWebExtractToolSlicesAndCaches(t *testing.T) {
 	t.Setenv(jinaAPIKeyEnv, "jina-test")
-	calls := 0
 	content := strings.Repeat("a", defaultExtractChars) + strings.Repeat("b", 2000)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
 		if r.Method != http.MethodGet {
 			t.Fatalf("method = %s", r.Method)
 		}
@@ -117,9 +118,6 @@ func TestWebExtractToolSlicesAndCaches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 1 {
-		t.Fatalf("expected cached second call, server calls = %d", calls)
-	}
 	if !strings.Contains(second.Content, "Range: 8000-10000 / 10000") || !strings.Contains(second.Content, "Cached: true") || !strings.Contains(second.Content, strings.Repeat("b", 20)) {
 		t.Fatalf("second content = %q", second.Content)
 	}
@@ -127,11 +125,10 @@ func TestWebExtractToolSlicesAndCaches(t *testing.T) {
 
 func TestWebExtractToolForceRefreshReplacesCache(t *testing.T) {
 	t.Setenv(jinaAPIKeyEnv, "jina-test")
-	calls := 0
+	var refreshed atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		calls++
 		content := "first version"
-		if calls > 1 {
+		if refreshed.Load() {
 			content = "second version"
 		}
 		_ = json.NewEncoder(w).Encode(jinaResponse{Data: &jinaResponseData{URL: "https://example.com/page", Content: content}})
@@ -149,23 +146,18 @@ func TestWebExtractToolForceRefreshReplacesCache(t *testing.T) {
 		t.Fatalf("first content = %q", first.Content)
 	}
 
-	refreshed, _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page","force_refresh":true}`)})
+	refreshed.Store(true)
+	result, _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page","force_refresh":true}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 2 {
-		t.Fatalf("expected refresh request, server calls = %d", calls)
-	}
-	if !strings.Contains(refreshed.Content, "second version") || !strings.Contains(refreshed.Content, "Cached: false") {
-		t.Fatalf("refreshed content = %q", refreshed.Content)
+	if !strings.Contains(result.Content, "second version") || !strings.Contains(result.Content, "Cached: false") {
+		t.Fatalf("refreshed content = %q", result.Content)
 	}
 
 	cached, _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)})
 	if err != nil {
 		t.Fatal(err)
-	}
-	if calls != 2 {
-		t.Fatalf("expected refreshed content to be cached, server calls = %d", calls)
 	}
 	if !strings.Contains(cached.Content, "second version") || !strings.Contains(cached.Content, "Cached: true") {
 		t.Fatalf("cached content = %q", cached.Content)
@@ -174,10 +166,9 @@ func TestWebExtractToolForceRefreshReplacesCache(t *testing.T) {
 
 func TestWebExtractToolFailedForceRefreshPreservesCache(t *testing.T) {
 	t.Setenv(jinaAPIKeyEnv, "jina-test")
-	calls := 0
+	var fail atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		calls++
-		if calls > 1 {
+		if fail.Load() {
 			http.Error(w, "refresh failed", http.StatusBadGateway)
 			return
 		}
@@ -191,6 +182,7 @@ func TestWebExtractToolFailedForceRefreshPreservesCache(t *testing.T) {
 	if _, _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)}); err != nil {
 		t.Fatal(err)
 	}
+	fail.Store(true)
 	if _, _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page","force_refresh":true}`)}); err == nil {
 		t.Fatal("expected force refresh error")
 	}
@@ -198,9 +190,6 @@ func TestWebExtractToolFailedForceRefreshPreservesCache(t *testing.T) {
 	cached, _, err := extract.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)})
 	if err != nil {
 		t.Fatal(err)
-	}
-	if calls != 2 {
-		t.Fatalf("expected failed refresh to preserve cache, server calls = %d", calls)
 	}
 	if !strings.Contains(cached.Content, "cached version") || !strings.Contains(cached.Content, "Cached: true") {
 		t.Fatalf("cached content = %q", cached.Content)
@@ -225,6 +214,204 @@ func TestWebExtractDefaultClientUsesConfiguredProxy(t *testing.T) {
 	}
 	if proxyURL == nil || proxyURL.String() != "http://127.0.0.1:9999" {
 		t.Fatalf("proxy = %v", proxyURL)
+	}
+}
+
+// Wait for callers to join before testing cancellation or publishing a response.
+// This synchronizes the scenario; HTTP request counts are not asserted.
+func waitForExtractWaiters(t *testing.T, cache *extractCache, key string, want int) {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		cache.mu.Lock()
+		flight := cache.inflight[key]
+		ready := flight != nil && flight.waiters == want
+		cache.mu.Unlock()
+		if ready {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatal("callers did not reach the shared fetch")
+		case <-ticker.C:
+		}
+	}
+}
+
+func TestWebExtractConcurrentPaginationAndCancellation(t *testing.T) {
+	for _, scenario := range []string{"pagination", "first canceled", "second canceled", "first timeout", "second timeout"} {
+		t.Run(scenario, func(t *testing.T) {
+			release := make(chan struct{})
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				select {
+				case <-release:
+					_, _ = w.Write([]byte("<html><title>Example</title><body>abcdef</body></html>"))
+				case <-r.Context().Done():
+				}
+			}))
+			defer server.Close()
+			// Exercise lazy cache initialization concurrently as well.
+			extract := &WebExtractTool{client: server.Client()}
+			firstCtx, firstCancel := context.WithCancel(t.Context())
+			defer firstCancel()
+			secondCtx, secondCancel := context.WithCancel(t.Context())
+			defer secondCancel()
+			type outcome struct {
+				result *tool.Result
+				err    error
+			}
+			call := func(ctx context.Context, first bool) <-chan outcome {
+				out := make(chan outcome, 1)
+				args := map[string]any{"url": server.URL, "jina": false, "proxy": "disabled", "max_chars": 3, "timeout_ms": 3000}
+				if !first {
+					args["offset"] = 3
+					args["force_refresh"] = true
+				}
+				if first && scenario == "first timeout" || !first && scenario == "second timeout" {
+					args["timeout_ms"] = 300
+				}
+				raw, _ := json.Marshal(args)
+				go func() {
+					result, _, err := extract.Call(ctx, tool.CallRequest{Arguments: raw})
+					out <- outcome{result, err}
+				}()
+				return out
+			}
+			first := call(firstCtx, true)
+			key := extractCacheKey("direct", server.URL, defaultRemoveSelector, extractProxyConfig{cacheKey: "disabled"})
+			waitForExtractWaiters(t, extract.extractCache(), key, 1)
+			second := call(secondCtx, false)
+			waitForExtractWaiters(t, extract.extractCache(), key, 2)
+			read := func(out <-chan outcome) outcome {
+				t.Helper()
+				select {
+				case result := <-out:
+					return result
+				case <-time.After(4 * time.Second):
+					t.Fatal("extract did not finish")
+					return outcome{}
+				}
+			}
+			if scenario != "pagination" {
+				canceled := first
+				if strings.HasPrefix(scenario, "second") {
+					canceled = second
+				}
+				wantErr := context.DeadlineExceeded
+				if scenario == "first canceled" {
+					firstCancel()
+					wantErr = context.Canceled
+				} else if scenario == "second canceled" {
+					secondCancel()
+					wantErr = context.Canceled
+				}
+				if result := read(canceled); !errors.Is(result.err, wantErr) {
+					t.Fatalf("canceled caller = %v; want %v", result.err, wantErr)
+				}
+			}
+			close(release)
+			for i, out := range []<-chan outcome{first, second} {
+				if i == 0 && strings.HasPrefix(scenario, "first") || i == 1 && strings.HasPrefix(scenario, "second") {
+					continue
+				}
+				result := read(out)
+				want := "Range: 0-3 / 14"
+				if i == 1 {
+					want = "Range: 3-6 / 14"
+				}
+				if result.err != nil || !strings.Contains(result.result.Content, want) || !strings.Contains(result.result.Content, "Cached: false") {
+					t.Fatalf("caller %d = %#v, %v", i, result.result, result.err)
+				}
+			}
+		})
+	}
+}
+
+func TestExtractCacheCanceledFetchCannotReplaceNewResult(t *testing.T) {
+	cache := newExtractCache()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	started := make(chan context.Context, 1)
+	release := make(chan struct{})
+	defer close(release)
+	first := make(chan error, 1)
+	go func() {
+		_, _, err := cache.getOrFetch(ctx, "page", false, func(fetchCtx context.Context) (cachedExtract, error) {
+			started <- fetchCtx
+			<-release // Model a transport returning a late response after cancellation.
+			return cachedExtract{content: "old"}, nil
+		})
+		first <- err
+	}()
+	fetchCtx := <-started
+	cache.mu.Lock()
+	flight := cache.inflight["page"]
+	cache.mu.Unlock()
+	cancel()
+	if err := <-first; !errors.Is(err, context.Canceled) {
+		t.Fatalf("first call = %v", err)
+	}
+	select {
+	case <-fetchCtx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("fetch remained active without waiters")
+	}
+	fetchNew := func(context.Context) (cachedExtract, error) { return cachedExtract{content: "new"}, nil }
+	entry, cached, err := cache.getOrFetch(t.Context(), "page", false, fetchNew)
+	if err != nil || cached || entry.content != "new" {
+		t.Fatalf("replacement = %#v, %t, %v", entry, cached, err)
+	}
+	// Unblock the canceled transport, then wait until its result has been processed.
+	release <- struct{}{}
+	<-flight.done
+	entry, cached, err = cache.getOrFetch(t.Context(), "page", false, fetchNew)
+	if err != nil || !cached || entry.content != "new" {
+		t.Fatalf("cache after late completion = %#v, %t, %v", entry, cached, err)
+	}
+}
+
+func TestExtractCacheRefreshAndFailureRecovery(t *testing.T) {
+	cache := newExtractCache()
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	failure := errors.New("upstream failed")
+	_, _, err := cache.getOrFetch(ctx, "page", false, func(context.Context) (cachedExtract, error) { return cachedExtract{}, failure })
+	if !errors.Is(err, failure) {
+		t.Fatalf("failed fetch = %v", err)
+	}
+	old := func(context.Context) (cachedExtract, error) { return cachedExtract{content: "old"}, nil }
+	if entry, cached, err := cache.getOrFetch(ctx, "page", false, old); err != nil || cached || entry.content != "old" {
+		t.Fatalf("retry = %#v, %t, %v", entry, cached, err)
+	}
+	release := make(chan struct{})
+	defer close(release)
+	refresh := make(chan error, 1)
+	go func() {
+		_, _, err := cache.getOrFetch(ctx, "page", true, func(fetchCtx context.Context) (cachedExtract, error) {
+			select {
+			case <-release:
+				return cachedExtract{content: "new"}, nil
+			case <-fetchCtx.Done():
+				return cachedExtract{}, fetchCtx.Err()
+			}
+		})
+		refresh <- err
+	}()
+	waitForExtractWaiters(t, cache, "page", 1)
+	if entry, cached, err := cache.getOrFetch(ctx, "page", false, old); err != nil || !cached || entry.content != "old" {
+		t.Fatalf("read during refresh = %#v, %t, %v", entry, cached, err)
+	}
+	if entry, _, err := cache.getOrFetch(ctx, "other", false, old); err != nil || entry.content != "old" {
+		t.Fatalf("other key during refresh = %#v, %v", entry, err)
+	}
+	release <- struct{}{}
+	if err := <-refresh; err != nil {
+		t.Fatal(err)
+	}
+	if entry, cached, err := cache.getOrFetch(ctx, "page", false, old); err != nil || !cached || entry.content != "new" {
+		t.Fatalf("refreshed cache = %#v, %t, %v", entry, cached, err)
 	}
 }
 

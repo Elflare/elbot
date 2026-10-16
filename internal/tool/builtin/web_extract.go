@@ -29,9 +29,11 @@ const (
 )
 
 type WebExtractTool struct {
-	client     *http.Client
-	endpoint   string
-	cache      *extractCache
+	client   *http.Client
+	endpoint string
+	cache    *extractCache
+	// cacheOnce protects lazy initialization, including tools constructed without NewWebExtractTool.
+	cacheOnce  sync.Once
 	processEnv processenv.Environment
 }
 
@@ -86,6 +88,20 @@ type extractCache struct {
 	mu     sync.Mutex
 	order  []string
 	values map[string]cachedExtract
+	// inflight shares unfinished fetches by cache key; mu protects all flight state.
+	inflight map[string]*extractFlight
+}
+
+type extractFlight struct {
+	// done publishes entry and err when the fetch finishes.
+	done chan struct{}
+	// cancel stops the shared fetch after its last waiter leaves.
+	cancel context.CancelFunc
+	// waiters counts callers still waiting for this unfinished fetch.
+	waiters int
+	// entry and err hold the completed fetch outcome, published through done.
+	entry cachedExtract
+	err   error
 }
 
 type extractProxyConfig struct {
@@ -175,24 +191,20 @@ func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (_ *too
 		source = "jina"
 	}
 	key := extractCacheKey(source, url, selector, proxy)
-	entry := cachedExtract{}
-	cached := false
-	if !args.ForceRefresh {
-		entry, cached = cache.get(key)
+	timeout := defaultExtractTimeout
+	if args.TimeoutMS > 0 {
+		timeout = time.Duration(args.TimeoutMS) * time.Millisecond
 	}
-	if !cached {
-		var fetched cachedExtract
-		var err error
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	entry, cached, err := cache.getOrFetch(ctx, key, args.ForceRefresh, func(fetchCtx context.Context) (cachedExtract, error) {
 		if useJina && hasJinaKey {
-			fetched, err = t.fetchJina(ctx, apiKey, url, selector, args.TimeoutMS, proxy)
-		} else {
-			fetched, err = t.fetchDirect(ctx, url, args.TimeoutMS, proxy)
+			return t.fetchJina(fetchCtx, apiKey, url, selector, proxy)
 		}
-		if err != nil {
-			return nil, err.Error(), err
-		}
-		entry = fetched
-		cache.set(key, entry)
+		return t.fetchDirect(fetchCtx, url, proxy)
+	})
+	if err != nil {
+		return nil, err.Error(), err
 	}
 	data := sliceExtract(entry, args.Offset, args.MaxChars, cached)
 	{
@@ -201,20 +213,12 @@ func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (_ *too
 	}
 }
 
-func (t *WebExtractTool) fetchJina(ctx context.Context, apiKey, targetURL, selector string, timeoutMS int, proxy extractProxyConfig) (cachedExtract, error) {
-	requestCtx := ctx
-	cancel := func() {}
-	if timeoutMS > 0 {
-		requestCtx, cancel = context.WithTimeout(ctx, time.Duration(timeoutMS)*time.Millisecond)
-	} else {
-		requestCtx, cancel = context.WithTimeout(ctx, defaultExtractTimeout)
-	}
-	defer cancel()
+func (t *WebExtractTool) fetchJina(ctx context.Context, apiKey, targetURL, selector string, proxy extractProxyConfig) (cachedExtract, error) {
 	readerURL, err := jinaReaderURL(t.extractEndpoint(), targetURL)
 	if err != nil {
 		return cachedExtract{}, err
 	}
-	httpReq, err := http.NewRequestWithContext(requestCtx, http.MethodGet, readerURL, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, readerURL, nil)
 	if err != nil {
 		return cachedExtract{}, fmt.Errorf("create Jina request: %w", err)
 	}
@@ -267,16 +271,8 @@ func jinaReaderURL(endpoint, targetURL string) (string, error) {
 	return strings.TrimRight(endpoint, "/") + "/http://" + parsed.Host + parsed.RequestURI(), nil
 }
 
-func (t *WebExtractTool) fetchDirect(ctx context.Context, targetURL string, timeoutMS int, proxy extractProxyConfig) (cachedExtract, error) {
-	requestCtx := ctx
-	cancel := func() {}
-	if timeoutMS > 0 {
-		requestCtx, cancel = context.WithTimeout(ctx, time.Duration(timeoutMS)*time.Millisecond)
-	} else {
-		requestCtx, cancel = context.WithTimeout(ctx, defaultExtractTimeout)
-	}
-	defer cancel()
-	httpReq, err := http.NewRequestWithContext(requestCtx, http.MethodGet, targetURL, nil)
+func (t *WebExtractTool) fetchDirect(ctx context.Context, targetURL string, proxy extractProxyConfig) (cachedExtract, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
 	if err != nil {
 		return cachedExtract{}, fmt.Errorf("create direct extract request: %w", err)
 	}
@@ -362,7 +358,7 @@ func (t *WebExtractTool) httpClient(proxy extractProxyConfig) *http.Client {
 	if t.client != nil {
 		return t.client
 	}
-	return &http.Client{Timeout: defaultExtractTimeout, Transport: extractTransport(proxy)}
+	return &http.Client{Transport: extractTransport(proxy)}
 }
 
 func resolveExtractProxy(environment processenv.Environment, value string) (extractProxyConfig, error) {
@@ -489,27 +485,66 @@ func (t *WebExtractTool) extractEndpoint() string {
 }
 
 func (t *WebExtractTool) extractCache() *extractCache {
-	if t.cache != nil {
-		return t.cache
-	}
-	t.cache = newExtractCache()
+	t.cacheOnce.Do(func() {
+		if t.cache == nil {
+			t.cache = newExtractCache()
+		}
+	})
 	return t.cache
 }
 
 func newExtractCache() *extractCache {
-	return &extractCache{values: map[string]cachedExtract{}}
+	return &extractCache{values: map[string]cachedExtract{}, inflight: map[string]*extractFlight{}}
 }
 
-func (c *extractCache) get(key string) (cachedExtract, bool) {
+func (c *extractCache) getOrFetch(ctx context.Context, key string, forceRefresh bool, fetch func(context.Context) (cachedExtract, error)) (cachedExtract, bool, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	entry, ok := c.values[key]
-	return entry, ok
+	if entry, ok := c.values[key]; ok && !forceRefresh {
+		c.mu.Unlock()
+		return entry, true, nil
+	}
+	flight, exists := c.inflight[key]
+	if !exists {
+		fetchCtx, cancel := context.WithTimeout(context.Background(), defaultExtractTimeout)
+		flight = &extractFlight{done: make(chan struct{}), cancel: cancel}
+		c.inflight[key] = flight
+		go func() {
+			entry, err := fetch(fetchCtx)
+			cancel()
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			flight.entry, flight.err = entry, err
+			// A canceled flight may finish after a replacement has already started.
+			if c.inflight[key] == flight {
+				if err == nil {
+					c.setLocked(key, entry)
+				}
+				delete(c.inflight, key)
+			}
+			close(flight.done)
+		}()
+	}
+	flight.waiters++
+	c.mu.Unlock()
+	select {
+	case <-ctx.Done():
+		c.mu.Lock()
+		flight.waiters--
+		if flight.waiters == 0 && c.inflight[key] == flight {
+			delete(c.inflight, key)
+			flight.cancel()
+		}
+		c.mu.Unlock()
+		return cachedExtract{}, false, ctx.Err()
+	case <-flight.done:
+		if err := ctx.Err(); err != nil {
+			return cachedExtract{}, false, err
+		}
+		return flight.entry, false, flight.err
+	}
 }
 
-func (c *extractCache) set(key string, entry cachedExtract) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+func (c *extractCache) setLocked(key string, entry cachedExtract) {
 	if _, exists := c.values[key]; exists {
 		c.values[key] = entry
 		return

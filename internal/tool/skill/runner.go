@@ -20,7 +20,34 @@ import (
 const (
 	defaultRunnerTimeout = 30 * time.Second
 	maxRunnerOutput      = 16 * 1024
+	maxRunnerStdout      = 1 * 1024 * 1024
 )
+
+type limitedOutput struct {
+	// buf holds only the leading limit bytes; remaining output is drained and discarded.
+	buf []byte
+	// limit bounds captured bytes independently for stdout and stderr.
+	limit int
+	// truncated reports discarded bytes, so incomplete stdout is never parsed as a result.
+	truncated bool
+}
+
+func (out *limitedOutput) Write(p []byte) (int, error) {
+	n := min(len(p), out.limit-len(out.buf))
+	out.buf = append(out.buf, p[:n]...)
+	if n < len(p) {
+		out.truncated = true
+	}
+	return len(p), nil
+}
+
+func (out *limitedOutput) String() string {
+	text := string(out.buf)
+	if out.truncated {
+		text += "\n... output truncated ...\n"
+	}
+	return text
+}
 
 type GoRunner struct {
 	Media      *tool.MediaRuntime
@@ -196,15 +223,18 @@ func safeRelativePath(root, rel string) (string, error) {
 }
 
 func runMediaCommand(ctx context.Context, label string, cmd *exec.Cmd, mediaCall *tool.MediaCall) (*tool.Result, error) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
+	stdout := limitedOutput{limit: maxRunnerStdout}
+	stderr := limitedOutput{limit: maxRunnerOutput}
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err != nil {
 		out := truncateOutput(stdout.String())
-		errText := truncateOutput(stderr.String())
+		errText := stderr.String()
 		return nil, commandError(ctx, label, err, out, errText)
+	}
+	if stdout.truncated {
+		return nil, fmt.Errorf("%s stdout exceeds %d byte limit%s", label, maxRunnerStdout, commandOutputSuffix("", stderr.String()))
 	}
 	return resultFromStdoutWithMedia(ctx, stdout.String(), mediaCall, cmd.Dir)
 }

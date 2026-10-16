@@ -2,12 +2,245 @@ package builtin
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"elbot/internal/tool"
 )
+
+func writeSyncMemory(t *testing.T, store *longMemoryStore, name string, id int64, content string) string {
+	t.Helper()
+	record := longMemoryRecord{ID: id, Category: "sync", Title: name, Summary: "summary", Content: content, CreatedAt: "2026-01-01", UpdatedAt: "2026-01-01"}
+	data, err := marshalLongMemoryFile(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(store.memoriesDir, name)
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestLongMemorySyncFileIdentityChanges(t *testing.T) {
+	for _, scenario := range []string{"rename", "change id", "swap ids", "duplicate later", "duplicate earlier", "invalid"} {
+		t.Run(scenario, func(t *testing.T) {
+			store := newLongMemoryStore(t.TempDir())
+			t.Cleanup(func() { _ = store.close() })
+			if err := store.ensureLocked(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			path := writeSyncMemory(t, store, "b.md", 1, "oldtoken")
+			if scenario == "swap ids" {
+				writeSyncMemory(t, store, "c.md", 2, "othertoken")
+			}
+			if err := store.syncLocked(t.Context(), true); err != nil {
+				t.Fatal(err)
+			}
+			want := map[int64]string{1: "b.md"}
+			invalidCount := 0
+			switch scenario {
+			case "rename":
+				if err := os.Rename(path, filepath.Join(store.memoriesDir, "a.md")); err != nil {
+					t.Fatal(err)
+				}
+				want[1] = "a.md"
+			case "change id":
+				writeSyncMemory(t, store, "b.md", 3, "newtoken")
+				want = map[int64]string{3: "b.md"}
+			case "swap ids":
+				writeSyncMemory(t, store, "b.md", 2, "newtoken")
+				writeSyncMemory(t, store, "c.md", 1, "othertoken")
+				want = map[int64]string{1: "c.md", 2: "b.md"}
+			case "duplicate later":
+				writeSyncMemory(t, store, "c.md", 1, "newtoken")
+				invalidCount = 1
+			case "duplicate earlier":
+				writeSyncMemory(t, store, "a.md", 1, "newtoken")
+				want[1] = "a.md"
+				invalidCount = 1
+			case "invalid":
+				if err := os.WriteFile(path, []byte("broken"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				want = map[int64]string{}
+				invalidCount = 1
+			}
+			for range 2 {
+				if err := store.syncLocked(t.Context(), true); err != nil {
+					t.Fatal(err)
+				}
+				for id := int64(1); id <= 3; id++ {
+					record, err := store.recordByIDLocked(t.Context(), id)
+					name, exists := want[id]
+					if !exists {
+						if !errors.Is(err, sql.ErrNoRows) {
+							t.Fatalf("unexpected id %d: %#v, %v", id, record, err)
+						}
+					} else if err != nil || filepath.Base(record.FilePath) != name {
+						t.Fatalf("id %d = %#v, %v; want %s", id, record, err, name)
+					}
+				}
+				invalids, err := store.invalidFilesLocked(t.Context(), 10)
+				if err != nil || len(invalids) != invalidCount {
+					t.Fatalf("invalids = %#v, %v", invalids, err)
+				}
+			}
+			if scenario == "invalid" || scenario == "change id" || scenario == "swap ids" || scenario == "duplicate earlier" {
+				records, err := store.searchFTSLocked(t.Context(), "oldtoken", "", "any", 10)
+				if err != nil || len(records) != 0 {
+					t.Fatalf("stale search results = %#v, %v", records, err)
+				}
+			}
+		})
+	}
+}
+
+func TestLongMemorySyncInvalidRecoveryAndRestart(t *testing.T) {
+	store := newLongMemoryStore(t.TempDir())
+	t.Cleanup(func() { _ = store.close() })
+	if err := store.ensureLocked(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	first := writeSyncMemory(t, store, "a.md", 1, "firsttoken")
+	writeSyncMemory(t, store, "b.md", 1, "secondtoken")
+	broken := filepath.Join(store.memoriesDir, "broken.md")
+	if err := os.WriteFile(broken, []byte("broken"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.syncLocked(t.Context(), true); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(first); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.categories(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	record, err := store.recordByIDLocked(t.Context(), 1)
+	if err != nil || filepath.Base(record.FilePath) != "b.md" {
+		t.Fatalf("promoted record = %#v, %v", record, err)
+	}
+	invalids, err := store.invalidFilesLocked(t.Context(), 10)
+	if err != nil || len(invalids) != 1 || invalids[0].FilePath != broken {
+		t.Fatalf("invalids after restart = %#v, %v", invalids, err)
+	}
+	writeSyncMemory(t, store, "broken.md", 2, "repairedtoken")
+	if err := store.syncLocked(t.Context(), true); err != nil {
+		t.Fatal(err)
+	}
+	if invalids, err := store.invalidFilesLocked(t.Context(), 10); err != nil || len(invalids) != 0 {
+		t.Fatalf("invalids after repair = %#v, %v", invalids, err)
+	}
+	if err := os.Remove(broken); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.syncLocked(t.Context(), true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.recordByIDLocked(t.Context(), 2); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("deleted record: %v", err)
+	}
+}
+
+func TestLongMemorySyncFailureCanRetry(t *testing.T) {
+	store := newLongMemoryStore(t.TempDir())
+	t.Cleanup(func() { _ = store.close() })
+	if err := store.ensureLocked(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.categories(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(store.memoriesDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.syncLocked(t.Context(), true); err == nil {
+		t.Fatal("expected missing directory error")
+	}
+	if err := os.MkdirAll(store.memoriesDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	writeSyncMemory(t, store, "a.md", 1, "recovered")
+	result, err := store.categories(t.Context())
+	if err != nil || !strings.Contains(result, "sync（共1条记录）") {
+		t.Fatalf("retry result = %q, %v", result, err)
+	}
+	// Reading within the cooldown uses the existing index; the next eligible read refreshes it.
+	writeSyncMemory(t, store, "b.md", 2, "next")
+	result, err = store.categories(t.Context())
+	if err != nil || !strings.Contains(result, "sync（共1条记录）") {
+		t.Fatalf("cooldown result = %q, %v", result, err)
+	}
+	store.lastSync = time.Now().Add(-longMemorySyncCooldown)
+	result, err = store.categories(t.Context())
+	if err != nil || !strings.Contains(result, "sync（共2条记录）") {
+		t.Fatalf("refreshed result = %q, %v", result, err)
+	}
+}
+
+func TestLongMemorySyncDuplicateOwnerBecomesInvalid(t *testing.T) {
+	for _, scenario := range []string{"removed", "changed id", "broken syntax", "invalid metadata"} {
+		t.Run(scenario, func(t *testing.T) {
+			store := newLongMemoryStore(t.TempDir())
+			t.Cleanup(func() { _ = store.close() })
+			if err := store.ensureLocked(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			first := writeSyncMemory(t, store, "a.md", 1, "firsttoken")
+			writeSyncMemory(t, store, "b.md", 1, "secondtoken")
+			if err := store.syncLocked(t.Context(), true); err != nil {
+				t.Fatal(err)
+			}
+			switch scenario {
+			case "removed":
+				if err := os.Remove(first); err != nil {
+					t.Fatal(err)
+				}
+			case "changed id":
+				writeSyncMemory(t, store, "a.md", 2, "changedtoken")
+			case "broken syntax":
+				if err := os.WriteFile(first, []byte("broken"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "invalid metadata":
+				writeSyncMemory(t, store, "a.md", 0, "invalidtoken")
+			}
+			for range 2 {
+				if err := store.syncLocked(t.Context(), true); err != nil {
+					t.Fatal(err)
+				}
+				record, err := store.recordByIDLocked(t.Context(), 1)
+				if err != nil || filepath.Base(record.FilePath) != "b.md" {
+					t.Fatalf("new owner = %#v, %v", record, err)
+				}
+				records, err := store.searchFTSLocked(t.Context(), "firsttoken", "", "any", 10)
+				if err != nil || len(records) != 0 {
+					t.Fatalf("old owner remains searchable: %#v, %v", records, err)
+				}
+			}
+			if scenario == "broken syntax" || scenario == "invalid metadata" {
+				if err := os.Remove(first); err != nil {
+					t.Fatal(err)
+				}
+				if err := store.syncLocked(t.Context(), true); err != nil {
+					t.Fatal(err)
+				}
+				if invalids, err := store.invalidFilesLocked(t.Context(), 10); err != nil || len(invalids) != 0 {
+					t.Fatalf("deleted invalid file still reported: %#v, %v", invalids, err)
+				}
+			}
+		})
+	}
+}
 
 func TestPreparedLongMemoryUpdatePreservesConfirmation(t *testing.T) {
 	for _, scenario := range []string{"unchanged", "external edit", "newer update", "canceled"} {

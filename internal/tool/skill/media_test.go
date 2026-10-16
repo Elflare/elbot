@@ -33,7 +33,7 @@ func TestSkillMediaBridge(t *testing.T) {
 	mediaRuntime := &tool.MediaRuntime{Center: center, SandboxRoot: t.TempDir()}
 	dir := t.TempDir()
 	source := `package main
-import("encoding/json";"os";"path/filepath";"time";"fmt")
+import("encoding/json";"os";"path/filepath";"time";"fmt";"strings")
 func main(){
  var path,mode,workspace string
  if len(os.Args)>1 { for i:=1;i+1<len(os.Args);i+=2 { if os.Args[i]=="--input" { path=os.Args[i+1] }; if os.Args[i]=="--mode" { mode=os.Args[i+1] } }; workspace=filepath.Dir(path)
@@ -42,7 +42,8 @@ func main(){
  if mode=="fail" { os.Exit(7) }; if mode=="wait" { time.Sleep(10*time.Second) }
  output:=filepath.Join(workspace,"output.txt"); os.WriteFile(output,[]byte("output"),0600)
  if mode=="escape" { output="../escape.txt" }
- fmt.Printf("{\"content\":\"done\",\"segments\":[{\"type\":\"file\",\"path\":%q}]}",filepath.ToSlash(output))
+ content:="done"; if mode=="large" { content=strings.Repeat("x",20000) }
+ fmt.Printf("{\"content\":%q,\"segments\":[{\"type\":\"file\",\"path\":%q}]}",content,filepath.ToSlash(output))
 }`
 	sourcePath := filepath.Join(dir, "main.go")
 	if err := os.WriteFile(sourcePath, []byte(source), 0600); err != nil {
@@ -71,7 +72,7 @@ func main(){
 		t.Fatal("invalid schema projection or mutated manifest")
 	}
 	for _, kind := range []string{"go", "toml"} {
-		for _, mode := range []string{"ok", "fail", "escape", "wait", "cancel"} {
+		for _, mode := range []string{"ok", "large", "fail", "escape", "wait", "cancel"} {
 			t.Run(kind+"/"+mode, func(t *testing.T) {
 				runCtx := ctx
 				if mode == "cancel" {
@@ -97,7 +98,7 @@ func main(){
 					raw, _ = json.Marshal(map[string]any{"input": item.ID, "mode": mode})
 					result, _, err = current.Call(runCtx, tool.CallRequest{Arguments: raw})
 				}
-				if mode == "ok" {
+				if mode == "ok" || mode == "large" {
 					if err != nil || len(result.Segments) != 2 {
 						t.Fatalf("result %#v %v", result, err)
 					}

@@ -121,6 +121,8 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/tool_directive.go`、`internal/agent/tool_cache.go`：输入指令和状态提交编排。
 - `internal/fileops/`：共享文件操作、编辑、目标锁和撤销备份。
 - `internal/tool/builtin/file_tools_ast.go`：单文件与目录共用的扩展名／Shell shebang 识别及 AST 解析；`file_tools_directory.go`：目录 AST 候选读取与缓存、rg 文件枚举和分批流式搜索、有界匹配候选及排序选择。grep 大文件警告沿用 rg 的搜索范围。
+- `internal/tool/builtin/long_memory.go`：长期记忆文件与 SQLite／FTS 索引；同步批量加载正常及异常状态，按文件名决定重复 ID 归属，先清理失效索引再写入变化记录。格式错误分类仅在 store 内存中复用；读取时按 30 秒冷却同步，修改／删除找不到 ID 时强制同步。
+- `internal/tool/builtin/web_extract.go`：正文缓存与同键在途获取；共享请求独立于调用方取消，每个调用单独等待，无人等待时取消获取。强制刷新可加入在途请求，失败保留旧缓存，迟到结果不覆盖新请求。
 - `internal/fileops/binding.go`、`internal/fileops/commit.go`：context 中的服务／Session／准入绑定，以及显式传递的提交校验；context 不保存编辑或撤销预览。
 - `internal/fileops/edit_service.go`、`internal/fileops/rollback_service.go`：编辑／撤销准备对象、预览和提交；`internal/fileops/atomic_write.go` 提供带 revision 校验的写入。
 - `internal/workspace/`、`internal/session/workspace.go`、`internal/sandbox/`：工作目录、持久化与后台路径限制。
@@ -148,6 +150,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/storage/dialogue.go`、`internal/storage/sqlite/dialogue_repository.go`：规则展示标记随消息原子提交；`internal/contextmgr/state.go` 在压缩新 Session 时清除标记。
 - `internal/tool/skill/`：扫描、catalog、创建、finalize、reload 和 runner。
 - `internal/tool/skill/command_tool.go`、`internal/tool/skill/runner.go`：执行 AgentSkill TOML 命令与 Go Skill，每次读取技能 `.env` 并合并基础子进程环境；Manager／scanner 为命令工具传递启动环境。
+- `internal/tool/skill/runner.go` 的 runMediaCommand 共用有界输出收集：stdout 保留 1 MiB、stderr 保留 16 KiB，超限后继续消费管道。成功执行但 stdout 超限时返回错误；完整结果交 media.go 解析，失败诊断独立截断。
 - `internal/tool/skill/agent_manifest.go`、`internal/tool/skill/go_source.go`：AgentSkill manifest 与 Go 源码／编译。
 - `internal/tool/skill/media.go`：媒体参数与 stdout 媒体，Go 参数准备按媒体 ID 复用路径、元数据和小文件 base64，保留参数顺序及重复项。
 - `internal/config/assets.go`：内置 Skill 说明。

@@ -44,18 +44,18 @@
   - 大文件警告与搜索范围一致；完整统计匹配行数，最大堆只保留展示或 index 需要的候选，按完整相对路径及行号排序。空结果、长行、特殊文件名、进程失败及取消均保持明确结果。
   - `internal/tool/builtin/file_tools_directory.go`、`internal/tool/builtin/file_tools_test.go`。
 
-- [ ] 长期记忆同步：批量读取并复用索引状态。
-  - 当前逐文件查询索引状态，末尾又查询完整路径列表；未变化的损坏文件仍重复读取、解析并保存错误记录。
-  - 批量读取正常／异常索引，复用未变化的格式错误状态；正确处理文件删除、路径及 ID 变化，重复 ID 等依赖全库状态的错误仍需重判。入口：[internal/tool/builtin/long_memory.go](../internal/tool/builtin/long_memory.go)。
+- [x] 长期记忆同步：批量读取正常／异常索引，复用扫描属性及未变化的格式错误；相同异常状态保留原记录。
+  - 格式错误分类仅保存在 store 内存中，不增加数据库字段；重新打开后在实际同步时重新校验异常文件。搜索、查看分类触发常规同步，保留 30 秒冷却；修改／删除找不到 ID 时强制同步，失败允许立即重试。
+  - 按文件名排序确定重复 ID 归属，先清理失效索引再写入变化记录，处理删除、改名、改 ID、互换 ID、损坏及重复 ID 恢复。入口：[internal/tool/builtin/long_memory.go](../internal/tool/builtin/long_memory.go)。
+  - `internal/tool/builtin/long_memory_test.go`。
 
-- [ ] 网页提取：合并相同缓存键的在途请求。
-  - 当前相同键并发未命中缓存时，各调用分别发起 HTTP 请求。
-  - 实施前明确等待方取消、请求失败及 force_refresh 的行为。入口：[internal/tool/builtin/web_extract.go](../internal/tool/builtin/web_extract.go)。
+- [x] 网页提取：合并相同缓存键的在途请求，调用方独立等待、取消和超时；无人等待时取消共享获取，迟到结果不覆盖新请求。
+  - 共享获取超时为 15 秒；force_refresh 跳过已有缓存但可加入在途获取，普通调用已有缓存时立即返回。成功更新缓存，失败保留旧缓存且不缓存错误。入口：[internal/tool/builtin/web_extract.go](../internal/tool/builtin/web_extract.go)。
+  - `internal/tool/builtin/web_tools_test.go`。
 
-- [ ] Skill 输出缓冲：分别处理诊断输出与完整 JSON 结果。
-  - 当前子进程 stdout／stderr 使用无限增长的缓冲区，进程结束后才截断展示。
-  - 实施前分别确定诊断输出及结构化结果的大小限制和超限处理，保持管道排空及媒体结果解析正确。入口：[internal/tool/skill/runner.go](../internal/tool/skill/runner.go)。
-  - `internal/tool/skill/command_tool.go`、`internal/tool/skill/media.go`。
+- [x] Skill 输出缓冲：stdout 最多保留 1 MiB，stderr 最多保留 16 KiB，超限后持续消费管道并丢弃多余输出。
+  - 进程成功但 stdout 超限时明确报错，不解析残缺 JSON 或导入媒体；失败、取消和超时保留原错误分类及有界诊断。未超限的完整 JSON 仍支持媒体结果，正文沿用 16 KiB 展示上限。入口：[internal/tool/skill/runner.go](../internal/tool/skill/runner.go)。
+  - `internal/tool/skill/command_tool.go`、`internal/tool/skill/media.go`、`internal/tool/skill/runner_test.go`、`internal/tool/skill/media_test.go`。
 
 共同要求：
 
