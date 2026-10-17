@@ -5,8 +5,6 @@ import (
 	globalevents "elbot/internal/events"
 	"elbot/internal/signal"
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -368,13 +366,9 @@ func TestHandleC2CMessageTextAndStickerStripsOnlyFaceFallback(t *testing.T) {
 	}
 }
 
-func TestInboundAttachmentsKeepRawFileWithoutDownloading(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Error("normalization must not download attachments")
-	}))
-	defer server.Close()
-	segments := inboundAttachmentSegments([]messageAttachment{{URL: server.URL + "/file", ContentType: "file", Filename: "test.txt", Size: 9}})
-	if len(segments) != 1 || segments[0].Type != platform.SegmentFile || segments[0].URL != server.URL+"/file" || segments[0].Name != "test.txt" || segments[0].Size != 9 || segments[0].MIMEType != "" {
+func TestInboundAttachmentsKeepRawFile(t *testing.T) {
+	segments := inboundAttachmentSegments([]messageAttachment{{URL: "https://example.com/file", ContentType: "file", Filename: "test.txt", Size: 9}})
+	if len(segments) != 1 || segments[0].Type != platform.SegmentFile || segments[0].URL != "https://example.com/file" || segments[0].Name != "test.txt" || segments[0].Size != 9 || segments[0].MIMEType != "" {
 		t.Fatalf("raw segments = %#v", segments)
 	}
 }

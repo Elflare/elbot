@@ -272,10 +272,6 @@ func TestOutputSegmentsBase64ReturnsReadError(t *testing.T) {
 }
 
 func TestSendContextOutputReturnsSendFailureWithoutFallbackMessage(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "a.png")
-	if err := os.WriteFile(path, []byte("png"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	var messages []any
 	transport := newTestTransport(t, func(req request) response {
 		messages = append(messages, req.Params["message"])

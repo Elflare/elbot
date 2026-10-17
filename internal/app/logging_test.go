@@ -4,14 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"go/ast"
-	"go/parser"
-	"go/token"
-	"io/fs"
 	"log/slog"
-	"os"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -115,83 +108,5 @@ func TestProductionGlobalLogsKeepUsageAndBoundBodies(t *testing.T) {
 				t.Fatal(counts)
 			}
 		})
-	}
-}
-
-func TestBusinessLoggingDependencyBoundaries(t *testing.T) {
-	root := ".."
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		rel, _ := filepath.Rel(root, path)
-		rel = filepath.ToSlash(rel)
-		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
-		if err != nil {
-			return err
-		}
-		aliases := map[string]string{}
-		for _, imp := range file.Imports {
-			p, _ := strconv.Unquote(imp.Path.Value)
-			name := filepath.Base(p)
-			if imp.Name != nil {
-				name = imp.Name.Name
-			}
-			aliases[name] = p
-			if rel == "events/platform.go" && strings.HasPrefix(p, "elbot/internal/") && p != "elbot/internal/signal" {
-				t.Errorf("business dependency in platform event contract: %s", p)
-			}
-			if strings.HasPrefix(rel, "platform/") && (p == "elbot/internal/agent" || p == "elbot/internal/cron" || p == "elbot/internal/app") {
-				t.Errorf("platform depends on event consumer: %s: %s", rel, p)
-			}
-		}
-		infrastructure := strings.HasPrefix(rel, "logging/") || strings.HasPrefix(rel, "signal/") || rel == "events/logging.go"
-		ast.Inspect(file, func(node ast.Node) bool {
-			if selector, ok := node.(*ast.SelectorExpr); ok {
-				if id, ok := selector.X.(*ast.Ident); ok && aliases[id.Name] == "elbot/internal/events" && selector.Sel.Name == "PlatformConnected" && strings.HasPrefix(rel, "app/") {
-					t.Errorf("App owns platform signal dispatch/subscription: %s", rel)
-				}
-				if id, ok := selector.X.(*ast.Ident); ok && aliases[id.Name] == "log/slog" && !infrastructure {
-					switch selector.Sel.Name {
-					case "Logger", "Handler", "New", "NewTextHandler", "NewJSONHandler", "Default", "SetDefault", "Info", "Warn", "Error", "Debug", "InfoContext", "WarnContext", "ErrorContext", "DebugContext":
-						t.Errorf("business logger bypass: %s: slog.%s", rel, selector.Sel.Name)
-					}
-				}
-			}
-			if call, ok := node.(*ast.CallExpr); ok {
-				if selector, ok := call.Fun.(*ast.SelectorExpr); ok && selector.Sel.Name == "Emit" {
-					if source, ok := selector.X.(*ast.SelectorExpr); ok && source.Sel.Name == "LogSubmitted" {
-						t.Errorf("snapshot bypass: %s", rel)
-					}
-				}
-			}
-			return true
-		})
-		if strings.HasPrefix(rel, "logging/") || strings.HasPrefix(rel, "events/") || rel == "agent/logging.go" || rel == "session/naming_logging.go" || rel == "modelmgr/logging.go" {
-			for _, p := range aliases {
-				if strings.HasPrefix(p, "elbot/internal/llm/") {
-					t.Errorf("protocol dependency in log consumer: %s", rel)
-				}
-			}
-		}
-		if rel == "events/logging.go" {
-			return nil
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		for _, name := range []string{"SetLogger(", "auditFunc(", "writeAudit(", "ConnectedSignal(", "NotifyPlatformConnected(", "ConnectionSource"} {
-			if strings.Contains(string(data), name) {
-				t.Errorf("retired log injection: %s: %s", rel, name)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 }

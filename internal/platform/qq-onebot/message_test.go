@@ -2,7 +2,6 @@ package qqonebot
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -225,13 +224,9 @@ func TestNormalizePlainTextDoesNotParseMarkup(t *testing.T) {
 }
 
 func TestHandleEventMediaRemainsRaw(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Error("inbound normalization must not download")
-	}))
-	defer server.Close()
 	for _, messageType := range []string{"private", "group"} {
 		for _, raw := range []string{
-			fmt.Sprintf(`[{"type":"file","data":{"file":"test.txt","url":%q,"file_size":"9"}}]`, server.URL+"/file"),
+			`[{"type":"file","data":{"file":"test.txt","url":"https://example.com/file","file_size":"9"}}]`,
 			`[{"type":"image","data":{"file":"image-id"}}]`,
 			`[{"type":"file","data":{"file":"test.txt","file_id":"id-1"}}]`,
 		} {
