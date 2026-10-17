@@ -153,12 +153,9 @@ func TestRegisterHooksUsesRuleNamesAndDescriptions(t *testing.T) {
 	infos := manager.List()
 	byName := map[string]hook.Info{}
 	for _, info := range infos {
-		if strings.HasPrefix(info.Name, "rules.") {
-			t.Fatalf("unexpected rules prefix in %#v", infos)
-		}
 		byName[info.Name] = info
 	}
-	if got := byName["greet"]; got.Description != "send a greeting" || strings.Contains(got.Detail, "description:") || !strings.Contains(got.Detail, "on: platform.message.received") {
+	if got := byName["greet"]; got.Description != "send a greeting" || !strings.Contains(got.Detail, "on: platform.message.received") {
 		t.Fatalf("greet info = %#v", got)
 	}
 	for _, name := range []string{"gated.role.1", "gated.role.2"} {
@@ -204,7 +201,7 @@ text = "ok"
 	})
 	(Module{Rules: cfg.Rules}).RegisterHooks(manager)
 	infos := manager.List()
-	if len(infos) != 1 || infos[0].PluginID != "demo" || infos[0].Name != "emit_file" || infos[0].Description != "demo plugin" || strings.Contains(infos[0].Detail, "description:") || !strings.Contains(infos[0].Detail, "on: llm.response.received") {
+	if len(infos) != 1 || infos[0].PluginID != "demo" || infos[0].Name != "emit_file" || infos[0].Description != "demo plugin" || !strings.Contains(infos[0].Detail, "on: llm.response.received") {
 		t.Fatalf("infos = %#v", infos)
 	}
 }

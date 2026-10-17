@@ -539,20 +539,21 @@ text = "good"
 	}
 }
 
-func TestLoadConfigRejectsUnknownLegacyField(t *testing.T) {
+func TestLoadConfigRejectsUnknownField(t *testing.T) {
 	dir := t.TempDir()
 	content := `[[rules]]
-name = "legacy"
+name = "unknown_field"
 on = "platform.connected"
-
-[rules.send]
-text = "old"
+always = true
+action = "send"
+text = "ok"
+unknown_field = true
 `
 	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 	_, _, err := loadConfig(Options{ConfigDir: dir})
-	if err == nil {
-		t.Fatal("expected parse error")
+	if err == nil || !strings.Contains(err.Error(), "unknown_field") {
+		t.Fatalf("err = %v", err)
 	}
 }

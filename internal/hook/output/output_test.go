@@ -103,10 +103,10 @@ func TestBuildGroupTargetAndTiming(t *testing.T) {
 	}
 }
 
-func TestDecodeJSONRejectsOldFields(t *testing.T) {
+func TestDecodeJSONRejectsUnknownFields(t *testing.T) {
 	var group Group
-	err := DecodeJSON([]byte(`{"outputs":[{"kind":"reply","reply_to_message_id":"1"}]}`), &group)
-	if err == nil || !strings.Contains(err.Error(), "reply_to_message_id") {
+	err := DecodeJSON([]byte(`{"outputs":[{"kind":"text","text":"message","unknown_field":true}]}`), &group)
+	if err == nil || !strings.Contains(err.Error(), "unknown_field") {
 		t.Fatalf("err = %v", err)
 	}
 }

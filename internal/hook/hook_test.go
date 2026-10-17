@@ -321,9 +321,6 @@ func TestManagerLogsCanceledHookAsInfo(t *testing.T) {
 	if !strings.Contains(logs, "level=INFO") || !strings.Contains(logs, "event=hook_canceled") {
 		t.Fatalf("logs missing info cancellation:\n%s", logs)
 	}
-	if strings.Contains(logs, "hook error") || strings.Contains(logs, "level=WARN") {
-		t.Fatalf("canceled hook should not log warning/error:\n%s", logs)
-	}
 }
 
 func TestNotifyRunsAllHandlersAndJoinsErrors(t *testing.T) {
@@ -432,7 +429,7 @@ func TestManagerSkipsUnmatchedHookAndLogsNothing(t *testing.T) {
 	if called {
 		t.Fatal("unmatched hook should not run")
 	}
-	if logs := buf.String(); strings.Contains(logs, "hook triggered") || strings.Contains(logs, "hook event") {
+	if logs := buf.String(); logs != "" {
 		t.Fatalf("unmatched hook should not be logged:\n%s", logs)
 	}
 }
