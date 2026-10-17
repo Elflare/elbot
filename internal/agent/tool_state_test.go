@@ -175,7 +175,7 @@ func TestForkKeepsHistoryWithoutCopyingToolOrUsageState(t *testing.T) {
 	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, store)
 	source, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{
 		Title:    "source",
-		Metadata: `{"tool_cache":[{"name":"old","source":"native","schema":{"type":"function","function":{"name":"old"}}}],"last_usage":{"TotalTokens":100}}`,
+		Metadata: `{"tool_cache":[{"name":"old","source":"native","schema":{"name":"old","parameters":{"type":"object"}}}],"last_usage":{"TotalTokens":100}}`,
 	})
 	if err != nil {
 		t.Fatal(err)

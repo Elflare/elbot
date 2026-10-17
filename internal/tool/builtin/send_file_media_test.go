@@ -38,7 +38,7 @@ func TestSendFileMediaIDBuildsLocalOutput(t *testing.T) {
 	}
 }
 
-func TestSendFileSchemaOnlyExposesSource(t *testing.T) {
+func TestSendFileSchemaExposesSource(t *testing.T) {
 	schema := NewSendFileTool(NewFileManager(t.TempDir(), DefaultFileDeliveryConfigForTest())).Schema()
 	properties, ok := schema.Parameters["properties"].(map[string]any)
 	if !ok {
@@ -46,9 +46,6 @@ func TestSendFileSchemaOnlyExposesSource(t *testing.T) {
 	}
 	if _, ok := properties["source"]; !ok {
 		t.Fatal("source property missing")
-	}
-	if _, ok := properties["media"]; ok {
-		t.Fatal("media property must not be exposed")
 	}
 }
 

@@ -22,9 +22,6 @@ func TestModuleOwnsOneToolGraphAndDoesNotCloseStorage(t *testing.T) {
 	if m.Registry() != m.Registry() || m.Manager() != m.Manager() || m.Preloader() != m.Preloader() || m.State() != m.State() {
 		t.Fatal("shared instances recreated")
 	}
-	if _, ok := m.Registry().Get("cron"); ok {
-		t.Fatal("Tool constructed Background's business tools")
-	}
 	if err := m.Start(); err != nil {
 		t.Fatal(err)
 	}

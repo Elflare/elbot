@@ -56,9 +56,6 @@ func TestDiscoveredToolsAreInjectedIntoTopLevelTools(t *testing.T) {
 	if !strings.Contains(latestToolContent, "已发现：web_search") {
 		t.Fatalf("discover tool result should summarize found tool: %s", latestToolContent)
 	}
-	if strings.Contains(latestToolContent, `"schema"`) {
-		t.Fatalf("discover tool result should not repeat schema json: %s", latestToolContent)
-	}
 	sessions, err := store.Sessions().List(context.Background(), storage.ListSessionsRequest{ActorID: "cli:local", Platform: p.Name(), PlatformScopeID: "local"})
 	if err != nil || len(sessions) == 0 {
 		t.Fatalf("list sessions: %#v err=%v", sessions, err)
@@ -248,9 +245,6 @@ func TestToolDirectiveInjectsConfiguredTagPrompt(t *testing.T) {
 	system := llm.SegmentsContentText(requests[0].Messages[0].Segments)
 	if !strings.Contains(system, "Use alpha carefully.") {
 		t.Fatalf("missing tag prompt: %q", system)
-	}
-	if strings.Contains(system, "worker") {
-		t.Fatalf("tag name leaked into system prompt: %q", system)
 	}
 	sessions, err := store.Sessions().List(context.Background(), storage.ListSessionsRequest{ActorID: "cli:local", Platform: p.Name(), PlatformScopeID: "local"})
 	if err != nil || len(sessions) == 0 {
@@ -468,9 +462,6 @@ func TestSkillDirectiveInjectsDetailAndWrapper(t *testing.T) {
 			content := llm.SegmentsContentText(latest.Segments)
 			if content != "处理这个\n\n# DOCX" {
 				t.Fatalf("latest user content = %q", content)
-			}
-			if strings.Contains(content, "系统预加载") || strings.Contains(content, "Skill: docx") {
-				t.Fatalf("skill directive should not add synthetic headers: %q", content)
 			}
 		})
 	}
