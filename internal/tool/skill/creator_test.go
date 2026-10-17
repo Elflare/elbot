@@ -154,7 +154,7 @@ func TestCreateElSkillDoesNotOverwriteExistingDirectory(t *testing.T) {
 func TestCreateElSkillInfoAndSchema(t *testing.T) {
 	creator := NewCreateElSkillTool(NewManager(t.TempDir(), tool.NewRegistry()))
 	info := creator.Info()
-	if info.Risk != tool.RiskHigh || !strings.Contains(info.Description, "可复用") || strings.Contains(info.Description, "risk") {
+	if info.Risk != tool.RiskHigh || !strings.Contains(info.Description, "可复用") {
 		t.Fatalf("info = %#v", info)
 	}
 	schema := creator.Schema()

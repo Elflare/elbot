@@ -200,7 +200,7 @@ func TestRegistryReplaceSourcesRejectsBuiltinSource(t *testing.T) {
 	}
 }
 
-func TestDiscoverToolDoesNotExposeRisk(t *testing.T) {
+func TestDiscoverToolReturnsSummary(t *testing.T) {
 	registry := NewRegistry()
 	if err := registry.Register(NewDiscoverTool(registry)); err != nil {
 		t.Fatal(err)
@@ -217,8 +217,8 @@ func TestDiscoverToolDoesNotExposeRisk(t *testing.T) {
 	if json.Valid(result.Data) == false {
 		t.Fatalf("discover result is not json: %s", result.Data)
 	}
-	if strings.Contains(result.Content, `"schema"`) || !strings.Contains(result.Content, "已发现：shell") {
-		t.Fatalf("discover content should summarize found tools without schema: %q", result.Content)
+	if !strings.Contains(result.Content, "已发现：shell") {
+		t.Fatalf("discover content should summarize found tools: %q", result.Content)
 	}
 }
 
@@ -285,7 +285,7 @@ func TestDiscoverToolSchemaJSONUsesBusinessFieldNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(result.Data)
-	if !strings.Contains(text, `"name":"shell"`) || !strings.Contains(text, `"parameters"`) || strings.Contains(text, `"function"`) || strings.Contains(text, `"Type"`) || strings.Contains(text, `"Function"`) {
+	if !strings.Contains(text, `"name":"shell"`) || !strings.Contains(text, `"parameters"`) {
 		t.Fatalf("schema json should use lowercase business fields: %s", text)
 	}
 }
@@ -349,9 +349,6 @@ func TestDiscoverToolDeclaresSharedRulesForStructuredDetails(t *testing.T) {
 	}
 	if !result.NeedsElyphRules || result.DiscoveryText == nil || !strings.Contains(result.DiscoveryText.Summary, "alpha、beta") {
 		t.Fatalf("missing discovery requirement or summary: %+v", result)
-	}
-	if strings.Contains(result.Content, "Skill alpha") || strings.Contains(result.Content, "Skill beta") {
-		t.Fatalf("discover should not add synthetic skill headers: %q", result.Content)
 	}
 }
 

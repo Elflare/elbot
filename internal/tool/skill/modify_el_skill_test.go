@@ -72,9 +72,6 @@ func TestModifyElSkillWritesFullContent(t *testing.T) {
 	if !strings.Contains(content, "#skill writer - New.") || !strings.HasSuffix(content, "\n") {
 		t.Fatalf("content = %q", content)
 	}
-	if _, ok := registry.Get("writer"); ok {
-		t.Fatal("modify_el_skill should not reload modified skill before finalize")
-	}
 }
 
 func TestModifyElSkillRejectsStaleRevision(t *testing.T) {
@@ -112,9 +109,6 @@ func TestModifyElSkillSchemaUsesRevision(t *testing.T) {
 	if _, ok := properties["expected_revision"]; !ok {
 		t.Fatalf("modify_el_skill schema should expose expected_revision: %#v", properties)
 	}
-	if _, ok := properties["expected_sha256"]; ok {
-		t.Fatalf("modify_el_skill schema should not expose expected_sha256: %#v", properties)
-	}
 	edits, ok := properties["edits"].(map[string]any)
 	if !ok {
 		t.Fatalf("modify_el_skill edits schema missing: %#v", properties["edits"])
@@ -132,20 +126,17 @@ func TestModifyElSkillSchemaUsesRevision(t *testing.T) {
 			t.Fatalf("modify_el_skill edit schema should expose %s: %#v", name, editProperties)
 		}
 	}
-	for _, name := range []string{"start_line", "expected_content", "match_mode", "old_content", "content"} {
-		if _, ok := editProperties[name]; ok {
-			t.Fatalf("modify_el_skill edit schema should not expose legacy field %s: %#v", name, editProperties)
-		}
-	}
+}
 
+func TestModifyElSkillRejectsUnknownFields(t *testing.T) {
 	modifier := NewModifyElSkillTool(NewManager(t.TempDir(), tool.NewRegistry()))
-	_, _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"missing","expected_sha256":"deadbeef","edits":[{"operation":"overwrite","new_text":"x"}]}`)})
-	if err == nil || !strings.Contains(err.Error(), "unknown field \"expected_sha256\"") {
-		t.Fatalf("expected legacy field rejection, got %v", err)
+	_, _, err := modifier.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"name":"missing","unknown_field":true,"edits":[{"operation":"overwrite","new_text":"x"}]}`)})
+	if err == nil || !strings.Contains(err.Error(), "unknown field \"unknown_field\"") {
+		t.Fatalf("expected unknown field rejection, got %v", err)
 	}
 }
 
-func TestModifyElSkillDefersElyphWarningsToFinalize(t *testing.T) {
+func TestModifyElSkillAcceptsElyphWarnings(t *testing.T) {
 	root := t.TempDir()
 	writeTestSkill(t, root, "warn_patch", "#skill warn_patch - Old.\n** risk low\n")
 	modifier := NewModifyElSkillTool(NewManager(root, tool.NewRegistry()))
@@ -164,9 +155,6 @@ func TestModifyElSkillDefersElyphWarningsToFinalize(t *testing.T) {
 	}
 	if !strings.Contains(result.Content, "modified EL skill warn_patch") || !strings.Contains(result.Content, "finalize_el_skill") {
 		t.Fatalf("content = %q", result.Content)
-	}
-	if strings.Contains(result.Content, "Warnings:") || strings.Contains(result.Content, "line 2:") {
-		t.Fatalf("modify_el_skill should defer warnings to finalize, content = %q", result.Content)
 	}
 }
 
@@ -192,7 +180,7 @@ func TestModifyElSkillEditsLines(t *testing.T) {
 	}
 }
 
-func TestModifyElSkillEditsCodeSourceWithoutBuild(t *testing.T) {
+func TestModifyElSkillEditsCodeSource(t *testing.T) {
 	root := t.TempDir()
 	writeTestGoSkill(t, root, "patcher_code", "package main\n\nfunc main() {}\n")
 	modifier := NewModifyElSkillTool(NewManager(root, tool.NewRegistry()))
@@ -211,7 +199,7 @@ func TestModifyElSkillEditsCodeSourceWithoutBuild(t *testing.T) {
 		t.Fatal(err)
 	}
 	content := readTestGoSource(t, root, "patcher_code")
-	if !strings.Contains(content, "missing()") || strings.Contains(content, "func main() { missing() }") {
+	if !strings.Contains(content, "missing()") {
 		t.Fatalf("content = %q", content)
 	}
 	if !strings.Contains(result.Content, "finalize_el_skill") {

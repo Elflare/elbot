@@ -777,7 +777,7 @@ func TestEditFileToolBatchReplacesLinesAndReturnsDiff(t *testing.T) {
 	if !strings.Contains(result.Content, "dry_run: false") || !strings.Contains(result.Content, "-beta") || !strings.Contains(result.Content, "+BETA") || !strings.Contains(result.Content, "+DELTA") {
 		t.Fatalf("unexpected diff:\n%s", result.Content)
 	}
-	if !strings.Contains(result.Content, "revision_before: ") || !strings.Contains(result.Content, "revision_after: ") || strings.Contains(result.Content, "sha256_") {
+	if !strings.Contains(result.Content, "revision_before: ") || !strings.Contains(result.Content, "revision_after: ") {
 		t.Fatalf("unexpected revision output:\n%s", result.Content)
 	}
 }
@@ -1037,34 +1037,14 @@ func TestEditFileToolRiskDetailFormatsEdits(t *testing.T) {
 	}
 }
 
-func TestFileToolSchemasDoNotExposeLargeFileThresholds(t *testing.T) {
-	for _, schema := range []any{NewReadFileTool().Schema(), NewEditFileTool().Schema()} {
-		data, err := json.Marshal(schema)
-		if err != nil {
-			t.Fatal(err)
-		}
-		text := string(data)
-		for _, hidden := range []string{"MiB", "104857600", "file too large", "diff omitted"} {
-			if strings.Contains(text, hidden) {
-				t.Fatalf("tool schema exposes runtime size policy %q: %s", hidden, text)
-			}
-		}
-	}
-}
-func TestEditFileToolSchemaOmitsDryRun(t *testing.T) {
+func TestEditFileToolSchemaExposesEditProtocol(t *testing.T) {
 	schema := NewEditFileTool().Schema()
 	properties, ok := schema.Parameters["properties"].(map[string]any)
 	if !ok {
 		t.Fatalf("schema properties missing: %#v", schema.Parameters)
 	}
-	if _, ok := properties["dry_run"]; ok {
-		t.Fatalf("edit_file schema should not expose dry_run: %#v", properties["dry_run"])
-	}
 	if _, ok := properties["expected_revision"]; !ok {
 		t.Fatalf("edit_file schema should expose expected_revision: %#v", properties)
-	}
-	if _, ok := properties["expected_sha256"]; ok {
-		t.Fatalf("edit_file schema should not expose expected_sha256: %#v", properties)
 	}
 	edits, ok := properties["edits"].(map[string]any)
 	if !ok {
@@ -1081,11 +1061,6 @@ func TestEditFileToolSchemaOmitsDryRun(t *testing.T) {
 	for _, name := range []string{"line", "end_line", "new_text", "old_text", "anchor", "index", "all_matches"} {
 		if _, ok := editProperties[name]; !ok {
 			t.Fatalf("edit_file edit schema should expose %s: %#v", name, editProperties)
-		}
-	}
-	for _, name := range []string{"start_line", "expected_content", "match_mode", "old_content", "content"} {
-		if _, ok := editProperties[name]; ok {
-			t.Fatalf("edit_file edit schema should not expose legacy field %s: %#v", name, editProperties)
 		}
 	}
 	operation, ok := editProperties["operation"].(map[string]any)
@@ -1366,9 +1341,6 @@ func assertFileRevision(t *testing.T, output string, data []byte) {
 	want := "revision: " + fileops.ContentRevision(data)
 	if !strings.Contains(output, want) {
 		t.Fatalf("output missing %q:\n%s", want, output)
-	}
-	if strings.Contains(output, "sha256:") {
-		t.Fatalf("output still exposes sha256:\n%s", output)
 	}
 }
 

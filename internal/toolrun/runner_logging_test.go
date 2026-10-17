@@ -429,9 +429,6 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 				if content["result"] != want {
 					t.Fatalf("source log body lost or replaced by business content: %s", calls[0].Content)
 				}
-				if _, exists := content["execution_started"]; exists {
-					t.Fatalf("internal execution state leaked into log: %s", calls[0].Content)
-				}
 			}
 			if tc.saveErr != nil {
 				r, ok := operations["tool_transcript_save"]

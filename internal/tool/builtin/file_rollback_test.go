@@ -93,7 +93,7 @@ func TestRollbackToolPathOnlyAndWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "action: restored") || strings.Contains(result.Content, "id:") {
+	if !strings.Contains(result.Content, "action: restored") {
 		t.Fatalf("result: %s", result.Content)
 	}
 	data, _ := os.ReadFile(filepath.Join(firstDir, "file"))

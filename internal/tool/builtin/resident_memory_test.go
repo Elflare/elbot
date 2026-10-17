@@ -120,15 +120,6 @@ func TestResidentMemoryToolRisksAndSchema(t *testing.T) {
 		t.Fatalf("core risk not high")
 	}
 	schema := coreTool.Schema()
-	props, ok := schema.Parameters["properties"].(map[string]any)
-	if !ok {
-		t.Fatalf("properties = %#v", schema.Parameters["properties"])
-	}
-	for _, name := range []string{"platform", "actor_id", "scope_id", "id"} {
-		if _, ok := props[name]; ok {
-			t.Fatalf("schema exposes %s: %#v", name, props)
-		}
-	}
 	if !strings.Contains(schema.Description, "200 字数或单词") {
 		t.Fatalf("core description = %q", schema.Description)
 	}

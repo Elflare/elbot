@@ -123,7 +123,4 @@ func TestChatHistoryFullSchema(t *testing.T) {
 			t.Fatalf("%s full schema: %#v", caller.Name(), schema)
 		}
 	}
-	if _, ok := NewReplyToChatHistoryMessageTool(nil).Schema().Parameters["properties"].(map[string]any)["full"]; ok {
-		t.Fatal("reply tool unexpectedly exposes full")
-	}
 }

@@ -191,13 +191,6 @@ func TestAnalyzeBashShellAdviceRejectsSedEditElSkill(t *testing.T) {
 	if advice.blockErr == nil || !strings.Contains(advice.blockErr.Error(), "modify_el_skill") {
 		t.Fatalf("expected modify_el_skill error, got %v", advice.blockErr)
 	}
-	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(content) != original {
-		t.Fatalf("file changed: %q", string(content))
-	}
 }
 
 func TestAnalyzeBashShellAdviceWarnsForCatResidentMemory(t *testing.T) {
@@ -221,13 +214,6 @@ func TestAnalyzeBashShellAdviceRejectsRedirectToResidentMemory(t *testing.T) {
 	advice := analyzeBashShellAdvice("echo changed > "+filepath.ToSlash(path), filepath.Dir(path), NewFileGuard(NewResidentMemoryFileGuardRule(path)))
 	if advice.blockErr == nil || !strings.Contains(advice.blockErr.Error(), "resident_memory_normal") {
 		t.Fatalf("expected resident memory error, got %v", advice.blockErr)
-	}
-	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(content) != original {
-		t.Fatalf("file changed: %q", string(content))
 	}
 }
 

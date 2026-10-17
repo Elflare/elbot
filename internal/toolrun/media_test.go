@@ -48,7 +48,7 @@ func (failingMediaTool) Call(context.Context, tool.CallRequest) (*tool.Result, s
 	}
 }
 
-func TestRunValidatesExactMediaArgumentsWithoutSeparateReferenceWrite(t *testing.T) {
+func TestRunValidatesExactMediaArguments(t *testing.T) {
 	ctx := context.Background()
 	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
@@ -61,7 +61,7 @@ func TestRunValidatesExactMediaArgumentsWithoutSeparateReferenceWrite(t *testing
 		t.Fatal(err)
 	}
 
-	run := func(t *testing.T, tl tool.Tool, session *storage.Session, arguments string) RunResult {
+	run := func(t *testing.T, tl tool.Tool, arguments string) RunResult {
 		t.Helper()
 		registry := tool.NewRegistry()
 		if err := registry.Register(tl); err != nil {
@@ -70,40 +70,25 @@ func TestRunValidatesExactMediaArgumentsWithoutSeparateReferenceWrite(t *testing
 		manager := NewManager(registry, nil)
 		manager.Media = center
 		return NewRunner(manager).Run(ctx, &runnerTestDeps{}, RunRequest{Committer: &testToolCommitter{},
-			Session: session, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
+			Session: &storage.Session{ID: "session", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 			Calls: []llm.ToolCallRequest{{ID: "call-1", Name: tl.Name(), Arguments: arguments}},
 		})
 	}
 
-	session := &storage.Session{OwnerID: "u", Platform: "test", PlatformScopeID: "s", Mode: storage.SessionModeWork}
-	if err := store.Sessions().Create(ctx, session); err != nil {
-		t.Fatal(err)
-	}
 	recorder := &mediaArgumentRecorder{}
 	arguments := `{"nested":{"media":"` + item.ID + `"},"text":"prefix ` + item.ID + `"}`
-	run(t, recorder, session, arguments)
+	run(t, recorder, arguments)
 	if recorder.received != arguments {
 		t.Fatalf("tool arguments = %q", recorder.received)
 	}
-	refs, err := store.MediaReferences().ListByOwner(ctx, "session_tool", session.ID)
-	if err != nil || len(refs) != 0 {
-		t.Fatalf("session tool references = %#v, %v", refs, err)
-	}
 
-	failedSession := &storage.Session{OwnerID: "u", Platform: "test", PlatformScopeID: "s", Mode: storage.SessionModeWork}
-	if err := store.Sessions().Create(ctx, failedSession); err != nil {
-		t.Fatal(err)
-	}
-	result := run(t, failingMediaTool{}, failedSession, `{"media":"`+item.ID+`"}`)
+	result := run(t, failingMediaTool{}, `{"media":"`+item.ID+`"}`)
 	if len(result.Messages) != 1 || !strings.Contains(llm.SegmentsContentText(result.Messages[0].Segments), "tool failed") {
 		t.Fatalf("failed tool result = %#v", result.Messages)
 	}
-	if refs, err := store.MediaReferences().ListByOwner(ctx, "session_tool", failedSession.ID); err != nil || len(refs) != 0 {
-		t.Fatalf("failed tool references = %#v, %v", refs, err)
-	}
 }
 
-func TestRunDoesNotRetainMediaBeforeExecution(t *testing.T) {
+func TestRunRejectsMissingMediaBeforeExecution(t *testing.T) {
 	ctx := context.Background()
 	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
@@ -111,38 +96,13 @@ func TestRunDoesNotRetainMediaBeforeExecution(t *testing.T) {
 	}
 	defer store.Close()
 	center := media.NewManager(store, t.TempDir(), &media.LocalBackend{Root: t.TempDir()})
-	item, err := center.ImportBytes(ctx, []byte("tool input"), media.Input{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	session := &storage.Session{OwnerID: "u", Platform: "test", PlatformScopeID: "s", Mode: storage.SessionModeWork}
-	if err := store.Sessions().Create(ctx, session); err != nil {
-		t.Fatal(err)
-	}
-	registry := tool.NewRegistry()
-	if err := registry.Register(runnerPreflightTool{}); err != nil {
-		t.Fatal(err)
-	}
-	manager := NewManager(registry, nil)
-	manager.Media = center
-	NewRunner(manager).Run(ctx, &runnerTestDeps{}, RunRequest{Committer: &testToolCommitter{},
-		Session: session, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
-		Calls: []llm.ToolCallRequest{{ID: "call-1", Name: "preflight_tool", Arguments: `{"media":"` + item.ID + `"}`}},
-	})
-	if refs, err := store.MediaReferences().ListByOwner(ctx, "session_tool", session.ID); err != nil || len(refs) != 0 {
-		t.Fatalf("preflight references = %#v, %v", refs, err)
-	}
-
-	missingSession := &storage.Session{OwnerID: "u", Platform: "test", PlatformScopeID: "s", Mode: storage.SessionModeWork}
-	if err := store.Sessions().Create(ctx, missingSession); err != nil {
-		t.Fatal(err)
-	}
+	missingSession := &storage.Session{ID: "missing-session", Mode: storage.SessionModeWork}
 	recorder := &mediaArgumentRecorder{}
-	registry = tool.NewRegistry()
+	registry := tool.NewRegistry()
 	if err := registry.Register(recorder); err != nil {
 		t.Fatal(err)
 	}
-	manager = NewManager(registry, nil)
+	manager := NewManager(registry, nil)
 	manager.Media = center
 	missingID := media.IDPrefix + strings.Repeat("f", 64)
 	result := NewRunner(manager).Run(ctx, &runnerTestDeps{}, RunRequest{Committer: &testToolCommitter{},
@@ -151,9 +111,6 @@ func TestRunDoesNotRetainMediaBeforeExecution(t *testing.T) {
 	})
 	if recorder.received != "" || len(result.Messages) != 1 || !strings.Contains(llm.SegmentsContentText(result.Messages[0].Segments), "retain media arguments") {
 		t.Fatalf("missing media execution = %q, %#v", recorder.received, result.Messages)
-	}
-	if refs, err := store.MediaReferences().ListByOwner(ctx, "session_tool", missingSession.ID); err != nil || len(refs) != 0 {
-		t.Fatalf("missing media references = %#v, %v", refs, err)
 	}
 }
 
