@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -14,7 +13,7 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 	"github.com/aws/smithy-go"
 )
 
@@ -48,11 +47,7 @@ func (b *concurrentTestBackend) PresignGet(ctx context.Context, item *storage.Me
 
 func newConcurrentTestManager(t *testing.T) *Manager {
 	t.Helper()
-	store, err := sqlite.New(t.Context(), filepath.Join(t.TempDir(), "db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
+	store := testutil.NewSQLiteStore(t)
 	root := t.TempDir()
 	return NewManager(store, root, &LocalBackend{Root: root})
 }

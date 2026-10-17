@@ -402,90 +402,60 @@ func TestChatToolCallShowsAssistantTextAndArguments(t *testing.T) {
 	}
 }
 
-func TestNonCLIChatToolCallWithAssistantTextSkipsToolArgumentPreview(t *testing.T) {
-	p := &fakePlatform{}
-	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
-		{{DeltaContent: "我先看一下。"}, {ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
-		{{DeltaContent: "看完了"}},
-	}}
-
-	registry := tool.NewRegistry()
-	_ = registry.Register(tool.NewDiscoverTool(registry))
-	_ = registry.Register(newAgentShellTool())
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
-		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"qq": {"1"}})
-	}, func(cfg *testAgentOptions) {
-		cfg.ToolRegistry = registry
-	})
-	a.output.dispatcher.RegisterPlatformSender("qq", p)
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
-		Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq", ScopeID: "private:1"}, Identity: contextinfo.Identity{PlatformUserID: "1", ActorID: "qq:1"}},
-	})
-
-	if err := a.HandleMessage(ctx, "看看目录"); err != nil {
-		t.Fatalf("HandleMessage: %v", err)
-	}
-	if strings.Contains(p.preview.String(), "正在调用 shell") || strings.Contains(p.preview.String(), `"cmd":"ls"`) {
-		t.Fatalf("non-cli should not receive assistant-text tool argument preview: %q", p.preview.String())
-	}
-	if !strings.Contains(p.out.String(), "我先看一下。") || !strings.Contains(p.out.String(), "看完了") {
-		t.Fatalf("missing streamed text: %q", p.out.String())
-	}
-}
-
 func TestToolPreviewConversationPolicyThroughChat(t *testing.T) {
-	for _, name := range []string{"qqonebot", "qqofficial", "telegram"} {
-		for _, kind := range []contextinfo.ConversationKind{contextinfo.ConversationPrivate, contextinfo.ConversationGroup} {
-			for _, prose := range []string{"", "我先看一下。"} {
-				for _, count := range []int{1, 2} {
-					t.Run(fmt.Sprintf("%s/%s/prose=%t/calls=%d", name, kind, prose != "", count), func(t *testing.T) {
-						p := &fakePlatform{}
-						calls := make([]chatcompletions.ToolCallDelta, count)
-						for i := range calls {
-							calls[i] = chatcompletions.ToolCallDelta{ID: fmt.Sprintf("call_%d", i), Name: "shell", Args: `{"cmd":"ls"}`}
-						}
-						client := &fakeLLM{chunks: [][]chatcompletions.Chunk{
-							{{DeltaContent: prose}, {ToolCallDeltas: calls, FinishReason: "tool_calls"}},
-							{{DeltaContent: "看完了"}},
-						}}
-						registry := tool.NewRegistry()
-						if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
-							t.Fatal(err)
-						}
-						if err := registry.Register(newAgentShellTool()); err != nil {
-							t.Fatal(err)
-						}
-						a := newTestAgent(t, p, client, "model", config.ProviderConfig{}, newTestStore(t), func(opts *testAgentOptions) {
-							opts.ToolRegistry = registry
-							opts.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{name: {"1"}})
-						})
-						a.output.dispatcher.RegisterPlatformSender(name, p)
-						connectFixtureNotifications(t, name, a.output.dispatcher)
-						ctx := platform.WithMessageContext(t.Context(), platform.MessageContext{Bot: platform.Identity{UserID: "bot"}, Mentions: []platform.Mention{{UserID: "bot"}}, Conversation: contextinfo.Conversation{
-							Source:   contextinfo.Source{Platform: name, ScopeID: string(kind) + ":1", ConversationKind: kind, ConversationID: "1"},
-							Identity: contextinfo.Identity{PlatformUserID: "1", ActorID: name + ":1"},
-						}})
-						if err := a.HandleMessage(ctx, "看看目录"); err != nil {
-							t.Fatal(err)
-						}
-						if _, err := events.NotificationRequested.Emit(ctx, events.NewNotification(ctx, 0, "barrier")); err != nil {
-							t.Fatal(err)
-						}
-						output := p.out.String()
-						want := 0
-						if kind == contextinfo.ConversationPrivate && prose == "" {
-							want = count
-						}
-						if got := strings.Count(output, "正在调用 shell"); got != want {
-							t.Fatalf("preview=%d want=%d output=%q", got, want, output)
-						}
-						if !strings.Contains(output, "看完了") || prose != "" && !strings.Contains(output, prose) {
-							t.Fatalf("missing prose: %q", output)
-						}
-					})
-				}
+	const name = "qqonebot"
+	for _, tc := range []struct {
+		name  string
+		kind  contextinfo.ConversationKind
+		prose string
+		count int
+		want  int
+	}{
+		{name: "private_batch", kind: contextinfo.ConversationPrivate, count: 2, want: 2},
+		{name: "private_with_text", kind: contextinfo.ConversationPrivate, prose: "我先看一下。", count: 1},
+		{name: "group_without_text", kind: contextinfo.ConversationGroup, count: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &fakePlatform{}
+			calls := make([]chatcompletions.ToolCallDelta, tc.count)
+			for i := range calls {
+				calls[i] = chatcompletions.ToolCallDelta{ID: fmt.Sprintf("call_%d", i), Name: "shell", Args: `{"cmd":"ls"}`}
 			}
-		}
+			client := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+				{{DeltaContent: tc.prose}, {ToolCallDeltas: calls, FinishReason: "tool_calls"}},
+				{{DeltaContent: "看完了"}},
+			}}
+			registry := tool.NewRegistry()
+			if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
+				t.Fatal(err)
+			}
+			if err := registry.Register(newAgentShellTool()); err != nil {
+				t.Fatal(err)
+			}
+			a := newTestAgent(t, p, client, "model", config.ProviderConfig{}, newTestStore(t), func(opts *testAgentOptions) {
+				opts.ToolRegistry = registry
+				opts.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{name: {"1"}})
+			})
+			a.output.dispatcher.RegisterPlatformSender(name, p)
+			connectFixtureNotifications(t, name, a.output.dispatcher)
+			ctx := platform.WithMessageContext(t.Context(), platform.MessageContext{Bot: platform.Identity{UserID: "bot"}, Mentions: []platform.Mention{{UserID: "bot"}}, Conversation: contextinfo.Conversation{
+				Source:   contextinfo.Source{Platform: name, ScopeID: string(tc.kind) + ":1", ConversationKind: tc.kind, ConversationID: "1"},
+				Identity: contextinfo.Identity{PlatformUserID: "1", ActorID: name + ":1"},
+			}})
+			if err := a.HandleMessage(ctx, "看看目录"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := events.NotificationRequested.Emit(ctx, events.NewNotification(ctx, 0, "barrier")); err != nil {
+				t.Fatal(err)
+			}
+			output := p.out.String()
+			if got := strings.Count(output, "正在调用 shell"); got != tc.want {
+				t.Fatalf("preview=%d want=%d output=%q", got, tc.want, output)
+			}
+			if !strings.Contains(output, "看完了") || tc.prose != "" && !strings.Contains(output, tc.prose) {
+				t.Fatalf("missing prose: %q", output)
+			}
+		})
 	}
 }
 

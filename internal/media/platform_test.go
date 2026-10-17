@@ -2,13 +2,12 @@ package media
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 )
 
 type historyResolver struct{ calls int }
@@ -20,11 +19,7 @@ func (r *historyResolver) ResolveMedia(_ context.Context, s platform.MessageSegm
 
 func TestGetHistoryMediaReusesAssociation(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "main.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := testutil.NewSQLiteStore(t)
 	root := t.TempDir()
 	m := NewManager(store, root, &LocalBackend{Root: root})
 	row := storage.ChatMessage{ID: "h", Platform: "p", PlatformScopeID: "s", PlatformMessageID: "1", Segments: platform.MarshalChatSegments([]platform.MessageSegment{{Type: platform.SegmentText, Text: "hi"}, {Type: platform.SegmentImage, PlatformFileID: "one"}, {Type: platform.SegmentFile, PlatformFileID: "two"}})}

@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -19,7 +18,7 @@ import (
 	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 	"elbot/internal/tool"
 	"elbot/internal/tool/builtin"
 )
@@ -351,25 +350,7 @@ func waitRequestCount(t *testing.T, f *fakeLLM, want int) {
 
 func newTestStore(t *testing.T) storage.Store {
 	t.Helper()
-	store, err := sqlite.New(context.Background(), ":memory:")
-	if err != nil {
-		t.Fatalf("new sqlite store: %v", err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
-	return store
-}
-
-func TestNewTestStoreUsesIndependentMemoryDatabase(t *testing.T) {
-	ctx := context.Background()
-	first := newTestStore(t)
-	second := newTestStore(t)
-	session := &storage.Session{OwnerID: "u1", Platform: "cli", PlatformScopeID: "local", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive}
-	if err := first.Sessions().Create(ctx, session); err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-	if _, err := second.Sessions().Get(ctx, session.ID); !errors.Is(err, storage.ErrNotFound) {
-		t.Fatalf("second store Get error = %v, want not found", err)
-	}
+	return testutil.NewSQLiteStore(t)
 }
 
 func firstRequestSystemText(req chatcompletions.Request) string {

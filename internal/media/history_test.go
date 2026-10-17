@@ -9,6 +9,7 @@ import (
 
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 )
 
 type brokenHistory struct{ storage.ChatHistoryRepository }
@@ -19,11 +20,7 @@ func (brokenHistory) GetByPlatformMessage(context.Context, string, string, strin
 
 func TestHistoryReconciliationAfterInterruptedDeletion(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "main.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := testutil.NewSQLiteStore(t)
 	history, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -97,11 +94,7 @@ func TestHistoryReconciliationHandlesAttachmentsAcrossPages(t *testing.T) {
 	for _, name := range []string{"present", "missing", "replacement", "offline"} {
 		t.Run(name, func(t *testing.T) {
 			ctx := t.Context()
-			store, err := sqlite.New(ctx, ":memory:")
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = store.Close() })
+			store := testutil.NewSQLiteStore(t)
 			history, err := sqlite.NewChatHistory(ctx, ":memory:")
 			if err != nil {
 				t.Fatal(err)

@@ -19,42 +19,9 @@ import (
 )
 
 func TestRunMediaCommandOutputLimits(t *testing.T) {
-	dir := t.TempDir()
-	source := `package main
-import ("encoding/json"; "fmt"; "os"; "strings"; "sync"; "time")
-func main() {
- mode := os.Args[1]
- switch mode {
- case "plain exact": fmt.Print(strings.Repeat("x", 1024*1024))
- case "plain overflow": fmt.Print(strings.Repeat("x", 1024*1024+1))
- case "json exact":
-  prefix, suffix := "{\"content\":\"", "\"}"
-  fmt.Print(prefix + strings.Repeat("x", 1024*1024-len(prefix)-len(suffix)) + suffix)
- case "json overflow":
-  json.NewEncoder(os.Stdout).Encode(map[string]any{"content":strings.Repeat("x",1024*1024),"segments":[]any{map[string]string{"type":"file","path":"missing.txt"}}})
- case "stderr overflow":
-  fmt.Fprint(os.Stderr,strings.Repeat("e",2*1024*1024)); fmt.Print("done")
- case "failure", "timeout", "canceled":
-  var wg sync.WaitGroup
-  wg.Add(2)
-  go func(){ defer wg.Done(); fmt.Print("stdout-prefix"+strings.Repeat("o",2*1024*1024)) }()
-  go func(){ defer wg.Done(); fmt.Fprint(os.Stderr,"stderr-prefix"+strings.Repeat("e",2*1024*1024)) }()
-  wg.Wait()
-  if mode=="failure" { os.Exit(7) }
-  os.WriteFile(os.Args[2],[]byte("ready"),0600)
-  time.Sleep(30*time.Second)
- }
-}`
-	sourcePath := filepath.Join(dir, "main.go")
-	if err := os.WriteFile(sourcePath, []byte(source), 0600); err != nil {
+	binary, err := os.Executable()
+	if err != nil {
 		t.Fatal(err)
-	}
-	binary := filepath.Join(dir, "output-helper")
-	if runtime.GOOS == "windows" {
-		binary += ".exe"
-	}
-	if out, err := exec.Command("go", "build", "-o", binary, sourcePath).CombinedOutput(); err != nil {
-		t.Fatalf("build: %v\n%s", err, out)
 	}
 	for _, mode := range []string{"plain exact", "plain overflow", "json exact", "json overflow", "stderr overflow", "failure", "timeout", "canceled"} {
 		t.Run(mode, func(t *testing.T) {
@@ -73,6 +40,7 @@ func main() {
 			done := make(chan outcome, 1)
 			go func() {
 				cmd := exec.CommandContext(ctx, binary, mode, ready)
+				cmd.Env = append(os.Environ(), "ELBOT_SKILL_TEST_HELPER=output")
 				result, err := runMediaCommand(ctx, "test skill", cmd, nil)
 				done <- outcome{result, err}
 			}()

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -13,7 +12,7 @@ import (
 
 	"elbot/internal/events"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 )
 
 type trackingDeleteBackend struct {
@@ -150,11 +149,7 @@ func (b *trackingDeleteBackend) Remove(ctx context.Context, item *storage.Media)
 func TestCleanupUsesStoredLocationsAcrossBackendChanges(t *testing.T) {
 	t.Run("s3 to hybrid removes remote object", func(t *testing.T) {
 		ctx := context.Background()
-		store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "db"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer store.Close()
+		store := testutil.NewSQLiteStore(t)
 		calls := []string{}
 		root := t.TempDir()
 		local := &trackingDeleteBackend{Backend: &LocalBackend{Root: root}, name: "local", calls: &calls}
@@ -186,11 +181,7 @@ func TestCleanupUsesStoredLocationsAcrossBackendChanges(t *testing.T) {
 
 	t.Run("hybrid to s3 retries remote before local", func(t *testing.T) {
 		ctx := context.Background()
-		store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "db"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer store.Close()
+		store := testutil.NewSQLiteStore(t)
 		calls := []string{}
 		root := t.TempDir()
 		local := &trackingDeleteBackend{Backend: &LocalBackend{Root: root}, name: "local", calls: &calls}
@@ -238,11 +229,7 @@ func TestCleanupUsesStoredLocationsAcrossBackendChanges(t *testing.T) {
 
 	t.Run("local failure after remote deletion retries idempotently", func(t *testing.T) {
 		ctx := context.Background()
-		store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "db"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer store.Close()
+		store := testutil.NewSQLiteStore(t)
 		calls := []string{}
 		root := t.TempDir()
 		local := &trackingDeleteBackend{Backend: &LocalBackend{Root: root}, name: "local", calls: &calls, fail: true}
@@ -285,11 +272,7 @@ func TestCleanupUsesStoredLocationsAcrossBackendChanges(t *testing.T) {
 
 	t.Run("missing remote preserves copies and retry metadata", func(t *testing.T) {
 		ctx := context.Background()
-		store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "db"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer store.Close()
+		store := testutil.NewSQLiteStore(t)
 		calls := []string{}
 		root := t.TempDir()
 		local := &trackingDeleteBackend{Backend: &LocalBackend{Root: root}, name: "local", calls: &calls}
@@ -321,11 +304,7 @@ func TestCleanupUsesStoredLocationsAcrossBackendChanges(t *testing.T) {
 
 func TestOpenProtectsMediaUntilReaderCloses(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := testutil.NewSQLiteStore(t)
 	root := t.TempDir()
 	m := NewManager(store, root, &LocalBackend{Root: root})
 	item, err := m.ImportBytes(ctx, []byte("reading"), Input{})

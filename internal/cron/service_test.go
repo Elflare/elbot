@@ -21,7 +21,7 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 )
 
 func TestScheduleExprOnceUsesMinutePrecision(t *testing.T) {
@@ -1000,11 +1000,7 @@ func deliveryPlatformDone(state CronDeliveryState, platformName string) bool {
 
 func newCronSQLiteStore(t *testing.T) storage.Store {
 	t.Helper()
-	store, err := sqlite.New(context.Background(), filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
+	store := testutil.NewSQLiteStore(t)
 	return store
 }
 
