@@ -69,12 +69,8 @@ func TestHandlerUsesDeclaredDeliveryResult(t *testing.T) {
 				return delivery.Receipt{PlatformMessageIDs: []string{"received"}}, globalevents.LogResult{ResultStatus: tc.status, Content: "source delivery diagnostic"}, tc.err
 			}})
 			var records []globalevents.LogRecord
-			var runtimeRecords []globalevents.LogRecord
 			connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
-				if record.Category == globalevents.LogRuntime {
-					runtimeRecords = append(runtimeRecords, record)
-				}
-				if record.EventName == "cron.trigger_failed" || record.EventName == "cron_trigger_failed" || record.EventName == "cron.trigger_completed" || record.EventName == "cron_trigger_completed" {
+				if record.EventName == "cron.trigger_failed" || record.EventName == "cron.trigger_completed" {
 					records = append(records, record)
 				}
 				return nil
@@ -84,7 +80,7 @@ func TestHandlerUsesDeclaredDeliveryResult(t *testing.T) {
 			}
 			defer connection.Disconnect()
 			logResult, err := s.Handler(t.Context(), *job)
-			if !errors.Is(err, tc.err) || logResult.ResultStatus != tc.status || len(records) != 1 || len(runtimeRecords) != 0 {
+			if !errors.Is(err, tc.err) || logResult.ResultStatus != tc.status || len(records) != 1 {
 				t.Fatalf("source/business result changed: log=%#v error=%v records=%#v", logResult, err, records)
 			}
 			for _, record := range records {

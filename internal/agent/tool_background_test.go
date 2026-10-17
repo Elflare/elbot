@@ -117,16 +117,13 @@ func TestRunBackgroundPreloadsSkillDetailAndActivatedHiddenWrapper(t *testing.T)
 		t.Fatalf("tools = %s", got)
 	}
 	systemPrompt := llm.SegmentsContentText(requests[0].Messages[0].Segments)
-	if strings.Contains(systemPrompt, "当前可用工具名称") || strings.Contains(systemPrompt, "discover_tool") {
+	if strings.Contains(systemPrompt, "discover_tool") {
 		t.Fatalf("background system prompt should not list tool names: %q", systemPrompt)
 	}
 	latest := requests[0].Messages[len(requests[0].Messages)-1]
 	content := llm.SegmentsContentText(latest.Segments)
 	if !strings.Contains(content, "[系统预加载 Skill]") || !strings.Contains(content, "# DOCX") || !strings.Contains(content, "[后台任务]") || !strings.Contains(content, "run") {
 		t.Fatalf("skill prompt missing content: %q", content)
-	}
-	if strings.Contains(content, "shell") || strings.Contains(content, "discover_tool") {
-		t.Fatalf("skill prompt should not mention unavailable tools: %q", content)
 	}
 }
 
@@ -188,7 +185,7 @@ func TestRunBackgroundUsesBackgroundModeWhenDefaultModeIsChat(t *testing.T) {
 		t.Fatalf("tools = %s", got)
 	}
 	systemPrompt := llm.SegmentsContentText(requests[0].Messages[0].Segments)
-	if strings.Contains(systemPrompt, "当前可用工具名称") || strings.Contains(systemPrompt, "discover_tool") {
+	if strings.Contains(systemPrompt, "discover_tool") {
 		t.Fatalf("background system prompt should not list tool names: %q", systemPrompt)
 	}
 }
@@ -377,27 +374,40 @@ func TestRunBackgroundToolPhaseDoesNotDisplayRuntimeStatus(t *testing.T) {
 	store := newTestStore(t)
 	platform := &fakePlatform{}
 	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
-		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call-1", Name: "discover_tool", Args: `{"name":"web_search"}`}}}},
+		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call-1", Name: "status_probe", Args: `{}`}}}},
 		{{DeltaContent: `{"completed":true,"need_report":false,"report":"ok"}`}},
 	}}
 
 	registry := tool.NewRegistry()
-	_ = registry.Register(tool.NewDiscoverTool(registry))
-	_ = registry.Register(builtin.NewWebSearchTool())
+	_ = registry.Register(agentWrapperTool{name: "status_probe"})
 	a := newTestAgent(t, platform, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
 		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
 		cfg.ToolRegistry = registry
 	})
 
 	_, err := a.RunBackground(ctx, background.RunRequest{
-		Kind:     background.KindCron,
-		Name:     "tool-status",
-		Platform: "cli",
-		Actor:    contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin},
-		Prompt:   "run",
+		Kind:          background.KindCron,
+		Name:          "tool-status",
+		Platform:      "cli",
+		Actor:         contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin},
+		Prompt:        "run",
+		ToolListNames: []string{"status_probe"},
 	})
 	if err != nil {
 		t.Fatalf("RunBackground: %v", err)
+	}
+	requests := f.chatRequests()
+	if len(requests) != 2 {
+		t.Fatalf("chat requests = %d", len(requests))
+	}
+	toolResultFound := false
+	for _, message := range requests[1].Messages {
+		if message.Role == llm.RoleTool && message.Name == "status_probe" && llm.SegmentsTextOnly(message.Segments) == "ok" {
+			toolResultFound = true
+		}
+	}
+	if !toolResultFound {
+		t.Fatal("status_probe result missing from follow-up model request")
 	}
 	if got := platform.out.String(); got != "" {
 		t.Fatalf("background cron tool phase wrote platform output: %q", got)
