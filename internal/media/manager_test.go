@@ -12,7 +12,7 @@ import (
 
 	"elbot/internal/events"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 )
 
 func TestValidID(t *testing.T) {
@@ -42,11 +42,7 @@ func TestArgumentMediaIDsUsesExactJSONValues(t *testing.T) {
 
 func TestRetainSessionToolArgumentsIsAtomicAndIdempotent(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := testutil.NewSQLiteStore(t)
 	manager := NewManager(store, t.TempDir(), &LocalBackend{Root: t.TempDir()})
 	item, err := manager.ImportBytes(ctx, []byte("tool input"), Input{Name: "input.bin"})
 	if err != nil {
@@ -99,11 +95,7 @@ func TestRetainSessionToolArgumentsIsAtomicAndIdempotent(t *testing.T) {
 
 func TestLocalManagerImportReadExportAndDeduplicatesBinary(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
-	if err != nil {
-		t.Fatalf("new store: %v", err)
-	}
-	defer store.Close()
+	store := testutil.NewSQLiteStore(t)
 	root := filepath.Join(t.TempDir(), "media")
 	manager := NewManager(store, root, &LocalBackend{Root: root})
 	data := []byte{0, 0xff, 0x80, 0x01, 0x7f}
@@ -182,11 +174,7 @@ func TestOpenHeldReadsWithinCallerReferenceLifetime(t *testing.T) {
 
 func TestImportSanitizesMediaMetadataAndReturnedCopies(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := testutil.NewSQLiteStore(t)
 	root := t.TempDir()
 	manager := NewManager(store, root, &LocalBackend{Root: root})
 

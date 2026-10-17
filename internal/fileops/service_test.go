@@ -16,7 +16,7 @@ import (
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 	"elbot/internal/workspace"
 )
 
@@ -35,11 +35,7 @@ type fileFixture struct {
 func newFileFixture(t *testing.T) *fileFixture {
 	t.Helper()
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin})
-	store, err := sqlite.New(ctx, ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
+	store := testutil.NewSQLiteStore(t)
 	sessions := session.NewService(store)
 	scope := session.Scope{ActorID: "admin", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 	row, err := sessions.Create(ctx, scope, session.CreateRequest{Title: "files"})

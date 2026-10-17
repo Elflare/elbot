@@ -3,10 +3,10 @@ package processenv
 import (
 	"bytes"
 	"context"
-	"errors"
+	"io"
+	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
@@ -16,9 +16,9 @@ func TestProcessTreeHelper(t *testing.T) {
 	if os.Getenv("ELBOT_PROCESS_TREE_HELPER") != "1" {
 		return
 	}
-	args := os.Args[len(os.Args)-3:]
+	args := os.Args[len(os.Args)-2:]
 	if args[0] == "parent" {
-		cmd := exec.Command(os.Args[0], "-test.run=^TestProcessTreeHelper$", "--", "child", args[1], args[2])
+		cmd := exec.Command(os.Args[0], "-test.run=^TestProcessTreeHelper$", "--", "child", args[1])
 		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 		if err := cmd.Start(); err != nil {
 			os.Exit(2)
@@ -26,14 +26,51 @@ func TestProcessTreeHelper(t *testing.T) {
 		_ = cmd.Wait()
 		os.Exit(0)
 	}
-	if err := os.WriteFile(args[1], []byte("ready"), 0600); err != nil {
+	conn, err := net.Dial("tcp", args[1])
+	if err != nil {
 		os.Exit(2)
 	}
-	time.Sleep(time.Second)
-	if err := os.WriteFile(args[2], []byte("side effect"), 0600); err != nil {
+	if _, err := conn.Write([]byte("ready")); err != nil {
+		os.Exit(2)
+	}
+	var command [1]byte
+	if _, err := io.ReadFull(conn, command[:]); err != nil || command[0] != 'f' {
+		os.Exit(2)
+	}
+	if _, err := conn.Write([]byte("alive")); err != nil {
 		os.Exit(2)
 	}
 	os.Exit(0)
+}
+
+func newProcessTreeListener(t *testing.T) *net.TCPListener {
+	t.Helper()
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	if err := listener.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	return listener
+}
+
+func acceptProcessTreeHelper(t *testing.T, listener *net.TCPListener) *net.TCPConn {
+	t.Helper()
+	conn, err := listener.AcceptTCP()
+	if err != nil {
+		t.Fatalf("helper did not connect: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	var ready [5]byte
+	if _, err := io.ReadFull(conn, ready[:]); err != nil || string(ready[:]) != "ready" {
+		t.Fatalf("helper did not become ready: %q, %v", ready, err)
+	}
+	return conn
 }
 
 func TestCommandContextCancelsDescendants(t *testing.T) {
@@ -51,33 +88,21 @@ func TestCommandContextCancelsDescendants(t *testing.T) {
 				ctx, timeoutCancel = context.WithTimeout(ctx, 500*time.Millisecond)
 				defer timeoutCancel()
 			}
-			dir := t.TempDir()
-			ready, marker := filepath.Join(dir, "ready"), filepath.Join(dir, "sent")
-			cmd := (Environment{}).CommandContext(ctx, executable, "-test.run=^TestProcessTreeHelper$", "--", "parent", ready, marker)
+			listener := newProcessTreeListener(t)
+			address := listener.Addr().String()
+			cmd := (Environment{}).CommandContext(ctx, executable, "-test.run=^TestProcessTreeHelper$", "--", "parent", address)
 			if mode == "uv" {
 				uv, err := exec.LookPath("uv")
 				if err != nil {
 					t.Skip("uv is not installed")
 				}
-				cmd = (Environment{}).CommandContext(ctx, uv, "--no-cache", "run", "--offline", "--no-project", "--no-sync", "--", executable, "-test.run=^TestProcessTreeHelper$", "--", "parent", ready, marker)
+				cmd = (Environment{}).CommandContext(ctx, uv, "--no-cache", "run", "--offline", "--no-project", "--no-sync", "--", executable, "-test.run=^TestProcessTreeHelper$", "--", "parent", address)
 			}
 			var output bytes.Buffer
 			cmd.Stdout, cmd.Stderr = &output, &output
 			finished := make(chan error, 1)
 			go func() { finished <- cmd.Run() }()
-			deadline := time.After(5 * time.Second)
-			for {
-				if _, err := os.Stat(ready); err == nil {
-					break
-				}
-				select {
-				case err := <-finished:
-					t.Fatalf("helper exited before ready: %v; %s", err, &output)
-				case <-deadline:
-					t.Fatal("helper did not become ready")
-				case <-time.After(time.Millisecond):
-				}
-			}
+			conn := acceptProcessTreeHelper(t, listener)
 			if mode != "timeout" {
 				cancel()
 			}
@@ -86,12 +111,17 @@ func TestCommandContextCancelsDescendants(t *testing.T) {
 				if err == nil {
 					t.Fatal("canceled process succeeded")
 				}
-			case <-deadline:
+			case <-time.After(5 * time.Second):
 				t.Fatal("canceled command did not finish")
 			}
-			time.Sleep(1100 * time.Millisecond)
-			if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
-				t.Fatalf("descendant performed side effect after cancellation: %v", err)
+			// The child cannot close voluntarily without a finish command.
+			var probe [1]byte
+			n, err := conn.Read(probe[:])
+			if n != 0 || err == nil {
+				t.Fatalf("descendant survived cancellation: read %d bytes, error %v", n, err)
+			}
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				t.Fatalf("descendant connection remained open: %v", err)
 			}
 		})
 	}
@@ -107,42 +137,33 @@ func TestKillProcessTreeFailureDoesNotKillParent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir := t.TempDir()
-	ready, marker := filepath.Join(dir, "ready"), filepath.Join(dir, "alive")
+	listener := newProcessTreeListener(t)
 	// On Unix this command inherits our process group, so a group with its PID
 	// does not exist. On Windows the missing taskkill supplies the failure.
-	cmd := exec.Command(executable, "-test.run=^TestProcessTreeHelper$", "--", "child", ready, marker)
+	cmd := exec.Command(executable, "-test.run=^TestProcessTreeHelper$", "--", "child", listener.Addr().String())
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
 	finished := make(chan error, 1)
 	go func() { finished <- cmd.Wait(); close(finished) }()
 	t.Cleanup(func() { _ = cmd.Process.Kill(); <-finished })
-	deadline := time.After(5 * time.Second)
-	for {
-		if _, err := os.Stat(ready); err == nil {
-			break
-		}
-		select {
-		case err := <-finished:
-			t.Fatalf("helper exited before ready: %v", err)
-		case <-deadline:
-			t.Fatal("helper did not become ready")
-		case <-time.After(time.Millisecond):
-		}
-	}
+	conn := acceptProcessTreeHelper(t, listener)
 	if err := KillProcessTree(cmd); err == nil {
 		t.Fatal("tree termination failure was hidden by killing the parent")
+	}
+	if _, err := conn.Write([]byte("f")); err != nil {
+		t.Fatalf("helper was killed after tree termination failed: %v", err)
+	}
+	var alive [5]byte
+	if _, err := io.ReadFull(conn, alive[:]); err != nil || string(alive[:]) != "alive" {
+		t.Fatalf("helper did not remain alive: %q, %v", alive, err)
 	}
 	select {
 	case err := <-finished:
 		if err != nil {
 			t.Fatalf("parent was killed after tree termination failed: %v", err)
 		}
-	case <-deadline:
+	case <-time.After(5 * time.Second):
 		t.Fatal("parent did not finish normally")
-	}
-	if _, err := os.Stat(marker); err != nil {
-		t.Fatalf("parent did not remain alive after termination failed: %v", err)
 	}
 }

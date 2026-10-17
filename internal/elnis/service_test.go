@@ -17,7 +17,7 @@ import (
 	globalevents "elbot/internal/events"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 	"elbot/internal/tool"
 	"elbot/internal/toolrun"
 )
@@ -1002,10 +1002,7 @@ func newTestService(t *testing.T, send SenderFunc) (*Service, func()) {
 
 func newTestServiceWithRunner(t *testing.T, runner background.Runner, send SenderFunc) (*Service, func()) {
 	t.Helper()
-	store, err := sqlite.New(context.Background(), filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("sqlite.New: %v", err)
-	}
+	store := testutil.NewSQLiteStore(t)
 	if send == nil {
 		send = func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 			return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil

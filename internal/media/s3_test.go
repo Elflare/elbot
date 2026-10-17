@@ -5,11 +5,10 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	"elbot/internal/config"
-	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 )
 
@@ -26,11 +25,7 @@ func TestNewS3BackendRequiresCredentials(t *testing.T) {
 
 func TestNewConfiguredDefersRemoteCredentialErrors(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := testutil.NewSQLiteStore(t)
 	if _, err := NewConfigured(ctx, store, t.TempDir(), config.FileDeliveryConfig{Backend: "base64"}, nil); err != nil {
 		t.Fatalf("base64 requires S3 credentials: %v", err)
 	}

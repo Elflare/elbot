@@ -6,18 +6,14 @@ import (
 
 	"elbot/internal/platform"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 )
 
 func TestHistoryCacheMaintainsMatchingAssociations(t *testing.T) {
 	for _, name := range []string{"history", "output", "same output", "changed output", "old history", "changed kind"} {
 		t.Run(name, func(t *testing.T) {
 			ctx := t.Context()
-			base, err := sqlite.New(ctx, ":memory:")
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = base.Close() })
+			base := testutil.NewSQLiteStore(t)
 			root := t.TempDir()
 			center := NewManager(base, root, &LocalBackend{Root: root})
 			item, err := center.ImportBytes(ctx, []byte("cached"), Input{Name: "file"})

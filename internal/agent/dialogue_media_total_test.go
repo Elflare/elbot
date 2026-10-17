@@ -239,7 +239,7 @@ func TestDialogueMediaTotalAcrossHistoryAndPending(t *testing.T) {
 					root := filepath.Join(t.TempDir(), "media")
 					center = media.NewManager(opts.Store, root, &media.LocalBackend{Root: root})
 					center.Remote = remote
-					center.FileDelivery.Backend, center.FileDelivery.MaxDirectBase64Bytes = backend, 8388608
+					center.FileDelivery.Backend, center.FileDelivery.MaxDirectBase64Bytes = backend, 24
 					opts.Media = center
 					if protocol == "response" {
 						configureNativeStore(t, opts, "provider", false)
@@ -264,7 +264,8 @@ func TestDialogueMediaTotalAcrossHistoryAndPending(t *testing.T) {
 					calls = func() int { return len(client.chatRequests()) }
 				}
 				var ids []string
-				for i, size := range []int{218805, 2528866, 2296589, 2372322, 2405626, 1} {
+				// History (21) and pending input (11) fit separately; together they exceed 24.
+				for i, size := range []int{1, 5, 7, 8, 9, 1} {
 					item, err := center.ImportBytes(t.Context(), bytes.Repeat([]byte{byte(i + 1)}, size), media.Input{Name: fmt.Sprintf("synthetic-%d.png", i), MIMEType: "image/png"})
 					if err != nil {
 						t.Fatal(err)
@@ -293,11 +294,11 @@ func TestDialogueMediaTotalAcrossHistoryAndPending(t *testing.T) {
 				defer connection.Disconnect()
 				err = a.HandleMessage(mediaInputContext(t, "next", ids[4], ids[5], ids[5]), "next")
 				if backend == "base64" {
-					if err == nil || !strings.Contains(err.Error(), "9822210 bytes") || calls() != 1 || usage.Load() != 0 || failed.Load() != 1 {
+					if err == nil || !strings.Contains(err.Error(), "32 bytes") || calls() != 1 || usage.Load() != 0 || failed.Load() != 1 {
 						t.Fatalf("err=%v requests=%d usage=%d failures=%d", err, calls(), usage.Load(), failed.Load())
 					}
 					output := awaitNotificationText(t, &p.out, "对话处理失败：")
-					if strings.Count(output, "对话处理失败：") != 1 || !strings.Contains(output, "file_delivery.max_direct_base64_bytes=8388608") {
+					if strings.Count(output, "对话处理失败：") != 1 || !strings.Contains(output, "file_delivery.max_direct_base64_bytes=24") {
 						t.Fatalf("notification=%q", output)
 					}
 				} else if err != nil || calls() != 2 || failed.Load() != 0 || remote.puts.Load() != 6 || remote.signs.Load() != 6 {

@@ -2,12 +2,11 @@ package media
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"elbot/internal/llm"
-	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 )
 
 func TestAcquireForLLMReleasesHoldsOnSuccessAndFailure(t *testing.T) {
@@ -15,11 +14,7 @@ func TestAcquireForLLMReleasesHoldsOnSuccessAndFailure(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
-			store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = store.Close() })
+			store := testutil.NewSQLiteStore(t)
 			root := t.TempDir()
 			manager := NewManager(store, root, &LocalBackend{Root: root})
 			item, err := manager.ImportBytes(ctx, []byte("hello"), Input{Name: "input.txt", MIMEType: "text/plain"})

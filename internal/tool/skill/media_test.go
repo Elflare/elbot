@@ -5,13 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
 	"elbot/internal/media"
+	"elbot/internal/processenv"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/tool"
@@ -32,37 +31,19 @@ func TestSkillMediaBridge(t *testing.T) {
 	}
 	mediaRuntime := &tool.MediaRuntime{Center: center, SandboxRoot: t.TempDir()}
 	dir := t.TempDir()
-	source := `package main
-import("encoding/json";"os";"path/filepath";"time";"fmt";"strings")
-func main(){
- var path,mode,workspace string
- if len(os.Args)>1 { for i:=1;i+1<len(os.Args);i+=2 { if os.Args[i]=="--input" { path=os.Args[i+1] }; if os.Args[i]=="--mode" { mode=os.Args[i+1] } }; workspace=filepath.Dir(path)
- } else { var payload struct { MediaInputs []struct{Path,Base64 string}; MediaWorkspace string; Mode string }; var raw map[string]json.RawMessage; json.NewDecoder(os.Stdin).Decode(&raw); json.Unmarshal(raw["media_inputs"],&payload.MediaInputs); json.Unmarshal(raw["media_workspace"],&workspace); json.Unmarshal(raw["mode"],&mode); if len(payload.MediaInputs)==0 || payload.MediaInputs[0].Base64!="aW5wdXQ=" { os.Exit(4) }; path=payload.MediaInputs[0].Path }
- if filepath.IsAbs(path) { os.Exit(5) }; data,err:=os.ReadFile(path); if err!=nil || string(data)!="input" { os.Exit(6) }
- if mode=="fail" { os.Exit(7) }; if mode=="wait" { time.Sleep(10*time.Second) }
- output:=filepath.Join(workspace,"output.txt"); os.WriteFile(output,[]byte("output"),0600)
- if mode=="escape" { output="../escape.txt" }
- content:="done"; if mode=="large" { content=strings.Repeat("x",20000) }
- fmt.Printf("{\"content\":%q,\"segments\":[{\"type\":\"file\",\"path\":%q}]}",content,filepath.ToSlash(output))
-}`
-	sourcePath := filepath.Join(dir, "main.go")
-	if err := os.WriteFile(sourcePath, []byte(source), 0600); err != nil {
+	binary, err := os.Executable()
+	if err != nil {
 		t.Fatal(err)
 	}
-	binary := filepath.Join(dir, "helper")
-	if runtime.GOOS == "windows" {
-		binary += ".exe"
-	}
-	if out, err := exec.Command("go", "build", "-o", binary, sourcePath).CombinedOutput(); err != nil {
-		t.Fatalf("build: %v %s", err, out)
-	}
+	environment := processenv.Environment{}.Overlay(map[string]string{"ELBOT_SKILL_TEST_HELPER": "media"})
 	catalog := NewCatalog()
 	catalog.Replace([]Record{{Name: "media", Kind: KindGo, Root: dir, BinaryPath: binary}})
-	runner := NewGoRunner(catalog)
+	runner := NewGoRunner(catalog, environment)
 	runner.Media = mediaRuntime
 	manifest := AgentSkillManifest{Command: []string{binary}, Args: map[string]string{"input": "--input", "inputs": "--inputs", "mode": "--mode"}, Parameters: map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "media"}, "inputs": map[string]any{"type": "array", "items": map[string]any{"type": "media"}, "maxItems": 10}, "mode": map[string]any{"type": "string"}}}}
 	command := NewCommandTool(Record{Name: "command", Kind: KindAgent, Root: dir, Manifest: manifest})
 	command.Media = mediaRuntime
+	command.ProcessEnv = environment
 	schema := manifest.Schema("command", "")
 	props := schema.Parameters["properties"].(map[string]any)
 	projectedInput := props["input"].(map[string]any)

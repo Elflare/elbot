@@ -5,7 +5,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 	"fmt"
 	"testing"
 	"time"
@@ -30,12 +30,7 @@ func (testDisplayMaterials) MaterialFor(origin llm.Origin) (MaterialPreparer, er
 
 func newTestStore(t *testing.T) storage.Store {
 	t.Helper()
-	store, err := sqlite.New(context.Background(), ":memory:")
-	if err != nil {
-		t.Fatalf("new store: %v", err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
-	return store
+	return testutil.NewSQLiteStore(t)
 }
 
 func startTestNaming(t *testing.T, svc *Service) {

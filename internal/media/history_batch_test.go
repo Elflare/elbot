@@ -4,13 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"testing"
 
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 )
 
 type batchResolver struct{ calls int }
@@ -25,11 +24,7 @@ func (r *batchResolver) ResolveMedia(_ context.Context, segment platform.Message
 
 func TestHistoryBatchOwnsBudgetCacheAndRepeatedFailures(t *testing.T) {
 	ctx := t.Context()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "main.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := testutil.NewSQLiteStore(t)
 	root := t.TempDir()
 	center := NewManager(store, root, &LocalBackend{Root: root})
 	var segments []platform.MessageSegment
@@ -74,11 +69,7 @@ func TestHistoryBatchOwnsBudgetCacheAndRepeatedFailures(t *testing.T) {
 
 func TestHistoryBatchBudgetSpansMessages(t *testing.T) {
 	ctx := t.Context()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "main.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := testutil.NewSQLiteStore(t)
 	root := t.TempDir()
 	center := NewManager(store, root, &LocalBackend{Root: root})
 	resolver := &batchResolver{}

@@ -136,44 +136,46 @@ func TestGlobalRecordsUseIndependentLevelsAndContent(t *testing.T) {
 }
 
 func TestGlobalRecordsSnapshotBeforeQueueConsumption(t *testing.T) {
-	m := testManager(t, "debug")
-	started, release := make(chan struct{}), make(chan struct{})
-	var releaseOnce sync.Once
-	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
-	if err := m.sinks[events.LogRuntime].queue.Submit(context.Background(), signal.Task{Shutdown: signal.Drain, Run: func(context.Context) error { close(started); <-release; return nil }}); err != nil {
-		t.Fatal(err)
-	}
-	<-started
-	value := "source-session"
-	before := time.Now()
-	emitRecord(t, events.LogRecord{Category: events.LogRuntime, Content: "original content", Identity: events.LogIdentity{SessionID: &value}})
-	after := time.Now()
-	value = "changed"
-	// RFC3339 has second precision. Consume only after the next second so a
-	// timestamp incorrectly taken by the worker cannot pass the assertion.
-	time.Sleep(time.Until(after.Truncate(time.Second).Add(time.Second)))
-	releaseOnce.Do(func() { close(release) })
-	if err := m.Close(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	entries := readJSONRecords(t, m.LogDir(), "elbot")
-	if len(entries) != 1 {
-		t.Fatal(entries)
-	}
-	var timestamp string
-	if err := json.Unmarshal(entries[0]["time"], &timestamp); err != nil {
-		t.Fatal(err)
-	}
-	at, err := time.Parse(time.RFC3339, timestamp)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if at.Before(before.Truncate(time.Second)) || at.After(after) {
-		t.Fatalf("not reception time: %s outside %s..%s", at, before, after)
-	}
-	if string(entries[0]["session_id"]) != "\"source-session\"" || string(entries[0]["content"]) != "\"original content\"" {
-		t.Fatal(entries)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		m := testManager(t, "debug")
+		started, release := make(chan struct{}), make(chan struct{})
+		var releaseOnce sync.Once
+		t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+		if err := m.sinks[events.LogRuntime].queue.Submit(context.Background(), signal.Task{Shutdown: signal.Drain, Run: func(context.Context) error { close(started); <-release; return nil }}); err != nil {
+			t.Fatal(err)
+		}
+		<-started
+		value := "source-session"
+		before := time.Now()
+		emitRecord(t, events.LogRecord{Category: events.LogRuntime, Content: "original content", Identity: events.LogIdentity{SessionID: &value}})
+		after := time.Now()
+		value = "changed"
+		// RFC3339 has second precision. Consume only after the next second so a
+		// timestamp incorrectly taken by the worker cannot pass the assertion.
+		time.Sleep(time.Until(after.Truncate(time.Second).Add(time.Second)))
+		releaseOnce.Do(func() { close(release) })
+		if err := m.Close(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		entries := readJSONRecords(t, m.LogDir(), "elbot")
+		if len(entries) != 1 {
+			t.Fatal(entries)
+		}
+		var timestamp string
+		if err := json.Unmarshal(entries[0]["time"], &timestamp); err != nil {
+			t.Fatal(err)
+		}
+		at, err := time.Parse(time.RFC3339, timestamp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if at.Before(before.Truncate(time.Second)) || at.After(after) {
+			t.Fatalf("not reception time: %s outside %s..%s", at, before, after)
+		}
+		if string(entries[0]["session_id"]) != "\"source-session\"" || string(entries[0]["content"]) != "\"original content\"" {
+			t.Fatal(entries)
+		}
+	})
 }
 
 func TestOversizedRecordsReportAndContinue(t *testing.T) {

@@ -24,7 +24,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/llm"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -45,11 +45,7 @@ func TestResolverPermissionFailureIsNotMissingMedia(t *testing.T) {
 	for _, backend := range []string{"base64", "hybrid", "s3"} {
 		t.Run(backend, func(t *testing.T) {
 			ctx := t.Context()
-			store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer store.Close()
+			store := testutil.NewSQLiteStore(t)
 			root := t.TempDir()
 			m := NewManager(store, root, &LocalBackend{Root: root})
 			item, err := m.ImportBytes(ctx, []byte("1234"), Input{Name: "image.png", MIMEType: "image/png"})
@@ -85,11 +81,7 @@ func (b *resolverRemote) PresignGet(_ context.Context, item *storage.Media, _ ti
 
 func TestMaterializeWithLimitsIsolation(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
+	store := testutil.NewSQLiteStore(t)
 	root := t.TempDir()
 	m := NewManager(store, root, &LocalBackend{Root: root})
 	m.MaxImportBytes = 4
@@ -144,11 +136,7 @@ func TestMaterializeWithLimitsIsolation(t *testing.T) {
 
 func TestMaterializeWithLimitsDownloadTimeout(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := testutil.NewSQLiteStore(t)
 	root := t.TempDir()
 	m := NewManager(store, root, &LocalBackend{Root: root})
 	m.DownloadTimeout = time.Second
@@ -176,11 +164,7 @@ func TestMaterializeWithLimitsDownloadTimeout(t *testing.T) {
 
 func TestResolverRequestTotalAndIsolation(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := testutil.NewSQLiteStore(t)
 	root := t.TempDir()
 	m := NewManager(store, root, &LocalBackend{Root: root})
 	first, err := m.ImportBytes(ctx, []byte("1234"), Input{Name: "first.png", MIMEType: "image/png"})
@@ -246,11 +230,7 @@ func TestResolverRequestTotalAndIsolation(t *testing.T) {
 
 func TestImportCompressionAndResolverReuse(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := testutil.NewSQLiteStore(t)
 	root := t.TempDir()
 	m := NewManager(store, root, &LocalBackend{Root: root})
 	m.Media = config.MediaConfig{LLMImageCompressionThresholdBytes: 1024 * 1024, LLMImageMaxLength: 32}
@@ -331,11 +311,7 @@ func TestImportImageLimits(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
-			store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer store.Close()
+			store := testutil.NewSQLiteStore(t)
 			backend := &resolverRemote{LocalBackend: LocalBackend{Root: t.TempDir()}}
 			m := NewManager(store, backend.Root, backend)
 			m.Media = config.MediaConfig{LLMImageCompressionThresholdBytes: tc.bytes, LLMImageMaxLength: tc.length}
@@ -374,11 +350,7 @@ func TestImportImageLimits(t *testing.T) {
 
 func TestResolverDoesNotCompressExistingMedia(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := testutil.NewSQLiteStore(t)
 	root := t.TempDir()
 	m := NewManager(store, root, &LocalBackend{Root: root})
 	data := testPNG(t, 80, 40)
@@ -400,11 +372,7 @@ func TestResolverDoesNotCompressExistingMedia(t *testing.T) {
 
 func TestImportURLAndFileCompressIdentically(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := testutil.NewSQLiteStore(t)
 	root := t.TempDir()
 	m := NewManager(store, root, &LocalBackend{Root: root})
 	m.Media.LLMImageMaxLength = 32
@@ -448,11 +416,7 @@ func testPNG(t *testing.T, width, height int) []byte {
 
 func TestImportURLUnknownSizeAndLimits(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := testutil.NewSQLiteStore(t)
 	root := t.TempDir()
 	m := NewManager(store, root, &LocalBackend{Root: root})
 	var requestedSignature string
@@ -493,11 +457,7 @@ func TestResolverUploadsLocalMediaAfterBackendChange(t *testing.T) {
 	for _, mode := range []string{"s3", "hybrid"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx := context.Background()
-			store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer store.Close()
+			store := testutil.NewSQLiteStore(t)
 			root := t.TempDir()
 			local := NewManager(store, root, &LocalBackend{Root: root})
 			data := []byte("local image before backend change")
@@ -583,11 +543,7 @@ func TestResolverUploadsLocalMediaAfterBackendChange(t *testing.T) {
 
 func TestMaterializeAndResolveSanitizeMediaNames(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := testutil.NewSQLiteStore(t)
 	root := t.TempDir()
 	m := NewManager(store, root, &LocalBackend{Root: root})
 
