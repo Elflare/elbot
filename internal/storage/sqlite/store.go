@@ -58,7 +58,7 @@ func New(ctx context.Context, path string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
 	}
-	if err := runMigrations(ctx, db); err != nil {
+	if err := initializeDB(ctx, db); err != nil {
 		_ = db.Close()
 		return nil, err
 	}

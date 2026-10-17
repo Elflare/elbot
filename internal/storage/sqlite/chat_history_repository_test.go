@@ -2,12 +2,55 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 
 	"elbot/internal/platform"
 	"elbot/internal/storage"
 )
+
+func TestChatHistoryAddsMissingSegmentsAndPreservesMessages(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "history.db")
+	old, err := NewChatHistory(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	message := &storage.ChatMessage{Platform: "cli", PlatformScopeID: "local", PlatformMessageID: "old", SenderID: "user", Text: "keep text"}
+	if err := old.Repository().Append(t.Context(), message); err != nil {
+		_ = old.Close()
+		t.Fatal(err)
+	}
+	// This column was absent in the original chat history database.
+	if _, err := old.db.Exec(`ALTER TABLE chat_messages DROP COLUMN segments`); err != nil {
+		_ = old.Close()
+		t.Fatal(err)
+	}
+	if err := old.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		store, err := NewChatHistory(t.Context(), path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		func() {
+			defer store.Close()
+			got, err := store.Repository().GetByPlatformMessage(t.Context(), "cli", "local", "old")
+			if err != nil || got.Text != message.Text || got.ID != message.ID {
+				t.Fatalf("existing message changed: %+v, %v", got, err)
+			}
+			media := &storage.ChatMessage{Platform: "cli", PlatformScopeID: "local", PlatformMessageID: "media", SenderID: "user", Segments: `[{"type":"image","name":"image.png"}]`}
+			if err := store.Repository().Append(t.Context(), media); err != nil {
+				t.Fatal(err)
+			}
+			var segments sql.NullString
+			if err := store.db.QueryRow(`SELECT segments FROM chat_messages WHERE platform_message_id = 'media'`).Scan(&segments); err != nil || segments.String != media.Segments {
+				t.Fatalf("segments = %v, error = %v", segments, err)
+			}
+		}()
+	}
+}
 
 func TestChatHistoryQueriesIncludeMediaOnlyMessages(t *testing.T) {
 	ctx := context.Background()

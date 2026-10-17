@@ -92,8 +92,14 @@ ON chat_messages(created_at);
 	if err != nil {
 		return fmt.Errorf("migrate chat history sqlite: %w", err)
 	}
-	if _, err := db.ExecContext(ctx, `ALTER TABLE chat_messages ADD COLUMN segments TEXT NULL`); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
-		return fmt.Errorf("add chat history segments: %w", err)
+	var hasSegments bool
+	if err := db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM pragma_table_info('chat_messages') WHERE name = 'segments')`).Scan(&hasSegments); err != nil {
+		return fmt.Errorf("inspect chat history segments: %w", err)
+	}
+	if !hasSegments {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE chat_messages ADD COLUMN segments TEXT NULL`); err != nil {
+			return fmt.Errorf("add chat history segments: %w", err)
+		}
 	}
 	return nil
 }

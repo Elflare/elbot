@@ -98,7 +98,7 @@ func assembleTestOptions(t *testing.T, opts testAgentOptions) testAssembly {
 		opts.SessionConfig.TriggerStep = defaults.Session.Naming.TriggerStep
 	}
 	if opts.Media.History == nil {
-		history, err := sqlite.NewChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
+		history, err := sqlite.NewChatHistory(t.Context(), ":memory:")
 		if err != nil {
 			t.Fatal(err)
 		}
