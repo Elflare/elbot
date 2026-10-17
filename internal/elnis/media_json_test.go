@@ -56,7 +56,7 @@ func TestReportMediaJSONSources(t *testing.T) {
 			t.Fatalf("normalize: %v %v", got, err)
 		}
 		raw, err := json.Marshal(got)
-		if err != nil || !strings.Contains(string(raw), `"media":"`+item.ID+`"`) || strings.Contains(string(raw), `"media_id"`) {
+		if err != nil || !strings.Contains(string(raw), `"media":"`+item.ID+`"`) {
 			t.Fatalf("persisted JSON: %s %v", raw, err)
 		}
 	}

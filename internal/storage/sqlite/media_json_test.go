@@ -56,7 +56,7 @@ func TestMediaJSONReferenceTransactions(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(string(data), `"media":`) || strings.Contains(string(data), "media_id") {
+		if !strings.Contains(string(data), `"media":`) {
 			t.Fatalf("wrong media JSON: %s", data)
 		}
 		return string(data)

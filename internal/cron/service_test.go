@@ -150,7 +150,7 @@ func TestPlatformConnectedGeneratesLLMReportForFirstConnectedTarget(t *testing.T
 	}
 }
 
-func TestMissedOnceReportTextIncludesPlatformWithoutPersistingTargetLanguage(t *testing.T) {
+func TestMissedOnceReportTextFormatsTitleAndBody(t *testing.T) {
 	if got := missedOnceReportText("日报", " 报告内容 "); got != "日报补发：\n\n报告内容" {
 		t.Fatalf("text = %q", got)
 	}
@@ -185,7 +185,7 @@ func TestCreateRejectsPastAndBumpsCurrentMinuteOnceRunAt(t *testing.T) {
 	}
 }
 
-func TestUpdateRejectsCurrentMinuteOnceRunAt(t *testing.T) {
+func TestUpdateBumpsCurrentMinuteOnceRunAt(t *testing.T) {
 	repo := newFakeCronRepo()
 	svc := newTestCronService(t, Options{Store: fakeCronStore{cron: repo}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:04:30") }
@@ -653,7 +653,7 @@ func TestRunLLMReportStartsFreshSessionEachCronTrigger(t *testing.T) {
 	}
 }
 
-func TestRunLLMReportDoesNotReuseCompletedOnceCronOutput(t *testing.T) {
+func TestRunLLMReportStoresGeneratedReport(t *testing.T) {
 	repo := newFakeCronRepo()
 	runner := &fakeCronRunner{text: `{"completed":true,"need_report":true,"report":"新报告"}`, sessionIDs: []string{"new-session"}}
 	svc := newTestCronService(t, Options{Store: fakeCronStore{cron: repo}, Runner: runner})
@@ -1015,17 +1015,6 @@ func mustParseTestTime(t *testing.T, value string) time.Time {
 		t.Fatalf("parse time: %v", err)
 	}
 	return parsed
-}
-
-func attrsString(attrs []any, key string) string {
-	for i := 0; i+1 < len(attrs); i += 2 {
-		if attrs[i] == key {
-			if value, ok := attrs[i+1].(string); ok {
-				return value
-			}
-		}
-	}
-	return ""
 }
 
 func deliverTestReport(t *testing.T, s *Service, platform, sessionID, messageID string) (globalevents.LogResult, error) {

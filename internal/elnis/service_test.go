@@ -753,8 +753,8 @@ func TestRunLLMEventReportsSegmentsByRelativePath(t *testing.T) {
 	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"见图","report_segments":[{"type":"image","url":"chart.png"}]}`}
 	sent := []delivery.Kind{}
 	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
-		if len(outputs) > 0 {
-			sent = append(sent, outputs[0].Kind)
+		for _, output := range outputs {
+			sent = append(sent, output.Kind)
 		}
 		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	})
@@ -778,7 +778,7 @@ func TestRunLLMEventReportsSegmentsByRelativePath(t *testing.T) {
 	if err := service.RunLLMEvent(context.Background(), queued.Event, queued.EventID); err != nil {
 		t.Fatalf("RunLLMEvent: %v", err)
 	}
-	if len(sent) != 1 || sent[0] != delivery.KindText {
+	if len(sent) != 2 || sent[0] != delivery.KindText || sent[1] != delivery.KindImage {
 		t.Fatalf("sent kinds = %#v", sent)
 	}
 }

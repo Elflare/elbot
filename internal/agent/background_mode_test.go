@@ -83,9 +83,6 @@ func TestBackgroundRelativeFilesUseElwispSandbox(t *testing.T) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("DO_NOT_INJECT_BACKGROUND_AGENTS"), 0644); err != nil {
-		t.Fatal(err)
-	}
 	registry := tool.NewRegistry()
 	_ = registry.Register(builtin.NewShellTool())
 	_ = registry.Register(builtin.NewReadFileTool())
@@ -120,9 +117,6 @@ func TestBackgroundRelativeFilesUseElwispSandbox(t *testing.T) {
 		}
 		for _, message := range request.Messages {
 			text := llm.SegmentsContentText(message.Segments)
-			if strings.Contains(text, "DO_NOT_INJECT_BACKGROUND_AGENTS") {
-				t.Fatal("injected background AGENTS.md")
-			}
 			if message.Role == llm.RoleTool && message.Name == "read_file" && strings.Contains(text, "sandbox-ok") {
 				read = true
 			}

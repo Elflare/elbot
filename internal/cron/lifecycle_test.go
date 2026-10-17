@@ -1,11 +1,9 @@
 package cron
 
 import (
-	"bytes"
 	"context"
 	globalevents "elbot/internal/events"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -23,7 +21,6 @@ func awaitCronDone(t *testing.T, done <-chan struct{}) {
 
 func TestManagerCancellationAndRepeatedStopWaitForHandlerExit(t *testing.T) {
 	repo := newFakeCronRepo()
-	var logs bytes.Buffer
 	manager := NewManager(repo)
 	started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	if err := manager.RegisterHandler("wait", func(ctx context.Context, _ storage.CronJob) (globalevents.LogResult, error) {
@@ -63,9 +60,6 @@ func TestManagerCancellationAndRepeatedStopWaitForHandlerExit(t *testing.T) {
 	state := repo.jobs[job.Name]
 	if state.RunCount != 1 || state.NextRunAt != nil {
 		t.Fatalf("canceled state=%+v", state)
-	}
-	if strings.Contains(logs.String(), "job failed") {
-		t.Fatalf("normal shutdown reported failure: %s", logs.String())
 	}
 	if err := manager.Start(context.Background()); !errors.Is(err, context.Canceled) {
 		t.Fatalf("late start reopened stopped manager: %v", err)
