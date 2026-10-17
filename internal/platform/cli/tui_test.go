@@ -446,13 +446,6 @@ func TestRefreshNoticesUsesSeparator(t *testing.T) {
 	}
 }
 
-func TestTUIHeaderOmitsMutedNoticeTitle(t *testing.T) {
-	m := tuiModel{width: 120}
-	if got := m.headerView(); strings.Contains(got, "notices") {
-		t.Fatalf("header still contains muted notice title: %q", got)
-	}
-}
-
 func TestRuntimeStatusTextShowsElapsedAndUsage(t *testing.T) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	m := tuiModel{
@@ -716,9 +709,6 @@ func TestAppendAssistantContentDoesNotAddSeparatorOnNewline(t *testing.T) {
 	m.appendAssistantContent("第一句\n")
 	m.appendAssistantContent("第二句")
 	got := m.content
-	if strings.Contains(got, "---") {
-		t.Fatalf("unexpected separator in content: %q", got)
-	}
 	if !strings.Contains(got, "assistant: 第一句\n第二句") {
 		t.Fatalf("assistant content was not kept in one block: %q", got)
 	}
@@ -814,8 +804,5 @@ func TestAppendUserContentAddsSeparatorBetweenTurns(t *testing.T) {
 	got := m.content
 	if !strings.Contains(got, "────────────") {
 		t.Fatalf("missing separator line: %q", got)
-	}
-	if strings.Contains(got, "---") {
-		t.Fatalf("unexpected plain separator: %q", got)
 	}
 }

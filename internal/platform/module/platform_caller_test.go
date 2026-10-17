@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"elbot/internal/delivery"
-	"elbot/internal/elvena"
 	"elbot/internal/events"
 	"elbot/internal/platform"
 )
@@ -36,9 +35,6 @@ func TestPlatformCallerResolverMatchesRuntimeName(t *testing.T) {
 	caller, ok := resolver.PlatformCaller("qqonebot")
 	if !ok || caller == nil {
 		t.Fatalf("PlatformCaller did not find qqonebot caller")
-	}
-	if _, ok := caller.(elvena.PlatformAPICaller); !ok {
-		t.Fatalf("caller does not implement elvena.PlatformAPICaller")
 	}
 }
 

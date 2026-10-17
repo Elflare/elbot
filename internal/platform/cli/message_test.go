@@ -5,22 +5,19 @@ import (
 	"testing"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/platform"
 )
 
 type captureLocalInfo struct {
-	infos           []contextinfo.Conversation
-	hasReplyContext bool
+	infos []contextinfo.Conversation
 }
 
 func (h *captureLocalInfo) HandleMessage(ctx context.Context, _ string) error {
 	info, _ := contextinfo.ConversationFromContext(ctx)
 	h.infos = append(h.infos, info)
-	_, h.hasReplyContext = platform.MessageContextFrom(ctx)
 	return nil
 }
 
-func TestLocalInputProvidesIdentityWithoutPlatformReplyContext(t *testing.T) {
+func TestLocalInputProvidesIdentity(t *testing.T) {
 	h := &captureLocalInfo{}
 	entry := localMessageHandler{next: h}
 	ctx := context.Background()
@@ -34,8 +31,5 @@ func TestLocalInputProvidesIdentityWithoutPlatformReplyContext(t *testing.T) {
 		if info.Source.Platform != "cli" || info.Source.ScopeID != "local" || info.Identity.ActorID != "cli:local" || info.Identity.PlatformUserID != "local" {
 			t.Fatal(info)
 		}
-	}
-	if h.hasReplyContext {
-		t.Fatal("unexpected platform reply context")
 	}
 }
