@@ -107,6 +107,10 @@ func (r GoRunner) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.Ri
 }
 
 func (r GoRunner) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, logContent string, callErr error) {
+	return r.call(ctx, req, runMediaCommand)
+}
+
+func (r GoRunner) call(ctx context.Context, req tool.CallRequest, run func(context.Context, string, *exec.Cmd, *tool.MediaCall) (*tool.Result, error)) (result *tool.Result, logContent string, callErr error) {
 	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 
 	var args goRunnerArgs
@@ -155,7 +159,7 @@ func (r GoRunner) Call(ctx context.Context, req tool.CallRequest) (result *tool.
 	cmd.Dir = record.Root
 	cmd.Stdin = bytes.NewReader(payload)
 	{
-		result, callErr := runMediaCommand(runCtx, "go skill", cmd, mediaCall)
+		result, callErr := run(runCtx, "go skill", cmd, mediaCall)
 		logContent = ""
 		if result != nil {
 			logContent = result.Content

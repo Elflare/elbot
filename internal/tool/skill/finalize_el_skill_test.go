@@ -45,6 +45,7 @@ func TestFinalizeElSkillReturnsElyphWarnings(t *testing.T) {
 }
 
 func TestFinalizeElSkillFormatsBuildsAndReloads(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	writeTestGoSkill(t, root, "finalize", "package main\nfunc main(){println(\"ok\")}\n")
 	registry := tool.NewRegistry()
@@ -73,6 +74,7 @@ func TestFinalizeElSkillFormatsBuildsAndReloads(t *testing.T) {
 }
 
 func TestFinalizeElSkillReturnsBuildFailure(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	writeTestGoSkill(t, root, "broken", "package main\n\nfunc main() { missing() }\n")
 	finalizer := NewFinalizeElSkillTool(NewManager(root, tool.NewRegistry()))

@@ -16,6 +16,7 @@ import (
 )
 
 func TestCreateElSkillCreatesBuildsAndReloads(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go executable not found")

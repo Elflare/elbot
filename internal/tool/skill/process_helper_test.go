@@ -2,8 +2,10 @@ package skill
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	ossignal "os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -69,7 +71,7 @@ func runOutputTestHelper() {
 	case "stderr overflow":
 		fmt.Fprint(os.Stderr, strings.Repeat("e", 2*1024*1024))
 		fmt.Print("done")
-	case "failure", "timeout", "canceled":
+	case "failure", "canceled":
 		var wg sync.WaitGroup
 		wg.Add(2)
 		go func() {
@@ -87,7 +89,7 @@ func runOutputTestHelper() {
 		if err := os.WriteFile(os.Args[2], []byte("ready"), 0600); err != nil {
 			panic(err)
 		}
-		time.Sleep(30 * time.Second)
+		waitForSkillHelperCancel()
 	}
 }
 
@@ -136,7 +138,10 @@ func runMediaTestHelper() {
 		os.Exit(7)
 	}
 	if mode == "wait" {
-		time.Sleep(10 * time.Second)
+		if err := os.WriteFile(os.Getenv("ELBOT_SKILL_TEST_READY_FILE"), []byte("ready"), 0600); err != nil {
+			panic(err)
+		}
+		waitForSkillHelperCancel()
 	}
 	output := filepath.Join(workspace, "output.txt")
 	if err := os.WriteFile(output, []byte("output"), 0600); err != nil {
@@ -150,4 +155,32 @@ func runMediaTestHelper() {
 		content = strings.Repeat("x", 20000)
 	}
 	fmt.Printf("{\"content\":%q,\"segments\":[{\"type\":\"file\",\"path\":%q}]}", content, filepath.ToSlash(output))
+}
+
+func waitForSkillHelperCancel() {
+	stop := make(chan os.Signal, 1)
+	ossignal.Notify(stop, os.Interrupt)
+	defer ossignal.Stop(stop)
+	<-stop
+}
+
+func waitForSkillHelperReady(t *testing.T, path string, exited <-chan struct{}) {
+	t.Helper()
+	// Polling only observes progress; it never decides when the helper times out.
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if _, err := os.Stat(path); err == nil {
+			return
+		} else if !errors.Is(err, os.ErrNotExist) {
+			t.Fatal(err)
+		}
+		select {
+		case <-exited:
+			t.Fatal("helper exited before reporting ready")
+		case <-t.Context().Done():
+			t.Fatal("test canceled before helper reported ready")
+		case <-ticker.C:
+		}
+	}
 }

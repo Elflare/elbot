@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -69,6 +70,10 @@ func (t CommandTool) ActivateTools() []string {
 }
 
 func (t CommandTool) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, logContent string, callErr error) {
+	return t.call(ctx, req, runMediaCommand)
+}
+
+func (t CommandTool) call(ctx context.Context, req tool.CallRequest, run func(context.Context, string, *exec.Cmd, *tool.MediaCall) (*tool.Result, error)) (result *tool.Result, logContent string, callErr error) {
 	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
 
 	dotEnv, err := config.LoadEnvFile(filepath.Join(t.Record.Root, ".env"))
@@ -105,7 +110,7 @@ func (t CommandTool) Call(ctx context.Context, req tool.CallRequest) (result *to
 	cmd := environment.CommandContext(runCtx, command[0], command[1:]...)
 	cmd.Dir = t.Record.Root
 	{
-		result, callErr := runMediaCommand(runCtx, "AgentSkill command", cmd, mediaCall)
+		result, callErr := run(runCtx, "AgentSkill command", cmd, mediaCall)
 		logContent = ""
 		if result != nil {
 			logContent = result.Content
