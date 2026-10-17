@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
@@ -21,6 +20,8 @@ import (
 	"elbot/internal/media"
 	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
+	"elbot/internal/session"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
@@ -350,11 +351,22 @@ func TestChatFailureDoesNotScheduleNaming(t *testing.T) {
 	store := newTestStore(t)
 	f := &fakeLLM{replies: []string{"__ERR__"}, titleReplies: []string{"should not be used"}}
 	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store)
+	scheduled := 0
+	connection, err := a.execution.sessions.NamingSignals().Scheduled.Observe(func(context.Context, session.NamingScheduledEvent) error {
+		scheduled++
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Disconnect()
 
 	if err := a.HandleMessage(context.Background(), "hello naming"); err == nil {
 		t.Fatal("expected chat error")
 	}
-	time.Sleep(50 * time.Millisecond)
+	if scheduled != 0 {
+		t.Fatalf("naming scheduled %d times, want 0", scheduled)
+	}
 	if f.requestCount() != 1 {
 		t.Fatalf("request count = %d, want only the failed chat request", f.requestCount())
 	}
