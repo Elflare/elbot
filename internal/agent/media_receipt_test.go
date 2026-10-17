@@ -10,11 +10,12 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/media"
 	"elbot/internal/platform"
+	"elbot/internal/testutil"
 )
 
 func TestMediaReceiptDoesNotGuessFallbackOrRetryCacheFailure(t *testing.T) {
 	ctx := context.Background()
-	store := newTestStore(t)
+	store := testutil.NewSQLiteStore(t)
 	root := t.TempDir()
 	router := dispatch.New(dispatch.Options{Primary: &fakePlatform{}, Store: store, Media: media.NewManager(store, root, &media.LocalBackend{Root: root}), MediaRetentionDays: 7})
 	outputs := []delivery.Output{{Kind: delivery.KindImage, Source: delivery.Source{Data: []byte("image")}}}

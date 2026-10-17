@@ -17,10 +17,41 @@ func TestMain(m *testing.M) {
 		runOutputTestHelper()
 	case "media":
 		runMediaTestHelper()
+	case "payload":
+		var payload map[string]string
+		if err := json.NewDecoder(os.Stdin).Decode(&payload); err != nil {
+			panic(err)
+		}
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]string{"content": payload["input"]})
+	case "shared-env":
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]string{"content": os.Getenv("ELBOT_GO_SKILL_ENV_TEST")})
+	case "environment":
+		runEnvironmentTestHelper()
 	default:
 		os.Exit(m.Run())
 	}
 	os.Exit(0)
+}
+
+func runEnvironmentTestHelper() {
+	cwd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	if err := os.WriteFile("executed", nil, 0600); err != nil {
+		panic(err)
+	}
+	values := map[string]string{"cwd": cwd}
+	for _, name := range []string{"ELBOT_SKILL_ENV_TEST", "ELBOT_SKILL_CONFIG_ONLY", "ELBOT_SKILL_PROCESS_ONLY", "ELBOT_SKILL_LOCAL_ONLY", "ELBOT_SKILL_EMPTY_TEST", "PATH"} {
+		values[name] = os.Getenv(name)
+	}
+	content, err := json.Marshal(values)
+	if err != nil {
+		panic(err)
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(map[string]string{"content": string(content)}); err != nil {
+		panic(err)
+	}
 }
 
 func runOutputTestHelper() {

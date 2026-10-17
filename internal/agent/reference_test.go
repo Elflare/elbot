@@ -13,6 +13,7 @@ import (
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
 	"elbot/internal/storage"
+	"elbot/internal/storage/sqlite"
 )
 
 func TestReferencedOutputMediaReachesVisionAndCanonicalSession(t *testing.T) {
@@ -20,6 +21,12 @@ func TestReferencedOutputMediaReachesVisionAndCanonicalSession(t *testing.T) {
 	store := newTestStore(t)
 	root := t.TempDir()
 	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
+	history, err := sqlite.NewChatHistory(t.Context(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = history.Close() })
+	center.History = history.Repository()
 	item, err := center.ImportBytes(ctx, []byte("image"), media.Input{Name: "image.png", MIMEType: "image/png"})
 	if err != nil {
 		t.Fatal(err)

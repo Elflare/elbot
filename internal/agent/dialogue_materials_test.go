@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -32,7 +31,7 @@ func TestResponsesMediaReplayAuditContainsOnlyOrderedReferences(t *testing.T) {
 		opts.Media = center
 		opts.Store = nativeAuditStore{Store: opts.Store, repository: nativeAuditRepository{DialogueRepository: opts.Store.Dialogues(), created: ids}}
 	})
-	item, err := center.ImportBytes(t.Context(), bytes.Repeat([]byte("image-data"), 4096), media.Input{MIMEType: "image/png"})
+	item, err := center.ImportBytes(t.Context(), []byte("image-data"), media.Input{MIMEType: "image/png"})
 	if err != nil {
 		t.Fatal(err)
 	}

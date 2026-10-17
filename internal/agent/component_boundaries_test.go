@@ -132,10 +132,10 @@ func TestHookFailureIsRecordedOnceAndStillNotifies(t *testing.T) {
 	records := make(chan globalevents.LogRecord, 32)
 	connection, _ := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error { records <- record; return nil }, signal.ConnectOptions{})
 	defer connection.Disconnect()
-	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) { cfg.HookManager = manager })
+	bridge := newTestHookBridge(t, &fakePlatform{}, manager)
 	facts := 0
-	_, _ = a.Signals().HookFailed.Observe(func(context.Context, agentevents.HookFailedEvent) error { facts++; return nil }, signal.ConnectOptions{})
-	a.hooks.Notify(context.Background(), hook.Event{Point: hook.PointErrorOccurred})
+	_, _ = bridge.failed.Observe(func(context.Context, agentevents.HookFailedEvent) error { facts++; return nil }, signal.ConnectOptions{})
+	bridge.Notify(context.Background(), hook.Event{Point: hook.PointErrorOccurred})
 	count := 0
 	for len(records) > 0 {
 		r := <-records

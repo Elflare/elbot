@@ -61,15 +61,16 @@ func TestConfirmationWaitTimeoutUsesSessionTTLAsUpperBound(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 
-			a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
-				idleExpiration := tt.cfg
-				cfg.SessionIdleExpiration = &idleExpiration
+			policy := NewConfirmationPolicy(ConfirmationPolicyDeps{
+				Identity:                NewIdentityResolver(IdentityResolverDeps{PlatformName: "test"}),
+				IdleExpiration:          sessionIdleExpirationConfig(tt.cfg),
+				UserConfirmationTimeout: defaultUserConfirmationTimeout,
 			})
 			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
 				Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ScopeID: tt.scopeID}, Identity: contextinfo.Identity{PlatformUserID: "1"}},
 			})
 			ctx = contextinfo.WithActor(ctx, contextinfo.Actor{ID: "test:1", Role: tt.role})
-			if got := a.execution.waitPolicy.WaitTimeout(ctx); got != tt.want {
+			if got := policy.WaitTimeout(ctx); got != tt.want {
 				t.Fatalf("confirmation timeout = %s, want %s", got, tt.want)
 			}
 		})

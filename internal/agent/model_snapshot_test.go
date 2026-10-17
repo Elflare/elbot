@@ -65,8 +65,8 @@ func TestModelCommandKeepsInFlightToolLoopOnOriginalSelection(t *testing.T) {
 		Providers:  map[string]config.ProviderConfig{"old": {Models: []string{"first"}}, "next": {Models: []string{"second"}}},
 		ModeModels: map[string]config.ModelSelection{storage.SessionModeWork: {Provider: "old", Model: "first"}},
 	})
-	opts := validConstructorOptions(t)
-	opts.Models, opts.Platform = models, &fakePlatform{}
+	opts := validConstructorOptions(t, func(opts *testAgentOptions) { opts.Models = models })
+	opts.Platform = &fakePlatform{}
 	opts.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
 	// Naming has its own snapshot boundary and is not part of this assertion.
 	opts.SessionConfig.NamingConfig.TriggerStep = 100
@@ -143,8 +143,8 @@ func TestChatNamingUsesTurnModelAcrossSwitch(t *testing.T) {
 		},
 		DefaultMode: storage.SessionModeChat,
 	})
-	opts := validConstructorOptions(t)
-	opts.Models, opts.Platform = models, &fakePlatform{}
+	opts := validConstructorOptions(t, func(opts *testAgentOptions) { opts.Models = models })
+	opts.Platform = &fakePlatform{}
 	opts.SessionConfig.DefaultMode = storage.SessionModeChat
 	opts.SessionConfig.NamingConfig.TriggerStep = 1
 	a := mustNewWithOptions(t, opts)
@@ -249,8 +249,8 @@ func TestCompactUsesOriginalSelectionDuringModelSwitch(t *testing.T) {
 		Providers:  map[string]config.ProviderConfig{"old": {Models: []string{"first"}}, "next": {Models: []string{"second"}}},
 		ModeModels: map[string]config.ModelSelection{storage.SessionModeWork: {Provider: "old", Model: "first"}},
 	})
-	opts := validConstructorOptions(t)
-	opts.Models, opts.Platform = models, &fakePlatform{}
+	opts := validConstructorOptions(t, func(opts *testAgentOptions) { opts.Models = models })
+	opts.Platform = &fakePlatform{}
 	a := mustNewWithOptions(t, opts)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

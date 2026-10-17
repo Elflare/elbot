@@ -247,9 +247,12 @@ func TestModelsShowsProviderFetchErrorsAndHealthyModels(t *testing.T) {
 }
 
 func TestModelOptionsFetchesProvidersInParallel(t *testing.T) {
+	started := make(chan string, 2)
+	release := make(chan struct{})
 	newModelServer := func(model string) *httptest.Server {
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			time.Sleep(150 * time.Millisecond)
+			started <- model
+			<-release
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprintf(w, `{"data":[{"id":%q}]}`, model)
 		}))
@@ -258,6 +261,7 @@ func TestModelOptionsFetchesProvidersInParallel(t *testing.T) {
 	defer srvA.Close()
 	srvB := newModelServer("remote-b")
 	defer srvB.Close()
+	defer close(release)
 
 	providers := map[string]config.ProviderConfig{
 		"local": {Models: []string{"local-model"}},
@@ -268,26 +272,28 @@ func TestModelOptionsFetchesProvidersInParallel(t *testing.T) {
 		storage.SessionModeWork: {Provider: "local", Model: "local-model"},
 		storage.SessionModeChat: {Provider: "local", Model: "local-model"},
 	}
-	a := mustNewWithOptions(t, testAgentOptions{
-		Platform: &fakePlatform{},
-		Models: newTestModels(t, modelmgr.Options{
-			Clients:     map[string]llm.Client{"local": &fakeLLM{models: []string{"local-model"}}},
-			ModeModels:  modeModels,
-			Providers:   providers,
-			DefaultMode: storage.SessionModeWork,
-		}),
-		Store:           newTestStore(t),
-		CommandPrefixes: []string{"/"},
-		SessionConfig:   session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork},
+	models := newTestModels(t, modelmgr.Options{
+		Clients:     map[string]llm.Client{"local": &fakeLLM{models: []string{"local-model"}}},
+		ModeModels:  modeModels,
+		Providers:   providers,
+		DefaultMode: storage.SessionModeWork,
 	})
 
-	startedAt := time.Now()
-	options := a.execution.models.ModelList("", modelmgr.ModelListOptions{}).Options
-	elapsed := time.Since(startedAt)
-
-	if elapsed >= 250*time.Millisecond {
-		t.Fatalf("model provider fetches appear serial, elapsed=%s", elapsed)
+	done := make(chan []modelmgr.ModelOption, 1)
+	go func() { done <- models.ModelList("", modelmgr.ModelListOptions{}).Options }()
+	deadline := time.NewTimer(time.Second)
+	defer deadline.Stop()
+	for range 2 {
+		select {
+		case <-started:
+		case <-deadline.C:
+			t.Fatal("both model providers did not receive requests concurrently")
+		}
 	}
+	// Reaching both handlers before either response proves the calls overlap.
+	release <- struct{}{}
+	release <- struct{}{}
+	options := <-done
 	got := []string{}
 	for _, option := range options {
 		got = append(got, option.Provider+"/"+option.Model)
@@ -315,22 +321,16 @@ func TestModelOptionsCachesProviderModelsUntilFresh(t *testing.T) {
 		storage.SessionModeWork: {Provider: "local", Model: "local-model"},
 		storage.SessionModeChat: {Provider: "local", Model: "local-model"},
 	}
-	a := mustNewWithOptions(t, testAgentOptions{
-		Platform: &fakePlatform{},
-		Models: newTestModels(t, modelmgr.Options{
-			Clients:     map[string]llm.Client{"local": &fakeLLM{models: []string{"local-model"}}},
-			ModeModels:  modeModels,
-			Providers:   providers,
-			DefaultMode: storage.SessionModeWork,
-		}),
-		Store:           newTestStore(t),
-		CommandPrefixes: []string{"/"},
-		SessionConfig:   session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork},
+	models := newTestModels(t, modelmgr.Options{
+		Clients:     map[string]llm.Client{"local": &fakeLLM{models: []string{"local-model"}}},
+		ModeModels:  modeModels,
+		Providers:   providers,
+		DefaultMode: storage.SessionModeWork,
 	})
 
-	first := a.execution.models.ModelList("", modelmgr.ModelListOptions{})
-	second := a.execution.models.ModelList("", modelmgr.ModelListOptions{})
-	fresh := a.execution.models.ModelList("", modelmgr.ModelListOptions{Fresh: true})
+	first := models.ModelList("", modelmgr.ModelListOptions{})
+	second := models.ModelList("", modelmgr.ModelListOptions{})
+	fresh := models.ModelList("", modelmgr.ModelListOptions{Fresh: true})
 
 	if requests != 2 {
 		t.Fatalf("provider model requests = %d, want 2", requests)

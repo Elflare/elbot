@@ -92,8 +92,7 @@ func testReadonlyHookSelection(t *testing.T, point hook.Point) {
 		Providers:  map[string]config.ProviderConfig{"old": {Models: []string{"first"}}, "next": {Models: []string{"second"}}},
 		ModeModels: map[string]config.ModelSelection{"work": {Provider: "old", Model: "first"}},
 	})
-	opts := validConstructorOptions(t)
-	opts.Models = models
+	opts := validConstructorOptions(t, func(opts *testAgentOptions) { opts.Models = models })
 	opts.SessionConfig.NamingConfig.TriggerStep = 100
 
 	h := newTestHookManager()

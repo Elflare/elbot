@@ -86,12 +86,13 @@ func (c *extensionCompactor) Prepare(_ context.Context, row *storage.Session, re
 }
 
 func TestRegisteredProtocolUsesActualAgentAdmissionPersistenceAndSessionCapabilities(t *testing.T) {
-	opts := validConstructorOptions(t)
 	client := &extensionClient{name: "configured"}
-	opts.Models = newTestModels(t, modelmgr.Options{
-		Clients:    map[string]llm.Client{"extension-provider": client},
-		Providers:  map[string]config.ProviderConfig{"extension-provider": {APIMode: "extension", Models: []string{"m"}}},
-		ModeModels: map[string]config.ModelSelection{"work": {Provider: "extension-provider", Model: "m"}},
+	opts := validConstructorOptions(t, func(opts *testAgentOptions) {
+		opts.Models = newTestModels(t, modelmgr.Options{
+			Clients:    map[string]llm.Client{"extension-provider": client},
+			Providers:  map[string]config.ProviderConfig{"extension-provider": {APIMode: "extension", Models: []string{"m"}}},
+			ModeModels: map[string]config.ModelSelection{"work": {Provider: "extension-provider", Model: "m"}},
+		})
 	})
 	assembled := assembleTestOptions(t, opts)
 	loop := &extensionLoop{t: t, store: opts.Store}

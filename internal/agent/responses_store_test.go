@@ -170,7 +170,12 @@ func TestResponsesStorageModes(t *testing.T) {
 func TestResponsesStatelessRestartAfterFailedRequest(t *testing.T) {
 	var opts testAgentOptions
 	path := filepath.Join(t.TempDir(), "sessions.db")
-	f := newNativeFixture(t, func(index int, request nativeTestRequest, w http.ResponseWriter) {
+	initialStore, err := sqlite.New(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = initialStore.Close() })
+	f := newNativeFixtureWithStore(t, initialStore, func(index int, request nativeTestRequest, w http.ResponseWriter) {
 		if index == 2 {
 			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprint(w, `{"error":{"message":"temporary request failure"}}`)
@@ -189,15 +194,8 @@ func TestResponsesStatelessRestartAfterFailedRequest(t *testing.T) {
 		}
 		emitNativeStore(w, fmt.Sprintf("r%d", index), false, nativeText(fmt.Sprintf("answer-%d", index)))
 	}, func(options *testAgentOptions) {
-		store, err := sqlite.New(t.Context(), path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = store.Close() })
-		options.Store = store
 		opts = *options
 	})
-	f.store = opts.Store
 	for _, input := range []string{"first input", "second input"} {
 		if err := f.agent.HandleMessage(t.Context(), input); err != nil {
 			t.Fatal(err)

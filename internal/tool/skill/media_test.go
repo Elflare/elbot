@@ -17,8 +17,9 @@ import (
 )
 
 func TestSkillMediaBridge(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+	store, err := sqlite.New(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
