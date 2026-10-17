@@ -82,14 +82,15 @@ func newNativeFixtureWithStore(t *testing.T, store storage.Store, respond func(i
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts := validConstructorOptions(t)
-	opts.Store = f.store
-	opts.Platform = f.platform
-	opts.SessionConfig.NamingConfig.TriggerStep = 100
-	opts.Models = newTestModels(t, modelmgr.Options{
-		Clients:    map[string]llm.Client{"native": client},
-		Providers:  map[string]config.ProviderConfig{"native": {APIMode: "response", BaseURL: server.URL, Models: []string{"m", "new-model", "task-model"}}},
-		ModeModels: map[string]config.ModelSelection{"work": {Provider: "native", Model: "m"}, "chat": {Provider: "native", Model: "m"}},
+	opts := validConstructorOptions(t, func(opts *testAgentOptions) {
+		opts.Store = f.store
+		opts.Platform = f.platform
+		opts.SessionConfig.NamingConfig.TriggerStep = 100
+		opts.Models = newTestModels(t, modelmgr.Options{
+			Clients:    map[string]llm.Client{"native": client},
+			Providers:  map[string]config.ProviderConfig{"native": {APIMode: "response", BaseURL: server.URL, Models: []string{"m", "new-model", "task-model"}}},
+			ModeModels: map[string]config.ModelSelection{"work": {Provider: "native", Model: "m"}, "chat": {Provider: "native", Model: "m"}},
+		})
 	})
 	f.agent = mustNewWithOptions(t, opts, configure...)
 	return f

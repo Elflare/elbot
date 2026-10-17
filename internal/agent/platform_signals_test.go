@@ -8,21 +8,45 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/config"
+	agentevents "elbot/internal/agent/events"
 	elcron "elbot/internal/cron"
 	"elbot/internal/delivery"
+	"elbot/internal/delivery/dispatch"
 	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
+	"elbot/internal/platform"
+	"elbot/internal/request"
+	"elbot/internal/security"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 )
 
-func newPlatformEventAgent(t *testing.T, handler hook.HandlerFunc) *agentFixture {
+func newTestHookBridge(t *testing.T, p platform.PlatformAdapter, manager *hook.DefaultManager) *HookBridge {
+	t.Helper()
+	dispatcher := dispatch.New(dispatch.Options{Primary: p})
+	connectFixtureNotifications(t, p.Name(), dispatcher)
+	bridge := NewHookBridge(HookBridgeDeps{
+		Manager: manager, Router: &fakeHookRouter{}, Requests: request.NewManager(0),
+		Identity: NewIdentityResolver(IdentityResolverDeps{PlatformName: p.Name(), ActorID: "cli:local", ScopeID: "local", Policy: security.DefaultPolicy()}),
+		Failed:   agentevents.NewSignals().HookFailed, Dispatcher: dispatcher,
+	})
+	manager.SetObserver(bridge.ObserveRun)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := bridge.Close(ctx); err != nil {
+			t.Error(err)
+		}
+	})
+	return bridge
+}
+
+func newPlatformEventBridge(t *testing.T, handler hook.HandlerFunc) *HookBridge {
 	t.Helper()
 	manager := newTestHookManager()
 
 	manager.Register(hook.Registration{Point: hook.PointPlatformConnected, Name: "connection", Match: hook.Always(), Handler: handler})
-	return newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(opts *testAgentOptions) { opts.HookManager = manager })
+	return newTestHookBridge(t, &fakePlatform{}, manager)
 }
 
 func emitPlatformConnection(t *testing.T, ctx context.Context, name string) {
@@ -45,7 +69,7 @@ func TestGlobalPlatformHooksIsolatePlatformsAndCancelPending(t *testing.T) {
 	type valueKey struct{}
 	started, second := make(chan struct{}, 1), make(chan struct{}, 2)
 	var firstCalls atomic.Int32
-	a := newPlatformEventAgent(t, func(ctx context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
+	a := newPlatformEventBridge(t, func(ctx context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
 		if ctx.Value(valueKey{}) != "retained" || ctx.Err() != nil {
 			t.Error("emission values or cancellation policy changed")
 		}
@@ -120,7 +144,7 @@ func TestGlobalPlatformCronIndependentOfUserHooks(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			started := make(chan struct{})
 			var once sync.Once
-			a := newPlatformEventAgent(t, func(ctx context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
+			a := newPlatformEventBridge(t, func(ctx context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
 				once.Do(func() { close(started) })
 				switch mode {
 				case "stop":
@@ -156,7 +180,7 @@ func TestGlobalPlatformCronIndependentOfUserHooks(t *testing.T) {
 
 func TestPlatformHookCloseWaitsForActualExit(t *testing.T) {
 	started, release := make(chan struct{}), make(chan struct{})
-	a := newPlatformEventAgent(t, func(ctx context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
+	a := newPlatformEventBridge(t, func(ctx context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
 		close(started)
 		<-release
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
@@ -187,7 +211,7 @@ func TestPlatformHookCloseWaitsForActualExit(t *testing.T) {
 func TestPlatformHookParentCancellationAndConcurrentClose(t *testing.T) {
 	for _, mode := range []string{"parent", "close"} {
 		t.Run(mode, func(t *testing.T) {
-			a := newPlatformEventAgent(t, func(_ context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
+			a := newPlatformEventBridge(t, func(_ context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
 				return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 			})
 			ctx, cancel := context.WithCancel(context.Background())
@@ -213,7 +237,7 @@ func TestPlatformHookParentCancellationAndConcurrentClose(t *testing.T) {
 				a.BeginClose()
 			}
 			wg.Wait()
-			awaitPlatformEvent(t, a.hooks.platformEventsDone())
+			awaitPlatformEvent(t, a.Done())
 			emitPlatformConnection(t, context.Background(), "two")
 			if err := a.StartPlatformEvents(context.Background()); !errors.Is(err, signal.ErrClosed) {
 				t.Fatalf("restart=%v", err)
@@ -239,7 +263,7 @@ func TestGlobalPlatformHookSendsOutput(t *testing.T) {
 		return e, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
 	p := &platformOutputSender{sent: make(chan []delivery.Output, 2)}
-	a := newTestAgent(t, p, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(opts *testAgentOptions) { opts.HookManager = manager })
+	a := newTestHookBridge(t, p, manager)
 	if err := a.StartPlatformEvents(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +305,7 @@ func TestPlatformConsumersRejectCapturedSnapshotAfterClose(t *testing.T) {
 		awaitPlatformEvent(t, captured)
 	}
 	var hookCalls atomic.Int32
-	a := newPlatformEventAgent(t, func(_ context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
+	a := newPlatformEventBridge(t, func(_ context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
 		hookCalls.Add(1)
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})

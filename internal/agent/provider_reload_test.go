@@ -36,8 +36,7 @@ func TestProviderRefreshKeepsInFlightToolLoopAndUpdatesNextTurn(t *testing.T) {
 		},
 		BuildClient: func(string, config.ProviderConfig) (llm.Client, error) { return next, nil },
 	})
-	opts := validConstructorOptions(t)
-	opts.Models = models
+	opts := validConstructorOptions(t, func(opts *testAgentOptions) { opts.Models = models })
 	opts.SessionConfig.NamingConfig.TriggerStep = 100
 	opts.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
 	registry := tool.NewRegistry()

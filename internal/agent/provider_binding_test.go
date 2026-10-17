@@ -36,8 +36,7 @@ func TestProtocolAdmissionRejectsWrongNativeCapability(t *testing.T) {
 				Clients: map[string]llm.Client{"p": client}, Providers: map[string]config.ProviderConfig{"p": {APIMode: mode}},
 				ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}},
 			})
-			opts := validConstructorOptions(t)
-			opts.Models = models
+			opts := validConstructorOptions(t, func(opts *testAgentOptions) { opts.Models = models })
 			a := mustNewWithOptions(t, opts)
 			if err := a.HandleMessage(t.Context(), "must not be saved"); err == nil || !strings.Contains(err.Error(), "streaming") || !strings.Contains(err.Error(), "p") {
 				t.Fatalf("wrong native capability was accepted: %v", err)
@@ -71,10 +70,11 @@ func TestResponseBindingRunsNativeDialogueAndContinuesCheckpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts := validConstructorOptions(t)
-	opts.Models = newTestModels(t, modelmgr.Options{
-		Clients: map[string]llm.Client{"native": client}, Providers: map[string]config.ProviderConfig{"native": {APIMode: "response", BaseURL: server.URL}},
-		ModeModels: map[string]config.ModelSelection{"work": {Provider: "native", Model: "m"}},
+	opts := validConstructorOptions(t, func(opts *testAgentOptions) {
+		opts.Models = newTestModels(t, modelmgr.Options{
+			Clients: map[string]llm.Client{"native": client}, Providers: map[string]config.ProviderConfig{"native": {APIMode: "response", BaseURL: server.URL}},
+			ModeModels: map[string]config.ModelSelection{"work": {Provider: "native", Model: "m"}},
+		})
 	})
 	opts.SessionConfig.NamingConfig.TriggerStep = 100
 	a := mustNewWithOptions(t, opts)

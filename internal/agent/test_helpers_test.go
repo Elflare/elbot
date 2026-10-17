@@ -2,7 +2,9 @@ package agent
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -18,7 +20,7 @@ import (
 	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/storage"
-	"elbot/internal/testutil"
+	"elbot/internal/storage/sqlite"
 	"elbot/internal/tool"
 	"elbot/internal/tool/builtin"
 )
@@ -348,9 +350,67 @@ func waitRequestCount(t *testing.T, f *fakeLLM, want int) {
 	}
 }
 
+var sharedTestStore *sqlite.Store
+var sharedTestDB *sql.DB
+
+func TestMain(m *testing.M) {
+	const dsn = "file:elbot-agent-tests?mode=memory&cache=shared"
+	var err error
+	sharedTestStore, err = sqlite.New(context.Background(), dsn)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	sharedTestDB, err = sql.Open("sqlite", dsn)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	sharedTestDB.SetMaxOpenConns(1)
+	if _, err := sharedTestDB.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	code := m.Run()
+	if err := sharedTestStore.Close(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		code = 1
+	}
+	if err := sharedTestDB.Close(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		code = 1
+	}
+	os.Exit(code)
+}
+
+// Agent tests run serially. Register this before constructing services so their
+// cleanup stops background work before the shared database is cleared.
 func newTestStore(t *testing.T) storage.Store {
 	t.Helper()
-	return testutil.NewSQLiteStore(t)
+	t.Cleanup(func() {
+		ctx := context.Background()
+		tx, err := sharedTestDB.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback()
+		// Foreign-key cascades clear child rows; keep tables, triggers and versions.
+		if _, err := tx.ExecContext(ctx, `
+DELETE FROM sessions;
+DELETE FROM cron_jobs;
+DELETE FROM elnis_events;
+DELETE FROM media_outputs;
+DELETE FROM media_history;
+DELETE FROM media_references;
+DELETE FROM media;
+`); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	return sharedTestStore
 }
 
 func firstRequestSystemText(req chatcompletions.Request) string {

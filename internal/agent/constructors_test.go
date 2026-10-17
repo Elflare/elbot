@@ -122,10 +122,24 @@ func TestExecutionConstructionKeepsBorrowedCallbacksAndServices(t *testing.T) {
 	}
 }
 
-func validConstructorOptions(t *testing.T) testAgentOptions {
+func validConstructorOptions(t *testing.T, configure ...func(*testAgentOptions)) testAgentOptions {
 	t.Helper()
-	return testAgentOptions{
-		Models: newTestModels(t, modelmgr.Options{
+	opts := testAgentOptions{
+		Providers:       map[string]config.ProviderConfig{"default": {}},
+		CommandPrefixes: []string{"/"},
+		SessionConfig:   session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork},
+		SecurityPolicy:  security.DefaultPolicy(),
+		SandboxRoot:     "data/sandbox",
+		ToolsConfig:     config.ToolsConfig{MaxRoundsPerTurn: 2},
+	}
+	for _, change := range configure {
+		change(&opts)
+	}
+	if opts.Store == nil {
+		opts.Store = newTestStore(t)
+	}
+	if opts.Models == nil {
+		opts.Models = newTestModels(t, modelmgr.Options{
 			Clients:   map[string]llm.Client{"default": &fakeLLM{}},
 			Providers: map[string]config.ProviderConfig{"default": {}},
 			ModeModels: map[string]config.ModelSelection{
@@ -133,13 +147,7 @@ func validConstructorOptions(t *testing.T) testAgentOptions {
 				storage.SessionModeChat: {Provider: "default", Model: "model"},
 			},
 			DefaultMode: storage.SessionModeWork,
-		}),
-		Providers:       map[string]config.ProviderConfig{"default": {}},
-		Store:           newTestStore(t),
-		CommandPrefixes: []string{"/"},
-		SessionConfig:   session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork},
-		SecurityPolicy:  security.DefaultPolicy(),
-		SandboxRoot:     "data/sandbox",
-		ToolsConfig:     config.ToolsConfig{MaxRoundsPerTurn: 2},
+		})
 	}
+	return opts
 }

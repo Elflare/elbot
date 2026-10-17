@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +18,7 @@ import (
 )
 
 func TestRunMediaCommandOutputLimits(t *testing.T) {
+	t.Parallel()
 	binary, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -29,7 +29,7 @@ func TestRunMediaCommandOutputLimits(t *testing.T) {
 			defer cancel()
 			if mode == "timeout" {
 				var stop context.CancelFunc
-				ctx, stop = context.WithTimeout(ctx, time.Second)
+				ctx, stop = context.WithTimeout(ctx, 100*time.Millisecond)
 				defer stop()
 			}
 			ready := filepath.Join(t.TempDir(), "ready")
@@ -129,38 +129,15 @@ func TestCommandErrorPreservesUnderlyingCancellationFailure(t *testing.T) {
 
 func TestGoRunnerPassesPayloadJSONToBinary(t *testing.T) {
 	dir := t.TempDir()
-	source := filepath.Join(dir, "main.go")
-	if err := os.WriteFile(source, []byte(`package main
-
-import (
-	"encoding/json"
-	"fmt"
-	"os"
-)
-
-func main() {
-	var payload map[string]string
-	if err := json.NewDecoder(os.Stdin).Decode(&payload); err != nil {
-		fmt.Println("decode failed")
-		os.Exit(1)
-	}
-	fmt.Printf(`+"`"+`{"content":"%s"}`+"`"+`, payload["input"])
-}
-`), 0o644); err != nil {
+	binary, err := os.Executable()
+	if err != nil {
 		t.Fatal(err)
-	}
-	binary := filepath.Join(dir, "helper")
-	if runtime.GOOS == "windows" {
-		binary += ".exe"
-	}
-	cmd := exec.Command("go", "build", "-o", binary, source)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build helper: %v\n%s", err, output)
 	}
 	catalog := NewCatalog()
 	catalog.Replace([]Record{{Name: "echo", Kind: KindGo, Root: dir, BinaryPath: binary}})
 	args := []byte(`{"skill_name":"echo","payload":{"input":"hello"}}`)
-	result, _, err := NewGoRunner(catalog).Call(context.Background(), tool.CallRequest{Arguments: args})
+	environment := processenv.Environment{}.Overlay(map[string]string{"ELBOT_SKILL_TEST_HELPER": "payload"})
+	result, _, err := NewGoRunner(catalog, environment).Call(context.Background(), tool.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,31 +148,13 @@ func main() {
 
 func TestGoRunnerUsesSharedProcessEnvironment(t *testing.T) {
 	dir := t.TempDir()
-	source := filepath.Join(dir, "main.go")
-	if err := os.WriteFile(source, []byte(`package main
-
-import (
-	"fmt"
-	"os"
-)
-
-func main() {
-	fmt.Printf("{\"content\":\"%s\"}", os.Getenv("ELBOT_GO_SKILL_ENV_TEST"))
-}
-`), 0o644); err != nil {
+	binary, err := os.Executable()
+	if err != nil {
 		t.Fatal(err)
-	}
-	binary := filepath.Join(dir, "helper")
-	if runtime.GOOS == "windows" {
-		binary += ".exe"
-	}
-	cmd := exec.Command("go", "build", "-o", binary, source)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build helper: %v\\n%s", err, output)
 	}
 	catalog := NewCatalog()
 	catalog.Replace([]Record{{Name: "environment", Kind: KindGo, Root: dir, BinaryPath: binary}})
-	runner := NewGoRunner(catalog, processenv.New([]string{"ELBOT_GO_SKILL_ENV_TEST=from-shared"}))
+	runner := NewGoRunner(catalog, processenv.New([]string{"ELBOT_GO_SKILL_ENV_TEST=from-shared", "ELBOT_SKILL_TEST_HELPER=shared-env"}))
 	result, _, err := runner.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"skill_name":"environment","payload":{}}`)})
 	if err != nil {
 		t.Fatal(err)
@@ -238,36 +197,9 @@ func TestResultFromStdoutHandlesTextAndJSON(t *testing.T) {
 }
 
 func TestSkillExecutionEnvironment(t *testing.T) {
-	dir := t.TempDir()
-	source := filepath.Join(dir, "main.go")
-	if err := os.WriteFile(source, []byte(`package main
-
-import (
-	"encoding/json"
-	"os"
-)
-
-func main() {
-	cwd, err := os.Getwd()
-	if err != nil { panic(err) }
-	if err := os.WriteFile("executed", nil, 0600); err != nil { panic(err) }
-	values := map[string]string{"cwd": cwd}
-	for _, name := range []string{"ELBOT_SKILL_ENV_TEST", "ELBOT_SKILL_CONFIG_ONLY", "ELBOT_SKILL_PROCESS_ONLY", "ELBOT_SKILL_LOCAL_ONLY", "ELBOT_SKILL_EMPTY_TEST", "PATH"} {
-		values[name] = os.Getenv(name)
-	}
-	content, err := json.Marshal(values)
-	if err != nil { panic(err) }
-	if err := json.NewEncoder(os.Stdout).Encode(map[string]string{"content": string(content)}); err != nil { panic(err) }
-}
-`), 0o600); err != nil {
+	binary, err := os.Executable()
+	if err != nil {
 		t.Fatal(err)
-	}
-	binary := filepath.Join(dir, "environment-helper")
-	if runtime.GOOS == "windows" {
-		binary += ".exe"
-	}
-	if output, err := exec.Command("go", "build", "-o", binary, source).CombinedOutput(); err != nil {
-		t.Fatalf("build helper: %v\n%s", err, output)
 	}
 	t.Setenv("ELBOT_SKILL_ENV_TEST", "host")
 
@@ -283,7 +215,7 @@ func main() {
 			if err != nil {
 				t.Fatal(err)
 			}
-			environment := processenv.New([]string{"ELBOT_SKILL_ENV_TEST=process", "ELBOT_SKILL_PROCESS_ONLY=process", "ELBOT_SKILL_EMPTY_TEST=process", "PATH=" + processPath}).Fill(dotEnv)
+			environment := processenv.New([]string{"ELBOT_SKILL_TEST_HELPER=environment", "ELBOT_SKILL_ENV_TEST=process", "ELBOT_SKILL_PROCESS_ONLY=process", "ELBOT_SKILL_EMPTY_TEST=process", "PATH=" + processPath}).Fill(dotEnv)
 			newCaller := func(root string) (tool.Tool, tool.CallRequest) {
 				t.Helper()
 				if kind == "go" {
@@ -383,10 +315,11 @@ func main() {
 
 	t.Run("agent-skill-path", func(t *testing.T) {
 		root := t.TempDir()
-		if err := os.WriteFile(filepath.Join(root, ".env"), []byte("PATH="+dir+"\n"), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(root, ".env"), []byte("PATH="+filepath.Dir(binary)+"\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		caller := NewCommandTool(Record{Name: "environment", Root: root, Manifest: AgentSkillManifest{Command: []string{filepath.Base(binary)}}})
+		caller.ProcessEnv = processenv.Environment{}.Overlay(map[string]string{"ELBOT_SKILL_TEST_HELPER": "environment"})
 		if _, _, err := caller.Call(context.Background(), tool.CallRequest{}); err != nil {
 			t.Fatalf("resolve command through skill PATH: %v", err)
 		}

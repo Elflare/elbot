@@ -260,7 +260,12 @@ func TestResponsesPendingDefinitionsSurviveRestartAndStatelessReplay(t *testing.
 	_ = registry.Register(nativeTool{name: "two"})
 	var opts testAgentOptions
 	path := filepath.Join(t.TempDir(), "sessions.db")
-	f := newNativeFixture(t, func(index int, request nativeTestRequest, w http.ResponseWriter) {
+	initialStore, err := sqlite.New(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = initialStore.Close() })
+	f := newNativeFixtureWithStore(t, initialStore, func(index int, request nativeTestRequest, w http.ResponseWriter) {
 		if index == 0 {
 			expectNativeDefinitions(t, request, "one")
 		} else {
@@ -275,15 +280,9 @@ func TestResponsesPendingDefinitionsSurviveRestartAndStatelessReplay(t *testing.
 		}
 		emitNativeStore(w, fmt.Sprintf("r%d", index), false, nativeText("answer"))
 	}, func(options *testAgentOptions) {
-		store, err := sqlite.New(t.Context(), path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = store.Close() })
-		options.Store, options.ToolRegistry = store, registry
+		options.ToolRegistry = registry
 		opts = *options
 	})
-	f.store = opts.Store
 	if err := f.agent.HandleMessage(t.Context(), "@tool:one first"); err != nil {
 		t.Fatal(err)
 	}

@@ -40,7 +40,7 @@ func TestResidentMemorySystemPromptSource(t *testing.T) {
 }
 
 func TestBackgroundPathsAreSystemPromptOnlyUntilTakeover(t *testing.T) {
-	manager := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t)).dialogue.System
+	manager := dialogue.NewSystemPromptManager(dialogue.BackgroundPathsSystemPromptSource{})
 	ctx := sandboxctx.WithSandboxContext(t.Context(), sandboxctx.SandboxContext{Background: true, Dir: t.TempDir()})
 	background, err := manager.Build(ctx, dialogue.SystemPromptRequest{Mode: storage.SessionModeBackground})
 	if err != nil {
