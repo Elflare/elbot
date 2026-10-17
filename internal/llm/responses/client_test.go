@@ -12,9 +12,11 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"elbot/internal/llm"
+	"elbot/internal/testutil"
 )
 
 func mustClient(t *testing.T, url string, extras map[string]any, modelExtras map[string]map[string]any, opts RequestOptions) *Client {
@@ -196,48 +198,52 @@ func TestResponseExtrasCannotReplaceOwnedFieldsOrEachOther(t *testing.T) {
 func TestResponseTimeoutsAndCancellation(t *testing.T) {
 	for _, first := range []bool{true, false} {
 		t.Run(fmt.Sprint("first=", first), func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "text/event-stream")
-				w.(http.Flusher).Flush()
-				if !first {
-					emit(w, "response.created", `{"type":"response.created","response":{"id":"r","status":"in_progress"}}`)
+			synctest.Test(t, func(t *testing.T) {
+				srv := testutil.NewVirtualHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "text/event-stream")
+					w.(http.Flusher).Flush()
+					if !first {
+						emit(w, "response.created", `{"type":"response.created","response":{"id":"r","status":"in_progress"}}`)
+					}
+					<-r.Context().Done()
+				}))
+				client := mustClient(t, srv.URL, nil, nil, RequestOptions{HTTPClient: srv.Client(), FirstChunkTimeout: 40 * time.Millisecond, StreamIdleTimeout: 40 * time.Millisecond})
+				_, err := client.GenerateText(context.Background(), llm.TextRequest{Model: "m", Input: "input"})
+				want := "idle timeout"
+				if first {
+					want = "first stream chunk timeout"
 				}
-				<-r.Context().Done()
-			}))
-			defer srv.Close()
-			client := mustClient(t, srv.URL, nil, nil, RequestOptions{FirstChunkTimeout: 40 * time.Millisecond, StreamIdleTimeout: 40 * time.Millisecond})
-			_, err := client.GenerateText(context.Background(), llm.TextRequest{Model: "m", Input: "input"})
-			want := "idle timeout"
-			if first {
-				want = "first stream chunk timeout"
-			}
-			if err == nil || !strings.Contains(err.Error(), want) {
-				t.Fatalf("error=%v", err)
-			}
+				if err == nil || !strings.Contains(err.Error(), want) {
+					t.Fatalf("error=%v", err)
+				}
+			})
 		})
 	}
-	started := make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		emit(w, "response.created", `{"type":"response.created"}`)
-		close(started)
-		<-r.Context().Done()
-	}))
-	defer srv.Close()
-	client := mustClient(t, srv.URL, nil, nil, RequestOptions{})
-	ctx, cancel := context.WithCancel(context.Background())
-	errCh := make(chan error, 1)
-	go func() { _, err := client.GenerateText(ctx, llm.TextRequest{Model: "m", Input: "input"}); errCh <- err }()
-	<-started
-	cancel()
-	select {
-	case err := <-errCh:
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("error=%v", err)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("text generation did not stop")
-	}
+	t.Run("cancel", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			started := make(chan struct{})
+			srv := testutil.NewVirtualHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				emit(w, "response.created", `{"type":"response.created"}`)
+				close(started)
+				<-r.Context().Done()
+			}))
+			client := mustClient(t, srv.URL, nil, nil, RequestOptions{HTTPClient: srv.Client()})
+			ctx, cancel := context.WithCancel(context.Background())
+			errCh := make(chan error, 1)
+			go func() { _, err := client.GenerateText(ctx, llm.TextRequest{Model: "m", Input: "input"}); errCh <- err }()
+			<-started
+			cancel()
+			select {
+			case err := <-errCh:
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("error=%v", err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("text generation did not stop")
+			}
+		})
+	})
 }
 
 func TestResponseMetadataAndRetryKeepSharedNotifier(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
@@ -28,6 +29,16 @@ type preparedArgumentTool struct {
 	arguments *string
 }
 
+// A tool invocation gives its asynchronous preview time to finish before the
+// simulated turn ends and cancels its request context. Wait synchronizes with
+// the notification workers without depending on real command startup time.
+type previewSyncShellTool struct{ agentShellTool }
+
+func (t previewSyncShellTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+	synctest.Wait()
+	return t.agentShellTool.Call(ctx, req)
+}
+
 func (t preparedArgumentTool) Name() string { return "prepared_args" }
 
 func (t preparedArgumentTool) Info() tool.Info {
@@ -47,79 +58,82 @@ func (t preparedArgumentTool) Call(ctx context.Context, req tool.CallRequest) (*
 }
 
 func TestChatExecutesToolAndFollowsUp(t *testing.T) {
-	p := &fakePlatform{}
-	store := newTestStore(t)
-	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
-		{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
-		{{DeltaContent: "目录已查看"}},
-	}}
+	synctest.Test(t, func(t *testing.T) {
+		p := &fakePlatform{}
+		store := newTestStore(t)
+		f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+			{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
+			{{DeltaContent: "目录已查看"}},
+		}}
 
-	registry := tool.NewRegistry()
-	if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.Register(newAgentShellTool()); err != nil {
-		t.Fatal(err)
-	}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
-		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
-		cfg.ToolRegistry = registry
+		registry := tool.NewRegistry()
+		if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
+			t.Fatal(err)
+		}
+		if err := registry.Register(previewSyncShellTool{}); err != nil {
+			t.Fatal(err)
+		}
+		a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, store, func(cfg *testAgentOptions) {
+			cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+			cfg.ToolRegistry = registry
+		})
+		ctx := context.Background()
+
+		if err := a.HandleMessage(ctx, "看看目录"); err != nil {
+			t.Fatalf("HandleMessage: %v", err)
+		}
+		synctest.Wait()
+		preview := p.preview.String()
+		if !strings.Contains(preview, "正在调用 shell") {
+			t.Fatalf("missing preview output: %q", preview)
+		}
+		if !strings.Contains(p.out.String(), "目录已查看") {
+			t.Fatalf("missing final answer: %q", p.out.String())
+		}
+		requests := f.chatRequests()
+		if len(requests) != 2 {
+			t.Fatalf("chat requests = %d", len(requests))
+		}
+		followup := requests[1]
+		if len(followup.Messages) < 2 {
+			t.Fatalf("followup messages = %#v", followup.Messages)
+		}
+		last := followup.Messages[len(followup.Messages)-1]
+		if last.Role != llm.RoleTool || last.ToolCallID != "call_1" || last.Name != "shell" || !strings.Contains(llm.SegmentsContentText(last.Segments), "stdout") {
+			t.Fatalf("missing tool result message: %#v", last)
+		}
+
+		sessions, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "cli:local", Platform: p.Name(), PlatformScopeID: "local"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		messages, err := store.Messages().ListBySession(ctx, sessions[0].ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(messages) != 4 || messages[1].Role != storage.RoleAssistant || messages[2].Role != storage.RoleTool || messages[3].Content != "目录已查看" {
+			t.Fatalf("messages = %#v", messages)
+		}
+		p.out.Reset()
+		if err := a.HandleMessage(ctx, "/status"); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+		if !strings.Contains(p.out.String(), "tool usage: persisted: shell x1") {
+			t.Fatalf("status missing tool usage: %q", p.out.String())
+		}
+
+		resumedAgent := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
+		if err := resumedAgent.HandleMessage(ctx, "/resume "+sessions[0].ID); err != nil {
+			t.Fatalf("resume: %v", err)
+		}
+		p.out.Reset()
+		if err := resumedAgent.HandleMessage(ctx, "/status"); err != nil {
+			t.Fatalf("resumed status: %v", err)
+		}
+		if !strings.Contains(p.out.String(), "tool usage: persisted: shell x1") {
+			t.Fatalf("resumed status missing tool usage: %q", p.out.String())
+		}
 	})
-	ctx := context.Background()
-
-	if err := a.HandleMessage(ctx, "看看目录"); err != nil {
-		t.Fatalf("HandleMessage: %v", err)
-	}
-	preview := p.preview.String()
-	if !strings.Contains(preview, "正在调用 shell") {
-		t.Fatalf("missing preview output: %q", preview)
-	}
-	if !strings.Contains(p.out.String(), "目录已查看") {
-		t.Fatalf("missing final answer: %q", p.out.String())
-	}
-	requests := f.chatRequests()
-	if len(requests) != 2 {
-		t.Fatalf("chat requests = %d", len(requests))
-	}
-	followup := requests[1]
-	if len(followup.Messages) < 2 {
-		t.Fatalf("followup messages = %#v", followup.Messages)
-	}
-	last := followup.Messages[len(followup.Messages)-1]
-	if last.Role != llm.RoleTool || last.ToolCallID != "call_1" || last.Name != "shell" || !strings.Contains(llm.SegmentsContentText(last.Segments), "stdout") {
-		t.Fatalf("missing tool result message: %#v", last)
-	}
-
-	sessions, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "cli:local", Platform: p.Name(), PlatformScopeID: "local"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	messages, err := store.Messages().ListBySession(ctx, sessions[0].ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(messages) != 4 || messages[1].Role != storage.RoleAssistant || messages[2].Role != storage.RoleTool || messages[3].Content != "目录已查看" {
-		t.Fatalf("messages = %#v", messages)
-	}
-	p.out.Reset()
-	if err := a.HandleMessage(ctx, "/status"); err != nil {
-		t.Fatalf("status: %v", err)
-	}
-	if !strings.Contains(p.out.String(), "tool usage: persisted: shell x1") {
-		t.Fatalf("status missing tool usage: %q", p.out.String())
-	}
-
-	resumedAgent := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, store)
-	if err := resumedAgent.HandleMessage(ctx, "/resume "+sessions[0].ID); err != nil {
-		t.Fatalf("resume: %v", err)
-	}
-	p.out.Reset()
-	if err := resumedAgent.HandleMessage(ctx, "/status"); err != nil {
-		t.Fatalf("resumed status: %v", err)
-	}
-	if !strings.Contains(p.out.String(), "tool usage: persisted: shell x1") {
-		t.Fatalf("resumed status missing tool usage: %q", p.out.String())
-	}
 }
 
 func TestPreparedToolArgumentsReachExecutionLLMAndTranscript(t *testing.T) {
@@ -377,29 +391,32 @@ func TestDiscoverToolDoesNotRepeatElyphRuleCardAcrossTurns(t *testing.T) {
 }
 
 func TestChatToolCallShowsAssistantTextAndArguments(t *testing.T) {
-	p := &fakePlatform{}
-	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
-		{{DeltaContent: "我先看一下。"}, {ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
-		{{DeltaContent: "看完了"}},
-	}}
+	synctest.Test(t, func(t *testing.T) {
+		p := &fakePlatform{}
+		f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
+			{{DeltaContent: "我先看一下。"}, {ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
+			{{DeltaContent: "看完了"}},
+		}}
 
-	registry := tool.NewRegistry()
-	_ = registry.Register(tool.NewDiscoverTool(registry))
-	_ = registry.Register(newAgentShellTool())
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
-		cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
-		cfg.ToolRegistry = registry
+		registry := tool.NewRegistry()
+		_ = registry.Register(tool.NewDiscoverTool(registry))
+		_ = registry.Register(previewSyncShellTool{})
+		a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
+			cfg.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
+			cfg.ToolRegistry = registry
+		})
+
+		if err := a.HandleMessage(context.Background(), "看看目录"); err != nil {
+			t.Fatalf("HandleMessage: %v", err)
+		}
+		synctest.Wait()
+		if !strings.Contains(p.preview.String(), "正在调用 shell") || !strings.Contains(p.preview.String(), `"cmd":"ls"`) {
+			t.Fatalf("missing cli tool arguments preview: %q", p.preview.String())
+		}
+		if !strings.Contains(p.out.String(), "我先看一下。") || !strings.Contains(p.out.String(), "看完了") {
+			t.Fatalf("missing streamed text: %q", p.out.String())
+		}
 	})
-
-	if err := a.HandleMessage(context.Background(), "看看目录"); err != nil {
-		t.Fatalf("HandleMessage: %v", err)
-	}
-	if !strings.Contains(p.preview.String(), "正在调用 shell") || !strings.Contains(p.preview.String(), `"cmd":"ls"`) {
-		t.Fatalf("missing cli tool arguments preview: %q", p.preview.String())
-	}
-	if !strings.Contains(p.out.String(), "我先看一下。") || !strings.Contains(p.out.String(), "看完了") {
-		t.Fatalf("missing streamed text: %q", p.out.String())
-	}
 }
 
 func TestToolPreviewConversationPolicyThroughChat(t *testing.T) {

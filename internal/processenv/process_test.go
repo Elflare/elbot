@@ -1,7 +1,6 @@
 package processenv
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"net"
@@ -9,6 +8,7 @@ import (
 	"os/exec"
 	"runtime"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -81,48 +81,74 @@ func TestCommandContextCancelsDescendants(t *testing.T) {
 	}
 	for _, mode := range []string{"cancel", "timeout", "uv"} {
 		t.Run(mode, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(t.Context())
-			defer cancel()
-			if mode == "timeout" {
-				var timeoutCancel context.CancelFunc
-				ctx, timeoutCancel = context.WithTimeout(ctx, 500*time.Millisecond)
-				defer timeoutCancel()
-			}
-			listener := newProcessTreeListener(t)
-			address := listener.Addr().String()
-			cmd := (Environment{}).CommandContext(ctx, executable, "-test.run=^TestProcessTreeHelper$", "--", "parent", address)
+			var uv string
 			if mode == "uv" {
-				uv, err := exec.LookPath("uv")
+				var err error
+				uv, err = exec.LookPath("uv")
 				if err != nil {
 					t.Skip("uv is not installed")
 				}
-				cmd = (Environment{}).CommandContext(ctx, uv, "--no-cache", "run", "--offline", "--no-project", "--no-sync", "--", executable, "-test.run=^TestProcessTreeHelper$", "--", "parent", address)
 			}
-			var output bytes.Buffer
-			cmd.Stdout, cmd.Stderr = &output, &output
-			finished := make(chan error, 1)
-			go func() { finished <- cmd.Run() }()
-			conn := acceptProcessTreeHelper(t, listener)
-			if mode != "timeout" {
-				cancel()
-			}
-			select {
-			case err := <-finished:
-				if err == nil {
+			listener := newProcessTreeListener(t)
+			ready := make(chan *net.TCPConn, 1)
+			// This goroutine and its network watchdogs use real time. Receiving
+			// its ready signal keeps the bubble clock still during process startup.
+			go func() {
+				defer close(ready)
+				ready <- acceptProcessTreeHelper(t, listener)
+			}()
+			synctest.Test(t, func(t *testing.T) {
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				if mode == "timeout" {
+					var timeoutCancel context.CancelFunc
+					ctx, timeoutCancel = context.WithTimeout(ctx, 500*time.Millisecond)
+					defer timeoutCancel()
+				}
+				address := listener.Addr().String()
+				cmd := (Environment{}).CommandContext(ctx, executable, "-test.run=^TestProcessTreeHelper$", "--", "parent", address)
+				if mode == "uv" {
+					cmd = (Environment{}).CommandContext(ctx, uv, "--no-cache", "run", "--offline", "--no-project", "--no-sync", "--", executable, "-test.run=^TestProcessTreeHelper$", "--", "parent", address)
+				}
+				// Files avoid exec's output-copy goroutines waiting on real pipes:
+				// those would prevent the virtual clock from advancing.
+				output, err := os.CreateTemp(t.TempDir(), "process-output")
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer output.Close()
+				cmd.Stdout, cmd.Stderr = output, output
+				if err := cmd.Start(); err != nil {
+					t.Fatal(err)
+				}
+				defer func() {
+					if cmd.ProcessState == nil {
+						_ = KillProcessTree(cmd)
+						_ = cmd.Wait()
+					}
+				}()
+				conn := <-ready
+				if conn == nil {
+					t.Fatal("helper did not become ready")
+				}
+				if mode == "timeout" {
+					<-ctx.Done()
+				} else {
+					cancel()
+				}
+				if err := cmd.Wait(); err == nil {
 					t.Fatal("canceled process succeeded")
 				}
-			case <-time.After(5 * time.Second):
-				t.Fatal("canceled command did not finish")
-			}
-			// The child cannot close voluntarily without a finish command.
-			var probe [1]byte
-			n, err := conn.Read(probe[:])
-			if n != 0 || err == nil {
-				t.Fatalf("descendant survived cancellation: read %d bytes, error %v", n, err)
-			}
-			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				t.Fatalf("descendant connection remained open: %v", err)
-			}
+				// The child cannot close voluntarily without a finish command.
+				var probe [1]byte
+				n, err := conn.Read(probe[:])
+				if n != 0 || err == nil {
+					t.Fatalf("descendant survived cancellation: read %d bytes, error %v", n, err)
+				}
+				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+					t.Fatalf("descendant connection remained open: %v", err)
+				}
+			})
 		})
 	}
 }

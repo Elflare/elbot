@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"elbot/internal/config"
@@ -111,50 +112,52 @@ func TestAppendWaitShutdownIsSilent(t *testing.T) {
 }
 
 func TestAppendExpiryCloseWaitsForOutput(t *testing.T) {
-	started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	var unblock sync.Once
-	hooks := newTestHookManager()
+	synctest.Test(t, func(t *testing.T) {
+		started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+		var unblock sync.Once
+		hooks := newTestHookManager()
 
-	hooks.Register(hook.Registration{Point: hook.PointAgentOutputPrepared, Name: "blocked expiry", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
-		if strings.Contains(llm.SegmentsTextOnly(e.Message.Segments), "追加确认已过期") {
-			close(started)
-			<-ctx.Done()
-			close(canceled)
-			<-release
-			return e, events.LogResult{ResultStatus: events.ResultCanceled, Content: "test source canceled"}, ctx.Err()
+		hooks.Register(hook.Registration{Point: hook.PointAgentOutputPrepared, Name: "blocked expiry", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
+			if strings.Contains(llm.SegmentsTextOnly(e.Message.Segments), "追加确认已过期") {
+				close(started)
+				<-ctx.Done()
+				close(canceled)
+				<-release
+				return e, events.LogResult{ResultStatus: events.ResultCanceled, Content: "test source canceled"}, ctx.Err()
+			}
+			return e, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
+		})})
+		a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(opts *testAgentOptions) { opts.HookManager = hooks })
+		t.Cleanup(func() { unblock.Do(func() { close(release) }) })
+		a.execution.waitPolicy.(*ConfirmationPolicy).userConfirmationTimeout = 10 * time.Millisecond
+		startAppendWait(t, a, contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "cli:review", Role: contextinfo.RoleUser}))
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("expiry output did not start")
 		}
-		return e, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})})
-	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(opts *testAgentOptions) { opts.HookManager = hooks })
-	t.Cleanup(func() { unblock.Do(func() { close(release) }) })
-	a.execution.waitPolicy.(*ConfirmationPolicy).userConfirmationTimeout = 10 * time.Millisecond
-	startAppendWait(t, a, contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "cli:review", Role: contextinfo.RoleUser}))
-	select {
-	case <-started:
-	case <-time.After(time.Second):
-		t.Fatal("expiry output did not start")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
-	defer cancel()
-	if err := a.Close(ctx); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("Close returned before output exited: %v", err)
-	}
-	select {
-	case <-canceled:
-	default:
-		t.Fatal("output did not receive cancellation")
-	}
-	select {
-	case <-a.Done():
-		t.Fatal("Done closed with output still active")
-	default:
-	}
-	unblock.Do(func() { close(release) })
-	select {
-	case <-a.Done():
-	case <-time.After(time.Second):
-		t.Fatal("output exit did not finish shutdown")
-	}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+		defer cancel()
+		if err := a.Close(ctx); !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("Close returned before output exited: %v", err)
+		}
+		select {
+		case <-canceled:
+		default:
+			t.Fatal("output did not receive cancellation")
+		}
+		select {
+		case <-a.Done():
+			t.Fatal("Done closed with output still active")
+		default:
+		}
+		unblock.Do(func() { close(release) })
+		select {
+		case <-a.Done():
+		case <-time.After(time.Second):
+			t.Fatal("output exit did not finish shutdown")
+		}
+	})
 }
 
 func TestAppendWaitRegistrationRacesClose(t *testing.T) {

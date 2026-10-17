@@ -6,6 +6,7 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/media"
 	"elbot/internal/storage"
+	"elbot/internal/testutil"
 	"errors"
 	"io"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -24,38 +26,39 @@ func enableMedia(t *testing.T, s *Service) {
 }
 
 func TestDirectMediaUsesPerCallLimits(t *testing.T) {
-	ctx := context.Background()
-	s, close := newTestService(t, func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-		return delivery.Receipt{PlatformMessageIDs: []string{"sent"}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
-	})
-	defer close()
-	enableMedia(t, s)
-	s.media.MaxImportBytes = 4
-	s.media.DownloadTimeout = time.Millisecond
-	s.cfg.Segment.MaxFileBytes = 3
-	s.cfg.Segment.DownloadTimeoutSecs = 1
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		select {
-		case <-time.After(50 * time.Millisecond):
-			_, _ = io.WriteString(w, "1234")
-		case <-r.Context().Done():
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		s, close := newTestService(t, func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+			return delivery.Receipt{PlatformMessageIDs: []string{"sent"}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+		})
+		defer close()
+		enableMedia(t, s)
+		s.media.MaxImportBytes = 4
+		s.media.DownloadTimeout = time.Millisecond
+		s.cfg.Segment.MaxFileBytes = 3
+		s.cfg.Segment.DownloadTimeoutSecs = 1
+		server := testutil.NewVirtualDefaultHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			select {
+			case <-time.After(50 * time.Millisecond):
+				_, _ = io.WriteString(w, "1234")
+			case <-r.Context().Done():
+			}
+		}))
+		req := testRequest(ModeDirect)
+		req.Targets = []Target{{Platform: "qqonebot", Type: "group", ID: "123"}}
+		req.Segments = []Segment{{Kind: SegmentKindFile, URL: server.URL, Name: "test.txt"}}
+		if _, err := s.Handle(ctx, "secret", req); err == nil {
+			t.Fatal("accepted media above Elnis limit")
 		}
-	}))
-	defer server.Close()
-	req := testRequest(ModeDirect)
-	req.Targets = []Target{{Platform: "qqonebot", Type: "group", ID: "123"}}
-	req.Segments = []Segment{{Kind: SegmentKindFile, URL: server.URL, Name: "test.txt"}}
-	if _, err := s.Handle(ctx, "secret", req); err == nil {
-		t.Fatal("accepted media above Elnis limit")
-	}
-	s.cfg.Segment.MaxFileBytes = 4
-	req.ID = storage.NewID()
-	if _, err := s.Handle(ctx, "secret", req); err != nil {
-		t.Fatalf("boundary import with Elnis timeout failed: %v", err)
-	}
-	if s.media.MaxImportBytes != 4 || s.media.DownloadTimeout != time.Millisecond {
-		t.Fatal("Elnis changed shared manager settings")
-	}
+		s.cfg.Segment.MaxFileBytes = 4
+		req.ID = storage.NewID()
+		if _, err := s.Handle(ctx, "secret", req); err != nil {
+			t.Fatalf("boundary import with Elnis timeout failed: %v", err)
+		}
+		if s.media.MaxImportBytes != 4 || s.media.DownloadTimeout != time.Millisecond {
+			t.Fatal("Elnis changed shared manager settings")
+		}
+	})
 }
 
 func TestDirectMediaCenterAndNoEagerDownloads(t *testing.T) {

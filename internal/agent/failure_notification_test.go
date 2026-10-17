@@ -416,16 +416,24 @@ func TestFailureNotificationKeepsOriginAfterSessionSwitch(t *testing.T) {
 }
 
 func TestTurnDeadlineNotifiesFromLifecycle(t *testing.T) {
-	p := &fakePlatform{}
-	a := newTestAgent(t, p, &fakeLLM{chatBlocks: []fakeLLMBlock{{started: make(chan struct{}), release: make(chan struct{})}}}, "model", config.ProviderConfig{}, newTestStore(t))
-	a.execution.responseTimeout = 20 * time.Millisecond
-	if err := a.input.HandleInput(t.Context(), "hello"); err != nil {
-		t.Fatalf("lifecycle timeout escaped as another failure: %v", err)
-	}
-	output := awaitNotificationText(t, &p.out, rules.TurnTimeout)
-	if strings.Count(output, rules.TurnTimeout) != 1 {
-		t.Fatalf("notification=%q", output)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		p := &fakePlatform{}
+		block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
+		a := newTestAgent(t, p, &fakeLLM{chatBlocks: []fakeLLMBlock{block}}, "model", config.ProviderConfig{}, newTestStore(t))
+		a.execution.responseTimeout = 20 * time.Millisecond
+		done := make(chan error, 1)
+		go func() { done <- a.input.HandleInput(t.Context(), "hello") }()
+		<-block.started
+		synctest.Wait()
+		time.Sleep(a.execution.responseTimeout)
+		if err := <-done; err != nil {
+			t.Fatalf("lifecycle timeout escaped as another failure: %v", err)
+		}
+		output := awaitNotificationText(t, &p.out, rules.TurnTimeout)
+		if strings.Count(output, rules.TurnTimeout) != 1 {
+			t.Fatalf("notification=%q", output)
+		}
+	})
 }
 
 func TestDialogueSynchronousHookFailuresHaveOneTerminalReport(t *testing.T) {
