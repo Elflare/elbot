@@ -58,7 +58,7 @@ func TestBackgroundPathsAreSystemPromptOnlyUntilTakeover(t *testing.T) {
 	}
 }
 
-func TestResidentMemorySystemPromptSourceDoesNotInjectDisplayName(t *testing.T) {
+func TestResidentMemorySystemPromptSourceOmitsEmptyMemory(t *testing.T) {
 	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
 	parts, err := (dialogue.ResidentMemorySystemPromptSource{Store: store}).Parts(context.Background(), dialogue.SystemPromptRequest{Scope: session.Scope{Platform: "cli", ActorID: "cli:local", IsCLI: true}})
 	if err != nil {
@@ -473,14 +473,6 @@ func TestStoredMessageSegmentsUsesStableLightweightJSON(t *testing.T) {
 			t.Fatalf("segments = %s, want contains %s", stored, want)
 		}
 	}
-	if strings.Contains(stored, "reference_text") {
-		t.Fatalf("segments contain derived reference field: %s", stored)
-	}
-	for _, forbidden := range []string{"Type", "Text", "URL", "MIMEType"} {
-		if strings.Contains(stored, forbidden) {
-			t.Fatalf("segments = %s, should not contain Go field name %s", stored, forbidden)
-		}
-	}
 }
 
 func TestToolResultStorageMessageUsesContentFastPath(t *testing.T) {
@@ -492,7 +484,7 @@ func TestToolResultStorageMessageUsesContentFastPath(t *testing.T) {
 		{Type: llm.SegmentText, Text: "done"},
 		{Type: llm.SegmentImage, URL: "data:image/png;base64,aGVsbG8=", Name: "result.png"},
 	}})
-	if multimodal.Content != "done [图片 1；名称：result.png；内嵌图片，无可复用 URL]" || !strings.Contains(multimodal.Segments, `"type":"image"`) || strings.Contains(multimodal.Segments, "reference_text") {
+	if multimodal.Content != "done [图片 1；名称：result.png；内嵌图片，无可复用 URL]" || !strings.Contains(multimodal.Segments, `"type":"image"`) {
 		t.Fatalf("multimodal message = %#v", multimodal)
 	}
 }

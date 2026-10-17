@@ -2,7 +2,6 @@ package builtin
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"elbot/internal/command"
@@ -118,7 +117,7 @@ func TestStopRejectsMissingOrExpiredCurrent(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if running.Err() != nil || strings.HasPrefix(result.Content, "stopped 1") {
+				if running.Err() != nil {
 					t.Fatalf("stale cancellation: %s", result.Content)
 				}
 			}

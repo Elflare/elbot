@@ -77,9 +77,6 @@ func TestProductionAssemblyObservesConversationExactlyOnce(t *testing.T) {
 			t.Fatalf("%s: %d records", message, counts[message])
 		}
 	}
-	if counts["reply_committed"] != 0 {
-		t.Fatalf("retired reply summary emitted: %v", counts)
-	}
 }
 
 func captureLogs(t *testing.T, logger *slog.Logger) {

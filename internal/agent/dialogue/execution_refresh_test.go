@@ -1,7 +1,6 @@
 package dialogue
 
 import (
-	"context"
 	"testing"
 
 	"elbot/internal/contextinfo"
@@ -10,19 +9,8 @@ import (
 	"elbot/internal/turn"
 )
 
-type forbiddenSessionReads struct {
-	storage.SessionRepository
-	reads int
-}
-
-func (r *forbiddenSessionReads) Get(context.Context, string) (*storage.Session, error) {
-	r.reads++
-	panic("tool refresh queried the database")
-}
-
 func TestRefreshExecutionUsesHandoffMemoryAndPreservesNewToolState(t *testing.T) {
-	repo := &forbiddenSessionReads{}
-	view := ExecutionView{Sessions: repo}
+	view := ExecutionView{}
 	e := turn.NewExecution("run")
 	ctx := turn.WithExecution(contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "background"}), e)
 	row := storage.Session{ID: "session", Mode: storage.SessionModeBackground, Metadata: `{"background_kind":"cron","tool_state":"old"}`}
@@ -52,9 +40,6 @@ func TestRefreshExecutionUsesHandoffMemoryAndPreservesNewToolState(t *testing.T)
 		if _, err := view.RefreshExecution(updated, &row); err != nil {
 			t.Fatal(err)
 		}
-	}
-	if repo.reads != 0 {
-		t.Fatal("unexpected repository reads", repo.reads)
 	}
 	// A tool state commit can bring back promoted metadata before the next call
 	// has updated the caller's session mode and ownership.

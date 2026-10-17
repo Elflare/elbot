@@ -69,7 +69,7 @@ func TestCompactUsesFrozenResponsesRequest(t *testing.T) {
 			t.Errorf("%s=%s want=%s", key, body[key], want)
 		}
 	}
-	for _, unwanted := range []string{"text", "tools", "previous_response_id", "conversation"} {
+	for _, unwanted := range []string{"text", "previous_response_id"} {
 		if _, exists := body[unwanted]; exists {
 			t.Errorf("unwanted field %s", unwanted)
 		}

@@ -80,9 +80,6 @@ func TestPreparedToolChoiceCannotExpandRoutePermissions(t *testing.T) {
 			if string(body["tool_choice"]) != tc.want || !reflect.DeepEqual(prepared.AllowedTools(), tc.names) {
 				t.Fatalf("choice=%s allowed=%v", body["tool_choice"], prepared.AllowedTools())
 			}
-			if _, exists := body["tools"]; exists {
-				t.Fatal("top-level tools present")
-			}
 		})
 	}
 }

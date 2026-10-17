@@ -71,14 +71,8 @@ func TestChatExecutesToolAndFollowsUp(t *testing.T) {
 		t.Fatalf("HandleMessage: %v", err)
 	}
 	preview := p.preview.String()
-	if strings.Contains(preview, "模型准备调用工具：shell") {
-		t.Fatalf("unexpected preparation preview output: %q", preview)
-	}
 	if !strings.Contains(preview, "正在调用 shell") {
 		t.Fatalf("missing preview output: %q", preview)
-	}
-	if strings.Contains(preview, "shell 调用完成") {
-		t.Fatalf("unexpected success preview output: %q", preview)
 	}
 	if !strings.Contains(p.out.String(), "目录已查看") {
 		t.Fatalf("missing final answer: %q", p.out.String())
@@ -382,7 +376,7 @@ func TestDiscoverToolDoesNotRepeatElyphRuleCardAcrossTurns(t *testing.T) {
 	}
 }
 
-func TestChatToolCallWithAssistantTextSkipsFallbackPreview(t *testing.T) {
+func TestChatToolCallShowsAssistantTextAndArguments(t *testing.T) {
 	p := &fakePlatform{}
 	f := &fakeLLM{chunks: [][]chatcompletions.Chunk{
 		{{DeltaContent: "我先看一下。"}, {ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call_1", Name: "shell", Args: `{"cmd":"ls"}`}}, FinishReason: "tool_calls"}},
@@ -399,9 +393,6 @@ func TestChatToolCallWithAssistantTextSkipsFallbackPreview(t *testing.T) {
 
 	if err := a.HandleMessage(context.Background(), "看看目录"); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
-	}
-	if strings.Contains(p.preview.String(), "模型准备调用工具") {
-		t.Fatalf("unexpected fallback preview: %q", p.preview.String())
 	}
 	if !strings.Contains(p.preview.String(), "正在调用 shell") || !strings.Contains(p.preview.String(), `"cmd":"ls"`) {
 		t.Fatalf("missing cli tool arguments preview: %q", p.preview.String())

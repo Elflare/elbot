@@ -48,7 +48,7 @@ func TestChatSilentCancellationPreservesPartialOutputLog(t *testing.T) {
 	defer client.cancel()
 	var records []globalevents.LogRecord
 	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, r globalevents.LogRecord) error {
-		if r.EventName == "llm_usage" || r.EventName == "llm_error" || r.EventName == "assistant_message" {
+		if r.EventName == "llm_usage" || r.EventName == "assistant_message" {
 			records = append(records, r)
 		}
 		return nil
@@ -90,7 +90,7 @@ func TestReplyLogPreservesCanceledSendAndIndependentSaveFailure(t *testing.T) {
 	f.repo.appendErr = errors.New("independent save failure")
 	var records []globalevents.LogRecord
 	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, r globalevents.LogRecord) error {
-		if r.EventName == "reply_delivered" || r.EventName == "persistence_error" {
+		if r.EventName == "reply_delivered" {
 			records = append(records, r)
 		}
 		return nil

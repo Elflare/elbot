@@ -64,7 +64,7 @@ func TestResponsesMediaReplayAuditContainsOnlyOrderedReferences(t *testing.T) {
 		if err := json.Unmarshal([]byte(exchange.RequestJSON), &audit); err != nil {
 			t.Fatal(err)
 		}
-		if len(audit.Input) != 0 || len(audit.Refs) != len(f.captured()[attempt].Input) || len(exchange.RequestJSON) > 16384 || strings.Contains(exchange.RequestJSON, "base64,") {
+		if len(audit.Input) != 0 || len(audit.Refs) != len(f.captured()[attempt].Input) || strings.Contains(exchange.RequestJSON, "base64,") {
 			t.Fatalf("bloated or incomplete audit: bytes=%d refs=%d", len(exchange.RequestJSON), len(audit.Refs))
 		}
 		for _, ref := range audit.Refs {

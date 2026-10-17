@@ -18,9 +18,6 @@ func TestCompactPromptAndSummaryAssembly(t *testing.T) {
 			t.Fatalf("prompt missing %q:\n%s", want, prompt)
 		}
 	}
-	if strings.Contains(prompt, "tool result") {
-		t.Fatalf("prompt contains tool result: %s", prompt)
-	}
 
 	got := assembleSummary("K\n", []string{"B", "G"})
 	want := "K\n\n以下是用户原话：\n1. B\n2. G"

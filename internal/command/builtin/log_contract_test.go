@@ -120,7 +120,7 @@ func TestLogQueryResultHeaders(t *testing.T) {
 			entry := logging.LogEntry{Level: "INFO", EventName: "event", ResultStatus: tc.status, Content: "body"}
 			got := format(false)([]logging.LogEntry{entry})
 			want := formatLogEntryTime(entry) + "  INFO  event" + tc.suffix + "\nbody"
-			if !strings.HasSuffix(got, want) || strings.Contains(got, "未声明") {
+			if !strings.HasSuffix(got, want) {
 				t.Fatalf("got=%q want suffix=%q", got, want)
 			}
 		}

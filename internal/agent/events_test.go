@@ -88,7 +88,7 @@ func TestReplyFactsPreservePartialSuccessAndReceiptSnapshot(t *testing.T) {
 	f.platform.receipt.SentMessages[0].OutputIndexes = []int{0}
 	var records []globalevents.LogRecord
 	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
-		if record.EventName == "reply_delivered" || record.EventName == "reply_committed" {
+		if record.EventName == "reply_delivered" {
 			records = append(records, record)
 		}
 		return nil

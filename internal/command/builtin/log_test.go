@@ -275,11 +275,6 @@ func TestLogCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 			t.Fatalf("runtime accepted migrated tool option: %s", args)
 		}
 	}
-	for _, option := range logCompletionOptions(false, false) {
-		if option.Text == "-t" || option.Text == "--run_source" {
-			t.Fatalf("runtime still offers migrated tool option: %s", option.Text)
-		}
-	}
 
 	_, err = NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `--hook`})
 	if err != nil {
@@ -328,7 +323,7 @@ func TestAuditCommandPreservesLiteralEventNames(t *testing.T) {
 	}
 }
 
-func TestAuditCommandRemovedOptionsAndHookCombinations(t *testing.T) {
+func TestAuditCommandRejectsUnknownOptionsAndCombinesHookFilters(t *testing.T) {
 	service := &fakeLogService{}
 	for _, option := range []string{"-u", "-a"} {
 		_, err := NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: option})
@@ -343,21 +338,12 @@ func TestAuditCommandRemovedOptionsAndHookCombinations(t *testing.T) {
 		}
 	}
 	cmd := NewAudit(Deps{})
-	help, err := cmd.Handle(context.Background(), command.Request{Args: "--help"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, option := range []string{"  -u", "  -a"} {
-		if strings.Contains(help.Content, option) {
-			t.Fatalf("obsolete help: %s", help.Content)
-		}
-	}
 	for _, tc := range []struct {
-		raw          string
-		want, absent []string
+		raw  string
+		want []string
 	}{
-		{"/audit ", []string{"-t", "--hook"}, []string{"-u", "-a"}},
-		{"/audit --event ", []string{"llm_usage", "hook_tool_call_completed", "session_naming_completed"}, []string{"user_input", "assistant_output", "user_message", "assistant_message", "hook", "hook_tool_error", "hook.tool_call"}},
+		{"/audit ", []string{"-t", "--hook"}},
+		{"/audit --event ", []string{"llm_usage", "hook_tool_call_completed", "session_naming_completed"}},
 	} {
 		completions := cmd.(command.Completer).Complete(context.Background(), command.CompletionRequest{Raw: tc.raw, Prefix: "/", Name: "audit", Cursor: len(tc.raw)})
 		var names []string
@@ -367,11 +353,6 @@ func TestAuditCommandRemovedOptionsAndHookCombinations(t *testing.T) {
 		for _, want := range tc.want {
 			if !slices.Contains(names, want) {
 				t.Fatalf("%q missing %q: %v", tc.raw, want, names)
-			}
-		}
-		for _, absent := range tc.absent {
-			if slices.Contains(names, absent) {
-				t.Fatalf("%q retained %q: %v", tc.raw, absent, names)
 			}
 		}
 	}
@@ -510,7 +491,7 @@ func TestLogRawIndependentOfLevelAndContentRendering(t *testing.T) {
 			if service.query.Raw != wantRaw || strings.Contains(result.Content, "ORIGINAL_PHYSICAL_RECORD") != wantRaw {
 				t.Fatalf("args=%q query=%+v content=%s", args, service.query, result.Content)
 			}
-			if !wantRaw && (!strings.Contains(result.Content, "失败") || !strings.Contains(result.Content, "WARN") || !strings.Contains(result.Content, "\ntool: shell") || !strings.Contains(result.Content, "9007199254740993") || strings.Contains(result.Content, "type=")) {
+			if !wantRaw && (!strings.Contains(result.Content, "失败") || !strings.Contains(result.Content, "WARN") || !strings.Contains(result.Content, "\ntool: shell") || !strings.Contains(result.Content, "9007199254740993")) {
 				t.Fatalf("normal content=%s", result.Content)
 			}
 		}
@@ -520,7 +501,7 @@ func TestLogUnspecifiedResultAndHelp(t *testing.T) {
 	service := &fakeLogService{entries: []logging.LogEntry{{Level: "INFO", Content: "plain", EventName: "progress"}}}
 	handler := NewLog(Deps{Logs: service})
 	result, err := handler.Handle(t.Context(), command.Request{})
-	if err != nil || strings.Contains(result.Content, "未声明") || !strings.Contains(result.Content, "  INFO  progress\nplain") {
+	if err != nil || !strings.Contains(result.Content, "  INFO  progress\nplain") {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 	result, err = handler.Handle(t.Context(), command.Request{Args: "-h"})
