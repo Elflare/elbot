@@ -1,16 +1,21 @@
 package builtin
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"elbot/internal/processenv"
@@ -243,88 +248,116 @@ func waitForExtractWaiters(t *testing.T, cache *extractCache, key string, want i
 func TestWebExtractConcurrentPaginationAndCancellation(t *testing.T) {
 	for _, scenario := range []string{"pagination", "first canceled", "second canceled", "first timeout", "second timeout"} {
 		t.Run(scenario, func(t *testing.T) {
-			release := make(chan struct{})
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				select {
-				case <-release:
-					_, _ = w.Write([]byte("<html><title>Example</title><body>abcdef</body></html>"))
-				case <-r.Context().Done():
+			synctest.Test(t, func(t *testing.T) {
+				const target = "http://example.test/page"
+				release := make(chan struct{})
+				releaseFetch := sync.OnceFunc(func() { close(release) })
+				defer releaseFetch()
+				// Keep the HTTP exchange in the bubble; socket I/O cannot
+				// establish when both callers have joined the shared fetch.
+				transport := &http.Transport{DisableKeepAlives: true, DialContext: func(context.Context, string, string) (net.Conn, error) {
+					client, peer := net.Pipe()
+					go func() {
+						defer peer.Close()
+						req, err := http.ReadRequest(bufio.NewReader(peer))
+						if err != nil {
+							t.Error(err)
+							return
+						}
+						_, _ = io.Copy(io.Discard, req.Body)
+						_ = req.Body.Close()
+						<-release
+						body := "<html><title>Example</title><body>abcdef</body></html>"
+						response := &http.Response{StatusCode: http.StatusOK, ProtoMajor: 1, ProtoMinor: 1, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), ContentLength: int64(len(body)), Close: true}
+						_ = response.Write(peer)
+					}()
+					return client, nil
+				}}
+				defer transport.CloseIdleConnections()
+				extract := NewWebExtractTool()
+				extract.client = &http.Client{Transport: transport}
+				firstCtx, firstCancel := context.WithCancel(t.Context())
+				defer firstCancel()
+				secondCtx, secondCancel := context.WithCancel(t.Context())
+				defer secondCancel()
+				type outcome struct {
+					result *tool.Result
+					err    error
 				}
-			}))
-			defer server.Close()
-			extract := NewWebExtractTool()
-			extract.client = server.Client()
-			firstCtx, firstCancel := context.WithCancel(t.Context())
-			defer firstCancel()
-			secondCtx, secondCancel := context.WithCancel(t.Context())
-			defer secondCancel()
-			type outcome struct {
-				result *tool.Result
-				err    error
-			}
-			call := func(ctx context.Context, first bool) <-chan outcome {
-				out := make(chan outcome, 1)
-				args := map[string]any{"url": server.URL, "jina": false, "proxy": "disabled", "max_chars": 3, "timeout_ms": 3000}
-				if !first {
-					args["offset"] = 3
-					args["force_refresh"] = true
+				call := func(ctx context.Context, first bool) <-chan outcome {
+					out := make(chan outcome, 1)
+					args := map[string]any{"url": target, "jina": false, "proxy": "disabled", "max_chars": 3, "timeout_ms": 3000}
+					if !first {
+						args["offset"] = 3
+						args["force_refresh"] = true
+					}
+					if first && scenario == "first timeout" || !first && scenario == "second timeout" {
+						args["timeout_ms"] = 1000
+					}
+					raw, _ := json.Marshal(args)
+					go func() {
+						result, _, err := extract.Call(ctx, tool.CallRequest{Arguments: raw})
+						out <- outcome{result, err}
+					}()
+					return out
 				}
-				if first && scenario == "first timeout" || !first && scenario == "second timeout" {
-					args["timeout_ms"] = 300
+				key := extractCacheKey("direct", target, defaultRemoveSelector, extractProxyConfig{cacheKey: "disabled"})
+				waitFor := func(want int) {
+					// Do not advance time until every caller has reached a wait.
+					synctest.Wait()
+					extract.cache.mu.Lock()
+					defer extract.cache.mu.Unlock()
+					flight := extract.cache.inflight[key]
+					if flight == nil || flight.waiters != want {
+						t.Fatalf("shared fetch not ready for %d callers: %+v", want, flight)
+					}
 				}
-				raw, _ := json.Marshal(args)
-				go func() {
-					result, _, err := extract.Call(ctx, tool.CallRequest{Arguments: raw})
-					out <- outcome{result, err}
-				}()
-				return out
-			}
-			first := call(firstCtx, true)
-			key := extractCacheKey("direct", server.URL, defaultRemoveSelector, extractProxyConfig{cacheKey: "disabled"})
-			waitForExtractWaiters(t, extract.cache, key, 1)
-			second := call(secondCtx, false)
-			waitForExtractWaiters(t, extract.cache, key, 2)
-			read := func(out <-chan outcome) outcome {
-				t.Helper()
-				select {
-				case result := <-out:
-					return result
-				case <-time.After(4 * time.Second):
-					t.Fatal("extract did not finish")
-					return outcome{}
+				first := call(firstCtx, true)
+				waitFor(1)
+				second := call(secondCtx, false)
+				waitFor(2)
+				read := func(out <-chan outcome) outcome {
+					t.Helper()
+					select {
+					case result := <-out:
+						return result
+					case <-time.After(4 * time.Second):
+						t.Fatal("extract did not finish")
+						return outcome{}
+					}
 				}
-			}
-			if scenario != "pagination" {
-				canceled := first
-				if strings.HasPrefix(scenario, "second") {
-					canceled = second
+				if scenario != "pagination" {
+					canceled := first
+					if strings.HasPrefix(scenario, "second") {
+						canceled = second
+					}
+					wantErr := context.DeadlineExceeded
+					if scenario == "first canceled" {
+						firstCancel()
+						wantErr = context.Canceled
+					} else if scenario == "second canceled" {
+						secondCancel()
+						wantErr = context.Canceled
+					}
+					if result := read(canceled); !errors.Is(result.err, wantErr) {
+						t.Fatalf("canceled caller = %v; want %v", result.err, wantErr)
+					}
 				}
-				wantErr := context.DeadlineExceeded
-				if scenario == "first canceled" {
-					firstCancel()
-					wantErr = context.Canceled
-				} else if scenario == "second canceled" {
-					secondCancel()
-					wantErr = context.Canceled
+				releaseFetch()
+				for i, out := range []<-chan outcome{first, second} {
+					if i == 0 && strings.HasPrefix(scenario, "first") || i == 1 && strings.HasPrefix(scenario, "second") {
+						continue
+					}
+					result := read(out)
+					want := "Range: 0-3 / 14"
+					if i == 1 {
+						want = "Range: 3-6 / 14"
+					}
+					if result.err != nil || !strings.Contains(result.result.Content, want) || !strings.Contains(result.result.Content, "Cached: false") {
+						t.Fatalf("caller %d = %#v, %v", i, result.result, result.err)
+					}
 				}
-				if result := read(canceled); !errors.Is(result.err, wantErr) {
-					t.Fatalf("canceled caller = %v; want %v", result.err, wantErr)
-				}
-			}
-			close(release)
-			for i, out := range []<-chan outcome{first, second} {
-				if i == 0 && strings.HasPrefix(scenario, "first") || i == 1 && strings.HasPrefix(scenario, "second") {
-					continue
-				}
-				result := read(out)
-				want := "Range: 0-3 / 14"
-				if i == 1 {
-					want = "Range: 3-6 / 14"
-				}
-				if result.err != nil || !strings.Contains(result.result.Content, want) || !strings.Contains(result.result.Content, "Cached: false") {
-					t.Fatalf("caller %d = %#v, %v", i, result.result, result.err)
-				}
-			}
+			})
 		})
 	}
 }

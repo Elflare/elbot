@@ -3,11 +3,15 @@ package skill
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"elbot/internal/media"
 	"elbot/internal/processenv"
@@ -53,76 +57,153 @@ func TestSkillMediaBridge(t *testing.T) {
 	if projectedInput["type"] != "string" || projectedItems["type"] != "string" || projectedItems["pattern"] == "" || manifestItems["type"] != "media" {
 		t.Fatal("invalid schema projection or mutated manifest")
 	}
+	assertPrepared := func(t *testing.T) {
+		t.Helper()
+		refs, err := store.MediaReferences().ListMediaIDs(ctx, item.ID)
+		if err != nil || len(refs) != 1 || refs[0].OwnerType != "skill" {
+			t.Fatalf("input was not retained before execution: %v %v", refs, err)
+		}
+		matches, err := filepath.Glob(filepath.Join(dir, ".media-call-*"))
+		if err != nil || len(matches) != 1 {
+			t.Fatalf("media workspace was not prepared: %v %v", matches, err)
+		}
+	}
+	assertCleanup := func(t *testing.T) {
+		t.Helper()
+		refs, err := store.MediaReferences().ListMediaIDs(ctx, item.ID)
+		if err != nil || len(refs) != 0 {
+			t.Fatalf("refs %v %v", refs, err)
+		}
+		matches, err := filepath.Glob(filepath.Join(dir, ".media-call-*"))
+		if err != nil || len(matches) != 0 {
+			t.Fatalf("temporary files survived: %v %v", matches, err)
+		}
+	}
 	for _, kind := range []string{"go", "toml"} {
 		for _, mode := range []string{"ok", "large", "fail", "escape", "wait", "cancel"} {
 			t.Run(kind+"/"+mode, func(t *testing.T) {
-				runCtx := ctx
-				if mode == "cancel" {
-					canceled, cancel := context.WithCancel(ctx)
-					cancel()
-					runCtx = canceled
-				}
-				var raw []byte
-				var result *tool.Result
-				var err error
-				if kind == "go" {
-					timeout := 0
-					if mode == "wait" {
-						timeout = 100
+				run := func(t *testing.T) {
+					runCtx := ctx
+					if mode == "cancel" {
+						canceled, cancel := context.WithCancel(ctx)
+						cancel()
+						runCtx = canceled
 					}
-					raw, _ = json.Marshal(map[string]any{"skill_name": "media", "timeout_ms": timeout, "payload": map[string]any{"mode": mode, "media_inputs": []tool.MediaInput{{MediaID: item.ID}}}})
-					result, _, err = runner.Call(runCtx, tool.CallRequest{Arguments: raw})
-				} else {
-					current := command
-					if mode == "wait" {
-						current.Manifest.TimeoutSeconds = 1
-					}
-					raw, _ = json.Marshal(map[string]any{"input": item.ID, "mode": mode})
-					result, _, err = current.Call(runCtx, tool.CallRequest{Arguments: raw})
-				}
-				if mode == "ok" || mode == "large" {
-					if err != nil || len(result.Segments) != 2 {
-						t.Fatalf("result %#v %v", result, err)
-					}
-					segment := result.Segments[1]
-					data, _, readErr := center.Read(ctx, segment.MediaID)
-					if readErr != nil || string(data) != "output" || segment.URL != "" {
-						t.Fatalf("result media %#v %q %v", segment, data, readErr)
-					}
-					refs, _ := store.MediaReferences().ListMediaIDs(ctx, segment.MediaID)
-					if len(refs) != 0 {
-						t.Fatal("output refs leaked")
 
+					execute := runMediaCommand
+					if mode == "wait" {
+						execute = func(ctx context.Context, label string, cmd *exec.Cmd, mediaCall *tool.MediaCall) (*tool.Result, error) {
+							want := 100 * time.Millisecond
+							if kind == "toml" {
+								want = time.Second
+							}
+							deadline, ok := ctx.Deadline()
+							if !ok || deadline.Sub(time.Now()) != want || ctx.Err() != nil {
+								t.Fatalf("wrong deadline: %v %v %v", deadline, ok, ctx.Err())
+							}
+							assertPrepared(t)
+							<-ctx.Done()
+							return nil, commandError(ctx, label, ctx.Err(), "", "")
+						}
 					}
-					session := &storage.Session{OwnerID: "skill-test", Platform: "test", PlatformScopeID: "test"}
-					if err := store.Sessions().Create(ctx, session); err != nil {
-						t.Fatal(err)
+					var raw []byte
+					var result *tool.Result
+					var err error
+					if kind == "go" {
+						timeout := 0
+						if mode == "wait" {
+							timeout = 100
+						}
+						raw, _ = json.Marshal(map[string]any{"skill_name": "media", "timeout_ms": timeout, "payload": map[string]any{"mode": mode, "media_inputs": []tool.MediaInput{{MediaID: item.ID}}}})
+						result, _, err = runner.call(runCtx, tool.CallRequest{Arguments: raw}, execute)
+					} else {
+						current := command
+						if mode == "wait" {
+							current.Manifest.TimeoutSeconds = 1
+						}
+						raw, _ = json.Marshal(map[string]any{"input": item.ID, "mode": mode})
+						result, _, err = current.call(runCtx, tool.CallRequest{Arguments: raw}, execute)
 					}
-					segments, _ := json.Marshal(result.LLMSegments())
-					message := &storage.Message{SessionID: session.ID, Role: storage.RoleTool, Segments: string(segments)}
-					if err := store.Messages().Append(ctx, message); err != nil {
-						t.Fatal(err)
+					if mode == "ok" || mode == "large" {
+						if err != nil || len(result.Segments) != 2 {
+							t.Fatalf("result %#v %v", result, err)
+						}
+						segment := result.Segments[1]
+						data, _, readErr := center.Read(ctx, segment.MediaID)
+						if readErr != nil || string(data) != "output" || segment.URL != "" {
+							t.Fatalf("result media %#v %q %v", segment, data, readErr)
+						}
+						refs, _ := store.MediaReferences().ListMediaIDs(ctx, segment.MediaID)
+						if len(refs) != 0 {
+							t.Fatal("output refs leaked")
+
+						}
+						session := &storage.Session{OwnerID: "skill-test", Platform: "test", PlatformScopeID: "test"}
+						if err := store.Sessions().Create(ctx, session); err != nil {
+							t.Fatal(err)
+						}
+						segments, _ := json.Marshal(result.LLMSegments())
+						message := &storage.Message{SessionID: session.ID, Role: storage.RoleTool, Segments: string(segments)}
+						if err := store.Messages().Append(ctx, message); err != nil {
+							t.Fatal(err)
+						}
+						persistent, err := store.MediaReferences().ListByOwner(ctx, "tool_result", message.ID)
+						if err != nil || len(persistent) != 1 || persistent[0].MediaID != segment.MediaID {
+							t.Fatalf("transcript refs %v %v", persistent, err)
+						}
+						if err := store.Sessions().Delete(ctx, session.ID); err != nil {
+							t.Fatal(err)
+						}
+					} else if err == nil {
+						t.Fatalf("%s succeeded", mode)
 					}
-					persistent, err := store.MediaReferences().ListByOwner(ctx, "tool_result", message.ID)
-					if err != nil || len(persistent) != 1 || persistent[0].MediaID != segment.MediaID {
-						t.Fatalf("transcript refs %v %v", persistent, err)
+
+					if mode == "wait" && !errors.Is(err, context.DeadlineExceeded) {
+						t.Fatalf("not a deadline failure: %v", err)
 					}
-					if err := store.Sessions().Delete(ctx, session.ID); err != nil {
-						t.Fatal(err)
+					if mode == "cancel" && !errors.Is(err, context.Canceled) {
+						t.Fatalf("not a cancellation failure: %v", err)
 					}
-				} else if err == nil {
-					t.Fatalf("%s succeeded", mode)
+					assertCleanup(t)
 				}
-				refs, refErr := store.MediaReferences().ListMediaIDs(ctx, item.ID)
-				if refErr != nil || len(refs) != 0 {
-					t.Fatalf("refs %v %v", refs, refErr)
-				}
-				matches, _ := filepath.Glob(filepath.Join(dir, ".media-call-*"))
-				if len(matches) > 0 {
-					t.Fatalf("temporary files survived: %v", matches)
+				if mode == "wait" {
+					synctest.Test(t, run)
+				} else {
+					run(t)
 				}
 			})
 		}
+		t.Run(kind+"/cancel running", func(t *testing.T) {
+			runCtx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			ready := filepath.Join(t.TempDir(), "ready")
+			environment := environment.Overlay(map[string]string{"ELBOT_SKILL_TEST_READY_FILE": ready})
+			done := make(chan error, 1)
+			exited := make(chan struct{})
+			go func() {
+				defer close(exited)
+				if kind == "go" {
+					current := runner
+					current.ProcessEnv = environment
+					raw, _ := json.Marshal(map[string]any{"skill_name": "media", "payload": map[string]any{"mode": "wait", "media_inputs": []tool.MediaInput{{MediaID: item.ID}}}})
+					_, _, err := current.Call(runCtx, tool.CallRequest{Arguments: raw})
+					done <- err
+				} else {
+					current := command
+					current.ProcessEnv = environment
+					raw, _ := json.Marshal(map[string]any{"input": item.ID, "mode": "wait"})
+					_, _, err := current.Call(runCtx, tool.CallRequest{Arguments: raw})
+					done <- err
+				}
+			}()
+			waitForSkillHelperReady(t, ready, exited)
+			assertPrepared(t)
+			cancel()
+			if err := <-done; !errors.Is(err, context.Canceled) {
+				t.Fatalf("running skill cancellation: %v", err)
+			}
+			assertCleanup(t)
+		})
 	}
 	call := mediaRuntime.NewCall()
 	defer call.Close()

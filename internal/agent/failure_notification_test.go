@@ -1,16 +1,18 @@
 package agent
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"elbot/internal/agent/dialogue"
@@ -35,60 +37,76 @@ func TestModelHeaderTimeoutNotifiesOnce(t *testing.T) {
 	for _, protocol := range []string{"chat", "response"} {
 		for _, entry := range []string{"input", "message"} {
 			t.Run(protocol+"/"+entry, func(t *testing.T) {
-				var requests, retries atomic.Int32
-				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if r.URL.Path == "/models" {
-						io.WriteString(w, `{"data":[{"id":"model"}]}`)
-						return
+				synctest.Test(t, func(t *testing.T) {
+					var requests, retries atomic.Int32
+					const endpoint = "http://provider.test"
+					// net.Pipe keeps HTTP parsing and transport timeouts inside the
+					// virtual clock, without depending on OS network scheduling.
+					transport := &http.Transport{DisableKeepAlives: true, ResponseHeaderTimeout: time.Second, DialContext: func(context.Context, string, string) (net.Conn, error) {
+						client, peer := net.Pipe()
+						go func() {
+							defer peer.Close()
+							req, err := http.ReadRequest(bufio.NewReader(peer))
+							if err != nil {
+								t.Error(err)
+								return
+							}
+							_, _ = io.Copy(io.Discard, req.Body)
+							_ = req.Body.Close()
+							if req.URL.Path == "/models" {
+								body := `{"data":[{"id":"model"}]}`
+								response := &http.Response{StatusCode: http.StatusOK, ProtoMajor: 1, ProtoMinor: 1, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), ContentLength: int64(len(body)), Close: true}
+								_ = response.Write(peer)
+								return
+							}
+							requests.Add(1)
+							_, _ = io.Copy(io.Discard, peer)
+						}()
+						return client, nil
+					}}
+					defer transport.CloseIdleConnections()
+					opts := httpclient.Options{HTTPClient: &http.Client{Transport: transport}, FirstChunkTimeout: time.Second, MaxRetries: 3, RetryInitialDelay: time.Second}
+
+					var client llm.Client
+					var err error
+					if protocol == "chat" {
+						client, err = chatcompletions.New(endpoint, "", nil, nil, opts)
+					} else {
+						client, err = responses.New(endpoint, "", nil, nil, opts)
 					}
-					_, _ = io.Copy(io.Discard, r.Body)
-					requests.Add(1)
-					select {
-					case <-r.Context().Done():
-					case <-time.After(time.Second):
+					if err != nil {
+						t.Fatal(err)
 					}
-				}))
-				defer server.Close()
-				opts := httpclient.Options{FirstChunkTimeout: time.Millisecond, MaxRetries: 3, RetryInitialDelay: time.Millisecond}
-				var client llm.Client
-				var err error
-				if protocol == "chat" {
-					client, err = chatcompletions.New(server.URL, "", nil, nil, opts)
-				} else {
-					client, err = responses.New(server.URL, "", nil, nil, opts)
-				}
-				if err != nil {
-					t.Fatal(err)
-				}
-				p := &fakePlatform{}
-				a := newTestAgent(t, p, client, "model", config.ProviderConfig{APIMode: protocol, BaseURL: server.URL}, newTestStore(t), func(opts *testAgentOptions) {
-					opts.SessionConfig.NamingConfig.TriggerStep = 100
+					p := &fakePlatform{}
+					a := newTestAgent(t, p, client, "model", config.ProviderConfig{APIMode: protocol, BaseURL: endpoint}, newTestStore(t), func(opts *testAgentOptions) {
+						opts.SessionConfig.NamingConfig.TriggerStep = 100
+					})
+					logs, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+						if record.EventName == "model_retry" {
+							retries.Add(1)
+						}
+						return nil
+					}, signal.ConnectOptions{})
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer logs.Disconnect()
+					if entry == "input" {
+						err = a.input.HandleInput(t.Context(), "hello")
+					} else {
+						err = a.HandleMessage(t.Context(), "hello")
+					}
+					if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "timeout awaiting response headers") {
+						t.Fatalf("expected transport deadline error, got %v", err)
+					}
+					if requests.Load() != 4 || retries.Load() != 3 {
+						t.Fatalf("requests=%d retries=%d", requests.Load(), retries.Load())
+					}
+					output := awaitNotificationText(t, &p.out, "对话处理失败：")
+					if strings.Count(output, "LLM 请求失败，正在重试") != 3 || strings.Count(output, "对话处理失败：") != 1 || !strings.Contains(output, "timeout awaiting response headers") {
+						t.Fatalf("incorrect terminal notification: %q", output)
+					}
 				})
-				logs, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-					if record.EventName == "model_retry" {
-						retries.Add(1)
-					}
-					return nil
-				}, signal.ConnectOptions{})
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer logs.Disconnect()
-				if entry == "input" {
-					err = a.input.HandleInput(t.Context(), "hello")
-				} else {
-					err = a.HandleMessage(t.Context(), "hello")
-				}
-				if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "timeout awaiting response headers") {
-					t.Fatalf("expected transport deadline error, got %v", err)
-				}
-				if requests.Load() != 4 || retries.Load() != 3 {
-					t.Fatalf("requests=%d retries=%d", requests.Load(), retries.Load())
-				}
-				output := awaitNotificationText(t, &p.out, "对话处理失败：")
-				if strings.Count(output, "LLM 请求失败，正在重试") != 3 || strings.Count(output, "对话处理失败：") != 1 || !strings.Contains(output, "timeout awaiting response headers") {
-					t.Fatalf("incorrect terminal notification: %q", output)
-				}
 			})
 		}
 	}

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/coder/websocket"
@@ -236,6 +237,7 @@ func startTransportReadLoop(ctx context.Context, transport *Transport) {
 }
 
 func TestAdapterPublishesGlobalConnectionsOnReconnect(t *testing.T) {
+	// Keep the real listener outside the bubble so it cannot block virtual time.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Accept(w, r, nil)
 		if err != nil {
@@ -244,31 +246,33 @@ func TestAdapterPublishesGlobalConnectionsOnReconnect(t *testing.T) {
 		_ = conn.Close(websocket.StatusGoingAway, "reconnect")
 	}))
 	defer server.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	calls := 0
-	connection, err := globalevents.PlatformConnected.Observe(func(_ context.Context, e globalevents.PlatformConnectedEvent) error {
-		if e.Platform != "qqonebot" {
-			t.Errorf("platform=%q", e.Platform)
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		calls := 0
+		connection, err := globalevents.PlatformConnected.Observe(func(_ context.Context, e globalevents.PlatformConnectedEvent) error {
+			if e.Platform != "qqonebot" {
+				t.Errorf("platform=%q", e.Platform)
+			}
+			calls++
+			if calls == 2 {
+				cancel()
+			}
+			return nil
+		}, signal.ConnectOptions{})
+		if err != nil {
+			t.Fatal(err)
 		}
-		calls++
-		if calls == 2 {
-			cancel()
+		defer connection.Disconnect()
+		if err := (&Adapter{}).Run(ctx, nil); err != nil {
+			t.Fatal(err)
 		}
-		return nil
-	}, signal.ConnectOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer connection.Disconnect()
-	if err := (&Adapter{}).Run(ctx, nil); err != nil {
-		t.Fatal(err)
-	}
-	adapter := &Adapter{cfg: Config{Enabled: true, ReconnectIntervalSeconds: 1}, transport: &Transport{URL: "ws" + strings.TrimPrefix(server.URL, "http"), Timeout: time.Second}}
-	if err := adapter.Run(ctx, nil); !errors.Is(err, context.Canceled) {
-		t.Fatalf("Run=%v", err)
-	}
-	if calls != 2 {
-		t.Fatalf("connections=%d", calls)
-	}
+		adapter := &Adapter{cfg: Config{Enabled: true, ReconnectIntervalSeconds: 1}, transport: &Transport{URL: "ws" + strings.TrimPrefix(server.URL, "http"), Timeout: time.Second}}
+		if err := adapter.Run(ctx, nil); !errors.Is(err, context.Canceled) {
+			t.Fatalf("Run=%v", err)
+		}
+		if calls != 2 {
+			t.Fatalf("connections=%d", calls)
+		}
+	})
 }

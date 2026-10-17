@@ -557,13 +557,21 @@ func TestDirectoryGrepCancellationAndProcessFailures(t *testing.T) {
 		t.Skip("ripgrep is required")
 	}
 	root := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	if _, _, err := directoryGrepFiles(ctx, rg, root); !errors.Is(err, context.Canceled) {
-		t.Fatalf("enumeration: %v", err)
-	}
-	if _, err := scanDirectoryGrepBatch(ctx, rg, root, "needle", []string{filepath.Join(root, "file")}, 1, &directoryMatchHeap{}); !errors.Is(err, context.Canceled) {
-		t.Fatalf("search: %v", err)
+	for _, reason := range []error{context.Canceled, context.DeadlineExceeded} {
+		var ctx context.Context
+		var cancel context.CancelFunc
+		if reason == context.Canceled {
+			ctx, cancel = context.WithCancel(t.Context())
+		} else {
+			ctx, cancel = context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+		}
+		cancel()
+		if _, _, err := directoryGrepFiles(ctx, rg, root); !errors.Is(err, reason) {
+			t.Fatalf("enumeration: %v, want %v", err, reason)
+		}
+		if _, err := scanDirectoryGrepBatch(ctx, rg, root, "needle", []string{filepath.Join(root, "file")}, 1, &directoryMatchHeap{}); !errors.Is(err, reason) {
+			t.Fatalf("search: %v, want %v", err, reason)
+		}
 	}
 	if runtime.GOOS == "windows" {
 		return
@@ -571,22 +579,50 @@ func TestDirectoryGrepCancellationAndProcessFailures(t *testing.T) {
 	for _, tc := range []struct{ name, script, want string }{
 		{"malformed", "printf '{invalid'", "read ripgrep output"},
 		{"failed", "exit 2", "run ripgrep"},
-		{"canceled", "exec sleep 30", "context deadline exceeded"},
+		{"canceled", "while :; do sleep 30; done", "context canceled"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(root, tc.name)
-			if err := os.WriteFile(path, []byte("#!/bin/sh\n"+tc.script+"\n"), 0755); err != nil {
+			ready := path + ".ready"
+			script := tc.script
+			if tc.name == "canceled" {
+				script = "printf ready > '" + strings.ReplaceAll(ready, "'", "'\\''") + "'\n" + script
+			}
+			if err := os.WriteFile(path, []byte("#!/bin/sh\n"+script+"\n"), 0755); err != nil {
 				t.Fatal(err)
 			}
-			timeout := 3 * time.Second
-			if tc.name == "canceled" {
-				timeout = 100 * time.Millisecond
-			}
-			ctx, cancel := context.WithTimeout(t.Context(), timeout)
+			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
-			_, err := scanDirectoryGrepBatch(ctx, path, root, "needle", []string{"file"}, 1, &directoryMatchHeap{})
+			done := make(chan error, 1)
+			go func() {
+				_, err := scanDirectoryGrepBatch(ctx, path, root, "needle", []string{"file"}, 1, &directoryMatchHeap{})
+				done <- err
+			}()
+			if tc.name == "canceled" {
+				ticker := time.NewTicker(time.Millisecond)
+				defer ticker.Stop()
+				for {
+					if _, err := os.Stat(ready); err == nil {
+						break
+					} else if !errors.Is(err, os.ErrNotExist) {
+						t.Fatal(err)
+					}
+					select {
+					case err := <-done:
+						t.Fatalf("process exited before reporting ready: %v", err)
+					case <-t.Context().Done():
+						t.Fatal("test canceled before process reported ready")
+					case <-ticker.C:
+					}
+				}
+				cancel()
+			}
+			err := <-done
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("err=%v want=%q", err, tc.want)
+			}
+			if tc.name == "canceled" && !errors.Is(err, context.Canceled) {
+				t.Fatalf("lost process cancellation: %v", err)
 			}
 		})
 	}

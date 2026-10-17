@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"elbot/internal/command"
@@ -428,8 +429,11 @@ func TestTelegramBotCommands(t *testing.T) {
 }
 
 func TestRunPublishesGlobalConnectionsOnReconnect(t *testing.T) {
+	// Keep the real listener outside the bubble so it cannot block virtual time.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		// Idle HTTP readers must exit before the virtual clock can advance.
+		w.Header().Set("Connection", "close")
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/getMe"):
 			fmt.Fprint(w, `{"ok":true,"result":{"id":123,"username":"test_bot"}}`)
@@ -440,31 +444,33 @@ func TestRunPublishesGlobalConnectionsOnReconnect(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	calls := 0
-	connection, err := globalevents.PlatformConnected.Observe(func(_ context.Context, e globalevents.PlatformConnectedEvent) error {
-		if e.Platform != "telegram" {
-			t.Errorf("platform=%q", e.Platform)
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		calls := 0
+		connection, err := globalevents.PlatformConnected.Observe(func(_ context.Context, e globalevents.PlatformConnectedEvent) error {
+			if e.Platform != "telegram" {
+				t.Errorf("platform=%q", e.Platform)
+			}
+			calls++
+			if calls == 2 {
+				cancel()
+			}
+			return nil
+		}, signal.ConnectOptions{})
+		if err != nil {
+			t.Fatal(err)
 		}
-		calls++
-		if calls == 2 {
-			cancel()
+		defer connection.Disconnect()
+		if err := New(Config{}, nil, nil).Run(ctx, nil); err != nil {
+			t.Fatal(err)
 		}
-		return nil
-	}, signal.ConnectOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer connection.Disconnect()
-	if err := New(Config{}, nil, nil).Run(ctx, nil); err != nil {
-		t.Fatal(err)
-	}
-	adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, ReconnectIntervalSeconds: 1}, nil, nil)
-	if err := adapter.Run(ctx, nil); !errors.Is(err, context.Canceled) {
-		t.Fatalf("Run=%v", err)
-	}
-	if calls != 2 {
-		t.Fatalf("connections=%d", calls)
-	}
+		adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, ReconnectIntervalSeconds: 1}, nil, nil)
+		if err := adapter.Run(ctx, nil); !errors.Is(err, context.Canceled) {
+			t.Fatalf("Run=%v", err)
+		}
+		if calls != 2 {
+			t.Fatalf("connections=%d", calls)
+		}
+	})
 }

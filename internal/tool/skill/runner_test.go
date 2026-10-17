@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"elbot/internal/config"
@@ -23,38 +24,26 @@ func TestRunMediaCommandOutputLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, mode := range []string{"plain exact", "plain overflow", "json exact", "json overflow", "stderr overflow", "failure", "timeout", "canceled"} {
+	for _, mode := range []string{"plain exact", "plain overflow", "json exact", "json overflow", "stderr overflow", "failure", "canceled"} {
 		t.Run(mode, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
-			if mode == "timeout" {
-				var stop context.CancelFunc
-				ctx, stop = context.WithTimeout(ctx, 100*time.Millisecond)
-				defer stop()
-			}
 			ready := filepath.Join(t.TempDir(), "ready")
 			type outcome struct {
 				result *tool.Result
 				err    error
 			}
 			done := make(chan outcome, 1)
+			exited := make(chan struct{})
 			go func() {
+				defer close(exited)
 				cmd := exec.CommandContext(ctx, binary, mode, ready)
 				cmd.Env = append(os.Environ(), "ELBOT_SKILL_TEST_HELPER=output")
 				result, err := runMediaCommand(ctx, "test skill", cmd, nil)
 				done <- outcome{result, err}
 			}()
 			if mode == "canceled" {
-				for {
-					if _, err := os.Stat(ready); err == nil {
-						break
-					}
-					select {
-					case <-ctx.Done():
-						t.Fatal("helper did not produce output before cancellation")
-					case <-time.After(time.Millisecond):
-					}
-				}
+				waitForSkillHelperReady(t, ready, exited)
 				cancel()
 			}
 			out := <-done
@@ -75,7 +64,7 @@ func TestRunMediaCommandOutputLimits(t *testing.T) {
 				if out.err == nil {
 					t.Fatal("expected process error")
 				}
-				if mode == "timeout" && !errors.Is(out.err, context.DeadlineExceeded) || mode == "canceled" && !errors.Is(out.err, context.Canceled) {
+				if mode == "canceled" && !errors.Is(out.err, context.Canceled) {
 					t.Fatalf("cancellation classification: %v", out.err)
 				}
 				for _, want := range []string{"stdout-prefix", "stderr-prefix", "output truncated"} {
@@ -116,14 +105,81 @@ func TestCommandErrorPreservesUnderlyingCancellationFailure(t *testing.T) {
 			}
 			cancel()
 			failure := errors.New("terminate process group failed")
-			err := commandError(ctx, "test skill", failure, "partial stdout", "partial stderr")
+			stdout := truncateOutput(strings.Repeat("o", maxRunnerOutput+1))
+			stderr := limitedOutput{limit: maxRunnerOutput}
+			_, _ = stderr.Write([]byte(strings.Repeat("e", maxRunnerOutput+1)))
+			err := commandError(ctx, "test skill", failure, stdout, stderr.String())
 			if !errors.Is(err, reason) || !errors.Is(err, failure) {
 				t.Fatalf("lost cancellation or termination failure: %v", err)
 			}
-			if !strings.Contains(err.Error(), "partial stdout") || !strings.Contains(err.Error(), "partial stderr") {
+			if !strings.Contains(err.Error(), "stdout:\n"+stdout) || !strings.Contains(err.Error(), "stderr:\n"+stderr.String()) || strings.Count(err.Error(), "output truncated") != 2 {
 				t.Fatalf("lost command output: %v", err)
 			}
+			want := "test skill canceled:"
+			if reason == context.DeadlineExceeded {
+				want = "test skill timed out:"
+			}
+			if !strings.HasPrefix(err.Error(), want) || len(err.Error()) > 2*maxRunnerOutput+512 {
+				t.Fatalf("incorrect cancellation diagnostics: %v", err)
+			}
 		})
+	}
+}
+
+func TestSkillDeadlineSelection(t *testing.T) {
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"go", "toml"} {
+		for _, tc := range []struct {
+			name   string
+			value  int
+			parent time.Duration
+			want   time.Duration
+		}{
+			{name: "default", want: 30 * time.Second},
+			{name: "explicit", value: 5, want: 5 * time.Second},
+			{name: "shorter parent", value: 5, parent: 2 * time.Second, want: 2 * time.Second},
+			{name: "longer parent", value: 5, parent: time.Minute, want: 5 * time.Second},
+		} {
+			t.Run(kind+"/"+tc.name, func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					ctx := t.Context()
+					if tc.parent > 0 {
+						var cancel context.CancelFunc
+						ctx, cancel = context.WithTimeout(ctx, tc.parent)
+						defer cancel()
+					}
+					want := time.Now().Add(tc.want)
+					calls := 0
+					execute := func(ctx context.Context, _ string, _ *exec.Cmd, _ *tool.MediaCall) (*tool.Result, error) {
+						calls++
+						deadline, ok := ctx.Deadline()
+						if !ok || !deadline.Equal(want) || ctx.Err() != nil {
+							t.Fatalf("deadline=%v want=%v err=%v", deadline, want, ctx.Err())
+						}
+						<-ctx.Done()
+						return nil, ctx.Err()
+					}
+					dir := t.TempDir()
+					var err error
+					if kind == "go" {
+						catalog := NewCatalog()
+						catalog.Replace([]Record{{Name: "deadline", Kind: KindGo, Root: dir, BinaryPath: binary}})
+						runner := NewGoRunner(catalog)
+						raw, _ := json.Marshal(map[string]any{"skill_name": "deadline", "timeout_ms": tc.value * 1000, "payload": map[string]any{}})
+						_, _, err = runner.call(ctx, tool.CallRequest{Arguments: raw}, execute)
+					} else {
+						command := NewCommandTool(Record{Root: dir, Manifest: AgentSkillManifest{Command: []string{binary}, TimeoutSeconds: tc.value}})
+						_, _, err = command.call(ctx, tool.CallRequest{}, execute)
+					}
+					if calls != 1 || !errors.Is(err, context.DeadlineExceeded) {
+						t.Fatalf("calls=%d error=%v", calls, err)
+					}
+				})
+			})
+		}
 	}
 }
 

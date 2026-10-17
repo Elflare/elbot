@@ -8,9 +8,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
-
-	"elbot/internal/platform"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
@@ -72,41 +71,21 @@ func TestReadLoopDeduplicatesOnlyLastNonzeroMessageID(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			adapter := newTestAdapter(t, Config{}, nil, nil)
-			calls := make(chan string, len(tc.frames))
-			release := make(chan struct{})
-			defer close(release)
-			handler := readLoopHandler(func(ctx context.Context, text string) error {
-				calls <- text
-				select {
-				case <-release:
-				case <-ctx.Done():
-				}
-				return nil
-			})
-			runReadLoopFrames(t, adapter, handler, tc.frames)
-			assertReadLoopCalls(t, calls, tc.want)
+			runReadLoopFrames(t, adapter, tc.frames, tc.want)
 		})
 	}
 }
 
 func TestReadLoopKeepsLastMessageIDAcrossReconnect(t *testing.T) {
 	adapter := newTestAdapter(t, Config{}, nil, nil)
-	calls := make(chan string, 4)
-	handler := readLoopHandler(func(_ context.Context, text string) error {
-		calls <- text
-		return nil
-	})
-	runReadLoopFrames(t, adapter, handler, []any{inboundEvent(7, "first")})
-	assertReadLoopCalls(t, calls, map[string]int{"first": 1})
-	runReadLoopFrames(t, adapter, handler, []any{inboundEvent(7, "duplicate"), inboundEvent(8, "next")})
-	assertReadLoopCalls(t, calls, map[string]int{"next": 1})
+	runReadLoopFrames(t, adapter, []any{inboundEvent(7, "first")}, map[string]int{"first": 1})
+	runReadLoopFrames(t, adapter, []any{inboundEvent(7, "duplicate"), inboundEvent(8, "next")}, map[string]int{"next": 1})
 
 	fresh := newTestAdapter(t, Config{}, nil, nil)
-	runReadLoopFrames(t, fresh, handler, []any{inboundEvent(7, "fresh")})
-	assertReadLoopCalls(t, calls, map[string]int{"fresh": 1})
+	runReadLoopFrames(t, fresh, []any{inboundEvent(7, "fresh")}, map[string]int{"fresh": 1})
 }
 
-func runReadLoopFrames(t *testing.T, adapter *Adapter, handler platform.PlatformHandler, frames []any) {
+func runReadLoopFrames(t *testing.T, adapter *Adapter, frames []any, want map[string]int) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	t.Cleanup(cancel)
@@ -130,9 +109,23 @@ func runReadLoopFrames(t *testing.T, adapter *Adapter, handler platform.Platform
 		t.Fatal(err)
 	}
 	defer adapter.transport.Close(websocket.StatusNormalClosure, "test done")
-	if err := adapter.readLoop(ctx, handler); websocket.CloseStatus(err) != websocket.StatusNormalClosure {
-		t.Fatalf("readLoop: %v", err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		calls := make(chan string, len(frames))
+		release := make(chan struct{})
+		defer close(release)
+		handler := readLoopHandler(func(_ context.Context, text string) error {
+			calls <- text
+			<-release
+			return nil
+		})
+		if err := adapter.readLoop(ctx, handler); websocket.CloseStatus(err) != websocket.StatusNormalClosure {
+			t.Fatalf("readLoop: %v", err)
+		}
+		// All frames are read; wait for handlers to record their calls and block
+		// on release before checking for unexpected duplicates.
+		synctest.Wait()
+		assertReadLoopCalls(t, calls, want)
+	})
 }
 
 func assertReadLoopCalls(t *testing.T, calls <-chan string, want map[string]int) {
@@ -156,6 +149,6 @@ func assertReadLoopCalls(t *testing.T, calls <-chan string, want map[string]int)
 	select {
 	case text := <-calls:
 		t.Fatalf("unexpected additional handler call: %q", text)
-	case <-time.After(50 * time.Millisecond):
+	default:
 	}
 }
