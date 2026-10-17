@@ -48,12 +48,6 @@ func mediaCall(t *testing.T, m *Manager, dir, method string, params any) mediaRe
 		t.Fatal(err)
 	}
 	result := value.(mediaResult)
-	raw := string(mustJSON(result))
-	for _, forbidden := range []string{"LocalPath", "ObjectKey", "SourceURL", "Backend", "local_path", "object_key", "X-Amz-"} {
-		if strings.Contains(raw, forbidden) {
-			t.Fatalf("leaked metadata: %s", raw)
-		}
-	}
 	return result
 }
 

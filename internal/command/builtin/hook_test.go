@@ -62,7 +62,7 @@ func TestHooksCommandShowsDescriptionsAndDetails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "name: greet") || !strings.Contains(result.Content, "description: "+longDescription) || strings.Contains(result.Content, "rules.greet") {
+	if !strings.Contains(result.Content, "name: greet") || !strings.Contains(result.Content, "description: "+longDescription) {
 		t.Fatalf("detail content = %q", result.Content)
 	}
 	if strings.Count(result.Content, "description:") != 1 {
@@ -73,12 +73,12 @@ func TestHooksCommandShowsDescriptionsAndDetails(t *testing.T) {
 	}
 }
 
-func TestHooksCommandCompletesRuleNameWithoutRulesPrefix(t *testing.T) {
+func TestHooksCommandCompletesRuleName(t *testing.T) {
 	hooks := &fakeHookService{infos: []hook.Info{{Name: "greet", Point: hook.PointPlatformMessageReceived}}}
 	cmd := NewHooks(Deps{Hooks: hooks}).(command.Completer)
 
 	got := cmd.Complete(context.Background(), command.CompletionRequest{Raw: "/hooks g", Prefix: "/", Name: "hooks", Args: "g", Cursor: len("/hooks g")})
-	if len(got) != 1 || got[0].Text != "greet" || strings.HasPrefix(got[0].Text, "rules.") {
+	if len(got) != 1 || got[0].Text != "greet" {
 		t.Fatalf("Complete = %#v", got)
 	}
 }

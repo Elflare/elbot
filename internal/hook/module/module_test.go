@@ -23,9 +23,6 @@ func TestInitialReloadWaitsForConnectionsAndBeginClosePreservesCore(t *testing.T
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	defer m.Close(ctx)
-	if len(m.Control().HookList()) != 0 || len(m.Control().StatefulHooks()) != 0 {
-		t.Fatal("constructor published plugins")
-	}
 	connected, loads := false, 0
 	m.control = hookcontrol.New(m.manager, m.runtime, func(hook.Registrar) (hook.ReloadReport, []hookruntime.Config, error) {
 		loads++

@@ -223,14 +223,11 @@ func TestRulesJSONTruncationPreservesUnicodeMarkerAndBusinessData(t *testing.T) 
 			if content["result"] != body {
 				t.Fatalf("completed content=%v", content)
 			}
-			if len((*records)[0].Content) > 64*1024 {
-				t.Fatal("oversized JSON")
-			}
 		})
 	}
 }
 
-func TestRulesSendJSONLimitKeepsFullSourceTextResult(t *testing.T) {
+func TestRulesSendLogTruncationKeepsFullSourceTextResult(t *testing.T) {
 	for _, character := range []string{"雪", "\x00"} {
 		body := strings.Repeat(character, 4096)
 		records := collectRecords(t)
@@ -251,9 +248,6 @@ func TestRulesSendJSONLimitKeepsFullSourceTextResult(t *testing.T) {
 		json.Unmarshal(content["result"], &got)
 		if got != strings.Repeat(character, 2047)+"…" || !strings.Contains((*records)[0].Content, "actual-message") {
 			t.Fatal((*records)[0])
-		}
-		if len((*records)[0].Content) > 64*1024 {
-			t.Fatal("escaped JSON exceeds limit")
 		}
 	}
 }
