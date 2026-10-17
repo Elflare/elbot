@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"elbot/internal/config"
@@ -77,40 +78,55 @@ func TestConfirmationWaitTimeoutUsesSessionTTLAsUpperBound(t *testing.T) {
 	}
 }
 func TestTurnResponseTimeoutNotifiesUser(t *testing.T) {
-	p := &fakePlatform{}
-	block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
-	a := newTestAgent(t, p, &fakeLLM{chatBlocks: []fakeLLMBlock{block}}, "test-model", config.ProviderConfig{}, newTestStore(t))
-	a.execution.responseTimeout = 10 * time.Millisecond
+	synctest.Test(t, func(t *testing.T) {
+		p := &fakePlatform{}
+		block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
+		a := newTestAgent(t, p, &fakeLLM{chatBlocks: []fakeLLMBlock{block}}, "test-model", config.ProviderConfig{}, newTestStore(t))
+		a.execution.responseTimeout = 10 * time.Millisecond
 
-	if err := a.HandleMessage(context.Background(), "hello"); err != nil {
-		t.Fatalf("HandleMessage: %v", err)
-	}
-	awaitNotificationText(t, &p.out, "本轮处理已超时停止")
+		done := make(chan error, 1)
+		go func() { done <- a.HandleMessage(context.Background(), "hello") }()
+		<-block.started
+		synctest.Wait()
+		time.Sleep(a.execution.responseTimeout)
+		if err := <-done; err != nil {
+			t.Fatalf("HandleMessage: %v", err)
+		}
+		awaitNotificationText(t, &p.out, "本轮处理已超时停止")
+	})
 }
 
 func TestTurnResponseTimeoutZeroAllowsLongTurn(t *testing.T) {
-	p := &fakePlatform{}
-	block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
-	a := newTestAgent(t, p, &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"done"}}, "test-model", config.ProviderConfig{}, newTestStore(t))
-	a.execution.responseTimeout = 0
+	synctest.Test(t, func(t *testing.T) {
+		p := &fakePlatform{}
+		block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
+		a := newTestAgent(t, p, &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"done"}}, "test-model", config.ProviderConfig{}, newTestStore(t))
+		a.execution.responseTimeout = 0
 
-	done := make(chan error, 1)
-	go func() { done <- a.HandleMessage(context.Background(), "hello") }()
-	<-block.started
-	time.Sleep(20 * time.Millisecond)
-	close(block.release)
-
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("HandleMessage: %v", err)
+		done := make(chan error, 1)
+		go func() { done <- a.HandleMessage(context.Background(), "hello") }()
+		<-block.started
+		time.Sleep(20 * time.Millisecond)
+		synctest.Wait()
+		select {
+		case err := <-done:
+			t.Fatalf("turn with timeout disabled ended before release: %v", err)
+		default:
 		}
-	case <-time.After(time.Second):
-		t.Fatal("HandleMessage did not finish after release")
-	}
-	if got := p.out.String(); !strings.Contains(got, "done") {
-		t.Fatalf("platform output = %q, want final reply", got)
-	}
+		close(block.release)
+
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("HandleMessage: %v", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("HandleMessage did not finish after release")
+		}
+		if got := p.out.String(); !strings.Contains(got, "done") {
+			t.Fatalf("platform output = %q, want final reply", got)
+		}
+	})
 }
 
 func TestStreamingOutputAppendsRawAndReplacesHookText(t *testing.T) {
@@ -173,57 +189,59 @@ func TestTurnOutputPreparedHookReplacesFinalStreamingMessage(t *testing.T) {
 }
 
 func TestLLMInterruptKeepsAppendConfirmationUntilConfirm(t *testing.T) {
-	p := &fakePlatform{}
-	block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
-	f := &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"interrupted", "confirmed"}}
-	a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
-	ctx := context.Background()
+	synctest.Test(t, func(t *testing.T) {
+		p := &fakePlatform{}
+		block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
+		f := &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"interrupted", "confirmed"}}
+		a := newTestAgent(t, p, f, "test-model", config.ProviderConfig{}, newTestStore(t))
+		ctx := context.Background()
 
-	done := make(chan error, 1)
-	go func() { done <- a.HandleMessage(ctx, "1+1") }()
-	select {
-	case <-block.started:
-	case <-time.After(time.Second):
-		t.Fatal("first LLM request did not start")
-	}
-	waitRequestCount(t, f, 1)
-
-	if err := a.HandleMessage(ctx, "stop"); err != nil {
-		t.Fatalf("interrupt: %v", err)
-	}
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("interrupted turn: %v", err)
+		done := make(chan error, 1)
+		go func() { done <- a.HandleMessage(ctx, "1+1") }()
+		select {
+		case <-block.started:
+		case <-time.After(time.Second):
+			t.Fatal("first LLM request did not start")
 		}
-	case <-time.After(time.Second):
-		t.Fatal("interrupted turn did not finish")
-	}
+		waitRequestCount(t, f, 1)
 
-	if err := a.HandleMessage(ctx, "同时计算2+2"); err != nil {
-		t.Fatalf("append pending: %v", err)
-	}
-	time.Sleep(20 * time.Millisecond)
-	if got := f.requestCount(); got != 1 {
-		t.Fatalf("request count after pending append = %d, want 1", got)
-	}
-
-	if err := a.HandleMessage(ctx, "再计算3+3"); err != nil {
-		t.Fatalf("append pending 2: %v", err)
-	}
-	if err := a.HandleMessage(ctx, "y"); err != nil {
-		t.Fatalf("confirm append: %v", err)
-	}
-	requests := f.chatRequests()
-	if len(requests) != 2 {
-		t.Fatalf("chat requests = %d, want 2", len(requests))
-	}
-	got := llm.SegmentsContentText(requests[1].Messages[len(requests[1].Messages)-1].Segments)
-	for _, want := range []string{"1+1", "stop", "同时计算2+2", "再计算3+3"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("confirmed request content = %q, missing %q", got, want)
+		if err := a.HandleMessage(ctx, "stop"); err != nil {
+			t.Fatalf("interrupt: %v", err)
 		}
-	}
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("interrupted turn: %v", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("interrupted turn did not finish")
+		}
+
+		if err := a.HandleMessage(ctx, "同时计算2+2"); err != nil {
+			t.Fatalf("append pending: %v", err)
+		}
+		synctest.Wait()
+		if got := f.requestCount(); got != 1 {
+			t.Fatalf("request count after pending append = %d, want 1", got)
+		}
+
+		if err := a.HandleMessage(ctx, "再计算3+3"); err != nil {
+			t.Fatalf("append pending 2: %v", err)
+		}
+		if err := a.HandleMessage(ctx, "y"); err != nil {
+			t.Fatalf("confirm append: %v", err)
+		}
+		requests := f.chatRequests()
+		if len(requests) != 2 {
+			t.Fatalf("chat requests = %d, want 2", len(requests))
+		}
+		got := llm.SegmentsContentText(requests[1].Messages[len(requests[1].Messages)-1].Segments)
+		for _, want := range []string{"1+1", "stop", "同时计算2+2", "再计算3+3"} {
+			if !strings.Contains(got, want) {
+				t.Fatalf("confirmed request content = %q, missing %q", got, want)
+			}
+		}
+	})
 }
 
 func TestActiveTurnBlocksNewSessionCommand(t *testing.T) {

@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"elbot/internal/config"
@@ -135,31 +136,32 @@ func TestMaterializeWithLimitsIsolation(t *testing.T) {
 }
 
 func TestMaterializeWithLimitsDownloadTimeout(t *testing.T) {
-	ctx := context.Background()
-	store := testutil.NewSQLiteStore(t)
-	root := t.TempDir()
-	m := NewManager(store, root, &LocalBackend{Root: root})
-	m.DownloadTimeout = time.Second
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/stall" {
-			w.(http.Flusher).Flush()
-			<-r.Context().Done()
-			return
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		store := testutil.NewSQLiteStore(t)
+		root := t.TempDir()
+		m := NewManager(store, root, &LocalBackend{Root: root})
+		m.DownloadTimeout = time.Second
+		server := testutil.NewVirtualDefaultHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/stall" {
+				w.(http.Flusher).Flush()
+				<-r.Context().Done()
+				return
+			}
+			_, _ = io.WriteString(w, "ok")
+		}))
+		out, err := m.MaterializeWithLimits(ctx, []llm.MessageSegment{{Type: llm.SegmentFile, URL: server.URL + "/stall"}}, ImportLimits{DownloadTimeout: 25 * time.Millisecond})
+		if !errors.Is(err, context.DeadlineExceeded) || len(out) != 0 {
+			t.Fatalf("stalled download: out=%#v err=%v", out, err)
 		}
-		_, _ = io.WriteString(w, "ok")
-	}))
-	defer server.Close()
-	out, err := m.MaterializeWithLimits(ctx, []llm.MessageSegment{{Type: llm.SegmentFile, URL: server.URL + "/stall"}}, ImportLimits{DownloadTimeout: 25 * time.Millisecond})
-	if err == nil || len(out) != 0 {
-		t.Fatalf("stalled download accepted: %#v", out)
-	}
-	if m.DownloadTimeout != time.Second {
-		t.Fatal("shared timeout changed")
-	}
-	out, err = m.Materialize(ctx, []llm.MessageSegment{{Type: llm.SegmentFile, URL: server.URL}})
-	if err != nil || len(out) != 1 || out[0].MediaID == "" {
-		t.Fatalf("default download failed: %#v", out)
-	}
+		if m.DownloadTimeout != time.Second {
+			t.Fatal("shared timeout changed")
+		}
+		out, err = m.Materialize(ctx, []llm.MessageSegment{{Type: llm.SegmentFile, URL: server.URL}})
+		if err != nil || len(out) != 1 || out[0].MediaID == "" {
+			t.Fatalf("default download failed: %#v", out)
+		}
+	})
 }
 
 func TestResolverRequestTotalAndIsolation(t *testing.T) {

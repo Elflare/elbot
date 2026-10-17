@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	agentevents "elbot/internal/agent/events"
@@ -179,33 +180,35 @@ func TestGlobalPlatformCronIndependentOfUserHooks(t *testing.T) {
 }
 
 func TestPlatformHookCloseWaitsForActualExit(t *testing.T) {
-	started, release := make(chan struct{}), make(chan struct{})
-	a := newPlatformEventBridge(t, func(ctx context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
-		close(started)
-		<-release
-		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
+	synctest.Test(t, func(t *testing.T) {
+		started, release := make(chan struct{}), make(chan struct{})
+		a := newPlatformEventBridge(t, func(ctx context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
+			close(started)
+			<-release
+			return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
+		})
+		var once sync.Once
+		t.Cleanup(func() { once.Do(func() { close(release) }) })
+		if err := a.StartPlatformEvents(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		emitPlatformConnection(t, context.Background(), "one")
+		awaitPlatformEvent(t, started)
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+		defer cancel()
+		if err := a.Close(ctx); !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("close=%v", err)
+		}
+		select {
+		case <-a.Done():
+			t.Fatal("Done closed with live hook")
+		default:
+		}
+		// The disconnected subscription must not enqueue into a new queue.
+		emitPlatformConnection(t, context.Background(), "two")
+		once.Do(func() { close(release) })
+		awaitPlatformEvent(t, a.Done())
 	})
-	var once sync.Once
-	t.Cleanup(func() { once.Do(func() { close(release) }) })
-	if err := a.StartPlatformEvents(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	emitPlatformConnection(t, context.Background(), "one")
-	awaitPlatformEvent(t, started)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
-	defer cancel()
-	if err := a.Close(ctx); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("close=%v", err)
-	}
-	select {
-	case <-a.Done():
-		t.Fatal("Done closed with live hook")
-	default:
-	}
-	// The disconnected subscription must not enqueue into a new queue.
-	emitPlatformConnection(t, context.Background(), "two")
-	once.Do(func() { close(release) })
-	awaitPlatformEvent(t, a.Done())
 }
 
 func TestPlatformHookParentCancellationAndConcurrentClose(t *testing.T) {

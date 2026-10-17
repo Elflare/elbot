@@ -391,65 +391,73 @@ func TestManagerRecordsTimeBeforeCapacityWait(t *testing.T) {
 
 func TestManagerBackpressureCancellationDrainAndTimeout(t *testing.T) {
 	readStderr := captureStderr(t)
-	started, release := make(chan struct{}), make(chan struct{})
-	var once sync.Once
-	writer := &controlledWriter{write: func(p []byte) (int, error) { once.Do(func() { close(started); <-release }); return len(p), nil }}
-	m, err := newManager("info", t.TempDir(), 30, func(prefix string) (io.WriteCloser, error) {
-		if prefix == "audit" {
-			return writer, nil
-		}
-		return &controlledWriter{}, nil
-	})
-	if err != nil {
+	// The process-wide diagnostics worker and its barriers must stay outside
+	// the bubble: it intentionally lives until the test process exits.
+	if err := signal.FlushDiagnostics(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	var releaseOnce sync.Once
-	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }); _ = m.Close(context.Background()) })
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if err := events.EmitLog(ctx, events.LogRecord{Category: events.LogAudit}); err != nil {
-		t.Fatal(err)
-	}
-	<-started
-	for range 256 {
-		emitRecord(t, events.LogRecord{Category: events.LogAudit})
-	}
-	blocked := make(chan error, 1)
-	go func() { blocked <- events.EmitLog(ctx, events.LogRecord{Category: events.LogAudit}) }()
-	select {
-	case err := <-blocked:
-		t.Fatalf("request cancellation escaped backpressure: %v", err)
-	case <-time.After(20 * time.Millisecond):
-	}
-	m.BeginClose()
-	select {
-	case err := <-blocked:
-		if !errors.Is(err, signal.ErrClosed) {
+	synctest.Test(t, func(t *testing.T) {
+		started, release := make(chan struct{}), make(chan struct{})
+		var once sync.Once
+		writer := &controlledWriter{write: func(p []byte) (int, error) { once.Do(func() { close(started); <-release }); return len(p), nil }}
+		m, err := newManager("info", t.TempDir(), 30, func(prefix string) (io.WriteCloser, error) {
+			if prefix == "audit" {
+				return writer, nil
+			}
+			return &controlledWriter{}, nil
+		})
+		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(time.Second):
-		t.Fatal("BeginClose did not wake producer")
-	}
-	deadline, stop := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
-	defer stop()
-	if err := m.Close(deadline); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatal(err)
-	}
-	if writer.closed.Load() {
-		t.Fatal("closed writer in active callback")
-	}
-	if _, err := NewManager("info", filepath.Join(t.TempDir(), "db"), 30); err == nil {
-		t.Fatal("timed-out manager released ownership")
-	}
-	if !strings.Contains(readStderr(), "signal drain incomplete") {
-		t.Fatal(readStderr())
-	}
-	releaseOnce.Do(func() { close(release) })
-	if err := m.Close(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if !writer.closed.Load() {
-		t.Fatal("writer not closed after worker exited")
+		var releaseOnce sync.Once
+		t.Cleanup(func() { releaseOnce.Do(func() { close(release) }); _ = m.Close(context.Background()) })
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		if err := events.EmitLog(ctx, events.LogRecord{Category: events.LogAudit}); err != nil {
+			t.Fatal(err)
+		}
+		<-started
+		for range 256 {
+			emitRecord(t, events.LogRecord{Category: events.LogAudit})
+		}
+		blocked := make(chan error, 1)
+		go func() { blocked <- events.EmitLog(ctx, events.LogRecord{Category: events.LogAudit}) }()
+		synctest.Wait()
+		select {
+		case err := <-blocked:
+			t.Fatalf("request cancellation escaped backpressure: %v", err)
+		default:
+		}
+		m.BeginClose()
+		select {
+		case err := <-blocked:
+			if !errors.Is(err, signal.ErrClosed) {
+				t.Fatal(err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("BeginClose did not wake producer")
+		}
+		deadline, stop := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+		defer stop()
+		if err := m.Close(deadline); !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatal(err)
+		}
+		if writer.closed.Load() {
+			t.Fatal("closed writer in active callback")
+		}
+		if _, err := NewManager("info", filepath.Join(t.TempDir(), "db"), 30); err == nil {
+			t.Fatal("timed-out manager released ownership")
+		}
+		releaseOnce.Do(func() { close(release) })
+		if err := m.Close(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if !writer.closed.Load() {
+			t.Fatal("writer not closed after worker exited")
+		}
+	})
+	if got := readStderr(); !strings.Contains(got, "signal drain incomplete") {
+		t.Fatal(got)
 	}
 }
 

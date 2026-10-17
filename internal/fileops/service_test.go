@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"elbot/internal/contextinfo"
@@ -279,125 +280,127 @@ func TestFileCommitSerializesSessionTransitions(t *testing.T) {
 					name = operation + "/" + transition + "/commit_first"
 				}
 				t.Run(name, func(t *testing.T) {
-					f := newFileFixture(t)
-					if operation != "edit" && operation != "prepared" {
-						if operation == "remove" {
-							if err := os.Remove(f.path); err != nil {
+					synctest.Test(t, func(t *testing.T) {
+						f := newFileFixture(t)
+						if operation != "edit" && operation != "prepared" {
+							if operation == "remove" {
+								if err := os.Remove(f.path); err != nil {
+									t.Fatal(err)
+								}
+							}
+							req := editRequest("file", "before", "after")
+							if operation == "remove" {
+								text := "after"
+								req = fileops.EditRequest{Path: "file", Create: true, Edits: []fileops.Edit{{Operation: "overwrite", NewText: &text}}}
+							}
+							if _, _, err := f.files.Edit(f.call(f.ctx, nil), req); err != nil {
 								t.Fatal(err)
 							}
 						}
-						req := editRequest("file", "before", "after")
-						if operation == "remove" {
-							text := "after"
-							req = fileops.EditRequest{Path: "file", Create: true, Edits: []fileops.Edit{{Operation: "overwrite", NewText: &text}}}
+						base, cancel := context.WithCancel(f.ctx)
+						defer cancel()
+						reached, allow := make(chan struct{}), make(chan struct{})
+						admission := func(ctx context.Context) (context.Context, func(), error) {
+							if !commitFirst {
+								close(reached)
+								<-allow
+							}
+							locked, release, err := f.sessions.EnterBinding(ctx, f.binding)
+							if err != nil {
+								return ctx, nil, err
+							}
+							if commitFirst {
+								close(reached)
+								<-allow
+							}
+							return locked, release, nil
 						}
-						if _, _, err := f.files.Edit(f.call(f.ctx, nil), req); err != nil {
-							t.Fatal(err)
+						ctx := f.call(base, admission)
+						done := make(chan error, 1)
+						go func() {
+							if operation == "prepared" {
+								prepared, err := f.files.PrepareEdit(ctx, editRequest("file", "before", "after"))
+								if err == nil {
+									_, _, err = prepared.Commit(ctx)
+								}
+								done <- err
+							} else if operation == "edit" {
+								_, _, err := f.files.Edit(ctx, editRequest("file", "before", "after"))
+								done <- err
+							} else {
+								_, err := f.files.Rollback(ctx, "file", 0)
+								done <- err
+							}
+						}()
+						waitSignal(t, reached)
+						if operation != "remove" {
+							staged, _ := filepath.Glob(filepath.Join(f.dir, ".file.tmp-*"))
+							if len(staged) != 1 {
+								t.Fatalf("temporary output not prepared before admission: %v", staged)
+							}
 						}
-					}
-					base, cancel := context.WithCancel(f.ctx)
-					defer cancel()
-					reached, allow := make(chan struct{}), make(chan struct{})
-					admission := func(ctx context.Context) (context.Context, func(), error) {
-						if !commitFirst {
-							close(reached)
-							<-allow
-						}
-						locked, release, err := f.sessions.EnterBinding(ctx, f.binding)
-						if err != nil {
-							return ctx, nil, err
+						transitionCall := func(ctx context.Context) error {
+							switch transition {
+							case "switch":
+								_, err := f.sessions.Create(ctx, f.scope, session.CreateRequest{Title: "next"})
+								return err
+							case "delete":
+								return f.sessions.Delete(ctx, f.scope, f.row.ID)
+							default:
+								_, release, err := f.sessions.EnterSessions(ctx, f.row.ID)
+								if err != nil {
+									return err
+								}
+								defer release()
+								cancel()
+								return nil
+							}
 						}
 						if commitFirst {
-							close(reached)
-							<-allow
-						}
-						return locked, release, nil
-					}
-					ctx := f.call(base, admission)
-					done := make(chan error, 1)
-					go func() {
-						if operation == "prepared" {
-							prepared, err := f.files.PrepareEdit(ctx, editRequest("file", "before", "after"))
-							if err == nil {
-								_, _, err = prepared.Commit(ctx)
+							deadline, stop := context.WithTimeout(f.ctx, 20*time.Millisecond)
+							err := transitionCall(deadline)
+							stop()
+							if !errors.Is(err, context.DeadlineExceeded) {
+								t.Fatalf("transition passed active commit: %v", err)
 							}
-							done <- err
-						} else if operation == "edit" {
-							_, _, err := f.files.Edit(ctx, editRequest("file", "before", "after"))
-							done <- err
-						} else {
-							_, err := f.files.Rollback(ctx, "file", 0)
-							done <- err
-						}
-					}()
-					waitSignal(t, reached)
-					if operation != "remove" {
-						staged, _ := filepath.Glob(filepath.Join(f.dir, ".file.tmp-*"))
-						if len(staged) != 1 {
-							t.Fatalf("temporary output not prepared before admission: %v", staged)
-						}
-					}
-					transitionCall := func(ctx context.Context) error {
-						switch transition {
-						case "switch":
-							_, err := f.sessions.Create(ctx, f.scope, session.CreateRequest{Title: "next"})
-							return err
-						case "delete":
-							return f.sessions.Delete(ctx, f.scope, f.row.ID)
-						default:
-							_, release, err := f.sessions.EnterSessions(ctx, f.row.ID)
-							if err != nil {
-								return err
-							}
-							defer release()
-							cancel()
-							return nil
-						}
-					}
-					if commitFirst {
-						deadline, stop := context.WithTimeout(f.ctx, 20*time.Millisecond)
-						err := transitionCall(deadline)
-						stop()
-						if !errors.Is(err, context.DeadlineExceeded) {
-							t.Fatalf("transition passed active commit: %v", err)
-						}
-					} else if err := transitionCall(f.ctx); err != nil {
-						t.Fatal(err)
-					}
-					close(allow)
-					err := waitError(t, done)
-					if (err == nil) != commitFirst {
-						t.Fatalf("commit first=%t error=%v", commitFirst, err)
-					}
-					if commitFirst {
-						if err := transitionCall(f.ctx); err != nil {
+						} else if err := transitionCall(f.ctx); err != nil {
 							t.Fatal(err)
 						}
-					}
-					want := "before"
-					if operation != "edit" && operation != "prepared" {
-						want = "after"
-					}
-					if commitFirst {
-						if operation == "remove" {
-							if _, err := os.Stat(f.path); !errors.Is(err, os.ErrNotExist) {
-								t.Fatalf("remove=%v", err)
+						close(allow)
+						err := waitError(t, done)
+						if (err == nil) != commitFirst {
+							t.Fatalf("commit first=%t error=%v", commitFirst, err)
+						}
+						if commitFirst {
+							if err := transitionCall(f.ctx); err != nil {
+								t.Fatal(err)
+							}
+						}
+						want := "before"
+						if operation != "edit" && operation != "prepared" {
+							want = "after"
+						}
+						if commitFirst {
+							if operation == "remove" {
+								if _, err := os.Stat(f.path); !errors.Is(err, os.ErrNotExist) {
+									t.Fatalf("remove=%v", err)
+								}
+							} else {
+								if operation == "edit" || operation == "prepared" {
+									want = "after"
+								} else {
+									want = "before"
+								}
+								readContent(t, f.path, want)
 							}
 						} else {
-							if operation == "edit" || operation == "prepared" {
-								want = "after"
-							} else {
-								want = "before"
-							}
 							readContent(t, f.path, want)
 						}
-					} else {
-						readContent(t, f.path, want)
-					}
-					staged, _ := filepath.Glob(filepath.Join(f.dir, ".file.tmp-*"))
-					if len(staged) != 0 {
-						t.Fatalf("temporary output leaked: %v", staged)
-					}
+						staged, _ := filepath.Glob(filepath.Join(f.dir, ".file.tmp-*"))
+						if len(staged) != 0 {
+							t.Fatalf("temporary output leaked: %v", staged)
+						}
+					})
 				})
 			}
 		}

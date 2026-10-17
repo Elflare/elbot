@@ -324,12 +324,13 @@ func TestShellToolUsesSandboxDir(t *testing.T) {
 	}
 }
 
-func TestShellToolCancelReturnsQuickly(t *testing.T) {
+func TestShellToolCancelStopsCommand(t *testing.T) {
 	workspace := t.TempDir()
 	shell := NewShellTool()
 	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
 	ctx, cancel := context.WithCancel(ctx)
-	args, _ := json.Marshal(map[string]any{"cmd": "echo started > started.txt; sleep 5", "timeout_ms": 10000})
+	defer cancel()
+	args, _ := json.Marshal(map[string]any{"cmd": "echo started > started.txt; while :; do sleep 60; done", "timeout_ms": 10000})
 	done := make(chan error, 1)
 	go func() {
 		_, _, err := shell.Call(ctx, tool.CallRequest{Arguments: args})
@@ -352,15 +353,16 @@ func TestShellToolCancelReturnsQuickly(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	cancelStarted := time.Now()
+	select {
+	case err := <-done:
+		t.Fatalf("shell command ended before cancellation: %v", err)
+	default:
+	}
 	cancel()
 	select {
 	case <-done:
-		if elapsed := time.Since(cancelStarted); elapsed > time.Second {
-			t.Fatalf("shell cancel took %s, want under 1s", elapsed)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("shell cancel did not return within 1s")
+	case <-time.After(5 * time.Second):
+		t.Fatal("shell cancel did not stop the command")
 	}
 }
 

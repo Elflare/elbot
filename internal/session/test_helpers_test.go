@@ -8,6 +8,7 @@ import (
 	"elbot/internal/testutil"
 	"fmt"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -108,18 +109,14 @@ func (n *fakeNamingNotifier) connect(t *testing.T, svc *Service) {
 
 func waitTitle(t *testing.T, store storage.Store, sessionID, want string) {
 	t.Helper()
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		session, err := store.Sessions().Get(context.Background(), sessionID)
-		if err != nil {
-			t.Fatalf("get session: %v", err)
-		}
-		if session.Title == want {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
+	synctest.Wait()
+	session, err := store.Sessions().Get(context.Background(), sessionID)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
 	}
-	t.Fatalf("title did not become %q", want)
+	if session.Title != want {
+		t.Fatalf("title = %q, want %q", session.Title, want)
+	}
 }
 
 func waitGeneratorCall(t *testing.T, ch <-chan []storage.Message) []storage.Message {
@@ -135,10 +132,11 @@ func waitGeneratorCall(t *testing.T, ch <-chan []storage.Message) []storage.Mess
 
 func ensureNoGeneratorCall(t *testing.T, ch <-chan []storage.Message) {
 	t.Helper()
+	synctest.Wait()
 	select {
 	case messages := <-ch:
 		t.Fatalf("unexpected title generator call: %#v", messages)
-	case <-time.After(50 * time.Millisecond):
+	default:
 	}
 }
 
