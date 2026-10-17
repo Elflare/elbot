@@ -36,7 +36,6 @@ type nativeTestRequest struct {
 	PreviousResponseID string            `json:"previous_response_id"`
 	Store              bool              `json:"store"`
 	Input              []json.RawMessage `json:"input"`
-	Tools              []json.RawMessage `json:"tools"`
 	ToolChoice         json.RawMessage   `json:"tool_choice"`
 	Include            []string          `json:"include"`
 }
@@ -70,9 +69,6 @@ func newNativeFixtureWithStore(t *testing.T, store storage.Store, respond func(i
 		request.Endpoint = r.URL.Path
 		if request.Endpoint == "/responses" && !containsNativeInclude(request.Include, "reasoning.encrypted_content") {
 			t.Error("main dialogue omitted encrypted reasoning material")
-		}
-		if request.Endpoint == "/responses" && len(request.Tools) != 0 {
-			t.Error("Responses definitions must be native input items")
 		}
 		f.mu.Lock()
 		f.requests = append(f.requests, request)

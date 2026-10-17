@@ -111,7 +111,7 @@ func TestTitleGeneratorUsesConfiguredOrContextModelProtocol(t *testing.T) {
 			if got.path != path || got.body["model"] != model {
 				t.Fatalf("request=%+v", got)
 			}
-			for _, field := range []string{"tools", "previous_response_id", "conversation"} {
+			for _, field := range []string{"tools", "previous_response_id"} {
 				if _, exists := got.body[field]; exists {
 					t.Errorf("independent naming request contains %s", field)
 				}

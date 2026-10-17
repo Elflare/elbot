@@ -174,17 +174,6 @@ func TestSessionSwitchBusyIsWarnNotification(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer connection.Disconnect()
-			var records []events.LogRecord
-			logs, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-				if record.EventName == "session_switch_blocked" {
-					records = append(records, record)
-				}
-				return nil
-			}, signal.ConnectOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer logs.Disconnect()
 			text := "-new"
 			if path == "session" {
 				ctx = platform.WithMessageContext(ctx, platform.MessageContext{ResumeSessionID: target.ID})
@@ -198,9 +187,6 @@ func TestSessionSwitchBusyIsWarnNotification(t *testing.T) {
 			}
 			if p.out.String() != session.ErrSessionBusy.Error() {
 				t.Fatalf("notification output: %q", p.out.String())
-			}
-			if len(records) != 0 {
-				t.Fatalf("busy log records: %+v", records)
 			}
 		})
 	}

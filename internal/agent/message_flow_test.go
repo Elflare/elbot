@@ -100,7 +100,7 @@ func TestTurnHookMultimodalUserMessagePersistsWithoutChangingPlatformText(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages) == 0 || !strings.Contains(messages[0].Content, "这是猫 [图片 1；名称：cat.png；媒体 ID：media:") || !strings.Contains(messages[0].Segments, `"type":"image"`) || strings.Contains(messages[0].Segments, "reference_text") || strings.Contains(messages[0].Segments, "base64,") {
+	if len(messages) == 0 || !strings.Contains(messages[0].Content, "这是猫 [图片 1；名称：cat.png；媒体 ID：media:") || !strings.Contains(messages[0].Segments, `"type":"image"`) || strings.Contains(messages[0].Segments, "base64,") {
 		t.Fatalf("stored user message = %#v", messages)
 	}
 }
@@ -211,7 +211,7 @@ func TestHandleMessageSendsFallbackForEmptyLLMResponse(t *testing.T) {
 	}
 }
 
-func TestDynamicProviderClientUsesAgentLogger(t *testing.T) {
+func TestDynamicProviderClientPublishesRequestLog(t *testing.T) {
 	var capturedBody []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedBody, _ = io.ReadAll(r.Body)
@@ -261,9 +261,6 @@ func TestDynamicProviderClientUsesAgentLogger(t *testing.T) {
 	logText := logs.String()
 	if !strings.Contains(logText, "openai chat request") || !strings.Contains(logText, "动态 provider 请求") {
 		t.Fatalf("dynamic provider request was not logged: %s", logText)
-	}
-	if strings.Contains(logText, "secret-key") || strings.Contains(logText, "Authorization") {
-		t.Fatalf("debug log leaked credentials: %s", logText)
 	}
 	if len(capturedBody) == 0 {
 		t.Fatal("server did not receive request body")

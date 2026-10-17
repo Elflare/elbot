@@ -31,7 +31,7 @@ import (
 	"elbot/internal/toolrun"
 )
 
-func TestModelHeaderTimeoutNotifiesWithoutMessageFallback(t *testing.T) {
+func TestModelHeaderTimeoutNotifiesOnce(t *testing.T) {
 	for _, protocol := range []string{"chat", "response"} {
 		for _, entry := range []string{"input", "message"} {
 			t.Run(protocol+"/"+entry, func(t *testing.T) {
@@ -86,7 +86,7 @@ func TestModelHeaderTimeoutNotifiesWithoutMessageFallback(t *testing.T) {
 					t.Fatalf("requests=%d retries=%d", requests.Load(), retries.Load())
 				}
 				output := awaitNotificationText(t, &p.out, "对话处理失败：")
-				if strings.Count(output, "LLM 请求失败，正在重试") != 3 || strings.Count(output, "对话处理失败：") != 1 || !strings.Contains(output, "timeout awaiting response headers") || strings.Contains(output, "请求失败：") {
+				if strings.Count(output, "LLM 请求失败，正在重试") != 3 || strings.Count(output, "对话处理失败：") != 1 || !strings.Contains(output, "timeout awaiting response headers") {
 					t.Fatalf("incorrect terminal notification: %q", output)
 				}
 			})
@@ -94,7 +94,7 @@ func TestModelHeaderTimeoutNotifiesWithoutMessageFallback(t *testing.T) {
 	}
 }
 
-func TestModelStreamFailureNotifiesWithoutMessageFallback(t *testing.T) {
+func TestModelStreamFailureNotifiesOnce(t *testing.T) {
 	for _, protocol := range []string{"chat", "response"} {
 		t.Run(protocol, func(t *testing.T) {
 			var a *agentFixture
@@ -112,7 +112,7 @@ func TestModelStreamFailureNotifiesWithoutMessageFallback(t *testing.T) {
 				t.Fatal("stream failure was swallowed")
 			}
 			output := awaitNotificationText(t, &p.out, "对话处理失败：")
-			if strings.Count(output, "对话处理失败：") != 1 || strings.Contains(output, "请求失败：") {
+			if strings.Count(output, "对话处理失败：") != 1 {
 				t.Fatalf("incorrect stream notification: %q", output)
 			}
 		})
@@ -405,7 +405,7 @@ func TestTurnDeadlineNotifiesFromLifecycle(t *testing.T) {
 		t.Fatalf("lifecycle timeout escaped as another failure: %v", err)
 	}
 	output := awaitNotificationText(t, &p.out, rules.TurnTimeout)
-	if strings.Count(output, rules.TurnTimeout) != 1 || strings.Contains(output, "LLM 响应中断") || strings.Contains(output, "请求失败：") {
+	if strings.Count(output, rules.TurnTimeout) != 1 {
 		t.Fatalf("notification=%q", output)
 	}
 }

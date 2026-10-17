@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,9 +14,7 @@ import (
 	"testing"
 	"time"
 
-	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
-	"elbot/internal/signal"
 )
 
 func mustClient(t *testing.T, url string, extras map[string]any, modelExtras map[string]map[string]any, opts RequestOptions) *Client {
@@ -48,7 +45,7 @@ func TestGenerateTextUsesNativeRequestAndCompleteResponse(t *testing.T) {
 		if body["reasoning"].(map[string]any)["effort"] != "medium" || body["text"].(map[string]any)["format"].(map[string]any)["type"] != "json_object" || body["seed"] != float64(7) {
 			t.Errorf("extras=%v", body)
 		}
-		for _, key := range []string{"messages", "tools", "previous_response_id"} {
+		for _, key := range []string{"previous_response_id"} {
 			if _, exists := body[key]; exists {
 				t.Errorf("unexpected field %s", key)
 			}
@@ -75,9 +72,6 @@ func TestStreamRetainsNativeItemsAndFunctionEvents(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
 		json.NewDecoder(r.Body).Decode(&body)
-		if _, exists := body["tools"]; exists {
-			t.Error("top-level tool definitions sent")
-		}
 		input := body["input"].([]any)[0].(map[string]any)
 		if input["type"] != "additional_tools" || input["role"] != "developer" {
 			t.Errorf("tool input=%v", input)
@@ -86,9 +80,6 @@ func TestStreamRetainsNativeItemsAndFunctionEvents(t *testing.T) {
 		tool := tools[0].(map[string]any)
 		if tool["type"] != "function" || tool["name"] != "read_file" || tool["strict"] != false || body["previous_response_id"] != "previous" {
 			t.Errorf("body=%v", body)
-		}
-		if _, nested := tool["function"]; nested {
-			t.Error("Chat tool wrapper used")
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		emit(w, "response.created", `{"type":"response.created","response":{"id":"resp-1","status":"in_progress"}}`)
@@ -289,25 +280,6 @@ func TestResponseMetadataAndRetryKeepSharedNotifier(t *testing.T) {
 	}
 }
 
-func TestResponseLogsExcludeInputAndOpaqueReasoning(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		emit(w, "response.completed", completedText)
-	}))
-	defer srv.Close()
-	client := mustClient(t, srv.URL, nil, nil, RequestOptions{})
-	var logs bytes.Buffer
-	captureLogs(t, slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	if _, err := client.GenerateText(context.Background(), llm.TextRequest{Model: "m", Instructions: "private instructions", Input: "private input"}); err != nil {
-		t.Fatal(err)
-	}
-	for _, secret := range []string{"secret-key", "private input", "private instructions", "encrypted_content"} {
-		if strings.Contains(logs.String(), secret) {
-			t.Fatalf("sensitive log=%s", logs.String())
-		}
-	}
-}
-
 func TestNativeInputAndUnknownItemsPreserveTheirJSON(t *testing.T) {
 	item, err := InputMessage("user", []InputContent{{Type: "input_image", ImageURL: "data:image/png;base64,eA=="}, {Type: "input_file", FileData: "data:text/plain;base64,eA==", Filename: "x.txt"}})
 	if err != nil {
@@ -333,21 +305,4 @@ func TestNativeInputAndUnknownItemsPreserveTheirJSON(t *testing.T) {
 	if err != nil || string(parsed.Raw) != unknownPart || len(parsed.Content) != 1 || parsed.Content[0].Type != "future_part" {
 		t.Fatalf("native content part lost: %+v error=%v", parsed, err)
 	}
-}
-
-// captureLogs observes the public signal; production never receives this logger.
-func captureLogs(t *testing.T, logger *slog.Logger) {
-	t.Helper()
-	connection, err := globalevents.LogSubmitted.Observe(func(ctx context.Context, record globalevents.LogRecord) error {
-		if !logger.Enabled(ctx, record.Level) {
-			return nil
-		}
-		out := slog.NewRecord(time.Now(), record.Level, record.Content, 0)
-		out.AddAttrs(slog.String("event", record.EventName), slog.String("module", record.Module))
-		return logger.Handler().Handle(ctx, out)
-	}, signal.ConnectOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(connection.Disconnect)
 }

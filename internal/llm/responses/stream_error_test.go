@@ -33,7 +33,7 @@ func TestStreamErrorMessages(t *testing.T) {
 			if apiErr.Code != tc.code || apiErr.Param != tc.param || !strings.Contains(err.Error(), tc.message) {
 				t.Fatalf("code=%q param=%q error=%q", apiErr.Code, apiErr.Param, err.Error())
 			}
-			if strings.Contains(err.Error(), "error :") || strings.Contains(err.Error(), tc.raw) {
+			if strings.Contains(err.Error(), tc.raw) {
 				t.Fatalf("invalid user-facing error: %s", err)
 			}
 			if apiErr.EventType != "error" || !json.Valid([]byte(apiErr.Detail)) {

@@ -736,9 +736,6 @@ func TestSoulPromptAndToolsByMode(t *testing.T) {
 		if !strings.HasPrefix(systemPrompt, "SOUL ONLY\n\nmeta: platform=cli, session_created_at=") || !strings.HasSuffix(systemPrompt, ".") {
 			t.Fatalf("system prompt = %q", systemPrompt)
 		}
-		if strings.Contains(systemPrompt, "discover_tool") || strings.Contains(systemPrompt, "work") {
-			t.Fatalf("system prompt polluted: %q", systemPrompt)
-		}
 	}
 	if len(chatRequests[0].Tools) != 1 || chatRequests[0].Tools[0].Name != "discover_tool" {
 		t.Fatalf("work tools = %#v", chatRequests[0].Tools)

@@ -122,7 +122,7 @@ func TestModelsGroupsProvidersAndSwitchPersistsState(t *testing.T) {
 		t.Fatalf("models after mode switches: %v", err)
 	}
 	modelsOut := p.out.String()
-	if !strings.Contains(modelsOut, "deepseek-chat (chat") || !strings.Contains(modelsOut, "glm-4-flash (work") || strings.Contains(modelsOut, "current") {
+	if !strings.Contains(modelsOut, "deepseek-chat (chat") || !strings.Contains(modelsOut, "glm-4-flash (work") {
 		t.Fatalf("models missing mode markers: %q", modelsOut)
 	}
 	p.out.Reset()

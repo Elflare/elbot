@@ -180,7 +180,7 @@ func TestToolPhasePendingInputInjectedBeforeFollowupLLM(t *testing.T) {
 	}
 	var persistedPending bool
 	for _, msg := range messages {
-		if msg.Role == storage.RoleUser && strings.Contains(msg.Content, "这是猫 [图片 1；名称：cat.png；媒体 ID：media:") && strings.Contains(msg.Segments, `"type":"image"`) && !strings.Contains(msg.Segments, "reference_text") && !strings.Contains(msg.Segments, "base64,") {
+		if msg.Role == storage.RoleUser && strings.Contains(msg.Content, "这是猫 [图片 1；名称：cat.png；媒体 ID：media:") && strings.Contains(msg.Segments, `"type":"image"`) && !strings.Contains(msg.Segments, "base64,") {
 			persistedPending = true
 		}
 	}

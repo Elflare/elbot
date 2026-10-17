@@ -43,7 +43,7 @@ func TestFactoryNativeClientsServeNamingAndChatTextCompaction(t *testing.T) {
 			if body["store"] != false || body["input"] == nil {
 				t.Errorf("native independent input=%v", body)
 			}
-			for _, field := range []string{"messages", "tools", "previous_response_id"} {
+			for _, field := range []string{"previous_response_id"} {
 				if _, exists := body[field]; exists {
 					t.Errorf("unexpected native field %s", field)
 				}

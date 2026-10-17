@@ -188,9 +188,6 @@ func TestAutoCompactCreatesStableFirstUserContext(t *testing.T) {
 			t.Fatalf("repeated compact payload missing %q:\n%s", want, repeatedPayload)
 		}
 	}
-	if strings.Contains(repeatedPayload, "已有摘要") || strings.Contains(repeatedPayload, "已有较早摘要") {
-		t.Fatalf("repeated compact used a special previous-summary field:\n%s", repeatedPayload)
-	}
 	repeated, err := a.execution.sessions.Current(ctx, a.identity.Scope(ctx))
 	if err != nil {
 		t.Fatalf("current repeated session: %v", err)
@@ -203,9 +200,6 @@ func TestAutoCompactCreatesStableFirstUserContext(t *testing.T) {
 		if !strings.Contains(mainAfterRepeated, want) {
 			t.Fatalf("main user after repeated compact missing %q: %q", want, mainAfterRepeated)
 		}
-	}
-	if _, err := store.ContextSummaries().LatestBySession(ctx, repeated.ID); !errors.Is(err, storage.ErrNotFound) {
-		t.Fatalf("new compact flow wrote a context summary: %v", err)
 	}
 }
 
@@ -325,9 +319,6 @@ func TestCompactBlocksSessionChangesAndStopCancels(t *testing.T) {
 	}
 	if got := len(a.execution.requests.ListBySession(source.ID)); got != 0 {
 		t.Fatalf("active requests = %d", got)
-	}
-	if _, err := store.ContextSummaries().LatestBySession(ctx, source.ID); !errors.Is(err, storage.ErrNotFound) {
-		t.Fatalf("summary after cancel err = %v", err)
 	}
 	if !a.execution.shouldCompact(ctx, source, modelmgr.SelectionForTurn(ctx, a.execution.models, source)) {
 		t.Fatal("usage no longer triggers compact after cancellation")

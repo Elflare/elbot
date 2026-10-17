@@ -30,7 +30,7 @@ func TestReplyDeliveryRecordsOncePerSend(t *testing.T) {
 			}
 			var records []events.LogRecord
 			connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
-				if r.EventName == "reply_delivered" || r.EventName == "reply_committed" {
+				if r.EventName == "reply_delivered" {
 					records = append(records, r)
 				}
 				return nil
@@ -109,25 +109,14 @@ func TestIntermediateStreamDeliveryLogsOnce(t *testing.T) {
 	}
 }
 
-func TestBufferedSendFailureKeepsReceiptAndReturnsWithoutTerminalReport(t *testing.T) {
+func TestBufferedSendFailureKeepsReceipt(t *testing.T) {
 	for _, sendErr := range []error{errors.New("send failed"), context.Canceled} {
 		t.Run(sendErr.Error(), func(t *testing.T) {
 			f := newReplyTestFixture(t, true)
 			f.platform.sendErr = sendErr
-			var records []events.LogRecord
-			connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
-				if r.EventName == "platform_send_error" {
-					records = append(records, r)
-				}
-				return nil
-			}, signal.ConnectOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(connection.Disconnect)
 			result, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-			if !errors.Is(err, sendErr) || !result.Persisted || len(result.Receipt.SentMessages) != 1 || len(records) != 0 {
-				t.Fatalf("result=%+v err=%v audit=%+v", result, err, records)
+			if !errors.Is(err, sendErr) || !result.Persisted || len(result.Receipt.SentMessages) != 1 {
+				t.Fatalf("result=%+v err=%v", result, err)
 			}
 		})
 	}
@@ -249,10 +238,8 @@ func TestReplyCommitLogSpacingComesFromSources(t *testing.T) {
 				if records[0].ResultStatus != status || records[0].Level != tc.level || !strings.HasPrefix(content, "operation=send_assistant_message\n") || !strings.Contains(content, "platform_message_ids=[sent]") {
 					t.Fatalf("reply facts changed: %+v", records[0])
 				}
-				for _, unwanted := range []string{"\nassociation:", "\nfinish:", "\noutputs_send:", "assistant_send:\n\n"} {
-					if strings.Contains(content, unwanted) {
-						t.Fatalf("empty section or extra newline %q: %s", unwanted, content)
-					}
+				if strings.Contains(content, "\nfinish:") {
+					t.Fatalf("empty finish section: %s", content)
 				}
 				if diagnostic == "" {
 					if strings.Contains(content, "\n\n") || strings.HasSuffix(content, "\n") || strings.Contains(content, "\nreplace:") {

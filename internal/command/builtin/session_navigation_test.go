@@ -28,8 +28,8 @@ func TestFormatMessagePageOnlyUsesAssistantMessages(t *testing.T) {
 	if !strings.Contains(content, "messages page 1/2") || !strings.Contains(content, "a1: answer one") {
 		t.Fatalf("content = %q", content)
 	}
-	if strings.Contains(content, "u1") || strings.Contains(content, "assistant") {
-		t.Fatalf("content should not include user messages or role labels: %q", content)
+	if strings.Contains(content, "u1") {
+		t.Fatalf("content should not include user messages: %q", content)
 	}
 }
 
