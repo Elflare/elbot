@@ -213,7 +213,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## Storage 与 SQLite
 
 - `internal/storage/storage.go`、`session_metadata.go`：领域模型、repository 契约与 metadata。
-- `internal/storage/sqlite/`、`migrations.go`：存储实现与数据库迁移。
+- `internal/storage/sqlite/`、`db_init.go`、`migrations.go`：存储实现、空库最新结构与已有数据库升级；`db_init.go` 的结构快照同时记录已包含的迁移版本。
 - `internal/storage/dialogue.go`、`internal/storage/sqlite/dialogue_repository.go`：对话／原生提交与材料契约。
 - `internal/storage/sqlite/session_repository.go`：Session 字段合并与同值写入跳过。
 - `internal/storage/sqlite/native_snapshot.go`、`native_material.go`：不可变快照、seed 与原生窗口批量读取。

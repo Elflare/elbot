@@ -35,7 +35,7 @@ func hasSQLiteObject(t *testing.T, db *sql.DB, objectType, name string) bool {
 	return true
 }
 
-func TestNewRunsMigrations(t *testing.T) {
+func TestNewCreatesCurrentTables(t *testing.T) {
 	store := newTestStore(t)
 
 	for _, table := range []string{"schema_migrations", "sessions", "messages", "platform_message_map", "context_summaries", "tool_call_records", "cron_jobs", "elnis_events", "elnis_report_deliveries", "media", "media_references"} {
@@ -100,6 +100,10 @@ func TestNewCanRunTwice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first New: %v", err)
 	}
+	session := &storage.Session{ID: "fresh", OwnerID: "qq:u1", Platform: "qq", PlatformScopeID: "group:1", Title: "keep title", Metadata: `{"keep":true}`}
+	if err := first.Sessions().Create(t.Context(), session); err != nil {
+		t.Fatal(err)
+	}
 	if err := first.Close(); err != nil {
 		t.Fatalf("close first: %v", err)
 	}
@@ -108,7 +112,14 @@ func TestNewCanRunTwice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second New: %v", err)
 	}
-	_ = second.Close()
+	defer second.Close()
+	got, err := second.Sessions().Get(t.Context(), session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.OwnerID != session.OwnerID || got.Platform != session.Platform || got.Title != session.Title || got.Metadata != session.Metadata {
+		t.Fatalf("reopening changed stored session or replayed historical conversions: %+v", got)
+	}
 }
 
 func TestSessionRepositoryCRUDAndScope(t *testing.T) {
