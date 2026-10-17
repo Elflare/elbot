@@ -35,7 +35,7 @@ func TestTurnPreparationUsesRequestContext(t *testing.T) {
 				wantErr := context.Canceled
 				if reason == "timeout" {
 					var cancel context.CancelFunc
-					reqCtx, cancel = context.WithTimeout(reqCtx, 20*time.Millisecond)
+					reqCtx, cancel = context.WithTimeout(reqCtx, 10*time.Millisecond)
 					defer cancel()
 					wantErr = context.DeadlineExceeded
 				}

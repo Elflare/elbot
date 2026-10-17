@@ -49,7 +49,7 @@ func TestModelHeaderTimeoutNotifiesOnce(t *testing.T) {
 					}
 				}))
 				defer server.Close()
-				opts := httpclient.Options{FirstChunkTimeout: 20 * time.Millisecond, MaxRetries: 3, RetryInitialDelay: time.Millisecond}
+				opts := httpclient.Options{FirstChunkTimeout: time.Millisecond, MaxRetries: 3, RetryInitialDelay: time.Millisecond}
 				var client llm.Client
 				var err error
 				if protocol == "chat" {
