@@ -198,7 +198,7 @@ Runtime 拥有注册、schema、权限与执行器，ToolRun 拥有当前视图�
 - ELyph 通用规则由 elyph/rules.go 提供，工具、Skill 与后台任务声明需求，输入／工具 Runner 在正文 Hook 后组装。首次展示状态与携带规则的消息原子提交，同 Session 共享，压缩新 Session 重置。
 - 输入指令、发现与后台首轮预加载在一次提交中合并状态，失败保留原状态；准备在准入锁外，提交复核取消、binding、模式和压缩状态。
 - tool.Info.APITypes 限制协议可用性，空集合不限；view_image 仅供 Responses。前台 chat 过滤工具、Skill 和 tag。
-- 后台只使用首轮授权状态，续跑不扩大工具集合，禁止 discover_tool、workspace 和 ForegroundOnly 工具。tool_list_names 先匹配工具／Skill，再匹配 tag，仅显式 tag 注入提示。
+- 后台只使用首轮授权状态，续跑不扩大工具集合，禁止 discover_tool、workspace 和 ForegroundOnly 工具。tool_list_names 先匹配工具／Skill，再匹配 tag，仅显式 tag 注入提示。PrepareBackground 按注册类型分流，授权筛选后复用 PrepareTools／PrepareSkills，合并工具附带说明、Skill 文档与状态；ActivateTools 声明的可执行 Skill 直接加载自身 schema，纯文档 Skill 不生成调用接口。
 - fileops 统一处理工具及命令的编辑／撤销。context 只保存绑定，准备对象持有快照，提交校验显式传递。准备时短暂锁定目标，等待确认期间不持有文件或锁；预览不暴露批准写入的字节。
 - 文件提交锁顺序为目标路径 → Scope → SessionID → 备份状态；核对绑定、取消、权限、目标和 revision 后写批准字节。撤销仅在成功写入后登记，后台编辑不登记前台备份；外部进程不参与锁。/stop、切换和清理与提交互斥：先提交则完成，先取消或失效则拒绝。
 - 目录 AST 先按扩展名／标准 Shell shebang 筛选，再完整读取候选，避免全文读取无关文件；Shell 文件优先采用有效 shebang 声明的方言。

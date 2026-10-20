@@ -108,7 +108,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## Tool Runtime、工具状态与文件
 
 - `internal/tool/`、`internal/tool/builtin/`：工具注册、schema、执行器与内置工具。
-- `internal/toolrun/state.go`、`preload.go`、`background.go`：Session 工具状态、预加载与后台白名单。
+- `internal/toolrun/state.go`、`preload.go`、`background.go`：Session 工具状态、前后台共用的工具／Skill 预加载与后台白名单。
 - `internal/agent/tool_directive.go`、`tool_cache.go`：输入指令与状态提交。
 - `internal/tool/builtin/file_tools_ast.go`、`file_tools_directory.go`：AST 识别、目录候选与缓存、rg 枚举及流式搜索。
 - `internal/tool/builtin/long_memory.go`：长期记忆文件、索引与同步。

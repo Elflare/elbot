@@ -122,7 +122,7 @@ func TestRunBackgroundPreloadsSkillDetailAndActivatedHiddenWrapper(t *testing.T)
 	}
 	latest := requests[0].Messages[len(requests[0].Messages)-1]
 	content := llm.SegmentsContentText(latest.Segments)
-	if !strings.Contains(content, "[系统预加载 Skill]") || !strings.Contains(content, "# DOCX") || !strings.Contains(content, "[后台任务]") || !strings.Contains(content, "run") {
+	if !strings.Contains(content, "[系统预加载资源]") || !strings.Contains(content, "# DOCX") || !strings.Contains(content, "[后台任务]") || !strings.Contains(content, "run") {
 		t.Fatalf("skill prompt missing content: %q", content)
 	}
 }

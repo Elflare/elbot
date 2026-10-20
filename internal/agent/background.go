@@ -213,7 +213,7 @@ func backgroundPromptWithSkills(prompt, skillPrompt string) string {
 	if skillPrompt == "" {
 		return prompt
 	}
-	return "[系统预加载 Skill]\n\n以下 Skill 说明已由系统预加载。Skill 本体不是 top-level tool schema；可调用能力只以本次请求注入的 top-level tool schema 为准。\n\n" + skillPrompt + "\n\n[后台任务]\n\n" + strings.TrimSpace(prompt)
+	return "[系统预加载资源]\n\n以下工具使用说明与 Skill 文档已由系统预加载。可调用能力以本次请求注入的 top-level tool schema 为准。\n\n" + skillPrompt + "\n\n[后台任务]\n\n" + strings.TrimSpace(prompt)
 }
 
 func toolBackgroundKind(kind background.Kind) sandboxctx.BackgroundKind {

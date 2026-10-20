@@ -177,7 +177,7 @@ func (t CronWriteTool) Schema() llm.ToolSchema {
 		Integer("run_after_months", "一次性任务相对当前时间的日历月偏移。\n** 用户说几个月后时优先使用\n~ run_at 同时传").
 		String("trigger_mode", "create 需要；update 可选。触发模式：direct 或 llm。direct 直接发消息；llm 后台运行 LLM 处理复杂任务。 ").
 		String("message", "create 需要；update 可选。trigger_mode=direct：使用普通自然语言通知文本。trigger_mode=llm：使用 ELyph #task <name> - 描述 任务文本。").
-		StringArray("tool_list_names", "trigger_mode=llm 时指定的工具、Skill 或标签名；任务只允许这些能力及必要依赖，不提供 discover_tool。标签附带标签提示，Skill 附带说明与 runner。update 传空数组表示清空。 ").
+		StringArray("tool_list_names", "trigger_mode=llm 时指定的工具、Skill 或标签名，填普通名字，无需 @ 前缀；按注册类型识别并预加载，任务只允许这些能力及必要依赖，不提供 discover_tool。工具附带使用说明，标签附带标签提示，Skill 附带文档与声明的运行工具，可执行 AgentSkill 同时提供自身调用接口。update 传空数组表示清空。 ").
 		String("model_provider", "任务专用模型 provider，与 model 成对设置；未指定时使用 work 模型。update 两者同时传空字符串恢复默认。").
 		String("model", "任务专用模型名称，与 model_provider 成对设置。").
 		Boolean("all_enabled_platforms", "是否发送/广播到所有 enabled 平台超级管理员。 ").

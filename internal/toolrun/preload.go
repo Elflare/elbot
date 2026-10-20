@@ -12,6 +12,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/elyph"
 	globalevents "elbot/internal/events"
+	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/tool"
 )
 
@@ -57,7 +58,8 @@ type BackgroundPreload struct {
 	NeedsElyphRules bool
 	Update          StateUpdate
 	Skills          []string
-	SkillPrompt     string
+	// SkillPrompt carries tool usage instructions and Skill documentation for the task input.
+	SkillPrompt string
 }
 
 func (s *PreloadService) PrepareTools(ctx context.Context, names []string) (ToolPreload, error) {
@@ -144,7 +146,7 @@ func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, na
 			result.NeedsElyphRules = result.NeedsElyphRules || (block.Format == elyph.Format && strings.TrimSpace(block.Content) != "")
 		}
 		for _, wrapper := range detailer.ActivateTools() {
-			result.Update.Tools = append(result.Update.Tools, s.preloadWrapper(ctx, sessionID, wrapper, false)...)
+			result.Update.Tools = append(result.Update.Tools, s.preloadWrapper(ctx, sessionID, wrapper, sandboxctx.BackgroundContext(ctx))...)
 		}
 		result.Accepted[i] = true
 	}
@@ -205,7 +207,6 @@ func (s *PreloadService) PrepareBackground(ctx context.Context, sessionID string
 	}
 
 	var result BackgroundPreload
-	seen := map[string]bool{}
 	var names []string
 	tags := map[string][]string{}
 	selections, err := s.BackgroundSelections(ctx, selectors)
@@ -228,78 +229,47 @@ func (s *PreloadService) PrepareBackground(ctx context.Context, sessionID string
 			}
 		}
 	}
+	var tools, skills []string
+	for _, name := range uniqueNames(names) {
+		candidate, _ := s.registry.Get(strings.TrimSpace(name))
+		if _, ok := candidate.(tool.DetailProvider); ok {
+			skills = append(skills, name)
+		} else {
+			tools = append(tools, name)
+		}
+	}
+	preparedTools, err := s.PrepareTools(ctx, tools)
+	if err != nil {
+		return BackgroundPreload{}, err
+	}
+	preparedSkills, err := s.PrepareSkills(ctx, sessionID, skills)
+	if err != nil {
+		return BackgroundPreload{}, err
+	}
+	result.Update.Tools = append(preparedTools.Update.Tools, preparedSkills.Update.Tools...)
+	result.Skills = preparedSkills.Names
+	result.NeedsElyphRules = preparedTools.NeedsElyphRules || preparedSkills.NeedsElyphRules
+	for i, name := range tools {
+		if preparedTools.Accepted[i] {
+			result.Update.Tags = append(result.Update.Tags, tags[name]...)
+		}
+	}
+	for i, name := range skills {
+		if preparedSkills.Accepted[i] {
+			result.Update.Tags = append(result.Update.Tags, tags[name]...)
+		}
+	}
+	for _, name := range append(preparedTools.Invalid, preparedSkills.Invalid...) {
+		record.EventName = "background_preload_skipped"
+		record.Level = slog.LevelInfo
+		record.ResultStatus = globalevents.ResultSkipped
+		record.Content = fmt.Sprintf("background preload skipped: name=%s reason=not_found_or_not_allowed", name)
+		_ = globalevents.EmitLog(ctx, record)
+	}
 	var sections []string
-	for _, name := range names {
-		name = strings.TrimSpace(name)
-		if name == "" || name == "discover_tool" || seen[name] {
-			continue
-		}
-		seen[name] = true
-		candidate, ok := s.registry.Get(name)
-		if !ok || !preloadAllowed(ctx, candidate) {
-			record.EventName = "background_preload_skipped"
-			record.Level = slog.LevelInfo
-			record.ResultStatus = globalevents.ResultSkipped
-			record.Content = fmt.Sprintf("background preload skipped: name=%s reason=not_found_or_not_allowed", name)
-			_ = globalevents.EmitLog(ctx, record)
-			continue
-		}
-		if detailer, ok := candidate.(tool.DetailProvider); ok {
-			if candidate.Info().Hidden {
-				record.EventName = "background_preload_skipped"
-				record.Level = slog.LevelInfo
-				record.ResultStatus = globalevents.ResultSkipped
-				record.Content = fmt.Sprintf("background preload skipped: name=%s reason=hidden_skill", name)
-				_ = globalevents.EmitLog(ctx, record)
-				continue
-			}
-			block, err := skillDetailBlock(ctx, candidate, detailer)
-			if err != nil {
-				record.EventName = "background_preload_skipped"
-				record.Level = slog.LevelError
-				record.ResultStatus = globalevents.ResultFailed
-				if errors.Is(err, context.Canceled) {
-					record.Level = slog.LevelInfo
-					record.ResultStatus = globalevents.ResultCanceled
-				}
-				record.Content = fmt.Sprintf("background preload failed: name=%s error=%v", name, err)
-				_ = globalevents.EmitLog(ctx, record)
-				return BackgroundPreload{}, err
-			}
-			detail := strings.TrimSpace(tool.RenderDetailBlocks([]tool.DetailBlock{block}))
-			if detail == "" {
-				record.EventName = "background_preload_skipped"
-				record.Level = slog.LevelInfo
-				record.ResultStatus = globalevents.ResultSkipped
-				record.Content = fmt.Sprintf("background preload skipped: name=%s reason=empty_skill_detail", name)
-				_ = globalevents.EmitLog(ctx, record)
-				continue
-			}
-			result.Skills = append(result.Skills, name)
-			result.NeedsElyphRules = result.NeedsElyphRules || block.Format == elyph.Format
-			result.Update.Tags = append(result.Update.Tags, tags[name]...)
-			sections = append(sections, "## Skill: "+name+"\n\n"+detail)
-			for _, wrapper := range detailer.ActivateTools() {
-				result.Update.Tools = append(result.Update.Tools, s.preloadWrapper(ctx, sessionID, wrapper, true)...)
-			}
-			continue
-		}
-		if candidate.Info().Hidden {
-			record.EventName = "background_preload_skipped"
-			record.Level = slog.LevelInfo
-			record.ResultStatus = globalevents.ResultSkipped
-			record.Content = fmt.Sprintf("background preload skipped: name=%s reason=not_found_or_not_allowed", name)
-			_ = globalevents.EmitLog(ctx, record)
-			continue
-		}
-		discovery := s.discoverNames(ctx, []string{name})
-		tools := NativeCachedToolsFromDiscovery(discovery)
-		for _, item := range discovery.Tools {
-			result.NeedsElyphRules = result.NeedsElyphRules || item.NeedsElyphRules
-		}
-		if len(tools) > 0 {
-			result.Update.Tools = append(result.Update.Tools, tools...)
-			result.Update.Tags = append(result.Update.Tags, tags[name]...)
+	for _, content := range []string{preparedTools.Content, preparedSkills.Content} {
+		if strings.TrimSpace(content) != "" {
+			sections = append(sections, content)
 		}
 	}
 	result.SkillPrompt = strings.Join(sections, "\n\n---\n\n")
@@ -420,11 +390,10 @@ func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name str
 		skip("not_found_or_not_allowed")
 		return nil
 	}
-	if _, skill := candidate.(tool.DetailProvider); skill {
-		skip("skill_has_no_schema")
-		return nil
-	}
-	if background && !candidate.Info().Hidden {
+	// Executable skills can provide both documentation and their own schema.
+	// Discovery renders their documentation, so load activated skill schemas directly.
+	_, skill := candidate.(tool.DetailProvider)
+	if background && !candidate.Info().Hidden && !skill {
 		return NativeCachedToolsFromDiscovery(s.discoverNames(ctx, []string{name}))
 	}
 	schema, info := candidate.Schema(), candidate.Info()
