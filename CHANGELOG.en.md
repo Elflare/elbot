@@ -49,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed the issue where duplicate stop tokens in Chat Completions caused duplicate delivery of tool calls and triggered `tool batch identity mismatch`.
 - Fixed the issue where `/stop` or timeout only terminated the Skill launcher, while child processes continued to execute and send.
 - Fixed a bug where the background could not retrieve Skills
 - Fixed excessive redundant IO to improve performance
