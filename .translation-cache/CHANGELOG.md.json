@@ -2208,6 +2208,14 @@
       "translation": "Cron retry cancellation, which previously might have recorded a sending failure and appended a failure notification, is now handled as a normal cancellation;",
       "updated_at": 1791194538
     },
+    "CHANGELOG.md:list:eddd9e72aa3da2723a128aa4f9ce7b4145a8d8887c9df45c4bc572cb4fbfb199": {
+      "kind": "list",
+      "source": "QQ 官方支持私聊与群聊的引用回复",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "eddd9e72aa3da2723a128aa4f9ce7b4145a8d8887c9df45c4bc572cb4fbfb199",
+      "translation": "Official support for quoted replies in QQ private and group chats",
+      "updated_at": 1792458312
+    },
     "CHANGELOG.md:list:ef6588782632f866ab4b19fd530b98068c98b122ae747795f4ea20470edff7e6": {
       "kind": "list",
       "source": "上下文压缩改为保留历史用户原话、过滤工具结果，成功后切换到 __ELBOT_CODE_0__ 独立 Session，并将压缩内容与新输入固定物化为首条用户消息；",
@@ -2314,8 +2322,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "b9931c2135a1b1ffe9a460cb41b5847e0ebf11812d7c8c167b6bcba16aac04a9",
+  "source_hash": "b861192522be280ebc5fd57168a48f4cabdd6c728cd41bd967613c91573bdc53",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1792456945,
+  "updated_at": 1792458312,
   "version": 2
 }
