@@ -28,6 +28,8 @@ func (a *Client) readStream(ctx context.Context, sse *httpclient.SSE, out chan<-
 		}
 	}
 	accums := map[int]*accumToolCall{}
+	// A finished choice is sealed; keep reading the stream for usage and [DONE].
+	finished := false
 	for frame := range sse.Frames {
 		if frame.Err != nil {
 			err := frame.Err
@@ -45,13 +47,10 @@ func (a *Client) readStream(ctx context.Context, sse *httpclient.SSE, out chan<-
 			send(Chunk{Error: fmt.Errorf("parse stream chunk: %w", err)})
 			return
 		}
-		if raw.Usage != nil && len(raw.Choices) == 0 {
-			if !send(Chunk{Usage: toUsage(raw.Usage)}) {
+		if finished || len(raw.Choices) == 0 {
+			if raw.Usage != nil && !send(Chunk{Usage: toUsage(raw.Usage)}) {
 				return
 			}
-			continue
-		}
-		if len(raw.Choices) == 0 {
 			continue
 		}
 		choice := raw.Choices[0]
@@ -76,7 +75,8 @@ func (a *Client) readStream(ctx context.Context, sse *httpclient.SSE, out chan<-
 			}
 			acc.args.WriteString(tc.Function.Arguments)
 		}
-		if chunk.FinishReason != "" && len(accums) > 0 {
+		finished = chunk.FinishReason != ""
+		if finished && len(accums) > 0 {
 			indices := make([]int, 0, len(accums))
 			for index := range accums {
 				indices = append(indices, index)
