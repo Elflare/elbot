@@ -800,6 +800,14 @@
       "translation": "Fixed the issue where __ELBOT_CODE_0__ would display active requests from other users or Sessions within the process when the caller has no current Session;",
       "updated_at": 1784987067
     },
+    "CHANGELOG.md:list:5f401361ed8d8ebe3433b0064274a2f55a9def9a29deb114cb16e74839625b19": {
+      "kind": "list",
+      "source": "修复 Chat Completions 重复结束标记导致工具调用重复交付、触发 __ELBOT_CODE_0__ 的问题。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "5f401361ed8d8ebe3433b0064274a2f55a9def9a29deb114cb16e74839625b19",
+      "translation": "Fixed the issue where duplicate stop tokens in Chat Completions caused duplicate delivery of tool calls and triggered __ELBOT_CODE_0__.",
+      "updated_at": 1792463375
+    },
     "CHANGELOG.md:list:60bd0875b57fac1eddc9b627c674bf06f753c9de9008945cdcfd9f6dee17d8f4": {
       "kind": "list",
       "source": "修改Systemp prompt结构，添加meta信息",
@@ -2322,8 +2330,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "b861192522be280ebc5fd57168a48f4cabdd6c728cd41bd967613c91573bdc53",
+  "source_hash": "034ed601cc77a31caa7087c73c3eae0cd08b841d4ad4f1ebd9fcb5357a54c336",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1792458312,
+  "updated_at": 1792463375,
   "version": 2
 }
