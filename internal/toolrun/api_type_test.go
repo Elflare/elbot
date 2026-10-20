@@ -7,6 +7,7 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
+	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -60,6 +61,10 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 			prepared, err := preloader.PrepareTools(ctx, []string{"image"})
 			if err != nil || len(prepared.Update.Tools) != boolInt(want) {
 				t.Fatalf("preload=%+v err=%v", prepared, err)
+			}
+			background, err := preloader.PrepareBackground(sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{Background: true}), "session", []string{"pictures"}, []string{"image"})
+			if err != nil || len(background.Update.Tools) != boolInt(want) || len(background.Update.Tags) != boolInt(want) {
+				t.Fatalf("background preload=%+v err=%v", background, err)
 			}
 			cache := prepared.Update.Tools
 			for _, mode := range []string{storage.SessionModeWork, storage.SessionModeBackground} {

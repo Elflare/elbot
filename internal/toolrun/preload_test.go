@@ -3,14 +3,68 @@ package toolrun
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/logging"
+	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/tool"
+	"elbot/internal/tool/skill"
 )
+
+type preloadContentTool struct {
+	availabilityTestTool
+	err   error
+	calls int
+}
+
+func (t *preloadContentTool) DiscoveryContent(context.Context) (string, bool, error) {
+	t.calls++
+	return "Use the tool with its task instructions.", false, t.err
+}
+
+func TestBackgroundPreloadIncludesToolContent(t *testing.T) {
+	registry := tool.NewRegistry()
+	candidate := &preloadContentTool{availabilityTestTool: availabilityTestTool{name: "task_tool"}}
+	if err := registry.Register(candidate); err != nil {
+		t.Fatal(err)
+	}
+	preloader := NewPreloadService(PreloadOptions{Registry: registry, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"tasks": {Tools: []string{"task_tool"}}}}})
+	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
+	ctx = sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{Background: true})
+	prepared, err := preloader.PrepareBackground(ctx, "session", []string{"task_tool", "tasks", "task_tool"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prepared.Update.Tools) != 1 || !strings.Contains(prepared.SkillPrompt, "Use the tool with its task instructions.") || candidate.calls != 1 {
+		t.Fatalf("preload=%+v content loads=%d", prepared, candidate.calls)
+	}
+	if strings.Join(prepared.Update.Tags, ",") != "tasks" {
+		t.Fatalf("tags=%v", prepared.Update.Tags)
+	}
+	prepared, err = preloader.PrepareBackground(ctx, "session", []string{"tasks"}, []string{})
+	if err != nil || len(prepared.Update.Tools) != 0 || len(prepared.Update.Tags) != 0 || prepared.SkillPrompt != "" || candidate.calls != 1 {
+		t.Fatalf("unauthorized preload=%+v content loads=%d err=%v", prepared, candidate.calls, err)
+	}
+	candidate.err = errors.New("content failed")
+	prepared, err = preloader.PrepareBackground(ctx, "session", []string{"task_tool"}, nil)
+	if !errors.Is(err, candidate.err) || len(prepared.Update.Tools) != 0 || prepared.SkillPrompt != "" {
+		t.Fatalf("failed preload=%+v err=%v", prepared, err)
+	}
+	candidate.err = nil
+	if err := registry.Register(skill.NewDescriptor(skill.Record{Name: "broken", DetailPath: filepath.Join(t.TempDir(), "missing.md")})); err != nil {
+		t.Fatal(err)
+	}
+	prepared, err = preloader.PrepareBackground(ctx, "session", []string{"tasks", "broken"}, nil)
+	if err == nil || len(prepared.Update.Tools) != 0 || len(prepared.Update.Tags) != 0 || prepared.SkillPrompt != "" {
+		t.Fatalf("skill failure leaked tool preparation: %+v err=%v", prepared, err)
+	}
+}
 
 func TestPreloadWrapperSkipAuditUsesEventName(t *testing.T) {
 	for _, background := range []bool{false, true} {
