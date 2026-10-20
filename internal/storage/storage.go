@@ -151,6 +151,15 @@ const (
 	ElnisReportDeliveryDelivered = "delivered"
 )
 
+// PlatformMessageAlias associates a platform reference index with its message ID.
+type PlatformMessageAlias struct {
+	Platform          string    // Platform owning the reference index.
+	PlatformScopeID   string    // Conversation in which the index is valid.
+	Alias             string    // Platform reference index, not a message ID.
+	PlatformMessageID string    // Actual message ID used by history and output mappings.
+	CreatedAt         time.Time // Registration time used by chat history retention.
+}
+
 type ChatMessage struct {
 	Seq                      int64
 	ID                       string
@@ -466,6 +475,8 @@ type ElnisEventRepository interface {
 
 type ChatHistoryRepository interface {
 	Append(ctx context.Context, message *ChatMessage) error
+	MapPlatformMessageAlias(ctx context.Context, mapping PlatformMessageAlias) error
+	ResolvePlatformMessageAlias(ctx context.Context, platform, scopeID, alias string) (string, error)
 	GetByPlatformMessage(ctx context.Context, platform, scopeID, platformMessageID string) (*ChatMessage, error)
 	Search(ctx context.Context, req ChatHistorySearchRequest) ([]ChatMessage, error)
 	Around(ctx context.Context, req ChatHistoryAroundRequest) ([]ChatMessage, error)

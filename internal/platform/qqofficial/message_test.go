@@ -98,16 +98,15 @@ func TestHandleGroupMessageRecordsChatHistoryBeforeWakeup(t *testing.T) {
 	defer historyStore.Close()
 	history := historyStore.Repository()
 	adapter := newTestAdapter(t, Config{}, nil, history)
+	mapTestReference(t, adapter, "group:group-1", "REFIDX_reply-1", "reply-1")
 	handler := &captureHandler{}
 	adapter.handleGroupMessage(ctx, handler, payload{Type: eventGroupMessageCreate}, inboundMessage{
-		ID:          "msg-1",
-		GroupOpenID: "group-1",
-		Author:      inboundAuthor{MemberOpenID: "member-1"},
-		Content:     "普通消息",
-		Timestamp:   "2026-08-29T12:34:56+08:00",
-		MessageReference: &messageReference{
-			MessageID: "reply-1",
-		},
+		ID:           "msg-1",
+		GroupOpenID:  "group-1",
+		Author:       inboundAuthor{MemberOpenID: "member-1"},
+		Content:      "普通消息",
+		Timestamp:    "2026-08-29T12:34:56+08:00",
+		MessageScene: messageScene{Ext: []string{"ref_msg_idx=REFIDX_reply-1"}},
 	})
 
 	row, err := history.GetByPlatformMessage(ctx, platformName, "group:group-1", "msg-1")
@@ -135,15 +134,14 @@ func TestHandleGroupMessageAppliesAssistantReference(t *testing.T) {
 		t.Fatalf("map assistant: %v", err)
 	}
 	adapter := newTestAdapter(t, Config{}, store, nil)
+	mapTestReference(t, adapter, "group:group-1", "REFIDX_assistant-1", "assistant-1")
 	handler := &captureHandler{}
 	adapter.handleGroupMessage(ctx, handler, payload{Type: eventGroupMessageCreate}, inboundMessage{
-		ID:          "msg-1",
-		GroupOpenID: "group-1",
-		Author:      inboundAuthor{MemberOpenID: "member-1"},
-		Content:     "继续",
-		MessageReference: &messageReference{
-			MessageID: "assistant-1",
-		},
+		ID:           "msg-1",
+		GroupOpenID:  "group-1",
+		Author:       inboundAuthor{MemberOpenID: "member-1"},
+		Content:      "继续",
+		MessageScene: messageScene{Ext: []string{"ref_msg_idx=REFIDX_assistant-1"}},
 	})
 
 	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
@@ -206,16 +204,14 @@ func TestHandleC2CMessageAddsFallbackReferenceText(t *testing.T) {
 	adapter := newTestAdapter(t, Config{}, nil, nil)
 	handler := &captureHandler{}
 	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
-		ID:      "msg-1",
-		Author:  inboundAuthor{UserOpenID: "user-1"},
-		Content: "你看看有没",
-		MessageReference: &messageReference{
-			MessageID: "notice-1",
-			Content:   "已保存附件：attachment-1\n路径：/tmp/attachment-1",
-		},
+		ID:          "msg-1",
+		Author:      inboundAuthor{UserOpenID: "user-1"},
+		Content:     "你看看有没",
+		MessageType: 103,
+		MsgElements: []messageElement{{MsgIdx: "REFIDX_notice-1", Content: "已保存附件：attachment-1\n路径：/tmp/attachment-1"}},
 	})
 
-	want := "[引用#notice-1:已保存附件：attachment-1\n路径：/tmp/attachment-1]\n\n你看看有没"
+	want := "[引用:已保存附件：attachment-1\n路径：/tmp/attachment-1]\n\n你看看有没"
 	if handler.text != "你看看有没" {
 		t.Fatalf("text = %q, want current text", handler.text)
 	}
@@ -226,7 +222,7 @@ func TestHandleC2CMessageAddsFallbackReferenceText(t *testing.T) {
 	if msgCtx.ContextText != want {
 		t.Fatalf("context text = %q, want %q", msgCtx.ContextText, want)
 	}
-	if msgCtx.Reply.MessageID != "notice-1" || msgCtx.Reply.Text != "已保存附件：attachment-1\n路径：/tmp/attachment-1" {
+	if msgCtx.Reply.MessageID != "" || msgCtx.Reply.Text != "已保存附件：attachment-1\n路径：/tmp/attachment-1" {
 		t.Fatalf("reply = %#v", msgCtx.Reply)
 	}
 }
@@ -235,6 +231,7 @@ func TestHandleC2CMessageForksOwnOlderAssistantReference(t *testing.T) {
 	ctx := context.Background()
 	store := newQQOfficialTestStore(t)
 	adapter := newTestAdapter(t, Config{}, store, nil)
+	mapTestReference(t, adapter, "c2c:user-1", "REFIDX_old", "platform-old")
 	svc := session.NewService(store)
 	scope := session.Scope{ActorID: "qqofficial:user-1", Platform: platformName, PlatformScopeID: "c2c:user-1"}
 	s, err := svc.Create(ctx, scope, session.CreateRequest{Title: "source"})
@@ -255,10 +252,11 @@ func TestHandleC2CMessageForksOwnOlderAssistantReference(t *testing.T) {
 
 	handler := &captureHandler{}
 	adapter.handleC2CMessage(ctx, handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
-		ID:               "msg-1",
-		Author:           inboundAuthor{UserOpenID: "user-1"},
-		Content:          "继续",
-		MessageReference: &messageReference{MessageID: "platform-old"},
+		ID:          "msg-1",
+		Author:      inboundAuthor{UserOpenID: "user-1"},
+		Content:     "继续",
+		MessageType: 103,
+		MsgElements: []messageElement{{MsgIdx: "REFIDX_old"}},
 	})
 	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
 	if !ok {
@@ -408,6 +406,7 @@ func TestHandleC2CMessageResumesLatestAssistantReference(t *testing.T) {
 	ctx := context.Background()
 	store := newQQOfficialTestStore(t)
 	adapter := newTestAdapter(t, Config{}, store, nil)
+	mapTestReference(t, adapter, "c2c:user-1", "REFIDX_latest", "platform-latest")
 	scope := session.Scope{ActorID: "qqofficial:user-1", Platform: platformName, PlatformScopeID: "c2c:user-1"}
 	_, latest := createQQOfficialAssistantMessages(t, ctx, store, scope)
 	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: platformName, PlatformScopeID: scope.PlatformScopeID, PlatformMessageID: "platform-latest", MessageID: latest.ID, SessionID: latest.SessionID}); err != nil {
@@ -416,10 +415,10 @@ func TestHandleC2CMessageResumesLatestAssistantReference(t *testing.T) {
 
 	handler := &captureHandler{}
 	adapter.handleC2CMessage(ctx, handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
-		ID:               "msg-1",
-		Author:           inboundAuthor{UserOpenID: "user-1"},
-		Content:          "继续",
-		MessageReference: &messageReference{MessageID: "platform-latest"},
+		ID:           "msg-1",
+		Author:       inboundAuthor{UserOpenID: "user-1"},
+		Content:      "继续",
+		MessageScene: messageScene{Ext: []string{"ref_msg_idx=REFIDX_latest"}},
 	})
 	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
 	if !ok {

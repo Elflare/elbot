@@ -82,13 +82,15 @@ type apiErrorResponse struct {
 }
 
 type inboundMessage struct {
-	ID               string              `json:"id"`
-	GroupOpenID      string              `json:"group_openid,omitempty"`
-	Author           inboundAuthor       `json:"author"`
-	Content          string              `json:"content"`
-	Timestamp        string              `json:"timestamp"`
-	Attachments      []messageAttachment `json:"attachments"`
-	MessageReference *messageReference   `json:"message_reference,omitempty"`
+	ID           string              `json:"id"`
+	GroupOpenID  string              `json:"group_openid,omitempty"`
+	Author       inboundAuthor       `json:"author"`
+	Content      string              `json:"content"`
+	Timestamp    string              `json:"timestamp"`
+	Attachments  []messageAttachment `json:"attachments"`
+	MessageScene messageScene        `json:"message_scene,omitempty"` // Carries this message's and its reference's indexes.
+	MessageType  int                 `json:"message_type,omitempty"`  // 103 identifies a quoted message.
+	MsgElements  []messageElement    `json:"msg_elements,omitempty"`  // First element contains the quoted content and attachments.
 }
 
 type inboundAuthor struct {
@@ -106,9 +108,14 @@ type messageAttachment struct {
 	Size        int64  `json:"size,omitempty"`
 }
 
-type messageReference struct {
-	MessageID string `json:"message_id,omitempty"`
-	Content   string `json:"content,omitempty"`
+type messageScene struct {
+	Ext []string `json:"ext,omitempty"` // key=value entries, including msg_idx and ref_msg_idx.
+}
+
+type messageElement struct {
+	MsgIdx      string              `json:"msg_idx,omitempty"`     // Reference index; distinct from the platform message ID.
+	Content     string              `json:"content,omitempty"`     // Quoted message text.
+	Attachments []messageAttachment `json:"attachments,omitempty"` // Quoted media; nested quotes are not expanded.
 }
 
 type messageToCreate struct {
@@ -200,8 +207,13 @@ type messageArkObjKV struct {
 }
 
 type messageResponse struct {
-	ID        string `json:"id"`
-	Timestamp any    `json:"timestamp,omitempty"`
+	ID        string                 `json:"id"`
+	Timestamp any                    `json:"timestamp,omitempty"`
+	ExtInfo   messageResponseExtInfo `json:"ext_info,omitempty"` // Reference information for the sent message.
+}
+
+type messageResponseExtInfo struct {
+	RefIdx string `json:"ref_idx,omitempty"` // Index returned in later incoming quotes of this message.
 }
 
 type uploadFileRequest struct {

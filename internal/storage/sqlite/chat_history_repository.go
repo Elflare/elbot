@@ -88,6 +88,18 @@ ON chat_messages(platform, platform_scope_id, sender_id);
 
 CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at
 ON chat_messages(created_at);
+
+CREATE TABLE IF NOT EXISTS platform_message_aliases (
+    platform TEXT NOT NULL,
+    platform_scope_id TEXT NOT NULL,
+    alias TEXT NOT NULL,
+    platform_message_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(platform, platform_scope_id, alias)
+);
+
+CREATE INDEX IF NOT EXISTS idx_platform_message_aliases_created_at
+ON platform_message_aliases(created_at);
 `)
 	if err != nil {
 		return fmt.Errorf("migrate chat history sqlite: %w", err)
@@ -143,6 +155,35 @@ ON CONFLICT(platform, platform_scope_id, platform_message_id) DO UPDATE SET
 		return fmt.Errorf("append chat message: %w", err)
 	}
 	return nil
+}
+
+func (r *ChatHistoryRepository) MapPlatformMessageAlias(ctx context.Context, mapping storage.PlatformMessageAlias) error {
+	if mapping.CreatedAt.IsZero() {
+		mapping.CreatedAt = storage.Now()
+	}
+	_, err := r.db.ExecContext(ctx, `
+INSERT INTO platform_message_aliases (platform, platform_scope_id, alias, platform_message_id, created_at)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(platform, platform_scope_id, alias) DO UPDATE SET
+    platform_message_id = excluded.platform_message_id,
+    created_at = excluded.created_at`, mapping.Platform, mapping.PlatformScopeID, mapping.Alias, mapping.PlatformMessageID, storage.FormatTime(mapping.CreatedAt))
+	if err != nil {
+		return fmt.Errorf("map platform message alias: %w", err)
+	}
+	return nil
+}
+
+func (r *ChatHistoryRepository) ResolvePlatformMessageAlias(ctx context.Context, platform, scopeID, alias string) (string, error) {
+	var messageID string
+	err := r.db.QueryRowContext(ctx, `SELECT platform_message_id FROM platform_message_aliases
+WHERE platform = ? AND platform_scope_id = ? AND alias = ?`, platform, scopeID, alias).Scan(&messageID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", storage.ErrNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("resolve platform message alias: %w", err)
+	}
+	return messageID, nil
 }
 
 func (r *ChatHistoryRepository) GetByPlatformMessage(ctx context.Context, platform, scopeID, platformMessageID string) (*storage.ChatMessage, error) {
@@ -244,13 +285,24 @@ func (r *ChatHistoryRepository) Around(ctx context.Context, req storage.ChatHist
 }
 
 func (r *ChatHistoryRepository) DeleteBefore(ctx context.Context, cutoff time.Time) (int, error) {
-	result, err := r.db.ExecContext(ctx, `DELETE FROM chat_messages WHERE created_at < ?`, storage.FormatTime(cutoff))
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin chat history cleanup: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM platform_message_aliases WHERE created_at < ?`, storage.FormatTime(cutoff)); err != nil {
+		return 0, fmt.Errorf("delete old platform message aliases: %w", err)
+	}
+	result, err := tx.ExecContext(ctx, `DELETE FROM chat_messages WHERE created_at < ?`, storage.FormatTime(cutoff))
 	if err != nil {
 		return 0, fmt.Errorf("delete old chat messages: %w", err)
 	}
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return 0, fmt.Errorf("chat messages rows affected: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit chat history cleanup: %w", err)
 	}
 	return int(rows), nil
 }
