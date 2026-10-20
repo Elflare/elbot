@@ -255,7 +255,7 @@ retry_initial_delay_seconds = 2
 
 ## CLI 远程配置
 
-`[platform.cli]` 同时保存 CLI 服务端和客户端配置。`server` 是当前 ElBot 作为服务端运行时读取的配置，`clients` 是当前命令作为 CLI 客户端连接服务端时读取的配置。
+`[platform.cli]` 同时保存 CLI 服务端配置和 CLI 客户端使用的连接配置。`server` 是当前 ElBot 作为服务端运行时读取的配置，`clients` 保存 CLI 客户端连接服务端时使用的各组连接配置。
 
 ```toml
 [platform.cli]
@@ -283,8 +283,8 @@ token_env = ["ELBOT_CLI_WINDOWS_TOKEN"]
 - `server.listen` 是服务端监听地址。
 - `default_url` 是客户端默认连接地址；连接其他机器时在 `clients.<name>.url` 写远程 WebSocket 地址。
 - `server.tokens` 是服务端允许登录的 CLI client id 与 token 环境变量列表。
-- `clients.<name>` 是客户端 profile；`id` 可省略，默认等于 `<name>`；`url` 可省略，默认使用 `default_url`。
-- `elbot cli -c <name>` 使用指定客户端 profile；未指定时使用 `default_client`。
+- `clients.<name>` 是连接配置；`id` 可省略，默认等于 `<name>`；`url` 可省略，默认使用 `default_url`。
+- `elbot cli -c <name>` 使用指定连接配置；未指定时使用 `default_client`。
 
 ## AgentSkill 工具化配置
 
