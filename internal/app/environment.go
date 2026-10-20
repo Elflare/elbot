@@ -95,7 +95,7 @@ func resolveRunMode(mode RunMode) (RunMode, error) {
 			fmt.Fprintln(os.Stderr, "ElBot service detected, starting local CLI-only mode. Use `elbot run` to force full foreground mode.")
 			return RunModeCLIOnly, nil
 		}
-		fmt.Fprintln(os.Stderr, "No ElBot service detected, starting full foreground mode. Use `elbot cli` to start local CLI only.")
+		fmt.Fprintln(os.Stderr, "No ElBot service detected, starting full foreground mode. Use `elbot cli` to connect to a server.")
 		return RunModeFull, nil
 	case RunModeFull, RunModeCLIOnly, RunModeService:
 		return mode, nil

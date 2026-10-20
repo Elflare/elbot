@@ -76,7 +76,7 @@ func ParseArgs(args []string) (Options, error) {
 		opts.Mode = app.RunModeFull
 	case "cli":
 		if len(positionals) != 1 {
-			return Options{}, fmt.Errorf("usage: elbot cli [--config path]")
+			return Options{}, fmt.Errorf("usage: elbot cli [--config path] [-c name]")
 		}
 		opts.Mode = app.RunModeCLIOnly
 	case "service":
@@ -107,20 +107,22 @@ func SupportedCompletionShell(shell string) bool {
 
 func WriteUsage(w io.Writer) {
 	fmt.Fprint(w, `Usage:
-  elbot [--config path] [-c client]
+  elbot [--config path] [-c name]
   elbot run [--config path]
-  elbot cli [--config path] [-c client]
+  elbot cli [--config path] [-c name]
   elbot service run [--config path]
   elbot completion [auto|bash|zsh|fish|nushell|powershell]
 
+Default: try the default CLI connection; fall back to local startup when eligible.
+
 Commands:
-  run          Run full foreground mode: CLI plus enabled platforms and cron.
-  cli          Run local CLI-only mode: CLI without background platforms or cron.
-  service run  Run headless service mode for Linux service managers.
+  run          Run local CLI with enabled platforms and background tasks.
+  cli          Run the CLI client and connect to a server.
+  service run  Run a headless service with enabled platforms and an optional CLI server.
   completion   Generate shell completion scripts.
 
 Options:
-  -c, --client name  CLI client profile name.
+  -c, --client name  CLI connection profile name.
   --config path       Path to TOML config file.
   --help         Show this help.
   --version      Show version.
@@ -217,7 +219,7 @@ esac
 func writeFishCompletion(w io.Writer) {
 	fmt.Fprint(w, `complete -c elbot -f
 complete -c elbot -n "__fish_use_subcommand" -a "run" -d "Run full foreground mode"
-complete -c elbot -n "__fish_use_subcommand" -a "cli" -d "Run local CLI-only mode"
+complete -c elbot -n "__fish_use_subcommand" -a "cli" -d "Run the CLI client and connect to a server"
 complete -c elbot -n "__fish_use_subcommand" -a "service" -d "Service commands"
 complete -c elbot -n "__fish_use_subcommand" -a "completion" -d "Generate shell completions"
 complete -c elbot -n "__fish_seen_subcommand_from service" -a "run" -d "Run headless service mode"
@@ -232,7 +234,7 @@ func writeNushellCompletion(w io.Writer) {
 	fmt.Fprint(w, `def "nu-complete elbot commands" [] {
   [
     {value: "run", description: "Run full foreground mode"}
-    {value: "cli", description: "Run local CLI-only mode"}
+    {value: "cli", description: "Run the CLI client and connect to a server"}
     {value: "service", description: "Service commands"}
     {value: "completion", description: "Generate shell completions"}
   ]
