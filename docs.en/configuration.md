@@ -257,7 +257,7 @@ The legacy `timeout_seconds` has been removed; existing configurations should be
 
 ## CLI Remote Configuration
 
-`[platform.cli]` stores both CLI server and client configurations. `server` is the configuration read when the current ElBot runs as a server, and `clients` is the configuration read when the current command connects to the server as a CLI client.
+`[platform.cli]` saves both the CLI server configuration and the connection configuration used by the CLI client. `server` is the configuration read when the current ElBot runs as a server, and `clients` saves the various sets of connection configurations used by the CLI client when connecting to the server.
 
 ```toml
 [platform.cli]
@@ -285,8 +285,8 @@ token_env = ["ELBOT_CLI_WINDOWS_TOKEN"]
 - `server.listen` is the server listening address.
 - `default_url` is the default client connection address; when connecting to other machines, enter the remote WebSocket address in `clients.<name>.url`.
 - `server.tokens` is the list of CLI client ID and token environment variables allowed to log in to the server.
-- `clients.<name>` is the client profile; `id` can be omitted, defaulting to `<name>`; `url` can be omitted, defaulting to `default_url`.
-- `elbot cli -c <name>` uses the specified client profile; if not specified, `default_client` is used.
+- `clients.<name>` is the connection configuration; `id` is optional and defaults to `<name>`; `url` is optional and defaults to using `default_url`.
+- `elbot cli -c <name>` uses the specified connection configuration; if not specified, `default_client` is used.
 
 ## AgentSkill Tooling Configuration
 
