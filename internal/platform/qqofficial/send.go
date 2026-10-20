@@ -147,6 +147,7 @@ func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string) 
 		}
 		return delivery.Receipt{}, logResult, err
 	}
+	a.recordMessageAlias(ctx, qqOfficialTargetScope(target), resp.ExtInfo.RefIdx, resp.ID)
 	return receiptWithMessageID(resp.ID), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
@@ -185,6 +186,7 @@ func (a *Adapter) sendMedia(ctx context.Context, target sendTarget, out delivery
 		}
 		return delivery.Receipt{}, logResult, err
 	}
+	a.recordMessageAlias(ctx, qqOfficialTargetScope(target), resp.ExtInfo.RefIdx, resp.ID)
 	return receiptWithMessageID(resp.ID), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
@@ -218,6 +220,7 @@ func (a *Adapter) sendArk(ctx context.Context, target sendTarget, ark messageArk
 		}
 		return delivery.Receipt{}, logResult, err
 	}
+	a.recordMessageAlias(ctx, qqOfficialTargetScope(target), resp.ExtInfo.RefIdx, resp.ID)
 	return receiptWithMessageID(resp.ID), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 

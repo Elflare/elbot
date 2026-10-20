@@ -227,7 +227,10 @@ func fallbackReferenceText(ctx context.Context, opts Options, replyID string, st
 }
 
 func FormatReferenceText(platformName string, reply platform.ReplyContext, currentText string) string {
-	header := "引用#" + strings.TrimSpace(reply.MessageID)
+	header := "引用"
+	if id := strings.TrimSpace(reply.MessageID); id != "" {
+		header += "#" + id
+	}
 	name := strings.TrimSpace(reply.SenderName)
 	id := strings.TrimSpace(reply.SenderID)
 	if id != "" {

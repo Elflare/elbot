@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 新增Responses api接口，支持完整Responses能力
 - 现在支持并发执行工具。
+- QQ 官方支持私聊与群聊的引用回复
 - 新增 Responses 专用 `view_image`：读取媒体 ID、URL、本地图片或当前聊天历史图片；图片回灌模型，本地路径仅超管可用。
 - Provider 新增 `api_mode="chat"/"response"`，省略仍使用 Chat Completions。
 - `edit_file` 为每个文件保留最近一次编辑前的内存备份。新增仅超管可用的 `/rollback [编号]` 和工具 `rollback_file`，发现读写文件工具时自动展开；切换 Session、重启或容量淘汰后记录失效。不覆盖 Shell 或外部程序的修改。

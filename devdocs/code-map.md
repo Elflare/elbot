@@ -176,6 +176,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/platform/module/ui.go`：CLI 状态订阅与思考能力装配。
 - `internal/platform/qq-onebot/`：协议转换、forward 展开、长消息与回执。
 - `internal/platform/qqofficial/`、`internal/platform/telegram/`、`internal/platform/headless/`：各平台 runtime。
+- `internal/platform/qqofficial/reference.go`：QQ 引用索引解析、消息 ID 关联、事件原文转换及入站／发送回执索引登记。
 
 <!-- locator:session -->
 ## Session
@@ -218,6 +219,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/storage/sqlite/session_repository.go`：Session 字段合并与同值写入跳过。
 - `internal/storage/sqlite/native_snapshot.go`、`native_material.go`：不可变快照、seed 与原生窗口批量读取。
 - `internal/storage/sqlite/media_history.go`、`media_lifecycle.go`：历史媒体关联、启动恢复与清理认领。
+- `internal/storage/sqlite/chat_history_repository.go`：聊天历史查询与保留时间清理，包含平台引用索引到真实消息 ID 的持久化映射。
 
 <!-- locator:elnis -->
 ## Elnis / Elvena / Elwisp
