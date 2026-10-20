@@ -82,14 +82,14 @@ go run ./cmd/elbot --config path/to/app.toml
 Common running modes:
 
 ```bash
-elbot              # Automatic mode
-elbot run          # Full foreground: CLI + enabled platforms + Cron
-elbot cli
-elbot service run  # Linux/headless service mode: do not start CLI, start enabled platforms and Cron
+elbot              # Automatic mode: prioritize connecting to the server, fallback to local startup when conditions are met
+elbot run          # Full foreground: local CLI interface + enabled platforms and background tasks
+elbot cli          # Start the CLI client and connect to the server
+elbot service run  # Headless service: start enabled platforms and background tasks, and provide a CLI server according to the configuration
 ```
 
-Automatic mode prioritizes connecting to the default CLI service; it falls back to local startup only when the client is not configured or the default local service is unreachable. Configuration and authentication errors are reported directly.
- In service mode, the remote CLI service and other messaging platforms run independently: exiting a single platform will not stop other platforms or background tasks; When no messaging platforms are configured or all platforms have exited, the service remains running until it is stopped externally. When an interactively started CLI exits, it will terminate the associated application process.
+Automatic mode prioritizes connecting to the CLI server using the default connection configuration. When `-c` is not explicitly specified, it will fallback to local startup only if the CLI is disabled, there are no connection configurations, or a network dialing failure occurs with the default local service; Configuration, authentication, and handshake errors are reported directly.
+ Service mode does not start the local interactive interface; The CLI server and other messaging platforms run independently: exiting a single platform will not stop other platforms or background tasks; When no messaging platforms are configured or all platforms have exited, the service remains running until it is stopped externally. When an interactively started CLI exits, it will terminate the associated application process.
 
 Upon normal exit, platform connection events will be stopped and corresponding processing will be canceled; components share a cleanup budget of up to 30 seconds; stop waiting and exit after the timeout expires. Expected cancellations and cleanup timeouts are not treated as application failures; actual runtime or shutdown errors will still be reported.
 

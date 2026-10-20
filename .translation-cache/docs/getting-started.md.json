@@ -1,28 +1,36 @@
 {
   "segments": {
-    "docs/getting-started.md:code-comment:bash:a2a87c263e0793e87dca8c128652941282fc018fff6c8c4cb6c97aba1c8f9798": {
+    "docs/getting-started.md:code-comment:bash:0ae5f7a335235de03d13e6dc4f7a21d0c2772e459e9a178ff652263fbab752d2": {
       "kind": "code-comment:bash",
-      "source": "Linux/headless 服务模式：不启动 CLI，启动已启用平台和 Cron",
+      "source": "启动 CLI 客户端，连接服务端",
       "source_file": "docs/getting-started.md",
-      "source_hash": "a2a87c263e0793e87dca8c128652941282fc018fff6c8c4cb6c97aba1c8f9798",
-      "translation": "Linux/headless service mode: do not start CLI, start enabled platforms and Cron",
-      "updated_at": 1781710779
+      "source_hash": "0ae5f7a335235de03d13e6dc4f7a21d0c2772e459e9a178ff652263fbab752d2",
+      "translation": "Start the CLI client and connect to the server",
+      "updated_at": 1792502240
     },
-    "docs/getting-started.md:code-comment:bash:b54868ef2af099400e62256a9a8ee4d862a5c3f4e49f37f45332426bd2d4e5ba": {
+    "docs/getting-started.md:code-comment:bash:4141aca0ed0c478fa101652d9d6e8815fb9df24ed2c703eb797bdd21e8401d75": {
       "kind": "code-comment:bash",
-      "source": "完整前台：CLI + 已启用平台 + Cron",
+      "source": "自动模式：优先连接服务端，符合条件时回退本地启动",
       "source_file": "docs/getting-started.md",
-      "source_hash": "b54868ef2af099400e62256a9a8ee4d862a5c3f4e49f37f45332426bd2d4e5ba",
-      "translation": "Full foreground: CLI + enabled platforms + Cron",
-      "updated_at": 1781710779
+      "source_hash": "4141aca0ed0c478fa101652d9d6e8815fb9df24ed2c703eb797bdd21e8401d75",
+      "translation": "Automatic mode: prioritize connecting to the server, fallback to local startup when conditions are met",
+      "updated_at": 1792502240
     },
-    "docs/getting-started.md:code-comment:bash:f7eacc50afd54a954c71b74c18b88f32f76cb820eae39b8ac749c37a64b02c0a": {
+    "docs/getting-started.md:code-comment:bash:7043592eedfdf08e2d2cf19f9582f9c66ffe85f43c5af228efc57bfaad0a4eda": {
       "kind": "code-comment:bash",
-      "source": "自动模式",
+      "source": "无界面服务：启动已启用平台和后台任务，按配置提供 CLI 服务端",
       "source_file": "docs/getting-started.md",
-      "source_hash": "f7eacc50afd54a954c71b74c18b88f32f76cb820eae39b8ac749c37a64b02c0a",
-      "translation": "Automatic mode",
-      "updated_at": 1781710779
+      "source_hash": "7043592eedfdf08e2d2cf19f9582f9c66ffe85f43c5af228efc57bfaad0a4eda",
+      "translation": "Headless service: start enabled platforms and background tasks, and provide a CLI server according to the configuration",
+      "updated_at": 1792502240
+    },
+    "docs/getting-started.md:code-comment:bash:b9170fa1512a93f7cb85f27a4204c6eda953abb96edaba4d5a3063f877dbff49": {
+      "kind": "code-comment:bash",
+      "source": "完整前台：本地 CLI 界面 + 已启用平台和后台任务",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "b9170fa1512a93f7cb85f27a4204c6eda953abb96edaba4d5a3063f877dbff49",
+      "translation": "Full foreground: local CLI interface + enabled platforms and background tasks",
+      "updated_at": 1792502240
     },
     "docs/getting-started.md:heading:0145e05322af8916973a09edb901f7397904a227aa495af8a41a2bf1f0d4fd23": {
       "kind": "heading",
@@ -336,6 +344,14 @@
       "translation": "Change the default mode in __ELBOT_CODE_0__ to chat:\n",
       "updated_at": 1781515975
     },
+    "docs/getting-started.md:paragraph:095747048951332c3022c922191158ec4736e7e491e636d9de4c3f5e038c51a4": {
+      "kind": "paragraph",
+      "source": "自动模式优先使用默认连接配置连接 CLI 服务端。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "095747048951332c3022c922191158ec4736e7e491e636d9de4c3f5e038c51a4",
+      "translation": "Automatic mode prioritizes connecting to the CLI server using the default connection configuration.",
+      "updated_at": 1792502240
+    },
     "docs/getting-started.md:paragraph:101973e91c104135121a751d01e1715126d62715c3741e886f94ab3245daf7b8": {
       "kind": "paragraph",
       "source": "开发期可以直接运行：\n",
@@ -351,6 +367,22 @@
       "source_hash": "1204a3eb9a309b78062a73635764e483c9f4b7cddb4a3d9bf30c737306f1d5fd",
       "translation": "If using other Providers, you need to synchronously modify __ELBOT_CODE_0__ and __ELBOT_CODE_1__.\n",
       "updated_at": 1781515975
+    },
+    "docs/getting-started.md:paragraph:1371346a5f85d73c4f735cf5f9f2879be642a99deeafd22d59668cde32a605bf": {
+      "kind": "paragraph",
+      "source": "服务模式不启动本地交互界面；",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "1371346a5f85d73c4f735cf5f9f2879be642a99deeafd22d59668cde32a605bf",
+      "translation": "Service mode does not start the local interactive interface;",
+      "updated_at": 1792502240
+    },
+    "docs/getting-started.md:paragraph:139be984ebdf43dde507b91c17254b6e6ec878656f68fd4241fa675782ec8003": {
+      "kind": "paragraph",
+      "source": "CLI 服务端和其他消息平台独立运行：单个平台退出不会停止其他平台或后台任务；",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "139be984ebdf43dde507b91c17254b6e6ec878656f68fd4241fa675782ec8003",
+      "translation": "The CLI server and other messaging platforms run independently: exiting a single platform will not stop other platforms or background tasks;",
+      "updated_at": 1792502240
     },
     "docs/getting-started.md:paragraph:172e996a8220bb173868d383d8e388706221e6839ee02147275d7e68733c7066": {
       "kind": "paragraph",
@@ -416,6 +448,14 @@
       "translation": "The default runtime model is specified in __ELBOT_CODE_0__ of the configuration directory:\n",
       "updated_at": 1781854929
     },
+    "docs/getting-started.md:paragraph:742fc880566f57458ae748d5cc46303b28d2025b401a6a21a348df48a7ff7264": {
+      "kind": "paragraph",
+      "source": "配置、认证和握手错误直接报告。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "742fc880566f57458ae748d5cc46303b28d2025b401a6a21a348df48a7ff7264",
+      "translation": "Configuration, authentication, and handshake errors are reported directly.\n",
+      "updated_at": 1792502240
+    },
     "docs/getting-started.md:paragraph:744e3cd370ff77c3f4325fc5f0da6ded94bd37526832f5063a08be3cf8df4728": {
       "kind": "paragraph",
       "source": "常用运行模式：\n",
@@ -448,14 +488,6 @@
       "translation": "Upon normal exit, platform connection events will be stopped and corresponding processing will be canceled; components share a cleanup budget of up to 30 seconds;",
       "updated_at": 1791194071
     },
-    "docs/getting-started.md:paragraph:80347b12281a08576dfb099ddee2c500b6787e99556f13b463b75be0c844aa7f": {
-      "kind": "paragraph",
-      "source": "自动模式优先连接默认 CLI 服务；未配置客户端或默认本机服务不可达时才回退本地启动，配置和认证错误直接报告。\n",
-      "source_file": "docs/getting-started.md",
-      "source_hash": "80347b12281a08576dfb099ddee2c500b6787e99556f13b463b75be0c844aa7f",
-      "translation": "Automatic mode prioritizes connecting to the default CLI service; it falls back to local startup only when the client is not configured or the default local service is unreachable. Configuration and authentication errors are reported directly.\n",
-      "updated_at": 1792028798
-    },
     "docs/getting-started.md:paragraph:8429e5040d047904b63a1e7135a5b45e7348f29018bd9dd79f6cb7deca6c39bd": {
       "kind": "paragraph",
       "source": "运行数据默认进入平台数据目录，例如 SQLite、日志和 sandbox。具体规则见 [配置说明](configuration.md)。\n",
@@ -472,13 +504,13 @@
       "translation": "This document is used to get ElBot up and running and complete your first CLI conversation.\n",
       "updated_at": 1781515975
     },
-    "docs/getting-started.md:paragraph:9715b7c9671379915f1ccb6a905ad22be9ac761f4e8e95c9992912b02fa1055b": {
+    "docs/getting-started.md:paragraph:8fa4cf76f98c84b6312ccbae6d959777d0931c94893cdf984982cc1f5e957526": {
       "kind": "paragraph",
-      "source": "服务模式下，远程 CLI 服务和其他消息平台独立运行：单个平台退出不会停止其他平台或后台任务；",
+      "source": "未显式指定 __ELBOT_CODE_0__ 时，CLI 被禁用、没有任何连接配置或默认本机服务发生网络拨号失败，才回退本地启动；",
       "source_file": "docs/getting-started.md",
-      "source_hash": "9715b7c9671379915f1ccb6a905ad22be9ac761f4e8e95c9992912b02fa1055b",
-      "translation": "In service mode, the remote CLI service and other messaging platforms run independently: exiting a single platform will not stop other platforms or background tasks;",
-      "updated_at": 1791726027
+      "source_hash": "8fa4cf76f98c84b6312ccbae6d959777d0931c94893cdf984982cc1f5e957526",
+      "translation": "When __ELBOT_CODE_0__ is not explicitly specified, it will fallback to local startup only if the CLI is disabled, there are no connection configurations, or a network dialing failure occurs with the default local service;",
+      "updated_at": 1792502240
     },
     "docs/getting-started.md:paragraph:9c79075c1d42ffa41b8f0a6ac4efe5e40520193862e33bbf95520baa73dd4b14": {
       "kind": "paragraph",
@@ -626,8 +658,8 @@
     }
   },
   "source": "docs/getting-started.md",
-  "source_hash": "403f43b0b04a83c2a51b132ea36e472da4d62aa199c22d0bec66d5ec4e27c2dd",
+  "source_hash": "f6d1656e89982b621de3aaceccdf96c4a047f91ece6790786009e35abfb66dca",
   "target": "docs.en/getting-started.md",
-  "updated_at": 1792028798,
+  "updated_at": 1792502240,
   "version": 2
 }
