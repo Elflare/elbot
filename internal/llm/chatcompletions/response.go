@@ -9,18 +9,18 @@ import (
 type Chunk struct {
 	DeltaContent          string
 	DeltaReasoningContent string
-	ToolCallDeltas        []ToolCallDelta
+	ToolCallDeltas        []ToolCallDelta // Accumulated calls, emitted once when the choice finishes.
 	FinishReason          string
 	Usage                 *llm.Usage
 	Error                 error
 }
 
-// ToolCallDelta is an incremental tool call fragment from a stream.
+// ToolCallDelta is an accumulated tool call emitted when the choice finishes.
 type ToolCallDelta struct {
 	Index int
 	ID    string
 	Name  string
-	Args  string // incremental JSON fragment
+	Args  string // Arguments assembled from stream fragments.
 }
 
 type openAIStreamChunk struct {

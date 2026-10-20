@@ -47,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复 Chat Completions 重复结束标记导致工具调用重复交付、触发 `tool batch identity mismatch` 的问题。
 - 修复 `/stop` 或超时仅终止 Skill 启动器、子进程仍继续执行和发送的问题。
 - 修复后台拿不到skill的bug
 - 修复大量无用IO，提升性能
