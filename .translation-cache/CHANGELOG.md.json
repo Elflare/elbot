@@ -680,6 +680,14 @@
       "translation": "Fixed a bug where large files sent from Elwisp to qqonebot caused total blockage.",
       "updated_at": 1788876182
     },
+    "CHANGELOG.md:list:5224015c1e76086df17ca29389315d23ff7c183d58e5e58086344bda29aca032": {
+      "kind": "list",
+      "source": "修复后台拿不到skill的bug",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "5224015c1e76086df17ca29389315d23ff7c183d58e5e58086344bda29aca032",
+      "translation": "Fixed a bug where the background could not retrieve Skills",
+      "updated_at": 1792456945
+    },
     "CHANGELOG.md:list:52958935082f3f74da761c874b50c751492953922f96365b2668bd473f60c011": {
       "kind": "list",
       "source": "修复 Agent 去除唤醒词或工具指令时会合并全部文字段、打乱图文位置的问题。",
@@ -2306,8 +2314,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "8f76d7457050e26c2162bd18825f51f74a993aa871e04545bc1d654f6c350338",
+  "source_hash": "b9931c2135a1b1ffe9a460cb41b5847e0ebf11812d7c8c167b6bcba16aac04a9",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1792165690,
+  "updated_at": 1792456945,
   "version": 2
 }

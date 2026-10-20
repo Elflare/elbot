@@ -49,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Fixed the issue where `/stop` or timeout only terminated the Skill launcher, while child processes continued to execute and send.
+- Fixed a bug where the background could not retrieve Skills
 - Fixed excessive redundant IO to improve performance
 - Fix the issue where native seeds without media were serialized as JSON `null`, causing media cleanup to falsely report missing references and abort.
 - Fix the issue where 'request failed' was falsely reported when ordinary messages were started concurrently.
