@@ -316,6 +316,7 @@ LLM 在 work 模式下可以通过 `discover_tool` 按需发现工具详情。�
 | 选项 | 作用 |
 | --- | --- |
 | `-d, --days <n>` | 查看最近 n 天，默认 1。 |
+| `-n <x[-y]>` | 汇总倒数第 x 到第 y 次模型调用（含两端）；省略 y 时只取第 x 次，序号为 1–100000。 |
 | `-m, --model <name>` | 按模型名过滤。 |
 | `-s, --session <id>` | 按 Session ID 过滤。 |
 | `--by <key>` | 按维度汇总：`model`（默认）、`day`、`session`。 |
@@ -331,6 +332,9 @@ LLM 在 work 模式下可以通过 `discover_tool` 按需发现工具详情。�
 /usage -s sess-xxx
 /usage --by day -d 30
 /usage --since 2h
+/usage -n 1
+/usage -n 1-3
+/usage -n 2-4 -m gpt-4o
 ```
 
 说明：
