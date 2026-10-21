@@ -1568,6 +1568,14 @@
       "translation": "Resident memory is no longer registered as a Hook; the __ELBOT_CODE_0__ of ordinary Hooks is explicitly defined as read-only context.",
       "updated_at": 1784467084
     },
+    "CHANGELOG.md:list:aa9cd69fae3d852f69b939b3e7f5f66f5e7c85f194649abf174202c3248be735": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 新增 __ELBOT_CODE_1__、__ELBOT_CODE_2__，可按倒数序号查看单次模型调用或汇总调用范围；。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "aa9cd69fae3d852f69b939b3e7f5f66f5e7c85f194649abf174202c3248be735",
+      "translation": "__ELBOT_CODE_0__ added __ELBOT_CODE_1__ and __ELBOT_CODE_2__, allowing viewing of single model calls or summarized call ranges by reverse index.",
+      "updated_at": 1792552004
+    },
     "CHANGELOG.md:list:aad5c8df94eeb1f80e25162d64492b3386d626e486461b5cff2001c143cc7fbc": {
       "kind": "list",
       "source": "OneBot 发送图片失败时，不再出现可见 fallback，但仍会记录日志。",
@@ -2330,8 +2338,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "034ed601cc77a31caa7087c73c3eae0cd08b841d4ad4f1ebd9fcb5357a54c336",
+  "source_hash": "2fdc0d14229db7b2be4fa43fe707d73ad815b9456bc6bcb3dee9d47e39bcdd98",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1792463375,
+  "updated_at": 1792552004,
   "version": 2
 }

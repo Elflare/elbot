@@ -12,9 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+
 - Added Responses API interface, supporting full Responses capabilities
 - Concurrent execution of tools is now supported.
 - Official support for quoted replies in QQ private and group chats
+- `/usage` added `-n x` and `-n x-y`, allowing viewing of single model calls or summarized call ranges by reverse index.
 - Added a dedicated `view_image` for Responses: reads media IDs, URLs, local images, or images from the current chat history; images are fed back into the model, and local paths are only available to superadmins.
 - Provider added `api_mode="chat"/"response"`; if omitted, Chat Completions will still be used.
 - `edit_file` keeps an in-memory backup of each file before its most recent edit. Added `/rollback [编号]` and tool `rollback_file` available only to superadmins, which automatically expand when file read/write tools are discovered; Records become invalid after switching Sessions, restarting, or capacity eviction. Does not overwrite modifications made by Shell or external programs.
