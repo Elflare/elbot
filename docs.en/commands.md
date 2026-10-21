@@ -318,6 +318,7 @@ Options:
 | Option | Function |
 | --- | --- |
 | `-d, --days <n>` | View the last n days, default is 1. |
+| `-n <x[-y]>` | Summarize model calls from the x-th last to the y-th last (inclusive); if y is omitted, only the x-th last call is taken. Indices range from 1–100,000. |
 | `-m, --model <name>` | Filter by model name. |
 | `-s, --session <id>` | Filter by Session ID. |
 | `--by <key>` | Summarize by dimension: `model` (default), `day`, `session`. |
@@ -333,6 +334,9 @@ Example:
 /usage -s sess-xxx
 /usage --by day -d 30
 /usage --since 2h
+/usage -n 1
+/usage -n 1-3
+/usage -n 2-4 -m gpt-4o
 ```
 
 Note:

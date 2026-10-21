@@ -1248,6 +1248,14 @@
       "translation": "Filter and display __ELBOT_CODE_0__ logs.",
       "updated_at": 1784127033
     },
+    "docs/commands.md:table:c8333a658ccdd4510ed873179922312b96a10a09a9941509078934b0150ee6b2": {
+      "kind": "table",
+      "source": "汇总倒数第 x 到第 y 次模型调用（含两端）；省略 y 时只取第 x 次，序号为 1–100000。",
+      "source_file": "docs/commands.md",
+      "source_hash": "c8333a658ccdd4510ed873179922312b96a10a09a9941509078934b0150ee6b2",
+      "translation": "Summarize model calls from the x-th last to the y-th last (inclusive); if y is omitted, only the x-th last call is taken. Indices range from 1–100,000.",
+      "updated_at": 1792551928
+    },
     "docs/commands.md:table:ca62733aa865adb9dd18ea238ef85037e8d791de79bd30b54a5aeef619d4540a": {
       "kind": "table",
       "source": "`/rename [编号或session_id",
@@ -1474,8 +1482,8 @@
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "bc36a78049ce3da77f9459768b5fc72f70a4e0ac8f7e271e95fb0501194608a5",
+  "source_hash": "ec88d4b3d97eca4c7245f36ac2da757280540233b029f572eeb8d600940d3603",
   "target": "docs.en/commands.md",
-  "updated_at": 1792140912,
+  "updated_at": 1792551928,
   "version": 2
 }
