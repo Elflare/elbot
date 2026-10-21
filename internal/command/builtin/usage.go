@@ -25,6 +25,7 @@ func usageInfo() command.Info {
 		MinRole:     contextinfo.RoleSuperadmin,
 		Help: strings.TrimSpace(`Options:
   -d, --days <n>        Days to look back. Default: 1.
+  -n <x[-y]>           Select calls from newest, inclusive (1..100000), after filters.
   -m, --model <name>    Filter by model name.
   -s, --session <id>    Filter by session ID.
   --by <key>            Group by: model (default), day, session.
@@ -37,7 +38,9 @@ Examples:
   /usage -m gpt-4o
   /usage -s sess-xxx
   /usage --by day -d 30
-  /usage --since 2h`),
+  /usage --since 2h
+  /usage -n 1
+  /usage -n 1-3`),
 	}
 }
 
@@ -55,7 +58,7 @@ func (c usageCommand) Handle(ctx context.Context, req command.Request) (*command
 	if wantsCommandHelp(req.Args) {
 		return formatCommandHelp(req.Prefix, usageInfo()), nil
 	}
-	query, groupBy, err := parseUsageQuery(req.Args)
+	query, groupBy, callRange, err := parseUsageQuery(req.Args)
 	if err != nil {
 		return nil, err
 	}
@@ -67,8 +70,25 @@ func (c usageCommand) Handle(ctx context.Context, req command.Request) (*command
 		return nil, err
 	}
 	content := "no usage data found"
-	if len(entries.Entries) > 0 {
-		content = formatUsageSummary(entries.Entries, query, groupBy)
+	if callRange == nil {
+		if len(entries.Entries) > 0 {
+			content = formatUsageSummary(entries.Entries, query, groupBy)
+		}
+	} else {
+		content = "没有调用记录"
+		if len(entries.Entries) > 0 {
+			if len(entries.Entries) >= callRange.start {
+				content = formatUsageSummary(entries.Entries[callRange.start-1:min(callRange.end, len(entries.Entries))], query, groupBy)
+			} else {
+				content = ""
+			}
+			if len(entries.Entries) < callRange.end {
+				if content != "" {
+					content += "\n"
+				}
+				content += fmt.Sprintf("仅有 %d 次调用", len(entries.Entries))
+			}
+		}
 	}
 	if entries.DamagedCount > 0 {
 		content += fmt.Sprintf("\n本次扫描发现 %d 条损坏记录，用量统计可能不完整。", entries.DamagedCount)
@@ -93,6 +113,7 @@ func usageCompletionOptions() []completionOption {
 	return []completionOption{
 		{Text: "-d", Description: "Days to look back"},
 		{Text: "--days", Description: "Days to look back"},
+		{Text: "-n", Description: "Select calls from newest: x or x-y"},
 		{Text: "-m", Description: "Filter by model"},
 		{Text: "--model", Description: "Filter by model"},
 		{Text: "-s", Description: "Filter by session"},
@@ -111,7 +132,36 @@ const (
 	groupBySession usageGroupKey = "session"
 )
 
-func parseUsageQuery(args string) (logging.LogQuery, usageGroupKey, error) {
+type usageCallRange struct {
+	// start and end are inclusive call positions, numbered from 1 (newest) after filtering.
+	start int
+	end   int
+}
+
+func parseUsageCallRange(value string) (*usageCallRange, error) {
+	parts := strings.Split(value, "-")
+	rangeErr := fmt.Errorf("-n must be x or x-y with 1 <= x <= y <= %d", usageQueryLimit)
+	if len(parts) > 2 {
+		return nil, rangeErr
+	}
+	callRange := &usageCallRange{}
+	for i, part := range parts {
+		parsed, err := strconv.ParseUint(part, 10, 32)
+		if err != nil || parsed == 0 || parsed > usageQueryLimit {
+			return nil, rangeErr
+		}
+		if i == 0 {
+			callRange.start = int(parsed)
+		}
+		callRange.end = int(parsed)
+	}
+	if callRange.start > callRange.end {
+		return nil, rangeErr
+	}
+	return callRange, nil
+}
+
+func parseUsageQuery(args string) (logging.LogQuery, usageGroupKey, *usageCallRange, error) {
 	query := logging.LogQuery{
 		Prefix:        "audit",
 		Limit:         usageQueryLimit,
@@ -121,72 +171,83 @@ func parseUsageQuery(args string) (logging.LogQuery, usageGroupKey, error) {
 		ContentFields: map[string]string{},
 	}
 	groupBy := groupByModel
+	var callRange *usageCallRange
 
 	parts, err := splitLogArgs(args)
 	if err != nil {
-		return query, groupBy, err
+		return query, groupBy, callRange, err
 	}
 	for i := 0; i < len(parts); i++ {
 		name := parts[i]
 		switch name {
+		case "-n":
+			value, err := nextArg(parts, &i, name)
+			if err != nil {
+				return query, groupBy, callRange, err
+			}
+			callRange, err = parseUsageCallRange(value)
+			if err != nil {
+				return query, groupBy, callRange, err
+			}
+			query.Limit = callRange.end
 		case "-d", "--days":
 			value, err := nextArg(parts, &i, name)
 			if err != nil {
-				return query, groupBy, err
+				return query, groupBy, callRange, err
 			}
 			days, err := parsePositiveInt(value, "days")
 			if err != nil {
-				return query, groupBy, err
+				return query, groupBy, callRange, err
 			}
 			query.Days = days
 		case "-m", "--model":
 			value, err := nextArg(parts, &i, name)
 			if err != nil {
-				return query, groupBy, err
+				return query, groupBy, callRange, err
 			}
 			query.ContentFields["model"] = value
 		case "-s", "--session":
 			value, err := nextArg(parts, &i, name)
 			if err != nil {
-				return query, groupBy, err
+				return query, groupBy, callRange, err
 			}
 			query.Fields["session_id"] = value
 		case "--by":
 			value, err := nextArg(parts, &i, name)
 			if err != nil {
-				return query, groupBy, err
+				return query, groupBy, callRange, err
 			}
 			switch strings.ToLower(strings.TrimSpace(value)) {
 			case "model", "day", "session":
 				groupBy = usageGroupKey(strings.ToLower(strings.TrimSpace(value)))
 			default:
-				return query, groupBy, fmt.Errorf("--by must be model, day or session")
+				return query, groupBy, callRange, fmt.Errorf("--by must be model, day or session")
 			}
 		case "--since":
 			value, err := nextArg(parts, &i, name)
 			if err != nil {
-				return query, groupBy, err
+				return query, groupBy, callRange, err
 			}
 			parsed, err := parseLogTime(value)
 			if err != nil {
-				return query, groupBy, err
+				return query, groupBy, callRange, err
 			}
 			query.Since = &parsed
 		case "--until":
 			value, err := nextArg(parts, &i, name)
 			if err != nil {
-				return query, groupBy, err
+				return query, groupBy, callRange, err
 			}
 			parsed, err := parseLogTime(value)
 			if err != nil {
-				return query, groupBy, err
+				return query, groupBy, callRange, err
 			}
 			query.Until = &parsed
 		default:
-			return query, groupBy, fmt.Errorf("unknown option: %s", name)
+			return query, groupBy, callRange, fmt.Errorf("unknown option: %s", name)
 		}
 	}
-	return query, groupBy, nil
+	return query, groupBy, callRange, nil
 }
 
 type usageBucket struct {

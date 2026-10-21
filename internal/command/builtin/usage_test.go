@@ -2,6 +2,10 @@ package builtin
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -210,7 +214,7 @@ func TestUsageCompletionOptions(t *testing.T) {
 	for i, comp := range completions {
 		texts[i] = comp.Text
 	}
-	for _, want := range []string{"-d", "--days", "-m", "--model", "-s", "--session", "--by", "--since", "--until"} {
+	for _, want := range []string{"-d", "--days", "-n", "-m", "--model", "-s", "--session", "--by", "--since", "--until"} {
 		found := false
 		for _, text := range texts {
 			if text == want {
@@ -220,6 +224,187 @@ func TestUsageCompletionOptions(t *testing.T) {
 		}
 		if !found {
 			t.Fatalf("missing completion option %q in %v", want, texts)
+		}
+	}
+}
+
+func TestUsageCallRangeQuery(t *testing.T) {
+	for _, tc := range []struct {
+		args       string
+		start, end int
+	}{
+		{"-n 1", 1, 1},
+		{"-n 2", 2, 2},
+		{"-n 1-3", 1, 3},
+		{"-n 2-4", 2, 4},
+		{"-n 2-2", 2, 2},
+		{"-n 1-100000", 1, 100000},
+		{"-n 100000", 100000, 100000},
+	} {
+		t.Run(tc.args, func(t *testing.T) {
+			query, groupBy, callRange, err := parseUsageQuery(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if callRange == nil || callRange.start != tc.start || callRange.end != tc.end {
+				t.Fatalf("range = %+v", callRange)
+			}
+			if query.Limit != tc.end || query.Days != 1 || groupBy != groupByModel || query.Fields["session_id"] != "" {
+				t.Fatalf("query = %+v, group = %s", query, groupBy)
+			}
+		})
+	}
+	query, _, callRange, err := parseUsageQuery("")
+	if err != nil || callRange != nil || query.Limit != usageQueryLimit || query.Days != 1 {
+		t.Fatalf("default query = %+v, range = %+v, err = %v", query, callRange, err)
+	}
+}
+
+func TestUsageRejectsInvalidCallRanges(t *testing.T) {
+	for _, args := range []string{
+		"-n", `-n ""`, "-n 0", "-n -1", "-n 1-0", "-n 3-1", "-n 1-", "-n -2",
+		"-n 1-2-3", "-n 1--2", "-n abc", "-n 1.5", "-n +1", "-n 1-+2", "-n １",
+		"-n 100001", "-n 1-100001", "-n 999999999999999999999999999999", `-n "1 - 3"`,
+	} {
+		t.Run(args, func(t *testing.T) {
+			service := &fakeLogService{}
+			_, err := NewUsage(Deps{Logs: service}).Handle(t.Context(), command.Request{Args: args})
+			if err == nil || !strings.Contains(err.Error(), "-n") {
+				t.Fatalf("expected range error, got %v", err)
+			}
+			if service.query.Prefix != "" {
+				t.Fatal("invalid range reached log reader")
+			}
+		})
+	}
+}
+
+func TestUsageCallRangesWithLogReader(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	yesterday := today.AddDate(0, 0, -1)
+	record := func(at time.Time, event, model, session string, prompt int) string {
+		t.Helper()
+		data, err := json.Marshal(map[string]any{
+			"time": at.Format(time.RFC3339Nano), "category": "audit", "level": "INFO",
+			"event": event, "module": "chat", "type": "json", "session_id": session,
+			"content": map[string]any{
+				"provider": "p", "model": model, "prompt_tokens": prompt,
+				"completion_tokens": prompt / 10, "total_tokens": prompt + prompt/10,
+				"cache_hit_tokens": 0, "elapsed_ms": 100,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data) + "\n"
+	}
+	for day, data := range map[time.Time]string{
+		yesterday: record(yesterday.Add(8*time.Hour), "llm_usage", "a", "s1", 10),
+		today: record(today.Add(8*time.Hour), "llm_usage", "a", "s1", 20) +
+			record(today.Add(9*time.Hour), "llm_usage", "b", "s2", 30) +
+			record(today.Add(10*time.Hour), "llm_usage", "a", "s1", 40) +
+			record(today.Add(11*time.Hour), "llm_usage", "a", "s2", 50) +
+			record(today.Add(12*time.Hour), "assistant_message", "a", "s2", 900),
+	} {
+		if err := os.WriteFile(filepath.Join(dir, "audit-"+day.Format("2006-01-02")+".log"), []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct {
+		name, args string
+		calls      int
+		prompt     int
+		want       []string
+		notice     string
+	}{
+		{name: "latest", args: "-n 1", calls: 1, prompt: 50},
+		{name: "second", args: "-n 2", calls: 1, prompt: 40},
+		{name: "three", args: "-n 1-3", calls: 3, prompt: 120, want: []string{"[p/a] calls: 2", "[p/b] calls: 1"}},
+		{name: "offset", args: "-n 2-3", calls: 2, prompt: 70},
+		{name: "equal bounds", args: "-n 2-2", calls: 1, prompt: 40},
+		{name: "model before range", args: "-n 1 -m b", calls: 1, prompt: 30},
+		{name: "session before range", args: "-s s1 -n 2", calls: 1, prompt: 20},
+		{name: "combined filters", args: "-n 2 -m a -s s1", calls: 1, prompt: 20},
+		{name: "time before range", args: "-n 2 --since " + today.Add(9*time.Hour).Format("2006-01-02T15:04") + " --until " + today.Add(10*time.Hour).Format("2006-01-02T15:04"), calls: 1, prompt: 30},
+		{name: "session grouping", args: "-n 1-3 --by session", calls: 3, prompt: 120, want: []string{"[s1] calls: 1", "[s2] calls: 2"}},
+		{name: "cross day", args: "-n 4-5 -d 2 --by day", calls: 2, prompt: 30, want: []string{"[" + today.Format("2006-01-02") + "] calls: 1", "[" + yesterday.Format("2006-01-02") + "] calls: 1"}},
+		{name: "short range today only", args: "-n 1-6", calls: 4, prompt: 140, notice: "仅有 4 次调用"},
+		{name: "short range with offset", args: "-n 3-6", calls: 2, prompt: 50, notice: "仅有 4 次调用"},
+		{name: "start out of range", args: "-n 5-6", notice: "仅有 4 次调用"},
+		{name: "last allowed position", args: "-n 100000", notice: "仅有 4 次调用"},
+		{name: "no matches", args: "-n 1 -m missing", notice: "没有调用记录"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := NewUsage(Deps{Logs: logging.Reader{Dir: dir}}).Handle(t.Context(), command.Request{Args: tc.args})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.calls == 0 {
+				if result.Content != tc.notice {
+					t.Fatalf("content = %q, want %q", result.Content, tc.notice)
+				}
+				return
+			}
+			total := fmt.Sprintf("[total] calls: %d\n  prompt: %d | completion: %d | total: %d\n  cache: 0 | elapsed: %.1fs\n",
+				tc.calls, tc.prompt, tc.prompt/10, tc.prompt+tc.prompt/10, float64(tc.calls)/10)
+			if !strings.Contains(result.Content, total) {
+				t.Fatalf("missing total %q in:\n%s", total, result.Content)
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(result.Content, want) {
+					t.Fatalf("missing %q in:\n%s", want, result.Content)
+				}
+			}
+			if tc.notice != "" {
+				if !strings.HasSuffix(result.Content, "\n"+tc.notice) {
+					t.Fatalf("missing exact notice %q in:\n%s", tc.notice, result.Content)
+				}
+			} else if strings.Contains(result.Content, "仅有") {
+				t.Fatalf("unexpected shortage notice:\n%s", result.Content)
+			}
+		})
+	}
+}
+
+func TestUsageCallRangePreservesUnknownAndDamage(t *testing.T) {
+	entry := logging.LogEntry{Type: events.ContentJSON, Content: `{"provider":"p","model":"a","prompt_tokens":null,"completion_tokens":2,"total_tokens":null,"cache_hit_tokens":0,"elapsed_ms":100}`}
+	for _, tc := range []struct {
+		args string
+		want []string
+	}{
+		{"-n 1", []string{"[total] calls: 1", "prompt: null | completion: 2 | total: null", "cache: 0 | elapsed: 0.1s"}},
+		{"-n 1-3", []string{"[total] calls: 1", "仅有 1 次调用"}},
+		{"-n 2", []string{"仅有 1 次调用"}},
+	} {
+		t.Run(tc.args, func(t *testing.T) {
+			service := &fakeLogService{entries: []logging.LogEntry{entry}, damagedCount: 2}
+			result, err := NewUsage(Deps{Logs: service}).Handle(t.Context(), command.Request{Args: tc.args})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range append(tc.want, "本次扫描发现 2 条损坏记录，用量统计可能不完整。") {
+				if !strings.Contains(result.Content, want) {
+					t.Fatalf("missing %q in:\n%s", want, result.Content)
+				}
+			}
+		})
+	}
+	result, err := NewUsage(Deps{Logs: &fakeLogService{damagedCount: 2}}).Handle(t.Context(), command.Request{Args: "-n 1"})
+	if err != nil || result.Content != "没有调用记录\n本次扫描发现 2 条损坏记录，用量统计可能不完整。" {
+		t.Fatalf("result = %+v, err = %v", result, err)
+	}
+}
+
+func TestUsageCallRangeHelp(t *testing.T) {
+	result, err := NewUsage(Deps{}).Handle(t.Context(), command.Request{Args: "--help"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"-n <x[-y]>", "/usage -n 1", "/usage -n 1-3"} {
+		if !strings.Contains(result.Content, want) {
+			t.Fatalf("help missing %q:\n%s", want, result.Content)
 		}
 	}
 }
