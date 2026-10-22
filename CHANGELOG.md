@@ -10,7 +10,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-
 - 新增Responses api接口，支持完整Responses能力
 - 现在支持并发执行工具。
 - QQ 官方支持私聊与群聊的引用回复
@@ -27,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 大幅重构底层，优化各包职责与边界
 - 重构日志系统
 - 重构通知系统
+- go升级到1.26.10
 - 优化CLI UI逻辑
 - 服务模式不再随全部消息平台退出而结束。
 - 优化cron任务的日志
