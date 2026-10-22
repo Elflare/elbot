@@ -48,6 +48,18 @@ func (s *WorkspaceStore) SetWorkspaceDir(ctx context.Context, dir string) error 
 func (s *WorkspaceStore) ClearWorkspaceDir(ctx context.Context) error {
 	return s.ClearWorkspaceDirWithAgentNotice(ctx, "", false)
 }
+
+// ClearWorkspaceDirIfMatches preserves a workspace selected after the caller read dir.
+func (s *WorkspaceStore) ClearWorkspaceDirIfMatches(ctx context.Context, dir string) (bool, error) {
+	cleared := false
+	err := s.save(ctx, func(state *workspace.State) {
+		if state.Dir == dir {
+			state.Dir = ""
+			cleared = true
+		}
+	})
+	return cleared && err == nil, err
+}
 func (s *WorkspaceStore) HasWorkspaceAgentNoticeDir(ctx context.Context, dir string) (bool, error) {
 	state, err := s.state(ctx)
 	return slices.Contains(state.AgentNoticeDirs, strings.TrimSpace(dir)), err

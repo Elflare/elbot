@@ -4,12 +4,90 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
 	"elbot/internal/storage"
 	"elbot/internal/workspace"
 )
+
+func TestMissingWorkspaceFallbackPersistsAfterPromotion(t *testing.T) {
+	svc, store := newTestService(t)
+	ctx := context.Background()
+	scope := Scope{ActorID: "owner", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	missing := filepath.Join(t.TempDir(), "cron", "missing")
+	metadata, err := json.Marshal(map[string]any{
+		"background_kind":             "cron",
+		"workspace_dir":               missing,
+		"workspace_agent_notice_dirs": []string{missing},
+		"unknown":                     "preserved",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := &storage.Session{OwnerID: "owner", Platform: "cli", PlatformScopeID: "cron:test", Mode: storage.SessionModeBackground, Metadata: string(metadata)}
+	if err := store.Sessions().Create(ctx, row); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Resume(ctx, scope, row.ID); err != nil {
+		t.Fatal(err)
+	}
+	adapter := NewWorkspaceStore(svc, store.Sessions(), row.ID)
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := workspace.CurrentWorkspaceDir(workspace.WithWorkspaceStore(ctx, adapter)); err != nil || got != cwd {
+		t.Fatalf("fallback=%q err=%v", got, err)
+	}
+	latest, err := store.Sessions().Get(ctx, row.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields, err := storage.DecodeSessionMetadata(latest.Metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := workspace.DecodeState(latest.Metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := fields["workspace_dir"]; exists || !WasPromoted(latest) || string(fields["unknown"]) != "\"preserved\"" || len(state.AgentNoticeDirs) != 1 || state.AgentNoticeDirs[0] != missing {
+		t.Fatalf("metadata changed incorrectly: %s", latest.Metadata)
+	}
+	restarted := NewWorkspaceStore(NewService(store), store.Sessions(), row.ID)
+	if got, err := restarted.GetWorkspaceDir(ctx); err != nil || got != "" {
+		t.Fatalf("persisted workspace=%q err=%v", got, err)
+	}
+}
+
+func TestConditionalWorkspaceClearPreservesNewSelection(t *testing.T) {
+	svc, store := newTestService(t)
+	ctx := context.Background()
+	row, err := svc.Create(ctx, Scope{ActorID: "owner", IsCLI: true}, CreateRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter := NewWorkspaceStore(svc, store.Sessions(), row.ID)
+	if err := adapter.SetWorkspaceDir(ctx, "/old"); err != nil {
+		t.Fatal(err)
+	}
+	stale, err := adapter.GetWorkspaceDir(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := adapter.SetWorkspaceDir(ctx, "/selected"); err != nil {
+		t.Fatal(err)
+	}
+	if cleared, err := adapter.ClearWorkspaceDirIfMatches(ctx, stale); err != nil || cleared {
+		t.Fatalf("stale clear=%v err=%v", cleared, err)
+	}
+	if got, err := adapter.GetWorkspaceDir(ctx); err != nil || got != "/selected" {
+		t.Fatalf("selected workspace=%q err=%v", got, err)
+	}
+}
 
 func TestWorkspaceMutationsPreserveConcurrentFields(t *testing.T) {
 	svc, store := newTestService(t)
@@ -132,6 +210,9 @@ func TestWorkspaceRejectsMalformedMetadataAndExpiredBinding(t *testing.T) {
 	}
 	if _, err := adapter.GetWorkspaceDir(old); err == nil {
 		t.Fatal("expired read revived")
+	}
+	if cleared, err := adapter.ClearWorkspaceDirIfMatches(old, ""); err == nil || cleared {
+		t.Fatal("expired call conditionally cleared workspace")
 	}
 	_, fresh, err := svc.CurrentBound(ctx, scope)
 	if err != nil {

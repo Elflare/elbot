@@ -236,6 +236,14 @@ func (s *testWorkspaceStore) ClearWorkspaceDir(ctx context.Context) error {
 	return nil
 }
 
+func (s *testWorkspaceStore) ClearWorkspaceDirIfMatches(_ context.Context, dir string) (bool, error) {
+	if s.dir != dir {
+		return false, nil
+	}
+	s.dir = ""
+	return true, nil
+}
+
 func (s *testWorkspaceStore) HasWorkspaceAgentNoticeDir(ctx context.Context, dir string) (bool, error) {
 	for _, noticeDir := range s.noticeDirs {
 		if noticeDir == dir {
