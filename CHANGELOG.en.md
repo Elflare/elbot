@@ -12,7 +12,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-
 - Added Responses API interface, supporting full Responses capabilities
 - Concurrent execution of tools is now supported.
 - Official support for quoted replies in QQ private and group chats
@@ -29,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Significantly refactored the underlying architecture, optimizing the responsibilities and boundaries of each package
 - Refactor the log system
 - Refactor the notification system
+- Upgraded Go to 1.26.10
 - Optimize CLI UI logic
 - Service mode no longer terminates when all messaging platforms exit.
 - Optimize cron task logs
