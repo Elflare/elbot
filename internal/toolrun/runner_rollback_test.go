@@ -32,6 +32,14 @@ func (s *rollbackWorkspace) SetWorkspaceDir(_ context.Context, dir string) error
 }
 func (s *rollbackWorkspace) ClearWorkspaceDir(context.Context) error { s.dir = ""; return nil }
 
+func (s *rollbackWorkspace) ClearWorkspaceDirIfMatches(_ context.Context, dir string) (bool, error) {
+	if s.dir != dir {
+		return false, nil
+	}
+	s.dir = ""
+	return true, nil
+}
+
 type runnerTestDeps struct {
 	confirmed      bool
 	recorded       []struct{ err error }

@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,8 @@ type WorkspaceStore interface {
 	GetWorkspaceDir(ctx context.Context) (string, error)
 	SetWorkspaceDir(ctx context.Context, dir string) error
 	ClearWorkspaceDir(ctx context.Context) error
+	// ClearWorkspaceDirIfMatches atomically clears only the expected saved path.
+	ClearWorkspaceDirIfMatches(ctx context.Context, dir string) (bool, error)
 }
 
 type WorkspaceAgentNoticeStore interface {
@@ -50,18 +53,38 @@ func WorkspaceStoreFromContext(ctx context.Context) (WorkspaceStore, bool) {
 }
 
 func CurrentWorkspaceDir(ctx context.Context) (string, error) {
-	if store, ok := WorkspaceStoreFromContext(ctx); ok {
-		dir, err := store.GetWorkspaceDir(ctx)
+	store, ok := WorkspaceStoreFromContext(ctx)
+	for {
+		var dir string
+		if ok {
+			var err error
+			dir, err = store.GetWorkspaceDir(ctx)
+			if err != nil {
+				return "", fmt.Errorf("load workspace: %w", err)
+			}
+			if strings.TrimSpace(dir) != "" {
+				resolved, err := ValidateWorkspaceDir(dir)
+				if err == nil {
+					return resolved, nil
+				}
+				if !errors.Is(err, os.ErrNotExist) {
+					return "", err
+				}
+			}
+		}
+		cwd, err := os.Getwd()
 		if err != nil {
-			return "", fmt.Errorf("load workspace: %w", err)
+			return "", fmt.Errorf("resolve workspace: %w", err)
 		}
 		if strings.TrimSpace(dir) != "" {
-			return ValidateWorkspaceDir(dir)
+			cleared, err := store.ClearWorkspaceDirIfMatches(ctx, dir)
+			if err != nil {
+				return "", fmt.Errorf("clear missing workspace: %w", err)
+			}
+			if !cleared {
+				continue
+			}
 		}
+		return filepath.Clean(cwd), nil
 	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", fmt.Errorf("resolve workspace: %w", err)
-	}
-	return filepath.Clean(cwd), nil
 }

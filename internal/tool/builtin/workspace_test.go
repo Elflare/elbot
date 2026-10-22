@@ -339,3 +339,55 @@ func TestWorkspaceToolResetLoadsAgentInstructionsOnce(t *testing.T) {
 		t.Fatalf("reset instructions repeated: %q", result.Content)
 	}
 }
+
+func TestDiscoverToolsResetsMissingWorkspace(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("fallback rules"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"workspace", "shell", "read_file"} {
+		t.Run(name, func(t *testing.T) {
+			store := &testWorkspaceStore{dir: filepath.Join(t.TempDir(), "missing")}
+			ctx := workspace.WithWorkspaceStore(context.Background(), store)
+			ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
+			registry := tool.NewRegistry()
+			for _, item := range []tool.Tool{NewWorkspaceTool(), NewShellTool(), NewReadFileTool(), NewRollbackFileTool(nil)} {
+				if err := registry.Register(item); err != nil {
+					t.Fatal(err)
+				}
+			}
+			args, _ := json.Marshal(map[string]string{"name": name})
+			result, _, err := tool.NewDiscoverTool(registry).Call(ctx, tool.CallRequest{Arguments: args})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if store.dir != "" || !strings.Contains(result.Content, "fallback rules") {
+				t.Fatalf("workspace=%q result=%q", store.dir, result.Content)
+			}
+			var discovered tool.DiscoveryResult
+			if err := json.Unmarshal(result.Data, &discovered); err != nil {
+				t.Fatal(err)
+			}
+			if len(discovered.Errors) != 0 {
+				t.Fatalf("discovery errors: %+v", discovered.Errors)
+			}
+			found := false
+			for _, item := range discovered.Tools {
+				if item.Info.Name == name && item.Schema != nil {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("missing schema for %s: %s", name, result.Data)
+			}
+			result, _, err = tool.NewDiscoverTool(registry).Call(ctx, tool.CallRequest{Arguments: args})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(result.Content, "fallback rules") {
+				t.Fatal("default workspace instructions repeated")
+			}
+		})
+	}
+}
