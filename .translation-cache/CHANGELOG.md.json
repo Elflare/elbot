@@ -424,6 +424,14 @@
       "translation": "Current invocation permissions are separately restricted by __ELBOT_CODE_0__.",
       "updated_at": 1791341159
     },
+    "CHANGELOG.md:list:32c81d55855f81e39b0a4564bac2ae310468637c44d7e142ff6558aeca66ceba": {
+      "kind": "list",
+      "source": "go升级到1.26.10",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "32c81d55855f81e39b0a4564bac2ae310468637c44d7e142ff6558aeca66ceba",
+      "translation": "Upgraded Go to 1.26.10",
+      "updated_at": 1792665481
+    },
     "CHANGELOG.md:list:3301a0a4db1f834d0d74491d7cde5f4925a0a8949fc3d670c1ecb7f61e05b8a3": {
       "kind": "list",
       "source": "按文件列出问题，并生成附配置说明和默认模板地址的 Elbot 处理请求。",
@@ -2346,8 +2354,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "9e205095c3ece947f91c46148190883fdcb0cf1c8976e603e0d96a01cb1b7e4e",
+  "source_hash": "f1cea18ce24df879f0a951cd7509bf06fa8f048e3ed3af8ad5ea8c91e716d15a",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1792631720,
+  "updated_at": 1792665481,
   "version": 2
 }
