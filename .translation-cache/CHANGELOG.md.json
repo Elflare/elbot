@@ -2256,6 +2256,14 @@
       "translation": "__ELBOT_CODE_0__ keeps an in-memory backup of each file before its most recent edit.",
       "updated_at": 1791194538
     },
+    "CHANGELOG.md:list:f2c2013cc942cb7cbac4e37305c50f25ec489d057badc090ec2bd956505751c5": {
+      "kind": "list",
+      "source": "修复已保存的 workspace 目录不存在时阻断工具发现和路径工具的问题。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "f2c2013cc942cb7cbac4e37305c50f25ec489d057badc090ec2bd956505751c5",
+      "translation": "Fixed an issue where tool discovery and path tools were blocked when the saved workspace directory did not exist.",
+      "updated_at": 1792631720
+    },
     "CHANGELOG.md:list:f2e746f804097ebb8b7da7760143bb69e518d02828d627084fb43f8963bab9dc": {
       "kind": "list",
       "source": "修复大量无用IO，提升性能",
@@ -2338,8 +2346,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "2fdc0d14229db7b2be4fa43fe707d73ad815b9456bc6bcb3dee9d47e39bcdd98",
+  "source_hash": "9e205095c3ece947f91c46148190883fdcb0cf1c8976e603e0d96a01cb1b7e4e",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1792552004,
+  "updated_at": 1792631720,
   "version": 2
 }
