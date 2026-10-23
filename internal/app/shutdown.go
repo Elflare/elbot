@@ -33,7 +33,7 @@ type shutdownStep struct {
 }
 
 // shutdown 在运行取消后继续清理；一旦超时，不释放可能仍被使用的依赖。
-func shutdown(ctx context.Context, lines *businessLines, resources *sharedResources, serviceLock io.Closer) error {
+func shutdown(ctx context.Context, lines *businessLines, resources *sharedResources, configLock io.Closer) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 	defer cancel()
 
@@ -47,8 +47,8 @@ func shutdown(ctx context.Context, lines *businessLines, resources *sharedResour
 	if result.kind == stopTimedOut {
 		return err
 	}
-	if serviceLock != nil {
-		result = runShutdownStep(ctx, "service lock", func(context.Context) error { return serviceLock.Close() })
+	if configLock != nil {
+		result = runShutdownStep(ctx, "config lock", func(context.Context) error { return configLock.Close() })
 		err = errors.Join(err, result.err)
 	}
 	return err

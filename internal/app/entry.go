@@ -25,7 +25,6 @@ type Options struct {
 }
 
 // businessLines 持有总管；部分构造失败时仍由统一退出流程清理。
-// TODO: Tool、Hook、Platform、Background 提供根包 Supervisor。
 type businessLines struct {
 	agent      *agent.Supervisor      // 前台 Agent 业务线。
 	tool       *tool.Supervisor       // 共享工具业务线。
@@ -56,9 +55,9 @@ func Run(ctx context.Context, opts Options) (err error) {
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	var (
-		lines       *businessLines
-		resources   *sharedResources
-		serviceLock io.Closer
+		lines      *businessLines
+		resources  *sharedResources
+		configLock io.Closer
 	)
 	defer func() {
 		cancel()
@@ -82,10 +81,10 @@ func Run(ctx context.Context, opts Options) (err error) {
 				err = nil
 			}
 		}
-		err = errors.Join(err, shutdown(ctx, lines, resources, serviceLock))
+		err = errors.Join(err, shutdown(ctx, lines, resources, configLock))
 	}()
 	var configPath string
-	configPath, serviceLock, err = prepareEnvironment(opts.ConfigPath, opts.Mode)
+	configPath, configLock, err = prepareEnvironment(opts.ConfigPath, opts.Mode)
 	if err != nil {
 		return err
 	}
@@ -119,7 +118,7 @@ func startBusinessLines(ctx context.Context, lines *businessLines) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	// TODO: 其余四条线提供 Start() error；构造时已接收运行上下文。
+	// 各总管在构造时接收运行上下文，Start 只负责启动自身业务。
 	if err := lines.tool.Start(); err != nil {
 		return fmt.Errorf("start tool: %w", err)
 	}
@@ -140,7 +139,7 @@ func startBusinessLines(ctx context.Context, lines *businessLines) error {
 
 // waitBusinessLines 将平台运行结束或外部停止交回 Run 发起统一退出。
 func waitBusinessLines(ctx context.Context, lines *businessLines) error {
-	// TODO: Platform 总管提供 Wait(ctx) error，内部汇总平台运行结果；
+	// Platform.Wait 汇总平台运行结果；
 	// TUI 正常退出结束应用，Service 不因所有消息平台循环退出而自动结束。
 	err := lines.platform.Wait(ctx)
 	if err != nil {

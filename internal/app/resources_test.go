@@ -83,24 +83,3 @@ func TestPrepareResourcesCanceledBeforeAcquisition(t *testing.T) {
 		t.Fatalf("resources=%#v error=%v", r, err)
 	}
 }
-
-func TestPrepareEnvironmentUsesResolvedPathAndValidatesMode(t *testing.T) {
-	path := appConfigFixture(t)
-	t.Setenv("ELBOT_CONFIG_FILE", path)
-	for _, mode := range []RunMode{RunModeTUI, RunModeService} {
-		got, lock, err := prepareEnvironment("", mode)
-		if lock != nil {
-			t.Cleanup(func() {
-				if err := lock.Close(); err != nil {
-					t.Error(err)
-				}
-			})
-		}
-		if err != nil || got != path {
-			t.Fatalf("mode=%s path=%s lock=%v error=%v", mode, got, lock, err)
-		}
-	}
-	if _, _, err := prepareEnvironment(path, "bad-mode"); err == nil {
-		t.Fatal("invalid mode accepted")
-	}
-}

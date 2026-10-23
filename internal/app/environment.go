@@ -3,8 +3,11 @@ package app
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 
 	"elbot/internal/config"
+
+	"github.com/gofrs/flock"
 )
 
 // RunMode 表示本地应用的运行方式。
@@ -17,18 +20,35 @@ const (
 	RunModeService RunMode = "service"
 )
 
-// prepareEnvironment 定位配置文件；服务运行占用交给统一退出流程释放。
-func prepareEnvironment(configPath string, mode RunMode) (resolvedConfigPath string, serviceLock io.Closer, err error) {
+// prepareEnvironment 定位配置文件并取得本地实例独占锁，由统一退出流程释放。
+func prepareEnvironment(configPath string, mode RunMode) (string, io.Closer, error) {
 	switch mode {
 	case RunModeTUI, RunModeService:
 	default:
 		return "", nil, fmt.Errorf("unknown run mode %q", mode)
 	}
-	resolvedConfigPath, err = config.ResolvePath(configPath)
+	resolvedConfigPath, err := config.ResolvePath(configPath)
 	if err != nil {
 		return "", nil, fmt.Errorf("resolve config path: %w", err)
 	}
-	// TODO: Service 模式按 resolvedConfigPath 取得跨进程独占运行占用，
-	// 将句柄交还 Run；TUI 模式不申请。当前尚不提供服务互斥保证。
-	return resolvedConfigPath, nil, nil
+	resolvedConfigPath, err = filepath.Abs(resolvedConfigPath)
+	if err != nil {
+		return "", nil, fmt.Errorf("make config path absolute: %w", err)
+	}
+	resolvedConfigPath, err = filepath.EvalSymlinks(resolvedConfigPath)
+	if err != nil {
+		return "", nil, fmt.Errorf("resolve config symlinks: %w", err)
+	}
+
+	// 独立锁文件避免配置替换保存时丢失互斥；释放锁时保留该文件。
+	lockPath := resolvedConfigPath + ".lock"
+	configLock := flock.New(lockPath)
+	locked, err := configLock.TryLock()
+	if err != nil {
+		return "", nil, fmt.Errorf("acquire config lock %q: %w", lockPath, err)
+	}
+	if !locked {
+		return "", nil, fmt.Errorf("config %q is already in use by another local instance", resolvedConfigPath)
+	}
+	return resolvedConfigPath, configLock, nil
 }
