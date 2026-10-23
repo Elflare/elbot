@@ -2,13 +2,13 @@ package security
 
 import "context"
 
-type policyContextKey struct{}
+type permissionContextKey struct{}
 
-func WithPolicy(ctx context.Context, policy *Policy) context.Context {
-	return context.WithValue(ctx, policyContextKey{}, policy)
+func WithPermission(ctx context.Context, permission *Permission) context.Context {
+	return context.WithValue(ctx, permissionContextKey{}, permission)
 }
 
-func PolicyFromContext(ctx context.Context) (*Policy, bool) {
-	policy, ok := ctx.Value(policyContextKey{}).(*Policy)
-	return policy, ok
+func PermissionFromContext(ctx context.Context) (*Permission, bool) {
+	permission, ok := ctx.Value(permissionContextKey{}).(*Permission)
+	return permission, ok
 }

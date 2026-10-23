@@ -282,7 +282,7 @@ func TestRunConfirmsOnlyAuthorizedHighRiskToolsForRegularUsers(t *testing.T) {
 			if err := registry.Register(runnerHighRiskTool{name: toolName, ownerScoped: tt.ownerScoped}); err != nil {
 				t.Fatal(err)
 			}
-			manager := NewManager(registry, security.NewPolicy(tt.userMaxRisk, "high", nil))
+			manager := NewManager(registry, security.NewPermission(tt.userMaxRisk, "high", nil))
 			deps := &runnerTestDeps{}
 			result := NewRunner(manager).Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{},
 				Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
@@ -304,7 +304,7 @@ func TestRunPreservesMultimodalToolSegments(t *testing.T) {
 	if err := registry.Register(runnerImageTool{}); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(registry, security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
+	manager := NewManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
 	result := NewRunner(manager).Run(context.Background(), &runnerTestDeps{}, RunRequest{Committer: &testToolCommitter{},
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
@@ -320,7 +320,7 @@ func TestRunSkipsConfirmationWhenPreflightFails(t *testing.T) {
 	if err := registry.Register(runnerPreflightTool{}); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(registry, security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
+	manager := NewManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
 	deps := &runnerTestDeps{}
 	committer := &testToolCommitter{}
 	result := NewRunner(manager).Run(context.Background(), deps, RunRequest{Committer: committer,
@@ -355,7 +355,7 @@ func TestRunSkipsConfirmationWhenShellPreflightFails(t *testing.T) {
 	if err := registry.Register(runnerShellPreflightTool{}); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(registry, security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
+	manager := NewManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
 	deps := &runnerTestDeps{}
 	committer := &testToolCommitter{}
 	result := NewRunner(manager).Run(context.Background(), deps, RunRequest{Committer: committer,
@@ -387,7 +387,7 @@ func TestRunPreparesToolContextBeforePreflightAndExecution(t *testing.T) {
 	if err := registry.Register(runnerContextPreflightTool{}); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(registry, security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
+	manager := NewManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
 	deps := &runnerTestDeps{prepareContext: func(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context {
 		return context.WithValue(ctx, runnerContextKey{}, "prepared")
 	}}
@@ -415,7 +415,7 @@ func TestRunPreservesPolicyDenialFact(t *testing.T) {
 			if err := registry.Register(runnerHighRiskTool{name: "risky"}); err != nil {
 				t.Fatal(err)
 			}
-			manager := NewManager(registry, security.NewPolicy("low", "high", nil))
+			manager := NewManager(registry, security.NewPermission("low", "high", nil))
 			deps := &runnerTestDeps{reject: reject}
 			role := contextinfo.RoleUser
 			if reject {
@@ -438,7 +438,7 @@ func TestRunKeepsNonEditFileAssessRiskBehavior(t *testing.T) {
 	if err := registry.Register(runnerRiskErrorTool{}); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(registry, security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}}))
+	manager := NewManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
 	deps := &runnerTestDeps{}
 	result := NewRunner(manager).Run(context.Background(), deps, RunRequest{Committer: &testToolCommitter{},
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},

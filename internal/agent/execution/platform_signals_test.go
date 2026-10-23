@@ -34,7 +34,7 @@ func newTestHookBridge(t *testing.T, p platform.PlatformAdapter, manager *hook.D
 	}
 	bridge := agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{
 		Manager: manager, Router: &fakeHookRouter{}, Requests: request.NewManager(0),
-		Identity: agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: p.Name(), ActorID: "cli:local", ScopeID: "local", Policy: security.DefaultPolicy()}),
+		Identity: agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: p.Name(), ActorID: "cli:local", ScopeID: "local", Permission: security.DefaultPermission()}),
 		Failed:   failed, Dispatcher: dispatcher,
 	})
 	manager.SetObserver(bridge.ObserveRun)
@@ -78,7 +78,7 @@ func TestGlobalPlatformHooksIsolatePlatformsAndCancelPending(t *testing.T) {
 	var firstCalls atomic.Int32
 	a := newPlatformEventBridge(t, func(ctx context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
 		if ctx.Value(valueKey{}) != "retained" || ctx.Err() != nil {
-			t.Error("emission values or cancellation policy changed")
+			t.Error("emission values or cancellation permission changed")
 		}
 		if event.Platform.ScopeID != "" || event.Actor.ID != "" {
 			t.Error("invented chat identity")

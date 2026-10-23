@@ -25,9 +25,9 @@ const (
 )
 
 type Manager struct {
-	Native *NativeSource
-	Policy *security.Policy
-	Media  *media.Manager
+	Native     *NativeSource
+	Permission *security.Permission
+	Media      *media.Manager
 }
 
 type Context struct {
@@ -60,9 +60,9 @@ type ResolvedTool struct {
 	Native tool.Tool
 	// Cached is the selected discovery metadata snapshot, nil for uncached tools.
 	Cached *CachedTool
-	// ResultStatus is declared by Resolve: succeeded, rejected by policy, or failed lookup/configuration.
+	// ResultStatus is declared by Resolve: succeeded, rejected by permission, or failed lookup/configuration.
 	ResultStatus events.ResultStatus
-	// Error retains the resolution error, including typed policy denial; nil does not declare success.
+	// Error retains the resolution error, including typed permission denial; nil does not declare success.
 	Error error
 }
 
@@ -85,8 +85,8 @@ type ExecutionResult struct {
 	ExecutionStarted bool
 }
 
-func NewManager(registry *tool.Registry, policy *security.Policy) *Manager {
-	return &Manager{Native: NewNativeSource(registry), Policy: policy}
+func NewManager(registry *tool.Registry, permission *security.Permission) *Manager {
+	return &Manager{Native: NewNativeSource(registry), Permission: permission}
 }
 
 func (m *Manager) ToolInfos(ctx context.Context, view Context) ([]tool.Info, error) {
@@ -96,7 +96,7 @@ func (m *Manager) ToolInfos(ctx context.Context, view Context) ([]tool.Info, err
 	if view.DisableBaseTools || view.Mode != storage.SessionModeWork {
 		return nil, nil
 	}
-	return m.Native.ToolInfos(ctx, actorForView(ctx, view), m.Policy), nil
+	return m.Native.ToolInfos(ctx, actorForView(ctx, view), m.Permission), nil
 }
 
 func (m *Manager) ToolNames(ctx context.Context, view Context) ([]string, error) {
@@ -225,7 +225,7 @@ func (m *Manager) ExecutePrepared(ctx context.Context, call llm.ToolCallRequest,
 	if resolved.Source == SourceKindELwisp {
 		return executeELwispTool(ctx, call, resolved, onStarted)
 	}
-	result := tool.Executor{Registry: m.Native.Registry, Actor: actor, Policy: m.Policy, OnStarted: onStarted}.ExecutePrepared(ctx, call, prepared)
+	result := tool.Executor{Registry: m.Native.Registry, Actor: actor, Permission: m.Permission, OnStarted: onStarted}.ExecutePrepared(ctx, call, prepared)
 	return ExecutionResult{Call: call, Message: result.Message, Result: result.Result, LogResult: result.LogResult, Error: result.Error, ResultStatus: result.ResultStatus, ExecutionStarted: result.ExecutionStarted}
 }
 
@@ -266,17 +266,17 @@ func actorForView(ctx context.Context, view Context) contextinfo.Actor {
 	if actor, ok := contextinfo.ActorFromContext(ctx); ok {
 		return actor
 	}
-	if policy, ok := security.PolicyFromContext(ctx); ok && policy != nil {
-		return policy.Actor(view.Scope.ActorID, view.Scope.Platform, view.Scope.ActorID, "")
+	if permission, ok := security.PermissionFromContext(ctx); ok && permission != nil {
+		return permission.Actor(view.Scope.ActorID, view.Scope.Platform, view.Scope.ActorID, "")
 	}
 	return contextinfo.Actor{ID: view.Scope.ActorID, Platform: view.Scope.Platform, PlatformUserID: view.Scope.ActorID, Role: contextinfo.RoleUser}
 }
 
-func policyForManager(ctx context.Context) *security.Policy {
-	if policy, ok := security.PolicyFromContext(ctx); ok && policy != nil {
-		return policy
+func permissionForManager(ctx context.Context) *security.Permission {
+	if permission, ok := security.PermissionFromContext(ctx); ok && permission != nil {
+		return permission
 	}
-	return security.DefaultPolicy()
+	return security.DefaultPermission()
 }
 
 func executionError(call llm.ToolCallRequest, message llm.LLMMessage, err error, resultStatus events.ResultStatus) ExecutionResult {

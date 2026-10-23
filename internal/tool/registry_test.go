@@ -369,9 +369,9 @@ func TestDiscoverToolHidesSuperadminOnlyToolsFromNormalUser(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	policy := security.NewPolicy("medium", "high", map[string][]string{"cli": {"local"}})
+	permission := security.NewPermission("medium", "high", map[string][]string{"cli": {"local"}})
 	actor := contextinfo.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: contextinfo.RoleUser}
-	ctx := security.WithPolicy(contextinfo.WithActor(context.Background(), actor), policy)
+	ctx := security.WithPermission(contextinfo.WithActor(context.Background(), actor), permission)
 	result, _, err := NewDiscoverTool(registry).Call(ctx, CallRequest{})
 	if err != nil {
 		t.Fatal(err)
@@ -391,9 +391,9 @@ func TestDiscoverToolShowsSuperadminOnlyToolsToSuperadmin(t *testing.T) {
 	if err := registry.Register(fakeTool{name: "cron", source: SourceBuiltin, risk: RiskMedium, superadminOnly: true}); err != nil {
 		t.Fatal(err)
 	}
-	policy := security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
+	permission := security.NewPermission("low", "high", map[string][]string{"cli": {"local"}})
 	actor := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
-	ctx := security.WithPolicy(contextinfo.WithActor(context.Background(), actor), policy)
+	ctx := security.WithPermission(contextinfo.WithActor(context.Background(), actor), permission)
 
 	result, _, err := NewDiscoverTool(registry).Call(ctx, CallRequest{})
 	if err != nil {

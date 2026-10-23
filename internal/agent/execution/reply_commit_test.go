@@ -179,7 +179,7 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 
 	sender := agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{
 		Dispatcher: dispatch.New(dispatch.Options{Primary: f.platform}),
-		Hooks:      agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{Manager: f.hooks, Identity: agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", Policy: security.DefaultPolicy()})}),
+		Hooks:      agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{Manager: f.hooks, Identity: agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", Permission: security.DefaultPermission()})}),
 	})
 	messages := &dialogue.MessageStore{Dialogues: replyTestDialogues{DialogueRepository: store.Dialogues(), repo: f.repo}, Gate: &dialogue.CommitGate{Sessions: session.NewService(store), Turns: turn.NewManager(), View: dialogue.ExecutionView{Sessions: store.Sessions()}}}
 	f.committer = &dialogue.ReplyCommitter{Persistence: messages.Committer("append_assistant_message"), Output: sender}

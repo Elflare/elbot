@@ -138,7 +138,7 @@ func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
 			if err := registry.Register(builtin.NewRollbackFileTool(service)); err != nil {
 				t.Fatal(err)
 			}
-			manager := toolrun.NewManager(registry, security.NewPolicy("low", "high", nil))
+			manager := toolrun.NewManager(registry, security.NewPermission("low", "high", nil))
 			actor := contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin}
 			base := contextinfo.WithActor(context.Background(), actor)
 			deps := &rollbackConfirmDeps{}
@@ -192,7 +192,7 @@ func TestRunEditPreservesConfirmationSnapshot(t *testing.T) {
 			if err := registry.Register(editor); err != nil {
 				t.Fatal(err)
 			}
-			manager := toolrun.NewManager(registry, security.NewPolicy("low", "high", nil))
+			manager := toolrun.NewManager(registry, security.NewPermission("low", "high", nil))
 			actor := contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin}
 			deps := &rollbackConfirmDeps{}
 			deps.prepareContext = func(ctx context.Context, _ *storage.Session, _ llm.ToolCallRequest) context.Context {

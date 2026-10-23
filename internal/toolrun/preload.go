@@ -24,7 +24,7 @@ type PreloadOptions struct {
 
 // PreloadService prepares tools and display material without writing session
 // state. The caller combines one input's updates and commits via StateService.
-// Actor, policy, workspace and background restrictions come from the call context.
+// Actor, permission, workspace and background restrictions come from the call context.
 type PreloadService struct {
 	registry *tool.Registry
 	tags     *toolTagConfigSource
@@ -177,7 +177,7 @@ func (s *PreloadService) BackgroundSelections(ctx context.Context, names []strin
 			// Actual preload separately enforces current API availability.
 			info := t.Info()
 			_, skill := t.(tool.DetailProvider)
-			return !info.ForegroundOnly && !info.Hidden && !skill && t.Name() != "workspace" && tool.CanAccessTool(actorForView(ctx, Context{}), policyForManager(ctx), info)
+			return !info.ForegroundOnly && !info.Hidden && !skill && t.Name() != "workspace" && tool.CanAccessTool(actorForView(ctx, Context{}), permissionForManager(ctx), info)
 		})
 		if err != nil {
 			return nil, err
@@ -277,7 +277,7 @@ func (s *PreloadService) PrepareBackground(ctx context.Context, sessionID string
 }
 
 func preloadAllowed(ctx context.Context, candidate tool.Tool) bool {
-	return tool.InfoAvailableInContext(ctx, candidate.Info()) && tool.CanAccessTool(actorForView(ctx, Context{}), policyForManager(ctx), candidate.Info())
+	return tool.InfoAvailableInContext(ctx, candidate.Info()) && tool.CanAccessTool(actorForView(ctx, Context{}), permissionForManager(ctx), candidate.Info())
 }
 
 func canPreloadTool(ctx context.Context, candidate tool.Tool) bool {

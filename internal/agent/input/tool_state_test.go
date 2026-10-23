@@ -29,12 +29,12 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	_ = registry.Register(agentWrapperTool{name: "wrapper", hidden: true})
 	_ = registry.Register(agentDetailTool{name: "doc", source: tool.SourceSkillAgent, detail: "#skill doc", format: "elyph", activate: []string{"wrapper"}})
 
-	policy := security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
-	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Policy: policy})
+	permission := security.NewPermission("low", "critical", map[string][]string{"cli": {"local"}})
+	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Permission: permission})
 	sessions := session.NewService(store)
 	t.Cleanup(func() { _ = sessions.Close(context.Background()) })
 	stateService := toolrun.NewStateService(store)
-	manager := toolrun.NewManager(registry, policy)
+	manager := toolrun.NewManager(registry, permission)
 	coordinator := NewInputCoordinator(InputCoordinatorDeps{Sessions: sessions, SessionRows: store.Sessions(), Identity: identity, Execution: directiveExecution{}, ToolState: stateService,
 		Preloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"worker": {Tools: []string{"alpha"}, Prompt: "TAG"}}}})})
 	toolsExecutor := &dialogue.ToolExecutor{Manager: manager, Registry: registry, State: stateService, Identity: identity}

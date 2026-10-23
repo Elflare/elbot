@@ -73,14 +73,14 @@ func (t discoverTool) Call(ctx context.Context, req CallRequest) (_ *Result, log
 		names = append([]string{args.Name}, names...)
 	}
 	names = normalizeNames(names)
-	actor, policy := discoverySecurity(ctx)
+	actor, permission := discoverySecurity(ctx)
 	var result *DiscoveryResult
 	activateTools := []string{}
 	if len(names) == 0 {
 		infos := t.registry.List()
 		out := make([]DiscoveredTool, 0, len(infos))
 		for _, info := range infos {
-			if !info.Hidden && InfoAvailableInContext(ctx, info) && (CanAccessTool(actor, policy, info) || info.Name == "discover_tool") {
+			if !info.Hidden && InfoAvailableInContext(ctx, info) && (CanAccessTool(actor, permission, info) || info.Name == "discover_tool") {
 				out = append(out, DiscoveredTool{Info: publicInfo(info)})
 			}
 		}
@@ -88,7 +88,7 @@ func (t discoverTool) Call(ctx context.Context, req CallRequest) (_ *Result, log
 	} else {
 		details, errors := t.registry.DiscoverDetails(contextinfo.WithActor(ctx, actor), names, func(candidate Tool) bool {
 			info := candidate.Info()
-			return InfoAvailableInContext(ctx, info) && CanAccessTool(actor, policy, info)
+			return InfoAvailableInContext(ctx, info) && CanAccessTool(actor, permission, info)
 		})
 		for _, discovered := range details {
 			if discovered.Detail == "" {
@@ -223,14 +223,14 @@ func discoveryContent(ctx context.Context, registry *Registry, result *Discovery
 	return DiscoveryText{Summary: summary, Details: strings.Join(parts, "\n\n")}, nil
 }
 
-func discoverySecurity(ctx context.Context) (contextinfo.Actor, *security.Policy) {
-	policy, ok := security.PolicyFromContext(ctx)
-	if !ok || policy == nil {
-		policy = security.DefaultPolicy()
+func discoverySecurity(ctx context.Context) (contextinfo.Actor, *security.Permission) {
+	permission, ok := security.PermissionFromContext(ctx)
+	if !ok || permission == nil {
+		permission = security.DefaultPermission()
 	}
 	actor, ok := contextinfo.ActorFromContext(ctx)
 	if !ok {
 		actor = contextinfo.Actor{Role: contextinfo.RoleUser}
 	}
-	return actor, policy
+	return actor, permission
 }

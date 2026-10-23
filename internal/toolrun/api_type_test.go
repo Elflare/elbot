@@ -44,7 +44,7 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 	if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(registry, security.DefaultPolicy())
+	manager := NewManager(registry, security.DefaultPermission())
 	preloader := NewPreloadService(PreloadOptions{Registry: registry})
 	actor := contextinfo.Actor{Role: contextinfo.RoleSuperadmin}
 	for _, apiType := range []string{"", "chat", "response", "other"} {

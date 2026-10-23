@@ -38,7 +38,7 @@ func backgroundDeps(t *testing.T) ModuleDeps {
 	t.Cleanup(func() { _ = store.Close() })
 	sessions := session.NewService(store)
 	t.Cleanup(func() { _ = sessions.Close(context.Background()) })
-	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Policy: security.DefaultPolicy()})
+	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Permission: security.DefaultPermission()})
 	registry := tool.NewRegistry()
 	return ModuleDeps{Store: store, Sessions: sessions, Identity: identity, Execution: &backgroundExecutionStub{}, Registry: registry, Preloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}), ToolState: toolrun.NewStateService(store), SandboxRoot: t.TempDir(), Maintenance: config.Default().Maintenance}
 }

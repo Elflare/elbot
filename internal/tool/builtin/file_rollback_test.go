@@ -246,7 +246,7 @@ func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
 	}
 	user := contextinfo.Actor{ID: "user", Role: contextinfo.RoleUser}
 	details, _ = registry.DiscoverDetails(context.Background(), []string{"edit_file"}, func(candidate tool.Tool) bool {
-		return tool.CanAccessTool(user, security.NewPolicy("critical", "high", nil), candidate.Info())
+		return tool.CanAccessTool(user, security.NewPermission("critical", "high", nil), candidate.Info())
 	})
 	for _, entry := range details {
 		if entry.Info.Name == "rollback_file" {

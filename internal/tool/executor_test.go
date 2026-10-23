@@ -83,14 +83,14 @@ func TestExecutorDeniesToolAboveUserRisk(t *testing.T) {
 	if err := registry.Register(fakeTool{name: "danger", source: SourceBuiltin, risk: RiskHigh}); err != nil {
 		t.Fatal(err)
 	}
-	executor := Executor{Registry: registry, Actor: contextinfo.Actor{Role: contextinfo.RoleUser}, Policy: security.DefaultPolicy()}
+	executor := Executor{Registry: registry, Actor: contextinfo.Actor{Role: contextinfo.RoleUser}, Permission: security.DefaultPermission()}
 	result := executor.Execute(context.Background(), llm.ToolCallRequest{ID: "call_1", Name: "danger", Arguments: `{}`})
 	if result.Error == nil || !strings.Contains(llm.SegmentsContentText(result.Message.Segments), "above your allowed tool level") {
 		t.Fatalf("result = %#v", result)
 	}
 	var denied PolicyDeniedError
 	if result.ResultStatus != events.ResultRejected || result.ExecutionStarted || !errors.As(result.Error, &denied) {
-		t.Fatalf("policy facts = %#v", result)
+		t.Fatalf("permission facts = %#v", result)
 	}
 }
 
@@ -147,7 +147,7 @@ func TestExecutorDeniesSuperadminOnlyToolForNormalUser(t *testing.T) {
 	if err := registry.Register(fakeTool{name: "cron", source: SourceBuiltin, risk: RiskMedium, superadminOnly: true}); err != nil {
 		t.Fatal(err)
 	}
-	executor := Executor{Registry: registry, Actor: contextinfo.Actor{Role: contextinfo.RoleUser}, Policy: security.NewPolicy("medium", "high", nil)}
+	executor := Executor{Registry: registry, Actor: contextinfo.Actor{Role: contextinfo.RoleUser}, Permission: security.NewPermission("medium", "high", nil)}
 	result := executor.Execute(context.Background(), llm.ToolCallRequest{ID: "call_1", Name: "cron", Arguments: `{}`})
 	if result.Error == nil || !strings.Contains(llm.SegmentsContentText(result.Message.Segments), "requires superadmin") {
 		t.Fatalf("result = %#v", result)

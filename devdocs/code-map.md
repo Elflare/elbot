@@ -18,13 +18,13 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 启动与装配
 
 - `cmd/elbot/main.go`、`internal/launcher/cli.go`：程序入口、参数与运行模式。
-- `internal/app/` 沿用六文件骨架，已填写 Agent 的总管构造、能力接线与启停代码；其余四条线的总管、共享资源准备和公共流程仍待实现，尚无可运行入口。13 个原生产文件和 12 个原测试文件均保存在 `*.go.bak` 中；职责设计见 [App 包设计](app-design.md)。
-- `internal/app/entry.go`：启动参数、业务线总管集合、启动耗时统计、应用入口和运行等待骨架；业务线启动中已填写 Agent 调用。
-- `internal/app/environment.go`：本地运行模式、配置路径定位和按配置取得服务运行占用的占位骨架。
-- `internal/app/resources.go`：共享资源集合及资源准备函数的占位骨架；加载已定位的配置，准备日志、共享存储、媒体、权限和模型管理，平台聊天历史归平台线。
-- `internal/app/wiring.go`：已填写 Agent 的现有资源与配置参数，构造失败时返回部分总管；其他总管及跨线接线保留占位，订阅由所属总管或服务持有。
-- `internal/app/shutdown.go`：已填写 Agent 的停止与关闭调用；退出协调、其他业务线、共享资源关闭和限时步骤仍是骨架，约定统一 30 秒预算。
-- `internal/app/client.go`：客户端参数、回退信号，以及明确运行和自动尝试两个占位入口；实际回退由进程入口决定。
+- `internal/app/` 六文件按下层接口已存在来实现公共流程，Agent 已接入真实总管；其他四条线、媒体和模型构造入口、平台客户端接口仍待实现，服务占用与进程入口适配尚未完成。13 个原生产文件和 12 个原测试文件保存在 `*.go.bak` 中；职责与调用契约见 [App 包设计](app-design.md)。
+- `internal/app/entry.go`：启动参数、总管集合、完整运行流程、四阶段耗时、启动顺序、平台等待和错误汇总。
+- `internal/app/environment.go`：验证运行模式、定位配置路径；按配置取得服务独占占用保留 TODO。
+- `internal/app/resources.go`：加载配置、构造共享资源并保留部分失败结果；向 `NewMediaCenter`、`NewModelManager` 交付完整配置，媒体与模型侧自行初始化；平台历史归平台线。
+- `internal/app/wiring.go`：真实构造 Agent；其他四条线按目标总管接口构造并标注 TODO，跨线只交付公开能力，失败保留部分总管。
+- `internal/app/shutdown.go`：用 `shutdownStep` 声明清理顺序，`runShutdownStep` 按统一 30 秒期限返回结果枚举，`runShutdownSteps` 顺序执行并汇总；普通失败后继续，超时停止后续清理。
+- `internal/app/client.go`：加载配置并调用 `platform.RunClient`，消费 `ClientResult`；明确运行直接返回错误，自动尝试将可回退结果转为信号，实际本地启动由进程入口决定。
 - `internal/agent/`：`Supervisor` 是 App 对接入口；`supervisor.go` 定义总管与公开能力，`deps.go` 声明共享资源和 `ToolCapabilities`、`HookCapabilities`、`PlatformCapabilities` 三类业务接口，`wiring.go` 拆分配置、构造线内组件并接线，`lifecycle.go` 管理启停，`signals.go` 持有通知与状态订阅。
 - `internal/tool/module/`：共享工具目录、执行核心、预加载、Skill／Memory／文件服务。
 - `internal/hook/module/`：Hook 核心、控制与插件进程。
@@ -83,7 +83,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 协议路线
 
 - `internal/agent/routes/`：按 APIType 登记 Loop／Compactor／Material。
-- `internal/agent/wiring.go`：消费完整配置与外部业务能力，装配线内组件和协议路线；App 资源准备职责见 `internal/app/resources.go`，当前尚未实现。
+- `internal/agent/wiring.go`：消费完整配置与外部业务能力，装配线内组件和协议路线；App 资源准备见 `internal/app/resources.go`。
 - `internal/agent/dialogue/loop.go`、`internal/contextmgr/compact_contract.go`、`internal/session/material.go`：公共循环、压缩和材料契约。
 - `internal/llm/origin.go`、`internal/modelmgr/compatibility.go`：持久化归属与兼容判断。
 - `internal/llm/api_type.go`、`internal/tool/availability.go`：模型 API 类型与工具可用性。

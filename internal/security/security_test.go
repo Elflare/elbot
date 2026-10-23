@@ -13,8 +13,8 @@ func TestActorIDCanonicalizesPlatformPrefix(t *testing.T) {
 }
 
 func TestPolicyActorUsesCanonicalIDAndNativePlatformUserID(t *testing.T) {
-	policy := NewPolicy("low", "high", map[string][]string{"qqofficial": {"user-1"}})
-	actor := policy.Actor("user-1", "qqofficial", "qqofficial:user-1", "User")
+	permission := NewPermission("low", "high", map[string][]string{"qqofficial": {"user-1"}})
+	actor := permission.Actor("user-1", "qqofficial", "qqofficial:user-1", "User")
 	if actor.ID != "qqofficial:user-1" {
 		t.Fatalf("actor.ID = %q, want qqofficial:user-1", actor.ID)
 	}
@@ -27,7 +27,7 @@ func TestPolicyActorUsesCanonicalIDAndNativePlatformUserID(t *testing.T) {
 }
 
 func TestPolicyActorFallsBackToIDWhenPlatformUserIDMissing(t *testing.T) {
-	actor := DefaultPolicy().Actor("qqofficial:user-1", "qqofficial", "", "User")
+	actor := DefaultPermission().Actor("qqofficial:user-1", "qqofficial", "", "User")
 	if actor.ID != "qqofficial:user-1" {
 		t.Fatalf("actor.ID = %q, want qqofficial:user-1", actor.ID)
 	}
@@ -37,7 +37,7 @@ func TestPolicyActorFallsBackToIDWhenPlatformUserIDMissing(t *testing.T) {
 }
 
 func TestPolicyUsesSeparateConfirmationThresholdsByRole(t *testing.T) {
-	policy := NewPolicy("low", "critical", nil)
+	permission := NewPermission("low", "critical", nil)
 	tests := []struct {
 		name  string
 		actor contextinfo.Actor
@@ -52,7 +52,7 @@ func TestPolicyUsesSeparateConfirmationThresholdsByRole(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := policy.NeedsToolConfirmation(tt.actor, tt.risk); got != tt.want {
+			if got := permission.NeedsToolConfirmation(tt.actor, tt.risk); got != tt.want {
 				t.Fatalf("NeedsToolConfirmation() = %v, want %v", got, tt.want)
 			}
 		})

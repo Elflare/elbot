@@ -70,7 +70,7 @@ func (r *BackgroundRunner) RunBackground(ctx context.Context, req background.Run
 		Sender:   discardSender{},
 		Segments: backgroundPromptSegments(req.PromptSegments),
 	})
-	ctx = security.WithPolicy(contextinfo.WithActor(ctx, actor), r.identity.Policy())
+	ctx = security.WithPermission(contextinfo.WithActor(ctx, actor), r.identity.Permission())
 
 	sandboxRoot := r.sandboxRoot
 	sandboxSubdir := strings.TrimSpace(req.SandboxSubdir)
@@ -196,7 +196,7 @@ type backgroundPreloadResult struct {
 }
 
 func (r *BackgroundRunner) preloadBackgroundResources(ctx context.Context, row *storage.Session, names []string, initial []toolrun.CachedTool, allowed []string) backgroundPreloadResult {
-	preloadCtx := contextinfo.WithActor(security.WithPolicy(ctx, r.identity.Policy()), r.identity.Actor(ctx))
+	preloadCtx := contextinfo.WithActor(security.WithPermission(ctx, r.identity.Permission()), r.identity.Actor(ctx))
 	prepared, err := r.preloader.PrepareBackground(preloadCtx, row.ID, names, allowed)
 	if err != nil {
 		return backgroundPreloadResult{Err: err}

@@ -23,15 +23,15 @@ type ToolCapabilities interface {
 
 type ToolRegistryFunc func() ToolCapabilities
 type ActorFunc func(context.Context) contextinfo.Actor
-type PolicyFunc func() *security.Policy
-type ToolTagsFunc func(context.Context, ToolCapabilities, contextinfo.Actor, *security.Policy) ([]string, error)
+type PermissionFunc func() *security.Permission
+type ToolTagsFunc func(context.Context, ToolCapabilities, contextinfo.Actor, *security.Permission) ([]string, error)
 type ToolNamesByTagFunc func(context.Context, ToolCapabilities, string, func(tool.Tool) bool) ([]string, error)
 
 type ToolDirectiveSource struct {
 	Context        func(context.Context) (context.Context, error)
 	Registry       ToolRegistryFunc
 	Actor          ActorFunc
-	Policy         PolicyFunc
+	Permission     PermissionFunc
 	Tags           ToolTagsFunc
 	ToolNamesByTag ToolNamesByTagFunc
 }
@@ -54,27 +54,27 @@ func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) ([]Item,
 	if s.Actor != nil {
 		actor = s.Actor(ctx)
 	}
-	policy := security.DefaultPolicy()
-	if s.Policy != nil && s.Policy() != nil {
-		policy = s.Policy()
+	permission := security.DefaultPermission()
+	if s.Permission != nil && s.Permission() != nil {
+		permission = s.Permission()
 	}
 	if token := directive.ParseSkillCompletionToken(req.Text, cursor); token.OK {
-		return s.completeSkills(ctx, registry, actor, policy, token, cursor), nil
+		return s.completeSkills(ctx, registry, actor, permission, token, cursor), nil
 	}
 	if token.PrefixOnly {
 		return []Item{{Text: token.Prefix, Label: token.Prefix, Kind: KindToolDirective, ReplaceStart: token.Start, ReplaceEnd: cursor}}, nil
 	}
-	tags, err := s.matchingTags(ctx, registry, actor, policy, token.Query)
+	tags, err := s.matchingTags(ctx, registry, actor, permission, token.Query)
 	if err != nil {
 		return nil, err
 	}
-	infos := s.matchingTools(ctx, registry, actor, policy, token.Query)
+	infos := s.matchingTools(ctx, registry, actor, permission, token.Query)
 	out := make([]Item, 0, len(tags)+len(infos))
 	seenText := map[string]bool{}
 	for _, tag := range tags {
 		text := token.Prefix + tag
 		seenText[text] = true
-		description, err := s.tagDescription(ctx, registry, actor, policy, tag)
+		description, err := s.tagDescription(ctx, registry, actor, permission, tag)
 		if err != nil {
 			return nil, err
 		}
@@ -95,11 +95,11 @@ func (s ToolDirectiveSource) registry() ToolCapabilities {
 	return s.Registry()
 }
 
-func (s ToolDirectiveSource) completeSkills(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, policy *security.Policy, token directive.SkillCompletionToken, cursor int) []Item {
+func (s ToolDirectiveSource) completeSkills(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, permission *security.Permission, token directive.SkillCompletionToken, cursor int) []Item {
 	if token.PrefixOnly {
 		return []Item{{Text: token.Prefix, Label: token.Prefix, Kind: KindSkillDirective, ReplaceStart: token.Start, ReplaceEnd: cursor}}
 	}
-	infos := s.matchingSkills(ctx, registry, actor, policy, token.Query)
+	infos := s.matchingSkills(ctx, registry, actor, permission, token.Query)
 	out := make([]Item, 0, len(infos))
 	for _, info := range infos {
 		out = append(out, Item{Text: token.Prefix + info.Name, Label: info.Name, Description: info.Description, Kind: KindSkillDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
@@ -107,17 +107,17 @@ func (s ToolDirectiveSource) completeSkills(ctx context.Context, registry ToolCa
 	return out
 }
 
-func (s ToolDirectiveSource) matchingTags(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, policy *security.Policy, query string) ([]string, error) {
-	candidates, err := s.allowedTags(ctx, registry, actor, policy)
+func (s ToolDirectiveSource) matchingTags(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, permission *security.Permission, query string) ([]string, error) {
+	candidates, err := s.allowedTags(ctx, registry, actor, permission)
 	return matchStrings(candidates, query), err
 }
 
-func (s ToolDirectiveSource) matchingTools(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, policy *security.Policy, query string) []tool.Info {
-	return matchInfos(s.allowedPlainTools(ctx, registry, actor, policy), query)
+func (s ToolDirectiveSource) matchingTools(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, permission *security.Permission, query string) []tool.Info {
+	return matchInfos(s.allowedPlainTools(ctx, registry, actor, permission), query)
 }
 
-func (s ToolDirectiveSource) matchingSkills(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, policy *security.Policy, query string) []tool.Info {
-	return matchInfos(s.allowedSkills(ctx, registry, actor, policy), query)
+func (s ToolDirectiveSource) matchingSkills(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, permission *security.Permission, query string) []tool.Info {
+	return matchInfos(s.allowedSkills(ctx, registry, actor, permission), query)
 }
 
 func matchInfos(candidates []tool.Info, query string) []tool.Info {
@@ -141,14 +141,14 @@ func matchInfos(candidates []tool.Info, query string) []tool.Info {
 	return fuzzy
 }
 
-func (s ToolDirectiveSource) allowedPlainTools(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, policy *security.Policy) []tool.Info {
+func (s ToolDirectiveSource) allowedPlainTools(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, permission *security.Permission) []tool.Info {
 	out := []tool.Info{}
 	for _, info := range registry.List() {
 		if info.Name == "discover_tool" || info.Hidden {
 			continue
 		}
 		candidate, ok := registry.Get(info.Name)
-		if !ok || !tool.InfoAvailableInContext(ctx, candidate.Info()) || !isPlainAllowedTool(candidate, actor, policy) {
+		if !ok || !tool.InfoAvailableInContext(ctx, candidate.Info()) || !isPlainAllowedTool(candidate, actor, permission) {
 			continue
 		}
 		out = append(out, info)
@@ -156,11 +156,11 @@ func (s ToolDirectiveSource) allowedPlainTools(ctx context.Context, registry Too
 	return out
 }
 
-func (s ToolDirectiveSource) allowedSkills(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, policy *security.Policy) []tool.Info {
+func (s ToolDirectiveSource) allowedSkills(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, permission *security.Permission) []tool.Info {
 	out := []tool.Info{}
 	for _, info := range registry.List() {
 		candidate, ok := registry.Get(info.Name)
-		if !ok || !tool.InfoAvailableInContext(ctx, candidate.Info()) || !isAllowedSkill(candidate, actor, policy) {
+		if !ok || !tool.InfoAvailableInContext(ctx, candidate.Info()) || !isAllowedSkill(candidate, actor, permission) {
 			continue
 		}
 		out = append(out, info)
@@ -168,12 +168,12 @@ func (s ToolDirectiveSource) allowedSkills(ctx context.Context, registry ToolCap
 	return out
 }
 
-func (s ToolDirectiveSource) allowedTags(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, policy *security.Policy) ([]string, error) {
-	return s.Tags(ctx, registry, actor, policy)
+func (s ToolDirectiveSource) allowedTags(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, permission *security.Permission) ([]string, error) {
+	return s.Tags(ctx, registry, actor, permission)
 }
 
-func (s ToolDirectiveSource) tagDescription(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, policy *security.Policy, tag string) (string, error) {
-	names, err := s.namesByTag(ctx, registry, tag, func(candidate tool.Tool) bool { return isPlainAllowedTool(candidate, actor, policy) })
+func (s ToolDirectiveSource) tagDescription(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, permission *security.Permission, tag string) (string, error) {
+	names, err := s.namesByTag(ctx, registry, tag, func(candidate tool.Tool) bool { return isPlainAllowedTool(candidate, actor, permission) })
 	if err != nil {
 		return "", err
 	}
@@ -213,18 +213,18 @@ func matchStrings(candidates []string, query string) []string {
 	return fuzzy
 }
 
-func isPlainAllowedTool(candidate tool.Tool, actor contextinfo.Actor, policy *security.Policy) bool {
+func isPlainAllowedTool(candidate tool.Tool, actor contextinfo.Actor, permission *security.Permission) bool {
 	info := candidate.Info()
-	if info.Name == "discover_tool" || info.Hidden || !tool.CanAccessTool(actor, policy, info) {
+	if info.Name == "discover_tool" || info.Hidden || !tool.CanAccessTool(actor, permission, info) {
 		return false
 	}
 	_, isSkillLike := candidate.(tool.DetailProvider)
 	return !isSkillLike
 }
 
-func isAllowedSkill(candidate tool.Tool, actor contextinfo.Actor, policy *security.Policy) bool {
+func isAllowedSkill(candidate tool.Tool, actor contextinfo.Actor, permission *security.Permission) bool {
 	info := candidate.Info()
-	if info.Hidden || !tool.CanAccessTool(actor, policy, info) {
+	if info.Hidden || !tool.CanAccessTool(actor, permission, info) {
 		return false
 	}
 	_, isSkillLike := candidate.(tool.DetailProvider)

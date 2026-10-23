@@ -52,7 +52,7 @@ func TestAuditShowsStartBeforeToolReturns(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		result := toolrun.NewRunner(toolrun.NewManager(registry, security.NewPolicy("high", "high", nil))).Run(ctx, deps, toolrun.RunRequest{
+		result := toolrun.NewRunner(toolrun.NewManager(registry, security.NewPermission("high", "high", nil))).Run(ctx, deps, toolrun.RunRequest{
 			Committer: deps, Session: &storage.Session{ID: "audit-live", Mode: storage.SessionModeWork},
 			Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 			Calls: []llm.ToolCallRequest{{ID: "audit-live-call", Name: probe.Name(), Arguments: "{}"}},

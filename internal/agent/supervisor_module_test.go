@@ -105,7 +105,7 @@ func isolatedModuleDeps(t *testing.T) SupervisorDeps {
 	}
 	t.Cleanup(func() { _ = models.Close(context.Background()) })
 	registry := tool.NewRegistry()
-	policy := security.DefaultPolicy()
+	permission := security.DefaultPermission()
 	sender := dispatch.New(dispatch.Options{Primary: &assemblyPlatform{}, Store: store})
 	hooks := hook.NewManager()
 	router, err := hookruntime.NewManager(hookruntime.Options{SharedDir: t.TempDir(), Registry: registry})
@@ -116,11 +116,11 @@ func isolatedModuleDeps(t *testing.T) SupervisorDeps {
 	root := t.TempDir()
 	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
 	return SupervisorDeps{
-		Media: center, Store: store, Models: models, Permission: policy,
+		Media: center, Store: store, Models: models, Permission: permission,
 		Platform: isolatedPlatformCapabilities{sender},
 		Hooks:    isolatedHookCapabilities{DefaultManager: hooks, Manager: router, HookService: hookcontrol.New(hooks, router, nil)},
 		Tools: isolatedToolCapabilities{
-			Registry: registry, Manager: toolrun.NewManager(registry, policy),
+			Registry: registry, Manager: toolrun.NewManager(registry, permission),
 			PreloadService: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}),
 			StateService:   toolrun.NewStateService(store),
 			Store:          resident.NewStore(filepath.Join(t.TempDir(), "memory.toml")),

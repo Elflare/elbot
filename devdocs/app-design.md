@@ -1,68 +1,72 @@
 # App 包设计
 
-本文记录 `internal/app` 已确认的文件职责，任务状态见[任务清单](tasks.md#app-包架构梳理)。六文件骨架中已填写 Agent 的总管构造、能力接线及启停调用；其余四条业务线、共享资源准备和公共流程仍待实现，当前没有可运行的 App 入口。
+App 使用六文件组织公共运行流程，按下层接口已存在来编写调用；下层按照这些契约实现。Agent 已通过真实公开接口接入，其他四条线、媒体和模型构造入口、平台客户端接口仍待实现。服务独占占用和进程入口适配尚未完成，完整应用暂不能构建运行。
 
-## 修改原则
+## 职责与边界
 
-五条业务线统一按 Agent 的方式组织：对接 App 的 `Supervisor`、依赖、装配和生命周期放在各自根包，内部业务放子包，线内共享内容放 `share`，不反向依赖使用方。各线管理并释放自有组件和订阅，只借用其他线及 App 的资源；权限命名统一为 `Permission`，旧 `Policy` 随改造迁移。
+App 负责共享资源、总管构造、跨线接线和启停协调。每条业务线接收完整配置，在内部拆分配置、创建组件并持有自己的订阅；App 不取得内部 Registry、Manager、Session 或执行协调器，不增加工厂或兼容层。权限管理及现行调用方统一使用 `security.Permission`。
 
-App 沿用已确认的六文件骨架和函数划分，不额外拆分或增加工厂层；只负责共享资源、总管构造、跨线接线及启停协调，业务内部装配和配置拆分留给各线。业务依赖接口由使用方声明，总管直接实现并交付这些能力；App 不获取下属组件，也不创建跨线适配对象。构造和接线完成后统一启动，失败保留部分结果交入口清理，退出沿用统一 30 秒预算。
-
-文档只保留最新状态；每个文件的设计确认后及时记录。
-
-## 已确认的文件划分
-
-| 文件 | 负责什么 | 不负责什么 | 与其他文件的关系 |
-|---|---|---|---|
-| `entry.go` | 应用入口与完整运行流程，组织准备、装配、启动、等待和退出，以及启动耗时统计 | 资源构造细节及下层业务实现 | 调用环境、资源、接线及退出协调；业务线启动与运行等待由入口组织 |
-| `environment.go` | 本地运行模式、实际配置路径定位，以及按配置取得服务运行占用 | 配置内容加载、业务线内部环境适配 | 向入口返回实际配置路径和服务占用句柄；路径交给资源准备，句柄纳入统一退出协调 |
-| `resources.go` | 按已定位的路径加载配置，准备共享存储、日志、媒体、权限和模型管理，明确资源所有权 | 平台聊天历史的存储生命周期、业务线启动顺序与内部接线 | 消费环境阶段定位的配置路径，向接线步骤提供基础依赖；部分准备失败时也明确已取得资源的清理责任 |
-| `wiring.go` | 五条线总管的创建与公开能力接线，构造和接线分步组织 | 下属组件实现、内部对象分配、应用退出策略 | 消费准备结果，向入口交付已构造的业务线 |
-| `shutdown.go` | 业务线停止、退出等待、统一退出预算及资源清理顺序 | 越过资源所有者释放其下属对象 | 协调业务线、应用资源和进程级资源的退出与释放 |
-| `client.go` | 独立客户端运行与自动尝试的回退判断 | 构造本地业务线、直接回退启动本地应用 | 向进程入口返回客户端结果或回退信号，由入口决定是否启动本地应用 |
-
-六个文件代表职责划分，不意味着每个文件都需要独立对象或一套 Factory、Request、Components。入口的业务线集合只持有五条线总管；环境准备直接返回配置路径和服务占用句柄，不新增环境结果结构体。共享资源由资源准备阶段创建，部分准备失败时也交回入口统一清理；共享存储由 App 协调生命周期，数据读写规则归各使用方。平台聊天历史及其存储生命周期归平台总管，由接线阶段连接查询与清理能力。接线产生的订阅等对象由对应总管或服务持有和释放，全部构造与接线完成后再由入口启动业务线。
-
-## 文件协作关系
-
-下图表示已确认的职责方向；当前仅填写 Agent 的构造、启动和关闭部分，完整调用链尚未实现。
+| 文件 | 职责 |
+|---|---|
+| `entry.go` | 完整运行流程、部分失败清理、启动顺序、平台运行等待、总耗时及四阶段 debug 统计 |
+| `environment.go` | 验证 TUI／Service 模式，按显式路径、环境变量、默认位置定位配置；服务独占占用留 TODO |
+| `resources.go` | 加载配置、构造共享资源并交付依赖；失败仍交回已取得的资源 |
+| `wiring.go` | 构造五条线总管，交付共享资源和公开业务能力；连接 Hook、Platform 与 Agent |
+| `shutdown.go` | 停止新工作、按结果枚举协调清理；全部步骤共享独立的 30 秒期限 |
+| `client.go` | 明确运行客户端和自动尝试；消费平台分类结果，返回错误或回退信号 |
 
 ```mermaid
 flowchart TB
-    E["entry.go<br/>应用入口与完整运行流程<br/>组织业务线启动、运行等待及启动统计"]
-    ENV["environment.go<br/>运行模式、配置路径定位<br/>按配置取得服务运行占用"]
-    R["resources.go<br/>加载配置、准备存储日志及共享服务<br/>明确资源所有权"]
-    W["wiring.go<br/>五条线总管构造与公开能力接线"]
-    S["shutdown.go<br/>停止与退出等待、统一预算<br/>资源清理与超时返回"]
-    C["client.go<br/>独立客户端运行路径及回退"]
-    X["下层黑盒<br/>共享基础资源与业务线公开能力"]
-    E --> ENV & R & W & S
-    ENV -->|实际配置路径| R
-    R -->|应用资源| W
-    S -.->|释放服务运行占用| ENV
-    S -.->|协调自有资源释放| R
-    S -.->|协调业务线退出| W
-    R --> X
-    W --> X
-    C --> X
+    E["entry.go<br/>入口、计时、启动与等待"] --> ENV["environment.go<br/>模式与配置路径"]
+    E --> R["resources.go<br/>共享资源构造与所有权"]
+    E --> W["wiring.go<br/>总管构造与能力接线"]
+    E --> S["shutdown.go<br/>统一期限、结果分类与清理顺序"]
+    R --> M["媒体与模型服务<br/>接收完整配置，自行初始化"]
+    W --> A["agent.Supervisor<br/>公开业务能力"]
+    W --> O["其他四条线<br/>总管接口"]
+    C["client.go<br/>消费结果、决定回退"] --> P["Platform.RunClient<br/>连接选择、运行与结果分类"]
 ```
 
-## 备份与当前进度
+## 运行与所有权
 
-`internal/app` 下共有 25 份原样备份：13 个生产文件和 12 个测试文件，均使用原文件名加 `.bak`，例如 `app.go.bak`、`runner_test.go.bak`。备份不参与 Go 构建，仅供新架构确认后参考。
+构造和接线完成后，按 Tool → Agent → Hook → Platform → Background 启动。Platform 的 `Wait(ctx)` 汇总运行结果；TUI 退出结束应用，Service 不因所有消息平台循环退出而自动结束。正常停止返回 nil，独立故障和等待超时返回错误，Platform 自行解释内部停止原因。
 
-生产备份包括 `app.go.bak`、`runner.go.bak`、`dependencies.go.bak`、`environment.go.bak`、`foundation.go.bak`、`models.go.bak`、`services.go.bak`、`wiring.go.bak`、`platforms.go.bak`、`integrations.go.bak`、`lifecycle.go.bak`、`cli_client.go.bak`、`service_marker.go.bak`。
+环境、资源、装配或启动失败均进入同一退出流程。入口先取消运行上下文，再以 `context.WithoutCancel` 创建统一清理期限。纯外部取消视为正常停止，混合错误中的独立故障仍保留；运行和清理错误合并返回。
 
-Agent 通过 `NewSupervisor(ctx, cfg, deps)` 接收完整配置、五项共享资源和三类业务能力。`agent/deps.go` 声明 `ToolCapabilities`、`HookCapabilities`、`PlatformCapabilities`，不暴露内部组件 getter 或总管生命周期方法；`agent/wiring.go` 拆分配置、创建线内组件，并把业务能力交给各消费位置。权限字段为 `Permission`，当前底层仍使用 `security.Policy`，权限侧实现待迁移。
+退出先请求各线停止新工作，等待平台接入与后台任务退出，再关闭 Agent、Hook、Tool，最后释放平台发送和历史查询能力。随后关闭模型管理、共享存储、日志和已取得的服务占用。媒体与权限没有独立关闭步骤。
 
-Agent 对外提供消息处理 `HandleMessage`、唤醒判断 `HookWakeup`、补全 `Complete`、命令元数据 `Commands`、Hook 请求跟踪 `ObserveHookRun`，以及状态和绑定的订阅入口 `ObserveStatusChanged`、`ObserveBindingChanged`。元数据与订阅快照独立复制，绑定只暴露 Scope、SessionID 和变更原因，不返回内部组件或信号源。集成测试使用真实总管装配，覆盖 Chat／Responses 工具轮次、补全、回滚、取消、Hook 与订阅契约；组件单测保留在所属包。
+App 用 `shutdownStep` 记录步骤名称和关闭调用，`runShutdownSteps` 顺序执行并汇总结果；`runShutdownStep` 负责单步等待和统一期限判断。下层 `Close` 保持返回 error，App 内部的 `stopResult` 将控制状态与错误详情分开：
 
-App 直接传入 Tool、Hook、Platform 总管，并通过其 `ConnectAgent` 接入 Agent；具体适配和订阅由接收方持有。构造失败保留部分结果，启停调用为 `Start`、`BeginClose` 和经 `runShutdownStep` 调用的 `Close`。其余四条业务线的总管实现仍为空，完整装配尚不可运行。App 与 Agent 不承接 Doctor，配置诊断由配置侧负责。
+| 状态 | 含义与处理 |
+|---|---|
+| `stopCompleted` | 步骤完成，继续清理 |
+| `stopFailed` | 步骤返回错误，保留错误并继续清理 |
+| `stopTimedOut` | App 的统一期限耗尽，保留此前错误并停止后续清理 |
 
-入口的总耗时与四阶段 debug 统计、独立客户端及回退、统一 30 秒退出预算仍按既定骨架实现；当前 `runShutdownStep` 也保留占位，尚不能运行或验证完整退出流程。
+业务自身返回超时错误不等于 App 的统一期限耗尽。关闭调用即使忽略取消，App 也只等待到统一期限；超时后不继续释放可能仍被使用的依赖。
 
-## 后续顺序
+共享存储由 App 持有，平台聊天历史及其存储归 Platform。App 通过 `media.NewMediaCenter(ctx, cfg, store)` 交付完整配置和共享存储，媒体侧负责后端、凭据、配置应用和中断恢复；通过 `modelmgr.NewModelManager(ctx, cfg)` 交付完整配置，模型侧负责协议客户端、请求参数和 providers 重载。两个构造入口均返回资源及错误，App 接收部分结果并统一清理，不拆解内部初始化。历史能力连接和历史引用对账等待平台公开能力接入。
 
-1. 按同样原则改造其余四条线和权限接口，补齐 Agent 的外部依赖与跨线接线；参考 `.bak` 中的相关逻辑，不按旧文件整块恢复。
-2. 完善公共流程和进程入口，包括已确认的 `client` 命令命名。
-3. 随对应职责与接口实现补充适用测试，删除过时测试；App、Agent 没有 Doctor 专属测试，配置诊断和命令测试保留在所属包。
+## 对外调用契约
+
+`agent.NewSupervisor(ctx, cfg, deps)` 接收 Store、Models、Media、Permission、Logs 及 Tool、Hook、Platform 能力。公开业务入口为 `HandleMessage`、`HookWakeup`、`Complete`、`Commands`、`ObserveHookRun`、`ObserveStatusChanged`、`ObserveBindingChanged`；生命周期使用 `Start`、`BeginClose`、`Close`、`Done`。接收方的 `ConnectAgent` 负责适配、订阅和释放。其他四条线通过根包 `Supervisor`、`SupervisorDeps`、`NewSupervisor` 及各自生命周期接口接入。
+
+`platform.RunClient(ctx, cfg, name)` 完成连接选择、运行和结果分类，返回 `ClientResult{Kind, Err}`：
+
+| 结果 | 契约 |
+|---|---|
+| `ClientCompleted` | 正常结束，Err 为 nil |
+| `ClientFallback` | 未指定连接名称时，默认连接未配置、被禁用或本机服务拨号失败；Err 保留原始错误 |
+| `ClientFailed` | 其他失败，Err 保留原始错误 |
+
+指定连接、远端失败、配置、认证、握手和取消均不归为可回退。App 不解析连接地址或重新判断失败性质。`RunClient` 直接返回 Err；`TryRunClient` 只将 `ClientFallback` 转换为 `ErrClientFallback`，其他结果返回 Err。实际本地启动由进程入口决定。
+
+服务占用仅保留 TODO，当前不保证同配置服务互斥。App 与 Agent 不承接 Doctor，配置诊断由配置侧负责。进程入口尚需适配已确认的 `client` 命名和新 App 参数。
+
+## 验证与备份
+
+资源测试保留部分失败所有权、提前取消和配置路径／模式验证，不断言服务占用句柄必须为空，不在 App 验证模型协议或重载内部实现。退出测试覆盖结果分类、执行顺序、普通失败后继续、共享期限、超时后停止后续步骤，以及存储关闭失败后仍释放日志。期限测试使用 `synctest` 虚拟时间。
+
+退出辅助函数和共享资源关闭测试可通过临时 overlay 隔离尚未实现的总管及资源构造调用，使用实际函数与共享资源类型，不提供假总管。完整 App 流程、资源构造及客户端链路仍需下层接口实现后验证。
+
+同目录保留 13 份原生产文件和 12 份原测试文件的 `*.go.bak`，不参与构建，未恢复旧装配。

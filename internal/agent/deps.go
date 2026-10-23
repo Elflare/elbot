@@ -27,7 +27,7 @@ type SupervisorDeps struct {
 	Store      storage.Store
 	Models     *modelmgr.Service
 	Media      *media.Manager
-	Permission *security.Policy // Shared permission policy; Agent does not own its lifecycle.
+	Permission *security.Permission // Shared permission permission; Agent does not own its lifecycle.
 	Logs       *logging.Manager
 	Tools      ToolCapabilities
 	Hooks      HookCapabilities

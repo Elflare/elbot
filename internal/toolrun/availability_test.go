@@ -41,7 +41,7 @@ func TestForegroundOnlyToolHiddenInBackgroundSchemasAndNames(t *testing.T) {
 	if err := registry.Register(foregroundOnlyTestTool{}); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(registry, security.DefaultPolicy())
+	manager := NewManager(registry, security.DefaultPermission())
 	ctx := sandboxctx.WithSandboxContext(context.Background(), sandboxctx.SandboxContext{Dir: t.TempDir(), Background: true, BackgroundKind: sandboxctx.BackgroundKindCron})
 	view := Context{Mode: storage.SessionModeWork, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}}
 	names, err := manager.ToolNames(ctx, view)
@@ -69,7 +69,7 @@ func TestSchemasKeepStableOrderAcrossBatchAndIncrementalDiscovery(t *testing.T) 
 	if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(registry, security.DefaultPolicy())
+	manager := NewManager(registry, security.DefaultPermission())
 	view := Context{Mode: storage.SessionModeWork, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}}
 	cached := func(name string) CachedTool {
 		return CachedTool{Name: name, Source: SourceKindNative, Schema: llm.ToolSchema{Name: name}}
@@ -111,7 +111,7 @@ func TestSchemasKeepStableOrderAcrossBatchAndIncrementalDiscovery(t *testing.T) 
 }
 
 func TestPathSchemasStayStableAcrossBackgroundTakeover(t *testing.T) {
-	manager := NewManager(tool.NewRegistry(), security.DefaultPolicy())
+	manager := NewManager(tool.NewRegistry(), security.DefaultPermission())
 	var cached []CachedTool
 	for _, name := range []string{"shell", "read_file", "edit_file", "send_file"} {
 		cached = append(cached, CachedTool{Name: name, Source: SourceKindNative, Schema: llm.ToolSchema{Name: name, Description: "stable definition", Parameters: map[string]any{"type": "object"}}})
@@ -134,7 +134,7 @@ func TestForegroundOnlyToolResolveRejectedInBackground(t *testing.T) {
 	if err := registry.Register(foregroundOnlyTestTool{}); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(registry, security.DefaultPolicy())
+	manager := NewManager(registry, security.DefaultPermission())
 	ctx := sandboxctx.WithSandboxContext(context.Background(), sandboxctx.SandboxContext{Dir: t.TempDir(), Background: true, BackgroundKind: sandboxctx.BackgroundKindCron})
 	resolved := manager.Resolve(ctx, "foreground_only", nil, storage.SessionModeBackground)
 	if resolved.ResultStatus != events.ResultRejected || resolved.Error == nil {
@@ -146,7 +146,7 @@ func TestForegroundOnlyToolResolveRejectedInBackground(t *testing.T) {
 	}
 	var denied tool.PolicyDeniedError
 	if !errors.As(resolved.Error, &denied) || !errors.As(cached.Error, &denied) {
-		t.Fatalf("policy errors were flattened: %T / %T", resolved.Error, cached.Error)
+		t.Fatalf("permission errors were flattened: %T / %T", resolved.Error, cached.Error)
 	}
 }
 

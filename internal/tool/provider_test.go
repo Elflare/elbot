@@ -40,7 +40,7 @@ func TestSchemaProviderHidesSuperadminOnlyToolNamesFromNormalUser(t *testing.T) 
 	if err := registry.Register(providerTestTool{name: "cron", superadminOnly: true}); err != nil {
 		t.Fatalf("register cron: %v", err)
 	}
-	provider := SchemaProvider{Registry: registry, Policy: security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})}
+	provider := SchemaProvider{Registry: registry, Permission: security.NewPermission("low", "high", map[string][]string{"cli": {"local"}})}
 	scope := session.Scope{Platform: "cli", ActorID: "cli:guest"}
 	actor := contextinfo.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: contextinfo.RoleUser}
 	ctx := contextinfo.WithActor(context.Background(), actor)
@@ -68,7 +68,7 @@ func TestSchemaProviderModeBehavior(t *testing.T) {
 	if err := registry.Register(providerTestTool{name: "skill_binary", source: SourceSkillGo}); err != nil {
 		t.Fatalf("register Go skill: %v", err)
 	}
-	provider := SchemaProvider{Registry: registry, Policy: security.DefaultPolicy()}
+	provider := SchemaProvider{Registry: registry, Permission: security.DefaultPermission()}
 	scope := session.Scope{Platform: "cli", ActorID: "cli:local"}
 
 	chatSchemas, err := provider.Schemas(context.Background(), storage.SessionModeChat, &storage.Session{}, scope)

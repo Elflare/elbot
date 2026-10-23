@@ -204,7 +204,7 @@ func buildElwispCreatorGuide(cfg elwispCreatorConfigSnapshot) string {
 ** 真实文件修改使用 edit_file；本地检查、curl 或脚本测试使用 shell。
 ** token 值由用户设置到系统环境变量或配置目录 .env；Elwisp 代码只读取环境变量。
 ** targets 必须由事件明确声明；用户目标不明确时，先询问用户要推送到哪些平台或会话。
-** tool_list_names 请求 ElBot 内部工具或 Skill，最终可用性由 elnis.toml allowed_tools、ToolRun 和 Security Policy 裁决。
+** tool_list_names 请求 ElBot 内部工具或 Skill，最终可用性由 elnis.toml allowed_tools、ToolRun 和 Security Permission 裁决。
 ** tools 是 Elwisp 随事件声明的外部工具，适合查询 Elwisp 所在环境的状态、日志或详情。
 ** Elwisp 外部工具 endpoint 默认绑定 127.0.0.1，除非用户明确需要远程访问。
 ~ 硬编码 token

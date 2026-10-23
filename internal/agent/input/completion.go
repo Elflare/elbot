@@ -30,7 +30,7 @@ type CompletionDeps struct {
 
 type CompletionIdentity interface {
 	dialogue.Identity
-	Policy() *security.Policy
+	Permission() *security.Permission
 }
 
 type CompletionExecution interface {
@@ -55,11 +55,11 @@ func NewCompletion(deps CompletionDeps) *completion.Service {
 				}
 				return prepared, nil
 			},
-			Registry: func() completion.ToolCapabilities { return registry },
-			Actor:    identity.Actor,
-			Policy:   func() *security.Policy { return identity.Policy() },
-			Tags: func(ctx context.Context, _ completion.ToolCapabilities, actor contextinfo.Actor, policy *security.Policy) ([]string, error) {
-				return deps.Tags(contextinfo.WithActor(security.WithPolicy(ctx, policy), actor))
+			Registry:   func() completion.ToolCapabilities { return registry },
+			Actor:      identity.Actor,
+			Permission: func() *security.Permission { return identity.Permission() },
+			Tags: func(ctx context.Context, _ completion.ToolCapabilities, actor contextinfo.Actor, permission *security.Permission) ([]string, error) {
+				return deps.Tags(contextinfo.WithActor(security.WithPermission(ctx, permission), actor))
 			},
 			ToolNamesByTag: func(ctx context.Context, _ completion.ToolCapabilities, tag string, allowed func(tool.Tool) bool) ([]string, error) {
 				return deps.ToolNamesByTag(ctx, tag, allowed)

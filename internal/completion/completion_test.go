@@ -86,8 +86,8 @@ func TestToolDirectiveSourceCompletesOnlyPlainTools(t *testing.T) {
 	source := ToolDirectiveSource{
 		Registry: func() ToolCapabilities { return registry },
 		Actor:    func(context.Context) contextinfo.Actor { return contextinfo.Actor{Role: contextinfo.RoleSuperadmin} },
-		Tags: func(ctx context.Context, _ ToolCapabilities, actor contextinfo.Actor, policy *security.Policy) ([]string, error) {
-			return toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}).Tags(contextinfo.WithActor(security.WithPolicy(ctx, policy), actor))
+		Tags: func(ctx context.Context, _ ToolCapabilities, actor contextinfo.Actor, permission *security.Permission) ([]string, error) {
+			return toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}).Tags(contextinfo.WithActor(security.WithPermission(ctx, permission), actor))
 		},
 		ToolNamesByTag: func(ctx context.Context, _ ToolCapabilities, tag string, allowed func(tool.Tool) bool) ([]string, error) {
 			return toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}).ToolNamesByTag(ctx, tag, allowed)
@@ -127,8 +127,8 @@ func TestToolDirectiveSourceCompletesSkillsSeparately(t *testing.T) {
 	source := ToolDirectiveSource{
 		Registry: func() ToolCapabilities { return registry },
 		Actor:    func(context.Context) contextinfo.Actor { return contextinfo.Actor{Role: contextinfo.RoleSuperadmin} },
-		Tags: func(ctx context.Context, _ ToolCapabilities, actor contextinfo.Actor, policy *security.Policy) ([]string, error) {
-			return toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}).Tags(contextinfo.WithActor(security.WithPolicy(ctx, policy), actor))
+		Tags: func(ctx context.Context, _ ToolCapabilities, actor contextinfo.Actor, permission *security.Permission) ([]string, error) {
+			return toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}).Tags(contextinfo.WithActor(security.WithPermission(ctx, permission), actor))
 		},
 		ToolNamesByTag: func(ctx context.Context, _ ToolCapabilities, tag string, allowed func(tool.Tool) bool) ([]string, error) {
 			return toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}).ToolNamesByTag(ctx, tag, allowed)
@@ -163,7 +163,7 @@ func TestToolDirectiveSourceCompletesConfiguredTags(t *testing.T) {
 	source := ToolDirectiveSource{
 		Registry: func() ToolCapabilities { return registry },
 		Actor:    func(context.Context) contextinfo.Actor { return contextinfo.Actor{Role: contextinfo.RoleSuperadmin} },
-		Tags: func(context.Context, ToolCapabilities, contextinfo.Actor, *security.Policy) ([]string, error) {
+		Tags: func(context.Context, ToolCapabilities, contextinfo.Actor, *security.Permission) ([]string, error) {
 			return []string{"agent"}, nil
 		},
 		ToolNamesByTag: func(_ context.Context, _ ToolCapabilities, tag string, _ func(tool.Tool) bool) ([]string, error) {

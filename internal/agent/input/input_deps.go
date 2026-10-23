@@ -17,7 +17,7 @@ import (
 
 type InputIdentity interface {
 	dialogue.Identity
-	Policy() *security.Policy
+	Permission() *security.Permission
 }
 
 type InputOutput interface {

@@ -33,7 +33,7 @@ type MessageHandler struct {
 // HandleMessage dispatches commands and chat messages.
 func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err error) {
 	actor := h.identity.Actor(ctx)
-	ctx = security.WithPolicy(contextinfo.WithActor(ctx, actor), h.identity.Policy())
+	ctx = security.WithPermission(contextinfo.WithActor(ctx, actor), h.identity.Permission())
 	segments := agentshare.InboundSegments(ctx, text)
 	woken := h.messageWakeup(ctx, llm.SegmentsTextOnly(segments))
 	ctx = withMessageWakeup(ctx, woken)
@@ -113,7 +113,7 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 
 type MessageIdentity interface {
 	dialogue.Identity
-	Policy() *security.Policy
+	Permission() *security.Permission
 }
 
 type MessageHooks interface {

@@ -88,7 +88,7 @@ func TestRunConcurrentFailuresKeepOriginalResultOrderAndFlushOnce(t *testing.T) 
 	deps := &runnerTestDeps{}
 	done := make(chan RunResult, 1)
 	go func() {
-		done <- NewRunner(NewManager(registry, security.NewPolicy("low", "critical", nil))).Run(ctx, deps, concurrentRunRequest(committer))
+		done <- NewRunner(NewManager(registry, security.NewPermission("low", "critical", nil))).Run(ctx, deps, concurrentRunRequest(committer))
 	}()
 	waitConcurrentStart(t, started)
 	for _, id := range []string{"C", "B", "A"} {

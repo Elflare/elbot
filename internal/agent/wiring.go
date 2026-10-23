@@ -43,7 +43,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	signals := agentevents.NewSignals()
 	m.statusChanged = signals.StatusChanged
 	view := dialogue.ExecutionView{Sessions: deps.Store.Sessions()}
-	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: deps.Platform.PrimaryName(), ActorID: "cli:local", ScopeID: "local", Policy: deps.Permission})
+	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: deps.Platform.PrimaryName(), ActorID: "cli:local", ScopeID: "local", Permission: deps.Permission})
 	bridge := agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{
 		Manager:    deps.Hooks,
 		Router:     deps.Hooks,

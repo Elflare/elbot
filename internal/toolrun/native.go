@@ -25,11 +25,11 @@ func (s *NativeSource) BaseSchemas(ctx context.Context) []llm.ToolSchema {
 	return s.Registry.SchemasForContext(func(info tool.Info) bool { return AvailableInContext(ctx, info) })
 }
 
-func (s *NativeSource) ToolInfos(ctx context.Context, actor contextinfo.Actor, policy *security.Policy) []tool.Info {
+func (s *NativeSource) ToolInfos(ctx context.Context, actor contextinfo.Actor, permission *security.Permission) []tool.Info {
 	infos := s.Registry.List()
 	available := make([]tool.Info, 0, len(infos))
 	for _, info := range infos {
-		if info.Name == "discover_tool" || info.Hidden || !AvailableInContext(ctx, info) || !tool.CanAccessTool(actor, policy, info) {
+		if info.Name == "discover_tool" || info.Hidden || !AvailableInContext(ctx, info) || !tool.CanAccessTool(actor, permission, info) {
 			continue
 		}
 		available = append(available, info)
@@ -37,8 +37,8 @@ func (s *NativeSource) ToolInfos(ctx context.Context, actor contextinfo.Actor, p
 	return available
 }
 
-func (s *NativeSource) ToolNames(ctx context.Context, actor contextinfo.Actor, policy *security.Policy) []string {
-	infos := s.ToolInfos(ctx, actor, policy)
+func (s *NativeSource) ToolNames(ctx context.Context, actor contextinfo.Actor, permission *security.Permission) []string {
+	infos := s.ToolInfos(ctx, actor, permission)
 	names := make([]string, 0, len(infos))
 	for _, info := range infos {
 		names = append(names, info.Name)

@@ -29,7 +29,7 @@ func TestPreparedExecutionBindsRequestAndChecksAuthority(t *testing.T) {
 			// External mutation must not rewrite the approved request identity.
 			req.Arguments[9] = '2'
 			call := llm.ToolCallRequest{ID: "one", Name: candidate.Name(), Arguments: `{"value":1}`}
-			executor := Executor{Registry: registry, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Policy: security.DefaultPolicy()}
+			executor := Executor{Registry: registry, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Permission: security.DefaultPermission()}
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			switch scenario {
@@ -58,7 +58,7 @@ func TestPreparedExecutionBindsRequestAndChecksAuthority(t *testing.T) {
 				t.Fatalf("expected refusal: %+v", result)
 			}
 			if scenario == "risk" && result.ResultStatus != events.ResultRejected {
-				t.Fatalf("policy = %+v", result)
+				t.Fatalf("permission = %+v", result)
 			}
 			if scenario == "canceled" && !errors.Is(result.Error, context.Canceled) {
 				t.Fatalf("cancel = %v", result.Error)
@@ -81,8 +81,8 @@ func TestOrdinaryToolUsesCurrentRegistration(t *testing.T) {
 	if err := registry.ReplaceSources([]Source{SourceSkillGo}, []Tool{fakeTool{name: "dynamic", source: SourceSkillGo, risk: RiskCritical}}); err != nil {
 		t.Fatal(err)
 	}
-	result := (Executor{Registry: registry, Actor: contextinfo.Actor{Role: contextinfo.RoleUser}, Policy: security.DefaultPolicy()}).ExecutePrepared(t.Context(), call, prepared)
+	result := (Executor{Registry: registry, Actor: contextinfo.Actor{Role: contextinfo.RoleUser}, Permission: security.DefaultPermission()}).ExecutePrepared(t.Context(), call, prepared)
 	if result.ResultStatus != events.ResultRejected || result.ExecutionStarted {
-		t.Fatalf("current policy ignored: %+v", result)
+		t.Fatalf("current permission ignored: %+v", result)
 	}
 }

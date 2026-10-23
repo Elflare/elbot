@@ -183,7 +183,7 @@ func TestStateConcurrentUpdatesPreserveOtherOwners(t *testing.T) {
 
 func TestSchemasAreDetachedForPreparedHook(t *testing.T) {
 	item := stateTestTool("tool")
-	manager := NewManager(tool.NewRegistry(), security.DefaultPolicy())
+	manager := NewManager(tool.NewRegistry(), security.DefaultPermission())
 	schemas, err := manager.Schemas(context.Background(), Context{Mode: storage.SessionModeWork, DisableBaseTools: true}, []CachedTool{item})
 	if err != nil {
 		t.Fatal(err)

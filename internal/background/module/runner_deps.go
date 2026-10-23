@@ -13,7 +13,7 @@ import (
 
 type BackgroundIdentity interface {
 	dialogue.Identity
-	Policy() *security.Policy
+	Permission() *security.Permission
 	PlatformName() string
 }
 

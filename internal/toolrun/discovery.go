@@ -12,7 +12,7 @@ import (
 
 // DiscoveryStateUpdate collects a discovery's schemas and activated wrappers
 // so the caller can commit them together.
-func DiscoveryStateUpdate(ctx context.Context, result *tool.Result, registry *tool.Registry, actor contextinfo.Actor, policy *security.Policy) (StateUpdate, error) {
+func DiscoveryStateUpdate(ctx context.Context, result *tool.Result, registry *tool.Registry, actor contextinfo.Actor, permission *security.Permission) (StateUpdate, error) {
 	if result == nil {
 		return StateUpdate{}, nil
 	}
@@ -24,11 +24,11 @@ func DiscoveryStateUpdate(ctx context.Context, result *tool.Result, registry *to
 		}
 		update.Tools = NativeCachedToolsFromDiscovery(&discovery)
 	}
-	update.Tools = append(update.Tools, activatedTools(ctx, result.Metadata, registry, actor, policy)...)
+	update.Tools = append(update.Tools, activatedTools(ctx, result.Metadata, registry, actor, permission)...)
 	return update, nil
 }
 
-func activatedTools(ctx context.Context, metadata map[string]any, registry *tool.Registry, actor contextinfo.Actor, policy *security.Policy) []CachedTool {
+func activatedTools(ctx context.Context, metadata map[string]any, registry *tool.Registry, actor contextinfo.Actor, permission *security.Permission) []CachedTool {
 	if len(metadata) == 0 || registry == nil {
 		return nil
 	}
@@ -36,8 +36,8 @@ func activatedTools(ctx context.Context, metadata map[string]any, registry *tool
 	if len(names) == 0 {
 		return nil
 	}
-	if policy == nil {
-		policy = security.DefaultPolicy()
+	if permission == nil {
+		permission = security.DefaultPermission()
 	}
 	discovery := &tool.DiscoveryResult{}
 	for _, name := range names {
@@ -47,7 +47,7 @@ func activatedTools(ctx context.Context, metadata map[string]any, registry *tool
 			if risk == "" {
 				risk = tool.RiskHigh
 			}
-			if !tool.InfoAvailableInContext(ctx, info) || !policy.CanUseTool(actor, risk, info.OwnerScoped) {
+			if !tool.InfoAvailableInContext(ctx, info) || !permission.CanUseTool(actor, risk, info.OwnerScoped) {
 				continue
 			}
 			schema := t.Schema()

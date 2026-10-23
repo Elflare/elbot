@@ -270,9 +270,9 @@ func (t GetChatHistoryAroundTool) Call(ctx context.Context, req tool.CallRequest
 
 func viewImageHistoryHint(ctx context.Context, center *media.Manager) string {
 	actor, _ := contextinfo.ActorFromContext(ctx)
-	policy, _ := security.PolicyFromContext(ctx)
+	permission, _ := security.PermissionFromContext(ctx)
 	info := (ViewImageTool{}).Info()
-	if center != nil && tool.InfoAvailableInContext(ctx, info) && tool.CanAccessTool(actor, policy, info) {
+	if center != nil && tool.InfoAvailableInContext(ctx, info) && tool.CanAccessTool(actor, permission, info) {
 		return "看图可用 view_image(message_id=[\"...\"])；指定图片沿用上述媒体序号。"
 	}
 	return ""

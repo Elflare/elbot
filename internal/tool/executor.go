@@ -13,9 +13,9 @@ import (
 )
 
 type Executor struct {
-	Registry *Registry
-	Actor    contextinfo.Actor
-	Policy   *security.Policy
+	Registry   *Registry
+	Actor      contextinfo.Actor
+	Permission *security.Permission
 	// OnStarted runs after authorization, immediately before the tool body.
 	OnStarted func()
 }
@@ -81,13 +81,13 @@ func (e Executor) execute(ctx context.Context, call llm.ToolCallRequest, prepare
 		}
 		return executionError(call, message, err, resultStatus)
 	}
-	policy := e.Policy
+	permission := e.Permission
 	actor := e.Actor
 	info := tool.Info()
 	if info.SuperadminOnly && actor.Role != contextinfo.RoleSuperadmin {
 		return executionError(call, message, PolicyDeniedError(fmt.Sprintf("tool %q requires superadmin role", call.Name)), events.ResultRejected)
 	}
-	if !policy.CanUseTool(actor, assessment.Level, info.OwnerScoped) {
+	if !permission.CanUseTool(actor, assessment.Level, info.OwnerScoped) {
 		return executionError(call, message, PolicyDeniedError(fmt.Sprintf("risk %s is above your allowed tool level", assessment.Level)), events.ResultRejected)
 	}
 	var result *Result

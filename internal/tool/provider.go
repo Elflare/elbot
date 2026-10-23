@@ -32,8 +32,8 @@ func PromptNamesFromInfos(infos []Info) PromptNames {
 }
 
 type SchemaProvider struct {
-	Registry *Registry
-	Policy   *security.Policy
+	Registry   *Registry
+	Permission *security.Permission
 }
 
 func (p SchemaProvider) Schemas(ctx context.Context, mode string, session *storage.Session, scope session.Scope) ([]llm.ToolSchema, error) {
@@ -60,14 +60,14 @@ func (p SchemaProvider) ToolNames(ctx context.Context, mode string, session *sto
 }
 
 func (p SchemaProvider) allowedInfos(actor contextinfo.Actor) []Info {
-	policy := p.Policy
-	if policy == nil {
-		policy = security.DefaultPolicy()
+	permission := p.Permission
+	if permission == nil {
+		permission = security.DefaultPermission()
 	}
 	infos := p.Registry.List()
 	out := make([]Info, 0, len(infos))
 	for _, info := range infos {
-		if CanAccessTool(actor, policy, info) || info.Name == "discover_tool" {
+		if CanAccessTool(actor, permission, info) || info.Name == "discover_tool" {
 			out = append(out, info)
 		}
 	}
@@ -78,8 +78,8 @@ func actorFromScope(ctx context.Context, scope session.Scope) contextinfo.Actor 
 	if actor, ok := contextinfo.ActorFromContext(ctx); ok {
 		return actor
 	}
-	if policy, ok := security.PolicyFromContext(ctx); ok && policy != nil {
-		return policy.Actor(scope.ActorID, scope.Platform, scope.ActorID, "")
+	if permission, ok := security.PermissionFromContext(ctx); ok && permission != nil {
+		return permission.Actor(scope.ActorID, scope.Platform, scope.ActorID, "")
 	}
 	return contextinfo.Actor{ID: scope.ActorID, Platform: scope.Platform, PlatformUserID: scope.ActorID, Role: contextinfo.RoleUser}
 }

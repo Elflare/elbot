@@ -17,7 +17,7 @@ type ModuleDeps struct {
 	Store                storage.Store
 	ChatHistory          storage.ChatHistoryRepository
 	Media                *media.Manager
-	Policy               *security.Policy
+	Permission           *security.Permission
 	ProcessEnv           processenv.Environment
 	ResidentMemoryLimits resident.Limits
 	TagsPath             string

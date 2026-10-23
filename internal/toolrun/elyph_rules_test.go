@@ -67,7 +67,7 @@ func TestRuleCardFollowsCompletionOrderAndSurvivesLaterCommitFailure(t *testing.
 			t.Fatal(err)
 		}
 	}
-	runner := NewRunner(NewManager(registry, security.DefaultPolicy()))
+	runner := NewRunner(NewManager(registry, security.DefaultPermission()))
 	row := &storage.Session{ID: "s", Mode: storage.SessionModeWork}
 	failure := errors.New("result rejected")
 	committer := &ruleCommitter{failure: failure, saved: secondFinished}
@@ -100,7 +100,7 @@ func TestDiscoveryListAndFailuresDoNotConsumeRules(t *testing.T) {
 	registry := tool.NewRegistry()
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(ruleDetailTool{name: "alpha"})
-	runner := NewRunner(NewManager(registry, security.DefaultPolicy()))
+	runner := NewRunner(NewManager(registry, security.DefaultPermission()))
 	row := &storage.Session{ID: "s", Mode: storage.SessionModeWork}
 	for _, args := range []string{`{}`, `{"name":"missing"}`} {
 		result := runner.Run(t.Context(), &runnerTestDeps{}, RunRequest{Session: row, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Committer: &ruleCommitter{}, Calls: []llm.ToolCallRequest{{ID: "lookup", Name: "discover_tool", Arguments: args}}})

@@ -36,7 +36,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		return m, err
 	}
 	m.catalog = catalog
-	m.engine = toolrun.NewManager(catalog.Registry, deps.Policy)
+	m.engine = toolrun.NewManager(catalog.Registry, deps.Permission)
 	m.engine.Media = deps.Media
 	m.preloader = toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: catalog.Registry, TagsPath: deps.TagsPath, Tags: deps.Tags})
 	m.state = toolrun.NewStateService(deps.Store)

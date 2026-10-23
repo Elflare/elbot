@@ -16,14 +16,15 @@ const (
 	RiskCritical RiskLevel = "critical"
 )
 
-type Policy struct {
-	UserMaxToolRisk       RiskLevel
-	SuperadminConfirmRisk RiskLevel
-	Superadmins           map[string]map[string]bool
+// Permission resolves actor roles and applies tool access and confirmation limits.
+type Permission struct {
+	UserMaxToolRisk       RiskLevel                  // Highest tool risk allowed for regular users.
+	SuperadminConfirmRisk RiskLevel                  // Risk threshold requiring superadmin confirmation.
+	Superadmins           map[string]map[string]bool // Platform name -> native user ID -> membership.
 }
 
-func NewPolicy(userMaxToolRisk, superadminConfirmRisk string, superadmins map[string][]string) *Policy {
-	p := &Policy{
+func NewPermission(userMaxToolRisk, superadminConfirmRisk string, superadmins map[string][]string) *Permission {
+	p := &Permission{
 		UserMaxToolRisk:       ParseRisk(userMaxToolRisk, RiskLow),
 		SuperadminConfirmRisk: ParseRisk(superadminConfirmRisk, RiskHigh),
 		Superadmins:           map[string]map[string]bool{},
@@ -46,8 +47,8 @@ func NewPolicy(userMaxToolRisk, superadminConfirmRisk string, superadmins map[st
 	return p
 }
 
-func DefaultPolicy() *Policy {
-	return NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
+func DefaultPermission() *Permission {
+	return NewPermission("low", "high", map[string][]string{"cli": {"local"}})
 }
 
 func ParseRisk(value string, fallback RiskLevel) RiskLevel {
@@ -59,7 +60,7 @@ func ParseRisk(value string, fallback RiskLevel) RiskLevel {
 	}
 }
 
-func (p *Policy) Actor(id, platform, platformUserID, displayName string) contextinfo.Actor {
+func (p *Permission) Actor(id, platform, platformUserID, displayName string) contextinfo.Actor {
 	platform = normalize(platform)
 	platformUserID = canonicalPlatformUserID(platform, platformUserID)
 	if platformUserID == "" {
@@ -109,7 +110,7 @@ func canonicalPlatformUserID(platform, value string) string {
 	return value
 }
 
-func (p *Policy) IsSuperadmin(platform, platformUserID string) bool {
+func (p *Permission) IsSuperadmin(platform, platformUserID string) bool {
 	if p == nil {
 		return false
 	}
@@ -117,7 +118,7 @@ func (p *Policy) IsSuperadmin(platform, platformUserID string) bool {
 	return ids != nil && ids[strings.TrimSpace(platformUserID)]
 }
 
-func (p *Policy) CanUseTool(actor contextinfo.Actor, risk RiskLevel, ownerScoped bool) bool {
+func (p *Permission) CanUseTool(actor contextinfo.Actor, risk RiskLevel, ownerScoped bool) bool {
 	if actor.Role == contextinfo.RoleSuperadmin {
 		return true
 	}
@@ -131,7 +132,7 @@ func (p *Policy) CanUseTool(actor contextinfo.Actor, risk RiskLevel, ownerScoped
 	return CompareRisk(risk, maxRisk) <= 0
 }
 
-func (p *Policy) NeedsToolConfirmation(actor contextinfo.Actor, risk RiskLevel) bool {
+func (p *Permission) NeedsToolConfirmation(actor contextinfo.Actor, risk RiskLevel) bool {
 	threshold := RiskHigh
 	if actor.Role == contextinfo.RoleSuperadmin && p != nil {
 		threshold = p.SuperadminConfirmRisk

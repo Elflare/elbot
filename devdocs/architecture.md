@@ -9,26 +9,30 @@
 <!-- locator:startup -->
 ## 启动与装配
 
-App 沿用六文件骨架，已填写 Agent 的总管构造、能力接线、启动和关闭调用；其他业务线、共享资源准备与公共流程仍待实现，当前没有可运行的 App 入口。原 13 个生产文件和 12 个测试文件均保存在同目录的 `*.go.bak` 中，不参与构建。
+App 按下层接口已存在来实现公共流程，下层按照调用契约实现。Agent 已接入真实总管；其他四条线、媒体和模型构造入口、平台客户端接口仍待实现，服务独占占用和进程入口适配尚未完成，完整应用暂不能构建运行。原 13 个生产文件和 12 个测试文件保存在同目录的 `*.go.bak` 中，不参与构建。
 
-已确认的文件职责见 [App 包设计](app-design.md)：`entry.go` 组织完整运行流程，`environment.go` 定位配置并取得服务运行占用，`resources.go` 按定位结果加载配置并准备日志、共享存储、媒体、权限和模型管理，`wiring.go` 分步构建五条线总管并连接公开能力，`shutdown.go` 协调业务线停止、限时等待与资源清理，`client.go` 承担明确运行和自动尝试客户端的路径，实际回退由进程入口决定。共享存储由 App 协调生命周期，平台聊天历史及其存储生命周期归平台总管；准备或装配失败时，已取得资源和总管交回入口统一清理；接线产生的订阅由对应总管或服务持有。退出流程使用独立清理上下文和统一 30 秒预算，超时立即停止等待，由 Run 返回标明业务线或资源的错误，进程入口输出到 stderr 后强制退出。下层实现不在本轮展开。
+六文件职责及接口契约见 [App 包设计](app-design.md)。App 加载配置、构造共享资源和各线总管、交付公开能力并协调启停。媒体和模型服务接收完整配置，自行处理后端、凭据、协议客户端、请求参数及恢复／重载；App 不拆解这些初始化细节。共享存储归 App，平台聊天历史及其存储归 Platform；部分失败交回已取得对象统一清理，订阅由接收方持有和释放。权限管理使用 `security.Permission`，App 与 Agent 不承接 Doctor。
 
-入口记录进程启动总耗时，并以 debug 级别记录环境准备、共享资源准备、业务线装配和业务线启动四个阶段。业务线按 Tool → Agent → Hook → Platform → Background 启动；退出先停止新工作并取消在途任务，等待使用方收尾后释放依赖，平台发送与聊天历史查询能力保留到使用方退出。
+入口记录启动总耗时和四阶段 debug 统计，按 Tool → Agent → Hook → Platform → Background 启动。Platform.Wait 汇总运行结果，正常停止返回 nil，独立故障和等待超时返回错误。退出先停止新工作、等待使用方收尾，再释放依赖；平台发送与历史查询能力保留到使用方退出。
+
+退出步骤共用独立的 30 秒预算。App 的 `runShutdownStep` 将结果分为完成、失败、超时，`runShutdownSteps` 按序执行并汇总；普通错误保留后继续清理，统一期限耗尽立即停止后续清理。下层 Close 保持返回 error，其业务超时错误不直接等同于 App 的统一期限耗尽。最终错误交回进程入口处理。
+
+客户端通过 `platform.RunClient(ctx, cfg, name)` 一次获得 `ClientResult{Kind, Err}`。Platform 负责连接选择与结果分类；App 的明确运行入口直接返回错误，自动尝试入口只将 `ClientFallback` 转为回退信号。App 不解析 URL 或重新组合回退条件，实际本地启动由进程入口决定。
 
 ```mermaid
 flowchart TB
-    E["app/entry.go<br/>入口、启动与运行等待"]
-    ENV["app/environment.go<br/>运行模式、配置定位与服务运行占用"]
-    R["app/resources.go<br/>应用资源准备与所有权"]
-    W["app/wiring.go<br/>五条线总管创建与公开能力接线"]
-    S["app/shutdown.go<br/>停止、限时退出等待与资源清理"]
-    C["app/client.go<br/>独立客户端路径与回退"]
+    E["app/entry.go<br/>入口、计时、启动与等待"]
+    ENV["app/environment.go<br/>运行模式、配置路径与服务占用"]
+    R["app/resources.go<br/>共享资源构造与所有权"]
+    W["app/wiring.go<br/>总管构造与公开能力接线"]
+    S["app/shutdown.go<br/>统一期限、结果分类与清理顺序"]
+    C["app/client.go<br/>结果分派与回退信号"]
     E --> ENV & R & W & S
-    ENV -->|实际配置路径| R
-    S -.->|释放服务运行占用| ENV
+    ENV -->|配置路径| R
+    R --> M["媒体与模型服务<br/>接收完整配置，自行初始化"]
+    C --> P["Platform.RunClient<br/>连接选择、运行与结果分类"]
+    S -.->|释放服务占用| ENV
 ```
-
-图中是文件职责关系，完整调用链尚未实现。其余章节描述下层代码，不代表当前 App 已完成装配。后续沿用已确认骨架参考 `.bak` 填充；App 与 Agent 不承接 Doctor，配置诊断由配置侧负责。
 
 <!-- locator:contextinfo -->
 ## 公共上下文事实

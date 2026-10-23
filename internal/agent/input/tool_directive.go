@@ -37,7 +37,7 @@ type skillDirectiveResult struct {
 }
 
 func (c *InputCoordinator) preloadContext(ctx context.Context) context.Context {
-	return contextinfo.WithActor(security.WithPolicy(ctx, c.identity.Policy()), c.identity.Actor(ctx))
+	return contextinfo.WithActor(security.WithPermission(ctx, c.identity.Permission()), c.identity.Actor(ctx))
 }
 
 func (c *InputCoordinator) prepareToolDirectives(ctx context.Context, row *storage.Session, text string) toolDirectiveResult {

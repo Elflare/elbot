@@ -10,13 +10,13 @@ import (
 	"elbot/internal/session"
 )
 
-// IdentityResolver owns entry defaults and the policy used to resolve actors.
+// IdentityResolver owns entry defaults and the permission used to resolve actors.
 // SourceActor deliberately does not apply entry defaults to source-free Hooks.
 type IdentityResolver struct {
 	platformName string
 	actorID      string
 	scopeID      string
-	policy       *security.Policy
+	permission   *security.Permission
 }
 
 func (r *IdentityResolver) Scope(ctx context.Context) session.Scope {
@@ -74,8 +74,8 @@ func (r *IdentityResolver) Actor(ctx context.Context) contextinfo.Actor {
 	if prefix := platformName + ":"; strings.HasPrefix(platformUserID, prefix) {
 		platformUserID = strings.TrimPrefix(platformUserID, prefix)
 	}
-	policy := r.policy
-	actor := policy.Actor(identity.ActorID, platformName, platformUserID, identity.DisplayName)
+	permission := r.permission
+	actor := permission.Actor(identity.ActorID, platformName, platformUserID, identity.DisplayName)
 	actor.Nickname = identity.Nickname
 	actor.GroupCard = identity.GroupCard
 	actor.GroupRole = groupRole
@@ -85,8 +85,8 @@ func (r *IdentityResolver) Actor(ctx context.Context) contextinfo.Actor {
 func (r *IdentityResolver) SourceActor(ctx context.Context) contextinfo.Actor {
 	actor, hasActor := contextinfo.ActorFromContext(ctx)
 	if info, ok := contextinfo.ConversationFromContext(ctx); ok && !hasActor && (info.Identity.PlatformUserID != "" || info.Identity.ActorID != "") {
-		policy := r.policy
-		actor = policy.Actor(info.Identity.ActorID, info.Source.Platform, info.Identity.PlatformUserID, info.Identity.DisplayName)
+		permission := r.permission
+		actor = permission.Actor(info.Identity.ActorID, info.Source.Platform, info.Identity.PlatformUserID, info.Identity.DisplayName)
 		actor.Nickname, actor.GroupCard = info.Identity.Nickname, info.Identity.GroupCard
 		if msg, ok := platform.MessageContextFrom(ctx); ok {
 			actor.GroupRole = msg.GroupRole
@@ -107,7 +107,7 @@ type IdentityResolverDeps struct {
 	PlatformName string
 	ActorID      string
 	ScopeID      string
-	Policy       *security.Policy
+	Permission   *security.Permission
 }
 
 // NewIdentityResolver initializes IdentityResolver without installing cross-service callbacks.
@@ -116,10 +116,10 @@ func NewIdentityResolver(deps IdentityResolverDeps) *IdentityResolver {
 		platformName: deps.PlatformName,
 		actorID:      deps.ActorID,
 		scopeID:      deps.ScopeID,
-		policy:       deps.Policy,
+		permission:   deps.Permission,
 	}
 }
 
-func (r *IdentityResolver) Policy() *security.Policy { return r.policy }
+func (r *IdentityResolver) Permission() *security.Permission { return r.permission }
 
 func (r *IdentityResolver) PlatformName() string { return r.platformName }

@@ -2,103 +2,172 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"time"
 
 	"elbot/internal/agent"
 	"elbot/internal/background"
+	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/platform"
 	"elbot/internal/tool"
 )
 
-// 本文件负责应用入口和完整运行流程。
-// 按顺序组织环境准备、资源准备、业务线装配、启动、运行等待和退出。
-
 // Options 是调用方传入的应用启动参数。
 type Options struct {
-	ConfigPath string    // 配置文件路径，交由资源准备阶段加载。
-	Version    string    // 构建版本，供应用运行期间使用。
-	StartedAt  time.Time // 进程启动时间，由 main 开头记录并传入。
-	Mode       RunMode   // 本地应用运行方式：TUI 或 Service，由启动分流明确选定。
+	ConfigPath string    // 配置路径；为空时由环境阶段定位。
+	Version    string    // 构建版本，记录在启动日志中。
+	StartedAt  time.Time // main 记录的进程启动时间。
+	Mode       RunMode   // 调用方明确选定的 TUI 或 Service 模式。
 }
 
-// businessLines 持有本次运行的五条业务线总管。
-// Agent 已提供根包 Supervisor，其余四条线的目标类型待各自改造。
-// 装配失败时仍保留已创建的总管，尚未创建的字段为空，交由退出协调统一处理。
+// businessLines 持有总管；部分构造失败时仍由统一退出流程清理。
+// TODO: Tool、Hook、Platform、Background 提供根包 Supervisor。
 type businessLines struct {
-	agent      *agent.Supervisor      // Agent 线总管。
-	tool       *tool.Supervisor       // Tool 线总管。
-	hook       *hook.Supervisor       // Hook 线总管。
-	platform   *platform.Supervisor   // Platform 线总管。
-	background *background.Supervisor // Background 线总管。
+	agent      *agent.Supervisor      // 前台 Agent 业务线。
+	tool       *tool.Supervisor       // 共享工具业务线。
+	hook       *hook.Supervisor       // Hook 业务线。
+	platform   *platform.Supervisor   // 平台接入、发送和历史查询业务线。
+	background *background.Supervisor // 后台执行与调度业务线。
 }
 
-// startupTiming 记录本次启动的总起点和四个入口阶段的耗时。
+// startupTiming 记录总起点及四个入口阶段。
 type startupTiming struct {
-	startedAt      time.Time      // main 记录的进程启动时间，用于计算启动总耗时。
-	stageStartedAt time.Time      // 当前阶段起点，初始为进入 Run 的时间。
-	stages         []startupStage // 按执行顺序保存已完成的入口阶段。
+	startedAt      time.Time      // 进程启动时间，用于统计总耗时。
+	stageStartedAt time.Time      // 当前阶段起点。
+	stages         []startupStage // 已完成的阶段，按执行顺序保存。
 }
 
-// startupStage 保存一个已完成启动阶段的名称和耗时。
 type startupStage struct {
-	name     string        // 环境准备、资源准备、业务线装配或业务线启动的阶段名称。
-	duration time.Duration // 该阶段从开始到完成的耗时。
+	name     string        // 环境、资源、装配或启动阶段名称。
+	duration time.Duration // 当前阶段耗时。
 }
 
-// Run 组织一次完整的本地应用运行，退出清理完成或达到退出期限后返回。
-// 外部取消且没有其他运行或清理错误时返回 nil。
-// 运行和清理均失败时保留两者的错误。
-// 退出超时立即返回带业务线或资源名称的错误，由 main 输出到 stderr 后强制退出。
-func Run(ctx context.Context, opts Options) error {
-	// 进入 Run 时直接创建 startupTiming，总起点使用 opts.StartedAt，阶段起点使用当前时间。
-	// 创建并持有运行上下文的取消函数，再准备环境与共享资源。
-	// 调用 buildBusinessLines 装配业务线；即使装配失败，也接收已创建的部分。
-	// 调用 startBusinessLines 启动；四个入口阶段各自完成后调用 markStage 记录耗时。
-	// 启动完成后调用统计对象的 log 输出耗时，再调用 waitBusinessLines 等待结束。
-	// 正常结束或任一阶段失败，都先取消运行上下文，再调用 shutdown 统一清理。
-	// 汇总运行与清理结果；清理超时时立即返回，不再等待未完成的清理任务。
-	pass
+// Run 组织完整运行；正常外部取消返回 nil，其他错误与清理错误合并。
+// 即使下层关闭不响应取消，也在统一退出期限到达后返回给 main。
+func Run(ctx context.Context, opts Options) (err error) {
+	now := time.Now()
+	timing := startupTiming{startedAt: opts.StartedAt, stageStartedAt: now}
+	if timing.startedAt.IsZero() {
+		timing.startedAt = now
+	}
+	runCtx, cancel := context.WithCancel(ctx)
+	var (
+		lines       *businessLines
+		resources   *sharedResources
+		serviceLock io.Closer
+	)
+	defer func() {
+		cancel()
+		if ctx.Err() != nil && err != nil {
+			// 仅吞掉纯外部取消；joined error 中的独立故障必须保留。
+			pending := []error{err}
+			canceled := true
+			for len(pending) > 0 {
+				cause := pending[len(pending)-1]
+				pending = pending[:len(pending)-1]
+				if joined, ok := cause.(interface{ Unwrap() []error }); ok {
+					pending = append(pending, joined.Unwrap()...)
+				} else if inner := errors.Unwrap(cause); inner != nil {
+					pending = append(pending, inner)
+				} else if cause != nil && !errors.Is(cause, ctx.Err()) {
+					canceled = false
+					break
+				}
+			}
+			if canceled {
+				err = nil
+			}
+		}
+		err = errors.Join(err, shutdown(ctx, lines, resources, serviceLock))
+	}()
+	var configPath string
+	configPath, serviceLock, err = prepareEnvironment(opts.ConfigPath, opts.Mode)
+	if err != nil {
+		return err
+	}
+	timing.markStage("environment")
+	resources, err = prepareResources(runCtx, configPath)
+	if err != nil {
+		return err
+	}
+	timing.markStage("resources")
+	lines, err = buildBusinessLines(runCtx, resources, opts.Mode)
+	if err != nil {
+		return err
+	}
+	timing.markStage("wiring")
+	if err = startBusinessLines(runCtx, lines); err != nil {
+		return err
+	}
+	timing.markStage("start")
+	_ = events.EmitLog(runCtx, events.LogRecord{
+		Category: events.LogRuntime, Module: "app", Level: slog.LevelInfo,
+		EventName: "elbot_started", Type: events.ContentText,
+		Content:      fmt.Sprintf("version=%s\nmode=%s\nconfig_path=%s", opts.Version, opts.Mode, configPath),
+		ResultStatus: events.ResultSucceeded,
+	})
+	timing.log(runCtx)
+	return waitBusinessLines(runCtx, lines)
 }
 
-// startBusinessLines 按依赖顺序启动五条业务线。
-// 启动失败时返回错误，由 Run 转入统一退出流程。
+// startBusinessLines 在全部构造和接线完成后按依赖顺序启动。
 func startBusinessLines(ctx context.Context, lines *businessLines) error {
-	// TODO: 先启动 Tool 总管，准备工具能力。
-	pass
-
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	// TODO: 其余四条线提供 Start() error；构造时已接收运行上下文。
+	if err := lines.tool.Start(); err != nil {
+		return fmt.Errorf("start tool: %w", err)
+	}
 	if err := lines.agent.Start(); err != nil {
 		return fmt.Errorf("start agent: %w", err)
 	}
-
-	// TODO: 依次启动 Hook、Platform、Background，放行唤醒、平台接入和后台调度。
-	pass
+	if err := lines.hook.Start(); err != nil {
+		return fmt.Errorf("start hook: %w", err)
+	}
+	if err := lines.platform.Start(); err != nil {
+		return fmt.Errorf("start platform: %w", err)
+	}
+	if err := lines.background.Start(); err != nil {
+		return fmt.Errorf("start background: %w", err)
+	}
 	return nil
 }
 
-// waitBusinessLines 等待外部停止请求或需要结束应用的业务线运行结果。
-// 外部取消属于正常停止；业务线运行故障返回错误。
-// 返回只表示进入退出流程，业务线停止与资源清理由 Run 发起退出协调。
+// waitBusinessLines 将平台运行结束或外部停止交回 Run 发起统一退出。
 func waitBusinessLines(ctx context.Context, lines *businessLines) error {
-	// 等待外部取消，或业务线报告需要结束应用的运行结果。
-	// 将正常结束或运行错误交还 Run。
-	pass
+	// TODO: Platform 总管提供 Wait(ctx) error，内部汇总平台运行结果；
+	// TUI 正常退出结束应用，Service 不因所有消息平台循环退出而自动结束。
+	err := lines.platform.Wait(ctx)
+	if err != nil {
+		return fmt.Errorf("wait platform: %w", err)
+	}
+	return nil
 }
 
-// markStage 记录刚完成的入口阶段，并将阶段起点推进到当前时刻。
-// 仅记录环境准备、共享资源准备、业务线装配和业务线启动四个阶段。
 func (t *startupTiming) markStage(name string) {
-	// 计算当前阶段的耗时，按完成顺序保存名称与耗时。
-	// 更新阶段起点，供下一个入口阶段计时。
-	pass
+	now := time.Now()
+	t.stages = append(t.stages, startupStage{name: name, duration: now.Sub(t.stageStartedAt)})
+	t.stageStartedAt = now
 }
 
-// log 在启动完成后输出总耗时，并以 debug 级别输出四个阶段的耗时。
-// 总耗时包含进入 Run 前的时间；阶段耗时从进入 Run 时开始记录。
-// 阶段明细由日志级别筛选，统计对象不另外持有启用开关。
 func (t *startupTiming) log(ctx context.Context) {
-	// 根据进程启动时间计算总耗时，输出启动完成的 info 日志。
-	// 按记录顺序输出各阶段的 debug 日志。
-	pass
+	_ = events.EmitLog(ctx, events.LogRecord{
+		Category: events.LogRuntime, Module: "app", Level: slog.LevelInfo,
+		EventName: "startup_completed", Type: events.ContentText,
+		Content:      fmt.Sprintf("total=%s", time.Since(t.startedAt)),
+		ResultStatus: events.ResultSucceeded,
+	})
+	for _, stage := range t.stages {
+		_ = events.EmitLog(ctx, events.LogRecord{
+			Category: events.LogRuntime, Module: "app", Level: slog.LevelDebug,
+			EventName: "startup_stage", Type: events.ContentText,
+			Content:      fmt.Sprintf("stage=%s\nduration=%s", stage.name, stage.duration),
+			ResultStatus: events.ResultSucceeded,
+		})
+	}
 }

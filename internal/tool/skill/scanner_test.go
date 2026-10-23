@@ -181,9 +181,9 @@ func TestPolicyOnlyAgentSkillHiddenFromNormalUserDiscovery(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	policy := security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
+	permission := security.NewPermission("low", "high", map[string][]string{"cli": {"local"}})
 	actor := contextinfo.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: contextinfo.RoleUser}
-	ctx := security.WithPolicy(contextinfo.WithActor(context.Background(), actor), policy)
+	ctx := security.WithPermission(contextinfo.WithActor(context.Background(), actor), permission)
 	discover := tool.NewDiscoverTool(registry)
 	result, _, err := discover.Call(ctx, tool.CallRequest{})
 	if err != nil {
@@ -216,9 +216,9 @@ superadmin_only = true
 			t.Fatal(err)
 		}
 	}
-	policy := security.NewPolicy("low", "high", map[string][]string{"cli": {"local"}})
+	permission := security.NewPermission("low", "high", map[string][]string{"cli": {"local"}})
 	superadmin := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
-	ctx := security.WithPolicy(contextinfo.WithActor(context.Background(), superadmin), policy)
+	ctx := security.WithPermission(contextinfo.WithActor(context.Background(), superadmin), permission)
 	args, _ := json.Marshal(map[string]string{"name": "private_doc"})
 	result, _, err := tool.NewDiscoverTool(registry).Call(ctx, tool.CallRequest{Arguments: args})
 	if err != nil {

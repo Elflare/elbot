@@ -251,7 +251,7 @@ func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunRe
 			}
 		}
 		if call.Name == "discover_tool" && result.Result != nil {
-			update, err := DiscoveryStateUpdate(ctx, result.Result, m.Native.Registry, actor, m.Policy)
+			update, err := DiscoveryStateUpdate(ctx, result.Result, m.Native.Registry, actor, m.Permission)
 			if err != nil {
 				return err
 			}
@@ -514,14 +514,14 @@ func (r *Runner) confirm(ctx context.Context, deps RunnerDeps, actor contextinfo
 	if resolved.Source == SourceKindELwisp {
 		return ConfirmResult{Allowed: true}, nil
 	}
-	policy := m.Policy
+	permission := m.Permission
 	info := resolved.Native.Info()
 	if info.SuperadminOnly && actor.Role != contextinfo.RoleSuperadmin {
 		deps.AuditToolDenied(ctx, sessionID, call, assessment.Level, "tool_requires_superadmin")
 		message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s denied: requires superadmin role", call.Name))
 		return ConfirmResult{Message: message}, tool.PolicyDeniedError("tool requires superadmin")
 	}
-	if !policy.CanUseTool(actor, assessment.Level, info.OwnerScoped) {
+	if !permission.CanUseTool(actor, assessment.Level, info.OwnerScoped) {
 		deps.AuditToolDenied(ctx, sessionID, call, assessment.Level, "tool_risk_above_allowed_level")
 		message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s denied: risk %s is above your allowed tool level", call.Name, assessment.Level))
 		return ConfirmResult{Message: message}, tool.PolicyDeniedError("tool risk above allowed level")
@@ -529,7 +529,7 @@ func (r *Runner) confirm(ctx context.Context, deps RunnerDeps, actor contextinfo
 	if confirm, handled := deps.ConfirmBackgroundTool(ctx, sessionID, call, resolved, assessment); handled {
 		return confirm, nil
 	}
-	if !policy.NeedsToolConfirmation(actor, assessment.Level) {
+	if !permission.NeedsToolConfirmation(actor, assessment.Level) {
 		return ConfirmResult{Allowed: true}, nil
 	}
 	return deps.ConfirmToolCall(ctx, sessionID, call, assessment, detail)

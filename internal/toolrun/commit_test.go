@@ -72,7 +72,7 @@ func TestToolCommitFailureStopsOnlyOnPersistenceError(t *testing.T) {
 			if err := registry.Register(countingCommitTool{count: &count, wait: waiting}); err != nil {
 				t.Fatal(err)
 			}
-			manager := NewManager(registry, security.NewPolicy("low", "critical", nil))
+			manager := NewManager(registry, security.NewPermission("low", "critical", nil))
 			failure := errors.New("commit failed")
 			sink := &failingToolCommitter{failure: failure, phase: phase}
 			result := NewRunner(manager).Run(ctx, deps, RunRequest{Committer: sink, Session: &storage.Session{ID: "s", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "A", Name: "count", Arguments: "{}"}, {ID: "B", Name: "count", Arguments: "{}"}}})

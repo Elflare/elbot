@@ -178,7 +178,7 @@ func (d toolRunDeps) RefreshExecution(ctx context.Context, row *storage.Session)
 
 type ToolIdentity interface {
 	dialogue.Identity
-	Policy() *security.Policy
+	Permission() *security.Permission
 }
 
 type ToolConfirmations interface {

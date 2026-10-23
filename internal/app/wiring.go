@@ -5,62 +5,75 @@ import (
 	"fmt"
 
 	"elbot/internal/agent"
+	"elbot/internal/background"
+	"elbot/internal/hook"
+	"elbot/internal/platform"
+	"elbot/internal/tool"
 )
 
-// 本文件负责五条业务线总管的创建与公开能力接线。
-// 只使用总管和共享服务的公开能力，下层构造与内部接线由各自负责。
-// 所有总管完成构造和接线后，由 entry.go 组织启动。
-
-// buildBusinessLines 创建五条业务线总管，并组织公开能力接线。
-// resources 是已准备的共享资源，mode 是明确选定的本地运行模式。
-// 成功时返回完整业务线；构造或接线失败时仍返回已创建的部分与错误。
-// 部分结果由 Run 交给退出协调统一清理，本函数不自行关闭总管。
-func buildBusinessLines(
-	ctx context.Context,
-	resources *sharedResources,
-	mode RunMode,
-) (*businessLines, error) {
+// buildBusinessLines 只构造总管并交付公开能力；失败时保留部分结果。
+// TODO: 其他四条线实现下面的根包构造入口和消费方 SupervisorDeps；
+// 每条线接收完整 cfg，在内部拆分配置、构造组件，禁止在 App 展开其内部装配。
+func buildBusinessLines(ctx context.Context, resources *sharedResources, mode RunMode) (*businessLines, error) {
 	lines := &businessLines{}
 	cfg := resources.config
-
-	// TODO: 构造 Platform、Tool、Hook 总管，提供 Agent 所需的外部能力。
-	pass
-
 	var err error
+	// TODO: Platform 内部拥有聊天历史存储，Mode 取 "tui" 或 "service"。
+	lines.platform, err = platform.NewSupervisor(ctx, cfg, platform.SupervisorDeps{
+		Mode: string(mode), Store: resources.store, Media: resources.media,
+		Permission: resources.permission, Logs: resources.logs,
+	})
+	if err != nil {
+		return lines, fmt.Errorf("build platform: %w", err)
+	}
+	lines.tool, err = tool.NewSupervisor(ctx, cfg, tool.SupervisorDeps{
+		Store: resources.store, Media: resources.media, Permission: resources.permission,
+		Platform: lines.platform,
+	})
+	if err != nil {
+		return lines, fmt.Errorf("build tool: %w", err)
+	}
+	lines.hook, err = hook.NewSupervisor(ctx, cfg, hook.SupervisorDeps{
+		Media: resources.media, Tools: lines.tool, Platform: lines.platform,
+	})
+	if err != nil {
+		return lines, fmt.Errorf("build hook: %w", err)
+	}
+
 	lines.agent, err = agent.NewSupervisor(ctx, cfg, agent.SupervisorDeps{
-		Store:      resources.store,
-		Models:     resources.models,
-		Media:      resources.media,
-		Permission: resources.permission,
-		Logs:       resources.logs,
-		Tools:      lines.tool,
-		Hooks:      lines.hook,
-		Platform:   lines.platform,
+		Store: resources.store, Models: resources.models, Media: resources.media,
+		Permission: resources.permission, Logs: resources.logs,
+		Tools: lines.tool, Hooks: lines.hook, Platform: lines.platform,
 	})
 	if err != nil {
 		return lines, fmt.Errorf("build agent: %w", err)
 	}
 
-	// TODO: 构造 Background 总管，借用 Agent 的公开业务能力。
-	pass
-
+	// TODO: Background 自行管理后台执行与调度，只借用各总管公开能力。
+	lines.background, err = background.NewSupervisor(ctx, cfg, background.SupervisorDeps{
+		Store: resources.store, Models: resources.models, Media: resources.media,
+		Permission: resources.permission, Logs: resources.logs,
+		Agent: lines.agent, Tools: lines.tool, Hooks: lines.hook, Platform: lines.platform,
+	})
+	if err != nil {
+		return lines, fmt.Errorf("build background: %w", err)
+	}
 	return lines, connectBusinessLines(lines, resources)
 }
 
-// connectBusinessLines 连接已有总管之间及总管与共享服务之间的公开能力。
-// 包括平台聊天历史向工具、媒体和后台提供的查询或清理能力。
-// 接线产生的订阅等对象由对应总管或服务持有和释放，App 不另行集中持有。
-// 接线失败时已有连接随所属总管或服务统一清理，本函数不启动业务线。
-func connectBusinessLines(
-	lines *businessLines,
-	resources *sharedResources,
-) error {
+// connectBusinessLines 连接公开能力；连接及订阅由接收方持有和释放。
+func connectBusinessLines(lines *businessLines, resources *sharedResources) error {
+	// TODO: Hook 使用 Agent.HookWakeup 和 ObserveHookRun；
+	// Platform 使用 HandleMessage、Complete、Commands 和两类快照订阅。
 	if err := lines.hook.ConnectAgent(lines.agent); err != nil {
 		return fmt.Errorf("connect hook agent: %w", err)
 	}
 	if err := lines.platform.ConnectAgent(lines.agent); err != nil {
 		return fmt.Errorf("connect platform agent: %w", err)
 	}
-	// TODO: 其余业务线和共享服务的公开能力接线。
+	// TODO: Platform 提供聊天历史的公开查询与清理能力后，接入 Media.History，
+	// 执行 ReconcileHistory；Tool、Background 的历史能力由 Platform 总管提供。
+	// TODO: Tool、Hook、Background 之间剩余能力接线随各总管接口落实；
+	// App 只交付总管，不取得内部 Registry、Manager、Session 或执行协调器。
 	return nil
 }

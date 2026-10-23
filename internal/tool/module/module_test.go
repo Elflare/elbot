@@ -15,7 +15,7 @@ func TestModuleOwnsOneToolGraphAndDoesNotCloseStorage(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	m, err := NewModule(t.Context(), ModuleDeps{ConfigDir: t.TempDir(), Store: store, Policy: security.DefaultPolicy()})
+	m, err := NewModule(t.Context(), ModuleDeps{ConfigDir: t.TempDir(), Store: store, Permission: security.DefaultPermission()})
 	if err != nil {
 		t.Fatal(err)
 	}

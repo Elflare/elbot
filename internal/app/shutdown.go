@@ -2,85 +2,162 @@ package app
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"time"
 )
 
-// 本文件负责业务线停止、退出等待、统一退出预算及资源清理顺序。
-// 正常结束和部分准备、装配、启动失败均进入同一退出流程。
-// 资源由所有者释放；退出错误标明所属业务线或资源，交给 Run 汇总返回。
-// 超时后立即停止等待，由 main 输出错误到 stderr 后强制结束进程。
-
-// shutdownTimeout 是整个退出过程共享的固定预算，各步骤不重新计时。
+// shutdownTimeout 是整个退出过程的统一预算，各步骤不重新计时。
 const shutdownTimeout = 30 * time.Second
 
-// shutdown 协调业务线、共享资源和服务运行占用的退出与释放。
-// Run 在调用前取消运行上下文；这里保留上下文信息并建立独立的清理期限。
-// 各步骤使用同一退出期限；超时后立即返回，停止清理仍可能被使用的依赖。
-// 已发生的清理错误与超时错误均保留，运行错误由 Run 负责合并。
-func shutdown(
-	ctx context.Context,
-	lines *businessLines,
-	resources *sharedResources,
-	serviceLock io.Closer,
-) error {
-	// 基于 context.WithoutCancel(ctx) 建立固定 30 秒的统一清理上下文。
-	// 调用 stopBusinessLines 停止业务线，再调用 closeSharedResources 释放共享资源。
-	// 最后通过有名称的退出步骤释放服务运行占用；只处理已取得的对象。
-	// 汇总已发生的错误，超时后立即交还 Run，不再等待未完成的清理任务。
-	pass
+// stopKind 表示 App 等待关闭步骤得到的结果，不从业务错误推断退出状态。
+type stopKind uint8
+
+const (
+	stopCompleted stopKind = iota // 当前步骤已完成，无关闭错误。
+	stopFailed                    // 当前步骤返回错误，继续清理后续资源。
+	stopTimedOut                  // 统一退出期限已耗尽，停止后续清理。
+)
+
+// stopResult 将清理控制结果与错误详情分开。
+type stopResult struct {
+	kind stopKind // 调用方据此决定继续清理或立即返回。
+	err  error    // 当前步骤或已执行步骤的错误详情。
 }
 
-// stopBusinessLines 停止接收新工作，等待在途工作收尾并由总管释放自有资源。
-// 先停止新工作并取消在途任务，等待使用方收尾后再释放其依赖。
-// 平台停止接入后，发送与聊天历史查询能力保留到使用方退出。
-// 接线产生的订阅由所属总管或服务释放，不在 App 重复持有或清理。
-// 部分构造或启动失败时同样处理已创建的总管；超时后停止继续清理依赖。
-func stopBusinessLines(ctx context.Context, lines *businessLines) error {
-	if lines == nil {
-		return nil
-	}
+// shutdownStep 描述一个有名称的关闭步骤。
+type shutdownStep struct {
+	name  string                      // 错误中标识该步骤所属的业务线或资源。
+	close func(context.Context) error // 关闭自有资源或等待已请求停止的任务。
+}
 
-	// TODO: 请求其余四条线停止新工作并取消在途任务，保留使用方仍需的能力。
-	pass
+// shutdown 在运行取消后继续清理；一旦超时，不释放可能仍被使用的依赖。
+func shutdown(ctx context.Context, lines *businessLines, resources *sharedResources, serviceLock io.Closer) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
+	defer cancel()
+
+	result := stopBusinessLines(ctx, lines)
+	if result.kind == stopTimedOut {
+		return result.err
+	}
+	err := result.err
+	result = closeSharedResources(ctx, resources)
+	err = errors.Join(err, result.err)
+	if result.kind == stopTimedOut {
+		return err
+	}
+	if serviceLock != nil {
+		result = runShutdownStep(ctx, "service lock", func(context.Context) error { return serviceLock.Close() })
+		err = errors.Join(err, result.err)
+	}
+	return err
+}
+
+// stopBusinessLines 先停止新工作，再按使用方到依赖方的顺序关闭。
+func stopBusinessLines(ctx context.Context, lines *businessLines) stopResult {
+	if lines == nil {
+		return stopResult{kind: stopCompleted}
+	}
+	// TODO: 其他总管提供 BeginClose；Platform 只停止接入，
+	// Hook、Tool 保留已接纳工作的能力，直到各自 Close。
+	if lines.platform != nil {
+		lines.platform.BeginClose()
+	}
+	if lines.background != nil {
+		lines.background.BeginClose()
+	}
 	if lines.agent != nil {
 		lines.agent.BeginClose()
 	}
-
-	// TODO: 等待平台停止接入及后台任务收尾，再关闭 Agent。
-	pass
-	if lines.agent != nil {
-		if err := runShutdownStep(ctx, "agent", lines.agent.Close); err != nil {
-			return err
-		}
+	if lines.hook != nil {
+		lines.hook.BeginClose()
+	}
+	if lines.tool != nil {
+		lines.tool.BeginClose()
 	}
 
-	// TODO: Agent 收尾后再释放 Hook、Tool 及平台发送和历史查询能力。
-	pass
-	return nil
+	var steps []shutdownStep
+	// TODO: Platform.Wait 等待接入循环结束，发送与历史查询留到 Close。
+	// 正常停止返回 nil；独立故障和等待超时返回错误，由 Platform 解释停止原因。
+	if lines.platform != nil {
+		steps = append(steps, shutdownStep{name: "platform ingress", close: lines.platform.Wait})
+	}
+	if lines.background != nil {
+		steps = append(steps, shutdownStep{name: "background", close: lines.background.Close})
+	}
+	if lines.agent != nil {
+		steps = append(steps, shutdownStep{name: "agent", close: lines.agent.Close})
+	}
+	if lines.hook != nil {
+		steps = append(steps, shutdownStep{name: "hook", close: lines.hook.Close})
+	}
+	if lines.tool != nil {
+		steps = append(steps, shutdownStep{name: "tool", close: lines.tool.Close})
+	}
+	if lines.platform != nil {
+		steps = append(steps, shutdownStep{name: "platform", close: lines.platform.Close})
+	}
+	return runShutdownSteps(ctx, steps)
 }
 
-// closeSharedResources 在业务线退出后释放共享服务、存储和日志。
-// 各资源沿用统一退出期限，使用方完成退出后才释放其依赖。
-// 日志在其他共享资源之后关闭，以便记录退出过程。
-func closeSharedResources(ctx context.Context, resources *sharedResources) error {
-	// 按依赖关系释放需要关闭的共享服务，再关闭共享存储和日志。
-	// 通过有名称的退出步骤处理已取得的资源，保留具体资源的关闭错误。
-	// 超时后立即返回，不再继续关闭可能仍被使用的依赖。
-	pass
+// closeSharedResources 不重复关闭借用对象；媒体和权限没有独立关闭步骤。
+func closeSharedResources(ctx context.Context, resources *sharedResources) stopResult {
+	if resources == nil {
+		return stopResult{kind: stopCompleted}
+	}
+	var steps []shutdownStep
+	if resources.models != nil {
+		steps = append(steps, shutdownStep{name: "models", close: resources.models.Close})
+	}
+	if resources.store != nil {
+		steps = append(steps, shutdownStep{name: "storage", close: func(context.Context) error { return resources.store.Close() }})
+	}
+	if resources.logs != nil {
+		steps = append(steps, shutdownStep{name: "logs", close: resources.logs.Close})
+	}
+	return runShutdownSteps(ctx, steps)
 }
 
-// runShutdownStep 执行一个有名称的退出步骤，并遵守调用方提供的统一期限。
-// name 标识当前业务线或资源；close 由对应所有者提供，负责关闭或退出等待。
-// 关闭调用独立执行，即使它不响应上下文取消，等待方仍须在期限到达时返回。
-// 错误包含步骤名称；超时只标记当前等待的步骤，不将未执行的步骤记为失败。
-func runShutdownStep(
-	ctx context.Context,
-	name string,
-	close func(context.Context) error,
-) error {
-	// 在统一期限内独立执行关闭调用，等待调用完成或期限到达。
-	// 正常完成时返回带步骤名称的关闭错误，成功则返回 nil。
-	// 超时时立即返回带步骤名称的超时错误，不再等待关闭调用。
-	pass
+// runShutdownSteps 按顺序执行关闭步骤，普通错误汇总，超时停止后续清理。
+func runShutdownSteps(ctx context.Context, steps []shutdownStep) stopResult {
+	var errs []error
+	for _, step := range steps {
+		result := runShutdownStep(ctx, step.name, step.close)
+		switch result.kind {
+		case stopCompleted:
+			continue
+		case stopFailed:
+			errs = append(errs, result.err)
+		case stopTimedOut:
+			return stopResult{kind: stopTimedOut, err: errors.Join(append(errs, result.err)...)}
+		}
+	}
+	if err := errors.Join(errs...); err != nil {
+		return stopResult{kind: stopFailed, err: err}
+	}
+	return stopResult{kind: stopCompleted}
+}
+
+// runShutdownStep 独立执行关闭调用，即使关闭方忽略取消，也按统一期限返回。
+// 结果缓冲允许超时后仍在运行的关闭调用自行结束，无需等待接收方。
+func runShutdownStep(ctx context.Context, name string, close func(context.Context) error) stopResult {
+	if err := ctx.Err(); err != nil {
+		return stopResult{kind: stopTimedOut, err: fmt.Errorf("close %s: %w", name, err)}
+	}
+	result := make(chan error, 1)
+	go func() { result <- close(ctx) }()
+	select {
+	case err := <-result:
+		// 关闭完成与期限到达可能同时发生；统一在这里分类，保留关闭错误。
+		if ctx.Err() != nil {
+			return stopResult{kind: stopTimedOut, err: fmt.Errorf("close %s: %w", name, errors.Join(err, ctx.Err()))}
+		}
+		if err != nil {
+			return stopResult{kind: stopFailed, err: fmt.Errorf("close %s: %w", name, err)}
+		}
+		return stopResult{kind: stopCompleted}
+	case <-ctx.Done():
+		return stopResult{kind: stopTimedOut, err: fmt.Errorf("close %s: %w", name, ctx.Err())}
+	}
 }
