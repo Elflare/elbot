@@ -25,7 +25,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/app/wiring.go`：业务线构建与公开能力接线的两个占位函数；失败时返回已创建的总管，订阅由所属总管或服务持有。
 - `internal/app/shutdown.go`：退出协调、业务线停止、共享资源关闭和有名称的限时步骤四个占位函数，统一 30 秒预算；超时立即返回具体业务线或资源的错误。
 - `internal/app/client.go`：客户端参数、回退信号，以及明确运行和自动尝试两个占位入口；实际回退由进程入口决定。
-- `internal/agent/module/`：Dialogue 构造、Session／Request／Turn 所有权、线内接线、通知订阅与关闭。
+- `internal/agent/`：`Supervisor` 是 App 对接入口；`supervisor.go` 定义总管与公开能力，`deps.go` 定义外部依赖，`wiring.go` 构造并接线，`lifecycle.go` 管理启停，`signals.go` 持有通知与状态订阅。
 - `internal/tool/module/`：共享工具目录、执行核心、预加载、Skill／Memory／文件服务。
 - `internal/hook/module/`：Hook 核心、控制与插件进程。
 - `internal/platform/module/`：平台适配器、发送与通知、API 能力、补全和运行生命周期。
@@ -46,11 +46,11 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/signal/`：泛型信号、订阅快照、有界调度、结果、关闭及设施诊断。
 - `internal/events/notification.go`、`platform.go`、`logging.go`：全局通知、平台连接与日志契约。
 - `internal/agent/events/`：Agent 实例事实信号。
-- `internal/agent/module/signals.go`、`agent_notifications.go`、`model_signals.go`：通知、重试、会话清理与接管订阅。
-- `internal/agent/platform_signals.go`、`internal/cron/platform_signals.go`：平台连接事件消费与队列生命周期。
+- `internal/agent/signals.go`：通知、重试、会话清理与接管订阅。
+- `internal/agent/hooks/platform_signals.go`、`internal/cron/platform_signals.go`：平台连接事件消费与队列生命周期。
 - `internal/session/naming_signals.go`、`naming_logging.go`、`naming_lifecycle.go`：命名信号、日志与退出。
 - `internal/modelmgr/signals.go`、`logging.go`：模型重试信号与日志。
-- `internal/agent/logging.go`、`internal/background/logging.go`：所属业务日志发布。
+- `internal/agent/share/logging.go`、`internal/background/logging.go`：所属业务日志发布。
 
 <!-- locator:config -->
 ## 配置、资产与日志
@@ -65,8 +65,9 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:agent-chat -->
 ## Agent 对话
 
-- `internal/agent/*_deps.go`：各消费者的依赖契约。
-- `internal/agent/message.go`、`input.go`、`background.go`：消息分发、普通输入与后台准备。
+- `internal/agent/{input,execution,confirmation,hooks,output,tools}/`：输入、执行、确认、Hook、输出与工具桥接；依赖契约随消费者放置。
+- `internal/agent/share/`：线内共享的身份、输入、片段、绑定、状态契约与辅助函数，不反向依赖上述六个业务子包。
+- `internal/agent/input/message.go`、`input.go`：消息分发与普通输入准备；`internal/background/module/runner.go`、`runner_deps.go`：后台资源准备与依赖契约。
 - `internal/agent/dialogue/runner.go`、`preparation.go`：公共单轮、组件构造、输入准备与终态失败报告。
 - `internal/agent/dialogue/materials.go`：公共消息投影、片段编解码、归档与请求媒体准备。
 - `internal/agent/dialogue/model_call.go`、`system_prompt.go`：公共模型 Hook、调用观察与 Prompt 来源。
@@ -76,13 +77,13 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/responses/native_call.go`：原生调用、流增量、参数归档与终态保存。
 - `internal/agent/responses/context.go`、`input.go`、`persistence.go`：原生窗口重建、完整请求组装与提交。
 - `internal/agent/responses/tool_inputs.go`、`input_format.go`：工具定义与输入格式。
-- `internal/agent/segments.go`、`inbound_media.go`：有序图文与入站媒体。
+- `internal/agent/share/segments.go`、`internal/agent/input/inbound_media.go`：有序图文与入站媒体。
 
 <!-- locator:protocol-routing -->
 ## 协议路线
 
 - `internal/agent/routes/`：按 APIType 登记 Loop／Compactor／Material。
-- `internal/agent/module/module.go`：协议业务能力装配；App 原客户端工厂实现保存在 `internal/app/models.go.bak`，新资源准备职责见 `internal/app/resources.go`，当前尚未实现。
+- `internal/agent/wiring.go`：协议业务能力装配；App 资源准备职责见 `internal/app/resources.go`，当前尚未实现。
 - `internal/agent/dialogue/loop.go`、`internal/contextmgr/compact_contract.go`、`internal/session/material.go`：公共循环、压缩和材料契约。
 - `internal/llm/origin.go`、`internal/modelmgr/compatibility.go`：持久化归属与兼容判断。
 - `internal/llm/api_type.go`、`internal/tool/availability.go`：模型 API 类型与工具可用性。
@@ -91,28 +92,28 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 命令与补全
 
 - `internal/command/`、`internal/command/builtin/register.go`：Router、命令契约与注册。
-- `internal/command/builtin/`、`internal/agent/command_executor.go`：命令实现、权限、冲突、结果通知与 Continuation。
+- `internal/command/builtin/`、`internal/agent/input/command_executor.go`：命令实现、权限、冲突、结果通知与 Continuation。
 - `internal/command/builtin/log.go`、`usage.go`：日志查询、正文展示和用量统计。
-- `internal/completion/`、`internal/agent/completion.go`：结构化补全与查询依赖。
-- `internal/agent/file_rollback.go`、`internal/command/builtin/rollback.go`：文件撤销准入与命令。
+- `internal/completion/`、`internal/agent/input/completion.go`：结构化补全与查询依赖。
+- `internal/agent/input/file_rollback.go`、`internal/agent/share/file_rollback.go`、`internal/command/builtin/rollback.go`：文件撤销准入、共享执行绑定与命令。
 - [命令文档](../docs/commands.md)。
 
 <!-- locator:request-turn -->
 ## Request、Turn 与状态
 
 - `internal/request/`、`internal/turn/`：请求树、取消与执行确认清理、stopping／attempt 收尾通知、阶段、pending、确认与 Execution。
-- `internal/agent/execution.go`、`execution_run.go`：前后台执行、接管与跨轮收尾。
-- `internal/agent/execution_admission.go`、`execution_input.go`、`execution_lifecycle.go`：准入、输入、追加确认与关闭。
+- `internal/agent/execution/execution.go`、`execution_run.go`：前后台执行、接管与跨轮收尾。
+- `internal/agent/execution/execution_admission.go`、`execution_input.go`、`execution_lifecycle.go`：准入、输入、追加确认与关闭。
 - `internal/processenv/environment.go`、`process_unix.go`、`process_windows.go`：子进程环境和命令构造、平台进程组／树终止及实际退出判定；Skill、Shell、Hook、编译和文件搜索复用。
-- `internal/agent/confirmation.go`、`risk_confirmation.go`：风险确认、来源日志与提示。
-- `internal/runtime/`、`internal/agent/status.go`：运行状态、usage 唯一内存事实、恢复快照、执行归属校验与状态发布。
+- `internal/agent/confirmation/confirmation.go`、`risk_confirmation.go`：风险确认、来源日志与提示。
+- `internal/runtime/`、`internal/agent/execution/status.go`：运行状态、usage 唯一内存事实、恢复快照、执行归属校验与状态发布。
 
 <!-- locator:tool -->
 ## Tool Runtime、工具状态与文件
 
 - `internal/tool/`、`internal/tool/builtin/`：工具注册、schema、执行器与内置工具。
 - `internal/toolrun/state.go`、`preload.go`、`background.go`：Session 工具状态、前后台共用的工具／Skill 预加载与后台白名单。
-- `internal/agent/tool_directive.go`、`tool_cache.go`：输入指令与状态提交。
+- `internal/agent/input/tool_directive.go`、`internal/agent/share/tool_cache.go`：输入指令与状态提交。
 - `internal/tool/builtin/file_tools_ast.go`、`file_tools_directory.go`：AST 识别、目录候选与缓存、rg 枚举及流式搜索。
 - `internal/tool/builtin/long_memory.go`：长期记忆文件、索引与同步。
 - `internal/tool/builtin/web_extract.go`：正文缓存与同键在途请求。
@@ -126,7 +127,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 工具调用链路
 
 - `internal/agent/dialogue/tool_execution.go`：协议共用的 ToolRun 入口与提交器。
-- `internal/agent/toolrun_adapter.go`：Hook、子请求、确认与状态桥接。
+- `internal/agent/tools/toolrun_adapter.go`：Hook、子请求、确认与状态桥接。
 - `internal/toolrun/runner.go`：顺序准备和确认、并发执行、完成队列、逐项提交与开始／结束日志组装。
 - `internal/agent/dialogue/commit.go`、`internal/agent/responses/persistence.go`：固定结果槽、逐项最终结果、批次封存与原生恢复快照。
 - `internal/toolrun/toolrun.go`、`elwisp_exec.go`：调用解析、原生／远程路由与执行结果。
@@ -156,7 +157,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/hook/call_policy.go`：工具调用只读策略。
 - `internal/hook/media.go`、`internal/hook/output/`：媒体 API 与输出协议。
 - `internal/hook/logging.go`：Hook 日志发布。
-- `internal/agent/hooks.go`：Agent Hook 桥接与调用请求登记。
+- `internal/agent/hooks/hooks.go`：Agent Hook 桥接与调用请求登记。
 - [Hook 文档](../docs/hooks.md)。
 
 <!-- locator:output -->
@@ -167,7 +168,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/notification/manager.go`、`rules/`：通知信号、目标、绑定校验、平台队列与提示规则。
 - `internal/platform/module/notifications.go`：通知管理器及平台订阅装配。
 - `internal/platform/{cli,qq-onebot,qqofficial,telegram}/notifications.go`：平台通知协议与实际发送。
-- `internal/agent/output.go`、`turn_output.go`、`execution_output.go`：输出 Hook、前后台策略、接管刷新与流式回执合并。
+- `internal/agent/output/output.go`、`internal/agent/execution/turn_output.go`、`execution_output.go`：输出 Hook、前后台策略、接管刷新与流式回执合并。
 - `internal/agent/dialogue/output.go`、`reply_commit.go`：正文／思考消费契约与最终回复提交。
 
 <!-- locator:platform -->
@@ -196,7 +197,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 上下文、Prompt 与压缩
 
 - `internal/contextmgr/`：历史、窗口查询、用量、seed 状态与压缩分派。
-- `internal/agent/execution_compact.go`、`context_usage.go`：压缩生命周期、交接及用量。
+- `internal/agent/execution/execution_compact.go`、`context_usage.go`：压缩生命周期、交接及用量。
 - `internal/agent/chat/compact.go`、`compressor.go`：Chat 摘要。
 - `internal/agent/responses/compact.go`、`branch.go`：原生压缩与分支材料。
 - `internal/agent/dialogue/system_prompt.go`、`prompt.go`、`foreground_notice.go`：公共 Prompt 与接管提示。
@@ -253,7 +254,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/cron/service.go`、`manager.go`：任务运行、调度与整体日志。
 - `internal/cron/models.go`、`delivery.go`、`recovery.go`：任务模型、逐项投递与连接恢复。
 - `internal/maintenance/`：维护任务及来源结果。
-- `internal/agent/background.go`、`background_tools.go`：公共后台执行与确认。
+- `internal/background/module/runner.go`、`internal/agent/confirmation/background_tools.go`：后台资源准备与确认。
 - `internal/tool/builtin/cron.go`、`internal/storage/sqlite/cron_job_repository.go`：工具入口与仓储。
 
 <!-- locator:docs -->

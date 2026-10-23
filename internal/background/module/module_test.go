@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/agent"
+	agentshare "elbot/internal/agent/share"
 	"elbot/internal/background"
 	"elbot/internal/config"
 	"elbot/internal/security"
@@ -23,10 +23,12 @@ type backgroundExecutionStub struct{ sessionID string }
 func (s *backgroundExecutionStub) ModelContext(ctx context.Context, _ *storage.Session) (context.Context, error) {
 	return ctx, nil
 }
+
 func (s *backgroundExecutionStub) RunBackground(_ context.Context, row *storage.Session, _ string) turn.Result {
 	s.sessionID = row.ID
 	return turn.Result{SessionID: row.ID, Text: "borrowed execution", Outcome: "completed"}
 }
+
 func backgroundDeps(t *testing.T) ModuleDeps {
 	t.Helper()
 	store, err := sqlite.New(t.Context(), ":memory:")
@@ -36,10 +38,11 @@ func backgroundDeps(t *testing.T) ModuleDeps {
 	t.Cleanup(func() { _ = store.Close() })
 	sessions := session.NewService(store)
 	t.Cleanup(func() { _ = sessions.Close(context.Background()) })
-	identity := agent.NewIdentityResolver(agent.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Policy: security.DefaultPolicy()})
+	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Policy: security.DefaultPolicy()})
 	registry := tool.NewRegistry()
 	return ModuleDeps{Store: store, Sessions: sessions, Identity: identity, Execution: &backgroundExecutionStub{}, Registry: registry, Preloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}), ToolState: toolrun.NewStateService(store), SandboxRoot: t.TempDir(), Maintenance: config.Default().Maintenance}
 }
+
 func TestBackgroundSharesDialogueStateAndReleasesOnlyItsTools(t *testing.T) {
 	deps := backgroundDeps(t)
 	sentinel := builtin.NewWorkspaceTool()
@@ -89,6 +92,7 @@ func TestBackgroundSharesDialogueStateAndReleasesOnlyItsTools(t *testing.T) {
 	default:
 	}
 }
+
 func TestBackgroundToolConflictIsAtomicAndDoesNotReleaseForeignRegistration(t *testing.T) {
 	deps := backgroundDeps(t)
 	foreignValue := builtin.NewCronTools(nil)[0].(builtin.CronTool)

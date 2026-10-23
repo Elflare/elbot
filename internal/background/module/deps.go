@@ -3,7 +3,6 @@ package module
 import (
 	"context"
 
-	"elbot/internal/agent"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/elvena"
@@ -37,8 +36,8 @@ type ModuleDeps struct {
 	Media     *media.Manager
 	Models    *modelmgr.Service
 	Sessions  *session.Service
-	Identity  agent.BackgroundIdentity
-	Execution agent.BackgroundExecution
+	Identity  BackgroundIdentity
+	Execution BackgroundExecution
 	Registry  *tool.Registry
 	ToolInfo  runtimeinfo.Info
 	Preloader *toolrun.PreloadService

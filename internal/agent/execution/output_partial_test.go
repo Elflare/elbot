@@ -1,0 +1,51 @@
+package execution
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"elbot/internal/config"
+	"elbot/internal/contextinfo"
+	"elbot/internal/delivery"
+	"elbot/internal/events"
+	"elbot/internal/platform"
+)
+
+func TestPartialAssistantSendKeepsMessageAssociation(t *testing.T) {
+	for _, buffered := range []bool{false, true} {
+		t.Run(map[bool]string{false: "direct", true: "buffered"}[buffered], func(t *testing.T) {
+			store := newTestStore(t)
+			a := newTestAgent(t, &fakePlatform{}, &fakeLLM{replies: []string{"long answer"}}, "test-model", config.ProviderConfig{}, store)
+			wantErr := errors.New("later page failed")
+			sender := mediaSendFunc(func([]delivery.Output) (delivery.Receipt, events.LogResult, error) {
+				{
+					logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+					if wantErr != nil {
+						logResult.ResultStatus = events.ResultFailed
+						logResult.Content = wantErr.Error()
+						if wantErr == context.Canceled {
+							logResult.ResultStatus = events.ResultCanceled
+						}
+					}
+					return delivery.Receipt{
+						PlatformMessageIDs: []string{"first-page"},
+						SentMessages:       []delivery.SentMessage{{Platform: "test", ScopeID: "group:old", PlatformMessageID: "first-page"}},
+					}, logResult, wantErr
+				}
+			})
+			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
+				Conversation:          contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ScopeID: "group:old"}, Identity: contextinfo.Identity{PlatformUserID: "user"}},
+				Sender:                sender,
+				BufferAssistantOutput: buffered,
+			})
+			if err := a.HandleMessage(ctx, "question"); !errors.Is(err, wantErr) {
+				t.Fatalf("send error=%v", err)
+			}
+			got, err := store.Messages().FindByPlatformMessage(ctx, "test", "group:old", "first-page")
+			if err != nil || got.Content != "long answer" {
+				t.Fatalf("successful page mapping=%#v/%v", got, err)
+			}
+		})
+	}
+}

@@ -76,7 +76,7 @@ flowchart TB
 
 | 层 | 职责 |
 |---|---|
-| 入口组件 | MessageHandler 分发，InputCoordinator 准备与预加载，BackgroundRunner 准备后台资源，CommandExecutor 执行命令 |
+| 入口组件 | agent/input 的 MessageHandler 分发，InputCoordinator 准备与预加载，CommandExecutor 执行命令；background/module 的 BackgroundRunner 准备后台资源 |
 | ExecutionCoordinator | 准入、attempt／Request、追加确认、pending、压缩交接与 Execution 完成 |
 | dialogue.Runner | 选择路线、加载材料、准备输入、收敛 Loop 结果、提交回复与统一失败报告 |
 | Chat／Responses Loop | 协议上下文、模型／工具循环、pending 与接管刷新 |
@@ -87,6 +87,27 @@ flowchart TB
 - 用户／pending 和工具记录通过共同提交口保存。ToolBatch 初始化时按模型调用顺序保存 assistant 调用数组、稳定结果 ID 和未知结果槽；最终结果逐项更新原槽，与统计、媒体引用、发现状态同事务提交。参数媒体引用在初始化时按批次去重；Chat 参数变化时，随对应结果补入新增引用与最终参数。全部完成后才续跑模型。
 - CommitGate 在事务内复核 binding 与活跃 Execution／attempt；Responses 同时比较 checkpoint，提交原生状态。API 审计独立保存。
 - 回复前刷新接管来源；Loop 和回复提交成功后，RecordTurn 一次合并保存活动时间与用量，再处理状态、压缩、pending、Execution 结果及命名。单轮 Runner 不结束跨轮 Execution。
+
+### Agent 包边界
+
+根包 `agent.Supervisor` 为 App 提供 Agent 业务线的构造与管理入口；App 当前仍为待实现骨架。根包持有 Session、Request、Turn、协议路线及订阅；具体业务放在子包，后台准备由 `background/module` 持有。`share` 提供线内共享定义与辅助能力，不反向依赖 input、execution、confirmation、hooks、output 或 tools。
+
+```mermaid
+flowchart TD
+    A["app/wiring.go<br/>业务线构建与公开能力接线"] --> S["agent/supervisor.go、deps.go<br/>总管、公开能力与外部依赖"]
+    S --> W["agent/wiring.go<br/>组件构造与线内接线"]
+    S --> L["agent/lifecycle.go<br/>启动、取消与关闭"]
+    S --> G["agent/signals.go<br/>连接、消费与释放订阅"]
+    W --> I["agent/input/<br/>消息、命令、补全与输入准备"]
+    W --> E["agent/execution/<br/>准入、跨轮执行、状态与输出生命周期"]
+    W --> C["agent/confirmation/<br/>风险策略、确认与提示"]
+    W --> H["agent/hooks/<br/>Hook 桥接与平台事件"]
+    W --> O["agent/output/<br/>发送、输出 Hook 与回执"]
+    W --> T["agent/tools/<br/>工具运行时与 ToolRun 桥接"]
+    W --> D["agent/dialogue/、chat/、responses/、routes/<br/>公共单轮与协议路线"]
+    I & E & C & H & O & T --> R["agent/share/<br/>身份、输入、片段、绑定与共享契约"]
+    B["background/module/runner.go、runner_deps.go<br/>后台准备与依赖契约"] --> R
+```
 
 <!-- locator:protocol-routing -->
 ## 协议路线与原生上下文
@@ -262,7 +283,7 @@ flowchart TD
     R --> B["agent/dialogue/reply_commit.go<br/>主对话回复与回执关联"]
     R --> BG["cron/delivery.go、elnis/outbox.go<br/>后台报告与投递状态"]
     B --> T["agent/dialogue/runner.go<br/>主对话终态归一与统一失败通知"]
-    R --> O["agent/output.go、toolrun/runner.go<br/>所属操作日志"]
+    R --> O["agent/output/output.go、toolrun/runner.go<br/>所属操作日志"]
     O --> E["events/logging.go<br/>契约校验与发布"]
     T --> E
     E --> L["logging/<br/>分类排队、过滤与落盘"]
@@ -293,10 +314,10 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    S["session/promotion.go、signals.go<br/>提交接管、发布同步事实"] --> E["agent/execution.go、turn/execution.go<br/>保存一致执行快照"]
-    W["agent/module/signals.go<br/>连接与释放订阅"] -.-> E
-    E --> T["agent/dialogue/execution_context.go、toolrun_adapter.go<br/>调用前应用接管快照"]
-    E --> O["agent/execution_output.go<br/>发送时刷新去向"]
+    S["session/promotion.go、signals.go<br/>提交接管、发布同步事实"] --> E["agent/execution/execution.go、turn/execution.go<br/>保存一致执行快照"]
+    W["agent/signals.go<br/>连接与释放订阅"] -.-> E
+    E --> T["agent/dialogue/execution_context.go、agent/tools/toolrun_adapter.go<br/>调用前应用接管快照"]
+    E --> O["agent/execution/execution_output.go<br/>发送时刷新去向"]
 ```
 
 - Fork／后台复制在锁外准备材料，提交复核 binding、checkpoint、pending 和取消；Session、消息、seed 与媒体引用原子保存。Responses 按分叉时的不可变快照取材料，包含对应工具批次结果、排除之后追加的结果，不重跑历史工具；后台副本不激活前台或继承执行／工具状态。

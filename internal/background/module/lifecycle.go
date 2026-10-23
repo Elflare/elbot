@@ -36,7 +36,9 @@ func (m *Module) BeginClose() {
 		close(m.done)
 	}()
 }
+
 func (m *Module) Done() <-chan struct{} { return m.done }
+
 func (m *Module) Close(ctx context.Context) error {
 	m.BeginClose()
 	var errs []error

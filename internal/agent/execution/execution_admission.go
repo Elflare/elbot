@@ -1,0 +1,132 @@
+package execution
+
+import (
+	"context"
+	"errors"
+
+	agentshare "elbot/internal/agent/share"
+	"elbot/internal/platform"
+	"elbot/internal/storage"
+	"elbot/internal/turn"
+)
+
+// errExecutionConflict marks input that has not started because another execution won admission.
+var errExecutionConflict = errors.New("当前会话已有其他执行，输入尚未开始处理")
+
+func (c *ExecutionCoordinator) ResolveInput(ctx context.Context, text string) (context.Context, *storage.Session, error) {
+	// Fork prepares native/media material outside scope admission. Capture the
+	// newly activated binding afterward, with the same final identity check.
+	if msg, ok := platform.MessageContextFrom(ctx); ok && msg.ResumeSessionID == "" && msg.ForkFromMessageID != "" {
+		row, err := c.sessions.Fork(ctx, c.identity.Scope(ctx), msg.ForkFromMessageID)
+		if err != nil {
+			return ctx, nil, err
+		}
+		locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), row.ID)
+		if err != nil {
+			return ctx, nil, err
+		}
+		defer release()
+		locked, err = agentshare.CaptureSessionBinding(locked, c.sessions, c.identity, row)
+		return locked, row, err
+	}
+	locked, release, err := c.sessions.EnterScope(ctx, c.identity.Scope(ctx))
+	if err != nil {
+		return ctx, nil, err
+	}
+	defer release()
+	row, err := c.sessionForInput(locked, text)
+	if err != nil {
+		return ctx, nil, err
+	}
+	locked, err = agentshare.CaptureSessionBinding(locked, c.sessions, c.identity, row)
+	return locked, row, err
+}
+
+func (c *ExecutionCoordinator) enterTurn(ctx context.Context, row *storage.Session) (context.Context, func(), error) {
+	ctx = c.view.Context(ctx)
+	scope := c.identity.Scope(ctx)
+	background := agentshare.IsBackgroundSession(row)
+	var locked context.Context
+	var release func()
+	var err error
+	if background {
+		locked, release, err = c.sessions.EnterSessions(ctx, row.ID)
+	} else {
+		locked, release, err = c.sessions.EnterActivation(ctx, scope, row.ID)
+	}
+	if err != nil {
+		return ctx, nil, err
+	}
+	latest, err := c.sessionRows.Get(locked, row.ID)
+	if err != nil {
+		release()
+		return ctx, nil, err
+	}
+	*row = *latest
+	if e := turn.ExecutionFromContext(ctx); e != nil {
+		select {
+		case <-e.Done():
+			release()
+			return ctx, nil, context.Canceled
+		default:
+		}
+	}
+	refreshed := c.view.Context(locked)
+	if c.identity.Scope(refreshed).Key() != scope.Key() || (background && !agentshare.IsBackgroundSession(row)) {
+		release()
+		if e := turn.ExecutionFromContext(ctx); e == nil || e.Foreground() == nil {
+			return ctx, nil, agentshare.ErrSessionBindingChanged
+		}
+		return c.enterTurn(refreshed, row)
+	}
+	if !agentshare.IsBackgroundSession(row) {
+		locked, err = agentshare.CaptureSessionBinding(refreshed, c.sessions, c.identity, row)
+		if err != nil {
+			release()
+			return ctx, nil, err
+		}
+	}
+	return locked, release, nil
+}
+
+func (c *ExecutionCoordinator) EnterInput(ctx context.Context, row *storage.Session) (context.Context, func(), error) {
+	locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), row.ID)
+	if err != nil {
+		return ctx, nil, err
+	}
+	locked, err = agentshare.CaptureSessionBinding(locked, c.sessions, c.identity, row)
+	if err == nil {
+		var latest *storage.Session
+		latest, err = c.sessionRows.Get(locked, row.ID)
+		if err == nil {
+			switch {
+			case latest.Mode != row.Mode:
+				err = errors.New("当前会话模式已切换，请重新发送消息")
+			case latest.ArchivedAt != nil:
+				err = agentshare.ErrInputArchived
+			case c.CompactActive(row.ID) && c.turns.Snapshot(row.ID).Phase != turn.PhaseStopping:
+				err = agentshare.ErrInputCompacting
+			}
+		}
+	}
+	if err == nil {
+		err = ctx.Err()
+	}
+	if err != nil {
+		release()
+		return ctx, nil, err
+	}
+	return locked, release, nil
+}
+
+func (c *ExecutionCoordinator) sessionForInput(ctx context.Context, text string) (*storage.Session, error) {
+	if msg, ok := platform.MessageContextFrom(ctx); ok {
+		if msg.ResumeSessionID != "" {
+			return c.sessions.Resume(ctx, c.identity.Scope(ctx), msg.ResumeSessionID)
+		}
+		if msg.ForkFromMessageID != "" {
+			return c.sessions.Fork(ctx, c.identity.Scope(ctx), msg.ForkFromMessageID)
+		}
+	}
+	return c.sessions.GetOrCreateCurrent(ctx, c.identity.Scope(ctx), text)
+}

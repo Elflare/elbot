@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"elbot/internal/agent"
 	"elbot/internal/background"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
@@ -28,7 +27,7 @@ type Module struct {
 	cfg             *config.Config
 	cronManager     *elcron.Manager
 	cron            *elcron.Service
-	runner          *agent.BackgroundRunner
+	runner          *BackgroundRunner
 	elnis           *elnis.Runtime
 	enableWorkers   bool
 	releaseTools    func()
@@ -49,7 +48,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 	if err := maint.RegisterCronHandlers(m.cronManager); err != nil {
 		return m, err
 	}
-	runner := agent.NewBackgroundRunner(agent.BackgroundRunnerDeps{
+	runner := NewBackgroundRunner(BackgroundRunnerDeps{
 		Sessions:    deps.Sessions,
 		SessionRows: deps.Store.Sessions(),
 		Identity:    deps.Identity,
@@ -86,6 +85,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 	m.releaseTools = release
 	return m, nil
 }
+
 func (m *Module) Start() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -116,6 +116,7 @@ func (m *Module) Start() error {
 	}
 	return nil
 }
+
 func startCronAsync(ctx context.Context, manager *elcron.Manager, cfg *config.Config, done chan<- struct{}) {
 	go func() {
 		defer close(done)
@@ -254,6 +255,7 @@ func (m *Module) Wait(ctx context.Context) error {
 		return ctx.Err()
 	}
 }
+
 func (m *Module) RunBackground(ctx context.Context, req background.RunRequest) (background.RunResult, error) {
 	return m.runner.RunBackground(ctx, req)
 }
