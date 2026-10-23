@@ -6,10 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/agent/dialogue"
+	commandbuiltin "elbot/internal/command/builtin"
 	"elbot/internal/config"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/fileops"
 	"elbot/internal/hook"
+	hookcontrol "elbot/internal/hook/control"
 	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
@@ -20,8 +23,59 @@ import (
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/tool"
+	"elbot/internal/tool/skill"
 	"elbot/internal/toolrun"
 )
+
+// These facades stand in for sibling Supervisors and expose operations only.
+type isolatedToolCapabilities struct {
+	*tool.Registry
+	*toolrun.Manager
+	*toolrun.PreloadService
+	*toolrun.StateService
+	*resident.Store
+	*fileops.Service
+	skills *skill.Manager
+}
+
+func (c isolatedToolCapabilities) Schemas(ctx context.Context, tc toolrun.Context, cached []toolrun.CachedTool) ([]llm.ToolSchema, error) {
+	return c.Manager.Schemas(ctx, tc, cached)
+}
+func (c isolatedToolCapabilities) List() []tool.Info { return c.Registry.List() }
+func (c isolatedToolCapabilities) Tags() []string    { return c.Registry.Tags() }
+func (c isolatedToolCapabilities) ToolTags(ctx context.Context) ([]string, error) {
+	return c.PreloadService.Tags(ctx)
+}
+func (c isolatedToolCapabilities) ListRollbacks(ctx context.Context) ([]fileops.RollbackInfo, error) {
+	return c.Service.List(ctx)
+}
+func (c isolatedToolCapabilities) Forget(binding fileops.Binding) { c.Service.Manager.Forget(binding) }
+func (c isolatedToolCapabilities) Remove(ctx context.Context, name string) error {
+	return c.skills.Remove(ctx, name)
+}
+func (c isolatedToolCapabilities) Reload(ctx context.Context) error { return c.skills.Reload(ctx) }
+
+type isolatedHookCapabilities struct {
+	*hook.DefaultManager
+	*hookruntime.Manager
+	commandbuiltin.HookService
+}
+
+type isolatedPlatformCapabilities struct{ *dispatch.Router }
+
+func (isolatedPlatformCapabilities) PrimaryName() string { return "cli" }
+func (isolatedPlatformCapabilities) StartReasoning(context.Context) dialogue.ReasoningStream {
+	return nil
+}
+
+func isolatedAgentConfig() *config.Config {
+	cfg := &config.Config{}
+	cfg.Session = config.SessionConfig{DefaultMode: "work", Naming: config.SessionNamingConfig{TriggerStep: 100}}
+	cfg.Tools.MaxRoundsPerTurn = 2
+	cfg.Commands.Prefixes = []string{"/"}
+	cfg.View.SessionListPageSize = 10
+	return cfg
+}
 
 type isolatedClient struct{}
 
@@ -61,12 +115,24 @@ func isolatedModuleDeps(t *testing.T) SupervisorDeps {
 	t.Cleanup(func() { _ = router.Close(context.Background()) })
 	root := t.TempDir()
 	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
-	return SupervisorDeps{Media: center, Memory: resident.NewStore(filepath.Join(t.TempDir(), "memory.toml")), HookRunner: hooks, HookRouter: router, PlatformName: "cli", Store: store, Models: models, Policy: policy, Dispatcher: sender, Registry: registry, ToolManager: toolrun.NewManager(registry, policy), Preloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}), ToolState: toolrun.NewStateService(store), Files: fileops.NewService(nil), Session: config.SessionConfig{DefaultMode: "work", Naming: config.SessionNamingConfig{TriggerStep: 100}}, MaxRounds: 2, Prefixes: []string{"/"}, PageSize: 10}
+	return SupervisorDeps{
+		Media: center, Store: store, Models: models, Permission: policy,
+		Platform: isolatedPlatformCapabilities{sender},
+		Hooks:    isolatedHookCapabilities{DefaultManager: hooks, Manager: router, HookService: hookcontrol.New(hooks, router, nil)},
+		Tools: isolatedToolCapabilities{
+			Registry: registry, Manager: toolrun.NewManager(registry, policy),
+			PreloadService: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}),
+			StateService:   toolrun.NewStateService(store),
+			Store:          resident.NewStore(filepath.Join(t.TempDir(), "memory.toml")),
+			Service:        fileops.NewService(nil),
+			skills:         skill.NewManager(t.TempDir(), registry),
+		},
+	}
 }
 
 func TestStandaloneDialogueOwnsStateAndBorrowsOnlyCapabilities(t *testing.T) {
 	deps := isolatedModuleDeps(t)
-	m, err := NewSupervisor(t.Context(), deps)
+	m, err := NewSupervisor(t.Context(), isolatedAgentConfig(), deps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +142,7 @@ func TestStandaloneDialogueOwnsStateAndBorrowsOnlyCapabilities(t *testing.T) {
 	if err := m.Start(); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.Handler().HandleMessage(t.Context(), "hello"); err != nil {
+	if err := m.HandleMessage(t.Context(), "hello"); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := deps.Store.Sessions().List(t.Context(), storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 10})
@@ -96,7 +162,7 @@ func TestStandaloneDialogueOwnsStateAndBorrowsOnlyCapabilities(t *testing.T) {
 		}
 	}
 	select {
-	case <-m.Sessions().Done():
+	case <-m.Done():
 	default:
 		t.Fatal("naming owner did not stop")
 	}
@@ -116,7 +182,7 @@ func TestDialoguePartialConstructionCleansOwnedState(t *testing.T) {
 	if err := deps.Models.ModelRetrying().Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewSupervisor(t.Context(), deps)
+	m, err := NewSupervisor(t.Context(), isolatedAgentConfig(), deps)
 	if err == nil || m == nil || m.sessions == nil {
 		t.Fatal(m, err)
 	}

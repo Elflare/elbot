@@ -3,41 +3,14 @@ package execution
 import (
 	"context"
 	"testing"
-	"time"
 
 	agentoutput "elbot/internal/agent/output"
-	"elbot/internal/config"
+
 	"elbot/internal/events"
 	"elbot/internal/notification"
-	runtimestatus "elbot/internal/runtime"
+
 	"elbot/internal/signal"
 )
-
-func TestCanceledParentPublishesTerminalStatus(t *testing.T) {
-	p := &fakePlatform{}
-	started := make(chan struct{})
-	a := newTestAgent(t, p, &fakeLLM{chatBlocks: []fakeLLMBlock{{started: started, release: make(chan struct{})}}}, "test-model", config.ProviderConfig{}, newTestStore(t))
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	done := make(chan error, 1)
-	go func() { done <- a.HandleMessage(ctx, "hello") }()
-	select {
-	case <-started:
-	case <-time.After(time.Second):
-		t.Fatal("model not started")
-	}
-	cancel()
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("chat did not stop")
-	}
-	_, shown := p.statusSnapshot()
-	t.Logf("displayed phase=%s running=%t", shown.Phase, shown.Running())
-	if shown.Phase != runtimestatus.PhaseDone && shown.Phase != runtimestatus.PhaseError {
-		t.Errorf("completed/canceled conversation still displayed as %s", shown.Phase)
-	}
-}
 
 func TestQueuedPreviewRespectsCancellation(t *testing.T) {
 	m, err := notification.New("cli")

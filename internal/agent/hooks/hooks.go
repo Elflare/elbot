@@ -8,7 +8,6 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/delivery/dispatch"
 	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -30,13 +29,15 @@ type HookRouter interface {
 }
 
 type HookBridge struct {
-	manager        hookRunner
-	router         HookRouter
-	requests       *request.Manager
-	identity       HookIdentity
-	media          *media.Manager
-	failed         *signal.Signal[agentevents.HookFailedEvent, signal.Empty]
-	dispatcher     *dispatch.Router
+	manager    hookRunner
+	router     HookRouter
+	requests   *request.Manager
+	identity   HookIdentity
+	media      *media.Manager
+	failed     *signal.Signal[agentevents.HookFailedEvent, signal.Empty]
+	dispatcher interface {
+		SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)
+	}
 	platformEvents platformSubscriptions
 }
 

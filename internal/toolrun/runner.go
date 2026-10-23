@@ -88,6 +88,11 @@ type Runner struct{ manager *Manager }
 
 func NewRunner(manager *Manager) *Runner { return &Runner{manager: manager} }
 
+// Run executes a tool batch through the manager's runtime.
+func (m *Manager) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunResult {
+	return NewRunner(m).Run(ctx, deps, req)
+}
+
 func (r *Runner) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunResult {
 	m := r.manager
 	if req.Session.Mode == storage.SessionModeChat {

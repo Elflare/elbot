@@ -3,75 +3,17 @@ package execution
 import (
 	"context"
 	"errors"
-	"sync"
+
 	"testing"
-	"time"
 
 	agenthooks "elbot/internal/agent/hooks"
 	agentshare "elbot/internal/agent/share"
-	"elbot/internal/config"
+
 	"elbot/internal/contextinfo"
-	"elbot/internal/delivery"
+
 	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
-	"elbot/internal/platform"
-	"elbot/internal/storage"
 )
-
-func TestFinalLLMTakeoverUsesForegroundHookAndReceipt(t *testing.T) {
-	for _, buffered := range []bool{false, true} {
-		t.Run(map[bool]string{false: "direct", true: "buffered"}[buffered], func(t *testing.T) {
-			block := fakeLLMBlock{started: make(chan struct{}), release: make(chan struct{})}
-			var release sync.Once
-			t.Cleanup(func() { release.Do(func() { close(block.release) }) })
-			f := &fakeLLM{chatBlocks: []fakeLLMBlock{block}, replies: []string{"foreground final"}}
-
-			manager := newTestHookManager()
-
-			var outputEvent hook.Event
-			manager.Register(hook.Registration{Point: hook.PointAgentTurnOutputPrepared, Name: "capture", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, globalevents.LogResult, error) {
-				outputEvent = e
-				return e, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
-			})})
-			a := newTestAgent(t, &fakePlatform{}, f, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
-				cfg.HookManager = manager
-			})
-			connectFixtureNotifications(t, "qq", a.output.dispatcher)
-			done := startTakeoverTest(a)
-			select {
-			case <-block.started:
-			case <-time.After(3 * time.Second):
-				t.Fatal("LLM did not start")
-			}
-			id := f.chatRequests()[0].SessionID
-			ctx := takeoverPrivateContext()
-			msg, _ := platform.MessageContextFrom(ctx)
-			msg.BufferAssistantOutput = buffered
-			msg.Sender = mediaSendFunc(func([]delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
-				return delivery.Receipt{PlatformMessageIDs: []string{"sent"}, SentMessages: []delivery.SentMessage{{Platform: "qq", ScopeID: "private:1", PlatformMessageID: "sent"}}}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
-			})
-			ctx = platform.WithMessageContext(ctx, msg)
-			if err := a.HandleMessage(ctx, "/resume "+id); err != nil {
-				t.Fatal(err)
-			}
-			release.Do(func() { close(block.release) })
-			result := awaitTakeover(t, done)
-			if !result.TakenOver || len(f.chatRequests()) != 1 {
-				t.Fatalf("result=%#v requests=%d", result, len(f.chatRequests()))
-			}
-			if outputEvent.Platform.ScopeID != "private:1" || outputEvent.Actor.ID != "qq:1" {
-				t.Errorf("output hook retained background identity: %#v / %#v", outputEvent.Platform, outputEvent.Actor)
-			}
-			mapped, err := a.messages.FindByPlatformMessage(ctx, "qq", "private:1", "sent")
-			if err != nil || mapped.ID != result.MessageID {
-				t.Errorf("foreground mapping=%#v/%v", mapped, err)
-			}
-			if _, err := a.messages.FindByPlatformMessage(ctx, "qq", "cron:takeover", "sent"); !errors.Is(err, storage.ErrNotFound) {
-				t.Errorf("background mapping remained: %v", err)
-			}
-		})
-	}
-}
 
 func TestConnectedHooksKeepAbsentChatIdentity(t *testing.T) {
 	manager := newTestHookManager()

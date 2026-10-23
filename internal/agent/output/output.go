@@ -10,16 +10,19 @@ import (
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/delivery/dispatch"
 	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 )
 
 type OutputSender struct {
-	dispatcher *dispatch.Router
-	hooks      dialogue.Hooks
-	reasoning  func(context.Context) dialogue.ReasoningStream
+	dispatcher interface {
+		SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)
+		SendChat(context.Context, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)
+		StartStream(context.Context) (delivery.MessageStream, error)
+	}
+	hooks     dialogue.Hooks
+	reasoning func(context.Context) dialogue.ReasoningStream
 }
 
 func (o *OutputSender) SendOutputs(ctx context.Context, outputs []delivery.Output) (globalevents.LogResult, error) {

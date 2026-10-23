@@ -6,20 +6,19 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"elbot/internal/agent/dialogue"
 	agenthooks "elbot/internal/agent/hooks"
 	agentoutput "elbot/internal/agent/output"
 	agentshare "elbot/internal/agent/share"
-	"elbot/internal/config"
+
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/events"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
-	runtimestatus "elbot/internal/runtime"
+
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -148,7 +147,7 @@ func (s *replyTestStream) Finish(ctx context.Context) (delivery.Receipt, events.
 	}
 }
 
-// The fixture uses the real output adapters and SQLite without constructing agentFixture.
+// The fixture uses real output adapters and SQLite for isolated reply commit tests.
 type replyTestFixture struct {
 	events          []string
 	ctx, requestCtx context.Context
@@ -459,17 +458,6 @@ func TestReplyCommitHookSuppressesDisplayWithoutChangingHistory(t *testing.T) {
 	}
 }
 
-type replyTestStore struct {
-	storage.Store
-	repo storage.MessageRepository
-}
-
-func (s replyTestStore) Messages() storage.MessageRepository { return s.repo }
-
-func (s replyTestStore) Dialogues() storage.DialogueRepository {
-	return replyTestDialogues{DialogueRepository: s.Store.Dialogues(), repo: s.repo.(*replyTestRepository)}
-}
-
 type replyTestDialogues struct {
 	storage.DialogueRepository
 	repo *replyTestRepository
@@ -493,56 +481,4 @@ func (r replyTestDialogues) Commit(ctx context.Context, commit storage.DialogueC
 		err = errors.Join(err, r.repo.mapErr)
 	}
 	return logResult, err
-}
-
-func TestChatReplySaveFailureKeepsExecutionFailed(t *testing.T) {
-	for _, buffered := range []bool{false, true} {
-		t.Run(map[bool]string{false: "direct", true: "buffered"}[buffered], func(t *testing.T) {
-			base := newTestStore(t)
-			var events []string
-			failure := errors.New("assistant save failed")
-			repo := &replyTestRepository{MessageRepository: base.Messages(), events: &events, appendErr: failure}
-			p := &replyTestPlatform{events: &events}
-			model := &fakeLLM{replies: []string{"visible answer"}, titleReplies: []string{"should not be used"}}
-			a := newTestAgent(t, p, model, "model", config.ProviderConfig{}, replyTestStore{Store: base, repo: repo})
-			execution := turn.NewExecution("reply-save-failure")
-			ctx := turn.WithExecution(platform.WithMessageContext(context.Background(), platform.MessageContext{BufferAssistantOutput: buffered}), execution)
-			if err := a.HandleMessage(ctx, "question"); !errors.Is(err, failure) {
-				t.Fatalf("chat error=%v", err)
-			}
-			waitCtx, cancel := context.WithTimeout(ctx, time.Second)
-			defer cancel()
-			result := execution.Wait(waitCtx)
-			if !errors.Is(result.Err, failure) || result.Outcome != "failed" || result.MessageID != "" || result.Text != "" {
-				t.Fatalf("execution=%+v", result)
-			}
-			row, err := a.execution.sessions.Current(ctx, a.identity.Scope(ctx))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if a.RuntimeStatus(row.ID).Phase != runtimestatus.PhaseError || a.execution.turns.Snapshot(row.ID).Phase != turn.PhaseIdle || len(a.execution.requests.List()) != 0 {
-				t.Fatal("failed reply retained execution or published success")
-			}
-			messages, err := base.Messages().ListBySession(ctx, row.ID)
-			if err != nil || len(messages) != 1 || messages[0].Role != storage.RoleUser {
-				t.Fatalf("history=%+v err=%v", messages, err)
-			}
-			answers := 0
-			for _, text := range p.texts {
-				if text == "visible answer" {
-					answers++
-				}
-			}
-			wantAnswers := 1
-			if answers != wantAnswers {
-				t.Fatalf("assistant sends=%d want=%d texts=%q", answers, wantAnswers, p.texts)
-			}
-			if err := a.execution.sessions.Close(waitCtx); err != nil {
-				t.Fatal(err)
-			}
-			if model.requestCount() != 1 {
-				t.Fatalf("unexpected follow-up or naming: %d", model.requestCount())
-			}
-		})
-	}
 }

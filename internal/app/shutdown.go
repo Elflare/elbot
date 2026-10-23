@@ -37,10 +37,27 @@ func shutdown(
 // 接线产生的订阅由所属总管或服务释放，不在 App 重复持有或清理。
 // 部分构造或启动失败时同样处理已创建的总管；超时后停止继续清理依赖。
 func stopBusinessLines(ctx context.Context, lines *businessLines) error {
-	// 通过总管的公开能力停止接收新工作，并请求在途任务取消。
-	// 使用有名称的退出步骤等待收尾和释放自有资源，遵守统一期限。
-	// 保留带业务线名称的退出错误，并在超时时立即返回。
+	if lines == nil {
+		return nil
+	}
+
+	// TODO: 请求其余四条线停止新工作并取消在途任务，保留使用方仍需的能力。
 	pass
+	if lines.agent != nil {
+		lines.agent.BeginClose()
+	}
+
+	// TODO: 等待平台停止接入及后台任务收尾，再关闭 Agent。
+	pass
+	if lines.agent != nil {
+		if err := runShutdownStep(ctx, "agent", lines.agent.Close); err != nil {
+			return err
+		}
+	}
+
+	// TODO: Agent 收尾后再释放 Hook、Tool 及平台发送和历史查询能力。
+	pass
+	return nil
 }
 
 // closeSharedResources 在业务线退出后释放共享服务、存储和日志。

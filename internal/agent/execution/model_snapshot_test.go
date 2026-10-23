@@ -3,7 +3,7 @@ package execution
 import (
 	"context"
 	"errors"
-	"strings"
+
 	"sync"
 	"testing"
 	"time"
@@ -13,11 +13,10 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
-	"elbot/internal/security"
+
 	"elbot/internal/session"
-	"elbot/internal/signal"
+
 	"elbot/internal/storage"
-	"elbot/internal/tool"
 )
 
 func modelBarrier(t *testing.T) (chan struct{}, chan struct{}, func()) {
@@ -50,63 +49,6 @@ func awaitModelDone(t *testing.T, done <-chan error) {
 	}
 }
 
-func TestModelCommandKeepsInFlightToolLoopOnOriginalSelection(t *testing.T) {
-	started, release, unblock := modelBarrier(t)
-	old := &fakeLLM{
-		chatBlocks: []fakeLLMBlock{{started: started, release: release}},
-		chunks: [][]chatcompletions.Chunk{
-			{{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "call", Name: "prepared_args", Args: `{}`}}, FinishReason: "tool_calls"}},
-			{{DeltaContent: "old reply"}},
-		},
-	}
-	next := &fakeLLM{replies: []string{"new reply"}}
-	models := newTestModels(t, modelmgr.Options{
-		Clients:    map[string]llm.Client{"old": old, "next": next},
-		Providers:  map[string]config.ProviderConfig{"old": {Models: []string{"first"}}, "next": {Models: []string{"second"}}},
-		ModeModels: map[string]config.ModelSelection{storage.SessionModeWork: {Provider: "old", Model: "first"}},
-	})
-	opts := validConstructorOptions(t, func(opts *testAgentOptions) { opts.Models = models })
-	opts.Platform = &fakePlatform{}
-	opts.SecurityPolicy = security.NewPolicy("low", "critical", map[string][]string{"cli": {"local"}})
-	// Naming has its own snapshot boundary and is not part of this assertion.
-	opts.SessionConfig.NamingConfig.TriggerStep = 100
-
-	registry := tool.NewRegistry()
-	arguments := ""
-	if err := registry.Register(preparedArgumentTool{arguments: &arguments}); err != nil {
-		t.Fatal(err)
-	}
-	a := mustNewWithOptions(t, opts, func(cfg *testAgentOptions) {
-		cfg.ToolRegistry = registry
-	})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	done := make(chan error, 1)
-	go func() { done <- a.HandleMessage(ctx, "use the tool") }()
-	awaitModelBarrier(t, started)
-	if err := a.HandleMessage(ctx, "/model --work next/second"); err != nil {
-		t.Fatal(err)
-	}
-	if models.ResolveMode(storage.SessionModeWork).Model != "second" {
-		t.Fatal("command did not update the injected service")
-	}
-	unblock()
-	awaitModelDone(t, done)
-	requests := old.chatRequests()
-	if len(requests) != 2 || requests[0].Model != "first" || requests[1].Model != "first" || next.requestCount() != 0 {
-		t.Fatalf("in-flight loop switched: old=%#v next=%d", requests, next.requestCount())
-	}
-	if arguments != "{}" {
-		t.Fatalf("tool was not executed: %q", arguments)
-	}
-	if err := a.HandleMessage(ctx, "next turn"); err != nil {
-		t.Fatal(err)
-	}
-	if got := next.chatRequests(); len(got) != 1 || got[0].Model != "second" {
-		t.Fatalf("next turn selection = %#v", got)
-	}
-}
-
 type failingNamingClient struct {
 	started chan struct{}
 	release chan struct{}
@@ -123,59 +65,6 @@ func (c *failingNamingClient) Stream(ctx context.Context, req chatcompletions.Re
 		return nil, errors.New("naming unavailable")
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	}
-}
-
-func TestChatNamingUsesTurnModelAcrossSwitch(t *testing.T) {
-	started, release, unblock := modelBarrier(t)
-	current := &fakeLLM{chatBlocks: []fakeLLMBlock{{started: started, release: release}}, replies: []string{"main reply"}, titleReplies: []string{"current title"}}
-	work := &fakeLLM{titleReplies: []string{"wrong work title"}}
-	next := &fakeLLM{titleReplies: []string{"wrong next title"}}
-	models := newTestModels(t, modelmgr.Options{
-		Clients: map[string]llm.Client{"deepseek": current, "native": work, "next": next},
-		Providers: map[string]config.ProviderConfig{
-			"deepseek": {Models: []string{"deepseek-chat"}},
-			"native":   {APIMode: "response", Models: []string{"gpt"}},
-			"next":     {Models: []string{"second"}},
-		},
-		ModeModels: map[string]config.ModelSelection{
-			storage.SessionModeChat: {Provider: "deepseek", Model: "deepseek-chat"},
-			storage.SessionModeWork: {Provider: "native", Model: "gpt"},
-		},
-		DefaultMode: storage.SessionModeChat,
-	})
-	opts := validConstructorOptions(t, func(opts *testAgentOptions) { opts.Models = models })
-	opts.Platform = &fakePlatform{}
-	opts.SessionConfig.DefaultMode = storage.SessionModeChat
-	opts.SessionConfig.NamingConfig.TriggerStep = 1
-	a := mustNewWithOptions(t, opts)
-	completed := make(chan session.NamingCompletedEvent, 1)
-	connection, err := a.execution.sessions.NamingSignals().Completed.Observe(func(_ context.Context, event session.NamingCompletedEvent) error {
-		completed <- event
-		return nil
-	}, signal.ConnectOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(connection.Disconnect)
-	done := make(chan error, 1)
-	go func() { done <- a.HandleMessage(t.Context(), "name this chat") }()
-	awaitModelBarrier(t, started)
-	if _, err := models.SelectModelForMode(storage.SessionModeChat, "next/second"); err != nil {
-		t.Fatal(err)
-	}
-	unblock()
-	awaitModelDone(t, done)
-	select {
-	case event := <-completed:
-		if event.Provider != "deepseek" || event.Model != "deepseek-chat" || event.GeneratedTitleRaw != "current title" {
-			t.Fatalf("naming used another model: %+v", event)
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("naming did not complete")
-	}
-	if work.requestCount() != 0 || next.requestCount() != 0 {
-		t.Fatalf("naming called work or next model: work=%d next=%d", work.requestCount(), next.requestCount())
 	}
 }
 
@@ -238,50 +127,6 @@ func TestNamingFallbackKeepsContextSelectionAcrossSwitchAndReload(t *testing.T) 
 	result, err := g.GenerateTitle(ctx, messages)
 	if err != nil || result.RawTitle != "new title" || result.Provider != "next" || result.Model != "second" {
 		t.Fatalf("new naming = %#v, %v", result, err)
-	}
-}
-
-func TestCompactUsesOriginalSelectionDuringModelSwitch(t *testing.T) {
-	started, release, unblock := modelBarrier(t)
-	old := &fakeLLM{chatBlocks: []fakeLLMBlock{{started: started, release: release}}, replies: []string{"old summary", "continued reply"}}
-	next := &fakeLLM{replies: []string{"new summary"}}
-	models := newTestModels(t, modelmgr.Options{
-		Clients:    map[string]llm.Client{"old": old, "next": next},
-		Providers:  map[string]config.ProviderConfig{"old": {Models: []string{"first"}}, "next": {Models: []string{"second"}}},
-		ModeModels: map[string]config.ModelSelection{storage.SessionModeWork: {Provider: "old", Model: "first"}},
-	})
-	opts := validConstructorOptions(t, func(opts *testAgentOptions) { opts.Models = models })
-	opts.Platform = &fakePlatform{}
-	a := mustNewWithOptions(t, opts)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	source, err := a.execution.sessions.Create(ctx, a.identity.Scope(ctx), session.CreateRequest{Title: "compact", Metadata: `{"llm_origin":{"protocol":"chat"}}`})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := a.messages.Append(ctx, &storage.Message{SessionID: source.ID, Role: storage.RoleUser, Content: "keep me"}); err != nil {
-		t.Fatal(err)
-	}
-	done := make(chan error, 1)
-	go func() { _, err := a.CompactCurrent(ctx, "manual"); done <- err }()
-	awaitModelBarrier(t, started)
-	if _, err := models.SelectCompactModel("next/second"); err != nil {
-		t.Fatal(err)
-	}
-	unblock()
-	awaitModelDone(t, done)
-	if got := old.chatRequests(); len(got) != 1 || got[0].Model != "first" || next.requestCount() != 0 {
-		t.Fatalf("compact switched: %#v", got)
-	}
-	// A manual compaction seeds its new Session on the next user input.
-	if err := a.HandleMessage(ctx, "continue after compaction"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := a.CompactCurrent(ctx, "manual"); err != nil {
-		t.Fatal(err)
-	}
-	if got := next.chatRequests(); len(got) != 1 || got[0].Model != "second" || !strings.Contains(llm.SegmentsContentText(got[0].Messages[1].Segments), "old summary") {
-		t.Fatalf("next compact = %#v", got)
 	}
 }
 

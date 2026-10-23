@@ -3,7 +3,6 @@ package input
 import (
 	"elbot/internal/agent/dialogue"
 	agentshare "elbot/internal/agent/share"
-	agenttools "elbot/internal/agent/tools"
 
 	"context"
 	"errors"
@@ -36,9 +35,9 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	t.Cleanup(func() { _ = sessions.Close(context.Background()) })
 	stateService := toolrun.NewStateService(store)
 	manager := toolrun.NewManager(registry, policy)
-	coordinator := NewInputCoordinator(InputCoordinatorDeps{Sessions: sessions, SessionRows: store.Sessions(), Identity: identity, Execution: directiveExecution{}, Registry: registry, ToolState: stateService,
+	coordinator := NewInputCoordinator(InputCoordinatorDeps{Sessions: sessions, SessionRows: store.Sessions(), Identity: identity, Execution: directiveExecution{}, ToolState: stateService,
 		Preloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"worker": {Tools: []string{"alpha"}, Prompt: "TAG"}}}})})
-	toolsExecutor := &dialogue.ToolExecutor{Manager: manager, Registry: registry, State: stateService, Identity: identity, DefaultProvider: true, Provider: agenttools.NewToolRuntimeState(agenttools.ToolRuntimeStateDeps{Manager: manager, Identity: identity}).Provider()}
+	toolsExecutor := &dialogue.ToolExecutor{Manager: manager, Registry: registry, State: stateService, Identity: identity}
 
 	row, err := sessions.Create(ctx, identity.Scope(ctx), session.CreateRequest{Title: "state", Metadata: `{"unknown":9007199254740993}`})
 	if err != nil {

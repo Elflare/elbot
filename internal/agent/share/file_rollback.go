@@ -12,7 +12,9 @@ import (
 	"elbot/internal/turn"
 )
 
-func FileRollbackContext(ctx context.Context, service *fileops.Service, sessions *session.Service, turns *turn.Manager, requests *request.Manager, identity dialogue.Identity, row *storage.Session, idleOnly ...bool) context.Context {
+func FileRollbackContext(ctx context.Context, service interface {
+	WithBinding(context.Context, fileops.Binding, ...fileops.CommitAdmission) context.Context
+}, sessions *session.Service, turns *turn.Manager, requests *request.Manager, identity dialogue.Identity, row *storage.Session, idleOnly ...bool) context.Context {
 	if row == nil {
 		return ctx
 	}

@@ -2,10 +2,9 @@ package execution
 
 import (
 	"context"
-	"strings"
+
 	"sync"
 	"testing"
-	"time"
 
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
@@ -64,20 +63,5 @@ func connectFixtureNotifications(t *testing.T, name string, router *dispatch.Rou
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
-	}
-}
-
-func awaitNotificationText(t *testing.T, output *safeStringBuilder, want string) string {
-	t.Helper()
-	deadline := time.Now().Add(time.Second)
-	for {
-		got := output.String()
-		if strings.Contains(got, want) {
-			return got
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("notification %q missing from %q", want, got)
-		}
-		time.Sleep(time.Millisecond)
 	}
 }

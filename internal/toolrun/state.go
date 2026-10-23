@@ -154,7 +154,9 @@ func (s State) Names() map[string]bool {
 	return out
 }
 
-func (s State) CachedTools(registry *tool.Registry, background bool) []CachedTool {
+func (s State) CachedTools(registry interface {
+	Get(string) (tool.Tool, bool)
+}, background bool) []CachedTool {
 	cached := make([]CachedTool, 0, len(s.ToolCache)+len(s.DiscoveredTools))
 	for _, item := range s.ToolCache {
 		if background && item.Name == "discover_tool" {

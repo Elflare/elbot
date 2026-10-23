@@ -1,6 +1,11 @@
 package app
 
-import "context"
+import (
+	"context"
+	"fmt"
+
+	"elbot/internal/agent"
+)
 
 // 本文件负责五条业务线总管的创建与公开能力接线。
 // 只使用总管和共享服务的公开能力，下层构造与内部接线由各自负责。
@@ -15,10 +20,31 @@ func buildBusinessLines(
 	resources *sharedResources,
 	mode RunMode,
 ) (*businessLines, error) {
-	// 根据依赖关系创建五条业务线总管，将已创建的总管记入返回集合。
-	// 调用 connectBusinessLines 连接总管与共享服务的公开能力。
-	// 任一步骤失败时保留部分结果与错误交还 Run，全部成功后交还完整集合。
+	lines := &businessLines{}
+	cfg := resources.config
+
+	// TODO: 构造 Platform、Tool、Hook 总管，提供 Agent 所需的外部能力。
 	pass
+
+	var err error
+	lines.agent, err = agent.NewSupervisor(ctx, cfg, agent.SupervisorDeps{
+		Store:      resources.store,
+		Models:     resources.models,
+		Media:      resources.media,
+		Permission: resources.permission,
+		Logs:       resources.logs,
+		Tools:      lines.tool,
+		Hooks:      lines.hook,
+		Platform:   lines.platform,
+	})
+	if err != nil {
+		return lines, fmt.Errorf("build agent: %w", err)
+	}
+
+	// TODO: 构造 Background 总管，借用 Agent 的公开业务能力。
+	pass
+
+	return lines, connectBusinessLines(lines, resources)
 }
 
 // connectBusinessLines 连接已有总管之间及总管与共享服务之间的公开能力。
@@ -29,8 +55,12 @@ func connectBusinessLines(
 	lines *businessLines,
 	resources *sharedResources,
 ) error {
-	// 使用总管与共享服务的公开能力建立所需连接。
-	// 将订阅等连接资源交由对应使用方持有，供其退出时释放。
-	// 接线失败时停止继续连接并返回错误，交由构建阶段连同部分总管上交。
-	pass
+	if err := lines.hook.ConnectAgent(lines.agent); err != nil {
+		return fmt.Errorf("connect hook agent: %w", err)
+	}
+	if err := lines.platform.ConnectAgent(lines.agent); err != nil {
+		return fmt.Errorf("connect platform agent: %w", err)
+	}
+	// TODO: 其余业务线和共享服务的公开能力接线。
+	return nil
 }

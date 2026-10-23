@@ -3,7 +3,7 @@ package execution
 import (
 	"context"
 	"errors"
-	"slices"
+
 	"sync"
 	"testing"
 	"time"
@@ -15,15 +15,15 @@ import (
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/hook"
-	"elbot/internal/llm"
+
 	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
 	sandboxctx "elbot/internal/sandbox"
-	"elbot/internal/security"
+
 	"elbot/internal/signal"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
+
 	"elbot/internal/turn"
 )
 
@@ -83,45 +83,6 @@ func TestComponentStatusCommittedBeforeObserversAndCancellation(t *testing.T) {
 		})
 	}
 	wg.Wait()
-}
-
-type componentAdminTool struct{ agentDetailTool }
-
-func (t componentAdminTool) Info() tool.Info {
-	info := t.agentDetailTool.Info()
-	info.SuperadminOnly = true
-	return info
-}
-
-func TestComponentPolicyOptionsReachHookAndPrompt(t *testing.T) {
-	registry := tool.NewRegistry()
-	if err := registry.Register(componentAdminTool{agentDetailTool{name: "admin_only"}}); err != nil {
-		t.Fatal(err)
-	}
-	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq", ScopeID: "private:1"}, Identity: contextinfo.Identity{PlatformUserID: "1"}})
-	for _, admin := range []bool{false, true} {
-		admins := map[string][]string{}
-		if admin {
-			admins["qq"] = []string{"1"}
-		}
-		a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
-			cfg.ToolRegistry = registry
-			cfg.SecurityPolicy = security.NewPolicy("low", "high", admins)
-		})
-		provider := a.dialogue.Preparer.Tools.Provider.(dialogue.ToolNameProvider)
-		actor := a.identity.Actor(ctx)
-		event := a.hooks.FillContext(ctx, hook.Event{})
-		if (actor.Role == contextinfo.RoleSuperadmin) != admin || event.Actor.Role != string(actor.Role) {
-			t.Fatalf("identity and Hook disagree with configured policy: %+v / %+v", actor, event.Actor)
-		}
-		names, err := provider.ToolNames(ctx, storage.SessionModeWork, &storage.Session{ID: "s1"}, a.Scope(ctx))
-		if err != nil || slices.Contains(names.Tools, "admin_only") != admin {
-			t.Fatalf("Prompt did not use configured identity: %+v / %v", names, err)
-		}
-		if sourceFree := a.hooks.FillContext(context.Background(), hook.Event{}); sourceFree.Actor.ID != "" {
-			t.Fatal("configured policy introduced a default Hook identity")
-		}
-	}
 }
 
 func TestHookFailureIsRecordedOnceAndStillNotifies(t *testing.T) {
@@ -190,48 +151,5 @@ func TestExecutionViewKeepsRequestCancellationAndClearsBackgroundOverrides(t *te
 	cancelRequest()
 	if !errors.Is(refreshed.Err(), context.Canceled) || !errors.Is(view.Context(ctx).Err(), context.Canceled) {
 		t.Fatal("execution view detached request cancellation")
-	}
-}
-
-func TestMigratedComponentsPublishFactsWithoutLogger(t *testing.T) {
-	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{replies: []string{"one"}}, "model", config.ProviderConfig{}, newTestStore(t))
-	ctx, row, err := a.execution.ResolveInput(context.Background(), "logging")
-	if err != nil {
-		t.Fatal(err)
-	}
-	counts := map[string]int{}
-	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
-		if record.Category != globalevents.LogRuntime || record.Identity.SessionID == nil || *record.Identity.SessionID != row.ID {
-			return nil
-		}
-		switch record.EventName {
-		case "user_message":
-			counts["input"]++
-		case "turn_response_timeout":
-			counts["timeout"]++
-		}
-		return nil
-	}, signal.ConnectOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer connection.Disconnect()
-	_, _ = a.signals.ModelCallCompleted.Observe(func(context.Context, agentevents.ModelCallCompletedEvent) error { counts["model"]++; return nil }, signal.ConnectOptions{})
-	out := foregroundTurnOutput{sender: a.output}
-	if _, err := a.dialogue.Preparer.LoadMaterials(ctx, dialogue.TurnInput{Session: row, Text: "input", Selection: modelmgr.SelectionForTurn(ctx, a.execution.models, row)}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := testChatRoute(a).Caller.Call(ctx, row, modelmgr.SelectionForTurn(ctx, a.execution.models, row), nil, nil, nil, nil, out); err != nil {
-		t.Fatal(err)
-	}
-	call := llm.ToolCallRequest{ID: "call", Name: "test_tool", Arguments: "{}"}
-	confirmCtx, cancel := context.WithCancel(ctx)
-	cancel()
-	_, _ = a.confirmations.AwaitToolConfirmation(confirmCtx, row.ID, call, tool.RiskAssessment{Level: tool.RiskHigh}, "")
-	a.execution.handleTurnContextDone(ctx, row.ID, context.DeadlineExceeded, out)
-	for _, event := range []string{"input", "model", "timeout"} {
-		if counts[event] != 1 {
-			t.Fatalf("%s events = %d", event, counts[event])
-		}
 	}
 }

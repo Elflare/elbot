@@ -18,14 +18,14 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 启动与装配
 
 - `cmd/elbot/main.go`、`internal/launcher/cli.go`：程序入口、参数与运行模式。
-- `internal/app/` 的六个文件已完成类型、字段、函数签名与职责注释骨架，函数体使用 `pass` 占位，尚无可运行入口。13 个原生产文件和 12 个原测试文件均保存在 `*.go.bak` 中；职责设计见 [App 包设计](app-design.md)。
-- `internal/app/entry.go`：启动参数、业务线总管集合、启动耗时统计，以及应用入口、业务线启动和运行等待的占位骨架。
+- `internal/app/` 沿用六文件骨架，已填写 Agent 的总管构造、能力接线与启停代码；其余四条线的总管、共享资源准备和公共流程仍待实现，尚无可运行入口。13 个原生产文件和 12 个原测试文件均保存在 `*.go.bak` 中；职责设计见 [App 包设计](app-design.md)。
+- `internal/app/entry.go`：启动参数、业务线总管集合、启动耗时统计、应用入口和运行等待骨架；业务线启动中已填写 Agent 调用。
 - `internal/app/environment.go`：本地运行模式、配置路径定位和按配置取得服务运行占用的占位骨架。
 - `internal/app/resources.go`：共享资源集合及资源准备函数的占位骨架；加载已定位的配置，准备日志、共享存储、媒体、权限和模型管理，平台聊天历史归平台线。
-- `internal/app/wiring.go`：业务线构建与公开能力接线的两个占位函数；失败时返回已创建的总管，订阅由所属总管或服务持有。
-- `internal/app/shutdown.go`：退出协调、业务线停止、共享资源关闭和有名称的限时步骤四个占位函数，统一 30 秒预算；超时立即返回具体业务线或资源的错误。
+- `internal/app/wiring.go`：已填写 Agent 的现有资源与配置参数，构造失败时返回部分总管；其他总管及跨线接线保留占位，订阅由所属总管或服务持有。
+- `internal/app/shutdown.go`：已填写 Agent 的停止与关闭调用；退出协调、其他业务线、共享资源关闭和限时步骤仍是骨架，约定统一 30 秒预算。
 - `internal/app/client.go`：客户端参数、回退信号，以及明确运行和自动尝试两个占位入口；实际回退由进程入口决定。
-- `internal/agent/`：`Supervisor` 是 App 对接入口；`supervisor.go` 定义总管与公开能力，`deps.go` 定义外部依赖，`wiring.go` 构造并接线，`lifecycle.go` 管理启停，`signals.go` 持有通知与状态订阅。
+- `internal/agent/`：`Supervisor` 是 App 对接入口；`supervisor.go` 定义总管与公开能力，`deps.go` 声明共享资源和 `ToolCapabilities`、`HookCapabilities`、`PlatformCapabilities` 三类业务接口，`wiring.go` 拆分配置、构造线内组件并接线，`lifecycle.go` 管理启停，`signals.go` 持有通知与状态订阅。
 - `internal/tool/module/`：共享工具目录、执行核心、预加载、Skill／Memory／文件服务。
 - `internal/hook/module/`：Hook 核心、控制与插件进程。
 - `internal/platform/module/`：平台适配器、发送与通知、API 能力、补全和运行生命周期。
@@ -45,7 +45,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/signal/`：泛型信号、订阅快照、有界调度、结果、关闭及设施诊断。
 - `internal/events/notification.go`、`platform.go`、`logging.go`：全局通知、平台连接与日志契约。
-- `internal/agent/events/`：Agent 实例事实信号。
+- `internal/agent/events/`：Agent 实例事实信号，以及对外状态、绑定快照；绑定快照不包含内部 Binding 句柄。
 - `internal/agent/signals.go`：通知、重试、会话清理与接管订阅。
 - `internal/agent/hooks/platform_signals.go`、`internal/cron/platform_signals.go`：平台连接事件消费与队列生命周期。
 - `internal/session/naming_signals.go`、`naming_logging.go`、`naming_lifecycle.go`：命名信号、日志与退出。
@@ -83,7 +83,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 协议路线
 
 - `internal/agent/routes/`：按 APIType 登记 Loop／Compactor／Material。
-- `internal/agent/wiring.go`：协议业务能力装配；App 资源准备职责见 `internal/app/resources.go`，当前尚未实现。
+- `internal/agent/wiring.go`：消费完整配置与外部业务能力，装配线内组件和协议路线；App 资源准备职责见 `internal/app/resources.go`，当前尚未实现。
 - `internal/agent/dialogue/loop.go`、`internal/contextmgr/compact_contract.go`、`internal/session/material.go`：公共循环、压缩和材料契约。
 - `internal/llm/origin.go`、`internal/modelmgr/compatibility.go`：持久化归属与兼容判断。
 - `internal/llm/api_type.go`、`internal/tool/availability.go`：模型 API 类型与工具可用性。

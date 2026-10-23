@@ -2,7 +2,7 @@ package execution
 
 import (
 	"context"
-	"encoding/json"
+
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -16,79 +16,10 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/events"
-	"elbot/internal/hook"
-	"elbot/internal/llm"
+
 	"elbot/internal/media"
 	"elbot/internal/platform"
 )
-
-func TestGoHookMediaAPIAndCanonicalMessage(t *testing.T) {
-	ctx := context.Background()
-	store := newTestStore(t)
-	p := &fakePlatform{}
-	root := t.TempDir()
-	hooks := newTestHookManager()
-
-	var id string
-	hooks.Register(hook.Registration{Point: hook.PointAgentInputPrepared, Name: "media", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
-		if event.Media == nil {
-			t.Fatal("missing host API")
-		}
-		raw, err := json.Marshal(event)
-		if err != nil || strings.Contains(string(raw), root) {
-			t.Fatalf("host API leaked: %s %v", raw, err)
-		}
-		metadata, err := event.Media.ImportBytes(ctx, []byte{0, 255, 128, 1}, media.Input{Name: "hook.png", MIMEType: "image/png"})
-		if err != nil {
-			return event, events.LogResult{ResultStatus: events.ResultFailed, Content: "test source failed"}, err
-		}
-		id = metadata.ID
-		event.Message.Segments = append(event.Message.Segments, llm.MessageSegment{Type: llm.SegmentImage, MediaID: id})
-		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})})
-	a := newTestMediaAgent(t, p, &fakeLLM{replies: []string{"done"}}, store, media.NewManager(store, root, &media.LocalBackend{Root: root}), func(cfg *testAgentOptions) {
-		cfg.HookManager = hooks
-	})
-	if err := a.HandleMessage(ctx, "hello"); err != nil {
-		t.Fatal(err)
-	}
-	session := onlySession(t, store, p)
-	messages, err := store.Messages().ListBySession(ctx, session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(messages[0].Segments, id) || strings.Contains(messages[0].Segments, "data:") {
-		t.Fatal(messages[0].Segments)
-	}
-	refs, err := store.MediaReferences().ListByOwner(ctx, "message", messages[0].ID)
-	if err != nil || len(refs) != 1 {
-		t.Fatalf("refs=%#v %v", refs, err)
-	}
-}
-
-type hookMediaSender struct {
-	t    *testing.T
-	path string
-	data []byte
-}
-
-func (s *hookMediaSender) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-	for _, out := range outputs {
-		if out.Source.MediaID != "" || out.Source.URL != "" {
-			s.t.Fatalf("unresolved source: %#v", out.Source)
-		}
-		data, err := os.ReadFile(out.Source.Path)
-		if err != nil || string(data) != string(s.data) {
-			s.t.Fatalf("send data: %v %v", data, err)
-		}
-		s.path = out.Source.Path
-	}
-	return delivery.Receipt{PlatformMessageIDs: []string{"sent"}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
-}
-
-func (s *hookMediaSender) SendTo(ctx context.Context, nTarget delivery.Target, nOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-	return s.SendChat(ctx, nOutputs)
-}
 
 type orderedMediaSender struct {
 	t        *testing.T
@@ -212,46 +143,5 @@ func TestMediaReceiptKeepsDuplicatesAndPartialSuccess(t *testing.T) {
 	cached, err := store.Media().FindOutputs(ctx, "qqonebot", "group:1", "sent", time.Now())
 	if err != nil || len(cached) != 2 || cached[0].MediaID != item.ID || cached[1].MediaID != item.ID || cached[0].SegmentIndex != 0 || cached[1].SegmentIndex != 1 {
 		t.Fatalf("cached duplicates = %#v %v", cached, err)
-	}
-}
-
-func TestHookMediaOutputDoesNotCreateSessionAndCleansExport(t *testing.T) {
-	ctx := context.Background()
-	store := newTestStore(t)
-	p := &fakePlatform{}
-	root := t.TempDir()
-	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
-	data := []byte{0, 255, 128, 1}
-	metadata, err := center.ImportBytes(ctx, data, media.Input{Name: "hook.png", MIMEType: "image/png"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	hooks := newTestHookManager()
-
-	output := delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{MediaID: metadata.ID}}
-	hooks.Register(hook.Registration{Point: hook.PointPlatformMessageReceived, Name: "output", Match: hook.Always(), Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
-		event.Outputs = []delivery.Output{output}
-		event.Control.Consume = true
-		return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-	})})
-	a := newTestMediaAgent(t, p, &fakeLLM{}, store, center, func(cfg *testAgentOptions) {
-		cfg.HookManager = hooks
-	})
-	sender := &hookMediaSender{t: t, data: data}
-	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Sender: sender})
-	if err := a.HandleMessage(ctx, "send"); err != nil {
-		t.Fatal(err)
-	}
-	if sender.path == "" {
-		t.Fatal("no media sent")
-	}
-	if _, err := os.Stat(sender.path); !os.IsNotExist(err) {
-		t.Fatalf("export survived send: %v", err)
-	}
-	if output.Source.MediaID != metadata.ID || output.Source.Path != "" {
-		t.Fatal("mutated original output")
-	}
-	if _, err := a.execution.sessions.Current(ctx, a.identity.Scope(ctx)); err == nil {
-		t.Fatal("output created a session")
 	}
 }

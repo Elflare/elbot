@@ -71,7 +71,8 @@ func (p *retryNoticePlatform) SendTo(ctx context.Context, noticeTarget delivery.
 
 func TestSharedRetrySubscriptionCoversChatCompactAndNaming(t *testing.T) {
 	deps := isolatedModuleDeps(t)
-	deps.Context = config.Default().Context
+	cfg := isolatedAgentConfig()
+	cfg.Context = config.Default().Context
 	model := &retryModel{calls: make(chan retryCall, 4)}
 	p := &retryNoticePlatform{retryNotices: make(chan string, 5)}
 	models, err := modelmgr.New(modelmgr.Options{Clients: map[string]llm.Client{"p": model}, Providers: map[string]config.ProviderConfig{"p": {Models: []string{"m"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}, DefaultMode: "work"})
@@ -80,9 +81,10 @@ func TestSharedRetrySubscriptionCoversChatCompactAndNaming(t *testing.T) {
 	}
 	defer models.Close(context.Background())
 	deps.Models = models
-	deps.Dispatcher = dispatch.New(dispatch.Options{Primary: p, Store: deps.Store})
-	connectTestNotifications(t, deps.Dispatcher)
-	runtime, err := NewSupervisor(t.Context(), deps)
+	sender := dispatch.New(dispatch.Options{Primary: p, Store: deps.Store})
+	deps.Platform = isolatedPlatformCapabilities{sender}
+	connectTestNotifications(t, sender)
+	runtime, err := NewSupervisor(t.Context(), cfg, deps)
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
 	if err != nil {
 		t.Fatal(err)
@@ -94,9 +96,9 @@ func TestSharedRetrySubscriptionCoversChatCompactAndNaming(t *testing.T) {
 		go func() {
 			switch name {
 			case "chat":
-				result <- runtime.Handler().HandleMessage(ctx, "hello")
+				result <- runtime.HandleMessage(ctx, "hello")
 			case "compact":
-				_, err := runtime.Execution().CompactCurrent(ctx, "test")
+				err := runtime.HandleMessage(ctx, "/compact")
 				result <- err
 			case "naming":
 				_, err := session.NewTitleGenerator(deps.Models).GenerateTitle(ctx, []storage.Message{{Role: storage.RoleUser, Content: "hello"}})

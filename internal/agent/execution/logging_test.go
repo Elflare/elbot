@@ -2,13 +2,13 @@ package execution
 
 import (
 	"context"
-	"encoding/json"
+
 	"errors"
 	"log/slog"
-	"net/http"
+
 	"path/filepath"
 	"strings"
-	"sync/atomic"
+
 	"testing"
 	"time"
 
@@ -19,71 +19,11 @@ import (
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
-	"elbot/internal/llm/chatcompletions"
+
 	"elbot/internal/logging"
 	"elbot/internal/modelmgr"
 	"elbot/internal/signal"
 )
-
-type cancelLoggingLLM struct {
-	fakeLLM
-	cancel context.CancelFunc
-}
-
-func (c *cancelLoggingLLM) Stream(context.Context, chatcompletions.Request) (<-chan chatcompletions.Chunk, error) {
-	ch := make(chan chatcompletions.Chunk, 1)
-	ch <- chatcompletions.Chunk{DeltaContent: "partial-before-cancel"}
-	c.cancel()
-	close(ch)
-	return ch, nil
-}
-
-func TestChatSilentCancellationPreservesPartialOutputLog(t *testing.T) {
-	client := &cancelLoggingLLM{}
-	a := newTestAgent(t, &fakePlatform{}, client, "model", config.ProviderConfig{}, newTestStore(t))
-	ctx, row, err := a.execution.ResolveInput(context.Background(), "hello")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, client.cancel = context.WithCancel(ctx)
-	defer client.cancel()
-	var records []globalevents.LogRecord
-	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, r globalevents.LogRecord) error {
-		if r.EventName == "llm_usage" || r.EventName == "assistant_message" {
-			records = append(records, r)
-		}
-		return nil
-	}, signal.ConnectOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer connection.Disconnect()
-	out := foregroundTurnOutput{sender: a.output}
-	result, err := testChatRoute(a).Caller.Call(ctx, row, modelmgr.SelectionForTurn(ctx, a.execution.models, row), nil, nil, nil, nil, out)
-	if err != nil || result.Text != "partial-before-cancel" {
-		t.Fatalf("result = %+v, error = %v", result, err)
-	}
-	if len(records) != 2 || records[0].EventName != "llm_usage" || records[1].EventName != "assistant_message" {
-		t.Fatalf("records = %#v", records)
-	}
-	for _, r := range records {
-		if r.ResultStatus != globalevents.ResultCanceled || r.Level != slog.LevelInfo || r.Identity.SessionID == nil || *r.Identity.SessionID != row.ID {
-			t.Fatalf("record = %#v", r)
-		}
-	}
-	if !strings.Contains(records[1].Content, "partial-before-cancel") {
-		t.Fatal("partial output missing from log")
-	}
-	var content map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(records[0].Content), &content); err != nil {
-		t.Fatal(err)
-	}
-	for _, key := range []string{"prompt_tokens", "completion_tokens", "total_tokens", "cache_hit_tokens"} {
-		if string(content[key]) != "null" {
-			t.Fatalf("missing usage: %s = %s", key, content[key])
-		}
-	}
-}
 
 func TestReplyLogPreservesCanceledSendAndIndependentSaveFailure(t *testing.T) {
 	f := newReplyTestFixture(t, false)
@@ -114,46 +54,6 @@ func TestReplyLogPreservesCanceledSendAndIndependentSaveFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "independent save failure") {
 		t.Fatalf("save diagnostic missing from returned error: %v", err)
-	}
-}
-
-func TestResponsesSuccessfulCallWithSaveFailureKeepsSourceFacts(t *testing.T) {
-	var fail atomic.Bool
-	fail.Store(true)
-	f := newNativeFixture(t, func(_ int, _ nativeTestRequest, w http.ResponseWriter) {
-		emitNative(w, "response", "completed", nativeText("upstream-success"))
-	}, func(opts *testAgentOptions) {
-		opts.Store = nativeTerminalFailureStore{Store: opts.Store, fail: &fail}
-	})
-	var event agentevents.ModelCallCompletedEvent
-	connection, err := f.agent.Signals().ModelCallCompleted.Observe(func(_ context.Context, e agentevents.ModelCallCompletedEvent) error { event = e; return nil }, signal.ConnectOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer connection.Disconnect()
-	var records []globalevents.LogRecord
-	logs, err := globalevents.LogSubmitted.Observe(func(_ context.Context, r globalevents.LogRecord) error {
-		if r.EventName == "llm_usage" {
-			records = append(records, r)
-		}
-		return nil
-	}, signal.ConnectOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer logs.Disconnect()
-	if err := f.agent.HandleMessage(t.Context(), "input"); err == nil || !strings.Contains(err.Error(), "terminal audit storage failed") {
-		t.Fatalf("error = %v", err)
-	}
-	if event.ProviderError || !event.OutputReady || event.Text != "upstream-success" {
-		t.Fatalf("business event = %+v", event)
-	}
-	if len(records) != 1 || records[0].ResultStatus != globalevents.ResultSucceeded || strings.Contains(records[0].Content, "terminal audit storage failed") {
-		t.Fatalf("logs = %#v", records)
-	}
-	output := awaitNotificationText(t, &f.platform.out, "对话处理失败：")
-	if strings.Count(output, "对话处理失败：") != 1 || !strings.Contains(output, "save native response") {
-		t.Fatalf("terminal save failure notification=%q", output)
 	}
 }
 
@@ -224,22 +124,6 @@ func TestStableLogNamesIndependentOfContent(t *testing.T) {
 	result, err := (logging.Reader{Dir: center.LogDir()}).Query(context.Background(), logging.LogQuery{Prefix: "elbot", Fields: map[string]string{"event": "stable_event"}})
 	if err != nil || len(result.Entries) != 2 || result.Entries[0].Content == result.Entries[1].Content {
 		t.Fatalf("result = %#v, err = %v", result, err)
-	}
-}
-
-func TestTurnTimeoutSeverity(t *testing.T) {
-	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t))
-	var records []globalevents.LogRecord
-	connection, _ := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
-		if record.EventName == "turn_response_timeout" && record.Category == globalevents.LogAudit {
-			records = append(records, record)
-		}
-		return nil
-	}, signal.ConnectOptions{})
-	defer connection.Disconnect()
-	a.execution.handleTurnContextDone(context.Background(), "timeout-session", context.DeadlineExceeded, foregroundTurnOutput{sender: a.output})
-	if len(records) != 1 || records[0].Level != slog.LevelError || records[0].ResultStatus != globalevents.ResultFailed {
-		t.Fatalf("records = %#v", records)
 	}
 }
 

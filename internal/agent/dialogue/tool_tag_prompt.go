@@ -9,7 +9,9 @@ import (
 
 // The tool module owns tag configuration; Agent only places its prompt material.
 type ToolTagsSystemPromptSource struct {
-	Preloader *toolrun.PreloadService
+	Preloader interface {
+		TagPrompts(context.Context, []string) ([]toolrun.TagPrompt, error)
+	}
 }
 
 func (s ToolTagsSystemPromptSource) Parts(ctx context.Context, req SystemPromptRequest) ([]SystemPromptPart, error) {

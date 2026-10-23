@@ -19,7 +19,6 @@ import (
 	"elbot/internal/platform"
 	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
 	"elbot/internal/toolrun"
 	"elbot/internal/turn"
 )
@@ -35,10 +34,14 @@ type InputCoordinator struct {
 	output        InputOutput
 	execution     InputExecution
 	confirmations InputConfirmations
-	registry      *tool.Registry
-	preloader     *toolrun.PreloadService
-	toolState     *toolrun.StateService
-	waitPolicy    InputWaitPolicy
+	preloader     interface {
+		PrepareTools(context.Context, []string) (toolrun.ToolPreload, error)
+		PrepareSkills(context.Context, string, []string) (toolrun.SkillPreload, error)
+	}
+	toolState interface {
+		Commit(context.Context, string, toolrun.StateUpdate) (toolrun.StateCommit, globalevents.LogResult, error)
+	}
+	waitPolicy InputWaitPolicy
 }
 
 func compactCommandBlockedText(command string) string {
@@ -239,7 +242,6 @@ func NewInputCoordinator(deps InputCoordinatorDeps) *InputCoordinator {
 		output:        deps.Output,
 		execution:     deps.Execution,
 		confirmations: deps.Confirmations,
-		registry:      deps.Registry,
 		preloader:     deps.Preloader,
 		toolState:     deps.ToolState,
 		waitPolicy:    deps.WaitPolicy,

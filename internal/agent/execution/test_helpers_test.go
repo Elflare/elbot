@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"elbot/internal/config"
 	"elbot/internal/delivery"
@@ -21,8 +20,6 @@ import (
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
-	"elbot/internal/tool"
-	"elbot/internal/tool/builtin"
 )
 
 var testProviderFiles sync.Map
@@ -56,23 +53,6 @@ func newTestModels(t *testing.T, opts modelmgr.Options) *modelmgr.Service {
 	testProviderFiles.Store(models, file)
 	t.Cleanup(func() { testProviderFiles.Delete(models); _ = models.Close(context.Background()) })
 	return models
-}
-
-func configureTestContext(t *testing.T, a *agentFixture, cfg config.ContextConfig, metadata config.ModelMetadataConfig, providers map[string]config.ProviderConfig) {
-	t.Helper()
-	value, ok := testProviderFiles.Load(a.execution.models)
-	if !ok {
-		t.Fatal("missing test provider file")
-	}
-	file := value.(*config.ProviderFile)
-	file.ModelMetadata = metadata
-	if providers != nil {
-		file.Providers = providers
-	}
-	if err := a.execution.models.ReloadProviders(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	a.execution.contexts.Configure(cfg)
 }
 
 type fakePlatform struct {
@@ -154,36 +134,6 @@ func (p *fakePlatform) statusSnapshot() (int, runtimestatus.Snapshot) {
 	p.statusMu.Lock()
 	defer p.statusMu.Unlock()
 	return p.statusCount, p.lastStatus
-}
-
-type fakeStreamingPlatform struct {
-	fakePlatform
-	stream fakeMessageStream
-}
-
-type fakeMessageStream struct {
-	appends  []string
-	replaces []string
-	finished int
-}
-
-func (p *fakeStreamingPlatform) StartStream(ctx context.Context) (delivery.MessageStream, error) {
-	return &p.stream, nil
-}
-
-func (s *fakeMessageStream) Append(ctx context.Context, text string) error {
-	s.appends = append(s.appends, text)
-	return nil
-}
-
-func (s *fakeMessageStream) Replace(ctx context.Context, text string) (delivery.Receipt, events.LogResult, error) {
-	s.replaces = append(s.replaces, text)
-	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
-}
-
-func (s *fakeMessageStream) Finish(ctx context.Context) (delivery.Receipt, events.LogResult, error) {
-	s.finished++
-	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
 type fakeLLMBlock struct {
@@ -334,23 +284,6 @@ func (f *fakeLLM) notifyRequestLocked() {
 	}
 }
 
-func waitRequestCount(t *testing.T, f *fakeLLM, want int) {
-	t.Helper()
-	notify := f.requestNotifyChan()
-	deadline := time.NewTimer(time.Second)
-	defer deadline.Stop()
-	for {
-		if f.requestCount() >= want {
-			return
-		}
-		select {
-		case <-notify:
-		case <-deadline.C:
-			t.Fatalf("request count = %d, want at least %d", f.requestCount(), want)
-		}
-	}
-}
-
 var sharedTestStore *sqlite.Store
 
 var sharedTestDB *sql.DB
@@ -415,180 +348,6 @@ DELETE FROM media;
 	return sharedTestStore
 }
 
-func firstRequestSystemText(req chatcompletions.Request) string {
-	for _, message := range req.Messages {
-		if message.Role == llm.RoleSystem {
-			return llm.SegmentsContentText(message.Segments)
-		}
-	}
-	return ""
-}
-
-func chatRequestText(req chatcompletions.Request) string {
-	parts := make([]string, 0, len(req.Messages))
-	for _, message := range req.Messages {
-		if text := llm.SegmentsContentText(message.Segments); text != "" {
-			parts = append(parts, text)
-		}
-	}
-	return strings.Join(parts, "\n")
-}
-
-func onlySession(t *testing.T, store storage.Store, p *fakePlatform) *storage.Session {
-	t.Helper()
-	sessions, err := store.Sessions().List(context.Background(), storage.ListSessionsRequest{ActorID: "cli:local", Platform: p.Name(), PlatformScopeID: "local"})
-	if err != nil || len(sessions) != 1 {
-		t.Fatalf("list sessions: %#v err=%v", sessions, err)
-	}
-	sessionRecord, err := store.Sessions().Get(context.Background(), sessions[0].ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return sessionRecord
-}
-
-func toolNames(schemas []llm.ToolSchema) string {
-
-	names := make([]string, 0, len(schemas))
-	for _, schema := range schemas {
-		names = append(names, schema.Name)
-	}
-	return strings.Join(names, ",")
-}
-
-type agentDetailTool struct {
-	name     string
-	source   tool.Source
-	detail   string
-	format   string
-	activate []string
-}
-
-func (t agentDetailTool) Name() string { return t.name }
-
-func (t agentDetailTool) Info() tool.Info {
-	return tool.Info{Name: t.name, Description: t.name, Source: t.source, Risk: tool.RiskLow}
-}
-
-func (t agentDetailTool) Schema() llm.ToolSchema { return llm.ToolSchema{} }
-
-func (t agentDetailTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
-	{
-		result := &tool.Result{Content: t.detail}
-		return result, result.Content, nil
-	}
-}
-
-func (t agentDetailTool) Detail() string {
-	return tool.RenderDetailBlocks([]tool.DetailBlock{t.DetailBlock()})
-}
-
-func (t agentDetailTool) DetailBlock() tool.DetailBlock {
-	return tool.DetailBlock{Content: t.detail, Format: t.format}
-}
-
-func (t agentDetailTool) ActivateTools() []string { return t.activate }
-
-type agentLazyDetailTool struct {
-	agentDetailTool
-	err error
-}
-
-func (t agentLazyDetailTool) LoadDetail(ctx context.Context) (tool.DetailBlock, error) {
-	if t.err != nil {
-		return tool.DetailBlock{}, t.err
-	}
-	return t.DetailBlock(), nil
-}
-
-type agentWrapperTool struct {
-	name   string
-	hidden bool
-	tags   []string
-}
-
-func (t agentWrapperTool) Name() string { return t.name }
-
-func (t agentWrapperTool) Info() tool.Info {
-	return tool.Info{Name: t.name, Description: t.name, Source: tool.SourceBuiltin, Risk: tool.RiskLow, Hidden: t.hidden, Tags: t.tags}
-}
-
-func (t agentWrapperTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Name: t.name, Parameters: map[string]any{"type": "object"}}
-}
-
-func (t agentWrapperTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
-	{
-		result := &tool.Result{Content: "ok"}
-		return result, result.Content, nil
-	}
-}
-
-func hasStoredUserMessage(messages []storage.Message, content string) bool {
-	for _, msg := range messages {
-		if msg.Role == storage.RoleUser && strings.Contains(msg.Content, content) {
-			return true
-		}
-	}
-	return false
-}
-
-type agentShellTool struct{}
-
-func (agentShellTool) Name() string { return "shell" }
-
-func (agentShellTool) Info() tool.Info {
-	return tool.Info{Name: "shell", Description: "fast test shell", Source: tool.SourceBuiltin, Risk: tool.RiskHigh}
-}
-
-func (agentShellTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Name: "shell", Parameters: map[string]any{"type": "object"}}
-}
-
-func (agentShellTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
-	return builtin.NewShellTool().AssessRisk(ctx, req)
-}
-
-func (agentShellTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
-	{
-		result := &tool.Result{Content: "agent test shell stdout"}
-		return result, result.Content, nil
-	}
-}
-
-func newAgentShellTool() tool.Tool { return agentShellTool{} }
-
-type slowTool struct {
-	started chan struct{}
-	release chan struct{}
-}
-
-func (t slowTool) Name() string { return "slow" }
-
-func (t slowTool) Info() tool.Info {
-	return tool.Info{Name: "slow", Description: "slow test tool", Source: tool.SourceBuiltin, Risk: tool.RiskLow}
-}
-
-func (t slowTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Name: "slow", Parameters: map[string]any{"type": "object"}}
-}
-
-func (t slowTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
-	close(t.started)
-	select {
-	case <-t.release:
-		{
-			result := &tool.Result{Content: "slow result"}
-			return result, result.Content, nil
-		}
-	case <-ctx.Done():
-		{
-			callErr := ctx.Err()
-			return nil, callErr.Error(), callErr
-		}
-	}
-}
-
 func (f *fakeLLM) GenerateText(ctx context.Context, req llm.TextRequest) (llm.TextResult, error) {
 	messages := []llm.LLMMessage{}
 	if req.Instructions != "" {
@@ -610,15 +369,6 @@ func (f *fakeLLM) GenerateText(ctx context.Context, req llm.TextRequest) (llm.Te
 		}
 	}
 	return result, ctx.Err()
-}
-
-func mustChatClient(t *testing.T, baseURL, key string, extras map[string]any) *chatcompletions.Client {
-	t.Helper()
-	client, err := chatcompletions.New(baseURL, key, extras, nil, chatcompletions.RequestOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return client
 }
 
 func newTestHookManager() *hook.DefaultManager {

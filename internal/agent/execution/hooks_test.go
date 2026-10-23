@@ -3,13 +3,13 @@ package execution
 import (
 	"context"
 	"errors"
-	"strings"
+
 	"testing"
 	"time"
 
 	agenthooks "elbot/internal/agent/hooks"
 	agentshare "elbot/internal/agent/share"
-	"elbot/internal/config"
+
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"elbot/internal/hook"
@@ -75,36 +75,6 @@ func TestFillHookContextAddsIntentTextWithoutWakeupPrefix(t *testing.T) {
 
 	if event.Message.IntentText != "咩" {
 		t.Fatalf("intent text = %q, want 咩", event.Message.IntentText)
-	}
-}
-
-func TestRunHookErrorReturnsToOwningEntry(t *testing.T) {
-	p := &fakePlatform{}
-	manager := newTestHookManager()
-
-	manager.Register(hook.Registration{
-		Point: hook.PointAgentInputPrepared,
-		Name:  "test.boom",
-		Match: hook.Always(),
-		Handler: hook.HandlerFunc(func(context.Context, hook.Event) (hook.Event, events.LogResult, error) {
-			return hook.Event{}, events.LogResult{ResultStatus: events.ResultFailed, Content: "test source failed"}, errors.New("boom")
-		}),
-	})
-
-	a := newTestAgent(t, p, &fakeLLM{}, "test-model", config.ProviderConfig{}, newTestStore(t), func(cfg *testAgentOptions) {
-		cfg.HookManager = manager
-	})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli",
-		ScopeID: "private:test"}}, Sender: p,
-	})
-
-	_, _, err := a.hooks.Run(ctx, hook.Event{Point: hook.PointAgentInputPrepared})
-	if err == nil {
-		t.Fatal("expected hook error")
-	}
-	assertNoFailureNotification(t, p)
-	if !strings.Contains(err.Error(), "hook test.boom") || !strings.Contains(err.Error(), "boom") {
-		t.Fatalf("hook error lost its source: %v", err)
 	}
 }
 

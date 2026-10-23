@@ -322,11 +322,6 @@ func TestSystemPromptSourcesKeepRegistrationAndToolTagOrder(t *testing.T) {
 	}
 }
 
-type recordingToolProvider struct {
-	tools []llm.ToolSchema
-	calls int
-}
-
 func TestFileSoulProviderCachesUntilFileChanges(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "SOUL.md")
 	if err := os.WriteFile(path, []byte("first"), 0o644); err != nil {
@@ -602,11 +597,6 @@ func newTestPromptBuilder(soul string, names ...string) chatroute.PromptBuilder 
 
 func (p staticToolNames) ToolNames(context.Context, string, *storage.Session, session.Scope) (dialogue.PromptToolNames, error) {
 	return dialogue.PromptToolNames{Tools: p.names}, nil
-}
-
-func (p *recordingToolProvider) Schemas(context.Context, string, *storage.Session, session.Scope) ([]llm.ToolSchema, error) {
-	p.calls++
-	return p.tools, nil
 }
 
 func TestPromptBuilderInjectsSummaryIntoCurrentUserMessage(t *testing.T) {

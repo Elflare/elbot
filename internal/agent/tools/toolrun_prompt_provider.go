@@ -5,7 +5,6 @@ import (
 
 	"elbot/internal/agent/dialogue"
 	agentshare "elbot/internal/agent/share"
-	"elbot/internal/llm"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -13,12 +12,10 @@ import (
 )
 
 type toolRunPromptProvider struct {
-	tools    *toolrun.Manager
+	tools interface {
+		ToolInfos(context.Context, toolrun.Context) ([]tool.Info, error)
+	}
 	identity dialogue.Identity
-}
-
-func (p toolRunPromptProvider) Schemas(ctx context.Context, mode string, session *storage.Session, scope session.Scope) ([]llm.ToolSchema, error) {
-	return p.tools.BaseSchemas(ctx, toolrun.Context{Mode: mode, Session: session, Scope: scope, Actor: p.identity.Actor(ctx), DisableBaseTools: agentshare.IsBackgroundSession(session)})
 }
 
 func (p toolRunPromptProvider) ToolNames(ctx context.Context, mode string, session *storage.Session, scope session.Scope) (dialogue.PromptToolNames, error) {

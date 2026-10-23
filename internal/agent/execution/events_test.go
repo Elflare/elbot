@@ -5,14 +5,12 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	agentevents "elbot/internal/agent/events"
-	"elbot/internal/config"
+
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
-	"elbot/internal/llm/chatcompletions"
-	"elbot/internal/modelmgr"
+
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/signal"
 	"elbot/internal/turn"
@@ -57,30 +55,6 @@ func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 	}
 }
 
-func TestModelCompletionSnapshotAndObserverFailureDoNotChangeResult(t *testing.T) {
-	usage := &llm.Usage{TotalTokens: func() *int64 { n := int64(7); return &n }()}
-	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{chunks: [][]chatcompletions.Chunk{{{DeltaContent: "source", Usage: usage}}}}, "model", config.ProviderConfig{}, newTestStore(t))
-	var event agentevents.ModelCallCompletedEvent
-	_, _ = a.Signals().ModelCallCompleted.Observe(func(_ context.Context, e agentevents.ModelCallCompletedEvent) error {
-		event = e
-		return errors.New("observer failed")
-	}, signal.ConnectOptions{})
-	ctx, row, err := a.execution.ResolveInput(context.Background(), "hello")
-	if err != nil {
-		t.Fatal(err)
-	}
-	out := foregroundTurnOutput{sender: a.output}
-	result, err := testChatRoute(a).Caller.Call(ctx, row, modelmgr.SelectionForTurn(ctx, a.execution.models, row), nil, nil, nil, nil, out)
-	if err != nil || result.Text != "source" || !event.OutputReady {
-		t.Fatalf("observation changed result: %+v / %v", result, err)
-	}
-	*usage.TotalTokens = 100
-	*result.Usage.TotalTokens = 101
-	if event.Usage.TotalTokens == nil || *event.Usage.TotalTokens != 7 {
-		t.Fatal("model fact retained mutable usage")
-	}
-}
-
 func TestReplyFactsPreservePartialSuccessAndReceiptSnapshot(t *testing.T) {
 	f := newReplyTestFixture(t, false)
 	f.platform.sendErr = errors.New("partial send")
@@ -108,51 +82,4 @@ func TestReplyFactsPreservePartialSuccessAndReceiptSnapshot(t *testing.T) {
 			t.Fatalf("receipt log snapshot mutated: %+v", record)
 		}
 	}
-}
-
-func TestConfirmationPublishesAfterAdmissionRelease(t *testing.T) {
-	a := newTestAgent(t, &fakePlatform{}, &fakeLLM{}, "model", config.ProviderConfig{}, newTestStore(t))
-	ctx, row, err := a.execution.ResolveInput(context.Background(), "hello")
-	if err != nil {
-		t.Fatal(err)
-	}
-	a.execution.turns.StartLLM(row.ID, "hello")
-	a.execution.turns.StartToolPhase(row.ID)
-	finished := make(chan struct{})
-	go func() {
-		_, _ = a.execution.turns.AwaitRiskConfirmationContext(ctx, row.ID, turn.RiskConfirmation{ID: "c", ToolName: "tool"}, time.Second)
-		close(finished)
-	}()
-	deadline := time.Now().Add(time.Second)
-	for {
-		if _, ok := a.execution.turns.PendingRiskConfirmation(row.ID); ok {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("confirmation not installed")
-		}
-		time.Sleep(time.Millisecond)
-	}
-	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
-		if record.EventName != "risk_confirmation_command" || record.Identity.SessionID == nil || *record.Identity.SessionID != row.ID {
-			return nil
-		}
-		lockCtx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		_, release, err := a.execution.sessions.EnterActivation(lockCtx, a.identity.Scope(ctx), row.ID)
-		if err != nil {
-			t.Error("confirmation event emitted with admission held:", err)
-			return err
-		}
-		release()
-		return nil
-	}, signal.ConnectOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer connection.Disconnect()
-	if err := a.confirmations.SubmitResponse(ctx, row.ID, "/confirm"); err != nil {
-		t.Fatal(err)
-	}
-	<-finished
 }

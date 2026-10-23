@@ -21,6 +21,7 @@ import (
 	commandbuiltin "elbot/internal/command/builtin"
 	"elbot/internal/config"
 	"elbot/internal/contextmgr"
+	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/logging"
 	"elbot/internal/request"
@@ -29,33 +30,33 @@ import (
 	"elbot/internal/turn"
 )
 
-func NewSupervisor(ctx context.Context, deps SupervisorDeps) (*Supervisor, error) {
+func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps) (*Supervisor, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	m := &Supervisor{ctx: ctx, cancel: cancel, bindings: &signalBindings{}, done: make(chan struct{})}
 	m.routes = routes.New()
-	m.sessions = session.NewServiceWithConfig(deps.Store, session.Config{NamingConfig: session.NamingConfig{TriggerStep: deps.Session.Naming.TriggerStep}, DefaultMode: deps.Session.DefaultMode}, session.NewTitleGenerator(deps.Models))
+	m.sessions = session.NewServiceWithConfig(deps.Store, session.Config{NamingConfig: session.NamingConfig{TriggerStep: cfg.Session.Naming.TriggerStep}, DefaultMode: cfg.Session.DefaultMode}, session.NewTitleGenerator(deps.Models))
 	m.requests = request.NewManager(0)
 	m.turns = turn.NewManager()
-	m.contexts = contextmgr.New(contextmgr.Options{Compactors: m.routes, Store: deps.Store, Models: deps.Models, Config: deps.Context})
-	m.commands = command.NewRouter(deps.Prefixes)
-	sessionCommands := commandbuiltin.NewSessionCommandState(deps.PageSize, deps.RetentionDays)
+	m.contexts = contextmgr.New(contextmgr.Options{Compactors: m.routes, Store: deps.Store, Models: deps.Models, Config: cfg.Context})
+	m.commands = command.NewRouter(cfg.Commands.Prefixes)
+	sessionCommands := commandbuiltin.NewSessionCommandState(cfg.View.SessionListPageSize, cfg.Maintenance.SessionCleanup.RetentionDays)
 	signals := agentevents.NewSignals()
 	m.statusChanged = signals.StatusChanged
 	view := dialogue.ExecutionView{Sessions: deps.Store.Sessions()}
-	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: deps.PlatformName, ActorID: "cli:local", ScopeID: "local", Policy: deps.Policy})
+	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: deps.Platform.PrimaryName(), ActorID: "cli:local", ScopeID: "local", Policy: deps.Permission})
 	bridge := agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{
-		Manager:    deps.HookRunner,
-		Router:     deps.HookRouter,
+		Manager:    deps.Hooks,
+		Router:     deps.Hooks,
 		Requests:   m.requests,
 		Identity:   identity,
 		Media:      deps.Media,
 		Failed:     signals.HookFailed,
-		Dispatcher: deps.Dispatcher,
+		Dispatcher: deps.Platform,
 	})
 	m.bridge = bridge
 	status := agentexecution.NewStatusRecorder(agentexecution.StatusRecorderDeps{View: view, Turns: m.turns, Changed: signals.StatusChanged})
-	output := agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{Dispatcher: deps.Dispatcher, Hooks: bridge, Reasoning: deps.Reasoning})
-	policy := agentconfirmation.NewConfirmationPolicy(agentconfirmation.ConfirmationPolicyDeps{Identity: identity, IdleExpiration: sessionIdleExpirationConfig(deps.Session.IdleExpiration), UserConfirmationTimeout: 10 * time.Minute})
+	output := agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{Dispatcher: deps.Platform, Hooks: bridge, Reasoning: deps.Platform.StartReasoning})
+	policy := agentconfirmation.NewConfirmationPolicy(agentconfirmation.ConfirmationPolicyDeps{Identity: identity, IdleExpiration: sessionIdleExpirationConfig(cfg.Session.IdleExpiration), UserConfirmationTimeout: 10 * time.Minute})
 	confirmations := agentconfirmation.NewConfirmationCoordinator(agentconfirmation.ConfirmationCoordinatorDeps{
 		Sessions: m.sessions,
 		Requests: m.requests,
@@ -65,44 +66,41 @@ func NewSupervisor(ctx context.Context, deps SupervisorDeps) (*Supervisor, error
 		Output:   output,
 		Policy:   policy,
 	})
-	toolRuntime := agenttools.NewToolRuntimeState(agenttools.ToolRuntimeStateDeps{Provider: nil, Manager: deps.ToolManager, Registry: deps.Registry, FileRollback: deps.Files, Identity: identity})
+	toolRuntime := agenttools.NewToolRuntimeState(agenttools.ToolRuntimeStateDeps{Manager: deps.Tools, FileRollback: deps.Tools, Identity: identity})
 	toolDeps := agenttools.NewToolRunDeps(agenttools.ToolRunDeps{
 		Status:        status,
 		Hooks:         bridge,
 		Requests:      m.requests,
 		Turns:         m.turns,
 		Identity:      identity,
-		State:         deps.ToolState,
 		Runtime:       toolRuntime,
 		Sessions:      m.sessions,
 		SessionRows:   deps.Store.Sessions(),
-		ToolCalls:     deps.Store.ToolCalls(),
 		Confirmations: confirmations,
 		View:          view,
 	})
 	runner := dialogue.NewRunner(dialogue.RunnerDeps{
-		Status:          status,
-		Routes:          m.routes,
-		Dialogues:       deps.Store.Dialogues(),
-		Sessions:        m.sessions,
-		Turns:           m.turns,
-		Contexts:        m.contexts,
-		Media:           deps.Media,
-		Identity:        identity,
-		Hooks:           bridge,
-		Output:          output,
-		ToolManager:     deps.ToolManager,
-		ToolRegistry:    deps.Registry,
-		ToolState:       deps.ToolState,
-		ToolDeps:        toolDeps,
-		ToolProvider:    toolRuntime.Provider(),
-		DefaultProvider: toolRuntime.DefaultProvider(),
-		MaxRounds:       deps.MaxRounds,
-		SoulPath:        deps.SoulPath,
-		Memory:          deps.Memory,
-		Preloader:       deps.Preloader,
-		Signals:         signals,
-		View:            view,
+		Status:       status,
+		Routes:       m.routes,
+		Dialogues:    deps.Store.Dialogues(),
+		Sessions:     m.sessions,
+		Turns:        m.turns,
+		Contexts:     m.contexts,
+		Media:        deps.Media,
+		Identity:     identity,
+		Hooks:        bridge,
+		Output:       output,
+		ToolManager:  deps.Tools,
+		ToolRegistry: deps.Tools,
+		ToolState:    deps.Tools,
+		ToolDeps:     toolDeps,
+		ToolProvider: toolRuntime.Provider(),
+		MaxRounds:    cfg.Tools.MaxRoundsPerTurn,
+		SoulPath:     cfg.Soul.Path,
+		Memory:       deps.Tools,
+		Preloader:    deps.Tools,
+		Signals:      signals,
+		View:         view,
 	})
 	chat := chatroute.NewLoop(chatroute.LoopDeps{
 		Status:   status,
@@ -150,7 +148,7 @@ func NewSupervisor(ctx context.Context, deps SupervisorDeps) (*Supervisor, error
 		Output:          output,
 		Status:          status,
 		WaitPolicy:      policy,
-		ResponseTimeout: deps.ResponseTimeout,
+		ResponseTimeout: time.Duration(cfg.LLMRequest.ResponseTimeoutSeconds) * time.Second,
 	})
 	m.execution = execution
 	input := agentinput.NewInputCoordinator(agentinput.InputCoordinatorDeps{
@@ -162,13 +160,12 @@ func NewSupervisor(ctx context.Context, deps SupervisorDeps) (*Supervisor, error
 		Output:        output,
 		Execution:     execution,
 		Confirmations: confirmations,
-		Registry:      deps.Registry,
-		Preloader:     deps.Preloader,
-		ToolState:     deps.ToolState,
+		Preloader:     deps.Tools,
+		ToolState:     deps.Tools,
 		WaitPolicy:    policy,
 	})
 	fileCommands := agentinput.NewFileCommandPreparer(agentinput.FileCommandPreparerDeps{
-		Service:     deps.Files,
+		Service:     deps.Tools,
 		Sessions:    m.sessions,
 		SessionRows: deps.Store.Sessions(),
 		Turns:       m.turns,
@@ -185,7 +182,6 @@ func NewSupervisor(ctx context.Context, deps SupervisorDeps) (*Supervisor, error
 		Confirmations: confirmations,
 		Input:         input,
 	}, commandbuiltin.Deps{
-		Doctor:             deps.Doctor,
 		Router:             m.commands,
 		Sessions:           m.sessions,
 		Requests:           m.requests,
@@ -195,13 +191,13 @@ func NewSupervisor(ctx context.Context, deps SupervisorDeps) (*Supervisor, error
 		Models:             deps.Models,
 		Contexts:           m.contexts,
 		Compact:            execution,
-		Tools:              deps.Registry,
-		Skills:             deps.Skills,
-		FileRollback:       deps.Files,
+		Tools:              deps.Tools,
+		Skills:             deps.Tools,
+		FileRollback:       fileRollbackCapabilities{deps.Tools},
 		PrepareFileContext: fileCommands.PrepareFileCommand,
-		Hooks:              deps.HookControl,
+		Hooks:              deps.Hooks,
 		SessionState:       sessionCommands,
-		Logs:               logging.Reader{Dir: deps.LogDir},
+		Logs:               logging.Reader{Dir: deps.Logs.LogDir()},
 		RuntimeStatus:      status.Snapshot,
 		Usage:              status.Usage,
 	})
@@ -219,26 +215,27 @@ func NewSupervisor(ctx context.Context, deps SupervisorDeps) (*Supervisor, error
 		MediaRows: deps.Store.Media(),
 	})
 	completion := agentinput.NewCompletion(agentinput.CompletionDeps{
-		Commands:  m.commands,
-		Sessions:  m.sessions,
-		Turns:     m.turns,
-		Store:     deps.Store,
-		Identity:  identity,
-		Registry:  deps.Registry,
-		Preloader: deps.Preloader,
-		Execution: execution,
+		Commands:       m.commands,
+		Sessions:       m.sessions,
+		Turns:          m.turns,
+		Store:          deps.Store,
+		Identity:       identity,
+		Registry:       deps.Tools,
+		Tags:           deps.Tools.ToolTags,
+		ToolNamesByTag: deps.Tools.ToolNamesByTag,
+		Execution:      execution,
 	})
 	bindings := m.bindings
 	if err := bindings.connectAgentNotifications(signals); err != nil {
 		return m, err
 	}
-	if err := bindings.connectSession(m.sessions, deps.Files.Manager, execution); err != nil {
+	if err := bindings.connectSession(m.sessions, deps.Tools, execution); err != nil {
 		return m, err
 	}
 	if err := m.bindings.connectModels(deps.Models); err != nil {
 		return m, err
 	}
-	m.handler, m.completion, m.identity = handler, completion, identity
+	m.handler, m.completion = handler, completion
 	return m, nil
 }
 
@@ -273,6 +270,13 @@ func wireCommands(deps agentinput.CommandExecutorDeps, modules commandbuiltin.De
 		return nil, err
 	}
 	return executor, nil
+}
+
+// fileRollbackCapabilities adapts the command's List name to Tool's rollback operation.
+type fileRollbackCapabilities struct{ ToolCapabilities }
+
+func (c fileRollbackCapabilities) List(ctx context.Context) ([]fileops.RollbackInfo, error) {
+	return c.ListRollbacks(ctx)
 }
 
 func bindProtocolRoutes(registry *routes.Registry, chat *chatroute.Loop, response *responseroute.Loop) {

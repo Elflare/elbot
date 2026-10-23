@@ -19,15 +19,20 @@ type ToolDepsFactory interface {
 	ForTurn(Output, string) toolrun.RunnerDeps
 }
 type ToolExecutor struct {
-	Messages        *MessageStore
-	Manager         *toolrun.Manager
-	State           *toolrun.StateService
-	Registry        *tool.Registry
-	Provider        ToolSchemaProvider
-	DefaultProvider bool
-	Identity        Identity
-	Deps            ToolDepsFactory
-	MaxRounds       int
+	Messages *MessageStore
+	Manager  interface {
+		Run(context.Context, toolrun.RunnerDeps, toolrun.RunRequest) toolrun.RunResult
+		Schemas(context.Context, toolrun.Context, []toolrun.CachedTool) ([]llm.ToolSchema, error)
+	}
+	State interface {
+		Load(context.Context, string) (*storage.Session, error)
+	}
+	Registry interface {
+		Get(string) (tool.Tool, bool)
+	}
+	Identity  Identity
+	Deps      ToolDepsFactory
+	MaxRounds int
 }
 
 func (r *ToolExecutor) MaxRoundsPerTurn() int { return r.MaxRounds }
@@ -111,7 +116,7 @@ func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storag
 		_, err = committer.Flush(ctx)
 		return toolrun.RunResult{Messages: messages, PreparedCalls: calls, Err: err}
 	}
-	return toolrun.NewRunner(r.Manager).Run(ctx, r.Deps.ForTurn(out, turn.AttemptFromContext(ctx)), toolrun.RunRequest{
+	return r.Manager.Run(ctx, r.Deps.ForTurn(out, turn.AttemptFromContext(ctx)), toolrun.RunRequest{
 		Session:          session,
 		Calls:            calls,
 		AssistantText:    assistantText,
@@ -126,9 +131,6 @@ func (r *ToolExecutor) Schemas(ctx context.Context, session *storage.Session) ([
 	if session == nil || (session.Mode != storage.SessionModeWork && session.Mode != storage.SessionModeBackground) {
 		return nil, nil
 	}
-	if session.Mode == storage.SessionModeWork && r.Provider != nil && !r.DefaultProvider {
-		return r.Provider.Schemas(ctx, session.Mode, session, r.Identity.Scope(ctx))
-	}
 	cached, _, err := CachedToolsForSession(ctx, r.State, r.Registry, session)
 	if err != nil {
 		return nil, fmt.Errorf("准备工具: %w", err)
@@ -136,7 +138,11 @@ func (r *ToolExecutor) Schemas(ctx context.Context, session *storage.Session) ([
 	return r.Manager.Schemas(ctx, toolrun.Context{Mode: session.Mode, Session: session, Scope: r.Identity.Scope(ctx), Actor: r.Identity.Actor(ctx), DisableBaseTools: sessionpkg.IsBackground(session)}, cached)
 }
 
-func CachedToolsForSession(ctx context.Context, service *toolrun.StateService, registry *tool.Registry, row *storage.Session) ([]toolrun.CachedTool, events.LogResult, error) {
+func CachedToolsForSession(ctx context.Context, service interface {
+	Load(context.Context, string) (*storage.Session, error)
+}, registry interface {
+	Get(string) (tool.Tool, bool)
+}, row *storage.Session) ([]toolrun.CachedTool, events.LogResult, error) {
 	if row == nil {
 		return nil, events.LogResult{ResultStatus: events.ResultSkipped, Content: "session is absent"}, nil
 	}

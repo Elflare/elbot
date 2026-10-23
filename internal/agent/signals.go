@@ -64,7 +64,7 @@ type signalBindings struct {
 	connections []*signal.Connection
 }
 
-func (b *signalBindings) connectSession(sessions *session.Service, rollback *fileops.RollbackManager, execution *agentexecution.ExecutionCoordinator) error {
+func (b *signalBindings) connectSession(sessions *session.Service, rollback interface{ Forget(fileops.Binding) }, execution *agentexecution.ExecutionCoordinator) error {
 	if err := connectSignal(b, sessions.ForegroundActivated(), func(ctx context.Context, event session.ForegroundActivatedEvent) error {
 		execution.AdoptForeground(ctx, &event.Session, event.Binding)
 		return nil

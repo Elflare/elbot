@@ -7,10 +7,10 @@ import (
 
 	"elbot/internal/agent/dialogue"
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/events"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
 	"elbot/internal/toolrun"
 	"elbot/internal/turn"
 )
@@ -51,8 +51,12 @@ type InputCoordinatorDeps struct {
 	Output        InputOutput
 	Execution     InputExecution
 	Confirmations InputConfirmations
-	Registry      *tool.Registry
-	Preloader     *toolrun.PreloadService
-	ToolState     *toolrun.StateService
-	WaitPolicy    InputWaitPolicy
+	Preloader     interface {
+		PrepareTools(context.Context, []string) (toolrun.ToolPreload, error)
+		PrepareSkills(context.Context, string, []string) (toolrun.SkillPreload, error)
+	}
+	ToolState interface {
+		Commit(context.Context, string, toolrun.StateUpdate) (toolrun.StateCommit, events.LogResult, error)
+	}
+	WaitPolicy InputWaitPolicy
 }

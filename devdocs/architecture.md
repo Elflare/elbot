@@ -9,7 +9,7 @@
 <!-- locator:startup -->
 ## 启动与装配
 
-App 的六个文件已完成类型、字段、函数签名与职责注释骨架，包含启动耗时统计与业务线启停约定；函数体使用 `pass` 占位，当前没有可运行的 App 入口。原 13 个生产文件和 12 个测试文件均保存在同目录的 `*.go.bak` 中，不参与构建。
+App 沿用六文件骨架，已填写 Agent 的总管构造、能力接线、启动和关闭调用；其他业务线、共享资源准备与公共流程仍待实现，当前没有可运行的 App 入口。原 13 个生产文件和 12 个测试文件均保存在同目录的 `*.go.bak` 中，不参与构建。
 
 已确认的文件职责见 [App 包设计](app-design.md)：`entry.go` 组织完整运行流程，`environment.go` 定位配置并取得服务运行占用，`resources.go` 按定位结果加载配置并准备日志、共享存储、媒体、权限和模型管理，`wiring.go` 分步构建五条线总管并连接公开能力，`shutdown.go` 协调业务线停止、限时等待与资源清理，`client.go` 承担明确运行和自动尝试客户端的路径，实际回退由进程入口决定。共享存储由 App 协调生命周期，平台聊天历史及其存储生命周期归平台总管；准备或装配失败时，已取得资源和总管交回入口统一清理；接线产生的订阅由对应总管或服务持有。退出流程使用独立清理上下文和统一 30 秒预算，超时立即停止等待，由 Run 返回标明业务线或资源的错误，进程入口输出到 stderr 后强制退出。下层实现不在本轮展开。
 
@@ -28,7 +28,7 @@ flowchart TB
     S -.->|释放服务运行占用| ENV
 ```
 
-图中是文件职责关系，尚未实现相应调用。其余章节描述保留的下层代码，不代表当前 App 已完成装配。旧 App 的构造、启动和退出逻辑可在 `.bak` 文件中查阅；后续须先确认骨架，再按新职责参考填充。
+图中是文件职责关系，完整调用链尚未实现。其余章节描述下层代码，不代表当前 App 已完成装配。后续沿用已确认骨架参考 `.bak` 填充；App 与 Agent 不承接 Doctor，配置诊断由配置侧负责。
 
 <!-- locator:contextinfo -->
 ## 公共上下文事实
@@ -90,12 +90,18 @@ flowchart TB
 
 ### Agent 包边界
 
-根包 `agent.Supervisor` 为 App 提供 Agent 业务线的构造与管理入口；App 当前仍为待实现骨架。根包持有 Session、Request、Turn、协议路线及订阅；具体业务放在子包，后台准备由 `background/module` 持有。`share` 提供线内共享定义与辅助能力，不反向依赖 input、execution、confirmation、hooks、output 或 tools。
+`Supervisor` 的业务出口为 `HandleMessage`、`HookWakeup`、`Complete`、`Commands`、`ObserveHookRun`、`ObserveStatusChanged`、`ObserveBindingChanged`；生命周期出口为 `Start`、`BeginClose`、`Close`、`Done`。内部组件不通过 getter 暴露。`Commands` 返回独立的命令元数据；状态订阅复制用量，绑定订阅只返回 Scope、SessionID 和变更原因，每个订阅者获得独立快照。调用方只持有自己的订阅连接，不能发射或关闭源信号。
+
+工具预加载和补全标签由 Tool 能力提供；执行 Schema 统一经工具执行能力生成，提示词只消费工具名称。Agent 不另设自定义 Schema Provider 或 Registry 回退。整链路测试通过真实 `NewSupervisor` 构造，子组件单测在各所属包中维护。
+
+根包 `agent.Supervisor` 为 App 提供 Agent 业务线的构造与管理入口。`NewSupervisor(ctx, cfg, deps)` 在内部拆分配置；`SupervisorDeps` 只接收 Store、Models、Media、Permission、Logs 五项共享资源，以及 Tool、Hook、Platform 三类业务能力。`deps.go` 在消费方声明 `ToolCapabilities`、`HookCapabilities`、`PlatformCapabilities`，提供方总管直接实现接口。内部消费位置同样按所需操作依赖接口，不获取提供方的 Manager、Registry 等组件。App 只传总管并调用接收方的 `ConnectAgent`，适配及订阅由接收方管理；其余四条线的总管实现仍待完成。根包持有 Session、Request、Turn、协议路线及订阅；具体业务放在子包，后台准备由 `background/module` 持有。`share` 提供线内共享定义与辅助能力，不反向依赖 input、execution、confirmation、hooks、output 或 tools。
 
 ```mermaid
 flowchart TD
-    A["app/wiring.go<br/>业务线构建与公开能力接线"] --> S["agent/supervisor.go、deps.go<br/>总管、公开能力与外部依赖"]
-    S --> W["agent/wiring.go<br/>组件构造与线内接线"]
+    A["app/wiring.go<br/>总管构造与跨线能力接线"] --> S["agent/supervisor.go<br/>Agent 总管与公开能力"]
+    A --> DEP["agent/deps.go<br/>共享资源和三类消费方能力接口"]
+    DEP --> W
+    S --> W["agent/wiring.go<br/>拆分配置、组件构造与线内接线"]
     S --> L["agent/lifecycle.go<br/>启动、取消与关闭"]
     S --> G["agent/signals.go<br/>连接、消费与释放订阅"]
     W --> I["agent/input/<br/>消息、命令、补全与输入准备"]

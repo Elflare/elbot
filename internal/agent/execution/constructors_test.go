@@ -4,22 +4,16 @@ import (
 	"context"
 	"log/slog"
 	"testing"
-	"time"
 
-	agentconfirmation "elbot/internal/agent/confirmation"
-	"elbot/internal/agent/dialogue"
 	agentinput "elbot/internal/agent/input"
-	agentoutput "elbot/internal/agent/output"
+
 	agentshare "elbot/internal/agent/share"
-	"elbot/internal/config"
+
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/hook"
-	"elbot/internal/llm"
-	"elbot/internal/modelmgr"
+
 	"elbot/internal/security"
-	"elbot/internal/session"
-	"elbot/internal/storage"
 )
 
 type constructorHooks struct{}
@@ -83,84 +77,4 @@ func TestMessageEntryConstructsWithOnlyConsumptionCapabilities(t *testing.T) {
 	if input.text != "plain input" || !input.expired {
 		t.Fatalf("input=%+v", input)
 	}
-}
-
-func TestExecutionConstructionKeepsBorrowedCallbacksAndServices(t *testing.T) {
-	opts := assembleTestOptions(t, validConstructorOptions(t))
-	defer opts.Sessions.Close(context.Background())
-	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Policy: opts.SecurityPolicy})
-	policy := agentconfirmation.NewConfirmationPolicy(agentconfirmation.ConfirmationPolicyDeps{Identity: identity})
-	status := NewStatusRecorder(StatusRecorderDeps{Turns: opts.Turns})
-	output := agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{Dispatcher: opts.Dispatcher, Hooks: constructorHooks{}})
-	activations := 0
-	connectTestForeground(t, opts.Sessions, func(context.Context, *storage.Session, *session.Binding) { activations++ })
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	deps := ExecutionCoordinatorDeps{
-		Sessions:    opts.Sessions,
-		SessionRows: opts.Store.Sessions(),
-		Turns:       opts.Turns,
-		Requests:    opts.Requests,
-		Contexts:    opts.Contexts,
-		Models:      opts.Models,
-		Dialogue:    &dialogue.Runner{Routes: opts.Routes},
-		Identity:    identity,
-		View:        dialogue.ExecutionView{Sessions: opts.Store.Sessions()},
-		Output:      output,
-		Status:      status,
-		WaitPolicy:  policy,
-	}
-	execution := NewExecutionCoordinator(ctx, deps)
-	scope := identity.Scope(t.Context())
-	row, err := opts.Sessions.PrepareBackground(t.Context(), scope, session.BackgroundRequest{Kind: "cron", Name: "borrowed"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := opts.Sessions.Resume(t.Context(), scope, row.ID); err != nil {
-		t.Fatal(err)
-	}
-	if activations != 1 {
-		t.Fatalf("constructor replaced borrowed callback: %d", activations)
-	}
-	cancel()
-	closeCtx, stop := context.WithTimeout(context.Background(), time.Second)
-	defer stop()
-	for range 2 {
-		if err := execution.Close(closeCtx); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := opts.Sessions.Current(closeCtx, scope); err != nil {
-		t.Fatalf("close released borrowed Sessions: %v", err)
-	}
-}
-
-func validConstructorOptions(t *testing.T, configure ...func(*testAgentOptions)) testAgentOptions {
-	t.Helper()
-	opts := testAgentOptions{
-		Providers:       map[string]config.ProviderConfig{"default": {}},
-		CommandPrefixes: []string{"/"},
-		SessionConfig:   session.Config{NamingConfig: session.NamingConfig{TriggerStep: 1}, DefaultMode: storage.SessionModeWork},
-		SecurityPolicy:  security.DefaultPolicy(),
-		SandboxRoot:     "data/sandbox",
-		ToolsConfig:     config.ToolsConfig{MaxRoundsPerTurn: 2},
-	}
-	for _, change := range configure {
-		change(&opts)
-	}
-	if opts.Store == nil {
-		opts.Store = newTestStore(t)
-	}
-	if opts.Models == nil {
-		opts.Models = newTestModels(t, modelmgr.Options{
-			Clients:   map[string]llm.Client{"default": &fakeLLM{}},
-			Providers: map[string]config.ProviderConfig{"default": {}},
-			ModeModels: map[string]config.ModelSelection{
-				storage.SessionModeWork: {Provider: "default", Model: "model"},
-				storage.SessionModeChat: {Provider: "default", Model: "model"},
-			},
-			DefaultMode: storage.SessionModeWork,
-		})
-	}
-	return opts
 }

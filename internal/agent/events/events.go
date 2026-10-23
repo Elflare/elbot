@@ -8,6 +8,7 @@ import (
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	runtimestatus "elbot/internal/runtime"
+	"elbot/internal/session"
 	"elbot/internal/signal"
 )
 
@@ -38,6 +39,20 @@ type StatusChangedEvent struct {
 	Snapshot runtimestatus.Snapshot // Committed execution state, independent of presentation.
 	Version  uint64                 // Monotonic publication order within the recorder.
 }
+
+// BindingSnapshot describes an activation without exposing its internal handle.
+type BindingSnapshot struct {
+	Scope     session.Scope // Conversation and actor scope of the activation.
+	SessionID string        // Persisted session selected by this activation.
+}
+
+// BindingChangedEvent contains independently copied facts for one subscriber.
+type BindingChangedEvent struct {
+	Old    *BindingSnapshot     // Previous activation; nil when none existed.
+	New    *BindingSnapshot     // New activation; nil when the scope becomes unbound.
+	Reason session.ChangeReason // Operation that changed the selection.
+}
+
 type VisionFallbackUsedEvent struct {
 	EventMeta
 	Visible bool

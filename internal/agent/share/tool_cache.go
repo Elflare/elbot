@@ -8,7 +8,9 @@ import (
 	"elbot/internal/toolrun"
 )
 
-func CommitToolState(ctx context.Context, state *toolrun.StateService, row *storage.Session, update toolrun.StateUpdate) (toolrun.StateCommit, events.LogResult, error) {
+func CommitToolState(ctx context.Context, state interface {
+	Commit(context.Context, string, toolrun.StateUpdate) (toolrun.StateCommit, events.LogResult, error)
+}, row *storage.Session, update toolrun.StateUpdate) (toolrun.StateCommit, events.LogResult, error) {
 	if len(update.Tools) == 0 && len(update.Tags) == 0 {
 		return toolrun.StateCommit{}, events.LogResult{ResultStatus: events.ResultSkipped}, nil
 	}

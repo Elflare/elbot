@@ -9,6 +9,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/memory/resident"
 	sandboxctx "elbot/internal/sandbox"
+	"elbot/internal/session"
 	"elbot/internal/storage"
 )
 
@@ -72,7 +73,9 @@ type SoulSystemPromptSource struct {
 }
 
 type ResidentMemorySystemPromptSource struct {
-	Store *resident.Store
+	Store interface {
+		Read(context.Context, session.Scope) (resident.Memory, error)
+	}
 }
 
 func (s ResidentMemorySystemPromptSource) Parts(ctx context.Context, req SystemPromptRequest) ([]SystemPromptPart, error) {

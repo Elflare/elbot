@@ -42,7 +42,7 @@ func (c *InputCoordinator) preloadContext(ctx context.Context) context.Context {
 
 func (c *InputCoordinator) prepareToolDirectives(ctx context.Context, row *storage.Session, text string) toolDirectiveResult {
 	result := toolDirectiveResult{Text: text}
-	if row == nil || row.Mode != storage.SessionModeWork || c.registry == nil || !containsAny(text, directive.ToolPrefix, directive.ToolFullPrefix, directive.ToolShortPrefix, directive.ToolShortFull) {
+	if row == nil || row.Mode != storage.SessionModeWork || !containsAny(text, directive.ToolPrefix, directive.ToolFullPrefix, directive.ToolShortPrefix, directive.ToolShortFull) {
 		return result
 	}
 	matches := directive.ToolMatches(text)
@@ -80,7 +80,7 @@ func (c *InputCoordinator) prepareToolDirectives(ctx context.Context, row *stora
 
 func (c *InputCoordinator) prepareSkillDirectives(ctx context.Context, row *storage.Session, text string) skillDirectiveResult {
 	result := skillDirectiveResult{Text: text}
-	if row == nil || row.Mode != storage.SessionModeWork || c.registry == nil || !containsAny(text, directive.SkillPrefix, directive.SkillFullPrefix, directive.SkillShortPrefix, directive.SkillShortFull) {
+	if row == nil || row.Mode != storage.SessionModeWork || !containsAny(text, directive.SkillPrefix, directive.SkillFullPrefix, directive.SkillShortPrefix, directive.SkillShortFull) {
 		return result
 	}
 	matches := directive.SkillMatches(text)

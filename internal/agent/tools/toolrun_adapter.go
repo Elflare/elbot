@@ -33,11 +33,9 @@ type toolRunDeps struct {
 	requests      *request.Manager
 	turns         *turn.Manager
 	identity      ToolIdentity
-	state         *toolrun.StateService
 	runtime       *ToolRuntimeState
 	sessions      *sessionstate.Service
 	sessionRows   storage.SessionRepository
-	toolCalls     storage.ToolCallRepository
 	confirmations ToolConfirmations
 	view          dialogue.ExecutionView
 	output        dialogue.Output
@@ -196,11 +194,9 @@ type ToolRunDeps struct {
 	Requests      *request.Manager
 	Turns         *turn.Manager
 	Identity      ToolIdentity
-	State         *toolrun.StateService
 	Runtime       *ToolRuntimeState
 	Sessions      *sessionstate.Service
 	SessionRows   storage.SessionRepository
-	ToolCalls     storage.ToolCallRepository
 	Confirmations ToolConfirmations
 	View          dialogue.ExecutionView
 }
@@ -212,11 +208,9 @@ func NewToolRunDeps(deps ToolRunDeps) dialogue.ToolDepsFactory {
 		requests:      deps.Requests,
 		turns:         deps.Turns,
 		identity:      deps.Identity,
-		state:         deps.State,
 		runtime:       deps.Runtime,
 		sessions:      deps.Sessions,
 		sessionRows:   deps.SessionRows,
-		toolCalls:     deps.ToolCalls,
 		confirmations: deps.Confirmations,
 		view:          deps.View,
 	}

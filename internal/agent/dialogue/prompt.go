@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"elbot/internal/llm"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -77,10 +76,6 @@ func currentSoulFileState(path string) (soulFileState, error) {
 
 func sameSoulFileState(left, right soulFileState) bool {
 	return left.size == right.size && left.modTime.Equal(right.modTime)
-}
-
-type ToolSchemaProvider interface {
-	Schemas(ctx context.Context, mode string, session *storage.Session, scope session.Scope) ([]llm.ToolSchema, error)
 }
 
 type PromptToolNames = tool.PromptNames

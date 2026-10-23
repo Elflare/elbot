@@ -12,20 +12,20 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
-	"elbot/internal/toolrun"
 	"elbot/internal/turn"
 )
 
 // CompletionDeps declares the query sources consumed by structured completion.
 type CompletionDeps struct {
-	Commands  *command.Router
-	Sessions  *session.Service
-	Turns     *turn.Manager
-	Store     storage.Store
-	Identity  CompletionIdentity
-	Registry  *tool.Registry
-	Preloader *toolrun.PreloadService
-	Execution CompletionExecution
+	Commands       *command.Router
+	Sessions       *session.Service
+	Turns          *turn.Manager
+	Store          storage.Store
+	Identity       CompletionIdentity
+	Registry       completion.ToolCapabilities
+	Tags           func(context.Context) ([]string, error)
+	ToolNamesByTag func(context.Context, string, func(tool.Tool) bool) ([]string, error)
+	Execution      CompletionExecution
 }
 
 type CompletionIdentity interface {
@@ -38,7 +38,7 @@ type CompletionExecution interface {
 }
 
 func NewCompletion(deps CompletionDeps) *completion.Service {
-	commands, sessions, turns, store, identity, registry, preloader, execution := deps.Commands, deps.Sessions, deps.Turns, deps.Store, deps.Identity, deps.Registry, deps.Preloader, deps.Execution
+	commands, sessions, turns, store, identity, registry, execution := deps.Commands, deps.Sessions, deps.Turns, deps.Store, deps.Identity, deps.Registry, deps.Execution
 
 	return completion.NewService(
 		completion.RiskConfirmationSource{Router: commands, Sessions: sessions, Turns: turns, Scope: identity.Scope, CommandNames: agentconfirmation.RiskConfirmationCommandNames()},
@@ -55,14 +55,14 @@ func NewCompletion(deps CompletionDeps) *completion.Service {
 				}
 				return prepared, nil
 			},
-			Registry: func() *tool.Registry { return registry },
+			Registry: func() completion.ToolCapabilities { return registry },
 			Actor:    identity.Actor,
 			Policy:   func() *security.Policy { return identity.Policy() },
-			Tags: func(ctx context.Context, _ *tool.Registry, actor contextinfo.Actor, policy *security.Policy) ([]string, error) {
-				return preloader.Tags(contextinfo.WithActor(security.WithPolicy(ctx, policy), actor))
+			Tags: func(ctx context.Context, _ completion.ToolCapabilities, actor contextinfo.Actor, policy *security.Policy) ([]string, error) {
+				return deps.Tags(contextinfo.WithActor(security.WithPolicy(ctx, policy), actor))
 			},
-			ToolNamesByTag: func(ctx context.Context, _ *tool.Registry, tag string, allowed func(tool.Tool) bool) ([]string, error) {
-				return preloader.ToolNamesByTag(ctx, tag, allowed)
+			ToolNamesByTag: func(ctx context.Context, _ completion.ToolCapabilities, tag string, allowed func(tool.Tool) bool) ([]string, error) {
+				return deps.ToolNamesByTag(ctx, tag, allowed)
 			},
 		},
 		completion.RouterSource{Router: commands, Actor: identity.Actor},

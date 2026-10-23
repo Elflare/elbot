@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"elbot/internal/agent"
@@ -23,7 +24,7 @@ type Options struct {
 }
 
 // businessLines 持有本次运行的五条业务线总管。
-// 总管使用各业务线根包的目标类型 Supervisor；下层类型声明待后续调整。
+// Agent 已提供根包 Supervisor，其余四条线的目标类型待各自改造。
 // 装配失败时仍保留已创建的总管，尚未创建的字段为空，交由退出协调统一处理。
 type businessLines struct {
 	agent      *agent.Supervisor      // Agent 线总管。
@@ -64,10 +65,16 @@ func Run(ctx context.Context, opts Options) error {
 // startBusinessLines 按依赖顺序启动五条业务线。
 // 启动失败时返回错误，由 Run 转入统一退出流程。
 func startBusinessLines(ctx context.Context, lines *businessLines) error {
-	// 按 Tool、Agent、Hook、Platform、Background 的顺序启动总管。
-	// 先准备工具与执行能力，再启动可能唤醒 Agent 的 Hook，最后放行平台接入和后台调度。
-	// 启动失败时停止继续启动，将错误交还 Run。
+	// TODO: 先启动 Tool 总管，准备工具能力。
 	pass
+
+	if err := lines.agent.Start(); err != nil {
+		return fmt.Errorf("start agent: %w", err)
+	}
+
+	// TODO: 依次启动 Hook、Platform、Background，放行唤醒、平台接入和后台调度。
+	pass
+	return nil
 }
 
 // waitBusinessLines 等待外部停止请求或需要结束应用的业务线运行结果。

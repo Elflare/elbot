@@ -9,7 +9,6 @@ import (
 	agenthooks "elbot/internal/agent/hooks"
 	agentinput "elbot/internal/agent/input"
 	"elbot/internal/agent/routes"
-	agentshare "elbot/internal/agent/share"
 	"elbot/internal/command"
 	"elbot/internal/completion"
 	"elbot/internal/contextmgr"
@@ -34,7 +33,6 @@ type Supervisor struct {
 	handler         *agentinput.MessageHandler
 	completion      *completion.Service
 	execution       *agentexecution.ExecutionCoordinator
-	identity        *agentshare.IdentityResolver
 	bridge          *agenthooks.HookBridge
 	bindings        *signalBindings
 	mu              sync.Mutex
@@ -42,20 +40,49 @@ type Supervisor struct {
 	done            chan struct{}
 }
 
-func (m *Supervisor) Handler() *agentinput.MessageHandler { return m.handler }
-
-func (m *Supervisor) StatusChanged() *signal.Signal[agentevents.StatusChangedEvent, signal.Empty] {
-	return m.statusChanged
+func (m *Supervisor) HandleMessage(ctx context.Context, text string) error {
+	return m.handler.HandleMessage(ctx, text)
 }
 
-func (m *Supervisor) Completion() *completion.Service { return m.completion }
+func (m *Supervisor) HookWakeup(ctx context.Context, event hook.Event) bool {
+	return m.handler.HookWakeup(ctx, event)
+}
 
-func (m *Supervisor) Commands() *command.Router { return m.commands }
+func (m *Supervisor) Complete(ctx context.Context, req completion.Request) ([]completion.Item, error) {
+	return m.completion.Complete(ctx, req)
+}
 
-func (m *Supervisor) Sessions() *session.Service { return m.sessions }
+// Commands returns detached metadata, never the mutable command router.
+func (m *Supervisor) Commands() []command.Info {
+	commands := m.commands.Commands()
+	for i := range commands {
+		commands[i].Aliases = append([]string(nil), commands[i].Aliases...)
+	}
+	return commands
+}
 
-func (m *Supervisor) Execution() *agentexecution.ExecutionCoordinator { return m.execution }
+func (m *Supervisor) ObserveHookRun(ctx context.Context, event hook.Event, info hook.ObserverInfo) (context.Context, func()) {
+	return m.bridge.ObserveRun(ctx, event, info)
+}
 
-func (m *Supervisor) Identity() *agentshare.IdentityResolver { return m.identity }
+// ObserveStatusChanged gives the caller ownership of its subscription only.
+func (m *Supervisor) ObserveStatusChanged(handler func(context.Context, agentevents.StatusChangedEvent) error, options signal.ConnectOptions) (*signal.Connection, error) {
+	return m.statusChanged.Observe(func(ctx context.Context, event agentevents.StatusChangedEvent) error {
+		event.Snapshot.Usage = agentevents.CloneUsage(event.Snapshot.Usage)
+		return handler(ctx, event)
+	}, options)
+}
 
-func (m *Supervisor) ObserveHookRun() hook.Observer { return m.bridge.ObserveRun }
+// ObserveBindingChanged projects internal activation handles into detached facts.
+func (m *Supervisor) ObserveBindingChanged(handler func(context.Context, agentevents.BindingChangedEvent) error, options signal.ConnectOptions) (*signal.Connection, error) {
+	return m.sessions.BindingChanged().Observe(func(ctx context.Context, event session.BindingChangedEvent) error {
+		snapshot := agentevents.BindingChangedEvent{Reason: event.Reason}
+		if event.Old != nil {
+			snapshot.Old = &agentevents.BindingSnapshot{Scope: event.Old.Scope(), SessionID: event.Old.SessionID()}
+		}
+		if event.New != nil {
+			snapshot.New = &agentevents.BindingSnapshot{Scope: event.New.Scope(), SessionID: event.New.SessionID()}
+		}
+		return handler(ctx, snapshot)
+	}, options)
+}

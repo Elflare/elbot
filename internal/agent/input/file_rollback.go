@@ -16,7 +16,9 @@ import (
 )
 
 type FileCommandPreparer struct {
-	service     *fileops.Service
+	service interface {
+		WithBinding(context.Context, fileops.Binding, ...fileops.CommitAdmission) context.Context
+	}
 	sessions    *session.Service
 	sessionRows storage.SessionRepository
 	turns       *turn.Manager
@@ -55,7 +57,9 @@ func (p *FileCommandPreparer) PrepareFileCommand(ctx context.Context, idleOnly b
 
 // FileCommandPreparerDeps declares only the capabilities consumed by FileCommandPreparer.
 type FileCommandPreparerDeps struct {
-	Service     *fileops.Service
+	Service interface {
+		WithBinding(context.Context, fileops.Binding, ...fileops.CommitAdmission) context.Context
+	}
 	Sessions    *session.Service
 	SessionRows storage.SessionRepository
 	Turns       *turn.Manager
