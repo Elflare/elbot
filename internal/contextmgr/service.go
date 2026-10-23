@@ -111,20 +111,17 @@ func (r *Service) Status(ctx context.Context, usage *llm.Usage, selection config
 	sb.WriteString("  ")
 	sb.WriteString(FormatTokens(usage))
 	sb.WriteString("\n")
-	sb.WriteString(fmt.Sprintf("  context window: %d\n", window))
 	if usage == nil || usage.TotalTokens == nil || *usage.TotalTokens < 0 || window <= 0 {
-		sb.WriteString("  context usage: unknown\n")
-		sb.WriteString(fmt.Sprintf("  compact threshold: %.0f%%\n", threshold*100))
+		sb.WriteString(fmt.Sprintf("  context window: %d (unknown)\n", window))
 		status := "unknown"
 		if !ctxCfg.CompactEnabled {
 			status = "disabled"
 		}
-		sb.WriteString(fmt.Sprintf("  compact status: %s\n", status))
+		sb.WriteString(fmt.Sprintf("  compact threshold: %.0f%%, status: %s\n", threshold*100, status))
 		return sb.String()
 	}
 	ratio := float64(*usage.TotalTokens) / float64(window)
-	sb.WriteString(fmt.Sprintf("  context usage: %.1f%%\n", ratio*100))
-	sb.WriteString(fmt.Sprintf("  compact threshold: %.0f%%\n", threshold*100))
+	sb.WriteString(fmt.Sprintf("  context window: %d (%.1f%%)\n", window, ratio*100))
 	status := "ok"
 	if !ctxCfg.CompactEnabled {
 		status = "disabled"
@@ -133,7 +130,7 @@ func (r *Service) Status(ctx context.Context, usage *llm.Usage, selection config
 	} else if ratio >= math.Max(0, threshold-0.1) {
 		status = "near threshold"
 	}
-	sb.WriteString(fmt.Sprintf("  compact status: %s\n", status))
+	sb.WriteString(fmt.Sprintf("  compact threshold: %.0f%%, status: %s\n", threshold*100, status))
 	return sb.String()
 }
 

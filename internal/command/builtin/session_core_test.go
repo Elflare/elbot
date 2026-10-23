@@ -1,11 +1,83 @@
 package builtin
 
 import (
+	"context"
+	"elbot/internal/command"
+	"elbot/internal/config"
+	"elbot/internal/llm"
+	"elbot/internal/modelmgr"
+	"elbot/internal/request"
+	"elbot/internal/session"
 	"elbot/internal/storage"
+	"elbot/internal/turn"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestStatusSessionMarkers(t *testing.T) {
+	ctx := context.Background()
+	models, err := modelmgr.New(modelmgr.Options{
+		Clients:    map[string]llm.Client{"test": struct{ llm.Client }{}},
+		Providers:  map[string]config.ProviderConfig{"test": {Models: []string{"model"}}},
+		ModeModels: map[string]config.ModelSelection{"work": {Provider: "test", Model: "model"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := models.Close(ctx); err != nil {
+			t.Error(err)
+		}
+	})
+	for _, tc := range []struct {
+		name             string
+		pinned, archived bool
+		want             string
+	}{
+		{name: "neither"},
+		{name: "pinned", pinned: true, want: "  pinned\n"},
+		{name: "archived", archived: true, want: "  archived\n"},
+		{name: "both", pinned: true, archived: true, want: "  pinned, archived\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newCommandTestStore(t)
+			svc := session.NewService(store)
+			scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+			row, err := svc.Create(ctx, scope, session.CreateRequest{Title: "status test"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+			_, err = store.Sessions().Mutate(ctx, row.ID, func(row *storage.Session) error {
+				if tc.pinned {
+					row.PinnedAt = &now
+				}
+				if tc.archived {
+					row.ArchivedAt = &now
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := NewStatus(Deps{
+				Sessions: svc, Models: models, Requests: request.NewManager(0), Turns: turn.NewManager(),
+				Store: store, Scope: func(context.Context) session.Scope { return scope },
+			}).Handle(ctx, command.Request{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := "  message count: 0\n" + tc.want + "  created at: "
+			if !strings.Contains(result.Content, want) {
+				t.Fatalf("status = %q, want contiguous block %q", result.Content, want)
+			}
+			if strings.Contains(result.Content, "pinned:") || strings.Contains(result.Content, "archived:") || strings.Contains(result.Content, "\n\n") {
+				t.Fatalf("status contains old fields or blank lines: %q", result.Content)
+			}
+		})
+	}
+}
 
 func TestFormatTimeForDisplay(t *testing.T) {
 	tm := time.Date(2026, 5, 31, 14, 24, 45, 704514100, time.FixedZone("CST", 8*60*60))

@@ -34,13 +34,16 @@ func NewStatus(deps Deps) command.Handler {
 			return nil, err
 		}
 		s := status.Session
-		archived := "no"
+		archived := ""
 		if s.ArchivedAt != nil {
-			archived = formatTime(*s.ArchivedAt)
+			archived = "archived"
 		}
-		pinned := "no"
+		pinned := ""
 		if s.PinnedAt != nil {
-			pinned = formatTime(*s.PinnedAt)
+			pinned = "pinned"
+			if archived != "" {
+				pinned += ", "
+			}
 		}
 		active := formatActiveRequests(ctx, deps, deps.Requests.ListBySession(s.ID))
 		turnSnapshot := deps.Turns.Snapshot(s.ID)
@@ -55,16 +58,14 @@ func NewStatus(deps Deps) command.Handler {
   mode: %s
   current model: %s/%s
   message count: %d
-  archived: %s
-  pinned: %s
-  created at: %s
+%s  created at: %s
   updated at: %s
   last ask: %s
   last answer: %s
 %s  turn phase: %s
   pending input: %s
   tool usage: %s
-%s`, s.ID, s.Title, s.Mode, currentModel.Provider, currentModel.Model, status.MessageCount, archived, pinned, formatTime(s.CreatedAt), formatTime(s.UpdatedAt), emptyTODO(sessionStatusPreview(status.LastUserContent)), emptyTODO(sessionStatusPreview(status.LastAnswerContent)), indentStatusBlock(active), turnSnapshot.Phase, pendingInput, formatToolUsage(ctx, deps, s.ID, turnSnapshot.Tools), formatContextStatus(ctx, deps, s, currentModel))}, nil
+%s`, s.ID, s.Title, s.Mode, currentModel.Provider, currentModel.Model, status.MessageCount, indentStatusBlock(pinned+archived), formatTime(s.CreatedAt), formatTime(s.UpdatedAt), emptyTODO(sessionStatusPreview(status.LastUserContent)), emptyTODO(sessionStatusPreview(status.LastAnswerContent)), indentStatusBlock(active), turnSnapshot.Phase, pendingInput, formatToolUsage(ctx, deps, s.ID, turnSnapshot.Tools), formatContextStatus(ctx, deps, s, currentModel))}, nil
 	})
 }
 
