@@ -33,15 +33,16 @@ type businessLines struct {
 	background *background.Supervisor // Background 线总管。
 }
 
-// Run 组织一次完整的本地应用运行，完成退出清理后返回。
+// Run 组织一次完整的本地应用运行，退出清理完成或达到退出期限后返回。
 // 外部取消且没有其他运行或清理错误时返回 nil。
 // 运行和清理均失败时保留两者的错误。
+// 退出超时立即返回带业务线或资源名称的错误，由 main 输出到 stderr 后强制退出。
 func Run(ctx context.Context, opts Options) error {
-	// 准备环境和共享资源，分别持有准备结果与已取得的资源。
-	// 调用 wireBusinessLines 装配业务线；即使装配失败，也接收已创建的部分。
+	// 创建并持有运行上下文的取消函数，再准备环境与共享资源。
+	// 调用 buildBusinessLines 装配业务线；即使装配失败，也接收已创建的部分。
 	// 调用 startBusinessLines 启动，再调用 waitBusinessLines 等待结束。
-	// 正常结束或任一阶段失败，都交给 shutdown.go 统一协调退出和资源清理。
-	// 完成清理后汇总运行与清理结果，并按上述约定返回。
+	// 正常结束或任一阶段失败，都先取消运行上下文，再调用 shutdown 统一清理。
+	// 汇总运行与清理结果；清理超时时立即返回，不再等待未完成的清理任务。
 	pass
 }
 

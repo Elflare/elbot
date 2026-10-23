@@ -9,9 +9,9 @@
 <!-- locator:startup -->
 ## 启动与装配
 
-App 正处于骨架重建阶段：`entry.go` 和 `environment.go` 已写入当前确认的类型与函数占位骨架，其余四个文件仅有包声明与职责注释；当前没有可运行的 App 入口。原 13 个生产文件和 12 个测试文件均保存在同目录的 `*.go.bak` 中，不参与构建。
+App 正处于骨架重建阶段：`entry.go`、`environment.go`、`resources.go`、`wiring.go` 和 `shutdown.go` 已写入当前确认的类型与函数占位骨架，`cli_client.go` 仍仅有包声明与职责注释；当前没有可运行的 App 入口。原 13 个生产文件和 12 个测试文件均保存在同目录的 `*.go.bak` 中，不参与构建。
 
-已确认的文件职责见 [App 包设计](app-design.md)：`entry.go` 组织完整运行流程，`environment.go` 定位配置并取得服务运行占用，`resources.go` 按定位结果加载配置并准备应用资源，`wiring.go` 装配五条线总管，`shutdown.go` 协调退出，`cli_client.go` 承担独立客户端路径。下层实现不在本轮展开。
+已确认的文件职责见 [App 包设计](app-design.md)：`entry.go` 组织完整运行流程，`environment.go` 定位配置并取得服务运行占用，`resources.go` 按定位结果加载配置并准备日志、共享存储、媒体、权限和模型管理，`wiring.go` 分步构建五条线总管并连接公开能力，`shutdown.go` 协调业务线停止、限时等待与资源清理，`cli_client.go` 承担独立客户端路径。共享存储由 App 协调生命周期，平台聊天历史及其存储生命周期归平台总管；准备或装配失败时，已取得资源和总管交回入口统一清理；接线产生的订阅由对应总管或服务持有。退出流程使用独立清理上下文和统一 30 秒预算，超时立即停止等待，由 Run 返回标明业务线或资源的错误，进程入口输出到 stderr 后强制退出。下层实现不在本轮展开。
 
 ```mermaid
 flowchart TB
@@ -19,7 +19,7 @@ flowchart TB
     ENV["app/environment.go<br/>运行模式、配置定位与服务运行占用"]
     R["app/resources.go<br/>应用资源准备与所有权"]
     W["app/wiring.go<br/>五条线总管创建与公开能力接线"]
-    S["app/shutdown.go<br/>取消、退出等待与资源清理顺序"]
+    S["app/shutdown.go<br/>停止、限时退出等待与资源清理"]
     C["app/cli_client.go<br/>独立客户端路径与回退"]
     E --> ENV & R & W & S
     ENV -->|实际配置路径| R
