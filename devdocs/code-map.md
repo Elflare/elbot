@@ -18,9 +18,10 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 启动与装配
 
 - `cmd/elbot/main.go`、`internal/launcher/cli.go`：程序入口、参数与运行模式。
-- `internal/app/` 正处于骨架重建阶段；入口已写入类型和函数的占位骨架，其余五个文件仅有包声明与职责注释，尚无可运行入口。13 个原生产文件和 12 个原测试文件均保存在 `*.go.bak` 中；职责设计见 [App 包设计](app-design.md)。
+- `internal/app/` 正处于骨架重建阶段；入口和环境准备已写入类型与函数的占位骨架，其余四个文件仅有包声明与职责注释，尚无可运行入口。13 个原生产文件和 12 个原测试文件均保存在 `*.go.bak` 中；职责设计见 [App 包设计](app-design.md)。
 - `internal/app/entry.go`：启动参数、业务线总管集合，以及应用入口、业务线启动和运行等待的占位骨架。
-- `internal/app/environment.go`、`resources.go`：运行模式与进程环境、配置与共享资源准备及所有权。
+- `internal/app/environment.go`：本地运行模式、配置路径定位和按配置取得服务运行占用的占位骨架。
+- `internal/app/resources.go`：按已定位的路径加载配置，准备共享资源并明确所有权。
 - `internal/app/wiring.go`：五条线总管的创建与公开能力接线。
 - `internal/app/shutdown.go`：取消、等待退出、统一退出预算及资源清理顺序。
 - `internal/app/cli_client.go`：独立 CLI 客户端运行路径及回退处理。

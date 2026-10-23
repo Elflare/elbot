@@ -19,7 +19,7 @@ type Options struct {
 	ConfigPath string    // 配置文件路径，交由资源准备阶段加载。
 	Version    string    // 构建版本，供应用运行期间使用。
 	StartedAt  time.Time // 进程启动时间，由 main 开头记录并传入。
-	Mode       RunMode   // 本地应用运行方式；类型与枚举定义待 environment.go 讨论。
+	Mode       RunMode   // 本地应用运行方式：TUI 或 Service，由启动分流明确选定。
 }
 
 // businessLines 持有本次运行的五条业务线总管。

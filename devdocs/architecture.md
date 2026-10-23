@@ -9,19 +9,21 @@
 <!-- locator:startup -->
 ## 启动与装配
 
-App 正处于骨架重建阶段：`entry.go` 已写入启动参数、业务线集合和三个入口侧函数的占位骨架，其余五个文件仅有包声明与职责注释；当前没有可运行的 App 入口。原 13 个生产文件和 12 个测试文件均保存在同目录的 `*.go.bak` 中，不参与构建。
+App 正处于骨架重建阶段：`entry.go` 和 `environment.go` 已写入当前确认的类型与函数占位骨架，其余四个文件仅有包声明与职责注释；当前没有可运行的 App 入口。原 13 个生产文件和 12 个测试文件均保存在同目录的 `*.go.bak` 中，不参与构建。
 
-已确认的文件职责见 [App 包设计](app-design.md)：`entry.go` 组织完整运行流程，`environment.go` 准备环境，`resources.go` 准备应用资源，`wiring.go` 装配五条线总管，`shutdown.go` 协调退出，`cli_client.go` 承担独立客户端路径。下层实现不在本轮展开。
+已确认的文件职责见 [App 包设计](app-design.md)：`entry.go` 组织完整运行流程，`environment.go` 定位配置并取得服务运行占用，`resources.go` 按定位结果加载配置并准备应用资源，`wiring.go` 装配五条线总管，`shutdown.go` 协调退出，`cli_client.go` 承担独立客户端路径。下层实现不在本轮展开。
 
 ```mermaid
 flowchart TB
     E["app/entry.go<br/>入口、启动与运行等待"]
-    ENV["app/environment.go<br/>运行模式、环境与服务标记"]
+    ENV["app/environment.go<br/>运行模式、配置定位与服务运行占用"]
     R["app/resources.go<br/>应用资源准备与所有权"]
     W["app/wiring.go<br/>五条线总管创建与公开能力接线"]
     S["app/shutdown.go<br/>取消、退出等待与资源清理顺序"]
     C["app/cli_client.go<br/>独立客户端路径与回退"]
     E --> ENV & R & W & S
+    ENV -->|实际配置路径| R
+    S -.->|释放服务运行占用| ENV
 ```
 
 图中是文件职责关系，尚未实现相应调用。其余章节描述保留的下层代码，不代表当前 App 已完成装配。旧 App 的构造、启动和退出逻辑可在 `.bak` 文件中查阅；后续须先确认骨架，再按新职责参考填充。
