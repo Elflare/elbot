@@ -992,6 +992,14 @@
       "translation": "Failure or blocking reports from LLM returning __ELBOT_CODE_0__ will now also be frozen and complete the re-delivery.",
       "updated_at": 1784437461
     },
+    "CHANGELOG.md:list:72864fa4bdc52c5e36342daab00a6259d85a196f03856105ed936ca312fe14c0": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 显示优化",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "72864fa4bdc52c5e36342daab00a6259d85a196f03856105ed936ca312fe14c0",
+      "translation": "__ELBOT_CODE_0__ display optimization",
+      "updated_at": 1792733637
+    },
     "CHANGELOG.md:list:739650cce75243839abd165c6d01f1367cbe946e89683ed8f68888b4e3a097b8": {
       "kind": "list",
       "source": "修复普通 __ELBOT_CODE_0__ 等日志查询直接展示 JSON 转义的bug。",
@@ -2354,8 +2362,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "7a48718329f8f25d72954811c223a4d03c2a289c2c982a5c8fff657d0e66381a",
+  "source_hash": "804c684e32c26ebbd06f7d306c180827e7e1b2a1c5acf43240843ccd23aca5a9",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1792718243,
+  "updated_at": 1792733637,
   "version": 2
 }
