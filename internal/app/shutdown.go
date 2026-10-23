@@ -32,7 +32,8 @@ func shutdown(
 }
 
 // stopBusinessLines 停止接收新工作，等待在途工作收尾并由总管释放自有资源。
-// 先通知已创建的总管停止，再依据依赖关系组织退出等待与资源释放。
+// 先停止新工作并取消在途任务，等待使用方收尾后再释放其依赖。
+// 平台停止接入后，发送与聊天历史查询能力保留到使用方退出。
 // 接线产生的订阅由所属总管或服务释放，不在 App 重复持有或清理。
 // 部分构造或启动失败时同样处理已创建的总管；超时后停止继续清理依赖。
 func stopBusinessLines(ctx context.Context, lines *businessLines) error {
