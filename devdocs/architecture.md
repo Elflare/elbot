@@ -9,43 +9,22 @@
 <!-- locator:startup -->
 ## 启动与装配
 
-`main → launcher → app.Run / Runner → 五条业务线 → 中层组件`。
+App 正处于骨架重建阶段：`entry.go` 已写入启动参数、业务线集合和三个入口侧函数的占位骨架，其余五个文件仅有包声明与职责注释；当前没有可运行的 App 入口。原 13 个生产文件和 12 个测试文件均保存在同目录的 `*.go.bak` 中，不参与构建。
 
-- Runner 依次准备 Environment、Foundation、Models 和 Wiring。Foundation 拥有配置、SQLite 与日志；共享模型、媒体、权限和诊断服务由基础服务层创建。
-- App 按 Platform → Tool → Hook → Dialogue → Background 构造上层模块，每次装配共享一份实例；各模块用 `ModuleDeps` 声明消费能力，组合包不互相导入。
-- Dialogue 创建并拥有 Session／Request／Turn，Background 借用；Tool 拥有共享目录和执行核心，Hook／Background 向目录注册业务工具。调用编排归调用方的 toolrun.Runner。
-- 模块构造负责线内接线，App 负责跨线回调、输入、补全和命令目录。公共单轮构造消息／提交／Prompt，Chat／Responses 构造协议内部组件。
-- 接线成功后按 Tool → Dialogue → Hook → Platform → Background 启动，Hook 首次 Reload 此时执行，平台循环提交启动后再异步启动 Cron。CLI-only 不启动调度器和 Elnis，仍恢复中断状态。
-- Runner 使用统一 30 秒预算发起 BeginClose，按 Platform → Background → Dialogue → Hook → Tool 等待，再释放基础服务。超时保留活跃任务依赖；重复关闭等待同一结果，关闭后不能重启。部分构造失败也由已取得资源的所有者清理。
-- Hook 在 Dialogue 的最终追加确认输出和命名任务退出前保持可用；各模块只关闭自有资源，Background 借用的服务由所属模块释放。
-
-图中实线为构造／消费关系，虚线为跨线接线或关闭调度。
+已确认的文件职责见 [App 包设计](app-design.md)：`entry.go` 组织完整运行流程，`environment.go` 准备环境，`resources.go` 准备应用资源，`wiring.go` 装配五条线总管，`shutdown.go` 协调退出，`cli_client.go` 承担独立客户端路径。下层实现不在本轮展开。
 
 ```mermaid
 flowchart TB
-    A["app/runner.go、dependencies.go<br/>启动阶段与退出预算"]
-    W["app/wiring.go、integrations.go<br/>模块构造、跨线接线与启动"]
-    F["app/foundation.go、services.go<br/>存储、日志及共享基础服务"]
-    L["app/lifecycle.go<br/>等待业务线、释放基础资源"]
-    P["platform/module/<br/>适配器、发送、通知与平台循环"]
-    T["tool/module/<br/>工具目录、执行核心与资源服务"]
-    H["hook/module/<br/>Hook 核心与插件进程"]
-    D["agent/module/<br/>Dialogue 构造、线内接线与订阅"]
-    B["background/module/<br/>后台执行、Cron、维护任务与 Elnis"]
-    E["agent/execution.go、dialogue/runner.go<br/>执行协调与公共单轮"]
-    Q["agent/chat/、agent/responses/<br/>协议循环、压缩与材料"]
-    S["session/service.go、request/manager.go、turn/manager.go<br/>各自拥有会话、请求与执行状态"]
-    A --> F & W & L
-    W --> P & T & H & D & B
-    D --> T & H & P
-    H --> T & P
-    B --> D & T & P
-    D --> E & S
-    E --> Q & S
-    B -->|借用| S
-    P -.->|消息、补全与目录| D
-    L -.-> P & B & D & H & T
+    E["app/entry.go<br/>入口、启动与运行等待"]
+    ENV["app/environment.go<br/>运行模式、环境与服务标记"]
+    R["app/resources.go<br/>应用资源准备与所有权"]
+    W["app/wiring.go<br/>五条线总管创建与公开能力接线"]
+    S["app/shutdown.go<br/>取消、退出等待与资源清理顺序"]
+    C["app/cli_client.go<br/>独立客户端路径与回退"]
+    E --> ENV & R & W & S
 ```
+
+图中是文件职责关系，尚未实现相应调用。其余章节描述保留的下层代码，不代表当前 App 已完成装配。旧 App 的构造、启动和退出逻辑可在 `.bak` 文件中查阅；后续须先确认骨架，再按新职责参考填充。
 
 <!-- locator:contextinfo -->
 ## 公共上下文事实

@@ -18,10 +18,12 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 启动与装配
 
 - `cmd/elbot/main.go`、`internal/launcher/cli.go`：程序入口、参数与运行模式。
-- `internal/app/app.go`、`runner.go`、`dependencies.go`：启动阶段与生命周期契约。
-- `internal/app/foundation.go`、`models.go`、`services.go`：配置、存储、日志、客户端及共享基础服务。
-- `internal/app/wiring.go`、`platforms.go`、`integrations.go`：五条业务线构造、平台选择、跨线接线与启动。
-- `internal/app/lifecycle.go`：业务线关闭及基础资源释放。
+- `internal/app/` 正处于骨架重建阶段；入口已写入类型和函数的占位骨架，其余五个文件仅有包声明与职责注释，尚无可运行入口。13 个原生产文件和 12 个原测试文件均保存在 `*.go.bak` 中；职责设计见 [App 包设计](app-design.md)。
+- `internal/app/entry.go`：启动参数、业务线总管集合，以及应用入口、业务线启动和运行等待的占位骨架。
+- `internal/app/environment.go`、`resources.go`：运行模式与进程环境、配置与共享资源准备及所有权。
+- `internal/app/wiring.go`：五条线总管的创建与公开能力接线。
+- `internal/app/shutdown.go`：取消、等待退出、统一退出预算及资源清理顺序。
+- `internal/app/cli_client.go`：独立 CLI 客户端运行路径及回退处理。
 - `internal/agent/module/`：Dialogue 构造、Session／Request／Turn 所有权、线内接线、通知订阅与关闭。
 - `internal/tool/module/`：共享工具目录、执行核心、预加载、Skill／Memory／文件服务。
 - `internal/hook/module/`：Hook 核心、控制与插件进程。
@@ -79,7 +81,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 协议路线
 
 - `internal/agent/routes/`：按 APIType 登记 Loop／Compactor／Material。
-- `internal/agent/module/module.go`、`internal/app/models.go`：协议业务能力与客户端工厂装配。
+- `internal/agent/module/module.go`：协议业务能力装配；App 原客户端工厂实现保存在 `internal/app/models.go.bak`，新资源准备职责见 `internal/app/resources.go`，当前尚未实现。
 - `internal/agent/dialogue/loop.go`、`internal/contextmgr/compact_contract.go`、`internal/session/material.go`：公共循环、压缩和材料契约。
 - `internal/llm/origin.go`、`internal/modelmgr/compatibility.go`：持久化归属与兼容判断。
 - `internal/llm/api_type.go`、`internal/tool/availability.go`：模型 API 类型与工具可用性。
