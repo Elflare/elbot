@@ -199,7 +199,10 @@ func TestPresignFailuresKeepCacheAndReleaseHold(t *testing.T) {
 				t.Fatalf("failure returned URL=%q err=%v", url, err)
 			}
 			cached, err := repository.GetSignedURL(t.Context(), id)
-			if err != nil || *cached != *old {
+			if err != nil ||
+				cached.MediaID != old.MediaID ||
+				cached.URL != old.URL ||
+				!cached.ExpiresAt.Equal(old.ExpiresAt) {
 				t.Fatalf("failure changed old cache: %+v %v", cached, err)
 			}
 			refs, err := m.Store.MediaReferences().ListMediaIDs(t.Context(), id)
