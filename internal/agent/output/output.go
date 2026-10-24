@@ -22,7 +22,7 @@ type OutputSender struct {
 		StartStream(context.Context) (delivery.MessageStream, error)
 	}
 	hooks     dialogue.Hooks
-	reasoning func(context.Context) dialogue.ReasoningStream
+	reasoning func(context.Context) delivery.ReasoningStream
 }
 
 func (o *OutputSender) SendOutputs(ctx context.Context, outputs []delivery.Output) (globalevents.LogResult, error) {
@@ -284,7 +284,7 @@ func (o *OutputSender) StartStream(ctx context.Context) (delivery.MessageStream,
 	return o.dispatcher.StartStream(ctx)
 }
 
-func (o *OutputSender) StartReasoning(ctx context.Context) dialogue.ReasoningStream {
+func (o *OutputSender) StartReasoning(ctx context.Context) delivery.ReasoningStream {
 	if o.reasoning == nil {
 		return nil
 	}

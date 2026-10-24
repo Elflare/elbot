@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"elbot/internal/agent/dialogue"
 	agentevents "elbot/internal/agent/events"
+	"elbot/internal/delivery"
 	"elbot/internal/platform/cli"
 	"elbot/internal/session"
 	"elbot/internal/signal"
@@ -35,7 +35,7 @@ func (m *Module) ConnectUI(status *signal.Signal[agentevents.StatusChangedEvent,
 	return nil
 }
 
-func (m *Module) StartReasoning(ctx context.Context) dialogue.ReasoningStream {
+func (m *Module) StartReasoning(ctx context.Context) delivery.ReasoningStream {
 	m.mu.Lock()
 	u := m.ui
 	m.mu.Unlock()

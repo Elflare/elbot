@@ -165,7 +165,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:notification -->
 ## 输出、投递与通知
 
-- `internal/delivery/`、`internal/delivery/dispatch/`：输出意图、目标、回执、发送路由与媒体准备。
+- `internal/delivery/delivery.go`：输出意图、目标、回执及公共 `MessageStream`、`ReasoningStream` 契约；`internal/delivery/dispatch/` 负责发送路由与媒体准备。
 - `internal/notification/manager.go`、`rules/`：通知信号、目标、绑定校验、平台队列与提示规则。
 - `internal/platform/module/notifications.go`：通知管理器及平台订阅装配。
 - `internal/platform/{cli,qq-onebot,qqofficial,telegram}/notifications.go`：平台通知协议与实际发送。

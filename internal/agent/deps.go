@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 
-	"elbot/internal/agent/dialogue"
 	agenthooks "elbot/internal/agent/hooks"
 	commandbuiltin "elbot/internal/command/builtin"
 	"elbot/internal/delivery"
@@ -70,5 +69,5 @@ type PlatformCapabilities interface {
 	SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
 	SendChat(context.Context, []delivery.Output) (delivery.Receipt, events.LogResult, error)
 	StartStream(context.Context) (delivery.MessageStream, error)
-	StartReasoning(context.Context) dialogue.ReasoningStream
+	StartReasoning(context.Context) delivery.ReasoningStream
 }

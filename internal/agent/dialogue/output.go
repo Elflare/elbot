@@ -11,7 +11,7 @@ import (
 )
 
 type Output interface {
-	StartReasoning(context.Context) ReasoningStream
+	StartReasoning(context.Context) delivery.ReasoningStream
 	StartStream(ctx context.Context) (delivery.MessageStream, error)
 	FinishIntermediate(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string, streaming bool) error
 	ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, events.LogResult, error)
@@ -27,14 +27,6 @@ type Output interface {
 	// workflow notices occupy one argument. Nonblank notices get one prefix each
 	// and are joined before a single output Hook and notification.
 	SendPreview(ctx context.Context, text ...string)
-}
-
-// ReasoningStream consumes raw model deltas in order for one call. Presentation
-// failures are isolated from the business result. Finish closes any opened view,
-// including on error or cancellation; implementations must tolerate repetition.
-type ReasoningStream interface {
-	Append(context.Context, string)
-	Finish(context.Context)
 }
 
 func BufferAssistantOutput(ctx context.Context) bool {

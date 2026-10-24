@@ -116,7 +116,7 @@ func (*testOutput) SendOutputs(context.Context, []delivery.Output) (events.LogRe
 }
 func (*testOutput) Notify(context.Context, slog.Level, string)              {}
 func (*testOutput) SendPreview(context.Context, ...string)                  {}
-func (*testOutput) StartReasoning(context.Context) dialogue.ReasoningStream { return nil }
+func (*testOutput) StartReasoning(context.Context) delivery.ReasoningStream { return nil }
 
 type testStatus struct{}
 

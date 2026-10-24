@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/agent/dialogue"
 	commandbuiltin "elbot/internal/command/builtin"
 	"elbot/internal/config"
+	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/fileops"
 	"elbot/internal/hook"
@@ -64,7 +64,7 @@ type isolatedHookCapabilities struct {
 type isolatedPlatformCapabilities struct{ *dispatch.Router }
 
 func (isolatedPlatformCapabilities) PrimaryName() string { return "cli" }
-func (isolatedPlatformCapabilities) StartReasoning(context.Context) dialogue.ReasoningStream {
+func (isolatedPlatformCapabilities) StartReasoning(context.Context) delivery.ReasoningStream {
 	return nil
 }
 

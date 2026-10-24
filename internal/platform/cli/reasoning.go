@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"elbot/internal/agent/dialogue"
+	"elbot/internal/delivery"
 	"elbot/internal/session"
 )
 
@@ -17,7 +17,7 @@ type reasoningStream struct {
 	failed   bool
 }
 
-func (u *UI) StartReasoning(context.Context) dialogue.ReasoningStream {
+func (u *UI) StartReasoning(context.Context) delivery.ReasoningStream {
 	return &reasoningStream{ui: u}
 }
 

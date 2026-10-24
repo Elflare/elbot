@@ -34,7 +34,7 @@ type ExecutionSender interface {
 	// Preview takes one complete notice per tool call; multiline bodies stay in
 	// one argument. General workflow notices also occupy one argument.
 	Preview(context.Context, ...string)
-	StartReasoning(context.Context) dialogue.ReasoningStream
+	StartReasoning(context.Context) delivery.ReasoningStream
 }
 
 // ExecutionCoordinatorDeps declares only the capabilities consumed by ExecutionCoordinator.

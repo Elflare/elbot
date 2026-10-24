@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"testing"
 
-	"elbot/internal/agent/dialogue"
 	agentoutput "elbot/internal/agent/output"
+	"elbot/internal/delivery"
 
 	"elbot/internal/contextinfo"
 
@@ -35,7 +35,7 @@ func TestExecutionReasoningResolvesAdoptionForNewDeltas(t *testing.T) {
 	ctx, cancel := context.WithCancel(turn.WithExecution(context.Background(), execution))
 	defer cancel()
 	probe := &adoptionReasoningProbe{}
-	out := executionTurnOutput{execution: execution, foreground: foregroundTurnOutput{sender: agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{Reasoning: func(context.Context) dialogue.ReasoningStream { return probe }})}}
+	out := executionTurnOutput{execution: execution, foreground: foregroundTurnOutput{sender: agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{Reasoning: func(context.Context) delivery.ReasoningStream { return probe }})}}
 	stream := out.StartReasoning(ctx)
 	stream.Append(ctx, "background")
 	execution.Adopt(contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: "original"}), storage.Session{})

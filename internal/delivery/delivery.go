@@ -199,6 +199,14 @@ type MessageStream interface {
 	Finish(ctx context.Context) (Receipt, globalevents.LogResult, error)
 }
 
+// ReasoningStream consumes raw model deltas in order for one call. Presentation
+// failures are isolated from the business result. Finish closes any opened view,
+// including on error or cancellation; implementations must tolerate repetition.
+type ReasoningStream interface {
+	Append(context.Context, string)
+	Finish(context.Context)
+}
+
 // MessageSender sends one logical message, represented by ordered output segments.
 // Receipt preserves actual delivery facts for business consumers. LogResult
 // declares the operation's logging outcome and body before any caller wraps error.

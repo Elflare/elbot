@@ -16,5 +16,5 @@ type OutputSenderDeps struct {
 		StartStream(context.Context) (delivery.MessageStream, error)
 	}
 	Hooks     dialogue.Hooks
-	Reasoning func(context.Context) dialogue.ReasoningStream // Optional per-call presentation capability.
+	Reasoning func(context.Context) delivery.ReasoningStream // Optional per-call presentation capability.
 }

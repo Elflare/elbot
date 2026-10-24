@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 
-	"elbot/internal/agent/dialogue"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/session"
@@ -46,7 +45,7 @@ func (o foregroundTurnOutput) SendPreview(ctx context.Context, text ...string) {
 	o.sender.Preview(ctx, text...)
 }
 
-func (o foregroundTurnOutput) StartReasoning(ctx context.Context) dialogue.ReasoningStream {
+func (o foregroundTurnOutput) StartReasoning(ctx context.Context) delivery.ReasoningStream {
 	return o.sender.StartReasoning(ctx)
 }
 
@@ -74,4 +73,4 @@ func (o backgroundTurnOutput) Notify(ctx context.Context, level slog.Level, text
 
 func (o backgroundTurnOutput) SendPreview(ctx context.Context, text ...string) {}
 
-func (o backgroundTurnOutput) StartReasoning(context.Context) dialogue.ReasoningStream { return nil }
+func (o backgroundTurnOutput) StartReasoning(context.Context) delivery.ReasoningStream { return nil }

@@ -110,7 +110,7 @@ func (o executionTurnOutput) SendPreview(ctx context.Context, text ...string) {
 	out.SendPreview(ctx, text...)
 }
 
-func (o executionTurnOutput) StartReasoning(ctx context.Context) dialogue.ReasoningStream {
+func (o executionTurnOutput) StartReasoning(ctx context.Context) delivery.ReasoningStream {
 	stream := o.foreground.StartReasoning(ctx)
 	if stream == nil {
 		return nil
@@ -121,7 +121,7 @@ func (o executionTurnOutput) StartReasoning(ctx context.Context) dialogue.Reason
 // Resolve foreground context for each new delta, including adoption mid-call.
 type executionReasoningStream struct {
 	view   dialogue.ExecutionView
-	stream dialogue.ReasoningStream
+	stream delivery.ReasoningStream
 }
 
 func (s executionReasoningStream) Append(ctx context.Context, text string) {
