@@ -6,8 +6,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/doctor"
-	"elbot/internal/hook"
-	hookruntime "elbot/internal/hook/runtime"
+	"elbot/internal/hook/share"
 	"elbot/internal/llm"
 	"elbot/internal/logging"
 	"elbot/internal/modelmgr"
@@ -72,9 +71,9 @@ type SkillService interface {
 }
 
 type HookService interface {
-	HookList() []hook.Info
-	HookReload() (hook.ReloadReport, error)
-	StatefulHooks() []hookruntime.Info
+	HookList() []share.Info
+	HookReload() (share.ReloadReport, error)
+	StatefulHooks() []share.RuntimeInfo
 	StartStatefulHook(id string) error
 	StopHook(ctx context.Context, id string) (bool, error)
 	RestartStatefulHook(ctx context.Context, id string) error

@@ -26,7 +26,7 @@ func TestContinuationRunsBeforeRulesAndCanStopPropagation(t *testing.T) {
 				event.Control.StopPropagation, event.Control.Consume = stop, true
 				return event, true, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "continuation"}, nil
 			})
-			manager.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "ordinary", Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event) (share.Event, events.LogResult, error) {
+			manager.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "ordinary", Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, events.LogResult, error) {
 				order = append(order, "rules")
 				if llm.SegmentsTextOnly(event.Message.Segments) != "resumed" {
 					t.Fatal("ordinary rules lost continuation changes")
@@ -37,7 +37,7 @@ func TestContinuationRunsBeforeRulesAndCanStopPropagation(t *testing.T) {
 				observed = append(observed, name)
 				return ctx, func() { finished++ }
 			}})
-			wantOrder, wantObserved, wantResult := []string{"route", "rules"}, []string{"continuation", "ordinary"}, "ordinary"
+			wantOrder, wantObserved, wantResult := []string{"route", "rules"}, []string{"continuation", "ordinary"}, "continuation\nordinary"
 			if stop {
 				wantOrder, wantObserved, wantResult = []string{"route"}, []string{"continuation"}, "continuation"
 			}
@@ -60,12 +60,12 @@ func TestPipelineFailureNotifiesOnceAndPreservesOriginalFailure(t *testing.T) {
 				event.Message.Segments = llm.TextSegments("failed route edit")
 				return event, true, events.LogResult{ResultStatus: events.ResultFailed, Content: "source outcome"}, original
 			})
-			manager.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "failure", Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event) (share.Event, events.LogResult, error) {
+			manager.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "failure", Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, events.LogResult, error) {
 				ordinary++
 				event.Message.Segments = llm.TextSegments("failed rule edit")
 				return event, events.LogResult{ResultStatus: events.ResultFailed, Content: "source outcome"}, original
 			})})
-			manager.Register(share.Registration{Point: share.PointErrorOccurred, Name: "error", Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event) (share.Event, events.LogResult, error) {
+			manager.Register(share.Registration{Point: share.PointErrorOccurred, Name: "error", Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, events.LogResult, error) {
 				notified++
 				if !errors.Is(event.Error, original) {
 					t.Errorf("lost source error: %v", event.Error)

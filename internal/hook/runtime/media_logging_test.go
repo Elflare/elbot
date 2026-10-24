@@ -12,12 +12,11 @@ import (
 	"time"
 
 	"elbot/internal/events"
-	"elbot/internal/hook"
 	"elbot/internal/storage"
 )
 
 type releaseMediaAPI struct {
-	hook.MediaAPI
+	mediaAPI
 	release func(context.Context, storage.MediaReference) error
 }
 
@@ -58,7 +57,7 @@ func TestRuntimeCloseUsesCallerMediaCleanupContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.WithValue(t.Context(), "cleanup-budget", "caller"))
 	cancel()
 	observed := make(chan context.Context, 1)
-	manager, err := NewManager(Options{SharedDir: t.TempDir(), Media: releaseMediaAPI{release: func(ctx context.Context, _ storage.MediaReference) error { observed <- ctx; return ctx.Err() }}})
+	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Media: releaseMediaAPI{release: func(ctx context.Context, _ storage.MediaReference) error { observed <- ctx; return ctx.Err() }}})
 	if err != nil {
 		t.Fatal(err)
 	}

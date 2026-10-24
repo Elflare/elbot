@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"elbot/internal/hook"
+	"elbot/internal/hook/share"
 )
 
 func formatRuleDetail(rule Rule) string {
@@ -89,7 +89,7 @@ func formatRuleDetail(rule Rule) string {
 	if rule.StopPropagation {
 		sb.WriteString("\nstop_propagation: true")
 	}
-	if rule.Wakeup != "" && rule.Wakeup != hook.WakeupRequired {
+	if rule.Wakeup != "" && rule.Wakeup != share.WakeupRequired {
 		sb.WriteString("\nwakeup: " + string(rule.Wakeup))
 	}
 	if rule.Priority != 0 {

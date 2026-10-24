@@ -4,7 +4,9 @@ package rules
 
 import (
 	"context"
-	"elbot/internal/hook"
+	"elbot/internal/hook/pipeline"
+	"elbot/internal/hook/share"
+	"elbot/internal/processenv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,11 +56,11 @@ text = "ok"
 	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	cfg, _, err := loadConfig(Options{ConfigDir: dir})
+	cfg, _, err := loadConfig(Options{Log: testLog, Notify: testNotify, ConfigDir: dir})
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
-	if len(cfg.Rules) != 1 || cfg.Rules[0].Wakeup != hook.WakeupForbidden {
+	if len(cfg.Rules) != 1 || cfg.Rules[0].Wakeup != share.WakeupForbidden {
 		t.Fatalf("rules = %#v", cfg.Rules)
 	}
 }
@@ -79,7 +81,7 @@ text = "ok"
 	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	cfg, _, err := loadConfig(Options{ConfigDir: dir})
+	cfg, _, err := loadConfig(Options{Log: testLog, Notify: testNotify, ConfigDir: dir})
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
@@ -115,14 +117,14 @@ path = "assets/pic.png"
 	if err := os.WriteFile(filepath.Join(pluginDir, "hook.toml"), []byte(plugin), 0o644); err != nil {
 		t.Fatalf("write plugin config: %v", err)
 	}
-	cfg, _, err := loadConfig(Options{ConfigDir: dir})
+	cfg, _, err := loadConfig(Options{Log: testLog, Notify: testNotify, ConfigDir: dir})
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
 	if len(cfg.Rules) != 1 || cfg.Rules[0].source.PluginName != "demo" || cfg.Rules[0].source.BaseDir != pluginDir {
 		t.Fatalf("rules = %#v", cfg.Rules)
 	}
-	got, _, err := Module{}.runRule(context.Background(), cfg.Rules[0], hook.Event{Point: hook.PointLLMResponseReceived})
+	got, _, err := Module{Opts: Options{Log: testLog, Notify: testNotify}}.runRule(context.Background(), cfg.Rules[0], share.Event{Point: share.PointLLMResponseReceived}, false)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -185,7 +187,7 @@ always = true
 		t.Fatalf("write plugin env: %v", err)
 	}
 	basePath := filepath.Join(dir, "base-bin")
-	opts := Options{ConfigDir: dir, ProcessEnv: hook.NewProcessEnvironment([]string{"TOKEN=process", "PATH=" + basePath}, nil)}
+	opts := Options{Log: testLog, Notify: testNotify, ConfigDir: dir, ProcessEnv: processenv.New([]string{"TOKEN=process", "PATH=" + basePath})}
 	cfg, _, err := loadConfig(opts)
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
@@ -215,7 +217,7 @@ always = true
 	}
 }
 
-func processEnvValue(environment hook.ProcessEnvironment, name string) string {
+func processEnvValue(environment processenv.Environment, name string) string {
 	for _, entry := range environment.Environ() {
 		key, value, ok := strings.Cut(entry, "=")
 		if ok && strings.EqualFold(key, name) {
@@ -263,18 +265,18 @@ always = true
 	if err := os.WriteFile(filepath.Join(pluginDir, "hook.toml"), []byte(plugin), 0o644); err != nil {
 		t.Fatalf("write plugin config: %v", err)
 	}
-	cfg, _, err := loadConfig(Options{ConfigDir: dir})
+	cfg, _, err := loadConfig(Options{Log: testLog, Notify: testNotify, ConfigDir: dir})
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
 	if len(cfg.Runtimes) != 1 || cfg.Runtimes[0].ID != "weather" || len(cfg.Rules) != 1 || cfg.Rules[0].source.RuntimeID != "weather" {
 		t.Fatalf("config = %#v", cfg)
 	}
-	blockedEvent := hook.Event{Platform: hook.PlatformContext{Name: "qqonebot", ScopeID: "group:123"}, Actor: hook.ActorContext{UserID: "7"}}
+	blockedEvent := share.Event{Platform: share.PlatformContext{Name: "qqonebot", ScopeID: "group:123"}, Actor: share.ActorContext{UserID: "7"}}
 	if !cfg.Runtimes[0].Block.Blocks(blockedEvent) || !cfg.Rules[0].source.Block.Blocks(blockedEvent) {
 		t.Fatalf("plugin block policy was not propagated: %#v", cfg)
 	}
-	module, err := NewModule(Options{ConfigDir: dir})
+	module, err := NewModule(Options{Log: testLog, Notify: testNotify, ConfigDir: dir})
 	if err != nil {
 		t.Fatalf("NewModule: %v", err)
 	}
@@ -312,20 +314,20 @@ text = "user"
 	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg, _, err := loadConfig(Options{ConfigDir: dir})
+	cfg, _, err := loadConfig(Options{Log: testLog, Notify: testNotify, ConfigDir: dir})
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
 	if len(cfg.Rules) != 3 {
 		t.Fatalf("rules = %#v", cfg.Rules)
 	}
-	if !cfg.Rules[0].source.Block.Blocks(hook.Event{Platform: hook.PlatformContext{Name: "telegram"}}) {
+	if !cfg.Rules[0].source.Block.Blocks(share.Event{Platform: share.PlatformContext{Name: "telegram"}}) {
 		t.Fatal("platform block was not applied")
 	}
-	if !cfg.Rules[1].source.Block.Blocks(hook.Event{Platform: hook.PlatformContext{Name: "qqonebot", ScopeID: "group:123"}}) {
+	if !cfg.Rules[1].source.Block.Blocks(share.Event{Platform: share.PlatformContext{Name: "qqonebot", ScopeID: "group:123"}}) {
 		t.Fatal("group block was not applied")
 	}
-	if !cfg.Rules[2].source.Block.Blocks(hook.Event{Platform: hook.PlatformContext{Name: "qqonebot"}, Actor: hook.ActorContext{UserID: "42"}}) {
+	if !cfg.Rules[2].source.Block.Blocks(share.Event{Platform: share.PlatformContext{Name: "qqonebot"}, Actor: share.ActorContext{UserID: "42"}}) {
 		t.Fatal("user block was not applied")
 	}
 }
@@ -350,20 +352,16 @@ text = "continued"
 	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	module, err := NewModule(Options{ConfigDir: dir})
+	module, err := NewModule(Options{Log: testLog, Notify: testNotify, ConfigDir: dir})
 	if err != nil {
 		t.Fatalf("NewModule: %v", err)
 	}
-	manager := hook.NewManager()
-	manager.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
-	manager.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
-		return ctx, func() {}
-	})
+	manager := pipeline.NewManager(testLog, nil)
 	module.RegisterHooks(manager)
-	event, _, err := manager.Run(context.Background(), hook.Event{
-		Point:    hook.PointPlatformMessageReceived,
-		Platform: hook.PlatformContext{Name: "qqonebot", ScopeID: "group:123"},
-	})
+	event, _, err := manager.Run(context.Background(), share.Event{
+		Point:    share.PointPlatformMessageReceived,
+		Platform: share.PlatformContext{Name: "qqonebot", ScopeID: "group:123"},
+	}, pipeline.CallOptions{Woken: true})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -385,7 +383,7 @@ text = "bad"
 	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, _, err := loadConfig(Options{ConfigDir: dir})
+	_, _, err := loadConfig(Options{Log: testLog, Notify: testNotify, ConfigDir: dir})
 	if err == nil || !strings.Contains(err.Error(), "rule 1") || !strings.Contains(err.Error(), "blocked_group") {
 		t.Fatalf("loadConfig error = %v", err)
 	}
@@ -425,7 +423,7 @@ text = "user rule"
 		t.Fatal(err)
 	}
 	var notices []string
-	cfg, _, err := loadConfig(Options{
+	cfg, _, err := loadConfig(Options{Log: testLog, Notify: testNotify,
 		ConfigDir: dir,
 		Notices:   &notices,
 	})
@@ -440,27 +438,23 @@ text = "user rule"
 			t.Fatalf("plugin rule block config was not ignored: %#v", rule)
 		}
 	}
-	manager := hook.NewManager()
-	manager.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
-	manager.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
-		return ctx, func() {}
-	})
-	(Module{Rules: cfg.Rules}).RegisterHooks(manager)
-	allowed, _, err := manager.Run(context.Background(), hook.Event{
-		Point:    hook.PointPlatformMessageReceived,
-		Platform: hook.PlatformContext{Name: "qqonebot", ScopeID: "group:999"},
-		Actor:    hook.ActorContext{UserID: "42"},
-	})
+	manager := pipeline.NewManager(testLog, nil)
+	(Module{Opts: Options{Log: testLog, Notify: testNotify}, Rules: cfg.Rules}).RegisterHooks(manager)
+	allowed, _, err := manager.Run(context.Background(), share.Event{
+		Point:    share.PointPlatformMessageReceived,
+		Platform: share.PlatformContext{Name: "qqonebot", ScopeID: "group:999"},
+		Actor:    share.ActorContext{UserID: "42"},
+	}, pipeline.CallOptions{Woken: true})
 	if err != nil {
 		t.Fatalf("allowed Run: %v", err)
 	}
 	if len(allowed.Outputs) != 2 {
 		t.Fatalf("allowed outputs = %#v", allowed.Outputs)
 	}
-	blocked, _, err := manager.Run(context.Background(), hook.Event{
-		Point:    hook.PointPlatformMessageReceived,
-		Platform: hook.PlatformContext{Name: "qqonebot", ScopeID: "group:123"},
-	})
+	blocked, _, err := manager.Run(context.Background(), share.Event{
+		Point:    share.PointPlatformMessageReceived,
+		Platform: share.PlatformContext{Name: "qqonebot", ScopeID: "group:123"},
+	}, pipeline.CallOptions{Woken: true})
 	if err != nil {
 		t.Fatalf("blocked Run: %v", err)
 	}
@@ -522,7 +516,7 @@ text = "good"
 		t.Fatalf("write good plugin: %v", err)
 	}
 	notices := []string{}
-	cfg, _, err := loadConfig(Options{
+	cfg, _, err := loadConfig(Options{Log: testLog, Notify: testNotify,
 		ConfigDir: dir,
 		Notices:   &notices,
 	})
@@ -554,7 +548,7 @@ unknown_field = true
 	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	_, _, err := loadConfig(Options{ConfigDir: dir})
+	_, _, err := loadConfig(Options{Log: testLog, Notify: testNotify, ConfigDir: dir})
 	if err == nil || !strings.Contains(err.Error(), "unknown_field") {
 		t.Fatalf("err = %v", err)
 	}

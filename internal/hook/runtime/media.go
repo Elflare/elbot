@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,7 +16,6 @@ import (
 	"time"
 
 	"elbot/internal/events"
-	"elbot/internal/hook"
 	hookoutput "elbot/internal/hook/output"
 	"elbot/internal/media"
 	"elbot/internal/storage"
@@ -42,15 +42,27 @@ type mediaLease struct {
 	path      string
 }
 
+// mediaAPI is runtime's borrowed media capability, limited to plugin RPC and leases.
+type mediaAPI interface {
+	ImportURL(context.Context, string, media.Input) (*storage.Media, error)
+	ImportReader(context.Context, io.Reader, int64, media.Input) (*storage.Media, error)
+	ImportBytes(context.Context, []byte, media.Input) (*storage.Media, error)
+	Metadata(context.Context, string) (*storage.Media, error)
+	Read(context.Context, string) ([]byte, *storage.Media, error)
+	Export(context.Context, string, string) (*storage.Media, error)
+	AddReference(context.Context, *storage.MediaReference) error
+	RemoveReference(context.Context, storage.MediaReference) error
+}
+
 type mediaBridge struct {
 	mu     sync.Mutex
-	api    hook.MediaAPI
+	api    mediaAPI
 	owner  string
 	leases map[string]*mediaLease
 	closed bool
 }
 
-func newMediaBridge(api hook.MediaAPI) *mediaBridge {
+func newMediaBridge(api mediaAPI) *mediaBridge {
 	return &mediaBridge{api: api, owner: randomID("hook-media"), leases: map[string]*mediaLease{}}
 }
 

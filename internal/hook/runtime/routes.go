@@ -12,7 +12,7 @@ import (
 
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
-	"elbot/internal/hook"
+	"elbot/internal/hook/share"
 	"log/slog"
 )
 
@@ -20,7 +20,7 @@ const maxToolCallsPerInvocation = 32
 const dispatchedMetadataKey = "hook.runtime.dispatched"
 const skipHookIDMetadataKey = "hook.runtime.skip_id"
 
-func (m *Manager) hasLease(event hook.Event) bool {
+func (m *Manager) hasLease(event share.Event) bool {
 	key := routeKeyFor(event)
 	m.mu.Lock()
 	lease, ok := m.routes[key]
@@ -28,9 +28,15 @@ func (m *Manager) hasLease(event hook.Event) bool {
 		delete(m.routes, key)
 		worker := m.transient[key]
 		delete(m.transient, key)
+		if worker != nil {
+			m.workWG.Add(1)
+		}
 		m.mu.Unlock()
 		if worker != nil {
-			go func() { _, _ = worker.stop(context.Background()) }()
+			go func() {
+				defer m.workWG.Done()
+				_, _ = worker.stop(context.Background())
+			}()
 		}
 		return false
 	}
@@ -38,7 +44,7 @@ func (m *Manager) hasLease(event hook.Event) bool {
 	return ok
 }
 
-func (m *Manager) RouteHookID(event hook.Event) string {
+func (m *Manager) RouteHookID(event share.Event) string {
 	key := routeKeyFor(event)
 	m.mu.RLock()
 	lease, ok := m.routes[key]
@@ -49,10 +55,10 @@ func (m *Manager) RouteHookID(event hook.Event) string {
 	return lease.HookID
 }
 
-// LLM processing. The caller owns normal Hook execution before calling Route.
-func (m *Manager) Route(ctx context.Context, event hook.Event) (hook.Event, bool, error) {
+// Route resumes a matching waiting invocation before pipeline runs ordinary rules.
+func (m *Manager) Route(ctx context.Context, event share.Event, observe func(context.Context, string) (context.Context, func())) (share.Event, bool, globalevents.LogResult, error) {
 	if dispatched, _ := event.Metadata[dispatchedMetadataKey].(bool); dispatched {
-		return event, false, nil
+		return event, false, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no matching continuation"}, nil
 	}
 	key := routeKeyFor(event)
 	m.mu.Lock()
@@ -61,15 +67,21 @@ func (m *Manager) Route(ctx context.Context, event hook.Event) (hook.Event, bool
 		delete(m.routes, key)
 		worker := m.transient[key]
 		delete(m.transient, key)
+		if worker != nil {
+			m.workWG.Add(1)
+		}
 		m.mu.Unlock()
 		if worker != nil {
-			go func() { _, _ = worker.stop(context.Background()) }()
+			go func() {
+				defer m.workWG.Done()
+				_, _ = worker.stop(context.Background())
+			}()
 		}
-		return event, false, nil
+		return event, false, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no matching continuation"}, nil
 	}
 	m.mu.Unlock()
 	if !ok {
-		return event, false, nil
+		return event, false, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no matching continuation"}, nil
 	}
 	worker := m.worker(lease.HookID)
 	if worker == nil {
@@ -81,14 +93,19 @@ func (m *Manager) Route(ctx context.Context, event hook.Event) (hook.Event, bool
 		m.mu.Lock()
 		delete(m.routes, key)
 		m.mu.Unlock()
-		return event, false, nil
+		return event, false, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no matching continuation"}, nil
 	}
 	if worker.config.Block.Blocks(event) {
 		m.clearLease(lease.HookID, event)
-		return event, false, nil
+		return event, false, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no matching continuation"}, nil
+	}
+	if observe != nil {
+		var done func()
+		ctx, done = observe(ctx, lease.HookID)
+		defer done()
 	}
 	updated, logResult, err := worker.handle(ctx, event, true, lease.Control)
-	// Continuations bypass DefaultManager; this source owns their point record.
+	// Runtime owns the continuation record; pipeline propagates this source outcome.
 	record := globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, EventName: "hook_triggered", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: fmt.Sprintf("continuation: hook=%s point=%s\n%s", lease.HookID, event.Point, logResult.Content), ResultStatus: logResult.ResultStatus}
 	if logResult.ResultStatus == globalevents.ResultFailed {
 		record.Level, record.EventName = slog.LevelError, "hook_error"
@@ -114,7 +131,7 @@ func (m *Manager) Route(ctx context.Context, event hook.Event) (hook.Event, bool
 	if facts.RootRequestID != "" {
 		record.Identity.RootRequestID = &facts.RootRequestID
 	}
-	hook.LogHook(ctx, record)
+	m.opts.Log(ctx, record)
 	if worker.config.ModeOrOnce() == ModeTransient && (err != nil || !m.hasLease(event)) {
 		m.stopTransient(key, worker)
 	}
@@ -124,10 +141,10 @@ func (m *Manager) Route(ctx context.Context, event hook.Event) (hook.Event, bool
 		}
 		updated.Metadata[skipHookIDMetadataKey] = lease.HookID
 	}
-	return updated, true, err
+	return updated, true, logResult, err
 }
 
-func (m *Manager) Cancel(event hook.Event) bool {
+func (m *Manager) Cancel(event share.Event) bool {
 	key := routeKeyFor(event)
 	m.mu.Lock()
 	lease, ok := m.routes[key]
@@ -169,7 +186,7 @@ type routeKey struct {
 	ActorID  string
 }
 
-func routeKeyFor(event hook.Event) routeKey {
+func routeKeyFor(event share.Event) routeKey {
 	return routeKey{Platform: event.Platform.Name, ScopeID: event.Platform.ScopeID, ActorID: event.Actor.ID}
 }
 
@@ -177,7 +194,7 @@ type lease struct {
 	HookID         string
 	ConversationID string
 	ExpiresAt      time.Time
-	Control        hook.Control
+	Control        share.Control
 }
 
 type invocation struct {
@@ -198,7 +215,7 @@ func (m *Manager) endInvocation(key routeKey, cancel context.CancelFunc) {
 	m.mu.Unlock()
 }
 
-func (m *Manager) setLease(id string, event hook.Event, result eventResult, defaults hook.Control) error {
+func (m *Manager) setLease(id string, event share.Event, result eventResult, defaults share.Control) error {
 	if strings.TrimSpace(result.ConversationID) == "" {
 		return fmt.Errorf("hook waiting response requires conversation_id")
 	}
@@ -222,7 +239,7 @@ func (m *Manager) setLease(id string, event hook.Event, result eventResult, defa
 	return nil
 }
 
-func (m *Manager) clearLease(id string, event hook.Event) {
+func (m *Manager) clearLease(id string, event share.Event) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	key := routeKeyFor(event)
@@ -237,7 +254,12 @@ func (m *Manager) clearRoutesLocked(id string) {
 			delete(m.routes, key)
 			if worker := m.transient[key]; worker != nil {
 				delete(m.transient, key)
-				go func() { _, _ = worker.stop(context.Background()) }()
+				// Registration and index removal share mu, so Close cannot miss either.
+				m.workWG.Add(1)
+				go func() {
+					defer m.workWG.Done()
+					_, _ = worker.stop(context.Background())
+				}()
 			}
 		}
 	}
@@ -251,13 +273,13 @@ func (m *Manager) clearRoutesLocked(id string) {
 
 type toolContext struct {
 	HookID    string
-	Event     hook.Event
+	Event     share.Event
 	Context   context.Context
 	ExpiresAt time.Time
 	Calls     int
 }
 
-func (m *Manager) putToolContext(id string, ctx context.Context, event hook.Event, ttl time.Duration) string {
+func (m *Manager) putToolContext(id string, ctx context.Context, event share.Event, ttl time.Duration) string {
 	token := randomID("ctx")
 	m.mu.Lock()
 	m.tokens[token] = toolContext{HookID: id, Event: event, Context: ctx, ExpiresAt: time.Now().Add(ttl)}

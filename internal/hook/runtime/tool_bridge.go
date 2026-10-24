@@ -14,7 +14,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
-	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/tool"
 )
@@ -26,7 +25,7 @@ func (w *worker) pluginRequest(value frame) (any, error) {
 		return w.manager.MediaRequest(ctx, w.config.Dir, value.Method, value.Params)
 	}
 	if strings.HasPrefix(value.Method, "shared.") {
-		return w.manager.shared.HandleRequest(value.Method, value.Params)
+		return w.manager.SharedRequest(value.Method, value.Params)
 	}
 	switch value.Method {
 	case "hooks.reload":
@@ -141,7 +140,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		if facts.RootRequestID != "" {
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
-		hook.LogHook(callCtx, record)
+		w.manager.opts.Log(callCtx, record)
 	}
 	if err != nil {
 		logHook("hook_tool_call_completed", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered; invalid parameters: " + err.Error()})
@@ -163,13 +162,13 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		logHook("hook_tool_call_completed", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})
 		return nil, err
 	}
-	registered, ok := w.manager.opts.Registry.Get(name)
+	info, ok := w.manager.opts.Tools.ToolInfo(name)
 	if !ok {
 		err := fmt.Errorf("tool %q not found", name)
 		logHook("hook_tool_call_completed", globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()})
 		return nil, err
 	}
-	if registered.Info().ForegroundOnly && params.Background {
+	if info.ForegroundOnly && params.Background {
 		err := fmt.Errorf("tool %q is foreground-only", name)
 		logHook("hook_tool_call_completed", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})
 		return nil, err
@@ -194,6 +193,14 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		} else {
 			actor, _ = contextinfo.ActorFromContext(callCtx)
 		}
+		// Preserve invocation values and cancellation, and also join runtime shutdown.
+		var cancel context.CancelFunc
+		callCtx, cancel = context.WithCancel(callCtx)
+		stop := context.AfterFunc(w.manager.rootCtx, cancel)
+		defer func() {
+			stop()
+			cancel()
+		}()
 	} else if params.Target.Empty() {
 		err := fmt.Errorf("background tool output requires an explicit target")
 		logHook("hook_tool_call_completed", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})
@@ -201,7 +208,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	} else {
 		// Standalone background execution retains its independent timeout.
 		var cancel context.CancelFunc
-		callCtx, cancel = context.WithTimeout(context.Background(), time.Duration(w.config.EventTimeoutSeconds)*time.Second)
+		callCtx, cancel = context.WithTimeout(w.manager.rootCtx, time.Duration(w.config.EventTimeoutSeconds)*time.Second)
 		defer cancel()
 	}
 	callCtx = contextinfo.WithActor(callCtx, permissionActor)
@@ -215,7 +222,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	}
 	started := time.Now()
 	logHook("hook_tool_call_prepared", globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded})
-	result, logContent, err := registered.Call(callCtx, call)
+	result, logContent, err := w.manager.opts.Tools.CallTool(callCtx, call)
 	elapsedMS := time.Since(started).Milliseconds()
 	content.ElapsedMS = &elapsedMS
 	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: logContent}
@@ -261,11 +268,11 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 func (w *worker) schemas() ([]llm.ToolSchema, error) {
 	out := make([]llm.ToolSchema, 0, len(w.config.Tools.Allow))
 	for _, name := range w.config.Tools.Allow {
-		registered, ok := w.manager.opts.Registry.Get(name)
+		schema, ok := w.manager.opts.Tools.ToolSchema(name)
 		if !ok {
 			return nil, fmt.Errorf("tool %q no longer exists", name)
 		}
-		out = append(out, registered.Schema())
+		out = append(out, schema)
 	}
 	return out, nil
 }

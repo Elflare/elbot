@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/hook"
+	"elbot/internal/hook/share"
 	"elbot/internal/media"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -31,7 +31,7 @@ func testMediaRuntime(t *testing.T) (*Manager, *media.Manager, string) {
 	t.Cleanup(func() { _ = store.Close() })
 	root := t.TempDir()
 	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
-	manager, err := NewManager(Options{SharedDir: t.TempDir(), Media: center})
+	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Media: center})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestWorkerMediaProtocolRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForStatus(t, m, "media", StatusReady)
-	event, _, err := m.Handle(context.Background(), "media", hook.Event{Actor: hook.ActorContext{ID: "test:media"}}, hook.Control{})
+	event, _, err := m.Handle(context.Background(), "media", share.Event{Actor: share.ActorContext{ID: "test:media"}}, share.Control{})
 	if err != nil {
 		t.Fatal(err)
 	}

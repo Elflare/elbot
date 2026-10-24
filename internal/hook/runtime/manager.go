@@ -4,6 +4,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -14,7 +15,7 @@ import (
 	"time"
 
 	globalevents "elbot/internal/events"
-	"elbot/internal/hook"
+	"elbot/internal/hook/share"
 )
 
 type Manager struct {
@@ -34,9 +35,11 @@ type Manager struct {
 	rootCtx       context.Context
 	rootCancel    context.CancelFunc
 	closed        bool
-	startWG       sync.WaitGroup
-	closeDone     chan struct{}
-	closeErr      error
+	// workWG joins owned asynchronous work, including tasks whose worker left an index.
+	// New work is admitted under mu; counted tasks register cleanup before returning.
+	workWG    sync.WaitGroup
+	closeDone chan struct{}
+	closeErr  error
 }
 
 var ErrClosed = errors.New("hook runtime manager is closed")
@@ -82,14 +85,14 @@ func (m *Manager) cleanSharedState(ctx context.Context) {
 				if logResult.ResultStatus == globalevents.ResultFailed {
 					level = slog.LevelError
 				}
-				hook.LogHook(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: level, EventName: "prune_hook_media", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: logResult.Content, ResultStatus: logResult.ResultStatus})
+				m.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: level, EventName: "prune_hook_media", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: logResult.Content, ResultStatus: logResult.ResultStatus})
 			}
 		}
 	}
 }
 
-func (m *Manager) SharedState() *SharedState {
-	return m.shared
+func (m *Manager) SharedRequest(method string, params json.RawMessage) (any, error) {
+	return m.shared.HandleRequest(method, params)
 }
 
 func (m *Manager) SetPluginReloadPreparer(fn func(string) (func() (globalevents.LogResult, error), error)) {
@@ -143,7 +146,7 @@ func (m *Manager) Apply(configs []Config, commit func(string)) error {
 
 func (m *Manager) validateConfig(config Config) error {
 	for _, name := range config.Tools.Allow {
-		if _, ok := m.opts.Registry.Get(name); !ok {
+		if _, ok := m.opts.Tools.ToolInfo(name); !ok {
 			return fmt.Errorf("runtime tools.allow references unknown tool %q", name)
 		}
 	}
@@ -174,7 +177,7 @@ func (m *Manager) ValidatePlugin(config Config) error {
 func (m *Manager) ReplacePlugin(id string, config *Config, commit func()) (globalevents.LogResult, error) {
 	if config != nil {
 		if err := m.validateConfig(*config); err != nil {
-			_, _ = globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(m.rootCtx), globalevents.Notification{Text: fmt.Sprintf("Hook %s 配置应用失败：%v", id, err), Level: slog.LevelWarn})
+			_ = m.opts.Notify(context.WithoutCancel(m.rootCtx), globalevents.Notification{Text: fmt.Sprintf("Hook %s 配置应用失败：%v", id, err), Level: slog.LevelWarn})
 			return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, fmt.Errorf("hook %s config: %w", id, err)
 		}
 	}
@@ -297,7 +300,7 @@ func (m *Manager) finishClose(ctx context.Context, workers []*worker) {
 		}()
 	}
 	wg.Wait()
-	m.startWG.Wait()
+	m.workWG.Wait()
 	<-m.sharedDone
 
 	logResult, err := m.media.prune(ctx, time.Now(), true)
@@ -306,7 +309,7 @@ func (m *Manager) finishClose(ctx context.Context, workers []*worker) {
 		if logResult.ResultStatus == globalevents.ResultFailed {
 			level = slog.LevelError
 		}
-		hook.LogHook(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: level, EventName: "prune_hook_media", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: logResult.Content, ResultStatus: logResult.ResultStatus})
+		m.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: level, EventName: "prune_hook_media", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: logResult.Content, ResultStatus: logResult.ResultStatus})
 	}
 	m.mu.Lock()
 	m.closeErr = errors.Join(append(workerErrs, err)...)
@@ -320,10 +323,10 @@ func (m *Manager) startWorker(worker *worker) error {
 		m.mu.Unlock()
 		return ErrClosed
 	}
-	m.startWG.Add(1)
+	m.workWG.Add(1)
 	m.mu.Unlock()
 	go func() {
-		defer m.startWG.Done()
+		defer m.workWG.Done()
 		worker.run()
 	}()
 	return nil
@@ -335,7 +338,7 @@ func (m *Manager) isClosed() bool {
 	return m.closed
 }
 
-func (m *Manager) List() []Info {
+func (m *Manager) List() []share.RuntimeInfo {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	itemsByID := map[string]Info{}
@@ -362,12 +365,12 @@ func (m *Manager) List() []Info {
 		info.Waiting++
 		itemsByID[lease.HookID] = info
 	}
-	items := make([]Info, 0, len(itemsByID))
+	items := make([]share.RuntimeInfo, 0, len(itemsByID))
 	for _, info := range itemsByID {
 		if info.Mode == ModeTransient && info.Status == "" {
 			info.Status = StatusStopped
 		}
-		items = append(items, info)
+		items = append(items, share.RuntimeInfo{ID: info.ID, Description: info.Description, Mode: string(info.Mode), Status: string(info.Status), Detail: info.Detail, Active: info.Active, Waiting: info.Waiting})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
 	return items
@@ -434,7 +437,7 @@ func (m *Manager) worker(id string) *worker {
 	return m.workers[strings.TrimSpace(id)]
 }
 
-func (m *Manager) Handle(ctx context.Context, id string, event hook.Event, defaults hook.Control) (hook.Event, globalevents.LogResult, error) {
+func (m *Manager) Handle(ctx context.Context, id string, event share.Event, defaults share.Control) (share.Event, globalevents.LogResult, error) {
 	if m.hasLease(event) {
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "worker not dispatched"}, nil
 	}
@@ -528,6 +531,10 @@ func (m *Manager) startTransient(ctx context.Context, config Config, key routeKe
 
 func (m *Manager) stopTransient(key routeKey, wanted *worker) {
 	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return // Close already owns stopping the indexed workers.
+	}
 	worker := m.transient[key]
 	if worker == nil || (wanted != nil && worker != wanted) {
 		m.mu.Unlock()
@@ -535,6 +542,10 @@ func (m *Manager) stopTransient(key routeKey, wanted *worker) {
 	}
 	delete(m.transient, key)
 	delete(m.routes, key)
+	m.workWG.Add(1)
 	m.mu.Unlock()
-	go func() { _, _ = worker.stop(context.Background()) }()
+	go func() {
+		defer m.workWG.Done()
+		_, _ = worker.stop(context.Background())
+	}()
 }

@@ -17,15 +17,17 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] 退出步骤使用结果枚举和共用批量执行函数，保持统一 30 秒预算与部分失败清理。
 - [x] 统一权限管理类型及现行调用方为 `Permission`。
 - [x] 测试覆盖资源部分失败、环境参数和退出辅助逻辑；期限测试使用虚拟时间。
-- [ ] 实现其他四条线的目标总管及 Platform.RunClient 结果契约，补齐跨线接线。
+- [ ] 实现 Tool、Platform、Background 的目标总管及 Platform.RunClient 结果契约，补齐跨线接线。
 - [x] 收窄 Agent 的 Hook 边界：声明 `hooks.Points`，提供 `RegisterHooks`、`StartHookRequest`，业务流程仅调用 Agent 自有扩展点；Hook 管理能力仅用于命令。
 - [x] Hook 根包实现 ConnectAgent：注册并持有一组回调，转换业务参数与 Hook Event 并处理结果转换；逐 handler 登记回调只传 context 与名称，不持有 Agent 内部组件。
 - [x] Hook 根部 context_to_event.go 负责外部事实转换；pipeline 组织续接、普通规则及错误钩子，构造时注入日志和 runtime 续接能力；注册查询契约与事件辅助逻辑归 share。
 - [x] Hook.Start 串行完成初始加载和平台订阅，重复启动等待完成；已补并发启动回归用例。
 - [x] Hook 根包持有 PlatformConnected 订阅和逐平台队列，管理全局 Hook 输出与真实退出；全局平台工作不登记 Agent 请求。已补根包桥接与生命周期用例，暂未执行。
 - [x] Hook.BeginClose 保留 Agent 收尾能力；Close 解绑并等待已接纳调用和平台工作，再关闭 runtime，Done 等待实际退出。
-- [ ] 落实 Hook 剩余子包接口：share 的 runtime／媒体共享定义；runtime.Route 接收逐 handler 回调并返回来源 LogResult；control 构造注入候选流水线的日志发布函数，候选 NewManager 使用空续接能力；rules/runtime 接收 Tools、Send、CallPlatformAPI（仅 rules）、Log、Notify 及各自最小媒体能力，清除对子系统根包的反向导入。
-- [ ] Hook 子包迁移完成后，更新管理命令的 share 查询类型，迁走根包 logging_test 中的流水线用例，删除旧 module／builtin／process 包装，再统一编译与验证。
+- [x] Hook 子包接入根包装配的能力：runtime.Route 接收登记回调并返回来源 LogResult；control 候选 pipeline 注入日志、使用空续接；rules/runtime 消费工具、发送、日志、通知及所需媒体能力，rules 使用按平台名称调用的 API；内部不反向导入根包。
+- [x] pipeline.Manager 作为具体执行器，将只读策略传给 rules 逐动作校验；share 保留调用快照和纯查询 RuntimeInfo，runtime 保留运行时枚举及私有媒体接口。
+- [x] 管理命令使用 share 查询类型；迁移流水线日志与旧装配层覆盖，删除 module／builtin／process 包装。
+- [ ] 编译并运行 Hook 及相关管理命令测试，完成整条接线验证；当前仅完成格式整理与静态核对。
 - [ ] 实现媒体 NewMediaCenter、模型 NewModelManager 的构造契约。
 - [ ] 实现按配置区分的服务独占运行占用。
 - [ ] 适配进程入口的新 App API 与 `client` 命名。

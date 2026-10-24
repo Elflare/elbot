@@ -6,6 +6,6 @@ import "context"
 
 type CallOptions struct {
 	Woken         bool                                                    // Fixed wakeup result supplied by the entry boundary.
-	ReadOnlyCalls bool                                                    // Forbids changes to tool call identities and arguments.
+	ReadOnlyCalls bool                                                    // Passed to rules to forbid changes to call identities and arguments.
 	Observe       func(context.Context, string) (context.Context, func()) // Optional per-handler request lifetime; execution owns its timing.
 }

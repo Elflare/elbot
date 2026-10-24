@@ -8,8 +8,7 @@ import (
 	"unicode/utf8"
 
 	"elbot/internal/command"
-	"elbot/internal/hook"
-	hookruntime "elbot/internal/hook/runtime"
+	"elbot/internal/hook/share"
 )
 
 const hookListDescriptionLimit = 60
@@ -25,8 +24,8 @@ type hooksCommand struct {
 type hookGroup struct {
 	name     string
 	plugin   bool
-	infos    []hook.Info
-	stateful *hookruntime.Info
+	infos    []share.Info
+	stateful *share.RuntimeInfo
 }
 
 func (c hooksCommand) Info() command.Info {
@@ -101,7 +100,7 @@ func collectHookGroups(deps Deps) []*hookGroup {
 	for _, info := range deps.Hooks.HookList() {
 		pluginID := strings.TrimSpace(info.PluginID)
 		if pluginID == "" {
-			groups = append(groups, &hookGroup{name: info.Name, infos: []hook.Info{info}})
+			groups = append(groups, &hookGroup{name: info.Name, infos: []share.Info{info}})
 			continue
 		}
 		group := plugins[pluginID]
@@ -174,7 +173,7 @@ func writePluginHookListLine(sb *strings.Builder, group *hookGroup) {
 	sb.WriteString("\n")
 }
 
-func writeStandaloneHookListLine(sb *strings.Builder, info hook.Info) {
+func writeStandaloneHookListLine(sb *strings.Builder, info share.Info) {
 	fmt.Fprintf(sb, "  %s  [%s]  priority=%d", info.Name, info.Point, info.Priority)
 	if description := strings.TrimSpace(info.Description); description != "" {
 		sb.WriteString(" - " + truncateHookDescription(description))
@@ -221,7 +220,7 @@ func hookCompletionDescription(group *hookGroup) string {
 	return strings.Join(parts, ", ")
 }
 
-func formatHookReloadResult(report hook.ReloadReport) string {
+func formatHookReloadResult(report share.ReloadReport) string {
 	if len(report.Notices) == 0 {
 		return "hook reload completed"
 	}
@@ -287,7 +286,7 @@ func formatPluginHookDetail(group *hookGroup) string {
 	return sb.String()
 }
 
-func writePluginRuleDetail(sb *strings.Builder, info hook.Info, pluginDescription string) {
+func writePluginRuleDetail(sb *strings.Builder, info share.Info, pluginDescription string) {
 	fmt.Fprintf(sb, "rule: %s\npoint: %s\npriority: %d", info.Name, info.Point, info.Priority)
 	if info.Active > 0 {
 		fmt.Fprintf(sb, "\nactive: %d", info.Active)
@@ -300,7 +299,7 @@ func writePluginRuleDetail(sb *strings.Builder, info hook.Info, pluginDescriptio
 	}
 }
 
-func formatSingleHookDetail(info hook.Info) string {
+func formatSingleHookDetail(info share.Info) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "name: %s\npoint: %s\npriority: %d", info.Name, info.Point, info.Priority)
 	if description := strings.TrimSpace(info.Description); description != "" {

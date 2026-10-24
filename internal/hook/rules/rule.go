@@ -5,12 +5,13 @@ package rules
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
-	"elbot/internal/hook"
+	"elbot/internal/hook/share"
 	"elbot/internal/security"
 )
 
@@ -24,23 +25,23 @@ func validateExecAction(action Action) error {
 	return nil
 }
 
-func ruleRegistrations(rule Rule) []hook.Match {
+func ruleRegistrations(rule Rule) []share.Match {
 	roleConditions := ruleRoleConditions(rule)
 	if len(roleConditions) == 0 {
-		return []hook.Match{{Conditions: rule.Match}}
+		return []share.Match{{Conditions: rule.Match}}
 	}
-	out := make([]hook.Match, 0, len(roleConditions))
+	out := make([]share.Match, 0, len(roleConditions))
 	for _, condition := range roleConditions {
-		conditions := append([]hook.Condition{}, rule.Match...)
+		conditions := append([]share.Condition{}, rule.Match...)
 		conditions = append(conditions, condition)
-		out = append(out, hook.Match{Conditions: conditions})
+		out = append(out, share.Match{Conditions: conditions})
 	}
 	return out
 }
 
-func ruleRoleConditions(rule Rule) []hook.Condition {
+func ruleRoleConditions(rule Rule) []share.Condition {
 	seen := map[string]bool{}
-	var out []hook.Condition
+	var out []share.Condition
 	add := func(field, role string) {
 		role = strings.TrimSpace(role)
 		if role == "" {
@@ -51,7 +52,7 @@ func ruleRoleConditions(rule Rule) []hook.Condition {
 			return
 		}
 		seen[key] = true
-		out = append(out, hook.Condition{Field: field, Op: hook.MatchFull, Value: role})
+		out = append(out, share.Condition{Field: field, Op: share.MatchFull, Value: role})
 	}
 	for _, role := range rule.Roles {
 		role = strings.TrimSpace(role)
@@ -93,19 +94,19 @@ func (r *Rule) normalize() error {
 	return nil
 }
 
-func (r Rule) conditions() ([]hook.Condition, error) {
+func (r Rule) conditions() ([]share.Condition, error) {
 	flat := strings.TrimSpace(r.If) != "" || strings.TrimSpace(r.Op) != "" || r.Value != ""
 	if r.Always {
 		if flat || len(r.Match) > 0 {
 			return nil, fmt.Errorf("always cannot be combined with if/op/value or match")
 		}
-		return []hook.Condition{{Op: hook.MatchAlways}}, nil
+		return []share.Condition{{Op: share.MatchAlways}}, nil
 	}
 	if flat && len(r.Match) > 0 {
 		return nil, fmt.Errorf("if/op/value cannot be combined with match")
 	}
 	if flat {
-		return []hook.Condition{{Field: r.If, Op: r.Op, Value: r.Value}}, nil
+		return []share.Condition{{Field: r.If, Op: r.Op, Value: r.Value}}, nil
 	}
 	return r.Match, nil
 }
@@ -146,7 +147,7 @@ func validateRule(rule Rule) error {
 	if strings.TrimSpace(rule.On) == "" {
 		return fmt.Errorf("hook rule %q missing on", rule.Name)
 	}
-	if !hook.KnownPoint(hook.Point(rule.On)) {
+	if !share.KnownPoint(share.Point(rule.On)) {
 		return fmt.Errorf("hook rule %q unknown hook point %q", rule.Name, rule.On)
 	}
 
@@ -160,7 +161,7 @@ func validateRule(rule Rule) error {
 	if len(rule.Match) == 0 {
 		return fmt.Errorf("hook rule %q missing match", rule.Name)
 	}
-	if err := (hook.Match{Conditions: rule.Match}).Validate(); err != nil {
+	if err := (share.Match{Conditions: rule.Match}).Validate(); err != nil {
 		return fmt.Errorf("hook rule %q matches: %w", rule.Name, err)
 	}
 
@@ -216,11 +217,11 @@ func validateActionTiming(timing string) error {
 	return delivery.ValidateDeliveryTiming(timing)
 }
 
-func (m Module) runRule(ctx context.Context, rule Rule, event hook.Event) (hook.Event, globalevents.LogResult, error) {
+func (m Module) runRule(ctx context.Context, rule Rule, event share.Event, readOnlyCalls bool) (share.Event, globalevents.LogResult, error) {
 	if !rule.matchRoles(event) {
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "role did not match"}, nil
 	}
-	before := hook.SnapshotCalls(event)
+	before := share.SnapshotCalls(event)
 	state := state{Actions: map[string]actionResult{}}
 	var passThrough *bool
 	var err error
@@ -229,7 +230,7 @@ func (m Module) runRule(ctx context.Context, rule Rule, event hook.Event) (hook.
 		var result actionResult
 		event, result, logResult, err = m.runAction(ctx, event, action, state)
 		if err == nil {
-			err = hook.ValidateCalls(ctx, before, event)
+			err = validateCalls(readOnlyCalls, before, event)
 			if err != nil {
 				logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
 			}
@@ -263,7 +264,7 @@ func (m Module) runRule(ctx context.Context, rule Rule, event hook.Event) (hook.
 	return event, logResult, nil
 }
 
-func (r Rule) matchRoles(event hook.Event) bool {
+func (r Rule) matchRoles(event share.Event) bool {
 	if len(r.Roles) > 0 && !matchesUnifiedRole(r.Roles, event) {
 		return false
 	}
@@ -276,7 +277,7 @@ func (r Rule) matchRoles(event hook.Event) bool {
 	return true
 }
 
-func matchesUnifiedRole(roles []string, event hook.Event) bool {
+func matchesUnifiedRole(roles []string, event share.Event) bool {
 	for _, role := range roles {
 		role = strings.TrimSpace(role)
 		if role == event.Actor.Role || role == event.Actor.GroupRole {
@@ -284,6 +285,17 @@ func matchesUnifiedRole(roles []string, event hook.Event) bool {
 		}
 	}
 	return false
+}
+
+// validateCalls enforces the explicit caller policy after each rule action.
+func validateCalls(readOnlyCalls bool, before, after share.Event) error {
+	if !readOnlyCalls {
+		return nil
+	}
+	if !reflect.DeepEqual(before.LLM.ToolCalls, after.LLM.ToolCalls) || before.Tool.ID != after.Tool.ID || before.Tool.Name != after.Tool.Name || before.Tool.Arguments != after.Tool.Arguments {
+		return fmt.Errorf("returned tool calls, IDs, names and arguments are read-only for this execution")
+	}
+	return nil
 }
 
 func containsString(values []string, target string) bool {

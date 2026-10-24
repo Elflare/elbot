@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"elbot/internal/events"
-	"elbot/internal/hook"
+	"elbot/internal/hook/share"
 	"elbot/internal/processenv"
 	"elbot/internal/signal"
 )
@@ -52,7 +52,7 @@ func TestExecIndependentSignalSurvivesLaterCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer connection.Disconnect()
-	_, _, result, err := (Module{}).runExec(ctx, hook.Event{}, Action{Command: []string{executable, "-test.run=^TestExecIndependentSignalHelper$"}}, state{})
+	_, _, result, err := (Module{Opts: Options{Log: testLog, Notify: testNotify}}).runExec(ctx, share.Event{}, Action{Command: []string{executable, "-test.run=^TestExecIndependentSignalHelper$"}}, state{})
 	if errors.Is(err, context.Canceled) || result.ResultStatus != events.ResultFailed || !strings.Contains(result.Content, "signal: killed") || !strings.Contains(result.Content, "context canceled") {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}

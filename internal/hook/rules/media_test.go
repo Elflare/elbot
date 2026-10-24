@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"elbot/internal/hook"
 	hookruntime "elbot/internal/hook/runtime"
+	"elbot/internal/hook/share"
 	"elbot/internal/media"
 	"elbot/internal/storage/sqlite"
 )
@@ -23,13 +23,13 @@ func TestExecMediaProtocolRoundTrip(t *testing.T) {
 	defer store.Close()
 	root := t.TempDir()
 	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
-	runtime, err := hookruntime.NewManager(hookruntime.Options{SharedDir: t.TempDir(), Media: center})
+	runtime, err := hookruntime.NewManager(hookruntime.Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Media: center})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer runtime.Close(ctx)
-	module := Module{Opts: Options{Runtime: runtime}}
-	got, _, err := module.runRule(ctx, Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("media")}}}, hook.Event{Point: hook.PointAgentInputPrepared})
+	module := Module{Opts: Options{Log: testLog, Notify: testNotify, Runtime: runtime}}
+	got, _, err := module.runRule(ctx, Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("media")}}}, share.Event{Point: share.PointAgentInputPrepared}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,12 +47,12 @@ func TestRuleSendMediaID(t *testing.T) {
 		{Type: "send", Kind: "image", URL: id},
 		{Type: "send", Outputs: []SegmentSpec{{Kind: "image", URL: id}}},
 	} {
-		got, _, err := (Module{}).runRule(context.Background(), Rule{Actions: []Action{action}}, hook.Event{})
+		got, _, err := (Module{Opts: Options{Log: testLog, Notify: testNotify}}).runRule(context.Background(), Rule{Actions: []Action{action}}, share.Event{}, false)
 		if err != nil || len(got.Outputs) != 1 || got.Outputs[0].Source.MediaID != id {
 			t.Fatalf("got=%#v err=%v", got, err)
 		}
 	}
-	if _, err := makeOutputs(Action{URL: id, Outputs: []SegmentSpec{{Kind: "text", Text: "mixed"}}}, hook.Event{}, state{}); err == nil {
+	if _, err := makeOutputs(Action{URL: id, Outputs: []SegmentSpec{{Kind: "text", Text: "mixed"}}}, share.Event{}, state{}); err == nil {
 		t.Fatal("mixed quick fields accepted")
 	}
 }

@@ -5,7 +5,8 @@ package rules
 import (
 	"context"
 	"elbot/internal/delivery"
-	"elbot/internal/hook"
+	"elbot/internal/hook/pipeline"
+	"elbot/internal/hook/share"
 	"elbot/internal/llm"
 	"os"
 	"path/filepath"
@@ -16,7 +17,7 @@ import (
 func TestRuleNormalizeFlatConditionAndAction(t *testing.T) {
 	rule := Rule{
 		If:     "platform.name",
-		Op:     hook.MatchFull,
+		Op:     share.MatchFull,
 		Value:  "qqonebot",
 		Action: "send",
 		Text:   "connected",
@@ -26,7 +27,7 @@ func TestRuleNormalizeFlatConditionAndAction(t *testing.T) {
 	if err := rule.normalize(); err != nil {
 		t.Fatalf("normalize: %v", err)
 	}
-	if len(rule.Match) != 1 || rule.Match[0].Field != "platform.name" || rule.Match[0].Op != hook.MatchFull {
+	if len(rule.Match) != 1 || rule.Match[0].Field != "platform.name" || rule.Match[0].Op != share.MatchFull {
 		t.Fatalf("match = %#v", rule.Match)
 	}
 	if len(rule.Actions) != 1 || rule.Actions[0].Type != "send" || rule.Actions[0].Text != "connected" || rule.Actions[0].Timing != delivery.DeliveryAfterAssistant {
@@ -54,7 +55,7 @@ func TestRuleNormalizeAlwaysAndPattern(t *testing.T) {
 	if err := rule.normalize(); err != nil {
 		t.Fatalf("normalize: %v", err)
 	}
-	if len(rule.Match) != 1 || rule.Match[0].Op != hook.MatchAlways {
+	if len(rule.Match) != 1 || rule.Match[0].Op != share.MatchAlways {
 		t.Fatalf("match = %#v", rule.Match)
 	}
 	if len(rule.Actions) != 1 || rule.Actions[0].Match != "cat" || !rule.Actions[0].All {
@@ -64,9 +65,9 @@ func TestRuleNormalizeAlwaysAndPattern(t *testing.T) {
 
 func TestRuleNormalizeKeepsListFormat(t *testing.T) {
 	rule := Rule{
-		Match: []hook.Condition{
-			{Field: "platform.name", Op: hook.MatchFull, Value: "qqonebot"},
-			{Field: "message.text", Op: hook.MatchContains, Value: "猫"},
+		Match: []share.Condition{
+			{Field: "platform.name", Op: share.MatchFull, Value: "qqonebot"},
+			{Field: "message.text", Op: share.MatchContains, Value: "猫"},
 		},
 		Actions: []Action{
 			{Type: "replace", Field: "message.text", Pattern: "猫", Replace: "狗", All: true},
@@ -85,7 +86,7 @@ func TestRuleNormalizeKeepsListFormat(t *testing.T) {
 }
 
 func TestRuleNormalizeRejectsAmbiguousCondition(t *testing.T) {
-	rule := Rule{Always: true, If: "message.text", Op: hook.MatchContains, Value: "cat", Action: "append"}
+	rule := Rule{Always: true, If: "message.text", Op: share.MatchContains, Value: "cat", Action: "append"}
 	err := rule.normalize()
 	if err == nil || !strings.Contains(err.Error(), "always cannot be combined") {
 		t.Fatalf("err = %v", err)
@@ -101,7 +102,7 @@ func TestRuleNormalizeRejectsActionWithActions(t *testing.T) {
 }
 
 func TestValidateRuleRejectsUnknownHookPoint(t *testing.T) {
-	rule := Rule{Name: "bad", On: "agent.out.prepared", Match: []hook.Condition{{Op: hook.MatchAlways}}, Actions: []Action{{Type: "append", Field: "message.text", Text: "!"}}}
+	rule := Rule{Name: "bad", On: "agent.out.prepared", Match: []share.Condition{{Op: share.MatchAlways}}, Actions: []Action{{Type: "append", Field: "message.text", Text: "!"}}}
 	err := validateRule(rule)
 	if err == nil || !strings.Contains(err.Error(), "unknown hook point") {
 		t.Fatalf("err = %v", err)
@@ -109,7 +110,7 @@ func TestValidateRuleRejectsUnknownHookPoint(t *testing.T) {
 }
 
 func TestValidateRuleRejectsUnsupportedTiming(t *testing.T) {
-	rule := Rule{Name: "bad_timing", On: string(hook.PointLLMResponseReceived), Match: []hook.Condition{{Op: hook.MatchAlways}}, Actions: []Action{{Type: "send", Text: "x", Timing: "later"}}}
+	rule := Rule{Name: "bad_timing", On: string(share.PointLLMResponseReceived), Match: []share.Condition{{Op: share.MatchAlways}}, Actions: []Action{{Type: "send", Text: "x", Timing: "later"}}}
 	err := validateRule(rule)
 	if err == nil || !strings.Contains(err.Error(), `unsupported timing "later"`) {
 		t.Fatalf("err = %v", err)
@@ -117,7 +118,7 @@ func TestValidateRuleRejectsUnsupportedTiming(t *testing.T) {
 }
 
 func TestValidateRuleRejectsUnsupportedWakeupPolicy(t *testing.T) {
-	rule := Rule{Name: "invalid", On: string(hook.PointPlatformMessageReceived), Wakeup: "sometimes", Match: []hook.Condition{{Op: hook.MatchAlways}}, Actions: []Action{{Type: "send", Text: "ok"}}}
+	rule := Rule{Name: "invalid", On: string(share.PointPlatformMessageReceived), Wakeup: "sometimes", Match: []share.Condition{{Op: share.MatchAlways}}, Actions: []Action{{Type: "send", Text: "ok"}}}
 	err := validateRule(rule)
 	if err == nil || !strings.Contains(err.Error(), `unsupported wakeup policy "sometimes"`) {
 		t.Fatalf("err = %v", err)
@@ -125,35 +126,31 @@ func TestValidateRuleRejectsUnsupportedWakeupPolicy(t *testing.T) {
 }
 
 func TestRegisterHooksUsesRuleNamesAndDescriptions(t *testing.T) {
-	manager := hook.NewManager()
-	manager.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
-	manager.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
-		return ctx, func() {}
-	})
-	module := Module{Rules: []Rule{
+	manager := pipeline.NewManager(testLog, nil)
+	module := Module{Opts: Options{Log: testLog, Notify: testNotify}, Rules: []Rule{
 		{
 			Name:        "greet",
 			Description: "send a greeting",
-			On:          string(hook.PointPlatformMessageReceived),
-			Match:       []hook.Condition{{Op: hook.MatchAlways}},
+			On:          string(share.PointPlatformMessageReceived),
+			Match:       []share.Condition{{Op: share.MatchAlways}},
 			Actions:     []Action{{Type: "send", Text: "hi"}},
 		},
 		{
 			Name:    "gated",
-			On:      string(hook.PointPlatformMessageReceived),
-			Match:   []hook.Condition{{Op: hook.MatchAlways}},
+			On:      string(share.PointPlatformMessageReceived),
+			Match:   []share.Condition{{Op: share.MatchAlways}},
 			Roles:   []string{"superadmin", "admin"},
 			Actions: []Action{{Type: "send", Text: "ok"}},
 		},
 	}}
 	cfg := Config{Rules: module.Rules}
-	if err := cfg.normalize(); err != nil {
+	if err := normalizeLoadedRules(&cfg, Options{Log: testLog, Notify: testNotify}); err != nil {
 		t.Fatal(err)
 	}
 	module.Rules = cfg.Rules
 	module.RegisterHooks(manager)
 	infos := manager.List()
-	byName := map[string]hook.Info{}
+	byName := map[string]share.Info{}
 	for _, info := range infos {
 		byName[info.Name] = info
 	}
@@ -192,16 +189,12 @@ text = "ok"
 	if err := os.WriteFile(filepath.Join(pluginDir, "hook.toml"), []byte(plugin), 0o644); err != nil {
 		t.Fatalf("write plugin config: %v", err)
 	}
-	cfg, _, err := loadConfig(Options{ConfigDir: dir})
+	cfg, _, err := loadConfig(Options{Log: testLog, Notify: testNotify, ConfigDir: dir})
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
-	manager := hook.NewManager()
-	manager.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
-	manager.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
-		return ctx, func() {}
-	})
-	(Module{Rules: cfg.Rules}).RegisterHooks(manager)
+	manager := pipeline.NewManager(testLog, nil)
+	(Module{Opts: Options{Log: testLog, Notify: testNotify}, Rules: cfg.Rules}).RegisterHooks(manager)
 	infos := manager.List()
 	if len(infos) != 1 || infos[0].PluginID != "demo" || infos[0].Name != "emit_file" || infos[0].Description != "demo plugin" || !strings.Contains(infos[0].Detail, "on: llm.response.received") {
 		t.Fatalf("infos = %#v", infos)
@@ -210,7 +203,7 @@ text = "ok"
 
 func TestRuleRegistrationsExpandRoles(t *testing.T) {
 	rule := Rule{
-		Match:      []hook.Condition{{Op: hook.MatchAlways}},
+		Match:      []share.Condition{{Op: share.MatchAlways}},
 		Roles:      []string{"superadmin", "admin"},
 		ActorRoles: []string{"user"},
 		GroupRoles: []string{"owner"},
@@ -232,11 +225,11 @@ func TestRuleRegistrationsExpandRoles(t *testing.T) {
 }
 
 func TestRuleRoleGatesAndControl(t *testing.T) {
-	module := Module{}
-	event := hook.Event{
-		Point:   hook.PointAgentInputPrepared,
-		Actor:   hook.ActorContext{Role: "user", GroupRole: "admin"},
-		Message: hook.MessagePayload{Segments: llm.TextSegments("hello")},
+	module := Module{Opts: Options{Log: testLog, Notify: testNotify}}
+	event := share.Event{
+		Point:   share.PointAgentInputPrepared,
+		Actor:   share.ActorContext{Role: "user", GroupRole: "admin"},
+		Message: share.MessagePayload{Segments: llm.TextSegments("hello")},
 	}
 	got, _, err := module.runRule(context.Background(), Rule{
 		Roles:           []string{"admin"},
@@ -245,7 +238,7 @@ func TestRuleRoleGatesAndControl(t *testing.T) {
 		Consume:         true,
 		StopPropagation: true,
 		Actions:         []Action{{Type: "append", Field: "message.text", Text: "!"}},
-	}, event)
+	}, event, false)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -256,7 +249,7 @@ func TestRuleRoleGatesAndControl(t *testing.T) {
 		t.Fatalf("control = %#v", got.Control)
 	}
 
-	blocked, _, err := module.runRule(context.Background(), Rule{GroupRoles: []string{"owner"}, Actions: []Action{{Type: "append", Field: "message.text", Text: "?"}}}, event)
+	blocked, _, err := module.runRule(context.Background(), Rule{GroupRoles: []string{"owner"}, Actions: []Action{{Type: "append", Field: "message.text", Text: "?"}}}, event, false)
 	if err != nil {
 		t.Fatalf("blocked runRule: %v", err)
 	}

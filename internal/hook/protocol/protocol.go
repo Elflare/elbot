@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"elbot/internal/hook"
 	hookoutput "elbot/internal/hook/output"
+	"elbot/internal/hook/share"
 )
 
 const Version = "hook.v2"
@@ -36,8 +36,8 @@ type MessageResult struct {
 }
 
 type EventHandleParams struct {
-	Event hook.Event        `json:"event"`
-	Match hook.MatchContext `json:"match,omitempty"`
+	Event share.Event        `json:"event"`
+	Match share.MatchContext `json:"match,omitempty"`
 }
 
 func NewRequest(id, method string, params any) (Frame, error) {

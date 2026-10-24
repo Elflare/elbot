@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 	"time"
@@ -12,8 +13,6 @@ import (
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/fileops"
 	"elbot/internal/hook"
-	hookcontrol "elbot/internal/hook/control"
-	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/media"
@@ -61,6 +60,9 @@ type isolatedHookCapabilities struct {
 
 type isolatedPlatformCapabilities struct{ *dispatch.Router }
 
+func (isolatedPlatformCapabilities) CallPlatformAPI(context.Context, string, string, map[string]any) (json.RawMessage, error) {
+	return nil, nil
+}
 func (isolatedPlatformCapabilities) PrimaryName() string { return "cli" }
 func (isolatedPlatformCapabilities) StartReasoning(context.Context) delivery.ReasoningStream {
 	return nil
@@ -105,18 +107,17 @@ func isolatedModuleDeps(t *testing.T) SupervisorDeps {
 	registry := tool.NewRegistry()
 	permission := security.DefaultPermission()
 	sender := dispatch.New(dispatch.Options{Primary: &assemblyPlatform{}, Store: store})
-	hooks := hook.NewManager()
-	router, err := hookruntime.NewManager(hookruntime.Options{SharedDir: t.TempDir(), Registry: registry})
+	hooks, err := hook.NewSupervisor(t.Context(), &config.Config{ConfigPath: filepath.Join(t.TempDir(), "config.toml")}, hook.SupervisorDeps{Platform: isolatedPlatformCapabilities{sender}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = router.Close(context.Background()) })
+	t.Cleanup(func() { _ = hooks.Close(context.Background()) })
 	root := t.TempDir()
 	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
 	return SupervisorDeps{
 		Media: center, Store: store, Models: models, Permission: permission,
 		Platform: isolatedPlatformCapabilities{sender},
-		Hooks:    isolatedHookCapabilities{HookService: hookcontrol.New(hooks, router, nil)},
+		Hooks:    isolatedHookCapabilities{HookService: hooks},
 		Tools: isolatedToolCapabilities{
 			Registry: registry, Manager: toolrun.NewManager(registry, permission),
 			PreloadService: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}),

@@ -3,12 +3,12 @@
 package control
 
 import (
-	"context"
 	"testing"
 
 	"elbot/internal/events"
-	"elbot/internal/hook"
+	"elbot/internal/hook/pipeline"
 	hookruntime "elbot/internal/hook/runtime"
+	"elbot/internal/hook/share"
 )
 
 type declaredReloadRuntime struct {
@@ -23,18 +23,14 @@ func (r *declaredReloadRuntime) ReplacePlugin(id string, config *hookruntime.Con
 }
 
 func TestPluginReloadCommitKeepsFailedResultSeparateFromBusiness(t *testing.T) {
-	active := hook.NewManager()
-	active.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
-	active.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
-		return ctx, func() {}
-	})
+	active := pipeline.NewManager(testLog, nil)
 	registerPluginTestHook(t, active, "demo", "old")
 	declared := events.LogResult{ResultStatus: events.ResultFailed, Content: "source reload facts"}
 	runtime := &declaredReloadRuntime{result: declared}
-	service := New(active, runtime, func(candidate hook.Registrar) (hook.ReloadReport, []hookruntime.Config, error) {
+	service := New(active, runtime, func(candidate share.Registrar) (share.ReloadReport, []hookruntime.Config, error) {
 		registerPluginTestHook(t, candidate, "demo", "new")
-		return hook.ReloadReport{}, []hookruntime.Config{{ID: "demo"}}, nil
-	})
+		return share.ReloadReport{}, []hookruntime.Config{{ID: "demo"}}, nil
+	}, testLog)
 	commit, err := service.PreparePluginReload("demo")
 	if err != nil {
 		t.Fatal(err)

@@ -18,17 +18,17 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 启动与装配
 
 - `cmd/elbot/main.go`、`internal/launcher/cli.go`：程序入口、参数与运行模式。
-- `internal/app/` 六文件按下层接口已存在来实现公共流程，Agent 已接入真实总管，配置独占已实现；其他四条线、媒体和模型构造入口、平台客户端接口及进程入口适配仍待完成。13 个原生产文件和 12 个原测试文件保存在 `*.go.bak` 中；职责与调用契约见 [App 包设计](app-design.md)。
+- `internal/app/` 六文件按下层接口已存在来实现公共流程，Agent、Hook 已实现根包总管，配置独占已实现；Tool、Platform、Background、媒体和模型构造入口、平台客户端接口及进程入口适配仍待完成。13 个原生产文件和 12 个原测试文件保存在 `*.go.bak` 中；职责与调用契约见 [App 包设计](app-design.md)。
 - `internal/app/entry.go`：启动参数、总管集合、完整运行流程、四阶段耗时、启动顺序、平台等待和错误汇总。
 - `internal/app/environment.go`：验证运行模式，定位配置并转为解析符号链接后的绝对路径；TUI／Service 通过 `gofrs/flock` 非阻塞取得对应 `.lock` 文件的独占锁。
 - `internal/app/environment_test.go`：配置定位、路径别名、配置替换保存、跨进程互斥、正常及异常退出后的重新取锁测试，可独立运行。
 - `internal/app/resources.go`：加载配置、构造共享资源并保留部分失败结果；向 `NewMediaCenter`、`NewModelManager` 交付完整配置，媒体与模型侧自行初始化；平台历史归平台线。
-- `internal/app/wiring.go`：真实构造 Agent；其他四条线按目标总管接口构造并标注 TODO，跨线只交付公开能力，失败保留部分总管。
+- `internal/app/wiring.go`：构造 Agent、Hook；Tool、Platform、Background 按目标总管接口构造并标注 TODO，跨线只交付公开能力，失败保留部分总管。
 - `internal/app/shutdown.go`：用 `shutdownStep` 声明清理顺序，`runShutdownStep` 按统一 30 秒期限返回结果枚举，`runShutdownSteps` 顺序执行并汇总；普通失败后继续，超时停止后续清理，资源关闭后最后释放配置锁。
 - `internal/app/client.go`：加载配置并调用 `platform.RunClient`，消费 `ClientResult`；明确运行直接返回错误，自动尝试将可回退结果转为信号，实际本地启动由进程入口决定。
 - `internal/agent/`：`Supervisor` 是 App 对接入口；`supervisor.go` 定义总管与公开能力，`deps.go` 声明共享资源和 `ToolCapabilities`、`HookCapabilities`、`PlatformCapabilities` 三类业务接口，`wiring.go` 拆分配置、构造线内组件并接线，`lifecycle.go` 管理启停，`signals.go` 持有通知与状态订阅。
 - `internal/tool/module/`：共享工具目录、执行核心、预加载、Skill／Memory／文件服务。
-- `internal/hook/module/`：Hook 核心、控制与插件进程。
+- `internal/hook/`：Hook 总管、外部桥接与生命周期；装配内部规则、流水线、控制与插件进程。
 - `internal/platform/module/`：平台适配器、发送与通知、API 能力、补全和运行生命周期。
 - `internal/background/module/`：后台执行、维护任务、Cron、Elnis 恢复与 runtime。
 
@@ -152,19 +152,21 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:hook -->
 ## Hook 与插件
 
-Hook 根包和 pipeline 已按目标执行边界实现；runtime、rules、control 及媒体共享契约仍待迁移，当前尚未完成编译接通。
+Hook 根包装配内部组件，子包通过 share 共享定义并接收外部能力，不反向导入根包。
 
 - `internal/hook/supervisor.go`、`deps.go`：公开管理入口与最小外部消费能力，内部组件只通过私有消费接口持有，不向调用方暴露。
 - `internal/hook/wiring.go`、`lifecycle.go`：配置拆分、直接装配规则／流水线／运行时、阶段关闭与实际退出等待。
 - `internal/hook/agent_bridge.go`：注册 Agent 回调组，转换业务参数与 Hook Event；显式传递唤醒、只读策略及逐 handler 登记回调。
 - `internal/hook/platform_signals.go`：持有平台连接订阅和逐平台队列，处理全局 Hook 输出；不登记 Agent 请求。
 - `internal/hook/context_to_event.go`：fillEventFromContext 将 contextinfo 与 platform 的来源、参与者、消息和引用转换并补入 Hook Event。
-- `internal/hook/share/event.go`、`match.go`、`call_policy.go`、`registration.go`：内部共享事件、匹配、显式只读校验、注册及查询契约；runtime 和媒体共享定义仍待迁入。
-- `internal/hook/pipeline/manager.go`、`options.go`：续接优先、普通规则与错误钩子的执行流程；CallOptions 显式传递逐次策略，构造时注入日志发布与续接能力。
-- `internal/hook/rules/`、`control/`：规则、一次性 exec、配置与管理；`runtime/`、`protocol/`：进程、RPC、waiting 与 hook.v2 帧。
+- `internal/hook/share/event.go`、`match.go`、`call_policy.go`、`registration.go`、`runtime.go`：内部共享事件、匹配、调用快照、注册与查询契约；RuntimeInfo 的模式和状态是展示字符串，运行时枚举留在 runtime。
+- `internal/hook/pipeline/manager.go`、`options.go`：续接优先、普通规则与错误钩子的执行流程，用 mergeLogResult 统一聚合来源结果；CallOptions 显式传递逐次策略，构造时注入日志发布与续接能力。
+- `internal/hook/rules/`：规则配置与一次性 exec；`rule.go` 逐动作校验只读调用策略；工具和平台调用、日志与通知通过注入能力完成，Runtime 仅借用 Handle、MediaRequest、SharedRequest。
+- `internal/hook/control/service.go`：列表、重载及进程管理；候选 pipeline 使用注入的日志发布函数，不接入续接能力。
+- `internal/hook/runtime/`、`protocol/`：进程、RPC、waiting 与 hook.v2 帧；`runtime/routes.go` 选中实际续接后登记请求并返回来源 LogResult；`runtime/media.go` 定义所需的最小私有媒体接口并管理租约。
+- `internal/hook/runtime/manager.go`、`worker.go`：登记并等待启动、进程、读取、插件请求、重载与异步停止的实际退出；`lifecycle_test.go` 覆盖关闭、脱离索引的临时 worker 与忽略取消的调用。
 - `internal/hook/media.go`、`logging.go`：媒体中心契约与来源日志／通知发布；`output/`：输出与消息转换。
-- `internal/hook/module/`、`builtin/`、`process.go` 及对应测试：待子包迁移后删除。
-- `internal/hook/agent_bridge_test.go`、`supervisor_test.go`：桥接转换、并发启动和关闭／平台队列边界用例；`pipeline/continuation_test.go` 验证续接顺序、短路和错误不递归，待子包接口落实后执行。
+- `internal/hook/agent_bridge_test.go`、`supervisor_test.go`、`wiring_test.go`：桥接转换、并发启动、配置加载和关闭／平台队列边界用例；`pipeline/continuation_test.go` 验证续接顺序、短路和错误不递归。
 - `internal/agent/hook_bridge.go`：对外单组回调注册与逐个 handler 的请求登记。
 - `internal/agent/hooks/points.go`：Agent 可挂接点及业务输入、结果契约；`hooks.go`：回调调度、输入事实准备和在途生命周期。
 - [Hook 文档](../docs/hooks.md)。

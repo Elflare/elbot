@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"elbot/internal/processenv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,16 +22,16 @@ import (
 
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
-	"elbot/internal/hook"
 	hookruntime "elbot/internal/hook/runtime"
+	"elbot/internal/hook/share"
 	"elbot/internal/llm"
 	"elbot/internal/signal"
 )
 
 func TestExecActionDefaultStdinIncludesEvent(t *testing.T) {
-	module := Module{}
-	event := hook.Event{Point: hook.PointAgentInputPrepared, Actor: hook.ActorContext{UserID: "alice"}, Message: hook.MessagePayload{PlatformMessage: []byte(`[{"type":"json"}]`)}}
-	got, _, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("stdin")}}}, event)
+	module := Module{Opts: Options{Log: testLog, Notify: testNotify}}
+	event := share.Event{Point: share.PointAgentInputPrepared, Actor: share.ActorContext{UserID: "alice"}, Message: share.MessagePayload{PlatformMessage: []byte(`[{"type":"json"}]`)}}
+	got, _, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("stdin")}}}, event, false)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -40,9 +41,9 @@ func TestExecActionDefaultStdinIncludesEvent(t *testing.T) {
 }
 
 func TestExecCommandPreservesArgvAndRendersEachArgument(t *testing.T) {
-	event := hook.Event{Message: hook.MessagePayload{Segments: []llm.MessageSegment{{Type: llm.SegmentText, Text: "上海 天气"}}}}
+	event := share.Event{Message: share.MessagePayload{Segments: []llm.MessageSegment{{Type: llm.SegmentText, Text: "上海 天气"}}}}
 	command := execHelperCommand("argv", "{{message.text}}", "", `C:\hook dir\`, `"quoted"`)
-	got, _, err := (Module{}).runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: command}}}, event)
+	got, _, err := (Module{Opts: Options{Log: testLog, Notify: testNotify}}).runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: command}}}, event, false)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -61,17 +62,17 @@ func TestExecCommandPreservesArgvAndRendersEachArgument(t *testing.T) {
 
 func TestExecCommandUsesConfiguredProcessEnvironment(t *testing.T) {
 	const key = "ELBOT_EXEC_HOOK_ENV_TEST"
-	baseEnv := hook.NewProcessEnvironment(os.Environ(), map[string]string{key: "from-manager"})
-	module := Module{Opts: Options{ProcessEnv: baseEnv}}
+	baseEnv := processenv.New(os.Environ()).Fill(map[string]string{key: "from-manager"})
+	module := Module{Opts: Options{Log: testLog, Notify: testNotify, ProcessEnv: baseEnv}}
 	rule := Rule{
 		Actions: []Action{{Type: "exec", Command: execHelperCommand("env", key)}},
 		source:  ruleSource{ProcessEnv: baseEnv.Overlay(map[string]string{key: "from-dotenv"})},
 	}
 	cfg := Config{Rules: []Rule{rule}}
-	if err := cfg.normalize(); err != nil {
+	if err := normalizeLoadedRules(&cfg, Options{Log: testLog, Notify: testNotify}); err != nil {
 		t.Fatal(err)
 	}
-	got, _, err := module.runRule(context.Background(), cfg.Rules[0], hook.Event{})
+	got, _, err := module.runRule(context.Background(), cfg.Rules[0], share.Event{}, false)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -92,31 +93,35 @@ func TestWriteProtocolFrameRejectsOversizedInput(t *testing.T) {
 }
 
 func TestExecCanUseRuntimeSharedState(t *testing.T) {
-	runtimeManager, err := hookruntime.NewManager(hookruntime.Options{SharedDir: t.TempDir()})
+	runtimeManager, err := hookruntime.NewManager(hookruntime.Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer runtimeManager.Close(context.Background())
-	if err := runtimeManager.SharedState().SetWithTTL("worker-data", json.RawMessage(`"from-worker"`), 0); err != nil {
+	if _, err := runtimeManager.SharedRequest("shared.set", json.RawMessage(`{"key":"worker-data","value":"from-worker","ttl_seconds":0}`)); err != nil {
 		t.Fatalf("seed shared state: %v", err)
 	}
-	module := Module{Opts: Options{Runtime: runtimeManager}}
+	module := Module{Opts: Options{Log: testLog, Notify: testNotify, Runtime: runtimeManager}}
 	if _, _, err := module.runRule(context.Background(), Rule{Actions: []Action{{
 		Type:    "exec",
 		Command: execHelperCommand("shared-state"),
-	}}}, hook.Event{Point: hook.PointLLMResponseReceived}); err != nil {
+	}}}, share.Event{Point: share.PointLLMResponseReceived}, false); err != nil {
 		t.Fatalf("run exec shared state: %v", err)
 	}
-	value, ok := runtimeManager.SharedState().Get("once-data")
-	if !ok || string(value) != "2" {
-		t.Fatalf("once-data = %s, %v", value, ok)
+	value, err := runtimeManager.SharedRequest("shared.get", json.RawMessage(`{"key":"once-data"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := value.(map[string]any)
+	if result["found"] != true || string(result["value"].(json.RawMessage)) != "2" {
+		t.Fatalf("once-data = %#v", result)
 	}
 }
 
 func TestExecOutputFrameLargerThanScannerDefaultSucceeds(t *testing.T) {
-	module := Module{}
+	module := Module{Opts: Options{Log: testLog, Notify: testNotify}}
 	const decodedSize = 70 * 1024
-	got, _, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("base64-output", fmt.Sprint(decodedSize))}}}, hook.Event{})
+	got, _, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("base64-output", fmt.Sprint(decodedSize))}}}, share.Event{}, false)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -149,7 +154,7 @@ func TestExecCancellationKillsDescendantProcesses(t *testing.T) {
 	defer cancel()
 	errCh := make(chan error, 1)
 	go func() {
-		_, _, err := (Module{}).runRule(ctx, Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("spawn-child-and-wait", listener.Addr().String())}}}, hook.Event{})
+		_, _, err := (Module{Opts: Options{Log: testLog, Notify: testNotify}}).runRule(ctx, Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("spawn-child-and-wait", listener.Addr().String())}}}, share.Event{}, false)
 		errCh <- err
 	}()
 	conn, err := listener.AcceptTCP()
@@ -186,12 +191,12 @@ func TestExecCancellationKillsDescendantProcesses(t *testing.T) {
 }
 
 func TestExecDoneMessageWritesConfiguredFieldAndResult(t *testing.T) {
-	module := Module{}
-	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "old"}}
+	module := Module{Opts: Options{Log: testLog, Notify: testNotify}}
+	event := share.Event{Point: share.PointLLMResponseReceived, LLM: share.LLMPayload{Text: "old"}}
 	got, _, err := module.runRule(context.Background(), Rule{Actions: []Action{
 		{ActionName: "script", Type: "exec", Command: execHelperCommand("done-message"), Field: "llm.text"},
 		{Type: "send", Text: "{{actions.script.result}}"},
-	}}, event)
+	}}, event, false)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -204,11 +209,11 @@ func TestExecDoneMessageWritesConfiguredFieldAndResult(t *testing.T) {
 }
 
 func TestExecDoneEmptyMessageClearsConfiguredField(t *testing.T) {
-	module := Module{}
-	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "[[atri_emotions]]"}}
+	module := Module{Opts: Options{Log: testLog, Notify: testNotify}}
+	event := share.Event{Point: share.PointLLMResponseReceived, LLM: share.LLMPayload{Text: "[[atri_emotions]]"}}
 	got, _, err := module.runRule(context.Background(), Rule{Actions: []Action{
 		{Type: "exec", Command: execHelperCommand("done-empty-message"), Field: "llm.text"},
-	}}, event)
+	}}, event, false)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -218,15 +223,15 @@ func TestExecDoneEmptyMessageClearsConfiguredField(t *testing.T) {
 }
 
 func TestExecDoneSegmentsReplacesToolResultContent(t *testing.T) {
-	module := Module{}
-	event := hook.Event{
-		Point:   hook.PointToolCallCompleted,
-		Message: hook.MessagePayload{Role: string(llm.RoleTool), Segments: llm.TextSegments("old")},
-		Tool:    hook.ToolPayload{Name: "screenshot", Result: "old"},
+	module := Module{Opts: Options{Log: testLog, Notify: testNotify}}
+	event := share.Event{
+		Point:   share.PointToolCallCompleted,
+		Message: share.MessagePayload{Role: string(llm.RoleTool), Segments: llm.TextSegments("old")},
+		Tool:    share.ToolPayload{Name: "screenshot", Result: "old"},
 	}
 	got, _, err := module.runRule(context.Background(), Rule{Actions: []Action{
 		{Type: "exec", Command: execHelperCommand("done-segments"), Field: "tool.result"},
-	}}, event)
+	}}, event, false)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -239,12 +244,12 @@ func TestExecDoneSegmentsReplacesToolResultContent(t *testing.T) {
 }
 
 func TestExecDoneUnmatchedRollsBackAndSkipsRemainingActions(t *testing.T) {
-	module := Module{}
-	event := hook.Event{Point: hook.PointLLMResponseReceived, LLM: hook.LLMPayload{Text: "old"}}
+	module := Module{Opts: Options{Log: testLog, Notify: testNotify}}
+	event := share.Event{Point: share.PointLLMResponseReceived, LLM: share.LLMPayload{Text: "old"}}
 	got, _, err := module.runRule(context.Background(), Rule{Actions: []Action{
 		{Type: "exec", Command: execHelperCommand("unmatched"), Field: "llm.text"},
 		{Type: "send", Text: "after"},
-	}}, event)
+	}}, event, false)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -259,12 +264,12 @@ func TestExecDoneUnmatchedRollsBackAndSkipsRemainingActions(t *testing.T) {
 func TestExecSuccessLogsStderr(t *testing.T) {
 	var logs bytes.Buffer
 	captureLogs(t, slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	module := Module{}
+	module := Module{Opts: Options{Log: testLog, Notify: testNotify}}
 	_, _, err := module.runRule(context.Background(), Rule{Actions: []Action{{
 		ActionName: "script",
 		Type:       "exec",
 		Command:    execHelperCommand("stderr-success"),
-	}}}, hook.Event{Point: hook.PointLLMResponseReceived})
+	}}}, share.Event{Point: share.PointLLMResponseReceived}, false)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -277,11 +282,11 @@ func TestExecSuccessLogsStderr(t *testing.T) {
 func TestExecFlushesStderrWithoutTrailingNewline(t *testing.T) {
 	var logs bytes.Buffer
 	captureLogs(t, slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	module := Module{}
+	module := Module{Opts: Options{Log: testLog, Notify: testNotify}}
 	_, _, err := module.runRule(context.Background(), Rule{Actions: []Action{{
 		Type:    "exec",
 		Command: execHelperCommand("stderr-no-newline"),
-	}}}, hook.Event{Point: hook.PointLLMResponseReceived})
+	}}}, share.Event{Point: share.PointLLMResponseReceived}, false)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -296,14 +301,14 @@ func TestExecPassThroughOverridesRuleControl(t *testing.T) {
 		mode        string
 		consume     bool
 		stop        bool
-		wantControl hook.Control
+		wantControl share.Control
 	}{
-		{name: "true allows propagation", mode: "pass-true", consume: true, stop: true, wantControl: hook.Control{}},
-		{name: "false blocks propagation", mode: "pass-false", wantControl: hook.Control{Consume: true, StopPropagation: true}},
+		{name: "true allows propagation", mode: "pass-true", consume: true, stop: true, wantControl: share.Control{}},
+		{name: "false blocks propagation", mode: "pass-false", wantControl: share.Control{Consume: true, StopPropagation: true}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, _, err := (Module{}).runRule(context.Background(), Rule{Name: "pass", Consume: tc.consume, StopPropagation: tc.stop, Actions: []Action{{Type: "exec", Command: execHelperCommand(tc.mode)}}}, hook.Event{})
+			got, _, err := (Module{Opts: Options{Log: testLog, Notify: testNotify}}).runRule(context.Background(), Rule{Name: "pass", Consume: tc.consume, StopPropagation: tc.stop, Actions: []Action{{Type: "exec", Command: execHelperCommand(tc.mode)}}}, share.Event{}, false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -315,11 +320,11 @@ func TestExecPassThroughOverridesRuleControl(t *testing.T) {
 }
 
 func TestExecActionsRunSynchronouslyInOrder(t *testing.T) {
-	module := Module{}
+	module := Module{Opts: Options{Log: testLog, Notify: testNotify}}
 	got, _, err := module.runRule(context.Background(), Rule{Actions: []Action{
 		{ActionName: "first", Type: "exec", Command: execHelperCommand("done-result", "one")},
 		{Type: "send", Text: "{{actions.first.result}}"},
-	}}, hook.Event{Point: hook.PointLLMResponseReceived})
+	}}, share.Event{Point: share.PointLLMResponseReceived}, false)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -333,11 +338,11 @@ func TestExecActionsRunConcurrently(t *testing.T) {
 	left := filepath.Join(dir, "left.ready")
 	right := filepath.Join(dir, "right.ready")
 	run := func(self, peer string) error {
-		_, _, err := Module{}.runRule(context.Background(), Rule{Actions: []Action{{
+		_, _, err := Module{Opts: Options{Log: testLog, Notify: testNotify}}.runRule(context.Background(), Rule{Actions: []Action{{
 			Type:           "exec",
 			Command:        execHelperCommand("signal-and-wait", self, peer),
 			TimeoutSeconds: 4,
-		}}}, hook.Event{Point: hook.PointLLMResponseReceived})
+		}}}, share.Event{Point: share.PointLLMResponseReceived}, false)
 		return err
 	}
 	errCh := make(chan error, 2)
@@ -413,11 +418,11 @@ func TestExecFailuresIncludeStderrTail(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := Module{}.runRule(context.Background(), Rule{Actions: []Action{{
+			_, _, err := Module{Opts: Options{Log: testLog, Notify: testNotify}}.runRule(context.Background(), Rule{Actions: []Action{{
 				Type:           "exec",
 				Command:        execHelperCommand(tt.helper),
 				TimeoutSeconds: tt.timeoutSeconds,
-			}}}, hook.Event{Point: hook.PointLLMResponseReceived})
+			}}}, share.Event{Point: share.PointLLMResponseReceived}, false)
 			if err == nil {
 				t.Fatal("expected exec error")
 			}
@@ -454,10 +459,10 @@ func TestExecProtocolErrorsIdentifyPluginProblem(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := Module{}.runRule(context.Background(), Rule{Actions: []Action{{
+			_, _, err := Module{Opts: Options{Log: testLog, Notify: testNotify}}.runRule(context.Background(), Rule{Actions: []Action{{
 				Type:    "exec",
 				Command: execHelperCommand(tt.helper),
-			}}}, hook.Event{Point: hook.PointLLMResponseReceived})
+			}}}, share.Event{Point: share.PointLLMResponseReceived}, false)
 			if err == nil {
 				t.Fatal("expected exec error")
 			}
@@ -471,11 +476,11 @@ func TestExecProtocolErrorsIdentifyPluginProblem(t *testing.T) {
 }
 
 func TestExecResponseWriteFailureIdentifiesPluginStdinProblem(t *testing.T) {
-	_, _, err := Module{}.runRule(context.Background(), Rule{Actions: []Action{{
+	_, _, err := Module{Opts: Options{Log: testLog, Notify: testNotify}}.runRule(context.Background(), Rule{Actions: []Action{{
 		Type:           "exec",
 		Command:        execHelperCommand("close-stdin-after-request"),
 		TimeoutSeconds: 2,
-	}}}, hook.Event{Point: hook.PointLLMResponseReceived})
+	}}}, share.Event{Point: share.PointLLMResponseReceived}, false)
 	if err == nil {
 		t.Fatal("expected exec error")
 	}

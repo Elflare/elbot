@@ -15,8 +15,8 @@ import (
 
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
-	"elbot/internal/hook"
 	hookoutput "elbot/internal/hook/output"
+	"elbot/internal/hook/share"
 	"elbot/internal/llm"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -33,7 +33,7 @@ type actionResult struct {
 	PassThrough *bool
 }
 
-func (m Module) runAction(ctx context.Context, event hook.Event, action Action, state state) (hook.Event, actionResult, globalevents.LogResult, error) {
+func (m Module) runAction(ctx context.Context, event share.Event, action Action, state state) (share.Event, actionResult, globalevents.LogResult, error) {
 	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "action=" + action.Type}
 	switch strings.TrimSpace(action.Type) {
 	case "prepend", "append", "replace", "delete":
@@ -73,7 +73,7 @@ func (m Module) runAction(ctx context.Context, event hook.Event, action Action, 
 	}
 }
 
-func applyTextAction(event hook.Event, action Action, state state) (hook.Event, error) {
+func applyTextAction(event share.Event, action Action, state state) (share.Event, error) {
 	field := strings.TrimSpace(action.Field)
 	if err := allowField(event, field); err != nil {
 		return event, err
@@ -100,7 +100,7 @@ func applyTextAction(event hook.Event, action Action, state state) (hook.Event, 
 	}
 }
 
-func prependTextField(event hook.Event, field, value string) hook.Event {
+func prependTextField(event share.Event, field, value string) share.Event {
 	switch field {
 	case "message.text":
 		event.Message.Segments = llm.PrependSegmentText(event.Message.Segments, value)
@@ -117,7 +117,7 @@ func prependTextField(event hook.Event, field, value string) hook.Event {
 	return event
 }
 
-func appendTextField(event hook.Event, field, value string) hook.Event {
+func appendTextField(event share.Event, field, value string) share.Event {
 	switch field {
 	case "message.text":
 		event.Message.Segments = llm.AppendSegmentText(event.Message.Segments, value)
@@ -134,7 +134,7 @@ func appendTextField(event hook.Event, field, value string) hook.Event {
 	return event
 }
 
-func replaceTextField(event hook.Event, field string, pattern *regexp.Regexp, replacement string, all bool) hook.Event {
+func replaceTextField(event share.Event, field string, pattern *regexp.Regexp, replacement string, all bool) share.Event {
 	switch field {
 	case "message.text":
 		event.Message.Segments = llm.ReplaceSegmentText(event.Message.Segments, pattern, replacement, all)
@@ -162,36 +162,36 @@ func replaceString(text string, pattern *regexp.Regexp, replacement string, all 
 	return text[:loc[0]] + pattern.ReplaceAllString(text[loc[0]:loc[1]], replacement) + text[loc[1]:]
 }
 
-func toolResultSegments(event hook.Event) []llm.MessageSegment {
+func toolResultSegments(event share.Event) []llm.MessageSegment {
 	if len(event.Message.Segments) > 0 {
 		return event.Message.Segments
 	}
 	return llm.TextSegments(event.Tool.Result)
 }
 
-func allowField(event hook.Event, field string) error {
+func allowField(event share.Event, field string) error {
 	switch event.Point {
-	case hook.PointPlatformMessageReceived, hook.PointAgentInputPrepared:
+	case share.PointPlatformMessageReceived, share.PointAgentInputPrepared:
 		if field == "message.text" {
 			return nil
 		}
-	case hook.PointLLMTurnPrepared, hook.PointLLMRequestPrepared:
+	case share.PointLLMTurnPrepared, share.PointLLMRequestPrepared:
 		if field == "llm.latest_user_text" {
 			return nil
 		}
-	case hook.PointLLMResponseReceived:
+	case share.PointLLMResponseReceived:
 		if field == "llm.text" {
 			return nil
 		}
-	case hook.PointToolCallPrepared:
+	case share.PointToolCallPrepared:
 		if field == "tool.arguments" {
 			return nil
 		}
-	case hook.PointToolCallCompleted:
+	case share.PointToolCallCompleted:
 		if field == "tool.result" {
 			return nil
 		}
-	case hook.PointAgentOutputPrepared, hook.PointAgentTurnOutputPrepared, hook.PointPlatformMessageSent:
+	case share.PointAgentOutputPrepared, share.PointAgentTurnOutputPrepared, share.PointPlatformMessageSent:
 		if field == "message.text" && event.Message.Role == string(llm.RoleAssistant) {
 			return nil
 		}
@@ -200,12 +200,12 @@ func allowField(event hook.Event, field string) error {
 	return fmt.Errorf("field %q cannot be edited at hook point %q", field, event.Point)
 }
 
-func makeOutputs(action Action, event hook.Event, state state) ([]delivery.Output, error) {
+func makeOutputs(action Action, event share.Event, state state) ([]delivery.Output, error) {
 	target := hookoutput.Target{
 		Platform: render(action.Target.Platform, event, state), ScopeID: render(action.Target.ScopeID, event, state),
 		PrivateUserID: render(action.Target.PrivateUserID, event, state), GroupID: render(action.Target.GroupID, event, state), Superadmins: action.Target.Superadmins,
 	}
-	if strings.TrimSpace(target.Platform) == "" && event.Point == hook.PointPlatformConnected {
+	if strings.TrimSpace(target.Platform) == "" && event.Point == share.PointPlatformConnected {
 		target.Platform = event.Platform.Name
 	}
 	quick := SegmentSpec{Kind: action.Kind, Text: action.Text, URL: action.URL, Path: action.Path, Base64: action.Base64, Name: action.Name, MIMEType: action.MIMEType, UserID: action.UserID, MessageID: action.MessageID, EmoticonID: action.EmoticonID}
@@ -233,7 +233,7 @@ func segmentSpecSet(spec SegmentSpec) bool {
 
 // callTool invokes a registered tool without Agent risk or confirmation gates.
 // Hook authors own authorization and risk decisions for Hook-triggered calls.
-func (m Module) callTool(ctx context.Context, event hook.Event, action Action, state state) (actionResult, globalevents.LogResult, error) {
+func (m Module) callTool(ctx context.Context, event share.Event, action Action, state state) (actionResult, globalevents.LogResult, error) {
 	name := strings.TrimSpace(action.Tool)
 	arguments := render(action.Arguments, event, state)
 	call := llm.ToolCallRequest{ID: storage.NewID(), Name: name, Arguments: arguments}
@@ -289,7 +289,7 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 		err = fmt.Errorf("tool is required")
 		logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()}
 	default:
-		registered, ok := m.Opts.Tools.Get(name)
+		_, ok := m.Opts.Tools.ToolInfo(name)
 		if !ok {
 			err = fmt.Errorf("tool %q not found", name)
 			logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()}
@@ -303,8 +303,8 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 			data, _ := json.Marshal(content)
 			start := record
 			start.EventName, start.Content, start.ResultStatus = "hook_tool_call_prepared", string(data), globalevents.ResultSucceeded
-			hook.LogHook(ctx, start)
-			toolResult, logResult.Content, err = registered.Call(ctx, tool.CallRequest{ID: call.ID, Name: name, Arguments: json.RawMessage(arguments)})
+			m.Opts.Log(ctx, start)
+			toolResult, logResult.Content, err = m.Opts.Tools.CallTool(ctx, tool.CallRequest{ID: call.ID, Name: name, Arguments: json.RawMessage(arguments)})
 			if err != nil {
 				logResult.ResultStatus = globalevents.ResultFailed
 				if errors.Is(err, context.Canceled) {
@@ -323,7 +323,7 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 	content.Arguments = ""
 	data, _ := json.Marshal(content)
 	record.Content = string(data)
-	hook.LogHook(ctx, record)
+	m.Opts.Log(ctx, record)
 	if err != nil {
 		return actionResult{Error: err.Error()}, logResult, err
 	}
@@ -333,9 +333,9 @@ func (m Module) callTool(ctx context.Context, event hook.Event, action Action, s
 	return actionResult{}, logResult, nil
 }
 
-func render(text string, event hook.Event, state state) string {
-	replacements := hook.TemplateValues(event)
-	for index, match := range hook.EventMatchContext(event).Regex {
+func render(text string, event share.Event, state state) string {
+	replacements := share.TemplateValues(event)
+	for index, match := range share.EventMatchContext(event).Regex {
 		prefix := fmt.Sprintf("{{match.regex.%d", index)
 		replacements[prefix+".text}}"] = match.Text
 		replacements[prefix+".field}}"] = match.Field
@@ -377,7 +377,7 @@ func byteSize(bytes int) string {
 }
 
 // setTextField overwrites a text field with the given value, using allowField for permission checks.
-func setTextField(event hook.Event, field, value string) (hook.Event, error) {
+func setTextField(event share.Event, field, value string) (share.Event, error) {
 	field = strings.TrimSpace(field)
 	if err := allowField(event, field); err != nil {
 		return event, err

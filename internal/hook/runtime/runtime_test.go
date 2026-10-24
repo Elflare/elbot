@@ -5,6 +5,7 @@ package runtime
 import (
 	"bufio"
 	"context"
+	"elbot/internal/processenv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,7 +18,7 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/hook"
+	"elbot/internal/hook/share"
 	"elbot/internal/llm"
 	"elbot/internal/signal"
 	"elbot/internal/tool"
@@ -61,7 +62,7 @@ func TestPluginToolAuditOutcome(t *testing.T) {
 			if err := registry.Register(auditTestTool{err: tc.err}); err != nil {
 				t.Fatal(err)
 			}
-			worker := &worker{manager: &Manager{rootCtx: context.Background(), opts: Options{Registry: registry}}, config: Config{ID: "plugin", EventTimeoutSeconds: 10, Tools: ToolsConfig{BackgroundAllow: []string{"audit_test"}}}}
+			worker := &worker{manager: &Manager{rootCtx: context.Background(), opts: Options{Log: testLog, Notify: testNotify, Tools: testTools{registry}}}, config: Config{ID: "plugin", EventTimeoutSeconds: 10, Tools: ToolsConfig{BackgroundAllow: []string{"audit_test"}}}}
 			_, err = worker.callTool(json.RawMessage(`{"name":"audit_test","arguments":{},"background":true,"target":{"platform":"cli"}}`))
 			if !errors.Is(err, tc.err) {
 				t.Fatalf("business error changed: %v", err)
@@ -121,6 +122,9 @@ func TestHookRuntimeHelperProcess(t *testing.T) {
 				continue
 			}
 			writeHelperResponse(id, map[string]any{})
+			if hookID == "blocked-log" {
+				fmt.Fprintln(os.Stdout, `{"type":"event","method":"hook.log","params":{"message":"hold reader"}}`)
+			}
 		case "event.handle":
 			if helperActorID(frame) == "test:cancel" {
 				continue
@@ -175,7 +179,7 @@ func helperHookID(value map[string]any) string {
 }
 
 func TestManagerBuildsCanonicalRuntimeOutputs(t *testing.T) {
-	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,8 +189,8 @@ func TestManagerBuildsCanonicalRuntimeOutputs(t *testing.T) {
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	waitForStatus(t, manager, "demo", StatusReady)
-	event := hook.Event{Actor: hook.ActorContext{ID: "test:output"}}
-	got, _, err := manager.Handle(context.Background(), "demo", event, hook.Control{})
+	event := share.Event{Actor: share.ActorContext{ID: "test:output"}}
+	got, _, err := manager.Handle(context.Background(), "demo", event, share.Control{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +200,7 @@ func TestManagerBuildsCanonicalRuntimeOutputs(t *testing.T) {
 }
 
 func TestManagerBuildsCanonicalRuntimeMessageSegments(t *testing.T) {
-	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,13 +210,13 @@ func TestManagerBuildsCanonicalRuntimeMessageSegments(t *testing.T) {
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	waitForStatus(t, manager, "demo", StatusReady)
-	event := hook.Event{
-		Point:   hook.PointToolCallCompleted,
-		Actor:   hook.ActorContext{ID: "test:message"},
-		Message: hook.MessagePayload{Role: "tool"},
-		Tool:    hook.ToolPayload{Name: "screenshot"},
+	event := share.Event{
+		Point:   share.PointToolCallCompleted,
+		Actor:   share.ActorContext{ID: "test:message"},
+		Message: share.MessagePayload{Role: "tool"},
+		Tool:    share.ToolPayload{Name: "screenshot"},
 	}
-	got, _, err := manager.Handle(context.Background(), "demo", event, hook.Control{})
+	got, _, err := manager.Handle(context.Background(), "demo", event, share.Control{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,8 +228,8 @@ func TestManagerBuildsCanonicalRuntimeMessageSegments(t *testing.T) {
 func TestManagerWorkersUseConfiguredProcessEnvironment(t *testing.T) {
 	for _, mode := range []Mode{ModePersistent, ModeTransient} {
 		t.Run(string(mode), func(t *testing.T) {
-			baseEnv := hook.NewProcessEnvironment(os.Environ(), map[string]string{"ELBOT_WORKER_HOOK_ENV_TEST": "from-manager"})
-			manager, err := NewManager(Options{
+			baseEnv := processenv.New(os.Environ()).Fill(map[string]string{"ELBOT_WORKER_HOOK_ENV_TEST": "from-manager"})
+			manager, err := NewManager(Options{Log: testLog, Notify: testNotify,
 				SharedDir: t.TempDir(),
 			})
 			if err != nil {
@@ -252,8 +256,8 @@ func TestManagerWorkersUseConfiguredProcessEnvironment(t *testing.T) {
 				waitForStatus(t, manager, "env", StatusReady)
 				return
 			}
-			event := hook.Event{Platform: hook.PlatformContext{Name: "test", ScopeID: "private:env"}, Actor: hook.ActorContext{ID: "test:env", UserID: "env"}}
-			if _, _, err := manager.Handle(context.Background(), "env", event, hook.Control{}); err != nil {
+			event := share.Event{Platform: share.PlatformContext{Name: "test", ScopeID: "private:env"}, Actor: share.ActorContext{ID: "test:env", UserID: "env"}}
+			if _, _, err := manager.Handle(context.Background(), "env", event, share.Control{}); err != nil {
 				t.Fatalf("Handle: %v", err)
 			}
 		})
@@ -267,7 +271,7 @@ func (discardWriteCloser) Close() error                   { return nil }
 
 func TestWorkerRejectsOversizedInputFrame(t *testing.T) {
 	w := &worker{stdin: discardWriteCloser{}}
-	err := w.write(frame{Type: "request", Error: strings.Repeat("x", hook.MaxProtocolFrameBytes)})
+	err := w.write(frame{Type: "request", Error: strings.Repeat("x", share.MaxProtocolFrameBytes)})
 	if err == nil || !strings.Contains(err.Error(), "stdin frame exceeds 16 MiB limit") {
 		t.Fatalf("err = %v", err)
 	}
@@ -292,7 +296,7 @@ func writeHelperError(id, message string) {
 }
 
 func TestManagerRoutesWaitingConversation(t *testing.T) {
-	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,22 +317,36 @@ func TestManagerRoutesWaitingConversation(t *testing.T) {
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	waitForStatus(t, manager, "demo", StatusReady)
-	event := hook.Event{Platform: hook.PlatformContext{Name: "test", ScopeID: "private:1"}, Actor: hook.ActorContext{ID: "test:1", UserID: "1"}}
-	if _, _, err := manager.Handle(context.Background(), "demo", event, hook.Control{Consume: true, StopPropagation: true}); err != nil {
+	event := share.Event{Platform: share.PlatformContext{Name: "test", ScopeID: "private:1"}, Actor: share.ActorContext{ID: "test:1", UserID: "1"}}
+	observed, finished := 0, 0
+	observe := func(ctx context.Context, name string) (context.Context, func()) {
+		if name != "demo" {
+			t.Fatalf("observed worker = %q", name)
+		}
+		observed++
+		return ctx, func() { finished++ }
+	}
+	if _, routed, _, err := manager.Route(context.Background(), event, observe); err != nil || routed || observed != 0 {
+		t.Fatalf("unmatched route registered a request: routed=%v observed=%d err=%v", routed, observed, err)
+	}
+	if _, _, err := manager.Handle(context.Background(), "demo", event, share.Control{Consume: true, StopPropagation: true}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	updated, handled, err := manager.Route(context.Background(), event)
+	updated, handled, outcome, err := manager.Route(context.Background(), event, observe)
 	if err != nil {
 		t.Fatalf("Route: %v", err)
+	}
+	if observed != 1 || finished != 1 || outcome.ResultStatus != events.ResultSucceeded {
+		t.Fatalf("continuation lifetime=%d/%d outcome=%+v", observed, finished, outcome)
 	}
 	if !handled || len(updated.Outputs) != 0 || updated.Control.Consume || updated.Control.StopPropagation {
 		t.Fatalf("Route = handled=%v event=%#v", handled, updated)
 	}
-	updated, handled, err = manager.Route(context.Background(), event)
+	updated, handled, _, err = manager.Route(context.Background(), event, observe)
 	if err != nil {
 		t.Fatalf("Route after completion: %v", err)
 	}
-	if handled || len(updated.Outputs) != 0 {
+	if handled || len(updated.Outputs) != 0 || observed != 1 || finished != 1 {
 		t.Fatalf("Route after completion = handled=%v event=%#v", handled, updated)
 	}
 	if _, err := manager.Stop(context.Background(), "demo"); err != nil {
@@ -337,7 +355,7 @@ func TestManagerRoutesWaitingConversation(t *testing.T) {
 }
 
 func TestManagerReclaimsTransientWorkerAfterPassThrough(t *testing.T) {
-	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,8 +375,8 @@ func TestManagerReclaimsTransientWorkerAfterPassThrough(t *testing.T) {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
-	event := hook.Event{Platform: hook.PlatformContext{Name: "test", ScopeID: "private:transient"}, Actor: hook.ActorContext{ID: "test:transient", UserID: "transient"}}
-	if _, _, err := manager.Handle(context.Background(), "demo", event, hook.Control{Consume: true, StopPropagation: true}); err != nil {
+	event := share.Event{Platform: share.PlatformContext{Name: "test", ScopeID: "private:transient"}, Actor: share.ActorContext{ID: "test:transient", UserID: "transient"}}
+	if _, _, err := manager.Handle(context.Background(), "demo", event, share.Control{Consume: true, StopPropagation: true}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
 	manager.mu.RLock()
@@ -367,7 +385,7 @@ func TestManagerReclaimsTransientWorkerAfterPassThrough(t *testing.T) {
 	if active != 1 || !manager.hasLease(event) {
 		t.Fatalf("transient worker = %d leased=%v, want one leased worker", active, manager.hasLease(event))
 	}
-	updated, routed, err := manager.Route(context.Background(), event)
+	updated, routed, _, err := manager.Route(context.Background(), event, nil)
 	if err != nil {
 		t.Fatalf("Route: %v", err)
 	}
@@ -383,7 +401,7 @@ func TestManagerReclaimsTransientWorkerAfterPassThrough(t *testing.T) {
 }
 
 func TestManagerStopReclaimsTransientWorkers(t *testing.T) {
-	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,8 +421,8 @@ func TestManagerStopReclaimsTransientWorkers(t *testing.T) {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
-	event := hook.Event{Platform: hook.PlatformContext{Name: "test", ScopeID: "private:stop"}, Actor: hook.ActorContext{ID: "test:stop", UserID: "stop"}}
-	if _, _, err := manager.Handle(context.Background(), "demo", event, hook.Control{}); err != nil {
+	event := share.Event{Platform: share.PlatformContext{Name: "test", ScopeID: "private:stop"}, Actor: share.ActorContext{ID: "test:stop", UserID: "stop"}}
+	if _, _, err := manager.Handle(context.Background(), "demo", event, share.Control{}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
 	if _, err := manager.Stop(context.Background(), "demo"); err != nil {
@@ -419,7 +437,7 @@ func TestManagerStopReclaimsTransientWorkers(t *testing.T) {
 }
 
 func TestManagerRouteUsesConfiguredDefaults(t *testing.T) {
-	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -440,12 +458,12 @@ func TestManagerRouteUsesConfiguredDefaults(t *testing.T) {
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	waitForStatus(t, manager, "demo", StatusReady)
-	event := hook.Event{Platform: hook.PlatformContext{Name: "test", ScopeID: "private:defaults"}, Actor: hook.ActorContext{ID: "test:defaults", UserID: "defaults"}}
-	defaults := hook.Control{Consume: true, StopPropagation: false}
+	event := share.Event{Platform: share.PlatformContext{Name: "test", ScopeID: "private:defaults"}, Actor: share.ActorContext{ID: "test:defaults", UserID: "defaults"}}
+	defaults := share.Control{Consume: true, StopPropagation: false}
 	if _, _, err := manager.Handle(context.Background(), "demo", event, defaults); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	updated, routed, err := manager.Route(context.Background(), event)
+	updated, routed, _, err := manager.Route(context.Background(), event, nil)
 	if err != nil {
 		t.Fatalf("Route: %v", err)
 	}
@@ -455,12 +473,12 @@ func TestManagerRouteUsesConfiguredDefaults(t *testing.T) {
 }
 
 func TestManagerHandleSkipsReleasedWaitingOwner(t *testing.T) {
-	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	event := hook.Event{Metadata: map[string]any{skipHookIDMetadataKey: "demo"}}
-	updated, _, err := manager.Handle(context.Background(), "demo", event, hook.Control{})
+	event := share.Event{Metadata: map[string]any{skipHookIDMetadataKey: "demo"}}
+	updated, _, err := manager.Handle(context.Background(), "demo", event, share.Control{})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -470,7 +488,7 @@ func TestManagerHandleSkipsReleasedWaitingOwner(t *testing.T) {
 }
 
 func TestManagerBlockedWaitingConversationFallsThrough(t *testing.T) {
-	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -491,24 +509,24 @@ func TestManagerBlockedWaitingConversationFallsThrough(t *testing.T) {
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	waitForStatus(t, manager, "demo", StatusReady)
-	event := hook.Event{Platform: hook.PlatformContext{Name: "qqonebot", ScopeID: "group:123"}, Actor: hook.ActorContext{ID: "qqonebot:1", UserID: "1"}}
-	policy, err := hook.NewBlockPolicy(nil, []string{"qqonebot:123"}, nil)
+	event := share.Event{Platform: share.PlatformContext{Name: "qqonebot", ScopeID: "group:123"}, Actor: share.ActorContext{ID: "qqonebot:1", UserID: "1"}}
+	policy, err := share.NewBlockPolicy(nil, []string{"qqonebot:123"}, nil)
 	if err != nil {
 		t.Fatalf("NewBlockPolicy: %v", err)
 	}
 	manager.worker("demo").config.Block = policy
-	if _, _, err := manager.Handle(context.Background(), "demo", event, hook.Control{}); err != nil {
+	if _, _, err := manager.Handle(context.Background(), "demo", event, share.Control{}); err != nil {
 		t.Fatalf("blocked Handle: %v", err)
 	}
 	if manager.hasLease(event) {
 		t.Fatal("blocked Handle created a waiting lease")
 	}
-	manager.worker("demo").config.Block = hook.BlockPolicy{}
-	if _, _, err := manager.Handle(context.Background(), "demo", event, hook.Control{}); err != nil {
+	manager.worker("demo").config.Block = share.BlockPolicy{}
+	if _, _, err := manager.Handle(context.Background(), "demo", event, share.Control{}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
 	manager.worker("demo").config.Block = policy
-	updated, handled, err := manager.Route(context.Background(), event)
+	updated, handled, _, err := manager.Route(context.Background(), event, nil)
 	if err != nil {
 		t.Fatalf("Route: %v", err)
 	}
@@ -520,7 +538,7 @@ func TestManagerBlockedWaitingConversationFallsThrough(t *testing.T) {
 var runtimeHelperArgs = []string{"space arg", "", `C:\hook dir\`, `"quoted"`}
 
 func TestWorkerRequestCancellationSendsEventCancelAndKeepsWorkerReady(t *testing.T) {
-	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -533,7 +551,7 @@ func TestWorkerRequestCancellationSendsEventCancelAndKeepsWorkerReady(t *testing
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() {
-		_, _, err := manager.Handle(ctx, config.ID, hook.Event{Platform: hook.PlatformContext{ConversationID: "cancel-me"}, Actor: hook.ActorContext{ID: "test:cancel"}}, hook.Control{})
+		_, _, err := manager.Handle(ctx, config.ID, share.Event{Platform: share.PlatformContext{ConversationID: "cancel-me"}, Actor: share.ActorContext{ID: "test:cancel"}}, share.Control{})
 		errCh <- err
 	}()
 	time.Sleep(50 * time.Millisecond)
@@ -547,7 +565,7 @@ func TestWorkerRequestCancellationSendsEventCancelAndKeepsWorkerReady(t *testing
 		t.Fatal("Worker invocation did not cancel")
 	}
 	waitForStatus(t, manager, config.ID, StatusReady)
-	if _, _, err := manager.Handle(context.Background(), config.ID, hook.Event{Actor: hook.ActorContext{ID: "test:defaults"}}, hook.Control{}); err != nil {
+	if _, _, err := manager.Handle(context.Background(), config.ID, share.Event{Actor: share.ActorContext{ID: "test:defaults"}}, share.Control{}); err != nil {
 		t.Fatalf("Worker was not reusable after cancellation: %v", err)
 	}
 }
@@ -561,7 +579,7 @@ func waitForStatus(t *testing.T, manager *Manager, id string, wanted Status) {
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		for _, info := range manager.List() {
-			if info.ID == id && info.Status == wanted {
+			if info.ID == id && info.Status == string(wanted) {
 				return
 			}
 		}
@@ -571,7 +589,7 @@ func waitForStatus(t *testing.T, manager *Manager, id string, wanted Status) {
 }
 
 func TestHookReloadRequestWaitsForActiveHandle(t *testing.T) {
-	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -610,7 +628,7 @@ func TestHookReloadRequestWaitsForActiveHandle(t *testing.T) {
 }
 
 func TestManagerReplacePluginKeepsOtherWorker(t *testing.T) {
-	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -655,7 +673,7 @@ func TestManagerReplacePluginKeepsOtherWorker(t *testing.T) {
 }
 
 func TestManagerCloseRejectsNewStartsAndIsIdempotent(t *testing.T) {
-	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -674,7 +692,7 @@ func TestManagerCloseRejectsNewStartsAndIsIdempotent(t *testing.T) {
 }
 
 func TestManagerCloseCallerDeadlinePreservesWorkerShutdown(t *testing.T) {
-	manager, err := NewManager(Options{SharedDir: t.TempDir()})
+	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}

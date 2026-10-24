@@ -14,7 +14,7 @@ import (
 
 	appconfig "elbot/internal/config"
 	globalevents "elbot/internal/events"
-	"elbot/internal/hook"
+	"elbot/internal/hook/share"
 )
 
 func loadConfig(opts Options) (Config, string, error) {
@@ -80,7 +80,7 @@ func loadConfig(opts Options) (Config, string, error) {
 			continue
 		}
 		pluginProcessEnv := sharedProcessEnv.Overlay(pluginValues)
-		block, err := hook.NewBlockPolicy(pcfg.Plugin.BlockedPlatforms, pcfg.Plugin.BlockedGroups, pcfg.Plugin.BlockedIDs)
+		block, err := share.NewBlockPolicy(pcfg.Plugin.BlockedPlatforms, pcfg.Plugin.BlockedGroups, pcfg.Plugin.BlockedIDs)
 		if err != nil {
 			reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
 			continue
@@ -229,7 +229,7 @@ func normalizeLoadedRules(cfg *Config, opts Options) error {
 					ContentLimit: 4096,
 					ResultStatus: globalevents.ResultSucceeded,
 				}
-				hook.LogHook(context.Background(), record)
+				opts.Log(context.Background(), record)
 			}
 
 		}
@@ -279,7 +279,7 @@ func reportPluginConfigError(ctx context.Context, opts Options, name, path strin
 		if facts.RootRequestID != "" {
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
-		hook.LogHook(ctx, record)
+		opts.Log(ctx, record)
 	}
 
 	{
@@ -291,7 +291,7 @@ func reportPluginConfigError(ctx context.Context, opts Options, name, path strin
 		if opts.Notices != nil {
 			*opts.Notices = append(*opts.Notices, text)
 		}
-		_, _ = globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
+		_ = opts.Notify(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
 	}
 }
 
@@ -322,7 +322,7 @@ func reportPluginConfigWarning(ctx context.Context, opts Options, name, path, me
 		if facts.RootRequestID != "" {
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
-		hook.LogHook(ctx, record)
+		opts.Log(ctx, record)
 	}
 
 	{
@@ -334,7 +334,7 @@ func reportPluginConfigWarning(ctx context.Context, opts Options, name, path, me
 		if opts.Notices != nil {
 			*opts.Notices = append(*opts.Notices, text)
 		}
-		_, _ = globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
+		_ = opts.Notify(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
 	}
 }
 
@@ -366,26 +366,22 @@ func reportConfigError(ctx context.Context, opts Options, path string, err error
 		if facts.RootRequestID != "" {
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
-		hook.LogHook(ctx, record)
+		opts.Log(ctx, record)
 	}
 
 	text := fmt.Sprintf("Hook rules 配置错误：%v", err)
 	if opts.Notices != nil {
 		*opts.Notices = append(*opts.Notices, text)
 	}
-	_, _ = globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
-}
-
-func (c *Config) normalize() error {
-	return normalizeLoadedRules(c, Options{})
+	_ = opts.Notify(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
 }
 
 func (r Rule) hasBlockConfig() bool {
 	return r.BlockedPlatforms != nil || r.BlockedGroups != nil || r.BlockedIDs != nil
 }
 
-func (r Rule) blockPolicy() (hook.BlockPolicy, error) {
-	return hook.NewBlockPolicy(r.BlockedPlatforms, r.BlockedGroups, r.BlockedIDs)
+func (r Rule) blockPolicy() (share.BlockPolicy, error) {
+	return share.NewBlockPolicy(r.BlockedPlatforms, r.BlockedGroups, r.BlockedIDs)
 }
 
 func (r *Rule) clearBlockConfig() {

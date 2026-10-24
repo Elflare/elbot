@@ -18,16 +18,16 @@ import (
 
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
-	"elbot/internal/hook"
 	hookoutput "elbot/internal/hook/output"
 	hookprotocol "elbot/internal/hook/protocol"
+	"elbot/internal/hook/share"
 	"elbot/internal/llm"
 	"elbot/internal/processenv"
 )
 
 const (
 	hookProtocolVersion       = hookprotocol.Version
-	maxHookProtocolFrameBytes = hook.MaxProtocolFrameBytes
+	maxHookProtocolFrameBytes = share.MaxProtocolFrameBytes
 	maxHookOutputBase64Bytes  = 10 * 1024 * 1024
 	largeOutputRecommendation = "write large media to a file and return outputs[].path or outputs[].url instead of inline base64"
 )
@@ -35,7 +35,7 @@ const (
 // runExec executes the one-shot variant of hook.v2. The process performs a
 // request/response handshake, receives one event.handle request, and returns a
 // completed result before exiting. Stateful hooks use internal/hook/runtime.
-func (m Module) runExec(ctx context.Context, event hook.Event, action Action, state state) (hook.Event, actionResult, globalevents.LogResult, error) {
+func (m Module) runExec(ctx context.Context, event share.Event, action Action, state state) (share.Event, actionResult, globalevents.LogResult, error) {
 	argv := make([]string, len(action.Command))
 	for i, arg := range action.Command {
 		argv[i] = render(arg, event, state)
@@ -94,7 +94,7 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 		stderrLogger.Flush()
 		return err
 	}
-	fail := func(result actionResult, logResult globalevents.LogResult, source error) (hook.Event, actionResult, globalevents.LogResult, error) {
+	fail := func(result actionResult, logResult globalevents.LogResult, source error) (share.Event, actionResult, globalevents.LogResult, error) {
 		source = errors.Join(source, killProcessTree())
 		_ = waitExec()
 		if contextErr := execContextError(runCtx, action); contextErr != nil {
@@ -128,7 +128,7 @@ func (m Module) runExec(ctx context.Context, event hook.Event, action Action, st
 		hookprotocol.EventHandleParams
 		Runtime map[string]any `json:"runtime"`
 	}{
-		EventHandleParams: hookprotocol.EventHandleParams{Event: event, Match: hook.EventMatchContext(event)},
+		EventHandleParams: hookprotocol.EventHandleParams{Event: event, Match: share.EventMatchContext(event)},
 		Runtime:           runtime,
 	}
 	if err := writeV2Request(stdin, eventID, "event.handle", params); err != nil {
@@ -191,7 +191,7 @@ func writeV2Response(w io.Writer, id string, result any, sourceErr error) error 
 	return writeProtocolFrame(w, response)
 }
 
-func (m Module) readV2Response(ctx context.Context, reader *bufio.Reader, stdin io.Writer, event hook.Event, action Action, state state, wantedID string) (json.RawMessage, globalevents.LogResult, error) {
+func (m Module) readV2Response(ctx context.Context, reader *bufio.Reader, stdin io.Writer, event share.Event, action Action, state state, wantedID string) (json.RawMessage, globalevents.LogResult, error) {
 	for {
 		line, err := readProtocolLine(reader)
 		if err != nil {
@@ -267,7 +267,7 @@ func (m Module) readV2Response(ctx context.Context, reader *bufio.Reader, stdin 
 					if facts.RootRequestID != "" {
 						record.Identity.RootRequestID = &facts.RootRequestID
 					}
-					hook.LogHook(ctx, record)
+					m.Opts.Log(ctx, record)
 				}
 			}
 		default:
@@ -276,7 +276,7 @@ func (m Module) readV2Response(ctx context.Context, reader *bufio.Reader, stdin 
 	}
 }
 
-func v2EventResult(event hook.Event, action Action, state state, raw json.RawMessage) (actionResult, hook.Event, error) {
+func v2EventResult(event share.Event, action Action, state state, raw json.RawMessage) (actionResult, share.Event, error) {
 	if len(raw) == 0 {
 		return actionResult{}, event, nil
 	}
@@ -308,7 +308,7 @@ func v2EventResult(event hook.Event, action Action, state state, raw json.RawMes
 			return result, event, err
 		}
 		event.Message.Segments = segments
-		if event.Point == hook.PointToolCallCompleted {
+		if event.Point == share.PointToolCallCompleted {
 			event.Tool.Result = llm.SegmentsTextOnly(segments)
 		}
 	} else if payload.Message != nil && payload.Message.Text != nil {
@@ -365,7 +365,7 @@ func shortProtocolLine(line string) string {
 	return string(runes[:max]) + "..."
 }
 
-func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, action Action, state state, method string, params json.RawMessage) (any, globalevents.LogResult, error) {
+func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, action Action, state state, method string, params json.RawMessage) (any, globalevents.LogResult, error) {
 	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "protocol request " + method + " handled"}
 	if strings.HasPrefix(method, "media.") {
 		result, err := m.Opts.Runtime.MediaRequest(ctx, action.sourceBaseDir(), method, params)
@@ -378,7 +378,7 @@ func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, act
 		return result, logResult, err
 	}
 	if strings.HasPrefix(method, "shared.") {
-		result, err := m.Opts.Runtime.SharedState().HandleRequest(method, params)
+		result, err := m.Opts.Runtime.SharedRequest(method, params)
 		if err != nil {
 			logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
 		}
@@ -410,11 +410,7 @@ func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, act
 				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 			}
 		}
-		caller, ok := m.Opts.PlatformCallers.PlatformCaller(platformName)
-		if !ok {
-			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("platform %q does not support api calls", platformName)}, fmt.Errorf("platform %q does not support api calls", platformName)
-		}
-		resp, err := caller.CallPlatformAPI(ctx, api, callParams)
+		resp, err := m.Opts.CallPlatformAPI(ctx, platformName, api, callParams)
 		if err != nil {
 			logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
 			if errors.Is(err, context.Canceled) {
@@ -461,7 +457,7 @@ func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, act
 			if facts.RootRequestID != "" {
 				record.Identity.RootRequestID = &facts.RootRequestID
 			}
-			hook.LogHook(ctx, record)
+			m.Opts.Log(ctx, record)
 		}
 		if err != nil {
 			return nil, logResult, err
@@ -516,7 +512,7 @@ func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, act
 			}
 			data, _ := json.Marshal(content)
 			record.Content = string(data)
-			hook.LogHook(ctx, record)
+			m.Opts.Log(ctx, record)
 		}
 		paramsMap, err := rawObject(params)
 		if err != nil {
@@ -568,7 +564,7 @@ func (m Module) handleProtocolRequest(ctx context.Context, event hook.Event, act
 			if facts.RootRequestID != "" {
 				record.Identity.RootRequestID = &facts.RootRequestID
 			}
-			hook.LogHook(ctx, record)
+			m.Opts.Log(ctx, record)
 		}
 
 		return map[string]any{"ok": true}, logResult, nil
@@ -602,7 +598,7 @@ func protocolOutputsFromMap(values map[string]json.RawMessage, action Action, de
 	return hookoutput.BuildGroup(hookoutput.Group{Outputs: specs, Target: target, Timing: timing}, hookoutput.BuildOptions{BaseDir: action.sourceBaseDir(), DefaultTarget: defaultTarget, DefaultTiming: defaultTiming})
 }
 
-func renderedActionTarget(action Action, event hook.Event, state state) hookoutput.Target {
+func renderedActionTarget(action Action, event share.Event, state state) hookoutput.Target {
 	return hookoutput.Target{
 		Platform: render(action.Target.Platform, event, state), ScopeID: render(action.Target.ScopeID, event, state),
 		PrivateUserID: render(action.Target.PrivateUserID, event, state), GroupID: render(action.Target.GroupID, event, state), Superadmins: action.Target.Superadmins,
@@ -790,12 +786,12 @@ func (w *execStderrLogger) emitLocked(line string) {
 			if facts.RootRequestID != "" {
 				record.Identity.RootRequestID = &facts.RootRequestID
 			}
-			hook.LogHook(w.ctx, record)
+			w.module.Opts.Log(w.ctx, record)
 		}
 	}
 }
 
-func (m Module) execCwd(action Action, event hook.Event, state state) (string, error) {
+func (m Module) execCwd(action Action, event share.Event, state state) (string, error) {
 	base := strings.TrimSpace(action.sourceBaseDir())
 	if base == "" {
 		base = strings.TrimSpace(m.Opts.ConfigDir)

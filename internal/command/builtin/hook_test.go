@@ -6,24 +6,23 @@ import (
 	"testing"
 
 	"elbot/internal/command"
-	"elbot/internal/hook"
-	hookruntime "elbot/internal/hook/runtime"
+	"elbot/internal/hook/share"
 )
 
 type fakeHookService struct {
-	infos        []hook.Info
-	runtimeInfos []hookruntime.Info
-	reloadReport hook.ReloadReport
+	infos        []share.Info
+	runtimeInfos []share.RuntimeInfo
+	reloadReport share.ReloadReport
 	started      string
 	stopped      string
 	restarted    string
 }
 
-func (s *fakeHookService) HookList() []hook.Info { return s.infos }
-func (s *fakeHookService) HookReload() (hook.ReloadReport, error) {
+func (s *fakeHookService) HookList() []share.Info { return s.infos }
+func (s *fakeHookService) HookReload() (share.ReloadReport, error) {
 	return s.reloadReport, nil
 }
-func (s *fakeHookService) StatefulHooks() []hookruntime.Info { return s.runtimeInfos }
+func (s *fakeHookService) StatefulHooks() []share.RuntimeInfo { return s.runtimeInfos }
 func (s *fakeHookService) StartStatefulHook(id string) error {
 	s.started = id
 	return nil
@@ -39,11 +38,11 @@ func (s *fakeHookService) RestartStatefulHook(_ context.Context, id string) erro
 
 func TestHooksCommandShowsDescriptionsAndDetails(t *testing.T) {
 	longDescription := "123456789012345678901234567890123456789012345678901234567890tail"
-	hooks := &fakeHookService{infos: []hook.Info{
+	hooks := &fakeHookService{infos: []share.Info{
 		{
 			Name:        "greet",
 			Description: longDescription,
-			Point:       hook.PointPlatformMessageReceived,
+			Point:       share.PointPlatformMessageReceived,
 			Priority:    1000,
 			Detail:      "on: platform.message.received\nmatch: always",
 		},
@@ -74,7 +73,7 @@ func TestHooksCommandShowsDescriptionsAndDetails(t *testing.T) {
 }
 
 func TestHooksCommandCompletesRuleName(t *testing.T) {
-	hooks := &fakeHookService{infos: []hook.Info{{Name: "greet", Point: hook.PointPlatformMessageReceived}}}
+	hooks := &fakeHookService{infos: []share.Info{{Name: "greet", Point: share.PointPlatformMessageReceived}}}
 	cmd := NewHooks(Deps{Hooks: hooks}).(command.Completer)
 
 	got := cmd.Complete(context.Background(), command.CompletionRequest{Raw: "/hooks g", Prefix: "/", Name: "hooks", Args: "g", Cursor: len("/hooks g")})
@@ -85,12 +84,12 @@ func TestHooksCommandCompletesRuleName(t *testing.T) {
 
 func TestHooksCommandGroupsPluginRulesAndExpandsDetail(t *testing.T) {
 	hooks := &fakeHookService{
-		infos: []hook.Info{
-			{PluginID: "weather", Name: "forecast", Description: "weather plugin", Point: hook.PointPlatformMessageReceived, Priority: 1000, Detail: "on: platform.message.received\nmatch: forecast"},
-			{PluginID: "weather", Name: "weather_help", Description: "weather plugin", Point: hook.PointAgentInputPrepared, Priority: 900, Detail: "on: agent.input.prepared\nmatch: help", Active: 2},
-			{Name: "builtin.cron.missed_once", Description: "cron fallback", Point: hook.PointPlatformConnected},
+		infos: []share.Info{
+			{PluginID: "weather", Name: "forecast", Description: "weather plugin", Point: share.PointPlatformMessageReceived, Priority: 1000, Detail: "on: platform.message.received\nmatch: forecast"},
+			{PluginID: "weather", Name: "weather_help", Description: "weather plugin", Point: share.PointAgentInputPrepared, Priority: 900, Detail: "on: agent.input.prepared\nmatch: help", Active: 2},
+			{Name: "builtin.cron.missed_once", Description: "cron fallback", Point: share.PointPlatformConnected},
 		},
-		runtimeInfos: []hookruntime.Info{{ID: "weather", Description: "weather plugin", Mode: hookruntime.ModePersistent, Status: hookruntime.StatusReady, Active: 1, Waiting: 1}},
+		runtimeInfos: []share.RuntimeInfo{{ID: "weather", Description: "weather plugin", Mode: "persistent", Status: "ready", Active: 1, Waiting: 1}},
 	}
 	cmd := NewHooks(Deps{Hooks: hooks})
 
@@ -134,7 +133,7 @@ func TestHooksCommandGroupsPluginRulesAndExpandsDetail(t *testing.T) {
 }
 
 func TestHooksReloadShowsWarnings(t *testing.T) {
-	hooks := &fakeHookService{reloadReport: hook.ReloadReport{Notices: []string{"Hook 插件 gpt_image 已跳过：bad field"}}}
+	hooks := &fakeHookService{reloadReport: share.ReloadReport{Notices: []string{"Hook 插件 gpt_image 已跳过：bad field"}}}
 	cmd := NewHooks(Deps{Hooks: hooks})
 
 	result, err := cmd.Handle(context.Background(), command.Request{Args: "reload"})
@@ -147,7 +146,7 @@ func TestHooksReloadShowsWarnings(t *testing.T) {
 }
 
 func TestHooksCommandManagesStatefulHooks(t *testing.T) {
-	hooks := &fakeHookService{runtimeInfos: []hookruntime.Info{{ID: "weather", Description: "weather loop", Mode: hookruntime.ModePersistent, Status: hookruntime.StatusReady}}}
+	hooks := &fakeHookService{runtimeInfos: []share.RuntimeInfo{{ID: "weather", Description: "weather loop", Mode: "persistent", Status: "ready"}}}
 	cmd := NewHooks(Deps{Hooks: hooks})
 
 	result, err := cmd.Handle(context.Background(), command.Request{})

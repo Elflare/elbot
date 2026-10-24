@@ -16,9 +16,9 @@ import (
 	"time"
 
 	globalevents "elbot/internal/events"
-	"elbot/internal/hook"
 	hookoutput "elbot/internal/hook/output"
 	hookprotocol "elbot/internal/hook/protocol"
+	"elbot/internal/hook/share"
 	"elbot/internal/llm"
 	"elbot/internal/processenv"
 )
@@ -142,7 +142,7 @@ func (w *worker) run() {
 		w.startFailed(err)
 		return
 	}
-	cmd.Stderr = stderrLogger{hookID: w.config.ID}
+	cmd.Stderr = stderrLogger{hookID: w.config.ID, Log: w.manager.opts.Log}
 	w.manager.mu.RLock()
 	w.mu.Lock()
 	if w.manager.closed || w.cmd != nil || w.stopping || w.manualStop {
@@ -163,9 +163,17 @@ func (w *worker) run() {
 	w.starting = false
 	w.pending = map[string]chan frame{}
 	w.mu.Unlock()
+	// Both loops belong to this admitted startup, even if Close begins next.
+	w.manager.workWG.Add(2)
 	w.manager.mu.RUnlock()
-	go w.readLoop(stdout)
-	go w.waitLoop(cmd)
+	go func() {
+		defer w.manager.workWG.Done()
+		w.readLoop(stdout)
+	}()
+	go func() {
+		defer w.manager.workWG.Done()
+		w.waitLoop(cmd)
+	}()
 
 	ctx, cancel := context.WithTimeout(w.manager.rootCtx, time.Duration(w.config.StartupTimeoutSeconds)*time.Second)
 	defer cancel()
@@ -194,10 +202,10 @@ func (w *worker) startFailed(err error) {
 	w.detail = strings.TrimSpace(err.Error())
 	cmd := w.cmd
 	w.mu.Unlock()
-	hook.LogHook(w.manager.rootCtx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "hook_worker_start_failed", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: fmt.Sprintf("hook=%s startup_error=%v", w.config.ID, err), ResultStatus: globalevents.ResultFailed})
-	_, _ = globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(w.manager.rootCtx), globalevents.Notification{Text: fmt.Sprintf("Hook %s 启动失败：%v", w.config.ID, err), Level: slog.LevelWarn})
+	w.manager.opts.Log(w.manager.rootCtx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "hook_worker_start_failed", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: fmt.Sprintf("hook=%s startup_error=%v", w.config.ID, err), ResultStatus: globalevents.ResultFailed})
+	_ = w.manager.opts.Notify(context.WithoutCancel(w.manager.rootCtx), globalevents.Notification{Text: fmt.Sprintf("Hook %s 启动失败：%v", w.config.ID, err), Level: slog.LevelWarn})
 	if cmd == nil && w.shouldRestart() {
-		go w.restartLater()
+		w.restartLater()
 	}
 }
 
@@ -238,7 +246,7 @@ func (w *worker) waitLoop(cmd *exec.Cmd) {
 		}
 		w.manager.mu.Unlock()
 		if w.shouldRestart() {
-			go w.restartLater()
+			w.restartLater()
 		}
 		return
 	}
@@ -249,30 +257,40 @@ func (w *worker) shouldRestart() bool {
 }
 
 func (w *worker) restartLater() {
-	w.mu.Lock()
-	delay := w.restartDelay
-	maxDelay := time.Duration(w.config.Restart.MaxDelaySeconds) * time.Second
-	next := maxDelay
-	if delay < maxDelay-delay {
-		next = delay * 2
-	}
-	w.restartDelay = next
-	w.mu.Unlock()
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-timer.C:
-	case <-w.manager.rootCtx.Done():
+	w.manager.mu.Lock()
+	if w.manager.closed {
+		w.manager.mu.Unlock()
 		return
 	}
-	_ = w.manager.startWorker(w)
+	w.manager.workWG.Add(1)
+	w.manager.mu.Unlock()
+	go func() {
+		defer w.manager.workWG.Done()
+		w.mu.Lock()
+		delay := w.restartDelay
+		maxDelay := time.Duration(w.config.Restart.MaxDelaySeconds) * time.Second
+		next := maxDelay
+		if delay < maxDelay-delay {
+			next = delay * 2
+		}
+		w.restartDelay = next
+		w.mu.Unlock()
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-w.manager.rootCtx.Done():
+			return
+		}
+		_ = w.manager.startWorker(w)
+	}()
 }
 
 func (w *worker) stop(ctx context.Context) (logResult globalevents.LogResult, err error) {
 	defer func() {
 		if logResult.ResultStatus == globalevents.ResultFailed {
-			hook.LogHook(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "hook_worker_stop_failed", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: fmt.Sprintf("hook=%s %s", w.config.ID, logResult.Content), ResultStatus: logResult.ResultStatus})
-			_, _ = globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(ctx), globalevents.Notification{Text: fmt.Sprintf("Hook %s 停止失败：%v", w.config.ID, err), Level: slog.LevelWarn})
+			w.manager.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "hook_worker_stop_failed", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: fmt.Sprintf("hook=%s %s", w.config.ID, logResult.Content), ResultStatus: logResult.ResultStatus})
+			_ = w.manager.opts.Notify(context.WithoutCancel(ctx), globalevents.Notification{Text: fmt.Sprintf("Hook %s 停止失败：%v", w.config.ID, err), Level: slog.LevelWarn})
 		}
 	}()
 	w.mu.Lock()
@@ -355,7 +373,7 @@ func (w *worker) kill() {
 	}
 }
 
-func (w *worker) handle(ctx context.Context, event hook.Event, continuation bool, defaults hook.Control) (hook.Event, globalevents.LogResult, error) {
+func (w *worker) handle(ctx context.Context, event share.Event, continuation bool, defaults share.Control) (share.Event, globalevents.LogResult, error) {
 	key := routeKeyFor(event)
 	unlock, err := w.lockRoute(ctx, key)
 	if err != nil {
@@ -395,7 +413,7 @@ func (w *worker) handle(ctx context.Context, event hook.Event, continuation bool
 	defer cancel()
 	token := w.manager.putToolContext(w.config.ID, requestCtx, event, time.Duration(w.config.EventTimeoutSeconds)*time.Second)
 	params := eventHandle{
-		EventHandleParams: hookprotocol.EventHandleParams{Event: event, Match: hook.EventMatchContext(event)},
+		EventHandleParams: hookprotocol.EventHandleParams{Event: event, Match: share.EventMatchContext(event)},
 		Continuation:      continuation,
 		ToolContext:       token,
 	}
@@ -432,12 +450,12 @@ func (w *worker) handle(ctx context.Context, event hook.Event, continuation bool
 			return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 		}
 		event.Message.Segments = segments
-		if event.Point == hook.PointToolCallCompleted {
+		if event.Point == share.PointToolCallCompleted {
 			event.Tool.Result = llm.SegmentsTextOnly(segments)
 		}
 	} else if result.Message != nil && result.Message.Text != nil {
 		event.Message.Segments = llm.SetSegmentText(event.Message.Segments, *result.Message.Text)
-		if event.Point == hook.PointToolCallCompleted {
+		if event.Point == share.PointToolCallCompleted {
 			event.Tool.Result = llm.SegmentsTextOnly(event.Message.Segments)
 		}
 	}
@@ -523,13 +541,21 @@ func (w *worker) runReload(reload func() (globalevents.LogResult, error)) {
 	if reload == nil {
 		return
 	}
+	w.manager.mu.Lock()
+	if w.manager.closed {
+		w.manager.mu.Unlock()
+		return
+	}
+	w.manager.workWG.Add(1)
+	w.manager.mu.Unlock()
 	go func() {
+		defer w.manager.workWG.Done()
 		if logResult, _ := reload(); logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled {
 			level := slog.LevelInfo
 			if logResult.ResultStatus == globalevents.ResultFailed {
 				level = slog.LevelError
 			}
-			hook.LogHook(context.Background(), globalevents.LogRecord{
+			w.manager.opts.Log(context.Background(), globalevents.LogRecord{
 				Category:     globalevents.LogRuntime,
 				Level:        level,
 				EventName:    "hook_plugin_reload_failed",
@@ -633,7 +659,7 @@ func (w *worker) write(value frame) error {
 	if err != nil {
 		return err
 	}
-	if len(data)+1 > hook.MaxProtocolFrameBytes {
+	if len(data)+1 > share.MaxProtocolFrameBytes {
 		return fmt.Errorf("hook protocol stdin frame exceeds 16 MiB limit")
 	}
 	w.writeMu.Lock()
@@ -652,7 +678,7 @@ func (w *worker) write(value frame) error {
 
 func (w *worker) readLoop(reader io.Reader) {
 	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 64*1024), hook.MaxProtocolFrameBytes)
+	scanner.Buffer(make([]byte, 64*1024), share.MaxProtocolFrameBytes)
 	for scanner.Scan() {
 		line := bytesTrim(scanner.Bytes())
 		if len(line) == 0 {
@@ -673,7 +699,19 @@ func (w *worker) readLoop(reader io.Reader) {
 				w.kill()
 				return
 			}
-			go w.handlePluginRequest(value)
+			w.manager.mu.Lock()
+			if w.manager.closed {
+				w.manager.mu.Unlock()
+				ok := false
+				_ = w.write(frame{Type: "response", ID: value.ID, OK: &ok, Error: ErrClosed.Error()})
+				continue
+			}
+			w.manager.workWG.Add(1)
+			w.manager.mu.Unlock()
+			go func() {
+				defer w.manager.workWG.Done()
+				w.handlePluginRequest(value)
+			}()
 		case "event":
 			w.handlePluginEvent(value)
 		default:
@@ -707,7 +745,7 @@ func (w *worker) deliverResponse(value frame) {
 
 func (w *worker) handlePluginEvent(value frame) {
 	if value.Method == "hook.log" {
-		hook.LogHook(context.Background(), globalevents.LogRecord{
+		w.manager.opts.Log(context.Background(), globalevents.LogRecord{
 			Category:     globalevents.LogRuntime,
 			Level:        slog.LevelInfo,
 			EventName:    "stateful_hook_event",
@@ -731,7 +769,7 @@ func (w *worker) handlePluginRequest(value frame) {
 	}
 	writeErr := w.write(response)
 	if writeErr != nil {
-		hook.LogHook(context.Background(), globalevents.LogRecord{
+		w.manager.opts.Log(context.Background(), globalevents.LogRecord{
 			Category:     globalevents.LogRuntime,
 			Level:        slog.LevelError,
 			EventName:    "write_hook_request_response_failed",

@@ -47,7 +47,7 @@ func TestBlockPolicyMatchesPlatformGroupAndUser(t *testing.T) {
 			if got := policy.Blocks(tt.event); got != tt.want {
 				t.Fatalf("Blocks() = %v, want %v", got, tt.want)
 			}
-		}, CallOptions{Woken: true})
+		})
 	}
 	if _, err := share.NewBlockPolicy(nil, []string{"missing-platform"}, nil); err == nil {
 		t.Fatal("expected malformed blocked_group to fail")
@@ -69,7 +69,7 @@ func TestManagerSkipsBlockedPluginAndContinues(t *testing.T) {
 		reg.Point = share.PointPlatformMessageReceived
 		reg.Match = share.Always()
 		name := reg.Name
-		reg.Handler = share.HandlerFunc(func(_ context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+		reg.Handler = share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 			runs = append(runs, name)
 			return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 		})
@@ -133,15 +133,15 @@ func TestManagerRunsByPriorityAndRegistrationOrder(t *testing.T) {
 	manager := newTestManager()
 
 	var got []string
-	manager.Register(share.Registration{Point: share.PointAgentInputPrepared, Priority: 10, Name: "late", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+	manager.Register(share.Registration{Point: share.PointAgentInputPrepared, Priority: 10, Name: "late", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 		got = append(got, "late")
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
-	manager.Register(share.Registration{Point: share.PointAgentInputPrepared, Priority: 0, Name: "first", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+	manager.Register(share.Registration{Point: share.PointAgentInputPrepared, Priority: 0, Name: "first", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 		got = append(got, "first")
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
-	manager.Register(share.Registration{Point: share.PointAgentInputPrepared, Priority: 0, Name: "second", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+	manager.Register(share.Registration{Point: share.PointAgentInputPrepared, Priority: 0, Name: "second", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 		got = append(got, "second")
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
@@ -158,11 +158,11 @@ func TestManagerRunsByPriorityAndRegistrationOrder(t *testing.T) {
 func TestManagerPassesUpdatedEventToNextHandler(t *testing.T) {
 	manager := newTestManager()
 
-	manager.Register(share.Registration{Point: share.PointLLMResponseReceived, Priority: 0, Name: "clean", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+	manager.Register(share.Registration{Point: share.PointLLMResponseReceived, Priority: 0, Name: "clean", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 		event.LLM.Text = "cleaned"
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
-	manager.Register(share.Registration{Point: share.PointLLMResponseReceived, Priority: 1, Name: "append", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+	manager.Register(share.Registration{Point: share.PointLLMResponseReceived, Priority: 1, Name: "append", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 		event.LLM.Text += " response"
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
@@ -206,11 +206,11 @@ func TestManagerStopsOnRunError(t *testing.T) {
 
 	boom := errors.New("boom")
 	called := false
-	manager.Register(share.Registration{Point: share.PointAgentInputPrepared, Priority: 0, Name: "boom", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+	manager.Register(share.Registration{Point: share.PointAgentInputPrepared, Priority: 0, Name: "boom", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 		event.Message.Segments = llm.ReplaceSegmentText(event.Message.Segments, regexp.MustCompile(".*"), "changed", false)
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "test source failed"}, boom
 	})})
-	manager.Register(share.Registration{Point: share.PointAgentInputPrepared, Priority: 1, Name: "later", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+	manager.Register(share.Registration{Point: share.PointAgentInputPrepared, Priority: 1, Name: "later", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 		called = true
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
@@ -241,7 +241,7 @@ func TestManagerObserverWrapsMatchedHookContext(t *testing.T) {
 		Priority: 7,
 		Name:     "observed",
 		Match:    share.Always(),
-		Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+		Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 			if got, _ := ctx.Value(contextKey{}).(string); got != "wrapped" {
 				t.Fatalf("observer context value = %q, want wrapped", got)
 			}
@@ -274,7 +274,7 @@ func TestManagerObserverSkipsUnmatchedAndWakeupSkippedHooks(t *testing.T) {
 		Name:   "unmatched",
 		Match:  share.Contains("llm.text", "[["),
 		Wakeup: share.WakeupAny,
-		Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+		Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 			called++
 			return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 		}),
@@ -283,7 +283,7 @@ func TestManagerObserverSkipsUnmatchedAndWakeupSkippedHooks(t *testing.T) {
 		Point: share.PointLLMResponseReceived,
 		Name:  "wakeup-skipped",
 		Match: share.Always(),
-		Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+		Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 			called++
 			return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 		}),
@@ -310,7 +310,7 @@ func TestManagerLogsCanceledHookAsInfo(t *testing.T) {
 		Point: share.PointAgentInputPrepared,
 		Name:  "cancel",
 		Match: share.Always(),
-		Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+		Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 			return event, globalevents.LogResult{ResultStatus: globalevents.ResultCanceled, Content: "test source canceled"}, context.Canceled
 		}),
 	})
@@ -331,11 +331,11 @@ func TestNotifyRunsAllHandlersAndJoinsErrors(t *testing.T) {
 	first := errors.New("first")
 	second := errors.New("second")
 	calls := 0
-	manager.Register(share.Registration{Point: share.PointErrorOccurred, Priority: 0, Name: "first", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+	manager.Register(share.Registration{Point: share.PointErrorOccurred, Priority: 0, Name: "first", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 		calls++
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "test source failed"}, first
 	})})
-	manager.Register(share.Registration{Point: share.PointErrorOccurred, Priority: 1, Name: "second", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+	manager.Register(share.Registration{Point: share.PointErrorOccurred, Priority: 1, Name: "second", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 		calls++
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "test source failed"}, second
 	})})
@@ -357,7 +357,7 @@ func TestManagerLogsNamedHook(t *testing.T) {
 	manager := newTestManager()
 
 	captureLogs(t, slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	manager.Register(share.Registration{Point: share.PointLLMResponseReceived, Priority: 5, PluginID: "test.plugin", Name: "test.logger", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+	manager.Register(share.Registration{Point: share.PointLLMResponseReceived, Priority: 5, PluginID: "test.plugin", Name: "test.logger", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 		event.LLM.Text = "after"
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
@@ -387,7 +387,7 @@ func TestManagerOmitsInapplicableLogFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(connection.Disconnect)
-	manager.Register(share.Registration{Point: share.PointAgentTurnOutputPrepared, Name: "clear_text", Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+	manager.Register(share.Registration{Point: share.PointAgentTurnOutputPrepared, Name: "clear_text", Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 		event.Message.Segments = nil
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "action=delete"}, nil
 	})})
@@ -419,7 +419,7 @@ func TestManagerSkipsUnmatchedHookAndLogsNothing(t *testing.T) {
 		Priority: 0,
 		Name:     "test.unmatched",
 		Match:    share.Contains("llm.text", "[["),
-		Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+		Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 			called = true
 			return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 		}),
@@ -444,7 +444,7 @@ func TestManagerPassesRegexMatchContext(t *testing.T) {
 		Point: share.PointAgentInputPrepared,
 		Name:  "test.regex",
 		Match: share.Regex("message.text", `^mute (?P<target>\S+) (?P<minutes>\d+)$`),
-		Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+		Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 			got, _ = event.Metadata["match"].(share.MatchContext)
 			return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 		}),
@@ -467,15 +467,15 @@ func TestManagerFiltersByWakeupPolicy(t *testing.T) {
 
 	woken := false
 	calls := []string{}
-	manager.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "default", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+	manager.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "default", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 		calls = append(calls, "default")
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
-	manager.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "any", Match: share.Always(), Wakeup: share.WakeupAny, Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+	manager.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "any", Match: share.Always(), Wakeup: share.WakeupAny, Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 		calls = append(calls, "any")
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
-	manager.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "forbidden", Match: share.Always(), Wakeup: share.WakeupForbidden, Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+	manager.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "forbidden", Match: share.Always(), Wakeup: share.WakeupForbidden, Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 		calls = append(calls, "forbidden")
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
@@ -496,12 +496,12 @@ func TestManagerStopsPropagation(t *testing.T) {
 	manager := newTestManager()
 
 	calls := 0
-	manager.Register(share.Registration{Point: share.PointAgentInputPrepared, Name: "first", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+	manager.Register(share.Registration{Point: share.PointAgentInputPrepared, Name: "first", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 		calls++
 		event.Control.StopPropagation = true
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
-	manager.Register(share.Registration{Point: share.PointAgentInputPrepared, Priority: 1, Name: "second", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+	manager.Register(share.Registration{Point: share.PointAgentInputPrepared, Priority: 1, Name: "second", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 		calls++
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
@@ -517,7 +517,7 @@ func TestManagerStopsPropagation(t *testing.T) {
 func TestManagerMarksHookOutputs(t *testing.T) {
 	manager := newTestManager()
 
-	manager.Register(share.Registration{Point: share.PointPlatformConnected, Priority: 0, Name: "notify.connected", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event) (share.Event, globalevents.LogResult, error) {
+	manager.Register(share.Registration{Point: share.PointPlatformConnected, Priority: 0, Name: "notify.connected", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 		event.Outputs = append(event.Outputs, delivery.Text("connected"))
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
@@ -552,7 +552,7 @@ func captureLogs(t *testing.T, logger *slog.Logger) {
 	t.Cleanup(connection.Disconnect)
 }
 
-func newTestManager() *DefaultManager {
+func newTestManager() *Manager {
 	return NewManager(func(ctx context.Context, record globalevents.LogRecord) {
 		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 	}, nil)

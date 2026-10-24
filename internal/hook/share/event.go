@@ -58,7 +58,6 @@ func KnownPoint(point Point) bool {
 // Event carries the context available at a hook point. Fields are populated
 // according to Point; hook handlers should only rely on fields relevant there.
 type Event struct {
-	Media    MediaAPI       `json:"-"`
 	ID       string         `json:"id"`
 	Point    Point          `json:"point"`
 	Time     time.Time      `json:"time"`
@@ -160,14 +159,15 @@ type ToolPayload struct {
 }
 
 // Handler returns business changes, the source-declared log outcome and the original error.
+// readOnlyCalls is enforced by rules after each action that may change call data.
 type Handler interface {
-	HandleHook(ctx context.Context, event Event) (Event, events.LogResult, error)
+	HandleHook(ctx context.Context, event Event, readOnlyCalls bool) (Event, events.LogResult, error)
 }
 
-type HandlerFunc func(ctx context.Context, event Event) (Event, events.LogResult, error)
+type HandlerFunc func(ctx context.Context, event Event, readOnlyCalls bool) (Event, events.LogResult, error)
 
-func (fn HandlerFunc) HandleHook(ctx context.Context, event Event) (Event, events.LogResult, error) {
-	return fn(ctx, event)
+func (fn HandlerFunc) HandleHook(ctx context.Context, event Event, readOnlyCalls bool) (Event, events.LogResult, error) {
+	return fn(ctx, event, readOnlyCalls)
 }
 
 // PrepareEvent fills execution metadata and the serializable error description.

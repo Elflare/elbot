@@ -563,6 +563,8 @@ Worker trigger rule 复用规则 Hook 的匹配、角色、priority、`wakeup`�
 
 Worker 状态为 `starting`、`ready`、`running`、`degraded`、`stopping`、`stopped` 或 `failed`。停止时 Host 先请求 `system.shutdown`，超过关闭超时才强制结束进程。
 
+Host 关闭 Hook runtime 时停止接纳新的插件请求，取消在途工具调用，并等待进程、插件请求、重载和资源清理实际结束。后台工具调用也受 runtime 关闭取消约束；即使调用忽略取消，关闭等待超时也不会把它视为已经退出。
+
 ### waiting、并发与取消
 
 需要继续收集输入时返回 `status = "waiting"`、`conversation_id` 和 `expires_at`；`expires_at` 必须晚于当前时间，且剩余时间不超过 `max_wait_seconds`。完成时返回 `completed` 或省略 status。
@@ -570,9 +572,10 @@ Worker 状态为 `starting`、`ready`、`running`、`degraded`、`stopping`、`s
 同一 `platform + scope_id + actor.id` 在同一个 worker 内串行，不同路由可并行。waiting 租约也以该三元组为 key：
 
 - 正常串行分发中，首个返回 `waiting` 的 worker 持有该路由，后续 worker trigger rule 不会再分发该路由。实现每条路由只存一份租约；若并发事件使多个 worker 同时竞争，最后写入者覆盖此前租约。因此多个 worker Hook 可能匹配同一路由时，应使用 `priority`、更严格条件或 `stop_propagation` 明确归属。
-- waiting 存在时，普通 `platform.message.received` 规则仍会先运行；worker trigger rule 不会再次触发。
+- waiting 存在时优先处理续接，续接放行后执行普通 `platform.message.received` 规则；对应 worker trigger rule 不会再次触发。
 - Host 先将后续消息以 `continuation = true` 路由给持有租约的 Hook；插件返回 `pass_through = true` 时，再从后续规则继续传播，最后可进入命令或主 LLM。
 - continuation 放行后不会用同一条消息重新触发刚结束 waiting 的插件。
+- 续接与后续普通规则的日志结果按执行顺序汇总；后续规则未匹配或成功，不会覆盖此前续接的失败或取消结果。
 - continuation 返回 `completed` 或省略 `status` 后，Host 立即释放租约；对于 transient worker，同时关闭该进程。再次返回 `waiting` 则以新 ID、过期时间续期。
 - 阻断策略命中、worker 退出、停止或重载会清理该插件租约。
 

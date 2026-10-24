@@ -9,47 +9,49 @@ import (
 	"sync"
 
 	"elbot/internal/events"
-	"elbot/internal/hook"
+	"elbot/internal/hook/pipeline"
 	hookruntime "elbot/internal/hook/runtime"
+	"elbot/internal/hook/share"
 )
 
 // Loader builds a complete candidate hook set and returns the stateful runtime
 // configuration discovered alongside it.
-type Loader func(hook.Registrar) (hook.ReloadReport, []hookruntime.Config, error)
+type Loader func(share.Registrar) (share.ReloadReport, []hookruntime.Config, error)
 
 type Runtime interface {
 	Apply([]hookruntime.Config, func(string)) error
 	ValidatePlugin(hookruntime.Config) error
 	ReplacePlugin(string, *hookruntime.Config, func()) (events.LogResult, error)
-	List() []hookruntime.Info
+	List() []share.RuntimeInfo
 	Start(string) error
 	Stop(context.Context, string) (bool, error)
 	Restart(context.Context, string) error
 }
 
 type Service struct {
-	manager  *hook.DefaultManager
+	manager  *pipeline.Manager
 	runtime  Runtime
 	loader   Loader
 	reloadMu sync.Mutex
+	Log      func(context.Context, events.LogRecord) // Publisher inherited by candidate pipelines.
 }
 
-func New(manager *hook.DefaultManager, runtime Runtime, loader Loader) *Service {
-	return &Service{manager: manager, runtime: runtime, loader: loader}
+func New(manager *pipeline.Manager, runtime Runtime, loader Loader, Log func(context.Context, events.LogRecord)) *Service {
+	return &Service{manager: manager, runtime: runtime, loader: loader, Log: Log}
 }
 
-func (s *Service) HookList() []hook.Info {
+func (s *Service) HookList() []share.Info {
 	return s.manager.List()
 }
 
-func (s *Service) HookReload() (hook.ReloadReport, error) {
+func (s *Service) HookReload() (share.ReloadReport, error) {
 	s.reloadMu.Lock()
 	defer s.reloadMu.Unlock()
 	return s.hookReload()
 }
 
-func (s *Service) hookReload() (hook.ReloadReport, error) {
-	candidate := hook.NewManager()
+func (s *Service) hookReload() (share.ReloadReport, error) {
+	candidate := pipeline.NewManager(s.Log, nil)
 	report, configs, err := s.loader(candidate)
 	if err != nil {
 		return report, err
@@ -86,7 +88,7 @@ func (s *Service) PreparePluginReload(id string) (func() (events.LogResult, erro
 		return nil, fmt.Errorf("hook plugin id is required")
 	}
 	s.reloadMu.Lock()
-	candidate := hook.NewManager()
+	candidate := pipeline.NewManager(s.Log, nil)
 	report, configs, err := s.loader(candidate)
 	s.reloadMu.Unlock()
 	if err != nil {
@@ -120,7 +122,7 @@ func (s *Service) PreparePluginReload(id string) (func() (events.LogResult, erro
 	}, nil
 }
 
-func (s *Service) StatefulHooks() []hookruntime.Info {
+func (s *Service) StatefulHooks() []share.RuntimeInfo {
 	return s.runtime.List()
 }
 

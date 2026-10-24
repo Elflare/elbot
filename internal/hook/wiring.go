@@ -18,7 +18,6 @@ import (
 
 func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps) (*Supervisor, error) {
 	configDir := config.PluginConfigDir(cfg.ConfigPath)
-	// TODO: 子包迁移时落实这些消费字段；子包不得反向导入根包的依赖类型。
 	runtime, err := hookruntime.NewManager(hookruntime.Options{
 		Media:     deps.Media,
 		Tools:     deps.Tools,

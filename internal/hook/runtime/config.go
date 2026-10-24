@@ -1,4 +1,4 @@
-// 定义并校验插件运行时配置与构造参数，公开查询类型待拆出。
+// 定义并校验插件运行时配置、控制状态与构造参数。
 
 // Package runtime runs stateful hook.v2 processes. It deliberately lives under
 // the Hook subsystem: a persistent hook is still a Hook, not another plugin
@@ -13,7 +13,9 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/hook"
+	"elbot/internal/hook/share"
+	"elbot/internal/llm"
+	"elbot/internal/processenv"
 	"elbot/internal/tool"
 )
 
@@ -61,12 +63,12 @@ type Config struct {
 	Restart                RestartConfig `toml:"restart"`
 	Tools                  ToolsConfig   `toml:"tools"`
 
-	ID          string                  `toml:"-"`
-	Description string                  `toml:"-"`
-	Dir         string                  `toml:"-"`
-	ConfigPath  string                  `toml:"-"`
-	Block       hook.BlockPolicy        `toml:"-"`
-	ProcessEnv  hook.ProcessEnvironment `toml:"-"`
+	ID          string                 `toml:"-"`
+	Description string                 `toml:"-"`
+	Dir         string                 `toml:"-"`
+	ConfigPath  string                 `toml:"-"`
+	Block       share.BlockPolicy      `toml:"-"`
+	ProcessEnv  processenv.Environment `toml:"-"`
 }
 
 func (c Config) ModeOrOnce() Mode {
@@ -153,12 +155,18 @@ type Info struct {
 }
 
 type Options struct {
-	Media    hook.MediaAPI
-	Registry *tool.Registry
+	Media mediaAPI // Borrowed media center; runtime owns only its own leases.
+	Tools interface {
+		ToolInfo(string) (tool.Info, bool)
+		ToolSchema(string) (llm.ToolSchema, bool)
+		CallTool(context.Context, tool.CallRequest) (*tool.Result, string, error)
+	} // Metadata, schema and invocation without exposing Tool objects.
 
 	// Send keeps delivery receipts separate from the source-owned log outcome.
 	Send      func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
 	SharedDir string
+	Log       func(context.Context, events.LogRecord)          // Publishes the source-owned record.
+	Notify    func(context.Context, events.Notification) error // Publishes the source-owned notice.
 }
 
 func resolveCwd(dir, cwd string) (string, error) {

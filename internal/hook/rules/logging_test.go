@@ -17,7 +17,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/hook"
+	"elbot/internal/hook/share"
 	"elbot/internal/llm"
 	"elbot/internal/signal"
 	"elbot/internal/tool"
@@ -48,7 +48,7 @@ func TestRuleToolStartPrecedesBodyAndEndHasElapsed(t *testing.T) {
 		}
 	}}
 	_ = registry.Register(invoked)
-	_, _, _ = (Module{Opts: Options{Tools: registry}}).callTool(t.Context(), hook.Event{}, Action{Tool: invoked.Name()}, state{})
+	_, _, _ = (Module{Opts: Options{Log: testLog, Notify: testNotify, Tools: testTools{registry}}}).callTool(t.Context(), share.Event{}, Action{Tool: invoked.Name()}, state{})
 	if len(*records) != 2 || (*records)[1].EventName != "hook_tool_call_completed" || !strings.Contains((*records)[1].Content, `"elapsed_ms"`) {
 		t.Fatalf("end=%+v", *records)
 	}
@@ -62,7 +62,7 @@ func (failedProtocolWriter) Write([]byte) (int, error) {
 
 func TestExecProtocolKeepsSendCancellationAndIndependentWriteFailure(t *testing.T) {
 	for _, failWrite := range []bool{false, true} {
-		module := Module{Opts: Options{Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+		module := Module{Opts: Options{Log: testLog, Notify: testNotify, Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 			return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultCanceled, Content: "source send cancellation"}, fmt.Errorf("wrapped send: %w", context.Canceled)
 		}}}
 		reader := bufio.NewReader(strings.NewReader("{\"type\":\"request\",\"id\":\"plugin:send\",\"method\":\"output.send\",\"params\":{\"outputs\":[{\"kind\":\"text\",\"text\":\"message\"}]}}\n"))
@@ -70,7 +70,7 @@ func TestExecProtocolKeepsSendCancellationAndIndependentWriteFailure(t *testing.
 		if failWrite {
 			writer = failedProtocolWriter{}
 		}
-		_, result, err := module.readV2Response(t.Context(), reader, writer, hook.Event{}, Action{}, state{}, "host:event")
+		_, result, err := module.readV2Response(t.Context(), reader, writer, share.Event{}, Action{}, state{}, "host:event")
 		if err == nil || !strings.Contains(result.Content, "source send cancellation") {
 			t.Fatalf("result=%+v err=%v", result, err)
 		}
@@ -110,10 +110,10 @@ func TestRulesToolRecordsUseIndependentBodyUniqueIDAndActor(t *testing.T) {
 	if err := registry.Register(invoked); err != nil {
 		t.Fatal(err)
 	}
-	module := Module{Opts: Options{Tools: registry}}
+	module := Module{Opts: Options{Log: testLog, Notify: testNotify, Tools: testTools{registry}}}
 	records := collectRecords(t)
 	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "context"})
-	for _, event := range []hook.Event{{Session: hook.SessionContext{ID: "session"}, Actor: hook.ActorContext{ID: "trigger"}}, {Session: hook.SessionContext{ID: "session"}}, {Actor: hook.ActorContext{ID: "permission"}}} {
+	for _, event := range []share.Event{{Session: share.SessionContext{ID: "session"}, Actor: share.ActorContext{ID: "trigger"}}, {Session: share.SessionContext{ID: "session"}}, {Actor: share.ActorContext{ID: "permission"}}} {
 		_, outcome, err := module.callTool(ctx, event, Action{Tool: "body_test"}, state{})
 		if err == nil || outcome.ResultStatus != events.ResultFailed {
 			t.Fatalf("outcome=%+v err=%v", outcome, err)
@@ -146,10 +146,10 @@ func TestRulesToolRecordsUseIndependentBodyUniqueIDAndActor(t *testing.T) {
 func TestRulesOutputSendUsesDeclaredResultAndPartialReceipt(t *testing.T) {
 	for _, callID := range []string{"", "actual-call"} {
 		records := collectRecords(t)
-		module := Module{Opts: Options{Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+		module := Module{Opts: Options{Log: testLog, Notify: testNotify, Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 			return delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "cli", PlatformMessageID: "partial"}}}, events.LogResult{ResultStatus: events.ResultFailed, Content: "declared failure with nil error"}, nil
 		}}}
-		result, _, err := module.handleProtocolRequest(t.Context(), hook.Event{Tool: hook.ToolPayload{ID: callID, Name: "shell"}}, Action{}, state{}, "output.send", json.RawMessage(`{"outputs":[{"kind":"text","text":"hello"}]}`))
+		result, _, err := module.handleProtocolRequest(t.Context(), share.Event{Tool: share.ToolPayload{ID: callID, Name: "shell"}}, Action{}, state{}, "output.send", json.RawMessage(`{"outputs":[{"kind":"text","text":"hello"}]}`))
 		if err != nil || result == nil || len(*records) != 1 {
 			t.Fatalf("result=%v err=%v records=%+v", result, err, *records)
 		}
@@ -171,11 +171,11 @@ func TestRulesOutputSendUsesDeclaredResultAndPartialReceipt(t *testing.T) {
 
 func TestRulesOutputPreparationFailureDoesNotInvokeSender(t *testing.T) {
 	records := collectRecords(t)
-	module := Module{Opts: Options{Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	module := Module{Opts: Options{Log: testLog, Notify: testNotify, Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		t.Fatal("sender entered")
 		return delivery.Receipt{}, events.LogResult{}, nil
 	}}}
-	_, _, err := module.handleProtocolRequest(t.Context(), hook.Event{}, Action{}, state{}, "output.send", json.RawMessage(`{"outputs":false}`))
+	_, _, err := module.handleProtocolRequest(t.Context(), share.Event{}, Action{}, state{}, "output.send", json.RawMessage(`{"outputs":false}`))
 	if err == nil || len(*records) != 1 || (*records)[0].ResultStatus != events.ResultFailed || !strings.Contains((*records)[0].Content, "send not entered") {
 		t.Fatalf("err=%v records=%+v", err, *records)
 	}
@@ -200,9 +200,9 @@ func TestRulesJSONTruncationPreservesUnicodeMarkerAndBusinessData(t *testing.T) 
 			if err := registry.Register(invoked); err != nil {
 				t.Fatal(err)
 			}
-			module := Module{Opts: Options{Tools: registry}}
+			module := Module{Opts: Options{Log: testLog, Notify: testNotify, Tools: testTools{registry}}}
 			records := collectRecords(t, true)
-			_, _, err := module.callTool(t.Context(), hook.Event{}, Action{Tool: invoked.Name(), Arguments: body}, state{})
+			_, _, err := module.callTool(t.Context(), share.Event{}, Action{Tool: invoked.Name(), Arguments: body}, state{})
 			if err != nil || invoked.got != body || len(*records) != 2 {
 				t.Fatalf("err=%v records=%+v", err, *records)
 			}
@@ -233,14 +233,14 @@ func TestRulesSendLogTruncationKeepsFullSourceTextResult(t *testing.T) {
 	for _, character := range []string{"雪", "\x00"} {
 		body := strings.Repeat(character, 4096)
 		records := collectRecords(t)
-		module := Module{Opts: Options{Send: func(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+		module := Module{Opts: Options{Log: testLog, Notify: testNotify, Send: func(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 			if outputs[0].Text != body {
 				t.Fatal("business output truncated")
 			}
 			return delivery.Receipt{PlatformMessageIDs: []string{"actual-message"}}, events.LogResult{ResultStatus: events.ResultCanceled, Content: body}, context.Canceled
 		}}}
 		params, _ := json.Marshal(map[string]any{"outputs": []map[string]any{{"kind": "text", "text": body}}})
-		_, result, err := module.handleProtocolRequest(t.Context(), hook.Event{}, Action{}, state{}, "output.send", params)
+		_, result, err := module.handleProtocolRequest(t.Context(), share.Event{}, Action{}, state{}, "output.send", params)
 		if !errors.Is(err, context.Canceled) || result.Content != body || len(*records) != 1 {
 			t.Fatalf("result=%+v err=%v", result, err)
 		}
@@ -256,11 +256,11 @@ func TestRulesSendLogTruncationKeepsFullSourceTextResult(t *testing.T) {
 
 func TestExecProtocolFailureKeepsFullTextDiagnostic(t *testing.T) {
 	body := strings.Repeat("雪", 5000)
-	module := Module{Opts: Options{Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	module := Module{Opts: Options{Log: testLog, Notify: testNotify, Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultCanceled, Content: body}, context.Canceled
 	}}}
 	reader := bufio.NewReader(strings.NewReader("{\"type\":\"request\",\"id\":\"plugin:send\",\"method\":\"output.send\",\"params\":{\"outputs\":[{\"kind\":\"text\",\"text\":\"message\"}]}}\n"))
-	_, result, err := module.readV2Response(t.Context(), reader, failedProtocolWriter{}, hook.Event{}, Action{}, state{}, "host:event")
+	_, result, err := module.readV2Response(t.Context(), reader, failedProtocolWriter{}, share.Event{}, Action{}, state{}, "host:event")
 	if err == nil || result.ResultStatus != events.ResultFailed || !strings.Contains(result.Content, body) {
 		t.Fatalf("length=%d result=%+v err=%v", len([]rune(result.Content)), result.ResultStatus, err)
 	}
@@ -279,7 +279,7 @@ func TestExecHostCancellationAfterResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer connection.Disconnect()
-	_, _, result, err := (Module{}).runExec(ctx, hook.Event{}, Action{Command: execHelperCommand("done-wait-cancel")}, state{})
+	_, _, result, err := (Module{Opts: Options{Log: testLog, Notify: testNotify}}).runExec(ctx, share.Event{}, Action{Command: execHelperCommand("done-wait-cancel")}, state{})
 	if !errors.Is(err, context.Canceled) || result.ResultStatus != events.ResultCanceled {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}

@@ -8,12 +8,13 @@ import (
 	"errors"
 	"testing"
 
-	"elbot/internal/hook"
+	"elbot/internal/hook/pipeline"
 	hookruntime "elbot/internal/hook/runtime"
+	"elbot/internal/hook/share"
 )
 
 type fakeRuntime struct {
-	infos     []hookruntime.Info
+	infos     []share.RuntimeInfo
 	applyErr  error
 	applied   []hookruntime.Config
 	started   string
@@ -49,7 +50,7 @@ func (r *fakeRuntime) ReplacePlugin(id string, config *hookruntime.Config, commi
 	return events.LogResult{ResultStatus: events.ResultSucceeded, Content: "replacement completed"}, nil
 }
 
-func (r *fakeRuntime) List() []hookruntime.Info { return r.infos }
+func (r *fakeRuntime) List() []share.RuntimeInfo { return r.infos }
 func (r *fakeRuntime) Start(id string) error {
 	r.started = id
 	return nil
@@ -64,15 +65,11 @@ func (r *fakeRuntime) Restart(_ context.Context, id string) error {
 }
 
 func TestReloadKeepsActiveHooksWhenLoaderFails(t *testing.T) {
-	active := hook.NewManager()
-	active.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
-	active.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
-		return ctx, func() {}
-	})
+	active := pipeline.NewManager(testLog, nil)
 	registerTestHook(t, active, "old")
-	service := New(active, &fakeRuntime{}, func(candidate hook.Registrar) (hook.ReloadReport, []hookruntime.Config, error) {
+	service := New(active, &fakeRuntime{}, func(candidate share.Registrar) (share.ReloadReport, []hookruntime.Config, error) {
 		registerTestHook(t, candidate, "new")
-		return hook.ReloadReport{Notices: []string{"warning"}}, nil, errors.New("load failed")
+		return share.ReloadReport{Notices: []string{"warning"}}, nil, errors.New("load failed", te, testLogstLog)
 	})
 
 	report, err := service.HookReload()
@@ -83,17 +80,13 @@ func TestReloadKeepsActiveHooksWhenLoaderFails(t *testing.T) {
 }
 
 func TestReloadPublishesIndependentRulesWhenRuntimeApplyFails(t *testing.T) {
-	active := hook.NewManager()
-	active.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
-	active.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
-		return ctx, func() {}
-	})
+	active := pipeline.NewManager(testLog, nil)
 	registerTestHook(t, active, "old")
-	runtime := &fakeRuntime{applyErr: errors.New("old worker shutdown failed")}
-	service := New(active, runtime, func(candidate hook.Registrar) (hook.ReloadReport, []hookruntime.Config, error) {
+	runtime := &fakeRuntime{applyErr: errors.New("old worker shutdown failed", testLog)}
+	service := New(active, runtime, func(candidate share.Registrar) (share.ReloadReport, []hookruntime.Config, error) {
 		registerTestHook(t, candidate, "new")
-		return hook.ReloadReport{}, []hookruntime.Config{{ID: "demo"}}, nil
-	})
+		return share.ReloadReport{}, []hookruntime.Config{{ID: "demo"}}, nil
+	}, testLog)
 
 	if _, err := service.HookReload(); err == nil {
 		t.Fatal("expected runtime apply error")
@@ -102,17 +95,13 @@ func TestReloadPublishesIndependentRulesWhenRuntimeApplyFails(t *testing.T) {
 }
 
 func TestReloadReplacesHooksAndAppliesRuntimeConfig(t *testing.T) {
-	active := hook.NewManager()
-	active.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
-	active.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
-		return ctx, func() {}
-	})
+	active := pipeline.NewManager(testLog, nil)
 	registerTestHook(t, active, "old")
 	runtime := &fakeRuntime{}
-	service := New(active, runtime, func(candidate hook.Registrar) (hook.ReloadReport, []hookruntime.Config, error) {
+	service := New(active, runtime, func(candidate share.Registrar) (share.ReloadReport, []hookruntime.Config, error) {
 		registerTestHook(t, candidate, "new")
-		return hook.ReloadReport{}, []hookruntime.Config{{ID: "demo"}}, nil
-	})
+		return share.ReloadReport{}, []hookruntime.Config{{ID: "demo"}}, nil
+	}, testLog)
 
 	if _, err := service.HookReload(); err != nil {
 		t.Fatalf("HookReload: %v", err)
@@ -124,8 +113,8 @@ func TestReloadReplacesHooksAndAppliesRuntimeConfig(t *testing.T) {
 }
 
 func TestServiceDelegatesStatefulLifecycle(t *testing.T) {
-	runtime := &fakeRuntime{infos: []hookruntime.Info{{ID: "demo"}}}
-	service := New(hook.NewManager(), runtime, nil)
+	runtime := &fakeRuntime{infos: []share.RuntimeInfo{{ID: "demo"}}}
+	service := New(pipeline.NewManager(testLog, nil), runtime, nil, testLog)
 
 	if infos := service.StatefulHooks(); len(infos) != 1 || infos[0].ID != "demo" {
 		t.Fatalf("StatefulHooks = %#v", infos)
@@ -144,19 +133,19 @@ func TestServiceDelegatesStatefulLifecycle(t *testing.T) {
 	}
 }
 
-func registerTestHook(t *testing.T, registrar hook.Registrar, name string) {
+func registerTestHook(t *testing.T, registrar share.Registrar, name string) {
 	t.Helper()
-	registrar.Register(hook.Registration{
-		Point: hook.PointAgentInputPrepared,
+	registrar.Register(share.Registration{
+		Point: share.PointAgentInputPrepared,
 		Name:  name,
-		Match: hook.Always(),
-		Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+		Match: share.Always(),
+		Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, events.LogResult, error) {
 			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
 	})
 }
 
-func assertHookNames(t *testing.T, infos []hook.Info, want ...string) {
+func assertHookNames(t *testing.T, infos []share.Info, want ...string) {
 	t.Helper()
 	if len(infos) != len(want) {
 		t.Fatalf("hook infos = %#v, want %v", infos, want)
@@ -169,19 +158,15 @@ func assertHookNames(t *testing.T, infos []hook.Info, want ...string) {
 }
 
 func TestPreparePluginReloadReplacesOnlyRequestedPlugin(t *testing.T) {
-	active := hook.NewManager()
-	active.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
-	active.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
-		return ctx, func() {}
-	})
+	active := pipeline.NewManager(testLog, nil)
 	registerPluginTestHook(t, active, "demo", "old")
 	registerPluginTestHook(t, active, "other", "other")
 	runtime := &fakeRuntime{}
-	service := New(active, runtime, func(candidate hook.Registrar) (hook.ReloadReport, []hookruntime.Config, error) {
+	service := New(active, runtime, func(candidate share.Registrar) (share.ReloadReport, []hookruntime.Config, error) {
 		registerPluginTestHook(t, candidate, "demo", "new")
 		registerPluginTestHook(t, candidate, "other", "other-new")
-		return hook.ReloadReport{}, []hookruntime.Config{{ID: "demo"}, {ID: "other"}}, nil
-	})
+		return share.ReloadReport{}, []hookruntime.Config{{ID: "demo"}, {ID: "other"}}, nil
+	}, testLog)
 
 	commit, err := service.PreparePluginReload("demo")
 	if err != nil {
@@ -204,15 +189,19 @@ func TestPreparePluginReloadReplacesOnlyRequestedPlugin(t *testing.T) {
 	}
 }
 
-func registerPluginTestHook(t *testing.T, registrar hook.Registrar, pluginID, name string) {
+func registerPluginTestHook(t *testing.T, registrar share.Registrar, pluginID, name string) {
 	t.Helper()
-	registrar.Register(hook.Registration{
-		Point:    hook.PointAgentInputPrepared,
+	registrar.Register(share.Registration{
+		Point:    share.PointAgentInputPrepared,
 		PluginID: pluginID,
 		Name:     name,
-		Match:    hook.Always(),
-		Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
+		Match:    share.Always(),
+		Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, events.LogResult, error) {
 			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
 		}),
 	})
+}
+
+func testLog(ctx context.Context, record events.LogRecord) {
+	_ = events.EmitLog(context.WithoutCancel(ctx), record)
 }
