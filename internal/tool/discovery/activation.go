@@ -1,63 +1,82 @@
 // 解析发现结果和激活声明，生成待提交的工具状态更新。
 package discovery
 
-import toolshare "elbot/internal/tool/share"
-
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 
-	"elbot/internal/contextinfo"
-	"elbot/internal/security"
-	"elbot/internal/tool"
+	"elbot/internal/tool/share"
 )
 
-// DiscoveryStateUpdate collects a discovery's schemas and activated wrappers
-// so the caller can commit them together.
-func DiscoveryStateUpdate(ctx context.Context, result *toolshare.Result, registry *tool.Registry, actor contextinfo.Actor, permission *security.Permission) (toolshare.StateUpdate, error) {
-	if result == nil {
-		return toolshare.StateUpdate{}, nil
+// DiscoveryStateUpdate 合并发现的 schema 与激活声明，交由调用方统一提交。
+func (r *Resolver) DiscoveryStateUpdate(ctx context.Context, result *share.Result) (share.StateUpdate, error) {
+	if err := ctx.Err(); err != nil {
+		return share.StateUpdate{}, err
 	}
-	update := toolshare.StateUpdate{}
+	if result == nil {
+		return share.StateUpdate{}, nil
+	}
+	update := share.StateUpdate{}
 	if len(result.Data) > 0 {
-		var discovery toolshare.DiscoveryResult
+		var discovery share.DiscoveryResult
 		if err := json.Unmarshal(result.Data, &discovery); err != nil {
-			return toolshare.StateUpdate{}, fmt.Errorf("decode tool discovery: %w", err)
+			return share.StateUpdate{}, fmt.Errorf("decode tool discovery: %w", err)
 		}
 		update.Tools = NativeCachedToolsFromDiscovery(&discovery)
 	}
-	update.Tools = append(update.Tools, activatedTools(ctx, result.Metadata, registry, actor, permission)...)
+	activated, err := r.activatedTools(ctx, result.Metadata)
+	if err != nil {
+		return share.StateUpdate{}, err
+	}
+	update.Tools = append(update.Tools, activated...)
 	return update, nil
 }
 
-func activatedTools(ctx context.Context, metadata map[string]any, registry *tool.Registry, actor contextinfo.Actor, permission *security.Permission) []toolshare.DiscoveredTool {
-	if len(metadata) == 0 || registry == nil {
-		return nil
-	}
-	names := metadataToolNames(metadata[toolshare.MetadataActivateTools])
+func (r *Resolver) activatedTools(ctx context.Context, metadata map[string]any) ([]share.DiscoveredTool, error) {
+	names := normalizeNames(metadataToolNames(metadata[share.MetadataActivateTools]))
 	if len(names) == 0 {
+		return nil, nil
+	}
+	tools, err := r.registry.QueryTools(ctx, share.ToolQuery{
+		Names: names, IncludeHidden: true, IncludeDiscover: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	allowed := make(map[string]share.Tool, len(tools))
+	for _, tool := range tools {
+		allowed[tool.Name()] = tool
+	}
+	discovery := &share.DiscoveryResult{}
+	for _, name := range names {
+		target, ok := allowed[name]
+		if !ok {
+			continue
+		}
+		schema := target.Schema()
+		discovery.Tools = append(discovery.Tools, share.DiscoveryItem{Info: publicInfo(target.Info()), Schema: &schema})
+	}
+	return NativeCachedToolsFromDiscovery(discovery), nil
+}
+
+// NativeCachedToolsFromDiscovery 只转换可执行条目，并分离 schema 中的可变数据。
+func NativeCachedToolsFromDiscovery(result *share.DiscoveryResult) []share.DiscoveredTool {
+	if result == nil {
 		return nil
 	}
-	if permission == nil {
-		permission = security.DefaultPermission()
-	}
-	discovery := &toolshare.DiscoveryResult{}
-	for _, name := range names {
-		if t, ok := registry.Get(name); ok {
-			info := t.Info()
-			risk := info.Risk
-			if risk == "" {
-				risk = toolshare.RiskHigh
-			}
-			if !tool.InfoAvailableInContext(ctx, info) || !permission.CanUseTool(actor, risk, info.OwnerScoped) {
-				continue
-			}
-			schema := t.Schema()
-			discovery.Tools = append(discovery.Tools, toolshare.DiscoveryItem{Info: toolshare.PublicInfo{Name: name, Description: info.Description, Source: string(info.Source), ForegroundOnly: info.ForegroundOnly}, Schema: &schema})
+	out := make([]share.DiscoveredTool, 0, len(result.Tools))
+	for _, discovered := range result.Tools {
+		if discovered.Schema == nil || discovered.Info.Name == "" {
+			continue
 		}
+		out = append(out, share.DiscoveredTool{
+			Name: discovered.Info.Name, Source: share.SourceKindNative,
+			Description: discovered.Info.Description, Schema: share.CloneSchema(*discovered.Schema),
+			ForegroundOnly: discovered.Info.ForegroundOnly,
+		})
 	}
-	return NativeCachedToolsFromDiscovery(discovery)
+	return out
 }
 
 func metadataToolNames(value any) []string {

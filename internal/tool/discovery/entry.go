@@ -1,8 +1,6 @@
 // 实现 discover_tool 入口，处理工具定义、参数和调用结果。
 package discovery
 
-import toolshare "elbot/internal/tool/share"
-
 import (
 	"bytes"
 	"context"
@@ -10,14 +8,13 @@ import (
 	"fmt"
 	"strings"
 
-	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
-	"elbot/internal/security"
+	"elbot/internal/tool/share"
 )
 
 type discoverTool struct {
-	registry       *Registry
-	beforeDiscover func(context.Context) error
+	resolver       *Resolver                   // 解析已注册目录中的发现请求。
+	beforeDiscover func(context.Context) error // 仅工具入口触发的 Skill 加载回调。
 }
 
 type discoverArgs struct {
@@ -25,35 +22,33 @@ type discoverArgs struct {
 	Names []string `json:"names"`
 }
 
-func NewDiscoverTool(registry *Registry, before ...func(context.Context) error) toolshare.Tool {
+func NewDiscoverTool(resolver *Resolver, before ...func(context.Context) error) share.Tool {
 	var hook func(context.Context) error
 	if len(before) > 0 {
 		hook = before[0]
 	}
-	return discoverTool{registry: registry, beforeDiscover: hook}
+	return discoverTool{resolver: resolver, beforeDiscover: hook}
 }
 
-func (t discoverTool) Name() string {
-	return "discover_tool"
-}
+func (t discoverTool) Name() string { return "discover_tool" }
 
-func (t discoverTool) Info() toolshare.Info {
-	return toolshare.NewBuilder(t.Name()).
+func (t discoverTool) Info() share.Info {
+	return share.NewBuilder(t.Name()).
 		Description("发现可用工具和技能。未知工具schema时使用此工具获取，已知不再次使用。不传 name/names 时列出工具简介，传 name/names 时返回指定工具及 schema或者skill描述。").
-		Risk(toolshare.RiskSafe).
+		Risk(share.RiskSafe).
 		BuildInfo()
 }
 
 func (t discoverTool) Schema() llm.ToolSchema {
-	return toolshare.NewBuilder(t.Name()).
+	return share.NewBuilder(t.Name()).
 		Description(t.Info().Description).
 		String("name", "可选，要查询详情的tool/skill名称。不传 name/names 则列出全部可见工具简介。").
 		StringArray("names", "可选，要批量查询详情的tool/skill名称列表。").
 		BuildSchema()
 }
 
-func (t discoverTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
-	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+func (t discoverTool) Call(ctx context.Context, req share.CallRequest) (_ *share.Result, logContent string, _ error) {
+	defer func() { logContent = share.TruncateLogContent(logContent, 1024) }()
 	if err := ctx.Err(); err != nil {
 		return nil, err.Error(), err
 	}
@@ -65,65 +60,43 @@ func (t discoverTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *t
 	var args discoverArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			{
-				callErr := fmt.Errorf("parse discover_tool arguments: %w", err)
-				return nil, callErr.Error(), callErr
-			}
+			callErr := fmt.Errorf("parse discover_tool arguments: %w", err)
+			return nil, callErr.Error(), callErr
 		}
 	}
 	names := append([]string{}, args.Names...)
 	if args.Name != "" {
 		names = append([]string{args.Name}, names...)
 	}
-	names = normalizeNames(names)
-	actor, permission := discoverySecurity(ctx)
-	var result *toolshare.DiscoveryResult
+	result, targets, err := t.resolver.discover(ctx, names)
+	if err != nil {
+		return nil, err.Error(), err
+	}
+	// 单个目标失败作为工具调用错误返回；批量发现保留逐项结果。
+	if len(result.Tools) == 0 && len(result.Errors) == 1 {
+		callErr := fmt.Errorf("discover tool %q: %s", result.Errors[0].Name, result.Errors[0].Reason)
+		return nil, callErr.Error(), callErr
+	}
 	activateTools := []string{}
-	if len(names) == 0 {
-		infos := t.registry.List()
-		out := make([]toolshare.DiscoveryItem, 0, len(infos))
-		for _, info := range infos {
-			if !info.Hidden && InfoAvailableInContext(ctx, info) && (CanAccessTool(actor, permission, info) || info.Name == "discover_tool") {
-				out = append(out, toolshare.DiscoveryItem{Info: publicInfo(info)})
-			}
+	for _, discovered := range result.Tools {
+		if discovered.Detail == "" {
+			continue
 		}
-		result = &toolshare.DiscoveryResult{Tools: out}
-	} else {
-		details, errors := t.registry.DiscoverDetails(contextinfo.WithActor(ctx, actor), names, func(candidate toolshare.Tool) bool {
-			info := candidate.Info()
-			return InfoAvailableInContext(ctx, info) && CanAccessTool(actor, permission, info)
-		})
-		for _, discovered := range details {
-			if discovered.Detail == "" {
-				continue
-			}
-			if target, ok := t.registry.Get(discovered.Info.Name); ok {
-				if detailer, ok := target.(toolshare.DetailProvider); ok {
-					activateTools = append(activateTools, detailer.ActivateTools()...)
-				}
-			}
-		}
-		result = &toolshare.DiscoveryResult{Tools: details, Errors: errors}
-		if len(details) == 0 && len(errors) > 0 && len(names) == 1 {
-			{
-				callErr := fmt.Errorf("discover tool %q: %s", errors[0].Name, errors[0].Reason)
-				return nil, callErr.Error(), callErr
-			}
+		if detailer, ok := targets[discovered.Info.Name].(share.DetailProvider); ok {
+			activateTools = append(activateTools, detailer.ActivateTools()...)
 		}
 	}
 	data, err := marshalJSONNoEscape(result)
 	if err != nil {
-		{
-			callErr := fmt.Errorf("marshal discovery result: %w", err)
-			return nil, callErr.Error(), callErr
-		}
+		callErr := fmt.Errorf("marshal discovery result: %w", err)
+		return nil, callErr.Error(), callErr
 	}
 	metadata := map[string]any{}
 	activateTools = normalizeNames(activateTools)
 	if len(activateTools) > 0 {
-		metadata[toolshare.MetadataActivateTools] = activateTools
+		metadata[share.MetadataActivateTools] = activateTools
 	}
-	details, err := discoveryContent(ctx, t.registry, result)
+	details, err := discoveryContent(ctx, targets, result)
 	if err != nil {
 		return nil, err.Error(), err
 	}
@@ -131,8 +104,7 @@ func (t discoverTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *t
 	for _, discovered := range result.Tools {
 		needsElyphRules = needsElyphRules || discovered.NeedsElyphRules
 	}
-	// 普通工具的完整 schema 通过 Data 交给工具状态服务，协议路线负责发送。
-	// tool message 独立保留发现说明，不重复展开完整 schema。
+	// schema 通过 Data 交给工具状态流程，正文只保留发现说明。
 	logContent = fmt.Sprintf("found=%d errors=%d", len(result.Tools), len(result.Errors))
 	for _, failure := range result.Errors {
 		logContent += fmt.Sprintf("\n%s: %s", failure.Name, failure.Reason)
@@ -140,10 +112,10 @@ func (t discoverTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *t
 	for _, discovered := range result.Tools {
 		logContent += "\n" + discovered.Info.Name
 	}
-	{
-		result := &toolshare.Result{Content: strings.TrimSpace(details.Summary + "\n\n" + details.Details), DiscoveryText: &details, NeedsElyphRules: needsElyphRules, Data: data, Metadata: metadata}
-		return result, logContent, nil
-	}
+	return &share.Result{
+		Content:       strings.TrimSpace(details.Summary + "\n\n" + details.Details),
+		DiscoveryText: &details, NeedsElyphRules: needsElyphRules, Data: data, Metadata: metadata,
+	}, logContent, nil
 }
 
 func marshalJSONNoEscape(value any) ([]byte, error) {
@@ -154,86 +126,4 @@ func marshalJSONNoEscape(value any) ([]byte, error) {
 		return nil, err
 	}
 	return bytes.TrimSpace(buf.Bytes()), nil
-}
-
-func discoveryContent(ctx context.Context, registry *Registry, result *toolshare.DiscoveryResult) (toolshare.DiscoveryText, error) {
-	if result == nil {
-		return toolshare.DiscoveryText{}, nil
-	}
-	parts := []string{}
-	foundTools := []string{}
-	appendedExtras := []string{}
-	detailBlocks := []toolshare.DetailBlock{}
-	for _, discovered := range result.Tools {
-		name := strings.TrimSpace(discovered.Info.Name)
-		if discovered.Detail != "" {
-			foundTools = append(foundTools, name)
-			block := discovered.DetailBlock
-			if strings.TrimSpace(block.Content) == "" {
-				block = toolshare.DetailBlock{Content: discovered.Detail}
-			}
-			detailBlocks = append(detailBlocks, block)
-			continue
-		}
-		if discovered.Schema != nil && name != "" {
-			foundTools = append(foundTools, name)
-			if target, ok := registry.Get(name); ok {
-				content, override, supported, err := LoadDiscoveryContent(ctx, target)
-				if err != nil {
-					return toolshare.DiscoveryText{}, fmt.Errorf("load discovery content for %s: %w", name, err)
-				}
-				if supported {
-					if strings.TrimSpace(content) != "" {
-						if override {
-							parts = append(parts, content)
-						} else {
-							appendedExtras = append(appendedExtras, content)
-						}
-						continue
-					}
-				}
-			}
-			continue
-		}
-		if name != "" {
-			parts = append(parts, fmt.Sprintf("%s：%s", name, discovered.Info.Description))
-		}
-	}
-	summary := ""
-	if len(foundTools) > 0 {
-		summary = fmt.Sprintf("已发现：%s。后续可直接使用。", strings.Join(foundTools, "、"))
-	}
-	parts = append(parts, appendedExtras...)
-	if detailText := RenderDetailBlocks(detailBlocks); detailText != "" {
-		parts = append(parts, detailText)
-	}
-	if len(result.Errors) > 0 {
-		errors := make([]string, 0, len(result.Errors))
-		for _, item := range result.Errors {
-			if item.Name == "" {
-				continue
-			}
-			reason := strings.TrimSpace(item.Reason)
-			if reason == "" {
-				reason = "not found or not allowed"
-			}
-			errors = append(errors, fmt.Sprintf("%s：%s", item.Name, reason))
-		}
-		if len(errors) > 0 {
-			parts = append(parts, "未发现工具："+strings.Join(errors, ", "))
-		}
-	}
-	return toolshare.DiscoveryText{Summary: summary, Details: strings.Join(parts, "\n\n")}, nil
-}
-
-func discoverySecurity(ctx context.Context) (contextinfo.Actor, *security.Permission) {
-	permission, ok := security.PermissionFromContext(ctx)
-	if !ok || permission == nil {
-		permission = security.DefaultPermission()
-	}
-	actor, ok := contextinfo.ActorFromContext(ctx)
-	if !ok {
-		actor = contextinfo.Actor{Role: contextinfo.RoleUser}
-	}
-	return actor, permission
 }

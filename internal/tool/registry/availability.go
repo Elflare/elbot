@@ -41,8 +41,8 @@ func CanAccessTool(actor contextinfo.Actor, permission *security.Permission, inf
 	return permission.CanUseTool(actor, risk, info.OwnerScoped)
 }
 
-// QueryTools 对目录和按名称指定的依赖使用相同资格规则；权限策略由构造时注入。
-func (r *Registry) QueryTools(ctx context.Context, query share.ToolQuery) ([]share.Info, error) {
+// QueryTools 返回本次通过资格筛选的原始对象；后续使用不再按名称查询目录。
+func (r *Registry) QueryTools(ctx context.Context, query share.ToolQuery) ([]share.Tool, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -53,7 +53,7 @@ func (r *Registry) QueryTools(ctx context.Context, query share.ToolQuery) ([]sha
 		candidates = append(candidates, candidate.Tool)
 	}
 	r.mu.RUnlock()
-	var infos []share.Info
+	var tools []share.Tool
 	for _, candidate := range candidates {
 		info := candidate.Info()
 		if query.Names != nil && !slices.Contains(query.Names, info.Name) {
@@ -69,12 +69,26 @@ func (r *Registry) QueryTools(ctx context.Context, query share.ToolQuery) ([]sha
 		if !InfoAvailableInContext(ctx, info) || !CanAccessTool(actor, r.permission, info) {
 			continue
 		}
+		tools = append(tools, candidate)
+	}
+	sort.Slice(tools, func(i, j int) bool { return tools[i].Name() < tools[j].Name() })
+	return tools, nil
+}
+
+// QueryToolInfos 将同一次查询的对象转换为对外元数据，不再查询目录。
+func (r *Registry) QueryToolInfos(ctx context.Context, query share.ToolQuery) ([]share.Info, error) {
+	tools, err := r.QueryTools(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	var infos []share.Info
+	for _, tool := range tools {
+		info := tool.Info()
 		info.APITypes = slices.Clone(info.APITypes)
 		info.Tags = slices.Clone(info.Tags)
 		info.DependsOn = slices.Clone(info.DependsOn)
 		infos = append(infos, info)
 	}
-	sort.Slice(infos, func(i, j int) bool { return infos[i].Name < infos[j].Name })
 	return infos, nil
 }
 

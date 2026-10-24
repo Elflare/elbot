@@ -45,13 +45,13 @@ func TestRegisterOwnedPreservesOptionalInterfaces(t *testing.T) {
 	if !ok || detail.Detail() != "skill detail" {
 		t.Fatal("lost DetailProvider")
 	}
-	infos, err := r.QueryTools(context.Background(), share.ToolQuery{Kind: "skill"})
-	if err != nil || len(infos) != 1 {
-		t.Fatalf("skill query = %v, %v", infos, err)
+	tools, err := r.QueryTools(context.Background(), share.ToolQuery{Kind: "skill"})
+	if err != nil || len(tools) != 1 || tools[0] != original {
+		t.Fatalf("skill query = %v, %v; want original object", tools, err)
 	}
-	infos, err = r.QueryTools(context.Background(), share.ToolQuery{Kind: "tool"})
-	if err != nil || len(infos) != 0 {
-		t.Fatalf("plain query = %v, %v", infos, err)
+	tools, err = r.QueryTools(context.Background(), share.ToolQuery{Kind: "tool"})
+	if err != nil || len(tools) != 0 {
+		t.Fatalf("plain query = %v, %v", tools, err)
 	}
 }
 
@@ -174,13 +174,13 @@ func TestQueryToolsQualification(t *testing.T) {
 		{"admin", admin, share.ToolQuery{Names: []string{"admin", "high"}}, "admin,high"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			infos, err := r.QueryTools(tc.ctx, tc.query)
+			tools, err := r.QueryTools(tc.ctx, tc.query)
 			if err != nil {
 				t.Fatal(err)
 			}
-			names := make([]string, 0, len(infos))
-			for _, info := range infos {
-				names = append(names, info.Name)
+			names := make([]string, 0, len(tools))
+			for _, tool := range tools {
+				names = append(names, tool.Name())
 			}
 			if got := strings.Join(names, ","); got != tc.want {
 				t.Fatalf("got %q, want %q", got, tc.want)

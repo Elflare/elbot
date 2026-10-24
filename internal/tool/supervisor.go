@@ -31,7 +31,7 @@ type Supervisor struct {
 }
 
 func (m *Supervisor) QueryTools(ctx context.Context, query share.ToolQuery) ([]share.Info, error) {
-	return m.catalog.Registry.QueryTools(ctx, query)
+	return m.catalog.Registry.QueryToolInfos(ctx, query)
 }
 
 func (m *Supervisor) ToolTags(ctx context.Context) ([]string, error) {
