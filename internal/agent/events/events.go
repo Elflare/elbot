@@ -2,7 +2,6 @@ package events
 
 import (
 	"context"
-	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/hook"
@@ -12,21 +11,8 @@ import (
 	"elbot/internal/signal"
 )
 
-// EventMeta identifies the published fact, never a mutable execution handle.
-type EventMeta struct {
-	At                        time.Time
-	SessionID, RunID, Attempt string
-	RequestID, RootRequestID  string
-}
-
-func Meta(ctx context.Context, sessionID string) EventMeta {
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	return EventMeta{At: time.Now(), SessionID: sessionID, RunID: facts.RunID, Attempt: facts.Attempt,
-		RequestID: facts.RequestID, RootRequestID: facts.RootRequestID}
-}
-
 type ModelCallCompletedEvent struct {
-	EventMeta
+	Execution                                  contextinfo.Execution // Identity of the execution that produced this call result.
 	Provider, Model, Text, SourceText          string
 	ToolCallCount                              int
 	ElapsedMS                                  int64
@@ -36,33 +22,40 @@ type ModelCallCompletedEvent struct {
 }
 
 type StatusChangedEvent struct {
-	Snapshot runtimestatus.Snapshot // Committed execution state, independent of presentation.
-	Version  uint64                 // Monotonic publication order within the recorder.
+	Snapshot     runtimestatus.Snapshot    // Committed execution state, independent of presentation.
+	Version      uint64                    // Monotonic publication order within the recorder, not a binding version.
+	Execution    contextinfo.Execution     // Identity of the execution that published the state, including terminal states.
+	Conversation *contextinfo.Conversation // Original presentation destination; nil when no conversation exists.
+	Binding      *BindingSnapshot          // Activation associated with this state; nil when unbound.
 }
 
 // BindingSnapshot describes an activation without exposing its internal handle.
 type BindingSnapshot struct {
 	Scope     session.Scope // Conversation and actor scope of the activation.
 	SessionID string        // Persisted session selected by this activation.
+	Version   uint64        // Service-local version assigned when this activation was established.
 }
 
 // BindingChangedEvent contains independently copied facts for one subscriber.
+// At least one of Old and New is present.
 type BindingChangedEvent struct {
-	Old    *BindingSnapshot     // Previous activation; nil when none existed.
-	New    *BindingSnapshot     // New activation; nil when the scope becomes unbound.
-	Reason session.ChangeReason // Operation that changed the selection.
+	Version uint64           // Service-local committed change version; unbinding also advances it.
+	Old     *BindingSnapshot // Previous activation; nil when none existed.
+	New     *BindingSnapshot // New activation; nil when the scope becomes unbound.
 }
 
 type VisionFallbackUsedEvent struct {
-	EventMeta
-	Visible bool
+	SessionID    string                    // Session used to deduplicate fallback notices.
+	Visible      bool                      // Whether this fallback should be shown to the user.
+	Conversation *contextinfo.Conversation // Original notification destination; nil when no conversation exists.
 }
+
 type HookFailedEvent struct {
-	EventMeta
-	Point    hook.Point
-	Platform hook.PlatformContext
-	Err      error
-	Notice   bool
+	Point        hook.Point                // Hook point that failed.
+	Platform     hook.PlatformContext      // Hook platform facts, also used to address notices when Conversation is nil.
+	Err          error                     // Failure reported by the hook.
+	Notice       bool                      // Whether the failure should produce a user notification.
+	Conversation *contextinfo.Conversation // Original notification destination; nil when no conversation exists.
 }
 type Signals struct {
 	ModelCallCompleted *signal.Signal[ModelCallCompletedEvent, signal.Empty]

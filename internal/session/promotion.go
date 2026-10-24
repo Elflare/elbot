@@ -94,7 +94,7 @@ func (s *Service) activateExisting(ctx context.Context, scope Scope, id string, 
 	if err != nil {
 		return nil, err
 	}
-	s.setCurrent(ctx, scope, row.ID, ChangeResume)
+	s.setCurrent(ctx, scope, row.ID)
 	if promoted {
 		s.mu.Lock()
 		binding := s.current[scope.Key()]

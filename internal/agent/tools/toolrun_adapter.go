@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"elbot/internal/agent/dialogue"
-	agentevents "elbot/internal/agent/events"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
@@ -147,7 +146,9 @@ func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call
 		}
 	}
 	data, _ := json.Marshal(content)
-	agentshare.EmitAgentLog(ctx, agentevents.Meta(ctx, sessionID), events.LogRecord{
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	facts.SessionID = sessionID
+	agentshare.EmitAgentLog(ctx, facts, events.LogRecord{
 		Category:     events.LogAudit,
 		Level:        slog.LevelInfo,
 		EventName:    "permission_denied",

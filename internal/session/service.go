@@ -14,6 +14,7 @@ import (
 type Service struct {
 	store               storage.Store
 	mu                  sync.Mutex
+	bindingVersion      uint64 // Monotonic committed binding-change version within this service, including unbinding; protected by mu.
 	current             map[string]*Binding
 	gates               map[string]*scopeGate
 	changed             *signal.Signal[BindingChangedEvent, signal.Empty]
@@ -104,7 +105,7 @@ func (s *Service) Create(ctx context.Context, scope Scope, req CreateRequest) (*
 	if err := s.store.Sessions().Create(ctx, session); err != nil {
 		return nil, err
 	}
-	s.setCurrent(ctx, scope, session.ID, ChangeCreate)
+	s.setCurrent(ctx, scope, session.ID)
 	return session, nil
 }
 
@@ -133,7 +134,7 @@ func (s *Service) ResetCurrent(ctx context.Context, scope Scope) error {
 	if err := s.canReplaceCurrent(scope, ""); err != nil {
 		return err
 	}
-	s.setCurrent(ctx, scope, "", ChangeReset)
+	s.setCurrent(ctx, scope, "")
 	return nil
 }
 

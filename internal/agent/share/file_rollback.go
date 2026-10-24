@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"elbot/internal/agent/dialogue"
 	"elbot/internal/fileops"
 	"elbot/internal/request"
 	"elbot/internal/session"
@@ -14,7 +13,9 @@ import (
 
 func FileRollbackContext(ctx context.Context, service interface {
 	WithBinding(context.Context, fileops.Binding, ...fileops.CommitAdmission) context.Context
-}, sessions *session.Service, turns *turn.Manager, requests *request.Manager, identity dialogue.Identity, row *storage.Session, idleOnly ...bool) context.Context {
+}, sessions *session.Service, turns *turn.Manager, requests *request.Manager, identity interface {
+	Scope(context.Context) session.Scope
+}, row *storage.Session, idleOnly ...bool) context.Context {
 	if row == nil {
 		return ctx
 	}

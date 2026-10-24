@@ -10,7 +10,7 @@ func TestCommittedBindingFactSurvivesCanceledLease(t *testing.T) {
 	s := NewService(nil)
 	defer s.Close(context.Background())
 	scope := Scope{ActorID: "cli:one", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
-	s.setCurrent(context.Background(), scope, "old", ChangeCreate)
+	s.setCurrent(context.Background(), scope, "old")
 	old := s.current[scope.Key()]
 	count := 0
 	c, err := s.changed.Observe(func(ctx context.Context, e BindingChangedEvent) error {
@@ -31,7 +31,7 @@ func TestCommittedBindingFactSurvivesCanceledLease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.setCurrent(locked, scope, "new", ChangeResume)
+	s.setCurrent(locked, scope, "new")
 	cancel()
 	if count != 0 {
 		t.Fatal("fact published before releasing scope lock")

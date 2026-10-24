@@ -8,7 +8,6 @@ import (
 	"log/slog"
 
 	"elbot/internal/agent/dialogue"
-	agentevents "elbot/internal/agent/events"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
@@ -241,6 +240,8 @@ func (c *ExecutionCoordinator) handleTurnContextDone(ctx context.Context, sessio
 		}
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		facts.SessionID = sessionID
 		record := events.LogRecord{
 			Category:     events.LogRuntime,
 			Level:        slog.LevelError,
@@ -252,10 +253,10 @@ func (c *ExecutionCoordinator) handleTurnContextDone(ctx context.Context, sessio
 			Identity:     events.LogIdentity{},
 			ResultStatus: events.ResultFailed,
 		}
-		agentshare.EmitAgentLog(ctx, agentevents.Meta(ctx, sessionID), record)
+		agentshare.EmitAgentLog(ctx, facts, record)
 		content, _ := json.Marshal(map[string]string{"error": fmt.Sprintf("%.2048v", err)})
 		record.Category, record.Type, record.Content = events.LogAudit, events.ContentJSON, string(content)
-		agentshare.EmitAgentLog(ctx, agentevents.Meta(ctx, sessionID), record)
+		agentshare.EmitAgentLog(ctx, facts, record)
 		out.Notify(context.WithoutCancel(ctx), slog.LevelWarn, notificationrules.TurnTimeout)
 	}
 }

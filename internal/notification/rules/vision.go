@@ -2,6 +2,7 @@ package rules
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"log/slog"
 	"sync"
@@ -15,7 +16,7 @@ type VisionNotices struct {
 }
 
 func NewVisionNotices() *VisionNotices { return &VisionNotices{attempted: make(map[string]bool)} }
-func (v *VisionNotices) Send(ctx context.Context, id string, visible bool) error {
+func (v *VisionNotices) Send(ctx context.Context, id string, visible bool, conversation *contextinfo.Conversation) error {
 	if !visible || ctx.Err() != nil {
 		return nil
 	}
@@ -26,7 +27,7 @@ func (v *VisionNotices) Send(ctx context.Context, id string, visible bool) error
 	}
 	v.attempted[id] = true
 	v.mu.Unlock()
-	results, err := events.NotificationRequested.Emit(ctx, events.NewNotification(ctx, slog.LevelWarn, VisionFallback))
+	results, err := events.NotificationRequested.Emit(ctx, events.Notification{Origin: conversation, Level: slog.LevelWarn, Text: VisionFallback})
 	started := len(results) > 0 && results[0].Started
 	if !started {
 		v.mu.Lock()

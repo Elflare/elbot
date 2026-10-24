@@ -7,9 +7,11 @@ import (
 
 	"elbot/internal/agent/dialogue"
 	agentevents "elbot/internal/agent/events"
+	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	"elbot/internal/llm"
 	runtimestatus "elbot/internal/runtime"
+	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
@@ -21,7 +23,7 @@ type StatusRecorder struct {
 	publishMu sync.Mutex
 	mu        sync.Mutex
 	snapshots map[string]runtimestatus.Snapshot
-	owners    map[string]agentevents.EventMeta
+	owners    map[string]contextinfo.Execution
 	version   uint64
 	turns     *turn.Manager
 	changed   *signal.Signal[agentevents.StatusChangedEvent, signal.Empty]
@@ -49,7 +51,8 @@ func (r *StatusRecorder) record(ctx context.Context, snapshot runtimestatus.Snap
 		return
 	}
 	r.mu.Lock()
-	owner := agentevents.Meta(ctx, snapshot.SessionID)
+	owner, _ := contextinfo.ExecutionFromContext(ctx)
+	owner.SessionID = snapshot.SessionID
 	e, attempt, active := r.turns.ExecutionAttempt(snapshot.SessionID)
 	previous := r.owners[snapshot.SessionID]
 	terminal := snapshot.Phase == runtimestatus.PhaseDone || snapshot.Phase == runtimestatus.PhaseError
@@ -81,8 +84,17 @@ func (r *StatusRecorder) record(ctx context.Context, snapshot runtimestatus.Snap
 	version := r.version
 	r.mu.Unlock()
 	snapshot.Usage = agentevents.CloneUsage(snapshot.Usage)
+	event := agentevents.StatusChangedEvent{Snapshot: snapshot, Version: version, Execution: owner}
+	if conversation, ok := contextinfo.ConversationFromContext(ctx); ok {
+		event.Conversation = &conversation
+	}
+	if binding, ok := session.BindingFromContext(ctx); ok {
+		event.Binding = &agentevents.BindingSnapshot{
+			Scope: binding.Scope(), SessionID: binding.SessionID(), Version: binding.Version(),
+		}
+	}
 	// This snapshot is committed. Publish it even when the request just ended.
-	agentevents.Emit(context.WithoutCancel(ctx), r.changed, agentevents.StatusChangedEvent{Snapshot: snapshot, Version: version})
+	agentevents.Emit(context.WithoutCancel(ctx), r.changed, event)
 }
 
 // Usage restores the durable snapshot once; fresh observations always win.
@@ -166,6 +178,6 @@ func NewStatusRecorder(deps StatusRecorderDeps) *StatusRecorder {
 		turns:     deps.Turns,
 		changed:   deps.Changed,
 		snapshots: make(map[string]runtimestatus.Snapshot),
-		owners:    make(map[string]agentevents.EventMeta),
+		owners:    make(map[string]contextinfo.Execution),
 	}
 }

@@ -34,6 +34,15 @@ func (m *Supervisor) BeginClose() {
 		for _, connection := range m.bindings.connections {
 			<-connection.Done()
 		}
+		// Producers may publish final facts until their own shutdown completes.
+		m.signals.ModelCallCompleted.BeginClose()
+		m.signals.StatusChanged.BeginClose()
+		m.signals.VisionFallbackUsed.BeginClose()
+		m.signals.HookFailed.BeginClose()
+		<-m.signals.ModelCallCompleted.Done()
+		<-m.signals.StatusChanged.Done()
+		<-m.signals.VisionFallbackUsed.Done()
+		<-m.signals.HookFailed.Done()
 		close(m.done)
 	}()
 }
@@ -66,7 +75,24 @@ func (m *Supervisor) Close(ctx context.Context) error {
 	}
 	if m.sessions != nil {
 		errs = append(errs, m.sessions.Close(ctx))
+		select {
+		case <-m.sessions.Done():
+		default:
+			return errors.Join(errs...)
+		}
 	}
+	// All owned producers have stopped. Close uses the caller's remaining budget;
+	// the observer above still waits for actual callback exit after a timeout.
+	m.signals.ModelCallCompleted.BeginClose()
+	m.signals.StatusChanged.BeginClose()
+	m.signals.VisionFallbackUsed.BeginClose()
+	m.signals.HookFailed.BeginClose()
+	errs = append(errs,
+		m.signals.ModelCallCompleted.Close(ctx),
+		m.signals.StatusChanged.Close(ctx),
+		m.signals.VisionFallbackUsed.Close(ctx),
+		m.signals.HookFailed.Close(ctx),
+	)
 	select {
 	case <-m.done:
 	default:

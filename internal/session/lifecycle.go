@@ -143,7 +143,7 @@ func (s *Service) Delete(ctx context.Context, scope Scope, sessionID string) err
 	if err := s.store.Sessions().Delete(ctx, row.ID); err != nil {
 		return err
 	}
-	s.clearSessionBindings(ctx, row.ID, ChangeDelete)
+	s.clearSessionBindings(ctx, row.ID)
 	return nil
 }
 
@@ -164,7 +164,7 @@ func (s *Service) CleanupExpired(ctx context.Context, cutoff time.Time) (int, er
 		}
 		deleted, err := s.store.Sessions().DeleteIfExpired(locked, id, cutoff)
 		if err == nil && deleted {
-			s.clearSessionBindings(locked, id, ChangeCleanup)
+			s.clearSessionBindings(locked, id)
 			count++
 		}
 		release()

@@ -117,7 +117,11 @@ func (h *HookBridge) NotifyError(ctx context.Context, source hook.Event, err err
 }
 
 func (h *HookBridge) publishFailure(ctx context.Context, event hook.Event, err error, notice bool) {
-	agentevents.Emit(context.WithoutCancel(ctx), h.failed, agentevents.HookFailedEvent{EventMeta: agentevents.Meta(ctx, event.Session.ID), Point: event.Point, Platform: event.Platform, Err: err, Notice: notice})
+	snapshot := agentevents.HookFailedEvent{Point: event.Point, Platform: event.Platform, Err: err, Notice: notice}
+	if conversation, ok := contextinfo.ConversationFromContext(ctx); ok {
+		snapshot.Conversation = &conversation
+	}
+	agentevents.Emit(context.WithoutCancel(ctx), h.failed, snapshot)
 }
 
 func (h *HookBridge) handlePlatformConnected(ctx context.Context, platformName string) {

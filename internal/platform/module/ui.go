@@ -4,15 +4,13 @@ import (
 	"context"
 	"errors"
 
-	agentevents "elbot/internal/agent/events"
 	"elbot/internal/delivery"
 	"elbot/internal/platform/cli"
-	"elbot/internal/session"
 	"elbot/internal/signal"
 )
 
 // ConnectUI assembles CLI presentation after the backend has been constructed.
-func (m *Module) ConnectUI(status *signal.Signal[agentevents.StatusChangedEvent, signal.Empty], binding *signal.Signal[session.BindingChangedEvent, signal.Empty]) error {
+func (m *Module) ConnectUI(source cli.AgentEvents) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
@@ -28,7 +26,7 @@ func (m *Module) ConnectUI(status *signal.Signal[agentevents.StatusChangedEvent,
 		switch runtime.(type) {
 		case *cli.Adapter, *cli.RemoteServer:
 			var err error
-			m.ui, err = cli.ConnectUI(status, binding)
+			m.ui, err = cli.ConnectUI(source)
 			return err
 		}
 	}

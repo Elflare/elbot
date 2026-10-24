@@ -21,7 +21,7 @@ func (b *signalBindings) connectAgentNotifications(events agentevents.Signals) e
 	vision := rules.NewVisionNotices()
 	return errors.Join(
 		connectSignal(b, events.VisionFallbackUsed, func(ctx context.Context, e agentevents.VisionFallbackUsedEvent) error {
-			return vision.Send(ctx, e.SessionID, e.Visible)
+			return vision.Send(ctx, e.SessionID, e.Visible, e.Conversation)
 		}, signal.ConnectOptions{}),
 		connectSignal(b, events.HookFailed, func(ctx context.Context, e agentevents.HookFailedEvent) error {
 			if !e.Notice {
@@ -31,7 +31,7 @@ func (b *signalBindings) connectAgentNotifications(events agentevents.Signals) e
 			if text == "" {
 				return nil
 			}
-			n := globalevents.NewNotification(ctx, slog.LevelError, text)
+			n := globalevents.Notification{Origin: e.Conversation, Level: slog.LevelError, Text: text}
 			if n.Origin == nil {
 				n.Target.Platform = e.Platform.Name
 				n.Target.ScopeID = e.Platform.ScopeID

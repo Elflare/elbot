@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	agentevents "elbot/internal/agent/events"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
@@ -206,7 +205,9 @@ func (c *ConfirmationCoordinator) publishConfirmationWait(ctx context.Context, s
 		}
 	}
 	data, _ := json.Marshal(content)
-	agentshare.EmitAgentLog(ctx, agentevents.Meta(ctx, sessionID), events.LogRecord{
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	facts.SessionID = sessionID
+	agentshare.EmitAgentLog(ctx, facts, events.LogRecord{
 		Category:     events.LogAudit,
 		Level:        slog.LevelInfo,
 		EventName:    "risk_confirmation_wait",
@@ -228,7 +229,9 @@ func (c *ConfirmationCoordinator) publishConfirmationResult(ctx context.Context,
 		}
 	}
 	data, _ := json.Marshal(content)
-	agentshare.EmitAgentLog(ctx, agentevents.Meta(ctx, sessionID), events.LogRecord{
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	facts.SessionID = sessionID
+	agentshare.EmitAgentLog(ctx, facts, events.LogRecord{
 		Category:     events.LogAudit,
 		Level:        level,
 		EventName:    "risk_confirmation_result",

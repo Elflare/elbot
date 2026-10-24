@@ -32,7 +32,7 @@ import (
 
 func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps) (*Supervisor, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	m := &Supervisor{ctx: ctx, cancel: cancel, bindings: &signalBindings{}, done: make(chan struct{})}
+	m := &Supervisor{ctx: ctx, cancel: cancel, signals: agentevents.NewSignals(), bindings: &signalBindings{}, done: make(chan struct{})}
 	m.routes = routes.New()
 	m.sessions = session.NewServiceWithConfig(deps.Store, session.Config{NamingConfig: session.NamingConfig{TriggerStep: cfg.Session.Naming.TriggerStep}, DefaultMode: cfg.Session.DefaultMode}, session.NewTitleGenerator(deps.Models))
 	m.requests = request.NewManager(0)
@@ -40,8 +40,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	m.contexts = contextmgr.New(contextmgr.Options{Compactors: m.routes, Store: deps.Store, Models: deps.Models, Config: cfg.Context})
 	m.commands = command.NewRouter(cfg.Commands.Prefixes)
 	sessionCommands := commandbuiltin.NewSessionCommandState(cfg.View.SessionListPageSize, cfg.Maintenance.SessionCleanup.RetentionDays)
-	signals := agentevents.NewSignals()
-	m.statusChanged = signals.StatusChanged
+	signals := m.signals
 	view := dialogue.ExecutionView{Sessions: deps.Store.Sessions()}
 	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: deps.Platform.PrimaryName(), ActorID: "cli:local", ScopeID: "local", Permission: deps.Permission})
 	bridge := agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{

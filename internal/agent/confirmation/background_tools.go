@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"log/slog"
 
-	agentevents "elbot/internal/agent/events"
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	sandboxctx "elbot/internal/sandbox"
@@ -41,12 +41,14 @@ func (c *ConfirmationCoordinator) ConfirmBackgroundSandboxShell(ctx context.Cont
 		Identity:     events.LogIdentity{},
 		ResultStatus: events.ResultSucceeded,
 	}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	facts.SessionID = sessionID
 	if risk == tool.RiskCritical {
 		record.EventName, record.ResultStatus = "background_shell_rejected", events.ResultRejected
-		agentshare.EmitAgentLog(ctx, agentevents.Meta(ctx, sessionID), record)
+		agentshare.EmitAgentLog(ctx, facts, record)
 		message.Segments = llm.TextSegments("后台沙盒禁止执行 critical 风险 shell 命令。请改用相对路径，把文件限制在当前 sandbox 目录内，避免绝对路径、.. 逃逸和危险命令；若仍无法完成，请在最终报告中说明阻塞原因。")
 		return false, true
 	}
-	agentshare.EmitAgentLog(ctx, agentevents.Meta(ctx, sessionID), record)
+	agentshare.EmitAgentLog(ctx, facts, record)
 	return true, true
 }

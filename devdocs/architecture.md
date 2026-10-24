@@ -96,11 +96,13 @@ flowchart TB
 
 ### Agent 包边界
 
-`Supervisor` 的业务出口为 `HandleMessage`、`HookWakeup`、`Complete`、`Commands`、`ObserveHookRun`、`ObserveStatusChanged`、`ObserveBindingChanged`；生命周期出口为 `Start`、`BeginClose`、`Close`、`Done`。内部组件不通过 getter 暴露。`Commands` 返回独立的命令元数据；状态订阅复制用量，绑定订阅只返回 Scope、SessionID 和变更原因，每个订阅者获得独立快照。调用方只持有自己的订阅连接，不能发射或关闭源信号。
+`Supervisor` 的业务出口为 `HandleMessage`、`HookWakeup`、`Complete`、`Commands`、`ObserveHookRun`、`ObserveStatusChanged`、`ObserveBindingChanged`；生命周期出口为 `Start`、`BeginClose`、`Close`、`Done`。内部组件不通过 getter 暴露。`Commands` 返回独立的命令元数据；状态订阅复制用量，绑定订阅只返回 Scope、SessionID 等绑定事实，每个订阅者获得独立快照。调用方只持有自己的订阅连接，不能发射或关闭源信号。
+
+Agent 总管持有四个线内事件信号。关闭开始后，两类公开订阅入口拒绝新订阅；内部生产者收尾完成后才关闭信号，沿用各订阅的关闭策略，并等待回调实际退出后完成 `Done`。`Close` 超时不会提前完成 `Done`；外部消费者自行管理其异步工作的生命周期。App 先停止平台接入和后台生产者，再关闭 Agent。
 
 工具预加载和补全标签由 Tool 能力提供；执行 Schema 统一经工具执行能力生成，提示词只消费工具名称。Agent 不另设自定义 Schema Provider 或 Registry 回退。整链路测试通过真实 `NewSupervisor` 构造，子组件单测在各所属包中维护。
 
-根包 `agent.Supervisor` 为 App 提供 Agent 业务线的构造与管理入口。`NewSupervisor(ctx, cfg, deps)` 在内部拆分配置；`SupervisorDeps` 只接收 Store、Models、Media、Permission、Logs 五项共享资源，以及 Tool、Hook、Platform 三类业务能力。`deps.go` 在消费方声明 `ToolCapabilities`、`HookCapabilities`、`PlatformCapabilities`，提供方总管直接实现接口。内部消费位置同样按所需操作依赖接口，不获取提供方的 Manager、Registry 等组件。App 只传总管并调用接收方的 `ConnectAgent`，适配及订阅由接收方管理；其余四条线的总管实现仍待完成。根包持有 Session、Request、Turn、协议路线及订阅；具体业务放在子包，后台准备由 `background/module` 持有。`share` 提供线内共享定义与辅助能力，不反向依赖 input、execution、confirmation、hooks、output 或 tools。
+根包 `agent.Supervisor` 为 App 提供 Agent 业务线的构造与管理入口。`NewSupervisor(ctx, cfg, deps)` 在内部拆分配置；`SupervisorDeps` 只接收 Store、Models、Media、Permission、Logs 五项共享资源，以及 Tool、Hook、Platform 三类业务能力。`deps.go` 在消费方声明 `ToolCapabilities`、`HookCapabilities`、`PlatformCapabilities`，提供方总管直接实现接口。内部消费位置同样按所需操作依赖接口，不获取提供方的 Manager、Registry 等组件。App 只传总管并调用接收方的 `ConnectAgent`，适配及订阅由接收方管理；其余四条线的总管实现仍待完成。根包持有 Session、Request、Turn、协议路线及订阅；具体业务放在子包，后台准备由 `background/module` 持有。`share` 提供线内共享定义与辅助能力，不反向依赖 input、execution、dialogue、confirmation、hooks、output 或 tools。
 
 ```mermaid
 flowchart TD

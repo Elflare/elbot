@@ -188,7 +188,7 @@ func TestServiceGetOrCreateCurrentReturnsStorageError(t *testing.T) {
 	store := storeWithSessionRepository{Store: base, sessions: failingGetSessionRepository{SessionRepository: base.Sessions(), err: wantErr}}
 	svc := NewService(store)
 	scope := Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
-	svc.setCurrent(context.Background(), scope, "current", ChangeResume)
+	svc.setCurrent(context.Background(), scope, "current")
 
 	if _, err := svc.GetOrCreateCurrent(context.Background(), scope, "must not create"); !errors.Is(err, wantErr) {
 		t.Fatalf("GetOrCreateCurrent error = %v, want %v", err, wantErr)

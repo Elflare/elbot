@@ -9,6 +9,7 @@ import (
 	"time"
 
 	agentevents "elbot/internal/agent/events"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/elyph"
 	"elbot/internal/events"
@@ -77,7 +78,8 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 		return
 	}
 	o.published = true
-	o.Event.EventMeta = agentevents.Meta(ctx, o.sessionID)
+	o.Event.Execution, _ = contextinfo.ExecutionFromContext(ctx)
+	o.Event.Execution.SessionID = o.sessionID
 	if o.Event.ElapsedMS < 0 {
 		o.Event.ElapsedMS = time.Since(o.startedAt).Milliseconds()
 	}
@@ -112,17 +114,17 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 	data, _ := json.Marshal(content)
 	o.LogRecord.Content = string(data)
 	o.LogRecord.Identity.SessionID = &o.sessionID
-	if o.Event.RunID != "" {
-		o.LogRecord.Identity.RunID = &o.Event.RunID
+	if o.Event.Execution.RunID != "" {
+		o.LogRecord.Identity.RunID = &o.Event.Execution.RunID
 	}
-	if o.Event.Attempt != "" {
-		o.LogRecord.Identity.Attempt = &o.Event.Attempt
+	if o.Event.Execution.Attempt != "" {
+		o.LogRecord.Identity.Attempt = &o.Event.Execution.Attempt
 	}
-	if o.Event.RequestID != "" {
-		o.LogRecord.Identity.RequestID = &o.Event.RequestID
+	if o.Event.Execution.RequestID != "" {
+		o.LogRecord.Identity.RequestID = &o.Event.Execution.RequestID
 	}
-	if o.Event.RootRequestID != "" {
-		o.LogRecord.Identity.RootRequestID = &o.Event.RootRequestID
+	if o.Event.Execution.RootRequestID != "" {
+		o.LogRecord.Identity.RootRequestID = &o.Event.Execution.RootRequestID
 	}
 	if o.LogRecord.EventName != "" {
 		_ = events.EmitLog(context.WithoutCancel(ctx), o.LogRecord)
@@ -142,7 +144,15 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 	agentevents.Emit(ctx, o.processor.Completed, o.Event)
 }
 func (c *CallProcessor) RecordVisionFallback(ctx context.Context, row *storage.Session) {
-	agentevents.Emit((ExecutionView{}).Context(ctx), c.Vision, agentevents.VisionFallbackUsedEvent{EventMeta: agentevents.Meta(ctx, row.ID), Visible: c.Identity.IsCLI(ctx) && !sessionpkg.IsBackground(row)})
+	ctx = (ExecutionView{}).Context(ctx)
+	event := agentevents.VisionFallbackUsedEvent{
+		SessionID: row.ID,
+		Visible:   c.Identity.IsCLI(ctx) && !sessionpkg.IsBackground(row),
+	}
+	if conversation, ok := contextinfo.ConversationFromContext(ctx); ok {
+		event.Conversation = &conversation
+	}
+	agentevents.Emit(ctx, c.Vision, event)
 }
 func (c *CallProcessor) NotifyError(ctx context.Context, event hook.Event, err error) {
 	event.Point = hook.PointErrorOccurred

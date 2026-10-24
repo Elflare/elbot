@@ -75,7 +75,7 @@ func (s *Service) ExpireIdleCurrent(ctx context.Context, req ExpireIdleRequest) 
 	if !expired {
 		return ExpireIdleResult{}, nil
 	}
-	s.setCurrent(ctx, req.Scope, "", ChangeExpire)
+	s.setCurrent(ctx, req.Scope, "")
 	return ExpireIdleResult{Expired: true, SessionID: session.ID, TTLMinutes: ttlMinutes}, nil
 }
 

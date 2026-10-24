@@ -114,6 +114,6 @@ func (s *Service) Fork(ctx context.Context, scope Scope, fromMessageID string) (
 	if err != nil {
 		return nil, err
 	}
-	s.setCurrent(locked, scope, fork.ID, ChangeFork)
+	s.setCurrent(locked, scope, fork.ID)
 	return fork, nil
 }

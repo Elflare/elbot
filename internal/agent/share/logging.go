@@ -3,26 +3,26 @@ package share
 import (
 	"context"
 
-	agentevents "elbot/internal/agent/events"
+	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 )
 
-// emitAgentLog copies only the source's explicit event identity.
-func EmitAgentLog(ctx context.Context, meta agentevents.EventMeta, record events.LogRecord) {
-	if meta.SessionID != "" {
-		record.Identity.SessionID = &meta.SessionID
+// EmitAgentLog copies only the source's explicit execution identity.
+func EmitAgentLog(ctx context.Context, execution contextinfo.Execution, record events.LogRecord) {
+	if execution.SessionID != "" {
+		record.Identity.SessionID = &execution.SessionID
 	}
-	if meta.RunID != "" {
-		record.Identity.RunID = &meta.RunID
+	if execution.RunID != "" {
+		record.Identity.RunID = &execution.RunID
 	}
-	if meta.Attempt != "" {
-		record.Identity.Attempt = &meta.Attempt
+	if execution.Attempt != "" {
+		record.Identity.Attempt = &execution.Attempt
 	}
-	if meta.RequestID != "" {
-		record.Identity.RequestID = &meta.RequestID
+	if execution.RequestID != "" {
+		record.Identity.RequestID = &execution.RequestID
 	}
-	if meta.RootRequestID != "" {
-		record.Identity.RootRequestID = &meta.RootRequestID
+	if execution.RootRequestID != "" {
+		record.Identity.RootRequestID = &execution.RootRequestID
 	}
 	_ = events.EmitLog(context.WithoutCancel(ctx), record)
 }

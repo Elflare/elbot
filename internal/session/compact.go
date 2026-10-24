@@ -90,7 +90,7 @@ func (s *Service) CreateCompacted(ctx context.Context, scope Scope, sourceID str
 		return nil, saveErr
 	}
 	if !background {
-		s.setCurrent(ctx, scope, next.ID, ChangeCreate)
+		s.setCurrent(ctx, scope, next.ID)
 	}
 	return next, nil
 }

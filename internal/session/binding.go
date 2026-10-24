@@ -14,11 +14,13 @@ import (
 type Binding struct {
 	scope     Scope
 	sessionID string
+	version   uint64 // Immutable service-local version assigned when this activation is established.
 	valid     atomic.Bool
 }
 
 func (b *Binding) Scope() Scope      { return b.scope }
 func (b *Binding) SessionID() string { return b.sessionID }
+func (b *Binding) Version() uint64   { return b.version }
 func (b *Binding) Valid() bool       { return b != nil && b.valid.Load() }
 
 type bindingContextKey struct{}
@@ -54,7 +56,7 @@ func (s *Service) CurrentBound(ctx context.Context, scope Scope) (*storage.Sessi
 	}
 	row, err := s.store.Sessions().Get(ctx, b.SessionID())
 	if errors.Is(err, storage.ErrNotFound) {
-		s.clearBinding(ctx, b, ChangeMissing)
+		s.clearBinding(ctx, b)
 	}
 	if err == nil && !b.Valid() {
 		return nil, b, storage.ErrNotFound

@@ -127,7 +127,7 @@ func TestBindingIgnoresFailedAndConditionalTransitions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc.clearBinding(ctx, &Binding{scope: scope, sessionID: "not-current"}, ChangeReset)
+	svc.clearBinding(ctx, &Binding{scope: scope, sessionID: "not-current"})
 	if _, err := svc.Resume(ctx, scope, "missing"); err == nil {
 		t.Fatal("resume missing succeeded")
 	}

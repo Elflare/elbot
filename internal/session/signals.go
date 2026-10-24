@@ -7,23 +7,10 @@ import (
 	"elbot/internal/storage"
 )
 
-type ChangeReason string
-
-const (
-	ChangeCreate  ChangeReason = "create"
-	ChangeResume  ChangeReason = "resume"
-	ChangeFork    ChangeReason = "fork"
-	ChangeReset   ChangeReason = "reset"
-	ChangeDelete  ChangeReason = "delete"
-	ChangeExpire  ChangeReason = "expire"
-	ChangeCleanup ChangeReason = "cleanup"
-	ChangeMissing ChangeReason = "missing"
-)
-
 type BindingChangedEvent struct {
-	Old    *Binding
-	New    *Binding
-	Reason ChangeReason
+	Version uint64 // Committed change version within the service; unbinding also advances it.
+	Old     *Binding
+	New     *Binding
 }
 
 // ForegroundActivatedEvent reports a committed background-to-foreground handoff.
@@ -42,13 +29,14 @@ func (s *Service) BindingChanged() *signal.Signal[BindingChangedEvent, signal.Em
 	return s.changed
 }
 
-func (s *Service) setCurrent(ctx context.Context, scope Scope, id string, reason ChangeReason) {
+func (s *Service) setCurrent(ctx context.Context, scope Scope, id string) {
 	s.mu.Lock()
 	old := s.current[scope.Key()]
 	if (old == nil && id == "") || (old != nil && old.SessionID() == id) {
 		s.mu.Unlock()
 		return
 	}
+	s.bindingVersion++
 	var next *Binding
 	if old != nil {
 		old.valid.Store(false)
@@ -56,15 +44,16 @@ func (s *Service) setCurrent(ctx context.Context, scope Scope, id string, reason
 	if id == "" {
 		delete(s.current, scope.Key())
 	} else {
-		next = &Binding{scope: scope, sessionID: id}
+		next = &Binding{scope: scope, sessionID: id, version: s.bindingVersion}
 		next.valid.Store(true)
 		s.current[scope.Key()] = next
 	}
+	event := BindingChangedEvent{Version: s.bindingVersion, Old: old, New: next}
 	s.mu.Unlock()
-	s.publishChange(ctx, BindingChangedEvent{Old: old, New: next, Reason: reason})
+	s.publishChange(ctx, event)
 }
 
-func (s *Service) clearBinding(ctx context.Context, binding *Binding, reason ChangeReason) {
+func (s *Service) clearBinding(ctx context.Context, binding *Binding) {
 	s.mu.Lock()
 	if s.current[binding.Scope().Key()] != binding {
 		s.mu.Unlock()
@@ -72,22 +61,25 @@ func (s *Service) clearBinding(ctx context.Context, binding *Binding, reason Cha
 	}
 	binding.valid.Store(false)
 	delete(s.current, binding.Scope().Key())
+	s.bindingVersion++
+	event := BindingChangedEvent{Version: s.bindingVersion, Old: binding}
 	s.mu.Unlock()
-	s.publishChange(ctx, BindingChangedEvent{Old: binding, Reason: reason})
+	s.publishChange(ctx, event)
 }
 
-func (s *Service) clearSessionBindings(ctx context.Context, id string, reason ChangeReason) {
+func (s *Service) clearSessionBindings(ctx context.Context, id string) {
 	s.mu.Lock()
-	var removed []*Binding
+	var removed []BindingChangedEvent
 	for key, b := range s.current {
 		if b.SessionID() == id {
 			b.valid.Store(false)
 			delete(s.current, key)
-			removed = append(removed, b)
+			s.bindingVersion++
+			removed = append(removed, BindingChangedEvent{Version: s.bindingVersion, Old: b})
 		}
 	}
 	s.mu.Unlock()
-	for _, b := range removed {
-		s.publishChange(ctx, BindingChangedEvent{Old: b, Reason: reason})
+	for _, event := range removed {
+		s.publishChange(ctx, event)
 	}
 }

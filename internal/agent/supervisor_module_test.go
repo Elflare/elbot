@@ -166,6 +166,7 @@ func TestStandaloneDialogueOwnsStateAndBorrowsOnlyCapabilities(t *testing.T) {
 	default:
 		t.Fatal("naming owner did not stop")
 	}
+	assertAgentSignalsClosed(t, m)
 	if _, err := deps.Store.Messages().ListBySession(ctx, rows[0].ID); err != nil {
 		t.Fatal("borrowed Store closed", err)
 	}
@@ -196,6 +197,7 @@ func TestDialoguePartialConstructionCleansOwnedState(t *testing.T) {
 	default:
 		t.Fatal("partial state remained alive")
 	}
+	assertAgentSignalsClosed(t, m)
 	if err := deps.Store.Media().RecoverInterrupted(ctx); err != nil {
 		t.Fatal("borrowed storage closed", err)
 	}

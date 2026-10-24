@@ -67,7 +67,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## Agent 对话
 
 - `internal/agent/{input,execution,confirmation,hooks,output,tools}/`：输入、执行、确认、Hook、输出与工具桥接；依赖契约随消费者放置。
-- `internal/agent/share/`：线内共享的身份、输入、片段、绑定、状态契约与辅助函数，不反向依赖上述六个业务子包。
+- `internal/agent/share/`：线内共享的身份、输入、片段、绑定、状态契约与辅助函数，不反向依赖上述六个业务子包及 dialogue。
 - `internal/agent/input/message.go`、`input.go`：消息分发与普通输入准备；`internal/background/module/runner.go`、`runner_deps.go`：后台资源准备与依赖契约。
 - `internal/agent/dialogue/runner.go`、`preparation.go`：公共单轮、组件构造、输入准备与终态失败报告。
 - `internal/agent/dialogue/materials.go`：公共消息投影、片段编解码、归档与请求媒体准备。
