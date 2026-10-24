@@ -64,6 +64,9 @@ func (m *Supervisor) PrepareTools(ctx context.Context, names []string) (share.To
 func (m *Supervisor) PrepareSkills(ctx context.Context, prefix string, names []string) (share.SkillPreload, error) {
 	return m.preloader.PrepareSkills(ctx, prefix, names)
 }
+func (m *Supervisor) PrepareBackground(ctx context.Context, req share.BackgroundPreloadRequest) (share.BackgroundPreload, error) {
+	return m.preloader.PrepareBackground(ctx, req)
+}
 func (m *Supervisor) TagPrompts(ctx context.Context, tags []string) ([]share.TagPrompt, error) {
 	return m.preloader.TagPrompts(ctx, tags)
 }

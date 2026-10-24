@@ -161,7 +161,7 @@ func (s *PreloadService) TagPrompts(ctx context.Context, tags []string) ([]share
 
 // ToolNamesByTag uses the same configured and built-in tags for discovery and completion.
 func (s *PreloadService) ToolNamesByTag(ctx context.Context, tag string, query share.ToolQuery) ([]string, error) {
-	names := s.registry.NamesByTag(tag, nil)
+	names := s.registry.NamesByTag(tag)
 	configured, err := s.tags.configuredToolNamesByTag(ctx, tag)
 	if err != nil {
 		return nil, err
@@ -172,9 +172,13 @@ func (s *PreloadService) ToolNamesByTag(ctx context.Context, tag string, query s
 	}
 	query.Names = names
 	infos, err := s.registry.QueryTools(ctx, query)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	result := make([]string, 0, len(infos))
-	for _, info := range infos { result = append(result, info.Name) }
+	for _, info := range infos {
+		result = append(result, info.Name())
+	}
 	return result, nil
 }
 
@@ -195,4 +199,15 @@ func (s *PreloadService) Tags(ctx context.Context) ([]string, error) {
 		}
 	}
 	return result, nil
+}
+
+func uniqueNames(names []string) []string {
+	result := make([]string, 0, len(names))
+	for _, name := range names {
+		if name = strings.TrimSpace(name); name != "" {
+			result = append(result, name)
+		}
+	}
+	sort.Strings(result)
+	return slices.Compact(result)
 }

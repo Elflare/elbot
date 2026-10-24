@@ -49,39 +49,60 @@ func (r *Resolver) DiscoverDetails(ctx context.Context, names []string) (*share.
 	return result, err
 }
 
-func (r *Resolver) resolve(ctx context.Context, names []string) (*share.DiscoveryResult, map[string]share.Tool, error) {
+// Resolve 解析已经通过 Registry 筛选的根工具，不重新按名称查询根对象。
+// 返回本次解析使用的根工具和依赖对象，供调用方继续读取动态内容。
+func (r *Resolver) Resolve(ctx context.Context, tools []share.Tool) (*share.DiscoveryResult, map[string]share.Tool, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
 	result := &share.DiscoveryResult{}
 	targets := map[string]share.Tool{}
-	for _, name := range names {
-		if err := r.addDiscoveryDetail(ctx, name, true, targets, result); err != nil {
+	seen := map[string]bool{}
+	for _, target := range tools {
+		targets[target.Name()] = target
+	}
+	for _, target := range tools {
+		if err := r.addDiscoveryDetail(ctx, target, targets, seen, result); err != nil {
 			return nil, nil, err
 		}
 	}
 	return result, targets, nil
 }
 
-func (r *Resolver) addDiscoveryDetail(ctx context.Context, name string, root bool, targets map[string]share.Tool, result *share.DiscoveryResult) error {
-	if _, seen := targets[name]; seen {
-		return nil
+func (r *Resolver) resolve(ctx context.Context, names []string) (*share.DiscoveryResult, map[string]share.Tool, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
 	}
-	tools, err := r.registry.QueryTools(ctx, share.ToolQuery{
-		Names: []string{name}, IncludeHidden: !root, IncludeDiscover: true,
-	})
-	if err != nil {
-		return err
-	}
-	if len(tools) == 0 {
-		if root {
-			result.Errors = append(result.Errors, share.DiscoveryError{Name: name, Reason: "not found or not allowed"})
+	result := &share.DiscoveryResult{}
+	targets := map[string]share.Tool{}
+	seen := map[string]bool{}
+	for _, name := range names {
+		if seen[name] {
+			continue
 		}
+		tools, err := r.registry.QueryTools(ctx, share.ToolQuery{Names: []string{name}, IncludeDiscover: true})
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(tools) == 0 {
+			result.Errors = append(result.Errors, share.DiscoveryError{Name: name, Reason: "not found or not allowed"})
+			continue
+		}
+		if err := r.addDiscoveryDetail(ctx, tools[0], targets, seen, result); err != nil {
+			return nil, nil, err
+		}
+	}
+	return result, targets, nil
+}
+
+func (r *Resolver) addDiscoveryDetail(ctx context.Context, target share.Tool, targets map[string]share.Tool, seen map[string]bool, result *share.DiscoveryResult) error {
+	name := target.Name()
+	if seen[name] {
 		return nil
 	}
-	target := tools[0]
 	// 保留原对象，同时使循环关联只解析一次。
 	targets[name] = target
+	seen[name] = true
 	info := target.Info()
 	discovered := share.DiscoveryItem{Info: publicInfo(info), NeedsElyphRules: info.NeedsElyphRules}
 	if loader, ok := target.(share.LazyDetailProvider); ok {
@@ -116,7 +137,20 @@ func (r *Resolver) addDiscoveryDetail(ctx context.Context, name string, root boo
 	discovered.NeedsElyphRules = discovered.NeedsElyphRules || (discovered.Detail != "" && discovered.DetailBlock.Format == elyph.Format)
 	result.Tools = append(result.Tools, discovered)
 	for _, dependency := range normalizeNames(info.DependsOn) {
-		if err := r.addDiscoveryDetail(ctx, dependency, false, targets, result); err != nil {
+		candidate, ok := targets[dependency]
+		if !ok {
+			tools, err := r.registry.QueryTools(ctx, share.ToolQuery{
+				Names: []string{dependency}, IncludeHidden: true, IncludeDiscover: true,
+			})
+			if err != nil {
+				return err
+			}
+			if len(tools) == 0 {
+				continue
+			}
+			candidate = tools[0]
+		}
+		if err := r.addDiscoveryDetail(ctx, candidate, targets, seen, result); err != nil {
 			return err
 		}
 	}

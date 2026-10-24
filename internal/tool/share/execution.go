@@ -13,6 +13,10 @@ import (
 )
 
 type ELwispToolDeclaration struct {
+	// CanonicalName 是适配方生成的模型侧唯一名称，不属于外部声明协议字段。
+	CanonicalName string `json:"-"`
+	// EventKey 是远程调用需传回的事件关联标识，不参与预载授权判断。
+	EventKey       string         `json:"-"`
 	Name           string         `json:"name"`
 	Description    string         `json:"description,omitempty"`
 	Schema         map[string]any `json:"schema,omitempty"`

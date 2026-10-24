@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 	"strings"
 
 	"elbot/internal/config"
@@ -14,51 +13,58 @@ import (
 	"elbot/internal/elyph"
 	globalevents "elbot/internal/events"
 	sandboxctx "elbot/internal/sandbox"
-	"elbot/internal/tool"
+	"elbot/internal/tool/discovery"
 	toolregistry "elbot/internal/tool/registry"
 	"elbot/internal/tool/share"
 )
 
 type PreloadOptions struct {
-	Registry *tool.Registry
-	TagsPath string
-	Tags     config.ToolTagsConfig
+	Registry *toolregistry.Registry // 已配置统一权限策略的工具目录。
+	TagsPath string                 // 标签配置文件路径；为空时使用 Tags。
+	Tags     config.ToolTagsConfig  // 不使用配置文件时的标签配置。
 }
 
-// PreloadService prepares tools and display material without writing session
-// state. The caller combines one input's updates and commits via StateService.
-// Actor, permission, workspace and background restrictions come from the call context.
+// PreloadService 准备工具和展示材料，不写会话状态，也不触发 Skill 扫描。
+// 调用方提供身份、模型、工作目录和前后台事实；资格筛选统一交给 Registry。
 type PreloadService struct {
-	registry *tool.Registry
-	tags     *toolTagConfigSource
+	registry *toolregistry.Registry // 提供目录事实与已筛选的原工具对象。
+	resolver *discovery.Resolver    // 解析选中对象及其依赖，保留本次使用的对象。
+	tags     *toolTagConfigSource   // 读取标签成员及提示内容。
 }
 
 func NewPreloadService(opts PreloadOptions) *PreloadService {
-	return &PreloadService{registry: opts.Registry, tags: newToolTagConfigSource(opts.TagsPath, opts.Tags)}
+	return &PreloadService{
+		registry: opts.Registry,
+		resolver: discovery.NewResolver(opts.Registry),
+		tags:     newToolTagConfigSource(opts.TagsPath, opts.Tags),
+	}
 }
 
 func (s *PreloadService) PrepareTools(ctx context.Context, names []string) (share.ToolPreload, error) {
+	if err := ctx.Err(); err != nil {
+		return share.ToolPreload{}, err
+	}
 	result := share.ToolPreload{Accepted: make([]bool, len(names))}
 	seen := map[string]bool{}
 	var content []string
 	for i, name := range names {
-		discovery, tag, err := s.discoverDirective(ctx, name)
+		details, targets, tag, err := s.discoverDirective(ctx, name)
 		if err != nil {
 			return share.ToolPreload{}, err
 		}
-		if discovery == nil || len(discovery.Tools) == 0 {
+		if len(details.Tools) == 0 {
 			result.Invalid = append(result.Invalid, name)
 			continue
 		}
-		text, err := s.discoveryContent(ctx, discovery, seen)
+		text, err := s.discoveryContent(ctx, details, targets, seen)
 		if err != nil {
 			return share.ToolPreload{}, err
 		}
 		if strings.TrimSpace(text) != "" {
 			content = append(content, text)
 		}
-		result.Update.Tools = append(result.Update.Tools, NativeCachedToolsFromDiscovery(discovery)...)
-		for _, item := range discovery.Tools {
+		result.Update.Tools = append(result.Update.Tools, discovery.NativeCachedToolsFromDiscovery(details)...)
+		for _, item := range details.Tools {
 			result.NeedsElyphRules = result.NeedsElyphRules || item.NeedsElyphRules
 		}
 		if tag != "" {
@@ -71,6 +77,14 @@ func (s *PreloadService) PrepareTools(ctx context.Context, names []string) (shar
 }
 
 func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, names []string) (share.SkillPreload, error) {
+	candidates, err := s.registry.QueryTools(ctx, share.ToolQuery{Names: uniqueNames(names), Kind: "skill"})
+	if err != nil {
+		return share.SkillPreload{}, err
+	}
+	targets := make(map[string]share.Tool, len(candidates))
+	for _, candidate := range candidates {
+		targets[candidate.Name()] = candidate
+	}
 	record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "tool", Identity: globalevents.LogIdentity{SessionID: &sessionID}}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	if facts.RunID != "" {
@@ -91,16 +105,18 @@ func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, na
 	var blocks []share.DetailBlock
 	for i, name := range names {
 		name = strings.TrimSpace(name)
-		candidate, ok := s.registry.Get(name)
-		if !ok || !canPreloadSkill(ctx, candidate) {
+		candidate, ok := targets[name]
+		if !ok {
 			result.Invalid = append(result.Invalid, name)
 			continue
 		}
 		detailer := candidate.(share.DetailProvider)
 		if !seen[name] {
 			block, err := skillDetailBlock(ctx, candidate, detailer)
+			if err == nil {
+				err = ctx.Err()
+			}
 			if err != nil {
-				result.Invalid = append(result.Invalid, name)
 				level := slog.LevelError
 				if errors.Is(err, context.Canceled) {
 					level = slog.LevelInfo
@@ -119,189 +135,69 @@ func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, na
 			result.Names = append(result.Names, name)
 			blocks = append(blocks, block)
 			result.NeedsElyphRules = result.NeedsElyphRules || (block.Format == elyph.Format && strings.TrimSpace(block.Content) != "")
-		}
-		for _, wrapper := range detailer.ActivateTools() {
-			result.Update.Tools = append(result.Update.Tools, s.preloadWrapper(ctx, sessionID, wrapper, sandboxctx.BackgroundContext(ctx))...)
+			for _, wrapper := range uniqueNames(detailer.ActivateTools()) {
+				tools, err := s.preloadWrapper(ctx, sessionID, wrapper, sandboxctx.BackgroundContext(ctx))
+				if err != nil {
+					return share.SkillPreload{}, err
+				}
+				result.Update.Tools = append(result.Update.Tools, tools...)
+			}
 		}
 		result.Accepted[i] = true
 	}
-	result.Content = tool.RenderDetailBlocks(blocks)
+	result.Content = discovery.RenderDetailBlocks(blocks)
 	return result, nil
 }
 
-func (s *PreloadService) BackgroundSelections(ctx context.Context, names []string) ([]share.BackgroundSelection, error) {
-	var selections []share.BackgroundSelection
-	for _, name := range uniqueNames(names) {
-		if name == "discover_tool" {
-			continue
-		}
-		if _, ok := s.registry.Get(name); ok {
-			selections = append(selections, share.BackgroundSelection{Names: []string{name}})
-			continue
-		}
-		tag := normalizeToolTag(name)
-		roots, err := s.ToolNamesByTag(ctx, tag, func(t share.Tool) bool {
-			// Selection expands authorization roots before a model is chosen.
-			// Actual preload separately enforces current API availability.
-			info := t.Info()
-			_, skill := t.(share.DetailProvider)
-			return !info.ForegroundOnly && !info.Hidden && !skill && t.Name() != "workspace" && tool.CanAccessTool(actorForView(ctx, share.Context{}), permissionForManager(ctx), info)
-		})
-		if err != nil {
-			return nil, err
-		}
-		if len(roots) == 0 {
-			roots, tag = []string{name}, ""
-		}
-		selections = append(selections, share.BackgroundSelection{Names: roots, Tag: tag})
-	}
-	return selections, nil
-}
-
-func (s *PreloadService) PrepareBackground(ctx context.Context, sessionID string, selectors, allowed []string) (share.BackgroundPreload, error) {
-	record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "tool", Identity: globalevents.LogIdentity{SessionID: &sessionID}}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if facts.RunID != "" {
-		record.Identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		record.Identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		record.Identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		record.Identity.RootRequestID = &facts.RootRequestID
-	}
-
-	var result share.BackgroundPreload
-	var names []string
-	tags := map[string][]string{}
-	selections, err := s.BackgroundSelections(ctx, selectors)
-	if err != nil {
-		return share.BackgroundPreload{}, err
-	}
-	for _, selection := range selections {
-		for _, name := range selection.Names {
-			if allowed != nil && !slices.Contains(allowed, name) {
-				record.EventName = "background_preload_skipped"
-				record.Level = slog.LevelInfo
-				record.ResultStatus = globalevents.ResultSkipped
-				record.Content = fmt.Sprintf("background preload skipped: name=%s reason=not_authorized", name)
-				_ = globalevents.EmitLog(ctx, record)
-				continue
-			}
-			names = append(names, name)
-			if selection.Tag != "" {
-				tags[name] = append(tags[name], selection.Tag)
-			}
-		}
-	}
-	var tools, skills []string
-	for _, name := range uniqueNames(names) {
-		candidate, _ := s.registry.Get(strings.TrimSpace(name))
-		if _, ok := candidate.(share.DetailProvider); ok {
-			skills = append(skills, name)
-		} else {
-			tools = append(tools, name)
-		}
-	}
-	preparedTools, err := s.PrepareTools(ctx, tools)
-	if err != nil {
-		return share.BackgroundPreload{}, err
-	}
-	preparedSkills, err := s.PrepareSkills(ctx, sessionID, skills)
-	if err != nil {
-		return share.BackgroundPreload{}, err
-	}
-	result.Update.Tools = append(preparedTools.Update.Tools, preparedSkills.Update.Tools...)
-	result.Skills = preparedSkills.Names
-	result.NeedsElyphRules = preparedTools.NeedsElyphRules || preparedSkills.NeedsElyphRules
-	for i, name := range tools {
-		if preparedTools.Accepted[i] {
-			result.Update.Tags = append(result.Update.Tags, tags[name]...)
-		}
-	}
-	for i, name := range skills {
-		if preparedSkills.Accepted[i] {
-			result.Update.Tags = append(result.Update.Tags, tags[name]...)
-		}
-	}
-	for _, name := range append(preparedTools.Invalid, preparedSkills.Invalid...) {
-		record.EventName = "background_preload_skipped"
-		record.Level = slog.LevelInfo
-		record.ResultStatus = globalevents.ResultSkipped
-		record.Content = fmt.Sprintf("background preload skipped: name=%s reason=not_found_or_not_allowed", name)
-		_ = globalevents.EmitLog(ctx, record)
-	}
-	var sections []string
-	for _, content := range []string{preparedTools.Content, preparedSkills.Content} {
-		if strings.TrimSpace(content) != "" {
-			sections = append(sections, content)
-		}
-	}
-	result.SkillPrompt = strings.Join(sections, "\n\n---\n\n")
-	return result, nil
-}
-
-func preloadAllowed(ctx context.Context, candidate share.Tool) bool {
-	infos, _ := toolregistry.QueryTools(ctx, []share.Tool{candidate}, share.ToolQuery{IncludeHidden: true, IncludeDiscover: true})
-	return len(infos) > 0
-}
-
-func canPreloadTool(ctx context.Context, candidate share.Tool) bool {
-	infos, _ := toolregistry.QueryTools(ctx, []share.Tool{candidate}, share.ToolQuery{Kind: "tool"})
-	return len(infos) > 0
-}
-
-func canPreloadSkill(ctx context.Context, candidate share.Tool) bool {
-	infos, _ := toolregistry.QueryTools(ctx, []share.Tool{candidate}, share.ToolQuery{Kind: "skill"})
-	return len(infos) > 0
-}
-
-func (s *PreloadService) discoverDirective(ctx context.Context, name string) (*share.DiscoveryResult, string, error) {
+func (s *PreloadService) discoverDirective(ctx context.Context, name string) (*share.DiscoveryResult, map[string]share.Tool, string, error) {
 	name = strings.TrimSpace(name)
-	if candidate, ok := s.registry.Get(name); ok {
-		if !canPreloadTool(ctx, candidate) {
-			return nil, "", nil
+	names, tag := []string{name}, ""
+	if _, exists := s.registry.Get(name); !exists {
+		tag = normalizeToolTag(name)
+		configured, err := s.tags.configuredToolNamesByTag(ctx, tag)
+		if err != nil {
+			return nil, nil, "", err
 		}
-		return s.discoverNames(ctx, []string{name}), "", nil
+		names = uniqueNames(append(s.registry.NamesByTag(tag), configured...))
 	}
-	tag := normalizeToolTag(name)
-	names, err := s.ToolNamesByTag(ctx, tag, share.ToolQuery{Kind: "tool"})
+	candidates, err := s.registry.QueryTools(ctx, share.ToolQuery{Names: names, Kind: "tool"})
 	if err != nil {
-		return nil, "", err
+		return nil, nil, "", err
 	}
-	return s.discoverNames(ctx, names), tag, nil
+	result, targets, err := s.discoverNames(ctx, candidates)
+	return result, targets, tag, err
 }
 
-func (s *PreloadService) discoverNames(ctx context.Context, names []string) *share.DiscoveryResult {
-	details, _ := s.registry.DiscoverDetails(ctx, names, func(candidate share.Tool) bool { return preloadAllowed(ctx, candidate) })
-	result := &share.DiscoveryResult{}
-	for _, item := range details {
+func (s *PreloadService) discoverNames(ctx context.Context, candidates []share.Tool) (*share.DiscoveryResult, map[string]share.Tool, error) {
+	details, targets, err := s.resolver.Resolve(ctx, candidates)
+	if err != nil {
+		return nil, nil, err
+	}
+	result := &share.DiscoveryResult{Errors: details.Errors}
+	for _, item := range details.Tools {
 		if item.Schema != nil && item.Info.Name != "" && item.Detail == "" {
 			result.Tools = append(result.Tools, item)
 		}
 	}
-	return result
+	return result, targets, nil
 }
 
-func (s *PreloadService) discoveryContent(ctx context.Context, discovery *share.DiscoveryResult, seen map[string]bool) (string, error) {
+func (s *PreloadService) discoveryContent(ctx context.Context, details *share.DiscoveryResult, targets map[string]share.Tool, seen map[string]bool) (string, error) {
 	var parts []string
-	for _, item := range discovery.Tools {
-		name := strings.TrimSpace(item.Info.Name)
-		if item.Schema == nil || name == "" || seen[name] {
+	for _, item := range details.Tools {
+		name := item.Info.Name
+		if seen[name] {
 			continue
 		}
-		candidate, ok := s.registry.Get(name)
-		if !ok {
-			continue
-		}
+		candidate := targets[name]
 		if _, ok := candidate.(share.ContextDiscoveryContentProvider); !ok {
 			continue
 		}
 		seen[name] = true
-		content, _, _, err := tool.LoadDiscoveryContent(ctx, candidate)
+		content, _, _, err := discovery.LoadDiscoveryContent(ctx, candidate)
+		if err == nil {
+			err = ctx.Err()
+		}
 		if err != nil {
 			return "", fmt.Errorf("load discovery content for %s: %w", name, err)
 		}
@@ -322,7 +218,7 @@ func skillDetailBlock(ctx context.Context, candidate share.Tool, detailer share.
 	return share.DetailBlock{Content: detailer.Detail()}, nil
 }
 
-func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name string, background bool) []share.DiscoveredTool {
+func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name string, background bool) ([]share.DiscoveredTool, error) {
 	record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "tool", Identity: globalevents.LogIdentity{SessionID: &sessionID}}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	if facts.RunID != "" {
@@ -340,7 +236,7 @@ func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name str
 
 	name = strings.TrimSpace(name)
 	if name == "" || name == "discover_tool" {
-		return nil
+		return nil, nil
 	}
 	eventName, key := "skill_wrapper_preload_skipped", "tool"
 	if background {
@@ -353,21 +249,29 @@ func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name str
 		record.Content = fmt.Sprintf("%s: %s=%s reason=%s", eventName, key, name, reason)
 		_ = globalevents.EmitLog(ctx, record)
 	}
-	candidate, ok := s.registry.Get(name)
-	if !ok || !preloadAllowed(ctx, candidate) {
+	candidates, err := s.registry.QueryTools(ctx, share.ToolQuery{Names: []string{name}, IncludeHidden: true})
+	if err != nil {
+		return nil, err
+	}
+	if len(candidates) == 0 {
 		skip("not_found_or_not_allowed")
-		return nil
+		return nil, nil
 	}
-	// Executable skills can provide both documentation and their own schema.
-	// Discovery renders their documentation, so load activated skill schemas directly.
+	candidate := candidates[0]
+	info := candidate.Info()
+	// 可执行 Skill 的文档和自身 schema 分开提供，激活时直接读取所选对象的 schema。
 	_, skill := candidate.(share.DetailProvider)
-	if background && !candidate.Info().Hidden && !skill {
-		return NativeCachedToolsFromDiscovery(s.discoverNames(ctx, []string{name}))
+	if background && !info.Hidden && !skill {
+		result, _, err := s.discoverNames(ctx, candidates)
+		if err != nil {
+			return nil, err
+		}
+		return discovery.NativeCachedToolsFromDiscovery(result), nil
 	}
-	schema, info := candidate.Schema(), candidate.Info()
+	schema := candidate.Schema()
 	if schema.Name == "" {
 		skip("empty_schema")
-		return nil
+		return nil, nil
 	}
-	return []share.DiscoveredTool{{Name: info.Name, Source: share.SourceKindNative, Description: info.Description, Schema: cloneSchema(schema), ForegroundOnly: info.ForegroundOnly}}
+	return []share.DiscoveredTool{{Name: info.Name, Source: share.SourceKindNative, Description: info.Description, Schema: share.CloneSchema(schema), ForegroundOnly: info.ForegroundOnly}}, nil
 }

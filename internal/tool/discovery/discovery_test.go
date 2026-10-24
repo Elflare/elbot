@@ -61,6 +61,30 @@ func plainTool(name string) testTool {
 	return testTool{info: share.Info{Name: name, Description: "description " + name, Risk: share.RiskLow, Source: share.SourceBuiltin}}
 }
 
+func TestResolvePreservesSelectedRootsAndDependencies(t *testing.T) {
+	first, second := plainTool("first"), plainTool("second")
+	first.info.DependsOn = []string{"second"}
+	second.info.DependsOn = []string{"first"}
+	first.info.Source, second.info.Source = "test", "test"
+	resolver, r := newTestResolver(t, first, second)
+	selected, err := r.QueryTools(t.Context(), share.ToolQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacement := second
+	replacement.info.Description = "replacement"
+	if err := r.ReplaceSources([]share.Source{"test"}, []share.Tool{replacement}); err != nil {
+		t.Fatal(err)
+	}
+	result, targets, err := resolver.Resolve(t.Context(), selected)
+	if err != nil || discoveredNames(result) != "first,second" || len(targets) != 2 {
+		t.Fatalf("result=%+v targets=%v err=%v", result, targets, err)
+	}
+	if result.Tools[1].Info.Description != second.info.Description || targets["second"].Info().Description != second.info.Description {
+		t.Fatal("selected dependency was looked up again")
+	}
+}
+
 func newTestResolver(t *testing.T, tools ...share.Tool) (*Resolver, *registry.Registry) {
 	t.Helper()
 	r := registry.NewRegistry(security.DefaultPermission())

@@ -35,6 +35,16 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 
 退出辅助函数与共享资源关闭测试可通过临时 overlay 隔离缺失的下层调用，使用实际函数，不提供假总管；完整应用暂不能构建运行。App 的 13 个原生产文件和 12 个原测试文件保存在 `*.go.bak` 中，不参与构建。
 
+## 后台工具统一预载
+
+统一入口为 Tool 根部 `Supervisor.PrepareBackground(ctx, share.BackgroundPreloadRequest)`，返回 `share.BackgroundPreload`。请求包含 `SessionID`、`Names`、`AllowedToolNames`、`ELwispTools`；本地名称可指向工具、Skill 或标签，外部声明沿用 `ELwispToolDeclaration`。调用方提交返回的 `Update`，预载不写会话状态。
+
+- [ ] Cron、Elnis 及以后新增的后台任务，全部通过根部 `PrepareBackground` 准备工具；不得直接访问 Tool 内部 Registry、PreloadService 或另建工具获取入口。
+- [ ] Cron 提供任务预载名单；Elnis 负责声明授权及适配，为每个外部工具补齐 `CanonicalName`、`EventKey`，将 `ELwispTools` 随任务传递。模型侧名称和事件关联字段属于内部调用信息，不属于外部声明协议字段。
+- [ ] Background 统一转交预载请求并提交返回状态；移除 Elnis 预先构造 `DiscoveredTool`、Background 追加或转换工具状态及重复过滤的旧路径。上游只提供工具材料与已裁定的范围，工具准备逻辑统一归 Tool。
+- [ ] 新会话统一预载并提交；续跑读取已提交工具状态。后台执行仅使用任务已有工具集合，不回退到全局目录获取未预载工具。
+- [ ] 调用方迁移完成后，删除旧 `ELwispInjection` 与绕过统一预载的转换入口，并验证 Cron 本地工具／Skill／标签、Elnis 本地加远程声明、空名单、范围限制及续跑行为。
+
 # 任务清单
 
 - [ ] CLI TUI 支持 Markdown 渲染。

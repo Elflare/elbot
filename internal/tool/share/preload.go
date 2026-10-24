@@ -1,4 +1,4 @@
-// 定义工具、Skill 和后台预加载的结果。
+// 定义工具、Skill 和后台预加载的请求与结果。
 package share
 
 type ToolPreload struct {
@@ -18,6 +18,14 @@ type SkillPreload struct {
 	Names           []string
 	Invalid         []string
 	Content         string
+}
+
+// BackgroundPreloadRequest 只提供工具材料，不携带任务来源业务对象。
+type BackgroundPreloadRequest struct {
+	SessionID        string                  // 预载审计关联的会话。
+	Names            []string                // 本地工具、Skill 或标签名称。
+	AllowedToolNames []string                // 上游给定的本地根工具范围；nil 不额外限制，空切片不允许。
+	ELwispTools      []ELwispToolDeclaration // 已由 Elnis 适配的外部工具声明。
 }
 
 type BackgroundPreload struct {

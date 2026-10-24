@@ -114,7 +114,10 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/tool/registry/`、`execution/`、`builtin/`：工具目录、执行核心与内置工具。
 - `internal/tool/share/`：公共定义、schema 构造与纯数据辅助。
-- `internal/tool/state/`、`preload/`：Session 工具状态、前后台共用的工具／Skill 预加载与后台白名单。
+- `internal/tool/discovery/resolve.go`：解析发现请求及依赖；`Resolve` 接收已筛选对象，返回展示数据与本次使用的对象集合。
+- `internal/tool/state/`：Session 工具状态。
+- `internal/tool/preload/preload.go`、`tags.go`：工具／Skill 预加载、动态说明与标签配置；运行资格由 Registry 筛选。
+- `internal/tool/preload/background.go`：展开后台名称／标签，将本地预载与已适配的 ELwisp 声明统一生成待提交状态和提示材料；根部 `Supervisor.PrepareBackground` 转发请求。
 - `internal/agent/input/tool_directive.go`、`internal/agent/share/tool_cache.go`：输入指令与状态提交。
 - `internal/tool/builtin/file_tools_ast.go`、`file_tools_directory.go`：AST 识别、目录候选与缓存、rg 枚举及流式搜索。
 - `internal/tool/builtin/long_memory.go`：长期记忆文件、索引与同步。
