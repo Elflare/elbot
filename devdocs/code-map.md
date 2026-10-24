@@ -152,16 +152,19 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:hook -->
 ## Hook 与插件
 
-当前仅完成 Hook 文件布局与职责注释；包声明、引用和内部代码拆分尚未调整。
+Hook 根包和 pipeline 已按目标执行边界实现；runtime、rules、control 及媒体共享契约仍待迁移，当前尚未完成编译接通。
 
-- `internal/hook/supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go`：总管、依赖、装配与生命周期的待实现骨架。
-- `internal/hook/agent_bridge.go`、`platform_signals.go`：Agent 注册适配和平台订阅的待实现骨架。
-- `internal/hook/share/event.go`、`match.go`、`call_policy.go`：事件、匹配和只读策略；`registration.go`、`runtime.go` 为共享定义待迁入的骨架。
-- `internal/hook/pipeline/manager.go`：普通 Hook 流水线；`options.go` 为待确认执行参数方式的预留文件。
-- `internal/hook/rules/`、`internal/hook/control/`：规则、一次性 exec、配置与管理。
-- `internal/hook/runtime/`、`internal/hook/protocol/`：持久进程、RPC、waiting 与 hook.v2 帧。
-- `internal/hook/media.go`、`logging.go`：媒体中心契约与日志发布；`output/`：输出与消息转换。
-- `internal/hook/module/`、`builtin/`、`process.go` 及对应测试：已标注待删除，代码暂时保留。
+- `internal/hook/supervisor.go`、`deps.go`：公开管理入口与最小外部消费能力，内部组件只通过私有消费接口持有，不向调用方暴露。
+- `internal/hook/wiring.go`、`lifecycle.go`：配置拆分、直接装配规则／流水线／运行时、阶段关闭与实际退出等待。
+- `internal/hook/agent_bridge.go`：注册 Agent 回调组，转换业务参数与 Hook Event；显式传递唤醒、只读策略及逐 handler 登记回调。
+- `internal/hook/platform_signals.go`：持有平台连接订阅和逐平台队列，处理全局 Hook 输出；不登记 Agent 请求。
+- `internal/hook/context_to_event.go`：fillEventFromContext 将 contextinfo 与 platform 的来源、参与者、消息和引用转换并补入 Hook Event。
+- `internal/hook/share/event.go`、`match.go`、`call_policy.go`、`registration.go`：内部共享事件、匹配、显式只读校验、注册及查询契约；runtime 和媒体共享定义仍待迁入。
+- `internal/hook/pipeline/manager.go`、`options.go`：续接优先、普通规则与错误钩子的执行流程；CallOptions 显式传递逐次策略，构造时注入日志发布与续接能力。
+- `internal/hook/rules/`、`control/`：规则、一次性 exec、配置与管理；`runtime/`、`protocol/`：进程、RPC、waiting 与 hook.v2 帧。
+- `internal/hook/media.go`、`logging.go`：媒体中心契约与来源日志／通知发布；`output/`：输出与消息转换。
+- `internal/hook/module/`、`builtin/`、`process.go` 及对应测试：待子包迁移后删除。
+- `internal/hook/agent_bridge_test.go`、`supervisor_test.go`：桥接转换、并发启动和关闭／平台队列边界用例；`pipeline/continuation_test.go` 验证续接顺序、短路和错误不递归，待子包接口落实后执行。
 - `internal/agent/hook_bridge.go`：对外单组回调注册与逐个 handler 的请求登记。
 - `internal/agent/hooks/points.go`：Agent 可挂接点及业务输入、结果契约；`hooks.go`：回调调度、输入事实准备和在途生命周期。
 - [Hook 文档](../docs/hooks.md)。

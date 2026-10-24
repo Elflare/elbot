@@ -19,9 +19,13 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] 测试覆盖资源部分失败、环境参数和退出辅助逻辑；期限测试使用虚拟时间。
 - [ ] 实现其他四条线的目标总管及 Platform.RunClient 结果契约，补齐跨线接线。
 - [x] 收窄 Agent 的 Hook 边界：声明 `hooks.Points`，提供 `RegisterHooks`、`StartHookRequest`，业务流程仅调用 Agent 自有扩展点；Hook 管理能力仅用于命令。
-- [ ] Hook 总管实现 `ConnectAgent`：按 `agent/hooks/points.go` 注册一组回调并持有解除函数；将业务参数转换为 Hook Event，处理续接／普通规则顺序、输出转换、只读校验和自身失败报告。每个实际 handler 通过 `StartHookRequest` 登记，Agent 不重复记录 Hook 失败。
-- [ ] Hook 自行实现 `PlatformConnected` 的订阅、按平台排队、Hook 执行、输出及失败处理和生命周期；全局平台工作不登记 Agent 请求。补回平台连接、源身份、错误不递归和队列关闭的专属测试。Agent 不再持有这些实现和测试。
-- [ ] Hook 的 `BeginClose` 保留 Agent 收尾所需回调及执行能力，待 Agent 关闭后，在 Hook 的 `Close` 中解除注册并等待自有工作退出。
+- [x] Hook 根包实现 ConnectAgent：注册并持有一组回调，转换业务参数与 Hook Event 并处理结果转换；逐 handler 登记回调只传 context 与名称，不持有 Agent 内部组件。
+- [x] Hook 根部 context_to_event.go 负责外部事实转换；pipeline 组织续接、普通规则及错误钩子，构造时注入日志和 runtime 续接能力；注册查询契约与事件辅助逻辑归 share。
+- [x] Hook.Start 串行完成初始加载和平台订阅，重复启动等待完成；已补并发启动回归用例。
+- [x] Hook 根包持有 PlatformConnected 订阅和逐平台队列，管理全局 Hook 输出与真实退出；全局平台工作不登记 Agent 请求。已补根包桥接与生命周期用例，暂未执行。
+- [x] Hook.BeginClose 保留 Agent 收尾能力；Close 解绑并等待已接纳调用和平台工作，再关闭 runtime，Done 等待实际退出。
+- [ ] 落实 Hook 剩余子包接口：share 的 runtime／媒体共享定义；runtime.Route 接收逐 handler 回调并返回来源 LogResult；control 构造注入候选流水线的日志发布函数，候选 NewManager 使用空续接能力；rules/runtime 接收 Tools、Send、CallPlatformAPI（仅 rules）、Log、Notify 及各自最小媒体能力，清除对子系统根包的反向导入。
+- [ ] Hook 子包迁移完成后，更新管理命令的 share 查询类型，迁走根包 logging_test 中的流水线用例，删除旧 module／builtin／process 包装，再统一编译与验证。
 - [ ] 实现媒体 NewMediaCenter、模型 NewModelManager 的构造契约。
 - [ ] 实现按配置区分的服务独占运行占用。
 - [ ] 适配进程入口的新 App API 与 `client` 命名。

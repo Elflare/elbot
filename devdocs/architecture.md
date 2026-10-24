@@ -269,12 +269,25 @@ flowchart LR
 <!-- locator:hook -->
 ## Hook
 
-普通 Manager 按事件点和优先级串行执行；control 管列表和 reload，持久 Runtime 管进程、RPC、waiting 与 SharedState。协议见[Hook 文档](../docs/hooks.md)。
+Hook 根包拥有公开管理入口、装配、外部连接和生命周期；pipeline 先调用注入的 runtime 续接能力，再按事件点和优先级串行执行普通规则，并负责触发错误钩子，control 管列表和 reload，runtime 管进程、RPC、waiting 与 SharedState。根包通过最小消费接口调用子包，不暴露内部组件。子包不得反向导入根包；工具、平台、媒体与日志／通知发布能力由根包装配注入。协议见[Hook 文档](../docs/hooks.md)。
+
+根包和 pipeline 已落实目标执行边界，其他子包构造参数、续接接口及剩余共享定义尚待落实。CallOptions 显式携带 Woken、ReadOnlyCalls 和 Observe；Observe 只接收 context 与 handler 名称，桥接从 Agent 事实固定 SessionID，执行方决定实际 handler 的登记起止。根部 fillEventFromContext 只转换并补入外部 context 事实；根包不组织内部执行顺序、不触发执行错误钩子、不重复匹配或执行只读校验。
+
+```mermaid
+flowchart TD
+    A["agent_bridge.go / platform_signals.go<br/>外部接入与结果转换"] --> S["supervisor.go / lifecycle.go<br/>入口调用生命周期与服务管理"]
+    S --> F["context_to_event.go<br/>外部事实转换并补入 Event"]
+    S --> P["pipeline/manager.go<br/>续接、普通规则、错误钩子"]
+    P -->|wiring.go 注入续接能力| R["runtime/routes.go<br/>waiting 状态与实际续接"]
+    S & P & R --> C["share/*.go<br/>内部共享契约与辅助函数"]
+```
+
+Hook.Start 串行等待加载与平台订阅完成后才标记启动成功，重复启动不会提前返回。Hook.BeginClose 停止新连接和平台订阅，保留 Agent 收尾回调；Close 解除 Agent 注册、取消并等待根包已接纳的调用及平台队列，再关闭 runtime。Done 等待真实退出，关闭等待超时不提前宣告完成。
 
 Agent 通过 `RegisterHooks(hooks.Points)` 接入一组提供方回调，返回解除注册函数。Points 声明消息、模型、工具和输出阶段，以及入站路由探测和取消能力；参数只包含业务数据，Agent 不构造 Hook 协议 Event。管理命令独立消费 HookService。
 
 - 未注册的处理点原样通过，通知点直接返回；重复注册报错。注册表按值保存，解除函数只影响自身注册，已进入的回调继续完成。Agent 不维护规则优先级或第二套插件流水线。
-- 入站先计算唤醒事实、检查原始取消命令，再探测 waiting 并按需准备媒体；消息回调完成续接和普通规则执行。Agent 随后发送附加输出、处理消费结果，再检查改写后的取消命令并进入命令／模型流程。唤醒不因改写而重新计算。
+- 入站先计算唤醒事实、检查原始取消命令，再探测 waiting 并按需准备媒体；消息回调通过 pipeline 完成续接和普通规则执行。Agent 随后发送附加输出、处理消费结果，再检查改写后的取消命令并进入命令／模型流程。唤醒不因改写而重新计算。
 - `Facts` 传递源身份、会话快照、唤醒结果和调用只读策略；原平台消息、引用及公共执行事实仍从所属包的 context 读取。初始 user 和新 pending 的编辑边界不变；Hook 协议转换和逐条规则校验归提供方。
 - `StartHookRequest` 为一个实际 handler 建立子 Request，保留根请求关联、取消和完成登记。会话尚未绑定时也可登记；不参与 Agent 执行的平台全局工作不使用此入口。
 - `BeginClose` 拒绝新注册，但保留在途生产者所需回调。App 等待平台输入和后台生产者后调用 `Close`，Agent 先结束内部生产者，再关闭回调调度和事实信号；`Done` 等待实际退出。
@@ -283,7 +296,7 @@ Agent 通过 `RegisterHooks(hooks.Points)` 接入一组提供方回调，返回�
 - 规则和持久配置先验证候选再替换，进程异步启动，失败按 runtime 重启策略处理。
 - exec 使用 hook.v2 Pipe，默认直接启动 argv；超时／取消终止进程树，结合宿主终止事实与原生退出状态判断结果，不用已取消 context 覆盖独立故障；worker 先固定退出状态和原因，再唤醒等待者。进程环境在启动时固定，进程变量优先于 .env。
 - Hook 来源保留显式值，再从公共事实补缺失；唤醒状态仅入口计算。llm.messages 深拷贝且只读，turn／request Hook 分别只改初始 user／新 drain 的 pending；改写保存后才发请求。
-- waiting 在平台 Hook 后、命令与主模型前路由；/cancel 取消路由执行。媒体临时引用随租约或 runtime 释放。
+- 入站先尝试 waiting 续接，再按 StopPropagation 决定是否执行普通规则；整个阶段在命令与主模型前完成，/cancel 取消路由执行。waiting 状态与续接执行归 runtime，媒体临时引用随租约或 runtime 释放。
 - Handler／Run 返回 Event、LogResult、error，Notify 返回 LogResult、error；来源先声明操作结果再包装错误，LogHook 只发布完整记录，Agent 不重复记录。
 - 实际工具调用返回后立即记录 hook_tool_call，已运行记 INFO／succeeded；无效参数记 rejected，不补造调用 ID。工具输出发送另记 hook_tool_log，业务与日志结果分离。
 - 工具审计 Actor 在授权默认值注入前固定；有 Session 时使用执行 Actor，无 Session 时使用原 contextinfo。输出、失败通知与进程关闭遵守各自来源和生命周期。

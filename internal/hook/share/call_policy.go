@@ -1,21 +1,13 @@
 // 提供 Hook 工具调用快照和只读策略校验。
 
-package hook
+package share
 
 import (
-	"context"
 	"fmt"
 	"reflect"
 
 	"elbot/internal/llm"
 )
-
-type readOnlyCallsKey struct{}
-
-// WithReadOnlyCalls is a consumer policy, not a protocol decision in Hook.
-func WithReadOnlyCalls(ctx context.Context) context.Context {
-	return context.WithValue(ctx, readOnlyCallsKey{}, true)
-}
 
 // SnapshotCalls breaks slice aliases before handing a read-only view to a Hook.
 func SnapshotCalls(event Event) Event {
@@ -23,8 +15,8 @@ func SnapshotCalls(event Event) Event {
 	return event
 }
 
-func ValidateCalls(ctx context.Context, before, after Event) error {
-	locked, _ := ctx.Value(readOnlyCallsKey{}).(bool)
+// ValidateCalls enforces the explicit caller policy for one handler result.
+func ValidateCalls(locked bool, before, after Event) error {
 	if !locked {
 		return nil
 	}

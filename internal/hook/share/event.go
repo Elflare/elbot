@@ -1,7 +1,7 @@
 // 定义 Hook 事件点、事件数据、控制结果和 handler 契约。
 
-// Package hook defines Hook events, matching, registration, and execution.
-package hook
+// Package share defines contracts and helpers shared by Hook components.
+package share
 
 import (
 	"context"
@@ -170,7 +170,8 @@ func (fn HandlerFunc) HandleHook(ctx context.Context, event Event) (Event, event
 	return fn(ctx, event)
 }
 
-func prepareEvent(event Event) Event {
+// PrepareEvent fills execution metadata and the serializable error description.
+func PrepareEvent(event Event) Event {
 	if event.Time.IsZero() {
 		event.Time = time.Now()
 	}

@@ -1,6 +1,6 @@
 // 定义并执行 Hook 的无状态匹配与屏蔽规则。
 
-package hook
+package share
 
 import (
 	"fmt"
