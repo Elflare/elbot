@@ -7,7 +7,7 @@ import (
 )
 
 type DiscoveryResult struct {
-	Tools  []DiscoveryItem `json:"tools,omitempty"`
+	Tools  []DiscoveryItem  `json:"tools,omitempty"`
 	Errors []DiscoveryError `json:"errors,omitempty"`
 }
 

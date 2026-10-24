@@ -1,7 +1,11 @@
 // 构造工具元数据和参数 schema。
 package share
 
-import "elbot/internal/llm"
+import (
+	"strings"
+
+	"elbot/internal/llm"
+)
 
 type Builder struct {
 	needsElyphRules bool
@@ -195,4 +199,53 @@ func appendUnique(values []string, value string) []string {
 		}
 	}
 	return append(values, value)
+}
+
+func normalizeNames(names []string) []string {
+	out := make([]string, 0, len(names))
+	seen := map[string]bool{}
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+	return out
+}
+
+func normalizeTags(tags []string) []string {
+	out := make([]string, 0, len(tags))
+	seen := map[string]bool{}
+	for _, tag := range tags {
+		tag = normalizeTag(tag)
+		if tag == "" || seen[tag] {
+			continue
+		}
+		seen[tag] = true
+		out = append(out, tag)
+	}
+	return out
+}
+
+func normalizeTag(tag string) string {
+	tag = strings.ToLower(strings.TrimSpace(tag))
+	for i := 0; i < len(tag); i++ {
+		c := tag[i]
+		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_' || c == '-' || c == '.') {
+			return ""
+		}
+	}
+	return tag
+}
+
+func normalizeRisk(value, fallback RiskLevel) RiskLevel {
+	if value != "" {
+		return value
+	}
+	if fallback != "" {
+		return fallback
+	}
+	return RiskHigh
 }

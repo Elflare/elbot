@@ -7,8 +7,6 @@ import (
 
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/fileops"
-	
-	
 )
 
 type ToolRuntimeState struct {
@@ -22,7 +20,7 @@ type ToolRuntimeState struct {
 type ToolRuntimeStateDeps struct {
 	Identity dialogue.Identity
 	Manager  interface {
-		ToolInfos(context.Context, toolshare.Context) ([]toolshare.Info, error)
+		QueryTools(context.Context, toolshare.ToolQuery) ([]toolshare.Info, error)
 	}
 	FileRollback interface {
 		WithBinding(context.Context, fileops.Binding, ...fileops.CommitAdmission) context.Context

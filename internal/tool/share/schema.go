@@ -7,8 +7,8 @@ import (
 	"elbot/internal/llm"
 )
 
-// Schemas are JSON trees. Preserve scalar Go types while detaching containers.
-func cloneSchema(schema llm.ToolSchema) llm.ToolSchema {
+// CloneSchema 深拷贝 JSON schema 的 map、slice 容器，保留标量的 Go 类型。
+func CloneSchema(schema llm.ToolSchema) llm.ToolSchema {
 	if schema.Parameters != nil {
 		schema.Parameters = cloneSchemaValue(reflect.ValueOf(schema.Parameters)).Interface().(map[string]any)
 	}

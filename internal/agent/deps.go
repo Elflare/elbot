@@ -37,7 +37,6 @@ type ToolCapabilities interface {
 	QueryTools(context.Context, share.ToolQuery) ([]share.Info, error)
 	ToolTags(context.Context) ([]string, error)
 	ToolNamesByTag(context.Context, string, share.ToolQuery) ([]string, error)
-	ToolInfos(context.Context, share.Context) ([]share.Info, error)
 	Schemas(context.Context, share.Context, []share.DiscoveredTool) ([]llm.ToolSchema, error)
 	Run(context.Context, share.RunnerDeps, share.RunRequest) share.RunResult
 	DiscoveredToolsForSession(context.Context, string, bool) ([]share.DiscoveredTool, events.LogResult, error)
