@@ -40,6 +40,7 @@ type ToolCapabilities interface {
 	Schemas(context.Context, share.Context, []share.DiscoveredTool) ([]llm.ToolSchema, error)
 	Run(context.Context, share.RunnerDeps, share.RunRequest) share.RunResult
 	DiscoveredToolsForSession(context.Context, string, bool) ([]share.DiscoveredTool, events.LogResult, error)
+	DecodeState(string) (share.State, error)
 	Commit(context.Context, string, share.StateUpdate) (share.StateCommit, events.LogResult, error)
 	PrepareTools(context.Context, []string) (share.ToolPreload, error)
 	PrepareSkills(context.Context, string, []string) (share.SkillPreload, error)

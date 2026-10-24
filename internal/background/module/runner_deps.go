@@ -4,10 +4,11 @@ import (
 	"context"
 
 	"elbot/internal/agent/dialogue"
+	"elbot/internal/events"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/toolrun"
+	toolshare "elbot/internal/tool/share"
 	"elbot/internal/turn"
 )
 
@@ -28,7 +29,11 @@ type BackgroundRunnerDeps struct {
 	SessionRows storage.SessionRepository
 	Identity    BackgroundIdentity
 	Execution   BackgroundExecution
-	Preloader   *toolrun.PreloadService
-	ToolState   *toolrun.StateService
+	Preloader   interface {
+		PrepareBackground(context.Context, toolshare.BackgroundPreloadRequest) (toolshare.BackgroundPreload, error)
+	} // 借用 Tool 根部的统一预载入口。
+	ToolState interface {
+		Commit(context.Context, string, toolshare.StateUpdate) (toolshare.StateCommit, events.LogResult, error)
+	} // 借用同一 Tool 根部的状态提交入口。
 	SandboxRoot string
 }

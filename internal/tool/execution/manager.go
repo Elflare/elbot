@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 
 	"elbot/internal/contextinfo"
@@ -24,7 +23,7 @@ type Manager struct {
 	Native     *NativeSource
 	Permission *security.Permission
 	Media      *media.Manager
-	Log func(context.Context, events.LogRecord) // Root-owned publication for complete execution records.
+	Log        func(context.Context, events.LogRecord) // Root-owned publication for complete execution records.
 }
 
 type ResolvedTool struct {
@@ -34,8 +33,8 @@ type ResolvedTool struct {
 	Source toolshare.SourceKind
 	// Native is the selected native implementation, nil for remote or unavailable tools.
 	Native toolshare.Tool
-	// Cached is the selected discovery metadata snapshot, nil for uncached tools.
-	Cached *toolshare.DiscoveredTool
+	// Discovered 是本次选中的已发现工具声明；直接解析的前台工具没有此声明。
+	Discovered *toolshare.DiscoveredTool
 	// ResultStatus is declared by Resolve: succeeded, rejected by permission, or failed lookup/configuration.
 	ResultStatus events.ResultStatus
 	// Error retains the resolution error, including typed permission denial; nil does not declare success.
@@ -78,7 +77,7 @@ func (m *Manager) BaseSchemas(ctx context.Context, view toolshare.Context) ([]ll
 	return m.Native.BaseSchemas(ctx), nil
 }
 
-func (m *Manager) Schemas(ctx context.Context, view toolshare.Context, cached []toolshare.DiscoveredTool) ([]llm.ToolSchema, error) {
+func (m *Manager) Schemas(ctx context.Context, view toolshare.Context, discovered []toolshare.DiscoveredTool) ([]llm.ToolSchema, error) {
 	if view.Mode != storage.SessionModeWork && view.Mode != storage.SessionModeBackground {
 		return nil, nil
 	}
@@ -86,7 +85,7 @@ func (m *Manager) Schemas(ctx context.Context, view toolshare.Context, cached []
 	if err != nil {
 		return nil, err
 	}
-	out := make([]llm.ToolSchema, 0, len(base)+len(cached))
+	out := make([]llm.ToolSchema, 0, len(base)+len(discovered))
 	seen := map[string]bool{}
 	appendSchema := func(schema llm.ToolSchema) {
 		name := schema.Name
@@ -99,49 +98,49 @@ func (m *Manager) Schemas(ctx context.Context, view toolshare.Context, cached []
 	for _, schema := range base {
 		appendSchema(schema)
 	}
-	for _, cachedTool := range cached {
-		if view.Mode == storage.SessionModeBackground && !backgroundToolAllowed(ctx, cachedTool) {
+	for _, discoveredTool := range discovered {
+		if view.Mode == storage.SessionModeBackground && !backgroundToolAllowed(ctx, discoveredTool) {
 			continue
 		}
-		if !cachedToolAvailable(ctx, cachedTool) {
+		if !discoveredToolAvailable(ctx, discoveredTool) {
 			continue
 		}
-		appendSchema(cachedTool.Schema)
+		appendSchema(discoveredTool.Schema)
 	}
 	return out, nil
 }
 
-func cachedToolAvailable(ctx context.Context, cached toolshare.DiscoveredTool) bool {
-	return AvailableInContext(ctx, toolshare.Info{ForegroundOnly: cached.ForegroundOnly})
+func discoveredToolAvailable(ctx context.Context, discovered toolshare.DiscoveredTool) bool {
+	return AvailableInContext(ctx, toolshare.Info{ForegroundOnly: discovered.ForegroundOnly})
 }
 
-func (m *Manager) Resolve(ctx context.Context, name string, cached []toolshare.DiscoveredTool, mode string) ResolvedTool {
+func (m *Manager) Resolve(ctx context.Context, name string, discovered []toolshare.DiscoveredTool, mode string) ResolvedTool {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return ResolvedTool{Name: name, ResultStatus: events.ResultFailed, Error: fmt.Errorf("tool name is empty")}
 	}
-	for _, cachedTool := range cached {
-		if cachedTool.Name != name && cachedTool.CanonicalName != name {
+	for _, discoveredTool := range discovered {
+		if discoveredTool.Name != name && discoveredTool.CanonicalName != name {
 			continue
 		}
-		if mode == storage.SessionModeBackground && !backgroundToolAllowed(ctx, cachedTool) {
+		if mode == storage.SessionModeBackground && !backgroundToolAllowed(ctx, discoveredTool) {
 			continue
 		}
-		cachedCopy := cachedTool
-		if !cachedToolAvailable(ctx, cachedCopy) {
-			return ResolvedTool{Name: name, Source: cachedCopy.Source, Cached: &cachedCopy, ResultStatus: events.ResultRejected, Error: toolshare.PolicyDeniedError("tool is unavailable in this context")}
+		discoveredCopy := discoveredTool
+		if !discoveredToolAvailable(ctx, discoveredCopy) {
+			return ResolvedTool{Name: name, Source: discoveredCopy.Source, Discovered: &discoveredCopy, ResultStatus: events.ResultRejected, Error: toolshare.PolicyDeniedError("tool is unavailable in this context")}
 		}
-		source := cachedCopy.Source
+		source := discoveredCopy.Source
 		if source == toolshare.SourceKindELwisp {
-			if cachedCopy.Endpoint == "" {
-				return ResolvedTool{Name: name, Source: source, Cached: &cachedCopy, ResultStatus: events.ResultFailed, Error: fmt.Errorf("ELwisp tool endpoint is missing")}
+			if discoveredCopy.Endpoint == "" {
+				return ResolvedTool{Name: name, Source: source, Discovered: &discoveredCopy, ResultStatus: events.ResultFailed, Error: fmt.Errorf("ELwisp tool endpoint is missing")}
 			}
-			return ResolvedTool{Name: cachedCopy.CanonicalName, Source: source, Cached: &cachedCopy, ResultStatus: events.ResultSucceeded}
+			return ResolvedTool{Name: discoveredCopy.CanonicalName, Source: source, Discovered: &discoveredCopy, ResultStatus: events.ResultSucceeded}
 		}
-		if nativeTool, ok := m.Native.Get(cachedCopy.Name); ok {
-			return ResolvedTool{Name: cachedCopy.Name, Source: toolshare.SourceKindNative, Native: nativeTool, Cached: &cachedCopy, ResultStatus: events.ResultSucceeded}
+		if nativeTool, ok := m.Native.Get(discoveredCopy.Name); ok {
+			return ResolvedTool{Name: discoveredCopy.Name, Source: toolshare.SourceKindNative, Native: nativeTool, Discovered: &discoveredCopy, ResultStatus: events.ResultSucceeded}
 		}
-		return ResolvedTool{Name: cachedCopy.Name, Source: toolshare.SourceKindNative, Cached: &cachedCopy, ResultStatus: events.ResultFailed, Error: fmt.Errorf("native tool is no longer available")}
+		return ResolvedTool{Name: discoveredCopy.Name, Source: toolshare.SourceKindNative, Discovered: &discoveredCopy, ResultStatus: events.ResultFailed, Error: fmt.Errorf("native tool is no longer available")}
 	}
 	if mode == storage.SessionModeBackground {
 		return ResolvedTool{Name: name, ResultStatus: events.ResultRejected, Error: toolshare.PolicyDeniedError("tool is not allowed in this background task")}
@@ -184,36 +183,6 @@ func (m *Manager) ExecutePrepared(ctx context.Context, call llm.ToolCallRequest,
 	}
 	result := tool.Executor{Registry: m.Native.Registry, Actor: actor, Permission: m.Permission, OnStarted: onStarted}.ExecutePrepared(ctx, call, prepared)
 	return toolshare.ExecutionResult{Call: call, Message: result.Message, Result: result.Result, LogResult: result.LogResult, Error: result.Error, ResultStatus: result.ResultStatus, ExecutionStarted: result.ExecutionStarted}
-}
-
-func NativeCachedToolsFromDiscovery(result *toolshare.DiscoveryResult) []toolshare.DiscoveredTool {
-	if result == nil {
-		return nil
-	}
-	out := make([]toolshare.DiscoveredTool, 0, len(result.Tools))
-	for _, discovered := range result.Tools {
-		if discovered.Schema == nil || discovered.Info.Name == "" {
-			continue
-		}
-		out = append(out, toolshare.DiscoveredTool{Name: discovered.Info.Name, Source: toolshare.SourceKindNative, Description: discovered.Info.Description, Schema: cloneSchema(*discovered.Schema), ForegroundOnly: discovered.Info.ForegroundOnly})
-	}
-	return out
-}
-
-func SortCachedTools(tools []toolshare.DiscoveredTool) []toolshare.DiscoveredTool {
-	out := append([]toolshare.DiscoveredTool(nil), tools...)
-	sort.Slice(out, func(i, j int) bool {
-		left := out[i].CanonicalName
-		if left == "" {
-			left = out[i].Name
-		}
-		right := out[j].CanonicalName
-		if right == "" {
-			right = out[j].Name
-		}
-		return left < right
-	})
-	return out
 }
 
 func actorForView(ctx context.Context, view toolshare.Context) contextinfo.Actor {

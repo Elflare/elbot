@@ -99,7 +99,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		},
 	}
 	runRequest.ToolListNames = event.Request.ToolListNames
-	runRequest.CachedTools = s.elwispCachedTools(event)
+	runRequest.ELwispTools = s.elwispTools(event)
 	runRequest.AllowedToolNames = make([]string, 0)
 	for name := range s.allowedInternalTools(event.Request.Elwisp.Name) {
 		runRequest.AllowedToolNames = append(runRequest.AllowedToolNames, name)

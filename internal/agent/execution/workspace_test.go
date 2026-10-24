@@ -13,7 +13,7 @@ import (
 	"elbot/internal/session"
 	sessionstate "elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/toolrun"
+	toolstate "elbot/internal/tool/state"
 	"elbot/internal/workspace"
 )
 
@@ -46,7 +46,7 @@ func TestSessionWorkspaceStorePersistsWithoutDroppingMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	metadata, err := toolrun.DecodeState(latest.Metadata)
+	metadata, err := toolstate.DecodeState(latest.Metadata)
 	if err != nil {
 		t.Fatal(err)
 	}

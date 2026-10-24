@@ -23,6 +23,8 @@ import (
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
+	"elbot/internal/tool/discovery"
+	toolstate "elbot/internal/tool/state"
 )
 
 // Runner belongs to the caller's orchestration; Manager supplies independent tool capabilities.
@@ -41,7 +43,7 @@ func (r *Runner) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsha
 		return toolshare.RunResult{}
 	}
 	sessionID := req.Session.ID
-	state, err := DecodeState(req.Session.Metadata)
+	state, err := toolstate.DecodeState(req.Session.Metadata)
 	if err != nil {
 		return toolshare.RunResult{Err: err}
 	}
@@ -193,20 +195,14 @@ func (r *Runner) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsha
 			}
 		}
 		if call.Name == "discover_tool" && result.Result != nil {
-			update, err := DiscoveryStateUpdate(ctx, result.Result, m.Native.Registry, actor, m.Permission)
+			update, err := discovery.NewResolver(m.Native.Registry).DiscoveryStateUpdate(contextinfo.WithActor(ctx, actor), result.Result)
 			if err != nil {
 				return err
 			}
-			state, err := DecodeState(req.Session.Metadata)
+			metadata, err = toolstate.PrepareUpdate(req.Session.Metadata, update)
 			if err != nil {
 				return err
 			}
-			for _, item := range update.Tools {
-				state.DiscoveredTools = append(state.DiscoveredTools, item.Name)
-			}
-			_ = metadata.Set("discovered_tools", uniqueNames(state.DiscoveredTools))
-			_ = metadata.Set("tool_cache", MergeCachedTools(state.ToolCache, update.Tools))
-			_ = metadata.Set("tool_tags", uniqueNames(append(state.ToolTags, update.Tags...)))
 		}
 		messages[index] = result.Message
 		stored := deps.ToolResultMessage(sessionID, result.Message)
@@ -302,7 +298,7 @@ func (r *Runner) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsha
 			fail(original, err, fmt.Sprintf("tool call %s was not executed: prepare transcript: %v", original.Name, err))
 			continue
 		}
-		resolved := m.Resolve(ctx, call.Name, req.CachedTools, snapshot.Mode)
+		resolved := m.Resolve(ctx, call.Name, req.DiscoveredTools, snapshot.Mode)
 		runSource := "foreground"
 		if sandbox, ok := sandboxctx.SandboxContextFromContext(ctx); ok && (sandbox.Background || sandbox.BackgroundKind != "") {
 			runSource = ""

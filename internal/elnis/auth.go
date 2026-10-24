@@ -6,11 +6,11 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/elvena"
-	"elbot/internal/toolrun"
 )
 
 func (s *Service) authenticate(token string) (string, bool) {
@@ -115,6 +115,21 @@ func (s *Service) authorizeExternalTools(event Event) error {
 	return nil
 }
 
-func (s *Service) elwispCachedTools(event Event) []toolshare.DiscoveredTool {
-	return toolrun.CachedToolsFromELwisp(toolshare.ELwispInjection{ELwispName: event.Request.Elwisp.Name, EventKey: event.EventKey, Tools: event.Request.Tools})
+var elwispToolNameReplacer = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
+
+func (s *Service) elwispTools(event Event) []toolshare.ELwispToolDeclaration {
+	tools := append([]toolshare.ELwispToolDeclaration(nil), event.Request.Tools...)
+	for i := range tools {
+		tools[i].Name = strings.TrimSpace(tools[i].Name)
+		tools[i].Endpoint = strings.TrimSpace(tools[i].Endpoint)
+		tools[i].CanonicalName = elwispToolName(event.Request.Elwisp.Name, tools[i].Name)
+		tools[i].EventKey = event.EventKey
+	}
+	return tools
+}
+
+func elwispToolName(elwispName, name string) string {
+	elwispName = elwispToolNameReplacer.ReplaceAllString(strings.TrimSpace(elwispName), "_")
+	name = elwispToolNameReplacer.ReplaceAllString(strings.TrimSpace(name), "_")
+	return fmt.Sprintf("elwisp_%s_%s", elwispName, name)
 }

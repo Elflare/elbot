@@ -23,7 +23,7 @@ func (r *Resolver) DiscoveryStateUpdate(ctx context.Context, result *share.Resul
 		if err := json.Unmarshal(result.Data, &discovery); err != nil {
 			return share.StateUpdate{}, fmt.Errorf("decode tool discovery: %w", err)
 		}
-		update.Tools = NativeCachedToolsFromDiscovery(&discovery)
+		update.Tools = NativeDiscoveredToolsFromDiscovery(&discovery)
 	}
 	activated, err := r.activatedTools(ctx, result.Metadata)
 	if err != nil {
@@ -57,11 +57,11 @@ func (r *Resolver) activatedTools(ctx context.Context, metadata map[string]any) 
 		schema := target.Schema()
 		discovery.Tools = append(discovery.Tools, share.DiscoveryItem{Info: publicInfo(target.Info()), Schema: &schema})
 	}
-	return NativeCachedToolsFromDiscovery(discovery), nil
+	return NativeDiscoveredToolsFromDiscovery(discovery), nil
 }
 
-// NativeCachedToolsFromDiscovery 只转换可执行条目，并分离 schema 中的可变数据。
-func NativeCachedToolsFromDiscovery(result *share.DiscoveryResult) []share.DiscoveredTool {
+// NativeDiscoveredToolsFromDiscovery 只转换可执行条目，并分离 schema 中的可变数据。
+func NativeDiscoveredToolsFromDiscovery(result *share.DiscoveryResult) []share.DiscoveredTool {
 	if result == nil {
 		return nil
 	}

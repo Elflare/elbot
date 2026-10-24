@@ -21,7 +21,7 @@ func (m *Supervisor) Start() error {
 		return err
 	}
 	m.started = true
-	done := m.catalog.SkillManager.StartDelayedReload(m.ctx, time.Second)
+	done := m.catalog.skillManager.StartDelayedReload(m.ctx, time.Second)
 	go func() {
 		<-m.ctx.Done()
 		<-done

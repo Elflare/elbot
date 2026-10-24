@@ -19,7 +19,9 @@ import (
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/toolrun"
+	"elbot/internal/tool/preload"
+	toolshare "elbot/internal/tool/share"
+	toolstate "elbot/internal/tool/state"
 )
 
 func TestResidentMemorySystemPromptSource(t *testing.T) {
@@ -284,6 +286,12 @@ func TestConversationMetaFromPlatformContext(t *testing.T) {
 	}
 }
 
+type tagPromptTestService struct { *preload.PreloadService }
+
+func (tagPromptTestService) DecodeState(raw string) (toolshare.State, error) {
+	return toolstate.DecodeState(raw)
+}
+
 func TestSystemPromptSourcesKeepRegistrationAndToolTagOrder(t *testing.T) {
 	ctx := context.Background()
 	scope := session.Scope{Platform: "cli", ActorID: "cli:local", IsCLI: true}
@@ -291,10 +299,10 @@ func TestSystemPromptSourcesKeepRegistrationAndToolTagOrder(t *testing.T) {
 	if err := memoryStore.WriteCore(ctx, scope, "RESIDENT_ORDER"); err != nil {
 		t.Fatalf("WriteCore: %v", err)
 	}
-	tagSource := dialogue.ToolTagsSystemPromptSource{Preloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{
+	tagSource := dialogue.ToolTagsSystemPromptSource{Preloader: tagPromptTestService{preload.NewPreloadService(preload.PreloadOptions{Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{
 		"alpha": {Prompt: "TAG_ALPHA"},
 		"beta":  {Prompt: "TAG_BETA"},
-	}}})}
+	}}})}}
 	sessionRecord := &storage.Session{
 		Mode:     storage.SessionModeWork,
 		Metadata: `{"tool_tags":["beta","alpha"]}`,

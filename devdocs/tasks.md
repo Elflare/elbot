@@ -39,11 +39,11 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 
 统一入口为 Tool 根部 `Supervisor.PrepareBackground(ctx, share.BackgroundPreloadRequest)`，返回 `share.BackgroundPreload`。请求包含 `SessionID`、`Names`、`AllowedToolNames`、`ELwispTools`；本地名称可指向工具、Skill 或标签，外部声明沿用 `ELwispToolDeclaration`。调用方提交返回的 `Update`，预载不写会话状态。
 
-- [ ] Cron、Elnis 及以后新增的后台任务，全部通过根部 `PrepareBackground` 准备工具；不得直接访问 Tool 内部 Registry、PreloadService 或另建工具获取入口。
-- [ ] Cron 提供任务预载名单；Elnis 负责声明授权及适配，为每个外部工具补齐 `CanonicalName`、`EventKey`，将 `ELwispTools` 随任务传递。模型侧名称和事件关联字段属于内部调用信息，不属于外部声明协议字段。
-- [ ] Background 统一转交预载请求并提交返回状态；移除 Elnis 预先构造 `DiscoveredTool`、Background 追加或转换工具状态及重复过滤的旧路径。上游只提供工具材料与已裁定的范围，工具准备逻辑统一归 Tool。
-- [ ] 新会话统一预载并提交；续跑读取已提交工具状态。后台执行仅使用任务已有工具集合，不回退到全局目录获取未预载工具。
-- [ ] 调用方迁移完成后，删除旧 `ELwispInjection` 与绕过统一预载的转换入口，并验证 Cron 本地工具／Skill／标签、Elnis 本地加远程声明、空名单、范围限制及续跑行为。
+- Cron、Elnis 及以后新增的后台任务，全部通过根部 `PrepareBackground` 准备工具；不得直接访问 Tool 内部 Registry、PreloadService 或另建工具获取入口。
+- [x] Cron 提供本地预载名单；Elnis 授权并适配 `ELwispTools`，补齐内部字段 `CanonicalName`、`EventKey`。
+- [ ] Background 总管接入 Tool 公开能力，在内部为执行器和 Elnis 接线；新会话统一预载并提交，续跑沿用已提交集合。
+- [x] State 统一保存完整 `DiscoveredTool` 声明，删除名称补查目录路径；后台旧声明转换入口已移除。
+- [ ] 完成 Cron／Elnis／Background 整链路测试；当前相关包仍受其他拆包遗留的循环依赖阻塞。App 已通过 Tools 交付 Tool 总管，内部能力分配由 Background 负责。
 
 # 任务清单
 

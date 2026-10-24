@@ -1,3 +1,4 @@
+// 提交 Tool 准备的完整声明，并同步调用方持有的会话元数据。
 package share
 
 import toolshare "elbot/internal/tool/share"

@@ -28,7 +28,7 @@ func TestExternalElwispForwardsArguments(t *testing.T) {
 	manager := NewManager(nil, nil)
 	args, _ := json.Marshal(map[string]any{"source": mediaID, "media_inputs": []map[string]string{{"media": mediaID}}})
 	call := llm.ToolCallRequest{ID: "call", Name: "external", Arguments: string(args)}
-	resolved := ResolvedTool{ResultStatus: events.ResultSucceeded, Source: toolshare.SourceKindELwisp, Cached: &toolshare.DiscoveredTool{Name: "external", Endpoint: server.URL}}
+	resolved := ResolvedTool{ResultStatus: events.ResultSucceeded, Source: toolshare.SourceKindELwisp, Discovered: &toolshare.DiscoveredTool{Name: "external", Endpoint: server.URL}}
 	result := manager.Execute(ctx, call, resolved, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	if result.Error != nil {
 		t.Fatal(result.Error)

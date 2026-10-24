@@ -15,7 +15,7 @@ import (
 	globalevents "elbot/internal/events"
 	"elbot/internal/media"
 	"elbot/internal/storage"
-	"elbot/internal/toolrun"
+	toolshare "elbot/internal/tool/share"
 )
 
 type SenderFunc func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)
@@ -36,10 +36,12 @@ type Options struct {
 	Tokens      map[string]string
 	Store       storage.Store
 
-	Send             SenderFunc
-	Runner           background.Runner
-	ResolveModel     ModelResolverFunc
-	ToolPreloader    *toolrun.PreloadService
+	Send          SenderFunc
+	Runner        background.Runner
+	ResolveModel  ModelResolverFunc
+	ToolPreloader interface {
+		BackgroundSelections(context.Context, []string) ([]toolshare.BackgroundSelection, error)
+	} // 由 Tool 根部提供声明展开能力，授权仍归 Elnis。
 	EnabledPlatforms []string
 	PlatformCallers  elvena.PlatformCallerResolver
 }
@@ -51,10 +53,12 @@ type Service struct {
 	tokens      map[string]string
 	store       storage.Store
 
-	send             SenderFunc
-	runner           background.Runner
-	resolveModel     ModelResolverFunc
-	toolPreloader    *toolrun.PreloadService
+	send          SenderFunc
+	runner        background.Runner
+	resolveModel  ModelResolverFunc
+	toolPreloader interface {
+		BackgroundSelections(context.Context, []string) ([]toolshare.BackgroundSelection, error)
+	}
 	enabledPlatforms []string
 	platformCallers  elvena.PlatformCallerResolver
 	enqueueLLM       EnqueueLLMFunc

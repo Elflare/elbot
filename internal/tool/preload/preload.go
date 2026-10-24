@@ -63,7 +63,7 @@ func (s *PreloadService) PrepareTools(ctx context.Context, names []string) (shar
 		if strings.TrimSpace(text) != "" {
 			content = append(content, text)
 		}
-		result.Update.Tools = append(result.Update.Tools, discovery.NativeCachedToolsFromDiscovery(details)...)
+		result.Update.Tools = append(result.Update.Tools, discovery.NativeDiscoveredToolsFromDiscovery(details)...)
 		for _, item := range details.Tools {
 			result.NeedsElyphRules = result.NeedsElyphRules || item.NeedsElyphRules
 		}
@@ -266,7 +266,7 @@ func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name str
 		if err != nil {
 			return nil, err
 		}
-		return discovery.NativeCachedToolsFromDiscovery(result), nil
+		return discovery.NativeDiscoveredToolsFromDiscovery(result), nil
 	}
 	schema := candidate.Schema()
 	if schema.Name == "" {

@@ -23,13 +23,13 @@ import (
 	toolstate "elbot/internal/tool/state"
 )
 
-// Runtime 保存装配出的组件，供总管转接能力，不承担执行流程。
-type Runtime struct {
-	Registry            *toolregistry.Registry
-	ResidentMemoryStore *resident.Store
-	SkillManager        *skill.Manager
-	FileManager         *builtin.FileManager
-	FileRollback        *fileops.Service
+// runtime 保存装配出的组件，供总管转接能力，不承担执行流程。
+type runtime struct {
+	registry            *toolregistry.Registry
+	residentMemoryStore *resident.Store
+	skillManager        *skill.Manager
+	fileManager         *builtin.FileManager
+	fileRollback        *fileops.Service
 }
 
 // NewSupervisor 只装配组件；后台加载由 Start 启动，失败时返回已取得的总管供调用方关闭。
@@ -55,22 +55,22 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	skillManager := skill.NewManager(filepath.Join(configDir, "skills"), registry, environment)
 	fileManager := builtin.NewFileManager(info.SandboxRoot)
 	fileManager.Media = deps.Media
-	m.catalog = &Runtime{
-		Registry:            registry,
-		ResidentMemoryStore: residentStore,
-		SkillManager:        skillManager,
-		FileManager:         fileManager,
-		FileRollback:        fileops.NewService(nil),
+	m.catalog = &runtime{
+		registry:            registry,
+		residentMemoryStore: residentStore,
+		skillManager:        skillManager,
+		fileManager:         fileManager,
+		fileRollback:        fileops.NewService(nil),
 	}
-	if err := RegisterAll(registry, RegisterOptions{
-		RuntimeInfo:         info,
-		ResidentMemoryStore: residentStore,
-		SkillManager:        skillManager,
-		ChatHistory:         deps.Platform,
-		LongMemoryDir:       filepath.Join(configDir, "long_memory"),
-		FileManager:         fileManager,
-		FileRollback:        m.catalog.FileRollback,
-		ProcessEnv:          environment,
+	if err := registerAll(registry, registerOptions{
+		runtimeInfo:         info,
+		residentMemoryStore: residentStore,
+		skillManager:        skillManager,
+		chatHistory:         deps.Platform,
+		longMemoryDir:       filepath.Join(configDir, "long_memory"),
+		fileManager:         fileManager,
+		fileRollback:        m.catalog.fileRollback,
+		processEnv:          environment,
 	}); err != nil {
 		return m, fmt.Errorf("register tools: %w", err)
 	}
@@ -83,55 +83,55 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Tags:       cfg.ToolTags,
 		Permission: deps.Permission,
 	})
-	m.state = toolstate.NewStateService(deps.Store, registry)
+	m.state = toolstate.NewStateService(deps.Store)
 	return m, nil
 }
 
-// RegisterOptions 只传递注册内置工具所需的已构造组件与配置。
-type RegisterOptions struct {
-	RuntimeInfo         runtimeinfo.Info
-	ResidentMemoryStore *resident.Store
-	SkillManager        *skill.Manager
-	ChatHistory         interface {
+// registerOptions 只传递注册内置工具所需的已构造组件与配置。
+type registerOptions struct {
+	runtimeInfo         runtimeinfo.Info
+	residentMemoryStore *resident.Store
+	skillManager        *skill.Manager
+	chatHistory         interface {
 		SearchChatHistory(context.Context, storage.ChatHistorySearchRequest) ([]storage.ChatMessage, error)
 		ChatHistoryAround(context.Context, storage.ChatHistoryAroundRequest) ([]storage.ChatMessage, error)
 		GetChatHistoryMessage(ctx context.Context, platform, scopeID, messageID string) (*storage.ChatMessage, error)
 	} // 仅转交 Platform 的查询能力，不获取或拥有聊天历史存储。
-	LongMemoryDir string
-	FileManager   *builtin.FileManager
-	FileRollback  *fileops.Service
-	ProcessEnv    processenv.Environment
+	longMemoryDir string
+	fileManager   *builtin.FileManager
+	fileRollback  *fileops.Service
+	processEnv    processenv.Environment
 }
 
-func RegisterAll(registry *toolregistry.Registry, opts RegisterOptions) error {
-	info := opts.RuntimeInfo
-	mediaRuntime := &toolmedia.MediaRuntime{Center: opts.FileManager.Media, SandboxRoot: info.SandboxRoot}
-	opts.SkillManager.Scanner.Media = mediaRuntime
-	if err := registry.Register(discovery.NewDiscoverTool(registry, opts.SkillManager.EnsureLoaded)); err != nil {
+func registerAll(registry *toolregistry.Registry, opts registerOptions) error {
+	info := opts.runtimeInfo
+	mediaRuntime := &toolmedia.MediaRuntime{Center: opts.fileManager.Media, SandboxRoot: info.SandboxRoot}
+	opts.skillManager.Scanner.Media = mediaRuntime
+	if err := registry.Register(discovery.NewDiscoverTool(registry, opts.skillManager.EnsureLoaded)); err != nil {
 		return err
 	}
 	if err := registry.Register(builtin.NewWorkspaceTool()); err != nil {
 		return err
 	}
-	for _, memoryTool := range builtin.NewResidentMemoryTools(opts.ResidentMemoryStore) {
+	for _, memoryTool := range builtin.NewResidentMemoryTools(opts.residentMemoryStore) {
 		if err := registry.Register(memoryTool); err != nil {
 			return err
 		}
 	}
-	for _, memoryTool := range builtin.NewLongMemoryTools(opts.LongMemoryDir) {
+	for _, memoryTool := range builtin.NewLongMemoryTools(opts.longMemoryDir) {
 		if err := registry.Register(memoryTool); err != nil {
 			return err
 		}
 	}
-	if err := registry.Register(builtin.NewViewImageTool(opts.FileManager.Media, opts.ChatHistory)); err != nil {
+	if err := registry.Register(builtin.NewViewImageTool(opts.fileManager.Media, opts.chatHistory)); err != nil {
 		return err
 	}
-	if err := registry.Register(builtin.NewSendFileTool(opts.FileManager)); err != nil {
+	if err := registry.Register(builtin.NewSendFileTool(opts.fileManager)); err != nil {
 		return err
 	}
-	search := builtin.NewSearchChatHistoryTool(opts.ChatHistory, opts.FileManager.Media, info)
-	around := builtin.NewGetChatHistoryAroundTool(opts.ChatHistory, opts.FileManager.Media, info)
-	if err := registry.Register(builtin.NewGetMediaTool(opts.ChatHistory, opts.FileManager.Media)); err != nil {
+	search := builtin.NewSearchChatHistoryTool(opts.chatHistory, opts.fileManager.Media, info)
+	around := builtin.NewGetChatHistoryAroundTool(opts.chatHistory, opts.fileManager.Media, info)
+	if err := registry.Register(builtin.NewGetMediaTool(opts.chatHistory, opts.fileManager.Media)); err != nil {
 		return err
 	}
 	if err := registry.Register(search); err != nil {
@@ -140,33 +140,33 @@ func RegisterAll(registry *toolregistry.Registry, opts RegisterOptions) error {
 	if err := registry.Register(around); err != nil {
 		return err
 	}
-	if err := registry.Register(builtin.NewReplyToChatHistoryMessageTool(opts.ChatHistory, info)); err != nil {
+	if err := registry.Register(builtin.NewReplyToChatHistoryMessageTool(opts.chatHistory, info)); err != nil {
 		return err
 	}
-	if err := registry.Register(builtin.NewWebSearchTool(opts.ProcessEnv)); err != nil {
+	if err := registry.Register(builtin.NewWebSearchTool(opts.processEnv)); err != nil {
 		return err
 	}
-	if err := registry.Register(builtin.NewWebExtractTool(opts.ProcessEnv)); err != nil {
+	if err := registry.Register(builtin.NewWebExtractTool(opts.processEnv)); err != nil {
 		return err
 	}
 	fileGuard := builtin.NewFileGuard(
-		builtin.NewElSkillFileGuardRule(opts.SkillManager.Root),
-		builtin.NewResidentMemoryFileGuardRule(opts.ResidentMemoryStore.Path),
-		builtin.NewLongMemoryFileGuardRule(opts.LongMemoryDir),
+		builtin.NewElSkillFileGuardRule(opts.skillManager.Root),
+		builtin.NewResidentMemoryFileGuardRule(opts.residentMemoryStore.Path),
+		builtin.NewLongMemoryFileGuardRule(opts.longMemoryDir),
 	)
-	opts.FileRollback.CheckWrite = fileGuard.CheckWrite
+	opts.fileRollback.CheckWrite = fileGuard.CheckWrite
 	editFile := builtin.NewEditFileTool(fileGuard)
-	editFile.Rollback = opts.FileRollback
+	editFile.Rollback = opts.fileRollback
 	if err := registry.Register(builtin.NewReadFileTool(fileGuard)); err != nil {
 		return err
 	}
 	if err := registry.Register(editFile); err != nil {
 		return err
 	}
-	if err := registry.Register(builtin.NewRollbackFileTool(opts.FileRollback)); err != nil {
+	if err := registry.Register(builtin.NewRollbackFileTool(opts.fileRollback)); err != nil {
 		return err
 	}
-	shell := builtin.NewShellToolWithEnvironment(opts.ProcessEnv, fileGuard)
+	shell := builtin.NewShellToolWithEnvironment(opts.processEnv, fileGuard)
 	shell.Media = mediaRuntime
 	if err := registry.Register(shell); err != nil {
 		return err
@@ -174,24 +174,24 @@ func RegisterAll(registry *toolregistry.Registry, opts RegisterOptions) error {
 	if err := registry.Register(builtin.NewElwispCreatorTool(info)); err != nil {
 		return err
 	}
-	if err := registry.Register(skill.NewAgentSkillTool(opts.SkillManager)); err != nil {
+	if err := registry.Register(skill.NewAgentSkillTool(opts.skillManager)); err != nil {
 		return err
 	}
-	goRunner := skill.NewGoRunner(opts.SkillManager.Catalog, opts.ProcessEnv)
+	goRunner := skill.NewGoRunner(opts.skillManager.Catalog, opts.processEnv)
 	goRunner.Media = mediaRuntime
 	if err := registry.Register(goRunner); err != nil {
 		return err
 	}
-	if err := registry.Register(skill.NewCreateElSkillTool(opts.SkillManager)); err != nil {
+	if err := registry.Register(skill.NewCreateElSkillTool(opts.skillManager)); err != nil {
 		return err
 	}
-	if err := registry.Register(skill.NewReadElSkillTool(opts.SkillManager)); err != nil {
+	if err := registry.Register(skill.NewReadElSkillTool(opts.skillManager)); err != nil {
 		return err
 	}
-	if err := registry.Register(skill.NewModifyElSkillTool(opts.SkillManager)); err != nil {
+	if err := registry.Register(skill.NewModifyElSkillTool(opts.skillManager)); err != nil {
 		return err
 	}
-	if err := registry.Register(skill.NewFinalizeElSkillTool(opts.SkillManager)); err != nil {
+	if err := registry.Register(skill.NewFinalizeElSkillTool(opts.skillManager)); err != nil {
 		return err
 	}
 	return nil

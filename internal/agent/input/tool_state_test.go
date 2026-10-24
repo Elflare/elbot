@@ -3,7 +3,6 @@ package input
 import toolshare "elbot/internal/tool/share"
 
 import (
-	"elbot/internal/agent/dialogue"
 	agentshare "elbot/internal/agent/share"
 
 	"context"
@@ -17,29 +16,27 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
-	"elbot/internal/toolrun"
+	"elbot/internal/tool/preload"
+	toolregistry "elbot/internal/tool/registry"
+	toolstate "elbot/internal/tool/state"
 )
 
 func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 
-	registry := tool.NewRegistry()
-	_ = registry.Register(tool.NewDiscoverTool(registry))
+	permission := security.NewPermission("low", "critical", map[string][]string{"cli": {"local"}})
+	registry := toolregistry.NewRegistry(permission)
 	_ = registry.Register(agentWrapperTool{name: "alpha"})
 	_ = registry.Register(agentWrapperTool{name: "wrapper", hidden: true})
 	_ = registry.Register(agentDetailTool{name: "doc", source: toolshare.SourceSkillAgent, detail: "#skill doc", format: "elyph", activate: []string{"wrapper"}})
 
-	permission := security.NewPermission("low", "critical", map[string][]string{"cli": {"local"}})
 	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Permission: permission})
 	sessions := session.NewService(store)
 	t.Cleanup(func() { _ = sessions.Close(context.Background()) })
-	stateService := toolrun.NewStateService(store)
-	manager := toolrun.NewManager(registry, permission)
+	stateService := toolstate.NewStateService(store)
 	coordinator := NewInputCoordinator(InputCoordinatorDeps{Sessions: sessions, SessionRows: store.Sessions(), Identity: identity, Execution: directiveExecution{}, ToolState: stateService,
-		Preloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"worker": {Tools: []string{"alpha"}, Prompt: "TAG"}}}})})
-	toolsExecutor := &dialogue.ToolExecutor{Manager: manager, Registry: registry, State: stateService, Identity: identity}
+		Preloader: preload.NewPreloadService(preload.PreloadOptions{Registry: registry, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"worker": {Tools: []string{"alpha"}, Prompt: "TAG"}}}})})
 
 	row, err := sessions.Create(ctx, identity.Scope(ctx), session.CreateRequest{Title: "state", Metadata: `{"unknown":9007199254740993}`})
 	if err != nil {
@@ -48,7 +45,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	before := row.Metadata
 	failure := errors.New("commit rejected")
 	repo := &toolStateFaultRepo{SessionRepository: store.Sessions(), failure: failure}
-	*stateService = *toolrun.NewStateService(toolStateFaultStore{Store: store, repo: repo})
+	*stateService = *toolstate.NewStateService(toolStateFaultStore{Store: store, repo: repo})
 	input := "question @tool:worker @skill:doc"
 	tools, skills, err := coordinator.applyInputDirectives(ctx, row, input)
 	if !errors.Is(err, failure) {
@@ -58,9 +55,9 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	if row.Metadata != before || latest.Metadata != before || tools.Text != input || skills.Text != input || len(tools.Injected) > 0 || len(skills.Skills) > 0 {
 		t.Fatalf("failed commit leaked state: tools=%+v skills=%+v row=%s", tools, skills, row.Metadata)
 	}
-	schemas, err := toolsExecutor.Schemas(ctx, row)
-	if err != nil || toolNames(schemas) != "discover_tool" {
-		t.Fatalf("failed schema published: %s %v", toolNames(schemas), err)
+	discovered, _, err := stateService.DiscoveredToolsForSession(ctx, row.ID, false)
+	if err != nil || len(discovered) != 0 {
+		t.Fatalf("failed declaration published: %+v %v", discovered, err)
 	}
 
 	repo.failure = nil
@@ -75,8 +72,8 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	if latest.Metadata != row.Metadata {
 		t.Fatal("call snapshot differs from committed row")
 	}
-	state, err := toolrun.DecodeState(latest.Metadata)
-	if err != nil || len(state.ToolCache) != 2 || strings.Join(state.ToolTags, ",") != "worker" || state.ElyphRulesShown {
+	state, err := toolstate.DecodeState(latest.Metadata)
+	if err != nil || len(state.DiscoveredTools) != 2 || strings.Join(state.ToolTags, ",") != "worker" || state.ElyphRulesShown {
 		t.Fatalf("state=%+v err=%v", state, err)
 	}
 	if !strings.Contains(row.Metadata, "9007199254740993") {

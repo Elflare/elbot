@@ -22,7 +22,6 @@ import (
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
-	"elbot/internal/toolrun"
 )
 
 type CallProcessor struct {
@@ -174,12 +173,12 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 	}
 	var allowedTools map[string]bool
 	if session.Mode == storage.SessionModeBackground {
-		cached, _, err := c.Tools.Manager.DiscoveredToolsForSession(ctx, session.ID, true)
+		discovered, _, err := c.Tools.Manager.DiscoveredToolsForSession(ctx, session.ID, true)
 		if err != nil {
 			return CallInput{}, err
 		}
 		allowedTools = map[string]bool{}
-		for _, item := range cached {
+		for _, item := range discovered {
 			if item.Schema.Name != "" {
 				allowedTools[item.Schema.Name] = true
 			}
@@ -252,7 +251,7 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 			return CallInput{}, err
 		}
 		segments := archived[0].Segments
-		state, err := toolrun.DecodeState(session.Metadata)
+		state, err := c.Tools.Manager.DecodeState(session.Metadata)
 		if err != nil {
 			return CallInput{}, err
 		}

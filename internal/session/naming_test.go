@@ -20,7 +20,7 @@ func TestServiceRenameMarksManualTitleAndPreservesMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	session.Metadata = `{"discovered_tools":["web_search"]}`
+	session.Metadata = `{"discovered_tools":[{"name":"web_search","source":"native","schema":{"name":"web_search"}}]}`
 	if _, err := store.Sessions().Mutate(ctx, session.ID, func(latest *storage.Session) error { *latest = *session; return nil }); err != nil {
 		t.Fatalf("update metadata: %v", err)
 	}
@@ -34,14 +34,16 @@ func TestServiceRenameMarksManualTitleAndPreservesMetadata(t *testing.T) {
 	}
 
 	var metadata struct {
-		DiscoveredTools []string `json:"discovered_tools"`
-		TitleRenamed    bool     `json:"title_renamed"`
-		TitleSource     string   `json:"title_source"`
+		DiscoveredTools []struct {
+			Name string `json:"name"`
+		} `json:"discovered_tools"`
+		TitleRenamed bool   `json:"title_renamed"`
+		TitleSource  string `json:"title_source"`
 	}
 	if err := json.Unmarshal([]byte(renamed.Metadata), &metadata); err != nil {
 		t.Fatalf("decode metadata: %v", err)
 	}
-	if len(metadata.DiscoveredTools) != 1 || metadata.DiscoveredTools[0] != "web_search" {
+	if len(metadata.DiscoveredTools) != 1 || metadata.DiscoveredTools[0].Name != "web_search" {
 		t.Fatalf("discovered_tools not preserved: %#v", metadata.DiscoveredTools)
 	}
 	if !metadata.TitleRenamed || metadata.TitleSource != "manual" {

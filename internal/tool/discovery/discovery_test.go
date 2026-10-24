@@ -313,19 +313,19 @@ func TestDiscoveryStateUpdateFiltersActivation(t *testing.T) {
 	}
 }
 
-func TestNativeCachedToolsDetachSchema(t *testing.T) {
+func TestNativeDiscoveredToolsDetachSchema(t *testing.T) {
 	schema := llm.ToolSchema{Name: "tool", Parameters: map[string]any{"properties": map[string]any{"value": map[string]any{"type": "string"}}}}
 	result := &share.DiscoveryResult{Tools: []share.DiscoveryItem{
 		{Info: share.PublicInfo{Name: "tool", ForegroundOnly: true}, Schema: &schema},
 		{Info: share.PublicInfo{Name: "skill"}, Detail: "document"},
 	}}
-	cached := NativeCachedToolsFromDiscovery(result)
-	if len(cached) != 1 || !cached[0].ForegroundOnly || cached[0].Source != share.SourceKindNative {
-		t.Fatalf("cache = %+v", cached)
+	discovered := NativeDiscoveredToolsFromDiscovery(result)
+	if len(discovered) != 1 || !discovered[0].ForegroundOnly || discovered[0].Source != share.SourceKindNative {
+		t.Fatalf("cache = %+v", discovered)
 	}
-	cached[0].Schema.Parameters["properties"].(map[string]any)["value"].(map[string]any)["type"] = "integer"
+	discovered[0].Schema.Parameters["properties"].(map[string]any)["value"].(map[string]any)["type"] = "integer"
 	if got := schema.Parameters["properties"].(map[string]any)["value"].(map[string]any)["type"]; got != "string" {
-		t.Fatal("cached schema aliases discovery data")
+		t.Fatal("discovered schema aliases discovery data")
 	}
 }
 

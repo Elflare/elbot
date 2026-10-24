@@ -6,13 +6,13 @@ import (
 	"context"
 
 	"elbot/internal/storage"
-	"elbot/internal/toolrun"
 )
 
 // The tool module owns tag configuration; Agent only places its prompt material.
 type ToolTagsSystemPromptSource struct {
 	Preloader interface {
 		TagPrompts(context.Context, []string) ([]toolshare.TagPrompt, error)
+		DecodeState(string) (toolshare.State, error)
 	}
 }
 
@@ -20,7 +20,7 @@ func (s ToolTagsSystemPromptSource) Parts(ctx context.Context, req SystemPromptR
 	if req.Session == nil || (req.Session.Mode != storage.SessionModeWork && req.Session.Mode != storage.SessionModeBackground) {
 		return nil, nil
 	}
-	state, err := toolrun.DecodeState(req.Session.Metadata)
+	state, err := s.Preloader.DecodeState(req.Session.Metadata)
 	if err != nil {
 		return nil, err
 	}

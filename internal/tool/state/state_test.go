@@ -14,10 +14,8 @@ import (
 	"elbot/internal/contextmgr"
 	"elbot/internal/events"
 	"elbot/internal/llm"
-	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
-	"elbot/internal/tool"
 )
 
 func stateTestStore(t *testing.T, metadata string) (storage.Store, *storage.Session) {
@@ -38,6 +36,14 @@ func stateTestTool(name string) toolshare.DiscoveredTool {
 	return toolshare.DiscoveredTool{Name: name, Source: toolshare.SourceKindNative, Schema: llm.ToolSchema{Name: name, Parameters: map[string]any{"properties": map[string]any{"path": map[string]any{"type": "string"}}}}}
 }
 
+func stateTestSnapshot(ctx context.Context, store storage.Store, id string) (toolshare.State, error) {
+	row, err := store.Sessions().Get(ctx, id)
+	if err != nil {
+		return toolshare.State{}, err
+	}
+	return DecodeState(row.Metadata)
+}
+
 func TestStateCommitRestoresAndDetachesSchemas(t *testing.T) {
 	ctx := context.Background()
 	store, row := stateTestStore(t, `{"workspace":"keep","unknown":9007199254740993,"title_source":"manual","last_usage":{"TotalTokens":12}}`)
@@ -51,32 +57,35 @@ func TestStateCommitRestoresAndDetachesSchemas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(committed.Injected, ",") != "external" {
+	if strings.Join(committed.Injected, ",") != "wisp/external" {
 		t.Fatalf("commit=%+v", committed)
 	}
 	repeated, _, err := service.Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{item}, Tags: []string{"tag"}})
-	if err != nil || len(repeated.Injected) != 0 || strings.Join(repeated.Existing, ",") != "external" || !reflect.DeepEqual(repeated.State, committed.State) {
+	if err != nil || len(repeated.Injected) != 0 || strings.Join(repeated.Existing, ",") != "wisp/external" || !reflect.DeepEqual(repeated.State, committed.State) {
 		t.Fatalf("repeated commit=%+v err=%v", repeated, err)
 	}
 	item.Schema.Parameters["properties"].(map[string]any)["bad"] = true
-	committed.State.ToolCache[0].Schema.Parameters["bad"] = true
-	restored, err := NewStateService(store).Snapshot(ctx, row.ID)
+	committed.State.DiscoveredTools[0].Schema.Parameters["bad"] = true
+	restored, err := stateTestSnapshot(ctx, store, row.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cached := restored.CachedTools(nil, false)
-	if len(cached) != 1 || cached[0].CanonicalName != "wisp/external" || cached[0].Endpoint != item.Endpoint || cached[0].TimeoutSeconds != 7 {
-		t.Fatalf("restored=%+v", cached)
+	discovered, _, err := service.DiscoveredToolsForSession(ctx, row.ID, false)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := cached[0].Schema.Parameters["bad"]; ok {
+	if len(discovered) != 1 || discovered[0].CanonicalName != "wisp/external" || discovered[0].Endpoint != item.Endpoint || discovered[0].TimeoutSeconds != 7 {
+		t.Fatalf("restored=%+v", discovered)
+	}
+	if _, ok := discovered[0].Schema.Parameters["bad"]; ok {
 		t.Fatal("output mutated persistence")
 	}
-	if _, ok := cached[0].Schema.Parameters["properties"].(map[string]any)["bad"]; ok {
+	if _, ok := discovered[0].Schema.Parameters["properties"].(map[string]any)["bad"]; ok {
 		t.Fatal("input mutated persistence")
 	}
-	cached[0].Schema.Parameters["bad"] = true
-	if _, ok := restored.ToolCache[0].Schema.Parameters["bad"]; ok {
-		t.Fatal("cache view aliases state")
+	discovered[0].Schema.Parameters["bad"] = true
+	if _, ok := restored.DiscoveredTools[0].Schema.Parameters["bad"]; ok {
+		t.Fatal("discovery view aliases state")
 	}
 	latest, _ := store.Sessions().Get(ctx, row.ID)
 	for _, want := range []string{`"unknown":9007199254740993`, `"workspace":"keep"`, `"title_source":"manual"`, `"TotalTokens":12`} {
@@ -85,13 +94,13 @@ func TestStateCommitRestoresAndDetachesSchemas(t *testing.T) {
 		}
 	}
 	repeat, _, err := service.Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{stateTestTool("external")}})
-	if err != nil || len(repeat.Injected) != 0 || strings.Join(repeat.Existing, ",") != "external" {
+	if err != nil || strings.Join(repeat.Injected, ",") != "external" || len(repeat.Existing) != 0 || len(repeat.State.DiscoveredTools) != 2 {
 		t.Fatalf("repeat=%+v err=%v", repeat, err)
 	}
 }
 
 func TestStateCommitFailureKeepsAllFields(t *testing.T) {
-	for _, metadata := range []string{`{"tool_tags":["old"],"unknown":5}`, `{"tool_cache":"invalid","unknown":5}`, `{broken`} {
+	for _, metadata := range []string{`{"tool_tags":["old"],"unknown":5}`, `{"discovered_tools":"invalid","unknown":5}`, `{broken`} {
 		t.Run(metadata, func(t *testing.T) {
 			ctx := context.Background()
 			store, row := stateTestStore(t, metadata)
@@ -149,9 +158,9 @@ func TestStateConcurrentUpdatesPreserveOtherOwners(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			snapshot, err := service.Snapshot(ctx, row.ID)
+			snapshot, err := stateTestSnapshot(ctx, store, row.ID)
 			if err == nil {
-				for _, item := range snapshot.ToolCache {
+				for _, item := range snapshot.DiscoveredTools {
 					item.Schema.Parameters["reader"] = true
 				}
 			}
@@ -166,8 +175,8 @@ func TestStateConcurrentUpdatesPreserveOtherOwners(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	state, err := service.Snapshot(ctx, row.ID)
-	if err != nil || len(state.ToolCache) != count || len(state.ToolTags) != count {
+	state, err := stateTestSnapshot(ctx, store, row.ID)
+	if err != nil || len(state.DiscoveredTools) != count || len(state.ToolTags) != count {
 		t.Fatalf("state=%+v err=%v", state, err)
 	}
 	latest, _ := store.Sessions().Get(ctx, row.ID)
@@ -180,22 +189,5 @@ func TestStateConcurrentUpdatesPreserveOtherOwners(t *testing.T) {
 	}
 	if strings.Contains(latest.Metadata, "reader") {
 		t.Fatal("reader mutated persisted schema")
-	}
-}
-
-func TestSchemasAreDetachedForPreparedHook(t *testing.T) {
-	item := stateTestTool("tool")
-	manager := NewManager(tool.NewRegistry(), security.DefaultPermission())
-	schemas, err := manager.Schemas(context.Background(), toolshare.Context{Mode: storage.SessionModeWork, DisableBaseTools: true}, []toolshare.DiscoveredTool{item})
-	if err != nil {
-		t.Fatal(err)
-	}
-	schemas[0].Parameters["properties"].(map[string]any)["path"].(map[string]any)["type"] = "number"
-	next, err := manager.Schemas(context.Background(), toolshare.Context{Mode: storage.SessionModeWork, DisableBaseTools: true}, []toolshare.DiscoveredTool{item})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if next[0].Parameters["properties"].(map[string]any)["path"].(map[string]any)["type"] != "string" {
-		t.Fatal("prepared hook polluted next request")
 	}
 }

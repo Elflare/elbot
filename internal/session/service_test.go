@@ -91,11 +91,11 @@ func TestPlatformScopeCanListAndResumeSamePlatformCronSessions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create other front: %v", err)
 	}
-	cronSession := &storage.Session{OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: "cron:user.cron.test", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "cron", Metadata: `{"discovered_tools":["web_search"]}`}
+	cronSession := &storage.Session{OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: "cron:user.cron.test", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "cron", Metadata: `{"discovered_tools":[{"name":"web_search","source":"native","schema":{"name":"web_search"}}]}`}
 	if err := store.Sessions().Create(ctx, cronSession); err != nil {
 		t.Fatalf("Create cron: %v", err)
 	}
-	otherPlatformCron := &storage.Session{OwnerID: scope.ActorID, Platform: "cli", PlatformScopeID: "cron:user.cron.test", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "cli cron", Metadata: `{"discovered_tools":["web_search"]}`}
+	otherPlatformCron := &storage.Session{OwnerID: scope.ActorID, Platform: "cli", PlatformScopeID: "cron:user.cron.test", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "cli cron", Metadata: `{"discovered_tools":[{"name":"web_search","source":"native","schema":{"name":"web_search"}}]}`}
 	if err := store.Sessions().Create(ctx, otherPlatformCron); err != nil {
 		t.Fatalf("Create other platform cron: %v", err)
 	}

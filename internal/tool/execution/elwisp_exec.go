@@ -52,8 +52,8 @@ func executeELwispTool(ctx context.Context, call llm.ToolCallRequest, resolved R
 		}
 		result.Message = message
 	}()
-	cached := resolved.Cached
-	timeout := time.Duration(cached.TimeoutSeconds) * time.Second
+	discovered := resolved.Discovered
+	timeout := time.Duration(discovered.TimeoutSeconds) * time.Second
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
@@ -64,13 +64,13 @@ func executeELwispTool(ctx context.Context, call llm.ToolCallRequest, resolved R
 	if len(arguments) == 0 {
 		arguments = json.RawMessage(`{}`)
 	}
-	payload, err := json.Marshal(elwispToolRequest{Tool: cached.Name, EventKey: cached.EventKey, Arguments: arguments})
+	payload, err := json.Marshal(elwispToolRequest{Tool: discovered.Name, EventKey: discovered.EventKey, Arguments: arguments})
 	if err != nil {
 		result.LogResult.ResultStatus = events.ResultFailed
 		result.Error = err
 		return result
 	}
-	req, err := http.NewRequestWithContext(toolCtx, http.MethodPost, cached.Endpoint, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(toolCtx, http.MethodPost, discovered.Endpoint, bytes.NewReader(payload))
 	if err != nil {
 		result.LogResult.ResultStatus = events.ResultFailed
 		result.Error = err

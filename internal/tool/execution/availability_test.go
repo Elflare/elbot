@@ -5,7 +5,6 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"elbot/internal/events"
-	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -17,6 +16,7 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
+	"elbot/internal/tool/state"
 )
 
 type foregroundOnlyTestTool struct{}
@@ -73,19 +73,33 @@ func TestSchemasKeepStableOrderAcrossBatchAndIncrementalDiscovery(t *testing.T) 
 	}
 	manager := NewManager(registry, security.DefaultPermission())
 	view := toolshare.Context{Mode: storage.SessionModeWork, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}}
-	cached := func(name string) toolshare.DiscoveredTool {
+	discovered := func(name string) toolshare.DiscoveredTool {
 		return toolshare.DiscoveredTool{Name: name, Source: toolshare.SourceKindNative, Schema: llm.ToolSchema{Name: name}}
 	}
-	alpha := cached("alpha")
-	beta := cached("beta")
-	batch := NormalizeCachedTools([]toolshare.DiscoveredTool{beta, alpha})
-	incremental := MergeCachedTools(MergeCachedTools(nil, []toolshare.DiscoveredTool{beta}), []toolshare.DiscoveredTool{alpha})
-	reverseIncremental := MergeCachedTools(MergeCachedTools(nil, []toolshare.DiscoveredTool{alpha}), []toolshare.DiscoveredTool{beta})
-	metadata, err := json.Marshal(map[string]any{"tool_cache": incremental})
-	if err != nil {
-		t.Fatal(err)
+	alpha := discovered("alpha")
+	beta := discovered("beta")
+	prepare := func(raw string, tools ...toolshare.DiscoveredTool) (string, []toolshare.DiscoveredTool) {
+		t.Helper()
+		patch, err := state.PrepareUpdate(raw, toolshare.StateUpdate{Tools: tools})
+		if err != nil {
+			t.Fatal(err)
+		}
+		metadata, err := patch.Encode()
+		if err != nil {
+			t.Fatal(err)
+		}
+		snapshot, err := state.DecodeState(metadata)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return metadata, snapshot.DiscoveredTools
 	}
-	restored, err := DecodeState(string(metadata))
+	_, batch := prepare("", beta, alpha)
+	first, _ := prepare("", beta)
+	metadata, incremental := prepare(first, alpha)
+	first, _ = prepare("", alpha)
+	_, reverseIncremental := prepare(first, beta)
+	restored, err := state.DecodeState(metadata)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +108,7 @@ func TestSchemasKeepStableOrderAcrossBatchAndIncrementalDiscovery(t *testing.T) 
 		"batch":               batch,
 		"incremental":         incremental,
 		"reverse incremental": reverseIncremental,
-		"restored":            restored.ToolCache,
+		"restored":            restored.DiscoveredTools,
 	} {
 		t.Run(name, func(t *testing.T) {
 			schemas, err := manager.Schemas(context.Background(), view, tools)
@@ -114,20 +128,20 @@ func TestSchemasKeepStableOrderAcrossBatchAndIncrementalDiscovery(t *testing.T) 
 
 func TestPathSchemasStayStableAcrossBackgroundTakeover(t *testing.T) {
 	manager := NewManager(tool.NewRegistry(), security.DefaultPermission())
-	var cached []toolshare.DiscoveredTool
+	var discovered []toolshare.DiscoveredTool
 	for _, name := range []string{"shell", "read_file", "edit_file", "send_file"} {
-		cached = append(cached, toolshare.DiscoveredTool{Name: name, Source: toolshare.SourceKindNative, Schema: llm.ToolSchema{Name: name, Description: "stable definition", Parameters: map[string]any{"type": "object"}}})
+		discovered = append(discovered, toolshare.DiscoveredTool{Name: name, Source: toolshare.SourceKindNative, Schema: llm.ToolSchema{Name: name, Description: "stable definition", Parameters: map[string]any{"type": "object"}}})
 	}
 	ctx := sandboxctx.WithSandboxContext(t.Context(), sandboxctx.SandboxContext{Background: true, Dir: t.TempDir()})
-	background, err := manager.Schemas(ctx, toolshare.Context{Mode: storage.SessionModeBackground, DisableBaseTools: true}, cached)
+	background, err := manager.Schemas(ctx, toolshare.Context{Mode: storage.SessionModeBackground, DisableBaseTools: true}, discovered)
 	if err != nil {
 		t.Fatal(err)
 	}
-	foreground, err := manager.Schemas(t.Context(), toolshare.Context{Mode: storage.SessionModeWork}, cached)
+	foreground, err := manager.Schemas(t.Context(), toolshare.Context{Mode: storage.SessionModeWork}, discovered)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(background) != len(cached) || !reflect.DeepEqual(background, foreground) {
+	if len(background) != len(discovered) || !reflect.DeepEqual(background, foreground) {
 		t.Fatalf("schemas changed on takeover: background=%+v foreground=%+v", background, foreground)
 	}
 }
@@ -142,27 +156,27 @@ func TestForegroundOnlyToolResolveRejectedInBackground(t *testing.T) {
 	if resolved.ResultStatus != events.ResultRejected || resolved.Error == nil {
 		t.Fatalf("resolved = %#v", resolved)
 	}
-	cached := manager.Resolve(ctx, "cached_foreground", []toolshare.DiscoveredTool{{Name: "cached_foreground", Source: toolshare.SourceKindELwisp, Endpoint: "http://127.0.0.1", ForegroundOnly: true}}, storage.SessionModeBackground)
-	if cached.ResultStatus != events.ResultRejected || cached.Error == nil {
-		t.Fatalf("cached resolved = %#v", cached)
+	discovered := manager.Resolve(ctx, "cached_foreground", []toolshare.DiscoveredTool{{Name: "cached_foreground", Source: toolshare.SourceKindELwisp, Endpoint: "http://127.0.0.1", ForegroundOnly: true}}, storage.SessionModeBackground)
+	if discovered.ResultStatus != events.ResultRejected || discovered.Error == nil {
+		t.Fatalf("discovered resolved = %#v", discovered)
 	}
 	var denied toolshare.PolicyDeniedError
-	if !errors.As(resolved.Error, &denied) || !errors.As(cached.Error, &denied) {
-		t.Fatalf("permission errors were flattened: %T / %T", resolved.Error, cached.Error)
+	if !errors.As(resolved.Error, &denied) || !errors.As(discovered.Error, &denied) {
+		t.Fatalf("permission errors were flattened: %T / %T", resolved.Error, discovered.Error)
 	}
 }
 
 func TestResolveDistinguishesMissingToolFromMissingRemoteConfiguration(t *testing.T) {
 	manager := NewManager(tool.NewRegistry(), nil)
 	for _, tc := range []struct {
-		name   string
-		cached []toolshare.DiscoveredTool
+		name       string
+		discovered []toolshare.DiscoveredTool
 	}{
 		{"missing", nil},
 		{"remote", []toolshare.DiscoveredTool{{Name: "remote", Source: toolshare.SourceKindELwisp}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			resolved := manager.Resolve(t.Context(), tc.name, tc.cached, storage.SessionModeWork)
+			resolved := manager.Resolve(t.Context(), tc.name, tc.discovered, storage.SessionModeWork)
 			var denied toolshare.PolicyDeniedError
 			if resolved.ResultStatus != events.ResultFailed || resolved.Error == nil || errors.As(resolved.Error, &denied) {
 				t.Fatalf("resolution facts = %#v", resolved)
@@ -172,5 +186,22 @@ func TestResolveDistinguishesMissingToolFromMissingRemoteConfiguration(t *testin
 				t.Fatalf("execution lost resolution facts: %#v", result)
 			}
 		})
+	}
+}
+
+func TestSchemasAreDetachedForPreparedHook(t *testing.T) {
+	item := toolshare.DiscoveredTool{Name: "tool", Source: toolshare.SourceKindNative, Schema: llm.ToolSchema{Name: "tool", Parameters: map[string]any{"properties": map[string]any{"path": map[string]any{"type": "string"}}}}}
+	manager := NewManager(tool.NewRegistry(), security.DefaultPermission())
+	schemas, err := manager.Schemas(context.Background(), toolshare.Context{Mode: storage.SessionModeWork, DisableBaseTools: true}, []toolshare.DiscoveredTool{item})
+	if err != nil {
+		t.Fatal(err)
+	}
+	schemas[0].Parameters["properties"].(map[string]any)["path"].(map[string]any)["type"] = "number"
+	next, err := manager.Schemas(context.Background(), toolshare.Context{Mode: storage.SessionModeWork, DisableBaseTools: true}, []toolshare.DiscoveredTool{item})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next[0].Parameters["properties"].(map[string]any)["path"].(map[string]any)["type"] != "string" {
+		t.Fatal("prepared hook polluted next request")
 	}
 }

@@ -216,11 +216,29 @@ flowchart LR
 
 Tool 拥有注册、schema、风险评估与执行器；Permission.CheckTool 根据身份、工具属性和后台事实决定拒绝、直接执行或交互确认。Tool 执行决定，Agent 承接交互确认。StateService 解释工具状态，PreloadService 返回待提交状态、材料和语言需求。
 
+- 会话的 `discovered_tools` 保存完整 `DiscoveredTool` 数组，是已发现工具集合的唯一事实；名称从声明提取，以 CanonicalName 优先、否则 Name 作为合并标识。State 不持有 Registry 实例，恢复声明不按名称重新生成 schema。Agent 经根部 `Supervisor.DecodeState(raw)` 解码当前会话快照。
 - ELyph 通用规则由 elyph/rules.go 提供，工具、Skill 与后台任务声明需求，输入／工具 Runner 在正文 Hook 后组装。首次展示状态与携带规则的消息原子提交，同 Session 共享，压缩新 Session 重置。
 - 输入指令、发现与后台首轮预加载在一次提交中合并状态，失败保留原状态；准备在准入锁外，提交复核取消、binding、模式和压缩状态。
 - tool.Info.APITypes 限制协议可用性，空集合不限；view_image 仅供 Responses。前台 chat 过滤工具、Skill 和 tag。
 - Registry 统一筛选运行资格，Discovery 的 Resolve 接收已筛选对象并解析依赖，Preload 使用返回的同一批对象读取动态说明。标签授权展开只读取目录与配置成员，不按当前模型、权限或前后台事实缩减声明。
 - PrepareBackground 接收 BackgroundPreloadRequest；AllowedToolNames 仅约束本地根工具，nil 不额外限制，空切片禁止本地根工具。它复用 PrepareTools／PrepareSkills，合并说明、Skill 文档、wrapper 和 ELwispTools 声明，并经 Registry 的后台规则过滤 discover_tool、workspace 与 ForegroundOnly 工具，返回待提交状态。外部声明的 CanonicalName、EventKey 由适配方提供，schema 在预载时复制；ActivateTools 声明的可执行 Skill 直接加载自身 schema，纯文档 Skill 不生成调用接口。调用方迁移与续跑约束见 [后台工具统一预载](tasks.md#后台工具统一预载)。
+- Tool 根部在内部构造 StateService，只向 State 交付 Store；装配结构 runtime、registerOptions、registerAll 及组件字段均为包内实现。App 交付完整配置和共享依赖，不取得 StateService。根部的 DecodeState、DiscoveredToolsForSession、Commit 转发状态能力；State 复用 Registry 的后台资格筛选规则，不查询目录重建声明。后台调用方的总管接线仍待完成，见 [后台工具统一预载](tasks.md#后台工具统一预载)。
+- 普通预载由调用方经根部 Commit 提交；Execution 调用 State.PrepareUpdate，从当前会话快照生成仅含工具字段的元数据补丁，与工具结果原子提交，不另作独立状态提交。合并、名称集合、排序和存储字段编码均在 State 内部；PrepareUpdate 不进入总管公开接口。读取从元数据解码出独立对象；Commit 返回序列化后重新解码的状态，避免与输入声明共享 schema。
+
+```mermaid
+flowchart LR
+    A["app/wiring.go：交付共享依赖"] --> W["tool/wiring.go：构造 StateService"]
+    W --> S["state/state.go：解码、读取、补丁准备与提交"]
+    P["Tool 总管：转发普通状态提交"] --> S
+    D["discovery/activation.go：转换发现结果"] --> E["execution/runner.go：请求补丁并随结果交付"]
+    E -->|PrepareUpdate| S
+    S -->|仅工具字段的补丁| E
+    E --> C["agent/dialogue/commit.go：随工具结果原子提交"]
+    S --> M["state/discovered.go：声明合并与排序"]
+    S --> DB["Session.metadata.discovered_tools"]
+    C --> DB
+```
+
 - fileops 统一处理工具及命令的编辑／撤销。context 只保存绑定，准备对象持有快照，提交校验显式传递。准备时短暂锁定目标，等待确认期间不持有文件或锁；预览不暴露批准写入的字节。
 - 文件提交锁顺序为目标路径 → Scope → SessionID → 备份状态；核对绑定、取消、权限、目标和 revision 后写批准字节。撤销仅在成功写入后登记，后台编辑不登记前台备份；外部进程不参与锁。/stop、切换和清理与提交互斥：先提交则完成，先取消或失效则拒绝。
 - 目录 AST 先按扩展名／标准 Shell shebang 筛选，再完整读取候选，避免全文读取无关文件；Shell 文件优先采用有效 shebang 声明的方言。

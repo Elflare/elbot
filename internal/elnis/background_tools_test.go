@@ -9,9 +9,10 @@ import (
 	"testing"
 
 	"elbot/internal/config"
-	"elbot/internal/tool"
-	"elbot/internal/tool/builtin"
-	"elbot/internal/toolrun"
+	"elbot/internal/llm"
+	"elbot/internal/security"
+	"elbot/internal/tool/preload"
+	"elbot/internal/tool/registry"
 )
 
 func TestBackgroundTagAuthorizationAndToolDeclarations(t *testing.T) {
@@ -19,14 +20,14 @@ func TestBackgroundTagAuthorizationAndToolDeclarations(t *testing.T) {
 		runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":false,"report":""}`}
 		service, cleanup := newTestServiceWithRunner(t, runner, nil)
 		defer cleanup()
-		registry := tool.NewRegistry()
-		_ = registry.Register(builtin.NewWebSearchTool())
-		_ = registry.Register(builtin.NewWebExtractTool())
+		registry := registry.NewRegistry(security.DefaultPermission())
+		_ = registry.Register(backgroundDeclarationTool{name: "web_search"})
+		_ = registry.Register(backgroundDeclarationTool{name: "web_extract"})
 		members := []string{"web_search"}
 		if denied {
 			members = append(members, "web_extract")
 		}
-		service.toolPreloader = toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"research": {Tools: members}}}})
+		service.toolPreloader = preload.NewPreloadService(preload.PreloadOptions{Registry: registry, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"research": {Tools: members}}}})
 		var queued QueuedLLMEvent
 		service.SetLLMEnqueuer(func(_ context.Context, event QueuedLLMEvent) error { queued = event; return nil })
 		req := testRequest(ModeLLM)
@@ -50,11 +51,26 @@ func TestBackgroundTagAuthorizationAndToolDeclarations(t *testing.T) {
 			t.Fatalf("requests=%+v", runner.requests)
 		}
 		got := runner.requests[0]
-		if !slices.Equal(got.ToolListNames, []string{"research"}) || !slices.Equal(got.AllowedToolNames, []string{"web_search"}) || len(got.CachedTools) != 1 {
+		if !slices.Equal(got.ToolListNames, []string{"research"}) || !slices.Equal(got.AllowedToolNames, []string{"web_search"}) || len(got.ELwispTools) != 1 {
 			t.Fatalf("tools=%+v", got)
+		}
+		declaration := got.ELwispTools[0]
+		if declaration.Name != "external" || declaration.CanonicalName != "elwisp_configured_external" || declaration.EventKey != queued.Event.EventKey {
+			t.Fatalf("external declaration=%+v", declaration)
 		}
 		if got.ModelProvider != "provider-work" || got.Model != "model-work" {
 			t.Fatalf("default model=%s/%s", got.ModelProvider, got.Model)
 		}
 	}
+}
+
+type backgroundDeclarationTool struct{ name string }
+
+func (t backgroundDeclarationTool) Name() string { return t.name }
+func (t backgroundDeclarationTool) Info() toolshare.Info {
+	return toolshare.Info{Name: t.name, Risk: toolshare.RiskLow}
+}
+func (t backgroundDeclarationTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: t.name} }
+func (backgroundDeclarationTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
+	return &toolshare.Result{}, "", nil
 }

@@ -7,7 +7,6 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
-	
 )
 
 type Kind string
@@ -40,7 +39,7 @@ type RunRequest struct {
 	// AllowedToolNames optionally restricts root tools (nil means unrestricted).
 	ToolListNames    []string
 	AllowedToolNames []string
-	CachedTools      []toolshare.DiscoveredTool
+	ELwispTools      []toolshare.ELwispToolDeclaration // 已授权并补齐模型侧名称、事件标识的外部声明。
 	SandboxSubdir    string
 	Metadata         map[string]string
 }

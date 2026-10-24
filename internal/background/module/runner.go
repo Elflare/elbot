@@ -23,7 +23,6 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/toolrun"
 )
 
 type BackgroundRunner struct {
@@ -31,8 +30,12 @@ type BackgroundRunner struct {
 	sessionRows storage.SessionRepository
 	identity    BackgroundIdentity
 	execution   BackgroundExecution
-	preloader   *toolrun.PreloadService
-	toolState   *toolrun.StateService
+	preloader   interface {
+		PrepareBackground(context.Context, toolshare.BackgroundPreloadRequest) (toolshare.BackgroundPreload, error)
+	}
+	toolState interface {
+		Commit(context.Context, string, toolshare.StateUpdate) (toolshare.StateCommit, globalevents.LogResult, error)
+	}
 	sandboxRoot string
 }
 
@@ -110,7 +113,7 @@ func (r *BackgroundRunner) RunBackground(ctx context.Context, req background.Run
 		if err != nil {
 			return background.RunResult{SessionID: bgSession.ID}, err
 		}
-		preloaded = r.preloadBackgroundResources(ctx, bgSession, req.ToolListNames, req.CachedTools, req.AllowedToolNames)
+		preloaded = r.preloadBackgroundResources(ctx, bgSession, req.ToolListNames, req.ELwispTools, req.AllowedToolNames)
 	}
 	if preloaded.Err != nil {
 		return background.RunResult{SessionID: bgSession.ID}, preloaded.Err
@@ -197,14 +200,14 @@ type backgroundPreloadResult struct {
 	SkillPrompt     string
 }
 
-func (r *BackgroundRunner) preloadBackgroundResources(ctx context.Context, row *storage.Session, names []string, initial []toolshare.DiscoveredTool, allowed []string) backgroundPreloadResult {
+func (r *BackgroundRunner) preloadBackgroundResources(ctx context.Context, row *storage.Session, names []string, declarations []toolshare.ELwispToolDeclaration, allowed []string) backgroundPreloadResult {
 	preloadCtx := contextinfo.WithActor(security.WithPermission(ctx, r.identity.Permission()), r.identity.Actor(ctx))
-	prepared, err := r.preloader.PrepareBackground(preloadCtx, row.ID, names, allowed)
+	prepared, err := r.preloader.PrepareBackground(preloadCtx, toolshare.BackgroundPreloadRequest{
+		SessionID: row.ID, Names: names, AllowedToolNames: allowed, ELwispTools: declarations,
+	})
 	if err != nil {
 		return backgroundPreloadResult{Err: err}
 	}
-	prepared.Update.Tools = append(toolrun.BackgroundCachedTools(ctx, initial), prepared.Update.Tools...)
-	prepared.Update.Tools = toolrun.BackgroundCachedTools(ctx, prepared.Update.Tools)
 	committed, _, err := agentshare.CommitToolState(ctx, r.toolState, row, prepared.Update)
 	if err != nil {
 		return backgroundPreloadResult{Err: err}

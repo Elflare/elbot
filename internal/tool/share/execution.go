@@ -25,12 +25,6 @@ type ELwispToolDeclaration struct {
 	ForegroundOnly bool           `json:"foreground_only,omitempty"`
 }
 
-type ELwispInjection struct {
-	ELwispName string
-	EventKey   string
-	Tools      []ELwispToolDeclaration
-}
-
 type ExecutionResult struct {
 	// Call is the request supplied to this execution entry point.
 	Call llm.ToolCallRequest
@@ -112,7 +106,7 @@ type RunRequest struct {
 	Calls            []llm.ToolCallRequest
 	AssistantText    string
 	AssistantRawText string
-	CachedTools      []DiscoveredTool
+	DiscoveredTools  []DiscoveredTool
 	Actor            contextinfo.Actor
 }
 

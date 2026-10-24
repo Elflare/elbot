@@ -14,7 +14,8 @@ import (
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/tool"
 	"elbot/internal/tool/builtin"
-	"elbot/internal/toolrun"
+	"elbot/internal/tool/preload"
+	toolstate "elbot/internal/tool/state"
 	"elbot/internal/turn"
 )
 
@@ -40,7 +41,7 @@ func backgroundDeps(t *testing.T) ModuleDeps {
 	t.Cleanup(func() { _ = sessions.Close(context.Background()) })
 	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Permission: security.DefaultPermission()})
 	registry := tool.NewRegistry()
-	return ModuleDeps{Store: store, Sessions: sessions, Identity: identity, Execution: &backgroundExecutionStub{}, Registry: registry, Preloader: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}), ToolState: toolrun.NewStateService(store), SandboxRoot: t.TempDir(), Maintenance: config.Default().Maintenance}
+	return ModuleDeps{Store: store, Sessions: sessions, Identity: identity, Execution: &backgroundExecutionStub{}, Registry: registry, Preloader: preload.NewPreloadService(preload.PreloadOptions{Registry: registry}), ToolState: toolstate.NewStateService(store), SandboxRoot: t.TempDir(), Maintenance: config.Default().Maintenance}
 }
 
 func TestBackgroundSharesDialogueStateAndReleasesOnlyItsTools(t *testing.T) {

@@ -229,6 +229,7 @@ type RunnerDeps struct {
 		Run(context.Context, toolshare.RunnerDeps, toolshare.RunRequest) toolshare.RunResult
 		Schemas(context.Context, toolshare.Context, []toolshare.DiscoveredTool) ([]llm.ToolSchema, error)
 		DiscoveredToolsForSession(context.Context, string, bool) ([]toolshare.DiscoveredTool, globalevents.LogResult, error)
+		DecodeState(string) (toolshare.State, error)
 	}
 	ToolDeps     ToolDepsFactory
 	ToolProvider ToolNameProvider
@@ -240,6 +241,7 @@ type RunnerDeps struct {
 	}
 	Preloader interface {
 		TagPrompts(context.Context, []string) ([]toolshare.TagPrompt, error)
+		DecodeState(string) (toolshare.State, error)
 	}
 	Signals events.Signals
 	View    ExecutionView

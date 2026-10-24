@@ -13,7 +13,6 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/storage"
-	"elbot/internal/toolrun"
 )
 
 type Preparer struct {
@@ -109,7 +108,7 @@ func (p *Preparer) PrepareInput(ctx context.Context, in LoopInput, user *storage
 			}
 		}
 	}
-	state, err := toolrun.DecodeState(in.Session.Metadata)
+	state, err := p.Tools.Manager.DecodeState(in.Session.Metadata)
 	if err != nil {
 		return nil, nil, err
 	}

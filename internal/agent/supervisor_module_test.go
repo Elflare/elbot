@@ -25,15 +25,20 @@ import (
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/tool"
 	"elbot/internal/tool/skill"
+	toolstate "elbot/internal/tool/state"
 	"elbot/internal/toolrun"
 )
 
 // These facades stand in for sibling Supervisors and expose operations only.
+func (isolatedToolCapabilities) DecodeState(raw string) (toolshare.State, error) {
+	return toolstate.DecodeState(raw)
+}
+
 type isolatedToolCapabilities struct {
 	*tool.Registry
 	*toolrun.Manager
 	*toolrun.PreloadService
-	*toolrun.StateService
+	*toolstate.StateService
 	*resident.Store
 	*fileops.Service
 	skills *skill.Manager
@@ -123,7 +128,7 @@ func isolatedModuleDeps(t *testing.T) SupervisorDeps {
 		Tools: isolatedToolCapabilities{
 			Registry: registry, Manager: toolrun.NewManager(registry, permission),
 			PreloadService: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}),
-			StateService:   toolrun.NewStateService(store),
+			StateService:   toolstate.NewStateService(store),
 			Store:          resident.NewStore(filepath.Join(t.TempDir(), "memory.toml")),
 			Service:        fileops.NewService(nil),
 			skills:         skill.NewManager(t.TempDir(), registry),

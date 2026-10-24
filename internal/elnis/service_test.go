@@ -17,11 +17,12 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/elvena"
 	globalevents "elbot/internal/events"
+	"elbot/internal/security"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/testutil"
-	"elbot/internal/tool"
-	"elbot/internal/toolrun"
+	"elbot/internal/tool/preload"
+	"elbot/internal/tool/registry"
 )
 
 func TestHandleRecordCreatesEventAndRejectsDuplicate(t *testing.T) {
@@ -1024,7 +1025,7 @@ func newTestServiceWithRunner(t *testing.T, runner background.Runner, send Sende
 		SandboxRoot:      filepath.Join(t.TempDir(), "sandbox"),
 		Tokens:           map[string]string{"home": "secret", "alt": "alt-secret"},
 		Store:            store,
-		ToolPreloader:    toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: tool.NewRegistry()}),
+		ToolPreloader:    preload.NewPreloadService(preload.PreloadOptions{Registry: registry.NewRegistry(security.DefaultPermission())}),
 		Send:             send,
 		Runner:           runner,
 		EnabledPlatforms: []string{"cli", "qqonebot"},

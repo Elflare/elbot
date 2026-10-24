@@ -92,8 +92,8 @@ func (r *Registry) QueryToolInfos(ctx context.Context, query share.ToolQuery) ([
 	return infos, nil
 }
 
-// BackgroundCachedTools applies background restrictions to executable discovery metadata.
-func BackgroundCachedTools(ctx context.Context, items []share.DiscoveredTool) []share.DiscoveredTool {
+// BackgroundDiscoveredTools applies background restrictions to executable discovery metadata.
+func BackgroundDiscoveredTools(ctx context.Context, items []share.DiscoveredTool) []share.DiscoveredTool {
 	var result []share.DiscoveredTool
 	for _, item := range items {
 		if item.ForegroundOnly {

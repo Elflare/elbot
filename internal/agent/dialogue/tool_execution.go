@@ -23,6 +23,7 @@ type ToolExecutor struct {
 		Run(context.Context, toolrun.RunnerDeps, toolrun.RunRequest) toolrun.RunResult
 		Schemas(context.Context, toolrun.Context, []toolrun.DiscoveredTool) ([]llm.ToolSchema, error)
 		DiscoveredToolsForSession(context.Context, string, bool) ([]toolrun.DiscoveredTool, events.LogResult, error)
+		DecodeState(string) (toolrun.State, error)
 	}
 	Identity  Identity
 	Deps      ToolDepsFactory
@@ -38,7 +39,7 @@ func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storag
 	if session == nil || (session.Mode != storage.SessionModeWork && session.Mode != storage.SessionModeBackground) {
 		return toolrun.RunResult{}
 	}
-	cached, logResult, err := r.Manager.DiscoveredToolsForSession(ctx, session.ID, sessionpkg.IsBackground(session))
+	discovered, logResult, err := r.Manager.DiscoveredToolsForSession(ctx, session.ID, sessionpkg.IsBackground(session))
 	if err != nil {
 		if logResult.ResultStatus == events.ResultSkipped || ctx.Err() != nil {
 			return toolrun.RunResult{Err: err}
@@ -115,7 +116,7 @@ func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storag
 		Calls:            calls,
 		AssistantText:    assistantText,
 		AssistantRawText: assistantRawText,
-		CachedTools:      cached,
+		DiscoveredTools:      discovered,
 		Actor:            r.Identity.Actor(ctx),
 		Committer:        committer,
 	})
@@ -125,10 +126,9 @@ func (r *ToolExecutor) Schemas(ctx context.Context, session *storage.Session) ([
 	if session == nil || (session.Mode != storage.SessionModeWork && session.Mode != storage.SessionModeBackground) {
 		return nil, nil
 	}
-	cached, _, err := r.Manager.DiscoveredToolsForSession(ctx, session.ID, sessionpkg.IsBackground(session))
+	discovered, _, err := r.Manager.DiscoveredToolsForSession(ctx, session.ID, sessionpkg.IsBackground(session))
 	if err != nil {
 		return nil, fmt.Errorf("准备工具: %w", err)
 	}
-	return r.Manager.Schemas(ctx, toolrun.Context{Mode: session.Mode, Session: session, Scope: r.Identity.Scope(ctx), Actor: r.Identity.Actor(ctx), DisableBaseTools: sessionpkg.IsBackground(session)}, cached)
+	return r.Manager.Schemas(ctx, toolrun.Context{Mode: session.Mode, Session: session, Scope: r.Identity.Scope(ctx), Actor: r.Identity.Actor(ctx), DisableBaseTools: sessionpkg.IsBackground(session)}, discovered)
 }
-

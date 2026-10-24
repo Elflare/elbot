@@ -13,7 +13,7 @@ import (
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/tool/runtimeinfo"
-	"elbot/internal/toolrun"
+	toolshare "elbot/internal/tool/share"
 )
 
 // ModuleDeps contains the capabilities used by background tasks, not their owners.
@@ -40,7 +40,12 @@ type ModuleDeps struct {
 	Execution BackgroundExecution
 	Registry  *tool.Registry
 	ToolInfo  runtimeinfo.Info
-	Preloader *toolrun.PreloadService
-	ToolState *toolrun.StateService
-	Send      func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
+	Preloader interface {
+		PrepareBackground(context.Context, toolshare.BackgroundPreloadRequest) (toolshare.BackgroundPreload, error)
+		BackgroundSelections(context.Context, []string) ([]toolshare.BackgroundSelection, error)
+	} // 由 Tool 根部提供后台预载与授权前的声明展开。
+	ToolState interface {
+		Commit(context.Context, string, toolshare.StateUpdate) (toolshare.StateCommit, events.LogResult, error)
+	} // 由同一 Tool 根部提供状态提交。
+	Send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
 }
