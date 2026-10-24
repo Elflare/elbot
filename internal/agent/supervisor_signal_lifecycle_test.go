@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"testing/synctest"
 
 	agentevents "elbot/internal/agent/events"
 	"elbot/internal/signal"
@@ -24,6 +25,51 @@ func assertAgentSignalsClosed(t *testing.T, m *Supervisor) {
 			t.Errorf("%s signal still running after Supervisor.Done", name)
 		}
 	}
+}
+
+func TestSupervisorBeginClosePreservesSignalsUntilClose(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		// External producers belong to App, so this lifecycle-only fixture has
+		// no owned component left to delay the BeginClose observer.
+		ctx, cancel := context.WithCancel(t.Context())
+		m := &Supervisor{
+			ctx: ctx, cancel: cancel, signals: agentevents.NewSignals(),
+			bindings: &signalBindings{}, done: make(chan struct{}),
+		}
+		t.Cleanup(func() { _ = m.Close(context.Background()) })
+		received := false
+		if _, err := m.ObserveStatusChanged(func(agentevents.StatusChangedEvent) error {
+			received = true
+			return nil
+		}, signal.ConnectOptions{}); err != nil {
+			t.Fatal(err)
+		}
+		m.BeginClose()
+		synctest.Wait()
+		for name, done := range map[string]<-chan struct{}{
+			"agent":  m.Done(),
+			"model":  m.signals.ModelCallCompleted.Done(),
+			"status": m.signals.StatusChanged.Done(),
+			"vision": m.signals.VisionFallbackUsed.Done(),
+			"hook":   m.signals.HookFailed.Done(),
+		} {
+			select {
+			case <-done:
+				t.Errorf("%s closed before Close joined external producers", name)
+			default:
+			}
+		}
+		if _, err := m.signals.StatusChanged.Emit(t.Context(), agentevents.StatusChangedEvent{}); err != nil {
+			t.Fatalf("external producer final status rejected: %v", err)
+		}
+		if !received {
+			t.Fatal("external producer final status not delivered")
+		}
+		if err := m.Close(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		assertAgentSignalsClosed(t, m)
+	})
 }
 
 func checkAgentSignalCloseWaits[T any](t *testing.T, m *Supervisor, source *signal.Signal[T, signal.Empty]) {

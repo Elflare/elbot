@@ -34,11 +34,7 @@ func (m *Supervisor) BeginClose() {
 		for _, connection := range m.bindings.connections {
 			<-connection.Done()
 		}
-		// Producers may publish final facts until their own shutdown completes.
-		m.signals.ModelCallCompleted.BeginClose()
-		m.signals.StatusChanged.BeginClose()
-		m.signals.VisionFallbackUsed.BeginClose()
-		m.signals.HookFailed.BeginClose()
+		// Close starts signal shutdown after the caller has joined external producers.
 		<-m.signals.ModelCallCompleted.Done()
 		<-m.signals.StatusChanged.Done()
 		<-m.signals.VisionFallbackUsed.Done()
@@ -49,6 +45,8 @@ func (m *Supervisor) BeginClose() {
 
 func (m *Supervisor) Done() <-chan struct{} { return m.done }
 
+// Close must follow the caller joining platform and background producers.
+// BeginClose alone preserves event sources for their final publications.
 func (m *Supervisor) Close(ctx context.Context) error {
 	m.BeginClose()
 	var errs []error
