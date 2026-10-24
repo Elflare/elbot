@@ -1,3 +1,5 @@
+// 处理插件媒体 RPC、租约、引用、临时文件及清理。
+
 package runtime
 
 import (

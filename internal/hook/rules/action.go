@@ -1,3 +1,5 @@
+// 实现 Hook 的文本改写、输出准备和工具调用等动作。
+
 package rules
 
 import (

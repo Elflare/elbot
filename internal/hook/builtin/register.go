@@ -1,3 +1,5 @@
+// 待删除：转发规则构造与注册，职责将并入根包装配。
+
 package builtin
 
 import (

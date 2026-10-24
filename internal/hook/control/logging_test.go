@@ -1,3 +1,5 @@
+// 验证插件重载提交的日志结果与业务错误独立性。
+
 package control
 
 import (

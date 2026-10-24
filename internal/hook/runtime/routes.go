@@ -1,3 +1,5 @@
+// 管理插件 waiting 租约、续接、取消和调用 token。
+
 package runtime
 
 import (

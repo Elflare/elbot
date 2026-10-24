@@ -1,3 +1,5 @@
+// 将插件消息描述转换为 LLM 消息片段。
+
 package output
 
 import (

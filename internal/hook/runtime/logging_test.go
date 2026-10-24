@@ -1,3 +1,5 @@
+// 验证持久插件工具调用与发送的独立日志结果。
+
 package runtime
 
 import (

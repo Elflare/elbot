@@ -1,3 +1,5 @@
+// 待删除：包装子进程环境，后续直接复用 processenv。
+
 package hook
 
 import (

@@ -1,3 +1,5 @@
+// 验证规则动作遵守工具调用只读策略。
+
 package rules
 
 import (

@@ -1,3 +1,5 @@
+// 验证 Hook 注册替换与在途执行快照。
+
 package hook
 
 import (

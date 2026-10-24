@@ -1,3 +1,5 @@
+// 提供一次性插件执行测试使用的辅助进程。
+
 package rules
 
 import (

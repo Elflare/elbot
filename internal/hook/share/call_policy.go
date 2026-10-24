@@ -1,3 +1,5 @@
+// 提供 Hook 工具调用快照和只读策略校验。
+
 package hook
 
 import (

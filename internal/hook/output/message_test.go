@@ -1,3 +1,5 @@
+// 验证插件消息片段转换和图片来源校验。
+
 package output
 
 import (

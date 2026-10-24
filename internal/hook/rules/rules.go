@@ -1,3 +1,5 @@
+// 定义规则、动作和消费依赖，并构造和注册规则集。
+
 package rules
 
 import (

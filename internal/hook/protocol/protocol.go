@@ -1,3 +1,5 @@
+// 定义 hook.v2 协议帧与数据，并提供编解码操作。
+
 package protocol
 
 import (

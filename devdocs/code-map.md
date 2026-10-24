@@ -152,12 +152,16 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:hook -->
 ## Hook 与插件
 
-- `internal/hook/event.go`、`manager.go`：事件与普通 Hook 流水线。
+当前仅完成 Hook 文件布局与职责注释；包声明、引用和内部代码拆分尚未调整。
+
+- `internal/hook/supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go`：总管、依赖、装配与生命周期的待实现骨架。
+- `internal/hook/agent_bridge.go`、`platform_signals.go`：Agent 注册适配和平台订阅的待实现骨架。
+- `internal/hook/share/event.go`、`match.go`、`call_policy.go`：事件、匹配和只读策略；`registration.go`、`runtime.go` 为共享定义待迁入的骨架。
+- `internal/hook/pipeline/manager.go`：普通 Hook 流水线；`options.go` 为待确认执行参数方式的预留文件。
 - `internal/hook/rules/`、`internal/hook/control/`：规则、一次性 exec、配置与管理。
 - `internal/hook/runtime/`、`internal/hook/protocol/`：持久进程、RPC、waiting 与 hook.v2 帧。
-- `internal/hook/call_policy.go`：工具调用只读策略。
-- `internal/hook/media.go`、`internal/hook/output/`：媒体 API 与输出协议。
-- `internal/hook/logging.go`：Hook 日志发布。
+- `internal/hook/media.go`、`logging.go`：媒体中心契约与日志发布；`output/`：输出与消息转换。
+- `internal/hook/module/`、`builtin/`、`process.go` 及对应测试：已标注待删除，代码暂时保留。
 - `internal/agent/hook_bridge.go`：对外单组回调注册与逐个 handler 的请求登记。
 - `internal/agent/hooks/points.go`：Agent 可挂接点及业务输入、结果契约；`hooks.go`：回调调度、输入事实准备和在途生命周期。
 - [Hook 文档](../docs/hooks.md)。

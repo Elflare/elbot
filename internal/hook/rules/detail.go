@@ -1,3 +1,5 @@
+// 生成管理列表使用的 Hook 规则详情。
+
 package rules
 
 import (

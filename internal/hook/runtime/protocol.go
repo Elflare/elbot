@@ -1,3 +1,5 @@
+// 处理 worker 协议交互、事件调用和响应。
+
 package runtime
 
 import (

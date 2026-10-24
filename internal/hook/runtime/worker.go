@@ -1,3 +1,5 @@
+// 管理插件进程启动、重启、状态转换和实际退出。
+
 package runtime
 
 import (

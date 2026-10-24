@@ -1,3 +1,5 @@
+// 定义并校验插件运行时配置与构造参数，公开查询类型待拆出。
+
 // Package runtime runs stateful hook.v2 processes. It deliberately lives under
 // the Hook subsystem: a persistent hook is still a Hook, not another plugin
 // dispatch path.

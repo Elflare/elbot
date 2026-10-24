@@ -1,3 +1,5 @@
+// 待删除：验证旧 Hook 模块构造和生命周期，相关覆盖将迁入根包测试。
+
 package module
 
 import (

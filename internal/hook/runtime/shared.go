@@ -1,3 +1,5 @@
+// 管理插件共享状态、读写请求和过期清理。
+
 package runtime
 
 import (

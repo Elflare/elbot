@@ -1,3 +1,5 @@
+// 管理 Hook 注册、排序、执行、活动记录、停止与替换，公共定义待拆出。
+
 package hook
 
 import (

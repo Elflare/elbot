@@ -1,3 +1,5 @@
+// 验证插件运行时、工具审计和规范化输出行为。
+
 package runtime
 
 import (

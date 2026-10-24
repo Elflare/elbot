@@ -1,3 +1,5 @@
+// 验证插件媒体来源与媒体标识转换。
+
 package output
 
 import (

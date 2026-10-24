@@ -1,3 +1,5 @@
+// 验证 Hook 匹配、流水线执行与事件语义，共享定义相关用例待拆分。
+
 package hook
 
 import (

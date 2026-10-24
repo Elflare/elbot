@@ -1,3 +1,5 @@
+// 管理插件 worker、配置应用、替换和运行时资源关闭。
+
 package runtime
 
 import (

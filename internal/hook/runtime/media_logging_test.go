@@ -1,3 +1,5 @@
+// 验证媒体清理与运行时关闭的错误和日志语义。
+
 package runtime
 
 import (

@@ -1,3 +1,5 @@
+// 定义 Hook 事件点、事件数据、控制结果和 handler 契约。
+
 // Package hook defines Hook events, matching, registration, and execution.
 package hook
 

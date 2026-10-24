@@ -1,3 +1,5 @@
+// 适配 Hook 日志与通知的对外发布。
+
 package hook
 
 import (

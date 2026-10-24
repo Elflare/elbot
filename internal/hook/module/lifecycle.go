@@ -1,3 +1,5 @@
+// 待删除：旧 Hook 模块生命周期封装，职责将由根包生命周期承接。
+
 package module
 
 import "context"

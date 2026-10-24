@@ -1,3 +1,5 @@
+// 验证一次性插件的媒体交互和规则媒体输出。
+
 package rules
 
 import (

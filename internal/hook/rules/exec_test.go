@@ -1,3 +1,5 @@
+// 验证一次性插件的参数、环境、协议和执行结果。
+
 package rules
 
 import (

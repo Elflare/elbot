@@ -1,3 +1,5 @@
+// 验证插件共享状态的读写、条件更新和参数校验。
+
 package runtime
 
 import (

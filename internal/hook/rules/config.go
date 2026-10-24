@@ -1,3 +1,5 @@
+// 发现插件、加载配置并处理路径、环境与规则校验。
+
 package rules
 
 import (

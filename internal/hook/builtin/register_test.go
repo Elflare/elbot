@@ -1,3 +1,5 @@
+// 待删除：验证旧规则注册转发层，相关覆盖将迁入装配测试。
+
 package builtin
 
 import (

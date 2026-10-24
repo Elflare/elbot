@@ -1,3 +1,5 @@
+// 验证 Hook 重载、规则替换和运行时管理行为。
+
 package control
 
 import (

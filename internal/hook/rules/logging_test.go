@@ -1,3 +1,5 @@
+// 验证规则工具调用和插件执行的来源日志。
+
 package rules
 
 import (

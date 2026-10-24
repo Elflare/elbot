@@ -1,3 +1,5 @@
+// 执行单条 Hook 规则、串联动作并汇总结果。
+
 package rules
 
 import (

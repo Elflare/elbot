@@ -1,3 +1,5 @@
+// 验证 Hook 动作的消息改写、输出准备和工具调用。
+
 package rules
 
 import (

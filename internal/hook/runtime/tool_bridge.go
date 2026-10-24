@@ -1,3 +1,5 @@
+// 分发插件宿主请求并处理工具调用授权和审计。
+
 package runtime
 
 import (

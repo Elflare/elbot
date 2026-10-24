@@ -1,3 +1,5 @@
+// 验证插件输出描述的投递转换与校验。
+
 package output
 
 import (

@@ -1,3 +1,5 @@
+// 验证 Hook 规则规范化、校验和执行行为。
+
 package rules
 
 import (

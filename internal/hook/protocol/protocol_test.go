@@ -1,3 +1,5 @@
+// 验证 hook.v2 帧编解码和请求标识。
+
 package protocol
 
 import (

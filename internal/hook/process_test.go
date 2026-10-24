@@ -1,3 +1,5 @@
+// 待删除：验证旧子进程环境封装，随封装移除。
+
 package hook
 
 import (

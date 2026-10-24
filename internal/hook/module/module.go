@@ -1,3 +1,5 @@
+// 待删除：旧 Hook 组件构造与管理入口，职责将由根包总管承接。
+
 package module
 
 import (

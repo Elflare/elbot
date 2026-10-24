@@ -1,3 +1,5 @@
+// 验证 Hook 日志发布和流水线执行结果的来源语义。
+
 package hook
 
 import (

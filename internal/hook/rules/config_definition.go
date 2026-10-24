@@ -1,3 +1,5 @@
+// 提供 Hook 规则配置的描述定义。
+
 package rules
 
 import "elbot/internal/config"

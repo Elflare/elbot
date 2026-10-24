@@ -1,3 +1,5 @@
+// 声明 Hook 对媒体中心的消费契约。
+
 package hook
 
 import (

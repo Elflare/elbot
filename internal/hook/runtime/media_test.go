@@ -1,3 +1,5 @@
+// 验证插件媒体 RPC、租约和文件访问约束。
+
 package runtime
 
 import (

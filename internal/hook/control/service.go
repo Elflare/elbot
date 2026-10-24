@@ -1,3 +1,5 @@
+// 协调 Hook 查询、重载、启动、停止、重启和候选配置提交。
+
 package control
 
 import (

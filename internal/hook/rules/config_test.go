@@ -1,3 +1,5 @@
+// 验证 Hook 配置加载、插件发现和规则校验。
+
 package rules
 
 import (

@@ -1,3 +1,5 @@
+// 定位并展示 Hook 配置的 TOML 错误。
+
 package rules
 
 import (

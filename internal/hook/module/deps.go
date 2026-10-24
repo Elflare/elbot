@@ -1,3 +1,5 @@
+// 待删除：旧 Hook 模块依赖定义，职责将由根包依赖与装配承接。
+
 package module
 
 import (

@@ -1,3 +1,5 @@
+// 验证流水线中的只读调用约束与可编辑结果。
+
 package hook
 
 import (

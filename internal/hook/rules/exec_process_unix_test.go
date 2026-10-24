@@ -1,3 +1,5 @@
+// 验证 Unix 插件进程退出信号与取消判定。
+
 //go:build !windows
 
 package rules

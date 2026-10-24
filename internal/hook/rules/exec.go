@@ -1,3 +1,5 @@
+// 执行一次性插件进程并处理 hook.v2 交互与宿主请求。
+
 package rules
 
 import (

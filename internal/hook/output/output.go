@@ -1,3 +1,5 @@
+// 将插件输出描述转换为投递输出。
+
 package output
 
 import (
