@@ -1,4 +1,7 @@
+// 处理 Skill 内容中的媒体访问与转换。
 package skill
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"bytes"
@@ -167,7 +170,7 @@ func prepareMediaValue(ctx context.Context, raw json.RawMessage, schemaValue any
 	}
 }
 
-func resultFromStdoutWithMedia(ctx context.Context, out string, call *tool.MediaCall, base string) (*tool.Result, error) {
+func resultFromStdoutWithMedia(ctx context.Context, out string, call *tool.MediaCall, base string) (*toolshare.Result, error) {
 	trimmed := strings.TrimSpace(out)
 	var structured struct {
 		Content  string `json:"content"`
@@ -182,11 +185,11 @@ func resultFromStdoutWithMedia(ctx context.Context, out string, call *tool.Media
 	}
 	if err := json.Unmarshal([]byte(trimmed), &structured); err != nil || (structured.Content == "" && len(structured.Segments) == 0) {
 		if trimmed == "" {
-			return &tool.Result{}, nil
+			return &toolshare.Result{}, nil
 		}
-		return &tool.Result{Content: truncateOutput(out)}, nil
+		return &toolshare.Result{Content: truncateOutput(out)}, nil
 	}
-	result := &tool.Result{Content: truncateOutput(structured.Content)}
+	result := &toolshare.Result{Content: truncateOutput(structured.Content)}
 	if len(structured.Segments) == 0 {
 		return result, nil
 	}

@@ -1,4 +1,7 @@
+// 实现工作目录工具，提供工作区信息及使用说明。
 package builtin
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
@@ -9,7 +12,7 @@ import (
 	"strings"
 
 	"elbot/internal/llm"
-	"elbot/internal/tool"
+	
 	"elbot/internal/workspace"
 )
 
@@ -28,7 +31,7 @@ func NewWorkspaceTool() WorkspaceTool {
 
 func (WorkspaceTool) Name() string { return "workspace" }
 
-func (WorkspaceTool) Info() tool.Info { return workspaceBuilder().BuildInfo() }
+func (WorkspaceTool) Info() toolshare.Info { return workspaceBuilder().BuildInfo() }
 
 func (WorkspaceTool) Schema() llm.ToolSchema { return workspaceBuilder().BuildSchema() }
 
@@ -57,10 +60,10 @@ func (WorkspaceTool) DiscoveryContent(ctx context.Context) (string, bool, error)
 	return instructions, false, nil
 }
 
-func workspaceBuilder() *tool.Builder {
-	return tool.NewBuilder("workspace").
+func workspaceBuilder() *toolshare.Builder {
+	return toolshare.NewBuilder("workspace").
 		Description("设置当前 Session 的共享工作目录。所有需要路径的工具会基于该目录解析相对路径。").
-		Risk(tool.RiskLow).
+		Risk(toolshare.RiskLow).
 		SuperadminOnly().
 		Tags("agent", "files").
 		ForegroundOnly().
@@ -68,8 +71,8 @@ func workspaceBuilder() *tool.Builder {
 		Boolean("reset", "为 true 时重置为默认工作目录。")
 }
 
-func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (WorkspaceTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	var args workspaceArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
@@ -103,7 +106,7 @@ func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Re
 					}
 				}
 				{
-					result := &tool.Result{Content: content}
+					result := &toolshare.Result{Content: content}
 					return result, logContent, nil
 				}
 			}
@@ -115,7 +118,7 @@ func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Re
 			}
 		}
 		{
-			result := &tool.Result{Content: content}
+			result := &toolshare.Result{Content: content}
 			return result, logContent, nil
 		}
 	}
@@ -149,7 +152,7 @@ func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Re
 				}
 			}
 			{
-				result := &tool.Result{Content: content}
+				result := &toolshare.Result{Content: content}
 				return result, logContent, nil
 			}
 		}
@@ -160,7 +163,7 @@ func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Re
 			}
 		}
 		{
-			result := &tool.Result{Content: content}
+			result := &toolshare.Result{Content: content}
 			return result, logContent, nil
 		}
 	}
@@ -169,7 +172,7 @@ func (WorkspaceTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Re
 		return nil, err.Error(), err
 	}
 	{
-		result := &tool.Result{Content: fmt.Sprintf("current workspace: %s", dir)}
+		result := &toolshare.Result{Content: fmt.Sprintf("current workspace: %s", dir)}
 		return result, result.Content, nil
 	}
 }

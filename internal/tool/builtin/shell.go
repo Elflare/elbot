@@ -1,4 +1,7 @@
+// 实现 Shell 工具，运行命令并收集输出。
 package builtin
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
@@ -60,7 +63,7 @@ func (ShellTool) Name() string {
 	return "shell"
 }
 
-func (t ShellTool) Info() tool.Info {
+func (t ShellTool) Info() toolshare.Info {
 	return shellBuilder().BuildInfo()
 }
 
@@ -91,21 +94,21 @@ func currentShellDesc() string {
 	}
 }
 
-func shellBuilder() *tool.Builder {
-	return tool.NewBuilder("shell").
+func shellBuilder() *toolshare.Builder {
+	return toolshare.NewBuilder("shell").
 		Description(fmt.Sprintf("执行 shell 命令。当前使用 %s，请使用相应语法。", currentShellDesc())).
-		Risk(tool.RiskHigh).
+		Risk(toolshare.RiskHigh).
 		DependsOn("workspace").
 		Tags("agent").
-		String("cmd", "要执行的 shell 命令。", tool.Required()).
+		String("cmd", "要执行的 shell 命令。", toolshare.Required()).
 		Integer("timeout_ms", "可选，命令超时时间，默认 10000。").
 		ObjectArray("media_inputs", "可选，显式媒体输入；宿主导出并注入 ELBOT_MEDIA_1 等环境变量，命令需按当前 shell 语法引用变量。", map[string]any{"media": map[string]any{"type": "string", "pattern": "^media:[0-9a-f]{64}$"}}, []string{"media"})
 }
 
-func (t ShellTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
+func (t ShellTool) AssessRisk(ctx context.Context, req toolshare.CallRequest) (toolshare.RiskAssessment, error) {
 	_, cmdText, err := decodeShellArgs(req)
 	if err != nil {
-		return tool.RiskAssessment{}, err
+		return toolshare.RiskAssessment{}, err
 	}
 	assessment := classifyShellCommand(cmdText)
 	if sandbox, ok := sandboxctx.SandboxContextFromContext(ctx); ok && sandbox.Background {
@@ -117,7 +120,7 @@ func (t ShellTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.R
 	return assessment, nil
 }
 
-func (t ShellTool) PrepareCall(ctx context.Context, req tool.CallRequest) (*tool.PreparedCall, error) {
+func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*tool.PreparedCall, error) {
 	_, cmdText, err := decodeShellArgs(req)
 	if err != nil {
 		return nil, err
@@ -132,8 +135,8 @@ func (t ShellTool) PrepareCall(ctx context.Context, req tool.CallRequest) (*tool
 	return nil, analyzeShellAdvice(cmdText, workDir, t.FileGuard).blockErr
 }
 
-func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, logContent string, callErr error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t ShellTool) Call(ctx context.Context, req toolshare.CallRequest) (result *toolshare.Result, logContent string, callErr error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 
 	args, cmdText, err := decodeShellArgs(req)
 	if err != nil {
@@ -206,12 +209,12 @@ func (t ShellTool) Call(ctx context.Context, req tool.CallRequest) (result *tool
 		logContent += "\nstdout:\n" + stdout
 	}
 	{
-		result := &tool.Result{Content: formatShellContent(data), Warnings: advice.warnings}
+		result := &toolshare.Result{Content: formatShellContent(data), Warnings: advice.warnings}
 		return result, logContent, nil
 	}
 }
 
-func decodeShellArgs(req tool.CallRequest) (shellArgs, string, error) {
+func decodeShellArgs(req toolshare.CallRequest) (shellArgs, string, error) {
 	var args shellArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {

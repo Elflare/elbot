@@ -1,5 +1,7 @@
 package runtime
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"elbot/internal/events"
@@ -18,10 +20,10 @@ func testNotify(ctx context.Context, notice events.Notification) error {
 
 type testTools struct{ *tool.Registry }
 
-func (t testTools) ToolInfo(name string) (tool.Info, bool) {
+func (t testTools) ToolInfo(name string) (toolshare.Info, bool) {
 	value, ok := t.Get(name)
 	if !ok {
-		return tool.Info{}, false
+		return toolshare.Info{}, false
 	}
 	return value.Info(), true
 }
@@ -34,7 +36,7 @@ func (t testTools) ToolSchema(name string) (llm.ToolSchema, bool) {
 	return value.Schema(), true
 }
 
-func (t testTools) CallTool(ctx context.Context, call tool.CallRequest) (*tool.Result, string, error) {
+func (t testTools) CallTool(ctx context.Context, call toolshare.CallRequest) (*toolshare.Result, string, error) {
 	value, _ := t.Get(call.Name)
 	return value.Call(ctx, call)
 }

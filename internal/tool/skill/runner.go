@@ -1,4 +1,7 @@
+// 运行 Go Skill，处理执行环境与调用结果。
 package skill
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"bytes"
@@ -71,47 +74,47 @@ func NewGoRunner(catalog *Catalog, environment ...processenv.Environment) GoRunn
 
 func (GoRunner) Name() string { return GoRunnerName }
 
-func (GoRunner) Info() tool.Info {
-	return tool.NewBuilder(GoRunnerName).
+func (GoRunner) Info() toolshare.Info {
+	return toolshare.NewBuilder(GoRunnerName).
 		Description("运行指定 Go skill，并把 arguments JSON 写入 stdin。").
-		Source(tool.SourceBuiltin).
-		Risk(tool.RiskLow).
+		Source(toolshare.SourceBuiltin).
+		Risk(toolshare.RiskLow).
 		Hidden().
 		BuildInfo()
 }
 
 func (GoRunner) Schema() llm.ToolSchema {
-	return tool.NewBuilder(GoRunnerName).
+	return toolshare.NewBuilder(GoRunnerName).
 		Description("运行指定 Go skill；skill_name 选择 skill，payload 放业务参数，timeout_ms 设置超时。可在 payload.media_inputs 显式传 [{\"media\":\"media:<sha256>\"}]；宿主补充相对路径、元数据、小文件 base64 和 media_workspace。stdout 可返回 content、segments（text/image/file，媒体使用 media 或 Skill 目录内相对 path）。").
-		String("skill_name", "Go skill 名称。", tool.Required()).
-		Object("payload", "业务参数 JSON 对象；除显式媒体输入外原样写入 stdin。", tool.Required()).
+		String("skill_name", "Go skill 名称。", toolshare.Required()).
+		Object("payload", "业务参数 JSON 对象；除显式媒体输入外原样写入 stdin。", toolshare.Required()).
 		Integer("timeout_ms", "可选，超时时间，默认 30000。").
 		BuildSchema()
 }
 
-func (r GoRunner) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
+func (r GoRunner) AssessRisk(ctx context.Context, req toolshare.CallRequest) (toolshare.RiskAssessment, error) {
 	_ = ctx
 	var args goRunnerArgs
 	if len(req.Arguments) > 0 {
 		var err error
 		args, err = parseGoRunnerArgs(req.Arguments)
 		if err != nil {
-			return tool.RiskAssessment{}, fmt.Errorf("parse go_skill_run arguments: %w", err)
+			return toolshare.RiskAssessment{}, fmt.Errorf("parse go_skill_run arguments: %w", err)
 		}
 	}
 	record, ok := r.Catalog.Get(strings.TrimSpace(args.SkillName))
 	if !ok || record.Kind != KindGo {
-		return tool.RiskAssessment{Level: tool.RiskHigh}, nil
+		return toolshare.RiskAssessment{Level: toolshare.RiskHigh}, nil
 	}
-	return tool.RiskAssessment{Level: record.Risk}, nil
+	return toolshare.RiskAssessment{Level: record.Risk}, nil
 }
 
-func (r GoRunner) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, logContent string, callErr error) {
+func (r GoRunner) Call(ctx context.Context, req toolshare.CallRequest) (result *toolshare.Result, logContent string, callErr error) {
 	return r.call(ctx, req, runMediaCommand)
 }
 
-func (r GoRunner) call(ctx context.Context, req tool.CallRequest, run func(context.Context, string, *exec.Cmd, *tool.MediaCall) (*tool.Result, error)) (result *tool.Result, logContent string, callErr error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (r GoRunner) call(ctx context.Context, req toolshare.CallRequest, run func(context.Context, string, *exec.Cmd, *tool.MediaCall) (*toolshare.Result, error)) (result *toolshare.Result, logContent string, callErr error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 
 	var args goRunnerArgs
 	if len(req.Arguments) > 0 {
@@ -226,7 +229,7 @@ func safeRelativePath(root, rel string) (string, error) {
 	return clean, nil
 }
 
-func runMediaCommand(ctx context.Context, label string, cmd *exec.Cmd, mediaCall *tool.MediaCall) (*tool.Result, error) {
+func runMediaCommand(ctx context.Context, label string, cmd *exec.Cmd, mediaCall *tool.MediaCall) (*toolshare.Result, error) {
 	stdout := limitedOutput{limit: maxRunnerStdout}
 	stderr := limitedOutput{limit: maxRunnerOutput}
 	cmd.Stdout = &stdout

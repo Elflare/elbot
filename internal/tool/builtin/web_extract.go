@@ -1,4 +1,7 @@
+// 实现网页正文提取工具，管理缓存与共享中的提取请求。
 package builtin
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
@@ -14,7 +17,7 @@ import (
 
 	"elbot/internal/llm"
 	"elbot/internal/processenv"
-	"elbot/internal/tool"
+	
 )
 
 const (
@@ -120,7 +123,7 @@ func (*WebExtractTool) Name() string {
 	return "web_extract"
 }
 
-func (t *WebExtractTool) Info() tool.Info {
+func (t *WebExtractTool) Info() toolshare.Info {
 	return webExtractBuilder().BuildInfo()
 }
 
@@ -128,13 +131,13 @@ func (t *WebExtractTool) Schema() llm.ToolSchema {
 	return webExtractBuilder().BuildSchema()
 }
 
-func webExtractBuilder() *tool.Builder {
-	return tool.NewBuilder("web_extract").
+func webExtractBuilder() *toolshare.Builder {
+	return toolshare.NewBuilder("web_extract").
 		Description("提取网页正文；默认返回前 8000 字符，可用同一 URL 加 offset 继续读取后续内容。").
-		Risk(tool.RiskLow).
+		Risk(toolshare.RiskLow).
 		Tags("web").
 		DependsOn("web_search").
-		String("url", "要提取的网页 URL。", tool.Required()).
+		String("url", "要提取的网页 URL。", toolshare.Required()).
 		Integer("offset", "从第几个字符开始返回，默认 0；用于继续读取缓存中的后续内容。").
 		Integer("max_chars", "本次最多返回字符数，默认 8000，硬上限 16000。").
 		String("remove_selector", "可选，覆盖默认移除 CSS 选择器：header, .class, #id。").
@@ -144,8 +147,8 @@ func webExtractBuilder() *tool.Builder {
 		Boolean("force_refresh", "是否跳过缓存并重新获取网页，默认 false；刷新成功后会覆盖对应缓存。")
 }
 
-func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t *WebExtractTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	if err := ctx.Err(); err != nil {
 		return nil, err.Error(), err
 	}
@@ -206,7 +209,7 @@ func (t *WebExtractTool) Call(ctx context.Context, req tool.CallRequest) (_ *too
 	}
 	data := sliceExtract(entry, args.Offset, args.MaxChars, cached)
 	{
-		result := &tool.Result{Content: formatExtractContent(data)}
+		result := &toolshare.Result{Content: formatExtractContent(data)}
 		return result, fmt.Sprintf("url=%s range=%d-%d/%d cached=%t source=%s\n%s\n%s", data.URL, data.Offset, data.Offset+data.ReturnedChars, data.TotalChars, data.Cached, data.Source, data.Title, data.Content), nil
 	}
 }

@@ -1,4 +1,7 @@
+// 实现文件读取与编辑工具，组织调用参数及结果。
 package builtin
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"bytes"
@@ -87,7 +90,7 @@ func (ReadFileTool) Name() string {
 	return "read_file"
 }
 
-func (t ReadFileTool) Info() tool.Info {
+func (t ReadFileTool) Info() toolshare.Info {
 	return readFileBuilder().BuildInfo()
 }
 
@@ -95,25 +98,25 @@ func (t ReadFileTool) Schema() llm.ToolSchema {
 	return readFileBuilder().BuildSchema()
 }
 
-func (t ReadFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
+func (t ReadFileTool) AssessRisk(ctx context.Context, req toolshare.CallRequest) (toolshare.RiskAssessment, error) {
 	var args readFileArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			return tool.RiskAssessment{}, fmt.Errorf("parse read_file arguments: %w", err)
+			return toolshare.RiskAssessment{}, fmt.Errorf("parse read_file arguments: %w", err)
 		}
 	}
 	mode, err := normalizeReadFileMode(args.Mode)
 	if err != nil {
-		return tool.RiskAssessment{}, err
+		return toolshare.RiskAssessment{}, err
 	}
 	resolved, err := workspace.ResolveWorkspacePath(ctx, args.Path, workspace.PathResolveOptions{AllowDirectory: mode != readFileModeRead})
 	if err != nil {
-		return tool.RiskAssessment{}, err
+		return toolshare.RiskAssessment{}, err
 	}
 	if isSensitiveReadFile(resolved.Path) {
-		return tool.RiskAssessment{Level: tool.RiskHigh, Reasons: []string{"读取可能包含凭据的敏感文件，需要用户确认"}}, nil
+		return toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"读取可能包含凭据的敏感文件，需要用户确认"}}, nil
 	}
-	return tool.RiskAssessment{Level: tool.RiskLow, Reasons: []string{"读取普通文本文件"}}, nil
+	return toolshare.RiskAssessment{Level: toolshare.RiskLow, Reasons: []string{"读取普通文本文件"}}, nil
 }
 
 func isSensitiveReadFile(path string) bool {
@@ -128,16 +131,16 @@ func isSensitiveReadFile(path string) bool {
 	return strings.Contains(name, "secret") || strings.Contains(name, "token") || strings.Contains(name, "credential")
 }
 
-func readFileBuilder() *tool.Builder {
-	return tool.NewBuilder("read_file").
+func readFileBuilder() *toolshare.Builder {
+	return toolshare.NewBuilder("read_file").
 		Description("读取文本文件并返回行号和 revision；支持按行读取，以及在文件或目录中进行文本、AST 名称和函数名搜索。").
-		Risk(tool.RiskLow).
+		Risk(toolshare.RiskLow).
 		SuperadminOnly().
 		Tags("files", "agent").
 		DependsOn("workspace", "rollback_file").
-		String("path", "文件或目录路径；read 模式仅支持文件，搜索模式可递归搜索目录。", tool.Required()).
+		String("path", "文件或目录路径；read 模式仅支持文件，搜索模式可递归搜索目录。", toolshare.Required()).
 		String("encoding", "文本编码，默认 auto。").
-		String("mode", "模式：read（默认，可不填）、grep、ast、ast_function；ast/ast_function 仅支持 Go 和 Shell。", tool.Enum("read", "grep", "ast", "ast_function")).
+		String("mode", "模式：read（默认，可不填）、grep、ast、ast_function；ast/ast_function 仅支持 Go 和 Shell。", toolshare.Enum("read", "grep", "ast", "ast_function")).
 		String("query", "grep/ast/ast_function 模式的搜索内容；ast 按名称精确匹配，ast_function 按函数名精确匹配。").
 		Integer("index", "可选，搜索结果序号，默认不填。grep/ast/ast_function返回内容有多个时，根据返回内容的编号再次搜索时填写。").
 		Integer("start_line", "read 模式起始行，1-based，默认 1。").
@@ -146,8 +149,8 @@ func readFileBuilder() *tool.Builder {
 		Integer("max_matches", "grep/ast/ast_function 模式最大匹配数，默认 20，范围 1-100。")
 }
 
-func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t ReadFileTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	var args readFileArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
@@ -263,7 +266,7 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.R
 		fmt.Fprintf(&b, "truncated: %t\n", truncated)
 		b.WriteString("content:\n")
 		{
-			result := &tool.Result{Content: b.String(), Warnings: warnings}
+			result := &toolshare.Result{Content: b.String(), Warnings: warnings}
 			return result, fmt.Sprintf("file=%s mode=%s lines=0/0 empty=true", file.Path, mode), nil
 		}
 	}
@@ -276,12 +279,12 @@ func (t ReadFileTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.R
 		fmt.Fprintf(&b, "%*d | %s\n", width, i, lines[i-1])
 	}
 	{
-		result := &tool.Result{Content: b.String(), Warnings: warnings}
+		result := &toolshare.Result{Content: b.String(), Warnings: warnings}
 		return result, fmt.Sprintf("file=%s mode=%s lines=%d-%d/%d truncated=%t\n%s", file.Path, mode, start, end, len(lines), truncated, strings.Join(lines[start-1:end], "\n")), nil
 	}
 }
 
-func readFileGrepResult(file fileops.File, lines []string, grep string, contextLines, maxMatches, index int, warnings []string) (*tool.Result, error) {
+func readFileGrepResult(file fileops.File, lines []string, grep string, contextLines, maxMatches, index int, warnings []string) (*toolshare.Result, error) {
 	query := strings.TrimSpace(grep)
 	if query == "" {
 		return nil, fmt.Errorf("grep is required")
@@ -315,7 +318,7 @@ func readFileGrepResult(file fileops.File, lines []string, grep string, contextL
 	fmt.Fprintf(&b, "context_lines: %d\n", contextLines)
 	b.WriteString("content:\n")
 	if len(matches) == 0 || len(lines) == 0 {
-		return &tool.Result{Content: b.String(), Warnings: warnings}, nil
+		return &toolshare.Result{Content: b.String(), Warnings: warnings}, nil
 	}
 	width := len(fmt.Sprintf("%d", len(lines)))
 	lastPrinted := 0
@@ -344,7 +347,7 @@ func readFileGrepResult(file fileops.File, lines []string, grep string, contextL
 		}
 		lastPrinted = end
 	}
-	return &tool.Result{Content: b.String(), Warnings: warnings}, nil
+	return &toolshare.Result{Content: b.String(), Warnings: warnings}, nil
 }
 
 func NewEditFileTool(fileGuard ...*FileGuard) EditFileTool {
@@ -356,7 +359,7 @@ func (EditFileTool) Name() string {
 	return "edit_file"
 }
 
-func (t EditFileTool) Info() tool.Info {
+func (t EditFileTool) Info() toolshare.Info {
 	return editFileBuilder().BuildInfo()
 }
 
@@ -364,42 +367,42 @@ func (t EditFileTool) Schema() llm.ToolSchema {
 	return editFileBuilder().BuildSchema()
 }
 
-func editFileBuilder() *tool.Builder {
+func editFileBuilder() *toolshare.Builder {
 	editProperties := fileops.EditOperationProperties()
-	return tool.NewBuilder("edit_file").
+	return toolshare.NewBuilder("edit_file").
 		Description("批量编辑文本文件；使用 edits 一次提交多个修改；成功后返回 unified diff。任一 edit 失败则不写文件。").
-		Risk(tool.RiskHigh).
+		Risk(toolshare.RiskHigh).
 		DependsOn("workspace", "rollback_file").
 		Tags("files", "agent").
-		String("path", "要编辑的文件路径,基于当前 workspace 解析；也可传绝对路径。", tool.Required()).
+		String("path", "要编辑的文件路径,基于当前 workspace 解析；也可传绝对路径。", toolshare.Required()).
 		String("encoding", "文本编码，默认 auto；非 UTF-8 文件应显式传入 gb18030、gbk、big5、shift_jis 等。").
 		String("expected_revision", "可选，编辑前读取到的revision；用于防止外部并发修改。").
 		Boolean("create", "为 true 时允许创建不存在的文本文件；提供 expected_revision 时仍要求文件已存在。").
 		Integer("context_lines", "diff 上下文行数，默认 3，范围 0-20。确认前自动预检和实际写入结果都会使用该上下文行数。").
-		ObjectArray("edits", "批量编辑列表；所有目标均基于编辑前原文解析。编辑已有文件时，应在本次调用的顶层传入 expected_revision，其值来自 read_file 返回的 revision; 创建新文件时不提供该字段。", editProperties, []string{"operation"}, tool.Required())
+		ObjectArray("edits", "批量编辑列表；所有目标均基于编辑前原文解析。编辑已有文件时，应在本次调用的顶层传入 expected_revision，其值来自 read_file 返回的 revision; 创建新文件时不提供该字段。", editProperties, []string{"operation"}, toolshare.Required())
 }
 
-func (t EditFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
+func (t EditFileTool) AssessRisk(ctx context.Context, req toolshare.CallRequest) (toolshare.RiskAssessment, error) {
 	var args editFileArgs
 	if len(req.Arguments) > 0 {
 		if err := decodeStrictFileArgs(req.Arguments, &args); err != nil {
-			return tool.RiskAssessment{}, fmt.Errorf("parse edit_file arguments: %w", err)
+			return toolshare.RiskAssessment{}, fmt.Errorf("parse edit_file arguments: %w", err)
 		}
 	}
 	resolved, err := resolveFileToolPath(ctx, args.Path, args.Create)
 	if err != nil {
-		return tool.RiskAssessment{}, err
+		return toolshare.RiskAssessment{}, err
 	}
 	if err := checkFileToolWrite(t.FileGuard, resolved.Path, args.Create); err != nil {
-		return tool.RiskAssessment{}, err
+		return toolshare.RiskAssessment{}, err
 	}
 	if sandbox, ok := sandboxctx.SandboxContextFromContext(ctx); ok && sandbox.Background {
-		return tool.RiskAssessment{Level: tool.RiskMedium, Reasons: []string{"后台文件编辑限制在当前任务工作目录内"}}, nil
+		return toolshare.RiskAssessment{Level: toolshare.RiskMedium, Reasons: []string{"后台文件编辑限制在当前任务工作目录内"}}, nil
 	}
-	return tool.RiskAssessment{Level: tool.RiskHigh, Reasons: []string{"文件内容写入操作需要确认"}}, nil
+	return toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"文件内容写入操作需要确认"}}, nil
 }
 
-func (t EditFileTool) PrepareCall(ctx context.Context, req tool.CallRequest) (*tool.PreparedCall, error) {
+func (t EditFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*tool.PreparedCall, error) {
 	var args editFileArgs
 	if len(req.Arguments) > 0 {
 		if err := decodeStrictFileArgs(req.Arguments, &args); err != nil {
@@ -411,7 +414,7 @@ func (t EditFileTool) PrepareCall(ctx context.Context, req tool.CallRequest) (*t
 		return nil, err
 	}
 	detail := editFileRiskDetail(args, prepared.Preview())
-	return tool.NewPreparedCall(t, req, detail, func(ctx context.Context) (*tool.Result, string, error) {
+	return tool.NewPreparedCall(t, req, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.call(ctx, args, prepared)
 	}), nil
 }
@@ -569,21 +572,21 @@ func fileToolEditOptions() fileops.EditFileOptions {
 		DetailedDiffMaxBytes: fileToolDetailedMaxBytes,
 	}
 }
-func (t EditFileTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+func (t EditFileTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
 	var args editFileArgs
 	if len(req.Arguments) > 0 {
 		if err := decodeStrictFileArgs(req.Arguments, &args); err != nil {
 			{
 				callErr := fmt.Errorf("parse edit_file arguments: %w", err)
-				return nil, tool.TruncateLogContent(callErr.Error(), 1024), callErr
+				return nil, toolshare.TruncateLogContent(callErr.Error(), 1024), callErr
 			}
 		}
 	}
 	return t.call(ctx, args, nil)
 }
 
-func (t EditFileTool) call(ctx context.Context, args editFileArgs, prepared *fileops.PreparedEdit) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t EditFileTool) call(ctx context.Context, args editFileArgs, prepared *fileops.PreparedEdit) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	var result fileops.EditResult
 	var resolved workspace.ResolvedPath
 	var err error
@@ -605,7 +608,7 @@ func (t EditFileTool) call(ctx context.Context, args editFileArgs, prepared *fil
 	}
 	{
 		logContent = fmt.Sprintf("edited=%s created=%t dry_run=%t rollback_available=%t\ndiff:\n%s", result.Path, result.Created, result.DryRun, result.RollbackAvailable, result.Diff)
-		return &tool.Result{Content: content, Warnings: resolved.Warnings}, logContent, nil
+		return &toolshare.Result{Content: content, Warnings: resolved.Warnings}, logContent, nil
 	}
 }
 

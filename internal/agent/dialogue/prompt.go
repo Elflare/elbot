@@ -1,5 +1,7 @@
 package dialogue
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"fmt"
@@ -10,7 +12,7 @@ import (
 
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
+	
 )
 
 type SoulProvider interface {
@@ -78,7 +80,7 @@ func sameSoulFileState(left, right soulFileState) bool {
 	return left.size == right.size && left.modTime.Equal(right.modTime)
 }
 
-type PromptToolNames = tool.PromptNames
+type PromptToolNames = toolshare.PromptNames
 
 type ToolNameProvider interface {
 	ToolNames(ctx context.Context, mode string, session *storage.Session, scope session.Scope) (PromptToolNames, error)

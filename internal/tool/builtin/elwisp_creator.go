@@ -1,4 +1,7 @@
+// 实现 Elwisp 创建工具，生成创建所需的说明与结果。
 package builtin
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
@@ -11,7 +14,7 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/llm"
-	"elbot/internal/tool"
+	
 	"elbot/internal/tool/runtimeinfo"
 )
 
@@ -40,31 +43,31 @@ func (ElwispCreatorTool) Name() string {
 	return ElwispCreatorName
 }
 
-func (ElwispCreatorTool) Info() tool.Info {
-	return tool.NewBuilder(ElwispCreatorName).
+func (ElwispCreatorTool) Info() toolshare.Info {
+	return toolshare.NewBuilder(ElwispCreatorName).
 		NeedsElyphRules().
 		Description("获取创建 Elwisp 监听器所需的精简 Elnis/Elvena/ELyph 说明，并附带当前 Elnis 配置摘要。").
-		Source(tool.SourceBuiltin).
-		Risk(tool.RiskLow).
+		Source(toolshare.SourceBuiltin).
+		Risk(toolshare.RiskLow).
 		SuperadminOnly().
 		DependsOn("read_file", "edit_file", "shell").
 		BuildInfo()
 }
 
 func (ElwispCreatorTool) Schema() llm.ToolSchema {
-	return tool.NewBuilder(ElwispCreatorName).
+	return toolshare.NewBuilder(ElwispCreatorName).
 		Description("无参数。调用后返回精简的 Elwisp 创建任务卡，包含当前 Elnis 配置摘要、Elvena 协议、ELyph 写法和安全注意事项。").
 		BuildSchema()
 }
 
-func (t ElwispCreatorTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t ElwispCreatorTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	_ = req
 	if err := ctx.Err(); err != nil {
 		return nil, err.Error(), err
 	}
 	{
-		result := &tool.Result{Content: buildElwispCreatorGuide(loadElwispCreatorConfig(t.info)), NeedsElyphRules: true}
+		result := &toolshare.Result{Content: buildElwispCreatorGuide(loadElwispCreatorConfig(t.info)), NeedsElyphRules: true}
 		return result, "elwisp_creator guide returned", nil
 	}
 }

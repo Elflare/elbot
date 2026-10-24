@@ -1,11 +1,14 @@
+// 维护 Skill 目录与查询结果。
 package skill
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"path/filepath"
 	"sort"
 	"sync"
 
-	"elbot/internal/tool"
+	
 )
 
 type Kind string
@@ -21,7 +24,7 @@ type Record struct {
 	Detail         string
 	DetailPath     string
 	Format         string
-	Risk           tool.RiskLevel
+	Risk           toolshare.RiskLevel
 	SuperadminOnly bool
 	Tags           []string
 	Kind           Kind
@@ -83,9 +86,9 @@ func (c *Catalog) List() []Record {
 	return out
 }
 
-func SourceForKind(kind Kind) tool.Source {
+func SourceForKind(kind Kind) toolshare.Source {
 	if kind == KindGo {
-		return tool.SourceSkillGo
+		return toolshare.SourceSkillGo
 	}
-	return tool.SourceSkillAgent
+	return toolshare.SourceSkillAgent
 }

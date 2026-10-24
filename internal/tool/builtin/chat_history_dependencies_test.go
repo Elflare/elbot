@@ -1,5 +1,7 @@
 package builtin
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"slices"
@@ -11,7 +13,7 @@ import (
 )
 
 func TestChatHistoryToolsMutuallyDiscoverable(t *testing.T) {
-	tools := []tool.Tool{
+	tools := []toolshare.Tool{
 		NewSearchChatHistoryTool(nil),
 		NewGetChatHistoryAroundTool(nil),
 		NewReplyToChatHistoryMessageTool(nil),

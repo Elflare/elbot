@@ -1,4 +1,7 @@
+// 实现媒体获取工具，读取会话中的媒体资料。
 package builtin
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
@@ -11,7 +14,7 @@ import (
 	"elbot/internal/media"
 	"elbot/internal/platform"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
+	
 )
 
 const getMediaDownloadLimit = 5
@@ -30,10 +33,10 @@ func NewGetMediaTool(history storage.ChatHistoryRepository, center *media.Manage
 	return GetMediaTool{history: history, center: center}
 }
 func (GetMediaTool) Name() string { return "get_media" }
-func getMediaBuilder() *tool.Builder {
-	return tool.NewBuilder("get_media").Description("仅在需要使用聊天记录中的媒体时调用。按当前聊天的平台消息 ID 和媒体序号获取媒体；已入库直接复用，未入库按需下载。仅返回媒体 ID，不返回媒体内容。省略 media_index 时获取每条消息第一个媒体；单次最多尝试下载 5 个媒体，失败也计入上限。").Risk(tool.RiskLow).Hidden().Tags("chat").DependsOn("search_chat_history", "get_chat_history_around", "reply_to_chat_history_message").StringArray("message_id", "当前聊天的平台消息 ID 数组，接受 #ID 或纯 ID。", tool.Required())
+func getMediaBuilder() *toolshare.Builder {
+	return toolshare.NewBuilder("get_media").Description("仅在需要使用聊天记录中的媒体时调用。按当前聊天的平台消息 ID 和媒体序号获取媒体；已入库直接复用，未入库按需下载。仅返回媒体 ID，不返回媒体内容。省略 media_index 时获取每条消息第一个媒体；单次最多尝试下载 5 个媒体，失败也计入上限。").Risk(toolshare.RiskLow).Hidden().Tags("chat").DependsOn("search_chat_history", "get_chat_history_around", "reply_to_chat_history_message").StringArray("message_id", "当前聊天的平台消息 ID 数组，接受 #ID 或纯 ID。", toolshare.Required())
 }
-func (GetMediaTool) Info() tool.Info { return getMediaBuilder().BuildInfo() }
+func (GetMediaTool) Info() toolshare.Info { return getMediaBuilder().BuildInfo() }
 func (GetMediaTool) Schema() llm.ToolSchema {
 	schema := getMediaBuilder().BuildSchema()
 	properties := schema.Parameters["properties"].(map[string]any)
@@ -41,8 +44,8 @@ func (GetMediaTool) Schema() llm.ToolSchema {
 	return schema
 }
 
-func (t GetMediaTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t GetMediaTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	var args getMediaArgs
 	if err := json.Unmarshal(req.Arguments, &args); err != nil {
 		{
@@ -90,7 +93,7 @@ func (t GetMediaTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.R
 	chat, err := currentChatHistoryContext(ctx)
 	if err != nil {
 		{
-			result := &tool.Result{Content: err.Error()}
+			result := &toolshare.Result{Content: err.Error()}
 			return result, result.Content, nil
 		}
 	}
@@ -138,7 +141,7 @@ func (t GetMediaTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.R
 		lines[positions[i]] += text
 	}
 	{
-		result := &tool.Result{Content: strings.Join(lines, "\n")}
+		result := &toolshare.Result{Content: strings.Join(lines, "\n")}
 		return result, result.Content + logContent, nil
 	}
 }

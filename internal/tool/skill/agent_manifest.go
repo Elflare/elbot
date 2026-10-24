@@ -1,4 +1,7 @@
+// 读取和处理文档型 Skill 的清单。
 package skill
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"encoding/json"
@@ -9,7 +12,7 @@ import (
 	"strings"
 
 	"elbot/internal/llm"
-	"elbot/internal/tool"
+	
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -17,7 +20,7 @@ import (
 const AgentSkillConfigFile = "ELBOT_SKILL.toml"
 
 type AgentSkillManifest struct {
-	Risk           tool.RiskLevel
+	Risk           toolshare.RiskLevel
 	SuperadminOnly bool
 	Tags           []string
 	Command        []string
@@ -85,7 +88,7 @@ func ParseAgentSkillManifest(data []byte) (AgentSkillManifest, error) {
 
 func validateAgentSkillManifest(file agentSkillManifestFile) (AgentSkillManifest, error) {
 	callable := agentSkillManifestCallable(file)
-	risk := tool.RiskSafe
+	risk := toolshare.RiskSafe
 	if strings.TrimSpace(file.Risk) != "" {
 		parsed, err := parseRisk(file.Risk)
 		if err != nil {

@@ -11,7 +11,7 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
+	"elbot/internal/tool/share"
 	"elbot/internal/turn"
 )
 
@@ -24,7 +24,7 @@ type CompletionDeps struct {
 	Identity       CompletionIdentity
 	Registry       completion.ToolCapabilities
 	Tags           func(context.Context) ([]string, error)
-	ToolNamesByTag func(context.Context, string, func(tool.Tool) bool) ([]string, error)
+	ToolNamesByTag func(context.Context, string, share.ToolQuery) ([]string, error)
 	Execution      CompletionExecution
 }
 
@@ -61,8 +61,8 @@ func NewCompletion(deps CompletionDeps) *completion.Service {
 			Tags: func(ctx context.Context, _ completion.ToolCapabilities, actor contextinfo.Actor, permission *security.Permission) ([]string, error) {
 				return deps.Tags(contextinfo.WithActor(security.WithPermission(ctx, permission), actor))
 			},
-			ToolNamesByTag: func(ctx context.Context, _ completion.ToolCapabilities, tag string, allowed func(tool.Tool) bool) ([]string, error) {
-				return deps.ToolNamesByTag(ctx, tag, allowed)
+			ToolNamesByTag: func(ctx context.Context, _ completion.ToolCapabilities, tag string, query share.ToolQuery) ([]string, error) {
+				return deps.ToolNamesByTag(ctx, tag, query)
 			},
 		},
 		completion.RouterSource{Router: commands, Actor: identity.Actor},

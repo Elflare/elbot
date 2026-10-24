@@ -1,5 +1,7 @@
 package agent
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"slices"
@@ -14,21 +16,21 @@ import (
 	"elbot/internal/modelmgr"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
+	
 )
 
 type contractTool struct{ calls int }
 
 func (*contractTool) Name() string { return "contract_echo" }
-func (v *contractTool) Info() tool.Info {
-	return tool.Info{Name: v.Name(), Source: tool.SourceBuiltin, Risk: tool.RiskSafe, Tags: []string{"contract"}}
+func (v *contractTool) Info() toolshare.Info {
+	return toolshare.Info{Name: v.Name(), Source: toolshare.SourceBuiltin, Risk: toolshare.RiskSafe, Tags: []string{"contract"}}
 }
 func (v *contractTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: v.Name(), Parameters: map[string]any{"type": "object", "properties": map[string]any{}}}
 }
-func (v *contractTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
+func (v *contractTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
 	v.calls++
-	return &tool.Result{Content: "contract result"}, "", nil
+	return &toolshare.Result{Content: "contract result"}, "", nil
 }
 
 type contractChat struct {

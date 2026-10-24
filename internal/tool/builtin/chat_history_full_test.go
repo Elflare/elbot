@@ -1,5 +1,7 @@
 package builtin
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"encoding/json"
@@ -9,7 +11,7 @@ import (
 	"unicode/utf8"
 
 	"elbot/internal/storage"
-	"elbot/internal/tool"
+	
 )
 
 type historyResultRepository struct {
@@ -40,10 +42,10 @@ func TestChatHistoryFullParameter(t *testing.T) {
 			row.Metadata = string(metadata)
 		}
 		repo := historyResultRepository{rows: []storage.ChatMessage{row}}
-		for _, caller := range []tool.Tool{NewSearchChatHistoryTool(repo), NewGetChatHistoryAroundTool(repo)} {
+		for _, caller := range []toolshare.Tool{NewSearchChatHistoryTool(repo), NewGetChatHistoryAroundTool(repo)} {
 			for _, full := range []string{"", `,"full":false`, `,"full":true`} {
 				t.Run(caller.Name()+"/"+full+"/reference="+row.ReplyToPlatformMessageID, func(t *testing.T) {
-					result, logContent, err := caller.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":"42"` + full + `}`)})
+					result, logContent, err := caller.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":"42"` + full + `}`)})
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -70,8 +72,8 @@ func TestChatHistoryFullStillBoundsTotalResult(t *testing.T) {
 		{{PlatformMessageID: "42", Text: strings.Repeat("雪🔥", 2000)}, {PlatformMessageID: "43", Text: strings.Repeat("后", 3000)}},
 	} {
 		repo := historyResultRepository{rows: rows}
-		for _, caller := range []tool.Tool{NewSearchChatHistoryTool(repo), NewGetChatHistoryAroundTool(repo)} {
-			result, logContent, err := caller.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":"42","full":true}`)})
+		for _, caller := range []toolshare.Tool{NewSearchChatHistoryTool(repo), NewGetChatHistoryAroundTool(repo)} {
+			result, logContent, err := caller.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":"42","full":true}`)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -92,8 +94,8 @@ func TestChatHistoryPreservesLiteralTruncationText(t *testing.T) {
 	ctx, _, _ := newHistoryMediaToolTest(t)
 	const body = "用户原文：...[单条消息过长，已截断]"
 	repo := historyResultRepository{rows: []storage.ChatMessage{{PlatformMessageID: "42", Text: body}}}
-	for _, caller := range []tool.Tool{NewSearchChatHistoryTool(repo), NewGetChatHistoryAroundTool(repo), NewReplyToChatHistoryMessageTool(repo)} {
-		result, logContent, err := caller.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":"42","message":"回复"}`)})
+	for _, caller := range []toolshare.Tool{NewSearchChatHistoryTool(repo), NewGetChatHistoryAroundTool(repo), NewReplyToChatHistoryMessageTool(repo)} {
+		result, logContent, err := caller.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":"42","message":"回复"}`)})
 		if err != nil || !strings.Contains(result.Content, body) || !strings.Contains(logContent, body) {
 			t.Fatalf("%s changed original message: result=%+v log=%q err=%v", caller.Name(), result, logContent, err)
 		}
@@ -104,7 +106,7 @@ func TestChatHistoryReplySeparatesLogPreview(t *testing.T) {
 	ctx, _, _ := newHistoryMediaToolTest(t)
 	repo := historyResultRepository{rows: []storage.ChatMessage{{PlatformMessageID: "42", Text: strings.Repeat("雪🔥", 200)}}}
 	caller := NewReplyToChatHistoryMessageTool(repo)
-	result, logContent, err := caller.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":"42","message":"回复"}`)})
+	result, logContent, err := caller.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":"42","message":"回复"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +116,7 @@ func TestChatHistoryReplySeparatesLogPreview(t *testing.T) {
 }
 
 func TestChatHistoryFullSchema(t *testing.T) {
-	for _, caller := range []tool.Tool{NewSearchChatHistoryTool(nil), NewGetChatHistoryAroundTool(nil)} {
+	for _, caller := range []toolshare.Tool{NewSearchChatHistoryTool(nil), NewGetChatHistoryAroundTool(nil)} {
 		schema := caller.Schema()
 		properties := schema.Parameters["properties"].(map[string]any)
 		full := properties["full"].(map[string]any)

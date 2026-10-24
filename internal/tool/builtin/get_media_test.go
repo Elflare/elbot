@@ -1,5 +1,7 @@
 package builtin
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"bytes"
 	"context"
@@ -17,7 +19,7 @@ import (
 	"elbot/internal/platform"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
-	"elbot/internal/tool"
+	
 )
 
 type getMediaResolver struct {
@@ -69,15 +71,15 @@ func newHistoryMediaToolTest(t *testing.T) (context.Context, GetMediaTool, *getM
 
 func TestGetMediaLimitCacheDefaultsAndTextOnly(t *testing.T) {
 	ctx, tools, resolver := newHistoryMediaToolTest(t)
-	result, _, err := tools.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"],"media_index":[[1,2,3,4,5,6,1]]}`)})
+	result, _, err := tools.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"],"media_index":[[1,2,3,4,5,6,1]]}`)})
 	if err != nil || resolver.calls != 5 || len(result.Segments) != 0 || len(result.Outputs) != 0 || !strings.Contains(result.Content, "达到本次") {
 		t.Fatalf("result = %#v err=%v calls=%d", result, err, resolver.calls)
 	}
-	result, _, err = tools.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":["#1","2"]}`)})
+	result, _, err = tools.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["#1","2"]}`)})
 	if err != nil || resolver.calls != 6 || strings.Count(result.Content, "[图片 media:") != 2 {
 		t.Fatalf("defaults = %#v %v calls=%d", result, err, resolver.calls)
 	}
-	result, _, err = tools.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"],"media_index":[[1,2,3,4,5,6,7]]}`)})
+	result, _, err = tools.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"],"media_index":[[1,2,3,4,5,6,7]]}`)})
 	if err != nil || resolver.calls != 8 || strings.Contains(result.Content, "上限") {
 		t.Fatalf("cache counted = %#v %v calls=%d", result, err, resolver.calls)
 	}
@@ -86,7 +88,7 @@ func TestGetMediaLimitCacheDefaultsAndTextOnly(t *testing.T) {
 func TestGetMediaValidationAndFailureBudget(t *testing.T) {
 	ctx, tools, resolver := newHistoryMediaToolTest(t)
 	for _, raw := range []string{`{}`, `{"message_id":[]}`, `{"message_id":[""]}`, `{"message_id":["1"],"media_index":[]}`, `{"message_id":["1"],"media_index":[[]]}`, `{"message_id":["1"],"media_index":[[0]]}`, `{"message_id":["1"],"media_index":[[-1]]}`} {
-		if _, _, err := tools.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(raw)}); err == nil {
+		if _, _, err := tools.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(raw)}); err == nil {
 			t.Fatalf("accepted %s", raw)
 		}
 	}
@@ -94,12 +96,12 @@ func TestGetMediaValidationAndFailureBudget(t *testing.T) {
 		t.Fatal("invalid arguments downloaded")
 	}
 	resolver.fail = true
-	result, _, err := tools.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"],"media_index":[[1,1,2,3,4,5,6,100]]}`)})
+	result, _, err := tools.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"],"media_index":[[1,1,2,3,4,5,6,100]]}`)})
 	if err != nil || resolver.calls != 5 || strings.Contains(result.Content, "secret-token") || !strings.Contains(result.Content, "序号越界") || !strings.Contains(result.Content, "达到本次") {
 		t.Fatalf("failure result = %#v %v calls=%d", result, err, resolver.calls)
 	}
 	other := platform.WithMessageContext(ctx, platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ScopeID: "other"}}, MediaResolver: resolver})
-	result, _, err = tools.Call(other, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"]}`)})
+	result, _, err = tools.Call(other, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"]}`)})
 	if err != nil || resolver.calls != 5 || !strings.Contains(result.Content, "没有该消息") {
 		t.Fatalf("scope leaked: %#v %v", result, err)
 	}
@@ -114,7 +116,7 @@ func TestGetMediaErrorLogSeparators(t *testing.T) {
 	} {
 		t.Run(args, func(t *testing.T) {
 			ctx, tools, _ := newHistoryMediaToolTest(t)
-			result, logContent, err := tools.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(args)})
+			result, logContent, err := tools.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(args)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -149,15 +151,15 @@ func TestHistoryQueriesShowMediaWithoutDownload(t *testing.T) {
 	around := NewGetChatHistoryAroundTool(tools.history)
 	around.center = tools.center
 	for _, call := range []struct {
-		tool tool.Tool
+		tool toolshare.Tool
 		args string
 	}{{search, `{}`}, {around, `{"message_id":"1"}`}} {
-		result, _, err := call.tool.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(call.args)})
+		result, _, err := call.tool.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(call.args)})
 		if err != nil || resolver.calls != 0 || !strings.Contains(result.Content, "1. [图片 media:未下载]") || len(result.Segments) != 0 {
 			t.Fatalf("history result = %#v %v", result, err)
 		}
 	}
-	if _, _, err := tools.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"]}`)}); err != nil {
+	if _, _, err := tools.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"]}`)}); err != nil {
 		t.Fatal(err)
 	}
 	row, err := tools.history.GetByPlatformMessage(ctx, "p", "s", "1")
@@ -168,7 +170,7 @@ func TestHistoryQueriesShowMediaWithoutDownload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, _, err := search.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{}`)})
+	result, _, err := search.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(`{}`)})
 	if err != nil || resolver.calls != 1 || !strings.Contains(result.Content, "[图片 "+ids[1]+"]") {
 		t.Fatalf("downloaded history = %#v %v", result, err)
 	}
@@ -182,7 +184,7 @@ func TestGetMediaReturnsCompressedHistoryID(t *testing.T) {
 		t.Fatal(err)
 	}
 	resolver.data = data.Bytes()
-	request := tool.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"]}`)}
+	request := toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"]}`)}
 	first, _, err := tools.Call(ctx, request)
 	if err != nil {
 		t.Fatal(err)

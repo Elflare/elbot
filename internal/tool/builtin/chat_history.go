@@ -1,4 +1,7 @@
+// 实现聊天历史查询和回复定位工具。
 package builtin
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
@@ -85,23 +88,23 @@ func (SearchChatHistoryTool) Name() string         { return "search_chat_history
 func (GetChatHistoryAroundTool) Name() string      { return "get_chat_history_around" }
 func (ReplyToChatHistoryMessageTool) Name() string { return "reply_to_chat_history_message" }
 
-func (t SearchChatHistoryTool) Info() tool.Info { return searchChatHistoryBuilder().BuildInfo() }
+func (t SearchChatHistoryTool) Info() toolshare.Info { return searchChatHistoryBuilder().BuildInfo() }
 func (t SearchChatHistoryTool) Schema() llm.ToolSchema {
 	return searchChatHistoryBuilder().BuildSchema()
 }
-func (t GetChatHistoryAroundTool) Info() tool.Info { return aroundChatHistoryBuilder().BuildInfo() }
+func (t GetChatHistoryAroundTool) Info() toolshare.Info { return aroundChatHistoryBuilder().BuildInfo() }
 func (t GetChatHistoryAroundTool) Schema() llm.ToolSchema {
 	return aroundChatHistoryBuilder().BuildSchema()
 }
-func (t ReplyToChatHistoryMessageTool) Info() tool.Info { return replyChatHistoryBuilder().BuildInfo() }
+func (t ReplyToChatHistoryMessageTool) Info() toolshare.Info { return replyChatHistoryBuilder().BuildInfo() }
 func (t ReplyToChatHistoryMessageTool) Schema() llm.ToolSchema {
 	return replyChatHistoryBuilder().BuildSchema()
 }
 
-func searchChatHistoryBuilder() *tool.Builder {
-	return tool.NewBuilder("search_chat_history").
+func searchChatHistoryBuilder() *toolshare.Builder {
+	return toolshare.NewBuilder("search_chat_history").
 		Description("查询当前平台当前群聊或私聊的聊天历史，可按关键词、用户和时间过滤；返回的 #message_id 可继续查看上下文或引用回复。").
-		Risk(tool.RiskLow).
+		Risk(toolshare.RiskLow).
 		Tags("chat").
 		DependsOn("get_chat_history_around", "reply_to_chat_history_message", "get_media").
 		String("query", "按消息正文搜索的关键词；可传多个搜索词，用空格、逗号、中文逗号、竖线或换行分隔；留空表示不过滤。").
@@ -115,36 +118,36 @@ func searchChatHistoryBuilder() *tool.Builder {
 		Boolean("full", "是否完整显示单条消息及引用内容，默认 false，可省略；true 只解除单条 300 字限制，整份结果仍受 6000 字限制，过长的行可能被整体省略。")
 }
 
-func aroundChatHistoryBuilder() *tool.Builder {
-	return tool.NewBuilder("get_chat_history_around").
+func aroundChatHistoryBuilder() *toolshare.Builder {
+	return toolshare.NewBuilder("get_chat_history_around").
 		Description("根据 search_chat_history 返回的 #message_id 查询当前聊天中该条消息附近的上下文。").
-		Risk(tool.RiskLow).
+		Risk(toolshare.RiskLow).
 		Hidden().
 		Tags("chat").
 		DependsOn("search_chat_history", "reply_to_chat_history_message", "get_media").
-		String("message_id", "search_chat_history 返回结果中的平台消息 ID，可传 # 开头或纯 ID。", tool.Required()).
+		String("message_id", "search_chat_history 返回结果中的平台消息 ID，可传 # 开头或纯 ID。", toolshare.Required()).
 		Integer("before", "向该消息之前查询多少条当前聊天记录，默认 10，最大 50。").
 		Integer("after", "向该消息之后查询多少条当前聊天记录，默认 10，最大 50。").
 		Boolean("full", "是否完整显示单条消息及引用内容，默认 false，可省略；true 只解除单条 300 字限制，整份结果仍受 6000 字限制，过长的行可能被整体省略。")
 }
 
-func replyChatHistoryBuilder() *tool.Builder {
-	return tool.NewBuilder("reply_to_chat_history_message").
+func replyChatHistoryBuilder() *toolshare.Builder {
+	return toolshare.NewBuilder("reply_to_chat_history_message").
 		Description("引用当前聊天历史中的某条平台消息，并发送回复到当前群聊或私聊。调用成功后不要重复发送相同内容。").
 		Hidden().
-		Risk(tool.RiskLow).
+		Risk(toolshare.RiskLow).
 		Tags("chat").
 		DependsOn("search_chat_history", "get_chat_history_around", "get_media").
-		String("message_id", "search_chat_history 或 get_chat_history_around 返回结果中的平台消息 ID，可传 # 开头或纯 ID。", tool.Required()).
-		String("message", "引用该历史消息时要发送到当前聊天的回复内容。", tool.Required())
+		String("message_id", "search_chat_history 或 get_chat_history_around 返回结果中的平台消息 ID，可传 # 开头或纯 ID。", toolshare.Required()).
+		String("message", "引用该历史消息时要发送到当前聊天的回复内容。", toolshare.Required())
 }
 
-func (t SearchChatHistoryTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t SearchChatHistoryTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	chatCtx, err := currentChatHistoryContext(ctx)
 	if err != nil {
 		{
-			result := &tool.Result{Content: err.Error()}
+			result := &toolshare.Result{Content: err.Error()}
 			return result, result.Content, nil
 		}
 	}
@@ -161,7 +164,7 @@ func (t SearchChatHistoryTool) Call(ctx context.Context, req tool.CallRequest) (
 	senderID, senderName, userErr := chatHistoryUserFilter(args.User, chatCtx)
 	if userErr != "" {
 		{
-			result := &tool.Result{Content: userErr}
+			result := &toolshare.Result{Content: userErr}
 			return result, result.Content, nil
 		}
 	}
@@ -181,7 +184,7 @@ func (t SearchChatHistoryTool) Call(ctx context.Context, req tool.CallRequest) (
 	}
 	if len(rows) == 0 {
 		{
-			result := &tool.Result{Content: "没有查到符合条件的当前聊天历史记录。"}
+			result := &toolshare.Result{Content: "没有查到符合条件的当前聊天历史记录。"}
 			return result, "returned=0\ncontent:\n" + result.Content, nil
 		}
 	}
@@ -202,17 +205,17 @@ func (t SearchChatHistoryTool) Call(ctx context.Context, req tool.CallRequest) (
 		logLines = append(logLines, hint)
 	}
 	{
-		result := &tool.Result{Content: chatHistoryResultLines(lines, "...[查询结果过长，已截断]")}
+		result := &toolshare.Result{Content: chatHistoryResultLines(lines, "...[查询结果过长，已截断]")}
 		return result, fmt.Sprintf("returned=%d\ncontent:\n%s", len(rows), chatHistoryResultLines(logLines, "…")), nil
 	}
 }
 
-func (t GetChatHistoryAroundTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t GetChatHistoryAroundTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	chatCtx, err := currentChatHistoryContext(ctx)
 	if err != nil {
 		{
-			result := &tool.Result{Content: err.Error()}
+			result := &toolshare.Result{Content: err.Error()}
 			return result, result.Content, nil
 		}
 	}
@@ -228,7 +231,7 @@ func (t GetChatHistoryAroundTool) Call(ctx context.Context, req tool.CallRequest
 	messageID := parseChatHistoryMessageID(args.MessageID)
 	if messageID == "" {
 		{
-			result := &tool.Result{Content: "message_id 必须是 search_chat_history 返回的 #message_id 或纯平台消息 ID。"}
+			result := &toolshare.Result{Content: "message_id 必须是 search_chat_history 返回的 #message_id 或纯平台消息 ID。"}
 			return result, result.Content, nil
 		}
 	}
@@ -242,7 +245,7 @@ func (t GetChatHistoryAroundTool) Call(ctx context.Context, req tool.CallRequest
 	if err != nil {
 		if err == storage.ErrNotFound {
 			{
-				result := &tool.Result{Content: fmt.Sprintf("没有在当前聊天找到 message_id 为 %s 的历史记录。", messageID)}
+				result := &toolshare.Result{Content: fmt.Sprintf("没有在当前聊天找到 message_id 为 %s 的历史记录。", messageID)}
 				return result, fmt.Sprintf("message_id=%s returned=0\ncontent:\n%s", messageID, result.Content), nil
 			}
 		}
@@ -263,7 +266,7 @@ func (t GetChatHistoryAroundTool) Call(ctx context.Context, req tool.CallRequest
 		logLines = append(logLines, hint)
 	}
 	{
-		result := &tool.Result{Content: chatHistoryResultLines(lines, "...[查询结果过长，已截断]")}
+		result := &toolshare.Result{Content: chatHistoryResultLines(lines, "...[查询结果过长，已截断]")}
 		return result, fmt.Sprintf("message_id=%s returned=%d\ncontent:\n%s", messageID, len(rows), chatHistoryResultLines(logLines, "…")), nil
 	}
 }
@@ -278,12 +281,12 @@ func viewImageHistoryHint(ctx context.Context, center *media.Manager) string {
 	return ""
 }
 
-func (t ReplyToChatHistoryMessageTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t ReplyToChatHistoryMessageTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	chatCtx, err := currentChatHistoryContext(ctx)
 	if err != nil {
 		{
-			result := &tool.Result{Content: err.Error()}
+			result := &toolshare.Result{Content: err.Error()}
 			return result, result.Content, nil
 		}
 	}
@@ -299,14 +302,14 @@ func (t ReplyToChatHistoryMessageTool) Call(ctx context.Context, req tool.CallRe
 	messageID := parseChatHistoryMessageID(args.MessageID)
 	if messageID == "" {
 		{
-			result := &tool.Result{Content: "message_id 必须是 search_chat_history 返回的 #message_id 或纯平台消息 ID。"}
+			result := &toolshare.Result{Content: "message_id 必须是 search_chat_history 返回的 #message_id 或纯平台消息 ID。"}
 			return result, result.Content, nil
 		}
 	}
 	replyText := strings.TrimSpace(args.Message)
 	if replyText == "" {
 		{
-			result := &tool.Result{Content: "回复内容不能为空。"}
+			result := &toolshare.Result{Content: "回复内容不能为空。"}
 			return result, result.Content, nil
 		}
 	}
@@ -314,14 +317,14 @@ func (t ReplyToChatHistoryMessageTool) Call(ctx context.Context, req tool.CallRe
 	if err != nil {
 		if err == storage.ErrNotFound {
 			{
-				result := &tool.Result{Content: fmt.Sprintf("没有在当前聊天找到 message_id 为 %s 的历史记录。", messageID)}
+				result := &toolshare.Result{Content: fmt.Sprintf("没有在当前聊天找到 message_id 为 %s 的历史记录。", messageID)}
 				return result, result.Content, nil
 			}
 		}
 		return nil, err.Error(), err
 	}
 	{
-		result := &tool.Result{
+		result := &toolshare.Result{
 			Content: fmt.Sprintf("已引用回复 [#%s] %s(%s): %s\n回复内容已发送到当前聊天，请不要重复发送。", target.PlatformMessageID, target.SenderName, target.SenderID, truncateChatHistoryMessage(target.Text, false, "...[单条消息过长，已截断]")),
 			Outputs: []delivery.Output{delivery.Reply(messageID, replyText)},
 		}

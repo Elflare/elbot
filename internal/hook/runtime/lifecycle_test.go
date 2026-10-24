@@ -1,5 +1,7 @@
 package runtime
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"errors"
@@ -47,7 +49,7 @@ func TestRuntimeCloseJoinsPluginToolRequests(t *testing.T) {
 			release := make(chan struct{})
 			unblock := sync.OnceFunc(func() { close(release) })
 			registry := tool.NewRegistry()
-			if err := registry.Register(loggingTool{run: func(ctx context.Context, _ tool.CallRequest) (*tool.Result, string, error) {
+			if err := registry.Register(loggingTool{run: func(ctx context.Context, _ toolshare.CallRequest) (*toolshare.Result, string, error) {
 				entered <- ctx
 				<-release // Deliberately ignore cancellation until the test releases us.
 				return nil, "tool exited", ctx.Err()

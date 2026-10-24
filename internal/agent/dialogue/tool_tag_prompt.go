@@ -1,5 +1,7 @@
 package dialogue
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 
@@ -10,7 +12,7 @@ import (
 // The tool module owns tag configuration; Agent only places its prompt material.
 type ToolTagsSystemPromptSource struct {
 	Preloader interface {
-		TagPrompts(context.Context, []string) ([]toolrun.TagPrompt, error)
+		TagPrompts(context.Context, []string) ([]toolshare.TagPrompt, error)
 	}
 }
 

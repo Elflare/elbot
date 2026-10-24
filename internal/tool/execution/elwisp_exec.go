@@ -1,0 +1,128 @@
+// 执行 Elwisp 远程调用并转换返回结果。
+package execution
+
+import toolshare "elbot/internal/tool/share"
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"time"
+
+	"elbot/internal/events"
+	"elbot/internal/llm"
+	
+)
+
+type elwispToolRequest struct {
+	Tool      string          `json:"tool"`
+	EventKey  string          `json:"event_key,omitempty"`
+	Arguments json.RawMessage `json:"arguments"`
+}
+
+type elwispToolResponse struct {
+	Content string `json:"content"`
+	Text    string `json:"text"`
+	Result  string `json:"result"`
+	Error   string `json:"error"`
+}
+
+func executeELwispTool(ctx context.Context, call llm.ToolCallRequest, resolved ResolvedTool, onStarted func()) (result toolshare.ExecutionResult) {
+	result.Call = call
+	result.ResultStatus = events.ResultFailed
+	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
+	defer func() {
+		// The remote source supplies its own log body, independently of segments.
+		if result.Error != nil {
+			result.LogResult.Content = result.Error.Error() + "\n" + result.LogResult.Content
+		}
+		result.LogResult.Content = toolshare.TruncateLogContent(result.LogResult.Content, 1024)
+		if result.Error != nil {
+			if errors.Is(result.Error, context.Canceled) {
+				result.ResultStatus = events.ResultCanceled
+			}
+			if result.Result == nil {
+				message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s failed: %v", call.Name, result.Error))
+			}
+		}
+		result.Message = message
+	}()
+	cached := resolved.Cached
+	timeout := time.Duration(cached.TimeoutSeconds) * time.Second
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	toolCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	arguments := json.RawMessage(strings.TrimSpace(call.Arguments))
+	if len(arguments) == 0 {
+		arguments = json.RawMessage(`{}`)
+	}
+	payload, err := json.Marshal(elwispToolRequest{Tool: cached.Name, EventKey: cached.EventKey, Arguments: arguments})
+	if err != nil {
+		result.LogResult.ResultStatus = events.ResultFailed
+		result.Error = err
+		return result
+	}
+	req, err := http.NewRequestWithContext(toolCtx, http.MethodPost, cached.Endpoint, bytes.NewReader(payload))
+	if err != nil {
+		result.LogResult.ResultStatus = events.ResultFailed
+		result.Error = err
+		return result
+	}
+	req.Header.Set("Content-Type", "application/json")
+	result.ExecutionStarted = true
+	if onStarted != nil {
+		onStarted()
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		result.Error = err
+		return result
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		result.Error = err
+		return result
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		result.Error = fmt.Errorf("ELwisp tool HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return result
+	}
+	content := strings.TrimSpace(string(body))
+	var parsed elwispToolResponse
+	if err := json.Unmarshal(body, &parsed); err == nil {
+		content = firstELwispResult(parsed.Content, parsed.Text, parsed.Result, content)
+		if strings.TrimSpace(parsed.Error) != "" {
+			result.Error = fmt.Errorf("ELwisp tool error: %s", strings.TrimSpace(parsed.Error))
+			content = firstELwispResult(parsed.Content, parsed.Text, parsed.Result)
+			result.LogResult.Content = content
+			if content != "" {
+				result.Result = &toolshare.Result{Content: content}
+				message.Segments = result.Result.LLMSegments()
+			}
+			return result
+		}
+	}
+	result.Result = &toolshare.Result{Content: content}
+	result.LogResult.Content = content
+	message.Segments = result.Result.LLMSegments()
+	result.ResultStatus = events.ResultSucceeded
+	return result
+}
+
+func firstELwispResult(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}

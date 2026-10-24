@@ -1,4 +1,7 @@
+// 实现 Skill 修改工具，准备并提交修改内容。
 package skill
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"bytes"
@@ -67,12 +70,12 @@ func NewModifyElSkillTool(manager *Manager) ModifyElSkillTool {
 
 func (ReadElSkillTool) Name() string { return ReadElSkillName }
 
-func (ReadElSkillTool) Info() tool.Info {
-	return tool.NewBuilder(ReadElSkillName).
+func (ReadElSkillTool) Info() toolshare.Info {
+	return toolshare.NewBuilder(ReadElSkillName).
 		Description("按行读取 ElBot 原生 EL Skill 的 SKILL.elyph 或 main.go，返回 revision 和 1-based 行号，供修改前定位使用。").
 		DependsOn("modify_el_skill").
-		Source(tool.SourceBuiltin).
-		Risk(tool.RiskMedium).
+		Source(toolshare.SourceBuiltin).
+		Risk(toolshare.RiskMedium).
 		BuildInfo()
 }
 
@@ -93,8 +96,8 @@ func (ReadElSkillTool) Schema() llm.ToolSchema {
 	}
 }
 
-func (t ReadElSkillTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t ReadElSkillTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	if err := ctx.Err(); err != nil {
 		return nil, err.Error(), err
 	}
@@ -136,19 +139,19 @@ func (t ReadElSkillTool) Call(ctx context.Context, req tool.CallRequest) (_ *too
 		fmt.Fprintf(&b, "%d: %s\n", i, lines[i-1])
 	}
 	{
-		result := &tool.Result{Content: strings.TrimRight(b.String(), "\n"), NeedsElyphRules: target == elSkillTargetElyph}
+		result := &toolshare.Result{Content: strings.TrimRight(b.String(), "\n"), NeedsElyphRules: target == elSkillTargetElyph}
 		return result, fmt.Sprintf("skill=%s target=%s lines=%d-%d/%d", args.Name, args.Target, start, end, len(lines)), nil
 	}
 }
 
 func (ModifyElSkillTool) Name() string { return ModifyElSkillName }
 
-func (ModifyElSkillTool) Info() tool.Info {
-	return tool.NewBuilder(ModifyElSkillName).
+func (ModifyElSkillTool) Info() toolshare.Info {
+	return toolshare.NewBuilder(ModifyElSkillName).
 		Description("修改 ElBot 原生 EL Skill 的 SKILL.elyph 或 main.go；技能定义会校验 ELyph 并 reload，源码只写入文件，完成后用 finalize_el_skill 格式化和编译。").
 		DependsOn(FinalizeElSkillName, "read_el_skill").
-		Source(tool.SourceBuiltin).
-		Risk(tool.RiskHigh).
+		Source(toolshare.SourceBuiltin).
+		Risk(toolshare.RiskHigh).
 		BuildInfo()
 }
 
@@ -172,7 +175,7 @@ func (ModifyElSkillTool) Schema() llm.ToolSchema {
 	}
 }
 
-func (t ModifyElSkillTool) PrepareCall(ctx context.Context, req tool.CallRequest) (*tool.PreparedCall, error) {
+func (t ModifyElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*tool.PreparedCall, error) {
 	preview, err := t.preview(ctx, req)
 	if err != nil {
 		return nil, err
@@ -187,21 +190,21 @@ func (t ModifyElSkillTool) PrepareCall(ctx context.Context, req tool.CallRequest
 	if !strings.HasSuffix(preview.Diff, "\n") {
 		b.WriteString("\n")
 	}
-	return tool.NewPreparedCall(t, req, strings.TrimRight(b.String(), "\n"), func(ctx context.Context) (*tool.Result, string, error) {
+	return tool.NewPreparedCall(t, req, strings.TrimRight(b.String(), "\n"), func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.call(ctx, preview)
 	}), nil
 }
 
-func (t ModifyElSkillTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+func (t ModifyElSkillTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
 	preview, err := t.preview(ctx, req)
 	if err != nil {
-		return nil, tool.TruncateLogContent(err.Error(), 1024), err
+		return nil, toolshare.TruncateLogContent(err.Error(), 1024), err
 	}
 	return t.call(ctx, preview)
 }
 
-func (t ModifyElSkillTool) call(ctx context.Context, preview modifyElSkillPreview) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t ModifyElSkillTool) call(ctx context.Context, preview modifyElSkillPreview) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	path, _, err := elSkillTargetPath(t.Manager, preview.Name, preview.Target)
 	if err != nil {
 		return nil, err.Error(), err
@@ -243,7 +246,7 @@ func (t ModifyElSkillTool) call(ctx context.Context, preview modifyElSkillPrevie
 	}
 }
 
-func (t ModifyElSkillTool) preview(ctx context.Context, req tool.CallRequest) (modifyElSkillPreview, error) {
+func (t ModifyElSkillTool) preview(ctx context.Context, req toolshare.CallRequest) (modifyElSkillPreview, error) {
 	if err := ctx.Err(); err != nil {
 		return modifyElSkillPreview{}, err
 	}
@@ -281,18 +284,18 @@ func (t ModifyElSkillTool) preview(ctx context.Context, req tool.CallRequest) (m
 	return modifyElSkillPreview{Name: name, Target: target, FileTarget: fileTarget, Path: path, Result: result, Diff: result.Diff}, nil
 }
 
-func (t ModifyElSkillTool) modifyElyph(ctx context.Context, preview modifyElSkillPreview) (*tool.Result, error) {
+func (t ModifyElSkillTool) modifyElyph(ctx context.Context, preview modifyElSkillPreview) (*toolshare.Result, error) {
 	if err := fileops.WriteFileWithRevision(ctx, preview.Path, preview.FileTarget, preview.Result.RevisionBefore, preview.Result.NewBytes); err != nil {
 		return nil, err
 	}
-	return &tool.Result{NeedsElyphRules: true, Content: fmt.Sprintf("modified EL skill %s target %s\nrevision_after: %s\ndiff:\n%s\n\nSKILL.elyph 已写入但尚未 reload；完成修改后调用 finalize_el_skill。", preview.Name, elSkillTargetElyph, preview.Result.RevisionAfter, preview.Diff)}, nil
+	return &toolshare.Result{NeedsElyphRules: true, Content: fmt.Sprintf("modified EL skill %s target %s\nrevision_after: %s\ndiff:\n%s\n\nSKILL.elyph 已写入但尚未 reload；完成修改后调用 finalize_el_skill。", preview.Name, elSkillTargetElyph, preview.Result.RevisionAfter, preview.Diff)}, nil
 }
 
-func (t ModifyElSkillTool) modifyCodeSource(ctx context.Context, preview modifyElSkillPreview) (*tool.Result, error) {
+func (t ModifyElSkillTool) modifyCodeSource(ctx context.Context, preview modifyElSkillPreview) (*toolshare.Result, error) {
 	if err := fileops.WriteFileWithRevision(ctx, preview.Path, preview.FileTarget, preview.Result.RevisionBefore, preview.Result.NewBytes); err != nil {
 		return nil, err
 	}
-	return &tool.Result{Content: fmt.Sprintf("modified EL skill %s target %s\nrevision_after: %s\ndiff:\n%s\n\n源码已写入但尚未格式化/编译；完成修改后调用 finalize_el_skill。", preview.Name, elSkillTargetCodeSource, preview.Result.RevisionAfter, preview.Diff)}, nil
+	return &toolshare.Result{Content: fmt.Sprintf("modified EL skill %s target %s\nrevision_after: %s\ndiff:\n%s\n\n源码已写入但尚未格式化/编译；完成修改后调用 finalize_el_skill。", preview.Name, elSkillTargetCodeSource, preview.Result.RevisionAfter, preview.Diff)}, nil
 }
 
 func decodeModifyElSkillArgs(raw json.RawMessage, args *modifyElSkillArgs) error {

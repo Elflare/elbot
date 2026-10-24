@@ -1,5 +1,7 @@
 package completion
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"testing"
@@ -89,7 +91,7 @@ func TestToolDirectiveSourceCompletesOnlyPlainTools(t *testing.T) {
 		Tags: func(ctx context.Context, _ ToolCapabilities, actor contextinfo.Actor, permission *security.Permission) ([]string, error) {
 			return toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}).Tags(contextinfo.WithActor(security.WithPermission(ctx, permission), actor))
 		},
-		ToolNamesByTag: func(ctx context.Context, _ ToolCapabilities, tag string, allowed func(tool.Tool) bool) ([]string, error) {
+		ToolNamesByTag: func(ctx context.Context, _ ToolCapabilities, tag string, allowed func(toolshare.Tool) bool) ([]string, error) {
 			return toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}).ToolNamesByTag(ctx, tag, allowed)
 		},
 	}
@@ -130,7 +132,7 @@ func TestToolDirectiveSourceCompletesSkillsSeparately(t *testing.T) {
 		Tags: func(ctx context.Context, _ ToolCapabilities, actor contextinfo.Actor, permission *security.Permission) ([]string, error) {
 			return toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}).Tags(contextinfo.WithActor(security.WithPermission(ctx, permission), actor))
 		},
-		ToolNamesByTag: func(ctx context.Context, _ ToolCapabilities, tag string, allowed func(tool.Tool) bool) ([]string, error) {
+		ToolNamesByTag: func(ctx context.Context, _ ToolCapabilities, tag string, allowed func(toolshare.Tool) bool) ([]string, error) {
 			return toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}).ToolNamesByTag(ctx, tag, allowed)
 		},
 	}
@@ -166,7 +168,7 @@ func TestToolDirectiveSourceCompletesConfiguredTags(t *testing.T) {
 		Tags: func(context.Context, ToolCapabilities, contextinfo.Actor, *security.Permission) ([]string, error) {
 			return []string{"agent"}, nil
 		},
-		ToolNamesByTag: func(_ context.Context, _ ToolCapabilities, tag string, _ func(tool.Tool) bool) ([]string, error) {
+		ToolNamesByTag: func(_ context.Context, _ ToolCapabilities, tag string, _ func(toolshare.Tool) bool) ([]string, error) {
 			if tag == "agent" {
 				return []string{"alpha"}, nil
 			}
@@ -199,13 +201,13 @@ type completionTestTool struct {
 }
 
 func (t completionTestTool) Name() string { return t.name }
-func (t completionTestTool) Info() tool.Info {
-	return tool.Info{Name: t.name, Description: t.description, Risk: tool.RiskLow, Hidden: t.hidden, Tags: t.tags}
+func (t completionTestTool) Info() toolshare.Info {
+	return toolshare.Info{Name: t.name, Description: t.description, Risk: toolshare.RiskLow, Hidden: t.hidden, Tags: t.tags}
 }
 func (t completionTestTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: t.name}
 }
-func (t completionTestTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
+func (t completionTestTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
 	return nil, "", nil
 }
 

@@ -1,10 +1,13 @@
+// 组织 Skill 的 ELyph 检查警告。
 package skill
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"strings"
 
 	"elbot/internal/elyph"
-	"elbot/internal/tool"
+	
 )
 
 func appendElyphWarnings(content string, diagnostics []elyph.Diagnostic) string {
@@ -12,5 +15,5 @@ func appendElyphWarnings(content string, diagnostics []elyph.Diagnostic) string 
 	if len(warnings) == 0 {
 		return content
 	}
-	return tool.AppendWarnings(content, []string{strings.TrimSpace(elyph.FormatDiagnostics(warnings))})
+	return toolshare.AppendWarnings(content, []string{strings.TrimSpace(elyph.FormatDiagnostics(warnings))})
 }

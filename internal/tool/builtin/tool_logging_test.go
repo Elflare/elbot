@@ -1,5 +1,7 @@
 package builtin
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"encoding/json"
@@ -12,7 +14,7 @@ import (
 
 	"elbot/internal/fileops"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
+	
 )
 
 type failingHistoryLogRepository struct {
@@ -32,9 +34,9 @@ func TestHistoryQueryErrorLogPreservesBusinessError(t *testing.T) {
 	ctx, _, _ := newHistoryMediaToolTest(t)
 	callErr := errors.New(strings.Repeat("雪🔥", 700))
 	repository := failingHistoryLogRepository{err: callErr}
-	for _, value := range []tool.Tool{NewSearchChatHistoryTool(repository), NewGetChatHistoryAroundTool(repository)} {
-		result, logContent, err := value.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":"1"}`)})
-		if result != nil || err != callErr || logContent != tool.TruncateLogContent(callErr.Error(), 1024) || utf8.RuneCountInString(logContent) != 1024 {
+	for _, value := range []toolshare.Tool{NewSearchChatHistoryTool(repository), NewGetChatHistoryAroundTool(repository)} {
+		result, logContent, err := value.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":"1"}`)})
+		if result != nil || err != callErr || logContent != toolshare.TruncateLogContent(callErr.Error(), 1024) || utf8.RuneCountInString(logContent) != 1024 {
 			t.Fatalf("%s: result=%+v log=%q err=%v", value.Name(), result, logContent, err)
 		}
 	}
@@ -49,7 +51,7 @@ func TestHistoryQueryLogIncludesResult(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		name          string
-		value         tool.Tool
+		value         toolshare.Tool
 		args, summary string
 	}{
 		{"search", NewSearchChatHistoryTool(mediaTool.history), `{}`, "returned=4"},
@@ -58,13 +60,13 @@ func TestHistoryQueryLogIncludesResult(t *testing.T) {
 		{"empty_around", NewGetChatHistoryAroundTool(mediaTool.history), `{"message_id":"missing"}`, "message_id=missing returned=0"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			result, logContent, err := tc.value.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(tc.args)})
+			result, logContent, err := tc.value.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(tc.args)})
 			if err != nil {
 				t.Fatal(err)
 			}
 			summary, body, ok := strings.Cut(logContent, "\ncontent:\n")
 			want := strings.ReplaceAll(result.Content, "...[单条消息过长，已截断]", "…")
-			if !ok || summary != tc.summary || logContent != tool.TruncateLogContent(tc.summary+"\ncontent:\n"+want, 1024) {
+			if !ok || summary != tc.summary || logContent != toolshare.TruncateLogContent(tc.summary+"\ncontent:\n"+want, 1024) {
 				t.Fatalf("log=%q result=%q", logContent, result.Content)
 			}
 			if !strings.HasPrefix(tc.name, "empty") && (utf8.RuneCountInString(result.Content) <= 1024 || utf8.RuneCountInString(logContent) != 1024 || !utf8.ValidString(body)) {
@@ -78,11 +80,11 @@ func TestGetMediaLogIncludesAllResults(t *testing.T) {
 	for _, args := range []string{`{"message_id":["1"]}`, `{"message_id":["missing"]}`, `{"message_id":["1","missing"]}`, `{"message_id":["1"],"media_index":[[1,2,3,4,5,6,7]]}`} {
 		t.Run(args, func(t *testing.T) {
 			ctx, value, _ := newHistoryMediaToolTest(t)
-			result, logContent, err := value.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(args)})
+			result, logContent, err := value.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(args)})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if logContent != tool.TruncateLogContent(result.Content, 1024) {
+			if logContent != toolshare.TruncateLogContent(result.Content, 1024) {
 				t.Fatalf("log=%q result=%q", logContent, result.Content)
 			}
 		})
@@ -96,7 +98,7 @@ func TestFileLogs(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path})
-	result, logContent, err := NewReadFileTool().Call(t.Context(), tool.CallRequest{Arguments: args})
+	result, logContent, err := NewReadFileTool().Call(t.Context(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +106,7 @@ func TestFileLogs(t *testing.T) {
 		t.Fatalf("read log=%q business bytes=%d", logContent, len(result.Content))
 	}
 	args, _ = json.Marshal(map[string]any{"path": path, "expected_revision": fileops.ContentRevision([]byte(body)), "edits": []map[string]any{{"operation": "overwrite", "new_text": body + "EDIT_TAIL"}}})
-	result, logContent, err = NewEditFileTool().Call(t.Context(), tool.CallRequest{Arguments: args})
+	result, logContent, err = NewEditFileTool().Call(t.Context(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}

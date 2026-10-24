@@ -1,5 +1,7 @@
 package confirmation
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	commandpkg "elbot/internal/command"
@@ -19,8 +21,8 @@ import (
 	"elbot/internal/request"
 	"elbot/internal/session"
 
-	"elbot/internal/tool"
-	"elbot/internal/toolrun"
+	
+	
 	"elbot/internal/turn"
 )
 
@@ -49,9 +51,9 @@ func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 			}
 			coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{Sessions: sessions, Requests: request.NewManager(0), Turns: turns, Commands: commandpkg.NewRouter([]string{"/"}), Identity: identity, Output: confirmationOutput{}, Policy: NewConfirmationPolicy(ConfirmationPolicyDeps{Identity: identity, UserConfirmationTimeout: time.Second})})
 
-			done := make(chan toolrun.ConfirmResult, 1)
+			done := make(chan toolshare.ConfirmResult, 1)
 			go func() {
-				result, _ := coordinator.AwaitToolConfirmation(requestCtx, row.ID, llm.ToolCallRequest{ID: "call", Name: "danger", Arguments: "{}"}, tool.RiskAssessment{Level: tool.RiskHigh}, "detail")
+				result, _ := coordinator.AwaitToolConfirmation(requestCtx, row.ID, llm.ToolCallRequest{ID: "call", Name: "danger", Arguments: "{}"}, toolshare.RiskAssessment{Level: toolshare.RiskHigh}, "detail")
 				done <- result
 			}()
 			deadline := time.Now().Add(time.Second)

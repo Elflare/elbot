@@ -1,5 +1,7 @@
 package skill
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"encoding/json"
@@ -33,7 +35,7 @@ func TestCreateElSkillCreatesBuildsAndReloads(t *testing.T) {
 		"elyph":       "#skill hello_skill - Echo reusable text.\n<- $text:str!\n-> $result:str\n",
 		"go_source":   goSource,
 	})
-	result, _, err := creator.Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := creator.Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +58,7 @@ func TestCreateElSkillCreatesBuildsAndReloads(t *testing.T) {
 	}
 
 	registered, ok := registry.Get("hello_skill")
-	if !ok || registered.Info().Source != tool.SourceSkillGo || registered.Info().Risk != tool.RiskLow {
+	if !ok || registered.Info().Source != toolshare.SourceSkillGo || registered.Info().Risk != toolshare.RiskLow {
 		t.Fatalf("registered = %#v ok=%v", registered, ok)
 	}
 }
@@ -91,7 +93,7 @@ func TestCreateElSkillReturnsElyphWarnings(t *testing.T) {
 		"risk":        "low",
 		"elyph":       "#skill warn_skill - Warn workflow.\n** 清单：\n",
 	})
-	result, _, err := creator.Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := creator.Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,14 +113,14 @@ func TestCreateElSkillCanCreateTextOnlySkill(t *testing.T) {
 		"risk":        "low",
 		"elyph":       "#skill workflow - Reusable workflow.\n<- $text:str!\n-> $result:str\n",
 	})
-	if _, _, err := creator.Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := creator.Call(context.Background(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "go", "workflow", "main.go")); !os.IsNotExist(err) {
 		t.Fatalf("main.go should not exist for text-only skill, err=%v", err)
 	}
 	registered, ok := registry.Get("workflow")
-	if !ok || registered.Info().Source != tool.SourceSkillGo {
+	if !ok || registered.Info().Source != toolshare.SourceSkillGo {
 		t.Fatalf("registered=%#v ok=%v", registered, ok)
 	}
 }
@@ -134,7 +136,7 @@ func TestCreateElSkillRejectsInvalidInputs(t *testing.T) {
 		`{"name":"bad","description":"x","risk":"low","elyph":"#skill bad","go_source":"package nope"}`,
 	}
 	for _, raw := range cases {
-		if _, _, err := creator.Call(context.Background(), tool.CallRequest{Arguments: []byte(raw)}); err == nil {
+		if _, _, err := creator.Call(context.Background(), toolshare.CallRequest{Arguments: []byte(raw)}); err == nil {
 			t.Fatalf("expected error for %s", raw)
 		}
 	}
@@ -147,7 +149,7 @@ func TestCreateElSkillDoesNotOverwriteExistingDirectory(t *testing.T) {
 	}
 	creator := NewCreateElSkillTool(NewManager(root, tool.NewRegistry()))
 	args := `{"name":"exists","description":"x","risk":"low","elyph":"#skill exists","go_source":"package main\nfunc main(){}"}`
-	if _, _, err := creator.Call(context.Background(), tool.CallRequest{Arguments: []byte(args)}); err == nil {
+	if _, _, err := creator.Call(context.Background(), toolshare.CallRequest{Arguments: []byte(args)}); err == nil {
 		t.Fatal("expected existing directory error")
 	}
 }
@@ -155,7 +157,7 @@ func TestCreateElSkillDoesNotOverwriteExistingDirectory(t *testing.T) {
 func TestCreateElSkillInfoAndSchema(t *testing.T) {
 	creator := NewCreateElSkillTool(NewManager(t.TempDir(), tool.NewRegistry()))
 	info := creator.Info()
-	if info.Risk != tool.RiskHigh || !strings.Contains(info.Description, "可复用") {
+	if info.Risk != toolshare.RiskHigh || !strings.Contains(info.Description, "可复用") {
 		t.Fatalf("info = %#v", info)
 	}
 	schema := creator.Schema()
@@ -167,13 +169,13 @@ func TestCreateElSkillInfoAndSchema(t *testing.T) {
 type creatorExistingTool struct{}
 
 func (creatorExistingTool) Name() string { return "dup" }
-func (creatorExistingTool) Info() tool.Info {
-	return tool.Info{Name: "dup", Description: "dup", Source: tool.SourceBuiltin, Risk: tool.RiskLow}
+func (creatorExistingTool) Info() toolshare.Info {
+	return toolshare.Info{Name: "dup", Description: "dup", Source: toolshare.SourceBuiltin, Risk: toolshare.RiskLow}
 }
 func (creatorExistingTool) Schema() llm.ToolSchema { return llm.ToolSchema{} }
-func (creatorExistingTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
+func (creatorExistingTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
 	{
-		result := &tool.Result{Content: "ok"}
+		result := &toolshare.Result{Content: "ok"}
 		return result, result.Content, nil
 	}
 }
@@ -185,7 +187,7 @@ func TestCreateElSkillDoesNotOverwriteRegistryTool(t *testing.T) {
 	}
 	creator := NewCreateElSkillTool(NewManager(t.TempDir(), registry))
 	args := `{"name":"dup","description":"x","risk":"low","elyph":"#skill dup","go_source":"package main\nfunc main(){}"}`
-	if _, _, err := creator.Call(context.Background(), tool.CallRequest{Arguments: []byte(args)}); err == nil {
+	if _, _, err := creator.Call(context.Background(), toolshare.CallRequest{Arguments: []byte(args)}); err == nil {
 		t.Fatal("expected registry conflict error")
 	}
 }
@@ -193,12 +195,12 @@ func TestCreateElSkillDoesNotOverwriteRegistryTool(t *testing.T) {
 func TestCreateElSkillDiscoversMaintenanceTools(t *testing.T) {
 	registry := tool.NewRegistry()
 	manager := NewManager(t.TempDir(), registry)
-	for _, item := range []tool.Tool{NewCreateElSkillTool(manager), NewReadElSkillTool(manager), NewModifyElSkillTool(manager), NewFinalizeElSkillTool(manager)} {
+	for _, item := range []toolshare.Tool{NewCreateElSkillTool(manager), NewReadElSkillTool(manager), NewModifyElSkillTool(manager), NewFinalizeElSkillTool(manager)} {
 		if err := registry.Register(item); err != nil {
 			t.Fatal(err)
 		}
 	}
-	details, errors := registry.DiscoverDetails(context.Background(), []string{CreateElSkillName}, func(tool.Tool) bool { return true })
+	details, errors := registry.DiscoverDetails(context.Background(), []string{CreateElSkillName}, func(toolshare.Tool) bool { return true })
 	if len(errors) > 0 {
 		t.Fatalf("errors = %#v", errors)
 	}

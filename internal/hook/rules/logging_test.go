@@ -2,6 +2,8 @@
 
 package rules
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"bufio"
 	"bytes"
@@ -29,14 +31,14 @@ type bodyTestTool struct {
 }
 
 func (*bodyTestTool) Name() string           { return "body_test" }
-func (*bodyTestTool) Info() tool.Info        { return tool.Info{Name: "body_test"} }
+func (*bodyTestTool) Info() toolshare.Info        { return toolshare.Info{Name: "body_test"} }
 func (*bodyTestTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "body_test"} }
-func (t *bodyTestTool) Call(_ context.Context, call tool.CallRequest) (*tool.Result, string, error) {
+func (t *bodyTestTool) Call(_ context.Context, call toolshare.CallRequest) (*toolshare.Result, string, error) {
 	if t.onCall != nil {
 		t.onCall()
 	}
 	t.ids = append(t.ids, call.ID)
-	return &tool.Result{Segments: llm.TextSegments("business segments")}, "日志正文：9007199254740993", errors.New("business result")
+	return &toolshare.Result{Segments: llm.TextSegments("business segments")}, "日志正文：9007199254740993", errors.New("business result")
 }
 
 func TestRuleToolStartPrecedesBodyAndEndHasElapsed(t *testing.T) {
@@ -184,11 +186,11 @@ func TestRulesOutputPreparationFailureDoesNotInvokeSender(t *testing.T) {
 type argumentLoggingTool struct{ got, body string }
 
 func (*argumentLoggingTool) Name() string           { return "argument_log" }
-func (*argumentLoggingTool) Info() tool.Info        { return tool.Info{Name: "argument_log"} }
+func (*argumentLoggingTool) Info() toolshare.Info        { return toolshare.Info{Name: "argument_log"} }
 func (*argumentLoggingTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "argument_log"} }
-func (t *argumentLoggingTool) Call(_ context.Context, call tool.CallRequest) (*tool.Result, string, error) {
+func (t *argumentLoggingTool) Call(_ context.Context, call toolshare.CallRequest) (*toolshare.Result, string, error) {
 	t.got = string(call.Arguments)
-	return &tool.Result{Content: t.body}, t.body, nil
+	return &toolshare.Result{Content: t.body}, t.body, nil
 }
 
 func TestRulesJSONTruncationPreservesUnicodeMarkerAndBusinessData(t *testing.T) {

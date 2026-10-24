@@ -1,4 +1,7 @@
+// 将 Skill 命令适配为工具调用。
 package skill
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"bytes"
@@ -32,8 +35,8 @@ func NewCommandTool(record Record) CommandTool {
 
 func (t CommandTool) Name() string { return t.Record.Name }
 
-func (t CommandTool) Info() tool.Info {
-	return tool.Info{Name: t.Record.Name, Description: t.Record.Description, Source: SourceForKind(t.Record.Kind), Risk: t.Manifest.Risk, SuperadminOnly: t.Manifest.SuperadminOnly, Tags: t.Manifest.Tags}
+func (t CommandTool) Info() toolshare.Info {
+	return toolshare.Info{Name: t.Record.Name, Description: t.Record.Description, Source: SourceForKind(t.Record.Kind), Risk: t.Manifest.Risk, SuperadminOnly: t.Manifest.SuperadminOnly, Tags: t.Manifest.Tags}
 }
 
 func (t CommandTool) Schema() llm.ToolSchema {
@@ -45,18 +48,18 @@ func (t CommandTool) Detail() string {
 	if err != nil {
 		return ""
 	}
-	return tool.RenderDetailBlocks([]tool.DetailBlock{block})
+	return tool.RenderDetailBlocks([]toolshare.DetailBlock{block})
 }
 
-func (t CommandTool) DetailBlock() tool.DetailBlock {
+func (t CommandTool) DetailBlock() toolshare.DetailBlock {
 	block, _ := t.LoadDetail(context.Background())
 	return block
 }
 
-func (t CommandTool) LoadDetail(ctx context.Context) (tool.DetailBlock, error) {
+func (t CommandTool) LoadDetail(ctx context.Context) (toolshare.DetailBlock, error) {
 	block, err := loadRecordDetail(t.Record)
 	if err != nil {
-		return tool.DetailBlock{}, err
+		return toolshare.DetailBlock{}, err
 	}
 	if t.Manifest.ExposeRoot {
 		block.Content = strings.TrimSpace(block.Content) + "\n\nAgentSkill root: " + t.Record.Root
@@ -69,12 +72,12 @@ func (t CommandTool) ActivateTools() []string {
 	return []string{AgentSkillManagerName, t.Record.Name}
 }
 
-func (t CommandTool) Call(ctx context.Context, req tool.CallRequest) (result *tool.Result, logContent string, callErr error) {
+func (t CommandTool) Call(ctx context.Context, req toolshare.CallRequest) (result *toolshare.Result, logContent string, callErr error) {
 	return t.call(ctx, req, runMediaCommand)
 }
 
-func (t CommandTool) call(ctx context.Context, req tool.CallRequest, run func(context.Context, string, *exec.Cmd, *tool.MediaCall) (*tool.Result, error)) (result *tool.Result, logContent string, callErr error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t CommandTool) call(ctx context.Context, req toolshare.CallRequest, run func(context.Context, string, *exec.Cmd, *tool.MediaCall) (*toolshare.Result, error)) (result *toolshare.Result, logContent string, callErr error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 
 	dotEnv, err := config.LoadEnvFile(filepath.Join(t.Record.Root, ".env"))
 	if err != nil {

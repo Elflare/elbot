@@ -1,4 +1,7 @@
+// 实现文件发送工具，解析目标文件并组织发送请求。
 package builtin
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
@@ -16,7 +19,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	sandboxctx "elbot/internal/sandbox"
-	"elbot/internal/tool"
+	
 	"elbot/internal/workspace"
 )
 
@@ -36,54 +39,54 @@ func NewSendFileTool(files *FileManager) SendFileTool {
 
 func (t SendFileTool) Name() string { return "send_file" }
 
-func (t SendFileTool) Info() tool.Info { return sendFileBuilder().BuildInfo() }
+func (t SendFileTool) Info() toolshare.Info { return sendFileBuilder().BuildInfo() }
 
 func (t SendFileTool) Schema() llm.ToolSchema { return sendFileBuilder().BuildSchema() }
 
-func sendFileBuilder() *tool.Builder {
-	return tool.NewBuilder("send_file").
+func sendFileBuilder() *toolshare.Builder {
+	return toolshare.NewBuilder("send_file").
 		Description("发送文件。").
-		Risk(tool.RiskMedium).
+		Risk(toolshare.RiskMedium).
 		SuperadminOnly().
 		String("source", "要发送的文件来源。支持本地路径、file URI、HTTP(S) URL 或 Media Center 媒体 ID。").
 		String("name", "可选，发送时展示的文件名。").
 		String("mime_type", "可选，文件 MIME 类型；不填时按扩展名推断。")
 }
 
-func (t SendFileTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
+func (t SendFileTool) AssessRisk(ctx context.Context, req toolshare.CallRequest) (toolshare.RiskAssessment, error) {
 	args, err := parseSendFileArgs(req)
 	if err != nil {
-		return tool.RiskAssessment{}, err
+		return toolshare.RiskAssessment{}, err
 	}
 	source := args.source()
 	if source == "" {
-		return tool.RiskAssessment{}, fmt.Errorf("source is required")
+		return toolshare.RiskAssessment{}, fmt.Errorf("source is required")
 	}
 	if strings.HasPrefix(source, media.IDPrefix) {
 		if !media.ValidID(source) {
-			return tool.RiskAssessment{}, fmt.Errorf("invalid media ID")
+			return toolshare.RiskAssessment{}, fmt.Errorf("invalid media ID")
 		}
-		return tool.RiskAssessment{Level: tool.RiskMedium}, nil
+		return toolshare.RiskAssessment{Level: toolshare.RiskMedium}, nil
 	}
 	if delivery.IsHTTPMediaSource(source) {
-		return tool.RiskAssessment{Level: tool.RiskMedium}, nil
+		return toolshare.RiskAssessment{Level: toolshare.RiskMedium}, nil
 	}
 	localSource, err := localSourcePath(source)
 	if err != nil {
-		return tool.RiskAssessment{}, err
+		return toolshare.RiskAssessment{}, err
 	}
 	resolved, err := workspace.ResolveWorkspacePath(ctx, localSource, workspace.PathResolveOptions{})
 	if err != nil {
-		return tool.RiskAssessment{}, err
+		return toolshare.RiskAssessment{}, err
 	}
 	if resolved.WasAbs {
-		return tool.RiskAssessment{Level: tool.RiskHigh, Reasons: []string{"发送外部文件需要确认"}}, nil
+		return toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"发送外部文件需要确认"}}, nil
 	}
-	return tool.RiskAssessment{Level: tool.RiskMedium}, nil
+	return toolshare.RiskAssessment{Level: toolshare.RiskMedium}, nil
 }
 
-func (t SendFileTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t SendFileTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	args, err := parseSendFileArgs(req)
 	if err != nil {
 		return nil, err.Error(), err
@@ -106,7 +109,7 @@ func (t SendFileTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.R
 		}
 	}
 	{
-		result := &tool.Result{Content: fmt.Sprintf("已发送文件：%s", label), Warnings: warnings, Outputs: []delivery.Output{out}}
+		result := &toolshare.Result{Content: fmt.Sprintf("已发送文件：%s", label), Warnings: warnings, Outputs: []delivery.Output{out}}
 		return result, fmt.Sprintf("file output prepared: %s", label), nil
 	}
 }
@@ -200,7 +203,7 @@ func (args sendFileArgs) source() string {
 	return strings.TrimSpace(args.Source)
 }
 
-func parseSendFileArgs(req tool.CallRequest) (sendFileArgs, error) {
+func parseSendFileArgs(req toolshare.CallRequest) (sendFileArgs, error) {
 	var args sendFileArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {

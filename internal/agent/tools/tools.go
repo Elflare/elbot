@@ -1,12 +1,14 @@
 package tools
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/fileops"
-	"elbot/internal/tool"
-	"elbot/internal/toolrun"
+	
+	
 )
 
 type ToolRuntimeState struct {
@@ -20,7 +22,7 @@ type ToolRuntimeState struct {
 type ToolRuntimeStateDeps struct {
 	Identity dialogue.Identity
 	Manager  interface {
-		ToolInfos(context.Context, toolrun.Context) ([]tool.Info, error)
+		ToolInfos(context.Context, toolshare.Context) ([]toolshare.Info, error)
 	}
 	FileRollback interface {
 		WithBinding(context.Context, fileops.Binding, ...fileops.CommitAdmission) context.Context

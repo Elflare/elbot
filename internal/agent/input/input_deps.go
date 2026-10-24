@@ -1,5 +1,7 @@
 package input
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"log/slog"
@@ -13,7 +15,7 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/toolrun"
+	
 	"elbot/internal/turn"
 )
 
@@ -56,11 +58,11 @@ type InputCoordinatorDeps struct {
 	Execution     InputExecution
 	Confirmations InputConfirmations
 	Preloader     interface {
-		PrepareTools(context.Context, []string) (toolrun.ToolPreload, error)
-		PrepareSkills(context.Context, string, []string) (toolrun.SkillPreload, error)
+		PrepareTools(context.Context, []string) (toolshare.ToolPreload, error)
+		PrepareSkills(context.Context, string, []string) (toolshare.SkillPreload, error)
 	}
 	ToolState interface {
-		Commit(context.Context, string, toolrun.StateUpdate) (toolrun.StateCommit, events.LogResult, error)
+		Commit(context.Context, string, toolshare.StateUpdate) (toolshare.StateCommit, events.LogResult, error)
 	}
 	WaitPolicy InputWaitPolicy
 }

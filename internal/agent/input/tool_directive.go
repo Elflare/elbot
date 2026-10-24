@@ -1,5 +1,7 @@
 package input
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"sort"
@@ -11,13 +13,13 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/toolrun"
+	
 	"elbot/internal/workspace"
 )
 
 type toolDirectiveResult struct {
 	NeedsElyphRules bool
-	update          toolrun.StateUpdate
+	update          toolshare.StateUpdate
 	Text            string
 	Injected        []string
 	Existing        []string
@@ -27,7 +29,7 @@ type toolDirectiveResult struct {
 
 type skillDirectiveResult struct {
 	NeedsElyphRules  bool
-	update           toolrun.StateUpdate
+	update           toolshare.StateUpdate
 	Err              error
 	Text             string
 	Skills           []string
@@ -193,8 +195,8 @@ func (c *InputCoordinator) applyInputDirectives(ctx context.Context, row *storag
 	if skills.Err != nil {
 		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, skills.Err
 	}
-	update := toolrun.StateUpdate{
-		Tools: append(append([]toolrun.CachedTool(nil), tools.update.Tools...), skills.update.Tools...),
+	update := toolshare.StateUpdate{
+		Tools: append(append([]toolshare.DiscoveredTool(nil), tools.update.Tools...), skills.update.Tools...),
 		Tags:  tools.update.Tags,
 	}
 	locked, release, err = c.execution.EnterInput(ctx, row)

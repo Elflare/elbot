@@ -1,5 +1,7 @@
 package elnis
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"slices"
@@ -30,7 +32,7 @@ func TestBackgroundTagAuthorizationAndToolDeclarations(t *testing.T) {
 		req := testRequest(ModeLLM)
 		req.Elwisp.Name = "configured"
 		req.ToolListNames = []string{"research"}
-		req.Tools = []toolrun.ELwispToolDeclaration{testExternalTool("external")}
+		req.Tools = []toolshare.ELwispToolDeclaration{testExternalTool("external")}
 		_, err := service.Handle(context.Background(), "secret", req)
 		if denied {
 			if err == nil || !strings.Contains(err.Error(), "web_extract") {

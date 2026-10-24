@@ -1,4 +1,7 @@
+// 枚举和搜索目录内容，维护候选目录及相关缓存。
 package builtin
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"bufio"
@@ -17,7 +20,7 @@ import (
 
 	"elbot/internal/fileops"
 	"elbot/internal/processenv"
-	"elbot/internal/tool"
+	
 )
 
 type directorySearchMatch struct {
@@ -130,7 +133,7 @@ func (c *directoryASTCache) store(root, mode, query string, matches []directoryS
 	c.entries[key] = directoryASTCacheEntry{Matches: append([]directorySearchMatch(nil), matches...), Files: append([]directoryASTFileState(nil), files...), ExpiresAt: now.Add(directoryASTCacheTTL), UsedAt: now}
 }
 
-func readFileDirectorySearch(ctx context.Context, root, mode string, args readFileArgs, warnings []string, astCache *directoryASTCache) (*tool.Result, error) {
+func readFileDirectorySearch(ctx context.Context, root, mode string, args readFileArgs, warnings []string, astCache *directoryASTCache) (*toolshare.Result, error) {
 	query := strings.TrimSpace(args.Query)
 	if query == "" {
 		return nil, fmt.Errorf("query is required when mode is %s", mode)
@@ -515,7 +518,7 @@ func directoryASTFilesMatch(root string, cached []directoryASTFileState) bool {
 	return true
 }
 
-func formatDirectorySearchMatches(root, mode, query string, matches []directorySearchMatch, total, contextLines, maxMatches, index int, warnings []string) (*tool.Result, error) {
+func formatDirectorySearchMatches(root, mode, query string, matches []directorySearchMatch, total, contextLines, maxMatches, index int, warnings []string) (*toolshare.Result, error) {
 	maxMatches = fileops.NormalizeMaxMatches(maxMatches)
 	if index > total || index < 0 {
 		return nil, fmt.Errorf("index %d is out of range; found %d matches", index, total)
@@ -531,7 +534,7 @@ func formatDirectorySearchMatches(root, mode, query string, matches []directoryS
 	fmt.Fprintf(&b, "path: %s\nmode: %s\nquery: %q\nmatches: %d\ntruncated: %t\n", root, mode, query, total, truncated)
 	if len(matches) == 0 {
 		b.WriteString("content:\n")
-		return &tool.Result{Content: b.String(), Warnings: warnings}, nil
+		return &toolshare.Result{Content: b.String(), Warnings: warnings}, nil
 	}
 	if index > 0 {
 		fmt.Fprintf(&b, "index: %d\ncontent:\n", index)
@@ -549,13 +552,13 @@ func formatDirectorySearchMatches(root, mode, query string, matches []directoryS
 				fmt.Fprintf(&b, "%d. %s:%d:%d [%s] %s\n", i+1, match.Path, match.Line, match.Column, match.Kind, match.Label)
 			}
 		}
-		return &tool.Result{Content: b.String(), Warnings: warnings}, nil
+		return &toolshare.Result{Content: b.String(), Warnings: warnings}, nil
 	}
 	b.WriteString("content:\n")
 	return formatDirectorySearchSelection(&b, root, mode, shown[0], contextLines, warnings)
 }
 
-func formatDirectorySearchSelection(b *strings.Builder, root, mode string, match directorySearchMatch, contextLines int, warnings []string) (*tool.Result, error) {
+func formatDirectorySearchSelection(b *strings.Builder, root, mode string, match directorySearchMatch, contextLines int, warnings []string) (*toolshare.Result, error) {
 	path := filepath.Join(root, filepath.FromSlash(match.Path))
 	maxBytes := int64(fileops.MaxFileSize)
 	if mode == readFileModeGrep {
@@ -579,5 +582,5 @@ func formatDirectorySearchSelection(b *strings.Builder, root, mode string, match
 	for line := start; line <= end; line++ {
 		fmt.Fprintf(b, "  %*d | %s\n", width, line, lines[line-1])
 	}
-	return &tool.Result{Content: b.String(), Warnings: warnings}, nil
+	return &toolshare.Result{Content: b.String(), Warnings: warnings}, nil
 }

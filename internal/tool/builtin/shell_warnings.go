@@ -1,3 +1,4 @@
+// 提取 Shell 执行相关警告，生成面向模型的提示。
 package builtin
 
 import (

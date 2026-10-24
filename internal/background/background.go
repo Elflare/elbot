@@ -1,11 +1,13 @@
 package background
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
-	"elbot/internal/toolrun"
+	
 )
 
 type Kind string
@@ -38,7 +40,7 @@ type RunRequest struct {
 	// AllowedToolNames optionally restricts root tools (nil means unrestricted).
 	ToolListNames    []string
 	AllowedToolNames []string
-	CachedTools      []toolrun.CachedTool
+	CachedTools      []toolshare.DiscoveredTool
 	SandboxSubdir    string
 	Metadata         map[string]string
 }

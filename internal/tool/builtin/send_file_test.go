@@ -1,5 +1,7 @@
 package builtin
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"encoding/json"
@@ -10,51 +12,50 @@ import (
 	"strings"
 	"testing"
 
-	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
 	sandboxctx "elbot/internal/sandbox"
-	"elbot/internal/tool"
+	
 	workspacepath "elbot/internal/workspace"
 )
 
 func TestSendFileAssessRiskExternalPath(t *testing.T) {
-	manager := NewFileManager(filepath.Join(t.TempDir(), "sandbox"), config.Default().FileDelivery)
+	manager := NewFileManager(filepath.Join(t.TempDir(), "sandbox"))
 	sendFile := NewSendFileTool(manager)
 	path := filepath.Join(t.TempDir(), "report.txt")
 	if err := os.WriteFile(path, []byte("report"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"source": path})
-	assessment, err := sendFile.AssessRisk(context.Background(), tool.CallRequest{Arguments: args})
+	assessment, err := sendFile.AssessRisk(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if assessment.Level != tool.RiskHigh {
+	if assessment.Level != toolshare.RiskHigh {
 		t.Fatalf("risk = %s, want high", assessment.Level)
 	}
 }
 
 func TestSendFileAssessRiskURL(t *testing.T) {
-	sendFile := NewSendFileTool(NewFileManager(filepath.Join(t.TempDir(), "sandbox"), config.Default().FileDelivery))
+	sendFile := NewSendFileTool(NewFileManager(filepath.Join(t.TempDir(), "sandbox")))
 	args, _ := json.Marshal(map[string]any{"source": "https://example.com/report.txt"})
-	assessment, err := sendFile.AssessRisk(context.Background(), tool.CallRequest{Arguments: args})
+	assessment, err := sendFile.AssessRisk(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if assessment.Level != tool.RiskMedium {
+	if assessment.Level != toolshare.RiskMedium {
 		t.Fatalf("risk = %s, want medium", assessment.Level)
 	}
 }
 
 func TestSendFileAssessRiskBackgroundAbsolutePath(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "sandbox")
-	manager := NewFileManager(root, config.Default().FileDelivery)
+	manager := NewFileManager(root)
 	sendFile := NewSendFileTool(manager)
 	args, _ := json.Marshal(map[string]any{"source": filepath.Join(t.TempDir(), "report.txt")})
 	ctx := sandboxctx.WithSandboxContext(context.Background(), sandboxctx.SandboxContext{Root: root, Dir: filepath.Join(root, "cron"), Background: true, BackgroundKind: sandboxctx.BackgroundKindCron})
-	_, err := sendFile.AssessRisk(ctx, tool.CallRequest{Arguments: args})
+	_, err := sendFile.AssessRisk(ctx, toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "background path must be relative") {
 		t.Fatalf("expected background absolute path rejection, got %v", err)
 	}
@@ -69,12 +70,12 @@ func TestSendFileSendsSandboxFile(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(cronDir, "report.txt"), []byte("hello"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewFileManager(root, config.Default().FileDelivery)
+	manager := NewFileManager(root)
 	sendFile := NewSendFileTool(manager)
 	args, _ := json.Marshal(map[string]any{"source": "report.txt"})
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot"}}})
 	ctx = sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{Root: root, Dir: cronDir, Background: true, BackgroundKind: sandboxctx.BackgroundKindCron})
-	result, _, err := sendFile.Call(ctx, tool.CallRequest{Arguments: args})
+	result, _, err := sendFile.Call(ctx, toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,11 +104,11 @@ func TestSendFileUsesWorkspaceRelativePath(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workspace, "report.txt"), []byte("workspace"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewFileManager(root, config.Default().FileDelivery)
+	manager := NewFileManager(root)
 	sendFile := NewSendFileTool(manager)
 	args, _ := json.Marshal(map[string]any{"source": "report.txt"})
 	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
-	result, _, err := sendFile.Call(ctx, tool.CallRequest{Arguments: args})
+	result, _, err := sendFile.Call(ctx, toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,10 +123,10 @@ func TestSendFileSendsExternalFileDirectly(t *testing.T) {
 	if err := os.WriteFile(source, []byte("outside"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewFileManager(root, config.Default().FileDelivery)
+	manager := NewFileManager(root)
 	sendFile := NewSendFileTool(manager)
 	args, _ := json.Marshal(map[string]any{"source": source})
-	result, _, err := sendFile.Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := sendFile.Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,9 +142,9 @@ func TestSendFileAcceptsFileURI(t *testing.T) {
 	if err := os.WriteFile(source, []byte("outside"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	sendFile := NewSendFileTool(NewFileManager(root, config.Default().FileDelivery))
+	sendFile := NewSendFileTool(NewFileManager(root))
 	args, _ := json.Marshal(map[string]any{"source": fileURI(source)})
-	result, _, err := sendFile.Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := sendFile.Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,9 +154,9 @@ func TestSendFileAcceptsFileURI(t *testing.T) {
 }
 
 func TestSendFileSendsURLFile(t *testing.T) {
-	sendFile := NewSendFileTool(NewFileManager(filepath.Join(t.TempDir(), "sandbox"), config.Default().FileDelivery))
+	sendFile := NewSendFileTool(NewFileManager(filepath.Join(t.TempDir(), "sandbox")))
 	args, _ := json.Marshal(map[string]any{"source": "https://example.com/report.txt"})
-	result, _, err := sendFile.Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := sendFile.Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,9 +170,9 @@ func TestSendFileSendsURLFile(t *testing.T) {
 }
 
 func TestSendFileSendsURLImage(t *testing.T) {
-	sendFile := NewSendFileTool(NewFileManager(filepath.Join(t.TempDir(), "sandbox"), config.Default().FileDelivery))
+	sendFile := NewSendFileTool(NewFileManager(filepath.Join(t.TempDir(), "sandbox")))
 	args, _ := json.Marshal(map[string]any{"source": "https://example.com/images/cat.png?size=large"})
-	result, _, err := sendFile.Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := sendFile.Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,9 +186,9 @@ func TestSendFileSendsURLImage(t *testing.T) {
 }
 
 func TestSendFileMIMETypeOverridesURLName(t *testing.T) {
-	sendFile := NewSendFileTool(NewFileManager(filepath.Join(t.TempDir(), "sandbox"), config.Default().FileDelivery))
+	sendFile := NewSendFileTool(NewFileManager(filepath.Join(t.TempDir(), "sandbox")))
 	args, _ := json.Marshal(map[string]any{"source": "https://example.com/download", "name": "download", "mime_type": "image/webp"})
-	result, _, err := sendFile.Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := sendFile.Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,9 +198,9 @@ func TestSendFileMIMETypeOverridesURLName(t *testing.T) {
 }
 
 func TestSendFileURLPathExtensionOverridesDisplayName(t *testing.T) {
-	sendFile := NewSendFileTool(NewFileManager(filepath.Join(t.TempDir(), "sandbox"), config.Default().FileDelivery))
+	sendFile := NewSendFileTool(NewFileManager(filepath.Join(t.TempDir(), "sandbox")))
 	args, _ := json.Marshal(map[string]any{"source": "https://example.com/cat.png", "name": "cat.txt"})
-	result, _, err := sendFile.Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := sendFile.Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,10 +218,10 @@ func TestSendFileHTTPFolderIsLocalPath(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workspace, "http", "cat.png"), []byte("not really png"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	sendFile := NewSendFileTool(NewFileManager(root, config.Default().FileDelivery))
+	sendFile := NewSendFileTool(NewFileManager(root))
 	args, _ := json.Marshal(map[string]any{"source": "http/cat.png"})
 	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
-	result, _, err := sendFile.Call(ctx, tool.CallRequest{Arguments: args})
+	result, _, err := sendFile.Call(ctx, toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,10 +237,10 @@ func TestSendFileSendsLocalImage(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workspace, "cat.png"), []byte("not really png"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	sendFile := NewSendFileTool(NewFileManager(root, config.Default().FileDelivery))
+	sendFile := NewSendFileTool(NewFileManager(root))
 	args, _ := json.Marshal(map[string]any{"source": "cat.png"})
 	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
-	result, _, err := sendFile.Call(ctx, tool.CallRequest{Arguments: args})
+	result, _, err := sendFile.Call(ctx, toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,8 +254,8 @@ func TestSendFileSendsLocalImage(t *testing.T) {
 }
 
 func TestSendFileRejectsMissingSource(t *testing.T) {
-	sendFile := NewSendFileTool(NewFileManager(filepath.Join(t.TempDir(), "sandbox"), config.Default().FileDelivery))
-	_, _, err := sendFile.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{}`)})
+	sendFile := NewSendFileTool(NewFileManager(filepath.Join(t.TempDir(), "sandbox")))
+	_, _, err := sendFile.Call(context.Background(), toolshare.CallRequest{Arguments: []byte(`{}`)})
 	if err == nil || !strings.Contains(err.Error(), "source is required") {
 		t.Fatalf("expected source error, got %v", err)
 	}
@@ -266,27 +267,12 @@ func TestSendFileBackgroundRejectsAbsolutePath(t *testing.T) {
 	if err := os.WriteFile(file, []byte("hello"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	sendFile := NewSendFileTool(NewFileManager(root, config.Default().FileDelivery))
+	sendFile := NewSendFileTool(NewFileManager(root))
 	args, _ := json.Marshal(map[string]any{"source": file})
 	ctx := sandboxctx.WithSandboxContext(context.Background(), sandboxctx.SandboxContext{Root: root, Dir: filepath.Join(root, "cron"), Background: true, BackgroundKind: sandboxctx.BackgroundKindCron})
-	_, _, err := sendFile.Call(ctx, tool.CallRequest{Arguments: args})
+	_, _, err := sendFile.Call(ctx, toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "background path must be relative") {
 		t.Fatalf("expected background absolute path rejection, got %v", err)
-	}
-}
-
-func TestSendFileRejectsOversizedBase64File(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "sandbox")
-	file := filepath.Join(t.TempDir(), "large.txt")
-	if err := os.WriteFile(file, []byte("12345"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	manager := NewFileManager(root, config.FileDeliveryConfig{MaxDirectBase64Bytes: 4, Backend: "base64"})
-	sendFile := NewSendFileTool(manager)
-	args, _ := json.Marshal(map[string]any{"source": file})
-	_, _, err := sendFile.Call(context.Background(), tool.CallRequest{Arguments: args})
-	if err == nil {
-		t.Fatal("expected oversized file error")
 	}
 }
 

@@ -1,5 +1,7 @@
 package builtin
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"os"
@@ -10,7 +12,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/elyph"
 	"elbot/internal/fileops"
-	"elbot/internal/tool"
+	
 )
 
 func TestElwispCreatorToolInfo(t *testing.T) {
@@ -18,10 +20,10 @@ func TestElwispCreatorToolInfo(t *testing.T) {
 	if info.Name != ElwispCreatorName {
 		t.Fatalf("name = %q", info.Name)
 	}
-	if info.Source != tool.SourceBuiltin {
+	if info.Source != toolshare.SourceBuiltin {
 		t.Fatalf("source = %q", info.Source)
 	}
-	if info.Risk != tool.RiskLow {
+	if info.Risk != toolshare.RiskLow {
 		t.Fatalf("risk = %q", info.Risk)
 	}
 	if !info.SuperadminOnly {
@@ -51,7 +53,7 @@ func TestElwispCreatorToolSchemaHasNoParameters(t *testing.T) {
 }
 
 func TestElwispCreatorToolCallReturnsGuide(t *testing.T) {
-	result, _, err := NewElwispCreatorTool().Call(context.Background(), tool.CallRequest{})
+	result, _, err := NewElwispCreatorTool().Call(context.Background(), toolshare.CallRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +109,7 @@ token_env = ["ELNIS_HOME_TOKEN"]
 `)
 	t.Setenv(config.EnvConfigFile, appPath)
 
-	result, _, err := NewElwispCreatorTool().Call(context.Background(), tool.CallRequest{})
+	result, _, err := NewElwispCreatorTool().Call(context.Background(), toolshare.CallRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +127,7 @@ token_env = ["ELNIS_HOME_TOKEN"]
 func TestElwispCreatorGuideWarnsWhenConfigMissing(t *testing.T) {
 	t.Setenv(config.EnvConfigFile, filepath.Join(t.TempDir(), "missing.toml"))
 
-	result, _, err := NewElwispCreatorTool().Call(context.Background(), tool.CallRequest{})
+	result, _, err := NewElwispCreatorTool().Call(context.Background(), toolshare.CallRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +156,7 @@ func TestRegisterAllIncludesElwispCreator(t *testing.T) {
 	if got := strings.Join(registered.Info().DependsOn, ","); got != "read_file,edit_file,shell" {
 		t.Fatalf("depends_on = %q", got)
 	}
-	details, errors := registry.DiscoverDetails(context.Background(), []string{ElwispCreatorName}, func(tool.Tool) bool { return true })
+	details, errors := registry.DiscoverDetails(context.Background(), []string{ElwispCreatorName}, func(toolshare.Tool) bool { return true })
 	if len(errors) > 0 {
 		t.Fatalf("discover errors = %#v", errors)
 	}

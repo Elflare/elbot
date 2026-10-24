@@ -190,7 +190,7 @@ Chat／Responses 共用 Dialogue 的 Prompt、Hook、ToolRun、媒体与提交�
 
 ```mermaid
 flowchart LR
-    R["toolrun/runner.go<br/>顺序准备、确认与完成队列"] --> W["tool/executor.go、toolrun/elwisp_exec.go<br/>并发执行与实际开始边界"]
+    R["tool/execution/runner.go<br/>顺序准备、确认与完成队列"] --> W["tool/execution/executor.go、elwisp_exec.go<br/>并发执行与实际开始边界"]
     W --> R
     R --> C["agent/dialogue/commit.go、responses/persistence.go<br/>固定槽初始化、逐项提交与原生快照"]
     C --> S["storage/sqlite/tool_batch.go、dialogue_repository.go<br/>结果、统计、媒体和发现状态原子保存"]
@@ -214,7 +214,7 @@ flowchart LR
 <!-- locator:tool -->
 ## Tool Runtime、工具状态与文件
 
-Runtime 拥有注册、schema、权限与执行器，ToolRun 拥有当前视图、路由与确认；StateService 解释工具状态，PreloadService 返回待提交状态、材料和语言需求。
+Tool 拥有注册、schema、风险评估与执行器；Permission.CheckTool 根据身份、工具属性和后台事实决定拒绝、直接执行或交互确认。Tool 执行决定，Agent 承接交互确认。StateService 解释工具状态，PreloadService 返回待提交状态、材料和语言需求。
 
 - ELyph 通用规则由 elyph/rules.go 提供，工具、Skill 与后台任务声明需求，输入／工具 Runner 在正文 Hook 后组装。首次展示状态与携带规则的消息原子提交，同 Session 共享，压缩新 Session 重置。
 - 输入指令、发现与后台首轮预加载在一次提交中合并状态，失败保留原状态；准备在准入锁外，提交复核取消、binding、模式和压缩状态。
@@ -337,7 +337,7 @@ flowchart TD
     R --> B["agent/dialogue/reply_commit.go<br/>主对话回复与回执关联"]
     R --> BG["cron/delivery.go、elnis/outbox.go<br/>后台报告与投递状态"]
     B --> T["agent/dialogue/runner.go<br/>主对话终态归一与统一失败通知"]
-    R --> O["agent/output/output.go、toolrun/runner.go<br/>所属操作日志"]
+    R --> O["agent/output/output.go、tool/execution/runner.go<br/>所属操作日志"]
     O --> E["events/logging.go<br/>契约校验与发布"]
     T --> E
     E --> L["logging/<br/>分类排队、过滤与落盘"]

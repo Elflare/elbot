@@ -1,3 +1,4 @@
+// 管理 Skill 的加载、刷新与移除。
 package skill
 
 import (

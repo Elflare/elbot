@@ -1,5 +1,7 @@
 package elnis
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"encoding/json"
 	"fmt"
@@ -9,7 +11,7 @@ import (
 	"time"
 
 	"elbot/internal/elvena"
-	"elbot/internal/toolrun"
+	
 )
 
 var elwispNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
@@ -109,7 +111,7 @@ func (s *Service) prepareEvent(origin elvena.Origin, req Request) (Event, error)
 	}, nil
 }
 
-func normalizedToolDeclarations(tools []toolrun.ELwispToolDeclaration) (string, error) {
+func normalizedToolDeclarations(tools []toolshare.ELwispToolDeclaration) (string, error) {
 	if len(tools) == 0 {
 		return "", nil
 	}

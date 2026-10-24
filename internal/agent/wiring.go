@@ -84,8 +84,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Hooks:        bridge,
 		Output:       output,
 		ToolManager:  deps.Tools,
-		ToolRegistry: deps.Tools,
-		ToolState:    deps.Tools,
 		ToolDeps:     toolDeps,
 		ToolProvider: toolRuntime.Provider(),
 		MaxRounds:    cfg.Tools.MaxRoundsPerTurn,

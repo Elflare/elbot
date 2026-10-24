@@ -1,17 +1,20 @@
+// 解析 Skill 文件中的元数据和正文。
 package skill
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"fmt"
 	"strings"
 
-	"elbot/internal/tool"
+	
 )
 
 type Definition struct {
 	Name        string
 	Description string
 	WhenToUse   string
-	Risk        tool.RiskLevel
+	Risk        toolshare.RiskLevel
 	Detail      string
 	Format      string
 }
@@ -45,14 +48,14 @@ func ParseSkillMarkdown(raw []byte, fallbackName string) (Definition, error) {
 	return def, nil
 }
 
-func parseRisk(value string) (tool.RiskLevel, error) {
+func parseRisk(value string) (toolshare.RiskLevel, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return tool.RiskHigh, nil
+		return toolshare.RiskHigh, nil
 	}
-	switch tool.RiskLevel(value) {
-	case tool.RiskSafe, tool.RiskLow, tool.RiskMedium, tool.RiskHigh, tool.RiskCritical:
-		return tool.RiskLevel(value), nil
+	switch toolshare.RiskLevel(value) {
+	case toolshare.RiskSafe, toolshare.RiskLow, toolshare.RiskMedium, toolshare.RiskHigh, toolshare.RiskCritical:
+		return toolshare.RiskLevel(value), nil
 	default:
 		return "", fmt.Errorf("invalid skill risk %q", value)
 	}

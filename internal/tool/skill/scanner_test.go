@@ -1,5 +1,7 @@
 package skill
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"encoding/json"
@@ -23,7 +25,7 @@ func TestFilesystemScannerScansAgentSkill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != 1 || tools[0].Name() != "docx" || tools[0].Info().Source != tool.SourceSkillAgent || tools[0].Info().Risk != tool.RiskSafe {
+	if len(tools) != 1 || tools[0].Name() != "docx" || tools[0].Info().Source != toolshare.SourceSkillAgent || tools[0].Info().Risk != toolshare.RiskSafe {
 		t.Fatalf("tools = %#v", tools)
 	}
 }
@@ -43,7 +45,7 @@ input = "--input"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != 1 || tools[0].Name() != "docx" || tools[0].Info().Risk != tool.RiskMedium {
+	if len(tools) != 1 || tools[0].Name() != "docx" || tools[0].Info().Risk != toolshare.RiskMedium {
 		t.Fatalf("tools = %#v", tools)
 	}
 	if _, ok := tools[0].(CommandTool); !ok {
@@ -74,7 +76,7 @@ func TestFilesystemScannerLoadsMarkdownDetailOnDemand(t *testing.T) {
 
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Updated DOCX")
 	args, _ := json.Marshal(map[string]string{"name": "docx"})
-	result, _, err := tool.NewDiscoverTool(registry).Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := tool.NewDiscoverTool(registry).Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +114,7 @@ input = "--input"
 
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Updated callable DOCX")
 	args, _ := json.Marshal(map[string]string{"name": "docx"})
-	result, _, err := tool.NewDiscoverTool(registry).Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := tool.NewDiscoverTool(registry).Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +136,7 @@ func TestMarkdownDetailReadFailureReturnsDiscoveryError(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]string{"name": "docx"})
-	_, _, err := tool.NewDiscoverTool(registry).Call(context.Background(), tool.CallRequest{Arguments: args})
+	_, _, err := tool.NewDiscoverTool(registry).Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "read SKILL.md") {
 		t.Fatalf("discovery error = %v, want SKILL.md read failure", err)
 	}
@@ -153,7 +155,7 @@ tags = ["private"]
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != 1 || tools[0].Name() != "private_doc" || tools[0].Info().Risk != tool.RiskHigh || !tools[0].Info().SuperadminOnly {
+	if len(tools) != 1 || tools[0].Name() != "private_doc" || tools[0].Info().Risk != toolshare.RiskHigh || !tools[0].Info().SuperadminOnly {
 		t.Fatalf("tools = %#v", tools)
 	}
 	if _, ok := tools[0].(Descriptor); !ok {
@@ -185,7 +187,7 @@ func TestPolicyOnlyAgentSkillHiddenFromNormalUserDiscovery(t *testing.T) {
 	actor := contextinfo.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: contextinfo.RoleUser}
 	ctx := security.WithPermission(contextinfo.WithActor(context.Background(), actor), permission)
 	discover := tool.NewDiscoverTool(registry)
-	result, _, err := discover.Call(ctx, tool.CallRequest{})
+	result, _, err := discover.Call(ctx, toolshare.CallRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +195,7 @@ func TestPolicyOnlyAgentSkillHiddenFromNormalUserDiscovery(t *testing.T) {
 		t.Fatalf("private skill should be hidden from normal user: %s", result.Data)
 	}
 	args, _ := json.Marshal(map[string]string{"name": "private_doc"})
-	if _, _, err := discover.Call(ctx, tool.CallRequest{Arguments: args}); err == nil {
+	if _, _, err := discover.Call(ctx, toolshare.CallRequest{Arguments: args}); err == nil {
 		t.Fatal("expected normal user detail query to be denied")
 	}
 }
@@ -220,7 +222,7 @@ superadmin_only = true
 	superadmin := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
 	ctx := security.WithPermission(contextinfo.WithActor(context.Background(), superadmin), permission)
 	args, _ := json.Marshal(map[string]string{"name": "private_doc"})
-	result, _, err := tool.NewDiscoverTool(registry).Call(ctx, tool.CallRequest{Arguments: args})
+	result, _, err := tool.NewDiscoverTool(registry).Call(ctx, toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +246,7 @@ input = "--input"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != 1 || tools[0].Name() != "docx" || tools[0].Info().Risk != tool.RiskSafe {
+	if len(tools) != 1 || tools[0].Name() != "docx" || tools[0].Info().Risk != toolshare.RiskSafe {
 		t.Fatalf("tools = %#v", tools)
 	}
 	if _, ok := tools[0].(Descriptor); !ok {
@@ -268,7 +270,7 @@ func TestFilesystemScannerScansGoSkillWithBinary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != 1 || tools[0].Name() != "foo" || tools[0].Info().Source != tool.SourceSkillGo {
+	if len(tools) != 1 || tools[0].Name() != "foo" || tools[0].Info().Source != toolshare.SourceSkillGo {
 		t.Fatalf("tools = %#v", tools)
 	}
 }
@@ -282,10 +284,10 @@ func TestFilesystemScannerScansGoTextSkillWithoutBinary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != 1 || tools[0].Name() != "notes" || tools[0].Info().Source != tool.SourceSkillGo || tools[0].Info().Risk != tool.RiskLow {
+	if len(tools) != 1 || tools[0].Name() != "notes" || tools[0].Info().Source != toolshare.SourceSkillGo || tools[0].Info().Risk != toolshare.RiskLow {
 		t.Fatalf("tools = %#v", tools)
 	}
-	detailer := tools[0].(DetailProvider)
+	detailer := tools[0].(toolshare.DetailProvider)
 	if len(detailer.ActivateTools()) != 0 {
 		t.Fatalf("pure ELyph go skill should not activate runner: %#v", detailer.ActivateTools())
 	}
@@ -391,7 +393,7 @@ func TestAgentDescriptorDetailWithoutActor(t *testing.T) {
 func TestAgentSkillCreatorNoticeDiscovery(t *testing.T) {
 	for _, invalidManifest := range []bool{false, true} {
 		registry := tool.NewRegistry()
-		record := Record{Name: "docx", Detail: "# DOCX", Kind: KindAgent, Risk: tool.RiskSafe}
+		record := Record{Name: "docx", Detail: "# DOCX", Kind: KindAgent, Risk: toolshare.RiskSafe}
 		if invalidManifest {
 			record.ManifestFound = true
 			record.ManifestError = "invalid manifest"
@@ -406,11 +408,11 @@ func TestAgentSkillCreatorNoticeDiscovery(t *testing.T) {
 				if role != "" {
 					ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: role})
 				}
-				result, _, err := discover.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"name":"docx"}`)})
+				result, _, err := discover.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(`{"name":"docx"}`)})
 				if err != nil {
 					t.Fatal(err)
 				}
-				var discovery tool.DiscoveryResult
+				var discovery toolshare.DiscoveryResult
 				if err := json.Unmarshal(result.Data, &discovery); err != nil {
 					t.Fatal(err)
 				}

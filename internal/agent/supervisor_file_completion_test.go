@@ -1,5 +1,7 @@
 package agent
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"fmt"
@@ -11,7 +13,7 @@ import (
 	"elbot/internal/completion"
 	"elbot/internal/contextinfo"
 	"elbot/internal/fileops"
-	"elbot/internal/tool"
+	
 )
 
 type contractFileTool struct {
@@ -22,7 +24,7 @@ type contractFileTool struct {
 	bindingCtx context.Context
 }
 
-func (v *contractFileTool) Call(ctx context.Context, _ tool.CallRequest) (*tool.Result, string, error) {
+func (v *contractFileTool) Call(ctx context.Context, _ toolshare.CallRequest) (*toolshare.Result, string, error) {
 	v.bindingCtx = context.WithoutCancel(ctx)
 	_, _, err := v.files.Edit(ctx, fileops.EditRequest{Path: v.path, Edits: []fileops.Edit{{Operation: "replace_text", OldText: "before", NewText: new("after")}}})
 	if err != nil {
@@ -36,7 +38,7 @@ func (v *contractFileTool) Call(ctx context.Context, _ tool.CallRequest) (*tool.
 		return nil, "", fmt.Errorf("backups=%d", len(records))
 	}
 	v.backup = records[0].ID
-	return &tool.Result{Content: "edited"}, "", nil
+	return &toolshare.Result{Content: "edited"}, "", nil
 }
 func TestSupervisorRollbackAndBindingInvalidation(t *testing.T) {
 	deps := isolatedModuleDeps(t)
@@ -92,22 +94,22 @@ func TestSupervisorRollbackAndBindingInvalidation(t *testing.T) {
 type contractPrivateTool struct{ contractTool }
 
 func (*contractPrivateTool) Name() string { return "contract_private" }
-func (v *contractPrivateTool) Info() tool.Info {
-	return tool.Info{Name: v.Name(), Risk: tool.RiskSafe, SuperadminOnly: true, Tags: []string{"private"}}
+func (v *contractPrivateTool) Info() toolshare.Info {
+	return toolshare.Info{Name: v.Name(), Risk: toolshare.RiskSafe, SuperadminOnly: true, Tags: []string{"private"}}
 }
 
 type contractSkill struct{ contractTool }
 
 func (*contractSkill) Name() string { return "contract_skill" }
-func (v *contractSkill) Info() tool.Info {
-	return tool.Info{Name: v.Name(), Source: tool.SourceSkillAgent, Risk: tool.RiskSafe, OwnerScoped: true}
+func (v *contractSkill) Info() toolshare.Info {
+	return toolshare.Info{Name: v.Name(), Source: toolshare.SourceSkillAgent, Risk: toolshare.RiskSafe, OwnerScoped: true}
 }
 func (*contractSkill) Detail() string          { return "skill instructions" }
 func (*contractSkill) ActivateTools() []string { return nil }
 func TestSupervisorCompletionUsesPermissionsTagsAndSkills(t *testing.T) {
 	deps := isolatedModuleDeps(t)
 	registry := deps.Tools.(isolatedToolCapabilities).Registry
-	for _, v := range []tool.Tool{&contractTool{}, &contractPrivateTool{}, &contractSkill{}} {
+	for _, v := range []toolshare.Tool{&contractTool{}, &contractPrivateTool{}, &contractSkill{}} {
 		if err := registry.Register(v); err != nil {
 			t.Fatal(err)
 		}

@@ -23,6 +23,31 @@ type Permission struct {
 	Superadmins           map[string]map[string]bool // Platform name -> native user ID -> membership.
 }
 
+// ToolPermissionResult 描述本次工具调用的权限与确认要求。
+type ToolPermissionResult struct {
+	Allowed           bool   // 是否具备执行权限；为 false 时不得进入确认或执行。
+	NeedsConfirmation bool   // 已有执行权限，但仍需取得用户确认。
+	Reason            string // 拒绝或自动确认的策略原因，供调用方组织提示与审计。
+}
+
+// CheckTool 统一判断工具权限与确认要求；backgroundKind 仅在后台沙盒中填写。
+// 场景和风险由调用方提供，本方法不读取业务组件、不交互也不发布日志。
+func (p *Permission) CheckTool(actor contextinfo.Actor, name string, risk RiskLevel, ownerScoped, superadminOnly bool, backgroundKind string) ToolPermissionResult {
+	if superadminOnly && actor.Role != contextinfo.RoleSuperadmin {
+		return ToolPermissionResult{Reason: "tool_requires_superadmin"}
+	}
+	if !p.CanUseTool(actor, risk, ownerScoped) {
+		return ToolPermissionResult{Reason: "tool_risk_above_allowed_level"}
+	}
+	if name == "shell" && (backgroundKind == "cron" || backgroundKind == "elnis") {
+		if risk == RiskCritical {
+			return ToolPermissionResult{Reason: "background_shell_rejected"}
+		}
+		return ToolPermissionResult{Allowed: true, Reason: "background_shell_auto_confirmed"}
+	}
+	return ToolPermissionResult{Allowed: true, NeedsConfirmation: p.NeedsToolConfirmation(actor, risk)}
+}
+
 func NewPermission(userMaxToolRisk, superadminConfirmRisk string, superadmins map[string][]string) *Permission {
 	p := &Permission{
 		UserMaxToolRisk:       ParseRisk(userMaxToolRisk, RiskLow),

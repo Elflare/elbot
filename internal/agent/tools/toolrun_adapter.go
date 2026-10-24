@@ -1,5 +1,7 @@
 package tools
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"encoding/json"
@@ -19,8 +21,8 @@ import (
 	"elbot/internal/security"
 	sessionstate "elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
-	"elbot/internal/toolrun"
+	
+	
 	"elbot/internal/turn"
 	"elbot/internal/workspace"
 )
@@ -43,7 +45,7 @@ type toolRunDeps struct {
 	attempt       string
 }
 
-func (d toolRunDeps) ForTurn(out dialogue.Output, attempt string) toolrun.RunnerDeps {
+func (d toolRunDeps) ForTurn(out dialogue.Output, attempt string) toolshare.RunnerDeps {
 	d.output, d.attempt = out, attempt
 	return d
 }
@@ -98,17 +100,8 @@ func (d toolRunDeps) ShouldSendPreview(ctx context.Context, session *storage.Ses
 	return d.identity.IsCLI(ctx) || strings.TrimSpace(assistantText) == ""
 }
 
-func (d toolRunDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail string) (toolrun.ConfirmResult, error) {
+func (d toolRunDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment toolshare.RiskAssessment, detail string) (toolshare.ConfirmResult, error) {
 	return d.confirmations.AwaitToolConfirmation(ctx, sessionID, call, assessment, detail)
-}
-
-func (d toolRunDeps) ConfirmBackgroundTool(ctx context.Context, sessionID string, call llm.ToolCallRequest, resolved toolrun.ResolvedTool, assessment tool.RiskAssessment) (toolrun.ConfirmResult, bool) {
-	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
-	allowed, handled := d.confirmations.ConfirmBackgroundSandboxShell(ctx, sessionID, call, assessment.Level, &message)
-	if !handled {
-		return toolrun.ConfirmResult{}, false
-	}
-	return toolrun.ConfirmResult{Allowed: allowed, Message: message}, true
 }
 
 func (d toolRunDeps) SendPreview(ctx context.Context, text ...string) {
@@ -119,7 +112,7 @@ func (d toolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output)
 	return d.output.SendOutputs(ctx, outputs)
 }
 
-func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk tool.RiskLevel, reason string) {
+func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk toolshare.RiskLevel, reason string) {
 	content := map[string]string{"actor_id": d.identity.Actor(ctx).ID, "tool": call.Name, "risk": string(risk), "reason": reason}
 	for key, value := range content {
 		runes := []rune(value)
@@ -165,8 +158,7 @@ type ToolIdentity interface {
 }
 
 type ToolConfirmations interface {
-	AwaitToolConfirmation(context.Context, string, llm.ToolCallRequest, tool.RiskAssessment, string) (toolrun.ConfirmResult, error)
-	ConfirmBackgroundSandboxShell(context.Context, string, llm.ToolCallRequest, tool.RiskLevel, *llm.LLMMessage) (bool, bool)
+	AwaitToolConfirmation(context.Context, string, llm.ToolCallRequest, toolshare.RiskAssessment, string) (toolshare.ConfirmResult, error)
 }
 
 // ToolRunDeps declares the application bridge consumed by ToolRun. Per-turn

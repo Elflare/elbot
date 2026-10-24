@@ -1,5 +1,7 @@
 package input
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"elbot/internal/agent/dialogue"
 	agentshare "elbot/internal/agent/share"
@@ -27,7 +29,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	_ = registry.Register(tool.NewDiscoverTool(registry))
 	_ = registry.Register(agentWrapperTool{name: "alpha"})
 	_ = registry.Register(agentWrapperTool{name: "wrapper", hidden: true})
-	_ = registry.Register(agentDetailTool{name: "doc", source: tool.SourceSkillAgent, detail: "#skill doc", format: "elyph", activate: []string{"wrapper"}})
+	_ = registry.Register(agentDetailTool{name: "doc", source: toolshare.SourceSkillAgent, detail: "#skill doc", format: "elyph", activate: []string{"wrapper"}})
 
 	permission := security.NewPermission("low", "critical", map[string][]string{"cli": {"local"}})
 	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Permission: permission})
@@ -108,7 +110,7 @@ func (r *toolStateFaultRepo) Mutate(ctx context.Context, id string, update func(
 
 type agentDetailTool struct {
 	name     string
-	source   tool.Source
+	source   toolshare.Source
 	detail   string
 	format   string
 	activate []string
@@ -116,25 +118,25 @@ type agentDetailTool struct {
 
 func (t agentDetailTool) Name() string { return t.name }
 
-func (t agentDetailTool) Info() tool.Info {
-	return tool.Info{Name: t.name, Description: t.name, Source: t.source, Risk: tool.RiskLow}
+func (t agentDetailTool) Info() toolshare.Info {
+	return toolshare.Info{Name: t.name, Description: t.name, Source: t.source, Risk: toolshare.RiskLow}
 }
 
 func (t agentDetailTool) Schema() llm.ToolSchema { return llm.ToolSchema{} }
 
-func (t agentDetailTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
+func (t agentDetailTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
 	{
-		result := &tool.Result{Content: t.detail}
+		result := &toolshare.Result{Content: t.detail}
 		return result, result.Content, nil
 	}
 }
 
 func (t agentDetailTool) Detail() string {
-	return tool.RenderDetailBlocks([]tool.DetailBlock{t.DetailBlock()})
+	return tool.RenderDetailBlocks([]toolshare.DetailBlock{t.DetailBlock()})
 }
 
-func (t agentDetailTool) DetailBlock() tool.DetailBlock {
-	return tool.DetailBlock{Content: t.detail, Format: t.format}
+func (t agentDetailTool) DetailBlock() toolshare.DetailBlock {
+	return toolshare.DetailBlock{Content: t.detail, Format: t.format}
 }
 
 func (t agentDetailTool) ActivateTools() []string { return t.activate }
@@ -147,17 +149,17 @@ type agentWrapperTool struct {
 
 func (t agentWrapperTool) Name() string { return t.name }
 
-func (t agentWrapperTool) Info() tool.Info {
-	return tool.Info{Name: t.name, Description: t.name, Source: tool.SourceBuiltin, Risk: tool.RiskLow, Hidden: t.hidden, Tags: t.tags}
+func (t agentWrapperTool) Info() toolshare.Info {
+	return toolshare.Info{Name: t.name, Description: t.name, Source: toolshare.SourceBuiltin, Risk: toolshare.RiskLow, Hidden: t.hidden, Tags: t.tags}
 }
 
 func (t agentWrapperTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: t.name, Parameters: map[string]any{"type": "object"}}
 }
 
-func (t agentWrapperTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
+func (t agentWrapperTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
 	{
-		result := &tool.Result{Content: "ok"}
+		result := &toolshare.Result{Content: "ok"}
 		return result, result.Content, nil
 	}
 }

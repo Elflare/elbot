@@ -2,6 +2,8 @@
 
 package runtime
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"encoding/json"
@@ -24,13 +26,13 @@ import (
 )
 
 type loggingTool struct {
-	run func(context.Context, tool.CallRequest) (*tool.Result, string, error)
+	run func(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error)
 }
 
 func (loggingTool) Name() string           { return "logging_tool" }
-func (loggingTool) Info() tool.Info        { return tool.Info{Name: "logging_tool"} }
+func (loggingTool) Info() toolshare.Info        { return toolshare.Info{Name: "logging_tool"} }
 func (loggingTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "logging_tool"} }
-func (t loggingTool) Call(ctx context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+func (t loggingTool) Call(ctx context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
 	return t.run(ctx, req)
 }
 
@@ -57,11 +59,11 @@ func captureHookRecords(t *testing.T, includeStarts ...bool) *[]events.LogRecord
 func TestPluginToolStartPrecedesBodyAndEndHasElapsed(t *testing.T) {
 	records := captureHookRecords(t, true)
 	registry := tool.NewRegistry()
-	_ = registry.Register(loggingTool{run: func(context.Context, tool.CallRequest) (*tool.Result, string, error) {
+	_ = registry.Register(loggingTool{run: func(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
 		if len(*records) != 1 || (*records)[0].EventName != "hook_tool_call_prepared" || strings.Contains((*records)[0].Content, `"result"`) {
 			t.Fatalf("start=%+v", *records)
 		}
-		return &tool.Result{Content: "business"}, "summary", nil
+		return &toolshare.Result{Content: "business"}, "summary", nil
 	}})
 	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Tools: testTools{registry}})
 	if err != nil {
@@ -93,9 +95,9 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 			records := captureHookRecords(t)
 			registry := tool.NewRegistry()
 			var callID string
-			if err := registry.Register(loggingTool{run: func(_ context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+			if err := registry.Register(loggingTool{run: func(_ context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
 				callID = req.ID
-				return &tool.Result{Content: "business body", Segments: llm.TextSegments("business segments"), Outputs: []delivery.Output{delivery.Text("output")}}, "独立日志正文", nil
+				return &toolshare.Result{Content: "business body", Segments: llm.TextSegments("business segments"), Outputs: []delivery.Output{delivery.Text("output")}}, "独立日志正文", nil
 			}}); err != nil {
 				t.Fatal(err)
 			}
@@ -153,11 +155,11 @@ func TestPluginToolArgumentPreviewDoesNotChangeInvocation(t *testing.T) {
 	records := captureHookRecords(t, true)
 	args, _ := json.Marshal(map[string]string{"value": strings.Repeat("雪🔥", 400)})
 	registry := tool.NewRegistry()
-	if err := registry.Register(loggingTool{run: func(_ context.Context, req tool.CallRequest) (*tool.Result, string, error) {
+	if err := registry.Register(loggingTool{run: func(_ context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
 		if string(req.Arguments) != string(args) {
 			t.Error("execution arguments were truncated")
 		}
-		return &tool.Result{Content: "business result"}, "source summary", nil
+		return &toolshare.Result{Content: "business result"}, "source summary", nil
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +203,7 @@ func TestToolAuditUsesTriggerActorAndKeepsEnteredCancellation(t *testing.T) {
 			records := captureHookRecords(t)
 			ctx, cancel := context.WithCancel(contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "context"}))
 			registry := tool.NewRegistry()
-			if err := registry.Register(loggingTool{run: func(ctx context.Context, _ tool.CallRequest) (*tool.Result, string, error) {
+			if err := registry.Register(loggingTool{run: func(ctx context.Context, _ toolshare.CallRequest) (*toolshare.Result, string, error) {
 				actor, _ := contextinfo.ActorFromContext(ctx)
 				if actor.ID != tc.sessionActor {
 					t.Fatalf("permission actor changed: %+v", actor)
@@ -297,8 +299,8 @@ func TestWorkerRequestKeepsKnownFaultWhenCanceled(t *testing.T) {
 func TestToolWithoutOutputsDoesNotInvokeSenderOrLogSend(t *testing.T) {
 	records := captureHookRecords(t)
 	registry := tool.NewRegistry()
-	if err := registry.Register(loggingTool{run: func(context.Context, tool.CallRequest) (*tool.Result, string, error) {
-		return &tool.Result{Content: "business only"}, "tool body", nil
+	if err := registry.Register(loggingTool{run: func(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
+		return &toolshare.Result{Content: "business only"}, "tool body", nil
 	}}); err != nil {
 		t.Fatal(err)
 	}

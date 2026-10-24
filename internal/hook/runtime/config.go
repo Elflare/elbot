@@ -5,6 +5,8 @@
 // dispatch path.
 package runtime
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"fmt"
@@ -16,7 +18,7 @@ import (
 	"elbot/internal/hook/share"
 	"elbot/internal/llm"
 	"elbot/internal/processenv"
-	"elbot/internal/tool"
+	
 )
 
 type Status string
@@ -157,9 +159,9 @@ type Info struct {
 type Options struct {
 	Media mediaAPI // Borrowed media center; runtime owns only its own leases.
 	Tools interface {
-		ToolInfo(string) (tool.Info, bool)
+		ToolInfo(string) (toolshare.Info, bool)
 		ToolSchema(string) (llm.ToolSchema, bool)
-		CallTool(context.Context, tool.CallRequest) (*tool.Result, string, error)
+		CallTool(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error)
 	} // Metadata, schema and invocation without exposing Tool objects.
 
 	// Send keeps delivery receipts separate from the source-owned log outcome.

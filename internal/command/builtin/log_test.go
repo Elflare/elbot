@@ -1,5 +1,7 @@
 package builtin
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"log/slog"
@@ -12,7 +14,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/events"
 	"elbot/internal/logging"
-	"elbot/internal/tool"
+	
 )
 
 // Both event selectors replace the previous selector; named --tool remains
@@ -468,7 +470,7 @@ func TestLogAndAuditCommandsCompleteOptionsAndValues(t *testing.T) {
 		t.Fatalf("elwisp mode Complete = %#v", got)
 	}
 
-	auditCmd := NewAudit(Deps{Tools: &fakeToolService{infos: []tool.Info{{Name: "shell"}, {Name: "web_search"}}}}).(command.Completer)
+	auditCmd := NewAudit(Deps{Tools: &fakeToolService{infos: []toolshare.Info{{Name: "shell"}, {Name: "web_search"}}}}).(command.Completer)
 	got = auditCmd.Complete(context.Background(), command.CompletionRequest{Raw: "/audit --risk h", Prefix: "/", Name: "audit", Args: "--risk h", Cursor: len("/audit --risk h")})
 	if len(got) != 1 || got[0].Text != "high" {
 		t.Fatalf("audit risk Complete = %#v", got)

@@ -1,5 +1,7 @@
 package builtin
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"encoding/json"
@@ -56,7 +58,7 @@ func (f *rollbackFixture) write(t *testing.T, path, text string) {
 		args["expected_revision"] = fileops.ContentRevision(data)
 	}
 	raw, _ := json.Marshal(args)
-	result, _, err := f.edit.Call(f.ctx(), tool.CallRequest{Arguments: raw})
+	result, _, err := f.edit.Call(f.ctx(), toolshare.CallRequest{Arguments: raw})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,9 +67,9 @@ func (f *rollbackFixture) write(t *testing.T, path, text string) {
 	}
 }
 
-func rollbackRequest(path string) tool.CallRequest {
+func rollbackRequest(path string) toolshare.CallRequest {
 	raw, _ := json.Marshal(map[string]any{"path": path})
-	return tool.CallRequest{ID: "rollback-call", Name: "rollback_file", Arguments: raw}
+	return toolshare.CallRequest{ID: "rollback-call", Name: "rollback_file", Arguments: raw}
 }
 
 func TestRollbackToolPathOnlyAndWorkspace(t *testing.T) {
@@ -81,7 +83,7 @@ func TestRollbackToolPathOnlyAndWorkspace(t *testing.T) {
 		t.Fatalf("schema: %#v", params)
 	}
 	for _, raw := range []string{`{}`, `{"path":"file","id":1}`, `{"path":"file","action":"rollback"}`} {
-		if _, _, err := f.rollback.Call(f.ctx(), tool.CallRequest{Arguments: json.RawMessage(raw)}); err == nil {
+		if _, _, err := f.rollback.Call(f.ctx(), toolshare.CallRequest{Arguments: json.RawMessage(raw)}); err == nil {
 			t.Fatalf("accepted %s", raw)
 		}
 	}
@@ -180,7 +182,7 @@ func TestRollbackToolFileGuardChecksActualTarget(t *testing.T) {
 	}
 	f.edit.FileGuard = guard
 	raw, _ := json.Marshal(map[string]any{"path": link, "expected_revision": fileops.ContentRevision([]byte("two")), "edits": []map[string]any{{"operation": "overwrite", "new_text": "three"}}})
-	if _, _, err := f.edit.Call(f.ctx(), tool.CallRequest{Arguments: raw}); err == nil || !strings.Contains(err.Error(), "protected target") {
+	if _, _, err := f.edit.Call(f.ctx(), toolshare.CallRequest{Arguments: raw}); err == nil || !strings.Contains(err.Error(), "protected target") {
 		t.Fatalf("edit guard: %v", err)
 	}
 	records, _ := f.service.List(f.ctx())
@@ -200,7 +202,7 @@ func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
 		t.Fatal("missing rollback tool")
 	}
 	info := rollback.Info()
-	if !info.Hidden || !info.SuperadminOnly || !info.ForegroundOnly || info.Risk != tool.RiskHigh || !slices.Equal(info.Tags, []string{"files"}) {
+	if !info.Hidden || !info.SuperadminOnly || !info.ForegroundOnly || info.Risk != toolshare.RiskHigh || !slices.Equal(info.Tags, []string{"files"}) {
 		t.Fatalf("info: %+v", info)
 	}
 	list, err := registry.Discover("")
@@ -231,7 +233,7 @@ func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
 		}
 	}
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin})
-	details, errs := registry.DiscoverDetails(ctx, []string{"read_file", "edit_file"}, func(candidate tool.Tool) bool { return tool.InfoAvailableInContext(ctx, candidate.Info()) })
+	details, errs := registry.DiscoverDetails(ctx, []string{"read_file", "edit_file"}, func(candidate toolshare.Tool) bool { return tool.InfoAvailableInContext(ctx, candidate.Info()) })
 	if len(errs) > 0 {
 		t.Fatal(errs)
 	}
@@ -245,7 +247,7 @@ func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
 		t.Fatalf("duplicate dependencies: %d", count)
 	}
 	user := contextinfo.Actor{ID: "user", Role: contextinfo.RoleUser}
-	details, _ = registry.DiscoverDetails(context.Background(), []string{"edit_file"}, func(candidate tool.Tool) bool {
+	details, _ = registry.DiscoverDetails(context.Background(), []string{"edit_file"}, func(candidate toolshare.Tool) bool {
 		return tool.CanAccessTool(user, security.NewPermission("critical", "high", nil), candidate.Info())
 	})
 	for _, entry := range details {

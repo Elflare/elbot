@@ -1,4 +1,7 @@
+// 实现长期记忆工具，维护记忆文件及索引。
 package builtin
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
@@ -135,9 +138,9 @@ type longMemoryStore struct {
 	formatErrors map[string]longMemoryInvalidFile
 }
 
-func NewLongMemoryTools(rootDir string) []tool.Tool {
+func NewLongMemoryTools(rootDir string) []toolshare.Tool {
 	store := newLongMemoryStore(rootDir)
-	return []tool.Tool{
+	return []toolshare.Tool{
 		LongMemoryTool{store: store},
 		LongMemorySearchTool{store: store},
 		LongMemoryWriteTool{store: store},
@@ -150,14 +153,14 @@ func newLongMemoryStore(rootDir string) *longMemoryStore {
 }
 
 func (LongMemoryTool) Name() string { return longMemoryToolName }
-func (t LongMemoryTool) Info() tool.Info {
+func (t LongMemoryTool) Info() toolshare.Info {
 	return longMemoryBuilder(t.Name(), "Long Memory 长期记忆入口。用于检索、保存、更新、删除全局长期记忆").DependsOn(longMemorySearchToolName, longMemoryWriteToolName).BuildInfo()
 }
 func (t LongMemoryTool) Schema() llm.ToolSchema {
 	return longMemoryBuilder(t.Name(), t.Info().Description).BuildSchema()
 }
-func (t LongMemoryTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t LongMemoryTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	{
 		result := textResult("long_memory 是长期记忆入口。请按需调用 long_memory_search 或 long_memory_write。long_memory_search 不传 keywords/category 时会返回分类目录。")
 		return result, "long_memory guide returned", nil
@@ -165,8 +168,8 @@ func (t LongMemoryTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool
 }
 
 func (LongMemorySearchTool) Name() string { return longMemorySearchToolName }
-func (t LongMemorySearchTool) Info() tool.Info {
-	return hiddenLongMemoryInfo(t.Name(), "检索全局长期记忆；不传 keywords/category 时返回分类目录。默认只返回标题和摘要，需要详细内容时传 brief_only=false。", tool.RiskMedium)
+func (t LongMemorySearchTool) Info() toolshare.Info {
+	return hiddenLongMemoryInfo(t.Name(), "检索全局长期记忆；不传 keywords/category 时返回分类目录。默认只返回标题和摘要，需要详细内容时传 brief_only=false。", toolshare.RiskMedium)
 }
 func (t LongMemorySearchTool) Schema() llm.ToolSchema {
 	return longMemoryBuilder(t.Name(), t.Info().Description).
@@ -177,8 +180,8 @@ func (t LongMemorySearchTool) Schema() llm.ToolSchema {
 		Integer("limit", "最大结果数，默认 3，上限 10。").
 		BuildSchema()
 }
-func (t LongMemorySearchTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t LongMemorySearchTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	var args longMemorySearchArgs
 	if err := lmDecodeArgs(req.Arguments, &args, t.Name()); err != nil {
 		return nil, err.Error(), err
@@ -204,12 +207,12 @@ func (t LongMemorySearchTool) Call(ctx context.Context, req tool.CallRequest) (_
 }
 
 func (LongMemoryWriteTool) Name() string { return longMemoryWriteToolName }
-func (t LongMemoryWriteTool) Info() tool.Info {
-	return hiddenLongMemoryInfo(t.Name(), "保存、局部更新或永久删除全局长期记忆。operation 为 save、update 或 delete。保存前建议先用 long_memory_search 查看分类和避免重复。", tool.RiskHigh)
+func (t LongMemoryWriteTool) Info() toolshare.Info {
+	return hiddenLongMemoryInfo(t.Name(), "保存、局部更新或永久删除全局长期记忆。operation 为 save、update 或 delete。保存前建议先用 long_memory_search 查看分类和避免重复。", toolshare.RiskHigh)
 }
 func (t LongMemoryWriteTool) Schema() llm.ToolSchema {
 	return longMemoryBuilder(t.Name(), t.Info().Description).
-		String("operation", "写操作：save、update、delete。", tool.Required()).
+		String("operation", "写操作：save、update、delete。", toolshare.Required()).
 		Integer("id", "update/delete 需要的记忆 ID。").
 		String("category", "save 需要；update 时不填表示保持不变，填写表示修改分类。优先复用已有分类，避免创建语义重叠的新分类。").
 		String("title", "save 需要；update 时不填表示保持不变，填写表示修改标题。").
@@ -220,7 +223,7 @@ func (t LongMemoryWriteTool) Schema() llm.ToolSchema {
 		BuildSchema()
 }
 
-func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req tool.CallRequest) (*tool.PreparedCall, error) {
+func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*tool.PreparedCall, error) {
 	args, err := t.decodeWriteArgs(req)
 	if err != nil {
 		return nil, err
@@ -233,7 +236,7 @@ func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req tool.CallReque
 		return nil, err
 	}
 	detail := longMemoryUpdateRiskDetail(args, preview)
-	return tool.NewPreparedCall(t, req, detail, func(ctx context.Context) (*tool.Result, string, error) {
+	return tool.NewPreparedCall(t, req, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.call(ctx, args, &preview)
 	}), nil
 }
@@ -263,7 +266,7 @@ func longMemoryUpdateRiskDetail(args longMemoryWriteArgs, preview longMemoryUpda
 	return strings.TrimRight(b.String(), "\n")
 }
 
-func (t LongMemoryWriteTool) decodeWriteArgs(req tool.CallRequest) (longMemoryWriteArgs, error) {
+func (t LongMemoryWriteTool) decodeWriteArgs(req toolshare.CallRequest) (longMemoryWriteArgs, error) {
 	var args longMemoryWriteArgs
 	if err := lmDecodeArgs(req.Arguments, &args, t.Name()); err != nil {
 		return longMemoryWriteArgs{}, err
@@ -291,16 +294,16 @@ func longMemoryUpdateArgsFromWrite(args longMemoryWriteArgs) longMemoryUpdateArg
 	return update
 }
 
-func (t LongMemoryWriteTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+func (t LongMemoryWriteTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
 	args, err := t.decodeWriteArgs(req)
 	if err != nil {
-		return nil, tool.TruncateLogContent(err.Error(), 1024), err
+		return nil, toolshare.TruncateLogContent(err.Error(), 1024), err
 	}
 	return t.call(ctx, args, nil)
 }
 
-func (t LongMemoryWriteTool) call(ctx context.Context, args longMemoryWriteArgs, preview *longMemoryUpdatePreview) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t LongMemoryWriteTool) call(ctx context.Context, args longMemoryWriteArgs, preview *longMemoryUpdatePreview) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	switch strings.ToLower(strings.TrimSpace(args.Operation)) {
 	case "save":
 		record, err := t.store.save(ctx, longMemorySaveArgs{Category: args.Category, Title: args.Title, Summary: args.Summary, Keywords: args.Keywords, Content: args.Content})
@@ -344,11 +347,11 @@ func (t LongMemoryWriteTool) call(ctx context.Context, args longMemoryWriteArgs,
 	}
 }
 
-func longMemoryBuilder(name, description string) *tool.Builder {
-	return tool.NewBuilder(name).Description(description).Risk(tool.RiskMedium).Tags("agent").SuperadminOnly()
+func longMemoryBuilder(name, description string) *toolshare.Builder {
+	return toolshare.NewBuilder(name).Description(description).Risk(toolshare.RiskMedium).Tags("agent").SuperadminOnly()
 }
 
-func hiddenLongMemoryInfo(name, description string, risk tool.RiskLevel) tool.Info {
+func hiddenLongMemoryInfo(name, description string, risk toolshare.RiskLevel) toolshare.Info {
 	return longMemoryBuilder(name, description).Risk(risk).Hidden().SuperadminOnly().BuildInfo()
 }
 

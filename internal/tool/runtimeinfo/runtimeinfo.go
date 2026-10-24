@@ -1,3 +1,4 @@
+// 描述并规范化工具使用的运行环境信息。
 package runtimeinfo
 
 import (
@@ -8,11 +9,10 @@ import (
 )
 
 type Info struct {
-	ConfigDir    string
-	ConfigPath   string
-	SandboxRoot  string
-	FileDelivery config.FileDeliveryConfig
-	Now          func() time.Time
+	ConfigDir   string
+	ConfigPath  string
+	SandboxRoot string
+	Now         func() time.Time
 }
 
 func First(values ...Info) Info {
@@ -31,16 +31,6 @@ func (i Info) Normalize() Info {
 	}
 	if i.SandboxRoot == "" {
 		i.SandboxRoot = config.Default().Sandbox.Root
-	}
-	defaults := config.Default().FileDelivery
-	if i.FileDelivery.MaxDirectBase64Bytes <= 0 {
-		i.FileDelivery.MaxDirectBase64Bytes = defaults.MaxDirectBase64Bytes
-	}
-	if i.FileDelivery.Backend == "" {
-		i.FileDelivery.Backend = defaults.Backend
-	}
-	if i.FileDelivery.S3Region == "" {
-		i.FileDelivery.S3Region = defaults.S3Region
 	}
 	if i.Now == nil {
 		i.Now = time.Now

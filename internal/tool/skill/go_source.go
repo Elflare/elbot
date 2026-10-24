@@ -1,3 +1,4 @@
+// 读取和解析 Go Skill 源码信息。
 package skill
 
 import (

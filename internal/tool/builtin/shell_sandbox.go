@@ -1,4 +1,7 @@
+// 处理 Shell 调用的沙箱路径与执行约束。
 package builtin
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"fmt"
@@ -7,7 +10,7 @@ import (
 	"strings"
 
 	"elbot/internal/security"
-	"elbot/internal/tool"
+	
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -16,20 +19,20 @@ var windowsAbsPathPattern = regexp.MustCompile(`^[A-Za-z]:/`)
 // background sandbox 是轻量路径约束，不是完整 OS 级沙箱。
 // 后台任务无人值守，因此禁止绝对路径、.. 逃逸、动态路径和 cd，
 // 尽量把 shell 影响限制在 sandbox cwd 内。
-func applyShellSandboxRisk(cmdText string, assessment tool.RiskAssessment) tool.RiskAssessment {
+func applyShellSandboxRisk(cmdText string, assessment toolshare.RiskAssessment) toolshare.RiskAssessment {
 	if isPowerShellEnv() {
 		return assessment
 	}
 	return applyBashShellSandboxRisk(cmdText, assessment)
 }
 
-func applyBashShellSandboxRisk(cmdText string, assessment tool.RiskAssessment) tool.RiskAssessment {
+func applyBashShellSandboxRisk(cmdText string, assessment toolshare.RiskAssessment) toolshare.RiskAssessment {
 	violations := validateBashShellSandboxCommand(cmdText)
 	if len(violations) == 0 {
 		return assessment
 	}
-	if security.CompareRisk(tool.RiskCritical, assessment.Level) > 0 {
-		assessment.Level = tool.RiskCritical
+	if security.CompareRisk(toolshare.RiskCritical, assessment.Level) > 0 {
+		assessment.Level = toolshare.RiskCritical
 	}
 	assessment.Reasons = appendUniqueReasons(assessment.Reasons, violations)
 	return assessment

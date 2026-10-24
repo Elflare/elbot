@@ -1,5 +1,7 @@
 package elnis
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"fmt"
@@ -113,6 +115,6 @@ func (s *Service) authorizeExternalTools(event Event) error {
 	return nil
 }
 
-func (s *Service) elwispCachedTools(event Event) []toolrun.CachedTool {
-	return toolrun.CachedToolsFromELwisp(toolrun.ELwispInjection{ELwispName: event.Request.Elwisp.Name, EventKey: event.EventKey, Tools: event.Request.Tools})
+func (s *Service) elwispCachedTools(event Event) []toolshare.DiscoveredTool {
+	return toolrun.CachedToolsFromELwisp(toolshare.ELwispInjection{ELwispName: event.Request.Elwisp.Name, EventKey: event.EventKey, Tools: event.Request.Tools})
 }

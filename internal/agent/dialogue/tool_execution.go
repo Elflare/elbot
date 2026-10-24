@@ -10,8 +10,7 @@ import (
 	"elbot/internal/llm"
 	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
-	"elbot/internal/toolrun"
+	toolrun "elbot/internal/tool/share"
 	"elbot/internal/turn"
 )
 
@@ -22,13 +21,8 @@ type ToolExecutor struct {
 	Messages *MessageStore
 	Manager  interface {
 		Run(context.Context, toolrun.RunnerDeps, toolrun.RunRequest) toolrun.RunResult
-		Schemas(context.Context, toolrun.Context, []toolrun.CachedTool) ([]llm.ToolSchema, error)
-	}
-	State interface {
-		Load(context.Context, string) (*storage.Session, error)
-	}
-	Registry interface {
-		Get(string) (tool.Tool, bool)
+		Schemas(context.Context, toolrun.Context, []toolrun.DiscoveredTool) ([]llm.ToolSchema, error)
+		DiscoveredToolsForSession(context.Context, string, bool) ([]toolrun.DiscoveredTool, events.LogResult, error)
 	}
 	Identity  Identity
 	Deps      ToolDepsFactory
@@ -44,7 +38,7 @@ func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storag
 	if session == nil || (session.Mode != storage.SessionModeWork && session.Mode != storage.SessionModeBackground) {
 		return toolrun.RunResult{}
 	}
-	cached, logResult, err := CachedToolsForSession(ctx, r.State, r.Registry, session)
+	cached, logResult, err := r.Manager.DiscoveredToolsForSession(ctx, session.ID, sessionpkg.IsBackground(session))
 	if err != nil {
 		if logResult.ResultStatus == events.ResultSkipped || ctx.Err() != nil {
 			return toolrun.RunResult{Err: err}
@@ -131,32 +125,10 @@ func (r *ToolExecutor) Schemas(ctx context.Context, session *storage.Session) ([
 	if session == nil || (session.Mode != storage.SessionModeWork && session.Mode != storage.SessionModeBackground) {
 		return nil, nil
 	}
-	cached, _, err := CachedToolsForSession(ctx, r.State, r.Registry, session)
+	cached, _, err := r.Manager.DiscoveredToolsForSession(ctx, session.ID, sessionpkg.IsBackground(session))
 	if err != nil {
 		return nil, fmt.Errorf("准备工具: %w", err)
 	}
 	return r.Manager.Schemas(ctx, toolrun.Context{Mode: session.Mode, Session: session, Scope: r.Identity.Scope(ctx), Actor: r.Identity.Actor(ctx), DisableBaseTools: sessionpkg.IsBackground(session)}, cached)
 }
 
-func CachedToolsForSession(ctx context.Context, service interface {
-	Load(context.Context, string) (*storage.Session, error)
-}, registry interface {
-	Get(string) (tool.Tool, bool)
-}, row *storage.Session) ([]toolrun.CachedTool, events.LogResult, error) {
-	if row == nil {
-		return nil, events.LogResult{ResultStatus: events.ResultSkipped, Content: "session is absent"}, nil
-	}
-	loaded, err := service.Load(ctx, row.ID)
-	if err != nil {
-		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("tool_state_error=%v", err)}
-		if ctx.Err() != nil {
-			logResult.ResultStatus = events.ResultCanceled
-		}
-		return nil, logResult, err
-	}
-	state, err := toolrun.DecodeState(loaded.Metadata)
-	if err != nil {
-		return nil, events.LogResult{ResultStatus: events.ResultSkipped}, err
-	}
-	return state.CachedTools(registry, sessionpkg.IsBackground(row)), events.LogResult{ResultStatus: events.ResultSucceeded, Content: "tool state loaded"}, nil
-}

@@ -1,5 +1,7 @@
 package agent
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"encoding/json"
@@ -37,10 +39,10 @@ type isolatedToolCapabilities struct {
 	skills *skill.Manager
 }
 
-func (c isolatedToolCapabilities) Schemas(ctx context.Context, tc toolrun.Context, cached []toolrun.CachedTool) ([]llm.ToolSchema, error) {
+func (c isolatedToolCapabilities) Schemas(ctx context.Context, tc toolshare.Context, cached []toolshare.DiscoveredTool) ([]llm.ToolSchema, error) {
 	return c.Manager.Schemas(ctx, tc, cached)
 }
-func (c isolatedToolCapabilities) List() []tool.Info { return c.Registry.List() }
+func (c isolatedToolCapabilities) List() []toolshare.Info { return c.Registry.List() }
 func (c isolatedToolCapabilities) Tags() []string    { return c.Registry.Tags() }
 func (c isolatedToolCapabilities) ToolTags(ctx context.Context) ([]string, error) {
 	return c.PreloadService.Tags(ctx)

@@ -1,5 +1,7 @@
 package dialogue
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"encoding/json"
@@ -142,7 +144,7 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 			record.Content += "\nraw_text=" + o.Event.SourceText
 		}
 		record.Content += fmt.Sprintf("\ntool_call_count=%d", o.Event.ToolCallCount)
-		record.Content = tool.TruncateLogContent(record.Content, 512)
+		record.Content = toolshare.TruncateLogContent(record.Content, 512)
 		_ = events.EmitLog(context.WithoutCancel(ctx), record)
 	}
 	agentevents.Emit(ctx, o.processor.Completed, o.Event)
@@ -172,11 +174,16 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 	}
 	var allowedTools map[string]bool
 	if session.Mode == storage.SessionModeBackground {
-		cached, _, err := CachedToolsForSession(ctx, c.Tools.State, c.Tools.Registry, session)
+		cached, _, err := c.Tools.Manager.DiscoveredToolsForSession(ctx, session.ID, true)
 		if err != nil {
 			return CallInput{}, err
 		}
-		allowedTools = toolrun.BackgroundToolNames(ctx, cached)
+		allowedTools = map[string]bool{}
+		for _, item := range cached {
+			if item.Schema.Name != "" {
+				allowedTools[item.Schema.Name] = true
+			}
+		}
 	}
 	baseMessages := llm.CloneMessages(messages)
 	requestMessages := llm.CloneMessages(baseMessages)

@@ -1,5 +1,7 @@
 package skill
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"encoding/json"
@@ -92,7 +94,7 @@ func TestSkillMediaBridge(t *testing.T) {
 
 					execute := runMediaCommand
 					if mode == "wait" {
-						execute = func(ctx context.Context, label string, cmd *exec.Cmd, mediaCall *tool.MediaCall) (*tool.Result, error) {
+						execute = func(ctx context.Context, label string, cmd *exec.Cmd, mediaCall *tool.MediaCall) (*toolshare.Result, error) {
 							want := 100 * time.Millisecond
 							if kind == "toml" {
 								want = time.Second
@@ -107,7 +109,7 @@ func TestSkillMediaBridge(t *testing.T) {
 						}
 					}
 					var raw []byte
-					var result *tool.Result
+					var result *toolshare.Result
 					var err error
 					if kind == "go" {
 						timeout := 0
@@ -115,14 +117,14 @@ func TestSkillMediaBridge(t *testing.T) {
 							timeout = 100
 						}
 						raw, _ = json.Marshal(map[string]any{"skill_name": "media", "timeout_ms": timeout, "payload": map[string]any{"mode": mode, "media_inputs": []tool.MediaInput{{MediaID: item.ID}}}})
-						result, _, err = runner.call(runCtx, tool.CallRequest{Arguments: raw}, execute)
+						result, _, err = runner.call(runCtx, toolshare.CallRequest{Arguments: raw}, execute)
 					} else {
 						current := command
 						if mode == "wait" {
 							current.Manifest.TimeoutSeconds = 1
 						}
 						raw, _ = json.Marshal(map[string]any{"input": item.ID, "mode": mode})
-						result, _, err = current.call(runCtx, tool.CallRequest{Arguments: raw}, execute)
+						result, _, err = current.call(runCtx, toolshare.CallRequest{Arguments: raw}, execute)
 					}
 					if mode == "ok" || mode == "large" {
 						if err != nil || len(result.Segments) != 2 {
@@ -186,13 +188,13 @@ func TestSkillMediaBridge(t *testing.T) {
 					current := runner
 					current.ProcessEnv = environment
 					raw, _ := json.Marshal(map[string]any{"skill_name": "media", "payload": map[string]any{"mode": "wait", "media_inputs": []tool.MediaInput{{MediaID: item.ID}}}})
-					_, _, err := current.Call(runCtx, tool.CallRequest{Arguments: raw})
+					_, _, err := current.Call(runCtx, toolshare.CallRequest{Arguments: raw})
 					done <- err
 				} else {
 					current := command
 					current.ProcessEnv = environment
 					raw, _ := json.Marshal(map[string]any{"input": item.ID, "mode": "wait"})
-					_, _, err := current.Call(runCtx, tool.CallRequest{Arguments: raw})
+					_, _, err := current.Call(runCtx, toolshare.CallRequest{Arguments: raw})
 					done <- err
 				}
 			}()

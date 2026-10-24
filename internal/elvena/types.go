@@ -1,9 +1,11 @@
 package elvena
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"time"
 
-	"elbot/internal/toolrun"
+	
 )
 
 const (
@@ -38,7 +40,7 @@ type Request struct {
 	Content       string                          `json:"content"`
 	ModelSlot     string                          `json:"model_slot"`
 	ToolListNames []string                        `json:"tool_list_names"`
-	Tools         []toolrun.ELwispToolDeclaration `json:"tools"`
+	Tools         []toolshare.ELwispToolDeclaration `json:"tools"`
 	Segments      []Segment                       `json:"segments,omitempty"`
 	Targets       []Target                        `json:"targets"`
 	Calls         []Call                          `json:"calls,omitempty"`

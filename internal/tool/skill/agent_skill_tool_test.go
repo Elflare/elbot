@@ -1,5 +1,7 @@
 package skill
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"encoding/json"
@@ -22,7 +24,7 @@ func TestPreparedAgentSkillReadUsesExecutionContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	reader := NewAgentSkillTool(manager)
-	prepared, err := reader.PrepareCall(t.Context(), tool.CallRequest{Arguments: []byte(`{"action":"read","name":"docx"}`)})
+	prepared, err := reader.PrepareCall(t.Context(), toolshare.CallRequest{Arguments: []byte(`{"action":"read","name":"docx"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,10 +48,10 @@ func TestAgentSkillWriteRollsBackConfigWhenReloadFails(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
 		oldContent string
-		oldRisk    tool.RiskLevel
+		oldRisk    toolshare.RiskLevel
 	}{
-		{name: "existing", oldContent: "risk = \"low\"\n", oldRisk: tool.RiskLow},
-		{name: "new", oldRisk: tool.RiskSafe},
+		{name: "existing", oldContent: "risk = \"low\"\n", oldRisk: toolshare.RiskLow},
+		{name: "new", oldRisk: toolshare.RiskSafe},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
@@ -73,7 +75,7 @@ func TestAgentSkillWriteRollsBackConfigWhenReloadFails(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, _, err = NewAgentSkillTool(manager).Call(context.Background(), tool.CallRequest{Arguments: args})
+			_, _, err = NewAgentSkillTool(manager).Call(context.Background(), toolshare.CallRequest{Arguments: args})
 			if err == nil || !strings.Contains(err.Error(), "restored previous") {
 				t.Fatalf("Call error = %v, want rollback error", err)
 			}
@@ -112,7 +114,7 @@ func TestAgentSkillWriteCommitsConfigAndReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := NewAgentSkillTool(manager).Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := NewAgentSkillTool(manager).Call(context.Background(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(AgentSkillConfigPath(dir))
@@ -120,11 +122,11 @@ func TestAgentSkillWriteCommitsConfigAndReload(t *testing.T) {
 		t.Fatalf("written config = %q, %v; want %q", data, err, content)
 	}
 	registered, ok := registry.Get("docx")
-	if !ok || registered.Info().Risk != tool.RiskHigh || !registered.Info().SuperadminOnly {
+	if !ok || registered.Info().Risk != toolshare.RiskHigh || !registered.Info().SuperadminOnly {
 		t.Fatalf("registry tool = %#v, %v", registered, ok)
 	}
 	record, ok := manager.Catalog.Get("docx")
-	if !ok || record.Risk != tool.RiskHigh || !record.SuperadminOnly {
+	if !ok || record.Risk != toolshare.RiskHigh || !record.SuperadminOnly {
 		t.Fatalf("catalog record = %#v, %v", record, ok)
 	}
 }

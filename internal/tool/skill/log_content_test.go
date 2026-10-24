@@ -1,5 +1,7 @@
 package skill
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"encoding/json"
 	"os"
@@ -9,7 +11,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"elbot/internal/tool"
+	
 )
 
 func TestSkillTruncationSeparatesModelAndLog(t *testing.T) {
@@ -31,12 +33,12 @@ func TestSkillTruncationSeparatesModelAndLog(t *testing.T) {
 		}
 		catalog := NewCatalog()
 		catalog.Replace([]Record{{Name: "output", Kind: KindGo, Root: root, BinaryPath: binary}})
-		callers := []tool.Tool{
+		callers := []toolshare.Tool{
 			NewGoRunner(catalog),
 			CommandTool{Record: Record{Name: "output", Root: root}, Manifest: AgentSkillManifest{Command: []string{"sh", "output.sh"}}},
 		}
 		for _, caller := range callers {
-			result, logContent, err := caller.Call(t.Context(), tool.CallRequest{Arguments: json.RawMessage(`{"skill_name":"output","payload":{}}`)})
+			result, logContent, err := caller.Call(t.Context(), toolshare.CallRequest{Arguments: json.RawMessage(`{"skill_name":"output","payload":{}}`)})
 			if fail {
 				if err == nil || !strings.Contains(err.Error(), "output truncated") || !strings.Contains(err.Error(), "exit code 7") {
 					t.Fatalf("%s lost model error details: %v", caller.Name(), err)

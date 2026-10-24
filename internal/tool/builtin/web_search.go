@@ -1,4 +1,7 @@
+// 实现网页搜索工具，组织搜索请求和结果。
 package builtin
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"bytes"
@@ -12,7 +15,7 @@ import (
 
 	"elbot/internal/llm"
 	"elbot/internal/processenv"
-	"elbot/internal/tool"
+	
 )
 
 const (
@@ -86,7 +89,7 @@ func (WebSearchTool) Name() string {
 	return "web_search"
 }
 
-func (t WebSearchTool) Info() tool.Info {
+func (t WebSearchTool) Info() toolshare.Info {
 	return webSearchBuilder().BuildInfo()
 }
 
@@ -94,13 +97,13 @@ func (t WebSearchTool) Schema() llm.ToolSchema {
 	return webSearchBuilder().BuildSchema()
 }
 
-func webSearchBuilder() *tool.Builder {
-	return tool.NewBuilder("web_search").
+func webSearchBuilder() *toolshare.Builder {
+	return toolshare.NewBuilder("web_search").
 		Description("执行网页搜索，返回简洁答案、来源链接和摘要；需要完整网页内容时继续调用 web_extract。").
-		Risk(tool.RiskLow).
+		Risk(toolshare.RiskLow).
 		Tags("web").
 		DependsOn("web_extract").
-		String("query", "搜索查询。", tool.Required()).
+		String("query", "搜索查询。", toolshare.Required()).
 		Integer("max_results", "最大结果数，默认 5，范围 1 到 20。").
 		String("search_depth", "搜索深度，默认 basic；可选 basic、fast、ultra-fast、advanced。advanced 更贵但更精确。").
 		String("topic", "搜索类别，默认 general；可选 general、news、finance。").
@@ -111,8 +114,8 @@ func webSearchBuilder() *tool.Builder {
 		Boolean("exact_match", "是否只返回包含查询中引号短语的精确匹配结果。")
 }
 
-func (t WebSearchTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t WebSearchTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	if err := ctx.Err(); err != nil {
 		return nil, err.Error(), err
 	}
@@ -188,7 +191,7 @@ func (t WebSearchTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.
 		}
 	}
 	{
-		result := &tool.Result{Content: formatTavilyContent(data)}
+		result := &toolshare.Result{Content: formatTavilyContent(data)}
 		logContent = fmt.Sprintf("results=%d", len(data.Results))
 		for _, item := range data.Results {
 			logContent += fmt.Sprintf("\n%s %s", item.Title, item.URL)

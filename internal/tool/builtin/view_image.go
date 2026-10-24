@@ -1,4 +1,7 @@
+// 实现图片查看工具，组织模型可用的图片结果。
 package builtin
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
@@ -33,14 +36,14 @@ func NewViewImageTool(center *media.Manager, history storage.ChatHistoryReposito
 }
 
 func (ViewImageTool) Name() string { return "view_image" }
-func viewImageBuilder() *tool.Builder {
-	return tool.NewBuilder("view_image").
+func viewImageBuilder() *toolshare.Builder {
+	return toolshare.NewBuilder("view_image").
 		Description("查看图片，已经看到的图片勿再次使用。source 与 message_id 二选一。").
-		APITypes(llm.APITypeResponse).Risk(tool.RiskLow).Tags("chat", "files").
+		APITypes(llm.APITypeResponse).Risk(toolshare.RiskLow).Tags("chat", "files").
 		String("source", "媒体 ID、HTTP(S) URL 或本地路径。").
 		StringArray("message_id", "当前聊天的消息 ID 数组，可带 #。")
 }
-func (ViewImageTool) Info() tool.Info { return viewImageBuilder().BuildInfo() }
+func (ViewImageTool) Info() toolshare.Info { return viewImageBuilder().BuildInfo() }
 func (ViewImageTool) Schema() llm.ToolSchema {
 	schema := viewImageBuilder().BuildSchema()
 	properties := schema.Parameters["properties"].(map[string]any)
@@ -53,7 +56,7 @@ func (ViewImageTool) Schema() llm.ToolSchema {
 	return schema
 }
 
-func parseViewImageArgs(req tool.CallRequest) (viewImageArgs, error) {
+func parseViewImageArgs(req toolshare.CallRequest) (viewImageArgs, error) {
 	var args viewImageArgs
 	if err := json.Unmarshal(req.Arguments, &args); err != nil {
 		return args, fmt.Errorf("parse view_image arguments: %w", err)
@@ -113,28 +116,28 @@ func (t ViewImageTool) sourcePath(ctx context.Context, source string) (workspace
 	return workspace.ResolveWorkspacePath(ctx, path, workspace.PathResolveOptions{})
 }
 
-func (t ViewImageTool) AssessRisk(ctx context.Context, req tool.CallRequest) (tool.RiskAssessment, error) {
+func (t ViewImageTool) AssessRisk(ctx context.Context, req toolshare.CallRequest) (toolshare.RiskAssessment, error) {
 	args, err := parseViewImageArgs(req)
 	if err != nil {
-		return tool.RiskAssessment{}, err
+		return toolshare.RiskAssessment{}, err
 	}
 	path, err := t.sourcePath(ctx, args.Source)
 	if err != nil {
-		return tool.RiskAssessment{}, err
+		return toolshare.RiskAssessment{}, err
 	}
 	if path.Path != "" && isSensitiveReadFile(path.Path) {
-		return tool.RiskAssessment{Level: tool.RiskHigh, Reasons: []string{"读取可能包含凭据的敏感文件，需要用户确认"}}, nil
+		return toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"读取可能包含凭据的敏感文件，需要用户确认"}}, nil
 	}
-	return tool.RiskAssessment{Level: tool.RiskLow}, nil
+	return toolshare.RiskAssessment{Level: toolshare.RiskLow}, nil
 }
 
-func (t ViewImageTool) PrepareCall(ctx context.Context, req tool.CallRequest) (*tool.PreparedCall, error) {
+func (t ViewImageTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*tool.PreparedCall, error) {
 	_, err := t.AssessRisk(ctx, req)
 	return nil, err
 }
 
-func (t ViewImageTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t ViewImageTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	args, err := parseViewImageArgs(req)
 	if err != nil {
 		return nil, err.Error(), err
@@ -164,12 +167,12 @@ func (t ViewImageTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.
 		return nil, err.Error(), err
 	}
 	{
-		result := &tool.Result{Segments: []llm.MessageSegment{imageResultSegment(item)}, Warnings: path.Warnings}
+		result := &toolshare.Result{Segments: []llm.MessageSegment{imageResultSegment(item)}, Warnings: path.Warnings}
 		return result, fmt.Sprintf("image prepared media_id=%s source=%s", item.ID, args.Source), nil
 	}
 }
 
-func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (_ *tool.Result, logContent string, _ error) {
+func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (_ *toolshare.Result, logContent string, _ error) {
 	chat, err := currentChatHistoryContext(ctx)
 	if err != nil {
 		return nil, err.Error(), err
@@ -237,7 +240,7 @@ func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (_ 
 		}
 		segments = append(segments, llm.MessageSegment{Type: llm.SegmentText, Text: label})
 	}
-	return &tool.Result{Segments: segments}, fmt.Sprintf("view_image message_id=%v media_index=%v", args.MessageIDs, args.MediaIndex) + logContent, ctx.Err()
+	return &toolshare.Result{Segments: segments}, fmt.Sprintf("view_image message_id=%v media_index=%v", args.MessageIDs, args.MediaIndex) + logContent, ctx.Err()
 }
 
 func imageResultSegment(item *storage.Media) llm.MessageSegment {

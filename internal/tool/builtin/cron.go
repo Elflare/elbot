@@ -1,4 +1,7 @@
+// 实现 Cron 工具定义、参数解析和结果组织，通过后台业务能力管理任务。
 package builtin
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
@@ -10,7 +13,7 @@ import (
 	"elbot/internal/contextinfo"
 	elcron "elbot/internal/cron"
 	"elbot/internal/llm"
-	"elbot/internal/tool"
+	
 	"elbot/internal/tool/runtimeinfo"
 )
 
@@ -74,20 +77,20 @@ type cronWriteArgs struct {
 	Enabled             *bool    `json:"enabled"`
 }
 
-func NewCronTools(service *elcron.Service, infos ...runtimeinfo.Info) []tool.Tool {
+func NewCronTools(service *elcron.Service, infos ...runtimeinfo.Info) []toolshare.Tool {
 	info := runtimeinfo.First(infos...)
-	return []tool.Tool{CronTool{service: service, info: info}, CronQueryTool{service: service, info: info}, CronWriteTool{service: service, info: info}}
+	return []toolshare.Tool{CronTool{service: service, info: info}, CronQueryTool{service: service, info: info}, CronWriteTool{service: service, info: info}}
 }
 
 func (t CronTool) Name() string { return "cron" }
-func (t CronTool) Info() tool.Info {
-	return tool.NewBuilder(t.Name()).Description("管理系统 Cron 定时任务。本工具仅为入口").Risk(tool.RiskMedium).SuperadminOnly().DependsOn("cron_query", "cron_write").BuildInfo()
+func (t CronTool) Info() toolshare.Info {
+	return toolshare.NewBuilder(t.Name()).Description("管理系统 Cron 定时任务。本工具仅为入口").Risk(toolshare.RiskMedium).SuperadminOnly().DependsOn("cron_query", "cron_write").BuildInfo()
 }
 func (t CronTool) Schema() llm.ToolSchema {
 	return cronBuilder(t.Name(), t.Info().Description).BuildSchema()
 }
-func (t CronTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t CronTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	now := t.info.CurrentTime().Format("2006-01-02 15:04:05")
 	{
 		result := textResult("cron 是定时任务管理入口。当前本地时间：" + now + "。请调用 cron_query 或 cron_write。cron_query 不传 name 时列出 cron，传 name 时查询单个 cron。")
@@ -103,8 +106,8 @@ func (t CronTool) DiscoveryContent() (string, bool) {
 }
 
 func (t CronQueryTool) Name() string { return "cron_query" }
-func (t CronQueryTool) Info() tool.Info {
-	return hiddenCronInfo(t.Name(), "查询单个 cron 或列出 cron。不传 name 时列出；传 name 时查询单个。", tool.RiskMedium)
+func (t CronQueryTool) Info() toolshare.Info {
+	return hiddenCronInfo(t.Name(), "查询单个 cron 或列出 cron。不传 name 时列出；传 name 时查询单个。", toolshare.RiskMedium)
 }
 func (t CronQueryTool) Schema() llm.ToolSchema {
 	return cronBuilder(t.Name(), "查询单个 cron 或列出 cron。 ").
@@ -113,8 +116,8 @@ func (t CronQueryTool) Schema() llm.ToolSchema {
 		Boolean("include_completed", "列出 cron 时是否显示已完成的 cron。默认 false；想查看历史一次性任务时设为 true。 ").
 		BuildSchema()
 }
-func (t CronQueryTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t CronQueryTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	var args cronQueryArgs
 	if err := decodeArgs(req.Arguments, &args); err != nil {
 		return nil, err.Error(), err
@@ -157,15 +160,15 @@ func (t CronQueryTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.
 }
 
 func (t CronWriteTool) Name() string { return "cron_write" }
-func (t CronWriteTool) Info() tool.Info {
-	info := hiddenCronInfo(t.Name(), "创建、Patch 更新、停用或硬删除 cron。operation 为 create、update、disable 或 delete。", tool.RiskHigh)
+func (t CronWriteTool) Info() toolshare.Info {
+	info := hiddenCronInfo(t.Name(), "创建、Patch 更新、停用或硬删除 cron。operation 为 create、update、disable 或 delete。", toolshare.RiskHigh)
 	info.NeedsElyphRules = true
 	return info
 }
 func (t CronWriteTool) Schema() llm.ToolSchema {
 	return cronBuilder(t.Name(), cronWriteDescription()).
-		String("operation", "写操作：create、update、disable、delete。", tool.Required()).
-		String("name", "任务短名，只允许字母、数字、下划线、点和横线。", tool.Required()).
+		String("operation", "写操作：create、update、disable、delete。", toolshare.Required()).
+		String("name", "任务短名，只允许字母、数字、下划线、点和横线。", toolshare.Required()).
 		String("title", "create 需要；update 可选。cron session 标题。为空时使用 name。").
 		String("schedule_mode", "create 需要；update 可选。触发计划类型：once 或 cron。 ").
 		String("run_at", "一次性任务绝对时间，格式 YYYY-MM-DD HH:MM:SS。schedule_mode=once 且未使用 run_after_* 时填写。\n~ 任意 run_after_* 同时传").
@@ -184,8 +187,8 @@ func (t CronWriteTool) Schema() llm.ToolSchema {
 		Boolean("enabled", "create：创建后是否启用，默认 true；update：是否启用。false 表示停用但保留记录。 ").
 		BuildSchema()
 }
-func (t CronWriteTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t CronWriteTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	var args cronWriteArgs
 	if err := decodeArgs(req.Arguments, &args); err != nil {
 		return nil, err.Error(), err
@@ -265,7 +268,7 @@ func (t CronWriteTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.
 	}
 }
 
-func (t CronWriteTool) create(ctx context.Context, args cronWriteArgs) (*tool.Result, error) {
+func (t CronWriteTool) create(ctx context.Context, args cronWriteArgs) (*toolshare.Result, error) {
 	if (args.ModelProvider == nil) != (args.Model == nil) {
 		return nil, fmt.Errorf("model_provider and model must be provided together")
 	}
@@ -294,7 +297,7 @@ func (t CronWriteTool) create(ctx context.Context, args cronWriteArgs) (*tool.Re
 	return jsonResult(map[string]any{"ok": true, "job": job})
 }
 
-func (t CronWriteTool) update(ctx context.Context, args cronWriteArgs) (*tool.Result, error) {
+func (t CronWriteTool) update(ctx context.Context, args cronWriteArgs) (*toolshare.Result, error) {
 	runAt, err := resolveUpdateRunAtAt(stringPtrIfNotEmpty(args.RunAt), relativeOffset{Minutes: args.RunAfterMinutes, Hours: args.RunAfterHours, Days: args.RunAfterDays, Weeks: args.RunAfterWeeks, Months: args.RunAfterMonths}, t.info.CurrentTime())
 	if err != nil {
 		return nil, err
@@ -402,12 +405,12 @@ func stringPtrIfNotEmpty(value string) *string {
 	return &value
 }
 
-func hiddenCronInfo(name, description string, risk tool.RiskLevel) tool.Info {
+func hiddenCronInfo(name, description string, risk toolshare.RiskLevel) toolshare.Info {
 	return cronBuilder(name, description).Risk(risk).Hidden().SuperadminOnly().BuildInfo()
 }
 
-func cronBuilder(name, description string) *tool.Builder {
-	return tool.NewBuilder(name).Description(description).Risk(tool.RiskMedium).SuperadminOnly()
+func cronBuilder(name, description string) *toolshare.Builder {
+	return toolshare.NewBuilder(name).Description(description).Risk(toolshare.RiskMedium).SuperadminOnly()
 }
 
 func decodeArgs(raw json.RawMessage, out any) error {
@@ -428,15 +431,15 @@ func actorFromContext(ctx context.Context) contextinfo.Actor {
 	return actor
 }
 
-func jsonResult(value any) (*tool.Result, error) {
+func jsonResult(value any) (*toolshare.Result, error) {
 	data, err := json.Marshal(value)
 	if err != nil {
 		return nil, err
 	}
-	return &tool.Result{Content: string(data)}, nil
+	return &toolshare.Result{Content: string(data)}, nil
 }
 
-func textResult(text string) *tool.Result {
+func textResult(text string) *toolshare.Result {
 	text = strings.TrimSpace(text)
-	return &tool.Result{Content: text}
+	return &toolshare.Result{Content: text}
 }

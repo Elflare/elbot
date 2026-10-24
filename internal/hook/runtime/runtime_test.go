@@ -2,6 +2,8 @@
 
 package runtime
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"bufio"
 	"context"
@@ -27,9 +29,9 @@ import (
 type auditTestTool struct{ err error }
 
 func (auditTestTool) Name() string           { return "audit_test" }
-func (auditTestTool) Info() tool.Info        { return tool.Info{Name: "audit_test"} }
+func (auditTestTool) Info() toolshare.Info        { return toolshare.Info{Name: "audit_test"} }
 func (auditTestTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "audit_test"} }
-func (a auditTestTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
+func (a auditTestTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
 	if a.err != nil {
 		return nil, a.err.Error(), a.err
 	}

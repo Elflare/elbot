@@ -1,5 +1,7 @@
 package builtin
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"bytes"
 	"context"
@@ -19,7 +21,7 @@ import (
 	"elbot/internal/platform"
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
+	
 )
 
 func viewImagePNG(t *testing.T) []byte {
@@ -30,7 +32,7 @@ func viewImagePNG(t *testing.T) []byte {
 	}
 	return data.Bytes()
 }
-func imageCount(result *tool.Result) int {
+func imageCount(result *toolshare.Result) int {
 	if result == nil {
 		return 0
 	}
@@ -53,8 +55,8 @@ func TestViewImageMessageSelectionAndPrevalidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	viewer := NewViewImageTool(get.center, get.history)
-	call := func(raw string) (*tool.Result, error) {
-		result, _, err := viewer.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(raw)})
+	call := func(raw string) (*toolshare.Result, error) {
+		result, _, err := viewer.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(raw)})
 		return result, err
 	}
 	for _, raw := range []string{`{}`, `{"message_id":[]}`, `{"message_id":["mixed"],"media_index":[[]]}`, `{"message_id":["mixed"],"media_index":[[0]]}`, `{"message_id":["mixed"],"media_index":[[1]]}`, `{"message_id":["mixed"],"media_index":[[4]]}`, `{"message_id":["mixed"],"media_index":[]}`, `{"source":"media:x","message_id":["mixed"]}`} {
@@ -74,7 +76,7 @@ func TestViewImageMessageSelectionAndPrevalidation(t *testing.T) {
 		t.Fatalf("selection=%+v err=%v calls=%d", result, err, resolver.calls)
 	}
 	other := platform.WithMessageContext(ctx, platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ScopeID: "other"}}})
-	if _, _, err := viewer.Call(other, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":["mixed"]}`)}); err == nil {
+	if _, _, err := viewer.Call(other, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["mixed"]}`)}); err == nil {
 		t.Fatal("cross-chat lookup allowed")
 	}
 	result, err = call(`{"message_id":["1"],"media_index":[[1,2,3,4,5,6]]}`)
@@ -91,9 +93,9 @@ func TestViewImageSourcesAndPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	call := func(ctx context.Context, source string) (*tool.Result, error) {
+	call := func(ctx context.Context, source string) (*toolshare.Result, error) {
 		raw, _ := json.Marshal(viewImageArgs{Source: source})
-		result, _, err := viewer.Call(ctx, tool.CallRequest{Arguments: raw})
+		result, _, err := viewer.Call(ctx, toolshare.CallRequest{Arguments: raw})
 		return result, err
 	}
 	if result, err := call(ctx, item.ID); err != nil || imageCount(result) != 1 {
@@ -148,8 +150,8 @@ func TestViewImageSourcesAndPermissions(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ := json.Marshal(viewImageArgs{Source: filepath.Join(dir, ".env")})
-	assessment, err := viewer.AssessRisk(admin, tool.CallRequest{Arguments: raw})
-	if err != nil || assessment.Level != tool.RiskHigh {
+	assessment, err := viewer.AssessRisk(admin, toolshare.CallRequest{Arguments: raw})
+	if err != nil || assessment.Level != toolshare.RiskHigh {
 		t.Fatalf("sensitive image source risk=%+v err=%v", assessment, err)
 	}
 	canceled, cancel := context.WithCancel(ctx)
@@ -163,11 +165,11 @@ func TestViewImagePartialFailuresKeepCachedImages(t *testing.T) {
 	ctx, get, resolver := newHistoryMediaToolTest(t)
 	resolver.data = viewImagePNG(t)
 	viewer := NewViewImageTool(get.center, get.history)
-	if _, _, err := viewer.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"]}`)}); err != nil {
+	if _, _, err := viewer.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"]}`)}); err != nil {
 		t.Fatal(err)
 	}
 	resolver.fail = true
-	result, _, err := viewer.Call(ctx, tool.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"],"media_index":[[2,1,2]]}`)})
+	result, _, err := viewer.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"],"media_index":[[2,1,2]]}`)})
 	if err != nil || imageCount(result) != 1 || resolver.calls != 2 {
 		t.Fatalf("partial result=%+v err=%v calls=%d", result, err, resolver.calls)
 	}

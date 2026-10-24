@@ -2,6 +2,8 @@
 
 package runtime
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"encoding/json"
@@ -15,7 +17,7 @@ import (
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
-	"elbot/internal/tool"
+	
 )
 
 func (w *worker) pluginRequest(value frame) (any, error) {
@@ -57,11 +59,11 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	}
 	err := json.Unmarshal(raw, &params)
 	name := strings.TrimSpace(params.Name)
-	call := tool.CallRequest{Name: name, Arguments: params.Arguments}
+	call := toolshare.CallRequest{Name: name, Arguments: params.Arguments}
 	callCtx := w.manager.rootCtx
 	actor, _ := contextinfo.ActorFromContext(callCtx)
 	// Keep the trigger actor separate from the permission principal below.
-	arguments := tool.TruncateLogContent(string(params.Arguments), 512)
+	arguments := toolshare.TruncateLogContent(string(params.Arguments), 512)
 	// Pointer fields distinguish absent operation facts from explicit empty or
 	// zero values. Declaration order fixes the log body's display order.
 	content := struct {
@@ -80,16 +82,16 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		ToolCallID         string            `json:"tool_call_id,omitempty"`
 		UserID             string            `json:"user_id,omitempty"`
 	}{
-		Tool:      tool.TruncateLogContent(name, 2048),
+		Tool:      toolshare.TruncateLogContent(name, 2048),
 		Arguments: &arguments,
-		Hook:      tool.TruncateLogContent(w.config.ID, 2048),
+		Hook:      toolshare.TruncateLogContent(w.config.ID, 2048),
 		Source:    "plugin",
 	}
 	invocation := params.ToolContext
 	if params.Background {
 		invocation = params.Origin
 	}
-	content.Invocation = tool.TruncateLogContent(invocation, 2048)
+	content.Invocation = toolshare.TruncateLogContent(invocation, 2048)
 	// Read trigger facts without consuming the permission token. Guard failures
 	// must retain the same trigger identity as an entered call.
 	w.manager.mu.RLock()
@@ -112,11 +114,11 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 			content.Arguments = nil
 		}
 		if eventName != "hook_tool_call_completed" {
-			logResult.Content = tool.TruncateLogContent(logResult.Content, 2048)
+			logResult.Content = toolshare.TruncateLogContent(logResult.Content, 2048)
 		}
-		content.ActorID = tool.TruncateLogContent(actor.ID, 2048)
-		content.Platform = tool.TruncateLogContent(actor.Platform, 2048)
-		content.UserID = tool.TruncateLogContent(actor.PlatformUserID, 2048)
+		content.ActorID = toolshare.TruncateLogContent(actor.ID, 2048)
+		content.Platform = toolshare.TruncateLogContent(actor.Platform, 2048)
+		content.UserID = toolshare.TruncateLogContent(actor.PlatformUserID, 2048)
 		data, _ := json.Marshal(content)
 		record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: eventName, Module: "hook", Type: globalevents.ContentJSON, Content: string(data), ContentLimit: 0, ResultStatus: logResult.ResultStatus}
 		if logResult.ResultStatus == globalevents.ResultFailed {

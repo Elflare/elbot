@@ -1,4 +1,7 @@
+// 将文档型 Skill 适配为可发现的工具入口。
 package skill
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
@@ -27,11 +30,11 @@ func NewAgentSkillTool(manager *Manager) AgentSkillTool {
 
 func (AgentSkillTool) Name() string { return AgentSkillManagerName }
 
-func (AgentSkillTool) Info() tool.Info {
-	return tool.NewBuilder(AgentSkillManagerName).
+func (AgentSkillTool) Info() toolshare.Info {
+	return toolshare.NewBuilder(AgentSkillManagerName).
 		Description(agentSkillToolDescription()).
-		Source(tool.SourceBuiltin).
-		Risk(tool.RiskHigh).
+		Source(toolshare.SourceBuiltin).
+		Risk(toolshare.RiskHigh).
 		Hidden().
 		BuildInfo()
 }
@@ -56,7 +59,7 @@ func agentSkillToolDescription() string {
 	return "读或写 AgentSkill 的 ELBOT_SKILL.toml。"
 }
 
-func (t AgentSkillTool) PrepareCall(ctx context.Context, req tool.CallRequest) (*tool.PreparedCall, error) {
+func (t AgentSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*tool.PreparedCall, error) {
 	preview, err := t.preview(ctx, req)
 	if err != nil {
 		return nil, err
@@ -65,21 +68,21 @@ func (t AgentSkillTool) PrepareCall(ctx context.Context, req tool.CallRequest) (
 	if preview.Action == "read" {
 		detail = fmt.Sprintf("读取 AgentSkill %s 的 %s", preview.Name, AgentSkillConfigFile)
 	}
-	return tool.NewPreparedCall(t, req, detail, func(ctx context.Context) (*tool.Result, string, error) {
+	return tool.NewPreparedCall(t, req, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.call(ctx, preview)
 	}), nil
 }
 
-func (t AgentSkillTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+func (t AgentSkillTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
 	preview, err := t.preview(ctx, req)
 	if err != nil {
-		return nil, tool.TruncateLogContent(err.Error(), 1024), err
+		return nil, toolshare.TruncateLogContent(err.Error(), 1024), err
 	}
 	return t.call(ctx, preview)
 }
 
-func (t AgentSkillTool) call(ctx context.Context, preview agentSkillPreview) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t AgentSkillTool) call(ctx context.Context, preview agentSkillPreview) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	if err := ctx.Err(); err != nil {
 		return nil, err.Error(), err
 	}
@@ -90,7 +93,7 @@ func (t AgentSkillTool) call(ctx context.Context, preview agentSkillPreview) (_ 
 	}
 	if preview.Action == "read" {
 		{
-			result := &tool.Result{Content: readAgentSkillConfig(record, preview.Path)}
+			result := &toolshare.Result{Content: readAgentSkillConfig(record, preview.Path)}
 			return result, result.Content, nil
 		}
 	}
@@ -101,7 +104,7 @@ func (t AgentSkillTool) call(ctx context.Context, preview agentSkillPreview) (_ 
 		}
 	}
 	{
-		result := &tool.Result{Content: fmt.Sprintf("wrote %s for AgentSkill %s and reloaded skills", AgentSkillConfigFile, preview.Name)}
+		result := &toolshare.Result{Content: fmt.Sprintf("wrote %s for AgentSkill %s and reloaded skills", AgentSkillConfigFile, preview.Name)}
 		return result, result.Content, nil
 	}
 }
@@ -113,7 +116,7 @@ type agentSkillPreview struct {
 	Toml   string
 }
 
-func (t AgentSkillTool) preview(ctx context.Context, req tool.CallRequest) (agentSkillPreview, error) {
+func (t AgentSkillTool) preview(ctx context.Context, req toolshare.CallRequest) (agentSkillPreview, error) {
 	if err := ctx.Err(); err != nil {
 		return agentSkillPreview{}, err
 	}

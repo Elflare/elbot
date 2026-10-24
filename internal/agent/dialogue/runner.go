@@ -1,5 +1,7 @@
 package dialogue
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"errors"
@@ -19,8 +21,7 @@ import (
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
-	"elbot/internal/toolrun"
+	
 	"elbot/internal/turn"
 )
 
@@ -225,14 +226,9 @@ type RunnerDeps struct {
 	}
 	Output      AssistantPreparer
 	ToolManager interface {
-		Run(context.Context, toolrun.RunnerDeps, toolrun.RunRequest) toolrun.RunResult
-		Schemas(context.Context, toolrun.Context, []toolrun.CachedTool) ([]llm.ToolSchema, error)
-	}
-	ToolRegistry interface {
-		Get(string) (tool.Tool, bool)
-	}
-	ToolState interface {
-		Load(context.Context, string) (*storage.Session, error)
+		Run(context.Context, toolshare.RunnerDeps, toolshare.RunRequest) toolshare.RunResult
+		Schemas(context.Context, toolshare.Context, []toolshare.DiscoveredTool) ([]llm.ToolSchema, error)
+		DiscoveredToolsForSession(context.Context, string, bool) ([]toolshare.DiscoveredTool, globalevents.LogResult, error)
 	}
 	ToolDeps     ToolDepsFactory
 	ToolProvider ToolNameProvider
@@ -243,14 +239,14 @@ type RunnerDeps struct {
 		Read(context.Context, session.Scope) (resident.Memory, error)
 	}
 	Preloader interface {
-		TagPrompts(context.Context, []string) ([]toolrun.TagPrompt, error)
+		TagPrompts(context.Context, []string) ([]toolshare.TagPrompt, error)
 	}
 	Signals events.Signals
 	View    ExecutionView
 }
 
 func NewRunner(deps RunnerDeps) *Runner {
-	tools := &ToolExecutor{Manager: deps.ToolManager, State: deps.ToolState, Registry: deps.ToolRegistry, Identity: deps.Identity, Deps: deps.ToolDeps, MaxRounds: deps.MaxRounds}
+	tools := &ToolExecutor{Manager: deps.ToolManager, Identity: deps.Identity, Deps: deps.ToolDeps, MaxRounds: deps.MaxRounds}
 	messages := &MessageStore{Dialogues: deps.Dialogues, Gate: &CommitGate{Sessions: deps.Sessions, Turns: deps.Turns, View: deps.View}}
 	tools.Messages = messages
 	replies := &ReplyCommitter{Output: deps.Output, Persistence: messages.Committer("append_assistant_message")}

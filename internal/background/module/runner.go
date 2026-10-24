@@ -1,5 +1,7 @@
 package module
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"encoding/json"
@@ -195,7 +197,7 @@ type backgroundPreloadResult struct {
 	SkillPrompt     string
 }
 
-func (r *BackgroundRunner) preloadBackgroundResources(ctx context.Context, row *storage.Session, names []string, initial []toolrun.CachedTool, allowed []string) backgroundPreloadResult {
+func (r *BackgroundRunner) preloadBackgroundResources(ctx context.Context, row *storage.Session, names []string, initial []toolshare.DiscoveredTool, allowed []string) backgroundPreloadResult {
 	preloadCtx := contextinfo.WithActor(security.WithPermission(ctx, r.identity.Permission()), r.identity.Actor(ctx))
 	prepared, err := r.preloader.PrepareBackground(preloadCtx, row.ID, names, allowed)
 	if err != nil {

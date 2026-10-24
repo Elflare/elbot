@@ -1,4 +1,7 @@
+// 描述 Skill 元数据、工具声明及详情。
 package skill
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
@@ -31,8 +34,8 @@ func NewDescriptor(record Record) Descriptor {
 
 func (d Descriptor) Name() string { return d.Record.Name }
 
-func (d Descriptor) Info() tool.Info {
-	return tool.Info{
+func (d Descriptor) Info() toolshare.Info {
+	return toolshare.Info{
 		Name:           d.Record.Name,
 		Description:    d.Record.Description,
 		Source:         SourceForKind(d.Record.Kind),
@@ -47,10 +50,10 @@ func (d Descriptor) Schema() llm.ToolSchema {
 	return llm.ToolSchema{}
 }
 
-func (d Descriptor) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
+func (d Descriptor) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
 	{
 		callErr := fmt.Errorf("skill %q is a document skill; query it with discover_tool", d.Record.Name)
-		return nil, tool.TruncateLogContent(callErr.Error(), 1024), callErr
+		return nil, toolshare.TruncateLogContent(callErr.Error(), 1024), callErr
 	}
 }
 
@@ -59,18 +62,18 @@ func (d Descriptor) Detail() string {
 	if err != nil {
 		return ""
 	}
-	return tool.RenderDetailBlocks([]tool.DetailBlock{block})
+	return tool.RenderDetailBlocks([]toolshare.DetailBlock{block})
 }
 
-func (d Descriptor) DetailBlock() tool.DetailBlock {
+func (d Descriptor) DetailBlock() toolshare.DetailBlock {
 	block, _ := d.LoadDetail(context.Background())
 	return block
 }
 
-func (d Descriptor) LoadDetail(ctx context.Context) (tool.DetailBlock, error) {
+func (d Descriptor) LoadDetail(ctx context.Context) (toolshare.DetailBlock, error) {
 	block, err := loadRecordDetail(d.Record)
 	if err != nil {
-		return tool.DetailBlock{}, err
+		return toolshare.DetailBlock{}, err
 	}
 	if d.Record.Kind == KindAgent {
 		block.Content = strings.TrimSpace(block.Content + "\n\n" + agentSkillNotice(ctx, d.Record))
@@ -106,20 +109,20 @@ func agentSkillNotice(ctx context.Context, record Record) string {
 	return "ElBot AgentSkill 使用提示：\n\n" + strings.Join(lines, "\n")
 }
 
-func loadRecordDetail(record Record) (tool.DetailBlock, error) {
+func loadRecordDetail(record Record) (toolshare.DetailBlock, error) {
 	content := record.Detail
 	format := record.Format
 	if record.DetailPath != "" {
 		data, err := os.ReadFile(record.DetailPath)
 		if err != nil {
-			return tool.DetailBlock{}, fmt.Errorf("read SKILL.md for %q: %w", record.Name, err)
+			return toolshare.DetailBlock{}, fmt.Errorf("read SKILL.md for %q: %w", record.Name, err)
 		}
 		def, err := ParseSkillMarkdown(data, record.Name)
 		if err != nil {
-			return tool.DetailBlock{}, fmt.Errorf("parse SKILL.md for %q: %w", record.Name, err)
+			return toolshare.DetailBlock{}, fmt.Errorf("parse SKILL.md for %q: %w", record.Name, err)
 		}
 		content = def.Detail
 		format = def.Format
 	}
-	return tool.DetailBlock{Content: content, Format: format}, nil
+	return toolshare.DetailBlock{Content: content, Format: format}, nil
 }

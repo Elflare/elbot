@@ -1,3 +1,4 @@
+// 检查工具文件访问与写入约束，保护受管理的文件。
 package builtin
 
 import (

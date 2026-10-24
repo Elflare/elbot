@@ -1,5 +1,7 @@
 package skill
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"encoding/json"
@@ -9,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"elbot/internal/tool"
+	
 )
 
 func TestCommandArgumentsBuildsFlagArgs(t *testing.T) {
@@ -58,8 +60,8 @@ func TestCommandToolRunsCommandAndReturnsText(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "echo.sh"), []byte("#!/bin/sh\necho input=$2\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cmd := CommandTool{Record: Record{Name: "echo_skill", Description: "echo", Kind: KindAgent, Root: root}, Manifest: AgentSkillManifest{Risk: tool.RiskLow, Command: []string{"sh", "echo.sh"}, Args: map[string]string{"input": "--input"}, Parameters: map[string]any{"type": "object", "required": []any{"input"}, "properties": map[string]any{"input": map[string]any{"type": "string"}}}}}
-	result, _, err := cmd.Call(context.Background(), tool.CallRequest{Name: "echo_skill", Arguments: json.RawMessage(`{"input":"hello"}`)})
+	cmd := CommandTool{Record: Record{Name: "echo_skill", Description: "echo", Kind: KindAgent, Root: root}, Manifest: AgentSkillManifest{Risk: toolshare.RiskLow, Command: []string{"sh", "echo.sh"}, Args: map[string]string{"input": "--input"}, Parameters: map[string]any{"type": "object", "required": []any{"input"}, "properties": map[string]any{"input": map[string]any{"type": "string"}}}}}
+	result, _, err := cmd.Call(context.Background(), toolshare.CallRequest{Name: "echo_skill", Arguments: json.RawMessage(`{"input":"hello"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,8 +78,8 @@ func TestCommandToolRunsCommandAndParsesJSONContent(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "json.sh"), []byte("#!/bin/sh\nprintf '{\"content\":\"ok\"}'\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cmd := CommandTool{Record: Record{Name: "json_skill", Description: "json", Kind: KindAgent, Root: root}, Manifest: AgentSkillManifest{Risk: tool.RiskLow, Command: []string{"sh", "json.sh"}, Args: map[string]string{"input": "--input"}, Parameters: map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "string"}}}}}
-	result, _, err := cmd.Call(context.Background(), tool.CallRequest{Name: "json_skill", Arguments: json.RawMessage(`{"input":"hello"}`)})
+	cmd := CommandTool{Record: Record{Name: "json_skill", Description: "json", Kind: KindAgent, Root: root}, Manifest: AgentSkillManifest{Risk: toolshare.RiskLow, Command: []string{"sh", "json.sh"}, Args: map[string]string{"input": "--input"}, Parameters: map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "string"}}}}}
+	result, _, err := cmd.Call(context.Background(), toolshare.CallRequest{Name: "json_skill", Arguments: json.RawMessage(`{"input":"hello"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}

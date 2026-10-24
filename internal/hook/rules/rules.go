@@ -2,6 +2,8 @@
 
 package rules
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"elbot/internal/processenv"
@@ -14,7 +16,7 @@ import (
 	hookoutput "elbot/internal/hook/output"
 	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/hook/share"
-	"elbot/internal/tool"
+	
 )
 
 const (
@@ -25,8 +27,8 @@ const (
 type Options struct {
 	ConfigDir string
 	Tools     interface {
-		ToolInfo(string) (tool.Info, bool)
-		CallTool(context.Context, tool.CallRequest) (*tool.Result, string, error)
+		ToolInfo(string) (toolshare.Info, bool)
+		CallTool(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error)
 	} // Borrowed metadata and call operations; no Tool objects escape their owner.
 
 	Notices *[]string // Optional reload report collector; never a sending dependency.

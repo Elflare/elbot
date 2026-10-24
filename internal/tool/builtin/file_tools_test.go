@@ -1,5 +1,7 @@
 package builtin
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"encoding/json"
@@ -16,7 +18,7 @@ import (
 
 	"elbot/internal/fileops"
 	sandboxctx "elbot/internal/sandbox"
-	"elbot/internal/tool"
+	
 	workspacepath "elbot/internal/workspace"
 
 	"mvdan.cc/sh/v3/syntax"
@@ -46,7 +48,7 @@ func TestShellASTUsesShebangDialect(t *testing.T) {
 			for _, target := range []string{path, root} {
 				for _, mode := range []string{readFileModeAST, readFileModeASTFunction} {
 					args, _ := json.Marshal(map[string]any{"path": target, "mode": mode, "query": "Target"})
-					result, _, err := NewReadFileTool().Call(t.Context(), tool.CallRequest{Arguments: args})
+					result, _, err := NewReadFileTool().Call(t.Context(), toolshare.CallRequest{Arguments: args})
 					if err != nil {
 						t.Fatalf("%s %s: %v", target, mode, err)
 					}
@@ -129,7 +131,7 @@ func TestReadFileToolReturnsLineNumbersAndEndRange(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "start_line": 2, "end_line": "end"})
-	result, _, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +150,7 @@ func TestReadFileToolAcceptsStringStartLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "start_line": "1", "end_line": "240"})
-	result, _, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +161,7 @@ func TestReadFileToolAcceptsStringStartLine(t *testing.T) {
 
 func TestReadFileToolRejectsInvalidStringStartLine(t *testing.T) {
 	args := []byte(`{"path":"sample.txt","start_line":"end"}`)
-	_, _, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	_, _, err := NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "start_line") || !strings.Contains(err.Error(), "integer string") {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -172,7 +174,7 @@ func TestReadFileToolReadsLargeFileAndReturnsRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "start_line": 2, "end_line": "2"})
-	result, _, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,11 +194,11 @@ func TestReadFileToolLargeFileDisablesASTButAllowsGrep(t *testing.T) {
 		t.Fatal(err)
 	}
 	astArgs, _ := json.Marshal(map[string]any{"path": path, "mode": "ast", "query": "needle"})
-	if _, _, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: astArgs}); err == nil || !strings.Contains(err.Error(), "AST") && !strings.Contains(err.Error(), "ast mode") {
+	if _, _, err := NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: astArgs}); err == nil || !strings.Contains(err.Error(), "AST") && !strings.Contains(err.Error(), "ast mode") {
 		t.Fatalf("expected large-file AST error, got %v", err)
 	}
 	grepArgs, _ := json.Marshal(map[string]any{"path": path, "mode": "grep", "query": "needle", "context_lines": 0})
-	result, _, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: grepArgs})
+	result, _, err := NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: grepArgs})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +221,7 @@ func TestReadFileToolRejectsFileAboveHardLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path})
-	_, _, err = NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	_, _, err = NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "file too large") {
 		t.Fatalf("expected hard-limit error, got %v", err)
 	}
@@ -231,7 +233,7 @@ func TestReadFileToolGrepReturnsMatchesWithContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "mode": "grep", "query": "beta", "context_lines": 1})
-	result, _, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +250,7 @@ func TestReadFileToolASTSearchesGoIdentifiers(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast", "query": "Target", "context_lines": 0})
-	result, _, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +267,7 @@ func TestReadFileToolASTSearchesShellWordsAndParameters(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast", "query": "target", "context_lines": 0})
-	result, _, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +283,7 @@ func TestReadFileToolASTFunctionReturnsCompleteGoFunctions(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast_function", "query": "Run"})
-	result, _, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +293,7 @@ func TestReadFileToolASTFunctionReturnsCompleteGoFunctions(t *testing.T) {
 		}
 	}
 	args, _ = json.Marshal(map[string]any{"path": path, "mode": "ast_function", "query": "Run", "index": 2})
-	result, _, err = NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err = NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +315,7 @@ func TestReadFileToolASTFunctionReturnsCompleteShellFunction(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast_function", "query": "run"})
-	result, _, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,7 +332,7 @@ func TestReadFileToolASTFunctionRequiresQuery(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast_function"})
-	_, _, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	_, _, err := NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "query is required when mode is ast_function") {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -345,7 +347,7 @@ func TestReadFileToolASTFunctionSearchesDirectoryAndSelectsIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": root, "mode": "ast_function", "query": "Run"})
-	result, _, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -355,7 +357,7 @@ func TestReadFileToolASTFunctionSearchesDirectoryAndSelectsIndex(t *testing.T) {
 		}
 	}
 	args, _ = json.Marshal(map[string]any{"path": root, "mode": "ast_function", "query": "Run", "index": 2})
-	result, _, err = NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err = NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,7 +374,7 @@ func TestReadFileToolDirectoryASTReportsSkippedLargeFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": root, "mode": "ast", "query": "Target"})
-	result, _, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,13 +391,13 @@ func TestReadFileToolDirectoryASTCacheInvalidatesWhenFilesChange(t *testing.T) {
 	}
 	readTool := NewReadFileTool()
 	args, _ := json.Marshal(map[string]any{"path": root, "mode": "ast_function", "query": "Run"})
-	if _, _, err := readTool.Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := readTool.Call(context.Background(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte("package sample\n\nfunc Run() {}\n\nfunc Run() {}\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	result, _, err := readTool.Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := readTool.Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -417,7 +419,7 @@ func TestReadFileToolDirectoryASTCacheInvalidatesWhenFilesChange(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		result, _, err := readTool.Call(t.Context(), tool.CallRequest{Arguments: args})
+		result, _, err := readTool.Call(t.Context(), toolshare.CallRequest{Arguments: args})
 		if err != nil || !strings.Contains(result.Content, fmt.Sprintf("matches: %d\n", want)) {
 			t.Fatalf("after add/remove: result=%+v err=%v", result, err)
 		}
@@ -640,7 +642,7 @@ func TestReadFileToolDirectoryGrepSelectsIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": root, "mode": "grep", "query": "needle", "index": 2})
-	result, _, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -668,7 +670,7 @@ func TestReadFileToolDirectoryGrepSkipsFilesAboveHardLimit(t *testing.T) {
 	}
 
 	args, _ := json.Marshal(map[string]any{"path": root, "mode": "grep", "query": "needle"})
-	result, _, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -684,7 +686,7 @@ func TestReadFileToolASTRejectsUnsupportedLanguage(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast", "query": "target"})
-	_, _, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	_, _, err := NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "only supports Go and Shell") {
 		t.Fatalf("expected unsupported language error, got %v", err)
 	}
@@ -705,7 +707,7 @@ func TestEditFileToolEditsLargeFileAndOmitsDiff(t *testing.T) {
 			"new_text":  "TARGET\n",
 		}},
 	})
-	result, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -735,7 +737,7 @@ func TestEditFileToolTruncatesLargeRiskDetailBlocks(t *testing.T) {
 			"new_text":  newText,
 		}},
 	})
-	prepared, err := NewEditFileTool().PrepareCall(context.Background(), tool.CallRequest{Arguments: args})
+	prepared, err := NewEditFileTool().PrepareCall(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -766,7 +768,7 @@ func TestEditFileToolRejectsFileAboveHardLimit(t *testing.T) {
 			"new_text":  "TARGET",
 		}},
 	})
-	_, _, err = NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	_, _, err = NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "file too large") {
 		t.Fatalf("expected hard-limit error, got %v", err)
 	}
@@ -778,7 +780,7 @@ func TestEditFileToolRequiresEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path})
-	_, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	_, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "edits is required") {
 		t.Fatalf("expected edits error, got %v", err)
 	}
@@ -799,7 +801,7 @@ func TestEditFileToolBatchReplacesLinesAndReturnsDiff(t *testing.T) {
 			"new_text":  "BETA\nDELTA\n",
 		}},
 	})
-	result, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -831,7 +833,7 @@ func TestEditFileToolRejectsStringLineNumbers(t *testing.T) {
 			"new_text":  "BETA",
 		}},
 	})
-	if _, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err == nil || !strings.Contains(err.Error(), "cannot unmarshal string") {
+	if _, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args}); err == nil || !strings.Contains(err.Error(), "cannot unmarshal string") {
 		t.Fatalf("expected integer line error, got %v", err)
 	}
 }
@@ -850,7 +852,7 @@ func TestEditFileToolAllMatches(t *testing.T) {
 			"all_matches": true,
 		}},
 	})
-	if _, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -876,7 +878,7 @@ func TestEditFileToolMissingTextTargetDoesNotWrite(t *testing.T) {
 			"new_text":  "BETA",
 		}},
 	})
-	_, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	_, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "old_text not found") {
 		t.Fatalf("expected missing target error, got %v", err)
 	}
@@ -904,7 +906,7 @@ func TestEditFileToolDeletesLineRange(t *testing.T) {
 			"end_line":  3,
 		}},
 	})
-	if _, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -929,7 +931,7 @@ func TestEditFileToolReplaceMatch(t *testing.T) {
 			"new_text":  "BETA\nGAMMA",
 		}},
 	})
-	if _, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -955,7 +957,7 @@ func TestEditFileToolReplaceMatchRequiresUniqueMatch(t *testing.T) {
 			"new_text":  "BETA",
 		}},
 	})
-	_, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	_, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "matched multiple locations") && !strings.Contains(err.Error(), "matched 2 locations") {
 		t.Fatalf("expected duplicate match error, got %v", err)
 	}
@@ -981,7 +983,7 @@ func TestEditFileToolDeleteMatch(t *testing.T) {
 			"new_text":  "",
 		}},
 	})
-	if _, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -1005,7 +1007,7 @@ func TestEditFileToolInsertBeforeAfterMatch(t *testing.T) {
 			{"operation": "insert_after", "anchor": "gamma", "new_text": "delta"},
 		},
 	})
-	if _, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -1042,7 +1044,7 @@ func TestEditFileToolRiskDetailFormatsEdits(t *testing.T) {
 			},
 		},
 	})
-	prepared, err := NewEditFileTool().PrepareCall(context.Background(), tool.CallRequest{Arguments: args})
+	prepared, err := NewEditFileTool().PrepareCall(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1144,7 +1146,7 @@ func TestEditFileToolPreflightRejectsInvalidEdits(t *testing.T) {
 			"new_text":  "MISSING",
 		}},
 	})
-	_, err := NewEditFileTool().PrepareCall(context.Background(), tool.CallRequest{Arguments: args})
+	_, err := NewEditFileTool().PrepareCall(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "preflight edit_file") || !strings.Contains(err.Error(), "old_text not found") {
 		t.Fatalf("expected preflight match error, got %v", err)
 	}
@@ -1170,7 +1172,7 @@ func TestEditFileToolBatchFailureIsAtomic(t *testing.T) {
 			{"operation": "replace_text", "old_text": "missing", "new_text": "MISSING"},
 		},
 	})
-	_, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	_, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "old_text not found") {
 		t.Fatalf("expected missing match error, got %v", err)
 	}
@@ -1198,7 +1200,7 @@ func TestEditFileToolContextLinesAndHunkHeader(t *testing.T) {
 			"new_text":  "FOUR",
 		}},
 	})
-	result, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1230,14 +1232,14 @@ func TestEditFileToolCronRiskAndSandbox(t *testing.T) {
 			"new_text":  "beta",
 		}},
 	})
-	assessment, err := NewEditFileTool().AssessRisk(ctx, tool.CallRequest{Arguments: args})
+	assessment, err := NewEditFileTool().AssessRisk(ctx, toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if assessment.Level != tool.RiskMedium {
+	if assessment.Level != toolshare.RiskMedium {
 		t.Fatalf("risk = %s", assessment.Level)
 	}
-	if _, _, err := NewEditFileTool().Call(ctx, tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := NewEditFileTool().Call(ctx, toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -1250,7 +1252,7 @@ func TestEditFileToolCronRiskAndSandbox(t *testing.T) {
 
 	outside := filepath.Join(t.TempDir(), "outside.txt")
 	outsideArgs, _ := json.Marshal(map[string]any{"path": outside, "edits": []map[string]any{{"operation": "delete", "line": 1}}})
-	if _, err := NewEditFileTool().AssessRisk(ctx, tool.CallRequest{Arguments: outsideArgs}); err == nil {
+	if _, err := NewEditFileTool().AssessRisk(ctx, toolshare.CallRequest{Arguments: outsideArgs}); err == nil {
 		t.Fatal("expected sandbox escape error")
 	}
 }
@@ -1266,18 +1268,18 @@ func TestReadFileToolSensitivePathRisk(t *testing.T) {
 	read := NewReadFileTool()
 	for _, tt := range []struct {
 		path string
-		risk tool.RiskLevel
+		risk toolshare.RiskLevel
 	}{
-		{path: ".env", risk: tool.RiskHigh},
-		{path: ".env.production", risk: tool.RiskHigh},
-		{path: "api-token.txt", risk: tool.RiskHigh},
-		{path: "credentials.json", risk: tool.RiskHigh},
-		{path: "id_ed25519", risk: tool.RiskHigh},
-		{path: "sample.txt", risk: tool.RiskLow},
+		{path: ".env", risk: toolshare.RiskHigh},
+		{path: ".env.production", risk: toolshare.RiskHigh},
+		{path: "api-token.txt", risk: toolshare.RiskHigh},
+		{path: "credentials.json", risk: toolshare.RiskHigh},
+		{path: "id_ed25519", risk: toolshare.RiskHigh},
+		{path: "sample.txt", risk: toolshare.RiskLow},
 	} {
 		t.Run(tt.path, func(t *testing.T) {
 			args, _ := json.Marshal(map[string]any{"path": tt.path})
-			assessment, err := read.AssessRisk(ctx, tool.CallRequest{Arguments: args})
+			assessment, err := read.AssessRisk(ctx, toolshare.CallRequest{Arguments: args})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1294,7 +1296,7 @@ func TestReadFileToolEmptyFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path})
-	result, _, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1313,7 +1315,7 @@ func TestEditFileToolCreateAndOverwrite(t *testing.T) {
 			"new_text":  "alpha",
 		}},
 	})
-	result, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1339,7 +1341,7 @@ func TestEditFileToolCreateAndOverwriteCreatesParentDirectory(t *testing.T) {
 			"new_text":  "alpha",
 		}},
 	})
-	result, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1363,7 +1365,7 @@ func TestEditFileToolCreateWithExpectedRevisionRequiresExistingFile(t *testing.T
 		"expected_revision": "deadbeefdeadbeef",
 		"edits":             []map[string]any{{"operation": "overwrite", "new_text": "alpha"}},
 	})
-	_, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	_, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "stat file") {
 		t.Fatalf("expected stat error, got %v", err)
 	}
@@ -1390,11 +1392,11 @@ func TestReadFileToolWarnsForElSkillFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path})
-	result, _, err := NewReadFileTool(NewFileGuard(NewElSkillFileGuardRule(root))).Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewReadFileTool(NewFileGuard(NewElSkillFileGuardRule(root))).Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := tool.AppendWarnings(result.Content, result.Warnings)
+	text := toolshare.AppendWarnings(result.Content, result.Warnings)
 	if !strings.Contains(text, "Warnings:") || !strings.Contains(text, "read_el_skill") {
 		t.Fatalf("expected read_el_skill warning, got:\n%s", text)
 	}
@@ -1412,10 +1414,10 @@ func TestEditFileToolRejectsElSkillFileBeforeWrite(t *testing.T) {
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "overwrite", "new_text": "changed"}}})
 	edit := NewEditFileTool(NewFileGuard(NewElSkillFileGuardRule(root)))
-	if _, err := edit.PrepareCall(context.Background(), tool.CallRequest{Arguments: args}); err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
+	if _, err := edit.PrepareCall(context.Background(), toolshare.CallRequest{Arguments: args}); err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
 		t.Fatalf("expected preflight modify_el_skill error, got %v", err)
 	}
-	if _, _, err := edit.Call(context.Background(), tool.CallRequest{Arguments: args}); err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
+	if _, _, err := edit.Call(context.Background(), toolshare.CallRequest{Arguments: args}); err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
 		t.Fatalf("expected call modify_el_skill error, got %v", err)
 	}
 	content, err := os.ReadFile(path)
@@ -1438,7 +1440,7 @@ func TestEditFileToolRejectsElSkillCodeSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "overwrite", "new_text": "func main() {}"}}})
-	_, _, err := NewEditFileTool(NewFileGuard(NewElSkillFileGuardRule(root))).Call(context.Background(), tool.CallRequest{Arguments: args})
+	_, _, err := NewEditFileTool(NewFileGuard(NewElSkillFileGuardRule(root))).Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
 		t.Fatalf("expected modify_el_skill error, got %v", err)
 	}
@@ -1459,19 +1461,19 @@ func TestFileToolsProtectResidentMemoryFile(t *testing.T) {
 	}
 	guard := NewFileGuard(NewResidentMemoryFileGuardRule(path))
 	readArgs, _ := json.Marshal(map[string]any{"path": path})
-	readResult, _, err := NewReadFileTool(guard).Call(context.Background(), tool.CallRequest{Arguments: readArgs})
+	readResult, _, err := NewReadFileTool(guard).Call(context.Background(), toolshare.CallRequest{Arguments: readArgs})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if text := tool.AppendWarnings(readResult.Content, readResult.Warnings); !strings.Contains(text, "resident_memory_read") {
+	if text := toolshare.AppendWarnings(readResult.Content, readResult.Warnings); !strings.Contains(text, "resident_memory_read") {
 		t.Fatalf("expected resident_memory_read warning, got:\n%s", text)
 	}
 	editArgs, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "overwrite", "new_text": "changed"}}})
 	edit := NewEditFileTool(guard)
-	if _, err := edit.PrepareCall(context.Background(), tool.CallRequest{Arguments: editArgs}); err == nil || !strings.Contains(err.Error(), "resident_memory_normal") {
+	if _, err := edit.PrepareCall(context.Background(), toolshare.CallRequest{Arguments: editArgs}); err == nil || !strings.Contains(err.Error(), "resident_memory_normal") {
 		t.Fatalf("expected resident memory preflight error, got %v", err)
 	}
-	if _, _, err := edit.Call(context.Background(), tool.CallRequest{Arguments: editArgs}); err == nil || !strings.Contains(err.Error(), "resident_memory_normal") {
+	if _, _, err := edit.Call(context.Background(), toolshare.CallRequest{Arguments: editArgs}); err == nil || !strings.Contains(err.Error(), "resident_memory_normal") {
 		t.Fatalf("expected resident memory call error, got %v", err)
 	}
 	content, err := os.ReadFile(path)
@@ -1495,15 +1497,15 @@ func TestFileToolsProtectLongMemoryMarkdown(t *testing.T) {
 	}
 	guard := NewFileGuard(NewLongMemoryFileGuardRule(root))
 	readArgs, _ := json.Marshal(map[string]any{"path": path})
-	readResult, _, err := NewReadFileTool(guard).Call(context.Background(), tool.CallRequest{Arguments: readArgs})
+	readResult, _, err := NewReadFileTool(guard).Call(context.Background(), toolshare.CallRequest{Arguments: readArgs})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if text := tool.AppendWarnings(readResult.Content, readResult.Warnings); !strings.Contains(text, "long_memory_search") {
+	if text := toolshare.AppendWarnings(readResult.Content, readResult.Warnings); !strings.Contains(text, "long_memory_search") {
 		t.Fatalf("expected long_memory_search warning, got:\n%s", text)
 	}
 	editArgs, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "overwrite", "new_text": "changed"}}})
-	_, _, err = NewEditFileTool(guard).Call(context.Background(), tool.CallRequest{Arguments: editArgs})
+	_, _, err = NewEditFileTool(guard).Call(context.Background(), toolshare.CallRequest{Arguments: editArgs})
 	if err == nil || !strings.Contains(err.Error(), "long_memory_write") {
 		t.Fatalf("expected long_memory_write error, got %v", err)
 	}
@@ -1531,7 +1533,7 @@ func TestEditFileToolInsertLineAvoidsJoinedLines(t *testing.T) {
 			"new_text":  "beta",
 		}},
 	})
-	if _, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -1557,7 +1559,7 @@ func TestEditFileToolMultiHunkDiff(t *testing.T) {
 			{"operation": "replace_text", "old_text": "seven", "new_text": "SEVEN"},
 		},
 	})
-	result, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1591,7 +1593,7 @@ func TestEditFileToolLineModeReplacePrefix(t *testing.T) {
 			"new_text":  "BETA",
 		}},
 	})
-	if _, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -1617,7 +1619,7 @@ func TestEditFileToolLineModeToleratesIndent(t *testing.T) {
 			"new_text":  "\tbeta := 10",
 		}},
 	})
-	if _, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -1642,7 +1644,7 @@ func TestEditFileToolLineModeMultiLineContentExpand(t *testing.T) {
 			"new_text":  "BETA1\nBETA2",
 		}},
 	})
-	if _, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -1668,7 +1670,7 @@ func TestEditFileToolLineModeMultipleMatchesWithIndex(t *testing.T) {
 			"index":     2,
 		}},
 	})
-	if _, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -1694,7 +1696,7 @@ func TestEditFileToolLineModeMultipleMatchesNoIndexError(t *testing.T) {
 			"new_text":  "BETA",
 		}},
 	})
-	_, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	_, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "matched 2 locations") {
 		t.Fatalf("expected matched 2 locations error, got %v", err)
 	}
@@ -1722,7 +1724,7 @@ func TestEditFileToolLineModeDeleteAndInsert(t *testing.T) {
 			{"operation": "insert_after", "anchor": "ga", "new_text": "delta"},
 		},
 	})
-	if _, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -1748,7 +1750,7 @@ func TestEditFileToolLineModeNeedleWithNewlineFails(t *testing.T) {
 			"new_text":  "X",
 		}},
 	})
-	_, _, err := NewEditFileTool().Call(context.Background(), tool.CallRequest{Arguments: args})
+	_, _, err := NewEditFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "single-line prefix") {
 		t.Fatalf("expected single-line prefix error, got %v", err)
 	}
@@ -1761,7 +1763,7 @@ func TestReadFileToolUsesWorkspaceRelativePath(t *testing.T) {
 	}
 	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
 	args, _ := json.Marshal(map[string]any{"path": "sample.txt"})
-	result, _, err := NewReadFileTool().Call(ctx, tool.CallRequest{Arguments: args})
+	result, _, err := NewReadFileTool().Call(ctx, toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1785,7 +1787,7 @@ func TestEditFileToolUsesWorkspaceRelativePath(t *testing.T) {
 			"new_text":  "beta",
 		}},
 	})
-	if _, _, err := NewEditFileTool().Call(ctx, tool.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := NewEditFileTool().Call(ctx, toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -1802,7 +1804,7 @@ func TestReadFileToolWarnsForAbsolutePath(t *testing.T) {
 	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	result, _, err := NewReadFileTool().Call(context.Background(), tool.CallRequest{Arguments: mustJSON(map[string]any{"path": path})})
+	result, _, err := NewReadFileTool().Call(context.Background(), toolshare.CallRequest{Arguments: mustJSON(map[string]any{"path": path})})
 	if err != nil {
 		t.Fatal(err)
 	}

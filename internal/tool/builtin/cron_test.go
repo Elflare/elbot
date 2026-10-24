@@ -1,5 +1,7 @@
 package builtin
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"strings"
@@ -7,11 +9,11 @@ import (
 	"time"
 
 	elcron "elbot/internal/cron"
-	"elbot/internal/tool"
+	
 )
 
 func TestCronToolCallReturnsCurrentTimeHint(t *testing.T) {
-	result, _, err := NewCronTools(nil)[0].Call(context.Background(), tool.CallRequest{})
+	result, _, err := NewCronTools(nil)[0].Call(context.Background(), toolshare.CallRequest{})
 	if err != nil {
 		t.Fatalf("Call: %v", err)
 	}
@@ -70,22 +72,22 @@ func TestCronToolsRiskAndVisibility(t *testing.T) {
 	if len(tools) != 3 {
 		t.Fatalf("tool count = %d", len(tools))
 	}
-	infos := map[string]tool.Info{}
+	infos := map[string]toolshare.Info{}
 	for _, cronTool := range tools {
 		infos[cronTool.Name()] = cronTool.Info()
 	}
-	if !infos["cron"].SuperadminOnly || infos["cron"].Hidden || infos["cron"].Risk != tool.RiskMedium {
+	if !infos["cron"].SuperadminOnly || infos["cron"].Hidden || infos["cron"].Risk != toolshare.RiskMedium {
 		t.Fatalf("cron info = %#v", infos["cron"])
 	}
 	if deps := strings.Join(infos["cron"].DependsOn, ","); deps != "cron_query,cron_write" {
 		t.Fatalf("cron dependencies = %q", deps)
 	}
 	info := infos["cron_query"]
-	if !info.SuperadminOnly || !info.Hidden || info.Risk != tool.RiskMedium {
+	if !info.SuperadminOnly || !info.Hidden || info.Risk != toolshare.RiskMedium {
 		t.Fatalf("cron_query info = %#v", info)
 	}
 	info = infos["cron_write"]
-	if !info.SuperadminOnly || !info.Hidden || info.Risk != tool.RiskHigh {
+	if !info.SuperadminOnly || !info.Hidden || info.Risk != toolshare.RiskHigh {
 		t.Fatalf("cron_write info = %#v", info)
 	}
 }

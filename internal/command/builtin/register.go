@@ -1,5 +1,7 @@
 package builtin
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 
@@ -14,7 +16,7 @@ import (
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
+	
 	"elbot/internal/turn"
 )
 
@@ -61,7 +63,7 @@ type CompactService interface {
 }
 
 type ToolService interface {
-	List() []tool.Info
+	List() []toolshare.Info
 	Unregister(name string) error
 }
 

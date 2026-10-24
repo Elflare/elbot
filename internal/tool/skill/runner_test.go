@@ -1,5 +1,7 @@
 package skill
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"encoding/json"
@@ -30,7 +32,7 @@ func TestRunMediaCommandOutputLimits(t *testing.T) {
 			defer cancel()
 			ready := filepath.Join(t.TempDir(), "ready")
 			type outcome struct {
-				result *tool.Result
+				result *toolshare.Result
 				err    error
 			}
 			done := make(chan outcome, 1)
@@ -153,7 +155,7 @@ func TestSkillDeadlineSelection(t *testing.T) {
 					}
 					want := time.Now().Add(tc.want)
 					calls := 0
-					execute := func(ctx context.Context, _ string, _ *exec.Cmd, _ *tool.MediaCall) (*tool.Result, error) {
+					execute := func(ctx context.Context, _ string, _ *exec.Cmd, _ *tool.MediaCall) (*toolshare.Result, error) {
 						calls++
 						deadline, ok := ctx.Deadline()
 						if !ok || !deadline.Equal(want) || ctx.Err() != nil {
@@ -169,10 +171,10 @@ func TestSkillDeadlineSelection(t *testing.T) {
 						catalog.Replace([]Record{{Name: "deadline", Kind: KindGo, Root: dir, BinaryPath: binary}})
 						runner := NewGoRunner(catalog)
 						raw, _ := json.Marshal(map[string]any{"skill_name": "deadline", "timeout_ms": tc.value * 1000, "payload": map[string]any{}})
-						_, _, err = runner.call(ctx, tool.CallRequest{Arguments: raw}, execute)
+						_, _, err = runner.call(ctx, toolshare.CallRequest{Arguments: raw}, execute)
 					} else {
 						command := NewCommandTool(Record{Root: dir, Manifest: AgentSkillManifest{Command: []string{binary}, TimeoutSeconds: tc.value}})
-						_, _, err = command.call(ctx, tool.CallRequest{}, execute)
+						_, _, err = command.call(ctx, toolshare.CallRequest{}, execute)
 					}
 					if calls != 1 || !errors.Is(err, context.DeadlineExceeded) {
 						t.Fatalf("calls=%d error=%v", calls, err)
@@ -193,7 +195,7 @@ func TestGoRunnerPassesPayloadJSONToBinary(t *testing.T) {
 	catalog.Replace([]Record{{Name: "echo", Kind: KindGo, Root: dir, BinaryPath: binary}})
 	args := []byte(`{"skill_name":"echo","payload":{"input":"hello"}}`)
 	environment := processenv.Environment{}.Overlay(map[string]string{"ELBOT_SKILL_TEST_HELPER": "payload"})
-	result, _, err := NewGoRunner(catalog, environment).Call(context.Background(), tool.CallRequest{Arguments: args})
+	result, _, err := NewGoRunner(catalog, environment).Call(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +213,7 @@ func TestGoRunnerUsesSharedProcessEnvironment(t *testing.T) {
 	catalog := NewCatalog()
 	catalog.Replace([]Record{{Name: "environment", Kind: KindGo, Root: dir, BinaryPath: binary}})
 	runner := NewGoRunner(catalog, processenv.New([]string{"ELBOT_GO_SKILL_ENV_TEST=from-shared", "ELBOT_SKILL_TEST_HELPER=shared-env"}))
-	result, _, err := runner.Call(context.Background(), tool.CallRequest{Arguments: []byte(`{"skill_name":"environment","payload":{}}`)})
+	result, _, err := runner.Call(context.Background(), toolshare.CallRequest{Arguments: []byte(`{"skill_name":"environment","payload":{}}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +239,7 @@ func TestCommandErrorIncludesSkillOutput(t *testing.T) {
 	}
 }
 
-func resultFromStdout(out string) (*tool.Result, error) {
+func resultFromStdout(out string) (*toolshare.Result, error) {
 	return resultFromStdoutWithMedia(context.Background(), out, nil, "")
 }
 
@@ -272,12 +274,12 @@ func TestSkillExecutionEnvironment(t *testing.T) {
 				t.Fatal(err)
 			}
 			environment := processenv.New([]string{"ELBOT_SKILL_TEST_HELPER=environment", "ELBOT_SKILL_ENV_TEST=process", "ELBOT_SKILL_PROCESS_ONLY=process", "ELBOT_SKILL_EMPTY_TEST=process", "PATH=" + processPath}).Fill(dotEnv)
-			newCaller := func(root string) (tool.Tool, tool.CallRequest) {
+			newCaller := func(root string) (toolshare.Tool, toolshare.CallRequest) {
 				t.Helper()
 				if kind == "go" {
 					catalog := NewCatalog()
 					catalog.Replace([]Record{{Name: "environment", Kind: KindGo, Root: root, BinaryPath: binary}})
-					return NewGoRunner(catalog, environment), tool.CallRequest{Arguments: []byte(`{"skill_name":"environment","payload":{}}`)}
+					return NewGoRunner(catalog, environment), toolshare.CallRequest{Arguments: []byte(`{"skill_name":"environment","payload":{}}`)}
 				}
 				writeSkill(t, root, "---\nname: environment\ndescription: Environment test\n---\n")
 				command, err := json.Marshal([]string{binary})
@@ -291,7 +293,7 @@ func TestSkillExecutionEnvironment(t *testing.T) {
 					t.Fatalf("scan: tools=%v, err=%v", tools, err)
 				}
 				// Verify execution through both scanning and registry replacement.
-				if _, _, err := tools[0].Call(context.Background(), tool.CallRequest{}); err != nil {
+				if _, _, err := tools[0].Call(context.Background(), toolshare.CallRequest{}); err != nil {
 					t.Fatalf("scanned command: %v", err)
 				}
 				for range 2 {
@@ -303,14 +305,14 @@ func TestSkillExecutionEnvironment(t *testing.T) {
 				if !ok {
 					t.Fatal("environment command was not registered")
 				}
-				return candidate, tool.CallRequest{}
+				return candidate, toolshare.CallRequest{}
 			}
 			root := filepath.Join(configDir, "skills", kind, "environment")
 			if err := os.MkdirAll(root, 0o755); err != nil {
 				t.Fatal(err)
 			}
 			caller, req := newCaller(root)
-			check := func(caller tool.Tool, req tool.CallRequest, root, common, local, empty, path string) {
+			check := func(caller toolshare.Tool, req toolshare.CallRequest, root, common, local, empty, path string) {
 				t.Helper()
 				result, _, err := caller.Call(context.Background(), req)
 				if err != nil {
@@ -376,7 +378,7 @@ func TestSkillExecutionEnvironment(t *testing.T) {
 		}
 		caller := NewCommandTool(Record{Name: "environment", Root: root, Manifest: AgentSkillManifest{Command: []string{filepath.Base(binary)}}})
 		caller.ProcessEnv = processenv.Environment{}.Overlay(map[string]string{"ELBOT_SKILL_TEST_HELPER": "environment"})
-		if _, _, err := caller.Call(context.Background(), tool.CallRequest{}); err != nil {
+		if _, _, err := caller.Call(context.Background(), toolshare.CallRequest{}); err != nil {
 			t.Fatalf("resolve command through skill PATH: %v", err)
 		}
 	})

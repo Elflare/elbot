@@ -1,20 +1,22 @@
 package builtin
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"strings"
 	"testing"
 
 	"elbot/internal/command"
-	"elbot/internal/tool"
+	
 )
 
 type fakeToolService struct {
-	infos   []tool.Info
+	infos   []toolshare.Info
 	removed []string
 }
 
-func (s *fakeToolService) List() []tool.Info            { return s.infos }
+func (s *fakeToolService) List() []toolshare.Info            { return s.infos }
 func (s *fakeToolService) Unregister(string) error      { return nil }
 func (s *fakeToolService) Reload(context.Context) error { return nil }
 func (s *fakeToolService) Remove(_ context.Context, name string) error {
@@ -47,7 +49,7 @@ func TestToolsRemoveConfirmedCallsRemove(t *testing.T) {
 }
 
 func TestToolsCommandCompletesActionsNamesAndConfirm(t *testing.T) {
-	tools := &fakeToolService{infos: []tool.Info{{Name: "echo", Description: "echo skill"}, {Name: "web_search", Description: "search"}}}
+	tools := &fakeToolService{infos: []toolshare.Info{{Name: "echo", Description: "echo skill"}, {Name: "web_search", Description: "search"}}}
 	cmd := NewTools(Deps{Tools: tools, Skills: tools}).(command.Completer)
 
 	got := cmd.Complete(context.Background(), command.CompletionRequest{Raw: "/tools r", Prefix: "/", Name: "tools", Args: "r", Cursor: len("/tools r")})

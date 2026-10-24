@@ -27,7 +27,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/app/shutdown.go`：用 `shutdownStep` 声明清理顺序，`runShutdownStep` 按统一 30 秒期限返回结果枚举，`runShutdownSteps` 顺序执行并汇总；普通失败后继续，超时停止后续清理，资源关闭后最后释放配置锁。
 - `internal/app/client.go`：加载配置并调用 `platform.RunClient`，消费 `ClientResult`；明确运行直接返回错误，自动尝试将可回退结果转为信号，实际本地启动由进程入口决定。
 - `internal/agent/`：`Supervisor` 是 App 对接入口；`supervisor.go` 定义总管与公开能力，`deps.go` 声明共享资源和 `ToolCapabilities`、`HookCapabilities`、`PlatformCapabilities` 三类业务接口，`wiring.go` 拆分配置、构造线内组件并接线，`lifecycle.go` 管理启停，`signals.go` 持有通知与状态订阅。
-- `internal/tool/module/`：共享工具目录、执行核心、预加载、Skill／Memory／文件服务。
+- `internal/tool/supervisor.go`、`wiring.go`、`lifecycle.go`：Tool 对外入口、组件装配与生命周期。
 - `internal/hook/`：Hook 总管、外部桥接与生命周期；装配内部规则、流水线、控制与插件进程。
 - `internal/platform/module/`：平台适配器、发送与通知、API 能力、补全和运行生命周期。
 - `internal/background/module/`：后台执行、维护任务、Cron、Elnis 恢复与 runtime。
@@ -112,8 +112,9 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:tool -->
 ## Tool Runtime、工具状态与文件
 
-- `internal/tool/`、`internal/tool/builtin/`：工具注册、schema、执行器与内置工具。
-- `internal/toolrun/state.go`、`preload.go`、`background.go`：Session 工具状态、前后台共用的工具／Skill 预加载与后台白名单。
+- `internal/tool/registry/`、`execution/`、`builtin/`：工具目录、执行核心与内置工具。
+- `internal/tool/share/`：公共定义、schema 构造与纯数据辅助。
+- `internal/tool/state/`、`preload/`：Session 工具状态、前后台共用的工具／Skill 预加载与后台白名单。
 - `internal/agent/input/tool_directive.go`、`internal/agent/share/tool_cache.go`：输入指令与状态提交。
 - `internal/tool/builtin/file_tools_ast.go`、`file_tools_directory.go`：AST 识别、目录候选与缓存、rg 枚举及流式搜索。
 - `internal/tool/builtin/long_memory.go`：长期记忆文件、索引与同步。
@@ -122,26 +123,26 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/fileops/edit_service.go`、`rollback_service.go`：编辑／撤销准备、预览与提交。
 - `internal/fileops/file.go`、`atomic_write.go`、`rollback.go`：结果计算、revision 校验写入、目标锁与撤销备份。
 - `internal/workspace/`、`internal/session/workspace.go`、`internal/sandbox/`：工作目录、持久化与后台路径限制。
-- `internal/tool/media_runtime.go`：单次工具调用的媒体持有与导出。
+- `internal/tool/media/runtime.go`：单次工具调用的媒体持有与导出。
 
 <!-- locator:tool-flow -->
 ## 工具调用链路
 
 - `internal/agent/dialogue/tool_execution.go`：协议共用的 ToolRun 入口与提交器。
 - `internal/agent/tools/toolrun_adapter.go`：Hook、子请求、确认与状态桥接。
-- `internal/toolrun/runner.go`：顺序准备和确认、并发执行、完成队列、逐项提交与开始／结束日志组装。
+- `internal/tool/execution/runner.go`：顺序准备和确认、并发执行、完成队列、逐项提交与开始／结束日志组装。
 - `internal/agent/dialogue/commit.go`、`internal/agent/responses/persistence.go`：固定结果槽、逐项最终结果、批次封存与原生恢复快照。
-- `internal/toolrun/toolrun.go`、`elwisp_exec.go`：调用解析、原生／远程路由与执行结果。
-- `internal/tool/prepared.go`、`executor.go`：准备能力、调用快照及执行阶段校验。
-- `internal/toolrun/logging.go`：完整工具日志发布。
+- `internal/tool/execution/manager.go`、`elwisp_exec.go`：调用解析、原生／远程路由与执行结果。
+- `internal/tool/execution/prepared.go`、`executor.go`：准备能力、调用快照及执行阶段校验。
+- `internal/tool/logging.go`：完整工具日志发布。
 - `internal/storage/tool_batch.go`、`internal/storage/sqlite/tool_batch.go`、`dialogue_repository.go`：稳定批次关联、原槽更新、结果／统计／媒体／发现状态原子提交；`tool_call_repository.go` 提供调用统计查询。
 
 <!-- locator:skill -->
 ## Skill 与 ELyph
 
 - `internal/elyph/`、`rules.go`：语言解析、lint、公共规则卡与展示判定。
-- `internal/tool/detail.go`、`discover.go`：发现摘要、详情与语言需求。
-- `internal/agent/dialogue/preparation.go`、`model_call.go`、`internal/toolrun/runner.go`：输入与工具结果的规则卡组装。
+- `internal/tool/discovery/`：发现入口、摘要、详情、语言需求与激活状态更新。
+- `internal/agent/dialogue/preparation.go`、`model_call.go`、`internal/tool/execution/runner.go`：输入与工具结果的规则卡组装。
 - `internal/storage/dialogue.go`、`internal/storage/sqlite/dialogue_repository.go`、`internal/contextmgr/state.go`：规则展示状态提交与压缩重置。
 - `internal/tool/skill/`：扫描、catalog、创建、finalize 与 reload。
 - `internal/tool/skill/command_tool.go`、`runner.go`：命令／Go 执行、进程环境与有界输出收集。
@@ -265,7 +266,7 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/cron/service.go`、`manager.go`：任务运行、调度与整体日志。
 - `internal/cron/models.go`、`delivery.go`、`recovery.go`：任务模型、逐项投递与连接恢复。
 - `internal/maintenance/`：维护任务及来源结果。
-- `internal/background/module/runner.go`、`internal/agent/confirmation/background_tools.go`：后台资源准备与确认。
+- `internal/background/module/runner.go`：后台资源准备；`internal/security/security.go` 的 `Permission.CheckTool` 决定工具拒绝、直接执行或交互确认，`internal/tool/execution/runner.go` 执行该决定。
 - `internal/tool/builtin/cron.go`、`internal/storage/sqlite/cron_job_repository.go`：工具入口与仓储。
 
 <!-- locator:docs -->

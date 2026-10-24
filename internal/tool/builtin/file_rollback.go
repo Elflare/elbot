@@ -1,4 +1,7 @@
+// 实现文件撤销工具，准备并提交文件回滚。
 package builtin
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
@@ -23,26 +26,26 @@ func NewRollbackFileTool(service *fileops.Service) RollbackFileTool {
 }
 
 func (RollbackFileTool) Name() string    { return "rollback_file" }
-func (RollbackFileTool) Info() tool.Info { return rollbackFileBuilder().BuildInfo() }
+func (RollbackFileTool) Info() toolshare.Info { return rollbackFileBuilder().BuildInfo() }
 func (RollbackFileTool) Schema() llm.ToolSchema {
 	schema := rollbackFileBuilder().BuildSchema()
 	schema.Parameters["additionalProperties"] = false
 	return schema
 }
 
-func rollbackFileBuilder() *tool.Builder {
-	return tool.NewBuilder("rollback_file").
+func rollbackFileBuilder() *toolshare.Builder {
+	return toolshare.NewBuilder("rollback_file").
 		Description("撤销指定文件在当前会话中最近一次成功的 edit_file 修改。已有文件恢复编辑前内容，新建文件删除。文件此后发生变化时拒绝撤销；成功后消耗备份，不支持连续撤销或重做。备份仅保存在内存中，切换会话、重启或容量淘汰后失效。不支持撤销 shell 或外部程序的修改。").
 		Hidden().
 		SuperadminOnly().
 		ForegroundOnly().
-		Risk(tool.RiskHigh).
+		Risk(toolshare.RiskHigh).
 		Tags("files").
 		DependsOn("workspace").
-		String("path", "要撤销最近一次编辑的文件路径；相对路径基于当前 workspace，也支持绝对路径。", tool.Required())
+		String("path", "要撤销最近一次编辑的文件路径；相对路径基于当前 workspace，也支持绝对路径。", toolshare.Required())
 }
 
-func decodeRollbackArgs(req tool.CallRequest) (rollbackFileArgs, error) {
+func decodeRollbackArgs(req toolshare.CallRequest) (rollbackFileArgs, error) {
 	var args rollbackFileArgs
 	if err := decodeStrictFileArgs(req.Arguments, &args); err != nil {
 		return args, fmt.Errorf("parse rollback_file arguments: %w", err)
@@ -53,7 +56,7 @@ func decodeRollbackArgs(req tool.CallRequest) (rollbackFileArgs, error) {
 	return args, nil
 }
 
-func (t RollbackFileTool) PrepareCall(ctx context.Context, req tool.CallRequest) (*tool.PreparedCall, error) {
+func (t RollbackFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*tool.PreparedCall, error) {
 	args, err := decodeRollbackArgs(req)
 	if err != nil {
 		return nil, err
@@ -68,21 +71,21 @@ func (t RollbackFileTool) PrepareCall(ctx context.Context, req tool.CallRequest)
 		action = "删除本次新建文件（保留父目录）"
 	}
 	detail := fmt.Sprintf("文件：%s\n操作：%s\n预检 diff:\n%s", preview.Path, action, preview.Diff)
-	return tool.NewPreparedCall(t, req, detail, func(ctx context.Context) (*tool.Result, string, error) {
+	return tool.NewPreparedCall(t, req, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.call(ctx, args, prepared)
 	}), nil
 }
 
-func (t RollbackFileTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
+func (t RollbackFileTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
 	args, err := decodeRollbackArgs(req)
 	if err != nil {
-		return nil, tool.TruncateLogContent(err.Error(), 1024), err
+		return nil, toolshare.TruncateLogContent(err.Error(), 1024), err
 	}
 	return t.call(ctx, args, nil)
 }
 
-func (t RollbackFileTool) call(ctx context.Context, args rollbackFileArgs, prepared *fileops.PreparedRollback) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t RollbackFileTool) call(ctx context.Context, args rollbackFileArgs, prepared *fileops.PreparedRollback) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	var result fileops.RollbackResult
 	var err error
 	if prepared != nil {
@@ -98,7 +101,7 @@ func (t RollbackFileTool) call(ctx context.Context, args rollbackFileArgs, prepa
 		action = "deleted_created_file"
 	}
 	{
-		result := &tool.Result{Content: fmt.Sprintf("rolled_back: %s\naction: %s\nrevision: %s", result.Path, action, result.Revision)}
+		result := &toolshare.Result{Content: fmt.Sprintf("rolled_back: %s\naction: %s\nrevision: %s", result.Path, action, result.Revision)}
 		return result, result.Content, nil
 	}
 }

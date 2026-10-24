@@ -2,6 +2,8 @@
 
 package rules
 
+import toolshare "elbot/internal/tool/share"
+
 import (
 	"context"
 	"elbot/internal/delivery"
@@ -190,18 +192,18 @@ type hookActionTestTool struct {
 
 func (*hookActionTestTool) Name() string { return "hook_test_critical" }
 
-func (*hookActionTestTool) Info() tool.Info {
-	return tool.Info{Name: "hook_test_critical", Description: "test hook tool", Risk: tool.RiskCritical}
+func (*hookActionTestTool) Info() toolshare.Info {
+	return toolshare.Info{Name: "hook_test_critical", Description: "test hook tool", Risk: toolshare.RiskCritical}
 }
 
 func (*hookActionTestTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "hook_test_critical", Parameters: map[string]any{"type": "object"}}
 }
 
-func (t *hookActionTestTool) Call(context.Context, tool.CallRequest) (*tool.Result, string, error) {
+func (t *hookActionTestTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
 	t.calls++
 	{
-		result, callErr := &tool.Result{Content: "called"}, t.err
+		result, callErr := &toolshare.Result{Content: "called"}, t.err
 		logContent := ""
 		if result != nil {
 			logContent = result.Content

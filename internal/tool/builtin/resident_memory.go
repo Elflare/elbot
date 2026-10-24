@@ -1,4 +1,7 @@
+// 实现常驻记忆工具，读取和维护常驻记忆内容。
 package builtin
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
@@ -11,7 +14,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/memory/resident"
 	"elbot/internal/session"
-	"elbot/internal/tool"
+	
 )
 
 const (
@@ -58,8 +61,8 @@ type memoryReadResult struct {
 	Status string          `json:"status"`
 }
 
-func NewResidentMemoryTools(store *resident.Store) []tool.Tool {
-	return []tool.Tool{ResidentMemoryTool{Store: store}, ResidentMemoryReadTool{Store: store}, ResidentMemoryNormalTool{Store: store}, ResidentMemoryCoreTool{Store: store}}
+func NewResidentMemoryTools(store *resident.Store) []toolshare.Tool {
+	return []toolshare.Tool{ResidentMemoryTool{Store: store}, ResidentMemoryReadTool{Store: store}, ResidentMemoryNormalTool{Store: store}, ResidentMemoryCoreTool{Store: store}}
 }
 
 func NewResidentMemoryTool(store *resident.Store) ResidentMemoryTool {
@@ -67,35 +70,35 @@ func NewResidentMemoryTool(store *resident.Store) ResidentMemoryTool {
 }
 
 func (t ResidentMemoryTool) Name() string { return ResidentMemoryToolName }
-func (t ResidentMemoryTool) Info() tool.Info {
-	return tool.NewBuilder(t.Name()).
+func (t ResidentMemoryTool) Info() toolshare.Info {
+	return toolshare.NewBuilder(t.Name()).
 		Description("管理当前用户在当前平台的常驻记忆。本工具仅为入口。").
-		Risk(tool.RiskLow).
+		Risk(toolshare.RiskLow).
 		DependsOn(ResidentMemoryReadToolName, ResidentMemoryNormalToolName, ResidentMemoryCoreToolName).
 		BuildInfo()
 }
 func (t ResidentMemoryTool) Schema() llm.ToolSchema {
-	return tool.NewBuilder(t.Name()).Description(t.Info().Description).BuildSchema()
+	return toolshare.NewBuilder(t.Name()).Description(t.Info().Description).BuildSchema()
 }
-func (t ResidentMemoryTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t ResidentMemoryTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	{
-		result := &tool.Result{Content: "resident_memory 是常驻记忆管理入口。请调用 resident_memory_read、resident_memory_normal 或 resident_memory_core。"}
+		result := &toolshare.Result{Content: "resident_memory 是常驻记忆管理入口。请调用 resident_memory_read、resident_memory_normal 或 resident_memory_core。"}
 		return result, "resident_memory guide returned", nil
 	}
 }
 
 func (t ResidentMemoryReadTool) Name() string { return ResidentMemoryReadToolName }
-func (t ResidentMemoryReadTool) Info() tool.Info {
-	return memoryBuilder(t.Name(), "读取当前用户在当前平台的常驻记忆。section 可为 all、core 或 normal，默认 all。", tool.RiskLow).Hidden().BuildInfo()
+func (t ResidentMemoryReadTool) Info() toolshare.Info {
+	return memoryBuilder(t.Name(), "读取当前用户在当前平台的常驻记忆。section 可为 all、core 或 normal，默认 all。", toolshare.RiskLow).Hidden().BuildInfo()
 }
 func (t ResidentMemoryReadTool) Schema() llm.ToolSchema {
-	return memoryBuilder(t.Name(), "读取当前用户在当前平台的常驻记忆。section 可为 all、core 或 normal，默认 all。", tool.RiskLow).
+	return memoryBuilder(t.Name(), "读取当前用户在当前平台的常驻记忆。section 可为 all、core 或 normal，默认 all。", toolshare.RiskLow).
 		String("section", "读取范围：all、core 或 normal。默认 all。").
 		BuildSchema()
 }
-func (t ResidentMemoryReadTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t ResidentMemoryReadTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	scope, err := memoryScope(ctx, t.Store)
 	if err != nil {
 		return nil, err.Error(), err
@@ -138,17 +141,17 @@ func (t ResidentMemoryReadTool) Call(ctx context.Context, req tool.CallRequest) 
 }
 
 func (t ResidentMemoryNormalTool) Name() string { return ResidentMemoryNormalToolName }
-func (t ResidentMemoryNormalTool) Info() tool.Info {
-	return memoryBuilder(t.Name(), normalDescription(t.Store), tool.RiskLow).Hidden().BuildInfo()
+func (t ResidentMemoryNormalTool) Info() toolshare.Info {
+	return memoryBuilder(t.Name(), normalDescription(t.Store), toolshare.RiskLow).Hidden().BuildInfo()
 }
 func (t ResidentMemoryNormalTool) Schema() llm.ToolSchema {
-	return memoryBuilder(t.Name(), normalDescription(t.Store), tool.RiskLow).
-		String("action", "操作类型：append、write 或 delete。", tool.Required()).
+	return memoryBuilder(t.Name(), normalDescription(t.Store), toolshare.RiskLow).
+		String("action", "操作类型：append、write 或 delete。", toolshare.Required()).
 		String("content", "append/write 时使用。write 会覆盖完整 normal，使用前必须先调用 resident_memory_read 读取 normal 或 all。delete 不需要 content。").
 		BuildSchema()
 }
-func (t ResidentMemoryNormalTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t ResidentMemoryNormalTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	scope, err := memoryScope(ctx, t.Store)
 	if err != nil {
 		return nil, err.Error(), err
@@ -169,7 +172,7 @@ func (t ResidentMemoryNormalTool) Call(ctx context.Context, req tool.CallRequest
 			return nil, err.Error(), err
 		}
 		{
-			result := &tool.Result{Content: "已追加普通常驻记忆。"}
+			result := &toolshare.Result{Content: "已追加普通常驻记忆。"}
 			return result, result.Content, nil
 		}
 	case "write", "set", "update":
@@ -183,7 +186,7 @@ func (t ResidentMemoryNormalTool) Call(ctx context.Context, req tool.CallRequest
 			return nil, err.Error(), err
 		}
 		{
-			result := &tool.Result{Content: "已更新普通常驻记忆。"}
+			result := &toolshare.Result{Content: "已更新普通常驻记忆。"}
 			return result, result.Content, nil
 		}
 	case "delete", "clear":
@@ -191,7 +194,7 @@ func (t ResidentMemoryNormalTool) Call(ctx context.Context, req tool.CallRequest
 			return nil, err.Error(), err
 		}
 		{
-			result := &tool.Result{Content: "已清空普通常驻记忆。"}
+			result := &toolshare.Result{Content: "已清空普通常驻记忆。"}
 			return result, result.Content, nil
 		}
 	default:
@@ -203,16 +206,16 @@ func (t ResidentMemoryNormalTool) Call(ctx context.Context, req tool.CallRequest
 }
 
 func (t ResidentMemoryCoreTool) Name() string { return ResidentMemoryCoreToolName }
-func (t ResidentMemoryCoreTool) Info() tool.Info {
-	return memoryBuilder(t.Name(), coreDescription(t.Store), tool.RiskHigh).Hidden().BuildInfo()
+func (t ResidentMemoryCoreTool) Info() toolshare.Info {
+	return memoryBuilder(t.Name(), coreDescription(t.Store), toolshare.RiskHigh).Hidden().BuildInfo()
 }
 func (t ResidentMemoryCoreTool) Schema() llm.ToolSchema {
-	return memoryBuilder(t.Name(), coreDescription(t.Store), tool.RiskHigh).
-		String("content", "完整 core 内容。允许空字符串，表示清空 core。", tool.Required()).
+	return memoryBuilder(t.Name(), coreDescription(t.Store), toolshare.RiskHigh).
+		String("content", "完整 core 内容。允许空字符串，表示清空 core。", toolshare.Required()).
 		BuildSchema()
 }
-func (t ResidentMemoryCoreTool) Call(ctx context.Context, req tool.CallRequest) (_ *tool.Result, logContent string, _ error) {
-	defer func() { logContent = tool.TruncateLogContent(logContent, 1024) }()
+func (t ResidentMemoryCoreTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
+	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	scope, err := memoryScope(ctx, t.Store)
 	if err != nil {
 		return nil, err.Error(), err
@@ -231,13 +234,13 @@ func (t ResidentMemoryCoreTool) Call(ctx context.Context, req tool.CallRequest) 
 		return nil, err.Error(), err
 	}
 	{
-		result := &tool.Result{Content: "已更新核心常驻记忆。"}
+		result := &toolshare.Result{Content: "已更新核心常驻记忆。"}
 		return result, result.Content, nil
 	}
 }
 
-func memoryBuilder(name, description string, risk tool.RiskLevel) *tool.Builder {
-	return tool.NewBuilder(name).Description(description).Risk(risk).OwnerScoped()
+func memoryBuilder(name, description string, risk toolshare.RiskLevel) *toolshare.Builder {
+	return toolshare.NewBuilder(name).Description(description).Risk(risk).OwnerScoped()
 }
 
 func normalDescription(store *resident.Store) string {
@@ -272,10 +275,10 @@ func decodeMemoryArgs(raw json.RawMessage, out any) error {
 	return nil
 }
 
-func memoryJSONResult(value any) (*tool.Result, error) {
+func memoryJSONResult(value any) (*toolshare.Result, error) {
 	data, err := json.Marshal(value)
 	if err != nil {
 		return nil, err
 	}
-	return &tool.Result{Content: string(data)}, nil
+	return &toolshare.Result{Content: string(data)}, nil
 }

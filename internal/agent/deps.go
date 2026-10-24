@@ -15,8 +15,7 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
-	"elbot/internal/toolrun"
+	"elbot/internal/tool/share"
 )
 
 // SupervisorDeps borrows shared resources and business capabilities; their owners retain lifecycle control.
@@ -35,17 +34,17 @@ type SupervisorDeps struct {
 type ToolCapabilities interface {
 	commandbuiltin.ToolService
 	commandbuiltin.SkillService
-	Get(string) (tool.Tool, bool)
+	QueryTools(context.Context, share.ToolQuery) ([]share.Info, error)
 	ToolTags(context.Context) ([]string, error)
-	ToolNamesByTag(context.Context, string, func(tool.Tool) bool) ([]string, error)
-	ToolInfos(context.Context, toolrun.Context) ([]tool.Info, error)
-	Schemas(context.Context, toolrun.Context, []toolrun.CachedTool) ([]llm.ToolSchema, error)
-	Run(context.Context, toolrun.RunnerDeps, toolrun.RunRequest) toolrun.RunResult
-	Load(context.Context, string) (*storage.Session, error)
-	Commit(context.Context, string, toolrun.StateUpdate) (toolrun.StateCommit, events.LogResult, error)
-	PrepareTools(context.Context, []string) (toolrun.ToolPreload, error)
-	PrepareSkills(context.Context, string, []string) (toolrun.SkillPreload, error)
-	TagPrompts(context.Context, []string) ([]toolrun.TagPrompt, error)
+	ToolNamesByTag(context.Context, string, share.ToolQuery) ([]string, error)
+	ToolInfos(context.Context, share.Context) ([]share.Info, error)
+	Schemas(context.Context, share.Context, []share.DiscoveredTool) ([]llm.ToolSchema, error)
+	Run(context.Context, share.RunnerDeps, share.RunRequest) share.RunResult
+	DiscoveredToolsForSession(context.Context, string, bool) ([]share.DiscoveredTool, events.LogResult, error)
+	Commit(context.Context, string, share.StateUpdate) (share.StateCommit, events.LogResult, error)
+	PrepareTools(context.Context, []string) (share.ToolPreload, error)
+	PrepareSkills(context.Context, string, []string) (share.SkillPreload, error)
+	TagPrompts(context.Context, []string) ([]share.TagPrompt, error)
 	Read(context.Context, session.Scope) (resident.Memory, error)
 	WithBinding(context.Context, fileops.Binding, ...fileops.CommitAdmission) context.Context
 	Forget(fileops.Binding)

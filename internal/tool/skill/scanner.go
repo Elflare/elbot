@@ -1,4 +1,7 @@
+// 扫描 Skill 目录并加载 Skill 内容。
 package skill
+
+import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
@@ -47,7 +50,7 @@ func DefaultRoot() string {
 	return "skills"
 }
 
-func (s FilesystemScanner) Scan(ctx context.Context) ([]tool.Tool, error) {
+func (s FilesystemScanner) Scan(ctx context.Context) ([]toolshare.Tool, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -55,7 +58,7 @@ func (s FilesystemScanner) Scan(ctx context.Context) ([]tool.Tool, error) {
 	if err != nil {
 		return nil, err
 	}
-	tools := make([]tool.Tool, 0, len(records))
+	tools := make([]toolshare.Tool, 0, len(records))
 	for _, record := range records {
 		tools = append(tools, s.toolForRecord(record))
 	}
@@ -70,11 +73,11 @@ func (s FilesystemScanner) Reload(ctx context.Context, registry *tool.Registry) 
 	if err != nil {
 		return err
 	}
-	replacements := make([]tool.Tool, 0, len(records))
+	replacements := make([]toolshare.Tool, 0, len(records))
 	for _, record := range records {
 		replacements = append(replacements, s.toolForRecord(record))
 	}
-	if err := registry.ReplaceSources([]tool.Source{tool.SourceSkillAgent, tool.SourceSkillGo}, replacements); err != nil {
+	if err := registry.ReplaceSources([]toolshare.Source{toolshare.SourceSkillAgent, toolshare.SourceSkillGo}, replacements); err != nil {
 		return err
 	}
 	s.Catalog.Replace(records)
@@ -196,7 +199,7 @@ func (s FilesystemScanner) readAgentRecord(root, dirName string) (Record, bool, 
 			return Record{}, false, fmt.Errorf("parse %s in %q: %w", elyph.SkillFileName, root, err)
 		}
 		detail := strings.TrimSpace(string(data))
-		record := Record{Name: header.Name, Description: header.Description, Detail: detail, Format: elyph.Format, Risk: tool.RiskSafe, Kind: KindAgent, Root: root}
+		record := Record{Name: header.Name, Description: header.Description, Detail: detail, Format: elyph.Format, Risk: toolshare.RiskSafe, Kind: KindAgent, Root: root}
 		return s.withAgentManifest(record), true, nil
 	} else if !os.IsNotExist(err) {
 		return Record{}, false, fmt.Errorf("read %s in %q: %w", elyph.SkillFileName, root, err)
@@ -213,7 +216,7 @@ func (s FilesystemScanner) readAgentRecord(root, dirName string) (Record, bool, 
 	if err != nil {
 		return Record{}, false, fmt.Errorf("parse SKILL.md in %q: %w", root, err)
 	}
-	record := Record{Name: strings.Clone(def.Name), Description: strings.Clone(def.Description), DetailPath: detailPath, Format: def.Format, Risk: tool.RiskSafe, Kind: KindAgent, Root: root}
+	record := Record{Name: strings.Clone(def.Name), Description: strings.Clone(def.Description), DetailPath: detailPath, Format: def.Format, Risk: toolshare.RiskSafe, Kind: KindAgent, Root: root}
 	return s.withAgentManifest(record), true, nil
 }
 
@@ -233,7 +236,7 @@ func (s FilesystemScanner) withAgentManifest(record Record) Record {
 	return record
 }
 
-func (s FilesystemScanner) toolForRecord(record Record) tool.Tool {
+func (s FilesystemScanner) toolForRecord(record Record) toolshare.Tool {
 	target := toolForRecord(record)
 	if command, ok := target.(CommandTool); ok {
 		command.Media = s.Media
@@ -242,14 +245,14 @@ func (s FilesystemScanner) toolForRecord(record Record) tool.Tool {
 	}
 	return target
 }
-func toolForRecord(record Record) tool.Tool {
+func toolForRecord(record Record) toolshare.Tool {
 	if record.Kind == KindAgent && record.ManifestFound && record.ManifestError == "" && record.Manifest.Callable {
 		return NewCommandTool(record)
 	}
 	return NewDescriptor(record)
 }
 
-func elyphRisk(text string) tool.RiskLevel {
+func elyphRisk(text string) toolshare.RiskLevel {
 	for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "** risk ") {
@@ -258,7 +261,7 @@ func elyphRisk(text string) tool.RiskLevel {
 			}
 		}
 	}
-	return tool.RiskHigh
+	return toolshare.RiskHigh
 }
 
 func dirNameForKind(kind Kind) string {
