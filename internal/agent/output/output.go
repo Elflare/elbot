@@ -11,8 +11,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
-	"elbot/internal/hook"
-	"elbot/internal/llm"
 )
 
 type OutputSender struct {
@@ -21,7 +19,11 @@ type OutputSender struct {
 		SendChat(context.Context, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)
 		StartStream(context.Context) (delivery.MessageStream, error)
 	}
-	hooks     dialogue.Hooks
+	hooks interface {
+		AgentOutputPrepared(context.Context, string) (string, globalevents.LogResult, error)
+		AgentTurnOutputPrepared(context.Context, string) (string, globalevents.LogResult, error)
+		PlatformMessageSent(context.Context, string)
+	}
 	reasoning func(context.Context) delivery.ReasoningStream
 }
 
@@ -82,12 +84,12 @@ func (o *OutputSender) SendTo(ctx context.Context, target delivery.Target, outpu
 	return err
 }
 
-func (o *OutputSender) PrepareAssistant(ctx context.Context, point hook.Point, text string) (string, globalevents.LogResult, error) {
-	event, logResult, err := o.hooks.Run(ctx, hook.Event{Point: point, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(text)}})
+func (o *OutputSender) PrepareAssistant(ctx context.Context, text string) (string, globalevents.LogResult, error) {
+	prepared, logResult, err := o.hooks.AgentTurnOutputPrepared(ctx, text)
 	if err != nil {
 		return "", logResult, err
 	}
-	return llm.SegmentsTextOnly(event.Message.Segments), logResult, nil
+	return prepared, logResult, nil
 }
 
 func (o *OutputSender) SendAssistant(ctx context.Context, text string) (receipt delivery.Receipt, logResult globalevents.LogResult, err error) {
@@ -95,7 +97,7 @@ func (o *OutputSender) SendAssistant(ctx context.Context, text string) (receipt 
 		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "assistant output is buffered and empty"}, nil
 	}
 	defer func() { o.observeDelivery(ctx, "send_assistant_message", logResult) }()
-	preparedText, logResult, err := o.PrepareAssistant(ctx, hook.PointAgentOutputPrepared, text)
+	preparedText, logResult, err := o.hooks.AgentOutputPrepared(ctx, text)
 	if err != nil {
 		return delivery.Receipt{}, logResult, err
 	}
@@ -139,7 +141,7 @@ func (o *OutputSender) SendAssistant(ctx context.Context, text string) (receipt 
 	if err != nil {
 		return receipt, logResult, err
 	}
-	o.hooks.Notify(ctx, hook.Event{Point: hook.PointPlatformMessageSent, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(preparedText)}})
+	o.hooks.PlatformMessageSent(ctx, preparedText)
 
 	return receipt, logResult, nil
 }
@@ -171,7 +173,7 @@ func (o *OutputSender) Preview(ctx context.Context, text ...string) {
 		return
 	}
 	preview := strings.Join(lines, "\n")
-	event, _, err := o.hooks.Run(ctx, hook.Event{Point: hook.PointAgentOutputPrepared, Message: hook.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(preview)}})
+	prepared, _, err := o.hooks.AgentOutputPrepared(ctx, preview)
 	if err != nil {
 		if ctx.Err() == nil {
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
@@ -179,7 +181,7 @@ func (o *OutputSender) Preview(ctx context.Context, text ...string) {
 		}
 		return
 	}
-	body := strings.TrimSpace(llm.SegmentsTextOnly(event.Message.Segments))
+	body := strings.TrimSpace(prepared)
 	if body == "" {
 		return
 	}
@@ -227,7 +229,7 @@ func (o *OutputSender) ReplaceAndFinishStream(ctx context.Context, streamCtx con
 		}
 		o.observeDelivery(ctx, "send_assistant_message", logResult)
 	}()
-	prepared, logResult, err := o.PrepareAssistant(ctx, hook.PointAgentOutputPrepared, text)
+	prepared, logResult, err := o.hooks.AgentOutputPrepared(ctx, text)
 	if err != nil {
 		return delivery.Receipt{}, logResult, err
 	}

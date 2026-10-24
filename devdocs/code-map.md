@@ -48,7 +48,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/events/notification.go`、`platform.go`、`logging.go`：全局通知、平台连接与日志契约。
 - `internal/agent/events/`：Agent 实例事实信号，以及对外状态、绑定快照；绑定快照不包含内部 Binding 句柄。
 - `internal/agent/signals.go`：通知、重试、会话清理与接管订阅。
-- `internal/agent/hooks/platform_signals.go`、`internal/cron/platform_signals.go`：平台连接事件消费与队列生命周期。
+- `internal/cron/platform_signals.go`：Cron 的平台连接事件消费与队列生命周期。
 - `internal/session/naming_signals.go`、`naming_logging.go`、`naming_lifecycle.go`：命名信号、日志与退出。
 - `internal/modelmgr/signals.go`、`logging.go`：模型重试信号与日志。
 - `internal/agent/share/logging.go`、`internal/background/logging.go`：所属业务日志发布。
@@ -66,7 +66,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:agent-chat -->
 ## Agent 对话
 
-- `internal/agent/{input,execution,confirmation,hooks,output,tools}/`：输入、执行、确认、Hook、输出与工具桥接；依赖契约随消费者放置。
+- `internal/agent/{input,execution,confirmation,hooks,output,tools}/`：输入、执行、确认、Agent 自有扩展点、输出与工具桥接；依赖契约随消费者放置。
 - `internal/agent/share/`：线内共享的身份、输入、片段、绑定、状态契约与辅助函数，不反向依赖上述六个业务子包及 dialogue。
 - `internal/agent/input/message.go`、`input.go`：消息分发与普通输入准备；`internal/background/module/runner.go`、`runner_deps.go`：后台资源准备与依赖契约。
 - `internal/agent/dialogue/runner.go`、`preparation.go`：公共单轮、组件构造、输入准备与终态失败报告。
@@ -158,7 +158,8 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/hook/call_policy.go`：工具调用只读策略。
 - `internal/hook/media.go`、`internal/hook/output/`：媒体 API 与输出协议。
 - `internal/hook/logging.go`：Hook 日志发布。
-- `internal/agent/hooks/hooks.go`：Agent Hook 桥接与调用请求登记。
+- `internal/agent/hook_bridge.go`：对外单组回调注册与逐个 handler 的请求登记。
+- `internal/agent/hooks/points.go`：Agent 可挂接点及业务输入、结果契约；`hooks.go`：回调调度、输入事实准备和在途生命周期。
 - [Hook 文档](../docs/hooks.md)。
 
 <!-- locator:output -->

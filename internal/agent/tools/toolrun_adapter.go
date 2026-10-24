@@ -4,16 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"reflect"
 	"strings"
 	"time"
 
 	"elbot/internal/agent/dialogue"
+	"elbot/internal/agent/hooks"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
@@ -27,8 +26,11 @@ import (
 )
 
 type toolRunDeps struct {
-	status        agentshare.ExecutionStatus
-	hooks         dialogue.Hooks
+	status agentshare.ExecutionStatus
+	hooks  interface {
+		ToolCallPrepared(context.Context, hooks.Session, llm.ToolCallRequest) (string, events.LogResult, error)
+		ToolCallCompleted(context.Context, hooks.Session, hooks.ToolResult) ([]llm.MessageSegment, events.LogResult, error)
+	}
 	requests      *request.Manager
 	turns         *turn.Manager
 	identity      ToolIdentity
@@ -47,44 +49,24 @@ func (d toolRunDeps) ForTurn(out dialogue.Output, attempt string) toolrun.Runner
 }
 
 func (d toolRunDeps) PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, events.LogResult, error) {
-	event, logResult, err := d.hooks.Run(ctx, hook.Event{
-		Point:   hook.PointToolCallPrepared,
-		Session: agentshare.HookSession(session),
-		Tool:    hook.ToolPayload{ID: call.ID, Name: call.Name, Arguments: call.Arguments},
-	})
+	arguments, logResult, err := d.hooks.ToolCallPrepared(ctx,
+		hooks.Session{ID: session.ID, Mode: session.Mode, Title: session.Title, Status: session.Status}, call)
 	if err != nil {
 		return call, logResult, err
 	}
-	call.Arguments = event.Tool.Arguments
+	call.Arguments = arguments
 	return call, logResult, nil
 }
 
 func (d toolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, events.LogResult, error) {
 	original := append([]llm.MessageSegment(nil), segments...)
-	resultText := llm.SegmentsTextOnly(original)
-	event, logResult, err := d.hooks.Run(ctx, hook.Event{
-		Point:   hook.PointToolCallCompleted,
-		Session: agentshare.HookSession(session),
-		Message: hook.MessagePayload{Role: string(llm.RoleTool), Segments: original},
-		Tool: hook.ToolPayload{
-			ID:        call.ID,
-			Name:      call.Name,
-			Arguments: call.Arguments,
-			Risk:      risk,
-			Result:    resultText,
-			Error:     callErr,
-		},
-	})
+	updated, logResult, err := d.hooks.ToolCallCompleted(ctx,
+		hooks.Session{ID: session.ID, Mode: session.Mode, Title: session.Title, Status: session.Status},
+		hooks.ToolResult{Call: call, Risk: risk, Segments: original, Err: callErr})
 	if err != nil {
 		return nil, logResult, err
 	}
-	if !reflect.DeepEqual(event.Message.Segments, original) {
-		return event.Message.Segments, logResult, nil
-	}
-	if event.Tool.Result != resultText {
-		return llm.SetSegmentText(original, event.Tool.Result), logResult, nil
-	}
-	return original, logResult, nil
+	return updated, logResult, nil
 }
 
 func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), events.LogResult, error) {
@@ -190,8 +172,11 @@ type ToolConfirmations interface {
 // ToolRunDeps declares the application bridge consumed by ToolRun. Per-turn
 // output and attempt remain private copies created by ForTurn.
 type ToolRunDeps struct {
-	Status        agentshare.ExecutionStatus
-	Hooks         dialogue.Hooks
+	Status agentshare.ExecutionStatus
+	Hooks  interface {
+		ToolCallPrepared(context.Context, hooks.Session, llm.ToolCallRequest) (string, events.LogResult, error)
+		ToolCallCompleted(context.Context, hooks.Session, hooks.ToolResult) ([]llm.MessageSegment, events.LogResult, error)
+	}
 	Requests      *request.Manager
 	Turns         *turn.Manager
 	Identity      ToolIdentity

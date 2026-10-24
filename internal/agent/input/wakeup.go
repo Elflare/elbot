@@ -5,33 +5,9 @@ import (
 	"strings"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/hook"
-	"elbot/internal/llm"
 	"elbot/internal/platform"
 	"elbot/internal/storage"
 )
-
-type messageWakeupContextKey struct{}
-
-func withMessageWakeup(ctx context.Context, woken bool) context.Context {
-	return context.WithValue(ctx, messageWakeupContextKey{}, woken)
-}
-
-func messageWakeupFromContext(ctx context.Context) (bool, bool) {
-	woken, ok := ctx.Value(messageWakeupContextKey{}).(bool)
-	return woken, ok
-}
-
-func (h *MessageHandler) HookWakeup(ctx context.Context, event hook.Event) bool {
-	if woken, ok := messageWakeupFromContext(ctx); ok {
-		return woken
-	}
-	text := strings.TrimSpace(llm.SegmentsTextOnly(event.Message.Segments))
-	if text == "" {
-		text = inboundRawText(ctx)
-	}
-	return h.messageWakeup(ctx, text)
-}
 
 func (h *MessageHandler) messageWakeup(ctx context.Context, text string) bool {
 	msg, ok := platform.MessageContextFrom(ctx)
@@ -51,13 +27,6 @@ func (h *MessageHandler) messageWakeup(ctx context.Context, text string) bool {
 		return true
 	}
 	return h.isReplyToBot(ctx, msg)
-}
-
-func inboundRawText(ctx context.Context) string {
-	if msg, ok := platform.MessageContextFrom(ctx); ok {
-		return strings.TrimSpace(msg.RawText)
-	}
-	return ""
 }
 
 func mentionsBot(msg platform.MessageContext) bool {

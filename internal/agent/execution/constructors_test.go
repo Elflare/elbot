@@ -9,32 +9,20 @@ import (
 
 	agentshare "elbot/internal/agent/share"
 
+	agenthooks "elbot/internal/agent/hooks"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/hook"
 
 	"elbot/internal/security"
 )
 
-type constructorHooks struct{}
+type constructorMessageHooks struct{}
 
-func (constructorHooks) Run(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
-	return e, events.LogResult{ResultStatus: events.ResultSkipped}, nil
+func (constructorMessageHooks) HasRoute(context.Context, agenthooks.Message) bool    { return false }
+func (constructorMessageHooks) CancelRoute(context.Context, agenthooks.Message) bool { return false }
+func (constructorMessageHooks) PlatformMessageReceived(_ context.Context, message agenthooks.Message) (agenthooks.PlatformMessageReceivedResult, events.LogResult, error) {
+	return agenthooks.PlatformMessageReceivedResult{Segments: message.Segments}, events.LogResult{}, nil
 }
-
-func (constructorHooks) Notify(context.Context, hook.Event) {}
-
-func (constructorHooks) FillContext(_ context.Context, e hook.Event) hook.Event { return e }
-
-func (constructorHooks) NotifyError(context.Context, hook.Event, error) {}
-
-func (constructorHooks) CancelRoute(hook.Event) bool { return false }
-
-func (constructorHooks) Route(_ context.Context, e hook.Event) (hook.Event, bool, error) {
-	return e, false, nil
-}
-
-func (constructorHooks) HasRoute(hook.Event) bool { return false }
 
 type constructorCommands struct{}
 
@@ -70,7 +58,7 @@ func (constructorOutput) SendOutputs(context.Context, []delivery.Output) (events
 func TestMessageEntryConstructsWithOnlyConsumptionCapabilities(t *testing.T) {
 	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Permission: security.DefaultPermission()})
 	input := &constructorInput{}
-	entry := agentinput.NewMessageHandler(agentinput.MessageHandlerDeps{Identity: identity, Hooks: constructorHooks{}, Output: constructorOutput{}, Commands: constructorCommands{}, Input: input})
+	entry := agentinput.NewMessageHandler(agentinput.MessageHandlerDeps{Identity: identity, Hooks: constructorMessageHooks{}, Output: constructorOutput{}, Commands: constructorCommands{}, Input: input})
 	if err := entry.HandleMessage(t.Context(), "plain input"); err != nil {
 		t.Fatal(err)
 	}

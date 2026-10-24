@@ -2,62 +2,46 @@ package execution
 
 import (
 	"context"
-	"testing"
-
 	agenthooks "elbot/internal/agent/hooks"
-	agentshare "elbot/internal/agent/share"
 	agenttools "elbot/internal/agent/tools"
 	"elbot/internal/events"
-	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/storage"
+	"testing"
 )
 
 func TestCompleteToolCallExposesNameAndAcceptsMultimodalSegments(t *testing.T) {
-	manager := newTestHookManager()
-
-	manager.Register(hook.Registration{
-		Point: hook.PointToolCallCompleted,
-		Name:  "test.tool-image",
-		Match: hook.Always(),
-		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
-			if event.Tool.Name != "screenshot" || event.Tool.ID != "call_1" || event.Message.Role != string(llm.RoleTool) {
-				t.Fatalf("event = %#v", event)
+	bridge := newTestHookBridge(t, agenthooks.Points{
+		ToolCallCompleted: func(_ context.Context, facts agenthooks.Facts, result agenthooks.ToolResult) ([]llm.MessageSegment, events.LogResult, error) {
+			if facts.Session.ID != "s1" || result.Call.Name != "screenshot" || result.Call.ID != "call_1" {
+				t.Fatalf("facts=%+v result=%+v", facts, result)
 			}
-			event.Message.Segments = append(event.Message.Segments, llm.MessageSegment{Type: llm.SegmentImage, URL: "https://example.com/result.png"})
-			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-		}),
+			return append(result.Segments, llm.MessageSegment{Type: llm.SegmentImage, URL: "https://example.com/result.png"}), events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+		},
 	})
-	deps := agenttools.NewToolRunDeps(agenttools.ToolRunDeps{Hooks: agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{Manager: manager, Identity: agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{ScopeID: "default"})})}).ForTurn(nil, "")
-	segments, _, err := deps.CompleteToolCall(context.Background(), &storage.Session{ID: "s1"}, llm.ToolCallRequest{ID: "call_1", Name: "screenshot", Arguments: `{}`}, "low", llm.TextSegments("done"), nil)
+	deps := agenttools.NewToolRunDeps(agenttools.ToolRunDeps{Hooks: bridge}).ForTurn(nil, "")
+	segments, _, err := deps.CompleteToolCall(t.Context(), &storage.Session{ID: "s1"}, llm.ToolCallRequest{ID: "call_1", Name: "screenshot", Arguments: "{}"}, "low", llm.TextSegments("done"), nil)
 	if err != nil {
-		t.Fatalf("CompleteToolCall: %v", err)
+		t.Fatal(err)
 	}
 	if len(segments) != 2 || segments[1].Type != llm.SegmentImage {
-		t.Fatalf("segments = %#v", segments)
+		t.Fatalf("segments=%+v", segments)
 	}
 }
 
 func TestPrepareToolCallOnlyAcceptsArguments(t *testing.T) {
-	manager := newTestHookManager()
-
-	manager.Register(hook.Registration{
-		Point: hook.PointToolCallPrepared,
-		Name:  "test.tool-arguments",
-		Match: hook.Always(),
-		Handler: hook.HandlerFunc(func(ctx context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
-			event.Tool.ID = "changed-id"
-			event.Tool.Name = "changed-name"
-			event.Tool.Arguments = `{"q":"cat"}`
-			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-		}),
+	bridge := newTestHookBridge(t, agenthooks.Points{
+		ToolCallPrepared: func(_ context.Context, _ agenthooks.Facts, call llm.ToolCallRequest) (string, events.LogResult, error) {
+			call.ID, call.Name = "changed-id", "changed-name"
+			return "{ }", events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+		},
 	})
-	deps := agenttools.NewToolRunDeps(agenttools.ToolRunDeps{Hooks: agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{Manager: manager, Identity: agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{ScopeID: "default"})})}).ForTurn(nil, "")
-	call, _, err := deps.PrepareToolCall(context.Background(), &storage.Session{ID: "s1"}, llm.ToolCallRequest{ID: "call_1", Name: "search", Arguments: `{"q":"dog"}`})
+	deps := agenttools.NewToolRunDeps(agenttools.ToolRunDeps{Hooks: bridge}).ForTurn(nil, "")
+	call, _, err := deps.PrepareToolCall(t.Context(), &storage.Session{ID: "s1"}, llm.ToolCallRequest{ID: "call_1", Name: "search", Arguments: "{}"})
 	if err != nil {
-		t.Fatalf("PrepareToolCall: %v", err)
+		t.Fatal(err)
 	}
-	if call.ID != "call_1" || call.Name != "search" || call.Arguments != `{"q":"cat"}` {
-		t.Fatalf("prepared call = %#v", call)
+	if call.ID != "call_1" || call.Name != "search" || call.Arguments != "{ }" {
+		t.Fatalf("call=%+v", call)
 	}
 }

@@ -6,7 +6,6 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/hook"
 	"elbot/internal/platform"
 )
 
@@ -35,5 +34,5 @@ func BufferAssistantOutput(ctx context.Context) bool {
 }
 
 type AssistantPreparer interface {
-	PrepareAssistant(context.Context, hook.Point, string) (string, events.LogResult, error)
+	PrepareAssistant(context.Context, string) (string, events.LogResult, error)
 }

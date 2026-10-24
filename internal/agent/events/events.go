@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/hook"
 	"elbot/internal/llm"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
@@ -50,18 +49,10 @@ type VisionFallbackUsedEvent struct {
 	Conversation *contextinfo.Conversation // Original notification destination; nil when no conversation exists.
 }
 
-type HookFailedEvent struct {
-	Point        hook.Point                // Hook point that failed.
-	Platform     hook.PlatformContext      // Hook platform facts, also used to address notices when Conversation is nil.
-	Err          error                     // Failure reported by the hook.
-	Notice       bool                      // Whether the failure should produce a user notification.
-	Conversation *contextinfo.Conversation // Original notification destination; nil when no conversation exists.
-}
 type Signals struct {
 	ModelCallCompleted *signal.Signal[ModelCallCompletedEvent, signal.Empty]
 	StatusChanged      *signal.Signal[StatusChangedEvent, signal.Empty]
 	VisionFallbackUsed *signal.Signal[VisionFallbackUsedEvent, signal.Empty]
-	HookFailed         *signal.Signal[HookFailedEvent, signal.Empty]
 }
 
 func NewSignals() Signals {
@@ -69,7 +60,6 @@ func NewSignals() Signals {
 		ModelCallCompleted: signal.New[ModelCallCompletedEvent, signal.Empty]("agent.model_completed"),
 		StatusChanged:      signal.New[StatusChangedEvent, signal.Empty]("agent.status_changed"),
 		VisionFallbackUsed: signal.New[VisionFallbackUsedEvent, signal.Empty]("agent.vision_fallback"),
-		HookFailed:         signal.New[HookFailedEvent, signal.Empty]("agent.hook_failed"),
 	}
 }
 func Emit[T any](ctx context.Context, source *signal.Signal[T, signal.Empty], event T) {

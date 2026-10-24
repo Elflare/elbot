@@ -17,7 +17,6 @@ func assertAgentSignalsClosed(t *testing.T, m *Supervisor) {
 		"model":  m.signals.ModelCallCompleted.Done(),
 		"status": m.signals.StatusChanged.Done(),
 		"vision": m.signals.VisionFallbackUsed.Done(),
-		"hook":   m.signals.HookFailed.Done(),
 	} {
 		select {
 		case <-done:
@@ -51,7 +50,6 @@ func TestSupervisorBeginClosePreservesSignalsUntilClose(t *testing.T) {
 			"model":  m.signals.ModelCallCompleted.Done(),
 			"status": m.signals.StatusChanged.Done(),
 			"vision": m.signals.VisionFallbackUsed.Done(),
-			"hook":   m.signals.HookFailed.Done(),
 		} {
 			select {
 			case <-done:
@@ -119,7 +117,6 @@ func TestSupervisorWaitsForEveryOwnedSignal(t *testing.T) {
 		"model":  func(t *testing.T, m *Supervisor) { checkAgentSignalCloseWaits(t, m, m.signals.ModelCallCompleted) },
 		"status": func(t *testing.T, m *Supervisor) { checkAgentSignalCloseWaits(t, m, m.signals.StatusChanged) },
 		"vision": func(t *testing.T, m *Supervisor) { checkAgentSignalCloseWaits(t, m, m.signals.VisionFallbackUsed) },
-		"hook":   func(t *testing.T, m *Supervisor) { checkAgentSignalCloseWaits(t, m, m.signals.HookFailed) },
 	} {
 		t.Run(name, func(t *testing.T) {
 			m := contractSupervisor(t, isolatedModuleDeps(t))

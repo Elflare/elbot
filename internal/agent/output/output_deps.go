@@ -3,7 +3,6 @@ package output
 import (
 	"context"
 
-	"elbot/internal/agent/dialogue"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 )
@@ -15,6 +14,10 @@ type OutputSenderDeps struct {
 		SendChat(context.Context, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)
 		StartStream(context.Context) (delivery.MessageStream, error)
 	}
-	Hooks     dialogue.Hooks
+	Hooks interface {
+		AgentOutputPrepared(context.Context, string) (string, globalevents.LogResult, error)
+		AgentTurnOutputPrepared(context.Context, string) (string, globalevents.LogResult, error)
+		PlatformMessageSent(context.Context, string)
+	}
 	Reasoning func(context.Context) delivery.ReasoningStream // Optional per-call presentation capability.
 }

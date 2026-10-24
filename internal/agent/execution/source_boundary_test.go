@@ -2,77 +2,48 @@ package execution
 
 import (
 	"context"
-	"errors"
-
-	"testing"
-
 	agenthooks "elbot/internal/agent/hooks"
 	agentshare "elbot/internal/agent/share"
-
 	"elbot/internal/contextinfo"
-
-	globalevents "elbot/internal/events"
-	"elbot/internal/hook"
+	"elbot/internal/events"
+	"testing"
 )
 
-func TestConnectedHooksKeepAbsentChatIdentity(t *testing.T) {
-	manager := newTestHookManager()
-
-	var events []hook.Event
-	for _, point := range []hook.Point{hook.PointPlatformConnected, hook.PointErrorOccurred} {
-		manager.Register(hook.Registration{Point: point, Name: string(point), Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, globalevents.LogResult, error) {
-			events = append(events, e)
-			if e.Point == hook.PointPlatformConnected {
-				return e, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "test source failed"}, errors.New("connection hook failed")
+func TestHookCallbackReceivesPublicFactsWithoutInventingSource(t *testing.T) {
+	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local"})
+	for _, tc := range []struct {
+		name       string
+		ctx        context.Context
+		wantActor  string
+		wantSource contextinfo.Source
+	}{
+		{"absent", t.Context(), "", contextinfo.Source{}},
+		{"platform only", contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram"}}), "", contextinfo.Source{Platform: "telegram"}},
+		{"explicit actor", contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "trusted"}), "trusted", contextinfo.Source{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bridge := agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{Identity: identity})
+			called := false
+			_, err := bridge.Register(agenthooks.Points{AgentOutputPrepared: func(ctx context.Context, facts agenthooks.Facts, text string) (string, events.LogResult, error) {
+				called = true
+				conversation, _ := contextinfo.ConversationFromContext(ctx)
+				if facts.Actor.ID != tc.wantActor || conversation.Source != tc.wantSource {
+					t.Fatalf("facts=%+v conversation=%+v", facts, conversation)
+				}
+				return text, events.LogResult{}, nil
+			}})
+			if err != nil {
+				t.Fatal(err)
 			}
-			return e, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
-		})})
-	}
-	bridge := newTestHookBridge(t, &fakePlatform{}, manager)
-	_, _, _ = bridge.Run(context.Background(), hook.Event{Point: hook.PointPlatformConnected, Platform: hook.PlatformContext{Name: "telegram"}})
-	if len(events) != 2 {
-		t.Fatalf("events=%#v", events)
-	}
-	for _, e := range events {
-		if e.Platform.Name != "telegram" || e.Platform.ScopeID != "" || e.Platform.UserID != "" || e.Actor != (hook.ActorContext{}) || e.Platform.PlatformMessageID != "" || e.Platform.ReplyToMessageID != "" {
-			t.Errorf("invented chat source for %s: %#v / %#v", e.Point, e.Platform, e.Actor)
-		}
-	}
-}
-
-func TestHookReadsPublicInfoWithoutPlatformExtension(t *testing.T) {
-	bridge := agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{Identity: agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local"})})
-	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{
-		Source:            contextinfo.Source{Platform: "cli", ScopeID: "local"},
-		Identity:          contextinfo.Identity{PlatformUserID: "local"},
-		PlatformMessageID: "incoming",
-		ReplyToMessageID:  "replied",
-	})
-	e := bridge.FillContext(ctx, hook.Event{})
-	if e.Platform.PlatformMessageID != "incoming" || e.Platform.ReplyToMessageID != "replied" || e.Actor.ID != "cli:local" {
-		t.Fatalf("event=%#v", e)
-	}
-}
-
-func TestHookKeepsExplicitFieldsAndDoesNotFillPartialSource(t *testing.T) {
-	bridge := agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{Identity: agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local"})})
-	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram"}})
-	e := bridge.FillContext(ctx, hook.Event{})
-	if e.Platform.Name != "telegram" || e.Platform.ScopeID != "" || e.Platform.UserID != "" || e.Actor != (hook.ActorContext{}) {
-		t.Fatalf("platform-only Info invented identity: %#v", e)
-	}
-	actor := contextinfo.Actor{ID: "qq:1", Platform: "qq", PlatformUserID: "1", Role: contextinfo.RoleUser}
-	ctx = contextinfo.WithActor(ctx, actor)
-	explicit := hook.Event{
-		Platform: hook.PlatformContext{Name: "explicit", ScopeID: "explicit-scope", UserID: "explicit-user", PlatformMessageID: "explicit-message", ReplyToMessageID: "explicit-reply"},
-		Actor:    hook.ActorContext{ID: "explicit-actor", Role: "explicit-role", DisplayName: "explicit-name"},
-	}
-	e = bridge.FillContext(ctx, explicit)
-	if e.Platform != explicit.Platform || e.Actor != explicit.Actor {
-		t.Fatalf("explicit fields overwritten: %#v", e)
-	}
-	e = bridge.FillContext(contextinfo.WithActor(context.Background(), actor), hook.Event{})
-	if e.Actor.ID != actor.ID || e.Actor.Role != string(actor.Role) || e.Platform.ScopeID != "" {
-		t.Fatalf("explicit security actor lost: %#v", e)
+			if _, _, err := bridge.AgentOutputPrepared(tc.ctx, "text"); err != nil {
+				t.Fatal(err)
+			}
+			if !called {
+				t.Fatal("callback not invoked")
+			}
+			if err := bridge.Close(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }

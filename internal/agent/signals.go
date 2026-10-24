@@ -8,9 +8,7 @@ import (
 	agentevents "elbot/internal/agent/events"
 	agentexecution "elbot/internal/agent/execution"
 	"elbot/internal/events"
-	globalevents "elbot/internal/events"
 	"elbot/internal/fileops"
-	"elbot/internal/hook"
 	"elbot/internal/modelmgr"
 	"elbot/internal/notification/rules"
 	"elbot/internal/session"
@@ -22,23 +20,6 @@ func (b *signalBindings) connectAgentNotifications(events agentevents.Signals) e
 	return errors.Join(
 		connectSignal(b, events.VisionFallbackUsed, func(ctx context.Context, e agentevents.VisionFallbackUsedEvent) error {
 			return vision.Send(ctx, e.SessionID, e.Visible, e.Conversation)
-		}, signal.ConnectOptions{}),
-		connectSignal(b, events.HookFailed, func(ctx context.Context, e agentevents.HookFailedEvent) error {
-			if !e.Notice {
-				return nil
-			}
-			text := rules.HookFailure(hook.Event{Point: e.Point, Platform: e.Platform}, e.Err)
-			if text == "" {
-				return nil
-			}
-			n := globalevents.Notification{Origin: e.Conversation, Level: slog.LevelError, Text: text}
-			if n.Origin == nil {
-				n.Target.Platform = e.Platform.Name
-				n.Target.ScopeID = e.Platform.ScopeID
-				n.Target.ID = e.Platform.ConversationID
-			}
-			_, err := globalevents.NotificationRequested.EmitAsync(session.WithBinding(context.WithoutCancel(ctx), nil), n)
-			return err
 		}, signal.ConnectOptions{}),
 	)
 }

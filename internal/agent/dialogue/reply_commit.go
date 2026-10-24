@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"elbot/internal/delivery"
-	"elbot/internal/hook"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 )
@@ -54,7 +53,7 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in ReplyCommitIn
 	}
 	if strings.TrimSpace(text) != "" {
 		var err error
-		text, _, err = c.Output.PrepareAssistant(ctx, hook.PointAgentTurnOutputPrepared, text)
+		text, _, err = c.Output.PrepareAssistant(ctx, text)
 		if err != nil {
 			return result, fmt.Errorf("turn output hook: %w", err)
 		}

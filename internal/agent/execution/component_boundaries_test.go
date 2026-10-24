@@ -13,8 +13,6 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-	globalevents "elbot/internal/events"
-	"elbot/internal/hook"
 
 	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
@@ -83,35 +81,6 @@ func TestComponentStatusCommittedBeforeObserversAndCancellation(t *testing.T) {
 		})
 	}
 	wg.Wait()
-}
-
-func TestHookFailureIsRecordedOnceAndStillNotifies(t *testing.T) {
-	manager := newTestHookManager()
-
-	manager.Register(hook.Registration{Point: hook.PointErrorOccurred, Name: "failing", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
-		return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "test source failed"}, errors.New("hook failure")
-	})})
-	records := make(chan globalevents.LogRecord, 32)
-	connection, _ := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error { records <- record; return nil }, signal.ConnectOptions{})
-	defer connection.Disconnect()
-	failed := agentevents.NewSignals().HookFailed
-	bridge := newTestHookBridge(t, &fakePlatform{}, manager, failed)
-	facts := 0
-	_, _ = failed.Observe(func(context.Context, agentevents.HookFailedEvent) error { facts++; return nil }, signal.ConnectOptions{})
-	bridge.Notify(context.Background(), hook.Event{Point: hook.PointErrorOccurred})
-	count := 0
-	for len(records) > 0 {
-		r := <-records
-		if r.EventName == "hook_error" {
-			count++
-			if r.Module != "hook" {
-				t.Fatal(r)
-			}
-		}
-	}
-	if count != 1 || facts != 1 {
-		t.Fatalf("original failure records=%d facts=%d", count, facts)
-	}
 }
 
 func TestExecutionViewKeepsRequestCancellationAndClearsBackgroundOverrides(t *testing.T) {

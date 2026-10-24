@@ -56,8 +56,6 @@ func (c isolatedToolCapabilities) Remove(ctx context.Context, name string) error
 func (c isolatedToolCapabilities) Reload(ctx context.Context) error { return c.skills.Reload(ctx) }
 
 type isolatedHookCapabilities struct {
-	*hook.DefaultManager
-	*hookruntime.Manager
 	commandbuiltin.HookService
 }
 
@@ -118,7 +116,7 @@ func isolatedModuleDeps(t *testing.T) SupervisorDeps {
 	return SupervisorDeps{
 		Media: center, Store: store, Models: models, Permission: permission,
 		Platform: isolatedPlatformCapabilities{sender},
-		Hooks:    isolatedHookCapabilities{DefaultManager: hooks, Manager: router, HookService: hookcontrol.New(hooks, router, nil)},
+		Hooks:    isolatedHookCapabilities{HookService: hookcontrol.New(hooks, router, nil)},
 		Tools: isolatedToolCapabilities{
 			Registry: registry, Manager: toolrun.NewManager(registry, permission),
 			PreloadService: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}),

@@ -2,205 +2,238 @@ package hooks
 
 import (
 	"context"
-	"strings"
-
-	agentevents "elbot/internal/agent/events"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
-	"elbot/internal/delivery"
-	globalevents "elbot/internal/events"
-	"elbot/internal/hook"
+	"elbot/internal/events"
 	"elbot/internal/llm"
-	"elbot/internal/media"
 	"elbot/internal/platform"
-	"elbot/internal/request"
-	"elbot/internal/signal"
+	"fmt"
+	"sync"
 )
 
-type hookRunner interface {
-	Run(context.Context, hook.Event) (hook.Event, globalevents.LogResult, error)
-	Notify(context.Context, hook.Event) (globalevents.LogResult, error)
+type HookIdentity interface {
+	SourceActor(context.Context) contextinfo.Actor
+}
+type HookBridgeDeps struct {
+	Identity HookIdentity // Source facts supplied by Agent; optional for source-free use.
 }
 
-type HookRouter interface {
-	Cancel(hook.Event) bool
-	Route(context.Context, hook.Event) (hook.Event, bool, error)
-	RouteHookID(hook.Event) string
-}
-
+// HookBridge owns callback admission, not the provider's workers or rules.
 type HookBridge struct {
-	manager    hookRunner
-	router     HookRouter
-	requests   *request.Manager
-	identity   HookIdentity
-	media      *media.Manager
-	failed     *signal.Signal[agentevents.HookFailedEvent, signal.Empty]
-	dispatcher interface {
-		SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)
-	}
-	platformEvents platformSubscriptions
+	mu       sync.Mutex
+	points   *Points // Current registration; detached callbacks retain their snapshot.
+	identity HookIdentity
+	active   int           // Admitted invocations, including callbacks from detached registrations.
+	closed   bool          // Final dispatch shutdown, after Agent producers have drained.
+	done     chan struct{} // Closed only after admission stops and active reaches zero.
 }
 
-func (h *HookBridge) CancelRoute(event hook.Event) bool {
-	return h.router.Cancel(event)
+func NewHookBridge(deps HookBridgeDeps) *HookBridge {
+	return &HookBridge{identity: deps.Identity, done: make(chan struct{})}
 }
 
-func (h *HookBridge) Route(ctx context.Context, event hook.Event) (hook.Event, bool, error) {
-	parent := ctx
-	if id := h.router.RouteHookID(event); id != "" {
-		requestCtx, done := h.ObserveRun(ctx, event, hook.ObserverInfo{Name: id + " continuation", Point: event.Point})
-		defer done()
-		ctx = requestCtx
+func (h *HookBridge) Register(points Points) (func(), error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.closed {
+		return nil, context.Canceled
 	}
-	updated, routed, err := h.router.Route(ctx, event)
-	if err != nil && parent.Err() == nil {
-		h.NotifyError(ctx, event, err)
-		h.publishFailure(ctx, event, err, false)
+	if h.points != nil {
+		return nil, fmt.Errorf("agent hooks: provider already registered")
 	}
-	return updated, routed, err
-}
-
-func (h *HookBridge) Run(ctx context.Context, event hook.Event) (hook.Event, globalevents.LogResult, error) {
-	manager := h.manager
-	event = h.FillContext(ctx, event)
-	before := hook.SnapshotCalls(event)
-	updated, logResult, err := manager.Run(ctx, event)
-	if err != nil {
-		if ctx.Err() != nil {
-			return event, logResult, err
+	h.points = &points
+	return func() {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		if h.points == &points {
+			h.points = nil
 		}
-		h.NotifyError(ctx, event, err)
-		h.publishFailure(ctx, event, err, false)
-		return before, logResult, err
-	}
-	return updated, logResult, nil
+	}, nil
 }
 
-func (h *HookBridge) Notify(ctx context.Context, event hook.Event) {
-	manager := h.manager
-	event = h.FillContext(ctx, event)
-	if _, err := manager.Notify(ctx, event); err != nil {
-		h.publishFailure(ctx, event, err, false)
-		if ctx.Err() != nil {
-			return
+func (h *HookBridge) acquire() (*Points, func(), error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.closed {
+		return nil, nil, context.Canceled
+	}
+	if h.points == nil {
+		return nil, nil, nil
+	}
+	points := h.points
+	h.active++
+	return points, func() {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		h.active--
+		if h.closed && h.active == 0 {
+			close(h.done)
 		}
-		if event.Point != hook.PointErrorOccurred {
-			h.NotifyError(ctx, event, err)
+	}, nil
+}
+
+func (h *HookBridge) facts(ctx context.Context, facts Facts) Facts {
+	if h.identity != nil {
+		facts.Actor = h.identity.SourceActor(ctx)
+	}
+	facts.Woken = true
+	if woken, ok := ctx.Value(wakeupKey{}).(bool); ok {
+		facts.Woken = woken
+	}
+	facts.ReadOnlyCalls, _ = ctx.Value(readOnlyCallsKey{}).(bool)
+	return facts
+}
+
+// prepareMessage supplies Agent input facts; conversion to a provider protocol
+// (including original platform payload and reply data) belongs to the provider.
+func prepareMessage(ctx context.Context, message Message) Message {
+	if message.PlatformText == "" {
+		if incoming, ok := platform.MessageContextFrom(ctx); ok {
+			message.PlatformText = incoming.RawText
 		}
 	}
-}
-
-// ObserveRun participates synchronously in request tracking.
-func (h *HookBridge) ObserveRun(ctx context.Context, event hook.Event, info hook.ObserverInfo) (context.Context, func()) {
-	sessionID := strings.TrimSpace(event.Session.ID)
-	if sessionID == "" {
-		sessionID = strings.TrimSpace(event.Request.SessionID)
+	if message.IntentText == "" && message.Role == string(llm.RoleUser) {
+		message.IntentText = agentshare.StripWakeupPrefix(ctx, llm.SegmentsTextOnly(message.Segments))
 	}
-	label := strings.TrimSpace(info.Name)
-	_, reqCtx, done := h.requests.Start(ctx, request.StartRequest{
-		ParentID:  contextinfo.RootRequestIDFromContext(ctx),
-		SessionID: sessionID,
-		Kind:      request.KindHook,
-		Label:     label,
-	})
-	return reqCtx, done
+	return message
 }
 
-func (h *HookBridge) NotifyError(ctx context.Context, source hook.Event, err error) {
-	if source.Point == hook.PointErrorOccurred {
+// BeginClose is called only after Agent's producers finish, not at the start of
+// application shutdown: those producers may still invoke callbacks while draining.
+func (h *HookBridge) BeginClose() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.closed {
 		return
 	}
-	event := source
-	event.Point = hook.PointErrorOccurred
-	event.Error = err
-	h.Notify(ctx, event)
+	h.closed, h.points = true, nil
+	if h.active == 0 {
+		close(h.done)
+	}
+}
+func (h *HookBridge) Done() <-chan struct{} { return h.done }
+func (h *HookBridge) Close(ctx context.Context) error {
+	h.BeginClose()
+	select {
+	case <-h.done:
+		return nil
+	default:
+	}
+	select {
+	case <-h.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
-func (h *HookBridge) publishFailure(ctx context.Context, event hook.Event, err error, notice bool) {
-	snapshot := agentevents.HookFailedEvent{Point: event.Point, Platform: event.Platform, Err: err, Notice: notice}
-	if conversation, ok := contextinfo.ConversationFromContext(ctx); ok {
-		snapshot.Conversation = &conversation
-	}
-	agentevents.Emit(context.WithoutCancel(ctx), h.failed, snapshot)
-}
-
-func (h *HookBridge) handlePlatformConnected(ctx context.Context, platformName string) {
-	event, _, err := h.Run(ctx, hook.Event{Point: hook.PointPlatformConnected, Platform: hook.PlatformContext{Name: platformName}})
-	if err == nil && len(event.Outputs) > 0 {
-		_, _, err = h.dispatcher.SendTo(ctx, delivery.Target{}, event.Outputs)
-	}
+func invoke[T, R any](h *HookBridge, ctx context.Context, facts Facts, value T, fallback R, selectPoint func(*Points) func(context.Context, Facts, T) (R, events.LogResult, error)) (R, events.LogResult, error) {
+	points, done, err := h.acquire()
 	if err != nil {
-		h.publishFailure(ctx, hook.Event{Point: hook.PointPlatformConnected, Platform: hook.PlatformContext{Name: platformName}}, err, false)
+		return fallback, events.LogResult{ResultStatus: events.ResultCanceled}, err
 	}
+	if points != nil {
+		defer done()
+		if fn := selectPoint(points); fn != nil {
+			return fn(ctx, h.facts(ctx, facts), value)
+		}
+	}
+	return fallback, events.LogResult{ResultStatus: events.ResultSkipped}, nil
 }
 
-func (h *HookBridge) FillContext(ctx context.Context, event hook.Event) hook.Event {
-	event.Media = h.media
-	// Connection and other source-free events must not inherit the Agent's
-	// default local identity. Only message facts or an explicit actor apply.
-	actor := h.identity.SourceActor(ctx)
-	if info, ok := contextinfo.ConversationFromContext(ctx); ok {
-		if event.Platform.Name == "" {
-			event.Platform.Name = info.Source.Platform
-		}
-		if event.Platform.ScopeID == "" {
-			event.Platform.ScopeID = info.Source.ScopeID
-		}
-		if event.Platform.ConversationID == "" {
-			event.Platform.ConversationID = info.Source.ConversationID
-		}
-		if event.Platform.PlatformMessageID == "" {
-			event.Platform.PlatformMessageID = info.PlatformMessageID
-		}
-		if event.Platform.ReplyToMessageID == "" {
-			event.Platform.ReplyToMessageID = info.ReplyToMessageID
-		}
+func (h *HookBridge) HasRoute(ctx context.Context, message Message) bool {
+	points, done, _ := h.acquire()
+	if points == nil {
+		return false
 	}
-	if msg, ok := platform.MessageContextFrom(ctx); ok {
-		if event.Message.PlatformText == "" {
-			event.Message.PlatformText = msg.RawText
-		}
-		if event.Point == hook.PointPlatformMessageReceived && len(event.Message.PlatformMessage) == 0 && len(msg.PlatformMessage) > 0 {
-			event.Message.PlatformMessage = append(event.Message.PlatformMessage, msg.PlatformMessage...)
-		}
-		if event.Message.Reply == nil && msg.Reply.MessageID != "" {
-			replySegments := agentshare.PlatformSegmentsToLLM(msg.Reply.Segments, msg.Reply.Text)
-			event.Message.Reply = &hook.MessageReplyPayload{
-				MessageID:   msg.Reply.MessageID,
-				SenderID:    msg.Reply.SenderID,
-				Text:        llm.SegmentsTextOnly(replySegments),
-				DisplayText: llm.SegmentsContentText(replySegments),
-				Segments:    replySegments,
-			}
-		}
-	}
-	if event.Message.IntentText == "" && event.Message.Role == string(llm.RoleUser) {
-		event.Message.IntentText = agentshare.StripWakeupPrefix(ctx, llm.SegmentsTextOnly(event.Message.Segments))
-	}
-	if event.Platform.UserID == "" {
-		event.Platform.UserID = actor.PlatformUserID
-	}
-	if event.Actor.ID == "" {
-		event.Actor = agentshare.ActorContext(actor)
-	} else if event.Actor.DisplayName == "" {
-		event.Actor.DisplayName = actor.DisplayName
-	}
-	return event
+	defer done()
+	return points.HasRoute != nil && points.HasRoute(ctx, h.facts(ctx, Facts{}), prepareMessage(ctx, message))
 }
 
-// NewHookBridge initializes HookBridge without installing cross-service callbacks.
-func NewHookBridge(deps HookBridgeDeps) *HookBridge {
-	return &HookBridge{
-		manager:    deps.Manager,
-		router:     deps.Router,
-		requests:   deps.Requests,
-		identity:   deps.Identity,
-		media:      deps.Media,
-		failed:     deps.Failed,
-		dispatcher: deps.Dispatcher,
+func (h *HookBridge) CancelRoute(ctx context.Context, message Message) bool {
+	points, done, _ := h.acquire()
+	if points == nil {
+		return false
 	}
+	defer done()
+	return points.CancelRoute != nil && points.CancelRoute(ctx, h.facts(ctx, Facts{}), prepareMessage(ctx, message))
 }
 
-func (h *HookBridge) HasRoute(event hook.Event) bool {
-	return h.router.RouteHookID(event) != ""
+func (h *HookBridge) PlatformMessageReceived(ctx context.Context, value Message) (PlatformMessageReceivedResult, events.LogResult, error) {
+	value = prepareMessage(ctx, value)
+	return invoke(h, ctx, Facts{}, value, PlatformMessageReceivedResult{Segments: value.Segments}, func(p *Points) func(context.Context, Facts, Message) (PlatformMessageReceivedResult, events.LogResult, error) {
+		return p.PlatformMessageReceived
+	})
+}
+
+func (h *HookBridge) AgentInputPrepared(ctx context.Context, session Session, value Message) ([]llm.MessageSegment, events.LogResult, error) {
+	value = prepareMessage(ctx, value)
+	return invoke(h, ctx, Facts{Session: session}, value, value.Segments, func(p *Points) func(context.Context, Facts, Message) ([]llm.MessageSegment, events.LogResult, error) {
+		return p.AgentInputPrepared
+	})
+}
+
+func (h *HookBridge) LLMTurnPrepared(ctx context.Context, session Session, value LLMInput) (LLMInputResult, events.LogResult, error) {
+	value.Message = prepareMessage(ctx, value.Message)
+	return invoke(h, ctx, Facts{Session: session}, value, LLMInputResult{Segments: value.Message.Segments, Tools: value.Tools}, func(p *Points) func(context.Context, Facts, LLMInput) (LLMInputResult, events.LogResult, error) {
+		return p.LLMTurnPrepared
+	})
+}
+
+func (h *HookBridge) LLMRequestPrepared(ctx context.Context, session Session, value LLMInput) (LLMInputResult, events.LogResult, error) {
+	value.Message = prepareMessage(ctx, value.Message)
+	return invoke(h, ctx, Facts{Session: session}, value, LLMInputResult{Segments: value.Message.Segments, Tools: value.Tools}, func(p *Points) func(context.Context, Facts, LLMInput) (LLMInputResult, events.LogResult, error) {
+		return p.LLMRequestPrepared
+	})
+}
+
+func (h *HookBridge) LLMResponseReceived(ctx context.Context, session Session, value LLMResponse) (LLMResponseResult, events.LogResult, error) {
+	return invoke(h, ctx, Facts{Session: session}, value, LLMResponseResult{Text: value.Text, SourceText: value.SourceText, Usage: value.Usage, ToolCalls: value.ToolCalls}, func(p *Points) func(context.Context, Facts, LLMResponse) (LLMResponseResult, events.LogResult, error) {
+		return p.LLMResponseReceived
+	})
+}
+
+func (h *HookBridge) ToolCallPrepared(ctx context.Context, session Session, value llm.ToolCallRequest) (string, events.LogResult, error) {
+	return invoke(h, ctx, Facts{Session: session}, value, value.Arguments, func(p *Points) func(context.Context, Facts, llm.ToolCallRequest) (string, events.LogResult, error) {
+		return p.ToolCallPrepared
+	})
+}
+
+func (h *HookBridge) ToolCallCompleted(ctx context.Context, session Session, value ToolResult) ([]llm.MessageSegment, events.LogResult, error) {
+	return invoke(h, ctx, Facts{Session: session}, value, value.Segments, func(p *Points) func(context.Context, Facts, ToolResult) ([]llm.MessageSegment, events.LogResult, error) {
+		return p.ToolCallCompleted
+	})
+}
+
+func (h *HookBridge) AgentOutputPrepared(ctx context.Context, value string) (string, events.LogResult, error) {
+	return invoke(h, ctx, Facts{}, value, value, func(p *Points) func(context.Context, Facts, string) (string, events.LogResult, error) {
+		return p.AgentOutputPrepared
+	})
+}
+
+func (h *HookBridge) AgentTurnOutputPrepared(ctx context.Context, value string) (string, events.LogResult, error) {
+	return invoke(h, ctx, Facts{}, value, value, func(p *Points) func(context.Context, Facts, string) (string, events.LogResult, error) {
+		return p.AgentTurnOutputPrepared
+	})
+}
+
+func (h *HookBridge) PlatformMessageSent(ctx context.Context, text string) {
+	points, done, _ := h.acquire()
+	if points == nil {
+		return
+	}
+	defer done()
+	if points.PlatformMessageSent != nil {
+		points.PlatformMessageSent(ctx, h.facts(ctx, Facts{}), text)
+	}
+}
+func (h *HookBridge) ErrorOccurred(ctx context.Context, session Session, response LLMResponse, err error) {
+	points, done, _ := h.acquire()
+	if points == nil {
+		return
+	}
+	defer done()
+	if points.ErrorOccurred != nil {
+		points.ErrorOccurred(ctx, h.facts(ctx, Facts{Session: session}), response, err)
+	}
 }

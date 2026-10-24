@@ -16,9 +16,6 @@ func (m *Supervisor) BeginClose() {
 	if m.execution != nil {
 		m.execution.BeginClose()
 	}
-	if m.bridge != nil {
-		m.bridge.BeginClose()
-	}
 	m.bindings.BeginClose()
 	// This observer waits on owned completion channels only; it never releases borrowed dependencies.
 	go func() {
@@ -38,7 +35,6 @@ func (m *Supervisor) BeginClose() {
 		<-m.signals.ModelCallCompleted.Done()
 		<-m.signals.StatusChanged.Done()
 		<-m.signals.VisionFallbackUsed.Done()
-		<-m.signals.HookFailed.Done()
 		close(m.done)
 	}()
 }
@@ -63,18 +59,18 @@ func (m *Supervisor) Close(ctx context.Context) error {
 			return errors.Join(errs...)
 		}
 	}
-	if m.bridge != nil {
-		errs = append(errs, m.bridge.Close(ctx))
-		select {
-		case <-m.bridge.Done():
-		default:
-			return errors.Join(errs...)
-		}
-	}
 	if m.sessions != nil {
 		errs = append(errs, m.sessions.Close(ctx))
 		select {
 		case <-m.sessions.Done():
+		default:
+			return errors.Join(errs...)
+		}
+	}
+	if m.bridge != nil {
+		errs = append(errs, m.bridge.Close(ctx))
+		select {
+		case <-m.bridge.Done():
 		default:
 			return errors.Join(errs...)
 		}
@@ -84,12 +80,10 @@ func (m *Supervisor) Close(ctx context.Context) error {
 	m.signals.ModelCallCompleted.BeginClose()
 	m.signals.StatusChanged.BeginClose()
 	m.signals.VisionFallbackUsed.BeginClose()
-	m.signals.HookFailed.BeginClose()
 	errs = append(errs,
 		m.signals.ModelCallCompleted.Close(ctx),
 		m.signals.StatusChanged.Close(ctx),
 		m.signals.VisionFallbackUsed.Close(ctx),
-		m.signals.HookFailed.Close(ctx),
 	)
 	select {
 	case <-m.done:
@@ -114,5 +108,5 @@ func (m *Supervisor) Start() error {
 	}
 	m.started = true
 	m.sessions.StartNaming(m.ctx)
-	return m.bridge.StartPlatformEvents(m.ctx)
+	return nil
 }

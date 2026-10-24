@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"log/slog"
 
+	"elbot/internal/agent/hooks"
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	"elbot/internal/elyph"
 	"elbot/internal/events"
-	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/storage"
@@ -20,8 +20,10 @@ type Preparer struct {
 	Contexts *contextmgr.Service
 	Media    *media.Manager
 	Identity Identity
-	Hooks    Hooks
-	Tools    *ToolExecutor
+	Hooks    interface {
+		LLMTurnPrepared(context.Context, hooks.Session, hooks.LLMInput) (hooks.LLMInputResult, events.LogResult, error)
+	}
+	Tools *ToolExecutor
 }
 
 func (p *Preparer) LoadMaterials(ctx context.Context, in TurnInput) (materials TurnMaterials, err error) {
@@ -86,9 +88,9 @@ func (p *Preparer) PrepareInput(ctx context.Context, in LoopInput, user *storage
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	event, _, err := p.Hooks.Run(ctx, hook.Event{Point: hook.PointLLMTurnPrepared, Session: hook.SessionContext{ID: in.Session.ID},
-		Message: hook.MessagePayload{ID: user.ID, Role: string(llm.RoleUser), PlatformText: platformText, Segments: append([]llm.MessageSegment(nil), segments...)},
-		LLM:     hook.LLMPayload{Provider: in.Selection.Provider, Model: in.Selection.Model, Messages: llm.CloneMessages(messages), Tools: tools}})
+	result, _, err := p.Hooks.LLMTurnPrepared(ctx, hooks.Session{ID: in.Session.ID}, hooks.LLMInput{
+		Message:  hooks.Message{ID: user.ID, Role: string(llm.RoleUser), PlatformText: platformText, Segments: append([]llm.MessageSegment(nil), segments...)},
+		Provider: in.Selection.Provider, Model: in.Selection.Model, Messages: llm.CloneMessages(messages), Tools: tools})
 	if err != nil {
 		return nil, nil, fmt.Errorf("llm turn hook: %w", err)
 	}
@@ -96,7 +98,7 @@ func (p *Preparer) PrepareInput(ctx context.Context, in LoopInput, user *storage
 		return nil, nil, err
 	}
 	if in.Session.Mode == storage.SessionModeWork || in.Session.Mode == storage.SessionModeBackground {
-		tools = event.LLM.Tools
+		tools = result.Tools
 	}
 	// A new session may inherit tool schemas after compaction. Their language
 	// requirements still apply even without a fresh discovery call.
@@ -112,7 +114,7 @@ func (p *Preparer) PrepareInput(ctx context.Context, in LoopInput, user *storage
 		return nil, nil, err
 	}
 	if ruleCard := elyph.RuleCardIfNeeded(needsElyphRules, state.ElyphRulesShown); ruleCard != "" {
-		event.Message.Segments = append(llm.TextSegments(ruleCard+"\n\n"), event.Message.Segments...)
+		result.Segments = append(llm.TextSegments(ruleCard+"\n\n"), result.Segments...)
 		fields, err := storage.DecodeSessionMetadata(user.Metadata)
 		if err != nil {
 			return nil, nil, err
@@ -120,7 +122,7 @@ func (p *Preparer) PrepareInput(ctx context.Context, in LoopInput, user *storage
 		_ = fields.Set("elyph_rules_shown", true)
 		user.Metadata, _ = fields.Encode()
 	}
-	archived, err := p.ArchiveMaterials(ctx, []llm.LLMMessage{{Segments: event.Message.Segments}})
+	archived, err := p.ArchiveMaterials(ctx, []llm.LLMMessage{{Segments: result.Segments}})
 	if err != nil {
 		return nil, nil, err
 	}

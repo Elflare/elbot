@@ -15,8 +15,6 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/events"
-	"elbot/internal/hook"
-	"elbot/internal/llm"
 	"elbot/internal/platform"
 
 	"elbot/internal/security"
@@ -156,7 +154,7 @@ type replyTestFixture struct {
 	committer       *dialogue.ReplyCommitter
 	out             dialogue.Output
 	in              dialogue.ReplyCommitInput
-	hooks           *hook.DefaultManager
+	hooks           *agenthooks.HookBridge
 }
 
 func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
@@ -175,11 +173,12 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 	var cancel context.CancelFunc
 	f.requestCtx, cancel = context.WithCancel(f.ctx)
 	t.Cleanup(cancel)
-	f.hooks = newTestHookManager()
+	f.hooks = agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{Identity: agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", Permission: security.DefaultPermission()})})
+	t.Cleanup(func() { _ = f.hooks.Close(context.Background()) })
 
 	sender := agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{
 		Dispatcher: dispatch.New(dispatch.Options{Primary: f.platform}),
-		Hooks:      agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{Manager: f.hooks, Identity: agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", Permission: security.DefaultPermission()})}),
+		Hooks:      f.hooks,
 	})
 	messages := &dialogue.MessageStore{Dialogues: replyTestDialogues{DialogueRepository: store.Dialogues(), repo: f.repo}, Gate: &dialogue.CommitGate{Sessions: session.NewService(store), Turns: turn.NewManager(), View: dialogue.ExecutionView{Sessions: store.Sessions()}}}
 	f.committer = &dialogue.ReplyCommitter{Persistence: messages.Committer("append_assistant_message"), Output: sender}
@@ -188,19 +187,22 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 	return f
 }
 
+func (f *replyTestFixture) register(t *testing.T, points agenthooks.Points) {
+	t.Helper()
+	if _, err := f.hooks.Register(points); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func (f *replyTestFixture) captureHooks(t *testing.T) {
 	t.Helper()
-	for _, point := range []hook.Point{hook.PointAgentTurnOutputPrepared, hook.PointAgentOutputPrepared} {
-		f.hooks.Register(hook.Registration{Point: point, Name: string(point), Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
-			suffix := "/send"
-			if point == hook.PointAgentTurnOutputPrepared {
-				suffix = "/turn"
-			}
+	appendText := func(suffix string) func(context.Context, agenthooks.Facts, string) (string, events.LogResult, error) {
+		return func(_ context.Context, _ agenthooks.Facts, text string) (string, events.LogResult, error) {
 			f.events = append(f.events, suffix)
-			e.Message.Segments = llm.AppendSegmentText(e.Message.Segments, suffix)
-			return e, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-		})})
+			return text + suffix, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+		}
 	}
+	f.register(t, agenthooks.Points{AgentTurnOutputPrepared: appendText("/turn"), AgentOutputPrepared: appendText("/send")})
 }
 
 func TestReplyCommitOrderAndTextSeparation(t *testing.T) {
@@ -411,9 +413,9 @@ func TestReplyCommitFinalHookFailureDoesNotSaveOrSend(t *testing.T) {
 	for _, buffered := range []bool{false, true} {
 		t.Run(map[bool]string{false: "direct", true: "buffered"}[buffered], func(t *testing.T) {
 			f := newReplyTestFixture(t, buffered)
-			f.hooks.Register(hook.Registration{Point: hook.PointAgentTurnOutputPrepared, Name: "cancel", Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
-				return e, events.LogResult{ResultStatus: events.ResultCanceled, Content: "test source canceled"}, context.Canceled
-			})})
+			f.register(t, agenthooks.Points{AgentTurnOutputPrepared: func(_ context.Context, _ agenthooks.Facts, text string) (string, events.LogResult, error) {
+				return text, events.LogResult{ResultStatus: events.ResultCanceled}, context.Canceled
+			}})
 			got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
 			if !errors.Is(err, context.Canceled) || got.Persisted || dialogue.HasReplyReceipt(got.Receipt) || len(f.events) != 0 {
 				t.Fatalf("result=%+v err=%v events=%v", got, err, f.events)
@@ -426,13 +428,13 @@ func TestReplyCommitHookSuppressesDisplayWithoutChangingHistory(t *testing.T) {
 	for _, buffered := range []bool{false, true} {
 		t.Run(map[bool]string{false: "direct", true: "buffered"}[buffered], func(t *testing.T) {
 			f := newReplyTestFixture(t, buffered)
-			for _, point := range []hook.Point{hook.PointAgentTurnOutputPrepared, hook.PointAgentOutputPrepared} {
-				f.hooks.Register(hook.Registration{Point: point, Name: string(point), Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
-					f.events = append(f.events, string(point))
-					e.Message.Segments = nil
-					return e, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
-				})})
+			suppress := func(point string) func(context.Context, agenthooks.Facts, string) (string, events.LogResult, error) {
+				return func(_ context.Context, _ agenthooks.Facts, _ string) (string, events.LogResult, error) {
+					f.events = append(f.events, point)
+					return "", events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+				}
 			}
+			f.register(t, agenthooks.Points{AgentTurnOutputPrepared: suppress("turn"), AgentOutputPrepared: suppress("send")})
 			got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
 			if err != nil || !got.Persisted || f.platform.text != "" {
 				t.Fatalf("result=%+v err=%v text=%q", got, err, f.platform.text)
@@ -443,7 +445,7 @@ func TestReplyCommitHookSuppressesDisplayWithoutChangingHistory(t *testing.T) {
 			}
 			count := 0
 			for _, event := range f.events {
-				if event == string(hook.PointAgentOutputPrepared) {
+				if event == "send" {
 					count++
 				}
 			}

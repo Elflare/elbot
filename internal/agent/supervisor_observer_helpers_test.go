@@ -76,6 +76,5 @@ func observerSignals() agentevents.Signals {
 		ModelCallCompleted: signal.New[agentevents.ModelCallCompletedEvent, signal.Empty]("model"),
 		StatusChanged:      signal.New[agentevents.StatusChangedEvent, signal.Empty]("status"),
 		VisionFallbackUsed: signal.New[agentevents.VisionFallbackUsedEvent, signal.Empty]("vision"),
-		HookFailed:         signal.New[agentevents.HookFailedEvent, signal.Empty]("hook"),
 	}
 }

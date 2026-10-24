@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"elbot/internal/agent/dialogue"
+	"elbot/internal/agent/hooks"
 	"elbot/internal/contextmgr"
 	"elbot/internal/delivery"
-	"elbot/internal/hook"
 	"elbot/internal/llm"
 	api "elbot/internal/llm/responses"
 	"elbot/internal/modelmgr"
@@ -125,7 +125,7 @@ func (p *preparedLoop) InputCommitter() dialogue.MessageCommitter {
 
 func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in dialogue.LoopInput, out dialogue.Output) (*storage.Message, error) {
 	s := p.state
-	s.ctx, s.requestCtx, s.selection, s.output = ctx, hook.WithReadOnlyCalls(requestCtx), in.Selection, out
+	s.ctx, s.requestCtx, s.selection, s.output = ctx, hooks.WithReadOnlyCalls(requestCtx), in.Selection, out
 	if err := s.requestCtx.Err(); err != nil {
 		return nil, err
 	}
@@ -173,7 +173,7 @@ func (s *turnState) instructions(ctx context.Context) (string, error) {
 
 func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.LoopInput, out dialogue.Output) dialogue.LoopResult {
 	s := p.state
-	s.ctx, s.requestCtx = ctx, hook.WithReadOnlyCalls(requestCtx)
+	s.ctx, s.requestCtx = ctx, hooks.WithReadOnlyCalls(requestCtx)
 	result := dialogue.LoopResult{Selection: in.Selection}
 	fail := func(err error) dialogue.LoopResult {
 		result.Outcome = dialogue.Failed

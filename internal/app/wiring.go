@@ -63,7 +63,7 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 
 // connectBusinessLines 连接公开能力；连接及订阅由接收方持有和释放。
 func connectBusinessLines(lines *businessLines, resources *sharedResources) error {
-	// TODO: Hook 使用 Agent.HookWakeup 和 ObserveHookRun；
+	// TODO: Hook 使用 Agent.RegisterHooks 注册 Points，并通过 StartHookRequest 登记实际 handler；
 	// Platform 使用 HandleMessage、Complete、Commands 和两类快照订阅。
 	if err := lines.hook.ConnectAgent(lines.agent); err != nil {
 		return fmt.Errorf("connect hook agent: %w", err)

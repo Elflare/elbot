@@ -3,12 +3,10 @@ package agent
 import (
 	"context"
 
-	agenthooks "elbot/internal/agent/hooks"
 	commandbuiltin "elbot/internal/command/builtin"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/fileops"
-	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/logging"
 	"elbot/internal/media"
@@ -55,12 +53,10 @@ type ToolCapabilities interface {
 	RollbackByID(context.Context, uint64) (fileops.RollbackResult, error)
 }
 
-// HookCapabilities exposes event execution, routing and Hook commands, excluding owner lifecycle methods.
+// HookCapabilities supplies only Hook management commands. Execution callbacks
+// are registered separately through RegisterHooks.
 type HookCapabilities interface {
-	agenthooks.HookRouter
 	commandbuiltin.HookService
-	Run(context.Context, hook.Event) (hook.Event, events.LogResult, error)
-	Notify(context.Context, hook.Event) (events.LogResult, error)
 }
 
 // PlatformCapabilities supplies platform identity and delivery for Agent output.

@@ -12,7 +12,6 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/completion"
 	"elbot/internal/contextmgr"
-	"elbot/internal/hook"
 	"elbot/internal/request"
 	"elbot/internal/session"
 	"elbot/internal/signal"
@@ -44,10 +43,6 @@ func (m *Supervisor) HandleMessage(ctx context.Context, text string) error {
 	return m.handler.HandleMessage(ctx, text)
 }
 
-func (m *Supervisor) HookWakeup(ctx context.Context, event hook.Event) bool {
-	return m.handler.HookWakeup(ctx, event)
-}
-
 func (m *Supervisor) Complete(ctx context.Context, req completion.Request) ([]completion.Item, error) {
 	return m.completion.Complete(ctx, req)
 }
@@ -59,10 +54,6 @@ func (m *Supervisor) Commands() []command.Info {
 		commands[i].Aliases = append([]string(nil), commands[i].Aliases...)
 	}
 	return commands
-}
-
-func (m *Supervisor) ObserveHookRun(ctx context.Context, event hook.Event, info hook.ObserverInfo) (context.Context, func()) {
-	return m.bridge.ObserveRun(ctx, event, info)
 }
 
 // ObserveStatusChanged gives each subscriber detached facts without the internal context.

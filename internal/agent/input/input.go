@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"elbot/internal/agent/dialogue"
+	"elbot/internal/agent/hooks"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
-	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/platform"
 	sessionpkg "elbot/internal/session"
@@ -26,11 +26,13 @@ import (
 // InputCoordinator prepares input outside admission and delegates execution state
 // changes to ExecutionCoordinator and the existing Session/Turn services.
 type InputCoordinator struct {
-	sessions      *sessionpkg.Service
-	sessionRows   storage.SessionRepository
-	turns         *turn.Manager
-	identity      InputIdentity
-	hooks         dialogue.Hooks
+	sessions    *sessionpkg.Service
+	sessionRows storage.SessionRepository
+	turns       *turn.Manager
+	identity    InputIdentity
+	hooks       interface {
+		AgentInputPrepared(context.Context, hooks.Session, hooks.Message) ([]llm.MessageSegment, globalevents.LogResult, error)
+	}
 	output        InputOutput
 	execution     InputExecution
 	confirmations InputConfirmations
@@ -100,19 +102,17 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 	}
 	ctx = locked
 	release()
-	event, _, err := c.hooks.Run(ctx, hook.Event{
-		Point:   hook.PointAgentInputPrepared,
-		Session: agentshare.HookSession(session),
-		Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: agentshare.InboundSegments(ctx, text)},
-	})
+	segments, _, err := c.hooks.AgentInputPrepared(ctx,
+		hooks.Session{ID: session.ID, Mode: session.Mode, Title: session.Title, Status: session.Status},
+		hooks.Message{Role: string(llm.RoleUser), Segments: agentshare.InboundSegments(ctx, text)})
 	if err != nil {
 		if ctx.Err() == nil {
 			dialogue.ReportFailure(ctx, session.ID, fmt.Errorf("agent input hook: %w", err), c.output.Notify)
 		}
 		return err
 	}
-	ctx = agentshare.WithInboundSegments(ctx, event.Message.Segments)
-	text = llm.SegmentsTextOnly(event.Message.Segments)
+	ctx = agentshare.WithInboundSegments(ctx, segments)
+	text = llm.SegmentsTextOnly(segments)
 
 	snapshot := c.turns.Snapshot(session.ID)
 	if snapshot.Phase != turn.PhaseAwaitRiskConfirm {

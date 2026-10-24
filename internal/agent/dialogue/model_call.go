@@ -9,11 +9,11 @@ import (
 	"time"
 
 	agentevents "elbot/internal/agent/events"
+	"elbot/internal/agent/hooks"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/elyph"
 	"elbot/internal/events"
-	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	sessionpkg "elbot/internal/session"
@@ -28,9 +28,13 @@ type CallProcessor struct {
 	Status interface {
 		RecordUsage(context.Context, string, *llm.Usage)
 	}
-	Messages  *MessageStore
-	Preparer  *Preparer
-	Hooks     Hooks
+	Messages *MessageStore
+	Preparer *Preparer
+	Hooks    interface {
+		LLMRequestPrepared(context.Context, hooks.Session, hooks.LLMInput) (hooks.LLMInputResult, events.LogResult, error)
+		LLMResponseReceived(context.Context, hooks.Session, hooks.LLMResponse) (hooks.LLMResponseResult, events.LogResult, error)
+		ErrorOccurred(context.Context, hooks.Session, hooks.LLMResponse, error)
+	}
 	Identity  Identity
 	Tools     *ToolExecutor
 	Completed *signal.Signal[agentevents.ModelCallCompletedEvent, signal.Empty]
@@ -154,10 +158,8 @@ func (c *CallProcessor) RecordVisionFallback(ctx context.Context, row *storage.S
 	}
 	agentevents.Emit(ctx, c.Vision, event)
 }
-func (c *CallProcessor) NotifyError(ctx context.Context, event hook.Event, err error) {
-	event.Point = hook.PointErrorOccurred
-	event.Error = err
-	c.Hooks.Notify(ctx, event)
+func (c *CallProcessor) NotifyError(ctx context.Context, sessionID string, response hooks.LLMResponse, err error) {
+	c.Hooks.ErrorOccurred(ctx, hooks.Session{ID: sessionID}, response, err)
 }
 
 // PrepareCall applies common hooks and authorization to canonical business
@@ -181,25 +183,21 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 	if notice, ok := ForegroundNotice(session); ok {
 		requestMessages = append(requestMessages, notice)
 	}
-	hookMessage := hook.MessagePayload{}
+	hookMessage := hooks.Message{}
 	if pending != nil {
-		hookMessage = hook.MessagePayload{
+		hookMessage = hooks.Message{
 			ID:           pending.Message.ID,
 			Role:         string(llm.RoleUser),
 			PlatformText: pending.PlatformText,
 			Segments:     append([]llm.MessageSegment(nil), baseMessages[pending.MessageIndex].Segments...),
 		}
 	}
-	event, logResult, err := c.Hooks.Run(ctx, hook.Event{
-		Point:   hook.PointLLMRequestPrepared,
-		Session: hook.SessionContext{ID: sessionID},
-		Message: hookMessage,
-		LLM: hook.LLMPayload{
-			Provider: selection.Provider,
-			Model:    selection.Model,
-			Messages: llm.CloneMessages(requestMessages),
-			Tools:    tools,
-		},
+	result, logResult, err := c.Hooks.LLMRequestPrepared(ctx, hooks.Session{ID: sessionID}, hooks.LLMInput{
+		Message:  hookMessage,
+		Provider: selection.Provider,
+		Model:    selection.Model,
+		Messages: llm.CloneMessages(requestMessages),
+		Tools:    tools,
 	})
 	if err != nil {
 		record.Content += "\nrequest_hook:\n" + logResult.Content
@@ -216,7 +214,7 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 		}
 		return CallInput{}, fmt.Errorf("llm request hook: %w", err)
 	}
-	tools = event.LLM.Tools
+	tools = result.Tools
 	// Hooks may change schemas, but cannot override registered availability.
 	if c.Tools != nil && c.Tools.Registry != nil {
 		filtered := make([]llm.ToolSchema, 0, len(tools))
@@ -242,7 +240,7 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 		tools = nil
 	}
 	if pending != nil {
-		archived, err := c.Preparer.ArchiveMaterials(ctx, []llm.LLMMessage{{Segments: event.Message.Segments}})
+		archived, err := c.Preparer.ArchiveMaterials(ctx, []llm.LLMMessage{{Segments: result.Segments}})
 		if err != nil {
 			return CallInput{}, err
 		}
@@ -280,27 +278,22 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 func (c *CallProcessor) CompleteCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, content string, usage *llm.Usage, toolCalls []llm.ToolCallRequest, elapsedMs int64) (CallOutput, error) {
 	sessionID := session.ID
 	toolsEnabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
-	event, _, err := c.Hooks.Run(ctx, hook.Event{
-		Point:   hook.PointLLMResponseReceived,
-		Session: hook.SessionContext{ID: sessionID},
-		LLM: hook.LLMPayload{
-			Provider:   selection.Provider,
-			Model:      selection.Model,
-			Usage:      usage,
-			SourceText: content,
-			Text:       content,
-			ToolCalls:  toolCalls,
-			ElapsedMS:  elapsedMs,
-		},
+	result, _, err := c.Hooks.LLMResponseReceived(ctx, hooks.Session{ID: sessionID}, hooks.LLMResponse{
+		Provider:   selection.Provider,
+		Model:      selection.Model,
+		Usage:      usage,
+		SourceText: content,
+		Text:       content,
+		ToolCalls:  append([]llm.ToolCallRequest(nil), toolCalls...),
+		ElapsedMS:  elapsedMs,
 	})
 	if err != nil {
 		return CallOutput{}, fmt.Errorf("llm response hook: %w", err)
 	}
-	usage = event.LLM.Usage
-	toolCalls = event.LLM.ToolCalls
+	usage = result.Usage
+	toolCalls = result.ToolCalls
 	if !toolsEnabled {
 		toolCalls = nil
 	}
-	finalText := event.LLM.Text
-	return CallOutput{Text: finalText, SourceText: event.LLM.SourceText, Usage: usage, ToolCalls: toolCalls, Outputs: event.Outputs}, nil
+	return CallOutput{Text: result.Text, SourceText: result.SourceText, Usage: usage, ToolCalls: toolCalls, Outputs: result.Outputs}, nil
 }

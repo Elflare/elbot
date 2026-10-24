@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	agenthooks "elbot/internal/agent/hooks"
 	agentoutput "elbot/internal/agent/output"
 
 	"elbot/internal/events"
@@ -42,7 +43,7 @@ func TestQueuedPreviewRespectsCancellation(t *testing.T) {
 	}
 	<-entered
 	ctx, cancel := context.WithCancel(context.Background())
-	out := agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{Hooks: constructorHooks{}})
+	out := agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{Hooks: agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{})})
 	out.Preview(ctx, "stale preview")
 	cancel()
 	last, err := events.NotificationRequested.EmitAsync(context.Background(), events.Notification{Text: "marker"})

@@ -5,15 +5,12 @@ import (
 	"testing"
 
 	"elbot/internal/agent/dialogue"
-	agenthooks "elbot/internal/agent/hooks"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
-	"elbot/internal/hook"
 )
 
 func TestPublicChatInfoConsumersAndSecurityPrecedence(t *testing.T) {
 	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "test", ActorID: "local", ScopeID: "local"})
-	bridge := agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{Identity: identity})
 	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{
 		Source:   contextinfo.Source{Platform: "qqonebot", ScopeID: "group:9", ConversationKind: contextinfo.ConversationGroup, ConversationID: "9"},
 		Identity: contextinfo.Identity{ActorID: "cli:local", PlatformUserID: "qqonebot:123", Nickname: "昵称", GroupCard: "名片", DisplayName: "显示名"},
@@ -29,10 +26,6 @@ func TestPublicChatInfoConsumersAndSecurityPrecedence(t *testing.T) {
 	parts, err := (dialogue.ConversationMetaSystemPromptSource{}).Parts(ctx, dialogue.SystemPromptRequest{Scope: scope})
 	if err != nil || len(parts) != 1 || parts[0].Content != `meta: platform=qqonebot, conversation=group(id:9), display_name="名片"(id:123).` {
 		t.Fatalf("prompt meta = %+v, %v", parts, err)
-	}
-	event := bridge.FillContext(ctx, hook.Event{})
-	if event.Platform.Name != "qqonebot" || event.Platform.ScopeID != "group:9" {
-		t.Fatalf("hook source = %+v", event.Platform)
 	}
 	trusted := contextinfo.Actor{ID: "trusted", PlatformUserID: "456", Role: contextinfo.RoleSuperadmin}
 	if got := identity.Actor(contextinfo.WithActor(ctx, trusted)); got != trusted {

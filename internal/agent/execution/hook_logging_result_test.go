@@ -6,24 +6,25 @@ import (
 
 	agenthooks "elbot/internal/agent/hooks"
 	agentoutput "elbot/internal/agent/output"
-	agentshare "elbot/internal/agent/share"
 	agenttools "elbot/internal/agent/tools"
 	"elbot/internal/events"
-	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/storage"
 )
 
 func TestHookAdaptersPassFailedResultWithNilBusinessError(t *testing.T) {
 	declared := events.LogResult{ResultStatus: events.ResultFailed, Content: "source failure independent of business return"}
-	manager := newTestHookManager()
-
-	for _, point := range []hook.Point{hook.PointToolCallPrepared, hook.PointToolCallCompleted, hook.PointAgentTurnOutputPrepared} {
-		manager.Register(hook.Registration{Name: string(point), Point: point, Match: hook.Always(), Handler: hook.HandlerFunc(func(_ context.Context, event hook.Event) (hook.Event, events.LogResult, error) {
-			return event, declared, nil
-		})})
-	}
-	bridge := agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{Manager: manager, Identity: agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{ScopeID: "test"})})
+	bridge := newTestHookBridge(t, agenthooks.Points{
+		ToolCallPrepared: func(_ context.Context, _ agenthooks.Facts, call llm.ToolCallRequest) (string, events.LogResult, error) {
+			return call.Arguments, declared, nil
+		},
+		ToolCallCompleted: func(_ context.Context, _ agenthooks.Facts, result agenthooks.ToolResult) ([]llm.MessageSegment, events.LogResult, error) {
+			return result.Segments, declared, nil
+		},
+		AgentTurnOutputPrepared: func(_ context.Context, _ agenthooks.Facts, text string) (string, events.LogResult, error) {
+			return text, declared, nil
+		},
+	})
 	deps := agenttools.NewToolRunDeps(agenttools.ToolRunDeps{Hooks: bridge}).ForTurn(nil, "")
 	session := &storage.Session{ID: "session"}
 	call := llm.ToolCallRequest{ID: "call", Name: "shell", Arguments: `{}`}
@@ -36,7 +37,7 @@ func TestHookAdaptersPassFailedResultWithNilBusinessError(t *testing.T) {
 		t.Fatalf("segments=%+v result=%+v err=%v", segments, result, err)
 	}
 	output := agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{Hooks: bridge})
-	text, result, err := output.PrepareAssistant(t.Context(), hook.PointAgentTurnOutputPrepared, "assistant business body")
+	text, result, err := output.PrepareAssistant(t.Context(), "assistant business body")
 	if err != nil || text != "assistant business body" || result != declared {
 		t.Fatalf("text=%q result=%+v err=%v", text, result, err)
 	}

@@ -9,9 +9,10 @@ import (
 	"time"
 
 	agentevents "elbot/internal/agent/events"
+	"elbot/internal/agent/hooks"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-	"elbot/internal/hook"
+	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	api "elbot/internal/llm/responses"
@@ -187,17 +188,30 @@ func TestSupervisorStopCancelsActiveMessage(t *testing.T) {
 
 func TestSupervisorHookEntrypoints(t *testing.T) {
 	m := contractSupervisor(t, isolatedModuleDeps(t))
+	var woken bool
+	_, err := m.RegisterHooks(hooks.Points{
+		PlatformMessageReceived: func(_ context.Context, facts hooks.Facts, message hooks.Message) (hooks.PlatformMessageReceivedResult, events.LogResult, error) {
+			woken = facts.Woken
+			return hooks.PlatformMessageReceivedResult{Segments: message.Segments, Consume: true}, events.LogResult{}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx := platform.WithMessageContext(t.Context(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{ConversationKind: contextinfo.ConversationGroup}}, TriggerKeywords: []string{"wake"}})
 	for _, tc := range []struct {
 		text string
 		want bool
 	}{{"hello", false}, {"wake hello", true}, {"/stop", true}} {
-		got := m.HookWakeup(ctx, hook.Event{Message: hook.MessagePayload{Segments: llm.TextSegments(tc.text)}})
+		if err := m.HandleMessage(ctx, tc.text); err != nil {
+			t.Fatal(err)
+		}
+		got := woken
 		if got != tc.want {
 			t.Errorf("wakeup %q=%v", tc.text, got)
 		}
 	}
-	tracked, done := m.ObserveHookRun(t.Context(), hook.Event{}, hook.ObserverInfo{Name: "contract-hook"})
+	tracked, done := m.StartHookRequest(t.Context(), "", "contract-hook")
 	if facts, ok := contextinfo.ExecutionFromContext(tracked); !ok || facts.RequestID == "" {
 		t.Fatal("hook request not tracked")
 	}

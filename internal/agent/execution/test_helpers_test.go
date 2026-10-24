@@ -9,10 +9,10 @@ import (
 	"sync"
 	"testing"
 
+	agenthooks "elbot/internal/agent/hooks"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
@@ -85,24 +85,6 @@ func (b *safeStringBuilder) Reset() {
 	b.mu.Lock()
 	b.b.Reset()
 	b.mu.Unlock()
-}
-
-type fakeHookRouter struct {
-	event  hook.Event
-	routed bool
-}
-
-func (r *fakeHookRouter) Cancel(hook.Event) bool { return false }
-
-func (r *fakeHookRouter) RouteHookID(hook.Event) string { return "" }
-
-func (r *fakeHookRouter) Route(_ context.Context, event hook.Event) (hook.Event, bool, error) {
-	if !r.routed {
-		return event, false, nil
-	}
-	event.Outputs = append(event.Outputs, r.event.Outputs...)
-	event.Control = r.event.Control
-	return event, true, nil
 }
 
 func (p *fakePlatform) Name() string { return "cli" }
@@ -371,11 +353,12 @@ func (f *fakeLLM) GenerateText(ctx context.Context, req llm.TextRequest) (llm.Te
 	return result, ctx.Err()
 }
 
-func newTestHookManager() *hook.DefaultManager {
-	manager := hook.NewManager()
-	manager.SetWakeupFunc(func(context.Context, hook.Event) bool { return true })
-	manager.SetObserver(func(ctx context.Context, _ hook.Event, _ hook.ObserverInfo) (context.Context, func()) {
-		return ctx, func() {}
-	})
-	return manager
+func newTestHookBridge(t *testing.T, points agenthooks.Points) *agenthooks.HookBridge {
+	t.Helper()
+	bridge := agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{})
+	if _, err := bridge.Register(points); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = bridge.Close(context.Background()) })
+	return bridge
 }

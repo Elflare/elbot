@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"elbot/internal/agent/dialogue"
+	"elbot/internal/agent/hooks"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
@@ -78,11 +78,7 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 		observation.LogRecord.ResultStatus, observation.LogRecord.Level = events.ResultFailed, slog.LevelError
 		completed.ElapsedMS = elapsedMillis(startedAt)
 		publishCompleted()
-		c.Calls.NotifyError(ctx, hook.Event{
-			Point:   hook.PointLLMResponseReceived,
-			Session: hook.SessionContext{ID: sessionID},
-			LLM:     hook.LLMPayload{Provider: selection.Provider, Model: selection.Model, ElapsedMS: elapsedMillis(startedAt)},
-		}, err)
+		c.Calls.NotifyError(ctx, sessionID, hooks.LLMResponse{Provider: selection.Provider, Model: selection.Model, ElapsedMS: elapsedMillis(startedAt)}, err)
 		return llmCallResult{}, fmt.Errorf("chat: %w", err)
 	}
 	var assistant strings.Builder
@@ -119,18 +115,14 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 			observation.LogRecord.ResultStatus, observation.LogRecord.Level = events.ResultFailed, slog.LevelError
 			completed.ElapsedMS = elapsedMillis(startedAt)
 			publishCompleted()
-			c.Calls.NotifyError(ctx, hook.Event{
-				Point:   hook.PointLLMResponseReceived,
-				Session: hook.SessionContext{ID: sessionID},
-				LLM: hook.LLMPayload{
-					Provider:   selection.Provider,
-					Model:      selection.Model,
-					SourceText: assistant.String(),
-					Text:       assistant.String(),
-					ToolCalls:  toolCalls,
-					Usage:      usage,
-					ElapsedMS:  elapsedMillis(startedAt),
-				},
+			c.Calls.NotifyError(ctx, sessionID, hooks.LLMResponse{
+				Provider:   selection.Provider,
+				Model:      selection.Model,
+				SourceText: assistant.String(),
+				Text:       assistant.String(),
+				ToolCalls:  toolCalls,
+				Usage:      usage,
+				ElapsedMS:  elapsedMillis(startedAt),
 			}, chunk.Error)
 
 			return llmCallResult{}, fmt.Errorf("chat stream: %w", chunk.Error)

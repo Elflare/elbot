@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"elbot/internal/agent/events"
+	"elbot/internal/agent/hooks"
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	globalevents "elbot/internal/events"
@@ -209,14 +210,19 @@ type RunnerDeps struct {
 		Record(context.Context, runtimestatus.Snapshot)
 		RecordUsage(context.Context, string, *llm.Usage)
 	}
-	Routes      LoopResolver
-	Dialogues   storage.DialogueRepository
-	Sessions    *session.Service
-	Turns       *turn.Manager
-	Contexts    *contextmgr.Service
-	Media       *media.Manager
-	Identity    Identity
-	Hooks       Hooks
+	Routes    LoopResolver
+	Dialogues storage.DialogueRepository
+	Sessions  *session.Service
+	Turns     *turn.Manager
+	Contexts  *contextmgr.Service
+	Media     *media.Manager
+	Identity  Identity
+	Hooks     interface {
+		LLMTurnPrepared(context.Context, hooks.Session, hooks.LLMInput) (hooks.LLMInputResult, globalevents.LogResult, error)
+		LLMRequestPrepared(context.Context, hooks.Session, hooks.LLMInput) (hooks.LLMInputResult, globalevents.LogResult, error)
+		LLMResponseReceived(context.Context, hooks.Session, hooks.LLMResponse) (hooks.LLMResponseResult, globalevents.LogResult, error)
+		ErrorOccurred(context.Context, hooks.Session, hooks.LLMResponse, error)
+	}
 	Output      AssistantPreparer
 	ToolManager interface {
 		Run(context.Context, toolrun.RunnerDeps, toolrun.RunRequest) toolrun.RunResult

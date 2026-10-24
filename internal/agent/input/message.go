@@ -8,11 +8,11 @@ import (
 	"strings"
 
 	"elbot/internal/agent/dialogue"
+	"elbot/internal/agent/hooks"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/security"
@@ -36,62 +36,53 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 	ctx = security.WithPermission(contextinfo.WithActor(ctx, actor), h.identity.Permission())
 	segments := agentshare.InboundSegments(ctx, text)
 	woken := h.messageWakeup(ctx, llm.SegmentsTextOnly(segments))
-	ctx = withMessageWakeup(ctx, woken)
+	ctx = hooks.WithWakeup(ctx, woken)
+	message := hooks.Message{Role: string(llm.RoleUser), Segments: segments}
 	if strings.TrimSpace(llm.SegmentsTextOnly(segments)) == "/cancel" {
-		cancelEvent := h.hooks.FillContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: agentshare.ActorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
-		if h.hooks.CancelRoute(cancelEvent) {
+		if h.hooks.CancelRoute(ctx, message) {
 			return h.output.SendChat(ctx, "已取消当前 Hook 会话。")
 		}
 	}
-	event := h.hooks.FillContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: agentshare.ActorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
-	waiting := h.hooks.HasRoute(event)
+	waiting := h.hooks.HasRoute(ctx, message)
 	if woken || waiting {
 		ctx, err = h.materializePlatformMedia(ctx)
 		if err != nil {
 			if ctx.Err() == nil {
-				dialogue.ReportFailure(ctx, event.Session.ID, fmt.Errorf("接收媒体: %w", err), h.output.Notify)
+				dialogue.ReportFailure(ctx, "", fmt.Errorf("接收媒体: %w", err), h.output.Notify)
 			}
 			return err
 		}
 		segments = agentshare.InboundSegments(ctx, text)
-		event = h.hooks.FillContext(ctx, hook.Event{Point: hook.PointPlatformMessageReceived, Actor: agentshare.ActorContext(actor), Message: hook.MessagePayload{Role: string(llm.RoleUser), Segments: segments}})
+		message.Segments = segments
 	}
-	event, routed, routeErr := h.hooks.Route(ctx, event)
-	if routeErr != nil {
+	result, _, err := h.hooks.PlatformMessageReceived(ctx, message)
+	if err != nil {
 		if ctx.Err() == nil {
-			dialogue.ReportFailure(ctx, event.Session.ID, fmt.Errorf("入站 Hook 续接: %w", routeErr), h.output.Notify)
+			dialogue.ReportFailure(ctx, "", fmt.Errorf("入站 Hook: %w", err), h.output.Notify)
 		}
-		return routeErr
+		return err
 	}
-	if !routed || !event.Control.StopPropagation {
-		event, _, err = h.hooks.Run(ctx, event)
-		if err != nil {
+	if len(result.Outputs) > 0 {
+		if _, err := h.output.SendOutputs(ctx, result.Outputs); err != nil {
 			if ctx.Err() == nil {
-				dialogue.ReportFailure(ctx, event.Session.ID, fmt.Errorf("入站 Hook: %w", err), h.output.Notify)
+				dialogue.ReportFailure(ctx, "", fmt.Errorf("发送入站 Hook 输出: %w", err), h.output.Notify)
 			}
 			return err
 		}
 	}
-	if len(event.Outputs) > 0 {
-		if _, err := h.output.SendOutputs(ctx, event.Outputs); err != nil {
-			if ctx.Err() == nil {
-				dialogue.ReportFailure(ctx, event.Session.ID, fmt.Errorf("发送入站 Hook 输出: %w", err), h.output.Notify)
-			}
-			return err
-		}
-	}
-	if event.Control.Consume {
+	if result.Consume {
 		return nil
 	}
-	hookChangedSegments := !reflect.DeepEqual(event.Message.Segments, segments)
+	hookChangedSegments := !reflect.DeepEqual(result.Segments, segments)
 	if hookChangedSegments {
-		segments = event.Message.Segments
+		segments = result.Segments
 	} else {
 		segments = agentshare.InboundContextSegments(ctx, text)
 	}
 	ctx = agentshare.WithInboundSegments(ctx, segments)
 	text = llm.SegmentsTextOnly(segments)
-	if strings.TrimSpace(text) == "/cancel" && h.hooks.CancelRoute(event) {
+	message.Segments = result.Segments
+	if strings.TrimSpace(text) == "/cancel" && h.hooks.CancelRoute(ctx, message) {
 		return h.output.SendChat(ctx, "已取消当前 Hook 会话。")
 	}
 	if !woken {
@@ -117,11 +108,9 @@ type MessageIdentity interface {
 }
 
 type MessageHooks interface {
-	dialogue.Hooks
-	FillContext(context.Context, hook.Event) hook.Event
-	CancelRoute(hook.Event) bool
-	Route(context.Context, hook.Event) (hook.Event, bool, error)
-	HasRoute(hook.Event) bool
+	CancelRoute(context.Context, hooks.Message) bool
+	HasRoute(context.Context, hooks.Message) bool
+	PlatformMessageReceived(context.Context, hooks.Message) (hooks.PlatformMessageReceivedResult, events.LogResult, error)
 }
 
 type MessageOutput interface {

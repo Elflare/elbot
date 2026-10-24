@@ -2,15 +2,11 @@ package agent
 
 import (
 	"context"
-	"errors"
-	"strings"
 	"testing"
-	"time"
 
 	agentevents "elbot/internal/agent/events"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery/dispatch"
-	"elbot/internal/hook"
 	"elbot/internal/notification/rules"
 	"elbot/internal/platform"
 )
@@ -25,27 +21,13 @@ func TestNotificationFactsUseGlobalSignalAndVisionDedup(t *testing.T) {
 	}
 	defer b.Close(context.Background())
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "original"}}, Sender: one})
-	meta := agentevents.EventMeta{SessionID: "one"}
+	conversation, _ := contextinfo.ConversationFromContext(ctx)
 	for range 2 {
-		if _, err := facts.VisionFallbackUsed.Emit(ctx, agentevents.VisionFallbackUsedEvent{EventMeta: meta, Visible: true}); err != nil {
+		if _, err := facts.VisionFallbackUsed.Emit(ctx, agentevents.VisionFallbackUsedEvent{SessionID: "one", Conversation: &conversation, Visible: true}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if one.text() != rules.VisionFallback || two.text() != "" {
 		t.Fatal("vision dedup or origin lost", one.text(), two.text())
-	}
-	if _, err := facts.HookFailed.Emit(ctx, agentevents.HookFailedEvent{EventMeta: meta, Point: hook.PointLLMResponseReceived, Err: errors.New("failed fact"), Notice: true}); err != nil {
-		t.Fatal(err)
-	}
-	deadline := time.After(time.Second)
-	for !strings.Contains(one.text(), "failed fact") {
-		select {
-		case <-deadline:
-			t.Fatal("failure notification not delivered")
-		case <-time.After(time.Millisecond):
-		}
-	}
-	if two.text() != "" {
-		t.Fatal("notification moved to another sender")
 	}
 }

@@ -13,7 +13,6 @@ import (
 	"elbot/internal/contextmgr"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/modelmgr"
@@ -93,7 +92,7 @@ type testOutput struct {
 	sent     []string
 }
 
-func (o *testOutput) PrepareAssistant(_ context.Context, _ hook.Point, text string) (string, events.LogResult, error) {
+func (o *testOutput) PrepareAssistant(_ context.Context, text string) (string, events.LogResult, error) {
 	return text, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 func (*testOutput) StartStream(context.Context) (delivery.MessageStream, error) { return nil, nil }

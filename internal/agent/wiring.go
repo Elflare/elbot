@@ -44,13 +44,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	view := dialogue.ExecutionView{Sessions: deps.Store.Sessions()}
 	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: deps.Platform.PrimaryName(), ActorID: "cli:local", ScopeID: "local", Permission: deps.Permission})
 	bridge := agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{
-		Manager:    deps.Hooks,
-		Router:     deps.Hooks,
-		Requests:   m.requests,
-		Identity:   identity,
-		Media:      deps.Media,
-		Failed:     signals.HookFailed,
-		Dispatcher: deps.Platform,
+		Identity: identity,
 	})
 	m.bridge = bridge
 	status := agentexecution.NewStatusRecorder(agentexecution.StatusRecorderDeps{View: view, Turns: m.turns, Changed: signals.StatusChanged})

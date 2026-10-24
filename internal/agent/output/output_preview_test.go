@@ -4,8 +4,6 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
-	"elbot/internal/hook"
-	"elbot/internal/llm"
 	"elbot/internal/notification"
 	"elbot/internal/signal"
 	"errors"
@@ -65,23 +63,32 @@ func TestPreviewConversationPolicyPrecedesHookAndSignal(t *testing.T) {
 }
 
 type previewTestHooks struct {
-	constructorHooks
 	calls   int
 	input   string
-	point   hook.Point
 	rewrite bool
 	output  string
 	err     error
 }
 
-func (h *previewTestHooks) Run(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
+func (*previewTestHooks) AgentTurnOutputPrepared(_ context.Context, text string) (string, events.LogResult, error) {
+	return text, events.LogResult{}, nil
+}
+
+func (*previewTestHooks) PlatformMessageSent(context.Context, string) {}
+
+// Both construction and storage accept only the three output callbacks.
+var (
+	_ = OutputSenderDeps{Hooks: &previewTestHooks{}}
+	_ = OutputSender{hooks: &previewTestHooks{}}
+)
+
+func (h *previewTestHooks) AgentOutputPrepared(_ context.Context, text string) (string, events.LogResult, error) {
 	h.calls++
-	h.input = llm.SegmentsTextOnly(e.Message.Segments)
-	h.point = e.Point
+	h.input = text
 	if h.rewrite {
-		e.Message.Segments = llm.TextSegments(h.output)
+		text = h.output
 	}
-	return e, events.LogResult{ResultStatus: events.ResultSkipped}, h.err
+	return text, events.LogResult{ResultStatus: events.ResultSkipped}, h.err
 }
 
 func TestPreviewGroupsToolNoticesBeforeHook(t *testing.T) {
@@ -178,29 +185,6 @@ func TestPreviewGroupsToolNoticesBeforeHook(t *testing.T) {
 			if hooks.calls != wantCalls || hooks.input != tt.input {
 				t.Fatalf("Hook calls/input = %d/%q, want %d/%q", hooks.calls, hooks.input, wantCalls, tt.input)
 			}
-			if hooks.calls != 0 && hooks.point != hook.PointAgentOutputPrepared {
-				t.Fatalf("Hook point = %s, want %s", hooks.point, hook.PointAgentOutputPrepared)
-			}
 		})
 	}
 }
-
-type constructorHooks struct{}
-
-func (constructorHooks) Run(_ context.Context, e hook.Event) (hook.Event, events.LogResult, error) {
-	return e, events.LogResult{ResultStatus: events.ResultSkipped}, nil
-}
-
-func (constructorHooks) Notify(context.Context, hook.Event) {}
-
-func (constructorHooks) FillContext(_ context.Context, e hook.Event) hook.Event { return e }
-
-func (constructorHooks) NotifyError(context.Context, hook.Event, error) {}
-
-func (constructorHooks) CancelRoute(hook.Event) bool { return false }
-
-func (constructorHooks) Route(_ context.Context, e hook.Event) (hook.Event, bool, error) {
-	return e, false, nil
-}
-
-func (constructorHooks) HasRoute(hook.Event) bool { return false }

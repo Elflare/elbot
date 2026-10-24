@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"elbot/internal/agent/dialogue"
+	"elbot/internal/agent/hooks"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
-	"elbot/internal/hook"
 	"elbot/internal/llm"
 	api "elbot/internal/llm/responses"
 	"elbot/internal/storage"
@@ -22,7 +22,7 @@ import (
 
 func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessage, stream delivery.MessageStream) (final dialogue.CallOutput, err error) {
 	client := s.selection.Client.(api.Streamer)
-	ctx = hook.WithReadOnlyCalls(ctx)
+	ctx = hooks.WithReadOnlyCalls(ctx)
 	observation := s.route.Calls.Begin(s.session.ID, s.selection)
 	defer func() {
 		observation.Publish(ctx, err)
@@ -160,11 +160,7 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 			final.Usage = result.Response.TokenUsage()
 		}
 		if observation.Event.ProviderError {
-			s.route.Calls.NotifyError(ctx, hook.Event{
-				Point:   hook.PointLLMResponseReceived,
-				Session: hook.SessionContext{ID: s.session.ID},
-				LLM:     hook.LLMPayload{Provider: s.selection.Provider, Model: s.selection.Model},
-			}, observation.Event.Err)
+			s.route.Calls.NotifyError(ctx, s.session.ID, hooks.LLMResponse{Provider: s.selection.Provider, Model: s.selection.Model}, observation.Event.Err)
 		}
 		return final, err
 	}

@@ -6,8 +6,10 @@ import (
 	"time"
 
 	"elbot/internal/agent/dialogue"
+	"elbot/internal/agent/hooks"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/events"
+	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -43,11 +45,13 @@ type InputWaitPolicy interface {
 
 // InputCoordinatorDeps declares only the capabilities consumed by InputCoordinator.
 type InputCoordinatorDeps struct {
-	Sessions      *session.Service
-	SessionRows   storage.SessionRepository
-	Turns         *turn.Manager
-	Identity      InputIdentity
-	Hooks         dialogue.Hooks
+	Sessions    *session.Service
+	SessionRows storage.SessionRepository
+	Turns       *turn.Manager
+	Identity    InputIdentity
+	Hooks       interface {
+		AgentInputPrepared(context.Context, hooks.Session, hooks.Message) ([]llm.MessageSegment, events.LogResult, error)
+	}
 	Output        InputOutput
 	Execution     InputExecution
 	Confirmations InputConfirmations

@@ -18,7 +18,10 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] 统一权限管理类型及现行调用方为 `Permission`。
 - [x] 测试覆盖资源部分失败、环境参数和退出辅助逻辑；期限测试使用虚拟时间。
 - [ ] 实现其他四条线的目标总管及 Platform.RunClient 结果契约，补齐跨线接线。
-- [ ] Hook 总管重构时，从 `internal/agent/hooks` 接管 `PlatformConnected` 的订阅、按平台排队、Hook 执行、输出和失败处理及其生命周期；无会话的平台连接事件不进入 Agent 请求登记，Agent 只保留对话 Hook 桥接。迁移完成前保留现有实现。
+- [x] 收窄 Agent 的 Hook 边界：声明 `hooks.Points`，提供 `RegisterHooks`、`StartHookRequest`，业务流程仅调用 Agent 自有扩展点；Hook 管理能力仅用于命令。
+- [ ] Hook 总管实现 `ConnectAgent`：按 `agent/hooks/points.go` 注册一组回调并持有解除函数；将业务参数转换为 Hook Event，处理续接／普通规则顺序、输出转换、只读校验和自身失败报告。每个实际 handler 通过 `StartHookRequest` 登记，Agent 不重复记录 Hook 失败。
+- [ ] Hook 自行实现 `PlatformConnected` 的订阅、按平台排队、Hook 执行、输出及失败处理和生命周期；全局平台工作不登记 Agent 请求。补回平台连接、源身份、错误不递归和队列关闭的专属测试。Agent 不再持有这些实现和测试。
+- [ ] Hook 的 `BeginClose` 保留 Agent 收尾所需回调及执行能力，待 Agent 关闭后，在 Hook 的 `Close` 中解除注册并等待自有工作退出。
 - [ ] 实现媒体 NewMediaCenter、模型 NewModelManager 的构造契约。
 - [ ] 实现按配置区分的服务独占运行占用。
 - [ ] 适配进程入口的新 App API 与 `client` 命名。
