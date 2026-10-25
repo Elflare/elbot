@@ -1,7 +1,6 @@
 package execution
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -25,11 +24,6 @@ func TestCallToolPreservesDirectCallResult(t *testing.T) {
 	}
 	if _, _, err := m.CallTool(t.Context(), share.CallRequest{Name: "missing"}); err == nil {
 		t.Fatal("missing tool accepted")
-	}
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	if _, _, err := m.CallTool(ctx, share.CallRequest{Name: "segments"}); !errors.Is(err, context.Canceled) {
-		t.Fatalf("cancellation lost: %v", err)
 	}
 }
 

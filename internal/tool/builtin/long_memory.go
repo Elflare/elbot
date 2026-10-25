@@ -37,14 +37,6 @@ type LongMemoryTool struct{ store *longMemoryStore }
 type LongMemorySearchTool struct{ store *longMemoryStore }
 type LongMemoryWriteTool struct{ store *longMemoryStore }
 
-type longMemorySaveArgs struct {
-	Category string `json:"category"`
-	Title    string `json:"title"`
-	Summary  string `json:"summary"`
-	Keywords string `json:"keywords"`
-	Content  string `json:"content"`
-}
-
 type longMemorySearchArgs struct {
 	Keywords  string `json:"keywords"`
 	Category  string `json:"category"`
@@ -154,12 +146,14 @@ func (t LongMemoryTool) Info() toolshare.Info {
 func (t LongMemoryTool) Schema() llm.ToolSchema {
 	return longMemoryBuilder(t.Name(), t.Info().Description).BuildSchema()
 }
-func (t LongMemoryTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
-	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
-	{
-		result := textResult("long_memory 是长期记忆入口。请按需调用 long_memory_search 或 long_memory_write。long_memory_search 不传 keywords/category 时会返回分类目录。")
-		return result, "long_memory guide returned", nil
-	}
+func (t LongMemoryTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+		{
+			result := textResult("long_memory 是长期记忆入口。请按需调用 long_memory_search 或 long_memory_write。long_memory_search 不传 keywords/category 时会返回分类目录。")
+			return result, "long_memory guide returned", nil
+		}
+	}), nil
 }
 
 func (LongMemorySearchTool) Name() string { return longMemorySearchToolName }
@@ -175,14 +169,24 @@ func (t LongMemorySearchTool) Schema() llm.ToolSchema {
 		Integer("limit", "最大结果数，默认 3，上限 10。").
 		BuildSchema()
 }
-func (t LongMemorySearchTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
-	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+func (t LongMemorySearchTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	var args longMemorySearchArgs
 	if err := lmDecodeArgs(req.Arguments, &args, t.Name()); err != nil {
-		return nil, err.Error(), err
+		return nil, err
 	}
-	if strings.TrimSpace(args.Keywords) == "" && strings.TrimSpace(args.Category) == "" {
-		content, err := t.store.categories(ctx)
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+		if strings.TrimSpace(args.Keywords) == "" && strings.TrimSpace(args.Category) == "" {
+			content, err := t.store.categories(ctx)
+			if err != nil {
+				return nil, err.Error(), err
+			}
+			{
+				result := textResult(content)
+				return result, result.Content, nil
+			}
+		}
+		content, err := t.store.search(ctx, args)
 		if err != nil {
 			return nil, err.Error(), err
 		}
@@ -190,15 +194,7 @@ func (t LongMemorySearchTool) Call(ctx context.Context, req toolshare.CallReques
 			result := textResult(content)
 			return result, result.Content, nil
 		}
-	}
-	content, err := t.store.search(ctx, args)
-	if err != nil {
-		return nil, err.Error(), err
-	}
-	{
-		result := textResult(content)
-		return result, result.Content, nil
-	}
+	}), nil
 }
 
 func (LongMemoryWriteTool) Name() string { return longMemoryWriteToolName }
@@ -223,17 +219,81 @@ func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.Call
 	if err != nil {
 		return nil, err
 	}
-	if strings.ToLower(strings.TrimSpace(args.Operation)) != "update" {
-		return nil, nil
+	assessment := toolshare.RiskAssessment{Level: t.Info().Risk}
+	switch strings.ToLower(strings.TrimSpace(args.Operation)) {
+	case "save":
+		record := longMemoryRecord{Category: cleanLongMemoryText(args.Category), Title: cleanLongMemoryText(args.Title), Summary: cleanLongMemoryText(args.Summary), Keywords: strings.Join(splitLongMemoryKeywords(args.Keywords), " "), Content: strings.TrimSpace(args.Content)}
+		detail := fmt.Sprintf("操作：新建长期记忆\n分类：%s\n标题：%s\n摘要：%s\n关键词：%s\n正文：\n%s", record.Category, record.Title, record.Summary, record.Keywords, record.Content)
+		return toolshare.NewPreparedCall(req, assessment, detail, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+			defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+			record, err := t.store.save(ctx, record)
+			if err != nil {
+				return nil, err.Error(), err
+			}
+			result := textResult(fmt.Sprintf("记忆写入成功！\nID：%d\n分类：%s\n标题：%s\n文件：%s\n可通过 long_memory_search 检索，或用 long_memory_write 更新/删除。", record.ID, record.Category, record.Title, record.FilePath))
+			return result, result.Content, nil
+		}), nil
+	case "update":
+		preview, err := t.store.previewUpdate(ctx, longMemoryUpdateArgsFromWrite(args))
+		if err != nil {
+			return nil, err
+		}
+		return toolshare.NewPreparedCall(req, assessment, longMemoryUpdateRiskDetail(args, preview), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+			defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+			record, err := t.store.update(ctx, preview)
+			if err != nil {
+				return nil, err.Error(), err
+			}
+			result := textResult(fmt.Sprintf("ID：%d 更新成功！\n分类：%s\n标题：%s\n文件：%s", record.ID, record.Category, record.Title, record.FilePath))
+			return result, result.Content, nil
+		}), nil
+	case "delete":
+		if args.ID <= 0 {
+			return nil, fmt.Errorf("id is required")
+		}
+		t.store.mu.Lock()
+		defer t.store.mu.Unlock()
+		if err := t.store.ensureLocked(ctx); err != nil {
+			return nil, err
+		}
+		record, err := t.store.recordByIDLocked(ctx, args.ID)
+		if errors.Is(err, sql.ErrNoRows) {
+			if err := t.store.syncLocked(ctx, true); err != nil {
+				return nil, err
+			}
+			record, err = t.store.recordByIDLocked(ctx, args.ID)
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("未找到 ID 为 %d 的长期记忆", args.ID)
+		}
+		if err != nil {
+			return nil, err
+		}
+		target, err := filepath.EvalSymlinks(record.FilePath)
+		if err != nil {
+			return nil, err
+		}
+		data, err := os.ReadFile(record.FilePath)
+		if err != nil {
+			return nil, err
+		}
+		revision := fileops.ContentRevision(data)
+		if parsed, err := parseLongMemoryText(string(data)); err == nil {
+			record.Title, record.Category, record.Summary = parsed.Meta.Title, parsed.Meta.Category, parsed.Meta.Summary
+		}
+		detail := fmt.Sprintf("操作：永久删除长期记忆\nID：%d\n标题：%s\n分类：%s\n摘要：%s\n文件：%s", record.ID, record.Title, record.Category, record.Summary, record.FilePath)
+		return toolshare.NewPreparedCall(req, assessment, detail, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+			defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+			path, err := t.store.delete(ctx, record, target, revision)
+			if err != nil {
+				return nil, err.Error(), err
+			}
+			result := textResult(fmt.Sprintf("记忆ID：%d已永久删除。\n文件：%s", record.ID, path))
+			return result, result.Content, nil
+		}), nil
+	default:
+		return nil, fmt.Errorf("operation must be save, update, or delete")
 	}
-	preview, err := t.store.previewUpdate(ctx, longMemoryUpdateArgsFromWrite(args))
-	if err != nil {
-		return nil, err
-	}
-	detail := longMemoryUpdateRiskDetail(args, preview)
-	return toolshare.NewPreparedCall(req, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
-		return t.call(ctx, args, &preview)
-	}), nil
 }
 
 func longMemoryUpdateRiskDetail(args longMemoryWriteArgs, preview longMemoryUpdatePreview) string {
@@ -289,59 +349,6 @@ func longMemoryUpdateArgsFromWrite(args longMemoryWriteArgs) longMemoryUpdateArg
 	return update
 }
 
-func (t LongMemoryWriteTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
-	args, err := t.decodeWriteArgs(req)
-	if err != nil {
-		return nil, toolshare.TruncateLogContent(err.Error(), 1024), err
-	}
-	return t.call(ctx, args, nil)
-}
-
-func (t LongMemoryWriteTool) call(ctx context.Context, args longMemoryWriteArgs, preview *longMemoryUpdatePreview) (_ *toolshare.Result, logContent string, _ error) {
-	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
-	switch strings.ToLower(strings.TrimSpace(args.Operation)) {
-	case "save":
-		record, err := t.store.save(ctx, longMemorySaveArgs{Category: args.Category, Title: args.Title, Summary: args.Summary, Keywords: args.Keywords, Content: args.Content})
-		if err != nil {
-			return nil, err.Error(), err
-		}
-		{
-			result := textResult(fmt.Sprintf("记忆写入成功！\nID：%d\n分类：%s\n标题：%s\n文件：%s\n可通过 long_memory_search 检索，或用 long_memory_write 更新/删除。", record.ID, record.Category, record.Title, record.FilePath))
-			return result, result.Content, nil
-		}
-	case "update":
-		if preview == nil {
-			result, err := t.store.previewUpdate(ctx, longMemoryUpdateArgsFromWrite(args))
-			if err != nil {
-				return nil, err.Error(), err
-			}
-			preview = &result
-		}
-		record, err := t.store.update(ctx, *preview)
-		if err != nil {
-			return nil, err.Error(), err
-		}
-		{
-			result := textResult(fmt.Sprintf("ID：%d 更新成功！\n分类：%s\n标题：%s\n文件：%s", record.ID, record.Category, record.Title, record.FilePath))
-			return result, result.Content, nil
-		}
-	case "delete":
-		path, err := t.store.delete(ctx, args.ID)
-		if err != nil {
-			return nil, err.Error(), err
-		}
-		{
-			result := textResult(fmt.Sprintf("记忆ID：%d已永久删除。\n文件：%s", args.ID, path))
-			return result, result.Content, nil
-		}
-	default:
-		{
-			callErr := fmt.Errorf("operation must be save, update, or delete")
-			return nil, callErr.Error(), callErr
-		}
-	}
-}
-
 func longMemoryBuilder(name, description string) *toolshare.Builder {
 	return toolshare.NewBuilder(name).Description(description).Risk(toolshare.RiskMedium).Tags("agent").SuperadminOnly()
 }
@@ -350,11 +357,10 @@ func hiddenLongMemoryInfo(name, description string, risk toolshare.RiskLevel) to
 	return longMemoryBuilder(name, description).Risk(risk).Hidden().SuperadminOnly().BuildInfo()
 }
 
-func (s *longMemoryStore) save(ctx context.Context, args longMemorySaveArgs) (longMemoryRecord, error) {
+func (s *longMemoryStore) save(ctx context.Context, record longMemoryRecord) (longMemoryRecord, error) {
 	if err := ctx.Err(); err != nil {
 		return longMemoryRecord{}, err
 	}
-	record := longMemoryRecord{Category: cleanLongMemoryText(args.Category), Title: cleanLongMemoryText(args.Title), Summary: cleanLongMemoryText(args.Summary), Keywords: strings.Join(splitLongMemoryKeywords(args.Keywords), " "), Content: strings.TrimSpace(args.Content)}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.ensureLocked(ctx); err != nil {
@@ -372,7 +378,7 @@ func (s *longMemoryStore) save(ctx context.Context, args longMemorySaveArgs) (lo
 	if err := validateLongMemoryRecord(record, true); err != nil {
 		return longMemoryRecord{}, err
 	}
-	if err := s.writeRecordFileLocked(record); err != nil {
+	if err := s.writeRecordFileLocked(ctx, record); err != nil {
 		return longMemoryRecord{}, err
 	}
 	info, err := os.Stat(record.FilePath)
@@ -601,35 +607,37 @@ func longMemoryInlineValue(value string) string {
 	return value
 }
 
-func (s *longMemoryStore) delete(ctx context.Context, id int64) (string, error) {
+func (s *longMemoryStore) delete(ctx context.Context, approved longMemoryRecord, target, revision string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	if id <= 0 {
-		return "", fmt.Errorf("id is required")
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.ensureLocked(ctx); err != nil {
-		return "", err
-	}
-	record, err := s.recordByIDLocked(ctx, id)
-	if errors.Is(err, sql.ErrNoRows) {
-		if syncErr := s.syncLocked(ctx, true); syncErr != nil {
-			return "", syncErr
-		}
-		record, err = s.recordByIDLocked(ctx, id)
-	}
+	record, err := s.recordByIDLocked(ctx, approved.ID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", fmt.Errorf("未找到 ID 为 %d 的长期记忆", id)
-		}
 		return "", err
 	}
-	if err := os.Remove(record.FilePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if record.FilePath != approved.FilePath {
+		return "", fmt.Errorf("memory target changed after preparation")
+	}
+	currentTarget, err := filepath.EvalSymlinks(record.FilePath)
+	if err != nil {
+		return "", err
+	}
+	if currentTarget != target {
+		return "", fmt.Errorf("memory target changed after preparation")
+	}
+	data, err := os.ReadFile(record.FilePath)
+	if err != nil {
+		return "", err
+	}
+	if fileops.ContentRevision(data) != revision {
+		return "", fmt.Errorf("memory changed after preparation")
+	}
+	if err := os.Remove(record.FilePath); err != nil {
 		return "", fmt.Errorf("delete memory file %q: %w", record.FilePath, err)
 	}
-	if err := s.deleteIndexLocked(ctx, id, record.FilePath); err != nil {
+	if err := s.deleteIndexLocked(ctx, record.ID, record.FilePath); err != nil {
 		return "", err
 	}
 	return record.FilePath, nil
@@ -812,7 +820,7 @@ func (s *longMemoryStore) syncLocked(ctx context.Context, force bool) error {
 	return nil
 }
 
-func (s *longMemoryStore) writeRecordFileLocked(record longMemoryRecord) error {
+func (s *longMemoryStore) writeRecordFileLocked(ctx context.Context, record longMemoryRecord) error {
 	if err := os.MkdirAll(filepath.Dir(record.FilePath), 0o755); err != nil {
 		return fmt.Errorf("create long memory file dir: %w", err)
 	}
@@ -820,7 +828,12 @@ func (s *longMemoryStore) writeRecordFileLocked(record longMemoryRecord) error {
 	if err != nil {
 		return err
 	}
-	return fileops.AtomicWriteFile(record.FilePath, data, 0o644)
+	prepared, err := fileops.PrepareFileWrite(ctx, record.FilePath, string(data))
+	if err != nil {
+		return err
+	}
+	_, err = prepared.Commit(ctx)
+	return err
 }
 
 func (s *longMemoryStore) indexRecordLocked(ctx context.Context, record longMemoryRecord) error {

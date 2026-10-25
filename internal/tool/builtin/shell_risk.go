@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"elbot/internal/security"
-	
+
 	"mvdan.cc/sh/v3/syntax"
 )
 

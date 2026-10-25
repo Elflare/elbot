@@ -200,22 +200,24 @@ func (*hookActionTestTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "hook_test_critical", Parameters: map[string]any{"type": "object"}}
 }
 
-func (t *hookActionTestTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
-	t.calls++
-	{
-		result, callErr := &toolshare.Result{Content: "called"}, t.err
-		logContent := ""
-		if result != nil {
-			logContent = result.Content
-		}
-		if callErr != nil {
-			if logContent != "" {
-				logContent += "\n"
+func (t *hookActionTestTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		t.calls++
+		{
+			result, callErr := &toolshare.Result{Content: "called"}, t.err
+			logContent := ""
+			if result != nil {
+				logContent = result.Content
 			}
-			logContent += callErr.Error()
+			if callErr != nil {
+				if logContent != "" {
+					logContent += "\n"
+				}
+				logContent += callErr.Error()
+			}
+			return result, logContent, callErr
 		}
-		return result, logContent, callErr
-	}
+	}), nil
 }
 
 func TestRuleToolAuditOutcome(t *testing.T) {

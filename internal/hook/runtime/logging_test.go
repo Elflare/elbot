@@ -30,10 +30,12 @@ type loggingTool struct {
 }
 
 func (loggingTool) Name() string           { return "logging_tool" }
-func (loggingTool) Info() toolshare.Info        { return toolshare.Info{Name: "logging_tool"} }
+func (loggingTool) Info() toolshare.Info   { return toolshare.Info{Name: "logging_tool"} }
 func (loggingTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "logging_tool"} }
-func (t loggingTool) Call(ctx context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
-	return t.run(ctx, req)
+func (t loggingTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		return t.run(ctx, req)
+	}), nil
 }
 
 func captureHookRecords(t *testing.T, includeStarts ...bool) *[]events.LogRecord {

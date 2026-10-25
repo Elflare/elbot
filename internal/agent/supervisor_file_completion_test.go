@@ -13,7 +13,6 @@ import (
 	"elbot/internal/completion"
 	"elbot/internal/contextinfo"
 	"elbot/internal/fileops"
-	
 )
 
 type contractFileTool struct {
@@ -24,21 +23,23 @@ type contractFileTool struct {
 	bindingCtx context.Context
 }
 
-func (v *contractFileTool) Call(ctx context.Context, _ toolshare.CallRequest) (*toolshare.Result, string, error) {
-	v.bindingCtx = context.WithoutCancel(ctx)
-	_, _, err := v.files.Edit(ctx, fileops.EditRequest{Path: v.path, Edits: []fileops.Edit{{Operation: "replace_text", OldText: "before", NewText: new("after")}}})
-	if err != nil {
-		return nil, "", err
-	}
-	records, err := v.files.List(ctx)
-	if err != nil {
-		return nil, "", err
-	}
-	if len(records) != 1 {
-		return nil, "", fmt.Errorf("backups=%d", len(records))
-	}
-	v.backup = records[0].ID
-	return &toolshare.Result{Content: "edited"}, "", nil
+func (v *contractFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: v.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		v.bindingCtx = context.WithoutCancel(ctx)
+		_, _, err := v.files.Edit(ctx, fileops.EditRequest{Path: v.path, Edits: []fileops.Edit{{Operation: "replace_text", OldText: "before", NewText: new("after")}}})
+		if err != nil {
+			return nil, "", err
+		}
+		records, err := v.files.List(ctx)
+		if err != nil {
+			return nil, "", err
+		}
+		if len(records) != 1 {
+			return nil, "", fmt.Errorf("backups=%d", len(records))
+		}
+		v.backup = records[0].ID
+		return &toolshare.Result{Content: "edited"}, "", nil
+	}), nil
 }
 func TestSupervisorRollbackAndBindingInvalidation(t *testing.T) {
 	deps := isolatedModuleDeps(t)

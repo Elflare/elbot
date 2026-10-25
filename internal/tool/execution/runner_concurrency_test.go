@@ -29,8 +29,10 @@ func (concurrentTool) Info() toolshare.Info {
 func (concurrentTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "parallel", Parameters: map[string]any{"type": "object"}}
 }
-func (t concurrentTool) Call(ctx context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
-	return t.run(ctx, req)
+func (t concurrentTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		return t.run(ctx, req)
+	}), nil
 }
 
 type concurrentCommitter struct {

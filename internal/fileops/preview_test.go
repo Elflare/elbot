@@ -116,3 +116,65 @@ func TestPreparedFileRejectsChangedTargetOrRevisionAndCancellation(t *testing.T)
 		})
 	}
 }
+
+func TestPreparedFileWriteCreateAndConflict(t *testing.T) {
+	for _, scenario := range []string{"new", "same", "appeared", "changed", "canceled"} {
+		t.Run(scenario, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "nested", "file.txt")
+			if scenario == "same" || scenario == "changed" {
+				if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("approved\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			prepared, err := fileops.PrepareFileWrite(t.Context(), path, "approved\n")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if scenario != "same" && scenario != "changed" {
+				if _, err := os.Stat(filepath.Dir(path)); !os.IsNotExist(err) {
+					t.Fatalf("prepare created parent: %v", err)
+				}
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			if scenario == "appeared" || scenario == "changed" {
+				if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("external\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			} else if scenario == "canceled" {
+				cancel()
+			}
+			_, err = prepared.Commit(ctx)
+			wantSuccess := scenario == "new" || scenario == "same"
+			if (err == nil) != wantSuccess {
+				t.Fatalf("commit = %v", err)
+			}
+			data, readErr := os.ReadFile(path)
+			if scenario == "canceled" {
+				if !os.IsNotExist(readErr) {
+					t.Fatalf("canceled write created file: %v", readErr)
+				}
+			} else {
+				want := "external\n"
+				if wantSuccess {
+					want = "approved\n"
+				}
+				if readErr != nil || string(data) != want {
+					t.Fatalf("file = %q, %v", data, readErr)
+				}
+			}
+			if scenario == "same" {
+				info, _ := os.Stat(path)
+				if info.Mode().Perm() != 0600 {
+					t.Fatal("mode changed")
+				}
+			}
+		})
+	}
+}

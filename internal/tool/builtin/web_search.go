@@ -15,7 +15,6 @@ import (
 
 	"elbot/internal/llm"
 	"elbot/internal/processenv"
-	
 )
 
 const (
@@ -114,17 +113,13 @@ func webSearchBuilder() *toolshare.Builder {
 		Boolean("exact_match", "是否只返回包含查询中引号短语的精确匹配结果。")
 }
 
-func (t WebSearchTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
-	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
-	if err := ctx.Err(); err != nil {
-		return nil, err.Error(), err
-	}
+func (t WebSearchTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	var args webSearchArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
 			{
 				callErr := fmt.Errorf("parse web_search arguments: %w", err)
-				return nil, callErr.Error(), callErr
+				return nil, callErr
 			}
 		}
 	}
@@ -132,14 +127,14 @@ func (t WebSearchTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *
 	if query == "" {
 		{
 			callErr := fmt.Errorf("query is required")
-			return nil, callErr.Error(), callErr
+			return nil, callErr
 		}
 	}
 	apiKey, ok := t.processEnv.Lookup(tavilyAPIKeyEnv)
 	if !ok || strings.TrimSpace(apiKey) == "" {
 		{
 			callErr := fmt.Errorf("%s is required; set it in environment or config .env", tavilyAPIKeyEnv)
-			return nil, callErr.Error(), callErr
+			return nil, callErr
 		}
 	}
 	payload := normalizeTavilyRequest(args, query)
@@ -147,57 +142,60 @@ func (t WebSearchTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *
 	if err != nil {
 		{
 			callErr := fmt.Errorf("marshal Tavily request: %w", err)
-			return nil, callErr.Error(), callErr
+			return nil, callErr
 		}
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, t.searchEndpoint(), bytes.NewReader(body))
-	if err != nil {
-		{
-			callErr := fmt.Errorf("create Tavily request: %w", err)
-			return nil, callErr.Error(), callErr
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("搜索：%s", query), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, t.searchEndpoint(), bytes.NewReader(body))
+		if err != nil {
+			{
+				callErr := fmt.Errorf("create Tavily request: %w", err)
+				return nil, callErr.Error(), callErr
+			}
 		}
-	}
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-	httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+		httpReq.Header.Set("Content-Type", "application/json")
 
-	client := t.httpClient()
-	resp, err := client.Do(httpReq)
-	if err != nil {
+		client := t.httpClient()
+		resp, err := client.Do(httpReq)
+		if err != nil {
+			{
+				callErr := fmt.Errorf("Tavily request: %w", err)
+				return nil, callErr.Error(), callErr
+			}
+		}
+		defer resp.Body.Close()
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			{
+				callErr := fmt.Errorf("read Tavily response: %w", err)
+				return nil, callErr.Error(), callErr
+			}
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			{
+				callErr := fmt.Errorf("Tavily HTTP %d: %s", resp.StatusCode, truncateHTTPBody(respBody))
+				return nil, callErr.Error(), callErr
+			}
+		}
+		var data tavilyResponse
+		if err := json.Unmarshal(respBody, &data); err != nil {
+			{
+				callErr := fmt.Errorf("parse Tavily response: %w", err)
+				return nil, callErr.Error(), callErr
+			}
+		}
 		{
-			callErr := fmt.Errorf("Tavily request: %w", err)
-			return nil, callErr.Error(), callErr
+			result := &toolshare.Result{Content: formatTavilyContent(data)}
+			logContent = fmt.Sprintf("results=%d", len(data.Results))
+			for _, item := range data.Results {
+				logContent += fmt.Sprintf("\n%s %s", item.Title, item.URL)
+			}
+			return result, logContent, nil
 		}
-	}
-	defer resp.Body.Close()
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		{
-			callErr := fmt.Errorf("read Tavily response: %w", err)
-			return nil, callErr.Error(), callErr
-		}
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		{
-			callErr := fmt.Errorf("Tavily HTTP %d: %s", resp.StatusCode, truncateHTTPBody(respBody))
-			return nil, callErr.Error(), callErr
-		}
-	}
-	var data tavilyResponse
-	if err := json.Unmarshal(respBody, &data); err != nil {
-		{
-			callErr := fmt.Errorf("parse Tavily response: %w", err)
-			return nil, callErr.Error(), callErr
-		}
-	}
-	{
-		result := &toolshare.Result{Content: formatTavilyContent(data)}
-		logContent = fmt.Sprintf("results=%d", len(data.Results))
-		for _, item := range data.Results {
-			logContent += fmt.Sprintf("\n%s %s", item.Title, item.URL)
-		}
-		return result, logContent, nil
-	}
+	}), nil
 }
 
 func normalizeTavilyRequest(args webSearchArgs, query string) tavilyRequest {

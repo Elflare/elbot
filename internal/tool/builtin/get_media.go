@@ -38,25 +38,24 @@ func (GetMediaTool) Schema() llm.ToolSchema {
 	return schema
 }
 
-func (t GetMediaTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
-	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+func (t GetMediaTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	var args getMediaArgs
 	if err := json.Unmarshal(req.Arguments, &args); err != nil {
 		{
 			callErr := fmt.Errorf("parse get_media arguments: %w", err)
-			return nil, callErr.Error(), callErr
+			return nil, callErr
 		}
 	}
 	if len(args.MessageIDs) == 0 {
 		{
 			callErr := fmt.Errorf("message_id must be a nonempty array")
-			return nil, callErr.Error(), callErr
+			return nil, callErr
 		}
 	}
 	if args.MediaIndex != nil && len(args.MediaIndex) != len(args.MessageIDs) {
 		{
 			callErr := fmt.Errorf("media_index must match message_id length")
-			return nil, callErr.Error(), callErr
+			return nil, callErr
 		}
 	}
 	for i, id := range args.MessageIDs {
@@ -64,57 +63,60 @@ func (t GetMediaTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *t
 		if args.MessageIDs[i] == "" {
 			{
 				callErr := fmt.Errorf("message_id must not contain empty IDs")
-				return nil, callErr.Error(), callErr
+				return nil, callErr
 			}
 		}
 		if args.MediaIndex != nil {
 			if len(args.MediaIndex[i]) == 0 {
 				{
 					callErr := fmt.Errorf("media_index entries must not be empty")
-					return nil, callErr.Error(), callErr
+					return nil, callErr
 				}
 			}
 			for _, index := range args.MediaIndex[i] {
 				if index < 1 {
 					{
 						callErr := fmt.Errorf("media_index must contain positive integers")
-						return nil, callErr.Error(), callErr
+						return nil, callErr
 					}
 				}
 			}
 		}
 	}
-	results, err := t.history.GetMedia(ctx, chat_history.MediaRequest{MessageIDs: args.MessageIDs, MediaIndex: args.MediaIndex})
-	if errors.Is(err, chat_history.ErrNoChatContext) {
-		return &toolshare.Result{Content: err.Error()}, err.Error(), nil
-	}
-	if err != nil {
-		return nil, err.Error(), err
-	}
-	var lines []string
-	for _, result := range results {
-		if errors.Is(result.Err, chat_history.ErrNotFound) {
-			lines = append(lines, fmt.Sprintf("[#%s] 当前聊天没有该消息。", result.MessageID))
-			continue
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("获取消息媒体：%s", strings.Join(args.MessageIDs, ", ")), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+		results, err := t.history.GetMedia(ctx, chat_history.MediaRequest{MessageIDs: args.MessageIDs, MediaIndex: args.MediaIndex})
+		if errors.Is(err, chat_history.ErrNoChatContext) {
+			return &toolshare.Result{Content: err.Error()}, err.Error(), nil
 		}
-		var text string
-		switch {
-		case errors.Is(result.Err, chat_history.ErrMediaIndex):
-			text = "[媒体序号越界]"
-		case errors.Is(result.Err, chat_history.ErrFetchLimit):
-			text = fmt.Sprintf("[媒体未下载：达到本次 %d 个下载尝试上限]", chat_history.MaxFetchAttempts)
-		case result.Err != nil:
-			text = "[媒体获取失败：来源不可用、超限或关联保存失败]"
-			logContent += fmt.Sprintf("\n[#%s] %d: %v", result.MessageID, result.Index, result.Err)
-		default:
-			text = historyMediaLabel(result.IsImage, result.Media.ID)
+		if err != nil {
+			return nil, err.Error(), err
 		}
-		lines = append(lines, fmt.Sprintf("[#%s] %d. %s", result.MessageID, result.Index, text))
-	}
-	{
-		result := &toolshare.Result{Content: strings.Join(lines, "\n")}
-		return result, result.Content + logContent, nil
-	}
+		var lines []string
+		for _, result := range results {
+			if errors.Is(result.Err, chat_history.ErrNotFound) {
+				lines = append(lines, fmt.Sprintf("[#%s] 当前聊天没有该消息。", result.MessageID))
+				continue
+			}
+			var text string
+			switch {
+			case errors.Is(result.Err, chat_history.ErrMediaIndex):
+				text = "[媒体序号越界]"
+			case errors.Is(result.Err, chat_history.ErrFetchLimit):
+				text = fmt.Sprintf("[媒体未下载：达到本次 %d 个下载尝试上限]", chat_history.MaxFetchAttempts)
+			case result.Err != nil:
+				text = "[媒体获取失败：来源不可用、超限或关联保存失败]"
+				logContent += fmt.Sprintf("\n[#%s] %d: %v", result.MessageID, result.Index, result.Err)
+			default:
+				text = historyMediaLabel(result.IsImage, result.Media.ID)
+			}
+			lines = append(lines, fmt.Sprintf("[#%s] %d. %s", result.MessageID, result.Index, text))
+		}
+		{
+			result := &toolshare.Result{Content: strings.Join(lines, "\n")}
+			return result, result.Content + logContent, nil
+		}
+	}), nil
 }
 
 func historyMediaLabel(isImage bool, id string) string {

@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"elbot/internal/elyph"
-	
 )
 
 func appendElyphWarnings(content string, diagnostics []elyph.Diagnostic) string {

@@ -88,7 +88,7 @@ func (m *Supervisor) Read(ctx context.Context, scope session.Scope) (resident.Me
 func (m *Supervisor) WithBinding(ctx context.Context, binding fileops.Binding, admission ...fileops.CommitAdmission) context.Context {
 	return m.catalog.fileRollback.WithBinding(ctx, binding, admission...)
 }
-func (m *Supervisor) Forget(binding fileops.Binding) { m.catalog.fileRollback.Forget(binding) }
+func (m *Supervisor) Forget(binding fileops.Binding) { m.catalog.fileRollback.Manager.Forget(binding) }
 func (m *Supervisor) ListRollbacks(ctx context.Context) ([]fileops.RollbackInfo, error) {
 	return m.catalog.fileRollback.List(ctx)
 }

@@ -70,28 +70,14 @@ func (t RollbackFileTool) PrepareCall(ctx context.Context, req toolshare.CallReq
 		action = "删除本次新建文件（保留父目录）"
 	}
 	detail := fmt.Sprintf("文件：%s\n操作：%s\n预检 diff:\n%s", preview.Path, action, preview.Diff)
-	return toolshare.NewPreparedCall(req, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
-		return t.call(ctx, args, prepared)
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
+		return t.call(ctx, prepared)
 	}), nil
 }
 
-func (t RollbackFileTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
-	args, err := decodeRollbackArgs(req)
-	if err != nil {
-		return nil, toolshare.TruncateLogContent(err.Error(), 1024), err
-	}
-	return t.call(ctx, args, nil)
-}
-
-func (t RollbackFileTool) call(ctx context.Context, args rollbackFileArgs, prepared *fileops.PreparedRollback) (_ *toolshare.Result, logContent string, _ error) {
+func (t RollbackFileTool) call(ctx context.Context, prepared *fileops.PreparedRollback) (_ *toolshare.Result, logContent string, _ error) {
 	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
-	var result fileops.RollbackResult
-	var err error
-	if prepared != nil {
-		result, err = prepared.Commit(ctx)
-	} else {
-		result, err = t.Service.Rollback(ctx, args.Path, 0)
-	}
+	result, err := prepared.Commit(ctx)
 	if err != nil {
 		return nil, err.Error(), err
 	}

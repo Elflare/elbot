@@ -32,7 +32,7 @@ func TestHistoryQueryErrorLogPreservesBusinessError(t *testing.T) {
 	callErr := errors.New(strings.Repeat("雪🔥", 700))
 	repository := failingHistoryLogRepository{err: callErr}
 	for _, value := range []toolshare.Tool{builtin.NewSearchChatHistoryTool(newHistoryTestManager(repository), nil), builtin.NewGetChatHistoryAroundTool(newHistoryTestManager(repository), nil)} {
-		result, logContent, err := value.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":"1"}`)})
+		result, logContent, err := callTool(ctx, value, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":"1"}`)})
 		if result != nil || err != callErr || logContent != toolshare.TruncateLogContent(callErr.Error(), 1024) || utf8.RuneCountInString(logContent) != 1024 {
 			t.Fatalf("%s: result=%+v log=%q err=%v", value.Name(), result, logContent, err)
 		}
@@ -57,7 +57,7 @@ func TestHistoryQueryLogIncludesResult(t *testing.T) {
 		{"empty_around", builtin.NewGetChatHistoryAroundTool(mediaTool.manager, nil), `{"message_id":"missing"}`, "message_id=missing returned=0"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			result, logContent, err := tc.value.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(tc.args)})
+			result, logContent, err := callTool(ctx, tc.value, toolshare.CallRequest{Arguments: json.RawMessage(tc.args)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -77,7 +77,7 @@ func TestGetMediaLogIncludesAllResults(t *testing.T) {
 	for _, args := range []string{`{"message_id":["1"]}`, `{"message_id":["missing"]}`, `{"message_id":["1","missing"]}`, `{"message_id":["1"],"media_index":[[1,2,3,4,5,6,7]]}`} {
 		t.Run(args, func(t *testing.T) {
 			ctx, value, _ := newHistoryMediaToolTest(t)
-			result, logContent, err := value.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(args)})
+			result, logContent, err := callTool(ctx, value, toolshare.CallRequest{Arguments: json.RawMessage(args)})
 			if err != nil {
 				t.Fatal(err)
 			}

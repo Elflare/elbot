@@ -26,14 +26,16 @@ func (blockingAuditTool) Info() toolshare.Info {
 func (blockingAuditTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "audit_probe", Parameters: map[string]any{"type": "object"}}
 }
-func (b blockingAuditTool) Call(ctx context.Context, _ toolshare.CallRequest) (*toolshare.Result, string, error) {
-	close(b.entered)
-	select {
-	case <-b.release:
-	case <-ctx.Done():
-		return nil, "cancelled", ctx.Err()
-	}
-	return &toolshare.Result{Content: "finished"}, "finished", nil
+func (b blockingAuditTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: b.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		close(b.entered)
+		select {
+		case <-b.release:
+		case <-ctx.Done():
+			return nil, "cancelled", ctx.Err()
+		}
+		return &toolshare.Result{Content: "finished"}, "finished", nil
+	}), nil
 }
 
 func TestAuditShowsStartBeforeToolReturns(t *testing.T) {

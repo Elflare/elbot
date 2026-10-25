@@ -103,10 +103,28 @@ func shellBuilder() *toolshare.Builder {
 		ObjectArray("media_inputs", "可选，显式媒体输入；宿主导出并注入 ELBOT_MEDIA_1 等环境变量，命令需按当前 shell 语法引用变量。", map[string]any{"media": map[string]any{"type": "string", "pattern": "^media:[0-9a-f]{64}$"}}, []string{"media"})
 }
 
-func (t ShellTool) AssessRisk(ctx context.Context, req toolshare.CallRequest) (toolshare.RiskAssessment, error) {
-	_, cmdText, err := decodeShellArgs(req)
+func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+
+	args, cmdText, err := decodeShellArgs(req)
 	if err != nil {
-		return toolshare.RiskAssessment{}, err
+		return nil, err
+	}
+
+	timeout := defaultShellTimeout
+	if args.TimeoutMS > 0 {
+		timeout = time.Duration(args.TimeoutMS) * time.Millisecond
+	}
+
+	if err := rejectShellDirectoryChange(cmdText); err != nil {
+		return nil, err
+	}
+	workDir, err := resolveShellWorkDir(ctx)
+	if err != nil {
+		return nil, err
+	}
+	advice := analyzeShellAdvice(cmdText, workDir, t.FileGuard)
+	if advice.blockErr != nil {
+		return nil, advice.blockErr
 	}
 	assessment := classifyShellCommand(cmdText)
 	if scope, ok := workspace.PathScopeFromContext(ctx); ok && scope.Restricted {
@@ -115,101 +133,63 @@ func (t ShellTool) AssessRisk(ctx context.Context, req toolshare.CallRequest) (t
 	if assessment.Level == "" {
 		assessment.Level = t.Info().Risk
 	}
-	return assessment, nil
-}
-
-func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	_, cmdText, err := decodeShellArgs(req)
-	if err != nil {
-		return nil, err
-	}
-	if err := rejectShellDirectoryChange(cmdText); err != nil {
-		return nil, err
-	}
-	workDir, err := resolveShellWorkDir(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return nil, analyzeShellAdvice(cmdText, workDir, t.FileGuard).blockErr
-}
-
-func (t ShellTool) Call(ctx context.Context, req toolshare.CallRequest) (result *toolshare.Result, logContent string, callErr error) {
-	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
-
-	args, cmdText, err := decodeShellArgs(req)
-	if err != nil {
-		return nil, err.Error(), err
-	}
-
-	timeout := defaultShellTimeout
-	if args.TimeoutMS > 0 {
-		timeout = time.Duration(args.TimeoutMS) * time.Millisecond
-	}
-	runCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	if err := rejectShellDirectoryChange(cmdText); err != nil {
-		return nil, err.Error(), err
-	}
-	workDir, err := resolveShellWorkDir(ctx)
-	if err != nil {
-		return nil, err.Error(), err
-	}
-	advice := analyzeShellAdvice(cmdText, workDir, t.FileGuard)
-	if advice.blockErr != nil {
-		return nil, advice.blockErr.Error(), advice.blockErr
-	}
-	environment := t.ProcessEnv
-	if len(args.MediaInputs) > 0 {
-		mediaCall := t.Media.NewCall()
-		defer func() {
-			err := mediaCall.Close()
-			callErr = errors.Join(callErr, err)
-			if err != nil {
-				logContent = fmt.Sprintf("media_cleanup_error=%v\n%s", err, logContent)
-			}
-		}()
-		variables := make(map[string]string, len(args.MediaInputs))
-		for i, input := range args.MediaInputs {
-			path, err := mediaCall.CachedExport(runCtx, input.MediaID)
-			if err != nil {
-				{
-					callErr := fmt.Errorf("prepare shell media: %w", err)
-					return nil, callErr.Error(), callErr
+	preview := fmt.Sprintf("命令：%s\n工作目录：%s\n超时：%s", cmdText, workDir, timeout)
+	return toolshare.NewPreparedCall(req, assessment, preview, func(ctx context.Context) (result *toolshare.Result, logContent string, callErr error) {
+		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+		runCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		environment := t.ProcessEnv
+		if len(args.MediaInputs) > 0 {
+			mediaCall := t.Media.NewCall()
+			defer func() {
+				err := mediaCall.Close()
+				callErr = errors.Join(callErr, err)
+				if err != nil {
+					logContent = fmt.Sprintf("media_cleanup_error=%v\n%s", err, logContent)
 				}
+			}()
+			variables := make(map[string]string, len(args.MediaInputs))
+			for i, input := range args.MediaInputs {
+				path, err := mediaCall.CachedExport(runCtx, input.MediaID)
+				if err != nil {
+					{
+						callErr := fmt.Errorf("prepare shell media: %w", err)
+						return nil, callErr.Error(), callErr
+					}
+				}
+				variables[fmt.Sprintf("ELBOT_MEDIA_%d", i+1)] = path
 			}
-			variables[fmt.Sprintf("ELBOT_MEDIA_%d", i+1)] = path
+			environment = environment.Overlay(variables)
 		}
-		environment = environment.Overlay(variables)
-	}
-	cmd := shellCommand(runCtx, environment, cmdText)
-	cmd.Dir = workDir
-	var stdout shellOutputBuffer
-	var stderr shellOutputBuffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err = cmd.Run()
-	exitCode := 0
-	if exitErr, ok := err.(*exec.ExitError); ok {
-		exitCode = exitErr.ExitCode()
-	} else if err != nil {
+		cmd := shellCommand(runCtx, environment, cmdText)
+		cmd.Dir = workDir
+		var stdout shellOutputBuffer
+		var stderr shellOutputBuffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		exitCode := 0
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else if err != nil {
+			{
+				callErr := fmt.Errorf("run shell: %w", err)
+				return nil, callErr.Error(), callErr
+			}
+		}
+		data := shellData{Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: exitCode}
+		logContent = fmt.Sprintf("exit_code=%d", exitCode)
+		if stderr := strings.TrimRight(data.Stderr, "\r\n"); stderr != "" {
+			logContent += "\nstderr:\n" + stderr
+		}
+		if stdout := strings.TrimRight(data.Stdout, "\r\n"); stdout != "" {
+			logContent += "\nstdout:\n" + stdout
+		}
 		{
-			callErr := fmt.Errorf("run shell: %w", err)
-			return nil, callErr.Error(), callErr
+			result := &toolshare.Result{Content: formatShellContent(data), Warnings: advice.warnings}
+			return result, logContent, nil
 		}
-	}
-	data := shellData{Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: exitCode}
-	logContent = fmt.Sprintf("exit_code=%d", exitCode)
-	if stderr := strings.TrimRight(data.Stderr, "\r\n"); stderr != "" {
-		logContent += "\nstderr:\n" + stderr
-	}
-	if stdout := strings.TrimRight(data.Stdout, "\r\n"); stdout != "" {
-		logContent += "\nstdout:\n" + stdout
-	}
-	{
-		result := &toolshare.Result{Content: formatShellContent(data), Warnings: advice.warnings}
-		return result, logContent, nil
-	}
+	}), nil
 }
 
 func decodeShellArgs(req toolshare.CallRequest) (shellArgs, string, error) {

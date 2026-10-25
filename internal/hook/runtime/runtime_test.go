@@ -29,13 +29,15 @@ import (
 type auditTestTool struct{ err error }
 
 func (auditTestTool) Name() string           { return "audit_test" }
-func (auditTestTool) Info() toolshare.Info        { return toolshare.Info{Name: "audit_test"} }
+func (auditTestTool) Info() toolshare.Info   { return toolshare.Info{Name: "audit_test"} }
 func (auditTestTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "audit_test"} }
-func (a auditTestTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
-	if a.err != nil {
-		return nil, a.err.Error(), a.err
-	}
-	return nil, "tool completed", nil
+func (a auditTestTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: a.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		if a.err != nil {
+			return nil, a.err.Error(), a.err
+		}
+		return nil, "tool completed", nil
+	}), nil
 }
 
 func TestPluginToolAuditOutcome(t *testing.T) {

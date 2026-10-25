@@ -29,14 +29,16 @@ func (t availabilityTestTool) Info() toolshare.Info {
 func (t availabilityTestTool) Schema() llm.ToolSchema {
 	return toolshare.NewBuilder(t.name).BuildSchema()
 }
-func (t availabilityTestTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
-	if t.calls != nil {
-		*t.calls++
-	}
-	{
-		result := &toolshare.Result{Content: "image"}
-		return result, result.Content, nil
-	}
+func (t availabilityTestTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		if t.calls != nil {
+			*t.calls++
+		}
+		{
+			result := &toolshare.Result{Content: "image"}
+			return result, result.Content, nil
+		}
+	}), nil
 }
 
 func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
@@ -85,7 +87,16 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 			if len(roots) != 1 || len(roots[0].Names) != 1 || roots[0].Names[0] != "image" {
 				t.Fatalf("roots=%+v", roots)
 			}
-			executed := manager.executePrepared(ctx, llm.ToolCallRequest{Name: "image", Arguments: `{}`}, manager.resolve(ctx, "image", nil, storage.SessionModeWork), nil, nil)
+			call := llm.ToolCallRequest{Name: "image", Arguments: `{}`}
+			resolved := manager.resolve(ctx, "image", nil, storage.SessionModeWork)
+			var preparedCall *toolshare.PreparedCall
+			if want {
+				preparedCall, err = manager.prepareCall(ctx, resolved, call)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			executed := manager.executePrepared(ctx, call, resolved, preparedCall, nil)
 			if (executed.Error == nil) != want {
 				t.Fatalf("execute=%+v", executed)
 			}

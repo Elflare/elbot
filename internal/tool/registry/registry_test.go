@@ -37,9 +37,11 @@ func (t fakeTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: t.name, Description: t.Info().Description, Parameters: map[string]any{"type": "object"}}
 }
 
-func (t fakeTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
-	result := &toolshare.Result{Content: "ok"}
-	return result, result.Content, nil
+func (t fakeTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		result := &toolshare.Result{Content: "ok"}
+		return result, result.Content, nil
+	}), nil
 }
 
 func TestRegistryRegisterList(t *testing.T) {

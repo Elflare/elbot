@@ -34,8 +34,10 @@ func (t backgroundPreloadTestTool) Schema() llm.ToolSchema {
 func (t backgroundPreloadTestTool) DiscoveryContent(context.Context) (string, bool, error) {
 	return "local instructions", false, t.err
 }
-func (backgroundPreloadTestTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
-	return &toolshare.Result{}, "", nil
+func (value backgroundPreloadTestTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		return &toolshare.Result{}, "", nil
+	}), nil
 }
 
 func TestBackgroundPreloadCommitsDeclarationsAndContinuationKeepsSet(t *testing.T) {

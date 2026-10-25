@@ -47,7 +47,7 @@ token_env = ["ELNIS_HOME_TOKEN"]
 
 `)
 
-	result, _, err := builtin.NewElwispCreatorTool(configBridge{configPath: appPath}).Call(context.Background(), toolshare.CallRequest{})
+	result, _, err := callTool(context.Background(), builtin.NewElwispCreatorTool(configBridge{configPath: appPath}), toolshare.CallRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestElwispCreatorGuideWarnsWhenConfigMissing(t *testing.T) {
 		t.Fatalf("config = %+v, err = %v", cfg, err)
 	}
 
-	result, _, err := builtin.NewElwispCreatorTool(configBridge{configPath: appPath}).Call(context.Background(), toolshare.CallRequest{})
+	result, _, err := callTool(context.Background(), builtin.NewElwispCreatorTool(configBridge{configPath: appPath}), toolshare.CallRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ models = ["model"]
 		t.Fatalf("second = %+v, %v", second, err)
 	}
 	tool := builtin.NewElwispCreatorTool(bridge)
-	result, _, err := tool.Call(t.Context(), toolshare.CallRequest{})
+	result, _, err := callTool(t.Context(), tool, toolshare.CallRequest{})
 	if err != nil || strings.Contains(result.Content, "dummy-private-token") {
 		t.Fatalf("guide = %+v, %v", result, err)
 	}

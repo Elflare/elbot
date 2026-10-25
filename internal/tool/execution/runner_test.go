@@ -128,40 +128,6 @@ func (runnerPreflightTool) PrepareCall(ctx context.Context, req toolshare.CallRe
 	return nil, fmt.Errorf("preflight rejected")
 }
 
-func (runnerPreflightTool) Call(ctx context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
-	{
-		result := &toolshare.Result{Content: "should not call"}
-		return result, result.Content, nil
-	}
-}
-
-type runnerShellPreflightTool struct{}
-
-func (runnerShellPreflightTool) Name() string { return "shell" }
-
-func (runnerShellPreflightTool) Info() toolshare.Info {
-	return toolshare.Info{Name: "shell", Risk: toolshare.RiskHigh}
-}
-
-func (runnerShellPreflightTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Name: "shell", Parameters: map[string]any{"type": "object"}}
-}
-
-func (runnerShellPreflightTool) AssessRisk(ctx context.Context, req toolshare.CallRequest) (toolshare.RiskAssessment, error) {
-	return toolshare.RiskAssessment{Level: toolshare.RiskHigh}, nil
-}
-
-func (runnerShellPreflightTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return nil, fmt.Errorf("protected file must use dedicated tool")
-}
-
-func (runnerShellPreflightTool) Call(ctx context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
-	{
-		result := &toolshare.Result{Content: "should not call"}
-		return result, result.Content, nil
-	}
-}
-
 type runnerContextPreflightTool struct{}
 
 func (runnerContextPreflightTool) Name() string { return "context_preflight" }
@@ -178,43 +144,18 @@ func (runnerContextPreflightTool) PrepareCall(ctx context.Context, req toolshare
 	if ctx.Value(runnerContextKey{}) != "prepared" {
 		return nil, fmt.Errorf("missing prepared context")
 	}
-	return nil, nil
-}
-
-func (runnerContextPreflightTool) Call(ctx context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
-	if ctx.Value(runnerContextKey{}) != "prepared" {
-		{
-			callErr := fmt.Errorf("missing prepared context during call")
-			return nil, callErr.Error(), callErr
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: toolshare.RiskLow}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		if ctx.Value(runnerContextKey{}) != "prepared" {
+			{
+				callErr := fmt.Errorf("missing prepared context during call")
+				return nil, callErr.Error(), callErr
+			}
 		}
-	}
-	{
-		result := &toolshare.Result{Content: "called"}
-		return result, result.Content, nil
-	}
-}
-
-type runnerRiskErrorTool struct{}
-
-func (runnerRiskErrorTool) Name() string { return "risk_error" }
-
-func (runnerRiskErrorTool) Info() toolshare.Info {
-	return toolshare.Info{Name: "risk_error", Risk: toolshare.RiskHigh}
-}
-
-func (runnerRiskErrorTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Name: "risk_error", Parameters: map[string]any{"type": "object"}}
-}
-
-func (runnerRiskErrorTool) AssessRisk(ctx context.Context, req toolshare.CallRequest) (toolshare.RiskAssessment, error) {
-	return toolshare.RiskAssessment{}, fmt.Errorf("risk parser failed")
-}
-
-func (runnerRiskErrorTool) Call(ctx context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
-	{
-		result := &toolshare.Result{Content: "called"}
-		return result, result.Content, nil
-	}
+		{
+			result := &toolshare.Result{Content: "called"}
+			return result, result.Content, nil
+		}
+	}), nil
 }
 
 type runnerImageTool struct{}
@@ -229,14 +170,16 @@ func (runnerImageTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "image_tool", Parameters: map[string]any{"type": "object"}}
 }
 
-func (runnerImageTool) Call(ctx context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
-	{
-		result := &toolshare.Result{Segments: []llm.MessageSegment{
-			{Type: llm.SegmentText, Text: "done"},
-			{Type: llm.SegmentImage, URL: "https://example.com/a.png"},
-		}}
-		return result, result.Content, nil
-	}
+func (value runnerImageTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		{
+			result := &toolshare.Result{Segments: []llm.MessageSegment{
+				{Type: llm.SegmentText, Text: "done"},
+				{Type: llm.SegmentImage, URL: "https://example.com/a.png"},
+			}}
+			return result, result.Content, nil
+		}
+	}), nil
 }
 
 type runnerHighRiskTool struct {
@@ -254,11 +197,13 @@ func (t runnerHighRiskTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: t.name, Parameters: map[string]any{"type": "object"}}
 }
 
-func (runnerHighRiskTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
-	{
-		result := &toolshare.Result{Content: "called"}
-		return result, result.Content, nil
-	}
+func (value runnerHighRiskTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		{
+			result := &toolshare.Result{Content: "called"}
+			return result, result.Content, nil
+		}
+	}), nil
 }
 
 func TestRunConfirmsOnlyAuthorizedHighRiskToolsForRegularUsers(t *testing.T) {
@@ -348,38 +293,6 @@ func TestRunSkipsConfirmationWhenPreflightFails(t *testing.T) {
 	}
 }
 
-func TestRunSkipsConfirmationWhenShellPreflightFails(t *testing.T) {
-	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if err := registry.Register(runnerShellPreflightTool{}); err != nil {
-		t.Fatal(err)
-	}
-	manager := newTestManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
-	deps := &runnerTestDeps{}
-	committer := &testToolCommitter{}
-	result := manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: committer,
-		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
-		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
-		Calls: []llm.ToolCallRequest{{
-			ID:        "call-1",
-			Name:      "shell",
-			Arguments: `{"cmd":"echo changed > memories.toml"}`,
-		}},
-	})
-	if deps.confirmed {
-		t.Fatal("shell preflight error should not ask for confirmation")
-	}
-	if len(result.Messages) != 1 {
-		t.Fatalf("messages = %d", len(result.Messages))
-	}
-	text := llm.SegmentsContentText(result.Messages[0].Segments)
-	if !strings.Contains(text, "tool call shell failed") || !strings.Contains(text, "dedicated tool") {
-		t.Fatalf("unexpected tool message: %s", text)
-	}
-	if len(committer.records) != 1 || committer.records["call-1"].Success {
-		t.Fatalf("expected recorded shell preflight error, got %#v", committer.records)
-	}
-}
-
 func TestRunPreparesToolContextBeforePreflightAndExecution(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	if err := registry.Register(runnerContextPreflightTool{}); err != nil {
@@ -428,29 +341,5 @@ func TestRunPreservesPolicyDenialFact(t *testing.T) {
 				t.Fatalf("missing denial fact: %v", committer.records)
 			}
 		})
-	}
-}
-
-func TestRunKeepsNonEditFileAssessRiskBehavior(t *testing.T) {
-	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if err := registry.Register(runnerRiskErrorTool{}); err != nil {
-		t.Fatal(err)
-	}
-	manager := newTestManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
-	deps := &runnerTestDeps{}
-	result := manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: &testToolCommitter{},
-		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
-		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
-		Calls: []llm.ToolCallRequest{{
-			ID:        "call-1",
-			Name:      "risk_error",
-			Arguments: `{}`,
-		}},
-	})
-	if len(result.Messages) != 1 {
-		t.Fatalf("messages = %d", len(result.Messages))
-	}
-	if got := llm.SegmentsContentText(result.Messages[0].Segments); !strings.Contains(got, "risk parser failed") {
-		t.Fatalf("tool result = %q", got)
 	}
 }

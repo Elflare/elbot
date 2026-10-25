@@ -4,7 +4,6 @@ package skill
 import toolshare "elbot/internal/tool/share"
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -16,8 +15,8 @@ import (
 	"time"
 
 	"elbot/internal/elyph"
+	"elbot/internal/fileops"
 	"elbot/internal/llm"
-	"elbot/internal/processenv"
 )
 
 const CreateElSkillName = "create_el_skill"
@@ -25,7 +24,7 @@ const CreateElSkillName = "create_el_skill"
 var skillNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
 
 type CreateElSkillTool struct {
-	Manager *Manager
+	manager *Manager
 }
 
 type createElSkillArgs struct {
@@ -38,7 +37,7 @@ type createElSkillArgs struct {
 }
 
 func NewCreateElSkillTool(manager *Manager) CreateElSkillTool {
-	return CreateElSkillTool{Manager: manager}
+	return CreateElSkillTool{manager: manager}
 }
 
 func (CreateElSkillTool) Name() string { return CreateElSkillName }
@@ -68,173 +67,130 @@ func (CreateElSkillTool) Schema() llm.ToolSchema {
 		BuildSchema()
 }
 
-func (t CreateElSkillTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
-	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+func (t CreateElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	var args createElSkillArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
 			{
 				callErr := fmt.Errorf("parse create_el_skill arguments: %w", err)
-				return nil, callErr.Error(), callErr
+				return nil, callErr
 			}
 		}
 	}
 	name := strings.TrimSpace(args.Name)
 	if err := validateSkillName(name); err != nil {
-		return nil, err.Error(), err
+		return nil, err
 	}
 	if args.Description = strings.TrimSpace(args.Description); args.Description == "" {
 		{
 			callErr := fmt.Errorf("description is required")
-			return nil, callErr.Error(), callErr
+			return nil, callErr
 		}
 	}
 	if _, err := parseRisk(args.Risk); err != nil {
-		return nil, err.Error(), err
+		return nil, err
 	}
 	goVersion := ""
 	if strings.TrimSpace(args.GoSource) != "" {
 		if err := validateGoSource(args.GoSource); err != nil {
-			return nil, err.Error(), err
+			return nil, err
 		}
 		var err error
-		goVersion, err = detectGoModVersion(ctx, t.Manager.ProcessEnv)
+		goVersion, err = detectGoModVersion(ctx, t.manager.processEnv)
 		if err != nil {
-			return nil, err.Error(), err
+			return nil, err
 		}
 	}
 	_, diagnostics, err := elyph.ValidateSkill(args.Elyph, name)
 	if err != nil {
-		return nil, err.Error(), err
+		return nil, err
 	}
 	args.Elyph = withElyphMetadata(args.Elyph, args.Description, args.Risk)
-	if _, exists := t.Manager.Registry.Get(name); exists {
+	if _, exists := t.manager.registry.Get(name); exists {
 		{
 			callErr := fmt.Errorf("tool or skill %q already exists", name)
-			return nil, callErr.Error(), callErr
+			return nil, callErr
 		}
 	}
-	root := filepath.Join(t.Manager.Root, "go", name)
+	root := filepath.Join(t.manager.root, "go", name)
 	if _, err := os.Stat(root); err == nil {
 		{
 			callErr := fmt.Errorf("skill directory %q already exists", root)
-			return nil, callErr.Error(), callErr
+			return nil, callErr
 		}
 	} else if err != nil && !os.IsNotExist(err) {
 		{
 			callErr := fmt.Errorf("stat skill directory: %w", err)
-			return nil, callErr.Error(), callErr
+			return nil, callErr
 		}
 	}
-	if err := os.MkdirAll(root, 0o755); err != nil {
-		{
-			callErr := fmt.Errorf("create skill directory: %w", err)
-			return nil, callErr.Error(), callErr
-		}
-	}
-	if err := os.WriteFile(filepath.Join(root, elyph.SkillFileName), []byte(args.Elyph), 0o644); err != nil {
-		{
-			callErr := fmt.Errorf("write %s: %w", elyph.SkillFileName, err)
-			return nil, callErr.Error(), callErr
-		}
-	}
+	files := make([]*fileops.PreparedFile, 0, 3)
+	contents := []struct{ path, content string }{{filepath.Join(root, elyph.SkillFileName), args.Elyph}}
 	if strings.TrimSpace(args.GoSource) != "" {
-		if err := os.WriteFile(filepath.Join(root, "main.go"), []byte(args.GoSource), 0o644); err != nil {
-			{
-				callErr := fmt.Errorf("write main.go: %w", err)
-				return nil, callErr.Error(), callErr
-			}
-		}
-		if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte(goModContent(name, goVersion)), 0o644); err != nil {
-			{
-				callErr := fmt.Errorf("write go.mod: %w", err)
-				return nil, callErr.Error(), callErr
-			}
-		}
-		binary := name
-		if runtime.GOOS == "windows" {
-			binary += ".exe"
-		}
-		timeout := 60 * time.Second
-		if args.TimeoutMS > 0 {
-			timeout = time.Duration(args.TimeoutMS) * time.Millisecond
-		}
-		runCtx, cancel := context.WithTimeout(ctx, timeout)
-		defer cancel()
-		cmd := t.Manager.ProcessEnv.CommandContext(runCtx, "go", "build", "-o", binary, ".")
-		cmd.Dir = root
-		var stdout bytes.Buffer
-		var stderr bytes.Buffer
-		cmd.Stdout = &stdout
-		cmd.Stderr = &stderr
-		if err := cmd.Run(); err != nil {
-			{
-				callErr := fmt.Errorf("go build failed: %w\nstdout:\n%s\nstderr:\n%s", err, truncateOutput(stdout.String()), truncateOutput(stderr.String()))
-				return nil, callErr.Error(), callErr
-			}
-		}
+		contents = append(contents, struct{ path, content string }{filepath.Join(root, "main.go"), args.GoSource}, struct{ path, content string }{filepath.Join(root, "go.mod"), goModContent(name, goVersion)})
 	}
-	if err := t.Manager.Reload(ctx); err != nil {
-		{
+	var preview strings.Builder
+	fmt.Fprintf(&preview, "创建 Skill：%s\n目录：%s\n", name, root)
+	for _, content := range contents {
+		file, err := fileops.PrepareFileWrite(ctx, content.path, content.content)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, file)
+		preview.WriteString(file.Preview().Diff)
+	}
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, preview.String(), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+		t.manager.writeMu.Lock()
+		defer t.manager.writeMu.Unlock()
+		if _, exists := t.manager.registry.Get(name); exists {
+			err := fmt.Errorf("tool or skill %q already exists", name)
+			return nil, err.Error(), err
+		}
+		if _, err := os.Stat(root); !os.IsNotExist(err) {
+			if err == nil {
+				err = fmt.Errorf("skill directory %q appeared after preparation", root)
+			}
+			return nil, err.Error(), err
+		}
+		for _, file := range files {
+			if _, err := file.Commit(ctx); err != nil {
+				return nil, err.Error(), err
+			}
+		}
+		if strings.TrimSpace(args.GoSource) != "" {
+			binary := name
+			if runtime.GOOS == "windows" {
+				binary += ".exe"
+			}
+			timeout := 60 * time.Second
+			if args.TimeoutMS > 0 {
+				timeout = time.Duration(args.TimeoutMS) * time.Millisecond
+			}
+			runCtx, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+			cmd := t.manager.processEnv.CommandContext(runCtx, "go", "build", "-o", binary, ".")
+			cmd.Dir = root
+			stdout := limitedOutput{limit: maxRunnerStdout}
+			stderr := limitedOutput{limit: maxRunnerOutput}
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+			if err := cmd.Run(); err != nil {
+				{
+					callErr := fmt.Errorf("go build failed: %w\nstdout:\n%s\nstderr:\n%s", err, truncateOutput(stdout.String()), truncateOutput(stderr.String()))
+					return nil, callErr.Error(), callErr
+				}
+			}
+		}
+		err := t.manager.reloadLocked(ctx)
+		t.manager.setReloadResult(err)
+		if err != nil {
 			callErr := fmt.Errorf("ELyph skill written but reload failed: %w", err)
 			return nil, callErr.Error(), callErr
 		}
-	}
-	{
 		result := &toolshare.Result{Content: appendElyphWarnings(fmt.Sprintf("created ELyph skill %s", name), diagnostics)}
 		return result, result.Content, nil
-	}
-}
-
-func detectGoModVersion(ctx context.Context, environments ...processenv.Environment) (string, error) {
-	var environment processenv.Environment
-	if len(environments) > 0 {
-		environment = environments[0]
-	}
-	goPath, err := environment.LookPath("go")
-	if err != nil {
-		return "", fmt.Errorf("system go executable not found; install Go and ensure it is in PATH before creating Go skill")
-	}
-	cmd := environment.CommandContext(ctx, goPath, "env", "GOVERSION")
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("detect go version: %w\nstderr:\n%s", err, truncateOutput(stderr.String()))
-	}
-	version, err := parseGoModVersion(stdout.String())
-	if err != nil {
-		return "", err
-	}
-	return version, nil
-}
-
-func parseGoModVersion(output string) (string, error) {
-	version := strings.TrimSpace(output)
-	if !strings.HasPrefix(version, "go") {
-		return "", fmt.Errorf("detect go version: unsupported go version output %q", version)
-	}
-	version = strings.TrimPrefix(version, "go")
-	parts := strings.Split(version, ".")
-	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
-		return "", fmt.Errorf("detect go version: unsupported go version output %q", strings.TrimSpace(output))
-	}
-	minor := parts[1]
-	for i, r := range minor {
-		if r < '0' || r > '9' {
-			minor = minor[:i]
-			break
-		}
-	}
-	if minor == "" {
-		return "", fmt.Errorf("detect go version: unsupported go version output %q", strings.TrimSpace(output))
-	}
-	return parts[0] + "." + minor, nil
-}
-
-func goModContent(name, version string) string {
-	return fmt.Sprintf("module elbot-skill/%s\n\ngo %s\n", name, version)
+	}), nil
 }
 
 func validateSkillName(name string) error {
@@ -251,13 +207,6 @@ func isWindowsReservedName(name string) bool {
 	base := strings.ToUpper(strings.TrimSpace(name))
 	reserved := map[string]bool{"CON": true, "PRN": true, "AUX": true, "NUL": true, "COM1": true, "COM2": true, "COM3": true, "COM4": true, "COM5": true, "COM6": true, "COM7": true, "COM8": true, "COM9": true, "LPT1": true, "LPT2": true, "LPT3": true, "LPT4": true, "LPT5": true, "LPT6": true, "LPT7": true, "LPT8": true, "LPT9": true}
 	return reserved[base]
-}
-
-func validateGoSource(source string) error {
-	if !strings.Contains(source, "package main") {
-		return fmt.Errorf("go_source must contain package main")
-	}
-	return nil
 }
 
 func withElyphMetadata(text, description, risk string) string {

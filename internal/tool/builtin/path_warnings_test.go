@@ -17,12 +17,12 @@ func TestSendFileAbsoluteWarningBelongsToForeground(t *testing.T) {
 	}
 	args, _ := json.Marshal(map[string]string{"source": path})
 	tool := NewSendFileTool(nil)
-	result, _, err := tool.Call(t.Context(), share.CallRequest{Arguments: args})
+	result, _, err := callTool(t.Context(), tool, share.CallRequest{Arguments: args})
 	if err != nil || len(result.Warnings) != 1 || result.Warnings[0] != share.AbsolutePathWorkspaceWarning {
 		t.Fatalf("foreground=%+v err=%v", result, err)
 	}
 	ctx := contextinfo.WithBackgroundKind(t.Context(), contextinfo.BackgroundKindElnis)
-	result, _, err = tool.Call(ctx, share.CallRequest{Arguments: args})
+	result, _, err = callTool(ctx, tool, share.CallRequest{Arguments: args})
 	if err != nil || len(result.Warnings) != 0 {
 		t.Fatalf("background=%+v err=%v", result, err)
 	}

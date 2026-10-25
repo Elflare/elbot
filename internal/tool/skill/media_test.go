@@ -43,14 +43,11 @@ func TestSkillMediaBridge(t *testing.T) {
 		t.Fatal(err)
 	}
 	environment := processenv.Environment{}.Overlay(map[string]string{"ELBOT_SKILL_TEST_HELPER": "media"})
-	catalog := NewCatalog()
-	catalog.Replace([]Record{{Name: "media", Kind: KindGo, Root: dir, BinaryPath: binary}})
-	runner := NewGoRunner(catalog, environment)
-	runner.Media = mediaRuntime
+	catalog := newCatalog()
+	catalog.Replace([]record{{Name: "media", Kind: KindGo, Root: dir, BinaryPath: binary}})
+	runner := NewGoRunner(&Manager{catalog: catalog, processEnv: environment, media: mediaRuntime})
 	manifest := AgentSkillManifest{Command: []string{binary}, Args: map[string]string{"input": "--input", "inputs": "--inputs", "mode": "--mode"}, Parameters: map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "media"}, "inputs": map[string]any{"type": "array", "items": map[string]any{"type": "media"}, "maxItems": 10}, "mode": map[string]any{"type": "string"}}}}
-	command := NewCommandTool(Record{Name: "command", Kind: KindAgent, Root: dir, Manifest: manifest})
-	command.Media = mediaRuntime
-	command.ProcessEnv = environment
+	command := newCommandTool(record{Name: "command", Kind: KindAgent, Root: dir, Manifest: manifest}, mediaRuntime, environment)
 	schema := manifest.Schema("command", "")
 	props := schema.Parameters["properties"].(map[string]any)
 	projectedInput := props["input"].(map[string]any)
@@ -117,14 +114,23 @@ func TestSkillMediaBridge(t *testing.T) {
 							timeout = 100
 						}
 						raw, _ = json.Marshal(map[string]any{"skill_name": "media", "timeout_ms": timeout, "payload": map[string]any{"mode": mode, "media_inputs": []toolshare.MediaInput{{MediaID: item.ID}}}})
-						result, _, err = runner.call(runCtx, toolshare.CallRequest{Arguments: raw}, execute)
+						args, parseErr := parseGoRunnerArgs(raw)
+						if parseErr != nil {
+							t.Fatal(parseErr)
+						}
+						record, _ := catalog.Get("media")
+						result, _, err = runner.call(runCtx, args, record, execute)
 					} else {
 						current := command
 						if mode == "wait" {
-							current.Manifest.TimeoutSeconds = 1
+							current.manifest.TimeoutSeconds = 1
 						}
 						raw, _ = json.Marshal(map[string]any{"input": item.ID, "mode": mode})
-						result, _, err = current.call(runCtx, toolshare.CallRequest{Arguments: raw}, execute)
+						args, parseErr := commandArguments(current.manifest, raw)
+						if parseErr != nil {
+							t.Fatal(parseErr)
+						}
+						result, _, err = current.call(runCtx, raw, args, execute)
 					}
 					if mode == "ok" || mode == "large" {
 						if err != nil || len(result.Segments) != 2 {
@@ -185,16 +191,15 @@ func TestSkillMediaBridge(t *testing.T) {
 			go func() {
 				defer close(exited)
 				if kind == "go" {
-					current := runner
-					current.ProcessEnv = environment
+					current := NewGoRunner(&Manager{catalog: catalog, processEnv: environment, media: mediaRuntime})
 					raw, _ := json.Marshal(map[string]any{"skill_name": "media", "payload": map[string]any{"mode": "wait", "media_inputs": []toolshare.MediaInput{{MediaID: item.ID}}}})
-					_, _, err := current.Call(runCtx, toolshare.CallRequest{Arguments: raw})
+					_, _, err := callTool(runCtx, current, toolshare.CallRequest{Arguments: raw})
 					done <- err
 				} else {
 					current := command
-					current.ProcessEnv = environment
+					current.processEnv = environment
 					raw, _ := json.Marshal(map[string]any{"input": item.ID, "mode": "wait"})
-					_, _, err := current.Call(runCtx, toolshare.CallRequest{Arguments: raw})
+					_, _, err := callTool(runCtx, current, toolshare.CallRequest{Arguments: raw})
 					done <- err
 				}
 			}()

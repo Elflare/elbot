@@ -51,72 +51,56 @@ func sendFileBuilder() *toolshare.Builder {
 		String("mime_type", "可选，文件 MIME 类型；不填时按扩展名推断。")
 }
 
-func (t SendFileTool) AssessRisk(ctx context.Context, req toolshare.CallRequest) (toolshare.RiskAssessment, error) {
+func (t SendFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	args, err := parseSendFileArgs(req)
 	if err != nil {
-		return toolshare.RiskAssessment{}, err
+		return nil, err
 	}
 	source := args.source()
 	if source == "" {
-		return toolshare.RiskAssessment{}, fmt.Errorf("source is required")
+		return nil, fmt.Errorf("source is required")
 	}
+	assessment := toolshare.RiskAssessment{Level: t.Info().Risk}
+	var resolved workspace.ResolvedPath
 	if strings.HasPrefix(source, toolmedia.IDPrefix) {
 		if !toolmedia.ValidID(source) {
-			return toolshare.RiskAssessment{}, fmt.Errorf("invalid media ID")
+			return nil, fmt.Errorf("invalid media ID")
 		}
-		return toolshare.RiskAssessment{Level: toolshare.RiskMedium}, nil
+	} else if !delivery.IsHTTPMediaSource(source) {
+		localSource, err := localSourcePath(source)
+		if err != nil {
+			return nil, err
+		}
+		resolved, err = workspace.ResolveWorkspacePath(ctx, localSource, workspace.PathResolveOptions{RequireRegularFile: true})
+		if err != nil {
+			return nil, err
+		}
+		if resolved.WasAbs {
+			assessment = toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"发送外部文件需要确认"}}
+		}
+		source = resolved.Path
 	}
-	if delivery.IsHTTPMediaSource(source) {
-		return toolshare.RiskAssessment{Level: toolshare.RiskMedium}, nil
-	}
-	localSource, err := localSourcePath(source)
-	if err != nil {
-		return toolshare.RiskAssessment{}, err
-	}
-	resolved, err := workspace.ResolveWorkspacePath(ctx, localSource, workspace.PathResolveOptions{RequireRegularFile: true})
-	if err != nil {
-		return toolshare.RiskAssessment{}, err
-	}
-	if resolved.WasAbs {
-		return toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"发送外部文件需要确认"}}, nil
-	}
-	return toolshare.RiskAssessment{Level: toolshare.RiskMedium}, nil
-}
-
-func (t SendFileTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
-	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
-	args, err := parseSendFileArgs(req)
-	if err != nil {
-		return nil, err.Error(), err
-	}
-	source := args.source()
-	if source == "" {
+	return toolshare.NewPreparedCall(req, assessment, fmt.Sprintf("发送文件：%s", source), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+		backgroundKind, _ := contextinfo.BackgroundKindFromContext(ctx)
+		out, warnings, label, err := t.buildOutput(ctx, args, source, resolved)
+		if err != nil {
+			return nil, err.Error(), err
+		}
+		if backgroundKind == contextinfo.BackgroundKindCron {
+			if info, ok := contextinfo.ConversationFromContext(ctx); ok && strings.TrimSpace(info.Source.Platform) != "" {
+				out.Target = delivery.Target{Platform: info.Source.Platform, Superadmins: true}
+			}
+		}
 		{
-			callErr := fmt.Errorf("source is required")
-			return nil, callErr.Error(), callErr
+			result := &toolshare.Result{Content: fmt.Sprintf("已发送文件：%s", label), Warnings: warnings, Outputs: []delivery.Output{out}}
+			return result, fmt.Sprintf("file output prepared: %s", label), nil
 		}
-	}
-	backgroundKind, _ := contextinfo.BackgroundKindFromContext(ctx)
-	out, warnings, label, err := t.buildOutput(ctx, args, source)
-	if err != nil {
-		return nil, err.Error(), err
-	}
-	if backgroundKind == contextinfo.BackgroundKindCron {
-		if info, ok := contextinfo.ConversationFromContext(ctx); ok && strings.TrimSpace(info.Source.Platform) != "" {
-			out.Target = delivery.Target{Platform: info.Source.Platform, Superadmins: true}
-		}
-	}
-	{
-		result := &toolshare.Result{Content: fmt.Sprintf("已发送文件：%s", label), Warnings: warnings, Outputs: []delivery.Output{out}}
-		return result, fmt.Sprintf("file output prepared: %s", label), nil
-	}
+	}), nil
 }
 
-func (t SendFileTool) buildOutput(ctx context.Context, args sendFileArgs, source string) (delivery.Output, []string, string, error) {
+func (t SendFileTool) buildOutput(ctx context.Context, args sendFileArgs, source string, resolved workspace.ResolvedPath) (delivery.Output, []string, string, error) {
 	if strings.HasPrefix(source, toolmedia.IDPrefix) {
-		if !toolmedia.ValidID(source) {
-			return delivery.Output{}, nil, "", fmt.Errorf("invalid media ID")
-		}
 		item, err := t.media.Metadata(ctx, source)
 		if err != nil {
 			return delivery.Output{}, nil, "", err
@@ -136,14 +120,6 @@ func (t SendFileTool) buildOutput(ctx context.Context, args sendFileArgs, source
 		out.Source.MIMEType = mimeType
 		out.Name = name
 		return out, nil, name, nil
-	}
-	localSource, err := localSourcePath(source)
-	if err != nil {
-		return delivery.Output{}, nil, "", err
-	}
-	resolved, err := workspace.ResolveWorkspacePath(ctx, localSource, workspace.PathResolveOptions{RequireRegularFile: true})
-	if err != nil {
-		return delivery.Output{}, nil, "", err
 	}
 	name := safeFileName(firstNonEmptyString(args.Name, filepath.Base(resolved.Path)))
 	mimeType := firstNonEmptyString(args.MIMEType, mime.TypeByExtension(filepath.Ext(name)))

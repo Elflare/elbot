@@ -53,7 +53,7 @@ func TestElwispCreatorToolSchemaHasNoParameters(t *testing.T) {
 }
 
 func TestElwispCreatorToolCallReturnsGuide(t *testing.T) {
-	result, _, err := NewElwispCreatorTool(elwispCreatorConfigStub{}).Call(context.Background(), toolshare.CallRequest{})
+	result, _, err := callTool(context.Background(), NewElwispCreatorTool(elwispCreatorConfigStub{}), toolshare.CallRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestElwispCreatorConfigWarningsBelongToGuide(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tool := NewElwispCreatorTool(elwispCreatorConfigStub{config: tc.config, err: tc.err})
-			result, _, err := tool.Call(t.Context(), toolshare.CallRequest{})
+			result, _, err := callTool(t.Context(), tool, toolshare.CallRequest{})
 			if err != nil {
 				t.Fatal(err)
 			}

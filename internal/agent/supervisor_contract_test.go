@@ -16,7 +16,6 @@ import (
 	"elbot/internal/modelmgr"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
-	
 )
 
 type contractTool struct{ calls int }
@@ -28,9 +27,11 @@ func (v *contractTool) Info() toolshare.Info {
 func (v *contractTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: v.Name(), Parameters: map[string]any{"type": "object", "properties": map[string]any{}}}
 }
-func (v *contractTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
-	v.calls++
-	return &toolshare.Result{Content: "contract result"}, "", nil
+func (v *contractTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: v.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		v.calls++
+		return &toolshare.Result{Content: "contract result"}, "", nil
+	}), nil
 }
 
 type contractChat struct {

@@ -17,7 +17,6 @@ import (
 
 	"elbot/internal/llm"
 	"elbot/internal/processenv"
-	
 )
 
 const (
@@ -147,17 +146,13 @@ func webExtractBuilder() *toolshare.Builder {
 		Boolean("force_refresh", "是否跳过缓存并重新获取网页，默认 false；刷新成功后会覆盖对应缓存。")
 }
 
-func (t *WebExtractTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
-	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
-	if err := ctx.Err(); err != nil {
-		return nil, err.Error(), err
-	}
+func (t *WebExtractTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	var args webExtractArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
 			{
 				callErr := fmt.Errorf("parse web_extract arguments: %w", err)
-				return nil, callErr.Error(), callErr
+				return nil, callErr
 			}
 		}
 	}
@@ -165,7 +160,7 @@ func (t *WebExtractTool) Call(ctx context.Context, req toolshare.CallRequest) (_
 	if url == "" {
 		{
 			callErr := fmt.Errorf("url is required")
-			return nil, callErr.Error(), callErr
+			return nil, callErr
 		}
 	}
 	selector := strings.TrimSpace(args.RemoveSelector)
@@ -174,7 +169,7 @@ func (t *WebExtractTool) Call(ctx context.Context, req toolshare.CallRequest) (_
 	}
 	proxy, err := resolveExtractProxy(t.processEnv, args.Proxy)
 	if err != nil {
-		return nil, err.Error(), err
+		return nil, err
 	}
 	cache := t.cache
 	useJina := true
@@ -196,22 +191,25 @@ func (t *WebExtractTool) Call(ctx context.Context, req toolshare.CallRequest) (_
 	if args.TimeoutMS > 0 {
 		timeout = time.Duration(args.TimeoutMS) * time.Millisecond
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	entry, cached, err := cache.getOrFetch(ctx, key, args.ForceRefresh, func(fetchCtx context.Context) (cachedExtract, error) {
-		if useJina && hasJinaKey {
-			return t.fetchJina(fetchCtx, apiKey, url, selector, proxy)
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("提取网页：%s", url), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		entry, cached, err := cache.getOrFetch(ctx, key, args.ForceRefresh, func(fetchCtx context.Context) (cachedExtract, error) {
+			if useJina && hasJinaKey {
+				return t.fetchJina(fetchCtx, apiKey, url, selector, proxy)
+			}
+			return t.fetchDirect(fetchCtx, url, proxy)
+		})
+		if err != nil {
+			return nil, err.Error(), err
 		}
-		return t.fetchDirect(fetchCtx, url, proxy)
-	})
-	if err != nil {
-		return nil, err.Error(), err
-	}
-	data := sliceExtract(entry, args.Offset, args.MaxChars, cached)
-	{
-		result := &toolshare.Result{Content: formatExtractContent(data)}
-		return result, fmt.Sprintf("url=%s range=%d-%d/%d cached=%t source=%s\n%s\n%s", data.URL, data.Offset, data.Offset+data.ReturnedChars, data.TotalChars, data.Cached, data.Source, data.Title, data.Content), nil
-	}
+		data := sliceExtract(entry, args.Offset, args.MaxChars, cached)
+		{
+			result := &toolshare.Result{Content: formatExtractContent(data)}
+			return result, fmt.Sprintf("url=%s range=%d-%d/%d cached=%t source=%s\n%s\n%s", data.URL, data.Offset, data.Offset+data.ReturnedChars, data.TotalChars, data.Cached, data.Source, data.Title, data.Content), nil
+		}
+	}), nil
 }
 
 func (t *WebExtractTool) fetchJina(ctx context.Context, apiKey, targetURL, selector string, proxy extractProxyConfig) (cachedExtract, error) {

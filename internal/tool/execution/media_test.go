@@ -29,12 +29,14 @@ func (t *mediaArgumentRecorder) Info() toolshare.Info {
 func (t *mediaArgumentRecorder) Schema() llm.ToolSchema {
 	return toolshare.NewBuilder(t.Name()).BuildSchema()
 }
-func (t *mediaArgumentRecorder) Call(_ context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
-	t.received = string(req.Arguments)
-	{
-		result := &toolshare.Result{Content: "ok"}
-		return result, result.Content, nil
-	}
+func (t *mediaArgumentRecorder) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		t.received = string(req.Arguments)
+		{
+			result := &toolshare.Result{Content: "ok"}
+			return result, result.Content, nil
+		}
+	}), nil
 }
 
 type failingMediaTool struct{}
@@ -46,11 +48,13 @@ func (failingMediaTool) Info() toolshare.Info {
 func (failingMediaTool) Schema() llm.ToolSchema {
 	return toolshare.NewBuilder("failing_media").BuildSchema()
 }
-func (failingMediaTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
-	{
-		callErr := errors.New("tool failed")
-		return nil, callErr.Error(), callErr
-	}
+func (value failingMediaTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		{
+			callErr := errors.New("tool failed")
+			return nil, callErr.Error(), callErr
+		}
+	}), nil
 }
 
 func TestRunValidatesExactMediaArguments(t *testing.T) {
@@ -130,10 +134,11 @@ func TestMediaArgumentsRemainExplicit(t *testing.T) {
 	}
 	call := llm.ToolCallRequest{Name: target.Name(), Arguments: arguments}
 	resolved := resolvedTool{ResultStatus: events.ResultSucceeded, Native: target}
-	if _, err := manager.assessRisk(context.Background(), resolved, call); err != nil {
+	prepared, err := manager.prepareCall(context.Background(), resolved, call)
+	if err != nil {
 		t.Fatal(err)
 	}
-	result := manager.executePrepared(context.Background(), call, resolved, nil, nil)
+	result := manager.executePrepared(context.Background(), call, resolved, prepared, nil)
 	if result.Error != nil {
 		t.Fatal(result.Error)
 	}

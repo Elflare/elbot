@@ -58,7 +58,7 @@ func (f *rollbackFixture) write(t *testing.T, path, text string) {
 		args["expected_revision"] = fileops.ContentRevision(data)
 	}
 	raw, _ := json.Marshal(args)
-	result, _, err := f.edit.Call(f.ctx(), toolshare.CallRequest{Arguments: raw})
+	result, _, err := callTool(f.ctx(), f.edit, toolshare.CallRequest{Arguments: raw})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,15 +83,15 @@ func TestRollbackToolPathOnlyAndWorkspace(t *testing.T) {
 		t.Fatalf("schema: %#v", params)
 	}
 	for _, raw := range []string{`{}`, `{"path":"file","id":1}`, `{"path":"file","action":"rollback"}`} {
-		if _, _, err := f.rollback.Call(f.ctx(), toolshare.CallRequest{Arguments: json.RawMessage(raw)}); err == nil {
+		if _, _, err := callTool(f.ctx(), f.rollback, toolshare.CallRequest{Arguments: json.RawMessage(raw)}); err == nil {
 			t.Fatalf("accepted %s", raw)
 		}
 	}
 	f.workspace.dir = t.TempDir()
-	if _, _, err := f.rollback.Call(f.ctx(), rollbackRequest("file")); err == nil {
+	if _, _, err := callTool(f.ctx(), f.rollback, rollbackRequest("file")); err == nil {
 		t.Fatal("relative path ignored current workspace")
 	}
-	result, _, err := f.rollback.Call(f.ctx(), rollbackRequest(filepath.Join(firstDir, "file")))
+	result, _, err := callTool(f.ctx(), f.rollback, rollbackRequest(filepath.Join(firstDir, "file")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestRollbackToolPreflightPinsRecordAndWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	detail := prepared.RiskDetail()
+	detail := prepared.Preview()
 	if !strings.Contains(detail, "删除本次新建文件") {
 		t.Fatalf("detail: %s", detail)
 	}
@@ -143,11 +143,11 @@ func TestRollbackToolPermissionsAndSessionExpiry(t *testing.T) {
 	f.write(t, "file", "new")
 	ctx := f.ctx()
 	userCtx := contextinfo.WithActor(ctx, contextinfo.Actor{ID: "user", Role: contextinfo.RoleUser})
-	if _, _, err := f.rollback.Call(userCtx, rollbackRequest("file")); err == nil || !strings.Contains(err.Error(), "superadmin") {
+	if _, _, err := callTool(userCtx, f.rollback, rollbackRequest("file")); err == nil || !strings.Contains(err.Error(), "superadmin") {
 		t.Fatalf("user: %v", err)
 	}
 	background := workspacepath.WithPathScope(contextinfo.WithBackgroundKind(ctx, ""), workspacepath.PathScope{Dir: f.workspace.dir, Restricted: true})
-	if _, _, err := f.rollback.Call(background, rollbackRequest("file")); err == nil {
+	if _, _, err := callTool(background, f.rollback, rollbackRequest("file")); err == nil {
 		t.Fatal("background rollback allowed")
 	}
 	if session, err := f.service.EditSession(background); err != nil || session != nil {
@@ -155,10 +155,10 @@ func TestRollbackToolPermissionsAndSessionExpiry(t *testing.T) {
 	}
 	f.binding.valid.Store(false)
 	f.binding = newRollbackTestBinding()
-	if _, _, err := f.rollback.Call(f.service.WithBinding(ctx, f.binding), rollbackRequest("file")); !errors.Is(err, fileops.ErrRollbackExpired) {
+	if _, _, err := callTool(f.service.WithBinding(ctx, f.binding), f.rollback, rollbackRequest("file")); !errors.Is(err, fileops.ErrRollbackExpired) {
 		t.Fatalf("lease revived: %v", err)
 	}
-	if _, _, err := f.rollback.Call(f.ctx(), rollbackRequest("file")); !errors.Is(err, fileops.ErrRollbackNotFound) {
+	if _, _, err := callTool(f.ctx(), f.rollback, rollbackRequest("file")); !errors.Is(err, fileops.ErrRollbackNotFound) {
 		t.Fatalf("record revived: %v", err)
 	}
 }
@@ -177,12 +177,12 @@ func TestRollbackToolFileGuardChecksActualTarget(t *testing.T) {
 	}
 	guard := NewFileGuard(FileGuardRule{ExactPath: target, WriteError: "protected target"})
 	f.service.CheckWrite = guard.CheckWrite
-	if _, _, err := f.rollback.Call(f.ctx(), rollbackRequest(link)); err == nil || !strings.Contains(err.Error(), "protected target") {
+	if _, _, err := callTool(f.ctx(), f.rollback, rollbackRequest(link)); err == nil || !strings.Contains(err.Error(), "protected target") {
 		t.Fatalf("guard: %v", err)
 	}
 	f.edit.FileGuard = guard
 	raw, _ := json.Marshal(map[string]any{"path": link, "expected_revision": fileops.ContentRevision([]byte("two")), "edits": []map[string]any{{"operation": "overwrite", "new_text": "three"}}})
-	if _, _, err := f.edit.Call(f.ctx(), toolshare.CallRequest{Arguments: raw}); err == nil || !strings.Contains(err.Error(), "protected target") {
+	if _, _, err := callTool(f.ctx(), f.edit, toolshare.CallRequest{Arguments: raw}); err == nil || !strings.Contains(err.Error(), "protected target") {
 		t.Fatalf("edit guard: %v", err)
 	}
 	records, _ := f.service.List(f.ctx())

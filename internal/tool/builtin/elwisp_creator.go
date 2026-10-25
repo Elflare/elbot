@@ -57,16 +57,14 @@ func (ElwispCreatorTool) Schema() llm.ToolSchema {
 		BuildSchema()
 }
 
-func (t ElwispCreatorTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
-	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
-	_ = req
-	if err := ctx.Err(); err != nil {
-		return nil, err.Error(), err
-	}
-	{
-		result := &toolshare.Result{Content: buildElwispCreatorGuide(t.config.ElwispCreatorConfig()), NeedsElyphRules: true}
-		return result, "elwisp_creator guide returned", nil
-	}
+func (t ElwispCreatorTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+		{
+			result := &toolshare.Result{Content: buildElwispCreatorGuide(t.config.ElwispCreatorConfig()), NeedsElyphRules: true}
+			return result, "elwisp_creator guide returned", nil
+		}
+	}), nil
 }
 
 func buildElwispCreatorGuide(cfg ElwispCreatorConfig, err error) string {

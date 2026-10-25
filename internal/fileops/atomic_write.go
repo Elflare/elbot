@@ -1,46 +1,10 @@
 package fileops
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 )
-
-// WriteFileWithRevision commits prepared bytes only while the existing target
-// still matches the approved revision. It uses the same bounded source size as
-// the memory and skill editors; it does not generate another diff.
-func WriteFileWithRevision(ctx context.Context, path, target, expectedRevision string, data []byte) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if err := checkFileTarget(path, target, false); err != nil {
-		return err
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return err
-	}
-	if info.Size() > MaxFileSize {
-		return fmt.Errorf("file too large: %d bytes exceeds %d", info.Size(), MaxFileSize)
-	}
-	result, err := readRevisionBytes(path, info.Size())
-	if err != nil {
-		return err
-	}
-	if ContentRevision(result) != expectedRevision {
-		return fmt.Errorf("file changed after preflight")
-	}
-	return atomicWriteFile(path, data, info.Mode(), func() error {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err := checkFileTarget(path, target, false); err != nil {
-			return err
-		}
-		return checkFileState(path, false, info)
-	})
-}
 
 func AtomicWriteFile(path string, data []byte, mode os.FileMode) error {
 	return atomicWriteFile(path, data, mode, nil)

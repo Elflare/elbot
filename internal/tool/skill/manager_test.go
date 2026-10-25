@@ -89,10 +89,10 @@ input = "--input"
 				t.Fatalf("registered skill = %#v, want risk %s", target, tc.risk)
 			}
 			if tc.callable {
-				if _, ok := target.(CommandTool); !ok {
+				if _, ok := target.(commandTool); !ok {
 					t.Fatalf("registered type = %T, want CommandTool", target)
 				}
-			} else if _, ok := target.(Descriptor); !ok {
+			} else if _, ok := target.(descriptor); !ok {
 				t.Fatalf("registered type = %T, want Descriptor", target)
 			}
 		})
@@ -112,17 +112,17 @@ func TestManagerLoadsMarkdownDetailOnDemand(t *testing.T) {
 	if !ok {
 		t.Fatal("docx should be registered")
 	}
-	descriptor, ok := candidate.(Descriptor)
+	descriptor, ok := candidate.(descriptor)
 	if !ok {
 		t.Fatalf("tool type = %T, want Descriptor", candidate)
 	}
-	if descriptor.Record.Detail != "" || descriptor.Record.DetailPath != filepath.Join(dir, "SKILL.md") {
-		t.Fatalf("record detail should not be cached: %#v", descriptor.Record)
+	if descriptor.record.Detail != "" || descriptor.record.DetailPath != filepath.Join(dir, "SKILL.md") {
+		t.Fatalf("record detail should not be cached: %#v", descriptor.record)
 	}
 
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Updated DOCX")
 	args, _ := json.Marshal(map[string]string{"name": "docx"})
-	result, _, err := discovery.NewDiscoverTool(discovery.NewResolver(registry)).Call(context.Background(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,17 +150,17 @@ input = "--input"
 	if !ok {
 		t.Fatal("docx should be registered")
 	}
-	command, ok := candidate.(CommandTool)
+	command, ok := candidate.(commandTool)
 	if !ok {
 		t.Fatalf("tool type = %T, want CommandTool", candidate)
 	}
-	if command.Record.Detail != "" || command.Record.DetailPath == "" {
-		t.Fatalf("callable skill detail should not be cached: %#v", command.Record)
+	if command.record.Detail != "" || command.record.DetailPath == "" {
+		t.Fatalf("callable skill detail should not be cached: %#v", command.record)
 	}
 
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Updated callable DOCX")
 	args, _ := json.Marshal(map[string]string{"name": "docx"})
-	result, _, err := discovery.NewDiscoverTool(discovery.NewResolver(registry)).Call(context.Background(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestMarkdownDetailReadFailureReturnsDiscoveryError(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]string{"name": "docx"})
-	_, _, err := discovery.NewDiscoverTool(discovery.NewResolver(registry)).Call(context.Background(), toolshare.CallRequest{Arguments: args})
+	_, _, err := callTool(context.Background(), discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "read SKILL.md") {
 		t.Fatalf("discovery error = %v, want SKILL.md read failure", err)
 	}
@@ -204,7 +204,7 @@ func TestPolicyOnlyAgentSkillHiddenFromNormalUserDiscovery(t *testing.T) {
 	actor := contextinfo.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: contextinfo.RoleUser}
 	ctx := contextinfo.WithActor(context.Background(), actor)
 	discover := discovery.NewDiscoverTool(discovery.NewResolver(registry))
-	result, _, err := discover.Call(ctx, toolshare.CallRequest{})
+	result, _, err := callTool(ctx, discover, toolshare.CallRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestPolicyOnlyAgentSkillHiddenFromNormalUserDiscovery(t *testing.T) {
 		t.Fatalf("private skill should be hidden from normal user: %s", result.Data)
 	}
 	args, _ := json.Marshal(map[string]string{"name": "private_doc"})
-	if _, _, err := discover.Call(ctx, toolshare.CallRequest{Arguments: args}); err == nil {
+	if _, _, err := callTool(ctx, discover, toolshare.CallRequest{Arguments: args}); err == nil {
 		t.Fatal("expected normal user detail query to be denied")
 	}
 }
@@ -234,7 +234,7 @@ superadmin_only = true
 	superadmin := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
 	ctx := contextinfo.WithActor(context.Background(), superadmin)
 	args, _ := json.Marshal(map[string]string{"name": "private_doc"})
-	result, _, err := discovery.NewDiscoverTool(discovery.NewResolver(registry)).Call(ctx, toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(ctx, discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +354,7 @@ func TestManagerRemoveDeletesDirectoryAndReloads(t *testing.T) {
 }
 
 func TestAgentDescriptorDetailWithoutActor(t *testing.T) {
-	d := NewDescriptor(record{Name: "docx", Detail: "# DOCX", Kind: KindAgent})
+	d := newDescriptor(record{Name: "docx", Detail: "# DOCX", Kind: KindAgent})
 	if d.Detail() != "# DOCX" || d.DetailBlock().Content != "# DOCX" || len(d.ActivateTools()) != 1 || d.ActivateTools()[0] != AgentSkillManagerName {
 		t.Fatalf("detail=%q activate=%#v", d.Detail(), d.ActivateTools())
 	}
@@ -368,7 +368,7 @@ func TestAgentSkillCreatorNoticeDiscovery(t *testing.T) {
 			record.ManifestFound = true
 			record.ManifestError = "invalid manifest"
 		}
-		if err := registry.Register(NewDescriptor(record)); err != nil {
+		if err := registry.Register(newDescriptor(record)); err != nil {
 			t.Fatal(err)
 		}
 		discover := discovery.NewDiscoverTool(discovery.NewResolver(registry))
@@ -378,7 +378,7 @@ func TestAgentSkillCreatorNoticeDiscovery(t *testing.T) {
 				if role != "" {
 					ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: role})
 				}
-				result, _, err := discover.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(`{"name":"docx"}`)})
+				result, _, err := callTool(ctx, discover, toolshare.CallRequest{Arguments: json.RawMessage(`{"name":"docx"}`)})
 				if err != nil {
 					t.Fatal(err)
 				}

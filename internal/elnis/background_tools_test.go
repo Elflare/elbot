@@ -71,6 +71,8 @@ func (t backgroundDeclarationTool) Info() toolshare.Info {
 	return toolshare.Info{Name: t.name, Risk: toolshare.RiskLow}
 }
 func (t backgroundDeclarationTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: t.name} }
-func (backgroundDeclarationTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
-	return &toolshare.Result{}, "", nil
+func (value backgroundDeclarationTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		return &toolshare.Result{}, "", nil
+	}), nil
 }

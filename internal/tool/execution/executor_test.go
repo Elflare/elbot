@@ -86,21 +86,23 @@ type partialResultTool struct {
 	err error
 }
 
-func (p partialResultTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
-	{
-		result, callErr := &toolshare.Result{Content: "completed first action", Data: []byte(`{"partial":true}`)}, p.err
-		logContent := ""
-		if result != nil {
-			logContent = result.Content
-		}
-		if callErr != nil {
-			if logContent != "" {
-				logContent += "\n"
+func (p partialResultTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: p.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		{
+			result, callErr := &toolshare.Result{Content: "completed first action", Data: []byte(`{"partial":true}`)}, p.err
+			logContent := ""
+			if result != nil {
+				logContent = result.Content
 			}
-			logContent += callErr.Error()
+			if callErr != nil {
+				if logContent != "" {
+					logContent += "\n"
+				}
+				logContent += callErr.Error()
+			}
+			return result, logContent, callErr
 		}
-		return result, logContent, callErr
-	}
+	}), nil
 }
 
 func TestExecutorRetainsPartialResultAndOriginalError(t *testing.T) {
@@ -162,12 +164,14 @@ func (segmentTool) Info() toolshare.Info {
 func (segmentTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "segments"}
 }
-func (segmentTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
-	{
-		result := &toolshare.Result{Segments: []llm.MessageSegment{
-			{Type: llm.SegmentText, Text: "image:"},
-			{Type: llm.SegmentImage, URL: "https://example.com/a.png", MIMEType: "image/png"},
-		}}
-		return result, result.Content, nil
-	}
+func (value segmentTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		{
+			result := &toolshare.Result{Segments: []llm.MessageSegment{
+				{Type: llm.SegmentText, Text: "image:"},
+				{Type: llm.SegmentImage, URL: "https://example.com/a.png", MIMEType: "image/png"},
+			}}
+			return result, result.Content, nil
+		}
+	}), nil
 }

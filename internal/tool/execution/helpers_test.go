@@ -38,12 +38,23 @@ func (t fakeTool) Info() share.Info {
 	return share.Info{Name: t.name, Source: t.source, Risk: t.risk, SuperadminOnly: t.superadminOnly}
 }
 func (t fakeTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: t.name} }
-func (t fakeTool) Call(context.Context, share.CallRequest) (*share.Result, string, error) {
-	return &share.Result{Content: t.name}, t.name, nil
+func (t fakeTool) PrepareCall(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
+	return share.NewPreparedCall(req, share.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*share.Result, string, error) {
+		return &share.Result{Content: t.name}, t.name, nil
+	}), nil
 }
 
 func executeTestCall(catalog *registry.Registry, call llm.ToolCallRequest) executionResult {
 	m := newTestManager(catalog, nil)
 	ctx := context.Background()
-	return m.executePrepared(ctx, call, m.resolve(ctx, call.Name, nil, storage.SessionModeWork), nil, nil)
+	resolved := m.resolve(ctx, call.Name, nil, storage.SessionModeWork)
+	var prepared *share.PreparedCall
+	if resolved.Native != nil {
+		var err error
+		prepared, err = m.prepareCall(ctx, resolved, call)
+		if err != nil {
+			panic(err)
+		}
+	}
+	return m.executePrepared(ctx, call, resolved, prepared, nil)
 }

@@ -20,7 +20,6 @@ import (
 
 	"elbot/internal/fileops"
 	"elbot/internal/processenv"
-	
 )
 
 type directorySearchMatch struct {

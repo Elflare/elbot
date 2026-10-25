@@ -10,7 +10,7 @@ import (
 )
 
 func TestCronToolCallReturnsCurrentTimeHint(t *testing.T) {
-	result, _, err := NewCronTools(nil)[0].Call(context.Background(), toolshare.CallRequest{})
+	result, _, err := callTool(context.Background(), NewCronTools(nil)[0], toolshare.CallRequest{})
 	if err != nil {
 		t.Fatalf("Call: %v", err)
 	}

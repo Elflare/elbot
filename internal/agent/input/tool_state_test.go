@@ -121,11 +121,13 @@ func (t agentDetailTool) Info() toolshare.Info {
 
 func (t agentDetailTool) Schema() llm.ToolSchema { return llm.ToolSchema{} }
 
-func (t agentDetailTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
-	{
-		result := &toolshare.Result{Content: t.detail}
-		return result, result.Content, nil
-	}
+func (t agentDetailTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		{
+			result := &toolshare.Result{Content: t.detail}
+			return result, result.Content, nil
+		}
+	}), nil
 }
 
 func (t agentDetailTool) Detail() string {
@@ -154,11 +156,13 @@ func (t agentWrapperTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: t.name, Parameters: map[string]any{"type": "object"}}
 }
 
-func (t agentWrapperTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
-	{
-		result := &toolshare.Result{Content: "ok"}
-		return result, result.Content, nil
-	}
+func (t agentWrapperTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		{
+			result := &toolshare.Result{Content: "ok"}
+			return result, result.Content, nil
+		}
+	}), nil
 }
 
 func toolNames(schemas []llm.ToolSchema) string {

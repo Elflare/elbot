@@ -13,49 +13,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"elbot/internal/config"
 	"elbot/internal/llm"
-	"elbot/internal/processenv"
 )
-
-const (
-	defaultRunnerTimeout = 30 * time.Second
-	maxRunnerOutput      = 16 * 1024
-	maxRunnerStdout      = 1 * 1024 * 1024
-)
-
-type limitedOutput struct {
-	// buf holds only the leading limit bytes; remaining output is drained and discarded.
-	buf []byte
-	// limit bounds captured bytes independently for stdout and stderr.
-	limit int
-	// truncated reports discarded bytes, so incomplete stdout is never parsed as a result.
-	truncated bool
-}
-
-func (out *limitedOutput) Write(p []byte) (int, error) {
-	n := min(len(p), out.limit-len(out.buf))
-	out.buf = append(out.buf, p[:n]...)
-	if n < len(p) {
-		out.truncated = true
-	}
-	return len(p), nil
-}
-
-func (out *limitedOutput) String() string {
-	text := string(out.buf)
-	if out.truncated {
-		text += "\n... output truncated ...\n"
-	}
-	return text
-}
 
 type GoRunner struct {
-	Media      *toolmedia.MediaRuntime
-	Catalog    *Catalog
-	ProcessEnv processenv.Environment
+	manager *Manager // 借用 Skill 目录、媒体入口和进程环境。
 }
 
 type goRunnerArgs struct {
@@ -64,12 +28,8 @@ type goRunnerArgs struct {
 	Payload   json.RawMessage `json:"-"`
 }
 
-func NewGoRunner(catalog *Catalog, environment ...processenv.Environment) GoRunner {
-	var processEnv processenv.Environment
-	if len(environment) > 0 {
-		processEnv = environment[0]
-	}
-	return GoRunner{Catalog: catalog, ProcessEnv: processEnv}
+func NewGoRunner(manager *Manager) GoRunner {
+	return GoRunner{manager: manager}
 }
 
 func (GoRunner) Name() string { return GoRunnerName }
@@ -92,58 +52,34 @@ func (GoRunner) Schema() llm.ToolSchema {
 		BuildSchema()
 }
 
-func (r GoRunner) AssessRisk(ctx context.Context, req toolshare.CallRequest) (toolshare.RiskAssessment, error) {
-	_ = ctx
-	var args goRunnerArgs
-	if len(req.Arguments) > 0 {
-		var err error
-		args, err = parseGoRunnerArgs(req.Arguments)
-		if err != nil {
-			return toolshare.RiskAssessment{}, fmt.Errorf("parse go_skill_run arguments: %w", err)
-		}
+func (r GoRunner) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	args, err := parseGoRunnerArgs(req.Arguments)
+	if err != nil {
+		return nil, fmt.Errorf("parse go_skill_run arguments: %w", err)
 	}
-	record, ok := r.Catalog.Get(strings.TrimSpace(args.SkillName))
-	if !ok || record.Kind != KindGo {
-		return toolshare.RiskAssessment{Level: toolshare.RiskHigh}, nil
+	record, ok := r.manager.catalog.Get(strings.TrimSpace(args.SkillName))
+	if !ok || record.Kind != KindGo || record.BinaryPath == "" {
+		return nil, fmt.Errorf("go skill %q not found", args.SkillName)
 	}
-	return toolshare.RiskAssessment{Level: record.Risk}, nil
+	preview := fmt.Sprintf("Go Skill：%s\n程序：%s\n工作目录：%s", record.Name, record.BinaryPath, record.Root)
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: record.Risk}, preview, func(ctx context.Context) (*toolshare.Result, string, error) {
+		return r.call(ctx, args, record, runMediaCommand)
+	}), nil
 }
 
-func (r GoRunner) Call(ctx context.Context, req toolshare.CallRequest) (result *toolshare.Result, logContent string, callErr error) {
-	return r.call(ctx, req, runMediaCommand)
-}
-
-func (r GoRunner) call(ctx context.Context, req toolshare.CallRequest, run func(context.Context, string, *exec.Cmd, *toolmedia.MediaCall) (*toolshare.Result, error)) (result *toolshare.Result, logContent string, callErr error) {
+func (r GoRunner) call(ctx context.Context, args goRunnerArgs, record record, run func(context.Context, string, *exec.Cmd, *toolmedia.MediaCall) (*toolshare.Result, error)) (result *toolshare.Result, logContent string, callErr error) {
 	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 
-	var args goRunnerArgs
-	if len(req.Arguments) > 0 {
-		var err error
-		args, err = parseGoRunnerArgs(req.Arguments)
-		if err != nil {
-			{
-				callErr := fmt.Errorf("parse go_skill_run arguments: %w", err)
-				return nil, callErr.Error(), callErr
-			}
-		}
-	}
-	record, ok := r.Catalog.Get(strings.TrimSpace(args.SkillName))
-	if !ok || record.Kind != KindGo || record.BinaryPath == "" {
-		{
-			callErr := fmt.Errorf("go skill %q not found", args.SkillName)
-			return nil, callErr.Error(), callErr
-		}
-	}
 	dotEnv, err := config.LoadEnvFile(filepath.Join(record.Root, ".env"))
 	if err != nil {
 		callErr := fmt.Errorf("load Go skill environment: %w", err)
 		return nil, callErr.Error(), callErr
 	}
-	environment := r.ProcessEnv.Overlay(dotEnv)
+	environment := r.manager.processEnv.Overlay(dotEnv)
 	timeout := runnerTimeout(args.TimeoutMS)
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	mediaCall := r.Media.NewCall()
+	mediaCall := r.manager.media.NewCall()
 	defer func() {
 		err := mediaCall.Close()
 		callErr = errors.Join(callErr, err)
@@ -200,82 +136,4 @@ func parseGoRunnerArgs(data json.RawMessage) (goRunnerArgs, error) {
 	}
 	args.Payload = json.RawMessage(value)
 	return args, nil
-}
-
-func runnerTimeout(timeoutMS int) time.Duration {
-	if timeoutMS > 0 {
-		return time.Duration(timeoutMS) * time.Millisecond
-	}
-	return defaultRunnerTimeout
-}
-
-func safeRelativePath(root, rel string) (string, error) {
-	rel = strings.TrimSpace(rel)
-	if rel == "" {
-		return "", fmt.Errorf("script is required")
-	}
-	if filepath.IsAbs(rel) {
-		return "", fmt.Errorf("script must be relative to skill directory")
-	}
-	clean := filepath.Clean(rel)
-	if clean == "." || strings.HasPrefix(clean, "..") {
-		return "", fmt.Errorf("script must stay inside skill directory")
-	}
-	full := filepath.Join(root, clean)
-	back, err := filepath.Rel(root, full)
-	if err != nil || strings.HasPrefix(back, "..") || filepath.IsAbs(back) {
-		return "", fmt.Errorf("script must stay inside skill directory")
-	}
-	return clean, nil
-}
-
-func runMediaCommand(ctx context.Context, label string, cmd *exec.Cmd, mediaCall *toolmedia.MediaCall) (*toolshare.Result, error) {
-	stdout := limitedOutput{limit: maxRunnerStdout}
-	stderr := limitedOutput{limit: maxRunnerOutput}
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if err != nil {
-		out := truncateOutput(stdout.String())
-		errText := stderr.String()
-		return nil, commandError(ctx, label, err, out, errText)
-	}
-	if stdout.truncated {
-		return nil, fmt.Errorf("%s stdout exceeds %d byte limit%s", label, maxRunnerStdout, commandOutputSuffix("", stderr.String()))
-	}
-	return resultFromStdoutWithMedia(ctx, stdout.String(), mediaCall, cmd.Dir)
-}
-
-func commandError(ctx context.Context, label string, err error, stdout, stderr string) error {
-	if ctxErr := ctx.Err(); errors.Is(ctxErr, context.DeadlineExceeded) {
-		return fmt.Errorf("%s timed out: %w%s", label, errors.Join(ctxErr, err), commandOutputSuffix(stdout, stderr))
-	} else if errors.Is(ctxErr, context.Canceled) {
-		return fmt.Errorf("%s canceled: %w%s", label, errors.Join(ctxErr, err), commandOutputSuffix(stdout, stderr))
-	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return fmt.Errorf("%s process failed with exit code %d: %w%s", label, exitErr.ExitCode(), err, commandOutputSuffix(stdout, stderr))
-	}
-	return fmt.Errorf("start %s failed: %w", label, err)
-}
-
-func commandOutputSuffix(stdout, stderr string) string {
-	parts := []string{}
-	if strings.TrimSpace(stdout) != "" {
-		parts = append(parts, "stdout:\n"+stdout)
-	}
-	if strings.TrimSpace(stderr) != "" {
-		parts = append(parts, "stderr:\n"+stderr)
-	}
-	if len(parts) == 0 {
-		return ""
-	}
-	return "\n" + strings.Join(parts, "\n")
-}
-
-func truncateOutput(text string) string {
-	if len(text) <= maxRunnerOutput {
-		return text
-	}
-	return text[:maxRunnerOutput] + "\n... output truncated ...\n"
 }

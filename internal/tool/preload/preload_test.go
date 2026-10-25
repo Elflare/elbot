@@ -44,8 +44,10 @@ func (t availabilityTestTool) Schema() llm.ToolSchema {
 	}
 	return llm.ToolSchema{Name: t.name, Description: t.info.Description, Parameters: map[string]any{"type": "object"}}
 }
-func (availabilityTestTool) Call(context.Context, share.CallRequest) (*share.Result, string, error) {
-	return &share.Result{}, "", nil
+func (value availabilityTestTool) PrepareCall(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
+	return share.NewPreparedCall(req, share.RiskAssessment{Level: value.Info().Risk}, "", func(ctx context.Context) (*share.Result, string, error) {
+		return &share.Result{}, "", nil
+	}), nil
 }
 
 type preloadSkill struct {

@@ -22,7 +22,7 @@ func TestWorkspaceToolQuerySetAndReset(t *testing.T) {
 	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	workspace := NewWorkspaceTool()
 
-	result, _, err := workspace.Call(ctx, toolshare.CallRequest{})
+	result, _, err := callTool(ctx, workspace, toolshare.CallRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestWorkspaceToolQuerySetAndReset(t *testing.T) {
 
 	dir := t.TempDir()
 	args, _ := json.Marshal(map[string]any{"path": dir})
-	result, _, err = workspace.Call(ctx, toolshare.CallRequest{Arguments: args})
+	result, _, err = callTool(ctx, workspace, toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestWorkspaceToolQuerySetAndReset(t *testing.T) {
 	}
 
 	args, _ = json.Marshal(map[string]any{"reset": true})
-	result, _, err = workspace.Call(ctx, toolshare.CallRequest{Arguments: args})
+	result, _, err = callTool(ctx, workspace, toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestWorkspaceToolAcceptsHomeShortcut(t *testing.T) {
 
 	for _, path := range []string{"~", "$HOME"} {
 		args, _ := json.Marshal(map[string]any{"path": path})
-		result, _, err := NewWorkspaceTool().Call(ctx, toolshare.CallRequest{Arguments: args})
+		result, _, err := callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
 		if err != nil {
 			t.Fatalf("path %q: %v", path, err)
 		}
@@ -82,7 +82,7 @@ func TestWorkspaceToolAcceptsHomeSubpath(t *testing.T) {
 
 	for _, path := range []string{"$HOME/workspace", `$HOME\workspace`} {
 		args, _ := json.Marshal(map[string]any{"path": path})
-		_, _, err := NewWorkspaceTool().Call(ctx, toolshare.CallRequest{Arguments: args})
+		_, _, err := callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
 		if err != nil {
 			t.Fatalf("path %q: %v", path, err)
 		}
@@ -100,7 +100,7 @@ func TestWorkspaceToolDoesNotExpandHomePrefixWithoutBoundary(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 
 	args, _ := json.Marshal(map[string]any{"path": "$HOMEfoo"})
-	_, _, err := NewWorkspaceTool().Call(ctx, toolshare.CallRequest{Arguments: args})
+	_, _, err := callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
 	if err == nil {
 		t.Fatal("expected literal $HOMEfoo path to be rejected")
 	}
@@ -110,7 +110,7 @@ func TestWorkspaceToolRejectsMissingDirectory(t *testing.T) {
 	store := &testWorkspaceStore{}
 	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	args, _ := json.Marshal(map[string]any{"path": filepath.Join(t.TempDir(), "missing")})
-	_, _, err := NewWorkspaceTool().Call(ctx, toolshare.CallRequest{Arguments: args})
+	_, _, err := callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
 	if err == nil {
 		t.Fatal("expected missing workspace error")
 	}
@@ -131,7 +131,7 @@ func TestWorkspaceToolLoadsAgentInstructionsOnce(t *testing.T) {
 	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	args, _ := json.Marshal(map[string]any{"path": dir})
 
-	result, logContent, err := NewWorkspaceTool().Call(ctx, toolshare.CallRequest{Arguments: args})
+	result, logContent, err := callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestWorkspaceToolLoadsAgentInstructionsOnce(t *testing.T) {
 		t.Fatalf("notice dirs = %#v", store.noticeDirs)
 	}
 
-	result, _, err = NewWorkspaceTool().Call(ctx, toolshare.CallRequest{Arguments: args})
+	result, _, err = callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestWorkspaceToolLoadsAgentInstructionsOnce(t *testing.T) {
 
 	resumedStore := &testWorkspaceStore{noticeDirs: append([]string(nil), store.noticeDirs...)}
 	resumedCtx := workspace.WithWorkspaceStore(context.Background(), resumedStore)
-	result, _, err = NewWorkspaceTool().Call(resumedCtx, toolshare.CallRequest{Arguments: args})
+	result, _, err = callTool(resumedCtx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestWorkspaceToolDiscoveryLoadsAgentInstructionsOnceAcrossEntryPoints(t *te
 	}
 
 	args, _ := json.Marshal(map[string]any{"path": dir})
-	result, _, err := workspace.Call(ctx, toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(ctx, workspace, toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestDiscoverWorkspaceLoadsCurrentAgentInstructions(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]string{"name": "workspace"})
-	result, _, err := discovery.NewDiscoverTool(discovery.NewResolver(registry)).Call(ctx, toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(ctx, discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +224,7 @@ func TestDiscoverWorkspaceLoadsCurrentAgentInstructions(t *testing.T) {
 		t.Fatalf("unexpected discovery result: %q", result.Content)
 	}
 
-	result, _, err = discovery.NewDiscoverTool(discovery.NewResolver(registry)).Call(ctx, toolshare.CallRequest{})
+	result, _, err = callTool(ctx, discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func TestWorkspaceToolAgentInstructionNameRules(t *testing.T) {
 	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	args, _ := json.Marshal(map[string]any{"path": dir})
 
-	result, _, err := NewWorkspaceTool().Call(ctx, toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +263,7 @@ func TestWorkspaceToolIgnoresLowercaseAgentNameUntilValidFileExists(t *testing.T
 	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	args, _ := json.Marshal(map[string]any{"path": dir})
 
-	result, _, err := NewWorkspaceTool().Call(ctx, toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +274,7 @@ func TestWorkspaceToolIgnoresLowercaseAgentNameUntilValidFileExists(t *testing.T
 	if err := os.WriteFile(filepath.Join(dir, "AGENT.md"), []byte("valid"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	result, _, err = NewWorkspaceTool().Call(ctx, toolshare.CallRequest{Arguments: args})
+	result, _, err = callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +292,7 @@ func TestWorkspaceToolSkipsLargeAgentInstructions(t *testing.T) {
 	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	args, _ := json.Marshal(map[string]any{"path": dir})
 
-	result, _, err := NewWorkspaceTool().Call(ctx, toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,7 +323,7 @@ func TestWorkspaceToolResetLoadsAgentInstructionsOnce(t *testing.T) {
 	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	args, _ := json.Marshal(map[string]any{"reset": true})
 
-	result, _, err := NewWorkspaceTool().Call(ctx, toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -334,7 +334,7 @@ func TestWorkspaceToolResetLoadsAgentInstructionsOnce(t *testing.T) {
 		t.Fatalf("notice dirs = %#v", store.noticeDirs)
 	}
 
-	result, _, err = NewWorkspaceTool().Call(ctx, toolshare.CallRequest{Arguments: args})
+	result, _, err = callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +361,7 @@ func TestDiscoverToolsResetsMissingWorkspace(t *testing.T) {
 				}
 			}
 			args, _ := json.Marshal(map[string]string{"name": name})
-			result, _, err := discovery.NewDiscoverTool(discovery.NewResolver(registry)).Call(ctx, toolshare.CallRequest{Arguments: args})
+			result, _, err := callTool(ctx, discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -384,7 +384,7 @@ func TestDiscoverToolsResetsMissingWorkspace(t *testing.T) {
 			if !found {
 				t.Fatalf("missing schema for %s: %s", name, result.Data)
 			}
-			result, _, err = discovery.NewDiscoverTool(discovery.NewResolver(registry)).Call(ctx, toolshare.CallRequest{Arguments: args})
+			result, _, err = callTool(ctx, discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})
 			if err != nil {
 				t.Fatal(err)
 			}

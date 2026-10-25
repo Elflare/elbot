@@ -15,7 +15,6 @@ import (
 	"strings"
 
 	"elbot/internal/llm"
-	"elbot/internal/media"
 )
 
 // prepareGoMedia changes only the stdin copy and only an explicit media_inputs field.

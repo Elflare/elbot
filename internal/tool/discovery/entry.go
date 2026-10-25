@@ -47,75 +47,77 @@ func (t discoverTool) Schema() llm.ToolSchema {
 		BuildSchema()
 }
 
-func (t discoverTool) Call(ctx context.Context, req share.CallRequest) (_ *share.Result, logContent string, _ error) {
-	defer func() { logContent = share.TruncateLogContent(logContent, 1024) }()
-	if err := ctx.Err(); err != nil {
-		return nil, err.Error(), err
-	}
-	if t.beforeDiscover != nil {
-		if err := t.beforeDiscover(ctx); err != nil {
-			return nil, err.Error(), err
-		}
-	}
+func (t discoverTool) PrepareCall(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
 	var args discoverArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
 			callErr := fmt.Errorf("parse discover_tool arguments: %w", err)
-			return nil, callErr.Error(), callErr
+			return nil, callErr
 		}
 	}
 	names := append([]string{}, args.Names...)
 	if args.Name != "" {
 		names = append([]string{args.Name}, names...)
 	}
-	result, targets, err := t.resolver.discover(ctx, names)
-	if err != nil {
-		return nil, err.Error(), err
-	}
-	// 单个目标失败作为工具调用错误返回；批量发现保留逐项结果。
-	if len(result.Tools) == 0 && len(result.Errors) == 1 {
-		callErr := fmt.Errorf("discover tool %q: %s", result.Errors[0].Name, result.Errors[0].Reason)
-		return nil, callErr.Error(), callErr
-	}
-	activateTools := []string{}
-	for _, discovered := range result.Tools {
-		if discovered.Detail == "" {
-			continue
+	return share.NewPreparedCall(req, share.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (_ *share.Result, logContent string, _ error) {
+		defer func() { logContent = share.TruncateLogContent(logContent, 1024) }()
+		if err := ctx.Err(); err != nil {
+			return nil, err.Error(), err
 		}
-		if detailer, ok := targets[discovered.Info.Name].(share.DetailProvider); ok {
-			activateTools = append(activateTools, detailer.ActivateTools()...)
+		if t.beforeDiscover != nil {
+			if err := t.beforeDiscover(ctx); err != nil {
+				return nil, err.Error(), err
+			}
 		}
-	}
-	data, err := marshalJSONNoEscape(result)
-	if err != nil {
-		callErr := fmt.Errorf("marshal discovery result: %w", err)
-		return nil, callErr.Error(), callErr
-	}
-	metadata := map[string]any{}
-	activateTools = normalizeNames(activateTools)
-	if len(activateTools) > 0 {
-		metadata[share.MetadataActivateTools] = activateTools
-	}
-	details, err := discoveryContent(ctx, targets, result)
-	if err != nil {
-		return nil, err.Error(), err
-	}
-	needsElyphRules := false
-	for _, discovered := range result.Tools {
-		needsElyphRules = needsElyphRules || discovered.NeedsElyphRules
-	}
-	// schema 通过 Data 交给工具状态流程，正文只保留发现说明。
-	logContent = fmt.Sprintf("found=%d errors=%d", len(result.Tools), len(result.Errors))
-	for _, failure := range result.Errors {
-		logContent += fmt.Sprintf("\n%s: %s", failure.Name, failure.Reason)
-	}
-	for _, discovered := range result.Tools {
-		logContent += "\n" + discovered.Info.Name
-	}
-	return &share.Result{
-		Content:       strings.TrimSpace(details.Summary + "\n\n" + details.Details),
-		DiscoveryText: &details, NeedsElyphRules: needsElyphRules, Data: data, Metadata: metadata,
-	}, logContent, nil
+		result, targets, err := t.resolver.discover(ctx, names)
+		if err != nil {
+			return nil, err.Error(), err
+		}
+		// 单个目标失败作为工具调用错误返回；批量发现保留逐项结果。
+		if len(result.Tools) == 0 && len(result.Errors) == 1 {
+			callErr := fmt.Errorf("discover tool %q: %s", result.Errors[0].Name, result.Errors[0].Reason)
+			return nil, callErr.Error(), callErr
+		}
+		activateTools := []string{}
+		for _, discovered := range result.Tools {
+			if discovered.Detail == "" {
+				continue
+			}
+			if detailer, ok := targets[discovered.Info.Name].(share.DetailProvider); ok {
+				activateTools = append(activateTools, detailer.ActivateTools()...)
+			}
+		}
+		data, err := marshalJSONNoEscape(result)
+		if err != nil {
+			callErr := fmt.Errorf("marshal discovery result: %w", err)
+			return nil, callErr.Error(), callErr
+		}
+		metadata := map[string]any{}
+		activateTools = normalizeNames(activateTools)
+		if len(activateTools) > 0 {
+			metadata[share.MetadataActivateTools] = activateTools
+		}
+		details, err := discoveryContent(ctx, targets, result)
+		if err != nil {
+			return nil, err.Error(), err
+		}
+		needsElyphRules := false
+		for _, discovered := range result.Tools {
+			needsElyphRules = needsElyphRules || discovered.NeedsElyphRules
+		}
+		// schema 通过 Data 交给工具状态流程，正文只保留发现说明。
+		logContent = fmt.Sprintf("found=%d errors=%d", len(result.Tools), len(result.Errors))
+		for _, failure := range result.Errors {
+			logContent += fmt.Sprintf("\n%s: %s", failure.Name, failure.Reason)
+		}
+		for _, discovered := range result.Tools {
+			logContent += "\n" + discovered.Info.Name
+		}
+		return &share.Result{
+			Content:       strings.TrimSpace(details.Summary + "\n\n" + details.Details),
+			DiscoveryText: &details, NeedsElyphRules: needsElyphRules, Data: data, Metadata: metadata,
+		}, logContent, nil
+	}), nil
 }
 
 func marshalJSONNoEscape(value any) ([]byte, error) {

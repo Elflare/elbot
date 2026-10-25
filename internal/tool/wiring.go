@@ -50,8 +50,9 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Core:   cfg.ResidentMemory.CoreMaxUnits,
 		Normal: cfg.ResidentMemory.NormalMaxUnits,
 	})
-	skillManager := skill.NewManager(filepath.Join(configDir, "skills"), registry, environment)
 	mediaRuntime := toolmedia.NewMediaRuntime(deps.Media, cfg.Sandbox.Root)
+	skillRoot := filepath.Join(configDir, "skills")
+	skillManager := skill.NewManager(skillRoot, registry, mediaRuntime, environment)
 	chatHistory := chat_history.NewManager(&chatHistoryBridge{platform: deps.Platform, media: mediaRuntime}, info)
 	m.catalog = &runtime{
 		registry:            registry,
@@ -65,6 +66,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		residentMemoryPath:  residentStore.Path,
 		elwispCreatorConfig: configBridge{configPath: cfg.ConfigPath},
 		skillManager:        skillManager,
+		skillRoot:           skillRoot,
 		chatHistory:         chatHistory,
 		longMemoryDir:       filepath.Join(configDir, "long_memory"),
 		fileRollback:        m.catalog.fileRollback,
@@ -88,6 +90,7 @@ type registerOptions struct {
 	residentMemoryPath  string
 	elwispCreatorConfig builtin.ElwispCreatorConfigProvider
 	skillManager        *skill.Manager
+	skillRoot           string                // 根部确定的技能资产目录，供文件保护规则使用。
 	chatHistory         *chat_history.Manager // 已适配外部能力的聊天历史组件。
 	longMemoryDir       string
 	media               *toolmedia.MediaRuntime
@@ -97,7 +100,6 @@ type registerOptions struct {
 
 func registerAll(registry *toolregistry.Registry, opts registerOptions) error {
 	mediaRuntime := opts.media
-	opts.skillManager.Scanner.Media = mediaRuntime
 	if err := registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry), opts.skillManager.EnsureLoaded)); err != nil {
 		return err
 	}
@@ -141,7 +143,7 @@ func registerAll(registry *toolregistry.Registry, opts registerOptions) error {
 		return err
 	}
 	fileGuard := builtin.NewFileGuard(
-		builtin.NewElSkillFileGuardRule(opts.skillManager.Root),
+		builtin.NewElSkillFileGuardRule(opts.skillRoot),
 		builtin.NewResidentMemoryFileGuardRule(opts.residentMemoryPath),
 		builtin.NewLongMemoryFileGuardRule(opts.longMemoryDir),
 	)
@@ -168,8 +170,7 @@ func registerAll(registry *toolregistry.Registry, opts registerOptions) error {
 	if err := registry.Register(skill.NewAgentSkillTool(opts.skillManager)); err != nil {
 		return err
 	}
-	goRunner := skill.NewGoRunner(opts.skillManager.Catalog, opts.processEnv)
-	goRunner.Media = mediaRuntime
+	goRunner := skill.NewGoRunner(opts.skillManager)
 	if err := registry.Register(goRunner); err != nil {
 		return err
 	}

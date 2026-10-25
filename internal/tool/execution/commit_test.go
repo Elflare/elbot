@@ -47,17 +47,19 @@ func (countingCommitTool) Info() toolshare.Info {
 func (countingCommitTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "count", Parameters: map[string]any{"type": "object"}}
 }
-func (c countingCommitTool) Call(ctx context.Context, _ toolshare.CallRequest) (*toolshare.Result, string, error) {
-	c.count.Add(1)
-	if c.wait != nil {
-		select {
-		case <-c.wait:
-		case <-ctx.Done():
-			return nil, "", ctx.Err()
+func (c countingCommitTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: c.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		c.count.Add(1)
+		if c.wait != nil {
+			select {
+			case <-c.wait:
+			case <-ctx.Done():
+				return nil, "", ctx.Err()
+			}
 		}
-	}
-	result := &toolshare.Result{Content: "done"}
-	return result, result.Content, nil
+		result := &toolshare.Result{Content: "done"}
+		return result, result.Content, nil
+	}), nil
 }
 
 func TestToolCommitFailureStopsOnlyOnPersistenceError(t *testing.T) {

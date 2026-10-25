@@ -11,7 +11,7 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
-	"elbot/internal/tool"
+	"elbot/internal/tool/discovery"
 )
 
 const (
@@ -19,74 +19,66 @@ const (
 	GoRunnerName          = "go_skill_run"
 )
 
-type DetailProvider interface {
-	Detail() string
-	ActivateTools() []string
+type descriptor struct {
+	record record // 扫描时确定的技能声明；详情正文按需读取。
 }
 
-type Descriptor struct {
-	Record Record
+func newDescriptor(record record) descriptor {
+	return descriptor{record: record}
 }
 
-func NewDescriptor(record Record) Descriptor {
-	return Descriptor{Record: record}
-}
+func (d descriptor) Name() string { return d.record.Name }
 
-func (d Descriptor) Name() string { return d.Record.Name }
-
-func (d Descriptor) Info() toolshare.Info {
+func (d descriptor) Info() toolshare.Info {
 	return toolshare.Info{
-		Name:           d.Record.Name,
-		Description:    d.Record.Description,
-		Source:         SourceForKind(d.Record.Kind),
-		Risk:           d.Record.Risk,
-		SuperadminOnly: d.Record.SuperadminOnly,
-		Tags:           d.Record.Tags,
+		Name:           d.record.Name,
+		Description:    d.record.Description,
+		Source:         SourceForKind(d.record.Kind),
+		Risk:           d.record.Risk,
+		SuperadminOnly: d.record.SuperadminOnly,
+		Tags:           d.record.Tags,
 	}
 }
 
-func (d Descriptor) Schema() llm.ToolSchema {
+func (d descriptor) Schema() llm.ToolSchema {
 	// Skill 本体是说明文档，不是可直接调用的 function schema。
 	return llm.ToolSchema{}
 }
 
-func (d Descriptor) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
-	{
-		callErr := fmt.Errorf("skill %q is a document skill; query it with discover_tool", d.Record.Name)
-		return nil, toolshare.TruncateLogContent(callErr.Error(), 1024), callErr
-	}
+func (d descriptor) PrepareCall(context.Context, toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return nil, fmt.Errorf("skill %q is a document skill; query it with discover_tool", d.record.Name)
 }
 
-func (d Descriptor) Detail() string {
+func (d descriptor) Detail() string {
 	block, err := d.LoadDetail(context.Background())
 	if err != nil {
 		return ""
 	}
-	return tool.RenderDetailBlocks([]toolshare.DetailBlock{block})
+	return discovery.RenderDetailBlocks([]toolshare.DetailBlock{block})
 }
 
-func (d Descriptor) DetailBlock() toolshare.DetailBlock {
+func (d descriptor) DetailBlock() toolshare.DetailBlock {
 	block, _ := d.LoadDetail(context.Background())
 	return block
 }
 
-func (d Descriptor) LoadDetail(ctx context.Context) (toolshare.DetailBlock, error) {
-	block, err := loadRecordDetail(d.Record)
+func (d descriptor) LoadDetail(ctx context.Context) (toolshare.DetailBlock, error) {
+	block, err := loadRecordDetail(d.record)
 	if err != nil {
 		return toolshare.DetailBlock{}, err
 	}
-	if d.Record.Kind == KindAgent {
-		block.Content = strings.TrimSpace(block.Content + "\n\n" + agentSkillNotice(ctx, d.Record))
+	if d.record.Kind == KindAgent {
+		block.Content = strings.TrimSpace(block.Content + "\n\n" + agentSkillNotice(ctx, d.record))
 	}
 	return block, nil
 }
 
-func (d Descriptor) ActivateTools() []string {
-	switch d.Record.Kind {
+func (d descriptor) ActivateTools() []string {
+	switch d.record.Kind {
 	case KindAgent:
 		return []string{AgentSkillManagerName}
 	case KindGo:
-		if d.Record.BinaryPath != "" {
+		if d.record.BinaryPath != "" {
 			return []string{GoRunnerName}
 		}
 		return nil
@@ -95,7 +87,7 @@ func (d Descriptor) ActivateTools() []string {
 	}
 }
 
-func agentSkillNotice(ctx context.Context, record Record) string {
+func agentSkillNotice(ctx context.Context, record record) string {
 	var lines []string
 	if actor, ok := contextinfo.ActorFromContext(ctx); ok && actor.Role == contextinfo.RoleSuperadmin {
 		lines = append(lines, "- 如该文档有脚本，请发现 agent_skill_creator，参考其说明是否把他注册成普通工具。")
@@ -109,7 +101,7 @@ func agentSkillNotice(ctx context.Context, record Record) string {
 	return "ElBot AgentSkill 使用提示：\n\n" + strings.Join(lines, "\n")
 }
 
-func loadRecordDetail(record Record) (toolshare.DetailBlock, error) {
+func loadRecordDetail(record record) (toolshare.DetailBlock, error) {
 	content := record.Detail
 	format := record.Format
 	if record.DetailPath != "" {

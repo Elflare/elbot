@@ -19,81 +19,89 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/llm"
 	"elbot/internal/processenv"
-	"elbot/internal/tool"
+	"elbot/internal/tool/discovery"
 )
 
-type CommandTool struct {
-	Media    *toolmedia.MediaRuntime
-	Record   Record
-	Manifest AgentSkillManifest
+type commandTool struct {
+	media    *toolmedia.MediaRuntime // 调用媒体的导入导出与清理入口。
+	record   record                  // 注册时选定的技能记录。
+	manifest AgentSkillManifest      // 准备和执行共用的命令声明。
 	// ProcessEnv 保存启动时已合并配置目录 .env 的基础子进程环境。
-	ProcessEnv processenv.Environment
+	processEnv processenv.Environment
 }
 
-func NewCommandTool(record Record) CommandTool {
-	return CommandTool{Record: record, Manifest: record.Manifest}
+func newCommandTool(record record, media *toolmedia.MediaRuntime, environment processenv.Environment) commandTool {
+	return commandTool{record: record, manifest: record.Manifest, media: media, processEnv: environment}
 }
 
-func (t CommandTool) Name() string { return t.Record.Name }
+func (t commandTool) Name() string { return t.record.Name }
 
-func (t CommandTool) Info() toolshare.Info {
-	return toolshare.Info{Name: t.Record.Name, Description: t.Record.Description, Source: SourceForKind(t.Record.Kind), Risk: t.Manifest.Risk, SuperadminOnly: t.Manifest.SuperadminOnly, Tags: t.Manifest.Tags}
+func (t commandTool) Info() toolshare.Info {
+	return toolshare.Info{Name: t.record.Name, Description: t.record.Description, Source: SourceForKind(t.record.Kind), Risk: t.manifest.Risk, SuperadminOnly: t.manifest.SuperadminOnly, Tags: t.manifest.Tags}
 }
 
-func (t CommandTool) Schema() llm.ToolSchema {
-	return t.Manifest.Schema(t.Record.Name, t.Record.Description)
+func (t commandTool) Schema() llm.ToolSchema {
+	return t.manifest.Schema(t.record.Name, t.record.Description)
 }
 
-func (t CommandTool) Detail() string {
+func (t commandTool) Detail() string {
 	block, err := t.LoadDetail(context.Background())
 	if err != nil {
 		return ""
 	}
-	return tool.RenderDetailBlocks([]toolshare.DetailBlock{block})
+	return discovery.RenderDetailBlocks([]toolshare.DetailBlock{block})
 }
 
-func (t CommandTool) DetailBlock() toolshare.DetailBlock {
+func (t commandTool) DetailBlock() toolshare.DetailBlock {
 	block, _ := t.LoadDetail(context.Background())
 	return block
 }
 
-func (t CommandTool) LoadDetail(ctx context.Context) (toolshare.DetailBlock, error) {
-	block, err := loadRecordDetail(t.Record)
+func (t commandTool) LoadDetail(ctx context.Context) (toolshare.DetailBlock, error) {
+	block, err := loadRecordDetail(t.record)
 	if err != nil {
 		return toolshare.DetailBlock{}, err
 	}
-	if t.Manifest.ExposeRoot {
-		block.Content = strings.TrimSpace(block.Content) + "\n\nAgentSkill root: " + t.Record.Root
+	if t.manifest.ExposeRoot {
+		block.Content = strings.TrimSpace(block.Content) + "\n\nAgentSkill root: " + t.record.Root
 	}
 	block.Content = strings.TrimSpace(block.Content)
 	return block, nil
 }
 
-func (t CommandTool) ActivateTools() []string {
-	return []string{AgentSkillManagerName, t.Record.Name}
+func (t commandTool) ActivateTools() []string {
+	return []string{AgentSkillManagerName, t.record.Name}
 }
 
-func (t CommandTool) Call(ctx context.Context, req toolshare.CallRequest) (result *toolshare.Result, logContent string, callErr error) {
-	return t.call(ctx, req, runMediaCommand)
+func (t commandTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	raw := bytes.Clone(req.Arguments)
+	args, err := commandArguments(t.manifest, raw)
+	if err != nil {
+		return nil, err
+	}
+	preview := fmt.Sprintf("命令：%v\n参数：%v\n工作目录：%s", t.manifest.Command, args, t.record.Root)
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, preview, func(ctx context.Context) (*toolshare.Result, string, error) {
+		return t.call(ctx, raw, args, runMediaCommand)
+	}), nil
 }
 
-func (t CommandTool) call(ctx context.Context, req toolshare.CallRequest, run func(context.Context, string, *exec.Cmd, *toolmedia.MediaCall) (*toolshare.Result, error)) (result *toolshare.Result, logContent string, callErr error) {
+func (t commandTool) call(ctx context.Context, raw json.RawMessage, args []string, run func(context.Context, string, *exec.Cmd, *toolmedia.MediaCall) (*toolshare.Result, error)) (result *toolshare.Result, logContent string, callErr error) {
 	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 
-	dotEnv, err := config.LoadEnvFile(filepath.Join(t.Record.Root, ".env"))
+	dotEnv, err := config.LoadEnvFile(filepath.Join(t.record.Root, ".env"))
 	if err != nil {
 		callErr := fmt.Errorf("load AgentSkill environment: %w", err)
 		return nil, callErr.Error(), callErr
 	}
-	environment := t.ProcessEnv.Overlay(dotEnv)
+	environment := t.processEnv.Overlay(dotEnv)
 
 	timeout := defaultRunnerTimeout
-	if t.Manifest.TimeoutSeconds > 0 {
-		timeout = time.Duration(t.Manifest.TimeoutSeconds) * time.Second
+	if t.manifest.TimeoutSeconds > 0 {
+		timeout = time.Duration(t.manifest.TimeoutSeconds) * time.Second
 	}
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	mediaCall := t.Media.NewCall()
+	mediaCall := t.media.NewCall()
 	defer func() {
 		err := mediaCall.Close()
 		callErr = errors.Join(callErr, err)
@@ -101,18 +109,20 @@ func (t CommandTool) call(ctx context.Context, req toolshare.CallRequest, run fu
 			logContent = fmt.Sprintf("media_cleanup_error=%v\n%s", err, logContent)
 		}
 	}()
-	raw, err := prepareCommandMedia(runCtx, req.Arguments, t.Manifest, mediaCall, t.Record.Root)
-	if err != nil {
-		return nil, err.Error(), err
+	if schemaContainsMedia(t.manifest.Parameters) {
+		prepared, err := prepareCommandMedia(runCtx, raw, t.manifest, mediaCall, t.record.Root)
+		if err != nil {
+			return nil, err.Error(), err
+		}
+		args, err = commandArguments(t.manifest, prepared)
+		if err != nil {
+			return nil, err.Error(), err
+		}
 	}
-	args, err := commandArguments(t.Manifest, raw)
-	if err != nil {
-		return nil, err.Error(), err
-	}
-	command := append([]string(nil), t.Manifest.Command...)
+	command := append([]string(nil), t.manifest.Command...)
 	command = append(command, args...)
 	cmd := environment.CommandContext(runCtx, command[0], command[1:]...)
-	cmd.Dir = t.Record.Root
+	cmd.Dir = t.record.Root
 	{
 		result, callErr := run(runCtx, "AgentSkill command", cmd, mediaCall)
 		logContent = ""

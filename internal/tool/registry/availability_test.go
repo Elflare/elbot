@@ -14,9 +14,6 @@ import (
 
 type optionalTool struct{ fakeTool }
 
-func (optionalTool) AssessRisk(context.Context, share.CallRequest) (share.RiskAssessment, error) {
-	return share.RiskAssessment{Level: share.RiskCritical}, nil
-}
 func (optionalTool) Detail() string          { return "skill detail" }
 func (optionalTool) ActivateTools() []string { return nil }
 
@@ -31,14 +28,6 @@ func TestRegisterOwnedPreservesOptionalInterfaces(t *testing.T) {
 	got, ok := r.Get("skill")
 	if !ok || got != original {
 		t.Fatalf("Get = %T, %v; want original tool", got, ok)
-	}
-	assessor, ok := got.(share.RiskAssessor)
-	if !ok {
-		t.Fatal("lost RiskAssessor")
-	}
-	risk, err := assessor.AssessRisk(context.Background(), share.CallRequest{})
-	if err != nil || risk.Level != share.RiskCritical {
-		t.Fatalf("risk = %+v, %v", risk, err)
 	}
 	detail, ok := got.(share.DetailProvider)
 	if !ok || detail.Detail() != "skill detail" {

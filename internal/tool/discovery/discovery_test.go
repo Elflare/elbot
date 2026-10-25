@@ -24,8 +24,10 @@ func (t testTool) Info() share.Info { return t.info }
 func (t testTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: t.info.Name, Description: t.info.Description, Parameters: map[string]any{"type": "object"}}
 }
-func (testTool) Call(context.Context, share.CallRequest) (*share.Result, string, error) {
-	return &share.Result{}, "", nil
+func (value testTool) PrepareCall(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
+	return share.NewPreparedCall(req, share.RiskAssessment{Level: value.Info().Risk}, "", func(ctx context.Context) (*share.Result, string, error) {
+		return &share.Result{}, "", nil
+	}), nil
 }
 
 type testSkill struct {
@@ -216,7 +218,7 @@ func TestDiscoverToolOwnsLoadingCallback(t *testing.T) {
 	if err != nil || len(before.Tools) != 0 || loads != 0 {
 		t.Fatalf("resolver triggered loading: %+v, %v", before, err)
 	}
-	result, log, err := tool.Call(context.Background(), share.CallRequest{Arguments: json.RawMessage(`{"name":"loaded"}`)})
+	result, log, err := callTool(context.Background(), tool, share.CallRequest{Arguments: json.RawMessage(`{"name":"loaded"}`)})
 	if err != nil || loads != 1 {
 		t.Fatalf("tool load = %d, %v", loads, err)
 	}
@@ -231,7 +233,7 @@ func TestDiscoverToolOwnsLoadingCallback(t *testing.T) {
 	}
 	want := errors.New("load failed")
 	tool = NewDiscoverTool(resolver, func(context.Context) error { return want })
-	if _, _, err := tool.Call(context.Background(), share.CallRequest{}); !errors.Is(err, want) {
+	if _, _, err := callTool(context.Background(), tool, share.CallRequest{}); !errors.Is(err, want) {
 		t.Fatalf("load failure = %v", err)
 	}
 }
@@ -242,7 +244,7 @@ func TestDiscoverToolContentAndActivationMetadata(t *testing.T) {
 		testDynamicTool{testTool: plainTool("append"), content: "追加说明"},
 		testDynamicTool{testTool: plainTool("override"), content: "独立说明", override: true}, skill,
 	)
-	result, log, err := NewDiscoverTool(resolver).Call(context.Background(), share.CallRequest{Arguments: json.RawMessage(`{"names":["append","override","skill","absent"]}`)})
+	result, log, err := callTool(context.Background(), NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"names":["append","override","skill","absent"]}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +262,7 @@ func TestDiscoverToolContentAndActivationMetadata(t *testing.T) {
 	if !strings.Contains(log, "found=3 errors=1") {
 		t.Fatalf("log = %q", log)
 	}
-	if _, _, err := NewDiscoverTool(resolver).Call(context.Background(), share.CallRequest{Arguments: json.RawMessage(`{"name":"absent"}`)}); err == nil {
+	if _, _, err := callTool(context.Background(), NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"name":"absent"}`)}); err == nil {
 		t.Fatal("single missing target should fail")
 	}
 }
@@ -268,7 +270,7 @@ func TestDiscoverToolContentAndActivationMetadata(t *testing.T) {
 func TestDiscoverDynamicContentFailure(t *testing.T) {
 	want := errors.New("dynamic content failed")
 	resolver, _ := newTestResolver(t, testDynamicTool{testTool: plainTool("dynamic"), err: want})
-	if _, _, err := NewDiscoverTool(resolver).Call(context.Background(), share.CallRequest{Arguments: json.RawMessage(`{"name":"dynamic"}`)}); !errors.Is(err, want) {
+	if _, _, err := callTool(context.Background(), NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"name":"dynamic"}`)}); !errors.Is(err, want) {
 		t.Fatalf("content error = %v", err)
 	}
 }
@@ -373,7 +375,7 @@ func TestDiscoveryKeepsQueriedObjectAcrossReplacement(t *testing.T) {
 			} else {
 				original.onSchema = replace
 			}
-			result, _, err := NewDiscoverTool(resolver).Call(context.Background(), share.CallRequest{Arguments: json.RawMessage(`{"name":"versioned"}`)})
+			result, _, err := callTool(context.Background(), NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"name":"versioned"}`)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -412,7 +414,7 @@ func TestDiscoveryKeepsSkillActivationDeclaration(t *testing.T) {
 	if err := r.Register(original); err != nil {
 		t.Fatal(err)
 	}
-	result, _, err := NewDiscoverTool(resolver).Call(context.Background(), share.CallRequest{Arguments: json.RawMessage(`{"name":"skill"}`)})
+	result, _, err := callTool(context.Background(), NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"name":"skill"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}

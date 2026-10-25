@@ -1,17 +1,19 @@
 package skill
 
+import "elbot/internal/security"
+import "elbot/internal/processenv"
+
 import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	toolregistry "elbot/internal/tool/registry"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"elbot/internal/tool"
 )
 
 func TestPreparedAgentSkillReadUsesExecutionContent(t *testing.T) {
@@ -19,7 +21,7 @@ func TestPreparedAgentSkillReadUsesExecutionContent(t *testing.T) {
 	dir := filepath.Join(root, "agent", "docx")
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# DOCX")
 	writeAgentSkillConfig(t, dir, "risk = \"low\"\n")
-	manager := NewManager(root, tool.NewRegistry())
+	manager := NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})
 	if err := manager.Reload(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +40,7 @@ func TestPreparedAgentSkillReadUsesExecutionContent(t *testing.T) {
 	if _, _, err := prepared.Call(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancel = %v", err)
 	}
-	manager.Catalog.Replace(nil)
+	manager.catalog.Replace(nil)
 	if _, _, err := prepared.Call(t.Context()); err == nil {
 		t.Fatal("removed target was accepted")
 	}
@@ -61,8 +63,8 @@ func TestAgentSkillWriteRollsBackConfigWhenReloadFails(t *testing.T) {
 			if tc.oldContent != "" {
 				writeAgentSkillConfig(t, dir, tc.oldContent)
 			}
-			registry := tool.NewRegistry()
-			manager := NewManager(root, registry)
+			registry := toolregistry.NewRegistry(security.DefaultPermission())
+			manager := NewManager(root, registry, nil, processenv.Environment{})
 			if err := manager.Reload(context.Background()); err != nil {
 				t.Fatal(err)
 			}
@@ -75,7 +77,7 @@ func TestAgentSkillWriteRollsBackConfigWhenReloadFails(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, _, err = NewAgentSkillTool(manager).Call(context.Background(), toolshare.CallRequest{Arguments: args})
+			_, _, err = callTool(context.Background(), NewAgentSkillTool(manager), toolshare.CallRequest{Arguments: args})
 			if err == nil || !strings.Contains(err.Error(), "restored previous") {
 				t.Fatalf("Call error = %v, want rollback error", err)
 			}
@@ -92,7 +94,7 @@ func TestAgentSkillWriteRollsBackConfigWhenReloadFails(t *testing.T) {
 			if !ok || registered.Info().Risk != tc.oldRisk {
 				t.Fatalf("registry risk = %#v, %v; want %s", registered, ok, tc.oldRisk)
 			}
-			record, ok := manager.Catalog.Get("docx")
+			record, ok := manager.catalog.Get("docx")
 			if !ok || record.Risk != tc.oldRisk {
 				t.Fatalf("catalog record = %#v, %v; want risk %s", record, ok, tc.oldRisk)
 			}
@@ -104,8 +106,8 @@ func TestAgentSkillWriteCommitsConfigAndReload(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "agent", "docx")
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# DOCX")
-	registry := tool.NewRegistry()
-	manager := NewManager(root, registry)
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
+	manager := NewManager(root, registry, nil, processenv.Environment{})
 	if err := manager.Reload(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +116,7 @@ func TestAgentSkillWriteCommitsConfigAndReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := NewAgentSkillTool(manager).Call(context.Background(), toolshare.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := callTool(context.Background(), NewAgentSkillTool(manager), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(AgentSkillConfigPath(dir))
@@ -125,7 +127,7 @@ func TestAgentSkillWriteCommitsConfigAndReload(t *testing.T) {
 	if !ok || registered.Info().Risk != toolshare.RiskHigh || !registered.Info().SuperadminOnly {
 		t.Fatalf("registry tool = %#v, %v", registered, ok)
 	}
-	record, ok := manager.Catalog.Get("docx")
+	record, ok := manager.catalog.Get("docx")
 	if !ok || record.Risk != toolshare.RiskHigh || !record.SuperadminOnly {
 		t.Fatalf("catalog record = %#v, %v", record, ok)
 	}

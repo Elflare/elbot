@@ -53,7 +53,7 @@ func TestShellMediaInputsAndCleanup(t *testing.T) {
 			}
 			raw, _ := json.Marshal(map[string]any{"cmd": test.cmd, "timeout_ms": test.timeout, "media_inputs": []toolshare.MediaInput{{MediaID: item.ID}, {MediaID: item.ID}}})
 			original := string(raw)
-			result, _, err := shell.Call(runCtx, toolshare.CallRequest{Arguments: raw})
+			result, _, err := callTool(runCtx, shell, toolshare.CallRequest{Arguments: raw})
 			if test.name == "success" && (err != nil || strings.Count(result.Content, "shell-media-content") != 2) {
 				t.Fatalf("result %#v %v", result, err)
 			}
@@ -73,7 +73,7 @@ func TestShellMediaInputsAndCleanup(t *testing.T) {
 	cmd := `echo started > "` + filepath.ToSlash(marker) + `"`
 	for _, id := range []string{"", "bad", "media:" + strings.Repeat("f", 64)} {
 		raw, _ := json.Marshal(map[string]any{"cmd": cmd, "media_inputs": []map[string]string{{"media": item.ID}, {"media": id}}})
-		if _, _, err := shell.Call(ctx, toolshare.CallRequest{Arguments: raw}); err == nil {
+		if _, _, err := callTool(ctx, shell, toolshare.CallRequest{Arguments: raw}); err == nil {
 			t.Fatalf("accepted %s", id)
 		}
 		if _, err := os.Stat(marker); !os.IsNotExist(err) {

@@ -119,7 +119,7 @@ func TestPrepareELwispToolFixesRequestWithoutSending(t *testing.T) {
 	if calls.Load() != 0 {
 		t.Fatal("preparation sent a request")
 	}
-	if prepared.RiskAssessment().Level != toolshare.RiskLow || !strings.Contains(prepared.Preview(), server.URL) || !strings.Contains(prepared.Preview(), `{"value":1}`) {
+	if prepared.RiskAssessment().Level != toolshare.RiskLow || prepared.Preview() != "" {
 		t.Fatalf("risk=%+v preview=%q", prepared.RiskAssessment(), prepared.Preview())
 	}
 	resolved.Discovered.Name = "changed"

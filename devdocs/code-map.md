@@ -134,7 +134,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/tool/builtin/web_extract.go`：正文缓存与同键在途请求。
 - `internal/fileops/binding.go`、`commit.go`：操作绑定与提交校验。
 - `internal/fileops/edit_service.go`、`rollback_service.go`：编辑／撤销准备、预览与提交。
-- `internal/fileops/preview.go`：PreparedFile 保存批准内容与目标，统一编码、diff、修订计算及复核提交；普通编辑与业务文本更新共用结果计算。
+- `internal/fileops/preview.go`：PrepareFile、PrepareFileEdit 与 PrepareFileWrite 准备业务转换、编辑协议和整文件写入；PreparedFile 固定存在状态、真实目标、批准内容与 revision，统一 diff 和复核提交，支持新建冲突检查与相同内容写入。
 - `internal/fileops/file.go`、`atomic_write.go`、`rollback.go`：结果计算、revision 校验写入、目标锁与撤销备份。
 - `internal/workspace/workspace.go`、`resolve.go`、`state.go`：工作目录契约、路径解析与状态编解码；`internal/session/workspace.go` 负责持久化适配。
 - `internal/workspace/context.go`：PathScope 与目录存取能力的上下文传递；`workspace.go` 优先选择调用级目录，未指定时读取 Session 或进程目录。
@@ -166,10 +166,11 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/storage/dialogue.go`、`internal/storage/sqlite/dialogue_repository.go`、`internal/contextmgr/state.go`：规则展示状态提交与压缩重置。
 - `internal/tool/skill/manager.go`：私有持有技能目录、注册目录、媒体入口和基础环境；协调扫描候选、构造工具、替换注册、更新活动目录与删除技能，重载、删除和 manifest 写入共用写入锁。
 - `internal/tool/skill/scanner.go`、`catalog.go`：扫描器只读取文件并生成候选记录；catalog 保存已成功注册的活动记录，两者均为 Skill 包内实现。
-- `internal/tool/skill/command_tool.go`、`go_runner.go`：命令／Go 执行、进程环境与有界输出收集。
+- `internal/tool/skill/command_tool.go`、`go_runner.go`：准备命令／Go 调用的参数、风险、目标与操作预览；执行阶段读取技能环境并准备媒体，GoRunner 固定所选活动记录。
 - `internal/tool/skill/skill_md_parser.go`、`elbot_skill_manifest.go`：SKILL.md 元数据与正文解析、ELBOT_SKILL.toml 解析校验与 schema 构造。
-- `internal/tool/skill/create_el_skill.go`、`modify_el_skill.go`、`finalize_el_skill.go`：原生 Skill 创建、读取与修改、校验编译及重载；`go_source.go` 处理 Go 源码与编译。
-- `internal/tool/skill/read_el_skill.go`、`process.go`：读取工具与公共进程执行的职责骨架；当前读取实现位于 `modify_el_skill.go`，进程执行与输出收集位于 `go_runner.go`。
+- `internal/tool/skill/create_el_skill.go`、`modify_el_skill.go`、`finalize_el_skill.go`：原生 Skill 创建、修改和 finalize 的准备、文件提交、编译及重载协调；文件预览与提交复用 fileops，`go_source.go` 处理源码规范化、格式化及校验。
+- `internal/tool/skill/read_el_skill.go`：原生 Skill 读取工具，准备时固定路径，执行时读取内容。
+- `internal/tool/skill/process.go`：公共进程执行、有界输出、取消错误、Go 编译器查找、版本探测与编译；保留创建和 finalize 各自的 Go 查找规则。
 - `internal/tool/skill/media.go`：媒体参数准备与 stdout 结果导入。
 - `internal/config/assets.go`：内置 Skill 说明。
 

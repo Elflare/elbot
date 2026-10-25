@@ -207,8 +207,10 @@ func (t completionTestTool) Info() toolshare.Info {
 func (t completionTestTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: t.name}
 }
-func (t completionTestTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
-	return nil, "", nil
+func (t completionTestTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		return nil, "", nil
+	}), nil
 }
 
 type completionTestSkill struct{ completionTestTool }

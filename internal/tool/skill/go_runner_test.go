@@ -1,5 +1,7 @@
 package skill
 
+import "elbot/internal/security"
+
 import toolshare "elbot/internal/tool/share"
 
 import (
@@ -18,8 +20,31 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/processenv"
-	"elbot/internal/tool"
+	toolregistry "elbot/internal/tool/registry"
 )
+
+func TestPreparedGoRunnerKeepsSelectedRecordAndArguments(t *testing.T) {
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog := newCatalog()
+	catalog.Replace([]record{{Name: "frozen", Kind: KindGo, Root: t.TempDir(), BinaryPath: binary, Risk: toolshare.RiskHigh}})
+	runner := NewGoRunner(&Manager{catalog: catalog, processEnv: processenv.New([]string{"ELBOT_SKILL_TEST_HELPER=payload"})})
+	raw := []byte(`{"skill_name":"frozen","payload":{"input":"approved"}}`)
+	prepared, err := runner.PrepareCall(t.Context(), toolshare.CallRequest{Arguments: raw})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range raw {
+		raw[i] = ' '
+	}
+	catalog.Replace([]record{{Name: "frozen", Kind: KindGo, Root: t.TempDir(), BinaryPath: "missing", Risk: toolshare.RiskSafe}})
+	result, _, err := prepared.Call(t.Context())
+	if err != nil || result.Content != "approved" || prepared.RiskAssessment().Level != toolshare.RiskHigh {
+		t.Fatalf("result=%+v risk=%+v err=%v", result, prepared.RiskAssessment(), err)
+	}
+}
 
 func TestRunMediaCommandOutputLimits(t *testing.T) {
 	t.Parallel()
@@ -83,16 +108,6 @@ func TestRunMediaCommandOutputLimits(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestSafeRelativePathRejectsEscape(t *testing.T) {
-	root := t.TempDir()
-	if _, err := safeRelativePath(root, "../evil.py"); err == nil {
-		t.Fatal("expected path escape error")
-	}
-	if _, err := safeRelativePath(root, filepath.Join("scripts", "ok.py")); err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -168,14 +183,14 @@ func TestSkillDeadlineSelection(t *testing.T) {
 					dir := t.TempDir()
 					var err error
 					if kind == "go" {
-						catalog := NewCatalog()
-						catalog.Replace([]Record{{Name: "deadline", Kind: KindGo, Root: dir, BinaryPath: binary}})
-						runner := NewGoRunner(catalog)
-						raw, _ := json.Marshal(map[string]any{"skill_name": "deadline", "timeout_ms": tc.value * 1000, "payload": map[string]any{}})
-						_, _, err = runner.call(ctx, toolshare.CallRequest{Arguments: raw}, execute)
+						catalog := newCatalog()
+						catalog.Replace([]record{{Name: "deadline", Kind: KindGo, Root: dir, BinaryPath: binary}})
+						runner := NewGoRunner(&Manager{catalog: catalog})
+						record, _ := catalog.Get("deadline")
+						_, _, err = runner.call(ctx, goRunnerArgs{SkillName: "deadline", TimeoutMS: tc.value * 1000, Payload: json.RawMessage(`{}`)}, record, execute)
 					} else {
-						command := NewCommandTool(Record{Root: dir, Manifest: AgentSkillManifest{Command: []string{binary}, TimeoutSeconds: tc.value}})
-						_, _, err = command.call(ctx, toolshare.CallRequest{}, execute)
+						command := newCommandTool(record{Root: dir, Manifest: AgentSkillManifest{Command: []string{binary}, TimeoutSeconds: tc.value}}, nil, processenv.Environment{})
+						_, _, err = command.call(ctx, nil, nil, execute)
 					}
 					if calls != 1 || !errors.Is(err, context.DeadlineExceeded) {
 						t.Fatalf("calls=%d error=%v", calls, err)
@@ -192,11 +207,11 @@ func TestGoRunnerPassesPayloadJSONToBinary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog := NewCatalog()
-	catalog.Replace([]Record{{Name: "echo", Kind: KindGo, Root: dir, BinaryPath: binary}})
+	catalog := newCatalog()
+	catalog.Replace([]record{{Name: "echo", Kind: KindGo, Root: dir, BinaryPath: binary}})
 	args := []byte(`{"skill_name":"echo","payload":{"input":"hello"}}`)
 	environment := processenv.Environment{}.Overlay(map[string]string{"ELBOT_SKILL_TEST_HELPER": "payload"})
-	result, _, err := NewGoRunner(catalog, environment).Call(context.Background(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), NewGoRunner(&Manager{catalog: catalog, processEnv: environment}), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,10 +226,10 @@ func TestGoRunnerUsesSharedProcessEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog := NewCatalog()
-	catalog.Replace([]Record{{Name: "environment", Kind: KindGo, Root: dir, BinaryPath: binary}})
-	runner := NewGoRunner(catalog, processenv.New([]string{"ELBOT_GO_SKILL_ENV_TEST=from-shared", "ELBOT_SKILL_TEST_HELPER=shared-env"}))
-	result, _, err := runner.Call(context.Background(), toolshare.CallRequest{Arguments: []byte(`{"skill_name":"environment","payload":{}}`)})
+	catalog := newCatalog()
+	catalog.Replace([]record{{Name: "environment", Kind: KindGo, Root: dir, BinaryPath: binary}})
+	runner := NewGoRunner(&Manager{catalog: catalog, processEnv: processenv.New([]string{"ELBOT_GO_SKILL_ENV_TEST=from-shared", "ELBOT_SKILL_TEST_HELPER=shared-env"})})
+	result, _, err := callTool(context.Background(), runner, toolshare.CallRequest{Arguments: []byte(`{"skill_name":"environment","payload":{}}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,9 +293,9 @@ func TestSkillExecutionEnvironment(t *testing.T) {
 			newCaller := func(root string) (toolshare.Tool, toolshare.CallRequest) {
 				t.Helper()
 				if kind == "go" {
-					catalog := NewCatalog()
-					catalog.Replace([]Record{{Name: "environment", Kind: KindGo, Root: root, BinaryPath: binary}})
-					return NewGoRunner(catalog, environment), toolshare.CallRequest{Arguments: []byte(`{"skill_name":"environment","payload":{}}`)}
+					catalog := newCatalog()
+					catalog.Replace([]record{{Name: "environment", Kind: KindGo, Root: root, BinaryPath: binary}})
+					return NewGoRunner(&Manager{catalog: catalog, processEnv: environment}), toolshare.CallRequest{Arguments: []byte(`{"skill_name":"environment","payload":{}}`)}
 				}
 				writeSkill(t, root, "---\nname: environment\ndescription: Environment test\n---\n")
 				command, err := json.Marshal([]string{binary})
@@ -288,21 +303,13 @@ func TestSkillExecutionEnvironment(t *testing.T) {
 					t.Fatal(err)
 				}
 				writeAgentSkillConfig(t, root, fmt.Sprintf("risk = \"low\"\ncommand = %s\nparameters = '''{\"type\":\"object\",\"properties\":{\"input\":{\"type\":\"string\"}}}'''\n[args]\ninput = \"--input\"\n", command))
-				manager := NewManager(filepath.Dir(filepath.Dir(root)), tool.NewRegistry(), environment)
-				tools, err := manager.Scanner.Scan(context.Background())
-				if err != nil || len(tools) != 1 {
-					t.Fatalf("scan: tools=%v, err=%v", tools, err)
-				}
-				// Verify execution through both scanning and registry replacement.
-				if _, _, err := tools[0].Call(context.Background(), toolshare.CallRequest{}); err != nil {
-					t.Fatalf("scanned command: %v", err)
-				}
+				manager := NewManager(filepath.Dir(filepath.Dir(root)), toolregistry.NewRegistry(security.DefaultPermission()), nil, environment)
 				for range 2 {
 					if err := manager.Reload(context.Background()); err != nil {
 						t.Fatal(err)
 					}
 				}
-				candidate, ok := manager.Registry.Get("environment")
+				candidate, ok := manager.registry.Get("environment")
 				if !ok {
 					t.Fatal("environment command was not registered")
 				}
@@ -315,7 +322,7 @@ func TestSkillExecutionEnvironment(t *testing.T) {
 			caller, req := newCaller(root)
 			check := func(caller toolshare.Tool, req toolshare.CallRequest, root, common, local, empty, path string) {
 				t.Helper()
-				result, _, err := caller.Call(context.Background(), req)
+				result, _, err := callTool(context.Background(), caller, req)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -360,7 +367,7 @@ func TestSkillExecutionEnvironment(t *testing.T) {
 			if err := os.Mkdir(envPath, 0o755); err != nil {
 				t.Fatal(err)
 			}
-			if _, _, err := caller.Call(context.Background(), req); err == nil || !strings.Contains(err.Error(), envPath) {
+			if _, _, err := callTool(context.Background(), caller, req); err == nil || !strings.Contains(err.Error(), envPath) {
 				t.Fatalf("unreadable dotenv error = %v, want path %s", err, envPath)
 			}
 			if _, err := os.Stat(filepath.Join(root, "executed")); !os.IsNotExist(err) {
@@ -377,9 +384,9 @@ func TestSkillExecutionEnvironment(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(root, ".env"), []byte("PATH="+filepath.Dir(binary)+"\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		caller := NewCommandTool(Record{Name: "environment", Root: root, Manifest: AgentSkillManifest{Command: []string{filepath.Base(binary)}}})
-		caller.ProcessEnv = processenv.Environment{}.Overlay(map[string]string{"ELBOT_SKILL_TEST_HELPER": "environment"})
-		if _, _, err := caller.Call(context.Background(), toolshare.CallRequest{}); err != nil {
+		caller := newCommandTool(record{Name: "environment", Root: root, Manifest: AgentSkillManifest{Command: []string{filepath.Base(binary)}}}, nil, processenv.Environment{})
+		caller.processEnv = processenv.Environment{}.Overlay(map[string]string{"ELBOT_SKILL_TEST_HELPER": "environment"})
+		if _, _, err := callTool(context.Background(), caller, toolshare.CallRequest{}); err != nil {
 			t.Fatalf("resolve command through skill PATH: %v", err)
 		}
 	})

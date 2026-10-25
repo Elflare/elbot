@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -72,12 +71,9 @@ func (m *Manager) reloadLocked(ctx context.Context) error {
 
 func (m *Manager) toolForRecord(record record) toolshare.Tool {
 	if record.Kind == KindAgent && record.ManifestFound && record.ManifestError == "" && record.Manifest.Callable {
-		command := NewCommandTool(record)
-		command.Media = m.media
-		command.ProcessEnv = m.processEnv
-		return command
+		return newCommandTool(record, m.media, m.processEnv)
 	}
-	return NewDescriptor(record)
+	return newDescriptor(record)
 }
 
 func (m *Manager) setReloadResult(err error) {
@@ -163,35 +159,22 @@ func (m *Manager) Remove(ctx context.Context, name string) (err error) {
 	return m.reloadLocked(ctx)
 }
 
-// WriteAgentSkillConfig commits an AgentSkill manifest and rolls the file back
-// if the complete skill snapshot cannot be reloaded.
-func (m *Manager) WriteAgentSkillConfig(ctx context.Context, name, content string) error {
-	name = strings.TrimSpace(name)
-	if err := validateSkillName(name); err != nil {
-		return err
-	}
-	if strings.TrimSpace(content) == "" {
-		return fmt.Errorf("toml is required for write")
-	}
-	if _, err := ParseAgentSkillManifest([]byte(content)); err != nil {
-		return err
-	}
-
+// commitAgentSkillConfig 提交已准备的配置；重载失败时由 Skill 恢复原文件。
+func (m *Manager) commitAgentSkillConfig(ctx context.Context, name, path string, prepared *fileops.PreparedFile) error {
 	m.writeMu.Lock()
 	defer m.writeMu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	record, ok := m.catalog.Get(name)
-	if !ok || record.Kind != KindAgent {
+	if !ok || record.Kind != KindAgent || AgentSkillConfigPath(record.Root) != path {
 		return fmt.Errorf("AgentSkill %q not found", name)
 	}
-	path := AgentSkillConfigPath(record.Root)
 	previous, err := captureFile(path)
 	if err != nil {
 		return err
 	}
-	if err := fileops.AtomicWriteFile(path, []byte(content), existingFileMode(path)); err != nil {
+	if _, err := prepared.Commit(ctx); err != nil {
 		return err
 	}
 	if err := m.reloadLocked(ctx); err != nil {

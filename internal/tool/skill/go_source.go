@@ -1,23 +1,13 @@
-// 读取和解析 Go Skill 源码信息。
+// 规范化、格式化并验证 Go Skill 源码与模块声明。
 package skill
 
 import (
-	"bytes"
-	"context"
 	"fmt"
 	"go/format"
 	"go/parser"
 	"go/token"
-	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
-	"time"
-
-	"elbot/internal/processenv"
 )
-
-const goBinaryEnv = "ELBOT_GO_BINARY"
 
 func normalizeGoSource(text string) string {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
@@ -43,103 +33,36 @@ func validateGoMainSource(source string) error {
 	return nil
 }
 
-func resolveGoExecutable(skillRoot string, environments ...processenv.Environment) (string, error) {
-	var environment processenv.Environment
-	if len(environments) > 0 {
-		environment = environments[0]
+func parseGoModVersion(output string) (string, error) {
+	version := strings.TrimSpace(output)
+	if !strings.HasPrefix(version, "go") {
+		return "", fmt.Errorf("detect go version: unsupported go version output %q", version)
 	}
-	if value, ok := environment.Lookup(goBinaryEnv); ok && strings.TrimSpace(value) != "" {
-		return validateGoExecutable(value, goBinaryEnv)
+	version = strings.TrimPrefix(version, "go")
+	parts := strings.Split(version, ".")
+	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
+		return "", fmt.Errorf("detect go version: unsupported go version output %q", strings.TrimSpace(output))
 	}
-	if goroot, ok := environment.Lookup("GOROOT"); ok && strings.TrimSpace(goroot) != "" {
-		candidate := filepath.Join(goroot, "bin", executableName("go"))
-		if path, ok := existingExecutable(candidate); ok {
-			return path, nil
+	minor := parts[1]
+	for i, r := range minor {
+		if r < '0' || r > '9' {
+			minor = minor[:i]
+			break
 		}
-		return "", fmt.Errorf("GOROOT is set but go executable is unavailable at %q; set %s=/path/to/go in system environment or config .env", candidate, goBinaryEnv)
 	}
-	if goPath, err := environment.LookPath("go"); err == nil {
-		return goPath, nil
+	if minor == "" {
+		return "", fmt.Errorf("detect go version: unsupported go version output %q", strings.TrimSpace(output))
 	}
-	return "", fmt.Errorf("go executable not found in ElBot service PATH; set %s=/path/to/go in system environment or config .env, or configure service PATH/GOROOT, then restart ElBot", goBinaryEnv)
+	return parts[0] + "." + minor, nil
 }
 
-func validateGoExecutable(path, source string) (string, error) {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return "", fmt.Errorf("%s is empty", source)
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return "", fmt.Errorf("%s points to unavailable go executable %q: %w", source, path, err)
-	}
-	if info.IsDir() {
-		return "", fmt.Errorf("%s points to a directory, not go executable: %q", source, path)
-	}
-	return path, nil
+func goModContent(name, version string) string {
+	return fmt.Sprintf("module elbot-skill/%s\n\ngo %s\n", name, version)
 }
 
-func existingExecutable(path string) (string, bool) {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return "", false
-	}
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
-		return "", false
-	}
-	return path, true
-}
-
-func executableName(name string) string {
-	if runtime.GOOS == "windows" {
-		return name + ".exe"
-	}
-	return name
-}
-
-type goBuildResult struct {
-	Stdout string
-	Stderr string
-	Err    error
-}
-
-func buildGoSkill(ctx context.Context, root, name string, timeoutMS int, environments ...processenv.Environment) error {
-	result, err := runGoBuild(ctx, root, name, timeoutMS, environments...)
-	if err != nil {
-		return err
-	}
-	if result.Err != nil {
-		return fmt.Errorf("go build failed: %w\nstdout:\n%s\nstderr:\n%s", result.Err, truncateOutput(result.Stdout), truncateOutput(result.Stderr))
+func validateGoSource(source string) error {
+	if !strings.Contains(source, "package main") {
+		return fmt.Errorf("go_source must contain package main")
 	}
 	return nil
-}
-
-func runGoBuild(ctx context.Context, root, name string, timeoutMS int, environments ...processenv.Environment) (goBuildResult, error) {
-	var environment processenv.Environment
-	if len(environments) > 0 {
-		environment = environments[0]
-	}
-	goPath, err := resolveGoExecutable(root, environment)
-	if err != nil {
-		return goBuildResult{}, err
-	}
-	binary := name
-	if runtime.GOOS == "windows" {
-		binary += ".exe"
-	}
-	timeout := 60 * time.Second
-	if timeoutMS > 0 {
-		timeout = time.Duration(timeoutMS) * time.Millisecond
-	}
-	runCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	cmd := environment.CommandContext(runCtx, goPath, "build", "-o", binary, ".")
-	cmd.Dir = root
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err = cmd.Run()
-	return goBuildResult{Stdout: stdout.String(), Stderr: stderr.String(), Err: err}, nil
 }

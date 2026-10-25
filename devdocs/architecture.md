@@ -238,8 +238,10 @@ flowchart LR
 - Tool 接口只保留 Name、Info、Schema 和必需的 PrepareCall；准备不执行业务写入，成功时必须返回非 nil 的 PreparedCall。完整风险由工具准备阶段确定；Execution 从准备结果读取风险，原生批次调用使用 Permission.CheckTool 判断放行或确认。目录替换、注销影响后续解析，不改变已准备的调用。
 - NewPreparedCall 复制调用参数与风险原因，保存预览和执行回调；Preview 只提供展示文本，RiskAssessment 返回独立风险结果。回调使用固定业务数据和执行阶段传入的 context，不保留准备阶段的 context 或锁。Execution 执行前校验取消与 Matches，只执行 PreparedCall，不提供绕过准备的调用分支。
 - 自动确认只跳过展示和等待，不跳过准备；普通调用进度提示与确认预览独立。已由调用方授权的 CallTool 同样先准备、复核参数与取消状态，再执行，但不进入模型批次或交互确认。
-- ELwisp 准备时固定远程地址、请求体与超时，参数或请求构造错误在发送前返回；实际执行只发送请求、解析返回并保留部分结果。远程调用沿用现行低风险自动放行策略，开始与结果状态由统一执行入口记录。
-- 业务提交负责目标、revision、权限绑定和业务状态复核；文件 diff 沿用 fileops 的大小与行比较限制，超限返回省略说明。文件准备及具体工具实现尚未全部迁移到必需 PrepareCall 契约，当前整包构建仍受未迁移入口及 Skill 循环依赖阻塞。
+- ELwisp 准备时固定远程地址、请求体与超时，参数或请求构造错误在发送前返回；实际执行只发送请求、解析返回并保留部分结果。远程调用沿用现行低风险自动放行策略，Preview 为空，开始与结果状态由统一执行入口记录。
+- Builtin、Skill 与发现工具均通过必需的 PrepareCall 接入；参数和动态风险只在准备时解析，执行使用固定的业务数据和目标。Shell、命令 Skill 与 GoRunner 在执行阶段启动进程和准备媒体；GoRunner 固定所选技能记录，目录重载不重新选择本次调用。
+- 业务提交负责目标、revision、权限绑定和业务状态复核。fileops 的 PrepareFileEdit 复用编辑协议与可选文本校验，PrepareFileWrite 准备完整 UTF-8 内容；两者返回 PreparedFile，固定存在状态、真实目标、revision 和批准内容。文件层复核后提交，diff 沿用大小与行比较限制。编辑保留无变化错误，整文件写入允许内容相同。
+- 长期记忆自行管理目录、索引、同步与删除。新建只预览规范化业务内容，执行时在保存锁内分配 ID、时间和文件名；更新复用 PreparedFile。删除预览 ID、标题、分类、摘要与路径，执行时复核目标和内容 revision，再删除文件与索引。
 - 每次准备及完成处理前应用 Execution 的内存接管快照，保留后续工具状态；本次调用权限与沙箱固定，输出发送时选择最新去向。发现状态提交成功后才更新快照，保存失败不重跑已完成动作。
 - Chat 工具消息只发文本，工具图片派生为同批之后的 user 多模态输入，不持久化派生消息；Responses 编码原生工具结果。
 
@@ -379,7 +381,9 @@ flowchart TD
 - AgentSkill 使用 SKILL.md 和可选 ELBOT_SKILL.toml；原生 EL／Go Skill 使用 SKILL.elyph，Go runner 可配编译产物。
 - 命令与 Go runner 每次读取技能根 .env；普通变量按技能 .env > 进程环境 > 配置根 .env 合并，PATH 按进程、配置根、技能追加去重。子进程 cwd 为技能根目录，Go 编译用启动时基础环境。
 - Manager 接收明确的技能根目录、Registry、Tool 媒体入口和基础环境，私有持有 Scanner 与 Catalog；Scanner 只扫描候选记录，Manager 构造工具并提交注册替换，成功后更新 Catalog。扫描和注册失败均保留原活动目录。
-- 重载、删除与 AgentSkill manifest 写入由 Manager 的 writeMu 串行协调；manifest 写入后重载失败则恢复文件。discover_tool 展示详情或激活 wrapper；原生 Skill finalize 执行 lint、gofmt、build 和 reload。
+- descriptor、commandTool 及其依赖为包内实现；GoRunner 通过 NewGoRunner(manager) 构造，Skill 不反向依赖 Tool 根包。
+- 创建、修改、finalize、删除、重载与 AgentSkill manifest 提交由 Manager 的 writeMu 串行协调；准备和确认等待不持有写锁，普通技能运行也不持锁。文件准备复用 fileops，manifest 提交后重载失败由 Skill 恢复原文件。
+- 创建预览已知源文件内容；finalize 准备校验和格式化结果，执行时复核源文件、提交格式化、编译并重载，无格式变化时跳过写入。创建或编译失败保留已有部分完成语义。读取实现位于 read_el_skill.go，进程、编译器查找及有界输出位于 process.go，源码处理位于 go_source.go。
 - 媒体在执行阶段准备：shell 用 media_inputs／ELBOT_MEDIA_N，Go 用 payload.media_inputs，TOML 用 type=media 参数；stdout 媒体经 os.Root 校验后导入中心，普通文本 ID 不转换。
 - shell 导出缓存跨调用保留，每次调用首次使用时校验文件并刷新时间，由 sandbox 维护任务清理；Go／TOML 使用调用私有目录，结束即删除。同次调用复用成功导出，不缓存失败结果，结束释放媒体引用。
 - Skill 命令 stdout 保留 1 MiB、stderr 保留 16 KiB，超限继续排空；成功但 stdout 超限时报错，不解析残缺 JSON。

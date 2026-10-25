@@ -21,7 +21,7 @@ func TestResolveGoExecutableReadsSharedEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	path, err := resolveGoExecutable(skillRoot, processenv.New([]string{goBinaryEnv + "=" + fakeGo}))
+	path, err := resolveGoExecutable(processenv.New([]string{goBinaryEnv + "=" + fakeGo}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestResolveGoExecutableUsesGOROOT(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	path, err := resolveGoExecutable(t.TempDir(), processenv.New([]string{"GOROOT=" + root}))
+	path, err := resolveGoExecutable(processenv.New([]string{"GOROOT=" + root}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestResolveGoExecutableUsesGOROOT(t *testing.T) {
 func TestResolveGoExecutableReportsInvalidConfiguredPath(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "missing-go")
 
-	_, err := resolveGoExecutable(t.TempDir(), processenv.New([]string{goBinaryEnv + "=" + missing}))
+	_, err := resolveGoExecutable(processenv.New([]string{goBinaryEnv + "=" + missing}))
 	if err == nil {
 		t.Fatal("expected error")
 	}

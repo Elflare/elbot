@@ -17,7 +17,6 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 
 	"elbot/internal/fileops"
-	
 )
 
 const (

@@ -88,14 +88,16 @@ func (s *Service) PrepareEdit(ctx context.Context, req EditRequest) (*PreparedEd
 		return nil, err
 	}
 	defer unlock()
-	result, err := EditFileWithOptions(resolved.Path, req.Encoding, req.ExpectedRevision, req.Create, true, req.ContextLines, req.Edits, req.Options)
+	fileRequest := req
+	fileRequest.Path = resolved.Path
+	file, err := PrepareFileEdit(ctx, fileRequest, nil)
 	if err != nil {
 		return nil, fmt.Errorf("preflight edit_file: %w", err)
 	}
-	if err := checkFileTarget(resolved.Path, target, result.Created); err != nil {
-		return nil, err
+	if file.target != target {
+		return nil, fmt.Errorf("edit target changed during preparation")
 	}
-	return &PreparedEdit{service: s, binding: binding, request: req, resolved: resolved, file: &PreparedFile{target: target, result: result}}, nil
+	return &PreparedEdit{service: s, binding: binding, request: req, resolved: resolved, file: file}, nil
 }
 
 // Edit directly commits an edit without building a confirmation preview.

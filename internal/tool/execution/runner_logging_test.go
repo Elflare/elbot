@@ -132,18 +132,20 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 	}
 }
 
-func (t loggingTool) Call(_ context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
-	if t.args != nil {
-		*t.args = string(req.Arguments)
-	}
-	logContent := "independent log body"
-	if t.cancel != nil {
-		t.cancel()
-	}
-	if t.err != nil {
-		logContent += "\n" + t.err.Error()
-	}
-	return &toolshare.Result{Content: "partial-result"}, logContent, t.err
+func (t loggingTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		if t.args != nil {
+			*t.args = string(req.Arguments)
+		}
+		logContent := "independent log body"
+		if t.cancel != nil {
+			t.cancel()
+		}
+		if t.err != nil {
+			logContent += "\n" + t.err.Error()
+		}
+		return &toolshare.Result{Content: "partial-result"}, logContent, t.err
+	}), nil
 }
 
 func TestRunnerWritesOnlyAuditWithBoundedArgumentPreview(t *testing.T) {

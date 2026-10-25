@@ -114,59 +114,55 @@ func (t ViewImageTool) sourcePath(ctx context.Context, source string) (workspace
 	return workspace.ResolveWorkspacePath(ctx, path, workspace.PathResolveOptions{})
 }
 
-func (t ViewImageTool) AssessRisk(ctx context.Context, req toolshare.CallRequest) (toolshare.RiskAssessment, error) {
+func (t ViewImageTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	args, err := parseViewImageArgs(req)
 	if err != nil {
-		return toolshare.RiskAssessment{}, err
+		return nil, err
 	}
 	path, err := t.sourcePath(ctx, args.Source)
 	if err != nil {
-		return toolshare.RiskAssessment{}, err
+		return nil, err
 	}
+	assessment := toolshare.RiskAssessment{Level: t.Info().Risk}
 	if path.Path != "" && isSensitiveReadFile(path.Path) {
-		return toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"读取可能包含凭据的敏感文件，需要用户确认"}}, nil
+		assessment = toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"读取可能包含凭据的敏感文件，需要用户确认"}}
 	}
-	return toolshare.RiskAssessment{Level: toolshare.RiskLow}, nil
-}
-
-func (t ViewImageTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
-	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
-	args, err := parseViewImageArgs(req)
-	if err != nil {
-		return nil, err.Error(), err
+	preview := fmt.Sprintf("查看图片：%s\n消息：%v", args.Source, args.MessageIDs)
+	if path.Path != "" {
+		preview = fmt.Sprintf("查看图片：%s", path.Path)
 	}
-	if args.Source == "" {
-		return t.viewMessages(ctx, args)
-	}
-	path, err := t.sourcePath(ctx, args.Source)
-	if err != nil {
-		return nil, err.Error(), err
-	}
-	var item toolshare.MediaInfo
-	if strings.HasPrefix(args.Source, toolmedia.IDPrefix) {
-		item, err = t.center.ValidateImage(ctx, args.Source)
-	} else {
-		if delivery.IsHTTPMediaSource(args.Source) {
-			item, err = t.center.ImportURL(ctx, args.Source, toolshare.MediaImportOptions{})
+	return toolshare.NewPreparedCall(req, assessment, preview, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+		if args.Source == "" {
+			return t.viewMessages(ctx, args)
+		}
+		var err error
+		var item toolshare.MediaInfo
+		if strings.HasPrefix(args.Source, toolmedia.IDPrefix) {
+			item, err = t.center.ValidateImage(ctx, args.Source)
 		} else {
-			item, err = t.center.ImportFile(ctx, path.Path, toolshare.MediaImportOptions{})
+			if delivery.IsHTTPMediaSource(args.Source) {
+				item, err = t.center.ImportURL(ctx, args.Source, toolshare.MediaImportOptions{})
+			} else {
+				item, err = t.center.ImportFile(ctx, path.Path, toolshare.MediaImportOptions{})
+			}
+			if err != nil {
+				return nil, err.Error(), err
+			}
+			item, err = t.center.ValidateImage(ctx, item.ID)
 		}
 		if err != nil {
 			return nil, err.Error(), err
 		}
-		item, err = t.center.ValidateImage(ctx, item.ID)
-	}
-	if err != nil {
-		return nil, err.Error(), err
-	}
-	{
-		var warnings []string
-		if path.WasAbs && !contextinfo.BackgroundContext(ctx) {
-			warnings = append(warnings, toolshare.AbsolutePathWorkspaceWarning)
+		{
+			var warnings []string
+			if path.WasAbs && !contextinfo.BackgroundContext(ctx) {
+				warnings = append(warnings, toolshare.AbsolutePathWorkspaceWarning)
+			}
+			result := &toolshare.Result{Segments: []llm.MessageSegment{imageResultSegment(item)}, Warnings: warnings}
+			return result, fmt.Sprintf("image prepared media_id=%s source=%s", item.ID, args.Source), nil
 		}
-		result := &toolshare.Result{Segments: []llm.MessageSegment{imageResultSegment(item)}, Warnings: warnings}
-		return result, fmt.Sprintf("image prepared media_id=%s source=%s", item.ID, args.Source), nil
-	}
+	}), nil
 }
 
 func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (_ *toolshare.Result, logContent string, _ error) {

@@ -48,11 +48,10 @@ func prepareELwispTool(call llm.ToolCallRequest, resolved resolvedTool) (*toolsh
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	preview := fmt.Sprintf("远程工具：%s\n地址：%s\n参数：%s", discovered.Name, discovered.Endpoint, arguments)
 	return toolshare.NewPreparedCall(
 		toolshare.CallRequest{ID: call.ID, Name: call.Name, Arguments: json.RawMessage(call.Arguments)},
 		toolshare.RiskAssessment{Level: toolshare.RiskLow},
-		preview,
+		"",
 		func(ctx context.Context) (*toolshare.Result, string, error) {
 			return executeELwispTool(ctx, req, timeout)
 		},

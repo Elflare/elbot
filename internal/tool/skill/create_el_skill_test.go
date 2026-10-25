@@ -1,9 +1,14 @@
 package skill
 
+import "elbot/internal/security"
+import "elbot/internal/processenv"
+
 import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
+	"elbot/internal/tool/discovery"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -14,7 +19,7 @@ import (
 	"testing"
 
 	"elbot/internal/llm"
-	"elbot/internal/tool"
+	toolregistry "elbot/internal/tool/registry"
 )
 
 func TestCreateElSkillCreatesBuildsAndReloads(t *testing.T) {
@@ -24,8 +29,8 @@ func TestCreateElSkillCreatesBuildsAndReloads(t *testing.T) {
 		t.Skip("go executable not found")
 	}
 
-	registry := tool.NewRegistry()
-	manager := NewManager(root, registry)
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
+	manager := NewManager(root, registry, nil, processenv.Environment{})
 	creator := NewCreateElSkillTool(manager)
 	goSource := "package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(\"{\\\"content\\\":\\\"ok\\\"}\") }"
 	args, _ := json.Marshal(map[string]string{
@@ -35,7 +40,7 @@ func TestCreateElSkillCreatesBuildsAndReloads(t *testing.T) {
 		"elyph":       "#skill hello_skill - Echo reusable text.\n<- $text:str!\n-> $result:str\n",
 		"go_source":   goSource,
 	})
-	result, _, err := creator.Call(context.Background(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), creator, toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,15 +90,15 @@ func TestParseGoModVersion(t *testing.T) {
 
 func TestCreateElSkillReturnsElyphWarnings(t *testing.T) {
 	root := t.TempDir()
-	registry := tool.NewRegistry()
-	creator := NewCreateElSkillTool(NewManager(root, registry))
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
+	creator := NewCreateElSkillTool(NewManager(root, registry, nil, processenv.Environment{}))
 	args, _ := json.Marshal(map[string]string{
 		"name":        "warn_skill",
 		"description": "Warn workflow.",
 		"risk":        "low",
 		"elyph":       "#skill warn_skill - Warn workflow.\n** 清单：\n",
 	})
-	result, _, err := creator.Call(context.Background(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), creator, toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,15 +110,15 @@ func TestCreateElSkillReturnsElyphWarnings(t *testing.T) {
 func TestCreateElSkillCanCreateTextOnlySkill(t *testing.T) {
 
 	root := t.TempDir()
-	registry := tool.NewRegistry()
-	creator := NewCreateElSkillTool(NewManager(root, registry))
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
+	creator := NewCreateElSkillTool(NewManager(root, registry, nil, processenv.Environment{}))
 	args, _ := json.Marshal(map[string]string{
 		"name":        "workflow",
 		"description": "Reusable workflow.",
 		"risk":        "low",
 		"elyph":       "#skill workflow - Reusable workflow.\n<- $text:str!\n-> $result:str\n",
 	})
-	if _, _, err := creator.Call(context.Background(), toolshare.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := callTool(context.Background(), creator, toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "go", "workflow", "main.go")); !os.IsNotExist(err) {
@@ -126,7 +131,7 @@ func TestCreateElSkillCanCreateTextOnlySkill(t *testing.T) {
 }
 
 func TestCreateElSkillRejectsInvalidInputs(t *testing.T) {
-	creator := NewCreateElSkillTool(NewManager(t.TempDir(), tool.NewRegistry()))
+	creator := NewCreateElSkillTool(NewManager(t.TempDir(), toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
 	cases := []string{
 		`{"name":"../evil","description":"x","risk":"low","elyph":"#skill evil","go_source":"package main"}`,
 		`{"name":"bad","description":"x","risk":"low","elyph":"missing header","go_source":"package main"}`,
@@ -136,7 +141,7 @@ func TestCreateElSkillRejectsInvalidInputs(t *testing.T) {
 		`{"name":"bad","description":"x","risk":"low","elyph":"#skill bad","go_source":"package nope"}`,
 	}
 	for _, raw := range cases {
-		if _, _, err := creator.Call(context.Background(), toolshare.CallRequest{Arguments: []byte(raw)}); err == nil {
+		if _, _, err := callTool(context.Background(), creator, toolshare.CallRequest{Arguments: []byte(raw)}); err == nil {
 			t.Fatalf("expected error for %s", raw)
 		}
 	}
@@ -147,15 +152,15 @@ func TestCreateElSkillDoesNotOverwriteExistingDirectory(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "go", "exists"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	creator := NewCreateElSkillTool(NewManager(root, tool.NewRegistry()))
+	creator := NewCreateElSkillTool(NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
 	args := `{"name":"exists","description":"x","risk":"low","elyph":"#skill exists","go_source":"package main\nfunc main(){}"}`
-	if _, _, err := creator.Call(context.Background(), toolshare.CallRequest{Arguments: []byte(args)}); err == nil {
+	if _, _, err := callTool(context.Background(), creator, toolshare.CallRequest{Arguments: []byte(args)}); err == nil {
 		t.Fatal("expected existing directory error")
 	}
 }
 
 func TestCreateElSkillInfoAndSchema(t *testing.T) {
-	creator := NewCreateElSkillTool(NewManager(t.TempDir(), tool.NewRegistry()))
+	creator := NewCreateElSkillTool(NewManager(t.TempDir(), toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
 	info := creator.Info()
 	if info.Risk != toolshare.RiskHigh || !strings.Contains(info.Description, "可复用") {
 		t.Fatalf("info = %#v", info)
@@ -173,37 +178,41 @@ func (creatorExistingTool) Info() toolshare.Info {
 	return toolshare.Info{Name: "dup", Description: "dup", Source: toolshare.SourceBuiltin, Risk: toolshare.RiskLow}
 }
 func (creatorExistingTool) Schema() llm.ToolSchema { return llm.ToolSchema{} }
-func (creatorExistingTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
-	{
-		result := &toolshare.Result{Content: "ok"}
-		return result, result.Content, nil
-	}
+func (value creatorExistingTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+		{
+			result := &toolshare.Result{Content: "ok"}
+			return result, result.Content, nil
+		}
+	}), nil
 }
 
 func TestCreateElSkillDoesNotOverwriteRegistryTool(t *testing.T) {
-	registry := tool.NewRegistry()
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	if err := registry.Register(creatorExistingTool{}); err != nil {
 		t.Fatal(err)
 	}
-	creator := NewCreateElSkillTool(NewManager(t.TempDir(), registry))
+	creator := NewCreateElSkillTool(NewManager(t.TempDir(), registry, nil, processenv.Environment{}))
 	args := `{"name":"dup","description":"x","risk":"low","elyph":"#skill dup","go_source":"package main\nfunc main(){}"}`
-	if _, _, err := creator.Call(context.Background(), toolshare.CallRequest{Arguments: []byte(args)}); err == nil {
+	if _, _, err := callTool(context.Background(), creator, toolshare.CallRequest{Arguments: []byte(args)}); err == nil {
 		t.Fatal("expected registry conflict error")
 	}
 }
 
 func TestCreateElSkillDiscoversMaintenanceTools(t *testing.T) {
-	registry := tool.NewRegistry()
-	manager := NewManager(t.TempDir(), registry)
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
+	manager := NewManager(t.TempDir(), registry, nil, processenv.Environment{})
 	for _, item := range []toolshare.Tool{NewCreateElSkillTool(manager), NewReadElSkillTool(manager), NewModifyElSkillTool(manager), NewFinalizeElSkillTool(manager)} {
 		if err := registry.Register(item); err != nil {
 			t.Fatal(err)
 		}
 	}
-	details, errors := registry.DiscoverDetails(context.Background(), []string{CreateElSkillName}, func(toolshare.Tool) bool { return true })
-	if len(errors) > 0 {
-		t.Fatalf("errors = %#v", errors)
+	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
+	discovered, err := discovery.NewResolver(registry).DiscoverDetails(ctx, []string{CreateElSkillName})
+	if err != nil || len(discovered.Errors) > 0 {
+		t.Fatalf("discovery = %#v, %v", discovered, err)
 	}
+	details := discovered.Tools
 	found := map[string]bool{}
 	for _, detail := range details {
 		found[detail.Info.Name] = detail.Schema != nil
