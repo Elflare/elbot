@@ -1,4 +1,4 @@
-// 管理 Skill 的加载、刷新与移除。
+// 持有 Skill 内部依赖，协调扫描、注册替换、目录更新与文件变更。
 package skill
 
 import (
@@ -12,40 +12,72 @@ import (
 
 	"elbot/internal/fileops"
 	"elbot/internal/processenv"
-	"elbot/internal/tool"
+	toolmedia "elbot/internal/tool/media"
+	toolregistry "elbot/internal/tool/registry"
+	toolshare "elbot/internal/tool/share"
 )
 
 type Manager struct {
-	Root       string
-	Catalog    *Catalog
-	Scanner    FilesystemScanner
-	Registry   *tool.Registry
-	ProcessEnv processenv.Environment
+	root       string                  // 根部装配传入的技能资产目录。
+	catalog    *catalog                // 当前已成功注册的技能记录。
+	scanner    filesystemScanner       // 只读取技能文件并生成候选记录。
+	registry   *toolregistry.Registry  // 借用 Tool 注册目录，仅替换 Skill 来源的工具。
+	media      *toolmedia.MediaRuntime // 借用 Tool 媒体入口，交给可执行技能使用。
+	processEnv processenv.Environment  // 启动时的基础环境，技能执行时再叠加自身 .env。
 
-	reloadMu sync.Mutex
-	mu       sync.Mutex
-	loaded   bool
-	loading  bool
-	done     chan struct{}
-	lastErr  error
+	writeMu sync.Mutex    // 串行化技能写入与重载；等待用户确认时不持有。
+	mu      sync.Mutex    // 保护加载状态及等待通知。
+	loaded  bool          // 最近一次加载结果是否成功，可直接复用活动目录。
+	loading bool          // 是否已有 EnsureLoaded 正在加载。
+	done    chan struct{} // 当前 EnsureLoaded 加载结束通知。
+	lastErr error         // 最近一次加载或管理操作的错误。
 }
 
-func NewManager(root string, registry *tool.Registry, environment ...processenv.Environment) *Manager {
-	var processEnv processenv.Environment
-	if len(environment) > 0 {
-		processEnv = environment[0]
+// NewManager 接收根部已确定的目录与完整依赖，不自行选择默认配置目录或启动加载。
+func NewManager(root string, registry *toolregistry.Registry, media *toolmedia.MediaRuntime, environment processenv.Environment) *Manager {
+	return &Manager{
+		root:       root,
+		catalog:    newCatalog(),
+		scanner:    newFilesystemScanner(root),
+		registry:   registry,
+		media:      media,
+		processEnv: environment,
 	}
-	scanner := NewFilesystemScanner(root)
-	scanner.ProcessEnv = processEnv
-	return &Manager{Root: scanner.Root, Catalog: scanner.Catalog, Scanner: scanner, Registry: registry, ProcessEnv: processEnv}
 }
 
 func (m *Manager) Reload(ctx context.Context) error {
-	m.reloadMu.Lock()
-	err := m.Scanner.Reload(ctx, m.Registry)
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
+	err := m.reloadLocked(ctx)
 	m.setReloadResult(err)
-	m.reloadMu.Unlock()
 	return err
+}
+
+// reloadLocked 在持有 writeMu 时提交候选；注册失败不会替换活动目录。
+func (m *Manager) reloadLocked(ctx context.Context) error {
+	records, err := m.scanner.scanRecords(ctx)
+	if err != nil {
+		return err
+	}
+	replacements := make([]toolshare.Tool, 0, len(records))
+	for _, record := range records {
+		replacements = append(replacements, m.toolForRecord(record))
+	}
+	if err := m.registry.ReplaceSources([]toolshare.Source{toolshare.SourceSkillAgent, toolshare.SourceSkillGo}, replacements); err != nil {
+		return err
+	}
+	m.catalog.Replace(records)
+	return nil
+}
+
+func (m *Manager) toolForRecord(record record) toolshare.Tool {
+	if record.Kind == KindAgent && record.ManifestFound && record.ManifestError == "" && record.Manifest.Callable {
+		command := NewCommandTool(record)
+		command.Media = m.media
+		command.ProcessEnv = m.processEnv
+		return command
+	}
+	return NewDescriptor(record)
 }
 
 func (m *Manager) setReloadResult(err error) {
@@ -80,8 +112,9 @@ func (m *Manager) EnsureLoaded(ctx context.Context) error {
 	done := m.done
 	m.mu.Unlock()
 
-	m.reloadMu.Lock()
-	err := m.Scanner.Reload(ctx, m.Registry)
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
+	err := m.reloadLocked(ctx)
 
 	m.mu.Lock()
 	m.loaded = err == nil
@@ -89,7 +122,6 @@ func (m *Manager) EnsureLoaded(ctx context.Context) error {
 	m.lastErr = err
 	close(done)
 	m.mu.Unlock()
-	m.reloadMu.Unlock()
 	return err
 }
 
@@ -111,12 +143,24 @@ func (m *Manager) StartDelayedReload(ctx context.Context, delay time.Duration) <
 	return done
 }
 
-func (m *Manager) Remove(ctx context.Context, name string) error {
-	m.reloadMu.Lock()
-	err := m.Scanner.Remove(ctx, m.Registry, name)
-	m.setReloadResult(err)
-	m.reloadMu.Unlock()
-	return err
+func (m *Manager) Remove(ctx context.Context, name string) (err error) {
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
+	defer func() { m.setReloadResult(err) }()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	record, ok := m.catalog.Get(name)
+	if !ok {
+		return fmt.Errorf("external skill %q not found", name)
+	}
+	if record.Root == "" {
+		return fmt.Errorf("external skill %q has no root directory", name)
+	}
+	if err := os.RemoveAll(record.Root); err != nil {
+		return fmt.Errorf("remove skill directory %q: %w", record.Root, err)
+	}
+	return m.reloadLocked(ctx)
 }
 
 // WriteAgentSkillConfig commits an AgentSkill manifest and rolls the file back
@@ -133,12 +177,12 @@ func (m *Manager) WriteAgentSkillConfig(ctx context.Context, name, content strin
 		return err
 	}
 
-	m.reloadMu.Lock()
-	defer m.reloadMu.Unlock()
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	record, ok := m.Catalog.Get(name)
+	record, ok := m.catalog.Get(name)
 	if !ok || record.Kind != KindAgent {
 		return fmt.Errorf("AgentSkill %q not found", name)
 	}
@@ -150,7 +194,7 @@ func (m *Manager) WriteAgentSkillConfig(ctx context.Context, name, content strin
 	if err := fileops.AtomicWriteFile(path, []byte(content), existingFileMode(path)); err != nil {
 		return err
 	}
-	if err := m.Scanner.Reload(ctx, m.Registry); err != nil {
+	if err := m.reloadLocked(ctx); err != nil {
 		if rollbackErr := previous.restore(path); rollbackErr != nil {
 			combined := fmt.Errorf("reload and restore previous %s failed: %w", AgentSkillConfigFile, errors.Join(err, rollbackErr))
 			m.setReloadResult(combined)
@@ -163,9 +207,9 @@ func (m *Manager) WriteAgentSkillConfig(ctx context.Context, name, content strin
 }
 
 type fileSnapshot struct {
-	exists bool
-	data   []byte
-	mode   os.FileMode
+	exists bool        // 写入前文件是否存在，决定恢复内容还是删除新建文件。
+	data   []byte      // 写入前的原始字节，失败恢复时不重新编码。
+	mode   os.FileMode // 写入前的文件权限。
 }
 
 func captureFile(path string) (fileSnapshot, error) {

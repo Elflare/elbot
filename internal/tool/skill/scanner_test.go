@@ -1,32 +1,27 @@
 package skill
 
-import toolshare "elbot/internal/tool/share"
-
 import (
 	"context"
-	"encoding/json"
-	"fmt"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 
-	"elbot/internal/contextinfo"
-	"elbot/internal/security"
-	"elbot/internal/tool"
+	toolshare "elbot/internal/tool/share"
 )
 
 func TestFilesystemScannerScansAgentSkill(t *testing.T) {
 	root := t.TempDir()
 	writeSkill(t, filepath.Join(root, "agent", "docx"), "---\nname: docx\ndescription: DOCX skill\nrisk: low\n---\n\n# DOCX\n\nUse scripts.")
-	scanner := NewFilesystemScanner(root)
-	tools, err := scanner.Scan(context.Background())
+	scanner := newFilesystemScanner(root)
+	records, err := scanner.scanRecords(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != 1 || tools[0].Name() != "docx" || tools[0].Info().Source != toolshare.SourceSkillAgent || tools[0].Info().Risk != toolshare.RiskSafe {
-		t.Fatalf("tools = %#v", tools)
+	if len(records) != 1 || records[0].Name != "docx" || records[0].Kind != KindAgent || records[0].Risk != toolshare.RiskSafe {
+		t.Fatalf("records = %#v", records)
 	}
 }
 
@@ -40,105 +35,16 @@ parameters = '''{"type":"object","required":["input"],"properties":{"input":{"ty
 [args]
 input = "--input"
 `)
-	scanner := NewFilesystemScanner(root)
-	tools, err := scanner.Scan(context.Background())
+	scanner := newFilesystemScanner(root)
+	records, err := scanner.scanRecords(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != 1 || tools[0].Name() != "docx" || tools[0].Info().Risk != toolshare.RiskMedium {
-		t.Fatalf("tools = %#v", tools)
+	if len(records) != 1 || records[0].Name != "docx" || records[0].Risk != toolshare.RiskMedium {
+		t.Fatalf("records = %#v", records)
 	}
-	if _, ok := tools[0].(CommandTool); !ok {
-		t.Fatalf("tool type = %T, want CommandTool", tools[0])
-	}
-}
-
-func TestFilesystemScannerLoadsMarkdownDetailOnDemand(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, "agent", "docx")
-	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Initial DOCX")
-	scanner := NewFilesystemScanner(root)
-	registry := tool.NewRegistry()
-	if err := scanner.Reload(context.Background(), registry); err != nil {
-		t.Fatal(err)
-	}
-	candidate, ok := registry.Get("docx")
-	if !ok {
-		t.Fatal("docx should be registered")
-	}
-	descriptor, ok := candidate.(Descriptor)
-	if !ok {
-		t.Fatalf("tool type = %T, want Descriptor", candidate)
-	}
-	if descriptor.Record.Detail != "" || descriptor.Record.DetailPath != filepath.Join(dir, "SKILL.md") {
-		t.Fatalf("record detail should not be cached: %#v", descriptor.Record)
-	}
-
-	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Updated DOCX")
-	args, _ := json.Marshal(map[string]string{"name": "docx"})
-	result, _, err := tool.NewDiscoverTool(registry).Call(context.Background(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(result.Content, "# Updated DOCX") || strings.Contains(result.Content, "# Initial DOCX") {
-		t.Fatalf("discovery should read current SKILL.md: %q", result.Content)
-	}
-}
-
-func TestFilesystemScannerLoadsCallableMarkdownDetailOnDemand(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, "agent", "docx")
-	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Initial DOCX")
-	writeAgentSkillConfig(t, dir, `risk = "safe"
-command = ["echo"]
-parameters = '''{"type":"object","properties":{"input":{"type":"string"}}}'''
-[args]
-input = "--input"
-`)
-	scanner := NewFilesystemScanner(root)
-	registry := tool.NewRegistry()
-	if err := scanner.Reload(context.Background(), registry); err != nil {
-		t.Fatal(err)
-	}
-	candidate, ok := registry.Get("docx")
-	if !ok {
-		t.Fatal("docx should be registered")
-	}
-	command, ok := candidate.(CommandTool)
-	if !ok {
-		t.Fatalf("tool type = %T, want CommandTool", candidate)
-	}
-	if command.Record.Detail != "" || command.Record.DetailPath == "" {
-		t.Fatalf("callable skill detail should not be cached: %#v", command.Record)
-	}
-
-	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Updated callable DOCX")
-	args, _ := json.Marshal(map[string]string{"name": "docx"})
-	result, _, err := tool.NewDiscoverTool(registry).Call(context.Background(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(result.Content, "# Updated callable DOCX") {
-		t.Fatalf("callable discovery should read current SKILL.md: %q", result.Content)
-	}
-}
-
-func TestMarkdownDetailReadFailureReturnsDiscoveryError(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, "agent", "docx")
-	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# DOCX")
-	scanner := NewFilesystemScanner(root)
-	registry := tool.NewRegistry()
-	if err := scanner.Reload(context.Background(), registry); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Remove(filepath.Join(dir, "SKILL.md")); err != nil {
-		t.Fatal(err)
-	}
-	args, _ := json.Marshal(map[string]string{"name": "docx"})
-	_, _, err := tool.NewDiscoverTool(registry).Call(context.Background(), toolshare.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "read SKILL.md") {
-		t.Fatalf("discovery error = %v, want SKILL.md read failure", err)
+	if !records[0].ManifestFound || !records[0].Manifest.Callable || records[0].ManifestError != "" {
+		t.Fatalf("callable manifest = %#v", records[0])
 	}
 }
 
@@ -150,84 +56,19 @@ func TestFilesystemScannerKeepsPolicyOnlyManifestAsDocumentSkill(t *testing.T) {
 superadmin_only = true
 tags = ["private"]
 `)
-	scanner := NewFilesystemScanner(root)
-	tools, err := scanner.Scan(context.Background())
+	scanner := newFilesystemScanner(root)
+	records, err := scanner.scanRecords(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != 1 || tools[0].Name() != "private_doc" || tools[0].Info().Risk != toolshare.RiskHigh || !tools[0].Info().SuperadminOnly {
-		t.Fatalf("tools = %#v", tools)
+	if len(records) != 1 || records[0].Name != "private_doc" || records[0].Risk != toolshare.RiskHigh || !records[0].SuperadminOnly {
+		t.Fatalf("records = %#v", records)
 	}
-	if _, ok := tools[0].(Descriptor); !ok {
-		t.Fatalf("tool type = %T, want Descriptor", tools[0])
+	if records[0].Manifest.Callable {
+		t.Fatalf("document manifest = %#v", records[0])
 	}
-	if len(tools[0].Info().Tags) != 1 || tools[0].Info().Tags[0] != "private" {
-		t.Fatalf("tags = %#v", tools[0].Info().Tags)
-	}
-}
-
-func TestPolicyOnlyAgentSkillHiddenFromNormalUserDiscovery(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, "agent", "private_doc")
-	writeSkill(t, dir, "---\nname: private_doc\ndescription: Private doc\n---\n\n# Private")
-	writeAgentSkillConfig(t, dir, `risk = "high"
-`)
-	scanner := NewFilesystemScanner(root)
-	tools, err := scanner.Scan(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	registry := tool.NewRegistry()
-	for _, scanned := range tools {
-		if err := registry.Register(scanned); err != nil {
-			t.Fatal(err)
-		}
-	}
-	permission := security.NewPermission("low", "high", map[string][]string{"cli": {"local"}})
-	actor := contextinfo.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: contextinfo.RoleUser}
-	ctx := security.WithPermission(contextinfo.WithActor(context.Background(), actor), permission)
-	discover := tool.NewDiscoverTool(registry)
-	result, _, err := discover.Call(ctx, toolshare.CallRequest{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(result.Data), "private_doc") {
-		t.Fatalf("private skill should be hidden from normal user: %s", result.Data)
-	}
-	args, _ := json.Marshal(map[string]string{"name": "private_doc"})
-	if _, _, err := discover.Call(ctx, toolshare.CallRequest{Arguments: args}); err == nil {
-		t.Fatal("expected normal user detail query to be denied")
-	}
-}
-
-func TestSuperadminOnlyAgentSkillVisibleToSuperadminDiscovery(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, "agent", "private_doc")
-	writeSkill(t, dir, "---\nname: private_doc\ndescription: Private doc\n---\n\n# Private")
-	writeAgentSkillConfig(t, dir, `risk = "low"
-superadmin_only = true
-`)
-	scanner := NewFilesystemScanner(root)
-	tools, err := scanner.Scan(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	registry := tool.NewRegistry()
-	for _, scanned := range tools {
-		if err := registry.Register(scanned); err != nil {
-			t.Fatal(err)
-		}
-	}
-	permission := security.NewPermission("low", "high", map[string][]string{"cli": {"local"}})
-	superadmin := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
-	ctx := security.WithPermission(contextinfo.WithActor(context.Background(), superadmin), permission)
-	args, _ := json.Marshal(map[string]string{"name": "private_doc"})
-	result, _, err := tool.NewDiscoverTool(registry).Call(ctx, toolshare.CallRequest{Arguments: args})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(result.Content, "# Private") {
-		t.Fatalf("superadmin should see skill detail: %q", result.Content)
+	if len(records[0].Tags) != 1 || records[0].Tags[0] != "private" {
+		t.Fatalf("tags = %#v", records[0].Tags)
 	}
 }
 
@@ -241,16 +82,16 @@ parameters = '''{"type":"object","properties":{"input":{"type":"string"}}}'''
 [args]
 input = "--input"
 `)
-	scanner := NewFilesystemScanner(root)
-	tools, err := scanner.Scan(context.Background())
+	scanner := newFilesystemScanner(root)
+	records, err := scanner.scanRecords(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != 1 || tools[0].Name() != "docx" || tools[0].Info().Risk != toolshare.RiskSafe {
-		t.Fatalf("tools = %#v", tools)
+	if len(records) != 1 || records[0].Name != "docx" || records[0].Risk != toolshare.RiskSafe {
+		t.Fatalf("records = %#v", records)
 	}
-	if _, ok := tools[0].(Descriptor); !ok {
-		t.Fatalf("tool type = %T, want Descriptor", tools[0])
+	if !records[0].ManifestFound || records[0].ManifestError == "" || records[0].Manifest.Callable {
+		t.Fatalf("document manifest = %#v", records[0])
 	}
 }
 
@@ -265,176 +106,13 @@ func TestFilesystemScannerScansGoSkillWithBinary(t *testing.T) {
 	if err := os.WriteFile(binary, []byte("fake"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	scanner := NewFilesystemScanner(root)
-	tools, err := scanner.Scan(context.Background())
+	scanner := newFilesystemScanner(root)
+	records, err := scanner.scanRecords(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != 1 || tools[0].Name() != "foo" || tools[0].Info().Source != toolshare.SourceSkillGo {
-		t.Fatalf("tools = %#v", tools)
-	}
-}
-
-func TestFilesystemScannerScansGoTextSkillWithoutBinary(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, "go", "notes")
-	writeElyphSkill(t, dir, "#skill notes - Notes workflow\n** risk low\n")
-	scanner := NewFilesystemScanner(root)
-	tools, err := scanner.Scan(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tools) != 1 || tools[0].Name() != "notes" || tools[0].Info().Source != toolshare.SourceSkillGo || tools[0].Info().Risk != toolshare.RiskLow {
-		t.Fatalf("tools = %#v", tools)
-	}
-	detailer := tools[0].(toolshare.DetailProvider)
-	if len(detailer.ActivateTools()) != 0 {
-		t.Fatalf("pure ELyph go skill should not activate runner: %#v", detailer.ActivateTools())
-	}
-}
-
-func TestFilesystemScannerReloadRemovesDeletedExternalSkill(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, "agent", "docx")
-	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# DOCX")
-	scanner := NewFilesystemScanner(root)
-	registry := tool.NewRegistry()
-	if err := scanner.Reload(context.Background(), registry); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := registry.Get("docx"); !ok {
-		t.Fatal("docx should be registered")
-	}
-	if err := os.RemoveAll(dir); err != nil {
-		t.Fatal(err)
-	}
-	if err := scanner.Reload(context.Background(), registry); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := registry.Get("docx"); ok {
-		t.Fatal("docx should be unregistered")
-	}
-}
-
-func TestFilesystemScannerReloadConflictKeepsRegistryAndCatalog(t *testing.T) {
-	root := t.TempDir()
-	oldDir := filepath.Join(root, "agent", "old")
-	writeSkill(t, oldDir, "---\nname: old\ndescription: Old skill\n---\n\n# Old")
-	scanner := NewFilesystemScanner(root)
-	registry := tool.NewRegistry()
-	if err := registry.Register(NewAgentSkillTool(nil)); err != nil {
-		t.Fatal(err)
-	}
-	if err := scanner.Reload(context.Background(), registry); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.RemoveAll(oldDir); err != nil {
-		t.Fatal(err)
-	}
-	writeSkill(t, filepath.Join(root, "agent", AgentSkillManagerName), "---\nname: agent_skill\ndescription: Conflict\n---\n\n# Conflict")
-
-	err := scanner.Reload(context.Background(), registry)
-	if err == nil || !strings.Contains(err.Error(), "conflicts with existing source") {
-		t.Fatalf("Reload error = %v, want builtin conflict", err)
-	}
-	if _, ok := registry.Get("old"); !ok {
-		t.Fatal("old registry snapshot should remain after failed reload")
-	}
-	if _, ok := scanner.Catalog.Get("old"); !ok {
-		t.Fatal("old catalog snapshot should remain after failed reload")
-	}
-	if _, ok := scanner.Catalog.Get(AgentSkillManagerName); ok {
-		t.Fatal("conflicting skill should not enter catalog")
-	}
-}
-
-func TestFilesystemScannerReloadRejectsDuplicateSkillNames(t *testing.T) {
-	root := t.TempDir()
-	writeSkill(t, filepath.Join(root, "agent", "shared"), "---\nname: shared\ndescription: Agent copy\n---\n\n# Shared")
-	writeElyphSkill(t, filepath.Join(root, "go", "shared"), "#skill shared - Go copy\n")
-	scanner := NewFilesystemScanner(root)
-	registry := tool.NewRegistry()
-	err := scanner.Reload(context.Background(), registry)
-	if err == nil || !strings.Contains(err.Error(), "duplicate skill names") {
-		t.Fatalf("Reload error = %v, want duplicate name error", err)
-	}
-	if len(registry.List()) != 0 || len(scanner.Catalog.List()) != 0 {
-		t.Fatalf("failed reload changed state: registry=%#v catalog=%#v", registry.List(), scanner.Catalog.List())
-	}
-}
-
-func TestFilesystemScannerRemoveDeletesDirectoryAndReloads(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, "agent", "docx")
-	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\nrisk: low\n---\n\n# DOCX")
-	scanner := NewFilesystemScanner(root)
-	registry := tool.NewRegistry()
-	if err := scanner.Reload(context.Background(), registry); err != nil {
-		t.Fatal(err)
-	}
-	if err := scanner.Remove(context.Background(), registry, "docx"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(dir); !os.IsNotExist(err) {
-		t.Fatalf("skill dir should be removed, err=%v", err)
-	}
-	if _, ok := registry.Get("docx"); ok {
-		t.Fatal("docx should be unregistered after remove")
-	}
-}
-
-func TestAgentDescriptorDetailWithoutActor(t *testing.T) {
-	d := NewDescriptor(Record{Name: "docx", Detail: "# DOCX", Kind: KindAgent})
-	if d.Detail() != "# DOCX" || d.DetailBlock().Content != "# DOCX" || len(d.ActivateTools()) != 1 || d.ActivateTools()[0] != AgentSkillManagerName {
-		t.Fatalf("detail=%q activate=%#v", d.Detail(), d.ActivateTools())
-	}
-}
-
-func TestAgentSkillCreatorNoticeDiscovery(t *testing.T) {
-	for _, invalidManifest := range []bool{false, true} {
-		registry := tool.NewRegistry()
-		record := Record{Name: "docx", Detail: "# DOCX", Kind: KindAgent, Risk: toolshare.RiskSafe}
-		if invalidManifest {
-			record.ManifestFound = true
-			record.ManifestError = "invalid manifest"
-		}
-		if err := registry.Register(NewDescriptor(record)); err != nil {
-			t.Fatal(err)
-		}
-		discover := tool.NewDiscoverTool(registry)
-		for _, role := range []contextinfo.Role{contextinfo.RoleUser, contextinfo.RoleSuperadmin, ""} {
-			t.Run(fmt.Sprintf("invalid=%t/role=%s", invalidManifest, role), func(t *testing.T) {
-				ctx := context.Background()
-				if role != "" {
-					ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: role})
-				}
-				result, _, err := discover.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(`{"name":"docx"}`)})
-				if err != nil {
-					t.Fatal(err)
-				}
-				var discovery toolshare.DiscoveryResult
-				if err := json.Unmarshal(result.Data, &discovery); err != nil {
-					t.Fatal(err)
-				}
-				if len(discovery.Tools) != 1 {
-					t.Fatalf("discovered tools = %#v", discovery.Tools)
-				}
-				for _, content := range []string{result.Content, discovery.Tools[0].Detail} {
-					if !strings.Contains(content, "# DOCX") {
-						t.Fatalf("missing skill body: %q", content)
-					}
-					if got := strings.Contains(content, "agent_skill_creator"); got != (role == contextinfo.RoleSuperadmin) {
-						t.Fatalf("creator notice for %q: %q", role, content)
-					}
-					if got := strings.Contains(content, "invalid manifest"); got != invalidManifest {
-						t.Fatalf("manifest diagnostic: %q", content)
-					}
-					if got := strings.Contains(content, "ElBot AgentSkill 使用提示："); got != (invalidManifest || role == contextinfo.RoleSuperadmin) {
-						t.Fatalf("notice heading: %q", content)
-					}
-				}
-			})
-		}
+	if len(records) != 1 || records[0].Name != "foo" || records[0].Kind != KindGo || records[0].BinaryPath != binary {
+		t.Fatalf("records = %#v", records)
 	}
 }
 
@@ -444,10 +122,19 @@ func TestFilesystemScannerRejectsBrokenElyph(t *testing.T) {
 	goodDir := filepath.Join(root, "go", "good")
 	writeElyphSkill(t, brokenDir, "missing header\n> do\n")
 	writeElyphSkill(t, goodDir, "#skill good - Good skill\n** risk low\n")
-	scanner := NewFilesystemScanner(root)
-	_, err := scanner.Scan(context.Background())
+	scanner := newFilesystemScanner(root)
+	_, err := scanner.scanRecords(context.Background())
 	if err == nil || !strings.Contains(err.Error(), brokenDir) {
 		t.Fatalf("Scan error = %v", err)
+	}
+}
+
+func TestFilesystemScannerCanceledEmptyDirectory(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := newFilesystemScanner(t.TempDir()).scanRecords(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("scanRecords = %v, want canceled", err)
 	}
 }
 

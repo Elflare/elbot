@@ -164,7 +164,8 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/tool/discovery/`：发现入口、摘要、详情、语言需求与激活状态更新。
 - `internal/agent/dialogue/preparation.go`、`model_call.go`、`internal/tool/execution/runner.go`：输入与工具结果的规则卡组装。
 - `internal/storage/dialogue.go`、`internal/storage/sqlite/dialogue_repository.go`、`internal/contextmgr/state.go`：规则展示状态提交与压缩重置。
-- `internal/tool/skill/`：扫描、catalog、创建、finalize 与 reload。
+- `internal/tool/skill/manager.go`：私有持有技能目录、注册目录、媒体入口和基础环境；协调扫描候选、构造工具、替换注册、更新活动目录与删除技能，重载、删除和 manifest 写入共用写入锁。
+- `internal/tool/skill/scanner.go`、`catalog.go`：扫描器只读取文件并生成候选记录；catalog 保存已成功注册的活动记录，两者均为 Skill 包内实现。
 - `internal/tool/skill/command_tool.go`、`go_runner.go`：命令／Go 执行、进程环境与有界输出收集。
 - `internal/tool/skill/skill_md_parser.go`、`elbot_skill_manifest.go`：SKILL.md 元数据与正文解析、ELBOT_SKILL.toml 解析校验与 schema 构造。
 - `internal/tool/skill/create_el_skill.go`、`modify_el_skill.go`、`finalize_el_skill.go`：原生 Skill 创建、读取与修改、校验编译及重载；`go_source.go` 处理 Go 源码与编译。

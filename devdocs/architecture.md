@@ -373,8 +373,8 @@ flowchart TD
 
 - AgentSkill 使用 SKILL.md 和可选 ELBOT_SKILL.toml；原生 EL／Go Skill 使用 SKILL.elyph，Go runner 可配编译产物。
 - 命令与 Go runner 每次读取技能根 .env；普通变量按技能 .env > 进程环境 > 配置根 .env 合并，PATH 按进程、配置根、技能追加去重。子进程 cwd 为技能根目录，Go 编译用启动时基础环境。
-- scanner 构建 catalog，discover_tool 展示详情或激活 wrapper；原生 Skill finalize 执行 lint、gofmt、build 和 reload。
-- reload 串行验证候选，再替换 registry 与 catalog，失败保留活动快照；AgentSkill manifest 修改后 reload 失败则恢复文件。
+- Manager 接收明确的技能根目录、Registry、Tool 媒体入口和基础环境，私有持有 Scanner 与 Catalog；Scanner 只扫描候选记录，Manager 构造工具并提交注册替换，成功后更新 Catalog。扫描和注册失败均保留原活动目录。
+- 重载、删除与 AgentSkill manifest 写入由 Manager 的 writeMu 串行协调；manifest 写入后重载失败则恢复文件。discover_tool 展示详情或激活 wrapper；原生 Skill finalize 执行 lint、gofmt、build 和 reload。
 - 媒体在执行阶段准备：shell 用 media_inputs／ELBOT_MEDIA_N，Go 用 payload.media_inputs，TOML 用 type=media 参数；stdout 媒体经 os.Root 校验后导入中心，普通文本 ID 不转换。
 - shell 导出缓存跨调用保留，每次调用首次使用时校验文件并刷新时间，由 sandbox 维护任务清理；Go／TOML 使用调用私有目录，结束即删除。同次调用复用成功导出，不缓存失败结果，结束释放媒体引用。
 - Skill 命令 stdout 保留 1 MiB、stderr 保留 16 KiB，超限继续排空；成功但 stdout 超限时报错，不解析残缺 JSON。

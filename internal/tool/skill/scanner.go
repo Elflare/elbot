@@ -1,11 +1,8 @@
-// 扫描 Skill 目录并加载 Skill 内容。
+// 扫描 Skill 文件并生成候选记录，不修改注册目录、活动目录或技能文件。
 package skill
-
-import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
-	toolmedia "elbot/internal/tool/media"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,96 +11,22 @@ import (
 	"strings"
 
 	"elbot/internal/elyph"
-	"elbot/internal/processenv"
-	"elbot/internal/tool"
+	toolshare "elbot/internal/tool/share"
 )
 
-const windowsAppDirName = "ElBot"
-const xdgAppDirName = "elbot"
-
-type FilesystemScanner struct {
-	Media   *toolmedia.MediaRuntime
-	Root    string
-	Catalog *Catalog
-	// ProcessEnv 传给扫描及重载产生的命令工具，作为技能 .env 的基础环境。
-	ProcessEnv processenv.Environment
+type filesystemScanner struct {
+	root string // 管理器传入的技能资产目录，包含 agent 与 go 子目录。
 }
 
-func NewFilesystemScanner(root string) FilesystemScanner {
-	if root == "" {
-		root = DefaultRoot()
-	}
-	return FilesystemScanner{Root: root, Catalog: NewCatalog()}
+func newFilesystemScanner(root string) filesystemScanner {
+	return filesystemScanner{root: root}
 }
 
-func DefaultRoot() string {
-	if runtime.GOOS == "windows" {
-		if dir, err := os.UserConfigDir(); err == nil && strings.TrimSpace(dir) != "" {
-			return filepath.Join(dir, windowsAppDirName, "skills")
-		}
-	}
-	if dir := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); dir != "" {
-		return filepath.Join(dir, xdgAppDirName, "skills")
-	}
-	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-		return filepath.Join(home, ".local", "share", xdgAppDirName, "skills")
-	}
-	return "skills"
-}
-
-func (s FilesystemScanner) Scan(ctx context.Context) ([]toolshare.Tool, error) {
+func (s filesystemScanner) scanRecords(ctx context.Context) ([]record, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	records, err := s.scanRecords(ctx)
-	if err != nil {
-		return nil, err
-	}
-	tools := make([]toolshare.Tool, 0, len(records))
-	for _, record := range records {
-		tools = append(tools, s.toolForRecord(record))
-	}
-	return tools, nil
-}
-
-func (s FilesystemScanner) Reload(ctx context.Context, registry *tool.Registry) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	records, err := s.scanRecords(ctx)
-	if err != nil {
-		return err
-	}
-	replacements := make([]toolshare.Tool, 0, len(records))
-	for _, record := range records {
-		replacements = append(replacements, s.toolForRecord(record))
-	}
-	if err := registry.ReplaceSources([]toolshare.Source{toolshare.SourceSkillAgent, toolshare.SourceSkillGo}, replacements); err != nil {
-		return err
-	}
-	s.Catalog.Replace(records)
-	return nil
-}
-
-func (s FilesystemScanner) Remove(ctx context.Context, registry *tool.Registry, name string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	record, ok := s.Catalog.Get(name)
-	if !ok {
-		return fmt.Errorf("external skill %q not found", name)
-	}
-	if record.Root == "" {
-		return fmt.Errorf("external skill %q has no root directory", name)
-	}
-	if err := os.RemoveAll(record.Root); err != nil {
-		return fmt.Errorf("remove skill directory %q: %w", record.Root, err)
-	}
-	return s.Reload(ctx, registry)
-}
-
-func (s FilesystemScanner) scanRecords(ctx context.Context) ([]Record, error) {
-	records := []Record{}
+	records := []record{}
 	agentRecords, err := s.scanKind(ctx, KindAgent)
 	if err != nil {
 		return nil, err
@@ -114,8 +37,8 @@ func (s FilesystemScanner) scanRecords(ctx context.Context) ([]Record, error) {
 		return nil, err
 	}
 	records = append(records, goRecords...)
-	seen := map[string]Record{}
-	out := make([]Record, 0, len(records))
+	seen := map[string]record{}
+	out := make([]record, 0, len(records))
 	duplicates := []string{}
 	for _, record := range records {
 		if record.Name == "" {
@@ -136,8 +59,8 @@ func (s FilesystemScanner) scanRecords(ctx context.Context) ([]Record, error) {
 	return out, nil
 }
 
-func (s FilesystemScanner) scanKind(ctx context.Context, kind Kind) ([]Record, error) {
-	dir := filepath.Join(s.Root, dirNameForKind(kind))
+func (s filesystemScanner) scanKind(ctx context.Context, kind Kind) ([]record, error) {
+	dir := filepath.Join(s.root, dirNameForKind(kind))
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -145,7 +68,7 @@ func (s FilesystemScanner) scanKind(ctx context.Context, kind Kind) ([]Record, e
 	if err != nil {
 		return nil, fmt.Errorf("read skill dir %q: %w", dir, err)
 	}
-	records := []Record{}
+	records := []record{}
 	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -165,63 +88,63 @@ func (s FilesystemScanner) scanKind(ctx context.Context, kind Kind) ([]Record, e
 	return records, nil
 }
 
-func (s FilesystemScanner) readRecord(root, dirName string, kind Kind) (Record, bool, error) {
+func (s filesystemScanner) readRecord(root, dirName string, kind Kind) (record, bool, error) {
 	if kind == KindGo {
 		return s.readGoRecord(root, dirName)
 	}
 	return s.readAgentRecord(root, dirName)
 }
 
-func (s FilesystemScanner) readGoRecord(root, dirName string) (Record, bool, error) {
+func (s filesystemScanner) readGoRecord(root, dirName string) (record, bool, error) {
 	data, err := os.ReadFile(filepath.Join(root, elyph.SkillFileName))
 	if os.IsNotExist(err) {
-		return Record{}, false, nil
+		return record{}, false, nil
 	}
 	if err != nil {
-		return Record{}, false, fmt.Errorf("read %s in %q: %w", elyph.SkillFileName, root, err)
+		return record{}, false, fmt.Errorf("read %s in %q: %w", elyph.SkillFileName, root, err)
 	}
 	header, err := elyph.ParseHeader(string(data))
 	if err != nil {
-		return Record{}, false, fmt.Errorf("parse %s in %q: %w", elyph.SkillFileName, root, err)
+		return record{}, false, fmt.Errorf("parse %s in %q: %w", elyph.SkillFileName, root, err)
 	}
 	binary, _, err := findGoBinary(root, dirName, header.Name)
 	if err != nil {
-		return Record{}, false, err
+		return record{}, false, err
 	}
 	detail := strings.TrimSpace(string(data))
-	record := Record{Name: header.Name, Description: header.Description, Detail: detail, Format: elyph.Format, Risk: elyphRisk(detail), Kind: KindGo, Root: root, BinaryPath: binary}
+	record := record{Name: header.Name, Description: header.Description, Detail: detail, Format: elyph.Format, Risk: elyphRisk(detail), Kind: KindGo, Root: root, BinaryPath: binary}
 	return record, true, nil
 }
 
-func (s FilesystemScanner) readAgentRecord(root, dirName string) (Record, bool, error) {
+func (s filesystemScanner) readAgentRecord(root, dirName string) (record, bool, error) {
 	if data, err := os.ReadFile(filepath.Join(root, elyph.SkillFileName)); err == nil {
 		header, err := elyph.ParseHeader(string(data))
 		if err != nil {
-			return Record{}, false, fmt.Errorf("parse %s in %q: %w", elyph.SkillFileName, root, err)
+			return record{}, false, fmt.Errorf("parse %s in %q: %w", elyph.SkillFileName, root, err)
 		}
 		detail := strings.TrimSpace(string(data))
-		record := Record{Name: header.Name, Description: header.Description, Detail: detail, Format: elyph.Format, Risk: toolshare.RiskSafe, Kind: KindAgent, Root: root}
+		record := record{Name: header.Name, Description: header.Description, Detail: detail, Format: elyph.Format, Risk: toolshare.RiskSafe, Kind: KindAgent, Root: root}
 		return s.withAgentManifest(record), true, nil
 	} else if !os.IsNotExist(err) {
-		return Record{}, false, fmt.Errorf("read %s in %q: %w", elyph.SkillFileName, root, err)
+		return record{}, false, fmt.Errorf("read %s in %q: %w", elyph.SkillFileName, root, err)
 	}
 	detailPath := filepath.Join(root, "SKILL.md")
 	data, err := os.ReadFile(detailPath)
 	if os.IsNotExist(err) {
-		return Record{}, false, nil
+		return record{}, false, nil
 	}
 	if err != nil {
-		return Record{}, false, fmt.Errorf("read SKILL.md in %q: %w", root, err)
+		return record{}, false, fmt.Errorf("read SKILL.md in %q: %w", root, err)
 	}
 	def, err := ParseSkillMarkdown(data, dirName)
 	if err != nil {
-		return Record{}, false, fmt.Errorf("parse SKILL.md in %q: %w", root, err)
+		return record{}, false, fmt.Errorf("parse SKILL.md in %q: %w", root, err)
 	}
-	record := Record{Name: strings.Clone(def.Name), Description: strings.Clone(def.Description), DetailPath: detailPath, Format: def.Format, Risk: toolshare.RiskSafe, Kind: KindAgent, Root: root}
+	record := record{Name: strings.Clone(def.Name), Description: strings.Clone(def.Description), DetailPath: detailPath, Format: def.Format, Risk: toolshare.RiskSafe, Kind: KindAgent, Root: root}
 	return s.withAgentManifest(record), true, nil
 }
 
-func (s FilesystemScanner) withAgentManifest(record Record) Record {
+func (s filesystemScanner) withAgentManifest(record record) record {
 	manifest, found, err := LoadAgentSkillManifest(record.Root)
 	record.ManifestFound = found
 	if err != nil {
@@ -235,22 +158,6 @@ func (s FilesystemScanner) withAgentManifest(record Record) Record {
 		record.Tags = manifest.Tags
 	}
 	return record
-}
-
-func (s FilesystemScanner) toolForRecord(record Record) toolshare.Tool {
-	target := toolForRecord(record)
-	if command, ok := target.(CommandTool); ok {
-		command.Media = s.Media
-		command.ProcessEnv = s.ProcessEnv
-		return command
-	}
-	return target
-}
-func toolForRecord(record Record) toolshare.Tool {
-	if record.Kind == KindAgent && record.ManifestFound && record.ManifestError == "" && record.Manifest.Callable {
-		return NewCommandTool(record)
-	}
-	return NewDescriptor(record)
 }
 
 func elyphRisk(text string) toolshare.RiskLevel {
