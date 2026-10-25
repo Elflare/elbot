@@ -165,8 +165,10 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/dialogue/preparation.go`、`model_call.go`、`internal/tool/execution/runner.go`：输入与工具结果的规则卡组装。
 - `internal/storage/dialogue.go`、`internal/storage/sqlite/dialogue_repository.go`、`internal/contextmgr/state.go`：规则展示状态提交与压缩重置。
 - `internal/tool/skill/`：扫描、catalog、创建、finalize 与 reload。
-- `internal/tool/skill/command_tool.go`、`runner.go`：命令／Go 执行、进程环境与有界输出收集。
-- `internal/tool/skill/agent_manifest.go`、`go_source.go`：AgentSkill manifest 与 Go 源码／编译。
+- `internal/tool/skill/command_tool.go`、`go_runner.go`：命令／Go 执行、进程环境与有界输出收集。
+- `internal/tool/skill/skill_md_parser.go`、`elbot_skill_manifest.go`：SKILL.md 元数据与正文解析、ELBOT_SKILL.toml 解析校验与 schema 构造。
+- `internal/tool/skill/create_el_skill.go`、`modify_el_skill.go`、`finalize_el_skill.go`：原生 Skill 创建、读取与修改、校验编译及重载；`go_source.go` 处理 Go 源码与编译。
+- `internal/tool/skill/read_el_skill.go`、`process.go`：读取工具与公共进程执行的职责骨架；当前读取实现位于 `modify_el_skill.go`，进程执行与输出收集位于 `go_runner.go`。
 - `internal/tool/skill/media.go`：媒体参数准备与 stdout 结果导入。
 - `internal/config/assets.go`：内置 Skill 说明。
 

@@ -1,4 +1,4 @@
-// 解析 Skill 文件中的元数据和正文。
+// 解析 SKILL.md 的元数据和 Markdown 正文。
 package skill
 
 import toolshare "elbot/internal/tool/share"
@@ -6,8 +6,6 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"fmt"
 	"strings"
-
-	
 )
 
 type Definition struct {

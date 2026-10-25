@@ -1,4 +1,4 @@
-// 实现 Skill 创建与读取工具，组织创建所需的内容。
+// 实现原生 Skill 创建工具，组织技能文档、Go 源码与初始编译。
 package skill
 
 import toolshare "elbot/internal/tool/share"
@@ -18,7 +18,6 @@ import (
 	"elbot/internal/elyph"
 	"elbot/internal/llm"
 	"elbot/internal/processenv"
-	
 )
 
 const CreateElSkillName = "create_el_skill"

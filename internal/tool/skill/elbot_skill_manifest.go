@@ -1,4 +1,4 @@
-// 读取和处理文档型 Skill 的清单。
+// 解析和校验 ELBOT_SKILL.toml，构造 AgentSkill 的工具 schema。
 package skill
 
 import toolshare "elbot/internal/tool/share"
@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"elbot/internal/llm"
-	
 
 	"github.com/pelletier/go-toml/v2"
 )
