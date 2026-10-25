@@ -48,8 +48,13 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Cron 工具通过 Tool 自有的 CronRepository、CronSaveRequest 和 CronInfo 访问根部 bridge；模型校验单独注入，Storage 类型与持久化编码不进入 Builtin 或 Share。
 - [x] 聊天历史与媒体的真实 SQLite 集成测试归 Tool 根部，Builtin 测试使用内部组件及契约；移除依赖旧 Runtime 装配的测试路径。
 - [x] Tool 根部直接请求 Storage 读写 Cron，转换结果并发布任务定义变更；真实 SQLite 集成测试归 Tool 根部，Builtin 使用内部契约替身。
-- [ ] Background 根部订阅 Tool.ObserveCronChanged，持有并释放连接；初次任务加载前建立订阅，内部 Cron 收到变更后重新读库刷新调度。
-- [ ] Background 根部完成 Agent／Tool／Platform 公开能力接线；App 只交付总管。
+- [x] Background 根部四文件收敛为对外门面、七项依赖、装配和生命周期框架；移除内部 Runner 的公开转发及 Wait，内部接入按目标调用标注 TODO。
+- [ ] 实现 Background 根部适配及内部消费契约：子包不直接引用其他业务包的根包、子包或 share；App 只交付总管。
+- [ ] 补齐 Agent 根包的后台执行、后台会话复制与过期会话清理契约，以及 Platform 的公开发送、API 和历史清理能力。
+- [ ] 接通 Tool.ObserveCronChanged 到内部 Cron 的刷新入口；初次任务加载前建立订阅，协调启动期间的变更并重新读库刷新调度。
+- [ ] 收口维护配置与 Cron 启动职责：SetupCron 只配置任务，移除其内部 Manager.Start 调用，由根部显式启动 Manager。
+- [ ] 实现 Cron Service.Start 与平台通知缓存契约：Start 前不触发 worker，前置步骤成功后由根部启动消费者；消费者就绪即可返回，不等待缓存任务执行完。验证启动前不执行、成功后消费、失败或关闭后不放行、关闭清理缓存及重复启动不重复创建消费者。
+- [ ] 实现 Background 内部同步启动就绪、停止接入及实际退出契约，迁移旧总管测试后验证部分构造失败、并发启停、订阅释放和统一清理期限；当前不测试未实现的内部流程。
 - [ ] 收口 Background 内部的持久化类型与读取边界，移除内部模型对 Storage 元数据类型的别名；完成后验证 Cron 通知到调度的整链路。
 
 ## 媒体中心对接

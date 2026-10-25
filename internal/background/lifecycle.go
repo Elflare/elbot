@@ -1,191 +1,140 @@
+// 协调 Background 的启动就绪、停止接入与实际退出，不实现内部业务流程。
 package background
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
-	"time"
 
-	elcron "elbot/internal/background/cron"
 	"elbot/internal/background/maintenance"
-	"elbot/internal/config"
-	"elbot/internal/contextinfo"
-	globalevents "elbot/internal/events"
 )
 
-func (m *Supervisor) Start() error {
+// Start 同步等待启动就绪；重复调用取得首次启动结果，不重复启动内部组件。
+func (m *Supervisor) Start() (err error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if m.closed {
+		m.mu.Unlock()
 		return context.Canceled
 	}
 	if m.started {
-		return nil
-	}
-	if err := m.cron.StartPlatformEvents(m.ctx); err != nil {
-		return err
+		done := m.startupDone
+		m.mu.Unlock()
+		select {
+		case <-done:
+			return m.startErr
+		case <-m.ctx.Done():
+			return m.ctx.Err()
+		}
 	}
 	m.started = true
-	if m.enableWorkers {
-		m.startupDone = make(chan struct{})
-		startCronAsync(m.ctx, m.cronManager, m.cfg, m.startupDone)
-	}
-	if m.elnis != nil {
-		m.elnisDone = make(chan struct{})
-		go func() {
-			defer close(m.elnisDone)
-			if err := m.elnis.Run(m.ctx); err != nil && err != context.Canceled {
-				_, notifyErr := globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(m.ctx), globalevents.NewNotification(m.ctx, slog.LevelError, "Elnis 服务异常退出："+err.Error()))
-				err = errors.Join(err, notifyErr)
-				_ = globalevents.EmitLog(m.ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "platform_stopped_with_error", Module: "app", Type: globalevents.ContentText, Content: fmt.Sprintf("platform stopped with error\nplatform=elnis\nerror=%v", err), ContentLimit: 4096, ResultStatus: globalevents.ResultFailed})
-			}
-		}()
-	}
-	return nil
-}
-
-func startCronAsync(ctx context.Context, manager *elcron.Manager, cfg *config.Config, done chan<- struct{}) {
-	go func() {
-		defer close(done)
-		startedAt := time.Now()
-		if err := setupCron(ctx, manager, cfg); err != nil {
-			if !errors.Is(err, context.Canceled) {
-				{
-					record := globalevents.LogRecord{
-						Category:     globalevents.LogRuntime,
-						Level:        slog.LevelError,
-						EventName:    "cron_async_startup_failed",
-						Module:       "app",
-						Type:         globalevents.ContentText,
-						Content:      fmt.Sprintf("cron async startup failed\nduration=%v\nerror=%v", time.Since(startedAt).String(), err.Error()),
-						ContentLimit: 4096,
-						ResultStatus: globalevents.ResultFailed,
-					}
-					facts, _ := contextinfo.ExecutionFromContext(ctx)
-					if facts.SessionID != "" {
-						record.Identity.SessionID = &facts.SessionID
-					}
-					if facts.RunID != "" {
-						record.Identity.RunID = &facts.RunID
-					}
-					if facts.Attempt != "" {
-						record.Identity.Attempt = &facts.Attempt
-					}
-					if facts.RequestID != "" {
-						record.Identity.RequestID = &facts.RequestID
-					}
-					if facts.RootRequestID != "" {
-						record.Identity.RootRequestID = &facts.RootRequestID
-					}
-					_, notifyErr := globalevents.NotificationRequested.EmitAsync(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelError, "Cron 启动失败："+err.Error()))
-					if notifyErr != nil {
-						record.Content += fmt.Sprintf("\nnotification_error=%v", notifyErr)
-					}
-					_ = globalevents.EmitLog(ctx, record)
-				}
-			}
-			return
-		}
-
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelInfo,
-				EventName:    "cron_async_startup_completed",
-				Module:       "app",
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("cron async startup completed\nduration=%v", time.Since(startedAt).String()),
-				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultSucceeded,
-			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			_ = globalevents.EmitLog(ctx, record)
-		}
-
+	m.startupDone = make(chan struct{})
+	m.mu.Unlock()
+	defer func() {
+		m.mu.Lock()
+		m.startErr = err
+		close(m.startupDone)
+		m.mu.Unlock()
 	}()
-}
 
-func setupCron(ctx context.Context, manager *elcron.Manager, cfg *config.Config) error {
-	return maintenance.SetupCron(ctx, manager, cfg)
-}
-
-// Wait keeps an enabled Elnis runtime alive even when service mode has no foreground platform loops.
-func (m *Supervisor) Wait(ctx context.Context) error {
-	if m.elnisDone == nil {
-		return nil
+	if err := m.ctx.Err(); err != nil {
+		return err
 	}
-	select {
-	case <-m.elnisDone:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
+	// TODO: Runtime.RecoverInterrupted 委托内部恢复，即使 Elnis 禁用也执行，且不启动 workers。
+	if err := m.elnis.RecoverInterrupted(m.ctx); err != nil {
+		return fmt.Errorf("recover elnis: %w", err)
 	}
+	// TODO: SetupCron 只同步配置维护任务，移除内部 Manager.Start 调用；启动由根部协调。
+	if err := maintenance.SetupCron(m.ctx, m.cronManager, m.cfg); err != nil {
+		return fmt.Errorf("setup maintenance cron: %w", err)
+	}
+	// TODO: Manager.Start 同步完成首次任务加载，并协调此前收到的任务变更。
+	if err := m.cronManager.Start(m.ctx); err != nil {
+		return fmt.Errorf("start cron: %w", err)
+	}
+	if m.cfg.Elnis.Enabled {
+		// TODO: Runtime.Start 在监听成功后返回；端口绑定等启动错误直接交回 App。
+		if err := m.elnis.Start(m.ctx); err != nil {
+			return fmt.Errorf("start elnis: %w", err)
+		}
+	}
+	// TODO: Service.Start 在上述步骤成功后放行平台通知，等待消费者就绪，不等待缓存任务执行完。
+	// 内部负责取消与关闭协调；启动失败不放行缓存，关闭时清理缓存并停止接纳通知。
+	if err := m.cron.Start(m.ctx); err != nil {
+		return fmt.Errorf("start cron platform consumer: %w", err)
+	}
+	return m.ctx.Err()
 }
 
+// BeginClose 停止新的启动请求、取消本线工作并解除订阅，不等待内部退出。
 func (m *Supervisor) BeginClose() {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if m.closed {
+		m.mu.Unlock()
 		return
 	}
 	m.closed = true
+	startupDone := m.startupDone
 	m.cancel()
-	if m.cron != nil {
-		m.cron.BeginClose()
-	}
-	var stopped context.Context
-	if m.cronManager != nil {
-		stopped = m.cronManager.Stop()
+	m.mu.Unlock()
+
+	for _, connection := range m.connections {
+		connection.Disconnect()
 	}
 	go func() {
-		if m.startupDone != nil {
-			<-m.startupDone
+		// 先取消启动上下文，再等待启动尝试退出，避免关闭之后又发布新的内部工作。
+		if startupDone != nil {
+			<-startupDone
+		}
+		// TODO: 内部 BeginClose 停止接入并发起完整退出；Done 包含资源、回调和所有 workers。
+		// 未启动、部分构造失败时，也必须支持关闭已取得的组件。
+		if m.elnis != nil {
+			m.elnis.BeginClose()
+		}
+		if m.cron != nil {
+			m.cron.BeginClose()
+		}
+		var stopped context.Context
+		if m.cronManager != nil {
+			stopped = m.cronManager.Stop()
+		}
+		for _, connection := range m.connections {
+			<-connection.Done()
 		}
 		if stopped != nil {
 			<-stopped.Done()
 		}
-		if m.elnisDone != nil {
-			<-m.elnisDone
-		}
 		if m.cron != nil {
 			<-m.cron.Done()
+		}
+		if m.elnis != nil {
+			<-m.elnis.Done()
 		}
 		close(m.done)
 	}()
 }
 
+// Done 只在全部自有工作退出后关闭；Close 超时不会提前关闭它。
 func (m *Supervisor) Done() <-chan struct{} { return m.done }
 
+// Close 使用调用方的清理期限；只关闭自有组件，借用资源继续由 App 及其提供方管理。
 func (m *Supervisor) Close(ctx context.Context) error {
 	m.BeginClose()
-	var errs []error
-	if m.cron != nil {
-		errs = append(errs, m.cron.Close(ctx))
-	}
 	select {
 	case <-m.done:
 	default:
 		select {
 		case <-m.done:
 		case <-ctx.Done():
-			return errors.Join(append(errs, ctx.Err())...)
+			return ctx.Err()
 		}
+	}
+	// TODO: 内部 Close 在 Done 后返回实际清理结果，重复调用保留同一结果。
+	var errs []error
+	if m.elnis != nil {
+		errs = append(errs, m.elnis.Close(ctx))
+	}
+	if m.cron != nil {
+		errs = append(errs, m.cron.Close(ctx))
 	}
 	return errors.Join(errs...)
 }

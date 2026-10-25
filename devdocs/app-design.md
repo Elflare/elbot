@@ -59,7 +59,9 @@ App 用 `shutdownStep` 记录步骤名称和关闭调用，`runShutdownSteps` �
 
 Tool 根部创建媒体入口、技能目录与基础环境并一次注入 Skill Manager；Builtin、Skill、发现及 ELwisp 均接入必需的准备／执行契约，Skill 内部不依赖 Tool 根包。Cron 工具只使用 Tool 内部契约，根部 bridge 接入 Storage 和模型校验并发布任务定义变更；Background 的订阅与调度刷新仍待接入。Background 的 Elnis 媒体调用尚引用旧 Tool 根部类型，其他目标总管契约仍待完成，整体装配尚不能通过编译。
 
-Background 根部按 `supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go` 分工；内部业务位于 `execution`、`cron`、`elnis`、`maintenance`、`share`。`NewSupervisor(ctx, cfg, deps)` 接收完整配置，但依赖仍保留待替换的 Session、执行及平台组件契约；目标总管接入尚未完成。Cron 工具注册和管理归 Tool，Background 不持有注册关系，也不提供 Cron CRUD 契约。
+Background 根部按四文件组织：`supervisor.go` 只定义对外总管并持有组件，`deps.go` 声明 Store、Models、Media、Logs、Agent、Tools、Platform 七项借用依赖，`wiring.go` 负责完整配置装配与边界适配，`lifecycle.go` 协调 Start、BeginClose、Close、Done。根部不公开内部 Runner，也不提供 Wait 或 Cron CRUD 契约；Cron 工具注册和管理归 Tool。
+
+Background 按目标内部接口写调用并标注 TODO：构造阶段建立订阅；Start 依次完成恢复、维护任务配置、Cron Manager 首次加载与启动、启用的 Elnis 就绪，最后调用 Cron Service.Start 放行平台通知。SetupCron 的目标契约只配置维护任务，Manager.Start 由根部显式调用；平台通知在 Service.Start 前只缓存、不启动 worker，启动失败不放行，关闭时清理缓存并停止接纳。Service.Start 等待消费者就绪，不等待缓存任务执行完。BeginClose 停止接入且不等待，Close 使用 App 的清理期限，Done 只在自有工作实际退出后关闭。Agent 的后台执行、会话复制与清理公开契约、内部组件适配及生命周期接入仍待实现；不补旧组件兼容层，当前根部框架不代表完整应用已可编译运行。
 
 `platform.RunClient(ctx, cfg, name)` 完成连接选择、运行和结果分类，返回 `ClientResult{Kind, Err}`：
 

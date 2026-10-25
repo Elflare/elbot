@@ -573,22 +573,21 @@ Elnis 接收事件，Elvena 定义公共协议，Elwisp 提供外部事件与工
 <!-- locator:cron -->
 ## Cron 与后台任务
 
-Background 根部拥有总管、装配与生命周期，内部业务分为 `execution`、`cron`、`elnis`、`maintenance`，共享契约和辅助能力位于 `share`。根部接收完整配置；Agent／Platform 的公开能力及 Tool 的 Cron 变更订阅仍待接入。Elnis 媒体调用仍引用旧 Tool 根部类型，需按媒体中心边界另行改造。
+Background 根部提供总管门面、消费方依赖、装配和生命周期协调，具体业务由 `execution`、`cron`、`elnis`、`maintenance` 承担，`share` 只用于内部协作。根部接收完整配置及 Store、Models、Media、Logs、Agent、Tools、Platform 七项借用依赖，不取得 Agent 的 Session 或执行器，不公开内部 Runner。内部接入按目标接口写调用并标注 TODO；Agent 的后台公开能力、内部适配与生命周期契约尚未实现，当前不保证完整编译运行。
 
 ```mermaid
 flowchart TD
-    W["background/wiring.go：构造与接线<br/>deps.go：消费方依赖"] --> S["supervisor.go：总管与运行入口<br/>lifecycle.go：启停与等待"]
-    W --> C["cron/：任务管理、调度与投递恢复"]
-    W --> E["elnis/：事件接入、处理与恢复"]
-    W --> M["maintenance/maintenance.go：维护任务与清理"]
-    W --> X["execution/runner.go：后台准备与调用协调<br/>runner_deps.go：执行依赖"]
-    C & E -->|注入 Runner| X
-    M --> C
-    C & E & X --> H["share/background.go：运行契约<br/>result.go：结果解析<br/>report.go：报告构造<br/>takeover.go：接管检查<br/>logging.go：日志发布"]
-    P["cron.go：公开请求与结果类型<br/>管理入口待实现"]
+    D["background/deps.go：七项借用依赖与公开能力接口"] --> W["background/wiring.go：构造、边界适配和订阅接线"]
+    W --> S["background/supervisor.go：对外门面与组件持有"]
+    L["background/lifecycle.go：启动就绪、停止接入与退出等待"] --> S
+    W -.->|内部接入 TODO| C["cron/：调度、执行与投递恢复"]
+    W -.->|内部接入 TODO| E["elnis/：事件接入、处理与恢复"]
+    W -.->|内部接入 TODO| M["maintenance/maintenance.go：维护任务与清理"]
+    W -.->|内部接入 TODO| X["execution/runner.go：后台调用协调"]
+    W --> P["其他业务根包：公开操作与类型"]
 ```
 
-Cron 拥有持久化任务、调度、执行与投递状态，maintenance 注册维护任务；Cron／Elnis 共用后台 Session、sandbox 和 JSON 结果能力。
+Tool 管理 Cron 任务定义，Background 负责调度、执行与投递状态，maintenance 提供维护任务。根部持有外部订阅，内部 Cron 负责首次加载和定义变化的协调。根部的目标启动顺序为恢复 → SetupCron 配置维护任务 → Manager.Start 首次加载与启动 → 启用的 Elnis 就绪 → Service.Start 启动平台通知消费者。SetupCron 不承担启动职责；Service.Start 前平台通知仅缓存、不触发 worker，启动失败不放行缓存，关闭时清理缓存并停止接纳，消费者就绪后 Start 即可返回。这些内部契约仍待实现。生命周期只等待自有工作，不关闭借用的资源；Close 超时不会提前关闭 Done。Elnis 媒体调用及内部跨包依赖仍待后续收口。
 
 - 每次调度新建后台 Session，同轮 JSON 修正复用 Session、首轮工具和固定模型；前台接管后等待真实 Execution 结果，停止后台修正、自动报告与未开始补投递。
 - Cron／Elnis 后台 sandbox 的 shell 非 critical 风险自动确认；critical 拒绝执行并返回提醒。

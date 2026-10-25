@@ -30,7 +30,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/tool/supervisor.go`、`wiring.go`、`lifecycle.go`：Tool 对外入口、组件装配与生命周期。
 - `internal/hook/`：Hook 总管、外部桥接与生命周期；装配内部规则、流水线、控制与插件进程。
 - `internal/platform/module/`：平台适配器、发送与通知、API 能力、补全和运行生命周期。
-- `internal/background/supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go`：后台总管、依赖、完整配置装配与启停；Agent／Platform 公开能力接入仍待完成。
+- `internal/background/supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go`：对外总管、七项借用依赖、完整配置装配与生命周期协调；根部显式启动 Cron Manager，并在前置启动步骤成功后调用 Cron Service.Start 放行平台通知。内部构造、适配和就绪／退出契约按目标调用标注 TODO，不公开内部 Runner，也不提供 Wait。
 - `internal/background/execution/`：后台准备与 Agent 执行协调；`cron/`、`elnis/`、`maintenance/` 承接各业务。
 
 <!-- locator:contextinfo -->
