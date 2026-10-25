@@ -30,7 +30,9 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/tool/supervisor.go`、`wiring.go`、`lifecycle.go`：Tool 对外入口、组件装配与生命周期。
 - `internal/hook/`：Hook 总管、外部桥接与生命周期；装配内部规则、流水线、控制与插件进程。
 - `internal/platform/module/`：平台适配器、发送与通知、API 能力、补全和运行生命周期。
-- `internal/background/module/`：后台执行、维护任务、Cron、Elnis 恢复与 runtime。
+- `internal/background/supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go`：后台总管、依赖、完整配置装配与启停；Agent／Platform 公开能力接入仍待完成。
+- `internal/background/cron.go`：对外 Cron 请求与结果类型；六项管理方法仍待实现。
+- `internal/background/execution/`：后台准备与 Agent 执行协调；`cron/`、`elnis/`、`maintenance/` 承接各业务。
 
 <!-- locator:contextinfo -->
 ## 公共上下文事实
@@ -48,10 +50,10 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/events/notification.go`、`platform.go`、`logging.go`：全局通知、平台连接与日志契约。
 - `internal/agent/events/`：Agent 实例事实信号，以及对外状态、绑定快照；绑定快照不包含内部 Binding 句柄。
 - `internal/agent/signals.go`：通知、重试、会话清理与接管订阅。
-- `internal/cron/platform_signals.go`：Cron 的平台连接事件消费与队列生命周期。
+- `internal/background/cron/platform_signals.go`：Cron 的平台连接事件消费与队列生命周期。
 - `internal/session/naming_signals.go`、`naming_logging.go`、`naming_lifecycle.go`：命名信号、日志与退出。
 - `internal/modelmgr/signals.go`、`logging.go`：模型重试信号与日志。
-- `internal/agent/share/logging.go`、`internal/background/logging.go`：所属业务日志发布。
+- `internal/agent/share/logging.go`、`internal/background/share/logging.go`：所属业务日志发布。
 
 <!-- locator:config -->
 ## 配置、资产与日志
@@ -68,7 +70,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/agent/{input,execution,confirmation,hooks,output,tools}/`：输入、执行、确认、Agent 自有扩展点、输出与工具桥接；依赖契约随消费者放置。
 - `internal/agent/share/`：线内共享的身份、输入、片段、绑定、状态契约与辅助函数，不反向依赖上述六个业务子包及 dialogue。
-- `internal/agent/input/message.go`、`input.go`：消息分发与普通输入准备；`internal/background/module/runner.go`、`runner_deps.go`：后台资源准备与依赖契约。
+- `internal/agent/input/message.go`、`input.go`：消息分发与普通输入准备；`internal/background/execution/runner.go`、`runner_deps.go`：后台资源准备与依赖契约。
 - `internal/agent/dialogue/runner.go`、`preparation.go`：公共单轮、组件构造、输入准备与终态失败报告。
 - `internal/agent/dialogue/materials.go`：公共消息投影、片段编解码、归档与请求媒体准备。
 - `internal/agent/dialogue/model_call.go`、`system_prompt.go`：公共模型 Hook、调用观察与 Prompt 来源。
@@ -227,7 +229,7 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/session/fork.go`、`background_copy.go`、`material.go`：Fork、副本与源材料契约。
 - `internal/session/compact.go`、`lifecycle.go`、`expiration.go`：压缩结果创建、生命周期与过期。
 - `internal/session/naming.go`、`naming_lifecycle.go`、`title.go`：命名调度、退出与生成。
-- `internal/background/takeover.go`：后台修正／投递前的接管检查。
+- `internal/background/share/takeover.go`：后台修正／投递前的接管检查。
 
 <!-- locator:context -->
 ## 上下文、Prompt 与压缩
@@ -264,13 +266,13 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 <!-- locator:elnis -->
 ## Elnis / Elvena / Elwisp
 
-- `internal/elvena/`、`internal/elnis/types.go`：公共协议与 Elnis 类型。
-- `internal/elnis/http.go`、`service.go`：HTTP runtime、队列、去重分发与中断执行恢复。
-- `internal/elnis/llm.go`、`direct.go`、`store.go`：模型／直接流程与事件状态。
-- `internal/elnis/auth.go`、`prepare.go`、`targets.go`：鉴权、规范化与目标裁决。
-- `internal/elnis/media.go`、`outbox.go`：媒体、持久化投递与恢复。
+- `internal/elvena/`、`internal/background/elnis/types.go`：公共协议与 Elnis 类型。
+- `internal/background/elnis/http.go`、`service.go`：HTTP runtime、队列、去重分发与中断执行恢复。
+- `internal/background/elnis/llm.go`、`direct.go`、`store.go`：模型／直接流程与事件状态。
+- `internal/background/elnis/auth.go`、`prepare.go`、`targets.go`：鉴权、规范化与目标裁决。
+- `internal/background/elnis/media.go`、`outbox.go`：媒体、持久化投递与恢复。
 - `internal/storage/sqlite/elnis_event_repository.go`：事件仓储与引用事务。
-- `internal/background/`：公共后台类型、JSON 结果与接管检查。
+- `internal/background/share/`：公共后台类型、JSON 结果、报告构造、接管检查与日志发布。
 - [内部架构](elnis-elwisp.md)、[功能说明](../docs/elnis.md)、[配置与协议示例](../docs/elnis-usage.md)。
 
 ## 媒体中心
@@ -286,11 +288,11 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 <!-- locator:cron -->
 ## Cron 与维护
 
-- `internal/cron/`：任务 CRUD、调度、执行、报告与投递恢复。
-- `internal/cron/service.go`、`manager.go`：任务运行、调度与整体日志。
-- `internal/cron/models.go`、`delivery.go`、`recovery.go`：任务模型、逐项投递与连接恢复。
-- `internal/maintenance/`：维护任务及来源结果。
-- `internal/background/module/runner.go`：后台资源准备；`internal/security/security.go` 的 `Permission.CheckTool` 决定工具拒绝、直接执行或交互确认，`internal/tool/execution/runner.go` 执行该决定。
+- `internal/background/cron/`：任务 CRUD、调度、执行、报告与投递恢复。
+- `internal/background/cron/service.go`、`manager.go`：任务运行、调度与整体日志。
+- `internal/background/cron/models.go`、`delivery.go`、`recovery.go`：任务模型、逐项投递与连接恢复。
+- `internal/background/maintenance/`：维护任务及来源结果。
+- `internal/background/execution/runner.go`：后台资源准备；`internal/security/security.go` 的 `Permission.CheckTool` 决定工具拒绝、直接执行或交互确认，`internal/tool/execution/runner.go` 执行该决定。
 - `internal/tool/builtin/cron.go`、`internal/storage/sqlite/cron_job_repository.go`：工具入口与仓储。
 
 <!-- locator:docs -->

@@ -27,7 +27,7 @@ Elnis 接收并分发事件，Elvena 定义协议，Elwisp 提供外部事件和
 
 ## 后台 LLM
 
-Elnis 通过 background.Runner 接口调用公共后台执行，由 Dialogue 的 BackgroundRunner 准备身份、Session、sandbox 与首轮工具；JSON 结果解析与 Cron 共用。
+Elnis 位于 `internal/background/elnis`，通过 `background/share.Runner` 契约调用公共后台执行，由 `background/execution.BackgroundRunner` 准备身份、Session、sandbox 与首轮工具；JSON 结果解析与 Cron 共用。
 
 - Session 为 background，模型使用 elwisp1/2/3，未指定或未配置回退 work；native 工具在 `elnis/<elwisp>` sandbox 执行。
 - 后台不读取工作目录中的 AGENTS.md，不开放 workspace／discover_tool；Prompt、工具权限与规则卡遵循[公共工具约束](architecture.md#tool-runtime工具状态与文件)。
@@ -54,6 +54,6 @@ Elnis 通过 background.Runner 接口调用公共后台执行，由 Dialogue 的
 
 ## Runtime 生命周期与审计
 
-Background Module 装配恢复、服务与 HTTP workers；runtime 共享应用 context，退出停止接收并取消、等待 worker，持久化报告留待启动恢复。
+Background 根部 `wiring.go` 装配恢复、服务与 HTTP workers，`lifecycle.go` 负责启停；runtime 共享应用 context，退出停止接收并取消、等待 worker，持久化报告留待启动恢复。
 
 审计覆盖接收、拒绝、去重、执行和投递，JSON 正文保存 Elwisp、source、event ID、mode、目标等查询事实，Session 关联写入 Identity；日志遵循[公共日志契约](architecture.md#信号与订阅)。

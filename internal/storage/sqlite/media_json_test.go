@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"elbot/internal/cron"
+	"elbot/internal/background/cron"
 	"elbot/internal/llm"
 	"elbot/internal/storage"
 )

@@ -5,7 +5,7 @@ import (
 	"log/slog"
 
 	"elbot/internal/agent/dialogue"
-	"elbot/internal/background"
+	background "elbot/internal/background/share"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/session"

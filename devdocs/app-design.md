@@ -55,9 +55,11 @@ App 用 `shutdownStep` 记录步骤名称和关闭调用，`runShutdownSteps` �
 ## 对外调用契约
 
 `agent.NewSupervisor(ctx, cfg, deps)` 接收 Store、Models、Media、Permission、Logs 及 Tool、Hook、Platform 能力，其中 Hook 能力仅供管理命令使用。公开业务入口为 `HandleMessage`、`RegisterHooks`、`StartHookRequest`、`Complete`、`Commands`、`ObserveStatusChanged`、`ObserveBindingChanged`；生命周期使用 `Start`、`BeginClose`、`Close`、`Done`。Hook 的 `ConnectAgent` 注册一组 `agent/hooks.Points` 回调并持有解除函数，每个实际 handler 通过 `StartHookRequest` 登记。其他接收方的 `ConnectAgent` 负责自身适配、订阅和释放。其余四条线通过根包 `Supervisor`、`SupervisorDeps`、`NewSupervisor` 及各自生命周期接口接入。
-各条线的对外文件放各条线的根高，内部业务放子包。
+各条线的对外文件放各条线的根部，内部业务放子包。
 
-Tool 根部创建媒体入口、技能目录与基础环境并一次注入 Skill Manager；Builtin、Skill、发现及 ELwisp 均接入必需的准备／执行契约，Skill 内部不依赖 Tool 根包。Tool 子包与文件能力可独立验证；Tool 根包仍等待 Background 的公开 Cron 请求与结果类型，整体装配尚不能通过编译。
+Tool 根部创建媒体入口、技能目录与基础环境并一次注入 Skill Manager；Builtin、Skill、发现及 ELwisp 均接入必需的准备／执行契约，Skill 内部不依赖 Tool 根包。Background 根部已定义公开 Cron 请求与结果类型，六项管理方法及 App 接线仍待实现。Background 的 Elnis 媒体调用尚引用旧 Tool 根部类型，当前形成循环依赖，整体装配尚不能通过编译。
+
+Background 根部按 `supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go`、`cron.go` 分工；内部业务位于 `execution`、`cron`、`elnis`、`maintenance`、`share`。`NewSupervisor(ctx, cfg, deps)` 接收完整配置，但依赖仍保留待替换的 Session、执行及平台组件契约；目标总管接入尚未完成。Cron 工具注册归 Tool，Background 不持有注册关系。
 
 `platform.RunClient(ctx, cfg, name)` 完成连接选择、运行和结果分类，返回 `ClientResult{Kind, Err}`：
 

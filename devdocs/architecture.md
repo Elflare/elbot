@@ -66,7 +66,7 @@ flowchart TB
 
 ```mermaid
 flowchart TD
-    B["background/module/runner.go<br/>计算并创建任务目录、注入调用范围"] --> C["workspace/context.go<br/>路径范围与目录存取能力"]
+    B["background/execution/runner.go<br/>计算并创建任务目录、注入调用范围"] --> C["workspace/context.go<br/>路径范围与目录存取能力"]
     B --> F["contextinfo/background.go、context.go<br/>后台来源事实"]
     S["session/workspace.go<br/>持久化与并发更新"] --> W["workspace/workspace.go、state.go<br/>目录契约、选择与状态编解码"]
     R["workspace/resolve.go<br/>统一路径解析与目标检查"] --> C
@@ -74,7 +74,7 @@ flowchart TD
     R --> P["workspace/sandbox.go<br/>目录组合与受限路径规则"]
     T["文件工具、FileOps"] --> R
     SH["builtin/shell.go<br/>读取工作目录并执行命令"] --> W
-    O["background/report.go<br/>组织报告附件"] --> P
+    O["background/share/report.go<br/>组织报告附件"] --> P
     M["tool/media/files.go、cache.go<br/>媒体文件与缓存操作"] --> P
 ```
 
@@ -108,7 +108,7 @@ flowchart TD
 
 | 层 | 职责 |
 |---|---|
-| 入口组件 | agent/input 的 MessageHandler 分发，InputCoordinator 准备与预加载，CommandExecutor 执行命令；background/module 的 BackgroundRunner 准备后台资源 |
+| 入口组件 | agent/input 的 MessageHandler 分发，InputCoordinator 准备与预加载，CommandExecutor 执行命令；background/execution 的 BackgroundRunner 准备后台资源 |
 | ExecutionCoordinator | 准入、attempt／Request、追加确认、pending、压缩交接与 Execution 完成 |
 | dialogue.Runner | 选择路线、加载材料、准备输入、收敛 Loop 结果、提交回复与统一失败报告 |
 | Chat／Responses Loop | 协议上下文、模型／工具循环、pending 与接管刷新 |
@@ -128,7 +128,7 @@ Agent 总管持有模型完成、状态变化、视觉降级三个线内事件�
 
 工具预加载和补全标签由 Tool 能力提供；执行 Schema 统一经工具执行能力生成，提示词只消费工具名称。Agent 不另设自定义 Schema Provider 或 Registry 回退。整链路测试通过真实 `NewSupervisor` 构造，子组件单测在各所属包中维护。
 
-根包 `agent.Supervisor` 为 App 提供 Agent 业务线的构造与管理入口。`NewSupervisor(ctx, cfg, deps)` 在内部拆分配置；`SupervisorDeps` 只接收 Store、Models、Media、Permission、Logs 五项共享资源，以及 Tool、Hook、Platform 三类业务能力。`deps.go` 在消费方声明 `ToolCapabilities`、`HookCapabilities`、`PlatformCapabilities`，提供方总管直接实现接口。Hook 能力只供管理命令使用，执行由提供方注册 Agent 自有回调。内部消费位置同样按所需操作依赖接口，不获取提供方的 Manager、Registry 等组件。Hook 统一注册一组 Points，各消费组件通过本地最小接口声明实际所需的回调；RunnerDeps 仅汇总 Preparer 与 CallProcessor 的能力用于装配，不要求输入、工具或输出回调。App 只传总管并调用接收方的 `ConnectAgent`，适配及订阅由接收方管理；Tool、Platform、Background 的总管实现仍待完成。根包持有 Session、Request、Turn、协议路线及订阅；具体业务放在子包，后台准备由 `background/module` 持有。`share` 提供线内共享定义与辅助能力，不反向依赖 input、execution、dialogue、confirmation、hooks、output 或 tools。
+根包 `agent.Supervisor` 为 App 提供 Agent 业务线的构造与管理入口。`NewSupervisor(ctx, cfg, deps)` 在内部拆分配置；`SupervisorDeps` 只接收 Store、Models、Media、Permission、Logs 五项共享资源，以及 Tool、Hook、Platform 三类业务能力。`deps.go` 在消费方声明 `ToolCapabilities`、`HookCapabilities`、`PlatformCapabilities`，提供方总管直接实现接口。Hook 能力只供管理命令使用，执行由提供方注册 Agent 自有回调。内部消费位置同样按所需操作依赖接口，不获取提供方的 Manager、Registry 等组件。Hook 统一注册一组 Points，各消费组件通过本地最小接口声明实际所需的回调；RunnerDeps 仅汇总 Preparer 与 CallProcessor 的能力用于装配，不要求输入、工具或输出回调。App 只传总管并调用接收方的 `ConnectAgent`，适配及订阅由接收方管理；Tool、Platform、Background 的总管实现仍待完成。根包持有 Session、Request、Turn、协议路线及订阅；具体业务放在子包，后台准备由 `background/execution` 持有。`share` 提供线内共享定义与辅助能力，不反向依赖 input、execution、dialogue、confirmation、hooks、output 或 tools。
 
 ```mermaid
 flowchart TD
@@ -149,7 +149,7 @@ flowchart TD
     W --> T["agent/tools/<br/>工具运行时与 ToolRun 桥接"]
     W --> D["agent/dialogue/、chat/、responses/、routes/<br/>公共单轮与协议路线"]
     I & E & C & H & O & T --> R["agent/share/<br/>身份、输入、片段、绑定与共享契约"]
-    B["background/module/runner.go、runner_deps.go<br/>后台准备与依赖契约"] --> R
+    B["background/execution/runner.go、runner_deps.go<br/>后台准备与依赖契约"] --> R
 ```
 
 <!-- locator:protocol-routing -->
@@ -538,6 +538,21 @@ Elnis 接收事件，Elvena 定义公共协议，Elwisp 提供外部事件与工
 
 <!-- locator:cron -->
 ## Cron 与后台任务
+
+Background 根部拥有总管、装配与生命周期，内部业务分为 `execution`、`cron`、`elnis`、`maintenance`，共享契约和辅助能力位于 `share`。根部接收完整配置；Agent／Platform 的公开能力接入、Cron 六项管理入口仍待完成。Elnis 媒体调用仍引用旧 Tool 根部类型，当前造成循环导入，需按媒体中心边界另行改造。
+
+```mermaid
+flowchart TD
+    W["background/wiring.go：构造与接线<br/>deps.go：消费方依赖"] --> S["supervisor.go：总管与运行入口<br/>lifecycle.go：启停与等待"]
+    W --> C["cron/：任务管理、调度与投递恢复"]
+    W --> E["elnis/：事件接入、处理与恢复"]
+    W --> M["maintenance/maintenance.go：维护任务与清理"]
+    W --> X["execution/runner.go：后台准备与调用协调<br/>runner_deps.go：执行依赖"]
+    C & E -->|注入 Runner| X
+    M --> C
+    C & E & X --> H["share/background.go：运行契约<br/>result.go：结果解析<br/>report.go：报告构造<br/>takeover.go：接管检查<br/>logging.go：日志发布"]
+    P["cron.go：公开请求与结果类型<br/>管理入口待实现"]
+```
 
 Cron 拥有持久化任务、调度、执行与投递状态，maintenance 注册维护任务；Cron／Elnis 共用后台 Session、sandbox 和 JSON 结果能力。
 

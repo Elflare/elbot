@@ -47,7 +47,8 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Builtin 的聊天工具接入 chat_history；查询范围、过滤和媒体选择归组件，Platform 历史及媒体获取由 Tool 根部适配，删除 Builtin 直连历史存储的逻辑。
 - [x] Cron 工具使用 Share 的服务与精简结果；Tool 根部提供 ConnectBackground，并管理注册关系的释放。
 - [x] 聊天历史与媒体的真实 SQLite 集成测试归 Tool 根部，Builtin 测试使用内部组件及契约；移除依赖旧 Runtime 装配的测试路径。
-- [ ] Background 提供公开的 CronCreateRequest、CronUpdateRequest、CronInfo 以及 CreateCron、UpdateCron、GetCron、ListCrons、DisableCron、DeleteCron 六项总管方法，与 Tool 根部适配契约一致。
+- [x] Background 根部定义 CronCreateRequest、CronUpdateRequest、CronInfo，与 Tool 根部数据契约一致。
+- [ ] Background 实现 CreateCron、UpdateCron、GetCron、ListCrons、DisableCron、DeleteCron 六项总管方法。
 - [ ] App 在 Tool 与 Background 构造后、Tool.Start 前调用 Tool.ConnectBackground；补齐后验证注册释放及 Cron 整链路。
 - [ ] Skill 移除反向导入 Tool 根包后运行 Tool 全包测试；当前循环依赖阻塞根包构建。
 
@@ -59,6 +60,13 @@ Tool 媒体层已统一向工具返回 `share.MediaInfo`，图片宽高、实际
 - [ ] 明确图片有效性校验接口，保持内容可解码及 MIME 校验语义；当前 Tool 的 ValidateImage 使用中心 ImageMetadata。图片宽高和实际格式继续在媒体中心内部消费。
 - [ ] 收敛调用期引用与已持有媒体的读取能力：支持同一调用复用、失败释放重试及中断恢复；Tool 当前通过中心公开方法管理临时引用，内部持有存储记录供 OpenHeld 使用。
 - [ ] Background／Elnis 整理媒体对接，移除旧 Tool 根部 MediaRuntime 引用，不能改为依赖 Tool 内部媒体包。
+
+## Background 目录与依赖
+
+- [x] 根部按总管、依赖、装配、生命周期及 Cron 数据契约拆分；内部业务收进 execution、cron、elnis、maintenance，共享定义与辅助能力归 share。
+- [x] 移除旧 module 和 Background 持有的 Cron 工具注册；公共结果使用方依赖 share。
+- [ ] 将根部保留的 Session、执行及平台组件依赖改为总管公开能力，补齐 App 接线。
+- [ ] Elnis 旧媒体调用造成 Background → Elnis → Tool → Background 循环依赖，按媒体中心边界改造后验证整条业务线。
 
 ## 后台工具统一预载
 
