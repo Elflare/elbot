@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- 新增配置文件锁，防止多个实例使用同一份配置文件
+
 ### Changed
 
 - 人工逐包、逐文件、逐函数、逐字段指导AI重构App到业务层，再次收拢边界、分清职责
