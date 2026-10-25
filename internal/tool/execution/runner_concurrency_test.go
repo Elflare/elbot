@@ -15,15 +15,17 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
+	toolregistry "elbot/internal/tool/registry"
 )
 
 type concurrentTool struct {
 	run func(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error)
 }
 
-func (concurrentTool) Name() string    { return "parallel" }
-func (concurrentTool) Info() toolshare.Info { return toolshare.Info{Name: "parallel", Risk: toolshare.RiskLow} }
+func (concurrentTool) Name() string { return "parallel" }
+func (concurrentTool) Info() toolshare.Info {
+	return toolshare.Info{Name: "parallel", Risk: toolshare.RiskLow}
+}
 func (concurrentTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "parallel", Parameters: map[string]any{"type": "object"}}
 }
@@ -69,7 +71,7 @@ func TestRunConcurrentFailuresKeepOriginalResultOrderAndFlushOnce(t *testing.T) 
 	started, completedOrder := make(chan string, 3), make(chan string, 3)
 	releases := map[string]chan struct{}{"A": make(chan struct{}), "B": make(chan struct{}), "C": make(chan struct{})}
 	var completed atomic.Int32
-	registry := tool.NewRegistry()
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	if err := registry.Register(concurrentTool{run: func(ctx context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
 		started <- req.ID
 		select {
@@ -90,7 +92,7 @@ func TestRunConcurrentFailuresKeepOriginalResultOrderAndFlushOnce(t *testing.T) 
 	deps := &runnerTestDeps{}
 	done := make(chan toolshare.RunResult, 1)
 	go func() {
-		done <- NewRunner(NewManager(registry, security.NewPermission("low", "critical", nil))).Run(ctx, deps, concurrentRunRequest(committer))
+		done <- newTestManager(registry, security.NewPermission("low", "critical", nil)).Run(ctx, deps, concurrentRunRequest(committer))
 	}()
 	waitConcurrentStart(t, started)
 	for _, id := range []string{"C", "B", "A"} {
@@ -127,7 +129,7 @@ func TestRunCancellationJoinsEveryWorkerWithoutFlushingPartialBatch(t *testing.T
 	defer cancel()
 	started := make(chan string, 3)
 	var completed atomic.Int32
-	registry := tool.NewRegistry()
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	_ = registry.Register(concurrentTool{run: func(ctx context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
 		started <- req.ID
 		<-ctx.Done()
@@ -137,7 +139,7 @@ func TestRunCancellationJoinsEveryWorkerWithoutFlushingPartialBatch(t *testing.T
 	committer := &concurrentCommitter{completed: &completed}
 	done := make(chan toolshare.RunResult, 1)
 	go func() {
-		done <- NewRunner(NewManager(registry, nil)).Run(ctx, &runnerTestDeps{}, concurrentRunRequest(committer))
+		done <- newTestManager(registry, nil).Run(ctx, &runnerTestDeps{}, concurrentRunRequest(committer))
 	}()
 	waitConcurrentStart(t, started)
 	cancel()
@@ -166,7 +168,7 @@ func (d *timeoutToolDeps) StartToolRequest(ctx context.Context, _, _ string) (co
 
 func TestRunSingleToolTimeoutDoesNotCancelSiblingTools(t *testing.T) {
 	started := make(chan string, 3)
-	registry := tool.NewRegistry()
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	_ = registry.Register(concurrentTool{run: func(ctx context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
 		started <- req.ID
 		if req.ID == "A" {
@@ -177,7 +179,7 @@ func TestRunSingleToolTimeoutDoesNotCancelSiblingTools(t *testing.T) {
 	}})
 	deps := &timeoutToolDeps{}
 	committer := &testToolCommitter{}
-	result := NewRunner(NewManager(registry, nil)).Run(t.Context(), deps, concurrentRunRequest(committer))
+	result := newTestManager(registry, nil).Run(t.Context(), deps, concurrentRunRequest(committer))
 	if result.Err != nil || result.Stopped || len(result.Messages) != 3 || !strings.Contains(committer.records["A"].Error, context.DeadlineExceeded.Error()) || !committer.records["B"].Success || !committer.records["C"].Success {
 		t.Fatalf("result=%+v records=%+v", result, committer.records)
 	}
@@ -216,7 +218,7 @@ func TestCompletedToolPersistsWhileLaterPreparationWaits(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 	deps := &blockedPreparationDeps{waiting: make(chan struct{}), release: make(chan struct{})}
-	registry := tool.NewRegistry()
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	_ = registry.Register(concurrentTool{run: func(ctx context.Context, call toolshare.CallRequest) (*toolshare.Result, string, error) {
 		if call.ID == "A" {
 			select {
@@ -229,7 +231,7 @@ func TestCompletedToolPersistsWhileLaterPreparationWaits(t *testing.T) {
 	}})
 	committer := &notifyingCommitter{saved: make(chan string, 3)}
 	done := make(chan toolshare.RunResult, 1)
-	go func() { done <- NewRunner(NewManager(registry, nil)).Run(ctx, deps, concurrentRunRequest(committer)) }()
+	go func() { done <- newTestManager(registry, nil).Run(ctx, deps, concurrentRunRequest(committer)) }()
 	select {
 	case id := <-committer.saved:
 		if id != "A" {

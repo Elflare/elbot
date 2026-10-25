@@ -120,7 +120,7 @@ func (t ShellTool) AssessRisk(ctx context.Context, req toolshare.CallRequest) (t
 	return assessment, nil
 }
 
-func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*tool.PreparedCall, error) {
+func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	_, cmdText, err := decodeShellArgs(req)
 	if err != nil {
 		return nil, err

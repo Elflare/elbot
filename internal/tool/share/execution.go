@@ -7,7 +7,6 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/llm"
-	"elbot/internal/session"
 	"elbot/internal/storage"
 	"time"
 )
@@ -25,25 +24,6 @@ type ELwispToolDeclaration struct {
 	ForegroundOnly bool           `json:"foreground_only,omitempty"`
 }
 
-type ExecutionResult struct {
-	// Call is the request supplied to this execution entry point.
-	Call llm.ToolCallRequest
-	// Message is the model-facing result; partial tool segments survive failures.
-	Message llm.LLMMessage
-	// Result is the original tool result, including partial results on error; nil means none.
-	Result *Result
-	// LogResult.Content carries the independent tool log body. Before call entry,
-	// the execution source declares ResultStatus and the reason; after entry,
-	// the runner uses ResultStatus for the invocation log outcome.
-	LogResult events.LogResult
-	// Error is the original execution or preparation error; nil does not declare success.
-	Error error
-	// ResultStatus is declared at the execution source, including pre-execution rejection.
-	ResultStatus events.ResultStatus
-	// ExecutionStarted records entry into Tool.Call or PreparedCall.Call, even if it fails.
-	ExecutionStarted bool
-}
-
 // PolicyDeniedError identifies an expected authorization or confirmation refusal.
 // Its text remains the user-facing reason; observers use the explicit source result.
 type PolicyDeniedError string
@@ -52,8 +32,6 @@ func (e PolicyDeniedError) Error() string { return string(e) }
 
 type Context struct {
 	Mode             string
-	Session          *storage.Session
-	Scope            session.Scope
 	Actor            contextinfo.Actor
 	DisableBaseTools bool
 }

@@ -5,6 +5,8 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"elbot/internal/events"
+	"elbot/internal/tool/discovery"
+	"elbot/internal/tool/preload"
 	"testing"
 
 	"elbot/internal/contextinfo"
@@ -12,7 +14,7 @@ import (
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/security"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
+	toolregistry "elbot/internal/tool/registry"
 )
 
 type availabilityTestTool struct {
@@ -25,7 +27,9 @@ func (t availabilityTestTool) Name() string { return t.name }
 func (t availabilityTestTool) Info() toolshare.Info {
 	return toolshare.NewBuilder(t.name).APITypes(t.types...).Tags("pictures").BuildInfo()
 }
-func (t availabilityTestTool) Schema() llm.ToolSchema { return toolshare.NewBuilder(t.name).BuildSchema() }
+func (t availabilityTestTool) Schema() llm.ToolSchema {
+	return toolshare.NewBuilder(t.name).BuildSchema()
+}
 func (t availabilityTestTool) Call(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
 	if t.calls != nil {
 		*t.calls++
@@ -37,17 +41,17 @@ func (t availabilityTestTool) Call(context.Context, toolshare.CallRequest) (*too
 }
 
 func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
-	registry := tool.NewRegistry()
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	calls := 0
 	image := availabilityTestTool{name: "image", types: []llm.APIType{llm.APITypeResponse}, calls: &calls}
 	if err := registry.Register(image); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Register(tool.NewDiscoverTool(registry)); err != nil {
+	if err := registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry), nil)); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(registry, security.DefaultPermission())
-	preloader := NewPreloadService(PreloadOptions{Registry: registry})
+	manager := newTestManager(registry, security.DefaultPermission())
+	preloader := preload.NewPreloadService(preload.PreloadOptions{Registry: registry})
 	actor := contextinfo.Actor{Role: contextinfo.RoleSuperadmin}
 	for _, apiType := range []string{"", "chat", "response", "other"} {
 		t.Run(apiType, func(t *testing.T) {
@@ -56,16 +60,12 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 				ctx = contextinfo.WithModel(ctx, contextinfo.Model{APIType: apiType})
 			}
 			want := apiType == "response"
-			names, err := manager.ToolNames(ctx, toolshare.Context{Mode: storage.SessionModeWork, Actor: actor})
-			if err != nil || (len(names) == 1) != want {
-				t.Fatalf("names=%v err=%v", names, err)
-			}
 			prepared, err := preloader.PrepareTools(ctx, []string{"image"})
 			if err != nil || len(prepared.Update.Tools) != boolInt(want) {
 				t.Fatalf("preload=%+v err=%v", prepared, err)
 			}
-			background, err := preloader.PrepareBackground(sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{Background: true}), "session", []string{"pictures"}, []string{"image"})
-			if err != nil || len(background.Update.Tools) != boolInt(want) || len(background.Update.Tags) != boolInt(want) {
+			background, err := preloader.PrepareBackground(sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{Background: true}), toolshare.BackgroundPreloadRequest{SessionID: "session", Names: []string{"image"}, AllowedToolNames: []string{"image"}})
+			if err != nil || len(background.Update.Tools) != boolInt(want) {
 				t.Fatalf("background preload=%+v err=%v", background, err)
 			}
 			cache := prepared.Update.Tools
@@ -74,7 +74,7 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 				if err != nil || len(schemas) != boolInt(want) {
 					t.Fatalf("%s schemas=%v err=%v", mode, schemas, err)
 				}
-				if got := manager.Resolve(ctx, "image", cache, mode); (got.ResultStatus == events.ResultSucceeded) != want {
+				if got := manager.resolve(ctx, "image", cache, mode); (got.ResultStatus == events.ResultSucceeded) != want {
 					t.Fatalf("resolved=%+v", got)
 				}
 			}
@@ -86,7 +86,7 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 			if len(roots) != 1 || len(roots[0].Names) != 1 || roots[0].Names[0] != "image" {
 				t.Fatalf("roots=%+v", roots)
 			}
-			executed := (tool.Executor{Registry: registry, Actor: actor}).Execute(ctx, llm.ToolCallRequest{Name: "image", Arguments: `{}`})
+			executed := manager.executePrepared(ctx, llm.ToolCallRequest{Name: "image", Arguments: `{}`}, manager.resolve(ctx, "image", nil, storage.SessionModeWork), nil, nil)
 			if (executed.Error == nil) != want {
 				t.Fatalf("execute=%+v", executed)
 			}

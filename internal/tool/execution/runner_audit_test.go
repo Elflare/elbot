@@ -9,21 +9,20 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/command"
-	commandbuiltin "elbot/internal/command/builtin"
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/logging"
 	"elbot/internal/security"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
-	"elbot/internal/toolrun"
+	toolregistry "elbot/internal/tool/registry"
 )
 
 type blockingAuditTool struct{ entered, release chan struct{} }
 
-func (blockingAuditTool) Name() string    { return "audit_probe" }
-func (blockingAuditTool) Info() toolshare.Info { return toolshare.Info{Name: "audit_probe", Risk: toolshare.RiskLow} }
+func (blockingAuditTool) Name() string { return "audit_probe" }
+func (blockingAuditTool) Info() toolshare.Info {
+	return toolshare.Info{Name: "audit_probe", Risk: toolshare.RiskLow}
+}
 func (blockingAuditTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "audit_probe", Parameters: map[string]any{"type": "object"}}
 }
@@ -44,18 +43,18 @@ func TestAuditShowsStartBeforeToolReturns(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = center.Close(context.Background()) })
 	probe := blockingAuditTool{entered: make(chan struct{}), release: make(chan struct{})}
-	registry := tool.NewRegistry()
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	if err := registry.Register(probe); err != nil {
 		t.Fatal(err)
 	}
-	deps := &rollbackConfirmDeps{}
+	deps := &runnerTestDeps{}
 	deps.prepareContext = func(ctx context.Context, _ *storage.Session, _ llm.ToolCallRequest) context.Context { return ctx }
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		result := toolrun.NewRunner(toolrun.NewManager(registry, security.NewPermission("high", "high", nil))).Run(ctx, deps, toolshare.RunRequest{
-			Committer: deps, Session: &storage.Session{ID: "audit-live", Mode: storage.SessionModeWork},
+		result := newTestManager(registry, security.NewPermission("high", "high", nil)).Run(ctx, deps, toolshare.RunRequest{
+			Committer: &testToolCommitter{}, Session: &storage.Session{ID: "audit-live", Mode: storage.SessionModeWork},
 			Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 			Calls: []llm.ToolCallRequest{{ID: "audit-live-call", Name: probe.Name(), Arguments: "{}"}},
 		})
@@ -68,16 +67,19 @@ func TestAuditShowsStartBeforeToolReturns(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("tool entry timeout")
 	}
-	audit := commandbuiltin.NewAudit(commandbuiltin.Deps{Logs: logging.Reader{Dir: center.LogDir()}})
+	audit := logging.Reader{Dir: center.LogDir()}
 	waitFor := func(end bool) {
 		t.Helper()
 		deadline := time.Now().Add(5 * time.Second)
 		for {
-			result, err := audit.Handle(t.Context(), command.Request{Args: "-t --raw -n 10"})
+			result, err := audit.Query(t.Context(), logging.LogQuery{Prefix: "audit", Days: 1, Limit: 10, MinLevel: "debug"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			text := result.Content
+			text := ""
+			for _, entry := range result.Entries {
+				text += entry.Raw
+			}
 			if !end && strings.Contains(text, "tool_call_completed") {
 				t.Fatalf("premature end: %s", text)
 			}

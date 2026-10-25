@@ -74,14 +74,11 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	}); err != nil {
 		return m, fmt.Errorf("register tools: %w", err)
 	}
-	m.engine = execution.NewManager(registry, deps.Permission)
-	m.engine.Media = deps.Media
-	m.engine.Log = logTool
+	m.engine = execution.NewManager(registry, deps.Permission, deps.Media, logTool)
 	m.preloader = preload.NewPreloadService(preload.PreloadOptions{
-		Registry:   registry,
-		TagsPath:   cfg.ToolTagsConfigPath,
-		Tags:       cfg.ToolTags,
-		Permission: deps.Permission,
+		Registry: registry,
+		TagsPath: cfg.ToolTagsConfigPath,
+		Tags:     cfg.ToolTags,
 	})
 	m.state = toolstate.NewStateService(deps.Store)
 	return m, nil
@@ -107,7 +104,7 @@ func registerAll(registry *toolregistry.Registry, opts registerOptions) error {
 	info := opts.runtimeInfo
 	mediaRuntime := &toolmedia.MediaRuntime{Center: opts.fileManager.Media, SandboxRoot: info.SandboxRoot}
 	opts.skillManager.Scanner.Media = mediaRuntime
-	if err := registry.Register(discovery.NewDiscoverTool(registry, opts.skillManager.EnsureLoaded)); err != nil {
+	if err := registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry), opts.skillManager.EnsureLoaded)); err != nil {
 		return err
 	}
 	if err := registry.Register(builtin.NewWorkspaceTool()); err != nil {

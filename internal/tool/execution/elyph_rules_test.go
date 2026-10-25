@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/tool/discovery"
 	"errors"
 	"strings"
 	"testing"
@@ -14,7 +15,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
+	toolregistry "elbot/internal/tool/registry"
 )
 
 type ruleDetailTool struct {
@@ -22,8 +23,10 @@ type ruleDetailTool struct {
 	wait <-chan struct{}
 }
 
-func (t ruleDetailTool) Name() string          { return t.name }
-func (t ruleDetailTool) Info() toolshare.Info       { return toolshare.Info{Name: t.name, Risk: toolshare.RiskSafe} }
+func (t ruleDetailTool) Name() string { return t.name }
+func (t ruleDetailTool) Info() toolshare.Info {
+	return toolshare.Info{Name: t.name, Risk: toolshare.RiskSafe}
+}
 func (ruleDetailTool) Schema() llm.ToolSchema  { return llm.ToolSchema{} }
 func (t ruleDetailTool) Detail() string        { return "#skill " + t.name + " - body" }
 func (ruleDetailTool) ActivateTools() []string { return nil }
@@ -63,13 +66,13 @@ func TestRuleCardFollowsCompletionOrderAndSurvivesLaterCommitFailure(t *testing.
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	secondFinished := make(chan struct{})
-	registry := tool.NewRegistry()
-	for _, candidate := range []toolshare.Tool{tool.NewDiscoverTool(registry), ruleDetailTool{name: "alpha", wait: secondFinished}, ruleDetailTool{name: "beta"}} {
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
+	for _, candidate := range []toolshare.Tool{discovery.NewDiscoverTool(discovery.NewResolver(registry), nil), ruleDetailTool{name: "alpha", wait: secondFinished}, ruleDetailTool{name: "beta"}} {
 		if err := registry.Register(candidate); err != nil {
 			t.Fatal(err)
 		}
 	}
-	runner := NewRunner(NewManager(registry, security.DefaultPermission()))
+	runner := newTestManager(registry, security.DefaultPermission())
 	row := &storage.Session{ID: "s", Mode: storage.SessionModeWork}
 	failure := errors.New("result rejected")
 	committer := &ruleCommitter{failure: failure, saved: secondFinished}
@@ -99,10 +102,10 @@ func TestRuleCardFollowsCompletionOrderAndSurvivesLaterCommitFailure(t *testing.
 }
 
 func TestDiscoveryListAndFailuresDoNotConsumeRules(t *testing.T) {
-	registry := tool.NewRegistry()
-	_ = registry.Register(tool.NewDiscoverTool(registry))
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
+	_ = registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry), nil))
 	_ = registry.Register(ruleDetailTool{name: "alpha"})
-	runner := NewRunner(NewManager(registry, security.DefaultPermission()))
+	runner := newTestManager(registry, security.DefaultPermission())
 	row := &storage.Session{ID: "s", Mode: storage.SessionModeWork}
 	for _, args := range []string{`{}`, `{"name":"missing"}`} {
 		result := runner.Run(t.Context(), &runnerTestDeps{}, toolshare.RunRequest{Session: row, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Committer: &ruleCommitter{}, Calls: []llm.ToolCallRequest{{ID: "lookup", Name: "discover_tool", Arguments: args}}})

@@ -116,7 +116,7 @@ func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storag
 		Calls:            calls,
 		AssistantText:    assistantText,
 		AssistantRawText: assistantRawText,
-		DiscoveredTools:      discovered,
+		DiscoveredTools:  discovered,
 		Actor:            r.Identity.Actor(ctx),
 		Committer:        committer,
 	})
@@ -130,5 +130,5 @@ func (r *ToolExecutor) Schemas(ctx context.Context, session *storage.Session) ([
 	if err != nil {
 		return nil, fmt.Errorf("准备工具: %w", err)
 	}
-	return r.Manager.Schemas(ctx, toolrun.Context{Mode: session.Mode, Session: session, Scope: r.Identity.Scope(ctx), Actor: r.Identity.Actor(ctx), DisableBaseTools: sessionpkg.IsBackground(session)}, discovered)
+	return r.Manager.Schemas(ctx, toolrun.Context{Mode: session.Mode, Actor: r.Identity.Actor(ctx), DisableBaseTools: sessionpkg.IsBackground(session)}, discovered)
 }

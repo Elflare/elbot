@@ -9,7 +9,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
+	toolregistry "elbot/internal/tool/registry"
 	"errors"
 	"sync/atomic"
 	"testing"
@@ -40,8 +40,10 @@ type countingCommitTool struct {
 	wait  <-chan struct{}
 }
 
-func (countingCommitTool) Name() string    { return "count" }
-func (countingCommitTool) Info() toolshare.Info { return toolshare.Info{Name: "count", Risk: security.RiskLow} }
+func (countingCommitTool) Name() string { return "count" }
+func (countingCommitTool) Info() toolshare.Info {
+	return toolshare.Info{Name: "count", Risk: security.RiskLow}
+}
 func (countingCommitTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "count", Parameters: map[string]any{"type": "object"}}
 }
@@ -70,14 +72,14 @@ func TestToolCommitFailureStopsOnlyOnPersistenceError(t *testing.T) {
 				blocked := &blockedPreparationDeps{waiting: make(chan struct{}), release: make(chan struct{})}
 				deps, waiting = blocked, blocked.waiting
 			}
-			registry := tool.NewRegistry()
+			registry := toolregistry.NewRegistry(security.DefaultPermission())
 			if err := registry.Register(countingCommitTool{count: &count, wait: waiting}); err != nil {
 				t.Fatal(err)
 			}
-			manager := NewManager(registry, security.NewPermission("low", "critical", nil))
+			manager := newTestManager(registry, security.NewPermission("low", "critical", nil))
 			failure := errors.New("commit failed")
 			sink := &failingToolCommitter{failure: failure, phase: phase}
-			result := NewRunner(manager).Run(ctx, deps, toolshare.RunRequest{Committer: sink, Session: &storage.Session{ID: "s", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "A", Name: "count", Arguments: "{}"}, {ID: "B", Name: "count", Arguments: "{}"}}})
+			result := manager.Run(ctx, deps, toolshare.RunRequest{Committer: sink, Session: &storage.Session{ID: "s", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "A", Name: "count", Arguments: "{}"}, {ID: "B", Name: "count", Arguments: "{}"}}})
 			if (phase != "prepared" && !errors.Is(result.Err, failure)) || (phase == "prepared" && result.Err != nil) || count.Load() != 1 {
 				t.Fatalf("result=%+v calls=%d", result, count.Load())
 			}

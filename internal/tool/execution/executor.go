@@ -1,4 +1,4 @@
-// 执行单次原生工具调用，处理风险评估与执行校验。
+// 执行本次已批准的工具对象，转换结果，不重复查询或授权。
 package execution
 
 import toolshare "elbot/internal/tool/share"
@@ -9,74 +9,58 @@ import (
 	"errors"
 	"fmt"
 
-	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"elbot/internal/llm"
-	"elbot/internal/security"
 )
 
-type Executor struct {
-	Registry   *Registry
-	Actor      contextinfo.Actor
-	Permission *security.Permission
-	// OnStarted runs after authorization, immediately before the tool body.
-	OnStarted func()
+type executionResult struct {
+	// Call is the request supplied to this execution entry point.
+	Call llm.ToolCallRequest
+	// Message is the model-facing result; partial tool segments survive failures.
+	Message llm.LLMMessage
+	// Result is the original tool result, including partial results on error; nil means none.
+	Result *toolshare.Result
+	// LogResult.Content carries the independent tool log body. Before call entry,
+	// the execution source declares ResultStatus and the reason; after entry,
+	// the runner uses ResultStatus for the invocation log outcome.
+	LogResult events.LogResult
+	// Error is the original execution or preparation error; nil does not declare success.
+	Error error
+	// ResultStatus is declared at the execution source, including pre-execution rejection.
+	ResultStatus events.ResultStatus
+	// ExecutionStarted records entry into Tool.Call or PreparedCall.Call, even if it fails.
+	ExecutionStarted bool
 }
 
-func (e Executor) Execute(ctx context.Context, call llm.ToolCallRequest) toolshare.ExecutionResult {
-	return e.execute(ctx, call, nil)
-}
-
-func (e Executor) ExecutePrepared(ctx context.Context, call llm.ToolCallRequest, prepared *PreparedCall) toolshare.ExecutionResult {
-	return e.execute(ctx, call, prepared)
-}
-
-func (e Executor) execute(ctx context.Context, call llm.ToolCallRequest, prepared *PreparedCall) toolshare.ExecutionResult {
+func (m *Manager) executePrepared(ctx context.Context, call llm.ToolCallRequest, resolved resolvedTool, prepared *toolshare.PreparedCall, onStarted func()) executionResult {
 	message := llm.LLMMessage{
 		Role:       llm.RoleTool,
 		Name:       call.Name,
 		ToolCallID: call.ID,
 	}
-	tool, ok := e.Registry.Get(call.Name)
-	if !ok {
-		return executionError(call, message, fmt.Errorf("tool %q not found", call.Name), events.ResultFailed)
+	if resolved.ResultStatus != events.ResultSucceeded {
+		return executionError(call, message, resolved.Error, resolved.ResultStatus)
+	}
+	if err := ctx.Err(); err != nil {
+		return executionError(call, message, err, events.ResultCanceled)
+	}
+	if resolved.Source == toolshare.SourceKindELwisp {
+		return executeELwispTool(ctx, call, resolved, onStarted)
 	}
 	request := toolshare.CallRequest{ID: call.ID, Name: call.Name, Arguments: json.RawMessage(call.Arguments)}
-	if prepared != nil {
-		if !prepared.matches(request) {
-			return executionError(call, message, fmt.Errorf("tool call changed after preparation"), events.ResultFailed)
-		}
-		tool = prepared.tool
+	if prepared != nil && !prepared.Matches(request) {
+		return executionError(call, message, fmt.Errorf("tool call changed after preparation"), events.ResultFailed)
 	}
-	if reason := UnavailableReason(ctx, tool.Info()); reason != "" {
-		return executionError(call, message, toolshare.PolicyDeniedError(reason), events.ResultRejected)
-	}
-	assessment, err := AssessRisk(ctx, tool, toolshare.CallRequest{ID: call.ID, Name: call.Name, Arguments: json.RawMessage(call.Arguments)})
-	if err != nil {
-		resultStatus := events.ResultFailed
-		if errors.Is(err, context.Canceled) {
-			resultStatus = events.ResultCanceled
-		}
-		return executionError(call, message, err, resultStatus)
-	}
-	permission := e.Permission
-	actor := e.Actor
-	info := tool.Info()
-	if info.SuperadminOnly && actor.Role != contextinfo.RoleSuperadmin {
-		return executionError(call, message, toolshare.PolicyDeniedError(fmt.Sprintf("tool %q requires superadmin role", call.Name)), events.ResultRejected)
-	}
-	if !permission.CanUseTool(actor, assessment.Level, info.OwnerScoped) {
-		return executionError(call, message, toolshare.PolicyDeniedError(fmt.Sprintf("risk %s is above your allowed tool level", assessment.Level)), events.ResultRejected)
-	}
+	var err error
 	var result *toolshare.Result
 	var logContent string
-	if e.OnStarted != nil {
-		e.OnStarted()
+	if onStarted != nil {
+		onStarted()
 	}
 	if prepared != nil {
 		result, logContent, err = prepared.Call(ctx)
 	} else {
-		result, logContent, err = tool.Call(ctx, request)
+		result, logContent, err = resolved.Native.Call(ctx, request)
 	}
 	resultStatus := events.ResultSucceeded
 	if err != nil {
@@ -91,11 +75,11 @@ func (e Executor) execute(ctx context.Context, call llm.ToolCallRequest, prepare
 	if result != nil {
 		message.Segments = result.LLMSegments()
 	}
-	return toolshare.ExecutionResult{Call: call, Message: message, Result: result, LogResult: events.LogResult{Content: logContent}, Error: err, ResultStatus: resultStatus, ExecutionStarted: true}
+	return executionResult{Call: call, Message: message, Result: result, LogResult: events.LogResult{Content: logContent}, Error: err, ResultStatus: resultStatus, ExecutionStarted: true}
 }
 
-func executionError(call llm.ToolCallRequest, message llm.LLMMessage, err error, resultStatus events.ResultStatus) toolshare.ExecutionResult {
+func executionError(call llm.ToolCallRequest, message llm.LLMMessage, err error, resultStatus events.ResultStatus) executionResult {
 	content := fmt.Sprintf("tool call %s failed: %v", call.Name, err)
 	message.Segments = llm.TextSegments(content)
-	return toolshare.ExecutionResult{Call: call, Message: message, Error: err, ResultStatus: resultStatus, LogResult: events.LogResult{ResultStatus: resultStatus, Content: toolshare.TruncateLogContent(content, 1024)}}
+	return executionResult{Call: call, Message: message, Error: err, ResultStatus: resultStatus, LogResult: events.LogResult{ResultStatus: resultStatus, Content: toolshare.TruncateLogContent(content, 1024)}}
 }

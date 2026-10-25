@@ -1,52 +1,30 @@
-// 管理调用准备和确认快照，承接准备后的执行。
+// 评估已选定工具的风险，并取得调用准备快照。
 package execution
 
-import toolshare "elbot/internal/tool/share"
-
 import (
-	"bytes"
 	"context"
+	"elbot/internal/llm"
+	"elbot/internal/security"
+	"elbot/internal/tool/share"
+	"encoding/json"
 )
 
-// CallPreparer validates before confirmation; nil means ordinary Call execution.
-type CallPreparer interface {
-	PrepareCall(context.Context, toolshare.CallRequest) (*PreparedCall, error)
+func (m *Manager) assessRisk(ctx context.Context, resolved resolvedTool, call llm.ToolCallRequest) (share.RiskAssessment, error) {
+	if resolved.Source == share.SourceKindELwisp {
+		return share.RiskAssessment{Level: share.RiskLow}, nil
+	}
+	fallback := security.ParseRisk(string(resolved.Native.Info().Risk), share.RiskHigh)
+	if assessor, ok := resolved.Native.(share.RiskAssessor); ok {
+		assessment, err := assessor.AssessRisk(ctx, share.CallRequest{ID: call.ID, Name: call.Name, Arguments: json.RawMessage(call.Arguments)})
+		assessment.Level = security.ParseRisk(string(assessment.Level), fallback)
+		return assessment, err
+	}
+	return share.RiskAssessment{Level: fallback}, nil
 }
 
-// PreparedCall owns a confirmation snapshot for one serial invocation.
-// It retains neither an execution context nor locks.
-type PreparedCall struct {
-	// tool owns both preparation and execution.
-	tool toolshare.Tool
-	// request binds the snapshot to independent invocation arguments.
-	request toolshare.CallRequest
-	// detail is the confirmation text produced by preparation.
-	detail string
-	// run consumes the tool-specific snapshot with the execution context.
-	run func(context.Context) (*toolshare.Result, string, error)
-}
-
-func NewPreparedCall(candidate toolshare.Tool, req toolshare.CallRequest, detail string, run func(context.Context) (*toolshare.Result, string, error)) *PreparedCall {
-	req.Arguments = bytes.Clone(req.Arguments)
-	return &PreparedCall{tool: candidate, request: req, detail: detail, run: run}
-}
-
-func PrepareCall(ctx context.Context, candidate toolshare.Tool, req toolshare.CallRequest) (*PreparedCall, error) {
-	if preparer, ok := candidate.(CallPreparer); ok {
-		return preparer.PrepareCall(ctx, req)
+func (m *Manager) prepareCall(ctx context.Context, resolved resolvedTool, call llm.ToolCallRequest) (*share.PreparedCall, error) {
+	if preparer, ok := resolved.Native.(share.CallPreparer); ok {
+		return preparer.PrepareCall(ctx, share.CallRequest{ID: call.ID, Name: call.Name, Arguments: json.RawMessage(call.Arguments)})
 	}
 	return nil, nil
-}
-
-func (p *PreparedCall) RiskDetail() string { return p.detail }
-
-func (p *PreparedCall) Call(ctx context.Context) (*toolshare.Result, string, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err.Error(), err
-	}
-	return p.run(ctx)
-}
-
-func (p *PreparedCall) matches(req toolshare.CallRequest) bool {
-	return p.request.ID == req.ID && p.request.Name == req.Name && bytes.Equal(p.request.Arguments, req.Arguments)
 }

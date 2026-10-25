@@ -17,7 +17,6 @@ import (
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	sandboxctx "elbot/internal/sandbox"
-	"elbot/internal/tool"
 	"elbot/internal/workspace"
 )
 
@@ -402,7 +401,7 @@ func (t EditFileTool) AssessRisk(ctx context.Context, req toolshare.CallRequest)
 	return toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"文件内容写入操作需要确认"}}, nil
 }
 
-func (t EditFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*tool.PreparedCall, error) {
+func (t EditFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	var args editFileArgs
 	if len(req.Arguments) > 0 {
 		if err := decodeStrictFileArgs(req.Arguments, &args); err != nil {
@@ -414,7 +413,7 @@ func (t EditFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 		return nil, err
 	}
 	detail := editFileRiskDetail(args, prepared.Preview())
-	return tool.NewPreparedCall(t, req, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.call(ctx, args, prepared)
 	}), nil
 }

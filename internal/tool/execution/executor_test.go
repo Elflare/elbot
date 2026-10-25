@@ -13,15 +13,16 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/security"
+	"elbot/internal/storage"
+	toolregistry "elbot/internal/tool/registry"
 )
 
 func TestExecutorExecutesTool(t *testing.T) {
-	registry := NewRegistry()
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	if err := registry.Register(fakeTool{name: "ok", source: toolshare.SourceBuiltin}); err != nil {
 		t.Fatal(err)
 	}
-	executor := Executor{Registry: registry}
-	result := executor.Execute(context.Background(), llm.ToolCallRequest{ID: "call_1", Name: "ok", Arguments: `{}`})
+	result := executeTestCall(registry, llm.ToolCallRequest{ID: "call_1", Name: "ok", Arguments: `{}`})
 	if result.Error != nil {
 		t.Fatal(result.Error)
 	}
@@ -34,8 +35,8 @@ func TestExecutorExecutesTool(t *testing.T) {
 }
 
 func TestExecutorMissingToolReturnsToolMessageError(t *testing.T) {
-	executor := Executor{Registry: NewRegistry()}
-	result := executor.Execute(context.Background(), llm.ToolCallRequest{ID: "call_1", Name: "missing", Arguments: `{}`})
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
+	result := executeTestCall(registry, llm.ToolCallRequest{ID: "call_1", Name: "missing", Arguments: `{}`})
 	if result.Error == nil {
 		t.Fatal("expected error")
 	}
@@ -48,11 +49,11 @@ func TestExecutorMissingToolReturnsToolMessageError(t *testing.T) {
 }
 
 func TestExecutorUsesResultSegments(t *testing.T) {
-	registry := NewRegistry()
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	if err := registry.Register(segmentTool{}); err != nil {
 		t.Fatal(err)
 	}
-	result := Executor{Registry: registry}.Execute(context.Background(), llm.ToolCallRequest{ID: "call_1", Name: "segments", Arguments: `{}`})
+	result := executeTestCall(registry, llm.ToolCallRequest{ID: "call_1", Name: "segments", Arguments: `{}`})
 	if result.Error != nil {
 		t.Fatal(result.Error)
 	}
@@ -77,22 +78,6 @@ func TestResultWarningsAppendToSegments(t *testing.T) {
 	text := llm.SegmentsContentText(result)
 	if !strings.Contains(text, "text") || !strings.Contains(text, "Warnings:") || !strings.Contains(text, "use read_file") {
 		t.Fatalf("text = %q", text)
-	}
-}
-
-func TestExecutorDeniesToolAboveUserRisk(t *testing.T) {
-	registry := NewRegistry()
-	if err := registry.Register(fakeTool{name: "danger", source: toolshare.SourceBuiltin, risk: toolshare.RiskHigh}); err != nil {
-		t.Fatal(err)
-	}
-	executor := Executor{Registry: registry, Actor: contextinfo.Actor{Role: contextinfo.RoleUser}, Permission: security.DefaultPermission()}
-	result := executor.Execute(context.Background(), llm.ToolCallRequest{ID: "call_1", Name: "danger", Arguments: `{}`})
-	if result.Error == nil || !strings.Contains(llm.SegmentsContentText(result.Message.Segments), "above your allowed tool level") {
-		t.Fatalf("result = %#v", result)
-	}
-	var denied toolshare.PolicyDeniedError
-	if result.ResultStatus != events.ResultRejected || result.ExecutionStarted || !errors.As(result.Error, &denied) {
-		t.Fatalf("permission facts = %#v", result)
 	}
 }
 
@@ -129,11 +114,11 @@ func TestExecutorRetainsPartialResultAndOriginalError(t *testing.T) {
 		{"timeout", context.DeadlineExceeded, events.ResultFailed},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			registry := NewRegistry()
+			registry := toolregistry.NewRegistry(security.DefaultPermission())
 			if err := registry.Register(partialResultTool{err: tc.err}); err != nil {
 				t.Fatal(err)
 			}
-			result := (Executor{Registry: registry}).Execute(context.Background(), llm.ToolCallRequest{ID: "partial", Name: "segments", Arguments: `{}`})
+			result := executeTestCall(registry, llm.ToolCallRequest{ID: "partial", Name: "segments", Arguments: `{}`})
 			if result.Error != tc.err || result.ResultStatus != tc.status || !result.ExecutionStarted {
 				t.Fatalf("execution facts = %#v", result)
 			}
@@ -144,22 +129,36 @@ func TestExecutorRetainsPartialResultAndOriginalError(t *testing.T) {
 	}
 }
 
-func TestExecutorDeniesSuperadminOnlyToolForNormalUser(t *testing.T) {
-	registry := NewRegistry()
-	if err := registry.Register(fakeTool{name: "cron", source: toolshare.SourceBuiltin, risk: toolshare.RiskMedium, superadminOnly: true}); err != nil {
-		t.Fatal(err)
-	}
-	executor := Executor{Registry: registry, Actor: contextinfo.Actor{Role: contextinfo.RoleUser}, Permission: security.NewPermission("medium", "high", nil)}
-	result := executor.Execute(context.Background(), llm.ToolCallRequest{ID: "call_1", Name: "cron", Arguments: `{}`})
-	if result.Error == nil || !strings.Contains(llm.SegmentsContentText(result.Message.Segments), "requires superadmin") {
-		t.Fatalf("result = %#v", result)
+func TestRunRejectsUnauthorizedTools(t *testing.T) {
+	for _, candidate := range []fakeTool{
+		{name: "danger", risk: toolshare.RiskHigh},
+		{name: "admin", risk: toolshare.RiskLow, superadminOnly: true},
+	} {
+		t.Run(candidate.name, func(t *testing.T) {
+			permission := security.DefaultPermission()
+			catalog := toolregistry.NewRegistry(permission)
+			if err := catalog.Register(candidate); err != nil {
+				t.Fatal(err)
+			}
+			deps := &runnerTestDeps{}
+			sink := &testToolCommitter{}
+			result := newTestManager(catalog, permission).Run(t.Context(), deps, toolshare.RunRequest{
+				Committer: sink, Session: &storage.Session{ID: "s", Mode: storage.SessionModeWork},
+				Actor: contextinfo.Actor{Role: contextinfo.RoleUser}, Calls: []llm.ToolCallRequest{{ID: "one", Name: candidate.name, Arguments: "{}"}},
+			})
+			if result.Err != nil || deps.confirmed || deps.completed != 0 || len(sink.records) != 1 || sink.records["one"].Success || sink.records["one"].Error == "" {
+				t.Fatalf("result=%+v deps=%+v records=%+v", result, deps, sink.records)
+			}
+		})
 	}
 }
 
 type segmentTool struct{}
 
 func (segmentTool) Name() string { return "segments" }
-func (segmentTool) Info() toolshare.Info   { return toolshare.Info{Name: "segments", Source: toolshare.SourceBuiltin, Risk: toolshare.RiskLow} }
+func (segmentTool) Info() toolshare.Info {
+	return toolshare.Info{Name: "segments", Source: toolshare.SourceBuiltin, Risk: toolshare.RiskLow}
+}
 func (segmentTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "segments"}
 }

@@ -5,6 +5,7 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"elbot/internal/events"
+	"elbot/internal/security"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -16,7 +17,7 @@ import (
 	"elbot/internal/media"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
-	"elbot/internal/tool"
+	toolregistry "elbot/internal/tool/registry"
 )
 
 type mediaArgumentRecorder struct{ received string }
@@ -38,8 +39,10 @@ func (t *mediaArgumentRecorder) Call(_ context.Context, req toolshare.CallReques
 
 type failingMediaTool struct{}
 
-func (failingMediaTool) Name() string    { return "failing_media" }
-func (failingMediaTool) Info() toolshare.Info { return toolshare.Info{Name: "failing_media", Risk: toolshare.RiskLow} }
+func (failingMediaTool) Name() string { return "failing_media" }
+func (failingMediaTool) Info() toolshare.Info {
+	return toolshare.Info{Name: "failing_media", Risk: toolshare.RiskLow}
+}
 func (failingMediaTool) Schema() llm.ToolSchema {
 	return toolshare.NewBuilder("failing_media").BuildSchema()
 }
@@ -65,13 +68,12 @@ func TestRunValidatesExactMediaArguments(t *testing.T) {
 
 	run := func(t *testing.T, tl toolshare.Tool, arguments string) toolshare.RunResult {
 		t.Helper()
-		registry := tool.NewRegistry()
+		registry := toolregistry.NewRegistry(security.DefaultPermission())
 		if err := registry.Register(tl); err != nil {
 			t.Fatal(err)
 		}
-		manager := NewManager(registry, nil)
-		manager.Media = center
-		return NewRunner(manager).Run(ctx, &runnerTestDeps{}, toolshare.RunRequest{Committer: &testToolCommitter{},
+		manager := newTestManager(registry, nil, center)
+		return manager.Run(ctx, &runnerTestDeps{}, toolshare.RunRequest{Committer: &testToolCommitter{},
 			Session: &storage.Session{ID: "session", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 			Calls: []llm.ToolCallRequest{{ID: "call-1", Name: tl.Name(), Arguments: arguments}},
 		})
@@ -100,14 +102,13 @@ func TestRunRejectsMissingMediaBeforeExecution(t *testing.T) {
 	center := media.NewManager(store, t.TempDir(), &media.LocalBackend{Root: t.TempDir()})
 	missingSession := &storage.Session{ID: "missing-session", Mode: storage.SessionModeWork}
 	recorder := &mediaArgumentRecorder{}
-	registry := tool.NewRegistry()
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	if err := registry.Register(recorder); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(registry, nil)
-	manager.Media = center
+	manager := newTestManager(registry, nil, center)
 	missingID := media.IDPrefix + strings.Repeat("f", 64)
-	result := NewRunner(manager).Run(ctx, &runnerTestDeps{}, toolshare.RunRequest{Committer: &testToolCommitter{},
+	result := manager.Run(ctx, &runnerTestDeps{}, toolshare.RunRequest{Committer: &testToolCommitter{},
 		Session: missingSession, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{ID: "call-2", Name: recorder.Name(), Arguments: `{"media":"` + missingID + `"}`}},
 	})
@@ -118,21 +119,21 @@ func TestRunRejectsMissingMediaBeforeExecution(t *testing.T) {
 
 func TestMediaArgumentsRemainExplicit(t *testing.T) {
 	target := &mediaArgumentRecorder{}
-	registry := tool.NewRegistry()
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	if err := registry.Register(target); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(registry, nil)
+	manager := newTestManager(registry, nil)
 	arguments := `{ "source":"media:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "payload":{"text":"unchanged"} }`
 	if !json.Valid([]byte(arguments)) {
 		t.Fatal("bad fixture")
 	}
 	call := llm.ToolCallRequest{Name: target.Name(), Arguments: arguments}
-	resolved := ResolvedTool{Name: target.Name(), ResultStatus: events.ResultSucceeded, Native: target}
-	if _, err := manager.AssessRisk(context.Background(), resolved, arguments); err != nil {
+	resolved := resolvedTool{ResultStatus: events.ResultSucceeded, Native: target}
+	if _, err := manager.assessRisk(context.Background(), resolved, call); err != nil {
 		t.Fatal(err)
 	}
-	result := manager.Execute(context.Background(), call, resolved, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
+	result := manager.executePrepared(context.Background(), call, resolved, nil, nil)
 	if result.Error != nil {
 		t.Fatal(result.Error)
 	}

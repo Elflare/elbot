@@ -51,9 +51,6 @@ func (m *Supervisor) DecodeState(raw string) (share.State, error) {
 	return toolstate.DecodeState(raw)
 }
 
-func (m *Supervisor) ToolInfos(ctx context.Context, view share.Context) ([]share.Info, error) {
-	return m.engine.ToolInfos(ctx, view)
-}
 func (m *Supervisor) Schemas(ctx context.Context, view share.Context, discovered []share.DiscoveredTool) ([]llm.ToolSchema, error) {
 	return m.engine.Schemas(ctx, view, discovered)
 }

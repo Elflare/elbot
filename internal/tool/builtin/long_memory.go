@@ -22,7 +22,6 @@ import (
 
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
-	"elbot/internal/tool"
 )
 
 const (
@@ -223,7 +222,7 @@ func (t LongMemoryWriteTool) Schema() llm.ToolSchema {
 		BuildSchema()
 }
 
-func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*tool.PreparedCall, error) {
+func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	args, err := t.decodeWriteArgs(req)
 	if err != nil {
 		return nil, err
@@ -236,7 +235,7 @@ func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.Call
 		return nil, err
 	}
 	detail := longMemoryUpdateRiskDetail(args, preview)
-	return tool.NewPreparedCall(t, req, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.call(ctx, args, &preview)
 	}), nil
 }

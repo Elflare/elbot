@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 )
 
@@ -25,11 +24,11 @@ func TestExternalElwispForwardsArguments(t *testing.T) {
 		_, _ = w.Write([]byte(`{"content":"ok"}`))
 	}))
 	defer server.Close()
-	manager := NewManager(nil, nil)
+	manager := newTestManager(nil, nil)
 	args, _ := json.Marshal(map[string]any{"source": mediaID, "media_inputs": []map[string]string{{"media": mediaID}}})
 	call := llm.ToolCallRequest{ID: "call", Name: "external", Arguments: string(args)}
-	resolved := ResolvedTool{ResultStatus: events.ResultSucceeded, Source: toolshare.SourceKindELwisp, Discovered: &toolshare.DiscoveredTool{Name: "external", Endpoint: server.URL}}
-	result := manager.Execute(ctx, call, resolved, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
+	resolved := resolvedTool{ResultStatus: events.ResultSucceeded, Source: toolshare.SourceKindELwisp, Discovered: &toolshare.DiscoveredTool{Name: "external", Endpoint: server.URL}}
+	result := manager.executePrepared(ctx, call, resolved, nil, nil)
 	if result.Error != nil {
 		t.Fatal(result.Error)
 	}

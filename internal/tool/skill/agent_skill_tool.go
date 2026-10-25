@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"elbot/internal/llm"
-	"elbot/internal/tool"
 )
 
 type AgentSkillTool struct {
@@ -59,7 +58,7 @@ func agentSkillToolDescription() string {
 	return "读或写 AgentSkill 的 ELBOT_SKILL.toml。"
 }
 
-func (t AgentSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*tool.PreparedCall, error) {
+func (t AgentSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	preview, err := t.preview(ctx, req)
 	if err != nil {
 		return nil, err
@@ -68,7 +67,7 @@ func (t AgentSkillTool) PrepareCall(ctx context.Context, req toolshare.CallReque
 	if preview.Action == "read" {
 		detail = fmt.Sprintf("读取 AgentSkill %s 的 %s", preview.Name, AgentSkillConfigFile)
 	}
-	return tool.NewPreparedCall(t, req, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.call(ctx, preview)
 	}), nil
 }

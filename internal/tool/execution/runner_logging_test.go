@@ -20,7 +20,7 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
+	toolregistry "elbot/internal/tool/registry"
 )
 
 type loggingTool struct {
@@ -48,14 +48,14 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 			}
 			handedOff := false
 			row := &storage.Session{ID: "origin-session", Mode: storage.SessionModeWork}
-			registry := tool.NewRegistry()
+			registry := toolregistry.NewRegistry(security.DefaultPermission())
 			if err := registry.Register(loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "logging_tool"}, cancel: func() {
 				handedOff = true
 				row.Metadata = `{"background_kind":"forged-later-value"}`
 			}}); err != nil {
 				t.Fatal(err)
 			}
-			manager := NewManager(registry, security.NewPermission("high", "high", nil))
+			manager := newTestManager(registry, security.NewPermission("high", "high", nil))
 			deps := &originLoggingDeps{refresh: func(ctx context.Context, _ *storage.Session) (context.Context, error) {
 				if handedOff {
 					ctx = contextinfo.WithExecution(ctx, contextinfo.Execution{SessionID: "another-context-session", RunID: "after"})
@@ -76,7 +76,7 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 			t.Cleanup(connection.Disconnect)
 			var result toolshare.RunResult
 			for _, id := range []string{"one", "two"} {
-				result = NewRunner(manager).Run(ctx, deps, toolshare.RunRequest{Committer: &testToolCommitter{}, Session: row, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: id, Name: "logging_tool", Arguments: "{}"}}})
+				result = manager.Run(ctx, deps, toolshare.RunRequest{Committer: &testToolCommitter{}, Session: row, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: id, Name: "logging_tool", Arguments: "{}"}}})
 				if result.Err != nil {
 					t.Fatal(result.Err)
 				}
@@ -153,13 +153,13 @@ func TestRunnerWritesOnlyAuditWithBoundedArgumentPreview(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = center.Close(context.Background()) })
 	var actualArgs string
-	registry := tool.NewRegistry()
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	if err := registry.Register(loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "logging_tool"}, args: &actualArgs}); err != nil {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]string{"note": strings.Repeat("雪🔥", 400) + "ARGUMENT_TAIL"})
-	manager := NewManager(registry, security.NewPermission("high", "high", nil))
-	result := NewRunner(manager).Run(t.Context(), &runnerTestDeps{}, toolshare.RunRequest{
+	manager := newTestManager(registry, security.NewPermission("high", "high", nil))
+	result := manager.Run(t.Context(), &runnerTestDeps{}, toolshare.RunRequest{
 		Committer: &testToolCommitter{}, Session: &storage.Session{ID: "bounded-audit", Mode: storage.SessionModeWork},
 		Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{ID: "call", Name: "logging_tool", Arguments: string(args)}},
@@ -216,11 +216,11 @@ func TestRunnerWritesOnlyAuditWithBoundedArgumentPreview(t *testing.T) {
 func TestRunnerRecordsInvocationBeforeCancellationStopsLaterOperations(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	registry := tool.NewRegistry()
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	if err := registry.Register(loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "logging_tool"}, cancel: cancel, err: context.Canceled}); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(registry, security.NewPermission("high", "high", nil))
+	manager := newTestManager(registry, security.NewPermission("high", "high", nil))
 	var calls []events.LogRecord
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 		if record.EventName == "tool_call_completed" && record.Category == events.LogAudit {
@@ -233,14 +233,14 @@ func TestRunnerRecordsInvocationBeforeCancellationStopsLaterOperations(t *testin
 	}
 	t.Cleanup(connection.Disconnect)
 	deps := &runnerTestDeps{}
-	result := NewRunner(manager).Run(ctx, deps, toolshare.RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{ID: "cancel-during-call", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "logging_tool", Arguments: "{}"}}})
+	result := manager.Run(ctx, deps, toolshare.RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{ID: "cancel-during-call", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "logging_tool", Arguments: "{}"}}})
 	if !result.Stopped || deps.completed != 0 || len(calls) != 1 || calls[0].ResultStatus != events.ResultCanceled || calls[0].Level != slog.LevelInfo || !strings.Contains(calls[0].Content, "independent log body") {
 		t.Fatalf("result=%#v completed=%d invocation logs=%#v", result, deps.completed, calls)
 	}
 }
 
 func TestRunnerRecordsUnenteredCallFailure(t *testing.T) {
-	manager := NewManager(tool.NewRegistry(), security.DefaultPermission())
+	manager := newTestManager(toolregistry.NewRegistry(security.DefaultPermission()), security.DefaultPermission())
 	var calls []events.LogRecord
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 		if record.EventName == "tool_call_completed" && record.Category == events.LogAudit {
@@ -253,7 +253,7 @@ func TestRunnerRecordsUnenteredCallFailure(t *testing.T) {
 	}
 	t.Cleanup(connection.Disconnect)
 	deps := &runnerTestDeps{}
-	NewRunner(manager).Run(context.Background(), deps, toolshare.RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{ID: "missing", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "missing", Arguments: "{}"}}})
+	manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{ID: "missing", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "missing", Arguments: "{}"}}})
 	if len(calls) != 1 || calls[0].ResultStatus != events.ResultFailed || calls[0].Level != slog.LevelError || !strings.Contains(calls[0].Content, "missing") || deps.completed != 0 {
 		t.Fatalf("invocation logs=%#v completed=%d", calls, deps.completed)
 	}
@@ -287,7 +287,7 @@ func (c *loggingCommitter) Begin(ctx context.Context, head *storage.Message) (ev
 }
 
 func TestRunnerBatchFailureDoesNotInventToolCompletions(t *testing.T) {
-	manager := NewManager(tool.NewRegistry(), security.NewPermission("high", "high", nil))
+	manager := newTestManager(toolregistry.NewRegistry(security.DefaultPermission()), security.NewPermission("high", "high", nil))
 	committer := &loggingCommitter{beginErr: errors.New("batch save failed")}
 	var records []events.LogRecord
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
@@ -300,7 +300,7 @@ func TestRunnerBatchFailureDoesNotInventToolCompletions(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer connection.Disconnect()
-	result := NewRunner(manager).Run(context.Background(), &runnerTestDeps{}, toolshare.RunRequest{Committer: committer, Session: &storage.Session{ID: "batch-session", Mode: storage.SessionModeWork}, Calls: []llm.ToolCallRequest{{ID: "one", Name: "one"}, {ID: "two", Name: "two"}}})
+	result := manager.Run(context.Background(), &runnerTestDeps{}, toolshare.RunRequest{Committer: committer, Session: &storage.Session{ID: "batch-session", Mode: storage.SessionModeWork}, Calls: []llm.ToolCallRequest{{ID: "one", Name: "one"}, {ID: "two", Name: "two"}}})
 	if !errors.Is(result.Err, committer.beginErr) || len(records) != 1 || records[0].EventName != "tool_batch_prepare_failed" || records[0].ResultStatus != events.ResultFailed {
 		t.Fatalf("result = %+v, logs = %#v", result, records)
 	}
@@ -328,11 +328,11 @@ func TestRunnerUsesSourceSaveResult(t *testing.T) {
 		{"mixed_failure", events.ResultFailed, errors.Join(context.Canceled, errors.New("independent storage failure"))},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			registry := tool.NewRegistry()
+			registry := toolregistry.NewRegistry(security.DefaultPermission())
 			if err := registry.Register(loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "logging_tool"}}); err != nil {
 				t.Fatal(err)
 			}
-			manager := NewManager(registry, security.NewPermission("high", "high", nil))
+			manager := newTestManager(registry, security.NewPermission("high", "high", nil))
 			source := events.LogResult{ResultStatus: tc.status, Content: "storage source diagnostic"}
 			deps := &loggingDeps{}
 			committer := &loggingCommitter{err: tc.err, resultLogResult: &source}
@@ -347,7 +347,7 @@ func TestRunnerUsesSourceSaveResult(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(connection.Disconnect)
-			result := NewRunner(manager).Run(context.Background(), deps, toolshare.RunRequest{Committer: committer, Session: &storage.Session{ID: "save-source", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "logging_tool", Arguments: "{}"}}})
+			result := manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: committer, Session: &storage.Session{ID: "save-source", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "logging_tool", Arguments: "{}"}}})
 			if !errors.Is(result.Err, tc.err) || len(saves) != 1 {
 				t.Fatalf("business result=%#v logs=%#v", result, saves)
 			}
@@ -377,11 +377,11 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 		{name: "confirmation timeout", confirmErr: context.DeadlineExceeded},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			registry := tool.NewRegistry()
+			registry := toolregistry.NewRegistry(security.DefaultPermission())
 			if err := registry.Register(loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "logging_tool"}, err: tc.callErr}); err != nil {
 				t.Fatal(err)
 			}
-			manager := NewManager(registry, security.NewPermission("high", "high", nil))
+			manager := newTestManager(registry, security.NewPermission("high", "high", nil))
 			committer := &loggingCommitter{err: tc.saveErr}
 			deps := &loggingDeps{runnerTestDeps: runnerTestDeps{reject: tc.reject}, confirmErr: tc.confirmErr}
 			var calls []events.LogRecord
@@ -404,7 +404,7 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer connection.Disconnect()
-			NewRunner(manager).Run(context.Background(), deps, toolshare.RunRequest{Committer: committer, Session: &storage.Session{ID: "session-log", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleUser}, Calls: []llm.ToolCallRequest{{ID: "call-log", Name: "logging_tool", Arguments: "{}"}}})
+			manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: committer, Session: &storage.Session{ID: "session-log", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleUser}, Calls: []llm.ToolCallRequest{{ID: "call-log", Name: "logging_tool", Arguments: "{}"}}})
 			if tc.reject || tc.confirmErr != nil {
 				if len(calls) != 0 {
 					t.Fatalf("tool never entered, invocation logs = %#v", calls)

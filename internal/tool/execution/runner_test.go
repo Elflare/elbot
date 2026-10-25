@@ -16,7 +16,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
+	toolregistry "elbot/internal/tool/registry"
 )
 
 type runnerContextKey struct{}
@@ -124,7 +124,7 @@ func (runnerPreflightTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "preflight_tool", Parameters: map[string]any{"type": "object"}}
 }
 
-func (runnerPreflightTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*tool.PreparedCall, error) {
+func (runnerPreflightTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	return nil, fmt.Errorf("preflight rejected")
 }
 
@@ -151,7 +151,7 @@ func (runnerShellPreflightTool) AssessRisk(ctx context.Context, req toolshare.Ca
 	return toolshare.RiskAssessment{Level: toolshare.RiskHigh}, nil
 }
 
-func (runnerShellPreflightTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*tool.PreparedCall, error) {
+func (runnerShellPreflightTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	return nil, fmt.Errorf("protected file must use dedicated tool")
 }
 
@@ -174,7 +174,7 @@ func (runnerContextPreflightTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "context_preflight", Parameters: map[string]any{"type": "object"}}
 }
 
-func (runnerContextPreflightTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*tool.PreparedCall, error) {
+func (runnerContextPreflightTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	if ctx.Value(runnerContextKey{}) != "prepared" {
 		return nil, fmt.Errorf("missing prepared context")
 	}
@@ -275,14 +275,14 @@ func TestRunConfirmsOnlyAuthorizedHighRiskToolsForRegularUsers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			registry := tool.NewRegistry()
+			registry := toolregistry.NewRegistry(security.DefaultPermission())
 			toolName := "high_risk_" + strings.ReplaceAll(tt.name, " ", "_")
 			if err := registry.Register(runnerHighRiskTool{name: toolName, ownerScoped: tt.ownerScoped}); err != nil {
 				t.Fatal(err)
 			}
-			manager := NewManager(registry, security.NewPermission(tt.userMaxRisk, "high", nil))
+			manager := newTestManager(registry, security.NewPermission(tt.userMaxRisk, "high", nil))
 			deps := &runnerTestDeps{}
-			result := NewRunner(manager).Run(context.Background(), deps, toolshare.RunRequest{Committer: &testToolCommitter{},
+			result := manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: &testToolCommitter{},
 				Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 				Actor:   contextinfo.Actor{Role: contextinfo.RoleUser},
 				Calls:   []llm.ToolCallRequest{{ID: "call-1", Name: toolName, Arguments: "{}"}},
@@ -298,12 +298,12 @@ func TestRunConfirmsOnlyAuthorizedHighRiskToolsForRegularUsers(t *testing.T) {
 	}
 }
 func TestRunPreservesMultimodalToolSegments(t *testing.T) {
-	registry := tool.NewRegistry()
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	if err := registry.Register(runnerImageTool{}); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
-	result := NewRunner(manager).Run(context.Background(), &runnerTestDeps{}, toolshare.RunRequest{Committer: &testToolCommitter{},
+	manager := newTestManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
+	result := manager.Run(context.Background(), &runnerTestDeps{}, toolshare.RunRequest{Committer: &testToolCommitter{},
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls:   []llm.ToolCallRequest{{ID: "call-1", Name: "image_tool", Arguments: `{}`}},
@@ -314,14 +314,14 @@ func TestRunPreservesMultimodalToolSegments(t *testing.T) {
 }
 
 func TestRunSkipsConfirmationWhenPreflightFails(t *testing.T) {
-	registry := tool.NewRegistry()
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	if err := registry.Register(runnerPreflightTool{}); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
+	manager := newTestManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
 	deps := &runnerTestDeps{}
 	committer := &testToolCommitter{}
-	result := NewRunner(manager).Run(context.Background(), deps, toolshare.RunRequest{Committer: committer,
+	result := manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: committer,
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{
@@ -349,14 +349,14 @@ func TestRunSkipsConfirmationWhenPreflightFails(t *testing.T) {
 }
 
 func TestRunSkipsConfirmationWhenShellPreflightFails(t *testing.T) {
-	registry := tool.NewRegistry()
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	if err := registry.Register(runnerShellPreflightTool{}); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
+	manager := newTestManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
 	deps := &runnerTestDeps{}
 	committer := &testToolCommitter{}
-	result := NewRunner(manager).Run(context.Background(), deps, toolshare.RunRequest{Committer: committer,
+	result := manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: committer,
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{
@@ -381,15 +381,15 @@ func TestRunSkipsConfirmationWhenShellPreflightFails(t *testing.T) {
 }
 
 func TestRunPreparesToolContextBeforePreflightAndExecution(t *testing.T) {
-	registry := tool.NewRegistry()
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	if err := registry.Register(runnerContextPreflightTool{}); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
+	manager := newTestManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
 	deps := &runnerTestDeps{prepareContext: func(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context {
 		return context.WithValue(ctx, runnerContextKey{}, "prepared")
 	}}
-	result := NewRunner(manager).Run(context.Background(), deps, toolshare.RunRequest{Committer: &testToolCommitter{},
+	result := manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: &testToolCommitter{},
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{
@@ -409,18 +409,18 @@ func TestRunPreparesToolContextBeforePreflightAndExecution(t *testing.T) {
 func TestRunPreservesPolicyDenialFact(t *testing.T) {
 	for _, reject := range []bool{false, true} {
 		t.Run(fmt.Sprint(reject), func(t *testing.T) {
-			registry := tool.NewRegistry()
+			registry := toolregistry.NewRegistry(security.DefaultPermission())
 			if err := registry.Register(runnerHighRiskTool{name: "risky"}); err != nil {
 				t.Fatal(err)
 			}
-			manager := NewManager(registry, security.NewPermission("low", "high", nil))
+			manager := newTestManager(registry, security.NewPermission("low", "high", nil))
 			deps := &runnerTestDeps{reject: reject}
 			role := contextinfo.RoleUser
 			if reject {
 				role = contextinfo.RoleSuperadmin
 			}
 			committer := &testToolCommitter{}
-			result := NewRunner(manager).Run(context.Background(), deps, toolshare.RunRequest{Committer: committer, Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: role}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "risky", Arguments: `{}`}}})
+			result := manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: committer, Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: role}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "risky", Arguments: `{}`}}})
 			if result.Err != nil || len(committer.records) != 1 || deps.completed != 0 {
 				t.Fatalf("result=%+v deps=%+v", result, deps)
 			}
@@ -432,13 +432,13 @@ func TestRunPreservesPolicyDenialFact(t *testing.T) {
 }
 
 func TestRunKeepsNonEditFileAssessRiskBehavior(t *testing.T) {
-	registry := tool.NewRegistry()
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	if err := registry.Register(runnerRiskErrorTool{}); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
+	manager := newTestManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
 	deps := &runnerTestDeps{}
-	result := NewRunner(manager).Run(context.Background(), deps, toolshare.RunRequest{Committer: &testToolCommitter{},
+	result := manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: &testToolCommitter{},
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{

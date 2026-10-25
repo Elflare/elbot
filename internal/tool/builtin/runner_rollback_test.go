@@ -1,10 +1,11 @@
-package execution
+package builtin
 
 import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
 	"elbot/internal/events"
+	"elbot/internal/tool/execution"
 	"errors"
 	"fmt"
 	"os"
@@ -19,9 +20,8 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
-	"elbot/internal/tool/builtin"
-	"elbot/internal/toolrun"
+	toolregistry "elbot/internal/tool/registry"
+
 	"elbot/internal/workspace"
 )
 
@@ -133,11 +133,13 @@ func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
 				}
 			}
 			edit("before", "after")
-			registry := tool.NewRegistry()
-			if err := registry.Register(builtin.NewRollbackFileTool(service)); err != nil {
+			registry := toolregistry.NewRegistry(security.DefaultPermission())
+			if err := registry.Register(NewRollbackFileTool(service)); err != nil {
 				t.Fatal(err)
 			}
-			manager := toolrun.NewManager(registry, security.NewPermission("low", "high", nil))
+			manager := execution.NewManager(registry, security.NewPermission("low", "high", nil), nil, func(ctx context.Context, record events.LogRecord) {
+				_ = events.EmitLog(context.WithoutCancel(ctx), record)
+			})
 			actor := contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin}
 			base := contextinfo.WithActor(context.Background(), actor)
 			deps := &rollbackConfirmDeps{}
@@ -148,7 +150,7 @@ func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
 			if changed {
 				deps.duringConfirmation = func() { edit("after", "latest") }
 			}
-			result := toolrun.NewRunner(manager).Run(base, deps, toolshare.RunRequest{Committer: deps,
+			result := manager.Run(base, deps, toolshare.RunRequest{Committer: deps,
 				Session: &storage.Session{ID: "session", Mode: storage.SessionModeWork},
 				Actor:   actor,
 				Calls:   []llm.ToolCallRequest{{ID: "rollback", Name: "rollback_file", Arguments: `{"path":"file"}`}},
@@ -185,13 +187,15 @@ func TestRunEditPreservesConfirmationSnapshot(t *testing.T) {
 			if err := os.WriteFile(path, []byte("before"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			editor := builtin.NewEditFileTool()
+			editor := NewEditFileTool()
 			editor.Rollback = service
-			registry := tool.NewRegistry()
+			registry := toolregistry.NewRegistry(security.DefaultPermission())
 			if err := registry.Register(editor); err != nil {
 				t.Fatal(err)
 			}
-			manager := toolrun.NewManager(registry, security.NewPermission("low", "high", nil))
+			manager := execution.NewManager(registry, security.NewPermission("low", "high", nil), nil, func(ctx context.Context, record events.LogRecord) {
+				_ = events.EmitLog(context.WithoutCancel(ctx), record)
+			})
 			actor := contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin}
 			deps := &rollbackConfirmDeps{}
 			deps.prepareContext = func(ctx context.Context, _ *storage.Session, _ llm.ToolCallRequest) context.Context {
@@ -205,7 +209,7 @@ func TestRunEditPreservesConfirmationSnapshot(t *testing.T) {
 					}
 				}
 			}
-			toolrun.NewRunner(manager).Run(contextinfo.WithActor(context.Background(), actor), deps, toolshare.RunRequest{Committer: deps,
+			manager.Run(contextinfo.WithActor(context.Background(), actor), deps, toolshare.RunRequest{Committer: deps,
 				Session: &storage.Session{ID: "session", Mode: storage.SessionModeWork}, Actor: actor,
 				Calls: []llm.ToolCallRequest{{ID: "edit", Name: "edit_file", Arguments: `{"path":"file","edits":[{"operation":"replace_text","old_text":"before","new_text":"after"}]}`}},
 			})

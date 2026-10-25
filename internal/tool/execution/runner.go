@@ -15,30 +15,18 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/delivery"
 	"elbot/internal/elyph"
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
 	"elbot/internal/tool/discovery"
 	toolstate "elbot/internal/tool/state"
 )
 
-// Runner belongs to the caller's orchestration; Manager supplies independent tool capabilities.
-type Runner struct{ manager *Manager }
-
-func NewRunner(manager *Manager) *Runner { return &Runner{manager: manager} }
-
-// Run executes a tool batch through the manager's runtime.
+// Run 顺序准备与确认、并发执行，并由单一协调器提交结果。
 func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolshare.RunRequest) toolshare.RunResult {
-	return NewRunner(m).Run(ctx, deps, req)
-}
-
-func (r *Runner) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolshare.RunRequest) toolshare.RunResult {
-	m := r.manager
 	if req.Session.Mode == storage.SessionModeChat {
 		return toolshare.RunResult{}
 	}
@@ -78,9 +66,9 @@ func (r *Runner) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsha
 	record := func(ctx context.Context, call llm.ToolCallRequest, eventName string, logResult events.LogResult) {
 		record := newRecord(ctx, eventName, logResult)
 		record.Content = fmt.Sprintf("tool=%s tool_call_id=%s\n%s", call.Name, call.ID, logResult.Content)
-		m.Log(ctx, record)
+		m.log(ctx, record)
 	}
-	recordCall := func(ctx context.Context, call llm.ToolCallRequest, resolved ResolvedTool, actor contextinfo.Actor, risk string, runSource string, startedAt time.Time, result *toolshare.ExecutionResult) {
+	recordCall := func(ctx context.Context, call llm.ToolCallRequest, resolved resolvedTool, actor contextinfo.Actor, risk string, runSource string, startedAt time.Time, result *executionResult) {
 		// The execution source declares the outcome; tools supply their diagnostic body.
 		// runSource was fixed before entry; source separately identifies the
 		// native/Elwisp implementation. Neither is inferred from diagnostics.
@@ -117,7 +105,7 @@ func (r *Runner) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsha
 		data, _ := json.Marshal(content)
 		record := newRecord(ctx, "tool_call_completed", logResult)
 		record.Category, record.Type, record.ContentLimit, record.Content = events.LogAudit, events.ContentJSON, 0, string(data)
-		m.Log(ctx, record)
+		m.log(ctx, record)
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
@@ -125,17 +113,16 @@ func (r *Runner) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsha
 	// The coordinator owns session state; workers return independent outcomes
 	// through a shared completion queue.
 	tasks := make([]struct {
-		ctx        context.Context
 		risk       string
 		actor      contextinfo.Actor
 		startedAt  time.Time
-		result     toolshare.ExecutionResult
+		result     executionResult
 		finishedAt time.Time
 	}, len(req.Calls))
 	head := deps.ToolCallMessage(sessionID, req.AssistantText, req.AssistantRawText, req.Calls)
 	logResult, err := req.Committer.Begin(ctx, &head)
 	if logResult.ResultStatus == events.ResultFailed || logResult.ResultStatus == events.ResultCanceled {
-		m.Log(ctx, newRecord(ctx, "tool_batch_prepare_failed", logResult))
+		m.log(ctx, newRecord(ctx, "tool_batch_prepare_failed", logResult))
 	}
 	if err != nil {
 		return toolshare.RunResult{Err: err}
@@ -188,14 +175,13 @@ func (r *Runner) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsha
 			}
 			if ruleCard != "" {
 				parts = append(parts, ruleCard)
-				elyphRulesShown = true
 			}
 			if len(parts) > 0 {
 				result.Message.Segments = append(llm.TextSegments(strings.Join(parts, "\n\n")+"\n\n"), result.Message.Segments...)
 			}
 		}
 		if call.Name == "discover_tool" && result.Result != nil {
-			update, err := discovery.NewResolver(m.Native.Registry).DiscoveryStateUpdate(contextinfo.WithActor(ctx, actor), result.Result)
+			update, err := discovery.NewResolver(m.registry).DiscoveryStateUpdate(contextinfo.WithActor(ctx, actor), result.Result)
 			if err != nil {
 				return err
 			}
@@ -222,6 +208,7 @@ func (r *Runner) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsha
 			return err
 		}
 		if ruleCard != "" {
+			elyphRulesShown = true
 			_ = metadata.Set("elyph_rules_shown", true)
 		}
 		if len(metadata) != 0 {
@@ -274,10 +261,10 @@ func (r *Runner) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsha
 		// Session snapshots keep later handoffs and discovery writes out of workers.
 		snapshot := *req.Session
 		task := &tasks[index]
-		task.ctx, task.startedAt = ctx, storage.Now()
+		task.startedAt = storage.Now()
 		task.actor = actor
 		fail := func(call llm.ToolCallRequest, err error, content string) {
-			task.result = toolshare.ExecutionResult{Call: call, Message: toolMessage(call.Name, call.ID, content), Error: err}
+			task.result = executionResult{Call: call, Message: toolMessage(call.Name, call.ID, content), Error: err}
 			task.finishedAt = storage.Now()
 			ready <- index
 		}
@@ -298,7 +285,7 @@ func (r *Runner) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsha
 			fail(original, err, fmt.Sprintf("tool call %s was not executed: prepare transcript: %v", original.Name, err))
 			continue
 		}
-		resolved := m.Resolve(ctx, call.Name, req.DiscoveredTools, snapshot.Mode)
+		resolved := m.resolve(ctx, call.Name, req.DiscoveredTools, snapshot.Mode)
 		runSource := "foreground"
 		if sandbox, ok := sandboxctx.SandboxContextFromContext(ctx); ok && (sandbox.Background || sandbox.BackgroundKind != "") {
 			runSource = ""
@@ -309,14 +296,15 @@ func (r *Runner) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsha
 		}
 		if resolved.ResultStatus != events.ResultSucceeded {
 			startedAt := time.Now()
-			task.result = m.Execute(ctx, call, resolved, actor)
+			task.result = m.executePrepared(ctx, call, resolved, nil, nil)
 			recordCall(ctx, call, resolved, actor, "", runSource, startedAt, &task.result)
 			task.finishedAt = storage.Now()
 			ready <- index
 			continue
 		}
 		toolCtx := deps.PrepareToolContext(ctx, &snapshot, call)
-		assessment, riskText, err := m.assessForRun(toolCtx, resolved, call)
+		assessment, err := m.assessRisk(toolCtx, resolved, call)
+		riskText := string(assessment.Level)
 		if err != nil {
 			resultStatus := events.ResultFailed
 			if errors.Is(err, context.Canceled) {
@@ -328,8 +316,8 @@ func (r *Runner) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsha
 		}
 		task.risk = riskText
 		deps.AddToolUse(sessionID, call.Name)
-		var prepared *tool.PreparedCall
-		await(func() { prepared, err = m.PrepareCall(toolCtx, resolved, call) })
+		var prepared *toolshare.PreparedCall
+		await(func() { prepared, err = m.prepareCall(toolCtx, resolved, call) })
 		if err != nil {
 			resultStatus := events.ResultFailed
 			if errors.Is(err, context.Canceled) {
@@ -347,7 +335,7 @@ func (r *Runner) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsha
 			detail = prepared.RiskDetail()
 		}
 		var confirm toolshare.ConfirmResult
-		await(func() { confirm, err = r.confirm(toolCtx, deps, actor, sessionID, call, resolved, assessment, detail) })
+		await(func() { confirm, err = m.confirm(toolCtx, deps, actor, sessionID, call, resolved, assessment, detail) })
 		confirmationExtra = joinAssistantText(confirmationExtra, confirm.Extra)
 		if resultErr != nil {
 			return toolshare.RunResult{Err: resultErr}
@@ -363,7 +351,7 @@ func (r *Runner) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsha
 			if len(message.Segments) == 0 {
 				message = toolMessage(call.Name, call.ID, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
 			}
-			task.result = toolshare.ExecutionResult{Call: call, Message: message, Error: err}
+			task.result = executionResult{Call: call, Message: message, Error: err}
 			task.finishedAt = storage.Now()
 			ready <- index
 			continue
@@ -379,7 +367,7 @@ func (r *Runner) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsha
 		runToolCtx = deps.PrepareToolContext(runToolCtx, &snapshot, call)
 		// Validate prepared argument references without opening another write transaction.
 		for _, id := range media.ArgumentMediaIDs(call.Arguments) {
-			_, err = m.Media.Metadata(runToolCtx, id)
+			_, err = m.media.Metadata(runToolCtx, id)
 			if err != nil {
 				break
 			}
@@ -393,13 +381,13 @@ func (r *Runner) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsha
 		go func() {
 			defer workers.Done()
 			startedAt := time.Now()
-			result := m.ExecutePrepared(runToolCtx, call, resolved, actor, prepared, func() {
+			result := m.executePrepared(runToolCtx, call, resolved, prepared, func() {
 				startedAt = time.Now()
 				task.startedAt = startedAt
 				content, _ := json.Marshal(map[string]string{"tool": call.Name, "tool_call_id": call.ID, "actor_id": actor.ID, "arguments": toolshare.TruncateLogContent(call.Arguments, 512), "risk": riskText, "run_source": runSource, "source": string(resolved.Source)})
 				record := newRecord(runToolCtx, "tool_call_prepared", events.LogResult{ResultStatus: events.ResultSucceeded})
 				record.Category, record.Type, record.ContentLimit, record.Content = events.LogAudit, events.ContentJSON, 0, string(content)
-				m.Log(runToolCtx, record)
+				m.log(runToolCtx, record)
 			})
 			recordCall(runToolCtx, call, resolved, actor, riskText, runSource, startedAt, &result)
 			task.finishedAt = storage.Now()
@@ -429,7 +417,7 @@ func (r *Runner) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsha
 	}
 	logResult, err = req.Committer.Flush(ctx)
 	if logResult.ResultStatus != events.ResultSkipped {
-		m.Log(ctx, newRecord(ctx, "tool_transcript_save", logResult))
+		m.log(ctx, newRecord(ctx, "tool_transcript_save", logResult))
 	}
 	return toolshare.RunResult{Messages: messages, PreparedCalls: preparedCalls, ConfirmationExtra: confirmationExtra, Err: err}
 }
@@ -446,8 +434,7 @@ func sendBatchToolPreview(ctx context.Context, deps toolshare.RunnerDeps, req to
 	return true
 }
 
-func (r *Runner) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor contextinfo.Actor, sessionID string, call llm.ToolCallRequest, resolved ResolvedTool, assessment toolshare.RiskAssessment, detail string) (toolshare.ConfirmResult, error) {
-	m := r.manager
+func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor contextinfo.Actor, sessionID string, call llm.ToolCallRequest, resolved resolvedTool, assessment toolshare.RiskAssessment, detail string) (toolshare.ConfirmResult, error) {
 	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
 	if resolved.Source == toolshare.SourceKindELwisp {
 		return toolshare.ConfirmResult{Allowed: true}, nil
@@ -458,7 +445,7 @@ func (r *Runner) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor c
 	if sandbox.Background {
 		backgroundKind = string(sandbox.BackgroundKind)
 	}
-	permission := m.Permission.CheckTool(actor, call.Name, assessment.Level, info.OwnerScoped, info.SuperadminOnly, backgroundKind)
+	permission := m.permission.CheckTool(actor, call.Name, assessment.Level, info.OwnerScoped, info.SuperadminOnly, backgroundKind)
 	if permission.Reason == "background_shell_auto_confirmed" || permission.Reason == "background_shell_rejected" {
 		content := map[string]string{"kind": backgroundKind, "tool": call.Name, "risk": string(assessment.Level), "sandbox_dir": sandbox.Dir, "arguments": call.Arguments}
 		for key, value := range content {
@@ -483,7 +470,7 @@ func (r *Runner) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor c
 		if facts.RootRequestID != "" {
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
-		m.Log(ctx, record)
+		m.log(ctx, record)
 	}
 	if !permission.Allowed {
 		switch permission.Reason {
@@ -504,11 +491,6 @@ func (r *Runner) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor c
 		return toolshare.ConfirmResult{Allowed: true}, nil
 	}
 	return deps.ConfirmToolCall(ctx, sessionID, call, assessment, detail)
-}
-
-func (m *Manager) assessForRun(ctx context.Context, resolved ResolvedTool, call llm.ToolCallRequest) (toolshare.RiskAssessment, string, error) {
-	assessment, err := m.AssessRisk(ctx, resolved, call.Arguments)
-	return assessment, string(assessment.Level), err
 }
 
 func toolMessage(name, id, content string) llm.LLMMessage {

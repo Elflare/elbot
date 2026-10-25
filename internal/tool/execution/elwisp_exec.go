@@ -16,7 +16,6 @@ import (
 
 	"elbot/internal/events"
 	"elbot/internal/llm"
-	
 )
 
 type elwispToolRequest struct {
@@ -32,7 +31,7 @@ type elwispToolResponse struct {
 	Error   string `json:"error"`
 }
 
-func executeELwispTool(ctx context.Context, call llm.ToolCallRequest, resolved ResolvedTool, onStarted func()) (result toolshare.ExecutionResult) {
+func executeELwispTool(ctx context.Context, call llm.ToolCallRequest, resolved resolvedTool, onStarted func()) (result executionResult) {
 	result.Call = call
 	result.ResultStatus = events.ResultFailed
 	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}

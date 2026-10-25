@@ -23,7 +23,7 @@ func (d *failingRefreshDeps) RefreshExecution(ctx context.Context, _ *storage.Se
 func TestRunnerPreservesRefreshError(t *testing.T) {
 	want := errors.New("execution state failed")
 	deps := &failingRefreshDeps{err: want}
-	result := NewRunner(NewManager(nil, nil)).Run(t.Context(), deps, toolshare.RunRequest{
+	result := newTestManager(nil, nil).Run(t.Context(), deps, toolshare.RunRequest{
 		Session:   &storage.Session{ID: "session", Mode: storage.SessionModeWork},
 		Calls:     []llm.ToolCallRequest{{ID: "call", Name: "unused"}},
 		Committer: &testToolCommitter{},

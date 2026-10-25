@@ -87,7 +87,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/wiring.go`：消费完整配置与外部业务能力，装配线内组件和协议路线；App 资源准备见 `internal/app/resources.go`。
 - `internal/agent/dialogue/loop.go`、`internal/contextmgr/compact_contract.go`、`internal/session/material.go`：公共循环、压缩和材料契约。
 - `internal/llm/origin.go`、`internal/modelmgr/compatibility.go`：持久化归属与兼容判断。
-- `internal/llm/api_type.go`、`internal/tool/availability.go`：模型 API 类型与工具可用性。
+- `internal/llm/api_type.go`、`internal/tool/registry/availability.go`：模型 API 类型与工具可用性。
 
 <!-- locator:commands -->
 ## 命令与补全
@@ -114,6 +114,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/tool/registry/`、`execution/`、`builtin/`：工具目录、执行核心与内置工具。
 - `internal/tool/share/`：公共定义、schema 构造与纯数据辅助。
+- `internal/tool/share/prepared.go`：CallPreparer 契约与 PreparedCall 参数快照，供工具实现和 Execution 共用。
 - `internal/tool/discovery/resolve.go`：解析发现请求及依赖；`Resolve` 接收已筛选对象，返回展示数据与本次使用的对象集合。
 - `internal/tool/state/state.go`：完整工具声明的解码、会话读取、提交与纯元数据补丁准备；`PrepareUpdate` 供 Execution 随工具结果提交，根部只转发对外状态能力。
 - `internal/tool/state/discovered.go`：已发现工具声明的规范化、合并与排序。
@@ -134,10 +135,10 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/agent/dialogue/tool_execution.go`：协议共用的 ToolRun 入口与提交器。
 - `internal/agent/tools/toolrun_adapter.go`：Hook、子请求、确认与状态桥接。
-- `internal/tool/execution/runner.go`：顺序准备和确认、并发执行、完成队列、逐项提交与开始／结束日志组装。
+- `internal/tool/execution/runner.go`：Manager 的批次流程，顺序准备和确认、并发执行、完成队列、逐项提交与开始／结束日志组装。
 - `internal/agent/dialogue/commit.go`、`internal/agent/responses/persistence.go`：固定结果槽、逐项最终结果、批次封存与原生恢复快照。
-- `internal/tool/execution/manager.go`、`elwisp_exec.go`：调用解析、原生／远程路由与执行结果。
-- `internal/tool/execution/prepared.go`、`executor.go`：准备能力、调用快照及执行阶段校验。
+- `internal/tool/execution/manager.go`：私有持有构造时注入的依赖，固定调用对象，提供原生直接调用；`schema.go` 组合基础与已发现声明。
+- `internal/tool/execution/prepared.go`：风险评估与调用准备；`executor.go` 定义包内 executionResult，执行已批准的原生对象并转换结果；`elwisp_exec.go` 执行远程调用。
 - `internal/tool/logging.go`：完整工具日志发布。
 - `internal/storage/tool_batch.go`、`internal/storage/sqlite/tool_batch.go`、`dialogue_repository.go`：稳定批次关联、原槽更新、结果／统计／媒体／发现状态原子提交；`tool_call_repository.go` 提供调用统计查询。
 

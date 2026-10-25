@@ -16,7 +16,6 @@ import (
 	"elbot/internal/media"
 	"elbot/internal/platform"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
 	"elbot/internal/workspace"
 )
 
@@ -129,11 +128,6 @@ func (t ViewImageTool) AssessRisk(ctx context.Context, req toolshare.CallRequest
 		return toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"读取可能包含凭据的敏感文件，需要用户确认"}}, nil
 	}
 	return toolshare.RiskAssessment{Level: toolshare.RiskLow}, nil
-}
-
-func (t ViewImageTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*tool.PreparedCall, error) {
-	_, err := t.AssessRisk(ctx, req)
-	return nil, err
 }
 
 func (t ViewImageTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {

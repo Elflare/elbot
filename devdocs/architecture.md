@@ -206,7 +206,8 @@ flowchart LR
 - 请求拥有的外部命令统一通过 processenv 配置终止行为：Unix 使用独立进程组，Windows 使用 taskkill /T /F；取消后等待命令和 stdout／stderr 收集结束。Skill、Shell、编译、一次性 Hook 和 ripgrep 共用此行为；常驻 Hook 的单次调用仍使用 event.cancel，关闭其进程时复用进程树终止。主动脱离进程组的守护进程和已提交给远端的动作不在取消保证内。
 - Tool.Call 返回业务 Result、独立日志正文和原始 error。实际调用前发布 tool_call_start，返回后立即发布 tool_call_end，先于发送、Hook 与持久化；Hook 规则／插件对应 hook_tool_call_started 和 hook_tool_call。开始无结果，结束有摘要与耗时，共享调用 ID；审计为追加文件日志。调用前固定 run_source；已进入调用记 INFO／succeeded，业务错误保留在正文，调用统计保留原始执行结论。
 - 参数日志限 512 rune，工具自行将摘要限为 1024 rune；日志不截断业务结果，也不把 Segments 自动转成日志正文。
-- PrepareCall 查询 CallPreparer；PreparedCall 固定参数、确认详情与执行回调，仅由本次 Runner 局部持有。Executor 复核身份、可用性和权限后使用执行 context 调用。
+- Execution 在解析时固定本次工具对象，风险评估与 Permission.CheckTool 各执行一次，需要交互时调用 Agent 的确认能力。目录替换、注销影响后续解析，不改变已准备或已批准的调用。
+- Share 的 CallPreparer、PreparedCall 定义准备契约；NewPreparedCall 复制参数并保存确认详情与执行回调，不持有工具目录、context 或锁。Execution 执行前校验取消与 Matches，不重新查目录或重复授权；工具自身负责目标和 revision 等提交校验。
 - 文件编辑／撤销、长期记忆更新和 Skill 修改复用准备结果，提交前核对目标及 revision；AgentSkill 正文到执行时才读取。
 - 每次准备及完成处理前应用 Execution 的内存接管快照，保留后续工具状态；本次调用权限与沙箱固定，输出发送时选择最新去向。发现状态提交成功后才更新快照，保存失败不重跑已完成动作。
 - Chat 工具消息只发文本，工具图片派生为同批之后的 user 多模态输入，不持久化派生消息；Responses 编码原生工具结果。
@@ -216,11 +217,27 @@ flowchart LR
 
 Tool 拥有注册、schema、风险评估与执行器；Permission.CheckTool 根据身份、工具属性和后台事实决定拒绝、直接执行或交互确认。Tool 执行决定，Agent 承接交互确认。StateService 解释工具状态，PreloadService 返回待提交状态、材料和语言需求。
 
+Execution 由 Manager 私有持有 Registry、Permission、Media 和日志发布函数，依赖在构造时一次注入，向 Tool 根部提供 Schemas、Run、CallTool。单次调用的 executionResult 留在包内；Share 只提供跨包协作契约。批次准备、确认、并发调度和完成处理是同一 Manager 的包内流程；App 与其他业务线只调用 Tool 总管。CallTool 是调用方已授权的原生直接调用，保留原始业务结果、日志正文和错误；Hook 负责自身策略，不进入模型批次和交互确认。
+
+```mermaid
+flowchart TD
+    A["app/wiring.go：交付配置与共享资源"] --> W["tool/wiring.go：装配执行依赖"]
+    S["tool/supervisor.go：转发公开能力"] --> M["execution/manager.go：依赖、来源解析与直接调用"]
+    W --> M
+    M --> SC["execution/schema.go：组合基础及已发现声明"]
+    M --> R["execution/runner.go：批次编排、确认与结果提交"]
+    R --> P["execution/prepared.go：风险评估与调用准备"]
+    P --> C["share/prepared.go：准备契约与参数快照"]
+    R --> E["execution/executor.go：执行原生对象与结果转换"]
+    R --> X["execution/elwisp_exec.go：远程调用与结果转换"]
+```
+
 - 会话的 `discovered_tools` 保存完整 `DiscoveredTool` 数组，是已发现工具集合的唯一事实；名称从声明提取，以 CanonicalName 优先、否则 Name 作为合并标识。State 不持有 Registry 实例，恢复声明不按名称重新生成 schema。Agent 经根部 `Supervisor.DecodeState(raw)` 解码当前会话快照。
 - ELyph 通用规则由 elyph/rules.go 提供，工具、Skill 与后台任务声明需求，输入／工具 Runner 在正文 Hook 后组装。首次展示状态与携带规则的消息原子提交，同 Session 共享，压缩新 Session 重置。
 - 输入指令、发现与后台首轮预加载在一次提交中合并状态，失败保留原状态；准备在准入锁外，提交复核取消、binding、模式和压缩状态。
 - tool.Info.APITypes 限制协议可用性，空集合不限；view_image 仅供 Responses。前台 chat 过滤工具、Skill 和 tag。
 - Registry 统一筛选运行资格，Discovery 的 Resolve 接收已筛选对象并解析依赖，Preload 使用返回的同一批对象读取动态说明。标签授权展开只读取目录与配置成员，不按当前模型、权限或前后台事实缩减声明。
+- Execution 的基础 schema 仅为通过 Registry 筛选的 discover_tool，限 Work 且未禁用基础工具；Chat 不开放工具，Background 只使用已发现声明。已发现 schema 不按目录重建，按输入顺序去重并复制；远程调用按 CanonicalName（为空时用 Name）定位，向端点发送原始 Name 与 EventKey。
 - PrepareBackground 接收 BackgroundPreloadRequest；AllowedToolNames 仅约束本地根工具，nil 不额外限制，空切片禁止本地根工具。它复用 PrepareTools／PrepareSkills，合并说明、Skill 文档、wrapper 和 ELwispTools 声明，并经 Registry 的后台规则过滤 discover_tool、workspace 与 ForegroundOnly 工具，返回待提交状态。外部声明的 CanonicalName、EventKey 由适配方提供，schema 在预载时复制；ActivateTools 声明的可执行 Skill 直接加载自身 schema，纯文档 Skill 不生成调用接口。调用方迁移与续跑约束见 [后台工具统一预载](tasks.md#后台工具统一预载)。
 - Tool 根部在内部构造 StateService，只向 State 交付 Store；装配结构 runtime、registerOptions、registerAll 及组件字段均为包内实现。App 交付完整配置和共享依赖，不取得 StateService。根部的 DecodeState、DiscoveredToolsForSession、Commit 转发状态能力；State 复用 Registry 的后台资格筛选规则，不查询目录重建声明。后台调用方的总管接线仍待完成，见 [后台工具统一预载](tasks.md#后台工具统一预载)。
 - 普通预载由调用方经根部 Commit 提交；Execution 调用 State.PrepareUpdate，从当前会话快照生成仅含工具字段的元数据补丁，与工具结果原子提交，不另作独立状态提交。合并、名称集合、排序和存储字段编码均在 State 内部；PrepareUpdate 不进入总管公开接口。读取从元数据解码出独立对象；Commit 返回序列化后重新解码的状态，避免与输入声明共享 schema。

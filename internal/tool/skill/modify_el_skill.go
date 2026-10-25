@@ -15,7 +15,6 @@ import (
 	"elbot/internal/elyph"
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
-	"elbot/internal/tool"
 )
 
 const (
@@ -175,7 +174,7 @@ func (ModifyElSkillTool) Schema() llm.ToolSchema {
 	}
 }
 
-func (t ModifyElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*tool.PreparedCall, error) {
+func (t ModifyElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	preview, err := t.preview(ctx, req)
 	if err != nil {
 		return nil, err
@@ -190,7 +189,7 @@ func (t ModifyElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRe
 	if !strings.HasSuffix(preview.Diff, "\n") {
 		b.WriteString("\n")
 	}
-	return tool.NewPreparedCall(t, req, strings.TrimRight(b.String(), "\n"), func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, strings.TrimRight(b.String(), "\n"), func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.call(ctx, preview)
 	}), nil
 }
