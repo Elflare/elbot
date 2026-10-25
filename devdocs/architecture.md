@@ -320,13 +320,15 @@ flowchart TD
     R --> H
     R --> P["Platform 公开查询、引用与历史记录类型"]
     R --> M["tool/media：媒体获取与精简结果"]
-    C["builtin/cron.go：Cron 参数与展示"] --> S["share/cron.go：内部任务管理契约"]
-    G["tool/background_bridge.go：连接、转换与注册"] --> C
+    C["builtin/cron.go：Cron 任务规则与展示"] --> S["builtin/cron_contract.go：消费方读写契约与数据"]
+    W --> C
+    W --> G["tool/cron_bridge.go：外部能力与数据转换、变更通知"]
     G --> S
-    G --> BG["Background 公开任务管理契约"]
+    G --> DB["Storage 根部：公开存储契约"]
+    G --> MM["模型服务：选择校验"]
 ```
 
-Cron 工具在启动前由 `Supervisor.ConnectBackground` 注册。根部将 Background 的请求／结果转换为 Share 契约，Builtin 不导入 Background 或 Cron；`CronInfo` 仅包含任务配置、启用／完成状态、次数及时间，不包含内部执行与投递数据。Tool 持有注册关系，BeginClose 保留收尾调用，Close 释放注册。Background 公开契约及 App 接线的完成状态见 [Tool 历史与后台管理对接](tasks.md#tool-历史与后台管理对接)。
+Cron 工具由 Tool 根部构造并注册。Builtin 使用 Tool 自有的 `CronRepository`、`CronSaveRequest` 和 `CronInfo`，负责参数、任务规则、更新合并与结果展示；模型校验通过单独注入的函数调用。根部 `cronBridge` 转换 Storage 任务定义、记录及状态投影，持久化 JSON、数据库任务名称和外部服务类型不进入 Builtin 或 Share。定义写入成功后，根部发布仅携带任务标识的 `CronChangedEvent`；`ObserveCronChanged` 的连接由订阅方持有。Tool 持有工具注册和信号生命周期，BeginClose 保留收尾调用，Close 释放自有资源。Background 订阅与调度刷新尚待接入，见 [Tool 历史与后台管理对接](tasks.md#tool-历史与后台管理对接)。
 
 常驻记忆和 Elwisp 创建指引各自在现有 Builtin 文件声明所需契约，Tool 根部实现适配。`configBridge` 每次按装配时的配置路径重新读取，只交付地址、路径、授权工具、token 名称／环境变量名及读取错误；Builtin 根据配置事实或读取错误生成创建指引与告警。`residentMemoryBridge` 持有 Store，将当前 Actor 转为存储范围并转换数据和未找到错误。Builtin 不持有 Config、常驻记忆 Store 或 Session 范围。
 
@@ -571,7 +573,7 @@ Elnis 接收事件，Elvena 定义公共协议，Elwisp 提供外部事件与工
 <!-- locator:cron -->
 ## Cron 与后台任务
 
-Background 根部拥有总管、装配与生命周期，内部业务分为 `execution`、`cron`、`elnis`、`maintenance`，共享契约和辅助能力位于 `share`。根部接收完整配置；Agent／Platform 的公开能力接入、Cron 六项管理入口仍待完成。Elnis 媒体调用仍引用旧 Tool 根部类型，当前造成循环导入，需按媒体中心边界另行改造。
+Background 根部拥有总管、装配与生命周期，内部业务分为 `execution`、`cron`、`elnis`、`maintenance`，共享契约和辅助能力位于 `share`。根部接收完整配置；Agent／Platform 的公开能力及 Tool 的 Cron 变更订阅仍待接入。Elnis 媒体调用仍引用旧 Tool 根部类型，需按媒体中心边界另行改造。
 
 ```mermaid
 flowchart TD

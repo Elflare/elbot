@@ -25,6 +25,7 @@ func (m *Supervisor) Start() error {
 	go func() {
 		<-m.ctx.Done()
 		<-done
+		<-m.cronChanged.Done()
 		close(m.done)
 	}()
 	return nil
@@ -46,15 +47,18 @@ func (m *Supervisor) Close(ctx context.Context) error {
 	m.BeginClose()
 	m.mu.Lock()
 	m.cancel()
-	if m.releaseBackgroundTools != nil {
-		m.releaseBackgroundTools()
-		m.releaseBackgroundTools = nil
+	if m.releaseCronTools != nil {
+		m.releaseCronTools()
+		m.releaseCronTools = nil
 	}
+	m.cronChanged.BeginClose()
 	if !m.started {
 		select {
 		case <-m.done:
 		default:
-			close(m.done)
+			// 尚未 Start 时也必须等信号任务真正结束。
+			m.started = true
+			go func() { <-m.cronChanged.Done(); close(m.done) }()
 		}
 	}
 	m.mu.Unlock()

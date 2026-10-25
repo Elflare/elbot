@@ -1,6 +1,6 @@
-// 定义 Tool 内部的 Cron 操作契约及请求、结果数据。
+// 定义 Builtin 消费的 Cron 操作契约及请求、结果数据，由根部 bridge 实现。
 // 仅保留工具所需的任务管理信息，不引用 Background 或 Cron 的实现类型。
-package share
+package builtin
 
 import (
 	"context"
@@ -9,23 +9,31 @@ import (
 	"elbot/internal/contextinfo"
 )
 
-// CronService 由 Tool 根部适配实现，不暴露后台服务或调度存储。
-type CronService interface {
-	CreateCron(context.Context, CronCreateRequest) (CronInfo, error)
-	UpdateCron(context.Context, CronUpdateRequest) (CronInfo, error)
-	GetCron(context.Context, string, contextinfo.Actor) (CronInfo, error)
-	ListCrons(context.Context, bool, bool, contextinfo.Actor) ([]CronInfo, error)
-	DisableCron(context.Context, string, contextinfo.Actor) error
-	DeleteCron(context.Context, string, contextinfo.Actor) error
+// CronRepository 是工具内部的任务读写契约，由根部 bridge 实现。
+// 请求和结果只包含工具业务信息，不暴露存储记录、编码格式或外部服务类型。
+type CronRepository interface {
+	Upsert(context.Context, CronSaveRequest) (CronInfo, error)
+	GetByName(context.Context, string) (CronInfo, error)
+	List(context.Context, bool) ([]CronInfo, error)
+	DisableByName(context.Context, string) error
+	DeleteByName(context.Context, string) error
+}
+
+// CronSaveRequest 是完成业务校验后的完整任务定义；更新时已合并未修改字段。
+type CronSaveRequest struct {
+	Definition    CronCreateRequest // 任务定义；Actor 始终保留原创建者。
+	Schedule      string            // 由计划规则生成的五字段 Cron 表达式。
+	NextRunAt     *time.Time        // 当前计划的下一次执行时间，停用时为 nil。
+	ResetDelivery bool              // 本次修改是否开启新一轮执行与投递。
 }
 
 type CronCreateRequest struct {
 	Name                string            // 任务短名。
 	Title               string            // 任务展示标题。
-	ScheduleMode        string            // once 或 cron，合法性由后台业务校验。
+	ScheduleMode        string            // once 或 cron，合法性由工具业务校验。
 	RunAt               string            // 已换算的本地绝对时间。
 	CronExpr            string            // 周期任务的 Cron 表达式。
-	TriggerMode         string            // direct 或 llm，合法性由后台业务校验。
+	TriggerMode         string            // direct 或 llm，合法性由工具业务校验。
 	Message             string            // 通知正文或 LLM 任务文本。
 	ToolListNames       []string          // LLM 任务请求的工具、Skill 或标签名。
 	ModelProvider       string            // 可选的任务专用模型提供方。

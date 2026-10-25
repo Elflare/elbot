@@ -14,59 +14,27 @@ import (
 	"elbot/internal/storage"
 )
 
-type ScheduleMode string
+type ScheduleMode = storage.CronScheduleMode
 
 const (
-	ScheduleOnce ScheduleMode = "once"
-	ScheduleCron ScheduleMode = "cron"
+	ScheduleOnce = storage.CronScheduleOnce
+	ScheduleCron = storage.CronScheduleCron
 )
 
-type TriggerMode string
+type TriggerMode = storage.CronTriggerMode
 
 const (
-	TriggerDirect TriggerMode = "direct"
-	TriggerLLM    TriggerMode = "llm"
+	TriggerDirect = storage.CronTriggerDirect
+	TriggerLLM = storage.CronTriggerLLM
 )
 
-type Metadata struct {
-	Kind      string          `json:"kind"`
-	Version   int             `json:"version"`
-	Title     string          `json:"title"`
-	CreatedBy CronActor       `json:"created_by"`
-	Schedule  CronSchedule    `json:"schedule"`
-	Trigger   CronTrigger     `json:"trigger"`
-	Target    CronTarget      `json:"target"`
-	LLM       CronLLMMetadata `json:"llm,omitempty"`
-}
-
-type CronActor struct {
-	ActorID        string `json:"actor_id"`
-	Platform       string `json:"platform"`
-	PlatformUserID string `json:"platform_user_id"`
-	DisplayName    string `json:"display_name,omitempty"`
-}
-
-type CronSchedule struct {
-	Mode     ScheduleMode `json:"mode"`
-	RunAt    string       `json:"run_at,omitempty"`
-	CronExpr string       `json:"cron_expr,omitempty"`
-}
-
-type CronTrigger struct {
-	Mode    TriggerMode `json:"mode"`
-	Message string      `json:"message"`
-}
-
-type CronTarget struct {
-	AllEnabledPlatforms bool   `json:"all_enabled_platforms"`
-	SourcePlatform      string `json:"source_platform"`
-}
-
-type CronLLMMetadata struct {
-	ToolListNames []string `json:"tool_list_names,omitempty"`
-	ModelProvider string   `json:"model_provider,omitempty"`
-	Model         string   `json:"model,omitempty"`
-}
+// 持久化数据格式由 Storage 定义，Cron 只保留内部使用的简名。
+type Metadata = storage.CronMetadata
+type CronActor = storage.CronActor
+type CronSchedule = storage.CronSchedule
+type CronTrigger = storage.CronTrigger
+type CronTarget = storage.CronTarget
+type CronLLMMetadata = storage.CronLLMMetadata
 
 type DeliveryStatus string
 
@@ -78,6 +46,7 @@ const (
 )
 
 type CronDeliveryState struct {
+	storage.CronTaskStatus // 供管理工具查询的完成状态，与投递进度一起持久化。
 	ExecutionRunID  string                    `json:"execution_run_id,omitempty"`
 	TakenOver       bool                      `json:"taken_over,omitempty"`
 	Outcome         string                    `json:"outcome,omitempty"`

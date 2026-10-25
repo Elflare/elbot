@@ -27,7 +27,7 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 		return lines, fmt.Errorf("build platform: %w", err)
 	}
 	lines.tool, err = tool.NewSupervisor(ctx, cfg, tool.SupervisorDeps{
-		Store: resources.store, Media: resources.media, Permission: resources.permission,
+		Store: resources.store, Models: resources.models, Media: resources.media, Permission: resources.permission,
 		Platform: lines.platform,
 	})
 	if err != nil {
@@ -52,8 +52,8 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 	// TODO: Background 自行管理后台执行与调度，只借用各总管公开能力。
 	lines.background, err = background.NewSupervisor(ctx, cfg, background.SupervisorDeps{
 		Store: resources.store, Models: resources.models, Media: resources.media,
-		Permission: resources.permission, Logs: resources.logs,
-		Agent: lines.agent, Tools: lines.tool, Hooks: lines.hook, Platform: lines.platform,
+		Logs: resources.logs,
+		Agent: lines.agent, Tools: lines.tool, Platform: lines.platform,
 	})
 	if err != nil {
 		return lines, fmt.Errorf("build background: %w", err)

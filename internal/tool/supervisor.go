@@ -10,6 +10,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/memory/resident"
 	"elbot/internal/session"
+	"elbot/internal/signal"
 	"elbot/internal/tool/execution"
 	"elbot/internal/tool/preload"
 	"elbot/internal/tool/share"
@@ -28,7 +29,8 @@ type Supervisor struct {
 	started                bool               // 标记已启动。
 	closed                 bool               // 标记已进入关闭阶段。
 	done                   chan struct{}      // 生命周期退出通知。
-	releaseBackgroundTools func()             // 释放本总管接入的后台工具注册，不关闭 Background。
+	releaseCronTools func() // 释放本总管持有的 Cron 工具注册。
+	cronChanged *signal.Signal[CronChangedEvent, signal.Empty] // 本实例任务定义变更通知。
 }
 
 func (m *Supervisor) QueryTools(ctx context.Context, query share.ToolQuery) ([]share.Info, error) {
@@ -70,8 +72,22 @@ func (m *Supervisor) PrepareSkills(ctx context.Context, prefix string, names []s
 func (m *Supervisor) PrepareBackground(ctx context.Context, req share.BackgroundPreloadRequest) (share.BackgroundPreload, error) {
 	return m.preloader.PrepareBackground(ctx, req)
 }
-func (m *Supervisor) BackgroundSelections(ctx context.Context, names []string) ([]share.BackgroundSelection, error) {
-	return m.preloader.BackgroundSelections(ctx, names)
+// BackgroundSelection 是授权前展开的工具名单，公开类型不依赖内部 share。
+type BackgroundSelection struct {
+	Names []string // 选择器展开得到的根工具名称。
+	Tag string // 使用标签选择时的标签名称。
+}
+
+func (m *Supervisor) BackgroundSelections(ctx context.Context, names []string) ([]BackgroundSelection, error) {
+	selections, err := m.preloader.BackgroundSelections(ctx, names)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]BackgroundSelection, len(selections))
+	for i, item := range selections {
+		result[i] = BackgroundSelection{Names: append([]string(nil), item.Names...), Tag: item.Tag}
+	}
+	return result, nil
 }
 func (m *Supervisor) TagPrompts(ctx context.Context, tags []string) ([]share.TagPrompt, error) {
 	return m.preloader.TagPrompts(ctx, tags)

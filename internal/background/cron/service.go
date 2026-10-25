@@ -23,9 +23,9 @@ import (
 )
 
 const (
-	UserHandlerName = "builtin.cron"
-	metadataKind    = "llm_cron"
-	timeLayout      = "2006-01-02 15:04:05"
+	UserHandlerName = storage.CronHandlerName
+	metadataKind    = storage.CronMetadataKind
+	timeLayout      = storage.CronTimeLayout
 )
 
 type TargetSenderFunc func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)

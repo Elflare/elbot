@@ -1,31 +1,32 @@
-// 实现 Cron 工具定义、参数解析和结果组织，通过后台业务能力管理任务。
+// 实现 Cron 工具及任务管理规则，只通过内部契约访问根部注入的能力。
 package builtin
-
-import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
+	"elbot/internal/elyph"
+	"elbot/internal/llm"
+	toolshare "elbot/internal/tool/share"
 	"encoding/json"
 	"fmt"
+	robfigcron "github.com/robfig/cron/v3"
+	"slices"
 	"strings"
 	"time"
-
-	"elbot/internal/contextinfo"
-	"elbot/internal/llm"
 
 	"elbot/internal/tool/runtimeinfo"
 )
 
 type CronTool struct {
-	service toolshare.CronService
+	service *cronService
 	info    runtimeinfo.Info
 }
 type CronQueryTool struct {
-	service toolshare.CronService
+	service *cronService
 	info    runtimeinfo.Info
 }
 type CronWriteTool struct {
-	service toolshare.CronService
+	service *cronService
 	info    runtimeinfo.Info
 }
 
@@ -56,9 +57,204 @@ type cronWriteArgs struct {
 	Enabled             *bool    `json:"enabled"`
 }
 
-func NewCronTools(service toolshare.CronService, infos ...runtimeinfo.Info) []toolshare.Tool {
+func NewCronTools(repo CronRepository, validateModel func(provider, model string) error, infos ...runtimeinfo.Info) []toolshare.Tool {
 	info := runtimeinfo.First(infos...)
+	service := &cronService{repo: repo, validateModel: validateModel, now: info.CurrentTime}
 	return []toolshare.Tool{CronTool{service: service, info: info}, CronQueryTool{service: service, info: info}, CronWriteTool{service: service, info: info}}
+}
+
+// cronService 只处理任务规则；读写和模型校验均通过根部注入的能力完成。
+type cronService struct {
+	repo          CronRepository
+	validateModel func(provider, model string) error // 根部桥接的模型选择校验，不依赖模型服务类型。
+	now           func() time.Time
+}
+
+func (s *cronService) CreateCron(ctx context.Context, req CronCreateRequest) (CronInfo, error) {
+	if strings.TrimSpace(req.SourcePlatform) == "" {
+		req.SourcePlatform = req.Actor.Platform
+	}
+	return s.upsert(ctx, req, true)
+}
+
+func (s *cronService) UpdateCron(ctx context.Context, patch CronUpdateRequest) (CronInfo, error) {
+	info, err := s.repo.GetByName(ctx, patch.Name)
+	if err != nil {
+		return CronInfo{}, err
+	}
+	req := CronCreateRequest{
+		Name: info.Name, Title: info.Title, ScheduleMode: info.ScheduleMode,
+		RunAt: info.RunAt, CronExpr: info.CronExpr, TriggerMode: info.TriggerMode,
+		Message: info.Message, ToolListNames: info.ToolListNames,
+		ModelProvider: info.ModelProvider, Model: info.Model,
+		AllEnabledPlatforms: info.AllEnabledPlatforms, Enabled: info.Enabled,
+		Actor: info.CreatedBy, SourcePlatform: info.SourcePlatform,
+	}
+	before := req
+	if patch.Title != nil {
+		req.Title = strings.TrimSpace(*patch.Title)
+	}
+	if patch.ScheduleMode != nil {
+		req.ScheduleMode = *patch.ScheduleMode
+	}
+	if patch.RunAt != nil {
+		req.RunAt = strings.TrimSpace(*patch.RunAt)
+	}
+	if patch.CronExpr != nil {
+		req.CronExpr = strings.TrimSpace(*patch.CronExpr)
+	}
+	if patch.TriggerMode != nil {
+		req.TriggerMode = *patch.TriggerMode
+	}
+	if patch.Message != nil {
+		req.Message = strings.TrimSpace(*patch.Message)
+	}
+	if patch.ToolListNames != nil {
+		req.ToolListNames = normalizeCronToolNames(*patch.ToolListNames)
+	}
+	if patch.ModelProvider != nil || patch.Model != nil {
+		if patch.ModelProvider == nil || patch.Model == nil {
+			return CronInfo{}, fmt.Errorf("model_provider and model must be updated together")
+		}
+		req.ModelProvider, req.Model = strings.TrimSpace(*patch.ModelProvider), strings.TrimSpace(*patch.Model)
+	}
+	if patch.AllEnabledPlatforms != nil {
+		req.AllEnabledPlatforms = *patch.AllEnabledPlatforms
+	}
+	if patch.Enabled != nil {
+		req.Enabled = *patch.Enabled
+	}
+	reset := req.Enabled && ((patch.Enabled != nil && *patch.Enabled) ||
+		before.ScheduleMode != req.ScheduleMode || before.RunAt != req.RunAt || before.CronExpr != req.CronExpr ||
+		before.TriggerMode != req.TriggerMode || before.Message != req.Message ||
+		before.AllEnabledPlatforms != req.AllEnabledPlatforms ||
+		before.ModelProvider != req.ModelProvider || before.Model != req.Model ||
+		!slices.Equal(before.ToolListNames, req.ToolListNames))
+	return s.upsert(ctx, req, reset)
+}
+
+func (s *cronService) GetCron(ctx context.Context, name string, _ contextinfo.Actor) (CronInfo, error) {
+	return s.repo.GetByName(ctx, name)
+}
+
+func (s *cronService) ListCrons(ctx context.Context, includeDisabled, includeCompleted bool, _ contextinfo.Actor) ([]CronInfo, error) {
+	jobs, err := s.repo.List(ctx, includeDisabled)
+	if err != nil {
+		return nil, err
+	}
+	result := []CronInfo{}
+	for _, job := range jobs {
+		if includeCompleted || !job.Completed {
+			result = append(result, job)
+		}
+	}
+	return result, nil
+}
+
+func (s *cronService) DisableCron(ctx context.Context, name string, _ contextinfo.Actor) error {
+	return s.repo.DisableByName(ctx, name)
+}
+
+func (s *cronService) DeleteCron(ctx context.Context, name string, _ contextinfo.Actor) error {
+	return s.repo.DeleteByName(ctx, name)
+}
+
+func (s *cronService) upsert(ctx context.Context, req CronCreateRequest, reset bool) (CronInfo, error) {
+	req.Name, req.Title = strings.TrimSpace(req.Name), strings.TrimSpace(req.Title)
+	req.Message, req.SourcePlatform = strings.TrimSpace(req.Message), strings.TrimSpace(req.SourcePlatform)
+	req.RunAt, req.CronExpr = strings.TrimSpace(req.RunAt), strings.TrimSpace(req.CronExpr)
+	req.ModelProvider, req.Model = strings.TrimSpace(req.ModelProvider), strings.TrimSpace(req.Model)
+	req.ToolListNames = normalizeCronToolNames(req.ToolListNames)
+	if req.Name == "" {
+		return CronInfo{}, fmt.Errorf("cron name is required")
+	}
+	if req.Title == "" {
+		req.Title = req.Name
+	}
+	if req.Message == "" {
+		return CronInfo{}, fmt.Errorf("message is required")
+	}
+	switch req.TriggerMode {
+	case "direct":
+	case "llm":
+		if _, err := elyph.ParseTask(req.Message, ""); err != nil {
+			return CronInfo{}, err
+		}
+	default:
+		return CronInfo{}, fmt.Errorf("unsupported trigger mode %q", req.TriggerMode)
+	}
+	if req.SourcePlatform == "" {
+		return CronInfo{}, fmt.Errorf("source platform is required")
+	}
+	if req.ModelProvider != "" || req.Model != "" {
+		if req.ModelProvider == "" || req.Model == "" {
+			return CronInfo{}, fmt.Errorf("model_provider and model must both be set or cleared")
+		}
+		if err := s.validateModel(req.ModelProvider, req.Model); err != nil {
+			return CronInfo{}, err
+		}
+	}
+	runAt := req.RunAt
+	expr, next, err := cronSchedule(&req, s.now())
+	if err != nil {
+		return CronInfo{}, err
+	}
+	// 当前分钟的一次性计划会顺延；这同样改变了执行计划，需要开启新一轮。
+	reset = reset || req.RunAt != runAt
+	return s.repo.Upsert(ctx, CronSaveRequest{Definition: req, Schedule: expr, NextRunAt: next, ResetDelivery: reset})
+}
+
+func cronSchedule(req *CronCreateRequest, now time.Time) (string, *time.Time, error) {
+	const timeLayout = "2006-01-02 15:04:05"
+	var next *time.Time
+	expr := req.CronExpr
+	switch req.ScheduleMode {
+	case "once":
+		runAt, err := time.ParseInLocation(timeLayout, req.RunAt, time.Local)
+		if err != nil {
+			return "", nil, fmt.Errorf("run_at must use YYYY-MM-DD HH:MM:SS: %w", err)
+		}
+		if req.Enabled {
+			nowMinute, runMinute := now.Truncate(time.Minute), runAt.Truncate(time.Minute)
+			if runMinute.Before(nowMinute) {
+				return "", nil, fmt.Errorf("run_at 时间不正确：一次性 cron 是分钟级调度，必须晚于当前这一分钟。当前时间：%s", now.Format(timeLayout))
+			}
+			if runMinute.Equal(nowMinute) {
+				runAt = nowMinute.Add(time.Minute)
+				req.RunAt = runAt.Format(timeLayout)
+			}
+			next = &runAt
+		}
+		expr = fmt.Sprintf("%d %d %d %d *", runAt.Minute(), runAt.Hour(), runAt.Day(), int(runAt.Month()))
+	case "cron":
+		if len(strings.Fields(expr)) != 5 {
+			return "", nil, fmt.Errorf("cron_expr must be a 5-field cron expression")
+		}
+	default:
+		return "", nil, fmt.Errorf("unsupported schedule mode %q", req.ScheduleMode)
+	}
+	parsed, err := robfigcron.ParseStandard(expr)
+	if err != nil {
+		return "", nil, err
+	}
+	if req.Enabled && req.ScheduleMode == "cron" {
+		value := parsed.Next(now)
+		if !value.IsZero() {
+			next = &value
+		}
+	}
+	return expr, next, nil
+}
+
+func normalizeCronToolNames(names []string) []string {
+	result := make([]string, 0, len(names))
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name != "" && !slices.Contains(result, name) {
+			result = append(result, name)
+		}
+	}
+	return result
 }
 
 func (t CronTool) Name() string { return "cron" }
@@ -274,7 +470,7 @@ func (t CronWriteTool) create(ctx context.Context, args cronWriteArgs) (*toolsha
 	if err != nil {
 		return nil, err
 	}
-	job, err := t.service.CreateCron(ctx, toolshare.CronCreateRequest{Name: args.Name, Title: args.Title, ScheduleMode: args.ScheduleMode, RunAt: runAt, CronExpr: args.CronExpr, TriggerMode: args.TriggerMode, Message: args.Message, ToolListNames: args.ToolListNames, ModelProvider: provider, Model: model, AllEnabledPlatforms: allEnabledPlatforms, Enabled: enabled, Actor: actor, SourcePlatform: actor.Platform})
+	job, err := t.service.CreateCron(ctx, CronCreateRequest{Name: args.Name, Title: args.Title, ScheduleMode: args.ScheduleMode, RunAt: runAt, CronExpr: args.CronExpr, TriggerMode: args.TriggerMode, Message: args.Message, ToolListNames: args.ToolListNames, ModelProvider: provider, Model: model, AllEnabledPlatforms: allEnabledPlatforms, Enabled: enabled, Actor: actor, SourcePlatform: actor.Platform})
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +482,7 @@ func (t CronWriteTool) update(ctx context.Context, args cronWriteArgs) (*toolsha
 	if err != nil {
 		return nil, err
 	}
-	patch := toolshare.CronUpdateRequest{Name: args.Name, Title: stringPtrIfNotEmpty(args.Title), RunAt: runAt, CronExpr: stringPtrIfNotEmpty(args.CronExpr), Message: stringPtrIfNotEmpty(args.Message), ModelProvider: args.ModelProvider, Model: args.Model, AllEnabledPlatforms: args.AllEnabledPlatforms, Enabled: args.Enabled, Actor: actorFromContext(ctx)}
+	patch := CronUpdateRequest{Name: args.Name, Title: stringPtrIfNotEmpty(args.Title), RunAt: runAt, CronExpr: stringPtrIfNotEmpty(args.CronExpr), Message: stringPtrIfNotEmpty(args.Message), ModelProvider: args.ModelProvider, Model: args.Model, AllEnabledPlatforms: args.AllEnabledPlatforms, Enabled: args.Enabled, Actor: actorFromContext(ctx)}
 	if args.ScheduleMode != "" {
 		v := args.ScheduleMode
 		patch.ScheduleMode = &v

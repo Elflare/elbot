@@ -106,6 +106,72 @@ type CronJob struct {
 	UpdatedAt     time.Time
 }
 
+// CronMetadata 是用户 Cron 任务的持久化定义，供管理工具与后台执行共同读取。
+// Storage 只声明数据格式；任务校验、调度及投递策略由调用方负责。
+type CronMetadata struct {
+	Kind      string          `json:"kind"`       // 持久化定义的种类。
+	Version   int             `json:"version"`    // 定义格式版本。
+	Title     string          `json:"title"`      // 展示标题。
+	CreatedBy CronActor       `json:"created_by"` // 创建者身份快照。
+	Schedule  CronSchedule    `json:"schedule"`   // 一次性或周期计划。
+	Trigger   CronTrigger     `json:"trigger"`    // 直接通知或 LLM 任务。
+	Target    CronTarget      `json:"target"`     // 报告投递范围。
+	LLM       CronLLMMetadata `json:"llm,omitempty"` // LLM 模型和工具选择。
+}
+
+const (
+	CronHandlerName = "builtin.cron"
+	CronMetadataKind = "llm_cron"
+	CronTimeLayout = "2006-01-02 15:04:05"
+)
+
+type CronScheduleMode string
+const (
+	CronScheduleOnce CronScheduleMode = "once"
+	CronScheduleCron CronScheduleMode = "cron"
+)
+
+type CronTriggerMode string
+const (
+	CronTriggerDirect CronTriggerMode = "direct"
+	CronTriggerLLM CronTriggerMode = "llm"
+)
+
+type CronActor struct {
+	ActorID string `json:"actor_id"` // 项目内身份标识。
+	Platform string `json:"platform"` // 创建者所属平台。
+	PlatformUserID string `json:"platform_user_id"` // 平台用户标识。
+	DisplayName string `json:"display_name,omitempty"` // 创建时的展示名称。
+}
+
+type CronSchedule struct {
+	Mode CronScheduleMode `json:"mode"` // 计划模式。
+	RunAt string `json:"run_at,omitempty"` // 本地时间，格式为 CronTimeLayout。
+	CronExpr string `json:"cron_expr,omitempty"` // 五字段 Cron 表达式。
+}
+
+type CronTrigger struct {
+	Mode CronTriggerMode `json:"mode"` // 执行方式。
+	Message string `json:"message"` // 通知正文或 ELyph 任务文本。
+}
+
+type CronTarget struct {
+	AllEnabledPlatforms bool `json:"all_enabled_platforms"` // 是否向全部启用平台投递。
+	SourcePlatform string `json:"source_platform"` // 非广播时的来源平台。
+}
+
+type CronLLMMetadata struct {
+	ToolListNames []string `json:"tool_list_names,omitempty"` // 工具、Skill 或标签选择。
+	ModelProvider string `json:"model_provider,omitempty"` // 可选的模型提供方。
+	Model string `json:"model,omitempty"` // 与提供方配对的模型名称。
+}
+
+// CronTaskStatus 是 DeliveryState 中供管理工具读取的状态投影。
+// 后台保存投递进度时同时写入；查询方不重新执行投递完成判定。
+type CronTaskStatus struct {
+	DeliveryComplete bool `json:"delivery_complete,omitempty"` // 后台已判定本轮报告投递完成或被前台接管。
+}
+
 type ElnisEvent struct {
 	ID               string
 	EventKey         string

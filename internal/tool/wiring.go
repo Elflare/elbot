@@ -11,6 +11,7 @@ import (
 	"elbot/internal/fileops"
 	"elbot/internal/memory/resident"
 	"elbot/internal/processenv"
+	"elbot/internal/signal"
 	"elbot/internal/tool/builtin"
 	"elbot/internal/tool/chat_history"
 	"elbot/internal/tool/discovery"
@@ -34,7 +35,7 @@ type runtime struct {
 // NewSupervisor 只装配组件；后台加载由 Start 启动，失败时返回已取得的总管供调用方关闭。
 func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps) (*Supervisor, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	m := &Supervisor{ctx: ctx, cancel: cancel, done: make(chan struct{})}
+	m := &Supervisor{ctx: ctx, cancel: cancel, done: make(chan struct{}), cronChanged: signal.New[CronChangedEvent, signal.Empty]("tool.cron_changed")}
 	configDir := filepath.Dir(cfg.ConfigPath)
 	dotEnv, err := config.LoadDotEnv(configDir)
 	if err != nil {
@@ -81,6 +82,11 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Tags:     cfg.ToolTags,
 	})
 	m.state = toolstate.NewStateService(deps.Store)
+	cron := cronBridge{repo: deps.Store.CronJobs(), models: deps.Models, changed: m.cronChanged}
+	m.releaseCronTools, err = registry.RegisterOwned(builtin.NewCronTools(cron, cron.ValidateSelection, info)...)
+	if err != nil {
+		return m, fmt.Errorf("register cron tools: %w", err)
+	}
 	return m, nil
 }
 

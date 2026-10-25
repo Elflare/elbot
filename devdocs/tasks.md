@@ -45,12 +45,12 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 ## Tool 历史与后台管理对接
 
 - [x] Builtin 的聊天工具接入 chat_history；查询范围、过滤和媒体选择归组件，Platform 历史及媒体获取由 Tool 根部适配，删除 Builtin 直连历史存储的逻辑。
-- [x] Cron 工具使用 Share 的服务与精简结果；Tool 根部提供 ConnectBackground，并管理注册关系的释放。
+- [x] Cron 工具通过 Tool 自有的 CronRepository、CronSaveRequest 和 CronInfo 访问根部 bridge；模型校验单独注入，Storage 类型与持久化编码不进入 Builtin 或 Share。
 - [x] 聊天历史与媒体的真实 SQLite 集成测试归 Tool 根部，Builtin 测试使用内部组件及契约；移除依赖旧 Runtime 装配的测试路径。
-- [x] Background 根部定义 CronCreateRequest、CronUpdateRequest、CronInfo，与 Tool 根部数据契约一致。
-- [ ] Background 实现 CreateCron、UpdateCron、GetCron、ListCrons、DisableCron、DeleteCron 六项总管方法。
-- [ ] App 在 Tool 与 Background 构造后、Tool.Start 前调用 Tool.ConnectBackground；补齐后验证注册释放及 Cron 整链路。
-- [ ] Skill 移除反向导入 Tool 根包后运行 Tool 全包测试；当前循环依赖阻塞根包构建。
+- [x] Tool 根部直接请求 Storage 读写 Cron，转换结果并发布任务定义变更；真实 SQLite 集成测试归 Tool 根部，Builtin 使用内部契约替身。
+- [ ] Background 根部订阅 Tool.ObserveCronChanged，持有并释放连接；初次任务加载前建立订阅，内部 Cron 收到变更后重新读库刷新调度。
+- [ ] Background 根部移除 CronCreateRequest、CronUpdateRequest、CronInfo，完成 Agent／Tool／Platform 公开能力接线；App 只交付总管，不再连接 Cron 管理接口。
+- [ ] 收口 Background 内部的持久化类型与读取边界，移除内部模型对 Storage 元数据类型的别名；完成后验证 Cron 通知到调度的整链路。
 
 ## 媒体中心对接
 

@@ -179,6 +179,11 @@ func (s *Service) persistDeliveryState(ctx context.Context, job *storage.CronJob
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	ctx = cleanupCtx
+	meta, err := decodeMetadata(job.Metadata)
+	if err != nil {
+		return false, err
+	}
+	state.DeliveryComplete = s.deliveryComplete(meta, state)
 	encoded, err := encodeDeliveryState(state)
 	if err != nil {
 		return false, err
