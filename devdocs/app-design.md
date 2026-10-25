@@ -59,7 +59,7 @@ App 用 `shutdownStep` 记录步骤名称和关闭调用，`runShutdownSteps` �
 
 Tool 根部创建媒体入口、技能目录与基础环境并一次注入 Skill Manager；Builtin、Skill、发现及 ELwisp 均接入必需的准备／执行契约，Skill 内部不依赖 Tool 根包。Cron 工具只使用 Tool 内部契约，根部 bridge 接入 Storage 和模型校验并发布任务定义变更；Background 的订阅与调度刷新仍待接入。Background 的 Elnis 媒体调用尚引用旧 Tool 根部类型，其他目标总管契约仍待完成，整体装配尚不能通过编译。
 
-Background 根部按 `supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go`、`cron.go` 分工；内部业务位于 `execution`、`cron`、`elnis`、`maintenance`、`share`。`NewSupervisor(ctx, cfg, deps)` 接收完整配置，但依赖仍保留待替换的 Session、执行及平台组件契约；目标总管接入尚未完成。Cron 工具注册归 Tool，Background 不持有注册关系。
+Background 根部按 `supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go` 分工；内部业务位于 `execution`、`cron`、`elnis`、`maintenance`、`share`。`NewSupervisor(ctx, cfg, deps)` 接收完整配置，但依赖仍保留待替换的 Session、执行及平台组件契约；目标总管接入尚未完成。Cron 工具注册和管理归 Tool，Background 不持有注册关系，也不提供 Cron CRUD 契约。
 
 `platform.RunClient(ctx, cfg, name)` 完成连接选择、运行和结果分类，返回 `ClientResult{Kind, Err}`：
 

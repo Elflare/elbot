@@ -31,7 +31,6 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/hook/`：Hook 总管、外部桥接与生命周期；装配内部规则、流水线、控制与插件进程。
 - `internal/platform/module/`：平台适配器、发送与通知、API 能力、补全和运行生命周期。
 - `internal/background/supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go`：后台总管、依赖、完整配置装配与启停；Agent／Platform 公开能力接入仍待完成。
-- `internal/background/cron.go`：现存 Cron 请求与结果类型，尚未用于总管能力；管理工具已通过 Tool 根部 bridge 请求 Storage。
 - `internal/background/execution/`：后台准备与 Agent 执行协调；`cron/`、`elnis/`、`maintenance/` 承接各业务。
 
 <!-- locator:contextinfo -->

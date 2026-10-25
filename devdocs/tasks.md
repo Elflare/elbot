@@ -49,7 +49,7 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] 聊天历史与媒体的真实 SQLite 集成测试归 Tool 根部，Builtin 测试使用内部组件及契约；移除依赖旧 Runtime 装配的测试路径。
 - [x] Tool 根部直接请求 Storage 读写 Cron，转换结果并发布任务定义变更；真实 SQLite 集成测试归 Tool 根部，Builtin 使用内部契约替身。
 - [ ] Background 根部订阅 Tool.ObserveCronChanged，持有并释放连接；初次任务加载前建立订阅，内部 Cron 收到变更后重新读库刷新调度。
-- [ ] Background 根部移除 CronCreateRequest、CronUpdateRequest、CronInfo，完成 Agent／Tool／Platform 公开能力接线；App 只交付总管，不再连接 Cron 管理接口。
+- [ ] Background 根部完成 Agent／Tool／Platform 公开能力接线；App 只交付总管。
 - [ ] 收口 Background 内部的持久化类型与读取边界，移除内部模型对 Storage 元数据类型的别名；完成后验证 Cron 通知到调度的整链路。
 
 ## 媒体中心对接

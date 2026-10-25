@@ -2,7 +2,7 @@
 
 本文件只写 Agent 在本仓库里“怎么做”（How）。架构细节、代码职责和功能说明不要塞回这里：
 
-- 需要理解整体架构：读 `devdocs/architecture.md`。
+- 需要理解整体架构：读 `devdocs/architecture.md`。architecture-principles必读
 - 需要定位代码入口：读 `devdocs/code-map.md`。
 - 需要用户侧功能说明：从 `docs/README.md` 开始。
 - 需要维护任务：读 `devdocs/tasks.md`。
