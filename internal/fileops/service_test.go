@@ -14,7 +14,6 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/fileops"
-	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/testutil"
@@ -422,7 +421,7 @@ func TestBackgroundEditUsesSharedTargetLockAndCancellation(t *testing.T) {
 	first := make(chan error, 1)
 	go func() { _, _, err := f.files.Edit(ctx, editRequest("file", "before", "after")); first <- err }()
 	waitSignal(t, reached)
-	bg, cancel := context.WithCancel(sandboxctx.WithSandboxContext(f.ctx, sandboxctx.SandboxContext{Background: true, Dir: f.dir}))
+	bg, cancel := context.WithCancel(workspace.WithPathScope(contextinfo.WithBackgroundKind(f.ctx, ""), workspace.PathScope{Dir: f.dir, Restricted: true}))
 	bg = f.files.WithBinding(bg, nil)
 	waiting := make(chan error, 1)
 	go func() { _, _, err := f.files.Edit(bg, editRequest("file", "before", "other")); waiting <- err }()
@@ -435,7 +434,7 @@ func TestBackgroundEditUsesSharedTargetLockAndCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	readContent(t, f.path, "after")
-	bg = sandboxctx.WithSandboxContext(f.ctx, sandboxctx.SandboxContext{Background: true, Dir: f.dir})
+	bg = workspace.WithPathScope(contextinfo.WithBackgroundKind(f.ctx, ""), workspace.PathScope{Dir: f.dir, Restricted: true})
 	result, _, err := f.files.Edit(f.files.WithBinding(bg, nil), editRequest("file", "after", "background"))
 	if err != nil || result.RollbackAvailable {
 		t.Fatalf("background result=%+v err=%v", result, err)

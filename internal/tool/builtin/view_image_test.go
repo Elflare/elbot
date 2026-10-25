@@ -19,9 +19,8 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/platform"
-	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/storage"
-	
+	"elbot/internal/workspace"
 )
 
 func viewImagePNG(t *testing.T) []byte {
@@ -89,7 +88,7 @@ func TestViewImageSourcesAndPermissions(t *testing.T) {
 	ctx, get, _ := newHistoryMediaToolTest(t)
 	viewer := NewViewImageTool(get.center, get.history)
 	data := viewImagePNG(t)
-	item, err := get.center.ImportBytes(ctx, data, media.Input{Name: "image.png"})
+	item, err := get.mediaCenter.ImportBytes(ctx, data, media.Input{Name: "image.png"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +122,7 @@ func TestViewImageSourcesAndPermissions(t *testing.T) {
 			t.Fatalf("local=%+v %v", result, err)
 		}
 	}
-	background := sandboxctx.WithSandboxContext(admin, sandboxctx.SandboxContext{Background: true, Dir: dir, Root: dir})
+	background := workspace.WithPathScope(contextinfo.WithBackgroundKind(admin, ""), workspace.PathScope{Dir: dir, Restricted: true})
 	if result, err := call(background, "image.png"); err != nil || imageCount(result) != 1 {
 		t.Fatalf("sandbox=%+v %v", result, err)
 	}
@@ -132,14 +131,14 @@ func TestViewImageSourcesAndPermissions(t *testing.T) {
 			t.Fatalf("escaped sandbox: %s", source)
 		}
 	}
-	bad, err := get.center.ImportBytes(ctx, []byte("not an image"), media.Input{Name: "broken.png", MIMEType: "image/png"})
+	bad, err := get.mediaCenter.ImportBytes(ctx, []byte("not an image"), media.Input{Name: "broken.png", MIMEType: "image/png"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := call(ctx, bad.ID); err == nil {
 		t.Fatal("accepted broken image")
 	}
-	truncated, err := get.center.ImportBytes(ctx, data[:33], media.Input{Name: "truncated.png"})
+	truncated, err := get.mediaCenter.ImportBytes(ctx, data[:33], media.Input{Name: "truncated.png"})
 	if err != nil {
 		t.Fatal(err)
 	}

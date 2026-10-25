@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,7 +20,6 @@ import (
 	"elbot/internal/processenv"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
-	"elbot/internal/tool"
 )
 
 func TestSkillMediaBridge(t *testing.T) {
@@ -36,7 +36,7 @@ func TestSkillMediaBridge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mediaRuntime := &tool.MediaRuntime{Center: center, SandboxRoot: t.TempDir()}
+	mediaRuntime := toolmedia.NewMediaRuntime(center, t.TempDir())
 	dir := t.TempDir()
 	binary, err := os.Executable()
 	if err != nil {
@@ -94,7 +94,7 @@ func TestSkillMediaBridge(t *testing.T) {
 
 					execute := runMediaCommand
 					if mode == "wait" {
-						execute = func(ctx context.Context, label string, cmd *exec.Cmd, mediaCall *tool.MediaCall) (*toolshare.Result, error) {
+						execute = func(ctx context.Context, label string, cmd *exec.Cmd, mediaCall *toolmedia.MediaCall) (*toolshare.Result, error) {
 							want := 100 * time.Millisecond
 							if kind == "toml" {
 								want = time.Second
@@ -116,7 +116,7 @@ func TestSkillMediaBridge(t *testing.T) {
 						if mode == "wait" {
 							timeout = 100
 						}
-						raw, _ = json.Marshal(map[string]any{"skill_name": "media", "timeout_ms": timeout, "payload": map[string]any{"mode": mode, "media_inputs": []tool.MediaInput{{MediaID: item.ID}}}})
+						raw, _ = json.Marshal(map[string]any{"skill_name": "media", "timeout_ms": timeout, "payload": map[string]any{"mode": mode, "media_inputs": []toolshare.MediaInput{{MediaID: item.ID}}}})
 						result, _, err = runner.call(runCtx, toolshare.CallRequest{Arguments: raw}, execute)
 					} else {
 						current := command
@@ -187,7 +187,7 @@ func TestSkillMediaBridge(t *testing.T) {
 				if kind == "go" {
 					current := runner
 					current.ProcessEnv = environment
-					raw, _ := json.Marshal(map[string]any{"skill_name": "media", "payload": map[string]any{"mode": "wait", "media_inputs": []tool.MediaInput{{MediaID: item.ID}}}})
+					raw, _ := json.Marshal(map[string]any{"skill_name": "media", "payload": map[string]any{"mode": "wait", "media_inputs": []toolshare.MediaInput{{MediaID: item.ID}}}})
 					_, _, err := current.Call(runCtx, toolshare.CallRequest{Arguments: raw})
 					done <- err
 				} else {
@@ -218,7 +218,7 @@ func TestSkillMediaBridge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	largeRaw, _ := json.Marshal(map[string]any{"media_inputs": []tool.MediaInput{{MediaID: large.ID}, {MediaID: item.ID}, {MediaID: large.ID}, {MediaID: item.ID}}})
+	largeRaw, _ := json.Marshal(map[string]any{"media_inputs": []toolshare.MediaInput{{MediaID: large.ID}, {MediaID: item.ID}, {MediaID: large.ID}, {MediaID: item.ID}}})
 	prepared, err := prepareGoMedia(ctx, largeRaw, call, dir)
 	if err != nil {
 		t.Fatal(err)

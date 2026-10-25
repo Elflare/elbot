@@ -4,15 +4,12 @@ package runtimeinfo
 import (
 	"path/filepath"
 	"time"
-
-	"elbot/internal/config"
 )
 
 type Info struct {
-	ConfigDir   string
-	ConfigPath  string
-	SandboxRoot string
-	Now         func() time.Time
+	ConfigDir  string
+	ConfigPath string
+	Now        func() time.Time
 }
 
 func First(values ...Info) Info {
@@ -28,9 +25,6 @@ func (i Info) Normalize() Info {
 	}
 	if i.ConfigPath == "" && i.ConfigDir != "" {
 		i.ConfigPath = filepath.Join(i.ConfigDir, "app.toml")
-	}
-	if i.SandboxRoot == "" {
-		i.SandboxRoot = config.Default().Sandbox.Root
 	}
 	if i.Now == nil {
 		i.Now = time.Now

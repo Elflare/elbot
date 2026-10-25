@@ -16,12 +16,12 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/memory/resident"
 	"elbot/internal/platform"
-	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool/preload"
 	toolshare "elbot/internal/tool/share"
 	toolstate "elbot/internal/tool/state"
+	"elbot/internal/workspace"
 )
 
 func TestResidentMemorySystemPromptSource(t *testing.T) {
@@ -44,19 +44,19 @@ func TestResidentMemorySystemPromptSource(t *testing.T) {
 
 func TestBackgroundPathsAreSystemPromptOnlyUntilTakeover(t *testing.T) {
 	manager := dialogue.NewSystemPromptManager(dialogue.BackgroundPathsSystemPromptSource{})
-	ctx := sandboxctx.WithSandboxContext(t.Context(), sandboxctx.SandboxContext{Background: true, Dir: t.TempDir()})
+	ctx := workspace.WithPathScope(contextinfo.WithBackgroundKind(t.Context(), ""), workspace.PathScope{Dir: t.TempDir(), Restricted: true})
 	background, err := manager.Build(ctx, dialogue.SystemPromptRequest{Mode: storage.SessionModeBackground})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(background, sandboxctx.BackgroundPathInstruction()) != 1 {
+	if strings.Count(background, workspace.RestrictedPathInstruction()) != 1 {
 		t.Fatalf("missing or duplicate background path rules: %s", background)
 	}
-	foreground, err := manager.Build(sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{}), dialogue.SystemPromptRequest{Mode: storage.SessionModeWork})
+	foreground, err := manager.Build(workspace.WithoutPathScope(contextinfo.WithoutBackgroundKind(ctx)), dialogue.SystemPromptRequest{Mode: storage.SessionModeWork})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(foreground, sandboxctx.BackgroundPathInstruction()) {
+	if strings.Contains(foreground, workspace.RestrictedPathInstruction()) {
 		t.Fatal("foreground takeover retained background path rules")
 	}
 }
@@ -286,7 +286,7 @@ func TestConversationMetaFromPlatformContext(t *testing.T) {
 	}
 }
 
-type tagPromptTestService struct { *preload.PreloadService }
+type tagPromptTestService struct{ *preload.PreloadService }
 
 func (tagPromptTestService) DecodeState(raw string) (toolshare.State, error) {
 	return toolstate.DecodeState(raw)

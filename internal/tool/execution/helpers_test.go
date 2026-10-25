@@ -8,6 +8,7 @@ import (
 	"elbot/internal/media"
 	"elbot/internal/security"
 	"elbot/internal/storage"
+	toolmedia "elbot/internal/tool/media"
 	"elbot/internal/tool/registry"
 	"elbot/internal/tool/share"
 )
@@ -20,7 +21,7 @@ func newTestManager(catalog *registry.Registry, permission *security.Permission,
 	if len(centers) > 0 {
 		center = centers[0]
 	}
-	return NewManager(catalog, permission, center, func(ctx context.Context, record events.LogRecord) {
+	return NewManager(catalog, permission, toolmedia.NewMediaRuntime(center, ""), func(ctx context.Context, record events.LogRecord) {
 		_ = events.EmitLog(context.WithoutCancel(ctx), record)
 	})
 }

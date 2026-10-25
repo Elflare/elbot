@@ -2,17 +2,16 @@ package media
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
 	"elbot/internal/media"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/workspace"
 )
 
 func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
@@ -28,7 +27,8 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := &MediaRuntime{Center: center, SandboxRoot: t.TempDir()}
+	runtime := NewMediaRuntime(center, t.TempDir())
+	ctx = workspace.WithPathScope(ctx, workspace.PathScope{Dir: t.TempDir(), Restricted: true})
 	errors := make(chan error, 8)
 	for range 8 {
 		go func() {
@@ -58,6 +58,9 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if filepath.Dir(path) != filepath.Join(runtime.sandboxRoot, "media-inputs") {
+		t.Fatalf("cache followed the invocation workspace: %s", path)
+	}
 	old := time.Now().Add(-30 * 24 * time.Hour)
 	if err := os.Chtimes(path, old, old); err != nil {
 		t.Fatal(err)
@@ -67,7 +70,7 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 	}
 	call = runtime.NewCall()
 	t.Cleanup(func() { _ = call.Close() })
-	again, err := call.CachedExport(ctx, item.ID)
+	again, err := call.CachedExport(workspace.WithPathScope(ctx, workspace.PathScope{Dir: t.TempDir()}), item.ID)
 	if err != nil || again != path {
 		t.Fatalf("cache path %s: %v", again, err)
 	}
@@ -155,7 +158,7 @@ func TestMediaExportFailureCanBeRetriedAndCanceled(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			runtime := &MediaRuntime{Center: center, SandboxRoot: t.TempDir()}
+			runtime := NewMediaRuntime(center, t.TempDir())
 			call := runtime.NewCall()
 			defer call.Close()
 			base := t.TempDir()
@@ -163,13 +166,13 @@ func TestMediaExportFailureCanBeRetriedAndCanceled(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			destination := filepath.Join(base, workspace, mediaFilename(item))
+			destination := filepath.Join(base, workspace, mediaFilename(mediaInfo(item)))
 			export := func(ctx context.Context) (string, error) {
 				path, _, err := call.Export(ctx, item.ID, base)
 				return filepath.Join(base, path), err
 			}
 			if shared {
-				destination = filepath.Join(runtime.SandboxRoot, "media-inputs", mediaFilename(item))
+				destination = filepath.Join(runtime.sandboxRoot, "media-inputs", mediaFilename(mediaInfo(item)))
 				export = func(ctx context.Context) (string, error) { return call.CachedExport(ctx, item.ID) }
 			}
 			if err := os.MkdirAll(destination, 0700); err != nil {
@@ -221,7 +224,7 @@ func TestMediaCallCloseFailureRecoveredAtStartup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	call := (&MediaRuntime{Center: center}).NewCall()
+	call := NewMediaRuntime(center, "").NewCall()
 	base := t.TempDir()
 	path, _, err := call.Export(ctx, item.ID, base)
 	if err != nil {
@@ -251,14 +254,5 @@ func TestMediaCallCloseFailureRecoveredAtStartup(t *testing.T) {
 	refs, err = reopened.MediaReferences().ListMediaIDs(ctx, item.ID)
 	if err != nil || len(refs) != 0 {
 		t.Fatalf("references survived startup recovery: %v %v", refs, err)
-	}
-}
-
-func TestMediaInputRejectsInvalidAndExtraFields(t *testing.T) {
-	for _, raw := range []string{`null`, `{}`, `{"media_id":"media:` + strings.Repeat("a", 64) + `"}`, `{"media":"bad"}`, `{"media":"media:` + strings.Repeat("a", 64) + `","path":"escape"}`} {
-		var input MediaInput
-		if err := json.Unmarshal([]byte(raw), &input); err == nil {
-			t.Fatalf("accepted %s", raw)
-		}
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"elbot/internal/contextinfo"
-	sandboxctx "elbot/internal/sandbox"
 )
 
 type fileBindingContextKey struct{}
@@ -35,7 +34,7 @@ func (s *Service) WithBinding(ctx context.Context, binding Binding, admission ..
 
 // EditSession returns nil for unrecorded edits and rejects invalid foreground leases.
 func (s *Service) EditSession(ctx context.Context) (*RollbackSession, error) {
-	if sandboxctx.BackgroundContext(ctx) {
+	if contextinfo.BackgroundContext(ctx) {
 		return nil, nil
 	}
 	binding, ok := ctx.Value(fileBindingContextKey{}).(*fileBinding)
@@ -69,7 +68,7 @@ func (s *Service) editBinding(ctx context.Context) (*fileBinding, *RollbackSessi
 }
 
 func (s *Service) rollbackBinding(ctx context.Context) (*fileBinding, error) {
-	if sandboxctx.BackgroundContext(ctx) {
+	if contextinfo.BackgroundContext(ctx) {
 		return nil, fmt.Errorf("rollback is only available in foreground sessions")
 	}
 	actor, ok := contextinfo.ActorFromContext(ctx)

@@ -45,6 +45,31 @@ func (s *fallbackWorkspaceStore) ClearWorkspaceDirIfMatches(_ context.Context, d
 	return true, nil
 }
 
+func TestCurrentWorkspaceDirUsesPathScopeWithoutReadingStore(t *testing.T) {
+	store := &fallbackWorkspaceStore{readErr: errors.New("session must not be read")}
+	dir := filepath.Join(t.TempDir(), "not-created")
+	for _, restricted := range []bool{false, true} {
+		ctx := WithPathScope(WithWorkspaceStore(t.Context(), store), PathScope{Dir: dir, Restricted: restricted})
+		if got, err := CurrentWorkspaceDir(ctx); err != nil || got != dir {
+			t.Fatalf("restricted=%t dir=%q err=%v", restricted, got, err)
+		}
+	}
+	if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("fixed directory was created: %v", err)
+	}
+	if store.clearCalls != 0 {
+		t.Fatalf("fixed directory changed session: clears=%d", store.clearCalls)
+	}
+}
+
+func TestCurrentWorkspaceDirRejectsRestrictedScopeWithoutDirectory(t *testing.T) {
+	store := &fallbackWorkspaceStore{dir: t.TempDir(), readErr: errors.New("session must not be read")}
+	ctx := WithPathScope(WithWorkspaceStore(t.Context(), store), PathScope{Restricted: true})
+	if _, err := CurrentWorkspaceDir(ctx); err == nil || !strings.Contains(err.Error(), "restricted workspace directory") {
+		t.Fatalf("missing restricted directory fell back to session: %v", err)
+	}
+}
+
 func TestCurrentWorkspaceDirResetsDeletedDirectory(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "workspace")
 	if err := os.Mkdir(dir, 0700); err != nil {

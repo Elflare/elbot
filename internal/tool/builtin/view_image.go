@@ -16,11 +16,12 @@ import (
 	"elbot/internal/media"
 	"elbot/internal/platform"
 	"elbot/internal/storage"
+	toolmedia "elbot/internal/tool/media"
 	"elbot/internal/workspace"
 )
 
 type ViewImageTool struct {
-	center  *media.Manager
+	center  *toolmedia.MediaRuntime
 	history storage.ChatHistoryRepository
 }
 
@@ -30,7 +31,7 @@ type viewImageArgs struct {
 	MediaIndex [][]int  `json:"media_index"`
 }
 
-func NewViewImageTool(center *media.Manager, history storage.ChatHistoryRepository) ViewImageTool {
+func NewViewImageTool(center *toolmedia.MediaRuntime, history storage.ChatHistoryRepository) ViewImageTool {
 	return ViewImageTool{center: center, history: history}
 }
 
@@ -143,9 +144,9 @@ func (t ViewImageTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *
 	if err != nil {
 		return nil, err.Error(), err
 	}
-	var item *storage.Media
+	var item toolshare.MediaInfo
 	if strings.HasPrefix(args.Source, media.IDPrefix) {
-		item, err = t.center.ImageMetadata(ctx, args.Source)
+		item, err = t.center.ValidateImage(ctx, args.Source)
 	} else {
 		if delivery.IsHTTPMediaSource(args.Source) {
 			item, err = t.center.ImportURL(ctx, args.Source, media.Input{})
@@ -155,13 +156,17 @@ func (t ViewImageTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *
 		if err != nil {
 			return nil, err.Error(), err
 		}
-		item, err = t.center.ImageMetadata(ctx, item.ID)
+		item, err = t.center.ValidateImage(ctx, item.ID)
 	}
 	if err != nil {
 		return nil, err.Error(), err
 	}
 	{
-		result := &toolshare.Result{Segments: []llm.MessageSegment{imageResultSegment(item)}, Warnings: path.Warnings}
+		var warnings []string
+		if path.WasAbs && !contextinfo.BackgroundContext(ctx) {
+			warnings = append(warnings, toolshare.AbsolutePathWorkspaceWarning)
+		}
+		result := &toolshare.Result{Segments: []llm.MessageSegment{imageResultSegment(item)}, Warnings: warnings}
 		return result, fmt.Sprintf("image prepared media_id=%s source=%s", item.ID, args.Source), nil
 	}
 }
@@ -223,7 +228,7 @@ func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (_ 
 			label += " 图片获取失败"
 			logContent += fmt.Sprintf("\n%s %v", label, result.Err)
 		default:
-			item, err := t.center.ImageMetadata(ctx, result.Media.ID)
+			item, err := t.center.ValidateImage(ctx, result.Media.ID)
 			if err != nil {
 				label += " 媒体不是有效或支持的图片"
 				logContent += fmt.Sprintf("\n%s %v", label, err)
@@ -237,6 +242,6 @@ func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (_ 
 	return &toolshare.Result{Segments: segments}, fmt.Sprintf("view_image message_id=%v media_index=%v", args.MessageIDs, args.MediaIndex) + logContent, ctx.Err()
 }
 
-func imageResultSegment(item *storage.Media) llm.MessageSegment {
+func imageResultSegment(item toolshare.MediaInfo) llm.MessageSegment {
 	return llm.MessageSegment{Type: llm.SegmentImage, MediaID: item.ID, Name: item.Name, MIMEType: item.MIMEType}
 }

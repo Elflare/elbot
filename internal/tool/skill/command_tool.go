@@ -6,6 +6,7 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"bytes"
 	"context"
+	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,7 +23,7 @@ import (
 )
 
 type CommandTool struct {
-	Media    *tool.MediaRuntime
+	Media    *toolmedia.MediaRuntime
 	Record   Record
 	Manifest AgentSkillManifest
 	// ProcessEnv 保存启动时已合并配置目录 .env 的基础子进程环境。
@@ -76,7 +77,7 @@ func (t CommandTool) Call(ctx context.Context, req toolshare.CallRequest) (resul
 	return t.call(ctx, req, runMediaCommand)
 }
 
-func (t CommandTool) call(ctx context.Context, req toolshare.CallRequest, run func(context.Context, string, *exec.Cmd, *tool.MediaCall) (*toolshare.Result, error)) (result *toolshare.Result, logContent string, callErr error) {
+func (t CommandTool) call(ctx context.Context, req toolshare.CallRequest, run func(context.Context, string, *exec.Cmd, *toolmedia.MediaCall) (*toolshare.Result, error)) (result *toolshare.Result, logContent string, callErr error) {
 	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 
 	dotEnv, err := config.LoadEnvFile(filepath.Join(t.Record.Root, ".env"))

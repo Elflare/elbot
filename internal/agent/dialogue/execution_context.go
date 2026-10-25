@@ -8,10 +8,10 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
-	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
+	"elbot/internal/workspace"
 )
 
 // ExecutionView reads the existing execution identity; it owns no adoption state.
@@ -70,7 +70,8 @@ func foregroundContext(ctx, foreground context.Context) context.Context {
 	} else {
 		ctx = session.WithBinding(ctx, nil)
 	}
-	ctx = sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{})
+	ctx = workspace.WithoutPathScope(ctx)
+	ctx = contextinfo.WithoutBackgroundKind(ctx)
 	ctx = modelmgr.WithSelectionOverride(ctx, config.ModelSelection{})
 	return ctx
 }

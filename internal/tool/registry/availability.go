@@ -8,7 +8,6 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
-	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/security"
 	"elbot/internal/tool/share"
 )
@@ -18,7 +17,7 @@ func InfoAvailableInContext(ctx context.Context, info share.Info) bool {
 }
 
 func UnavailableReason(ctx context.Context, info share.Info) string {
-	if info.ForegroundOnly && sandboxctx.BackgroundContext(ctx) {
+	if info.ForegroundOnly && contextinfo.BackgroundContext(ctx) {
 		return "tool is only available in foreground sessions"
 	}
 	if len(info.APITypes) > 0 {

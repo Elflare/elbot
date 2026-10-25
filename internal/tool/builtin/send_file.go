@@ -18,13 +18,12 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	sandboxctx "elbot/internal/sandbox"
-	
+	toolmedia "elbot/internal/tool/media"
 	"elbot/internal/workspace"
 )
 
 type SendFileTool struct {
-	files *FileManager
+	media *toolmedia.MediaRuntime
 }
 
 type sendFileArgs struct {
@@ -33,8 +32,8 @@ type sendFileArgs struct {
 	MIMEType string `json:"mime_type"`
 }
 
-func NewSendFileTool(files *FileManager) SendFileTool {
-	return SendFileTool{files: files}
+func NewSendFileTool(media *toolmedia.MediaRuntime) SendFileTool {
+	return SendFileTool{media: media}
 }
 
 func (t SendFileTool) Name() string { return "send_file" }
@@ -75,7 +74,7 @@ func (t SendFileTool) AssessRisk(ctx context.Context, req toolshare.CallRequest)
 	if err != nil {
 		return toolshare.RiskAssessment{}, err
 	}
-	resolved, err := workspace.ResolveWorkspacePath(ctx, localSource, workspace.PathResolveOptions{})
+	resolved, err := workspace.ResolveWorkspacePath(ctx, localSource, workspace.PathResolveOptions{RequireRegularFile: true})
 	if err != nil {
 		return toolshare.RiskAssessment{}, err
 	}
@@ -98,12 +97,12 @@ func (t SendFileTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *t
 			return nil, callErr.Error(), callErr
 		}
 	}
-	sandbox, _ := sandboxctx.SandboxContextFromContext(ctx)
+	backgroundKind, _ := contextinfo.BackgroundKindFromContext(ctx)
 	out, warnings, label, err := t.buildOutput(ctx, args, source)
 	if err != nil {
 		return nil, err.Error(), err
 	}
-	if sandbox.BackgroundKind == sandboxctx.BackgroundKindCron {
+	if backgroundKind == contextinfo.BackgroundKindCron {
 		if info, ok := contextinfo.ConversationFromContext(ctx); ok && strings.TrimSpace(info.Source.Platform) != "" {
 			out.Target = delivery.Target{Platform: info.Source.Platform, Superadmins: true}
 		}
@@ -119,7 +118,7 @@ func (t SendFileTool) buildOutput(ctx context.Context, args sendFileArgs, source
 		if !media.ValidID(source) {
 			return delivery.Output{}, nil, "", fmt.Errorf("invalid media ID")
 		}
-		item, err := t.files.Media.Metadata(ctx, source)
+		item, err := t.media.Metadata(ctx, source)
 		if err != nil {
 			return delivery.Output{}, nil, "", err
 		}
@@ -143,18 +142,37 @@ func (t SendFileTool) buildOutput(ctx context.Context, args sendFileArgs, source
 	if err != nil {
 		return delivery.Output{}, nil, "", err
 	}
-	resolved, err := workspace.ResolveWorkspacePath(ctx, localSource, workspace.PathResolveOptions{})
+	resolved, err := workspace.ResolveWorkspacePath(ctx, localSource, workspace.PathResolveOptions{RequireRegularFile: true})
 	if err != nil {
 		return delivery.Output{}, nil, "", err
 	}
-	prepared, err := t.files.Prepare(resolved.Path, args.Name, args.MIMEType)
-	if err != nil {
-		return delivery.Output{}, nil, "", err
+	name := safeFileName(firstNonEmptyString(args.Name, filepath.Base(resolved.Path)))
+	mimeType := firstNonEmptyString(args.MIMEType, mime.TypeByExtension(filepath.Ext(name)))
+	out := outputForMediaType(mimeType, resolved.Path)
+	out.Name = name
+	out.Source.MIMEType = mimeType
+	var warnings []string
+	if resolved.WasAbs && !contextinfo.BackgroundContext(ctx) {
+		warnings = append(warnings, toolshare.AbsolutePathWorkspaceWarning)
 	}
-	out := outputForMediaType(prepared.MIMEType, prepared.Path)
-	out.Name = prepared.Name
-	out.Source.MIMEType = prepared.MIMEType
-	return out, resolved.Warnings, prepared.Name, nil
+	return out, warnings, name, nil
+}
+
+func safeFileName(name string) string {
+	name = strings.TrimSpace(filepath.Base(name))
+	if name == "." || name == string(filepath.Separator) || name == "" {
+		return "file"
+	}
+	return name
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func outputForMediaType(mimeType, path string) delivery.Output {

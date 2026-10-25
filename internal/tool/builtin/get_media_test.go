@@ -5,6 +5,7 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"bytes"
 	"context"
+	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -19,7 +20,6 @@ import (
 	"elbot/internal/platform"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
-	
 )
 
 type getMediaResolver struct {
@@ -39,7 +39,12 @@ func (r *getMediaResolver) ResolveMedia(_ context.Context, s platform.MessageSeg
 	return delivery.Source{Data: []byte(s.PlatformFileID), MIMEType: "image/png"}, nil
 }
 
-func newHistoryMediaToolTest(t *testing.T) (context.Context, GetMediaTool, *getMediaResolver) {
+type historyMediaToolFixture struct {
+	GetMediaTool
+	mediaCenter *media.Manager
+}
+
+func newHistoryMediaToolTest(t *testing.T) (context.Context, historyMediaToolFixture, *getMediaResolver) {
 	t.Helper()
 	ctx := context.Background()
 	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "main.db"))
@@ -66,7 +71,7 @@ func newHistoryMediaToolTest(t *testing.T) (context.Context, GetMediaTool, *getM
 	}
 	resolver := &getMediaResolver{}
 	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ScopeID: "s"}}, MediaResolver: resolver})
-	return ctx, NewGetMediaTool(history.Repository(), center), resolver
+	return ctx, historyMediaToolFixture{GetMediaTool: NewGetMediaTool(history.Repository(), toolmedia.NewMediaRuntime(center, root)), mediaCenter: center}, resolver
 }
 
 func TestGetMediaLimitCacheDefaultsAndTextOnly(t *testing.T) {
@@ -146,10 +151,8 @@ func TestGetMediaSchemaAndHistoryIDTruncation(t *testing.T) {
 
 func TestHistoryQueriesShowMediaWithoutDownload(t *testing.T) {
 	ctx, tools, resolver := newHistoryMediaToolTest(t)
-	search := NewSearchChatHistoryTool(tools.history)
-	search.center = tools.center
-	around := NewGetChatHistoryAroundTool(tools.history)
-	around.center = tools.center
+	search := NewSearchChatHistoryTool(tools.history, tools.center)
+	around := NewGetChatHistoryAroundTool(tools.history, tools.center)
 	for _, call := range []struct {
 		tool toolshare.Tool
 		args string
@@ -178,7 +181,7 @@ func TestHistoryQueriesShowMediaWithoutDownload(t *testing.T) {
 
 func TestGetMediaReturnsCompressedHistoryID(t *testing.T) {
 	ctx, tools, resolver := newHistoryMediaToolTest(t)
-	tools.center.Media.LLMImageMaxLength = 32
+	tools.mediaCenter.Media.LLMImageMaxLength = 32
 	var data bytes.Buffer
 	if err := png.Encode(&data, image.NewNRGBA(image.Rect(0, 0, 80, 40))); err != nil {
 		t.Fatal(err)
@@ -197,7 +200,7 @@ func TestGetMediaReturnsCompressedHistoryID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stored, item, err := tools.center.Read(ctx, ids[1])
+	stored, item, err := tools.mediaCenter.Read(ctx, ids[1])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +208,7 @@ func TestGetMediaReturnsCompressedHistoryID(t *testing.T) {
 	if err != nil || format != "jpeg" || cfg.Width >= 32 || cfg.Height >= 32 || item.MIMEType != "image/jpeg" || !strings.Contains(first.Content, ids[1]) || len(first.Segments) != 0 {
 		t.Fatalf("compressed result = %#v, media %#v, dimensions %#v, %v", first, item, cfg, err)
 	}
-	tools.center.Media.LLMImageCompressionThresholdBytes = 1
+	tools.mediaCenter.Media.LLMImageCompressionThresholdBytes = 1
 	again, _, err := tools.Call(ctx, request)
 	if err != nil || again.Content != first.Content || resolver.calls != 1 {
 		t.Fatalf("cached result = %#v, calls %d, error %v", again, resolver.calls, err)

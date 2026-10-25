@@ -4,20 +4,20 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
-	"elbot/internal/events"
-	"elbot/internal/tool/discovery"
 	"errors"
 	"reflect"
 	"strings"
 	"testing"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"elbot/internal/llm"
-	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/security"
 	"elbot/internal/storage"
+	"elbot/internal/tool/discovery"
 	toolregistry "elbot/internal/tool/registry"
 	"elbot/internal/tool/state"
+	"elbot/internal/workspace"
 )
 
 type foregroundOnlyTestTool struct{}
@@ -45,7 +45,7 @@ func TestForegroundOnlyToolHiddenInBackgroundSchemas(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := newTestManager(registry, security.DefaultPermission())
-	ctx := sandboxctx.WithSandboxContext(context.Background(), sandboxctx.SandboxContext{Dir: t.TempDir(), Background: true, BackgroundKind: sandboxctx.BackgroundKindCron})
+	ctx := workspace.WithPathScope(contextinfo.WithBackgroundKind(context.Background(), contextinfo.BackgroundKindCron), workspace.PathScope{Dir: t.TempDir(), Restricted: true})
 	view := toolshare.Context{Mode: storage.SessionModeWork, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}}
 	schemas, err := manager.Schemas(ctx, view, []toolshare.DiscoveredTool{{Name: "cached_foreground", Source: toolshare.SourceKindELwisp, ForegroundOnly: true, Schema: llm.ToolSchema{Name: "cached_foreground"}}})
 	if err != nil {
@@ -124,7 +124,7 @@ func TestPathSchemasStayStableAcrossBackgroundTakeover(t *testing.T) {
 	for _, name := range []string{"shell", "read_file", "edit_file", "send_file"} {
 		discovered = append(discovered, toolshare.DiscoveredTool{Name: name, Source: toolshare.SourceKindNative, Schema: llm.ToolSchema{Name: name, Description: "stable definition", Parameters: map[string]any{"type": "object"}}})
 	}
-	ctx := sandboxctx.WithSandboxContext(t.Context(), sandboxctx.SandboxContext{Background: true, Dir: t.TempDir()})
+	ctx := workspace.WithPathScope(contextinfo.WithBackgroundKind(t.Context(), ""), workspace.PathScope{Dir: t.TempDir(), Restricted: true})
 	background, err := manager.Schemas(ctx, toolshare.Context{Mode: storage.SessionModeBackground, DisableBaseTools: true}, discovered)
 	if err != nil {
 		t.Fatal(err)
@@ -143,7 +143,7 @@ func TestForegroundOnlyToolResolveRejectedInBackground(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := newTestManager(registry, security.DefaultPermission())
-	ctx := sandboxctx.WithSandboxContext(context.Background(), sandboxctx.SandboxContext{Dir: t.TempDir(), Background: true, BackgroundKind: sandboxctx.BackgroundKindCron})
+	ctx := workspace.WithPathScope(contextinfo.WithBackgroundKind(context.Background(), contextinfo.BackgroundKindCron), workspace.PathScope{Dir: t.TempDir(), Restricted: true})
 	resolved := manager.resolve(ctx, "foreground_only", nil, storage.SessionModeBackground)
 	if resolved.ResultStatus != events.ResultRejected || resolved.Error == nil {
 		t.Fatalf("resolved = %#v", resolved)

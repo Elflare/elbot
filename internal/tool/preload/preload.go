@@ -12,7 +12,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/elyph"
 	globalevents "elbot/internal/events"
-	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/tool/discovery"
 	toolregistry "elbot/internal/tool/registry"
 	"elbot/internal/tool/share"
@@ -136,7 +135,7 @@ func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, na
 			blocks = append(blocks, block)
 			result.NeedsElyphRules = result.NeedsElyphRules || (block.Format == elyph.Format && strings.TrimSpace(block.Content) != "")
 			for _, wrapper := range uniqueNames(detailer.ActivateTools()) {
-				tools, err := s.preloadWrapper(ctx, sessionID, wrapper, sandboxctx.BackgroundContext(ctx))
+				tools, err := s.preloadWrapper(ctx, sessionID, wrapper, contextinfo.BackgroundContext(ctx))
 				if err != nil {
 					return share.SkillPreload{}, err
 				}

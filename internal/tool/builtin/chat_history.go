@@ -5,6 +5,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -32,12 +33,12 @@ const (
 var chatHistoryAtIDPattern = regexp.MustCompile(`^@(.+)$`)
 
 type SearchChatHistoryTool struct {
-	center  *media.Manager
+	center  *toolmedia.MediaRuntime
 	history storage.ChatHistoryRepository
 	info    runtimeinfo.Info
 }
 type GetChatHistoryAroundTool struct {
-	center  *media.Manager
+	center  *toolmedia.MediaRuntime
 	history storage.ChatHistoryRepository
 	info    runtimeinfo.Info
 }
@@ -72,12 +73,12 @@ type replyChatHistoryArgs struct {
 	Message   string `json:"message"`
 }
 
-func NewSearchChatHistoryTool(history storage.ChatHistoryRepository, infos ...runtimeinfo.Info) SearchChatHistoryTool {
-	return SearchChatHistoryTool{history: history, info: runtimeinfo.First(infos...)}
+func NewSearchChatHistoryTool(history storage.ChatHistoryRepository, center *toolmedia.MediaRuntime, infos ...runtimeinfo.Info) SearchChatHistoryTool {
+	return SearchChatHistoryTool{center: center, history: history, info: runtimeinfo.First(infos...)}
 }
 
-func NewGetChatHistoryAroundTool(history storage.ChatHistoryRepository, infos ...runtimeinfo.Info) GetChatHistoryAroundTool {
-	return GetChatHistoryAroundTool{history: history, info: runtimeinfo.First(infos...)}
+func NewGetChatHistoryAroundTool(history storage.ChatHistoryRepository, center *toolmedia.MediaRuntime, infos ...runtimeinfo.Info) GetChatHistoryAroundTool {
+	return GetChatHistoryAroundTool{center: center, history: history, info: runtimeinfo.First(infos...)}
 }
 
 func NewReplyToChatHistoryMessageTool(history storage.ChatHistoryRepository, infos ...runtimeinfo.Info) ReplyToChatHistoryMessageTool {
@@ -92,11 +93,15 @@ func (t SearchChatHistoryTool) Info() toolshare.Info { return searchChatHistoryB
 func (t SearchChatHistoryTool) Schema() llm.ToolSchema {
 	return searchChatHistoryBuilder().BuildSchema()
 }
-func (t GetChatHistoryAroundTool) Info() toolshare.Info { return aroundChatHistoryBuilder().BuildInfo() }
+func (t GetChatHistoryAroundTool) Info() toolshare.Info {
+	return aroundChatHistoryBuilder().BuildInfo()
+}
 func (t GetChatHistoryAroundTool) Schema() llm.ToolSchema {
 	return aroundChatHistoryBuilder().BuildSchema()
 }
-func (t ReplyToChatHistoryMessageTool) Info() toolshare.Info { return replyChatHistoryBuilder().BuildInfo() }
+func (t ReplyToChatHistoryMessageTool) Info() toolshare.Info {
+	return replyChatHistoryBuilder().BuildInfo()
+}
 func (t ReplyToChatHistoryMessageTool) Schema() llm.ToolSchema {
 	return replyChatHistoryBuilder().BuildSchema()
 }
@@ -271,7 +276,7 @@ func (t GetChatHistoryAroundTool) Call(ctx context.Context, req toolshare.CallRe
 	}
 }
 
-func viewImageHistoryHint(ctx context.Context, center *media.Manager) string {
+func viewImageHistoryHint(ctx context.Context, center *toolmedia.MediaRuntime) string {
 	actor, _ := contextinfo.ActorFromContext(ctx)
 	permission, _ := security.PermissionFromContext(ctx)
 	info := (ViewImageTool{}).Info()
@@ -442,7 +447,7 @@ func clampChatHistoryWindow(value int) int {
 }
 
 // formatChatHistoryMedia 展示消息及媒体序号，纯文字消息不读取媒体关联或输出缓存。
-func formatChatHistoryMedia(ctx context.Context, row storage.ChatMessage, targetID string, center *media.Manager, full bool) (string, string, error) {
+func formatChatHistoryMedia(ctx context.Context, row storage.ChatMessage, targetID string, center *toolmedia.MediaRuntime, full bool) (string, string, error) {
 	line := formatChatHistoryLine(row, targetID, full, "...[单条消息过长，已截断]")
 	logContent := formatChatHistoryLine(row, targetID, false, "…")
 	segments := media.HistorySegments(row)

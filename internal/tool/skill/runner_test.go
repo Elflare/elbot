@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -155,7 +156,7 @@ func TestSkillDeadlineSelection(t *testing.T) {
 					}
 					want := time.Now().Add(tc.want)
 					calls := 0
-					execute := func(ctx context.Context, _ string, _ *exec.Cmd, _ *tool.MediaCall) (*toolshare.Result, error) {
+					execute := func(ctx context.Context, _ string, _ *exec.Cmd, _ *toolmedia.MediaCall) (*toolshare.Result, error) {
 						calls++
 						deadline, ok := ctx.Deadline()
 						if !ok || !deadline.Equal(want) || ctx.Err() != nil {

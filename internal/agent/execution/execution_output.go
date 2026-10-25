@@ -8,9 +8,9 @@ import (
 	"elbot/internal/background"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/session"
 	"elbot/internal/turn"
+	"elbot/internal/workspace"
 )
 
 // The sink changes when a running background execution is adopted. Already
@@ -68,7 +68,7 @@ func (o executionTurnOutput) SendAssistant(ctx context.Context, text string) (de
 					}
 					return delivery.Receipt{}, logResult, err
 				}
-				outputs, err := background.BuildReportOutputs("", parsed.ReportSegments, sandboxctx.SandboxContext{Root: dir, Dir: dir})
+				outputs, err := background.BuildReportOutputs("", parsed.ReportSegments, workspace.PathScope{Dir: dir, Restricted: true})
 				if err != nil {
 					logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
 					if err == context.Canceled {

@@ -13,7 +13,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/logging"
-	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/security"
 	"elbot/internal/tool/registry"
 	"elbot/internal/tool/share"
@@ -79,7 +78,7 @@ func TestBackgroundPreloadIncludesToolContent(t *testing.T) {
 	}
 	preloader := NewPreloadService(PreloadOptions{Registry: registry, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"tasks": {Tools: []string{"task_tool"}}}}})
 	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
-	ctx = sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{Background: true})
+	ctx = contextinfo.WithBackgroundKind(ctx, "")
 	prepared, err := preloader.PrepareBackground(ctx, share.BackgroundPreloadRequest{SessionID: "session", Names: []string{"task_tool", "tasks", "task_tool"}})
 	if err != nil {
 		t.Fatal(err)
@@ -157,7 +156,7 @@ func TestBackgroundPreloadLocalAndELwisp(t *testing.T) {
 		}
 	}
 	s := NewPreloadService(PreloadOptions{Registry: r})
-	ctx := sandboxctx.WithSandboxContext(t.Context(), sandboxctx.SandboxContext{Background: true})
+	ctx := contextinfo.WithBackgroundKind(t.Context(), "")
 	schema := map[string]any{"type": "object", "properties": map[string]any{"x": map[string]any{"type": "string"}}}
 	req := share.BackgroundPreloadRequest{Names: []string{"guide", "guide"}, ELwispTools: []share.ELwispToolDeclaration{
 		{Name: "remote", CanonicalName: "source_remote", EventKey: "event", Endpoint: "https://example.invalid", TimeoutSeconds: 9, Schema: schema},

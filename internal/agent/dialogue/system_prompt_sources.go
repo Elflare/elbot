@@ -8,9 +8,9 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/memory/resident"
-	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/session"
 	"elbot/internal/storage"
+	"elbot/internal/workspace"
 )
 
 type ConversationMetaSystemPromptSource struct{}
@@ -113,13 +113,13 @@ type ToolNamesSystemPromptSource struct {
 type BackgroundPathsSystemPromptSource struct{}
 
 func (BackgroundPathsSystemPromptSource) Parts(ctx context.Context, _ SystemPromptRequest) ([]SystemPromptPart, error) {
-	sandbox, ok := sandboxctx.SandboxContextFromContext(ctx)
-	if !ok || !sandbox.Background {
+	scope, ok := workspace.PathScopeFromContext(ctx)
+	if !ok || !scope.Restricted {
 		return nil, nil
 	}
 	return []SystemPromptPart{{
 		Name:    "background_paths",
-		Content: "后台文件与 Shell 工具（shell、read_file、edit_file、send_file）：" + sandboxctx.BackgroundPathInstruction(),
+		Content: "当前调用的文件与 Shell 工具（shell、read_file、edit_file、send_file）使用固定工作目录。路径必须为相对路径，不得使用绝对路径、~、冒号或 .. 路径段。Shell 不允许通过 cd 等命令切换目录。",
 	}}, nil
 }
 
@@ -127,7 +127,7 @@ func (s ToolNamesSystemPromptSource) Parts(ctx context.Context, req SystemPrompt
 	if req.Session == nil {
 		return nil, nil
 	}
-	if sandbox, ok := sandboxctx.SandboxContextFromContext(ctx); ok && sandbox.Background {
+	if contextinfo.BackgroundContext(ctx) {
 		return nil, nil
 	}
 	names, err := s.Tools.ToolNames(ctx, req.Mode, req.Session, req.Scope)

@@ -10,7 +10,6 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
-	"elbot/internal/sandbox"
 	"elbot/internal/security"
 	"elbot/internal/tool/registry"
 	"elbot/internal/tool/share"
@@ -122,7 +121,7 @@ func TestDiscoverListUsesRegistryQualification(t *testing.T) {
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleUser})
 	// Context 中更宽松的策略不能替换 registry 持有的策略。
 	ctx = security.WithPermission(ctx, security.NewPermission("critical", "high", nil))
-	ctx = sandbox.WithSandboxContext(ctx, sandbox.SandboxContext{Background: true})
+	ctx = contextinfo.WithBackgroundKind(ctx, "")
 	result, err := resolver.Discover(ctx, []string{" "})
 	if err != nil {
 		t.Fatal(err)
@@ -286,7 +285,7 @@ func TestDiscoveryStateUpdateFiltersActivation(t *testing.T) {
 	api := plainTool("api")
 	api.info.APITypes = []llm.APIType{"responses"}
 	resolver, _ := newTestResolver(t, hidden, admin, foreground, high, api)
-	ctx := sandbox.WithSandboxContext(context.Background(), sandbox.SandboxContext{Background: true})
+	ctx := contextinfo.WithBackgroundKind(context.Background(), "")
 	result := &share.Result{
 		Data:     json.RawMessage(`{"tools":[{"info":{"name":"base"},"schema":{"name":"base","parameters":{"type":"object"}}}]}`),
 		Metadata: map[string]any{share.MetadataActivateTools: []any{"hidden", 42, "admin", "foreground", "high", "api", "missing", "hidden"}},

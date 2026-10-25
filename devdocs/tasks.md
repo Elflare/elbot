@@ -41,6 +41,15 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Share 提供准备契约；单次调用固定工具对象，统一风险与权限决定，保留批次并发、确认、日志和逐项提交。
 - [ ] Builtin、Skill 完成各自依赖整理后，运行真实工具的集成测试及 Tool 根部整链路验证；文件编辑／撤销批次测试位于 Builtin。
 
+## 媒体中心对接
+
+Tool 媒体层已统一向工具返回 `share.MediaInfo`，图片宽高、实际格式、存储位置和清理状态不属于工具契约。媒体中心后续使用自身公开类型，不能反向依赖 Tool 或其 Share。
+
+- [ ] 整理媒体中心的公开结果：通用媒体信息与内部存储记录分离，查询、导入及历史媒体结果不泄漏后端和对象位置；Tool 在自身入口转换为 Share 数据。
+- [ ] 明确图片有效性校验接口，保持内容可解码及 MIME 校验语义；当前 Tool 的 ValidateImage 使用中心 ImageMetadata。图片宽高和实际格式继续在媒体中心内部消费。
+- [ ] 收敛调用期引用与已持有媒体的读取能力：支持同一调用复用、失败释放重试及中断恢复；Tool 当前通过中心公开方法管理临时引用，内部持有存储记录供 OpenHeld 使用。
+- [ ] Background／Elnis 整理媒体对接，移除旧 Tool 根部 MediaRuntime 引用，不能改为依赖 Tool 内部媒体包。
+
 ## 后台工具统一预载
 
 统一入口为 Tool 根部 `Supervisor.PrepareBackground(ctx, share.BackgroundPreloadRequest)`，返回 `share.BackgroundPreload`。请求包含 `SessionID`、`Names`、`AllowedToolNames`、`ELwispTools`；本地名称可指向工具、Skill 或标签，外部声明沿用 `ELwispToolDeclaration`。调用方提交返回的 `Update`，预载不写会话状态。

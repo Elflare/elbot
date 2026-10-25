@@ -2,19 +2,18 @@ package elnis
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-	"path/filepath"
 	"time"
 
 	"elbot/internal/background"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
-	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/storage"
+	"elbot/internal/workspace"
 )
 
 func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resultJSON, sessionID, messageID string, result background.JSONResult) (bool, error) {
@@ -30,7 +29,11 @@ func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resul
 	if len(resolved) == 0 {
 		return false, s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusCompleted, sessionID, resultJSON, "")
 	}
-	result.ReportSegments, err = s.importReportSegments(ctx, result.ReportSegments, eventID, filepath.Join(s.sandboxRoot, filepath.FromSlash(elnisSandboxSubdir(event.Request.Elwisp.Name))))
+	dir, err := workspace.SandboxDir(s.sandboxRoot, elnisSandboxSubdir(event.Request.Elwisp.Name))
+	if err != nil {
+		return false, err
+	}
+	result.ReportSegments, err = s.importReportSegments(ctx, result.ReportSegments, eventID, dir)
 	if err != nil {
 		return false, err
 	}
@@ -40,11 +43,7 @@ func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resul
 	}
 	resultJSON = string(encoded)
 
-	outputs, err := background.BuildReportOutputs(result.Report, result.ReportSegments, sandboxctx.SandboxContext{
-		Dir:            filepath.Join(s.sandboxRoot, filepath.FromSlash(elnisSandboxSubdir(event.Request.Elwisp.Name))),
-		Background:     true,
-		BackgroundKind: sandboxctx.BackgroundKindElnis,
-	})
+	outputs, err := background.BuildReportOutputs(result.Report, result.ReportSegments, workspace.PathScope{Dir: dir, Restricted: true})
 	if err != nil {
 		return false, err
 	}

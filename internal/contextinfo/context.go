@@ -6,6 +6,7 @@ type conversationKey struct{}
 type actorKey struct{}
 type executionKey struct{}
 type modelKey struct{}
+type backgroundKindKey struct{}
 type absent struct{}
 
 func WithConversation(ctx context.Context, value Conversation) context.Context {
@@ -58,4 +59,22 @@ func ModelFromContext(ctx context.Context) (Model, bool) {
 
 func WithoutModel(ctx context.Context) context.Context {
 	return context.WithValue(ctx, modelKey{}, absent{})
+}
+
+func WithBackgroundKind(ctx context.Context, value BackgroundKind) context.Context {
+	return context.WithValue(ctx, backgroundKindKey{}, value)
+}
+
+func BackgroundKindFromContext(ctx context.Context) (BackgroundKind, bool) {
+	value, ok := ctx.Value(backgroundKindKey{}).(BackgroundKind)
+	return value, ok
+}
+
+func WithoutBackgroundKind(ctx context.Context) context.Context {
+	return context.WithValue(ctx, backgroundKindKey{}, absent{})
+}
+
+func BackgroundContext(ctx context.Context) bool {
+	_, ok := BackgroundKindFromContext(ctx)
+	return ok
 }

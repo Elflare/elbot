@@ -28,7 +28,6 @@ type runtime struct {
 	registry            *toolregistry.Registry
 	residentMemoryStore *resident.Store
 	skillManager        *skill.Manager
-	fileManager         *builtin.FileManager
 	fileRollback        *fileops.Service
 }
 
@@ -43,9 +42,8 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	}
 	environment := processenv.New(os.Environ()).Fill(dotEnv)
 	info := runtimeinfo.Info{
-		ConfigDir:   configDir,
-		ConfigPath:  cfg.ConfigPath,
-		SandboxRoot: cfg.Sandbox.Root,
+		ConfigDir:  configDir,
+		ConfigPath: cfg.ConfigPath,
 	}.Normalize()
 	registry := toolregistry.NewRegistry(deps.Permission)
 	residentStore := resident.NewStoreWithLimits(filepath.Join(configDir, "memories.toml"), resident.Limits{
@@ -53,28 +51,26 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Normal: cfg.ResidentMemory.NormalMaxUnits,
 	})
 	skillManager := skill.NewManager(filepath.Join(configDir, "skills"), registry, environment)
-	fileManager := builtin.NewFileManager(info.SandboxRoot)
-	fileManager.Media = deps.Media
+	mediaRuntime := toolmedia.NewMediaRuntime(deps.Media, cfg.Sandbox.Root)
 	m.catalog = &runtime{
 		registry:            registry,
 		residentMemoryStore: residentStore,
 		skillManager:        skillManager,
-		fileManager:         fileManager,
 		fileRollback:        fileops.NewService(nil),
 	}
 	if err := registerAll(registry, registerOptions{
 		runtimeInfo:         info,
+		media:               mediaRuntime,
 		residentMemoryStore: residentStore,
 		skillManager:        skillManager,
 		chatHistory:         deps.Platform,
 		longMemoryDir:       filepath.Join(configDir, "long_memory"),
-		fileManager:         fileManager,
 		fileRollback:        m.catalog.fileRollback,
 		processEnv:          environment,
 	}); err != nil {
 		return m, fmt.Errorf("register tools: %w", err)
 	}
-	m.engine = execution.NewManager(registry, deps.Permission, deps.Media, logTool)
+	m.engine = execution.NewManager(registry, deps.Permission, mediaRuntime, logTool)
 	m.preloader = preload.NewPreloadService(preload.PreloadOptions{
 		Registry: registry,
 		TagsPath: cfg.ToolTagsConfigPath,
@@ -95,14 +91,14 @@ type registerOptions struct {
 		GetChatHistoryMessage(ctx context.Context, platform, scopeID, messageID string) (*storage.ChatMessage, error)
 	} // 仅转交 Platform 的查询能力，不获取或拥有聊天历史存储。
 	longMemoryDir string
-	fileManager   *builtin.FileManager
+	media         *toolmedia.MediaRuntime
 	fileRollback  *fileops.Service
 	processEnv    processenv.Environment
 }
 
 func registerAll(registry *toolregistry.Registry, opts registerOptions) error {
 	info := opts.runtimeInfo
-	mediaRuntime := &toolmedia.MediaRuntime{Center: opts.fileManager.Media, SandboxRoot: info.SandboxRoot}
+	mediaRuntime := opts.media
 	opts.skillManager.Scanner.Media = mediaRuntime
 	if err := registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry), opts.skillManager.EnsureLoaded)); err != nil {
 		return err
@@ -120,15 +116,15 @@ func registerAll(registry *toolregistry.Registry, opts registerOptions) error {
 			return err
 		}
 	}
-	if err := registry.Register(builtin.NewViewImageTool(opts.fileManager.Media, opts.chatHistory)); err != nil {
+	if err := registry.Register(builtin.NewViewImageTool(opts.media, opts.chatHistory)); err != nil {
 		return err
 	}
-	if err := registry.Register(builtin.NewSendFileTool(opts.fileManager)); err != nil {
+	if err := registry.Register(builtin.NewSendFileTool(opts.media)); err != nil {
 		return err
 	}
-	search := builtin.NewSearchChatHistoryTool(opts.chatHistory, opts.fileManager.Media, info)
-	around := builtin.NewGetChatHistoryAroundTool(opts.chatHistory, opts.fileManager.Media, info)
-	if err := registry.Register(builtin.NewGetMediaTool(opts.chatHistory, opts.fileManager.Media)); err != nil {
+	search := builtin.NewSearchChatHistoryTool(opts.chatHistory, opts.media, info)
+	around := builtin.NewGetChatHistoryAroundTool(opts.chatHistory, opts.media, info)
+	if err := registry.Register(builtin.NewGetMediaTool(opts.chatHistory, opts.media)); err != nil {
 		return err
 	}
 	if err := registry.Register(search); err != nil {

@@ -9,6 +9,9 @@ import (
 	"unicode/utf8"
 )
 
+// AbsolutePathWorkspaceWarning 由工具在前台使用绝对路径时附加到结果。
+const AbsolutePathWorkspaceWarning = "使用了绝对路径，不会改变 workspace。若多次在该目录工作，建议先使用 workspace 工具切换。"
+
 // TruncateLogContent bounds a log-only string to a positive Unicode character
 // limit, including the ellipsis. Callers choose the content and limit; business
 // results and execution arguments must remain unchanged.

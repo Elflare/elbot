@@ -16,11 +16,11 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/logging"
-	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/security"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	toolregistry "elbot/internal/tool/registry"
+	"elbot/internal/workspace"
 )
 
 type loggingTool struct {
@@ -44,7 +44,7 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 		t.Run(initial, func(t *testing.T) {
 			ctx := contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "context-session", RunID: "before", Attempt: "attempt", RequestID: "request", RootRequestID: "root"})
 			if initial != "foreground" {
-				ctx = sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{Background: true, BackgroundKind: sandboxctx.BackgroundKind(initial)})
+				ctx = contextinfo.WithBackgroundKind(ctx, contextinfo.BackgroundKind(initial))
 			}
 			handedOff := false
 			row := &storage.Session{ID: "origin-session", Mode: storage.SessionModeWork}
@@ -59,7 +59,7 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 			deps := &originLoggingDeps{refresh: func(ctx context.Context, _ *storage.Session) (context.Context, error) {
 				if handedOff {
 					ctx = contextinfo.WithExecution(ctx, contextinfo.Execution{SessionID: "another-context-session", RunID: "after"})
-					return sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{}), nil
+					return workspace.WithoutPathScope(contextinfo.WithoutBackgroundKind(ctx)), nil
 				}
 				return ctx, nil
 			}}

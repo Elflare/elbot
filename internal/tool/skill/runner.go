@@ -6,6 +6,7 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"bytes"
 	"context"
+	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,7 +18,6 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/llm"
 	"elbot/internal/processenv"
-	"elbot/internal/tool"
 )
 
 const (
@@ -53,7 +53,7 @@ func (out *limitedOutput) String() string {
 }
 
 type GoRunner struct {
-	Media      *tool.MediaRuntime
+	Media      *toolmedia.MediaRuntime
 	Catalog    *Catalog
 	ProcessEnv processenv.Environment
 }
@@ -113,7 +113,7 @@ func (r GoRunner) Call(ctx context.Context, req toolshare.CallRequest) (result *
 	return r.call(ctx, req, runMediaCommand)
 }
 
-func (r GoRunner) call(ctx context.Context, req toolshare.CallRequest, run func(context.Context, string, *exec.Cmd, *tool.MediaCall) (*toolshare.Result, error)) (result *toolshare.Result, logContent string, callErr error) {
+func (r GoRunner) call(ctx context.Context, req toolshare.CallRequest, run func(context.Context, string, *exec.Cmd, *toolmedia.MediaCall) (*toolshare.Result, error)) (result *toolshare.Result, logContent string, callErr error) {
 	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 
 	var args goRunnerArgs
@@ -229,7 +229,7 @@ func safeRelativePath(root, rel string) (string, error) {
 	return clean, nil
 }
 
-func runMediaCommand(ctx context.Context, label string, cmd *exec.Cmd, mediaCall *tool.MediaCall) (*toolshare.Result, error) {
+func runMediaCommand(ctx context.Context, label string, cmd *exec.Cmd, mediaCall *toolmedia.MediaCall) (*toolshare.Result, error) {
 	stdout := limitedOutput{limit: maxRunnerStdout}
 	stderr := limitedOutput{limit: maxRunnerOutput}
 	cmd.Stdout = &stdout

@@ -17,6 +17,7 @@ import (
 	"elbot/internal/media"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
+	workspacepath "elbot/internal/workspace"
 )
 
 // ImportWorkspaceMedia is a host API, not an Elvena RPC.
@@ -24,25 +25,28 @@ func (s *Service) ImportWorkspaceMedia(ctx context.Context, elwispName, path str
 	if !elwispNamePattern.MatchString(elwispName) {
 		return nil, fmt.Errorf("invalid elwisp name")
 	}
+	dir, err := workspacepath.SandboxDir(s.sandboxRoot, elnisSandboxSubdir(elwispName))
+	if err != nil {
+		return nil, err
+	}
 	call := (&tool.MediaRuntime{Center: s.media}).NewCall()
-	item, err := call.Import(ctx, filepath.Join(s.sandboxRoot, "elnis", elwispName), path, input)
+	item, err := call.Import(ctx, dir, path, input)
 	return item, errors.Join(err, call.Close())
 }
 
 // ExportWorkspaceMedia creates a new file within this Elwisp's workspace.
 func (s *Service) ExportWorkspaceMedia(ctx context.Context, elwispName, id, path string) error {
-	if !elwispNamePattern.MatchString(elwispName) || !filepath.IsLocal(path) || strings.Contains(path, ":") {
-		return fmt.Errorf("invalid workspace path")
+	if !elwispNamePattern.MatchString(elwispName) {
+		return fmt.Errorf("invalid elwisp name")
 	}
-	for _, part := range strings.Split(strings.ReplaceAll(path, "\\", "/"), "/") {
-		if part == ".." {
-			return fmt.Errorf("workspace path contains parent traversal")
-		}
+	path, err := workspacepath.NormalizeRestrictedPath(path)
+	if err != nil {
+		return err
 	}
-	if strings.HasPrefix(strings.ReplaceAll(path, "\\", "/"), "/") {
-		return fmt.Errorf("workspace path must be relative")
+	workspace, err := workspacepath.SandboxDir(s.sandboxRoot, elnisSandboxSubdir(elwispName))
+	if err != nil {
+		return err
 	}
-	workspace := filepath.Join(s.sandboxRoot, "elnis", elwispName)
 	if err := os.MkdirAll(workspace, 0700); err != nil {
 		return err
 	}

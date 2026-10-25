@@ -35,7 +35,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:contextinfo -->
 ## 公共上下文事实
 
-- `internal/contextinfo/`：Conversation、Actor、Execution、Model 定义与存取。
+- `internal/contextinfo/`：Conversation、Actor、Execution、Model、BackgroundKind 定义与存取；后台来源事实不包含路径或路径限制。
 - `internal/platform/platform.go`、`internal/platform/cli/message.go`：平台消息投影与 CLI 来源。
 - `internal/security/`：身份解析、权限与风险策略。
 - `internal/agent/dialogue/execution_context.go`：模型事实与接管上下文刷新。
@@ -127,8 +127,14 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/fileops/binding.go`、`commit.go`：操作绑定与提交校验。
 - `internal/fileops/edit_service.go`、`rollback_service.go`：编辑／撤销准备、预览与提交。
 - `internal/fileops/file.go`、`atomic_write.go`、`rollback.go`：结果计算、revision 校验写入、目标锁与撤销备份。
-- `internal/workspace/`、`internal/session/workspace.go`、`internal/sandbox/`：工作目录、持久化与后台路径限制。
-- `internal/tool/media/runtime.go`：单次工具调用的媒体持有与导出。
+- `internal/workspace/workspace.go`、`resolve.go`、`state.go`：工作目录契约、路径解析与状态编解码；`internal/session/workspace.go` 负责持久化适配。
+- `internal/workspace/context.go`：PathScope 与目录存取能力的上下文传递；`workspace.go` 优先选择调用级目录，未指定时读取 Session 或进程目录。
+- `internal/workspace/sandbox.go`：NormalizeRestrictedPath 统一受限相对路径规则，SandboxDir 计算沙盒子目录，ResolveSandboxRelativePath 组合受限绝对路径；不创建目录、组织提示或管理文件生命周期。
+- `internal/tool/share/media.go`：MediaInput、MediaInfo 与历史媒体逐项结果；只包含工具需要的参数和通用信息。
+- `internal/tool/media/runtime.go`：统一媒体入口与精简结果转换；媒体中心和缓存根目录为私有依赖。
+- `internal/tool/media/call.go`：调用状态、引用持有、释放重试与临时资源清理。
+- `internal/tool/media/files.go`、`cache.go`：调用目录及文件导入导出、共享缓存使用与刷新；缓存保留期由维护任务管理。
+- `internal/tool/builtin/send_file.go`：消费路径事实和 Tool 媒体能力，组织文件名称、MIME、提示与发送输出。
 
 <!-- locator:tool-flow -->
 ## 工具调用链路

@@ -5,6 +5,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,14 +15,13 @@ import (
 	"elbot/internal/media"
 	"elbot/internal/platform"
 	"elbot/internal/storage"
-	
 )
 
 const getMediaDownloadLimit = 5
 
 type GetMediaTool struct {
 	history storage.ChatHistoryRepository
-	center  *media.Manager
+	center  *toolmedia.MediaRuntime
 }
 
 type getMediaArgs struct {
@@ -29,7 +29,7 @@ type getMediaArgs struct {
 	MediaIndex [][]int  `json:"media_index"`
 }
 
-func NewGetMediaTool(history storage.ChatHistoryRepository, center *media.Manager) GetMediaTool {
+func NewGetMediaTool(history storage.ChatHistoryRepository, center *toolmedia.MediaRuntime) GetMediaTool {
 	return GetMediaTool{history: history, center: center}
 }
 func (GetMediaTool) Name() string { return "get_media" }

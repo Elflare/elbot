@@ -16,12 +16,11 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/fileops"
-	sandboxctx "elbot/internal/sandbox"
-	
-	workspacepath "elbot/internal/workspace"
-
 	"mvdan.cc/sh/v3/syntax"
+
+	"elbot/internal/contextinfo"
+	"elbot/internal/fileops"
+	workspacepath "elbot/internal/workspace"
 )
 
 func TestShellASTUsesShebangDialect(t *testing.T) {
@@ -1222,7 +1221,7 @@ func TestEditFileToolCronRiskAndSandbox(t *testing.T) {
 	if err := os.WriteFile(path, original, 0644); err != nil {
 		t.Fatal(err)
 	}
-	ctx := sandboxctx.WithSandboxContext(context.Background(), sandboxctx.SandboxContext{Dir: sandbox, Background: true, BackgroundKind: sandboxctx.BackgroundKindCron})
+	ctx := workspacepath.WithPathScope(contextinfo.WithBackgroundKind(context.Background(), contextinfo.BackgroundKindCron), workspacepath.PathScope{Dir: sandbox, Restricted: true})
 	args, _ := json.Marshal(map[string]any{
 		"path":              "sample.txt",
 		"expected_revision": fileops.ContentRevision(original),

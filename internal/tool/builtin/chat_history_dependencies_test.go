@@ -14,8 +14,8 @@ import (
 
 func TestChatHistoryToolsMutuallyDiscoverable(t *testing.T) {
 	tools := []toolshare.Tool{
-		NewSearchChatHistoryTool(nil),
-		NewGetChatHistoryAroundTool(nil),
+		NewSearchChatHistoryTool(nil, nil),
+		NewGetChatHistoryAroundTool(nil, nil),
 		NewReplyToChatHistoryMessageTool(nil),
 		NewGetMediaTool(nil, nil),
 	}

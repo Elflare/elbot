@@ -8,20 +8,20 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	sandboxctx "elbot/internal/sandbox"
+	"elbot/internal/workspace"
 )
 
 func PathInstruction() string {
-	return sandboxctx.BackgroundPathInstruction()
+	return "后台任务的本地附件路径必须基于任务工作目录，使用相对路径；不得使用绝对路径、~、冒号或 .. 路径段。"
 }
 
-func BuildReportOutputs(report string, segments []llm.MessageSegment, sandbox sandboxctx.SandboxContext) ([]delivery.Output, error) {
+func BuildReportOutputs(report string, segments []llm.MessageSegment, scope workspace.PathScope) ([]delivery.Output, error) {
 	outputs := []delivery.Output{}
 	if text := strings.TrimSpace(report); text != "" {
 		outputs = append(outputs, delivery.Text(text))
 	}
 	for i, segment := range segments {
-		out, err := BuildReportSegmentOutput(segment, sandbox)
+		out, err := BuildReportSegmentOutput(segment, scope)
 		if err != nil {
 			return nil, fmt.Errorf("report segment %d: %w", i, err)
 		}
@@ -30,7 +30,7 @@ func BuildReportOutputs(report string, segments []llm.MessageSegment, sandbox sa
 	return outputs, nil
 }
 
-func BuildReportSegmentOutput(segment llm.MessageSegment, sandbox sandboxctx.SandboxContext) (delivery.Output, error) {
+func BuildReportSegmentOutput(segment llm.MessageSegment, scope workspace.PathScope) (delivery.Output, error) {
 	var kind delivery.Kind
 	switch segment.Type {
 	case llm.SegmentImage:
@@ -53,7 +53,7 @@ func BuildReportSegmentOutput(segment llm.MessageSegment, sandbox sandboxctx.San
 		out.Source.URL = strings.TrimSpace(segment.URL)
 		return out, nil
 	}
-	path, err := sandboxctx.ResolveSandboxRelativePath(sandbox, segment.URL)
+	path, err := workspace.ResolveSandboxRelativePath(scope, segment.URL)
 	if err != nil {
 		return delivery.Output{}, err
 	}

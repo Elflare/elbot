@@ -39,7 +39,7 @@ flowchart TB
 <!-- locator:contextinfo -->
 ## 公共上下文事实
 
-`contextinfo` 定义四组事实，getter 返回快照和存在标记，缺失不补全局默认值。
+`contextinfo` 定义五组事实，getter 返回快照和存在标记，缺失不补全局默认值。
 
 | 分组 | 内容与来源 |
 |---|---|
@@ -47,10 +47,36 @@ flowchart TB
 | Actor | ElBot 身份、角色及平台群角色，由 security 解析 |
 | Execution | Session／当前、父、根 Request／Run／Attempt ID，由所属服务建立关联 |
 | Model | 固定 Selection 及其 Origin 的 provider、model、protocol |
+| BackgroundKind | 后台来源类型，由后台入口提供；事实存在表示后台执行，空值表示来源未分类 |
 
 - 平台会话与 ElBot Session 分开表达；事实不替代权限、binding 或 attempt 校验。公共包不持有凭据、服务或原生载荷。
 - MessageContext 安装公共 Conversation，私有 context 保存正文和 Sender；PlatformData 是平台提供的不可变快照。
 - 接管替换 Conversation、Actor、Model 与平台来源，清除新来源缺失的事实，保留执行取消链。
+- 后台来源供权限、工具资格和日志使用；路径范围由 `workspace.PathScope` 独立表达。接管同时清除后台来源和调用级路径范围，保留 Session 工作目录。
+
+### 公共工作路径
+
+`workspace` 负责工作目录选择、路径解析和目录状态契约。`PathScope{Dir, Restricted}` 固定本次调用使用的目录及限制；未指定调用目录时读取 Session，最后回退进程工作目录。受限范围缺少目录时返回错误，不能回退到其他目录。Session 目录失效时按原值条件清除，避免覆盖并发切换。
+
+配置负责沙盒根目录的默认值与相对路径归一化。Background 通过 `SandboxDir` 计算并创建任务目录，再注入 PathScope 和后台来源。文件工具与 Shell 使用同一工作目录规则；报告附件按受限范围解析。路径解析只检查路径组成和目标类型，实际文件打开与资源生命周期由消费方负责，媒体导入导出保留 `os.Root` 的打开边界。
+
+`NormalizeRestrictedPath` 统一相对路径字符串规则：两种斜杠均作为分隔符，拒绝绝对路径、~、冒号和任意 `..` 路径段，允许 `report..txt` 等普通文件名。`RequireRegularFile` 在统一目标检查中要求已存在目标为普通文件。公共结果只返回路径事实；工具在前台使用绝对路径时根据 `WasAbs` 附加 Share 中的提示，后台与 Shell 自行组织业务说明。
+
+媒体缓存使用配置根目录下的 `media-inputs/`，不跟随 Session 工作目录切换；Tool 的 RuntimeInfo 不保存沙盒根目录。维护任务负责缓存保留期，Session 负责目录状态落库，Workspace 不承担这些业务。
+
+```mermaid
+flowchart TD
+    B["background/module/runner.go<br/>计算并创建任务目录、注入调用范围"] --> C["workspace/context.go<br/>路径范围与目录存取能力"]
+    B --> F["contextinfo/background.go、context.go<br/>后台来源事实"]
+    S["session/workspace.go<br/>持久化与并发更新"] --> W["workspace/workspace.go、state.go<br/>目录契约、选择与状态编解码"]
+    R["workspace/resolve.go<br/>统一路径解析与目标检查"] --> C
+    R --> W
+    R --> P["workspace/sandbox.go<br/>目录组合与受限路径规则"]
+    T["文件工具、FileOps"] --> R
+    SH["builtin/shell.go<br/>读取工作目录并执行命令"] --> W
+    O["background/report.go<br/>组织报告附件"] --> P
+    M["tool/media/files.go、cache.go<br/>媒体文件与缓存操作"] --> P
+```
 
 <!-- locator:signal -->
 ## 信号与订阅
@@ -279,6 +305,19 @@ flowchart LR
 工具结果保留完整正文与 segments，提交成功后才进入活跃上下文。归档保存稳定媒体 ID，请求展开 URL／base64 仅供当次发送，不回写或从 HTTP 正文反向恢复归档。
 
 ### 媒体引用与清理
+
+Tool 装配创建统一 `MediaRuntime`，Builtin、Skill 与 Execution 通过它访问媒体；内部媒体中心与缓存根目录为私有依赖。查询、导入、持有、导出及历史媒体批量结果仅向工具返回 `share.MediaInfo{ID, Name, MIMEType, Size}`；`storage.Media` 留在媒体实现内部。`ValidateImage` 请求中心验证图片并返回通用信息，图片宽高和实际格式仅由媒体中心内部消费。文件发送工具直接接收 Tool 媒体入口，负责名称、MIME 与发送输出的组织。
+
+```mermaid
+flowchart TD
+    T["builtin、skill、execution<br/>工具业务与执行"] --> R["tool/media/runtime.go<br/>统一媒体入口、精简结果转换"]
+    T --> S["tool/share/media.go<br/>媒体参数与通用信息契约"]
+    R --> C["tool/media/call.go<br/>调用状态、引用持有与清理"]
+    F["tool/media/files.go<br/>调用目录、文件导入导出"] --> C
+    K["tool/media/cache.go<br/>共享缓存使用与刷新"] --> C
+    F --> W["workspace/sandbox.go<br/>相对路径规则"]
+    K --> W
+```
 
 - 媒体按 SHA-256 去重，media_references 是引用事实来源；消息、工具参数、Fork、Cron、Elnis 和输出关联通过事务维护引用，读取／发送另持临时引用。
 - MediaCall 按 ID 复用调用内元数据、持有和成功导出；OpenHeld 使用已持有记录，同次调用串行，Close 释放引用，失败释放可重试。

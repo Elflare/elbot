@@ -14,9 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/processenv"
-	sandboxctx "elbot/internal/sandbox"
-	
 	workspacepath "elbot/internal/workspace"
 )
 
@@ -319,9 +318,12 @@ func TestAnalyzeBashShellAdviceWarnsForCommandPathArgument(t *testing.T) {
 
 func TestShellToolUsesSandboxDir(t *testing.T) {
 	sandboxDir := filepath.Join(t.TempDir(), "sandbox", "cron")
+	if err := os.MkdirAll(sandboxDir, 0755); err != nil {
+		t.Fatal(err)
+	}
 	shell := NewShellTool()
 	args, _ := json.Marshal(map[string]any{"cmd": "pwd > cwd.txt"})
-	ctx := sandboxctx.WithSandboxContext(context.Background(), sandboxctx.SandboxContext{Dir: sandboxDir, Background: true, BackgroundKind: sandboxctx.BackgroundKindCron})
+	ctx := workspacepath.WithPathScope(contextinfo.WithBackgroundKind(context.Background(), contextinfo.BackgroundKindCron), workspacepath.PathScope{Dir: sandboxDir, Restricted: true})
 	if _, _, err := shell.Call(ctx, toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}

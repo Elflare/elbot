@@ -2,22 +2,21 @@ package cron
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"elbot/internal/background"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
-	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/session"
 	"elbot/internal/storage"
+	"elbot/internal/workspace"
 )
 
 type resolvedCronTarget struct {
@@ -102,7 +101,14 @@ func (s *Service) deliverPrepared(ctx context.Context, job storage.CronJob, meta
 			case outputState.Status == DeliveryFallbackPending:
 				out, status = delivery.Text(outputState.FallbackText), DeliveryFallbackDelivered
 			default:
-				out, buildErr = background.BuildReportSegmentOutput(state.ReportSegments[segmentIndex], s.cronSandbox(job.Name))
+				segment := state.ReportSegments[segmentIndex]
+				var scope workspace.PathScope
+				if segment.MediaID == "" && !delivery.IsHTTPMediaSource(segment.URL) {
+					scope, buildErr = s.cronSandbox(job.Name)
+				}
+				if buildErr == nil {
+					out, buildErr = background.BuildReportSegmentOutput(segment, scope)
+				}
 				if buildErr != nil && (!recovery || ctx.Err() != nil) {
 					logResult.ResultStatus = globalevents.ResultFailed
 				}
@@ -301,8 +307,9 @@ func reportSegmentFallbackText(segment llm.MessageSegment) string {
 	return fmt.Sprintf("路径 %s 附件发送失败", value)
 }
 
-func (s *Service) cronSandbox(jobName string) sandboxctx.SandboxContext {
-	return sandboxctx.SandboxContext{Dir: filepath.Join(s.sandboxRoot, filepath.FromSlash(cronSandboxSubdir(jobName))), Background: true, BackgroundKind: sandboxctx.BackgroundKindCron}
+func (s *Service) cronSandbox(jobName string) (workspace.PathScope, error) {
+	dir, err := workspace.SandboxDir(s.sandboxRoot, cronSandboxSubdir(jobName))
+	return workspace.PathScope{Dir: dir, Restricted: true}, err
 }
 
 func encodeDeliveryState(state CronDeliveryState) (string, error) {

@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"path/filepath"
+	"os"
 	"strings"
 
 	agentshare "elbot/internal/agent/share"
@@ -19,10 +19,10 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
-	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
+	"elbot/internal/workspace"
 )
 
 type BackgroundRunner struct {
@@ -85,12 +85,15 @@ func (r *BackgroundRunner) RunBackground(ctx context.Context, req background.Run
 	if sandboxSubdir == "" {
 		sandboxSubdir = "background"
 	}
-	ctx = sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{
-		Root:           sandboxRoot,
-		Dir:            filepath.Join(sandboxRoot, filepath.FromSlash(sandboxSubdir)),
-		Background:     true,
-		BackgroundKind: toolBackgroundKind(req.Kind),
-	})
+	dir, err := workspace.SandboxDir(sandboxRoot, sandboxSubdir)
+	if err != nil {
+		return background.RunResult{}, err
+	}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return background.RunResult{}, err
+	}
+	ctx = workspace.WithPathScope(ctx, workspace.PathScope{Dir: dir, Restricted: true})
+	ctx = contextinfo.WithBackgroundKind(ctx, toolBackgroundKind(req.Kind))
 
 	if req.ModelProvider != "" || req.Model != "" {
 		ctx = modelmgr.WithSelectionOverride(ctx, config.ModelSelection{Provider: req.ModelProvider, Model: req.Model})
@@ -104,7 +107,7 @@ func (r *BackgroundRunner) RunBackground(ctx context.Context, req background.Run
 		}
 		return background.RunResult{}, err
 	}
-	if err := session.NewWorkspaceStore(r.sessions, r.sessionRows, bgSession.ID).EnsureWorkspaceDir(ctx, filepath.Join(sandboxRoot, filepath.FromSlash(sandboxSubdir))); err != nil {
+	if err := session.NewWorkspaceStore(r.sessions, r.sessionRows, bgSession.ID).EnsureWorkspaceDir(ctx, dir); err != nil {
 		return background.RunResult{}, err
 	}
 	var preloaded backgroundPreloadResult
@@ -223,14 +226,14 @@ func backgroundPromptWithSkills(prompt, skillPrompt string) string {
 	return "[系统预加载资源]\n\n以下工具使用说明与 Skill 文档已由系统预加载。可调用能力以本次请求注入的 top-level tool schema 为准。\n\n" + skillPrompt + "\n\n[后台任务]\n\n" + strings.TrimSpace(prompt)
 }
 
-func toolBackgroundKind(kind background.Kind) sandboxctx.BackgroundKind {
+func toolBackgroundKind(kind background.Kind) contextinfo.BackgroundKind {
 	switch kind {
 	case background.KindCron:
-		return sandboxctx.BackgroundKindCron
+		return contextinfo.BackgroundKindCron
 	case background.KindElnis:
-		return sandboxctx.BackgroundKindElnis
+		return contextinfo.BackgroundKindElnis
 	default:
-		return sandboxctx.BackgroundKind(strings.TrimSpace(string(kind)))
+		return contextinfo.BackgroundKind(strings.TrimSpace(string(kind)))
 	}
 }
 
@@ -239,6 +242,6 @@ func NewBackgroundRunner(deps BackgroundRunnerDeps) *BackgroundRunner {
 	return &BackgroundRunner{
 		sessions: deps.Sessions, sessionRows: deps.SessionRows, identity: deps.Identity,
 		execution: deps.Execution, preloader: deps.Preloader, toolState: deps.ToolState,
-		sandboxRoot: filepath.Clean(deps.SandboxRoot),
+		sandboxRoot: deps.SandboxRoot,
 	}
 }

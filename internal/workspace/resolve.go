@@ -1,3 +1,4 @@
+// 统一解析调用范围或 Session 工作目录中的文件路径。
 package workspace
 
 import (
@@ -7,27 +8,29 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-
-	sandboxctx "elbot/internal/sandbox"
 )
 
 func ResolveWorkspacePath(ctx context.Context, rawPath string, opts PathResolveOptions) (ResolvedPath, error) {
 	if err := ctx.Err(); err != nil {
 		return ResolvedPath{}, err
 	}
-	rawPath = strings.TrimSpace(rawPath)
-	if rawPath == "" {
-		return ResolvedPath{}, fmt.Errorf("path is required")
-	}
-	if sandbox, ok := sandboxctx.SandboxContextFromContext(ctx); ok && sandbox.Background {
-		path, err := sandboxctx.ResolveSandboxRelativePath(sandbox, rawPath)
+	if scope, ok := PathScopeFromContext(ctx); ok && scope.Restricted {
+		path, err := ResolveSandboxRelativePath(scope, rawPath)
 		if err != nil {
 			return ResolvedPath{}, err
 		}
 		if err := validateResolvedPath(path, opts); err != nil {
 			return ResolvedPath{}, err
 		}
-		return ResolvedPath{Path: filepath.Clean(path), BaseDir: filepath.Clean(firstNonEmptyString(sandbox.Dir, sandbox.Root))}, nil
+		baseDir, err := filepath.Abs(strings.TrimSpace(scope.Dir))
+		if err != nil {
+			return ResolvedPath{}, err
+		}
+		return ResolvedPath{Path: path, BaseDir: baseDir}, nil
+	}
+	rawPath = strings.TrimSpace(rawPath)
+	if rawPath == "" {
+		return ResolvedPath{}, fmt.Errorf("path is required")
 	}
 	expandedPath, err := expandWorkspacePath(rawPath)
 	if err != nil {
@@ -46,11 +49,7 @@ func ResolveWorkspacePath(ctx context.Context, rawPath string, opts PathResolveO
 	if err := validateResolvedPath(path, opts); err != nil {
 		return ResolvedPath{}, err
 	}
-	resolved := ResolvedPath{Path: path, BaseDir: baseDir, WasAbs: wasAbs}
-	if wasAbs {
-		resolved.Warnings = []string{absolutePathWorkspaceWarning}
-	}
-	return resolved, nil
+	return ResolvedPath{Path: path, BaseDir: baseDir, WasAbs: wasAbs}, nil
 }
 
 func ValidateWorkspaceDir(path string) (string, error) {
@@ -65,6 +64,10 @@ func ValidateWorkspaceDir(path string) (string, error) {
 	path = filepath.Clean(normalizeWorkspaceLocalPath(expandedPath))
 	if path == "" || path == "." {
 		return "", fmt.Errorf("workspace path is required")
+	}
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve workspace path: %w", err)
 	}
 	info, err := os.Stat(path)
 	if err != nil {
@@ -111,6 +114,9 @@ func validateResolvedPath(path string, opts PathResolveOptions) error {
 	if info.IsDir() && !opts.AllowDirectory {
 		return fmt.Errorf("path is a directory")
 	}
+	if opts.RequireRegularFile && !info.Mode().IsRegular() {
+		return fmt.Errorf("path is not a regular file")
+	}
 	return nil
 }
 
@@ -123,15 +129,6 @@ func normalizeWorkspaceLocalPath(path string) string {
 		return strings.ToUpper(string(path[1])) + ":" + filepath.FromSlash(path[2:])
 	}
 	return filepath.FromSlash(path)
-}
-
-func firstNonEmptyString(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
 }
 
 func isASCIIAlpha(ch byte) bool { return ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' }

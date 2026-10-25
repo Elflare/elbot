@@ -26,6 +26,29 @@ func TestPerMessageSnapshots(t *testing.T) {
 	wg.Wait()
 }
 
+func TestBackgroundSourceCanBeClearedWithoutChangingOtherFacts(t *testing.T) {
+	base, cancel := context.WithCancel(WithActor(t.Context(), Actor{ID: "owner"}))
+	defer cancel()
+	for _, kind := range []BackgroundKind{"", BackgroundKindCron, BackgroundKindElnis, "custom"} {
+		ctx := WithBackgroundKind(base, kind)
+		if got, ok := BackgroundKindFromContext(ctx); !ok || got != kind || !BackgroundContext(ctx) {
+			t.Fatalf("background source=%q present=%t", got, ok)
+		}
+		cleared := WithoutBackgroundKind(ctx)
+		if BackgroundContext(cleared) || !BackgroundContext(ctx) {
+			t.Fatal("clearing changed the parent or kept the child background")
+		}
+		if got, ok := ActorFromContext(cleared); !ok || got.ID != "owner" {
+			t.Fatal("clearing background source lost actor")
+		}
+	}
+	ctx := WithoutBackgroundKind(WithBackgroundKind(base, BackgroundKindCron))
+	cancel()
+	if ctx.Err() != context.Canceled {
+		t.Fatal("clearing background source lost cancellation")
+	}
+}
+
 func TestDomainsCanBeMissingAndClearedIndependently(t *testing.T) {
 	base, cancel := context.WithCancel(context.Background())
 	ctx := WithConversation(base, Conversation{Source: Source{Platform: "qq"}})

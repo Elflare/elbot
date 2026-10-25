@@ -10,15 +10,14 @@ import (
 	"strings"
 
 	"elbot/internal/security"
-	
+
 	"mvdan.cc/sh/v3/syntax"
 )
 
 var windowsAbsPathPattern = regexp.MustCompile(`^[A-Za-z]:/`)
 
-// background sandbox 是轻量路径约束，不是完整 OS 级沙箱。
-// 后台任务无人值守，因此禁止绝对路径、.. 逃逸、动态路径和 cd，
-// 尽量把 shell 影响限制在 sandbox cwd 内。
+// 受限调用使用轻量路径约束，不是完整 OS 级沙箱。
+// 命令分析由 Shell 负责，路径范围不代表后台身份。
 func applyShellSandboxRisk(cmdText string, assessment toolshare.RiskAssessment) toolshare.RiskAssessment {
 	if isPowerShellEnv() {
 		return assessment
@@ -42,7 +41,7 @@ func validateBashShellSandboxCommand(cmdText string) []string {
 	parser := syntax.NewParser(syntax.Variant(syntax.LangBash))
 	file, err := parser.Parse(strings.NewReader(cmdText), "")
 	if err != nil {
-		return []string{"background sandbox 无法解析 shell AST，拒绝后台自动执行: " + err.Error()}
+		return []string{"受限调用无法解析 shell AST: " + err.Error()}
 	}
 	checker := &shellSandboxChecker{}
 	syntax.Walk(file, func(node syntax.Node) bool {
@@ -79,7 +78,7 @@ func (c *shellSandboxChecker) checkCall(call *syntax.CallExpr) {
 	}
 	name, ok := literalWord(call.Args[0])
 	if !ok || name == "" {
-		c.add("命令名包含动态结构，background sandbox 无法静态确认")
+		c.add("命令名包含动态结构，受限调用 无法静态确认")
 		return
 	}
 	name = commandBase(name)
@@ -158,7 +157,7 @@ func sandboxPathViolation(value string) string {
 	}
 	clean := path.Clean(p)
 	if clean == ".." || strings.HasPrefix(clean, "../") {
-		return "逃逸 background sandbox"
+		return "逃逸 受限调用"
 	}
 	return ""
 }

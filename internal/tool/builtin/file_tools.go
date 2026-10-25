@@ -14,9 +14,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
-	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/workspace"
 )
 
@@ -168,6 +168,10 @@ func (t ReadFileTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *t
 		return nil, err.Error(), err
 	}
 	path := resolved.Path
+	var warnings []string
+	if resolved.WasAbs && !contextinfo.BackgroundContext(ctx) {
+		warnings = append(warnings, toolshare.AbsolutePathWorkspaceWarning)
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, err.Error(), err
@@ -180,7 +184,7 @@ func (t ReadFileTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *t
 			}
 		}
 		{
-			result, callErr := readFileDirectorySearch(ctx, path, mode, args, resolved.Warnings, t.astCache)
+			result, callErr := readFileDirectorySearch(ctx, path, mode, args, warnings, t.astCache)
 			logContent := ""
 			if result != nil {
 				logContent = result.Content
@@ -209,7 +213,7 @@ func (t ReadFileTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *t
 		return nil, err.Error(), err
 	}
 	lines := fileops.SplitLines(file.Text)
-	warnings := append(resolved.Warnings, t.FileGuard.ReadWarnings(path)...)
+	warnings = append(warnings, t.FileGuard.ReadWarnings(path)...)
 	if largeFile {
 		warnings = append(warnings, fmt.Sprintf("large file: %d bytes; ast and ast_function modes are disabled", info.Size()))
 	}
@@ -395,8 +399,8 @@ func (t EditFileTool) AssessRisk(ctx context.Context, req toolshare.CallRequest)
 	if err := checkFileToolWrite(t.FileGuard, resolved.Path, args.Create); err != nil {
 		return toolshare.RiskAssessment{}, err
 	}
-	if sandbox, ok := sandboxctx.SandboxContextFromContext(ctx); ok && sandbox.Background {
-		return toolshare.RiskAssessment{Level: toolshare.RiskMedium, Reasons: []string{"后台文件编辑限制在当前任务工作目录内"}}, nil
+	if scope, ok := workspace.PathScopeFromContext(ctx); ok && scope.Restricted {
+		return toolshare.RiskAssessment{Level: toolshare.RiskMedium, Reasons: []string{"文件编辑限制在当前调用工作目录内"}}, nil
 	}
 	return toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"文件内容写入操作需要确认"}}, nil
 }
@@ -599,15 +603,19 @@ func (t EditFileTool) call(ctx context.Context, args editFileArgs, prepared *fil
 	}
 	content := fmt.Sprintf("dry_run: %t\nedited: %s\ncreated: %t\nencoding: %s\nrevision_before: %s\nrevision_after: %s\ndiff:\n%s", result.DryRun, result.Path, result.Created, result.Encoding, result.RevisionBefore, result.RevisionAfter, result.Diff)
 	content += fmt.Sprintf("\nrollback_available: %t", result.RollbackAvailable)
+	var warnings []string
+	if resolved.WasAbs && !contextinfo.BackgroundContext(ctx) {
+		warnings = append(warnings, toolshare.AbsolutePathWorkspaceWarning)
+	}
 	if result.RollbackEvicted > 0 {
-		resolved.Warnings = append(resolved.Warnings, fmt.Sprintf("撤销备份达到内存上限，已清理 %d 条最旧记录。", result.RollbackEvicted))
+		warnings = append(warnings, fmt.Sprintf("撤销备份达到内存上限，已清理 %d 条最旧记录。", result.RollbackEvicted))
 	}
 	if lease, _ := t.Rollback.EditSession(ctx); lease != nil && !result.RollbackAvailable {
-		resolved.Warnings = append(resolved.Warnings, "文件已编辑，但撤销备份因会话失效或容量限制未保留。")
+		warnings = append(warnings, "文件已编辑，但撤销备份因会话失效或容量限制未保留。")
 	}
 	{
 		logContent = fmt.Sprintf("edited=%s created=%t dry_run=%t rollback_available=%t\ndiff:\n%s", result.Path, result.Created, result.DryRun, result.RollbackAvailable, result.Diff)
-		return &toolshare.Result{Content: content, Warnings: resolved.Warnings}, logContent, nil
+		return &toolshare.Result{Content: content, Warnings: warnings}, logContent, nil
 	}
 }
 

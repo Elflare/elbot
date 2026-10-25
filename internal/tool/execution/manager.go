@@ -9,16 +9,16 @@ import (
 	"strings"
 
 	"elbot/internal/events"
-	"elbot/internal/media"
 	"elbot/internal/security"
 	"elbot/internal/storage"
+	toolmedia "elbot/internal/tool/media"
 	"elbot/internal/tool/registry"
 )
 
 type Manager struct {
 	registry   *registry.Registry                      // 本次调用解析使用的原生工具目录。
 	permission *security.Permission                    // 根部注入的调用权限与确认策略。
-	media      *media.Manager                          // 执行前查询工具参数引用的媒体。
+	media      *toolmedia.MediaRuntime                 // 经统一媒体入口查询工具参数引用的媒体。
 	log        func(context.Context, events.LogRecord) // Root-owned publication for complete execution records.
 }
 
@@ -35,7 +35,7 @@ type resolvedTool struct {
 	Error error
 }
 
-func NewManager(registry *registry.Registry, permission *security.Permission, media *media.Manager, log func(context.Context, events.LogRecord)) *Manager {
+func NewManager(registry *registry.Registry, permission *security.Permission, media *toolmedia.MediaRuntime, log func(context.Context, events.LogRecord)) *Manager {
 	return &Manager{registry: registry, permission: permission, media: media, log: log}
 }
 

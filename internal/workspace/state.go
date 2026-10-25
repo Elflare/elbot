@@ -1,3 +1,4 @@
+// 编解码 Session 中的工作目录与说明文件提示状态。
 package workspace
 
 import (
@@ -8,7 +9,9 @@ import (
 
 // State owns only workspace metadata; the Session adapter preserves other keys.
 type State struct {
-	Dir             string   `json:"workspace_dir,omitempty"`
+	// Dir 是 Session 保存的工作目录，不包含调用级路径限制。
+	Dir string `json:"workspace_dir,omitempty"`
+	// AgentNoticeDirs 记录已向模型附带工作约定的目录，避免同一目录重复提示。
 	AgentNoticeDirs []string `json:"workspace_agent_notice_dirs,omitempty"`
 }
 

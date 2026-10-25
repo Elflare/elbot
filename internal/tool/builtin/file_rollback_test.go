@@ -16,7 +16,6 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/fileops"
-	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/security"
 	"elbot/internal/tool"
 	workspacepath "elbot/internal/workspace"
@@ -146,7 +145,7 @@ func TestRollbackToolPermissionsAndSessionExpiry(t *testing.T) {
 	if _, _, err := f.rollback.Call(userCtx, rollbackRequest("file")); err == nil || !strings.Contains(err.Error(), "superadmin") {
 		t.Fatalf("user: %v", err)
 	}
-	background := sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{Background: true, Dir: f.workspace.dir})
+	background := workspacepath.WithPathScope(contextinfo.WithBackgroundKind(ctx, ""), workspacepath.PathScope{Dir: f.workspace.dir, Restricted: true})
 	if _, _, err := f.rollback.Call(background, rollbackRequest("file")); err == nil {
 		t.Fatal("background rollback allowed")
 	}

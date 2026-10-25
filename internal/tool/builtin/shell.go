@@ -5,10 +5,10 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -20,8 +20,6 @@ import (
 
 	"elbot/internal/llm"
 	"elbot/internal/processenv"
-	sandboxctx "elbot/internal/sandbox"
-	"elbot/internal/tool"
 	"elbot/internal/workspace"
 )
 
@@ -34,15 +32,15 @@ const (
 )
 
 type ShellTool struct {
-	Media      *tool.MediaRuntime
+	Media      *toolmedia.MediaRuntime
 	FileGuard  *FileGuard
 	ProcessEnv processenv.Environment
 }
 
 type shellArgs struct {
-	MediaInputs []tool.MediaInput `json:"media_inputs"`
-	Cmd         string            `json:"cmd"`
-	TimeoutMS   int               `json:"timeout_ms"`
+	MediaInputs []toolshare.MediaInput `json:"media_inputs"`
+	Cmd         string                 `json:"cmd"`
+	TimeoutMS   int                    `json:"timeout_ms"`
 }
 
 type shellData struct {
@@ -111,7 +109,7 @@ func (t ShellTool) AssessRisk(ctx context.Context, req toolshare.CallRequest) (t
 		return toolshare.RiskAssessment{}, err
 	}
 	assessment := classifyShellCommand(cmdText)
-	if sandbox, ok := sandboxctx.SandboxContextFromContext(ctx); ok && sandbox.Background {
+	if scope, ok := workspace.PathScopeFromContext(ctx); ok && scope.Restricted {
 		assessment = applyShellSandboxRisk(cmdText, assessment)
 	}
 	if assessment.Level == "" {
@@ -229,12 +227,6 @@ func decodeShellArgs(req toolshare.CallRequest) (shellArgs, string, error) {
 }
 
 func resolveShellWorkDir(ctx context.Context) (string, error) {
-	if sandbox, ok := sandboxctx.SandboxContextFromContext(ctx); ok && strings.TrimSpace(sandbox.Dir) != "" {
-		if err := os.MkdirAll(sandbox.Dir, 0755); err != nil {
-			return "", fmt.Errorf("create shell sandbox: %w", err)
-		}
-		return filepath.Clean(sandbox.Dir), nil
-	}
 	return workspace.CurrentWorkspaceDir(ctx)
 }
 

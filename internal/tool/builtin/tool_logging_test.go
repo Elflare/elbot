@@ -14,7 +14,6 @@ import (
 
 	"elbot/internal/fileops"
 	"elbot/internal/storage"
-	
 )
 
 type failingHistoryLogRepository struct {
@@ -34,7 +33,7 @@ func TestHistoryQueryErrorLogPreservesBusinessError(t *testing.T) {
 	ctx, _, _ := newHistoryMediaToolTest(t)
 	callErr := errors.New(strings.Repeat("雪🔥", 700))
 	repository := failingHistoryLogRepository{err: callErr}
-	for _, value := range []toolshare.Tool{NewSearchChatHistoryTool(repository), NewGetChatHistoryAroundTool(repository)} {
+	for _, value := range []toolshare.Tool{NewSearchChatHistoryTool(repository, nil), NewGetChatHistoryAroundTool(repository, nil)} {
 		result, logContent, err := value.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":"1"}`)})
 		if result != nil || err != callErr || logContent != toolshare.TruncateLogContent(callErr.Error(), 1024) || utf8.RuneCountInString(logContent) != 1024 {
 			t.Fatalf("%s: result=%+v log=%q err=%v", value.Name(), result, logContent, err)
@@ -54,10 +53,10 @@ func TestHistoryQueryLogIncludesResult(t *testing.T) {
 		value         toolshare.Tool
 		args, summary string
 	}{
-		{"search", NewSearchChatHistoryTool(mediaTool.history), `{}`, "returned=4"},
-		{"around", NewGetChatHistoryAroundTool(mediaTool.history), `{"message_id":"long"}`, "message_id=long returned=4"},
-		{"empty", NewSearchChatHistoryTool(mediaTool.history), `{"query":"no-match"}`, "returned=0"},
-		{"empty_around", NewGetChatHistoryAroundTool(mediaTool.history), `{"message_id":"missing"}`, "message_id=missing returned=0"},
+		{"search", NewSearchChatHistoryTool(mediaTool.history, nil), `{}`, "returned=4"},
+		{"around", NewGetChatHistoryAroundTool(mediaTool.history, nil), `{"message_id":"long"}`, "message_id=long returned=4"},
+		{"empty", NewSearchChatHistoryTool(mediaTool.history, nil), `{"query":"no-match"}`, "returned=0"},
+		{"empty_around", NewGetChatHistoryAroundTool(mediaTool.history, nil), `{"message_id":"missing"}`, "message_id=missing returned=0"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			result, logContent, err := tc.value.Call(ctx, toolshare.CallRequest{Arguments: json.RawMessage(tc.args)})

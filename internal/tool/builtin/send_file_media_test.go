@@ -4,13 +4,13 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
 	"path/filepath"
 	"testing"
 
 	"elbot/internal/media"
 	"elbot/internal/storage/sqlite"
-	
 )
 
 func TestSendFileMediaIDBuildsLocalOutput(t *testing.T) {
@@ -21,14 +21,13 @@ func TestSendFileMediaIDBuildsLocalOutput(t *testing.T) {
 	}
 	defer store.Close()
 	root := filepath.Join(t.TempDir(), "sandbox")
-	files := NewFileManager(root)
-	files.Media = media.NewManager(store, root, &media.LocalBackend{Root: root})
-	resource, err := files.Media.ImportBytes(ctx, []byte("hello"), media.Input{Name: "hello.txt", MIMEType: "text/plain"})
+	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
+	resource, err := center.ImportBytes(ctx, []byte("hello"), media.Input{Name: "hello.txt", MIMEType: "text/plain"})
 	if err != nil {
 		t.Fatalf("import media: %v", err)
 	}
 
-	toolValue := NewSendFileTool(files)
+	toolValue := NewSendFileTool(toolmedia.NewMediaRuntime(center, root))
 	arguments, _ := json.Marshal(map[string]string{"source": resource.ID})
 	result, _, err := toolValue.Call(ctx, toolshare.CallRequest{Arguments: arguments})
 	if err != nil {
@@ -40,7 +39,7 @@ func TestSendFileMediaIDBuildsLocalOutput(t *testing.T) {
 }
 
 func TestSendFileSchemaExposesSource(t *testing.T) {
-	schema := NewSendFileTool(NewFileManager(t.TempDir())).Schema()
+	schema := NewSendFileTool(nil).Schema()
 	properties, ok := schema.Parameters["properties"].(map[string]any)
 	if !ok {
 		t.Fatalf("schema properties missing: %#v", schema.Parameters)

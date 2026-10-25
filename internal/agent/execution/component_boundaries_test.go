@@ -3,26 +3,21 @@ package execution
 import (
 	"context"
 	"errors"
-
 	"sync"
 	"testing"
 	"time"
 
 	"elbot/internal/agent/dialogue"
 	agentevents "elbot/internal/agent/events"
-
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-
 	"elbot/internal/modelmgr"
 	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
-	sandboxctx "elbot/internal/sandbox"
-
 	"elbot/internal/signal"
 	"elbot/internal/storage"
-
 	"elbot/internal/turn"
+	"elbot/internal/workspace"
 )
 
 type statusReadingPlatform struct {
@@ -93,7 +88,8 @@ func TestExecutionViewKeepsRequestCancellationAndClearsBackgroundOverrides(t *te
 		Sender:                &fakePlatform{},
 		BufferAssistantOutput: true,
 	})
-	ctx = sandboxctx.WithSandboxContext(ctx, sandboxctx.SandboxContext{Root: "/background", Dir: "/background/task"})
+	ctx = workspace.WithPathScope(ctx, workspace.PathScope{Dir: "/background/task", Restricted: true})
+	ctx = contextinfo.WithBackgroundKind(ctx, contextinfo.BackgroundKindCron)
 	ctx = modelmgr.WithSelectionOverride(ctx, config.ModelSelection{Provider: "task", Model: "task"})
 	foreground, cancelForeground := context.WithCancel(contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "remote:original"}}))
 	actor := contextinfo.Actor{ID: "cli:owner", Role: contextinfo.RoleSuperadmin}
@@ -108,8 +104,11 @@ func TestExecutionViewKeepsRequestCancellationAndClearsBackgroundOverrides(t *te
 	if info, ok := contextinfo.ConversationFromContext(refreshed); !ok || info.Source.ScopeID != "remote:original" {
 		t.Fatalf("foreground public facts = %+v, %v", info, ok)
 	}
-	if sandbox, _ := sandboxctx.SandboxContextFromContext(refreshed); sandbox.Root != "" || sandbox.Dir != "" {
-		t.Fatalf("retained sandbox: %+v", sandbox)
+	if scope, ok := workspace.PathScopeFromContext(refreshed); ok {
+		t.Fatalf("retained path scope: %+v", scope)
+	}
+	if contextinfo.BackgroundContext(refreshed) {
+		t.Fatal("retained background identity")
 	}
 	if selection := modelmgr.SelectionOverrideFromContext(refreshed); selection.Provider != "" || selection.Model != "" {
 		t.Fatalf("retained model override: %+v", selection)

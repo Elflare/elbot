@@ -19,10 +19,10 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	sandboxctx "elbot/internal/sandbox"
 	"elbot/internal/storage"
 	"elbot/internal/tool/discovery"
 	toolstate "elbot/internal/tool/state"
+	"elbot/internal/workspace"
 )
 
 // Run 顺序准备与确认、并发执行，并由单一协调器提交结果。
@@ -287,11 +287,11 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		}
 		resolved := m.resolve(ctx, call.Name, req.DiscoveredTools, snapshot.Mode)
 		runSource := "foreground"
-		if sandbox, ok := sandboxctx.SandboxContextFromContext(ctx); ok && (sandbox.Background || sandbox.BackgroundKind != "") {
+		if backgroundKind, ok := contextinfo.BackgroundKindFromContext(ctx); ok {
 			runSource = ""
-			switch sandbox.BackgroundKind {
-			case sandboxctx.BackgroundKindCron, sandboxctx.BackgroundKindElnis:
-				runSource = string(sandbox.BackgroundKind)
+			switch backgroundKind {
+			case contextinfo.BackgroundKindCron, contextinfo.BackgroundKindElnis:
+				runSource = string(backgroundKind)
 			}
 		}
 		if resolved.ResultStatus != events.ResultSucceeded {
@@ -440,14 +440,12 @@ func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor 
 		return toolshare.ConfirmResult{Allowed: true}, nil
 	}
 	info := resolved.Native.Info()
-	sandbox, _ := sandboxctx.SandboxContextFromContext(ctx)
-	backgroundKind := ""
-	if sandbox.Background {
-		backgroundKind = string(sandbox.BackgroundKind)
-	}
+	kind, _ := contextinfo.BackgroundKindFromContext(ctx)
+	backgroundKind := string(kind)
 	permission := m.permission.CheckTool(actor, call.Name, assessment.Level, info.OwnerScoped, info.SuperadminOnly, backgroundKind)
 	if permission.Reason == "background_shell_auto_confirmed" || permission.Reason == "background_shell_rejected" {
-		content := map[string]string{"kind": backgroundKind, "tool": call.Name, "risk": string(assessment.Level), "sandbox_dir": sandbox.Dir, "arguments": call.Arguments}
+		scope, _ := workspace.PathScopeFromContext(ctx)
+		content := map[string]string{"kind": backgroundKind, "tool": call.Name, "risk": string(assessment.Level), "sandbox_dir": scope.Dir, "arguments": call.Arguments}
 		for key, value := range content {
 			content[key] = toolshare.TruncateLogContent(value, 2048)
 		}

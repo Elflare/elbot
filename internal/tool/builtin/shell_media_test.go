@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -12,7 +13,6 @@ import (
 
 	"elbot/internal/media"
 	"elbot/internal/storage/sqlite"
-	"elbot/internal/tool"
 	"elbot/internal/workspace"
 )
 
@@ -30,7 +30,7 @@ func TestShellMediaInputsAndCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	shell := NewShellTool()
-	shell.Media = &tool.MediaRuntime{Center: center, SandboxRoot: t.TempDir()}
+	shell.Media = toolmedia.NewMediaRuntime(center, t.TempDir())
 	command := `cat "$ELBOT_MEDIA_1" "$ELBOT_MEDIA_2"`
 	slow := "sleep 10"
 	if isPowerShellEnv() {
@@ -51,7 +51,7 @@ func TestShellMediaInputsAndCleanup(t *testing.T) {
 				cancel()
 				runCtx = canceled
 			}
-			raw, _ := json.Marshal(map[string]any{"cmd": test.cmd, "timeout_ms": test.timeout, "media_inputs": []tool.MediaInput{{MediaID: item.ID}, {MediaID: item.ID}}})
+			raw, _ := json.Marshal(map[string]any{"cmd": test.cmd, "timeout_ms": test.timeout, "media_inputs": []toolshare.MediaInput{{MediaID: item.ID}, {MediaID: item.ID}}})
 			original := string(raw)
 			result, _, err := shell.Call(runCtx, toolshare.CallRequest{Arguments: raw})
 			if test.name == "success" && (err != nil || strings.Count(result.Content, "shell-media-content") != 2) {

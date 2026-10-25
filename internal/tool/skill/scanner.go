@@ -5,6 +5,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	toolmedia "elbot/internal/tool/media"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,7 +22,7 @@ const windowsAppDirName = "ElBot"
 const xdgAppDirName = "elbot"
 
 type FilesystemScanner struct {
-	Media   *tool.MediaRuntime
+	Media   *toolmedia.MediaRuntime
 	Root    string
 	Catalog *Catalog
 	// ProcessEnv 传给扫描及重载产生的命令工具，作为技能 .env 的基础环境。

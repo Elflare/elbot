@@ -8,7 +8,6 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
-	"elbot/internal/sandbox"
 	"elbot/internal/security"
 	"elbot/internal/tool/share"
 )
@@ -154,7 +153,7 @@ func TestQueryToolsQualification(t *testing.T) {
 	}
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleUser})
 	ctx = security.WithPermission(ctx, security.NewPermission("low", "high", nil))
-	background := sandbox.WithSandboxContext(ctx, sandbox.SandboxContext{Background: true})
+	background := contextinfo.WithBackgroundKind(ctx, "")
 	model := contextinfo.WithModel(ctx, contextinfo.Model{APIType: "responses"})
 	admin := contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	for _, tc := range []struct {
