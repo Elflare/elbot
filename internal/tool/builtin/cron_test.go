@@ -7,9 +7,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	elcron "elbot/internal/cron"
-	
 )
 
 func TestCronToolCallReturnsCurrentTimeHint(t *testing.T) {
@@ -68,7 +65,7 @@ func TestResolveUpdateRunAtReturnsPointerForRelativeOffset(t *testing.T) {
 }
 
 func TestCronToolsRiskAndVisibility(t *testing.T) {
-	tools := NewCronTools(&elcron.Service{})
+	tools := NewCronTools(nil)
 	if len(tools) != 3 {
 		t.Fatalf("tool count = %d", len(tools))
 	}

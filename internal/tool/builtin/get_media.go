@@ -5,23 +5,17 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
-	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
 	"elbot/internal/llm"
-	"elbot/internal/media"
-	"elbot/internal/platform"
-	"elbot/internal/storage"
+	"elbot/internal/tool/chat_history"
 )
 
-const getMediaDownloadLimit = 5
-
 type GetMediaTool struct {
-	history storage.ChatHistoryRepository
-	center  *toolmedia.MediaRuntime
+	history *chat_history.Manager
 }
 
 type getMediaArgs struct {
@@ -29,8 +23,8 @@ type getMediaArgs struct {
 	MediaIndex [][]int  `json:"media_index"`
 }
 
-func NewGetMediaTool(history storage.ChatHistoryRepository, center *toolmedia.MediaRuntime) GetMediaTool {
-	return GetMediaTool{history: history, center: center}
+func NewGetMediaTool(history *chat_history.Manager) GetMediaTool {
+	return GetMediaTool{history: history}
 }
 func (GetMediaTool) Name() string { return "get_media" }
 func getMediaBuilder() *toolshare.Builder {
@@ -90,55 +84,32 @@ func (t GetMediaTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *t
 			}
 		}
 	}
-	chat, err := currentChatHistoryContext(ctx)
-	if err != nil {
-		{
-			result := &toolshare.Result{Content: err.Error()}
-			return result, result.Content, nil
-		}
+	results, err := t.history.GetMedia(ctx, chat_history.MediaRequest{MessageIDs: args.MessageIDs, MediaIndex: args.MediaIndex})
+	if errors.Is(err, chat_history.ErrNoChatContext) {
+		return &toolshare.Result{Content: err.Error()}, err.Error(), nil
 	}
-	msg, _ := platform.MessageContextFrom(ctx)
-	var lines []string
-	var requests []media.HistoryMediaRequest
-	var positions []int
-	for i, id := range args.MessageIDs {
-		indexes := []int{1}
-		if args.MediaIndex != nil {
-			indexes = args.MediaIndex[i]
-		}
-		row, err := t.history.GetByPlatformMessage(ctx, chat.Platform, chat.ScopeID, id)
-		if err != nil {
-			if err == storage.ErrNotFound {
-				lines = append(lines, fmt.Sprintf("[#%s] 当前聊天没有该消息。", id))
-				continue
-			}
-			return nil, err.Error(), err
-		}
-		for _, index := range indexes {
-			positions = append(positions, len(lines))
-			lines = append(lines, fmt.Sprintf("[#%s] %d. ", id, index))
-			requests = append(requests, media.HistoryMediaRequest{Message: *row, Index: index})
-		}
-	}
-	results, err := t.center.GetHistoryMediaBatch(ctx, requests, msg.MediaResolver, media.HistoryFetchOptions{MaxFetchAttempts: getMediaDownloadLimit})
 	if err != nil {
 		return nil, err.Error(), err
 	}
-	for i, result := range results {
+	var lines []string
+	for _, result := range results {
+		if errors.Is(result.Err, chat_history.ErrNotFound) {
+			lines = append(lines, fmt.Sprintf("[#%s] 当前聊天没有该消息。", result.MessageID))
+			continue
+		}
 		var text string
 		switch {
-		case errors.Is(result.Err, media.ErrHistoryMediaIndex):
+		case errors.Is(result.Err, chat_history.ErrMediaIndex):
 			text = "[媒体序号越界]"
-		case errors.Is(result.Err, media.ErrHistoryFetchLimit):
-			text = "[媒体未下载：达到本次 5 个下载尝试上限]"
+		case errors.Is(result.Err, chat_history.ErrFetchLimit):
+			text = fmt.Sprintf("[媒体未下载：达到本次 %d 个下载尝试上限]", chat_history.MaxFetchAttempts)
 		case result.Err != nil:
 			text = "[媒体获取失败：来源不可用、超限或关联保存失败]"
-			logContent += fmt.Sprintf("\n[#%s] %d: %v", requests[i].Message.PlatformMessageID, requests[i].Index, result.Err)
+			logContent += fmt.Sprintf("\n[#%s] %d: %v", result.MessageID, result.Index, result.Err)
 		default:
-			request := requests[i]
-			text = historyMediaLabel(media.HistorySegments(request.Message)[request.Index-1].Type, result.Media.ID)
+			text = historyMediaLabel(result.IsImage, result.Media.ID)
 		}
-		lines[positions[i]] += text
+		lines = append(lines, fmt.Sprintf("[#%s] %d. %s", result.MessageID, result.Index, text))
 	}
 	{
 		result := &toolshare.Result{Content: strings.Join(lines, "\n")}
@@ -146,15 +117,13 @@ func (t GetMediaTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *t
 	}
 }
 
-func historyMediaLabel(kind platform.MessageSegmentType, id string) string {
+func historyMediaLabel(isImage bool, id string) string {
 	label := "文件"
-	if kind == platform.SegmentImage {
+	if isImage {
 		label = "图片"
 	}
 	if id == "" {
-		id = "未下载"
-	} else {
-		id = strings.TrimPrefix(id, media.IDPrefix)
+		id = "media:未下载"
 	}
-	return "[" + label + " media:" + id + "]"
+	return "[" + label + " " + id + "]"
 }

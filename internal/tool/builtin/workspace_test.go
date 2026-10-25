@@ -12,7 +12,8 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/security"
-	"elbot/internal/tool"
+	"elbot/internal/tool/discovery"
+	toolregistry "elbot/internal/tool/registry"
 	"elbot/internal/workspace"
 )
 
@@ -210,12 +211,12 @@ func TestDiscoverWorkspaceLoadsCurrentAgentInstructions(t *testing.T) {
 	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	ctx = security.WithPermission(ctx, security.NewPermission("low", "critical", map[string][]string{"cli": {"admin"}}))
 	ctx = contextinfo.WithActor(ctx, contextinfo.Actor{ID: "cli:admin", Platform: "cli", PlatformUserID: "admin", Role: contextinfo.RoleSuperadmin})
-	registry := tool.NewRegistry()
+	registry := toolregistry.NewRegistry(security.NewPermission("critical", "critical", nil))
 	if err := registry.Register(NewWorkspaceTool()); err != nil {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]string{"name": "workspace"})
-	result, _, err := tool.NewDiscoverTool(registry).Call(ctx, toolshare.CallRequest{Arguments: args})
+	result, _, err := discovery.NewDiscoverTool(discovery.NewResolver(registry)).Call(ctx, toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +224,7 @@ func TestDiscoverWorkspaceLoadsCurrentAgentInstructions(t *testing.T) {
 		t.Fatalf("unexpected discovery result: %q", result.Content)
 	}
 
-	result, _, err = tool.NewDiscoverTool(registry).Call(ctx, toolshare.CallRequest{})
+	result, _, err = discovery.NewDiscoverTool(discovery.NewResolver(registry)).Call(ctx, toolshare.CallRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,14 +354,14 @@ func TestDiscoverToolsResetsMissingWorkspace(t *testing.T) {
 			store := &testWorkspaceStore{dir: filepath.Join(t.TempDir(), "missing")}
 			ctx := workspace.WithWorkspaceStore(context.Background(), store)
 			ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
-			registry := tool.NewRegistry()
+			registry := toolregistry.NewRegistry(security.NewPermission("critical", "critical", nil))
 			for _, item := range []toolshare.Tool{NewWorkspaceTool(), NewShellTool(), NewReadFileTool(), NewRollbackFileTool(nil)} {
 				if err := registry.Register(item); err != nil {
 					t.Fatal(err)
 				}
 			}
 			args, _ := json.Marshal(map[string]string{"name": name})
-			result, _, err := tool.NewDiscoverTool(registry).Call(ctx, toolshare.CallRequest{Arguments: args})
+			result, _, err := discovery.NewDiscoverTool(discovery.NewResolver(registry)).Call(ctx, toolshare.CallRequest{Arguments: args})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -383,7 +384,7 @@ func TestDiscoverToolsResetsMissingWorkspace(t *testing.T) {
 			if !found {
 				t.Fatalf("missing schema for %s: %s", name, result.Data)
 			}
-			result, _, err = tool.NewDiscoverTool(registry).Call(ctx, toolshare.CallRequest{Arguments: args})
+			result, _, err = discovery.NewDiscoverTool(discovery.NewResolver(registry)).Call(ctx, toolshare.CallRequest{Arguments: args})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -18,16 +18,17 @@ import (
 
 // Supervisor 只持有内部组件并转接对外能力；装配和生命周期分别由 wiring.go、lifecycle.go 负责。
 type Supervisor struct {
-	catalog   *runtime
-	engine    *execution.Manager
-	preloader *preload.PreloadService
-	state     *toolstate.StateService
-	ctx       context.Context    // Tool 生命周期上下文。
-	cancel    context.CancelFunc // 由生命周期入口取消后台工作。
-	mu        sync.Mutex         // 保护启动、关闭状态。
-	started   bool               // 标记已启动。
-	closed    bool               // 标记已进入关闭阶段。
-	done      chan struct{}      // 生命周期退出通知。
+	catalog                *runtime
+	engine                 *execution.Manager
+	preloader              *preload.PreloadService
+	state                  *toolstate.StateService
+	ctx                    context.Context    // Tool 生命周期上下文。
+	cancel                 context.CancelFunc // 由生命周期入口取消后台工作。
+	mu                     sync.Mutex         // 保护启动、关闭状态。
+	started                bool               // 标记已启动。
+	closed                 bool               // 标记已进入关闭阶段。
+	done                   chan struct{}      // 生命周期退出通知。
+	releaseBackgroundTools func()             // 释放本总管接入的后台工具注册，不关闭 Background。
 }
 
 func (m *Supervisor) QueryTools(ctx context.Context, query share.ToolQuery) ([]share.Info, error) {

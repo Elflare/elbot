@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-
-	
 )
 
 func TestClassifyBashShellCommand(t *testing.T) {
@@ -48,7 +46,7 @@ func TestBashShellRiskAppliesBackgroundSandbox(t *testing.T) {
 		reasonPart string
 	}{
 		{name: "relative redirect", cmd: "echo hi > report.txt", want: toolshare.RiskHigh, reasonPart: "写入重定向"},
-		{name: "parent redirect", cmd: "echo hi > ../report.txt", want: toolshare.RiskCritical, reasonPart: "逃逸 background sandbox"},
+		{name: "parent redirect", cmd: "echo hi > ../report.txt", want: toolshare.RiskCritical, reasonPart: "重定向目标逃逸"},
 
 		{name: "absolute read", cmd: "cat /etc/passwd", want: toolshare.RiskCritical, reasonPart: "使用绝对路径"},
 		{name: "dynamic redirect", cmd: "echo hi > \"$file\"", want: toolshare.RiskCritical, reasonPart: "动态结构"},

@@ -17,7 +17,8 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/fileops"
 	"elbot/internal/security"
-	"elbot/internal/tool"
+	"elbot/internal/tool/discovery"
+	toolregistry "elbot/internal/tool/registry"
 	workspacepath "elbot/internal/workspace"
 )
 
@@ -191,11 +192,12 @@ func TestRollbackToolFileGuardChecksActualTarget(t *testing.T) {
 }
 
 func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
-	runtime, err := NewRuntime(RuntimeOptions{ConfigDir: t.TempDir(), FileRollback: fileops.NewService(nil)})
-	if err != nil {
-		t.Fatal(err)
+	registry := toolregistry.NewRegistry(security.NewPermission("critical", "critical", nil))
+	for _, item := range []toolshare.Tool{NewWorkspaceTool(), NewReadFileTool(), NewEditFileTool(), NewRollbackFileTool(fileops.NewService(nil))} {
+		if err := registry.Register(item); err != nil {
+			t.Fatal(err)
+		}
 	}
-	registry := runtime.Registry
 	rollback, ok := registry.Get("rollback_file")
 	if !ok {
 		t.Fatal("missing rollback tool")
@@ -204,7 +206,9 @@ func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
 	if !info.Hidden || !info.SuperadminOnly || !info.ForegroundOnly || info.Risk != toolshare.RiskHigh || !slices.Equal(info.Tags, []string{"files"}) {
 		t.Fatalf("info: %+v", info)
 	}
-	list, err := registry.Discover("")
+	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin})
+	resolver := discovery.NewResolver(registry)
+	list, err := resolver.Discover(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,13 +217,14 @@ func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
 			t.Fatal("hidden tool listed")
 		}
 	}
-	if _, err := registry.Discover("rollback_file"); err == nil {
-		t.Fatal("hidden root discovery allowed")
+	hidden, err := resolver.Discover(ctx, []string{"rollback_file"})
+	if err != nil || len(hidden.Errors) != 1 || len(hidden.Tools) != 0 {
+		t.Fatalf("hidden discovery = %+v, %v", hidden, err)
 	}
 	for _, name := range []string{"read_file", "edit_file"} {
-		result, err := registry.Discover(name)
-		if err != nil {
-			t.Fatal(err)
+		result, err := resolver.Discover(ctx, []string{name})
+		if err != nil || len(result.Errors) != 0 {
+			t.Fatalf("discover = %+v, %v", result, err)
 		}
 		found := false
 		for _, entry := range result.Tools {
@@ -231,13 +236,12 @@ func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
 			t.Fatalf("%s did not expand rollback", name)
 		}
 	}
-	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin})
-	details, errs := registry.DiscoverDetails(ctx, []string{"read_file", "edit_file"}, func(candidate toolshare.Tool) bool { return tool.InfoAvailableInContext(ctx, candidate.Info()) })
-	if len(errs) > 0 {
-		t.Fatal(errs)
+	details, err := resolver.DiscoverDetails(ctx, []string{"read_file", "edit_file"})
+	if err != nil || len(details.Errors) != 0 {
+		t.Fatalf("details = %+v, %v", details, err)
 	}
 	count := 0
-	for _, entry := range details {
+	for _, entry := range details.Tools {
 		if entry.Info.Name == "rollback_file" {
 			count++
 		}
@@ -245,11 +249,12 @@ func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("duplicate dependencies: %d", count)
 	}
-	user := contextinfo.Actor{ID: "user", Role: contextinfo.RoleUser}
-	details, _ = registry.DiscoverDetails(context.Background(), []string{"edit_file"}, func(candidate toolshare.Tool) bool {
-		return tool.CanAccessTool(user, security.NewPermission("critical", "high", nil), candidate.Info())
-	})
-	for _, entry := range details {
+	userCtx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "user", Role: contextinfo.RoleUser})
+	details, err = resolver.DiscoverDetails(userCtx, []string{"edit_file"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range details.Tools {
 		if entry.Info.Name == "rollback_file" {
 			t.Fatal("user discovered superadmin dependency")
 		}

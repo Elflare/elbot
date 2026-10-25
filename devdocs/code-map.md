@@ -115,6 +115,11 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/tool/registry/`、`execution/`、`builtin/`：工具目录、执行核心与内置工具。
 - `internal/tool/share/`：公共定义、schema 构造与纯数据辅助。
 - `internal/tool/share/prepared.go`：CallPreparer 契约与 PreparedCall 参数快照，供工具实现和 Execution 共用。
+- `internal/tool/share/cron.go`：Tool 内部的 CronService、创建／更新请求与精简管理结果，不依赖 Background 或 Cron 实现。
+- `internal/tool/background_bridge.go`：ConnectBackground 接收后台公开能力，转换请求与结果并注册 Cron 工具；注册关系由 Tool 的 Close 释放。
+- `internal/tool/chat_history/manager.go`：历史组件构造与 Backend 契约；`query.go` 处理聊天范围、用户／时间筛选和查询；`media.go` 处理媒体选择、序号与批次获取策略。
+- `internal/tool/chat_history_bridge.go`：将 Platform 历史记录、引用及媒体解析结果转换为组件数据，适配媒体获取；外部历史类型不进入 Builtin 或 chat_history。
+- `internal/tool/builtin/chat_history.go`、`get_media.go`、`view_image.go`：历史工具 schema、参数解析与展示，历史查询及媒体选择交给 chat_history；`cron.go` 通过 Share 的 CronService 管理任务。
 - `internal/tool/discovery/resolve.go`：解析发现请求及依赖；`Resolve` 接收已筛选对象，返回展示数据与本次使用的对象集合。
 - `internal/tool/state/state.go`：完整工具声明的解码、会话读取、提交与纯元数据补丁准备；`PrepareUpdate` 供 Execution 随工具结果提交，根部只转发对外状态能力。
 - `internal/tool/state/discovered.go`：已发现工具声明的规范化、合并与排序。

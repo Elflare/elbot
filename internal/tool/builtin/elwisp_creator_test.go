@@ -10,9 +10,11 @@ import (
 	"testing"
 
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/elyph"
-	"elbot/internal/fileops"
-	
+	"elbot/internal/security"
+	"elbot/internal/tool/discovery"
+	toolregistry "elbot/internal/tool/registry"
 )
 
 func TestElwispCreatorToolInfo(t *testing.T) {
@@ -143,12 +145,13 @@ func writeElwispCreatorTestFile(t *testing.T, path, content string) {
 	}
 }
 
-func TestRegisterAllIncludesElwispCreator(t *testing.T) {
-	runtime, err := NewRuntime(RuntimeOptions{ConfigDir: t.TempDir(), FileRollback: fileops.NewService(nil)})
-	if err != nil {
-		t.Fatal(err)
+func TestElwispCreatorDependencyDiscovery(t *testing.T) {
+	registry := toolregistry.NewRegistry(security.NewPermission("critical", "critical", nil))
+	for _, item := range []toolshare.Tool{NewElwispCreatorTool(), NewReadFileTool(), NewEditFileTool(), NewShellTool(), NewRollbackFileTool(nil), NewWorkspaceTool()} {
+		if err := registry.Register(item); err != nil {
+			t.Fatal(err)
+		}
 	}
-	registry := runtime.Registry
 	registered, ok := registry.Get(ElwispCreatorName)
 	if !ok {
 		t.Fatal("elwisp_creator not registered")
@@ -156,12 +159,13 @@ func TestRegisterAllIncludesElwispCreator(t *testing.T) {
 	if got := strings.Join(registered.Info().DependsOn, ","); got != "read_file,edit_file,shell" {
 		t.Fatalf("depends_on = %q", got)
 	}
-	details, errors := registry.DiscoverDetails(context.Background(), []string{ElwispCreatorName}, func(toolshare.Tool) bool { return true })
-	if len(errors) > 0 {
-		t.Fatalf("discover errors = %#v", errors)
+	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
+	details, err := discovery.NewResolver(registry).DiscoverDetails(ctx, []string{ElwispCreatorName})
+	if err != nil || len(details.Errors) > 0 {
+		t.Fatalf("discover = %+v, %v", details, err)
 	}
 	seen := map[string]bool{}
-	for _, detail := range details {
+	for _, detail := range details.Tools {
 		seen[detail.Info.Name] = true
 	}
 	for _, name := range []string{ElwispCreatorName, "read_file", "edit_file", "shell"} {

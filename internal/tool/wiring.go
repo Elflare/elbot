@@ -11,8 +11,8 @@ import (
 	"elbot/internal/fileops"
 	"elbot/internal/memory/resident"
 	"elbot/internal/processenv"
-	"elbot/internal/storage"
 	"elbot/internal/tool/builtin"
+	"elbot/internal/tool/chat_history"
 	"elbot/internal/tool/discovery"
 	"elbot/internal/tool/execution"
 	toolmedia "elbot/internal/tool/media"
@@ -52,6 +52,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	})
 	skillManager := skill.NewManager(filepath.Join(configDir, "skills"), registry, environment)
 	mediaRuntime := toolmedia.NewMediaRuntime(deps.Media, cfg.Sandbox.Root)
+	chatHistory := chat_history.NewManager(&chatHistoryBridge{platform: deps.Platform, media: mediaRuntime}, info)
 	m.catalog = &runtime{
 		registry:            registry,
 		residentMemoryStore: residentStore,
@@ -63,7 +64,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		media:               mediaRuntime,
 		residentMemoryStore: residentStore,
 		skillManager:        skillManager,
-		chatHistory:         deps.Platform,
+		chatHistory:         chatHistory,
 		longMemoryDir:       filepath.Join(configDir, "long_memory"),
 		fileRollback:        m.catalog.fileRollback,
 		processEnv:          environment,
@@ -85,15 +86,11 @@ type registerOptions struct {
 	runtimeInfo         runtimeinfo.Info
 	residentMemoryStore *resident.Store
 	skillManager        *skill.Manager
-	chatHistory         interface {
-		SearchChatHistory(context.Context, storage.ChatHistorySearchRequest) ([]storage.ChatMessage, error)
-		ChatHistoryAround(context.Context, storage.ChatHistoryAroundRequest) ([]storage.ChatMessage, error)
-		GetChatHistoryMessage(ctx context.Context, platform, scopeID, messageID string) (*storage.ChatMessage, error)
-	} // 仅转交 Platform 的查询能力，不获取或拥有聊天历史存储。
-	longMemoryDir string
-	media         *toolmedia.MediaRuntime
-	fileRollback  *fileops.Service
-	processEnv    processenv.Environment
+	chatHistory         *chat_history.Manager // 已适配外部能力的聊天历史组件。
+	longMemoryDir       string
+	media               *toolmedia.MediaRuntime
+	fileRollback        *fileops.Service
+	processEnv          processenv.Environment
 }
 
 func registerAll(registry *toolregistry.Registry, opts registerOptions) error {
@@ -122,9 +119,9 @@ func registerAll(registry *toolregistry.Registry, opts registerOptions) error {
 	if err := registry.Register(builtin.NewSendFileTool(opts.media)); err != nil {
 		return err
 	}
-	search := builtin.NewSearchChatHistoryTool(opts.chatHistory, opts.media, info)
-	around := builtin.NewGetChatHistoryAroundTool(opts.chatHistory, opts.media, info)
-	if err := registry.Register(builtin.NewGetMediaTool(opts.chatHistory, opts.media)); err != nil {
+	search := builtin.NewSearchChatHistoryTool(opts.chatHistory, opts.media)
+	around := builtin.NewGetChatHistoryAroundTool(opts.chatHistory, opts.media)
+	if err := registry.Register(builtin.NewGetMediaTool(opts.chatHistory)); err != nil {
 		return err
 	}
 	if err := registry.Register(search); err != nil {
@@ -133,7 +130,7 @@ func registerAll(registry *toolregistry.Registry, opts registerOptions) error {
 	if err := registry.Register(around); err != nil {
 		return err
 	}
-	if err := registry.Register(builtin.NewReplyToChatHistoryMessageTool(opts.chatHistory, info)); err != nil {
+	if err := registry.Register(builtin.NewReplyToChatHistoryMessageTool(opts.chatHistory)); err != nil {
 		return err
 	}
 	if err := registry.Register(builtin.NewWebSearchTool(opts.processEnv)); err != nil {

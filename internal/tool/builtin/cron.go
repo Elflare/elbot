@@ -11,43 +11,22 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
-	elcron "elbot/internal/cron"
 	"elbot/internal/llm"
-	
+
 	"elbot/internal/tool/runtimeinfo"
 )
 
 type CronTool struct {
-	service *elcron.Service
+	service toolshare.CronService
 	info    runtimeinfo.Info
 }
 type CronQueryTool struct {
-	service *elcron.Service
+	service toolshare.CronService
 	info    runtimeinfo.Info
 }
 type CronWriteTool struct {
-	service *elcron.Service
+	service toolshare.CronService
 	info    runtimeinfo.Info
-}
-
-type cronCreateArgs struct {
-	Name                string   `json:"name"`
-	Title               string   `json:"title"`
-	ScheduleMode        string   `json:"schedule_mode"`
-	RunAt               string   `json:"run_at"`
-	CronExpr            string   `json:"cron_expr"`
-	RunAfterMinutes     int      `json:"run_after_minutes"`
-	RunAfterHours       int      `json:"run_after_hours"`
-	RunAfterDays        int      `json:"run_after_days"`
-	RunAfterWeeks       int      `json:"run_after_weeks"`
-	RunAfterMonths      int      `json:"run_after_months"`
-	TriggerMode         string   `json:"trigger_mode"`
-	Message             string   `json:"message"`
-	ToolListNames       []string `json:"tool_list_names"`
-	ModelProvider       string   `json:"model_provider"`
-	Model               string   `json:"model"`
-	AllEnabledPlatforms bool     `json:"all_enabled_platforms"`
-	Enabled             *bool    `json:"enabled"`
 }
 
 type cronQueryArgs struct {
@@ -77,7 +56,7 @@ type cronWriteArgs struct {
 	Enabled             *bool    `json:"enabled"`
 }
 
-func NewCronTools(service *elcron.Service, infos ...runtimeinfo.Info) []toolshare.Tool {
+func NewCronTools(service toolshare.CronService, infos ...runtimeinfo.Info) []toolshare.Tool {
 	info := runtimeinfo.First(infos...)
 	return []toolshare.Tool{CronTool{service: service, info: info}, CronQueryTool{service: service, info: info}, CronWriteTool{service: service, info: info}}
 }
@@ -123,23 +102,23 @@ func (t CronQueryTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *
 		return nil, err.Error(), err
 	}
 	if strings.TrimSpace(args.Name) != "" {
-		view, err := t.service.Get(ctx, args.Name, actorFromContext(ctx))
+		view, err := t.service.GetCron(ctx, args.Name, actorFromContext(ctx))
 		if err != nil {
 			return nil, err.Error(), err
 		}
 		{
 			result, callErr := jsonResult(view)
 			if result != nil {
-				result.NeedsElyphRules = view.Metadata.Trigger.Mode == elcron.TriggerLLM
+				result.NeedsElyphRules = view.TriggerMode == "llm"
 			}
-			logContent := fmt.Sprintf("name=%s enabled=%t completed=%t", view.Job.Name, view.Job.Enabled, view.Delivery.TaskCompleted)
+			logContent := fmt.Sprintf("name=%s enabled=%t completed=%t", view.Name, view.Enabled, view.Completed)
 			if callErr != nil {
 				logContent = callErr.Error()
 			}
 			return result, logContent, callErr
 		}
 	}
-	views, err := t.service.List(ctx, args.IncludeDisabled, args.IncludeCompleted, actorFromContext(ctx))
+	views, err := t.service.ListCrons(ctx, args.IncludeDisabled, args.IncludeCompleted, actorFromContext(ctx))
 	if err != nil {
 		return nil, err.Error(), err
 	}
@@ -147,10 +126,10 @@ func (t CronQueryTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *
 		result, callErr := jsonResult(views)
 		logContent := fmt.Sprintf("returned=%d", len(views))
 		for _, view := range views {
-			if result != nil && view.Metadata.Trigger.Mode == elcron.TriggerLLM {
+			if result != nil && view.TriggerMode == "llm" {
 				result.NeedsElyphRules = true
 			}
-			logContent += fmt.Sprintf("\nname=%s enabled=%t completed=%t", view.Job.Name, view.Job.Enabled, view.Delivery.TaskCompleted)
+			logContent += fmt.Sprintf("\nname=%s enabled=%t completed=%t", view.Name, view.Enabled, view.Completed)
 		}
 		if callErr != nil {
 			logContent = callErr.Error()
@@ -225,7 +204,7 @@ func (t CronWriteTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *
 			return result, logContent, callErr
 		}
 	case "disable":
-		if err := t.service.Disable(ctx, args.Name, actorFromContext(ctx)); err != nil {
+		if err := t.service.DisableCron(ctx, args.Name, actorFromContext(ctx)); err != nil {
 			return nil, err.Error(), err
 		}
 		{
@@ -243,7 +222,7 @@ func (t CronWriteTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *
 			return result, logContent, callErr
 		}
 	case "delete":
-		if err := t.service.Delete(ctx, args.Name, actorFromContext(ctx)); err != nil {
+		if err := t.service.DeleteCron(ctx, args.Name, actorFromContext(ctx)); err != nil {
 			return nil, err.Error(), err
 		}
 		{
@@ -285,12 +264,11 @@ func (t CronWriteTool) create(ctx context.Context, args cronWriteArgs) (*toolsha
 	if args.AllEnabledPlatforms != nil {
 		allEnabledPlatforms = *args.AllEnabledPlatforms
 	}
-	createArgs := cronCreateArgs{Name: args.Name, Title: args.Title, ScheduleMode: args.ScheduleMode, RunAt: args.RunAt, CronExpr: args.CronExpr, RunAfterMinutes: args.RunAfterMinutes, RunAfterHours: args.RunAfterHours, RunAfterDays: args.RunAfterDays, RunAfterWeeks: args.RunAfterWeeks, RunAfterMonths: args.RunAfterMonths, TriggerMode: args.TriggerMode, Message: args.Message, ToolListNames: args.ToolListNames, ModelProvider: provider, Model: model, AllEnabledPlatforms: allEnabledPlatforms, Enabled: args.Enabled}
-	runAt, err := resolveCreateRunAtAt(createArgs, t.info.CurrentTime())
+	runAt, err := resolveRunAtAt(args.RunAt, relativeOffset{Minutes: args.RunAfterMinutes, Hours: args.RunAfterHours, Days: args.RunAfterDays, Weeks: args.RunAfterWeeks, Months: args.RunAfterMonths}, t.info.CurrentTime())
 	if err != nil {
 		return nil, err
 	}
-	job, err := t.service.Create(ctx, elcron.UpsertRequest{Name: args.Name, Title: args.Title, ScheduleMode: elcron.ScheduleMode(args.ScheduleMode), RunAt: runAt, CronExpr: args.CronExpr, TriggerMode: elcron.TriggerMode(args.TriggerMode), Message: args.Message, ToolListNames: args.ToolListNames, ModelProvider: provider, Model: model, AllEnabledPlatforms: allEnabledPlatforms, Enabled: enabled, Actor: actor, SourcePlatform: actor.Platform})
+	job, err := t.service.CreateCron(ctx, toolshare.CronCreateRequest{Name: args.Name, Title: args.Title, ScheduleMode: args.ScheduleMode, RunAt: runAt, CronExpr: args.CronExpr, TriggerMode: args.TriggerMode, Message: args.Message, ToolListNames: args.ToolListNames, ModelProvider: provider, Model: model, AllEnabledPlatforms: allEnabledPlatforms, Enabled: enabled, Actor: actor, SourcePlatform: actor.Platform})
 	if err != nil {
 		return nil, err
 	}
@@ -302,31 +280,23 @@ func (t CronWriteTool) update(ctx context.Context, args cronWriteArgs) (*toolsha
 	if err != nil {
 		return nil, err
 	}
-	patch := elcron.PatchRequest{Name: args.Name, Title: stringPtrIfNotEmpty(args.Title), RunAt: runAt, CronExpr: stringPtrIfNotEmpty(args.CronExpr), Message: stringPtrIfNotEmpty(args.Message), ModelProvider: args.ModelProvider, Model: args.Model, AllEnabledPlatforms: args.AllEnabledPlatforms, Enabled: args.Enabled, Actor: actorFromContext(ctx)}
+	patch := toolshare.CronUpdateRequest{Name: args.Name, Title: stringPtrIfNotEmpty(args.Title), RunAt: runAt, CronExpr: stringPtrIfNotEmpty(args.CronExpr), Message: stringPtrIfNotEmpty(args.Message), ModelProvider: args.ModelProvider, Model: args.Model, AllEnabledPlatforms: args.AllEnabledPlatforms, Enabled: args.Enabled, Actor: actorFromContext(ctx)}
 	if args.ScheduleMode != "" {
-		v := elcron.ScheduleMode(args.ScheduleMode)
+		v := args.ScheduleMode
 		patch.ScheduleMode = &v
 	}
 	if args.TriggerMode != "" {
-		v := elcron.TriggerMode(args.TriggerMode)
+		v := args.TriggerMode
 		patch.TriggerMode = &v
 	}
 	if args.ToolListNames != nil {
 		patch.ToolListNames = &args.ToolListNames
 	}
-	job, err := t.service.Update(ctx, patch)
+	job, err := t.service.UpdateCron(ctx, patch)
 	if err != nil {
 		return nil, err
 	}
 	return jsonResult(map[string]any{"ok": true, "job": job})
-}
-
-func resolveCreateRunAt(args cronCreateArgs) (string, error) {
-	return resolveCreateRunAtAt(args, time.Now())
-}
-
-func resolveCreateRunAtAt(args cronCreateArgs, now time.Time) (string, error) {
-	return resolveRunAtAt(args.RunAt, relativeOffset{Minutes: args.RunAfterMinutes, Hours: args.RunAfterHours, Days: args.RunAfterDays, Weeks: args.RunAfterWeeks, Months: args.RunAfterMonths}, now)
 }
 
 func resolveUpdateRunAt(runAt *string, offset relativeOffset) (*string, error) {

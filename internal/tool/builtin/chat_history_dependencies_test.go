@@ -8,8 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/storage"
-	"elbot/internal/tool"
+	"elbot/internal/tool/chat_history"
+	"elbot/internal/tool/discovery"
+	toolregistry "elbot/internal/tool/registry"
 )
 
 func TestChatHistoryToolsMutuallyDiscoverable(t *testing.T) {
@@ -17,9 +18,9 @@ func TestChatHistoryToolsMutuallyDiscoverable(t *testing.T) {
 		NewSearchChatHistoryTool(nil, nil),
 		NewGetChatHistoryAroundTool(nil, nil),
 		NewReplyToChatHistoryMessageTool(nil),
-		NewGetMediaTool(nil, nil),
+		NewGetMediaTool(nil),
 	}
-	registry := tool.NewRegistry()
+	registry := toolregistry.NewRegistry(nil)
 	for _, value := range tools {
 		if err := registry.Register(value); err != nil {
 			t.Fatal(err)
@@ -36,13 +37,16 @@ func TestChatHistoryToolsMutuallyDiscoverable(t *testing.T) {
 					t.Fatalf("unexpected dependency on %s: %#v", other.Name(), info.DependsOn)
 				}
 			}
-			details, errs := registry.DiscoverDetails(context.Background(), []string{value.Name()}, nil)
+			details, err := discovery.NewResolver(registry).DiscoverDetails(context.Background(), []string{value.Name()})
+			if err != nil {
+				t.Fatal(err)
+			}
 			if info.Hidden {
-				if len(details) != 0 || len(errs) != 1 {
-					t.Fatalf("hidden tool exposed: %#v, errors = %#v", details, errs)
+				if len(details.Tools) != 0 || len(details.Errors) != 1 {
+					t.Fatalf("hidden tool exposed: %#v", details)
 				}
-			} else if len(errs) != 0 || len(details) != len(tools) {
-				t.Fatalf("discovery = %#v, errors = %#v", details, errs)
+			} else if len(details.Errors) != 0 || len(details.Tools) != len(tools) {
+				t.Fatalf("discovery = %#v", details)
 			}
 			if info.Hidden != (value.Name() != "search_chat_history") {
 				t.Fatalf("hidden setting changed: %#v", info)
@@ -52,11 +56,11 @@ func TestChatHistoryToolsMutuallyDiscoverable(t *testing.T) {
 }
 
 func TestFormatChatHistoryLineIncludesReferenceContext(t *testing.T) {
-	row := storage.ChatMessage{
-		Platform: "qqonebot", PlatformMessageID: "84", SenderID: "2002", SenderName: "回复者",
-		Text: "本次发送的内容", ReplyToPlatformMessageID: "42",
-		Metadata:  `{"reply":{"sender_id":"1001","sender_name":"被引用者","text":"被引用内容"}}`,
-		CreatedAt: time.Date(2026, 9, 12, 15, 4, 5, 0, time.Local),
+	row := chat_history.Message{
+		Key: chat_history.MessageKey{Platform: "qqonebot", MessageID: "84"}, SenderID: "2002", SenderName: "回复者",
+		Text:          "本次发送的内容",
+		ReferenceText: "[引用#42：被引用者(qq:1001):被引用内容]\n\n本次发送的内容",
+		CreatedAt:     time.Date(2026, 9, 12, 15, 4, 5, 0, time.Local),
 	}
 	want := `=> [#84] 2026-09-12 15:04:05 回复者(2002): [引用#42：被引用者(qq:1001):被引用内容]
 

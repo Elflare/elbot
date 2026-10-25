@@ -41,6 +41,15 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Share 提供准备契约；单次调用固定工具对象，统一风险与权限决定，保留批次并发、确认、日志和逐项提交。
 - [ ] Builtin、Skill 完成各自依赖整理后，运行真实工具的集成测试及 Tool 根部整链路验证；文件编辑／撤销批次测试位于 Builtin。
 
+## Tool 历史与后台管理对接
+
+- [x] Builtin 的聊天工具接入 chat_history；查询范围、过滤和媒体选择归组件，Platform 历史及媒体获取由 Tool 根部适配，删除 Builtin 直连历史存储的逻辑。
+- [x] Cron 工具使用 Share 的服务与精简结果；Tool 根部提供 ConnectBackground，并管理注册关系的释放。
+- [x] 聊天历史与媒体的真实 SQLite 集成测试归 Tool 根部，Builtin 测试使用内部组件及契约；移除依赖旧 Runtime 装配的测试路径。
+- [ ] Background 提供公开的 CronCreateRequest、CronUpdateRequest、CronInfo 以及 CreateCron、UpdateCron、GetCron、ListCrons、DisableCron、DeleteCron 六项总管方法，与 Tool 根部适配契约一致。
+- [ ] App 在 Tool 与 Background 构造后、Tool.Start 前调用 Tool.ConnectBackground；补齐后验证注册释放及 Cron 整链路。
+- [ ] Skill 移除反向导入 Tool 根包后运行 Tool 全包测试；当前循环依赖阻塞根包构建。
+
 ## 媒体中心对接
 
 Tool 媒体层已统一向工具返回 `share.MediaInfo`，图片宽高、实际格式、存储位置和清理状态不属于工具契约。媒体中心后续使用自身公开类型，不能反向依赖 Tool 或其 Share。

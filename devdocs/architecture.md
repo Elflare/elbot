@@ -268,6 +268,27 @@ flowchart TD
 - Tool 根部在内部构造 StateService，只向 State 交付 Store；装配结构 runtime、registerOptions、registerAll 及组件字段均为包内实现。App 交付完整配置和共享依赖，不取得 StateService。根部的 DecodeState、DiscoveredToolsForSession、Commit 转发状态能力；State 复用 Registry 的后台资格筛选规则，不查询目录重建声明。后台调用方的总管接线仍待完成，见 [后台工具统一预载](tasks.md#后台工具统一预载)。
 - 普通预载由调用方经根部 Commit 提交；Execution 调用 State.PrepareUpdate，从当前会话快照生成仅含工具字段的元数据补丁，与工具结果原子提交，不另作独立状态提交。合并、名称集合、排序和存储字段编码均在 State 内部；PrepareUpdate 不进入总管公开接口。读取从元数据解码出独立对象；Commit 返回序列化后重新解码的状态，避免与输入声明共享 schema。
 
+聊天历史由 `chat_history.Manager` 处理当前聊天范围、用户／时间筛选、数量限制和媒体选择。Builtin 负责 schema、参数规范化与结果展示；组件的 Backend 由根部 `chatHistoryBridge` 实现，根部转换 Platform 历史记录与引用格式，并通过 Tool 媒体入口获取选中的媒体。查询仅整理媒体描述及已有 ID，不触发下载；同次媒体调用复用消息查询，保留请求顺序和重复项，未缓存媒体的获取尝试上限为 5。`view_image` 在获取前完成历史图片选择校验，获取后通过媒体入口校验图片内容。
+
+下面是代码依赖图，箭头表示依赖方向：
+
+```mermaid
+flowchart TD
+    W["tool/wiring.go：构造与注入"] --> B["builtin/chat_history.go、get_media.go、view_image.go：参数与展示"]
+    W --> H["chat_history/manager.go、query.go、media.go：契约、查询与媒体选择"]
+    W --> R["tool/chat_history_bridge.go：外部历史与媒体适配"]
+    B --> H
+    R --> H
+    R --> P["Platform 公开查询、引用与历史记录类型"]
+    R --> M["tool/media：媒体获取与精简结果"]
+    C["builtin/cron.go：Cron 参数与展示"] --> S["share/cron.go：内部任务管理契约"]
+    G["tool/background_bridge.go：连接、转换与注册"] --> C
+    G --> S
+    G --> BG["Background 公开任务管理契约"]
+```
+
+Cron 工具在启动前由 `Supervisor.ConnectBackground` 注册。根部将 Background 的请求／结果转换为 Share 契约，Builtin 不导入 Background 或 Cron；`CronInfo` 仅包含任务配置、启用／完成状态、次数及时间，不包含内部执行与投递数据。Tool 持有注册关系，BeginClose 保留收尾调用，Close 释放注册。Background 公开契约及 App 接线的完成状态见 [Tool 历史与后台管理对接](tasks.md#tool-历史与后台管理对接)。
+
 ```mermaid
 flowchart LR
     A["app/wiring.go：交付共享依赖"] --> W["tool/wiring.go：构造 StateService"]

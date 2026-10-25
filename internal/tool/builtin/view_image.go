@@ -14,15 +14,14 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	"elbot/internal/platform"
-	"elbot/internal/storage"
+	"elbot/internal/tool/chat_history"
 	toolmedia "elbot/internal/tool/media"
 	"elbot/internal/workspace"
 )
 
 type ViewImageTool struct {
 	center  *toolmedia.MediaRuntime
-	history storage.ChatHistoryRepository
+	history *chat_history.Manager
 }
 
 type viewImageArgs struct {
@@ -31,7 +30,7 @@ type viewImageArgs struct {
 	MediaIndex [][]int  `json:"media_index"`
 }
 
-func NewViewImageTool(center *toolmedia.MediaRuntime, history storage.ChatHistoryRepository) ViewImageTool {
+func NewViewImageTool(center *toolmedia.MediaRuntime, history *chat_history.Manager) ViewImageTool {
 	return ViewImageTool{center: center, history: history}
 }
 
@@ -172,58 +171,19 @@ func (t ViewImageTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *
 }
 
 func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (_ *toolshare.Result, logContent string, _ error) {
-	chat, err := currentChatHistoryContext(ctx)
-	if err != nil {
-		return nil, err.Error(), err
-	}
-	var requests []media.HistoryMediaRequest
-	for i, id := range args.MessageIDs {
-		if err := ctx.Err(); err != nil {
-			return nil, err.Error(), err
-		}
-		row, err := t.history.GetByPlatformMessage(ctx, chat.Platform, chat.ScopeID, id)
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, "", fmt.Errorf("[#%s] 当前聊天没有该消息", id)
-		}
-		if err != nil {
-			return nil, err.Error(), err
-		}
-		segments := media.HistorySegments(*row)
-		var images []int
-		for j, segment := range segments {
-			if segment.Type == platform.SegmentImage {
-				images = append(images, j+1)
-			}
-		}
-		if len(images) == 0 {
-			return nil, "", fmt.Errorf("[#%s] 没有图片", id)
-		}
-		indexes := images[:1]
-		if args.MediaIndex != nil {
-			indexes = args.MediaIndex[i]
-		}
-		for _, index := range indexes {
-			if index > len(segments) || segments[index-1].Type != platform.SegmentImage {
-				return nil, "", fmt.Errorf("[#%s] 序号 %d 不是图片；可选图片序号：%v", id, index, images)
-			}
-			requests = append(requests, media.HistoryMediaRequest{Message: *row, Index: index})
-		}
-	}
-	msg, _ := platform.MessageContextFrom(ctx)
-	results, err := t.center.GetHistoryMediaBatch(ctx, requests, msg.MediaResolver, media.HistoryFetchOptions{MaxFetchAttempts: getMediaDownloadLimit})
+	results, err := t.history.GetImages(ctx, chat_history.MediaRequest{MessageIDs: args.MessageIDs, MediaIndex: args.MediaIndex})
 	if err != nil {
 		return nil, err.Error(), err
 	}
 	var segments []llm.MessageSegment
-	for i, result := range results {
+	for _, result := range results {
 		if err := ctx.Err(); err != nil {
 			return nil, err.Error(), err
 		}
-		request := requests[i]
-		label := fmt.Sprintf("[#%s] %d.", request.Message.PlatformMessageID, request.Index)
+		label := fmt.Sprintf("[#%s] %d.", result.MessageID, result.Index)
 		switch {
-		case errors.Is(result.Err, media.ErrHistoryFetchLimit):
-			label += " 达到本次 5 个下载尝试上限"
+		case errors.Is(result.Err, chat_history.ErrFetchLimit):
+			label += fmt.Sprintf(" 达到本次 %d 个下载尝试上限", chat_history.MaxFetchAttempts)
 		case result.Err != nil:
 			label += " 图片获取失败"
 			logContent += fmt.Sprintf("\n%s %v", label, result.Err)

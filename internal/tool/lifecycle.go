@@ -46,6 +46,10 @@ func (m *Supervisor) Close(ctx context.Context) error {
 	m.BeginClose()
 	m.mu.Lock()
 	m.cancel()
+	if m.releaseBackgroundTools != nil {
+		m.releaseBackgroundTools()
+		m.releaseBackgroundTools = nil
+	}
 	if !m.started {
 		select {
 		case <-m.done:
