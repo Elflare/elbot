@@ -75,14 +75,10 @@ type longMemoryWriteArgs struct {
 }
 
 type longMemoryUpdatePreview struct {
-	// Target pins the real file addressed by the confirmation snapshot.
-	Target      string
-	Before      longMemoryRecord
-	After       longMemoryRecord
-	File        fileops.File
-	FullContent string
-	Diff        string
-	Changes     []string
+	Before  longMemoryRecord
+	After   longMemoryRecord
+	File    *fileops.PreparedFile // 公共文件层保存批准内容与原修订，提交时统一复核。
+	Changes []string
 }
 
 type longMemoryRecord struct {
@@ -258,8 +254,8 @@ func longMemoryUpdateRiskDetail(args longMemoryWriteArgs, preview longMemoryUpda
 		}
 	}
 	b.WriteString("预检 diff:\n")
-	b.WriteString(preview.Diff)
-	if !strings.HasSuffix(preview.Diff, "\n") {
+	b.WriteString(preview.File.Preview().Diff)
+	if !strings.HasSuffix(preview.File.Preview().Diff, "\n") {
 		b.WriteString("\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
@@ -470,7 +466,7 @@ func (s *longMemoryStore) update(ctx context.Context, preview longMemoryUpdatePr
 	if record.FilePath != preview.Before.FilePath {
 		return longMemoryRecord{}, fmt.Errorf("memory target changed after preflight")
 	}
-	if err := s.writeUpdatePreviewLocked(ctx, preview); err != nil {
+	if _, err := preview.File.Commit(ctx); err != nil {
 		return longMemoryRecord{}, err
 	}
 	info, err := os.Stat(preview.After.FilePath)
@@ -519,75 +515,71 @@ func (s *longMemoryStore) previewUpdateLocked(ctx context.Context, args longMemo
 		}
 		return longMemoryUpdatePreview{}, err
 	}
-	target, err := fileops.ResolveFileTarget(record.FilePath, false)
-	if err != nil {
-		return longMemoryUpdatePreview{}, err
-	}
-	file, err := fileops.ReadFile(record.FilePath, "")
-	if err != nil {
-		return longMemoryUpdatePreview{}, err
-	}
-	parsed, err := parseLongMemoryText(file.Text)
-	if err != nil {
-		return longMemoryUpdatePreview{}, fmt.Errorf("无法更新：记忆文件格式损坏，工具不会覆盖原文件。\n%s", longMemoryRepairAdvice(record.FilePath, err))
-	}
-	record = recordFromParsedFile(record.FilePath, parsed, record.FileMTimeNS, record.FileSize)
-	next := record
-	changes := []string{}
-	if args.Category != nil {
-		old := next.Category
-		next.Category = cleanLongMemoryText(*args.Category)
-		changes = appendLongMemoryChange(changes, "分类", old, next.Category)
-	}
-	if args.Title != nil {
-		old := next.Title
-		next.Title = cleanLongMemoryText(*args.Title)
-		changes = appendLongMemoryChange(changes, "标题", old, next.Title)
-	}
-	if args.Summary != nil {
-		old := next.Summary
-		next.Summary = cleanLongMemoryText(*args.Summary)
-		changes = appendLongMemoryChange(changes, "摘要", old, next.Summary)
-	}
-	if args.Keywords != nil {
-		old := next.Keywords
-		next.Keywords = strings.Join(splitLongMemoryKeywords(*args.Keywords), " ")
-		changes = appendLongMemoryChange(changes, "关键词", old, next.Keywords)
-	}
-	if args.Content != nil {
-		old := next.Content
-		next.Content = strings.TrimSpace(*args.Content)
-		changes = appendLongMemoryChange(changes, "正文", old, next.Content)
-	}
-	if len(args.ContentEdits) > 0 {
-		content, err := fileops.ApplyEdits(next.Content, args.ContentEdits)
+	var preview longMemoryUpdatePreview
+	file, err := fileops.PrepareFile(ctx, record.FilePath, func(text string) (string, error) {
+		parsed, err := parseLongMemoryText(text)
 		if err != nil {
-			return longMemoryUpdatePreview{}, err
+			return "", fmt.Errorf("无法更新：记忆文件格式损坏，工具不会覆盖原文件。\n%s", longMemoryRepairAdvice(record.FilePath, err))
 		}
-		old := next.Content
-		next.Content = strings.TrimSpace(content)
-		changes = appendLongMemoryChange(changes, "正文", old, next.Content)
-	}
-	if err := validateLongMemoryRecord(next, true); err != nil {
-		return longMemoryUpdatePreview{}, err
-	}
-	if len(changes) == 0 {
-		return longMemoryUpdatePreview{}, fmt.Errorf("edit produced no changes")
-	}
-	next.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	if next.CreatedAt == "" {
-		next.CreatedAt = next.UpdatedAt
-	}
-	data, err := marshalLongMemoryFile(next)
+		record = recordFromParsedFile(record.FilePath, parsed, record.FileMTimeNS, record.FileSize)
+		next := record
+		changes := []string{}
+		if args.Category != nil {
+			old := next.Category
+			next.Category = cleanLongMemoryText(*args.Category)
+			changes = appendLongMemoryChange(changes, "分类", old, next.Category)
+		}
+		if args.Title != nil {
+			old := next.Title
+			next.Title = cleanLongMemoryText(*args.Title)
+			changes = appendLongMemoryChange(changes, "标题", old, next.Title)
+		}
+		if args.Summary != nil {
+			old := next.Summary
+			next.Summary = cleanLongMemoryText(*args.Summary)
+			changes = appendLongMemoryChange(changes, "摘要", old, next.Summary)
+		}
+		if args.Keywords != nil {
+			old := next.Keywords
+			next.Keywords = strings.Join(splitLongMemoryKeywords(*args.Keywords), " ")
+			changes = appendLongMemoryChange(changes, "关键词", old, next.Keywords)
+		}
+		if args.Content != nil {
+			old := next.Content
+			next.Content = strings.TrimSpace(*args.Content)
+			changes = appendLongMemoryChange(changes, "正文", old, next.Content)
+		}
+		if len(args.ContentEdits) > 0 {
+			content, err := fileops.ApplyEdits(next.Content, args.ContentEdits)
+			if err != nil {
+				return "", err
+			}
+			old := next.Content
+			next.Content = strings.TrimSpace(content)
+			changes = appendLongMemoryChange(changes, "正文", old, next.Content)
+		}
+		if err := validateLongMemoryRecord(next, true); err != nil {
+			return "", err
+		}
+		if len(changes) == 0 {
+			return "", fmt.Errorf("edit produced no changes")
+		}
+		next.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		if next.CreatedAt == "" {
+			next.CreatedAt = next.UpdatedAt
+		}
+		data, err := marshalLongMemoryFile(next)
+		if err != nil {
+			return "", err
+		}
+		preview.Before, preview.After, preview.Changes = record, next, changes
+		return string(data), nil
+	})
 	if err != nil {
 		return longMemoryUpdatePreview{}, err
 	}
-	oldText := fileops.NormalizeEditText(file.Text)
-	newText := fileops.NormalizeEditText(string(data))
-	if oldText == newText {
-		return longMemoryUpdatePreview{}, fmt.Errorf("edit produced no changes")
-	}
-	return longMemoryUpdatePreview{Target: target, Before: record, After: next, File: file, FullContent: string(data), Diff: fileops.UnifiedDiff(record.FilePath, fileops.SplitLines(oldText), fileops.SplitLines(newText), 3), Changes: changes}, nil
+	preview.File = file
+	return preview, nil
 }
 
 func (args longMemoryUpdateArgs) hasChanges() bool {
@@ -607,14 +599,6 @@ func longMemoryInlineValue(value string) string {
 		return "(空)"
 	}
 	return value
-}
-
-func (s *longMemoryStore) writeUpdatePreviewLocked(ctx context.Context, preview longMemoryUpdatePreview) error {
-	result, err := fileops.EncodeText(fileops.RestoreLineEndings(fileops.NormalizeEditText(preview.FullContent), preview.File.LineEnding), preview.File.Encoding, preview.File.BOM)
-	if err != nil {
-		return err
-	}
-	return fileops.WriteFileWithRevision(ctx, preview.After.FilePath, preview.Target, fileops.ContentRevision(preview.File.Bytes), result)
 }
 
 func (s *longMemoryStore) delete(ctx context.Context, id int64) (string, error) {
@@ -836,15 +820,7 @@ func (s *longMemoryStore) writeRecordFileLocked(record longMemoryRecord) error {
 	if err != nil {
 		return err
 	}
-	tmp := record.FilePath + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return fmt.Errorf("write temp long memory file %q: %w", tmp, err)
-	}
-	if err := os.Rename(tmp, record.FilePath); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("replace long memory file %q: %w", record.FilePath, err)
-	}
-	return nil
+	return fileops.AtomicWriteFile(record.FilePath, data, 0o644)
 }
 
 func (s *longMemoryStore) indexRecordLocked(ctx context.Context, record longMemoryRecord) error {

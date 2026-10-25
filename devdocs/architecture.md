@@ -289,6 +289,20 @@ flowchart TD
 
 Cron 工具在启动前由 `Supervisor.ConnectBackground` 注册。根部将 Background 的请求／结果转换为 Share 契约，Builtin 不导入 Background 或 Cron；`CronInfo` 仅包含任务配置、启用／完成状态、次数及时间，不包含内部执行与投递数据。Tool 持有注册关系，BeginClose 保留收尾调用，Close 释放注册。Background 公开契约及 App 接线的完成状态见 [Tool 历史与后台管理对接](tasks.md#tool-历史与后台管理对接)。
 
+常驻记忆和 Elwisp 创建指引各自在现有 Builtin 文件声明所需契约，Tool 根部实现适配。`configBridge` 每次按装配时的配置路径重新读取，只交付地址、路径、授权工具、token 名称／环境变量名及读取错误；Builtin 根据配置事实或读取错误生成创建指引与告警。`residentMemoryBridge` 持有 Store，将当前 Actor 转为存储范围并转换数据和未找到错误。Builtin 不持有 Config、常驻记忆 Store 或 Session 范围。
+
+```mermaid
+flowchart LR
+    W["tool/wiring.go：构造并注入"] --> C["tool/config_bridge.go：读取配置并转换摘要"]
+    W --> R["tool/resident_memory_bridge.go：身份范围与存储适配"]
+    C --> E["builtin/elwisp_creator.go：配置契约与创建指引"]
+    R --> M["builtin/resident_memory.go：记忆契约与工具业务"]
+    E --> S["share：工具契约与结果"]
+    M --> S
+    L["builtin/long_memory.go：记忆格式、索引与同步"] --> F["fileops/preview.go：预览快照与修订提交"]
+    D["fileops/edit_service.go：普通编辑绑定与撤销策略"] --> F
+```
+
 ```mermaid
 flowchart LR
     A["app/wiring.go：交付共享依赖"] --> W["tool/wiring.go：构造 StateService"]
@@ -304,6 +318,7 @@ flowchart LR
 ```
 
 - fileops 统一处理工具及命令的编辑／撤销。context 只保存绑定，准备对象持有快照，提交校验显式传递。准备时短暂锁定目标，等待确认期间不持有文件或锁；预览不暴露批准写入的字节。
+- PreparedFile 为业务文本更新保存原目标、原修订与批准字节。PrepareFile 的转换回调只运行一次，普通编辑与业务更新共用编码、换行、diff 和修订计算；长期记忆复用其提交，普通编辑继续由 Service 管理绑定、准入和撤销。长期记忆新文件写入复用 AtomicWriteFile。
 - 文件提交锁顺序为目标路径 → Scope → SessionID → 备份状态；核对绑定、取消、权限、目标和 revision 后写批准字节。撤销仅在成功写入后登记，后台编辑不登记前台备份；外部进程不参与锁。/stop、切换和清理与提交互斥：先提交则完成，先取消或失效则拒绝。
 - 目录 AST 先按扩展名／标准 Shell shebang 筛选，再完整读取候选，避免全文读取无关文件；Shell 文件优先采用有效 shebang 声明的方言。
 - 目录 grep 由 rg 枚举文件并分批流式搜索，完整统计匹配数，只保留展示／index 所需候选，按相对路径和行号排序；大文件警告与实际搜索范围一致。
@@ -327,7 +342,9 @@ flowchart LR
 
 ### 媒体引用与清理
 
-Tool 装配创建统一 `MediaRuntime`，Builtin、Skill 与 Execution 通过它访问媒体；内部媒体中心与缓存根目录为私有依赖。查询、导入、持有、导出及历史媒体批量结果仅向工具返回 `share.MediaInfo{ID, Name, MIMEType, Size}`；`storage.Media` 留在媒体实现内部。`ValidateImage` 请求中心验证图片并返回通用信息，图片宽高和实际格式仅由媒体中心内部消费。文件发送工具直接接收 Tool 媒体入口，负责名称、MIME 与发送输出的组织。
+Tool 装配创建统一 `MediaRuntime`，Builtin、Skill 与 Execution 通过它访问媒体；内部媒体中心与缓存根目录为私有依赖。导入使用 `share.MediaImportOptions{Name, MIMEType}`，由入口转换为媒体中心参数；Builtin 通过入口的 IDPrefix、ValidID 识别媒体 ID。查询、导入、持有、导出及历史媒体批量结果仅向工具返回 `share.MediaInfo{ID, Name, MIMEType, Size}`；`storage.Media` 留在媒体实现内部。`ValidateImage` 请求中心验证图片并返回通用信息，图片宽高和实际格式仅由媒体中心内部消费。文件发送工具直接接收 Tool 媒体入口，负责名称、MIME 与发送输出的组织。
+
+`share.MediaInput` 只处理 JSON 解码、字段类型与未知字段约束，不依赖媒体中心。Shell／Skill 将解码后的 ID 传给 Tool/media 的 CachedExport／Export，经 Retain 调用媒体中心 Metadata，复用中心已有的 ID 校验和查询；媒体准备失败时不启动命令。
 
 ```mermaid
 flowchart TD

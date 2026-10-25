@@ -6,37 +6,34 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
-	"runtime"
-	"sort"
 	"strings"
 
-	"elbot/internal/config"
 	"elbot/internal/llm"
-	
-	"elbot/internal/tool/runtimeinfo"
 )
 
 const ElwispCreatorName = "elwisp_creator"
 
+// ElwispCreatorConfigProvider 由 Tool 根部适配，只提供创建指引所需的配置。
+type ElwispCreatorConfigProvider interface {
+	ElwispCreatorConfig() (ElwispCreatorConfig, error)
+}
+
 type ElwispCreatorTool struct {
-	info runtimeinfo.Info
+	config ElwispCreatorConfigProvider // 根部注入的配置获取能力。
 }
 
-type elwispCreatorConfigSnapshot struct {
-	AppConfigPath   string
-	ElnisConfigPath string
-	Enabled         bool
-	Addr            string
-	TokenNames      []string
-	TokenEnvNames   []string
-	AllowedTools    []string
-	Warnings        []string
+type ElwispCreatorConfig struct {
+	AppConfigPath   string   // 主配置文件路径，供指引定位配置。
+	ElnisConfigPath string   // Elnis 配置文件路径。
+	Enabled         bool     // Elnis 是否启用。
+	Addr            string   // Elnis HTTP 监听地址。
+	TokenNames      []string // 已配置的 token 名称，不包含密钥值。
+	TokenEnvNames   []string // 存放 token 的环境变量名。
+	AllowedTools    []string // Elnis 允许请求的工具名单。
 }
 
-func NewElwispCreatorTool(infos ...runtimeinfo.Info) ElwispCreatorTool {
-	return ElwispCreatorTool{info: runtimeinfo.First(infos...)}
+func NewElwispCreatorTool(config ElwispCreatorConfigProvider) ElwispCreatorTool {
+	return ElwispCreatorTool{config: config}
 }
 
 func (ElwispCreatorTool) Name() string {
@@ -67,97 +64,12 @@ func (t ElwispCreatorTool) Call(ctx context.Context, req toolshare.CallRequest) 
 		return nil, err.Error(), err
 	}
 	{
-		result := &toolshare.Result{Content: buildElwispCreatorGuide(loadElwispCreatorConfig(t.info)), NeedsElyphRules: true}
+		result := &toolshare.Result{Content: buildElwispCreatorGuide(t.config.ElwispCreatorConfig()), NeedsElyphRules: true}
 		return result, "elwisp_creator guide returned", nil
 	}
 }
 
-func loadElwispCreatorConfig(info runtimeinfo.Info) elwispCreatorConfigSnapshot {
-	appConfigPath, ok := findElwispCreatorAppConfigPath(info)
-	if !ok {
-		return elwispCreatorConfigSnapshot{Warnings: []string{
-			"未找到 ElBot app.toml，无法确认 Elnis endpoint 和 token 配置。请提示用户先配置 Elnis，或让用户要求 Agent 修改 app.toml / elnis.toml / .env。",
-		}}
-	}
-
-	cfg, err := config.Load(appConfigPath)
-	if err != nil {
-		return elwispCreatorConfigSnapshot{
-			AppConfigPath: appConfigPath,
-			Warnings: []string{
-				fmt.Sprintf("读取 ElBot 配置失败：%v。请提示用户修复配置后再创建 Elwisp。", err),
-			},
-		}
-	}
-
-	tokenNames := make([]string, 0, len(cfg.Elnis.Tokens))
-	tokenEnvSet := map[string]bool{}
-	for name, token := range cfg.Elnis.Tokens {
-		tokenNames = append(tokenNames, name)
-		for _, envName := range token.TokenEnv {
-			envName = strings.TrimSpace(envName)
-			if envName != "" {
-				tokenEnvSet[envName] = true
-			}
-		}
-	}
-	sort.Strings(tokenNames)
-	tokenEnvNames := make([]string, 0, len(tokenEnvSet))
-	for envName := range tokenEnvSet {
-		tokenEnvNames = append(tokenEnvNames, envName)
-	}
-	sort.Strings(tokenEnvNames)
-
-	snapshot := elwispCreatorConfigSnapshot{
-		AppConfigPath:   cfg.ConfigPath,
-		ElnisConfigPath: cfg.ElnisConfigPath,
-		Enabled:         cfg.Elnis.Enabled,
-		Addr:            strings.TrimSpace(cfg.Elnis.HTTP.Addr),
-		TokenNames:      tokenNames,
-		TokenEnvNames:   tokenEnvNames,
-		AllowedTools:    append([]string(nil), cfg.Elnis.AllowedTools...),
-	}
-	sort.Strings(snapshot.AllowedTools)
-
-	if !snapshot.Enabled {
-		snapshot.Warnings = append(snapshot.Warnings, "当前 Elnis 未启用。测试 Elwisp 前，请提示用户设置 elnis.toml 的 enabled=true。")
-	}
-	if snapshot.Addr == "" {
-		snapshot.Warnings = append(snapshot.Warnings, "未读取到 Elnis HTTP addr。请提示用户配置 elnis.toml 的 [http].addr。")
-	}
-	if len(snapshot.TokenEnvNames) == 0 {
-		snapshot.Warnings = append(snapshot.Warnings, "当前未配置 Elnis token_env。请提示用户配置 token_env，并在系统环境变量或配置目录 .env 中保存 token。")
-	}
-	return snapshot
-}
-
-func findElwispCreatorAppConfigPath(info runtimeinfo.Info) (string, bool) {
-	info = info.Normalize()
-	if strings.TrimSpace(info.ConfigPath) != "" {
-		return filepath.Clean(info.ConfigPath), true
-	}
-	if envPath := strings.TrimSpace(os.Getenv(config.EnvConfigFile)); envPath != "" {
-		return filepath.Clean(envPath), true
-	}
-	if dir, err := os.UserConfigDir(); err == nil && strings.TrimSpace(dir) != "" {
-		name := config.XDGAppDirName
-		if runtime.GOOS == "windows" {
-			name = config.AppDirName
-		}
-		path := filepath.Join(dir, name, "app.toml")
-		if fileExists(path) {
-			return path, true
-		}
-	}
-	return "", false
-}
-
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
-}
-
-func buildElwispCreatorGuide(cfg elwispCreatorConfigSnapshot) string {
+func buildElwispCreatorGuide(cfg ElwispCreatorConfig, err error) string {
 	var b strings.Builder
 	b.WriteString(`#task create_elwisp - 帮用户设计或创建 Elwisp 监听器
 <- $user_goal:str!
@@ -172,7 +84,7 @@ func buildElwispCreatorGuide(cfg elwispCreatorConfigSnapshot) string {
 // roles: Elwisp 负责观察服务器、RSS、Webhook、日志、脚本、游戏或设备状态，并上报 Elvena 事件。
 // roles: Elvena 统一描述来源、事件 id、内容、处理模式、目标请求和可选工具声明。
 `)
-	writeElwispCreatorConfig(&b, cfg)
+	writeElwispCreatorConfig(&b, cfg, err)
 	b.WriteString(`// elvena_v1: endpoint
 `)
 	if cfg.Addr != "" {
@@ -220,7 +132,7 @@ func buildElwispCreatorGuide(cfg elwispCreatorConfigSnapshot) string {
 	return b.String()
 }
 
-func writeElwispCreatorConfig(b *strings.Builder, cfg elwispCreatorConfigSnapshot) {
+func writeElwispCreatorConfig(b *strings.Builder, cfg ElwispCreatorConfig, err error) {
 	b.WriteString("// current_elnis\n")
 	writeGuideField(b, "app_config", cfg.AppConfigPath)
 	writeGuideField(b, "elnis_config", cfg.ElnisConfigPath)
@@ -234,8 +146,18 @@ func writeElwispCreatorConfig(b *strings.Builder, cfg elwispCreatorConfigSnapsho
 	writeGuideList(b, "token_names", cfg.TokenNames)
 	writeGuideList(b, "token_env", cfg.TokenEnvNames)
 	writeGuideList(b, "allowed_tools", cfg.AllowedTools)
-	for _, warning := range cfg.Warnings {
-		writeGuideField(b, "warning", warning)
+	if err != nil {
+		writeGuideField(b, "warning", fmt.Sprintf("读取 ElBot 配置失败：%v。请提示用户修复配置后再创建 Elwisp。", err))
+		return
+	}
+	if !cfg.Enabled {
+		writeGuideField(b, "warning", "当前 Elnis 未启用。测试 Elwisp 前，请提示用户设置 elnis.toml 的 enabled=true。")
+	}
+	if cfg.Addr == "" {
+		writeGuideField(b, "warning", "未读取到 Elnis HTTP addr。请提示用户配置 elnis.toml 的 [http].addr。")
+	}
+	if len(cfg.TokenEnvNames) == 0 {
+		writeGuideField(b, "warning", "当前未配置 Elnis token_env。请提示用户配置 token_env，并在系统环境变量或配置目录 .env 中保存 token。")
 	}
 }
 

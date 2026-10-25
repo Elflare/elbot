@@ -119,6 +119,9 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/tool/background_bridge.go`：ConnectBackground 接收后台公开能力，转换请求与结果并注册 Cron 工具；注册关系由 Tool 的 Close 释放。
 - `internal/tool/chat_history/manager.go`：历史组件构造与 Backend 契约；`query.go` 处理聊天范围、用户／时间筛选和查询；`media.go` 处理媒体选择、序号与批次获取策略。
 - `internal/tool/chat_history_bridge.go`：将 Platform 历史记录、引用及媒体解析结果转换为组件数据，适配媒体获取；外部历史类型不进入 Builtin 或 chat_history。
+- `internal/tool/config_bridge.go`：按装配路径读取配置，向 Builtin 的 ElwispCreatorConfigProvider 提供精简配置摘要与读取错误；创建指引与告警由 Builtin 生成。
+- `internal/tool/resident_memory_bridge.go`：实现 Builtin 的 ResidentMemoryService，转换调用者范围、常驻记忆数据及未找到错误。
+- `internal/tool/builtin/elwisp_creator.go`、`resident_memory.go`：各自声明所需服务与数据契约，组织工具参数、指引和展示。
 - `internal/tool/builtin/chat_history.go`、`get_media.go`、`view_image.go`：历史工具 schema、参数解析与展示，历史查询及媒体选择交给 chat_history；`cron.go` 通过 Share 的 CronService 管理任务。
 - `internal/tool/discovery/resolve.go`：解析发现请求及依赖；`Resolve` 接收已筛选对象，返回展示数据与本次使用的对象集合。
 - `internal/tool/state/state.go`：完整工具声明的解码、会话读取、提交与纯元数据补丁准备；`PrepareUpdate` 供 Execution 随工具结果提交，根部只转发对外状态能力。
@@ -127,16 +130,17 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/tool/preload/background.go`：展开后台名称／标签，将本地预载与已适配的 ELwisp 声明统一生成待提交状态和提示材料；根部 `Supervisor.PrepareBackground` 转发请求。
 - `internal/agent/input/tool_directive.go`、`internal/agent/share/tool_state.go`：输入指令与状态提交。
 - `internal/tool/builtin/file_tools_ast.go`、`file_tools_directory.go`：AST 识别、目录候选与缓存、rg 枚举及流式搜索。
-- `internal/tool/builtin/long_memory.go`：长期记忆文件、索引与同步。
+- `internal/tool/builtin/long_memory.go`：长期记忆格式、索引与同步；更新复用 fileops 的文件预览和提交。
 - `internal/tool/builtin/web_extract.go`：正文缓存与同键在途请求。
 - `internal/fileops/binding.go`、`commit.go`：操作绑定与提交校验。
 - `internal/fileops/edit_service.go`、`rollback_service.go`：编辑／撤销准备、预览与提交。
+- `internal/fileops/preview.go`：PreparedFile 保存批准内容与目标，统一编码、diff、修订计算及复核提交；普通编辑与业务文本更新共用结果计算。
 - `internal/fileops/file.go`、`atomic_write.go`、`rollback.go`：结果计算、revision 校验写入、目标锁与撤销备份。
 - `internal/workspace/workspace.go`、`resolve.go`、`state.go`：工作目录契约、路径解析与状态编解码；`internal/session/workspace.go` 负责持久化适配。
 - `internal/workspace/context.go`：PathScope 与目录存取能力的上下文传递；`workspace.go` 优先选择调用级目录，未指定时读取 Session 或进程目录。
 - `internal/workspace/sandbox.go`：NormalizeRestrictedPath 统一受限相对路径规则，SandboxDir 计算沙盒子目录，ResolveSandboxRelativePath 组合受限绝对路径；不创建目录、组织提示或管理文件生命周期。
-- `internal/tool/share/media.go`：MediaInput、MediaInfo 与历史媒体逐项结果；只包含工具需要的参数和通用信息。
-- `internal/tool/media/runtime.go`：统一媒体入口与精简结果转换；媒体中心和缓存根目录为私有依赖。
+- `internal/tool/share/media.go`：MediaInput、MediaImportOptions、MediaInfo 与历史媒体逐项结果；包含工具需要的参数、JSON 解码约束和通用信息，ID 校验由媒体调用链承担。
+- `internal/tool/media/runtime.go`：统一媒体入口、导入参数及精简结果转换，提供 IDPrefix、ValidID；媒体中心和缓存根目录为私有依赖。
 - `internal/tool/media/call.go`：调用状态、引用持有、释放重试与临时资源清理。
 - `internal/tool/media/files.go`、`cache.go`：调用目录及文件导入导出、共享缓存使用与刷新；缓存保留期由维护任务管理。
 - `internal/tool/builtin/send_file.go`：消费路径事实和 Tool 媒体能力，组织文件名称、MIME、提示与发送输出。

@@ -4,9 +4,6 @@ package share
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
-
-	"elbot/internal/media"
 )
 
 // MediaInput 显式声明工具输入的媒体，不从命令文本推断。
@@ -22,9 +19,6 @@ func (i *MediaInput) UnmarshalJSON(data []byte) error {
 	if err := decoder.Decode(&value); err != nil {
 		return err
 	}
-	if !media.ValidID(value.MediaID) {
-		return fmt.Errorf("invalid media")
-	}
 	*i = MediaInput(value)
 	return nil
 }
@@ -35,6 +29,12 @@ type MediaInfo struct {
 	Name     string // 展示及导出时使用的文件名。
 	MIMEType string // 媒体内容类型。
 	Size     int64  // 媒体内容的字节数。
+}
+
+// MediaImportOptions 只包含工具指定的导入展示信息，不暴露媒体中心的来源记录。
+type MediaImportOptions struct {
+	Name     string // 导入后使用的文件名；为空时由媒体入口推断。
+	MIMEType string // 调用方提供的内容类型；为空时由媒体入口识别。
 }
 
 // HistoryMediaResult 保留历史媒体请求的顺序及逐项错误。

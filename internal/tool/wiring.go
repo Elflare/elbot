@@ -60,9 +60,10 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		fileRollback:        fileops.NewService(nil),
 	}
 	if err := registerAll(registry, registerOptions{
-		runtimeInfo:         info,
 		media:               mediaRuntime,
-		residentMemoryStore: residentStore,
+		residentMemory:      residentMemoryBridge{store: residentStore},
+		residentMemoryPath:  residentStore.Path,
+		elwispCreatorConfig: configBridge{configPath: cfg.ConfigPath},
 		skillManager:        skillManager,
 		chatHistory:         chatHistory,
 		longMemoryDir:       filepath.Join(configDir, "long_memory"),
@@ -83,8 +84,9 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 
 // registerOptions 只传递注册内置工具所需的已构造组件与配置。
 type registerOptions struct {
-	runtimeInfo         runtimeinfo.Info
-	residentMemoryStore *resident.Store
+	residentMemory      builtin.ResidentMemoryService
+	residentMemoryPath  string
+	elwispCreatorConfig builtin.ElwispCreatorConfigProvider
 	skillManager        *skill.Manager
 	chatHistory         *chat_history.Manager // 已适配外部能力的聊天历史组件。
 	longMemoryDir       string
@@ -94,7 +96,6 @@ type registerOptions struct {
 }
 
 func registerAll(registry *toolregistry.Registry, opts registerOptions) error {
-	info := opts.runtimeInfo
 	mediaRuntime := opts.media
 	opts.skillManager.Scanner.Media = mediaRuntime
 	if err := registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry), opts.skillManager.EnsureLoaded)); err != nil {
@@ -103,7 +104,7 @@ func registerAll(registry *toolregistry.Registry, opts registerOptions) error {
 	if err := registry.Register(builtin.NewWorkspaceTool()); err != nil {
 		return err
 	}
-	for _, memoryTool := range builtin.NewResidentMemoryTools(opts.residentMemoryStore) {
+	for _, memoryTool := range builtin.NewResidentMemoryTools(opts.residentMemory) {
 		if err := registry.Register(memoryTool); err != nil {
 			return err
 		}
@@ -141,7 +142,7 @@ func registerAll(registry *toolregistry.Registry, opts registerOptions) error {
 	}
 	fileGuard := builtin.NewFileGuard(
 		builtin.NewElSkillFileGuardRule(opts.skillManager.Root),
-		builtin.NewResidentMemoryFileGuardRule(opts.residentMemoryStore.Path),
+		builtin.NewResidentMemoryFileGuardRule(opts.residentMemoryPath),
 		builtin.NewLongMemoryFileGuardRule(opts.longMemoryDir),
 	)
 	opts.fileRollback.CheckWrite = fileGuard.CheckWrite
@@ -161,7 +162,7 @@ func registerAll(registry *toolregistry.Registry, opts registerOptions) error {
 	if err := registry.Register(shell); err != nil {
 		return err
 	}
-	if err := registry.Register(builtin.NewElwispCreatorTool(info)); err != nil {
+	if err := registry.Register(builtin.NewElwispCreatorTool(opts.elwispCreatorConfig)); err != nil {
 		return err
 	}
 	if err := registry.Register(skill.NewAgentSkillTool(opts.skillManager)); err != nil {

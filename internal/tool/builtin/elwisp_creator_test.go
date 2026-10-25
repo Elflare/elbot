@@ -4,12 +4,10 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
-	"os"
-	"path/filepath"
+	"errors"
 	"strings"
 	"testing"
 
-	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/elyph"
 	"elbot/internal/security"
@@ -18,7 +16,7 @@ import (
 )
 
 func TestElwispCreatorToolInfo(t *testing.T) {
-	info := NewElwispCreatorTool().Info()
+	info := NewElwispCreatorTool(nil).Info()
 	if info.Name != ElwispCreatorName {
 		t.Fatalf("name = %q", info.Name)
 	}
@@ -38,7 +36,7 @@ func TestElwispCreatorToolInfo(t *testing.T) {
 }
 
 func TestElwispCreatorToolSchemaHasNoParameters(t *testing.T) {
-	schema := NewElwispCreatorTool().Schema()
+	schema := NewElwispCreatorTool(nil).Schema()
 	if schema.Name != ElwispCreatorName {
 		t.Fatalf("schema name = %q", schema.Name)
 	}
@@ -55,7 +53,7 @@ func TestElwispCreatorToolSchemaHasNoParameters(t *testing.T) {
 }
 
 func TestElwispCreatorToolCallReturnsGuide(t *testing.T) {
-	result, _, err := NewElwispCreatorTool().Call(context.Background(), toolshare.CallRequest{})
+	result, _, err := NewElwispCreatorTool(elwispCreatorConfigStub{}).Call(context.Background(), toolshare.CallRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,79 +73,9 @@ func TestElwispCreatorToolCallReturnsGuide(t *testing.T) {
 	}
 }
 
-func TestElwispCreatorGuideIncludesConfigSummary(t *testing.T) {
-	dir := t.TempDir()
-	appPath := filepath.Join(dir, "app.toml")
-	providersPath := filepath.Join(dir, "providers.toml")
-	elnisPath := filepath.Join(dir, "elnis.toml")
-	writeElwispCreatorTestFile(t, appPath, `
-[config_files]
-providers = "providers.toml"
-elnis = "elnis.toml"
-
-[mode_models.work]
-provider = "test"
-model = "work-model"
-
-[mode_models.chat]
-provider = "test"
-model = "chat-model"
-`)
-	writeElwispCreatorTestFile(t, providersPath, `
-[providers.test]
-base_url = "https://example.invalid"
-models = ["work-model", "chat-model"]
-`)
-	writeElwispCreatorTestFile(t, elnisPath, `
-enabled = true
-allowed_tools = ["web_extract", "web_search"]
-
-[http]
-addr = "127.0.0.1:45678"
-
-[tokens.home]
-token_env = ["ELNIS_HOME_TOKEN"]
-
-`)
-	t.Setenv(config.EnvConfigFile, appPath)
-
-	result, _, err := NewElwispCreatorTool().Call(context.Background(), toolshare.CallRequest{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{
-		"endpoint: http://127.0.0.1:45678/elvena/v3/events",
-		"token_env: [ELNIS_HOME_TOKEN]",
-		"allowed_tools: [web_extract, web_search]",
-	} {
-		if !strings.Contains(result.Content, want) {
-			t.Fatalf("guide missing %q: %s", want, result.Content)
-		}
-	}
-}
-
-func TestElwispCreatorGuideWarnsWhenConfigMissing(t *testing.T) {
-	t.Setenv(config.EnvConfigFile, filepath.Join(t.TempDir(), "missing.toml"))
-
-	result, _, err := NewElwispCreatorTool().Call(context.Background(), toolshare.CallRequest{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(result.Content, "读取 ElBot 配置失败") || !strings.Contains(result.Content, "修复配置") {
-		t.Fatalf("guide missing config warning: %s", result.Content)
-	}
-}
-
-func writeElwispCreatorTestFile(t *testing.T, path, content string) {
-	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("write %s: %v", path, err)
-	}
-}
-
 func TestElwispCreatorDependencyDiscovery(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.NewPermission("critical", "critical", nil))
-	for _, item := range []toolshare.Tool{NewElwispCreatorTool(), NewReadFileTool(), NewEditFileTool(), NewShellTool(), NewRollbackFileTool(nil), NewWorkspaceTool()} {
+	for _, item := range []toolshare.Tool{NewElwispCreatorTool(nil), NewReadFileTool(), NewEditFileTool(), NewShellTool(), NewRollbackFileTool(nil), NewWorkspaceTool()} {
 		if err := registry.Register(item); err != nil {
 			t.Fatal(err)
 		}
@@ -172,5 +100,43 @@ func TestElwispCreatorDependencyDiscovery(t *testing.T) {
 		if !seen[name] {
 			t.Fatalf("discover details missing %s: %#v", name, details)
 		}
+	}
+}
+
+type elwispCreatorConfigStub struct {
+	config ElwispCreatorConfig
+	err    error
+}
+
+func (s elwispCreatorConfigStub) ElwispCreatorConfig() (ElwispCreatorConfig, error) {
+	return s.config, s.err
+}
+
+func TestElwispCreatorConfigWarningsBelongToGuide(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		config   ElwispCreatorConfig
+		err      error
+		warnings []string
+	}{
+		{name: "ready", config: ElwispCreatorConfig{Enabled: true, Addr: "127.0.0.1:10001", TokenEnvNames: []string{"TOKEN"}}},
+		{name: "incomplete", warnings: []string{"当前 Elnis 未启用", "未读取到 Elnis HTTP addr", "当前未配置 Elnis token_env"}},
+		{name: "read-error", err: errors.New("cannot load config"), warnings: []string{"读取 ElBot 配置失败：cannot load config。请提示用户修复配置后再创建 Elwisp。"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tool := NewElwispCreatorTool(elwispCreatorConfigStub{config: tc.config, err: tc.err})
+			result, _, err := tool.Call(t.Context(), toolshare.CallRequest{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Count(result.Content, "// warning:") != len(tc.warnings) {
+				t.Fatalf("unexpected warnings: %s", result.Content)
+			}
+			for _, warning := range tc.warnings {
+				if !strings.Contains(result.Content, warning) {
+					t.Fatalf("missing %q: %s", warning, result.Content)
+				}
+			}
+		})
 	}
 }

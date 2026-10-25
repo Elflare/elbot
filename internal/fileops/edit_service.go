@@ -24,11 +24,9 @@ type PreparedEdit struct {
 	binding *fileBinding
 	// request is an independent copy of the approved edit arguments.
 	request EditRequest
-	// resolved and target pin the workspace path and actual filesystem target.
+	// resolved pins the workspace path; file holds the shared file snapshot.
 	resolved workspace.ResolvedPath
-	target   string
-	// result retains the approved bytes, revisions and confirmation diff.
-	result EditResult
+	file     *PreparedFile
 }
 
 func cloneEditRequest(req EditRequest) EditRequest {
@@ -46,9 +44,7 @@ func cloneEditRequest(req EditRequest) EditRequest {
 
 // Preview returns confirmation metadata without exposing the prepared bytes.
 func (p *PreparedEdit) Preview() EditResult {
-	result := p.result
-	result.NewBytes = nil
-	return result
+	return p.file.Preview()
 }
 
 func (p *PreparedEdit) Commit(ctx context.Context) (EditResult, workspace.ResolvedPath, error) {
@@ -99,7 +95,7 @@ func (s *Service) PrepareEdit(ctx context.Context, req EditRequest) (*PreparedEd
 	if err := checkFileTarget(resolved.Path, target, result.Created); err != nil {
 		return nil, err
 	}
-	return &PreparedEdit{service: s, binding: binding, request: req, resolved: resolved, target: target, result: result}, nil
+	return &PreparedEdit{service: s, binding: binding, request: req, resolved: resolved, file: &PreparedFile{target: target, result: result}}, nil
 }
 
 // Edit directly commits an edit without building a confirmation preview.
@@ -123,7 +119,7 @@ func (s *Service) edit(ctx context.Context, req EditRequest, prepared *PreparedE
 	if err != nil {
 		return EditResult{}, resolved, err
 	}
-	if prepared != nil && (prepared.resolved.Path != resolved.Path || prepared.target != target) {
+	if prepared != nil && (prepared.resolved.Path != resolved.Path || prepared.file.target != target) {
 		return EditResult{}, resolved, fmt.Errorf("edit target changed after preflight")
 	}
 	guard := commitGuard{validate: func(locked context.Context) error {
@@ -141,7 +137,7 @@ func (s *Service) edit(ctx context.Context, req EditRequest, prepared *PreparedE
 	}
 	var result *EditResult
 	if prepared != nil {
-		result = &prepared.result
+		result = &prepared.file.result
 	}
 	committed, err := s.Manager.editFile(ctx, lease, resolved.Path, req.Encoding, req.ExpectedRevision, req.Create, req.ContextLines, req.Edits, req.Options, s.CheckWrite, guard, result)
 	return committed, resolved, err

@@ -213,7 +213,7 @@ func resultFromStdoutWithMedia(ctx context.Context, out string, call *toolmedia.
 		}
 		id := segment.MediaID
 		if segment.Path != "" {
-			metadata, err := call.Import(ctx, base, segment.Path, media.Input{Name: segment.Name, MIMEType: segment.MIMEType})
+			metadata, err := call.Import(ctx, base, segment.Path, toolshare.MediaImportOptions{Name: segment.Name, MIMEType: segment.MIMEType})
 			if err != nil {
 				return nil, err
 			}

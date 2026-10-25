@@ -3,6 +3,7 @@ package media
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"image"
 	"image/png"
@@ -10,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"elbot/internal/media"
@@ -87,7 +89,7 @@ func TestMediaAPIImportsAndNormalizedCallPath(t *testing.T) {
 	if err := os.WriteFile(path, []byte("hello"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	info, err := runtime.ImportFile(t.Context(), path, media.Input{Name: "file.txt", MIMEType: "text/plain"})
+	info, err := runtime.ImportFile(t.Context(), path, share.MediaImportOptions{Name: "file.txt", MIMEType: "text/plain"})
 	if err != nil || info.Name != "file.txt" || info.Size != 5 {
 		t.Fatalf("file=%+v %v", info, err)
 	}
@@ -96,20 +98,40 @@ func TestMediaAPIImportsAndNormalizedCallPath(t *testing.T) {
 		_, _ = w.Write([]byte("hello"))
 	}))
 	defer server.Close()
-	remote, err := runtime.ImportURL(t.Context(), server.URL+"/file.txt", media.Input{})
+	remote, err := runtime.ImportURL(t.Context(), server.URL+"/file.txt", share.MediaImportOptions{})
 	if err != nil || remote.ID != info.ID || remote.Size != 5 {
 		t.Fatalf("url=%+v %v", remote, err)
 	}
 	call := runtime.NewCall()
 	defer call.Close()
-	imported, err := call.Import(t.Context(), base, "nested\\file.txt", media.Input{})
+	imported, err := call.Import(t.Context(), base, "nested\\file.txt", share.MediaImportOptions{})
 	if err != nil || imported.ID != info.ID {
 		t.Fatalf("normalized import=%+v %v", imported, err)
 	}
 	for _, path := range []string{"nested/../nested/file.txt", "nested\\..\\nested\\file.txt", "~/file.txt", "file:stream"} {
-		if _, err := call.Import(t.Context(), base, path, media.Input{}); err == nil {
+		if _, err := call.Import(t.Context(), base, path, share.MediaImportOptions{}); err == nil {
 			t.Fatalf("accepted %q", path)
 		}
+	}
+}
+
+func TestMediaExportsRejectInvalidDecodedIDs(t *testing.T) {
+	runtime, _ := newMediaAPITest(t)
+	for _, raw := range []string{`null`, `{}`, `{"media":null}`, `{"media":""}`, `{"media":"bad"}`} {
+		t.Run(raw, func(t *testing.T) {
+			var input share.MediaInput
+			if err := json.Unmarshal([]byte(raw), &input); err != nil {
+				t.Fatal(err)
+			}
+			call := runtime.NewCall()
+			defer call.Close()
+			if _, _, err := call.Export(t.Context(), input.MediaID, t.TempDir()); err == nil || !strings.Contains(err.Error(), "invalid media ID") {
+				t.Fatalf("export accepted invalid ID: %v", err)
+			}
+			if _, err := call.CachedExport(t.Context(), input.MediaID); err == nil || !strings.Contains(err.Error(), "invalid media ID") {
+				t.Fatalf("cached export accepted invalid ID: %v", err)
+			}
+		})
 	}
 }
 

@@ -6,15 +6,10 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
-	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
-	"elbot/internal/memory/resident"
-	"elbot/internal/session"
-	
 )
 
 const (
@@ -25,20 +20,38 @@ const (
 	residentMemoryWritingRule    = "内容必须使用第三人称：当前用户称为“用户”，模型自身称为“assistant”；只记录背景信息，不记录对模型的指令"
 )
 
-type ResidentMemoryTool struct {
-	Store *resident.Store
+// ResidentMemoryService 只操作当前调用者的常驻记忆，身份与存储范围由根部适配。
+type ResidentMemoryService interface {
+	Read(context.Context) (ResidentMemory, error)
+	AppendNormal(context.Context, string) error
+	WriteNormal(context.Context, string) error
+	DeleteNormal(context.Context) error
+	WriteCore(context.Context, string) error
+	LimitsOrDefault() ResidentMemoryLimits
 }
 
+type ResidentMemory struct {
+	Core   string // 核心记忆；未保存时为空。
+	Normal string // 普通记忆；未保存时为空。
+}
+
+type ResidentMemoryLimits struct {
+	Core   int // 核心记忆允许的最大字数或单词数。
+	Normal int // 普通记忆允许的最大字数或单词数。
+}
+
+type ResidentMemoryTool struct{}
+
 type ResidentMemoryReadTool struct {
-	Store *resident.Store
+	service ResidentMemoryService
 }
 
 type ResidentMemoryNormalTool struct {
-	Store *resident.Store
+	service ResidentMemoryService
 }
 
 type ResidentMemoryCoreTool struct {
-	Store *resident.Store
+	service ResidentMemoryService
 }
 
 type memoryReadArgs struct {
@@ -55,18 +68,14 @@ type memoryCoreArgs struct {
 }
 
 type memoryReadResult struct {
-	Core   string          `json:"core,omitempty"`
-	Normal string          `json:"normal,omitempty"`
-	Limits resident.Limits `json:"limits"`
-	Status string          `json:"status"`
+	Core   string               `json:"core,omitempty"`
+	Normal string               `json:"normal,omitempty"`
+	Limits ResidentMemoryLimits `json:"limits"`
+	Status string               `json:"status"`
 }
 
-func NewResidentMemoryTools(store *resident.Store) []toolshare.Tool {
-	return []toolshare.Tool{ResidentMemoryTool{Store: store}, ResidentMemoryReadTool{Store: store}, ResidentMemoryNormalTool{Store: store}, ResidentMemoryCoreTool{Store: store}}
-}
-
-func NewResidentMemoryTool(store *resident.Store) ResidentMemoryTool {
-	return ResidentMemoryTool{Store: store}
+func NewResidentMemoryTools(service ResidentMemoryService) []toolshare.Tool {
+	return []toolshare.Tool{ResidentMemoryTool{}, ResidentMemoryReadTool{service: service}, ResidentMemoryNormalTool{service: service}, ResidentMemoryCoreTool{service: service}}
 }
 
 func (t ResidentMemoryTool) Name() string { return ResidentMemoryToolName }
@@ -99,10 +108,6 @@ func (t ResidentMemoryReadTool) Schema() llm.ToolSchema {
 }
 func (t ResidentMemoryReadTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
 	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
-	scope, err := memoryScope(ctx, t.Store)
-	if err != nil {
-		return nil, err.Error(), err
-	}
 	var args memoryReadArgs
 	if err := decodeMemoryArgs(req.Arguments, &args); err != nil {
 		return nil, err.Error(), err
@@ -117,13 +122,11 @@ func (t ResidentMemoryReadTool) Call(ctx context.Context, req toolshare.CallRequ
 			return nil, callErr.Error(), callErr
 		}
 	}
-	memory, err := t.Store.Read(ctx, scope)
-	if errors.Is(err, resident.ErrNotFound) {
-		memory = resident.Memory{}
-	} else if err != nil {
+	memory, err := t.service.Read(ctx)
+	if err != nil {
 		return nil, err.Error(), err
 	}
-	result := memoryReadResult{Limits: t.Store.LimitsOrDefault(), Status: "ok"}
+	result := memoryReadResult{Limits: t.service.LimitsOrDefault(), Status: "ok"}
 	if section == "all" || section == "core" {
 		result.Core = memory.Core
 	}
@@ -142,20 +145,16 @@ func (t ResidentMemoryReadTool) Call(ctx context.Context, req toolshare.CallRequ
 
 func (t ResidentMemoryNormalTool) Name() string { return ResidentMemoryNormalToolName }
 func (t ResidentMemoryNormalTool) Info() toolshare.Info {
-	return memoryBuilder(t.Name(), normalDescription(t.Store), toolshare.RiskLow).Hidden().BuildInfo()
+	return memoryBuilder(t.Name(), normalDescription(t.service), toolshare.RiskLow).Hidden().BuildInfo()
 }
 func (t ResidentMemoryNormalTool) Schema() llm.ToolSchema {
-	return memoryBuilder(t.Name(), normalDescription(t.Store), toolshare.RiskLow).
+	return memoryBuilder(t.Name(), normalDescription(t.service), toolshare.RiskLow).
 		String("action", "操作类型：append、write 或 delete。", toolshare.Required()).
 		String("content", "append/write 时使用。write 会覆盖完整 normal，使用前必须先调用 resident_memory_read 读取 normal 或 all。delete 不需要 content。").
 		BuildSchema()
 }
 func (t ResidentMemoryNormalTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
 	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
-	scope, err := memoryScope(ctx, t.Store)
-	if err != nil {
-		return nil, err.Error(), err
-	}
 	var args memoryNormalArgs
 	if err := decodeMemoryArgs(req.Arguments, &args); err != nil {
 		return nil, err.Error(), err
@@ -168,7 +167,7 @@ func (t ResidentMemoryNormalTool) Call(ctx context.Context, req toolshare.CallRe
 				return nil, callErr.Error(), callErr
 			}
 		}
-		if err := t.Store.AppendNormal(ctx, scope, *args.Content); err != nil {
+		if err := t.service.AppendNormal(ctx, *args.Content); err != nil {
 			return nil, err.Error(), err
 		}
 		{
@@ -182,7 +181,7 @@ func (t ResidentMemoryNormalTool) Call(ctx context.Context, req toolshare.CallRe
 				return nil, callErr.Error(), callErr
 			}
 		}
-		if err := t.Store.WriteNormal(ctx, scope, *args.Content); err != nil {
+		if err := t.service.WriteNormal(ctx, *args.Content); err != nil {
 			return nil, err.Error(), err
 		}
 		{
@@ -190,7 +189,7 @@ func (t ResidentMemoryNormalTool) Call(ctx context.Context, req toolshare.CallRe
 			return result, result.Content, nil
 		}
 	case "delete", "clear":
-		if err := t.Store.DeleteNormal(ctx, scope); err != nil {
+		if err := t.service.DeleteNormal(ctx); err != nil {
 			return nil, err.Error(), err
 		}
 		{
@@ -207,19 +206,15 @@ func (t ResidentMemoryNormalTool) Call(ctx context.Context, req toolshare.CallRe
 
 func (t ResidentMemoryCoreTool) Name() string { return ResidentMemoryCoreToolName }
 func (t ResidentMemoryCoreTool) Info() toolshare.Info {
-	return memoryBuilder(t.Name(), coreDescription(t.Store), toolshare.RiskHigh).Hidden().BuildInfo()
+	return memoryBuilder(t.Name(), coreDescription(t.service), toolshare.RiskHigh).Hidden().BuildInfo()
 }
 func (t ResidentMemoryCoreTool) Schema() llm.ToolSchema {
-	return memoryBuilder(t.Name(), coreDescription(t.Store), toolshare.RiskHigh).
+	return memoryBuilder(t.Name(), coreDescription(t.service), toolshare.RiskHigh).
 		String("content", "完整 core 内容。允许空字符串，表示清空 core。", toolshare.Required()).
 		BuildSchema()
 }
 func (t ResidentMemoryCoreTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *toolshare.Result, logContent string, _ error) {
 	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
-	scope, err := memoryScope(ctx, t.Store)
-	if err != nil {
-		return nil, err.Error(), err
-	}
 	var args memoryCoreArgs
 	if err := decodeMemoryArgs(req.Arguments, &args); err != nil {
 		return nil, err.Error(), err
@@ -230,7 +225,7 @@ func (t ResidentMemoryCoreTool) Call(ctx context.Context, req toolshare.CallRequ
 			return nil, callErr.Error(), callErr
 		}
 	}
-	if err := t.Store.WriteCore(ctx, scope, *args.Content); err != nil {
+	if err := t.service.WriteCore(ctx, *args.Content); err != nil {
 		return nil, err.Error(), err
 	}
 	{
@@ -243,26 +238,14 @@ func memoryBuilder(name, description string, risk toolshare.RiskLevel) *toolshar
 	return toolshare.NewBuilder(name).Description(description).Risk(risk).OwnerScoped()
 }
 
-func normalDescription(store *resident.Store) string {
-	limits := memoryLimits(store)
+func normalDescription(service ResidentMemoryService) string {
+	limits := service.LimitsOrDefault()
 	return fmt.Sprintf("修改当前用户在当前平台的普通常驻记忆。支持 append、write、delete。write 会覆盖完整 normal，使用前必须先调用 resident_memory_read。normal 上限 %d 字数或单词。%s", limits.Normal, residentMemoryWritingRule)
 }
 
-func coreDescription(store *resident.Store) string {
-	limits := memoryLimits(store)
+func coreDescription(service ResidentMemoryService) string {
+	limits := service.LimitsOrDefault()
 	return fmt.Sprintf("覆盖当前用户在当前平台的核心常驻记忆。仅当用户明确要求修改核心记忆时使用；必须先调用 resident_memory_read 读取完整 core，再写入完整 core。允许传空字符串清空 core。core 上限 %d 字数或单词。%s", limits.Core, residentMemoryWritingRule)
-}
-
-func memoryLimits(store *resident.Store) resident.Limits {
-	return store.LimitsOrDefault()
-}
-
-func memoryScope(ctx context.Context, store *resident.Store) (session.Scope, error) {
-	actor, ok := contextinfo.ActorFromContext(ctx)
-	if !ok {
-		return session.Scope{}, fmt.Errorf("resident memory actor is not available")
-	}
-	return resident.ActorScope(actor), nil
 }
 
 func decodeMemoryArgs(raw json.RawMessage, out any) error {

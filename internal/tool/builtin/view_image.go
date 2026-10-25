@@ -13,7 +13,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
-	"elbot/internal/media"
 	"elbot/internal/tool/chat_history"
 	toolmedia "elbot/internal/tool/media"
 	"elbot/internal/workspace"
@@ -98,8 +97,8 @@ func (t ViewImageTool) sourcePath(ctx context.Context, source string) (workspace
 	if source == "" || delivery.IsHTTPMediaSource(source) {
 		return workspace.ResolvedPath{}, nil
 	}
-	if strings.HasPrefix(source, media.IDPrefix) {
-		if !media.ValidID(source) {
+	if strings.HasPrefix(source, toolmedia.IDPrefix) {
+		if !toolmedia.ValidID(source) {
 			return workspace.ResolvedPath{}, fmt.Errorf("invalid media ID")
 		}
 		return workspace.ResolvedPath{}, nil
@@ -144,13 +143,13 @@ func (t ViewImageTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *
 		return nil, err.Error(), err
 	}
 	var item toolshare.MediaInfo
-	if strings.HasPrefix(args.Source, media.IDPrefix) {
+	if strings.HasPrefix(args.Source, toolmedia.IDPrefix) {
 		item, err = t.center.ValidateImage(ctx, args.Source)
 	} else {
 		if delivery.IsHTTPMediaSource(args.Source) {
-			item, err = t.center.ImportURL(ctx, args.Source, media.Input{})
+			item, err = t.center.ImportURL(ctx, args.Source, toolshare.MediaImportOptions{})
 		} else {
-			item, err = t.center.ImportFile(ctx, path.Path, media.Input{})
+			item, err = t.center.ImportFile(ctx, path.Path, toolshare.MediaImportOptions{})
 		}
 		if err != nil {
 			return nil, err.Error(), err

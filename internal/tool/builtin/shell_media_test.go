@@ -71,7 +71,7 @@ func TestShellMediaInputsAndCleanup(t *testing.T) {
 	}
 	marker := filepath.Join(t.TempDir(), "started")
 	cmd := `echo started > "` + filepath.ToSlash(marker) + `"`
-	for _, id := range []string{"bad", "media:" + strings.Repeat("f", 64)} {
+	for _, id := range []string{"", "bad", "media:" + strings.Repeat("f", 64)} {
 		raw, _ := json.Marshal(map[string]any{"cmd": cmd, "media_inputs": []map[string]string{{"media": item.ID}, {"media": id}}})
 		if _, _, err := shell.Call(ctx, toolshare.CallRequest{Arguments: raw}); err == nil {
 			t.Fatalf("accepted %s", id)

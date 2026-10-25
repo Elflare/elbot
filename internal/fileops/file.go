@@ -142,26 +142,9 @@ func editFileWithResult(path, requestedEncoding, expectedRevision string, create
 		if err != nil {
 			return EditResult{}, err
 		}
-		if newText == oldText {
-			return EditResult{}, fmt.Errorf("edit produced no changes")
-		}
-		outputText := RestoreLineEndings(newText, file.LineEnding)
-		newBytes, err := EncodeText(outputText, file.Encoding, file.BOM)
+		result, err = prepareFileResult(file, created, newText, contextLines, options)
 		if err != nil {
 			return EditResult{}, err
-		}
-		if options.MaxOutputBytes > 0 && int64(len(newBytes)) > options.MaxOutputBytes {
-			return EditResult{}, fmt.Errorf("edited file too large: %d bytes exceeds %d", len(newBytes), options.MaxOutputBytes)
-		}
-		contextLines = NormalizeContextLines(contextLines)
-		result = EditResult{
-			Path:           file.Path,
-			Created:        created,
-			Encoding:       file.Encoding,
-			RevisionBefore: oldRevision,
-			RevisionAfter:  ContentRevision(newBytes),
-			Diff:           editDiff(file.Path, oldText, newText, len(file.Bytes), len(newBytes), contextLines, options.DetailedDiffMaxBytes),
-			NewBytes:       newBytes,
 		}
 	}
 	result.DryRun = dryRun

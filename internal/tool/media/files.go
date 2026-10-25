@@ -67,7 +67,7 @@ func (c *MediaCall) Export(ctx context.Context, id, base string) (string, share.
 }
 
 // Import 规范化受限相对路径，再通过 os.Root 打开普通文件并持有导入结果。
-func (c *MediaCall) Import(ctx context.Context, base, path string, input media.Input) (share.MediaInfo, error) {
+func (c *MediaCall) Import(ctx context.Context, base, path string, input share.MediaImportOptions) (share.MediaInfo, error) {
 	path, err := workspace.NormalizeRestrictedPath(path)
 	if err != nil {
 		return share.MediaInfo{}, err
@@ -92,7 +92,7 @@ func (c *MediaCall) Import(ctx context.Context, base, path string, input media.I
 	if input.Name == "" {
 		input.Name = filepath.Base(path)
 	}
-	metadata, err := c.runtime.center.ImportReader(ctx, file, info.Size(), input)
+	metadata, err := c.runtime.center.ImportReader(ctx, file, info.Size(), mediaInput(input))
 	if err != nil {
 		return share.MediaInfo{}, err
 	}

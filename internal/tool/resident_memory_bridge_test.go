@@ -1,4 +1,4 @@
-package builtin
+package tool
 
 import toolshare "elbot/internal/tool/share"
 
@@ -11,7 +11,7 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/memory/resident"
-	
+	"elbot/internal/tool/builtin"
 )
 
 func raw(text string) json.RawMessage {
@@ -20,9 +20,9 @@ func raw(text string) json.RawMessage {
 
 func TestResidentMemoryToolsUseActorScope(t *testing.T) {
 	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	coreTool := ResidentMemoryCoreTool{Store: store}
-	normalTool := ResidentMemoryNormalTool{Store: store}
-	readTool := ResidentMemoryReadTool{Store: store}
+	coreTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[3]
+	normalTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[2]
+	readTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[1]
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "qqonebot:1", Platform: "qqonebot", PlatformUserID: "1", Role: contextinfo.RoleUser})
 
 	if _, _, err := coreTool.Call(ctx, toolshare.CallRequest{Arguments: raw(`{"content":"用户喜欢被称为娅娅。"}`)}); err != nil {
@@ -54,7 +54,7 @@ func TestResidentMemoryToolsUseActorScope(t *testing.T) {
 
 func TestResidentMemoryNormalAppendWriteDelete(t *testing.T) {
 	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	normalTool := ResidentMemoryNormalTool{Store: store}
+	normalTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[2]
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin})
 
 	result, _, err := normalTool.Call(ctx, toolshare.CallRequest{Arguments: raw(`{"action":"append","content":"第一条"}`)})
@@ -86,7 +86,7 @@ func TestResidentMemoryNormalAppendWriteDelete(t *testing.T) {
 
 func TestResidentMemoryCoreAllowsEmptyString(t *testing.T) {
 	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	coreTool := ResidentMemoryCoreTool{Store: store}
+	coreTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[3]
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin})
 
 	if _, _, err := coreTool.Call(ctx, toolshare.CallRequest{Arguments: raw(`{"content":"核心"}`)}); err != nil {
@@ -105,13 +105,13 @@ func TestResidentMemoryCoreAllowsEmptyString(t *testing.T) {
 
 func TestResidentMemoryToolRisksAndSchema(t *testing.T) {
 	store := resident.NewStoreWithLimits("unused.toml", resident.Limits{Core: 200, Normal: 300})
-	entry := NewResidentMemoryTool(store)
+	entry := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[0]
 	if entry.Info().Risk != toolshare.RiskLow || len(entry.Info().DependsOn) != 3 {
 		t.Fatalf("entry info = %#v", entry.Info())
 	}
-	readTool := ResidentMemoryReadTool{Store: store}
-	normalTool := ResidentMemoryNormalTool{Store: store}
-	coreTool := ResidentMemoryCoreTool{Store: store}
+	readTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[1]
+	normalTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[2]
+	coreTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[3]
 	if readTool.Info().Risk != toolshare.RiskLow {
 		t.Fatalf("read risk not low")
 	}
@@ -142,8 +142,8 @@ func TestResidentMemoryToolRisksAndSchema(t *testing.T) {
 
 func TestResidentMemoryValidation(t *testing.T) {
 	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	readTool := ResidentMemoryReadTool{Store: store}
-	normalTool := ResidentMemoryNormalTool{Store: store}
+	readTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[1]
+	normalTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[2]
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin})
 
 	if _, _, err := readTool.Call(context.Background(), toolshare.CallRequest{Arguments: raw(`{"section":"all"}`)}); err == nil {

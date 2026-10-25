@@ -11,6 +11,7 @@ import (
 
 	"elbot/internal/media"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/tool/share"
 	"elbot/internal/workspace"
 )
 
@@ -109,7 +110,7 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(base, output), []byte("output"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	imported, err := private.Import(ctx, base, output, media.Input{})
+	imported, err := private.Import(ctx, base, output, share.MediaImportOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +129,7 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 		t.Fatalf("private export survived: %v", err)
 	}
 	for _, path := range []string{"../escape", "/absolute", `C:\escape`, `..\escape`} {
-		if _, err := runtime.NewCall().Import(ctx, base, path, media.Input{}); err == nil {
+		if _, err := runtime.NewCall().Import(ctx, base, path, share.MediaImportOptions{}); err == nil {
 			t.Fatalf("accepted %s", path)
 		}
 	}
@@ -137,7 +138,7 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(outside, filepath.Join(base, "link.txt")); err == nil {
-		if _, err := runtime.NewCall().Import(ctx, base, "link.txt", media.Input{}); err == nil {
+		if _, err := runtime.NewCall().Import(ctx, base, "link.txt", share.MediaImportOptions{}); err == nil {
 			t.Fatal("accepted escaped symlink")
 		}
 	}

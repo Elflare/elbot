@@ -17,7 +17,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
-	"elbot/internal/media"
 	toolmedia "elbot/internal/tool/media"
 	"elbot/internal/workspace"
 )
@@ -61,8 +60,8 @@ func (t SendFileTool) AssessRisk(ctx context.Context, req toolshare.CallRequest)
 	if source == "" {
 		return toolshare.RiskAssessment{}, fmt.Errorf("source is required")
 	}
-	if strings.HasPrefix(source, media.IDPrefix) {
-		if !media.ValidID(source) {
+	if strings.HasPrefix(source, toolmedia.IDPrefix) {
+		if !toolmedia.ValidID(source) {
 			return toolshare.RiskAssessment{}, fmt.Errorf("invalid media ID")
 		}
 		return toolshare.RiskAssessment{Level: toolshare.RiskMedium}, nil
@@ -114,8 +113,8 @@ func (t SendFileTool) Call(ctx context.Context, req toolshare.CallRequest) (_ *t
 }
 
 func (t SendFileTool) buildOutput(ctx context.Context, args sendFileArgs, source string) (delivery.Output, []string, string, error) {
-	if strings.HasPrefix(source, media.IDPrefix) {
-		if !media.ValidID(source) {
+	if strings.HasPrefix(source, toolmedia.IDPrefix) {
+		if !toolmedia.ValidID(source) {
 			return delivery.Output{}, nil, "", fmt.Errorf("invalid media ID")
 		}
 		item, err := t.media.Metadata(ctx, source)
