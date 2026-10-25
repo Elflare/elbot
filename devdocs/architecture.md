@@ -216,7 +216,10 @@ Chat／Responses 共用 Dialogue 的 Prompt、Hook、ToolRun、媒体与提交�
 
 ```mermaid
 flowchart LR
-    R["tool/execution/runner.go<br/>顺序准备、确认与完成队列"] --> W["tool/execution/executor.go、elwisp_exec.go<br/>并发执行与实际开始边界"]
+    R["tool/execution/runner.go<br/>顺序准备、确认与完成队列"] --> A["tool/execution/prepared.go<br/>原生与远程调用准备"]
+    A --> D["tool/share/definition.go、prepared.go<br/>必需准备入口、参数、风险、预览与执行回调"]
+    D --> Q["agent/confirmation/confirmation.go<br/>自动放行或交互确认"]
+    Q --> W["tool/execution/executor.go、elwisp_exec.go<br/>执行准备结果、远程发送与开始边界"]
     W --> R
     R --> C["agent/dialogue/commit.go、responses/persistence.go<br/>固定槽初始化、逐项提交与原生快照"]
     C --> S["storage/sqlite/tool_batch.go、dialogue_repository.go<br/>结果、统计、媒体和发现状态原子保存"]
@@ -230,11 +233,13 @@ flowchart LR
 - N 个调用的正常批次有 1 次初始化事务和 N 次结果事务，最后一次同时封存批次与原生快照；不单独写 started 状态。此计数不含工具自身业务写入、模型请求归档、异常恢复和轮末收尾。原始返回至最终结果提交之间中断时，该项仍为未知。
 - 单工具失败、拒绝或超时不停止其他调用；整轮取消或确认过期取消并等待所有 worker。完成 Hook 只处理实际执行的结果，Content／Segments 回灌模型，Data 供内部消费。
 - 请求拥有的外部命令统一通过 processenv 配置终止行为：Unix 使用独立进程组，Windows 使用 taskkill /T /F；取消后等待命令和 stdout／stderr 收集结束。Skill、Shell、编译、一次性 Hook 和 ripgrep 共用此行为；常驻 Hook 的单次调用仍使用 event.cancel，关闭其进程时复用进程树终止。主动脱离进程组的守护进程和已提交给远端的动作不在取消保证内。
-- Tool.Call 返回业务 Result、独立日志正文和原始 error。实际调用前发布 tool_call_start，返回后立即发布 tool_call_end，先于发送、Hook 与持久化；Hook 规则／插件对应 hook_tool_call_started 和 hook_tool_call。开始无结果，结束有摘要与耗时，共享调用 ID；审计为追加文件日志。调用前固定 run_source；已进入调用记 INFO／succeeded，业务错误保留在正文，调用统计保留原始执行结论。
+- PreparedCall.Call 返回业务 Result、独立日志正文和原始 error。实际调用前发布 tool_call_start，返回后立即发布 tool_call_end，先于发送、Hook 与持久化；Hook 规则／插件对应 hook_tool_call_started 和 hook_tool_call。开始无结果，结束有摘要与耗时，共享调用 ID；审计为追加文件日志。调用前固定 run_source；已进入调用记 INFO／succeeded，业务错误保留在正文，调用统计保留原始执行结论。
 - 参数日志限 512 rune，工具自行将摘要限为 1024 rune；日志不截断业务结果，也不把 Segments 自动转成日志正文。
-- Execution 在解析时固定本次工具对象，风险评估与 Permission.CheckTool 各执行一次，需要交互时调用 Agent 的确认能力。目录替换、注销影响后续解析，不改变已准备或已批准的调用。
-- Share 的 CallPreparer、PreparedCall 定义准备契约；NewPreparedCall 复制参数并保存确认详情与执行回调，不持有工具目录、context 或锁。Execution 执行前校验取消与 Matches，不重新查目录或重复授权；工具自身负责目标和 revision 等提交校验。
-- 文件编辑／撤销、长期记忆更新和 Skill 修改复用准备结果，提交前核对目标及 revision；AgentSkill 正文到执行时才读取。
+- Tool 接口只保留 Name、Info、Schema 和必需的 PrepareCall；准备不执行业务写入，成功时必须返回非 nil 的 PreparedCall。完整风险由工具准备阶段确定；Execution 从准备结果读取风险，原生批次调用使用 Permission.CheckTool 判断放行或确认。目录替换、注销影响后续解析，不改变已准备的调用。
+- NewPreparedCall 复制调用参数与风险原因，保存预览和执行回调；Preview 只提供展示文本，RiskAssessment 返回独立风险结果。回调使用固定业务数据和执行阶段传入的 context，不保留准备阶段的 context 或锁。Execution 执行前校验取消与 Matches，只执行 PreparedCall，不提供绕过准备的调用分支。
+- 自动确认只跳过展示和等待，不跳过准备；普通调用进度提示与确认预览独立。已由调用方授权的 CallTool 同样先准备、复核参数与取消状态，再执行，但不进入模型批次或交互确认。
+- ELwisp 准备时固定远程地址、请求体与超时，参数或请求构造错误在发送前返回；实际执行只发送请求、解析返回并保留部分结果。远程调用沿用现行低风险自动放行策略，开始与结果状态由统一执行入口记录。
+- 业务提交负责目标、revision、权限绑定和业务状态复核；文件 diff 沿用 fileops 的大小与行比较限制，超限返回省略说明。文件准备及具体工具实现尚未全部迁移到必需 PrepareCall 契约，当前整包构建仍受未迁移入口及 Skill 循环依赖阻塞。
 - 每次准备及完成处理前应用 Execution 的内存接管快照，保留后续工具状态；本次调用权限与沙箱固定，输出发送时选择最新去向。发现状态提交成功后才更新快照，保存失败不重跑已完成动作。
 - Chat 工具消息只发文本，工具图片派生为同批之后的 user 多模态输入，不持久化派生消息；Responses 编码原生工具结果。
 

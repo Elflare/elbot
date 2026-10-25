@@ -303,19 +303,6 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			continue
 		}
 		toolCtx := deps.PrepareToolContext(ctx, &snapshot, call)
-		assessment, err := m.assessRisk(toolCtx, resolved, call)
-		riskText := string(assessment.Level)
-		if err != nil {
-			resultStatus := events.ResultFailed
-			if errors.Is(err, context.Canceled) {
-				resultStatus = events.ResultCanceled
-			}
-			record(ctx, call, "tool_prepare", events.LogResult{ResultStatus: resultStatus, Content: fmt.Sprintf("assess risk: %v", err)})
-			fail(call, err, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
-			continue
-		}
-		task.risk = riskText
-		deps.AddToolUse(sessionID, call.Name)
 		var prepared *toolshare.PreparedCall
 		await(func() { prepared, err = m.prepareCall(toolCtx, resolved, call) })
 		if err != nil {
@@ -327,15 +314,18 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			fail(call, err, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
 			continue
 		}
+		assessment := prepared.RiskAssessment()
+		riskText := string(assessment.Level)
+		task.risk = riskText
+		deps.AddToolUse(sessionID, call.Name)
+		// 调用进度提示独立于需要交互确认时展示的准备结果。
 		if !batchPreviewSent && deps.ShouldSendPreview(ctx, req.Session, call, req.AssistantText) {
 			deps.SendPreview(ctx, fmt.Sprintf("正在调用 %s：%s", call.Name, previewArguments(call.Arguments)))
 		}
-		detail := ""
-		if prepared != nil {
-			detail = prepared.RiskDetail()
-		}
 		var confirm toolshare.ConfirmResult
-		await(func() { confirm, err = m.confirm(toolCtx, deps, actor, sessionID, call, resolved, assessment, detail) })
+		await(func() {
+			confirm, err = m.confirm(toolCtx, deps, actor, sessionID, call, resolved, assessment, prepared.Preview())
+		})
 		confirmationExtra = joinAssistantText(confirmationExtra, confirm.Extra)
 		if resultErr != nil {
 			return toolshare.RunResult{Err: resultErr}

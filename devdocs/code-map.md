@@ -114,7 +114,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/tool/registry/`、`execution/`、`builtin/`：工具目录、执行核心与内置工具。
 - `internal/tool/share/`：公共定义、schema 构造与纯数据辅助。
-- `internal/tool/share/prepared.go`：CallPreparer 契约与 PreparedCall 参数快照，供工具实现和 Execution 共用。
+- `internal/tool/share/definition.go`、`prepared.go`、`risk.go`：Tool 的必需 PrepareCall 入口；PreparedCall 固定参数、完整风险、预览和执行回调，提供 Preview、RiskAssessment、Call 与参数匹配检查。
 - `internal/tool/share/cron.go`：Tool 内部的 CronService、创建／更新请求与精简管理结果，不依赖 Background 或 Cron 实现。
 - `internal/tool/background_bridge.go`：ConnectBackground 接收后台公开能力，转换请求与结果并注册 Cron 工具；注册关系由 Tool 的 Close 释放。
 - `internal/tool/chat_history/manager.go`：历史组件构造与 Backend 契约；`query.go` 处理聊天范围、用户／时间筛选和查询；`media.go` 处理媒体选择、序号与批次获取策略。
@@ -152,8 +152,8 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/tools/toolrun_adapter.go`：Hook、子请求、确认与状态桥接。
 - `internal/tool/execution/runner.go`：Manager 的批次流程，顺序准备和确认、并发执行、完成队列、逐项提交与开始／结束日志组装。
 - `internal/agent/dialogue/commit.go`、`internal/agent/responses/persistence.go`：固定结果槽、逐项最终结果、批次封存与原生恢复快照。
-- `internal/tool/execution/manager.go`：私有持有构造时注入的依赖，固定调用对象，提供原生直接调用；`schema.go` 组合基础与已发现声明。
-- `internal/tool/execution/prepared.go`：风险评估与调用准备；`executor.go` 定义包内 executionResult，执行已批准的原生对象并转换结果；`elwisp_exec.go` 执行远程调用。
+- `internal/tool/execution/manager.go`：私有持有构造时注入的依赖，固定调用对象；原生直接调用也先准备再执行；`schema.go` 组合基础与已发现声明。
+- `internal/tool/execution/prepared.go`：取得原生或远程工具的完整准备结果；`executor.go` 复核调用身份与取消状态，只执行 PreparedCall 并转换结果；`elwisp_exec.go` 分离远程请求准备与发送，固定地址、请求体和超时。
 - `internal/tool/logging.go`：完整工具日志发布。
 - `internal/storage/tool_batch.go`、`internal/storage/sqlite/tool_batch.go`、`dialogue_repository.go`：稳定批次关联、原槽更新、结果／统计／媒体／发现状态原子提交；`tool_call_repository.go` 提供调用统计查询。
 

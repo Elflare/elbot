@@ -2,11 +2,9 @@ package execution
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/security"
-	"elbot/internal/storage"
 	"elbot/internal/tool/registry"
 	"elbot/internal/tool/share"
 	"errors"
@@ -18,7 +16,7 @@ func TestPreparedExecutionBindsRequest(t *testing.T) {
 		t.Run(scenario, func(t *testing.T) {
 			req := share.CallRequest{ID: "one", Name: "prepared", Arguments: []byte(`{"value":1}`)}
 			called := false
-			prepared := share.NewPreparedCall(req, "approved detail", func(context.Context) (*share.Result, string, error) {
+			prepared := share.NewPreparedCall(req, share.RiskAssessment{Level: share.RiskHigh}, "approved detail", func(context.Context) (*share.Result, string, error) {
 				called = true
 				return &share.Result{Content: "approved result"}, "approved log", nil
 			})
@@ -36,7 +34,7 @@ func TestPreparedExecutionBindsRequest(t *testing.T) {
 			case "canceled":
 				cancel()
 			}
-			result := newTestManager(nil, nil).executePrepared(ctx, call, resolvedTool{Source: share.SourceKindNative, ResultStatus: events.ResultSucceeded}, prepared, nil)
+			result := (&Manager{}).executePrepared(ctx, call, resolvedTool{Source: share.SourceKindNative, ResultStatus: events.ResultSucceeded}, prepared, nil)
 			if scenario == "success" {
 				if result.Error != nil || !called || !result.ExecutionStarted || result.Result.Content != "approved result" || result.LogResult.Content != "approved log" {
 					t.Fatalf("result=%+v called=%v", result, called)
@@ -54,7 +52,7 @@ func TestPreparedExecutionBindsRequest(t *testing.T) {
 type snapshotTool struct {
 	assessments int
 	calls       int
-	prepared    bool
+	prepare     func(context.Context, share.CallRequest) (*share.PreparedCall, error)
 }
 
 func (*snapshotTool) Name() string { return "snapshot" }
@@ -62,76 +60,67 @@ func (*snapshotTool) Info() share.Info {
 	return share.Info{Name: "snapshot", Source: share.SourceSkillGo, Risk: share.RiskHigh}
 }
 func (*snapshotTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "snapshot"} }
-func (s *snapshotTool) AssessRisk(context.Context, share.CallRequest) (share.RiskAssessment, error) {
+func (s *snapshotTool) PrepareCall(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
 	s.assessments++
-	return share.RiskAssessment{Level: share.RiskHigh}, nil
-}
-func (s *snapshotTool) PrepareCall(_ context.Context, req share.CallRequest) (*share.PreparedCall, error) {
-	if !s.prepared {
-		return nil, nil
+	if s.prepare != nil {
+		return s.prepare(ctx, req)
 	}
-	return share.NewPreparedCall(req, "original snapshot", func(ctx context.Context) (*share.Result, string, error) { return s.Call(ctx, req) }), nil
-}
-func (s *snapshotTool) Call(context.Context, share.CallRequest) (*share.Result, string, error) {
-	s.calls++
-	return &share.Result{Content: "original"}, "original", nil
-}
-
-type snapshotConfirmDeps struct {
-	runnerTestDeps
-	change func()
+	return share.NewPreparedCall(req, share.RiskAssessment{Level: share.RiskHigh}, "original snapshot", func(context.Context) (*share.Result, string, error) {
+		s.calls++
+		return &share.Result{Content: "original"}, "original", nil
+	}), nil
 }
 
-func (d *snapshotConfirmDeps) ConfirmToolCall(context.Context, string, llm.ToolCallRequest, share.RiskAssessment, string) (share.ConfirmResult, error) {
-	d.confirmed = true
-	d.change()
-	return share.ConfirmResult{Allowed: true}, nil
-}
-
-func TestRunKeepsSelectedObjectAcrossCatalogChanges(t *testing.T) {
-	for _, prepared := range []bool{false, true} {
-		for _, action := range []string{"replace", "remove"} {
-			name := action
-			if prepared {
-				name += "_prepared"
+func TestCallToolAlwaysPreparesAndChecksBeforeExecution(t *testing.T) {
+	for _, scenario := range []string{"success", "prepare_error", "canceled_before", "canceled_after", "changed_request"} {
+		t.Run(scenario, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			tool := &snapshotTool{}
+			prepareErr := errors.New("prepare failed")
+			if scenario != "success" {
+				tool.prepare = func(_ context.Context, req share.CallRequest) (*share.PreparedCall, error) {
+					if scenario == "prepare_error" {
+						return nil, prepareErr
+					}
+					if scenario == "canceled_after" {
+						cancel()
+					}
+					if scenario == "changed_request" {
+						req.ID = "different"
+					}
+					return share.NewPreparedCall(req, share.RiskAssessment{Level: share.RiskHigh}, "snapshot", func(context.Context) (*share.Result, string, error) {
+						tool.calls++
+						return &share.Result{Content: "original"}, "original", nil
+					}), nil
+				}
 			}
-			t.Run(name, func(t *testing.T) {
-				permission := security.DefaultPermission()
-				catalog := registry.NewRegistry(permission)
-				original := &snapshotTool{prepared: prepared}
-				replacement := &snapshotTool{}
-				if err := catalog.Register(original); err != nil {
-					t.Fatal(err)
+			catalog := registry.NewRegistry(security.DefaultPermission())
+			if err := catalog.Register(tool); err != nil {
+				t.Fatal(err)
+			}
+			if scenario == "canceled_before" {
+				cancel()
+			}
+			result, logContent, err := (&Manager{registry: catalog}).CallTool(ctx, share.CallRequest{ID: "one", Name: tool.Name(), Arguments: []byte(`{}`)})
+			if scenario == "success" {
+				if err != nil || tool.assessments != 1 || tool.calls != 1 || result.Content != "original" || logContent != "original" {
+					t.Fatalf("tool=%+v result=%+v log=%q error=%v", tool, result, logContent, err)
 				}
-				deps := &snapshotConfirmDeps{change: func() {
-					var err error
-					if action == "replace" {
-						err = catalog.ReplaceSources([]share.Source{share.SourceSkillGo}, []share.Tool{replacement})
-					} else {
-						err = catalog.Unregister(original.Name())
-					}
-					if err != nil {
-						t.Fatal(err)
-					}
-				}}
-				manager := newTestManager(catalog, permission)
-				req := share.RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{ID: "snapshot", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "one", Name: original.Name(), Arguments: "{}"}}}
-				result := manager.Run(t.Context(), deps, req)
-				if result.Err != nil || !deps.confirmed || original.calls != 1 || original.assessments != 1 || replacement.calls != 0 {
-					t.Fatalf("result=%+v old=%+v new=%+v", result, original, replacement)
-				}
-				req.Committer = &testToolCommitter{}
-				result = manager.Run(t.Context(), &runnerTestDeps{}, req)
-				if result.Err != nil || original.calls != 1 || original.assessments != 1 {
-					t.Fatalf("old object reused: %+v", original)
-				}
-				if action == "replace" && (replacement.calls != 1 || replacement.assessments != 1) {
-					t.Fatalf("new object not selected: %+v", replacement)
-				}
-				if action == "remove" && (len(result.Messages) != 1 || llm.SegmentsContentText(result.Messages[0].Segments) == "original") {
-					t.Fatalf("removed object still callable: %+v", result)
-				}
-			})
-		}
+				return
+			}
+			if err == nil || result != nil || tool.calls != 0 {
+				t.Fatalf("invalid call executed: tool=%+v result=%+v error=%v", tool, result, err)
+			}
+			if scenario == "prepare_error" && !errors.Is(err, prepareErr) {
+				t.Fatalf("prepare error lost: %v", err)
+			}
+			if scenario == "canceled_before" && tool.assessments != 0 {
+				t.Fatal("canceled call was prepared")
+			}
+			if (scenario == "canceled_before" || scenario == "canceled_after") && !errors.Is(err, context.Canceled) {
+				t.Fatalf("cancellation lost: %v", err)
+			}
+		})
 	}
 }

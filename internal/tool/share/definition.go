@@ -54,10 +54,7 @@ type Tool interface {
 	Name() string
 	Info() Info
 	Schema() llm.ToolSchema
-	// Call returns the business result, an independent log body, and the original
-	// business error. The runner declares the invocation log status and level
-	// from the execution outcome; tools supply logContent, including diagnostics.
-	// Tools summarize and truncate their own log bodies to 1024 runes,
-	// including the ellipsis. Business results remain unchanged.
-	Call(ctx context.Context, req CallRequest) (result *Result, logContent string, callErr error)
+	// PrepareCall 固定本次调用的风险、预览与执行数据，不执行业务写入。
+	// 成功时必须返回非 nil 的准备结果；自动确认也使用同一准备入口。
+	PrepareCall(ctx context.Context, req CallRequest) (*PreparedCall, error)
 }

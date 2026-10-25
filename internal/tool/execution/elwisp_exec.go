@@ -1,21 +1,18 @@
-// 执行 Elwisp 远程调用并转换返回结果。
+// 准备 Elwisp 远程请求，在统一执行入口放行后发送并转换返回结果。
 package execution
-
-import toolshare "elbot/internal/tool/share"
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
-	"elbot/internal/events"
 	"elbot/internal/llm"
+	toolshare "elbot/internal/tool/share"
 )
 
 type elwispToolRequest struct {
@@ -31,90 +28,72 @@ type elwispToolResponse struct {
 	Error   string `json:"error"`
 }
 
-func executeELwispTool(ctx context.Context, call llm.ToolCallRequest, resolved resolvedTool, onStarted func()) (result executionResult) {
-	result.Call = call
-	result.ResultStatus = events.ResultFailed
-	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
-	defer func() {
-		// The remote source supplies its own log body, independently of segments.
-		if result.Error != nil {
-			result.LogResult.Content = result.Error.Error() + "\n" + result.LogResult.Content
-		}
-		result.LogResult.Content = toolshare.TruncateLogContent(result.LogResult.Content, 1024)
-		if result.Error != nil {
-			if errors.Is(result.Error, context.Canceled) {
-				result.ResultStatus = events.ResultCanceled
-			}
-			if result.Result == nil {
-				message.Segments = llm.TextSegments(fmt.Sprintf("tool call %s failed: %v", call.Name, result.Error))
-			}
-		}
-		result.Message = message
-	}()
+// prepareELwispTool 固定远程地址、请求体和超时，不发送请求或保留准备阶段的 context。
+func prepareELwispTool(call llm.ToolCallRequest, resolved resolvedTool) (*toolshare.PreparedCall, error) {
 	discovered := resolved.Discovered
 	timeout := time.Duration(discovered.TimeoutSeconds) * time.Second
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
-	toolCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
 	arguments := json.RawMessage(strings.TrimSpace(call.Arguments))
 	if len(arguments) == 0 {
 		arguments = json.RawMessage(`{}`)
 	}
 	payload, err := json.Marshal(elwispToolRequest{Tool: discovered.Name, EventKey: discovered.EventKey, Arguments: arguments})
 	if err != nil {
-		result.LogResult.ResultStatus = events.ResultFailed
-		result.Error = err
-		return result
+		return nil, err
 	}
-	req, err := http.NewRequestWithContext(toolCtx, http.MethodPost, discovered.Endpoint, bytes.NewReader(payload))
+	req, err := http.NewRequest(http.MethodPost, discovered.Endpoint, bytes.NewReader(payload))
 	if err != nil {
-		result.LogResult.ResultStatus = events.ResultFailed
-		result.Error = err
-		return result
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	result.ExecutionStarted = true
-	if onStarted != nil {
-		onStarted()
-	}
-	resp, err := http.DefaultClient.Do(req)
+	preview := fmt.Sprintf("远程工具：%s\n地址：%s\n参数：%s", discovered.Name, discovered.Endpoint, arguments)
+	return toolshare.NewPreparedCall(
+		toolshare.CallRequest{ID: call.ID, Name: call.Name, Arguments: json.RawMessage(call.Arguments)},
+		toolshare.RiskAssessment{Level: toolshare.RiskLow},
+		preview,
+		func(ctx context.Context) (*toolshare.Result, string, error) {
+			return executeELwispTool(ctx, req, timeout)
+		},
+	), nil
+}
+
+// executeELwispTool 只发送已准备的请求，结果状态与开始边界由统一执行入口负责。
+func executeELwispTool(ctx context.Context, req *http.Request, timeout time.Duration) (result *toolshare.Result, logContent string, callErr error) {
+	defer func() {
+		if callErr != nil {
+			logContent = callErr.Error() + "\n" + logContent
+		}
+		logContent = toolshare.TruncateLogContent(logContent, 1024)
+	}()
+	toolCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	resp, err := http.DefaultClient.Do(req.Clone(toolCtx))
 	if err != nil {
-		result.Error = err
-		return result
+		return nil, "", err
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		result.Error = err
-		return result
+		return nil, "", err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		result.Error = fmt.Errorf("ELwisp tool HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-		return result
+		return nil, "", fmt.Errorf("ELwisp tool HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	content := strings.TrimSpace(string(body))
 	var parsed elwispToolResponse
 	if err := json.Unmarshal(body, &parsed); err == nil {
 		content = firstELwispResult(parsed.Content, parsed.Text, parsed.Result, content)
 		if strings.TrimSpace(parsed.Error) != "" {
-			result.Error = fmt.Errorf("ELwisp tool error: %s", strings.TrimSpace(parsed.Error))
 			content = firstELwispResult(parsed.Content, parsed.Text, parsed.Result)
-			result.LogResult.Content = content
 			if content != "" {
-				result.Result = &toolshare.Result{Content: content}
-				message.Segments = result.Result.LLMSegments()
+				result = &toolshare.Result{Content: content}
 			}
-			return result
+			return result, content, fmt.Errorf("ELwisp tool error: %s", strings.TrimSpace(parsed.Error))
 		}
 	}
-	result.Result = &toolshare.Result{Content: content}
-	result.LogResult.Content = content
-	message.Segments = result.Result.LLMSegments()
-	result.ResultStatus = events.ResultSucceeded
-	return result
+	return &toolshare.Result{Content: content}, content, nil
 }
 
 func firstELwispResult(values ...string) string {

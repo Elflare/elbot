@@ -28,7 +28,7 @@ type executionResult struct {
 	Error error
 	// ResultStatus is declared at the execution source, including pre-execution rejection.
 	ResultStatus events.ResultStatus
-	// ExecutionStarted records entry into Tool.Call or PreparedCall.Call, even if it fails.
+	// ExecutionStarted 记录进入 PreparedCall.Call，准备阶段失败不算开始执行。
 	ExecutionStarted bool
 }
 
@@ -44,24 +44,14 @@ func (m *Manager) executePrepared(ctx context.Context, call llm.ToolCallRequest,
 	if err := ctx.Err(); err != nil {
 		return executionError(call, message, err, events.ResultCanceled)
 	}
-	if resolved.Source == toolshare.SourceKindELwisp {
-		return executeELwispTool(ctx, call, resolved, onStarted)
-	}
 	request := toolshare.CallRequest{ID: call.ID, Name: call.Name, Arguments: json.RawMessage(call.Arguments)}
-	if prepared != nil && !prepared.Matches(request) {
+	if !prepared.Matches(request) {
 		return executionError(call, message, fmt.Errorf("tool call changed after preparation"), events.ResultFailed)
 	}
-	var err error
-	var result *toolshare.Result
-	var logContent string
 	if onStarted != nil {
 		onStarted()
 	}
-	if prepared != nil {
-		result, logContent, err = prepared.Call(ctx)
-	} else {
-		result, logContent, err = resolved.Native.Call(ctx, request)
-	}
+	result, logContent, err := prepared.Call(ctx)
 	resultStatus := events.ResultSucceeded
 	if err != nil {
 		resultStatus = events.ResultFailed

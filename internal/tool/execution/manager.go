@@ -86,7 +86,8 @@ func (m *Manager) resolve(ctx context.Context, name string, discovered []toolsha
 	return resolvedTool{ResultStatus: events.ResultFailed, Error: fmt.Errorf("tool %q not found", name)}
 }
 
-// CallTool 供已由调用方授权的原生调用使用，不进入模型批次或交互确认。
+// CallTool 供已由调用方授权的原生调用使用；仍先准备，再执行同一结果。
+// 此入口不进入模型批次或交互确认。
 func (m *Manager) CallTool(ctx context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, "", err
@@ -95,5 +96,15 @@ func (m *Manager) CallTool(ctx context.Context, req toolshare.CallRequest) (*too
 	if !ok {
 		return nil, "", fmt.Errorf("tool %q not found", req.Name)
 	}
-	return candidate.Call(ctx, req)
+	prepared, err := candidate.PrepareCall(ctx, req)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
+	}
+	if !prepared.Matches(req) {
+		return nil, "", fmt.Errorf("tool call changed after preparation")
+	}
+	return prepared.Call(ctx)
 }
