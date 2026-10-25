@@ -9,8 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Added a configuration file lock to prevent multiple instances from using the same configuration file
+
 ### Changed
 
+- Manually guided the AI to refactor the App to the business layer package by package, file by file, function by function, and field by field, further tightening boundaries and clarifying responsibilities
 - `/status` display optimization
 
 ## [v0.6.0 - 2026-10-23]

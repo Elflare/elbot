@@ -944,6 +944,14 @@
       "translation": "__ELBOT_CODE_0__ now restores non-current Sessions directly based on the most recent update time; __ELBOT_CODE_1__ represents the most recent item, and it is no longer required to first execute a bare __ELBOT_CODE_2__ to establish numbering.",
       "updated_at": 1784276217
     },
+    "CHANGELOG.md:list:6e755a9ddb4d7686123cb88afec69960ec5e5d6fa7d8ba60a63216b8c9cd751c": {
+      "kind": "list",
+      "source": "人工逐包、逐文件、逐函数、逐字段指导AI重构App到业务层，再次收拢边界、分清职责",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "6e755a9ddb4d7686123cb88afec69960ec5e5d6fa7d8ba60a63216b8c9cd751c",
+      "translation": "Manually guided the AI to refactor the App to the business layer package by package, file by file, function by function, and field by field, further tightening boundaries and clarifying responsibilities",
+      "updated_at": 1792940905
+    },
     "CHANGELOG.md:list:6e825de7a3fb0a65300d30be0edd7d8051380fa20be7239c89d4c991c8928362": {
       "kind": "list",
       "source": "QQ OneBot 新增 __ELBOT_CODE_0__ 配置，本地图片和文件默认使用 base64 发送，也可在共享文件系统的部署中显式改用 __ELBOT_CODE_1__。",
@@ -1607,6 +1615,14 @@
       "source_hash": "ab58d9dcd816b9be7a67a5dda1fe70b790eeb3652be980bac9d344e0fa067f37",
       "translation": "Skill scanning has been changed to delayed execution after startup, with a fallback to ensure scanning upon the first use of __ELBOT_CODE_0__, reducing startup blocking.",
       "updated_at": 1783074551
+    },
+    "CHANGELOG.md:list:ab70b2260c9d93732f581cc5f68629aa4a07434e0f572125f53682cea05dc262": {
+      "kind": "list",
+      "source": "新增配置文件锁，防止多个实例使用同一份配置文件",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "ab70b2260c9d93732f581cc5f68629aa4a07434e0f572125f53682cea05dc262",
+      "translation": "Added a configuration file lock to prevent multiple instances from using the same configuration file",
+      "updated_at": 1792940905
     },
     "CHANGELOG.md:list:ac3afc51b6a800e97966f71f733c8b5c6a8ed82d2528465a388929465e7a17c6": {
       "kind": "list",
@@ -2362,8 +2378,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "804c684e32c26ebbd06f7d306c180827e7e1b2a1c5acf43240843ccd23aca5a9",
+  "source_hash": "912e2ff88195f2b6f33f753e949ec0a79c45e84d19d5ee380d40d57ea95f3f62",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1792733637,
+  "updated_at": 1792940905,
   "version": 2
 }
