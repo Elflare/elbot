@@ -18,19 +18,19 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 启动与装配
 
 - `cmd/elbot/main.go`、`internal/launcher/cli.go`：程序入口、参数与运行模式。
-- `internal/app/` 六文件按下层接口已存在来实现公共流程，Agent、Hook 已实现根包总管，配置独占已实现；Tool、Platform、Background、媒体和模型构造入口、平台客户端接口及进程入口适配仍待完成。13 个原生产文件和 12 个原测试文件保存在 `*.go.bak` 中；职责与调用契约见 [App 包设计](app-design.md)。
-- `internal/app/entry.go`：启动参数、总管集合、完整运行流程、四阶段耗时、启动顺序、平台等待和错误汇总。
+- `internal/app/` 六文件按下层接口已存在来实现公共流程，Agent、Hook、Tool、Background 已提供根包总管，配置独占已实现；Platform 总管、媒体和模型构造入口、平台客户端接口及进程入口适配仍待完成。13 个原生产文件和 12 个原测试文件保存在 `*.go.bak` 中；职责与调用契约见 [App 包设计](app-design.md)。
+- `internal/app/entry.go`：启动参数、局部阶段列表、统一阶段执行与耗时、Lifecycle／可选 Waiter、唯一总管集合、按顺序启动与按能力等待。
 - `internal/app/environment.go`：验证运行模式，定位配置并转为解析符号链接后的绝对路径；TUI／Service 通过 `gofrs/flock` 非阻塞取得对应 `.lock` 文件的独占锁。
 - `internal/app/environment_test.go`：配置定位、路径别名、配置替换保存、跨进程互斥、正常及异常退出后的重新取锁测试，可独立运行。
 - `internal/app/resources.go`：加载配置、构造共享资源并保留部分失败结果；向 `NewMediaCenter`、`NewModelManager` 交付完整配置，媒体与模型侧自行初始化；平台历史归平台线。
-- `internal/app/wiring.go`：构造 Agent、Hook；Tool、Platform、Background 按目标总管接口构造并标注 TODO，跨线只交付公开能力，失败保留部分总管。
+- `internal/app/wiring.go`：用具体类型构造各线、连接公开能力并登记到唯一集合；构造失败保留非 nil 部分总管，Platform 按目标接口调用。
 - `internal/app/shutdown.go`：用 `shutdownStep` 声明清理顺序，`runShutdownStep` 按统一 30 秒期限返回结果枚举，`runShutdownSteps` 顺序执行并汇总；普通失败后继续，超时停止后续清理，资源关闭后最后释放配置锁。
 - `internal/app/client.go`：加载配置并调用 `platform.RunClient`，消费 `ClientResult`；明确运行直接返回错误，自动尝试将可回退结果转为信号，实际本地启动由进程入口决定。
 - `internal/agent/`：`Supervisor` 是 App 对接入口；`supervisor.go` 定义总管与公开能力，`deps.go` 声明共享资源和 `ToolCapabilities`、`HookCapabilities`、`PlatformCapabilities` 三类业务接口，`wiring.go` 拆分配置、构造线内组件并接线，`lifecycle.go` 管理启停，`signals.go` 持有通知与状态订阅。
 - `internal/tool/supervisor.go`、`wiring.go`、`lifecycle.go`：Tool 对外入口、组件装配与生命周期。
 - `internal/hook/`：Hook 总管、外部桥接与生命周期；装配内部规则、流水线、控制与插件进程。
 - `internal/platform/module/`：平台适配器、发送与通知、API 能力、补全和运行生命周期。
-- `internal/background/supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go`：对外总管、七项借用依赖、最小能力注入与生命周期协调。公开数据类型按需复用，cronBridge 仅保留存储转换，elnisBridge 仅保留存储与媒体转换。根部持有 Tool／平台订阅，显式启动 Cron Manager，在前置步骤成功后调用 Cron Service.Start 放行平台通知；Elnis 存储与媒体适配已完成，就绪／退出契约仍待落实，不公开内部 Runner，也不提供 Wait。
+- `internal/background/supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go`：对外总管、七项借用依赖、最小能力注入与生命周期协调。cronBridge 转换存储，elnisBridge 转换存储与媒体。根部持有 Tool／平台订阅，显式启动 Cron Manager，Elnis 就绪后放行 Cron 平台通知；Wait 及时上报整线致命故障，BeginClose 取消组件与订阅，Done 等待实际退出，不公开内部 Runner。
 - `internal/background/execution/`：任务目录、后台来源准备与 Agent 公开执行入口转接；`cron/`、`elnis/`、`maintenance/` 承接各业务。
 
 <!-- locator:contextinfo -->
@@ -273,7 +273,9 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 ## Elnis / Elvena / Elwisp
 
 - `internal/elvena/`、`internal/background/elnis/types.go`：公共协议与 Elnis 类型；工具声明直接使用 Tool 根包公开类型。
-- `internal/background/elnis/http.go`、`service.go`：HTTP runtime、队列、去重分发与中断执行恢复。
+- `internal/background/elnis/http.go`：HTTP 构造、路由、协议与连接跟踪。
+- `internal/background/elnis/lifecycle.go`：同步监听就绪、队列与 workers、运行故障观察、实际退出和批量终态收尾。
+- `internal/background/elnis/service.go`：去重分发与中断执行恢复。
 - `internal/background/elnis/llm.go`、`direct.go`、`store.go`：模型／直接流程与事件状态。
 - `internal/background/elnis/auth.go`、`prepare.go`、`targets.go`：鉴权、规范化与目标裁决。
 - `internal/background/elnis/repository.go`：Elnis 独用事件仓储、最小记录及写入请求；根部 wiring.go 转换 Storage 记录与错误。

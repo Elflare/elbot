@@ -39,13 +39,13 @@ flowchart TD
 <!-- locator:startup -->
 ## 启动与装配
 
-App 按下层接口已存在来实现公共流程，下层按照调用契约实现。Agent、Hook 已实现根包总管，配置独占已实现；Tool、Platform、Background、媒体和模型构造入口、平台客户端接口及进程入口适配仍待完成。完整应用的编译与运行验证需待这些接口接入。原 13 个生产文件和 12 个测试文件保存在同目录的 `*.go.bak` 中，不参与构建。
+App 按下层接口已存在来实现公共流程，下层按照调用契约实现。Agent、Hook、Tool、Background 已提供根包总管，配置独占已实现；Platform 总管、媒体和模型构造入口、平台客户端接口及进程入口适配仍待完成。完整应用的编译与运行验证需待这些接口接入。原 13 个生产文件和 12 个测试文件保存在同目录的 `*.go.bak` 中，不参与构建。
 
 六文件职责及接口契约见 [App 包设计](app-design.md)。App 加载配置、构造共享资源和各线总管、交付公开能力并协调启停。媒体和模型服务接收完整配置，自行处理后端、凭据、协议客户端、请求参数及恢复／重载；App 不拆解这些初始化细节。共享存储归 App，平台聊天历史及其存储归 Platform；部分失败交回已取得对象统一清理，订阅由接收方持有和释放。权限管理使用 `security.Permission`，App 与 Agent 不承接 Doctor。
 
 TUI 和 Service 在创建资源前，按配置文件的绝对路径及符号链接解析结果取得独立 `.lock` 文件的非阻塞独占锁；同配置重复启动立即报错，不同配置分别运行，纯客户端不取锁。入口持有锁，统一退出流程在资源关闭后释放；锁文件保留，退出超时则由进程退出释放锁。
 
-入口记录启动总耗时和四阶段 debug 统计，按 Tool → Agent → Hook → Platform → Background 启动。Platform.Wait 汇总运行结果，正常停止返回 nil，独立故障和等待超时返回错误。退出先停止新工作、等待使用方收尾，再释放依赖；平台发送与历史查询能力保留到使用方退出。
+入口用局部阶段列表统一执行环境、资源、装配和启动，记录成功阶段耗时；每步先保存部分结果再交回错误。唯一的业务线集合登记 Lifecycle、名称和启动顺序，按 Tool → Agent → Hook → Platform → Background 启动。App 自动筛选可选 Waiter 并发等待，首个结果触发取消并回收其余等待，保留独立故障。Platform 解释退出语义，Background 及时上报致命故障。退出先停止新工作、等待使用方收尾，再释放依赖；平台发送与历史查询能力保留到使用方退出。
 
 退出步骤共用独立的 30 秒预算。App 的 `runShutdownStep` 将结果分为完成、失败、超时，`runShutdownSteps` 按序执行并汇总；普通错误保留后继续清理，统一期限耗尽立即停止后续清理。下层 Close 保持返回 error，其业务超时错误不直接等同于 App 的统一期限耗尽。最终错误交回进程入口处理。
 
@@ -588,7 +588,7 @@ Elnis 独用的 EventRepository 与 Media 契约由 Background 根部转换；JS
 <!-- locator:cron -->
 ## Cron 与后台任务
 
-Background 根部保留 `supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go` 四文件，负责门面、Store／Models／Media／Logs／Agent／Tools／Platform 七项借用依赖、装配与生命周期。业务由 `execution`、`cron`、`elnis`、`maintenance` 承担；根部不取得 Agent 的 Session 或执行器，也不公开内部 Runner。Elnis 的存储与媒体契约已接入根部桥接，生命周期契约仍待落实，整体装配尚不能编译运行。
+Background 根部保留 `supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go` 四文件，负责门面、Store／Models／Media／Logs／Agent／Tools／Platform 七项借用依赖、装配与生命周期。业务由 `execution`、`cron`、`elnis`、`maintenance` 承担；根部不取得 Agent 的 Session 或执行器，也不公开内部 Runner。Elnis 的存储、媒体和生命周期已接入，Background 整包可独立验证。
 
 Cron 独用的 `JobRepository`、任务快照与运行事实放在 `cron/repository.go`，由根部 `cronBridge` 转换 Storage 记录与错误。Metadata、DeliveryState 作为原始 JSON 交给 Cron 按任务解析，坏记录单独记录失败，不阻断其他任务。Cron 不持有完整 Store 或 Session 服务；模型使用最小接口，发送、Agent.CopyBackground 和接管查询分别注入。Cron 与 Elnis 共用 `share.SessionTakenOver` 函数契约，查询由 Agent 调用自有 Session 完成，Share 不读库。广播复制按任务来源平台跳过源端，复制元数据保留 JSON 值类型。
 
@@ -606,6 +606,8 @@ flowchart TD
     W --> E["elnis/service.go、outbox.go：事件处理与恢复"]
     W --> ER["elnis/repository.go：事件与报告持久化契约"]
     W --> EM["elnis/media.go：媒体契约与受限附件导入"]
+    L --> EL["elnis/lifecycle.go：监听就绪、workers、故障观察与批量收尾"]
+    W --> EH["elnis/http.go：HTTP 构造与请求协议"]
     E --> SR["share/report.go：报告构造与实际回执映射"]
     C --> SR
     W --> X["execution/runner.go、runner_deps.go：任务目录与 Agent 执行转接"]
@@ -621,6 +623,12 @@ flowchart TD
 Tool 管理任务定义，Background 负责调度、执行与投递状态。构造时订阅 Tool 的任务变更，回调只合并名称、不读库。Manager.Start 首次加载后重新读取启动期间变更的任务，再启动调度；运行期间由单个 worker 刷新，读库期间的新通知保留到下一轮。修改、禁用、删除和同名重建均以最新存储记录为准。维护任务配置与执行结束后的调度更新也走这一入口。Stop 停止接纳并等待刷新、Handler 和收尾记账实际退出。
 
 根部启动顺序为恢复 → SetupCron 配置维护任务 → Manager.Start → 启用的 Elnis 就绪 → Cron Service.Start。平台通知在 Service.Start 前按平台合并，并保留最新上下文的值，不继承发出方取消；此时不创建 worker。前置步骤成功后放行，同平台串行、不同平台独立，Start 不等待恢复任务完成。关闭清空缓存并取消队列，Close 超时不会提前关闭 Done；生命周期不关闭借用资源。
+
+Elnis Start 同步重置投递状态、绑定监听并启动 workers；禁用时根部仍恢复中断执行。退出先关闭接入与连接、取消执行，等待 handler、Serve 和 workers 真实退出，再批量失败化未形成报告的执行并原子释放引用，保留持久化报告。收尾写入隔离取消并限时 5 秒，失败交回 Close，由下次启动恢复兜底。
+
+Runtime.Wait 的致命运行故障由根部观察，触发 Background 整线 BeginClose 并通过 Background.Wait 及时交给 App；正常 Wait 等待实际 Done，取消等待不关闭组件。根部对订阅调用 BeginClose 并等待已接纳回调退出。Done 包含组件和观察工作真实退出，Close 只返回清理结果；单个事件或投递失败不升级为整线故障。
+
+具体停止原因由下层组件归类，上层只依据生命周期结果协调退出。Background 的启动／等待取消路径直接通过 Runtime.Wait 获取已发布结果，不依赖异步转存、不解析 HTTP 错误；已取消的等待上下文使观察及时返回。Runtime 启动结果也保留已经发布的运行故障。
 
 执行收尾只按本次开始时的任务 ID 写 LastRunAt、UpdatedAt，由 SQLite 原子递增 run_count。记账不写 Enabled 或 NextRunAt，不把旧任务的运行算进同名重建的任务。报告状态和实际发送回执在同一事务提交；即使投递令牌已过期，实际发送的消息映射仍保存，旧状态不会覆盖新状态。
 

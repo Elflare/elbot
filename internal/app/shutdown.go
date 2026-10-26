@@ -33,7 +33,7 @@ type shutdownStep struct {
 }
 
 // shutdown 在运行取消后继续清理；一旦超时，不释放可能仍被使用的依赖。
-func shutdown(ctx context.Context, lines *businessLines, resources *sharedResources, configLock io.Closer) error {
+func shutdown(ctx context.Context, lines businessLines, resources *sharedResources, configLock io.Closer) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 	defer cancel()
 
@@ -55,48 +55,24 @@ func shutdown(ctx context.Context, lines *businessLines, resources *sharedResour
 }
 
 // stopBusinessLines 先停止新工作，再按使用方到依赖方的顺序关闭。
-func stopBusinessLines(ctx context.Context, lines *businessLines) stopResult {
-	if lines == nil {
-		return stopResult{kind: stopCompleted}
-	}
-	// TODO: 其他总管提供 BeginClose；Platform 只停止接入，
-	// Hook、Tool 保留已接纳工作的能力，直到各自 Close。
-	if lines.platform != nil {
-		lines.platform.BeginClose()
-	}
-	if lines.background != nil {
-		lines.background.BeginClose()
-	}
-	if lines.agent != nil {
-		lines.agent.BeginClose()
-	}
-	if lines.hook != nil {
-		lines.hook.BeginClose()
-	}
-	if lines.tool != nil {
-		lines.tool.BeginClose()
+func stopBusinessLines(ctx context.Context, lines businessLines) stopResult {
+	// Platform 先停止接入；Hook、Tool 保留已接纳工作的能力，直到各自 Close。
+	for _, name := range []string{"platform", "background", "agent", "hook", "tool"} {
+		if line, ok := lines[name]; ok {
+			line.supervisor.BeginClose()
+		}
 	}
 
 	var steps []shutdownStep
 	// TODO: Platform.Wait 等待接入循环结束，发送与历史查询留到 Close。
 	// 正常停止返回 nil；独立故障和等待超时返回错误，由 Platform 解释停止原因。
-	if lines.platform != nil {
-		steps = append(steps, shutdownStep{name: "platform ingress", close: lines.platform.Wait})
+	if line, ok := lines["platform"]; ok {
+		steps = append(steps, shutdownStep{name: "platform ingress", close: line.supervisor.(Waiter).Wait})
 	}
-	if lines.background != nil {
-		steps = append(steps, shutdownStep{name: "background", close: lines.background.Close})
-	}
-	if lines.agent != nil {
-		steps = append(steps, shutdownStep{name: "agent", close: lines.agent.Close})
-	}
-	if lines.hook != nil {
-		steps = append(steps, shutdownStep{name: "hook", close: lines.hook.Close})
-	}
-	if lines.tool != nil {
-		steps = append(steps, shutdownStep{name: "tool", close: lines.tool.Close})
-	}
-	if lines.platform != nil {
-		steps = append(steps, shutdownStep{name: "platform", close: lines.platform.Close})
+	for _, name := range []string{"background", "agent", "hook", "tool", "platform"} {
+		if line, ok := lines[name]; ok {
+			steps = append(steps, shutdownStep{name: name, close: line.supervisor.Close})
+		}
 	}
 	return runShutdownSteps(ctx, steps)
 }

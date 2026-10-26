@@ -16,7 +16,7 @@ func TestNewRuntimeConfiguresHTTPTimeouts(t *testing.T) {
 	service, cleanup := newTestService(t, nil)
 	defer cleanup()
 
-	defaults := NewRuntime(config.Default().Elnis.HTTP, service).server
+	defaults := startTestRuntime(t, config.Default().Elnis.HTTP, service).server
 	if defaults.ReadHeaderTimeout != 5*time.Second || defaults.ReadTimeout != 30*time.Second || defaults.WriteTimeout != 300*time.Second || defaults.IdleTimeout != 60*time.Second {
 		t.Fatalf("default timeouts = header:%s read:%s write:%s idle:%s", defaults.ReadHeaderTimeout, defaults.ReadTimeout, defaults.WriteTimeout, defaults.IdleTimeout)
 	}
@@ -24,7 +24,7 @@ func TestNewRuntimeConfiguresHTTPTimeouts(t *testing.T) {
 	cfg := config.Default().Elnis.HTTP
 	cfg.ReadHeaderTimeoutSeconds, cfg.ReadTimeoutSeconds = 7, 11
 	cfg.WriteTimeoutSeconds, cfg.IdleTimeoutSeconds = 13, 17
-	configured := NewRuntime(cfg, service).server
+	configured := startTestRuntime(t, cfg, service).server
 	if configured.ReadHeaderTimeout != 7*time.Second || configured.ReadTimeout != 11*time.Second || configured.WriteTimeout != 13*time.Second || configured.IdleTimeout != 17*time.Second {
 		t.Fatalf("configured timeouts = header:%s read:%s write:%s idle:%s", configured.ReadHeaderTimeout, configured.ReadTimeout, configured.WriteTimeout, configured.IdleTimeout)
 	}
@@ -33,7 +33,7 @@ func TestNewRuntimeConfiguresHTTPTimeouts(t *testing.T) {
 func TestElnisHTTPAcceptsSingleJSONAndIgnoresUnknownFields(t *testing.T) {
 	service, cleanup := newTestService(t, nil)
 	defer cleanup()
-	runtime := NewRuntime(config.Default().Elnis.HTTP, service)
+	runtime := startTestRuntime(t, config.Default().Elnis.HTTP, service)
 
 	request := validHTTPEvent("unknown-field")
 	request["future_field"] = map[string]any{"enabled": true}
@@ -63,7 +63,7 @@ func TestElnisHTTPRejectsTrailingJSON(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			service, cleanup := newTestService(t, nil)
 			defer cleanup()
-			runtime := NewRuntime(config.Default().Elnis.HTTP, service)
+			runtime := startTestRuntime(t, config.Default().Elnis.HTTP, service)
 			body, err := json.Marshal(validHTTPEvent("trailing-" + tt.name))
 			if err != nil {
 				t.Fatal(err)
@@ -89,7 +89,7 @@ func TestElnisHTTPPreservesRoutesAuthAndBodyLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runtime := NewRuntime(config.Default().Elnis.HTTP, service)
+	runtime := startTestRuntime(t, config.Default().Elnis.HTTP, service)
 	response := serveElnisRequest(runtime, "/elvena/v3/events", body, "secret")
 	if response.Code != http.StatusAccepted {
 		t.Fatalf("v3 status = %d, body = %s", response.Code, response.Body.String())
@@ -102,7 +102,7 @@ func TestElnisHTTPPreservesRoutesAuthAndBodyLimit(t *testing.T) {
 
 	cfg := config.Default().Elnis.HTTP
 	cfg.MaxBodyBytes = 16
-	limited := NewRuntime(cfg, service)
+	limited := startTestRuntime(t, cfg, service)
 	response = serveElnisRequest(limited, "/elvena/v2/events", body, "secret")
 	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "request body too large") {
 		t.Fatalf("oversized status = %d, body = %s", response.Code, response.Body.String())

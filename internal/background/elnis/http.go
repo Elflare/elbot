@@ -2,35 +2,22 @@ package elnis
 
 import (
 	"context"
-	background "elbot/internal/background/share"
-	"elbot/internal/contextinfo"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"log/slog"
+	"net"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"elbot/internal/config"
-	globalevents "elbot/internal/events"
 )
-
-type Runtime struct {
-	server  *http.Server
-	service *Service
-	queue   chan QueuedLLMEvent
-	workers int
-}
-
-const reportRecoveryInterval = 30 * time.Second
 
 func NewRuntime(cfg config.ElnisHTTPConfig, service *Service) *Runtime {
 	mux := http.NewServeMux()
 
-	r := &Runtime{service: service, queue: make(chan QueuedLLMEvent, cfg.QueueSize), workers: cfg.Workers}
+	r := &Runtime{service: service, queue: make(chan QueuedLLMEvent, cfg.QueueSize), workers: cfg.Workers,
+		failed: make(chan struct{}), done: make(chan struct{})}
 	service.SetLLMEnqueuer(r.enqueueLLM)
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, req *http.Request) {
@@ -61,8 +48,26 @@ func NewRuntime(cfg config.ElnisHTTPConfig, service *Service) *Runtime {
 	mux.HandleFunc("/elvena/v2/events", handler)
 	mux.HandleFunc("/elvena/v3/events", handler)
 	r.server = &http.Server{
-		Addr:              cfg.Addr,
-		Handler:           mux,
+		Addr: cfg.Addr,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			r.mu.Lock()
+			if !r.ready || r.closed {
+				r.mu.Unlock()
+				writeJSON(w, http.StatusServiceUnavailable, Response{Status: StatusFailed, Error: "elnis is not accepting events"})
+				return
+			}
+			r.mu.Unlock()
+			mux.ServeHTTP(w, req)
+		}),
+		BaseContext: func(net.Listener) context.Context { return r.ctx },
+		ConnState: func(_ net.Conn, state http.ConnState) {
+			switch state {
+			case http.StateNew:
+				r.connections.Add(1)
+			case http.StateClosed:
+				r.connections.Done()
+			}
+		},
 		ReadHeaderTimeout: time.Duration(cfg.ReadHeaderTimeoutSeconds) * time.Second,
 		ReadTimeout:       time.Duration(cfg.ReadTimeoutSeconds) * time.Second,
 		WriteTimeout:      time.Duration(cfg.WriteTimeoutSeconds) * time.Second,
@@ -83,142 +88,6 @@ func decodeSingleJSON(decoder *json.Decoder, target any) error {
 		return err
 	}
 	return nil
-}
-
-func (r *Runtime) enqueueLLM(ctx context.Context, event QueuedLLMEvent) error {
-	select {
-	case r.queue <- event:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-		return fmt.Errorf("elnis llm queue is full")
-	}
-}
-
-func (r *Runtime) Run(ctx context.Context) error {
-	runCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	if err := r.service.resetDeliveringReports(runCtx); err != nil {
-		return fmt.Errorf("reset interrupted elnis reports: %w", err)
-	}
-	var wg sync.WaitGroup
-	for i := 0; i < r.workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			r.worker(runCtx)
-		}()
-	}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		r.reportWorker(runCtx)
-	}()
-	errCh := make(chan error, 1)
-	go func() {
-		if err := r.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- err
-			return
-		}
-		errCh <- nil
-	}()
-	select {
-	case <-ctx.Done():
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer shutdownCancel()
-		shutdownErr := r.server.Shutdown(shutdownCtx)
-		cancel()
-		wg.Wait()
-		if shutdownErr != nil {
-			return errors.Join(ctx.Err(), shutdownErr)
-		}
-		return ctx.Err()
-	case err := <-errCh:
-		cancel()
-		wg.Wait()
-		return err
-	}
-}
-
-func (r *Runtime) reportWorker(ctx context.Context) {
-	identity := globalevents.LogIdentity{}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if facts.SessionID != "" {
-		identity.SessionID = &facts.SessionID
-	}
-	if facts.RunID != "" {
-		identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		identity.RootRequestID = &facts.RootRequestID
-	}
-
-	if logResult, _ := r.service.recoverReports(ctx, false); logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled {
-		{
-			content, _ := json.Marshal(map[string]any{"result": fmt.Sprintf("%.2048s", logResult.Content)})
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogElnis,
-				Level:        slog.LevelWarn,
-				EventName:    "initial_elnis_report_recovery_failed",
-				Module:       "elnis",
-				Type:         globalevents.ContentJSON,
-				Content:      string(content),
-				ResultStatus: logResult.ResultStatus,
-			}
-			if logResult.ResultStatus == globalevents.ResultCanceled {
-				record.Level = slog.LevelInfo
-			}
-			record.Identity = identity
-			background.LogBackground(ctx, record)
-		}
-	}
-	ticker := time.NewTicker(reportRecoveryInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if logResult, _ := r.service.recoverReports(ctx, false); logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled {
-				{
-					content, _ := json.Marshal(map[string]any{"result": fmt.Sprintf("%.2048s", logResult.Content)})
-					record := globalevents.LogRecord{
-						Category:     globalevents.LogElnis,
-						Level:        slog.LevelWarn,
-						EventName:    "elnis_report_retry_failed",
-						Module:       "elnis",
-						Type:         globalevents.ContentJSON,
-						Content:      string(content),
-						ResultStatus: logResult.ResultStatus,
-					}
-					if logResult.ResultStatus == globalevents.ResultCanceled {
-						record.Level = slog.LevelInfo
-					}
-					record.Identity = identity
-					background.LogBackground(ctx, record)
-				}
-			}
-		}
-	}
-}
-
-func (r *Runtime) worker(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case event := <-r.queue:
-			// RunLLMEvent records failures at their source.
-			_ = r.service.RunLLMEvent(ctx, event.Event, event.EventID)
-		}
-	}
 }
 
 func bearerToken(req *http.Request) string {

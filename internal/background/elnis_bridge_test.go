@@ -551,3 +551,85 @@ func TestQueuedMediaReferencesRecoverAfterInterruption(t *testing.T) {
 		t.Fatalf("interrupted refs %v %v", refs, err)
 	}
 }
+
+type blockedElnisRunner struct{ entered, release chan struct{} }
+
+func (r blockedElnisRunner) RunBackground(ctx context.Context, _ share.RunRequest) (share.RunResult, error) {
+	close(r.entered)
+	<-r.release
+	return share.RunResult{}, ctx.Err()
+}
+
+func TestRuntimeCloseCommitsInterruptedEventsAndPreservesOutbox(t *testing.T) {
+	b, store := newElnisBridgeFixture(t)
+	entered, release := make(chan struct{}), make(chan struct{})
+	svc := newElnisBridgeService(t, b, elnis.Options{SandboxRoot: t.TempDir(), Runner: blockedElnisRunner{entered, release}})
+	cfg := config.Default().Elnis.HTTP
+	cfg.Addr = "127.0.0.1:0"
+	cfg.Workers = 1
+	runtime := elnis.NewRuntime(cfg, svc)
+	if err := runtime.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+	req := elnisBridgeRequest(elnis.ModeLLM)
+	if _, err := svc.Handle(t.Context(), "secret", req); err != nil {
+		t.Fatal(err)
+	}
+	<-entered
+	runtime.BeginClose()
+	// All workers are canceled; the occupied execution keeps cleanup from starting.
+	const mediaID = "shutdown-media"
+	if err := store.Media().Upsert(t.Context(), &storage.Media{ID: mediaID, Backend: "local", MIMEType: "text/plain"}); err != nil {
+		t.Fatal(err)
+	}
+	rows := map[string]string{}
+	for _, status := range []string{elnis.StatusAccepted, elnis.StatusQueued, elnis.StatusRunning, elnis.StatusResultReady, elnis.StatusDelivering} {
+		var mediaIDs []string
+		if status == elnis.StatusAccepted || status == elnis.StatusQueued || status == elnis.StatusRunning {
+			mediaIDs = []string{mediaID}
+		}
+		row, err := store.ElnisEvents().Create(t.Context(), storage.CreateElnisEventRequest{
+			EventKey: status, ElwispName: "close", Source: "test", SourceID: status, Status: status, MediaIDs: mediaIDs,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows[status] = row.ID
+		if status == elnis.StatusResultReady || status == elnis.StatusDelivering {
+			if err := store.ElnisEvents().PrepareReport(t.Context(), storage.PrepareElnisReportRequest{
+				EventID: row.ID, ResultReadyStatus: status, Result: "durable",
+				Deliveries: []storage.CreateElnisReportDeliveryRequest{{Target: "{}", Output: `{"Source":{"media":"shutdown-media"}}`}},
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	select {
+	case <-runtime.Done():
+		t.Fatal("closed before writer exit")
+	default:
+	}
+	close(release)
+	if err := runtime.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	for status, id := range rows {
+		row, err := store.ElnisEvents().Get(t.Context(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if status == elnis.StatusResultReady || status == elnis.StatusDelivering {
+			items, err := store.ElnisEvents().ListReportDeliveries(t.Context(), id)
+			if err != nil || len(items) != 1 || row.Status != status || row.Result != "durable" {
+				t.Fatalf("outbox lost: %#v %#v %v", row, items, err)
+			}
+		} else if row.Status != elnis.StatusFailed || row.Error != "elnis stopped before durable report" {
+			t.Fatalf("unfinished event not finalized: %#v", row)
+		}
+	}
+	refs, err := store.MediaReferences().ListMediaIDs(t.Context(), mediaID)
+	if err != nil || len(refs) != 2 {
+		t.Fatalf("remaining references=%#v %v", refs, err)
+	}
+}

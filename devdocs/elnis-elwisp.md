@@ -14,7 +14,7 @@ Elnis 接收并分发事件，Elvena 定义协议，Elwisp 提供外部事件和
 - Bearer 或 X-Elnis-Token 鉴权；token 名用于审计，Elwisp 身份取 elwisp.name，日志不记录 token 原文。
 - 唯一键为 elwisp.name + source + id；重复不分发，同键不同 hash 只告警，不覆盖原事件。
 - record 只记录；direct 在当前请求内发送文本／segments 并执行 raw／capability calls，calls-only 不额外发消息；llm 落库后入内存队列，HTTP 不等待模型完成。
-- RecoverInterrupted 将 accepted／queued／running 中未持久化报告的事件标记失败并原子释放引用；工具可能已有副作用，因此不重放。已有报告按 outbox 恢复投递。根部在 worker 启动前、包括禁用 Elnis 时调用恢复的生命周期接线仍待完成。
+- RecoverInterrupted 将 accepted／queued／running 中未持久化报告的事件标记失败并原子释放引用；工具可能已有副作用，因此不重放。已有报告按 outbox 恢复投递。Background 根部在 worker 启动前调用恢复，禁用 Elnis 时也执行。
 
 ## 来源、工具与投递裁决
 
@@ -61,6 +61,12 @@ Cron 与 Elnis 共用 share/report.go 的 ReportMessageMap 和 MapReportReceipt�
 
 ## Runtime 生命周期与审计
 
-Background 根部 `wiring.go` 装配服务、仓储、媒体和平台调用函数。Runtime 当前提供 Run，负责 HTTP 监听与 workers，退出时停止接收并取消、等待 worker；根部 `lifecycle.go` 所需的启动就绪、恢复、停止接入及退出接口尚未实现。持久化报告保留供恢复投递。
+Background 根部 `wiring.go` 装配服务、仓储、媒体和平台调用函数。Elnis 的 `http.go` 负责 HTTP 构造与协议，`lifecycle.go` 提供 RecoverInterrupted、Start、Wait、BeginClose、Close、Done。Start 同步重置中断投递并绑定监听后发布就绪；监听失败直接返回。
+
+BeginClose 停止接入、取消执行并关闭连接，等待真实 handler、Serve 和 workers 退出，再批量失败化残留 accepted／queued／running 并释放引用，保留 result_ready／delivering 报告。数据库收尾使用取消隔离和 5 秒上限；写入失败由 Close 返回，并由下次启动恢复兜底。未启动的 Runtime 不额外执行退出更新，Close 超时不会提前关闭 Done。
+
+HTTP 服务致命故障通过 Wait 立即上报 Background；根部发起整线关闭并由自身 Wait 上报 App，触发统一 30 秒清理。Wait 的运行错误与 Close 的清理错误分开，正常关闭等待真实 Done；取消 Wait 只停止等待。单次事件、模型执行或报告投递失败仍按业务结果处理。
+
+Runtime 负责区分正常关闭与致命故障，已发布故障优先于等待取消，启动结果也保留发布前已经发生的运行故障。Background 在启动／等待被取消时通过 Runtime.Wait 读取已发布结果，使用已取消上下文立即完成观察，不等待清理或观察协程转存；根部只协调关闭，不解释 Elnis 内部错误。
 
 审计覆盖接收、拒绝、去重、执行和投递，JSON 正文保存 Elwisp、source、event ID、mode、目标等查询事实，Session 关联写入 Identity；日志遵循[公共日志契约](architecture.md#信号与订阅)。

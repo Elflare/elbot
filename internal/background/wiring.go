@@ -179,10 +179,9 @@ func (b elnisBridge) AddEventReference(ctx context.Context, mediaID, eventID, pu
 }
 
 // NewSupervisor 只构造与接线；失败仍返回已取得的总管，由 App 统一清理。
-// TODO: 下层实现这里声明的目标消费契约；不兼容旧 Session、执行器或跨业务 share 类型。
 func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps) (*Supervisor, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	m := &Supervisor{ctx: ctx, cancel: cancel, cfg: cfg, done: make(chan struct{})}
+	m := &Supervisor{ctx: ctx, cancel: cancel, cfg: cfg, failed: make(chan struct{}), done: make(chan struct{})}
 	if err := ctx.Err(); err != nil {
 		return m, err
 	}

@@ -29,5 +29,8 @@ type Supervisor struct {
 	closed      bool          // 已停止接收新的启动请求，重复关闭不重复释放资源。
 	startupDone chan struct{} // 非 nil 表示启动已开始；关闭表示启动尝试已结束。
 	startErr    error         // 首次启动结果，随 startupDone 关闭一起发布。
+	runErr      error         // 首次致命运行故障，由 failed 发布，不等待实际清理。
+	failed      chan struct{} // 运行故障唤醒 Wait，正常关闭不触发。
+	monitorDone chan struct{} // Elnis 运行观察已退出；仅启用并启动 Elnis 时创建。
 	done        chan struct{} // 全部自有工作和订阅回调实际退出后关闭。
 }
