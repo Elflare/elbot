@@ -43,8 +43,7 @@ func (m *Supervisor) Start() (err error) {
 	if err := m.elnis.RecoverInterrupted(m.ctx); err != nil {
 		return fmt.Errorf("recover elnis: %w", err)
 	}
-	// TODO: SetupCron 只同步配置维护任务，移除内部 Manager.Start 调用；启动由根部协调。
-	if err := maintenance.SetupCron(m.ctx, m.cronManager, m.cfg); err != nil {
+	if err := maintenance.SetupCron(m.ctx, m.cronManager.ConfigureMaintenanceJob, m.cfg); err != nil {
 		return fmt.Errorf("setup maintenance cron: %w", err)
 	}
 	// TODO: Manager.Start 同步完成首次任务加载，并协调此前收到的任务变更。

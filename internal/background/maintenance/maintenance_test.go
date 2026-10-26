@@ -90,7 +90,7 @@ func TestCleanupUsesInjectedLiveSessionService(t *testing.T) {
 		}
 		return nil
 	})
-	svc := NewServiceWithConfig(nil, nil, &config.Config{Maintenance: config.MaintenanceConfig{SessionCleanup: config.MaintenanceCleanupConfig{Enabled: true, RetentionDays: 1}}}, live)
+	svc := NewServiceWithConfig(nil, nil, &config.Config{Maintenance: config.MaintenanceConfig{SessionCleanup: config.MaintenanceCleanupConfig{Enabled: true, RetentionDays: 1}}}, live.CleanupExpired)
 	if logResult, err := svc.RunSessionCleanup(ctx); err != nil || logResult.ResultStatus != events.ResultSucceeded || !strings.Contains(logResult.Content, "deleted=0") {
 		t.Fatalf("cleanup=%#v error=%v", logResult, err)
 	}

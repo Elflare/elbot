@@ -586,7 +586,7 @@ Elnis 接收事件，Elvena 定义公共协议，Elwisp 提供外部事件与工
 <!-- locator:cron -->
 ## Cron 与后台任务
 
-Background 根部提供总管门面、消费方依赖、装配和生命周期协调，具体业务由 `execution`、`cron`、`elnis`、`maintenance` 承担，`share` 只用于内部协作。根部接收完整配置及 Store、Models、Media、Logs、Agent、Tools、Platform 七项借用依赖，不取得 Agent 的 Session 或执行器，不公开内部 Runner。内部接入按目标接口写调用并标注 TODO；Runner 已接入 Agent 的后台执行公开能力，Background 其余内部适配与生命周期契约尚未落实，当前不保证完整编译运行。
+Background 根部提供总管门面、消费方依赖、装配和生命周期协调，具体业务由 `execution`、`cron`、`elnis`、`maintenance` 承担，`share` 只用于内部协作。根部接收完整配置及 Store、Models、Media、Logs、Agent、Tools、Platform 七项借用依赖，不取得 Agent 的 Session 或执行器，不公开内部 Runner。内部接入按目标接口写调用并标注 TODO；Runner 和维护组件已接入 Agent 的后台执行与会话清理公开能力；维护组件已收敛消费契约，其余内部适配与生命周期契约尚未落实，当前不保证完整编译运行。
 
 目标接线按实际消费裁剪能力，公开请求和结果类型直接复用所属业务根包定义：Runner 只消费 Agent.RunBackground；Cron 的会话复制与发送、维护组件的会话和历史清理、Elnis 的发送与平台 API 均使用独立函数。模型与日志使用最小接口，Elnis 的模型解析函数只返回 ModelSelection，工具声明展开只暴露 BackgroundSelections。根部仅为存储与媒体转换保留 cronBridge、elnisBridge，方法随内部数据契约实现；不为直接转发维护适配类型。Runner 准备任务目录与后台来源，调用 Agent 完成会话准备、执行上下文、工具预载和执行；报告解析与重试归 Cron、Elnis。Elvena、Elnis 和 Background 共享请求使用 Tool 根包工具声明类型，JSON 保留协议字段名、忽略内部关联字段。
 
@@ -597,13 +597,16 @@ flowchart TD
     L["background/lifecycle.go：启动就绪、停止接入与退出等待"] --> S
     W -.->|内部接入 TODO| C["cron/：调度、执行与投递恢复"]
     W -.->|内部接入 TODO| E["elnis/：事件接入、处理与恢复"]
-    W -.->|内部接入 TODO| M["maintenance/maintenance.go：维护任务与清理"]
+    W --> M["maintenance/maintenance.go：维护任务与清理"]
+    W --> MC["cron/maintenance.go：维护回调与配置适配"]
+    M --> MJ["share/maintenance.go：共享维护任务配置"]
+    MC --> MJ
     W --> X["execution/runner.go：任务目录、后台来源与 Agent 执行转接<br/>runner_deps.go：最小执行契约"]
     X --> AG["agent/background.go：公开后台执行入口"]
     W --> P["其他业务根包：公开操作与类型"]
 ```
 
-Tool 管理 Cron 任务定义，Background 负责调度、执行与投递状态，maintenance 提供维护任务。根部持有外部订阅，内部 Cron 负责首次加载和定义变化的协调。根部的目标启动顺序为恢复 → SetupCron 配置维护任务 → Manager.Start 首次加载与启动 → 启用的 Elnis 就绪 → Service.Start 启动平台通知消费者。SetupCron 不承担启动职责；Service.Start 前平台通知仅缓存、不触发 worker，启动失败不放行缓存，关闭时清理缓存并停止接纳，消费者就绪后 Start 即可返回。这些内部契约仍待实现。生命周期只等待自有工作，不关闭借用的资源；Close 超时不会提前关闭 Done。Elnis 媒体调用及内部跨包依赖仍待后续收口。
+Tool 管理 Cron 任务定义，Background 负责调度、执行与投递状态，maintenance 提供维护任务。根部持有外部订阅，内部 Cron 负责首次加载和定义变化的协调。根部的目标启动顺序为恢复 → SetupCron 配置维护任务 → Manager.Start 首次加载与启动 → 启用的 Elnis 就绪 → Service.Start 启动平台通知消费者。SetupCron 已仅通过注入的配置函数交付 share.MaintenanceJob，不承担启动职责；Cron 的维护适配复用既有任务校验和存储，禁用不存在的任务视为成功。维护组件通过两个清理函数、日志最小接口和仅含 Cleanup 的媒体接口工作，不依赖 Cron、Session 或历史仓库实现；历史删除不触发引用对账，对账统一在媒体清理时进行。平台通知的目标契约为 Service.Start 前仅缓存、不触发 worker，启动失败不放行缓存，关闭时清理缓存并停止接纳，消费者就绪后 Start 即可返回。平台通知及其余内部生命周期契约仍待实现。生命周期只等待自有工作，不关闭借用的资源；Close 超时不会提前关闭 Done。Elnis 媒体调用及内部跨包依赖仍待后续收口。
 
 - 每次调度新建后台 Session，同轮 JSON 修正复用 Session、首轮工具和固定模型；前台接管后等待真实 Execution 结果，停止后台修正、自动报告与未开始补投递。
 - Cron／Elnis 后台 sandbox 的 shell 非 critical 风险自动确认；critical 拒绝执行并返回提醒。

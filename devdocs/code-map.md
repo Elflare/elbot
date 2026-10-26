@@ -297,7 +297,9 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/background/cron/`：任务 CRUD、调度、执行、报告与投递恢复。
 - `internal/background/cron/service.go`、`manager.go`：任务运行、调度与整体日志。
 - `internal/background/cron/models.go`、`delivery.go`、`recovery.go`：任务模型、逐项投递与连接恢复。
-- `internal/background/maintenance/`：维护任务及来源结果。
+- `internal/background/maintenance/maintenance.go`：维护清理、处理器注册与任务配置；通过最小接口和函数使用外部能力，不启动调度器。
+- `internal/background/share/maintenance.go`：维护组件与 Cron 共用的 MaintenanceJob 配置。
+- `internal/background/cron/maintenance.go`：维护回调与共享配置适配，复用 Cron 的任务校验、启用和禁用。
 - `internal/background/execution/runner.go`：准备任务目录与后台来源，再调用 Agent.RunBackground；`internal/security/security.go` 的 `Permission.CheckTool` 决定工具拒绝、直接执行或交互确认，`internal/tool/execution/runner.go` 执行该决定。
 - `internal/tool/builtin/cron.go`、`internal/storage/sqlite/cron_job_repository.go`：工具入口与仓储。
 

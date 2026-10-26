@@ -51,11 +51,12 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Tool 根部直接请求 Storage 读写 Cron，转换结果并发布任务定义变更；真实 SQLite 集成测试归 Tool 根部，Builtin 使用内部契约替身。
 - [x] Background 根部四文件收敛为对外门面、七项依赖、装配和生命周期框架；移除内部 Runner 的公开转发及 Wait，内部接入按目标调用标注 TODO。
 - [x] Background 根部按消费方职责注入最小接口或函数，按需复用 Agent、Tool 等根包公开类型；cronBridge 仅保留存储转换，elnisBridge 仅保留存储与媒体转换，注释采用当前架构原则。
-- [ ] 落实 Background 子包消费契约和根部存储、媒体转换：Cron 接入会话复制函数；维护组件接入会话、历史清理函数和媒体清理接口；Elnis 接入发送、平台 API 与模型选择。跨业务不引用内部子包或 share，本业务兄弟子包通过 share 协作。
+- [ ] 落实 Background 子包消费契约和根部存储、媒体转换：Cron 接入会话复制函数；Elnis 接入发送、平台 API 与模型选择。跨业务不引用内部子包或 share，本业务兄弟子包通过 share 协作。
 - [x] Agent 根包提供后台执行、会话复制与过期清理；复制元数据使用 JSON 原始值，输入组件通过最小能力完成准备。
-- [ ] 实现 Platform 的公开发送、API 和历史清理能力，并接通 Background 子包对 Agent 会话复制及清理方法的调用。
+- [ ] 实现 Platform 的公开发送、API 和历史清理能力，并接通 Background 子包对 Agent 会话复制方法的调用。
 - [ ] 接通 Tool.ObserveCronChanged 到内部 Cron 的刷新入口；初次任务加载前建立订阅，协调启动期间的变更并重新读库刷新调度。
-- [ ] 收口维护配置与 Cron 启动职责：SetupCron 只配置任务，移除其内部 Manager.Start 调用，由根部显式启动 Manager。
+- [x] 维护组件使用会话、历史清理函数及媒体 Cleanup 最小接口；共享维护配置由 share.MaintenanceJob 表达，Cron 适配回调与任务配置，根部负责接线。历史引用在媒体清理时统一对账。
+- [x] SetupCron 只配置维护任务，由根部显式启动 Manager；注册、配置、清理结果传递和配置不启动调度的回归已覆盖。
 - [ ] 实现 Cron Service.Start 与平台通知缓存契约：Start 前不触发 worker，前置步骤成功后由根部启动消费者；消费者就绪即可返回，不等待缓存任务执行完。验证启动前不执行、成功后消费、失败或关闭后不放行、关闭清理缓存及重复启动不重复创建消费者。
 - [ ] 实现 Background 内部同步启动就绪、停止接入及实际退出契约，迁移旧总管测试后验证部分构造失败、并发启停、订阅释放和统一清理期限；当前不测试未实现的内部流程。
 - [ ] 收口 Background 内部的持久化类型与读取边界，移除内部模型对 Storage 元数据类型的别名；完成后验证 Cron 通知到调度的整链路。

@@ -9,22 +9,21 @@ import (
 	"syscall"
 	"time"
 
-	elcron "elbot/internal/background/cron"
+	"elbot/internal/background/share"
 	"elbot/internal/config"
 	globalevents "elbot/internal/events"
-	"elbot/internal/media"
-	"elbot/internal/session"
-	"elbot/internal/storage"
 )
 
 type Service struct {
-	Sessions *session.Service
-	Media    *media.Manager
-	logs     interface {
+	Media interface {
+		Cleanup(context.Context) (globalevents.LogResult, error)
+	}
+	logs interface {
 		CleanupOldLogs() error
 		RetentionDays() int
 	}
-	chatHistory        storage.ChatHistoryRepository
+	cleanupSessions    func(context.Context, time.Time) (int, error) // 按截止时间清理会话，忙闲保护由提供方负责。
+	cleanupChatHistory func(context.Context, time.Time) (int, error) // 按截止时间清理平台历史，返回已删除条数。
 	sessionCleanup     config.MaintenanceCleanupConfig
 	chatHistoryCleanup config.ChatHistoryCleanupConfig
 	sandboxRoot        string
@@ -34,11 +33,11 @@ type Service struct {
 func NewServiceWithConfig(logs interface {
 	CleanupOldLogs() error
 	RetentionDays() int
-}, chatHistory storage.ChatHistoryRepository, cfg *config.Config, sessions *session.Service) *Service {
+}, cleanupChatHistory func(context.Context, time.Time) (int, error), cfg *config.Config, cleanupSessions func(context.Context, time.Time) (int, error)) *Service {
 	return &Service{
-		Sessions:           sessions,
+		cleanupSessions:    cleanupSessions,
 		logs:               logs,
-		chatHistory:        chatHistory,
+		cleanupChatHistory: cleanupChatHistory,
 		sessionCleanup:     cfg.Maintenance.SessionCleanup,
 		chatHistoryCleanup: cfg.Maintenance.ChatHistoryCleanup,
 		sandboxRoot:        cfg.Sandbox.Root,
@@ -46,65 +45,37 @@ func NewServiceWithConfig(logs interface {
 	}
 }
 
-func (s *Service) RegisterCronHandlers(manager *elcron.Manager) error {
-	if err := manager.RegisterHandler("maintenance.log_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
-		return s.RunLogCleanup(ctx)
-	}); err != nil {
+func (s *Service) RegisterCronHandlers(register func(string, func(context.Context) (globalevents.LogResult, error)) error) error {
+	if err := register("maintenance.log_cleanup", s.RunLogCleanup); err != nil {
 		return err
 	}
-	if err := manager.RegisterHandler("maintenance.session_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
-
-		return s.RunSessionCleanup(ctx)
-	}); err != nil {
+	if err := register("maintenance.session_cleanup", s.RunSessionCleanup); err != nil {
 		return err
 	}
-	if err := manager.RegisterHandler("maintenance.sandbox_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
-
-		return s.RunSandboxCleanup(ctx)
-	}); err != nil {
+	if err := register("maintenance.sandbox_cleanup", s.RunSandboxCleanup); err != nil {
 		return err
 	}
-	if err := manager.RegisterHandler("maintenance.media_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
-
-		return s.Media.Cleanup(ctx)
-	}); err != nil {
+	if err := register("maintenance.media_cleanup", s.Media.Cleanup); err != nil {
 		return err
 	}
-	if err := manager.RegisterHandler("maintenance.chat_history_cleanup", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
-
-		return s.RunChatHistoryCleanup(ctx)
-	}); err != nil {
+	if err := register("maintenance.chat_history_cleanup", s.RunChatHistoryCleanup); err != nil {
 		return err
 	}
 	return nil
 }
 
-func SetupCron(ctx context.Context, manager *elcron.Manager, cfg *config.Config) error {
-	if err := upsertOrDisable(ctx, manager, cfg.Maintenance.LogCleanup.Enabled, "system.maintenance.log_cleanup", "maintenance.log_cleanup", cfg.Maintenance.LogCleanup.Schedule); err != nil {
-		return err
-	}
-	if err := upsertOrDisable(ctx, manager, cfg.Maintenance.SessionCleanup.Enabled, "system.maintenance.session_cleanup", "maintenance.session_cleanup", cfg.Maintenance.SessionCleanup.Schedule); err != nil {
-		return err
-	}
-	if err := upsertOrDisable(ctx, manager, cfg.Maintenance.SandboxCleanup.Enabled, "system.maintenance.sandbox_cleanup", "maintenance.sandbox_cleanup", cfg.Maintenance.SandboxCleanup.Schedule); err != nil {
-		return err
-	}
-	if err := upsertOrDisable(ctx, manager, cfg.Maintenance.ChatHistoryCleanup.Enabled, "system.maintenance.chat_history_cleanup", "maintenance.chat_history_cleanup", cfg.Maintenance.ChatHistoryCleanup.Schedule); err != nil {
-		return err
-	}
-	if err := upsertOrDisable(ctx, manager, true, "system.maintenance.media_cleanup", "maintenance.media_cleanup", cfg.Maintenance.SandboxCleanup.Schedule); err != nil {
-		return err
-	}
-	return manager.Start(ctx)
-}
-
-func upsertOrDisable(ctx context.Context, manager *elcron.Manager, enabled bool, name, handler, schedule string) error {
-	if enabled {
-		_, err := manager.UpsertJob(ctx, elcron.UpsertJobRequest{Name: name, Handler: handler, Schedule: schedule, Enabled: true})
-		return err
-	}
-	if err := manager.DisableJob(ctx, name); err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return err
+// SetupCron 只配置维护任务，调度启动由 Background 根部负责。
+func SetupCron(ctx context.Context, configure func(context.Context, share.MaintenanceJob) error, cfg *config.Config) error {
+	for _, job := range []share.MaintenanceJob{
+		{Name: "system.maintenance.log_cleanup", Handler: "maintenance.log_cleanup", Schedule: cfg.Maintenance.LogCleanup.Schedule, Enabled: cfg.Maintenance.LogCleanup.Enabled},
+		{Name: "system.maintenance.session_cleanup", Handler: "maintenance.session_cleanup", Schedule: cfg.Maintenance.SessionCleanup.Schedule, Enabled: cfg.Maintenance.SessionCleanup.Enabled},
+		{Name: "system.maintenance.sandbox_cleanup", Handler: "maintenance.sandbox_cleanup", Schedule: cfg.Maintenance.SandboxCleanup.Schedule, Enabled: cfg.Maintenance.SandboxCleanup.Enabled},
+		{Name: "system.maintenance.chat_history_cleanup", Handler: "maintenance.chat_history_cleanup", Schedule: cfg.Maintenance.ChatHistoryCleanup.Schedule, Enabled: cfg.Maintenance.ChatHistoryCleanup.Enabled},
+		{Name: "system.maintenance.media_cleanup", Handler: "maintenance.media_cleanup", Schedule: cfg.Maintenance.SandboxCleanup.Schedule, Enabled: true},
+	} {
+		if err := configure(ctx, job); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -126,7 +97,7 @@ func (s *Service) RunSessionCleanup(ctx context.Context) (logResult globalevents
 	if !s.sessionCleanup.Enabled {
 		return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "cleanup is not enabled or configured"}, nil
 	}
-	deleted, err := s.Sessions.CleanupExpired(ctx, time.Now().AddDate(0, 0, -s.sessionCleanup.RetentionDays))
+	deleted, err := s.cleanupSessions(ctx, time.Now().AddDate(0, 0, -s.sessionCleanup.RetentionDays))
 	logResult = globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: fmt.Sprintf("deleted=%d\nretention_days=%d", deleted, s.sessionCleanup.RetentionDays)}
 	if err != nil {
 		logResult.ResultStatus = globalevents.ResultFailed
@@ -143,11 +114,8 @@ func (s *Service) RunChatHistoryCleanup(ctx context.Context) (logResult globalev
 		return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "cleanup is not enabled or configured"}, nil
 	}
 	cutoff := time.Now().AddDate(0, 0, -s.chatHistoryCleanup.RetentionDays)
-	deleted, err := s.chatHistory.DeleteBefore(ctx, cutoff)
+	deleted, err := s.cleanupChatHistory(ctx, cutoff)
 	logResult = globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: fmt.Sprintf("deleted=%d\nretention_days=%d", deleted, s.chatHistoryCleanup.RetentionDays)}
-	if err == nil {
-		err = s.Media.ReconcileHistory(ctx)
-	}
 	if err != nil {
 		logResult.ResultStatus = globalevents.ResultFailed
 		if errors.Is(err, context.Canceled) {
