@@ -1,6 +1,8 @@
 package dialogue
 
 import (
+	agentshare "elbot/internal/agent/share"
+
 	"context"
 	"errors"
 	"fmt"
@@ -13,34 +15,13 @@ import (
 
 // ReplyCommitter owns the final reply's send/save order, not the turn lifecycle.
 type ReplyCommitter struct {
-	Persistence MessageCommitter
+	Persistence agentshare.MessageCommitter
 	Output      AssistantPreparer
-}
-
-type ReplyCommitInput struct {
-	Persistence  MessageCommitter
-	Session      *storage.Session
-	Text         string
-	RawText      string
-	PlatformText string
-	Stream       delivery.MessageStream
-	Outputs      []delivery.Output
-}
-
-// A failed commit can still have delivered or persisted a reply. Receipt covers
-// the assistant send; deferred outputs retain their existing delivery boundary.
-type ReplyCommitResult struct {
-	MessageID  string
-	RawText    string
-	Receipt    delivery.Receipt
-	Persisted  bool
-	SendErr    error
-	PersistErr error
 }
 
 // Commit requires contexts and Session refreshed through executionView by the
 // caller. streamCtx retains the model request's original cancellation chain.
-func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in ReplyCommitInput, out Output) (result ReplyCommitResult, _ error) {
+func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.ReplyCommitInput, out agentshare.Output) (result agentshare.ReplyCommitResult, _ error) {
 	persistence := in.Persistence
 	if persistence == nil {
 		persistence = c.Persistence

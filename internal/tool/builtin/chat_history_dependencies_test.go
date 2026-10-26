@@ -4,13 +4,12 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/security"
+	"elbot/internal/tool/discovery"
+	toolregistry "elbot/internal/tool/registry"
 	"slices"
 	"testing"
 	"time"
-
-	"elbot/internal/tool/chat_history"
-	"elbot/internal/tool/discovery"
-	toolregistry "elbot/internal/tool/registry"
 )
 
 func TestChatHistoryToolsMutuallyDiscoverable(t *testing.T) {
@@ -20,7 +19,7 @@ func TestChatHistoryToolsMutuallyDiscoverable(t *testing.T) {
 		NewReplyToChatHistoryMessageTool(nil),
 		NewGetMediaTool(nil),
 	}
-	registry := toolregistry.NewRegistry(nil)
+	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
 	for _, value := range tools {
 		if err := registry.Register(value); err != nil {
 			t.Fatal(err)
@@ -56,8 +55,8 @@ func TestChatHistoryToolsMutuallyDiscoverable(t *testing.T) {
 }
 
 func TestFormatChatHistoryLineIncludesReferenceContext(t *testing.T) {
-	row := chat_history.Message{
-		Key: chat_history.MessageKey{Platform: "qqonebot", MessageID: "84"}, SenderID: "2002", SenderName: "回复者",
+	row := toolshare.Message{
+		Key: toolshare.MessageKey{Platform: "qqonebot", MessageID: "84"}, SenderID: "2002", SenderName: "回复者",
 		Text:          "本次发送的内容",
 		ReferenceText: "[引用#42：被引用者(qq:1001):被引用内容]\n\n本次发送的内容",
 		CreatedAt:     time.Date(2026, 9, 12, 15, 4, 5, 0, time.Local),

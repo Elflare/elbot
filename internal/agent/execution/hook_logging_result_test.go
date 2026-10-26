@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	agentshare "elbot/internal/agent/share"
 	"testing"
 
 	agenthooks "elbot/internal/agent/hooks"
@@ -18,7 +19,7 @@ func TestHookAdaptersPassFailedResultWithNilBusinessError(t *testing.T) {
 		ToolCallPrepared: func(_ context.Context, _ agenthooks.Facts, call llm.ToolCallRequest) (string, events.LogResult, error) {
 			return call.Arguments, declared, nil
 		},
-		ToolCallCompleted: func(_ context.Context, _ agenthooks.Facts, result agenthooks.ToolResult) ([]llm.MessageSegment, events.LogResult, error) {
+		ToolCallCompleted: func(_ context.Context, _ agenthooks.Facts, result agentshare.ToolResult) ([]llm.MessageSegment, events.LogResult, error) {
 			return result.Segments, declared, nil
 		},
 		AgentTurnOutputPrepared: func(_ context.Context, _ agenthooks.Facts, text string) (string, events.LogResult, error) {

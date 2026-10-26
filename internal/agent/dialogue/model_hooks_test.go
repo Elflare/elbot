@@ -2,6 +2,8 @@ package dialogue
 
 import (
 	"context"
+	agentshare "elbot/internal/agent/share"
+	"elbot/internal/tool"
 	"testing"
 
 	"elbot/internal/agent/hooks"
@@ -27,25 +29,25 @@ func TestRequestPointOnlyBindsNewPendingAndKeepsHistoryDetached(t *testing.T) {
 		t.Run(map[bool]string{false: "without pending", true: "with pending"}[withPending], func(t *testing.T) {
 			bridge := hooks.NewHookBridge(hooks.HookBridgeDeps{})
 			defer bridge.Close(context.Background())
-			_, err := bridge.Register(hooks.Points{LLMRequestPrepared: func(_ context.Context, _ hooks.Facts, input hooks.LLMInput) (hooks.LLMInputResult, events.LogResult, error) {
+			_, err := bridge.Register(hooks.Points{LLMRequestPrepared: func(_ context.Context, _ hooks.Facts, input agentshare.LLMInput) (agentshare.LLMInputResult, events.LogResult, error) {
 				if (input.Message.ID != "") != withPending {
 					t.Fatalf("bound message=%+v", input.Message)
 				}
 				// A provider cannot change stored history through the input snapshot.
 				input.Messages[0].Segments = llm.TextSegments("attempted history edit")
-				return hooks.LLMInputResult{Segments: llm.TextSegments("edited pending"), Tools: input.Tools}, events.LogResult{}, nil
+				return agentshare.LLMInputResult{Segments: llm.TextSegments("edited pending"), Tools: input.Tools}, events.LogResult{}, nil
 			}})
 			if err != nil {
 				t.Fatal(err)
 			}
 			messages := []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("initial")}}
-			var pending *PendingUserMessage
+			var pending *agentshare.PendingUserMessage
 			if withPending {
 				messages = append(messages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments("pending")})
-				pending = &PendingUserMessage{Message: storage.Message{ID: "pending", Content: "pending"}, MessageIndex: 1}
+				pending = &agentshare.PendingUserMessage{Message: storage.Message{ID: "pending", Content: "pending"}, MessageIndex: 1}
 			}
 			commits := &hookInputCommitter{}
-			processor := &CallProcessor{Hooks: bridge, Preparer: &Preparer{}}
+			processor := &CallProcessor{Hooks: bridge, Preparer: &Preparer{}, Tools: &ToolExecutor{Manager: hookTools{}}}
 			got, err := processor.PrepareCall(t.Context(), &storage.Session{ID: "s", Mode: storage.SessionModeWork}, modelmgr.Selection{}, messages, nil, pending, commits, &events.LogRecord{})
 			if err != nil {
 				t.Fatal(err)
@@ -62,4 +64,11 @@ func TestRequestPointOnlyBindsNewPendingAndKeepsHistoryDetached(t *testing.T) {
 			}
 		})
 	}
+}
+
+type hookTools struct{ *tool.Supervisor }
+
+func (hookTools) DecodeState(string) (tool.State, error) { return tool.State{}, nil }
+func (hookTools) FilterSchemas(_ context.Context, schemas []llm.ToolSchema) ([]llm.ToolSchema, error) {
+	return schemas, nil
 }

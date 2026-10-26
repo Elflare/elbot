@@ -8,19 +8,35 @@ import (
 	"fmt"
 	"strings"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"elbot/internal/security"
 	"elbot/internal/storage"
-	toolmedia "elbot/internal/tool/media"
-	"elbot/internal/tool/registry"
 )
 
-type Manager struct {
-	registry   *registry.Registry                      // 本次调用解析使用的原生工具目录。
-	permission *security.Permission                    // 根部注入的调用权限与确认策略。
-	media      *toolmedia.MediaRuntime                 // 经统一媒体入口查询工具参数引用的媒体。
-	log        func(context.Context, events.LogRecord) // Root-owned publication for complete execution records.
+// ManagerDeps 由根部一次交付执行所需能力，不持有兄弟组件。
+type ManagerDeps struct {
+	Registry interface {
+		Get(string) (toolshare.Tool, bool)
+		ToolInfo(string) (toolshare.Info, bool)
+		QueryTools(context.Context, toolshare.ToolQuery) ([]toolshare.Tool, error)
+	} // 工具解析与目录查询。
+	Permission interface {
+		CheckTool(contextinfo.Actor, string, security.RiskLevel, bool, bool, string) security.ToolPermissionResult
+	} // 当前调用的授权与确认判定。
+	Media interface {
+		Metadata(context.Context, string) (toolshare.MediaInfo, error)
+	} // 参数引用的媒体查询。
+	Log                       func(context.Context, events.LogRecord)                                      // 执行记录发布。
+	InfoAvailableInContext    func(context.Context, toolshare.Info) bool                                   // schema 上下文资格。
+	UnavailableReason         func(context.Context, toolshare.Info) string                                 // 解析拒绝原因。
+	BackgroundDiscoveredTools func(context.Context, []toolshare.DiscoveredTool) []toolshare.DiscoveredTool // 后台声明筛选。
+	DecodeState               func(string) (toolshare.State, error)                                        // 会话工具状态解码。
+	PrepareUpdate             func(string, toolshare.StateUpdate) (storage.SessionMetadata, error)         // 随结果原子提交的元数据补丁。
+	DiscoveryStateUpdate      func(context.Context, *toolshare.Result) (toolshare.StateUpdate, error)      // 本次发现或激活结果。
 }
+
+type Manager struct{ ManagerDeps }
 
 type resolvedTool struct {
 	// Source identifies the selected provider; empty means no provider was found.
@@ -35,9 +51,7 @@ type resolvedTool struct {
 	Error error
 }
 
-func NewManager(registry *registry.Registry, permission *security.Permission, media *toolmedia.MediaRuntime, log func(context.Context, events.LogRecord)) *Manager {
-	return &Manager{registry: registry, permission: permission, media: media, log: log}
-}
+func NewManager(deps ManagerDeps) *Manager { return &Manager{ManagerDeps: deps} }
 
 func (m *Manager) resolve(ctx context.Context, name string, discovered []toolshare.DiscoveredTool, mode string) resolvedTool {
 	name = strings.TrimSpace(name)
@@ -52,11 +66,11 @@ func (m *Manager) resolve(ctx context.Context, name string, discovered []toolsha
 		if modelName != name {
 			continue
 		}
-		if mode == storage.SessionModeBackground && len(registry.BackgroundDiscoveredTools(ctx, []toolshare.DiscoveredTool{discoveredTool})) == 0 {
+		if mode == storage.SessionModeBackground && len(m.BackgroundDiscoveredTools(ctx, []toolshare.DiscoveredTool{discoveredTool})) == 0 {
 			continue
 		}
 		discoveredCopy := discoveredTool
-		if mode != storage.SessionModeBackground && !registry.InfoAvailableInContext(ctx, toolshare.Info{ForegroundOnly: discoveredCopy.ForegroundOnly}) {
+		if mode != storage.SessionModeBackground && !m.InfoAvailableInContext(ctx, toolshare.Info{ForegroundOnly: discoveredCopy.ForegroundOnly}) {
 			return resolvedTool{Source: discoveredCopy.Source, Discovered: &discoveredCopy, ResultStatus: events.ResultRejected, Error: toolshare.PolicyDeniedError("tool is unavailable in this context")}
 		}
 		source := discoveredCopy.Source
@@ -66,8 +80,8 @@ func (m *Manager) resolve(ctx context.Context, name string, discovered []toolsha
 			}
 			return resolvedTool{Source: source, Discovered: &discoveredCopy, ResultStatus: events.ResultSucceeded}
 		}
-		if nativeTool, ok := m.registry.Get(discoveredCopy.Name); ok {
-			if reason := registry.UnavailableReason(ctx, nativeTool.Info()); reason != "" {
+		if nativeTool, ok := m.Registry.Get(discoveredCopy.Name); ok {
+			if reason := m.UnavailableReason(ctx, nativeTool.Info()); reason != "" {
 				return resolvedTool{Source: toolshare.SourceKindNative, Native: nativeTool, Discovered: &discoveredCopy, ResultStatus: events.ResultRejected, Error: toolshare.PolicyDeniedError(reason)}
 			}
 			return resolvedTool{Source: toolshare.SourceKindNative, Native: nativeTool, Discovered: &discoveredCopy, ResultStatus: events.ResultSucceeded}
@@ -77,8 +91,8 @@ func (m *Manager) resolve(ctx context.Context, name string, discovered []toolsha
 	if mode == storage.SessionModeBackground {
 		return resolvedTool{ResultStatus: events.ResultRejected, Error: toolshare.PolicyDeniedError("tool is not allowed in this background task")}
 	}
-	if nativeTool, ok := m.registry.Get(name); ok {
-		if reason := registry.UnavailableReason(ctx, nativeTool.Info()); reason != "" {
+	if nativeTool, ok := m.Registry.Get(name); ok {
+		if reason := m.UnavailableReason(ctx, nativeTool.Info()); reason != "" {
 			return resolvedTool{Source: toolshare.SourceKindNative, Native: nativeTool, ResultStatus: events.ResultRejected, Error: toolshare.PolicyDeniedError(reason)}
 		}
 		return resolvedTool{Source: toolshare.SourceKindNative, Native: nativeTool, ResultStatus: events.ResultSucceeded}
@@ -92,7 +106,7 @@ func (m *Manager) CallTool(ctx context.Context, req toolshare.CallRequest) (*too
 	if err := ctx.Err(); err != nil {
 		return nil, "", err
 	}
-	candidate, ok := m.registry.Get(req.Name)
+	candidate, ok := m.Registry.Get(req.Name)
 	if !ok {
 		return nil, "", fmt.Errorf("tool %q not found", req.Name)
 	}

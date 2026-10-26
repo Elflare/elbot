@@ -2,12 +2,9 @@ package agent
 
 import (
 	"context"
-	"fmt"
-	"strings"
-	"sync"
-	"testing"
-
-	agentevents "elbot/internal/agent/events"
+	"elbot/internal/agent/dialogue"
+	agentexecution "elbot/internal/agent/execution"
+	agentshare "elbot/internal/agent/share"
 	"elbot/internal/command"
 	"elbot/internal/completion"
 	"elbot/internal/delivery"
@@ -16,6 +13,10 @@ import (
 	"elbot/internal/notification"
 	"elbot/internal/platform"
 	"elbot/internal/signal"
+	"fmt"
+	"strings"
+	"sync"
+	"testing"
 )
 
 type assemblyPlatform struct {
@@ -71,10 +72,10 @@ func (p *assemblyPlatform) text() string {
 	return strings.Join(p.outputs, "\n")
 }
 
-func observerSignals() agentevents.Signals {
-	return agentevents.Signals{
-		ModelCallCompleted: signal.New[agentevents.ModelCallCompletedEvent, signal.Empty]("model"),
-		StatusChanged:      signal.New[agentevents.StatusChangedEvent, signal.Empty]("status"),
-		VisionFallbackUsed: signal.New[agentevents.VisionFallbackUsedEvent, signal.Empty]("vision"),
+func observerSignals() signals {
+	return signals{
+		ModelCallCompleted: signal.New[agentshare.ModelCallCompletedEvent, signal.Empty]("model"),
+		StatusChanged:      signal.New[agentexecution.StatusChangedEvent, signal.Empty]("status"),
+		VisionFallbackUsed: signal.New[dialogue.VisionFallbackUsedEvent, signal.Empty]("vision"),
 	}
 }

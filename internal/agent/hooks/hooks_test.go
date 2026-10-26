@@ -2,6 +2,7 @@ package hooks
 
 import (
 	"context"
+	agentshare "elbot/internal/agent/share"
 	"errors"
 	"reflect"
 	"testing"
@@ -52,22 +53,22 @@ func TestPartialProviderPreservesUnregisteredValues(t *testing.T) {
 	}
 	ctx := t.Context()
 	segments := llm.TextSegments("original")
-	message := Message{Segments: segments}
-	session := Session{ID: "session"}
+	message := agentshare.Message{Segments: segments}
+	session := agentshare.Session{ID: "session"}
 	if got, _, err := h.PlatformMessageReceived(ctx, message); err != nil || got.Consume || len(got.Outputs) != 0 || !reflect.DeepEqual(got.Segments, segments) {
 		t.Fatal(got, err)
 	}
 	if got, _, err := h.AgentInputPrepared(ctx, session, message); err != nil || !reflect.DeepEqual(got, segments) {
 		t.Fatal(got, err)
 	}
-	input := LLMInput{Message: message, Tools: []llm.ToolSchema{{Name: "tool"}}}
-	for _, run := range []func(context.Context, Session, LLMInput) (LLMInputResult, events.LogResult, error){h.LLMTurnPrepared, h.LLMRequestPrepared} {
+	input := agentshare.LLMInput{Message: message, Tools: []llm.ToolSchema{{Name: "tool"}}}
+	for _, run := range []func(context.Context, agentshare.Session, agentshare.LLMInput) (agentshare.LLMInputResult, events.LogResult, error){h.LLMTurnPrepared, h.LLMRequestPrepared} {
 		got, _, err := run(ctx, session, input)
 		if err != nil || !reflect.DeepEqual(got.Segments, segments) || !reflect.DeepEqual(got.Tools, input.Tools) {
 			t.Fatal(got, err)
 		}
 	}
-	response := LLMResponse{Text: "display", SourceText: "raw", ToolCalls: []llm.ToolCallRequest{{ID: "call", Name: "tool", Arguments: "{}"}}}
+	response := agentshare.LLMResponse{Text: "display", SourceText: "raw", ToolCalls: []llm.ToolCallRequest{{ID: "call", Name: "tool", Arguments: "{}"}}}
 	got, _, err := h.LLMResponseReceived(ctx, session, response)
 	if err != nil || got.Text != "display" || got.SourceText != "raw" || !reflect.DeepEqual(got.ToolCalls, response.ToolCalls) {
 		t.Fatal(got, err)
@@ -75,7 +76,7 @@ func TestPartialProviderPreservesUnregisteredValues(t *testing.T) {
 	if args, _, err := h.ToolCallPrepared(ctx, session, response.ToolCalls[0]); err != nil || args != "{}" {
 		t.Fatal(args, err)
 	}
-	if got, _, err := h.ToolCallCompleted(ctx, session, ToolResult{Segments: segments}); err != nil || !reflect.DeepEqual(got, segments) {
+	if got, _, err := h.ToolCallCompleted(ctx, session, agentshare.ToolResult{Segments: segments}); err != nil || !reflect.DeepEqual(got, segments) {
 		t.Fatal(got, err)
 	}
 	if got, _, err := h.AgentTurnOutputPrepared(ctx, "display"); err != nil || got != "display" {
@@ -99,8 +100,8 @@ func TestCallbackFactsPreserveWakeupAndCallPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session := Session{ID: "s", Mode: "work"}
-	for _, ctx := range []context.Context{t.Context(), WithReadOnlyCalls(WithWakeup(t.Context(), false))} {
+	session := agentshare.Session{ID: "s", Mode: "work"}
+	for _, ctx := range []context.Context{t.Context(), agentshare.WithReadOnlyCalls(agentshare.WithWakeup(t.Context(), false))} {
 		if _, _, err := h.ToolCallPrepared(ctx, session, llm.ToolCallRequest{}); err != nil {
 			t.Fatal(err)
 		}
@@ -114,16 +115,16 @@ func TestMessageFactsKeepOriginalTextAndPreparedIntent(t *testing.T) {
 	h := NewHookBridge(HookBridgeDeps{})
 	defer h.Close(context.Background())
 	ctx := platform.WithMessageContext(t.Context(), platform.MessageContext{RawText: "wake original", TriggerKeywords: []string{"wake"}})
-	var seen []Message
-	_, err := h.Register(Points{PlatformMessageReceived: func(_ context.Context, _ Facts, message Message) (PlatformMessageReceivedResult, events.LogResult, error) {
+	var seen []agentshare.Message
+	_, err := h.Register(Points{PlatformMessageReceived: func(_ context.Context, _ Facts, message agentshare.Message) (agentshare.PlatformMessageReceivedResult, events.LogResult, error) {
 		seen = append(seen, message)
-		return PlatformMessageReceivedResult{Segments: message.Segments}, events.LogResult{}, nil
+		return agentshare.PlatformMessageReceivedResult{Segments: message.Segments}, events.LogResult{}, nil
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, original := range []string{"", "explicit original"} {
-		_, _, err := h.PlatformMessageReceived(ctx, Message{Role: string(llm.RoleUser), PlatformText: original, Segments: llm.TextSegments("wake edited")})
+		_, _, err := h.PlatformMessageReceived(ctx, agentshare.Message{Role: string(llm.RoleUser), PlatformText: original, Segments: llm.TextSegments("wake edited")})
 		if err != nil {
 			t.Fatal(err)
 		}

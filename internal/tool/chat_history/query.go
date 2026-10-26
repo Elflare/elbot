@@ -4,18 +4,12 @@ package chat_history
 
 import (
 	"context"
-	"errors"
+	"elbot/internal/tool/share"
 	"regexp"
 	"strings"
 	"time"
 
 	"elbot/internal/contextinfo"
-)
-
-var (
-	ErrNotFound      = errors.New("chat history message not found")
-	ErrNoChatContext = errors.New("当前上下文没有平台聊天信息，无法自动确定要查询哪个聊天。")
-	ErrNoCurrentUser = errors.New("无法解析“我”：当前平台上下文没有用户 ID。")
 )
 
 const (
@@ -24,33 +18,6 @@ const (
 )
 
 var chatHistoryAtIDPattern = regexp.MustCompile(`^@(.+)$`)
-
-type MessageKey struct {
-	Platform  string // 消息所属平台。
-	ScopeID   string // 平台内的群聊或私聊范围。
-	MessageID string // 平台消息 ID，不含展示用的 # 前缀。
-}
-
-type Message struct {
-	Key           MessageKey  // 消息的稳定查询位置。
-	SenderID      string      // 平台发送者 ID。
-	SenderName    string      // 发送者展示名，缺失时由工具使用 ID 展示。
-	Text          string      // 消息正文，未做工具展示截断。
-	ReferenceText string      // 根部转换后的完整引用及正文；没有引用时为空。
-	CreatedAt     time.Time   // 消息时间。
-	Media         []MediaItem // 仅包含媒体项，切片位置加一即对外媒体序号。
-}
-
-type SearchRequest struct {
-	Query     string // 工具输入的关键词文本。
-	QueryMode string // 关键词组合方式。
-	User      string // 用户输入的发送者筛选，可使用“我”、@ID、ID 或名称。
-	Since     string // 用户输入的开始时间。
-	Until     string // 用户输入的结束时间。
-	Hours     int    // 无有效 Since 时使用的最近小时数。
-	Days      int    // 无有效 Since 和 Hours 时使用的最近天数。
-	Limit     int    // 用户请求的数量，组件统一应用默认值和上限。
-}
 
 type SearchQuery struct {
 	Platform        string     // 当前调用所属平台。
@@ -64,28 +31,22 @@ type SearchQuery struct {
 	Limit           int        // 已应用默认值和上限的数量。
 }
 
-type AroundRequest struct {
-	MessageID string // 工具已规范化且检查为非空的消息 ID。
-	Before    int    // 消息之前的数量，组件应用默认值和上限。
-	After     int    // 消息之后的数量，组件应用默认值和上限。
-}
-
 type AroundQuery struct {
-	Key    MessageKey // 当前聊天内的目标消息。
-	Before int        // 已应用默认值和上限的向前数量。
-	After  int        // 已应用默认值和上限的向后数量。
+	Key    share.MessageKey // 当前聊天内的目标消息。
+	Before int              // 已应用默认值和上限的向前数量。
+	After  int              // 已应用默认值和上限的向后数量。
 }
 
-func (m *Manager) Search(ctx context.Context, req SearchRequest) ([]Message, error) {
+func (m *Manager) Search(ctx context.Context, req share.SearchRequest) ([]share.Message, error) {
 	chat, err := currentChatHistoryContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 	senderID, senderName, errText := chatHistoryUserFilter(req.User, chat)
 	if errText != "" {
-		return nil, ErrNoCurrentUser
+		return nil, share.ErrNoCurrentUser
 	}
-	since, until := chatHistoryTimeRangeAt(req.Since, req.Until, req.Hours, req.Days, m.info.CurrentTime())
+	since, until := chatHistoryTimeRangeAt(req.Since, req.Until, req.Hours, req.Days, m.now())
 	return m.backend.Search(ctx, SearchQuery{
 		Platform: chat.Platform, ScopeID: chat.ScopeID,
 		QueryTerms: splitChatHistoryTerms(req.Query), QueryMode: req.QueryMode,
@@ -94,24 +55,24 @@ func (m *Manager) Search(ctx context.Context, req SearchRequest) ([]Message, err
 	})
 }
 
-func (m *Manager) Around(ctx context.Context, req AroundRequest) ([]Message, error) {
+func (m *Manager) Around(ctx context.Context, req share.AroundRequest) ([]share.Message, error) {
 	chat, err := currentChatHistoryContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return m.backend.Around(ctx, AroundQuery{
-		Key:    MessageKey{Platform: chat.Platform, ScopeID: chat.ScopeID, MessageID: req.MessageID},
+		Key:    share.MessageKey{Platform: chat.Platform, ScopeID: chat.ScopeID, MessageID: req.MessageID},
 		Before: clampChatHistoryWindow(req.Before), After: clampChatHistoryWindow(req.After),
 	})
 }
 
 // GetMessage 接收工具已规范化且检查为非空的消息 ID。
-func (m *Manager) GetMessage(ctx context.Context, messageID string) (Message, error) {
+func (m *Manager) GetMessage(ctx context.Context, messageID string) (share.Message, error) {
 	chat, err := currentChatHistoryContext(ctx)
 	if err != nil {
-		return Message{}, err
+		return share.Message{}, err
 	}
-	return m.backend.GetMessage(ctx, MessageKey{Platform: chat.Platform, ScopeID: chat.ScopeID, MessageID: messageID})
+	return m.backend.GetMessage(ctx, share.MessageKey{Platform: chat.Platform, ScopeID: chat.ScopeID, MessageID: messageID})
 }
 
 type chatHistoryContext struct {
@@ -126,7 +87,7 @@ func currentChatHistoryContext(ctx context.Context) (chatHistoryContext, error) 
 	}
 	info, ok := contextinfo.ConversationFromContext(ctx)
 	if !ok || strings.TrimSpace(info.Source.Platform) == "" || strings.TrimSpace(info.Source.ScopeID) == "" {
-		return chatHistoryContext{}, ErrNoChatContext
+		return chatHistoryContext{}, share.ErrNoChatContext
 	}
 	return chatHistoryContext{Platform: info.Source.Platform, ScopeID: info.Source.ScopeID, PlatformUserID: info.Identity.PlatformUserID}, nil
 }
@@ -138,7 +99,7 @@ func chatHistoryUserFilter(user string, ctx chatHistoryContext) (senderID, sende
 	}
 	if user == "我" || user == "本人" || user == "自己" {
 		if strings.TrimSpace(ctx.PlatformUserID) == "" {
-			return "", "", ErrNoCurrentUser.Error()
+			return "", "", share.ErrNoCurrentUser.Error()
 		}
 		return ctx.PlatformUserID, "", ""
 	}

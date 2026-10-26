@@ -5,7 +5,9 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"elbot/internal/events"
+	"elbot/internal/tool/discovery"
 	"elbot/internal/tool/execution"
+	"elbot/internal/tool/state"
 	"errors"
 	"fmt"
 	"os"
@@ -137,9 +139,9 @@ func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
 			if err := registry.Register(NewRollbackFileTool(service)); err != nil {
 				t.Fatal(err)
 			}
-			manager := execution.NewManager(registry, security.NewPermission("low", "high", nil), nil, func(ctx context.Context, record events.LogRecord) {
+			manager := execution.NewManager(execution.ManagerDeps{Registry: registry, Permission: security.NewPermission("low", "high", nil), InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, DecodeState: state.DecodeState, PrepareUpdate: state.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(registry).DiscoveryStateUpdate, Log: func(ctx context.Context, record events.LogRecord) {
 				_ = events.EmitLog(context.WithoutCancel(ctx), record)
-			})
+			}})
 			actor := contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin}
 			base := contextinfo.WithActor(context.Background(), actor)
 			deps := &rollbackConfirmDeps{}
@@ -193,9 +195,9 @@ func TestRunEditPreservesConfirmationSnapshot(t *testing.T) {
 			if err := registry.Register(editor); err != nil {
 				t.Fatal(err)
 			}
-			manager := execution.NewManager(registry, security.NewPermission("low", "high", nil), nil, func(ctx context.Context, record events.LogRecord) {
+			manager := execution.NewManager(execution.ManagerDeps{Registry: registry, Permission: security.NewPermission("low", "high", nil), InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, DecodeState: state.DecodeState, PrepareUpdate: state.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(registry).DiscoveryStateUpdate, Log: func(ctx context.Context, record events.LogRecord) {
 				_ = events.EmitLog(context.WithoutCancel(ctx), record)
-			})
+			}})
 			actor := contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin}
 			deps := &rollbackConfirmDeps{}
 			deps.prepareContext = func(ctx context.Context, _ *storage.Session, _ llm.ToolCallRequest) context.Context {

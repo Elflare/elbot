@@ -9,16 +9,24 @@ import (
 
 	"elbot/internal/events"
 	"elbot/internal/storage"
-	toolregistry "elbot/internal/tool/registry"
 	toolshare "elbot/internal/tool/share"
 )
 
 // StateService has no second writable cache. All updates merge the latest row.
 type StateService struct {
-	store storage.Store // 持久化会话状态；本服务不维护第二份可写缓存。
+	backgroundDiscoveredTools func(context.Context, []toolshare.DiscoveredTool) []toolshare.DiscoveredTool // 根部注入的后台声明资格筛选。
+	store                     interface {
+		Get(context.Context, string) (*storage.Session, error)
+		Mutate(context.Context, string, func(*storage.Session) error) (*storage.Session, error)
+	} // 持久化会话状态；本服务不维护第二份可写缓存。
 }
 
-func NewStateService(store storage.Store) *StateService { return &StateService{store: store} }
+func NewStateService(store interface {
+	Get(context.Context, string) (*storage.Session, error)
+	Mutate(context.Context, string, func(*storage.Session) error) (*storage.Session, error)
+}, backgroundDiscoveredTools func(context.Context, []toolshare.DiscoveredTool) []toolshare.DiscoveredTool) *StateService {
+	return &StateService{store: store, backgroundDiscoveredTools: backgroundDiscoveredTools}
+}
 
 func DecodeState(raw string) (toolshare.State, error) {
 	fields, err := storage.DecodeSessionMetadata(raw)
@@ -72,7 +80,7 @@ func prepareUpdate(state *toolshare.State, update toolshare.StateUpdate) (storag
 func (s *StateService) Commit(ctx context.Context, id string, update toolshare.StateUpdate) (toolshare.StateCommit, events.LogResult, error) {
 	var result toolshare.StateCommit
 	var callbackErr error
-	row, err := s.store.Sessions().Mutate(ctx, id, func(row *storage.Session) (err error) {
+	row, err := s.store.Mutate(ctx, id, func(row *storage.Session) (err error) {
 		defer func() { callbackErr = err }()
 		state, err := DecodeState(row.Metadata)
 		if err != nil {
@@ -143,7 +151,7 @@ func uniqueNames(values []string) []string {
 }
 
 func (s *StateService) DiscoveredToolsForSession(ctx context.Context, id string, background bool) ([]toolshare.DiscoveredTool, events.LogResult, error) {
-	row, err := s.store.Sessions().Get(ctx, id)
+	row, err := s.store.Get(ctx, id)
 	if err != nil {
 		result := events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("tool_state_error=%v", err)}
 		if ctx.Err() != nil {
@@ -157,7 +165,7 @@ func (s *StateService) DiscoveredToolsForSession(ctx context.Context, id string,
 	}
 	items := state.DiscoveredTools
 	if background {
-		items = toolregistry.BackgroundDiscoveredTools(ctx, items)
+		items = s.backgroundDiscoveredTools(ctx, items)
 	}
 	return items, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "tool state loaded"}, nil
 }

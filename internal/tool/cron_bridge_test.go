@@ -13,7 +13,6 @@ import (
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/tool/builtin"
-	"elbot/internal/tool/runtimeinfo"
 	"elbot/internal/tool/share"
 )
 
@@ -29,7 +28,7 @@ func TestCronBridgeStorageAndNotifications(t *testing.T) {
 	owner := contextinfo.Actor{ID: "owner", Platform: "qq", PlatformUserID: "123", DisplayName: "Owner"}
 	ctx := contextinfo.WithActor(t.Context(), owner)
 	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.Local)
-	tools := builtin.NewCronTools(bridge, nil, runtimeinfo.Info{Now: func() time.Time { return now }})
+	tools := builtin.NewCronTools(bridge, nil, func() time.Time { return now })
 	var notifications []CronChangedEvent
 	var exists []bool
 	_, err = (&Supervisor{cronChanged: changed}).ObserveCronChanged(func(event CronChangedEvent) error {

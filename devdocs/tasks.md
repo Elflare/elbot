@@ -18,7 +18,7 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] 统一权限管理类型及现行调用方为 `Permission`。
 - [x] 测试覆盖资源部分失败、环境参数和退出辅助逻辑；期限测试使用虚拟时间。
 - [ ] 实现 Tool、Platform、Background 的目标总管及 Platform.RunClient 结果契约，补齐跨线接线。
-- [x] 收窄 Agent 的 Hook 边界：声明 `hooks.Points`，提供 `RegisterHooks`、`StartHookRequest`，业务流程仅调用 Agent 自有扩展点；Hook 管理能力仅用于命令。
+- [x] 收窄 Agent 的 Hook 边界：声明根包 `agent.Points`，提供 `RegisterHooks`、`StartHookRequest`，业务流程仅调用 Agent 自有扩展点；Hook 管理能力仅用于命令。
 - [x] Hook 根包实现 ConnectAgent：注册并持有一组回调，转换业务参数与 Hook Event 并处理结果转换；逐 handler 登记回调只传 context 与名称，不持有 Agent 内部组件。
 - [x] Hook 根部 context_to_event.go 负责外部事实转换；pipeline 组织续接、普通规则及错误钩子，构造时注入日志和 runtime 续接能力；注册查询契约与事件辅助逻辑归 share。
 - [x] Hook.Start 串行完成初始加载和平台订阅，重复启动等待完成；已补并发启动回归用例。
@@ -50,7 +50,7 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Tool 根部直接请求 Storage 读写 Cron，转换结果并发布任务定义变更；真实 SQLite 集成测试归 Tool 根部，Builtin 使用内部契约替身。
 - [x] Background 根部四文件收敛为对外门面、七项依赖、装配和生命周期框架；移除内部 Runner 的公开转发及 Wait，内部接入按目标调用标注 TODO。
 - [ ] 实现 Background 根部适配及内部消费契约：子包不直接引用其他业务包的根包、子包或 share；App 只交付总管。
-- [ ] 补齐 Agent 根包的后台执行、后台会话复制与过期会话清理契约，以及 Platform 的公开发送、API 和历史清理能力。
+- [ ] 实现 Agent 根包已预留的后台执行、后台会话复制与过期会话清理方法，以及 Platform 的公开发送、API 和历史清理能力。
 - [ ] 接通 Tool.ObserveCronChanged 到内部 Cron 的刷新入口；初次任务加载前建立订阅，协调启动期间的变更并重新读库刷新调度。
 - [ ] 收口维护配置与 Cron 启动职责：SetupCron 只配置任务，移除其内部 Manager.Start 调用，由根部显式启动 Manager。
 - [ ] 实现 Cron Service.Start 与平台通知缓存契约：Start 前不触发 worker，前置步骤成功后由根部启动消费者；消费者就绪即可返回，不等待缓存任务执行完。验证启动前不执行、成功后消费、失败或关闭后不放行、关闭清理缓存及重复启动不重复创建消费者。
@@ -95,3 +95,13 @@ Tool 媒体层已统一向工具返回 `share.MediaInfo`，图片宽高、实际
 
 - MCP 接入：暂不考虑，使用 Skill。
 - 子 Agent：暂不考虑，信息交流会带来噪声或损失。
+
+## Agent 边界接入
+
+- [x] 公开 Hook 载荷与订阅事件独立定义在根部；内部共享循环、提交、消息与 Hook 契约放 Share，具体实现留所属子包。
+- [x] 子包不依赖兄弟实现；根部注入实际需要的外部能力、模型选择函数与 Workspace 工厂。
+- [x] Agent 的 11 个子包测试通过。
+- [ ] Hook.ConnectAgent 改用 agent.Points 与根包嵌套类型；Hook 管理结果迁到其公开根包后，更新 Agent 的管理消费契约。
+- [ ] Command 的工具目录与 Completion 查询改用 Tool 根包公开契约，移除旧 InfoAvailableInContext 调用；Notification 的旧 Hook.Event 引用随提供方收口。
+- [ ] 外围契约接入后编译 Agent 根包，运行 Supervisor 整链路及订阅生命周期回归。
+- [ ] Background 准备迁入 Agent 后实现 contracts.go 中三个 TODO 方法；路径准备、报告解析和重试策略仍归 Background。

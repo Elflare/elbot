@@ -4,6 +4,10 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/events"
+	"elbot/internal/tool"
+	"elbot/internal/tool/discovery"
+	"elbot/internal/workspace"
 
 	"context"
 	"errors"
@@ -34,9 +38,12 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Permission: permission})
 	sessions := session.NewService(store)
 	t.Cleanup(func() { _ = sessions.Close(context.Background()) })
-	stateService := toolstate.NewStateService(store)
-	coordinator := NewInputCoordinator(InputCoordinatorDeps{Sessions: sessions, SessionRows: store.Sessions(), Identity: identity, Execution: directiveExecution{}, ToolState: stateService,
-		Preloader: preload.NewPreloadService(preload.PreloadOptions{Registry: registry, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"worker": {Tools: []string{"alpha"}, Prompt: "TAG"}}}})})
+	stateService := toolstate.NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)
+	coordinator := NewInputCoordinator(InputCoordinatorDeps{Sessions: sessions, SessionRows: store.Sessions(), Identity: identity, Execution: directiveExecution{}, ToolState: directiveState{stateService},
+		NewWorkspaceStore: func(id string) workspace.WorkspaceStore {
+			return session.NewWorkspaceStore(sessions, store.Sessions(), id)
+		},
+		Preloader: directivePreloader{preload.NewPreloadService(preload.PreloadOptions{Registry: registry, Resolver: discovery.NewResolver(registry), NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery, LoadDiscoveryContent: discovery.LoadDiscoveryContent, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"worker": {Tools: []string{"alpha"}, Prompt: "TAG"}}}})}})
 
 	row, err := sessions.Create(ctx, identity.Scope(ctx), session.CreateRequest{Title: "state", Metadata: `{"unknown":9007199254740993}`})
 	if err != nil {
@@ -45,7 +52,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	before := row.Metadata
 	failure := errors.New("commit rejected")
 	repo := &toolStateFaultRepo{SessionRepository: store.Sessions(), failure: failure}
-	*stateService = *toolstate.NewStateService(toolStateFaultStore{Store: store, repo: repo})
+	*stateService = *toolstate.NewStateService(repo, toolregistry.BackgroundDiscoveredTools)
 	input := "question @tool:worker @skill:doc"
 	tools, skills, err := coordinator.applyInputDirectives(ctx, row, input)
 	if !errors.Is(err, failure) {
@@ -131,7 +138,7 @@ func (t agentDetailTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 }
 
 func (t agentDetailTool) Detail() string {
-	return tool.RenderDetailBlocks([]toolshare.DetailBlock{t.DetailBlock()})
+	return toolshare.RenderDetailBlocks([]toolshare.DetailBlock{t.DetailBlock()})
 }
 
 func (t agentDetailTool) DetailBlock() toolshare.DetailBlock {
@@ -181,4 +188,33 @@ func (directiveExecution) EnterInput(ctx context.Context, row *storage.Session) 
 }
 func (directiveExecution) ModelContext(ctx context.Context, row *storage.Session) (context.Context, error) {
 	return ctx, nil
+}
+
+type directiveState struct{ *toolstate.StateService }
+
+func (s directiveState) Commit(ctx context.Context, id string, update tool.StateUpdate) (tool.StateCommit, events.LogResult, error) {
+	internal := toolshare.StateUpdate{Tags: update.Tags}
+	for _, v := range update.Tools {
+		internal.Tools = append(internal.Tools, toolshare.DiscoveredTool{Name: v.Name, CanonicalName: v.CanonicalName, Source: toolshare.SourceKind(v.Source), Description: v.Description, Schema: v.Schema, EventKey: v.EventKey, Endpoint: v.Endpoint, TimeoutSeconds: v.TimeoutSeconds, ForegroundOnly: v.ForegroundOnly})
+	}
+	value, result, err := s.StateService.Commit(ctx, id, internal)
+	return tool.StateCommit{Metadata: value.Metadata, Injected: value.Injected, Existing: value.Existing}, result, err
+}
+
+type directivePreloader struct{ *preload.PreloadService }
+
+func (p directivePreloader) PrepareTools(ctx context.Context, names []string) (tool.ToolPreload, error) {
+	v, err := p.PreloadService.PrepareTools(ctx, names)
+	return tool.ToolPreload{NeedsElyphRules: v.NeedsElyphRules, Update: publicDirectiveUpdate(v.Update), Accepted: v.Accepted, Invalid: v.Invalid, Content: v.Content}, err
+}
+func (p directivePreloader) PrepareSkills(ctx context.Context, id string, names []string) (tool.SkillPreload, error) {
+	v, err := p.PreloadService.PrepareSkills(ctx, id, names)
+	return tool.SkillPreload{NeedsElyphRules: v.NeedsElyphRules, Update: publicDirectiveUpdate(v.Update), Accepted: v.Accepted, Names: v.Names, Invalid: v.Invalid, Content: v.Content}, err
+}
+func publicDirectiveUpdate(v toolshare.StateUpdate) tool.StateUpdate {
+	out := tool.StateUpdate{Tags: v.Tags}
+	for _, v := range v.Tools {
+		out.Tools = append(out.Tools, tool.DiscoveredTool{Name: v.Name, CanonicalName: v.CanonicalName, Source: tool.SourceKind(v.Source), Description: v.Description, Schema: v.Schema, EventKey: v.EventKey, Endpoint: v.Endpoint, TimeoutSeconds: v.TimeoutSeconds, ForegroundOnly: v.ForegroundOnly})
+	}
+	return out
 }

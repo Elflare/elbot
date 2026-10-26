@@ -47,8 +47,8 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/signal/`：泛型信号、订阅快照、有界调度、结果、关闭及设施诊断。
 - `internal/events/notification.go`、`platform.go`、`logging.go`：全局通知、平台连接与日志契约。
-- `internal/agent/events/`：Agent 实例事实信号，以及对外状态、绑定快照；绑定快照不包含内部 Binding 句柄。
-- `internal/agent/signals.go`：通知、重试、会话清理与接管订阅。
+- `internal/agent/contracts.go`：公开 Hook 回调及载荷、状态和绑定快照、后台预留请求结果；不暴露内部组件或 Binding 句柄。
+- `internal/agent/signals.go`：Agent 信号源构造及通知、重试、会话清理与接管订阅。
 - `internal/background/cron/platform_signals.go`：Cron 的平台连接事件消费与队列生命周期。
 - `internal/session/naming_signals.go`、`naming_logging.go`、`naming_lifecycle.go`：命名信号、日志与退出。
 - `internal/modelmgr/signals.go`、`logging.go`：模型重试信号与日志。
@@ -68,10 +68,11 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## Agent 对话
 
 - `internal/agent/{input,execution,confirmation,hooks,output,tools}/`：输入、执行、确认、Agent 自有扩展点、输出与工具桥接；依赖契约随消费者放置。
-- `internal/agent/share/`：线内共享的身份、输入、片段、绑定、状态契约与辅助函数，不反向依赖上述六个业务子包及 dialogue。
+- `internal/agent/share/dialogue.go`、`hooks.go`：多子包共用的循环、提交、材料、消息转换和接管提示，以及 Hook 载荷与上下文辅助；独用消费接口留消费者，不反向依赖实现子包。
+- `internal/agent/share/status.go`、`execution/status.go`、`dialogue/model_call.go`：模型完成、执行状态、视觉降级的内部事实定义。
 - `internal/agent/input/message.go`、`input.go`：消息分发与普通输入准备；`internal/background/execution/runner.go`、`runner_deps.go`：后台资源准备与依赖契约。
 - `internal/agent/dialogue/runner.go`、`preparation.go`：公共单轮、组件构造、输入准备与终态失败报告。
-- `internal/agent/dialogue/materials.go`：公共消息投影、片段编解码、归档与请求媒体准备。
+- `internal/agent/dialogue/materials.go`：消息归档与请求媒体准备；共享投影与片段编解码在 `share/dialogue.go`。
 - `internal/agent/dialogue/model_call.go`、`system_prompt.go`：公共模型 Hook、调用观察与 Prompt 来源。
 - `internal/agent/dialogue/message_store.go`、`commit.go`、`reply_commit.go`：消息、工具批次及最终回复提交。
 - `internal/agent/chat/`：Chat Loop、请求、历史、摘要与 seed。
@@ -86,7 +87,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/agent/routes/`：按 APIType 登记 Loop／Compactor／Material。
 - `internal/agent/wiring.go`：消费完整配置与外部业务能力，装配线内组件和协议路线；App 资源准备见 `internal/app/resources.go`。
-- `internal/agent/dialogue/loop.go`、`internal/contextmgr/compact_contract.go`、`internal/session/material.go`：公共循环、压缩和材料契约。
+- `internal/agent/share/dialogue.go`、`internal/contextmgr/compact_contract.go`、`internal/session/material.go`：公共循环、压缩和材料契约。
 - `internal/llm/origin.go`、`internal/modelmgr/compatibility.go`：持久化归属与兼容判断。
 - `internal/llm/api_type.go`、`internal/tool/registry/availability.go`：模型 API 类型与工具可用性。
 
@@ -194,7 +195,7 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/hook/media.go`、`logging.go`：媒体中心契约与来源日志／通知发布；`output/`：输出与消息转换。
 - `internal/hook/agent_bridge_test.go`、`supervisor_test.go`、`wiring_test.go`：桥接转换、并发启动、配置加载和关闭／平台队列边界用例；`pipeline/continuation_test.go` 验证续接顺序、短路和错误不递归。
 - `internal/agent/hook_bridge.go`：对外单组回调注册与逐个 handler 的请求登记。
-- `internal/agent/hooks/points.go`：Agent 可挂接点及业务输入、结果契约；`hooks.go`：回调调度、输入事实准备和在途生命周期。
+- `internal/agent/hooks/points.go`：内部回调组与事实组合；`hooks.go`：回调调度、输入事实准备和在途生命周期。公开回调在 Agent 根部，内部载荷在 `share/hooks.go`。
 - [Hook 文档](../docs/hooks.md)。
 
 <!-- locator:output -->
@@ -237,7 +238,7 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/agent/execution/execution_compact.go`、`context_usage.go`：压缩生命周期、交接及用量。
 - `internal/agent/chat/compact.go`、`compressor.go`：Chat 摘要。
 - `internal/agent/responses/compact.go`、`branch.go`：原生压缩与分支材料。
-- `internal/agent/dialogue/system_prompt.go`、`prompt.go`、`foreground_notice.go`：公共 Prompt 与接管提示。
+- `internal/agent/dialogue/system_prompt.go`、`prompt.go`：公共 Prompt；`internal/agent/share/dialogue.go`：跨路线共用的接管提示。
 - `internal/agent/chat/transcript.go`：Chat 历史与 Prompt Builder。
 
 <!-- locator:llm -->

@@ -16,7 +16,9 @@ type IdentityResolver struct {
 	platformName string
 	actorID      string
 	scopeID      string
-	permission   *security.Permission
+	permission   interface {
+		Actor(string, string, string, string) contextinfo.Actor
+	} // 根部仅注入身份解析能力。
 }
 
 func (r *IdentityResolver) Scope(ctx context.Context) session.Scope {
@@ -107,7 +109,9 @@ type IdentityResolverDeps struct {
 	PlatformName string
 	ActorID      string
 	ScopeID      string
-	Permission   *security.Permission
+	Permission   interface {
+		Actor(string, string, string, string) contextinfo.Actor
+	} // 身份解析不取得工具授权或确认策略。
 }
 
 // NewIdentityResolver initializes IdentityResolver without installing cross-service callbacks.
@@ -119,7 +123,5 @@ func NewIdentityResolver(deps IdentityResolverDeps) *IdentityResolver {
 		permission:   deps.Permission,
 	}
 }
-
-func (r *IdentityResolver) Permission() *security.Permission { return r.permission }
 
 func (r *IdentityResolver) PlatformName() string { return r.platformName }

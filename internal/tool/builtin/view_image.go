@@ -13,14 +13,19 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
-	"elbot/internal/tool/chat_history"
-	toolmedia "elbot/internal/tool/media"
+	"elbot/internal/media"
 	"elbot/internal/workspace"
 )
 
 type ViewImageTool struct {
-	center  *toolmedia.MediaRuntime
-	history *chat_history.Manager
+	center interface {
+		ValidateImage(context.Context, string) (toolshare.MediaInfo, error)
+		ImportURL(context.Context, string, toolshare.MediaImportOptions) (toolshare.MediaInfo, error)
+		ImportFile(context.Context, string, toolshare.MediaImportOptions) (toolshare.MediaInfo, error)
+	}
+	history interface {
+		GetImages(context.Context, toolshare.MediaRequest) ([]toolshare.MediaResult, error)
+	}
 }
 
 type viewImageArgs struct {
@@ -29,7 +34,13 @@ type viewImageArgs struct {
 	MediaIndex [][]int  `json:"media_index"`
 }
 
-func NewViewImageTool(center *toolmedia.MediaRuntime, history *chat_history.Manager) ViewImageTool {
+func NewViewImageTool(center interface {
+	ValidateImage(context.Context, string) (toolshare.MediaInfo, error)
+	ImportURL(context.Context, string, toolshare.MediaImportOptions) (toolshare.MediaInfo, error)
+	ImportFile(context.Context, string, toolshare.MediaImportOptions) (toolshare.MediaInfo, error)
+}, history interface {
+	GetImages(context.Context, toolshare.MediaRequest) ([]toolshare.MediaResult, error)
+}) ViewImageTool {
 	return ViewImageTool{center: center, history: history}
 }
 
@@ -97,8 +108,8 @@ func (t ViewImageTool) sourcePath(ctx context.Context, source string) (workspace
 	if source == "" || delivery.IsHTTPMediaSource(source) {
 		return workspace.ResolvedPath{}, nil
 	}
-	if strings.HasPrefix(source, toolmedia.IDPrefix) {
-		if !toolmedia.ValidID(source) {
+	if strings.HasPrefix(source, media.IDPrefix) {
+		if !media.ValidID(source) {
 			return workspace.ResolvedPath{}, fmt.Errorf("invalid media ID")
 		}
 		return workspace.ResolvedPath{}, nil
@@ -138,7 +149,7 @@ func (t ViewImageTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 		}
 		var err error
 		var item toolshare.MediaInfo
-		if strings.HasPrefix(args.Source, toolmedia.IDPrefix) {
+		if strings.HasPrefix(args.Source, media.IDPrefix) {
 			item, err = t.center.ValidateImage(ctx, args.Source)
 		} else {
 			if delivery.IsHTTPMediaSource(args.Source) {
@@ -166,7 +177,7 @@ func (t ViewImageTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 }
 
 func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (_ *toolshare.Result, logContent string, _ error) {
-	results, err := t.history.GetImages(ctx, chat_history.MediaRequest{MessageIDs: args.MessageIDs, MediaIndex: args.MediaIndex})
+	results, err := t.history.GetImages(ctx, toolshare.MediaRequest{MessageIDs: args.MessageIDs, MediaIndex: args.MediaIndex})
 	if err != nil {
 		return nil, err.Error(), err
 	}
@@ -177,8 +188,8 @@ func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (_ 
 		}
 		label := fmt.Sprintf("[#%s] %d.", result.MessageID, result.Index)
 		switch {
-		case errors.Is(result.Err, chat_history.ErrFetchLimit):
-			label += fmt.Sprintf(" 达到本次 %d 个下载尝试上限", chat_history.MaxFetchAttempts)
+		case errors.Is(result.Err, toolshare.ErrFetchLimit):
+			label += fmt.Sprintf(" 达到本次 %d 个下载尝试上限", toolshare.MaxFetchAttempts)
 		case result.Err != nil:
 			label += " 图片获取失败"
 			logContent += fmt.Sprintf("\n%s %v", label, result.Err)

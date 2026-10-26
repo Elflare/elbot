@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"elbot/internal/agent/dialogue"
-	agentevents "elbot/internal/agent/events"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/modelmgr"
@@ -39,12 +38,12 @@ func TestComponentStatusCommittedBeforeObserversAndCancellation(t *testing.T) {
 		contexts[id] = turn.WithAttempt(turn.WithExecution(t.Context(), execution), "attempt")
 		turns.StartExecution(id, turn.Input{}, execution, "attempt")
 	}
-	recorder := NewStatusRecorder(StatusRecorderDeps{Turns: turns, Changed: signal.New[agentevents.StatusChangedEvent, signal.Empty]("test.status")})
+	recorder := NewStatusRecorder(StatusRecorderDeps{View: dialogue.ExecutionView{}, Turns: turns, Changed: signal.New[StatusChangedEvent, signal.Empty]("test.status")})
 	t.Cleanup(func() { _ = recorder.changed.Close(context.Background()) })
 	started := time.Now()
 	recorder.Record(contexts["s1"], runtimestatus.Snapshot{SessionID: "s1", Model: "model", TurnStartedAt: started, Phase: runtimestatus.PhaseLLM})
 	p := &statusReadingPlatform{recorder: recorder, observed: make(chan runtimestatus.Snapshot, 1)}
-	connection, err := recorder.changed.Observe(func(ctx context.Context, event agentevents.StatusChangedEvent) error {
+	connection, err := recorder.changed.Observe(func(ctx context.Context, event StatusChangedEvent) error {
 		if ctx.Err() != nil {
 			t.Error("committed fact inherited cancellation")
 		}

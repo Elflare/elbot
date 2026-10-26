@@ -1,11 +1,10 @@
 package dialogue
 
 import (
+	agentshare "elbot/internal/agent/share"
+
 	"context"
 	"strings"
-
-	"elbot/internal/session"
-	"elbot/internal/storage"
 )
 
 type SystemPromptPart struct {
@@ -13,14 +12,8 @@ type SystemPromptPart struct {
 	Content string
 }
 
-type SystemPromptRequest struct {
-	Mode    string
-	Session *storage.Session
-	Scope   session.Scope
-}
-
 type SystemPromptSource interface {
-	Parts(ctx context.Context, req SystemPromptRequest) ([]SystemPromptPart, error)
+	Parts(ctx context.Context, req agentshare.SystemPromptRequest) ([]SystemPromptPart, error)
 }
 
 type SystemPromptManager struct {
@@ -39,7 +32,7 @@ func (m *SystemPromptManager) AddSource(source SystemPromptSource) {
 	m.sources = append(m.sources, source)
 }
 
-func (m SystemPromptManager) Build(ctx context.Context, req SystemPromptRequest) (string, error) {
+func (m SystemPromptManager) Build(ctx context.Context, req agentshare.SystemPromptRequest) (string, error) {
 	content := []string{}
 	for _, source := range m.sources {
 		sourceParts, err := source.Parts(ctx, req)

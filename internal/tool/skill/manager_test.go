@@ -22,7 +22,8 @@ func TestManagerSerializesConcurrentReloads(t *testing.T) {
 	root := t.TempDir()
 	writeSkill(t, filepath.Join(root, "agent", "docs"), "---\nname: docs\ndescription: Docs\n---\n\n# Docs")
 	writeElyphSkill(t, filepath.Join(root, "go", "worker"), "#skill worker - Worker\n")
-	manager := NewManager(root, toolregistry.NewRegistry(nil), nil, processenv.Environment{})
+	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
+	manager := NewManager(root, registry, nil, processenv.Environment{})
 
 	const goroutines = 12
 	const reloads = 20
@@ -44,7 +45,7 @@ func TestManagerSerializesConcurrentReloads(t *testing.T) {
 			t.Fatalf("concurrent Reload: %v", err)
 		}
 	}
-	if got := manager.registry.List(); len(got) != 2 {
+	if got := registry.List(); len(got) != 2 {
 		t.Fatalf("registry = %#v, want two skills", got)
 	}
 	if got := manager.catalog.List(); len(got) != 2 {
@@ -79,7 +80,7 @@ input = "--input"
 			if tc.manifest != "" {
 				writeAgentSkillConfig(t, dir, tc.manifest)
 			}
-			registry := toolregistry.NewRegistry(nil)
+			registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
 			manager := NewManager(root, registry, nil, processenv.Environment{})
 			if err := manager.Reload(context.Background()); err != nil {
 				t.Fatal(err)
@@ -103,7 +104,7 @@ func TestManagerLoadsMarkdownDetailOnDemand(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "agent", "docx")
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Initial DOCX")
-	registry := toolregistry.NewRegistry(nil)
+	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
 	manager := NewManager(root, registry, nil, processenv.Environment{})
 	if err := manager.Reload(context.Background()); err != nil {
 		t.Fatal(err)
@@ -141,7 +142,7 @@ parameters = '''{"type":"object","properties":{"input":{"type":"string"}}}'''
 [args]
 input = "--input"
 `)
-	registry := toolregistry.NewRegistry(nil)
+	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
 	manager := NewManager(root, registry, nil, processenv.Environment{})
 	if err := manager.Reload(context.Background()); err != nil {
 		t.Fatal(err)
@@ -173,7 +174,7 @@ func TestMarkdownDetailReadFailureReturnsDiscoveryError(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "agent", "docx")
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# DOCX")
-	registry := toolregistry.NewRegistry(nil)
+	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
 	manager := NewManager(root, registry, nil, processenv.Environment{})
 	if err := manager.Reload(context.Background()); err != nil {
 		t.Fatal(err)
@@ -247,7 +248,7 @@ func TestManagerScansGoTextSkillWithoutBinary(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "go", "notes")
 	writeElyphSkill(t, dir, "#skill notes - Notes workflow\n** risk low\n")
-	registry := toolregistry.NewRegistry(nil)
+	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
 	manager := NewManager(root, registry, nil, processenv.Environment{})
 	err := manager.Reload(context.Background())
 	if err != nil {
@@ -267,7 +268,7 @@ func TestManagerReloadRemovesDeletedExternalSkill(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "agent", "docx")
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# DOCX")
-	registry := toolregistry.NewRegistry(nil)
+	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
 	manager := NewManager(root, registry, nil, processenv.Environment{})
 	if err := manager.Reload(context.Background()); err != nil {
 		t.Fatal(err)
@@ -290,7 +291,7 @@ func TestManagerReloadConflictKeepsRegistryAndCatalog(t *testing.T) {
 	root := t.TempDir()
 	oldDir := filepath.Join(root, "agent", "old")
 	writeSkill(t, oldDir, "---\nname: old\ndescription: Old skill\n---\n\n# Old")
-	registry := toolregistry.NewRegistry(nil)
+	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
 	manager := NewManager(root, registry, nil, processenv.Environment{})
 	if err := registry.Register(NewAgentSkillTool(nil)); err != nil {
 		t.Fatal(err)
@@ -322,7 +323,7 @@ func TestManagerReloadRejectsDuplicateSkillNames(t *testing.T) {
 	root := t.TempDir()
 	writeSkill(t, filepath.Join(root, "agent", "shared"), "---\nname: shared\ndescription: Agent copy\n---\n\n# Shared")
 	writeElyphSkill(t, filepath.Join(root, "go", "shared"), "#skill shared - Go copy\n")
-	registry := toolregistry.NewRegistry(nil)
+	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
 	manager := NewManager(root, registry, nil, processenv.Environment{})
 	err := manager.Reload(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "duplicate skill names") {
@@ -337,7 +338,7 @@ func TestManagerRemoveDeletesDirectoryAndReloads(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "agent", "docx")
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\nrisk: low\n---\n\n# DOCX")
-	registry := toolregistry.NewRegistry(nil)
+	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
 	manager := NewManager(root, registry, nil, processenv.Environment{})
 	if err := manager.Reload(context.Background()); err != nil {
 		t.Fatal(err)
@@ -362,7 +363,7 @@ func TestAgentDescriptorDetailWithoutActor(t *testing.T) {
 
 func TestAgentSkillCreatorNoticeDiscovery(t *testing.T) {
 	for _, invalidManifest := range []bool{false, true} {
-		registry := toolregistry.NewRegistry(nil)
+		registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
 		record := record{Name: "docx", Detail: "# DOCX", Kind: KindAgent, Risk: toolshare.RiskSafe}
 		if invalidManifest {
 			record.ManifestFound = true

@@ -5,7 +5,6 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
-	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,7 +31,7 @@ const (
 )
 
 type ShellTool struct {
-	Media      *toolmedia.MediaRuntime
+	Media      interface{ NewCall() toolshare.MediaCall }
 	FileGuard  *FileGuard
 	ProcessEnv processenv.Environment
 }

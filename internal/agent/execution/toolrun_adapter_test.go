@@ -3,6 +3,7 @@ package execution
 import (
 	"context"
 	agenthooks "elbot/internal/agent/hooks"
+	agentshare "elbot/internal/agent/share"
 	agenttools "elbot/internal/agent/tools"
 	"elbot/internal/events"
 	"elbot/internal/llm"
@@ -12,7 +13,7 @@ import (
 
 func TestCompleteToolCallExposesNameAndAcceptsMultimodalSegments(t *testing.T) {
 	bridge := newTestHookBridge(t, agenthooks.Points{
-		ToolCallCompleted: func(_ context.Context, facts agenthooks.Facts, result agenthooks.ToolResult) ([]llm.MessageSegment, events.LogResult, error) {
+		ToolCallCompleted: func(_ context.Context, facts agenthooks.Facts, result agentshare.ToolResult) ([]llm.MessageSegment, events.LogResult, error) {
 			if facts.Session.ID != "s1" || result.Call.Name != "screenshot" || result.Call.ID != "call_1" {
 				t.Fatalf("facts=%+v result=%+v", facts, result)
 			}

@@ -1,18 +1,21 @@
 package chat
 
 import (
+	agentshare "elbot/internal/agent/share"
+
 	"context"
 	"fmt"
 	"strings"
 
-	"elbot/internal/agent/dialogue"
 	"elbot/internal/llm"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 )
 
 type PromptBuilder struct {
-	System dialogue.SystemPromptManager
+	System interface {
+		Build(context.Context, agentshare.SystemPromptRequest) (string, error)
+	}
 }
 
 type PromptBuildRequest struct {
@@ -27,7 +30,7 @@ func (b PromptBuilder) Build(ctx context.Context, req PromptBuildRequest) ([]llm
 	if req.Session != nil && req.Session.Mode != "" {
 		mode = req.Session.Mode
 	}
-	systemPrompt, err := b.System.Build(ctx, dialogue.SystemPromptRequest{Mode: mode, Session: req.Session, Scope: req.Scope})
+	systemPrompt, err := b.System.Build(ctx, agentshare.SystemPromptRequest{Mode: mode, Session: req.Session, Scope: req.Scope})
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +44,7 @@ func (b PromptBuilder) Build(ctx context.Context, req PromptBuildRequest) ([]llm
 		if role != llm.RoleUser && role != llm.RoleAssistant && role != llm.RoleTool && role != llm.RoleSystem {
 			continue
 		}
-		projected, err := dialogue.MessageFromStorage(message)
+		projected, err := agentshare.MessageFromStorage(message)
 		if err != nil {
 			return nil, err
 		}

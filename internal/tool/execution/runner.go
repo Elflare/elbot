@@ -20,8 +20,6 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/storage"
-	"elbot/internal/tool/discovery"
-	toolstate "elbot/internal/tool/state"
 	"elbot/internal/workspace"
 )
 
@@ -31,7 +29,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		return toolshare.RunResult{}
 	}
 	sessionID := req.Session.ID
-	state, err := toolstate.DecodeState(req.Session.Metadata)
+	state, err := m.DecodeState(req.Session.Metadata)
 	if err != nil {
 		return toolshare.RunResult{Err: err}
 	}
@@ -66,7 +64,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 	record := func(ctx context.Context, call llm.ToolCallRequest, eventName string, logResult events.LogResult) {
 		record := newRecord(ctx, eventName, logResult)
 		record.Content = fmt.Sprintf("tool=%s tool_call_id=%s\n%s", call.Name, call.ID, logResult.Content)
-		m.log(ctx, record)
+		m.Log(ctx, record)
 	}
 	recordCall := func(ctx context.Context, call llm.ToolCallRequest, resolved resolvedTool, actor contextinfo.Actor, risk string, runSource string, startedAt time.Time, result *executionResult) {
 		// The execution source declares the outcome; tools supply their diagnostic body.
@@ -105,7 +103,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		data, _ := json.Marshal(content)
 		record := newRecord(ctx, "tool_call_completed", logResult)
 		record.Category, record.Type, record.ContentLimit, record.Content = events.LogAudit, events.ContentJSON, 0, string(data)
-		m.log(ctx, record)
+		m.Log(ctx, record)
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
@@ -122,7 +120,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 	head := deps.ToolCallMessage(sessionID, req.AssistantText, req.AssistantRawText, req.Calls)
 	logResult, err := req.Committer.Begin(ctx, &head)
 	if logResult.ResultStatus == events.ResultFailed || logResult.ResultStatus == events.ResultCanceled {
-		m.log(ctx, newRecord(ctx, "tool_batch_prepare_failed", logResult))
+		m.Log(ctx, newRecord(ctx, "tool_batch_prepare_failed", logResult))
 	}
 	if err != nil {
 		return toolshare.RunResult{Err: err}
@@ -181,11 +179,11 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			}
 		}
 		if call.Name == "discover_tool" && result.Result != nil {
-			update, err := discovery.NewResolver(m.registry).DiscoveryStateUpdate(contextinfo.WithActor(ctx, actor), result.Result)
+			update, err := m.DiscoveryStateUpdate(contextinfo.WithActor(ctx, actor), result.Result)
 			if err != nil {
 				return err
 			}
-			metadata, err = toolstate.PrepareUpdate(req.Session.Metadata, update)
+			metadata, err = m.PrepareUpdate(req.Session.Metadata, update)
 			if err != nil {
 				return err
 			}
@@ -357,7 +355,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		runToolCtx = deps.PrepareToolContext(runToolCtx, &snapshot, call)
 		// Validate prepared argument references without opening another write transaction.
 		for _, id := range media.ArgumentMediaIDs(call.Arguments) {
-			_, err = m.media.Metadata(runToolCtx, id)
+			_, err = m.Media.Metadata(runToolCtx, id)
 			if err != nil {
 				break
 			}
@@ -377,7 +375,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 				content, _ := json.Marshal(map[string]string{"tool": call.Name, "tool_call_id": call.ID, "actor_id": actor.ID, "arguments": toolshare.TruncateLogContent(call.Arguments, 512), "risk": riskText, "run_source": runSource, "source": string(resolved.Source)})
 				record := newRecord(runToolCtx, "tool_call_prepared", events.LogResult{ResultStatus: events.ResultSucceeded})
 				record.Category, record.Type, record.ContentLimit, record.Content = events.LogAudit, events.ContentJSON, 0, string(content)
-				m.log(runToolCtx, record)
+				m.Log(runToolCtx, record)
 			})
 			recordCall(runToolCtx, call, resolved, actor, riskText, runSource, startedAt, &result)
 			task.finishedAt = storage.Now()
@@ -407,7 +405,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 	}
 	logResult, err = req.Committer.Flush(ctx)
 	if logResult.ResultStatus != events.ResultSkipped {
-		m.log(ctx, newRecord(ctx, "tool_transcript_save", logResult))
+		m.Log(ctx, newRecord(ctx, "tool_transcript_save", logResult))
 	}
 	return toolshare.RunResult{Messages: messages, PreparedCalls: preparedCalls, ConfirmationExtra: confirmationExtra, Err: err}
 }
@@ -432,7 +430,7 @@ func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor 
 	info := resolved.Native.Info()
 	kind, _ := contextinfo.BackgroundKindFromContext(ctx)
 	backgroundKind := string(kind)
-	permission := m.permission.CheckTool(actor, call.Name, assessment.Level, info.OwnerScoped, info.SuperadminOnly, backgroundKind)
+	permission := m.Permission.CheckTool(actor, call.Name, assessment.Level, info.OwnerScoped, info.SuperadminOnly, backgroundKind)
 	if permission.Reason == "background_shell_auto_confirmed" || permission.Reason == "background_shell_rejected" {
 		scope, _ := workspace.PathScopeFromContext(ctx)
 		content := map[string]string{"kind": backgroundKind, "tool": call.Name, "risk": string(assessment.Level), "sandbox_dir": scope.Dir, "arguments": call.Arguments}
@@ -458,7 +456,7 @@ func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor 
 		if facts.RootRequestID != "" {
 			record.Identity.RootRequestID = &facts.RootRequestID
 		}
-		m.log(ctx, record)
+		m.Log(ctx, record)
 	}
 	if !permission.Allowed {
 		switch permission.Reason {

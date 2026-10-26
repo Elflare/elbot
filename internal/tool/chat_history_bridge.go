@@ -26,7 +26,7 @@ type chatHistoryBridge struct {
 	media *toolmedia.MediaRuntime // 历史媒体的关联查询与获取统一经过 Tool 媒体层。
 }
 
-func (b *chatHistoryBridge) Search(ctx context.Context, query chat_history.SearchQuery) ([]chat_history.Message, error) {
+func (b *chatHistoryBridge) Search(ctx context.Context, query chat_history.SearchQuery) ([]share.Message, error) {
 	rows, err := b.platform.SearchChatHistory(ctx, storage.ChatHistorySearchRequest{
 		Platform: query.Platform, PlatformScopeID: query.ScopeID,
 		QueryTerms: query.QueryTerms, QueryMode: query.QueryMode,
@@ -39,7 +39,7 @@ func (b *chatHistoryBridge) Search(ctx context.Context, query chat_history.Searc
 	return b.messages(ctx, rows)
 }
 
-func (b *chatHistoryBridge) Around(ctx context.Context, query chat_history.AroundQuery) ([]chat_history.Message, error) {
+func (b *chatHistoryBridge) Around(ctx context.Context, query chat_history.AroundQuery) ([]share.Message, error) {
 	rows, err := b.platform.ChatHistoryAround(ctx, storage.ChatHistoryAroundRequest{
 		Platform: query.Key.Platform, PlatformScopeID: query.Key.ScopeID,
 		PlatformMessageID: query.Key.MessageID, Before: query.Before, After: query.After,
@@ -50,16 +50,16 @@ func (b *chatHistoryBridge) Around(ctx context.Context, query chat_history.Aroun
 	return b.messages(ctx, rows)
 }
 
-func (b *chatHistoryBridge) GetMessage(ctx context.Context, key chat_history.MessageKey) (chat_history.Message, error) {
+func (b *chatHistoryBridge) GetMessage(ctx context.Context, key share.MessageKey) (share.Message, error) {
 	row, err := b.platform.GetChatHistoryMessage(ctx, key.Platform, key.ScopeID, key.MessageID)
 	if err != nil {
-		return chat_history.Message{}, historyError(err)
+		return share.Message{}, historyError(err)
 	}
 	return b.message(ctx, *row, false)
 }
 
-func (b *chatHistoryBridge) messages(ctx context.Context, rows []storage.ChatMessage) ([]chat_history.Message, error) {
-	result := make([]chat_history.Message, len(rows))
+func (b *chatHistoryBridge) messages(ctx context.Context, rows []storage.ChatMessage) ([]share.Message, error) {
+	result := make([]share.Message, len(rows))
 	for i, row := range rows {
 		message, err := b.message(ctx, row, true)
 		if err != nil {
@@ -70,9 +70,9 @@ func (b *chatHistoryBridge) messages(ctx context.Context, rows []storage.ChatMes
 	return result, nil
 }
 
-func (b *chatHistoryBridge) message(ctx context.Context, row storage.ChatMessage, includeCached bool) (chat_history.Message, error) {
-	message := chat_history.Message{
-		Key:      chat_history.MessageKey{Platform: row.Platform, ScopeID: row.PlatformScopeID, MessageID: row.PlatformMessageID},
+func (b *chatHistoryBridge) message(ctx context.Context, row storage.ChatMessage, includeCached bool) (share.Message, error) {
+	message := share.Message{
+		Key:      share.MessageKey{Platform: row.Platform, ScopeID: row.PlatformScopeID, MessageID: row.PlatformMessageID},
 		SenderID: row.SenderID, SenderName: row.SenderName, Text: row.Text, CreatedAt: row.CreatedAt,
 	}
 	if strings.TrimSpace(row.ReplyToPlatformMessageID) != "" {
@@ -87,12 +87,12 @@ func (b *chatHistoryBridge) message(ctx context.Context, row storage.ChatMessage
 		var err error
 		ids, err = b.media.HistoryIDs(ctx, row)
 		if err != nil {
-			return chat_history.Message{}, err
+			return share.Message{}, err
 		}
 	}
-	message.Media = make([]chat_history.MediaItem, len(segments))
+	message.Media = make([]share.MediaItem, len(segments))
 	for i, segment := range segments {
-		message.Media[i] = chat_history.MediaItem{IsImage: segment.Type == platform.SegmentImage, MediaID: ids[i+1]}
+		message.Media[i] = share.MediaItem{IsImage: segment.Type == platform.SegmentImage, MediaID: ids[i+1]}
 	}
 	return message, nil
 }
@@ -103,7 +103,7 @@ func (b *chatHistoryBridge) FetchMedia(ctx context.Context, queries []chat_histo
 		row *storage.ChatMessage
 		err error
 	}
-	known := make(map[chat_history.MessageKey]lookup)
+	known := make(map[share.MessageKey]lookup)
 	results := make([]share.HistoryMediaResult, len(queries))
 	var requests []media.HistoryMediaRequest
 	var positions []int
@@ -142,11 +142,11 @@ func (b *chatHistoryBridge) FetchMedia(ctx context.Context, queries []chat_histo
 func historyError(err error) error {
 	switch {
 	case errors.Is(err, storage.ErrNotFound):
-		return fmt.Errorf("%w: %v", chat_history.ErrNotFound, err)
+		return fmt.Errorf("%w: %v", share.ErrNotFound, err)
 	case errors.Is(err, media.ErrHistoryMediaIndex):
-		return fmt.Errorf("%w: %v", chat_history.ErrMediaIndex, err)
+		return fmt.Errorf("%w: %v", share.ErrMediaIndex, err)
 	case errors.Is(err, media.ErrHistoryFetchLimit):
-		return fmt.Errorf("%w: %v", chat_history.ErrFetchLimit, err)
+		return fmt.Errorf("%w: %v", share.ErrFetchLimit, err)
 	default:
 		return err
 	}

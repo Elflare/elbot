@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	toolshare "elbot/internal/tool/share"
@@ -20,10 +21,14 @@ type registration struct {
 type Registry struct {
 	mu         sync.RWMutex             // 保护注册目录及原子替换。
 	tools      map[string]*registration // 名称到注册记录，释放时按记录身份核对。
-	permission *security.Permission     // 根部注入的统一访问权限策略。
+	permission interface {
+		CanUseTool(contextinfo.Actor, security.RiskLevel, bool) bool
+	} // 根部只交付目录筛选需要的权限能力。
 }
 
-func NewRegistry(permission *security.Permission) *Registry {
+func NewRegistry(permission interface {
+	CanUseTool(contextinfo.Actor, security.RiskLevel, bool) bool
+}) *Registry {
 	return &Registry{tools: map[string]*registration{}, permission: permission}
 }
 

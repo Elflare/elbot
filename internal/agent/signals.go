@@ -2,23 +2,23 @@ package agent
 
 import (
 	"context"
-	"errors"
-	"log/slog"
-
-	agentevents "elbot/internal/agent/events"
+	"elbot/internal/agent/dialogue"
 	agentexecution "elbot/internal/agent/execution"
+	agentshare "elbot/internal/agent/share"
 	"elbot/internal/events"
 	"elbot/internal/fileops"
 	"elbot/internal/modelmgr"
 	"elbot/internal/notification/rules"
 	"elbot/internal/session"
 	"elbot/internal/signal"
+	"errors"
+	"log/slog"
 )
 
-func (b *signalBindings) connectAgentNotifications(events agentevents.Signals) error {
+func (b *signalBindings) connectAgentNotifications(events signals) error {
 	vision := rules.NewVisionNotices()
 	return errors.Join(
-		connectSignal(b, events.VisionFallbackUsed, func(ctx context.Context, e agentevents.VisionFallbackUsedEvent) error {
+		connectSignal(b, events.VisionFallbackUsed, func(ctx context.Context, e dialogue.VisionFallbackUsedEvent) error {
 			return vision.Send(ctx, e.SessionID, e.Visible, e.Conversation)
 		}, signal.ConnectOptions{}),
 	)
@@ -97,4 +97,18 @@ func connectSignal[T any](b *signalBindings, source *signal.Signal[T, signal.Emp
 		b.connections = append(b.connections, c)
 	}
 	return err
+}
+
+type signals struct {
+	ModelCallCompleted *signal.Signal[agentshare.ModelCallCompletedEvent, signal.Empty]
+	StatusChanged      *signal.Signal[agentexecution.StatusChangedEvent, signal.Empty]
+	VisionFallbackUsed *signal.Signal[dialogue.VisionFallbackUsedEvent, signal.Empty]
+}
+
+func newSignals() signals {
+	return signals{
+		ModelCallCompleted: signal.New[agentshare.ModelCallCompletedEvent, signal.Empty]("agent.model_completed"),
+		StatusChanged:      signal.New[agentexecution.StatusChangedEvent, signal.Empty]("agent.status_changed"),
+		VisionFallbackUsed: signal.New[dialogue.VisionFallbackUsedEvent, signal.Empty]("agent.vision_fallback"),
+	}
 }

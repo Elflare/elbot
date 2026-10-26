@@ -17,12 +17,14 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
-	toolmedia "elbot/internal/tool/media"
+	"elbot/internal/media"
 	"elbot/internal/workspace"
 )
 
 type SendFileTool struct {
-	media *toolmedia.MediaRuntime
+	media interface {
+		Metadata(context.Context, string) (toolshare.MediaInfo, error)
+	}
 }
 
 type sendFileArgs struct {
@@ -31,7 +33,9 @@ type sendFileArgs struct {
 	MIMEType string `json:"mime_type"`
 }
 
-func NewSendFileTool(media *toolmedia.MediaRuntime) SendFileTool {
+func NewSendFileTool(media interface {
+	Metadata(context.Context, string) (toolshare.MediaInfo, error)
+}) SendFileTool {
 	return SendFileTool{media: media}
 }
 
@@ -62,8 +66,8 @@ func (t SendFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 	}
 	assessment := toolshare.RiskAssessment{Level: t.Info().Risk}
 	var resolved workspace.ResolvedPath
-	if strings.HasPrefix(source, toolmedia.IDPrefix) {
-		if !toolmedia.ValidID(source) {
+	if strings.HasPrefix(source, media.IDPrefix) {
+		if !media.ValidID(source) {
 			return nil, fmt.Errorf("invalid media ID")
 		}
 	} else if !delivery.IsHTTPMediaSource(source) {
@@ -100,7 +104,7 @@ func (t SendFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 }
 
 func (t SendFileTool) buildOutput(ctx context.Context, args sendFileArgs, source string, resolved workspace.ResolvedPath) (delivery.Output, []string, string, error) {
-	if strings.HasPrefix(source, toolmedia.IDPrefix) {
+	if strings.HasPrefix(source, media.IDPrefix) {
 		item, err := t.media.Metadata(ctx, source)
 		if err != nil {
 			return delivery.Output{}, nil, "", err

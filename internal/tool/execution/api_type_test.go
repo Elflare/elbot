@@ -52,7 +52,7 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := newTestManager(registry, security.DefaultPermission())
-	preloader := preload.NewPreloadService(preload.PreloadOptions{Registry: registry})
+	preloader := preload.NewPreloadService(preload.PreloadOptions{Registry: registry, Resolver: discovery.NewResolver(registry), NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery, LoadDiscoveryContent: discovery.LoadDiscoveryContent, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools})
 	actor := contextinfo.Actor{Role: contextinfo.RoleSuperadmin}
 	for _, apiType := range []string{"", "chat", "response", "other"} {
 		t.Run(apiType, func(t *testing.T) {

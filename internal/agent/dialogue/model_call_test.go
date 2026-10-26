@@ -2,11 +2,11 @@ package dialogue
 
 import (
 	"context"
+	agentshare "elbot/internal/agent/share"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
-	agentevents "elbot/internal/agent/events"
 	"elbot/internal/events"
 	"elbot/internal/modelmgr"
 	"elbot/internal/signal"
@@ -39,9 +39,9 @@ func TestAssistantMessageLogSummary(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(logs.Disconnect)
-			processor := &CallProcessor{Completed: signal.New[agentevents.ModelCallCompletedEvent, signal.Empty]("test.completed")}
-			var completed agentevents.ModelCallCompletedEvent
-			connection, err := processor.Completed.Observe(func(_ context.Context, event agentevents.ModelCallCompletedEvent) error {
+			processor := &CallProcessor{Completed: signal.New[agentshare.ModelCallCompletedEvent, signal.Empty]("test.completed")}
+			var completed agentshare.ModelCallCompletedEvent
+			connection, err := processor.Completed.Observe(func(_ context.Context, event agentshare.ModelCallCompletedEvent) error {
 				completed = event
 				return nil
 			}, signal.ConnectOptions{})
@@ -50,10 +50,10 @@ func TestAssistantMessageLogSummary(t *testing.T) {
 			}
 			t.Cleanup(connection.Disconnect)
 			observation := processor.Begin("session", modelmgr.Selection{})
-			observation.Event.Provider, observation.Event.Model = "p", "m"
-			observation.Event.OutputReady = true
-			observation.Event.ElapsedMS = 0
-			observation.Event.Text, observation.Event.SourceText = tc.text, tc.raw
+			observation.Event().Provider, observation.Event().Model = "p", "m"
+			observation.Event().OutputReady = true
+			observation.Event().ElapsedMS = 0
+			observation.Event().Text, observation.Event().SourceText = tc.text, tc.raw
 			observation.Publish(t.Context(), nil)
 			if len(records) != 1 {
 				t.Fatalf("assistant records=%d", len(records))
@@ -64,7 +64,7 @@ func TestAssistantMessageLogSummary(t *testing.T) {
 			if records[0].ContentLimit != 4096 {
 				t.Fatalf("center limit changed: %d", records[0].ContentLimit)
 			}
-			if completed.Text != tc.text || completed.SourceText != tc.raw || observation.Event.Text != tc.text || observation.Event.SourceText != tc.raw {
+			if completed.Text != tc.text || completed.SourceText != tc.raw || observation.Event().Text != tc.text || observation.Event().SourceText != tc.raw {
 				t.Fatal("logging changed business text")
 			}
 		})

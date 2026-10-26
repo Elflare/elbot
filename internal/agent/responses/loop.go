@@ -2,11 +2,12 @@ package responses
 
 import (
 	"context"
+	agentshare "elbot/internal/agent/share"
+	"elbot/internal/events"
+	"elbot/internal/tool"
 	"fmt"
 	"strings"
 
-	"elbot/internal/agent/dialogue"
-	"elbot/internal/agent/hooks"
 	"elbot/internal/contextmgr"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
@@ -19,25 +20,68 @@ import (
 )
 
 type Loop struct {
+	Identity interface {
+		Scope(context.Context) session.Scope
+	}
+	SelectionForTurn func(context.Context, *storage.Session) modelmgr.Selection
+	Gate             interface {
+		Enter(context.Context, string) (context.Context, func(), error)
+	}
+	SessionRows interface {
+		Mutate(context.Context, string, func(*storage.Session) error) (*storage.Session, error)
+	}
+
 	Status interface {
 		Record(context.Context, runtimestatus.Snapshot)
 	}
 	compactor  contextmgr.Compactor
-	Repository storage.DialogueRepository
-	Context    *Context
-	Models     *modelmgr.Service
-	Turns      *turn.Manager
-	View       dialogue.ExecutionView
-	Preparer   *dialogue.Preparer
-	Tools      *dialogue.ToolExecutor
-	Messages   *dialogue.MessageStore
-	Calls      *dialogue.CallProcessor
-	System     dialogue.SystemPromptManager
+	Repository interface {
+		CreateExchange(context.Context, *storage.NativeExchange) error
+		FinishExchange(context.Context, string, string, string, string, string) error
+		CurrentCheckpoint(context.Context, string) (*storage.NativeCheckpoint, error)
+		CheckpointForMessage(context.Context, string, string) (*storage.NativeCheckpoint, error)
+		LoadNativeWindow(context.Context, *storage.Session, *storage.NativeCheckpoint) (*storage.NativeWindowRecords, error)
+		PendingInputs(context.Context, string) ([]storage.NativeInput, error)
+		Calls(context.Context, string) ([]storage.NativeCall, error)
+	}
+	Context *Context
+	Turns   interface {
+		StartToolPhase(string, ...string) bool
+		DrainMergedInput(string, ...string) turn.Input
+	}
+	View interface {
+		Context(context.Context) context.Context
+		RefreshSession(context.Context, *storage.Session) (context.Context, error)
+		WithModel(context.Context, modelmgr.Selection) (context.Context, error)
+		CheckSelection(*storage.Session, modelmgr.Selection) error
+	}
+	Preparer interface {
+		PrepareInput(context.Context, agentshare.LoopInput, *storage.Message, string, []llm.MessageSegment, []llm.LLMMessage, []llm.ToolSchema, bool) ([]llm.MessageSegment, []llm.ToolSchema, error)
+		ArchiveMaterials(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, error)
+		PrepareMaterials(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, func(), error)
+	}
+	Tools interface {
+		Schemas(context.Context, *storage.Session) ([]llm.ToolSchema, error)
+		MaxRoundsPerTurn() int
+		ExecuteWithCommitter(context.Context, *storage.Session, []llm.ToolCallRequest, string, string, agentshare.Output, tool.ToolCommitter) tool.RunResult
+	}
+	Messages interface {
+		Commit(context.Context, storage.DialogueCommit, string) (events.LogResult, error)
+	}
+	Calls interface {
+		Begin(string, modelmgr.Selection) agentshare.CallObservation
+		PrepareCall(context.Context, *storage.Session, modelmgr.Selection, []llm.LLMMessage, []llm.ToolSchema, *agentshare.PendingUserMessage, agentshare.MessageCommitter, *events.LogRecord) (agentshare.CallInput, error)
+		NotifyError(context.Context, string, agentshare.LLMResponse, error)
+		CompleteCall(context.Context, *storage.Session, modelmgr.Selection, string, *llm.Usage, []llm.ToolCallRequest, int64) (agentshare.CallOutput, error)
+	}
+	System interface {
+		Build(context.Context, agentshare.SystemPromptRequest) (string, error)
+	}
 }
 
 type preparedLoop struct {
 	state     *turnState
-	materials dialogue.TurnMaterials
+	materials agentshare.TurnMaterials
 }
 
 // CheckSelection validates the native capability before any turn input is saved.
@@ -54,7 +98,7 @@ type turnState struct {
 	session           *storage.Session
 	ctx, requestCtx   context.Context
 	selection         modelmgr.Selection
-	output            dialogue.Output
+	output            agentshare.Output
 	projection        []llm.LLMMessage
 	tools             []llm.ToolSchema
 	definitions       toolDefinitions
@@ -69,7 +113,7 @@ type turnState struct {
 	calls      []llm.ToolCallRequest
 }
 
-func (r *Loop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials) (dialogue.PreparedLoop, error) {
+func (r *Loop) PrepareTurn(ctx context.Context, materials agentshare.TurnMaterials) (agentshare.PreparedLoop, error) {
 	checkpoint, err := r.Repository.CurrentCheckpoint(ctx, materials.Session.ID)
 	if err != nil {
 		return nil, err
@@ -119,13 +163,13 @@ func (r *Loop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials
 	return &preparedLoop{materials: materials, state: &turnState{route: r, session: materials.Session, checkpoint: checkpoint, seed: seed, window: window, definitions: definitions}}, nil
 }
 
-func (p *preparedLoop) InputCommitter() dialogue.MessageCommitter {
+func (p *preparedLoop) InputCommitter() agentshare.MessageCommitter {
 	return inputCommitter{state: p.state}
 }
 
-func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in dialogue.LoopInput, out dialogue.Output) (*storage.Message, error) {
+func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (*storage.Message, error) {
 	s := p.state
-	s.ctx, s.requestCtx, s.selection, s.output = ctx, hooks.WithReadOnlyCalls(requestCtx), in.Selection, out
+	s.ctx, s.requestCtx, s.selection, s.output = ctx, agentshare.WithReadOnlyCalls(requestCtx), in.Selection, out
 	if err := s.requestCtx.Err(); err != nil {
 		return nil, err
 	}
@@ -138,7 +182,7 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in dialogue
 	}
 	s.projection = []llm.LLMMessage{{Role: llm.RoleSystem, Segments: llm.TextSegments(instructions)}}
 	for _, row := range p.materials.Loaded.Messages {
-		projected, err := dialogue.MessageFromStorage(row)
+		projected, err := agentshare.MessageFromStorage(row)
 		if err != nil {
 			return nil, err
 		}
@@ -155,13 +199,13 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in dialogue
 		return nil, err
 	}
 	s.tools = tools
-	user.Content, user.Segments = dialogue.MessageContent(segments), dialogue.StoredMessageSegments(segments)
+	user.Content, user.Segments = agentshare.MessageContent(segments), agentshare.StoredMessageSegments(segments)
 	s.projection[len(s.projection)-1].Segments = segments
 	return user, nil
 }
 
 func (s *turnState) instructions(ctx context.Context) (string, error) {
-	text, err := s.route.System.Build(ctx, dialogue.SystemPromptRequest{Mode: s.session.Mode, Session: s.session, Scope: s.route.Preparer.Identity.Scope(ctx)})
+	text, err := s.route.System.Build(ctx, agentshare.SystemPromptRequest{Mode: s.session.Mode, Session: s.session, Scope: s.route.Identity.Scope(ctx)})
 	if err != nil {
 		return "", err
 	}
@@ -171,12 +215,12 @@ func (s *turnState) instructions(ctx context.Context) (string, error) {
 	return text, nil
 }
 
-func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.LoopInput, out dialogue.Output) dialogue.LoopResult {
+func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) agentshare.LoopResult {
 	s := p.state
-	s.ctx, s.requestCtx = ctx, hooks.WithReadOnlyCalls(requestCtx)
-	result := dialogue.LoopResult{Selection: in.Selection}
-	fail := func(err error) dialogue.LoopResult {
-		result.Outcome = dialogue.Failed
+	s.ctx, s.requestCtx = ctx, agentshare.WithReadOnlyCalls(requestCtx)
+	result := agentshare.LoopResult{Selection: in.Selection}
+	fail := func(err error) agentshare.LoopResult {
+		result.Outcome = agentshare.Failed
 		result.Err = err
 		return result
 	}
@@ -194,7 +238,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		s.ctx = s.route.View.Context(s.ctx)
 		if session.WasPromoted(s.session) && !foregroundPrepared {
 			foregroundPrepared = true
-			s.selection = modelmgr.SelectionForTurn(s.requestCtx, s.route.Models, s.session)
+			s.selection = s.route.SelectionForTurn(s.requestCtx, s.session)
 			if err := s.route.CheckSelection(s.selection); err != nil {
 				return fail(err)
 			}
@@ -225,9 +269,9 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		if err := s.route.View.CheckSelection(s.session, s.selection); err != nil {
 			return fail(err)
 		}
-		var pending *dialogue.PendingUserMessage
+		var pending *agentshare.PendingUserMessage
 		if toolPhase {
-			pending = dialogue.DrainPending(s.route.Turns, s.session.ID, turn.AttemptFromContext(s.ctx))
+			pending = agentshare.DrainPending(s.route.Turns, s.session.ID, turn.AttemptFromContext(s.ctx))
 			if pending != nil {
 				pending.MessageIndex = len(s.projection)
 				s.projection = append(s.projection, llm.LLMMessage{Role: llm.RoleUser, Segments: pending.Segments})
@@ -258,8 +302,8 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			if _, err := out.SendOutputs(s.ctx, immediate); err != nil {
 				return fail(err)
 			}
-			result.Outcome = dialogue.Completed
-			result.Commit = dialogue.ReplyCommitInput{
+			result.Outcome = agentshare.Completed
+			result.Commit = agentshare.ReplyCommitInput{
 				Persistence:  replyCommitter{state: s},
 				Session:      s.session,
 				Text:         s.sourceText,
@@ -278,13 +322,13 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		}
 		committer := &toolCommitter{state: s}
 		if rounds >= s.route.Tools.MaxRoundsPerTurn() {
-			head := dialogue.ToolCallStorageMessage(s.session.ID, s.sourceText, s.sourceText, s.calls)
+			head := agentshare.ToolCallStorageMessage(s.session.ID, s.sourceText, s.sourceText, s.calls)
 			if _, err := committer.Begin(s.requestCtx, &head); err != nil {
 				return fail(err)
 			}
 			for i, call := range s.calls {
 				message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments("tool call was not executed: max_rounds_per_turn reached")}
-				row := dialogue.ToolResultStorageMessage(s.session.ID, message)
+				row := agentshare.ToolResultStorageMessage(s.session.ID, message)
 				if _, err := committer.Result(s.requestCtx, i, call, message, &storage.ToolResultCommit{Result: &row}); err != nil {
 					return fail(err)
 				}
@@ -303,12 +347,12 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			if _, err := (inputCommitter{state: s}).Commit(s.requestCtx, summaryInput, nil); err != nil {
 				return fail(err)
 			}
-			projected, err := dialogue.MessageFromStorage(*summaryInput)
+			projected, err := agentshare.MessageFromStorage(*summaryInput)
 			if err != nil {
 				return fail(err)
 			}
 			s.projection = append(s.projection, projected)
-			pending = dialogue.DrainPending(s.route.Turns, s.session.ID, turn.AttemptFromContext(s.ctx))
+			pending = agentshare.DrainPending(s.route.Turns, s.session.ID, turn.AttemptFromContext(s.ctx))
 			if pending != nil {
 				pending.MessageIndex = len(s.projection)
 				s.projection = append(s.projection, llm.LLMMessage{Role: llm.RoleUser, Segments: pending.Segments})
@@ -331,8 +375,8 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			if _, err := out.SendOutputs(s.ctx, immediate); err != nil {
 				return fail(err)
 			}
-			result.Outcome = dialogue.Completed
-			result.Commit = dialogue.ReplyCommitInput{
+			result.Outcome = agentshare.Completed
+			result.Commit = agentshare.ReplyCommitInput{
 				Persistence:  replyCommitter{state: s},
 				Session:      s.session,
 				Text:         s.sourceText,
@@ -345,7 +389,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		}
 		if !toolPhase {
 			if !s.route.Turns.StartToolPhase(s.session.ID, turn.AttemptFromContext(s.ctx)) {
-				result.Outcome = dialogue.Stopped
+				result.Outcome = agentshare.Stopped
 				return result
 			}
 			toolPhase = true
@@ -359,7 +403,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			if err := s.requestCtx.Err(); err != nil {
 				return fail(err)
 			}
-			result.Outcome = dialogue.Stopped
+			result.Outcome = agentshare.Stopped
 			return result
 		}
 		if execution.ConfirmationExtra != "" {
@@ -367,7 +411,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			if _, err := (inputCommitter{state: s}).Commit(s.requestCtx, message, nil); err != nil {
 				return fail(err)
 			}
-			projected, err := dialogue.MessageFromStorage(*message)
+			projected, err := agentshare.MessageFromStorage(*message)
 			if err != nil {
 				return fail(err)
 			}
@@ -383,11 +427,12 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 func NewLoop(deps LoopDeps) *Loop {
 	nativeContext := &Context{Repository: deps.Repository, Preparer: deps.Preparer}
 	return &Loop{
+		Identity: deps.Identity, SelectionForTurn: deps.SelectionForTurn,
+		Gate: deps.Gate, SessionRows: deps.SessionRows,
 		Status:     deps.Status,
 		Repository: deps.Repository,
 		Context:    nativeContext,
-		compactor:  &Compactor{Context: nativeContext, Messages: deps.Messages, View: deps.View, System: deps.System, Identity: deps.Preparer.Identity},
-		Models:     deps.Models,
+		compactor:  &Compactor{Context: nativeContext, Gate: deps.Gate, View: deps.View, System: deps.System, Identity: deps.Identity},
 		Turns:      deps.Turns,
 		View:       deps.View,
 		Preparer:   deps.Preparer,

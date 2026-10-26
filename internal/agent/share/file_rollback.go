@@ -13,7 +13,13 @@ import (
 
 func FileRollbackContext(ctx context.Context, service interface {
 	WithBinding(context.Context, fileops.Binding, ...fileops.CommitAdmission) context.Context
-}, sessions *session.Service, turns *turn.Manager, requests *request.Manager, identity interface {
+}, sessions interface {
+	CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
+	EnterBinding(context.Context, *session.Binding) (context.Context, func(), error)
+	EnterSessions(context.Context, ...string) (context.Context, func(), error)
+}, turns interface{ Snapshot(string) turn.Snapshot }, requests interface {
+	ListBySession(string) []request.Request
+}, identity interface {
 	Scope(context.Context) session.Scope
 }, row *storage.Session, idleOnly ...bool) context.Context {
 	if row == nil {

@@ -1,6 +1,8 @@
 package dialogue
 
 import (
+	agentshare "elbot/internal/agent/share"
+
 	"context"
 	"errors"
 	"strconv"
@@ -15,7 +17,7 @@ import (
 
 type ConversationMetaSystemPromptSource struct{}
 
-func (ConversationMetaSystemPromptSource) Parts(ctx context.Context, req SystemPromptRequest) ([]SystemPromptPart, error) {
+func (ConversationMetaSystemPromptSource) Parts(ctx context.Context, req agentshare.SystemPromptRequest) ([]SystemPromptPart, error) {
 	info, ok := contextinfo.ConversationFromContext(ctx)
 	if !ok {
 		info.Source.Platform = req.Scope.Platform
@@ -78,7 +80,7 @@ type ResidentMemorySystemPromptSource struct {
 	}
 }
 
-func (s ResidentMemorySystemPromptSource) Parts(ctx context.Context, req SystemPromptRequest) ([]SystemPromptPart, error) {
+func (s ResidentMemorySystemPromptSource) Parts(ctx context.Context, req agentshare.SystemPromptRequest) ([]SystemPromptPart, error) {
 	memory, err := s.Store.Read(ctx, req.Scope)
 	if errors.Is(err, resident.ErrNotFound) {
 		return nil, nil
@@ -93,7 +95,7 @@ func (s ResidentMemorySystemPromptSource) Parts(ctx context.Context, req SystemP
 	return []SystemPromptPart{{Name: "resident_memory", Content: content}}, nil
 }
 
-func (s SoulSystemPromptSource) Parts(ctx context.Context, req SystemPromptRequest) ([]SystemPromptPart, error) {
+func (s SoulSystemPromptSource) Parts(ctx context.Context, req agentshare.SystemPromptRequest) ([]SystemPromptPart, error) {
 	mode := req.Mode
 	if mode == "" {
 		mode = storage.SessionModeWork
@@ -106,13 +108,13 @@ func (s SoulSystemPromptSource) Parts(ctx context.Context, req SystemPromptReque
 }
 
 type ToolNamesSystemPromptSource struct {
-	Tools ToolNameProvider
+	Tools agentshare.ToolNameProvider
 }
 
 // Runtime path rules belong to the prompt, not to a function's stable schema.
 type BackgroundPathsSystemPromptSource struct{}
 
-func (BackgroundPathsSystemPromptSource) Parts(ctx context.Context, _ SystemPromptRequest) ([]SystemPromptPart, error) {
+func (BackgroundPathsSystemPromptSource) Parts(ctx context.Context, _ agentshare.SystemPromptRequest) ([]SystemPromptPart, error) {
 	scope, ok := workspace.PathScopeFromContext(ctx)
 	if !ok || !scope.Restricted {
 		return nil, nil
@@ -123,7 +125,7 @@ func (BackgroundPathsSystemPromptSource) Parts(ctx context.Context, _ SystemProm
 	}}, nil
 }
 
-func (s ToolNamesSystemPromptSource) Parts(ctx context.Context, req SystemPromptRequest) ([]SystemPromptPart, error) {
+func (s ToolNamesSystemPromptSource) Parts(ctx context.Context, req agentshare.SystemPromptRequest) ([]SystemPromptPart, error) {
 	if req.Session == nil {
 		return nil, nil
 	}

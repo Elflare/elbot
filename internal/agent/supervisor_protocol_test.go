@@ -2,14 +2,7 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
-	"slices"
-	"sync"
-	"testing"
-	"time"
 
-	agentevents "elbot/internal/agent/events"
-	"elbot/internal/agent/hooks"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
@@ -20,6 +13,11 @@ import (
 	"elbot/internal/platform"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
+	"encoding/json"
+	"slices"
+	"sync"
+	"testing"
+	"time"
 )
 
 type contractResponse struct {
@@ -96,7 +94,7 @@ func TestSupervisorStatusSnapshotIsolation(t *testing.T) {
 	m := contractSupervisor(t, deps)
 	var mu sync.Mutex
 	var totals []int64
-	mutate, err := m.ObserveStatusChanged(func(_ context.Context, e agentevents.StatusChangedEvent) error {
+	mutate, err := m.ObserveStatusChanged(func(e StatusChangedEvent) error {
 		if e.Snapshot.Usage != nil && e.Snapshot.Usage.TotalTokens != nil {
 			*e.Snapshot.Usage.TotalTokens = -1
 		}
@@ -106,7 +104,7 @@ func TestSupervisorStatusSnapshotIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer mutate.Disconnect()
-	observe, err := m.ObserveStatusChanged(func(_ context.Context, e agentevents.StatusChangedEvent) error {
+	observe, err := m.ObserveStatusChanged(func(e StatusChangedEvent) error {
 		if e.Snapshot.Usage != nil && e.Snapshot.Usage.TotalTokens != nil {
 			mu.Lock()
 			totals = append(totals, *e.Snapshot.Usage.TotalTokens)
@@ -189,10 +187,10 @@ func TestSupervisorStopCancelsActiveMessage(t *testing.T) {
 func TestSupervisorHookEntrypoints(t *testing.T) {
 	m := contractSupervisor(t, isolatedModuleDeps(t))
 	var woken bool
-	_, err := m.RegisterHooks(hooks.Points{
-		PlatformMessageReceived: func(_ context.Context, facts hooks.Facts, message hooks.Message) (hooks.PlatformMessageReceivedResult, events.LogResult, error) {
+	_, err := m.RegisterHooks(Points{
+		PlatformMessageReceived: func(_ context.Context, facts Facts, message Message) (PlatformMessageReceivedResult, events.LogResult, error) {
 			woken = facts.Woken
-			return hooks.PlatformMessageReceivedResult{Segments: message.Segments, Consume: true}, events.LogResult{}, nil
+			return PlatformMessageReceivedResult{Segments: message.Segments, Consume: true}, events.LogResult{}, nil
 		},
 	})
 	if err != nil {

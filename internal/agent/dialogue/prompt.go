@@ -1,18 +1,13 @@
 package dialogue
 
-import toolshare "elbot/internal/tool/share"
-
 import (
 	"context"
+	agentshare "elbot/internal/agent/share"
 	"fmt"
 	"os"
 	"strings"
 	"sync"
 	"time"
-
-	"elbot/internal/session"
-	"elbot/internal/storage"
-	
 )
 
 type SoulProvider interface {
@@ -80,13 +75,7 @@ func sameSoulFileState(left, right soulFileState) bool {
 	return left.size == right.size && left.modTime.Equal(right.modTime)
 }
 
-type PromptToolNames = toolshare.PromptNames
-
-type ToolNameProvider interface {
-	ToolNames(ctx context.Context, mode string, session *storage.Session, scope session.Scope) (PromptToolNames, error)
-}
-
-func ToolNamesText(names PromptToolNames) string {
+func ToolNamesText(names agentshare.PromptToolNames) string {
 	parts := make([]string, 0, 3)
 	if len(names.Tools) > 0 {
 		parts = append(parts, fmt.Sprintf("tools: %s.", strings.Join(names.Tools, ",")))

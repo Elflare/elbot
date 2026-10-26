@@ -13,10 +13,18 @@ import (
 )
 
 type Compactor struct {
-	Store    storage.Store
-	Models   *modelmgr.Service
-	Contexts *contextmgr.Service
-	Loader   contextmgr.Loader
+	ToolCalls interface {
+		SuccessfulIDs(context.Context, []string) (map[string]bool, error)
+	}
+	Models interface {
+		ResolveCompact(modelmgr.Selection) modelmgr.Selection
+	}
+	Contexts interface {
+		Load(context.Context, string) (*contextmgr.LoadedContext, error)
+	}
+	Loader interface {
+		LoadRawMessages(context.Context, string) ([]storage.Message, error)
+	}
 }
 
 func (s *Compactor) Prepare(ctx context.Context, current *storage.Session, reason string, fallback modelmgr.Selection) (*contextmgr.PreparedCompact, error) {
@@ -95,7 +103,7 @@ func (r *Compactor) CompactMessages(ctx context.Context, loaded *contextmgr.Load
 	successful := map[string]bool{}
 	if len(callIDs) > 0 {
 		var err error
-		successful, err = r.Store.ToolCalls().SuccessfulIDs(ctx, callIDs)
+		successful, err = r.ToolCalls.SuccessfulIDs(ctx, callIDs)
 		if err != nil {
 			return nil, err
 		}

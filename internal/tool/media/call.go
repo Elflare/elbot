@@ -27,7 +27,7 @@ type retainedMedia struct {
 	cachedPath string                 // 本次调用已准备的共享缓存路径。
 }
 
-func (r *MediaRuntime) NewCall() *MediaCall {
+func (r *MediaRuntime) NewCall() share.MediaCall {
 	return &MediaCall{runtime: r, owner: rand.Text(), mediaByID: map[string]*retainedMedia{}}
 }
 

@@ -1,12 +1,13 @@
 package responses
 
 import (
+	agentshare "elbot/internal/agent/share"
+
 	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 
-	"elbot/internal/agent/dialogue"
 	"elbot/internal/llm"
 	api "elbot/internal/llm/responses"
 	"elbot/internal/storage"
@@ -56,7 +57,7 @@ func nativeItem(callID string, segments []llm.MessageSegment) (api.Item, error) 
 		}
 	}
 	if textOnly {
-		output, err = json.Marshal(dialogue.MessageContent(segments))
+		output, err = json.Marshal(agentshare.MessageContent(segments))
 	} else {
 		output, err = json.Marshal(content)
 	}
@@ -75,7 +76,7 @@ func queuedInput(sessionID, messageID, exchangeID, callID string, segments []llm
 	if err != nil {
 		return storage.NativeInput{}, err
 	}
-	materials, err := dialogue.EncodeMaterials([]dialogue.Material{{MessageID: messageID, Segments: segments}})
+	materials, err := agentshare.EncodeMaterials([]agentshare.Material{{MessageID: messageID, Segments: segments}})
 	if err != nil {
 		return storage.NativeInput{}, err
 	}
@@ -91,7 +92,7 @@ func queuedInput(sessionID, messageID, exchangeID, callID string, segments []llm
 }
 
 func inputSegments(input storage.NativeInput) ([]llm.MessageSegment, error) {
-	materials, err := dialogue.DecodeMaterials(input.MediaJSON)
+	materials, err := agentshare.DecodeMaterials(input.MediaJSON)
 	if err != nil {
 		return nil, err
 	}

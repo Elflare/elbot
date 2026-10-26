@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/tool/runtimeinfo"
 	"elbot/internal/tool/share"
 )
 
@@ -44,7 +43,7 @@ func (s *cronRepositoryStub) DeleteByName(_ context.Context, name string) error 
 
 func cronTestTools(repo *cronRepositoryStub, validate func(string, string) error) []share.Tool {
 	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.Local)
-	return NewCronTools(repo, validate, runtimeinfo.Info{Now: func() time.Time { return now }})
+	return NewCronTools(repo, validate, func() time.Time { return now })
 }
 
 func TestCronCreateAndPatchUseOnlyInternalRequests(t *testing.T) {

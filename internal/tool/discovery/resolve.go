@@ -7,16 +7,19 @@ import (
 	"strings"
 
 	"elbot/internal/elyph"
-	"elbot/internal/tool/registry"
 	"elbot/internal/tool/share"
 )
 
 // Resolver 使用已注册的目录解析发现请求；不触发 Skill 加载或提交会话状态。
 type Resolver struct {
-	registry *registry.Registry // 提供工具目录与统一资格筛选。
+	registry interface {
+		QueryTools(context.Context, share.ToolQuery) ([]share.Tool, error)
+	} // 提供工具目录与统一资格筛选。
 }
 
-func NewResolver(registry *registry.Registry) *Resolver {
+func NewResolver(registry interface {
+	QueryTools(context.Context, share.ToolQuery) ([]share.Tool, error)
+}) *Resolver {
 	return &Resolver{registry: registry}
 }
 
@@ -118,11 +121,11 @@ func (r *Resolver) addDiscoveryDetail(ctx context.Context, target share.Tool, ta
 			return nil
 		}
 		discovered.DetailBlock = block
-		discovered.Detail = RenderDetailBlocks([]share.DetailBlock{block})
+		discovered.Detail = share.RenderDetailBlocks([]share.DetailBlock{block})
 	} else if detailer, ok := target.(share.DetailProvider); ok {
 		if structured, ok := target.(share.StructuredDetailProvider); ok {
 			discovered.DetailBlock = structured.DetailBlock()
-			discovered.Detail = RenderDetailBlocks([]share.DetailBlock{discovered.DetailBlock})
+			discovered.Detail = share.RenderDetailBlocks([]share.DetailBlock{discovered.DetailBlock})
 		} else {
 			discovered.Detail = detailer.Detail()
 			discovered.DetailBlock = share.DetailBlock{Content: discovered.Detail}

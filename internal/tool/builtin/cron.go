@@ -13,21 +13,19 @@ import (
 	"slices"
 	"strings"
 	"time"
-
-	"elbot/internal/tool/runtimeinfo"
 )
 
 type CronTool struct {
 	service *cronService
-	info    runtimeinfo.Info
+	now     func() time.Time
 }
 type CronQueryTool struct {
 	service *cronService
-	info    runtimeinfo.Info
+	now     func() time.Time
 }
 type CronWriteTool struct {
 	service *cronService
-	info    runtimeinfo.Info
+	now     func() time.Time
 }
 
 type cronQueryArgs struct {
@@ -57,10 +55,9 @@ type cronWriteArgs struct {
 	Enabled             *bool    `json:"enabled"`
 }
 
-func NewCronTools(repo CronRepository, validateModel func(provider, model string) error, infos ...runtimeinfo.Info) []toolshare.Tool {
-	info := runtimeinfo.First(infos...)
-	service := &cronService{repo: repo, validateModel: validateModel, now: info.CurrentTime}
-	return []toolshare.Tool{CronTool{service: service, info: info}, CronQueryTool{service: service, info: info}, CronWriteTool{service: service, info: info}}
+func NewCronTools(repo CronRepository, validateModel func(provider, model string) error, now func() time.Time) []toolshare.Tool {
+	service := &cronService{repo: repo, validateModel: validateModel, now: now}
+	return []toolshare.Tool{CronTool{service: service, now: now}, CronQueryTool{service: service, now: now}, CronWriteTool{service: service, now: now}}
 }
 
 // cronService 只处理任务规则；读写和模型校验均通过根部注入的能力完成。
@@ -267,7 +264,7 @@ func (t CronTool) Schema() llm.ToolSchema {
 func (t CronTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
 		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
-		now := t.info.CurrentTime().Format("2006-01-02 15:04:05")
+		now := t.now().Format("2006-01-02 15:04:05")
 		{
 			result := textResult("cron 是定时任务管理入口。当前本地时间：" + now + "。请调用 cron_query 或 cron_write。cron_query 不传 name 时列出 cron，传 name 时查询单个 cron。")
 			return result, "cron guide returned; current_time=" + now, nil
@@ -279,7 +276,7 @@ func (t CronTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*
 // The cron entry tool is the natural place to surface this because users often
 // discover cron tools to set up time-based reminders.
 func (t CronTool) DiscoveryContent() (string, bool) {
-	return "当前本地时间：" + t.info.CurrentTime().Format("2006-01-02 15:04:05"), false
+	return "当前本地时间：" + t.now().Format("2006-01-02 15:04:05"), false
 }
 
 func (t CronQueryTool) Name() string { return "cron_query" }
@@ -466,7 +463,7 @@ func (t CronWriteTool) create(ctx context.Context, args cronWriteArgs) (*toolsha
 	if args.AllEnabledPlatforms != nil {
 		allEnabledPlatforms = *args.AllEnabledPlatforms
 	}
-	runAt, err := resolveRunAtAt(args.RunAt, relativeOffset{Minutes: args.RunAfterMinutes, Hours: args.RunAfterHours, Days: args.RunAfterDays, Weeks: args.RunAfterWeeks, Months: args.RunAfterMonths}, t.info.CurrentTime())
+	runAt, err := resolveRunAtAt(args.RunAt, relativeOffset{Minutes: args.RunAfterMinutes, Hours: args.RunAfterHours, Days: args.RunAfterDays, Weeks: args.RunAfterWeeks, Months: args.RunAfterMonths}, t.now())
 	if err != nil {
 		return nil, err
 	}
@@ -478,7 +475,7 @@ func (t CronWriteTool) create(ctx context.Context, args cronWriteArgs) (*toolsha
 }
 
 func (t CronWriteTool) update(ctx context.Context, args cronWriteArgs) (*toolshare.Result, error) {
-	runAt, err := resolveUpdateRunAtAt(stringPtrIfNotEmpty(args.RunAt), relativeOffset{Minutes: args.RunAfterMinutes, Hours: args.RunAfterHours, Days: args.RunAfterDays, Weeks: args.RunAfterWeeks, Months: args.RunAfterMonths}, t.info.CurrentTime())
+	runAt, err := resolveUpdateRunAtAt(stringPtrIfNotEmpty(args.RunAt), relativeOffset{Minutes: args.RunAfterMinutes, Hours: args.RunAfterHours, Days: args.RunAfterDays, Weeks: args.RunAfterWeeks, Months: args.RunAfterMonths}, t.now())
 	if err != nil {
 		return nil, err
 	}

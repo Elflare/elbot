@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"elbot/internal/tool"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,7 +20,7 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool/preload"
-	toolshare "elbot/internal/tool/share"
+
 	toolstate "elbot/internal/tool/state"
 	"elbot/internal/workspace"
 )
@@ -33,7 +34,7 @@ func TestResidentMemorySystemPromptSource(t *testing.T) {
 	if err := store.WriteNormal(context.Background(), scope, "用户喜欢简短回答。"); err != nil {
 		t.Fatalf("WriteNormal: %v", err)
 	}
-	parts, err := (dialogue.ResidentMemorySystemPromptSource{Store: store}).Parts(context.Background(), dialogue.SystemPromptRequest{Scope: scope})
+	parts, err := (dialogue.ResidentMemorySystemPromptSource{Store: store}).Parts(context.Background(), agentshare.SystemPromptRequest{Scope: scope})
 	if err != nil {
 		t.Fatalf("Parts: %v", err)
 	}
@@ -45,25 +46,25 @@ func TestResidentMemorySystemPromptSource(t *testing.T) {
 func TestBackgroundPathsAreSystemPromptOnlyUntilTakeover(t *testing.T) {
 	manager := dialogue.NewSystemPromptManager(dialogue.BackgroundPathsSystemPromptSource{})
 	ctx := workspace.WithPathScope(contextinfo.WithBackgroundKind(t.Context(), ""), workspace.PathScope{Dir: t.TempDir(), Restricted: true})
-	background, err := manager.Build(ctx, dialogue.SystemPromptRequest{Mode: storage.SessionModeBackground})
+	background, err := manager.Build(ctx, agentshare.SystemPromptRequest{Mode: storage.SessionModeBackground})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(background, workspace.RestrictedPathInstruction()) != 1 {
+	if strings.Count(background, "路径必须为相对路径") != 1 {
 		t.Fatalf("missing or duplicate background path rules: %s", background)
 	}
-	foreground, err := manager.Build(workspace.WithoutPathScope(contextinfo.WithoutBackgroundKind(ctx)), dialogue.SystemPromptRequest{Mode: storage.SessionModeWork})
+	foreground, err := manager.Build(workspace.WithoutPathScope(contextinfo.WithoutBackgroundKind(ctx)), agentshare.SystemPromptRequest{Mode: storage.SessionModeWork})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(foreground, workspace.RestrictedPathInstruction()) {
+	if strings.Contains(foreground, "路径必须为相对路径") {
 		t.Fatal("foreground takeover retained background path rules")
 	}
 }
 
 func TestResidentMemorySystemPromptSourceOmitsEmptyMemory(t *testing.T) {
 	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	parts, err := (dialogue.ResidentMemorySystemPromptSource{Store: store}).Parts(context.Background(), dialogue.SystemPromptRequest{Scope: session.Scope{Platform: "cli", ActorID: "cli:local", IsCLI: true}})
+	parts, err := (dialogue.ResidentMemorySystemPromptSource{Store: store}).Parts(context.Background(), agentshare.SystemPromptRequest{Scope: session.Scope{Platform: "cli", ActorID: "cli:local", IsCLI: true}})
 	if err != nil {
 		t.Fatalf("Parts: %v", err)
 	}
@@ -77,7 +78,7 @@ func TestConversationMetaSystemPromptSource(t *testing.T) {
 		Source:   contextinfo.Source{Platform: "qqonebot", ConversationKind: "group", ConversationID: "9"},
 		Identity: contextinfo.Identity{PlatformUserID: "1001", Nickname: "群名片, A=1\n下一行"},
 	}
-	parts, err := (dialogue.ConversationMetaSystemPromptSource{}).Parts(contextinfo.WithConversation(context.Background(), info), dialogue.SystemPromptRequest{
+	parts, err := (dialogue.ConversationMetaSystemPromptSource{}).Parts(contextinfo.WithConversation(context.Background(), info), agentshare.SystemPromptRequest{
 		Session: &storage.Session{CreatedAt: time.Date(2026, time.August, 27, 12, 34, 56, 789, time.FixedZone("CST", 8*60*60))},
 	})
 	if err != nil {
@@ -168,7 +169,7 @@ func TestConversationMetaSystemPromptSourceFields(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parts, err := (dialogue.ConversationMetaSystemPromptSource{}).Parts(contextinfo.WithConversation(context.Background(), tt.meta), dialogue.SystemPromptRequest{})
+			parts, err := (dialogue.ConversationMetaSystemPromptSource{}).Parts(contextinfo.WithConversation(context.Background(), tt.meta), agentshare.SystemPromptRequest{})
 			if err != nil {
 				t.Fatalf("Parts: %v", err)
 			}
@@ -277,8 +278,8 @@ func TestConversationMetaFromPlatformContext(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := platform.WithMessageContext(context.Background(), tt.msg)
-			got, err := (dialogue.ConversationMetaSystemPromptSource{}).Parts(ctx, dialogue.SystemPromptRequest{Scope: tt.scope})
-			want, wantErr := (dialogue.ConversationMetaSystemPromptSource{}).Parts(contextinfo.WithConversation(context.Background(), tt.want), dialogue.SystemPromptRequest{})
+			got, err := (dialogue.ConversationMetaSystemPromptSource{}).Parts(ctx, agentshare.SystemPromptRequest{Scope: tt.scope})
+			want, wantErr := (dialogue.ConversationMetaSystemPromptSource{}).Parts(contextinfo.WithConversation(context.Background(), tt.want), agentshare.SystemPromptRequest{})
 			if err != nil || wantErr != nil || len(got) != 1 || len(want) != 1 || got[0] != want[0] {
 				t.Fatalf("prompt = %#v (%v), want %#v (%v)", got, err, want, wantErr)
 			}
@@ -288,8 +289,17 @@ func TestConversationMetaFromPlatformContext(t *testing.T) {
 
 type tagPromptTestService struct{ *preload.PreloadService }
 
-func (tagPromptTestService) DecodeState(raw string) (toolshare.State, error) {
-	return toolstate.DecodeState(raw)
+func (tagPromptTestService) DecodeState(raw string) (tool.State, error) {
+	state, err := toolstate.DecodeState(raw)
+	return tool.State{ToolTags: state.ToolTags, ElyphRulesShown: state.ElyphRulesShown}, err
+}
+func (s tagPromptTestService) TagPrompts(ctx context.Context, tags []string) ([]tool.TagPrompt, error) {
+	values, err := s.PreloadService.TagPrompts(ctx, tags)
+	result := make([]tool.TagPrompt, len(values))
+	for i, v := range values {
+		result[i] = tool.TagPrompt(v)
+	}
+	return result, err
 }
 
 func TestSystemPromptSourcesKeepRegistrationAndToolTagOrder(t *testing.T) {
@@ -315,11 +325,11 @@ func TestSystemPromptSourcesKeepRegistrationAndToolTagOrder(t *testing.T) {
 		dialogue.ConversationMetaSystemPromptSource{},
 	)
 	meta := contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli"}, Identity: contextinfo.Identity{}}
-	got, err := manager.Build(contextinfo.WithConversation(ctx, meta), dialogue.SystemPromptRequest{Session: sessionRecord, Scope: scope})
+	got, err := manager.Build(contextinfo.WithConversation(ctx, meta), agentshare.SystemPromptRequest{Session: sessionRecord, Scope: scope})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	parts := []string{"SOUL_ORDER", dialogue.ToolNamesText(dialogue.PromptToolNames{Tools: []string{"shell"}}), "TAG_ALPHA", "TAG_BETA", "RESIDENT_ORDER", "meta: platform=cli."}
+	parts := []string{"SOUL_ORDER", dialogue.ToolNamesText(agentshare.PromptToolNames{Tools: []string{"shell"}}), "TAG_ALPHA", "TAG_BETA", "RESIDENT_ORDER", "meta: platform=cli."}
 	previous := -1
 	for _, part := range parts {
 		index := strings.Index(got, part)
@@ -394,25 +404,25 @@ func TestPromptBuilderMergesToolNamesIntoSingleSystemMessage(t *testing.T) {
 func TestToolNamesTextSeparatesToolsAndSkills(t *testing.T) {
 	tests := []struct {
 		name  string
-		names dialogue.PromptToolNames
+		names agentshare.PromptToolNames
 		want  string
 	}{
 		{
 			name:  "mixed",
-			names: dialogue.PromptToolNames{Tools: []string{"shell", "web"}, Skills: []string{"code_review", "weather"}},
+			names: agentshare.PromptToolNames{Tools: []string{"shell", "web"}, Skills: []string{"code_review", "weather"}},
 			want:  "tools: shell,web. skills: code_review,weather. Use discover_tool(names) for all possibly relevant tools/skills, including uncertain ones; prefer extras over omissions.",
 		},
 		{
 			name:  "tools only",
-			names: dialogue.PromptToolNames{Tools: []string{"shell"}},
+			names: agentshare.PromptToolNames{Tools: []string{"shell"}},
 			want:  "tools: shell. Use discover_tool(names) for all possibly relevant tools/skills, including uncertain ones; prefer extras over omissions.",
 		},
 		{
 			name:  "skills only",
-			names: dialogue.PromptToolNames{Skills: []string{"weather"}},
+			names: agentshare.PromptToolNames{Skills: []string{"weather"}},
 			want:  "skills: weather. Use discover_tool(names) for all possibly relevant tools/skills, including uncertain ones; prefer extras over omissions.",
 		},
-		{name: "empty", names: dialogue.PromptToolNames{}, want: ""},
+		{name: "empty", names: agentshare.PromptToolNames{}, want: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -445,7 +455,7 @@ func TestPromptBuilderUsesAssistantRawTextFromMetadata(t *testing.T) {
 func TestPromptBuilderRestoresAssistantRawTextAndToolCalls(t *testing.T) {
 	builder := newTestPromptBuilder("SOUL")
 	calls := []llm.ToolCallRequest{{ID: "call-1", Name: "shell", Arguments: `{"cmd":"pwd"}`}}
-	stored := dialogue.ToolCallStorageMessage("session-1", "visible", "raw [[smile]]", calls)
+	stored := agentshare.ToolCallStorageMessage("session-1", "visible", "raw [[smile]]", calls)
 	messages, err := builder.Build(context.Background(), chatroute.PromptBuildRequest{
 		Session:  &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{stored},
@@ -466,7 +476,7 @@ func TestPromptBuilderRestoresAssistantRawTextAndToolCalls(t *testing.T) {
 }
 
 func TestStoredMessageSegmentsUsesStableLightweightJSON(t *testing.T) {
-	stored := dialogue.StoredMessageSegments([]llm.MessageSegment{
+	stored := agentshare.StoredMessageSegments([]llm.MessageSegment{
 		{Type: llm.SegmentText, Text: "看图"},
 		{Type: llm.SegmentImage, URL: "https://example.com/a.png", MIMEType: "image/png"},
 	})
@@ -481,11 +491,11 @@ func TestStoredMessageSegmentsUsesStableLightweightJSON(t *testing.T) {
 }
 
 func TestToolResultStorageMessageUsesContentFastPath(t *testing.T) {
-	pureText := dialogue.ToolResultStorageMessage("s1", llm.LLMMessage{Role: llm.RoleTool, Name: "shell", ToolCallID: "call_1", Segments: llm.TextSegments("done")})
+	pureText := agentshare.ToolResultStorageMessage("s1", llm.LLMMessage{Role: llm.RoleTool, Name: "shell", ToolCallID: "call_1", Segments: llm.TextSegments("done")})
 	if pureText.Content != "done" || pureText.Segments != "" {
 		t.Fatalf("pure text message = %#v", pureText)
 	}
-	multimodal := dialogue.ToolResultStorageMessage("s1", llm.LLMMessage{Role: llm.RoleTool, Name: "screenshot", ToolCallID: "call_2", Segments: []llm.MessageSegment{
+	multimodal := agentshare.ToolResultStorageMessage("s1", llm.LLMMessage{Role: llm.RoleTool, Name: "screenshot", ToolCallID: "call_2", Segments: []llm.MessageSegment{
 		{Type: llm.SegmentText, Text: "done"},
 		{Type: llm.SegmentImage, URL: "data:image/png;base64,aGVsbG8=", Name: "result.png"},
 	}})
@@ -503,7 +513,7 @@ func TestPromptBuilderRestoresUserSegmentsFromStorage(t *testing.T) {
 	messages, err := builder.Build(context.Background(), chatroute.PromptBuildRequest{
 		Session: &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{
-			{Role: storage.RoleUser, Content: "看图 [图片: https://example.com/a.png]", Segments: dialogue.StoredMessageSegments(segments)},
+			{Role: storage.RoleUser, Content: "看图 [图片: https://example.com/a.png]", Segments: agentshare.StoredMessageSegments(segments)},
 		},
 	})
 	if err != nil {
@@ -535,8 +545,8 @@ func TestPromptBuilderRestoresToolSegmentsAndFallsBackToContent(t *testing.T) {
 				Role:       storage.RoleTool,
 				Content:    "截图完成 [图片]",
 				ToolCallID: "call_1",
-				Segments:   dialogue.StoredMessageSegments(toolSegments),
-				Metadata:   dialogue.ToolNameMetadata("screenshot"),
+				Segments:   agentshare.StoredMessageSegments(toolSegments),
+				Metadata:   agentshare.ToolNameMetadata("screenshot"),
 			},
 		},
 	})
@@ -561,7 +571,7 @@ func TestPromptBuilderSummaryPreservesUserImageSegment(t *testing.T) {
 	messages, err := builder.Build(context.Background(), chatroute.PromptBuildRequest{
 		Session: &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{
-			{Role: storage.RoleUser, Content: llm.SegmentsContentText(segments), Segments: dialogue.StoredMessageSegments(segments)},
+			{Role: storage.RoleUser, Content: llm.SegmentsContentText(segments), Segments: agentshare.StoredMessageSegments(segments)},
 		},
 		Summary: &storage.ContextSummary{Summary: "old summary"},
 	})
@@ -603,8 +613,8 @@ func newTestPromptBuilder(soul string, names ...string) chatroute.PromptBuilder 
 	return chatroute.PromptBuilder{System: manager}
 }
 
-func (p staticToolNames) ToolNames(context.Context, string, *storage.Session, session.Scope) (dialogue.PromptToolNames, error) {
-	return dialogue.PromptToolNames{Tools: p.names}, nil
+func (p staticToolNames) ToolNames(context.Context, string, *storage.Session, session.Scope) (agentshare.PromptToolNames, error) {
+	return agentshare.PromptToolNames{Tools: p.names}, nil
 }
 
 func TestPromptBuilderInjectsSummaryIntoCurrentUserMessage(t *testing.T) {

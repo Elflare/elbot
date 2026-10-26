@@ -7,12 +7,11 @@ import (
 	"fmt"
 	"log/slog"
 
-	"elbot/internal/agent/dialogue"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"elbot/internal/modelmgr"
-	notificationrules "elbot/internal/notification/rules"
+
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
 	sessionpkg "elbot/internal/session"
@@ -23,23 +22,23 @@ import (
 // ModelContext supplies the prospective main-dialogue target to tool views.
 // Execution still resolves and checks its fixed selection at admission.
 func (c *ExecutionCoordinator) ModelContext(ctx context.Context, row *storage.Session) (context.Context, error) {
-	selected := modelmgr.SelectionForTurn(ctx, c.models, row)
+	selected := c.SelectionForTurn(ctx, row)
 	return c.view.WithModel(ctx, selected)
 }
 
-func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.Session, text string, out dialogue.Output) (*storage.Session, turn.Input, error) {
+func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.Session, text string, out agentshare.Output) (*storage.Session, turn.Input, error) {
 	ctx, release, err := c.enterTurn(ctx, session)
 	if err != nil {
 		if ctx.Err() == nil && !errors.Is(err, agentshare.ErrSessionBindingChanged) && !errors.Is(err, errExecutionConflict) {
-			dialogue.ReportFailure(ctx, session.ID, err, out.Notify)
+			agentshare.ReportFailure(ctx, session.ID, err, out.Notify)
 		}
 		return session, turn.Input{}, err
 	}
-	selection := modelmgr.SelectionForTurn(ctx, c.models, session)
+	selection := c.SelectionForTurn(ctx, session)
 	source, _, err := sessionpkg.Origin(session)
 	if err != nil {
 		release()
-		dialogue.ReportFailure(ctx, session.ID, err, out.Notify)
+		agentshare.ReportFailure(ctx, session.ID, err, out.Notify)
 		return session, turn.Input{}, err
 	}
 	err = c.dialogue.CheckSelection(selection)
@@ -48,13 +47,13 @@ func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.
 	}
 	if err != nil {
 		release()
-		dialogue.ReportFailure(ctx, session.ID, err, out.Notify)
+		agentshare.ReportFailure(ctx, session.ID, err, out.Notify)
 		return session, turn.Input{}, err
 	}
 	ctx, err = c.view.WithModel(ctx, selection)
 	if err != nil {
 		release()
-		dialogue.ReportFailure(ctx, session.ID, err, out.Notify)
+		agentshare.ReportFailure(ctx, session.ID, err, out.Notify)
 		return session, turn.Input{}, err
 	}
 	latest, err := c.sessions.RegisterOrigin(ctx, session.ID, selection.Origin)
@@ -64,21 +63,21 @@ func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.
 	release()
 	if err != nil {
 		if ctx.Err() == nil {
-			dialogue.ReportFailure(ctx, session.ID, fmt.Errorf("登记对话来源: %w", err), out.Notify)
+			agentshare.ReportFailure(ctx, session.ID, fmt.Errorf("登记对话来源: %w", err), out.Notify)
 		}
 		return session, turn.Input{}, err
 	}
 	ctx, session, err = c.compactBeforeTurn(ctx, session, text, out, selection)
 	if err != nil {
 		if ctx.Err() == nil && !errors.Is(err, agentshare.ErrSessionBindingChanged) {
-			dialogue.ReportFailure(ctx, session.ID, fmt.Errorf("轮前压缩: %w", err), out.Notify)
+			agentshare.ReportFailure(ctx, session.ID, fmt.Errorf("轮前压缩: %w", err), out.Notify)
 		}
 		return session, turn.Input{}, err
 	}
 	ctx, release, err = c.enterTurn(ctx, session)
 	if err != nil {
 		if ctx.Err() == nil && !errors.Is(err, agentshare.ErrSessionBindingChanged) && !errors.Is(err, errExecutionConflict) {
-			dialogue.ReportFailure(ctx, session.ID, err, out.Notify)
+			agentshare.ReportFailure(ctx, session.ID, err, out.Notify)
 		}
 		return session, turn.Input{}, err
 	}
@@ -102,7 +101,7 @@ func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.
 	return session, pending, nil
 }
 
-func (c *ExecutionCoordinator) finishAttempt(ctx context.Context, session *storage.Session, out dialogue.Output, result dialogue.TurnResult) error {
+func (c *ExecutionCoordinator) finishAttempt(ctx context.Context, session *storage.Session, out agentshare.Output, result agentshare.TurnResult) error {
 	attempt := turn.AttemptFromContext(ctx)
 	execution := turn.ExecutionFromContext(ctx)
 	if err := result.Err; err != nil && !result.QuietCancellation {
@@ -125,30 +124,30 @@ func (c *ExecutionCoordinator) finishAttempt(ctx context.Context, session *stora
 	return nil
 }
 
-func (c *ExecutionCoordinator) runTurn(ctx context.Context, session *storage.Session, text string, out dialogue.Output, selection modelmgr.Selection) (dialogue.TurnResult, turn.Input) {
-	prepared, err := c.dialogue.PrepareTurn(ctx, dialogue.TurnInput{Session: session, Text: text, Input: agentshare.InboundTurnInput(ctx, text), ReplyToPlatformMessageID: agentshare.InboundReplyMessageID(ctx), Selection: selection})
+func (c *ExecutionCoordinator) runTurn(ctx context.Context, session *storage.Session, text string, out agentshare.Output, selection modelmgr.Selection) (agentshare.TurnResult, turn.Input) {
+	prepared, err := c.dialogue.PrepareTurn(ctx, agentshare.TurnInput{Session: session, Text: text, Input: agentshare.InboundTurnInput(ctx, text), ReplyToPlatformMessageID: agentshare.InboundReplyMessageID(ctx), Selection: selection})
 	if err != nil {
-		result := dialogue.TurnResult{Outcome: dialogue.Failed, Err: err}
+		result := agentshare.TurnResult{Outcome: agentshare.Failed, Err: err}
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
-			result.Outcome = dialogue.Canceled
+			result.Outcome = agentshare.Canceled
 		} else {
-			dialogue.ReportFailure(ctx, session.ID, err, out.Notify)
+			agentshare.ReportFailure(ctx, session.ID, err, out.Notify)
 		}
 		return result, turn.Input{}
 	}
 	locked, releaseRequest, err := c.sessions.EnterSessions(ctx, session.ID)
 	if err != nil {
-		result := dialogue.TurnResult{Outcome: dialogue.Failed, Err: err}
+		result := agentshare.TurnResult{Outcome: agentshare.Failed, Err: err}
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
-			result.Outcome = dialogue.Canceled
+			result.Outcome = agentshare.Canceled
 		} else {
-			dialogue.ReportFailure(ctx, session.ID, err, out.Notify)
+			agentshare.ReportFailure(ctx, session.ID, err, out.Notify)
 		}
 		return result, turn.Input{}
 	}
 	if !c.turns.MatchesAttempt(session.ID, turn.AttemptFromContext(ctx)) || c.turns.Snapshot(session.ID).Phase == turn.PhaseStopping {
 		releaseRequest()
-		return dialogue.TurnResult{Outcome: dialogue.Canceled, Err: context.Canceled, QuietCancellation: true}, turn.Input{}
+		return agentshare.TurnResult{Outcome: agentshare.Canceled, Err: context.Canceled, QuietCancellation: true}, turn.Input{}
 	}
 	reqCtxInfo, reqCtx, done := c.requests.Start(locked, request.StartRequest{SessionID: session.ID, Kind: request.KindTurn, Label: "chat", Timeout: c.responseTimeout})
 	releaseRequest()
@@ -156,21 +155,21 @@ func (c *ExecutionCoordinator) runTurn(ctx context.Context, session *storage.Ses
 	stopObserver := c.observeRequestStop(reqCtx, session.ID, turn.AttemptFromContext(ctx))
 	defer stopObserver()
 
-	result := c.dialogue.RunTurn(ctx, reqCtx, dialogue.TurnInput{Session: session, Text: text, Selection: selection, RequestID: reqCtxInfo.ID, Prepared: prepared}, out)
+	result := c.dialogue.RunTurn(ctx, reqCtx, agentshare.TurnInput{Session: session, Text: text, Selection: selection, RequestID: reqCtxInfo.ID, Prepared: prepared}, out)
 	if result.QuietCancellation {
 		c.handleTurnContextDone(ctx, session.ID, reqCtx.Err(), out)
 		return result, turn.Input{}
 	}
-	if result.Outcome != dialogue.Completed {
+	if result.Outcome != agentshare.Completed {
 		return result, turn.Input{}
 	}
 	pending, err := c.finishCompletedTurn(ctx, session, out, result)
 	if err != nil {
-		result.Outcome, result.Err = dialogue.Failed, err
+		result.Outcome, result.Err = agentshare.Failed, err
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
-			result.Outcome = dialogue.Canceled
+			result.Outcome = agentshare.Canceled
 		} else {
-			dialogue.ReportFailure(reqCtx, session.ID, err, out.Notify)
+			agentshare.ReportFailure(reqCtx, session.ID, err, out.Notify)
 		}
 	}
 	return result, pending
@@ -197,7 +196,7 @@ func (c *ExecutionCoordinator) observeRequestStop(ctx context.Context, sessionID
 	}
 }
 
-func (c *ExecutionCoordinator) finishCompletedTurn(ctx context.Context, session *storage.Session, out dialogue.Output, result dialogue.TurnResult) (turn.Input, error) {
+func (c *ExecutionCoordinator) finishCompletedTurn(ctx context.Context, session *storage.Session, out agentshare.Output, result agentshare.TurnResult) (turn.Input, error) {
 	ctx = c.view.Context(ctx)
 	selection, turnStartedAt, committed := result.Selection, result.StartedAt, result.Committed
 	usage, err := c.status.Usage(session)
@@ -217,7 +216,7 @@ func (c *ExecutionCoordinator) finishCompletedTurn(ctx context.Context, session 
 		Usage:          usage,
 	}, storage.Now())
 	c.status.Record(ctx, doneStatus)
-	nextSelection := modelmgr.SelectionForTurn(ctx, c.models, session)
+	nextSelection := c.SelectionForTurn(ctx, session)
 	if c.shouldCompact(ctx, session, nextSelection) {
 		_, _, _ = out.SendAssistant(ctx, "compact status: will compact before next request")
 	}
@@ -233,7 +232,7 @@ func (c *ExecutionCoordinator) finishCompletedTurn(ctx context.Context, session 
 	return pending, nil
 }
 
-func (c *ExecutionCoordinator) handleTurnContextDone(ctx context.Context, sessionID string, err error, out dialogue.Output) {
+func (c *ExecutionCoordinator) handleTurnContextDone(ctx context.Context, sessionID string, err error, out agentshare.Output) {
 	if c.turns.Execution(sessionID) != turn.ExecutionFromContext(ctx) || (c.turns.Snapshot(sessionID).Phase != turn.PhaseAwaitAppendConfirm && c.turns.MatchesAttempt(sessionID, turn.AttemptFromContext(ctx))) {
 		if e := turn.ExecutionFromContext(ctx); e != nil {
 			e.Finish(err)
@@ -257,6 +256,6 @@ func (c *ExecutionCoordinator) handleTurnContextDone(ctx context.Context, sessio
 		content, _ := json.Marshal(map[string]string{"error": fmt.Sprintf("%.2048v", err)})
 		record.Category, record.Type, record.Content = events.LogAudit, events.ContentJSON, string(content)
 		agentshare.EmitAgentLog(ctx, facts, record)
-		out.Notify(context.WithoutCancel(ctx), slog.LevelWarn, notificationrules.TurnTimeout)
+		out.Notify(context.WithoutCancel(ctx), slog.LevelWarn, c.TurnTimeout)
 	}
 }

@@ -3,19 +3,13 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/delivery"
+	"elbot/internal/llm"
+	toolshare "elbot/internal/tool/share"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
-
-	"elbot/internal/contextinfo"
-	"elbot/internal/delivery"
-	"elbot/internal/llm"
-	"elbot/internal/security"
-	"elbot/internal/tool/chat_history"
-	toolmedia "elbot/internal/tool/media"
-	"elbot/internal/tool/registry"
-	toolshare "elbot/internal/tool/share"
 )
 
 const (
@@ -24,15 +18,21 @@ const (
 )
 
 type SearchChatHistoryTool struct {
-	center  *toolmedia.MediaRuntime
-	history *chat_history.Manager
+	viewImageAvailable func(context.Context) bool
+	history            interface {
+		Search(context.Context, toolshare.SearchRequest) ([]toolshare.Message, error)
+	}
 }
 type GetChatHistoryAroundTool struct {
-	center  *toolmedia.MediaRuntime
-	history *chat_history.Manager
+	viewImageAvailable func(context.Context) bool
+	history            interface {
+		Around(context.Context, toolshare.AroundRequest) ([]toolshare.Message, error)
+	}
 }
 type ReplyToChatHistoryMessageTool struct {
-	history *chat_history.Manager
+	history interface {
+		GetMessage(context.Context, string) (toolshare.Message, error)
+	}
 }
 
 type searchChatHistoryArgs struct {
@@ -59,13 +59,19 @@ type replyChatHistoryArgs struct {
 	Message   string `json:"message"`
 }
 
-func NewSearchChatHistoryTool(history *chat_history.Manager, center *toolmedia.MediaRuntime) SearchChatHistoryTool {
-	return SearchChatHistoryTool{center: center, history: history}
+func NewSearchChatHistoryTool(history interface {
+	Search(context.Context, toolshare.SearchRequest) ([]toolshare.Message, error)
+}, viewImageAvailable func(context.Context) bool) SearchChatHistoryTool {
+	return SearchChatHistoryTool{viewImageAvailable: viewImageAvailable, history: history}
 }
-func NewGetChatHistoryAroundTool(history *chat_history.Manager, center *toolmedia.MediaRuntime) GetChatHistoryAroundTool {
-	return GetChatHistoryAroundTool{center: center, history: history}
+func NewGetChatHistoryAroundTool(history interface {
+	Around(context.Context, toolshare.AroundRequest) ([]toolshare.Message, error)
+}, viewImageAvailable func(context.Context) bool) GetChatHistoryAroundTool {
+	return GetChatHistoryAroundTool{viewImageAvailable: viewImageAvailable, history: history}
 }
-func NewReplyToChatHistoryMessageTool(history *chat_history.Manager) ReplyToChatHistoryMessageTool {
+func NewReplyToChatHistoryMessageTool(history interface {
+	GetMessage(context.Context, string) (toolshare.Message, error)
+}) ReplyToChatHistoryMessageTool {
 	return ReplyToChatHistoryMessageTool{history: history}
 }
 
@@ -134,11 +140,11 @@ func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.Ca
 	}
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
 		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
-		rows, err := t.history.Search(ctx, chat_history.SearchRequest{
+		rows, err := t.history.Search(ctx, toolshare.SearchRequest{
 			Query: args.Query, QueryMode: args.QueryMode, User: args.User,
 			Since: args.Since, Until: args.Until, Hours: args.Hours, Days: args.Days, Limit: args.Limit,
 		})
-		if errors.Is(err, chat_history.ErrNoChatContext) || errors.Is(err, chat_history.ErrNoCurrentUser) {
+		if errors.Is(err, toolshare.ErrNoChatContext) || errors.Is(err, toolshare.ErrNoCurrentUser) {
 			return &toolshare.Result{Content: err.Error()}, err.Error(), nil
 		}
 		if err != nil {
@@ -157,7 +163,7 @@ func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.Ca
 		}
 		lines = append(lines, "仅在需要媒体时调用 get_media(message_id=[\"...\"], media_index=[[1]]) 获取媒体 ID；可用 get_chat_history_around(message_id=\"...\") 查看附近上下文；可用 reply_to_chat_history_message(message_id=\"...\", message=\"...\") 引用回复。")
 		logLines = append(logLines, lines[len(lines)-1])
-		if hint := viewImageHistoryHint(ctx, t.center); hint != "" {
+		if hint := viewImageHistoryHint(ctx, t.viewImageAvailable); hint != "" {
 			lines = append(lines, hint)
 			logLines = append(logLines, hint)
 		}
@@ -181,11 +187,11 @@ func (t GetChatHistoryAroundTool) PrepareCall(ctx context.Context, req toolshare
 			result := &toolshare.Result{Content: "message_id 必须是 search_chat_history 返回的 #message_id 或纯平台消息 ID。"}
 			return result, result.Content, nil
 		}
-		rows, err := t.history.Around(ctx, chat_history.AroundRequest{MessageID: messageID, Before: args.Before, After: args.After})
-		if errors.Is(err, chat_history.ErrNoChatContext) {
+		rows, err := t.history.Around(ctx, toolshare.AroundRequest{MessageID: messageID, Before: args.Before, After: args.After})
+		if errors.Is(err, toolshare.ErrNoChatContext) {
 			return &toolshare.Result{Content: err.Error()}, err.Error(), nil
 		}
-		if errors.Is(err, chat_history.ErrNotFound) {
+		if errors.Is(err, toolshare.ErrNotFound) {
 			result := &toolshare.Result{Content: fmt.Sprintf("没有在当前聊天找到 message_id 为 %s 的历史记录。", messageID)}
 			return result, fmt.Sprintf("message_id=%s returned=0\ncontent:\n%s", messageID, result.Content), nil
 		}
@@ -199,7 +205,7 @@ func (t GetChatHistoryAroundTool) PrepareCall(ctx context.Context, req toolshare
 			lines = append(lines, line)
 			logLines = append(logLines, preview)
 		}
-		if hint := viewImageHistoryHint(ctx, t.center); hint != "" {
+		if hint := viewImageHistoryHint(ctx, t.viewImageAvailable); hint != "" {
 			lines = append(lines, hint)
 			logLines = append(logLines, hint)
 		}
@@ -208,11 +214,8 @@ func (t GetChatHistoryAroundTool) PrepareCall(ctx context.Context, req toolshare
 	}), nil
 }
 
-func viewImageHistoryHint(ctx context.Context, center *toolmedia.MediaRuntime) string {
-	actor, _ := contextinfo.ActorFromContext(ctx)
-	permission, _ := security.PermissionFromContext(ctx)
-	info := (ViewImageTool{}).Info()
-	if center != nil && registry.InfoAvailableInContext(ctx, info) && registry.CanAccessTool(actor, permission, info) {
+func viewImageHistoryHint(ctx context.Context, viewImageAvailable func(context.Context) bool) string {
+	if viewImageAvailable != nil && viewImageAvailable(ctx) {
 		return "看图可用 view_image(message_id=[\"...\"])；指定图片沿用上述媒体序号。"
 	}
 	return ""
@@ -239,10 +242,10 @@ func (t ReplyToChatHistoryMessageTool) PrepareCall(ctx context.Context, req tool
 			return result, result.Content, nil
 		}
 		target, err := t.history.GetMessage(ctx, messageID)
-		if errors.Is(err, chat_history.ErrNoChatContext) {
+		if errors.Is(err, toolshare.ErrNoChatContext) {
 			return &toolshare.Result{Content: err.Error()}, err.Error(), nil
 		}
-		if errors.Is(err, chat_history.ErrNotFound) {
+		if errors.Is(err, toolshare.ErrNotFound) {
 			result := &toolshare.Result{Content: fmt.Sprintf("没有在当前聊天找到 message_id 为 %s 的历史记录。", messageID)}
 			return result, result.Content, nil
 		}
@@ -262,7 +265,7 @@ func parseChatHistoryMessageID(value string) string {
 	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(value), "#"))
 }
 
-func formatChatHistoryMedia(row chat_history.Message, targetID string, full bool) (string, string) {
+func formatChatHistoryMedia(row toolshare.Message, targetID string, full bool) (string, string) {
 	line := formatChatHistoryLine(row, targetID, full, "...[单条消息过长，已截断]")
 	logContent := formatChatHistoryLine(row, targetID, false, "…")
 	for i, item := range row.Media {
@@ -286,7 +289,7 @@ func chatHistoryResultLines(blocks []string, marker string) string {
 	}
 	return strings.Join(lines, "\n")
 }
-func formatChatHistoryLine(row chat_history.Message, targetID string, full bool, marker string) string {
+func formatChatHistoryLine(row toolshare.Message, targetID string, full bool, marker string) string {
 	prefix := ""
 	if targetID != "" && row.Key.MessageID == targetID {
 		prefix = "=> "

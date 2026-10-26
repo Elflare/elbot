@@ -1,25 +1,22 @@
 package input
 
-import toolshare "elbot/internal/tool/share"
-
 import (
 	"context"
+	"elbot/internal/tool"
 	"sort"
 	"strings"
 
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/directive"
-	"elbot/internal/security"
-	"elbot/internal/session"
 	"elbot/internal/storage"
-	
+
 	"elbot/internal/workspace"
 )
 
 type toolDirectiveResult struct {
 	NeedsElyphRules bool
-	update          toolshare.StateUpdate
+	update          tool.StateUpdate
 	Text            string
 	Injected        []string
 	Existing        []string
@@ -29,7 +26,7 @@ type toolDirectiveResult struct {
 
 type skillDirectiveResult struct {
 	NeedsElyphRules  bool
-	update           toolshare.StateUpdate
+	update           tool.StateUpdate
 	Err              error
 	Text             string
 	Skills           []string
@@ -39,7 +36,7 @@ type skillDirectiveResult struct {
 }
 
 func (c *InputCoordinator) preloadContext(ctx context.Context) context.Context {
-	return contextinfo.WithActor(security.WithPermission(ctx, c.identity.Permission()), c.identity.Actor(ctx))
+	return contextinfo.WithActor(ctx, c.identity.Actor(ctx))
 }
 
 func (c *InputCoordinator) prepareToolDirectives(ctx context.Context, row *storage.Session, text string) toolDirectiveResult {
@@ -52,7 +49,7 @@ func (c *InputCoordinator) prepareToolDirectives(ctx context.Context, row *stora
 		return result
 	}
 	if !agentshare.IsBackgroundSession(row) {
-		ctx = workspace.WithWorkspaceStore(ctx, session.NewWorkspaceStore(c.sessions, c.sessionRows, row.ID))
+		ctx = workspace.WithWorkspaceStore(ctx, c.NewWorkspaceStore(row.ID))
 	}
 	names := make([]string, len(matches))
 	for i, match := range matches {
@@ -195,8 +192,8 @@ func (c *InputCoordinator) applyInputDirectives(ctx context.Context, row *storag
 	if skills.Err != nil {
 		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, skills.Err
 	}
-	update := toolshare.StateUpdate{
-		Tools: append(append([]toolshare.DiscoveredTool(nil), tools.update.Tools...), skills.update.Tools...),
+	update := tool.StateUpdate{
+		Tools: append(append([]tool.DiscoveredTool(nil), tools.update.Tools...), skills.update.Tools...),
 		Tags:  tools.update.Tags,
 	}
 	locked, release, err = c.execution.EnterInput(ctx, row)

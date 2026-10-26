@@ -4,7 +4,6 @@ package skill
 import (
 	"context"
 	"elbot/internal/processenv"
-	toolmedia "elbot/internal/tool/media"
 	toolshare "elbot/internal/tool/share"
 	"errors"
 	"fmt"
@@ -55,7 +54,7 @@ func runnerTimeout(timeoutMS int) time.Duration {
 	return defaultRunnerTimeout
 }
 
-func runMediaCommand(ctx context.Context, label string, cmd *exec.Cmd, mediaCall *toolmedia.MediaCall) (*toolshare.Result, error) {
+func runMediaCommand(ctx context.Context, label string, cmd *exec.Cmd, mediaCall toolshare.MediaCall) (*toolshare.Result, error) {
 	stdout := limitedOutput{limit: maxRunnerStdout}
 	stderr := limitedOutput{limit: maxRunnerOutput}
 	cmd.Stdout = &stdout

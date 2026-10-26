@@ -16,7 +16,9 @@ import (
 
 // ExecutionView reads the existing execution identity; it owns no adoption state.
 type ExecutionView struct {
-	Sessions storage.SessionRepository
+	Sessions interface {
+		Get(context.Context, string) (*storage.Session, error)
+	}
 }
 
 func (v ExecutionView) CheckSelection(row *storage.Session, selection modelmgr.Selection) error {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"elbot/internal/agent/dialogue"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/fileops"
@@ -19,11 +18,20 @@ type FileCommandPreparer struct {
 	service interface {
 		WithBinding(context.Context, fileops.Binding, ...fileops.CommitAdmission) context.Context
 	}
-	sessions    *session.Service
-	sessionRows storage.SessionRepository
-	turns       *turn.Manager
-	requests    *request.Manager
-	identity    dialogue.Identity
+	sessions interface {
+		CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
+		EnterBinding(context.Context, *session.Binding) (context.Context, func(), error)
+		EnterSessions(context.Context, ...string) (context.Context, func(), error)
+	}
+	NewWorkspaceStore func(string) workspace.WorkspaceStore
+	turns             interface{ Snapshot(string) turn.Snapshot }
+	requests          interface {
+		ListBySession(string) []request.Request
+	}
+	identity interface {
+		Scope(context.Context) session.Scope
+		Actor(context.Context) contextinfo.Actor
+	}
 }
 
 // PrepareFileCommand captures the original binding and execution admission for
@@ -52,7 +60,7 @@ func (p *FileCommandPreparer) PrepareFileCommand(ctx context.Context, idleOnly b
 	// Listing never enters commit admission, but a reused command context must
 	// still reject a write if a Turn begins while it waits for the target lock.
 	ctx = agentshare.FileRollbackContext(ctx, p.service, p.sessions, p.turns, p.requests, p.identity, row, true)
-	return workspace.WithWorkspaceStore(ctx, session.NewWorkspaceStore(p.sessions, p.sessionRows, row.ID)), nil
+	return workspace.WithWorkspaceStore(ctx, p.NewWorkspaceStore(row.ID)), nil
 }
 
 // FileCommandPreparerDeps declares only the capabilities consumed by FileCommandPreparer.
@@ -60,21 +68,30 @@ type FileCommandPreparerDeps struct {
 	Service interface {
 		WithBinding(context.Context, fileops.Binding, ...fileops.CommitAdmission) context.Context
 	}
-	Sessions    *session.Service
-	SessionRows storage.SessionRepository
-	Turns       *turn.Manager
-	Requests    *request.Manager
-	Identity    dialogue.Identity
+	Sessions interface {
+		CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
+		EnterBinding(context.Context, *session.Binding) (context.Context, func(), error)
+		EnterSessions(context.Context, ...string) (context.Context, func(), error)
+	}
+	NewWorkspaceStore func(string) workspace.WorkspaceStore
+	Turns             interface{ Snapshot(string) turn.Snapshot }
+	Requests          interface {
+		ListBySession(string) []request.Request
+	}
+	Identity interface {
+		Scope(context.Context) session.Scope
+		Actor(context.Context) contextinfo.Actor
+	}
 }
 
 // NewFileCommandPreparer initializes FileCommandPreparer without installing cross-service callbacks.
 func NewFileCommandPreparer(deps FileCommandPreparerDeps) *FileCommandPreparer {
 	return &FileCommandPreparer{
-		service:     deps.Service,
-		sessions:    deps.Sessions,
-		sessionRows: deps.SessionRows,
-		turns:       deps.Turns,
-		requests:    deps.Requests,
-		identity:    deps.Identity,
+		service:           deps.Service,
+		sessions:          deps.Sessions,
+		NewWorkspaceStore: deps.NewWorkspaceStore,
+		turns:             deps.Turns,
+		requests:          deps.Requests,
+		identity:          deps.Identity,
 	}
 }

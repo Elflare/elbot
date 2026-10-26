@@ -1,6 +1,7 @@
 package state
 
 import (
+	toolregistry "elbot/internal/tool/registry"
 	"encoding/json"
 	"reflect"
 	"slices"
@@ -28,7 +29,7 @@ func TestDiscoveredToolsMergeOrderAndReplacement(t *testing.T) {
 
 func TestStatePersistsCompleteDeclarationsByCanonicalName(t *testing.T) {
 	store, row := stateTestStore(t, "")
-	service := NewStateService(store)
+	service := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)
 	left, right := stateTestTool("remote"), stateTestTool("remote")
 	left.Source, right.Source = toolshare.SourceKindELwisp, toolshare.SourceKindELwisp
 	left.CanonicalName, right.CanonicalName = "left_remote", "right_remote"
@@ -58,7 +59,7 @@ func TestStatePersistsCompleteDeclarationsByCanonicalName(t *testing.T) {
 	if len(stored) != 2 || stored[0].Endpoint != left.Endpoint || stored[1].Endpoint != right.Endpoint || stored[0].EventKey != left.EventKey {
 		t.Fatalf("stored=%+v", stored)
 	}
-	restored, logResult, err := NewStateService(store).DiscoveredToolsForSession(t.Context(), row.ID, false)
+	restored, logResult, err := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools).DiscoveredToolsForSession(t.Context(), row.ID, false)
 	if err != nil || logResult.ResultStatus != events.ResultSucceeded || !reflect.DeepEqual(restored, stored) {
 		t.Fatalf("restored=%+v log=%+v err=%v", restored, logResult, err)
 	}
@@ -66,7 +67,7 @@ func TestStatePersistsCompleteDeclarationsByCanonicalName(t *testing.T) {
 
 func TestStateReadUsesPersistedDeclarationsAndBackgroundRules(t *testing.T) {
 	store, row := stateTestStore(t, "")
-	service := NewStateService(store)
+	service := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)
 	regular, front, workspace := stateTestTool("unregistered"), stateTestTool("front"), stateTestTool("workspace")
 	regular.Schema.Description = "persisted definition"
 	front.ForegroundOnly = true
@@ -94,7 +95,7 @@ func TestStateReadUsesPersistedDeclarationsAndBackgroundRules(t *testing.T) {
 func TestPrepareUpdateOwnsOnlyToolFieldsAndMatchesCommit(t *testing.T) {
 	const raw = `{"unknown":9007199254740993,"elyph_rules_shown":true,"tool_tags":["old"]}`
 	store, row := stateTestStore(t, raw)
-	service := NewStateService(store)
+	service := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)
 	item := stateTestTool("new")
 	update := toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{item}, Tags: []string{"new"}}
 	patch, err := PrepareUpdate(raw, update)

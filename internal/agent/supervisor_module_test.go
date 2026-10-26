@@ -1,7 +1,5 @@
 package agent
 
-import toolshare "elbot/internal/tool/share"
-
 import (
 	"context"
 	"encoding/json"
@@ -13,6 +11,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
+	"elbot/internal/events"
 	"elbot/internal/fileops"
 	"elbot/internal/hook"
 	"elbot/internal/llm"
@@ -20,46 +19,28 @@ import (
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/modelmgr"
+	"elbot/internal/processenv"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
-	"elbot/internal/tool"
+	"elbot/internal/tool/discovery"
+	"elbot/internal/tool/execution"
+	toolmedia "elbot/internal/tool/media"
+	"elbot/internal/tool/preload"
+	toolregistry "elbot/internal/tool/registry"
 	"elbot/internal/tool/skill"
 	toolstate "elbot/internal/tool/state"
-	"elbot/internal/toolrun"
 )
 
-// These facades stand in for sibling Supervisors and expose operations only.
-func (isolatedToolCapabilities) DecodeState(raw string) (toolshare.State, error) {
-	return toolstate.DecodeState(raw)
-}
-
 type isolatedToolCapabilities struct {
-	*tool.Registry
-	*toolrun.Manager
-	*toolrun.PreloadService
+	*toolregistry.Registry
+	*execution.Manager
+	*preload.PreloadService
 	*toolstate.StateService
 	*resident.Store
 	*fileops.Service
 	skills *skill.Manager
 }
-
-func (c isolatedToolCapabilities) Schemas(ctx context.Context, tc toolshare.Context, cached []toolshare.DiscoveredTool) ([]llm.ToolSchema, error) {
-	return c.Manager.Schemas(ctx, tc, cached)
-}
-func (c isolatedToolCapabilities) List() []toolshare.Info { return c.Registry.List() }
-func (c isolatedToolCapabilities) Tags() []string    { return c.Registry.Tags() }
-func (c isolatedToolCapabilities) ToolTags(ctx context.Context) ([]string, error) {
-	return c.PreloadService.Tags(ctx)
-}
-func (c isolatedToolCapabilities) ListRollbacks(ctx context.Context) ([]fileops.RollbackInfo, error) {
-	return c.Service.List(ctx)
-}
-func (c isolatedToolCapabilities) Forget(binding fileops.Binding) { c.Service.Manager.Forget(binding) }
-func (c isolatedToolCapabilities) Remove(ctx context.Context, name string) error {
-	return c.skills.Remove(ctx, name)
-}
-func (c isolatedToolCapabilities) Reload(ctx context.Context) error { return c.skills.Reload(ctx) }
 
 type isolatedHookCapabilities struct {
 	commandbuiltin.HookService
@@ -111,8 +92,8 @@ func isolatedModuleDeps(t *testing.T) SupervisorDeps {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = models.Close(context.Background()) })
-	registry := tool.NewRegistry()
 	permission := security.DefaultPermission()
+	registry := toolregistry.NewRegistry(permission)
 	sender := dispatch.New(dispatch.Options{Primary: &assemblyPlatform{}, Store: store})
 	hooks, err := hook.NewSupervisor(t.Context(), &config.Config{ConfigPath: filepath.Join(t.TempDir(), "config.toml")}, hook.SupervisorDeps{Platform: isolatedPlatformCapabilities{sender}})
 	if err != nil {
@@ -126,12 +107,12 @@ func isolatedModuleDeps(t *testing.T) SupervisorDeps {
 		Platform: isolatedPlatformCapabilities{sender},
 		Hooks:    isolatedHookCapabilities{HookService: hooks},
 		Tools: isolatedToolCapabilities{
-			Registry: registry, Manager: toolrun.NewManager(registry, permission),
-			PreloadService: toolrun.NewPreloadService(toolrun.PreloadOptions{Registry: registry}),
-			StateService:   toolstate.NewStateService(store),
+			Registry: registry, Manager: execution.NewManager(execution.ManagerDeps{Registry: registry, Permission: permission, Media: toolmedia.NewMediaRuntime(center, root), InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, DecodeState: toolstate.DecodeState, PrepareUpdate: toolstate.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(registry).DiscoveryStateUpdate, Log: func(context.Context, events.LogRecord) {}}),
+			PreloadService: preload.NewPreloadService(preload.PreloadOptions{Registry: registry, Resolver: discovery.NewResolver(registry), NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery, LoadDiscoveryContent: discovery.LoadDiscoveryContent, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools}),
+			StateService:   toolstate.NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools),
 			Store:          resident.NewStore(filepath.Join(t.TempDir(), "memory.toml")),
 			Service:        fileops.NewService(nil),
-			skills:         skill.NewManager(t.TempDir(), registry),
+			skills:         skill.NewManager(t.TempDir(), registry, toolmedia.NewMediaRuntime(center, root), processenv.New(nil)),
 		},
 	}
 }

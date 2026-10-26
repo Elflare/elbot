@@ -1,13 +1,14 @@
 package execution
 
 import (
+	agentshare "elbot/internal/agent/share"
+
 	"context"
 
 	"strings"
 	"testing"
 
 	chatroute "elbot/internal/agent/chat"
-	"elbot/internal/agent/dialogue"
 
 	"elbot/internal/contextmgr"
 	"elbot/internal/llm"
@@ -35,8 +36,8 @@ func TestCompactMessagesFiltersToolResultsAndFailedCalls(t *testing.T) {
 		{ID: "failed", Name: "web", Arguments: `{"q":"failed"}`},
 		{ID: "missing", Name: "shell", Arguments: `{"command":"missing"}`},
 	}
-	toolCall := dialogue.ToolCallStorageMessage(session.ID, "C", "C", calls)
-	runtime := &chatroute.Compactor{Store: store}
+	toolCall := agentshare.ToolCallStorageMessage(session.ID, "C", "C", calls)
+	runtime := &chatroute.Compactor{ToolCalls: store.ToolCalls()}
 	messages, err := runtime.CompactMessages(ctx, &contextmgr.LoadedContext{
 		Summary: &storage.ContextSummary{Summary: "I"},
 		Messages: []storage.Message{

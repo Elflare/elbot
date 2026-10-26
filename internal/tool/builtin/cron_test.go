@@ -10,7 +10,7 @@ import (
 )
 
 func TestCronToolCallReturnsCurrentTimeHint(t *testing.T) {
-	result, _, err := callTool(context.Background(), NewCronTools(nil, nil)[0], toolshare.CallRequest{})
+	result, _, err := callTool(context.Background(), NewCronTools(nil, nil, time.Now)[0], toolshare.CallRequest{})
 	if err != nil {
 		t.Fatalf("Call: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestResolveUpdateRunAtReturnsPointerForRelativeOffset(t *testing.T) {
 }
 
 func TestCronToolsRiskAndVisibility(t *testing.T) {
-	tools := NewCronTools(nil, nil)
+	tools := NewCronTools(nil, nil, time.Now)
 	if len(tools) != 3 {
 		t.Fatalf("tool count = %d", len(tools))
 	}

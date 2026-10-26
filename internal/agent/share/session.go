@@ -6,7 +6,6 @@ import (
 
 	"elbot/internal/request"
 	"elbot/internal/session"
-	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
@@ -14,7 +13,9 @@ import (
 var ErrSessionBindingChanged = errors.New("当前会话已切换，请重新发送消息")
 
 // Existing execution contexts keep their original binding across confirmation.
-func CaptureSessionBinding(ctx context.Context, sessions *session.Service, identity interface {
+func CaptureSessionBinding(ctx context.Context, sessions interface {
+	CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
+}, identity interface {
 	Scope(context.Context) session.Scope
 }, row *storage.Session) (context.Context, error) {
 	current, binding, err := sessions.CurrentBound(ctx, identity.Scope(ctx))
@@ -33,7 +34,11 @@ func CaptureSessionBinding(ctx context.Context, sessions *session.Service, ident
 	return session.WithBinding(ctx, binding), nil
 }
 
-func CompactActive(turns *turn.Manager, requests *request.Manager, sessionID string) bool {
+func CompactActive(turns interface {
+	Snapshot(string) turn.Snapshot
+}, requests interface {
+	ListBySession(string) []request.Request
+}, sessionID string) bool {
 	if turns.Snapshot(sessionID).Phase == turn.PhaseCompact {
 		return true
 	}
@@ -45,4 +50,4 @@ func CompactActive(turns *turn.Manager, requests *request.Manager, sessionID str
 	return false
 }
 
-func IsBackgroundSession(row *storage.Session) bool { return sessionpkg.IsBackground(row) }
+func IsBackgroundSession(row *storage.Session) bool { return session.IsBackground(row) }

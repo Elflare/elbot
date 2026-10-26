@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"elbot/internal/agent/dialogue"
-	agentevents "elbot/internal/agent/events"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
@@ -70,7 +69,7 @@ func TestAgentLogSourcePreservesExplicitIdentity(t *testing.T) {
 	}
 	defer connection.Disconnect()
 	ctx := contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "wrong", RequestID: "wrong"})
-	agentshare.EmitAgentLog(ctx, agentevents.EventMeta{SessionID: "source"}, globalevents.LogRecord{
+	agentshare.EmitAgentLog(ctx, contextinfo.Execution{SessionID: "source"}, globalevents.LogRecord{
 		Category:  globalevents.LogRuntime,
 		Level:     slog.LevelInfo,
 		EventName: "identity_test",
@@ -93,18 +92,18 @@ func TestModelObservationPreservesExplicitResultAndUsage(t *testing.T) {
 	processor := &dialogue.CallProcessor{}
 	observation := processor.Begin("session", modelmgr.Selection{ModelSelection: config.ModelSelection{Provider: "provider", Model: "model"}})
 	tokens := int64(9007199254740993)
-	observation.Event.Usage = &llm.Usage{TotalTokens: &tokens}
-	observation.Event.OutputReady, observation.Event.Text = true, "partial output"
-	observation.LogRecord.ResultStatus, observation.LogRecord.Level = globalevents.ResultFailed, slog.LevelError
-	observation.LogRecord.EventName = "llm_usage"
-	observation.LogRecord.Content = "call_error=context canceled\npersistence_error=disk full"
+	observation.Event().Usage = &llm.Usage{TotalTokens: &tokens}
+	observation.Event().OutputReady, observation.Event().Text = true, "partial output"
+	observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultFailed, slog.LevelError
+	observation.LogRecord().EventName = "llm_usage"
+	observation.LogRecord().Content = "call_error=context canceled\npersistence_error=disk full"
 	observation.Publish(context.Background(), errors.Join(context.Canceled, errors.New("disk full")))
 	observation.Publish(context.Background(), nil)
 	if len(records) != 2 || records[0].ResultStatus != globalevents.ResultFailed || records[1].Content == "" {
 		t.Fatalf("records = %#v", records)
 	}
 	tokens = 0
-	if observation.Event.Usage.TotalTokens == nil || *observation.Event.Usage.TotalTokens != 9007199254740993 {
+	if observation.Event().Usage.TotalTokens == nil || *observation.Event().Usage.TotalTokens != 9007199254740993 {
 		t.Fatal("usage pointer was not copied")
 	}
 }
@@ -116,7 +115,7 @@ func TestStableLogNamesIndependentOfContent(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = center.Close(context.Background()) })
 	for _, content := range []string{"before wording", "after wording：变化"} {
-		agentshare.EmitAgentLog(context.Background(), agentevents.EventMeta{}, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, EventName: "stable_event", Module: "agent", Content: content})
+		agentshare.EmitAgentLog(context.Background(), contextinfo.Execution{}, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, EventName: "stable_event", Module: "agent", Content: content})
 	}
 	if err := center.Close(context.Background()); err != nil {
 		t.Fatal(err)

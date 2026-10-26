@@ -2,28 +2,28 @@ package dialogue
 
 import (
 	"context"
-
-	"elbot/internal/agent/hooks"
+	agentshare "elbot/internal/agent/share"
 	"elbot/internal/events"
 )
 
 type preparationOnlyHooks struct{}
 
-func (preparationOnlyHooks) LLMTurnPrepared(_ context.Context, _ hooks.Session, input hooks.LLMInput) (hooks.LLMInputResult, events.LogResult, error) {
-	return hooks.LLMInputResult{Segments: input.Message.Segments, Tools: input.Tools}, events.LogResult{}, nil
+func (preparationOnlyHooks) LLMTurnPrepared(_ context.Context, _ agentshare.Session, input agentshare.LLMInput) (agentshare.LLMInputResult, events.LogResult, error) {
+	return agentshare.LLMInputResult{Segments: input.Message.Segments, Tools: input.Tools}, events.LogResult{}, nil
 }
 
 type callOnlyHooks struct{}
 
-func (callOnlyHooks) LLMRequestPrepared(_ context.Context, _ hooks.Session, input hooks.LLMInput) (hooks.LLMInputResult, events.LogResult, error) {
-	return hooks.LLMInputResult{Segments: input.Message.Segments, Tools: input.Tools}, events.LogResult{}, nil
+func (callOnlyHooks) LLMRequestPrepared(_ context.Context, _ agentshare.Session, input agentshare.LLMInput) (agentshare.LLMInputResult, events.LogResult, error) {
+	return agentshare.LLMInputResult{Segments: input.Message.Segments, Tools: input.Tools}, events.LogResult{}, nil
 }
 
-func (callOnlyHooks) LLMResponseReceived(_ context.Context, _ hooks.Session, response hooks.LLMResponse) (hooks.LLMResponseResult, events.LogResult, error) {
-	return hooks.LLMResponseResult{Text: response.Text, SourceText: response.SourceText, Usage: response.Usage, ToolCalls: response.ToolCalls}, events.LogResult{}, nil
+func (callOnlyHooks) LLMResponseReceived(_ context.Context, _ agentshare.Session, response agentshare.LLMResponse) (agentshare.LLMResponseResult, events.LogResult, error) {
+	return agentshare.LLMResponseResult{Text: response.Text, SourceText: response.SourceText, Usage: response.Usage, ToolCalls: response.ToolCalls}, events.LogResult{}, nil
 }
 
-func (callOnlyHooks) ErrorOccurred(context.Context, hooks.Session, hooks.LLMResponse, error) {}
+func (callOnlyHooks) ErrorOccurred(context.Context, agentshare.Session, agentshare.LLMResponse, error) {
+}
 
 type runnerOnlyHooks struct {
 	preparationOnlyHooks

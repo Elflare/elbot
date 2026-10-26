@@ -2,6 +2,7 @@ package responses
 
 import (
 	"context"
+
 	"encoding/json"
 	"fmt"
 
@@ -54,12 +55,12 @@ func (s *turnState) ensureInputFormat(ctx context.Context) error {
 	if version != 0 {
 		return incompatibleInputFormat()
 	}
-	locked, release, err := s.route.Messages.Gate.Enter(ctx, s.session.ID)
+	locked, release, err := s.route.Gate.Enter(ctx, s.session.ID)
 	if err != nil {
 		return err
 	}
 	defer release()
-	row, err := s.route.View.Sessions.Mutate(locked, s.session.ID, func(row *storage.Session) error {
+	row, err := s.route.SessionRows.Mutate(locked, s.session.ID, func(row *storage.Session) error {
 		version, err := sessionInputVersion(row)
 		if err != nil {
 			return err

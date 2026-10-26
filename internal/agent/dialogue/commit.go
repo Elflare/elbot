@@ -1,6 +1,8 @@
 package dialogue
 
 import (
+	agentshare "elbot/internal/agent/share"
+
 	"context"
 	"fmt"
 	"slices"
@@ -13,18 +15,18 @@ import (
 	"elbot/internal/turn"
 )
 
-// MessageCommitter commits a prepared business message, or a cursor-only reply.
-// Protocol-private implementations can atomically attach their native state.
-type MessageCommitter interface {
-	Commit(context.Context, *storage.Message, []storage.PlatformMessageMap) (events.LogResult, error)
-}
-
 // CommitGate uses the original activation and live attempt, not public IDs as
 // authorization. It is held only for local persistence, never across external IO.
 type CommitGate struct {
-	Sessions *session.Service
-	Turns    *turn.Manager
-	View     ExecutionView
+	Sessions interface {
+		EnterBinding(context.Context, *session.Binding) (context.Context, func(), error)
+		EnterSessions(context.Context, ...string) (context.Context, func(), error)
+	}
+	Turns interface {
+		Execution(string) *turn.Execution
+		MatchesAttempt(string, string) bool
+	}
+	View ExecutionView
 }
 
 func (g *CommitGate) Enter(ctx context.Context, sessionID string) (context.Context, func(), error) {
@@ -59,7 +61,7 @@ type messageCommitter struct {
 	operation string
 }
 
-func (s *MessageStore) Committer(operation string) MessageCommitter {
+func (s *MessageStore) Committer(operation string) agentshare.MessageCommitter {
 	return messageCommitter{store: s, operation: operation}
 }
 
@@ -74,7 +76,7 @@ func (c messageCommitter) Commit(ctx context.Context, message *storage.Message, 
 type ToolTranscriptCommitter struct {
 	Messages  *MessageStore
 	SessionID string
-	Committed []llm.LLMMessage
+	committed []llm.LLMMessage
 	head      *storage.Message
 	calls     []llm.ToolCallRequest
 	results   []*storage.Message
@@ -83,7 +85,7 @@ type ToolTranscriptCommitter struct {
 
 func (c *ToolTranscriptCommitter) Begin(ctx context.Context, head *storage.Message) (events.LogResult, error) {
 	c.SessionID, c.head = head.SessionID, head
-	metadata, err := AssistantMessageMetadata(head.Metadata)
+	metadata, err := agentshare.AssistantMessageMetadata(head.Metadata)
 	if err != nil {
 		return events.LogResult{ResultStatus: events.ResultSkipped}, err
 	}
@@ -91,13 +93,13 @@ func (c *ToolTranscriptCommitter) Begin(ctx context.Context, head *storage.Messa
 	c.results = make([]*storage.Message, len(c.calls))
 	c.remaining = len(c.calls)
 	for i, call := range c.calls {
-		stored := ToolResultStorageMessage(c.SessionID, llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments("tool outcome is unknown: result has not been saved; do not assume success or retry automatically")})
+		stored := agentshare.ToolResultStorageMessage(c.SessionID, llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments("tool outcome is unknown: result has not been saved; do not assume success or retry automatically")})
 		fields, _ := storage.DecodeSessionMetadata(stored.Metadata)
 		_ = fields.Set("tool_result_status", "pending")
 		stored.Metadata, _ = fields.Encode()
 		c.results[i] = &stored
 	}
-	batch, err := NewToolBatch(head, c.calls, c.results)
+	batch, err := agentshare.NewToolBatch(head, c.calls, c.results)
 	if err != nil {
 		return events.LogResult{ResultStatus: events.ResultSkipped}, err
 	}
@@ -144,36 +146,13 @@ func (c *ToolTranscriptCommitter) Flush(ctx context.Context) (events.LogResult, 
 		return result, fmt.Errorf("tool batch has unfinished results")
 	}
 	for _, stored := range append([]*storage.Message{c.head}, c.results...) {
-		message, err := MessageFromStorage(*stored)
+		message, err := agentshare.MessageFromStorage(*stored)
 		if err != nil {
 			return result, err
 		}
-		c.Committed = append(c.Committed, message)
+		c.committed = append(c.committed, message)
 	}
 	return result, nil
 }
 
-// NewToolBatch retains one assistant call array and ordered call/result links.
-func NewToolBatch(head *storage.Message, calls []llm.ToolCallRequest, results []*storage.Message) (*storage.ToolBatch, error) {
-	if head.ID == "" {
-		head.ID = storage.NewID()
-	}
-	head.CreatedAt = storage.Now()
-	ids := make([]string, len(results))
-	for i, result := range results {
-		if result.ID == "" {
-			result.ID = storage.NewID()
-		}
-		ids[i] = result.ID
-		result.CreatedAt = head.CreatedAt
-	}
-	fields, err := storage.DecodeSessionMetadata(head.Metadata)
-	if err != nil {
-		return nil, err
-	}
-	// Calls and IDs contain only strings; decoded metadata already contains valid JSON.
-	_ = fields.Set("tool_calls", calls)
-	_ = fields.Set(storage.ToolResultMessageKey, ids)
-	head.Metadata, _ = fields.Encode()
-	return &storage.ToolBatch{Call: head, Results: results}, nil
-}
+func (c *ToolTranscriptCommitter) Committed() []llm.LLMMessage { return c.committed }

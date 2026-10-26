@@ -1,16 +1,19 @@
 package chat
 
 import (
+	agentshare "elbot/internal/agent/share"
+
 	"fmt"
 	"strings"
 
-	"elbot/internal/agent/dialogue"
 	"elbot/internal/llm"
 	"elbot/internal/turn"
 )
 
-func drainPendingUserInput(turns *turn.Manager, id string, messages []llm.LLMMessage, expected ...string) ([]llm.LLMMessage, *dialogue.PendingUserMessage) {
-	pending := dialogue.DrainPending(turns, id, expected...)
+func drainPendingUserInput(turns interface {
+	DrainMergedInput(string, ...string) turn.Input
+}, id string, messages []llm.LLMMessage, expected ...string) ([]llm.LLMMessage, *agentshare.PendingUserMessage) {
+	pending := agentshare.DrainPending(turns, id, expected...)
 	if pending == nil {
 		return messages, nil
 	}

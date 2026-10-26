@@ -17,7 +17,8 @@ import (
 func TestPlatformMediaUnavailableAndMetadata(t *testing.T) {
 	store := newTestStore(t)
 	root := t.TempDir()
-	a := &MessageHandler{media: media.NewManager(store, root, &media.LocalBackend{Root: root})}
+	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
+	a := &MessageHandler{media: center, History: center.History}
 	resolver := &inboundMediaResolver{}
 	msg := platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram"}}, MediaResolver: resolver}
 	segment := platform.MessageSegment{Type: platform.SegmentImage, PlatformFileID: "image"}
@@ -25,7 +26,7 @@ func TestPlatformMediaUnavailableAndMetadata(t *testing.T) {
 	if !media.ValidID(got.MediaID) || got.MIMEType != "image/png" || got.Size != 5 || got.PlatformFileID != "" || got.URL != "" {
 		t.Fatalf("materialized metadata = %#v", got)
 	}
-	segment.Size = a.media.MaxImportBytes + 1
+	segment.Size = center.MaxImportBytes + 1
 	segment.Name = "https://example.com/private/photo.png?rkey=name-secret"
 	got = a.materializePlatformSegment(context.Background(), msg, segment)
 	if got.Type != platform.SegmentText || got.Text != "[媒体不可用；photo.png]" || resolver.calls != 1 {
@@ -42,8 +43,9 @@ func TestPlatformMediaUnavailableAndMetadata(t *testing.T) {
 func TestPlatformMediaCopiesShareResolutionWithoutDroppingPositions(t *testing.T) {
 	store := newTestStore(t)
 	root := t.TempDir()
-	a := &MessageHandler{media: media.NewManager(store, root, &media.LocalBackend{Root: root})}
-	a.media.Media.LLMImageMaxLength = 32
+	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
+	a := &MessageHandler{media: center, History: center.History}
+	center.Media.LLMImageMaxLength = 32
 	var data bytes.Buffer
 	if err := png.Encode(&data, image.NewNRGBA(image.Rect(0, 0, 80, 40))); err != nil {
 		t.Fatal(err)
@@ -68,7 +70,7 @@ func TestPlatformMediaCopiesShareResolutionWithoutDroppingPositions(t *testing.T
 			t.Fatalf("compressed metadata = %#v", segment)
 		}
 	}
-	stored, _, err := a.media.Read(context.Background(), id)
+	stored, _, err := center.Read(context.Background(), id)
 	if err != nil {
 		t.Fatal(err)
 	}

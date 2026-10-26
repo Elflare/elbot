@@ -1,15 +1,16 @@
 package responses
 
 import (
+	agentshare "elbot/internal/agent/share"
+
 	"context"
 	"encoding/json"
 
-	"elbot/internal/agent/dialogue"
 	"elbot/internal/storage"
 )
 
 func foregroundNoticeInput(row *storage.Session) (*storage.NativeInput, error) {
-	message, ok := dialogue.ForegroundNotice(row)
+	message, ok := agentshare.ForegroundNotice(row)
 	if !ok {
 		return nil, nil
 	}

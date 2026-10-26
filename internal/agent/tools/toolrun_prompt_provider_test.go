@@ -1,16 +1,17 @@
 package tools
 
 import (
+	agentshare "elbot/internal/agent/share"
+
 	"context"
 	"errors"
 	"reflect"
 	"testing"
 
-	"elbot/internal/agent/dialogue"
 	"elbot/internal/contextinfo"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	toolshare "elbot/internal/tool/share"
+	toolshare "elbot/internal/tool"
 )
 
 type promptQueryFunc func(context.Context, toolshare.ToolQuery) ([]toolshare.Info, error)
@@ -20,7 +21,6 @@ func (f promptQueryFunc) QueryTools(ctx context.Context, query toolshare.ToolQue
 }
 
 type promptIdentity struct {
-	dialogue.Identity
 	actor contextinfo.Actor
 }
 
@@ -48,7 +48,7 @@ func TestPromptNamesUseQueriedGroups(t *testing.T) {
 		}),
 	}
 	got, err := provider.ToolNames(context.Background(), storage.SessionModeWork, &storage.Session{}, session.Scope{})
-	want := dialogue.PromptToolNames{Tools: []string{"command"}, Skills: []string{"guide"}}
+	want := agentshare.PromptToolNames{Tools: []string{"command"}, Skills: []string{"guide"}}
 	if err != nil || !reflect.DeepEqual(got, want) || !reflect.DeepEqual(kinds, []string{"tool", "skill"}) {
 		t.Fatalf("names = %#v, queries = %v, error = %v", got, kinds, err)
 	}

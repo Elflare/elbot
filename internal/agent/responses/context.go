@@ -1,11 +1,12 @@
 package responses
 
 import (
+	agentshare "elbot/internal/agent/share"
+
 	"context"
 	"encoding/json"
 	"fmt"
 
-	"elbot/internal/agent/dialogue"
 	"elbot/internal/llm"
 	api "elbot/internal/llm/responses"
 	"elbot/internal/modelmgr"
@@ -15,11 +16,21 @@ import (
 
 // Context owns Responses material, never execution or session activation.
 type Context struct {
-	Repository storage.DialogueRepository
-	Preparer   *dialogue.Preparer
+	Repository interface {
+		CreateExchange(context.Context, *storage.NativeExchange) error
+		FinishExchange(context.Context, string, string, string, string, string) error
+		CurrentCheckpoint(context.Context, string) (*storage.NativeCheckpoint, error)
+		CheckpointForMessage(context.Context, string, string) (*storage.NativeCheckpoint, error)
+		LoadNativeWindow(context.Context, *storage.Session, *storage.NativeCheckpoint) (*storage.NativeWindowRecords, error)
+		PendingInputs(context.Context, string) ([]storage.NativeInput, error)
+		Calls(context.Context, string) ([]storage.NativeCall, error)
+	}
+	Preparer interface {
+		PrepareMaterials(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, func(), error)
+	}
 }
 
-type material = dialogue.Material
+type material = agentshare.Material
 
 type nativeWindow struct {
 	Items            []api.Item
@@ -52,7 +63,7 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 		if err != nil {
 			return nil, err
 		}
-		w.Materials, err = dialogue.DecodeMaterials(seed.MaterialsJSON)
+		w.Materials, err = agentshare.DecodeMaterials(seed.MaterialsJSON)
 		if err != nil {
 			return nil, err
 		}
@@ -361,7 +372,7 @@ func (w *nativeWindow) mediaIDs() []string {
 			arguments = append(arguments, item.Arguments)
 		}
 	}
-	return dialogue.MaterialMediaIDs(w.Materials, arguments, w.RetainedMediaIDs)
+	return agentshare.MaterialMediaIDs(w.Materials, arguments, w.RetainedMediaIDs)
 }
 
 // Resolve obtains protocol-neutral prepared material before assembling input
@@ -447,7 +458,7 @@ func (w *nativeWindow) Seed(continuation []api.Item, calls []storage.NativeCall,
 	if err != nil {
 		return nil, err
 	}
-	materials, err := dialogue.EncodeMaterials(w.Materials)
+	materials, err := agentshare.EncodeMaterials(w.Materials)
 	if err != nil {
 		return nil, err
 	}

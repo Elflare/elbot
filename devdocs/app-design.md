@@ -1,6 +1,6 @@
 # App 包设计
 
-App 使用六文件组织公共运行流程，按下层接口已存在来编写调用；下层按照这些契约实现。Agent 已通过真实公开接口接入，配置独占已实现；其他四条线、媒体和模型构造入口、平台客户端接口及进程入口适配仍待完成。完整应用的编译与运行验证需待这些接口接入。
+App 使用六文件组织公共运行流程，按下层接口已存在来编写调用；下层按照这些契约实现。Agent 已提供根包公开接口，配置独占已实现；外围调用方迁移、各业务线接线、媒体和模型构造入口、平台客户端接口及进程入口适配仍待完成。完整应用的编译与运行验证需待这些接口接入。
 
 ## 职责与边界
 
@@ -54,14 +54,14 @@ App 用 `shutdownStep` 记录步骤名称和关闭调用，`runShutdownSteps` �
 
 ## 对外调用契约
 
-`agent.NewSupervisor(ctx, cfg, deps)` 接收 Store、Models、Media、Permission、Logs 及 Tool、Hook、Platform 能力，其中 Hook 能力仅供管理命令使用。公开业务入口为 `HandleMessage`、`RegisterHooks`、`StartHookRequest`、`Complete`、`Commands`、`ObserveStatusChanged`、`ObserveBindingChanged`；生命周期使用 `Start`、`BeginClose`、`Close`、`Done`。Hook 的 `ConnectAgent` 注册一组 `agent/hooks.Points` 回调并持有解除函数，每个实际 handler 通过 `StartHookRequest` 登记。其他接收方的 `ConnectAgent` 负责自身适配、订阅和释放。其余四条线通过根包 `Supervisor`、`SupervisorDeps`、`NewSupervisor` 及各自生命周期接口接入。
-各条线的对外文件放各条线的根部，内部业务放子包。
+`agent.NewSupervisor(ctx, cfg, deps)` 接收 Store、Models、Media、Permission、Logs 及 Tool、Hook、Platform 能力，其中 Hook 能力仅供管理命令使用。公开业务入口为 `HandleMessage`、`RegisterHooks`、`StartHookRequest`、`Complete`、`Commands`、`ObserveStatusChanged`、`ObserveBindingChanged`；生命周期使用 `Start`、`BeginClose`、`Close`、`Done`。Hook 的 `ConnectAgent` 注册一组 `agent.Points` 回调并持有解除函数，每个实际 handler 通过 `StartHookRequest` 登记。其他接收方的 `ConnectAgent` 负责自身适配、订阅和释放。其余四条线通过根包 `Supervisor`、`SupervisorDeps`、`NewSupervisor` 及各自生命周期接口接入。
+各条线的对外文件放各条线的根部，内部业务放子包。Agent 的公开回调和事件定义在 contracts.go，内部共享载荷放 share，消费者按实际需要接收最小能力。当前 Agent 子包可独立验证；根包装配仍受 Hook、Command、Completion 的旧契约阻塞。
 
 Tool 根部创建媒体入口、技能目录与基础环境并一次注入 Skill Manager；Builtin、Skill、发现及 ELwisp 均接入必需的准备／执行契约，Skill 内部不依赖 Tool 根包。Cron 工具只使用 Tool 内部契约，根部 bridge 接入 Storage 和模型校验并发布任务定义变更；Background 的订阅与调度刷新仍待接入。Background 的 Elnis 媒体调用尚引用旧 Tool 根部类型，其他目标总管契约仍待完成，整体装配尚不能通过编译。
 
 Background 根部按四文件组织：`supervisor.go` 只定义对外总管并持有组件，`deps.go` 声明 Store、Models、Media、Logs、Agent、Tools、Platform 七项借用依赖，`wiring.go` 负责完整配置装配与边界适配，`lifecycle.go` 协调 Start、BeginClose、Close、Done。根部不公开内部 Runner，也不提供 Wait 或 Cron CRUD 契约；Cron 工具注册和管理归 Tool。
 
-Background 按目标内部接口写调用并标注 TODO：构造阶段建立订阅；Start 依次完成恢复、维护任务配置、Cron Manager 首次加载与启动、启用的 Elnis 就绪，最后调用 Cron Service.Start 放行平台通知。SetupCron 的目标契约只配置维护任务，Manager.Start 由根部显式调用；平台通知在 Service.Start 前只缓存、不启动 worker，启动失败不放行，关闭时清理缓存并停止接纳。Service.Start 等待消费者就绪，不等待缓存任务执行完。BeginClose 停止接入且不等待，Close 使用 App 的清理期限，Done 只在自有工作实际退出后关闭。Agent 的后台执行、会话复制与清理公开契约、内部组件适配及生命周期接入仍待实现；不补旧组件兼容层，当前根部框架不代表完整应用已可编译运行。
+Background 按目标内部接口写调用并标注 TODO：构造阶段建立订阅；Start 依次完成恢复、维护任务配置、Cron Manager 首次加载与启动、启用的 Elnis 就绪，最后调用 Cron Service.Start 放行平台通知。SetupCron 的目标契约只配置维护任务，Manager.Start 由根部显式调用；平台通知在 Service.Start 前只缓存、不启动 worker，启动失败不放行，关闭时清理缓存并停止接纳。Service.Start 等待消费者就绪，不等待缓存任务执行完。BeginClose 停止接入且不等待，Close 使用 App 的清理期限，Done 只在自有工作实际退出后关闭。Agent 根部已预留 BackgroundRequest、BackgroundResult、BackgroundCopyRequest，以及 RunBackground、CopyBackground、CleanupSessions 的 TODO 签名；方法实现、内部组件适配及生命周期接入仍待完成；不补旧组件兼容层，当前根部框架不代表完整应用已可编译运行。
 
 `platform.RunClient(ctx, cfg, name)` 完成连接选择、运行和结果分类，返回 `ClientResult{Kind, Err}`：
 

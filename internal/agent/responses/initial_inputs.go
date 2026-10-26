@@ -1,12 +1,13 @@
 package responses
 
 import (
+	agentshare "elbot/internal/agent/share"
+
 	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
 
-	"elbot/internal/agent/dialogue"
 	api "elbot/internal/llm/responses"
 	"elbot/internal/storage"
 )
@@ -61,7 +62,7 @@ func (r *Loop) validateInitialInputs(ctx context.Context, row *storage.Session, 
 		if err != nil {
 			return err
 		}
-		if dialogue.MessageContent(segments) != message.Content || dialogue.StoredMessageSegments(segments) != message.Segments {
+		if agentshare.MessageContent(segments) != message.Content || agentshare.StoredMessageSegments(segments) != message.Segments {
 			return missing()
 		}
 		item, err := api.ParseItem([]byte(input.ItemJSON))

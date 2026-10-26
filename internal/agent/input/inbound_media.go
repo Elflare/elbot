@@ -78,7 +78,7 @@ func (h *MessageHandler) associateInboundHistory(ctx context.Context, msg platfo
 	if !hasMedia {
 		return nil
 	}
-	row, err := h.media.History.GetByPlatformMessage(ctx, msg.Conversation.Source.Platform, msg.Conversation.Source.ScopeID, messageID)
+	row, err := h.History.GetByPlatformMessage(ctx, msg.Conversation.Source.Platform, msg.Conversation.Source.ScopeID, messageID)
 	if errors.Is(err, storage.ErrNotFound) {
 		return nil
 	}

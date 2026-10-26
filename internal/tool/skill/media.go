@@ -6,7 +6,6 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"bytes"
 	"context"
-	toolmedia "elbot/internal/tool/media"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -18,7 +17,7 @@ import (
 )
 
 // prepareGoMedia changes only the stdin copy and only an explicit media_inputs field.
-func prepareGoMedia(ctx context.Context, raw json.RawMessage, call *toolmedia.MediaCall, base string) (json.RawMessage, error) {
+func prepareGoMedia(ctx context.Context, raw json.RawMessage, call toolshare.MediaCall, base string) (json.RawMessage, error) {
 	var payload map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return nil, err
@@ -73,7 +72,7 @@ func prepareGoMedia(ctx context.Context, raw json.RawMessage, call *toolmedia.Me
 	return json.Marshal(payload)
 }
 
-func prepareCommandMedia(ctx context.Context, raw json.RawMessage, manifest AgentSkillManifest, call *toolmedia.MediaCall, base string) (json.RawMessage, error) {
+func prepareCommandMedia(ctx context.Context, raw json.RawMessage, manifest AgentSkillManifest, call toolshare.MediaCall, base string) (json.RawMessage, error) {
 	properties, _ := manifest.Parameters["properties"].(map[string]any)
 	if !schemaContainsMedia(manifest.Parameters) || len(bytes.TrimSpace(raw)) == 0 {
 		return raw, nil
@@ -117,7 +116,7 @@ func schemaContainsMedia(value any) bool {
 	return false
 }
 
-func prepareMediaValue(ctx context.Context, raw json.RawMessage, schemaValue any, call *toolmedia.MediaCall, base, name string) (json.RawMessage, error) {
+func prepareMediaValue(ctx context.Context, raw json.RawMessage, schemaValue any, call toolshare.MediaCall, base, name string) (json.RawMessage, error) {
 	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		return nil, fmt.Errorf("media argument %s must not be null", name)
 	}
@@ -169,7 +168,7 @@ func prepareMediaValue(ctx context.Context, raw json.RawMessage, schemaValue any
 	}
 }
 
-func resultFromStdoutWithMedia(ctx context.Context, out string, call *toolmedia.MediaCall, base string) (*toolshare.Result, error) {
+func resultFromStdoutWithMedia(ctx context.Context, out string, call toolshare.MediaCall, base string) (*toolshare.Result, error) {
 	trimmed := strings.TrimSpace(out)
 	var structured struct {
 		Content  string `json:"content"`

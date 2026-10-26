@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	toolregistry "elbot/internal/tool/registry"
 	"errors"
 	"fmt"
 	"reflect"
@@ -47,7 +48,7 @@ func stateTestSnapshot(ctx context.Context, store storage.Store, id string) (too
 func TestStateCommitRestoresAndDetachesSchemas(t *testing.T) {
 	ctx := context.Background()
 	store, row := stateTestStore(t, `{"workspace":"keep","unknown":9007199254740993,"title_source":"manual","last_usage":{"TotalTokens":12}}`)
-	service := NewStateService(store)
+	service := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)
 	item := stateTestTool("external")
 	item.Source = toolshare.SourceKindELwisp
 	item.CanonicalName = "wisp/external"
@@ -106,7 +107,7 @@ func TestStateCommitFailureKeepsAllFields(t *testing.T) {
 			store, row := stateTestStore(t, metadata)
 			invalid := stateTestTool("new")
 			invalid.Schema.Parameters["invalid"] = make(chan int)
-			result, logResult, err := NewStateService(store).Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{invalid}, Tags: []string{"new"}})
+			result, logResult, err := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools).Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{invalid}, Tags: []string{"new"}})
 			if err == nil || result.Metadata != "" || len(result.Injected) != 0 {
 				t.Fatalf("failure published state: %+v %v", result, err)
 			}
@@ -122,7 +123,7 @@ func TestStateCommitFailureKeepsAllFields(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	store, row := stateTestStore(t, "")
-	_, _, err := NewStateService(store).Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{stateTestTool("canceled")}})
+	_, _, err := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools).Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{stateTestTool("canceled")}})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancel error=%v", err)
 	}
@@ -135,7 +136,7 @@ func TestStateCommitFailureKeepsAllFields(t *testing.T) {
 func TestStateConcurrentUpdatesPreserveOtherOwners(t *testing.T) {
 	ctx := context.Background()
 	store, row := stateTestStore(t, `{"unknown":9007199254740993,"context_compact":{"pending":true,"summary":"seed"}}`)
-	service := NewStateService(store)
+	service := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)
 	contexts := contextmgr.New(contextmgr.Options{Store: store})
 	const count = 24
 	start := make(chan struct{})

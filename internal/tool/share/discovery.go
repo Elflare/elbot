@@ -4,6 +4,7 @@ package share
 import (
 	"context"
 	"elbot/internal/llm"
+	"strings"
 )
 
 type DiscoveryResult struct {
@@ -76,3 +77,14 @@ type LazyDetailProvider interface {
 const (
 	MetadataActivateTools = "activate_tools"
 )
+
+// RenderDetailBlocks 只拼接业务详情，不处理会话相关的语言规则。
+func RenderDetailBlocks(blocks []DetailBlock) string {
+	var parts []string
+	for _, block := range blocks {
+		if content := strings.TrimSpace(block.Content); content != "" {
+			parts = append(parts, content)
+		}
+	}
+	return strings.Join(parts, "\n\n---\n\n")
+}

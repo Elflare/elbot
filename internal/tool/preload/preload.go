@@ -12,31 +12,35 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/elyph"
 	globalevents "elbot/internal/events"
-	"elbot/internal/tool/discovery"
-	toolregistry "elbot/internal/tool/registry"
 	"elbot/internal/tool/share"
 )
 
 type PreloadOptions struct {
-	Registry *toolregistry.Registry // 已配置统一权限策略的工具目录。
-	TagsPath string                 // 标签配置文件路径；为空时使用 Tags。
-	Tags     config.ToolTagsConfig  // 不使用配置文件时的标签配置。
+	Resolver interface {
+		Resolve(context.Context, []share.Tool) (*share.DiscoveryResult, map[string]share.Tool, error)
+	} // 根部注入的发现解析。
+	NativeDiscoveredToolsFromDiscovery func(*share.DiscoveryResult) []share.DiscoveredTool                  // 已解析结果转换。
+	LoadDiscoveryContent               func(context.Context, share.Tool) (string, bool, bool, error)        // 动态发现说明。
+	BackgroundDiscoveredTools          func(context.Context, []share.DiscoveredTool) []share.DiscoveredTool // 后台资格筛选。
+	Registry                           interface {
+		Get(string) (share.Tool, bool)
+		QueryTools(context.Context, share.ToolQuery) ([]share.Tool, error)
+		NamesByTag(string) []string
+		Tags() []string
+	} // 已配置统一权限策略的工具目录。
+	TagsPath string                // 标签配置文件路径；为空时使用 Tags。
+	Tags     config.ToolTagsConfig // 不使用配置文件时的标签配置。
 }
 
 // PreloadService 准备工具和展示材料，不写会话状态，也不触发 Skill 扫描。
 // 调用方提供身份、模型、工作目录和前后台事实；资格筛选统一交给 Registry。
 type PreloadService struct {
-	registry *toolregistry.Registry // 提供目录事实与已筛选的原工具对象。
-	resolver *discovery.Resolver    // 解析选中对象及其依赖，保留本次使用的对象。
-	tags     *toolTagConfigSource   // 读取标签成员及提示内容。
+	PreloadOptions
+	tags *toolTagConfigSource // 标签配置读取。
 }
 
 func NewPreloadService(opts PreloadOptions) *PreloadService {
-	return &PreloadService{
-		registry: opts.Registry,
-		resolver: discovery.NewResolver(opts.Registry),
-		tags:     newToolTagConfigSource(opts.TagsPath, opts.Tags),
-	}
+	return &PreloadService{PreloadOptions: opts, tags: newToolTagConfigSource(opts.TagsPath, opts.Tags)}
 }
 
 func (s *PreloadService) PrepareTools(ctx context.Context, names []string) (share.ToolPreload, error) {
@@ -62,7 +66,7 @@ func (s *PreloadService) PrepareTools(ctx context.Context, names []string) (shar
 		if strings.TrimSpace(text) != "" {
 			content = append(content, text)
 		}
-		result.Update.Tools = append(result.Update.Tools, discovery.NativeDiscoveredToolsFromDiscovery(details)...)
+		result.Update.Tools = append(result.Update.Tools, s.NativeDiscoveredToolsFromDiscovery(details)...)
 		for _, item := range details.Tools {
 			result.NeedsElyphRules = result.NeedsElyphRules || item.NeedsElyphRules
 		}
@@ -76,7 +80,7 @@ func (s *PreloadService) PrepareTools(ctx context.Context, names []string) (shar
 }
 
 func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, names []string) (share.SkillPreload, error) {
-	candidates, err := s.registry.QueryTools(ctx, share.ToolQuery{Names: uniqueNames(names), Kind: "skill"})
+	candidates, err := s.Registry.QueryTools(ctx, share.ToolQuery{Names: uniqueNames(names), Kind: "skill"})
 	if err != nil {
 		return share.SkillPreload{}, err
 	}
@@ -144,22 +148,22 @@ func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, na
 		}
 		result.Accepted[i] = true
 	}
-	result.Content = discovery.RenderDetailBlocks(blocks)
+	result.Content = share.RenderDetailBlocks(blocks)
 	return result, nil
 }
 
 func (s *PreloadService) discoverDirective(ctx context.Context, name string) (*share.DiscoveryResult, map[string]share.Tool, string, error) {
 	name = strings.TrimSpace(name)
 	names, tag := []string{name}, ""
-	if _, exists := s.registry.Get(name); !exists {
+	if _, exists := s.Registry.Get(name); !exists {
 		tag = normalizeToolTag(name)
 		configured, err := s.tags.configuredToolNamesByTag(ctx, tag)
 		if err != nil {
 			return nil, nil, "", err
 		}
-		names = uniqueNames(append(s.registry.NamesByTag(tag), configured...))
+		names = uniqueNames(append(s.Registry.NamesByTag(tag), configured...))
 	}
-	candidates, err := s.registry.QueryTools(ctx, share.ToolQuery{Names: names, Kind: "tool"})
+	candidates, err := s.Registry.QueryTools(ctx, share.ToolQuery{Names: names, Kind: "tool"})
 	if err != nil {
 		return nil, nil, "", err
 	}
@@ -168,7 +172,7 @@ func (s *PreloadService) discoverDirective(ctx context.Context, name string) (*s
 }
 
 func (s *PreloadService) discoverNames(ctx context.Context, candidates []share.Tool) (*share.DiscoveryResult, map[string]share.Tool, error) {
-	details, targets, err := s.resolver.Resolve(ctx, candidates)
+	details, targets, err := s.Resolver.Resolve(ctx, candidates)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -193,7 +197,7 @@ func (s *PreloadService) discoveryContent(ctx context.Context, details *share.Di
 			continue
 		}
 		seen[name] = true
-		content, _, _, err := discovery.LoadDiscoveryContent(ctx, candidate)
+		content, _, _, err := s.LoadDiscoveryContent(ctx, candidate)
 		if err == nil {
 			err = ctx.Err()
 		}
@@ -248,7 +252,7 @@ func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name str
 		record.Content = fmt.Sprintf("%s: %s=%s reason=%s", eventName, key, name, reason)
 		_ = globalevents.EmitLog(ctx, record)
 	}
-	candidates, err := s.registry.QueryTools(ctx, share.ToolQuery{Names: []string{name}, IncludeHidden: true})
+	candidates, err := s.Registry.QueryTools(ctx, share.ToolQuery{Names: []string{name}, IncludeHidden: true})
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +269,7 @@ func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name str
 		if err != nil {
 			return nil, err
 		}
-		return discovery.NativeDiscoveredToolsFromDiscovery(result), nil
+		return s.NativeDiscoveredToolsFromDiscovery(result), nil
 	}
 	schema := candidate.Schema()
 	if schema.Name == "" {

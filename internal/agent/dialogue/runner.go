@@ -1,27 +1,23 @@
 package dialogue
 
-import toolshare "elbot/internal/tool/share"
-
 import (
 	"context"
-	"errors"
-	"fmt"
-	"log/slog"
-
-	"elbot/internal/agent/events"
-	"elbot/internal/agent/hooks"
+	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
-	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/modelmgr"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
-	
+	"elbot/internal/tool"
+	"errors"
+	"fmt"
+
 	"elbot/internal/turn"
 )
 
@@ -31,16 +27,21 @@ type Runner struct {
 	}
 	Calls    *CallProcessor
 	System   SystemPromptManager
-	Routes   LoopResolver
+	Routes   agentshare.LoopResolver
 	Preparer *Preparer
 	Messages *MessageStore
 	Replies  *ReplyCommitter
-	Turns    *turn.Manager
-	View     ExecutionView
+	Turns    interface {
+		Execution(string) *turn.Execution
+		MatchesAttempt(string, string) bool
+		Snapshot(string) turn.Snapshot
+	}
+	View ExecutionView
 }
 type PreparedTurn struct {
-	route Loop
-	input TurnInput
+	route    agentshare.Loop
+	input    agentshare.TurnInput
+	preparer *Preparer
 }
 
 // CheckSelection validates route availability before compaction or input writes.
@@ -52,7 +53,7 @@ func (r *Runner) CheckSelection(selection modelmgr.Selection) error {
 	return loop.CheckSelection(selection)
 }
 
-func (r *Runner) PrepareTurn(ctx context.Context, in TurnInput) (*PreparedTurn, error) {
+func (r *Runner) PrepareTurn(ctx context.Context, in agentshare.TurnInput) (agentshare.PreparedTurn, error) {
 	route, err := r.Routes.LoopFor(in.Selection.Origin.APIType)
 	if err != nil {
 		return nil, err
@@ -61,10 +62,10 @@ func (r *Runner) PrepareTurn(ctx context.Context, in TurnInput) (*PreparedTurn, 
 	if err != nil {
 		return nil, err
 	}
-	return &PreparedTurn{route: route, input: in}, nil
+	return &PreparedTurn{route: route, input: in, preparer: r.Preparer}, nil
 }
 
-func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Output) (result TurnResult) {
+func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInput, out agentshare.Output) (result agentshare.TurnResult) {
 	result.StartedAt = storage.Now()
 	result.Selection = in.Selection
 	defer func() {
@@ -88,20 +89,20 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 				}
 			}
 			if result.QuietCancellation {
-				result.Outcome = Canceled
+				result.Outcome = agentshare.Canceled
 			}
 		}
-		if result.Outcome == Completed {
+		if result.Outcome == agentshare.Completed {
 			return
 		}
 		execution := r.Turns.Execution(in.Session.ID)
 		if execution != nil && execution == turn.ExecutionFromContext(ctx) && r.Turns.Snapshot(in.Session.ID).Phase == turn.PhaseAwaitAppendConfirm {
-			result.Outcome = Paused
+			result.Outcome = agentshare.Paused
 		} else if execution != nil && !r.Turns.MatchesAttempt(in.Session.ID, turn.AttemptFromContext(ctx)) {
-			result.Outcome = Superseded
+			result.Outcome = agentshare.Superseded
 		}
-		if result.Outcome == Failed && result.Err != nil {
-			ReportFailure(requestCtx, in.Session.ID, result.Err, out.Notify)
+		if result.Outcome == agentshare.Failed && result.Err != nil {
+			agentshare.ReportFailure(requestCtx, in.Session.ID, result.Err, out.Notify)
 		}
 	}()
 	var err error
@@ -110,15 +111,11 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 		requestCtx, err = r.View.WithModel(requestCtx, in.Selection)
 	}
 	if err != nil {
-		result.Outcome, result.Err = Failed, err
+		result.Outcome, result.Err = agentshare.Failed, err
 		return result
 	}
-	loopIn := LoopInput{Session: in.Session, Text: in.Text, Selection: in.Selection, RequestID: in.RequestID, StartedAt: result.StartedAt}
-	materials, err := r.Preparer.LoadMaterials(requestCtx, in.Prepared.input)
-	var prepared PreparedLoop
-	if err == nil {
-		prepared, err = in.Prepared.route.PrepareTurn(requestCtx, materials)
-	}
+	loopIn := agentshare.LoopInput{Session: in.Session, Text: in.Text, Selection: in.Selection, RequestID: in.RequestID, StartedAt: result.StartedAt}
+	prepared, err := in.Prepared.PrepareTurn(requestCtx)
 	var user *storage.Message
 	if err == nil {
 		user, err = prepared.PrepareInput(ctx, requestCtx, loopIn, out)
@@ -130,7 +127,7 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 		_, err = prepared.InputCommitter().Commit(requestCtx, user, nil)
 	}
 	if err != nil {
-		result.Outcome, result.Err = Failed, err
+		result.Outcome, result.Err = agentshare.Failed, err
 		return result
 	}
 	if user != nil {
@@ -138,7 +135,7 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 		if string(fields["elyph_rules_shown"]) == "true" {
 			fields, err := storage.DecodeSessionMetadata(in.Session.Metadata)
 			if err != nil {
-				result.Outcome, result.Err = Failed, err
+				result.Outcome, result.Err = agentshare.Failed, err
 				return result
 			}
 			_ = fields.Set("elyph_rules_shown", true)
@@ -148,12 +145,12 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 	loop := prepared.RunLoop(ctx, requestCtx, loopIn, out)
 	result.Outcome, result.Err, result.QuietCancellation = loop.Outcome, loop.Err, loop.QuietCancellation
 	result.Usage, result.Selection = loop.Usage, loop.Selection
-	if loop.Outcome != Completed {
+	if loop.Outcome != agentshare.Completed {
 		return result
 	}
 	requestCtx, err = r.View.RefreshSession(requestCtx, in.Session)
 	if err != nil {
-		result.Outcome, result.Err = Failed, err
+		result.Outcome, result.Err = agentshare.Failed, err
 		return result
 	}
 	ctx = r.View.Context(ctx)
@@ -162,7 +159,7 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 		requestCtx, err = r.View.WithModel(requestCtx, result.Selection)
 	}
 	if err != nil {
-		result.Outcome, result.Err = Failed, err
+		result.Outcome, result.Err = agentshare.Failed, err
 		return result
 	}
 	r.Status.Record(ctx, runtimestatus.Snapshot{SessionID: in.Session.ID, Phase: runtimestatus.PhaseSending,
@@ -170,39 +167,9 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in TurnInput, out Outp
 		Kind: request.KindTurn, Label: "chat", TurnStartedAt: result.StartedAt, StageStartedAt: storage.Now()})
 	result.Committed, err = r.Replies.Commit(ctx, requestCtx, loop.Commit, out)
 	if err != nil {
-		result.Outcome, result.Err = Failed, err
+		result.Outcome, result.Err = agentshare.Failed, err
 	}
 	return result
-}
-
-// ReportFailure reports a terminal business failure at its owning entrypoint.
-// Callers settle cancellation, recovery and execution replacement before calling.
-// notify preserves foreground/background delivery policy without coupling steps
-// to notification transport or adding an "already reported" error marker.
-func ReportFailure(ctx context.Context, sessionID string, err error, notify func(context.Context, slog.Level, string)) {
-	record := globalevents.LogRecord{
-		Category: globalevents.LogRuntime, Level: slog.LevelError,
-		EventName: "dialogue_failed", Module: "dialogue", Type: globalevents.ContentText,
-		Content: err.Error(), ContentLimit: 8192, ResultStatus: globalevents.ResultFailed,
-	}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if sessionID != "" {
-		record.Identity.SessionID = &sessionID
-	}
-	if facts.RunID != "" {
-		record.Identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		record.Identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		record.Identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		record.Identity.RootRequestID = &facts.RootRequestID
-	}
-	_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
-	notify(session.WithBinding(context.WithoutCancel(ctx), nil), slog.LevelError, "对话处理失败："+err.Error())
 }
 
 // RunnerDeps contains external capabilities needed to build the common single-turn collaborators.
@@ -211,28 +178,47 @@ type RunnerDeps struct {
 		Record(context.Context, runtimestatus.Snapshot)
 		RecordUsage(context.Context, string, *llm.Usage)
 	}
-	Routes    LoopResolver
-	Dialogues storage.DialogueRepository
-	Sessions  *session.Service
-	Turns     *turn.Manager
-	Contexts  *contextmgr.Service
-	Media     *media.Manager
-	Identity  Identity
-	Hooks     interface {
-		LLMTurnPrepared(context.Context, hooks.Session, hooks.LLMInput) (hooks.LLMInputResult, globalevents.LogResult, error)
-		LLMRequestPrepared(context.Context, hooks.Session, hooks.LLMInput) (hooks.LLMInputResult, globalevents.LogResult, error)
-		LLMResponseReceived(context.Context, hooks.Session, hooks.LLMResponse) (hooks.LLMResponseResult, globalevents.LogResult, error)
-		ErrorOccurred(context.Context, hooks.Session, hooks.LLMResponse, error)
+	Routes    agentshare.LoopResolver
+	Dialogues interface {
+		Commit(context.Context, storage.DialogueCommit) (globalevents.LogResult, error)
+	}
+	Sessions interface {
+		EnterBinding(context.Context, *session.Binding) (context.Context, func(), error)
+		EnterSessions(context.Context, ...string) (context.Context, func(), error)
+	}
+	Turns interface {
+		Execution(string) *turn.Execution
+		MatchesAttempt(string, string) bool
+		Snapshot(string) turn.Snapshot
+	}
+	Contexts interface {
+		Load(context.Context, string) (*contextmgr.LoadedContext, error)
+	}
+	Media interface {
+		Materialize(context.Context, []llm.MessageSegment) ([]llm.MessageSegment, error)
+		AcquireForLLM(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, func(), error)
+	}
+	Identity interface {
+		Actor(context.Context) contextinfo.Actor
+		IsCLI(context.Context) bool
+	}
+	Hooks interface {
+		LLMTurnPrepared(context.Context, agentshare.Session, agentshare.LLMInput) (agentshare.LLMInputResult, globalevents.LogResult, error)
+		LLMRequestPrepared(context.Context, agentshare.Session, agentshare.LLMInput) (agentshare.LLMInputResult, globalevents.LogResult, error)
+		LLMResponseReceived(context.Context, agentshare.Session, agentshare.LLMResponse) (agentshare.LLMResponseResult, globalevents.LogResult, error)
+		ErrorOccurred(context.Context, agentshare.Session, agentshare.LLMResponse, error)
 	}
 	Output      AssistantPreparer
 	ToolManager interface {
-		Run(context.Context, toolshare.RunnerDeps, toolshare.RunRequest) toolshare.RunResult
-		Schemas(context.Context, toolshare.Context, []toolshare.DiscoveredTool) ([]llm.ToolSchema, error)
-		DiscoveredToolsForSession(context.Context, string, bool) ([]toolshare.DiscoveredTool, globalevents.LogResult, error)
-		DecodeState(string) (toolshare.State, error)
+		ToolInfo(string) (tool.Info, bool)
+		FilterSchemas(context.Context, []llm.ToolSchema) ([]llm.ToolSchema, error)
+		Run(context.Context, tool.RunnerDeps, tool.RunRequest) tool.RunResult
+		Schemas(context.Context, tool.Context, []tool.DiscoveredTool) ([]llm.ToolSchema, error)
+		DiscoveredToolsForSession(context.Context, string, bool) ([]tool.DiscoveredTool, globalevents.LogResult, error)
+		DecodeState(string) (tool.State, error)
 	}
-	ToolDeps     ToolDepsFactory
-	ToolProvider ToolNameProvider
+	ToolDeps     agentshare.ToolDepsFactory
+	ToolProvider agentshare.ToolNameProvider
 	// MaxRounds bounds tool batches within one turn.
 	MaxRounds int
 	SoulPath  string
@@ -240,11 +226,12 @@ type RunnerDeps struct {
 		Read(context.Context, session.Scope) (resident.Memory, error)
 	}
 	Preloader interface {
-		TagPrompts(context.Context, []string) ([]toolshare.TagPrompt, error)
-		DecodeState(string) (toolshare.State, error)
+		TagPrompts(context.Context, []string) ([]tool.TagPrompt, error)
+		DecodeState(string) (tool.State, error)
 	}
-	Signals events.Signals
-	View    ExecutionView
+	Completed *signal.Signal[agentshare.ModelCallCompletedEvent, signal.Empty]
+	Vision    *signal.Signal[VisionFallbackUsedEvent, signal.Empty]
+	View      ExecutionView
 }
 
 func NewRunner(deps RunnerDeps) *Runner {
@@ -252,9 +239,9 @@ func NewRunner(deps RunnerDeps) *Runner {
 	messages := &MessageStore{Dialogues: deps.Dialogues, Gate: &CommitGate{Sessions: deps.Sessions, Turns: deps.Turns, View: deps.View}}
 	tools.Messages = messages
 	replies := &ReplyCommitter{Output: deps.Output, Persistence: messages.Committer("append_assistant_message")}
-	preparer := &Preparer{Contexts: deps.Contexts, Media: deps.Media, Identity: deps.Identity, Hooks: deps.Hooks, Tools: tools}
+	preparer := &Preparer{Contexts: deps.Contexts, Media: deps.Media, Hooks: deps.Hooks, Tools: tools}
 	messages.Preparer = preparer
-	calls := &CallProcessor{Status: deps.Status, Messages: messages, Preparer: preparer, Hooks: deps.Hooks, Identity: deps.Identity, Tools: tools, Completed: deps.Signals.ModelCallCompleted, Vision: deps.Signals.VisionFallbackUsed}
+	calls := &CallProcessor{Status: deps.Status, Messages: messages, Preparer: preparer, Hooks: deps.Hooks, Identity: deps.Identity, Tools: tools, Completed: deps.Completed, Vision: deps.Vision}
 	soul := SoulProvider(StaticSoulProvider{Prompt: "You are a helpful assistant."})
 	if deps.SoulPath != "" {
 		soul = &FileSoulProvider{Path: deps.SoulPath}
@@ -267,4 +254,13 @@ func NewRunner(deps RunnerDeps) *Runner {
 	system.AddSource(ResidentMemorySystemPromptSource{Store: deps.Memory})
 	system.AddSource(ConversationMetaSystemPromptSource{})
 	return &Runner{Status: deps.Status, Routes: deps.Routes, Preparer: preparer, Messages: messages, Replies: replies, Turns: deps.Turns, View: deps.View, Calls: calls, System: system}
+}
+
+// PrepareTurn delays material loading until the execution attempt is admitted.
+func (p *PreparedTurn) PrepareTurn(ctx context.Context) (agentshare.PreparedLoop, error) {
+	materials, err := p.preparer.LoadMaterials(ctx, p.input)
+	if err != nil {
+		return nil, err
+	}
+	return p.route.PrepareTurn(ctx, materials)
 }

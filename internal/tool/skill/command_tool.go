@@ -6,7 +6,6 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"bytes"
 	"context"
-	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,18 +18,17 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/llm"
 	"elbot/internal/processenv"
-	"elbot/internal/tool/discovery"
 )
 
 type commandTool struct {
-	media    *toolmedia.MediaRuntime // 调用媒体的导入导出与清理入口。
-	record   record                  // 注册时选定的技能记录。
-	manifest AgentSkillManifest      // 准备和执行共用的命令声明。
+	media    interface{ NewCall() toolshare.MediaCall } // 调用媒体的导入导出与清理入口。
+	record   record                                     // 注册时选定的技能记录。
+	manifest AgentSkillManifest                         // 准备和执行共用的命令声明。
 	// ProcessEnv 保存启动时已合并配置目录 .env 的基础子进程环境。
 	processEnv processenv.Environment
 }
 
-func newCommandTool(record record, media *toolmedia.MediaRuntime, environment processenv.Environment) commandTool {
+func newCommandTool(record record, media interface{ NewCall() toolshare.MediaCall }, environment processenv.Environment) commandTool {
 	return commandTool{record: record, manifest: record.Manifest, media: media, processEnv: environment}
 }
 
@@ -49,7 +47,7 @@ func (t commandTool) Detail() string {
 	if err != nil {
 		return ""
 	}
-	return discovery.RenderDetailBlocks([]toolshare.DetailBlock{block})
+	return toolshare.RenderDetailBlocks([]toolshare.DetailBlock{block})
 }
 
 func (t commandTool) DetailBlock() toolshare.DetailBlock {
@@ -85,7 +83,7 @@ func (t commandTool) PrepareCall(ctx context.Context, req toolshare.CallRequest)
 	}), nil
 }
 
-func (t commandTool) call(ctx context.Context, raw json.RawMessage, args []string, run func(context.Context, string, *exec.Cmd, *toolmedia.MediaCall) (*toolshare.Result, error)) (result *toolshare.Result, logContent string, callErr error) {
+func (t commandTool) call(ctx context.Context, raw json.RawMessage, args []string, run func(context.Context, string, *exec.Cmd, toolshare.MediaCall) (*toolshare.Result, error)) (result *toolshare.Result, logContent string, callErr error) {
 	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 
 	dotEnv, err := config.LoadEnvFile(filepath.Join(t.record.Root, ".env"))

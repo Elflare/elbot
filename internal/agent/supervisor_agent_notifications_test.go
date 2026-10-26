@@ -2,13 +2,12 @@ package agent
 
 import (
 	"context"
-	"testing"
-
-	agentevents "elbot/internal/agent/events"
+	"elbot/internal/agent/dialogue"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/notification/rules"
 	"elbot/internal/platform"
+	"testing"
 )
 
 func TestNotificationFactsUseGlobalSignalAndVisionDedup(t *testing.T) {
@@ -23,7 +22,7 @@ func TestNotificationFactsUseGlobalSignalAndVisionDedup(t *testing.T) {
 	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "original"}}, Sender: one})
 	conversation, _ := contextinfo.ConversationFromContext(ctx)
 	for range 2 {
-		if _, err := facts.VisionFallbackUsed.Emit(ctx, agentevents.VisionFallbackUsedEvent{SessionID: "one", Conversation: &conversation, Visible: true}); err != nil {
+		if _, err := facts.VisionFallbackUsed.Emit(ctx, dialogue.VisionFallbackUsedEvent{SessionID: "one", Conversation: &conversation, Visible: true}); err != nil {
 			t.Fatal(err)
 		}
 	}

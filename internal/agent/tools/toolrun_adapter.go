@@ -1,16 +1,13 @@
 package tools
 
-import toolshare "elbot/internal/tool/share"
-
 import (
 	"context"
+	"elbot/internal/tool"
 	"encoding/json"
 	"log/slog"
 	"strings"
 	"time"
 
-	"elbot/internal/agent/dialogue"
-	"elbot/internal/agent/hooks"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
@@ -21,8 +18,7 @@ import (
 	"elbot/internal/security"
 	sessionstate "elbot/internal/session"
 	"elbot/internal/storage"
-	
-	
+
 	"elbot/internal/turn"
 	"elbot/internal/workspace"
 )
@@ -30,29 +26,41 @@ import (
 type toolRunDeps struct {
 	status agentshare.ExecutionStatus
 	hooks  interface {
-		ToolCallPrepared(context.Context, hooks.Session, llm.ToolCallRequest) (string, events.LogResult, error)
-		ToolCallCompleted(context.Context, hooks.Session, hooks.ToolResult) ([]llm.MessageSegment, events.LogResult, error)
+		ToolCallPrepared(context.Context, agentshare.Session, llm.ToolCallRequest) (string, events.LogResult, error)
+		ToolCallCompleted(context.Context, agentshare.Session, agentshare.ToolResult) ([]llm.MessageSegment, events.LogResult, error)
 	}
-	requests      *request.Manager
-	turns         *turn.Manager
-	identity      ToolIdentity
-	runtime       *ToolRuntimeState
-	sessions      *sessionstate.Service
-	sessionRows   storage.SessionRepository
-	confirmations ToolConfirmations
-	view          dialogue.ExecutionView
-	output        dialogue.Output
-	attempt       string
+	requests interface {
+		ListBySession(string) []request.Request
+		Start(context.Context, request.StartRequest) (request.Request, context.Context, func())
+	}
+	turns interface {
+		Snapshot(string) turn.Snapshot
+		AddToolUse(string, string, string)
+	}
+	identity ToolIdentity
+	runtime  *ToolRuntimeState
+	sessions interface {
+		CurrentBound(context.Context, sessionstate.Scope) (*storage.Session, *sessionstate.Binding, error)
+		EnterBinding(context.Context, *sessionstate.Binding) (context.Context, func(), error)
+		EnterSessions(context.Context, ...string) (context.Context, func(), error)
+	}
+	NewWorkspaceStore func(string) workspace.WorkspaceStore
+	confirmations     ToolConfirmations
+	view              interface {
+		RefreshExecution(context.Context, *storage.Session) (context.Context, error)
+	}
+	output  agentshare.Output
+	attempt string
 }
 
-func (d toolRunDeps) ForTurn(out dialogue.Output, attempt string) toolshare.RunnerDeps {
+func (d toolRunDeps) ForTurn(out agentshare.Output, attempt string) tool.RunnerDeps {
 	d.output, d.attempt = out, attempt
 	return d
 }
 
 func (d toolRunDeps) PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, events.LogResult, error) {
 	arguments, logResult, err := d.hooks.ToolCallPrepared(ctx,
-		hooks.Session{ID: session.ID, Mode: session.Mode, Title: session.Title, Status: session.Status}, call)
+		agentshare.Session{ID: session.ID, Mode: session.Mode, Title: session.Title, Status: session.Status}, call)
 	if err != nil {
 		return call, logResult, err
 	}
@@ -63,8 +71,8 @@ func (d toolRunDeps) PrepareToolCall(ctx context.Context, session *storage.Sessi
 func (d toolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, events.LogResult, error) {
 	original := append([]llm.MessageSegment(nil), segments...)
 	updated, logResult, err := d.hooks.ToolCallCompleted(ctx,
-		hooks.Session{ID: session.ID, Mode: session.Mode, Title: session.Title, Status: session.Status},
-		hooks.ToolResult{Call: call, Risk: risk, Segments: original, Err: callErr})
+		agentshare.Session{ID: session.ID, Mode: session.Mode, Title: session.Title, Status: session.Status},
+		agentshare.ToolResult{Call: call, Risk: risk, Segments: original, Err: callErr})
 	if err != nil {
 		return nil, logResult, err
 	}
@@ -93,14 +101,14 @@ func (d toolRunDeps) PrepareToolContext(ctx context.Context, session *storage.Se
 	if agentshare.IsBackgroundSession(session) {
 		return ctx
 	}
-	return workspace.WithWorkspaceStore(ctx, sessionstate.NewWorkspaceStore(d.sessions, d.sessionRows, session.ID))
+	return workspace.WithWorkspaceStore(ctx, d.NewWorkspaceStore(session.ID))
 }
 
 func (d toolRunDeps) ShouldSendPreview(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, assistantText string) bool {
 	return d.identity.IsCLI(ctx) || strings.TrimSpace(assistantText) == ""
 }
 
-func (d toolRunDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment toolshare.RiskAssessment, detail string) (toolshare.ConfirmResult, error) {
+func (d toolRunDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail string) (tool.ConfirmResult, error) {
 	return d.confirmations.AwaitToolConfirmation(ctx, sessionID, call, assessment, detail)
 }
 
@@ -112,7 +120,7 @@ func (d toolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output)
 	return d.output.SendOutputs(ctx, outputs)
 }
 
-func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk toolshare.RiskLevel, reason string) {
+func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk security.RiskLevel, reason string) {
 	content := map[string]string{"actor_id": d.identity.Actor(ctx).ID, "tool": call.Name, "risk": string(risk), "reason": reason}
 	for key, value := range content {
 		runes := []rune(value)
@@ -141,11 +149,11 @@ func (d toolRunDeps) AddToolUse(sessionID, toolName string) {
 }
 
 func (d toolRunDeps) ToolResultMessage(sessionID string, message llm.LLMMessage) storage.Message {
-	return dialogue.ToolResultStorageMessage(sessionID, message)
+	return agentshare.ToolResultStorageMessage(sessionID, message)
 }
 
 func (d toolRunDeps) ToolCallMessage(sessionID, content, rawText string, calls []llm.ToolCallRequest) storage.Message {
-	return dialogue.ToolCallStorageMessage(sessionID, content, rawText, calls)
+	return agentshare.ToolCallStorageMessage(sessionID, content, rawText, calls)
 }
 
 func (d toolRunDeps) RefreshExecution(ctx context.Context, row *storage.Session) (context.Context, error) {
@@ -153,12 +161,13 @@ func (d toolRunDeps) RefreshExecution(ctx context.Context, row *storage.Session)
 }
 
 type ToolIdentity interface {
-	dialogue.Identity
-	Permission() *security.Permission
+	Scope(context.Context) sessionstate.Scope
+	Actor(context.Context) contextinfo.Actor
+	IsCLI(context.Context) bool
 }
 
 type ToolConfirmations interface {
-	AwaitToolConfirmation(context.Context, string, llm.ToolCallRequest, toolshare.RiskAssessment, string) (toolshare.ConfirmResult, error)
+	AwaitToolConfirmation(context.Context, string, llm.ToolCallRequest, tool.RiskAssessment, string) (tool.ConfirmResult, error)
 }
 
 // ToolRunDeps declares the application bridge consumed by ToolRun. Per-turn
@@ -166,30 +175,42 @@ type ToolConfirmations interface {
 type ToolRunDeps struct {
 	Status agentshare.ExecutionStatus
 	Hooks  interface {
-		ToolCallPrepared(context.Context, hooks.Session, llm.ToolCallRequest) (string, events.LogResult, error)
-		ToolCallCompleted(context.Context, hooks.Session, hooks.ToolResult) ([]llm.MessageSegment, events.LogResult, error)
+		ToolCallPrepared(context.Context, agentshare.Session, llm.ToolCallRequest) (string, events.LogResult, error)
+		ToolCallCompleted(context.Context, agentshare.Session, agentshare.ToolResult) ([]llm.MessageSegment, events.LogResult, error)
 	}
-	Requests      *request.Manager
-	Turns         *turn.Manager
-	Identity      ToolIdentity
-	Runtime       *ToolRuntimeState
-	Sessions      *sessionstate.Service
-	SessionRows   storage.SessionRepository
-	Confirmations ToolConfirmations
-	View          dialogue.ExecutionView
+	Requests interface {
+		ListBySession(string) []request.Request
+		Start(context.Context, request.StartRequest) (request.Request, context.Context, func())
+	}
+	Turns interface {
+		Snapshot(string) turn.Snapshot
+		AddToolUse(string, string, string)
+	}
+	Identity ToolIdentity
+	Runtime  *ToolRuntimeState
+	Sessions interface {
+		CurrentBound(context.Context, sessionstate.Scope) (*storage.Session, *sessionstate.Binding, error)
+		EnterBinding(context.Context, *sessionstate.Binding) (context.Context, func(), error)
+		EnterSessions(context.Context, ...string) (context.Context, func(), error)
+	}
+	NewWorkspaceStore func(string) workspace.WorkspaceStore
+	Confirmations     ToolConfirmations
+	View              interface {
+		RefreshExecution(context.Context, *storage.Session) (context.Context, error)
+	}
 }
 
-func NewToolRunDeps(deps ToolRunDeps) dialogue.ToolDepsFactory {
+func NewToolRunDeps(deps ToolRunDeps) agentshare.ToolDepsFactory {
 	return &toolRunDeps{
-		status:        deps.Status,
-		hooks:         deps.Hooks,
-		requests:      deps.Requests,
-		turns:         deps.Turns,
-		identity:      deps.Identity,
-		runtime:       deps.Runtime,
-		sessions:      deps.Sessions,
-		sessionRows:   deps.SessionRows,
-		confirmations: deps.Confirmations,
-		view:          deps.View,
+		status:            deps.Status,
+		hooks:             deps.Hooks,
+		requests:          deps.Requests,
+		turns:             deps.Turns,
+		identity:          deps.Identity,
+		runtime:           deps.Runtime,
+		sessions:          deps.Sessions,
+		NewWorkspaceStore: deps.NewWorkspaceStore,
+		confirmations:     deps.Confirmations,
+		view:              deps.View,
 	}
 }

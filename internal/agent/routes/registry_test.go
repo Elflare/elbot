@@ -1,6 +1,8 @@
 package routes_test
 
 import (
+	agentshare "elbot/internal/agent/share"
+
 	"context"
 	"log/slog"
 	"path/filepath"
@@ -42,7 +44,7 @@ type testLoop struct {
 
 func (*testLoop) CheckSelection(modelmgr.Selection) error { return nil }
 
-func (l *testLoop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials) (dialogue.PreparedLoop, error) {
+func (l *testLoop) PrepareTurn(ctx context.Context, materials agentshare.TurnMaterials) (agentshare.PreparedLoop, error) {
 	if contextinfo.RootRequestIDFromContext(ctx) == "" {
 		l.t.Fatal("materials loaded without request registration")
 	}
@@ -58,11 +60,11 @@ type testPrepared struct {
 	user *storage.Message
 }
 
-func (p *testPrepared) InputCommitter() dialogue.MessageCommitter {
+func (p *testPrepared) InputCommitter() agentshare.MessageCommitter {
 	return p.loop.messages.Committer("append_user_message")
 }
 
-func (p *testPrepared) PrepareInput(_, requestCtx context.Context, in dialogue.LoopInput, _ dialogue.Output) (*storage.Message, error) {
+func (p *testPrepared) PrepareInput(_, requestCtx context.Context, in agentshare.LoopInput, _ agentshare.Output) (*storage.Message, error) {
 	if contextinfo.RootRequestIDFromContext(requestCtx) != in.RequestID {
 		p.loop.t.Fatal("preparation lost parent request")
 	}
@@ -70,10 +72,10 @@ func (p *testPrepared) PrepareInput(_, requestCtx context.Context, in dialogue.L
 	return p.user, nil
 }
 
-func (p *testPrepared) RunLoop(_, requestCtx context.Context, in dialogue.LoopInput, _ dialogue.Output) dialogue.LoopResult {
+func (p *testPrepared) RunLoop(_, requestCtx context.Context, in agentshare.LoopInput, _ agentshare.Output) agentshare.LoopResult {
 	p.loop.ran++
-	return dialogue.LoopResult{Outcome: dialogue.Completed, Selection: in.Selection, Usage: &llm.Usage{TotalTokens: func() *int64 { n := int64(7); return &n }()},
-		Commit: dialogue.ReplyCommitInput{Session: in.Session, Text: "stored reply", RawText: "source reply", PlatformText: "visible reply"}}
+	return agentshare.LoopResult{Outcome: agentshare.Completed, Selection: in.Selection, Usage: &llm.Usage{TotalTokens: func() *int64 { n := int64(7); return &n }()},
+		Commit: agentshare.ReplyCommitInput{Session: in.Session, Text: "stored reply", RawText: "source reply", PlatformText: "visible reply"}}
 }
 
 type testCompactor struct{ calls int }
@@ -150,7 +152,7 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 		Messages: loop.messages,
 		Replies:  &dialogue.ReplyCommitter{Persistence: loop.messages.Committer("append_assistant_message"), Output: out},
 		Turns:    turn.NewManager(), View: dialogue.ExecutionView{Sessions: store.Sessions()}}
-	in := dialogue.TurnInput{
+	in := agentshare.TurnInput{
 		Session:   row,
 		Text:      "incoming",
 		Selection: modelmgr.Selection{ModelSelection: config.ModelSelection{Provider: origin.Provider, Model: "m"}, Client: client, Origin: origin},
@@ -164,7 +166,7 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	defer done()
 	in.RequestID = info.ID
 	result := runner.RunTurn(ctx, requestCtx, in, out)
-	if result.Outcome != dialogue.Completed || !result.Committed.Persisted || result.Usage == nil || (result.Usage.TotalTokens == nil || *result.Usage.TotalTokens != 7) {
+	if result.Outcome != agentshare.Completed || !result.Committed.Persisted || result.Usage == nil || (result.Usage.TotalTokens == nil || *result.Usage.TotalTokens != 7) {
 		t.Fatalf("common execution failed: %+v", result)
 	}
 	if loop.prepared != 1 || loop.ran != 1 || len(out.sent) != 1 || out.sent[0] != "visible reply" {
@@ -174,7 +176,7 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	if err != nil || len(rows) != 2 || rows[1].Content != "stored reply" {
 		t.Fatalf("common commit lost canonical reply: %+v / %v", rows, err)
 	}
-	metadata, err := dialogue.AssistantMessageMetadata(rows[1].Metadata)
+	metadata, err := agentshare.AssistantMessageMetadata(rows[1].Metadata)
 	if err != nil || metadata.RawText != "source reply" {
 		t.Fatal(metadata, err)
 	}

@@ -3,6 +3,7 @@ package media
 
 import (
 	"context"
+	"io"
 
 	"elbot/internal/media"
 	"elbot/internal/platform"
@@ -20,11 +21,33 @@ func ValidID(id string) bool {
 
 // MediaRuntime 由 Tool 装配共享；媒体中心及其存储细节不向工具开放。
 type MediaRuntime struct {
-	center      *media.Manager // 借用的媒体中心，生命周期由 App 持有。
-	sandboxRoot string         // 媒体缓存根目录，不随调用工作目录变化。
+	center interface {
+		Metadata(context.Context, string) (*storage.Media, error)
+		ImageMetadata(context.Context, string) (*storage.Media, error)
+		ImportURL(context.Context, string, media.Input) (*storage.Media, error)
+		ImportFile(context.Context, string, media.Input) (*storage.Media, error)
+		ImportReader(context.Context, io.Reader, int64, media.Input) (*storage.Media, error)
+		OpenHeld(context.Context, *storage.Media) (io.ReadCloser, error)
+		AddReference(context.Context, *storage.MediaReference) error
+		RemoveReference(context.Context, storage.MediaReference) error
+		HistoryIDs(context.Context, storage.ChatMessage) (map[int]string, error)
+		GetHistoryMediaBatch(context.Context, []media.HistoryMediaRequest, platform.MediaResolver, media.HistoryFetchOptions) ([]media.HistoryMediaResult, error)
+	} // 借用的媒体中心，生命周期由 App 持有。
+	sandboxRoot string // 媒体缓存根目录，不随调用工作目录变化。
 }
 
-func NewMediaRuntime(center *media.Manager, sandboxRoot string) *MediaRuntime {
+func NewMediaRuntime(center interface {
+	Metadata(context.Context, string) (*storage.Media, error)
+	ImageMetadata(context.Context, string) (*storage.Media, error)
+	ImportURL(context.Context, string, media.Input) (*storage.Media, error)
+	ImportFile(context.Context, string, media.Input) (*storage.Media, error)
+	ImportReader(context.Context, io.Reader, int64, media.Input) (*storage.Media, error)
+	OpenHeld(context.Context, *storage.Media) (io.ReadCloser, error)
+	AddReference(context.Context, *storage.MediaReference) error
+	RemoveReference(context.Context, storage.MediaReference) error
+	HistoryIDs(context.Context, storage.ChatMessage) (map[int]string, error)
+	GetHistoryMediaBatch(context.Context, []media.HistoryMediaRequest, platform.MediaResolver, media.HistoryFetchOptions) ([]media.HistoryMediaResult, error)
+}, sandboxRoot string) *MediaRuntime {
 	return &MediaRuntime{center: center, sandboxRoot: sandboxRoot}
 }
 

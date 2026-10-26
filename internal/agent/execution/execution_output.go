@@ -1,29 +1,29 @@
 package execution
 
 import (
+	agentshare "elbot/internal/agent/share"
+
 	"context"
 	"log/slog"
 
-	"elbot/internal/agent/dialogue"
-	background "elbot/internal/background/share"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/session"
+
 	"elbot/internal/turn"
-	"elbot/internal/workspace"
 )
 
 // The sink changes when a running background execution is adopted. Already
 // completed output is never replayed, and a request's cancellation is retained.
 type executionTurnOutput struct {
-	view       dialogue.ExecutionView
-	foreground dialogue.Output
-	sessions   *session.Service
+	view interface {
+		Context(context.Context) context.Context
+	}
+	foreground agentshare.Output
 	execution  *turn.Execution
-	fallback   dialogue.Output
+	fallback   agentshare.Output
 }
 
-func (o executionTurnOutput) target(ctx context.Context) (context.Context, dialogue.Output) {
+func (o executionTurnOutput) target(ctx context.Context) (context.Context, agentshare.Output) {
 	if o.execution.Foreground() != nil {
 		return o.view.Context(ctx), o.foreground
 	}
@@ -47,51 +47,6 @@ func (o executionTurnOutput) ReplaceAndFinishStream(ctx, streamCtx context.Conte
 
 func (o executionTurnOutput) SendAssistant(ctx context.Context, text string) (delivery.Receipt, events.LogResult, error) {
 	ctx, out := o.target(ctx)
-	if foreground := o.execution.Foreground(); foreground != nil {
-		if parsed, err := background.ParseJSONResult(text); err == nil {
-			text = parsed.Report
-			if len(parsed.ReportSegments) > 0 {
-				binding, _ := session.BindingFromContext(foreground)
-				row, err := o.view.Sessions.Get(ctx, binding.SessionID())
-				if err != nil {
-					logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
-					if err == context.Canceled {
-						logResult.ResultStatus = events.ResultCanceled
-					}
-					return delivery.Receipt{}, logResult, err
-				}
-				dir, err := session.NewWorkspaceStore(o.sessions, o.view.Sessions, row.ID).GetWorkspaceDir(ctx)
-				if err != nil {
-					logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
-					if err == context.Canceled {
-						logResult.ResultStatus = events.ResultCanceled
-					}
-					return delivery.Receipt{}, logResult, err
-				}
-				outputs, err := background.BuildReportOutputs("", parsed.ReportSegments, workspace.PathScope{Dir: dir, Restricted: true})
-				if err != nil {
-					logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
-					if err == context.Canceled {
-						logResult.ResultStatus = events.ResultCanceled
-					}
-					return delivery.Receipt{}, logResult, err
-				}
-				receipt, logResult, err := out.SendAssistant(ctx, text)
-				if err != nil {
-					return receipt, logResult, err
-				}
-				// Receipt continues to identify the assistant text for message association.
-				// Report outputs retain their own delivery boundary.
-				result := logResult
-				logResult, err = out.SendOutputs(ctx, outputs)
-				logResult.Content = "assistant:\n" + result.Content + "\noutputs:\n" + logResult.Content
-				if result.ResultStatus == events.ResultFailed || (result.ResultStatus == events.ResultCanceled && logResult.ResultStatus != events.ResultFailed) {
-					logResult.ResultStatus = result.ResultStatus
-				}
-				return receipt, logResult, err
-			}
-		}
-	}
 	return out.SendAssistant(ctx, text)
 }
 
@@ -120,7 +75,9 @@ func (o executionTurnOutput) StartReasoning(ctx context.Context) delivery.Reason
 
 // Resolve foreground context for each new delta, including adoption mid-call.
 type executionReasoningStream struct {
-	view   dialogue.ExecutionView
+	view interface {
+		Context(context.Context) context.Context
+	}
 	stream delivery.ReasoningStream
 }
 

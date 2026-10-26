@@ -2,6 +2,7 @@ package responses
 
 import (
 	"context"
+	agentshare "elbot/internal/agent/share"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -10,8 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"elbot/internal/agent/dialogue"
-	"elbot/internal/agent/hooks"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
@@ -20,14 +19,14 @@ import (
 	"elbot/internal/storage"
 )
 
-func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessage, stream delivery.MessageStream) (final dialogue.CallOutput, err error) {
+func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMessage, stream delivery.MessageStream) (final agentshare.CallOutput, err error) {
 	client := s.selection.Client.(api.Streamer)
-	ctx = hooks.WithReadOnlyCalls(ctx)
+	ctx = agentshare.WithReadOnlyCalls(ctx)
 	observation := s.route.Calls.Begin(s.session.ID, s.selection)
 	defer func() {
 		observation.Publish(ctx, err)
 	}()
-	projection, err := s.route.Calls.PrepareCall(ctx, s.session, s.selection, s.projection, s.tools, pending, inputCommitter{state: s}, &observation.LogRecord)
+	projection, err := s.route.Calls.PrepareCall(ctx, s.session, s.selection, s.projection, s.tools, pending, inputCommitter{state: s}, observation.LogRecord())
 	if err != nil {
 		return final, err
 	}
@@ -159,8 +158,8 @@ func (s *turnState) call(ctx context.Context, pending *dialogue.PendingUserMessa
 		if result.Response != nil {
 			final.Usage = result.Response.TokenUsage()
 		}
-		if observation.Event.ProviderError {
-			s.route.Calls.NotifyError(ctx, s.session.ID, hooks.LLMResponse{Provider: s.selection.Provider, Model: s.selection.Model}, observation.Event.Err)
+		if observation.Event().ProviderError {
+			s.route.Calls.NotifyError(ctx, s.session.ID, agentshare.LLMResponse{Provider: s.selection.Provider, Model: s.selection.Model}, observation.Event().Err)
 		}
 		return final, err
 	}

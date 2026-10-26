@@ -1,10 +1,11 @@
 package responses
 
 import (
+	agentshare "elbot/internal/agent/share"
+
 	"context"
 	"fmt"
 
-	"elbot/internal/agent/dialogue"
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/storage"
@@ -17,7 +18,7 @@ func (c inputCommitter) Commit(ctx context.Context, message *storage.Message, ma
 		err := fmt.Errorf("native input message is required")
 		return events.LogResult{ResultStatus: events.ResultSkipped}, err
 	}
-	segments, err := dialogue.MessageSegmentsFromStorage(message.Segments)
+	segments, err := agentshare.MessageSegmentsFromStorage(message.Segments)
 	if err != nil {
 		return events.LogResult{ResultStatus: events.ResultSkipped}, err
 	}
@@ -110,7 +111,7 @@ func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) (event
 	native := s.advance("")
 	for i, call := range s.calls {
 		message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments("tool outcome is unknown: result has not been saved; do not assume success or retry automatically")}
-		stored := dialogue.ToolResultStorageMessage(s.session.ID, message)
+		stored := agentshare.ToolResultStorageMessage(s.session.ID, message)
 		stored.ID = storage.NewID()
 		fields, _ := storage.DecodeSessionMetadata(stored.Metadata)
 		_ = fields.Set("tool_result_status", "pending")
@@ -123,7 +124,7 @@ func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) (event
 		c.inputs[i] = input
 		c.calls = append(c.calls, storage.NativeCall{ExchangeID: s.exchange.ID, CallID: call.ID, Name: call.Name, Arguments: call.Arguments, Ordinal: i, Status: "pending", ResultInputID: input.ID})
 	}
-	batch, err := dialogue.NewToolBatch(head, s.calls, c.results)
+	batch, err := agentshare.NewToolBatch(head, s.calls, c.results)
 	if err != nil {
 		return events.LogResult{ResultStatus: events.ResultSkipped}, err
 	}
@@ -159,7 +160,7 @@ func (c *toolCommitter) Result(ctx context.Context, index int, _ llm.ToolCallReq
 		return events.LogResult{ResultStatus: events.ResultSkipped}, err
 	}
 	segments := archived[0].Segments
-	stored.Content, stored.Segments = dialogue.MessageContent(segments), dialogue.StoredMessageSegments(segments)
+	stored.Content, stored.Segments = agentshare.MessageContent(segments), agentshare.StoredMessageSegments(segments)
 	input, err := queuedInput(s.session.ID, stored.ID, s.exchange.ID, c.calls[index].CallID, segments)
 	if err != nil {
 		return events.LogResult{ResultStatus: events.ResultSkipped}, err
@@ -195,7 +196,7 @@ func (c *toolCommitter) Flush(ctx context.Context) (events.LogResult, error) {
 		return logResult, fmt.Errorf("tool batch has unfinished results")
 	}
 	for _, stored := range append([]*storage.Message{c.head}, c.results...) {
-		projected, err := dialogue.MessageFromStorage(*stored)
+		projected, err := agentshare.MessageFromStorage(*stored)
 		if err != nil {
 			return logResult, err
 		}

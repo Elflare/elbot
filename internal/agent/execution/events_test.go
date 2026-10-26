@@ -2,11 +2,10 @@ package execution
 
 import (
 	"context"
+	"elbot/internal/agent/dialogue"
 	"errors"
 	"strings"
 	"testing"
-
-	agentevents "elbot/internal/agent/events"
 
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
@@ -18,13 +17,13 @@ import (
 
 func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 	turns := turn.NewManager()
-	events := signal.New[agentevents.StatusChangedEvent, signal.Empty]("status")
-	var observed []agentevents.StatusChangedEvent
-	_, _ = events.Observe(func(_ context.Context, e agentevents.StatusChangedEvent) error {
+	events := signal.New[StatusChangedEvent, signal.Empty]("status")
+	var observed []StatusChangedEvent
+	_, _ = events.Observe(func(_ context.Context, e StatusChangedEvent) error {
 		observed = append(observed, e)
 		return nil
 	}, signal.ConnectOptions{})
-	r := NewStatusRecorder(StatusRecorderDeps{Turns: turns, Changed: events})
+	r := NewStatusRecorder(StatusRecorderDeps{View: dialogue.ExecutionView{}, Turns: turns, Changed: events})
 	old, current := turn.NewExecution("old"), turn.NewExecution("current")
 	oldCtx := turn.WithAttempt(turn.WithExecution(context.Background(), old), "old-attempt")
 	ctx := turn.WithAttempt(turn.WithExecution(context.Background(), current), "current-attempt")

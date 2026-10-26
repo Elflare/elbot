@@ -1,13 +1,14 @@
 package responses
 
 import (
+	agentshare "elbot/internal/agent/share"
+
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 
-	"elbot/internal/agent/dialogue"
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	globalevents "elbot/internal/events"
@@ -18,11 +19,19 @@ import (
 )
 
 type Compactor struct {
-	Context  *Context
-	Messages *dialogue.MessageStore
-	View     dialogue.ExecutionView
-	System   dialogue.SystemPromptManager
-	Identity dialogue.Identity
+	Context *Context
+	Gate    interface {
+		Enter(context.Context, string) (context.Context, func(), error)
+	}
+	View interface {
+		WithModel(context.Context, modelmgr.Selection) (context.Context, error)
+	}
+	System interface {
+		Build(context.Context, agentshare.SystemPromptRequest) (string, error)
+	}
+	Identity interface {
+		Scope(context.Context) session.Scope
+	}
 }
 
 func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason string, selection modelmgr.Selection) (prepared *contextmgr.PreparedCompact, err error) {
@@ -86,7 +95,7 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 		return nil, err
 	}
 	defer release()
-	instructions, err := c.System.Build(ctx, dialogue.SystemPromptRequest{Mode: row.Mode, Session: row, Scope: c.Identity.Scope(ctx)})
+	instructions, err := c.System.Build(ctx, agentshare.SystemPromptRequest{Mode: row.Mode, Session: row, Scope: c.Identity.Scope(ctx)})
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +126,7 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 		RequestJSON:          audit,
 		InputIDsJSON:         "[]",
 	}
-	locked, leave, err := c.Messages.Gate.Enter(ctx, row.ID)
+	locked, leave, err := c.Gate.Enter(ctx, row.ID)
 	if err != nil {
 		return nil, err
 	}

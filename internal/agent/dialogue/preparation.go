@@ -2,41 +2,43 @@ package dialogue
 
 import (
 	"context"
-	"fmt"
-	"log/slog"
-
-	"elbot/internal/agent/hooks"
+	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	"elbot/internal/elyph"
 	"elbot/internal/events"
 	"elbot/internal/llm"
-	"elbot/internal/media"
 	"elbot/internal/storage"
+	"fmt"
+	"log/slog"
 )
 
 type Preparer struct {
-	Contexts *contextmgr.Service
-	Media    *media.Manager
-	Identity Identity
-	Hooks    interface {
-		LLMTurnPrepared(context.Context, hooks.Session, hooks.LLMInput) (hooks.LLMInputResult, events.LogResult, error)
+	Contexts interface {
+		Load(context.Context, string) (*contextmgr.LoadedContext, error)
+	}
+	Media interface {
+		Materialize(context.Context, []llm.MessageSegment) ([]llm.MessageSegment, error)
+		AcquireForLLM(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, func(), error)
+	}
+	Hooks interface {
+		LLMTurnPrepared(context.Context, agentshare.Session, agentshare.LLMInput) (agentshare.LLMInputResult, events.LogResult, error)
 	}
 	Tools *ToolExecutor
 }
 
-func (p *Preparer) LoadMaterials(ctx context.Context, in TurnInput) (materials TurnMaterials, err error) {
+func (p *Preparer) LoadMaterials(ctx context.Context, in agentshare.TurnInput) (materials agentshare.TurnMaterials, err error) {
 	input := in.Input
 	if len(input.Segments) == 0 {
 		input.Segments = llm.TextSegments(in.Text)
 	}
 	archived, err := p.ArchiveMaterials(ctx, []llm.LLMMessage{{Segments: input.Segments}})
 	if err != nil {
-		return TurnMaterials{}, err
+		return agentshare.TurnMaterials{}, err
 	}
 	segments := archived[0].Segments
 	message := &storage.Message{ID: storage.NewID(), SessionID: in.Session.ID, Role: storage.RoleUser,
-		Content: MessageContent(segments), Segments: StoredMessageSegments(segments), ReplyToPlatformMessageID: in.ReplyToPlatformMessageID}
+		Content: agentshare.MessageContent(segments), Segments: agentshare.StoredMessageSegments(segments), ReplyToPlatformMessageID: in.ReplyToPlatformMessageID}
 	input.Segments = segments
 	record := events.LogRecord{
 		Category:     events.LogRuntime,
@@ -78,17 +80,17 @@ func (p *Preparer) LoadMaterials(ctx context.Context, in TurnInput) (materials T
 	_ = events.EmitLog(context.WithoutCancel(ctx), record)
 	loaded, err := p.Contexts.Load(ctx, in.Session.ID)
 	if err != nil {
-		return TurnMaterials{}, fmt.Errorf("读取对话上下文: %w", err)
+		return agentshare.TurnMaterials{}, fmt.Errorf("读取对话上下文: %w", err)
 	}
-	return TurnMaterials{Session: in.Session, Input: input, UserMessage: message, Loaded: loaded}, nil
+	return agentshare.TurnMaterials{Session: in.Session, Input: input, UserMessage: message, Loaded: loaded}, nil
 }
 
-func (p *Preparer) PrepareInput(ctx context.Context, in LoopInput, user *storage.Message, platformText string, segments []llm.MessageSegment, messages []llm.LLMMessage, tools []llm.ToolSchema, needsElyphRules bool) ([]llm.MessageSegment, []llm.ToolSchema, error) {
+func (p *Preparer) PrepareInput(ctx context.Context, in agentshare.LoopInput, user *storage.Message, platformText string, segments []llm.MessageSegment, messages []llm.LLMMessage, tools []llm.ToolSchema, needsElyphRules bool) ([]llm.MessageSegment, []llm.ToolSchema, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	result, _, err := p.Hooks.LLMTurnPrepared(ctx, hooks.Session{ID: in.Session.ID}, hooks.LLMInput{
-		Message:  hooks.Message{ID: user.ID, Role: string(llm.RoleUser), PlatformText: platformText, Segments: append([]llm.MessageSegment(nil), segments...)},
+	result, _, err := p.Hooks.LLMTurnPrepared(ctx, agentshare.Session{ID: in.Session.ID}, agentshare.LLMInput{
+		Message:  agentshare.Message{ID: user.ID, Role: string(llm.RoleUser), PlatformText: platformText, Segments: append([]llm.MessageSegment(nil), segments...)},
 		Provider: in.Selection.Provider, Model: in.Selection.Model, Messages: llm.CloneMessages(messages), Tools: tools})
 	if err != nil {
 		return nil, nil, fmt.Errorf("llm turn hook: %w", err)
@@ -101,10 +103,10 @@ func (p *Preparer) PrepareInput(ctx context.Context, in LoopInput, user *storage
 	}
 	// A new session may inherit tool schemas after compaction. Their language
 	// requirements still apply even without a fresh discovery call.
-	if p.Tools != nil && p.Tools.Registry != nil {
+	if p.Tools != nil && p.Tools.Manager != nil {
 		for _, schema := range tools {
-			if candidate, ok := p.Tools.Registry.Get(schema.Name); ok {
-				needsElyphRules = needsElyphRules || candidate.Info().NeedsElyphRules
+			if info, ok := p.Tools.Manager.ToolInfo(schema.Name); ok {
+				needsElyphRules = needsElyphRules || info.NeedsElyphRules
 			}
 		}
 	}

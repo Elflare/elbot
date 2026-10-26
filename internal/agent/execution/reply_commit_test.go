@@ -152,8 +152,8 @@ type replyTestFixture struct {
 	repo            *replyTestRepository
 	platform        *replyTestPlatform
 	committer       *dialogue.ReplyCommitter
-	out             dialogue.Output
-	in              dialogue.ReplyCommitInput
+	out             agentshare.Output
+	in              agentshare.ReplyCommitInput
 	hooks           *agenthooks.HookBridge
 }
 
@@ -183,7 +183,7 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 	messages := &dialogue.MessageStore{Dialogues: replyTestDialogues{DialogueRepository: store.Dialogues(), repo: f.repo}, Gate: &dialogue.CommitGate{Sessions: session.NewService(store), Turns: turn.NewManager(), View: dialogue.ExecutionView{Sessions: store.Sessions()}}}
 	f.committer = &dialogue.ReplyCommitter{Persistence: messages.Committer("append_assistant_message"), Output: sender}
 	f.out = foregroundTurnOutput{sender: sender}
-	f.in = dialogue.ReplyCommitInput{Session: row, Text: "history", RawText: "raw", PlatformText: "visible", Outputs: []delivery.Output{delivery.Text("later")}}
+	f.in = agentshare.ReplyCommitInput{Session: row, Text: "history", RawText: "raw", PlatformText: "visible", Outputs: []delivery.Output{delivery.Text("later")}}
 	return f
 }
 
@@ -434,7 +434,7 @@ func TestReplyCommitHookSuppressesDisplayWithoutChangingHistory(t *testing.T) {
 					return "", events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 				}
 			}
-			f.register(t, agenthooks.Points{AgentTurnOutputPrepared: suppress("turn"), AgentOutputPrepared: suppress("send")})
+			f.register(t, agenthooks.Points{AgentTurnOutputPrepared: suppress("turn"), AgentOutputPrepared: suppress("send_hook")})
 			got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
 			if err != nil || !got.Persisted || f.platform.text != "" {
 				t.Fatalf("result=%+v err=%v text=%q", got, err, f.platform.text)
@@ -445,7 +445,7 @@ func TestReplyCommitHookSuppressesDisplayWithoutChangingHistory(t *testing.T) {
 			}
 			count := 0
 			for _, event := range f.events {
-				if event == "send" {
+				if event == "send_hook" {
 					count++
 				}
 			}

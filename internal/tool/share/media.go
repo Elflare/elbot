@@ -3,6 +3,7 @@ package share
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 )
 
@@ -41,4 +42,14 @@ type MediaImportOptions struct {
 type HistoryMediaResult struct {
 	Media MediaInfo // 成功取得的媒体；失败时为零值。
 	Err   error     // 此项查询或获取失败的原因。
+}
+
+// MediaCall 是 Builtin 与 Skill 共用的单次媒体资源契约；Close 释放本次持有。
+type MediaCall interface {
+	Retain(context.Context, string) (MediaInfo, error)
+	Workspace(string) (string, error)
+	Export(context.Context, string, string) (string, MediaInfo, error)
+	Import(context.Context, string, string, MediaImportOptions) (MediaInfo, error)
+	CachedExport(context.Context, string) (string, error)
+	Close() error
 }

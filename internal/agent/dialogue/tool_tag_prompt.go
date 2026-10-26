@@ -1,22 +1,22 @@
 package dialogue
 
-import toolshare "elbot/internal/tool/share"
-
 import (
+	agentshare "elbot/internal/agent/share"
+
 	"context"
+	"elbot/internal/tool"
 
 	"elbot/internal/storage"
 )
 
-// The tool module owns tag configuration; Agent only places its prompt material.
 type ToolTagsSystemPromptSource struct {
 	Preloader interface {
-		TagPrompts(context.Context, []string) ([]toolshare.TagPrompt, error)
-		DecodeState(string) (toolshare.State, error)
+		TagPrompts(context.Context, []string) ([]tool.TagPrompt, error)
+		DecodeState(string) (tool.State, error)
 	}
 }
 
-func (s ToolTagsSystemPromptSource) Parts(ctx context.Context, req SystemPromptRequest) ([]SystemPromptPart, error) {
+func (s ToolTagsSystemPromptSource) Parts(ctx context.Context, req agentshare.SystemPromptRequest) ([]SystemPromptPart, error) {
 	if req.Session == nil || (req.Session.Mode != storage.SessionModeWork && req.Session.Mode != storage.SessionModeBackground) {
 		return nil, nil
 	}

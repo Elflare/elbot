@@ -11,18 +11,19 @@ import (
 
 	"elbot/internal/fileops"
 	"elbot/internal/processenv"
-	toolmedia "elbot/internal/tool/media"
-	toolregistry "elbot/internal/tool/registry"
 	toolshare "elbot/internal/tool/share"
 )
 
 type Manager struct {
-	root       string                  // 根部装配传入的技能资产目录。
-	catalog    *catalog                // 当前已成功注册的技能记录。
-	scanner    filesystemScanner       // 只读取技能文件并生成候选记录。
-	registry   *toolregistry.Registry  // 借用 Tool 注册目录，仅替换 Skill 来源的工具。
-	media      *toolmedia.MediaRuntime // 借用 Tool 媒体入口，交给可执行技能使用。
-	processEnv processenv.Environment  // 启动时的基础环境，技能执行时再叠加自身 .env。
+	root     string            // 根部装配传入的技能资产目录。
+	catalog  *catalog          // 当前已成功注册的技能记录。
+	scanner  filesystemScanner // 只读取技能文件并生成候选记录。
+	registry interface {
+		ReplaceSources([]toolshare.Source, []toolshare.Tool) error
+		Get(string) (toolshare.Tool, bool)
+	} // 借用 Tool 注册目录，仅替换 Skill 来源的工具。
+	media      interface{ NewCall() toolshare.MediaCall } // 借用 Tool 媒体入口，交给可执行技能使用。
+	processEnv processenv.Environment                     // 启动时的基础环境，技能执行时再叠加自身 .env。
 
 	writeMu sync.Mutex    // 串行化技能写入与重载；等待用户确认时不持有。
 	mu      sync.Mutex    // 保护加载状态及等待通知。
@@ -33,7 +34,10 @@ type Manager struct {
 }
 
 // NewManager 接收根部已确定的目录与完整依赖，不自行选择默认配置目录或启动加载。
-func NewManager(root string, registry *toolregistry.Registry, media *toolmedia.MediaRuntime, environment processenv.Environment) *Manager {
+func NewManager(root string, registry interface {
+	ReplaceSources([]toolshare.Source, []toolshare.Tool) error
+	Get(string) (toolshare.Tool, bool)
+}, media interface{ NewCall() toolshare.MediaCall }, environment processenv.Environment) *Manager {
 	return &Manager{
 		root:       root,
 		catalog:    newCatalog(),

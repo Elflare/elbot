@@ -8,9 +8,11 @@ import (
 	"elbot/internal/media"
 	"elbot/internal/security"
 	"elbot/internal/storage"
+	"elbot/internal/tool/discovery"
 	toolmedia "elbot/internal/tool/media"
 	"elbot/internal/tool/registry"
 	"elbot/internal/tool/share"
+	"elbot/internal/tool/state"
 )
 
 func newTestManager(catalog *registry.Registry, permission *security.Permission, centers ...*media.Manager) *Manager {
@@ -21,9 +23,9 @@ func newTestManager(catalog *registry.Registry, permission *security.Permission,
 	if len(centers) > 0 {
 		center = centers[0]
 	}
-	return NewManager(catalog, permission, toolmedia.NewMediaRuntime(center, ""), func(ctx context.Context, record events.LogRecord) {
+	return NewManager(ManagerDeps{Registry: catalog, Permission: permission, Media: toolmedia.NewMediaRuntime(center, ""), InfoAvailableInContext: registry.InfoAvailableInContext, UnavailableReason: registry.UnavailableReason, BackgroundDiscoveredTools: registry.BackgroundDiscoveredTools, DecodeState: state.DecodeState, PrepareUpdate: state.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(catalog).DiscoveryStateUpdate, Log: func(ctx context.Context, record events.LogRecord) {
 		_ = events.EmitLog(context.WithoutCancel(ctx), record)
-	})
+	}})
 }
 
 type fakeTool struct {

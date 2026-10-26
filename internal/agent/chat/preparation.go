@@ -1,16 +1,17 @@
 package chat
 
 import (
+	agentshare "elbot/internal/agent/share"
+
 	"context"
 
-	"elbot/internal/agent/dialogue"
 	"elbot/internal/contextmgr"
 	"elbot/internal/llm"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/storage"
 )
 
-func (r *Loop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials) (dialogue.PreparedLoop, error) {
+func (r *Loop) PrepareTurn(ctx context.Context, materials agentshare.TurnMaterials) (agentshare.PreparedLoop, error) {
 	session, loaded := materials.Session, materials.Loaded
 	hasUserHistory := hasStorageUserMessage(loaded.Messages)
 	compactSeedOnCurrentUser := false
@@ -33,11 +34,11 @@ func (r *Loop) PrepareTurn(ctx context.Context, materials dialogue.TurnMaterials
 	return &preparedLoop{route: r, materials: materials, compactSeedOnCurrentUser: compactSeedOnCurrentUser, summaryOnCurrentUser: summaryOnCurrentUser}, nil
 }
 
-func (p *preparedLoop) InputCommitter() dialogue.MessageCommitter {
+func (p *preparedLoop) InputCommitter() agentshare.MessageCommitter {
 	return p.route.Messages.Committer("append_user_message")
 }
 
-func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in dialogue.LoopInput, out dialogue.Output) (*storage.Message, error) {
+func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (*storage.Message, error) {
 	r := p.route
 	s := &chatTurnState{
 		ctx:        ctx,
@@ -66,7 +67,7 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in dialogue
 		TurnStartedAt:  s.startedAt,
 		StageStartedAt: s.startedAt,
 	})
-	scope := r.Preparer.Identity.Scope(ctx)
+	scope := r.Identity.Scope(ctx)
 	var err error
 	s.messages, err = r.PromptBuilder.Build(ctx, PromptBuildRequest{Session: s.session, Scope: scope, Messages: messages, Summary: loaded.Summary})
 	if err != nil {
@@ -102,11 +103,11 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in dialogue
 	}
 	s.messages = llm.SetLatestUserSegments(s.messages, promptUserSegments)
 	if compactSeedOnCurrentUser {
-		userMessage.Content = dialogue.MessageContent(promptUserSegments)
-		userMessage.Segments = dialogue.StoredMessageSegments(promptUserSegments)
+		userMessage.Content = agentshare.MessageContent(promptUserSegments)
+		userMessage.Segments = agentshare.StoredMessageSegments(promptUserSegments)
 	} else {
-		userMessage.Content = dialogue.MessageContent(canonicalUserSegments)
-		userMessage.Segments = dialogue.StoredMessageSegments(canonicalUserSegments)
+		userMessage.Content = agentshare.MessageContent(canonicalUserSegments)
+		userMessage.Segments = agentshare.StoredMessageSegments(canonicalUserSegments)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err

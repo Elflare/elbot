@@ -1,9 +1,9 @@
 package input
 
-import toolshare "elbot/internal/tool/share"
-
 import (
 	"context"
+	"elbot/internal/tool"
+	"elbot/internal/workspace"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,8 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"elbot/internal/agent/dialogue"
-	"elbot/internal/agent/hooks"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
@@ -21,29 +19,39 @@ import (
 	"elbot/internal/platform"
 	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
-	
+
 	"elbot/internal/turn"
 )
 
 // InputCoordinator prepares input outside admission and delegates execution state
 // changes to ExecutionCoordinator and the existing Session/Turn services.
 type InputCoordinator struct {
-	sessions    *sessionpkg.Service
-	sessionRows storage.SessionRepository
-	turns       *turn.Manager
-	identity    InputIdentity
-	hooks       interface {
-		AgentInputPrepared(context.Context, hooks.Session, hooks.Message) ([]llm.MessageSegment, globalevents.LogResult, error)
+	// NewWorkspaceStore binds workspace operations to the admitted session.
+	NewWorkspaceStore func(string) workspace.WorkspaceStore
+	sessions          interface {
+		EnterActivation(context.Context, sessionpkg.Scope, ...string) (context.Context, func(), error)
+		Resume(context.Context, sessionpkg.Scope, string) (*storage.Session, error)
+		CurrentBound(context.Context, sessionpkg.Scope) (*storage.Session, *sessionpkg.Binding, error)
+		Current(context.Context, sessionpkg.Scope) (*storage.Session, error)
+		ExpireIdleCurrent(context.Context, sessionpkg.ExpireIdleRequest) (sessionpkg.ExpireIdleResult, error)
+	}
+	sessionRows interface {
+		Get(context.Context, string) (*storage.Session, error)
+	}
+	turns    interface{ Snapshot(string) turn.Snapshot }
+	identity InputIdentity
+	hooks    interface {
+		AgentInputPrepared(context.Context, agentshare.Session, agentshare.Message) ([]llm.MessageSegment, globalevents.LogResult, error)
 	}
 	output        InputOutput
 	execution     InputExecution
 	confirmations InputConfirmations
 	preloader     interface {
-		PrepareTools(context.Context, []string) (toolshare.ToolPreload, error)
-		PrepareSkills(context.Context, string, []string) (toolshare.SkillPreload, error)
+		PrepareTools(context.Context, []string) (tool.ToolPreload, error)
+		PrepareSkills(context.Context, string, []string) (tool.SkillPreload, error)
 	}
 	toolState interface {
-		Commit(context.Context, string, toolshare.StateUpdate) (toolshare.StateCommit, globalevents.LogResult, error)
+		Commit(context.Context, string, tool.StateUpdate) (tool.StateCommit, globalevents.LogResult, error)
 	}
 	waitPolicy InputWaitPolicy
 }
@@ -58,7 +66,7 @@ func (c *InputCoordinator) HandleInput(ctx context.Context, text string) error {
 		if errors.Is(err, sessionpkg.ErrSessionBusy) {
 			_, err = globalevents.NotificationRequested.Emit(sessionpkg.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelWarn, err.Error()))
 		} else if ctx.Err() == nil && !errors.Is(err, agentshare.ErrSessionBindingChanged) {
-			dialogue.ReportFailure(ctx, "", fmt.Errorf("准备会话: %w", err), c.output.Notify)
+			agentshare.ReportFailure(ctx, "", fmt.Errorf("准备会话: %w", err), c.output.Notify)
 		}
 		return err
 	}
@@ -69,7 +77,7 @@ func (c *InputCoordinator) ContinueCommandInput(ctx context.Context, continuatio
 	locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), continuation.SessionID)
 	if err != nil {
 		if ctx.Err() == nil {
-			dialogue.ReportFailure(ctx, continuation.SessionID, err, c.output.Notify)
+			agentshare.ReportFailure(ctx, continuation.SessionID, err, c.output.Notify)
 		}
 		return err
 	}
@@ -82,7 +90,7 @@ func (c *InputCoordinator) ContinueCommandInput(ctx context.Context, continuatio
 	release()
 	if err != nil {
 		if ctx.Err() == nil {
-			dialogue.ReportFailure(ctx, continuation.SessionID, err, c.output.Notify)
+			agentshare.ReportFailure(ctx, continuation.SessionID, err, c.output.Notify)
 		}
 		return err
 	}
@@ -98,18 +106,18 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 	}
 	if err != nil {
 		if ctx.Err() == nil && !errors.Is(err, agentshare.ErrSessionBindingChanged) {
-			dialogue.ReportFailure(ctx, session.ID, err, c.output.Notify)
+			agentshare.ReportFailure(ctx, session.ID, err, c.output.Notify)
 		}
 		return err
 	}
 	ctx = locked
 	release()
 	segments, _, err := c.hooks.AgentInputPrepared(ctx,
-		hooks.Session{ID: session.ID, Mode: session.Mode, Title: session.Title, Status: session.Status},
-		hooks.Message{Role: string(llm.RoleUser), Segments: agentshare.InboundSegments(ctx, text)})
+		agentshare.Session{ID: session.ID, Mode: session.Mode, Title: session.Title, Status: session.Status},
+		agentshare.Message{Role: string(llm.RoleUser), Segments: agentshare.InboundSegments(ctx, text)})
 	if err != nil {
 		if ctx.Err() == nil {
-			dialogue.ReportFailure(ctx, session.ID, fmt.Errorf("agent input hook: %w", err), c.output.Notify)
+			agentshare.ReportFailure(ctx, session.ID, fmt.Errorf("agent input hook: %w", err), c.output.Notify)
 		}
 		return err
 	}
@@ -121,14 +129,14 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 		directives, skillDirectives, err := c.applyInputDirectives(ctx, session, text)
 		if err != nil {
 			if ctx.Err() == nil {
-				dialogue.ReportFailure(ctx, session.ID, fmt.Errorf("准备输入指令: %w", err), c.output.Notify)
+				agentshare.ReportFailure(ctx, session.ID, fmt.Errorf("准备输入指令: %w", err), c.output.Notify)
 			}
 			return err
 		}
 		if len(directives.Injected) > 0 || len(directives.Existing) > 0 || len(directives.Invalid) > 0 {
 			if err := c.notifyToolDirectiveResult(ctx, directives); err != nil {
 				if ctx.Err() == nil {
-					dialogue.ReportFailure(ctx, session.ID, err, c.output.Notify)
+					agentshare.ReportFailure(ctx, session.ID, err, c.output.Notify)
 				}
 				return err
 			}
@@ -136,7 +144,7 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 		if len(skillDirectives.Skills) > 0 || len(skillDirectives.InjectedWrappers) > 0 || len(skillDirectives.ExistingWrappers) > 0 || len(skillDirectives.Invalid) > 0 {
 			if err := c.notifySkillDirectiveResult(ctx, skillDirectives); err != nil {
 				if ctx.Err() == nil {
-					dialogue.ReportFailure(ctx, session.ID, err, c.output.Notify)
+					agentshare.ReportFailure(ctx, session.ID, err, c.output.Notify)
 				}
 				return err
 			}
@@ -151,7 +159,7 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 				latest, err := c.sessionRows.Get(ctx, session.ID)
 				if err != nil {
 					if ctx.Err() == nil {
-						dialogue.ReportFailure(ctx, session.ID, err, c.output.Notify)
+						agentshare.ReportFailure(ctx, session.ID, err, c.output.Notify)
 					}
 					return err
 				}
@@ -236,16 +244,17 @@ func hasForkFromMessage(ctx context.Context) bool {
 // NewInputCoordinator initializes InputCoordinator without installing cross-service callbacks.
 func NewInputCoordinator(deps InputCoordinatorDeps) *InputCoordinator {
 	return &InputCoordinator{
-		sessions:      deps.Sessions,
-		sessionRows:   deps.SessionRows,
-		turns:         deps.Turns,
-		identity:      deps.Identity,
-		hooks:         deps.Hooks,
-		output:        deps.Output,
-		execution:     deps.Execution,
-		confirmations: deps.Confirmations,
-		preloader:     deps.Preloader,
-		toolState:     deps.ToolState,
-		waitPolicy:    deps.WaitPolicy,
+		sessions:          deps.Sessions,
+		NewWorkspaceStore: deps.NewWorkspaceStore,
+		sessionRows:       deps.SessionRows,
+		turns:             deps.Turns,
+		identity:          deps.Identity,
+		hooks:             deps.Hooks,
+		output:            deps.Output,
+		execution:         deps.Execution,
+		confirmations:     deps.Confirmations,
+		preloader:         deps.Preloader,
+		toolState:         deps.ToolState,
+		waitPolicy:        deps.WaitPolicy,
 	}
 }

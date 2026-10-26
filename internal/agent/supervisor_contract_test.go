@@ -4,11 +4,6 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
-	"slices"
-	"sync"
-	"testing"
-
-	agentevents "elbot/internal/agent/events"
 	"elbot/internal/completion"
 	"elbot/internal/config"
 	"elbot/internal/llm"
@@ -16,6 +11,9 @@ import (
 	"elbot/internal/modelmgr"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
+	"slices"
+	"sync"
+	"testing"
 )
 
 type contractTool struct{ calls int }
@@ -138,8 +136,8 @@ func TestSupervisorBindingSubscriptionsAndCommandMetadata(t *testing.T) {
 		}
 	}
 	var mu sync.Mutex
-	var received []agentevents.BindingChangedEvent
-	mutator, err := m.ObserveBindingChanged(func(_ context.Context, e agentevents.BindingChangedEvent) error {
+	var received []BindingChangedEvent
+	mutator, err := m.ObserveBindingChanged(func(e BindingChangedEvent) error {
 		if e.New != nil {
 			e.New.SessionID = "corrupted"
 		}
@@ -149,7 +147,7 @@ func TestSupervisorBindingSubscriptionsAndCommandMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer mutator.Disconnect()
-	observer, err := m.ObserveBindingChanged(func(_ context.Context, e agentevents.BindingChangedEvent) error {
+	observer, err := m.ObserveBindingChanged(func(e BindingChangedEvent) error {
 		mu.Lock()
 		defer mu.Unlock()
 		received = append(received, e)

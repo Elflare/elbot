@@ -29,7 +29,9 @@ func UnavailableReason(ctx context.Context, info share.Info) string {
 	return ""
 }
 
-func CanAccessTool(actor contextinfo.Actor, permission *security.Permission, info share.Info) bool {
+func CanAccessTool(actor contextinfo.Actor, permission interface {
+	CanUseTool(contextinfo.Actor, security.RiskLevel, bool) bool
+}, info share.Info) bool {
 	if info.SuperadminOnly && actor.Role != contextinfo.RoleSuperadmin {
 		return false
 	}

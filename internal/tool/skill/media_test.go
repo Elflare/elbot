@@ -91,7 +91,7 @@ func TestSkillMediaBridge(t *testing.T) {
 
 					execute := runMediaCommand
 					if mode == "wait" {
-						execute = func(ctx context.Context, label string, cmd *exec.Cmd, mediaCall *toolmedia.MediaCall) (*toolshare.Result, error) {
+						execute = func(ctx context.Context, label string, cmd *exec.Cmd, mediaCall toolshare.MediaCall) (*toolshare.Result, error) {
 							want := 100 * time.Millisecond
 							if kind == "toml" {
 								want = time.Second

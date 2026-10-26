@@ -64,7 +64,7 @@ func discoveryContent(ctx context.Context, targets map[string]share.Tool, result
 		summary = fmt.Sprintf("已发现：%s。后续可直接使用。", strings.Join(foundTools, "、"))
 	}
 	parts = append(parts, appendedExtras...)
-	if detailText := RenderDetailBlocks(detailBlocks); detailText != "" {
+	if detailText := share.RenderDetailBlocks(detailBlocks); detailText != "" {
 		parts = append(parts, detailText)
 	}
 	if len(result.Errors) > 0 {
@@ -84,15 +84,4 @@ func discoveryContent(ctx context.Context, targets map[string]share.Tool, result
 		}
 	}
 	return share.DiscoveryText{Summary: summary, Details: strings.Join(parts, "\n\n")}, nil
-}
-
-// RenderDetailBlocks 只拼接业务详情，不处理会话相关的语言规则。
-func RenderDetailBlocks(blocks []share.DetailBlock) string {
-	var parts []string
-	for _, block := range blocks {
-		if content := strings.TrimSpace(block.Content); content != "" {
-			parts = append(parts, content)
-		}
-	}
-	return strings.Join(parts, "\n\n---\n\n")
 }

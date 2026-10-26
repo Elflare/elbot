@@ -8,8 +8,6 @@ import (
 	agentinput "elbot/internal/agent/input"
 
 	agentshare "elbot/internal/agent/share"
-
-	agenthooks "elbot/internal/agent/hooks"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 
@@ -18,10 +16,10 @@ import (
 
 type constructorMessageHooks struct{}
 
-func (constructorMessageHooks) HasRoute(context.Context, agenthooks.Message) bool    { return false }
-func (constructorMessageHooks) CancelRoute(context.Context, agenthooks.Message) bool { return false }
-func (constructorMessageHooks) PlatformMessageReceived(_ context.Context, message agenthooks.Message) (agenthooks.PlatformMessageReceivedResult, events.LogResult, error) {
-	return agenthooks.PlatformMessageReceivedResult{Segments: message.Segments}, events.LogResult{}, nil
+func (constructorMessageHooks) HasRoute(context.Context, agentshare.Message) bool    { return false }
+func (constructorMessageHooks) CancelRoute(context.Context, agentshare.Message) bool { return false }
+func (constructorMessageHooks) PlatformMessageReceived(_ context.Context, message agentshare.Message) (agentshare.PlatformMessageReceivedResult, events.LogResult, error) {
+	return agentshare.PlatformMessageReceivedResult{Segments: message.Segments}, events.LogResult{}, nil
 }
 
 type constructorCommands struct{}

@@ -209,7 +209,9 @@ func isRiskConfirmationCommandName(name string) bool {
 	return false
 }
 
-func IsRiskConfirmationCommand(text string, router *command.Router) bool {
+func IsRiskConfirmationCommand(text string, router interface {
+	Parse(string) command.Parsed
+}) bool {
 	parsed := router.Parse(text)
 	return parsed.OK && isRiskConfirmationCommandName(parsed.Name)
 }

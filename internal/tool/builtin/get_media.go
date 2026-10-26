@@ -11,11 +11,12 @@ import (
 	"strings"
 
 	"elbot/internal/llm"
-	"elbot/internal/tool/chat_history"
 )
 
 type GetMediaTool struct {
-	history *chat_history.Manager
+	history interface {
+		GetMedia(context.Context, toolshare.MediaRequest) ([]toolshare.MediaResult, error)
+	}
 }
 
 type getMediaArgs struct {
@@ -23,7 +24,9 @@ type getMediaArgs struct {
 	MediaIndex [][]int  `json:"media_index"`
 }
 
-func NewGetMediaTool(history *chat_history.Manager) GetMediaTool {
+func NewGetMediaTool(history interface {
+	GetMedia(context.Context, toolshare.MediaRequest) ([]toolshare.MediaResult, error)
+}) GetMediaTool {
 	return GetMediaTool{history: history}
 }
 func (GetMediaTool) Name() string { return "get_media" }
@@ -85,8 +88,8 @@ func (t GetMediaTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 	}
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("获取消息媒体：%s", strings.Join(args.MessageIDs, ", ")), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
 		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
-		results, err := t.history.GetMedia(ctx, chat_history.MediaRequest{MessageIDs: args.MessageIDs, MediaIndex: args.MediaIndex})
-		if errors.Is(err, chat_history.ErrNoChatContext) {
+		results, err := t.history.GetMedia(ctx, toolshare.MediaRequest{MessageIDs: args.MessageIDs, MediaIndex: args.MediaIndex})
+		if errors.Is(err, toolshare.ErrNoChatContext) {
 			return &toolshare.Result{Content: err.Error()}, err.Error(), nil
 		}
 		if err != nil {
@@ -94,16 +97,16 @@ func (t GetMediaTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 		}
 		var lines []string
 		for _, result := range results {
-			if errors.Is(result.Err, chat_history.ErrNotFound) {
+			if errors.Is(result.Err, toolshare.ErrNotFound) {
 				lines = append(lines, fmt.Sprintf("[#%s] 当前聊天没有该消息。", result.MessageID))
 				continue
 			}
 			var text string
 			switch {
-			case errors.Is(result.Err, chat_history.ErrMediaIndex):
+			case errors.Is(result.Err, toolshare.ErrMediaIndex):
 				text = "[媒体序号越界]"
-			case errors.Is(result.Err, chat_history.ErrFetchLimit):
-				text = fmt.Sprintf("[媒体未下载：达到本次 %d 个下载尝试上限]", chat_history.MaxFetchAttempts)
+			case errors.Is(result.Err, toolshare.ErrFetchLimit):
+				text = fmt.Sprintf("[媒体未下载：达到本次 %d 个下载尝试上限]", toolshare.MaxFetchAttempts)
 			case result.Err != nil:
 				text = "[媒体获取失败：来源不可用、超限或关联保存失败]"
 				logContent += fmt.Sprintf("\n[#%s] %d: %v", result.MessageID, result.Index, result.Err)

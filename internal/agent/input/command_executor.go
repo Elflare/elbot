@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	agentconfirmation "elbot/internal/agent/confirmation"
-	"elbot/internal/agent/dialogue"
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
@@ -18,10 +16,22 @@ import (
 )
 
 type CommandExecutor struct {
-	router        *command.Router
-	sessions      *session.Service
-	turns         *turn.Manager
-	identity      dialogue.Identity
+	IsRiskConfirmationCommand func(string) bool
+	router                    interface {
+		IsCommand(string) bool
+		Parse(string) command.Parsed
+		CommandInfo(string) (command.Info, bool)
+		Dispatch(context.Context, string) (*command.Result, error)
+	}
+	sessions interface {
+		CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
+	}
+	turns interface {
+		Snapshot(string) turn.Snapshot
+	}
+	identity interface {
+		Scope(context.Context) session.Scope
+	}
 	execution     CommandExecution
 	output        CommandOutput
 	confirmations CommandConfirmations
@@ -49,7 +59,7 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 	if sessionErr == nil && snapshot.Phase == turn.PhaseAwaitAppendConfirm && (turn.IsConfirm(text) || turn.IsCancel(text)) {
 		return true, e.execution.ResumeAppend(ctx, sessionRow, text)
 	}
-	if sessionErr == nil && snapshot.Phase == turn.PhaseAwaitRiskConfirm && agentconfirmation.IsRiskConfirmationCommand(text, e.router) {
+	if sessionErr == nil && snapshot.Phase == turn.PhaseAwaitRiskConfirm && e.IsRiskConfirmationCommand(text) {
 		return true, e.confirmations.SubmitResponse(ctx, sessionRow.ID, text)
 	}
 	if sessionErr == nil && hasInfo && snapshot.Phase != turn.PhaseIdle && blocksDuringActiveTurn(info.SessionEffect) {
@@ -152,10 +162,22 @@ type CommandInput interface {
 
 // CommandExecutorDeps declares only the capabilities consumed by CommandExecutor.
 type CommandExecutorDeps struct {
-	Router        *command.Router
-	Sessions      *session.Service
-	Turns         *turn.Manager
-	Identity      dialogue.Identity
+	IsRiskConfirmationCommand func(string) bool
+	Router                    interface {
+		IsCommand(string) bool
+		Parse(string) command.Parsed
+		CommandInfo(string) (command.Info, bool)
+		Dispatch(context.Context, string) (*command.Result, error)
+	}
+	Sessions interface {
+		CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
+	}
+	Turns interface {
+		Snapshot(string) turn.Snapshot
+	}
+	Identity interface {
+		Scope(context.Context) session.Scope
+	}
 	Execution     CommandExecution
 	Output        CommandOutput
 	Confirmations CommandConfirmations
@@ -165,14 +187,15 @@ type CommandExecutorDeps struct {
 // NewCommandExecutor initializes CommandExecutor without installing cross-service callbacks.
 func NewCommandExecutor(deps CommandExecutorDeps) *CommandExecutor {
 	return &CommandExecutor{
-		router:        deps.Router,
-		sessions:      deps.Sessions,
-		turns:         deps.Turns,
-		identity:      deps.Identity,
-		execution:     deps.Execution,
-		output:        deps.Output,
-		confirmations: deps.Confirmations,
-		input:         deps.Input,
+		router:                    deps.Router,
+		IsRiskConfirmationCommand: deps.IsRiskConfirmationCommand,
+		sessions:                  deps.Sessions,
+		turns:                     deps.Turns,
+		identity:                  deps.Identity,
+		execution:                 deps.Execution,
+		output:                    deps.Output,
+		confirmations:             deps.Confirmations,
+		input:                     deps.Input,
 	}
 }
 

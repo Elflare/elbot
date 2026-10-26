@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"elbot/internal/security"
 	"testing"
 
 	"elbot/internal/agent/dialogue"
@@ -10,7 +11,7 @@ import (
 )
 
 func TestPublicChatInfoConsumersAndSecurityPrecedence(t *testing.T) {
-	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "test", ActorID: "local", ScopeID: "local"})
+	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{Permission: security.DefaultPermission(), PlatformName: "test", ActorID: "local", ScopeID: "local"})
 	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{
 		Source:   contextinfo.Source{Platform: "qqonebot", ScopeID: "group:9", ConversationKind: contextinfo.ConversationGroup, ConversationID: "9"},
 		Identity: contextinfo.Identity{ActorID: "cli:local", PlatformUserID: "qqonebot:123", Nickname: "昵称", GroupCard: "名片", DisplayName: "显示名"},
@@ -23,7 +24,7 @@ func TestPublicChatInfoConsumersAndSecurityPrecedence(t *testing.T) {
 	if scope.Platform != "qqonebot" || scope.PlatformScopeID != "group:9" || scope.ActorID != actor.ID || scope.IsCLI {
 		t.Fatalf("scope = %+v", scope)
 	}
-	parts, err := (dialogue.ConversationMetaSystemPromptSource{}).Parts(ctx, dialogue.SystemPromptRequest{Scope: scope})
+	parts, err := (dialogue.ConversationMetaSystemPromptSource{}).Parts(ctx, agentshare.SystemPromptRequest{Scope: scope})
 	if err != nil || len(parts) != 1 || parts[0].Content != `meta: platform=qqonebot, conversation=group(id:9), display_name="名片"(id:123).` {
 		t.Fatalf("prompt meta = %+v, %v", parts, err)
 	}

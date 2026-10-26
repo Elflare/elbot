@@ -2,13 +2,11 @@ package agent
 
 import (
 	"context"
-	"sync"
-
-	agentevents "elbot/internal/agent/events"
 	agentexecution "elbot/internal/agent/execution"
 	agenthooks "elbot/internal/agent/hooks"
 	agentinput "elbot/internal/agent/input"
 	"elbot/internal/agent/routes"
+	agentshare "elbot/internal/agent/share"
 	"elbot/internal/command"
 	"elbot/internal/completion"
 	"elbot/internal/contextmgr"
@@ -16,11 +14,12 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/turn"
+	"sync"
 )
 
 // Supervisor owns the foreground business line and its independently managed Session, Request and Turn state.
 type Supervisor struct {
-	signals         agentevents.Signals // Owned event sources; closed after internal producers finish.
+	signals         signals // Owned event sources; closed after internal producers finish.
 	ctx             context.Context
 	cancel          context.CancelFunc
 	sessions        *session.Service
@@ -58,41 +57,41 @@ func (m *Supervisor) Commands() []command.Info {
 
 // ObserveStatusChanged gives each subscriber detached facts without the internal context.
 // Handlers update memory or enqueue work; the caller owns its subscription and work lifecycle.
-func (m *Supervisor) ObserveStatusChanged(handler func(agentevents.StatusChangedEvent) error, options signal.ConnectOptions) (*signal.Connection, error) {
+func (m *Supervisor) ObserveStatusChanged(handler func(StatusChangedEvent) error, options signal.ConnectOptions) (*signal.Connection, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
 		return nil, signal.ErrClosed
 	}
-	return m.signals.StatusChanged.Observe(func(_ context.Context, event agentevents.StatusChangedEvent) error {
-		event.Snapshot.Usage = agentevents.CloneUsage(event.Snapshot.Usage)
+	return m.signals.StatusChanged.Observe(func(_ context.Context, event agentexecution.StatusChangedEvent) error {
+		event.Snapshot.Usage = agentshare.CloneUsage(event.Snapshot.Usage)
 		if event.Conversation != nil {
 			conversation := *event.Conversation
 			event.Conversation = &conversation
 		}
+		snapshot := StatusChangedEvent{Snapshot: event.Snapshot, Version: event.Version, Execution: event.Execution, Conversation: event.Conversation}
 		if event.Binding != nil {
-			binding := *event.Binding
-			event.Binding = &binding
+			snapshot.Binding = &BindingSnapshot{Scope: event.Binding.Scope, SessionID: event.Binding.SessionID, Version: event.Binding.Version}
 		}
-		return handler(event)
+		return handler(snapshot)
 	}, options)
 }
 
 // ObserveBindingChanged projects internal activation handles into detached facts.
 // Handlers update memory or enqueue work; the caller owns its subscription and work lifecycle.
-func (m *Supervisor) ObserveBindingChanged(handler func(agentevents.BindingChangedEvent) error, options signal.ConnectOptions) (*signal.Connection, error) {
+func (m *Supervisor) ObserveBindingChanged(handler func(BindingChangedEvent) error, options signal.ConnectOptions) (*signal.Connection, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
 		return nil, signal.ErrClosed
 	}
 	return m.sessions.BindingChanged().Observe(func(_ context.Context, event session.BindingChangedEvent) error {
-		snapshot := agentevents.BindingChangedEvent{Version: event.Version}
+		snapshot := BindingChangedEvent{Version: event.Version}
 		if event.Old != nil {
-			snapshot.Old = &agentevents.BindingSnapshot{Scope: event.Old.Scope(), SessionID: event.Old.SessionID(), Version: event.Old.Version()}
+			snapshot.Old = &BindingSnapshot{Scope: event.Old.Scope(), SessionID: event.Old.SessionID(), Version: event.Old.Version()}
 		}
 		if event.New != nil {
-			snapshot.New = &agentevents.BindingSnapshot{Scope: event.New.Scope(), SessionID: event.New.SessionID(), Version: event.New.Version()}
+			snapshot.New = &BindingSnapshot{Scope: event.New.Scope(), SessionID: event.New.SessionID(), Version: event.New.Version()}
 		}
 		return handler(snapshot)
 	}, options)

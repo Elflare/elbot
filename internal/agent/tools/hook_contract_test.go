@@ -2,19 +2,18 @@ package tools
 
 import (
 	"context"
-
-	"elbot/internal/agent/hooks"
+	agentshare "elbot/internal/agent/share"
 	"elbot/internal/events"
 	"elbot/internal/llm"
 )
 
 type toolOnlyHooks struct{}
 
-func (toolOnlyHooks) ToolCallPrepared(_ context.Context, _ hooks.Session, call llm.ToolCallRequest) (string, events.LogResult, error) {
+func (toolOnlyHooks) ToolCallPrepared(_ context.Context, _ agentshare.Session, call llm.ToolCallRequest) (string, events.LogResult, error) {
 	return call.Arguments, events.LogResult{}, nil
 }
 
-func (toolOnlyHooks) ToolCallCompleted(_ context.Context, _ hooks.Session, result hooks.ToolResult) ([]llm.MessageSegment, events.LogResult, error) {
+func (toolOnlyHooks) ToolCallCompleted(_ context.Context, _ agentshare.Session, result agentshare.ToolResult) ([]llm.MessageSegment, events.LogResult, error) {
 	return result.Segments, events.LogResult{}, nil
 }
 

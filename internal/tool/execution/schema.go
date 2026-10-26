@@ -6,7 +6,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/storage"
-	"elbot/internal/tool/registry"
 	"elbot/internal/tool/share"
 )
 
@@ -30,7 +29,7 @@ func (m *Manager) Schemas(ctx context.Context, view share.Context, discovered []
 		out = append(out, share.CloneSchema(schema))
 	}
 	if view.Mode == storage.SessionModeWork && !view.DisableBaseTools {
-		tools, err := m.registry.QueryTools(ctx, share.ToolQuery{Names: []string{"discover_tool"}, IncludeDiscover: true})
+		tools, err := m.Registry.QueryTools(ctx, share.ToolQuery{Names: []string{"discover_tool"}, IncludeDiscover: true})
 		if err != nil {
 			return nil, err
 		}
@@ -39,13 +38,31 @@ func (m *Manager) Schemas(ctx context.Context, view share.Context, discovered []
 		}
 	}
 	if view.Mode == storage.SessionModeBackground {
-		discovered = registry.BackgroundDiscoveredTools(ctx, discovered)
+		discovered = m.BackgroundDiscoveredTools(ctx, discovered)
 	}
 	for _, item := range discovered {
-		if view.Mode != storage.SessionModeBackground && !registry.InfoAvailableInContext(ctx, share.Info{ForegroundOnly: item.ForegroundOnly}) {
+		if view.Mode != storage.SessionModeBackground && !m.InfoAvailableInContext(ctx, share.Info{ForegroundOnly: item.ForegroundOnly}) {
 			continue
 		}
 		appendSchema(item.Schema)
+	}
+	return out, nil
+}
+
+// FilterSchemas 复核 Hook 修改后的声明，保留未知工具及调用方提供的 schema 和顺序。
+func (m *Manager) FilterSchemas(ctx context.Context, schemas []llm.ToolSchema) ([]llm.ToolSchema, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if schemas == nil {
+		return nil, nil
+	}
+	out := make([]llm.ToolSchema, 0, len(schemas))
+	for _, schema := range schemas {
+		if info, ok := m.Registry.ToolInfo(schema.Name); ok && !m.InfoAvailableInContext(ctx, info) {
+			continue
+		}
+		out = append(out, schema)
 	}
 	return out, nil
 }

@@ -1,19 +1,15 @@
 package dialogue
 
-import toolshare "elbot/internal/tool/share"
-
 import (
 	"context"
+	agentshare "elbot/internal/agent/share"
+	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
-	agentevents "elbot/internal/agent/events"
-	"elbot/internal/agent/hooks"
-	"elbot/internal/contextinfo"
-	"elbot/internal/delivery"
 	"elbot/internal/elyph"
 	"elbot/internal/events"
 	"elbot/internal/llm"
@@ -21,7 +17,6 @@ import (
 	sessionpkg "elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
 )
 
 type CallProcessor struct {
@@ -32,44 +27,34 @@ type CallProcessor struct {
 	Messages *MessageStore
 	Preparer *Preparer
 	Hooks    interface {
-		LLMRequestPrepared(context.Context, hooks.Session, hooks.LLMInput) (hooks.LLMInputResult, events.LogResult, error)
-		LLMResponseReceived(context.Context, hooks.Session, hooks.LLMResponse) (hooks.LLMResponseResult, events.LogResult, error)
-		ErrorOccurred(context.Context, hooks.Session, hooks.LLMResponse, error)
+		LLMRequestPrepared(context.Context, agentshare.Session, agentshare.LLMInput) (agentshare.LLMInputResult, events.LogResult, error)
+		LLMResponseReceived(context.Context, agentshare.Session, agentshare.LLMResponse) (agentshare.LLMResponseResult, events.LogResult, error)
+		ErrorOccurred(context.Context, agentshare.Session, agentshare.LLMResponse, error)
 	}
-	Identity  Identity
+	Identity  interface{ IsCLI(context.Context) bool }
 	Tools     *ToolExecutor
-	Completed *signal.Signal[agentevents.ModelCallCompletedEvent, signal.Empty]
-	Vision    *signal.Signal[agentevents.VisionFallbackUsedEvent, signal.Empty]
-}
-type CallInput struct {
-	Messages, RequestMessages []llm.LLMMessage
-	Tools                     []llm.ToolSchema
-}
-type CallOutput struct {
-	Text, SourceText string
-	Usage            *llm.Usage
-	ToolCalls        []llm.ToolCallRequest
-	Outputs          []delivery.Output
+	Completed *signal.Signal[agentshare.ModelCallCompletedEvent, signal.Empty]
+	Vision    *signal.Signal[VisionFallbackUsedEvent, signal.Empty]
 }
 type CallObservation struct {
 	processor *CallProcessor
 	sessionID string
 	startedAt time.Time
 	published bool
-	Event     agentevents.ModelCallCompletedEvent
+	event     agentshare.ModelCallCompletedEvent
 	// LogRecord holds this call's source-defined logging result independently of
 	// the business event. Branches fill status and content; Publish does not infer
 	// outcomes from Event.Err. Identity is fixed from the source at publication.
-	LogRecord events.LogRecord
+	logRecord events.LogRecord
 }
 
-func (c *CallProcessor) Begin(sessionID string, selected modelmgr.Selection) *CallObservation {
+func (c *CallProcessor) Begin(sessionID string, selected modelmgr.Selection) agentshare.CallObservation {
 	return &CallObservation{
 		processor: c,
 		sessionID: sessionID,
 		startedAt: time.Now(),
-		Event:     agentevents.ModelCallCompletedEvent{Provider: selected.Provider, Model: selected.Model, ElapsedMS: -1},
-		LogRecord: events.LogRecord{
+		event:     agentshare.ModelCallCompletedEvent{Provider: selected.Provider, Model: selected.Model, ElapsedMS: -1},
+		logRecord: events.LogRecord{
 			Category:     events.LogAudit,
 			Level:        slog.LevelInfo,
 			Module:       "agent",
@@ -83,89 +68,89 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 		return
 	}
 	o.published = true
-	o.Event.Execution, _ = contextinfo.ExecutionFromContext(ctx)
-	o.Event.Execution.SessionID = o.sessionID
-	if o.Event.ElapsedMS < 0 {
-		o.Event.ElapsedMS = time.Since(o.startedAt).Milliseconds()
+	o.event.Execution, _ = contextinfo.ExecutionFromContext(ctx)
+	o.event.Execution.SessionID = o.sessionID
+	if o.event.ElapsedMS < 0 {
+		o.event.ElapsedMS = time.Since(o.startedAt).Milliseconds()
 	}
-	o.Event.Usage = agentevents.CloneUsage(o.Event.Usage)
+	o.event.Usage = agentshare.CloneUsage(o.event.Usage)
 	if o.processor.Status != nil {
-		o.processor.Status.RecordUsage(ctx, o.sessionID, o.Event.Usage)
+		o.processor.Status.RecordUsage(ctx, o.sessionID, o.event.Usage)
 	}
-	if o.Event.Err == nil {
-		o.Event.Err = err
+	if o.event.Err == nil {
+		o.event.Err = err
 	}
 	content := map[string]any{
-		"provider":          o.Event.Provider,
-		"model":             o.Event.Model,
-		"elapsed_ms":        o.Event.ElapsedMS,
+		"provider":          o.event.Provider,
+		"model":             o.event.Model,
+		"elapsed_ms":        o.event.ElapsedMS,
 		"prompt_tokens":     nil,
 		"completion_tokens": nil,
 		"total_tokens":      nil,
 		"cache_hit_tokens":  nil,
 	}
-	if o.Event.VisionFallback {
+	if o.event.VisionFallback {
 		content["vision_fallback"] = true
 	}
-	if o.LogRecord.Content != "" {
-		content["detail"] = fmt.Sprintf("%.8192s", o.LogRecord.Content)
+	if o.logRecord.Content != "" {
+		content["detail"] = fmt.Sprintf("%.8192s", o.logRecord.Content)
 	}
-	if o.Event.ProviderError && o.Event.Err != nil {
-		content["error"] = fmt.Sprintf("%.2048s", o.Event.Err.Error())
+	if o.event.ProviderError && o.event.Err != nil {
+		content["error"] = fmt.Sprintf("%.2048s", o.event.Err.Error())
 	}
-	if usage := o.Event.Usage; usage != nil {
+	if usage := o.event.Usage; usage != nil {
 		content["prompt_tokens"], content["completion_tokens"], content["total_tokens"], content["cache_hit_tokens"] = usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens, usage.CacheHitTokens
 	}
 	data, _ := json.Marshal(content)
-	o.LogRecord.Content = string(data)
-	o.LogRecord.Identity.SessionID = &o.sessionID
-	if o.Event.Execution.RunID != "" {
-		o.LogRecord.Identity.RunID = &o.Event.Execution.RunID
+	o.logRecord.Content = string(data)
+	o.logRecord.Identity.SessionID = &o.sessionID
+	if o.event.Execution.RunID != "" {
+		o.logRecord.Identity.RunID = &o.event.Execution.RunID
 	}
-	if o.Event.Execution.Attempt != "" {
-		o.LogRecord.Identity.Attempt = &o.Event.Execution.Attempt
+	if o.event.Execution.Attempt != "" {
+		o.logRecord.Identity.Attempt = &o.event.Execution.Attempt
 	}
-	if o.Event.Execution.RequestID != "" {
-		o.LogRecord.Identity.RequestID = &o.Event.Execution.RequestID
+	if o.event.Execution.RequestID != "" {
+		o.logRecord.Identity.RequestID = &o.event.Execution.RequestID
 	}
-	if o.Event.Execution.RootRequestID != "" {
-		o.LogRecord.Identity.RootRequestID = &o.Event.Execution.RootRequestID
+	if o.event.Execution.RootRequestID != "" {
+		o.logRecord.Identity.RootRequestID = &o.event.Execution.RootRequestID
 	}
-	if o.LogRecord.EventName != "" {
-		_ = events.EmitLog(context.WithoutCancel(ctx), o.LogRecord)
+	if o.logRecord.EventName != "" {
+		_ = events.EmitLog(context.WithoutCancel(ctx), o.logRecord)
 	}
-	if o.Event.OutputReady {
-		record := o.LogRecord
+	if o.event.OutputReady {
+		record := o.logRecord
 		record.Category, record.Type, record.EventName = events.LogRuntime, events.ContentText, "assistant_message"
 		record.ContentLimit = 4096
-		record.Content = fmt.Sprintf("provider=%s\nmodel=%s\nelapsed_ms=%d\ntext=%s", o.Event.Provider, o.Event.Model, o.Event.ElapsedMS, o.Event.Text)
-		if o.Event.Text != o.Event.SourceText {
-			record.Content += "\nraw_text=" + o.Event.SourceText
+		record.Content = fmt.Sprintf("provider=%s\nmodel=%s\nelapsed_ms=%d\ntext=%s", o.event.Provider, o.event.Model, o.event.ElapsedMS, o.event.Text)
+		if o.event.Text != o.event.SourceText {
+			record.Content += "\nraw_text=" + o.event.SourceText
 		}
-		record.Content += fmt.Sprintf("\ntool_call_count=%d", o.Event.ToolCallCount)
-		record.Content = toolshare.TruncateLogContent(record.Content, 512)
+		record.Content += fmt.Sprintf("\ntool_call_count=%d", o.event.ToolCallCount)
+		record.Content = agentshare.TruncateLogContent(record.Content, 512)
 		_ = events.EmitLog(context.WithoutCancel(ctx), record)
 	}
-	agentevents.Emit(ctx, o.processor.Completed, o.Event)
+	agentshare.Emit(ctx, o.processor.Completed, o.event)
 }
 func (c *CallProcessor) RecordVisionFallback(ctx context.Context, row *storage.Session) {
 	ctx = (ExecutionView{}).Context(ctx)
-	event := agentevents.VisionFallbackUsedEvent{
+	event := VisionFallbackUsedEvent{
 		SessionID: row.ID,
 		Visible:   c.Identity.IsCLI(ctx) && !sessionpkg.IsBackground(row),
 	}
 	if conversation, ok := contextinfo.ConversationFromContext(ctx); ok {
 		event.Conversation = &conversation
 	}
-	agentevents.Emit(ctx, c.Vision, event)
+	agentshare.Emit(ctx, c.Vision, event)
 }
-func (c *CallProcessor) NotifyError(ctx context.Context, sessionID string, response hooks.LLMResponse, err error) {
-	c.Hooks.ErrorOccurred(ctx, hooks.Session{ID: sessionID}, response, err)
+func (c *CallProcessor) NotifyError(ctx context.Context, sessionID string, response agentshare.LLMResponse, err error) {
+	c.Hooks.ErrorOccurred(ctx, agentshare.Session{ID: sessionID}, response, err)
 }
 
 // PrepareCall applies common hooks and authorization to canonical business
 // material. PrepareMaterials expands only the material selected for this call.
-func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *PendingUserMessage, persistence MessageCommitter, record *events.LogRecord) (CallInput, error) {
+func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *agentshare.PendingUserMessage, persistence agentshare.MessageCommitter, record *events.LogRecord) (agentshare.CallInput, error) {
 	sessionID := session.ID
 	toolsEnabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
 	if !toolsEnabled {
@@ -175,7 +160,7 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 	if session.Mode == storage.SessionModeBackground {
 		discovered, _, err := c.Tools.Manager.DiscoveredToolsForSession(ctx, session.ID, true)
 		if err != nil {
-			return CallInput{}, err
+			return agentshare.CallInput{}, err
 		}
 		allowedTools = map[string]bool{}
 		for _, item := range discovered {
@@ -186,19 +171,19 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 	}
 	baseMessages := llm.CloneMessages(messages)
 	requestMessages := llm.CloneMessages(baseMessages)
-	if notice, ok := ForegroundNotice(session); ok {
+	if notice, ok := agentshare.ForegroundNotice(session); ok {
 		requestMessages = append(requestMessages, notice)
 	}
-	hookMessage := hooks.Message{}
+	hookMessage := agentshare.Message{}
 	if pending != nil {
-		hookMessage = hooks.Message{
+		hookMessage = agentshare.Message{
 			ID:           pending.Message.ID,
 			Role:         string(llm.RoleUser),
 			PlatformText: pending.PlatformText,
 			Segments:     append([]llm.MessageSegment(nil), baseMessages[pending.MessageIndex].Segments...),
 		}
 	}
-	result, logResult, err := c.Hooks.LLMRequestPrepared(ctx, hooks.Session{ID: sessionID}, hooks.LLMInput{
+	result, logResult, err := c.Hooks.LLMRequestPrepared(ctx, agentshare.Session{ID: sessionID}, agentshare.LLMInput{
 		Message:  hookMessage,
 		Provider: selection.Provider,
 		Model:    selection.Model,
@@ -218,19 +203,15 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 				err = errors.Join(err, persistErr)
 			}
 		}
-		return CallInput{}, fmt.Errorf("llm request hook: %w", err)
+		return agentshare.CallInput{}, fmt.Errorf("llm request hook: %w", err)
 	}
 	tools = result.Tools
 	// Hooks may change schemas, but cannot override registered availability.
-	if c.Tools != nil && c.Tools.Registry != nil {
-		filtered := make([]llm.ToolSchema, 0, len(tools))
-		for _, schema := range tools {
-			if candidate, ok := c.Tools.Registry.Get(schema.Name); ok && !tool.InfoAvailableInContext(ctx, candidate.Info()) {
-				continue
-			}
-			filtered = append(filtered, schema)
+	if c.Tools != nil && c.Tools.Manager != nil {
+		tools, err = c.Tools.Manager.FilterSchemas(ctx, tools)
+		if err != nil {
+			return agentshare.CallInput{}, fmt.Errorf("filter tool schemas: %w", err)
 		}
-		tools = filtered
 	}
 	if allowedTools != nil {
 		filtered := make([]llm.ToolSchema, 0, len(tools))
@@ -248,29 +229,29 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 	if pending != nil {
 		archived, err := c.Preparer.ArchiveMaterials(ctx, []llm.LLMMessage{{Segments: result.Segments}})
 		if err != nil {
-			return CallInput{}, err
+			return agentshare.CallInput{}, err
 		}
 		segments := archived[0].Segments
 		state, err := c.Tools.Manager.DecodeState(session.Metadata)
 		if err != nil {
-			return CallInput{}, err
+			return agentshare.CallInput{}, err
 		}
 		ruleCard := elyph.RuleCardIfNeeded(pending.NeedsElyphRules, state.ElyphRulesShown)
 		if ruleCard != "" {
 			segments = append(llm.TextSegments(ruleCard+"\n\n"), segments...)
 			fields, err := storage.DecodeSessionMetadata(pending.Message.Metadata)
 			if err != nil {
-				return CallInput{}, err
+				return agentshare.CallInput{}, err
 			}
 			_ = fields.Set("elyph_rules_shown", true)
 			pending.Message.Metadata, _ = fields.Encode()
 		}
 		baseMessages[pending.MessageIndex].Segments = segments
 		requestMessages[pending.MessageIndex].Segments = segments
-		pending.Message.Content = MessageContent(segments)
-		pending.Message.Segments = StoredMessageSegments(segments)
+		pending.Message.Content = agentshare.MessageContent(segments)
+		pending.Message.Segments = agentshare.StoredMessageSegments(segments)
 		if _, err := persistence.Commit(ctx, &pending.Message, nil); err != nil {
-			return CallInput{}, err
+			return agentshare.CallInput{}, err
 		}
 		if ruleCard != "" {
 			fields, _ := storage.DecodeSessionMetadata(session.Metadata)
@@ -278,13 +259,13 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 			session.Metadata, _ = fields.Encode()
 		}
 	}
-	return CallInput{Messages: baseMessages, RequestMessages: requestMessages, Tools: tools}, nil
+	return agentshare.CallInput{Messages: baseMessages, RequestMessages: requestMessages, Tools: tools}, nil
 }
 
-func (c *CallProcessor) CompleteCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, content string, usage *llm.Usage, toolCalls []llm.ToolCallRequest, elapsedMs int64) (CallOutput, error) {
+func (c *CallProcessor) CompleteCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, content string, usage *llm.Usage, toolCalls []llm.ToolCallRequest, elapsedMs int64) (agentshare.CallOutput, error) {
 	sessionID := session.ID
 	toolsEnabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
-	result, _, err := c.Hooks.LLMResponseReceived(ctx, hooks.Session{ID: sessionID}, hooks.LLMResponse{
+	result, _, err := c.Hooks.LLMResponseReceived(ctx, agentshare.Session{ID: sessionID}, agentshare.LLMResponse{
 		Provider:   selection.Provider,
 		Model:      selection.Model,
 		Usage:      usage,
@@ -294,12 +275,21 @@ func (c *CallProcessor) CompleteCall(ctx context.Context, session *storage.Sessi
 		ElapsedMS:  elapsedMs,
 	})
 	if err != nil {
-		return CallOutput{}, fmt.Errorf("llm response hook: %w", err)
+		return agentshare.CallOutput{}, fmt.Errorf("llm response hook: %w", err)
 	}
 	usage = result.Usage
 	toolCalls = result.ToolCalls
 	if !toolsEnabled {
 		toolCalls = nil
 	}
-	return CallOutput{Text: result.Text, SourceText: result.SourceText, Usage: usage, ToolCalls: toolCalls, Outputs: result.Outputs}, nil
+	return agentshare.CallOutput{Text: result.Text, SourceText: result.SourceText, Usage: usage, ToolCalls: toolCalls, Outputs: result.Outputs}, nil
+}
+
+func (o *CallObservation) Event() *agentshare.ModelCallCompletedEvent { return &o.event }
+func (o *CallObservation) LogRecord() *events.LogRecord               { return &o.logRecord }
+
+type VisionFallbackUsedEvent struct {
+	SessionID    string                    // Session used to deduplicate fallback notices.
+	Visible      bool                      // Whether this fallback should be shown to the user.
+	Conversation *contextinfo.Conversation // Original notification destination; nil when no conversation exists.
 }

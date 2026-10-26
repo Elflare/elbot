@@ -1,13 +1,14 @@
 package chat
 
 import (
+	agentshare "elbot/internal/agent/share"
+
 	"context"
 	"fmt"
 
-	"elbot/internal/agent/dialogue"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
-	"elbot/internal/modelmgr"
+
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
 	sessionpkg "elbot/internal/session"
@@ -15,7 +16,7 @@ import (
 	"elbot/internal/turn"
 )
 
-func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.LoopInput, out dialogue.Output) (result dialogue.LoopResult) {
+func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (result agentshare.LoopResult) {
 	r, s := p.route, p.state
 	for i := range p.materials.Loaded.Messages {
 		head := &p.materials.Loaded.Messages[i]
@@ -57,7 +58,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		s.ctx = r.View.Context(s.ctx)
 		if sessionpkg.WasPromoted(s.session) && !foregroundPrepared {
 			foregroundPrepared = true
-			s.selection = modelmgr.SelectionForTurn(s.requestCtx, r.Models, s.session)
+			s.selection = r.SelectionForTurn(s.requestCtx, s.session)
 			if err := r.CheckSelection(s.selection); err != nil {
 				return failedLoop(err)
 			}
@@ -69,7 +70,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			if modelErr != nil {
 				return failedLoop(modelErr)
 			}
-			scope := r.Preparer.Identity.Scope(s.requestCtx)
+			scope := r.Identity.Scope(s.requestCtx)
 			prompt, err := r.PromptBuilder.Build(s.requestCtx, PromptBuildRequest{Session: s.session, Scope: scope})
 			if err != nil {
 				return failedLoop(err)
@@ -94,7 +95,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		if err := r.View.CheckSelection(s.session, s.selection); err != nil {
 			return failedLoop(err)
 		}
-		var pending *dialogue.PendingUserMessage
+		var pending *agentshare.PendingUserMessage
 		if inToolPhase {
 			s.messages, pending = drainPendingUserInput(r.Turns, s.session.ID, s.messages, turn.AttemptFromContext(s.ctx))
 		}
@@ -125,7 +126,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		}
 		streaming := result.Stream != nil
 		if err := s.requestCtx.Err(); err != nil {
-			return dialogue.LoopResult{Outcome: dialogue.Canceled, Err: err, QuietCancellation: true}
+			return agentshare.LoopResult{Outcome: agentshare.Canceled, Err: err, QuietCancellation: true}
 		}
 		assistantText := result.Text
 		assistantRawText := result.RawText
@@ -167,20 +168,20 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		}
 		if !inToolPhase {
 			if !r.Turns.StartToolPhase(s.session.ID, turn.AttemptFromContext(s.ctx)) {
-				return dialogue.LoopResult{Outcome: dialogue.Stopped}
+				return agentshare.LoopResult{Outcome: agentshare.Stopped}
 			}
 			inToolPhase = true
 		}
 		if toolRounds >= r.Tools.MaxRoundsPerTurn() {
 			s.output.SendPreview(s.ctx, fmt.Sprintf("已达到 max_rounds_per_turn=%d，后续工具调用未执行，正在请求模型总结当前进度。", r.Tools.MaxRoundsPerTurn()))
 			skipped := skippedToolMessages(result.ToolCalls, r.Tools.MaxRoundsPerTurn())
-			committer := &dialogue.ToolTranscriptCommitter{Messages: r.Tools.Messages}
-			head := dialogue.ToolCallStorageMessage(s.session.ID, assistantRawText, assistantRawText, result.ToolCalls)
+			committer := r.NewToolTranscriptCommitter()
+			head := agentshare.ToolCallStorageMessage(s.session.ID, assistantRawText, assistantRawText, result.ToolCalls)
 			if _, err := committer.Begin(s.requestCtx, &head); err != nil {
 				return failedLoop(err)
 			}
 			for i, message := range skipped {
-				stored := dialogue.ToolResultStorageMessage(s.session.ID, message)
+				stored := agentshare.ToolResultStorageMessage(s.session.ID, message)
 				if _, err := committer.Result(s.requestCtx, i, result.ToolCalls[i], message, &storage.ToolResultCommit{Result: &stored}); err != nil {
 					return failedLoop(err)
 				}
@@ -188,14 +189,14 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			if _, err := committer.Flush(s.requestCtx); err != nil {
 				return failedLoop(err)
 			}
-			s.messages = append(s.messages, committer.Committed...)
-			var summaryPending *dialogue.PendingUserMessage
+			s.messages = append(s.messages, committer.Committed()...)
+			var summaryPending *agentshare.PendingUserMessage
 			s.messages, summaryPending = drainPendingUserInput(r.Turns, s.session.ID, s.messages, turn.AttemptFromContext(s.ctx))
 			summaryInput := &storage.Message{SessionID: s.session.ID, Role: storage.RoleUser, Content: "工具调用轮次已达到上限，可以询问用户是否继续或者基于已有工具结果和当前上下文总结当前进度。"}
 			if _, err := r.Messages.Append(s.requestCtx, summaryInput, "append_summary_input"); err != nil {
 				return failedLoop(err)
 			}
-			projected, err := dialogue.MessageFromStorage(*summaryInput)
+			projected, err := agentshare.MessageFromStorage(*summaryInput)
 			if err != nil {
 				return failedLoop(err)
 			}
@@ -236,18 +237,18 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			break
 		}
 		toolRounds++
-		committer := &dialogue.ToolTranscriptCommitter{Messages: r.Tools.Messages}
+		committer := r.NewToolTranscriptCommitter()
 		execution := r.Tools.ExecuteWithCommitter(s.requestCtx, s.session, result.ToolCalls, assistantRawText, assistantRawText, s.output, committer)
 		if execution.Err != nil {
 			return failedLoop(execution.Err)
 		}
 		if execution.Stopped {
 			if err := s.requestCtx.Err(); err != nil {
-				return dialogue.LoopResult{Outcome: dialogue.Canceled, Err: err, QuietCancellation: true}
+				return agentshare.LoopResult{Outcome: agentshare.Canceled, Err: err, QuietCancellation: true}
 			}
-			return dialogue.LoopResult{Outcome: dialogue.Stopped}
+			return agentshare.LoopResult{Outcome: agentshare.Stopped}
 		}
-		s.messages = append(s.messages, committer.Committed...)
+		s.messages = append(s.messages, committer.Committed()...)
 		s.tools, err = r.Tools.Schemas(s.ctx, s.session)
 		if err != nil {
 			return failedLoop(err)
@@ -257,7 +258,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 			if _, err := r.Messages.Append(s.requestCtx, message, "append_confirmation_input"); err != nil {
 				return failedLoop(err)
 			}
-			projected, err := dialogue.MessageFromStorage(*message)
+			projected, err := agentshare.MessageFromStorage(*message)
 			if err != nil {
 				return failedLoop(err)
 			}
@@ -265,12 +266,12 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 		}
 	}
 	if err := s.requestCtx.Err(); err != nil {
-		return dialogue.LoopResult{Outcome: dialogue.Canceled, Err: err, QuietCancellation: true}
+		return agentshare.LoopResult{Outcome: agentshare.Canceled, Err: err, QuietCancellation: true}
 	}
 
-	return dialogue.LoopResult{
-		Outcome: dialogue.Completed,
-		Commit: dialogue.ReplyCommitInput{
+	return agentshare.LoopResult{
+		Outcome: agentshare.Completed,
+		Commit: agentshare.ReplyCommitInput{
 			Persistence:  r.Messages.Committer("append_assistant_message"),
 			Session:      s.session,
 			Text:         finalText,
@@ -282,6 +283,6 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in dialogue.Loop
 	}
 }
 
-func failedLoop(err error) dialogue.LoopResult {
-	return dialogue.LoopResult{Outcome: dialogue.Failed, Err: err}
+func failedLoop(err error) agentshare.LoopResult {
+	return agentshare.LoopResult{Outcome: agentshare.Failed, Err: err}
 }

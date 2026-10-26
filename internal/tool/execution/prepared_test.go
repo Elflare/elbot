@@ -102,7 +102,7 @@ func TestCallToolAlwaysPreparesAndChecksBeforeExecution(t *testing.T) {
 			if scenario == "canceled_before" {
 				cancel()
 			}
-			result, logContent, err := (&Manager{registry: catalog}).CallTool(ctx, share.CallRequest{ID: "one", Name: tool.Name(), Arguments: []byte(`{}`)})
+			result, logContent, err := (&Manager{ManagerDeps: ManagerDeps{Registry: catalog}}).CallTool(ctx, share.CallRequest{ID: "one", Name: tool.Name(), Arguments: []byte(`{}`)})
 			if scenario == "success" {
 				if err != nil || tool.assessments != 1 || tool.calls != 1 || result.Content != "original" || logContent != "original" {
 					t.Fatalf("tool=%+v result=%+v log=%q error=%v", tool, result, logContent, err)

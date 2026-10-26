@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
@@ -77,7 +78,7 @@ func newHistoryMediaToolTest(t *testing.T) (context.Context, historyMediaToolFix
 	resolver := &getMediaResolver{}
 	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ScopeID: "s"}}, MediaResolver: resolver})
 	mediaRuntime := toolmedia.NewMediaRuntime(center, root)
-	manager := chat_history.NewManager(&chatHistoryBridge{platform: historyPlatformTest{history.Repository()}, media: mediaRuntime})
+	manager := chat_history.NewManager(&chatHistoryBridge{platform: historyPlatformTest{history.Repository()}, media: mediaRuntime}, time.Now)
 	return ctx, historyMediaToolFixture{GetMediaTool: builtin.NewGetMediaTool(manager), manager: manager, history: history.Repository(), center: mediaRuntime, mediaCenter: center}, resolver
 }
 
@@ -141,8 +142,8 @@ func TestGetMediaErrorLogSeparators(t *testing.T) {
 
 func TestHistoryQueriesShowMediaWithoutDownload(t *testing.T) {
 	ctx, tools, resolver := newHistoryMediaToolTest(t)
-	search := builtin.NewSearchChatHistoryTool(tools.manager, tools.center)
-	around := builtin.NewGetChatHistoryAroundTool(tools.manager, tools.center)
+	search := builtin.NewSearchChatHistoryTool(tools.manager, nil)
+	around := builtin.NewGetChatHistoryAroundTool(tools.manager, nil)
 	for _, call := range []struct {
 		tool toolshare.Tool
 		args string
@@ -218,5 +219,5 @@ func (p historyPlatformTest) GetChatHistoryMessage(ctx context.Context, platform
 	return p.GetByPlatformMessage(ctx, platform, scopeID, messageID)
 }
 func newHistoryTestManager(repository storage.ChatHistoryRepository) *chat_history.Manager {
-	return chat_history.NewManager(&chatHistoryBridge{platform: historyPlatformTest{repository}})
+	return chat_history.NewManager(&chatHistoryBridge{platform: historyPlatformTest{repository}}, time.Now)
 }

@@ -1,9 +1,9 @@
 package confirmation
 
-import toolshare "elbot/internal/tool/share"
-
 import (
 	"context"
+	"elbot/internal/security"
+	"elbot/internal/tool"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -16,11 +16,10 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"elbot/internal/llm"
-	"elbot/internal/request"
+
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	
-	
+
 	"elbot/internal/turn"
 )
 
@@ -32,10 +31,24 @@ type ConfirmationPolicy struct {
 }
 
 type ConfirmationCoordinator struct {
-	sessions           *session.Service
-	requests           *request.Manager
-	turns              *turn.Manager
-	commands           *command.Router
+	sessions interface {
+		CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
+		EnterActivation(context.Context, session.Scope, ...string) (context.Context, func(), error)
+	}
+	requests interface {
+		CancelSession(string) int
+	}
+	turns interface {
+		BeginRiskConfirmation(string, turn.RiskConfirmation, ...string) *turn.RiskConfirmationWait
+		PendingRiskConfirmation(string) (turn.RiskConfirmation, bool)
+		RefreshRiskConfirmation(string) bool
+		ResolveRiskConfirmation(string, turn.RiskConfirmationResponse) bool
+		StopSession(string, ...string)
+	}
+	commands interface {
+		IsCommand(string) bool
+		Parse(string) command.Parsed
+	}
 	identity           ConfirmationIdentity
 	output             ConfirmationOutput
 	policy             agentshare.ConfirmationWaitPolicy
@@ -198,7 +211,7 @@ func (c *ConfirmationCoordinator) setToolAutoConfirmed(sessionID, toolName strin
 	c.autoConfirmTools[sessionID][toolName] = true
 }
 
-func (c *ConfirmationCoordinator) publishConfirmationWait(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk toolshare.RiskLevel, reasons []string) {
+func (c *ConfirmationCoordinator) publishConfirmationWait(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk security.RiskLevel, reasons []string) {
 	content := map[string]string{"tool": call.Name, "risk": string(risk), "arguments": call.Arguments, "risk_reasons": strings.Join(reasons, "; ")}
 	for key, value := range content {
 		runes := []rune(value)
@@ -222,7 +235,7 @@ func (c *ConfirmationCoordinator) publishConfirmationWait(ctx context.Context, s
 	})
 }
 
-func (c *ConfirmationCoordinator) publishConfirmationResult(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk toolshare.RiskLevel, action, extra, reason string, resultStatus events.ResultStatus, level slog.Level) {
+func (c *ConfirmationCoordinator) publishConfirmationResult(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk security.RiskLevel, action, extra, reason string, resultStatus events.ResultStatus, level slog.Level) {
 	content := map[string]string{"tool": call.Name, "risk": string(risk), "action": action, "extra": extra, "reason": reason}
 	for key, value := range content {
 		runes := []rune(value)
@@ -246,9 +259,9 @@ func (c *ConfirmationCoordinator) publishConfirmationResult(ctx context.Context,
 	})
 }
 
-func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment toolshare.RiskAssessment, detail string) (toolshare.ConfirmResult, error) {
+func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail string) (tool.ConfirmResult, error) {
 	if c.isSessionAutoConfirmed(sessionID) || c.isToolAutoConfirmed(sessionID, call.Name) {
-		return toolshare.ConfirmResult{Allowed: true}, nil
+		return tool.ConfirmResult{Allowed: true}, nil
 	}
 	fullArgs := compactArguments(call.Arguments)
 	previewArgs := previewArguments(fullArgs)
@@ -270,14 +283,14 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 				level = slog.LevelInfo
 			}
 			c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "prompt_failed", "", "send risk confirmation:\n"+logResult.Content, resultStatus, level)
-			return toolshare.ConfirmResult{Stopped: true}, fmt.Errorf("send risk confirmation: %w", err)
+			return tool.ConfirmResult{Stopped: true}, fmt.Errorf("send risk confirmation: %w", err)
 		}
 	}
 	resp, ok, resultStatus := wait.Wait(ctx, timeout)
 	if resp.Expired {
 		c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "expire", resp.Extra, "confirmation wait expired", events.ResultFailed, slog.LevelInfo)
 		err := c.output.SendChat(context.WithoutCancel(ctx), "高风险工具确认已过期，当前处理已停止。")
-		return toolshare.ConfirmResult{
+		return tool.ConfirmResult{
 			Allowed: false,
 			Extra:   resp.Extra,
 			Message: llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments(fmt.Sprintf("tool call %s confirmation expired", call.Name))},
@@ -296,7 +309,7 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 			reason = err.Error()
 		}
 		c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, action, resp.Extra, reason, resultStatus, slog.LevelInfo)
-		return toolshare.ConfirmResult{
+		return tool.ConfirmResult{
 			Allowed: false,
 			Extra:   resp.Extra,
 			Message: llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments(fmt.Sprintf("tool call %s stopped by user", call.Name))},
@@ -306,13 +319,13 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	if resp.ConfirmTool {
 		c.setToolAutoConfirmed(sessionID, call.Name)
 		if err := c.output.SendChat(ctx, fmt.Sprintf("已为当前 Session 自动确认后续 %s 工具调用。", call.Name)); err != nil {
-			return toolshare.ConfirmResult{Allowed: true, Extra: resp.Extra}, err
+			return tool.ConfirmResult{Allowed: true, Extra: resp.Extra}, err
 		}
 	}
 	if resp.ConfirmAll {
 		c.setSessionAutoConfirmed(sessionID)
 		if err := c.output.SendChat(ctx, "已为当前 Session 自动确认后续高风险工具调用。"); err != nil {
-			return toolshare.ConfirmResult{Allowed: true, Extra: resp.Extra}, err
+			return tool.ConfirmResult{Allowed: true, Extra: resp.Extra}, err
 		}
 	}
 	if resp.Rejected {
@@ -321,7 +334,7 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 			reason = "user rejected"
 		}
 		c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "reject", resp.Extra, reason, events.ResultRejected, slog.LevelInfo)
-		return toolshare.ConfirmResult{
+		return tool.ConfirmResult{
 			Allowed: false,
 			Extra:   resp.Extra,
 			Message: llm.LLMMessage{
@@ -340,7 +353,7 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 		action = "confirmall"
 	}
 	c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, action, resp.Extra, "", events.ResultSucceeded, slog.LevelInfo)
-	return toolshare.ConfirmResult{Allowed: true, Extra: resp.Extra}, nil
+	return tool.ConfirmResult{Allowed: true, Extra: resp.Extra}, nil
 }
 
 // NewConfirmationCoordinator initializes ConfirmationCoordinator without installing cross-service callbacks.

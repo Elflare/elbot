@@ -9,8 +9,9 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/request"
+
 	"elbot/internal/session"
+	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
 
@@ -26,10 +27,24 @@ type ConfirmationOutput interface {
 
 // ConfirmationCoordinatorDeps declares only the capabilities consumed by ConfirmationCoordinator.
 type ConfirmationCoordinatorDeps struct {
-	Sessions *session.Service
-	Requests *request.Manager
-	Turns    *turn.Manager
-	Commands *command.Router
+	Sessions interface {
+		CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
+		EnterActivation(context.Context, session.Scope, ...string) (context.Context, func(), error)
+	}
+	Requests interface {
+		CancelSession(string) int
+	}
+	Turns interface {
+		BeginRiskConfirmation(string, turn.RiskConfirmation, ...string) *turn.RiskConfirmationWait
+		PendingRiskConfirmation(string) (turn.RiskConfirmation, bool)
+		RefreshRiskConfirmation(string) bool
+		ResolveRiskConfirmation(string, turn.RiskConfirmationResponse) bool
+		StopSession(string, ...string)
+	}
+	Commands interface {
+		IsCommand(string) bool
+		Parse(string) command.Parsed
+	}
 	Identity ConfirmationIdentity
 	Output   ConfirmationOutput
 	Policy   agentshare.ConfirmationWaitPolicy

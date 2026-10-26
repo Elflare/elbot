@@ -11,7 +11,6 @@ import (
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
-	toolregistry "elbot/internal/tool/registry"
 	"elbot/internal/tool/share"
 )
 
@@ -25,7 +24,7 @@ func (s *PreloadService) BackgroundSelections(ctx context.Context, selectors []s
 		if name == "discover_tool" {
 			continue
 		}
-		if _, exists := s.registry.Get(name); exists {
+		if _, exists := s.Registry.Get(name); exists {
 			selections = append(selections, share.BackgroundSelection{Names: []string{name}})
 			continue
 		}
@@ -34,7 +33,7 @@ func (s *PreloadService) BackgroundSelections(ctx context.Context, selectors []s
 		if err != nil {
 			return nil, err
 		}
-		roots := uniqueNames(append(s.registry.NamesByTag(tag), configured...))
+		roots := uniqueNames(append(s.Registry.NamesByTag(tag), configured...))
 		if len(roots) == 0 {
 			roots, tag = []string{name}, ""
 		}
@@ -106,7 +105,7 @@ func (s *PreloadService) PrepareBackground(ctx context.Context, req share.Backgr
 			TimeoutSeconds: declaration.TimeoutSeconds, ForegroundOnly: declaration.ForegroundOnly,
 		})
 	}
-	result.Update.Tools = toolregistry.BackgroundDiscoveredTools(ctx, result.Update.Tools)
+	result.Update.Tools = s.BackgroundDiscoveredTools(ctx, result.Update.Tools)
 	for i, name := range names {
 		if preparedTools.Accepted[i] || preparedSkills.Accepted[i] {
 			result.Update.Tags = append(result.Update.Tags, tags[name]...)

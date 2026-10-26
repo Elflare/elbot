@@ -64,16 +64,16 @@ func TestInboundCallbackOutputPrecedesConsumeAndDispatch(t *testing.T) {
 		t.Run(map[bool]string{false: "continue", true: "consume"}[consume], func(t *testing.T) {
 			p := &entryProbe{}
 			h := hookMessageEntry(t, p, hooks.Points{
-				HasRoute: func(context.Context, hooks.Facts, hooks.Message) bool {
+				HasRoute: func(context.Context, hooks.Facts, agentshare.Message) bool {
 					p.order = append(p.order, "route?")
 					return false
 				},
-				PlatformMessageReceived: func(_ context.Context, facts hooks.Facts, message hooks.Message) (hooks.PlatformMessageReceivedResult, events.LogResult, error) {
+				PlatformMessageReceived: func(_ context.Context, facts hooks.Facts, message agentshare.Message) (agentshare.PlatformMessageReceivedResult, events.LogResult, error) {
 					p.order = append(p.order, "received")
 					if !facts.Woken {
 						t.Fatal("source-free input should be awake")
 					}
-					return hooks.PlatformMessageReceivedResult{Segments: llm.TextSegments("edited"), Consume: consume, Outputs: []delivery.Output{delivery.Text("extra")}}, events.LogResult{}, nil
+					return agentshare.PlatformMessageReceivedResult{Segments: llm.TextSegments("edited"), Consume: consume, Outputs: []delivery.Output{delivery.Text("extra")}}, events.LogResult{}, nil
 				},
 			})
 			if err := h.HandleMessage(t.Context(), "original"); err != nil {
@@ -97,17 +97,17 @@ func TestWaitingInputPreparesMediaWithoutRecomputingWakeup(t *testing.T) {
 	p := &entryProbe{}
 	resolver := &inboundMediaResolver{}
 	h := hookMessageEntry(t, p, hooks.Points{
-		HasRoute: func(_ context.Context, facts hooks.Facts, _ hooks.Message) bool {
+		HasRoute: func(_ context.Context, facts hooks.Facts, _ agentshare.Message) bool {
 			if facts.Woken || resolver.calls != 0 {
 				t.Fatal("route probe occurred after media or changed wakeup")
 			}
 			return true
 		},
-		PlatformMessageReceived: func(_ context.Context, facts hooks.Facts, message hooks.Message) (hooks.PlatformMessageReceivedResult, events.LogResult, error) {
+		PlatformMessageReceived: func(_ context.Context, facts hooks.Facts, message agentshare.Message) (agentshare.PlatformMessageReceivedResult, events.LogResult, error) {
 			if facts.Woken || resolver.calls != 1 || len(message.Segments) != 1 || !media.ValidID(message.Segments[0].MediaID) {
 				t.Fatalf("facts=%+v message=%+v calls=%d", facts, message, resolver.calls)
 			}
-			return hooks.PlatformMessageReceivedResult{Segments: llm.TextSegments("wake edited")}, events.LogResult{}, nil
+			return agentshare.PlatformMessageReceivedResult{Segments: llm.TextSegments("wake edited")}, events.LogResult{}, nil
 		},
 	})
 	store := newTestStore(t)
@@ -131,16 +131,16 @@ func TestCancelRouteBeforeAndAfterMessageRewrite(t *testing.T) {
 		t.Run(map[bool]string{false: "rewritten", true: "raw"}[rawCancel], func(t *testing.T) {
 			p := &entryProbe{}
 			h := hookMessageEntry(t, p, hooks.Points{
-				CancelRoute: func(_ context.Context, _ hooks.Facts, message hooks.Message) bool {
+				CancelRoute: func(_ context.Context, _ hooks.Facts, message agentshare.Message) bool {
 					p.order = append(p.order, "cancel")
 					if llm.SegmentsTextOnly(message.Segments) != "/cancel" {
 						t.Fatal(message)
 					}
 					return true
 				},
-				PlatformMessageReceived: func(_ context.Context, _ hooks.Facts, _ hooks.Message) (hooks.PlatformMessageReceivedResult, events.LogResult, error) {
+				PlatformMessageReceived: func(_ context.Context, _ hooks.Facts, _ agentshare.Message) (agentshare.PlatformMessageReceivedResult, events.LogResult, error) {
 					p.order = append(p.order, "received")
-					return hooks.PlatformMessageReceivedResult{Segments: llm.TextSegments("/cancel")}, events.LogResult{}, nil
+					return agentshare.PlatformMessageReceivedResult{Segments: llm.TextSegments("/cancel")}, events.LogResult{}, nil
 				},
 			})
 			text := "original"

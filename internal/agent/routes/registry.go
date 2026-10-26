@@ -1,9 +1,10 @@
 package routes
 
 import (
+	agentshare "elbot/internal/agent/share"
+
 	"fmt"
 
-	"elbot/internal/agent/dialogue"
 	"elbot/internal/contextmgr"
 	"elbot/internal/llm"
 	"elbot/internal/session"
@@ -28,7 +29,7 @@ func (r *Registry) binding(apiType llm.APIType) (Binding, error) {
 	return binding, nil
 }
 
-func (r *Registry) LoopFor(apiType llm.APIType) (dialogue.Loop, error) {
+func (r *Registry) LoopFor(apiType llm.APIType) (agentshare.Loop, error) {
 	binding, err := r.binding(apiType)
 	if err != nil {
 		return nil, err

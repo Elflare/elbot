@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"elbot/internal/security"
 
 	"testing"
 
@@ -57,7 +58,7 @@ func TestConfirmationWaitTimeoutUsesSessionTTLAsUpperBound(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 
 			policy := agentconfirmation.NewConfirmationPolicy(agentconfirmation.ConfirmationPolicyDeps{
-				Identity:                agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "test"}),
+				Identity:                agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{Permission: security.DefaultPermission(), PlatformName: "test"}),
 				IdleExpiration:          sessionIdleExpirationConfig(tt.cfg),
 				UserConfirmationTimeout: 10 * time.Minute,
 			})

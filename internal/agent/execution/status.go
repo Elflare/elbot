@@ -2,11 +2,10 @@ package execution
 
 import (
 	"context"
+	agentshare "elbot/internal/agent/share"
 	"sync"
 	"time"
 
-	"elbot/internal/agent/dialogue"
-	agentevents "elbot/internal/agent/events"
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	"elbot/internal/llm"
@@ -25,9 +24,14 @@ type StatusRecorder struct {
 	snapshots map[string]runtimestatus.Snapshot
 	owners    map[string]contextinfo.Execution
 	version   uint64
-	turns     *turn.Manager
-	changed   *signal.Signal[agentevents.StatusChangedEvent, signal.Empty]
-	view      dialogue.ExecutionView
+	turns     interface {
+		ExecutionAttempt(string) (*turn.Execution, string, bool)
+		Snapshot(string) turn.Snapshot
+	}
+	changed *signal.Signal[StatusChangedEvent, signal.Empty]
+	view    interface {
+		Context(context.Context) context.Context
+	}
 }
 
 func (r *StatusRecorder) Record(ctx context.Context, snapshot runtimestatus.Snapshot) {
@@ -77,24 +81,24 @@ func (r *StatusRecorder) record(ctx context.Context, snapshot runtimestatus.Snap
 	if !terminal && r.turns.Snapshot(snapshot.SessionID).Phase == turn.PhaseStopping {
 		snapshot.Phase = runtimestatus.PhaseStopping
 	}
-	snapshot.Usage = agentevents.CloneUsage(snapshot.Usage)
+	snapshot.Usage = agentshare.CloneUsage(snapshot.Usage)
 	r.snapshots[snapshot.SessionID] = snapshot
 	r.owners[snapshot.SessionID] = owner
 	r.version++
 	version := r.version
 	r.mu.Unlock()
-	snapshot.Usage = agentevents.CloneUsage(snapshot.Usage)
-	event := agentevents.StatusChangedEvent{Snapshot: snapshot, Version: version, Execution: owner}
+	snapshot.Usage = agentshare.CloneUsage(snapshot.Usage)
+	event := StatusChangedEvent{Snapshot: snapshot, Version: version, Execution: owner}
 	if conversation, ok := contextinfo.ConversationFromContext(ctx); ok {
 		event.Conversation = &conversation
 	}
 	if binding, ok := session.BindingFromContext(ctx); ok {
-		event.Binding = &agentevents.BindingSnapshot{
+		event.Binding = &BindingSnapshot{
 			Scope: binding.Scope(), SessionID: binding.SessionID(), Version: binding.Version(),
 		}
 	}
 	// This snapshot is committed. Publish it even when the request just ended.
-	agentevents.Emit(context.WithoutCancel(ctx), r.changed, event)
+	agentshare.Emit(context.WithoutCancel(ctx), r.changed, event)
 }
 
 // Usage restores the durable snapshot once; fresh observations always win.
@@ -110,17 +114,17 @@ func (r *StatusRecorder) Usage(row *storage.Session) (*llm.Usage, error) {
 		if err != nil {
 			return nil, err
 		}
-		snapshot.SessionID, snapshot.Usage = row.ID, agentevents.CloneUsage(state.LastUsage)
+		snapshot.SessionID, snapshot.Usage = row.ID, agentshare.CloneUsage(state.LastUsage)
 		r.snapshots[row.ID] = snapshot
 	}
-	return agentevents.CloneUsage(snapshot.Usage), nil
+	return agentshare.CloneUsage(snapshot.Usage), nil
 }
 
 func (r *StatusRecorder) Snapshot(sessionID string) runtimestatus.Snapshot {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	snapshot := r.snapshots[sessionID]
-	snapshot.Usage = agentevents.CloneUsage(snapshot.Usage)
+	snapshot.Usage = agentshare.CloneUsage(snapshot.Usage)
 	return snapshot
 }
 
@@ -166,9 +170,14 @@ func runtimeDoneStatus(base runtimestatus.Snapshot, usageUpdatedAt time.Time) ru
 
 // StatusRecorderDeps declares only the capabilities consumed by StatusRecorder.
 type StatusRecorderDeps struct {
-	View    dialogue.ExecutionView // Refreshes source facts after foreground adoption.
-	Turns   *turn.Manager
-	Changed *signal.Signal[agentevents.StatusChangedEvent, signal.Empty]
+	View interface {
+		Context(context.Context) context.Context
+	} // Refreshes source facts after foreground adoption.
+	Turns interface {
+		ExecutionAttempt(string) (*turn.Execution, string, bool)
+		Snapshot(string) turn.Snapshot
+	}
+	Changed *signal.Signal[StatusChangedEvent, signal.Empty]
 }
 
 // NewStatusRecorder initializes StatusRecorder without installing cross-service callbacks.
@@ -180,4 +189,19 @@ func NewStatusRecorder(deps StatusRecorderDeps) *StatusRecorder {
 		snapshots: make(map[string]runtimestatus.Snapshot),
 		owners:    make(map[string]contextinfo.Execution),
 	}
+}
+
+type StatusChangedEvent struct {
+	Snapshot     runtimestatus.Snapshot    // Committed execution state, independent of presentation.
+	Version      uint64                    // Monotonic publication order within the recorder, not a binding version.
+	Execution    contextinfo.Execution     // Identity of the execution that published the state, including terminal states.
+	Conversation *contextinfo.Conversation // Original presentation destination; nil when no conversation exists.
+	Binding      *BindingSnapshot          // Activation associated with this state; nil when unbound.
+}
+
+// BindingSnapshot describes an activation without exposing its internal handle.
+type BindingSnapshot struct {
+	Scope     session.Scope // Conversation and actor scope of the activation.
+	SessionID string        // Persisted session selected by this activation.
+	Version   uint64        // Service-local version assigned when this activation was established.
 }

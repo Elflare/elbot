@@ -2,13 +2,12 @@ package agent
 
 import (
 	"context"
+	agentexecution "elbot/internal/agent/execution"
+	"elbot/internal/signal"
 	"errors"
 	"sync"
 	"testing"
 	"testing/synctest"
-
-	agentevents "elbot/internal/agent/events"
-	"elbot/internal/signal"
 )
 
 func assertAgentSignalsClosed(t *testing.T, m *Supervisor) {
@@ -32,12 +31,12 @@ func TestSupervisorBeginClosePreservesSignalsUntilClose(t *testing.T) {
 		// no owned component left to delay the BeginClose observer.
 		ctx, cancel := context.WithCancel(t.Context())
 		m := &Supervisor{
-			ctx: ctx, cancel: cancel, signals: agentevents.NewSignals(),
+			ctx: ctx, cancel: cancel, signals: newSignals(),
 			bindings: &signalBindings{}, done: make(chan struct{}),
 		}
 		t.Cleanup(func() { _ = m.Close(context.Background()) })
 		received := false
-		if _, err := m.ObserveStatusChanged(func(agentevents.StatusChangedEvent) error {
+		if _, err := m.ObserveStatusChanged(func(StatusChangedEvent) error {
 			received = true
 			return nil
 		}, signal.ConnectOptions{}); err != nil {
@@ -57,7 +56,7 @@ func TestSupervisorBeginClosePreservesSignalsUntilClose(t *testing.T) {
 			default:
 			}
 		}
-		if _, err := m.signals.StatusChanged.Emit(t.Context(), agentevents.StatusChangedEvent{}); err != nil {
+		if _, err := m.signals.StatusChanged.Emit(t.Context(), agentexecution.StatusChangedEvent{}); err != nil {
 			t.Fatalf("external producer final status rejected: %v", err)
 		}
 		if !received {
@@ -150,20 +149,20 @@ func TestSupervisorAllowsFinalFactsButRejectsNewObservers(t *testing.T) {
 		t.Fatal(t.Context().Err())
 	}
 	received := make(chan struct{}, 1)
-	if _, err := m.ObserveStatusChanged(func(agentevents.StatusChangedEvent) error {
+	if _, err := m.ObserveStatusChanged(func(StatusChangedEvent) error {
 		received <- struct{}{}
 		return nil
 	}, signal.ConnectOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	m.BeginClose()
-	if _, err := m.ObserveStatusChanged(func(agentevents.StatusChangedEvent) error { return nil }, signal.ConnectOptions{}); !errors.Is(err, signal.ErrClosed) {
+	if _, err := m.ObserveStatusChanged(func(StatusChangedEvent) error { return nil }, signal.ConnectOptions{}); !errors.Is(err, signal.ErrClosed) {
 		t.Fatalf("status observer after BeginClose: %v", err)
 	}
-	if _, err := m.ObserveBindingChanged(func(agentevents.BindingChangedEvent) error { return nil }, signal.ConnectOptions{}); !errors.Is(err, signal.ErrClosed) {
+	if _, err := m.ObserveBindingChanged(func(BindingChangedEvent) error { return nil }, signal.ConnectOptions{}); !errors.Is(err, signal.ErrClosed) {
 		t.Fatalf("binding observer after BeginClose: %v", err)
 	}
-	if _, err := m.signals.StatusChanged.Emit(t.Context(), agentevents.StatusChangedEvent{}); err != nil {
+	if _, err := m.signals.StatusChanged.Emit(t.Context(), agentexecution.StatusChangedEvent{}); err != nil {
 		t.Fatalf("final status rejected: %v", err)
 	}
 	select {

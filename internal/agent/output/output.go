@@ -2,12 +2,12 @@ package output
 
 import (
 	"context"
+	agentshare "elbot/internal/agent/share"
 	"fmt"
 	"log/slog"
 	"slices"
 	"strings"
 
-	"elbot/internal/agent/dialogue"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
@@ -93,7 +93,7 @@ func (o *OutputSender) PrepareAssistant(ctx context.Context, text string) (strin
 }
 
 func (o *OutputSender) SendAssistant(ctx context.Context, text string) (receipt delivery.Receipt, logResult globalevents.LogResult, err error) {
-	if strings.TrimSpace(text) == "" && dialogue.BufferAssistantOutput(ctx) {
+	if strings.TrimSpace(text) == "" && agentshare.BufferAssistantOutput(ctx) {
 		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "assistant output is buffered and empty"}, nil
 	}
 	defer func() { o.observeDelivery(ctx, "send_assistant_message", logResult) }()
@@ -177,7 +177,7 @@ func (o *OutputSender) Preview(ctx context.Context, text ...string) {
 	if err != nil {
 		if ctx.Err() == nil {
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			dialogue.ReportFailure(ctx, facts.SessionID, fmt.Errorf("准备工具预览: %w", err), o.Notify)
+			agentshare.ReportFailure(ctx, facts.SessionID, fmt.Errorf("准备工具预览: %w", err), o.Notify)
 		}
 		return
 	}
@@ -280,7 +280,7 @@ func (o *OutputSender) ReplaceAndFinishStream(ctx context.Context, streamCtx con
 }
 
 func (o *OutputSender) StartStream(ctx context.Context) (delivery.MessageStream, error) {
-	if dialogue.BufferAssistantOutput(ctx) {
+	if agentshare.BufferAssistantOutput(ctx) {
 		return nil, nil
 	}
 	return o.dispatcher.StartStream(ctx)

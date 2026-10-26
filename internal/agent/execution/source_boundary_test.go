@@ -6,11 +6,12 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
+	"elbot/internal/security"
 	"testing"
 )
 
 func TestHookCallbackReceivesPublicFactsWithoutInventingSource(t *testing.T) {
-	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local"})
+	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{Permission: security.DefaultPermission(), PlatformName: "cli", ActorID: "cli:local", ScopeID: "local"})
 	for _, tc := range []struct {
 		name       string
 		ctx        context.Context

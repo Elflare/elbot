@@ -158,7 +158,13 @@ Agent 总管持有模型完成、状态变化、视觉降级三个线内事件�
 
 工具预加载和补全标签由 Tool 能力提供；执行 Schema 统一经工具执行能力生成，提示词只消费工具名称。Agent 不另设自定义 Schema Provider 或 Registry 回退。整链路测试通过真实 `NewSupervisor` 构造，子组件单测在各所属包中维护。
 
-根包 `agent.Supervisor` 为 App 提供 Agent 业务线的构造与管理入口。`NewSupervisor(ctx, cfg, deps)` 在内部拆分配置；`SupervisorDeps` 只接收 Store、Models、Media、Permission、Logs 五项共享资源，以及 Tool、Hook、Platform 三类业务能力。`deps.go` 在消费方声明 `ToolCapabilities`、`HookCapabilities`、`PlatformCapabilities`，提供方总管直接实现接口。Hook 能力只供管理命令使用，执行由提供方注册 Agent 自有回调。内部消费位置同样按所需操作依赖接口，不获取提供方的 Manager、Registry 等组件。Hook 统一注册一组 Points，各消费组件通过本地最小接口声明实际所需的回调；RunnerDeps 仅汇总 Preparer 与 CallProcessor 的能力用于装配，不要求输入、工具或输出回调。App 只传总管并调用接收方的 `ConnectAgent`，适配及订阅由接收方管理；Tool、Platform、Background 的总管实现仍待完成。根包持有 Session、Request、Turn、协议路线及订阅；具体业务放在子包，后台准备由 `background/execution` 持有。`share` 提供线内共享定义与辅助能力，不反向依赖 input、execution、dialogue、confirmation、hooks、output 或 tools。
+根包 `agent.Supervisor` 接收完整配置和借用依赖，持有 Session、Request、Turn、协议路线及订阅。公开 Hook 回调及嵌套数据、状态和绑定事件定义在 `contracts.go`；根部转换为内部契约，每个订阅者获得独立快照。后台请求、结果与复制请求也在此预留，执行、复制、清理方法仍为 TODO，后台准备尚在 Background。
+
+`wiring.go` 负责组件构造、协议接线、Completion 装配及 Workspace 工厂；消费者只接收实际使用的 Session、Turn、Request、Models、Contexts、Media、存储和命令能力。身份能力也按实际调用裁剪。外部公开数据和足够小的公开接口直接使用，不复制同义类型。Agent 的 Tool 调用统一使用 Tool 根包类型。
+
+兄弟子包通过消费接口及 `share` 协作。Loop、准备结果、提交、消息转换及接管提示归 `share/dialogue.go`；Hook 载荷与调用上下文辅助归 `share/hooks.go`。ExecutionView、Preparer、CallProcessor、MessageStore、CommitGate 和 ToolTranscriptCommitter 的实现保留在 Dialogue；Chat／Responses 只取得所需能力。信号源统一由根部构造，模型完成事实归 Share，状态事实归 Execution，视觉降级事实归 Dialogue。
+
+Hook、Command、Completion 等外围调用方尚需迁移；Hook 管理结果仍使用提供方旧类型，根包整体编译与整链路测试等待外围收口，不能据子包测试通过认定应用已可运行。
 
 ```mermaid
 flowchart TD
@@ -174,12 +180,13 @@ flowchart TD
     W --> H["agent/hooks/hooks.go<br/>单组回调调度与在途生命周期"]
     S --> HB["agent/hook_bridge.go<br/>注册入口与逐个 handler 的请求登记"]
     HB --> H
-    H --> HP["agent/hooks/points.go<br/>可挂接点与业务输入、结果契约"]
+    H --> HP["agent/hooks/points.go<br/>内部回调组与事实组合"]
+    HP --> SH["agent/share/hooks.go<br/>内部 Hook 载荷与上下文辅助"]
+    S --> CT["agent/contracts.go<br/>公开回调、事件及后台预留契约"]
     W --> O["agent/output/<br/>发送、输出 Hook 与回执"]
     W --> T["agent/tools/<br/>工具运行时与 ToolRun 桥接"]
     W --> D["agent/dialogue/、chat/、responses/、routes/<br/>公共单轮与协议路线"]
-    I & E & C & H & O & T --> R["agent/share/<br/>身份、输入、片段、绑定与共享契约"]
-    B["background/execution/runner.go、runner_deps.go<br/>后台准备与依赖契约"] --> R
+    I & E & C & H & O & T & D --> R["agent/share/<br/>身份、输入、片段、绑定与共享契约"]
 ```
 
 <!-- locator:protocol-routing -->
@@ -450,7 +457,7 @@ Hook.Start 串行等待加载与平台订阅完成后才标记启动成功，重
 
 runtime 的 workWG 覆盖启动、进程等待、读取循环、插件请求、重载、重启等待和异步停止。任务登记与关闭入口共用锁；临时 worker 移出索引时先登记停止任务，已接纳任务在退出前登记必要收尾。关闭后拒绝新业务任务，取消工具调用上下文；后台调用保留独立超时，带来源调用保留原上下文信息及取消关系。等待所有工作及共享资源清理结束后才关闭 Done，worker.stop 不等待整个 Manager 的工作组。
 
-Agent 通过 `RegisterHooks(hooks.Points)` 接入一组提供方回调，返回解除注册函数。Points 声明消息、模型、工具和输出阶段，以及入站路由探测和取消能力；参数只包含业务数据，Agent 不构造 Hook 协议 Event。管理命令独立消费 HookService。
+Agent 通过 `RegisterHooks(agent.Points)` 接入一组提供方回调，返回解除注册函数。Points 声明消息、模型、工具和输出阶段，以及入站路由探测和取消能力；参数只包含业务数据，Agent 不构造 Hook 协议 Event。管理命令独立消费 HookService。
 
 - 未注册的处理点原样通过，通知点直接返回；重复注册报错。注册表按值保存，解除函数只影响自身注册，已进入的回调继续完成。Agent 不维护规则优先级或第二套插件流水线。
 - 入站先计算唤醒事实、检查原始取消命令，再探测 waiting 并按需准备媒体；消息回调通过 pipeline 完成续接和普通规则执行。Agent 随后发送附加输出、处理消费结果，再检查改写后的取消命令并进入命令／模型流程。唤醒不因改写而重新计算。

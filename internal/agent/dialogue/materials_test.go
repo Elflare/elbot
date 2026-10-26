@@ -1,6 +1,8 @@
 package dialogue
 
 import (
+	agentshare "elbot/internal/agent/share"
+
 	"context"
 	"errors"
 	"io"
@@ -118,14 +120,14 @@ func TestToolTranscriptMirrorMatchesFullDatabaseFacts(t *testing.T) {
 	}
 	committer := &ToolTranscriptCommitter{Messages: &MessageStore{Dialogues: store.Dialogues(), Gate: &CommitGate{Sessions: session.NewService(store), Turns: turn.NewManager(), View: ExecutionView{Sessions: store.Sessions()}}}}
 	calls := []llm.ToolCallRequest{{ID: "one", Name: "discover_tool", Arguments: `{"names":["one","two"]}`}, {ID: "two", Name: "large", Arguments: `{"all":true}`}}
-	head := ToolCallStorageMessage(row.ID, "calling", "calling", calls)
+	head := agentshare.ToolCallStorageMessage(row.ID, "calling", "calling", calls)
 	if _, err := committer.Begin(t.Context(), &head); err != nil {
 		t.Fatal(err)
 	}
 	full := strings.Repeat("完整工具说明与结果\n", 4096)
 	for i, call := range calls {
 		message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments(full)}
-		stored := ToolResultStorageMessage(row.ID, message)
+		stored := agentshare.ToolResultStorageMessage(row.ID, message)
 		if _, err := committer.Result(t.Context(), i, call, message, &storage.ToolResultCommit{Result: &stored}); err != nil {
 			t.Fatal(err)
 		}
@@ -139,21 +141,21 @@ func TestToolTranscriptMirrorMatchesFullDatabaseFacts(t *testing.T) {
 	}
 	var restored []llm.LLMMessage
 	for _, row := range rows {
-		message, err := MessageFromStorage(row)
+		message, err := agentshare.MessageFromStorage(row)
 		if err != nil {
 			t.Fatal(err)
 		}
 		restored = append(restored, message)
 	}
-	if !reflect.DeepEqual(restored, committer.Committed) || len(restored) != 3 || restored[2].Segments[0].Text != full {
+	if !reflect.DeepEqual(restored, committer.Committed()) || len(restored) != 3 || restored[2].Segments[0].Text != full {
 		t.Fatal("committed mirror differs from complete restored transcript")
 	}
-	before := len(committer.Committed)
+	before := len(committer.Committed())
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	stored := ToolResultStorageMessage(row.ID, llm.LLMMessage{Role: llm.RoleTool, Segments: llm.TextSegments("unsaved")})
-	if _, err := committer.Result(t.Context(), 0, calls[0], llm.LLMMessage{}, &storage.ToolResultCommit{Result: &stored}); err == nil || len(committer.Committed) != before {
+	stored := agentshare.ToolResultStorageMessage(row.ID, llm.LLMMessage{Role: llm.RoleTool, Segments: llm.TextSegments("unsaved")})
+	if _, err := committer.Result(t.Context(), 0, calls[0], llm.LLMMessage{}, &storage.ToolResultCommit{Result: &stored}); err == nil || len(committer.Committed()) != before {
 		t.Fatal("failed result entered active context")
 	}
 }
@@ -165,8 +167,8 @@ func TestTextSegmentsRestoreWithoutWhitespaceOrBoundaryChanges(t *testing.T) {
 		{{Type: llm.SegmentText}},
 	} {
 		message := llm.LLMMessage{Role: llm.RoleTool, Name: "tool", ToolCallID: "id", Segments: segments}
-		stored := ToolResultStorageMessage("session", message)
-		if got, err := MessageFromStorage(stored); err != nil || !reflect.DeepEqual(got, message) {
+		stored := agentshare.ToolResultStorageMessage("session", message)
+		if got, err := agentshare.MessageFromStorage(stored); err != nil || !reflect.DeepEqual(got, message) {
 			t.Fatalf("restored=%#v want=%#v", got, message)
 		}
 	}
@@ -207,7 +209,7 @@ func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 	calls[0].Arguments = `{"media":"` + item.ID + `"}`
 	calls[1].Arguments = calls[0].Arguments
 	calls[2].Arguments = calls[0].Arguments
-	head := ToolCallStorageMessage(row.ID, "", "", calls)
+	head := agentshare.ToolCallStorageMessage(row.ID, "", "", calls)
 	if _, err := committer.Begin(ctx, &head); err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +233,7 @@ func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 	for _, index := range []int{1, 0, 2} {
 		call := calls[index]
 		message := llm.LLMMessage{Role: llm.RoleTool, ToolCallID: call.ID, Name: call.Name, Segments: llm.TextSegments("final " + call.ID)}
-		stored := ToolResultStorageMessage(row.ID, message)
+		stored := agentshare.ToolResultStorageMessage(row.ID, message)
 		record := &storage.ToolCallRecord{ToolCallID: call.ID, ToolName: call.Name, Success: true, StartedAt: storage.Now(), FinishedAt: storage.Now()}
 		if _, err := committer.Result(ctx, index, call, message, &storage.ToolResultCommit{Result: &stored, Record: record}); err != nil {
 			t.Fatal(err)

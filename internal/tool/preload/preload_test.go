@@ -2,6 +2,7 @@ package preload
 
 import (
 	"context"
+	"elbot/internal/tool/discovery"
 	"encoding/json"
 	"errors"
 	"os"
@@ -78,7 +79,7 @@ func TestBackgroundPreloadIncludesToolContent(t *testing.T) {
 	if err := registry.Register(candidate); err != nil {
 		t.Fatal(err)
 	}
-	preloader := NewPreloadService(PreloadOptions{Registry: registry, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"tasks": {Tools: []string{"task_tool"}}}}})
+	preloader := newTestPreloader(PreloadOptions{Registry: registry, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"tasks": {Tools: []string{"task_tool"}}}}})
 	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	ctx = contextinfo.WithBackgroundKind(ctx, "")
 	prepared, err := preloader.PrepareBackground(ctx, share.BackgroundPreloadRequest{SessionID: "session", Names: []string{"task_tool", "tasks", "task_tool"}})
@@ -122,7 +123,7 @@ func TestPreloadWrapperSkipAuditUsesEventName(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = manager.Close(context.Background()) })
-			preloader := NewPreloadService(PreloadOptions{Registry: registry.NewRegistry(security.DefaultPermission())})
+			preloader := newTestPreloader(PreloadOptions{Registry: registry.NewRegistry(security.DefaultPermission())})
 			if got, err := preloader.preloadWrapper(context.Background(), "session", "missing", background); len(got) != 0 || err != nil {
 				t.Fatalf("unexpected tools: %+v", got)
 			}
@@ -157,7 +158,7 @@ func TestBackgroundPreloadLocalAndELwisp(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	s := NewPreloadService(PreloadOptions{Registry: r})
+	s := newTestPreloader(PreloadOptions{Registry: r})
 	ctx := contextinfo.WithBackgroundKind(t.Context(), "")
 	schema := map[string]any{"type": "object", "properties": map[string]any{"x": map[string]any{"type": "string"}}}
 	req := share.BackgroundPreloadRequest{Names: []string{"guide", "guide"}, ELwispTools: []share.ELwispToolDeclaration{
@@ -205,7 +206,7 @@ func TestSelectionsExpandBeforeRuntimeQualification(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	s := NewPreloadService(PreloadOptions{Registry: r, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{
+	s := newTestPreloader(PreloadOptions{Registry: r, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{
 		"group": {Tools: []string{"normal", "admin", "hidden", "api", "guide"}},
 	}}})
 	selections, err := s.BackgroundSelections(t.Context(), []string{"group"})
@@ -240,7 +241,7 @@ func TestPreloadKeepsSelectedObjectAfterReplacement(t *testing.T) {
 	if err := r.Register(original); err != nil {
 		t.Fatal(err)
 	}
-	got, err := NewPreloadService(PreloadOptions{Registry: r}).PrepareTools(t.Context(), []string{"dynamic"})
+	got, err := newTestPreloader(PreloadOptions{Registry: r}).PrepareTools(t.Context(), []string{"dynamic"})
 	if err != nil || len(got.Update.Tools) != 1 || got.Update.Tools[0].Schema.Description != "old" || original.calls != 1 || replacement.calls != 0 {
 		t.Fatalf("got=%+v original=%d replacement=%d err=%v", got, original.calls, replacement.calls, err)
 	}
@@ -254,8 +255,16 @@ func TestPrepareToolsCancellationDuringContent(t *testing.T) {
 	if err := r.Register(candidate); err != nil {
 		t.Fatal(err)
 	}
-	got, err := NewPreloadService(PreloadOptions{Registry: r}).PrepareTools(ctx, []string{"cancel"})
+	got, err := newTestPreloader(PreloadOptions{Registry: r}).PrepareTools(ctx, []string{"cancel"})
 	if !errors.Is(err, context.Canceled) || len(got.Update.Tools) != 0 || got.Content != "" {
 		t.Fatalf("got=%+v err=%v", got, err)
 	}
+}
+
+func newTestPreloader(opts PreloadOptions) *PreloadService {
+	opts.Resolver = discovery.NewResolver(opts.Registry)
+	opts.NativeDiscoveredToolsFromDiscovery = discovery.NativeDiscoveredToolsFromDiscovery
+	opts.LoadDiscoveryContent = discovery.LoadDiscoveryContent
+	opts.BackgroundDiscoveredTools = registry.BackgroundDiscoveredTools
+	return NewPreloadService(opts)
 }

@@ -2,39 +2,40 @@ package tools
 
 import (
 	"context"
+	"elbot/internal/tool"
 
-	"elbot/internal/agent/dialogue"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	toolshare "elbot/internal/tool/share"
 )
 
 type toolRunPromptProvider struct {
 	tools interface {
-		QueryTools(context.Context, toolshare.ToolQuery) ([]toolshare.Info, error)
+		QueryTools(context.Context, tool.ToolQuery) ([]tool.Info, error)
 	}
-	identity dialogue.Identity
+	identity interface {
+		Actor(context.Context) contextinfo.Actor
+	}
 }
 
-func (p toolRunPromptProvider) ToolNames(ctx context.Context, mode string, session *storage.Session, scope session.Scope) (dialogue.PromptToolNames, error) {
+func (p toolRunPromptProvider) ToolNames(ctx context.Context, mode string, session *storage.Session, scope session.Scope) (agentshare.PromptToolNames, error) {
 	if err := ctx.Err(); err != nil {
-		return dialogue.PromptToolNames{}, err
+		return agentshare.PromptToolNames{}, err
 	}
 	if mode != storage.SessionModeWork || agentshare.IsBackgroundSession(session) {
-		return dialogue.PromptToolNames{}, nil
+		return agentshare.PromptToolNames{}, nil
 	}
 	ctx = contextinfo.WithActor(ctx, p.identity.Actor(ctx))
-	tools, err := p.tools.QueryTools(ctx, toolshare.ToolQuery{Kind: "tool"})
+	tools, err := p.tools.QueryTools(ctx, tool.ToolQuery{Kind: "tool"})
 	if err != nil {
-		return dialogue.PromptToolNames{}, err
+		return agentshare.PromptToolNames{}, err
 	}
-	skills, err := p.tools.QueryTools(ctx, toolshare.ToolQuery{Kind: "skill"})
+	skills, err := p.tools.QueryTools(ctx, tool.ToolQuery{Kind: "skill"})
 	if err != nil {
-		return dialogue.PromptToolNames{}, err
+		return agentshare.PromptToolNames{}, err
 	}
-	names := dialogue.PromptToolNames{}
+	names := agentshare.PromptToolNames{}
 	for _, info := range tools {
 		names.Tools = append(names.Tools, info.Name)
 	}

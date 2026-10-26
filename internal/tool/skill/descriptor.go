@@ -11,7 +11,6 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
-	"elbot/internal/tool/discovery"
 )
 
 const (
@@ -54,7 +53,7 @@ func (d descriptor) Detail() string {
 	if err != nil {
 		return ""
 	}
-	return discovery.RenderDetailBlocks([]toolshare.DetailBlock{block})
+	return toolshare.RenderDetailBlocks([]toolshare.DetailBlock{block})
 }
 
 func (d descriptor) DetailBlock() toolshare.DetailBlock {
