@@ -1,11 +1,11 @@
-// 定义并校验插件运行时配置、控制状态与构造参数。
+// 定义插件运行时控制状态、构造参数及工作目录解析。
 
 // Package runtime runs stateful hook.v2 processes. It deliberately lives under
 // the Hook subsystem: a persistent hook is still a Hook, not another plugin
 // dispatch path.
 package runtime
 
-import toolshare "elbot/internal/tool/share"
+import "elbot/internal/tool"
 
 import (
 	"context"
@@ -17,8 +17,6 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/hook/share"
 	"elbot/internal/llm"
-	"elbot/internal/processenv"
-	
 )
 
 type Status string
@@ -33,123 +31,10 @@ const (
 	StatusFailed   Status = "failed"
 )
 
-type Mode string
-
-const (
-	ModeOnce       Mode = "once"
-	ModePersistent Mode = "persistent"
-	ModeTransient  Mode = "transient"
-)
-
-type RestartConfig struct {
-	Strategy            string `toml:"strategy"`
-	InitialDelaySeconds int    `toml:"initial_delay_seconds"`
-	MaxDelaySeconds     int    `toml:"max_delay_seconds"`
-}
-
-type ToolsConfig struct {
-	Allow           []string `toml:"allow"`
-	BackgroundAllow []string `toml:"background_allow"`
-}
-
-// Config is decoded from [plugin.runtime]. Omitted mode is equivalent to
-// once; only persistent and transient modes create hook.v2 workers.
-type Config struct {
-	Mode                   Mode          `toml:"mode"`
-	Command                []string      `toml:"command"`
-	Cwd                    string        `toml:"cwd"`
-	StartupTimeoutSeconds  int           `toml:"startup_timeout_seconds"`
-	ShutdownTimeoutSeconds int           `toml:"shutdown_timeout_seconds"`
-	EventTimeoutSeconds    int           `toml:"event_timeout_seconds"`
-	MaxWaitSeconds         int           `toml:"max_wait_seconds"`
-	Restart                RestartConfig `toml:"restart"`
-	Tools                  ToolsConfig   `toml:"tools"`
-
-	ID          string                 `toml:"-"`
-	Description string                 `toml:"-"`
-	Dir         string                 `toml:"-"`
-	ConfigPath  string                 `toml:"-"`
-	Block       share.BlockPolicy      `toml:"-"`
-	ProcessEnv  processenv.Environment `toml:"-"`
-}
-
-func (c Config) ModeOrOnce() Mode {
-	if c.Mode == "" {
-		return ModeOnce
-	}
-	return c.Mode
-}
-
-func (c Config) IsWorker() bool {
-	return c.ModeOrOnce() != ModeOnce
-}
-
-func (c Config) Validate() error {
-	mode := c.ModeOrOnce()
-	if mode == ModeOnce {
-		return nil
-	}
-	if mode != ModePersistent && mode != ModeTransient {
-		return fmt.Errorf("runtime mode must be once, persistent or transient")
-	}
-	if strings.TrimSpace(c.ID) == "" {
-		return fmt.Errorf("hook id is required")
-	}
-	if !validID(c.ID) {
-		return fmt.Errorf("hook id %q must contain only lowercase letters, digits, '-' or '_'", c.ID)
-	}
-	if len(c.Command) == 0 || strings.TrimSpace(c.Command[0]) == "" {
-		return fmt.Errorf("runtime command is required")
-	}
-	if strings.TrimSpace(c.Cwd) == "" {
-		return fmt.Errorf("runtime cwd is required")
-	}
-	if c.StartupTimeoutSeconds <= 0 || c.ShutdownTimeoutSeconds <= 0 || c.EventTimeoutSeconds <= 0 || c.MaxWaitSeconds <= 0 {
-		return fmt.Errorf("runtime startup_timeout_seconds, shutdown_timeout_seconds, event_timeout_seconds and max_wait_seconds must be positive")
-	}
-	strategy := strings.TrimSpace(c.Restart.Strategy)
-	if strategy != "never" && strategy != "on_failure" && strategy != "always" {
-		return fmt.Errorf("runtime restart.strategy must be never, on_failure or always")
-	}
-	if c.Restart.InitialDelaySeconds <= 0 || c.Restart.MaxDelaySeconds <= 0 || c.Restart.InitialDelaySeconds > c.Restart.MaxDelaySeconds {
-		return fmt.Errorf("runtime restart delays must be positive and initial_delay_seconds cannot exceed max_delay_seconds")
-	}
-	if strings.TrimSpace(c.Dir) == "" {
-		return fmt.Errorf("runtime plugin directory is required")
-	}
-	seen := map[string]bool{}
-	for _, name := range c.Tools.Allow {
-		if name == "" || seen[name] {
-			return fmt.Errorf("runtime tools.allow contains an empty or duplicate tool name")
-		}
-		seen[name] = true
-	}
-	for _, name := range c.Tools.BackgroundAllow {
-		if !seen[name] {
-			return fmt.Errorf("runtime tools.background_allow tool %q must also appear in tools.allow", name)
-		}
-	}
-	for _, seconds := range []int{c.StartupTimeoutSeconds, c.ShutdownTimeoutSeconds, c.EventTimeoutSeconds, c.MaxWaitSeconds, c.Restart.InitialDelaySeconds, c.Restart.MaxDelaySeconds} {
-		if int64(seconds) > int64((1<<63-1)/1_000_000_000) {
-			return fmt.Errorf("runtime duration exceeds time.Duration limit")
-		}
-	}
-	return nil
-}
-
-func validID(value string) bool {
-	for _, r := range value {
-		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' && r != '_' {
-			return false
-		}
-	}
-	return value != ""
-}
-
 type Info struct {
 	ID          string
 	Description string
-	Mode        Mode
+	Mode        share.RuntimeMode
 	Status      Status
 	Detail      string
 	Active      int
@@ -159,9 +44,9 @@ type Info struct {
 type Options struct {
 	Media mediaAPI // Borrowed media center; runtime owns only its own leases.
 	Tools interface {
-		ToolInfo(string) (toolshare.Info, bool)
+		ToolInfo(string) (tool.Info, bool)
 		ToolSchema(string) (llm.ToolSchema, bool)
-		CallTool(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error)
+		CallTool(context.Context, tool.CallRequest) (*tool.Result, string, error)
 	} // Metadata, schema and invocation without exposing Tool objects.
 
 	// Send keeps delivery receipts separate from the source-owned log outcome.

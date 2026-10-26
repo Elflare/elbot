@@ -21,8 +21,9 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/hook/share"
 	"elbot/internal/llm"
+	"elbot/internal/security"
 	"elbot/internal/signal"
-	"elbot/internal/tool"
+	tool "elbot/internal/tool/registry"
 )
 
 type bodyTestTool struct {
@@ -45,7 +46,7 @@ func (t *bodyTestTool) PrepareCall(ctx context.Context, call toolshare.CallReque
 
 func TestRuleToolStartPrecedesBodyAndEndHasElapsed(t *testing.T) {
 	records := collectRecords(t, true)
-	registry := tool.NewRegistry()
+	registry := tool.NewRegistry(security.DefaultPermission())
 	invoked := &bodyTestTool{onCall: func() {
 		if len(*records) != 1 || (*records)[0].EventName != "hook_tool_call_prepared" || strings.Contains((*records)[0].Content, `"result"`) {
 			t.Fatalf("start=%+v", *records)
@@ -109,7 +110,7 @@ func collectRecords(t *testing.T, includeStarts ...bool) *[]events.LogRecord {
 }
 
 func TestRulesToolRecordsUseIndependentBodyUniqueIDAndActor(t *testing.T) {
-	registry := tool.NewRegistry()
+	registry := tool.NewRegistry(security.DefaultPermission())
 	invoked := &bodyTestTool{}
 	if err := registry.Register(invoked); err != nil {
 		t.Fatal(err)
@@ -201,7 +202,7 @@ func TestRulesJSONTruncationPreservesUnicodeMarkerAndBusinessData(t *testing.T) 
 	for _, length := range []int{255, 256, 257, 511, 512, 513, 2049} {
 		t.Run(fmt.Sprint(length), func(t *testing.T) {
 			body := strings.Repeat("雪", length)
-			registry := tool.NewRegistry()
+			registry := tool.NewRegistry(security.DefaultPermission())
 			invoked := &argumentLoggingTool{body: body}
 			if err := registry.Register(invoked); err != nil {
 				t.Fatal(err)

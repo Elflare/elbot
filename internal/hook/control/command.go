@@ -1,4 +1,4 @@
-package builtin
+package control
 
 import (
 	"context"
@@ -13,12 +13,13 @@ import (
 
 const hookListDescriptionLimit = 60
 
-func NewHooks(deps Deps) command.Handler {
-	return hooksCommand{deps: deps}
+func NewHooks(deps HookService, beginCall func(context.Context) (context.Context, func(), error)) command.Handler {
+	return hooksCommand{deps: deps, beginCall: beginCall}
 }
 
 type hooksCommand struct {
-	deps Deps
+	deps      HookService                                            // 命令实际消费的管理能力。
+	beginCall func(context.Context) (context.Context, func(), error) // 根部准入、取消与在途登记。
 }
 
 type hookGroup struct {
@@ -37,6 +38,12 @@ func (c hooksCommand) Info() command.Info {
 }
 
 func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
+	ctx, done, err := c.beginCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer done()
+
 	deps := c.deps
 	fields := strings.Fields(req.Args)
 	if len(fields) == 0 {
@@ -44,7 +51,7 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 	}
 	switch fields[0] {
 	case "reload":
-		report, err := deps.Hooks.HookReload()
+		report, err := deps.HookReload()
 		if err != nil {
 			return &command.Result{Content: fmt.Sprintf("hook reload finished; errors:\n%v", err) + "\n" + strings.Join(report.Notices, "\n")}, nil
 		}
@@ -56,11 +63,11 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 		var err error
 		switch fields[0] {
 		case "start":
-			err = deps.Hooks.StartStatefulHook(fields[1])
+			err = deps.StartStatefulHook(fields[1])
 		case "stop":
-			_, err = deps.Hooks.StopHook(ctx, fields[1])
+			_, err = deps.StopHook(ctx, fields[1])
 		case "restart":
-			err = deps.Hooks.RestartStatefulHook(ctx, fields[1])
+			err = deps.RestartStatefulHook(ctx, fields[1])
 		}
 		if err != nil {
 			return &command.Result{Content: fmt.Sprintf("hook %s failed: %v", fields[0], err)}, nil
@@ -73,31 +80,36 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 }
 
 func (c hooksCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
+	ctx, done, err := c.beginCall(ctx)
+	if err != nil {
+		return nil
+	}
+	defer done()
 	_ = ctx
-	token := currentCompletionToken(req)
-	if isFirstArg(req, token) {
-		options := []completionOption{{Text: "reload", Description: "Reload all hooks"}, {Text: "start", Description: "Start a stateful hook"}, {Text: "stop", Description: "Stop a stateful hook"}, {Text: "restart", Description: "Restart a stateful hook"}}
+	token := command.CurrentCompletionToken(req)
+	if command.IsFirstArg(req, token) {
+		options := []command.CompletionOption{{Text: "reload", Description: "Reload all hooks"}, {Text: "start", Description: "Start a stateful hook"}, {Text: "stop", Description: "Stop a stateful hook"}, {Text: "restart", Description: "Restart a stateful hook"}}
 		for _, group := range collectHookGroups(c.deps) {
 			description := hookCompletionDescription(group)
-			options = append(options, completionOption{Text: group.name, Description: description})
+			options = append(options, command.CompletionOption{Text: group.name, Description: description})
 		}
-		return completeStaticOptions(options, token.Text, token.Start, token.End, "hooks_arg")
+		return command.CompleteStaticOptions(options, token.Text, token.Start, token.End, "hooks_arg")
 	}
 	fields := strings.Fields(req.Args)
 	if len(fields) > 0 && (fields[0] == "start" || fields[0] == "stop" || fields[0] == "restart") {
-		options := []completionOption{}
-		for _, info := range c.deps.Hooks.StatefulHooks() {
-			options = append(options, completionOption{Text: info.ID, Description: string(info.Status)})
+		options := []command.CompletionOption{}
+		for _, info := range c.deps.StatefulHooks() {
+			options = append(options, command.CompletionOption{Text: info.ID, Description: string(info.Status)})
 		}
-		return completeStaticOptions(options, token.Text, token.Start, token.End, "stateful_hook")
+		return command.CompleteStaticOptions(options, token.Text, token.Start, token.End, "stateful_hook")
 	}
 	return nil
 }
 
-func collectHookGroups(deps Deps) []*hookGroup {
+func collectHookGroups(deps HookService) []*hookGroup {
 	groups := make([]*hookGroup, 0)
 	plugins := make(map[string]*hookGroup)
-	for _, info := range deps.Hooks.HookList() {
+	for _, info := range deps.HookList() {
 		pluginID := strings.TrimSpace(info.PluginID)
 		if pluginID == "" {
 			groups = append(groups, &hookGroup{name: info.Name, infos: []share.Info{info}})
@@ -111,7 +123,7 @@ func collectHookGroups(deps Deps) []*hookGroup {
 		}
 		group.infos = append(group.infos, info)
 	}
-	for _, info := range deps.Hooks.StatefulHooks() {
+	for _, info := range deps.StatefulHooks() {
 		id := strings.TrimSpace(info.ID)
 		group := plugins[id]
 		if group == nil {
@@ -131,7 +143,7 @@ func collectHookGroups(deps Deps) []*hookGroup {
 	return groups
 }
 
-func formatHookList(deps Deps) string {
+func formatHookList(deps HookService) string {
 	groups := collectHookGroups(deps)
 	if len(groups) == 0 {
 		return "hooks: none"
@@ -145,7 +157,7 @@ func formatHookList(deps Deps) string {
 		}
 		writeStandaloneHookListLine(&sb, group.infos[0])
 	}
-	return trimTrailingNewlines(sb.String())
+	return strings.TrimRight(sb.String(), "\n")
 }
 
 func writePluginHookListLine(sb *strings.Builder, group *hookGroup) {
@@ -235,10 +247,10 @@ func formatHookReloadResult(report share.ReloadReport) string {
 		sb.WriteString(notice)
 		sb.WriteString("\n")
 	}
-	return trimTrailingNewlines(sb.String())
+	return strings.TrimRight(sb.String(), "\n")
 }
 
-func formatHookDetail(deps Deps, name string) string {
+func formatHookDetail(deps HookService, name string) string {
 	groups := collectHookGroups(deps)
 	for _, group := range groups {
 		if group.plugin && group.name == name {
@@ -320,8 +332,11 @@ func truncateHookDescription(description string) string {
 	return string(runes[:hookListDescriptionLimit]) + "..."
 }
 
-type HookModule struct{}
-
-func (HookModule) RegisterCommands(registrar Registrar, deps Deps) error {
-	return RegisterFactories(registrar, deps, NewHooks)
+type HookService interface {
+	HookList() []share.Info
+	HookReload() (share.ReloadReport, error)
+	StatefulHooks() []share.RuntimeInfo
+	StartStatefulHook(id string) error
+	StopHook(ctx context.Context, id string) (bool, error)
+	RestartStatefulHook(ctx context.Context, id string) error
 }

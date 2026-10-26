@@ -2,7 +2,7 @@
 
 package rules
 
-import toolshare "elbot/internal/tool/share"
+import "elbot/internal/tool"
 
 import (
 	"context"
@@ -17,11 +17,10 @@ import (
 
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
-	hookoutput "elbot/internal/hook/output"
 	"elbot/internal/hook/share"
+	hookoutput "elbot/internal/hook/share/output"
 	"elbot/internal/llm"
 	"elbot/internal/storage"
-	
 )
 
 type state struct {
@@ -250,20 +249,20 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 		Source     string  `json:"source"`
 		ToolCallID string  `json:"tool_call_id"`
 	}{
-		Tool:       toolshare.TruncateLogContent(name, 2048),
-		Arguments:  toolshare.TruncateLogContent(arguments, 512),
-		Point:      toolshare.TruncateLogContent(string(event.Point), 2048),
+		Tool:       share.TruncateLogContent(name, 2048),
+		Arguments:  share.TruncateLogContent(arguments, 512),
+		Point:      share.TruncateLogContent(string(event.Point), 2048),
 		Source:     "rules",
 		ToolCallID: call.ID,
 	}
 	if event.Session.ID != "" {
 		if event.Actor.ID != "" {
-			content.ActorID = toolshare.TruncateLogContent(event.Actor.ID, 2048)
+			content.ActorID = share.TruncateLogContent(event.Actor.ID, 2048)
 		}
 		record.Identity.SessionID = &event.Session.ID
 	} else {
 		if actor, ok := contextinfo.ActorFromContext(ctx); ok && actor.ID != "" {
-			content.ActorID = toolshare.TruncateLogContent(actor.ID, 2048)
+			content.ActorID = share.TruncateLogContent(actor.ID, 2048)
 		}
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		if facts.SessionID != "" {
@@ -284,7 +283,7 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 		record.Identity.RootRequestID = &facts.RootRequestID
 	}
 	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
-	var toolResult *toolshare.Result
+	var toolResult *tool.Result
 	var err error
 	switch {
 	case name == "":
@@ -306,7 +305,7 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 			start := record
 			start.EventName, start.Content, start.ResultStatus = "hook_tool_call_prepared", string(data), globalevents.ResultSucceeded
 			m.Opts.Log(ctx, start)
-			toolResult, logResult.Content, err = m.Opts.Tools.CallTool(ctx, toolshare.CallRequest{ID: call.ID, Name: name, Arguments: json.RawMessage(arguments)})
+			toolResult, logResult.Content, err = m.Opts.Tools.CallTool(ctx, tool.CallRequest{ID: call.ID, Name: name, Arguments: json.RawMessage(arguments)})
 			if err != nil {
 				logResult.ResultStatus = globalevents.ResultFailed
 				if errors.Is(err, context.Canceled) {

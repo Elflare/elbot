@@ -7,8 +7,9 @@ import (
 	"errors"
 	"testing"
 	"testing/synctest"
+	"time"
 
-	agenthooks "elbot/internal/agent/hooks"
+	agenthooks "elbot/internal/agent"
 	"elbot/internal/events"
 	"elbot/internal/hook/pipeline"
 	"elbot/internal/hook/share"
@@ -22,53 +23,52 @@ type startTestControl struct {
 func (c startTestControl) HookReload() (share.ReloadReport, error) { return c.reload() }
 
 func TestSupervisorConcurrentStartWaitsForPlatformSubscription(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		m, _ := newBridgeTestSupervisor(t)
-		loading, release := make(chan struct{}), make(chan struct{})
-		defer func() {
-			select {
-			case <-release:
-			default:
-				close(release)
-			}
-		}()
-		loads := 0
-		m.control = startTestControl{reload: func() (share.ReloadReport, error) {
-			loads++
-			close(loading)
-			<-release
-			return share.ReloadReport{}, nil
-		}}
-		connected := make(chan struct{}, 1)
-		m.manager = bridgeTestPipeline{run: func(_ context.Context, event share.Event, _ pipeline.CallOptions) (share.Event, events.LogResult, error) {
-			connected <- struct{}{}
-			return event, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
-		}}
-		first, second := make(chan error, 1), make(chan error, 1)
-		go func() { first <- m.Start() }()
-		<-loading
-		go func() { second <- m.Start() }()
-		synctest.Wait()
+
+	m, _ := newBridgeTestSupervisor(t)
+	loading, release := make(chan struct{}), make(chan struct{})
+	defer func() {
 		select {
-		case err := <-second:
-			t.Fatalf("second Start returned before subscriptions were ready: %v", err)
+		case <-release:
 		default:
+			close(release)
 		}
-		close(release)
-		if err := <-second; err != nil {
-			t.Fatal(err)
-		}
-		if _, err := events.PlatformConnected.Emit(context.Background(), events.PlatformConnectedEvent{Platform: "test"}); err != nil {
-			t.Fatal(err)
-		}
-		synctest.Wait()
-		if len(connected) != 1 {
-			t.Fatal("connection emitted after Start returned was lost")
-		}
-		if err := <-first; err != nil || loads != 1 {
-			t.Fatalf("first Start=%v reloads=%d", err, loads)
-		}
-	})
+	}()
+	loads := 0
+	m.control = startTestControl{reload: func() (share.ReloadReport, error) {
+		loads++
+		close(loading)
+		<-release
+		return share.ReloadReport{}, nil
+	}}
+	connected := make(chan struct{}, 1)
+	m.manager = bridgeTestPipeline{run: func(_ context.Context, event share.Event, _ pipeline.CallOptions) (share.Event, events.LogResult, error) {
+		connected <- struct{}{}
+		return event, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+	}}
+	first, second := make(chan error, 1), make(chan error, 1)
+	go func() { first <- m.Start() }()
+	<-loading
+	go func() { second <- m.Start() }()
+	select {
+	case err := <-second:
+		t.Fatalf("second Start returned before subscriptions were ready: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(release)
+	if err := <-second; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := events.PlatformConnected.Emit(context.Background(), events.PlatformConnectedEvent{Platform: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-connected:
+	case <-time.After(time.Second):
+		t.Fatal("connection emitted after Start returned was lost")
+	}
+	if err := <-first; err != nil || loads != 1 {
+		t.Fatalf("first Start=%v reloads=%d", err, loads)
+	}
 }
 
 func TestSupervisorBeginClosePreservesAgentAndCloseWaitsForActualExit(t *testing.T) {

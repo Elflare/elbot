@@ -13,7 +13,8 @@ import (
 
 	"elbot/internal/events"
 	"elbot/internal/hook/share"
-	"elbot/internal/tool"
+	"elbot/internal/security"
+	tool "elbot/internal/tool/registry"
 )
 
 func closeRuntimeAfterRelease(t *testing.T, manager *Manager, release func()) {
@@ -48,7 +49,7 @@ func TestRuntimeCloseJoinsPluginToolRequests(t *testing.T) {
 			entered := make(chan context.Context, 1)
 			release := make(chan struct{})
 			unblock := sync.OnceFunc(func() { close(release) })
-			registry := tool.NewRegistry()
+			registry := tool.NewRegistry(security.DefaultPermission())
 			if err := registry.Register(loggingTool{run: func(ctx context.Context, _ toolshare.CallRequest) (*toolshare.Result, string, error) {
 				entered <- ctx
 				<-release // Deliberately ignore cancellation until the test releases us.
@@ -61,7 +62,7 @@ func TestRuntimeCloseJoinsPluginToolRequests(t *testing.T) {
 				t.Fatal(err)
 			}
 			closeRuntimeAfterRelease(t, manager, unblock)
-			w := newWorker(manager, Config{ID: "test", EventTimeoutSeconds: 30, Tools: ToolsConfig{Allow: []string{"logging_tool"}, BackgroundAllow: []string{"logging_tool"}}})
+			w := newWorker(manager, share.RuntimeConfig{ID: "test", EventTimeoutSeconds: 30, Tools: share.RuntimeToolsConfig{Allow: []string{"logging_tool"}, BackgroundAllow: []string{"logging_tool"}}})
 			w.stdin = discardWriteCloser{}
 			params := map[string]any{"name": "logging_tool", "background": true, "target": map[string]string{"platform": "cli"}}
 			if mode != "standalone" {
@@ -106,7 +107,7 @@ func TestRuntimeCloseJoinsRemovedTransient(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := newWorker(manager, Config{ID: "test"})
+	w := newWorker(manager, share.RuntimeConfig{ID: "test"})
 	w.stopping, w.done = true, make(chan struct{})
 	unblock := sync.OnceFunc(func() { close(w.done) })
 	closeRuntimeAfterRelease(t, manager, unblock)
@@ -128,7 +129,7 @@ func TestRuntimeCloseJoinsReload(t *testing.T) {
 	entered, release := make(chan struct{}), make(chan struct{})
 	unblock := sync.OnceFunc(func() { close(release) })
 	closeRuntimeAfterRelease(t, manager, unblock)
-	w := newWorker(manager, Config{ID: "test"})
+	w := newWorker(manager, share.RuntimeConfig{ID: "test"})
 	w.runReload(func() (events.LogResult, error) {
 		close(entered)
 		<-release
@@ -156,8 +157,8 @@ func TestRuntimeCloseJoinsWorkerReadLoop(t *testing.T) {
 		t.Fatal(err)
 	}
 	closeRuntimeAfterRelease(t, manager, unblock)
-	config := Config{ID: "blocked-log", Mode: ModePersistent, Command: runtimeHelperCommand(), Dir: t.TempDir(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 1, EventTimeoutSeconds: 2, Restart: RestartConfig{Strategy: "never"}}
-	if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
+	config := share.RuntimeConfig{ID: "blocked-log", Mode: share.RuntimeModePersistent, Command: runtimeHelperCommand(), Dir: t.TempDir(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 1, EventTimeoutSeconds: 2, Restart: share.RuntimeRestartConfig{Strategy: "never"}}
+	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -185,8 +186,8 @@ func TestWorkerSelfReloadCanStopItsOwnProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	closeRuntimeAfterRelease(t, manager, func() {})
-	config := Config{ID: "demo", Mode: ModePersistent, Command: runtimeHelperCommand(), Dir: t.TempDir(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 1, EventTimeoutSeconds: 2, Restart: RestartConfig{Strategy: "never"}}
-	if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
+	config := share.RuntimeConfig{ID: "demo", Mode: share.RuntimeModePersistent, Command: runtimeHelperCommand(), Dir: t.TempDir(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 1, EventTimeoutSeconds: 2, Restart: share.RuntimeRestartConfig{Strategy: "never"}}
+	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
 		t.Fatal(err)
 	}
 	waitForStatus(t, manager, config.ID, StatusReady)
@@ -216,9 +217,9 @@ func TestRuntimeCloseConcurrentWithStartup(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		config := Config{ID: "demo", Mode: ModePersistent, Command: runtimeHelperCommand(), Dir: t.TempDir(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 1, EventTimeoutSeconds: 2, Restart: RestartConfig{Strategy: "never"}}
+		config := share.RuntimeConfig{ID: "demo", Mode: share.RuntimeModePersistent, Command: runtimeHelperCommand(), Dir: t.TempDir(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 1, EventTimeoutSeconds: 2, Restart: share.RuntimeRestartConfig{Strategy: "never"}}
 		applied := make(chan error, 1)
-		go func() { applied <- manager.Apply([]Config{config}, func(string) {}) }()
+		go func() { applied <- manager.Apply([]share.RuntimeConfig{config}, func(string) {}) }()
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		err = manager.Close(ctx)
 		cancel()

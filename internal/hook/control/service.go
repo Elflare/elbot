@@ -9,35 +9,28 @@ import (
 	"sync"
 
 	"elbot/internal/events"
-	"elbot/internal/hook/pipeline"
-	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/hook/share"
 )
 
-// Loader builds a complete candidate hook set and returns the stateful runtime
-// configuration discovered alongside it.
-type Loader func(share.Registrar) (share.ReloadReport, []hookruntime.Config, error)
-
-type Runtime interface {
-	Apply([]hookruntime.Config, func(string)) error
-	ValidatePlugin(hookruntime.Config) error
-	ReplacePlugin(string, *hookruntime.Config, func()) (events.LogResult, error)
-	List() []share.RuntimeInfo
-	Start(string) error
-	Stop(context.Context, string) (bool, error)
-	Restart(context.Context, string) error
+// ReloadCandidate 是本次加载的候选信息；Commit 持有候选直到提交能力被释放。
+type ReloadCandidate struct {
+	Infos    []share.Info          // 候选规则的查询快照，用于确定需要替换的插件。
+	Runtimes []share.RuntimeConfig // 本次加载的插件运行配置。
+	Commit   func(pluginID string) // 仅替换指定插件的规则；候选执行器由根部闭包持有。
 }
+
+// Loader 由根部装配，创建完整候选；加载失败时不得提交候选。
+type Loader func() (share.ReloadReport, ReloadCandidate, error)
 
 type Service struct {
-	manager  *pipeline.Manager
-	runtime  Runtime
+	manager  share.PipelineControl
+	runtime  share.RuntimeControl
 	loader   Loader
 	reloadMu sync.Mutex
-	Log      func(context.Context, events.LogRecord) // Publisher inherited by candidate pipelines.
 }
 
-func New(manager *pipeline.Manager, runtime Runtime, loader Loader, Log func(context.Context, events.LogRecord)) *Service {
-	return &Service{manager: manager, runtime: runtime, loader: loader, Log: Log}
+func New(manager share.PipelineControl, runtime share.RuntimeControl, loader Loader) *Service {
+	return &Service{manager: manager, runtime: runtime, loader: loader}
 }
 
 func (s *Service) HookList() []share.Info {
@@ -51,8 +44,7 @@ func (s *Service) HookReload() (share.ReloadReport, error) {
 }
 
 func (s *Service) hookReload() (share.ReloadReport, error) {
-	candidate := pipeline.NewManager(s.Log, nil)
-	report, configs, err := s.loader(candidate)
+	report, candidate, err := s.loader()
 	if err != nil {
 		return report, err
 	}
@@ -60,22 +52,22 @@ func (s *Service) hookReload() (share.ReloadReport, error) {
 	for _, info := range s.runtime.List() {
 		runtimeIDs[info.ID] = true
 	}
-	for _, config := range configs {
+	for _, config := range candidate.Runtimes {
 		runtimeIDs[config.ID] = true
 	}
 	ids := map[string]bool{}
 	for _, info := range s.manager.List() {
 		ids[info.PluginID] = true
 	}
-	for _, info := range candidate.List() {
+	for _, info := range candidate.Infos {
 		ids[info.PluginID] = true
 	}
 	for id := range ids {
 		if !runtimeIDs[id] {
-			s.manager.ReplacePlugin(id, candidate)
+			candidate.Commit(id)
 		}
 	}
-	err = s.runtime.Apply(configs, func(id string) { s.manager.ReplacePlugin(id, candidate) })
+	err = s.runtime.Apply(candidate.Runtimes, candidate.Commit)
 	return report, err
 }
 
@@ -88,16 +80,15 @@ func (s *Service) PreparePluginReload(id string) (func() (events.LogResult, erro
 		return nil, fmt.Errorf("hook plugin id is required")
 	}
 	s.reloadMu.Lock()
-	candidate := pipeline.NewManager(s.Log, nil)
-	report, configs, err := s.loader(candidate)
+	report, candidate, err := s.loader()
 	s.reloadMu.Unlock()
 	if err != nil {
 		return nil, err
 	}
-	var config *hookruntime.Config
-	for i := range configs {
-		if configs[i].ID == id {
-			value := configs[i]
+	var config *share.RuntimeConfig
+	for i := range candidate.Runtimes {
+		if candidate.Runtimes[i].ID == id {
+			value := candidate.Runtimes[i]
 			config = &value
 			break
 		}
@@ -118,7 +109,7 @@ func (s *Service) PreparePluginReload(id string) (func() (events.LogResult, erro
 		if err := s.runtime.ValidatePlugin(*config); err != nil {
 			return events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}, err
 		}
-		return s.runtime.ReplacePlugin(id, config, func() { s.manager.ReplacePlugin(id, candidate) })
+		return s.runtime.ReplacePlugin(id, config, func() { candidate.Commit(id) })
 	}, nil
 }
 

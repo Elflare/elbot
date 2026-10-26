@@ -1,4 +1,4 @@
-package builtin
+package control
 
 import (
 	"context"
@@ -47,7 +47,7 @@ func TestHooksCommandShowsDescriptionsAndDetails(t *testing.T) {
 			Detail:      "on: platform.message.received\nmatch: always",
 		},
 	}}
-	cmd := NewHooks(Deps{Hooks: hooks})
+	cmd := NewHooks(hooks, testBeginCall)
 
 	result, err := cmd.Handle(context.Background(), command.Request{})
 	if err != nil {
@@ -74,7 +74,7 @@ func TestHooksCommandShowsDescriptionsAndDetails(t *testing.T) {
 
 func TestHooksCommandCompletesRuleName(t *testing.T) {
 	hooks := &fakeHookService{infos: []share.Info{{Name: "greet", Point: share.PointPlatformMessageReceived}}}
-	cmd := NewHooks(Deps{Hooks: hooks}).(command.Completer)
+	cmd := NewHooks(hooks, testBeginCall).(command.Completer)
 
 	got := cmd.Complete(context.Background(), command.CompletionRequest{Raw: "/hooks g", Prefix: "/", Name: "hooks", Args: "g", Cursor: len("/hooks g")})
 	if len(got) != 1 || got[0].Text != "greet" {
@@ -91,7 +91,7 @@ func TestHooksCommandGroupsPluginRulesAndExpandsDetail(t *testing.T) {
 		},
 		runtimeInfos: []share.RuntimeInfo{{ID: "weather", Description: "weather plugin", Mode: "persistent", Status: "ready", Active: 1, Waiting: 1}},
 	}
-	cmd := NewHooks(Deps{Hooks: hooks})
+	cmd := NewHooks(hooks, testBeginCall)
 
 	result, err := cmd.Handle(context.Background(), command.Request{})
 	if err != nil {
@@ -134,7 +134,7 @@ func TestHooksCommandGroupsPluginRulesAndExpandsDetail(t *testing.T) {
 
 func TestHooksReloadShowsWarnings(t *testing.T) {
 	hooks := &fakeHookService{reloadReport: share.ReloadReport{Notices: []string{"Hook 插件 gpt_image 已跳过：bad field"}}}
-	cmd := NewHooks(Deps{Hooks: hooks})
+	cmd := NewHooks(hooks, testBeginCall)
 
 	result, err := cmd.Handle(context.Background(), command.Request{Args: "reload"})
 	if err != nil {
@@ -147,7 +147,7 @@ func TestHooksReloadShowsWarnings(t *testing.T) {
 
 func TestHooksCommandManagesStatefulHooks(t *testing.T) {
 	hooks := &fakeHookService{runtimeInfos: []share.RuntimeInfo{{ID: "weather", Description: "weather loop", Mode: "persistent", Status: "ready"}}}
-	cmd := NewHooks(Deps{Hooks: hooks})
+	cmd := NewHooks(hooks, testBeginCall)
 
 	result, err := cmd.Handle(context.Background(), command.Request{})
 	if err != nil || !strings.Contains(result.Content, "weather  [persistent:ready]") {
@@ -162,3 +162,5 @@ func TestHooksCommandManagesStatefulHooks(t *testing.T) {
 		t.Fatalf("restart = %#v, restarted=%q, err=%v", result, hooks.restarted, err)
 	}
 }
+
+func testBeginCall(ctx context.Context) (context.Context, func(), error) { return ctx, func() {}, nil }

@@ -128,8 +128,8 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 }
 
 func (c stopCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
-	token := currentCompletionToken(req)
-	if !isFirstArg(req, token) {
+	token := command.CurrentCompletionToken(req)
+	if !command.IsFirstArg(req, token) {
 		return nil
 	}
 	requests, _ := stoppableRequests(ctx, c.deps)

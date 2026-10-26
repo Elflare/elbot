@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/hook/control"
 	"elbot/internal/hook/pipeline"
@@ -40,26 +41,32 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Log:             LogHook,
 		Notify:          notify,
 	}
-	loadHooks := func(registrar share.Registrar) (share.ReloadReport, []hookruntime.Config, error) {
+	loadHooks := func() (share.ReloadReport, control.ReloadCandidate, error) {
+		candidate := pipeline.NewManager(LogHook, nil)
 		var notices []string
 		loadOpts := opts
 		loadOpts.Notices = &notices
 		module, err := rules.NewModule(loadOpts)
 		report := share.ReloadReport{Notices: notices}
 		if err != nil {
-			return report, nil, err
+			return report, control.ReloadCandidate{}, err
 		}
-		module.RegisterHooks(registrar)
-		return report, module.Runtimes, nil
+		module.RegisterHooks(candidate)
+		return report, control.ReloadCandidate{
+			Infos: candidate.List(), Runtimes: module.Runtimes,
+			Commit: func(pluginID string) { manager.ReplacePlugin(pluginID, candidate) },
+		}, nil
 	}
-	service := control.New(manager, runtime, loadHooks, LogHook)
+	service := control.New(manager, runtime, loadHooks)
 	runtime.SetPluginReloadPreparer(service.PreparePluginReload)
 	// App cancels its producers before Hook.Close. Their final callbacks must
 	// retain access to Hook until that explicit shutdown boundary.
 	callCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	return &Supervisor{
+	m := &Supervisor{
 		manager: manager, runtime: runtime, control: service,
 		send:   deps.Platform.SendTo,
 		parent: ctx, ctx: callCtx, cancel: cancel, done: make(chan struct{}),
-	}, nil
+	}
+	m.commands = []command.Handler{control.NewHooks(service, m.beginCall)}
+	return m, nil
 }

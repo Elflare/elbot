@@ -8,41 +8,6 @@ import (
 	"elbot/internal/request"
 )
 
-type completionToken struct {
-	Start int
-	End   int
-	Text  string
-}
-
-func currentCompletionToken(req command.CompletionRequest) completionToken {
-	cursor := req.Cursor
-	if cursor <= 0 || cursor > len(req.Raw) {
-		cursor = len(req.Raw)
-	}
-	start := cursor
-	for start > 0 && req.Raw[start-1] != ' ' && req.Raw[start-1] != '\t' {
-		start--
-	}
-	return completionToken{Start: start, End: cursor, Text: req.Raw[start:cursor]}
-}
-
-func completeStaticOptions(options []completionOption, query string, start, end int, kind string) []command.Completion {
-	out := []command.Completion{}
-	for _, option := range options {
-		if query != "" && !strings.HasPrefix(option.Text, query) {
-			continue
-		}
-		out = append(out, command.Completion{Text: option.Text, Label: firstNonEmpty(option.Label, option.Text), Description: option.Description, Kind: kind, ReplaceStart: start, ReplaceEnd: end})
-	}
-	return out
-}
-
-type completionOption struct {
-	Text        string
-	Label       string
-	Description string
-}
-
 func completeStringOptions(values []string, query string, start, end int, kind string) []command.Completion {
 	out := []command.Completion{}
 	for _, value := range values {
@@ -97,16 +62,11 @@ func completeToolNames(deps Deps, query string, start, end int) []command.Comple
 	return out
 }
 
-func completeConfirmFlag(args string, token completionToken) []command.Completion {
+func completeConfirmFlag(args string, token command.CompletionToken) []command.Completion {
 	if strings.Contains(" "+args+" ", " --confirm ") {
 		return nil
 	}
-	return completeStaticOptions([]completionOption{{Text: "--confirm", Description: "Confirm this destructive action"}}, token.Text, token.Start, token.End, "option")
-}
-
-func isFirstArg(req command.CompletionRequest, token completionToken) bool {
-	before := strings.TrimSpace(req.Raw[len(req.Prefix)+len(req.Name) : token.Start])
-	return before == ""
+	return command.CompleteStaticOptions([]command.CompletionOption{{Text: "--confirm", Description: "Confirm this destructive action"}}, token.Text, token.Start, token.End, "option")
 }
 
 func firstNonEmpty(values ...string) string {

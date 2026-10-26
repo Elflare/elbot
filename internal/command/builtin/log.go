@@ -161,7 +161,7 @@ func (c logCommand) Handle(ctx context.Context, req command.Request) (*command.R
 
 func (c logCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
 	_ = ctx
-	token := currentCompletionToken(req)
+	token := command.CurrentCompletionToken(req)
 	previous := previousLogToken(req.Raw, token.Start)
 	if c.audit && previous == "--run_source" {
 		return completeStringOptions([]string{"foreground", "cron", "elnis"}, token.Text, token.Start, token.End, "run_source")
@@ -182,13 +182,13 @@ func (c logCommand) Complete(ctx context.Context, req command.CompletionRequest)
 		return completeStringOptions([]string{"record", "direct", "llm"}, token.Text, token.Start, token.End, "elnis_mode")
 	}
 	if strings.HasPrefix(token.Text, "-") || token.Text == "" {
-		return completeStaticOptions(logCompletionOptions(c.audit, c.elwisp), token.Text, token.Start, token.End, "option")
+		return command.CompleteStaticOptions(logCompletionOptions(c.audit, c.elwisp), token.Text, token.Start, token.End, "option")
 	}
 	return nil
 }
 
-func logCompletionOptions(audit, elwisp bool) []completionOption {
-	options := []completionOption{
+func logCompletionOptions(audit, elwisp bool) []command.CompletionOption {
+	options := []command.CompletionOption{
 		{Text: "-n", Description: "Number of entries"},
 		{Text: "--limit", Description: "Number of entries"},
 		{Text: "--days", Description: "Read logs from recent days"},
@@ -205,40 +205,40 @@ func logCompletionOptions(audit, elwisp bool) []completionOption {
 	}
 	if !elwisp {
 		options = append(options,
-			completionOption{Text: "--hook", Description: "Hook module records"},
+			command.CompletionOption{Text: "--hook", Description: "Hook module records"},
 		)
 	}
 	if !audit && !elwisp {
 		options = append(options,
-			completionOption{Text: "-u", Description: "User events"},
-			completionOption{Text: "-a", Description: "Assistant events"},
-			completionOption{Text: "-s", Description: "System prompt events"},
-			completionOption{Text: "--system", Description: "System prompt events"},
+			command.CompletionOption{Text: "-u", Description: "User events"},
+			command.CompletionOption{Text: "-a", Description: "Assistant events"},
+			command.CompletionOption{Text: "-s", Description: "System prompt events"},
+			command.CompletionOption{Text: "--system", Description: "System prompt events"},
 		)
 	}
 	if audit {
 		options = append(options,
-			completionOption{Text: "-t", Description: "Tool start and end events"},
-			completionOption{Text: "--run_source", Description: "Tool run source: foreground, cron, elnis"},
-			completionOption{Text: "--event", Description: "Filter audit event"},
-			completionOption{Text: "--risk", Description: "Filter risk level"},
-			completionOption{Text: "--actor", Description: "Filter actor ID"},
-			completionOption{Text: "--session", Description: "Filter session ID"},
-			completionOption{Text: "--tool", Description: "Tool events or filter tool name"},
+			command.CompletionOption{Text: "-t", Description: "Tool start and end events"},
+			command.CompletionOption{Text: "--run_source", Description: "Tool run source: foreground, cron, elnis"},
+			command.CompletionOption{Text: "--event", Description: "Filter audit event"},
+			command.CompletionOption{Text: "--risk", Description: "Filter risk level"},
+			command.CompletionOption{Text: "--actor", Description: "Filter actor ID"},
+			command.CompletionOption{Text: "--session", Description: "Filter session ID"},
+			command.CompletionOption{Text: "--tool", Description: "Tool events or filter tool name"},
 		)
 	}
 	if elwisp {
 		options = append(options,
-			completionOption{Text: "--name", Description: "Filter Elwisp name"},
-			completionOption{Text: "--elwisp", Description: "Filter Elwisp name"},
-			completionOption{Text: "--source", Description: "Filter event source"},
-			completionOption{Text: "--tag", Description: "Filter Elwisp tag"},
-			completionOption{Text: "--id", Description: "Filter source event ID"},
-			completionOption{Text: "--source-id", Description: "Filter source event ID"},
-			completionOption{Text: "--mode", Description: "Filter Elnis mode"},
-			completionOption{Text: "--event-key", Description: "Filter event key"},
-			completionOption{Text: "--event-id", Description: "Filter internal event ID"},
-			completionOption{Text: "--token", Description: "Filter token name"},
+			command.CompletionOption{Text: "--name", Description: "Filter Elwisp name"},
+			command.CompletionOption{Text: "--elwisp", Description: "Filter Elwisp name"},
+			command.CompletionOption{Text: "--source", Description: "Filter event source"},
+			command.CompletionOption{Text: "--tag", Description: "Filter Elwisp tag"},
+			command.CompletionOption{Text: "--id", Description: "Filter source event ID"},
+			command.CompletionOption{Text: "--source-id", Description: "Filter source event ID"},
+			command.CompletionOption{Text: "--mode", Description: "Filter Elnis mode"},
+			command.CompletionOption{Text: "--event-key", Description: "Filter event key"},
+			command.CompletionOption{Text: "--event-id", Description: "Filter internal event ID"},
+			command.CompletionOption{Text: "--token", Description: "Filter token name"},
 		)
 	}
 	return options

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"elbot/internal/agent/hooks"
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"elbot/internal/request"
@@ -15,7 +14,7 @@ func TestHookRequestsKeepPerHandlerIdentityAndCancellation(t *testing.T) {
 	m := contractSupervisor(t, isolatedModuleDeps(t))
 	parent, parentCtx, parentDone := m.requests.Start(t.Context(), request.StartRequest{SessionID: "session", Kind: request.KindTurn})
 	defer parentDone()
-	_, err := m.RegisterHooks(hooks.Points{AgentOutputPrepared: func(ctx context.Context, _ hooks.Facts, text string) (string, events.LogResult, error) {
+	_, err := m.RegisterHooks(Points{AgentOutputPrepared: func(ctx context.Context, _ Facts, text string) (string, events.LogResult, error) {
 		for _, name := range []string{"first", "second"} {
 			runCtx, done := m.StartHookRequest(ctx, "session", name)
 			facts, _ := contextinfo.ExecutionFromContext(runCtx)
@@ -56,7 +55,7 @@ func TestHookRequestsKeepPerHandlerIdentityAndCancellation(t *testing.T) {
 func TestBeginCloseRetainsCallbacksForDrainingProducers(t *testing.T) {
 	m := contractSupervisor(t, isolatedModuleDeps(t))
 	called := false
-	_, err := m.RegisterHooks(hooks.Points{AgentOutputPrepared: func(_ context.Context, _ hooks.Facts, text string) (string, events.LogResult, error) {
+	_, err := m.RegisterHooks(Points{AgentOutputPrepared: func(_ context.Context, _ Facts, text string) (string, events.LogResult, error) {
 		called = true
 		return text, events.LogResult{}, nil
 	}})
@@ -64,7 +63,7 @@ func TestBeginCloseRetainsCallbacksForDrainingProducers(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.BeginClose()
-	if _, err := m.RegisterHooks(hooks.Points{}); err == nil {
+	if _, err := m.RegisterHooks(Points{}); err == nil {
 		t.Fatal("registration accepted after BeginClose")
 	}
 	if _, _, err := m.bridge.AgentOutputPrepared(t.Context(), "final output"); err != nil || !called {

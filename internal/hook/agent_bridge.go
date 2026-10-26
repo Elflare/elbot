@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"reflect"
 
-	agenthooks "elbot/internal/agent/hooks"
+	agenthooks "elbot/internal/agent"
 	"elbot/internal/events"
 	"elbot/internal/hook/pipeline"
 	"elbot/internal/hook/share"

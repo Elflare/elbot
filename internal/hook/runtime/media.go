@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"elbot/internal/events"
-	hookoutput "elbot/internal/hook/output"
+	hookoutput "elbot/internal/hook/share/output"
 	"elbot/internal/media"
 	"elbot/internal/storage"
 )

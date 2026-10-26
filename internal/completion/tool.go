@@ -8,7 +8,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/directive"
 	"elbot/internal/security"
-	"elbot/internal/tool/share"
+	"elbot/internal/tool"
 )
 
 const KindToolDirective = "tool_directive"
@@ -17,14 +17,14 @@ const KindSkillDirective = "skill_directive"
 
 // ToolCapabilities is the catalog view needed by directive completion.
 type ToolCapabilities interface {
-	QueryTools(context.Context, share.ToolQuery) ([]share.Info, error)
+	QueryTools(context.Context, tool.ToolQuery) ([]tool.Info, error)
 }
 
 type ToolRegistryFunc func() ToolCapabilities
 type ActorFunc func(context.Context) contextinfo.Actor
 type PermissionFunc func() *security.Permission
 type ToolTagsFunc func(context.Context, ToolCapabilities, contextinfo.Actor, *security.Permission) ([]string, error)
-type ToolNamesByTagFunc func(context.Context, ToolCapabilities, string, share.ToolQuery) ([]string, error)
+type ToolNamesByTagFunc func(context.Context, ToolCapabilities, string, tool.ToolQuery) ([]string, error)
 
 type ToolDirectiveSource struct {
 	Context        func(context.Context) (context.Context, error)
@@ -118,22 +118,22 @@ func (s ToolDirectiveSource) matchingTags(ctx context.Context, registry ToolCapa
 	return matchStrings(candidates, query), err
 }
 
-func (s ToolDirectiveSource) matchingTools(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, permission *security.Permission, query string) ([]share.Info, error) {
-	infos, err := registry.QueryTools(ctx, share.ToolQuery{Kind: "tool"})
+func (s ToolDirectiveSource) matchingTools(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, permission *security.Permission, query string) ([]tool.Info, error) {
+	infos, err := registry.QueryTools(ctx, tool.ToolQuery{Kind: "tool"})
 	return matchInfos(infos, query), err
 }
 
-func (s ToolDirectiveSource) matchingSkills(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, permission *security.Permission, query string) ([]share.Info, error) {
-	infos, err := registry.QueryTools(ctx, share.ToolQuery{Kind: "skill"})
+func (s ToolDirectiveSource) matchingSkills(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, permission *security.Permission, query string) ([]tool.Info, error) {
+	infos, err := registry.QueryTools(ctx, tool.ToolQuery{Kind: "skill"})
 	return matchInfos(infos, query), err
 }
 
-func matchInfos(candidates []share.Info, query string) []share.Info {
+func matchInfos(candidates []tool.Info, query string) []tool.Info {
 	if query == "" {
 		return candidates
 	}
-	prefix := []share.Info{}
-	fuzzy := []share.Info{}
+	prefix := []tool.Info{}
+	fuzzy := []tool.Info{}
 	for _, info := range candidates {
 		if strings.HasPrefix(info.Name, query) {
 			prefix = append(prefix, info)
@@ -154,7 +154,7 @@ func (s ToolDirectiveSource) allowedTags(ctx context.Context, registry ToolCapab
 }
 
 func (s ToolDirectiveSource) tagDescription(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, permission *security.Permission, tag string) (string, error) {
-	names, err := s.ToolNamesByTag(ctx, registry, tag, share.ToolQuery{Kind: "tool"})
+	names, err := s.ToolNamesByTag(ctx, registry, tag, tool.ToolQuery{Kind: "tool"})
 	if err != nil {
 		return "", err
 	}

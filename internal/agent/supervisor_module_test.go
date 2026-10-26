@@ -7,13 +7,12 @@ import (
 	"testing"
 	"time"
 
-	commandbuiltin "elbot/internal/command/builtin"
+	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/delivery/dispatch"
 	"elbot/internal/events"
 	"elbot/internal/fileops"
-	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/media"
@@ -42,9 +41,9 @@ type isolatedToolCapabilities struct {
 	skills *skill.Manager
 }
 
-type isolatedHookCapabilities struct {
-	commandbuiltin.HookService
-}
+type isolatedHookCapabilities struct{}
+
+func (isolatedHookCapabilities) Commands() []command.Handler { return nil }
 
 type isolatedPlatformCapabilities struct{ *dispatch.Router }
 
@@ -95,17 +94,12 @@ func isolatedModuleDeps(t *testing.T) SupervisorDeps {
 	permission := security.DefaultPermission()
 	registry := toolregistry.NewRegistry(permission)
 	sender := dispatch.New(dispatch.Options{Primary: &assemblyPlatform{}, Store: store})
-	hooks, err := hook.NewSupervisor(t.Context(), &config.Config{ConfigPath: filepath.Join(t.TempDir(), "config.toml")}, hook.SupervisorDeps{Platform: isolatedPlatformCapabilities{sender}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = hooks.Close(context.Background()) })
 	root := t.TempDir()
 	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
 	return SupervisorDeps{
 		Media: center, Store: store, Models: models, Permission: permission,
 		Platform: isolatedPlatformCapabilities{sender},
-		Hooks:    isolatedHookCapabilities{HookService: hooks},
+		Hooks:    isolatedHookCapabilities{},
 		Tools: isolatedToolCapabilities{
 			Registry: registry, Manager: execution.NewManager(execution.ManagerDeps{Registry: registry, Permission: permission, Media: toolmedia.NewMediaRuntime(center, root), InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, DecodeState: toolstate.DecodeState, PrepareUpdate: toolstate.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(registry).DiscoveryStateUpdate, Log: func(context.Context, events.LogRecord) {}}),
 			PreloadService: preload.NewPreloadService(preload.PreloadOptions{Registry: registry, Resolver: discovery.NewResolver(registry), NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery, LoadDiscoveryContent: discovery.LoadDiscoveryContent, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools}),

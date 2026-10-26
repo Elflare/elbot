@@ -132,7 +132,7 @@ func (m *Manager) Route(ctx context.Context, event share.Event, observe func(con
 		record.Identity.RootRequestID = &facts.RootRequestID
 	}
 	m.opts.Log(ctx, record)
-	if worker.config.ModeOrOnce() == ModeTransient && (err != nil || !m.hasLease(event)) {
+	if worker.config.ModeOrOnce() == share.RuntimeModeTransient && (err != nil || !m.hasLease(event)) {
 		m.stopTransient(key, worker)
 	}
 	if err == nil && !updated.Control.StopPropagation {
@@ -173,7 +173,7 @@ func (m *Manager) Cancel(event share.Event) bool {
 		if !runningOK {
 			selected.notifyCancel(conversationID)
 		}
-		if selected.config.ModeOrOnce() == ModeTransient {
+		if selected.config.ModeOrOnce() == share.RuntimeModeTransient {
 			m.stopTransient(key, selected)
 		}
 	}

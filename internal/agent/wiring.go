@@ -226,13 +226,15 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Skills:             deps.Tools,
 		FileRollback:       fileRollbackCapabilities{deps.Tools},
 		PrepareFileContext: fileCommands.PrepareFileCommand,
-		Hooks:              deps.Hooks,
 		SessionState:       sessionCommands,
 		Logs:               logging.Reader{Dir: deps.Logs.LogDir()},
 		RuntimeStatus:      status.Snapshot,
 		Usage:              status.Usage,
 	})
 	if err != nil {
+		return m, err
+	}
+	if err := command.RegisterHandlers(m.commands, deps.Hooks.Commands()...); err != nil {
 		return m, err
 	}
 	handler := agentinput.NewMessageHandler(agentinput.MessageHandlerDeps{
@@ -257,7 +259,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 				}
 				return execution.ModelContext(ctx, row)
 			},
-			// TODO: Completion 的公开查询契约尚需改用 Tool 根部类型。
 			Registry:   func() completion.ToolCapabilities { return deps.Tools },
 			Actor:      identity.Actor,
 			Permission: func() *security.Permission { return deps.Permission },

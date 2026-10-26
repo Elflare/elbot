@@ -139,8 +139,8 @@ func (c renameCommand) Handle(ctx context.Context, req command.Request) (*comman
 }
 
 func (c renameCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
-	token := currentCompletionToken(req)
-	if !isFirstArg(req, token) {
+	token := command.CurrentCompletionToken(req)
+	if !command.IsFirstArg(req, token) {
 		return nil
 	}
 	return completeSessionIDs(ctx, c.deps, token.Text, false, token.Start, token.End)
@@ -209,8 +209,8 @@ func (c cleanCommand) Handle(ctx context.Context, req command.Request) (*command
 
 func (c cleanCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
 	_ = ctx
-	token := currentCompletionToken(req)
-	if !isFirstArg(req, token) {
+	token := command.CurrentCompletionToken(req)
+	if !command.IsFirstArg(req, token) {
 		return nil
 	}
 	return completeConfirmFlag(req.Args, token)
@@ -235,15 +235,15 @@ func (c sessionTargetCommand) Handle(ctx context.Context, req command.Request) (
 }
 
 func (c sessionTargetCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
-	token := currentCompletionToken(req)
+	token := command.CurrentCompletionToken(req)
 	fields := strings.Fields(req.Args)
 	if len(fields) > 0 && fields[len(fields)-1] == "--confirm" {
 		return nil
 	}
-	if c.confirm && len(fields) > 0 && (!isFirstArg(req, token) || strings.HasPrefix(token.Text, "--")) {
+	if c.confirm && len(fields) > 0 && (!command.IsFirstArg(req, token) || strings.HasPrefix(token.Text, "--")) {
 		return completeConfirmFlag(req.Args, token)
 	}
-	if isFirstArg(req, token) {
+	if command.IsFirstArg(req, token) {
 		return completeSessionIDs(ctx, c.deps, token.Text, c.archived, token.Start, token.End)
 	}
 	if c.confirm {

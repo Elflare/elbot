@@ -118,19 +118,19 @@ func (c rollbackCommand) Complete(ctx context.Context, req command.CompletionReq
 	if c.deps.FileRollback == nil || c.deps.PrepareFileContext == nil {
 		return nil
 	}
-	token := currentCompletionToken(req)
-	if !isFirstArg(req, token) {
+	token := command.CurrentCompletionToken(req)
+	if !command.IsFirstArg(req, token) {
 		return nil
 	}
 	records, err := c.list(ctx)
 	if err != nil {
 		return nil
 	}
-	options := make([]completionOption, 0, len(records))
+	options := make([]command.CompletionOption, 0, len(records))
 	for _, record := range records {
-		options = append(options, completionOption{Text: strconv.FormatUint(record.ID, 10), Description: record.Path})
+		options = append(options, command.CompletionOption{Text: strconv.FormatUint(record.ID, 10), Description: record.Path})
 	}
-	return completeStaticOptions(options, token.Text, token.Start, token.End, "rollback_record")
+	return command.CompleteStaticOptions(options, token.Text, token.Start, token.End, "rollback_record")
 }
 
 func (c rollbackCommand) list(ctx context.Context) ([]fileops.RollbackInfo, error) {

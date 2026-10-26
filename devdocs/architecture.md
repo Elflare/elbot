@@ -230,7 +230,7 @@ Chat／Responses 共用 Dialogue 的 Prompt、Hook、ToolRun、媒体与提交�
 <!-- locator:commands -->
 ## 命令链路
 
-`CommandExecutor → Router → builtin → 领域服务`。Dispatch 返回的命令错误由 CommandExecutor 统一发布一条 ERROR 通知，并保留原始错误；通知发往原会话且不绑定可能失效的旧 session。参数帮助归 command.Info.Help，补全使用 completion，CLI 本地文件补全优先；用户用法见[命令文档](../docs/commands.md)。
+`CommandExecutor → Router → command.Handler → 领域服务`。内置命令由 builtin 提供；`/hooks` 由 Hook 的 `control/command.go` 提供，根部 `Commands` 返回命令切片副本，Agent 统一注册。通用补全 token、候选和替换范围工具位于 `command/completion.go`。Dispatch 返回的命令错误由 CommandExecutor 统一发布一条 ERROR 通知，并保留原始错误；通知发往原会话且不绑定可能失效的旧 session。参数帮助归 command.Info.Help，补全使用 completion，CLI 本地文件补全优先；用户用法见[命令文档](../docs/commands.md)。
 
 - 改变 Session 的命令声明 SessionEffect，执行器处理压缩／确认冲突，Session 服务判断绑定规则。
 - 普通用户的请求查询与停止限定当前 Session，超管可管理全局；取消复核原 binding 和目标请求。列表选择按 Scope 隔离。
@@ -430,13 +430,13 @@ flowchart TD
 <!-- locator:hook -->
 ## Hook
 
-Hook 根包拥有公开管理入口、装配、外部连接和生命周期；pipeline 先调用注入的 runtime 续接能力，再按事件点和优先级串行执行普通规则，并负责触发错误钩子，control 管列表和 reload，runtime 管进程、RPC、waiting 与 SharedState。根包通过最小消费接口调用子包，不暴露内部组件。子包不得反向导入根包；工具、平台、媒体与日志／通知发布能力由根包装配注入。协议见[Hook 文档](../docs/hooks.md)。
+Hook 根包拥有公开管理入口、装配、外部连接和生命周期；pipeline 先调用注入的 runtime 续接能力，再按事件点和优先级串行执行普通规则，并负责触发错误钩子，control 管查询、重载、进程管理及命令展示，runtime 管进程、RPC、waiting 与 SharedState。根包通过最小消费接口调用子包，不暴露内部组件。子包不得反向导入根包；工具、平台、媒体与日志／通知发布能力由根包装配注入。协议见[Hook 文档](../docs/hooks.md)。
 
 CallOptions 显式携带 Woken、ReadOnlyCalls 和 Observe；Observe 只接收 context 与 handler 名称，桥接从 Agent 事实固定 SessionID，执行方决定实际 handler 的登记起止。runtime.Route 在选中有效续接后登记请求，返回 Event、是否续接、来源 LogResult 与 error。pipeline 将只读策略传给 Handler，由 rules 在每个动作后校验；调用快照供失败恢复使用。根部 fillEventFromContext 只转换并补入外部 context 事实。
 
-pipeline 用 mergeLogResult 聚合续接与普通规则的来源结果：Skipped 不参与，Failed 优先于 Canceled，其余取后一个状态，正文按执行顺序连接；全部跳过时返回 no matching Hook。规则仅借用 runtime 的 Handle、MediaRequest、SharedRequest，SharedState 由 runtime 私有持有，不通过 getter 暴露。
+pipeline 用 mergeLogResult 聚合续接与普通规则的来源结果：Skipped 不参与，Failed 优先于 Canceled，其余取后一个状态，正文按执行顺序连接；全部跳过时返回 no matching Hook。规则通过 share.RuntimeCaller 借用 Handle、MediaRequest、SharedRequest；control 通过 share.PipelineControl、share.RuntimeControl 查询、停止和管理插件。SharedState 由 runtime 私有持有，不通过 getter 暴露。
 
-Tools 按消费点提供 ToolInfo、ToolSchema 和 CallTool，规则不需要 schema；Platform 提供 SendTo 和按平台名称调用的 CallPlatformAPI。根部 media.go 保留媒体中心契约，runtime/media.go 只声明所需的八个方法；Event 不携带服务能力。日志和通知通过根包装配的 Log、Notify 发布。运行时模式和状态枚举归 runtime，share.RuntimeInfo 仅提供查询展示字符串。control 构造候选 pipeline 时继承日志发布能力，续接能力为空；替换规则保留活动 pipeline 的接线。
+Tools 按消费点提供 ToolInfo、ToolSchema 和 CallTool，使用 Tool 根包公开类型，规则不需要 schema；Platform 提供 SendTo 和按平台名称调用的 CallPlatformAPI。根部 media.go 保留媒体中心契约，runtime/media.go 只声明所需的八个方法；Event 不携带服务能力。日志和通知通过根包装配的 Log、Notify 发布。插件配置、执行模式及校验归 share/runtime_config.go，运行状态枚举归 runtime；share.RuntimeInfo 仅提供查询展示字符串。根部 Loader 创建带日志、无续接的候选 pipeline，向 control 交付 ReloadCandidate 的查询信息、运行时配置和按插件提交闭包；control 决定提交时机，替换算法与活动 pipeline 接线保留。输出转换与 hook.v2 协议分别位于 share/output、share/protocol，子包不直接依赖兄弟实现。
 
 ```mermaid
 flowchart TD
@@ -445,19 +445,23 @@ flowchart TD
     S --> P["pipeline/manager.go<br/>续接、普通规则、错误钩子"]
     P -->|wiring.go 注入续接能力| R["runtime/routes.go<br/>waiting 状态与实际续接"]
     P -->|传递只读策略| Q["rules/rule.go<br/>逐动作执行与只读校验"]
-    W["wiring.go / deps.go<br/>装配并注入外部消费能力"] --> P & R & Q
-    W --> M["control/service.go<br/>查询、候选构建与重载提交"]
-    Q --> RT["runtime/manager.go<br/>执行能力、共享请求与异步工作等待"]
+    W["wiring.go / deps.go<br/>创建组件与候选、注入协作能力"] --> P & R & Q
+    W -->|Loader 与 Commit| M["control/service.go<br/>查询与重载提交协调"]
+    W --> CMD["control/command.go<br/>参数、展示、补全与调用准入"]
+    CMD --> M
+    CMD --> CC["command/completion.go<br/>通用补全 token 与候选"]
+    Q -.->|share.RuntimeCaller，经根部连接| RT["runtime/manager.go<br/>执行能力、共享请求与异步工作等待"]
     RT --> WK["runtime/worker.go<br/>进程、RPC、读取与重载"]
     R --> RT
-    S & P & R & Q & M --> C["share/*.go<br/>事件、快照、注册与查询契约"]
+    S & P & R & Q & M --> C["share/*.go<br/>事件、配置、控制与查询契约"]
+    Q & RT --> SH["share/output/*、share/protocol/*<br/>输出转换与协议"]
 ```
 
-Hook.Start 串行等待加载与平台订阅完成后才标记启动成功，重复启动不会提前返回。Hook.BeginClose 停止新连接和平台订阅，保留 Agent 收尾回调；Close 解除 Agent 注册、取消并等待根包已接纳的调用及平台队列，再关闭 runtime。Done 等待真实退出，关闭等待超时不提前宣告完成。
+Hook.Start 串行等待加载与平台订阅完成后才标记启动成功，重复启动不会提前返回。Hook.BeginClose 停止新连接和平台订阅，保留 Agent 收尾回调和管理命令；命令 Handle 与 Complete 各通过根部准入一次并登记在途，Close 解除 Agent 注册、取消并等待根包已接纳的调用及平台队列，再关闭 runtime。Done 等待真实退出，关闭等待超时不提前宣告完成。
 
 runtime 的 workWG 覆盖启动、进程等待、读取循环、插件请求、重载、重启等待和异步停止。任务登记与关闭入口共用锁；临时 worker 移出索引时先登记停止任务，已接纳任务在退出前登记必要收尾。关闭后拒绝新业务任务，取消工具调用上下文；后台调用保留独立超时，带来源调用保留原上下文信息及取消关系。等待所有工作及共享资源清理结束后才关闭 Done，worker.stop 不等待整个 Manager 的工作组。
 
-Agent 通过 `RegisterHooks(agent.Points)` 接入一组提供方回调，返回解除注册函数。Points 声明消息、模型、工具和输出阶段，以及入站路由探测和取消能力；参数只包含业务数据，Agent 不构造 Hook 协议 Event。管理命令独立消费 HookService。
+Agent 通过 `RegisterHooks(agent.Points)` 接入一组提供方回调，返回解除注册函数。Points 声明消息、模型、工具和输出阶段，以及入站路由探测和取消能力；参数只包含业务数据，Agent 不构造 Hook 协议 Event。Agent 只消费 Hook 的标准命令；`control/command.go` 在 Hook 内部消费 HookService，查询结果不跨业务包公开。
 
 - 未注册的处理点原样通过，通知点直接返回；重复注册报错。注册表按值保存，解除函数只影响自身注册，已进入的回调继续完成。Agent 不维护规则优先级或第二套插件流水线。
 - 入站先计算唤醒事实、检查原始取消命令，再探测 waiting 并按需准备媒体；消息回调通过 pipeline 完成续接和普通规则执行。Agent 随后发送附加输出、处理消费结果，再检查改写后的取消命令并进入命令／模型流程。唤醒不因改写而重新计算。

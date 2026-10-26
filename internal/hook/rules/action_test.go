@@ -10,8 +10,9 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/hook/share"
 	"elbot/internal/llm"
+	"elbot/internal/security"
 	"elbot/internal/signal"
-	"elbot/internal/tool"
+	tool "elbot/internal/tool/registry"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -242,7 +243,7 @@ func TestRuleToolAuditOutcome(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer connection.Disconnect()
-			registry := tool.NewRegistry()
+			registry := tool.NewRegistry(security.DefaultPermission())
 			if err := registry.Register(&hookActionTestTool{err: tc.err}); err != nil {
 				t.Fatal(err)
 			}
@@ -265,7 +266,7 @@ func TestRuleToolAuditOutcome(t *testing.T) {
 }
 
 func TestRuleToolActionLeavesRiskAndAuthorizationToHook(t *testing.T) {
-	registry := tool.NewRegistry()
+	registry := tool.NewRegistry(security.DefaultPermission())
 	testTool := &hookActionTestTool{}
 	if err := registry.Register(testTool); err != nil {
 		t.Fatalf("register tool: %v", err)

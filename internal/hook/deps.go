@@ -2,7 +2,7 @@
 
 package hook
 
-import toolshare "elbot/internal/tool/share"
+import "elbot/internal/tool"
 
 import (
 	"context"
@@ -11,7 +11,6 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/llm"
-	
 )
 
 // SupervisorDeps contains borrowed capabilities. Hook neither owns their
@@ -19,9 +18,9 @@ import (
 type SupervisorDeps struct {
 	Media MediaAPI // Shared media center; runtime owns only its own media leases.
 	Tools interface {
-		ToolInfo(string) (toolshare.Info, bool)
+		ToolInfo(string) (tool.Info, bool)
 		ToolSchema(string) (llm.ToolSchema, bool)
-		CallTool(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error)
+		CallTool(context.Context, tool.CallRequest) (*tool.Result, string, error)
 	} // Tool metadata, schema and invocation, without exposing callable Tool objects.
 	Platform interface {
 		SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)

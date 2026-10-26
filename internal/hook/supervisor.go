@@ -6,6 +6,7 @@ import (
 	"context"
 	"sync"
 
+	"elbot/internal/command"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/hook/pipeline"
@@ -26,14 +27,10 @@ type Supervisor struct {
 		Done() <-chan struct{}
 	}
 	control interface {
-		HookList() []share.Info
 		HookReload() (share.ReloadReport, error)
-		StatefulHooks() []share.RuntimeInfo
-		StartStatefulHook(string) error
-		StopHook(context.Context, string) (bool, error)
-		RestartStatefulHook(context.Context, string) error
 	}
-	send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
+	commands []command.Handler // 已装配的管理命令能力；外部仅取得标准 Handler。
+	send     func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
 
 	parent         context.Context // Construction context, used for startup and platform subscription ownership.
 	ctx            context.Context // Hook-owned cancellation for admitted boundary calls; canceled only by Close.
@@ -51,58 +48,9 @@ type Supervisor struct {
 	done           chan struct{} // All boundary calls, platform callbacks and runtime resources have exited.
 }
 
-func (m *Supervisor) HookList() []share.Info {
-	_, done, err := m.beginCall(context.Background())
-	if err != nil {
-		return nil
-	}
-	defer done()
-	return m.control.HookList()
-}
-
-func (m *Supervisor) HookReload() (share.ReloadReport, error) {
-	_, done, err := m.beginCall(context.Background())
-	if err != nil {
-		return share.ReloadReport{}, err
-	}
-	defer done()
-	return m.control.HookReload()
-}
-
-func (m *Supervisor) StatefulHooks() []share.RuntimeInfo {
-	_, done, err := m.beginCall(context.Background())
-	if err != nil {
-		return nil
-	}
-	defer done()
-	return m.control.StatefulHooks()
-}
-
-func (m *Supervisor) StartStatefulHook(id string) error {
-	_, done, err := m.beginCall(context.Background())
-	if err != nil {
-		return err
-	}
-	defer done()
-	return m.control.StartStatefulHook(id)
-}
-
-func (m *Supervisor) StopHook(ctx context.Context, id string) (bool, error) {
-	ctx, done, err := m.beginCall(ctx)
-	if err != nil {
-		return false, err
-	}
-	defer done()
-	return m.control.StopHook(ctx, id)
-}
-
-func (m *Supervisor) RestartStatefulHook(ctx context.Context, id string) error {
-	ctx, done, err := m.beginCall(ctx)
-	if err != nil {
-		return err
-	}
-	defer done()
-	return m.control.RestartStatefulHook(ctx, id)
+// Commands returns a detached collection of callable management commands.
+func (m *Supervisor) Commands() []command.Handler {
+	return append([]command.Handler(nil), m.commands...)
 }
 
 // run admits an external call and supplies its facts; pipeline owns execution.

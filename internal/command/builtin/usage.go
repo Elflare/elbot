@@ -98,19 +98,19 @@ func (c usageCommand) Handle(ctx context.Context, req command.Request) (*command
 
 func (c usageCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
 	_ = ctx
-	token := currentCompletionToken(req)
+	token := command.CurrentCompletionToken(req)
 	previous := previousLogToken(req.Raw, token.Start)
 	if previous == "--by" {
 		return completeStringOptions([]string{"model", "day", "session"}, token.Text, token.Start, token.End, "group_by")
 	}
 	if strings.HasPrefix(token.Text, "-") || token.Text == "" {
-		return completeStaticOptions(usageCompletionOptions(), token.Text, token.Start, token.End, "option")
+		return command.CompleteStaticOptions(usageCompletionOptions(), token.Text, token.Start, token.End, "option")
 	}
 	return nil
 }
 
-func usageCompletionOptions() []completionOption {
-	return []completionOption{
+func usageCompletionOptions() []command.CompletionOption {
+	return []command.CompletionOption{
 		{Text: "-d", Description: "Days to look back"},
 		{Text: "--days", Description: "Days to look back"},
 		{Text: "-n", Description: "Select calls from newest: x or x-y"},

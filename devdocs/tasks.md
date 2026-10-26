@@ -18,16 +18,17 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] 统一权限管理类型及现行调用方为 `Permission`。
 - [x] 测试覆盖资源部分失败、环境参数和退出辅助逻辑；期限测试使用虚拟时间。
 - [ ] 实现 Tool、Platform、Background 的目标总管及 Platform.RunClient 结果契约，补齐跨线接线。
-- [x] 收窄 Agent 的 Hook 边界：声明根包 `agent.Points`，提供 `RegisterHooks`、`StartHookRequest`，业务流程仅调用 Agent 自有扩展点；Hook 管理能力仅用于命令。
+- [x] 收窄 Agent 的 Hook 边界：声明根包 `agent.Points`，提供 `RegisterHooks`、`StartHookRequest`，业务流程仅调用 Agent 自有扩展点；Hook 仅提供标准管理命令，由 Agent 注册。
 - [x] Hook 根包实现 ConnectAgent：注册并持有一组回调，转换业务参数与 Hook Event 并处理结果转换；逐 handler 登记回调只传 context 与名称，不持有 Agent 内部组件。
 - [x] Hook 根部 context_to_event.go 负责外部事实转换；pipeline 组织续接、普通规则及错误钩子，构造时注入日志和 runtime 续接能力；注册查询契约与事件辅助逻辑归 share。
 - [x] Hook.Start 串行完成初始加载和平台订阅，重复启动等待完成；已补并发启动回归用例。
-- [x] Hook 根包持有 PlatformConnected 订阅和逐平台队列，管理全局 Hook 输出与真实退出；全局平台工作不登记 Agent 请求。已补根包桥接与生命周期用例，暂未执行。
+- [x] Hook 根包持有 PlatformConnected 订阅和逐平台队列，管理全局 Hook 输出与真实退出；全局平台工作不登记 Agent 请求。根包桥接与生命周期用例已通过。
 - [x] Hook.BeginClose 保留 Agent 收尾能力；Close 解绑并等待已接纳调用和平台工作，再关闭 runtime，Done 等待实际退出。
-- [x] Hook 子包接入根包装配的能力：runtime.Route 接收登记回调并返回来源 LogResult；control 候选 pipeline 注入日志、使用空续接；rules/runtime 消费工具、发送、日志、通知及所需媒体能力，rules 使用按平台名称调用的 API；内部不反向导入根包。
-- [x] pipeline.Manager 作为具体执行器，将只读策略传给 rules 逐动作校验；share 保留调用快照和纯查询 RuntimeInfo，runtime 保留运行时枚举及私有媒体接口。
-- [x] 管理命令使用 share 查询类型；迁移流水线日志与旧装配层覆盖，删除 module／builtin／process 包装。
-- [ ] 编译并运行 Hook 及相关管理命令测试，完成整条接线验证；当前仅完成格式整理与静态核对。
+- [x] Hook 子包接入根包装配的能力：runtime.Route 接收登记回调并返回来源 LogResult；根部 Loader 创建带日志、无续接的候选 pipeline，control 仅接收候选信息与提交闭包；rules/runtime 消费工具、发送、日志、通知及所需媒体能力，rules 使用按平台名称调用的 API；内部不反向导入根包。
+- [x] pipeline.Manager 作为具体执行器，将只读策略传给 rules 逐动作校验；share 保留调用快照、配置与执行模式、查询结果及最小协作接口；runtime 保留运行状态枚举及私有媒体接口。
+- [x] Hook 子包不直接依赖兄弟实现；共享输出转换和协议归 share/output、share/protocol，候选准备与提交隔离回归通过。
+- [x] 管理命令位于 Hook control，内部使用 share 查询类型；根部 Commands 仅交付标准 Handler。
+- [x] Hook 及管理命令测试通过，真实 Agent–Hook–Tool 接线覆盖命令、补全及输出回调。
 - [ ] 实现媒体 NewMediaCenter、模型 NewModelManager 的构造契约。
 - [ ] 实现按配置区分的服务独占运行占用。
 - [ ] 适配进程入口的新 App API 与 `client` 命名。
@@ -101,7 +102,7 @@ Tool 媒体层已统一向工具返回 `share.MediaInfo`，图片宽高、实际
 - [x] 公开 Hook 载荷与订阅事件独立定义在根部；内部共享循环、提交、消息与 Hook 契约放 Share，具体实现留所属子包。
 - [x] 子包不依赖兄弟实现；根部注入实际需要的外部能力、模型选择函数与 Workspace 工厂。
 - [x] Agent 的 11 个子包测试通过。
-- [ ] Hook.ConnectAgent 改用 agent.Points 与根包嵌套类型；Hook 管理结果迁到其公开根包后，更新 Agent 的管理消费契约。
-- [ ] Command 的工具目录与 Completion 查询改用 Tool 根包公开契约，移除旧 InfoAvailableInContext 调用；Notification 的旧 Hook.Event 引用随提供方收口。
-- [ ] 外围契约接入后编译 Agent 根包，运行 Supervisor 整链路及订阅生命周期回归。
+- [x] Hook.ConnectAgent 使用 agent.Points 与根包嵌套类型；Agent 通过 Commands 注册 Hook 命令，管理结果留在 Hook 内部。
+- [x] Command 与 Completion 使用 Tool 根包查询契约；删除无生产调用的 Notification HookFailure 辅助与测试。
+- [x] Agent 根包编译通过，Supervisor 整链路及订阅生命周期回归通过。
 - [ ] Background 准备迁入 Agent 后实现 contracts.go 中三个 TODO 方法；路径准备、报告解析和重试策略仍归 Background。

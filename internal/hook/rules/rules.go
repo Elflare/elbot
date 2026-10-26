@@ -2,7 +2,7 @@
 
 package rules
 
-import toolshare "elbot/internal/tool/share"
+import "elbot/internal/tool"
 
 import (
 	"context"
@@ -13,10 +13,8 @@ import (
 
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
-	hookoutput "elbot/internal/hook/output"
-	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/hook/share"
-	
+	hookoutput "elbot/internal/hook/share/output"
 )
 
 const (
@@ -27,8 +25,8 @@ const (
 type Options struct {
 	ConfigDir string
 	Tools     interface {
-		ToolInfo(string) (toolshare.Info, bool)
-		CallTool(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error)
+		ToolInfo(string) (tool.Info, bool)
+		CallTool(context.Context, tool.CallRequest) (*tool.Result, string, error)
 	} // Borrowed metadata and call operations; no Tool objects escape their owner.
 
 	Notices *[]string // Optional reload report collector; never a sending dependency.
@@ -36,20 +34,16 @@ type Options struct {
 	Send            func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)
 	CallPlatformAPI func(context.Context, string, string, map[string]any) (json.RawMessage, error)
 	// Runtime borrows execution capabilities without exposing owned components.
-	Runtime interface {
-		Handle(context.Context, string, share.Event, share.Control) (share.Event, globalevents.LogResult, error)
-		MediaRequest(context.Context, string, string, json.RawMessage) (any, error)
-		SharedRequest(string, json.RawMessage) (any, error)
-	}
+	Runtime    share.RuntimeCaller
 	ProcessEnv processenv.Environment
 	Log        func(context.Context, globalevents.LogRecord)          // Publishes a complete source-owned record.
 	Notify     func(context.Context, globalevents.Notification) error // Publishes the notice chosen by this source.
 }
 
 type Config struct {
-	Plugins  []PluginRef          `toml:"plugins"`
-	Rules    []Rule               `toml:"rules"`
-	Runtimes []hookruntime.Config `toml:"-"`
+	Plugins  []PluginRef           `toml:"plugins"`
+	Rules    []Rule                `toml:"rules"`
+	Runtimes []share.RuntimeConfig `toml:"-"`
 }
 
 type PluginRef struct {
@@ -59,12 +53,12 @@ type PluginRef struct {
 }
 
 type PluginInfo struct {
-	Name             string              `toml:"name"`
-	Description      string              `toml:"description"`
-	BlockedPlatforms []string            `toml:"blocked_platform"`
-	BlockedGroups    []string            `toml:"blocked_group"`
-	BlockedIDs       []string            `toml:"blocked_id"`
-	Runtime          *hookruntime.Config `toml:"runtime"`
+	Name             string               `toml:"name"`
+	Description      string               `toml:"description"`
+	BlockedPlatforms []string             `toml:"blocked_platform"`
+	BlockedGroups    []string             `toml:"blocked_group"`
+	BlockedIDs       []string             `toml:"blocked_id"`
+	Runtime          *share.RuntimeConfig `toml:"runtime"`
 }
 
 type pluginConfig struct {
@@ -145,7 +139,7 @@ type Target = hookoutput.Target
 
 type Module struct {
 	Rules    []Rule
-	Runtimes []hookruntime.Config
+	Runtimes []share.RuntimeConfig
 	Opts     Options
 }
 

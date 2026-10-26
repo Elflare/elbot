@@ -9,39 +9,38 @@ import (
 	"testing"
 
 	"elbot/internal/hook/pipeline"
-	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/hook/share"
 )
 
 type fakeRuntime struct {
 	infos     []share.RuntimeInfo
 	applyErr  error
-	applied   []hookruntime.Config
+	applied   []share.RuntimeConfig
 	started   string
 	stopped   string
 	restarted string
 	replaced  string
 }
 
-func (r *fakeRuntime) Apply(configs []hookruntime.Config, commit func(string)) error {
+func (r *fakeRuntime) Apply(configs []share.RuntimeConfig, commit func(string)) error {
 	if r.applyErr != nil {
 		return r.applyErr
 	}
-	r.applied = append([]hookruntime.Config(nil), configs...)
+	r.applied = append([]share.RuntimeConfig(nil), configs...)
 	for _, config := range configs {
 		commit(config.ID)
 	}
 	return nil
 }
 
-func (r *fakeRuntime) ValidatePlugin(config hookruntime.Config) error {
+func (r *fakeRuntime) ValidatePlugin(config share.RuntimeConfig) error {
 	if r.applyErr != nil {
 		return r.applyErr
 	}
 	return nil
 }
 
-func (r *fakeRuntime) ReplacePlugin(id string, config *hookruntime.Config, commit func()) (events.LogResult, error) {
+func (r *fakeRuntime) ReplacePlugin(id string, config *share.RuntimeConfig, commit func()) (events.LogResult, error) {
 	if r.applyErr != nil {
 		return events.LogResult{ResultStatus: events.ResultFailed, Content: r.applyErr.Error()}, r.applyErr
 	}
@@ -67,10 +66,10 @@ func (r *fakeRuntime) Restart(_ context.Context, id string) error {
 func TestReloadKeepsActiveHooksWhenLoaderFails(t *testing.T) {
 	active := pipeline.NewManager(testLog, nil)
 	registerTestHook(t, active, "old")
-	service := New(active, &fakeRuntime{}, func(candidate share.Registrar) (share.ReloadReport, []hookruntime.Config, error) {
+	service := New(active, &fakeRuntime{}, testLoader(active, func(candidate share.Registrar) (share.ReloadReport, []share.RuntimeConfig, error) {
 		registerTestHook(t, candidate, "new")
-		return share.ReloadReport{Notices: []string{"warning"}}, nil, errors.New("load failed", te, testLogstLog)
-	})
+		return share.ReloadReport{Notices: []string{"warning"}}, nil, errors.New("load failed")
+	}))
 
 	report, err := service.HookReload()
 	if err == nil || len(report.Notices) != 1 {
@@ -82,11 +81,11 @@ func TestReloadKeepsActiveHooksWhenLoaderFails(t *testing.T) {
 func TestReloadPublishesIndependentRulesWhenRuntimeApplyFails(t *testing.T) {
 	active := pipeline.NewManager(testLog, nil)
 	registerTestHook(t, active, "old")
-	runtime := &fakeRuntime{applyErr: errors.New("old worker shutdown failed", testLog)}
-	service := New(active, runtime, func(candidate share.Registrar) (share.ReloadReport, []hookruntime.Config, error) {
+	runtime := &fakeRuntime{applyErr: errors.New("old worker shutdown failed")}
+	service := New(active, runtime, testLoader(active, func(candidate share.Registrar) (share.ReloadReport, []share.RuntimeConfig, error) {
 		registerTestHook(t, candidate, "new")
-		return share.ReloadReport{}, []hookruntime.Config{{ID: "demo"}}, nil
-	}, testLog)
+		return share.ReloadReport{}, []share.RuntimeConfig{{ID: "demo"}}, nil
+	}))
 
 	if _, err := service.HookReload(); err == nil {
 		t.Fatal("expected runtime apply error")
@@ -98,10 +97,10 @@ func TestReloadReplacesHooksAndAppliesRuntimeConfig(t *testing.T) {
 	active := pipeline.NewManager(testLog, nil)
 	registerTestHook(t, active, "old")
 	runtime := &fakeRuntime{}
-	service := New(active, runtime, func(candidate share.Registrar) (share.ReloadReport, []hookruntime.Config, error) {
+	service := New(active, runtime, testLoader(active, func(candidate share.Registrar) (share.ReloadReport, []share.RuntimeConfig, error) {
 		registerTestHook(t, candidate, "new")
-		return share.ReloadReport{}, []hookruntime.Config{{ID: "demo"}}, nil
-	}, testLog)
+		return share.ReloadReport{}, []share.RuntimeConfig{{ID: "demo"}}, nil
+	}))
 
 	if _, err := service.HookReload(); err != nil {
 		t.Fatalf("HookReload: %v", err)
@@ -114,7 +113,7 @@ func TestReloadReplacesHooksAndAppliesRuntimeConfig(t *testing.T) {
 
 func TestServiceDelegatesStatefulLifecycle(t *testing.T) {
 	runtime := &fakeRuntime{infos: []share.RuntimeInfo{{ID: "demo"}}}
-	service := New(pipeline.NewManager(testLog, nil), runtime, nil, testLog)
+	service := New(pipeline.NewManager(testLog, nil), runtime, nil)
 
 	if infos := service.StatefulHooks(); len(infos) != 1 || infos[0].ID != "demo" {
 		t.Fatalf("StatefulHooks = %#v", infos)
@@ -162,11 +161,11 @@ func TestPreparePluginReloadReplacesOnlyRequestedPlugin(t *testing.T) {
 	registerPluginTestHook(t, active, "demo", "old")
 	registerPluginTestHook(t, active, "other", "other")
 	runtime := &fakeRuntime{}
-	service := New(active, runtime, func(candidate share.Registrar) (share.ReloadReport, []hookruntime.Config, error) {
+	service := New(active, runtime, testLoader(active, func(candidate share.Registrar) (share.ReloadReport, []share.RuntimeConfig, error) {
 		registerPluginTestHook(t, candidate, "demo", "new")
 		registerPluginTestHook(t, candidate, "other", "other-new")
-		return share.ReloadReport{}, []hookruntime.Config{{ID: "demo"}, {ID: "other"}}, nil
-	}, testLog)
+		return share.ReloadReport{}, []share.RuntimeConfig{{ID: "demo"}, {ID: "other"}}, nil
+	}))
 
 	commit, err := service.PreparePluginReload("demo")
 	if err != nil {
@@ -204,4 +203,45 @@ func registerPluginTestHook(t *testing.T, registrar share.Registrar, pluginID, n
 
 func testLog(ctx context.Context, record events.LogRecord) {
 	_ = events.EmitLog(context.WithoutCancel(ctx), record)
+}
+
+// testLoader supplies the same candidate/commit contract as root wiring while
+// letting each test choose the candidate registrations and load outcome.
+func testLoader(active *pipeline.Manager, load func(share.Registrar) (share.ReloadReport, []share.RuntimeConfig, error)) Loader {
+	return func() (share.ReloadReport, ReloadCandidate, error) {
+		candidate := pipeline.NewManager(testLog, nil)
+		report, configs, err := load(candidate)
+		if err != nil {
+			return report, ReloadCandidate{}, err
+		}
+		return report, ReloadCandidate{Infos: candidate.List(), Runtimes: configs, Commit: func(id string) { active.ReplacePlugin(id, candidate) }}, nil
+	}
+}
+
+func TestPreparedReloadRetainsItsCandidateAcrossAnotherLoad(t *testing.T) {
+	active := pipeline.NewManager(testLog, nil)
+	registerPluginTestHook(t, active, "demo", "old")
+	next := "first"
+	service := New(active, &fakeRuntime{}, testLoader(active, func(candidate share.Registrar) (share.ReloadReport, []share.RuntimeConfig, error) {
+		registerPluginTestHook(t, candidate, "demo", next)
+		return share.ReloadReport{}, []share.RuntimeConfig{{ID: "demo"}}, nil
+	}))
+	first, err := service.PreparePluginReload("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	next = "second"
+	second, err := service.PreparePluginReload("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertHookNames(t, active.List(), "old")
+	if _, err := first(); err != nil {
+		t.Fatal(err)
+	}
+	assertHookNames(t, active.List(), "first")
+	if _, err := second(); err != nil {
+		t.Fatal(err)
+	}
+	assertHookNames(t, active.List(), "second")
 }

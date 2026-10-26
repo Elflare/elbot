@@ -5,7 +5,7 @@ package share
 type RuntimeInfo struct {
 	ID          string // Plugin identifier used by management commands.
 	Description string // User-facing plugin description.
-	Mode        string // Display value of the runtime-owned execution mode.
+	Mode        string // Display value of the shared execution mode.
 	Status      string // Display value of the runtime-owned lifecycle status.
 	Detail      string // Runtime-provided state detail or failure reason.
 	Active      int    // Number of active invocations in this snapshot.

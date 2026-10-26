@@ -1,22 +1,23 @@
 package builtin
 
-import toolshare "elbot/internal/tool/share"
+import toolshare "elbot/internal/tool"
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	"elbot/internal/command"
-	
 )
 
 type fakeToolService struct {
 	infos   []toolshare.Info
 	removed []string
+	query   func(context.Context, toolshare.ToolQuery) ([]toolshare.Info, error)
 }
 
-func (s *fakeToolService) List() []toolshare.Info            { return s.infos }
+func (s *fakeToolService) List() []toolshare.Info       { return s.infos }
 func (s *fakeToolService) Unregister(string) error      { return nil }
 func (s *fakeToolService) Reload(context.Context) error { return nil }
 func (s *fakeToolService) Remove(_ context.Context, name string) error {
@@ -65,5 +66,38 @@ func TestToolsCommandCompletesActionsNamesAndConfirm(t *testing.T) {
 	got = cmd.Complete(context.Background(), command.CompletionRequest{Raw: "/tools remove echo --", Prefix: "/", Name: "tools", Args: "remove echo --", Cursor: len("/tools remove echo --")})
 	if len(got) != 1 || got[0].Text != "--confirm" {
 		t.Fatalf("confirm Complete = %#v", got)
+	}
+}
+
+func (s *fakeToolService) QueryTools(ctx context.Context, query toolshare.ToolQuery) ([]toolshare.Info, error) {
+	if s.query != nil {
+		return s.query(ctx, query)
+	}
+	return s.infos, nil
+}
+
+func TestToolsListUsesQualifiedQueryAndReturnsQueryFailure(t *testing.T) {
+	failure := errors.New("catalog unavailable")
+	for _, fail := range []bool{false, true} {
+		service := &fakeToolService{infos: []toolshare.Info{{Name: "unqualified"}}}
+		service.query = func(ctx context.Context, query toolshare.ToolQuery) ([]toolshare.Info, error) {
+			if !query.IncludeHidden || !query.IncludeDiscover || query.Kind != "" || query.Names != nil {
+				t.Fatalf("query=%+v", query)
+			}
+			if fail {
+				return nil, failure
+			}
+			return []toolshare.Info{{Name: "qualified", Hidden: true}}, nil
+		}
+		result, err := NewTools(Deps{Tools: service}).Handle(t.Context(), command.Request{})
+		if fail {
+			if !errors.Is(err, failure) {
+				t.Fatalf("error=%v", err)
+			}
+			continue
+		}
+		if err != nil || !strings.Contains(result.Content, "qualified") || strings.Contains(result.Content, "unqualified") {
+			t.Fatalf("result=%+v err=%v", result, err)
+		}
 	}
 }

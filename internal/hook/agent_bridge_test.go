@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	agenthooks "elbot/internal/agent/hooks"
+	agenthooks "elbot/internal/agent"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"

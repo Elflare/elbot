@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	hookoutput "elbot/internal/hook/output"
 	"elbot/internal/hook/share"
+	hookoutput "elbot/internal/hook/share/output"
 )
 
 const Version = "hook.v2"

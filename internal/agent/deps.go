@@ -3,7 +3,7 @@ package agent
 import (
 	"context"
 
-	commandbuiltin "elbot/internal/command/builtin"
+	"elbot/internal/command"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/fileops"
@@ -56,12 +56,8 @@ type ToolCapabilities interface {
 	RollbackByID(context.Context, uint64) (fileops.RollbackResult, error)
 }
 
-// HookCapabilities supplies only Hook management commands. Execution callbacks
-// are registered separately through RegisterHooks.
-// TODO: Hook 管理结果迁到其根包后，在此声明根包类型的消费契约；当前沿用提供方已有签名。
-type HookCapabilities interface {
-	commandbuiltin.HookService
-}
+// HookCapabilities supplies standard management commands; callbacks enter through RegisterHooks.
+type HookCapabilities interface{ Commands() []command.Handler }
 
 // PlatformCapabilities supplies platform identity and delivery for Agent output.
 type PlatformCapabilities interface {

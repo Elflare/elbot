@@ -35,7 +35,7 @@ type toolRunDeps struct {
 	}
 	turns interface {
 		Snapshot(string) turn.Snapshot
-		AddToolUse(string, string, string)
+		AddToolUse(string, string, ...string)
 	}
 	identity ToolIdentity
 	runtime  *ToolRuntimeState
@@ -184,7 +184,7 @@ type ToolRunDeps struct {
 	}
 	Turns interface {
 		Snapshot(string) turn.Snapshot
-		AddToolUse(string, string, string)
+		AddToolUse(string, string, ...string)
 	}
 	Identity ToolIdentity
 	Runtime  *ToolRuntimeState

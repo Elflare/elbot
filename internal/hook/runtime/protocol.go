@@ -10,7 +10,7 @@ import (
 	"time"
 
 	globalevents "elbot/internal/events"
-	hookprotocol "elbot/internal/hook/protocol"
+	hookprotocol "elbot/internal/hook/share/protocol"
 	"elbot/internal/llm"
 )
 

@@ -13,7 +13,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/events"
 	"elbot/internal/logging"
-	
+
 	toolbuiltin "elbot/internal/tool/builtin"
 )
 
@@ -21,7 +21,11 @@ func TestShellLogHasNoBlankLineBeforeRisk(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("uses POSIX shell commands")
 	}
-	result, logContent, err := toolbuiltin.NewShellTool().Call(t.Context(), toolshare.CallRequest{Arguments: json.RawMessage(`{"cmd":"printf 'Current directory: /home/test\\n'"}`)})
+	prepared, err := toolbuiltin.NewShellTool().PrepareCall(t.Context(), toolshare.CallRequest{Arguments: json.RawMessage(`{"cmd":"printf 'Current directory: /home/test\\n'"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, logContent, err := prepared.Call(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}

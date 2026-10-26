@@ -171,8 +171,8 @@ func TestMediaProtocolRejectsSymlinkEscape(t *testing.T) {
 
 func TestWorkerMediaProtocolRoundTrip(t *testing.T) {
 	m, _, dir := testMediaRuntime(t)
-	cfg := Config{ID: "media", Dir: dir, Mode: ModePersistent, Command: runtimeHelperCommand(), Cwd: ".", StartupTimeoutSeconds: 5, ShutdownTimeoutSeconds: 2, EventTimeoutSeconds: 5, MaxWaitSeconds: 30, Restart: RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1}}
-	if err := m.Apply([]Config{cfg}, func(string) {}); err != nil {
+	cfg := share.RuntimeConfig{ID: "media", Dir: dir, Mode: share.RuntimeModePersistent, Command: runtimeHelperCommand(), Cwd: ".", StartupTimeoutSeconds: 5, ShutdownTimeoutSeconds: 2, EventTimeoutSeconds: 5, MaxWaitSeconds: 30, Restart: share.RuntimeRestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1}}
+	if err := m.Apply([]share.RuntimeConfig{cfg}, func(string) {}); err != nil {
 		t.Fatal(err)
 	}
 	waitForStatus(t, m, "media", StatusReady)
@@ -187,7 +187,7 @@ func TestWorkerMediaProtocolRoundTrip(t *testing.T) {
 func TestWorkerMediaDispatch(t *testing.T) {
 
 	m, _, dir := testMediaRuntime(t)
-	w := newWorker(m, Config{Dir: dir, EventTimeoutSeconds: 5})
+	w := newWorker(m, share.RuntimeConfig{Dir: dir, EventTimeoutSeconds: 5})
 	value, err := w.pluginRequest(frame{Method: "media.import", Params: mustJSON(map[string]string{"base64": "YQ=="})})
 	if err != nil || !media.ValidID(value.(mediaResult).MediaID) {
 		t.Fatalf("dispatch: %#v %v", value, err)

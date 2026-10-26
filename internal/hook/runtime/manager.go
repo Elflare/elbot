@@ -23,7 +23,7 @@ type Manager struct {
 	opts          Options
 	workers       map[string]*worker
 	transient     map[routeKey]*worker
-	configs       map[string]Config
+	configs       map[string]share.RuntimeConfig
 	routes        map[routeKey]lease
 	running       map[routeKey]invocation
 	tokens        map[string]toolContext
@@ -54,7 +54,7 @@ func NewManager(opts Options) (*Manager, error) {
 		opts:         opts,
 		workers:      map[string]*worker{},
 		transient:    map[routeKey]*worker{},
-		configs:      map[string]Config{},
+		configs:      map[string]share.RuntimeConfig{},
 		routes:       map[routeKey]lease{},
 		running:      map[routeKey]invocation{},
 		tokens:       map[string]toolContext{},
@@ -110,8 +110,8 @@ func (m *Manager) preparePluginReload(id string) (func() (globalevents.LogResult
 
 // Apply reconciles configured workers. Persistent workers start immediately;
 // transient worker definitions are retained until a trigger rule matches.
-func (m *Manager) Apply(configs []Config, commit func(string)) error {
-	next := make(map[string]*Config, len(configs))
+func (m *Manager) Apply(configs []share.RuntimeConfig, commit func(string)) error {
+	next := make(map[string]*share.RuntimeConfig, len(configs))
 	for i := range configs {
 		next[configs[i].ID] = &configs[i]
 	}
@@ -144,7 +144,7 @@ func (m *Manager) Apply(configs []Config, commit func(string)) error {
 	return errors.Join(failures...)
 }
 
-func (m *Manager) validateConfig(config Config) error {
+func (m *Manager) validateConfig(config share.RuntimeConfig) error {
 	for _, name := range config.Tools.Allow {
 		if _, ok := m.opts.Tools.ToolInfo(name); !ok {
 			return fmt.Errorf("runtime tools.allow references unknown tool %q", name)
@@ -153,7 +153,7 @@ func (m *Manager) validateConfig(config Config) error {
 	return nil
 }
 
-func (m *Manager) ValidatePlugin(config Config) error {
+func (m *Manager) ValidatePlugin(config share.RuntimeConfig) error {
 	if !config.IsWorker() {
 		return fmt.Errorf("hook %q is not a worker", config.ID)
 	}
@@ -174,7 +174,7 @@ func (m *Manager) ValidatePlugin(config Config) error {
 
 // ReplacePlugin stops this plugin's old workers before publishing its candidate.
 // A nil config removes the worker definition. commit publishes its ordinary rules.
-func (m *Manager) ReplacePlugin(id string, config *Config, commit func()) (globalevents.LogResult, error) {
+func (m *Manager) ReplacePlugin(id string, config *share.RuntimeConfig, commit func()) (globalevents.LogResult, error) {
 	if config != nil {
 		if err := m.validateConfig(*config); err != nil {
 			_ = m.opts.Notify(context.WithoutCancel(m.rootCtx), globalevents.Notification{Text: fmt.Sprintf("Hook %s 配置应用失败：%v", id, err), Level: slog.LevelWarn})
@@ -235,7 +235,7 @@ func (m *Manager) ReplacePlugin(id string, config *Config, commit func()) (globa
 		delete(m.configs, id)
 	} else {
 		m.configs[id] = *config
-		if config.ModeOrOnce() == ModePersistent {
+		if config.ModeOrOnce() == share.RuntimeModePersistent {
 			m.workers[id] = newWorker(m, *config)
 		}
 	}
@@ -367,7 +367,7 @@ func (m *Manager) List() []share.RuntimeInfo {
 	}
 	items := make([]share.RuntimeInfo, 0, len(itemsByID))
 	for _, info := range itemsByID {
-		if info.Mode == ModeTransient && info.Status == "" {
+		if info.Mode == share.RuntimeModeTransient && info.Status == "" {
 			info.Status = StatusStopped
 		}
 		items = append(items, share.RuntimeInfo{ID: info.ID, Description: info.Description, Mode: string(info.Mode), Status: string(info.Status), Detail: info.Detail, Active: info.Active, Waiting: info.Waiting})
@@ -403,7 +403,7 @@ func (m *Manager) Stop(ctx context.Context, id string) (bool, error) {
 	}
 	m.mu.Lock()
 	config, ok := m.configs[id]
-	if !ok || config.ModeOrOnce() != ModeTransient {
+	if !ok || config.ModeOrOnce() != share.RuntimeModeTransient {
 		m.mu.Unlock()
 		return false, fmt.Errorf("hook worker %q not found", id)
 	}
@@ -452,9 +452,9 @@ func (m *Manager) Handle(ctx context.Context, id string, event share.Event, defa
 	}
 	var worker *worker
 	switch config.ModeOrOnce() {
-	case ModePersistent:
+	case share.RuntimeModePersistent:
 		worker = m.worker(id)
-	case ModeTransient:
+	case share.RuntimeModeTransient:
 		var err error
 		var logResult globalevents.LogResult
 		worker, logResult, err = m.startTransient(ctx, config, routeKeyFor(event))
@@ -471,7 +471,7 @@ func (m *Manager) Handle(ctx context.Context, id string, event share.Event, defa
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "worker not dispatched"}, nil
 	}
 	updated, logResult, err := worker.handle(ctx, event, false, defaults)
-	if config.ModeOrOnce() == ModeTransient && (err != nil || !m.hasLease(event)) {
+	if config.ModeOrOnce() == share.RuntimeModeTransient && (err != nil || !m.hasLease(event)) {
 		m.stopTransient(routeKeyFor(event), worker)
 	}
 	if err == nil {
@@ -483,7 +483,7 @@ func (m *Manager) Handle(ctx context.Context, id string, event share.Event, defa
 	return updated, logResult, err
 }
 
-func (m *Manager) startTransient(ctx context.Context, config Config, key routeKey) (*worker, globalevents.LogResult, error) {
+func (m *Manager) startTransient(ctx context.Context, config share.RuntimeConfig, key routeKey) (*worker, globalevents.LogResult, error) {
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()

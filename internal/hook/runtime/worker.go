@@ -16,16 +16,16 @@ import (
 	"time"
 
 	globalevents "elbot/internal/events"
-	hookoutput "elbot/internal/hook/output"
-	hookprotocol "elbot/internal/hook/protocol"
 	"elbot/internal/hook/share"
+	hookoutput "elbot/internal/hook/share/output"
+	hookprotocol "elbot/internal/hook/share/protocol"
 	"elbot/internal/llm"
 	"elbot/internal/processenv"
 )
 
 type worker struct {
 	manager *Manager
-	config  Config
+	config  share.RuntimeConfig
 
 	mu           sync.Mutex
 	status       Status
@@ -47,7 +47,7 @@ type worker struct {
 	routeLocks   map[routeKey]chan struct{}
 }
 
-func newWorker(manager *Manager, config Config) *worker {
+func newWorker(manager *Manager, config share.RuntimeConfig) *worker {
 	return &worker{manager: manager, config: config, status: StatusStopped, restartDelay: time.Duration(config.Restart.InitialDelaySeconds) * time.Second, pending: map[string]chan frame{}, routeLocks: map[routeKey]chan struct{}{}}
 }
 
@@ -253,7 +253,7 @@ func (w *worker) waitLoop(cmd *exec.Cmd) {
 }
 
 func (w *worker) shouldRestart() bool {
-	return w.config.ModeOrOnce() == ModePersistent && (w.config.Restart.Strategy == "on_failure" || w.config.Restart.Strategy == "always")
+	return w.config.ModeOrOnce() == share.RuntimeModePersistent && (w.config.Restart.Strategy == "on_failure" || w.config.Restart.Strategy == "always")
 }
 
 func (w *worker) restartLater() {

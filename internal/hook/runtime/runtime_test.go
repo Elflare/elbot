@@ -22,8 +22,9 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/hook/share"
 	"elbot/internal/llm"
+	"elbot/internal/security"
 	"elbot/internal/signal"
-	"elbot/internal/tool"
+	tool "elbot/internal/tool/registry"
 )
 
 type auditTestTool struct{ err error }
@@ -62,11 +63,11 @@ func TestPluginToolAuditOutcome(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer connection.Disconnect()
-			registry := tool.NewRegistry()
+			registry := tool.NewRegistry(security.DefaultPermission())
 			if err := registry.Register(auditTestTool{err: tc.err}); err != nil {
 				t.Fatal(err)
 			}
-			worker := &worker{manager: &Manager{rootCtx: context.Background(), opts: Options{Log: testLog, Notify: testNotify, Tools: testTools{registry}}}, config: Config{ID: "plugin", EventTimeoutSeconds: 10, Tools: ToolsConfig{BackgroundAllow: []string{"audit_test"}}}}
+			worker := &worker{manager: &Manager{rootCtx: context.Background(), opts: Options{Log: testLog, Notify: testNotify, Tools: testTools{registry}}}, config: share.RuntimeConfig{ID: "plugin", EventTimeoutSeconds: 10, Tools: share.RuntimeToolsConfig{BackgroundAllow: []string{"audit_test"}}}}
 			_, err = worker.callTool(json.RawMessage(`{"name":"audit_test","arguments":{},"background":true,"target":{"platform":"cli"}}`))
 			if !errors.Is(err, tc.err) {
 				t.Fatalf("business error changed: %v", err)
@@ -187,8 +188,8 @@ func TestManagerBuildsCanonicalRuntimeOutputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := Config{Mode: ModePersistent, Command: runtimeHelperCommand(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 2, EventTimeoutSeconds: 2, MaxWaitSeconds: 30, Restart: RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1}, ID: "demo", Dir: t.TempDir()}
-	if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
+	config := share.RuntimeConfig{Mode: share.RuntimeModePersistent, Command: runtimeHelperCommand(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 2, EventTimeoutSeconds: 2, MaxWaitSeconds: 30, Restart: share.RuntimeRestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1}, ID: "demo", Dir: t.TempDir()}
+	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
@@ -208,8 +209,8 @@ func TestManagerBuildsCanonicalRuntimeMessageSegments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := Config{Mode: ModePersistent, Command: runtimeHelperCommand(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 2, EventTimeoutSeconds: 2, MaxWaitSeconds: 30, Restart: RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1}, ID: "demo", Dir: t.TempDir()}
-	if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
+	config := share.RuntimeConfig{Mode: share.RuntimeModePersistent, Command: runtimeHelperCommand(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 2, EventTimeoutSeconds: 2, MaxWaitSeconds: 30, Restart: share.RuntimeRestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1}, ID: "demo", Dir: t.TempDir()}
+	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
@@ -230,7 +231,7 @@ func TestManagerBuildsCanonicalRuntimeMessageSegments(t *testing.T) {
 }
 
 func TestManagerWorkersUseConfiguredProcessEnvironment(t *testing.T) {
-	for _, mode := range []Mode{ModePersistent, ModeTransient} {
+	for _, mode := range []share.RuntimeMode{share.RuntimeModePersistent, share.RuntimeModeTransient} {
 		t.Run(string(mode), func(t *testing.T) {
 			baseEnv := processenv.New(os.Environ()).Fill(map[string]string{"ELBOT_WORKER_HOOK_ENV_TEST": "from-manager"})
 			manager, err := NewManager(Options{Log: testLog, Notify: testNotify,
@@ -239,7 +240,7 @@ func TestManagerWorkersUseConfiguredProcessEnvironment(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			config := Config{
+			config := share.RuntimeConfig{
 				Mode:                   mode,
 				Command:                runtimeHelperCommand(),
 				Cwd:                    ".",
@@ -247,16 +248,16 @@ func TestManagerWorkersUseConfiguredProcessEnvironment(t *testing.T) {
 				ShutdownTimeoutSeconds: 2,
 				EventTimeoutSeconds:    2,
 				MaxWaitSeconds:         30,
-				Restart:                RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
+				Restart:                share.RuntimeRestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
 				ID:                     "env",
 				Dir:                    t.TempDir(),
 				ProcessEnv:             baseEnv.Overlay(map[string]string{"ELBOT_WORKER_HOOK_ENV_TEST": "from-dotenv"}),
 			}
-			if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
+			if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
 				t.Fatalf("Apply: %v", err)
 			}
 			t.Cleanup(func() { manager.Close(context.Background()) })
-			if mode == ModePersistent {
+			if mode == share.RuntimeModePersistent {
 				waitForStatus(t, manager, "env", StatusReady)
 				return
 			}
@@ -304,19 +305,19 @@ func TestManagerRoutesWaitingConversation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := Config{
-		Mode:                   ModePersistent,
+	config := share.RuntimeConfig{
+		Mode:                   share.RuntimeModePersistent,
 		Command:                runtimeHelperCommand(),
 		Cwd:                    ".",
 		StartupTimeoutSeconds:  2,
 		ShutdownTimeoutSeconds: 2,
 		EventTimeoutSeconds:    2,
 		MaxWaitSeconds:         30,
-		Restart:                RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
+		Restart:                share.RuntimeRestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
 		ID:                     "demo",
 		Dir:                    t.TempDir(),
 	}
-	if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
+	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
@@ -363,19 +364,19 @@ func TestManagerReclaimsTransientWorkerAfterPassThrough(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := Config{
-		Mode:                   ModeTransient,
+	config := share.RuntimeConfig{
+		Mode:                   share.RuntimeModeTransient,
 		Command:                runtimeHelperCommand(),
 		Cwd:                    ".",
 		StartupTimeoutSeconds:  2,
 		ShutdownTimeoutSeconds: 2,
 		EventTimeoutSeconds:    2,
 		MaxWaitSeconds:         30,
-		Restart:                RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
+		Restart:                share.RuntimeRestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
 		ID:                     "demo",
 		Dir:                    t.TempDir(),
 	}
-	if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
+	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
@@ -409,19 +410,19 @@ func TestManagerStopReclaimsTransientWorkers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := Config{
-		Mode:                   ModeTransient,
+	config := share.RuntimeConfig{
+		Mode:                   share.RuntimeModeTransient,
 		Command:                runtimeHelperCommand(),
 		Cwd:                    ".",
 		StartupTimeoutSeconds:  2,
 		ShutdownTimeoutSeconds: 2,
 		EventTimeoutSeconds:    2,
 		MaxWaitSeconds:         30,
-		Restart:                RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
+		Restart:                share.RuntimeRestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
 		ID:                     "demo",
 		Dir:                    t.TempDir(),
 	}
-	if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
+	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
@@ -445,19 +446,19 @@ func TestManagerRouteUsesConfiguredDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := Config{
-		Mode:                   ModePersistent,
+	config := share.RuntimeConfig{
+		Mode:                   share.RuntimeModePersistent,
 		Command:                runtimeHelperCommand(),
 		Cwd:                    ".",
 		StartupTimeoutSeconds:  2,
 		ShutdownTimeoutSeconds: 2,
 		EventTimeoutSeconds:    2,
 		MaxWaitSeconds:         30,
-		Restart:                RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
+		Restart:                share.RuntimeRestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
 		ID:                     "demo",
 		Dir:                    t.TempDir(),
 	}
-	if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
+	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
@@ -496,19 +497,19 @@ func TestManagerBlockedWaitingConversationFallsThrough(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := Config{
-		Mode:                   ModePersistent,
+	config := share.RuntimeConfig{
+		Mode:                   share.RuntimeModePersistent,
 		Command:                runtimeHelperCommand(),
 		Cwd:                    ".",
 		StartupTimeoutSeconds:  2,
 		ShutdownTimeoutSeconds: 2,
 		EventTimeoutSeconds:    2,
 		MaxWaitSeconds:         30,
-		Restart:                RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
+		Restart:                share.RuntimeRestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
 		ID:                     "demo",
 		Dir:                    t.TempDir(),
 	}
-	if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
+	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
@@ -546,8 +547,8 @@ func TestWorkerRequestCancellationSendsEventCancelAndKeepsWorkerReady(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := Config{Mode: ModePersistent, Command: runtimeHelperCommand(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 2, EventTimeoutSeconds: 5, MaxWaitSeconds: 30, Restart: RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1}, ID: "cancel-aware", Dir: t.TempDir()}
-	if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
+	config := share.RuntimeConfig{Mode: share.RuntimeModePersistent, Command: runtimeHelperCommand(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 2, EventTimeoutSeconds: 5, MaxWaitSeconds: 30, Restart: share.RuntimeRestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1}, ID: "cancel-aware", Dir: t.TempDir()}
+	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
@@ -607,7 +608,7 @@ func TestHookReloadRequestWaitsForActiveHandle(t *testing.T) {
 			return events.LogResult{ResultStatus: events.ResultSucceeded, Content: "reload completed"}, nil
 		}, nil
 	})
-	worker := newWorker(manager, Config{ID: "demo"})
+	worker := newWorker(manager, share.RuntimeConfig{ID: "demo"})
 	worker.status = StatusRunning
 	worker.active = 1
 	result, err := worker.pluginRequest(frame{Method: "hooks.reload", Params: json.RawMessage(`{}`)})
@@ -636,23 +637,23 @@ func TestManagerReplacePluginKeepsOtherWorker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := func(id string) Config {
-		return Config{
-			Mode:                   ModePersistent,
+	config := func(id string) share.RuntimeConfig {
+		return share.RuntimeConfig{
+			Mode:                   share.RuntimeModePersistent,
 			Command:                runtimeHelperCommand(),
 			Cwd:                    ".",
 			StartupTimeoutSeconds:  2,
 			ShutdownTimeoutSeconds: 2,
 			EventTimeoutSeconds:    2,
 			MaxWaitSeconds:         30,
-			Restart:                RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
+			Restart:                share.RuntimeRestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
 			ID:                     id,
 			Dir:                    t.TempDir(),
 		}
 	}
 	demo := config("demo")
 	other := config("other")
-	if err := manager.Apply([]Config{demo, other}, func(string) {}); err != nil {
+	if err := manager.Apply([]share.RuntimeConfig{demo, other}, func(string) {}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
@@ -700,19 +701,19 @@ func TestManagerCloseCallerDeadlinePreservesWorkerShutdown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := Config{
-		Mode:                   ModePersistent,
+	config := share.RuntimeConfig{
+		Mode:                   share.RuntimeModePersistent,
 		Command:                runtimeHelperCommand(),
 		Cwd:                    ".",
 		StartupTimeoutSeconds:  2,
 		ShutdownTimeoutSeconds: 2,
 		EventTimeoutSeconds:    2,
 		MaxWaitSeconds:         30,
-		Restart:                RestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
+		Restart:                share.RuntimeRestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1},
 		ID:                     "slow-shutdown",
 		Dir:                    t.TempDir(),
 	}
-	if err := manager.Apply([]Config{config}, func(string) {}); err != nil {
+	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	waitForStatus(t, manager, config.ID, StatusReady)

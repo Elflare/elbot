@@ -18,9 +18,9 @@ import (
 
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
-	hookoutput "elbot/internal/hook/output"
-	hookprotocol "elbot/internal/hook/protocol"
 	"elbot/internal/hook/share"
+	hookoutput "elbot/internal/hook/share/output"
+	hookprotocol "elbot/internal/hook/share/protocol"
 	"elbot/internal/llm"
 	"elbot/internal/processenv"
 )

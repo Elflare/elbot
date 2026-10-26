@@ -7,6 +7,7 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/tool"
+	"elbot/internal/tool/registry"
 )
 
 func testLog(ctx context.Context, record events.LogRecord) {
@@ -18,14 +19,15 @@ func testNotify(ctx context.Context, notice events.Notification) error {
 	return err
 }
 
-type testTools struct{ *tool.Registry }
+type testTools struct{ *registry.Registry }
 
-func (t testTools) ToolInfo(name string) (toolshare.Info, bool) {
+func (t testTools) ToolInfo(name string) (tool.Info, bool) {
 	value, ok := t.Get(name)
 	if !ok {
-		return toolshare.Info{}, false
+		return tool.Info{}, false
 	}
-	return value.Info(), true
+	info := value.Info()
+	return tool.Info{Name: info.Name, Description: info.Description, Risk: info.Risk, Source: tool.Source(info.Source), Hidden: info.Hidden, SuperadminOnly: info.SuperadminOnly, APITypes: info.APITypes, ForegroundOnly: info.ForegroundOnly, OwnerScoped: info.OwnerScoped, Tags: info.Tags, DependsOn: info.DependsOn, NeedsElyphRules: info.NeedsElyphRules}, true
 }
 
 func (t testTools) ToolSchema(name string) (llm.ToolSchema, bool) {
@@ -36,7 +38,19 @@ func (t testTools) ToolSchema(name string) (llm.ToolSchema, bool) {
 	return value.Schema(), true
 }
 
-func (t testTools) CallTool(ctx context.Context, call toolshare.CallRequest) (*toolshare.Result, string, error) {
+func (t testTools) CallTool(ctx context.Context, call tool.CallRequest) (*tool.Result, string, error) {
 	value, _ := t.Get(call.Name)
-	return value.Call(ctx, call)
+	prepared, err := value.PrepareCall(ctx, toolshare.CallRequest{ID: call.ID, Name: call.Name, Arguments: call.Arguments})
+	if err != nil {
+		return nil, "", err
+	}
+	result, log, err := prepared.Call(ctx)
+	if result == nil {
+		return nil, log, err
+	}
+	out := &tool.Result{NeedsElyphRules: result.NeedsElyphRules, Content: result.Content, Segments: result.Segments, Warnings: result.Warnings, Data: result.Data, Metadata: result.Metadata, Outputs: result.Outputs}
+	if result.DiscoveryText != nil {
+		out.DiscoveryText = &tool.DiscoveryText{Summary: result.DiscoveryText.Summary, Details: result.DiscoveryText.Details}
+	}
+	return out, log, err
 }

@@ -32,7 +32,8 @@ func (c toolsCommand) Handle(ctx context.Context, req command.Request) (*command
 	}
 	fields := strings.Fields(req.Args)
 	if len(fields) == 0 {
-		return &command.Result{Content: formatTools(ctx, deps)}, nil
+		content, err := formatTools(ctx, deps)
+		return &command.Result{Content: content}, err
 	}
 	switch fields[0] {
 	case "reload":
@@ -67,10 +68,10 @@ func (c toolsCommand) Handle(ctx context.Context, req command.Request) (*command
 
 func (c toolsCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
 	_ = ctx
-	token := currentCompletionToken(req)
+	token := command.CurrentCompletionToken(req)
 	fields := strings.Fields(req.Args)
-	if len(fields) == 0 || isFirstArg(req, token) {
-		return completeStaticOptions([]completionOption{
+	if len(fields) == 0 || command.IsFirstArg(req, token) {
+		return command.CompleteStaticOptions([]command.CompletionOption{
 			{Text: "reload", Description: "Reload external skills"},
 			{Text: "remove", Description: "Remove an external skill"},
 			{Text: "uninstall", Description: "Remove an external skill"},
@@ -85,24 +86,24 @@ func (c toolsCommand) Complete(ctx context.Context, req command.CompletionReques
 	return completeConfirmFlag(req.Args, token)
 }
 
-func formatTools(ctx context.Context, deps Deps) string {
-	infos := deps.Tools.List()
+func formatTools(ctx context.Context, deps Deps) (string, error) {
+	infos, err := deps.Tools.QueryTools(ctx, tool.ToolQuery{IncludeHidden: true, IncludeDiscover: true})
+	if err != nil {
+		return "", err
+	}
 	if len(infos) == 0 {
-		return "tools: none"
+		return "tools: none", nil
 	}
 	var sb strings.Builder
 	sb.WriteString("tools:\n")
 	for _, info := range infos {
-		if !tool.InfoAvailableInContext(ctx, info) {
-			continue
-		}
 		tags := ""
 		if len(info.Tags) > 0 {
 			tags = " tags=" + strings.Join(info.Tags, ",")
 		}
 		sb.WriteString(fmt.Sprintf("  %s [%s]%s %s\n", info.Name, info.Source, tags, info.Description))
 	}
-	return trimTrailingNewlines(sb.String())
+	return trimTrailingNewlines(sb.String()), nil
 }
 
 func hasFlag(fields []string, flag string) bool {

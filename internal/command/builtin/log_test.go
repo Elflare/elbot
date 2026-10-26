@@ -1,6 +1,6 @@
 package builtin
 
-import toolshare "elbot/internal/tool/share"
+import toolshare "elbot/internal/tool"
 
 import (
 	"context"
@@ -14,7 +14,6 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/events"
 	"elbot/internal/logging"
-	
 )
 
 // Both event selectors replace the previous selector; named --tool remains

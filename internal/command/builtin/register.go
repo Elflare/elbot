@@ -1,6 +1,6 @@
 package builtin
 
-import toolshare "elbot/internal/tool/share"
+import "elbot/internal/tool"
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/doctor"
-	"elbot/internal/hook/share"
 	"elbot/internal/llm"
 	"elbot/internal/logging"
 	"elbot/internal/modelmgr"
@@ -16,7 +15,7 @@ import (
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	
+
 	"elbot/internal/turn"
 )
 
@@ -63,22 +62,14 @@ type CompactService interface {
 }
 
 type ToolService interface {
-	List() []toolshare.Info
+	List() []tool.Info
+	QueryTools(context.Context, tool.ToolQuery) ([]tool.Info, error)
 	Unregister(name string) error
 }
 
 type SkillService interface {
 	Remove(ctx context.Context, name string) error
 	Reload(ctx context.Context) error
-}
-
-type HookService interface {
-	HookList() []share.Info
-	HookReload() (share.ReloadReport, error)
-	StatefulHooks() []share.RuntimeInfo
-	StartStatefulHook(id string) error
-	StopHook(ctx context.Context, id string) (bool, error)
-	RestartStatefulHook(ctx context.Context, id string) error
 }
 
 type LogService interface {
@@ -105,7 +96,6 @@ type Deps struct {
 	Skills             SkillService
 	FileRollback       FileRollbackService
 	PrepareFileContext func(context.Context, bool) (context.Context, error)
-	Hooks              HookService
 	SessionState       *SessionCommandState
 
 	Logs          LogService
@@ -141,7 +131,6 @@ func DefaultModules() []Module {
 		RequestModule{},
 		LogModule{},
 		ToolModule{},
-		HookModule{},
 	}
 }
 

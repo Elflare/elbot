@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
@@ -70,8 +71,8 @@ func TestSupervisorLoadsRulesAtStartAndKeepsConfigFailureNonFatal(t *testing.T) 
 	case <-time.After(time.Second):
 		t.Fatal("missing configuration notice")
 	}
-	if infos := m.HookList(); len(infos) != 0 {
-		t.Fatalf("invalid rules registered: %+v", infos)
+	if result, err := m.Commands()[0].Handle(t.Context(), command.Request{}); err != nil || result.Content != "hooks: none" {
+		t.Fatalf("invalid rules registered: %+v, %v", result, err)
 	}
 	if err := m.Close(context.Background()); err != nil {
 		t.Fatal(err)
