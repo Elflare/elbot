@@ -10,7 +10,6 @@ import (
 	"elbot/internal/background/share"
 	"elbot/internal/config"
 	"elbot/internal/events"
-	"elbot/internal/storage"
 )
 
 func TestMaintenanceHandlerPreservesContextAndResult(t *testing.T) {
@@ -28,7 +27,7 @@ func TestMaintenanceHandlerPreservesContextAndResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := m.handlers["cleanup"](ctx, storage.CronJob{})
+	got, err := m.handlers["cleanup"](ctx, Job{})
 	if !reflect.DeepEqual(got, want) || err != boom {
 		t.Fatalf("result=%#v err=%v", got, err)
 	}
@@ -78,7 +77,7 @@ type failingMaintenanceRepo struct {
 	err error
 }
 
-func (r failingMaintenanceRepo) Upsert(context.Context, storage.UpsertCronJobRequest) (*storage.CronJob, error) {
+func (r failingMaintenanceRepo) Upsert(context.Context, UpsertJobRequest) (*Job, error) {
 	return nil, r.err
 }
 func (r failingMaintenanceRepo) DisableByName(context.Context, string) error { return r.err }

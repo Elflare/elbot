@@ -9,13 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"elbot/internal/agent"
 	background "elbot/internal/background/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/session"
-	"elbot/internal/storage"
 	"elbot/internal/workspace"
 )
 
@@ -25,7 +25,7 @@ type resolvedCronTarget struct {
 	target   delivery.Target
 }
 
-func (s *Service) deliverPrepared(ctx context.Context, job storage.CronJob, meta Metadata, state CronDeliveryState, platformFilter string, recovery bool) (logResult globalevents.LogResult, err error) {
+func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, state CronDeliveryState, platformFilter string, recovery bool) (logResult globalevents.LogResult, err error) {
 	logResult = globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "operation=deliverPrepared"}
 	defer func() {
 		if err != nil {
@@ -35,7 +35,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job storage.CronJob, meta
 	if !state.ReportReady {
 		return logResult, nil
 	}
-	taken, err := background.SessionTakenOver(ctx, s.store, state.ReportSessionID)
+	taken, err := s.sessionTakenOver(ctx, state.ReportSessionID)
 	if err != nil {
 		logResult.ResultStatus = globalevents.ResultFailed
 		if errors.Is(err, context.Canceled) {
@@ -61,7 +61,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job storage.CronJob, meta
 		}
 		targetState := ensureDeliveryTargetState(&state, resolved.key)
 		for index, outputID := range deliveryOutputIDs(state) {
-			taken, err := background.SessionTakenOver(ctx, s.store, state.ReportSessionID)
+			taken, err := s.sessionTakenOver(ctx, state.ReportSessionID)
 			if err != nil {
 				if logResult.ResultStatus != globalevents.ResultFailed {
 					logResult.ResultStatus = globalevents.ResultFailed
@@ -175,7 +175,7 @@ func (s *Service) sendDeliveryOutput(ctx context.Context, jobName string, resolv
 	return s.sendOutputsToPlatformTarget(ctx, jobName, resolved.platform, resolved.target, []delivery.Output{out}, state.ReportSessionID)
 }
 
-func (s *Service) persistDeliveryState(ctx context.Context, job *storage.CronJob, state CronDeliveryState, mappings []storage.PlatformMessageMap) (bool, error) {
+func (s *Service) persistDeliveryState(ctx context.Context, job *Job, state CronDeliveryState, mappings []ReportMessageMap) (bool, error) {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	ctx = cleanupCtx
@@ -188,7 +188,7 @@ func (s *Service) persistDeliveryState(ctx context.Context, job *storage.CronJob
 	if err != nil {
 		return false, err
 	}
-	swapped, err := s.store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, job.DeliveryToken, job.DeliveryToken, encoded, mappings)
+	swapped, err := s.store.CompareAndSwapDelivery(ctx, job.ID, job.DeliveryToken, job.DeliveryToken, encoded, mappings)
 	if err != nil || !swapped {
 		return swapped, err
 	}
@@ -528,13 +528,13 @@ func (s *Service) sendOutputsToPlatforms(ctx context.Context, jobName string, pl
 	}
 }
 
-func (s *Service) mapReportReceipt(sessionID, messageID string, receipt delivery.Receipt) []storage.PlatformMessageMap {
+func (s *Service) mapReportReceipt(sessionID, messageID string, receipt delivery.Receipt) []ReportMessageMap {
 	if sessionID == "" || messageID == "" {
 		return nil
 	}
-	mappings := make([]storage.PlatformMessageMap, 0, len(receipt.SentMessages))
+	mappings := make([]ReportMessageMap, 0, len(receipt.SentMessages))
 	for _, sent := range receipt.SentMessages {
-		mappings = append(mappings, storage.PlatformMessageMap{Platform: sent.Platform, PlatformScopeID: sent.ScopeID, PlatformMessageID: sent.PlatformMessageID, SessionID: sessionID, MessageID: messageID})
+		mappings = append(mappings, ReportMessageMap{Platform: sent.Platform, PlatformScopeID: sent.ScopeID, PlatformMessageID: sent.PlatformMessageID, SessionID: sessionID, MessageID: messageID})
 	}
 	return mappings
 }
@@ -553,30 +553,28 @@ func cronTargetLabel(target delivery.Target) string {
 }
 
 func (s *Service) copySessionToBroadcastTargets(ctx context.Context, sourceSessionID string, meta Metadata, jobName string) error {
-	source, err := s.store.Sessions().Get(ctx, sourceSessionID)
-	if err != nil {
-		return err
-	}
 	for _, target := range s.enabledPlatforms {
-		if target.Name == source.Platform {
+		if target.Name == meta.Target.SourcePlatform {
 			continue
 		}
 		owner := targetOwnerID(target)
 		if owner == "" {
 			continue
 		}
-		metadata := storage.SessionMetadata{}
+		metadata := map[string]json.RawMessage{}
 		for key, value := range map[string]any{"cron_job_name": jobName, "cron_source_session_id": sourceSessionID, "cron_broadcast_copy": true} {
-			if err := metadata.Set(key, value); err != nil {
+			encoded, err := json.Marshal(value)
+			if err != nil {
 				return err
 			}
+			metadata[key] = encoded
 		}
-		copySession, err := s.sessions.CopyBackground(ctx, session.Scope{ActorID: owner, Platform: target.Name, PlatformScopeID: cronScopeID(jobName)}, session.BackgroundCopyRequest{SourceSessionID: sourceSessionID, Kind: "cron", Name: jobName, Title: meta.Title, Metadata: metadata})
+		copySession, err := s.copyBackground(ctx, agent.BackgroundCopyRequest{Scope: session.Scope{ActorID: owner, Platform: target.Name, PlatformScopeID: cronScopeID(jobName)}, SourceSessionID: sourceSessionID, Kind: "cron", Name: jobName, Title: meta.Title, Metadata: metadata})
 		if err != nil {
 			return err
 		}
 		{
-			content, _ := json.Marshal(map[string]any{"job": jobName, "source_session_id": sourceSessionID, "target_session_id": copySession.ID, "platform": target.Name})
+			content, _ := json.Marshal(map[string]any{"job": jobName, "source_session_id": sourceSessionID, "target_session_id": copySession, "platform": target.Name})
 			record := globalevents.LogRecord{
 				Category:     globalevents.LogAudit,
 				Level:        slog.LevelInfo,

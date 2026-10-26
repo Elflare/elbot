@@ -36,10 +36,11 @@ type Options struct {
 	Tokens      map[string]string
 	Store       storage.Store
 
-	Send          SenderFunc
-	Runner        background.Runner
-	ResolveModel  ModelResolverFunc
-	ToolPreloader interface {
+	Send             SenderFunc
+	Runner           background.Runner
+	SessionTakenOver background.SessionTakenOver
+	ResolveModel     ModelResolverFunc
+	ToolPreloader    interface {
 		BackgroundSelections(context.Context, []string) ([]tool.BackgroundSelection, error)
 	} // 由 Tool 根部提供声明展开能力，授权仍归 Elnis。
 	EnabledPlatforms []string
@@ -53,10 +54,11 @@ type Service struct {
 	tokens      map[string]string
 	store       storage.Store
 
-	send          SenderFunc
-	runner        background.Runner
-	resolveModel  ModelResolverFunc
-	toolPreloader interface {
+	send             SenderFunc
+	runner           background.Runner
+	sessionTakenOver background.SessionTakenOver
+	resolveModel     ModelResolverFunc
+	toolPreloader    interface {
 		BackgroundSelections(context.Context, []string) ([]tool.BackgroundSelection, error)
 	}
 	enabledPlatforms []string
@@ -76,6 +78,7 @@ func NewService(opts Options) (*Service, error) {
 		store:            opts.Store,
 		send:             opts.Send,
 		runner:           opts.Runner,
+		sessionTakenOver: opts.SessionTakenOver,
 		resolveModel:     opts.ResolveModel,
 		toolPreloader:    opts.ToolPreloader,
 		enabledPlatforms: uniqueSorted(opts.EnabledPlatforms),

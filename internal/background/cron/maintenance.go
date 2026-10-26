@@ -6,12 +6,11 @@ import (
 
 	"elbot/internal/background/share"
 	"elbot/internal/events"
-	"elbot/internal/storage"
 )
 
 // RegisterMaintenanceHandler 将无需任务记录的维护回调接入 Cron。
 func (m *Manager) RegisterMaintenanceHandler(name string, handler func(context.Context) (events.LogResult, error)) error {
-	return m.RegisterHandler(name, func(ctx context.Context, _ storage.CronJob) (events.LogResult, error) {
+	return m.RegisterHandler(name, func(ctx context.Context, _ Job) (events.LogResult, error) {
 		return handler(ctx)
 	})
 }
@@ -22,7 +21,7 @@ func (m *Manager) ConfigureMaintenanceJob(ctx context.Context, req share.Mainten
 		_, err := m.UpsertJob(ctx, UpsertJobRequest{Name: req.Name, Handler: req.Handler, Schedule: req.Schedule, Enabled: true})
 		return err
 	}
-	if err := m.DisableJob(ctx, req.Name); err != nil && !errors.Is(err, storage.ErrNotFound) {
+	if err := m.DisableJob(ctx, req.Name); err != nil && !errors.Is(err, ErrJobNotFound) {
 		return err
 	}
 	return nil

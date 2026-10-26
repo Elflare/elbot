@@ -1,23 +1,7 @@
 package share
 
-import (
-	"context"
-	"errors"
+import "context"
 
-	"elbot/internal/session"
-	"elbot/internal/storage"
-)
-
-func SessionTakenOver(ctx context.Context, store storage.Store, id string) (bool, error) {
-	if id == "" {
-		return false, nil
-	}
-	row, err := store.Sessions().Get(ctx, id)
-	if errors.Is(err, storage.ErrNotFound) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	return session.WasPromoted(row), nil
-}
+// SessionTakenOver 查询后台会话是否已被前台接管，由根部注入 Agent 的公开能力。
+// 空标识或不存在的会话返回 false；读取失败正常返回错误。
+type SessionTakenOver func(context.Context, string) (bool, error)

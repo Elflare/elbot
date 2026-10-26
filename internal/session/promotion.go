@@ -106,3 +106,18 @@ func (s *Service) activateExisting(ctx context.Context, scope Scope, id string, 
 	}
 	return row, nil
 }
+
+// SessionTakenOver 只返回接管事实，不向调用方交付会话存储记录。
+func (s *Service) SessionTakenOver(ctx context.Context, id string) (bool, error) {
+	if id == "" {
+		return false, nil
+	}
+	row, err := s.store.Sessions().Get(ctx, id)
+	if errors.Is(err, storage.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return WasPromoted(row), nil
+}

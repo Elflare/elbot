@@ -14,62 +14,49 @@ import (
 	robfigcron "github.com/robfig/cron/v3"
 
 	globalevents "elbot/internal/events"
-	"elbot/internal/storage"
 )
 
 // Handler supplies the execution result and independent diagnostic body. The
 // scheduler consumes these source facts without classifying the original error.
-type Handler func(ctx context.Context, job storage.CronJob) (logResult globalevents.LogResult, err error)
-
-type Registry interface {
-	RegisterHandler(name string, handler Handler) error
-	UpsertJob(ctx context.Context, req UpsertJobRequest) (*storage.CronJob, error)
-	DisableJob(ctx context.Context, name string) error
-	DeleteJob(ctx context.Context, name string) error
-}
+type Handler func(ctx context.Context, job Job) (logResult globalevents.LogResult, err error)
 
 type Manager struct {
-	repo storage.CronJobRepository
+	repo JobRepository
 
 	scheduler *robfigcron.Cron
 
-	mu        sync.Mutex
-	handlers  map[string]Handler
-	entries   map[string]robfigcron.EntryID
-	running   map[string]bool
-	started   bool
-	stopped   bool
-	runCtx    context.Context
-	cancel    context.CancelFunc
-	startDone chan struct{}
-	startErr  error
-	stopDone  context.Context
-	workers   sync.WaitGroup
+	mu          sync.Mutex
+	handlers    map[string]Handler
+	entries     map[string]robfigcron.EntryID
+	running     map[string]bool
+	started     bool
+	stopped     bool
+	runCtx      context.Context
+	cancel      context.CancelFunc
+	startDone   chan struct{}
+	startErr    error
+	stopDone    context.Context
+	workers     sync.WaitGroup
+	pendingJobs map[string]struct{} // 尚需重新读取的任务名称；变更期间继续收集下一轮。
+	refreshWake chan struct{}       // 合并唤醒信号，实际待办保存在 pendingJobs。
 }
 
-type UpsertJobRequest = storage.UpsertCronJobRequest
-
-func NewManager(repo storage.CronJobRepository) *Manager {
-	return &Manager{repo: repo, handlers: map[string]Handler{}, entries: map[string]robfigcron.EntryID{}, running: map[string]bool{}}
+func NewManager(repo JobRepository) *Manager {
+	return &Manager{repo: repo, handlers: map[string]Handler{}, entries: map[string]robfigcron.EntryID{}, running: map[string]bool{}, pendingJobs: map[string]struct{}{}, refreshWake: make(chan struct{}, 1)}
 }
 
 func (m *Manager) RegisterHandler(name string, handler Handler) error {
 	m.mu.Lock()
 	m.handlers[name] = handler
-	started := m.started
 	m.mu.Unlock()
-
-	if started {
-		return m.reloadEnabled(context.Background())
-	}
 	return nil
 }
 
-func (m *Manager) UpsertJob(ctx context.Context, req UpsertJobRequest) (*storage.CronJob, error) {
+func (m *Manager) UpsertJob(ctx context.Context, req UpsertJobRequest) (*Job, error) {
 	if err := validateUpsertRequest(req); err != nil {
 		return nil, err
 	}
-	nextRun, err := computeNextRunAt(req.Schedule, req.Metadata, req.Enabled, time.Now())
+	nextRun, err := computeNextRunAt(req.Schedule, "", req.Enabled, time.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -78,14 +65,7 @@ func (m *Manager) UpsertJob(ctx context.Context, req UpsertJobRequest) (*storage
 	if err != nil {
 		return nil, err
 	}
-	m.mu.Lock()
-	started := m.started
-	m.mu.Unlock()
-	if started {
-		if err := m.scheduleJob(*job); err != nil {
-			return nil, err
-		}
-	}
+	_ = m.RefreshJob(job.Name)
 	return job, nil
 }
 
@@ -93,8 +73,7 @@ func (m *Manager) DisableJob(ctx context.Context, name string) error {
 	if err := m.repo.DisableByName(ctx, name); err != nil {
 		return err
 	}
-	m.removeEntry(name)
-	return nil
+	return m.RefreshJob(name)
 }
 
 func (m *Manager) DisableJobIfDeliveryToken(ctx context.Context, name, deliveryToken string) (bool, error) {
@@ -102,13 +81,8 @@ func (m *Manager) DisableJobIfDeliveryToken(ctx context.Context, name, deliveryT
 	if err != nil || !disabled {
 		return disabled, err
 	}
-	m.removeEntry(name)
+	_ = m.RefreshJob(name)
 	return true, nil
-}
-
-func (m *Manager) DeleteJob(ctx context.Context, name string) error {
-	m.removeEntry(name)
-	return m.repo.DeleteByName(ctx, name)
 }
 
 func (m *Manager) Start(ctx context.Context) error {
@@ -138,14 +112,32 @@ func (m *Manager) Start(ctx context.Context) error {
 	runCtx := m.runCtx
 	m.mu.Unlock()
 	defer m.workers.Done()
+
 	err := m.reloadEnabled(runCtx)
-	m.mu.Lock()
-	if err == nil {
+	for err == nil {
+		m.mu.Lock()
 		err = runCtx.Err()
+		if err != nil || m.stopped {
+			if err == nil {
+				err = context.Canceled
+			}
+			m.mu.Unlock()
+			break
+		}
+		if len(m.pendingJobs) == 0 {
+			// 发布就绪和 worker 所有权必须与停止、接纳处于同一临界区。
+			m.workers.Add(1)
+			go m.runRefreshes(runCtx)
+			m.scheduler.Start()
+			m.mu.Unlock()
+			break
+		}
+		pending := m.pendingJobs
+		m.pendingJobs = make(map[string]struct{})
+		m.mu.Unlock()
+		m.refreshPending(runCtx, pending)
 	}
-	if err == nil && !m.stopped {
-		m.scheduler.Start()
-	}
+	m.mu.Lock()
 	m.startErr = err
 	close(m.startDone)
 	m.mu.Unlock()
@@ -193,6 +185,7 @@ func (m *Manager) Stop() context.Context {
 	}
 	m.stopped = true
 	m.started = false
+	clear(m.pendingJobs)
 	if m.cancel != nil {
 		m.cancel()
 	}
@@ -231,7 +224,7 @@ func (m *Manager) reloadEnabled(ctx context.Context) error {
 		return err
 	}
 	for _, job := range jobs {
-		if err := m.scheduleJob(job); err != nil {
+		if err := m.scheduleJob(ctx, job); err != nil {
 			{
 				record := globalevents.LogRecord{
 					Category:     globalevents.LogRuntime,
@@ -266,11 +259,11 @@ func (m *Manager) reloadEnabled(ctx context.Context) error {
 	return nil
 }
 
-func (m *Manager) scheduleJob(job storage.CronJob) error {
+func (m *Manager) scheduleJob(ctx context.Context, job Job) error {
 	m.mu.Lock()
-	if !m.started {
+	if !m.started || m.stopped || ctx.Err() != nil {
 		m.mu.Unlock()
-		return nil
+		return ctx.Err()
 	}
 	if id, ok := m.entries[job.Name]; ok {
 		m.scheduler.Remove(id)
@@ -278,7 +271,7 @@ func (m *Manager) scheduleJob(job storage.CronJob) error {
 	}
 	if !job.Enabled {
 		m.mu.Unlock()
-		return m.updateNextRunAt(context.Background(), job, nil)
+		return m.updateNextRunAt(ctx, job, nil)
 	}
 	if _, ok := m.handlers[job.Handler]; !ok {
 		m.mu.Unlock()
@@ -295,7 +288,7 @@ func (m *Manager) scheduleJob(job storage.CronJob) error {
 			}
 			background.LogBackground(context.Background(), record)
 		}
-		return m.updateNextRunAt(context.Background(), job, nil)
+		return m.updateNextRunAt(ctx, job, nil)
 	}
 	nextRun, err := computeNextRunAt(job.Schedule, job.Metadata, true, time.Now())
 	if err != nil {
@@ -304,7 +297,7 @@ func (m *Manager) scheduleJob(job storage.CronJob) error {
 	}
 	if nextRun == nil {
 		m.mu.Unlock()
-		return m.updateNextRunAt(context.Background(), job, nil)
+		return m.updateNextRunAt(ctx, job, nil)
 	}
 	entryID, err := m.scheduler.AddFunc(job.Schedule, func() {
 		m.runJob(job.Name)
@@ -315,7 +308,7 @@ func (m *Manager) scheduleJob(job storage.CronJob) error {
 	}
 	m.entries[job.Name] = entryID
 	m.mu.Unlock()
-	if err := m.updateNextRunAt(context.Background(), job, nextRun); err != nil {
+	if err := m.updateNextRunAt(ctx, job, nextRun); err != nil {
 		return err
 	}
 	{
@@ -480,55 +473,9 @@ func (m *Manager) runJob(name string) {
 	// Final bookkeeping remains part of the tracked invocation after cancel.
 	ctx = context.WithoutCancel(ctx)
 
-	m.mu.Lock()
-	entryID := m.entries[job.Name]
-	scheduler := m.scheduler
-	if m.stopped {
-		scheduler = nil
-	}
-	m.mu.Unlock()
-
-	stateJob := job
-	if latest, err := m.repo.GetByName(ctx, job.Name); err == nil {
-		stateJob = latest
-	} else {
-		record.Content += fmt.Sprintf("\nreload_error=%q", err.Error())
-		record.ResultStatus = globalevents.ResultFailed
-		record.Level = slog.LevelError
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelError,
-				EventName:    "cron_job_reload_after_run_failed",
-				Module:       "cron",
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("cron job reload after run failed\njob=%v\nhandler=%v\nerror=%v", job.Name, job.Handler, err),
-				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultFailed,
-			}
-			record.Identity = identity
-			background.LogBackground(ctx, record)
-		}
-	}
-
-	enabled := stateJob.Enabled
-	var nextRun *time.Time
-	if enabled && scheduler != nil && entryID != 0 {
-		entry := scheduler.Entry(entryID)
-		if !entry.Next.IsZero() {
-			next := entry.Next
-			nextRun = &next
-		}
-	}
-	if userOnceRunAtExpired(stateJob.Metadata, time.Now()) {
-		nextRun = nil
-		m.removeEntry(job.Name)
-	}
-	if err := m.repo.UpdateRunState(ctx, stateJob.ID, storage.CronJobRunState{
+	defer m.RefreshJob(job.Name)
+	if err := m.repo.UpdateRunState(ctx, job.ID, JobRunState{
 		LastRunAt: startedAt,
-		NextRunAt: nextRun,
-		RunCount:  stateJob.RunCount + 1,
-		Enabled:   enabled,
 		UpdatedAt: time.Now(),
 	}); err != nil {
 		record.Content += fmt.Sprintf("\nstate_save_error=%q", err.Error())
@@ -577,7 +524,7 @@ func validateUpsertRequest(req UpsertJobRequest) error {
 	return nil
 }
 
-func (m *Manager) updateNextRunAt(ctx context.Context, job storage.CronJob, nextRunAt *time.Time) error {
+func (m *Manager) updateNextRunAt(ctx context.Context, job Job, nextRunAt *time.Time) error {
 	if job.NextRunAt == nil && nextRunAt == nil ||
 		job.NextRunAt != nil && nextRunAt != nil && job.NextRunAt.Equal(*nextRunAt) {
 		return nil
@@ -657,11 +604,6 @@ func userOnceRunAt(metadata string) (time.Time, bool, error) {
 		return time.Time{}, true, err
 	}
 	return runAt, true, nil
-}
-
-func userOnceRunAtExpired(metadata string, now time.Time) bool {
-	runAt, ok, err := userOnceRunAt(metadata)
-	return err == nil && ok && !runAt.After(now)
 }
 
 func timePtr(t time.Time) *time.Time {

@@ -1025,6 +1025,7 @@ func newTestServiceWithRunner(t *testing.T, runner background.Runner, send Sende
 		SandboxRoot:      filepath.Join(t.TempDir(), "sandbox"),
 		Tokens:           map[string]string{"home": "secret", "alt": "alt-secret"},
 		Store:            store,
+		SessionTakenOver: func(context.Context, string) (bool, error) { return false, nil },
 		ToolPreloader:    publicBackgroundSelections{preload.NewPreloadService(preload.PreloadOptions{Registry: registry.NewRegistry(security.DefaultPermission())})},
 		Send:             send,
 		Runner:           runner,

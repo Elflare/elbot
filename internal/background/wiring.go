@@ -3,9 +3,11 @@ package background
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	elcron "elbot/internal/background/cron"
 	"elbot/internal/background/elnis"
@@ -20,7 +22,7 @@ import (
 )
 
 // 根部只为存储编码和业务数据转换保留适配；公开数据类型按需复用，能力按消费方职责裁剪。
-// TODO: 随内部存储、媒体契约落实转换方法；不为直接转发增加适配或占位实现。
+// Cron 使用自有记录；Elnis 的存储与媒体转换随其内部契约落实。
 type cronBridge struct {
 	repo storage.CronJobRepository // 请求 Storage 读写任务定义和执行状态，转换为内部记录。
 }
@@ -45,12 +47,11 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Execution: deps.Agent, SandboxRoot: cfg.Sandbox.Root,
 	})
 	cron := cronBridge{repo: deps.Store.CronJobs()}
-	// TODO: Manager 和 Service 接收内部存储契约；CopyBackground 使用 Agent 根包请求。
 	// Models 只暴露 ResolveMode 和 ValidateSelection，发送与复制使用独立函数。
 	m.cronManager = elcron.NewManager(cron)
 	m.cron = elcron.NewService(elcron.Options{
 		Manager: m.cronManager, Store: cron, Runner: m.runner,
-		SendTarget: deps.Platform.SendTo, Models: deps.Models, CopyBackground: deps.Agent.CopyBackground,
+		SendTarget: deps.Platform.SendTo, Models: deps.Models, CopyBackground: deps.Agent.CopyBackground, SessionTakenOver: deps.Agent.SessionTakenOver,
 		EnabledPlatforms: enabledCronPlatforms(cfg), SandboxRoot: cfg.Sandbox.Root,
 	})
 	if err := m.cronManager.RegisterHandler(elcron.UserHandlerName, m.cron.Handler); err != nil {
@@ -83,7 +84,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	service, err := elnis.NewService(elnis.Options{
 		Media: elnisDeps, Config: cfg.Elnis, SandboxRoot: cfg.Sandbox.Root, Tokens: tokens,
 		Store: elnisDeps, EnabledPlatforms: platforms, CallPlatformAPI: deps.Platform.CallPlatformAPI,
-		Send: deps.Platform.SendTo, Runner: m.runner, ToolPreloader: deps.Tools,
+		Send: deps.Platform.SendTo, Runner: m.runner, ToolPreloader: deps.Tools, SessionTakenOver: deps.Agent.SessionTakenOver,
 		ResolveModel: func(slot string) config.ModelSelection {
 			return deps.Models.ResolveMode(slot).ModelSelection
 		},
@@ -94,7 +95,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	// 禁用 Elnis 时也保留恢复入口；Start 只在启用时启动监听和 workers。
 	m.elnis = elnis.NewRuntime(cfg.Elnis.HTTP, service)
 
-	// TODO: RefreshJob 只接纳任务标识，内部协调启动前变更、首次读库和串行调度刷新。
+	// 变更回调只登记名称，由 Manager 串行读库刷新。
 	connection, err := deps.Tools.ObserveCronChanged(func(event tool.CronChangedEvent) error {
 		return m.cronManager.RefreshJob(event.Name)
 	}, signal.ConnectOptions{})
@@ -104,8 +105,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	m.connections = append(m.connections, connection)
 
 	// App 在全部构造完成后启动 Platform；此时已订阅，避免漏掉启动时的连接通知。
-	// TODO: EnqueuePlatformConnected 在 Service.Start 前只缓存，不触发 worker；Start 后才消费。
-	// 启动失败不放行缓存，关闭时清理缓存并停止接纳；内部不再自行订阅全局信号。
+	// Service.Start 前按平台缓存通知，根部完成前置启动后才放行消费。
 	connection, err = globalevents.PlatformConnected.Observe(func(ctx context.Context, event globalevents.PlatformConnectedEvent) error {
 		return m.cron.EnqueuePlatformConnected(ctx, event.Platform)
 	}, signal.ConnectOptions{})
@@ -160,4 +160,64 @@ func resolveElnisTokens(cfg *config.Config) (map[string]string, error) {
 		}
 	}
 	return out, nil
+}
+
+func cronJob(row *storage.CronJob) *elcron.Job {
+	return &elcron.Job{ID: row.ID, Name: row.Name, Handler: row.Handler, Schedule: row.Schedule, Enabled: row.Enabled,
+		Metadata: row.Metadata, DeliveryState: row.DeliveryState, DeliveryToken: row.DeliveryToken, NextRunAt: row.NextRunAt}
+}
+
+func cronError(err error) error {
+	if errors.Is(err, storage.ErrNotFound) {
+		return elcron.ErrJobNotFound
+	}
+	return err
+}
+
+func (b cronBridge) Upsert(ctx context.Context, req elcron.UpsertJobRequest) (*elcron.Job, error) {
+	row, err := b.repo.Upsert(ctx, storage.UpsertCronJobRequest{Name: req.Name, Handler: req.Handler, Schedule: req.Schedule, Enabled: req.Enabled, NextRunAt: req.NextRunAt})
+	if err != nil {
+		return nil, cronError(err)
+	}
+	return cronJob(row), nil
+}
+func (b cronBridge) GetByName(ctx context.Context, name string) (*elcron.Job, error) {
+	row, err := b.repo.GetByName(ctx, name)
+	if err != nil {
+		return nil, cronError(err)
+	}
+	return cronJob(row), nil
+}
+func (b cronBridge) ListEnabled(ctx context.Context) ([]elcron.Job, error) {
+	rows, err := b.repo.ListEnabled(ctx)
+	if err != nil {
+		return nil, cronError(err)
+	}
+	jobs := make([]elcron.Job, 0, len(rows))
+	for i := range rows {
+		jobs = append(jobs, *cronJob(&rows[i]))
+	}
+	return jobs, nil
+}
+func (b cronBridge) UpdateNextRunAt(ctx context.Context, id string, next *time.Time, updated time.Time) error {
+	return cronError(b.repo.UpdateNextRunAt(ctx, id, next, updated))
+}
+func (b cronBridge) UpdateRunState(ctx context.Context, id string, state elcron.JobRunState) error {
+	return cronError(b.repo.UpdateRunState(ctx, id, storage.CronJobRunState{LastRunAt: state.LastRunAt, UpdatedAt: state.UpdatedAt}))
+}
+func (b cronBridge) CompareAndSwapDelivery(ctx context.Context, id, expected, next, state string, mappings []elcron.ReportMessageMap) (bool, error) {
+	rows := make([]storage.PlatformMessageMap, 0, len(mappings))
+	for _, mapping := range mappings {
+		rows = append(rows, storage.PlatformMessageMap{Platform: mapping.Platform, PlatformScopeID: mapping.PlatformScopeID,
+			PlatformMessageID: mapping.PlatformMessageID, SessionID: mapping.SessionID, MessageID: mapping.MessageID})
+	}
+	swapped, err := b.repo.CompareAndSwapDelivery(ctx, id, expected, next, state, rows)
+	return swapped, cronError(err)
+}
+func (b cronBridge) DisableByName(ctx context.Context, name string) error {
+	return cronError(b.repo.DisableByName(ctx, name))
+}
+func (b cronBridge) DisableByNameIfDeliveryToken(ctx context.Context, name, token string) (bool, error) {
+	disabled, err := b.repo.DisableByNameIfDeliveryToken(ctx, name, token)
+	return disabled, cronError(err)
 }

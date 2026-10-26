@@ -145,12 +145,9 @@ WHERE id = ?`,
 func (r *CronJobRepository) UpdateRunState(ctx context.Context, id string, state storage.CronJobRunState) error {
 	res, err := r.db.ExecContext(ctx, `
 UPDATE cron_jobs
-SET last_run_at = ?, next_run_at = ?, run_count = ?, enabled = ?, updated_at = ?
+SET last_run_at = ?, run_count = run_count + 1, updated_at = ?
 WHERE id = ?`,
 		storage.FormatTime(state.LastRunAt),
-		nullTime(state.NextRunAt),
-		state.RunCount,
-		boolInt(state.Enabled),
 		storage.FormatTime(state.UpdatedAt),
 		id,
 	)

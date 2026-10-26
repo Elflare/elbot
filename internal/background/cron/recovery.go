@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	globalevents "elbot/internal/events"
-	"elbot/internal/storage"
 )
 
 func (s *Service) RunMissedOnce(ctx context.Context) {
@@ -76,7 +75,7 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 		identity.RootRequestID = &facts.RootRequestID
 	}
 
-	jobs, err := s.store.CronJobs().ListEnabled(ctx)
+	jobs, err := s.store.ListEnabled(ctx)
 	if err != nil {
 		if errors.Is(err, context.Canceled) && ctx.Err() == context.Canceled {
 			return
@@ -124,13 +123,13 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 		if lockErr != nil {
 			return
 		}
-		latest, loadErr := s.store.CronJobs().GetByName(ctx, job.Name)
+		latest, loadErr := s.store.GetByName(ctx, job.Name)
 		if loadErr != nil {
 			unlock()
 			if errors.Is(loadErr, context.Canceled) && ctx.Err() == context.Canceled {
 				return
 			}
-			if !errors.Is(loadErr, storage.ErrNotFound) {
+			if !errors.Is(loadErr, ErrJobNotFound) {
 				background.LogBackground(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "missed_cron_run_failed", Module: "cron", Type: globalevents.ContentText, Content: fmt.Sprintf("job=%s\nstage=reload\nerror=%v", job.Name, loadErr), Identity: identity, ResultStatus: globalevents.ResultFailed})
 			}
 			continue
@@ -282,7 +281,7 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 	}
 }
 
-func (s *Service) deliverMissedOnce(ctx context.Context, job storage.CronJob, meta Metadata, platformName string) (globalevents.LogResult, error) {
+func (s *Service) deliverMissedOnce(ctx context.Context, job Job, meta Metadata, platformName string) (globalevents.LogResult, error) {
 	content := "operation=deliverMissedOnce"
 	job, state, logResult, prepareErr := s.prepareDelivery(ctx, job, meta)
 	resultStatus := logResult.ResultStatus

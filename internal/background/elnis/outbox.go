@@ -17,7 +17,7 @@ import (
 )
 
 func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resultJSON, sessionID, messageID string, result background.JSONResult) (bool, error) {
-	if taken, err := background.SessionTakenOver(ctx, s.store, sessionID); err != nil {
+	if taken, err := s.sessionTakenOver(ctx, sessionID); err != nil {
 		return false, err
 	} else if taken {
 		return false, s.completeTakeover(ctx, eventID, event.ResolvedTargets, background.RunResult{SessionID: sessionID, MessageID: messageID, TakenOver: true, Outcome: "taken_over", Text: resultJSON}, nil)
@@ -137,7 +137,7 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) (logResult 
 	}
 	logResult.ResultStatus = globalevents.ResultSucceeded
 	for index := 0; index < len(deliveries); {
-		if taken, err := background.SessionTakenOver(ctx, s.store, event.SessionID); err != nil {
+		if taken, err := s.sessionTakenOver(ctx, event.SessionID); err != nil {
 			if logResult.ResultStatus != globalevents.ResultFailed {
 				logResult.ResultStatus = globalevents.ResultFailed
 				if errors.Is(err, context.Canceled) {

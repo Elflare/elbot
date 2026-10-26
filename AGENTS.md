@@ -87,4 +87,3 @@ rg -n "locator:agent-chat" AGENTS.md devdocs/*.md
 ## 注意：
 
 - 所有非精确rg使用（如搜索内容中有多个|、内容简短等），必须加上限制，如-m，或者使用管道符过滤
-

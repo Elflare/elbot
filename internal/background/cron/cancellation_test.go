@@ -69,7 +69,7 @@ func TestRecoveryCancellationDoesNotSendFailureNotice(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	captureLogs(t, slog.New(slog.NewTextHandler(&logs, nil)))
-	s := newTestCronService(t, Options{Store: fakeCronStore{cron: repo}, EnabledPlatforms: []PlatformTarget{{Name: "qqonebot"}}, SendTarget: func(_ context.Context, target delivery.Target, _ []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+	s := newTestCronService(t, Options{Store: repo, EnabledPlatforms: []PlatformTarget{{Name: "qqonebot"}}, SendTarget: func(_ context.Context, target delivery.Target, _ []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 		targets = append(targets, target.Platform)
 		cancel()
 		{

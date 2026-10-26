@@ -13,7 +13,6 @@ import (
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/signal"
-	"elbot/internal/storage"
 )
 
 type loggingCronRepo struct {
@@ -27,7 +26,7 @@ func TestDeliveryUsesSourceFailureWithSuccessfulBusinessReturn(t *testing.T) {
 	repo := newFakeCronRepo()
 	meta := Metadata{Kind: metadataKind, Version: 1, Title: "partial", Schedule: CronSchedule{Mode: ScheduleCron}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "report"}, Target: CronTarget{SourcePlatform: "cli"}}
 	job := upsertTestCronJob(t, repo, meta)
-	s := newTestCronService(t, Options{Store: fakeCronStore{cron: repo}, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+	s := newTestCronService(t, Options{Store: repo, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 		return delivery.Receipt{PlatformMessageIDs: []string{"received"}}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "one destination failed"}, nil
 	}})
 	var records []globalevents.LogRecord
@@ -65,7 +64,7 @@ func TestHandlerUsesDeclaredDeliveryResult(t *testing.T) {
 			repo := newFakeCronRepo()
 			meta := Metadata{Kind: metadataKind, Version: 1, Title: "partial", Schedule: CronSchedule{Mode: ScheduleCron}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "report"}, Target: CronTarget{SourcePlatform: "cli"}}
 			job := upsertTestCronJob(t, repo, meta)
-			s := newTestCronService(t, Options{Store: fakeCronStore{cron: repo}, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+			s := newTestCronService(t, Options{Store: repo, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 				return delivery.Receipt{PlatformMessageIDs: []string{"received"}}, globalevents.LogResult{ResultStatus: tc.status, Content: "source delivery diagnostic"}, tc.err
 			}})
 			var records []globalevents.LogRecord
@@ -92,7 +91,7 @@ func TestHandlerUsesDeclaredDeliveryResult(t *testing.T) {
 	}
 }
 
-func (r *loggingCronRepo) UpdateRunState(ctx context.Context, id string, state storage.CronJobRunState) error {
+func (r *loggingCronRepo) UpdateRunState(ctx context.Context, id string, state JobRunState) error {
 	r.saved = true
 	if r.saveErr != nil {
 		return r.saveErr
@@ -124,7 +123,7 @@ func TestRunJobLogsFinalResultAfterStateSave(t *testing.T) {
 			ctx, cancel := context.WithCancel(contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "session", RequestID: "request"}))
 			defer cancel()
 			manager.started, manager.runCtx = true, ctx
-			manager.handlers["handler"] = func(context.Context, storage.CronJob) (globalevents.LogResult, error) {
+			manager.handlers["handler"] = func(context.Context, Job) (globalevents.LogResult, error) {
 				if tc.cancel {
 					cancel()
 				}
@@ -134,7 +133,7 @@ func TestRunJobLogsFinalResultAfterStateSave(t *testing.T) {
 				}
 				return globalevents.LogResult{ResultStatus: tc.sourceResult, Content: content}, tc.runErr
 			}
-			job, err := repo.Upsert(ctx, storage.UpsertCronJobRequest{Name: "job", Handler: "handler", Enabled: true})
+			job, err := repo.Upsert(ctx, UpsertJobRequest{Name: "job", Handler: "handler", Enabled: true})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -179,7 +178,7 @@ func TestRunJobPublishesHandlerContentOnlyOnce(t *testing.T) {
 	repo := &loggingCronRepo{fakeCronRepo: newFakeCronRepo()}
 	meta := Metadata{Kind: metadataKind, Version: 1, Title: "reminder", Schedule: CronSchedule{Mode: ScheduleCron}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "hello"}, Target: CronTarget{SourcePlatform: "cli"}}
 	job := upsertTestCronJob(t, repo.fakeCronRepo, meta)
-	s := newTestCronService(t, Options{Store: fakeCronStore{cron: repo}, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+	s := newTestCronService(t, Options{Store: repo, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "sent_once\n\nreceipt=one"}, nil
 	}})
 	manager := NewManager(repo)
@@ -224,7 +223,7 @@ func TestRecoveryPublishesReturnedDeliveryDetails(t *testing.T) {
 			repo := newFakeCronRepo()
 			meta := Metadata{Kind: metadataKind, Version: 1, Title: "reminder", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "hello"}, Target: CronTarget{SourcePlatform: "cli"}}
 			job := upsertTestCronJob(t, repo, meta)
-			s := newTestCronService(t, Options{Store: fakeCronStore{cron: repo}, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+			s := newTestCronService(t, Options{Store: repo, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 				return delivery.Receipt{}, globalevents.LogResult{ResultStatus: status, Content: "delivery_detail\n\nreceipt=one"}, nil
 			}})
 			s.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }

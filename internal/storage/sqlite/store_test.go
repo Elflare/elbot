@@ -374,12 +374,8 @@ func TestCronJobRepositoryUpsertAndRunState(t *testing.T) {
 	}
 
 	lastRun := storage.Now()
-	nextRun := lastRun.Add(time.Hour)
 	if err := store.CronJobs().UpdateRunState(ctx, job.ID, storage.CronJobRunState{
 		LastRunAt: lastRun,
-		NextRunAt: &nextRun,
-		RunCount:  1,
-		Enabled:   true,
 		UpdatedAt: lastRun,
 	}); err != nil {
 		t.Fatalf("update run state: %v", err)
@@ -431,7 +427,7 @@ func TestCronJobRepositoryDeliveryCASAndReset(t *testing.T) {
 	}
 	lastRun := storage.Now().Add(-time.Hour)
 	if err := store.CronJobs().UpdateRunState(ctx, job.ID, storage.CronJobRunState{
-		LastRunAt: lastRun, RunCount: 7, Enabled: true, UpdatedAt: lastRun,
+		LastRunAt: lastRun, UpdatedAt: lastRun,
 	}); err != nil {
 		t.Fatalf("save prior run state: %v", err)
 	}
@@ -453,7 +449,7 @@ func TestCronJobRepositoryDeliveryCASAndReset(t *testing.T) {
 		t.Fatalf("delivery was overwritten: %#v", preserved)
 	}
 	if preserved.ID != job.ID || preserved.Metadata != req.Metadata ||
-		!preserved.CreatedAt.Equal(job.CreatedAt) || preserved.RunCount != 7 ||
+		!preserved.CreatedAt.Equal(job.CreatedAt) || preserved.RunCount != 1 ||
 		preserved.LastRunAt == nil || !preserved.LastRunAt.Equal(lastRun) {
 		t.Fatalf("updated job lost configuration or run history: %#v", preserved)
 	}
@@ -466,7 +462,7 @@ func TestCronJobRepositoryDeliveryCASAndReset(t *testing.T) {
 	if reset.DeliveryToken != "" || reset.DeliveryState != "" {
 		t.Fatalf("delivery was not reset: %#v", reset)
 	}
-	if reset.ID != job.ID || reset.RunCount != 7 || reset.LastRunAt == nil || !reset.LastRunAt.Equal(lastRun) {
+	if reset.ID != job.ID || reset.RunCount != 1 || reset.LastRunAt == nil || !reset.LastRunAt.Equal(lastRun) {
 		t.Fatalf("delivery reset changed run history: %#v", reset)
 	}
 	persisted, err := store.CronJobs().GetByName(ctx, job.Name)

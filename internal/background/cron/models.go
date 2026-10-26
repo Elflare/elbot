@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"elbot/internal/config"
-	"elbot/internal/storage"
 )
 
 func (s *Service) validateModel(meta CronLLMMetadata) error {
@@ -24,5 +23,5 @@ func (s *Service) modelForTask(meta CronLLMMetadata) (config.ModelSelection, err
 	if meta.ModelProvider != "" {
 		return config.ModelSelection{Provider: meta.ModelProvider, Model: meta.Model}, nil
 	}
-	return s.models.ResolveMode(storage.SessionModeWork).ModelSelection, nil
+	return s.models.ResolveMode("work").ModelSelection, nil
 }

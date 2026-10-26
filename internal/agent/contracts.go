@@ -161,3 +161,6 @@ type BackgroundCopyRequest struct {
 	Title           string                     // 目标标题。
 	Metadata        map[string]json.RawMessage // 目标来源元数据，保留各字段的 JSON 值类型。
 }
+
+// ErrForegroundSession 表示后台复制的来源已不再允许后台操作。
+var ErrForegroundSession = session.ErrForegroundSession

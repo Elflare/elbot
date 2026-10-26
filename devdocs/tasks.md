@@ -51,15 +51,18 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Tool 根部直接请求 Storage 读写 Cron，转换结果并发布任务定义变更；真实 SQLite 集成测试归 Tool 根部，Builtin 使用内部契约替身。
 - [x] Background 根部四文件收敛为对外门面、七项依赖、装配和生命周期框架；移除内部 Runner 的公开转发及 Wait，内部接入按目标调用标注 TODO。
 - [x] Background 根部按消费方职责注入最小接口或函数，按需复用 Agent、Tool 等根包公开类型；cronBridge 仅保留存储转换，elnisBridge 仅保留存储与媒体转换，注释采用当前架构原则。
-- [ ] 落实 Background 子包消费契约和根部存储、媒体转换：Cron 接入会话复制函数；Elnis 接入发送、平台 API 与模型选择。跨业务不引用内部子包或 share，本业务兄弟子包通过 share 协作。
+- [x] Cron 使用自有 JobRepository、记录和 JSON 模型，由根部转换 Storage；会话复制与共享接管查询接入 Agent，移除旧 Service 管理入口。
+- [ ] 落实 Elnis 存储、媒体、发送与平台 API 消费契约。跨业务不引用内部子包或 share，本业务兄弟子包通过 share 协作。
 - [x] Agent 根包提供后台执行、会话复制与过期清理；复制元数据使用 JSON 原始值，输入组件通过最小能力完成准备。
-- [ ] 实现 Platform 的公开发送、API 和历史清理能力，并接通 Background 子包对 Agent 会话复制方法的调用。
-- [ ] 接通 Tool.ObserveCronChanged 到内部 Cron 的刷新入口；初次任务加载前建立订阅，协调启动期间的变更并重新读库刷新调度。
+- [ ] 实现 Platform 的公开发送、API 和历史清理能力。
+- [x] Tool.ObserveCronChanged 接入 Cron.RefreshJob；通知只登记名称，启动与运行期串行重新读库，覆盖修改、禁用、删除、同名重建及读取期间再变更。
 - [x] 维护组件使用会话、历史清理函数及媒体 Cleanup 最小接口；共享维护配置由 share.MaintenanceJob 表达，Cron 适配回调与任务配置，根部负责接线。历史引用在媒体清理时统一对账。
 - [x] SetupCron 只配置维护任务，由根部显式启动 Manager；注册、配置、清理结果传递和配置不启动调度的回归已覆盖。
-- [ ] 实现 Cron Service.Start 与平台通知缓存契约：Start 前不触发 worker，前置步骤成功后由根部启动消费者；消费者就绪即可返回，不等待缓存任务执行完。验证启动前不执行、成功后消费、失败或关闭后不放行、关闭清理缓存及重复启动不重复创建消费者。
+- [x] Cron Service.Start 前按平台合并最新通知且不启动 worker；启动后独立队列消费，覆盖重复启动、取消、关闭清缓存、等待真实回调及 Close 超时。
 - [ ] 实现 Background 内部同步启动就绪、停止接入及实际退出契约，迁移旧总管测试后验证部分构造失败、并发启停、订阅释放和统一清理期限；当前不测试未实现的内部流程。
-- [ ] 收口 Background 内部的持久化类型与读取边界，移除内部模型对 Storage 元数据类型的别名；完成后验证 Cron 通知到调度的整链路。
+- [x] Cron 运行记账仅写 LastRunAt、UpdatedAt，SQLite 原子累加次数；不覆盖启用状态、下次运行时间或同名重建任务。
+- [x] 真实 SQLite 验证根部 Cron 转换、旧令牌回执映射、报告完成 JSON，以及 Tool 公共通知到调度的链路；根部测试可隔离实际 cronBridge 声明运行，整体装配仍受 Elnis 阻塞。
+- [ ] 收口 Elnis 的持久化类型与读取边界。
 
 ## 媒体中心对接
 
@@ -72,10 +75,10 @@ Tool 媒体层已统一向工具返回 `share.MediaInfo`，图片宽高、实际
 
 ## Background 目录与依赖
 
-- [x] 根部按总管、依赖、装配、生命周期及 Cron 数据契约拆分；内部业务收进 execution、cron、elnis、maintenance，共享定义与辅助能力归 share。
+- [x] 根部按总管、依赖、装配、生命周期四文件组织；Cron 独用数据契约放在 cron 子包；内部业务收进 execution、cron、elnis、maintenance，共享定义与辅助能力归 share。
 - [x] 移除旧 module 和 Background 持有的 Cron 工具注册；公共结果使用方依赖 share。
 - [ ] 实现根部所消费的 Platform 公开能力及 Background 内部目标接口，验证 App 已声明的总管接线。
-- [ ] 修复已确认的子包编译阻塞：execution 仍将 Tool share 状态交给使用 Tool 根包类型的 Agent 辅助入口，Elnis 仍引用已删除的 tool.MediaRuntime；按目标边界迁移后继续验证根部接线与整条业务线。
+- [ ] 修复已确认的子包编译阻塞：Elnis 仍引用已删除的 tool.MediaRuntime；按目标边界迁移后继续验证根部接线与整条业务线。
 
 ## 后台工具统一预载
 

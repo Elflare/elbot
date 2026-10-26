@@ -9,32 +9,62 @@ import (
 	"time"
 
 	background "elbot/internal/background/share"
-	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
-	"elbot/internal/storage"
 )
 
-type ScheduleMode = storage.CronScheduleMode
+type Metadata struct {
+	Kind      string          `json:"kind"`          // 持久化定义的种类。
+	Version   int             `json:"version"`       // 定义格式版本。
+	Title     string          `json:"title"`         // 展示标题。
+	CreatedBy CronActor       `json:"created_by"`    // 创建者身份快照。
+	Schedule  CronSchedule    `json:"schedule"`      // 一次性或周期计划。
+	Trigger   CronTrigger     `json:"trigger"`       // 直接通知或 LLM 任务。
+	Target    CronTarget      `json:"target"`        // 报告投递范围。
+	LLM       CronLLMMetadata `json:"llm,omitempty"` // LLM 模型和工具选择。
+}
+
+type ScheduleMode string
 
 const (
-	ScheduleOnce = storage.CronScheduleOnce
-	ScheduleCron = storage.CronScheduleCron
+	ScheduleOnce ScheduleMode = "once"
+	ScheduleCron ScheduleMode = "cron"
 )
 
-type TriggerMode = storage.CronTriggerMode
+type TriggerMode string
 
 const (
-	TriggerDirect = storage.CronTriggerDirect
-	TriggerLLM = storage.CronTriggerLLM
+	TriggerDirect TriggerMode = "direct"
+	TriggerLLM    TriggerMode = "llm"
 )
 
-// 持久化数据格式由 Storage 定义，Cron 只保留内部使用的简名。
-type Metadata = storage.CronMetadata
-type CronActor = storage.CronActor
-type CronSchedule = storage.CronSchedule
-type CronTrigger = storage.CronTrigger
-type CronTarget = storage.CronTarget
-type CronLLMMetadata = storage.CronLLMMetadata
+type CronActor struct {
+	ActorID        string `json:"actor_id"`               // 项目内身份标识。
+	Platform       string `json:"platform"`               // 创建者所属平台。
+	PlatformUserID string `json:"platform_user_id"`       // 平台用户标识。
+	DisplayName    string `json:"display_name,omitempty"` // 创建时的展示名称。
+}
+
+type CronSchedule struct {
+	Mode     ScheduleMode `json:"mode"`                // 计划模式。
+	RunAt    string       `json:"run_at,omitempty"`    // 本地时间，格式为 timeLayout。
+	CronExpr string       `json:"cron_expr,omitempty"` // 五字段 Cron 表达式。
+}
+
+type CronTrigger struct {
+	Mode    TriggerMode `json:"mode"`    // 执行方式。
+	Message string      `json:"message"` // 通知正文或 ELyph 任务文本。
+}
+
+type CronTarget struct {
+	AllEnabledPlatforms bool   `json:"all_enabled_platforms"` // 是否向全部启用平台投递。
+	SourcePlatform      string `json:"source_platform"`       // 非广播时的来源平台。
+}
+
+type CronLLMMetadata struct {
+	ToolListNames []string `json:"tool_list_names,omitempty"` // 工具、Skill 或标签选择。
+	ModelProvider string   `json:"model_provider,omitempty"`  // 可选的模型提供方。
+	Model         string   `json:"model,omitempty"`           // 与提供方配对的模型名称。
+}
 
 type DeliveryStatus string
 
@@ -46,19 +76,19 @@ const (
 )
 
 type CronDeliveryState struct {
-	storage.CronTaskStatus // 供管理工具查询的完成状态，与投递进度一起持久化。
-	ExecutionRunID  string                    `json:"execution_run_id,omitempty"`
-	TakenOver       bool                      `json:"taken_over,omitempty"`
-	Outcome         string                    `json:"outcome,omitempty"`
-	ExecutionResult string                    `json:"execution_result,omitempty"`
-	RunID           string                    `json:"run_id"`
-	ReportReady     bool                      `json:"report_ready,omitempty"`
-	TaskCompleted   bool                      `json:"task_completed,omitempty"`
-	Report          string                    `json:"report,omitempty"`
-	ReportSegments  []llm.MessageSegment      `json:"report_segments,omitempty"`
-	ReportSessionID string                    `json:"report_session_id,omitempty"`
-	ReportMessageID string                    `json:"report_message_id,omitempty"`
-	Targets         []CronDeliveryTargetState `json:"targets,omitempty"`
+	DeliveryComplete bool                      `json:"delivery_complete,omitempty"` // 本轮报告已投递完成或被前台接管，供管理工具读取。
+	ExecutionRunID   string                    `json:"execution_run_id,omitempty"`
+	TakenOver        bool                      `json:"taken_over,omitempty"`
+	Outcome          string                    `json:"outcome,omitempty"`
+	ExecutionResult  string                    `json:"execution_result,omitempty"`
+	RunID            string                    `json:"run_id"`
+	ReportReady      bool                      `json:"report_ready,omitempty"`
+	TaskCompleted    bool                      `json:"task_completed,omitempty"`
+	Report           string                    `json:"report,omitempty"`
+	ReportSegments   []llm.MessageSegment      `json:"report_segments,omitempty"`
+	ReportSessionID  string                    `json:"report_session_id,omitempty"`
+	ReportMessageID  string                    `json:"report_message_id,omitempty"`
+	Targets          []CronDeliveryTargetState `json:"targets,omitempty"`
 }
 
 type CronDeliveryTargetState struct {
@@ -72,47 +102,6 @@ type CronDeliveryOutputState struct {
 	FallbackText string         `json:"fallback_text,omitempty"`
 }
 
-type UpsertRequest struct {
-	Name                string
-	Title               string
-	ScheduleMode        ScheduleMode
-	RunAt               string
-	CronExpr            string
-	TriggerMode         TriggerMode
-	Message             string
-	ToolListNames       []string
-	ModelProvider       string
-	Model               string
-	AllEnabledPlatforms bool
-
-	Enabled        bool
-	Actor          contextinfo.Actor
-	SourcePlatform string
-}
-
-type PatchRequest struct {
-	Name                string
-	Title               *string
-	ScheduleMode        *ScheduleMode
-	RunAt               *string
-	CronExpr            *string
-	TriggerMode         *TriggerMode
-	Message             *string
-	ToolListNames       *[]string
-	ModelProvider       *string
-	Model               *string
-	AllEnabledPlatforms *bool
-
-	Enabled *bool
-	Actor   contextinfo.Actor
-}
-
-type JobView struct {
-	Job      storage.CronJob   `json:"job"`
-	Metadata Metadata          `json:"metadata"`
-	Delivery CronDeliveryState `json:"delivery,omitempty"`
-}
-
 type CronLLMResult = background.JSONResult
 
 func decodeMetadata(raw string) (Metadata, error) {
@@ -124,41 +113,6 @@ func decodeMetadata(raw string) (Metadata, error) {
 		return Metadata{}, fmt.Errorf("unsupported cron metadata kind %q", meta.Kind)
 	}
 	return meta, nil
-}
-
-func validateMetadata(meta Metadata) error {
-	if strings.TrimSpace(meta.Trigger.Message) == "" {
-		return fmt.Errorf("message is required")
-	}
-	if meta.Trigger.Mode != TriggerDirect && meta.Trigger.Mode != TriggerLLM {
-		return fmt.Errorf("unsupported trigger mode %q", meta.Trigger.Mode)
-	}
-	if meta.Target.SourcePlatform == "" {
-		return fmt.Errorf("source platform is required")
-	}
-	return nil
-}
-
-func scheduleExpr(schedule CronSchedule) (string, error) {
-	switch schedule.Mode {
-	case ScheduleOnce:
-		runAt, err := parseRunAt(schedule.RunAt)
-		if err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("%d %d %d %d *", runAt.Minute(), runAt.Hour(), runAt.Day(), int(runAt.Month())), nil
-	case ScheduleCron:
-		expr := strings.TrimSpace(schedule.CronExpr)
-		if expr == "" {
-			return "", fmt.Errorf("cron_expr is required")
-		}
-		if len(strings.Fields(expr)) != 5 {
-			return "", fmt.Errorf("cron_expr must be a 5-field cron expression")
-		}
-		return expr, nil
-	default:
-		return "", fmt.Errorf("unsupported schedule mode %q", schedule.Mode)
-	}
 }
 
 func parseRunAt(value string) (time.Time, error) {
@@ -195,28 +149,3 @@ func cronSandboxSubdir(jobName string) string {
 }
 
 func cronScopeID(jobName string) string { return "cron:" + normalizeJobName(jobName) }
-
-func actorMetadata(actor contextinfo.Actor) CronActor {
-	return CronActor{ActorID: actor.ID, Platform: actor.Platform, PlatformUserID: actor.PlatformUserID, DisplayName: actor.DisplayName}
-}
-
-func requireSuperadmin(actor contextinfo.Actor) error {
-	if actor.Role != contextinfo.RoleSuperadmin {
-		return fmt.Errorf("cron requires superadmin role")
-	}
-	return nil
-}
-
-func normalizeToolListNames(names []string) []string {
-	out := make([]string, 0, len(names))
-	seen := map[string]bool{}
-	for _, name := range names {
-		name = strings.TrimSpace(name)
-		if name == "" || seen[name] {
-			continue
-		}
-		seen[name] = true
-		out = append(out, name)
-	}
-	return out
-}

@@ -30,7 +30,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/tool/supervisor.go`、`wiring.go`、`lifecycle.go`：Tool 对外入口、组件装配与生命周期。
 - `internal/hook/`：Hook 总管、外部桥接与生命周期；装配内部规则、流水线、控制与插件进程。
 - `internal/platform/module/`：平台适配器、发送与通知、API 能力、补全和运行生命周期。
-- `internal/background/supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go`：对外总管、七项借用依赖、最小能力注入与生命周期协调。公开数据类型按需复用，cronBridge 仅保留存储转换，elnisBridge 仅保留存储与媒体转换。根部显式启动 Cron Manager，并在前置启动步骤成功后调用 Cron Service.Start 放行平台通知；内部消费、转换及就绪／退出契约仍标注 TODO，不公开内部 Runner，也不提供 Wait。
+- `internal/background/supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go`：对外总管、七项借用依赖、最小能力注入与生命周期协调。公开数据类型按需复用，cronBridge 仅保留存储转换，elnisBridge 仅保留存储与媒体转换。根部持有 Tool／平台订阅，显式启动 Cron Manager，在前置步骤成功后调用 Cron Service.Start 放行平台通知；Elnis 适配与就绪／退出契约仍待落实，不公开内部 Runner，也不提供 Wait。
 - `internal/background/execution/`：任务目录、后台来源准备与 Agent 公开执行入口转接；`cron/`、`elnis/`、`maintenance/` 承接各业务。
 
 <!-- locator:contextinfo -->
@@ -49,7 +49,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/events/notification.go`、`platform.go`、`logging.go`：全局通知、平台连接与日志契约。
 - `internal/agent/contracts.go`：公开 Hook 回调及载荷、状态和绑定快照、后台请求结果（复制元数据为 JSON 原始值）；不暴露内部组件或 Binding 句柄。
 - `internal/agent/signals.go`：Agent 信号源构造及通知、重试、会话清理与接管订阅。
-- `internal/background/cron/platform_signals.go`：Cron 的平台连接事件消费与队列生命周期。
+- `internal/background/cron/lifecycle.go`：Cron 平台连接通知的启动前合并、独立消费队列与关闭等待。
 - `internal/session/naming_signals.go`、`naming_logging.go`、`naming_lifecycle.go`：命名信号、日志与退出。
 - `internal/modelmgr/signals.go`、`logging.go`：模型重试信号与日志。
 - `internal/agent/share/logging.go`、`internal/background/share/logging.go`：所属业务日志发布。
@@ -71,7 +71,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/share/dialogue.go`、`hooks.go`：多子包共用的循环、提交、材料、消息转换和接管提示，以及 Hook 载荷与上下文辅助；独用消费接口留消费者，不反向依赖实现子包。
 - `internal/agent/share/status.go`、`execution/status.go`、`dialogue/model_call.go`：模型完成、执行状态、视觉降级的内部事实定义。
 - `internal/agent/input/message.go`、`input.go`：消息分发与普通输入准备。
-- `internal/agent/background.go`：后台执行、复制与清理公开入口，以及调用方和 Agent 的取消连接；`input/background.go`、`background_deps.go`：后台身份、会话、工具准备与独用消费契约。
+- `internal/agent/background.go`：后台执行、复制、清理与接管查询公开入口，以及调用方和 Agent 的取消连接；`input/background.go`、`background_deps.go`：后台身份、会话、工具准备与独用消费契约。
 - `internal/background/execution/runner.go`、`runner_deps.go`：任务目录与后台来源准备，以及仅含 Agent.RunBackground 的消费契约。
 - `internal/agent/dialogue/runner.go`、`preparation.go`：公共单轮、组件构造、输入准备与终态失败报告。
 - `internal/agent/dialogue/materials.go`：消息归档与请求媒体准备；共享投影与片段编解码在 `share/dialogue.go`。
@@ -231,11 +231,11 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 
 - `internal/session/service.go`、`types.go`：服务与领域接口。
 - `internal/session/binding.go`、`coordination.go`、`signals.go`：current、准入锁与绑定变化。
-- `internal/session/origin.go`、`promotion.go`、`background.go`：模型归属、前台接管与后台准备。
+- `internal/session/origin.go`、`promotion.go`、`background.go`：模型归属、前台接管及事实查询、后台准备。
 - `internal/session/fork.go`、`background_copy.go`、`material.go`：Fork、副本与源材料契约。
 - `internal/session/compact.go`、`lifecycle.go`、`expiration.go`：压缩结果创建、生命周期与过期。
 - `internal/session/naming.go`、`naming_lifecycle.go`、`title.go`：命名调度、退出与生成。
-- `internal/background/share/takeover.go`：后台修正／投递前的接管检查。
+- `internal/background/share/takeover.go`：Cron 与 Elnis 共用的接管查询函数契约，由根部注入 Agent 公开方法。
 
 <!-- locator:context -->
 ## 上下文、Prompt 与压缩
@@ -294,8 +294,11 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 <!-- locator:cron -->
 ## Cron 与维护
 
-- `internal/background/cron/`：任务 CRUD、调度、执行、报告与投递恢复。
-- `internal/background/cron/service.go`、`manager.go`：任务运行、调度与整体日志。
+- `internal/background/cron/`：调度、执行、报告与投递恢复；任务定义管理归 Tool。
+- `internal/background/cron/service.go`、`manager.go`：任务运行、调度、按原任务 ID 记账与整体日志。
+- `internal/background/cron/repository.go`、`model.go`：独用持久化契约、任务快照与 JSON 模型；根部 wiring.go 实现存储转换。
+- `internal/background/cron/refresh.go`：只登记名称的刷新入口，首次加载协调与运行期串行重新读库。
+- `internal/background/cron/lifecycle.go`：平台通知启动前合并、启动后消费和退出等待。
 - `internal/background/cron/models.go`、`delivery.go`、`recovery.go`：任务模型、逐项投递与连接恢复。
 - `internal/background/maintenance/maintenance.go`：维护清理、处理器注册与任务配置；通过最小接口和函数使用外部能力，不启动调度器。
 - `internal/background/share/maintenance.go`：维护组件与 Cron 共用的 MaintenanceJob 配置。

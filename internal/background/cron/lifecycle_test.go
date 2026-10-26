@@ -6,8 +6,6 @@ import (
 	"errors"
 	"testing"
 	"time"
-
-	"elbot/internal/storage"
 )
 
 func awaitCronDone(t *testing.T, done <-chan struct{}) {
@@ -23,7 +21,7 @@ func TestManagerCancellationAndRepeatedStopWaitForHandlerExit(t *testing.T) {
 	repo := newFakeCronRepo()
 	manager := NewManager(repo)
 	started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	if err := manager.RegisterHandler("wait", func(ctx context.Context, _ storage.CronJob) (globalevents.LogResult, error) {
+	if err := manager.RegisterHandler("wait", func(ctx context.Context, _ Job) (globalevents.LogResult, error) {
 		close(started)
 		<-ctx.Done()
 		close(canceled)
@@ -58,7 +56,7 @@ func TestManagerCancellationAndRepeatedStopWaitForHandlerExit(t *testing.T) {
 	awaitCronDone(t, first.Done())
 	awaitCronDone(t, second.Done())
 	state := repo.jobs[job.Name]
-	if state.RunCount != 1 || state.NextRunAt != nil {
+	if repo.counts[state.ID] != 1 || state.NextRunAt == nil {
 		t.Fatalf("canceled state=%+v", state)
 	}
 	if err := manager.Start(context.Background()); !errors.Is(err, context.Canceled) {
@@ -67,34 +65,34 @@ func TestManagerCancellationAndRepeatedStopWaitForHandlerExit(t *testing.T) {
 }
 
 type lifecycleCronRepo struct {
-	storage.CronJobRepository
-	list   func(context.Context) ([]storage.CronJob, error)
-	finish func(context.Context, string, storage.CronJobRunState) error
+	JobRepository
+	list   func(context.Context) ([]Job, error)
+	finish func(context.Context, string, JobRunState) error
 }
 
-func (r lifecycleCronRepo) ListEnabled(ctx context.Context) ([]storage.CronJob, error) {
+func (r lifecycleCronRepo) ListEnabled(ctx context.Context) ([]Job, error) {
 	if r.list != nil {
 		return r.list(ctx)
 	}
-	return r.CronJobRepository.ListEnabled(ctx)
+	return r.JobRepository.ListEnabled(ctx)
 }
 
-func (r lifecycleCronRepo) UpdateRunState(ctx context.Context, id string, state storage.CronJobRunState) error {
+func (r lifecycleCronRepo) UpdateRunState(ctx context.Context, id string, state JobRunState) error {
 	if r.finish != nil {
 		return r.finish(ctx, id, state)
 	}
-	return r.CronJobRepository.UpdateRunState(ctx, id, state)
+	return r.JobRepository.UpdateRunState(ctx, id, state)
 }
 
 func TestManagerStopWaitsForStartupAndPreventsLateScheduling(t *testing.T) {
 	base := newFakeCronRepo()
 	started, release := make(chan struct{}), make(chan struct{})
-	manager := NewManager(lifecycleCronRepo{CronJobRepository: base, list: func(context.Context) ([]storage.CronJob, error) {
+	manager := NewManager(lifecycleCronRepo{JobRepository: base, list: func(context.Context) ([]Job, error) {
 		close(started)
 		<-release
-		return []storage.CronJob{{Name: "late", Handler: "late", Enabled: true, Schedule: "@every 1s"}}, nil
+		return []Job{{Name: "late", Handler: "late", Enabled: true, Schedule: "@every 1s"}}, nil
 	}})
-	if err := manager.RegisterHandler("late", func(context.Context, storage.CronJob) (globalevents.LogResult, error) {
+	if err := manager.RegisterHandler("late", func(context.Context, Job) (globalevents.LogResult, error) {
 		t.Error("late handler ran")
 		return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "finished"}, nil
 	}); err != nil {
@@ -124,7 +122,7 @@ func TestManagerStartupFailureAndStopBeforeStart(t *testing.T) {
 		t.Run(map[bool]string{true: "stop first", false: "load failure"}[stopFirst], func(t *testing.T) {
 			failure := errors.New("load failed")
 			loads := 0
-			manager := NewManager(lifecycleCronRepo{CronJobRepository: newFakeCronRepo(), list: func(context.Context) ([]storage.CronJob, error) { loads++; return nil, failure }})
+			manager := NewManager(lifecycleCronRepo{JobRepository: newFakeCronRepo(), list: func(context.Context) ([]Job, error) { loads++; return nil, failure }})
 			if stopFirst {
 				awaitCronDone(t, manager.Stop().Done())
 			}
@@ -148,12 +146,12 @@ func TestManagerStartupFailureAndStopBeforeStart(t *testing.T) {
 func TestManagerStopWaitsForRunBookkeeping(t *testing.T) {
 	base := newFakeCronRepo()
 	finishing, release := make(chan struct{}), make(chan struct{})
-	manager := NewManager(lifecycleCronRepo{CronJobRepository: base, finish: func(ctx context.Context, id string, state storage.CronJobRunState) error {
+	manager := NewManager(lifecycleCronRepo{JobRepository: base, finish: func(ctx context.Context, id string, state JobRunState) error {
 		close(finishing)
 		<-release
 		return base.UpdateRunState(ctx, id, state)
 	}})
-	if err := manager.RegisterHandler("test", func(context.Context, storage.CronJob) (globalevents.LogResult, error) {
+	if err := manager.RegisterHandler("test", func(context.Context, Job) (globalevents.LogResult, error) {
 		return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "finished"}, nil
 	}); err != nil {
 		t.Fatal(err)

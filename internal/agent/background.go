@@ -69,3 +69,13 @@ func (m *Supervisor) CleanupSessions(ctx context.Context, cutoff time.Time) (int
 	defer done()
 	return m.sessions.CleanupExpired(ctx, cutoff)
 }
+
+// SessionTakenOver 查询后台会话是否已被前台接管。
+func (m *Supervisor) SessionTakenOver(ctx context.Context, id string) (bool, error) {
+	ctx, done, err := m.backgroundContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer done()
+	return m.sessions.SessionTakenOver(ctx, id)
+}

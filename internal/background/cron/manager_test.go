@@ -5,6 +5,7 @@ import (
 	globalevents "elbot/internal/events"
 	"encoding/json"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,43 +13,47 @@ import (
 )
 
 type fakeCronRepo struct {
-	jobs map[string]*storage.CronJob
+	mu       sync.Mutex
+	jobs     map[string]*Job
+	runs     map[string]JobRunState
+	counts   map[string]int
+	mappings []ReportMessageMap
 }
 
 func newFakeCronRepo() *fakeCronRepo {
-	return &fakeCronRepo{jobs: map[string]*storage.CronJob{}}
+	return &fakeCronRepo{jobs: map[string]*Job{}, runs: map[string]JobRunState{}, counts: map[string]int{}}
 }
 
-func (r *fakeCronRepo) Upsert(ctx context.Context, req storage.UpsertCronJobRequest) (*storage.CronJob, error) {
+func (r *fakeCronRepo) Upsert(ctx context.Context, req UpsertJobRequest) (*Job, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if job, ok := r.jobs[req.Name]; ok {
 		job.Handler = req.Handler
 		job.Schedule = req.Schedule
 		job.Enabled = req.Enabled
-		job.Metadata = req.Metadata
 		job.NextRunAt = req.NextRunAt
-		if req.ResetDelivery {
-			job.DeliveryState = ""
-			job.DeliveryToken = ""
-		}
-		job.UpdatedAt = storage.Now()
 		return job, nil
 	}
-	job := &storage.CronJob{ID: storage.NewID(), Name: req.Name, Handler: req.Handler, Schedule: req.Schedule, Enabled: req.Enabled, Metadata: req.Metadata, NextRunAt: req.NextRunAt, CreatedAt: storage.Now(), UpdatedAt: storage.Now()}
+	job := &Job{ID: storage.NewID(), Name: req.Name, Handler: req.Handler, Schedule: req.Schedule, Enabled: req.Enabled, NextRunAt: req.NextRunAt}
 	r.jobs[job.Name] = job
 	return job, nil
 }
 
-func (r *fakeCronRepo) GetByName(ctx context.Context, name string) (*storage.CronJob, error) {
+func (r *fakeCronRepo) GetByName(ctx context.Context, name string) (*Job, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	job, ok := r.jobs[name]
 	if !ok {
-		return nil, storage.ErrNotFound
+		return nil, ErrJobNotFound
 	}
 	copy := *job
 	return &copy, nil
 }
 
-func (r *fakeCronRepo) List(ctx context.Context, includeDisabled bool) ([]storage.CronJob, error) {
-	jobs := []storage.CronJob{}
+func (r *fakeCronRepo) List(ctx context.Context, includeDisabled bool) ([]Job, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	jobs := []Job{}
 	for _, job := range r.jobs {
 		if includeDisabled || job.Enabled {
 			jobs = append(jobs, *job)
@@ -57,41 +62,43 @@ func (r *fakeCronRepo) List(ctx context.Context, includeDisabled bool) ([]storag
 	return jobs, nil
 }
 
-func (r *fakeCronRepo) ListEnabled(ctx context.Context) ([]storage.CronJob, error) {
+func (r *fakeCronRepo) ListEnabled(ctx context.Context) ([]Job, error) {
 	return r.List(ctx, false)
 }
 
 func (r *fakeCronRepo) UpdateNextRunAt(ctx context.Context, id string, nextRunAt *time.Time, updatedAt time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	for _, job := range r.jobs {
 		if job.ID == id {
 			job.NextRunAt = nextRunAt
-			job.UpdatedAt = updatedAt
 			return nil
 		}
 	}
-	return storage.ErrNotFound
+	return ErrJobNotFound
 }
 
-func (r *fakeCronRepo) UpdateRunState(ctx context.Context, id string, state storage.CronJobRunState) error {
+func (r *fakeCronRepo) UpdateRunState(ctx context.Context, id string, state JobRunState) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	for _, job := range r.jobs {
 		if job.ID == id {
-			job.LastRunAt = &state.LastRunAt
-			job.NextRunAt = state.NextRunAt
-			job.RunCount = state.RunCount
-			job.Enabled = state.Enabled
-			job.UpdatedAt = state.UpdatedAt
+			r.runs[id] = state
+			r.counts[id]++
 			return nil
 		}
 	}
-	return storage.ErrNotFound
+	return ErrJobNotFound
 }
 
-func (r *fakeCronRepo) CompareAndSwapDelivery(ctx context.Context, id, expectedToken, nextToken, deliveryState string, mappings []storage.PlatformMessageMap) (bool, error) {
+func (r *fakeCronRepo) CompareAndSwapDelivery(ctx context.Context, id, expectedToken, nextToken, deliveryState string, mappings []ReportMessageMap) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.mappings = append(r.mappings, mappings...)
 	for _, job := range r.jobs {
 		if job.ID == id && job.Enabled && job.DeliveryToken == expectedToken {
 			job.DeliveryToken = nextToken
 			job.DeliveryState = deliveryState
-			job.UpdatedAt = storage.Now()
 			return true, nil
 		}
 	}
@@ -99,9 +106,11 @@ func (r *fakeCronRepo) CompareAndSwapDelivery(ctx context.Context, id, expectedT
 }
 
 func (r *fakeCronRepo) DisableByName(ctx context.Context, name string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	job, ok := r.jobs[name]
 	if !ok {
-		return storage.ErrNotFound
+		return ErrJobNotFound
 	}
 	job.Enabled = false
 	job.NextRunAt = nil
@@ -109,6 +118,8 @@ func (r *fakeCronRepo) DisableByName(ctx context.Context, name string) error {
 }
 
 func (r *fakeCronRepo) DisableByNameIfDeliveryToken(ctx context.Context, name, deliveryToken string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	job, ok := r.jobs[name]
 	if !ok || !job.Enabled || job.DeliveryToken != deliveryToken {
 		return false, nil
@@ -119,8 +130,10 @@ func (r *fakeCronRepo) DisableByNameIfDeliveryToken(ctx context.Context, name, d
 }
 
 func (r *fakeCronRepo) DeleteByName(ctx context.Context, name string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if _, ok := r.jobs[name]; !ok {
-		return storage.ErrNotFound
+		return ErrJobNotFound
 	}
 	delete(r.jobs, name)
 	return nil
@@ -130,16 +143,16 @@ func TestManagerRunsRegisteredHandlerAndUpdatesState(t *testing.T) {
 	repo := newFakeCronRepo()
 	manager := NewManager(repo)
 	called := false
-	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
+	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job Job) (globalevents.LogResult, error) {
 		called = true
-		if job.Metadata != `{"hello":"world"}` {
-			t.Fatalf("metadata = %q", job.Metadata)
+		if job.Name != "test.job" {
+			t.Fatalf("job = %#v", job)
 		}
 		return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "finished"}, nil
 	}); err != nil {
 		t.Fatalf("register handler: %v", err)
 	}
-	job, err := manager.UpsertJob(context.Background(), UpsertJobRequest{Name: "test.job", Handler: "test.handler", Schedule: "0 3 * * *", Enabled: true, Metadata: `{"hello":"world"}`})
+	job, err := manager.UpsertJob(context.Background(), UpsertJobRequest{Name: "test.job", Handler: "test.handler", Schedule: "0 3 * * *", Enabled: true})
 	if err != nil {
 		t.Fatalf("upsert job: %v", err)
 	}
@@ -152,8 +165,8 @@ func TestManagerRunsRegisteredHandlerAndUpdatesState(t *testing.T) {
 	if !called {
 		t.Fatal("handler was not called")
 	}
-	got := repo.jobs[job.Name]
-	if got.RunCount != 1 || got.LastRunAt == nil {
+	got, _ := repo.GetByName(context.Background(), job.Name)
+	if repo.counts[got.ID] != 1 || repo.runs[got.ID].LastRunAt.IsZero() {
 		t.Fatalf("job state = %#v", got)
 	}
 }
@@ -162,7 +175,7 @@ func TestManagerFailedHandlerStillUpdatesRunState(t *testing.T) {
 	repo := newFakeCronRepo()
 	manager := NewManager(repo)
 	boom := errors.New("boom")
-	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
+	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job Job) (globalevents.LogResult, error) {
 		return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: boom.Error()}, boom
 	}); err != nil {
 		t.Fatalf("register handler: %v", err)
@@ -177,8 +190,8 @@ func TestManagerFailedHandlerStillUpdatesRunState(t *testing.T) {
 	}
 	defer func() { <-manager.Stop().Done() }()
 	manager.runJob(job.Name)
-	got := repo.jobs[job.Name]
-	if got.RunCount != 1 {
+	got, _ := repo.GetByName(context.Background(), job.Name)
+	if repo.counts[got.ID] != 1 {
 		t.Fatalf("job state = %#v", got)
 	}
 }
@@ -237,7 +250,7 @@ func TestManagerSchedulesNextRunState(t *testing.T) {
 			repo := newFakeCronRepo()
 			manager := NewManager(repo)
 			if tt.registered {
-				if err := manager.RegisterHandler("test.handler", func(context.Context, storage.CronJob) (globalevents.LogResult, error) {
+				if err := manager.RegisterHandler("test.handler", func(context.Context, Job) (globalevents.LogResult, error) {
 					return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 				}); err != nil {
 					t.Fatalf("register handler: %v", err)
@@ -247,16 +260,17 @@ func TestManagerSchedulesNextRunState(t *testing.T) {
 				t.Fatalf("start manager: %v", err)
 			}
 			defer func() { <-manager.Stop().Done() }()
-			job := storage.CronJob{
+			job := Job{
 				ID: "job", Name: "test.job", Handler: "test.handler", Schedule: "0 3 * * *",
 				Enabled: tt.enabled, Metadata: tt.metadata, NextRunAt: tt.initial,
 			}
 			repo.jobs[job.Name] = &job
 			before := time.Now()
-			if err := manager.scheduleJob(job); err != nil {
+			if err := manager.scheduleJob(context.Background(), job); err != nil {
 				t.Fatalf("schedule job: %v", err)
 			}
-			got := repo.jobs[job.Name].NextRunAt
+			stored, _ := repo.GetByName(context.Background(), job.Name)
+			got := stored.NextRunAt
 			if tt.want != nil {
 				if got == nil || !got.Equal(*tt.want) {
 					t.Fatalf("next run = %v, want %v", got, tt.want)
@@ -281,7 +295,7 @@ func TestManagerSchedulesNextRunState(t *testing.T) {
 func TestManagerRunJobDoesNotReenableJobDisabledByHandler(t *testing.T) {
 	repo := newFakeCronRepo()
 	manager := NewManager(repo)
-	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
+	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job Job) (globalevents.LogResult, error) {
 		err := manager.DisableJob(ctx, job.Name)
 		if err != nil {
 			return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
@@ -300,11 +314,11 @@ func TestManagerRunJobDoesNotReenableJobDisabledByHandler(t *testing.T) {
 	}
 	defer func() { <-manager.Stop().Done() }()
 	manager.runJob(job.Name)
-	got := repo.jobs[job.Name]
+	got, _ := repo.GetByName(context.Background(), job.Name)
 	if got.Enabled {
 		t.Fatalf("job was re-enabled: %#v", got)
 	}
-	if got.RunCount != 1 || got.LastRunAt == nil {
+	if repo.counts[got.ID] != 1 || repo.runs[got.ID].LastRunAt.IsZero() {
 		t.Fatalf("job state was not updated: %#v", got)
 	}
 }
@@ -346,30 +360,16 @@ func TestManagerSkipsUnregisteredHandler(t *testing.T) {
 	}
 	defer func() { <-manager.Stop().Done() }()
 	manager.runJob(job.Name)
-	got := repo.jobs[job.Name]
-	if got.RunCount != 0 || got.LastRunAt != nil {
+	got, _ := repo.GetByName(context.Background(), job.Name)
+	if repo.counts[got.ID] != 0 || !repo.runs[got.ID].LastRunAt.IsZero() {
 		t.Fatalf("job should not run: %#v", got)
-	}
-}
-
-func TestManagerDeleteJobRemovesRepositoryRecord(t *testing.T) {
-	repo := newFakeCronRepo()
-	manager := NewManager(repo)
-	if _, err := manager.UpsertJob(context.Background(), UpsertJobRequest{Name: "test.job", Handler: "test.handler", Schedule: "0 3 * * *", Enabled: true}); err != nil {
-		t.Fatalf("upsert job: %v", err)
-	}
-	if err := manager.DeleteJob(context.Background(), "test.job"); err != nil {
-		t.Fatalf("delete job: %v", err)
-	}
-	if _, ok := repo.jobs["test.job"]; ok {
-		t.Fatal("job still exists after delete")
 	}
 }
 
 func TestManagerStartSchedulesEnabledJobs(t *testing.T) {
 	repo := newFakeCronRepo()
 	manager := NewManager(repo)
-	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job storage.CronJob) (globalevents.LogResult, error) {
+	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job Job) (globalevents.LogResult, error) {
 		return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "finished"}, nil
 	}); err != nil {
 		t.Fatalf("register handler: %v", err)

@@ -105,7 +105,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		runRequest.AllowedToolNames = append(runRequest.AllowedToolNames, name)
 	}
 	result, err := s.runner.RunBackground(ctx, runRequest)
-	if taken, lookupErr := background.SessionTakenOver(context.WithoutCancel(ctx), s.store, result.SessionID); lookupErr != nil {
+	if taken, lookupErr := s.sessionTakenOver(context.WithoutCancel(ctx), result.SessionID); lookupErr != nil {
 		err = errors.Join(err, lookupErr)
 		persistenceErr := s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, result.Text, err.Error())
 		content, _ := json.Marshal(map[string]string{"event_id": eventID, "error": errors.Join(err, persistenceErr).Error()})
@@ -266,7 +266,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 }
 
 func (s *Service) retryLLMResultFormat(ctx context.Context, event Event, sessionID string, model config.ModelSelection) (background.RunResult, background.JSONResult, error) {
-	if taken, err := background.SessionTakenOver(ctx, s.store, sessionID); err != nil || taken {
+	if taken, err := s.sessionTakenOver(ctx, sessionID); err != nil || taken {
 		return background.RunResult{SessionID: sessionID, TakenOver: taken, Outcome: "taken_over"}, background.JSONResult{}, err
 	}
 	result, err := s.runner.RunBackground(ctx, background.RunRequest{

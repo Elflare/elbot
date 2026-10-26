@@ -8,14 +8,12 @@ import (
 	"testing"
 	"time"
 
-	globalevents "elbot/internal/events"
 	"elbot/internal/signal"
-	"elbot/internal/storage"
 )
 
 func startCronPlatformEvents(t *testing.T, s *Service) {
 	t.Helper()
-	if err := s.StartPlatformEvents(t.Context()); err != nil {
+	if err := s.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
@@ -31,9 +29,14 @@ func startCronPlatformEvents(t *testing.T, s *Service) {
 // repository only after recovery has finished, without sleeps or polling.
 func emitCronPlatformAndWait(t *testing.T, s *Service, name string) {
 	t.Helper()
-	if _, err := globalevents.PlatformConnected.Emit(context.Background(), globalevents.PlatformConnectedEvent{Platform: name}); err != nil {
+	if err := s.EnqueuePlatformConnected(context.Background(), name); err != nil {
 		t.Fatal(err)
 	}
+	waitCronPlatform(t, s, name)
+}
+
+func waitCronPlatform(t *testing.T, s *Service, name string) {
+	t.Helper()
 	s.platformEvents.mu.Lock()
 	queue := s.platformEvents.platformQueues[name]
 	s.platformEvents.mu.Unlock()
@@ -52,26 +55,19 @@ func emitCronPlatformAndWait(t *testing.T, s *Service, name string) {
 }
 
 type connectionRepo struct {
-	storage.CronJobRepository
-	list func(context.Context) ([]storage.CronJob, error)
+	JobRepository
+	list func(context.Context) ([]Job, error)
 }
 
-func (r connectionRepo) ListEnabled(ctx context.Context) ([]storage.CronJob, error) {
+func (r connectionRepo) ListEnabled(ctx context.Context) ([]Job, error) {
 	return r.list(ctx)
 }
-
-type connectionStore struct {
-	storage.Store
-	repo storage.CronJobRepository
-}
-
-func (s connectionStore) CronJobs() storage.CronJobRepository { return s.repo }
 
 func TestCronPlatformSubscriptionsIsolateAndCancel(t *testing.T) {
 	type key struct{}
 	first, second := make(chan struct{}, 1), make(chan struct{}, 1)
 	var calls atomic.Int32
-	s := newTestCronService(t, Options{Store: connectionStore{repo: connectionRepo{list: func(ctx context.Context) ([]storage.CronJob, error) {
+	s := newTestCronService(t, Options{Store: connectionRepo{list: func(ctx context.Context) ([]Job, error) {
 		if ctx.Value(key{}) == "one" {
 			calls.Add(1)
 			first <- struct{}{}
@@ -80,14 +76,14 @@ func TestCronPlatformSubscriptionsIsolateAndCancel(t *testing.T) {
 		}
 		second <- struct{}{}
 		return nil, nil
-	}}}})
+	}}})
 	startCronPlatformEvents(t, s)
-	if err := s.StartPlatformEvents(t.Context()); err != nil {
+	if err := s.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	emit := func(name string) {
 		ctx, cancel := context.WithCancel(context.WithValue(context.Background(), key{}, name))
-		if _, err := globalevents.PlatformConnected.Emit(ctx, globalevents.PlatformConnectedEvent{Platform: name}); err != nil {
+		if err := s.EnqueuePlatformConnected(ctx, name); err != nil {
 			t.Fatal(err)
 		}
 		cancel()
@@ -119,32 +115,36 @@ func TestCronPlatformSubscriptionsIsolateAndCancel(t *testing.T) {
 		t.Fatal("consumed after close")
 	default:
 	}
-	if err := s.StartPlatformEvents(context.Background()); !errors.Is(err, signal.ErrClosed) {
+	if err := s.Start(context.Background()); !errors.Is(err, signal.ErrClosed) {
 		t.Fatalf("restart=%v", err)
 	}
 }
 
-func TestCronPlatformSubscriptionRejectsBlankAndDoesNotReplay(t *testing.T) {
+func TestCronPlatformSubscriptionRejectsBlankAndCachesBeforeStart(t *testing.T) {
 	var calls atomic.Int32
-	s := newTestCronService(t, Options{Store: connectionStore{repo: connectionRepo{list: func(context.Context) ([]storage.CronJob, error) { calls.Add(1); return nil, nil }}}})
-	if _, err := globalevents.PlatformConnected.Emit(context.Background(), globalevents.PlatformConnectedEvent{Platform: "before"}); err != nil {
+	s := newTestCronService(t, Options{Store: connectionRepo{list: func(context.Context) ([]Job, error) { calls.Add(1); return nil, nil }}})
+	if err := s.EnqueuePlatformConnected(context.Background(), "before"); err != nil {
 		t.Fatal(err)
 	}
 	startCronPlatformEvents(t, s)
-	if _, err := globalevents.PlatformConnected.Emit(context.Background(), globalevents.PlatformConnectedEvent{Platform: " "}); err == nil {
+	waitCronPlatform(t, s, "before")
+	if err := s.EnqueuePlatformConnected(context.Background(), " "); err == nil {
 		t.Fatal("blank platform accepted")
 	}
 	emitCronPlatformAndWait(t, s, "after")
-	if calls.Load() != 1 {
+	if err := s.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 2 {
 		t.Fatalf("calls=%d", calls.Load())
 	}
 }
 
 func TestCronPlatformSubscriptionParentCancellationRacesEmission(t *testing.T) {
-	s := newTestCronService(t, Options{Store: connectionStore{repo: connectionRepo{list: func(context.Context) ([]storage.CronJob, error) { return nil, nil }}}})
+	s := newTestCronService(t, Options{Store: connectionRepo{list: func(context.Context) ([]Job, error) { return nil, nil }}})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := s.StartPlatformEvents(ctx); err != nil {
+	if err := s.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
 	var wg sync.WaitGroup
@@ -153,7 +153,7 @@ func TestCronPlatformSubscriptionParentCancellationRacesEmission(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range 50 {
-				if _, err := globalevents.PlatformConnected.Emit(context.Background(), globalevents.PlatformConnectedEvent{Platform: "one"}); err != nil {
+				if err := s.EnqueuePlatformConnected(context.Background(), "one"); err != nil {
 					t.Error(err)
 				}
 			}
@@ -166,7 +166,7 @@ func TestCronPlatformSubscriptionParentCancellationRacesEmission(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("parent cancellation leaked subscription")
 	}
-	if err := s.StartPlatformEvents(context.Background()); !errors.Is(err, signal.ErrClosed) {
+	if err := s.Start(context.Background()); !errors.Is(err, signal.ErrClosed) {
 		t.Fatalf("restart=%v", err)
 	}
 }

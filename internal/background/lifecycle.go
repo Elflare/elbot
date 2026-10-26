@@ -46,7 +46,7 @@ func (m *Supervisor) Start() (err error) {
 	if err := maintenance.SetupCron(m.ctx, m.cronManager.ConfigureMaintenanceJob, m.cfg); err != nil {
 		return fmt.Errorf("setup maintenance cron: %w", err)
 	}
-	// TODO: Manager.Start 同步完成首次任务加载，并协调此前收到的任务变更。
+	// Manager.Start 完成首次加载，并排空启动期间登记的定义变更。
 	if err := m.cronManager.Start(m.ctx); err != nil {
 		return fmt.Errorf("start cron: %w", err)
 	}
@@ -56,7 +56,7 @@ func (m *Supervisor) Start() (err error) {
 			return fmt.Errorf("start elnis: %w", err)
 		}
 	}
-	// TODO: Service.Start 在上述步骤成功后放行平台通知，等待消费者就绪，不等待缓存任务执行完。
+	// 前置步骤成功后放行平台通知；消费者就绪即可返回，不等待恢复任务执行完。
 	// 内部负责取消与关闭协调；启动失败不放行缓存，关闭时清理缓存并停止接纳通知。
 	if err := m.cron.Start(m.ctx); err != nil {
 		return fmt.Errorf("start cron platform consumer: %w", err)
