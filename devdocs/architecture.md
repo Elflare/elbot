@@ -138,7 +138,7 @@ flowchart TD
 
 | 层 | 职责 |
 |---|---|
-| 入口组件 | agent/input 的 MessageHandler 分发，InputCoordinator 准备与预加载，CommandExecutor 执行命令；background/execution 的 BackgroundRunner 准备后台资源 |
+| 入口组件 | agent/input 的 MessageHandler 分发，InputCoordinator 准备与预加载，CommandExecutor 执行命令，BackgroundHandler 准备后台会话与工具；Background 旧调用尚未切换 |
 | ExecutionCoordinator | 准入、attempt／Request、追加确认、pending、压缩交接与 Execution 完成 |
 | dialogue.Runner | 选择路线、加载材料、准备输入、收敛 Loop 结果、提交回复与统一失败报告 |
 | Chat／Responses Loop | 协议上下文、模型／工具循环、pending 与接管刷新 |
@@ -152,19 +152,19 @@ flowchart TD
 
 ### Agent 包边界
 
-`Supervisor` 的业务出口为 `HandleMessage`、`RegisterHooks`、`StartHookRequest`、`Complete`、`Commands`、`ObserveStatusChanged`、`ObserveBindingChanged`；生命周期出口为 `Start`、`BeginClose`、`Close`、`Done`。内部组件不通过 getter 暴露。`Commands` 返回独立的命令元数据；状态订阅复制用量，绑定订阅只返回 Scope、SessionID 等绑定事实，每个订阅者获得独立快照。调用方只持有自己的订阅连接，不能发射或关闭源信号。
+`Supervisor` 的业务出口为 `HandleMessage`、`RunBackground`、`CopyBackground`、`CleanupSessions`、`RegisterHooks`、`StartHookRequest`、`Complete`、`Commands`、`ObserveStatusChanged`、`ObserveBindingChanged`；生命周期出口为 `Start`、`BeginClose`、`Close`、`Done`。内部组件不通过 getter 暴露。`Commands` 返回独立的命令元数据；状态订阅复制用量，绑定订阅只返回 Scope、SessionID 等绑定事实，每个订阅者获得独立快照。调用方只持有自己的订阅连接，不能发射或关闭源信号。
 
 Agent 总管持有模型完成、状态变化、视觉降级三个线内事件信号。`BeginClose` 拒绝两类公开入口的新订阅，但保留信号供在途工作发布收尾事件。App 等待平台接入和后台生产者退出后调用 Agent 的 `Close`；`Close` 等待内部组件收尾，再关闭信号，沿用各订阅的关闭策略。`Done` 等待信号回调实际退出，单独调用 `BeginClose` 不会完成 `Done`，`Close` 超时也不会提前完成它。外部消费者自行管理其异步工作的生命周期。
 
 工具预加载和补全标签由 Tool 能力提供；执行 Schema 统一经工具执行能力生成，提示词只消费工具名称。Agent 不另设自定义 Schema Provider 或 Registry 回退。整链路测试通过真实 `NewSupervisor` 构造，子组件单测在各所属包中维护。
 
-根包 `agent.Supervisor` 接收完整配置和借用依赖，持有 Session、Request、Turn、协议路线及订阅。公开 Hook 回调及嵌套数据、状态和绑定事件定义在 `contracts.go`；根部转换为内部契约，每个订阅者获得独立快照。后台请求、结果与复制请求也在此预留，执行、复制、清理方法仍为 TODO，后台准备尚在 Background。
+根包 `agent.Supervisor` 接收完整配置和借用依赖，持有 Session、Request、Turn、协议路线及订阅。公开 Hook 回调及嵌套数据、状态和绑定事件定义在 `contracts.go`；根部转换为内部契约，每个订阅者获得独立快照。后台请求、结果与复制请求也在此定义；background.go 提供执行、复制与过期清理入口，连接调用方与 Agent 的取消信号。input/background.go 准备身份、会话、模型上下文和新会话预载，复用现有执行协调器；复制与清理委托自有 Session，复制元数据使用 JSON 原始值。调用方提供已准备的工作目录范围与后台来源，并在 Close 前等待这些同步调用退出。Background 的旧准备实现仍待后续调用链迁移时删除。
 
 `wiring.go` 负责组件构造、协议接线、Completion 装配及 Workspace 工厂；消费者只接收实际使用的 Session、Turn、Request、Models、Contexts、Media、存储和命令能力。身份能力也按实际调用裁剪。外部公开数据和足够小的公开接口直接使用，不复制同义类型。Agent 的 Tool 调用统一使用 Tool 根包类型。
 
 兄弟子包通过消费接口及 `share` 协作。Loop、准备结果、提交、消息转换及接管提示归 `share/dialogue.go`；Hook 载荷与调用上下文辅助归 `share/hooks.go`。ExecutionView、Preparer、CallProcessor、MessageStore、CommitGate 和 ToolTranscriptCommitter 的实现保留在 Dialogue；Chat／Responses 只取得所需能力。信号源统一由根部构造，模型完成事实归 Share，状态事实归 Execution，视觉降级事实归 Dialogue。
 
-Hook、Command、Completion 等外围调用方尚需迁移；Hook 管理结果仍使用提供方旧类型，根包整体编译与整链路测试等待外围收口，不能据子包测试通过认定应用已可运行。
+Hook、Command、Completion 已消费根包公开契约，Agent 根部与真实 Tool 接线的回归可独立运行；Background 内部调用与其余业务线仍待接入，完整应用尚不能运行。
 
 ```mermaid
 flowchart TD
@@ -175,6 +175,10 @@ flowchart TD
     S --> L["agent/lifecycle.go<br/>启动、取消与关闭"]
     S --> G["agent/signals.go<br/>连接、消费与释放订阅"]
     W --> I["agent/input/<br/>消息、命令、补全与输入准备"]
+    S --> BG["agent/background.go<br/>公开后台入口、取消连接和结果转换"]
+    W --> BI["agent/input/background.go、background_deps.go<br/>后台输入准备与最小依赖"]
+    BG --> BI
+    BI -.->|根部注入| E
     W --> E["agent/execution/<br/>准入、跨轮执行、状态与输出生命周期"]
     W --> C["agent/confirmation/<br/>风险策略、确认与提示"]
     W --> H["agent/hooks/hooks.go<br/>单组回调调度与在途生命周期"]
@@ -182,7 +186,7 @@ flowchart TD
     HB --> H
     H --> HP["agent/hooks/points.go<br/>内部回调组与事实组合"]
     HP --> SH["agent/share/hooks.go<br/>内部 Hook 载荷与上下文辅助"]
-    S --> CT["agent/contracts.go<br/>公开回调、事件及后台预留契约"]
+    S --> CT["agent/contracts.go<br/>公开回调、事件及后台请求结果"]
     W --> O["agent/output/<br/>发送、输出 Hook 与回执"]
     W --> T["agent/tools/<br/>工具运行时与 ToolRun 桥接"]
     W --> D["agent/dialogue/、chat/、responses/、routes/<br/>公共单轮与协议路线"]
@@ -582,11 +586,13 @@ Elnis 接收事件，Elvena 定义公共协议，Elwisp 提供外部事件与工
 <!-- locator:cron -->
 ## Cron 与后台任务
 
-Background 根部提供总管门面、消费方依赖、装配和生命周期协调，具体业务由 `execution`、`cron`、`elnis`、`maintenance` 承担，`share` 只用于内部协作。根部接收完整配置及 Store、Models、Media、Logs、Agent、Tools、Platform 七项借用依赖，不取得 Agent 的 Session 或执行器，不公开内部 Runner。内部接入按目标接口写调用并标注 TODO；Agent 的后台公开能力、内部适配与生命周期契约尚未实现，当前不保证完整编译运行。
+Background 根部提供总管门面、消费方依赖、装配和生命周期协调，具体业务由 `execution`、`cron`、`elnis`、`maintenance` 承担，`share` 只用于内部协作。根部接收完整配置及 Store、Models、Media、Logs、Agent、Tools、Platform 七项借用依赖，不取得 Agent 的 Session 或执行器，不公开内部 Runner。内部接入按目标接口写调用并标注 TODO；Agent 的后台公开能力已实现，Background 的内部适配与生命周期契约尚未落实，当前不保证完整编译运行。
+
+目标接线按实际消费裁剪能力，公开请求和结果类型直接复用所属业务根包定义：Runner 只消费 Agent.RunBackground；Cron 的会话复制与发送、维护组件的会话和历史清理、Elnis 的发送与平台 API 均使用独立函数。模型与日志使用最小接口，Elnis 的模型解析函数只返回 ModelSelection，工具声明展开只暴露 BackgroundSelections。根部仅为存储与媒体转换保留 cronBridge、elnisBridge，方法随内部数据契约实现；不为直接转发维护适配类型。后台路径准备、报告解析和重试归 Background；Agent 已实现会话准备、执行上下文与工具预载，Background 的旧调用仍待切换。
 
 ```mermaid
 flowchart TD
-    D["background/deps.go：七项借用依赖与公开能力接口"] --> W["background/wiring.go：构造、边界适配和订阅接线"]
+    D["background/deps.go：七项借用依赖与公开能力接口"] --> W["background/wiring.go：构造、最小能力注入、存储媒体转换和订阅"]
     W --> S["background/supervisor.go：对外门面与组件持有"]
     L["background/lifecycle.go：启动就绪、停止接入与退出等待"] --> S
     W -.->|内部接入 TODO| C["cron/：调度、执行与投递恢复"]

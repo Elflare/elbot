@@ -17,7 +17,7 @@ import (
 	"sync"
 )
 
-// Supervisor owns the foreground business line and its independently managed Session, Request and Turn state.
+// Supervisor owns foreground and background execution and its independently managed Session, Request and Turn state.
 type Supervisor struct {
 	signals         signals // Owned event sources; closed after internal producers finish.
 	ctx             context.Context
@@ -28,6 +28,7 @@ type Supervisor struct {
 	routes          *routes.Registry
 	contexts        *contextmgr.Service
 	commands        *command.Router
+	background      *agentinput.BackgroundHandler // Prepares task input using owned Session and execution capabilities.
 	handler         *agentinput.MessageHandler
 	completion      *completion.Service
 	execution       *agentexecution.ExecutionCoordinator

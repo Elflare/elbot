@@ -30,7 +30,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/tool/supervisor.go`、`wiring.go`、`lifecycle.go`：Tool 对外入口、组件装配与生命周期。
 - `internal/hook/`：Hook 总管、外部桥接与生命周期；装配内部规则、流水线、控制与插件进程。
 - `internal/platform/module/`：平台适配器、发送与通知、API 能力、补全和运行生命周期。
-- `internal/background/supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go`：对外总管、七项借用依赖、完整配置装配与生命周期协调；根部显式启动 Cron Manager，并在前置启动步骤成功后调用 Cron Service.Start 放行平台通知。内部构造、适配和就绪／退出契约按目标调用标注 TODO，不公开内部 Runner，也不提供 Wait。
+- `internal/background/supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go`：对外总管、七项借用依赖、最小能力注入与生命周期协调。公开数据类型按需复用，cronBridge 仅保留存储转换，elnisBridge 仅保留存储与媒体转换。根部显式启动 Cron Manager，并在前置启动步骤成功后调用 Cron Service.Start 放行平台通知；内部消费、转换及就绪／退出契约仍标注 TODO，不公开内部 Runner，也不提供 Wait。
 - `internal/background/execution/`：后台准备与 Agent 执行协调；`cron/`、`elnis/`、`maintenance/` 承接各业务。
 
 <!-- locator:contextinfo -->
@@ -47,7 +47,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/signal/`：泛型信号、订阅快照、有界调度、结果、关闭及设施诊断。
 - `internal/events/notification.go`、`platform.go`、`logging.go`：全局通知、平台连接与日志契约。
-- `internal/agent/contracts.go`：公开 Hook 回调及载荷、状态和绑定快照、后台预留请求结果；不暴露内部组件或 Binding 句柄。
+- `internal/agent/contracts.go`：公开 Hook 回调及载荷、状态和绑定快照、后台请求结果（复制元数据为 JSON 原始值）；不暴露内部组件或 Binding 句柄。
 - `internal/agent/signals.go`：Agent 信号源构造及通知、重试、会话清理与接管订阅。
 - `internal/background/cron/platform_signals.go`：Cron 的平台连接事件消费与队列生命周期。
 - `internal/session/naming_signals.go`、`naming_logging.go`、`naming_lifecycle.go`：命名信号、日志与退出。
@@ -70,7 +70,9 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/{input,execution,confirmation,hooks,output,tools}/`：输入、执行、确认、Agent 自有扩展点、输出与工具桥接；依赖契约随消费者放置。
 - `internal/agent/share/dialogue.go`、`hooks.go`：多子包共用的循环、提交、材料、消息转换和接管提示，以及 Hook 载荷与上下文辅助；独用消费接口留消费者，不反向依赖实现子包。
 - `internal/agent/share/status.go`、`execution/status.go`、`dialogue/model_call.go`：模型完成、执行状态、视觉降级的内部事实定义。
-- `internal/agent/input/message.go`、`input.go`：消息分发与普通输入准备；`internal/background/execution/runner.go`、`runner_deps.go`：后台资源准备与依赖契约。
+- `internal/agent/input/message.go`、`input.go`：消息分发与普通输入准备。
+- `internal/agent/background.go`：后台执行、复制与清理公开入口，以及调用方和 Agent 的取消连接；`input/background.go`、`background_deps.go`：后台身份、会话、工具准备与独用消费契约。
+- `internal/background/execution/runner.go`、`runner_deps.go`：待切换到 Agent 公开能力的旧后台准备路径；切换后保留任务目录与后台来源准备。
 - `internal/agent/dialogue/runner.go`、`preparation.go`：公共单轮、组件构造、输入准备与终态失败报告。
 - `internal/agent/dialogue/materials.go`：消息归档与请求媒体准备；共享投影与片段编解码在 `share/dialogue.go`。
 - `internal/agent/dialogue/model_call.go`、`system_prompt.go`：公共模型 Hook、调用观察与 Prompt 来源。

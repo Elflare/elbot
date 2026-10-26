@@ -167,6 +167,15 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		ResponseTimeout: time.Duration(cfg.LLMRequest.ResponseTimeoutSeconds) * time.Second,
 	})
 	m.execution = execution
+	m.background = agentinput.NewBackgroundHandler(agentinput.BackgroundHandlerDeps{
+		Sessions: m.sessions, Identity: identity, Execution: execution, Preloader: deps.Tools, ToolState: deps.Tools,
+		WithPermission: func(ctx context.Context) context.Context {
+			return security.WithPermission(ctx, deps.Permission)
+		},
+		EnsureWorkspaceDir: func(ctx context.Context, id, dir string) error {
+			return session.NewWorkspaceStore(m.sessions, deps.Store.Sessions(), id).EnsureWorkspaceDir(ctx, dir)
+		},
+	})
 	m.sessions.SetActivitySource(func() []string {
 		var ids []string
 		for _, active := range m.turns.SnapshotAll() {

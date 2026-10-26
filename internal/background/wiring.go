@@ -13,40 +13,21 @@ import (
 	"elbot/internal/background/maintenance"
 	"elbot/internal/config"
 	globalevents "elbot/internal/events"
-	"elbot/internal/logging"
 	"elbot/internal/media"
-	"elbot/internal/modelmgr"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 )
 
-// 以下适配按消费业务命名，只保存借用能力，不把提供方类型直接交给内部子包。
-// TODO: 在内部消费契约收口时补齐这些适配的方法和数据转换；本阶段不提供空实现。
-type executionBridge struct {
-	agent AgentCapabilities // 将内部后台请求转换为 Agent 根包请求，再转换执行结果。
-}
-
+// 根部只为存储编码和业务数据转换保留适配；公开数据类型按需复用，能力按消费方职责裁剪。
+// TODO: 随内部存储、媒体契约落实转换方法；不为直接转发增加适配或占位实现。
 type cronBridge struct {
-	repo     storage.CronJobRepository // 请求 Storage 读写任务定义和执行状态，转换为内部记录。
-	agent    AgentCapabilities         // 将内部会话复制要求转换为 Agent 根包请求。
-	models   *modelmgr.Service         // 将模型选择与校验结果转换为内部模型契约。
-	platform PlatformCapabilities      // 将内部投递要求转换为平台公开发送请求。
+	repo storage.CronJobRepository // 请求 Storage 读写任务定义和执行状态，转换为内部记录。
 }
 
 type elnisBridge struct {
-	store    storage.Store        // 请求 Storage 持久化事件及报告，转换为内部记录。
-	media    *media.Manager       // 转换事件媒体处理的请求与结果。
-	models   *modelmgr.Service    // 转换 Elnis 模型槽的解析结果。
-	tools    ToolCapabilities     // 转换授权前的工具声明展开结果。
-	platform PlatformCapabilities // 转接公开发送和平台 API，不取得平台调用器。
-}
-
-type maintenanceBridge struct {
-	logs     *logging.Manager     // 提供日志清理及保留策略。
-	agent    AgentCapabilities    // 请求 Agent 清理过期会话，不取得 Session 服务。
-	platform PlatformCapabilities // 请求 Platform 清理历史，不取得历史仓库。
-	media    *media.Manager       // 提供媒体清理和历史引用对账。
+	store storage.Store  // 请求 Storage 持久化事件及报告，转换为内部记录。
+	media *media.Manager // 转换事件媒体处理的请求与结果。
 }
 
 // NewSupervisor 只构造与接线；失败仍返回已取得的总管，由 App 统一清理。
@@ -58,26 +39,28 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		return m, err
 	}
 
-	// TODO: Runner 只消费内部后台执行契约；会话准备、权限、模型上下文和工具预载由 Agent 完成。
+	// TODO: Execution 只声明 RunBackground，使用 Agent 根包请求和结果；会话准备、权限、模型上下文和工具预载由 Agent 完成。
+	// Runner 保留任务路径准备、后台来源注入、报告解析和重试策略，不持有 Agent 内部组件。
 	m.runner = execution.NewBackgroundRunner(execution.BackgroundRunnerDeps{
-		Execution: executionBridge{agent: deps.Agent},
+		Execution: deps.Agent, SandboxRoot: cfg.Sandbox.Root,
 	})
-	cron := cronBridge{repo: deps.Store.CronJobs(), agent: deps.Agent, models: deps.Models, platform: deps.Platform}
-	// TODO: Manager 和 Service 接收本包内部存储、模型、投递和会话复制契约。
+	cron := cronBridge{repo: deps.Store.CronJobs()}
+	// TODO: Manager 和 Service 接收内部存储契约；CopyBackground 使用 Agent 根包请求。
+	// Models 只暴露 ResolveMode 和 ValidateSelection，发送与复制使用独立函数。
 	m.cronManager = elcron.NewManager(cron)
 	m.cron = elcron.NewService(elcron.Options{
 		Manager: m.cronManager, Store: cron, Runner: m.runner,
-		SendTarget: cron.SendTo, Models: cron, CopyBackground: cron.CopyBackground,
+		SendTarget: deps.Platform.SendTo, Models: deps.Models, CopyBackground: deps.Agent.CopyBackground,
 		EnabledPlatforms: enabledCronPlatforms(cfg), SandboxRoot: cfg.Sandbox.Root,
 	})
 	if err := m.cronManager.RegisterHandler(elcron.UserHandlerName, m.cron.Handler); err != nil {
 		return m, fmt.Errorf("register cron handler: %w", err)
 	}
 
-	// TODO: 维护组件使用本地能力契约；RegisterCronHandlers 通过内部共享注册契约协作。
-	maintDeps := maintenanceBridge{logs: deps.Logs, agent: deps.Agent, platform: deps.Platform, media: deps.Media}
-	maint := maintenance.NewServiceWithConfig(maintDeps, maintDeps, cfg, maintDeps)
-	maint.Media = maintDeps
+	// TODO: 维护组件接收日志最小接口、两项清理函数及仅含 Cleanup 的媒体接口。
+	// 两项清理函数均为 func(context.Context, time.Time) (int, error)；RegisterCronHandlers 使用内部共享注册契约。
+	maint := maintenance.NewServiceWithConfig(deps.Logs, deps.Platform.CleanupChatHistory, cfg, deps.Agent.CleanupSessions)
+	maint.Media = deps.Media
 	if err := maint.RegisterCronHandlers(m.cronManager); err != nil {
 		return m, fmt.Errorf("register maintenance handlers: %w", err)
 	}
@@ -94,12 +77,16 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	for _, target := range enabledCronPlatforms(cfg) {
 		platforms = append(platforms, target.Name)
 	}
-	elnisDeps := elnisBridge{store: deps.Store, media: deps.Media, models: deps.Models, tools: deps.Tools, platform: deps.Platform}
-	// TODO: Elnis 的媒体、事件存储、模型和工具声明使用内部契约；平台 API 改为按名称调用。
+	elnisDeps := elnisBridge{store: deps.Store, media: deps.Media}
+	// TODO: Elnis 的媒体和存储消费内部契约；ToolPreloader 只声明 BackgroundSelections，使用 Tool 根包类型。
+	// 平台能力分别注入发送与按名称调用 API 的函数，模型解析只返回所需选择数据。
 	service, err := elnis.NewService(elnis.Options{
 		Media: elnisDeps, Config: cfg.Elnis, SandboxRoot: cfg.Sandbox.Root, Tokens: tokens,
-		Store: elnisDeps, EnabledPlatforms: platforms, CallPlatformAPI: elnisDeps.CallPlatformAPI,
-		Send: elnisDeps.SendTo, Runner: m.runner, ToolPreloader: elnisDeps, ResolveModel: elnisDeps.ResolveModel,
+		Store: elnisDeps, EnabledPlatforms: platforms, CallPlatformAPI: deps.Platform.CallPlatformAPI,
+		Send: deps.Platform.SendTo, Runner: m.runner, ToolPreloader: deps.Tools,
+		ResolveModel: func(slot string) config.ModelSelection {
+			return deps.Models.ResolveMode(slot).ModelSelection
+		},
 	})
 	if err != nil {
 		return m, fmt.Errorf("build elnis: %w", err)

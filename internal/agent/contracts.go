@@ -3,6 +3,8 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
+
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
@@ -119,7 +121,7 @@ type BindingChangedEvent struct {
 	New     *BindingSnapshot // New activation; nil when the scope becomes unbound.
 }
 
-// BackgroundRequest 预留后台执行输入；工作目录与后台来源由调用方放入 context。
+// BackgroundRequest 描述后台执行输入；调用方在 context 中提供已准备的非空工作目录范围与后台来源。
 // 工具声明仅初始化新会话，续跑沿用会话中已提交的状态。
 type BackgroundRequest struct {
 	Kind             string                       // 后台任务来源。
@@ -152,15 +154,10 @@ type BackgroundResult struct {
 
 // BackgroundCopyRequest 复制后台历史，不激活目标前台会话。
 type BackgroundCopyRequest struct {
-	SourceSessionID string            // 被复制的后台会话。
-	Scope           session.Scope     // 目标会话作用域。
-	Kind            string            // 目标后台来源。
-	Name            string            // 来源内的任务标识。
-	Title           string            // 目标标题。
-	Metadata        map[string]string // 目标来源元数据。
+	SourceSessionID string                     // 被复制的后台会话。
+	Scope           session.Scope              // 目标会话作用域。
+	Kind            string                     // 目标后台来源。
+	Name            string                     // 来源内的任务标识。
+	Title           string                     // 目标标题。
+	Metadata        map[string]json.RawMessage // 目标来源元数据，保留各字段的 JSON 值类型。
 }
-
-// TODO: 后台准备迁入 Agent 后实现以下 Supervisor 方法；当前仅预留契约，不提供占位成功实现。
-// RunBackground(ctx context.Context, req BackgroundRequest) (BackgroundResult, error)
-// CopyBackground(ctx context.Context, req BackgroundCopyRequest) (string, error)
-// CleanupSessions(ctx context.Context, cutoff time.Time) (int, error)

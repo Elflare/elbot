@@ -49,6 +49,17 @@ func (c isolatedToolCapabilities) PrepareTools(ctx context.Context, n []string) 
 	v, e := c.PreloadService.PrepareTools(ctx, n)
 	return isolated_toPublicToolPreload(v), e
 }
+
+func (c isolatedToolCapabilities) PrepareBackground(ctx context.Context, req tool.BackgroundPreloadRequest) (tool.BackgroundPreload, error) {
+	declarations := make([]toolshare.ELwispToolDeclaration, len(req.ELwispTools))
+	for i, declaration := range req.ELwispTools {
+		declarations[i] = toolshare.ELwispToolDeclaration(declaration)
+	}
+	prepared, err := c.PreloadService.PrepareBackground(ctx, toolshare.BackgroundPreloadRequest{
+		SessionID: req.SessionID, Names: req.Names, AllowedToolNames: req.AllowedToolNames, ELwispTools: declarations,
+	})
+	return tool.BackgroundPreload{NeedsElyphRules: prepared.NeedsElyphRules, Update: isolated_toPublicStateUpdate(prepared.Update), Skills: prepared.Skills, SkillPrompt: prepared.SkillPrompt}, err
+}
 func (c isolatedToolCapabilities) PrepareSkills(ctx context.Context, p string, n []string) (tool.SkillPreload, error) {
 	v, e := c.PreloadService.PrepareSkills(ctx, p, n)
 	return isolated_toPublicSkillPreload(v), e

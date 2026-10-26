@@ -46,6 +46,7 @@ type ToolCapabilities interface {
 	DiscoveredToolsForSession(context.Context, string, bool) ([]tool.DiscoveredTool, events.LogResult, error)
 	DecodeState(string) (tool.State, error)
 	Commit(context.Context, string, tool.StateUpdate) (tool.StateCommit, events.LogResult, error)
+	PrepareBackground(context.Context, tool.BackgroundPreloadRequest) (tool.BackgroundPreload, error)
 	PrepareTools(context.Context, []string) (tool.ToolPreload, error)
 	PrepareSkills(context.Context, string, []string) (tool.SkillPreload, error)
 	TagPrompts(context.Context, []string) ([]tool.TagPrompt, error)

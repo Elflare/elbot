@@ -18,6 +18,7 @@ import (
 )
 
 // SupervisorDeps 只借用资源和公开能力，生命周期仍由提供方管理；完整配置单独传入构造入口。
+// 根部向子包注入实际需要的最小接口或函数，公开数据类型可以按需复用。
 type SupervisorDeps struct {
 	Store    storage.Store        // 持久化 Cron 任务及运行状态、Elnis 事件；不取得平台历史仓库。
 	Models   *modelmgr.Service    // 解析和校验后台任务使用的模型选择。
@@ -29,7 +30,7 @@ type SupervisorDeps struct {
 }
 
 // AgentCapabilities 只描述后台业务操作，不取得 Agent 的 Session、执行器或权限对象。
-// TODO: Agent 根包实现以下公开方法及请求、结果类型；准备会话、执行上下文和工具预载均在 Agent 内部完成。
+// Agent 根包提供请求、结果及以下公开方法；会话准备、执行上下文和工具预载由 Agent 负责。
 type AgentCapabilities interface {
 	RunBackground(context.Context, agent.BackgroundRequest) (agent.BackgroundResult, error)
 	CopyBackground(context.Context, agent.BackgroundCopyRequest) (string, error)
