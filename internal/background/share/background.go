@@ -1,6 +1,6 @@
 package share
 
-import toolshare "elbot/internal/tool/share"
+import "elbot/internal/tool"
 
 import (
 	"context"
@@ -34,12 +34,11 @@ type RunRequest struct {
 	Model           string
 	PromptSegments  []llm.MessageSegment
 	Prompt          string
-	RetryPrompt     string
 	// Tool inputs initialize new sessions only; continuations inherit committed state.
 	// AllowedToolNames optionally restricts root tools (nil means unrestricted).
 	ToolListNames    []string
 	AllowedToolNames []string
-	ELwispTools      []toolshare.ELwispToolDeclaration // 已授权并补齐模型侧名称、事件标识的外部声明。
+	ELwispTools      []tool.ELwispToolDeclaration // 已授权并补齐模型侧名称、事件标识的外部声明。
 	SandboxSubdir    string
 	Metadata         map[string]string
 }
@@ -51,8 +50,6 @@ type RunResult struct {
 	SessionID string
 	MessageID string
 	Text      string
-	Parsed    JSONResult
-	ParseErr  error
 }
 
 type JSONResult struct {

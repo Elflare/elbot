@@ -51,9 +51,9 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Tool 根部直接请求 Storage 读写 Cron，转换结果并发布任务定义变更；真实 SQLite 集成测试归 Tool 根部，Builtin 使用内部契约替身。
 - [x] Background 根部四文件收敛为对外门面、七项依赖、装配和生命周期框架；移除内部 Runner 的公开转发及 Wait，内部接入按目标调用标注 TODO。
 - [x] Background 根部按消费方职责注入最小接口或函数，按需复用 Agent、Tool 等根包公开类型；cronBridge 仅保留存储转换，elnisBridge 仅保留存储与媒体转换，注释采用当前架构原则。
-- [ ] 落实 Background 子包消费契约和根部存储、媒体转换：Runner.Execution 只声明 Agent.RunBackground；Cron 接入会话复制函数；维护组件接入会话、历史清理函数和媒体清理接口；Elnis 接入工具声明展开、发送、平台 API 与模型选择。跨业务不引用内部子包或 share，本业务兄弟子包通过 share 协作。
+- [ ] 落实 Background 子包消费契约和根部存储、媒体转换：Cron 接入会话复制函数；维护组件接入会话、历史清理函数和媒体清理接口；Elnis 接入发送、平台 API 与模型选择。跨业务不引用内部子包或 share，本业务兄弟子包通过 share 协作。
 - [x] Agent 根包提供后台执行、会话复制与过期清理；复制元数据使用 JSON 原始值，输入组件通过最小能力完成准备。
-- [ ] 实现 Platform 的公开发送、API 和历史清理能力，并接通 Background 子包对 Agent 三个公开方法的调用。
+- [ ] 实现 Platform 的公开发送、API 和历史清理能力，并接通 Background 子包对 Agent 会话复制及清理方法的调用。
 - [ ] 接通 Tool.ObserveCronChanged 到内部 Cron 的刷新入口；初次任务加载前建立订阅，协调启动期间的变更并重新读库刷新调度。
 - [ ] 收口维护配置与 Cron 启动职责：SetupCron 只配置任务，移除其内部 Manager.Start 调用，由根部显式启动 Manager。
 - [ ] 实现 Cron Service.Start 与平台通知缓存契约：Start 前不触发 worker，前置步骤成功后由根部启动消费者；消费者就绪即可返回，不等待缓存任务执行完。验证启动前不执行、成功后消费、失败或关闭后不放行、关闭清理缓存及重复启动不重复创建消费者。
@@ -78,13 +78,13 @@ Tool 媒体层已统一向工具返回 `share.MediaInfo`，图片宽高、实际
 
 ## 后台工具统一预载
 
-统一入口为 Tool 根部 `Supervisor.PrepareBackground(ctx, tool.BackgroundPreloadRequest)`，返回 `tool.BackgroundPreload`。请求包含 `SessionID`、`Names`、`AllowedToolNames`、`ELwispTools`；本地名称可指向工具、Skill 或标签，外部声明沿用 `tool.ELwispToolDeclaration`。Agent 提交返回的 `Update`，预载不写会话状态；Background 旧调用链仍待迁移。
+统一入口为 Tool 根部 `Supervisor.PrepareBackground(ctx, tool.BackgroundPreloadRequest)`，返回 `tool.BackgroundPreload`。请求包含 `SessionID`、`Names`、`AllowedToolNames`、`ELwispTools`；本地名称可指向工具、Skill 或标签，外部声明沿用 `tool.ELwispToolDeclaration`。Agent 提交返回的 `Update`，预载不写会话状态；Background Runner 通过 Agent.RunBackground 触发准备与执行。
 
-- Cron、Elnis 及以后新增的后台任务，全部通过根部 `PrepareBackground` 准备工具；不得直接访问 Tool 内部 Registry、PreloadService 或另建工具获取入口。
+- Cron、Elnis 及以后新增的后台任务，统一由 Agent 调用 Tool 根部 `PrepareBackground` 准备工具；不得直接访问 Tool 内部 Registry、PreloadService 或另建工具获取入口。
 - [x] Cron 提供本地预载名单；Elnis 授权并适配 `ELwispTools`，补齐内部字段 `CanonicalName`、`EventKey`。
-- [ ] Background 总管接入 Tool 公开能力，在内部为执行器和 Elnis 接线；新会话统一预载并提交，续跑沿用已提交集合。
+- [x] Background Runner 只接入 Agent.RunBackground，Elnis 只借用 Tool.BackgroundSelections；新会话由 Agent 预载并提交，续跑沿用已提交集合。
 - [x] State 统一保存完整 `DiscoveredTool` 声明，删除名称补查目录路径；后台旧声明转换入口已移除。
-- [ ] 完成 Cron／Elnis／Background 整链路测试；当前受后台执行的 Tool 类型不匹配、Elnis 旧媒体类型及尚未实现的目标契约阻塞。App 已通过 Tools 交付 Tool 总管，内部能力分配由 Background 负责。
+- [ ] 完成 Cron／Elnis／Background 整链路测试；当前受 Elnis 旧媒体类型及尚未实现的目标契约阻塞。App 已通过 Tools 交付 Tool 总管，内部能力分配由 Background 负责。
 
 # 任务清单
 
@@ -108,4 +108,4 @@ Tool 媒体层已统一向工具返回 `share.MediaInfo`，图片宽高、实际
 - [x] Command 与 Completion 使用 Tool 根包查询契约；删除无生产调用的 Notification HookFailure 辅助与测试。
 - [x] Agent 根包编译通过，Supervisor 整链路及订阅生命周期回归通过。
 - [x] Agent 实现 RunBackground、CopyBackground、CleanupSessions，input 承接后台准备；调用方准备目录与后台来源，仍负责报告解析和重试。
-- [ ] 将 Elvena 请求、Elnis 工具声明及 Background 共享请求统一为 Tool 根包类型，再切换旧 Runner 到 Agent.RunBackground 并删除旧准备逻辑。
+- [x] Elvena 请求、Elnis 工具声明及 Background 共享请求统一使用 Tool 根包类型；Runner 仅准备目录、注入后台来源并调用 Agent.RunBackground，工具声明 JSON 排除内部关联字段。

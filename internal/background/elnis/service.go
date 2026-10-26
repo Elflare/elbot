@@ -15,7 +15,7 @@ import (
 	globalevents "elbot/internal/events"
 	"elbot/internal/media"
 	"elbot/internal/storage"
-	toolshare "elbot/internal/tool/share"
+	"elbot/internal/tool"
 )
 
 type SenderFunc func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)
@@ -40,7 +40,7 @@ type Options struct {
 	Runner        background.Runner
 	ResolveModel  ModelResolverFunc
 	ToolPreloader interface {
-		BackgroundSelections(context.Context, []string) ([]toolshare.BackgroundSelection, error)
+		BackgroundSelections(context.Context, []string) ([]tool.BackgroundSelection, error)
 	} // 由 Tool 根部提供声明展开能力，授权仍归 Elnis。
 	EnabledPlatforms []string
 	PlatformCallers  elvena.PlatformCallerResolver
@@ -57,7 +57,7 @@ type Service struct {
 	runner        background.Runner
 	resolveModel  ModelResolverFunc
 	toolPreloader interface {
-		BackgroundSelections(context.Context, []string) ([]toolshare.BackgroundSelection, error)
+		BackgroundSelections(context.Context, []string) ([]tool.BackgroundSelection, error)
 	}
 	enabledPlatforms []string
 	platformCallers  elvena.PlatformCallerResolver

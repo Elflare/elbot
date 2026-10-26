@@ -11,6 +11,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/llm"
 	"elbot/internal/security"
+	"elbot/internal/tool"
 	"elbot/internal/tool/preload"
 	"elbot/internal/tool/registry"
 )
@@ -27,13 +28,13 @@ func TestBackgroundTagAuthorizationAndToolDeclarations(t *testing.T) {
 		if denied {
 			members = append(members, "web_extract")
 		}
-		service.toolPreloader = preload.NewPreloadService(preload.PreloadOptions{Registry: registry, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"research": {Tools: members}}}})
+		service.toolPreloader = publicBackgroundSelections{preload.NewPreloadService(preload.PreloadOptions{Registry: registry, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"research": {Tools: members}}}})}
 		var queued QueuedLLMEvent
 		service.SetLLMEnqueuer(func(_ context.Context, event QueuedLLMEvent) error { queued = event; return nil })
 		req := testRequest(ModeLLM)
 		req.Elwisp.Name = "configured"
 		req.ToolListNames = []string{"research"}
-		req.Tools = []toolshare.ELwispToolDeclaration{testExternalTool("external")}
+		req.Tools = []tool.ELwispToolDeclaration{testExternalTool("external")}
 		_, err := service.Handle(context.Background(), "secret", req)
 		if denied {
 			if err == nil || !strings.Contains(err.Error(), "web_extract") {
@@ -75,4 +76,21 @@ func (value backgroundDeclarationTool) PrepareCall(ctx context.Context, req tool
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
 		return &toolshare.Result{}, "", nil
 	}), nil
+}
+
+// publicBackgroundSelections keeps real selector expansion behind the public consumer contract.
+type publicBackgroundSelections struct {
+	preloader *preload.PreloadService
+}
+
+func (p publicBackgroundSelections) BackgroundSelections(ctx context.Context, names []string) ([]tool.BackgroundSelection, error) {
+	items, err := p.preloader.BackgroundSelections(ctx, names)
+	if err != nil {
+		return nil, err
+	}
+	var out []tool.BackgroundSelection
+	for _, item := range items {
+		out = append(out, tool.BackgroundSelection(item))
+	}
+	return out, nil
 }

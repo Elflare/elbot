@@ -108,14 +108,14 @@ type SkillPreload struct {
 
 // ELwispToolDeclaration 是已授权的远端工具声明；不携带事件业务对象。
 type ELwispToolDeclaration struct {
-	CanonicalName  string         // 调用方分配的模型侧唯一名称。
-	EventKey       string         // 调用方提供的事件关联标识。
-	Name           string         // 远端工具原名。
-	Description    string         // 工具说明。
-	Schema         map[string]any // 参数 schema。
-	TimeoutSeconds int            // 调用超时秒数。
-	Endpoint       string         // 远端调用地址。
-	ForegroundOnly bool           // 禁止后台使用。
+	CanonicalName  string         `json:"-"`                         // 调用方分配的模型侧唯一名称，不参与外部声明 JSON。
+	EventKey       string         `json:"-"`                         // 调用方提供的事件关联标识，不参与外部声明 JSON。
+	Name           string         `json:"name"`                      // 远端工具原名。
+	Description    string         `json:"description,omitempty"`     // 工具说明。
+	Schema         map[string]any `json:"schema,omitempty"`          // 参数 schema。
+	TimeoutSeconds int            `json:"timeout_seconds,omitempty"` // 调用超时秒数。
+	Endpoint       string         `json:"endpoint,omitempty"`        // 远端调用地址。
+	ForegroundOnly bool           `json:"foreground_only,omitempty"` // 禁止后台使用。
 }
 
 type BackgroundPreloadRequest struct {

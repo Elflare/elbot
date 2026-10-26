@@ -1,6 +1,6 @@
 package elnis
 
-import toolshare "elbot/internal/tool/share"
+import "elbot/internal/tool"
 
 import (
 	"context"
@@ -117,8 +117,8 @@ func (s *Service) authorizeExternalTools(event Event) error {
 
 var elwispToolNameReplacer = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
 
-func (s *Service) elwispTools(event Event) []toolshare.ELwispToolDeclaration {
-	tools := append([]toolshare.ELwispToolDeclaration(nil), event.Request.Tools...)
+func (s *Service) elwispTools(event Event) []tool.ELwispToolDeclaration {
+	tools := append([]tool.ELwispToolDeclaration(nil), event.Request.Tools...)
 	for i := range tools {
 		tools[i].Name = strings.TrimSpace(tools[i].Name)
 		tools[i].Endpoint = strings.TrimSpace(tools[i].Endpoint)

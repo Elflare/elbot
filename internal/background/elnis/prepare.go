@@ -1,6 +1,6 @@
 package elnis
 
-import toolshare "elbot/internal/tool/share"
+import "elbot/internal/tool"
 
 import (
 	"encoding/json"
@@ -110,7 +110,7 @@ func (s *Service) prepareEvent(origin elvena.Origin, req Request) (Event, error)
 	}, nil
 }
 
-func normalizedToolDeclarations(tools []toolshare.ELwispToolDeclaration) (string, error) {
+func normalizedToolDeclarations(tools []tool.ELwispToolDeclaration) (string, error) {
 	if len(tools) == 0 {
 		return "", nil
 	}

@@ -39,8 +39,8 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		return m, err
 	}
 
-	// TODO: Execution 只声明 RunBackground，使用 Agent 根包请求和结果；会话准备、权限、模型上下文和工具预载由 Agent 完成。
-	// Runner 保留任务路径准备、后台来源注入、报告解析和重试策略，不持有 Agent 内部组件。
+	// Execution 只声明 Agent.RunBackground；Runner 准备任务目录和后台来源。
+	// 会话与工具准备由 Agent 完成，报告解析和重试由 Cron、Elnis 负责。
 	m.runner = execution.NewBackgroundRunner(execution.BackgroundRunnerDeps{
 		Execution: deps.Agent, SandboxRoot: cfg.Sandbox.Root,
 	})
@@ -78,7 +78,8 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		platforms = append(platforms, target.Name)
 	}
 	elnisDeps := elnisBridge{store: deps.Store, media: deps.Media}
-	// TODO: Elnis 的媒体和存储消费内部契约；ToolPreloader 只声明 BackgroundSelections，使用 Tool 根包类型。
+	// TODO: Elnis 的媒体和存储消费内部契约。
+	// ToolPreloader 只声明 BackgroundSelections，使用 Tool 根包类型。
 	// 平台能力分别注入发送与按名称调用 API 的函数，模型解析只返回所需选择数据。
 	service, err := elnis.NewService(elnis.Options{
 		Media: elnisDeps, Config: cfg.Elnis, SandboxRoot: cfg.Sandbox.Root, Tokens: tokens,

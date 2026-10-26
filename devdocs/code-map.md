@@ -31,7 +31,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/hook/`：Hook 总管、外部桥接与生命周期；装配内部规则、流水线、控制与插件进程。
 - `internal/platform/module/`：平台适配器、发送与通知、API 能力、补全和运行生命周期。
 - `internal/background/supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go`：对外总管、七项借用依赖、最小能力注入与生命周期协调。公开数据类型按需复用，cronBridge 仅保留存储转换，elnisBridge 仅保留存储与媒体转换。根部显式启动 Cron Manager，并在前置启动步骤成功后调用 Cron Service.Start 放行平台通知；内部消费、转换及就绪／退出契约仍标注 TODO，不公开内部 Runner，也不提供 Wait。
-- `internal/background/execution/`：后台准备与 Agent 执行协调；`cron/`、`elnis/`、`maintenance/` 承接各业务。
+- `internal/background/execution/`：任务目录、后台来源准备与 Agent 公开执行入口转接；`cron/`、`elnis/`、`maintenance/` 承接各业务。
 
 <!-- locator:contextinfo -->
 ## 公共上下文事实
@@ -72,7 +72,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/share/status.go`、`execution/status.go`、`dialogue/model_call.go`：模型完成、执行状态、视觉降级的内部事实定义。
 - `internal/agent/input/message.go`、`input.go`：消息分发与普通输入准备。
 - `internal/agent/background.go`：后台执行、复制与清理公开入口，以及调用方和 Agent 的取消连接；`input/background.go`、`background_deps.go`：后台身份、会话、工具准备与独用消费契约。
-- `internal/background/execution/runner.go`、`runner_deps.go`：待切换到 Agent 公开能力的旧后台准备路径；切换后保留任务目录与后台来源准备。
+- `internal/background/execution/runner.go`、`runner_deps.go`：任务目录与后台来源准备，以及仅含 Agent.RunBackground 的消费契约。
 - `internal/agent/dialogue/runner.go`、`preparation.go`：公共单轮、组件构造、输入准备与终态失败报告。
 - `internal/agent/dialogue/materials.go`：消息归档与请求媒体准备；共享投影与片段编解码在 `share/dialogue.go`。
 - `internal/agent/dialogue/model_call.go`、`system_prompt.go`：公共模型 Hook、调用观察与 Prompt 来源。
@@ -272,7 +272,7 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 <!-- locator:elnis -->
 ## Elnis / Elvena / Elwisp
 
-- `internal/elvena/`、`internal/background/elnis/types.go`：公共协议与 Elnis 类型。
+- `internal/elvena/`、`internal/background/elnis/types.go`：公共协议与 Elnis 类型；工具声明直接使用 Tool 根包公开类型。
 - `internal/background/elnis/http.go`、`service.go`：HTTP runtime、队列、去重分发与中断执行恢复。
 - `internal/background/elnis/llm.go`、`direct.go`、`store.go`：模型／直接流程与事件状态。
 - `internal/background/elnis/auth.go`、`prepare.go`、`targets.go`：鉴权、规范化与目标裁决。
@@ -298,7 +298,7 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/background/cron/service.go`、`manager.go`：任务运行、调度与整体日志。
 - `internal/background/cron/models.go`、`delivery.go`、`recovery.go`：任务模型、逐项投递与连接恢复。
 - `internal/background/maintenance/`：维护任务及来源结果。
-- `internal/background/execution/runner.go`：后台资源准备；`internal/security/security.go` 的 `Permission.CheckTool` 决定工具拒绝、直接执行或交互确认，`internal/tool/execution/runner.go` 执行该决定。
+- `internal/background/execution/runner.go`：准备任务目录与后台来源，再调用 Agent.RunBackground；`internal/security/security.go` 的 `Permission.CheckTool` 决定工具拒绝、直接执行或交互确认，`internal/tool/execution/runner.go` 执行该决定。
 - `internal/tool/builtin/cron.go`、`internal/storage/sqlite/cron_job_repository.go`：工具入口与仓储。
 
 <!-- locator:docs -->

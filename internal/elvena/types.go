@@ -1,11 +1,9 @@
 package elvena
 
-import toolshare "elbot/internal/tool/share"
-
 import (
 	"time"
 
-	
+	"elbot/internal/tool"
 )
 
 const (
@@ -29,22 +27,22 @@ const (
 )
 
 type Request struct {
-	Version       string                          `json:"version"`
-	Elwisp        Elwisp                          `json:"elwisp"`
-	Source        string                          `json:"source"`
-	ID            string                          `json:"id"`
-	CreatedAt     string                          `json:"created_at"`
-	Mode          string                          `json:"mode"`
-	Title         string                          `json:"title"`
-	Format        string                          `json:"format"`
-	Content       string                          `json:"content"`
-	ModelSlot     string                          `json:"model_slot"`
-	ToolListNames []string                        `json:"tool_list_names"`
-	Tools         []toolshare.ELwispToolDeclaration `json:"tools"`
-	Segments      []Segment                       `json:"segments,omitempty"`
-	Targets       []Target                        `json:"targets"`
-	Calls         []Call                          `json:"calls,omitempty"`
-	Meta          map[string]any                  `json:"meta"`
+	Version       string                       `json:"version"`
+	Elwisp        Elwisp                       `json:"elwisp"`
+	Source        string                       `json:"source"`
+	ID            string                       `json:"id"`
+	CreatedAt     string                       `json:"created_at"`
+	Mode          string                       `json:"mode"`
+	Title         string                       `json:"title"`
+	Format        string                       `json:"format"`
+	Content       string                       `json:"content"`
+	ModelSlot     string                       `json:"model_slot"`
+	ToolListNames []string                     `json:"tool_list_names"`
+	Tools         []tool.ELwispToolDeclaration `json:"tools"`
+	Segments      []Segment                    `json:"segments,omitempty"`
+	Targets       []Target                     `json:"targets"`
+	Calls         []Call                       `json:"calls,omitempty"`
+	Meta          map[string]any               `json:"meta"`
 }
 
 type Elwisp struct {

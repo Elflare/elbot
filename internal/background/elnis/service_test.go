@@ -1,6 +1,6 @@
 package elnis
 
-import toolshare "elbot/internal/tool/share"
+import "elbot/internal/tool"
 
 import (
 	"context"
@@ -230,7 +230,7 @@ func TestHandleAllowsExternalToolsByDefault(t *testing.T) {
 	defer cleanup()
 
 	req := testRequest(ModeLLM)
-	req.Tools = []toolshare.ELwispToolDeclaration{testExternalTool("server_status")}
+	req.Tools = []tool.ELwispToolDeclaration{testExternalTool("server_status")}
 	resp, err := service.Handle(context.Background(), "secret", req)
 	if err != nil {
 		t.Fatalf("Handle external tool: %v", err)
@@ -252,7 +252,7 @@ func TestHandleRejectsDisabledExternalTool(t *testing.T) {
 	defer cleanup()
 
 	req := testRequest(ModeLLM)
-	req.Tools = []toolshare.ELwispToolDeclaration{testExternalTool("danger_tool")}
+	req.Tools = []tool.ELwispToolDeclaration{testExternalTool("danger_tool")}
 	resp, err := service.Handle(context.Background(), "secret", req)
 	if err == nil {
 		t.Fatal("expected disabled external tool error")
@@ -1025,7 +1025,7 @@ func newTestServiceWithRunner(t *testing.T, runner background.Runner, send Sende
 		SandboxRoot:      filepath.Join(t.TempDir(), "sandbox"),
 		Tokens:           map[string]string{"home": "secret", "alt": "alt-secret"},
 		Store:            store,
-		ToolPreloader:    preload.NewPreloadService(preload.PreloadOptions{Registry: registry.NewRegistry(security.DefaultPermission())}),
+		ToolPreloader:    publicBackgroundSelections{preload.NewPreloadService(preload.PreloadOptions{Registry: registry.NewRegistry(security.DefaultPermission())})},
 		Send:             send,
 		Runner:           runner,
 		EnabledPlatforms: []string{"cli", "qqonebot"},
@@ -1053,8 +1053,8 @@ func boolPtr(value bool) *bool {
 	return &value
 }
 
-func testExternalTool(name string) toolshare.ELwispToolDeclaration {
-	return toolshare.ELwispToolDeclaration{
+func testExternalTool(name string) tool.ELwispToolDeclaration {
+	return tool.ELwispToolDeclaration{
 		Name:           name,
 		Description:    "test external tool",
 		Endpoint:       "http://127.0.0.1:32171/tools/" + name,
