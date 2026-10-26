@@ -126,7 +126,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 				logResult.Content += fmt.Sprintf("\nattachment_error=%v", buildErr)
 				outputState.Status = DeliveryFallbackPending
 				outputState.FallbackText = reportSegmentFallbackText(state.ReportSegments[segmentIndex])
-				active, saveErr := s.persistDeliveryState(ctx, &job, state, s.mapReportReceipt(state.ReportSessionID, state.ReportMessageID, receipt))
+				active, saveErr := s.persistDeliveryState(ctx, &job, state, background.MapReportReceipt(state.ReportSessionID, state.ReportMessageID, receipt))
 				if saveErr != nil {
 					logResult.ResultStatus = globalevents.ResultFailed
 					return logResult, errors.Join(buildErr, saveErr)
@@ -146,7 +146,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 				outputState.Status = status
 			}
 			if buildErr == nil || len(receipt.SentMessages) > 0 {
-				active, saveErr := s.persistDeliveryState(ctx, &job, state, s.mapReportReceipt(state.ReportSessionID, state.ReportMessageID, receipt))
+				active, saveErr := s.persistDeliveryState(ctx, &job, state, background.MapReportReceipt(state.ReportSessionID, state.ReportMessageID, receipt))
 				if saveErr != nil {
 					logResult.ResultStatus = globalevents.ResultFailed
 					return logResult, errors.Join(buildErr, saveErr)
@@ -175,7 +175,7 @@ func (s *Service) sendDeliveryOutput(ctx context.Context, jobName string, resolv
 	return s.sendOutputsToPlatformTarget(ctx, jobName, resolved.platform, resolved.target, []delivery.Output{out}, state.ReportSessionID)
 }
 
-func (s *Service) persistDeliveryState(ctx context.Context, job *Job, state CronDeliveryState, mappings []ReportMessageMap) (bool, error) {
+func (s *Service) persistDeliveryState(ctx context.Context, job *Job, state CronDeliveryState, mappings []background.ReportMessageMap) (bool, error) {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	ctx = cleanupCtx
@@ -526,17 +526,6 @@ func (s *Service) sendOutputsToPlatforms(ctx context.Context, jobName string, pl
 		logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
 		return logResult, err
 	}
-}
-
-func (s *Service) mapReportReceipt(sessionID, messageID string, receipt delivery.Receipt) []ReportMessageMap {
-	if sessionID == "" || messageID == "" {
-		return nil
-	}
-	mappings := make([]ReportMessageMap, 0, len(receipt.SentMessages))
-	for _, sent := range receipt.SentMessages {
-		mappings = append(mappings, ReportMessageMap{Platform: sent.Platform, PlatformScopeID: sent.ScopeID, PlatformMessageID: sent.PlatformMessageID, SessionID: sessionID, MessageID: messageID})
-	}
-	return mappings
 }
 
 func cronTargetLabel(target delivery.Target) string {

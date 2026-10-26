@@ -2,7 +2,6 @@ package elnis
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -16,60 +15,15 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
 	workspacepath "elbot/internal/workspace"
 )
 
-// ImportWorkspaceMedia is a host API, not an Elvena RPC.
-func (s *Service) ImportWorkspaceMedia(ctx context.Context, elwispName, path string, input media.Input) (*storage.Media, error) {
-	if !elwispNamePattern.MatchString(elwispName) {
-		return nil, fmt.Errorf("invalid elwisp name")
-	}
-	dir, err := workspacepath.SandboxDir(s.sandboxRoot, elnisSandboxSubdir(elwispName))
-	if err != nil {
-		return nil, err
-	}
-	call := (&tool.MediaRuntime{Center: s.media}).NewCall()
-	item, err := call.Import(ctx, dir, path, input)
-	return item, errors.Join(err, call.Close())
-}
-
-// ExportWorkspaceMedia creates a new file within this Elwisp's workspace.
-func (s *Service) ExportWorkspaceMedia(ctx context.Context, elwispName, id, path string) error {
-	if !elwispNamePattern.MatchString(elwispName) {
-		return fmt.Errorf("invalid elwisp name")
-	}
-	path, err := workspacepath.NormalizeRestrictedPath(path)
-	if err != nil {
-		return err
-	}
-	workspace, err := workspacepath.SandboxDir(s.sandboxRoot, elnisSandboxSubdir(elwispName))
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(workspace, 0700); err != nil {
-		return err
-	}
-	root, err := os.OpenRoot(workspace)
-	if err != nil {
-		return err
-	}
-	defer root.Close()
-	reader, _, err := s.media.Open(ctx, id)
-	if err != nil {
-		return err
-	}
-	defer reader.Close()
-	file, err := root.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return err
-	}
-	_, copyErr := io.Copy(file, reader)
-	closeErr := file.Close()
-	if copyErr != nil || closeErr != nil {
-		return errors.Join(copyErr, closeErr, root.Remove(path))
-	}
-	return nil
+// Media 是事件输入和报告附件需要的媒体能力；导入仅返回稳定媒体 ID。
+type Media interface {
+	MaterializeWithLimits(context.Context, []llm.MessageSegment, media.ImportLimits) ([]llm.MessageSegment, error)
+	ImportURL(context.Context, string, media.Input) (string, error)
+	ImportReader(context.Context, io.Reader, int64, media.Input) (string, error)
+	AddEventReference(ctx context.Context, mediaID, eventID, purpose string) error
 }
 
 func validateMediaSegment(seg Segment) error {
@@ -125,7 +79,7 @@ func (s *Service) materializeSegments(ctx context.Context, segments []Segment, e
 			return nil, fmt.Errorf("segment %d media unavailable", i)
 		}
 		out[i] = resolved[0]
-		if err := s.media.AddReference(ctx, &storage.MediaReference{MediaID: out[i].MediaID, OwnerType: "elnis_event", OwnerID: eventID, Purpose: "input"}); err != nil {
+		if err := s.media.AddEventReference(ctx, out[i].MediaID, eventID, "input"); err != nil {
 			return nil, err
 		}
 	}
@@ -157,8 +111,6 @@ func (s *Service) directMediaOutputs(ctx context.Context, event Event, eventID s
 
 func (s *Service) importReportSegments(ctx context.Context, segments []llm.MessageSegment, eventID string, workspace string) ([]llm.MessageSegment, error) {
 	out := append([]llm.MessageSegment(nil), segments...)
-	bridge := (&tool.MediaRuntime{Center: s.media}).NewCall()
-	defer bridge.Close()
 	for i, seg := range out {
 		if seg.Type != llm.SegmentImage && seg.Type != llm.SegmentFile {
 			return nil, fmt.Errorf("unsupported report segment type %q", seg.Type)
@@ -170,25 +122,46 @@ func (s *Service) importReportSegments(ctx context.Context, segments []llm.Messa
 			seg.MediaID = seg.URL
 			seg.URL = ""
 		}
-		if seg.MediaID != "" {
-			if _, err := s.media.Metadata(ctx, seg.MediaID); err != nil {
-				return nil, err
+		if seg.MediaID == "" {
+			var err error
+			input := media.Input{Name: seg.Name, MIMEType: seg.MIMEType}
+			if delivery.IsHTTPMediaSource(seg.URL) {
+				seg.MediaID, err = s.media.ImportURL(ctx, seg.URL, input)
+			} else {
+				path, pathErr := workspacepath.NormalizeRestrictedPath(seg.URL)
+				if pathErr != nil {
+					return nil, pathErr
+				}
+				// 每项导入结束即关闭文件及根目录句柄。
+				seg.MediaID, err = func() (string, error) {
+					root, err := os.OpenRoot(workspace)
+					if err != nil {
+						return "", err
+					}
+					defer root.Close()
+					file, err := root.Open(path)
+					if err != nil {
+						return "", fmt.Errorf("open report media: %w", err)
+					}
+					defer file.Close()
+					info, err := file.Stat()
+					if err != nil {
+						return "", err
+					}
+					if !info.Mode().IsRegular() {
+						return "", fmt.Errorf("report media must be a regular file")
+					}
+					if input.Name == "" {
+						input.Name = filepath.Base(path)
+					}
+					return s.media.ImportReader(ctx, file, info.Size(), input)
+				}()
 			}
-		} else if delivery.IsHTTPMediaSource(seg.URL) {
-			// Keep existing HTTP report compatibility while persisting only stable IDs.
-			item, err := s.media.ImportURL(ctx, seg.URL, media.Input{Name: seg.Name, MIMEType: seg.MIMEType})
 			if err != nil {
 				return nil, err
 			}
-			seg.MediaID = item.ID
-		} else {
-			item, err := bridge.Import(ctx, workspace, seg.URL, media.Input{Name: seg.Name, MIMEType: seg.MIMEType})
-			if err != nil {
-				return nil, err
-			}
-			seg.MediaID = item.ID
 		}
-		if err := s.media.AddReference(ctx, &storage.MediaReference{MediaID: seg.MediaID, OwnerType: "elnis_event", OwnerID: eventID, Purpose: "report"}); err != nil {
+		if err := s.media.AddEventReference(ctx, seg.MediaID, eventID, "report"); err != nil {
 			return nil, err
 		}
 		seg.URL = ""

@@ -11,6 +11,26 @@ import (
 	"elbot/internal/workspace"
 )
 
+type ReportMessageMap struct {
+	Platform          string // 实际发送平台。
+	PlatformScopeID   string // 实际发送会话。
+	PlatformMessageID string // 平台返回的消息标识。
+	SessionID         string // 报告所属会话。
+	MessageID         string // 报告对应的持久化消息。
+}
+
+// MapReportReceipt 只映射发送方明确返回的消息归属，不推测平台或会话。
+func MapReportReceipt(sessionID, messageID string, receipt delivery.Receipt) []ReportMessageMap {
+	if sessionID == "" || messageID == "" {
+		return nil
+	}
+	mappings := make([]ReportMessageMap, 0, len(receipt.SentMessages))
+	for _, sent := range receipt.SentMessages {
+		mappings = append(mappings, ReportMessageMap{Platform: sent.Platform, PlatformScopeID: sent.ScopeID, PlatformMessageID: sent.PlatformMessageID, SessionID: sessionID, MessageID: messageID})
+	}
+	return mappings
+}
+
 func PathInstruction() string {
 	return "后台任务的本地附件路径必须基于任务工作目录，使用相对路径；不得使用绝对路径、~、冒号或 .. 路径段。"
 }

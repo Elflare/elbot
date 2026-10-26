@@ -12,7 +12,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
-	"elbot/internal/storage"
 	"elbot/internal/workspace"
 )
 
@@ -51,7 +50,7 @@ func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resul
 		return false, s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusCompleted, sessionID, resultJSON, "")
 	}
 
-	deliveries := make([]storage.CreateElnisReportDeliveryRequest, 0, len(resolved)*len(outputs))
+	deliveries := make([]CreateReportDeliveryRequest, 0, len(resolved)*len(outputs))
 	for _, target := range resolved {
 		targetJSON, err := json.Marshal(target)
 		if err != nil {
@@ -62,14 +61,14 @@ func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resul
 			if err != nil {
 				return false, fmt.Errorf("marshal elnis report output: %w", err)
 			}
-			deliveries = append(deliveries, storage.CreateElnisReportDeliveryRequest{
+			deliveries = append(deliveries, CreateReportDeliveryRequest{
 				Target:    string(targetJSON),
 				Output:    string(outputJSON),
 				MessageID: messageID,
 			})
 		}
 	}
-	if err := s.store.ElnisEvents().PrepareReport(ctx, storage.PrepareElnisReportRequest{
+	if err := s.store.PrepareReport(ctx, PrepareReportRequest{
 		EventID:           eventID,
 		ResolvedTargets:   event.ResolvedTargets,
 		SessionID:         sessionID,
@@ -108,7 +107,7 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) (logResult 
 			logResult.Content += fmt.Sprintf("\nreport_error=%v", err)
 		}
 	}()
-	repo := s.store.ElnisEvents()
+	repo := s.store
 	claimed, err := repo.ClaimReport(ctx, eventID, StatusResultReady, StatusDelivering)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -156,7 +155,7 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) (logResult 
 			return logResult, err
 		}
 		item := deliveries[index]
-		if item.Status == storage.ElnisReportDeliveryDelivered {
+		if item.Status == ReportDeliveryDelivered {
 			index++
 			continue
 		}
@@ -165,11 +164,11 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) (logResult 
 			logResult.ResultStatus = globalevents.ResultFailed
 			return s.failReportDelivery(ctx, eventID, item.ID, logResult, fmt.Errorf("decode elnis report target: %w", err), delivery.Receipt{}, nil)
 		}
-		batch := []storage.ElnisReportDelivery{item}
+		batch := []ReportDelivery{item}
 		index++
 		for index < len(deliveries) {
 			next := deliveries[index]
-			if next.Status == storage.ElnisReportDeliveryDelivered || next.Target != item.Target {
+			if next.Status == ReportDeliveryDelivered || next.Target != item.Target {
 				break
 			}
 			batch = append(batch, next)
@@ -194,7 +193,7 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) (logResult 
 			outputs = append(outputs, output)
 		}
 		receipt, result, err := s.send(ctx, target.ToDeliveryTarget(), outputs)
-		mappings := s.mapReportReceipt(event.SessionID, batch[0].MessageID, receipt)
+		mappings := background.MapReportReceipt(event.SessionID, batch[0].MessageID, receipt)
 		logResult.Content += "\nsend:\n" + result.Content
 		if result.ResultStatus == globalevents.ResultFailed ||
 			(result.ResultStatus == globalevents.ResultCanceled && logResult.ResultStatus != globalevents.ResultFailed) {
@@ -241,11 +240,11 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) (logResult 
 	return logResult, nil
 }
 
-func (s *Service) failReportDelivery(ctx context.Context, eventID, deliveryID string, logResult globalevents.LogResult, deliveryErr error, receipt delivery.Receipt, mappings []storage.PlatformMessageMap) (globalevents.LogResult, error) {
+func (s *Service) failReportDelivery(ctx context.Context, eventID, deliveryID string, logResult globalevents.LogResult, deliveryErr error, receipt delivery.Receipt, mappings []background.ReportMessageMap) (globalevents.LogResult, error) {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	receiptJSON, _ := json.Marshal(receipt)
-	if err := s.store.ElnisEvents().MarkReportDeliveryFailed(cleanupCtx, eventID, deliveryID, StatusResultReady, deliveryErr.Error(), string(receiptJSON), mappings); err != nil {
+	if err := s.store.MarkReportDeliveryFailed(cleanupCtx, eventID, deliveryID, StatusResultReady, deliveryErr.Error(), string(receiptJSON), mappings); err != nil {
 		logResult.Content += fmt.Sprintf("\npersistence_error=%v", err)
 		if logResult.ResultStatus != globalevents.ResultFailed {
 			logResult.ResultStatus = globalevents.ResultFailed
@@ -261,7 +260,7 @@ func (s *Service) failReportDelivery(ctx context.Context, eventID, deliveryID st
 func (s *Service) releaseReport(ctx context.Context, eventID string, logResult globalevents.LogResult, deliveryErr error) (globalevents.LogResult, error) {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	if err := s.store.ElnisEvents().ReleaseReport(cleanupCtx, eventID, StatusDelivering, StatusResultReady, deliveryErr.Error()); err != nil {
+	if err := s.store.ReleaseReport(cleanupCtx, eventID, StatusDelivering, StatusResultReady, deliveryErr.Error()); err != nil {
 		logResult.Content += fmt.Sprintf("\npersistence_error=%v", err)
 		if logResult.ResultStatus != globalevents.ResultFailed {
 			logResult.ResultStatus = globalevents.ResultFailed
@@ -275,12 +274,12 @@ func (s *Service) releaseReport(ctx context.Context, eventID string, logResult g
 }
 
 func (s *Service) resetDeliveringReports(ctx context.Context) error {
-	return s.store.ElnisEvents().ResetDeliveringReports(ctx, StatusDelivering, StatusResultReady)
+	return s.store.ResetDeliveringReports(ctx, StatusDelivering, StatusResultReady)
 }
 
 // recoverReports owns one recovery pass; each report retains its declared result.
 func (s *Service) recoverReports(ctx context.Context, resetDelivering bool) (globalevents.LogResult, error) {
-	repo := s.store.ElnisEvents()
+	repo := s.store
 	if resetDelivering {
 		if err := s.resetDeliveringReports(ctx); err != nil {
 			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}

@@ -12,10 +12,9 @@ import (
 	"time"
 
 	globalevents "elbot/internal/events"
-	"elbot/internal/storage"
 )
 
-func (s *Service) handleDuplicate(ctx context.Context, event Event, existing *storage.ElnisEvent) {
+func (s *Service) handleDuplicate(ctx context.Context, event Event, existing *EventRecord) {
 	identity := globalevents.LogIdentity{}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	if facts.SessionID != "" {
@@ -92,7 +91,7 @@ func (s *Service) completeEventWithSession(ctx context.Context, id, resolvedTarg
 		defer cancel()
 		ctx = cleanupCtx
 	}
-	return s.store.ElnisEvents().Update(ctx, storage.UpdateElnisEventRequest{ID: id, ResolvedTargets: resolvedTargets, Status: status, SessionID: sessionID, Result: result, Error: eventErr})
+	return s.store.Update(ctx, UpdateEventRequest{ID: id, ResolvedTargets: resolvedTargets, Status: status, SessionID: sessionID, Result: result, Error: eventErr})
 }
 
 func contentHash(req Request) string {

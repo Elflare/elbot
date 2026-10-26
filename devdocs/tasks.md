@@ -52,7 +52,7 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Background 根部四文件收敛为对外门面、七项依赖、装配和生命周期框架；移除内部 Runner 的公开转发及 Wait，内部接入按目标调用标注 TODO。
 - [x] Background 根部按消费方职责注入最小接口或函数，按需复用 Agent、Tool 等根包公开类型；cronBridge 仅保留存储转换，elnisBridge 仅保留存储与媒体转换，注释采用当前架构原则。
 - [x] Cron 使用自有 JobRepository、记录和 JSON 模型，由根部转换 Storage；会话复制与共享接管查询接入 Agent，移除旧 Service 管理入口。
-- [ ] 落实 Elnis 存储、媒体、发送与平台 API 消费契约。跨业务不引用内部子包或 share，本业务兄弟子包通过 share 协作。
+- [x] Elnis 使用独用 EventRepository、Media 契约与发送、平台 API 函数；根部转换存储及媒体类型，共用回执映射归 share。
 - [x] Agent 根包提供后台执行、会话复制与过期清理；复制元数据使用 JSON 原始值，输入组件通过最小能力完成准备。
 - [ ] 实现 Platform 的公开发送、API 和历史清理能力。
 - [x] Tool.ObserveCronChanged 接入 Cron.RefreshJob；通知只登记名称，启动与运行期串行重新读库，覆盖修改、禁用、删除、同名重建及读取期间再变更。
@@ -61,8 +61,8 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Cron Service.Start 前按平台合并最新通知且不启动 worker；启动后独立队列消费，覆盖重复启动、取消、关闭清缓存、等待真实回调及 Close 超时。
 - [ ] 实现 Background 内部同步启动就绪、停止接入及实际退出契约，迁移旧总管测试后验证部分构造失败、并发启停、订阅释放和统一清理期限；当前不测试未实现的内部流程。
 - [x] Cron 运行记账仅写 LastRunAt、UpdatedAt，SQLite 原子累加次数；不覆盖启用状态、下次运行时间或同名重建任务。
-- [x] 真实 SQLite 验证根部 Cron 转换、旧令牌回执映射、报告完成 JSON，以及 Tool 公共通知到调度的链路；根部测试可隔离实际 cronBridge 声明运行，整体装配仍受 Elnis 阻塞。
-- [ ] 收口 Elnis 的持久化类型与读取边界。
+- [x] 真实 SQLite 验证根部 Cron 转换、旧令牌回执映射、报告完成 JSON，以及 Tool 公共通知到调度的链路；根部测试可隔离实际 cronBridge 声明运行，整体装配仍受 Elnis 生命周期与旧总管测试装配阻塞。
+- [x] Elnis 使用最小事件／报告记录和独立写入请求；真实 SQLite、媒体中心及事务集成测试归 Background 根部，Elnis 行为测试使用自身契约替身。
 
 ## 媒体中心对接
 
@@ -71,14 +71,15 @@ Tool 媒体层已统一向工具返回 `share.MediaInfo`，图片宽高、实际
 - [ ] 整理媒体中心的公开结果：通用媒体信息与内部存储记录分离，查询、导入及历史媒体结果不泄漏后端和对象位置；Tool 在自身入口转换为 Share 数据。
 - [ ] 明确图片有效性校验接口，保持内容可解码及 MIME 校验语义；当前 Tool 的 ValidateImage 使用中心 ImageMetadata。图片宽高和实际格式继续在媒体中心内部消费。
 - [ ] 收敛调用期引用与已持有媒体的读取能力：支持同一调用复用、失败释放重试及中断恢复；Tool 当前通过中心公开方法管理临时引用，内部持有存储记录供 OpenHeld 使用。
-- [ ] Background／Elnis 整理媒体对接，移除旧 Tool 根部 MediaRuntime 引用，不能改为依赖 Tool 内部媒体包。
+- [x] Elnis 通过 Media 契约导入及物化；本地报告使用 os.Root 限制路径，直接建立事件引用，无 Tool 媒体运行时依赖。
 
 ## Background 目录与依赖
 
 - [x] 根部按总管、依赖、装配、生命周期四文件组织；Cron 独用数据契约放在 cron 子包；内部业务收进 execution、cron、elnis、maintenance，共享定义与辅助能力归 share。
 - [x] 移除旧 module 和 Background 持有的 Cron 工具注册；公共结果使用方依赖 share。
 - [ ] 实现根部所消费的 Platform 公开能力及 Background 内部目标接口，验证 App 已声明的总管接线。
-- [ ] 修复已确认的子包编译阻塞：Elnis 仍引用已删除的 tool.MediaRuntime；按目标边界迁移后继续验证根部接线与整条业务线。
+- [x] Elnis 子包独立构建，实际 elnisBridge 与 cronBridge 可隔离运行真实存储集成测试。
+- [ ] 完成 Elnis Runtime 生命周期接口并迁移旧 Supervisor 测试后，验证 Background 整包接线。
 
 ## 后台工具统一预载
 
@@ -88,7 +89,7 @@ Tool 媒体层已统一向工具返回 `share.MediaInfo`，图片宽高、实际
 - [x] Cron 提供本地预载名单；Elnis 授权并适配 `ELwispTools`，补齐内部字段 `CanonicalName`、`EventKey`。
 - [x] Background Runner 只接入 Agent.RunBackground，Elnis 只借用 Tool.BackgroundSelections；新会话由 Agent 预载并提交，续跑沿用已提交集合。
 - [x] State 统一保存完整 `DiscoveredTool` 声明，删除名称补查目录路径；后台旧声明转换入口已移除。
-- [ ] 完成 Cron／Elnis／Background 整链路测试；当前受 Elnis 旧媒体类型及尚未实现的目标契约阻塞。App 已通过 Tools 交付 Tool 总管，内部能力分配由 Background 负责。
+- [ ] 完成 Cron／Elnis／Background 整链路测试；当前受 Elnis 生命周期、旧总管测试装配及尚未实现的目标契约阻塞。App 已通过 Tools 交付 Tool 总管，内部能力分配由 Background 负责。
 
 # 任务清单
 

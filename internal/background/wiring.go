@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strings"
 	"time"
@@ -13,8 +14,10 @@ import (
 	"elbot/internal/background/elnis"
 	"elbot/internal/background/execution"
 	"elbot/internal/background/maintenance"
+	"elbot/internal/background/share"
 	"elbot/internal/config"
 	globalevents "elbot/internal/events"
+	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
@@ -22,14 +25,157 @@ import (
 )
 
 // 根部只为存储编码和业务数据转换保留适配；公开数据类型按需复用，能力按消费方职责裁剪。
-// Cron 使用自有记录；Elnis 的存储与媒体转换随其内部契约落实。
+// Cron 与 Elnis 使用自有记录，根部将存储及媒体能力转换为内部契约。
 type cronBridge struct {
 	repo storage.CronJobRepository // 请求 Storage 读写任务定义和执行状态，转换为内部记录。
 }
 
 type elnisBridge struct {
-	store storage.Store  // 请求 Storage 持久化事件及报告，转换为内部记录。
-	media *media.Manager // 转换事件媒体处理的请求与结果。
+	repo  storage.ElnisEventRepository // 请求 Storage 持久化事件及报告，转换为内部记录。
+	media *media.Manager               // 转换事件媒体处理的请求与结果。
+}
+
+var _ elnis.EventRepository = elnisBridge{}
+var _ elnis.Media = elnisBridge{}
+
+func elnisError(err error) error {
+	if errors.Is(err, storage.ErrNotFound) {
+		return elnis.ErrEventNotFound
+	}
+	return err
+}
+
+func elnisEvent(row *storage.ElnisEvent) *elnis.EventRecord {
+	return &elnis.EventRecord{ID: row.ID, EventKey: row.EventKey, ContentHash: row.ContentHash,
+		ResolvedTargets: row.ResolvedTargets, SessionID: row.SessionID, Result: row.Result}
+}
+
+func (b elnisBridge) Create(ctx context.Context, req elnis.CreateEventRequest) (*elnis.EventRecord, error) {
+	row, err := b.repo.Create(ctx, storage.CreateElnisEventRequest{
+		MediaIDs: req.MediaIDs, EventKey: req.EventKey, TokenName: req.TokenName, ElwispName: req.ElwispName,
+		Source: req.Source, SourceID: req.SourceID, Tags: req.Tags, Mode: req.Mode, ModelSlot: req.ModelSlot,
+		ContentHash: req.ContentHash, ToolDeclarations: req.ToolDeclarations, ToolHash: req.ToolHash,
+		RequestedTargets: req.RequestedTargets, ResolvedTargets: req.ResolvedTargets, Status: req.Status,
+		ReceivedAt: req.ReceivedAt, CreatedAt: req.CreatedAt,
+	})
+	if err != nil {
+		return nil, elnisError(err)
+	}
+	return elnisEvent(row), nil
+}
+
+func (b elnisBridge) Get(ctx context.Context, id string) (*elnis.EventRecord, error) {
+	row, err := b.repo.Get(ctx, id)
+	if err != nil {
+		return nil, elnisError(err)
+	}
+	return elnisEvent(row), nil
+}
+
+func (b elnisBridge) GetByKey(ctx context.Context, name, source, sourceID string) (*elnis.EventRecord, error) {
+	row, err := b.repo.GetByKey(ctx, name, source, sourceID)
+	if err != nil {
+		return nil, elnisError(err)
+	}
+	return elnisEvent(row), nil
+}
+
+func (b elnisBridge) Update(ctx context.Context, req elnis.UpdateEventRequest) error {
+	return elnisError(b.repo.Update(ctx, storage.UpdateElnisEventRequest{ID: req.ID, ResolvedTargets: req.ResolvedTargets,
+		Status: req.Status, SessionID: req.SessionID, Result: req.Result, Error: req.Error}))
+}
+
+func (b elnisBridge) FailInterrupted(ctx context.Context, statuses []string, failed, reason string) error {
+	return elnisError(b.repo.FailInterrupted(ctx, statuses, failed, reason))
+}
+
+func (b elnisBridge) PrepareReport(ctx context.Context, req elnis.PrepareReportRequest) error {
+	items := make([]storage.CreateElnisReportDeliveryRequest, 0, len(req.Deliveries))
+	for _, item := range req.Deliveries {
+		items = append(items, storage.CreateElnisReportDeliveryRequest{Target: item.Target, Output: item.Output, MessageID: item.MessageID})
+	}
+	return elnisError(b.repo.PrepareReport(ctx, storage.PrepareElnisReportRequest{EventID: req.EventID,
+		ResolvedTargets: req.ResolvedTargets, SessionID: req.SessionID, Result: req.Result,
+		Deliveries: items, ResultReadyStatus: req.ResultReadyStatus}))
+}
+
+func (b elnisBridge) ResetDeliveringReports(ctx context.Context, delivering, ready string) error {
+	return elnisError(b.repo.ResetDeliveringReports(ctx, delivering, ready))
+}
+
+func (b elnisBridge) ListResultReadyReportIDs(ctx context.Context, ready string) ([]string, error) {
+	ids, err := b.repo.ListResultReadyReportIDs(ctx, ready)
+	return ids, elnisError(err)
+}
+
+func (b elnisBridge) ClaimReport(ctx context.Context, id, ready, delivering string) (bool, error) {
+	claimed, err := b.repo.ClaimReport(ctx, id, ready, delivering)
+	return claimed, elnisError(err)
+}
+
+func (b elnisBridge) ReleaseReport(ctx context.Context, id, delivering, ready, reason string) error {
+	return elnisError(b.repo.ReleaseReport(ctx, id, delivering, ready, reason))
+}
+
+func (b elnisBridge) ListReportDeliveries(ctx context.Context, id string) ([]elnis.ReportDelivery, error) {
+	rows, err := b.repo.ListReportDeliveries(ctx, id)
+	if err != nil {
+		return nil, elnisError(err)
+	}
+	items := make([]elnis.ReportDelivery, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, elnis.ReportDelivery{ID: row.ID, Target: row.Target, Output: row.Output, MessageID: row.MessageID, Status: row.Status})
+	}
+	return items, nil
+}
+
+func (b elnisBridge) StartReportDelivery(ctx context.Context, id string) error {
+	return elnisError(b.repo.StartReportDelivery(ctx, id))
+}
+
+func (b elnisBridge) MarkReportDeliveryFailed(ctx context.Context, eventID, deliveryID, ready, reason, receipt string, mappings []share.ReportMessageMap) error {
+	return elnisError(b.repo.MarkReportDeliveryFailed(ctx, eventID, deliveryID, ready, reason, receipt, reportMessageMaps(mappings)))
+}
+
+func (b elnisBridge) MarkReportDeliveriesDelivered(ctx context.Context, ids []string, receipt string, mappings []share.ReportMessageMap) error {
+	return elnisError(b.repo.MarkReportDeliveriesDelivered(ctx, ids, receipt, reportMessageMaps(mappings)))
+}
+
+func (b elnisBridge) CompleteReport(ctx context.Context, id, delivering, completed string) error {
+	return elnisError(b.repo.CompleteReport(ctx, id, delivering, completed))
+}
+
+func reportMessageMaps(mappings []share.ReportMessageMap) []storage.PlatformMessageMap {
+	rows := make([]storage.PlatformMessageMap, 0, len(mappings))
+	for _, mapping := range mappings {
+		rows = append(rows, storage.PlatformMessageMap{Platform: mapping.Platform, PlatformScopeID: mapping.PlatformScopeID,
+			PlatformMessageID: mapping.PlatformMessageID, SessionID: mapping.SessionID, MessageID: mapping.MessageID})
+	}
+	return rows
+}
+
+func (b elnisBridge) MaterializeWithLimits(ctx context.Context, segments []llm.MessageSegment, limits media.ImportLimits) ([]llm.MessageSegment, error) {
+	return b.media.MaterializeWithLimits(ctx, segments, limits)
+}
+
+func (b elnisBridge) ImportURL(ctx context.Context, url string, input media.Input) (string, error) {
+	row, err := b.media.ImportURL(ctx, url, input)
+	if err != nil {
+		return "", err
+	}
+	return row.ID, nil
+}
+
+func (b elnisBridge) ImportReader(ctx context.Context, reader io.Reader, size int64, input media.Input) (string, error) {
+	row, err := b.media.ImportReader(ctx, reader, size, input)
+	if err != nil {
+		return "", err
+	}
+	return row.ID, nil
+}
+
+func (b elnisBridge) AddEventReference(ctx context.Context, mediaID, eventID, purpose string) error {
+	return b.media.AddReference(ctx, &storage.MediaReference{MediaID: mediaID, OwnerType: "elnis_event", OwnerID: eventID, Purpose: purpose})
 }
 
 // NewSupervisor 只构造与接线；失败仍返回已取得的总管，由 App 统一清理。
@@ -77,8 +223,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	for _, target := range enabledCronPlatforms(cfg) {
 		platforms = append(platforms, target.Name)
 	}
-	elnisDeps := elnisBridge{store: deps.Store, media: deps.Media}
-	// TODO: Elnis 的媒体和存储消费内部契约。
+	elnisDeps := elnisBridge{repo: deps.Store.ElnisEvents(), media: deps.Media}
 	// ToolPreloader 只声明 BackgroundSelections，使用 Tool 根包类型。
 	// 平台能力分别注入发送与按名称调用 API 的函数，模型解析只返回所需选择数据。
 	service, err := elnis.NewService(elnis.Options{
@@ -205,13 +350,8 @@ func (b cronBridge) UpdateNextRunAt(ctx context.Context, id string, next *time.T
 func (b cronBridge) UpdateRunState(ctx context.Context, id string, state elcron.JobRunState) error {
 	return cronError(b.repo.UpdateRunState(ctx, id, storage.CronJobRunState{LastRunAt: state.LastRunAt, UpdatedAt: state.UpdatedAt}))
 }
-func (b cronBridge) CompareAndSwapDelivery(ctx context.Context, id, expected, next, state string, mappings []elcron.ReportMessageMap) (bool, error) {
-	rows := make([]storage.PlatformMessageMap, 0, len(mappings))
-	for _, mapping := range mappings {
-		rows = append(rows, storage.PlatformMessageMap{Platform: mapping.Platform, PlatformScopeID: mapping.PlatformScopeID,
-			PlatformMessageID: mapping.PlatformMessageID, SessionID: mapping.SessionID, MessageID: mapping.MessageID})
-	}
-	swapped, err := b.repo.CompareAndSwapDelivery(ctx, id, expected, next, state, rows)
+func (b cronBridge) CompareAndSwapDelivery(ctx context.Context, id, expected, next, state string, mappings []share.ReportMessageMap) (bool, error) {
+	swapped, err := b.repo.CompareAndSwapDelivery(ctx, id, expected, next, state, reportMessageMaps(mappings))
 	return swapped, cronError(err)
 }
 func (b cronBridge) DisableByName(ctx context.Context, name string) error {

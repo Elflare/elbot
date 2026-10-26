@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	background "elbot/internal/background/share"
 	globalevents "elbot/internal/events"
 	"encoding/json"
 	"errors"
@@ -17,7 +18,7 @@ type fakeCronRepo struct {
 	jobs     map[string]*Job
 	runs     map[string]JobRunState
 	counts   map[string]int
-	mappings []ReportMessageMap
+	mappings []background.ReportMessageMap
 }
 
 func newFakeCronRepo() *fakeCronRepo {
@@ -91,7 +92,7 @@ func (r *fakeCronRepo) UpdateRunState(ctx context.Context, id string, state JobR
 	return ErrJobNotFound
 }
 
-func (r *fakeCronRepo) CompareAndSwapDelivery(ctx context.Context, id, expectedToken, nextToken, deliveryState string, mappings []ReportMessageMap) (bool, error) {
+func (r *fakeCronRepo) CompareAndSwapDelivery(ctx context.Context, id, expectedToken, nextToken, deliveryState string, mappings []background.ReportMessageMap) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.mappings = append(r.mappings, mappings...)

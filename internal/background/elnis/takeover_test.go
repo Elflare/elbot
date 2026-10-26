@@ -47,7 +47,7 @@ func TestTakeoverSuppressesRepairAndReport(t *testing.T) {
 			if err := svc.RunLLMEvent(context.Background(), queued.Event, queued.EventID); !errors.Is(err, runErr) {
 				t.Fatalf("error: %v", err)
 			}
-			record, err := svc.store.ElnisEvents().Get(context.Background(), queued.EventID)
+			record, err := testRepo(svc).snapshot(context.Background(), queued.EventID)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	background "elbot/internal/background/share"
 	"errors"
 	"time"
 )
@@ -36,14 +37,6 @@ type UpsertJobRequest struct {
 	NextRunAt *time.Time // Manager 计算的初次运行时间。
 }
 
-type ReportMessageMap struct {
-	Platform          string // 实际发送平台。
-	PlatformScopeID   string // 实际发送会话。
-	PlatformMessageID string // 平台返回的消息标识。
-	SessionID         string // 报告所属会话。
-	MessageID         string // 报告对应的持久化消息。
-}
-
 // JobRepository 是 Cron 独用的持久化能力，由 Background 根部转换实现。
 type JobRepository interface {
 	Upsert(context.Context, UpsertJobRequest) (*Job, error)
@@ -51,7 +44,7 @@ type JobRepository interface {
 	ListEnabled(context.Context) ([]Job, error)
 	UpdateNextRunAt(context.Context, string, *time.Time, time.Time) error
 	UpdateRunState(context.Context, string, JobRunState) error
-	CompareAndSwapDelivery(context.Context, string, string, string, string, []ReportMessageMap) (bool, error)
+	CompareAndSwapDelivery(context.Context, string, string, string, string, []background.ReportMessageMap) (bool, error)
 	DisableByName(context.Context, string) error
 	DisableByNameIfDeliveryToken(context.Context, string, string) (bool, error)
 }

@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"elbot/internal/delivery"
-	"elbot/internal/storage"
 )
 
 func TestDefaultAdminReportUsesActualReceiptSources(t *testing.T) {
@@ -22,13 +21,6 @@ func TestDefaultAdminReportUsesActualReceiptSources(t *testing.T) {
 		}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	})
 	defer cleanup()
-	row := &storage.Session{ID: "bg-session", OwnerID: "elnis:home", Platform: "qqonebot", PlatformScopeID: "elnis:review", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive}
-	if err := s.store.Sessions().Create(ctx, row); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.store.Messages().Append(ctx, &storage.Message{ID: "bg-message", SessionID: row.ID, Role: storage.RoleAssistant, Content: "done"}); err != nil {
-		t.Fatal(err)
-	}
 	var queued QueuedLLMEvent
 	s.SetLLMEnqueuer(func(_ context.Context, e QueuedLLMEvent) error { queued = e; return nil })
 	req := testRequest(ModeLLM)
@@ -40,9 +32,6 @@ func TestDefaultAdminReportUsesActualReceiptSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, sent := range []struct{ scope, id string }{{"private:1001", "admin-1"}, {"private:1002", "admin-2"}} {
-		msg, err := s.store.Messages().FindByPlatformMessage(ctx, "qqonebot", sent.scope, sent.id)
-		if err != nil || msg.ID != "bg-message" {
-			t.Fatalf("mapping %s/%s: %#v/%v", sent.scope, sent.id, msg, err)
-		}
+		assertReportMapping(t, s, "qqonebot", sent.scope, sent.id)
 	}
 }

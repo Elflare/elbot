@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	background "elbot/internal/background/share"
 	"elbot/internal/events"
 	"errors"
 	"testing"
@@ -28,7 +29,7 @@ func TestPartialSendMapsSuccessAndReturnsFailure(t *testing.T) {
 	if _, err := deliverTestReport(t, s, "qqonebot", "task", "cron-message"); !errors.Is(err, wantErr) {
 		t.Fatalf("send error=%v", err)
 	}
-	if len(store.mappings) != 1 || store.mappings[0] != (ReportMessageMap{Platform: "qqonebot", PlatformScopeID: "private:1001", PlatformMessageID: "partial", SessionID: "task", MessageID: "cron-message"}) {
+	if len(store.mappings) != 1 || store.mappings[0] != (background.ReportMessageMap{Platform: "qqonebot", PlatformScopeID: "private:1001", PlatformMessageID: "partial", SessionID: "task", MessageID: "cron-message"}) {
 		t.Fatalf("mappings=%#v", store.mappings)
 	}
 }

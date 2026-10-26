@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"elbot/internal/delivery"
-	"elbot/internal/storage"
 )
 
 func TestPartialReportMapsSuccessAndRemainsRetryable(t *testing.T) {
@@ -33,13 +32,6 @@ func TestPartialReportMapsSuccessAndRemainsRetryable(t *testing.T) {
 		return delivery.Receipt{PlatformMessageIDs: []string{"retry"}, SentMessages: []delivery.SentMessage{{Platform: "qqonebot", ScopeID: "private:1001", PlatformMessageID: "retry"}}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	})
 	defer cleanup()
-	row := &storage.Session{ID: "bg-session", OwnerID: "elnis:home", Platform: "qqonebot", PlatformScopeID: "elnis:watcher:source:event-1", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive}
-	if err := s.store.Sessions().Create(ctx, row); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.store.Messages().Append(ctx, &storage.Message{ID: "bg-message", SessionID: row.ID, Role: storage.RoleAssistant, Content: "done"}); err != nil {
-		t.Fatal(err)
-	}
 	var queued QueuedLLMEvent
 	s.SetLLMEnqueuer(func(_ context.Context, event QueuedLLMEvent) error { queued = event; return nil })
 	req := testRequest(ModeLLM)
@@ -50,18 +42,15 @@ func TestPartialReportMapsSuccessAndRemainsRetryable(t *testing.T) {
 	if err := s.RunLLMEvent(ctx, queued.Event, queued.EventID); !errors.Is(err, wantErr) {
 		t.Fatalf("send error=%v", err)
 	}
-	msg, err := s.store.Messages().FindByPlatformMessage(ctx, "qqonebot", "private:1001", "partial")
-	if err != nil || msg.ID != "bg-message" {
-		t.Fatalf("mapping=%#v/%v", msg, err)
-	}
-	event, err := s.store.ElnisEvents().Get(ctx, queued.EventID)
+	assertReportMapping(t, s, "qqonebot", "private:1001", "partial")
+	event, err := testRepo(s).snapshot(ctx, queued.EventID)
 	if err != nil || event.Status != StatusResultReady {
 		t.Fatalf("event=%#v/%v", event, err)
 	}
 	if _, err := s.recoverReports(ctx, false); err != nil {
 		t.Fatal(err)
 	}
-	event, err = s.store.ElnisEvents().Get(ctx, queued.EventID)
+	event, err = testRepo(s).snapshot(ctx, queued.EventID)
 	if err != nil || event.Status != StatusCompleted || calls != 2 {
 		t.Fatalf("recovery=%#v/%v calls=%d", event, err, calls)
 	}

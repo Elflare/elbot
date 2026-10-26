@@ -9,7 +9,6 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/elvena"
 	globalevents "elbot/internal/events"
-	"elbot/internal/storage"
 )
 
 // runDirect declares this event's result before its caller saves failure state.
@@ -74,14 +73,7 @@ func (s *Service) executeCalls(ctx context.Context, targets []Target, calls []Ca
 		if platform == "" && len(targets) > 0 {
 			platform = targets[0].Platform
 		}
-		caller, ok := s.platformCallers.PlatformCaller(platform)
-		if !ok || caller == nil {
-			err := fmt.Errorf("platform %q does not support api calls", platform)
-			logResult.ResultStatus = globalevents.ResultFailed
-			logResult.Content += "\n" + err.Error()
-			return logResult, err
-		}
-		if _, err := caller.CallPlatformAPI(ctx, rawCall.API, rawCall.Params); err != nil {
+		if _, err := s.callPlatformAPI(ctx, platform, rawCall.API, rawCall.Params); err != nil {
 			logResult.ResultStatus = globalevents.ResultFailed
 			logResult.Content += fmt.Sprintf("\nplatform=%s api=%s error=%v", platform, rawCall.API, err)
 			if errors.Is(err, context.Canceled) {
@@ -109,15 +101,4 @@ func (s *Service) sendOutputsToTargets(ctx context.Context, targets []Target, ou
 		}
 	}
 	return logResult, nil
-}
-
-func (s *Service) mapReportReceipt(sessionID, messageID string, receipt delivery.Receipt) []storage.PlatformMessageMap {
-	if sessionID == "" || messageID == "" {
-		return nil
-	}
-	mappings := make([]storage.PlatformMessageMap, 0, len(receipt.SentMessages))
-	for _, sent := range receipt.SentMessages {
-		mappings = append(mappings, storage.PlatformMessageMap{Platform: sent.Platform, PlatformScopeID: sent.ScopeID, PlatformMessageID: sent.PlatformMessageID, SessionID: sessionID, MessageID: messageID})
-	}
-	return mappings
 }

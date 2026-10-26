@@ -14,12 +14,12 @@ Elnis 接收并分发事件，Elvena 定义协议，Elwisp 提供外部事件和
 - Bearer 或 X-Elnis-Token 鉴权；token 名用于审计，Elwisp 身份取 elwisp.name，日志不记录 token 原文。
 - 唯一键为 elwisp.name + source + id；重复不分发，同键不同 hash 只告警，不覆盖原事件。
 - record 只记录；direct 在当前请求内发送文本／segments 并执行 raw／capability calls，calls-only 不额外发消息；llm 落库后入内存队列，HTTP 不等待模型完成。
-- worker 启动前恢复 accepted／queued／running 中未持久化报告的事件，将其标记失败并原子释放引用，即使 Elnis 禁用也执行；工具可能已有副作用，因此不重放。已有报告按 outbox 恢复投递。
+- RecoverInterrupted 将 accepted／queued／running 中未持久化报告的事件标记失败并原子释放引用；工具可能已有副作用，因此不重放。已有报告按 outbox 恢复投递。根部在 worker 启动前、包括禁用 Elnis 时调用恢复的生命周期接线仍待完成。
 
 ## 来源、工具与投递裁决
 
 - 未配置的 Elwisp 默认启用，显式 enabled=false 拒绝；单 Elwisp 可限制 token、覆盖内部工具白名单、禁用外部工具或目标。
-- 内部工具按全局 allowed_tools 或单 Elwisp 覆盖值，经 PreloadService 展开工具／Skill／tag，执行前仍校验根工具权限。
+- 内部工具按全局 allowed_tools 或单 Elwisp 覆盖值，经 Tool 根部 BackgroundSelections 展开工具／Skill／tag，执行前仍校验根工具权限。
 - 外部工具用 `elwisp.<name>.<tool>` 命名空间，随 payload 显式注入 Session，不经 discover_tool 发现；统一走 ToolRun 路由、记录与结果回灌。
 - native 工具执行宿主权限和风险策略；远端 Elwisp 工具按无人值守 low 风险执行，其副作用属于远端环境。
 - targets、全局／单 Elwisp 禁用目标和启用平台共同裁决投递范围；platform-only 请求指向平台管理员，platform-only 禁用项屏蔽整个平台。
@@ -27,13 +27,19 @@ Elnis 接收并分发事件，Elvena 定义协议，Elwisp 提供外部事件和
 
 ## 后台 LLM
 
-Elnis 位于 `internal/background/elnis`，通过 `background/share.Runner` 契约调用公共后台执行，由 `background/execution.BackgroundRunner` 准备身份、Session、sandbox 与首轮工具；JSON 结果解析与 Cron 共用。
+Elnis 位于 `internal/background/elnis`，通过 `background/share.Runner` 契约调用公共后台执行，由 `background/execution.BackgroundRunner` 准备任务目录与后台来源并调用 Agent.RunBackground；Session、权限、模型和首轮工具由 Agent 准备，JSON 结果解析与 Cron 共用。
 
 - Session 为 background，模型使用 elwisp1/2/3，未指定或未配置回退 work；native 工具在 `elnis/<elwisp>` sandbox 执行。
 - 后台不读取工作目录中的 AGENTS.md，不开放 workspace／discover_tool；Prompt、工具权限与规则卡遵循[公共工具约束](architecture.md#tool-runtime工具状态与文件)。
 - 首轮提交工具／Skill／外部工具状态，续跑与 JSON 修正复用该状态；失效远端工具保留历史 schema，调用返回不可用。
 - 结果解析 completed、need_report 和报告内容；有内容与目标时先保存结果和 outbox，再立即投递，无需报告则完成。
 - 前台接管后等待真实 Execution 结果，停止后台修正、自动报告及未开始补投递；复用 Session 不恢复后台身份。
+
+## 依赖边界
+
+Elnis 的 repository.go 定义 EventRepository、最小事件／投递记录和独立写入请求，Background 根部 elnisBridge 转换 Storage 类型与未找到错误。JSON 由 Elnis 解释，终态引用清理、报告准备及回执映射由 Storage 原子提交。平台调用由根部注入 CallPlatformAPI 函数，Elnis 只提交平台名称、API 和参数。
+
+Cron 与 Elnis 共用 share/report.go 的 ReportMessageMap 和 MapReportReceipt；只映射 SentMessages，不根据未归属的消息 ID 猜测发送位置。
 
 ## 报告 outbox
 
@@ -49,11 +55,12 @@ Elnis 位于 `internal/background/elnis`，通过 `background/share.Runner` 契�
 
 - image／file 接受 HTTP(S)、data URI 和完整媒体 ID，不接受外部本地路径或宿主媒体 RPC。
 - record、重复、拒绝和排队 URL 不下载；排队已有 ID 建事件引用，LLM 执行时物化，direct 有实际目标才导入。
-- workspace 按普通文件规则维护，导入／导出经 os.Root 校验；outbox 附件在准备时导入，只保存稳定 ID，远端工具只操作远端文件。
+- outbox 本地附件在准备时规范化受限相对路径，经 os.Root 打开并检查普通文件，导入后立即建立事件报告引用，只保存稳定 ID；远端工具只操作远端文件。
+- Elnis 的 Media 契约只包含 MaterializeWithLimits、ImportURL、ImportReader、AddEventReference，由根部适配媒体中心；每次物化传递大小及超时限制，导入只返回媒体 ID。已有 ID 在建立引用时统一校验。
 - 引用、输出关联和清理遵循[媒体中心约束](architecture.md#媒体引用与清理)；已发送缓存使用 retention_days，非正值不缓存。
 
 ## Runtime 生命周期与审计
 
-Background 根部 `wiring.go` 装配恢复、服务与 HTTP workers，`lifecycle.go` 负责启停；runtime 共享应用 context，退出停止接收并取消、等待 worker，持久化报告留待启动恢复。
+Background 根部 `wiring.go` 装配服务、仓储、媒体和平台调用函数。Runtime 当前提供 Run，负责 HTTP 监听与 workers，退出时停止接收并取消、等待 worker；根部 `lifecycle.go` 所需的启动就绪、恢复、停止接入及退出接口尚未实现。持久化报告保留供恢复投递。
 
 审计覆盖接收、拒绝、去重、执行和投递，JSON 正文保存 Elwisp、source、event ID、mode、目标等查询事实，Session 关联写入 Identity；日志遵循[公共日志契约](architecture.md#信号与订阅)。

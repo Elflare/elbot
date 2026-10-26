@@ -13,22 +13,21 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/signal"
-	"elbot/internal/storage"
 )
 
 type failCompletedEventRepository struct {
-	storage.ElnisEventRepository
+	EventRepository
 	err error
 }
 
 type joinedFailureBackgroundRunner struct{ err error }
 
 type failingReportReceiptRepository struct {
-	storage.ElnisEventRepository
+	EventRepository
 	err error
 }
 
-func (r failingReportReceiptRepository) MarkReportDeliveriesDelivered(context.Context, []string, string, []storage.PlatformMessageMap) error {
+func (r failingReportReceiptRepository) MarkReportDeliveriesDelivered(context.Context, []string, string, []background.ReportMessageMap) error {
 	return r.err
 }
 
@@ -59,7 +58,7 @@ func TestElnisEventFailureDoesNotReclassifyDialogueError(t *testing.T) {
 	if err := service.RunLLMEvent(t.Context(), queued.Event, queued.EventID); err != failure {
 		t.Fatalf("business error changed: %v", err)
 	}
-	row, err := service.store.ElnisEvents().Get(t.Context(), queued.EventID)
+	row, err := testRepo(service).snapshot(t.Context(), queued.EventID)
 	if err != nil || row.Status != StatusFailed || len(records) != 2 {
 		t.Fatalf("event=%#v logs=%#v err=%v", row, records, err)
 	}
@@ -70,11 +69,11 @@ func TestElnisEventFailureDoesNotReclassifyDialogueError(t *testing.T) {
 	}
 }
 
-func (r failCompletedEventRepository) Update(ctx context.Context, req storage.UpdateElnisEventRequest) error {
+func (r failCompletedEventRepository) Update(ctx context.Context, req UpdateEventRequest) error {
 	if req.Status == StatusCompleted {
 		return r.err
 	}
-	return r.ElnisEventRepository.Update(ctx, req)
+	return r.EventRepository.Update(ctx, req)
 }
 
 func TestElnisLogsSuccessfulRunSaveFailure(t *testing.T) {
@@ -90,7 +89,7 @@ func TestElnisLogsSuccessfulRunSaveFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	failure := errors.New("completion state save failed")
-	service.store = elnisRepositoryStore{Store: service.store, repo: failCompletedEventRepository{ElnisEventRepository: service.store.ElnisEvents(), err: failure}}
+	service.store = failCompletedEventRepository{EventRepository: service.store, err: failure}
 
 	var records []events.LogRecord
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
@@ -131,13 +130,6 @@ func newElnisReportLoggingFixture(t *testing.T, send SenderFunc) (*Service, Queu
 	service, cleanup := newTestServiceWithRunner(t, &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"done"}`}, send)
 	t.Cleanup(cleanup)
 	ctx := t.Context()
-	row := &storage.Session{ID: "bg-session", OwnerID: "elnis:home", Platform: "qqonebot", PlatformScopeID: "elnis:watcher:source:event-1", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive}
-	if err := service.store.Sessions().Create(ctx, row); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.store.Messages().Append(ctx, &storage.Message{ID: "bg-message", SessionID: row.ID, Role: storage.RoleAssistant, Content: "done"}); err != nil {
-		t.Fatal(err)
-	}
 	var queued QueuedLLMEvent
 	service.SetLLMEnqueuer(func(_ context.Context, event QueuedLLMEvent) error { queued = event; return nil })
 	req := testRequest(ModeLLM)
@@ -195,7 +187,7 @@ func TestElnisDeliveryPreservesSourceLogResultAndBusinessState(t *testing.T) {
 					if tc.err == nil && (!response.Accepted || response.Status != StatusCompleted) {
 						t.Fatalf("business response changed: %#v", response)
 					}
-					row, getErr := service.store.ElnisEvents().GetByKey(t.Context(), req.Elwisp.Name, req.Source, req.ID)
+					row, getErr := testRepo(service).snapshotByKey(t.Context(), req.Elwisp.Name, req.Source, req.ID)
 					if getErr != nil {
 						t.Fatal(getErr)
 					}
@@ -204,7 +196,7 @@ func TestElnisDeliveryPreservesSourceLogResultAndBusinessState(t *testing.T) {
 				if err != tc.err {
 					t.Fatalf("business error changed: got=%v want=%v", err, tc.err)
 				}
-				row, err := service.store.ElnisEvents().Get(t.Context(), eventID)
+				row, err := testRepo(service).snapshot(t.Context(), eventID)
 				wantState := StatusCompleted
 				if tc.err != nil {
 					wantState = StatusFailed
@@ -253,7 +245,7 @@ func TestElnisRecoveryKeepsDeclaredFailureWithNilBusinessError(t *testing.T) {
 	if err != nil || logResult.ResultStatus != events.ResultFailed || len(records) != 1 || records[0].ResultStatus != events.ResultFailed || !strings.Contains(records[0].Content, "recovery partially delivered") {
 		t.Fatalf("recovery result=%#v error=%v records=%#v", logResult, err, records)
 	}
-	row, err := service.store.ElnisEvents().Get(t.Context(), queued.EventID)
+	row, err := testRepo(service).snapshot(t.Context(), queued.EventID)
 	if err != nil || row.Status != StatusCompleted || calls != 2 {
 		t.Fatalf("business completion/retry policy changed: state=%#v error=%v sends=%d", row, err, calls)
 	}
@@ -272,7 +264,7 @@ func TestElnisReportPreservesIndependentFailureAcrossCancellation(t *testing.T) 
 			service, queued := newElnisReportLoggingFixture(t, func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 				return delivery.Receipt{PlatformMessageIDs: []string{"partial"}}, events.LogResult{ResultStatus: tc.sendStatus, Content: "declared send diagnostic"}, nil
 			})
-			service.store = elnisRepositoryStore{Store: service.store, repo: failingReportReceiptRepository{ElnisEventRepository: service.store.ElnisEvents(), err: tc.saveErr}}
+			service.store = failingReportReceiptRepository{EventRepository: service.store, err: tc.saveErr}
 			var records []events.LogRecord
 			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 				if record.EventName == "elnis_llm_report_delivery_failed" {
@@ -290,7 +282,7 @@ func TestElnisReportPreservesIndependentFailureAcrossCancellation(t *testing.T) 
 			if len(records) != 1 || records[0].ResultStatus != events.ResultFailed || !strings.Contains(records[0].Content, "declared send diagnostic") || !strings.Contains(records[0].Content, tc.saveErr.Error()) {
 				t.Fatalf("independent failure or executed facts lost: %#v", records)
 			}
-			row, err := service.store.ElnisEvents().Get(t.Context(), queued.EventID)
+			row, err := testRepo(service).snapshot(t.Context(), queued.EventID)
 			if err != nil || row.Status != StatusResultReady {
 				t.Fatalf("report retry state changed: %#v error=%v", row, err)
 			}

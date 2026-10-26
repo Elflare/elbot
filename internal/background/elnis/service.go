@@ -14,7 +14,6 @@ import (
 	"elbot/internal/elvena"
 	globalevents "elbot/internal/events"
 	"elbot/internal/media"
-	"elbot/internal/storage"
 	"elbot/internal/tool"
 )
 
@@ -30,11 +29,11 @@ type EnqueueLLMFunc func(ctx context.Context, event QueuedLLMEvent) error
 type ModelResolverFunc func(slot string) config.ModelSelection
 
 type Options struct {
-	Media       *media.Manager
+	Media       Media
 	Config      config.ElnisConfig
 	SandboxRoot string
 	Tokens      map[string]string
-	Store       storage.Store
+	Store       EventRepository
 
 	Send             SenderFunc
 	Runner           background.Runner
@@ -44,15 +43,15 @@ type Options struct {
 		BackgroundSelections(context.Context, []string) ([]tool.BackgroundSelection, error)
 	} // 由 Tool 根部提供声明展开能力，授权仍归 Elnis。
 	EnabledPlatforms []string
-	PlatformCallers  elvena.PlatformCallerResolver
+	CallPlatformAPI  func(ctx context.Context, platform, api string, params map[string]any) (json.RawMessage, error) // 由根部注入，Platform 负责按名称路由。
 }
 
 type Service struct {
-	media       *media.Manager
+	media       Media
 	cfg         config.ElnisConfig
 	sandboxRoot string
 	tokens      map[string]string
-	store       storage.Store
+	store       EventRepository
 
 	send             SenderFunc
 	runner           background.Runner
@@ -62,7 +61,7 @@ type Service struct {
 		BackgroundSelections(context.Context, []string) ([]tool.BackgroundSelection, error)
 	}
 	enabledPlatforms []string
-	platformCallers  elvena.PlatformCallerResolver
+	callPlatformAPI  func(context.Context, string, string, map[string]any) (json.RawMessage, error)
 	enqueueLLM       EnqueueLLMFunc
 }
 
@@ -82,13 +81,13 @@ func NewService(opts Options) (*Service, error) {
 		resolveModel:     opts.ResolveModel,
 		toolPreloader:    opts.ToolPreloader,
 		enabledPlatforms: uniqueSorted(opts.EnabledPlatforms),
-		platformCallers:  opts.PlatformCallers,
+		callPlatformAPI:  opts.CallPlatformAPI,
 	}, nil
 }
 
 // RecoverInterrupted fails executions whose in-memory work cannot survive restart.
-// The app calls it before workers start, including when Elnis is disabled.
-func RecoverInterrupted(ctx context.Context, repo storage.ElnisEventRepository) error {
+// Invoke before workers start, including when Elnis is disabled.
+func RecoverInterrupted(ctx context.Context, repo EventRepository) error {
 	return repo.FailInterrupted(ctx, []string{StatusAccepted, StatusQueued, StatusRunning},
 		StatusFailed, "interrupted before durable report")
 }
@@ -252,10 +251,10 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 		}
 		return Response{Accepted: false, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
 	}
-	if existing, err := s.store.ElnisEvents().GetByKey(ctx, req.Elwisp.Name, req.Source, req.ID); err == nil {
+	if existing, err := s.store.GetByKey(ctx, req.Elwisp.Name, req.Source, req.ID); err == nil {
 		s.handleDuplicate(ctx, event, existing)
 		return Response{Accepted: true, Duplicate: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusDuplicate}, nil
-	} else if !errors.Is(err, storage.ErrNotFound) {
+	} else if !errors.Is(err, ErrEventNotFound) {
 		return Response{}, err
 	}
 
@@ -271,7 +270,7 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 			}
 		}
 	}
-	record, err := s.store.ElnisEvents().Create(ctx, storage.CreateElnisEventRequest{
+	record, err := s.store.Create(ctx, CreateEventRequest{
 		MediaIDs:         mediaIDs,
 		EventKey:         event.EventKey,
 		TokenName:        event.Origin.Label(),

@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	background "elbot/internal/background/share"
 	"elbot/internal/events"
 	"encoding/json"
 	"fmt"
@@ -40,7 +41,7 @@ func TestTextReportMapsRealTelegramPartialReceipt(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected second target failure")
 	}
-	if len(repo.mappings) != 1 || repo.mappings[0] != (ReportMessageMap{Platform: "telegram", PlatformScopeID: "private:1", PlatformMessageID: "77", SessionID: "task", MessageID: "report"}) {
+	if len(repo.mappings) != 1 || repo.mappings[0] != (background.ReportMessageMap{Platform: "telegram", PlatformScopeID: "private:1", PlatformMessageID: "77", SessionID: "task", MessageID: "report"}) {
 		t.Fatalf("mappings=%#v", repo.mappings)
 	}
 }

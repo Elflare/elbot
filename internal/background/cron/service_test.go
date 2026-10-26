@@ -164,7 +164,7 @@ func TestRunLLMMapsReportNoticeToBackgroundMessage(t *testing.T) {
 	if _, err := svc.runLLM(ctx, *job, meta); err != nil {
 		t.Fatalf("runLLM: %v", err)
 	}
-	if len(store.mappings) != 1 || store.mappings[0] != (ReportMessageMap{Platform: "qq-onebot", PlatformScopeID: "private:1001", PlatformMessageID: "notice-1", SessionID: "cron-session", MessageID: "cron-message"}) {
+	if len(store.mappings) != 1 || store.mappings[0] != (background.ReportMessageMap{Platform: "qq-onebot", PlatformScopeID: "private:1001", PlatformMessageID: "notice-1", SessionID: "cron-session", MessageID: "cron-message"}) {
 		t.Fatalf("mappings = %#v", store.mappings)
 	}
 }

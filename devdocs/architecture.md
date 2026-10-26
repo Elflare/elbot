@@ -581,14 +581,16 @@ contextmgr 管历史、用量、阈值和压缩分派，通过 Selection 查询 
 
 Elnis 接收事件，Elvena 定义公共协议，Elwisp 提供外部事件与工具；Elnis 复用 BackgroundRunner 和公共发送能力。
 
+Elnis 独用的 EventRepository 与 Media 契约由 Background 根部转换；JSON 由 Elnis 解释，状态、回执与媒体引用事务由 Storage 完成。平台 API 通过函数注入，平台选择与调用由 Platform 公开能力负责。Cron 与 Elnis 共用 share.ReportMessageMap 和 MapReportReceipt，保留实际平台、scope 与消息 ID。
+
 接收、去重、outbox 与恢复见 [Elnis 架构](elnis-elwisp.md)；配置和协议示例见[使用文档](../docs/elnis-usage.md)。
 
 <!-- locator:cron -->
 ## Cron 与后台任务
 
-Background 根部保留 `supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go` 四文件，负责门面、Store／Models／Media／Logs／Agent／Tools／Platform 七项借用依赖、装配与生命周期。业务由 `execution`、`cron`、`elnis`、`maintenance` 承担；根部不取得 Agent 的 Session 或执行器，也不公开内部 Runner。Elnis 的存储、媒体及生命周期契约仍待落实，整体装配尚不能编译运行。
+Background 根部保留 `supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go` 四文件，负责门面、Store／Models／Media／Logs／Agent／Tools／Platform 七项借用依赖、装配与生命周期。业务由 `execution`、`cron`、`elnis`、`maintenance` 承担；根部不取得 Agent 的 Session 或执行器，也不公开内部 Runner。Elnis 的存储与媒体契约已接入根部桥接，生命周期契约仍待落实，整体装配尚不能编译运行。
 
-Cron 独用的 `JobRepository`、任务快照、运行事实与回执映射放在 `cron/repository.go`，由根部 `cronBridge` 转换 Storage 记录与错误。Metadata、DeliveryState 作为原始 JSON 交给 Cron 按任务解析，坏记录单独记录失败，不阻断其他任务。Cron 不持有完整 Store 或 Session 服务；模型使用最小接口，发送、Agent.CopyBackground 和接管查询分别注入。Cron 与 Elnis 共用 `share.SessionTakenOver` 函数契约，查询由 Agent 调用自有 Session 完成，Share 不读库。广播复制按任务来源平台跳过源端，复制元数据保留 JSON 值类型。
+Cron 独用的 `JobRepository`、任务快照与运行事实放在 `cron/repository.go`，由根部 `cronBridge` 转换 Storage 记录与错误。Metadata、DeliveryState 作为原始 JSON 交给 Cron 按任务解析，坏记录单独记录失败，不阻断其他任务。Cron 不持有完整 Store 或 Session 服务；模型使用最小接口，发送、Agent.CopyBackground 和接管查询分别注入。Cron 与 Elnis 共用 `share.SessionTakenOver` 函数契约，查询由 Agent 调用自有 Session 完成，Share 不读库。广播复制按任务来源平台跳过源端，复制元数据保留 JSON 值类型。
 
 Runner 只准备任务目录与后台来源并调用 Agent.RunBackground；会话、工具预载与执行上下文由 Agent 处理，报告解析与重试归 Cron、Elnis。Elvena、Elnis 和 Background 共享请求使用 Tool 根包工具声明类型，JSON 保留协议字段名并忽略内部关联字段。维护组件使用会话／历史清理函数、日志最小接口及媒体 Cleanup 接口；历史引用统一在媒体清理时对账。
 
@@ -601,7 +603,11 @@ flowchart TD
     W --> C["cron/service.go、execution.go、delivery.go、recovery.go：执行与投递"]
     W --> F["cron/manager.go、refresh.go：首次加载与串行刷新"]
     W --> P["cron/lifecycle.go：平台通知缓存与消费队列"]
-    W -.->|契约待落实| E["elnis/：事件处理与恢复"]
+    W --> E["elnis/service.go、outbox.go：事件处理与恢复"]
+    W --> ER["elnis/repository.go：事件与报告持久化契约"]
+    W --> EM["elnis/media.go：媒体契约与受限附件导入"]
+    E --> SR["share/report.go：报告构造与实际回执映射"]
+    C --> SR
     W --> X["execution/runner.go、runner_deps.go：任务目录与 Agent 执行转接"]
     W --> M["maintenance/maintenance.go：维护任务与清理"]
     W --> MC["cron/maintenance.go：维护任务适配"]

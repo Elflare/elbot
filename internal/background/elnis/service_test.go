@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,8 +20,6 @@ import (
 	globalevents "elbot/internal/events"
 	"elbot/internal/security"
 	"elbot/internal/signal"
-	"elbot/internal/storage"
-	"elbot/internal/testutil"
 	"elbot/internal/tool/preload"
 	"elbot/internal/tool/registry"
 )
@@ -186,7 +185,7 @@ func TestHandleLLMQueuesEvent(t *testing.T) {
 	if resp.Status != StatusQueued || queued.EventID == "" || queued.Event.EventKey == "" {
 		t.Fatalf("response = %#v queued = %#v", resp, queued)
 	}
-	record, err := service.store.ElnisEvents().GetByKey(context.Background(), req.Elwisp.Name, req.Source, req.ID)
+	record, err := testRepo(service).snapshotByKey(context.Background(), req.Elwisp.Name, req.Source, req.ID)
 	if err != nil {
 		t.Fatalf("GetByKey: %v", err)
 	}
@@ -238,7 +237,7 @@ func TestHandleAllowsExternalToolsByDefault(t *testing.T) {
 	if resp.Status != StatusQueued {
 		t.Fatalf("response = %#v", resp)
 	}
-	record, err := service.store.ElnisEvents().GetByKey(context.Background(), req.Elwisp.Name, req.Source, req.ID)
+	record, err := testRepo(service).snapshotByKey(context.Background(), req.Elwisp.Name, req.Source, req.ID)
 	if err != nil {
 		t.Fatalf("GetByKey: %v", err)
 	}
@@ -376,13 +375,6 @@ func TestRunLLMEventMapsReportNoticeToBackgroundMessage(t *testing.T) {
 		return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}, SentMessages: []delivery.SentMessage{{Platform: "qq-onebot", ScopeID: "private:1001", PlatformMessageID: "notice-1"}}}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	})
 	defer cleanup()
-	bgSession := &storage.Session{ID: "bg-session", OwnerID: "elnis:home", Platform: "qq-onebot", PlatformScopeID: "elnis:watcher:source:event-1", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "elnis"}
-	if err := service.store.Sessions().Create(context.Background(), bgSession); err != nil {
-		t.Fatalf("create background session: %v", err)
-	}
-	if err := service.store.Messages().Append(context.Background(), &storage.Message{ID: "bg-message", SessionID: bgSession.ID, Role: storage.RoleAssistant, Content: "处理完成"}); err != nil {
-		t.Fatalf("append background message: %v", err)
-	}
 	var queued QueuedLLMEvent
 	service.SetLLMEnqueuer(func(ctx context.Context, event QueuedLLMEvent) error {
 		queued = event
@@ -397,13 +389,7 @@ func TestRunLLMEventMapsReportNoticeToBackgroundMessage(t *testing.T) {
 	if err := service.RunLLMEvent(context.Background(), queued.Event, queued.EventID); err != nil {
 		t.Fatalf("RunLLMEvent: %v", err)
 	}
-	msg, err := service.store.Messages().FindByPlatformMessage(context.Background(), "qq-onebot", "private:1001", "notice-1")
-	if err != nil {
-		t.Fatalf("FindByPlatformMessage: %v", err)
-	}
-	if msg.ID != "bg-message" || msg.SessionID != "bg-session" {
-		t.Fatalf("mapped message = %#v", msg)
-	}
+	assertReportMapping(t, service, "qq-onebot", "private:1001", "notice-1")
 }
 
 func TestRunLLMEventCompletesAndReports(t *testing.T) {
@@ -430,7 +416,7 @@ func TestRunLLMEventCompletesAndReports(t *testing.T) {
 	if err := service.RunLLMEvent(context.Background(), queued.Event, queued.EventID); err != nil {
 		t.Fatalf("RunLLMEvent: %v", err)
 	}
-	record, err := service.store.ElnisEvents().GetByKey(context.Background(), req.Elwisp.Name, req.Source, req.ID)
+	record, err := testRepo(service).snapshotByKey(context.Background(), req.Elwisp.Name, req.Source, req.ID)
 	if err != nil {
 		t.Fatalf("GetByKey: %v", err)
 	}
@@ -495,7 +481,7 @@ func TestRunLLMEventDoesNotCompleteBeforeReportDelivery(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("report sender was not called")
 	}
-	record, err := service.store.ElnisEvents().Get(context.Background(), queued.EventID)
+	record, err := testRepo(service).snapshot(context.Background(), queued.EventID)
 	if err != nil {
 		t.Fatalf("Get event while sending: %v", err)
 	}
@@ -508,18 +494,18 @@ func TestRunLLMEventDoesNotCompleteBeforeReportDelivery(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatalf("RunLLMEvent: %v", err)
 	}
-	record, err = service.store.ElnisEvents().Get(context.Background(), queued.EventID)
+	record, err = testRepo(service).snapshot(context.Background(), queued.EventID)
 	if err != nil {
 		t.Fatalf("Get completed event: %v", err)
 	}
 	if record.Status != StatusCompleted {
 		t.Fatalf("completed status = %q", record.Status)
 	}
-	deliveries, err := service.store.ElnisEvents().ListReportDeliveries(context.Background(), queued.EventID)
+	deliveries, err := testRepo(service).deliverySnapshots(context.Background(), queued.EventID)
 	if err != nil {
 		t.Fatalf("ListReportDeliveries: %v", err)
 	}
-	if len(deliveries) != 1 || deliveries[0].Status != storage.ElnisReportDeliveryDelivered || !strings.Contains(deliveries[0].Receipt, "notice-1") {
+	if len(deliveries) != 1 || deliveries[0].Status != ReportDeliveryDelivered || !strings.Contains(deliveries[0].Receipt, "notice-1") {
 		t.Fatalf("deliveries = %#v", deliveries)
 	}
 }
@@ -560,32 +546,32 @@ func TestRunLLMEventRetriesOnlyIncompleteReportDeliveries(t *testing.T) {
 	if err := service.RunLLMEvent(context.Background(), queued.Event, queued.EventID); err == nil {
 		t.Fatal("expected report delivery failure")
 	}
-	record, err := service.store.ElnisEvents().Get(context.Background(), queued.EventID)
+	record, err := testRepo(service).snapshot(context.Background(), queued.EventID)
 	if err != nil {
 		t.Fatalf("Get failed delivery event: %v", err)
 	}
 	if record.Status != StatusResultReady || !strings.Contains(record.Error, "temporary delivery failure") {
 		t.Fatalf("record after failure = %#v", record)
 	}
-	deliveries, err := service.store.ElnisEvents().ListReportDeliveries(context.Background(), queued.EventID)
+	deliveries, err := testRepo(service).deliverySnapshots(context.Background(), queued.EventID)
 	if err != nil {
 		t.Fatalf("ListReportDeliveries after failure: %v", err)
 	}
-	if len(deliveries) != 2 || deliveries[0].Status != storage.ElnisReportDeliveryDelivered || deliveries[1].Status != storage.ElnisReportDeliveryFailed {
+	if len(deliveries) != 2 || deliveries[0].Status != ReportDeliveryDelivered || deliveries[1].Status != "failed" {
 		t.Fatalf("deliveries after failure = %#v", deliveries)
 	}
 
 	if _, err := service.recoverReports(context.Background(), false); err != nil {
 		t.Fatalf("recoverReports: %v", err)
 	}
-	record, err = service.store.ElnisEvents().Get(context.Background(), queued.EventID)
+	record, err = testRepo(service).snapshot(context.Background(), queued.EventID)
 	if err != nil {
 		t.Fatalf("Get recovered event: %v", err)
 	}
 	if record.Status != StatusCompleted || calls != 3 {
 		t.Fatalf("recovered record = %#v, send calls = %d", record, calls)
 	}
-	deliveries, err = service.store.ElnisEvents().ListReportDeliveries(context.Background(), queued.EventID)
+	deliveries, err = testRepo(service).deliverySnapshots(context.Background(), queued.EventID)
 	if err != nil {
 		t.Fatalf("ListReportDeliveries after recovery: %v", err)
 	}
@@ -602,14 +588,8 @@ func TestRunLLMEventRetriesWhenReceiptPersistenceFails(t *testing.T) {
 		return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}, SentMessages: []delivery.SentMessage{{Platform: "cli", ScopeID: "local", PlatformMessageID: "notice-1", OutputIndexes: []int{0}}}}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	})
 	defer cleanup()
-	if err := service.store.Sessions().Create(t.Context(), &storage.Session{ID: "bg-session", OwnerID: "cli:local", Platform: "cli", PlatformScopeID: "local", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive}); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.store.Messages().Append(t.Context(), &storage.Message{ID: "bg-message", SessionID: "bg-session", Role: storage.RoleAssistant, Content: "report"}); err != nil {
-		t.Fatal(err)
-	}
-	failingRepo := &failOnceReceiptRepository{ElnisEventRepository: service.store.ElnisEvents()}
-	service.store = elnisRepositoryStore{Store: service.store, repo: failingRepo}
+	failingRepo := &failOnceReceiptRepository{EventRepository: service.store}
+	service.store = failingRepo
 	var queued QueuedLLMEvent
 	service.SetLLMEnqueuer(func(ctx context.Context, event QueuedLLMEvent) error {
 		queued = event
@@ -623,7 +603,7 @@ func TestRunLLMEventRetriesWhenReceiptPersistenceFails(t *testing.T) {
 	if err := service.RunLLMEvent(context.Background(), queued.Event, queued.EventID); err == nil {
 		t.Fatal("expected receipt persistence failure")
 	}
-	record, err := service.store.ElnisEvents().Get(context.Background(), queued.EventID)
+	record, err := testRepo(service).snapshot(context.Background(), queued.EventID)
 	if err != nil {
 		t.Fatalf("Get event after receipt failure: %v", err)
 	}
@@ -631,28 +611,28 @@ func TestRunLLMEventRetriesWhenReceiptPersistenceFails(t *testing.T) {
 		t.Fatalf("record after receipt failure = %#v, calls = %d", record, calls)
 	}
 
-	if _, err := service.store.Messages().FindByPlatformMessage(t.Context(), "cli", "local", "notice-1"); !errors.Is(err, storage.ErrNotFound) {
-		t.Fatalf("mapping did not roll back: %v", err)
+	if len(testRepo(service).mappings) != 0 {
+		t.Fatal("failed commit retained mappings")
 	}
-	pending, err := service.store.ElnisEvents().ListReportDeliveries(t.Context(), queued.EventID)
-	if err != nil || len(pending) != 1 || pending[0].Status != storage.ElnisReportDeliveryPending || pending[0].Receipt != "" {
+	pending, err := testRepo(service).deliverySnapshots(t.Context(), queued.EventID)
+	if err != nil || len(pending) != 1 || pending[0].Status != "pending" || pending[0].Receipt != "" {
 		t.Fatalf("delivery did not roll back: %#v %v", pending, err)
 	}
 	if _, err := service.recoverReports(context.Background(), false); err != nil {
 		t.Fatalf("recoverReports: %v", err)
 	}
-	record, err = service.store.ElnisEvents().Get(context.Background(), queued.EventID)
+	record, err = testRepo(service).snapshot(context.Background(), queued.EventID)
 	if err != nil {
 		t.Fatalf("Get recovered event: %v", err)
 	}
 	if record.Status != StatusCompleted || calls != 2 {
 		t.Fatalf("recovered record = %#v, calls = %d", record, calls)
 	}
-	deliveries, err := service.store.ElnisEvents().ListReportDeliveries(context.Background(), queued.EventID)
+	deliveries, err := testRepo(service).deliverySnapshots(context.Background(), queued.EventID)
 	if err != nil {
 		t.Fatalf("ListReportDeliveries: %v", err)
 	}
-	if len(deliveries) != 1 || deliveries[0].Attempts != 2 || deliveries[0].Status != storage.ElnisReportDeliveryDelivered {
+	if len(deliveries) != 1 || deliveries[0].Attempts != 2 || deliveries[0].Status != ReportDeliveryDelivered {
 		t.Fatalf("deliveries = %#v", deliveries)
 	}
 }
@@ -682,7 +662,7 @@ func TestRecoverReportsResetsInterruptedDeliveringEvent(t *testing.T) {
 	if err != nil || !prepared {
 		t.Fatalf("prepareReport = %v, %v", prepared, err)
 	}
-	claimed, err := service.store.ElnisEvents().ClaimReport(context.Background(), queued.EventID, StatusResultReady, StatusDelivering)
+	claimed, err := service.store.ClaimReport(context.Background(), queued.EventID, StatusResultReady, StatusDelivering)
 	if err != nil || !claimed {
 		t.Fatalf("ClaimReport = %v, %v", claimed, err)
 	}
@@ -690,7 +670,7 @@ func TestRecoverReportsResetsInterruptedDeliveringEvent(t *testing.T) {
 	if _, err := service.recoverReports(context.Background(), true); err != nil {
 		t.Fatalf("recoverReports: %v", err)
 	}
-	record, err := service.store.ElnisEvents().Get(context.Background(), queued.EventID)
+	record, err := testRepo(service).snapshot(context.Background(), queued.EventID)
 	if err != nil {
 		t.Fatalf("Get recovered event: %v", err)
 	}
@@ -724,7 +704,7 @@ func TestRecoverReportsDoesNotResendPersistedReceipt(t *testing.T) {
 	if err != nil || !prepared {
 		t.Fatalf("prepareReport = %v, %v", prepared, err)
 	}
-	repo := service.store.ElnisEvents()
+	repo := service.store
 	claimed, err := repo.ClaimReport(context.Background(), queued.EventID, StatusResultReady, StatusDelivering)
 	if err != nil || !claimed {
 		t.Fatalf("ClaimReport = %v, %v", claimed, err)
@@ -743,7 +723,7 @@ func TestRecoverReportsDoesNotResendPersistedReceipt(t *testing.T) {
 	if _, err := service.recoverReports(context.Background(), true); err != nil {
 		t.Fatalf("recoverReports: %v", err)
 	}
-	record, err := repo.Get(context.Background(), queued.EventID)
+	record, err := testRepo(service).snapshot(context.Background(), queued.EventID)
 	if err != nil {
 		t.Fatalf("Get recovered event: %v", err)
 	}
@@ -977,7 +957,7 @@ func TestHandleDirectCallsOnlyDoesNotSendOutput(t *testing.T) {
 	})
 	defer cleanup()
 	caller := &fakePlatformCallerResolver{callers: map[string]*fakePlatformCaller{"qqonebot": {}}}
-	service.platformCallers = caller
+	service.callPlatformAPI = caller.CallPlatformAPI
 
 	req := testRequest(ModeDirect)
 	req.Content = ""
@@ -1005,7 +985,7 @@ func newTestService(t *testing.T, send SenderFunc) (*Service, func()) {
 
 func newTestServiceWithRunner(t *testing.T, runner background.Runner, send SenderFunc) (*Service, func()) {
 	t.Helper()
-	store := testutil.NewSQLiteStore(t)
+	store := newFakeEventRepository()
 	if send == nil {
 		send = func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 			return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
@@ -1039,7 +1019,7 @@ func newTestServiceWithRunner(t *testing.T, runner background.Runner, send Sende
 	}
 	enableMedia(t, service)
 	service.SetLLMEnqueuer(func(context.Context, QueuedLLMEvent) error { return nil })
-	return service, func() { _ = store.Close() }
+	return service, func() {}
 }
 
 func targetSummary(targets []Target) string {
@@ -1082,9 +1062,12 @@ type fakePlatformCallerResolver struct {
 	callers map[string]*fakePlatformCaller
 }
 
-func (r *fakePlatformCallerResolver) PlatformCaller(platform string) (elvena.PlatformAPICaller, bool) {
+func (r *fakePlatformCallerResolver) CallPlatformAPI(ctx context.Context, platform, api string, params map[string]any) (json.RawMessage, error) {
 	caller, ok := r.callers[platform]
-	return caller, ok
+	if !ok {
+		return nil, fmt.Errorf("platform %q does not support api calls", platform)
+	}
+	return caller.CallPlatformAPI(ctx, api, params)
 }
 
 type fakeBackgroundRunner struct {
@@ -1092,28 +1075,17 @@ type fakeBackgroundRunner struct {
 	requests []background.RunRequest
 }
 
-type elnisRepositoryStore struct {
-	storage.Store
-	repo storage.ElnisEventRepository
-}
-
-func (s elnisRepositoryStore) ElnisEvents() storage.ElnisEventRepository {
-	return s.repo
-}
-
 type failOnceReceiptRepository struct {
-	storage.ElnisEventRepository
+	EventRepository
 	failed bool
 }
 
-func (r *failOnceReceiptRepository) MarkReportDeliveriesDelivered(ctx context.Context, deliveryIDs []string, receipt string, mappings []storage.PlatformMessageMap) error {
+func (r *failOnceReceiptRepository) MarkReportDeliveriesDelivered(ctx context.Context, deliveryIDs []string, receipt string, mappings []background.ReportMessageMap) error {
 	if !r.failed {
 		r.failed = true
-		mappings[0].ID = "duplicate-receipt-map"
-		mappings = append(mappings, mappings[0])
-		return r.ElnisEventRepository.MarkReportDeliveriesDelivered(ctx, deliveryIDs, receipt, mappings)
+		return errors.New("receipt persistence failed")
 	}
-	return r.ElnisEventRepository.MarkReportDeliveriesDelivered(ctx, deliveryIDs, receipt, mappings)
+	return r.EventRepository.MarkReportDeliveriesDelivered(ctx, deliveryIDs, receipt, mappings)
 }
 
 func (r *fakeBackgroundRunner) RunBackground(ctx context.Context, req background.RunRequest) (background.RunResult, error) {

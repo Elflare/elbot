@@ -56,7 +56,7 @@ func TestCronBridgeOpaqueRecordsErrorsAndDeliveryTransaction(t *testing.T) {
 	if ok, err := b.CompareAndSwapDelivery(ctx, row.ID, "", "current", `{"delivery_complete":true}`, nil); err != nil || !ok {
 		t.Fatal(ok, err)
 	}
-	mappings := []elcron.ReportMessageMap{{Platform: "telegram", PlatformScopeID: "private:1", PlatformMessageID: "sent", SessionID: "session", MessageID: "message"}}
+	mappings := []share.ReportMessageMap{{Platform: "telegram", PlatformScopeID: "private:1", PlatformMessageID: "sent", SessionID: "session", MessageID: "message"}}
 	if ok, err := b.CompareAndSwapDelivery(ctx, row.ID, "stale", "obsolete", `{}`, mappings); err != nil || ok {
 		t.Fatalf("stale commit=%v,%v", ok, err)
 	}

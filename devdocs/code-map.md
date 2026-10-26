@@ -30,7 +30,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/tool/supervisor.go`、`wiring.go`、`lifecycle.go`：Tool 对外入口、组件装配与生命周期。
 - `internal/hook/`：Hook 总管、外部桥接与生命周期；装配内部规则、流水线、控制与插件进程。
 - `internal/platform/module/`：平台适配器、发送与通知、API 能力、补全和运行生命周期。
-- `internal/background/supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go`：对外总管、七项借用依赖、最小能力注入与生命周期协调。公开数据类型按需复用，cronBridge 仅保留存储转换，elnisBridge 仅保留存储与媒体转换。根部持有 Tool／平台订阅，显式启动 Cron Manager，在前置步骤成功后调用 Cron Service.Start 放行平台通知；Elnis 适配与就绪／退出契约仍待落实，不公开内部 Runner，也不提供 Wait。
+- `internal/background/supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go`：对外总管、七项借用依赖、最小能力注入与生命周期协调。公开数据类型按需复用，cronBridge 仅保留存储转换，elnisBridge 仅保留存储与媒体转换。根部持有 Tool／平台订阅，显式启动 Cron Manager，在前置步骤成功后调用 Cron Service.Start 放行平台通知；Elnis 存储与媒体适配已完成，就绪／退出契约仍待落实，不公开内部 Runner，也不提供 Wait。
 - `internal/background/execution/`：任务目录、后台来源准备与 Agent 公开执行入口转接；`cron/`、`elnis/`、`maintenance/` 承接各业务。
 
 <!-- locator:contextinfo -->
@@ -276,9 +276,11 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/background/elnis/http.go`、`service.go`：HTTP runtime、队列、去重分发与中断执行恢复。
 - `internal/background/elnis/llm.go`、`direct.go`、`store.go`：模型／直接流程与事件状态。
 - `internal/background/elnis/auth.go`、`prepare.go`、`targets.go`：鉴权、规范化与目标裁决。
-- `internal/background/elnis/media.go`、`outbox.go`：媒体、持久化投递与恢复。
+- `internal/background/elnis/repository.go`：Elnis 独用事件仓储、最小记录及写入请求；根部 wiring.go 转换 Storage 记录与错误。
+- `internal/background/elnis/media.go`：四项媒体消费能力、输入物化与报告附件受限导入；根部适配媒体中心，导入仅返回稳定 ID。
+- `internal/background/elnis/outbox.go`：报告准备、有序投递与恢复，事务由仓储执行。
 - `internal/storage/sqlite/elnis_event_repository.go`：事件仓储与引用事务。
-- `internal/background/share/`：公共后台类型、JSON 结果、报告构造、接管检查与日志发布。
+- `internal/background/share/`：公共后台类型、JSON 结果、接管检查与日志发布；report.go 提供报告构造及 Cron／Elnis 共用的 ReportMessageMap、MapReportReceipt。
 - [内部架构](elnis-elwisp.md)、[功能说明](../docs/elnis.md)、[配置与协议示例](../docs/elnis-usage.md)。
 
 ## 媒体中心
