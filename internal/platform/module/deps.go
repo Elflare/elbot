@@ -1,3 +1,6 @@
+// deps.go 保留旧总管依赖定义。
+// TODO：按职责迁入根部 deps.go并更新调用方后删除本文件。
+
 package module
 
 import (

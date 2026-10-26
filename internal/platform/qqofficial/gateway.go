@@ -1,3 +1,5 @@
+// gateway.go 管理 QQ 官方平台网关连接和事件接收。
+
 package qqofficial
 
 import (

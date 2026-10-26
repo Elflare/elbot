@@ -1,3 +1,5 @@
+// tui_file_reference.go 处理终端输入中的文件引用交互。
+
 package cli
 
 import (

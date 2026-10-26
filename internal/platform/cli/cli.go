@@ -1,3 +1,5 @@
+// cli.go 实现 CLI 适配器运行、输入接入与消息发送。
+
 package cli
 
 import (

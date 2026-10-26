@@ -1,3 +1,6 @@
+// builtin_test.go 验证旧平台装配或运行行为。
+// TODO：对应行为迁入新边界的测试后删除本文件。
+
 package builtin
 
 import (

@@ -1,3 +1,6 @@
+// platform.go 保留旧平台契约、消息上下文与通知辅助定义。
+// TODO：按职责迁入contracts.go 与 share 对应文件并更新调用方后删除本文件。
+
 package platform
 
 import (

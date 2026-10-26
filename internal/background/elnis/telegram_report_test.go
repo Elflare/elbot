@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"elbot/internal/delivery"
-	"elbot/internal/delivery/dispatch"
+	"elbot/internal/platform/dispatch"
 	"elbot/internal/platform/telegram"
 )
 

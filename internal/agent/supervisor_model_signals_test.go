@@ -10,11 +10,11 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/delivery/dispatch"
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
+	"elbot/internal/platform/dispatch"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 )

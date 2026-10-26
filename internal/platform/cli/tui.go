@@ -1,3 +1,5 @@
+// tui.go 实现终端界面主体和键盘交互。
+
 package cli
 
 import (

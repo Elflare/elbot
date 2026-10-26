@@ -1,3 +1,5 @@
+// clipboard.go 连接系统剪贴板，支持终端复制和粘贴。
+
 package cli
 
 import (

@@ -1,3 +1,5 @@
+// notifications.go 将通知转换为平台消息并实际投递。
+
 package qqonebot
 
 import (

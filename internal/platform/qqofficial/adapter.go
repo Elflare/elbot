@@ -1,3 +1,5 @@
+// adapter.go 协调适配器运行、平台接入与消息处理。
+
 package qqofficial
 
 import (

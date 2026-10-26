@@ -1,3 +1,5 @@
+// message.go 解析入站消息并准备平台输入上下文。
+
 package qqofficial
 
 import (

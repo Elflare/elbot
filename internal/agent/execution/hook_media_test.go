@@ -14,8 +14,8 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/delivery/dispatch"
 	"elbot/internal/events"
+	"elbot/internal/platform/dispatch"
 
 	"elbot/internal/media"
 	"elbot/internal/platform"

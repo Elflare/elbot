@@ -7,10 +7,10 @@ import (
 	"testing"
 
 	"elbot/internal/delivery"
-	"elbot/internal/delivery/dispatch"
 	"elbot/internal/events"
-	"elbot/internal/notification"
 	"elbot/internal/platform"
+	"elbot/internal/platform/dispatch"
+	"elbot/internal/platform/notification"
 	"elbot/internal/signal"
 )
 

@@ -1,3 +1,5 @@
+// tui_mouse.go 处理终端界面的鼠标交互。
+
 package cli
 
 import tea "github.com/charmbracelet/bubbletea"

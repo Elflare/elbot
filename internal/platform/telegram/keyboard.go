@@ -1,3 +1,5 @@
+// keyboard.go 处理平台按钮与键盘交互。
+
 package telegram
 
 import "strings"

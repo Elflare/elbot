@@ -1,3 +1,5 @@
+// remote_server.go 接收远程 CLI 连接并管理服务端交互。
+
 package cli
 
 import (

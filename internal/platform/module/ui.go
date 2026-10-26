@@ -1,3 +1,6 @@
+// ui.go 保留旧 CLI 展示和思考流接线。
+// TODO：按职责迁入根部 agent.go、send.go 与 wiring.go并更新调用方后删除本文件。
+
 package module
 
 import (

@@ -12,7 +12,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/notification"
+	"elbot/internal/platform/notification"
 	"log/slog"
 )
 

@@ -1,4 +1,7 @@
-package elvena
+// calls.go 承接 Elvena 的平台调用与能力映射，保留现有逻辑。
+// TODO：适配器子包改造时，将平台映射拆入各自的 capability_api.go。
+
+package dispatch
 
 import (
 	"context"
@@ -7,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"elbot/internal/elvena"
 )
 
 const (
@@ -23,10 +28,10 @@ type PlatformCallerResolver interface {
 	PlatformCaller(platform string) (PlatformAPICaller, bool)
 }
 
-func ExecuteCalls(ctx context.Context, resolver PlatformCallerResolver, calls []Call) ([]CallResult, error) {
-	results := make([]CallResult, 0, len(calls))
+func ExecuteCalls(ctx context.Context, resolver PlatformCallerResolver, calls []elvena.Call) ([]elvena.CallResult, error) {
+	results := make([]elvena.CallResult, 0, len(calls))
 	for _, call := range calls {
-		result := CallResult{Call: call}
+		result := elvena.CallResult{Call: call}
 		resp, err := ExecuteCall(ctx, resolver, call)
 		if err != nil {
 			result.Error = err.Error()
@@ -39,7 +44,7 @@ func ExecuteCalls(ctx context.Context, resolver PlatformCallerResolver, calls []
 	return results, nil
 }
 
-func ExecuteCall(ctx context.Context, resolver PlatformCallerResolver, call Call) (json.RawMessage, error) {
+func ExecuteCall(ctx context.Context, resolver PlatformCallerResolver, call elvena.Call) (json.RawMessage, error) {
 	if resolver == nil {
 		return nil, fmt.Errorf("platform api caller resolver is not configured")
 	}
@@ -64,27 +69,27 @@ type RawCall struct {
 	Params   map[string]any
 }
 
-func ResolveRawCall(call Call) (RawCall, error) {
+func ResolveRawCall(call elvena.Call) (RawCall, error) {
 	kind := call.Kind
 	if kind == "" {
 		switch {
 		case strings.TrimSpace(call.Name) != "":
-			kind = CallKindCapability
+			kind = elvena.CallKindCapability
 		case strings.TrimSpace(call.API) != "":
-			kind = CallKindRaw
+			kind = elvena.CallKindRaw
 		}
 	}
 	switch kind {
-	case CallKindRaw:
+	case elvena.CallKindRaw:
 		return rawCall(call)
-	case CallKindCapability:
+	case elvena.CallKindCapability:
 		return mapCapability(call)
 	default:
 		return RawCall{}, fmt.Errorf("unsupported call kind %q", kind)
 	}
 }
 
-func rawCall(call Call) (RawCall, error) {
+func rawCall(call elvena.Call) (RawCall, error) {
 	api := strings.TrimSpace(call.API)
 	if api == "" {
 		return RawCall{}, fmt.Errorf("raw call api is required")
@@ -92,7 +97,7 @@ func rawCall(call Call) (RawCall, error) {
 	return RawCall{Platform: callPlatform(call), API: api, Params: cloneParams(call.Params)}, nil
 }
 
-func mapCapability(call Call) (RawCall, error) {
+func mapCapability(call elvena.Call) (RawCall, error) {
 	name := strings.TrimSpace(call.Name)
 	switch name {
 	case CapabilityMessageRecall:
@@ -106,7 +111,7 @@ func mapCapability(call Call) (RawCall, error) {
 	}
 }
 
-func mapMessageRecall(call Call) (RawCall, error) {
+func mapMessageRecall(call elvena.Call) (RawCall, error) {
 	platform := callPlatform(call)
 	params := cloneParams(call.Params)
 	messageID, err := requiredIntParam(params, "message_id")
@@ -127,7 +132,7 @@ func mapMessageRecall(call Call) (RawCall, error) {
 	}
 }
 
-func mapMemberMute(call Call) (RawCall, error) {
+func mapMemberMute(call elvena.Call) (RawCall, error) {
 	platform := callPlatform(call)
 	params := cloneParams(call.Params)
 	userID, err := requiredIntParam(params, "user_id")
@@ -172,7 +177,7 @@ func mapMemberMute(call Call) (RawCall, error) {
 	}
 }
 
-func mapChatLeave(call Call) (RawCall, error) {
+func mapChatLeave(call elvena.Call) (RawCall, error) {
 	platform := callPlatform(call)
 	params := cloneParams(call.Params)
 	switch platform {
@@ -197,14 +202,14 @@ func mapChatLeave(call Call) (RawCall, error) {
 	}
 }
 
-func callPlatform(call Call) string {
+func callPlatform(call elvena.Call) string {
 	if platform := strings.TrimSpace(call.Platform); platform != "" {
 		return platform
 	}
 	return strings.TrimSpace(call.Target.Platform)
 }
 
-func targetOrParamID(target Target, params map[string]any, key string) (int64, error) {
+func targetOrParamID(target elvena.Target, params map[string]any, key string) (int64, error) {
 	if target.ID != "" {
 		return strconv.ParseInt(strings.TrimSpace(target.ID), 10, 64)
 	}

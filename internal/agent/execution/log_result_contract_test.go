@@ -11,9 +11,9 @@ import (
 	agentoutput "elbot/internal/agent/output"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/delivery/dispatch"
 	"elbot/internal/events"
 	"elbot/internal/platform"
+	"elbot/internal/platform/dispatch"
 	"elbot/internal/signal"
 )
 

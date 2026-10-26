@@ -1,3 +1,6 @@
+// notifications.go 保留旧通知装配与平台故障通知。
+// TODO：按职责迁入根部装配与内部通知组件并更新调用方后删除本文件。
+
 package module
 
 import (
@@ -7,8 +10,8 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
-	"elbot/internal/notification"
 	"elbot/internal/platform"
+	"elbot/internal/platform/notification"
 	"fmt"
 )
 

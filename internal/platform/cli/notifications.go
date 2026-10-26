@@ -1,3 +1,5 @@
+// notifications.go 将通知投递到对应的 CLI 展示目标。
+
 package cli
 
 import (

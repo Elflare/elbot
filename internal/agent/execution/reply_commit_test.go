@@ -13,9 +13,9 @@ import (
 	agentshare "elbot/internal/agent/share"
 
 	"elbot/internal/delivery"
-	"elbot/internal/delivery/dispatch"
 	"elbot/internal/events"
 	"elbot/internal/platform"
+	"elbot/internal/platform/dispatch"
 
 	"elbot/internal/security"
 	"elbot/internal/session"

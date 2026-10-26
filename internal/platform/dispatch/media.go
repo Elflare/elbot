@@ -1,3 +1,5 @@
+// media.go 准备发送媒体并处理投递后的媒体缓存与回执关联。
+
 package dispatch
 
 import (

@@ -1,3 +1,5 @@
+// client.go 执行平台原生请求并封装已有协议操作。
+
 package qqofficial
 
 import (

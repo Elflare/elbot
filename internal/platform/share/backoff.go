@@ -1,4 +1,6 @@
-package platform
+// backoff.go 提供平台重连共用的指数退避和重复告警控制。
+
+package share
 
 import "time"
 

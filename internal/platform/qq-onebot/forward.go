@@ -1,3 +1,5 @@
+// forward.go 处理 OneBot 合并转发展开和长消息发送。
+
 package qqonebot
 
 import (

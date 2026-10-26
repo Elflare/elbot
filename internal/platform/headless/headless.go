@@ -1,3 +1,5 @@
+// headless.go 提供无交互主平台及运行等待行为。
+
 package headless
 
 import (

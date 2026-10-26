@@ -4,9 +4,9 @@ import (
 	"context"
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/contextinfo"
-	"elbot/internal/delivery/dispatch"
 	"elbot/internal/notification/rules"
 	"elbot/internal/platform"
+	"elbot/internal/platform/dispatch"
 	"testing"
 )
 

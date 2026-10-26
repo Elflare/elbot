@@ -1,3 +1,5 @@
+// conversion.go 转换 OneBot 消息片段与内部消息格式。
+
 package qqonebot
 
 import (

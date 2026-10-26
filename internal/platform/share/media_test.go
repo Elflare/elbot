@@ -1,4 +1,6 @@
-package platform
+// media_test.go 验证随组件迁入的既有行为。
+
+package share
 
 import (
 	"reflect"

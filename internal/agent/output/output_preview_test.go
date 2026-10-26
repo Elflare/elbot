@@ -4,7 +4,7 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
-	"elbot/internal/notification"
+	"elbot/internal/platform/notification"
 	"elbot/internal/signal"
 	"errors"
 	"slices"

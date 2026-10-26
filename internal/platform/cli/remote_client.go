@@ -1,3 +1,5 @@
+// remote_client.go 建立远程 CLI 连接并运行客户端，识别连接阶段失败。
+
 package cli
 
 import (

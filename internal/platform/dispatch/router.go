@@ -1,3 +1,5 @@
+// router.go 选择目标适配器并路由发送请求，协调实际投递与回执。
+
 // Package dispatch owns physical delivery, platform routing and output media.
 package dispatch
 

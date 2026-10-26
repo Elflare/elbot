@@ -1,4 +1,6 @@
-package platform
+// media.go 序列化历史消息片段并清洗媒体来源，避免存入临时或敏感地址。
+
+package share
 
 import (
 	"encoding/json"

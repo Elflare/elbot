@@ -1,3 +1,5 @@
+// reference.go 解析平台引用索引并关联真实消息 ID，登记入站和发送引用关系。
+
 package qqofficial
 
 import (

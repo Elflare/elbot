@@ -1,3 +1,5 @@
+// format.go 转换 Telegram 消息文本与平台格式。
+
 package telegram
 
 import (

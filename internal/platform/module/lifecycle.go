@@ -1,3 +1,6 @@
+// lifecycle.go 保留旧平台运行与退出管理。
+// TODO：按职责迁入根部 lifecycle.go并更新调用方后删除本文件。
+
 package module
 
 import "context"

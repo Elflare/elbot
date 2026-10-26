@@ -1,3 +1,5 @@
+// send.go 发送 QQ 官方平台消息并整理发送回执。
+
 package qqofficial
 
 import (

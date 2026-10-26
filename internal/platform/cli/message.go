@@ -1,3 +1,5 @@
+// message.go 构造 CLI 消息来源与输入上下文。
+
 package cli
 
 import (

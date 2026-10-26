@@ -1,3 +1,5 @@
+// config_definition.go 声明 CLI 配置字段与默认定义。
+
 package cli
 
 import "elbot/internal/config"

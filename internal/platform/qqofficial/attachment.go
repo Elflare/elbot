@@ -1,3 +1,5 @@
+// attachment.go 处理平台附件解析与媒体接入。
+
 package qqofficial
 
 import (

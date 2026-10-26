@@ -1,3 +1,5 @@
+// remote_protocol.go 定义远程 CLI 消息与通信协议。
+
 package cli
 
 import (

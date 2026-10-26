@@ -1,3 +1,5 @@
+// token.go 管理 QQ 官方平台访问令牌。
+
 package qqofficial
 
 import (

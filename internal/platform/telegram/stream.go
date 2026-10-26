@@ -1,3 +1,5 @@
+// stream.go 处理 Telegram 流式发送、分页与回执。
+
 package telegram
 
 import (

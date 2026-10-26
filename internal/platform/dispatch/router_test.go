@@ -1,3 +1,5 @@
+// router_test.go 验证随组件迁入的既有行为。
+
 package dispatch
 
 import (

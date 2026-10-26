@@ -1,3 +1,5 @@
+// status_format.go 将运行状态转换为 CLI 展示文案。
+
 package cli
 
 import (

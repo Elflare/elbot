@@ -1,3 +1,5 @@
+// config_definition.go 声明平台配置字段与默认定义。
+
 package qqonebot
 
 import "elbot/internal/config"

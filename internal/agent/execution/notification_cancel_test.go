@@ -8,7 +8,7 @@ import (
 	agentoutput "elbot/internal/agent/output"
 
 	"elbot/internal/events"
-	"elbot/internal/notification"
+	"elbot/internal/platform/notification"
 
 	"elbot/internal/signal"
 )

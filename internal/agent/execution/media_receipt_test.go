@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"elbot/internal/delivery"
-	"elbot/internal/delivery/dispatch"
 	"elbot/internal/events"
 	"elbot/internal/media"
 	"elbot/internal/platform"
+	"elbot/internal/platform/dispatch"
 	"elbot/internal/testutil"
 )
 

@@ -1,3 +1,5 @@
+// tui_copy.go 处理终端内容的选择与复制。
+
 package cli
 
 import (

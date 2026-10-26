@@ -488,7 +488,7 @@ Agent 通过 `RegisterHooks(agent.Points)` 接入一组提供方回调，返回�
 <a id="output"></a>
 ## 输出与发送
 
-正文、媒体、Hook 输出和后台报告经 `delivery/dispatch.Router → 平台发送器`；SendChat 回复原会话，SendTo 发送明确目标，返回实际 Receipt、LogResult 与 error。
+正文、媒体、Hook 输出和后台报告的发送路由实现在 `platform/dispatch.Router → 平台发送器`；SendChat 回复原会话，SendTo 发送明确目标，返回实际 Receipt、LogResult 与 error。
 
 推理文本流契约由 `delivery.ReasoningStream` 定义，提供 `Append` 和 `Finish`；Agent 消费该输出能力，Platform 实现展示。两侧引用同一公共契约，Platform 无需为推理流返回类型依赖 Agent 的 `dialogue` 包。
 
@@ -502,7 +502,7 @@ Agent 通过 `RegisterHooks(agent.Points)` 接入一组提供方回调，返回�
 
 ```mermaid
 flowchart TD
-    P["platform 各适配器<br/>实际发送与回执、来源 LogResult"] --> R["delivery/dispatch/router.go、media.go<br/>路由、媒体处理与送达日志"]
+    P["platform 各适配器<br/>实际发送与回执、来源 LogResult"] --> R["platform/dispatch/router.go、media.go<br/>路由、媒体处理与送达日志"]
     R --> B["agent/dialogue/reply_commit.go<br/>主对话回复与回执关联"]
     R --> BG["cron/delivery.go、elnis/outbox.go<br/>后台报告与投递状态"]
     B --> T["agent/dialogue/runner.go<br/>主对话终态归一与统一失败通知"]
@@ -516,6 +516,8 @@ flowchart TD
 ## 平台适配
 
 平台负责输入归一化、历史与输出落地，支持本地／远程 CLI、QQ OneBot、QQ Official、Telegram 和 headless。
+
+Platform 根部与内部协作契约已建立文件骨架；发送路由、通知管理、公共辅助和 Elvena 平台调用实现已归入 Platform 对应子包。`public_api.go` 是对外调用入口骨架，`share/adapter_api.go` 是内部调用契约骨架，各适配器的 `capability_api.go` 是通用能力实现骨架。旧 `platform.go`、`module/`、`builtin/` 保留并标注删除；类型边界与调用方迁移尚未完成，当前目录骨架不表示整线已经编译接通。
 
 - Platform Module 管理适配器；服务模式各平台退出互不影响，全部退出后仍等待外部停止，直接启动的交互 CLI 拥有应用退出职责。非预期退出记录错误，并异步通知其他运行平台的配置超管。
 - CLI 拥有私有展示目标、状态订阅、合并和格式化；远程默认回复固定原连接，断开即失败，显式目标按多连接规则发送。

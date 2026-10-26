@@ -1,3 +1,5 @@
+// refcontext.go 恢复引用消息并整理上下文，判断会话续接或分叉。
+
 package refcontext
 
 import (

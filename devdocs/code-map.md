@@ -29,7 +29,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/`：`Supervisor` 是 App 对接入口；`supervisor.go` 定义总管与公开能力，`deps.go` 声明共享资源和 `ToolCapabilities`、`HookCapabilities`、`PlatformCapabilities` 三类业务接口，`wiring.go` 拆分配置、构造线内组件并接线，`lifecycle.go` 管理启停，`signals.go` 持有通知与状态订阅。
 - `internal/tool/supervisor.go`、`wiring.go`、`lifecycle.go`：Tool 对外入口、组件装配与生命周期。
 - `internal/hook/`：Hook 总管、外部桥接与生命周期；装配内部规则、流水线、控制与插件进程。
-- `internal/platform/module/`：平台适配器、发送与通知、API 能力、补全和运行生命周期。
+- `internal/platform/`：根部已建立对外与装配骨架，发送路由和通知管理位于内部子包；`module/`、`builtin/` 保留待拆分的旧实现并标注删除，调用边界尚未接通。
 - `internal/background/supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go`：对外总管、七项借用依赖、最小能力注入与生命周期协调。cronBridge 转换存储，elnisBridge 转换存储与媒体。根部持有 Tool／平台订阅，显式启动 Cron Manager，Elnis 就绪后放行 Cron 平台通知；Wait 及时上报整线致命故障，BeginClose 取消组件与订阅，Done 等待实际退出，不公开内部 Runner。
 - `internal/background/execution/`：任务目录、后台来源准备与 Agent 公开执行入口转接；`cron/`、`elnis/`、`maintenance/` 承接各业务。
 
@@ -208,8 +208,8 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 <!-- locator:notification -->
 ## 输出、投递与通知
 
-- `internal/delivery/delivery.go`：输出意图、目标、回执及公共 `MessageStream`、`ReasoningStream` 契约；`internal/delivery/dispatch/` 负责发送路由与媒体准备。
-- `internal/notification/manager.go`、`rules/`：通知信号、目标、绑定校验、平台队列与提示规则。
+- `internal/delivery/delivery.go`：输出意图、目标、回执及公共 `MessageStream`、`ReasoningStream` 契约；`internal/platform/dispatch/` 负责发送路由与媒体准备。
+- `internal/platform/notification/manager.go`：通知信号、目标、绑定校验与平台队列；`internal/notification/rules/` 保留 Agent 使用的提示规则。
 - `internal/platform/module/notifications.go`：通知管理器及平台订阅装配。
 - `internal/platform/{cli,qq-onebot,qqofficial,telegram}/notifications.go`：平台通知协议与实际发送。
 - `internal/agent/output/output.go`、`internal/agent/execution/turn_output.go`、`execution_output.go`：输出 Hook、前后台策略、接管刷新与流式回执合并。
@@ -218,8 +218,13 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 <!-- locator:platform -->
 ## 平台适配
 
-- `internal/platform/platform.go`、`internal/platform/builtin/`：平台契约与装配。
-- `internal/platform/media.go`、`internal/platform/refcontext/`：历史 segments、来源清洗与引用恢复。
+- `internal/platform/{supervisor,deps,wiring,lifecycle}.go`：总管、借用依赖、装配与生命周期骨架，尚未实现接线。
+- `internal/platform/{contracts,agent,send,public_api,history,client,config}.go`：公开契约、Agent 接入、发送、能力调用、历史、客户端和配置汇总的职责骨架。
+- `internal/platform/share/`：内部契约与共享辅助；`adapter_api.go` 定义调用契约的职责，`config.go`、`media.go`、`backoff.go` 已迁入现有辅助实现，消息类型和调用方仍待对接。
+- `internal/platform/dispatch/{router,media}.go`：发送路由与媒体准备；`calls.go` 承接 Elvena 平台调用与映射实现，尚未拆入各适配器。
+- `internal/platform/{telegram,qq-onebot}/capability_api.go`：通用能力的平台实现骨架。
+- `internal/platform/refcontext/refcontext.go`：引用消息恢复与上下文处理。
+- `internal/platform/platform.go`、`module/`、`builtin/`：保留尚未拆分的旧实现，文件头标注迁移后删除；不作为新对外边界。
 - `internal/platform/cli/`：本地／远程 CLI 与 TUI；`ui.go`、`status.go`、`reasoning.go`、`status_format.go` 分别负责展示目标、状态合并、思考流和状态文案。
 - `internal/platform/module/ui.go`：CLI 状态订阅与思考能力装配。
 - `internal/platform/qq-onebot/`：协议转换、forward 展开、长消息与回执。
@@ -293,7 +298,7 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/media/platform.go`、`history.go`：平台媒体、历史批量获取与跨库对账。
 - `internal/storage/sqlite/media_repository.go`：元数据与签名缓存。
 - `internal/tool/builtin/chat_history.go`、`get_media.go`、`view_image.go`：历史查询、媒体获取与 Responses 看图。
-- `internal/delivery/dispatch/media.go`：输出媒体准备与回执缓存。
+- `internal/platform/dispatch/media.go`：输出媒体准备与回执缓存。
 
 <!-- locator:cron -->
 ## Cron 与维护

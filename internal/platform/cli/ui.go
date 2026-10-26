@@ -1,3 +1,5 @@
+// ui.go 接入 CLI 展示能力并管理状态订阅与展示生命周期。
+
 package cli
 
 import (

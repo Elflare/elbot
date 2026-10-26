@@ -1,3 +1,6 @@
+// builtin.go 保留旧内置平台构造与配置汇总。
+// TODO：按职责迁入根部 wiring.go、config.go并更新调用方后删除本文件。
+
 package builtin
 
 import (

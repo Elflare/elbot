@@ -1,3 +1,6 @@
+// module.go 保留旧平台总管与装配实现。
+// TODO：按职责迁入根部 supervisor.go、wiring.go 等文件并更新调用方后删除本文件。
+
 package module
 
 import (
@@ -11,12 +14,12 @@ import (
 	"elbot/internal/completion"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-	"elbot/internal/delivery/dispatch"
 	globalevents "elbot/internal/events"
-	"elbot/internal/notification"
 	"elbot/internal/platform"
 	platformbuiltin "elbot/internal/platform/builtin"
 	"elbot/internal/platform/cli"
+	"elbot/internal/platform/dispatch"
+	"elbot/internal/platform/notification"
 )
 
 type Module struct {

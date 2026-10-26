@@ -1,3 +1,5 @@
+// transport.go 管理 OneBot 连接并执行原生协议请求。
+
 package qqonebot
 
 import (

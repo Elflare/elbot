@@ -1,3 +1,6 @@
+// platform_caller.go 保留旧平台原生调用对象查找入口。
+// TODO：按职责迁入public_api.go 与内部调用路由并更新调用方后删除本文件。
+
 package module
 
 import (

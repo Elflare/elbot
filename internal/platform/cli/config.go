@@ -1,3 +1,5 @@
+// config.go 解析和规范化 CLI 配置。
+
 package cli
 
 import (

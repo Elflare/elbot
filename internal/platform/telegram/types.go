@@ -1,3 +1,5 @@
+// types.go 定义平台协议数据类型。
+
 package telegram
 
 import "encoding/json"

@@ -1,3 +1,5 @@
+// reasoning.go 处理思考文本流的 CLI 展示与收尾。
+
 package cli
 
 import (

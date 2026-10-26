@@ -1,3 +1,5 @@
+// manager.go 管理通知订阅、逐平台队列和投递生命周期。
+
 // Package notification owns routing and lifetime of short runtime notifications.
 package notification
 

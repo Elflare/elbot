@@ -1,3 +1,5 @@
+// config.go 解析和规范化平台配置。
+
 package telegram
 
 import (
