@@ -84,6 +84,8 @@ Agent 公开 RunBackground、CopyBackground、CleanupSessions、SessionTakenOver
 
 Elvena 请求、Elnis 声明生成与展开、Background 共享请求统一使用 Tool 根包公开类型。工具声明的 JSON 标签保持协议字段名和空值省略规则，CanonicalName、EventKey 由 Elnis 生成，不参与外部声明 JSON。Runner 只准备任务目录与后台来源，并调用 Agent.RunBackground；会话、权限、模型和工具预载归 Agent，报告解析和重试归 Cron、Elnis。
 
+Elvena／Elnis 的文件职责与迁移 TODO 已标注，定义和行为尚未迁移。目标边界为 Elvena 保留公共协议与来源契约，Elnis 持有内部 Event、目标转换、正文准备及执行逻辑；Call 将收敛为 Platform、API、Params，无调用方的 CallResult、旧总线及输出辅助逻辑待删除。现有 ResolveRawCall 执行依赖仍待清理，具体文件归属见 [Elnis 内部架构](elnis-elwisp.md#依赖边界)。
+
 `platform.RunClient(ctx, cfg, name)` 完成连接选择、运行和结果分类，返回 `ClientResult{Kind, Err}`：
 
 | 结果 | 契约 |

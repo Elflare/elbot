@@ -298,14 +298,17 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 <!-- locator:elnis -->
 ## Elnis / Elvena / Elwisp
 
-- `internal/elvena/`、`internal/background/elnis/types.go`：公共协议与 Elnis 类型；工具声明直接使用 Tool 根包公开类型。
+- `internal/elvena/types.go`、`origin.go`：公共协议数据与来源契约；工具声明使用 Tool 根包公开类型。旧能力分发字段、无调用方的 CallResult 和内部 Event 仍待清理或迁出。
+- `internal/elvena/delivery.go`、`dispatcher.go`：待清理的投递辅助与无调用总线；已标注迁移 TODO，尚未删除。
+- `internal/background/elnis/types.go`：引用公共协议类型，待接收自有 Event 定义并替换当前别名。
 - `internal/background/elnis/http.go`：HTTP 构造、路由、协议与连接跟踪。
 - `internal/background/elnis/lifecycle.go`：同步监听就绪、队列与 workers、运行故障观察、实际退出和批量终态收尾。
 - `internal/background/elnis/service.go`：去重分发与中断执行恢复。
-- `internal/background/elnis/llm.go`、`direct.go`、`store.go`：模型／直接流程与事件状态。
-- `internal/background/elnis/auth.go`、`prepare.go`、`targets.go`：鉴权、规范化与目标裁决。
+- `internal/background/elnis/llm.go`、`store.go`：模型流程与事件状态。
+- `internal/background/elnis/direct.go`：原生调用、直接投递与完成状态；待移除 ResolveRawCall 依赖，保留平台选择与注入的原生调用链。
+- `internal/background/elnis/auth.go`、`prepare.go`、`targets.go`：鉴权、规范化与目标裁决；targets.go 待接收 Elvena 的投递目标转换逻辑。
 - `internal/background/elnis/repository.go`：Elnis 独用事件仓储、最小记录及写入请求；根部 wiring.go 转换 Storage 记录与错误。
-- `internal/background/elnis/media.go`：四项媒体消费能力、输入物化与报告附件受限导入；根部适配媒体中心，导入仅返回稳定 ID。
+- `internal/background/elnis/media.go`：四项媒体消费能力、输入物化、直接输出准备与报告附件受限导入；待接收 Elvena 的正文组装逻辑。根部适配媒体中心，导入仅返回稳定 ID。
 - `internal/background/elnis/outbox.go`：报告准备、有序投递与恢复，事务由仓储执行。
 - `internal/storage/sqlite/elnis_event_repository.go`：事件仓储与引用事务。
 - `internal/background/share/`：公共后台类型、JSON 结果、接管检查与日志发布；report.go 提供报告构造及 Cron／Elnis 共用的 ReportMessageMap、MapReportReceipt。

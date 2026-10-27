@@ -1,3 +1,6 @@
+// types.go 引用公共协议类型，并承接 Elnis 内部事件状态。
+// TODO：将 Event 从 elvena 迁入本文件，替换当前别名；公共协议类型仍引用 elvena。
+
 package elnis
 
 import "elbot/internal/elvena"

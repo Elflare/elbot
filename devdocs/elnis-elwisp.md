@@ -37,6 +37,26 @@ Elnis 位于 `internal/background/elnis`，通过 `background/share.Runner` 契�
 
 ## 依赖边界
 
+现有文件已标注职责与迁移 TODO，以下为待落实的归属：Elvena 的 types.go 保留公共请求、响应、片段、目标及原生调用声明，origin.go 保留来源契约；内部 Event 从 Elvena 迁入 Elnis/types.go。投递目标转换从 Elvena/delivery.go 归入 Elnis/targets.go，正文组装归入 Elnis/media.go；其余无调用辅助逻辑、CallResult 及 dispatcher.go 中的无调用总线待删除。本阶段只完成注释骨架，旧定义与 ResolveRawCall 执行依赖仍在。
+
+```mermaid
+flowchart TD
+    T["elvena/types.go：公共协议数据"]
+    O["elvena/origin.go：来源契约"]
+    E["elnis/types.go：内部事件状态（待迁入）"]
+    D["elnis/direct.go：原生调用、直接投递与完成状态"]
+    M["elnis/media.go：媒体准备与正文组装"]
+    G["elnis/targets.go：目标裁决与投递目标转换"]
+    E --> T
+    E --> O
+    D --> E
+    D --> M
+    D --> G
+    X["elvena/delivery.go：迁移后删除"] -.-> M
+    X -.-> G
+    B["elvena/dispatcher.go：无调用方，待删除"]
+```
+
 Elnis 的 repository.go 定义 EventRepository、最小事件／投递记录和独立写入请求，Background 根部 elnisBridge 转换 Storage 类型与未找到错误。JSON 由 Elnis 解释，终态引用清理、报告准备及回执映射由 Storage 原子提交。平台调用由根部注入 CallPlatformAPI 函数，Elnis 只提交平台名称、API 和参数。
 
 Cron 与 Elnis 共用 share/report.go 的 ReportMessageMap 和 MapReportReceipt；只映射 SentMessages，不根据未归属的消息 ID 猜测发送位置。

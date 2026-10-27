@@ -1,3 +1,6 @@
+// media.go 定义最小媒体能力，准备事件输入、直接输出与报告附件。
+// TODO：接收 elvena.DirectText 的正文组装逻辑，与直接输出准备保持在同一文件。
+
 package elnis
 
 import (

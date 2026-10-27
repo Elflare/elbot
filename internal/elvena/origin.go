@@ -1,3 +1,5 @@
+// origin.go 定义调用来源及其校验、标识，不承担事件鉴权或执行。
+
 package elvena
 
 import (

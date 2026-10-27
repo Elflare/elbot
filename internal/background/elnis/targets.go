@@ -1,3 +1,6 @@
+// targets.go 裁决启用平台与禁用目标，解析事件投递目标。
+// TODO：接收 elvena.Target.ToDeliveryTarget 的转换逻辑，统一承担投递目标转换。
+
 package elnis
 
 import (

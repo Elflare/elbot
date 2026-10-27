@@ -1,3 +1,6 @@
+// dispatcher.go 保留旧事件分发接口与总线；Dispatcher、Bus 当前没有调用方。
+// TODO：删除本文件，不新增替代总线或兼容包装。
+
 package elvena
 
 import (

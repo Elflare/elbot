@@ -1,3 +1,7 @@
+// delivery.go 保留尚未迁出的投递目标转换、正文组装与旧输出辅助逻辑。
+// TODO：ToDeliveryTarget 的转换逻辑归入 background/elnis/targets.go，DirectText 的正文组装归入 background/elnis/media.go。
+// TODO：迁移调用方后删除其余无调用辅助逻辑及本文件，公共协议不承担投递准备。
+
 package elvena
 
 import (

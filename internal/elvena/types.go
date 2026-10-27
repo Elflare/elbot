@@ -1,3 +1,7 @@
+// types.go 定义公共请求、响应、片段、目标与平台调用声明。
+// TODO：Call 收敛为 Platform、API、Params，删除旧能力分发字段、CallKind 和无调用方的 CallResult。
+// TODO：Event 的去重、解析目标及接收时间等运行状态迁入 background/elnis/types.go。
+
 package elvena
 
 import (

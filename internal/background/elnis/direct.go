@@ -1,3 +1,7 @@
+// direct.go 管理原生调用、直接投递与事件完成状态。
+// TODO：删除 ResolveRawCall 依赖，直接使用注入的 CallPlatformAPI；保留显式平台优先、否则首个解析目标平台的选择规则。
+// 调用顺序、失败与取消结果归 Elnis；原生协议转发归 Platform，不在这里恢复能力映射。
+
 package elnis
 
 import (
