@@ -3,6 +3,8 @@ package tool
 
 import (
 	"context"
+	"elbot/internal/delivery"
+	"elbot/internal/platform"
 
 	"elbot/internal/media"
 	"elbot/internal/modelmgr"
@@ -17,8 +19,9 @@ type SupervisorDeps struct {
 	Media      *media.Manager       // 借用媒体管理能力，交付策略由 Media 处理。
 	Permission *security.Permission // 统一提供工具访问和执行确认策略。
 	Platform   interface {
-		SearchChatHistory(context.Context, storage.ChatHistorySearchRequest) ([]storage.ChatMessage, error)
-		ChatHistoryAround(context.Context, storage.ChatHistoryAroundRequest) ([]storage.ChatMessage, error)
-		GetChatHistoryMessage(ctx context.Context, platform, scopeID, messageID string) (*storage.ChatMessage, error)
-	} // 聊天历史及其存储由 Platform 持有，Tool 只查询消息。
+		SearchChatHistory(context.Context, platform.ChatHistorySearchRequest) ([]platform.ChatMessage, error)
+		ChatHistoryAround(context.Context, platform.ChatHistoryAroundRequest) ([]platform.ChatMessage, error)
+		GetChatHistoryMessage(ctx context.Context, platform, scopeID, messageID string) (*platform.ChatMessage, error)
+		ResolveMedia(context.Context, string, media.PlatformMedia, int64) (delivery.Source, error)
+	} // 历史存储和适配器归 Platform；Tool 只借用查询和媒体来源解析能力。
 }

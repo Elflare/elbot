@@ -3,6 +3,7 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	toolshare "elbot/internal/tool/share"
@@ -36,6 +37,8 @@ type ReplyToChatHistoryMessageTool struct {
 }
 
 type searchChatHistoryArgs struct {
+	Platform json.RawMessage `json:"platform"` // 保留字段是否提供，显式 null 也交查询层按空值处理。
+	Scope    json.RawMessage `json:"scope"`    // 聊天范围的显式输入，仅后台允许。
 	// Full 只解除单条消息限长，查询结果总量仍受限制。
 	Full      bool   `json:"full"`
 	Limit     int    `json:"limit"`
@@ -93,13 +96,15 @@ func (ReplyToChatHistoryMessageTool) Schema() llm.ToolSchema {
 
 func searchChatHistoryBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("search_chat_history").
-		Description("查询当前平台当前群聊或私聊的聊天历史，可按关键词、用户和时间过滤；返回的 #message_id 可继续查看上下文或引用回复。").
+		Description("查询聊天历史，可按关键词、用户和时间过滤。前台只能查询当前聊天，禁止指定 platform、scope；后台必须同时指定非空的 platform、scope。").
 		Risk(toolshare.RiskLow).
 		Tags("chat").
 		DependsOn("get_chat_history_around", "reply_to_chat_history_message", "get_media").
+		String("platform", "仅后台任务必填，指定目标平台，例如 qqofficial、qqonebot、telegram；前台禁止提供。").
+		String("scope", "仅后台任务必填，指定目标聊天范围，例如 QQ 官方私聊 c2c:用户openid、群聊 group:群ID；前台禁止提供。").
 		String("query", "按消息正文搜索的关键词；可传多个搜索词，用空格、逗号、中文逗号、竖线或换行分隔；留空表示不过滤。").
 		String("query_mode", "多个搜索词的匹配规则：or 或 and；默认 or。").
-		String("user", "按用户过滤。可传平台用户 ID、@ID、昵称，或“我”。").
+		String("user", "按用户过滤：同时匹配平台用户 ID（精确相等）或昵称（包含文本）；留空不筛选。不解析 @ 前缀或“我”等特殊写法。").
 		String("since", "起始时间。支持 Unix 时间戳、YYYY-MM-DD、YYYY-MM-DD HH:MM、YYYY-MM-DD HH:MM:SS；留空表示不限制。").
 		String("until", "结束时间。格式同 since；留空表示不限制。").
 		Integer("hours", "查询最近多少小时。since 为空时生效；0 表示不限制。").
@@ -138,34 +143,53 @@ func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.Ca
 			return nil, err
 		}
 	}
+	request := toolshare.SearchRequest{
+		Query: args.Query, QueryMode: args.QueryMode, User: args.User,
+		Since: args.Since, Until: args.Until, Hours: args.Hours, Days: args.Days, Limit: args.Limit,
+	}
+	if len(args.Platform) > 0 {
+		request.Platform = new(string)
+		if err := json.Unmarshal(args.Platform, request.Platform); err != nil {
+			return nil, fmt.Errorf("parse platform: %w", err)
+		}
+	}
+	if len(args.Scope) > 0 {
+		request.Scope = new(string)
+		if err := json.Unmarshal(args.Scope, request.Scope); err != nil {
+			return nil, fmt.Errorf("parse scope: %w", err)
+		}
+	}
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
 		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
-		rows, err := t.history.Search(ctx, toolshare.SearchRequest{
-			Query: args.Query, QueryMode: args.QueryMode, User: args.User,
-			Since: args.Since, Until: args.Until, Hours: args.Hours, Days: args.Days, Limit: args.Limit,
-		})
-		if errors.Is(err, toolshare.ErrNoChatContext) || errors.Is(err, toolshare.ErrNoCurrentUser) {
+		rows, err := t.history.Search(ctx, request)
+		if errors.Is(err, toolshare.ErrNoChatContext) {
 			return &toolshare.Result{Content: err.Error()}, err.Error(), nil
 		}
 		if err != nil {
 			return nil, err.Error(), err
 		}
+		label := "当前聊天历史"
+		if contextinfo.BackgroundContext(ctx) {
+			label = fmt.Sprintf("聊天历史（platform=%s，scope=%s）", strings.TrimSpace(*request.Platform), strings.TrimSpace(*request.Scope))
+		}
 		if len(rows) == 0 {
-			result := &toolshare.Result{Content: "没有查到符合条件的当前聊天历史记录。"}
+			result := &toolshare.Result{Content: "没有查到符合条件的" + label + "记录。"}
 			return result, "returned=0\ncontent:\n" + result.Content, nil
 		}
-		lines := []string{fmt.Sprintf("当前聊天历史查询结果：返回 %d 条。", len(rows))}
+		lines := []string{fmt.Sprintf("%s查询结果：返回 %d 条。", label, len(rows))}
 		logLines := []string{lines[0]}
 		for _, row := range rows {
 			line, preview := formatChatHistoryMedia(row, "", args.Full)
 			lines = append(lines, line)
 			logLines = append(logLines, preview)
 		}
-		lines = append(lines, "仅在需要媒体时调用 get_media(message_id=[\"...\"], media_index=[[1]]) 获取媒体 ID；可用 get_chat_history_around(message_id=\"...\") 查看附近上下文；可用 reply_to_chat_history_message(message_id=\"...\", message=\"...\") 引用回复。")
-		logLines = append(logLines, lines[len(lines)-1])
-		if hint := viewImageHistoryHint(ctx, t.viewImageAvailable); hint != "" {
-			lines = append(lines, hint)
-			logLines = append(logLines, hint)
+		if !contextinfo.BackgroundContext(ctx) {
+			lines = append(lines, "仅在需要媒体时调用 get_media(message_id=[\"...\"], media_index=[[1]]) 获取媒体 ID；可用 get_chat_history_around(message_id=\"...\") 查看附近上下文；可用 reply_to_chat_history_message(message_id=\"...\", message=\"...\") 引用回复。")
+			logLines = append(logLines, lines[len(lines)-1])
+			if hint := viewImageHistoryHint(ctx, t.viewImageAvailable); hint != "" {
+				lines = append(lines, hint)
+				logLines = append(logLines, hint)
+			}
 		}
 		result := &toolshare.Result{Content: chatHistoryResultLines(lines, "...[查询结果过长，已截断]")}
 		return result, fmt.Sprintf("returned=%d\ncontent:\n%s", len(rows), chatHistoryResultLines(logLines, "…")), nil
@@ -299,10 +323,45 @@ func formatChatHistoryLine(row toolshare.Message, targetID string, full bool, ma
 		name = row.SenderID
 	}
 	body := truncateChatHistoryMessage(row.Text, full, marker)
-	if row.ReferenceText != "" {
-		body = truncateChatHistoryReference(row.ReferenceText, full, marker)
+	if row.Reply.MessageID != "" {
+		body = truncateChatHistoryReference(formatChatHistoryReference(row), full, marker)
 	}
 	return fmt.Sprintf("%s[#%s] %s %s(%s): %s", prefix, row.Key.MessageID, row.CreatedAt.Format("2006-01-02 15:04:05"), name, row.SenderID, body)
+}
+func formatChatHistoryReference(row toolshare.Message) string {
+	reply := row.Reply
+	header := "引用#" + reply.MessageID
+	name, id := strings.TrimSpace(reply.SenderName), strings.TrimSpace(reply.SenderID)
+	if id != "" {
+		kind := strings.TrimSpace(row.Key.Platform)
+		if kind == "" {
+			kind = "id"
+		}
+		switch kind {
+		case "qqonebot":
+			kind = "qq"
+		case "telegram":
+			kind = "tg"
+		case "qqofficial":
+			kind = "openid"
+		}
+		if name != "" {
+			name += "(" + kind + ":" + id + ")"
+		} else {
+			name = kind + ":" + id
+		}
+	}
+	if name != "" {
+		header += "：" + name
+	}
+	if text := strings.TrimSpace(reply.Text); text != "" {
+		header += ":" + text
+	}
+	text := "[" + header + "]"
+	if body := strings.TrimSpace(row.Text); body != "" {
+		text += "\n\n" + body
+	}
+	return text
 }
 func truncateChatHistoryReference(text string, full bool, marker string) string {
 	text = strings.TrimSpace(strings.ReplaceAll(text, "\r", ""))

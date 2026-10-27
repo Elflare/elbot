@@ -1,3 +1,5 @@
+注：此重构不改用户文档
+
 # App 包设计
 
 App 使用六文件组织公共运行流程，按下层接口已存在来编写调用；下层按照这些契约实现。五条业务线已提供根包总管，配置独占已实现；Platform 下层与接收方契约、媒体和模型构造入口及进程入口适配仍待完成。完整应用的编译与运行验证需待这些接口接入。
@@ -95,7 +97,7 @@ App 与 Agent 不承接 Doctor，配置诊断由配置侧负责。进程入口�
 
 ## Platform 下层目标契约
 
-以下为根部当前调用的目标签名，供后续下层阶段实现。子包不导入根部或兄弟实现，外部不导入 `platform/share`；Agent、Media、Tool 的旧 Platform 依赖需随各自边界迁移移除，不增加兼容别名。
+以下为根部当前调用的目标签名，供后续下层阶段实现。子包不导入根部或兄弟实现，外部不导入 `platform/share`；Media 已移除 Platform 依赖，Tool 历史桥接只消费 Platform 根部公开契约。Agent 入站与其余旧消费者仍需按各自边界迁移，不增加兼容别名。
 
 ```go
 // share/adapter.go
@@ -170,7 +172,11 @@ flowchart TD
     A --> Provider["Agent / Media 根部：接收方契约"]
 ```
 
+历史链路使用 Platform 根部 `ChatMessage`、`ChatHistorySearchRequest`、`ChatHistoryAroundRequest` 与 `ErrChatHistoryNotFound`，不向 Tool 交付存储记录。引用元数据编解码在 `share/reference.go`，引用展示归 Builtin。Media 的 `PlatformMedia`、`HistoryMessage` 只携带来源和历史身份；批量获取接受包含目标平台的解析函数。根部 `ResolveMedia` 转换参数并转发，dispatch 复用已有平台注册表选择解析器；未知或不支持的平台返回错误，不回退，不另设总管路由表。历史范围规则只在 Tool 历史组件校验，SQL 对昵称执行字面包含匹配。
+
 ## 验证与备份
+
+Media、Tool 媒体组件、历史查询组件及共享编解码可独立验证。Platform 事实投影与 dispatch 媒体路由的隔离回归使用实际生产类型和函数；这不替代整包接线验证。Agent 旧入站调用、Platform 其余子包与 CLI 契约尚未完成，整包仍受其阻塞。
 
 `environment_test.go` 覆盖配置路径优先级、模式验证、相对路径与符号链接、配置替换保存、不同配置并行、取锁失败，以及 TUI／Service 各组合的跨进程互斥。子进程正常关闭和被终止后，锁文件保留且可重新取锁。环境测试可独立运行：`go test internal/app/environment.go internal/app/environment_test.go`。
 
@@ -181,5 +187,3 @@ App 的阶段执行、登记、启动、可选等待和退出测试可在临时�
 Platform 生命周期独立验证：`go test -race internal/platform/lifecycle.go internal/platform/lifecycle_test.go`。覆盖重复并发启停、未启动及部分失败清理、TUI／Service 差异、取消观察与故障保留、接入退出后保留资源、清理超时续接和普通失败继续。公开事实独立验证：`go test -race internal/platform/contracts.go internal/platform/contracts_test.go`，覆盖存入和读取的切片隔离、空值、上下文移除及无关上下文保留。agent_test.go 覆盖输入转换、延迟解析和公开事实投影，需目标类型落地后运行。API 分流、客户端结果、真实订阅与历史接线仍需整包验证；当前整包受旧反向依赖循环、CLI 旧 agent/events 引用及 share 缺失类型阻塞，旧消费者使用已移除的公开运行字段也需迁移。
 
 同目录保留 13 份原生产文件和 12 份原测试文件的 `*.go.bak`，不参与构建，未恢复旧装配。
-
-此重构不改用户文档

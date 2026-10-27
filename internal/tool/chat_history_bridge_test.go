@@ -7,6 +7,7 @@ import (
 	"context"
 	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/png"
@@ -31,7 +32,7 @@ type getMediaResolver struct {
 	fail  bool
 }
 
-func (r *getMediaResolver) ResolveMedia(_ context.Context, s platform.MessageSegment, _ int64) (delivery.Source, error) {
+func (r *getMediaResolver) ResolveMedia(_ context.Context, _ string, s media.PlatformMedia, _ int64) (delivery.Source, error) {
 	r.calls++
 	if r.fail {
 		return delivery.Source{}, fmt.Errorf("https://secret-token/private")
@@ -66,19 +67,27 @@ func newHistoryMediaToolTest(t *testing.T) (context.Context, historyMediaToolFix
 	root := t.TempDir()
 	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
 	center.History = history.Repository()
-	var segments []platform.MessageSegment
+	var segments []media.PlatformMedia
 	for i := 1; i <= 7; i++ {
-		segments = append(segments, platform.MessageSegment{Type: platform.SegmentImage, PlatformFileID: fmt.Sprint(i)})
+		segments = append(segments, media.PlatformMedia{Type: "image", PlatformFileID: fmt.Sprint(i)})
+	}
+	var storedSegments []map[string]any
+	for _, segment := range segments {
+		storedSegments = append(storedSegments, map[string]any{"type": segment.Type, "platform_file_id": segment.PlatformFileID})
+	}
+	encoded, err := json.Marshal(storedSegments)
+	if err != nil {
+		t.Fatal(err)
 	}
 	for _, id := range []string{"1", "2"} {
-		if err := history.Repository().Append(ctx, &storage.ChatMessage{Platform: "p", PlatformScopeID: "s", PlatformMessageID: id, SenderID: "u", Text: "pictures", Segments: platform.MarshalChatSegments(segments)}); err != nil {
+		if err := history.Repository().Append(ctx, &storage.ChatMessage{Platform: "p", PlatformScopeID: "s", PlatformMessageID: id, SenderID: "u", Text: "pictures", Segments: string(encoded)}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	resolver := &getMediaResolver{}
-	ctx = platform.WithMessageContext(ctx, platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ScopeID: "s"}}, MediaResolver: resolver})
+	ctx = contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ScopeID: "s"}})
 	mediaRuntime := toolmedia.NewMediaRuntime(center, root)
-	manager := chat_history.NewManager(&chatHistoryBridge{platform: historyPlatformTest{history.Repository()}, media: mediaRuntime}, time.Now)
+	manager := chat_history.NewManager(&chatHistoryBridge{platform: historyPlatformTest{ChatHistoryRepository: history.Repository(), resolve: resolver.ResolveMedia}, media: mediaRuntime}, time.Now)
 	return ctx, historyMediaToolFixture{GetMediaTool: builtin.NewGetMediaTool(manager), manager: manager, history: history.Repository(), center: mediaRuntime, mediaCenter: center}, resolver
 }
 
@@ -113,7 +122,7 @@ func TestGetMediaValidationAndFailureBudget(t *testing.T) {
 	if err != nil || resolver.calls != 5 || strings.Contains(result.Content, "secret-token") || !strings.Contains(result.Content, "序号越界") || !strings.Contains(result.Content, "达到本次") {
 		t.Fatalf("failure result = %#v %v calls=%d", result, err, resolver.calls)
 	}
-	other := platform.WithMessageContext(ctx, platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ScopeID: "other"}}, MediaResolver: resolver})
+	other := contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ScopeID: "other"}})
 	result, _, err = callTool(other, tools, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"]}`)})
 	if err != nil || resolver.calls != 5 || !strings.Contains(result.Content, "没有该消息") {
 		t.Fatalf("scope leaked: %#v %v", result, err)
@@ -160,7 +169,7 @@ func TestHistoryQueriesShowMediaWithoutDownload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids, err := tools.center.HistoryIDs(ctx, *row)
+	ids, err := tools.center.HistoryIDs(ctx, historyMediaMessage(historyTestMessage(*row)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +196,7 @@ func TestGetMediaReturnsCompressedHistoryID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids, err := tools.center.HistoryIDs(ctx, *row)
+	ids, err := tools.center.HistoryIDs(ctx, historyMediaMessage(historyTestMessage(*row)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,17 +216,63 @@ func TestGetMediaReturnsCompressedHistoryID(t *testing.T) {
 }
 
 // 平台替身只将已持有仓库适配成根部公开能力，实际查询仍由 SQLite 执行。
-type historyPlatformTest struct{ storage.ChatHistoryRepository }
+type historyPlatformTest struct {
+	storage.ChatHistoryRepository
+	resolve func(context.Context, string, media.PlatformMedia, int64) (delivery.Source, error)
+}
 
-func (p historyPlatformTest) SearchChatHistory(ctx context.Context, req storage.ChatHistorySearchRequest) ([]storage.ChatMessage, error) {
-	return p.Search(ctx, req)
+func (p historyPlatformTest) SearchChatHistory(ctx context.Context, req platform.ChatHistorySearchRequest) ([]platform.ChatMessage, error) {
+	rows, err := p.Search(ctx, storage.ChatHistorySearchRequest{Platform: req.Platform, PlatformScopeID: req.ScopeID, QueryTerms: req.QueryTerms, QueryMode: req.QueryMode, SenderQuery: req.SenderQuery, Since: req.Since, Until: req.Until, Limit: req.Limit})
+	return historyTestMessages(rows), historyTestError(err)
 }
-func (p historyPlatformTest) ChatHistoryAround(ctx context.Context, req storage.ChatHistoryAroundRequest) ([]storage.ChatMessage, error) {
-	return p.Around(ctx, req)
+func (p historyPlatformTest) ChatHistoryAround(ctx context.Context, req platform.ChatHistoryAroundRequest) ([]platform.ChatMessage, error) {
+	rows, err := p.Around(ctx, storage.ChatHistoryAroundRequest{Platform: req.Platform, PlatformScopeID: req.ScopeID, PlatformMessageID: req.MessageID, Before: req.Before, After: req.After})
+	return historyTestMessages(rows), historyTestError(err)
 }
-func (p historyPlatformTest) GetChatHistoryMessage(ctx context.Context, platform, scopeID, messageID string) (*storage.ChatMessage, error) {
-	return p.GetByPlatformMessage(ctx, platform, scopeID, messageID)
+func (p historyPlatformTest) GetChatHistoryMessage(ctx context.Context, name, scopeID, messageID string) (*platform.ChatMessage, error) {
+	row, err := p.GetByPlatformMessage(ctx, name, scopeID, messageID)
+	if err != nil {
+		return nil, historyTestError(err)
+	}
+	message := historyTestMessage(*row)
+	return &message, nil
+}
+func (p historyPlatformTest) ResolveMedia(ctx context.Context, name string, input media.PlatformMedia, limit int64) (delivery.Source, error) {
+	return p.resolve(ctx, name, input, limit)
+}
+func historyTestMessages(rows []storage.ChatMessage) []platform.ChatMessage {
+	result := make([]platform.ChatMessage, len(rows))
+	for i, row := range rows {
+		result[i] = historyTestMessage(row)
+	}
+	return result
+}
+func historyTestMessage(row storage.ChatMessage) platform.ChatMessage {
+	message := platform.ChatMessage{ID: row.ID, Platform: row.Platform, ScopeID: row.PlatformScopeID, MessageID: row.PlatformMessageID, SenderID: row.SenderID, SenderName: row.SenderName, Text: row.Text, CreatedAt: row.CreatedAt}
+	var segments []struct {
+		Type   string `json:"type"`
+		FileID string `json:"platform_file_id"`
+	}
+	if err := json.Unmarshal([]byte(row.Segments), &segments); err == nil {
+		for _, segment := range segments {
+			if segment.Type == "image" || segment.Type == "file" {
+				message.Media = append(message.Media, media.PlatformMedia{Type: segment.Type, PlatformFileID: segment.FileID})
+			}
+		}
+	}
+	var metadata struct {
+		Reply map[string]string `json:"reply"`
+	}
+	_ = json.Unmarshal([]byte(row.Metadata), &metadata)
+	message.Reply = platform.ReplyContext{MessageID: row.ReplyToPlatformMessageID, SenderID: metadata.Reply["sender_id"], SenderName: metadata.Reply["sender_name"], Text: metadata.Reply["text"]}
+	return message
+}
+func historyTestError(err error) error {
+	if errors.Is(err, storage.ErrNotFound) {
+		return platform.ErrChatHistoryNotFound
+	}
+	return err
 }
 func newHistoryTestManager(repository storage.ChatHistoryRepository) *chat_history.Manager {
-	return chat_history.NewManager(&chatHistoryBridge{platform: historyPlatformTest{repository}}, time.Now)
+	return chat_history.NewManager(&chatHistoryBridge{platform: historyPlatformTest{ChatHistoryRepository: repository}}, time.Now)
 }

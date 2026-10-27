@@ -7,12 +7,11 @@ import (
 	"strings"
 
 	"elbot/internal/delivery"
-	"elbot/internal/platform"
 	"elbot/internal/storage"
 )
 
 // ImportPlatform resolves transport-only sources without persisting credentials or local paths.
-func (m *Manager) ImportPlatform(ctx context.Context, platformName string, resolver platform.MediaResolver, segment platform.MessageSegment) (*storage.Media, error) {
+func (m *Manager) ImportPlatform(ctx context.Context, platformName string, resolver func(context.Context, PlatformMedia, int64) (delivery.Source, error), segment PlatformMedia) (*storage.Media, error) {
 	if segment.MediaID != "" {
 		return m.Metadata(ctx, segment.MediaID)
 	}
@@ -22,7 +21,7 @@ func (m *Manager) ImportPlatform(ctx context.Context, platformName string, resol
 	source := delivery.Source{URL: strings.TrimSpace(segment.URL)}
 	var err error
 	if source.URL == "" && resolver != nil {
-		source, err = resolver.ResolveMedia(ctx, segment, m.MaxImportBytes)
+		source, err = resolver(ctx, segment, m.MaxImportBytes)
 	}
 	if err != nil {
 		return nil, err
@@ -45,19 +44,8 @@ func (m *Manager) ImportPlatform(ctx context.Context, platformName string, resol
 	}
 }
 
-// HistorySegments returns only media positions; text never consumes a media index.
-func HistorySegments(row storage.ChatMessage) []platform.MessageSegment {
-	var out []platform.MessageSegment
-	for _, segment := range platform.UnmarshalChatSegments(row.Segments) {
-		if segment.Type == platform.SegmentImage || segment.Type == platform.SegmentFile {
-			out = append(out, segment)
-		}
-	}
-	return out
-}
-
 // HistoryIDs consults local associations only and never downloads a source.
-func (m *Manager) HistoryIDs(ctx context.Context, row storage.ChatMessage) (map[int]string, error) {
+func (m *Manager) HistoryIDs(ctx context.Context, row HistoryMessage) (map[int]string, error) {
 	entries, err := m.loadHistoryMedia(ctx, row)
 	if err != nil {
 		return nil, err
@@ -77,7 +65,7 @@ type historyMediaEntry struct {
 }
 
 // loadHistoryMedia 合并历史关联与有效输出缓存，按媒体 ID 去重读取，并保留匹配的持久关联以跳过重复保存。
-func (m *Manager) loadHistoryMedia(ctx context.Context, row storage.ChatMessage) (map[int]historyMediaEntry, error) {
+func (m *Manager) loadHistoryMedia(ctx context.Context, row HistoryMessage) (map[int]historyMediaEntry, error) {
 	entries := map[int]historyMediaEntry{}
 	mediaByID := map[string]*storage.Media{}
 	lookup := func(id string) (*storage.Media, error) {
@@ -91,7 +79,7 @@ func (m *Manager) loadHistoryMedia(ctx context.Context, row storage.ChatMessage)
 		mediaByID[id] = item
 		return item, nil
 	}
-	associations, err := m.Store.Media().FindHistory(ctx, row.Platform, row.PlatformScopeID, row.PlatformMessageID)
+	associations, err := m.Store.Media().FindHistory(ctx, row.Platform, row.ScopeID, row.MessageID)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +95,7 @@ func (m *Manager) loadHistoryMedia(ctx context.Context, row storage.ChatMessage)
 			entries[association.MediaIndex] = historyMediaEntry{media: item, association: &association}
 		}
 	}
-	outputs, err := m.Store.Media().FindOutputs(ctx, row.Platform, row.PlatformScopeID, row.PlatformMessageID, m.Now())
+	outputs, err := m.Store.Media().FindOutputs(ctx, row.Platform, row.ScopeID, row.MessageID, m.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -129,11 +117,11 @@ func (m *Manager) loadHistoryMedia(ctx context.Context, row storage.ChatMessage)
 	return entries, nil
 }
 
-func (m *Manager) AssociateHistory(ctx context.Context, row storage.ChatMessage, index int, kind platform.MessageSegmentType, id string) error {
-	return m.Store.Media().SaveHistory(ctx, storage.HistoryMedia{HistoryID: row.ID, Platform: row.Platform, ScopeID: row.PlatformScopeID, MessageID: row.PlatformMessageID, MediaIndex: index, Kind: string(kind), MediaID: id})
+func (m *Manager) AssociateHistory(ctx context.Context, row HistoryMessage, index int, kind string, id string) error {
+	return m.Store.Media().SaveHistory(ctx, storage.HistoryMedia{HistoryID: row.ID, Platform: row.Platform, ScopeID: row.ScopeID, MessageID: row.MessageID, MediaIndex: index, Kind: kind, MediaID: id})
 }
 
-func (m *Manager) GetHistoryMedia(ctx context.Context, row storage.ChatMessage, index int, resolver platform.MediaResolver) (*storage.Media, error) {
+func (m *Manager) GetHistoryMedia(ctx context.Context, row HistoryMessage, index int, resolver func(context.Context, string, PlatformMedia, int64) (delivery.Source, error)) (*storage.Media, error) {
 	results, err := m.GetHistoryMediaBatch(ctx, []HistoryMediaRequest{{Message: row, Index: index}}, resolver, HistoryFetchOptions{})
 	if err != nil {
 		return nil, err
@@ -145,8 +133,8 @@ var ErrHistoryFetchLimit = errors.New("history media fetch limit reached")
 var ErrHistoryMediaIndex = errors.New("history media index out of range")
 
 type HistoryMediaRequest struct {
-	Message storage.ChatMessage
-	Index   int
+	Message HistoryMessage // 目标历史消息及有序媒体。
+	Index   int            // 从 1 开始的媒体序号。
 }
 
 type HistoryMediaResult struct {
@@ -162,7 +150,7 @@ type HistoryFetchOptions struct {
 
 // GetHistoryMediaBatch owns cache decisions and acquisition state for one call.
 // Results retain input order, including duplicate positions and per-item failures.
-func (m *Manager) GetHistoryMediaBatch(ctx context.Context, requests []HistoryMediaRequest, resolver platform.MediaResolver, opts HistoryFetchOptions) ([]HistoryMediaResult, error) {
+func (m *Manager) GetHistoryMediaBatch(ctx context.Context, requests []HistoryMediaRequest, resolver func(context.Context, string, PlatformMedia, int64) (delivery.Source, error), opts HistoryFetchOptions) ([]HistoryMediaResult, error) {
 	type messageKey struct{ platform, scope, message, history string }
 	type position struct {
 		messageKey
@@ -177,14 +165,14 @@ func (m *Manager) GetHistoryMediaBatch(ctx context.Context, requests []HistoryMe
 			return nil, err
 		}
 		row, index := request.Message, request.Index
-		key := messageKey{row.Platform, row.PlatformScopeID, row.PlatformMessageID, row.ID}
+		key := messageKey{row.Platform, row.ScopeID, row.MessageID, row.ID}
 		pos := position{key, index}
 		if result, ok := seen[pos]; ok {
 			results = append(results, result)
 			continue
 		}
 		var result HistoryMediaResult
-		segments := HistorySegments(row)
+		segments := row.Media
 		if index < 1 || index > len(segments) {
 			result.Err = fmt.Errorf("%w: %d (message has %d media)", ErrHistoryMediaIndex, index, len(segments))
 		} else {
@@ -206,9 +194,15 @@ func (m *Manager) GetHistoryMediaBatch(ctx context.Context, requests []HistoryMe
 			} else {
 				attempts++
 				segment.MediaID = ""
-				result.Media, result.Err = m.ImportPlatform(ctx, row.Platform, resolver, segment)
+				var resolve func(context.Context, PlatformMedia, int64) (delivery.Source, error)
+				if resolver != nil {
+					resolve = func(ctx context.Context, input PlatformMedia, limit int64) (delivery.Source, error) {
+						return resolver(ctx, row.Platform, input, limit)
+					}
+				}
+				result.Media, result.Err = m.ImportPlatform(ctx, row.Platform, resolve, segment)
 			}
-			if result.Err == nil && (entry.association == nil || entry.association.Kind != string(segment.Type)) {
+			if result.Err == nil && (entry.association == nil || entry.association.Kind != segment.Type) {
 				result.Err = m.AssociateHistory(ctx, row, index, segment.Type, result.Media.ID)
 			}
 		}

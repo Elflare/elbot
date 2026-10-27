@@ -16,6 +16,7 @@ import (
 	globalevents "elbot/internal/events"
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
+	"elbot/internal/platform/share"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 )
@@ -255,7 +256,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 		Raw:                      msg.Content,
 		Segments:                 platform.MarshalChatSegments(inboundSegments(text, inboundAttachmentSegments(msg.Attachments))),
 		ReplyToPlatformMessageID: strings.TrimSpace(replyID),
-		Metadata:                 refcontext.MarshalChatMetadata(reply),
+		Metadata:                 share.MarshalChatMetadata(share.ReplyContext{MessageID: reply.MessageID, SenderID: reply.SenderID, SenderName: reply.SenderName, Text: reply.Text}),
 		CreatedAt:                createdAt,
 	}
 	if err := a.chatHistory.Append(ctx, history); err != nil {

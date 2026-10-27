@@ -15,7 +15,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/platform"
-	"elbot/internal/platform/refcontext"
+	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
@@ -278,7 +278,7 @@ func TestResolveMediaUsesPlatformOnlyOnDemand(t *testing.T) {
 				}
 				return response{Status: "ok", Data: []byte(tc.data), Echo: req.Echo}
 			})
-			got, err := adapter.ResolveMedia(context.Background(), platform.MessageSegment{Type: tc.kind, PlatformFileID: "id-1", Name: "display-name"}, tc.limit)
+			got, err := adapter.ResolveMedia(context.Background(), share.MessageSegment{Type: share.MessageSegmentType(tc.kind), PlatformFileID: "id-1", Name: "display-name"}, tc.limit)
 			if (err != nil) != tc.wantErr || calls != 1 || got.URL != tc.url || got.Path != tc.path {
 				t.Fatalf("source/calls/error = %#v/%d/%v", got, calls, err)
 			}
@@ -567,7 +567,7 @@ func TestHandleEventStoresReferenceSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reply := refcontext.ChatMessageReply(*row)
+	reply := share.ChatMessageReply(*row)
 	if reply.MessageID != "42" || reply.SenderID != "1001" || reply.SenderName != "被引用者" || reply.Text != "被引用内容" {
 		t.Fatalf("stored reply = %#v", reply)
 	}

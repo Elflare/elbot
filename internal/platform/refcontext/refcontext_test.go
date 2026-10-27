@@ -199,14 +199,6 @@ func TestFormatReferenceTextUsesPlatformIdentifierLabels(t *testing.T) {
 	}
 }
 
-func TestChatMetadataPreservesReferenceSnapshot(t *testing.T) {
-	want := platform.ReplyContext{MessageID: "42", SenderID: "1001", SenderName: "小娅", Text: "原消息"}
-	message := storage.ChatMessage{ReplyToPlatformMessageID: want.MessageID, Metadata: MarshalChatMetadata(want)}
-	if got := ChatMessageReply(message); got.MessageID != want.MessageID || got.SenderID != want.SenderID || got.SenderName != want.SenderName || got.Text != want.Text {
-		t.Fatalf("reply = %#v, want %#v", got, want)
-	}
-}
-
 func createAssistantMessages(t *testing.T, ctx context.Context, store storage.Store, scope session.Scope) (*storage.Message, *storage.Message) {
 	t.Helper()
 	s, err := session.NewService(store).Create(ctx, scope, session.CreateRequest{Title: "source"})

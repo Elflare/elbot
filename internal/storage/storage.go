@@ -295,8 +295,7 @@ type ChatHistorySearchRequest struct {
 	PlatformScopeID string
 	QueryTerms      []string
 	QueryMode       string
-	SenderID        string
-	SenderNameQuery string
+	SenderQuery     string // 用户 ID 精确相等或昵称包含此文本；空值不筛选。
 	Since           *time.Time
 	Until           *time.Time
 	Limit           int

@@ -14,8 +14,24 @@ import (
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/media"
+	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 )
+
+// ResolveMedia 只使用指定平台，不沿用当前会话或默认发送平台。
+func (r *Router) ResolveMedia(ctx context.Context, name string, input share.MessageSegment, maxBytes int64) (delivery.Source, error) {
+	r.mu.RLock()
+	sender := r.senders[name]
+	r.mu.RUnlock()
+	if sender == nil {
+		return delivery.Source{}, fmt.Errorf("target platform %q is not configured", name)
+	}
+	resolver, ok := sender.(share.MediaResolver)
+	if !ok {
+		return delivery.Source{}, fmt.Errorf("platform %q does not support media resolution", name)
+	}
+	return resolver.ResolveMedia(ctx, input, maxBytes)
+}
 
 func (a *Router) prepareMediaOutputs(ctx context.Context, outputs []delivery.Output) ([]delivery.Output, globalevents.LogResult, error) {
 	// The owning delivery.Manager validates outputs before entering rawSender.

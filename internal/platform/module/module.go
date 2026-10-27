@@ -50,7 +50,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 	m.primary, m.runtimes = bundle.Primary, bundle.Runtimes
 	m.dispatcher = dispatch.New(dispatch.Options{Primary: m.primary, Store: deps.Store, Media: deps.Media, MediaRetentionDays: deps.MediaRetentionDays})
 	for _, adapter := range m.runtimes {
-		m.dispatcher.RegisterPlatformSender(adapter.Name(), adapter)
+		m.dispatcher.RegisterPlatform(adapter)
 	}
 	return m, m.connectNotifications()
 }

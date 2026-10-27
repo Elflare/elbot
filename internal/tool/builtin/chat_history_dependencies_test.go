@@ -57,9 +57,9 @@ func TestChatHistoryToolsMutuallyDiscoverable(t *testing.T) {
 func TestFormatChatHistoryLineIncludesReferenceContext(t *testing.T) {
 	row := toolshare.Message{
 		Key: toolshare.MessageKey{Platform: "qqonebot", MessageID: "84"}, SenderID: "2002", SenderName: "回复者",
-		Text:          "本次发送的内容",
-		ReferenceText: "[引用#42：被引用者(qq:1001):被引用内容]\n\n本次发送的内容",
-		CreatedAt:     time.Date(2026, 9, 12, 15, 4, 5, 0, time.Local),
+		Text:      "本次发送的内容",
+		Reply:     toolshare.ReplyContext{MessageID: "42", SenderID: "1001", SenderName: "被引用者", Text: "被引用内容"},
+		CreatedAt: time.Date(2026, 9, 12, 15, 4, 5, 0, time.Local),
 	}
 	want := `=> [#84] 2026-09-12 15:04:05 回复者(2002): [引用#42：被引用者(qq:1001):被引用内容]
 

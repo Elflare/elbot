@@ -4,9 +4,47 @@ package platform
 
 import (
 	"context"
+	"elbot/internal/media"
 	"encoding/json"
+	"errors"
 	"slices"
+	"time"
 )
+
+var ErrChatHistoryNotFound = errors.New("chat history message not found")
+
+// ChatMessage 是历史消息的公开事实，不携带数据库编码或运行能力。
+type ChatMessage struct {
+	ID         string                // 历史记录身份，用于媒体关联的所有者校验。
+	Platform   string                // 消息所属平台。
+	ScopeID    string                // 平台内聊天范围。
+	MessageID  string                // 平台消息 ID。
+	SenderID   string                // 平台发送者 ID。
+	SenderName string                // 发送者展示名。
+	Text       string                // 消息正文。
+	CreatedAt  time.Time             // 消息记录时间。
+	Reply      ReplyContext          // 已解码的引用事实。
+	Media      []media.PlatformMedia // 按原顺序排列的媒体，文本不占序号。
+}
+
+type ChatHistorySearchRequest struct {
+	Platform    string     // 查询平台。
+	ScopeID     string     // 查询聊天范围。
+	QueryTerms  []string   // 上层规范化后的关键词。
+	QueryMode   string     // 关键词组合方式：and 或 or。
+	SenderQuery string     // 发送者 ID 精确匹配或昵称包含文本。
+	Since       *time.Time // 可选起始时间。
+	Until       *time.Time // 可选结束时间。
+	Limit       int        // 上层确定的返回数量。
+}
+
+type ChatHistoryAroundRequest struct {
+	Platform  string // 查询平台。
+	ScopeID   string // 查询聊天范围。
+	MessageID string // 中心消息的平台 ID。
+	Before    int    // 中心消息之前的数量。
+	After     int    // 中心消息之后的数量。
+}
 
 // ClientResultKind 是 Platform 对连接运行结果的公开分类，App 不解释底层错误。
 type ClientResultKind uint8

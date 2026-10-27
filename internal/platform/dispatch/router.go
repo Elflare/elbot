@@ -41,12 +41,15 @@ type Router struct {
 
 func New(opts Options) *Router {
 	r := &Router{primary: opts.Primary, senders: make(map[string]delivery.MessageSender), store: opts.Store, media: opts.Media, mediaRetentionDays: opts.MediaRetentionDays}
-	r.RegisterPlatformSender(opts.Primary.Name(), opts.Primary)
+	r.RegisterPlatform(opts.Primary)
 	return r
 }
 
-func (r *Router) RegisterPlatformSender(name string, sender delivery.MessageSender) {
-	name = strings.TrimSpace(name)
+func (r *Router) RegisterPlatform(sender interface {
+	Name() string
+	delivery.MessageSender
+}) {
+	name := strings.TrimSpace(sender.Name())
 	r.mu.Lock()
 	r.senders[name] = sender
 	r.mu.Unlock()

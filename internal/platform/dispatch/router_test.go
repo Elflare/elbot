@@ -54,11 +54,10 @@ func TestRouterPreservesConcurrentSourceSnapshots(t *testing.T) {
 		return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	}}
 	router := New(Options{Primary: sender})
-	router.RegisterPlatformSender("test", sender)
 	var wg sync.WaitGroup
 	for i := range 24 {
 		id := fmt.Sprint(i)
-		info := contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ScopeID: id}, PlatformMessageID: "message-" + id, PlatformData: id}
+		info := contextinfo.Conversation{Source: contextinfo.Source{Platform: sender.Name(), ScopeID: id}, PlatformMessageID: "message-" + id, PlatformData: id}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

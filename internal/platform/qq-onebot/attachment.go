@@ -9,10 +9,10 @@ import (
 	"strings"
 
 	"elbot/internal/delivery"
-	"elbot/internal/platform"
+	"elbot/internal/platform/share"
 )
 
-func (a *Adapter) ResolveMedia(ctx context.Context, segment platform.MessageSegment, maxBytes int64) (delivery.Source, error) {
+func (a *Adapter) ResolveMedia(ctx context.Context, segment share.MessageSegment, maxBytes int64) (delivery.Source, error) {
 	if segment.Size > maxBytes {
 		return delivery.Source{}, fmt.Errorf("onebot media exceeds import limit of %d bytes", maxBytes)
 	}
@@ -25,13 +25,13 @@ func (a *Adapter) ResolveMedia(ctx context.Context, segment platform.MessageSegm
 	}
 	var path, url string
 	switch segment.Type {
-	case platform.SegmentImage:
+	case share.SegmentImage:
 		data, err := a.transport.GetImage(ctx, file)
 		if err != nil {
 			return delivery.Source{}, err
 		}
 		path, url = data.File, data.URL
-	case platform.SegmentFile:
+	case share.SegmentFile:
 		data, err := a.transport.GetFile(ctx, file)
 		if err != nil {
 			return delivery.Source{}, err

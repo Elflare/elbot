@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"elbot/internal/media"
-	"elbot/internal/platform"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/tool/share"
@@ -147,11 +146,12 @@ func TestMediaAPIHistoryBatchPreservesOrderAndErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	row := storage.ChatMessage{Platform: "test", PlatformScopeID: "chat", PlatformMessageID: "message", Segments: platform.MarshalChatSegments([]platform.MessageSegment{{Type: platform.SegmentFile, PlatformFileID: "file"}})}
-	if err := center.History.Append(t.Context(), &row); err != nil {
+	stored := storage.ChatMessage{Platform: "test", PlatformScopeID: "chat", PlatformMessageID: "message", Segments: `[{"type":"file","platform_file_id":"file"}]`}
+	if err := center.History.Append(t.Context(), &stored); err != nil {
 		t.Fatal(err)
 	}
-	if err := center.AssociateHistory(t.Context(), row, 1, platform.SegmentFile, record.ID); err != nil {
+	row := media.HistoryMessage{ID: stored.ID, Platform: "test", ScopeID: "chat", MessageID: "message", Media: []media.PlatformMedia{{Type: "file", PlatformFileID: "file"}}}
+	if err := center.AssociateHistory(t.Context(), row, 1, "file", record.ID); err != nil {
 		t.Fatal(err)
 	}
 	requests := []media.HistoryMediaRequest{{Message: row, Index: 1}, {Message: row, Index: 2}, {Message: row, Index: 1}}

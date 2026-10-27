@@ -5,6 +5,7 @@ package chat_history
 import (
 	"context"
 	"elbot/internal/tool/share"
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -17,18 +18,15 @@ const (
 	chatHistoryMaxLimit     = 50
 )
 
-var chatHistoryAtIDPattern = regexp.MustCompile(`^@(.+)$`)
-
 type SearchQuery struct {
-	Platform        string     // 当前调用所属平台。
-	ScopeID         string     // 当前调用所属聊天范围。
-	QueryTerms      []string   // 已拆分并去除空项的关键词。
-	QueryMode       string     // 关键词组合方式，由查询提供方执行。
-	SenderID        string     // 精确筛选的发送者 ID。
-	SenderNameQuery string     // 按名称筛选发送者的文本。
-	Since           *time.Time // 可选开始时间。
-	Until           *time.Time // 可选结束时间。
-	Limit           int        // 已应用默认值和上限的数量。
+	Platform    string     // 本次查询的平台。
+	ScopeID     string     // 本次查询的聊天范围。
+	QueryTerms  []string   // 已拆分并去除空项的关键词。
+	QueryMode   string     // 关键词组合方式，由查询提供方执行。
+	SenderQuery string     // 用户 ID 精确匹配或昵称包含匹配，空值不筛选。
+	Since       *time.Time // 可选开始时间。
+	Until       *time.Time // 可选结束时间。
+	Limit       int        // 已应用默认值和上限的数量。
 }
 
 type AroundQuery struct {
@@ -38,20 +36,31 @@ type AroundQuery struct {
 }
 
 func (m *Manager) Search(ctx context.Context, req share.SearchRequest) ([]share.Message, error) {
-	chat, err := currentChatHistoryContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	senderID, senderName, errText := chatHistoryUserFilter(req.User, chat)
-	if errText != "" {
-		return nil, share.ErrNoCurrentUser
+	var chat chatHistoryContext
+	if contextinfo.BackgroundContext(ctx) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if req.Platform == nil || req.Scope == nil || strings.TrimSpace(*req.Platform) == "" || strings.TrimSpace(*req.Scope) == "" {
+			return nil, fmt.Errorf("后台查询聊天历史必须指定非空的 platform 和 scope。")
+		}
+		chat = chatHistoryContext{Platform: strings.TrimSpace(*req.Platform), ScopeID: strings.TrimSpace(*req.Scope)}
+	} else {
+		if req.Platform != nil || req.Scope != nil {
+			return nil, fmt.Errorf("前台查询聊天历史不能指定 platform 或 scope，请使用当前聊天。")
+		}
+		var err error
+		chat, err = currentChatHistoryContext(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
 	since, until := chatHistoryTimeRangeAt(req.Since, req.Until, req.Hours, req.Days, m.now())
 	return m.backend.Search(ctx, SearchQuery{
 		Platform: chat.Platform, ScopeID: chat.ScopeID,
 		QueryTerms: splitChatHistoryTerms(req.Query), QueryMode: req.QueryMode,
-		SenderID: senderID, SenderNameQuery: senderName,
-		Since: since, Until: until, Limit: clampChatHistoryLimit(req.Limit),
+		SenderQuery: strings.TrimSpace(req.User),
+		Since:       since, Until: until, Limit: clampChatHistoryLimit(req.Limit),
 	})
 }
 
@@ -76,9 +85,8 @@ func (m *Manager) GetMessage(ctx context.Context, messageID string) (share.Messa
 }
 
 type chatHistoryContext struct {
-	Platform       string
-	ScopeID        string
-	PlatformUserID string
+	Platform string
+	ScopeID  string
 }
 
 func currentChatHistoryContext(ctx context.Context) (chatHistoryContext, error) {
@@ -89,27 +97,7 @@ func currentChatHistoryContext(ctx context.Context) (chatHistoryContext, error) 
 	if !ok || strings.TrimSpace(info.Source.Platform) == "" || strings.TrimSpace(info.Source.ScopeID) == "" {
 		return chatHistoryContext{}, share.ErrNoChatContext
 	}
-	return chatHistoryContext{Platform: info.Source.Platform, ScopeID: info.Source.ScopeID, PlatformUserID: info.Identity.PlatformUserID}, nil
-}
-
-func chatHistoryUserFilter(user string, ctx chatHistoryContext) (senderID, senderName, errText string) {
-	user = strings.TrimSpace(user)
-	if user == "" {
-		return "", "", ""
-	}
-	if user == "我" || user == "本人" || user == "自己" {
-		if strings.TrimSpace(ctx.PlatformUserID) == "" {
-			return "", "", share.ErrNoCurrentUser.Error()
-		}
-		return ctx.PlatformUserID, "", ""
-	}
-	if match := chatHistoryAtIDPattern.FindStringSubmatch(user); len(match) == 2 {
-		return strings.TrimSpace(match[1]), "", ""
-	}
-	if isDigits(user) {
-		return user, "", ""
-	}
-	return "", user, ""
+	return chatHistoryContext{Platform: info.Source.Platform, ScopeID: info.Source.ScopeID}, nil
 }
 
 func chatHistoryTimeRangeAt(sinceRaw, untilRaw string, hours, days int, now time.Time) (*time.Time, *time.Time) {

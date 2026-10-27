@@ -16,6 +16,7 @@ import (
 	globalevents "elbot/internal/events"
 	"elbot/internal/platform"
 	"elbot/internal/platform/refcontext"
+	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 )
 
@@ -169,7 +170,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized
 		Raw:                      firstNonEmpty(msg.Text, msg.Caption),
 		Segments:                 platform.MarshalChatSegments(normalized.Segments),
 		ReplyToPlatformMessageID: normalized.ReplyID,
-		Metadata:                 refcontext.MarshalChatMetadata(reply),
+		Metadata:                 share.MarshalChatMetadata(share.ReplyContext{MessageID: reply.MessageID, SenderID: reply.SenderID, SenderName: reply.SenderName, Text: reply.Text}),
 		CreatedAt:                createdAt,
 	}
 	if err := a.chatHistory.Append(ctx, chatMessage); err != nil {
@@ -297,7 +298,7 @@ func cleanText(text string) string {
 	return strings.TrimSpace(strings.Join(strings.Fields(text), " "))
 }
 
-func (a *Adapter) ResolveMedia(ctx context.Context, segment platform.MessageSegment, maxBytes int64) (delivery.Source, error) {
+func (a *Adapter) ResolveMedia(ctx context.Context, segment share.MessageSegment, maxBytes int64) (delivery.Source, error) {
 	file, err := a.client.getFile(ctx, segment.PlatformFileID)
 	if err != nil {
 		return delivery.Source{}, err

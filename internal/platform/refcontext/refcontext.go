@@ -4,7 +4,6 @@ package refcontext
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -22,16 +21,6 @@ type ReferencedMessage struct {
 	// CanonicalContent means Text already contains the stored assistant answer.
 	// Enrichers may render it, but must not fetch and inject another copy.
 	CanonicalContent bool
-}
-
-type chatMetadata struct {
-	Reply *chatReplyMetadata `json:"reply,omitempty"`
-}
-
-type chatReplyMetadata struct {
-	SenderID   string `json:"sender_id,omitempty"`
-	SenderName string `json:"sender_name,omitempty"`
-	Text       string `json:"text,omitempty"`
 }
 
 type Options struct {
@@ -254,31 +243,6 @@ func FormatReferenceText(platformName string, reply platform.ReplyContext, curre
 		formatted += "\n\n" + currentText
 	}
 	return formatted
-}
-
-func MarshalChatMetadata(reply platform.ReplyContext) string {
-	if strings.TrimSpace(reply.MessageID) == "" {
-		return ""
-	}
-	metadata := chatMetadata{Reply: &chatReplyMetadata{
-		SenderID: strings.TrimSpace(reply.SenderID), SenderName: strings.TrimSpace(reply.SenderName), Text: strings.TrimSpace(reply.Text),
-	}}
-	data, err := json.Marshal(metadata)
-	if err != nil {
-		return ""
-	}
-	return string(data)
-}
-
-func ChatMessageReply(message storage.ChatMessage) platform.ReplyContext {
-	reply := platform.ReplyContext{MessageID: strings.TrimSpace(message.ReplyToPlatformMessageID)}
-	var metadata chatMetadata
-	if json.Unmarshal([]byte(strings.TrimSpace(message.Metadata)), &metadata) == nil && metadata.Reply != nil {
-		reply.SenderID = strings.TrimSpace(metadata.Reply.SenderID)
-		reply.SenderName = strings.TrimSpace(metadata.Reply.SenderName)
-		reply.Text = strings.TrimSpace(metadata.Reply.Text)
-	}
-	return reply
 }
 
 func referenceSenderName(label string) string {

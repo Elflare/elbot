@@ -227,13 +227,10 @@ func (r *ChatHistoryRepository) Search(ctx context.Context, req storage.ChatHist
 			conditions = append(conditions, "("+strings.Join(parts, " "+op+" ")+")")
 		}
 	}
-	if req.SenderID != "" {
-		conditions = append(conditions, "sender_id = ?")
-		params = append(params, req.SenderID)
-	}
-	if req.SenderNameQuery != "" {
-		conditions = append(conditions, "sender_name LIKE ?")
-		params = append(params, "%"+req.SenderNameQuery+"%")
+	if req.SenderQuery != "" {
+		conditions = append(conditions, "(sender_id = ? OR sender_name LIKE ? ESCAPE '!')")
+		pattern := strings.NewReplacer("!", "!!", "%", "!%", "_", "!_").Replace(req.SenderQuery)
+		params = append(params, req.SenderQuery, "%"+pattern+"%")
 	}
 	if req.Since != nil {
 		conditions = append(conditions, "created_at >= ?")

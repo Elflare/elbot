@@ -5,8 +5,8 @@ import (
 	"context"
 	"io"
 
+	"elbot/internal/delivery"
 	"elbot/internal/media"
-	"elbot/internal/platform"
 	"elbot/internal/storage"
 	"elbot/internal/tool/share"
 )
@@ -30,8 +30,8 @@ type MediaRuntime struct {
 		OpenHeld(context.Context, *storage.Media) (io.ReadCloser, error)
 		AddReference(context.Context, *storage.MediaReference) error
 		RemoveReference(context.Context, storage.MediaReference) error
-		HistoryIDs(context.Context, storage.ChatMessage) (map[int]string, error)
-		GetHistoryMediaBatch(context.Context, []media.HistoryMediaRequest, platform.MediaResolver, media.HistoryFetchOptions) ([]media.HistoryMediaResult, error)
+		HistoryIDs(context.Context, media.HistoryMessage) (map[int]string, error)
+		GetHistoryMediaBatch(context.Context, []media.HistoryMediaRequest, func(context.Context, string, media.PlatformMedia, int64) (delivery.Source, error), media.HistoryFetchOptions) ([]media.HistoryMediaResult, error)
 	} // 借用的媒体中心，生命周期由 App 持有。
 	sandboxRoot string // 媒体缓存根目录，不随调用工作目录变化。
 }
@@ -45,8 +45,8 @@ func NewMediaRuntime(center interface {
 	OpenHeld(context.Context, *storage.Media) (io.ReadCloser, error)
 	AddReference(context.Context, *storage.MediaReference) error
 	RemoveReference(context.Context, storage.MediaReference) error
-	HistoryIDs(context.Context, storage.ChatMessage) (map[int]string, error)
-	GetHistoryMediaBatch(context.Context, []media.HistoryMediaRequest, platform.MediaResolver, media.HistoryFetchOptions) ([]media.HistoryMediaResult, error)
+	HistoryIDs(context.Context, media.HistoryMessage) (map[int]string, error)
+	GetHistoryMediaBatch(context.Context, []media.HistoryMediaRequest, func(context.Context, string, media.PlatformMedia, int64) (delivery.Source, error), media.HistoryFetchOptions) ([]media.HistoryMediaResult, error)
 }, sandboxRoot string) *MediaRuntime {
 	return &MediaRuntime{center: center, sandboxRoot: sandboxRoot}
 }
@@ -85,11 +85,11 @@ func (r *MediaRuntime) ImportFile(ctx context.Context, path string, input share.
 	return mediaInfo(record), nil
 }
 
-func (r *MediaRuntime) HistoryIDs(ctx context.Context, row storage.ChatMessage) (map[int]string, error) {
+func (r *MediaRuntime) HistoryIDs(ctx context.Context, row media.HistoryMessage) (map[int]string, error) {
 	return r.center.HistoryIDs(ctx, row)
 }
 
-func (r *MediaRuntime) GetHistoryMediaBatch(ctx context.Context, requests []media.HistoryMediaRequest, resolver platform.MediaResolver, opts media.HistoryFetchOptions) ([]share.HistoryMediaResult, error) {
+func (r *MediaRuntime) GetHistoryMediaBatch(ctx context.Context, requests []media.HistoryMediaRequest, resolver func(context.Context, string, media.PlatformMedia, int64) (delivery.Source, error), opts media.HistoryFetchOptions) ([]share.HistoryMediaResult, error) {
 	results, err := r.center.GetHistoryMediaBatch(ctx, requests, resolver, opts)
 	if err != nil {
 		return nil, err

@@ -122,8 +122,8 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/tool/share/definition.go`、`prepared.go`、`risk.go`：Tool 的必需 PrepareCall 入口；PreparedCall 固定参数、完整风险、预览和执行回调，提供 Preview、RiskAssessment、Call 与参数匹配检查。
 - `internal/tool/builtin/cron_contract.go`：Builtin 消费的 CronRepository、CronSaveRequest、创建／更新请求与管理结果，由根部 bridge 实现，不引用 Storage、Config 或 Background 类型。
 - `internal/tool/cron_bridge.go`：转换 Tool 与 Storage 的任务数据和持久化格式，桥接模型校验；写入成功后发布根部 CronChangedEvent，提供 ObserveCronChanged。工具由 wiring 注册，注册及信号由 Tool 生命周期释放。
-- `internal/tool/chat_history/manager.go`：历史组件构造与 Backend 契约；`query.go` 处理聊天范围、用户／时间筛选和查询；`media.go` 处理媒体选择、序号与批次获取策略。
-- `internal/tool/chat_history_bridge.go`：将 Platform 历史记录、引用及媒体解析结果转换为组件数据，适配媒体获取；外部历史类型不进入 Builtin 或 chat_history。
+- `internal/tool/chat_history/manager.go`：历史组件构造与 Backend 契约；`query.go` 统一检查搜索范围：前台禁止显式 platform／scope，后台必须同时提供；user 仅去除首尾空白，以 SenderQuery 交查询后端同时匹配 ID 或昵称，不解析特殊写法。`media.go` 处理媒体选择、序号与批次获取策略。
+- `internal/tool/chat_history_bridge.go`：消费 Platform 根部公开历史事实，转换组件数据和 Media 历史输入，并注入按目标平台解析媒体的函数；不解析存储 JSON，不访问 Platform 子包。Builtin 根据结构化 Reply 组织引用展示。
 - `internal/tool/config_bridge.go`：按装配路径读取配置，向 Builtin 的 ElwispCreatorConfigProvider 提供精简配置摘要与读取错误；创建指引与告警由 Builtin 生成。
 - `internal/tool/resident_memory_bridge.go`：实现 Builtin 的 ResidentMemoryService，转换调用者范围、常驻记忆数据及未找到错误。
 - `internal/tool/builtin/elwisp_creator.go`、`resident_memory.go`：各自声明所需服务与数据契约，组织工具参数、指引和展示。
@@ -145,7 +145,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/workspace/context.go`：PathScope 与目录存取能力的上下文传递；`workspace.go` 优先选择调用级目录，未指定时读取 Session 或进程目录。
 - `internal/workspace/sandbox.go`：NormalizeRestrictedPath 统一受限相对路径规则，SandboxDir 计算沙盒子目录，ResolveSandboxRelativePath 组合受限绝对路径；不创建目录、组织提示或管理文件生命周期。
 - `internal/tool/share/media.go`：MediaInput、MediaImportOptions、MediaInfo 与历史媒体逐项结果；包含工具需要的参数、JSON 解码约束和通用信息，ID 校验由媒体调用链承担。
-- `internal/tool/media/runtime.go`：统一媒体入口、导入参数及精简结果转换，提供 IDPrefix、ValidID；媒体中心和缓存根目录为私有依赖。
+- `internal/tool/media/runtime.go`：统一媒体入口、导入参数及精简结果转换，提供 IDPrefix、ValidID；历史媒体使用 Media 自有 HistoryMessage 和显式解析函数，不携带 Platform 运行类型。媒体中心和缓存根目录为私有依赖。
 - `internal/tool/media/call.go`：调用状态、引用持有、释放重试与临时资源清理。
 - `internal/tool/media/files.go`、`cache.go`：调用目录及文件导入导出、共享缓存使用与刷新；缓存保留期由维护任务管理。
 - `internal/tool/builtin/send_file.go`：消费路径事实和 Tool 媒体能力，组织文件名称、MIME、提示与发送输出。
@@ -221,12 +221,15 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/platform/{supervisor,deps,wiring,lifecycle}.go`：总管、借用依赖、完整配置装配与生命周期；部分构造可清理，停止接入与最终资源释放分离。下层目标契约见 [App 包设计](app-design.md#platform-下层目标契约)。
 - `internal/platform/{contracts,agent,send,public_api,history,client,config}.go`：公开契约、Agent 输入与展示转接、发送、两类 API、历史查询清理、客户端分类转换及配置汇总；按下层已实现来调用，整包仍待迁移。
 - `internal/platform/share/`：内部契约与共享辅助；`adapter_api.go` 定义调用契约的职责，`config.go`、`media.go`、`backoff.go` 已迁入现有辅助实现，消息类型和调用方仍待对接。
-- `internal/platform/dispatch/{router,media}.go`：发送路由与媒体准备；`calls.go` 承接 Elvena 平台调用与映射实现，尚未拆入各适配器。
+- `internal/platform/dispatch/{router,media}.go`：复用平台注册表执行发送与显式目标媒体解析；ResolveMedia 不回退到当前或默认平台。`calls.go` 承接 Elvena 平台调用与映射实现，尚未拆入各适配器。
 - `internal/platform/{telegram,qq-onebot}/capability_api.go`：通用能力的平台实现骨架。
 - `internal/platform/refcontext/refcontext.go`：引用消息恢复与上下文处理。
 - `internal/platform/platform.go`、`module/`、`builtin/`：保留尚未拆分的旧实现，文件头标注迁移后删除；不作为新对外边界。
 - `internal/platform/cli/`：本地／远程 CLI 与 TUI；`ui.go`、`status.go`、`reasoning.go`、`status_format.go` 分别负责展示目标、状态合并、思考流和状态文案。
-- `internal/platform/contracts.go`：客户端分类与纯消息事实契约；公开 MessageContext 仅含原文、原生载荷和引用，存取复制可变内容。
+- `internal/platform/contracts.go`：客户端分类、纯消息事实和历史查询契约；ChatMessage 公开引用和有序媒体，不暴露存储 JSON。公开 MessageContext 仅含原文、原生载荷和引用，存取复制可变内容。
+- `internal/platform/history.go`：转换公开历史请求、消息事实和未找到错误；ResolveMedia 转换输入后交 dispatch 路由，不另建平台能力表。
+- `internal/platform/share/{message,reference,media}.go`：内部片段、引用和媒体解析契约，以及历史引用元数据与片段的编解码；完整运行消息契约仍待入站链迁移。
+- `internal/media/{types,platform}.go`：自有 PlatformMedia、HistoryMessage；负责媒体缓存、关联和批量获取，通过注入函数解析平台来源，不依赖 Platform。
 - `internal/platform/{lifecycle,contracts,agent}_test.go`：生命周期、公开事实隔离独立测试，以及待接收方契约落地的输入转换与投影测试。
 - `internal/platform/qq-onebot/`：协议转换、forward 展开、长消息与回执。
 - `internal/platform/qqofficial/`、`internal/platform/telegram/`、`internal/platform/headless/`：各平台 runtime。
@@ -273,7 +276,7 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/storage/sqlite/session_repository.go`：Session 字段合并与同值写入跳过。
 - `internal/storage/sqlite/native_snapshot.go`、`native_material.go`：不可变快照、seed 与原生窗口批量读取。
 - `internal/storage/sqlite/media_history.go`、`media_lifecycle.go`：历史媒体关联、启动恢复与清理认领。
-- `internal/storage/sqlite/chat_history_repository.go`：聊天历史查询与保留时间清理，包含平台引用索引到真实消息 ID 的持久化映射。
+- `internal/storage/sqlite/chat_history_repository.go`：聊天历史查询与保留时间清理，包含平台引用索引到真实消息 ID 的持久化映射。搜索始终限定平台和聊天范围，SenderQuery 非空时以括号包裹的 OR 条件执行发送者 ID 精确匹配或昵称字面包含匹配，昵称 LIKE 模式转义通配符。
 
 <!-- locator:elnis -->
 ## Elnis / Elvena / Elwisp

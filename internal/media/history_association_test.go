@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/platform"
 	"elbot/internal/storage"
 	"elbot/internal/testutil"
 )
@@ -20,7 +19,7 @@ func TestHistoryCacheMaintainsMatchingAssociations(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			row := storage.ChatMessage{ID: "history", Platform: "p", PlatformScopeID: "s", PlatformMessageID: "m", Segments: platform.MarshalChatSegments([]platform.MessageSegment{{Type: platform.SegmentFile, PlatformFileID: "cached"}})}
+			row := HistoryMessage{ID: "history", Platform: "p", ScopeID: "s", MessageID: "m", Media: []PlatformMedia{{Type: "file", PlatformFileID: "cached"}}}
 			if name != "output" {
 				association := storage.HistoryMedia{HistoryID: row.ID, Platform: "p", ScopeID: "s", MessageID: "m", MediaIndex: 1, Kind: "file", MediaID: item.ID}
 				if name == "old history" {
@@ -49,7 +48,7 @@ func TestHistoryCacheMaintainsMatchingAssociations(t *testing.T) {
 				t.Fatal(err)
 			}
 			resolver := &batchResolver{}
-			results, err := center.GetHistoryMediaBatch(ctx, []HistoryMediaRequest{{Message: row, Index: 1}, {Message: row, Index: 1}}, resolver, HistoryFetchOptions{MaxFetchAttempts: 1})
+			results, err := center.GetHistoryMediaBatch(ctx, []HistoryMediaRequest{{Message: row, Index: 1}, {Message: row, Index: 1}}, resolver.ResolveMedia, HistoryFetchOptions{MaxFetchAttempts: 1})
 			if err != nil || len(results) != 2 || results[0].Err != nil || results[1].Err != nil || results[0].Media.ID != item.ID || results[1].Media.ID != item.ID {
 				t.Fatalf("results=%+v error=%v", results, err)
 			}

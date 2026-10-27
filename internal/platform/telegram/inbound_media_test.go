@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"elbot/internal/platform"
+	"elbot/internal/platform/share"
 	"elbot/internal/storage/sqlite"
 )
 
@@ -55,7 +56,7 @@ func TestInboundMediaHistoryAndDeferredResolver(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	segments := platform.UnmarshalChatSegments(row.Segments)
+	segments := share.UnmarshalChatSegments(row.Segments)
 	if len(segments) != 1 || segments[0].PlatformFileID != "photo-id" || segments[0].URL != "" || strings.Contains(row.Segments, "secret") {
 		t.Fatalf("history = %#v", row)
 	}

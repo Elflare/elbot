@@ -9,7 +9,6 @@ import (
 var (
 	ErrNotFound      = errors.New("chat history message not found")
 	ErrNoChatContext = errors.New("当前上下文没有平台聊天信息，无法自动确定要查询哪个聊天。")
-	ErrNoCurrentUser = errors.New("无法解析“我”：当前平台上下文没有用户 ID。")
 	ErrMediaIndex    = errors.New("history media index out of range")
 	ErrFetchLimit    = errors.New("history media fetch limit reached")
 )
@@ -24,24 +23,33 @@ type MessageKey struct {
 }
 
 type Message struct {
-	Key           MessageKey  // 消息的稳定查询位置。
-	SenderID      string      // 平台发送者 ID。
-	SenderName    string      // 发送者展示名，缺失时由工具使用 ID 展示。
-	Text          string      // 消息正文，未做工具展示截断。
-	ReferenceText string      // 根部转换后的完整引用及正文；没有引用时为空。
-	CreatedAt     time.Time   // 消息时间。
-	Media         []MediaItem // 仅包含媒体项，切片位置加一即对外媒体序号。
+	Key        MessageKey   // 消息的稳定查询位置。
+	SenderID   string       // 平台发送者 ID。
+	SenderName string       // 发送者展示名，缺失时由工具使用 ID 展示。
+	Text       string       // 消息正文，未做工具展示截断。
+	Reply      ReplyContext // 被引用消息的事实，由工具组织展示。
+	CreatedAt  time.Time    // 消息时间。
+	Media      []MediaItem  // 仅包含媒体项，切片位置加一即对外媒体序号。
+}
+
+type ReplyContext struct {
+	MessageID  string // 被引用消息的平台 ID；空值表示没有引用。
+	SenderID   string // 被引用消息的发送者 ID。
+	SenderName string // 被引用消息的发送者展示名。
+	Text       string // 被引用消息的正文。
 }
 
 type SearchRequest struct {
-	Query     string // 工具输入的关键词文本。
-	QueryMode string // 关键词组合方式。
-	User      string // 用户输入的发送者筛选，可使用“我”、@ID、ID 或名称。
-	Since     string // 用户输入的开始时间。
-	Until     string // 用户输入的结束时间。
-	Hours     int    // 无有效 Since 时使用的最近小时数。
-	Days      int    // 无有效 Since 和 Hours 时使用的最近天数。
-	Limit     int    // 用户请求的数量，组件统一应用默认值和上限。
+	Platform  *string // 显式指定的平台；nil 表示未提供，仅后台允许且必填。
+	Scope     *string // 显式指定的聊天范围；nil 表示未提供，仅后台允许且必填。
+	Query     string  // 工具输入的关键词文本。
+	QueryMode string  // 关键词组合方式。
+	User      string  // 同时用于用户 ID 精确匹配或昵称包含匹配，不解析特殊写法。
+	Since     string  // 用户输入的开始时间。
+	Until     string  // 用户输入的结束时间。
+	Hours     int     // 无有效 Since 时使用的最近小时数。
+	Days      int     // 无有效 Since 和 Hours 时使用的最近天数。
+	Limit     int     // 用户请求的数量，组件统一应用默认值和上限。
 }
 
 type AroundRequest struct {
