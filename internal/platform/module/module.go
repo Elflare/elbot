@@ -48,7 +48,7 @@ func NewModule(ctx context.Context, deps ModuleDeps) (*Module, error) {
 		return m, err
 	}
 	m.primary, m.runtimes = bundle.Primary, bundle.Runtimes
-	m.dispatcher = dispatch.New(dispatch.Options{Primary: m.primary, Store: deps.Store, Media: deps.Media, MediaRetentionDays: deps.MediaRetentionDays})
+	m.dispatcher = dispatch.New(dispatch.Options{Primary: m.primary, SaveMediaOutput: deps.Store.Media().SaveOutput, Media: deps.Media, MediaRetentionDays: deps.MediaRetentionDays})
 	for _, adapter := range m.runtimes {
 		m.dispatcher.RegisterPlatform(adapter)
 	}

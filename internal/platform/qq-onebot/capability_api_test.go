@@ -1,4 +1,4 @@
-// capability_api_test.go 验证通用能力映射、参数校验及原生透传边界。
+// capability_api_test.go 验证原生协议透传、参数不变与失败传播。
 package qqonebot
 
 import (
@@ -15,7 +15,7 @@ import (
 	"github.com/coder/websocket/wsjson"
 )
 
-func TestCapabilityMappingAndNativePassthrough(t *testing.T) {
+func TestNativeAPIPassthrough(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		requests := make(chan request, 8)
 		server := testutil.NewVirtualDefaultHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -45,20 +45,12 @@ func TestCapabilityMappingAndNativePassthrough(t *testing.T) {
 		tests := []struct {
 			name, action string
 			params, want map[string]any
-			raw          bool
 		}{
-			{"message.recall", "delete_msg", map[string]any{"message_id": "-12"}, map[string]any{"message_id": float64(-12)}, false},
-			{"member.mute", "set_group_ban", map[string]any{"user_id": json.Number("3"), "group_id": int64(4), "duration_seconds": float64(60)}, map[string]any{"user_id": float64(3), "group_id": float64(4), "duration": float64(60)}, false},
-			{"chat.leave", "set_group_leave", map[string]any{"group_id": 4, "is_dismiss": true}, map[string]any{"group_id": float64(4), "is_dismiss": true}, false},
-			{"message.recall", "message.recall", map[string]any{"custom": "untouched"}, map[string]any{"custom": "untouched"}, true},
+			{"custom_api", "custom_api", map[string]any{"custom": "untouched"}, map[string]any{"custom": "untouched"}},
 		}
 		for _, tt := range tests {
 			before, _ := json.Marshal(tt.params)
-			call := a.CallCapability
-			if tt.raw {
-				call = a.CallPlatformAPI
-			}
-			data, err := call(ctx, tt.name, tt.params)
+			data, err := a.CallPlatformAPI(ctx, tt.name, tt.params)
 			if err != nil || string(data) != `{"native":true}` {
 				t.Fatalf("%s = %s/%v", tt.name, data, err)
 			}
@@ -70,23 +62,6 @@ func TestCapabilityMappingAndNativePassthrough(t *testing.T) {
 			if string(before) != string(after) {
 				t.Fatal("caller params mutated")
 			}
-		}
-		for _, tt := range []struct {
-			name   string
-			params map[string]any
-		}{
-			{"unknown", nil}, {"message.recall", nil}, {"message.recall", map[string]any{"message_id": 1.5}},
-			{"member.mute", map[string]any{"user_id": 1, "duration_seconds": 0, "group_id": 2}},
-			{"member.mute", map[string]any{"user_id": 1, "duration_seconds": 3}}, {"chat.leave", nil},
-		} {
-			if _, err := a.CallCapability(ctx, tt.name, tt.params); err == nil {
-				t.Fatalf("invalid capability %s succeeded", tt.name)
-			}
-		}
-		select {
-		case req := <-requests:
-			t.Fatalf("invalid capability sent request: %#v", req)
-		default:
 		}
 		if _, err := a.CallPlatformAPI(context.Background(), "fail", nil); err == nil {
 			t.Fatal("native failure was hidden")

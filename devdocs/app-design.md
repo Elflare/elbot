@@ -64,7 +64,7 @@ App 用 `shutdownStep` 记录步骤名称和关闭调用，`runShutdownSteps` �
 `agent.NewSupervisor(ctx, cfg, deps)` 接收 Store、ChatHistory、Models、Media、Permission、Logs 及 Tool、Hook、Platform 能力，其中 Hook 仅通过 `Commands() []command.Handler` 提供管理命令，由 Agent 使用标准注册入口接入。公开业务入口为 `HandleMessage`、`RunBackground`、`CopyBackground`、`CleanupSessions`、`SessionTakenOver`、`RegisterHooks`、`StartHookRequest`、`Complete`、`Commands`、`ObserveStatusChanged`、`ObserveBindingChanged`；生命周期使用 `Start`、`BeginClose`、`Close`、`Done`。Hook 的 `ConnectAgent` 注册一组 `agent.Points` 回调并持有解除函数，每个实际 handler 通过 `StartHookRequest` 登记。其他接收方的 `ConnectAgent` 负责自身适配、订阅和释放。其余四条线通过根包 `Supervisor`、`SupervisorDeps`、`NewSupervisor` 及各自生命周期接口接入。
 各条线的对外文件放各条线的根部，内部业务放子包。Agent 的公开回调和事件定义在 contracts.go，内部共享载荷放 share，消费者按实际需要接收最小能力。Agent 根包与子包、Hook、Command、Completion 已通过相关回归；真实 Agent–Hook–Tool 总管接线覆盖命令注册、规则补全和输出回调。Hook 消费 Agent 与 Tool 根部类型，管理查询类型留在 Hook 内部。
 
-Platform 根部按目标下层契约实现。NewSupervisor 接收完整配置及 Mode、Store、ChatHistory、Media、Permission、Logs，持有适配器、通知连接和 UI；历史库属于 App，Platform 只借用。部分失败仍交回总管。公开发送、两类 API 和媒体解析转交内部组件，不暴露 Repository 或 Router。旧 `platform.go`、`module/`、`builtin/` 保留迁移后删除标记；下层与旧消费者尚未接通。
+Platform 根部按目标下层契约实现。NewSupervisor 接收完整配置及 Mode、Store、ChatHistory、Media、Permission、Logs，持有适配器、通知连接和 UI；历史库属于 App，Platform 只借用。部分失败仍交回总管。公开发送、原生 API 和媒体解析转交内部组件，不暴露 Repository 或 Router。旧 `platform.go`、`module/`、`builtin/` 保留迁移后删除标记；失败通知与旧消费者尚未接通。
 
 Tool 根部创建媒体入口、技能目录与基础环境并一次注入 Skill Manager；Builtin、Skill、发现及 ELwisp 均接入必需的准备／执行契约，Skill 内部不依赖 Tool 根包。Cron 工具只使用 Tool 内部契约，根部 bridge 接入 Storage 和模型校验并发布任务定义变更；Background 根部持有订阅，Cron Manager 合并名称并串行读库刷新。Elnis 已通过自身媒体契约接入媒体中心。Background 整包已完成生命周期接线；完整 App 仍需 Platform 下层契约以及媒体、模型构造入口接通。
 
@@ -173,15 +173,15 @@ CLI SetCompleter 接收 `func(context.Context, completion.Request) ([]completion
 
 `cli.ConnectUI(cli.AgentEvents)` 返回 UI 和 error，部分 UI 交根部清理。event_contracts.go 定义 CLI 自有 StatusChangedEvent、BindingChangedEvent、BindingSnapshot，由根部转换 Agent 公开事件；订阅回调不接收 context，展示目标取自 Conversation，日志事实取自 Execution。状态发布版本与绑定变更版本分别处理，终态释放待发正文但保留版本水位；换绑／解绑清除旧绑定待发状态并拒绝迟到事件；worker 在锁内取出状态即开始发送，在途发送允许完成，新状态随后串行发送。发送上下文保留事件事实并隔离展示停止，远程写入沿用 15 秒超时。UI 消费已交付的独立快照，持有订阅和展示 worker；BeginClose 停止接纳并清空待发状态，Close 解除订阅并等待在途发送及 worker 实际退出，等待超时可重试。
 
-dispatch.Options.Primary 和 Router 的 primary 字段只接收 `interface { Name() string; delivery.MessageSender }`，RegisterPlatform 的目标参数使用同一匿名接口，不包含 Start、BeginClose、Wait、Close。根部注册时也按该窄接口交付；完整 Runtime 仅由总管持有。路由通过可选的 share.CapabilityCaller、share.PlatformAPICaller 识别两类调用能力，不接管启停。Media 改为 dispatch 独用的最小接口（Metadata、ImportURL、ImportFile、ImportBytes、ResolveForOutput，沿用现有签名）。保留发送方法，增加 `CallCapability(ctx, platform, name, params)` 和 `CallPlatformAPI(ctx, platform, api, params)`，均返回 `(json.RawMessage, error)`，params 为 `map[string]any`。两个 share 调用接口分别提供去掉 platform 参数的同名方法。
+dispatch.Options.Primary 和 Router 的 primary 字段只接收 `interface { Name() string; delivery.MessageSender }`，RegisterPlatform 使用同一匿名接口。完整 Runtime 仅由总管持有，dispatch 不接管启停。Media 接收 Metadata、ImportURL、ImportFile、ImportBytes、ResolveForOutput 五项能力；SaveMediaOutput 接收 `func(context.Context, storage.MediaOutput) error`，根部直接注入 Store.Media().SaveOutput。媒体准备、发送副本解析、临时资源释放与实际回执关联归 media.go；部分发送仅缓存真实回执；回执身份必填校验归存储入口，dispatch 不重复检查并静默跳过，缓存失败记录警告，不改变发送结果或重发。
 
-通用入口仅承接已有 message.recall、member.mute、chat.leave，未知或不支持即报错；原生入口不登记名称清单、不映射业务名称，已知名称也不转入通用入口。认证、协议封装和传输错误归适配器。OneBot 与 Telegram 的 capability_api.go 已实现三项映射与独立原生入口，分别返回原生 Data／result；member.mute 要求正 duration_seconds，目标 ID 从参数取得。Telegram 使用 chat_id，撤回另需 message_id，禁言另需 user_id。dispatch/calls.go 的旧 Elvena 调用链与重复映射仍待路由阶段移除；不增加头像等未使用能力。
+通用能力使用 SendChat、SendTo、StartStream、ResolveMedia 等固定方法；引用恢复沿用 refcontext 入站链路，不提供字符串能力分发表。原生入口 `CallPlatformAPI(ctx, platform, api, params)` 返回 `(json.RawMessage, error)`，params 为 `map[string]any`。calls.go 按显式平台取得适配器、释放注册表锁，再通过 share.PlatformAPICaller 转交原始上下文、接口名和参数；未知或不支持的平台报错，不回退当前或默认平台。OneBot、Telegram 的 capability_api.go 保留原生传输，分别返回原生 Data／result；认证、协议封装和操作生命周期归适配器。Hook platform.call 与 Elnis direct 负责各自的平台选择；Elnis 旧调用声明和执行契约待后续清理。
 
 通知沿用 New、AddPlatform、ConnectNotifications。share/notification.go 定义 NotificationReceiver 和 NotificationTarget；接收契约只连接发送端，连接由根部持有和释放，目标转换在匹配来源时保留原生回复路由。CLI、OneBot、QQ Official、Telegram 已使用 Share 通知契约；旧根包通知定义待旧调用链清理时删除。Manager 的 `NotifyPlatformFailure(context.Context, string, error, []events.NotificationTarget)` 尚待实现，负责格式化和异步投递；根部选择仍在运行的平台目标。
 
 CLI client.go 提供 `RunClient(ctx, rawConfig, configDir, name) ClientResult` 和自身 ClientCompleted／ClientFallback／ClientFailed 分类，根部只转换为公开结果，回退规则见上节。本机判断只接受有效 WebSocket URL 的 localhost 或回环 IP；已连接后断线结束 TUI 并返回失败，不自动重连或回退。客户端统一收回读循环、展示与补全等待，保留独立错误。
 
-Share 的 Runtime、MessageHandler、CapabilityCaller、PlatformAPICaller 和 NotificationReceiver 已定义；运行与入站契约位于 runtime_contracts.go，共同配置及最小历史契约位于 config.go、history_contracts.go，两类可选 API 接口位于 adapter_api.go，不并入 Runtime。Share 不实现生命周期状态机、协议映射或发送调度；CLI 已接入运行、入站与通知契约，Headless 已接入无状态运行契约，OneBot 已接入运行、入站、通知与两类 API，QQ Official 已接入运行、入站与通知，Telegram 已接入运行、入站、通知与两类 API；剩余路由和旧调用方迁移归对应包阶段。
+Share 的 Runtime、MessageHandler、PlatformAPICaller 和 NotificationReceiver 已定义；运行与入站契约位于 runtime_contracts.go，共同配置及最小历史契约位于 config.go、history_contracts.go，可选原生 API 接口位于 adapter_api.go，不并入 Runtime。Share 不实现生命周期状态机、协议映射或发送调度；CLI 已接入运行、入站与通知契约，Headless 已接入无状态运行契约，OneBot 与 Telegram 已接入运行、入站、通知与原生 API，QQ Official 已接入运行、入站与通知。旧调用方迁移归对应包阶段。
 
 ```mermaid
 flowchart TD
@@ -203,7 +203,11 @@ flowchart TD
 
 Storage、Media、Tool 根部／历史／媒体／Builtin、Agent 输入／执行／上下文／输出及 Platform 的 share／refcontext／dispatch／notification 相关回归已通过。覆盖真实 SQLite 历史范围、引用与媒体顺序、缓存及获取额度、延迟物化、输入快照、前台接管取消链、后台静默与显式投递。Agent 根部生产文件与内部测试已单独通过；Agent–Hook 集成仍受 Hook 引用的 Platform 剩余旧依赖阻塞。Platform 和 App 整包尚不能编译；Background 整包另受 Elnis 的旧 elvena.ResolveRawCall 调用阻塞。组件或文件级验证不替代整包接线验证。
 
-CLI 整包与 Share、refcontext、dispatch、notification 的 race 回归通过。CLI 覆盖真实管道和 Linux 伪终端的停止／最终关闭、真实 WebSocket 收尾发送、同步监听失败、并发启停及超时重试、原连接回复、事件乱序与绑定失效、WebSocket 背压期间换绑和展示关闭后连接保留、UI 关闭超时重试、回调收尾期间取消观察仍返回已发布故障、部分 UI 所有权、客户端分类及断线退出。CLI 不再依赖旧 agent/events、Platform 根包或兄弟实现；Headless 整包也通过 race，覆盖无状态生命周期、取消上下文、重复及并发调用、发送失败契约；OneBot、Share、refcontext 的 race 回归通过，覆盖分阶段关闭、临时拨号取消、在途写入取消隔离、关闭重试、重连隔离及 API 映射；OneBot 不再依赖根包或兄弟实现。QQ Official、Share、refcontext、notification 的 race 回归通过，覆盖实际 HTTP／WebSocket、心跳序号同步及失败退出、恢复与重新鉴权、并发启停、取消观察与独立故障、收尾发送、完整发送及别名入库等待、关闭超时重试。QQ Official 不再依赖根包或兄弟实现。Telegram、Share、refcontext、notification 与 Background/Cron 的 race 回归通过，覆盖异步远端连接、分阶段关闭、完整操作取消与退出等待、流式等待取消隔离、关闭超时重试、独立连接池释放、身份快照、命令目录并发、引用恢复、配置边界及两类 API。Telegram 生产代码与包内测试均不依赖 Platform 根包或兄弟实现；Background 报告测试通过发送契约注入回执。Platform 整包仍缺 dispatch.Router 的两类 API 方法和 notification.Manager.NotifyPlatformFailure；Elnis 整包仍被旧 Elvena 符号阻塞。
+CLI 整包与 Share、refcontext、dispatch、notification 的 race 回归通过。CLI 覆盖真实管道和 Linux 伪终端的停止／最终关闭、真实 WebSocket 收尾发送、同步监听失败、并发启停及超时重试、原连接回复、事件乱序与绑定失效、WebSocket 背压期间换绑和展示关闭后连接保留、UI 关闭超时重试、回调收尾期间取消观察仍返回已发布故障、部分 UI 所有权、客户端分类及断线退出。CLI 不再依赖旧 agent/events、Platform 根包或兄弟实现；Headless 整包也通过 race，覆盖无状态生命周期、取消上下文、重复及并发调用、发送失败契约；OneBot、Share、refcontext 的 race 回归通过，覆盖分阶段关闭、临时拨号取消、在途写入取消隔离、关闭重试、重连隔离及原生 API 透传；OneBot 不再依赖根包或兄弟实现。QQ Official、Share、refcontext、notification 的 race 回归通过，覆盖实际 HTTP／WebSocket、心跳序号同步及失败退出、恢复与重新鉴权、并发启停、取消观察与独立故障、收尾发送、完整发送及别名入库等待、关闭超时重试。QQ Official 不再依赖根包或兄弟实现。Telegram、Share、refcontext、notification 与 Background/Cron 的 race 回归通过，覆盖异步远端连接、分阶段关闭、完整操作取消与退出等待、流式等待取消隔离、关闭超时重试、独立连接池释放、身份快照、命令目录并发、引用恢复、配置边界及原生 API。Telegram 生产代码与包内测试均不依赖 Platform 根包或兄弟实现；Background 报告测试通过发送契约注入回执。Platform 整包仍缺 notification.Manager.NotifyPlatformFailure；Elnis 整包仍被旧 Elvena 符号阻塞。
+
+媒体来源转换、回执顺序与重复关联、部分成功和缓存失败测试位于 dispatch/media_receipt_test.go，使用真实媒体中心与 SQLite；身份缺失覆盖存储校验告警及发送结果保留。Agent 的 SendOutputs 日志测试直接注入发送契约，只验证来源日志透传；回执日志格式由 dispatch 验证。
+
+dispatch、Share、OneBot、Telegram、refcontext、Agent/execution 与 Hook/rules 的 race 回归通过。覆盖显式平台原生转发、参数与结果保留、错误及取消传播、调用期间注册表可写，以及媒体回执函数注入、部分发送、缓存失败不重发和临时资源释放。Platform／App 整包当前仍被 NotifyPlatformFailure 缺失阻塞；Elnis 仍引用旧 ResolveRawCall 和 CapabilityMessageRecall，需按任务清单完成迁移。
 
 `environment_test.go` 覆盖配置路径优先级、模式验证、相对路径与符号链接、配置替换保存、不同配置并行、取锁失败，以及 TUI／Service 各组合的跨进程互斥。子进程正常关闭和被终止后，锁文件保留且可重新取锁。环境测试可独立运行：`go test internal/app/environment.go internal/app/environment_test.go`。
 
@@ -211,6 +215,6 @@ CLI 整包与 Share、refcontext、dispatch、notification 的 race 回归通过
 
 App 的阶段执行、登记、启动、可选等待和退出测试已在临时包中隔离尚未实现的构造调用并通过 race 验证，使用实际函数、共享资源类型和真实历史 SQLite，不提供假生产总管。覆盖任意数量业务线、独立故障保留及阻塞关闭下的统一期限。Background 的历史清理测试依赖已改为直接注入仓库，借用资源关闭断言需待上述 Elnis 编译阻塞解除后运行。完整 App 流程、资源构造及客户端链路仍需下层接口实现后验证。
 
-Platform 生命周期独立验证：`go test -race internal/platform/lifecycle.go internal/platform/lifecycle_test.go`。覆盖重复并发启停、未启动及部分失败清理、TUI／Service 差异、取消观察与故障保留、接入退出后保留资源、清理超时续接和普通失败继续。公开事实独立验证：`go test -race internal/platform/contracts.go internal/platform/contracts_test.go`，覆盖存入和读取的切片隔离、空值、上下文移除及无关上下文保留。agent_test.go 覆盖输入转换、延迟解析和公开事实投影，需剩余子包契约落地后运行。API 分流、跨根部客户端结果、真实订阅与历史接线仍需整包验证；整包仍受 dispatch API、失败通知及旧调用链阻塞；后续工作及验收条件见 [任务清单](tasks.md#platform-剩余接线)。
+Platform 生命周期独立验证：`go test -race internal/platform/lifecycle.go internal/platform/lifecycle_test.go`。覆盖重复并发启停、未启动及部分失败清理、TUI／Service 差异、取消观察与故障保留、接入退出后保留资源、清理超时续接和普通失败继续。公开事实独立验证：`go test -race internal/platform/contracts.go internal/platform/contracts_test.go`，覆盖存入和读取的切片隔离、空值、上下文移除及无关上下文保留。agent_test.go 覆盖输入转换、延迟解析和公开事实投影，需剩余子包契约落地后运行。原生 API 跨根部接线、客户端结果、真实订阅与历史接线仍需整包验证；整包仍受失败通知及旧调用链阻塞；后续工作及验收条件见 [任务清单](tasks.md#platform-剩余接线)。
 
 同目录保留 13 份原生产文件和 12 份原测试文件的 `*.go.bak`，不参与构建，未恢复旧装配。

@@ -1,5 +1,4 @@
 // router.go 管理平台注册、发送目标选择及普通与流式发送路由，只借用发送能力，不接管适配器生命周期。
-// TODO：将完整 Store 依赖收窄为媒体回执实际使用的 SaveOutput 能力，由 Platform 根部注入。
 
 // Package dispatch owns physical delivery, platform routing and output media.
 package dispatch
@@ -23,8 +22,9 @@ type Options struct {
 		Name() string
 		delivery.MessageSender
 	}
-	Store storage.Store
-	Media interface {
+	// SaveMediaOutput 关联实际发送消息与媒体，由根部注入借用的存储能力。
+	SaveMediaOutput func(context.Context, storage.MediaOutput) error
+	Media           interface {
 		Metadata(context.Context, string) (*storage.Media, error)
 		ImportURL(context.Context, string, media.Input) (*storage.Media, error)
 		ImportFile(context.Context, string, media.Input) (*storage.Media, error)
@@ -39,10 +39,10 @@ type Router struct {
 		Name() string
 		delivery.MessageSender
 	}
-	mu      sync.RWMutex
-	senders map[string]delivery.MessageSender
-	store   storage.Store
-	media   interface {
+	mu              sync.RWMutex
+	senders         map[string]delivery.MessageSender
+	saveMediaOutput func(context.Context, storage.MediaOutput) error
+	media           interface {
 		Metadata(context.Context, string) (*storage.Media, error)
 		ImportURL(context.Context, string, media.Input) (*storage.Media, error)
 		ImportFile(context.Context, string, media.Input) (*storage.Media, error)
@@ -53,7 +53,7 @@ type Router struct {
 }
 
 func New(opts Options) *Router {
-	r := &Router{primary: opts.Primary, senders: make(map[string]delivery.MessageSender), store: opts.Store, media: opts.Media, mediaRetentionDays: opts.MediaRetentionDays}
+	r := &Router{primary: opts.Primary, senders: make(map[string]delivery.MessageSender), saveMediaOutput: opts.SaveMediaOutput, media: opts.Media, mediaRetentionDays: opts.MediaRetentionDays}
 	r.RegisterPlatform(opts.Primary)
 	return r
 }

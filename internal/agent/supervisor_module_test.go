@@ -102,7 +102,7 @@ func isolatedModuleDeps(t *testing.T) SupervisorDeps {
 	t.Cleanup(func() { _ = models.Close(context.Background()) })
 	permission := security.DefaultPermission()
 	registry := toolregistry.NewRegistry(permission)
-	sender := dispatch.New(dispatch.Options{Primary: &assemblyPlatform{}, Store: store})
+	sender := dispatch.New(dispatch.Options{Primary: &assemblyPlatform{}})
 	root := t.TempDir()
 	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
 	return SupervisorDeps{

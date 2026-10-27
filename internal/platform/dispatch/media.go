@@ -1,5 +1,5 @@
 // media.go 按显式平台解析媒体，准备出站媒体并关联实际发送回执；解析不回退到当前或默认平台。
-// 媒体服务与存储能力均为借用；TODO：回执持久化改用根部注入的最小 SaveOutput 能力。
+// 媒体服务与回执持久化函数均由根部注入，只借用，不管理其生命周期。
 
 package dispatch
 
@@ -165,16 +165,13 @@ func (a *Router) cacheMediaReceipt(ctx context.Context, outputs []delivery.Outpu
 		platformName := strings.TrimSpace(message.Platform)
 		scopeID := strings.TrimSpace(message.ScopeID)
 		messageID := strings.TrimSpace(message.PlatformMessageID)
-		if platformName == "" || scopeID == "" || messageID == "" {
-			continue
-		}
 		segmentIndex := 0
 		for _, outputIndex := range message.OutputIndexes {
 			out := outputs[outputIndex]
 			if out.Source.MediaID == "" || !isMediaOutputKind(out.Kind) {
 				continue
 			}
-			if err := a.store.Media().SaveOutput(ctx, storage.MediaOutput{Platform: platformName, ScopeID: scopeID, MessageID: messageID, SegmentIndex: segmentIndex, Kind: string(out.Kind), MediaID: out.Source.MediaID, ExpiresAt: expiresAt}); err != nil {
+			if err := a.saveMediaOutput(ctx, storage.MediaOutput{Platform: platformName, ScopeID: scopeID, MessageID: messageID, SegmentIndex: segmentIndex, Kind: string(out.Kind), MediaID: out.Source.MediaID, ExpiresAt: expiresAt}); err != nil {
 				errs = append(errs, err)
 			}
 			segmentIndex++

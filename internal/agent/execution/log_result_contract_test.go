@@ -12,9 +12,22 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/platform/dispatch"
 	"elbot/internal/signal"
 )
+
+type outputSendFunc func([]delivery.Output) (delivery.Receipt, events.LogResult, error)
+
+func (f outputSendFunc) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	return f(outputs)
+}
+
+func (f outputSendFunc) SendTo(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	return f(outputs)
+}
+
+func (outputSendFunc) StartStream(context.Context) (delivery.MessageStream, error) {
+	return nil, nil
+}
 
 func TestReplyDeliveryRecordsOncePerSend(t *testing.T) {
 	for _, mode := range []string{"direct", "buffered", "stream"} {
@@ -150,11 +163,11 @@ func TestSendOutputsUsesSourceLogResult(t *testing.T) {
 				PlatformMessageIDs: []string{"sent"},
 				SentMessages:       []delivery.SentMessage{{Platform: "test", ScopeID: "group:1", PlatformMessageID: "sent", OutputIndexes: []int{0}}},
 			}
-			backend := mediaSendFunc(func([]delivery.Output) (delivery.Receipt, events.LogResult, error) {
+			backend := outputSendFunc(func([]delivery.Output) (delivery.Receipt, events.LogResult, error) {
 				return businessReceipt, events.LogResult{ResultStatus: tc.status, Content: "source-specific diagnostic"}, tc.err
 			})
 			ctx := context.Background()
-			sender := agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{Dispatcher: dispatch.New(dispatch.Options{Primary: backend})})
+			sender := agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{Dispatcher: backend})
 			logResult, err := sender.SendOutputs(ctx, []delivery.Output{delivery.Text("business text")})
 			if err != tc.err || logResult.ResultStatus != tc.status || !strings.Contains(logResult.Content, "source-specific diagnostic") {
 				t.Fatalf("log result=%#v error=%v", logResult, err)
@@ -162,8 +175,8 @@ func TestSendOutputsUsesSourceLogResult(t *testing.T) {
 			if len(records) != 1 || records[0].ResultStatus != tc.status || records[0].Level != tc.level {
 				t.Fatalf("records=%#v", records)
 			}
-			if !strings.Contains(records[0].Content, "platform_message_id=sent") || !strings.Contains(records[0].Content, "output_indexes=[0]") {
-				t.Fatalf("partial-delivery facts missing: %s", records[0].Content)
+			if records[0].Content != "operation=send_outputs\nsource-specific diagnostic" {
+				t.Fatalf("source diagnostic changed: %s", records[0].Content)
 			}
 		})
 	}

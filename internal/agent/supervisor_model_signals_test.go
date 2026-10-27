@@ -81,7 +81,7 @@ func TestSharedRetrySubscriptionCoversChatCompactAndNaming(t *testing.T) {
 	}
 	defer models.Close(context.Background())
 	deps.Models = models
-	sender := dispatch.New(dispatch.Options{Primary: p, Store: deps.Store})
+	sender := dispatch.New(dispatch.Options{Primary: p})
 	deps.Platform = isolatedPlatformCapabilities{sender}
 	connectTestNotifications(t, sender)
 	runtime, err := NewSupervisor(t.Context(), cfg, deps)

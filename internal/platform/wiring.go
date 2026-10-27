@@ -107,7 +107,7 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps) error {
 			return err
 		}
 	}
-	m.dispatcher = dispatch.New(dispatch.Options{Primary: m.primary, Store: deps.Store, Media: deps.Media, MediaRetentionDays: cfg.Maintenance.SandboxCleanup.RetentionDays})
+	m.dispatcher = dispatch.New(dispatch.Options{Primary: m.primary, SaveMediaOutput: deps.Store.Media().SaveOutput, Media: deps.Media, MediaRetentionDays: cfg.Maintenance.SandboxCleanup.RetentionDays})
 	m.notifications, err = notification.New(m.primary.Name())
 	if err != nil {
 		return err

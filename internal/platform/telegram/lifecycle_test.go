@@ -259,8 +259,7 @@ func TestOperationsRemainAvailableUntilFinalClose(t *testing.T) {
 			_, _, err := a.SendTo(ctx, delivery.Target{PrivateUserID: "9"}, []delivery.Output{delivery.Text("hello")})
 			return err
 		},
-		"API":        func() error { _, err := a.CallPlatformAPI(ctx, "getChat", nil); return err },
-		"capability": func() error { _, err := a.CallCapability(ctx, "chat.leave", map[string]any{"chat_id": 9}); return err },
+		"API": func() error { _, err := a.CallPlatformAPI(ctx, "getChat", nil); return err },
 		"media": func() error {
 			_, err := a.ResolveMedia(ctx, share.MessageSegment{PlatformFileID: "file"}, 10)
 			return err
@@ -271,7 +270,7 @@ func TestOperationsRemainAvailableUntilFinalClose(t *testing.T) {
 		"Finish":      func() error { _, _, err := idle.Finish(ctx); return err },
 	}
 	// Stream methods use a deterministic order; other operations have no ordering dependency.
-	for _, name := range []string{"SendChat", "SendTo", "API", "capability", "media", "StartStream", "Append", "Replace", "Finish"} {
+	for _, name := range []string{"SendChat", "SendTo", "API", "media", "StartStream", "Append", "Replace", "Finish"} {
 		if err := operations[name](); err != nil {
 			t.Fatalf("%s after BeginClose: %v", name, err)
 		}

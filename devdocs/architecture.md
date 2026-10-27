@@ -517,7 +517,7 @@ flowchart TD
 
 平台负责输入归一化、历史与输出落地，支持本地／远程 CLI、QQ OneBot、QQ Official、Telegram 和 headless。
 
-Platform 根部按下层目标契约实现总管、装配与公开能力；下层契约见 [App 包设计](app-design.md#platform-下层目标契约)。根部持有适配器与订阅，借用 App 持有的历史库，输入转换为 Agent 自有请求并保留延迟媒体解析。contracts.go 的公开 MessageContext 只表达原文、原生载荷与引用事实，运行能力留在内部。dispatch 只取得名称、发送及可选的 API、媒体解析能力，完整 Runtime 归总管；引用存储依赖通过根部闭包固定，不混入共享请求。public_api.go 将通用能力与原生透传分开路由，不解释平台协议。Share 已定义运行、入站、两类可选 API 和通知接收契约，并提供通知目标转换；CLI、OneBot、QQ Official 已接入运行与通知，Headless 已接入无状态运行契约；OneBot 已实现通用能力与原生 API 分离，其余适配器及 dispatch 调用方仍待接通。旧 platform.go、module/、builtin/ 保留删除标记；旧反向依赖及调用方尚未迁移，整线尚不能编译接通。
+Platform 根部负责总管、装配与公开能力；下层契约见 [App 包设计](app-design.md#platform-下层目标契约)。根部持有适配器与订阅，借用 App 持有的历史库，输入转换为 Agent 自有请求并保留延迟媒体解析。contracts.go 的公开 MessageContext 只表达原文、原生载荷与引用事实，运行能力留在内部。dispatch 只取得名称、发送及可选原生 API、媒体解析能力，完整 Runtime 归总管；媒体回执通过根部注入的 SaveMediaOutput 持久化。通用能力使用固定方法，public_api.go 转交原生 API 与媒体解析，calls.go 只按显式平台查找并在锁外转发。引用恢复依赖通过根部闭包固定，不混入共享请求。Share 定义运行、入站、可选原生 API 和通知契约；CLI、OneBot、QQ Official、Telegram 已接入运行与通知，Headless 已接入无状态运行契约，OneBot 与 Telegram 提供原生传输。旧 platform.go、module/、builtin/ 保留删除标记；失败通知和旧调用方迁移仍阻塞整线接通。
 
 - Platform Supervisor 管理适配器；服务模式各平台退出互不影响，全部退出后仍等待外部停止，本地 TUI 退出结束整线。独立故障记录错误并异步通知其他运行平台的配置超管。BeginClose／Wait 仅停止并等待接入；Close 最后释放 UI、通知和适配器资源，历史库由 App 在所有业务线退出后关闭，Done 表示最终清理完成。
 - Headless 是 Service 模式的无状态主发送占位：Start 仅检查 context，BeginClose 无操作，Wait／Close 立即完成，两种发送入口保持拒绝输出。根部不启动它，只登记最终清理；Service 持续等待外部停止由根部负责，Headless 不持有接入、资源或常驻协程。

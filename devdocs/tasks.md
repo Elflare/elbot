@@ -76,15 +76,18 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 
 ## Platform 剩余接线
 
-- [x] Share 定义 Runtime／MessageHandler、两类可选 API 与 NotificationReceiver 契约；NotificationTarget 保留来源回复路由及显式目标转换行为。旧根包定义标记调用方迁移后删除，实际下层接线见后续任务。
+- [x] Share 定义 Runtime／MessageHandler、可选原生 API 与 NotificationReceiver 契约；NotificationTarget 保留来源回复路由及显式目标转换行为。旧根包定义标记调用方迁移后删除，实际下层接线见后续任务。
 - [x] CLI 本地 Adapter 与 RemoteServer 接入 share.Runtime、MessageHandler；真实管道、Linux 伪终端和 WebSocket 覆盖同步启动、并发启停、接入停止后保留发送、实际退出及超时重试；取消观察时保留回调收尾前已记录的独立故障。
 - [x] Headless 接入无状态 share.Runtime，删除旧 Run 和反向依赖；保留 Service 主发送占位，生命周期、取消上下文、重复及并发调用和发送失败契约通过 race 回归。
-- [x] OneBot 接入 share.Runtime、MessageHandler、Share 通知与两类 API，删除旧 New／Run 和反向依赖。race 覆盖停止接入后的发送、临时拨号取消、已建立临时连接保留、在途写帧取消隔离、关闭重试、重连隔离、API 参数映射及既有消息行为。
+- [x] OneBot 接入 share.Runtime、MessageHandler、Share 通知与原生 API，删除旧 New／Run 和反向依赖。race 覆盖停止接入后的发送、临时拨号取消、已建立临时连接保留、在途写帧取消隔离、关闭重试、重连隔离、原生 API 透传及既有消息行为。
 - [x] QQ Official 接入 Share 运行、入站与通知契约及自有最小 Deps；移除旧 New／Run、完整历史字段、闲置配置与非法依赖。race 回归覆盖网关重连分类、心跳同步与退出、并发启停、独立故障保留、停止接入后的发送、在途 HTTP 取消及别名入库等待、关闭超时重试、令牌刷新等待取消与 401 单次重试。
-- [x] Telegram 接入 Share 运行、入站、通知和两类 API 契约；使用自有最小 Deps，删除旧 New／Run 与 share/adapter.go。race 覆盖异步连接、并发启停、实际退出、收尾发送、完整操作取消、关闭超时重试、独立连接池清理、可取消流式等待、身份快照、命令目录并发、引用与历史、配置边界及 API 映射。
+- [x] Telegram 接入 Share 运行、入站、通知和原生 API 契约；使用自有最小 Deps，删除旧 New／Run 与 share/adapter.go。race 覆盖异步连接、并发启停、实际退出、收尾发送、完整操作取消、关闭超时重试、独立连接池清理、可取消流式等待、身份快照、命令目录并发、引用与历史、配置边界及 原生 API 透传。
 - [x] CLI 移除旧 agent/events 与 Platform 根包依赖，接入自有事件、ConnectUI 和函数式补全；通过事件版本、部分 UI 所有权、订阅释放、后台静默和原连接回复回归；换绑清除旧待发状态，在途发送按序完成，真实 WebSocket 背压覆盖换绑和展示关闭后连接保留，UI 关闭可超时重试。命令信息由补全入口消费，不保存闲置目录。
 - [x] CLI 客户端实现分类结果，根部仅转换；验证指定连接、默认本机拨号失败回退、远端与认证失败不回退、取消及已连接后断线退出。CLI 与四个相关组件通过 race，跨根部接线仍待整包验证。
-- [ ] dispatch.Router 实现 CallCapability／CallPlatformAPI 并删除旧 Elvena 调用链与重复映射；notification.Manager 实现 NotifyPlatformFailure。适配器契约已接入，Platform 整包当前缺这三个入口；验证未知能力报错、两类 API 不混流、发送与通知实际路由。
+- [x] dispatch.Router 按显式平台转发 CallPlatformAPI；通用发送、流式与媒体能力保留固定方法，引用恢复沿用入站链路。媒体回执通过根部注入 SaveMediaOutput；删除字符串能力分发表、撤回／禁言／退群映射及 dispatch 旧 Elvena 执行代码。
+- [ ] notification.Manager 实现 NotifyPlatformFailure，验证失败通知实际路由与停止、关闭行为。
+- [ ] Elvena／Elnis 清理旧 capability 声明、Kind／Name 等分发字段、ResolveRawCall 执行依赖及映射测试；保留 Elnis direct 原生调用链及调用方的平台选择规则，不引入兼容包装。
+- [ ] 更新 Elwisp 生成提示与相关用户示例，停止生成已删除的能力名；保留 Hook platform.call 原生链路，平台选择仍由调用方负责。用户文档随对应迁移阶段更新。
 - [ ] 替代调用方全部迁移后删除旧 platform.go、module/、builtin/，不加兼容别名；验证子包不再反向导入根包，兄弟实现通过 share 协作。
 - [ ] 媒体／模型构造入口及进程入口适配完成后，运行 Platform、App 整包与完整应用回归；组件隔离测试不替代真实总管接线和整包通过。
 
