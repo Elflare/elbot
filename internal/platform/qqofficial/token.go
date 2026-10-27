@@ -1,4 +1,4 @@
-// token.go 管理 QQ 官方平台访问令牌。
+// token.go 负责访问令牌的获取、缓存与刷新，供 HTTP 请求和网关鉴权使用。
 
 package qqofficial
 

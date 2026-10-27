@@ -1,4 +1,5 @@
-// send.go 发送 QQ 官方平台消息并整理发送回执。
+// send.go 负责消息编码、媒体上传、实际发送及回执整理。
+// TODO：承接 adapter.go 的发送入口、目标类型与解析、消息序号分配。
 
 package qqofficial
 

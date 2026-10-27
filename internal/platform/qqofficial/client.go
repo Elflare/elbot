@@ -1,4 +1,5 @@
-// client.go 执行平台原生请求并封装已有协议操作。
+// client.go 负责 HTTP 请求、认证重试及现有消息发送、文件上传等协议操作。
+// 发送与网关接入相互独立；TODO：配合生命周期管理 HTTP 操作与最终资源释放。
 
 package qqofficial
 

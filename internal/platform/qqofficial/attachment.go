@@ -1,4 +1,5 @@
-// attachment.go 处理平台附件解析与媒体接入。
+// attachment.go 将入站附件转换为媒体片段，整理类型、名称、来源和大小事实。
+// 这里只解析附件元数据，不下载或持久化媒体。
 
 package qqofficial
 

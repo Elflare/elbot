@@ -1,3 +1,6 @@
+// text_receipt_test.go 验证文本、回复及语音降级回执中的实际平台目标和输出关联。
+// TODO：发送夹具随唯一构造入口迁移。
+
 package qqofficial
 
 import (

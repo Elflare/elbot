@@ -1,4 +1,4 @@
-// types.go 定义平台协议数据类型。
+// types.go 定义网关、消息、媒体、令牌和键盘等平台协议载荷。
 
 package qqofficial
 

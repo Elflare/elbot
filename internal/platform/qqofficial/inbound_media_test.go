@@ -1,3 +1,6 @@
+// inbound_media_test.go 验证纯媒体入站历史的内容与片段顺序。
+// TODO：迁移入站 handler 和根包类型，使用 Share 与 Storage 契约。
+
 package qqofficial
 
 import (

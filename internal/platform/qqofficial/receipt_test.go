@@ -1,3 +1,6 @@
+// receipt_test.go 验证多项媒体发送部分失败时保留已成功发送的回执。
+// TODO：发送夹具随唯一构造入口迁移。
+
 package qqofficial
 
 import (

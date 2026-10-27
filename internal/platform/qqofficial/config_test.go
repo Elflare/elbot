@@ -1,3 +1,6 @@
+// config_test.go 验证凭据来源、优先级与配置字段保留。
+// TODO：构造夹具改用本包最小依赖。
+
 package qqofficial
 
 import (

@@ -1,4 +1,5 @@
-// message.go 解析入站消息并准备平台输入上下文。
+// message.go 归一化入站消息、构造平台事实、消费引用恢复结果并写入聊天历史。
+// TODO：改用 Share MessageHandler 显式交付，承接 adapter.go 的入站扩展定义。
 
 package qqofficial
 

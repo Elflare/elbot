@@ -1,4 +1,5 @@
-// keyboard.go 处理平台按钮与键盘交互。
+// keyboard.go 构造风险确认提示所用的命令按钮与键盘载荷。
+// 这里只生成平台消息组件，不执行按钮对应的业务命令。
 
 package qqofficial
 

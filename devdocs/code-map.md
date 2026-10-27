@@ -239,7 +239,11 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/platform/qq-onebot/{lifecycle,send}.go`：分阶段启停、重连、输入接纳和临时连接登记；消息发送、输出编码及回执。停止接入后保留已建立连接发送，最终 Close 等待实际释放。
 - `internal/platform/qq-onebot/{message,transport,capability_api}.go`：入站事实与历史落库；WebSocket 连接、写帧、响应匹配与终态关闭；三项通用能力映射及独立原生 API。
 - `internal/platform/qq-onebot/{conversion,forward,attachment,notifications,config_definition}.go`：消息片段转换、合并转发展开、媒体来源解析、通知投递和配置元数据；通知使用 Share 契约；测试通过注入契约验证引用结果消费，不依赖根包或兄弟实现。
-- `internal/platform/qqofficial/`、`internal/platform/telegram/`：各平台 runtime。
+- `internal/platform/qqofficial/adapter.go`：当前仍包含旧运行与部分发送实现；已标记职责迁移，目标保留适配器定义与最小借用依赖，旧 New、Run 待删除。
+- `internal/platform/qqofficial/lifecycle.go`：仅有职责注释的待实现骨架，承接分阶段启停、重连调度、业务退出等待与最终资源清理。
+- `internal/platform/qqofficial/{config,gateway,message,send}.go`：配置与唯一构造入口、网关协议与事件分发、入站事实与历史写入、消息发送与回执；已标记职责归拢及 Share 契约迁移，当前尚未完成接线。
+- `internal/platform/qqofficial/{client,token,attachment,keyboard,types,notifications,config_definition}.go`：HTTP 协议操作、令牌管理、附件元数据、键盘载荷、协议类型、通知投递及配置元数据；通知仍待迁移 Share 契约，旧构造、根包类型及兄弟实现测试夹具的迁移位置见测试文件头。
+- `internal/platform/telegram/`：Telegram 平台 runtime。
 - `internal/platform/headless/headless.go`：Service 主发送占位及无状态生命周期；不接收输入、不持有资源，两种发送入口保持失败，持续运行由根部协调。
 - `internal/platform/qqofficial/reference.go`：QQ 引用索引解析、消息 ID 关联、事件原文转换及入站／发送回执索引登记。
 

@@ -1,4 +1,5 @@
-// config.go 解析和规范化平台配置。
+// config.go 解析和规范化配置、解析凭据，并提供 NewFromPlatformConfig 构造入口。
+// TODO：消费本包最小依赖，将旧 New 初始化并入此入口。
 
 package qqofficial
 

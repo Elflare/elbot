@@ -1,3 +1,6 @@
+// reference_test.go 验证引用索引、别名范围、事件引用内容及发送后的别名登记。
+// TODO：迁移旧构造、handler 与根包类型，保留别名存储和引用结果消费断言。
+
 package qqofficial
 
 import (

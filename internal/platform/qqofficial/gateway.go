@@ -1,4 +1,5 @@
-// gateway.go 管理 QQ 官方平台网关连接和事件接收。
+// gateway.go 负责网关连接、鉴权、心跳、重连原因分类及事件分发。
+// TODO：改用 Share 入站契约，接入 lifecycle.go 的工作跟踪，处理心跳状态同步与协程退出。
 
 package qqofficial
 

@@ -1,4 +1,5 @@
-// notifications.go 将通知转换为平台消息并实际投递。
+// notifications.go 转换通知目标并调用平台发送，连接由上层持有和释放。
+// TODO：改用 Share 通知契约，移除对 Platform 根包的依赖。
 
 package qqofficial
 

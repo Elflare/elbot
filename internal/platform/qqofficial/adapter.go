@@ -1,4 +1,5 @@
-// adapter.go 协调适配器运行、平台接入与消息处理。
+// adapter.go 定义适配器及借用依赖；TODO：裁剪历史能力，运行职责迁入 lifecycle.go，发送与入站扩展分别归入 send.go、message.go。
+// 本包后续仅保留 config.go 的 NewFromPlatformConfig 构造入口，旧 New、Run 待删除。
 
 package qqofficial
 
@@ -30,7 +31,7 @@ type Adapter struct {
 	wsWriteMu sync.Mutex
 }
 
-// TODO：参考 qqonebot.Deps 与唯一构造入口，拆分本包所需依赖并移除旧 New。
+// TODO：删除旧 New，将初始化并入 config.go 的 NewFromPlatformConfig，不保留兼容入口。
 func New(cfg Config, chatHistory storage.ChatHistoryRepository) *Adapter {
 	applyDefaults(&cfg)
 	return &Adapter{cfg: cfg, chatHistory: chatHistory, client: newAPIClient(cfg), seqByID: map[string]int{}}
@@ -45,6 +46,7 @@ func (a *Adapter) notifyConnected(ctx context.Context) {
 	_, _ = globalevents.PlatformConnected.Emit(ctx, globalevents.PlatformConnectedEvent{Platform: a.Name()})
 }
 
+// TODO：删除旧 Run，由 lifecycle.go 的 Start、BeginClose、Wait、Close 接替运行协调。
 func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) error {
 	if !a.cfg.Enabled {
 		return nil

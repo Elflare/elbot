@@ -1,3 +1,6 @@
+// message_test.go 验证入站身份、唤醒事实、引用结果、历史写入、附件转换与连接通知。
+// TODO：迁移旧构造、handler 和根包类型；引用决策通过注入契约验证消费行为。
+
 package qqofficial
 
 import (

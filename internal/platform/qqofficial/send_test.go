@@ -1,3 +1,6 @@
+// send_test.go 验证群聊与私聊发送、媒体上传、通知目标及显式投递的回复隔离。
+// TODO：迁移旧构造，通知夹具改用 Share 接收契约，移除对兄弟通知实现的依赖。
+
 package qqofficial
 
 import (
