@@ -1,3 +1,6 @@
+// inbound_media_test.go 验证媒体历史的顺序与凭据清洗，以及输出引用避免重复平台查询。
+// TODO：迁移旧入站夹具，使用 Share 消息契约及 Storage 历史编解码。
+
 package qqonebot
 
 import (

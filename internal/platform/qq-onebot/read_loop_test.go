@@ -1,3 +1,6 @@
+// read_loop_test.go 验证仅按上一条非零消息 ID 去重，并在重连后保留去重状态。
+// TODO：夹具改用 share.MessageHandler，接入可等待的入站工作登记，替换旧读循环调用方式。
+
 package qqonebot
 
 import (

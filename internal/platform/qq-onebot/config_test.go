@@ -1,3 +1,6 @@
+// config_test.go 验证访问令牌的配置来源、优先级与缺省行为。
+// TODO：测试夹具改用 NewFromPlatformConfig(raw, deps)，移除旧参数列表。
+
 package qqonebot
 
 import (

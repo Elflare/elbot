@@ -1,4 +1,5 @@
-// config_definition.go 声明平台配置字段与默认定义。
+// config_definition.go 注册 OneBot 配置元数据，通过 Config 提供字段定义。
+// 不创建适配器，配置默认值与依赖构造保留在 adapter.go。
 
 package qqonebot
 

@@ -1,3 +1,6 @@
+// forward_test.go 验证合并转发的一层引用展开、顺序、占位与失败处理。
+// TODO：迁移旧构造与历史编解码夹具，通过注入契约替换 Platform 根包及 refcontext 实现依赖。
+
 package qqonebot
 
 import (

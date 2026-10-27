@@ -1,3 +1,6 @@
+// conversion_test.go 验证消息转换场景、媒体规则及不同协议表示的归一化。
+// TODO：测试类型改用 Share 契约，移除对 Platform 根包的依赖。
+
 package qqonebot
 
 import (

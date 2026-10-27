@@ -1,4 +1,5 @@
-// message.go 解析入站消息并准备平台输入上下文。
+// message.go 负责入站归一化、上下文构造、引用恢复与聊天历史写入。
+// TODO：从 adapter.go 迁入入站处理链路，并通过 share.MessageHandler 交付完整消息上下文。
 
 package qqonebot
 

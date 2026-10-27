@@ -1,3 +1,6 @@
+// transport_test.go 验证写入与响应超时、并发响应匹配、断线重连及连接通知。
+// TODO：适配分阶段关闭语义，将旧 Run 夹具迁移到新的生命周期入口。
+
 package qqonebot
 
 import (

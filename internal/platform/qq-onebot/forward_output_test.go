@@ -1,3 +1,6 @@
+// forward_output_test.go 验证长文本合并转发、失败不回退及部分发送回执。
+// TODO：迁移旧 New 构造夹具，发送行为断言保持不变。
+
 package qqonebot
 
 import (

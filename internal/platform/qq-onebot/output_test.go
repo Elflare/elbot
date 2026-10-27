@@ -1,3 +1,6 @@
+// output_test.go 验证通知投递、媒体输出编码及发送失败行为。
+// TODO：迁移旧 New 构造夹具，通知测试直接使用信号契约，移除 notification 兄弟实现依赖。
+
 package qqonebot
 
 import (

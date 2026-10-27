@@ -1,4 +1,5 @@
-// conversion.go 转换 OneBot 消息片段与内部消息格式。
+// conversion.go 负责普通输入与合并转发内容的消息片段转换，保留各场景的元数据规则。
+// 这里只转换协议事实，不获取媒体或交付业务消息。
 
 package qqonebot
 

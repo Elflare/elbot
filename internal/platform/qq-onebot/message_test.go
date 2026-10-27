@@ -1,3 +1,6 @@
+// message_test.go 验证配置、文本分页、消息归一化、引用上下文、历史快照与延迟媒体解析。
+// TODO：迁移旧构造、入站 handler 和 Platform 根包类型，按新的文件职责整理测试归属。
+
 package qqonebot
 
 import (

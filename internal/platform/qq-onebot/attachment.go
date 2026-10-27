@@ -1,4 +1,5 @@
-// attachment.go 处理平台附件解析与媒体接入。
+// attachment.go 负责图片、文件的媒体来源解析与大小限制检查。
+// 返回媒体服务可使用的 URL 或路径，平台文件信息按需查询。
 
 package qqonebot
 

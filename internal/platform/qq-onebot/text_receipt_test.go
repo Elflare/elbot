@@ -1,3 +1,6 @@
+// text_receipt_test.go 验证文本发送回执保留实际目标，以及长文本使用单次合并转发回执。
+// TODO：迁移旧 New 构造夹具，保留实际发送与回执断言。
+
 package qqonebot
 
 import (

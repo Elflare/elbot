@@ -1,4 +1,5 @@
-// adapter.go 协调适配器运行、平台接入与消息处理。
+// adapter.go 的目标职责是定义适配器、配置及依赖，并通过 NewFromPlatformConfig 完成构造。
+// TODO：启停与读循环迁入 lifecycle.go，发送迁入 send.go，入站处理迁入 message.go，两类 API 入口归 capability_api.go。
 
 package qqonebot
 
@@ -144,7 +145,7 @@ func validateSendFileMode(mode string) error {
 	}
 }
 
-// TODO：适配器子包改造时替换此旧构造入口，直接消费 AdapterDeps 的窄能力并初始化引用恢复。
+// TODO：删除旧 New，将初始化并入 NewFromPlatformConfig，直接消费 AdapterDeps 的窄能力并完整注入引用恢复。
 func New(cfg Config, store storage.Store, chatHistory storage.ChatHistoryRepository) *Adapter {
 	applyDefaults(&cfg)
 
@@ -168,6 +169,7 @@ func (a *Adapter) notifyConnected(ctx context.Context) {
 	_, _ = globalevents.PlatformConnected.Emit(ctx, globalevents.PlatformConnectedEvent{Platform: a.Name()})
 }
 
+// TODO：删除旧 Run，由 lifecycle.go 的 Start、BeginClose、Wait、Close 承接分阶段生命周期，不保留兼容入口。
 func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) error {
 	if !a.cfg.Enabled {
 		return nil

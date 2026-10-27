@@ -235,7 +235,10 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/storage/chat_history.go`：ChatSegment、ChatReply 和持久化编解码，保留片段顺序与来源清洗规则。
 - `internal/media/{types,platform}.go`：自有 PlatformMedia、HistoryMessage；负责媒体缓存、关联和批量获取，通过注入函数解析平台来源，不依赖 Platform。
 - `internal/platform/{lifecycle,contracts,agent}_test.go`：生命周期、公开事实隔离独立测试，以及输入转换与投影测试；本轮契约迁移的测试留到 review 运行。
-- `internal/platform/qq-onebot/`：协议转换、forward 展开、长消息与回执。
+- `internal/platform/qq-onebot/adapter.go`：当前仍包含旧运行、入站和发送实现；已标记迁移职责，目标保留适配器定义、配置与唯一构造入口，旧 New、Run 待删除。
+- `internal/platform/qq-onebot/{lifecycle,send}.go`：仅有职责注释的待实现骨架，分别承接分阶段生命周期与消息发送、输出编码、回执；尚未迁入实现。
+- `internal/platform/qq-onebot/{message,transport,capability_api}.go`：分别归拢入站处理、连接与响应匹配、两类 API 入口；已标记待改造，当前接线尚未完成。
+- `internal/platform/qq-onebot/{conversion,forward,attachment,notifications,config_definition}.go`：消息片段转换、合并转发展开、媒体来源解析、通知投递和配置元数据；通知仍待改用 Share 契约，测试夹具迁移位置已在各测试文件头标注。
 - `internal/platform/qqofficial/`、`internal/platform/telegram/`：各平台 runtime。
 - `internal/platform/headless/headless.go`：Service 主发送占位及无状态生命周期；不接收输入、不持有资源，两种发送入口保持失败，持续运行由根部协调。
 - `internal/platform/qqofficial/reference.go`：QQ 引用索引解析、消息 ID 关联、事件原文转换及入站／发送回执索引登记。

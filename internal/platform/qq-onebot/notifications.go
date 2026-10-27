@@ -1,4 +1,5 @@
-// notifications.go 将通知转换为平台消息并实际投递。
+// notifications.go 负责通知目标转换与实际消息投递。
+// TODO：改用 share.NotificationTarget 和 Share 通知契约，删除对 Platform 根包的依赖。
 
 package qqonebot
 

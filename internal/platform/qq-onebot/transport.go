@@ -1,4 +1,5 @@
-// transport.go 管理 OneBot 连接并执行原生协议请求。
+// transport.go 负责 WebSocket 连接、原生请求发送与响应匹配。
+// TODO：改造连接关闭与并发请求收尾，停止业务接入后仍读取发送响应，最终关闭时释放等待中的请求。
 
 package qqonebot
 

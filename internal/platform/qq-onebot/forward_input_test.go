@@ -1,3 +1,6 @@
+// forward_input_test.go 验证私聊合并转发展开、混合内容、引用及续接分叉行为。
+// TODO：迁移旧构造和入站夹具，通过注入契约替换 Platform 根包及 refcontext 实现依赖。
+
 package qqonebot
 
 import (
