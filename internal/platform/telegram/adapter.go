@@ -1,4 +1,5 @@
-// adapter.go 协调适配器运行、平台接入与消息处理。
+// adapter.go 定义适配器；TODO：声明自有最小依赖与生命周期状态。
+// 现有轮询、消息处理、发送、命令同步及 API 入口待迁入各职责文件。
 
 package telegram
 
@@ -27,7 +28,7 @@ import (
 type Adapter struct {
 	referenceResolver func(context.Context, share.ReferenceOptions) (share.ReferenceResult, error) // 根部注入的引用恢复能力。
 	cfg               Config
-	chatHistory       storage.ChatHistoryRepository // TODO：适配器子包改造时替换为 AdapterDeps.ChatHistory 的窄能力。
+	chatHistory       storage.ChatHistoryRepository // TODO：收窄为实际使用的历史 Append 能力。
 	client            *apiClient
 
 	botID          int64
@@ -40,7 +41,7 @@ type target struct {
 	ScopeID string
 }
 
-// TODO：参考 qqonebot.Deps 与唯一构造入口，拆分本包所需依赖并移除旧 New。
+// TODO：删除旧 New，将初始化并入唯一构造入口 NewFromPlatformConfig。
 func New(cfg Config, chatHistory storage.ChatHistoryRepository) *Adapter {
 	applyDefaults(&cfg)
 	return &Adapter{cfg: cfg, chatHistory: chatHistory, client: newAPIClient(cfg)}
@@ -59,6 +60,7 @@ func (a *Adapter) notifyConnected(ctx context.Context) {
 	_, _ = globalevents.PlatformConnected.Emit(ctx, globalevents.PlatformConnectedEvent{Platform: a.Name()})
 }
 
+// TODO：删除旧 Run，由 lifecycle.go 实现 Share 的 Start、BeginClose、Wait、Close 契约。
 func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) error {
 	if !a.cfg.Enabled {
 		return nil

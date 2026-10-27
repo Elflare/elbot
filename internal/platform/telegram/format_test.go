@@ -1,3 +1,5 @@
+// format_test.go 验证 Markdown 文本块与代码到 Telegram HTML 的转换。
+
 package telegram
 
 import (

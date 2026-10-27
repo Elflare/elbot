@@ -1,3 +1,5 @@
+// message_test.go 验证机器人提及清洗及入站文档消息归一化。
+
 package telegram
 
 import (

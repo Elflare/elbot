@@ -1,4 +1,5 @@
-// stream.go 处理 Telegram 流式发送、分页与回执。
+// stream.go 处理流式预览、更新和最终回执，复用普通发送与分页能力。
+// TODO：接入生命周期管理，停止接入后保留收尾发送，最终关闭等待在途操作退出。
 
 package telegram
 

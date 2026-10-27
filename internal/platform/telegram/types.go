@@ -1,4 +1,4 @@
-// types.go 定义平台协议数据类型。
+// types.go 定义 Telegram 入站事件、消息及 API 请求响应的协议类型。
 
 package telegram
 

@@ -1,3 +1,6 @@
+// text_receipt_test.go 验证分页与流式回执来源，部分失败不重发已成功页面。
+// TODO：测试构造迁入唯一入口，保留完整回执与媒体关联语义验证。
+
 package telegram
 
 import (

@@ -1,3 +1,6 @@
+// inbound_media_test.go 验证入站媒体历史记录与延迟解析。
+// TODO：使用唯一构造入口与 Share 消息契约，移除对 Platform 根包的依赖。
+
 package telegram
 
 import (

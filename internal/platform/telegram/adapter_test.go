@@ -1,3 +1,6 @@
+// adapter_test.go 覆盖配置、协议请求、发送、命令同步及重连通知。
+// TODO：随职责迁移调整测试归属，使用唯一构造入口及分阶段生命周期。
+
 package telegram
 
 import (

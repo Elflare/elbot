@@ -1,4 +1,4 @@
-// config.go 解析和规范化平台配置。
+// config.go 解析和规范化平台配置；TODO：接收本包最小依赖，合并初始化为唯一构造入口。
 
 package telegram
 

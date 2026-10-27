@@ -1,3 +1,6 @@
+// stream_test.go 验证流式消息发送、编辑、替换及私聊富文本草稿。
+// TODO：测试构造迁入唯一入口，补充生命周期接入后的实际退出验证。
+
 package telegram
 
 import (

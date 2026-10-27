@@ -1,3 +1,6 @@
+// receipt_test.go 验证多目标发送部分失败时保留成功回执。
+// TODO：测试构造迁入唯一入口，保持部分成功语义验证。
+
 package telegram
 
 import (

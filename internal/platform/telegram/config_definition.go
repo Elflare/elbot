@@ -1,4 +1,4 @@
-// config_definition.go 声明平台配置字段与默认定义。
+// config_definition.go 提供 Telegram 配置元数据，不创建适配器。
 
 package telegram
 

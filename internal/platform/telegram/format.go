@@ -1,4 +1,4 @@
-// format.go 转换 Telegram 消息文本与平台格式。
+// format.go 承担 Telegram 消息文本与平台格式之间的转换。
 
 package telegram
 

@@ -1,4 +1,5 @@
-// message.go 解析入站消息并准备平台输入上下文。
+// message.go 处理入站事实、引用、历史写入及媒体解析。
+// TODO：接收 adapter.go 的消息与按钮回调处理，通过 Share MessageHandler 交付输入。
 
 package telegram
 

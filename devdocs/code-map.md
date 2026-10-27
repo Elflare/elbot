@@ -222,7 +222,7 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/platform/{contracts,agent,send,public_api,client,config}.go`：公开契约、Agent 输入与展示转接、发送、两类 API、媒体解析、客户端分类转换及配置汇总；按下层已实现来调用，整包仍待迁移。
 - `internal/platform/share/`：内部契约与共享辅助；`runtime_contracts.go` 定义 Runtime 与 MessageHandler，`adapter_api.go` 定义两类 API，`notification.go` 定义通知接收及目标转换；`config.go` 定义 CommonConfig 与配置辅助，`history_contracts.go` 定义最小历史读写，`backoff.go` 提供退避。`adapter.go` 仅保留 Telegram 待迁移的旧 AdapterDeps，不再包含 Store。
 - `internal/platform/dispatch/{router,media}.go`：复用平台注册表执行发送与显式目标媒体解析；ResolveMedia 不回退到当前或默认平台。`calls.go` 承接 Elvena 平台调用与映射实现，尚未拆入各适配器。
-- `internal/platform/telegram/capability_api.go`：待实现的通用能力入口。
+- `internal/platform/telegram/capability_api.go`：两类 API 的职责骨架；待迁入已有撤回、禁言、退群映射及 adapter.go 的独立原生 API 入口，尚无实现。
 - `internal/platform/refcontext/refcontext.go`：引用消息恢复与上下文处理；Options 持有 Store 和仅含 GetByPlatformMessage 的历史消费接口，单次请求和结果使用 share 契约，由根部闭包注入适配器。
 - `internal/platform/platform.go`、`module/`、`builtin/`：保留尚未拆分的旧实现，文件头标注迁移后删除；不作为新对外边界。
 - `internal/platform/cli/`：本地／远程 CLI 与 TUI；`lifecycle.go` 管理本地接入和终端最终退出，`remote_lifecycle.go` 管理同步监听及连接分阶段释放；`cli.go`、`remote_server.go` 保留输入和发送实现。
@@ -243,7 +243,10 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/platform/qqofficial/lifecycle.go`：管理分阶段启停、重连调度、入站及完整发送退出等待与最终资源清理；HTTP 发送保留到最终关闭。
 - `internal/platform/qqofficial/{config,gateway,message,send}.go`：配置与唯一构造入口、网关协议及心跳同步、Share 入站交付与历史写入、消息发送与回执。
 - `internal/platform/qqofficial/{client,token,attachment,keyboard,types,notifications,config_definition}.go`：自有 HTTP 连接池与协议操作、可取消等待的令牌缓存及刷新、附件元数据、键盘载荷、协议类型、Share 通知投递及配置元数据。
-- `internal/platform/telegram/`：Telegram 平台 runtime。
+- `internal/platform/telegram/adapter.go`：当前仍承载旧构造、Run、消息处理、发送与命令同步；目标仅保留适配器、自有最小依赖与状态，历史待收窄为 Append。
+- `internal/platform/telegram/{lifecycle,send,commands}.go`：新增职责骨架，尚无实现；分别承接分阶段启停与轮询退出等待、普通发送与分页回执、命令目录转换与同步。
+- `internal/platform/telegram/{config,message,stream,client}.go`：配置解析、入站事实与历史和媒体解析、流式发送、HTTP 协议操作；唯一构造、Share 入站契约及资源生命周期仍待接入。
+- `internal/platform/telegram/{format,keyboard,types,notifications,config_definition}.go`：文本格式、键盘载荷、协议类型、通知投递及配置元数据；通知仍待改用 Share 契约，测试同步标记待迁移入口。
 - `internal/platform/headless/headless.go`：Service 主发送占位及无状态生命周期；不接收输入、不持有资源，两种发送入口保持失败，持续运行由根部协调。
 - `internal/platform/qqofficial/reference.go`：QQ 引用索引解析、消息 ID 关联、事件原文转换及入站／发送回执索引登记。
 

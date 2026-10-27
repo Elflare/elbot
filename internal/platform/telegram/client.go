@@ -1,4 +1,5 @@
-// client.go 执行平台原生请求并封装已有协议操作。
+// client.go 执行 HTTP 请求、上传下载及平台协议操作。
+// TODO：明确自有连接池的构造与释放，配合生命周期停止和最终清理。
 
 package telegram
 

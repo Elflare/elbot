@@ -1,4 +1,4 @@
-// notifications.go 将通知转换为平台消息并实际投递。
+// notifications.go 将通知转换为平台消息并实际投递；TODO：改用 Share 通知契约。
 
 package telegram
 
