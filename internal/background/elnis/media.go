@@ -1,5 +1,4 @@
-// media.go 定义最小媒体能力，准备事件输入、直接输出与报告附件。
-// TODO：接收 elvena.DirectText 的正文组装逻辑，与直接输出准备保持在同一文件。
+// media.go 定义最小媒体能力，准备事件输入、直接输出正文与报告附件。
 
 package elnis
 
@@ -14,7 +13,6 @@ import (
 	"time"
 
 	"elbot/internal/delivery"
-	"elbot/internal/elvena"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/storage"
@@ -89,13 +87,22 @@ func (s *Service) materializeSegments(ctx context.Context, segments []Segment, e
 	return out, nil
 }
 
+func directText(req Request) string {
+	parts := []string{}
+	if title := strings.TrimSpace(req.Title); title != "" {
+		parts = append(parts, title)
+	}
+	parts = append(parts, strings.TrimSpace(req.Content))
+	return strings.Join(parts, "\n")
+}
+
 func (s *Service) directMediaOutputs(ctx context.Context, event Event, eventID string) ([]delivery.Output, error) {
 	segments, err := s.materializeSegments(ctx, event.Request.Segments, eventID)
 	if err != nil {
 		return nil, err
 	}
 	if len(segments) == 0 {
-		return []delivery.Output{delivery.Text(elvena.DirectText(event.Request))}, nil
+		return []delivery.Output{delivery.Text(directText(event.Request))}, nil
 	}
 	outputs := make([]delivery.Output, 0, len(segments))
 	for _, seg := range segments {

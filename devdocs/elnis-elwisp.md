@@ -13,7 +13,7 @@ Elnis 接收并分发事件，Elvena 定义协议，Elwisp 提供外部事件和
 - Runtime 接收 POST /elvena/v2/events 和 /elvena/v3/events，提供 /healthz；限制 body 大小，仅接受单个 JSON object。
 - Bearer 或 X-Elnis-Token 鉴权；token 名用于审计，Elwisp 身份取 elwisp.name，日志不记录 token 原文。
 - 唯一键为 elwisp.name + source + id；重复不分发，同键不同 hash 只告警，不覆盖原事件。
-- record 只记录；direct 在当前请求内发送文本／segments 并执行 raw／capability calls，calls-only 不额外发消息；llm 落库后入内存队列，HTTP 不等待模型完成。
+- record 只记录；direct 在当前请求内依次执行原生 calls，再发送文本／segments；调用失败或取消时停止后续调用和发送，calls-only 不额外发消息；llm 落库后入内存队列，HTTP 不等待模型完成。
 - RecoverInterrupted 将 accepted／queued／running 中未持久化报告的事件标记失败并原子释放引用；工具可能已有副作用，因此不重放。已有报告按 outbox 恢复投递。Background 根部在 worker 启动前调用恢复，禁用 Elnis 时也执行。
 
 ## 来源、工具与投递裁决
@@ -37,13 +37,13 @@ Elnis 位于 `internal/background/elnis`，通过 `background/share.Runner` 契�
 
 ## 依赖边界
 
-现有文件已标注职责与迁移 TODO，以下为待落实的归属：Elvena 的 types.go 保留公共请求、响应、片段、目标及原生调用声明，origin.go 保留来源契约；内部 Event 从 Elvena 迁入 Elnis/types.go。投递目标转换从 Elvena/delivery.go 归入 Elnis/targets.go，正文组装归入 Elnis/media.go；其余无调用辅助逻辑、CallResult 及 dispatcher.go 中的无调用总线待删除。本阶段只完成注释骨架，旧定义与 ResolveRawCall 执行依赖仍在。
+Elvena 的 types.go 定义公共请求、响应、片段、目标及原生调用声明，origin.go 定义来源契约。Call 只包含 platform、api、params，沿用现有请求解析机制；API 与参数由平台解释，不在 Elnis 增加映射或重复校验。Elnis/types.go 定义内部 Event，持有规范化请求、去重信息、目标快照及时间事实。targets.go 的 toDeliveryTarget 供直接发送与报告投递共用，media.go 的 directText 组装正文。
 
 ```mermaid
 flowchart TD
     T["elvena/types.go：公共协议数据"]
     O["elvena/origin.go：来源契约"]
-    E["elnis/types.go：内部事件状态（待迁入）"]
+    E["elnis/types.go：内部事件状态"]
     D["elnis/direct.go：原生调用、直接投递与完成状态"]
     M["elnis/media.go：媒体准备与正文组装"]
     G["elnis/targets.go：目标裁决与投递目标转换"]
@@ -52,12 +52,9 @@ flowchart TD
     D --> E
     D --> M
     D --> G
-    X["elvena/delivery.go：迁移后删除"] -.-> M
-    X -.-> G
-    B["elvena/dispatcher.go：无调用方，待删除"]
 ```
 
-Elnis 的 repository.go 定义 EventRepository、最小事件／投递记录和独立写入请求，Background 根部 elnisBridge 转换 Storage 类型与未找到错误。JSON 由 Elnis 解释，终态引用清理、报告准备及回执映射由 Storage 原子提交。平台调用由根部注入 CallPlatformAPI 函数，Elnis 只提交平台名称、API 和参数。
+Elnis 的 repository.go 定义 EventRepository、最小事件／投递记录和独立写入请求，Background 根部 elnisBridge 转换 Storage 类型与未找到错误。JSON 由 Elnis 解释，终态引用清理、报告准备及回执映射由 Storage 原子提交。平台调用由根部注入 CallPlatformAPI 函数；Elnis 去除显式平台名称首尾空白，未指定时选择首个解析目标的平台，原样转交上下文、API 和参数。执行结果记录成功、失败或取消，原生响应正文不作为额外消息发送。
 
 Cron 与 Elnis 共用 share/report.go 的 ReportMessageMap 和 MapReportReceipt；只映射 SentMessages，不根据未归属的消息 ID 猜测发送位置。
 

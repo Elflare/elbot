@@ -1,14 +1,8 @@
 // types.go 定义公共请求、响应、片段、目标与平台调用声明。
-// TODO：Call 收敛为 Platform、API、Params，删除旧能力分发字段、CallKind 和无调用方的 CallResult。
-// TODO：Event 的去重、解析目标及接收时间等运行状态迁入 background/elnis/types.go。
 
 package elvena
 
-import (
-	"time"
-
-	"elbot/internal/tool"
-)
+import "elbot/internal/tool"
 
 const (
 	VersionV2 = "elvena.v2"
@@ -76,26 +70,11 @@ type Target struct {
 	ID       string `json:"id,omitempty" toml:"id"`
 }
 
-type CallKind string
-
-const (
-	CallKindCapability CallKind = "capability"
-	CallKindRaw        CallKind = "raw"
-)
-
+// Call 描述平台原生 API 请求，平台选择与执行归接收方。
 type Call struct {
-	Kind     CallKind       `json:"kind,omitempty"`
-	Name     string         `json:"name,omitempty"`
-	Platform string         `json:"platform,omitempty"`
-	Target   Target         `json:"target,omitempty"`
-	API      string         `json:"api,omitempty"`
-	Params   map[string]any `json:"params,omitempty"`
-}
-
-type CallResult struct {
-	Call     Call   `json:"call"`
-	Response string `json:"response,omitempty"`
-	Error    string `json:"error,omitempty"`
+	Platform string         `json:"platform,omitempty"` // 平台名称；省略时由接收方选择。
+	API      string         `json:"api,omitempty"`      // 平台原生接口名。
+	Params   map[string]any `json:"params,omitempty"`   // 原生接口参数，由平台解释。
 }
 
 type Response struct {
@@ -105,19 +84,4 @@ type Response struct {
 	Mode      string `json:"mode"`
 	Status    string `json:"status"`
 	Error     string `json:"error,omitempty"`
-}
-
-type Event struct {
-	Request          Request
-	Origin           Origin
-	EventKey         string
-	ContentHash      string
-	ToolDeclarations string
-	ToolHash         string
-	TagsJSON         string
-	RequestedTargets string
-	ResolvedTargets  string
-	SegmentPaths     map[string]string
-	CreatedAt        time.Time
-	ReceivedAt       time.Time
 }

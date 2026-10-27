@@ -72,7 +72,7 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Platform.RestoreMessageContext 由 Agent 根部注入，后台入口清除继承的平台状态，前台接管恢复平台事实与路由；普通后台输出和默认通知静默，显式目标投递保留。
 - [x] Platform 根部历史能力裁剪为写入、单条身份查询和两项别名方法，refcontext 只接收单条查询；删除总管中转字段。OneBot、QQ Official、Telegram 已使用自有最小 Deps，Share 提供 CommonConfig 与最小历史读写契约；三个远程适配器均已移除完整或闲置 Store。Telegram 只借用 Append 与引用恢复函数，旧共享 AdapterDeps、旧构造及完整历史字段已删除，不增加兼容层。
 - [x] 本轮 Agent、Tool、Media、refcontext、dispatch 测试夹具接入新契约；相关回归通过，覆盖真实 SQLite 范围与昵称匹配、引用及媒体顺序、缓存与额度、入站切片隔离和延迟物化、接管取消链及后台静默／显式投递。Agent 根部内部测试单独通过；App 实际生命周期与历史库清理的隔离 race 回归通过。
-- [ ] 完成旧消费者迁移及媒体／模型构造入口后，运行 Agent–Hook、App 整包和资源构造测试；解除 Elnis 的旧 elvena.ResolveRawCall 调用阻塞后，运行 Background 已迁移的历史清理依赖及借用所有权测试。旧适配器实现和其测试夹具在对应子包阶段对接。
+- [ ] 完成旧消费者迁移及媒体／模型构造入口后，运行 Agent–Hook、App 整包和资源构造测试。Background 历史清理依赖及借用所有权测试已随整包 race 回归通过。旧适配器实现和其测试夹具在对应子包阶段对接。
 
 ## Platform 剩余接线
 
@@ -86,9 +86,8 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] CLI 客户端实现分类结果，根部仅转换；验证指定连接、默认本机拨号失败回退、远端与认证失败不回退、取消及已连接后断线退出。CLI 与四个相关组件通过 race，跨根部接线仍待整包验证。
 - [x] dispatch.Router 按显式平台转发 CallPlatformAPI；通用发送、流式与媒体能力保留固定方法，引用恢复沿用入站链路。媒体回执通过根部注入 SaveMediaOutput；删除字符串能力分发表、撤回／禁言／退群映射及 dispatch 旧 Elvena 执行代码。
 - [x] notification.Manager 实现 NotifyPlatformFailure，复用既有异步信号；根部选择存活平台和去重管理员目标。Platform 根包、notification、Share 与 Agent/execution 的 race 回归通过，覆盖实际路由、停止接入后通知、取消排队及在途工作、等待回调退出和超时重试；旧上下文测试已按当前公开事实契约清理。
-- [x] Elvena／Elnis 沿用现有文件补充职责说明与迁移 TODO；仅完成骨架标注，定义和行为未迁移。
-- [ ] Elvena／Elnis 清理旧 capability 声明、Kind／Name／Target 等分发字段、CallKind、无调用方的 CallResult、ResolveRawCall 执行依赖及映射测试；Call 保留 Platform／API／Params，保留 Elnis direct 原生调用链及调用方的平台选择规则，不引入兼容包装。
-- [ ] Event 归入 Elnis/types.go；投递目标转换归 targets.go，正文组装归 media.go。迁移调用方后删除 Elvena/delivery.go 及剩余无调用辅助逻辑，删除无调用方的 dispatcher.go 总线。
+- [x] Elvena Call 只包含 Platform／API／Params；Elnis direct 按既有平台选择规则直接转发原生调用，保留顺序执行、遇错停止及 calls-only 行为，无能力映射或兼容包装。Elvena、Background 根包及全部子包、dispatch 的 race 回归通过，覆盖 HTTP 原生请求、失败与取消、真实 SQLite 接线、去重恢复和借用资源生命周期。
+- [x] Event 由 Elnis/types.go 定义并注释字段用途，不保留闲置 SegmentPaths；targets.go 的 toDeliveryTarget 与 media.go 的 directText 承担投递准备。Elvena 仅保留协议与来源文件，无闲置结果类型、总线或投递辅助文件。
 - [ ] 更新 Elwisp 生成提示与相关用户示例，停止生成已删除的能力名；保留 Hook platform.call 原生链路，平台选择仍由调用方负责。用户文档随对应迁移阶段更新。
 - [ ] 替代调用方全部迁移后删除旧 platform.go、module/、builtin/，不加兼容别名；验证子包不再反向导入根包，兄弟实现通过 share 协作。
 - [ ] 补充 Platform 原生 API、客户端结果与真实历史接线集成验证；媒体／模型构造入口及进程入口适配完成后，运行 App 整包与完整应用回归；组件隔离测试不替代真实总管接线和整包通过。

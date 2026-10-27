@@ -1,5 +1,5 @@
 // direct.go 管理原生调用、直接投递与事件完成状态。
-// TODO：删除 ResolveRawCall 依赖，直接使用注入的 CallPlatformAPI；保留显式平台优先、否则首个解析目标平台的选择规则。
+// 原生调用使用注入的 CallPlatformAPI，显式平台优先，否则使用首个解析目标的平台。
 // 调用顺序、失败与取消结果归 Elnis；原生协议转发归 Platform，不在这里恢复能力映射。
 
 package elnis
@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"elbot/internal/delivery"
-	"elbot/internal/elvena"
 	globalevents "elbot/internal/events"
 )
 
@@ -67,25 +66,19 @@ func (s *Service) executeCalls(ctx context.Context, targets []Target, calls []Ca
 	}
 	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
 	for _, call := range calls {
-		rawCall, err := elvena.ResolveRawCall(call)
-		if err != nil {
-			logResult.ResultStatus = globalevents.ResultFailed
-			logResult.Content += "\n" + err.Error()
-			return logResult, err
-		}
-		platform := strings.TrimSpace(rawCall.Platform)
+		platform := strings.TrimSpace(call.Platform)
 		if platform == "" && len(targets) > 0 {
 			platform = targets[0].Platform
 		}
-		if _, err := s.callPlatformAPI(ctx, platform, rawCall.API, rawCall.Params); err != nil {
+		if _, err := s.callPlatformAPI(ctx, platform, call.API, call.Params); err != nil {
 			logResult.ResultStatus = globalevents.ResultFailed
-			logResult.Content += fmt.Sprintf("\nplatform=%s api=%s error=%v", platform, rawCall.API, err)
+			logResult.Content += fmt.Sprintf("\nplatform=%s api=%s error=%v", platform, call.API, err)
 			if errors.Is(err, context.Canceled) {
 				logResult.ResultStatus = globalevents.ResultCanceled
 			}
 			return logResult, err
 		}
-		logResult.Content += fmt.Sprintf("\nplatform=%s api=%s completed", platform, rawCall.API)
+		logResult.Content += fmt.Sprintf("\nplatform=%s api=%s completed", platform, call.API)
 	}
 	return logResult, nil
 }
@@ -94,7 +87,7 @@ func (s *Service) sendOutputsToTargets(ctx context.Context, targets []Target, ou
 	ctx = delivery.WithTemporaryConnection(ctx)
 	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSkipped}
 	for _, target := range targets {
-		_, result, err := s.send(ctx, target.ToDeliveryTarget(), outputs)
+		_, result, err := s.send(ctx, toDeliveryTarget(target), outputs)
 		logResult.Content += fmt.Sprintf("\ntarget=%v\n%s", target, result.Content)
 		if logResult.ResultStatus == globalevents.ResultSkipped || result.ResultStatus == globalevents.ResultFailed ||
 			(result.ResultStatus == globalevents.ResultCanceled && logResult.ResultStatus != globalevents.ResultFailed) {

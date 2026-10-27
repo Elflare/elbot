@@ -192,7 +192,7 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) (logResult 
 			}
 			outputs = append(outputs, output)
 		}
-		receipt, result, err := s.send(ctx, target.ToDeliveryTarget(), outputs)
+		receipt, result, err := s.send(ctx, toDeliveryTarget(target), outputs)
 		mappings := background.MapReportReceipt(event.SessionID, batch[0].MessageID, receipt)
 		logResult.Content += "\nsend:\n" + result.Content
 		if result.ResultStatus == globalevents.ResultFailed ||

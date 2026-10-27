@@ -898,6 +898,9 @@ func TestResolveTargetsDisabledElwispPrivateChat(t *testing.T) {
 func TestHandleDirectSendsToPrivateAndGroupTargets(t *testing.T) {
 	sent := []string{}
 	service, cleanup := newTestService(t, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+		if target.Superadmins {
+			t.Fatalf("explicit target became an admin target: %+v", target)
+		}
 		if len(outputs) > 0 {
 			sent = append(sent, target.Platform+":"+target.PrivateUserID+":"+target.GroupID+":"+outputs[0].Text)
 		}
@@ -925,6 +928,9 @@ func TestHandleDirectSendsToPrivateAndGroupTargets(t *testing.T) {
 func TestHandleDirectSendsToResolvedSuperadminTargets(t *testing.T) {
 	sent := []string{}
 	service, cleanup := newTestService(t, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+		if !target.Superadmins || target.PrivateUserID != "" || target.GroupID != "" {
+			t.Fatalf("admin target changed: %+v", target)
+		}
 		if len(outputs) > 0 {
 			sent = append(sent, target.Platform+":"+outputs[0].Text)
 		}
@@ -962,7 +968,7 @@ func TestHandleDirectCallsOnlyDoesNotSendOutput(t *testing.T) {
 	req := testRequest(ModeDirect)
 	req.Content = ""
 	req.Title = ""
-	req.Calls = []Call{{Kind: elvena.CallKindCapability, Name: elvena.CapabilityMessageRecall, Platform: "qqonebot", Params: map[string]any{"message_id": 42}}}
+	req.Calls = []Call{{Platform: "qqonebot", API: "custom_api", Params: map[string]any{"message_id": 42}}}
 	resp, err := service.Handle(context.Background(), "secret", req)
 	if err != nil {
 		t.Fatalf("Handle direct calls-only: %v", err)
@@ -974,7 +980,7 @@ func TestHandleDirectCallsOnlyDoesNotSendOutput(t *testing.T) {
 		t.Fatalf("sent outputs = %d, want 0", sent)
 	}
 	calls := caller.callers["qqonebot"].calls
-	if len(calls) != 1 || calls[0].api != "delete_msg" || calls[0].params["message_id"] != int64(42) {
+	if len(calls) != 1 || calls[0].api != "custom_api" || calls[0].params["message_id"] != 42 {
 		t.Fatalf("calls = %#v", calls)
 	}
 }

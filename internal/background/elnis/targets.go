@@ -1,5 +1,4 @@
-// targets.go 裁决启用平台与禁用目标，解析事件投递目标。
-// TODO：接收 elvena.Target.ToDeliveryTarget 的转换逻辑，统一承担投递目标转换。
+// targets.go 裁决启用平台与禁用目标，解析事件目标并转换为投递目标。
 
 package elnis
 
@@ -9,7 +8,21 @@ import (
 	"strings"
 
 	"elbot/internal/config"
+	"elbot/internal/delivery"
 )
+
+func toDeliveryTarget(t Target) delivery.Target {
+	out := delivery.Target{Platform: t.Platform}
+	switch t.Type {
+	case "private":
+		out.PrivateUserID = t.ID
+	case "group":
+		out.GroupID = t.ID
+	default:
+		out.Superadmins = true
+	}
+	return out
+}
 
 func (s *Service) resolveTargets(req Request) ([]Target, error) {
 	resolved := []Target{}

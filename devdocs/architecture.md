@@ -593,7 +593,7 @@ Elnis 独用的 EventRepository 与 Media 契约由 Background 根部转换；JS
 <!-- locator:cron -->
 ## Cron 与后台任务
 
-Background 根部保留 `supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go` 四文件，负责门面、Store／ChatHistory／Models／Media／Logs／Agent／Tools／Platform 借用依赖、装配与生命周期。业务由 `execution`、`cron`、`elnis`、`maintenance` 承担；根部不取得 Agent 的 Session 或执行器，也不公开内部 Runner。Elnis 的存储、媒体和生命周期已接入；当前 Background 整包验证受 Elnis 的旧 Elvena 调用阻塞。
+Background 根部保留 `supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go` 四文件，负责门面、Store／ChatHistory／Models／Media／Logs／Agent／Tools／Platform 借用依赖、装配与生命周期。业务由 `execution`、`cron`、`elnis`、`maintenance` 承担；根部不取得 Agent 的 Session 或执行器，也不公开内部 Runner。Elnis 的存储、媒体和生命周期已接入。
 
 Cron 独用的 `JobRepository`、任务快照与运行事实放在 `cron/repository.go`，由根部 `cronBridge` 转换 Storage 记录与错误。Metadata、DeliveryState 作为原始 JSON 交给 Cron 按任务解析，坏记录单独记录失败，不阻断其他任务。Cron 不持有完整 Store 或 Session 服务；模型使用最小接口，发送、Agent.CopyBackground 和接管查询分别注入。Cron 与 Elnis 共用 `share.SessionTakenOver` 函数契约，查询由 Agent 调用自有 Session 完成，Share 不读库。广播复制按任务来源平台跳过源端，复制元数据保留 JSON 值类型。
 
