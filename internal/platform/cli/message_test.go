@@ -5,13 +5,14 @@ import (
 	"testing"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/platform/share"
 )
 
 type captureLocalInfo struct {
 	infos []contextinfo.Conversation
 }
 
-func (h *captureLocalInfo) HandleMessage(ctx context.Context, _ string) error {
+func (h *captureLocalInfo) HandleMessage(ctx context.Context, _ string, msg share.MessageContext) error {
 	info, _ := contextinfo.ConversationFromContext(ctx)
 	h.infos = append(h.infos, info)
 	return nil
@@ -19,7 +20,7 @@ func (h *captureLocalInfo) HandleMessage(ctx context.Context, _ string) error {
 
 func TestLocalInputProvidesIdentity(t *testing.T) {
 	h := &captureLocalInfo{}
-	entry := localMessageHandler{next: h}
+	entry := localMessageHandler{next: h.HandleMessage, adapter: New()}
 	ctx := context.Background()
 	if err := entry.HandleMessage(ctx, "first"); err != nil {
 		t.Fatal(err)

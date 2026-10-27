@@ -6,7 +6,7 @@ import (
 	"context"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/platform"
+	"elbot/internal/platform/share"
 	"elbot/internal/signal"
 	"errors"
 	"fmt"
@@ -16,14 +16,14 @@ func (a *Adapter) ConnectNotifications(s *signal.Signal[events.Notification, eve
 	return s.Connect(func(ctx context.Context, n events.Notification) (events.NotificationReceipt, error) {
 		err := a.sendTUIMessage(tuiNoticeMsg{Text: n.Text, Level: n.Level}, "[notice] "+n.Text)
 		if err != nil {
-			delivery.LogSendResult(ctx, platform.NotificationTarget(n), delivery.Text(n.Text), events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()})
+			delivery.LogSendResult(ctx, share.NotificationTarget(n), delivery.Text(n.Text), events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()})
 		}
 		return events.NotificationReceipt{}, err
 	}, signal.ConnectOptions{})
 }
 func (s *RemoteServer) ConnectNotifications(source *signal.Signal[events.Notification, events.NotificationReceipt]) (*signal.Connection, error) {
 	return source.Connect(func(ctx context.Context, n events.Notification) (events.NotificationReceipt, error) {
-		target := platform.NotificationTarget(n)
+		target := share.NotificationTarget(n)
 		logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
 		defer func() { delivery.LogSendResult(ctx, target, delivery.Text(n.Text), logResult) }()
 		clients, err := s.targetClients(ctx, target)

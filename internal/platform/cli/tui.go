@@ -17,9 +17,10 @@ import (
 	"github.com/mattn/go-runewidth"
 
 	"elbot/internal/completion"
-	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
 )
+
+type tuiReadyMsg struct{}
 
 type tuiOutputMsg string
 type tuiReplaceAssistantMsg string
@@ -139,13 +140,16 @@ type tuiNotice struct {
 }
 
 type tuiModel struct {
-	ctx     context.Context
-	handler platform.PlatformHandler
-	output  chan tea.Msg
+	ctx      context.Context
+	handler  func(context.Context, string) error
+	inputCtx context.Context
+	ready    func()
+	stop     func()
+	output   chan tea.Msg
 
 	copyState          copyModeState
 	clipboard          clipboardWriter
-	completion         completionProvider
+	completion         func(context.Context, completion.Request) ([]completion.Item, error)
 	localFiles         *localFileResolver
 	completionState    completionState
 	content            string
@@ -171,10 +175,6 @@ type tuiModel struct {
 	resizingNotice     bool
 }
 
-type completionProvider interface {
-	Complete(context.Context, completion.Request) ([]completion.Item, error)
-}
-
 func newTUIInput() textarea.Model {
 	input := textarea.New()
 	input.Focus()
@@ -186,40 +186,43 @@ func newTUIInput() textarea.Model {
 	return input
 }
 
-func runTUI(ctx context.Context, handler platform.PlatformHandler, completion completionProvider, output chan tea.Msg, setProgram tuiProgramSetter, userName, assistantName string) error {
-	input := newTUIInput()
-
-	if userName == "" {
-		userName = "user"
+func runTUI(m tuiModel, setProgram tuiProgramSetter) error {
+	if m.userName == "" {
+		m.userName = "user"
 	}
-	if assistantName == "" {
-		assistantName = "assistant"
+	if m.assistantName == "" {
+		m.assistantName = "assistant"
 	}
-
-	m := tuiModel{
-		ctx:           ctx,
-		handler:       handler,
-		output:        output,
-		copyState:     copyModeState{},
-		clipboard:     newClipboardWriter(),
-		completion:    completion,
-		localFiles:    newLocalFileResolver(""),
-		input:         input,
-		userName:      userName,
-		assistantName: assistantName,
-	}
-	program := tea.NewProgram(m, tea.WithMouseCellMotion())
+	m.input = newTUIInput()
+	m.clipboard = newClipboardWriter()
+	m.localFiles = newLocalFileResolver("")
+	program := tea.NewProgram(m, tea.WithMouseCellMotion(), tea.WithContext(context.WithoutCancel(m.ctx)), tea.WithoutSignalHandler())
+	// 使用正常退出消息，让 Bubble Tea 等待输入读取退出后再关闭 reader。
+	quitDone := make(chan struct{})
+	stopQuit := context.AfterFunc(m.ctx, func() { program.Quit(); close(quitDone) })
+	defer func() {
+		if !stopQuit() {
+			<-quitDone
+		}
+	}()
 	if setProgram != nil {
 		setProgram(program)
 		defer setProgram(nil)
 	}
-	// 启用鼠标捕获，用于分区滚动和 copy mode 区域选择。
 	_, err := program.Run()
 	return err
 }
 
+func (m tuiModel) exit() tea.Cmd {
+	if m.stop != nil {
+		m.stop()
+		return nil
+	}
+	return tea.Quit
+}
+
 func (m tuiModel) Init() tea.Cmd {
-	return tea.Batch(waitTUIOutput(m.output), tickTUIStatus())
+	return tea.Batch(waitTUIOutput(m.ctx, m.output), tickTUIStatus(), func() tea.Msg { return tuiReadyMsg{} })
 }
 
 func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -236,6 +239,12 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	switch msg := msg.(type) {
+	case tuiReadyMsg:
+		if m.ready != nil {
+			m.ready()
+			m.ready = nil
+		}
+		return m, nil
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -245,28 +254,28 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tuiOutputMsg:
 		m.appendAssistantContent(string(msg))
-		return m, waitTUIOutput(m.output)
+		return m, waitTUIOutput(m.ctx, m.output)
 	case tuiReplaceAssistantMsg:
 		m.replaceAssistantContent(string(msg))
-		return m, waitTUIOutput(m.output)
+		return m, waitTUIOutput(m.ctx, m.output)
 	case tuiFinishAssistantMsg:
 		m.finishAssistantContent()
-		return m, waitTUIOutput(m.output)
+		return m, waitTUIOutput(m.ctx, m.output)
 	case tuiReasoningMsg:
 		m.appendReasoningContent(string(msg))
-		return m, waitTUIOutput(m.output)
+		return m, waitTUIOutput(m.ctx, m.output)
 	case tuiStatusMsg:
 		m.runtimeStatus = runtimestatus.Snapshot(msg)
 		if m.statusNow.IsZero() {
 			m.statusNow = time.Now()
 		}
-		return m, waitTUIOutput(m.output)
+		return m, waitTUIOutput(m.ctx, m.output)
 	case tuiStatusTickMsg:
 		m.statusNow = time.Time(msg)
 		return m, tickTUIStatus()
 	case tuiNoticeMsg:
 		m.appendNoticeLevel(msg.Text, msg.Level)
-		return m, waitTUIOutput(m.output)
+		return m, waitTUIOutput(m.ctx, m.output)
 	case tuiClipboardMsg:
 		if msg.err != nil {
 			m.appendNoticeLevel("paste: "+msg.err.Error(), slog.LevelError)
@@ -284,6 +293,9 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 	case tea.KeyMsg:
+		if m.inputCtx != nil && m.inputCtx.Err() != nil {
+			return m, nil
+		}
 		if m.copyState.active() {
 			return m.updateCopyMode(msg)
 		}
@@ -316,7 +328,7 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.clearInput()
 				return m, nil
 			}
-			return m, tea.Quit
+			return m, m.exit()
 		case "ctrl+v":
 			return m, readTUIClipboard()
 		case "pgup":
@@ -614,7 +626,7 @@ func (m tuiModel) complete(value string) ([]completion.Item, error) {
 		}
 	}
 	if m.completion != nil {
-		return m.completion.Complete(m.ctx, completion.Request{Text: value, Cursor: cursor})
+		return m.completion(m.ctx, completion.Request{Text: value, Cursor: cursor})
 	}
 
 	return nil, nil
@@ -762,13 +774,16 @@ func (m tuiModel) nextHistory() (tea.Model, tea.Cmd) {
 }
 
 func (m tuiModel) submitInput() (tea.Model, tea.Cmd) {
+	if m.inputCtx != nil && m.inputCtx.Err() != nil {
+		return m, nil
+	}
 	m.clearCompletion()
 	text := strings.TrimSpace(m.input.Value())
 	if text == "" {
 		return m, nil
 	}
 	if text == "/exit" {
-		return m, tea.Quit
+		return m, m.exit()
 	}
 	sendText, err := m.expandLocalFileReferences(text)
 	if err != nil {
@@ -781,7 +796,7 @@ func (m tuiModel) submitInput() (tea.Model, tea.Cmd) {
 	m.clearInput()
 	m.appendUserContent(text)
 	go func() {
-		_ = m.handler.HandleMessage(m.ctx, sendText)
+		_ = m.handler(m.ctx, sendText)
 	}()
 	return m, nil
 }
@@ -1080,9 +1095,15 @@ func (m tuiModel) runtimeStatusText() string {
 	return FormatCompact(m.runtimeStatus, now, width)
 }
 
-func waitTUIOutput(output <-chan tea.Msg) tea.Cmd {
+func waitTUIOutput(ctx context.Context, output <-chan tea.Msg) tea.Cmd {
 	return func() tea.Msg {
-		msg, ok := <-output
+		var msg tea.Msg
+		var ok bool
+		select {
+		case msg, ok = <-output:
+		case <-ctx.Done():
+			return nil
+		}
 		if !ok {
 			return tea.Quit()
 		}

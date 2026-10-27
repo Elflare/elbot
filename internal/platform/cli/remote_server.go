@@ -8,6 +8,7 @@ import (
 	"elbot/internal/platform/share"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"sort"
 	"strings"
@@ -21,28 +22,38 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/platform"
 	"elbot/internal/security"
 )
-
-type CompletionProvider interface {
-	Complete(context.Context, completion.Request) ([]completion.Item, error)
-}
 
 type RemoteServerOptions struct {
 	Config      Config
 	ConfigDir   string
 	Superadmins []string
-	Completer   CompletionProvider
 }
 
 type RemoteServer struct {
 	cfg         Config
 	configDir   string
 	superadmins map[string]bool
-	completer   CompletionProvider
+	completer   func(context.Context, completion.Request) ([]completion.Item, error)
 
-	server *http.Server
+	server                      *http.Server    // 接入 HTTP 服务，最终关闭时释放非升级连接。
+	listener                    net.Listener    // BeginClose 关闭的监听器。
+	listenerStopped             bool            // 仅在本实例成功关闭监听时，归一化对应 Serve 退出。
+	started                     bool            // 已有一次启动尝试。
+	closing                     bool            // 新连接与业务消息的接入闸门已关闭。
+	closingResources            bool            // 最终资源释放已启动，重试仅等待同一次收尾。
+	startDone                   chan struct{}   // 监听初始化结果已发布。
+	serveDone                   chan struct{}   // Serve 已退出。
+	done                        chan struct{}   // 监听与握手、已接纳业务调用均已退出。
+	closeDone                   chan struct{}   // 全部自有连接和处理协程已退出。
+	startErr, runErr, closeErr  error           // 初始化、运行、清理结果分别保留。
+	workCtx                     context.Context // 握手及已接纳业务的运行上下文。
+	transportCtx                context.Context // 已认证连接保留至最终关闭。
+	workCancel, transportCancel context.CancelFunc
+	stopParent                  func() bool    // 解除上游取消观察。
+	work                        sync.WaitGroup // 已接纳握手、消息与补全。
+	transports                  sync.WaitGroup // 持有升级连接的处理协程。
 
 	mu      sync.Mutex
 	clients map[string]map[*remoteClientConn]struct{}
@@ -79,52 +90,43 @@ func NewRemoteServer(opts RemoteServerOptions) (*RemoteServer, error) {
 		cfg:         cfg,
 		configDir:   opts.ConfigDir,
 		superadmins: setFromStrings(opts.Superadmins),
-		completer:   opts.Completer,
 		clients:     map[string]map[*remoteClientConn]struct{}{},
+		startDone:   make(chan struct{}), serveDone: make(chan struct{}), done: make(chan struct{}), closeDone: make(chan struct{}),
 	}, nil
 }
 
-func (s *RemoteServer) SetCompleter(completer *completion.Service) {
+func (s *RemoteServer) SetCompleter(completer func(context.Context, completion.Request) ([]completion.Item, error)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.completer = completer
 }
 
 func (s *RemoteServer) Name() string { return "cli" }
 
-func (s *RemoteServer) Run(ctx context.Context, handler platform.PlatformHandler) error {
-	mux := http.NewServeMux()
-	mux.HandleFunc(defaultRemotePath, func(w http.ResponseWriter, req *http.Request) {
-		s.handleWebSocket(ctx, handler, w, req)
-	})
-	s.server = &http.Server{Addr: s.cfg.Server.Listen, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	errCh := make(chan error, 1)
-	go func() {
-		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			errCh <- err
-			return
-		}
-		errCh <- nil
-	}()
-	select {
-	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = s.server.Shutdown(shutdownCtx)
-		s.closeAll()
-		return ctx.Err()
-	case err := <-errCh:
-		s.closeAll()
-		return err
+func (s *RemoteServer) handleWebSocket(ctx context.Context, handler share.MessageHandler, w http.ResponseWriter, req *http.Request) {
+	s.mu.Lock()
+	if s.closing {
+		s.mu.Unlock()
+		http.Error(w, "cli is stopping", http.StatusServiceUnavailable)
+		return
 	}
-}
-
-func (s *RemoteServer) handleWebSocket(ctx context.Context, handler platform.PlatformHandler, w http.ResponseWriter, req *http.Request) {
+	s.transports.Add(1)
+	s.work.Add(1) // 握手属于接入，完成后才允许 Wait 返回。
+	s.mu.Unlock()
+	defer s.transports.Done()
+	handshakeDone := false
+	defer func() {
+		if !handshakeDone {
+			s.work.Done()
+		}
+	}()
 	conn, err := websocket.Accept(w, req, &websocket.AcceptOptions{InsecureSkipVerify: true})
 	if err != nil {
 		return
 	}
-	defer conn.Close(websocket.StatusNormalClosure, "bye")
+	defer conn.CloseNow()
 	var hello remoteMessage
-	readCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	readCtx, cancel := context.WithTimeout(s.workCtx, 10*time.Second)
 	err = wsjson.Read(readCtx, conn, &hello)
 	cancel()
 	if err != nil {
@@ -136,10 +138,14 @@ func (s *RemoteServer) handleWebSocket(ctx context.Context, handler platform.Pla
 		return
 	}
 	client := &remoteClientConn{id: clientID, conn: conn, server: s}
-	s.addClient(client)
+	if !s.addClient(client) {
+		return
+	}
 	defer s.removeClient(client)
+	s.work.Done()
+	handshakeDone = true
 	_, _ = client.write(ctx, remoteMessage{Type: remoteMsgHelloOK, ClientID: clientID})
-	msgCtx := s.messageContext(ctx, client)
+	msgCtx := s.messageContext(s.workCtx, client)
 	for {
 		var msg remoteMessage
 		if err := wsjson.Read(ctx, conn, &msg); err != nil {
@@ -149,24 +155,42 @@ func (s *RemoteServer) handleWebSocket(ctx context.Context, handler platform.Pla
 	}
 }
 
-func (s *RemoteServer) handleClientMessage(ctx context.Context, handler platform.PlatformHandler, client *remoteClientConn, msg remoteMessage) {
-	switch msg.Type {
-	case remoteMsgInput:
-		text := strings.TrimSpace(msg.Text)
-		if text == "" {
-			return
-		}
-		go func() {
-			_ = handler.HandleMessage(ctx, text)
-		}()
-	case remoteMsgComplete:
-		items, err := s.completer.Complete(ctx, completion.Request{Text: msg.Text, Cursor: msg.Cursor})
-		if err != nil {
-			_, _ = client.write(context.Background(), remoteMessage{Type: remoteMsgError, ID: msg.ID, Text: err.Error()})
-			return
-		}
-		_, _ = client.write(context.Background(), remoteMessage{Type: remoteMsgCompleteResult, ID: msg.ID, Items: items})
+func (s *RemoteServer) handleClientMessage(ctx context.Context, handler share.MessageHandler, client *remoteClientConn, msg remoteMessage) {
+	if msg.Type != remoteMsgInput && msg.Type != remoteMsgComplete {
+		return
 	}
+	s.mu.Lock()
+	if s.closing {
+		s.mu.Unlock()
+		return
+	}
+	s.work.Add(1)
+	complete := s.completer
+	s.mu.Unlock()
+	go func() {
+		defer s.work.Done()
+		switch msg.Type {
+		case remoteMsgInput:
+			text := strings.TrimSpace(msg.Text)
+			if text == "" {
+				return
+			}
+			input, _ := share.MessageContextFrom(ctx)
+			input.RawText = msg.Text
+			_ = handler(ctx, text, input)
+		case remoteMsgComplete:
+			var items []completion.Item
+			var err error
+			if complete != nil {
+				items, err = complete(ctx, completion.Request{Text: msg.Text, Cursor: msg.Cursor})
+			}
+			if err != nil {
+				_, _ = client.write(s.transportCtx, remoteMessage{Type: remoteMsgError, ID: msg.ID, Text: err.Error()})
+				return
+			}
+			_, _ = client.write(s.transportCtx, remoteMessage{Type: remoteMsgCompleteResult, ID: msg.ID, Items: items})
+		}
+	}()
 }
 
 func (s *RemoteServer) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
@@ -332,13 +356,17 @@ func (c *remoteClientConn) write(ctx context.Context, msg remoteMessage) (events
 	return logResult, err
 }
 
-func (s *RemoteServer) addClient(client *remoteClientConn) {
+func (s *RemoteServer) addClient(client *remoteClientConn) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.closing {
+		return false
+	}
 	if s.clients[client.id] == nil {
 		s.clients[client.id] = map[*remoteClientConn]struct{}{}
 	}
 	s.clients[client.id][client] = struct{}{}
+	return true
 }
 
 func (s *RemoteServer) removeClient(client *remoteClientConn) {
@@ -365,7 +393,7 @@ func (s *RemoteServer) closeAll() {
 	s.clients = map[string]map[*remoteClientConn]struct{}{}
 	s.mu.Unlock()
 	for _, client := range clients {
-		_ = client.conn.Close(websocket.StatusNormalClosure, "server stopped")
+		_ = client.conn.CloseNow()
 	}
 }
 

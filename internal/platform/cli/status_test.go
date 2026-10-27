@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	agentevents "elbot/internal/agent/events"
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	runtimestatus "elbot/internal/runtime"
@@ -54,10 +53,9 @@ func TestStatusCoalescesTerminalAndUpdatesDuringSend(t *testing.T) {
 	emit := func(version uint64, phase runtimestatus.Phase, tokens int) {
 		t.Helper()
 		usage := &llm.Usage{TotalTokens: func() *int64 { n := int64(tokens); return &n }()}
-		if err := d.receive(ctx, agentevents.StatusChangedEvent{Snapshot: runtimestatus.Snapshot{SessionID: "s", Phase: phase, Usage: usage}, Version: version}); err != nil {
+		if err := d.receive(StatusChangedEvent{Conversation: testConversation(ctx), Snapshot: runtimestatus.Snapshot{SessionID: "s", Phase: phase, Usage: usage}, Version: version}); err != nil {
 			t.Fatal(err)
 		}
-		*usage.TotalTokens = -1
 	}
 	emit(1, runtimestatus.PhaseLLM, 1)
 	if got := nextStatus(t, p.sent); got.Phase != runtimestatus.PhaseLLM || (got.Usage.TotalTokens == nil || *got.Usage.TotalTokens != 1) {
@@ -103,10 +101,10 @@ func TestStatusTargetsKeepDistinctSendersAndBackgroundIsSilent(t *testing.T) {
 		return nil
 	}
 	t.Cleanup(func() { _ = d.Close(context.Background()) })
-	e := agentevents.StatusChangedEvent{Snapshot: runtimestatus.Snapshot{SessionID: "same", Phase: runtimestatus.PhaseDone}, Version: 1}
+	e := StatusChangedEvent{Snapshot: runtimestatus.Snapshot{SessionID: "same", Phase: runtimestatus.PhaseDone}, Version: 1}
 	for _, a := range []*Adapter{one, two} {
 		ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: messageData{adapter: a}})
-		if err := d.receive(ctx, e); err != nil {
+		if err := d.receive(StatusChangedEvent{Snapshot: e.Snapshot, Version: e.Version, Conversation: testConversation(ctx)}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -124,7 +122,7 @@ func TestStatusTargetsKeepDistinctSendersAndBackgroundIsSilent(t *testing.T) {
 	}
 	e.Version++
 	background := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli"}})
-	if err := d.receive(background, e); err != nil {
+	if err := d.receive(StatusChangedEvent{Snapshot: e.Snapshot, Version: e.Version, Conversation: testConversation(background)}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.Close(context.Background()); err != nil {

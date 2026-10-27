@@ -116,7 +116,7 @@ func TestTUIStatusCopyHintMatchesNoticePanel(t *testing.T) {
 }
 
 func TestCompleteInputCyclesCandidates(t *testing.T) {
-	m := tuiModel{completion: completion.NewService(staticCompletionSource{{Text: "/chat"}, {Text: "/checkmodel"}}), input: newTUIInput(), width: 80, height: 20}
+	m := tuiModel{completion: completion.NewService(staticCompletionSource{{Text: "/chat"}, {Text: "/checkmodel"}}).Complete, input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("/c")
 
 	updated, _ := m.completeInput(1)
@@ -145,7 +145,7 @@ func TestCompleteInputCyclesCandidates(t *testing.T) {
 }
 
 func TestCompletionSelectionUsesArrowKeysWhenPopupVisible(t *testing.T) {
-	m := tuiModel{completion: completion.NewService(staticCompletionSource{{Text: "/chat"}, {Text: "/checkmodel"}}), input: newTUIInput(), width: 80, height: 20}
+	m := tuiModel{completion: completion.NewService(staticCompletionSource{{Text: "/chat"}, {Text: "/checkmodel"}}).Complete, input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("/c")
 	updated, _ := m.completeInput(1)
 	m = updated.(tuiModel)
@@ -165,7 +165,7 @@ func TestCompletionSelectionUsesArrowKeysWhenPopupVisible(t *testing.T) {
 
 func TestCompletionServiceWorksWithoutHandler(t *testing.T) {
 	service := completion.NewService(staticCompletionSource{{Text: "/service"}, {Text: "/service2"}})
-	m := tuiModel{completion: service, input: newTUIInput(), width: 80, height: 20}
+	m := tuiModel{completion: service.Complete, input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("/s")
 	updated, _ := m.completeInput(1)
 	m = updated.(tuiModel)
@@ -175,7 +175,7 @@ func TestCompletionServiceWorksWithoutHandler(t *testing.T) {
 }
 
 func TestCompletionShiftTabSelectsPreviousCandidate(t *testing.T) {
-	m := tuiModel{completion: completion.NewService(staticCompletionSource{{Text: "/chat"}, {Text: "/checkmodel"}}), input: newTUIInput(), width: 80, height: 20}
+	m := tuiModel{completion: completion.NewService(staticCompletionSource{{Text: "/chat"}, {Text: "/checkmodel"}}).Complete, input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("/c")
 	updated, _ := m.completeInput(1)
 	m = updated.(tuiModel)
@@ -189,7 +189,7 @@ func TestCompletionShiftTabSelectsPreviousCandidate(t *testing.T) {
 
 func TestCompletionSingleItemUsesReplaceRange(t *testing.T) {
 	service := completion.NewService(staticCompletionSource{{Text: "openai/gpt-4o", ReplaceStart: len("/model "), ReplaceEnd: len("/model gp")}})
-	m := tuiModel{completion: service, input: newTUIInput(), width: 80, height: 20}
+	m := tuiModel{completion: service.Complete, input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("/model gp")
 	m.input.CursorEnd()
 
@@ -202,7 +202,7 @@ func TestCompletionSingleItemUsesReplaceRange(t *testing.T) {
 
 func TestCompletionUsesByteRangesWithFullWidthInput(t *testing.T) {
 	service := completion.NewService(staticCompletionSource{{Text: "@t：web_search", ReplaceStart: 0, ReplaceEnd: len("@t：we")}})
-	m := tuiModel{completion: service, input: newTUIInput(), width: 80, height: 20}
+	m := tuiModel{completion: service.Complete, input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("@t：we")
 	m.input.CursorEnd()
 
@@ -224,7 +224,7 @@ func TestCompletionUsesCursorInMultilineInput(t *testing.T) {
 		ReplaceStart: len(prefix + "/model "),
 		ReplaceEnd:   len(value),
 	}})
-	m := tuiModel{completion: service, input: newTUIInput(), width: 80, height: 20}
+	m := tuiModel{completion: service.Complete, input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue(value)
 
 	updated, _ := m.completeInput(1)
@@ -271,7 +271,7 @@ func TestEnterExpandsLocalFileReferencesBeforeSending(t *testing.T) {
 	root := t.TempDir()
 	mustWriteFile(t, root, "foo.txt", "hello\n")
 	handler := capturingHandler{messages: make(chan string, 1)}
-	m := tuiModel{ctx: context.Background(), handler: handler, output: make(chan tea.Msg, 1), localFiles: newLocalFileResolver(root), input: newTUIInput(), width: 80, height: 20}
+	m := tuiModel{ctx: context.Background(), handler: handler.HandleMessage, output: make(chan tea.Msg, 1), localFiles: newLocalFileResolver(root), input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("see #foo.txt")
 	m.input.CursorEnd()
 
@@ -296,7 +296,7 @@ func TestEnterExpandsLocalFileReferencesBeforeSending(t *testing.T) {
 func TestEnterSendsMissingLocalFileReferenceAsLiteralText(t *testing.T) {
 	root := t.TempDir()
 	handler := capturingHandler{messages: make(chan string, 1)}
-	m := tuiModel{ctx: context.Background(), handler: handler, output: make(chan tea.Msg, 1), localFiles: newLocalFileResolver(root), input: newTUIInput(), width: 80, height: 20}
+	m := tuiModel{ctx: context.Background(), handler: handler.HandleMessage, output: make(chan tea.Msg, 1), localFiles: newLocalFileResolver(root), input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("see #missing.txt")
 	m.input.CursorEnd()
 
@@ -336,7 +336,7 @@ func TestExpandReferencesExpandsExistingAndPreservesMissing(t *testing.T) {
 }
 
 func TestCancelKeyClearsCompletionOrInputBeforeQuit(t *testing.T) {
-	m := tuiModel{completion: completion.NewService(staticCompletionSource{{Text: "/chat"}, {Text: "/checkmodel"}}), input: newTUIInput(), width: 80, height: 20}
+	m := tuiModel{completion: completion.NewService(staticCompletionSource{{Text: "/chat"}, {Text: "/checkmodel"}}).Complete, input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("/c")
 	updated, _ := m.completeInput(1)
 	m = updated.(tuiModel)
@@ -506,7 +506,7 @@ func TestMultilinePasteStaysInTextareaUntilEnter(t *testing.T) {
 	handler := capturingHandler{messages: make(chan string, 1)}
 	m := tuiModel{
 		ctx:        context.Background(),
-		handler:    handler,
+		handler:    handler.HandleMessage,
 		output:     make(chan tea.Msg, 1),
 		localFiles: newLocalFileResolver(t.TempDir()),
 		input:      newTUIInput(),
@@ -562,7 +562,7 @@ func TestWindowsPasteBurstEnterInsertsNewlineBeforeSubmit(t *testing.T) {
 	handler := capturingHandler{messages: make(chan string, 1)}
 	m := tuiModel{
 		ctx:      context.Background(),
-		handler:  handler,
+		handler:  handler.HandleMessage,
 		output:   make(chan tea.Msg, 1),
 		input:    newTUIInput(),
 		inputNow: func() time.Time { return current },
@@ -605,7 +605,7 @@ func TestWindowsPasteBurstEnterInsertsNewlineBeforeSubmit(t *testing.T) {
 
 func TestEnterInPreviousLineInsertsNewline(t *testing.T) {
 	handler := capturingHandler{messages: make(chan string, 1)}
-	m := tuiModel{ctx: context.Background(), handler: handler, input: newTUIInput(), width: 80, height: 20}
+	m := tuiModel{ctx: context.Background(), handler: handler.HandleMessage, input: newTUIInput(), width: 80, height: 20}
 	setTextareaValueAndCursor(&m.input, "first\nsecond", len([]rune("first")))
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})

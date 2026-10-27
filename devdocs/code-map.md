@@ -37,7 +37,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 公共上下文事实
 
 - `internal/contextinfo/`：Conversation、Actor、Execution、Model、BackgroundKind 定义与存取；后台来源事实不包含路径或路径限制。
-- `internal/platform/platform.go`、`internal/platform/cli/message.go`：平台消息投影与 CLI 来源。
+- `internal/platform/agent.go`、`internal/platform/cli/message.go`：平台消息投影与 CLI 入站来源。
 - `internal/security/`：身份解析、权限与风险策略。
 - `internal/agent/dialogue/execution_context.go`：模型事实与接管上下文刷新。
 - `internal/request/manager.go`、`internal/turn/execution.go`、`internal/session/binding.go`：执行关联、快照与绑定。
@@ -220,12 +220,14 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 
 - `internal/platform/{supervisor,deps,wiring,lifecycle}.go`：总管、借用依赖、完整配置装配与生命周期；部分构造可清理，停止接入与最终资源释放分离。下层目标契约见 [App 包设计](app-design.md#platform-下层目标契约)。
 - `internal/platform/{contracts,agent,send,public_api,client,config}.go`：公开契约、Agent 输入与展示转接、发送、两类 API、媒体解析、客户端分类转换及配置汇总；按下层已实现来调用，整包仍待迁移。
-- `internal/platform/share/`：内部契约与共享辅助；`runtime_contracts.go` 定义 Runtime 与 MessageHandler，`adapter_api.go` 定义通用能力和原生 API 两个可选接口，`notification.go` 定义通知接收契约与目标转换；这些契约的下层实现仍待接通。`config.go`、`backoff.go` 提供共享辅助，`adapter.go` 的 AdapterDeps 接收历史写入、身份查询、两项别名能力及引用恢复函数。
+- `internal/platform/share/`：内部契约与共享辅助；`runtime_contracts.go` 定义 Runtime 与 MessageHandler，`adapter_api.go` 定义通用能力和原生 API 两个可选接口，`notification.go` 定义通知接收契约与目标转换；CLI 已接入运行与通知契约，其余下层实现仍待接通。`config.go`、`backoff.go` 提供共享辅助，`adapter.go` 的 AdapterDeps 接收历史写入、身份查询、两项别名能力及引用恢复函数。
 - `internal/platform/dispatch/{router,media}.go`：复用平台注册表执行发送与显式目标媒体解析；ResolveMedia 不回退到当前或默认平台。`calls.go` 承接 Elvena 平台调用与映射实现，尚未拆入各适配器。
 - `internal/platform/{telegram,qq-onebot}/capability_api.go`：通用能力的平台实现骨架。
 - `internal/platform/refcontext/refcontext.go`：引用消息恢复与上下文处理；Options 持有 Store 和仅含 GetByPlatformMessage 的历史消费接口，单次请求和结果使用 share 契约，由根部闭包注入适配器。
 - `internal/platform/platform.go`、`module/`、`builtin/`：保留尚未拆分的旧实现，文件头标注迁移后删除；不作为新对外边界。
-- `internal/platform/cli/`：本地／远程 CLI 与 TUI；`ui.go`、`status.go`、`reasoning.go`、`status_format.go` 分别负责展示目标、状态合并、思考流和状态文案。
+- `internal/platform/cli/`：本地／远程 CLI 与 TUI；`lifecycle.go` 管理本地接入和终端最终退出，`remote_lifecycle.go` 管理同步监听及连接分阶段释放；`cli.go`、`remote_server.go` 保留输入和发送实现。
+- `internal/platform/cli/event_contracts.go`：CLI 自有状态与绑定事实；`ui.go` 持有订阅，`status.go` 按目标合并状态并处理绑定版本，`reasoning.go`、`status_format.go` 负责思考流和状态文案。
+- `internal/platform/cli/client.go`：连接选择与结果分类；`remote_client.go` 负责握手、通信、断线后结束展示和收回补全等待，`tui.go` 负责交互及终端正常退出。
 - `internal/platform/contracts.go`：客户端分类与纯消息事实。公开 MessageContext 仅含原文、原生载荷和引用，存取复制可变内容。
 - `internal/platform/public_api.go`：公开平台 API 与 ResolveMedia，转换媒体输入后交 dispatch 路由，不另建平台能力表。
 - `internal/platform/share/{message,reference}.go`：内部路由上下文、片段、引用恢复契约与引用格式化。根部 `agent.go` 转换 Agent 输入，RestoreMessageContext 恢复公开事实及内部路由，不改写目标公共会话事实。

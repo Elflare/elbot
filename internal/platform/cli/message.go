@@ -6,13 +6,13 @@ import (
 	"context"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/platform"
+	"elbot/internal/platform/share"
 )
 
 // Both scanner and TUI enter through this handler. The public snapshot is per
 // message; the private CLI destination is separate from message reply metadata.
 type localMessageHandler struct {
-	next    platform.PlatformHandler
+	next    share.MessageHandler
 	adapter *Adapter
 }
 
@@ -22,5 +22,5 @@ func (h localMessageHandler) HandleMessage(ctx context.Context, text string) err
 		Source:       contextinfo.Source{Platform: "cli", ScopeID: "local", ConversationKind: contextinfo.ConversationUnknown, ConversationID: "local"},
 		Identity:     contextinfo.Identity{ActorID: "cli:local", PlatformUserID: "local"},
 	}
-	return h.next.HandleMessage(contextinfo.WithConversation(ctx, info), text)
+	return h.next(contextinfo.WithConversation(ctx, info), text, share.MessageContext{Conversation: info, RawText: text, Sender: h.adapter})
 }

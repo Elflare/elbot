@@ -8,13 +8,11 @@ import (
 	"testing"
 	"time"
 
-	agentevents "elbot/internal/agent/events"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/platform/dispatch"
-	"elbot/internal/platform/notification"
 	runtimestatus "elbot/internal/runtime"
+	"elbot/internal/signal"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"log/slog"
@@ -82,21 +80,16 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 		return contextinfo.WithConversation(ctx, info)
 	}
 	firstCtx, secondCtx := snapshot(first), snapshot(second)
-	manager, err := notification.New("cli")
-	if err != nil {
+	notices := signal.New[events.Notification, events.NotificationReceipt]("test.cli.notice")
+	defer notices.Close(context.Background())
+	if connection, err := s.ConnectNotifications(notices); err != nil {
 		t.Fatal(err)
-	}
-	defer manager.Close(context.Background())
-	notices, err := manager.AddPlatform("cli")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = s.ConnectNotifications(notices); err != nil {
-		t.Fatal(err)
+	} else {
+		defer connection.Close(context.Background())
 	}
 	for _, level := range []slog.Level{slog.LevelDebug, slog.LevelInfo, slog.LevelWarn, slog.LevelError} {
 		n := events.NewNotification(firstCtx, level, "original-notice")
-		if _, err := events.NotificationRequested.Emit(secondCtx, n); err != nil {
+		if _, err := notices.Emit(firstCtx, n); err != nil {
 			t.Fatal(err)
 		}
 		var msg remoteMessage
@@ -107,7 +100,6 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 			t.Fatal(msg)
 		}
 	}
-	router := dispatch.New(dispatch.Options{Primary: s})
 	firstTarget, secondTarget := uiTarget(firstCtx), uiTarget(secondCtx)
 	if firstTarget == (messageData{}) || firstTarget == secondTarget {
 		t.Fatalf("status targets merged original CLI connections: %+v / %+v", firstTarget, secondTarget)
@@ -121,15 +113,15 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 			t.Fatalf("got %q, want %q", msg.Text, want)
 		}
 	}
-	if _, _, err := router.SendTo(firstCtx, delivery.Target{}, []delivery.Output{delivery.Text("first-only")}); err != nil {
+	if _, _, err := s.SendTo(firstCtx, delivery.Target{}, []delivery.Output{delivery.Text("first-only")}); err != nil {
 		t.Fatal(err)
 	}
 	read(one, "first-only")
-	if _, _, err := router.SendChat(secondCtx, []delivery.Output{delivery.Text("second-only")}); err != nil {
+	if _, _, err := s.SendChat(secondCtx, []delivery.Output{delivery.Text("second-only")}); err != nil {
 		t.Fatal(err)
 	}
 	read(two, "second-only")
-	if _, _, err := router.SendTo(firstCtx, delivery.Target{Platform: "cli", PrivateUserID: "same-user"}, []delivery.Output{delivery.Text("both")}); err != nil {
+	if _, _, err := s.SendTo(firstCtx, delivery.Target{Platform: "cli", PrivateUserID: "same-user"}, []delivery.Output{delivery.Text("both")}); err != nil {
 		t.Fatal(err)
 	}
 	read(one, "both")
@@ -142,7 +134,7 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 	cancelRequest()
 	stream.Finish(secondCtx) // Closing keeps the view that actually received deltas.
 	read(one, "[/thinking]\n\n")
-	if _, err := status.Emit(context.WithoutCancel(requestCtx), agentevents.StatusChangedEvent{Snapshot: runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseDone}, Version: 1}); err != nil {
+	if _, err := status.Emit(context.WithoutCancel(requestCtx), StatusChangedEvent{Conversation: testConversation(requestCtx), Snapshot: runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseDone}, Version: 1}); err != nil {
 		t.Fatal(err)
 	}
 	var terminal remoteMessage
@@ -152,12 +144,12 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 	if terminal.Type != remoteMsgStatus || terminal.Snapshot.Phase != runtimestatus.PhaseDone {
 		t.Fatal(terminal)
 	}
-	if _, _, err := router.SendChat(secondCtx, []delivery.Output{delivery.Text("second-barrier")}); err != nil {
+	if _, _, err := s.SendChat(secondCtx, []delivery.Output{delivery.Text("second-barrier")}); err != nil {
 		t.Fatal(err)
 	}
 	read(two, "second-barrier") // Neither reasoning nor status leaked to the same user's other connection.
 	first.conn.CloseNow()
-	if _, err := events.NotificationRequested.Emit(ctx, events.Notification{Target: events.NotificationTarget{Platform: "cli", Kind: contextinfo.ConversationPrivate, ID: "same-user"}, Text: "partial-notice"}); err == nil {
+	if _, err := notices.Emit(ctx, events.Notification{Target: events.NotificationTarget{Platform: "cli", Kind: contextinfo.ConversationPrivate, ID: "same-user"}, Text: "partial-notice"}); err == nil {
 		t.Fatal("notification partial failure reported success")
 	}
 	read(two, "partial-notice")
@@ -168,10 +160,10 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 	read(two, "partial-fanout")
 	s.removeClient(first)
 	first.conn.CloseNow()
-	if _, _, err := router.SendChat(firstCtx, []delivery.Output{delivery.Text("must-not-move")}); err == nil {
+	if _, _, err := s.SendChat(firstCtx, []delivery.Output{delivery.Text("must-not-move")}); err == nil {
 		t.Fatal("disconnected original reply succeeded")
 	}
-	if _, _, err := router.SendChat(secondCtx, []delivery.Output{delivery.Text("survivor")}); err != nil {
+	if _, _, err := s.SendChat(secondCtx, []delivery.Output{delivery.Text("survivor")}); err != nil {
 		t.Fatal(err)
 	}
 	read(two, "survivor")

@@ -7,17 +7,15 @@ import (
 	"strings"
 	"testing"
 
-	agentevents "elbot/internal/agent/events"
 	"elbot/internal/contextinfo"
-	"elbot/internal/session"
 	"elbot/internal/signal"
 )
 
-func testUI(t *testing.T) (*UI, *signal.Signal[agentevents.StatusChangedEvent, signal.Empty]) {
+func testUI(t *testing.T) (*UI, *signal.Signal[StatusChangedEvent, signal.Empty]) {
 	t.Helper()
-	status := signal.New[agentevents.StatusChangedEvent, signal.Empty]("test.cli.status")
-	binding := signal.New[session.BindingChangedEvent, signal.Empty]("test.cli.binding")
-	u, err := ConnectUI(status, binding)
+	status := signal.New[StatusChangedEvent, signal.Empty]("test.cli.status")
+	binding := signal.New[BindingChangedEvent, signal.Empty]("test.cli.binding")
+	u, err := ConnectUI(testAgentEvents{status, binding})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"time"
 
-	agentevents "elbot/internal/agent/events"
 	"elbot/internal/contextinfo"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/signal"
@@ -36,8 +35,8 @@ func (d messageData) setRuntimeStatus(ctx context.Context, snapshot runtimestatu
 
 // AgentEvents exposes only the fact subscriptions consumed by CLI presentation.
 type AgentEvents interface {
-	ObserveStatusChanged(func(agentevents.StatusChangedEvent) error, signal.ConnectOptions) (*signal.Connection, error)
-	ObserveBindingChanged(func(agentevents.BindingChangedEvent) error, signal.ConnectOptions) (*signal.Connection, error)
+	ObserveStatusChanged(func(StatusChangedEvent) error, signal.ConnectOptions) (*signal.Connection, error)
+	ObserveBindingChanged(func(BindingChangedEvent) error, signal.ConnectOptions) (*signal.Connection, error)
 }
 
 // UI owns CLI state subscriptions and their asynchronous display worker.
@@ -50,14 +49,18 @@ type UI struct {
 func ConnectUI(source AgentEvents) (*UI, error) {
 	u := &UI{display: newStatusDisplay()}
 	c, err := source.ObserveStatusChanged(u.display.receive, signal.ConnectOptions{})
-	if err == nil {
+	if c != nil {
 		u.connections = append(u.connections, c)
+	}
+	if err == nil {
 		c, err = source.ObserveBindingChanged(u.display.forget, signal.ConnectOptions{})
+		if c != nil {
+			u.connections = append(u.connections, c)
+		}
 	}
 	if err != nil {
-		return nil, errors.Join(err, u.Close(context.Background()))
+		return u, err
 	}
-	u.connections = append(u.connections, c)
 	return u, nil
 }
 

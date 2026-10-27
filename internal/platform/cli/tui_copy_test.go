@@ -20,7 +20,7 @@ func (c *fakeClipboard) WriteAll(text string) error {
 
 func newCopyTestModel() tuiModel {
 	m := tuiModel{
-		handler:       fakeCompletingHandler{},
+		handler:       fakeCompletingHandler{}.HandleMessage,
 		clipboard:     &fakeClipboard{},
 		userName:      "user",
 		assistantName: "assistant",

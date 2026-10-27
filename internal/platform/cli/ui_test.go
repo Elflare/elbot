@@ -3,57 +3,58 @@ package cli
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
-	agentevents "elbot/internal/agent/events"
 	"elbot/internal/contextinfo"
 	runtimestatus "elbot/internal/runtime"
-	"elbot/internal/session"
 	"elbot/internal/signal"
 )
 
 func TestUIConnectFailureReleasesPartialSubscription(t *testing.T) {
-	status := signal.New[agentevents.StatusChangedEvent, signal.Empty]("test.status", signal.Options[agentevents.StatusChangedEvent]{Single: true})
+	status := signal.New[StatusChangedEvent, signal.Empty]("test.status", signal.Options[StatusChangedEvent]{Single: true})
 	defer status.Close(context.Background())
-	binding := signal.New[session.BindingChangedEvent, signal.Empty]("test.binding")
+	binding := signal.New[BindingChangedEvent, signal.Empty]("test.binding")
 	_ = binding.Close(context.Background())
-	if u, err := ConnectUI(status, binding); !errors.Is(err, signal.ErrClosed) || u != nil {
+	u, err := ConnectUI(testAgentEvents{status, binding})
+	if !errors.Is(err, signal.ErrClosed) || u == nil {
 		t.Fatal(u, err)
 	}
+	if err := u.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	// A failed assembly must not retain the single available registration.
-	c, err := status.Observe(func(context.Context, agentevents.StatusChangedEvent) error { return nil }, signal.ConnectOptions{})
+	c, err := status.Observe(func(context.Context, StatusChangedEvent) error { return nil }, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = c.Close(context.Background())
 }
 
-func TestUICloseCancelsDisplayAndWaitsForActualExit(t *testing.T) {
+func TestUIClosePreservesInFlightSendAndRetries(t *testing.T) {
 	u, status := testUI(t)
-	started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	defer close(release)
+	started, release := make(chan context.Context, 1), make(chan struct{})
+	var once sync.Once
+	defer once.Do(func() { close(release) })
 	u.display.send = func(ctx context.Context, _ messageData, _ runtimestatus.Snapshot) error {
-		close(started)
-		<-ctx.Done()
-		close(canceled)
+		started <- ctx
 		<-release
 		return ctx.Err()
 	}
 	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: messageData{adapter: New()}})
-	if _, err := status.Emit(ctx, agentevents.StatusChangedEvent{Snapshot: runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseLLM}, Version: 1}); err != nil {
+	if _, err := status.Emit(ctx, StatusChangedEvent{Conversation: testConversation(ctx), Snapshot: runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseLLM}, Version: 1}); err != nil {
 		t.Fatal(err)
 	}
+	var sending context.Context
 	select {
-	case <-started:
+	case sending = <-started:
 	case <-time.After(time.Second):
 		t.Fatal("display never started")
 	}
 	u.BeginClose()
-	select {
-	case <-canceled:
-	case <-time.After(time.Second):
-		t.Fatal("display cancellation not propagated")
+	if sending.Err() != nil {
+		t.Error("UI close canceled shared transport", sending.Err())
 	}
 	deadline, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
@@ -62,5 +63,12 @@ func TestUICloseCancelsDisplayAndWaitsForActualExit(t *testing.T) {
 	}
 	if u.display.stopped() {
 		t.Fatal("reported exit while callback still active")
+	}
+	once.Do(func() { close(release) })
+	if err := u.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if !u.display.stopped() {
+		t.Fatal("retry returned before actual exit")
 	}
 }

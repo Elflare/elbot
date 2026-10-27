@@ -69,7 +69,9 @@ func TestRunPublishesGlobalPlatformConnection(t *testing.T) {
 	original := os.Stdin
 	os.Stdin = input
 	defer func() { os.Stdin = original }()
-	if err := New().Run(context.Background(), nil); err != nil {
+	adapter := New()
+	defer adapter.Close(context.Background())
+	if err := adapter.Start(context.Background(), nil); err != nil {
 		t.Fatal(err)
 	}
 	if calls != 1 {

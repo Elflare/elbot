@@ -41,6 +41,8 @@ type RemoteClient struct {
 	pendingMu sync.Mutex
 	pending   map[string]chan remoteMessage
 	output    chan tea.Msg
+	done      chan struct{} // 客户端运行结束，释放独立补全等待。
+	runErr    error
 }
 
 func NewRemoteClient(opts RemoteClientOptions) (*RemoteClient, error) {
@@ -53,7 +55,7 @@ func NewRemoteClient(opts RemoteClientOptions) (*RemoteClient, error) {
 	if strings.TrimSpace(client.URL) == "" {
 		return nil, fmt.Errorf("cli client %q url is empty", profile)
 	}
-	return &RemoteClient{cfg: cfg, configDir: opts.ConfigDir, profile: profile, client: client, pending: map[string]chan remoteMessage{}, output: make(chan tea.Msg, 256)}, nil
+	return &RemoteClient{cfg: cfg, configDir: opts.ConfigDir, profile: profile, client: client, pending: map[string]chan remoteMessage{}, output: make(chan tea.Msg, 256), done: make(chan struct{})}, nil
 }
 
 func (c *RemoteClient) URL() string {
@@ -61,6 +63,19 @@ func (c *RemoteClient) URL() string {
 }
 
 func (c *RemoteClient) Run(ctx context.Context) error {
+	return c.run(ctx, func(ctx context.Context) error {
+		return runTUI(tuiModel{ctx: ctx, inputCtx: ctx, handler: c.HandleMessage, completion: c.Complete, output: c.output, userName: c.client.ID, assistantName: "assistant"}, nil)
+	})
+}
+
+// run 协调真实连接与展示生命周期；display 只负责终端交互。
+func (c *RemoteClient) run(ctx context.Context, display func(context.Context) error) (err error) {
+	defer func() {
+		c.pendingMu.Lock()
+		c.runErr = err
+		close(c.done)
+		c.pendingMu.Unlock()
+	}()
 	token, err := c.resolveToken()
 	if err != nil {
 		return err
@@ -74,7 +89,7 @@ func (c *RemoteClient) Run(ctx context.Context) error {
 		return fmt.Errorf("connect cli server %s: %w", c.client.URL, err)
 	}
 	c.conn = conn
-	defer conn.Close(websocket.StatusNormalClosure, "bye")
+	defer conn.CloseNow()
 	if err := c.write(ctx, remoteMessage{Type: remoteMsgHello, ClientID: c.client.ID, Token: token}); err != nil {
 		return err
 	}
@@ -88,8 +103,55 @@ func (c *RemoteClient) Run(ctx context.Context) error {
 	if hello.Type != remoteMsgHelloOK {
 		return fmt.Errorf("unexpected cli server message %q", hello.Type)
 	}
-	go c.readLoop(ctx)
-	return runTUI(ctx, c, c, c.output, nil, c.client.ID, "assistant")
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	reads, ui := make(chan error, 1), make(chan error, 1)
+	go func() { reads <- c.readLoop(runCtx) }()
+	go func() { ui <- display(runCtx) }()
+	var readErr, uiErr error
+	var readDone, uiDone bool
+	select {
+	case readErr = <-reads:
+		readDone = true
+	case uiErr = <-ui:
+		uiDone = true
+	case <-ctx.Done():
+		err = ctx.Err()
+	}
+	// 收回已发布的独立结果，再发起其余工作取消。
+	if !readDone {
+		select {
+		case readErr = <-reads:
+			readDone = true
+		default:
+		}
+	}
+	if !uiDone {
+		select {
+		case uiErr = <-ui:
+			uiDone = true
+		default:
+		}
+	}
+	if readDone && readErr != nil {
+		err = errors.Join(err, fmt.Errorf("cli server disconnected: %w", readErr))
+	}
+	if uiDone {
+		err = errors.Join(err, uiErr)
+	}
+	cancel()
+	_ = conn.CloseNow()
+	if !readDone {
+		<-reads
+	}
+	if !uiDone {
+		uiErr = <-ui
+		err = errors.Join(err, uiErr)
+	}
+	if ctx.Err() != nil {
+		err = errors.Join(err, ctx.Err())
+	}
+	return err
 }
 
 func (c *RemoteClient) HandleMessage(ctx context.Context, text string) error {
@@ -114,17 +176,24 @@ func (c *RemoteClient) Complete(ctx context.Context, req completion.Request) ([]
 		return msg.Items, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	case <-c.done:
+		c.pendingMu.Lock()
+		err := c.runErr
+		c.pendingMu.Unlock()
+		if err == nil {
+			err = fmt.Errorf("cli client stopped")
+		}
+		return nil, err
 	case <-time.After(2 * time.Second):
 		return nil, context.DeadlineExceeded
 	}
 }
 
-func (c *RemoteClient) readLoop(ctx context.Context) {
+func (c *RemoteClient) readLoop(ctx context.Context) error {
 	for {
 		var msg remoteMessage
 		if err := wsjson.Read(ctx, c.conn, &msg); err != nil {
-			c.sendTUI(tuiNoticeMsg{Text: "cli server disconnected: " + err.Error(), Level: slog.LevelError})
-			return
+			return err
 		}
 		c.handleServerMessage(msg)
 	}
@@ -153,6 +222,7 @@ func (c *RemoteClient) handleServerMessage(msg remoteMessage) {
 		}
 		c.pendingMu.Lock()
 		ch := c.pending[msg.ID]
+		delete(c.pending, msg.ID)
 		c.pendingMu.Unlock()
 		if ch != nil {
 			ch <- msg

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"elbot/internal/delivery"
-	"elbot/internal/session"
 )
 
 // reasoningStream is used sequentially by one model call, without a signal queue.
@@ -25,9 +24,6 @@ func (u *UI) StartReasoning(context.Context) delivery.ReasoningStream {
 
 func (s *reasoningStream) Append(ctx context.Context, text string) {
 	if text == "" || s.finished || ctx.Err() != nil || s.ui.display.ctx.Err() != nil {
-		return
-	}
-	if binding, ok := session.BindingFromContext(ctx); ok && !binding.Valid() {
 		return
 	}
 	target := uiTarget(ctx)

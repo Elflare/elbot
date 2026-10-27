@@ -3,30 +3,48 @@
 package cli
 
 import (
-	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/mattn/go-isatty"
+	"github.com/muesli/cancelreader"
 
 	"elbot/internal/completion"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
-	"elbot/internal/platform"
 )
 
 // Adapter is a CLI platform adapter that reads from stdin.
 type Adapter struct {
-	mu            sync.Mutex
-	output        chan tea.Msg
-	program       *tea.Program
-	userName      string
-	assistantName string
-	completion    *completion.Service
+	mu                         sync.Mutex
+	output                     chan tea.Msg
+	program                    *tea.Program
+	userName                   string
+	assistantName              string
+	completion                 func(context.Context, completion.Request) ([]completion.Item, error)
+	input                      *os.File                  // 借用输入，不负责关闭 os.Stdin。
+	interactive                bool                      // 构造时确定的终端模式。
+	started                    bool                      // 已有一次启动尝试，禁止重新运行。
+	closing                    bool                      // 接入闸门已关闭。
+	closed                     bool                      // 终端与输入辅助资源已释放。
+	inputStopped               bool                      // inputDone 是否已发布。
+	startDone                  chan struct{}             // 本地初始化结果已发布。
+	inputDone                  chan struct{}             // 扫描退出或 TUI 业务输入停止。
+	renderDone                 chan struct{}             // 终端程序及读取协程已退出。
+	done                       chan struct{}             // 接入与已登记业务回调均退出。
+	startErr, runErr, closeErr error                     // 初始化、运行、清理结果分别保留。
+	workCtx                    context.Context           // 业务输入与补全的运行上下文。
+	workCancel                 context.CancelFunc        // 停止业务输入与已接纳回调。
+	renderCancel               context.CancelFunc        // 最终请求终端正常退出。
+	inputReader                cancelreader.CancelReader // 可取消的输入包装，不持有底层文件所有权。
+	stopParent                 func() bool               // 解除上游运行取消的观察。
+	work                       sync.WaitGroup            // 已接纳的输入和补全调用。
+
 }
 
 type cliMessageStream struct {
@@ -35,7 +53,7 @@ type cliMessageStream struct {
 
 // New creates a new CLI adapter.
 func New() *Adapter {
-	return &Adapter{output: make(chan tea.Msg, 256), userName: "user", assistantName: "assistant"}
+	return &Adapter{output: make(chan tea.Msg, 256), userName: "user", assistantName: "assistant", input: os.Stdin, interactive: isatty.IsTerminal(os.Stdin.Fd()), startDone: make(chan struct{}), inputDone: make(chan struct{}), renderDone: make(chan struct{}), done: make(chan struct{})}
 }
 
 // Name returns the platform name.
@@ -43,56 +61,10 @@ func (a *Adapter) Name() string {
 	return "cli"
 }
 
-func (a *Adapter) SetCompleter(service *completion.Service) {
+func (a *Adapter) SetCompleter(service func(context.Context, completion.Request) ([]completion.Item, error)) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.completion = service
-}
-
-// StopAppOnExit marks the interactive CLI as owning the current foreground process.
-// Future service deployments can use adapters that return false so CLI exit won't stop services.
-func (a *Adapter) StopAppOnExit() bool {
-	return true
-}
-
-// Run starts the stdin read loop. It handles /exit locally and forwards
-// all other input to the handler.
-func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) error {
-	handler = localMessageHandler{next: handler, adapter: a}
-	a.notifyConnected(ctx)
-	if !isatty.IsTerminal(os.Stdin.Fd()) {
-		return a.runScanner(ctx, handler)
-	}
-	return a.runInteractive(ctx, handler)
-}
-
-func (a *Adapter) runScanner(ctx context.Context, handler platform.PlatformHandler) error {
-	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Print("> ")
-	for scanner.Scan() {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		text := scanner.Text()
-		if text == "/exit" {
-			return nil
-		}
-
-		_ = handler.HandleMessage(ctx, text)
-
-		fmt.Print("> ")
-	}
-	return scanner.Err()
-}
-
-func (a *Adapter) runInteractive(ctx context.Context, handler platform.PlatformHandler) error {
-	a.mu.Lock()
-	completion := a.completion
-	a.mu.Unlock()
-	return runTUI(ctx, handler, completion, a.output, a.setProgram, a.userName, a.assistantName)
 }
 
 func (a *Adapter) setProgram(program *tea.Program) {
@@ -107,7 +79,7 @@ func (a *Adapter) notifyConnected(ctx context.Context) {
 }
 
 func (a *Adapter) StartStream(ctx context.Context) (delivery.MessageStream, error) {
-	if !isatty.IsTerminal(os.Stdin.Fd()) {
+	if !a.interactive {
 		return nil, fmt.Errorf("cli streaming output requires interactive TUI")
 	}
 	a.mu.Lock()
@@ -123,24 +95,29 @@ func (s cliMessageStream) Append(ctx context.Context, text string) error {
 	if text == "" {
 		return nil
 	}
-	s.adapter.sendTUIMessage(tuiOutputMsg(text), text)
-	return nil
+	return s.adapter.sendTUIMessage(tuiOutputMsg(text), text)
 }
 
 func (s cliMessageStream) Replace(ctx context.Context, text string) (delivery.Receipt, globalevents.LogResult, error) {
-	s.adapter.sendTUIMessage(tuiReplaceAssistantMsg(text), text)
+	if err := s.adapter.sendTUIMessage(tuiReplaceAssistantMsg(text), text); err != nil {
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+	}
 	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
 func (s cliMessageStream) Finish(ctx context.Context) (delivery.Receipt, globalevents.LogResult, error) {
-	s.adapter.sendTUIMessage(tuiFinishAssistantMsg{}, "\n")
+	if err := s.adapter.sendTUIMessage(tuiFinishAssistantMsg{}, "\n"); err != nil {
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+	}
 	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
 func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	text := outputsText(outputs)
 	if text != "" {
-		a.sendTUIMessage(tuiOutputMsg(text), text)
+		if err := a.sendTUIMessage(tuiOutputMsg(text), text); err != nil {
+			return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+		}
 	}
 	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
@@ -159,7 +136,9 @@ func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []
 	}
 	text := outputsText(outputs)
 	if text != "" {
-		a.sendTUIMessage(tuiOutputMsg(text), text)
+		if err := a.sendTUIMessage(tuiOutputMsg(text), text); err != nil {
+			return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+		}
 	}
 	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
@@ -168,8 +147,12 @@ func (a *Adapter) sendTUIMessage(msg tea.Msg, fallback string) error {
 	a.mu.Lock()
 	output := a.output
 	program := a.program
+	closed := a.closed
 	a.mu.Unlock()
-	if !isatty.IsTerminal(os.Stdin.Fd()) {
+	if closed {
+		return io.ErrClosedPipe
+	}
+	if !a.interactive {
 		_, err := fmt.Fprintln(os.Stdout, strings.TrimSuffix(fallback, "\n"))
 		return err
 	}
