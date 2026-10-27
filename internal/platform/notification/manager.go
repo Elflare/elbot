@@ -35,6 +35,16 @@ func New(primary string) (*Manager, error) {
 	return m, nil
 }
 
+// NotifyPlatformFailure 将故障通知异步投递给根部选定的目标，不等待发送结果。
+func (m *Manager) NotifyPlatformFailure(ctx context.Context, name string, failure error, targets []events.NotificationTarget) {
+	for _, target := range targets {
+		_, _ = events.NotificationRequested.EmitAsync(ctx, events.Notification{
+			Target: target, Level: slog.LevelError,
+			Text: fmt.Sprintf("平台 %s 异常退出：%v", name, failure),
+		})
+	}
+}
+
 // AddPlatform creates the platform's independent scheduling resources. The
 // adapter connects its sender; it does not own another notification queue.
 func (m *Manager) AddPlatform(name string) (*signal.Signal[events.Notification, events.NotificationReceipt], error) {

@@ -1,4 +1,4 @@
-// manager_test.go 验证随组件迁入的既有行为。
+// manager_test.go 验证通知路由、故障异步投递及队列关闭行为。
 
 package notification
 
@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"elbot/internal/contextinfo"
@@ -16,6 +17,125 @@ import (
 	"elbot/internal/signal"
 	"elbot/internal/storage/sqlite"
 )
+
+func TestPlatformFailureDeliveryIsAsyncAndIsolated(t *testing.T) {
+	m := testManager(t, "slow")
+	release := make(chan struct{})
+	defer close(release)
+	started := make(chan string, 8)
+	var slowCalls, fastCalls atomic.Int32
+	for _, name := range []string{"slow", "fast"} {
+		addTestPlatform(t, m, name, func(_ context.Context, n events.Notification) (events.NotificationReceipt, error) {
+			if n.Text == "barrier" {
+				return events.NotificationReceipt{}, nil
+			}
+			if n.Level != slog.LevelError || n.Text != "平台 failed 异常退出：offline" || n.Target.Platform != name || n.Target.ID != "admin" || n.Target.Kind != contextinfo.ConversationPrivate || n.Origin != nil {
+				t.Errorf("unexpected failure notification: %+v", n)
+			}
+			if name == "slow" {
+				slowCalls.Add(1)
+				started <- name
+				<-release
+				return events.NotificationReceipt{}, errors.New("send failed")
+			}
+			fastCalls.Add(1)
+			started <- name
+			return events.NotificationReceipt{}, nil
+		})
+	}
+	targets := []events.NotificationTarget{
+		{Platform: "slow", Kind: contextinfo.ConversationPrivate, ID: "admin"},
+		{Platform: "fast", Kind: contextinfo.ConversationPrivate, ID: "admin"},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	ctx = contextinfo.WithBackgroundKind(ctx, contextinfo.BackgroundKindCron)
+	returned := make(chan struct{})
+	go func() {
+		m.NotifyPlatformFailure(ctx, "failed", errors.New("offline"), targets)
+		close(returned)
+	}()
+	select {
+	case <-returned:
+	case <-ctx.Done():
+		t.Fatal("failure notification waited for sender")
+	}
+	for range targets {
+		select {
+		case <-started:
+		case <-ctx.Done():
+			t.Fatal("slow platform blocked another destination")
+		}
+	}
+	m.NotifyPlatformFailure(ctx, "failed", errors.New("offline"), nil)
+	canceled, stop := context.WithCancel(ctx)
+	stop()
+	m.NotifyPlatformFailure(canceled, "failed", errors.New("offline"), targets)
+	release <- struct{}{}
+	// 同目标的同步标记等待此前通知完成，避免用睡眠猜测队列进度。
+	for _, target := range targets {
+		if _, err := events.NotificationRequested.Emit(ctx, events.Notification{Target: target, Text: "barrier"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if slowCalls.Load() != 1 || fastCalls.Load() != 1 {
+		t.Fatalf("unexpected additional delivery: slow=%d fast=%d", slowCalls.Load(), fastCalls.Load())
+	}
+}
+func TestManagerCloseWaitsForSenderAndCanRetry(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		m := testManager(t, "remote")
+		release := make(chan struct{})
+		defer close(release)
+		var calls atomic.Int32
+		var sendContext context.Context
+		s := addTestPlatform(t, m, "remote", func(ctx context.Context, _ events.Notification) (events.NotificationReceipt, error) {
+			calls.Add(1)
+			sendContext = ctx
+			<-release
+			return events.NotificationReceipt{}, nil
+		})
+		targets := []events.NotificationTarget{{Platform: "remote", Kind: contextinfo.ConversationPrivate, ID: "admin"}}
+		m.NotifyPlatformFailure(context.Background(), "failed", errors.New("offline"), targets)
+		synctest.Wait()
+		if calls.Load() != 1 {
+			t.Fatal("sender did not start")
+		}
+		m.NotifyPlatformFailure(context.Background(), "failed", errors.New("queued"), targets)
+		synctest.Wait()
+		m.BeginClose()
+		synctest.Wait()
+		if !errors.Is(sendContext.Err(), context.Canceled) {
+			t.Fatalf("sender was not canceled: %v", sendContext.Err())
+		}
+		if _, err := m.AddPlatform("late"); !errors.Is(err, signal.ErrClosed) {
+			t.Fatalf("registration after close: %v", err)
+		}
+		m.NotifyPlatformFailure(context.Background(), "failed", errors.New("late"), targets)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := m.Close(ctx); !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("Close did not wait for actual sender exit: %v", err)
+		}
+		select {
+		case <-s.Done():
+			t.Fatal("queue reported completion while sender was still running")
+		default:
+		}
+		release <- struct{}{}
+		if err := m.Close(context.Background()); err != nil {
+			t.Fatalf("retry Close: %v", err)
+		}
+		if calls.Load() != 1 {
+			t.Fatalf("queued or late notification started: %d", calls.Load())
+		}
+		select {
+		case <-s.Done():
+		default:
+			t.Fatal("queue not completed after sender exit")
+		}
+	})
+}
 
 func testManager(t *testing.T, primary string) *Manager {
 	t.Helper()

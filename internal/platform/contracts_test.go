@@ -4,7 +4,31 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+
+	"elbot/internal/contextinfo"
 )
+
+func TestMessageAndConversationFactsAreIndependent(t *testing.T) {
+	origin := contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram", ScopeID: "private:7"}, PlatformMessageID: "source"}
+	parent := contextinfo.WithConversation(context.Background(), origin)
+	msg := MessageContext{RawText: "message", Reply: ReplyContext{MessageID: "reply"}}
+	ctx := WithMessageContext(parent, msg)
+	if got, ok := contextinfo.ConversationFromContext(ctx); !ok || got != origin {
+		t.Fatalf("installing message changed conversation: %+v, %v", got, ok)
+	}
+	updated := origin
+	updated.PlatformMessageID = "updated"
+	ctx = contextinfo.WithConversation(ctx, updated)
+	for _, candidate := range []context.Context{ctx, contextinfo.WithoutConversation(ctx)} {
+		got, ok := MessageContextFrom(candidate)
+		if !ok || got.RawText != msg.RawText || got.Reply.MessageID != msg.Reply.MessageID {
+			t.Fatalf("conversation changed message facts: %+v, %v", got, ok)
+		}
+	}
+	if got, ok := contextinfo.ConversationFromContext(WithoutMessageContext(ctx)); !ok || got != updated {
+		t.Fatalf("removing message changed conversation: %+v, %v", got, ok)
+	}
+}
 
 func TestMessageContextSnapshotsAreIndependent(t *testing.T) {
 	type factKey struct{}
