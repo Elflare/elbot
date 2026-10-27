@@ -101,7 +101,7 @@ App 与 Agent 不承接 Doctor，配置诊断由配置侧负责。进程入口�
 以下为根部当前调用的目标签名，供后续下层阶段实现。子包不导入根部或兄弟实现，外部不导入 `platform/share`；Media 已移除 Platform 依赖，Tool 历史桥接直接消费 Storage 查询与编解码，平台媒体解析只通过根部最小接口注入。Agent 使用自己的 MessageRequest，剩余旧消费者仍需按各自边界迁移，不增加兼容别名。
 
 ```go
-// share/adapter.go
+// share/runtime_contracts.go
 type Runtime interface {
     Name() string
     Start(context.Context, MessageHandler) error
@@ -159,7 +159,9 @@ dispatch.Options.Primary 和 Router 的 primary 字段只接收 `interface { Nam
 
 通用入口仅承接已有 message.recall、member.mute、chat.leave，未知或不支持即报错；原生入口不登记名称清单、不映射业务名称，已知名称也不转入通用入口。认证、协议封装和传输错误归适配器。Elvena 映射保留在 dispatch/calls.go，待子包阶段拆入 capability_api.go；不增加头像等未使用能力。
 
-通知沿用 New、AddPlatform、ConnectNotifications，NotificationReceiver 移入 share。Manager 增加 `NotifyPlatformFailure(context.Context, string, error, []events.NotificationTarget)`，负责格式化和异步投递；根部选择仍在运行的平台目标。CLI 增加 `RunClient(ctx, rawConfig, configDir, name) ClientResult` 和自身 ClientCompleted／ClientFallback／ClientFailed 分类，根部只转换为公开结果，规则见上节。
+通知沿用 New、AddPlatform、ConnectNotifications。share/notification.go 定义 NotificationReceiver 和 NotificationTarget；接收契约只连接发送端，连接由根部持有和释放，目标转换在匹配来源时保留原生回复路由。旧根包通知定义待各子包调用方迁移后删除。Manager 增加 `NotifyPlatformFailure(context.Context, string, error, []events.NotificationTarget)`，负责格式化和异步投递；根部选择仍在运行的平台目标。CLI 增加 `RunClient(ctx, rawConfig, configDir, name) ClientResult` 和自身 ClientCompleted／ClientFallback／ClientFailed 分类，根部只转换为公开结果，规则见上节。
+
+Share 的 Runtime、MessageHandler、CapabilityCaller、PlatformAPICaller 和 NotificationReceiver 已定义；运行与入站契约位于 runtime_contracts.go，构造依赖保留在 adapter.go，两类可选 API 接口位于 adapter_api.go，不并入 Runtime。Share 不实现生命周期状态机、协议映射或发送调度；这些接口的实际实现与调用方迁移仍归对应子包阶段。
 
 ```mermaid
 flowchart TD

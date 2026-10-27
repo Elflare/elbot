@@ -1,4 +1,4 @@
-// adapter.go 定义适配器运行、输入交付与发送契约。
+// adapter.go 定义适配器构造时注入的依赖。
 
 package share
 

@@ -1,5 +1,7 @@
 // platform.go 保留尚未迁移的旧运行契约与通知辅助定义。
 // TODO：迁入 share 对应文件并更新调用方后删除本文件；公开消息事实已归 contracts.go。
+// share/runtime_contracts.go 已定义目标 Runtime 与 MessageHandler；适配器迁移后删除旧运行契约。
+// share/notification.go 已定义通知接收与目标转换；各子包调用方迁移后删除这里的旧定义。
 
 package platform
 

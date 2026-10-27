@@ -76,6 +76,7 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 
 ## Platform 剩余接线
 
+- [x] Share 定义 Runtime／MessageHandler、两类可选 API 与 NotificationReceiver 契约；NotificationTarget 保留来源回复路由及显式目标转换行为。旧根包定义标记调用方迁移后删除，实际下层接线见后续任务。
 - [ ] 适配器接入 share.Runtime 和 MessageHandler：Start 同步完成本地启动，BeginClose 停止接入，Wait 可取消且保留独立故障，Close 可超时重试；停止接入后发送能力仍可供收尾使用。验收需覆盖部分启动、并发启停与实际退出。
 - [ ] CLI 移除旧 agent/events 引用，接入自身状态／绑定事件、ConnectUI、标准补全与命令目录。验收需覆盖订阅释放、前台接管展示和远程默认回复绑定。
 - [ ] CLI 客户端实现分类结果，根部仅转换；验证明确指定连接、默认本地失败回退、远端与认证失败不回退、取消和连接关闭。

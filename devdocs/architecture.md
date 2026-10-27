@@ -517,7 +517,7 @@ flowchart TD
 
 平台负责输入归一化、历史与输出落地，支持本地／远程 CLI、QQ OneBot、QQ Official、Telegram 和 headless。
 
-Platform 根部按下层目标契约实现总管、装配与公开能力；下层契约见 [App 包设计](app-design.md#platform-下层目标契约)。根部持有适配器与订阅，借用 App 持有的历史库，输入转换为 Agent 自有请求并保留延迟媒体解析。contracts.go 的公开 MessageContext 只表达原文、原生载荷与引用事实，运行能力留在内部。dispatch 只取得名称、发送及可选的 API、媒体解析能力，完整 Runtime 归总管；引用存储依赖通过根部闭包固定，不混入共享请求。public_api.go 将通用能力与原生透传分开路由，不解释平台协议。share/adapter_api.go 和适配器 capability_api.go 仍待子包阶段实现。旧 platform.go、module/、builtin/ 保留删除标记；旧反向依赖及调用方尚未迁移，整线尚不能编译接通。
+Platform 根部按下层目标契约实现总管、装配与公开能力；下层契约见 [App 包设计](app-design.md#platform-下层目标契约)。根部持有适配器与订阅，借用 App 持有的历史库，输入转换为 Agent 自有请求并保留延迟媒体解析。contracts.go 的公开 MessageContext 只表达原文、原生载荷与引用事实，运行能力留在内部。dispatch 只取得名称、发送及可选的 API、媒体解析能力，完整 Runtime 归总管；引用存储依赖通过根部闭包固定，不混入共享请求。public_api.go 将通用能力与原生透传分开路由，不解释平台协议。Share 已定义运行、入站、两类可选 API 和通知接收契约，并提供通知目标转换；适配器生命周期、capability_api.go 及调用方接线仍待子包阶段实现。旧 platform.go、module/、builtin/ 保留删除标记；旧反向依赖及调用方尚未迁移，整线尚不能编译接通。
 
 - Platform Supervisor 管理适配器；服务模式各平台退出互不影响，全部退出后仍等待外部停止，本地 TUI 退出结束整线。独立故障记录错误并异步通知其他运行平台的配置超管。BeginClose／Wait 仅停止并等待接入；Close 最后释放 UI、通知和适配器资源，历史库由 App 在所有业务线退出后关闭，Done 表示最终清理完成。
 - CLI 拥有私有展示目标、状态订阅、合并和格式化；远程默认回复固定原连接，断开即失败，显式目标按多连接规则发送。
