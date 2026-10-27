@@ -27,7 +27,6 @@ import (
 type Adapter struct {
 	referenceResolver func(context.Context, share.ReferenceOptions) (share.ReferenceResult, error) // 根部注入的引用恢复能力。
 	cfg               Config
-	store             storage.Store                 // TODO：适配器子包改造时删除；引用恢复已由根部注入，不再使用此字段。
 	chatHistory       storage.ChatHistoryRepository // TODO：适配器子包改造时替换为 AdapterDeps.ChatHistory 的窄能力。
 	client            *apiClient
 
@@ -41,10 +40,10 @@ type target struct {
 	ScopeID string
 }
 
-// TODO：适配器子包改造时替换此旧构造入口，直接消费 AdapterDeps 的窄能力并初始化引用恢复。
-func New(cfg Config, store storage.Store, chatHistory storage.ChatHistoryRepository) *Adapter {
+// TODO：参考 qqonebot.Deps 与唯一构造入口，拆分本包所需依赖并移除旧 New。
+func New(cfg Config, chatHistory storage.ChatHistoryRepository) *Adapter {
 	applyDefaults(&cfg)
-	return &Adapter{cfg: cfg, store: store, chatHistory: chatHistory, client: newAPIClient(cfg)}
+	return &Adapter{cfg: cfg, chatHistory: chatHistory, client: newAPIClient(cfg)}
 }
 
 func (a *Adapter) Name() string { return platformName }

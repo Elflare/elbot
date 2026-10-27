@@ -38,6 +38,7 @@ type Config struct {
 	Superadmins              []string
 }
 
+// TODO：参考 qqonebot.Deps 改用本包依赖组合，并将旧 New 初始化并入本入口。
 func NewFromPlatformConfig(raw map[string]any, deps share.AdapterDeps) (*Adapter, error) {
 	var cfg Config
 	if err := share.DecodeConfig(raw, &cfg); err != nil {
@@ -62,7 +63,7 @@ func NewFromPlatformConfig(raw map[string]any, deps share.AdapterDeps) (*Adapter
 		}
 		cfg.ClientSecret = secret
 	}
-	adapter := New(cfg, deps.Store, deps.ChatHistory)
+	adapter := New(cfg, deps.ChatHistory)
 	adapter.referenceResolver = deps.ReferenceResolver
 	return adapter, nil
 }

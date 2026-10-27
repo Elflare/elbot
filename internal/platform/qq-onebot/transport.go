@@ -1,5 +1,4 @@
 // transport.go 负责 WebSocket 连接、原生请求发送与响应匹配。
-// TODO：改造连接关闭与并发请求收尾，停止业务接入后仍读取发送响应，最终关闭时释放等待中的请求。
 
 package qqonebot
 
@@ -10,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -30,11 +30,16 @@ type Transport struct {
 
 	mu sync.Mutex
 
-	writeOnce sync.Once
-	writeGate chan struct{}
-	conn      *websocket.Conn
-	pending   map[string]chan response
-	seq       atomic.Uint64
+	writeGate   chan struct{}            // 串行写帧；排队阶段响应调用方和最终关闭取消。
+	conn        *websocket.Conn          // 当前已发布连接；请求登记时在同一把锁下取得。
+	pending     map[string]chan response // 当前连接的回应等待表，投递和关闭均受 mu 保护。
+	seq         atomic.Uint64            // 跨重连保持递增，旧回应不能匹配新请求。
+	closing     bool                     // 最终关闭已开始，拒绝所有新操作。
+	closeCtx    context.Context          // 取消在途拨号与等待写入资格的操作。
+	closeCancel context.CancelFunc
+	active      sync.WaitGroup // 已接纳的拨号、读取和请求，等待真实退出。
+	closeDone   chan struct{}  // 连接及在途操作全部释放。
+	closeErr    error          // 最终关闭结果。
 }
 
 type request struct {
@@ -82,10 +87,33 @@ type getFileData struct {
 	FileName string `json:"file_name"`
 }
 
+func newTransport(url, accessToken string, timeout time.Duration) *Transport {
+	ctx, cancel := context.WithCancel(context.Background())
+	t := &Transport{
+		URL: url, AccessToken: accessToken, Timeout: timeout,
+		writeGate: make(chan struct{}, 1), pending: make(map[string]chan response),
+		closeCtx: ctx, closeCancel: cancel, closeDone: make(chan struct{}),
+	}
+	t.writeGate <- struct{}{}
+	return t
+}
+
 func (t *Transport) Connect(ctx context.Context) error {
+	t.mu.Lock()
+	if t.closing {
+		t.mu.Unlock()
+		return fmt.Errorf("onebot transport is closed")
+	}
+	t.active.Add(1)
+	t.mu.Unlock()
+	defer t.active.Done()
 	if t.URL == "" {
 		return fmt.Errorf("onebot ws url is empty")
 	}
+	ctx, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(t.closeCtx, cancel)
+	defer stop()
+	defer cancel()
 	header := http.Header{}
 	if t.AccessToken != "" {
 		header.Set("Authorization", "Bearer "+t.AccessToken)
@@ -95,34 +123,101 @@ func (t *Transport) Connect(ctx context.Context) error {
 		return fmt.Errorf("connect onebot websocket: %w", err)
 	}
 	t.mu.Lock()
+	err = ctx.Err()
+	if t.closing {
+		err = fmt.Errorf("onebot transport is closed")
+	} else if t.conn != nil {
+		err = fmt.Errorf("onebot websocket is already connected")
+	}
+	if err != nil {
+		t.mu.Unlock()
+		_ = conn.CloseNow()
+		return err
+	}
 	t.conn = conn
-	t.pending = map[string]chan response{}
+	t.pending = make(map[string]chan response)
 	t.mu.Unlock()
 	return nil
 }
 
-func (t *Transport) Close(status websocket.StatusCode, reason string) {
+// disconnect 只释放发生故障的那条连接，迟到错误不影响重连后的连接。
+func (t *Transport) disconnect(conn *websocket.Conn) {
 	t.mu.Lock()
-	conn := t.conn
-	t.conn = nil
-	pending := t.pending
-	t.pending = nil
-	t.mu.Unlock()
-	if conn != nil {
-		_ = conn.Close(status, reason)
+	if t.conn != conn {
+		t.mu.Unlock()
+		return
 	}
-	for _, ch := range pending {
+	t.conn = nil
+	for echo, ch := range t.pending {
+		delete(t.pending, echo)
 		close(ch)
+	}
+	t.mu.Unlock()
+	_ = conn.CloseNow()
+}
+
+func (t *Transport) Close(ctx context.Context) error {
+	t.mu.Lock()
+	if !t.closing {
+		if err := ctx.Err(); err != nil {
+			t.mu.Unlock()
+			return err
+		}
+		t.closing = true
+		t.closeCancel()
+		conn := t.conn
+		t.conn = nil
+		for echo, ch := range t.pending {
+			delete(t.pending, echo)
+			close(ch)
+		}
+		go t.closeResources(conn)
+	}
+	t.mu.Unlock()
+	select {
+	case <-t.closeDone:
+		return t.closeErr
+	default:
+	}
+	select {
+	case <-t.closeDone:
+		return t.closeErr
+	case <-ctx.Done():
+		select {
+		case <-t.closeDone:
+			return t.closeErr
+		default:
+			return ctx.Err()
+		}
 	}
 }
 
+func (t *Transport) closeResources(conn *websocket.Conn) {
+	var err error
+	if conn != nil {
+		err = conn.Close(websocket.StatusNormalClosure, "onebot transport closed")
+		if errors.Is(err, net.ErrClosed) {
+			err = nil
+		}
+	}
+	t.active.Wait()
+	t.closeErr = err
+	close(t.closeDone)
+}
+
 func (t *Transport) Read(ctx context.Context) (Event, error) {
-	conn := t.currentConn()
-	if conn == nil {
+	t.mu.Lock()
+	conn := t.conn
+	if t.closing || conn == nil {
+		t.mu.Unlock()
 		return Event{}, fmt.Errorf("onebot websocket is not connected")
 	}
+	t.active.Add(1)
+	t.mu.Unlock()
+	defer t.active.Done()
 	var raw json.RawMessage
 	if err := wsjson.Read(ctx, conn, &raw); err != nil {
+		t.disconnect(conn)
 		return Event{}, err
 	}
 	if t.dispatchResponse(raw) {
@@ -130,6 +225,7 @@ func (t *Transport) Read(ctx context.Context) (Event, error) {
 	}
 	var event Event
 	if err := json.Unmarshal(raw, &event); err != nil {
+		t.disconnect(conn)
 		return Event{}, fmt.Errorf("decode onebot event: %w", err)
 	}
 	return event, nil
@@ -278,6 +374,12 @@ func (t *Transport) sendMessage(ctx context.Context, action string, params map[s
 }
 
 func (t *Transport) call(ctx context.Context, action string, params map[string]any) (_ response, callErr error) {
+	active := false
+	defer func() {
+		if active {
+			t.active.Done()
+		}
+	}()
 	startedAt := time.Now()
 	var encodedAt, acquiredAt, writtenAt time.Time
 	frameBytes := 0
@@ -334,10 +436,6 @@ func (t *Transport) call(ctx context.Context, action string, params map[string]a
 	if err := ctx.Err(); err != nil {
 		return response{}, err
 	}
-	conn := t.currentConn()
-	if conn == nil {
-		return response{}, fmt.Errorf("onebot websocket is not connected")
-	}
 	echo := fmt.Sprintf("elbot-%d", t.seq.Add(1))
 	frame, err := json.Marshal(request{Action: action, Params: params, Echo: echo})
 	encodedAt = time.Now()
@@ -347,30 +445,47 @@ func (t *Transport) call(ctx context.Context, action string, params map[string]a
 	frameBytes = len(frame)
 	ch := make(chan response, 1)
 	t.mu.Lock()
-	if t.pending == nil {
-		t.pending = map[string]chan response{}
+	conn := t.conn
+	if t.closing || conn == nil {
+		t.mu.Unlock()
+		return response{}, fmt.Errorf("onebot websocket is not connected")
 	}
+	t.active.Add(1)
+	active = true
 	t.pending[echo] = ch
 	t.mu.Unlock()
 	defer t.removePending(echo)
 
-	writeCtx, cancelWrite := context.WithTimeout(ctx, t.writeTimeout(frameBytes))
-	release, err := t.acquireWrite(writeCtx)
+	waitCtx, cancelWait := context.WithTimeout(ctx, t.writeTimeout(frameBytes))
+	release, err := t.acquireWrite(waitCtx)
+	cancelWait()
 	if err != nil {
-		cancelWrite()
 		return response{}, fmt.Errorf("wait to send onebot action %s: %w", action, err)
 	}
+	if err := ctx.Err(); err != nil {
+		release()
+		return response{}, err
+	}
+	if err := t.closeCtx.Err(); err != nil {
+		release()
+		return response{}, err
+	}
 	acquiredAt = time.Now()
+	// 已开始的帧只受写入超时和连接关闭约束，业务取消不破坏共享连接。
+	writeCtx, cancelWrite := context.WithTimeout(context.WithoutCancel(ctx), t.writeTimeout(frameBytes))
 	err = conn.Write(writeCtx, websocket.MessageText, frame)
 	writtenAt = time.Now()
 	release()
 	cancelWrite()
 	if err != nil {
-		_ = conn.CloseNow()
+		t.disconnect(conn)
 		return response{}, fmt.Errorf("send onebot action %s: %w", action, err)
 	}
+	if err := ctx.Err(); err != nil {
+		return response{}, err
+	}
 
-	waitCtx := ctx
+	waitCtx = ctx
 	if t.Timeout > 0 {
 		var cancelWait context.CancelFunc
 		waitCtx, cancelWait = context.WithTimeout(ctx, t.Timeout)
@@ -403,11 +518,9 @@ func (t *Transport) writeTimeout(frameBytes int) time.Duration {
 }
 
 func (t *Transport) acquireWrite(ctx context.Context) (func(), error) {
-	t.writeOnce.Do(func() {
-		t.writeGate = make(chan struct{}, 1)
-		t.writeGate <- struct{}{}
-	})
 	select {
+	case <-t.closeCtx.Done():
+		return nil, t.closeCtx.Err()
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-t.writeGate:
@@ -420,12 +533,6 @@ func elapsedMillisBetween(start, end time.Time) int64 {
 		return 0
 	}
 	return end.Sub(start).Milliseconds()
-}
-
-func (t *Transport) currentConn() *websocket.Conn {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.conn
 }
 
 func (t *Transport) removePending(echo string) {
@@ -446,8 +553,9 @@ func (t *Transport) dispatchResponse(raw json.RawMessage) bool {
 		return false
 	}
 	t.mu.Lock()
+	defer t.mu.Unlock()
 	ch := t.pending[resp.Echo]
-	t.mu.Unlock()
+	delete(t.pending, resp.Echo)
 	if ch == nil {
 		return true
 	}

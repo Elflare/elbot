@@ -1,5 +1,5 @@
 // forward.go 负责合并转发内容的一层展开与引用展示，保留原始媒体顺序。
-// 本文件只处理入站及引用内容，长消息发送待从 adapter.go 迁入 send.go。
+// 本文件只处理入站及引用内容，长消息发送位于 send.go。
 
 package qqonebot
 

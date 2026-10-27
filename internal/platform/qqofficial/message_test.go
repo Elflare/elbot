@@ -502,5 +502,5 @@ func newTestAdapter(t *testing.T, cfg Config, store storage.Store, history stora
 		t.Cleanup(func() { _ = db.Close() })
 		history = db.Repository()
 	}
-	return New(cfg, store, history)
+	return New(cfg, history)
 }

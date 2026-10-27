@@ -1,9 +1,9 @@
 // config_test.go 验证访问令牌的配置来源、优先级与缺省行为。
-// TODO：测试夹具改用 NewFromPlatformConfig(raw, deps)，移除旧参数列表。
 
 package qqonebot
 
 import (
+	"elbot/internal/platform/share"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,7 +19,7 @@ func TestNewFromPlatformConfigReadsAccessTokenFromDotEnv(t *testing.T) {
 	adapter, err := NewFromPlatformConfig(map[string]any{
 		"enabled":          true,
 		"access_token_env": "QQONEBOT_TOKEN",
-	}, nil, nil, nil, nil, dir, "", 0, 0)
+	}, Deps{CommonConfig: share.CommonConfig{ConfigDir: dir}})
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestNewFromPlatformConfigPrefersSystemEnvironment(t *testing.T) {
 	adapter, err := NewFromPlatformConfig(map[string]any{
 		"enabled":          true,
 		"access_token_env": "QQONEBOT_TOKEN",
-	}, nil, nil, nil, nil, dir, "", 0, 0)
+	}, Deps{CommonConfig: share.CommonConfig{ConfigDir: dir}})
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestNewFromPlatformConfigPrefersLegacyAccessToken(t *testing.T) {
 		"enabled":          true,
 		"access_token":     "legacy-token",
 		"access_token_env": "QQONEBOT_TOKEN",
-	}, nil, nil, nil, nil, dir, "", 0, 0)
+	}, Deps{CommonConfig: share.CommonConfig{ConfigDir: dir}})
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestNewFromPlatformConfigPrefersLegacyAccessToken(t *testing.T) {
 }
 
 func TestNewFromPlatformConfigAllowsMissingAccessToken(t *testing.T) {
-	adapter, err := NewFromPlatformConfig(map[string]any{"enabled": true}, nil, nil, nil, nil, t.TempDir(), "", 0, 0)
+	adapter, err := NewFromPlatformConfig(map[string]any{"enabled": true}, Deps{CommonConfig: share.CommonConfig{ConfigDir: t.TempDir()}})
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}

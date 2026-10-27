@@ -1,5 +1,4 @@
 // text_receipt_test.go 验证文本发送回执保留实际目标，以及长文本使用单次合并转发回执。
-// TODO：迁移旧 New 构造夹具，保留实际发送与回执断言。
 
 package qqonebot
 
@@ -15,7 +14,7 @@ func TestTextReceiptsKeepActualTarget(t *testing.T) {
 	transport := newTestTransport(t, func(req request) response {
 		return response{Status: "ok", Data: []byte(`{"message_id":88}`), Echo: req.Echo}
 	})
-	a := New(Config{Enabled: true, URL: transport.URL}, nil, nil)
+	a := newTestAdapter(t, Config{Enabled: true, URL: transport.URL}, nil, nil)
 	a.transport = transport
 	for _, target := range []target{{MessageType: "private", UserID: 1}, {MessageType: "group", GroupID: 9}} {
 		for _, explicit := range []bool{false, true} {
@@ -49,7 +48,7 @@ func TestTextPagesReturnOneForwardReceipt(t *testing.T) {
 		}
 		return response{Status: "ok", Data: []byte(`{"message_id":88}`), Echo: req.Echo}
 	})
-	a := New(Config{Enabled: true, URL: transport.URL}, nil, nil)
+	a := newTestAdapter(t, Config{Enabled: true, URL: transport.URL}, nil, nil)
 	a.transport = transport
 	receipt, _, err := a.SendChat(testTargetContext(target{MessageType: "group", GroupID: 9}), []delivery.Output{delivery.Text(strings.Repeat("a", 30000))})
 	if err != nil || calls != 1 || len(receipt.PlatformMessageIDs) != 1 || len(receipt.SentMessages) != 1 {

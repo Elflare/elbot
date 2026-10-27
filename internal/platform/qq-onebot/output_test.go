@@ -1,5 +1,4 @@
 // output_test.go 验证通知投递、媒体输出编码及发送失败行为。
-// TODO：迁移旧 New 构造夹具，通知测试直接使用信号契约，移除 notification 兄弟实现依赖。
 
 package qqonebot
 
@@ -16,7 +15,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/platform/notification"
+	"elbot/internal/signal"
 	"log/slog"
 )
 
@@ -34,7 +33,7 @@ func TestNotificationDeliversExplicitGroupToolText(t *testing.T) {
 		calls.Add(1)
 		return response{Status: "ok", Data: []byte(`{"message_id":88}`), Echo: req.Echo}
 	})
-	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil)
+	adapter := newTestAdapter(t, Config{Enabled: true, URL: transport.URL}, nil, nil)
 	adapter.transport = transport
 	ctx := testTargetContext(target{MessageType: "group", GroupID: 9})
 
@@ -56,7 +55,7 @@ func TestNotificationKeepsPrivateToolPreview(t *testing.T) {
 		action = req.Action
 		return response{Status: "ok", Data: []byte(`{"message_id":88}`), Echo: req.Echo}
 	})
-	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil)
+	adapter := newTestAdapter(t, Config{Enabled: true, URL: transport.URL}, nil, nil)
 	adapter.transport = transport
 	ctx := testTargetContext(target{MessageType: "private", UserID: 1})
 
@@ -73,19 +72,14 @@ func TestNotificationKeepsPrivateToolPreview(t *testing.T) {
 }
 func emitTestNotification(t *testing.T, adapter *Adapter, ctx context.Context, text string) (events.NotificationReceipt, error) {
 	t.Helper()
-	m, err := notification.New(adapter.Name())
+	s := signal.New[events.Notification, events.NotificationReceipt]("onebot-test-notification")
+	defer s.Close(context.Background())
+	connection, err := adapter.ConnectNotifications(s)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer m.Close(context.Background())
-	s, err := m.AddPlatform(adapter.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := adapter.ConnectNotifications(s); err != nil {
-		t.Fatal(err)
-	}
-	r, err := events.NotificationRequested.Emit(ctx, events.NewNotification(ctx, slog.LevelDebug, text))
+	defer connection.Close(context.Background())
+	r, err := s.Emit(ctx, events.NewNotification(ctx, slog.LevelDebug, text))
 	if len(r) == 0 {
 		return events.NotificationReceipt{}, err
 	}
@@ -242,7 +236,7 @@ func TestSendRecordUsesPrivateAndGroupMessageAPIs(t *testing.T) {
 				}
 				return response{Status: "ok", Data: []byte(`{"message_id":88}`), Echo: req.Echo}
 			})
-			adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil)
+			adapter := newTestAdapter(t, Config{Enabled: true, URL: transport.URL}, nil, nil)
 			adapter.transport = transport
 			ctx := testTargetContext(tc.target)
 			out := delivery.Output{Kind: delivery.KindRecord, Source: delivery.Source{URL: "https://example.com/voice.mp3"}}
@@ -280,7 +274,7 @@ func TestSendContextOutputReturnsSendFailureWithoutFallbackMessage(t *testing.T)
 		messages = append(messages, req.Params["message"])
 		return response{Status: "failed", Retcode: 1, Data: []byte(`{}`), Echo: req.Echo}
 	})
-	adapter := New(Config{Enabled: true, URL: transport.URL}, nil, nil)
+	adapter := newTestAdapter(t, Config{Enabled: true, URL: transport.URL}, nil, nil)
 	adapter.transport = transport
 	ctx := testTargetContext(target{MessageType: "private", UserID: 1})
 

@@ -1,5 +1,4 @@
 // message_test.go 验证配置、文本分页、消息归一化、引用上下文、历史快照与延迟媒体解析。
-// TODO：迁移旧构造、入站 handler 和 Platform 根包类型，按新的文件职责整理测试归属。
 
 package qqonebot
 
@@ -17,7 +16,6 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/platform"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -28,7 +26,7 @@ func TestNewFromPlatformConfig(t *testing.T) {
 		"enabled":          true,
 		"ws_url":           "ws://example",
 		"trigger_keywords": []any{"芙莉丝"},
-	}, nil, nil, nil, nil, t.TempDir(), t.TempDir(), 100*1024*1024, 60)
+	}, Deps{CommonConfig: share.CommonConfig{ConfigDir: t.TempDir()}})
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -40,7 +38,7 @@ func TestNewFromPlatformConfig(t *testing.T) {
 func TestNewFromPlatformConfigSendFileMode(t *testing.T) {
 	adapter, err := NewFromPlatformConfig(map[string]any{
 		"send_file_mode": "file_uri",
-	}, nil, nil, nil, nil, t.TempDir(), t.TempDir(), 100*1024*1024, 60)
+	}, Deps{CommonConfig: share.CommonConfig{ConfigDir: t.TempDir()}})
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -52,7 +50,7 @@ func TestNewFromPlatformConfigSendFileMode(t *testing.T) {
 func TestNewFromPlatformConfigRejectsInvalidSendFileMode(t *testing.T) {
 	_, err := NewFromPlatformConfig(map[string]any{
 		"send_file_mode": "auto",
-	}, nil, nil, nil, nil, t.TempDir(), t.TempDir(), 100*1024*1024, 60)
+	}, Deps{CommonConfig: share.CommonConfig{ConfigDir: t.TempDir()}})
 	if err == nil || !strings.Contains(err.Error(), "send_file_mode") {
 		t.Fatalf("err = %v", err)
 	}
@@ -147,11 +145,11 @@ func TestImageTextDoesNotRepeatPlaceholder(t *testing.T) {
 				t.Fatalf("text = %q, want user text %q without generated image placeholder", msg.Text, tc.text)
 			}
 			segments := finalMessageSegments(msg.Text, msg.Segments, nil)
-			if len(segments) == 0 || segments[len(segments)-1].Type != platform.SegmentImage {
+			if len(segments) == 0 || segments[len(segments)-1].Type != share.SegmentImage {
 				t.Fatalf("image lost: %#v", segments)
 			}
 			for _, segment := range segments {
-				if segment.Type == platform.SegmentText && segment.Text != tc.text {
+				if segment.Type == share.SegmentText && segment.Text != tc.text {
 					t.Fatalf("unexpected text: %q", segment.Text)
 				}
 			}
@@ -239,8 +237,8 @@ func TestHandleEventMediaRemainsRaw(t *testing.T) {
 				return response{Status: "failed", Echo: req.Echo}
 			})
 			handler := &captureHandler{}
-			adapter.handleEvent(context.Background(), handler, Event{MessageType: messageType, SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 7, Message: []byte(raw)})
-			msg, ok := platform.MessageContextFrom(handler.ctx)
+			adapter.handleEvent(context.Background(), handler.HandleMessage, Event{MessageType: messageType, SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 7, Message: []byte(raw)})
+			msg, ok := share.MessageContextFrom(handler.ctx)
 			if handler.count != 1 || !ok || msg.MediaResolver != adapter || len(msg.Segments) < 1 {
 				t.Fatalf("handler/raw context = %d/%#v", handler.count, msg)
 			}
@@ -255,25 +253,25 @@ func TestHandleEventMediaRemainsRaw(t *testing.T) {
 func TestResolveMediaUsesPlatformOnlyOnDemand(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
-		kind      platform.MessageSegmentType
+		kind      share.MessageSegmentType
 		data      string
 		url, path string
 		limit     int64
 		wantErr   bool
 	}{
-		{name: "file URL preferred", kind: platform.SegmentFile, data: `{"file":"C:/remote.txt","url":"https://example.com/file","file_size":"9"}`, url: "https://example.com/file", limit: 10},
-		{name: "file path", kind: platform.SegmentFile, data: `{"file":"C:/remote.txt","file_size":"9"}`, path: "C:/remote.txt", limit: 10},
-		{name: "file oversized", kind: platform.SegmentFile, data: `{"file":"C:/remote.txt","file_size":"11"}`, limit: 10, wantErr: true},
-		{name: "image URL preferred", kind: platform.SegmentImage, data: `{"file":"C:/remote.png","url":"https://example.com/image"}`, url: "https://example.com/image", limit: 10},
-		{name: "image path", kind: platform.SegmentImage, data: `{"file":"C:/remote.png"}`, path: "C:/remote.png", limit: 10},
+		{name: "file URL preferred", kind: share.SegmentFile, data: `{"file":"C:/remote.txt","url":"https://example.com/file","file_size":"9"}`, url: "https://example.com/file", limit: 10},
+		{name: "file path", kind: share.SegmentFile, data: `{"file":"C:/remote.txt","file_size":"9"}`, path: "C:/remote.txt", limit: 10},
+		{name: "file oversized", kind: share.SegmentFile, data: `{"file":"C:/remote.txt","file_size":"11"}`, limit: 10, wantErr: true},
+		{name: "image URL preferred", kind: share.SegmentImage, data: `{"file":"C:/remote.png","url":"https://example.com/image"}`, url: "https://example.com/image", limit: 10},
+		{name: "image path", kind: share.SegmentImage, data: `{"file":"C:/remote.png"}`, path: "C:/remote.png", limit: 10},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
-			adapter := New(Config{}, nil, nil)
+			adapter := newTestAdapter(t, Config{}, nil, nil)
 			adapter.transport = newTestTransport(t, func(req request) response {
 				calls++
 				action := "get_file"
-				if tc.kind == platform.SegmentImage {
+				if tc.kind == share.SegmentImage {
 					action = "get_image"
 				}
 				if req.Action != action || req.Params["file"] != "id-1" {
@@ -293,12 +291,12 @@ func TestHandleEventDeliversPlainGroupMessage(t *testing.T) {
 	adapter := newTestAdapter(t, Config{Enabled: true, URL: "ws://127.0.0.1:6700/", TriggerKeywords: []string{"芙莉丝"}}, nil, nil)
 	handler := &captureHandler{}
 
-	adapter.handleEvent(context.Background(), handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, RawMessage: "hello"})
+	adapter.handleEvent(context.Background(), handler.HandleMessage, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, RawMessage: "hello"})
 
 	if handler.count != 1 || handler.text != "hello" {
 		t.Fatalf("handler count/text = %d/%q", handler.count, handler.text)
 	}
-	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	msgCtx, ok := share.MessageContextFrom(handler.ctx)
 	if !ok {
 		t.Fatal("missing message context")
 	}
@@ -312,9 +310,9 @@ func TestHandleEventKeepsPlatformMessageForHooks(t *testing.T) {
 	handler := &captureHandler{}
 	raw := []byte(`[{"type":"json","data":{"data":"{\"app\":\"miniapp\"}"}}]`)
 
-	adapter.handleEvent(context.Background(), handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, Message: raw})
+	adapter.handleEvent(context.Background(), handler.HandleMessage, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, Message: raw})
 
-	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	msgCtx, ok := share.MessageContextFrom(handler.ctx)
 	if !ok {
 		t.Fatal("missing message context")
 	}
@@ -326,7 +324,7 @@ func TestHandleEventKeepsPlatformMessageForHooks(t *testing.T) {
 func TestHandleEventKeepsTriggerKeywordForUpperLayers(t *testing.T) {
 	adapter := newTestAdapter(t, Config{Enabled: true, URL: "ws://127.0.0.1:6700/", TriggerKeywords: []string{"芙莉丝"}}, nil, nil)
 	handler := &captureHandler{}
-	adapter.handleEvent(context.Background(), handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, RawMessage: "芙莉丝，你好"})
+	adapter.handleEvent(context.Background(), handler.HandleMessage, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, RawMessage: "芙莉丝，你好"})
 	if handler.text != "芙莉丝，你好" {
 		t.Fatalf("handled text = %q", handler.text)
 	}
@@ -343,12 +341,12 @@ func TestHandleEventAtUsesGroupMemberCard(t *testing.T) {
 	adapter.transport = transport
 	handler := &captureHandler{}
 
-	adapter.handleEvent(context.Background(), handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 7, Message: []byte(`[{"type":"text","data":{"text":"/status "}},{"type":"at","data":{"qq":"2"}}]`)})
+	adapter.handleEvent(context.Background(), handler.HandleMessage, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 7, Message: []byte(`[{"type":"text","data":{"text":"/status "}},{"type":"at","data":{"qq":"2"}}]`)})
 
 	if handler.text != "/status [at 群昵称 qq:2]" {
 		t.Fatalf("handler text = %q", handler.text)
 	}
-	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	msgCtx, ok := share.MessageContextFrom(handler.ctx)
 	if !ok {
 		t.Fatal("missing message context")
 	}
@@ -368,7 +366,7 @@ func TestHandleEventAtFallsBackToNickname(t *testing.T) {
 	adapter.transport = transport
 	handler := &captureHandler{}
 
-	adapter.handleEvent(context.Background(), handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 7, Message: []byte(`[{"type":"text","data":{"text":"/status "}},{"type":"at","data":{"qq":"2"}}]`)})
+	adapter.handleEvent(context.Background(), handler.HandleMessage, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 7, Message: []byte(`[{"type":"text","data":{"text":"/status "}},{"type":"at","data":{"qq":"2"}}]`)})
 
 	if handler.text != "/status [at 普通昵称 qq:2]" {
 		t.Fatalf("handler text = %q", handler.text)
@@ -381,138 +379,53 @@ type captureHandler struct {
 	count int
 }
 
-func (h *captureHandler) HandleMessage(ctx context.Context, text string) error {
-	h.ctx = ctx
+func (h *captureHandler) HandleMessage(ctx context.Context, text string, message share.MessageContext) error {
+	h.ctx = share.WithMessageContext(ctx, message)
 	h.text = text
 	h.count++
 	return nil
 }
 
-func TestForkableReferenceMessageIDRequiresOwnAssistantSession(t *testing.T) {
-	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "elbot.db"))
-	if err != nil {
-		t.Fatalf("new store: %v", err)
-	}
-	defer store.Close()
-
-	own := &storage.Session{OwnerID: "qqonebot:1", Platform: "qqonebot", PlatformScopeID: "group:9", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "own"}
-	other := &storage.Session{OwnerID: "qqonebot:2", Platform: "qqonebot", PlatformScopeID: "group:9", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "other"}
-	for _, session := range []*storage.Session{own, other} {
-		if err := store.Sessions().Create(ctx, session); err != nil {
-			t.Fatalf("create session: %v", err)
+func TestHandleEventPreservesReferenceDecision(t *testing.T) {
+	for _, decision := range []share.ReferenceResult{
+		{ForkFromMessageID: "earlier-answer"},
+		{ResumeSessionID: "own-session"},
+		{Text: "foreign answer context", Reply: share.ReplyContext{MessageID: "42", Text: "foreign answer"}},
+	} {
+		adapter := newTestAdapter(t, Config{Superadmins: []string{"1"}}, nil, nil)
+		adapter.findByPlatformMessage = func(context.Context, string, string, string) (*storage.Message, error) {
+			return &storage.Message{Role: storage.RoleAssistant}, nil
 		}
-	}
-	base := storage.Now()
-	firstAssistant := &storage.Message{SessionID: own.ID, Role: storage.RoleAssistant, Content: "first answer", CreatedAt: base}
-	latestAssistant := &storage.Message{SessionID: own.ID, Role: storage.RoleAssistant, Content: "latest answer", CreatedAt: base.Add(3 * time.Second)}
-	otherAssistant := &storage.Message{SessionID: other.ID, Role: storage.RoleAssistant, Content: "other answer", CreatedAt: base.Add(time.Second)}
-	ownUser := &storage.Message{SessionID: own.ID, Role: storage.RoleUser, Content: "own user", CreatedAt: base.Add(2 * time.Second)}
-	for _, msg := range []*storage.Message{firstAssistant, otherAssistant, ownUser, latestAssistant} {
-		if err := store.Messages().Append(ctx, msg); err != nil {
-			t.Fatalf("append message: %v", err)
+		adapter.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
+			if opts.Platform != "qqonebot" || opts.ScopeID != "group:9" || opts.ActorID != "qqonebot:1" || !opts.IsSuperadmin || opts.ReplyID != "42" || opts.Text != "继续" || opts.Fetch == nil || opts.Enrich == nil {
+				t.Fatalf("reference options = %#v", opts)
+			}
+			return decision, nil
 		}
-	}
-	maps := []storage.PlatformMessageMap{
-		{Platform: "qqonebot", PlatformScopeID: "group:9", PlatformMessageID: "first-assistant", MessageID: firstAssistant.ID, SessionID: own.ID},
-		{Platform: "qqonebot", PlatformScopeID: "group:9", PlatformMessageID: "latest-assistant", MessageID: latestAssistant.ID, SessionID: own.ID},
-		{Platform: "qqonebot", PlatformScopeID: "group:9", PlatformMessageID: "other-assistant", MessageID: otherAssistant.ID, SessionID: other.ID},
-		{Platform: "qqonebot", PlatformScopeID: "group:9", PlatformMessageID: "own-user", MessageID: ownUser.ID, SessionID: own.ID},
-	}
-	for _, mapping := range maps {
-		if err := store.Messages().MapPlatformMessage(ctx, mapping); err != nil {
-			t.Fatalf("map platform message: %v", err)
+		handler := &captureHandler{}
+		adapter.handleEvent(t.Context(), handler.HandleMessage, Event{
+			MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 7,
+			Message: []byte(`[{"type":"reply","data":{"id":"42"}},{"type":"text","data":{"text":"继续"}}]`),
+		})
+		message, ok := share.MessageContextFrom(handler.ctx)
+		if !ok || handler.text != "继续" || message.ForkFromMessageID != decision.ForkFromMessageID || message.ResumeSessionID != decision.ResumeSessionID || message.ContextText != decision.Text || message.Reply.MessageID != decision.Reply.MessageID {
+			t.Fatalf("message = %#v, text = %q, decision = %#v", message, handler.text, decision)
 		}
-	}
-
-	adapter := newTestAdapter(t, Config{Enabled: true, URL: "ws://127.0.0.1:6700/"}, store, nil)
-	for _, mapping := range maps {
-		msg, err := store.Messages().Get(ctx, mapping.MessageID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := adapter.chatHistory.Append(ctx, &storage.ChatMessage{
-			Platform:          mapping.Platform,
-			PlatformScopeID:   mapping.PlatformScopeID,
-			PlatformMessageID: mapping.PlatformMessageID,
-			Text:              msg.Content,
-		}); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	handler := &captureHandler{}
-	adapter.handleEvent(ctx, handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, Message: []byte(`[{"type":"reply","data":{"id":"first-assistant"}},{"type":"text","data":{"text":"继续"}}]`)})
-	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
-	if !ok {
-		t.Fatal("missing message context")
-	}
-	if msgCtx.ForkFromMessageID != firstAssistant.ID {
-		t.Fatalf("historical assistant fork id = %q, want %q", msgCtx.ForkFromMessageID, firstAssistant.ID)
-	}
-	if handler.text != "继续" {
-		t.Fatalf("historical assistant reference text = %q, want original", handler.text)
-	}
-
-	handler = &captureHandler{}
-	adapter.handleEvent(ctx, handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, Message: []byte(`[{"type":"reply","data":{"id":"latest-assistant"}},{"type":"text","data":{"text":"继续"}}]`)})
-	msgCtx, ok = platform.MessageContextFrom(handler.ctx)
-	if !ok {
-		t.Fatal("missing message context")
-	}
-	if msgCtx.ForkFromMessageID != "" || msgCtx.ResumeSessionID != own.ID {
-		t.Fatalf("latest assistant action = fork %q, resume %q", msgCtx.ForkFromMessageID, msgCtx.ResumeSessionID)
-	}
-	if handler.text != "继续" {
-		t.Fatalf("latest assistant reference text = %q, want direct continuation", handler.text)
-	}
-
-	handler = &captureHandler{}
-	adapter.handleEvent(ctx, handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, Message: []byte(`[{"type":"reply","data":{"id":"other-assistant"}},{"type":"text","data":{"text":"继续"}}]`)})
-	msgCtx, ok = platform.MessageContextFrom(handler.ctx)
-	if !ok {
-		t.Fatal("missing message context")
-	}
-	if handler.text != "继续" {
-		t.Fatalf("other assistant current text = %q, want current", handler.text)
-	}
-	if msgCtx.ContextText != "[引用#other-assistant：bot:other answer]\n\n继续" {
-		t.Fatalf("other assistant context text = %q", msgCtx.ContextText)
-	}
-	if msgCtx.Reply.MessageID != "other-assistant" || msgCtx.Reply.Text != "other answer" {
-		t.Fatalf("other assistant reply = %#v", msgCtx.Reply)
-	}
-
-	handler = &captureHandler{}
-	adapter.cfg.TriggerKeywords = []string{"芙莉丝"}
-	adapter.handleEvent(ctx, handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, Message: []byte(`[{"type":"reply","data":{"id":"own-user"}},{"type":"text","data":{"text":"芙莉丝 继续"}}]`)})
-	msgCtx, ok = platform.MessageContextFrom(handler.ctx)
-	if !ok {
-		t.Fatal("missing message context")
-	}
-	if handler.text != "芙莉丝 继续" {
-		t.Fatalf("user current text = %q, want current", handler.text)
-	}
-	if msgCtx.ContextText != "[引用#own-user:own user]\n\n芙莉丝 继续" {
-		t.Fatalf("user context text = %q", msgCtx.ContextText)
-	}
-	if msgCtx.Reply.MessageID != "own-user" || msgCtx.Reply.Text != "own user" {
-		t.Fatalf("user reply = %#v", msgCtx.Reply)
 	}
 }
 
 func TestFinalMessageSegmentsIncludesReferenceImage(t *testing.T) {
-	current := []platform.MessageSegment{{Type: platform.SegmentText, Text: "看这个"}}
-	referenced := []platform.MessageSegment{{Type: platform.SegmentText, Text: "[图片]"}, {Type: platform.SegmentImage, URL: "https://example.com/a.jpg", Name: "a.jpg"}}
+	current := []share.MessageSegment{{Type: share.SegmentText, Text: "看这个"}}
+	referenced := []share.MessageSegment{{Type: share.SegmentText, Text: "[图片]"}, {Type: share.SegmentImage, URL: "https://example.com/a.jpg", Name: "a.jpg"}}
 
 	segments := finalMessageSegments("[引用：用户]：[图片]\n\n看这个", current, referenced)
 	if len(segments) != 2 {
 		t.Fatalf("segments = %#v", segments)
 	}
-	if segments[0].Type != platform.SegmentText || !strings.Contains(segments[0].Text, "[引用：用户]：[图片]") {
+	if segments[0].Type != share.SegmentText || !strings.Contains(segments[0].Text, "[引用：用户]：[图片]") {
 		t.Fatalf("text segment = %#v", segments[0])
 	}
-	if segments[1].Type != platform.SegmentImage || segments[1].URL != "https://example.com/a.jpg" || segments[1].Name != "a.jpg" {
+	if segments[1].Type != share.SegmentImage || segments[1].URL != "https://example.com/a.jpg" || segments[1].Name != "a.jpg" {
 		t.Fatalf("image segment = %#v", segments[1])
 	}
 }
@@ -550,13 +463,20 @@ func TestHandleEventStoresReferenceSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	adapter := newTestAdapter(t, Config{}, nil, repo)
+	adapter.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
+		if opts.ReplyID != "42" {
+			t.Fatalf("reply ID = %q", opts.ReplyID)
+		}
+		reply := share.ReplyContext{MessageID: "42", SenderID: "1001", SenderName: "被引用者", Text: "被引用内容"}
+		return share.ReferenceResult{Text: share.FormatReferenceText("qqonebot", reply, opts.Text), Reply: reply}, nil
+	}
 	handler := &captureHandler{}
-	adapter.handleEvent(ctx, handler, Event{
+	adapter.handleEvent(ctx, handler.HandleMessage, Event{
 		MessageType: "group", SelfID: 9999, UserID: 2002, GroupID: 9, MessageID: 84,
 		Sender:  Sender{UserID: 2002, Nickname: "回复者"},
 		Message: []byte(`[{"type":"reply","data":{"id":"42"}},{"type":"text","data":{"text":"本次发送的内容"}}]`),
 	})
-	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	msgCtx, ok := share.MessageContextFrom(handler.ctx)
 	if !ok {
 		t.Fatal("missing message context")
 	}
@@ -570,7 +490,7 @@ func TestHandleEventStoresReferenceSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reply := share.ChatMessageReply(*row)
+	reply := storage.ChatMessageReply(*row)
 	if reply.MessageID != "42" || reply.SenderID != "1001" || reply.SenderName != "被引用者" || reply.Text != "被引用内容" {
 		t.Fatalf("stored reply = %#v", reply)
 	}
@@ -590,9 +510,9 @@ func TestHandleEventFillsReplyToSenderID(t *testing.T) {
 	adapter.transport = transport
 	handler := &captureHandler{}
 
-	adapter.handleEvent(context.Background(), handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 7, Message: []byte(`[{"type":"reply","data":{"id":"77"}},{"type":"text","data":{"text":"继续"}}]`)})
+	adapter.handleEvent(context.Background(), handler.HandleMessage, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 7, Message: []byte(`[{"type":"reply","data":{"id":"77"}},{"type":"text","data":{"text":"继续"}}]`)})
 
-	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	msgCtx, ok := share.MessageContextFrom(handler.ctx)
 	if !ok {
 		t.Fatal("missing message context")
 	}
@@ -624,7 +544,7 @@ func TestWithReferenceUsesGetMessageImageWhenStoreHasText(t *testing.T) {
 	transport := newTestTransport(t, func(req request) response {
 		return response{Status: "ok", Data: []byte(`{"user_id":2,"sender":{"nickname":"用户"},"message":[{"type":"image","data":{"file":"a.jpg","url":"https://example.com/a.jpg"}}]}`), Echo: req.Echo}
 	})
-	adapter := New(Config{Enabled: true, URL: transport.URL}, store, nil)
+	adapter := newTestAdapter(t, Config{Enabled: true, URL: transport.URL}, store, nil)
 	adapter.transport = transport
 
 	ref, ok, err := adapter.referenceFetcher(Event{MessageType: "group", SelfID: 1000, GroupID: 9})(ctx, "77")
@@ -640,7 +560,7 @@ func TestWithReferenceUsesGetMessageImageWhenStoreHasText(t *testing.T) {
 	if ref.SenderID != "2" || ref.SenderName != "用户" {
 		t.Fatalf("reference sender = %#v", ref)
 	}
-	if len(ref.Segments) != 1 || ref.Segments[0].Type != platform.SegmentImage || ref.Segments[0].URL != "https://example.com/a.jpg" {
+	if len(ref.Segments) != 1 || ref.Segments[0].Type != share.SegmentImage || ref.Segments[0].URL != "https://example.com/a.jpg" {
 		t.Fatalf("reference segments = %#v", ref.Segments)
 	}
 }
@@ -675,7 +595,7 @@ func newTestTransport(t *testing.T, handle func(request) response) *Transport {
 		}
 	}))
 	t.Cleanup(server.Close)
-	transport := &Transport{URL: "ws" + strings.TrimPrefix(server.URL, "http"), Timeout: time.Second}
+	transport := newTransport("ws"+strings.TrimPrefix(server.URL, "http"), "", time.Second)
 	ctx, cancel := context.WithCancel(context.Background())
 	if err := transport.Connect(ctx); err != nil {
 		t.Fatalf("connect transport: %v", err)
@@ -689,7 +609,7 @@ func newTestTransport(t *testing.T, handle func(request) response) *Transport {
 	}()
 	t.Cleanup(func() {
 		cancel()
-		transport.Close(websocket.StatusNormalClosure, "test done")
+		transport.Close(context.Background())
 	})
 	return transport
 }
@@ -712,5 +632,23 @@ func newTestAdapter(t *testing.T, cfg Config, store storage.Store, history stora
 		t.Cleanup(func() { _ = db.Close() })
 		history = db.Repository()
 	}
-	return New(cfg, store, history)
+	adapter, err := NewFromPlatformConfig(map[string]any{
+		"enabled": cfg.Enabled, "ws_url": cfg.URL, "access_token": cfg.AccessToken, "access_token_env": cfg.AccessTokenEnv,
+		"reconnect_interval_seconds": cfg.ReconnectIntervalSeconds, "api_timeout_seconds": cfg.APITimeoutSeconds,
+		"trigger_keywords": cfg.TriggerKeywords, "send_file_mode": cfg.SendFileMode,
+	}, Deps{
+		CommonConfig: share.CommonConfig{
+			Superadmins: cfg.Superadmins, CommandPrefixes: cfg.CommandPrefixes,
+		},
+		ChatHistory: history, FindByPlatformMessage: store.Messages().FindByPlatformMessage,
+		FindOutputs: store.Media().FindOutputs,
+		ReferenceResolver: func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
+			return share.ReferenceResult{Text: opts.Text, Reply: share.ReplyContext{MessageID: opts.ReplyID}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = adapter.Close(context.Background()) })
+	return adapter
 }

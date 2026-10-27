@@ -1,5 +1,4 @@
 // forward_test.go 验证合并转发的一层引用展开、顺序、占位与失败处理。
-// TODO：迁移旧构造与历史编解码夹具，通过注入契约替换 Platform 根包及 refcontext 实现依赖。
 
 package qqonebot
 
@@ -12,8 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"elbot/internal/platform"
-	"elbot/internal/platform/refcontext"
+	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
@@ -32,7 +30,7 @@ func TestGroupForwardHistoryKeepsPlaceholderWithoutFetching(t *testing.T) {
 	})
 	raw := json.RawMessage(`[{"type":"text","data":{"text":"前"}},{"type":"forward","data":{"id":"secret-forward-resource"}},{"type":"image","data":{"file":"outside-image"}},{"type":"text","data":{"text":"后"}}]`)
 	handler := &captureHandler{}
-	a.handleEvent(ctx, handler, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 123, Message: raw})
+	a.handleEvent(ctx, handler.HandleMessage, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 123, Message: raw})
 	if handler.text != "前[forward]后" {
 		t.Fatalf("text=%q", handler.text)
 	}
@@ -43,9 +41,9 @@ func TestGroupForwardHistoryKeepsPlaceholderWithoutFetching(t *testing.T) {
 	if row.Text != "前[forward]后" || strings.Contains(row.Raw+row.Segments+row.Metadata, "secret-forward-resource") {
 		t.Fatalf("history=%#v", row)
 	}
-	segments := platform.UnmarshalChatSegments(row.Segments)
-	if got := forwardSegmentsForTest(segments); got != "前[forward]{image:outside-image}后" {
-		t.Fatalf("history order=%q", got)
+	segments := storage.UnmarshalChatSegments(row.Segments)
+	if len(segments) != 4 || segments[0].Text != "前" || segments[1].Text != "[forward]" || segments[2].Type != "image" || segments[2].PlatformFileID != "outside-image" || segments[3].Text != "后" {
+		t.Fatalf("history order=%#v", segments)
 	}
 }
 
@@ -85,13 +83,14 @@ func TestForwardReferenceExpandsOneLayerInOrder(t *testing.T) {
 					}
 				})
 				a := newTestAdapter(t, Config{}, nil, repo)
+				a.referenceResolver = resolveFetchedReferenceForTest
 				a.transport = transport
 				if withHistory {
-					a.recordChatMessage(ctx, original, normalizeMessage(original.Message, "", original.SelfID), platform.ReplyContext{})
+					a.recordChatMessage(ctx, original, normalizeMessage(original.Message, "", original.SelfID), share.ReplyContext{})
 				}
 				handler := &captureHandler{}
-				a.handleEvent(ctx, handler, Event{MessageType: kind, SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 222, Message: json.RawMessage(`[{"type":"reply","data":{"id":"987654321"}},{"type":"text","data":{"text":"问题前"}},{"type":"image","data":{"file":"current-image"}},{"type":"text","data":{"text":"问题后"}}]`)})
-				msg, ok := platform.MessageContextFrom(handler.ctx)
+				a.handleEvent(ctx, handler.HandleMessage, Event{MessageType: kind, SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 222, Message: json.RawMessage(`[{"type":"reply","data":{"id":"987654321"}},{"type":"text","data":{"text":"问题前"}},{"type":"image","data":{"file":"current-image"}},{"type":"text","data":{"text":"问题后"}}]`)})
+				msg, ok := share.MessageContextFrom(handler.ctx)
 				if !ok {
 					t.Fatal("missing message context")
 				}
@@ -131,7 +130,7 @@ func TestForwardReferenceErrorsAndEmptyContent(t *testing.T) {
 	for _, failure := range []string{"get_msg", "get_forward_msg", "empty", "malformed", "missing resource"} {
 		t.Run(failure, func(t *testing.T) {
 			var calls atomic.Int32
-			a := New(Config{}, nil, nil)
+			a := newTestAdapter(t, Config{}, nil, nil)
 			a.transport = newTestTransport(t, func(req request) response {
 				calls.Add(1)
 				if req.Action == failure {
@@ -148,7 +147,7 @@ func TestForwardReferenceErrorsAndEmptyContent(t *testing.T) {
 				}
 				return response{Data: []byte(`{"messages":[]}`)}
 			})
-			ref := refcontext.ReferencedMessage{Text: "前[forward]后", Segments: []platform.MessageSegment{textSegment("前"), textSegment("[forward]"), textSegment("后")}}
+			ref := share.ReferencedMessage{Text: "前[forward]后", Segments: []share.MessageSegment{textSegment("前"), textSegment("[forward]"), textSegment("后")}}
 			segments, err := a.expandForwardReference(Event{})(context.Background(), "987654321", ref)
 			got := forwardSegmentsForTest(segments)
 			if failure != "empty" {
@@ -173,7 +172,7 @@ func TestForwardReferenceErrorsAndEmptyContent(t *testing.T) {
 }
 
 func TestMultipleForwardsRejectPartialContent(t *testing.T) {
-	a := New(Config{}, nil, nil)
+	a := newTestAdapter(t, Config{}, nil, nil)
 	var calls atomic.Int32
 	a.transport = newTestTransport(t, func(req request) response {
 		if req.Action == "get_msg" {
@@ -185,19 +184,19 @@ func TestMultipleForwardsRejectPartialContent(t *testing.T) {
 		}
 		return response{Status: "failed", Retcode: 1}
 	})
-	got, err := a.expandForwardReference(Event{})(context.Background(), "123", refcontext.ReferencedMessage{Text: "[forward]中间[forward]"})
+	got, err := a.expandForwardReference(Event{})(context.Background(), "123", share.ReferencedMessage{Text: "[forward]中间[forward]"})
 	if err == nil || len(got) != 0 || calls.Load() != 2 {
 		t.Fatalf("display=%#v err=%v calls=%d", got, err, calls.Load())
 	}
 }
 
 func TestCanonicalForwardReferenceDoesNotFetchAgain(t *testing.T) {
-	a := New(Config{}, nil, nil)
+	a := newTestAdapter(t, Config{}, nil, nil)
 	a.transport = newTestTransport(t, func(req request) response {
 		t.Errorf("canonical forward queried %s", req.Action)
 		return response{Status: "failed", Retcode: 1}
 	})
-	ref := refcontext.ReferencedMessage{Text: "完整 assistant 正文", Segments: []platform.MessageSegment{textSegment("[forward]")}, CanonicalContent: true}
+	ref := share.ReferencedMessage{Text: "完整 assistant 正文", Segments: []share.MessageSegment{textSegment("[forward]")}, CanonicalContent: true}
 	got, err := a.expandForwardReference(Event{})(context.Background(), "123", ref)
 	if err != nil {
 		t.Fatal(err)
@@ -207,15 +206,15 @@ func TestCanonicalForwardReferenceDoesNotFetchAgain(t *testing.T) {
 	}
 }
 
-func forwardSegmentsForTest(segments []platform.MessageSegment) string {
+func forwardSegmentsForTest(segments []share.MessageSegment) string {
 	var out strings.Builder
 	for _, segment := range segments {
 		switch segment.Type {
-		case platform.SegmentText:
+		case share.SegmentText:
 			out.WriteString(segment.Text)
-		case platform.SegmentImage:
+		case share.SegmentImage:
 			out.WriteString("{image:" + segment.PlatformFileID + "}")
-		case platform.SegmentFile:
+		case share.SegmentFile:
 			out.WriteString("{file:" + segment.PlatformFileID + "}")
 		default:
 			out.WriteString("{" + string(segment.Type) + "}")

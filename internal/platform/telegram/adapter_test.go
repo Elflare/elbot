@@ -55,7 +55,7 @@ func TestPartialTextSendKeepsReceiptWithoutRestartingFallback(t *testing.T) {
 				_ = json.NewEncoder(w).Encode(apiResponse[sentMessage]{OK: false, ErrorCode: 500, Description: "later page failed"})
 			}))
 			defer server.Close()
-			adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: format}, nil, nil)
+			adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: format}, nil)
 			ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ConversationKind: contextinfo.ConversationGroup, ConversationID: "-19", ScopeID: "group:-19"}})
 			receipt, _, err := adapter.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(strings.Repeat("a", telegramRichTextRunes+1))})
 			if err == nil || len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "71" || calls != 2 {
@@ -201,7 +201,7 @@ func TestSendTextUsesHTMLByDefault(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(apiResponse[sentMessage]{OK: true, Result: sentMessage{MessageID: 7}})
 	}))
 	defer server.Close()
-	adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL}, nil, nil)
+	adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL}, nil)
 	receipt, _, err := adapter.sendText(context.Background(), target{ChatID: 1}, "# 标题\n\n| A | B |\n|---|---|", 0, false)
 	if err != nil {
 		t.Fatal(err)
@@ -228,7 +228,7 @@ func TestSendTextRichFailure(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(apiResponse[sentMessage]{OK: true, Result: sentMessage{MessageID: 8}})
 	}))
 	defer server.Close()
-	adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: "rich"}, nil, nil)
+	adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: "rich"}, nil)
 	receipt, _, err := adapter.sendText(context.Background(), target{ChatID: 1}, "# bad", 0, false)
 	if err == nil || len(receipt.PlatformMessageIDs) != 0 {
 		t.Fatalf("receipt=%#v err=%v", receipt, err)
@@ -462,10 +462,10 @@ func TestRunPublishesGlobalConnectionsOnReconnect(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer connection.Disconnect()
-		if err := New(Config{}, nil, nil).Run(ctx, nil); err != nil {
+		if err := New(Config{}, nil).Run(ctx, nil); err != nil {
 			t.Fatal(err)
 		}
-		adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, ReconnectIntervalSeconds: 1}, nil, nil)
+		adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, ReconnectIntervalSeconds: 1}, nil)
 		if err := adapter.Run(ctx, nil); !errors.Is(err, context.Canceled) {
 			t.Fatalf("Run=%v", err)
 		}

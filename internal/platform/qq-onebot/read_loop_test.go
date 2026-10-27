@@ -1,28 +1,21 @@
 // read_loop_test.go 验证仅按上一条非零消息 ID 去重，并在重连后保留去重状态。
-// TODO：夹具改用 share.MessageHandler，接入可等待的入站工作登记，替换旧读循环调用方式。
 
 package qqonebot
 
 import (
 	"context"
+	"elbot/internal/platform/share"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )
-
-type readLoopHandler func(context.Context, string) error
-
-func (h readLoopHandler) HandleMessage(ctx context.Context, text string) error {
-	return h(ctx, text)
-}
 
 func inboundEvent(id int64, text string) Event {
 	raw, _ := json.Marshal(text)
@@ -111,24 +104,21 @@ func runReadLoopFrames(t *testing.T, adapter *Adapter, frames []any, want map[st
 	if err := adapter.transport.Connect(ctx); err != nil {
 		t.Fatal(err)
 	}
-	defer adapter.transport.Close(websocket.StatusNormalClosure, "test done")
-	synctest.Test(t, func(t *testing.T) {
-		calls := make(chan string, len(frames))
-		release := make(chan struct{})
-		defer close(release)
-		handler := readLoopHandler(func(_ context.Context, text string) error {
-			calls <- text
-			<-release
-			return nil
-		})
-		if err := adapter.readLoop(ctx, handler); websocket.CloseStatus(err) != websocket.StatusNormalClosure {
-			t.Fatalf("readLoop: %v", err)
-		}
-		// All frames are read; wait for handlers to record their calls and block
-		// on release before checking for unexpected duplicates.
-		synctest.Wait()
-		assertReadLoopCalls(t, calls, want)
+	adapter.workCtx = ctx
+	calls := make(chan string, len(frames))
+	release := make(chan struct{})
+	handler := share.MessageHandler(func(_ context.Context, text string, _ share.MessageContext) error {
+		calls <- text
+		<-release
+		return nil
 	})
+	err := adapter.readLoop(ctx, handler)
+	close(release)
+	adapter.work.Wait()
+	if websocket.CloseStatus(err) != websocket.StatusNormalClosure {
+		t.Fatalf("readLoop: %v", err)
+	}
+	assertReadLoopCalls(t, calls, want)
 }
 
 func assertReadLoopCalls(t *testing.T, calls <-chan string, want map[string]int) {

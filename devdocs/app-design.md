@@ -111,14 +111,17 @@ type Runtime interface {
     delivery.MessageSender
 }
 type MessageHandler func(context.Context, string, MessageContext) error
-// 三个远程适配器；CLI、headless 保留现有构造入口。
-NewFromPlatformConfig(map[string]any, share.AdapterDeps) (*Adapter, error)
+// OneBot 自有依赖；CLI、headless 保留现有构造入口。
+qqonebot.NewFromPlatformConfig(map[string]any, qqonebot.Deps) (*qqonebot.Adapter, error)
+// Telegram、QQ Official 暂用 share.AdapterDeps，待按 OneBot 模式迁移。
 refcontext.Apply(context.Context, refcontext.Options, share.ReferenceOptions) (share.ReferenceResult, error)
 ```
 
-AdapterDeps 包含 Store、ChatHistory、Superadmins、CommandPrefixes、ConfigDir、AttachmentDir、MaxReceiveFileBytes、DownloadTimeoutSecs；另有 `ReferenceResolver func(context.Context, ReferenceOptions) (ReferenceResult, error)`。根部 SupervisorDeps.ChatHistory 与 AdapterDeps.ChatHistory 使用消费方匿名接口，仅包含 Append、GetByPlatformMessage、MapPlatformMessageAlias、ResolvePlatformMessageAlias；总管不保存仅用于中转的 history 字段。refcontext.Options.ChatHistory 只包含 GetByPlatformMessage。Storage 参数和返回类型保持一致，不增加公共接口包。
+share/config.go 的 CommonConfig 包含 Superadmins、CommandPrefixes、ConfigDir、AttachmentDir、MaxReceiveFileBytes、DownloadTimeoutSecs；share/history_contracts.go 定义 ChatHistoryWriter（Append）和 ChatHistoryReader（GetByPlatformMessage）。OneBot 在 adapter.go 声明自有 Deps，嵌入 CommonConfig，历史只组合这两项能力，另接收 ReferenceResolver、FindByPlatformMessage 和 FindOutputs。根部直接注入存储方法值，不交付完整 Store，不增加查询转发层。
 
-share.ReferenceOptions 只包含 Platform、ScopeID、ActorID、IsSuperadmin、ReplyID、Text、CommandPrefixes、Fetch、Enrich，不携带存储依赖；ReferenceResult、ReferencedMessage 保留现有结果字段，片段使用 share 类型。refcontext.Options 仅包含 Store、ChatHistory，根部装配时固定该依赖值，通过闭包注入引用函数，不新增 Resolver 组件。远程适配器保留 Enabled；所有非 nil 构造结果都纳入所有权，包括未启用与部分失败对象。适配器旧 New 入口和完整历史字段尚待子包阶段替换，Telegram／QQ Official 的闲置 store 字段届时删除；代码已标明替换条件，不为旧实现放宽根部契约。
+根部 SupervisorDeps.ChatHistory 按实际使用接收 Append、GetByPlatformMessage、MapPlatformMessageAlias、ResolvePlatformMessageAlias；总管不保存仅用于中转的 history 字段。refcontext.Options.ChatHistory 只包含 GetByPlatformMessage。share/adapter.go 的旧 AdapterDeps 仅供 Telegram、QQ Official 迁移使用，已删除 Store，待两者参照 OneBot 声明实际所需的自有依赖后删除；别名能力由 QQ Official 自己声明。Storage 参数和返回类型保持一致。
+
+share.ReferenceOptions 只包含 Platform、ScopeID、ActorID、IsSuperadmin、ReplyID、Text、CommandPrefixes、Fetch、Enrich，不携带存储依赖；ReferenceResult、ReferencedMessage 保留现有结果字段，片段使用 share 类型。refcontext.Options 仅包含 Store、ChatHistory，根部装配时固定该依赖值，通过闭包注入引用函数，不新增 Resolver 组件。远程适配器保留 Enabled；所有非 nil 构造结果都纳入所有权，包括未启用与部分失败对象。OneBot 已删除旧 New、Run 和完整历史字段，仅保留 NewFromPlatformConfig。Telegram／QQ Official 的闲置 store 字段及构造参数已删除，其余旧构造和完整历史字段留待各自子包迁移。
 
 Start 同步完成本地启动，不等待远端连通；与 BeginClose 并发安全，关闭后不再接纳输入。正常停止由适配器返回 nil，独立故障返回 error；Wait 响应观察取消并优先返回已发布结果；独立运行故障已记录而业务仍在收尾时，取消观察仍返回该故障，不提前宣告退出。启动失败仍可 Wait／Close。Close 响应期限且可重试。根部 BeginClose 只停止接入，Wait 等待所有已尝试启动的接入实际退出；服务模式即使全部平台退出也等待外部停止，本地 TUI 退出结束整线。取消等待不停止业务线，也不覆盖已经发布的独立故障。
 
@@ -157,19 +160,23 @@ CLI 的本地 Adapter 与 RemoteServer 已实现 share.Runtime；lifecycle.go �
 
 Headless 在 headless.go 实现无状态的 share.Runtime，保留 New 和名称 service。Start 只返回传入 context 的错误，不保存或调用 MessageHandler；BeginClose 无操作，Wait／Close 立即成功，观察上下文取消不覆盖完成结果。它没有接入、自有资源或常驻协程，两种发送入口保持拒绝输出。根部将其登记为不启动的主发送占位，只在最终清理时调用 Close；Service 持续运行由根部协调。旧 Run 与对 Platform 根包的依赖已移除。
 
+OneBot 的 lifecycle.go 管理分阶段生命周期：Start 完成本地初始化后异步拨号，连接或读取失败按原退避策略重连；BeginClose 停止输入、重连与新临时拨号，取消已接纳业务及正在进行的临时拨号。Wait 等待接入驱动与业务回调实际退出，已建立连接继续读取 API 响应，断开后不再重连。Close 最终并行释放主连接及临时连接，等待协议读取、在途请求和临时发送退出；观察超时可重试，不关闭借用依赖。
+
+OneBot 的 transport.go 由 newTransport 初始化。请求登记与连接快照、响应投递与 pending 清理分别在同一锁内完成；disconnect 只处理捕获到的故障连接，迟到错误不影响新连接。Transport.Close 永久拒绝新操作并等待真实清理。等待写入资格和响应可取消；帧开始写入后使用隔离调用方取消且有期限的上下文，调用需等帧写完或超时后返回，最终关闭仍可释放连接。send.go 保持发送与回执行为，message.go 通过显式 MessageHandler 参数交付事实并直接写历史。
+
 CLI SetCompleter 接收 `func(context.Context, completion.Request) ([]completion.Item, error)`；CLI 通过补全入口消费命令信息，没有单独保存命令目录。其他实际命令目录消费者仍接收 `SetCommandCatalog([]command.Info)`。入站每条消息以 share.MessageHandler 交付原文、身份和 Sender，私有目标固定原终端或原连接。
 
 `cli.ConnectUI(cli.AgentEvents)` 返回 UI 和 error，部分 UI 交根部清理。event_contracts.go 定义 CLI 自有 StatusChangedEvent、BindingChangedEvent、BindingSnapshot，由根部转换 Agent 公开事件；订阅回调不接收 context，展示目标取自 Conversation，日志事实取自 Execution。状态发布版本与绑定变更版本分别处理，终态释放待发正文但保留版本水位；换绑／解绑清除旧绑定待发状态并拒绝迟到事件；worker 在锁内取出状态即开始发送，在途发送允许完成，新状态随后串行发送。发送上下文保留事件事实并隔离展示停止，远程写入沿用 15 秒超时。UI 消费已交付的独立快照，持有订阅和展示 worker；BeginClose 停止接纳并清空待发状态，Close 解除订阅并等待在途发送及 worker 实际退出，等待超时可重试。
 
 dispatch.Options.Primary 和 Router 的 primary 字段只接收 `interface { Name() string; delivery.MessageSender }`，RegisterPlatform 的目标参数使用同一匿名接口，不包含 Start、BeginClose、Wait、Close。根部注册时也按该窄接口交付；完整 Runtime 仅由总管持有。路由通过可选的 share.CapabilityCaller、share.PlatformAPICaller 识别两类调用能力，不接管启停。Media 改为 dispatch 独用的最小接口（Metadata、ImportURL、ImportFile、ImportBytes、ResolveForOutput，沿用现有签名）。保留发送方法，增加 `CallCapability(ctx, platform, name, params)` 和 `CallPlatformAPI(ctx, platform, api, params)`，均返回 `(json.RawMessage, error)`，params 为 `map[string]any`。两个 share 调用接口分别提供去掉 platform 参数的同名方法。
 
-通用入口仅承接已有 message.recall、member.mute、chat.leave，未知或不支持即报错；原生入口不登记名称清单、不映射业务名称，已知名称也不转入通用入口。认证、协议封装和传输错误归适配器。Elvena 映射保留在 dispatch/calls.go，待子包阶段拆入 capability_api.go；不增加头像等未使用能力。
+通用入口仅承接已有 message.recall、member.mute、chat.leave，未知或不支持即报错；原生入口不登记名称清单、不映射业务名称，已知名称也不转入通用入口。认证、协议封装和传输错误归适配器。OneBot 的 capability_api.go 已实现三项映射与独立原生入口，返回原生 Data；member.mute 要求正 duration_seconds，目标 ID 从参数取得。dispatch/calls.go 的旧 Elvena 调用链及其他平台映射仍待对应阶段迁移；不增加头像等未使用能力。
 
-通知沿用 New、AddPlatform、ConnectNotifications。share/notification.go 定义 NotificationReceiver 和 NotificationTarget；接收契约只连接发送端，连接由根部持有和释放，目标转换在匹配来源时保留原生回复路由。CLI 已使用 Share 通知契约；旧根包通知定义待其余子包调用方迁移后删除。Manager 的 `NotifyPlatformFailure(context.Context, string, error, []events.NotificationTarget)` 尚待实现，负责格式化和异步投递；根部选择仍在运行的平台目标。
+通知沿用 New、AddPlatform、ConnectNotifications。share/notification.go 定义 NotificationReceiver 和 NotificationTarget；接收契约只连接发送端，连接由根部持有和释放，目标转换在匹配来源时保留原生回复路由。CLI、OneBot 已使用 Share 通知契约；旧根包通知定义待其余子包调用方迁移后删除。Manager 的 `NotifyPlatformFailure(context.Context, string, error, []events.NotificationTarget)` 尚待实现，负责格式化和异步投递；根部选择仍在运行的平台目标。
 
 CLI client.go 提供 `RunClient(ctx, rawConfig, configDir, name) ClientResult` 和自身 ClientCompleted／ClientFallback／ClientFailed 分类，根部只转换为公开结果，回退规则见上节。本机判断只接受有效 WebSocket URL 的 localhost 或回环 IP；已连接后断线结束 TUI 并返回失败，不自动重连或回退。客户端统一收回读循环、展示与补全等待，保留独立错误。
 
-Share 的 Runtime、MessageHandler、CapabilityCaller、PlatformAPICaller 和 NotificationReceiver 已定义；运行与入站契约位于 runtime_contracts.go，构造依赖保留在 adapter.go，两类可选 API 接口位于 adapter_api.go，不并入 Runtime。Share 不实现生命周期状态机、协议映射或发送调度；CLI 已接入运行、入站与通知契约，Headless 已接入无状态运行契约，其余接口实现与调用方迁移仍归对应子包阶段。
+Share 的 Runtime、MessageHandler、CapabilityCaller、PlatformAPICaller 和 NotificationReceiver 已定义；运行与入站契约位于 runtime_contracts.go，共同配置及最小历史契约位于 config.go、history_contracts.go，adapter.go 仅保留待迁移的旧依赖，两类可选 API 接口位于 adapter_api.go，不并入 Runtime。Share 不实现生命周期状态机、协议映射或发送调度；CLI 已接入运行、入站与通知契约，Headless 已接入无状态运行契约，OneBot 已接入运行、入站、通知与两类 API，其余实现与调用方迁移仍归对应子包阶段。
 
 ```mermaid
 flowchart TD
@@ -191,7 +198,7 @@ flowchart TD
 
 Storage、Media、Tool 根部／历史／媒体／Builtin、Agent 输入／执行／上下文／输出及 Platform 的 share／refcontext／dispatch／notification 相关回归已通过。覆盖真实 SQLite 历史范围、引用与媒体顺序、缓存及获取额度、延迟物化、输入快照、前台接管取消链、后台静默与显式投递。Agent 根部生产文件与内部测试已单独通过；Agent–Hook 集成仍受 Hook 引用的 Platform 剩余旧依赖阻塞。Platform 和 App 整包尚不能编译；Background 整包另受 Elnis 的旧 elvena.ResolveRawCall 调用阻塞。组件或文件级验证不替代整包接线验证。
 
-CLI 整包与 Share、refcontext、dispatch、notification 的 race 回归通过。CLI 覆盖真实管道和 Linux 伪终端的停止／最终关闭、真实 WebSocket 收尾发送、同步监听失败、并发启停及超时重试、原连接回复、事件乱序与绑定失效、WebSocket 背压期间换绑和展示关闭后连接保留、UI 关闭超时重试、回调收尾期间取消观察仍返回已发布故障、部分 UI 所有权、客户端分类及断线退出。CLI 不再依赖旧 agent/events、Platform 根包或兄弟实现；Headless 整包也通过 race，覆盖无状态生命周期、取消上下文、重复及并发调用、发送失败契约；Platform 整包当前首先被 qq-onebot 反向导入根包阻塞。
+CLI 整包与 Share、refcontext、dispatch、notification 的 race 回归通过。CLI 覆盖真实管道和 Linux 伪终端的停止／最终关闭、真实 WebSocket 收尾发送、同步监听失败、并发启停及超时重试、原连接回复、事件乱序与绑定失效、WebSocket 背压期间换绑和展示关闭后连接保留、UI 关闭超时重试、回调收尾期间取消观察仍返回已发布故障、部分 UI 所有权、客户端分类及断线退出。CLI 不再依赖旧 agent/events、Platform 根包或兄弟实现；Headless 整包也通过 race，覆盖无状态生命周期、取消上下文、重复及并发调用、发送失败契约；OneBot、Share、refcontext 的 race 回归通过，覆盖分阶段关闭、临时拨号取消、在途写入取消隔离、关闭重试、重连隔离及 API 映射；OneBot 不再依赖根包或兄弟实现。Platform 整包当前首先被 QQ Official 反向导入根包阻塞。
 
 `environment_test.go` 覆盖配置路径优先级、模式验证、相对路径与符号链接、配置替换保存、不同配置并行、取锁失败，以及 TUI／Service 各组合的跨进程互斥。子进程正常关闭和被终止后，锁文件保留且可重新取锁。环境测试可独立运行：`go test internal/app/environment.go internal/app/environment_test.go`。
 

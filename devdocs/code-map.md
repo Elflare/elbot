@@ -220,9 +220,9 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 
 - `internal/platform/{supervisor,deps,wiring,lifecycle}.go`：总管、借用依赖、完整配置装配与生命周期；部分构造可清理，停止接入与最终资源释放分离。下层目标契约见 [App 包设计](app-design.md#platform-下层目标契约)。
 - `internal/platform/{contracts,agent,send,public_api,client,config}.go`：公开契约、Agent 输入与展示转接、发送、两类 API、媒体解析、客户端分类转换及配置汇总；按下层已实现来调用，整包仍待迁移。
-- `internal/platform/share/`：内部契约与共享辅助；`runtime_contracts.go` 定义 Runtime 与 MessageHandler，`adapter_api.go` 定义通用能力和原生 API 两个可选接口，`notification.go` 定义通知接收契约与目标转换；CLI 已接入运行与通知契约，Headless 已接入无状态运行契约，其余下层实现仍待接通。`config.go`、`backoff.go` 提供共享辅助，`adapter.go` 的 AdapterDeps 接收历史写入、身份查询、两项别名能力及引用恢复函数。
+- `internal/platform/share/`：内部契约与共享辅助；`runtime_contracts.go` 定义 Runtime 与 MessageHandler，`adapter_api.go` 定义两类 API，`notification.go` 定义通知接收及目标转换；`config.go` 定义 CommonConfig 与配置辅助，`history_contracts.go` 定义最小历史读写，`backoff.go` 提供退避。`adapter.go` 仅保留 Telegram／QQ Official 待迁移的旧 AdapterDeps，不再包含 Store。
 - `internal/platform/dispatch/{router,media}.go`：复用平台注册表执行发送与显式目标媒体解析；ResolveMedia 不回退到当前或默认平台。`calls.go` 承接 Elvena 平台调用与映射实现，尚未拆入各适配器。
-- `internal/platform/{telegram,qq-onebot}/capability_api.go`：通用能力的平台实现骨架。
+- `internal/platform/telegram/capability_api.go`：待实现的通用能力入口。
 - `internal/platform/refcontext/refcontext.go`：引用消息恢复与上下文处理；Options 持有 Store 和仅含 GetByPlatformMessage 的历史消费接口，单次请求和结果使用 share 契约，由根部闭包注入适配器。
 - `internal/platform/platform.go`、`module/`、`builtin/`：保留尚未拆分的旧实现，文件头标注迁移后删除；不作为新对外边界。
 - `internal/platform/cli/`：本地／远程 CLI 与 TUI；`lifecycle.go` 管理本地接入和终端最终退出，`remote_lifecycle.go` 管理同步监听及连接分阶段释放；`cli.go`、`remote_server.go` 保留输入和发送实现。
@@ -235,10 +235,10 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/storage/chat_history.go`：ChatSegment、ChatReply 和持久化编解码，保留片段顺序与来源清洗规则。
 - `internal/media/{types,platform}.go`：自有 PlatformMedia、HistoryMessage；负责媒体缓存、关联和批量获取，通过注入函数解析平台来源，不依赖 Platform。
 - `internal/platform/{lifecycle,contracts,agent}_test.go`：生命周期、公开事实隔离独立测试，以及输入转换与投影测试；本轮契约迁移的测试留到 review 运行。
-- `internal/platform/qq-onebot/adapter.go`：当前仍包含旧运行、入站和发送实现；已标记迁移职责，目标保留适配器定义、配置与唯一构造入口，旧 New、Run 待删除。
-- `internal/platform/qq-onebot/{lifecycle,send}.go`：仅有职责注释的待实现骨架，分别承接分阶段生命周期与消息发送、输出编码、回执；尚未迁入实现。
-- `internal/platform/qq-onebot/{message,transport,capability_api}.go`：分别归拢入站处理、连接与响应匹配、两类 API 入口；已标记待改造，当前接线尚未完成。
-- `internal/platform/qq-onebot/{conversion,forward,attachment,notifications,config_definition}.go`：消息片段转换、合并转发展开、媒体来源解析、通知投递和配置元数据；通知仍待改用 Share 契约，测试夹具迁移位置已在各测试文件头标注。
+- `internal/platform/qq-onebot/adapter.go`：适配器、配置、自有最小 Deps 和唯一 NewFromPlatformConfig 构造入口。根部注入历史、引用恢复和两项存储查询。
+- `internal/platform/qq-onebot/{lifecycle,send}.go`：分阶段启停、重连、输入接纳和临时连接登记；消息发送、输出编码及回执。停止接入后保留已建立连接发送，最终 Close 等待实际释放。
+- `internal/platform/qq-onebot/{message,transport,capability_api}.go`：入站事实与历史落库；WebSocket 连接、写帧、响应匹配与终态关闭；三项通用能力映射及独立原生 API。
+- `internal/platform/qq-onebot/{conversion,forward,attachment,notifications,config_definition}.go`：消息片段转换、合并转发展开、媒体来源解析、通知投递和配置元数据；通知使用 Share 契约；测试通过注入契约验证引用结果消费，不依赖根包或兄弟实现。
 - `internal/platform/qqofficial/`、`internal/platform/telegram/`：各平台 runtime。
 - `internal/platform/headless/headless.go`：Service 主发送占位及无状态生命周期；不接收输入、不持有资源，两种发送入口保持失败，持续运行由根部协调。
 - `internal/platform/qqofficial/reference.go`：QQ 引用索引解析、消息 ID 关联、事件原文转换及入站／发送回执索引登记。

@@ -140,7 +140,7 @@ func segmentDataString(data map[string]any, key string) string {
 	case string:
 		return v
 	case float64:
-		return strings.TrimSuffix(strings.TrimSuffix(fmt.Sprintf("%f", v), "0"), ".")
+		return strconv.FormatFloat(v, 'f', -1, 64)
 	default:
 		return fmt.Sprint(v)
 	}

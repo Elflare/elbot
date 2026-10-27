@@ -56,9 +56,10 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps) error {
 	}
 	// 引用恢复只在根部连接；适配器不导入 refcontext 兄弟包。
 	referenceDeps := refcontext.Options{Store: deps.Store, ChatHistory: deps.ChatHistory}
+	// TODO：QQ Official、Telegram 参考 qqonebot.Deps 改为各自的依赖组合，随后删除此旧依赖装配。
 	adapterDeps := func(name string) share.AdapterDeps {
 		return share.AdapterDeps{
-			Store: deps.Store, ChatHistory: deps.ChatHistory,
+			ChatHistory: deps.ChatHistory,
 			Superadmins: cfg.Security.Superadmins[name], CommandPrefixes: cfg.Commands.Prefixes,
 			ConfigDir: filepath.Dir(cfg.ConfigPath), AttachmentDir: filepath.Join(cfg.Sandbox.Root, "platform", name),
 			MaxReceiveFileBytes: cfg.PlatformFiles.MaxReceiveFileBytes, DownloadTimeoutSecs: cfg.PlatformFiles.DownloadTimeoutSecs,
@@ -77,7 +78,19 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps) error {
 		}
 	}
 	if raw, ok := cfg.Platform["qqonebot"]; ok {
-		adapter, err := qqonebot.NewFromPlatformConfig(raw, adapterDeps("qqonebot"))
+		adapter, err := qqonebot.NewFromPlatformConfig(raw, qqonebot.Deps{
+			CommonConfig: share.CommonConfig{
+				Superadmins: cfg.Security.Superadmins["qqonebot"], CommandPrefixes: cfg.Commands.Prefixes,
+				ConfigDir: filepath.Dir(cfg.ConfigPath), AttachmentDir: filepath.Join(cfg.Sandbox.Root, "platform", "qqonebot"),
+				MaxReceiveFileBytes: cfg.PlatformFiles.MaxReceiveFileBytes, DownloadTimeoutSecs: cfg.PlatformFiles.DownloadTimeoutSecs,
+			},
+			ChatHistory: deps.ChatHistory,
+			ReferenceResolver: func(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
+				return refcontext.Apply(ctx, referenceDeps, opts)
+			},
+			FindByPlatformMessage: deps.Store.Messages().FindByPlatformMessage,
+			FindOutputs:           deps.Store.Media().FindOutputs,
+		})
 		if adapter != nil {
 			m.ownRuntime(adapter, err == nil && adapter.Enabled(), false)
 		}

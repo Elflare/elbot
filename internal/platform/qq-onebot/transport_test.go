@@ -1,5 +1,4 @@
 // transport_test.go 验证写入与响应超时、并发响应匹配、断线重连及连接通知。
-// TODO：适配分阶段关闭语义，将旧 Run 夹具迁移到新的生命周期入口。
 
 package qqonebot
 
@@ -25,7 +24,7 @@ import (
 )
 
 func TestTransportWriteTimeout(t *testing.T) {
-	transport := &Transport{Timeout: 15 * time.Second}
+	transport := newTransport("", "", 15*time.Second)
 	tests := []struct {
 		name       string
 		frameBytes int
@@ -149,10 +148,7 @@ func TestTransportBlockedWriteClosesConnectionAndCanReconnect(t *testing.T) {
 			server.Close()
 		})
 
-		transport := &Transport{
-			URL:     "ws" + strings.TrimPrefix(server.URL, "http"),
-			Timeout: 25 * time.Millisecond,
-		}
+		transport := newTransport("ws"+strings.TrimPrefix(server.URL, "http"), "", 25*time.Millisecond)
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
 		if err := transport.Connect(ctx); err != nil {
@@ -163,13 +159,12 @@ func TestTransportBlockedWriteClosesConnectionAndCanReconnect(t *testing.T) {
 			t.Fatal("large call unexpectedly succeeded")
 		}
 
-		transport.Close(websocket.StatusNormalClosure, "reconnect")
 		transport.Timeout = 500 * time.Millisecond
 		if err := transport.Connect(ctx); err != nil {
 			t.Fatalf("reconnect transport: %v", err)
 		}
 		startTransportReadLoop(ctx, transport)
-		t.Cleanup(func() { transport.Close(websocket.StatusNormalClosure, "test done") })
+		t.Cleanup(func() { transport.Close(context.Background()) })
 		if _, err := transport.Call(ctx, "fast", nil); err != nil {
 			t.Fatalf("fast call after reconnect: %v", err)
 		}
@@ -227,17 +222,14 @@ func serveOneBotResponses(ctx context.Context, conn *websocket.Conn, delay func(
 
 func connectTestTransport(t *testing.T, server *httptest.Server, timeout time.Duration) (*Transport, context.Context) {
 	t.Helper()
-	transport := &Transport{
-		URL:     "ws" + strings.TrimPrefix(server.URL, "http"),
-		Timeout: timeout,
-	}
+	transport := newTransport("ws"+strings.TrimPrefix(server.URL, "http"), "", timeout)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	if err := transport.Connect(ctx); err != nil {
 		t.Fatalf("connect transport: %v", err)
 	}
 	startTransportReadLoop(ctx, transport)
-	t.Cleanup(func() { transport.Close(websocket.StatusNormalClosure, "test done") })
+	t.Cleanup(func() { transport.Close(context.Background()) })
 	return transport, ctx
 }
 
@@ -252,7 +244,6 @@ func startTransportReadLoop(ctx context.Context, transport *Transport) {
 }
 
 func TestAdapterPublishesGlobalConnectionsOnReconnect(t *testing.T) {
-	// Keep the real listener outside the bubble so it cannot block virtual time.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Accept(w, r, nil)
 		if err != nil {
@@ -261,33 +252,38 @@ func TestAdapterPublishesGlobalConnectionsOnReconnect(t *testing.T) {
 		_ = conn.Close(websocket.StatusGoingAway, "reconnect")
 	}))
 	defer server.Close()
-	synctest.Test(t, func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		calls := 0
-		connection, err := globalevents.PlatformConnected.Observe(func(_ context.Context, e globalevents.PlatformConnectedEvent) error {
-			if e.Platform != "qqonebot" {
-				t.Errorf("platform=%q", e.Platform)
-			}
-			calls++
-			if calls == 2 {
-				cancel()
-			}
-			return nil
-		}, signal.ConnectOptions{})
-		if err != nil {
-			t.Fatal(err)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	calls := 0
+	connection, err := globalevents.PlatformConnected.Observe(func(_ context.Context, e globalevents.PlatformConnectedEvent) error {
+		if e.Platform != "qqonebot" {
+			t.Errorf("platform=%q", e.Platform)
 		}
-		defer connection.Disconnect()
-		if err := (&Adapter{}).Run(ctx, nil); err != nil {
-			t.Fatal(err)
+		calls++
+		if calls == 2 {
+			cancel()
 		}
-		adapter := &Adapter{cfg: Config{Enabled: true, ReconnectIntervalSeconds: 1}, transport: &Transport{URL: "ws" + strings.TrimPrefix(server.URL, "http"), Timeout: time.Second}}
-		if err := adapter.Run(ctx, nil); !errors.Is(err, context.Canceled) {
-			t.Fatalf("Run=%v", err)
-		}
-		if calls != 2 {
-			t.Fatalf("connections=%d", calls)
-		}
-	})
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close(context.Background())
+	disabled := newTestAdapter(t, Config{}, nil, nil)
+	if err := disabled.Start(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := disabled.Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	adapter := newTestAdapter(t, Config{Enabled: true, URL: "ws" + strings.TrimPrefix(server.URL, "http"), ReconnectIntervalSeconds: 1}, nil, nil)
+	if err := adapter.Start(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := adapter.Wait(context.Background()); err != nil {
+		t.Fatalf("Wait=%v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("connections=%d", calls)
+	}
 }

@@ -1,5 +1,4 @@
 // forward_input_test.go 验证私聊合并转发展开、混合内容、引用及续接分叉行为。
-// TODO：迁移旧构造和入站夹具，通过注入契约替换 Platform 根包及 refcontext 实现依赖。
 
 package qqonebot
 
@@ -11,8 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/platform"
-	"elbot/internal/platform/refcontext"
+	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
@@ -26,7 +24,8 @@ const twoTextForwardResponse = `{"messages":[
 const twoTextForwardDisplay = "<forward_message>\nElflare：第一条文本\n保留换行\n\nElflare：第二条文本\n</forward_message>"
 
 func TestForwardReferenceReadsMessageNodeBodies(t *testing.T) {
-	a := New(Config{}, nil, nil)
+	a := newTestAdapter(t, Config{}, nil, nil)
+	a.referenceResolver = resolveFetchedReferenceForTest
 	a.transport = newTestTransport(t, func(req request) response {
 		switch req.Action {
 		case "get_msg":
@@ -38,7 +37,7 @@ func TestForwardReferenceReadsMessageNodeBodies(t *testing.T) {
 			return response{Status: "failed", Retcode: 1}
 		}
 	})
-	got, err := a.expandForwardReference(Event{})(context.Background(), "123", refcontext.ReferencedMessage{Text: "[forward]"})
+	got, err := a.expandForwardReference(Event{})(context.Background(), "123", share.ReferencedMessage{Text: "[forward]"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,8 +64,8 @@ func TestPrivateForwardExpandsWithoutReference(t *testing.T) {
 		return response{Data: []byte(twoTextForwardResponse)}
 	})
 	handler := &captureHandler{}
-	a.handleEvent(ctx, handler, Event{MessageType: "private", SelfID: 1000, UserID: 1, MessageID: 123, Message: json.RawMessage(`[{"type":"forward","data":{"id":"resource"}}]`)})
-	msg, ok := platform.MessageContextFrom(handler.ctx)
+	a.handleEvent(ctx, handler.HandleMessage, Event{MessageType: "private", SelfID: 1000, UserID: 1, MessageID: 123, Message: json.RawMessage(`[{"type":"forward","data":{"id":"resource"}}]`)})
+	msg, ok := share.MessageContextFrom(handler.ctx)
 	if !ok || handler.count != 1 {
 		t.Fatal("missing message context")
 	}
@@ -114,6 +113,7 @@ func TestPrivateForwardMixedContentAndReferences(t *testing.T) {
 	for _, reference := range []string{"none", "ordinary", "forward"} {
 		t.Run(reference, func(t *testing.T) {
 			a := newTestAdapter(t, Config{}, nil, nil)
+			a.referenceResolver = resolveFetchedReferenceForTest
 			calls := map[string]int{}
 			a.transport = newTestTransport(t, func(req request) response {
 				if req.Action == "get_msg" && reference != "none" {
@@ -146,8 +146,8 @@ func TestPrivateForwardMixedContentAndReferences(t *testing.T) {
 				raw = `[{"type":"reply","data":{"id":"42"}},` + raw[1:]
 			}
 			handler := &captureHandler{}
-			a.handleEvent(context.Background(), handler, Event{MessageType: "private", SelfID: 1000, UserID: 1, MessageID: 123, Message: json.RawMessage(raw)})
-			msg, _ := platform.MessageContextFrom(handler.ctx)
+			a.handleEvent(context.Background(), handler.HandleMessage, Event{MessageType: "private", SelfID: 1000, UserID: 1, MessageID: 123, Message: json.RawMessage(raw)})
+			msg, _ := share.MessageContextFrom(handler.ctx)
 			want := "外层前\n<forward_message>\n节点：节点前\n{image:inside}节点后[forward][语音]\n</forward_message>中间<forward_message>\n[forward]\n</forward_message>{image:outside}外层后"
 			switch reference {
 			case "ordinary":
@@ -194,6 +194,15 @@ func TestPrivateForwardKeepsAssistantResumeAndFork(t *testing.T) {
 		}
 	}
 	a := newTestAdapter(t, Config{}, store, nil)
+	a.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
+		if opts.Text != "" || opts.ScopeID != "private:1" {
+			t.Fatalf("reference options = %#v", opts)
+		}
+		if opts.ReplyID == "41" {
+			return share.ReferenceResult{ForkFromMessageID: first.ID}, nil
+		}
+		return share.ReferenceResult{ResumeSessionID: session.ID}, nil
+	}
 	a.transport = newTestTransport(t, func(req request) response {
 		if req.Action == "get_forward_msg" {
 			return response{Data: []byte(twoTextForwardResponse)}
@@ -202,8 +211,8 @@ func TestPrivateForwardKeepsAssistantResumeAndFork(t *testing.T) {
 	})
 	for _, id := range []string{"41", "42"} {
 		handler := &captureHandler{}
-		a.handleEvent(ctx, handler, Event{MessageType: "private", UserID: 1, SelfID: 1000, Message: json.RawMessage(`[{"type":"reply","data":{"id":"` + id + `"}},{"type":"forward","data":{"id":"current"}}]`)})
-		msg, _ := platform.MessageContextFrom(handler.ctx)
+		a.handleEvent(ctx, handler.HandleMessage, Event{MessageType: "private", UserID: 1, SelfID: 1000, Message: json.RawMessage(`[{"type":"reply","data":{"id":"` + id + `"}},{"type":"forward","data":{"id":"current"}}]`)})
+		msg, _ := share.MessageContextFrom(handler.ctx)
 		if msg.ContextText != twoTextForwardDisplay {
 			t.Fatalf("assistant content duplicated or input missing: %q", msg.ContextText)
 		}
@@ -222,13 +231,14 @@ func TestPrivateForwardTextAndCommandsDoNotFetch(t *testing.T) {
 		`[{"type":"text","data":{"text":"/new "}},{"type":"forward","data":{"id":"resource"}}]`,
 	} {
 		a := newTestAdapter(t, Config{}, nil, nil)
+		a.referenceResolver = resolveFetchedReferenceForTest
 		a.transport = newTestTransport(t, func(req request) response {
 			t.Errorf("unexpected API %s", req.Action)
 			return response{Status: "failed", Retcode: 1}
 		})
 		handler := &captureHandler{}
-		a.handleEvent(context.Background(), handler, Event{MessageType: "private", UserID: 1, Message: json.RawMessage(raw)})
-		msg, _ := platform.MessageContextFrom(handler.ctx)
+		a.handleEvent(context.Background(), handler.HandleMessage, Event{MessageType: "private", UserID: 1, Message: json.RawMessage(raw)})
+		msg, _ := share.MessageContextFrom(handler.ctx)
 		if len(msg.ContextSegments) > 0 {
 			t.Fatalf("unexpected expanded content: %#v", msg.ContextSegments)
 		}
