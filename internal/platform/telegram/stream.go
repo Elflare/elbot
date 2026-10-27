@@ -1,5 +1,4 @@
-// stream.go 处理流式预览、更新和最终回执，复用普通发送与分页能力。
-// TODO：接入生命周期管理，停止接入后保留收尾发送，最终关闭等待在途操作退出。
+// stream.go 串行处理流式预览、更新与最终回执，完整操作参与最终关闭。
 
 package telegram
 
@@ -8,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"elbot/internal/delivery"
@@ -19,7 +17,7 @@ type messageStream struct {
 	adapter *Adapter
 	target  target
 
-	mu       sync.Mutex
+	gate     chan struct{} // 串行操作资格，等待可被调用方或最终关闭取消。
 	message  int64
 	draftID  int64
 	useDraft bool
@@ -29,20 +27,25 @@ type messageStream struct {
 }
 
 func (a *Adapter) StartStream(ctx context.Context) (delivery.MessageStream, error) {
+	ctx, finish, err := a.beginOperation(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer finish()
 	t, err := contextTarget(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("telegram stream target: %w", err)
 	}
-	return &messageStream{adapter: a, target: t, draftID: time.Now().UnixNano(), useDraft: strings.HasPrefix(t.ScopeID, "private:") && a.cfg.richMessageEnabled()}, nil
+	return &messageStream{gate: make(chan struct{}, 1), adapter: a, target: t, draftID: time.Now().UnixNano(), useDraft: strings.HasPrefix(t.ScopeID, "private:") && a.cfg.richMessageEnabled()}, nil
 }
 
 func (s *messageStream) Append(ctx context.Context, text string) error {
-	if text == "" {
-		return nil
+	ctx, finish, err := s.beginOperation(ctx)
+	if err != nil {
+		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.finished {
+	defer finish()
+	if s.finished || text == "" {
 		return nil
 	}
 	s.text += text
@@ -81,8 +84,15 @@ func (s *messageStream) Append(ctx context.Context, text string) error {
 }
 
 func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Receipt, globalevents.LogResult, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	ctx, finish, err := s.beginOperation(ctx)
+	if err != nil {
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return delivery.Receipt{}, logResult, err
+	}
+	defer finish()
 	if s.finished {
 		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	}
@@ -144,8 +154,15 @@ func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Rece
 }
 
 func (s *messageStream) Finish(ctx context.Context) (delivery.Receipt, globalevents.LogResult, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	ctx, finish, err := s.beginOperation(ctx)
+	if err != nil {
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return delivery.Receipt{}, logResult, err
+	}
+	defer finish()
 	s.finished = true
 	if s.message == 0 {
 		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
@@ -154,7 +171,7 @@ func (s *messageStream) Finish(ctx context.Context) (delivery.Receipt, globaleve
 }
 
 func (a *Adapter) streamPreviewPayload(text string) (string, string) {
-	switch a.cfg.format() {
+	switch a.cfg.Format {
 	case "plain", "rich":
 		return plainTextFromMarkdown(text), ""
 	default:
@@ -172,4 +189,23 @@ func streamPreviewText(text string) string {
 		return text
 	}
 	return string(runes[:telegramTextPageRunes-24]) + "\n……（生成中，完整内容稍后发送）"
+}
+
+func (s *messageStream) beginOperation(ctx context.Context) (context.Context, func(), error) {
+	ctx, finish, err := s.adapter.beginOperation(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	select {
+	case s.gate <- struct{}{}:
+	case <-ctx.Done():
+		finish()
+		return nil, nil, ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		<-s.gate
+		finish()
+		return nil, nil, err
+	}
+	return ctx, func() { <-s.gate; finish() }, nil
 }

@@ -1,5 +1,4 @@
-// client.go 执行 HTTP 请求、上传下载及平台协议操作。
-// TODO：明确自有连接池的构造与释放，配合生命周期停止和最终清理。
+// client.go 持有自有 HTTP 连接池，执行请求、上传下载及平台协议操作。
 
 package telegram
 
@@ -11,8 +10,8 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -31,17 +30,15 @@ type mediaSource struct {
 	Name string
 }
 
-func newAPIClient(cfg Config) *apiClient {
-	return &apiClient{cfg: cfg, http: newHTTPClient(cfg), token: cfg.token()}
+func newAPIClient(cfg Config, proxyURL *url.URL) *apiClient {
+	return &apiClient{cfg: cfg, http: newHTTPClient(proxyURL), token: cfg.BotToken}
 }
 
-func newHTTPClient(cfg Config) *http.Client {
-	proxyURL, _ := cfg.proxyURL()
-	if proxyURL == nil {
-		return &http.Client{}
-	}
+func newHTTPClient(proxyURL *url.URL) *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = http.ProxyURL(proxyURL)
+	if proxyURL != nil {
+		transport.Proxy = http.ProxyURL(proxyURL)
+	}
 	return &http.Client{Transport: transport}
 }
 
@@ -173,11 +170,8 @@ func (c *apiClient) sendMediaByReference(ctx context.Context, method string, cha
 
 func callTelegram[T any](c *apiClient, ctx context.Context, method string, in any, timeout time.Duration) (T, error) {
 	var zero T
-	if timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
-	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	var body io.Reader
 	if in != nil {
 		data, err := json.Marshal(in)
@@ -290,14 +284,7 @@ func multipartMediaBody(chatID int64, field string, source mediaSource, replyTo 
 			return nil, "", err
 		}
 	}
-	name := strings.TrimSpace(source.Name)
-	if name == "" && strings.TrimSpace(source.Path) != "" {
-		name = filepath.Base(source.Path)
-	}
-	if name == "" {
-		name = "file"
-	}
-	part, err := writer.CreateFormFile(field, name)
+	part, err := writer.CreateFormFile(field, source.Name)
 	if err != nil {
 		return nil, "", err
 	}

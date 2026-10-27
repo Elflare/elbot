@@ -70,7 +70,7 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Storage 定义 ChatSegment、ChatReply 与编解码；远程适配器直接入库，Tool 根部直接查询并转换内部消息，删除 Platform 历史包装和旧公开类型。
 - [x] Agent.HandleMessage 接收自有 MessageRequest；输入、唤醒、媒体物化与历史关联使用自有契约，生产代码不导入 Platform。
 - [x] Platform.RestoreMessageContext 由 Agent 根部注入，后台入口清除继承的平台状态，前台接管恢复平台事实与路由；普通后台输出和默认通知静默，显式目标投递保留。
-- [x] Platform 根部及 AdapterDeps 历史能力裁剪为写入、单条身份查询和两项别名方法，refcontext 只接收单条查询；删除总管中转字段。OneBot、QQ Official 已使用自有最小 Deps，Share 提供 CommonConfig 与最小历史读写契约；三个远程适配器均已移除完整或闲置 Store。Telegram 旧构造及完整历史字段仍待替换，不增加兼容层。
+- [x] Platform 根部历史能力裁剪为写入、单条身份查询和两项别名方法，refcontext 只接收单条查询；删除总管中转字段。OneBot、QQ Official、Telegram 已使用自有最小 Deps，Share 提供 CommonConfig 与最小历史读写契约；三个远程适配器均已移除完整或闲置 Store。Telegram 只借用 Append 与引用恢复函数，旧共享 AdapterDeps、旧构造及完整历史字段已删除，不增加兼容层。
 - [x] 本轮 Agent、Tool、Media、refcontext、dispatch 测试夹具接入新契约；相关回归通过，覆盖真实 SQLite 范围与昵称匹配、引用及媒体顺序、缓存与额度、入站切片隔离和延迟物化、接管取消链及后台静默／显式投递。Agent 根部内部测试单独通过；App 实际生命周期与历史库清理的隔离 race 回归通过。
 - [ ] 解除 Platform 剩余旧依赖及媒体／模型构造入口阻塞后，运行 Agent–Hook、Platform、App 整包和资源构造测试；解除 Elnis 的旧 elvena.ResolveRawCall 调用阻塞后，运行 Background 已迁移的历史清理依赖及借用所有权测试。旧适配器实现和其测试夹具在对应子包阶段对接。
 
@@ -81,10 +81,10 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Headless 接入无状态 share.Runtime，删除旧 Run 和反向依赖；保留 Service 主发送占位，生命周期、取消上下文、重复及并发调用和发送失败契约通过 race 回归。
 - [x] OneBot 接入 share.Runtime、MessageHandler、Share 通知与两类 API，删除旧 New／Run 和反向依赖。race 覆盖停止接入后的发送、临时拨号取消、已建立临时连接保留、在途写帧取消隔离、关闭重试、重连隔离、API 参数映射及既有消息行为。
 - [x] QQ Official 接入 Share 运行、入站与通知契约及自有最小 Deps；移除旧 New／Run、完整历史字段、闲置配置与非法依赖。race 回归覆盖网关重连分类、心跳同步与退出、并发启停、独立故障保留、停止接入后的发送、在途 HTTP 取消及别名入库等待、关闭超时重试、令牌刷新等待取消与 401 单次重试。
-- [ ] Telegram 接入 share.Runtime、MessageHandler，参考 OneBot 定义自有最小依赖，完成后删除 share/adapter.go：Start 同步完成本地启动，BeginClose 停止接入，Wait 可取消且保留独立故障，Close 可超时重试；停止接入后发送能力仍可供收尾使用。验收需覆盖部分启动、并发启停与实际退出。
+- [x] Telegram 接入 Share 运行、入站、通知和两类 API 契约；使用自有最小 Deps，删除旧 New／Run 与 share/adapter.go。race 覆盖异步连接、并发启停、实际退出、收尾发送、完整操作取消、关闭超时重试、独立连接池清理、可取消流式等待、身份快照、命令目录并发、引用与历史、配置边界及 API 映射。
 - [x] CLI 移除旧 agent/events 与 Platform 根包依赖，接入自有事件、ConnectUI 和函数式补全；通过事件版本、部分 UI 所有权、订阅释放、后台静默和原连接回复回归；换绑清除旧待发状态，在途发送按序完成，真实 WebSocket 背压覆盖换绑和展示关闭后连接保留，UI 关闭可超时重试。命令信息由补全入口消费，不保存闲置目录。
 - [x] CLI 客户端实现分类结果，根部仅转换；验证指定连接、默认本机拨号失败回退、远端与认证失败不回退、取消及已连接后断线退出。CLI 与四个相关组件通过 race，跨根部接线仍待整包验证。
-- [ ] dispatch 与适配器接通通用能力和原生 API，notification 接通平台失败通知与接收契约；验证未知能力报错、两类 API 不混流、发送与通知实际路由。
+- [ ] dispatch.Router 实现 CallCapability／CallPlatformAPI 并删除旧 Elvena 调用链与重复映射；notification.Manager 实现 NotifyPlatformFailure。适配器契约已接入，Platform 整包当前缺这三个入口；验证未知能力报错、两类 API 不混流、发送与通知实际路由。
 - [ ] 替代调用方全部迁移后删除旧 platform.go、module/、builtin/，不加兼容别名；验证子包不再反向导入根包，兄弟实现通过 share 协作。
 - [ ] 媒体／模型构造入口及进程入口适配完成后，运行 Platform、App 整包与完整应用回归；组件隔离测试不替代真实总管接线和整包通过。
 

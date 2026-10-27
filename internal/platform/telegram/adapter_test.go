@@ -1,5 +1,4 @@
 // adapter_test.go 覆盖配置、协议请求、发送、命令同步及重连通知。
-// TODO：随职责迁移调整测试归属，使用唯一构造入口及分阶段生命周期。
 
 package telegram
 
@@ -58,7 +57,7 @@ func TestPartialTextSendKeepsReceiptWithoutRestartingFallback(t *testing.T) {
 				_ = json.NewEncoder(w).Encode(apiResponse[sentMessage]{OK: false, ErrorCode: 500, Description: "later page failed"})
 			}))
 			defer server.Close()
-			adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: format}, nil)
+			adapter := newTestAdapter(t, Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: format}, nil)
 			ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ConversationKind: contextinfo.ConversationGroup, ConversationID: "-19", ScopeID: "group:-19"}})
 			receipt, _, err := adapter.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(strings.Repeat("a", telegramRichTextRunes+1))})
 			if err == nil || len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "71" || calls != 2 {
@@ -104,8 +103,9 @@ func TestTelegramTokenEnvReadsConfigDotEnv(t *testing.T) {
 	}
 	t.Setenv("TELEGRAM_BOT_TOKEN", "")
 	cfg := Config{BotTokenEnv: "TELEGRAM_BOT_TOKEN", ConfigEnvDir: dir}
-	if got := cfg.token(); got != "from-dotenv" {
-		t.Fatalf("token = %q", got)
+	got, err := cfg.tokenValue()
+	if err != nil || got != "from-dotenv" {
+		t.Fatalf("token=%q err=%v", got, err)
 	}
 }
 
@@ -125,15 +125,19 @@ func TestTelegramProxyEnvPrefersOSEnvOverConfigDotEnv(t *testing.T) {
 	}
 }
 
-func TestTelegramHTTPClientWithoutProxyUsesDefaultTransport(t *testing.T) {
-	client := newHTTPClient(Config{})
-	if client.Transport != nil {
+func TestTelegramHTTPClientOwnsTransport(t *testing.T) {
+	client := newHTTPClient(nil)
+	if client.Transport == nil || client.Transport == http.DefaultTransport {
 		t.Fatalf("transport = %#v", client.Transport)
 	}
 }
 
 func TestTelegramHTTPClientUsesProxyURL(t *testing.T) {
-	client := newHTTPClient(Config{ProxyURL: "http://127.0.0.1:8080"})
+	proxy, err := url.Parse("http://127.0.0.1:8080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := newHTTPClient(proxy)
 	transport, ok := client.Transport.(*http.Transport)
 	if !ok {
 		t.Fatalf("transport = %#v", client.Transport)
@@ -153,7 +157,7 @@ func TestTelegramInvalidProxyURLFromPlatformConfig(t *testing.T) {
 		"enabled":   true,
 		"bot_token": "token",
 		"proxy_url": "://bad",
-	}, nil, nil, nil, nil, "")
+	}, Deps{})
 	if err == nil || !strings.Contains(err.Error(), "invalid telegram proxy_url") {
 		t.Fatalf("err = %v", err)
 	}
@@ -204,7 +208,7 @@ func TestSendTextUsesHTMLByDefault(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(apiResponse[sentMessage]{OK: true, Result: sentMessage{MessageID: 7}})
 	}))
 	defer server.Close()
-	adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL}, nil)
+	adapter := newTestAdapter(t, Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL}, nil)
 	receipt, _, err := adapter.sendText(context.Background(), target{ChatID: 1}, "# 标题\n\n| A | B |\n|---|---|", 0, false)
 	if err != nil {
 		t.Fatal(err)
@@ -231,7 +235,7 @@ func TestSendTextRichFailure(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(apiResponse[sentMessage]{OK: true, Result: sentMessage{MessageID: 8}})
 	}))
 	defer server.Close()
-	adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: "rich"}, nil)
+	adapter := newTestAdapter(t, Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: "rich"}, nil)
 	receipt, _, err := adapter.sendText(context.Background(), target{ChatID: 1}, "# bad", 0, false)
 	if err == nil || len(receipt.PlatformMessageIDs) != 0 {
 		t.Fatalf("receipt=%#v err=%v", receipt, err)
@@ -259,7 +263,7 @@ func TestSendMessageMarkdownFallback(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := newAPIClient(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL})
+	client := newTestAdapter(t, Config{BotToken: "token", APIBaseURL: server.URL}, nil).client
 	msg, err := client.sendMessage(context.Background(), sendMessageRequest{ChatID: 1, Text: "bad_md", ParseMode: "Markdown"})
 	if err != nil {
 		t.Fatal(err)
@@ -299,7 +303,7 @@ func TestSendMediaUsesURLAsReference(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := newAPIClient(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL})
+	client := newTestAdapter(t, Config{BotToken: "token", APIBaseURL: server.URL}, nil).client
 	if _, err := client.sendPhoto(context.Background(), 1, mediaSource{URL: "https://example.com/a.png"}, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +323,7 @@ func TestSendStickerUsesNativeEmoticonID(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(apiResponse[sentMessage]{OK: true, Result: sentMessage{MessageID: 11}})
 	}))
 	defer server.Close()
-	client := newAPIClient(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL})
+	client := newTestAdapter(t, Config{BotToken: "token", APIBaseURL: server.URL}, nil).client
 	if _, err := client.sendSticker(context.Background(), 1, "sticker-file-id", 0); err != nil {
 		t.Fatal(err)
 	}
@@ -356,8 +360,8 @@ func TestMultipartMediaBodyReadsStructuredSources(t *testing.T) {
 		source mediaSource
 		want   string
 	}{
-		{name: "data", source: mediaSource{Data: []byte("from-data")}, want: "from-data"},
-		{name: "file", source: mediaSource{Path: path}, want: "from-file"},
+		{name: "data", source: mediaSource{Name: "data.txt", Data: []byte("from-data")}, want: "from-data"},
+		{name: "file", source: mediaSource{Name: "chosen.txt", Path: path}, want: "from-file"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			body, contentType, err := multipartMediaBody(1, "document", tc.source, 0)
@@ -375,6 +379,9 @@ func TestMultipartMediaBodyReadsStructuredSources(t *testing.T) {
 				}
 				if part.FormName() != "document" {
 					continue
+				}
+				if part.FileName() != tc.source.Name {
+					t.Fatalf("document filename = %q, want %q", part.FileName(), tc.source.Name)
 				}
 				data, err := io.ReadAll(part)
 				if err != nil {
@@ -403,7 +410,7 @@ func TestSetMyCommandsPayload(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(apiResponse[bool]{OK: true, Result: true})
 	}))
 	defer server.Close()
-	client := newAPIClient(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL})
+	client := newTestAdapter(t, Config{BotToken: "token", APIBaseURL: server.URL}, nil).client
 	if err := client.setMyCommands(context.Background(), []botCommand{{Command: "help", Description: "查看帮助"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -431,7 +438,7 @@ func TestTelegramBotCommands(t *testing.T) {
 	}
 }
 
-func TestRunPublishesGlobalConnectionsOnReconnect(t *testing.T) {
+func TestPollingPublishesGlobalConnectionsOnReconnect(t *testing.T) {
 	// Keep the real listener outside the bubble so it cannot block virtual time.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -465,12 +472,13 @@ func TestRunPublishesGlobalConnectionsOnReconnect(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer connection.Disconnect()
-		if err := New(Config{}, nil).Run(ctx, nil); err != nil {
+
+		adapter := newTestAdapter(t, Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, ReconnectIntervalSeconds: 1}, nil)
+		if err := adapter.Start(ctx, nil); err != nil {
 			t.Fatal(err)
 		}
-		adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, ReconnectIntervalSeconds: 1}, nil)
-		if err := adapter.Run(ctx, nil); !errors.Is(err, context.Canceled) {
-			t.Fatalf("Run=%v", err)
+		if err := adapter.Wait(context.Background()); err != nil {
+			t.Fatal(err)
 		}
 		if calls != 2 {
 			t.Fatalf("connections=%d", calls)

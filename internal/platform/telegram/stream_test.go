@@ -1,5 +1,4 @@
 // stream_test.go 验证流式消息发送、编辑、替换及私聊富文本草稿。
-// TODO：测试构造迁入唯一入口，补充生命周期接入后的实际退出验证。
 
 package telegram
 
@@ -33,8 +32,8 @@ func TestMessageStreamSendEditReplace(t *testing.T) {
 	}))
 	defer server.Close()
 
-	adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, StreamEditIntervalMilliseconds: 1}, nil)
-	stream := &messageStream{adapter: adapter, target: target{ChatID: 1}}
+	adapter := newTestAdapter(t, Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, StreamEditIntervalMilliseconds: 1}, nil)
+	stream := newTestStream(t, adapter, "private:1")
 	if err := stream.Append(context.Background(), "hello"); err != nil {
 		t.Fatal(err)
 	}
@@ -83,8 +82,8 @@ func TestPrivateMessageStreamUsesRichDraft(t *testing.T) {
 	}))
 	defer server.Close()
 
-	adapter := New(Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, StreamEditIntervalMilliseconds: 1, Format: "rich"}, nil)
-	stream := &messageStream{adapter: adapter, target: target{ChatID: 1, ScopeID: "private:1"}, draftID: 1, useDraft: true}
+	adapter := newTestAdapter(t, Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, StreamEditIntervalMilliseconds: 1, Format: "rich"}, nil)
+	stream := newTestStream(t, adapter, "private:1")
 	if err := stream.Append(context.Background(), "# hi"); err != nil {
 		t.Fatal(err)
 	}

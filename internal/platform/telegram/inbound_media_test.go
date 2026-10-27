@@ -1,5 +1,4 @@
 // inbound_media_test.go 验证入站媒体历史记录与延迟解析。
-// TODO：使用唯一构造入口与 Share 消息契约，移除对 Platform 根包的依赖。
 
 package telegram
 
@@ -12,21 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"elbot/internal/platform"
 	"elbot/internal/platform/share"
+	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
-
-type mediaCaptureHandler struct {
-	msg   platform.MessageContext
-	calls int
-}
-
-func (h *mediaCaptureHandler) HandleMessage(ctx context.Context, _ string) error {
-	h.msg, _ = platform.MessageContextFrom(ctx)
-	h.calls++
-	return nil
-}
 
 func TestInboundMediaHistoryAndDeferredResolver(t *testing.T) {
 	ctx := context.Background()
@@ -45,29 +33,35 @@ func TestInboundMediaHistoryAndDeferredResolver(t *testing.T) {
 		fmt.Fprint(w, "image")
 	}))
 	defer server.Close()
-	a := newTestAdapter(t, Config{BotToken: "123:secret", APIBaseURL: server.URL, FileBaseURL: server.URL}, nil, history.Repository())
-	a.client.http = server.Client()
-	handler := &mediaCaptureHandler{}
-	a.handleMessage(ctx, handler, message{MessageID: 1, Chat: chat{ID: 9, Type: "group"}, Photo: []photoSize{{FileID: "photo-id", FileSize: 5}}})
-	if calls != 0 || handler.calls != 1 || handler.msg.MediaResolver != a {
-		t.Fatalf("eager calls/handler = %d/%#v", calls, handler)
+	a := newTestAdapter(t, Config{BotToken: "123:secret", APIBaseURL: server.URL, FileBaseURL: server.URL}, history.Repository())
+
+	var captured share.MessageContext
+	handled := 0
+	handler := func(_ context.Context, _ string, msg share.MessageContext) error {
+		captured = msg
+		handled++
+		return nil
 	}
-	if handler.msg.Conversation.Source.ConversationID != "9" || handler.msg.Conversation.Source.ScopeID != "group:9" {
-		t.Fatalf("conversation source = %+v", handler.msg.Conversation.Source)
+	a.handleMessage(ctx, handler, message{MessageID: 1, Chat: chat{ID: 9, Type: "group"}, Photo: []photoSize{{FileID: "photo-id", FileSize: 5}}}, share.Identity{})
+	if calls != 0 || handled != 1 || captured.MediaResolver != a {
+		t.Fatalf("eager calls/handler = %d/%#v", calls, captured)
+	}
+	if captured.Conversation.Source.ConversationID != "9" || captured.Conversation.Source.ScopeID != "group:9" {
+		t.Fatalf("conversation source = %+v", captured.Conversation.Source)
 	}
 	row, err := history.Repository().GetByPlatformMessage(ctx, platformName, "group:9", "1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	segments := share.UnmarshalChatSegments(row.Segments)
+	segments := storage.UnmarshalChatSegments(row.Segments)
 	if len(segments) != 1 || segments[0].PlatformFileID != "photo-id" || segments[0].URL != "" || strings.Contains(row.Segments, "secret") {
 		t.Fatalf("history = %#v", row)
 	}
-	source, err := a.ResolveMedia(ctx, segments[0], 10)
+	source, err := a.ResolveMedia(ctx, captured.Segments[0], 10)
 	if err != nil || string(source.Data) != "image" || calls != 2 || source.URL != "" {
 		t.Fatalf("resolved = %#v, calls=%d, err=%v", source, calls, err)
 	}
-	if _, err = a.ResolveMedia(ctx, segments[0], 3); err == nil || calls != 3 {
+	if _, err = a.ResolveMedia(ctx, captured.Segments[0], 3); err == nil || calls != 3 {
 		t.Fatalf("declared limit: calls=%d err=%v", calls, err)
 	}
 	if _, err = a.client.downloadFile(ctx, "photos/a.jpg", 3); err == nil {

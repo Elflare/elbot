@@ -1,10 +1,11 @@
-// message.go 处理入站事实、引用、历史写入及媒体解析。
-// TODO：接收 adapter.go 的消息与按钮回调处理，通过 Share MessageHandler 交付输入。
+// message.go 处理入站交付、按钮回调、引用事实、历史写入及媒体解析。
 
 package telegram
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
+	"elbot/internal/security"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/platform/share"
@@ -60,44 +60,7 @@ func normalizeMessage(msg message) normalizedMessage {
 	return out
 }
 
-func stripBotMention(text, botUsername string) (string, bool) {
-	botUsername = strings.TrimPrefix(strings.TrimSpace(botUsername), "@")
-	if text == "" || botUsername == "" {
-		return text, false
-	}
-	mention := "@" + strings.ToLower(botUsername)
-	lower := strings.ToLower(text)
-	mentioned := strings.Contains(lower, mention)
-	for _, prefix := range []string{"/"} {
-		if strings.HasPrefix(text, prefix) {
-			fields := strings.Fields(text)
-			if len(fields) > 0 {
-				cmd := fields[0]
-				if at := strings.Index(cmd, "@"); at >= 0 && strings.EqualFold(strings.TrimPrefix(cmd[at:], "@"), botUsername) {
-					fields[0] = cmd[:at]
-					return strings.Join(fields, " "), true
-				}
-			}
-		}
-	}
-	if mentioned {
-		fields := strings.Fields(text)
-		kept := fields[:0]
-		for _, field := range fields {
-			if strings.EqualFold(field, "@"+botUsername) {
-				continue
-			}
-			kept = append(kept, field)
-		}
-		return strings.Join(kept, " "), true
-	}
-	return text, false
-}
-
 func largestPhoto(photos []photoSize) photoSize {
-	if len(photos) == 0 {
-		return photoSize{}
-	}
 	best := photos[0]
 	for _, photo := range photos[1:] {
 		if photo.Width*photo.Height > best.Width*best.Height {
@@ -294,15 +257,16 @@ func displayName(u user) string {
 	return name
 }
 
-func isFromBot(msg message) bool {
-	return msg.From != nil && msg.From.IsBot
-}
-
 func cleanText(text string) string {
 	return strings.TrimSpace(strings.Join(strings.Fields(text), " "))
 }
 
 func (a *Adapter) ResolveMedia(ctx context.Context, segment share.MessageSegment, maxBytes int64) (delivery.Source, error) {
+	ctx, finish, err := a.beginOperation(ctx)
+	if err != nil {
+		return delivery.Source{}, err
+	}
+	defer finish()
 	file, err := a.client.getFile(ctx, segment.PlatformFileID)
 	if err != nil {
 		return delivery.Source{}, err
@@ -324,4 +288,201 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func (a *Adapter) handleUpdate(ctx context.Context, handler share.MessageHandler, upd update, bot share.Identity) {
+	if upd.CallbackQuery != nil {
+		a.handleCallbackQuery(ctx, handler, *upd.CallbackQuery, bot)
+		return
+	}
+	if upd.Message == nil {
+		return
+	}
+	a.handleMessage(ctx, handler, *upd.Message, bot)
+}
+
+func (a *Adapter) messageGroupRole(ctx context.Context, msg message) contextinfo.GroupRole {
+	if msg.From == nil || (msg.Chat.Type != "group" && msg.Chat.Type != "supergroup") {
+		return contextinfo.GroupRoleUnknown
+	}
+	member, err := a.client.getChatMember(ctx, msg.Chat.ID, msg.From.ID)
+	if err != nil {
+		{
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelWarn,
+				EventName:    "get_telegram_chat_member_failed",
+				Module:       "telegram",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("get telegram chat member failed\nerror=%v", err),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			if errors.Is(err, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			if facts.SessionID != "" {
+				record.Identity.SessionID = &facts.SessionID
+			}
+			if facts.RunID != "" {
+				record.Identity.RunID = &facts.RunID
+			}
+			if facts.Attempt != "" {
+				record.Identity.Attempt = &facts.Attempt
+			}
+			if facts.RequestID != "" {
+				record.Identity.RequestID = &facts.RequestID
+			}
+			if facts.RootRequestID != "" {
+				record.Identity.RootRequestID = &facts.RootRequestID
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		}
+		return contextinfo.GroupRoleUnknown
+	}
+	switch strings.TrimSpace(member.Status) {
+	case "creator":
+		return contextinfo.GroupRoleOwner
+	case "administrator":
+		return contextinfo.GroupRoleAdmin
+	case "member", "restricted":
+		return contextinfo.GroupRoleMember
+	default:
+		return contextinfo.GroupRoleUnknown
+	}
+}
+
+func (a *Adapter) handleCallbackQuery(ctx context.Context, handler share.MessageHandler, query callbackQuery, bot share.Identity) {
+	if strings.TrimSpace(query.ID) != "" {
+		if err := a.client.answerCallbackQuery(ctx, query.ID, "已收到"); err != nil {
+			{
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogRuntime,
+					Level:        slog.LevelError,
+					EventName:    "answer_telegram_callback_failed",
+					Module:       "telegram",
+					Type:         globalevents.ContentText,
+					Content:      fmt.Sprintf("answer telegram callback failed\nerror=%v", err),
+					ContentLimit: 4096,
+					ResultStatus: globalevents.ResultFailed,
+				}
+				if errors.Is(err, context.Canceled) {
+					record.ResultStatus = globalevents.ResultCanceled
+					record.Level = slog.LevelInfo
+				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				if facts.SessionID != "" {
+					record.Identity.SessionID = &facts.SessionID
+				}
+				if facts.RunID != "" {
+					record.Identity.RunID = &facts.RunID
+				}
+				if facts.Attempt != "" {
+					record.Identity.Attempt = &facts.Attempt
+				}
+				if facts.RequestID != "" {
+					record.Identity.RequestID = &facts.RequestID
+				}
+				if facts.RootRequestID != "" {
+					record.Identity.RootRequestID = &facts.RootRequestID
+				}
+				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			}
+		}
+	}
+	if query.Message == nil || strings.TrimSpace(query.Data) == "" {
+		return
+	}
+	msg := *query.Message
+	msg.From = &query.From
+	msg.Text = strings.TrimSpace(query.Data)
+	a.handleMessage(ctx, handler, msg, bot)
+}
+
+func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandler, msg message, bot share.Identity) {
+	normalized := normalizeMessage(msg)
+	if msg.Chat.Type != "private" && msg.Chat.Type != "group" && msg.Chat.Type != "supergroup" {
+		a.recordChatMessage(ctx, msg, normalized, share.ReplyContext{})
+		return
+	}
+	text := normalized.Text
+	platformUserID := userIDString(msg.From)
+	groupRole := a.messageGroupRole(ctx, msg)
+	messageCtx := share.MessageContext{
+		Conversation: contextinfo.Conversation{
+			Source: contextinfo.Source{
+				Platform:         a.Name(),
+				ScopeID:          scopeID(msg.Chat),
+				ConversationKind: telegramConversationKind(msg.Chat),
+				ConversationID:   formatMessageID(msg.Chat.ID),
+			},
+			Identity: contextinfo.Identity{
+				ActorID:        security.ActorID(a.Name(), platformUserID),
+				PlatformUserID: platformUserID,
+				Nickname:       displayNamePtr(msg.From, ""),
+				DisplayName:    displayNamePtr(msg.From, ""),
+			},
+			PlatformMessageID: formatMessageID(msg.MessageID),
+			ReplyToMessageID:  normalized.ReplyID,
+			ReplyToSenderID:   userIDString(replySender(normalized.ReplyMessage)),
+		},
+		GroupRole: groupRole,
+
+		Sender:          a,
+		MediaResolver:   a,
+		Segments:        finalMessageSegments(text, normalized.Segments, nil),
+		RawText:         normalized.Text,
+		Bot:             bot,
+		Mentions:        append([]share.Mention(nil), normalized.Mentions...),
+		TriggerKeywords: append([]string(nil), a.cfg.TriggerKeywords...),
+		Meta: map[string]any{
+			"telegram.message_id": formatMessageID(msg.MessageID),
+			"telegram.chat_id":    strconv.FormatInt(msg.Chat.ID, 10),
+		},
+	}
+	msgCtx := share.WithMessageContext(ctx, messageCtx)
+
+	var referenceSegments []share.MessageSegment
+	if normalized.ReplyID != "" {
+		ref, err := a.referenceResolver(msgCtx, share.ReferenceOptions{
+			Platform:        a.Name(),
+			ScopeID:         messageCtx.Conversation.Source.ScopeID,
+			ActorID:         messageCtx.Conversation.Identity.ActorID,
+			IsSuperadmin:    isConfiguredSuperadmin(a.cfg.Superadmins, userIDString(msg.From)),
+			ReplyID:         normalized.ReplyID,
+			Text:            text,
+			CommandPrefixes: a.cfg.CommandPrefixes,
+			Fetch:           a.referenceFetcher(msg, normalized),
+		})
+		if err != nil {
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "platform_context_failed",
+				Module:       "telegram",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("prepare platform context failed: %v", err),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
+			}
+			_ = globalevents.EmitLog(context.WithoutCancel(msgCtx), record)
+			return
+		}
+		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
+		messageCtx.ResumeSessionID = ref.ResumeSessionID
+		messageCtx.ContextText = ref.Text
+		messageCtx.Reply = ref.Reply
+		referenceSegments = ref.ReferenceSegments
+		if strings.TrimSpace(ref.Text) != "" || len(referenceSegments) > 0 {
+			messageCtx.ContextSegments = finalMessageSegments(ref.Text, normalized.Segments, referenceSegments)
+		}
+	}
+	a.recordChatMessage(ctx, msg, normalized, messageCtx.Reply)
+	if strings.TrimSpace(text) == "" && strings.TrimSpace(messageCtx.ContextText) == "" && len(messageCtx.ContextSegments) == 0 && len(normalized.Segments) == 0 {
+		return
+	}
+	messageCtx.Segments = finalMessageSegments(text, normalized.Segments, nil)
+	_ = handler(ctx, text, messageCtx)
 }

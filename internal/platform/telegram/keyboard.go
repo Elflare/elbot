@@ -1,4 +1,4 @@
-// keyboard.go 构造风险确认键盘与命令按钮载荷；按钮回调处理待从 adapter.go 迁入 message.go。
+// keyboard.go 构造风险确认键盘与命令按钮载荷；按钮回调处理归 message.go。
 
 package telegram
 

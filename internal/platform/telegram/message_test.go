@@ -1,44 +1,18 @@
-// message_test.go 验证机器人提及清洗及入站文档消息归一化。
+// message_test.go 验证入站消息归一化并提供唯一构造入口的测试夹具。
 
 package telegram
 
 import (
 	"context"
-	"elbot/internal/storage"
+	"elbot/internal/contextinfo"
+	"elbot/internal/delivery"
+	"elbot/internal/platform/share"
 	"elbot/internal/storage/sqlite"
+	"github.com/pelletier/go-toml/v2"
 	"path/filepath"
 	"testing"
+	"time"
 )
-
-func TestStripBotMentionFromCommand(t *testing.T) {
-	text, mentioned := stripBotMention("/help@ElBot hi", "ElBot")
-	if !mentioned {
-		t.Fatal("mentioned = false")
-	}
-	if text != "/help hi" {
-		t.Fatalf("text = %q", text)
-	}
-}
-
-func TestStripBotMentionFromText(t *testing.T) {
-	text, mentioned := stripBotMention("hello @ElBot", "ElBot")
-	if !mentioned {
-		t.Fatal("mentioned = false")
-	}
-	if text != "hello" {
-		t.Fatalf("text = %q", text)
-	}
-}
-
-func TestStripBotMentionFromTextCaseInsensitive(t *testing.T) {
-	text, mentioned := stripBotMention("hello @elbot", "ElBot")
-	if !mentioned {
-		t.Fatal("mentioned = false")
-	}
-	if text != "hello" {
-		t.Fatalf("text = %q", text)
-	}
-}
 
 func TestNormalizeDocument(t *testing.T) {
 	msg := message{Document: &document{FileID: "file-id", FileName: "a.txt", MIMEType: "text/plain"}}
@@ -51,16 +25,18 @@ func TestNormalizeDocument(t *testing.T) {
 	}
 }
 
-func newTestAdapter(t *testing.T, cfg Config, store storage.Store, history storage.ChatHistoryRepository) *Adapter {
+func newTestStream(t *testing.T, a *Adapter, scope string) delivery.MessageStream {
 	t.Helper()
-	if store == nil {
-		db, err := sqlite.New(context.Background(), filepath.Join(t.TempDir(), "store.db"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = db.Close() })
-		store = db
+	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ScopeID: scope}})
+	s, err := a.StartStream(ctx)
+	if err != nil {
+		t.Fatal(err)
 	}
+	return s
+}
+
+func newTestAdapter(t *testing.T, cfg Config, history share.ChatHistoryWriter) *Adapter {
+	t.Helper()
 	if history == nil {
 		db, err := sqlite.NewChatHistory(context.Background(), filepath.Join(t.TempDir(), "history.db"))
 		if err != nil {
@@ -69,5 +45,31 @@ func newTestAdapter(t *testing.T, cfg Config, store storage.Store, history stora
 		t.Cleanup(func() { _ = db.Close() })
 		history = db.Repository()
 	}
-	return New(cfg, history)
+	cfg.Enabled = true
+	if cfg.BotToken == "" && cfg.BotTokenEnv == "" {
+		cfg.BotToken = "test-token"
+	}
+	raw := map[string]any{}
+	data, err := toml.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := toml.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	a, err := NewFromPlatformConfig(raw, Deps{
+		CommonConfig: share.CommonConfig{Superadmins: cfg.Superadmins, CommandPrefixes: cfg.CommandPrefixes, ConfigDir: cfg.ConfigEnvDir},
+		ChatHistory:  history,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := a.Close(ctx); err != nil {
+			t.Errorf("close adapter: %v", err)
+		}
+	})
+	return a
 }

@@ -1,8 +1,9 @@
-// config.go 解析和规范化平台配置；TODO：接收本包最小依赖，合并初始化为唯一构造入口。
+// config.go 解析配置并通过唯一入口构造适配器。
 
 package telegram
 
 import (
+	"context"
 	"elbot/internal/platform/share"
 	"fmt"
 	"net/url"
@@ -44,8 +45,7 @@ type Config struct {
 	ConfigEnvDir                   string   `toml:"-"`
 }
 
-// TODO：参考 qqonebot.Deps 改用本包依赖组合，并将旧 New 初始化并入本入口。
-func NewFromPlatformConfig(raw map[string]any, deps share.AdapterDeps) (*Adapter, error) {
+func NewFromPlatformConfig(raw map[string]any, deps Deps) (*Adapter, error) {
 	var cfg Config
 	if err := share.DecodeConfig(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("decode telegram config: %w", err)
@@ -54,20 +54,28 @@ func NewFromPlatformConfig(raw map[string]any, deps share.AdapterDeps) (*Adapter
 	cfg.CommandPrefixes = append([]string(nil), deps.CommandPrefixes...)
 	cfg.ConfigEnvDir = deps.ConfigDir
 	applyDefaults(&cfg)
+	var client *apiClient
 	if cfg.Enabled {
 		token, err := cfg.tokenValue()
 		if err != nil {
 			return nil, err
 		}
-		if strings.TrimSpace(token) == "" {
+		if token == "" {
 			return nil, fmt.Errorf("telegram bot_token or bot_token_env is required")
 		}
-		if _, err := cfg.proxyURL(); err != nil {
+		proxyURL, err := cfg.proxyURL()
+		if err != nil {
 			return nil, err
 		}
+		cfg.BotToken = token
+		client = newAPIClient(cfg, proxyURL)
 	}
-	adapter := New(cfg, deps.ChatHistory)
-	adapter.referenceResolver = deps.ReferenceResolver
+	operationCtx, operationCancel := context.WithCancel(context.Background())
+	adapter := &Adapter{
+		cfg: cfg, client: client, chatHistory: deps.ChatHistory, referenceResolver: deps.ReferenceResolver,
+		operationCtx: operationCtx, operationCancel: operationCancel,
+		pollDone: make(chan struct{}), done: make(chan struct{}), closeDone: make(chan struct{}),
+	}
 	return adapter, nil
 }
 
@@ -94,11 +102,6 @@ func applyDefaults(cfg *Config) {
 	if len(cfg.CommandPrefixes) == 0 {
 		cfg.CommandPrefixes = []string{"/"}
 	}
-}
-
-func (c Config) token() string {
-	value, _ := c.tokenValue()
-	return value
 }
 
 func (c Config) tokenValue() (string, error) {
@@ -149,35 +152,19 @@ func (c Config) envValue(name string) (string, error) {
 }
 
 func (c Config) apiTimeout() time.Duration {
-	d := time.Duration(c.APITimeoutSeconds) * time.Second
-	if d <= 0 {
-		return defaultAPITimeout
-	}
-	return d
+	return time.Duration(c.APITimeoutSeconds) * time.Second
 }
 
 func (c Config) pollTimeout() time.Duration {
-	d := time.Duration(c.PollTimeoutSeconds) * time.Second
-	if d <= 0 {
-		return defaultPollTimeout
-	}
-	return d
+	return time.Duration(c.PollTimeoutSeconds) * time.Second
 }
 
 func (c Config) reconnectInterval() time.Duration {
-	d := time.Duration(c.ReconnectIntervalSeconds) * time.Second
-	if d <= 0 {
-		return defaultReconnectInterval
-	}
-	return d
+	return time.Duration(c.ReconnectIntervalSeconds) * time.Second
 }
 
 func (c Config) streamEditInterval() time.Duration {
-	d := time.Duration(c.StreamEditIntervalMilliseconds) * time.Millisecond
-	if d <= 0 {
-		return defaultStreamEditInterval
-	}
-	return d
+	return time.Duration(c.StreamEditIntervalMilliseconds) * time.Millisecond
 }
 
 func normalizeTelegramFormat(format string) string {
@@ -191,10 +178,6 @@ func normalizeTelegramFormat(format string) string {
 	}
 }
 
-func (c Config) format() string {
-	return normalizeTelegramFormat(c.Format)
-}
-
 func (c Config) richMessageEnabled() bool {
-	return c.format() == "rich"
+	return c.Format == "rich"
 }
