@@ -1,5 +1,6 @@
-// calls.go 承接 Elvena 的平台调用与能力映射，保留现有逻辑。
-// TODO：适配器子包改造时，将平台映射拆入各自的 capability_api.go。
+// calls.go 当前承接旧 Elvena 调用链及平台映射；目标职责是通用能力与原生 API 的独立路由。
+// TODO：删除旧调用契约和重复映射，改为 CallCapability、CallPlatformAPI，复用平台注册表及 Share 两类调用接口。
+// OneBot 与 Telegram 已实现各自的协议映射；认证、协议封装和实际传输归适配器。
 
 package dispatch
 

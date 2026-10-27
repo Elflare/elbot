@@ -1,4 +1,4 @@
-// router_test.go 验证随组件迁入的既有行为。
+// router_test.go 验证并发发送的来源快照隔离、显式目标优先及部分发送回执保留。
 
 package dispatch
 

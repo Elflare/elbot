@@ -1,3 +1,4 @@
+// media_resolver_test.go 验证显式平台媒体解析、不支持时不回退及解析错误原样返回。
 package dispatch
 
 import (

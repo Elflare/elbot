@@ -1,4 +1,5 @@
-// router.go 选择目标适配器并路由发送请求，协调实际投递与回执。
+// router.go 管理平台注册、发送目标选择及普通与流式发送路由，只借用发送能力，不接管适配器生命周期。
+// TODO：将完整 Store 依赖收窄为媒体回执实际使用的 SaveOutput 能力，由 Platform 根部注入。
 
 // Package dispatch owns physical delivery, platform routing and output media.
 package dispatch

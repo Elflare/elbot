@@ -221,7 +221,9 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/platform/{supervisor,deps,wiring,lifecycle}.go`：总管、借用依赖、完整配置装配与生命周期；部分构造可清理，停止接入与最终资源释放分离。下层目标契约见 [App 包设计](app-design.md#platform-下层目标契约)。
 - `internal/platform/{contracts,agent,send,public_api,client,config}.go`：公开契约、Agent 输入与展示转接、发送、两类 API、媒体解析、客户端分类转换及配置汇总；按下层已实现来调用，整包仍待迁移。
 - `internal/platform/share/`：内部契约与共享辅助；`runtime_contracts.go` 定义 Runtime 与 MessageHandler，`adapter_api.go` 定义两类 API，`notification.go` 定义通知接收及目标转换；`config.go` 定义 CommonConfig 与配置辅助，`history_contracts.go` 定义最小历史读写，`backoff.go` 提供退避。适配器独有依赖定义在各自包内。
-- `internal/platform/dispatch/{router,media}.go`：复用平台注册表执行发送与显式目标媒体解析；ResolveMedia 不回退到当前或默认平台。`calls.go` 承接 Elvena 平台调用与映射实现，尚未拆入各适配器。
+- `internal/platform/dispatch/router.go`：平台注册、目标选择及普通与流式发送路由，只借用发送能力，不接管适配器生命周期；完整 Store 依赖待收窄为根部注入的 SaveOutput 能力。
+- `internal/platform/dispatch/calls.go`：当前仍承接旧 Elvena 调用链与重复映射；OneBot、Telegram 已实现各自的协议映射，此处待改为复用平台注册表和 Share 契约的两类独立 API 路由。
+- `internal/platform/dispatch/media.go`：显式平台媒体解析、出站媒体准备及实际发送回执关联；ResolveMedia 不回退到当前或默认平台。媒体服务与存储均为借用，回执持久化待接入最小能力。dispatch 当前仅明确职责骨架，具体改造尚未完成。
 - `internal/platform/telegram/capability_api.go`：撤回、禁言、退群的通用能力映射与独立原生 API 入口，返回原生 result。
 - `internal/platform/refcontext/refcontext.go`：引用消息恢复与上下文处理；Options 持有 Store 和仅含 GetByPlatformMessage 的历史消费接口，单次请求和结果使用 share 契约，由根部闭包注入适配器。
 - `internal/platform/platform.go`、`module/`、`builtin/`：保留尚未拆分的旧实现，文件头标注迁移后删除；不作为新对外边界。
