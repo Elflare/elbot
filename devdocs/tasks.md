@@ -72,11 +72,11 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Platform.RestoreMessageContext 由 Agent 根部注入，后台入口清除继承的平台状态，前台接管恢复平台事实与路由；普通后台输出和默认通知静默，显式目标投递保留。
 - [x] Platform 根部历史能力裁剪为写入、单条身份查询和两项别名方法，refcontext 只接收单条查询；删除总管中转字段。OneBot、QQ Official、Telegram 已使用自有最小 Deps，Share 提供 CommonConfig 与最小历史读写契约；三个远程适配器均已移除完整或闲置 Store。Telegram 只借用 Append 与引用恢复函数，旧共享 AdapterDeps、旧构造及完整历史字段已删除，不增加兼容层。
 - [x] 本轮 Agent、Tool、Media、refcontext、dispatch 测试夹具接入新契约；相关回归通过，覆盖真实 SQLite 范围与昵称匹配、引用及媒体顺序、缓存与额度、入站切片隔离和延迟物化、接管取消链及后台静默／显式投递。Agent 根部内部测试单独通过；App 实际生命周期与历史库清理的隔离 race 回归通过。
-- [ ] 完成旧消费者迁移及媒体／模型构造入口后，运行 Agent–Hook、App 整包和资源构造测试。Background 历史清理依赖及借用所有权测试已随整包 race 回归通过。旧适配器实现和其测试夹具在对应子包阶段对接。
+- [ ] 完成媒体／模型构造入口及进程入口适配后，运行 Agent–Hook、App 整包和资源构造测试。Background 历史清理依赖及借用所有权测试已随整包 race 回归通过。
 
 ## Platform 剩余接线
 
-- [x] Share 定义 Runtime／MessageHandler、可选原生 API 与 NotificationReceiver 契约；NotificationTarget 保留来源回复路由及显式目标转换行为。旧根包定义标记调用方迁移后删除，实际下层接线见后续任务。
+- [x] Share 定义 Runtime／MessageHandler、可选原生 API 与 NotificationReceiver 契约；NotificationTarget 保留来源回复路由及显式目标转换行为。各适配器已接入内部契约。
 - [x] CLI 本地 Adapter 与 RemoteServer 接入 share.Runtime、MessageHandler；真实管道、Linux 伪终端和 WebSocket 覆盖同步启动、并发启停、接入停止后保留发送、实际退出及超时重试；取消观察时保留回调收尾前已记录的独立故障。
 - [x] Headless 接入无状态 share.Runtime，删除旧 Run 和反向依赖；保留 Service 主发送占位，生命周期、取消上下文、重复及并发调用和发送失败契约通过 race 回归。
 - [x] OneBot 接入 share.Runtime、MessageHandler、Share 通知与原生 API，删除旧 New／Run 和反向依赖。race 覆盖停止接入后的发送、临时拨号取消、已建立临时连接保留、在途写帧取消隔离、关闭重试、重连隔离、原生 API 透传及既有消息行为。
@@ -89,7 +89,7 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Elvena Call 只包含 Platform／API／Params；Elnis direct 按既有平台选择规则直接转发原生调用，保留顺序执行、遇错停止及 calls-only 行为，无能力映射或兼容包装。Elvena、Background 根包及全部子包、dispatch 的 race 回归通过，覆盖 HTTP 原生请求、失败与取消、真实 SQLite 接线、去重恢复和借用资源生命周期。
 - [x] Event 由 Elnis/types.go 定义并注释字段用途，不保留闲置 SegmentPaths；targets.go 的 toDeliveryTarget 与 media.go 的 directText 承担投递准备。Elvena 仅保留协议与来源文件，无闲置结果类型、总线或投递辅助文件。
 - [ ] 更新 Elwisp 生成提示与相关用户示例，停止生成已删除的能力名；保留 Hook platform.call 原生链路，平台选择仍由调用方负责。用户文档随对应迁移阶段更新。
-- [ ] 替代调用方全部迁移后删除旧 platform.go、module/、builtin/，不加兼容别名；验证子包不再反向导入根包，兄弟实现通过 share 协作。
+- [x] 删除旧 platform.go、module/、builtin/ 及旧实现测试，不保留兼容别名；Doctor 使用外部测试包，通过 Platform 根部 ConfigDefinitions 获取配置定义；Platform 根包及全部子包、Doctor 的 race 回归通过。
 - [ ] 补充 Platform 原生 API、客户端结果与真实历史接线集成验证；媒体／模型构造入口及进程入口适配完成后，运行 App 整包与完整应用回归；组件隔离测试不替代真实总管接线和整包通过。
 
 ## 媒体中心对接

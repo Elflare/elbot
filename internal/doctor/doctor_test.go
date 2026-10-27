@@ -1,4 +1,4 @@
-package doctor
+package doctor_test
 
 import (
 	"context"
@@ -13,8 +13,9 @@ import (
 	"testing"
 
 	"elbot/internal/config"
+	"elbot/internal/doctor"
 	"elbot/internal/hook/rules"
-	"elbot/internal/platform/builtin"
+	"elbot/internal/platform"
 )
 
 func writeFile(t *testing.T, path, text string) {
@@ -39,20 +40,20 @@ func editFile(t *testing.T, path, old, next string) {
 	writeFile(t, path, strings.Replace(string(data), old, next, 1))
 }
 
-func fixture(t *testing.T) (string, *Service) {
+func fixture(t *testing.T) (string, *doctor.Service) {
 	t.Helper()
 	dir := t.TempDir()
 	for _, asset := range config.DefaultAssets() {
 		writeFile(t, filepath.Join(dir, asset.Path), asset.Content)
 	}
-	service, err := New(filepath.Join(dir, "app.toml"), testInspector())
+	service, err := doctor.New(filepath.Join(dir, "app.toml"), testInspector())
 	if err != nil {
 		t.Fatal(err)
 	}
 	return dir, service
 }
 
-func check(t *testing.T, service *Service) Report {
+func check(t *testing.T, service *doctor.Service) doctor.Report {
 	t.Helper()
 	report, err := service.Check(context.Background())
 	if err != nil {
@@ -124,7 +125,7 @@ func TestCustomPathsAndOptionalFields(t *testing.T) {
 	editFile(t, mainPath, `state = "state.toml"`, `state = "nested/state.toml"`)
 	editFile(t, mainPath, `path = "SOUL.md"`, `path = "custom soul.md"`)
 	editFile(t, mainPath, "# Main application config.", "# Custom main configuration.")
-	service, err := New(mainPath, testInspector())
+	service, err := doctor.New(mainPath, testInspector())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +285,7 @@ func TestInvalidMainDoesNotGuessDependentPaths(t *testing.T) {
 func TestMissingDirectoryIsNotCreated(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "missing", "custom.toml")
-	service, err := New(path, testInspector())
+	service, err := doctor.New(path, testInspector())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,13 +333,13 @@ func TestReadFailureAndCancellation(t *testing.T) {
 	if _, err := service.Check(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation: %v", err)
 	}
-	if _, err := New("", testInspector()); err == nil {
+	if _, err := doctor.New("", testInspector()); err == nil {
 		t.Fatal("accepted empty main config path")
 	}
 }
 
 func TestReportTextMatchesApprovedWording(t *testing.T) {
-	report := Report{ConfigPath: "/srv/mybot/custom.toml", Files: []FileIssue{
+	report := doctor.Report{ConfigPath: "/srv/mybot/custom.toml", Files: []doctor.FileIssue{
 		{Path: "/srv/mybot/custom.toml", Issues: []config.Issue{
 			{Level: config.LevelError, Message: "TOML 格式错误。"},
 			{Level: config.LevelHint, Message: "未完成相关配置检查。"},
@@ -436,6 +437,6 @@ func TestPartialMainParseDoesNotSupplyPaths(t *testing.T) {
 }
 
 func testInspector() *config.Inspector {
-	definitions := append(builtin.ConfigDefinitions(), rules.ConfigDefinition())
+	definitions := append(platform.ConfigDefinitions(), rules.ConfigDefinition())
 	return config.NewInspector(definitions...)
 }

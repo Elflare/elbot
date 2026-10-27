@@ -18,7 +18,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 启动与装配
 
 - `cmd/elbot/main.go`、`internal/launcher/cli.go`：程序入口、参数与运行模式。
-- `internal/app/` 六文件按下层接口已存在来实现公共流程，五条业务线已提供根包总管，配置独占已实现；Platform 旧消费者迁移、媒体和模型构造入口及进程入口适配仍待完成。13 个原生产文件和 12 个原测试文件保存在 `*.go.bak` 中；职责与调用契约见 [App 包设计](app-design.md)。
+- `internal/app/` 六文件按下层接口已存在来实现公共流程，五条业务线已提供根包总管，配置独占已实现；媒体和模型构造入口及进程入口适配仍待完成。13 个原生产文件和 12 个原测试文件保存在 `*.go.bak` 中；职责与调用契约见 [App 包设计](app-design.md)。
 - `internal/app/entry.go`：启动参数、局部阶段列表、统一阶段执行与耗时、Lifecycle／可选 Waiter、唯一总管集合、按顺序启动与按能力等待。
 - `internal/app/environment.go`：验证运行模式，定位配置并转为解析符号链接后的绝对路径；TUI／Service 通过 `gofrs/flock` 非阻塞取得对应 `.lock` 文件的独占锁。
 - `internal/app/environment_test.go`：配置定位、路径别名、配置替换保存、跨进程互斥、正常及异常退出后的重新取锁测试，可独立运行。
@@ -29,7 +29,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/`：`Supervisor` 是 App 对接入口；`supervisor.go` 定义总管与公开能力，`deps.go` 声明共享资源和 `ToolCapabilities`、`HookCapabilities`、`PlatformCapabilities` 三类业务接口，`wiring.go` 拆分配置、构造线内组件并接线，`lifecycle.go` 管理启停，`signals.go` 持有通知与状态订阅。
 - `internal/tool/supervisor.go`、`wiring.go`、`lifecycle.go`：Tool 对外入口、组件装配与生命周期。
 - `internal/hook/`：Hook 总管、外部桥接与生命周期；装配内部规则、流水线、控制与插件进程。
-- `internal/platform/`：根部负责对外、装配和生命周期，发送路由和通知管理位于内部子包；故障通知已接通，`module/`、`builtin/` 保留待迁移删除的旧实现。
+- `internal/platform/`：根部负责对外、装配和生命周期，发送路由和通知管理位于内部子包；故障通知已接通，配置定义由根部 config.go 汇总。
 - `internal/background/supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go`：对外总管、借用依赖、最小能力注入与生命周期协调。cronBridge 转换存储，elnisBridge 转换存储与媒体。根部持有 Tool／平台订阅，显式启动 Cron Manager，Elnis 就绪后放行 Cron 平台通知；Wait 及时上报整线致命故障，BeginClose 取消组件与订阅，Done 等待实际退出，不公开内部 Runner。
 - `internal/background/execution/`：任务目录、后台来源准备与 Agent 公开执行入口转接；`cron/`、`elnis/`、`maintenance/` 承接各业务。
 
@@ -210,7 +210,7 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 
 - `internal/delivery/delivery.go`：输出意图、目标、回执及公共 `MessageStream`、`ReasoningStream` 契约；`internal/platform/dispatch/` 负责发送路由与媒体准备。
 - `internal/platform/notification/manager.go`：通知信号、目标、绑定校验、平台队列及关闭等待；NotifyPlatformFailure 格式化故障通知并逐目标异步提交；`internal/notification/rules/` 保留 Agent 使用的提示规则。
-- `internal/platform/wiring.go`：构造通知管理器并持有适配器接线；选择存活平台与管理员故障通知目标，记录故障日志。旧 `module/notifications.go` 随旧调用方迁移后删除。
+- `internal/platform/wiring.go`：构造通知管理器并持有适配器接线；选择存活平台与管理员故障通知目标，记录故障日志。
 - `internal/platform/{cli,qq-onebot,qqofficial,telegram}/notifications.go`：平台通知协议与实际发送。
 - `internal/agent/output/output.go`、`internal/agent/execution/turn_output.go`、`execution_output.go`：输出 Hook、前后台策略、接管刷新与流式回执合并。
 - `internal/agent/dialogue/output.go`、`reply_commit.go`：正文／思考消费契约与最终回复提交。
@@ -219,14 +219,13 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 ## 平台适配
 
 - `internal/platform/{supervisor,deps,wiring,lifecycle}.go`：总管、借用依赖、完整配置装配与生命周期；部分构造可清理，停止接入与最终资源释放分离。下层目标契约见 [App 包设计](app-design.md#platform-下层目标契约)。
-- `internal/platform/{contracts,agent,send,public_api,client,config}.go`：公开契约、Agent 输入与展示转接、发送、原生 API、媒体解析、客户端分类转换及配置汇总；下层通知与发送契约已接通，旧调用方仍待迁移。
+- `internal/platform/{contracts,agent,send,public_api,client,config}.go`：公开契约、Agent 输入与展示转接、发送、原生 API、媒体解析、客户端分类转换及配置汇总；下层通知与发送契约已接通。
 - `internal/platform/share/`：内部契约与共享辅助；`runtime_contracts.go` 定义 Runtime 与 MessageHandler，`adapter_api.go` 定义原生 API，`notification.go` 定义通知接收及目标转换；`config.go` 定义 CommonConfig 与配置辅助，`history_contracts.go` 定义最小历史读写，`backoff.go` 提供退避。适配器独有依赖定义在各自包内。
 - `internal/platform/dispatch/router.go`：平台注册、目标选择及普通与流式发送路由，只借用发送能力，不接管适配器生命周期；接收最小媒体接口与 SaveMediaOutput 函数。
 - `internal/platform/dispatch/calls.go`：按显式平台查找可选 share.PlatformAPICaller，释放注册表锁后原样转发原生请求；不回退平台，不解释业务名称。
 - `internal/platform/dispatch/media.go`：显式平台媒体解析、出站媒体准备、临时资源释放及实际发送回执关联；ResolveMedia 不回退到当前或默认平台。借用媒体服务与回执持久化函数，缓存失败不重发。
 - `internal/platform/telegram/capability_api.go`：原生 API 入口，登记完整操作并返回原生 result。
 - `internal/platform/refcontext/refcontext.go`：引用消息恢复与上下文处理；Options 持有 Store 和仅含 GetByPlatformMessage 的历史消费接口，单次请求和结果使用 share 契约，由根部闭包注入适配器。
-- `internal/platform/platform.go`、`module/`、`builtin/`：保留尚未拆分的旧实现，文件头标注迁移后删除；不作为新对外边界。
 - `internal/platform/cli/`：本地／远程 CLI 与 TUI；`lifecycle.go` 管理本地接入和终端最终退出，`remote_lifecycle.go` 管理同步监听及连接分阶段释放；`cli.go`、`remote_server.go` 保留输入和发送实现。
 - `internal/platform/cli/event_contracts.go`：CLI 自有状态与绑定事实；`ui.go` 持有订阅，`status.go` 按目标合并状态并处理绑定版本，`reasoning.go`、`status_format.go` 负责思考流和状态文案。
 - `internal/platform/cli/client.go`：连接选择与结果分类；`remote_client.go` 负责握手、通信、断线后结束展示和收回补全等待，`tui.go` 负责交互及终端正常退出。

@@ -1,4 +1,4 @@
-package doctor
+package doctor_test
 
 import (
 	"os"
@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"elbot/internal/config"
+	"elbot/internal/doctor"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -35,7 +36,7 @@ func removeFile(t *testing.T, path string) {
 	}
 }
 
-func requireIssue(t *testing.T, report Report, path string, level config.Level, fragment string) config.Issue {
+func requireIssue(t *testing.T, report doctor.Report, path string, level config.Level, fragment string) config.Issue {
 	t.Helper()
 	for _, file := range report.Files {
 		if file.Path == path {
@@ -50,7 +51,7 @@ func requireIssue(t *testing.T, report Report, path string, level config.Level, 
 	return config.Issue{}
 }
 
-func requireErrorCount(t *testing.T, report Report, want int) {
+func requireErrorCount(t *testing.T, report doctor.Report, want int) {
 	t.Helper()
 	got := 0
 	for _, file := range report.Files {
