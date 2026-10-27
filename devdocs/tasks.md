@@ -78,7 +78,8 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 
 - [x] Share 定义 Runtime／MessageHandler、两类可选 API 与 NotificationReceiver 契约；NotificationTarget 保留来源回复路由及显式目标转换行为。旧根包定义标记调用方迁移后删除，实际下层接线见后续任务。
 - [x] CLI 本地 Adapter 与 RemoteServer 接入 share.Runtime、MessageHandler；真实管道、Linux 伪终端和 WebSocket 覆盖同步启动、并发启停、接入停止后保留发送、实际退出及超时重试；取消观察时保留回调收尾前已记录的独立故障。
-- [ ] headless 和其余远程适配器接入 share.Runtime、MessageHandler：Start 同步完成本地启动，BeginClose 停止接入，Wait 可取消且保留独立故障，Close 可超时重试；停止接入后发送能力仍可供收尾使用。验收需覆盖部分启动、并发启停与实际退出。
+- [x] Headless 接入无状态 share.Runtime，删除旧 Run 和反向依赖；保留 Service 主发送占位，生命周期、取消上下文、重复及并发调用和发送失败契约通过 race 回归。
+- [ ] 其余远程适配器接入 share.Runtime、MessageHandler：Start 同步完成本地启动，BeginClose 停止接入，Wait 可取消且保留独立故障，Close 可超时重试；停止接入后发送能力仍可供收尾使用。验收需覆盖部分启动、并发启停与实际退出。
 - [x] CLI 移除旧 agent/events 与 Platform 根包依赖，接入自有事件、ConnectUI 和函数式补全；通过事件版本、部分 UI 所有权、订阅释放、后台静默和原连接回复回归；换绑清除旧待发状态，在途发送按序完成，真实 WebSocket 背压覆盖换绑和展示关闭后连接保留，UI 关闭可超时重试。命令信息由补全入口消费，不保存闲置目录。
 - [x] CLI 客户端实现分类结果，根部仅转换；验证指定连接、默认本机拨号失败回退、远端与认证失败不回退、取消及已连接后断线退出。CLI 与四个相关组件通过 race，跨根部接线仍待整包验证。
 - [ ] dispatch 与适配器接通通用能力和原生 API，notification 接通平台失败通知与接收契约；验证未知能力报错、两类 API 不混流、发送与通知实际路由。

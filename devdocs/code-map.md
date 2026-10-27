@@ -220,7 +220,7 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 
 - `internal/platform/{supervisor,deps,wiring,lifecycle}.go`：总管、借用依赖、完整配置装配与生命周期；部分构造可清理，停止接入与最终资源释放分离。下层目标契约见 [App 包设计](app-design.md#platform-下层目标契约)。
 - `internal/platform/{contracts,agent,send,public_api,client,config}.go`：公开契约、Agent 输入与展示转接、发送、两类 API、媒体解析、客户端分类转换及配置汇总；按下层已实现来调用，整包仍待迁移。
-- `internal/platform/share/`：内部契约与共享辅助；`runtime_contracts.go` 定义 Runtime 与 MessageHandler，`adapter_api.go` 定义通用能力和原生 API 两个可选接口，`notification.go` 定义通知接收契约与目标转换；CLI 已接入运行与通知契约，其余下层实现仍待接通。`config.go`、`backoff.go` 提供共享辅助，`adapter.go` 的 AdapterDeps 接收历史写入、身份查询、两项别名能力及引用恢复函数。
+- `internal/platform/share/`：内部契约与共享辅助；`runtime_contracts.go` 定义 Runtime 与 MessageHandler，`adapter_api.go` 定义通用能力和原生 API 两个可选接口，`notification.go` 定义通知接收契约与目标转换；CLI 已接入运行与通知契约，Headless 已接入无状态运行契约，其余下层实现仍待接通。`config.go`、`backoff.go` 提供共享辅助，`adapter.go` 的 AdapterDeps 接收历史写入、身份查询、两项别名能力及引用恢复函数。
 - `internal/platform/dispatch/{router,media}.go`：复用平台注册表执行发送与显式目标媒体解析；ResolveMedia 不回退到当前或默认平台。`calls.go` 承接 Elvena 平台调用与映射实现，尚未拆入各适配器。
 - `internal/platform/{telegram,qq-onebot}/capability_api.go`：通用能力的平台实现骨架。
 - `internal/platform/refcontext/refcontext.go`：引用消息恢复与上下文处理；Options 持有 Store 和仅含 GetByPlatformMessage 的历史消费接口，单次请求和结果使用 share 契约，由根部闭包注入适配器。
@@ -236,7 +236,8 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/media/{types,platform}.go`：自有 PlatformMedia、HistoryMessage；负责媒体缓存、关联和批量获取，通过注入函数解析平台来源，不依赖 Platform。
 - `internal/platform/{lifecycle,contracts,agent}_test.go`：生命周期、公开事实隔离独立测试，以及输入转换与投影测试；本轮契约迁移的测试留到 review 运行。
 - `internal/platform/qq-onebot/`：协议转换、forward 展开、长消息与回执。
-- `internal/platform/qqofficial/`、`internal/platform/telegram/`、`internal/platform/headless/`：各平台 runtime。
+- `internal/platform/qqofficial/`、`internal/platform/telegram/`：各平台 runtime。
+- `internal/platform/headless/headless.go`：Service 主发送占位及无状态生命周期；不接收输入、不持有资源，两种发送入口保持失败，持续运行由根部协调。
 - `internal/platform/qqofficial/reference.go`：QQ 引用索引解析、消息 ID 关联、事件原文转换及入站／发送回执索引登记。
 
 <!-- locator:session -->
