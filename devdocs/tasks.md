@@ -100,6 +100,10 @@ Tool 媒体层已统一向工具返回 `share.MediaInfo`，图片宽高、实际
 - [x] Elnis 与 Background 整包构建，实际 elnisBridge 与 cronBridge 运行真实存储集成测试。
 - [x] Elnis Runtime 生命周期与 Supervisor 测试已接通；Background 全包通过 race 检查，真实 SQLite 覆盖关闭批量终态、媒体引用与 outbox 保留。
 
+## session包
+    超时只是下一次收到消息时解除绑定
+    过期处理：统一负责“session 不再活跃后，回收各模块内存状态”的管理链路，建议改为自动new一个的逻辑。)
+
 ## 后台工具统一预载
 
 统一入口为 Tool 根部 `Supervisor.PrepareBackground(ctx, tool.BackgroundPreloadRequest)`，返回 `tool.BackgroundPreload`。请求包含 `SessionID`、`Names`、`AllowedToolNames`、`ELwispTools`；本地名称可指向工具、Skill 或标签，外部声明沿用 `tool.ELwispToolDeclaration`。Agent 提交返回的 `Update`，预载不写会话状态；Background Runner 通过 Agent.RunBackground 触发准备与执行。
@@ -110,12 +114,6 @@ Tool 媒体层已统一向工具返回 `share.MediaInfo`，图片宽高、实际
 - [x] State 统一保存完整 `DiscoveredTool` 声明，删除名称补查目录路径；后台旧声明转换入口已移除。
 - [x] Cron／Elnis／Background 内部接线与存储链路通过整包测试；App 通过 Tools 交付 Tool 总管，内部能力分配由 Background 负责。完整应用链路仍等待 Platform 与共享资源构造入口。
 
-## 其他包改造
-
-- 媒体中心
-- session包
-    超时只是下一次收到消息时解除绑定
-    过期处理：统一负责“session 不再活跃后，回收各模块内存状态”的管理链路，建议改为自动new一个的逻辑。)
 
 ## 不一定实现
 
