@@ -94,7 +94,7 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 		if stopped.Kind == request.KindTurn {
 			deps.Turns.StopSession(stopped.SessionID)
 			count := deps.Requests.CancelSession(stopped.SessionID)
-			return &command.Result{Content: fmt.Sprintf("正在停止 %d 个请求；执行收尾后移除。", count)}, nil
+			return &command.Result{Content: fmt.Sprintf("正在停止 %d 个请求。", count)}, nil
 		}
 		if latest.Stopping {
 			return &command.Result{Content: "请求正在停止，等待执行收尾。"}, nil
@@ -102,7 +102,7 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 		if !deps.Requests.Cancel(id) {
 			return &command.Result{Content: fmt.Sprintf("request not found: %s", arg)}, nil
 		}
-		return &command.Result{Content: "正在停止 1 个请求；执行收尾后移除。"}, nil
+		return &command.Result{Content: "正在停止 1 个请求。"}, nil
 	}
 
 	actor, _ := contextinfo.ActorFromContext(ctx)
@@ -124,7 +124,7 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 	}
 	deps.Turns.StopSession(current.ID)
 	count := deps.Requests.CancelSession(current.ID)
-	return &command.Result{Content: fmt.Sprintf("正在停止 %d 个请求；执行收尾后移除。", count)}, nil
+	return &command.Result{Content: fmt.Sprintf("正在停止 %d 个请求。", count)}, nil
 }
 
 func (c stopCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -164,7 +164,7 @@ func NewStopAll(deps Deps) command.Handler {
 			deps.Turns.StopSession(id)
 			count += deps.Requests.CancelSession(id)
 		}
-		return &command.Result{Content: fmt.Sprintf("正在停止 %d 个请求；执行收尾后移除。", count)}, nil
+		return &command.Result{Content: fmt.Sprintf("正在停止 %d 个请求。", count)}, nil
 	})
 }
 
