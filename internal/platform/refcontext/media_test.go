@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"elbot/internal/media"
-	"elbot/internal/platform"
+	"elbot/internal/platform/share"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -27,9 +27,9 @@ func TestReferenceMediaOutputHistoryAndFallbackPriority(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer history.Close()
-	raw := []platform.MessageSegment{{Type: platform.SegmentImage, PlatformFileID: "raw-image"}, {Type: platform.SegmentFile, PlatformFileID: "raw-file"}, {Type: platform.SegmentImage, PlatformFileID: "raw-image"}}
+	raw := []share.MessageSegment{{Type: share.SegmentImage, PlatformFileID: "raw-image"}, {Type: share.SegmentFile, PlatformFileID: "raw-file"}, {Type: share.SegmentImage, PlatformFileID: "raw-image"}}
 	for _, id := range []string{"output", "history"} {
-		if err := history.Repository().Append(ctx, &storage.ChatMessage{Platform: "telegram", PlatformScopeID: "group:9", PlatformMessageID: id, SenderID: "other", Segments: platform.MarshalChatSegments(raw)}); err != nil {
+		if err := history.Repository().Append(ctx, &storage.ChatMessage{Platform: "telegram", PlatformScopeID: "group:9", PlatformMessageID: id, SenderID: "other", Segments: encodeReferenceSegments(raw)}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -39,20 +39,21 @@ func TestReferenceMediaOutputHistoryAndFallbackPriority(t *testing.T) {
 		}
 	}
 	calls := 0
-	opts := Options{Store: store, ChatHistory: history.Repository(), Platform: "telegram", ScopeID: "group:9", Text: "看看", Fetch: func(context.Context, string) (ReferencedMessage, bool, error) {
+	deps := Options{Store: store, ChatHistory: history.Repository()}
+	opts := share.ReferenceOptions{Platform: "telegram", ScopeID: "group:9", Text: "看看", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
 		calls++
-		return ReferencedMessage{Segments: raw}, true, nil
+		return share.ReferencedMessage{Segments: raw}, true, nil
 	}}
 	opts.ReplyID = "output"
-	got, err := Apply(ctx, opts)
+	got, err := Apply(ctx, deps, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 0 || len(got.ReferenceSegments) != 3 || got.ReferenceSegments[0].MediaID != item.ID || got.ReferenceSegments[1].Type != platform.SegmentFile || got.ReferenceSegments[2].MediaID != item.ID {
+	if calls != 0 || len(got.ReferenceSegments) != 3 || got.ReferenceSegments[0].MediaID != item.ID || got.ReferenceSegments[1].Type != share.SegmentFile || got.ReferenceSegments[2].MediaID != item.ID {
 		t.Fatalf("output priority = %#v, calls=%d", got, calls)
 	}
 	opts.ReplyID = "history"
-	got, err = Apply(ctx, opts)
+	got, err = Apply(ctx, deps, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +61,7 @@ func TestReferenceMediaOutputHistoryAndFallbackPriority(t *testing.T) {
 		t.Fatalf("history order = %#v, calls=%d", got, calls)
 	}
 	opts.ReplyID = "missing"
-	got, err = Apply(ctx, opts)
+	got, err = Apply(ctx, deps, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,11 +78,12 @@ func TestLatestAssistantResumesWithoutMediaAndOlderForkRestores(t *testing.T) {
 	mapPlatformMessage(t, ctx, store, scope, "old", first)
 	mapPlatformMessage(t, ctx, store, scope, "latest", latest)
 	calls := 0
-	opts := Options{ChatHistory: newRefTestHistory(t), Store: store, Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "latest", Text: "继续", Fetch: func(context.Context, string) (ReferencedMessage, bool, error) {
+	deps := Options{ChatHistory: newRefTestHistory(t), Store: store}
+	opts := share.ReferenceOptions{Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "latest", Text: "继续", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
 		calls++
-		return ReferencedMessage{Segments: []platform.MessageSegment{{Type: platform.SegmentImage, PlatformFileID: "image"}}}, true, nil
+		return share.ReferencedMessage{Segments: []share.MessageSegment{{Type: share.SegmentImage, PlatformFileID: "image"}}}, true, nil
 	}}
-	got, err := Apply(ctx, opts)
+	got, err := Apply(ctx, deps, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +91,7 @@ func TestLatestAssistantResumesWithoutMediaAndOlderForkRestores(t *testing.T) {
 		t.Fatalf("latest injected reference = %#v", got)
 	}
 	opts.ReplyID = "old"
-	got, err = Apply(ctx, opts)
+	got, err = Apply(ctx, deps, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +99,7 @@ func TestLatestAssistantResumesWithoutMediaAndOlderForkRestores(t *testing.T) {
 		t.Fatalf("older media fork = %#v", got)
 	}
 	opts.ReplyID = "latest"
-	got, err = Apply(ctx, opts)
+	got, err = Apply(ctx, deps, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,12 +127,12 @@ func TestReferenceHistoryRestoresStableMediaAssociations(t *testing.T) {
 	}
 	defer history.Close()
 
-	raw := []platform.MessageSegment{
-		{Type: platform.SegmentText, Text: "caption"},
-		{Type: platform.SegmentImage, URL: "https://cdn.example.com/image.png?rkey=expired-secret"},
-		{Type: platform.SegmentFile, PlatformFileID: "file-id"},
-		{Type: platform.SegmentImage, URL: "https://cdn.example.com/image.png?rkey=expired-secret"},
-		{Type: platform.SegmentFile, PlatformFileID: "stale-file-id"},
+	raw := []share.MessageSegment{
+		{Type: share.SegmentText, Text: "caption"},
+		{Type: share.SegmentImage, URL: "https://cdn.example.com/image.png?rkey=expired-secret"},
+		{Type: share.SegmentFile, PlatformFileID: "file-id"},
+		{Type: share.SegmentImage, URL: "https://cdn.example.com/image.png?rkey=expired-secret"},
+		{Type: share.SegmentFile, PlatformFileID: "stale-file-id"},
 	}
 	row := &storage.ChatMessage{
 		Platform:          "qqofficial",
@@ -138,7 +140,7 @@ func TestReferenceHistoryRestoresStableMediaAssociations(t *testing.T) {
 		PlatformMessageID: "history-associated",
 		SenderID:          "other",
 		Text:              "caption",
-		Segments:          platform.MarshalChatSegments(raw),
+		Segments:          encodeReferenceSegments(raw),
 	}
 	if err := history.Repository().Append(ctx, row); err != nil {
 		t.Fatal(err)
@@ -162,14 +164,10 @@ func TestReferenceHistoryRestoresStableMediaAssociations(t *testing.T) {
 	}
 
 	fetchCalls := 0
-	got, err := Apply(ctx, Options{
-		Store: store, ChatHistory: history.Repository(),
-		Platform: row.Platform, ScopeID: row.PlatformScopeID, ReplyID: row.PlatformMessageID,
-		Text: "看看", Fetch: func(context.Context, string) (ReferencedMessage, bool, error) {
-			fetchCalls++
-			return ReferencedMessage{}, false, nil
-		},
-	})
+	got, err := Apply(ctx, Options{Store: store, ChatHistory: history.Repository()}, share.ReferenceOptions{Platform: row.Platform, ScopeID: row.PlatformScopeID, ReplyID: row.PlatformMessageID, Text: "看看", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
+		fetchCalls++
+		return share.ReferencedMessage{}, false, nil
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +177,7 @@ func TestReferenceHistoryRestoresStableMediaAssociations(t *testing.T) {
 	if len(got.ReferenceSegments) != len(raw) {
 		t.Fatalf("segments = %#v", got.ReferenceSegments)
 	}
-	if got.ReferenceSegments[0].Type != platform.SegmentText ||
+	if got.ReferenceSegments[0].Type != share.SegmentText ||
 		got.ReferenceSegments[1].MediaID != image.ID ||
 		got.ReferenceSegments[2].MediaID != file.ID ||
 		got.ReferenceSegments[3].MediaID != image.ID {

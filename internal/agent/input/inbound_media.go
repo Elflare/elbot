@@ -2,6 +2,7 @@ package input
 
 import (
 	"context"
+	agentshare "elbot/internal/agent/share"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,20 +11,19 @@ import (
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/media"
-	"elbot/internal/platform"
 	"elbot/internal/storage"
 )
 
 func (h *MessageHandler) materializePlatformMedia(ctx context.Context) (context.Context, error) {
-	msg, ok := platform.MessageContextFrom(ctx)
+	msg, ok := agentshare.MessageContextFrom(ctx)
 	if !ok {
 		return ctx, nil
 	}
-	cache := map[platform.MessageSegment]platform.MessageSegment{}
-	resolve := func(segments []platform.MessageSegment) []platform.MessageSegment {
-		out := append([]platform.MessageSegment(nil), segments...)
+	cache := map[agentshare.MessageSegment]agentshare.MessageSegment{}
+	resolve := func(segments []agentshare.MessageSegment) []agentshare.MessageSegment {
+		out := append([]agentshare.MessageSegment(nil), segments...)
 		for i, segment := range out {
-			if segment.Type != platform.SegmentImage && segment.Type != platform.SegmentFile {
+			if segment.Type != "image" && segment.Type != "file" {
 				continue
 			}
 			if resolved, ok := cache[segment]; ok {
@@ -36,41 +36,43 @@ func (h *MessageHandler) materializePlatformMedia(ctx context.Context) (context.
 		}
 		return out
 	}
+	info, _ := contextinfo.ConversationFromContext(ctx)
 	original := msg
 	msg.Segments = resolve(msg.Segments)
 	msg.ContextSegments = resolve(msg.ContextSegments)
 	msg.Reply.Segments = resolve(msg.Reply.Segments)
-	if err := h.associateInboundHistory(ctx, msg, msg.PlatformMessageID, original.Segments, msg.Segments); err != nil {
+	if err := h.associateInboundHistory(ctx, msg, info.PlatformMessageID, original.Segments, msg.Segments); err != nil {
 		return ctx, err
 	}
 	if err := h.associateInboundHistory(ctx, msg, msg.Reply.MessageID, original.Reply.Segments, msg.Reply.Segments); err != nil {
 		return ctx, err
 	}
-	return platform.WithMessageContext(ctx, msg), nil
+	return agentshare.WithMessageContext(ctx, msg), nil
 }
 
-func (h *MessageHandler) materializePlatformSegment(ctx context.Context, msg platform.MessageContext, segment platform.MessageSegment) platform.MessageSegment {
-	item, err := h.media.ImportPlatform(ctx, msg.Conversation.Source.Platform, msg.MediaResolver, segment)
+func (h *MessageHandler) materializePlatformSegment(ctx context.Context, msg agentshare.MessageContext, segment agentshare.MessageSegment) agentshare.MessageSegment {
+	info, _ := contextinfo.ConversationFromContext(ctx)
+	item, err := h.media.ImportPlatform(ctx, info.Source.Platform, msg.ResolveMedia, segment.Media)
 	if err != nil {
 		return unavailablePlatformSegment(segment)
 	}
-	segment.MediaID = item.ID
-	segment.Name = item.Name
-	segment.MIMEType = item.MIMEType
-	segment.Size = item.Size
-	segment.URL = ""
-	segment.PlatformFileID = ""
+	segment.Media.MediaID = item.ID
+	segment.Media.Name = item.Name
+	segment.Media.MIMEType = item.MIMEType
+	segment.Media.Size = item.Size
+	segment.Media.URL = ""
+	segment.Media.PlatformFileID = ""
 	return segment
 }
 
 // associateInboundHistory 只为成功物化的媒体保存历史位置，无可关联媒体时不查询历史库。
-func (h *MessageHandler) associateInboundHistory(ctx context.Context, msg platform.MessageContext, messageID string, original, resolved []platform.MessageSegment) error {
+func (h *MessageHandler) associateInboundHistory(ctx context.Context, msg agentshare.MessageContext, messageID string, original, resolved []agentshare.MessageSegment) error {
 	if messageID == "" {
 		return nil
 	}
 	hasMedia := false
 	for i, raw := range original {
-		if (raw.Type == platform.SegmentImage || raw.Type == platform.SegmentFile) && resolved[i].MediaID != "" {
+		if (raw.Type == "image" || raw.Type == "file") && resolved[i].Media.MediaID != "" {
 			hasMedia = true
 			break
 		}
@@ -78,7 +80,8 @@ func (h *MessageHandler) associateInboundHistory(ctx context.Context, msg platfo
 	if !hasMedia {
 		return nil
 	}
-	row, err := h.History.GetByPlatformMessage(ctx, msg.Conversation.Source.Platform, msg.Conversation.Source.ScopeID, messageID)
+	info, _ := contextinfo.ConversationFromContext(ctx)
+	row, err := h.History.GetByPlatformMessage(ctx, info.Source.Platform, info.Source.ScopeID, messageID)
 	if errors.Is(err, storage.ErrNotFound) {
 		return nil
 	}
@@ -88,14 +91,14 @@ func (h *MessageHandler) associateInboundHistory(ctx context.Context, msg platfo
 	var failures []error
 	index := 0
 	for i, raw := range original {
-		if raw.Type != platform.SegmentImage && raw.Type != platform.SegmentFile {
+		if raw.Type != "image" && raw.Type != "file" {
 			continue
 		}
 		index++
-		if resolved[i].MediaID == "" {
+		if resolved[i].Media.MediaID == "" {
 			continue
 		}
-		if err := h.media.AssociateHistory(ctx, *row, index, raw.Type, resolved[i].MediaID); err != nil {
+		if err := h.media.AssociateHistory(ctx, media.HistoryMessage{ID: row.ID, Platform: row.Platform, ScopeID: row.PlatformScopeID, MessageID: row.PlatformMessageID}, index, raw.Type, resolved[i].Media.MediaID); err != nil {
 			failures = append(failures, err)
 			{
 				record := globalevents.LogRecord{
@@ -135,12 +138,12 @@ func (h *MessageHandler) associateInboundHistory(ctx context.Context, msg platfo
 	return errors.Join(failures...)
 }
 
-func unavailablePlatformSegment(segment platform.MessageSegment) platform.MessageSegment {
-	label := strings.TrimSpace(segment.Name)
+func unavailablePlatformSegment(segment agentshare.MessageSegment) agentshare.MessageSegment {
+	label := strings.TrimSpace(segment.Media.Name)
 	if label == "" {
 		label = "未知媒体"
 	} else {
 		label = media.SanitizeName(label)
 	}
-	return platform.MessageSegment{Type: platform.SegmentText, Text: "[媒体不可用；" + label + "]"}
+	return agentshare.MessageSegment{Type: "text", Text: "[媒体不可用；" + label + "]"}
 }

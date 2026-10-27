@@ -41,11 +41,11 @@ flowchart TD
 
 App 按下层接口已存在来实现公共流程，下层按照调用契约实现。五条业务线已提供根包总管，配置独占已实现；Platform 下层与接收方契约、媒体和模型构造入口及进程入口适配仍待完成。完整应用的编译与运行验证需待这些接口接入。原 13 个生产文件和 12 个测试文件保存在同目录的 `*.go.bak` 中，不参与构建。
 
-六文件职责及接口契约见 [App 包设计](app-design.md)。App 加载配置、构造共享资源和各线总管、交付公开能力并协调启停。媒体和模型服务接收完整配置，自行处理后端、凭据、协议客户端、请求参数及恢复／重载；App 不拆解这些初始化细节。共享存储归 App，平台聊天历史及其存储归 Platform；部分失败交回已取得对象统一清理，订阅由接收方持有和释放。权限管理使用 `security.Permission`，App 与 Agent 不承接 Doctor。
+六文件职责及接口契约见 [App 包设计](app-design.md)。App 加载配置、构造共享资源和各线总管、交付公开能力并协调启停。媒体和模型服务接收完整配置，自行处理后端、凭据、协议客户端、请求参数及恢复／重载；App 不拆解这些初始化细节。共享存储和独立历史库均归 App，Platform 直接写入历史，Tool 直接查询；部分失败交回已取得对象统一清理，订阅由接收方持有和释放。权限管理使用 `security.Permission`，App 与 Agent 不承接 Doctor。
 
 TUI 和 Service 在创建资源前，按配置文件的绝对路径及符号链接解析结果取得独立 `.lock` 文件的非阻塞独占锁；同配置重复启动立即报错，不同配置分别运行，纯客户端不取锁。入口持有锁，统一退出流程在资源关闭后释放；锁文件保留，退出超时则由进程退出释放锁。
 
-入口用局部阶段列表统一执行环境、资源、装配和启动，记录成功阶段耗时；每步先保存部分结果再交回错误。唯一的业务线集合登记 Lifecycle、名称和启动顺序，按 Tool → Agent → Hook → Platform → Background 启动。App 自动筛选可选 Waiter 并发等待，首个结果触发取消并回收其余等待，保留独立故障。Platform 解释退出语义，Background 及时上报致命故障。退出先停止新工作、等待使用方收尾，再释放依赖；平台发送与历史查询能力保留到使用方退出。
+入口用局部阶段列表统一执行环境、资源、装配和启动，记录成功阶段耗时；每步先保存部分结果再交回错误。唯一的业务线集合登记 Lifecycle、名称和启动顺序，按 Tool → Agent → Hook → Platform → Background 启动。App 自动筛选可选 Waiter 并发等待，首个结果触发取消并回收其余等待，保留独立故障。Platform 解释退出语义，Background 及时上报致命故障。退出先停止新工作、等待使用方收尾，再释放依赖；平台发送能力和 App 持有的历史库保留到使用方退出。
 
 退出步骤共用独立的 30 秒预算。App 的 `runShutdownStep` 将结果分为完成、失败、超时，`runShutdownSteps` 按序执行并汇总；普通错误保留后继续清理，统一期限耗尽立即停止后续清理。下层 Close 保持返回 error，其业务超时错误不直接等同于 App 的统一期限耗尽。最终错误交回进程入口处理。
 
@@ -80,8 +80,8 @@ flowchart TB
 | BackgroundKind | 后台来源类型，由后台入口提供；事实存在表示后台执行，空值表示来源未分类 |
 
 - 平台会话与 ElBot Session 分开表达；事实不替代权限、binding 或 attempt 校验。公共包不持有凭据、服务或原生载荷。
-- MessageContext 安装公共 Conversation，私有 context 保存正文和 Sender；PlatformData 是平台提供的不可变快照。
-- 接管替换 Conversation、Actor、Model 与平台来源，清除新来源缺失的事实，保留执行取消链。
+- Platform 内部 MessageContext 投影公共 Conversation，私有 context 保存协议路由；根部公开 MessageContext 仅保存原文、原生 JSON 与引用事实。Agent.MessageRequest 转为 Agent 自有输入上下文，不读取平台私有值。
+- 接管替换 Conversation、Actor、Model 与 Agent 输入，通过根部注入的 Platform.RestoreMessageContext 恢复平台公开及私有状态；来源缺失时清除，保留执行取消链。后台普通输出静默，显式目标发送保持可用。
 - 后台来源供权限、工具资格和日志使用；路径范围由 `workspace.PathScope` 独立表达。接管同时清除后台来源和调用级路径范围，保留 Session 工作目录。
 
 ### 公共工作路径
@@ -316,7 +316,7 @@ flowchart TD
 - Tool 根部在内部构造 StateService，只向 State 交付 Store；装配结构 runtime、registerOptions、registerAll 及组件字段均为包内实现。App 交付完整配置和共享依赖，不取得 StateService。根部的 DecodeState、DiscoveredToolsForSession、Commit 转发状态能力；State 复用 Registry 的后台资格筛选规则，不查询目录重建声明。后台调用方的总管接线仍待完成，见 [后台工具统一预载](tasks.md#后台工具统一预载)。
 - 普通预载由调用方经根部 Commit 提交；Execution 调用 State.PrepareUpdate，从当前会话快照生成仅含工具字段的元数据补丁，与工具结果原子提交，不另作独立状态提交。合并、名称集合、排序和存储字段编码均在 State 内部；PrepareUpdate 不进入总管公开接口。读取从元数据解码出独立对象；Commit 返回序列化后重新解码的状态，避免与输入声明共享 schema。
 
-聊天历史由 `chat_history.Manager` 处理当前聊天范围、用户／时间筛选、数量限制和媒体选择。Builtin 负责 schema、参数规范化与结果展示；组件的 Backend 由根部 `chatHistoryBridge` 实现，根部转换 Platform 历史记录与引用格式，并通过 Tool 媒体入口获取选中的媒体。查询仅整理媒体描述及已有 ID，不触发下载；同次媒体调用复用消息查询，保留请求顺序和重复项，未缓存媒体的获取尝试上限为 5。`view_image` 在获取前完成历史图片选择校验，获取后通过媒体入口校验图片内容。
+聊天历史由 `chat_history.Manager` 处理当前聊天范围、用户／时间筛选、数量限制和媒体选择。Builtin 负责 schema、参数规范化与结果展示；组件的 Backend 由根部 `chatHistoryBridge` 实现，根部直接查询 Storage 并转换历史记录与引用事实，并通过 Tool 媒体入口获取选中的媒体。查询仅整理媒体描述及已有 ID，不触发下载；同次媒体调用复用消息查询，保留请求顺序和重复项，未缓存媒体的获取尝试上限为 5。`view_image` 在获取前完成历史图片选择校验，获取后通过媒体入口校验图片内容。
 
 下面是代码依赖图，箭头表示依赖方向：
 
@@ -327,7 +327,7 @@ flowchart TD
     W --> R["tool/chat_history_bridge.go：外部历史与媒体适配"]
     B --> H
     R --> H
-    R --> P["Platform 公开查询、引用与历史记录类型"]
+    R --> DB["storage/chat_history.go：历史事实与编解码"]
     R --> M["tool/media：媒体获取与精简结果"]
     C["builtin/cron.go：Cron 任务规则与展示"] --> S["builtin/cron_contract.go：消费方读写契约与数据"]
     W --> C
@@ -517,13 +517,13 @@ flowchart TD
 
 平台负责输入归一化、历史与输出落地，支持本地／远程 CLI、QQ OneBot、QQ Official、Telegram 和 headless。
 
-Platform 根部十一文件已按下层目标契约实现总管、装配与公开能力；下层契约见 [App 包设计](app-design.md#platform-下层目标契约)。根部持有历史存储和订阅，输入转换为 Agent 自有请求并保留延迟媒体解析。contracts.go 的公开 MessageContext 只表达原文、原生载荷与引用事实，运行能力留在内部。dispatch 只取得名称、发送及可选的 API、媒体解析能力，完整 Runtime 归总管；引用存储依赖通过根部闭包固定，不混入共享请求。public_api.go 将通用能力与原生透传分开路由，不解释平台协议。share/adapter_api.go 和适配器 capability_api.go 仍待子包阶段实现。旧 platform.go、module/、builtin/ 保留删除标记；旧反向依赖及调用方尚未迁移，整线尚不能编译接通。
+Platform 根部按下层目标契约实现总管、装配与公开能力；下层契约见 [App 包设计](app-design.md#platform-下层目标契约)。根部持有适配器与订阅，借用 App 持有的历史库，输入转换为 Agent 自有请求并保留延迟媒体解析。contracts.go 的公开 MessageContext 只表达原文、原生载荷与引用事实，运行能力留在内部。dispatch 只取得名称、发送及可选的 API、媒体解析能力，完整 Runtime 归总管；引用存储依赖通过根部闭包固定，不混入共享请求。public_api.go 将通用能力与原生透传分开路由，不解释平台协议。share/adapter_api.go 和适配器 capability_api.go 仍待子包阶段实现。旧 platform.go、module/、builtin/ 保留删除标记；旧反向依赖及调用方尚未迁移，整线尚不能编译接通。
 
-- Platform Supervisor 管理适配器；服务模式各平台退出互不影响，全部退出后仍等待外部停止，本地 TUI 退出结束整线。独立故障记录错误并异步通知其他运行平台的配置超管。BeginClose／Wait 仅停止并等待接入；Close 最后释放 UI、通知、适配器资源和历史，Done 表示最终清理完成。
+- Platform Supervisor 管理适配器；服务模式各平台退出互不影响，全部退出后仍等待外部停止，本地 TUI 退出结束整线。独立故障记录错误并异步通知其他运行平台的配置超管。BeginClose／Wait 仅停止并等待接入；Close 最后释放 UI、通知和适配器资源，历史库由 App 在所有业务线退出后关闭，Done 表示最终清理完成。
 - CLI 拥有私有展示目标、状态订阅、合并和格式化；远程默认回复固定原连接，断开即失败，显式目标按多连接规则发送。
 - 思考流直接接收原始增量与结束边界，每次调用独立，首个有效增量打开展示，结束／失败／取消收尾；逐增量刷新接管来源，不重放历史，展示错误不改变业务结果。
 - 原始有序 segments 写入 Chat History 并清洗敏感来源，只在唤醒或 waiting continuation 时物化媒体。引用依次按输出关联、历史、平台能力恢复。
-- 历史查询通过 Platform 根部自有请求和 ChatMessage 事实对外提供，根部只转换存储记录与错误；引用及媒体片段由内部共享编解码处理。Tool 根部适配能力，Builtin 根据引用事实组织展示。Media 使用自有 PlatformMedia、HistoryMessage 和注入的解析函数，承担缓存、关联及获取上限，不依赖 Platform；目标平台解析由 dispatch 复用平台注册表执行，根部只转发，不读取当前消息中的下载器。Agent 旧入站媒体调用仍待迁移。
+- 历史片段和引用事实由 Storage 的 ChatSegment、ChatReply 及编解码函数定义，适配器转换后直接写入历史库。Platform 根部及 AdapterDeps 只接收写入、单条身份查询和两项别名能力，refcontext 只接收历史身份查询；旧适配器构造与完整历史字段留待子包阶段替换，不反向放宽契约。Tool 根部直接查询并适配存储记录和错误，Builtin 根据内部引用事实展示；Platform 无历史查询或清理包装。Media 使用自有 PlatformMedia、HistoryMessage 和注入的解析函数，承担缓存、关联及获取上限，不依赖 Platform；目标平台解析由 dispatch 复用平台注册表执行。Agent 通过自有请求中的延迟解析函数物化媒体，按历史身份关联成功的媒体位置。
 - 相同 actor／platform／scope 的最后一条 assistant 引用触发 Resume，较早回复触发 Fork。
 - QQ Official 在适配器内解析 `message_scene.ext`、引用类型 `103` 和一层 `msg_elements`；入站 `msg_idx`、发送回执 `ext_info.ref_idx` 按平台／scope 映射到真实消息 ID，存入 Chat History 库并随历史清理。映射命中后复用公共引用恢复；未命中时只展示事件自带文本与附件，不触发 Resume／Fork。
 - OneBot 私聊或显式引用 forward 展开一层，其余情况用占位；纯文本超过 3000 个 Unicode 字符时发合并 forward，失败不退回分条。Telegram 流式分页失败保留已发页回执，不重发整段；CLI 返回空回执。
@@ -591,7 +591,7 @@ Elnis 独用的 EventRepository 与 Media 契约由 Background 根部转换；JS
 <!-- locator:cron -->
 ## Cron 与后台任务
 
-Background 根部保留 `supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go` 四文件，负责门面、Store／Models／Media／Logs／Agent／Tools／Platform 七项借用依赖、装配与生命周期。业务由 `execution`、`cron`、`elnis`、`maintenance` 承担；根部不取得 Agent 的 Session 或执行器，也不公开内部 Runner。Elnis 的存储、媒体和生命周期已接入，Background 整包可独立验证。
+Background 根部保留 `supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go` 四文件，负责门面、Store／ChatHistory／Models／Media／Logs／Agent／Tools／Platform 借用依赖、装配与生命周期。业务由 `execution`、`cron`、`elnis`、`maintenance` 承担；根部不取得 Agent 的 Session 或执行器，也不公开内部 Runner。Elnis 的存储、媒体和生命周期已接入；当前 Background 整包验证受 Elnis 的旧 Elvena 调用阻塞。
 
 Cron 独用的 `JobRepository`、任务快照与运行事实放在 `cron/repository.go`，由根部 `cronBridge` 转换 Storage 记录与错误。Metadata、DeliveryState 作为原始 JSON 交给 Cron 按任务解析，坏记录单独记录失败，不阻断其他任务。Cron 不持有完整 Store 或 Session 服务；模型使用最小接口，发送、Agent.CopyBackground 和接管查询分别注入。Cron 与 Elnis 共用 `share.SessionTakenOver` 函数契约，查询由 Agent 调用自有 Session 完成，Share 不读库。广播复制按任务来源平台跳过源端，复制元数据保留 JSON 值类型。
 
@@ -599,7 +599,7 @@ Runner 只准备任务目录与后台来源并调用 Agent.RunBackground；会�
 
 ```mermaid
 flowchart TD
-    D["background/deps.go：七项借用依赖"] --> W["background/wiring.go：构造、注入、存储转换与外部订阅"]
+    D["background/deps.go：借用资源与业务能力"] --> W["background/wiring.go：构造、注入、存储转换与外部订阅"]
     W --> S["background/supervisor.go：对外门面与组件持有"]
     L["background/lifecycle.go：启动顺序与退出等待"] --> S
     W --> R["cron/repository.go：独用记录与持久化契约"]

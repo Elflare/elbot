@@ -47,6 +47,10 @@ func (isolatedHookCapabilities) Commands() []command.Handler { return nil }
 
 type isolatedPlatformCapabilities struct{ *dispatch.Router }
 
+func (isolatedPlatformCapabilities) RestoreMessageContext(ctx, _ context.Context) context.Context {
+	return ctx
+}
+
 func (isolatedPlatformCapabilities) CallPlatformAPI(context.Context, string, string, map[string]any) (json.RawMessage, error) {
 	return nil, nil
 }
@@ -86,6 +90,11 @@ func isolatedModuleDeps(t *testing.T) SupervisorDeps {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
+	history, err := sqlite.NewChatHistory(t.Context(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = history.Close() })
 	models, err := modelmgr.New(modelmgr.Options{Clients: map[string]llm.Client{"p": isolatedClient{}}, Providers: map[string]config.ProviderConfig{"p": {Models: []string{"m"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}, DefaultMode: "work"})
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +106,7 @@ func isolatedModuleDeps(t *testing.T) SupervisorDeps {
 	root := t.TempDir()
 	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
 	return SupervisorDeps{
-		Media: center, Store: store, Models: models, Permission: permission,
+		Media: center, Store: store, ChatHistory: history.Repository(), Models: models, Permission: permission,
 		Platform: isolatedPlatformCapabilities{sender},
 		Hooks:    isolatedHookCapabilities{},
 		Tools: isolatedToolCapabilities{
@@ -123,7 +132,7 @@ func TestStandaloneDialogueOwnsStateAndBorrowsOnlyCapabilities(t *testing.T) {
 	if err := m.Start(); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.HandleMessage(t.Context(), "hello"); err != nil {
+	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "hello"}); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := deps.Store.Sessions().List(t.Context(), storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 10})

@@ -14,7 +14,7 @@ func appConfigFixture(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
 	files := map[string]string{
-		"app.toml": fmt.Sprintf("[storage]\nsessions_sqlite_path = %q\n[sandbox]\nroot = %q\n[file_delivery]\nbackend = \"base64\"\n[runtime]\nlog_level = \"debug\"\n", filepath.Join(root, "sessions.db"), filepath.Join(root, "sandbox")),
+		"app.toml": fmt.Sprintf("[storage]\nsessions_sqlite_path = %q\nchat_history_sqlite_path = %q\n[sandbox]\nroot = %q\n[file_delivery]\nbackend = \"base64\"\n[runtime]\nlog_level = \"debug\"\n", filepath.Join(root, "sessions.db"), filepath.Join(root, "history.db"), filepath.Join(root, "sandbox")),
 		"providers.toml": `[providers.chat]
 base_url = "https://unused.invalid/v1"
 api_mode = "chat"
@@ -44,6 +44,11 @@ func cleanupAppResources(t *testing.T, r *sharedResources) {
 				t.Error(err)
 			}
 		}
+		if r.historyStore != nil {
+			if err := r.historyStore.Close(); err != nil {
+				t.Error(err)
+			}
+		}
 		if r.store != nil {
 			if err := r.store.Close(); err != nil {
 				t.Error(err)
@@ -55,6 +60,18 @@ func cleanupAppResources(t *testing.T, r *sharedResources) {
 			}
 		}
 	})
+}
+
+func TestPrepareResourcesReturnsStoreWhenHistoryConstructionFails(t *testing.T) {
+	path := appConfigFixture(t)
+	if err := os.Mkdir(filepath.Join(filepath.Dir(path), "history.db"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	r, err := prepareResources(t.Context(), path)
+	cleanupAppResources(t, r)
+	if err == nil || !strings.Contains(err.Error(), "prepare chat history") || r.store == nil || r.historyStore != nil || r.media != nil {
+		t.Fatalf("resources=%+v err=%v", r, err)
+	}
 }
 
 func TestPrepareResourcesReturnsPartialOwnership(t *testing.T) {

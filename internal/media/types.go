@@ -63,11 +63,13 @@ type lazyBackend struct {
 }
 
 type Manager struct {
-	objects         objectLocks
-	cleanupMu       objectLocks
-	local           Backend
-	Store           storage.Store
-	History         storage.ChatHistoryRepository
+	objects   objectLocks
+	cleanupMu objectLocks
+	local     Backend
+	Store     storage.Store
+	History   interface {
+		GetByPlatformMessage(context.Context, string, string, string) (*storage.ChatMessage, error)
+	} // 仅借用历史身份查询，媒体清理不取得写入或关闭能力。
 	Backend         Backend
 	Remote          Backend
 	remoteFactory   func(context.Context) (Backend, error)

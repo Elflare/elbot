@@ -1,4 +1,4 @@
-// config.go 提供配置解析、触发词和命令前缀的共享辅助逻辑。
+// config.go 提供配置解析和命令前缀的共享辅助逻辑。
 
 package share
 
@@ -25,18 +25,6 @@ func DecodeConfig(raw map[string]any, out any) error {
 		return fmt.Errorf("decode platform config: %w", err)
 	}
 	return nil
-}
-
-// StripTriggerKeyword removes only the matched keyword prefix from text.
-func StripTriggerKeyword(text string, keywords []string) (string, bool) {
-	text = strings.TrimSpace(text)
-	for _, keyword := range keywords {
-		keyword = strings.TrimSpace(keyword)
-		if keyword != "" && strings.HasPrefix(text, keyword) {
-			return strings.TrimSpace(strings.TrimPrefix(text, keyword)), true
-		}
-	}
-	return text, false
 }
 
 func HasCommandPrefix(text string, prefixes []string) bool {

@@ -3,11 +3,10 @@
 package cli
 
 import (
+	"elbot/internal/platform/share"
 	"errors"
 	"fmt"
 	"strings"
-
-	"elbot/internal/platform"
 )
 
 const defaultRemoteAddr = "127.0.0.1:32172"
@@ -39,7 +38,7 @@ type ClientConfig struct {
 
 func NewConfigFromPlatformConfig(raw map[string]any) (Config, error) {
 	cfg := defaultConfig()
-	if err := platform.DecodeConfig(raw, &cfg); err != nil {
+	if err := share.DecodeConfig(raw, &cfg); err != nil {
 		return Config{}, fmt.Errorf("decode cli config: %w", err)
 	}
 	applyConfigDefaults(&cfg)

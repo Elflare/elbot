@@ -10,7 +10,6 @@ import (
 	"elbot/internal/llm/chatcompletions"
 	api "elbot/internal/llm/responses"
 	"elbot/internal/modelmgr"
-	"elbot/internal/platform"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"encoding/json"
@@ -58,7 +57,7 @@ func TestSupervisorNativeResponseToolTurn(t *testing.T) {
 	t.Cleanup(func() { _ = models.Close(context.Background()) })
 	deps.Models = models
 	m := contractSupervisor(t, deps)
-	if err := m.HandleMessage(t.Context(), "@tool:contract_echo hello"); err != nil {
+	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "@tool:contract_echo hello"}); err != nil {
 		t.Fatal(err)
 	}
 	if echo.calls != 1 || len(client.requests) != 2 {
@@ -115,7 +114,7 @@ func TestSupervisorStatusSnapshotIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := m.HandleMessage(t.Context(), "hello"); err != nil {
+	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "hello"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := observe.Close(t.Context()); err != nil {
@@ -127,7 +126,7 @@ func TestSupervisorStatusSnapshotIsolation(t *testing.T) {
 		t.Errorf("usage snapshots: %v", totals)
 	}
 	mu.Unlock()
-	if err := m.HandleMessage(t.Context(), "again"); err != nil {
+	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "again"}); err != nil {
 		t.Fatal(err)
 	}
 	mu.Lock()
@@ -154,14 +153,14 @@ func TestSupervisorStopCancelsActiveMessage(t *testing.T) {
 	contractModels(t, &deps, client)
 	m := contractSupervisor(t, deps)
 	result := make(chan error, 1)
-	go func() { result <- m.HandleMessage(t.Context(), "hello") }()
+	go func() { result <- m.HandleMessage(t.Context(), MessageRequest{Text: "hello"}) }()
 	var call context.Context
 	select {
 	case call = <-client.entered:
 	case <-time.After(time.Second):
 		t.Fatal("model not started")
 	}
-	if err := m.HandleMessage(t.Context(), "/stop"); err != nil {
+	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "/stop"}); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -196,12 +195,12 @@ func TestSupervisorHookEntrypoints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := platform.WithMessageContext(t.Context(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{ConversationKind: contextinfo.ConversationGroup}}, TriggerKeywords: []string{"wake"}})
+	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{ConversationKind: contextinfo.ConversationGroup}})
 	for _, tc := range []struct {
 		text string
 		want bool
 	}{{"hello", false}, {"wake hello", true}, {"/stop", true}} {
-		if err := m.HandleMessage(ctx, tc.text); err != nil {
+		if err := m.HandleMessage(ctx, MessageRequest{Text: tc.text, TriggerKeywords: []string{"wake"}}); err != nil {
 			t.Fatal(err)
 		}
 		got := woken

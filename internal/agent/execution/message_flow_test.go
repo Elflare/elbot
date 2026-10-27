@@ -3,6 +3,7 @@ package execution
 import (
 	"bytes"
 	"context"
+	"elbot/internal/media"
 	"io"
 	"log/slog"
 	"net/http"
@@ -19,7 +20,6 @@ import (
 	"elbot/internal/llm/chatcompletions"
 
 	"elbot/internal/modelmgr"
-	"elbot/internal/platform"
 
 	"elbot/internal/storage"
 	"elbot/internal/turn"
@@ -41,9 +41,9 @@ func TestInboundTurnInputRoundTripWithoutPlatformContext(t *testing.T) {
 }
 
 func TestReplaceInboundTextSegmentsPreservesImage(t *testing.T) {
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Segments: []platform.MessageSegment{
-		{Type: platform.SegmentText, Text: "@tool:web 看看"},
-		{Type: platform.SegmentImage, URL: "data:image/png;base64,YWJj", MIMEType: "image/png"},
+	ctx := agentshare.WithMessageContext(context.Background(), agentshare.MessageContext{Segments: []agentshare.MessageSegment{
+		{Type: "text", Text: "@tool:web 看看"},
+		{Type: "image", Media: media.PlatformMedia{Type: "image", URL: "data:image/png;base64,YWJj", MIMEType: "image/png"}},
 	}})
 
 	segments := agentshare.ReplaceInboundTextSegments(ctx, "看看")

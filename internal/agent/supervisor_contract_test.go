@@ -90,7 +90,7 @@ func TestSupervisorToolPreloadExecutionAndPersistence(t *testing.T) {
 	if err != nil || !slices.Contains(completion.Texts(items), "@tool:contract_echo") || !slices.Contains(completion.Texts(items), "@tool:contract") {
 		t.Fatalf("completion: %v %v", items, err)
 	}
-	if err := m.HandleMessage(t.Context(), "@tool:contract_echo hello"); err != nil {
+	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "@tool:contract_echo hello"}); err != nil {
 		t.Fatal(err)
 	}
 	if echo.calls != 1 || len(client.requests) != 2 {
@@ -156,7 +156,7 @@ func TestSupervisorBindingSubscriptionsAndCommandMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := m.HandleMessage(t.Context(), "hello"); err != nil {
+	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "hello"}); err != nil {
 		t.Fatal(err)
 	}
 	observer.Disconnect()
@@ -166,7 +166,7 @@ func TestSupervisorBindingSubscriptionsAndCommandMetadata(t *testing.T) {
 		t.Errorf("binding snapshots: %#v", received)
 	}
 	mu.Unlock()
-	if err := m.HandleMessage(t.Context(), "/new"); err != nil {
+	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "/new"}); err != nil {
 		t.Fatal(err)
 	}
 	mu.Lock()

@@ -24,7 +24,6 @@ import (
 	"elbot/internal/platform/refcontext"
 	"elbot/internal/platform/share"
 	"elbot/internal/platform/telegram"
-	"elbot/internal/storage/sqlite"
 )
 
 func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps) error {
@@ -35,11 +34,6 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps) error {
 		return m.agentErr
 	}
 	var err error
-	m.historyStore, err = sqlite.NewChatHistory(m.ctx, cfg.Storage.ChatHistorySQLitePath)
-	if err != nil {
-		return err
-	}
-	m.history = m.historyStore.Repository()
 	if deps.Mode == "tui" {
 		m.primary = cli.New()
 		m.ownRuntime(m.primary, true, true)
@@ -61,10 +55,10 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps) error {
 		}
 	}
 	// 引用恢复只在根部连接；适配器不导入 refcontext 兄弟包。
-	referenceDeps := refcontext.Options{Store: deps.Store, ChatHistory: m.history}
+	referenceDeps := refcontext.Options{Store: deps.Store, ChatHistory: deps.ChatHistory}
 	adapterDeps := func(name string) share.AdapterDeps {
 		return share.AdapterDeps{
-			Store: deps.Store, ChatHistory: m.history,
+			Store: deps.Store, ChatHistory: deps.ChatHistory,
 			Superadmins: cfg.Security.Superadmins[name], CommandPrefixes: cfg.Commands.Prefixes,
 			ConfigDir: filepath.Dir(cfg.ConfigPath), AttachmentDir: filepath.Join(cfg.Sandbox.Root, "platform", name),
 			MaxReceiveFileBytes: cfg.PlatformFiles.MaxReceiveFileBytes, DownloadTimeoutSecs: cfg.PlatformFiles.DownloadTimeoutSecs,
@@ -188,8 +182,5 @@ func (m *Supervisor) configureCloseSteps() {
 	}
 	for _, adapter := range m.adapters {
 		m.closeSteps = append(m.closeSteps, closeStep{adapter.Name(), adapter.Close})
-	}
-	if m.historyStore != nil {
-		m.closeSteps = append(m.closeSteps, closeStep{"chat history", func(context.Context) error { return m.historyStore.Close() }})
 	}
 }

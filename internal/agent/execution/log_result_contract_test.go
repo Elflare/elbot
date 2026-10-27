@@ -12,7 +12,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/platform"
 	"elbot/internal/platform/dispatch"
 	"elbot/internal/signal"
 )
@@ -154,8 +153,8 @@ func TestSendOutputsUsesSourceLogResult(t *testing.T) {
 			backend := mediaSendFunc(func([]delivery.Output) (delivery.Receipt, events.LogResult, error) {
 				return businessReceipt, events.LogResult{ResultStatus: tc.status, Content: "source-specific diagnostic"}, tc.err
 			})
-			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Sender: backend})
-			sender := agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{Dispatcher: dispatch.New(dispatch.Options{Primary: &fakePlatform{}})})
+			ctx := context.Background()
+			sender := agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{Dispatcher: dispatch.New(dispatch.Options{Primary: backend})})
 			logResult, err := sender.SendOutputs(ctx, []delivery.Output{delivery.Text("business text")})
 			if err != tc.err || logResult.ResultStatus != tc.status || !strings.Contains(logResult.Content, "source-specific diagnostic") {
 				t.Fatalf("log result=%#v error=%v", logResult, err)

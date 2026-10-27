@@ -19,12 +19,45 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/media"
-	"elbot/internal/platform"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/tool/builtin"
 	"elbot/internal/tool/chat_history"
 )
+
+func TestHistoryBridgeProjectsStoredReplyAndOrderedMedia(t *testing.T) {
+	ctx, fixture, resolver := newHistoryMediaToolTest(t)
+	reply := storage.ChatReply{MessageID: "reply:opaque-id", SenderID: "sender", SenderName: "名字", Text: "quoted"}
+	row := storage.ChatMessage{Platform: "p", PlatformScopeID: "s", PlatformMessageID: "opaque/id", SenderID: "author", SenderName: "nickname", Text: "mixed", ReplyToPlatformMessageID: reply.MessageID, Metadata: storage.MarshalChatMetadata(reply), Segments: storage.MarshalChatSegments([]storage.ChatSegment{
+		{Type: "text", Text: "before"}, {Type: "file", PlatformFileID: "file"}, {Type: "image", PlatformFileID: "first"}, {Type: "text", Text: "between"}, {Type: "image", PlatformFileID: "second"},
+	})}
+	if err := fixture.history.Append(ctx, &row); err != nil {
+		t.Fatal(err)
+	}
+	bridge := &chatHistoryBridge{history: fixture.history, platform: resolver, media: fixture.center}
+	key := toolshare.MessageKey{Platform: "p", ScopeID: "s", MessageID: row.PlatformMessageID}
+	got, err := bridge.GetMessage(ctx, key)
+	if err != nil || got.Key != key || got.SenderID != row.SenderID || got.SenderName != row.SenderName || got.Text != row.Text || got.Reply != (toolshare.ReplyContext{MessageID: reply.MessageID, SenderID: reply.SenderID, SenderName: reply.SenderName, Text: reply.Text}) {
+		t.Fatalf("projection=%+v err=%v", got, err)
+	}
+	if len(got.Media) != 3 || got.Media[0].IsImage || !got.Media[1].IsImage || !got.Media[2].IsImage || resolver.calls != 0 {
+		t.Fatal("media order/download changed", got.Media, resolver.calls)
+	}
+	key.ScopeID = "other"
+	if _, err := bridge.GetMessage(ctx, key); !errors.Is(err, toolshare.ErrNotFound) {
+		t.Fatal("scope/not-found conversion", err)
+	}
+	for _, tc := range []struct{ source, want error }{
+		{fmt.Errorf("wrapped: %w", storage.ErrNotFound), toolshare.ErrNotFound},
+		{media.ErrHistoryMediaIndex, toolshare.ErrMediaIndex},
+		{media.ErrHistoryFetchLimit, toolshare.ErrFetchLimit},
+		{context.Canceled, context.Canceled},
+	} {
+		if err := historyError(tc.source); !errors.Is(err, tc.want) {
+			t.Fatal(tc.source, err)
+		}
+	}
+}
 
 type getMediaResolver struct {
 	data  []byte
@@ -87,7 +120,7 @@ func newHistoryMediaToolTest(t *testing.T) (context.Context, historyMediaToolFix
 	resolver := &getMediaResolver{}
 	ctx = contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ScopeID: "s"}})
 	mediaRuntime := toolmedia.NewMediaRuntime(center, root)
-	manager := chat_history.NewManager(&chatHistoryBridge{platform: historyPlatformTest{ChatHistoryRepository: history.Repository(), resolve: resolver.ResolveMedia}, media: mediaRuntime}, time.Now)
+	manager := chat_history.NewManager(&chatHistoryBridge{history: history.Repository(), platform: resolver, media: mediaRuntime}, time.Now)
 	return ctx, historyMediaToolFixture{GetMediaTool: builtin.NewGetMediaTool(manager), manager: manager, history: history.Repository(), center: mediaRuntime, mediaCenter: center}, resolver
 }
 
@@ -169,7 +202,7 @@ func TestHistoryQueriesShowMediaWithoutDownload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids, err := tools.center.HistoryIDs(ctx, historyMediaMessage(historyTestMessage(*row)))
+	ids, err := tools.center.HistoryIDs(ctx, historyMediaMessage(*row))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +229,7 @@ func TestGetMediaReturnsCompressedHistoryID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids, err := tools.center.HistoryIDs(ctx, historyMediaMessage(historyTestMessage(*row)))
+	ids, err := tools.center.HistoryIDs(ctx, historyMediaMessage(*row))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,64 +248,6 @@ func TestGetMediaReturnsCompressedHistoryID(t *testing.T) {
 	}
 }
 
-// 平台替身只将已持有仓库适配成根部公开能力，实际查询仍由 SQLite 执行。
-type historyPlatformTest struct {
-	storage.ChatHistoryRepository
-	resolve func(context.Context, string, media.PlatformMedia, int64) (delivery.Source, error)
-}
-
-func (p historyPlatformTest) SearchChatHistory(ctx context.Context, req platform.ChatHistorySearchRequest) ([]platform.ChatMessage, error) {
-	rows, err := p.Search(ctx, storage.ChatHistorySearchRequest{Platform: req.Platform, PlatformScopeID: req.ScopeID, QueryTerms: req.QueryTerms, QueryMode: req.QueryMode, SenderQuery: req.SenderQuery, Since: req.Since, Until: req.Until, Limit: req.Limit})
-	return historyTestMessages(rows), historyTestError(err)
-}
-func (p historyPlatformTest) ChatHistoryAround(ctx context.Context, req platform.ChatHistoryAroundRequest) ([]platform.ChatMessage, error) {
-	rows, err := p.Around(ctx, storage.ChatHistoryAroundRequest{Platform: req.Platform, PlatformScopeID: req.ScopeID, PlatformMessageID: req.MessageID, Before: req.Before, After: req.After})
-	return historyTestMessages(rows), historyTestError(err)
-}
-func (p historyPlatformTest) GetChatHistoryMessage(ctx context.Context, name, scopeID, messageID string) (*platform.ChatMessage, error) {
-	row, err := p.GetByPlatformMessage(ctx, name, scopeID, messageID)
-	if err != nil {
-		return nil, historyTestError(err)
-	}
-	message := historyTestMessage(*row)
-	return &message, nil
-}
-func (p historyPlatformTest) ResolveMedia(ctx context.Context, name string, input media.PlatformMedia, limit int64) (delivery.Source, error) {
-	return p.resolve(ctx, name, input, limit)
-}
-func historyTestMessages(rows []storage.ChatMessage) []platform.ChatMessage {
-	result := make([]platform.ChatMessage, len(rows))
-	for i, row := range rows {
-		result[i] = historyTestMessage(row)
-	}
-	return result
-}
-func historyTestMessage(row storage.ChatMessage) platform.ChatMessage {
-	message := platform.ChatMessage{ID: row.ID, Platform: row.Platform, ScopeID: row.PlatformScopeID, MessageID: row.PlatformMessageID, SenderID: row.SenderID, SenderName: row.SenderName, Text: row.Text, CreatedAt: row.CreatedAt}
-	var segments []struct {
-		Type   string `json:"type"`
-		FileID string `json:"platform_file_id"`
-	}
-	if err := json.Unmarshal([]byte(row.Segments), &segments); err == nil {
-		for _, segment := range segments {
-			if segment.Type == "image" || segment.Type == "file" {
-				message.Media = append(message.Media, media.PlatformMedia{Type: segment.Type, PlatformFileID: segment.FileID})
-			}
-		}
-	}
-	var metadata struct {
-		Reply map[string]string `json:"reply"`
-	}
-	_ = json.Unmarshal([]byte(row.Metadata), &metadata)
-	message.Reply = platform.ReplyContext{MessageID: row.ReplyToPlatformMessageID, SenderID: metadata.Reply["sender_id"], SenderName: metadata.Reply["sender_name"], Text: metadata.Reply["text"]}
-	return message
-}
-func historyTestError(err error) error {
-	if errors.Is(err, storage.ErrNotFound) {
-		return platform.ErrChatHistoryNotFound
-	}
-	return err
-}
 func newHistoryTestManager(repository storage.ChatHistoryRepository) *chat_history.Manager {
-	return chat_history.NewManager(&chatHistoryBridge{platform: historyPlatformTest{ChatHistoryRepository: repository}}, time.Now)
+	return chat_history.NewManager(&chatHistoryBridge{history: repository}, time.Now)
 }

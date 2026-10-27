@@ -4,8 +4,9 @@ import (
 	"context"
 	"strings"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
-	"elbot/internal/platform"
+	"elbot/internal/media"
 	"elbot/internal/turn"
 )
 
@@ -15,7 +16,7 @@ func InboundSegments(ctx context.Context, text string) []llm.MessageSegment {
 	if input, ok := ctx.Value(inboundTurnInputContextKey{}).(turn.Input); ok && len(input.Segments) > 0 {
 		return append([]llm.MessageSegment(nil), input.Segments...)
 	}
-	if msg, ok := platform.MessageContextFrom(ctx); ok && len(msg.Segments) > 0 {
+	if msg, ok := MessageContextFrom(ctx); ok && len(msg.Segments) > 0 {
 		return PlatformSegmentsToLLM(msg.Segments, text)
 	}
 	return llm.TextSegments(text)
@@ -27,7 +28,7 @@ func InboundTurnInput(ctx context.Context, text string) turn.Input {
 		return input
 	}
 	platformText := text
-	if msg, ok := platform.MessageContextFrom(ctx); ok && strings.TrimSpace(msg.RawText) != "" {
+	if msg, ok := MessageContextFrom(ctx); ok && strings.TrimSpace(msg.RawText) != "" {
 		platformText = msg.RawText
 	}
 	segments := InboundSegments(ctx, text)
@@ -37,7 +38,7 @@ func InboundTurnInput(ctx context.Context, text string) turn.Input {
 func WithInboundTurnInput(ctx context.Context, input turn.Input) context.Context {
 	input.Segments = append([]llm.MessageSegment(nil), input.Segments...)
 	ctx = context.WithValue(ctx, inboundTurnInputContextKey{}, input)
-	msg, ok := platform.MessageContextFrom(ctx)
+	msg, ok := MessageContextFrom(ctx)
 	if !ok {
 		return ctx
 	}
@@ -45,11 +46,11 @@ func WithInboundTurnInput(ctx context.Context, input turn.Input) context.Context
 	msg.Segments = llmSegmentsToPlatform(input.Segments)
 	msg.ContextText = ""
 	msg.ContextSegments = nil
-	return platform.WithMessageContext(ctx, msg)
+	return WithMessageContext(ctx, msg)
 }
 
 func InboundContextSegments(ctx context.Context, text string) []llm.MessageSegment {
-	if msg, ok := platform.MessageContextFrom(ctx); ok {
+	if msg, ok := MessageContextFrom(ctx); ok {
 		if len(msg.ContextSegments) > 0 {
 			return PlatformSegmentsToLLM(msg.ContextSegments, msg.ContextText)
 		}
@@ -61,11 +62,12 @@ func InboundContextSegments(ctx context.Context, text string) []llm.MessageSegme
 }
 
 func InboundReplyMessageID(ctx context.Context) string {
-	if msg, ok := platform.MessageContextFrom(ctx); ok {
+	if msg, ok := MessageContextFrom(ctx); ok {
 		if id := strings.TrimSpace(msg.Reply.MessageID); id != "" {
 			return id
 		}
-		return strings.TrimSpace(msg.ReplyToMessageID)
+		info, _ := contextinfo.ConversationFromContext(ctx)
+		return strings.TrimSpace(info.ReplyToMessageID)
 	}
 	return ""
 }
@@ -75,14 +77,14 @@ func WithInboundSegments(ctx context.Context, segments []llm.MessageSegment) con
 	input.Text = llm.SegmentsTextOnly(segments)
 	input.Segments = append([]llm.MessageSegment(nil), segments...)
 	ctx = context.WithValue(ctx, inboundTurnInputContextKey{}, input)
-	msg, ok := platform.MessageContextFrom(ctx)
+	msg, ok := MessageContextFrom(ctx)
 	if !ok {
 		return ctx
 	}
 	msg.Segments = llmSegmentsToPlatform(segments)
 	msg.ContextText = ""
 	msg.ContextSegments = nil
-	return platform.WithMessageContext(ctx, msg)
+	return WithMessageContext(ctx, msg)
 }
 
 func ReplaceInboundTextSegments(ctx context.Context, text string) []llm.MessageSegment {
@@ -150,16 +152,16 @@ func HasInboundNonTextSegment(ctx context.Context) bool {
 	return false
 }
 
-func llmSegmentsToPlatform(segments []llm.MessageSegment) []platform.MessageSegment {
-	out := make([]platform.MessageSegment, 0, len(segments))
+func llmSegmentsToPlatform(segments []llm.MessageSegment) []MessageSegment {
+	out := make([]MessageSegment, 0, len(segments))
 	for _, segment := range segments {
 		switch segment.Type {
 		case llm.SegmentText:
-			out = append(out, platform.MessageSegment{Type: platform.SegmentText, Text: segment.Text})
+			out = append(out, MessageSegment{Type: "text", Text: segment.Text})
 		case llm.SegmentImage:
-			out = append(out, platform.MessageSegment{Type: platform.SegmentImage, Text: segment.Text, URL: segment.URL, MediaID: segment.MediaID, MIMEType: segment.MIMEType, Name: segment.Name})
+			out = append(out, MessageSegment{Type: "image", Text: segment.Text, Media: media.PlatformMedia{Type: "image", URL: segment.URL, MediaID: segment.MediaID, MIMEType: segment.MIMEType, Name: segment.Name}})
 		case llm.SegmentFile:
-			out = append(out, platform.MessageSegment{Type: platform.SegmentFile, Text: segment.Text, URL: segment.URL, MediaID: segment.MediaID, MIMEType: segment.MIMEType, Name: segment.Name})
+			out = append(out, MessageSegment{Type: "file", Text: segment.Text, Media: media.PlatformMedia{Type: "file", URL: segment.URL, MediaID: segment.MediaID, MIMEType: segment.MIMEType, Name: segment.Name}})
 		}
 	}
 	return out

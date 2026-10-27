@@ -13,7 +13,6 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
-	"elbot/internal/platform"
 	"elbot/internal/session"
 	"elbot/internal/signal"
 )
@@ -65,10 +64,8 @@ func (m *Manager) route(ctx context.Context, n events.Notification) *signal.Emis
 	if strings.TrimSpace(n.Text) == "" {
 		return signal.Resolved(signal.Result[events.NotificationReceipt]{Err: errors.New("notification text is empty")})
 	}
-	if msg, ok := platform.MessageContextFrom(ctx); ok {
-		if suppressed, ok := msg.Sender.(interface{ NotificationsSuppressed() bool }); ok && suppressed.NotificationsSuppressed() {
-			return signal.Resolved(signal.Result[events.NotificationReceipt]{})
-		}
+	if contextinfo.BackgroundContext(ctx) && n.Target == (events.NotificationTarget{}) {
+		return signal.Resolved(signal.Result[events.NotificationReceipt]{})
 	}
 	if n.Origin != nil {
 		ctx = contextinfo.WithConversation(ctx, *n.Origin)

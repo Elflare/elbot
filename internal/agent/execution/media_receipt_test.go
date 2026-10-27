@@ -8,7 +8,6 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/media"
-	"elbot/internal/platform"
 	"elbot/internal/platform/dispatch"
 	"elbot/internal/testutil"
 )
@@ -17,12 +16,12 @@ func TestMediaReceiptDoesNotGuessFallbackOrRetryCacheFailure(t *testing.T) {
 	ctx := context.Background()
 	store := testutil.NewSQLiteStore(t)
 	root := t.TempDir()
-	router := dispatch.New(dispatch.Options{Primary: &fakePlatform{}, Store: store, Media: media.NewManager(store, root, &media.LocalBackend{Root: root}), MediaRetentionDays: 7})
 	outputs := []delivery.Output{{Kind: delivery.KindImage, Source: delivery.Source{Data: []byte("image")}}}
 	sender := mediaSendFunc(func([]delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		return delivery.Receipt{PlatformMessageIDs: []string{"fallback"}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	})
-	_, _, err := router.SendChat(platform.WithMessageContext(ctx, platform.MessageContext{Sender: sender}), outputs)
+	router := dispatch.New(dispatch.Options{Primary: sender, Store: store, Media: media.NewManager(store, root, &media.LocalBackend{Root: root}), MediaRetentionDays: 7})
+	_, _, err := router.SendChat(ctx, outputs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,13 +40,16 @@ func TestMediaReceiptDoesNotGuessFallbackOrRetryCacheFailure(t *testing.T) {
 			SentMessages:       []delivery.SentMessage{{Platform: "telegram", ScopeID: "group:9", PlatformMessageID: "sent", OutputIndexes: []int{0}}},
 		}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	})
-	receipt, _, err := router.SendChat(platform.WithMessageContext(ctx, platform.MessageContext{Sender: sender}), outputs)
+	router = dispatch.New(dispatch.Options{Primary: sender, Store: store, Media: media.NewManager(store, root, &media.LocalBackend{Root: root}), MediaRetentionDays: 7})
+	receipt, _, err := router.SendChat(ctx, outputs)
 	if err != nil || calls != 1 || len(receipt.PlatformMessageIDs) != 1 {
 		t.Fatalf("cache failure changed send result: %#v %d %v", receipt, calls, err)
 	}
 }
 
 type mediaSendFunc func([]delivery.Output) (delivery.Receipt, events.LogResult, error)
+
+func (mediaSendFunc) Name() string { return "cli" }
 
 func (f mediaSendFunc) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	return f(outputs)

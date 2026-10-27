@@ -16,7 +16,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/memory/resident"
-	"elbot/internal/platform"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool/preload"
@@ -186,20 +185,18 @@ func TestConversationMetaSystemPromptSourceFields(t *testing.T) {
 	}
 }
 
-func TestConversationMetaFromPlatformContext(t *testing.T) {
+func TestConversationMetaFromPublicContext(t *testing.T) {
 	tests := []struct {
 		name  string
-		msg   platform.MessageContext
+		msg   contextinfo.Conversation
 		scope session.Scope
 		want  contextinfo.Conversation
 	}{
 		{
 			name: "group card",
-			msg: platform.MessageContext{
-				Conversation: contextinfo.Conversation{
-					Source:   contextinfo.Source{Platform: "qqonebot", ConversationKind: contextinfo.ConversationGroup, ConversationID: "9"},
-					Identity: contextinfo.Identity{PlatformUserID: "1001", Nickname: "昵称", GroupCard: "群名片"},
-				},
+			msg: contextinfo.Conversation{
+				Source:   contextinfo.Source{Platform: "qqonebot", ConversationKind: contextinfo.ConversationGroup, ConversationID: "9"},
+				Identity: contextinfo.Identity{PlatformUserID: "1001", Nickname: "昵称", GroupCard: "群名片"},
 			},
 			scope: session.Scope{Platform: "qqonebot", PlatformScopeID: "group:9"},
 			want: contextinfo.Conversation{
@@ -209,11 +206,9 @@ func TestConversationMetaFromPlatformContext(t *testing.T) {
 		},
 		{
 			name: "group nickname fallback",
-			msg: platform.MessageContext{
-				Conversation: contextinfo.Conversation{
-					Source:   contextinfo.Source{Platform: "telegram", ConversationKind: contextinfo.ConversationGroup, ConversationID: "-1009"},
-					Identity: contextinfo.Identity{PlatformUserID: "1001", Nickname: "昵称"},
-				},
+			msg: contextinfo.Conversation{
+				Source:   contextinfo.Source{Platform: "telegram", ConversationKind: contextinfo.ConversationGroup, ConversationID: "-1009"},
+				Identity: contextinfo.Identity{PlatformUserID: "1001", Nickname: "昵称"},
 			},
 			scope: session.Scope{Platform: "telegram", PlatformScopeID: "supergroup:-1009"},
 			want: contextinfo.Conversation{
@@ -223,11 +218,9 @@ func TestConversationMetaFromPlatformContext(t *testing.T) {
 		},
 		{
 			name: "private ignores group card",
-			msg: platform.MessageContext{
-				Conversation: contextinfo.Conversation{
-					Source:   contextinfo.Source{Platform: "qqofficial", ScopeID: "c2c:openid-1", ConversationKind: contextinfo.ConversationPrivate, ConversationID: "openid-1"},
-					Identity: contextinfo.Identity{PlatformUserID: "openid-1", Nickname: "昵称", GroupCard: "不应使用"},
-				},
+			msg: contextinfo.Conversation{
+				Source:   contextinfo.Source{Platform: "qqofficial", ScopeID: "c2c:openid-1", ConversationKind: contextinfo.ConversationPrivate, ConversationID: "openid-1"},
+				Identity: contextinfo.Identity{PlatformUserID: "openid-1", Nickname: "昵称", GroupCard: "不应使用"},
 			},
 			scope: session.Scope{Platform: "qqofficial", PlatformScopeID: "c2c:openid-1"},
 			want: contextinfo.Conversation{
@@ -237,11 +230,9 @@ func TestConversationMetaFromPlatformContext(t *testing.T) {
 		},
 		{
 			name: "channel",
-			msg: platform.MessageContext{
-				Conversation: contextinfo.Conversation{
-					Source:   contextinfo.Source{Platform: "qqofficial", ConversationKind: contextinfo.ConversationChannel, ConversationID: "channel-1"},
-					Identity: contextinfo.Identity{PlatformUserID: "user-1", Nickname: "昵称"},
-				},
+			msg: contextinfo.Conversation{
+				Source:   contextinfo.Source{Platform: "qqofficial", ConversationKind: contextinfo.ConversationChannel, ConversationID: "channel-1"},
+				Identity: contextinfo.Identity{PlatformUserID: "user-1", Nickname: "昵称"},
 			},
 			scope: session.Scope{Platform: "qqofficial", PlatformScopeID: "channel:channel-1"},
 			want: contextinfo.Conversation{
@@ -251,11 +242,9 @@ func TestConversationMetaFromPlatformContext(t *testing.T) {
 		},
 		{
 			name: "group missing nickname",
-			msg: platform.MessageContext{
-				Conversation: contextinfo.Conversation{
-					Source:   contextinfo.Source{Platform: "qqonebot", ConversationKind: contextinfo.ConversationGroup, ConversationID: "9"},
-					Identity: contextinfo.Identity{PlatformUserID: " 1001 "},
-				},
+			msg: contextinfo.Conversation{
+				Source:   contextinfo.Source{Platform: "qqonebot", ConversationKind: contextinfo.ConversationGroup, ConversationID: "9"},
+				Identity: contextinfo.Identity{PlatformUserID: " 1001 "},
 			},
 			scope: session.Scope{Platform: "qqonebot", PlatformScopeID: "group:9"},
 			want: contextinfo.Conversation{
@@ -265,11 +254,9 @@ func TestConversationMetaFromPlatformContext(t *testing.T) {
 		},
 		{
 			name: "group missing user ID",
-			msg: platform.MessageContext{
-				Conversation: contextinfo.Conversation{
-					Source:   contextinfo.Source{Platform: "qqonebot", ConversationKind: contextinfo.ConversationGroup, ConversationID: "9"},
-					Identity: contextinfo.Identity{Nickname: "昵称"},
-				},
+			msg: contextinfo.Conversation{
+				Source:   contextinfo.Source{Platform: "qqonebot", ConversationKind: contextinfo.ConversationGroup, ConversationID: "9"},
+				Identity: contextinfo.Identity{Nickname: "昵称"},
 			},
 			scope: session.Scope{Platform: "qqonebot", PlatformScopeID: "group:9"},
 			want:  contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ConversationKind: "group", ConversationID: "9"}, Identity: contextinfo.Identity{Nickname: "昵称"}},
@@ -277,7 +264,7 @@ func TestConversationMetaFromPlatformContext(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := platform.WithMessageContext(context.Background(), tt.msg)
+			ctx := contextinfo.WithConversation(context.Background(), tt.msg)
 			got, err := (dialogue.ConversationMetaSystemPromptSource{}).Parts(ctx, agentshare.SystemPromptRequest{Scope: tt.scope})
 			want, wantErr := (dialogue.ConversationMetaSystemPromptSource{}).Parts(contextinfo.WithConversation(context.Background(), tt.want), agentshare.SystemPromptRequest{})
 			if err != nil || wantErr != nil || len(got) != 1 || len(want) != 1 || got[0] != want[0] {
@@ -591,7 +578,7 @@ func TestPromptBuilderSummaryPreservesUserImageSegment(t *testing.T) {
 }
 
 func TestConfirmAppendOverridesConfirmationSegments(t *testing.T) {
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Segments: []platform.MessageSegment{{Type: platform.SegmentText, Text: "y"}}})
+	ctx := agentshare.WithMessageContext(context.Background(), agentshare.MessageContext{Segments: []agentshare.MessageSegment{{Type: "text", Text: "y"}}})
 	merged := "补充信息：\n1. A\n2. B"
 	ctx = agentshare.WithInboundSegments(ctx, llm.TextSegments(merged))
 

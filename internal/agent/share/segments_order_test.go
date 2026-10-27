@@ -3,7 +3,6 @@ package share
 import (
 	"context"
 	"elbot/internal/llm"
-	"elbot/internal/platform"
 	"reflect"
 	"testing"
 )
@@ -26,7 +25,7 @@ func TestReplaceInboundTextSegmentsKeepsOrder(t *testing.T) {
 				{Type: llm.SegmentImage, URL: "https://example.com/b.png"},
 				{Type: llm.SegmentText, Text: tc.last},
 			}
-			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Segments: llmSegmentsToPlatform(segments)})
+			ctx := WithMessageContext(context.Background(), MessageContext{Segments: llmSegmentsToPlatform(segments)})
 			want := append([]llm.MessageSegment(nil), segments...)
 			want[len(want)-1].Text = tc.wantLast
 			got := ReplaceInboundTextSegments(ctx, llm.SegmentsTextOnly(want))

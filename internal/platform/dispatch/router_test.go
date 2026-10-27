@@ -13,15 +13,14 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/platform"
+	"elbot/internal/platform/share"
 )
 
 type testSender struct {
 	send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
 }
 
-func (s testSender) Name() string                                        { return "primary" }
-func (s testSender) Run(context.Context, platform.PlatformHandler) error { return nil }
+func (s testSender) Name() string { return "primary" }
 func (s testSender) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	return s.send(ctx, delivery.Target{}, outputs)
 }
@@ -106,7 +105,7 @@ func TestRouterExplicitTargetOverridesSenderAndKeepsPartialReceipt(t *testing.T)
 		return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	}}
 	router := New(Options{Primary: primary})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Sender: override})
+	ctx := share.WithMessageContext(context.Background(), share.MessageContext{Sender: override})
 	if _, _, err := router.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("reply")}); err != nil {
 		t.Fatal(err)
 	}

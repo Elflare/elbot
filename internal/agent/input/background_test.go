@@ -13,7 +13,6 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
-	"elbot/internal/platform"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -106,10 +105,8 @@ func TestBackgroundPreparationKeepsContextAndMultimodalSkillMaterial(t *testing.
 	if beforePath != afterPath {
 		t.Fatal(afterPath)
 	}
-	msg, _ := platform.MessageContextFrom(h.runContext)
-	quiet, ok := msg.Sender.(interface{ NotificationsSuppressed() bool })
-	if !ok || !quiet.NotificationsSuppressed() {
-		t.Fatal("background notifications are not suppressed")
+	if !contextinfo.BackgroundContext(h.runContext) {
+		t.Fatal("background execution lost its output suppression identity")
 	}
 	if !h.input.NeedsElyphRules || !strings.Contains(h.input.Text, "SKILL_GUIDANCE") {
 		t.Fatalf("lost instructions: %+v", h.input)

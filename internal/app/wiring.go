@@ -16,9 +16,14 @@ import (
 func buildBusinessLines(ctx context.Context, resources *sharedResources, mode RunMode) (businessLines, error) {
 	lines := businessLines{}
 	cfg := resources.config
-	// TODO: Platform 内部拥有聊天历史存储，Mode 取 "tui" 或 "service"。
+	// 历史库由 App 持有，各线只借用实际使用的能力。
+	history := resources.historyStore.Repository()
+	resources.media.History = history
+	if err := resources.media.ReconcileHistory(ctx); err != nil {
+		return lines, fmt.Errorf("reconcile history media: %w", err)
+	}
 	platformSupervisor, err := platform.NewSupervisor(ctx, cfg, platform.SupervisorDeps{
-		Mode: string(mode), Store: resources.store, Media: resources.media,
+		Mode: string(mode), Store: resources.store, Media: resources.media, ChatHistory: history,
 		Permission: resources.permission, Logs: resources.logs,
 	})
 	if err := register(lines, "platform", 4, platformSupervisor, err); err != nil {
@@ -26,7 +31,7 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 	}
 	toolSupervisor, err := tool.NewSupervisor(ctx, cfg, tool.SupervisorDeps{
 		Store: resources.store, Models: resources.models, Media: resources.media, Permission: resources.permission,
-		Platform: platformSupervisor,
+		Platform: platformSupervisor, ChatHistory: history,
 	})
 	if err := register(lines, "tool", 1, toolSupervisor, err); err != nil {
 		return lines, err
@@ -41,7 +46,7 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 	agentSupervisor, err := agent.NewSupervisor(ctx, cfg, agent.SupervisorDeps{
 		Store: resources.store, Models: resources.models, Media: resources.media,
 		Permission: resources.permission, Logs: resources.logs,
-		Tools: toolSupervisor, Hooks: hookSupervisor, Platform: platformSupervisor,
+		Tools: toolSupervisor, Hooks: hookSupervisor, Platform: platformSupervisor, ChatHistory: history,
 	})
 	if err := register(lines, "agent", 2, agentSupervisor, err); err != nil {
 		return lines, err
@@ -51,7 +56,7 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 	backgroundSupervisor, err := background.NewSupervisor(ctx, cfg, background.SupervisorDeps{
 		Store: resources.store, Models: resources.models, Media: resources.media,
 		Logs:  resources.logs,
-		Agent: agentSupervisor, Tools: toolSupervisor, Platform: platformSupervisor,
+		Agent: agentSupervisor, Tools: toolSupervisor, Platform: platformSupervisor, ChatHistory: history,
 	})
 	if err := register(lines, "background", 5, backgroundSupervisor, err); err != nil {
 		return lines, err
@@ -64,8 +69,6 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 	if err := platformSupervisor.ConnectAgent(agentSupervisor); err != nil {
 		return lines, fmt.Errorf("connect platform agent: %w", err)
 	}
-	// TODO: Platform 提供聊天历史的公开查询与清理能力后，接入 Media.History，
-	// 执行 ReconcileHistory；Tool、Background 的历史能力由 Platform 总管提供。
 	// App 只交付总管，不取得内部 Registry、Manager、Session 或执行协调器。
 	return lines, nil
 }

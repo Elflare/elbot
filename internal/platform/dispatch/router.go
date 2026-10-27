@@ -13,7 +13,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/media"
-	"elbot/internal/platform"
+	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 )
 
@@ -22,8 +22,14 @@ type Options struct {
 		Name() string
 		delivery.MessageSender
 	}
-	Store              storage.Store
-	Media              *media.Manager
+	Store storage.Store
+	Media interface {
+		Metadata(context.Context, string) (*storage.Media, error)
+		ImportURL(context.Context, string, media.Input) (*storage.Media, error)
+		ImportFile(context.Context, string, media.Input) (*storage.Media, error)
+		ImportBytes(context.Context, []byte, media.Input) (*storage.Media, error)
+		ResolveForOutput(context.Context, string) (delivery.Source, func(), error)
+	}
 	MediaRetentionDays int
 }
 
@@ -32,10 +38,16 @@ type Router struct {
 		Name() string
 		delivery.MessageSender
 	}
-	mu                 sync.RWMutex
-	senders            map[string]delivery.MessageSender
-	store              storage.Store
-	media              *media.Manager
+	mu      sync.RWMutex
+	senders map[string]delivery.MessageSender
+	store   storage.Store
+	media   interface {
+		Metadata(context.Context, string) (*storage.Media, error)
+		ImportURL(context.Context, string, media.Input) (*storage.Media, error)
+		ImportFile(context.Context, string, media.Input) (*storage.Media, error)
+		ImportBytes(context.Context, []byte, media.Input) (*storage.Media, error)
+		ResolveForOutput(context.Context, string) (delivery.Source, func(), error)
+	}
 	mediaRetentionDays int
 }
 
@@ -57,7 +69,7 @@ func (r *Router) RegisterPlatform(sender interface {
 
 func (r *Router) sender(ctx context.Context, target delivery.Target) (delivery.MessageSender, error) {
 	if target.Empty() {
-		if msg, ok := platform.MessageContextFrom(ctx); ok && msg.Sender != nil {
+		if msg, ok := share.MessageContextFrom(ctx); ok && msg.Sender != nil {
 			return msg.Sender, nil
 		}
 	}

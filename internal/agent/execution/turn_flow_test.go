@@ -12,8 +12,6 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-
-	"elbot/internal/platform"
 )
 
 func TestConfirmationWaitTimeoutUsesSessionTTLAsUpperBound(t *testing.T) {
@@ -62,9 +60,7 @@ func TestConfirmationWaitTimeoutUsesSessionTTLAsUpperBound(t *testing.T) {
 				IdleExpiration:          sessionIdleExpirationConfig(tt.cfg),
 				UserConfirmationTimeout: 10 * time.Minute,
 			})
-			ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{
-				Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ScopeID: tt.scopeID}, Identity: contextinfo.Identity{PlatformUserID: "1"}},
-			})
+			ctx := agentshare.WithMessageContext(contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ScopeID: tt.scopeID}, Identity: contextinfo.Identity{PlatformUserID: "1"}}), agentshare.MessageContext{})
 			ctx = contextinfo.WithActor(ctx, contextinfo.Actor{ID: "test:1", Role: tt.role})
 			if got := policy.WaitTimeout(ctx); got != tt.want {
 				t.Fatalf("confirmation timeout = %s, want %s", got, tt.want)

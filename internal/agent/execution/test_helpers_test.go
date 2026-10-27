@@ -16,7 +16,6 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
-	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -88,8 +87,6 @@ func (b *safeStringBuilder) Reset() {
 }
 
 func (p *fakePlatform) Name() string { return "cli" }
-
-func (p *fakePlatform) Run(context.Context, platform.PlatformHandler) error { return nil }
 
 func (p *fakePlatform) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	p.out.WriteString(delivery.FallbackOutput(outputs).Text)

@@ -1,6 +1,6 @@
 // media_test.go 验证随组件迁入的既有行为。
 
-package share
+package storage
 
 import (
 	"reflect"
@@ -9,14 +9,14 @@ import (
 )
 
 func TestChatSegmentsPreserveOrderAndRemoveTransientSources(t *testing.T) {
-	segments := []MessageSegment{
-		{Type: SegmentText, Text: "hello"},
-		{Type: SegmentImage, URL: "https://example.com/a.png", PlatformFileID: "file-id", Name: "a.png", MIMEType: "image/png", Size: 42},
-		{Type: SegmentFile, URL: "data:image/png;base64,c2VjcmV0", Name: "C:\\media\\secret.txt", MediaID: "media:secret", PlatformFileID: "C:/media/secret.txt"},
-		{Type: SegmentImage, URL: "https://api.telegram.org/file/bot123:secret/a.jpg", Name: "base64://secret"},
-		{Type: SegmentImage, URL: "https://example.com/a?X-Amz-Signature=secret"},
-		{Type: SegmentImage, URL: "https://example.com/a?rkey=secret"},
-		{Type: SegmentImage, URL: "https://example.com/a?token=secret"},
+	segments := []ChatSegment{
+		{Type: "text", Text: "hello"},
+		{Type: "image", URL: "https://example.com/a.png", PlatformFileID: "file-id", Name: "a.png", MIMEType: "image/png", Size: 42},
+		{Type: "file", URL: "data:image/png;base64,c2VjcmV0", Name: "C:\\media\\secret.txt", MediaID: "media:secret", PlatformFileID: "C:/media/secret.txt"},
+		{Type: "image", URL: "https://api.telegram.org/file/bot123:secret/a.jpg", Name: "base64://secret"},
+		{Type: "image", URL: "https://example.com/a?X-Amz-Signature=secret"},
+		{Type: "image", URL: "https://example.com/a?rkey=secret"},
+		{Type: "image", URL: "https://example.com/a?token=secret"},
 	}
 	segments = append(segments, segments[1])
 	raw := MarshalChatSegments(segments)

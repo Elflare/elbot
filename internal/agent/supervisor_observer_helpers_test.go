@@ -9,7 +9,6 @@ import (
 	"elbot/internal/completion"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/platform"
 	"elbot/internal/platform/dispatch"
 	"elbot/internal/platform/notification"
 	"elbot/internal/signal"
@@ -26,6 +25,8 @@ type assemblyPlatform struct {
 	completer *completion.Service
 }
 
+type notificationSenderKey struct{}
+
 func connectTestNotifications(t *testing.T, router *dispatch.Router) *notification.Manager {
 	t.Helper()
 	m, err := notification.New("cli")
@@ -38,7 +39,11 @@ func connectTestNotifications(t *testing.T, router *dispatch.Router) *notificati
 		t.Fatal(err)
 	}
 	_, err = s.Connect(func(ctx context.Context, n events.Notification) (events.NotificationReceipt, error) {
-		r, _, err := router.SendTo(ctx, platform.NotificationTarget(n), []delivery.Output{delivery.Text(n.Text)})
+		var sender delivery.MessageSender = router
+		if original, ok := ctx.Value(notificationSenderKey{}).(delivery.MessageSender); ok {
+			sender = original
+		}
+		r, _, err := sender.SendTo(ctx, delivery.Target{Platform: n.Target.Platform, ScopeID: n.Target.ScopeID}, []delivery.Output{delivery.Text(n.Text)})
 		return events.NotificationReceipt{PlatformMessageIDs: r.PlatformMessageIDs}, err
 	}, signal.ConnectOptions{})
 	if err != nil {
@@ -48,8 +53,6 @@ func connectTestNotifications(t *testing.T, router *dispatch.Router) *notificati
 }
 
 func (*assemblyPlatform) Name() string { return "cli" }
-
-func (*assemblyPlatform) Run(context.Context, platform.PlatformHandler) error { return nil }
 
 func (p *assemblyPlatform) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	p.mu.Lock()

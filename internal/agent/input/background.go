@@ -11,11 +11,10 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/media"
 	"elbot/internal/modelmgr"
-	"elbot/internal/platform"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -26,18 +25,6 @@ import (
 // BackgroundHandler prepares task input and delegates execution to the existing coordinator.
 type BackgroundHandler struct {
 	BackgroundHandlerDeps // Borrowed preparation capabilities, wired by the Agent root.
-}
-
-type discardSender struct{}
-
-func (discardSender) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
-	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
-}
-
-func (discardSender) NotificationsSuppressed() bool { return true }
-
-func (discardSender) SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
-	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
 func (r *BackgroundHandler) RunBackground(ctx context.Context, req BackgroundRequest) turn.Result {
@@ -56,14 +43,12 @@ func (r *BackgroundHandler) RunBackground(ctx context.Context, req BackgroundReq
 	if scopeID == "" {
 		scopeID = backgroundScopeID(req.Kind, req.Name)
 	}
-	ctx = platform.WithMessageContext(ctx, platform.MessageContext{
-		Conversation: contextinfo.Conversation{
-			Source:   contextinfo.Source{Platform: platformName, ScopeID: scopeID},
-			Identity: contextinfo.Identity{ActorID: actor.ID, PlatformUserID: actor.PlatformUserID, Nickname: actor.Nickname, GroupCard: actor.GroupCard, DisplayName: actor.DisplayName},
-		},
-		Sender:   discardSender{},
-		Segments: backgroundPromptSegments(req.PromptSegments),
+	ctx = contextinfo.WithConversation(ctx, contextinfo.Conversation{
+		Source:   contextinfo.Source{Platform: platformName, ScopeID: scopeID},
+		Identity: contextinfo.Identity{ActorID: actor.ID, PlatformUserID: actor.PlatformUserID, Nickname: actor.Nickname, GroupCard: actor.GroupCard, DisplayName: actor.DisplayName},
 	})
+	previous, _ := agentshare.MessageContextFrom(ctx)
+	ctx = agentshare.WithMessageContext(ctx, agentshare.MessageContext{RawText: req.Prompt, Segments: backgroundPromptSegments(req.PromptSegments), RestoreMessageContext: previous.RestoreMessageContext})
 	ctx = r.WithPermission(contextinfo.WithActor(ctx, actor))
 
 	scope, ok := workspace.PathScopeFromContext(ctx)
@@ -136,16 +121,16 @@ func (r *BackgroundHandler) RunBackground(ctx context.Context, req BackgroundReq
 	return r.Execution.RunBackground(ctx, bgSession, prompt)
 }
 
-func backgroundPromptSegments(segments []llm.MessageSegment) []platform.MessageSegment {
-	out := make([]platform.MessageSegment, 0, len(segments))
+func backgroundPromptSegments(segments []llm.MessageSegment) []agentshare.MessageSegment {
+	out := make([]agentshare.MessageSegment, 0, len(segments))
 	for _, segment := range segments {
 		switch segment.Type {
 		case llm.SegmentText:
-			out = append(out, platform.MessageSegment{Type: platform.SegmentText, Text: segment.Text, MIMEType: segment.MIMEType, Name: segment.Name})
+			out = append(out, agentshare.MessageSegment{Type: "text", Text: segment.Text, Media: media.PlatformMedia{Type: "text", MIMEType: segment.MIMEType, Name: segment.Name}})
 		case llm.SegmentImage:
-			out = append(out, platform.MessageSegment{Type: platform.SegmentImage, Text: segment.Text, URL: segment.URL, MediaID: segment.MediaID, MIMEType: segment.MIMEType, Name: segment.Name})
+			out = append(out, agentshare.MessageSegment{Type: "image", Text: segment.Text, Media: media.PlatformMedia{Type: "image", URL: segment.URL, MediaID: segment.MediaID, MIMEType: segment.MIMEType, Name: segment.Name}})
 		case llm.SegmentFile:
-			out = append(out, platform.MessageSegment{Type: platform.SegmentFile, Text: segment.Text, URL: segment.URL, MediaID: segment.MediaID, MIMEType: segment.MIMEType, Name: segment.Name})
+			out = append(out, agentshare.MessageSegment{Type: "file", Text: segment.Text, Media: media.PlatformMedia{Type: "file", URL: segment.URL, MediaID: segment.MediaID, MIMEType: segment.MIMEType, Name: segment.Name}})
 		}
 	}
 	return out

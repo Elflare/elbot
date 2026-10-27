@@ -48,6 +48,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	sessionCommands := commandbuiltin.NewSessionCommandState(cfg.View.SessionListPageSize, cfg.Maintenance.SessionCleanup.RetentionDays)
 	signals := m.signals
 	view := dialogue.ExecutionView{Sessions: deps.Store.Sessions()}
+	m.restoreMessageContext = deps.Platform.RestoreMessageContext
 	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: deps.Platform.PrimaryName(), ActorID: "cli:local", ScopeID: "local", Permission: deps.Permission})
 	bridge := agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{
 		Identity: identity,
@@ -247,7 +248,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		return m, err
 	}
 	handler := agentinput.NewMessageHandler(agentinput.MessageHandlerDeps{
-		History:   deps.Media.History,
+		History:   deps.ChatHistory,
 		Identity:  identity,
 		Hooks:     bridge,
 		Output:    output,

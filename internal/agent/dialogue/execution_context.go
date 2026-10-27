@@ -2,12 +2,12 @@ package dialogue
 
 import (
 	"context"
+	agentshare "elbot/internal/agent/share"
 	"fmt"
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/modelmgr"
-	"elbot/internal/platform"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
@@ -49,14 +49,7 @@ func foregroundContext(ctx, foreground context.Context) context.Context {
 	if foreground == nil {
 		return ctx
 	}
-	// Replace the entire routing snapshot, including an absent platform context.
-	// Local CLI has no message sender; inheriting a background discard sender
-	// would silently lose every subsequent foreground output.
-	if msg, ok := platform.MessageContextFrom(foreground); ok {
-		ctx = platform.WithMessageContext(ctx, msg)
-	} else {
-		ctx = platform.WithoutMessageContext(ctx)
-	}
+	ctx = agentshare.RestoreMessageContext(ctx, foreground)
 	if info, ok := contextinfo.ConversationFromContext(foreground); ok {
 		ctx = contextinfo.WithConversation(ctx, info)
 	} else {

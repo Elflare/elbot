@@ -61,6 +61,32 @@ func TestOriginalSourceAndPartialFailure(t *testing.T) {
 		t.Fatal(r, err)
 	}
 }
+
+func TestBackgroundDefaultNotificationIsSilentAndExplicitTargetDelivers(t *testing.T) {
+	m := testManager(t, "cli")
+	calls := 0
+	addTestPlatform(t, m, "cli", func(_ context.Context, n events.Notification) (events.NotificationReceipt, error) {
+		calls++
+		if n.Text != "explicit" {
+			t.Error("default background notice escaped", n)
+		}
+		return events.NotificationReceipt{}, nil
+	})
+	ctx := contextinfo.WithBackgroundKind(t.Context(), contextinfo.BackgroundKindCron)
+	ctx = contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "old-origin"}})
+	if _, err := events.NotificationRequested.Emit(ctx, events.NewNotification(ctx, slog.LevelInfo, "silent")); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 0 {
+		t.Fatal("background notification sent")
+	}
+	if _, err := events.NotificationRequested.Emit(ctx, events.Notification{Text: "explicit", Target: events.NotificationTarget{Platform: "cli", ScopeID: "target"}}); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatal("explicit background notification suppressed")
+	}
+}
 func TestPlatformFullWarnsAndOtherPlatformStillSends(t *testing.T) {
 	m := testManager(t, "slow")
 	started := make(chan struct{}, 8)

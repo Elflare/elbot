@@ -6,7 +6,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"elbot/internal/llm"
-	"elbot/internal/platform"
 	"fmt"
 	"sync"
 )
@@ -85,7 +84,7 @@ func (h *HookBridge) facts(ctx context.Context, facts Facts) Facts {
 // (including original platform payload and reply data) belongs to the provider.
 func prepareMessage(ctx context.Context, message agentshare.Message) agentshare.Message {
 	if message.PlatformText == "" {
-		if incoming, ok := platform.MessageContextFrom(ctx); ok {
+		if incoming, ok := agentshare.MessageContextFrom(ctx); ok {
 			message.PlatformText = incoming.RawText
 		}
 	}

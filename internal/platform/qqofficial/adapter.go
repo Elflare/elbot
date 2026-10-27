@@ -4,6 +4,7 @@ package qqofficial
 
 import (
 	"context"
+	"elbot/internal/platform/share"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -19,16 +20,18 @@ import (
 )
 
 type Adapter struct {
-	cfg         Config
-	store       storage.Store
-	chatHistory storage.ChatHistoryRepository
-	client      *apiClient
+	referenceResolver func(context.Context, share.ReferenceOptions) (share.ReferenceResult, error) // 根部注入的引用恢复能力。
+	cfg               Config
+	store             storage.Store                 // TODO：适配器子包改造时删除；引用恢复已由根部注入，不再使用此字段。
+	chatHistory       storage.ChatHistoryRepository // TODO：适配器子包改造时替换为 AdapterDeps.ChatHistory 的窄能力。
+	client            *apiClient
 
 	seqMu     sync.Mutex
 	seqByID   map[string]int
 	wsWriteMu sync.Mutex
 }
 
+// TODO：适配器子包改造时替换此旧构造入口，直接消费 AdapterDeps 的窄能力并初始化引用恢复。
 func New(cfg Config, store storage.Store, chatHistory storage.ChatHistoryRepository) *Adapter {
 	applyDefaults(&cfg)
 	return &Adapter{cfg: cfg, store: store, chatHistory: chatHistory, client: newAPIClient(cfg), seqByID: map[string]int{}}
@@ -48,7 +51,7 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 		return nil
 	}
 	state := gatewayState{}
-	backoff := platform.NewBackoff(a.cfg.reconnectInterval(), 10*time.Second)
+	backoff := share.NewBackoff(a.cfg.reconnectInterval(), 10*time.Second)
 	for {
 		if err := ctx.Err(); err != nil {
 			return err

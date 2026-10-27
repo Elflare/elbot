@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	agentshare "elbot/internal/agent/share"
-	"elbot/internal/platform"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
@@ -16,7 +15,7 @@ var errExecutionConflict = errors.New("当前会话已有其他执行，输入�
 func (c *ExecutionCoordinator) ResolveInput(ctx context.Context, text string) (context.Context, *storage.Session, error) {
 	// Fork prepares native/media material outside scope admission. Capture the
 	// newly activated binding afterward, with the same final identity check.
-	if msg, ok := platform.MessageContextFrom(ctx); ok && msg.ResumeSessionID == "" && msg.ForkFromMessageID != "" {
+	if msg, ok := agentshare.MessageContextFrom(ctx); ok && msg.ResumeSessionID == "" && msg.ForkFromMessageID != "" {
 		row, err := c.sessions.Fork(ctx, c.identity.Scope(ctx), msg.ForkFromMessageID)
 		if err != nil {
 			return ctx, nil, err
@@ -120,7 +119,7 @@ func (c *ExecutionCoordinator) EnterInput(ctx context.Context, row *storage.Sess
 }
 
 func (c *ExecutionCoordinator) sessionForInput(ctx context.Context, text string) (*storage.Session, error) {
-	if msg, ok := platform.MessageContextFrom(ctx); ok {
+	if msg, ok := agentshare.MessageContextFrom(ctx); ok {
 		if msg.ResumeSessionID != "" {
 			return c.sessions.Resume(ctx, c.identity.Scope(ctx), msg.ResumeSessionID)
 		}

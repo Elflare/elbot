@@ -28,6 +28,9 @@ type OutputSender struct {
 }
 
 func (o *OutputSender) SendOutputs(ctx context.Context, outputs []delivery.Output) (globalevents.LogResult, error) {
+	if contextinfo.BackgroundContext(ctx) {
+		return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "background output is silent"}, nil
+	}
 	_, logResult, err := o.dispatcher.SendTo(ctx, delivery.Target{}, outputs)
 	if len(outputs) > 0 || err != nil {
 		o.observeDelivery(ctx, "send_outputs", logResult)
@@ -80,6 +83,9 @@ func (o *OutputSender) SendChat(ctx context.Context, text string) error {
 }
 
 func (o *OutputSender) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) error {
+	if target.Empty() && contextinfo.BackgroundContext(ctx) {
+		return nil
+	}
 	_, _, err := o.dispatcher.SendTo(ctx, target, outputs)
 	return err
 }
@@ -93,6 +99,9 @@ func (o *OutputSender) PrepareAssistant(ctx context.Context, text string) (strin
 }
 
 func (o *OutputSender) SendAssistant(ctx context.Context, text string) (receipt delivery.Receipt, logResult globalevents.LogResult, err error) {
+	if contextinfo.BackgroundContext(ctx) {
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "background output is silent"}, nil
+	}
 	if strings.TrimSpace(text) == "" && agentshare.BufferAssistantOutput(ctx) {
 		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "assistant output is buffered and empty"}, nil
 	}
@@ -147,7 +156,7 @@ func (o *OutputSender) SendAssistant(ctx context.Context, text string) (receipt 
 }
 
 func (o *OutputSender) Notify(ctx context.Context, level slog.Level, text string) {
-	if strings.TrimSpace(text) == "" {
+	if contextinfo.BackgroundContext(ctx) || strings.TrimSpace(text) == "" {
 		return
 	}
 	_, _ = globalevents.NotificationRequested.EmitAsync(ctx, globalevents.NewNotification(ctx, level, text))
@@ -157,6 +166,9 @@ func (o *OutputSender) Notify(ctx context.Context, level slog.Level, text string
 // any multiline body. General workflow notices also occupy one argument.
 // It prefixes each nonblank notice once, joins them, and runs the output Hook once.
 func (o *OutputSender) Preview(ctx context.Context, text ...string) {
+	if contextinfo.BackgroundContext(ctx) {
+		return
+	}
 	info, _ := contextinfo.ConversationFromContext(ctx)
 	if info.Source.ConversationKind == contextinfo.ConversationGroup {
 		return
@@ -280,14 +292,14 @@ func (o *OutputSender) ReplaceAndFinishStream(ctx context.Context, streamCtx con
 }
 
 func (o *OutputSender) StartStream(ctx context.Context) (delivery.MessageStream, error) {
-	if agentshare.BufferAssistantOutput(ctx) {
+	if contextinfo.BackgroundContext(ctx) || agentshare.BufferAssistantOutput(ctx) {
 		return nil, nil
 	}
 	return o.dispatcher.StartStream(ctx)
 }
 
 func (o *OutputSender) StartReasoning(ctx context.Context) delivery.ReasoningStream {
-	if o.reasoning == nil {
+	if contextinfo.BackgroundContext(ctx) || o.reasoning == nil {
 		return nil
 	}
 	return o.reasoning(ctx)

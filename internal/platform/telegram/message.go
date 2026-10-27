@@ -14,8 +14,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
-	"elbot/internal/platform"
-	"elbot/internal/platform/refcontext"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 )
@@ -24,8 +22,8 @@ type normalizedMessage struct {
 	Text         string
 	ReplyID      string
 	ReplyMessage *message
-	Mentions     []platform.Mention
-	Segments     []platform.MessageSegment
+	Mentions     []share.Mention
+	Segments     []share.MessageSegment
 }
 
 func normalizeMessage(msg message) normalizedMessage {
@@ -38,18 +36,18 @@ func normalizeMessage(msg message) normalizedMessage {
 		out.ReplyMessage = msg.ReplyToMessage
 	}
 	if out.Text != "" {
-		out.Segments = append(out.Segments, platform.MessageSegment{Type: platform.SegmentText, Text: out.Text})
+		out.Segments = append(out.Segments, share.MessageSegment{Type: share.SegmentText, Text: out.Text})
 	}
 	if len(msg.Photo) > 0 {
 		photo := largestPhoto(msg.Photo)
-		segment := platform.MessageSegment{Type: platform.SegmentImage, Name: photo.FileID, PlatformFileID: photo.FileID, MIMEType: "image/jpeg", Size: photo.FileSize}
+		segment := share.MessageSegment{Type: share.SegmentImage, Name: photo.FileID, PlatformFileID: photo.FileID, MIMEType: "image/jpeg", Size: photo.FileSize}
 		out.Segments = append(out.Segments, segment)
 		if out.Text == "" {
 			out.Text = "[图片]"
 		}
 	}
 	if msg.Document != nil {
-		segment := platform.MessageSegment{Type: platform.SegmentFile, Name: msg.Document.FileName, MIMEType: msg.Document.MIMEType, PlatformFileID: msg.Document.FileID, Size: msg.Document.FileSize}
+		segment := share.MessageSegment{Type: share.SegmentFile, Name: msg.Document.FileName, MIMEType: msg.Document.MIMEType, PlatformFileID: msg.Document.FileID, Size: msg.Document.FileSize}
 		if segment.Name == "" {
 			segment.Name = msg.Document.FileID
 		}
@@ -121,23 +119,23 @@ func telegramConversationKind(c chat) contextinfo.ConversationKind {
 	}
 }
 
-func mentionsFromText(text string) []platform.Mention {
+func mentionsFromText(text string) []share.Mention {
 	fields := strings.Fields(text)
-	mentions := make([]platform.Mention, 0)
+	mentions := make([]share.Mention, 0)
 	for _, field := range fields {
 		name := strings.Trim(strings.TrimSpace(field), ",，.:：;；!！?？()（）[]【】")
 		if !strings.HasPrefix(name, "@") || len(name) <= 1 {
 			continue
 		}
-		mentions = append(mentions, platform.Mention{Username: strings.TrimPrefix(name, "@"), Text: field})
+		mentions = append(mentions, share.Mention{Username: strings.TrimPrefix(name, "@"), Text: field})
 	}
 	return mentions
 }
 
-func (a *Adapter) referenceFetcher(msg message, normalized normalizedMessage) func(context.Context, string) (refcontext.ReferencedMessage, bool, error) {
-	return func(ctx context.Context, replyID string) (refcontext.ReferencedMessage, bool, error) {
+func (a *Adapter) referenceFetcher(msg message, normalized normalizedMessage) func(context.Context, string) (share.ReferencedMessage, bool, error) {
+	return func(ctx context.Context, replyID string) (share.ReferencedMessage, bool, error) {
 		if normalized.ReplyMessage == nil || normalized.ReplyID != strings.TrimSpace(replyID) {
-			return refcontext.ReferencedMessage{}, false, nil
+			return share.ReferencedMessage{}, false, nil
 		}
 		ref := normalizeMessage(*normalized.ReplyMessage)
 		label := "引用"
@@ -146,11 +144,11 @@ func (a *Adapter) referenceFetcher(msg message, normalized normalizedMessage) fu
 			senderName = displayName(*normalized.ReplyMessage.From)
 			label = "引用：" + senderName
 		}
-		return refcontext.ReferencedMessage{SenderID: userIDString(normalized.ReplyMessage.From), SenderName: senderName, Label: label, Text: ref.Text, Segments: appendNonTextSegments(nil, ref.Segments)}, true, nil
+		return share.ReferencedMessage{SenderID: userIDString(normalized.ReplyMessage.From), SenderName: senderName, Label: label, Text: ref.Text, Segments: appendNonTextSegments(nil, ref.Segments)}, true, nil
 	}
 }
 
-func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized normalizedMessage, reply platform.ReplyContext) {
+func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized normalizedMessage, reply share.ReplyContext) {
 	if (strings.TrimSpace(normalized.Text) == "" && len(normalized.Segments) == 0) || msg.MessageID == 0 {
 		return
 	}
@@ -159,6 +157,11 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized
 		createdAt = time.Unix(msg.Date, 0)
 	}
 	senderID := userIDString(msg.From)
+	sourceSegments := normalized.Segments
+	segments := make([]storage.ChatSegment, len(sourceSegments))
+	for i, segment := range sourceSegments {
+		segments[i] = storage.ChatSegment{Type: string(segment.Type), Text: segment.Text, UserID: segment.UserID, URL: segment.URL, MediaID: segment.MediaID, PlatformFileID: segment.PlatformFileID, MIMEType: segment.MIMEType, Name: segment.Name, Size: segment.Size}
+	}
 	chatMessage := &storage.ChatMessage{
 		Platform:                 a.Name(),
 		PlatformScopeID:          scopeID(msg.Chat),
@@ -168,9 +171,9 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized
 		SenderName:               displayNamePtr(msg.From, ""),
 		Text:                     normalized.Text,
 		Raw:                      firstNonEmpty(msg.Text, msg.Caption),
-		Segments:                 platform.MarshalChatSegments(normalized.Segments),
+		Segments:                 storage.MarshalChatSegments(segments),
 		ReplyToPlatformMessageID: normalized.ReplyID,
-		Metadata:                 share.MarshalChatMetadata(share.ReplyContext{MessageID: reply.MessageID, SenderID: reply.SenderID, SenderName: reply.SenderName, Text: reply.Text}),
+		Metadata:                 storage.MarshalChatMetadata(storage.ChatReply{MessageID: reply.MessageID, SenderID: reply.SenderID, SenderName: reply.SenderName, Text: reply.Text}),
 		CreatedAt:                createdAt,
 	}
 	if err := a.chatHistory.Append(ctx, chatMessage); err != nil {
@@ -210,19 +213,19 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized
 	}
 }
 
-func finalMessageSegments(text string, current, referenced []platform.MessageSegment) []platform.MessageSegment {
-	out := make([]platform.MessageSegment, 0, 1+len(current)+len(referenced))
+func finalMessageSegments(text string, current, referenced []share.MessageSegment) []share.MessageSegment {
+	out := make([]share.MessageSegment, 0, 1+len(current)+len(referenced))
 	if strings.TrimSpace(text) != "" {
-		out = append(out, platform.MessageSegment{Type: platform.SegmentText, Text: text})
+		out = append(out, share.MessageSegment{Type: share.SegmentText, Text: text})
 	}
 	out = appendNonTextSegments(out, current)
 	out = appendNonTextSegments(out, referenced)
 	return out
 }
 
-func appendNonTextSegments(out []platform.MessageSegment, segments []platform.MessageSegment) []platform.MessageSegment {
+func appendNonTextSegments(out []share.MessageSegment, segments []share.MessageSegment) []share.MessageSegment {
 	for _, segment := range segments {
-		if segment.Type != platform.SegmentText {
+		if segment.Type != share.SegmentText {
 			out = append(out, segment)
 		}
 	}

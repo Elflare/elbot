@@ -15,7 +15,6 @@ import (
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/platform"
-	"elbot/internal/platform/refcontext"
 	"elbot/internal/platform/share"
 	"elbot/internal/security"
 	"elbot/internal/storage"
@@ -121,15 +120,15 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 	referenced := inboundReferencedMessage(msg, refIndex)
 	replyID, err := a.resolveInboundReplyID(ctx, scopeID, refIndex)
 	actorID := security.ActorID(a.Name(), senderID)
-	bot := platform.Identity{}
-	var mentions []platform.Mention
+	bot := share.Identity{}
+	var mentions []share.Mention
 	if conversation == contextinfo.ConversationGroup {
 		bot.UserID = strings.TrimSpace(a.cfg.AppID)
 		if mentionedBot && bot.UserID != "" {
-			mentions = []platform.Mention{{UserID: bot.UserID}}
+			mentions = []share.Mention{{UserID: bot.UserID}}
 		}
 	}
-	messageCtx := platform.MessageContext{
+	messageCtx := share.MessageContext{
 		Conversation: contextinfo.Conversation{
 			Source: contextinfo.Source{
 				Platform:         a.Name(),
@@ -161,12 +160,10 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 			metaMemberID:  strings.TrimSpace(msg.Author.MemberOpenID),
 		},
 	}
-	msgCtx := platform.WithMessageContext(ctx, messageCtx)
-	var ref refcontext.Result
+	msgCtx := share.WithMessageContext(ctx, messageCtx)
+	var ref share.ReferenceResult
 	if err == nil && replyID != "" {
-		ref, err = refcontext.Apply(msgCtx, refcontext.Options{
-			Store:           a.store,
-			ChatHistory:     a.chatHistory,
+		ref, err = a.referenceResolver(msgCtx, share.ReferenceOptions{
 			Platform:        a.Name(),
 			ScopeID:         messageCtx.Conversation.Source.ScopeID,
 			ActorID:         actorID,
@@ -174,7 +171,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 			ReplyID:         replyID,
 			Text:            text,
 			CommandPrefixes: a.cfg.CommandPrefixes,
-			Fetch: func(context.Context, string) (refcontext.ReferencedMessage, bool, error) {
+			Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
 				return referenced, len(referenced.Segments) > 0, nil
 			},
 		})
@@ -193,10 +190,10 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 		_ = globalevents.EmitLog(context.WithoutCancel(msgCtx), record)
 		return
 	}
-	if replyID == "" && len(referenced.Segments) > 0 && !platform.HasCommandPrefix(text, a.cfg.CommandPrefixes) {
-		ref.Reply = platform.ReplyContext{Text: referenced.Text, Segments: referenced.Segments}
+	if replyID == "" && len(referenced.Segments) > 0 && !share.HasCommandPrefix(text, a.cfg.CommandPrefixes) {
+		ref.Reply = share.ReplyContext{Text: referenced.Text, Segments: referenced.Segments}
 		ref.ReferenceSegments = referenced.Segments
-		ref.Text = refcontext.FormatReferenceText(a.Name(), ref.Reply, text)
+		ref.Text = share.FormatReferenceText(a.Name(), ref.Reply, text)
 	}
 	if replyID != "" || len(ref.ReferenceSegments) > 0 {
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
@@ -207,7 +204,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 			messageCtx.ContextSegments = finalMessageSegments(ref.Text, segments, ref.ReferenceSegments)
 		}
 		messageCtx.Segments = finalMessageSegments(text, segments, nil)
-		msgCtx = platform.WithMessageContext(ctx, messageCtx)
+		msgCtx = share.WithMessageContext(ctx, messageCtx)
 	}
 	a.recordChatMessage(ctx, msg, conversation, senderID, scopeID, text, replyID, messageCtx.Reply)
 	a.recordMessageAlias(ctx, scopeID, msgIndex, msg.ID)
@@ -232,7 +229,7 @@ func normalizedInboundText(msg inboundMessage, mentionedBot bool) string {
 	return strings.TrimSpace(text)
 }
 
-func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, conversation contextinfo.ConversationKind, senderID, scopeID, text, replyID string, reply platform.ReplyContext) {
+func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, conversation contextinfo.ConversationKind, senderID, scopeID, text, replyID string, reply share.ReplyContext) {
 	if (strings.TrimSpace(text) == "" && len(msg.Attachments) == 0) || strings.TrimSpace(msg.ID) == "" {
 		return
 	}
@@ -246,6 +243,11 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 	if conversation == contextinfo.ConversationGroup {
 		scopeType = "group"
 	}
+	sourceSegments := inboundSegments(text, inboundAttachmentSegments(msg.Attachments))
+	segments := make([]storage.ChatSegment, len(sourceSegments))
+	for i, segment := range sourceSegments {
+		segments[i] = storage.ChatSegment{Type: string(segment.Type), Text: segment.Text, UserID: segment.UserID, URL: segment.URL, MediaID: segment.MediaID, PlatformFileID: segment.PlatformFileID, MIMEType: segment.MIMEType, Name: segment.Name, Size: segment.Size}
+	}
 	history := &storage.ChatMessage{
 		Platform:                 a.Name(),
 		PlatformScopeID:          scopeID,
@@ -254,9 +256,9 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 		SenderID:                 senderID,
 		Text:                     strings.TrimSpace(text),
 		Raw:                      msg.Content,
-		Segments:                 platform.MarshalChatSegments(inboundSegments(text, inboundAttachmentSegments(msg.Attachments))),
+		Segments:                 storage.MarshalChatSegments(segments),
 		ReplyToPlatformMessageID: strings.TrimSpace(replyID),
-		Metadata:                 share.MarshalChatMetadata(share.ReplyContext{MessageID: reply.MessageID, SenderID: reply.SenderID, SenderName: reply.SenderName, Text: reply.Text}),
+		Metadata:                 storage.MarshalChatMetadata(storage.ChatReply{MessageID: reply.MessageID, SenderID: reply.SenderID, SenderName: reply.SenderName, Text: reply.Text}),
 		CreatedAt:                createdAt,
 	}
 	if err := a.chatHistory.Append(ctx, history); err != nil {
@@ -310,28 +312,28 @@ func isConfiguredSuperadmin(superadmins []string, id string) bool {
 	return false
 }
 
-func inboundSegments(text string, attachments []platform.MessageSegment) []platform.MessageSegment {
-	segments := make([]platform.MessageSegment, 0, 1+len(attachments))
+func inboundSegments(text string, attachments []share.MessageSegment) []share.MessageSegment {
+	segments := make([]share.MessageSegment, 0, 1+len(attachments))
 	if strings.TrimSpace(text) != "" {
-		segments = append(segments, platform.MessageSegment{Type: platform.SegmentText, Text: text})
+		segments = append(segments, share.MessageSegment{Type: share.SegmentText, Text: text})
 	}
 	segments = append(segments, attachments...)
 	return segments
 }
 
-func finalMessageSegments(text string, current, referenced []platform.MessageSegment) []platform.MessageSegment {
-	out := make([]platform.MessageSegment, 0, 1+len(current)+len(referenced))
+func finalMessageSegments(text string, current, referenced []share.MessageSegment) []share.MessageSegment {
+	out := make([]share.MessageSegment, 0, 1+len(current)+len(referenced))
 	if strings.TrimSpace(text) != "" {
-		out = append(out, platform.MessageSegment{Type: platform.SegmentText, Text: text})
+		out = append(out, share.MessageSegment{Type: share.SegmentText, Text: text})
 	}
 	out = appendNonTextSegments(out, current)
 	out = appendNonTextSegments(out, referenced)
 	return out
 }
 
-func appendNonTextSegments(out []platform.MessageSegment, segments []platform.MessageSegment) []platform.MessageSegment {
+func appendNonTextSegments(out []share.MessageSegment, segments []share.MessageSegment) []share.MessageSegment {
 	for _, segment := range segments {
-		if segment.Type != platform.SegmentText {
+		if segment.Type != share.SegmentText {
 			out = append(out, segment)
 		}
 	}

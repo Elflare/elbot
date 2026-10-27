@@ -4,6 +4,7 @@ package telegram
 
 import (
 	"context"
+	"elbot/internal/platform/share"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,16 +20,16 @@ import (
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/platform"
-	"elbot/internal/platform/refcontext"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 )
 
 type Adapter struct {
-	cfg         Config
-	store       storage.Store
-	chatHistory storage.ChatHistoryRepository
-	client      *apiClient
+	referenceResolver func(context.Context, share.ReferenceOptions) (share.ReferenceResult, error) // 根部注入的引用恢复能力。
+	cfg               Config
+	store             storage.Store                 // TODO：适配器子包改造时删除；引用恢复已由根部注入，不再使用此字段。
+	chatHistory       storage.ChatHistoryRepository // TODO：适配器子包改造时替换为 AdapterDeps.ChatHistory 的窄能力。
+	client            *apiClient
 
 	botID          int64
 	botUsername    string
@@ -40,6 +41,7 @@ type target struct {
 	ScopeID string
 }
 
+// TODO：适配器子包改造时替换此旧构造入口，直接消费 AdapterDeps 的窄能力并初始化引用恢复。
 func New(cfg Config, store storage.Store, chatHistory storage.ChatHistoryRepository) *Adapter {
 	applyDefaults(&cfg)
 	return &Adapter{cfg: cfg, store: store, chatHistory: chatHistory, client: newAPIClient(cfg)}
@@ -62,7 +64,7 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 	if !a.cfg.Enabled {
 		return nil
 	}
-	backoff := platform.NewBackoff(a.cfg.reconnectInterval(), 10*time.Second)
+	backoff := share.NewBackoff(a.cfg.reconnectInterval(), 10*time.Second)
 	var offset int64
 	for {
 		if err := ctx.Err(); err != nil {
@@ -342,13 +344,13 @@ func (a *Adapter) handleCallbackQuery(ctx context.Context, handler platform.Plat
 func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHandler, msg message) {
 	normalized := normalizeMessage(msg)
 	if msg.Chat.Type != "private" && msg.Chat.Type != "group" && msg.Chat.Type != "supergroup" {
-		a.recordChatMessage(ctx, msg, normalized, platform.ReplyContext{})
+		a.recordChatMessage(ctx, msg, normalized, share.ReplyContext{})
 		return
 	}
 	text := normalized.Text
 	platformUserID := userIDString(msg.From)
 	groupRole := a.messageGroupRole(ctx, msg)
-	messageCtx := platform.MessageContext{
+	messageCtx := share.MessageContext{
 		Conversation: contextinfo.Conversation{
 			Source: contextinfo.Source{
 				Platform:         a.Name(),
@@ -372,21 +374,19 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 		MediaResolver:   a,
 		Segments:        finalMessageSegments(text, normalized.Segments, nil),
 		RawText:         normalized.Text,
-		Bot:             platform.Identity{UserID: formatMessageID(a.botID), Username: a.botUsername},
-		Mentions:        append([]platform.Mention(nil), normalized.Mentions...),
+		Bot:             share.Identity{UserID: formatMessageID(a.botID), Username: a.botUsername},
+		Mentions:        append([]share.Mention(nil), normalized.Mentions...),
 		TriggerKeywords: append([]string(nil), a.cfg.TriggerKeywords...),
 		Meta: map[string]any{
 			"telegram.message_id": formatMessageID(msg.MessageID),
 			"telegram.chat_id":    strconv.FormatInt(msg.Chat.ID, 10),
 		},
 	}
-	msgCtx := platform.WithMessageContext(ctx, messageCtx)
+	msgCtx := share.WithMessageContext(ctx, messageCtx)
 
-	var referenceSegments []platform.MessageSegment
+	var referenceSegments []share.MessageSegment
 	if normalized.ReplyID != "" {
-		ref, err := refcontext.Apply(msgCtx, refcontext.Options{
-			Store:           a.store,
-			ChatHistory:     a.chatHistory,
+		ref, err := a.referenceResolver(msgCtx, share.ReferenceOptions{
 			Platform:        a.Name(),
 			ScopeID:         messageCtx.Conversation.Source.ScopeID,
 			ActorID:         messageCtx.Conversation.Identity.ActorID,
@@ -424,7 +424,7 @@ func (a *Adapter) handleMessage(ctx context.Context, handler platform.PlatformHa
 		return
 	}
 	messageCtx.Segments = finalMessageSegments(text, normalized.Segments, nil)
-	msgCtx = platform.WithMessageContext(ctx, messageCtx)
+	msgCtx = share.WithMessageContext(ctx, messageCtx)
 	_ = handler.HandleMessage(msgCtx, text)
 }
 

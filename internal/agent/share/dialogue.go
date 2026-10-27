@@ -10,7 +10,6 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/modelmgr"
-	"elbot/internal/platform"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -108,7 +107,7 @@ type Output interface {
 }
 
 func BufferAssistantOutput(ctx context.Context) bool {
-	msg, ok := platform.MessageContextFrom(ctx)
+	msg, ok := MessageContextFrom(ctx)
 	return ok && msg.BufferAssistantOutput
 }
 

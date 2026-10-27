@@ -11,8 +11,6 @@ import (
 	"elbot/internal/platform/notification"
 	"elbot/internal/platform/share"
 	"elbot/internal/signal"
-	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 )
 
 // Supervisor 是 App 对接的 Platform 总管；内部组件不通过 getter 对外暴露。
@@ -27,8 +25,6 @@ type Supervisor struct {
 	agent          AgentCapabilities
 	agentConnected bool // ConnectAgent 只执行一次，失败结果也保留供 Start 检查。
 	agentErr       error
-	historyStore   *sqlite.ChatHistoryStore
-	history        storage.ChatHistoryRepository
 }
 
 // NewSupervisor 接收完整配置；部分构造失败仍返回总管，由 App 统一清理。

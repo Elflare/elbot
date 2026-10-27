@@ -14,7 +14,6 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/platform"
 	"elbot/internal/platform/dispatch"
 
 	"elbot/internal/security"
@@ -169,7 +168,7 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 	f.platform = &replyTestPlatform{events: &f.events, receipt: delivery.Receipt{
 		PlatformMessageIDs: []string{"sent"}, SentMessages: []delivery.SentMessage{{Platform: "telegram", ScopeID: "private:actual", PlatformMessageID: "sent"}},
 	}}
-	f.ctx = platform.WithMessageContext(context.Background(), platform.MessageContext{BufferAssistantOutput: buffered})
+	f.ctx = agentshare.WithMessageContext(context.Background(), agentshare.MessageContext{BufferAssistantOutput: buffered})
 	var cancel context.CancelFunc
 	f.requestCtx, cancel = context.WithCancel(f.ctx)
 	t.Cleanup(cancel)

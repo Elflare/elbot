@@ -204,7 +204,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	}
 
 	// 维护组件只接收日志最小接口、两项清理函数和媒体 Cleanup 接口。
-	maint := maintenance.NewServiceWithConfig(deps.Logs, deps.Platform.CleanupChatHistory, cfg, deps.Agent.CleanupSessions)
+	maint := maintenance.NewServiceWithConfig(deps.Logs, deps.ChatHistory.DeleteBefore, cfg, deps.Agent.CleanupSessions)
 	maint.Media = deps.Media
 	if err := maint.RegisterCronHandlers(m.cronManager.RegisterMaintenanceHandler); err != nil {
 		return m, fmt.Errorf("register maintenance handlers: %w", err)

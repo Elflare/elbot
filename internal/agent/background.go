@@ -5,6 +5,7 @@ import (
 	"time"
 
 	agentinput "elbot/internal/agent/input"
+	agentshare "elbot/internal/agent/share"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 )
@@ -36,6 +37,8 @@ func (m *Supervisor) RunBackground(ctx context.Context, req BackgroundRequest) (
 		return BackgroundResult{}, err
 	}
 	defer done()
+	ctx = m.restoreMessageContext(ctx, context.Background())
+	ctx = agentshare.WithMessageContext(ctx, agentshare.MessageContext{RestoreMessageContext: m.restoreMessageContext})
 	result := m.background.RunBackground(ctx, agentinput.BackgroundRequest(req))
 	return BackgroundResult{
 		RunID: result.RunID, SessionID: result.SessionID, MessageID: result.MessageID,

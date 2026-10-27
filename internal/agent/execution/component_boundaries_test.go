@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	agentshare "elbot/internal/agent/share"
 	"errors"
 	"sync"
 	"testing"
@@ -11,7 +12,6 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/modelmgr"
-	"elbot/internal/platform"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
@@ -82,9 +82,8 @@ func TestExecutionViewKeepsRequestCancellationAndClearsBackgroundOverrides(t *te
 	requestCtx, cancelRequest := context.WithCancel(context.Background())
 	defer cancelRequest()
 	ctx := turn.WithAttempt(turn.WithExecution(requestCtx, execution), "attempt")
-	ctx = platform.WithMessageContext(ctx, platform.MessageContext{
-		Conversation:          contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq", ScopeID: "cron:1"}},
-		Sender:                &fakePlatform{},
+	ctx = agentshare.WithMessageContext(contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq", ScopeID: "cron:1"}}), agentshare.MessageContext{
+
 		BufferAssistantOutput: true,
 	})
 	ctx = workspace.WithPathScope(ctx, workspace.PathScope{Dir: "/background/task", Restricted: true})
@@ -96,8 +95,8 @@ func TestExecutionViewKeepsRequestCancellationAndClearsBackgroundOverrides(t *te
 	cancelForeground()
 	view := dialogue.ExecutionView{}
 	refreshed := view.Context(ctx)
-	msg, ok := platform.MessageContextFrom(refreshed)
-	if ok || msg.Sender != nil || msg.BufferAssistantOutput {
+	msg, ok := agentshare.MessageContextFrom(refreshed)
+	if ok || msg.BufferAssistantOutput {
 		t.Fatalf("retained background routing: %+v", msg)
 	}
 	if info, ok := contextinfo.ConversationFromContext(refreshed); !ok || info.Source.ScopeID != "remote:original" {

@@ -4,25 +4,23 @@ package qqonebot
 
 import (
 	"context"
+	"elbot/internal/platform/share"
 	"strings"
-
-	"elbot/internal/platform"
-	"elbot/internal/platform/refcontext"
 )
 
 // expandForwardReference restores the original protocol segments for explicit
 // references. Private direct messages already have them and use expandForwardSegments.
-func (a *Adapter) expandForwardReference(event Event) func(context.Context, string, refcontext.ReferencedMessage) ([]platform.MessageSegment, error) {
-	return func(ctx context.Context, replyID string, ref refcontext.ReferencedMessage) ([]platform.MessageSegment, error) {
+func (a *Adapter) expandForwardReference(event Event) func(context.Context, string, share.ReferencedMessage) ([]share.MessageSegment, error) {
+	return func(ctx context.Context, replyID string, ref share.ReferencedMessage) ([]share.MessageSegment, error) {
 		hasForward := strings.Contains(ref.Text, "[forward]")
 		for _, segment := range ref.Segments {
-			hasForward = hasForward || (segment.Type == platform.SegmentText && strings.Contains(segment.Text, "[forward]"))
+			hasForward = hasForward || (segment.Type == share.SegmentText && strings.Contains(segment.Text, "[forward]"))
 		}
 		if !hasForward {
 			return nil, nil
 		}
 		if ref.CanonicalContent {
-			return []platform.MessageSegment{textSegment("<forward_message>\n" + ref.Text + "\n</forward_message>")}, nil
+			return []share.MessageSegment{textSegment("<forward_message>\n" + ref.Text + "\n</forward_message>")}, nil
 		}
 		message, err := a.transport.GetMessage(ctx, replyID)
 		if err != nil {
@@ -30,9 +28,9 @@ func (a *Adapter) expandForwardReference(event Event) func(context.Context, stri
 		}
 		segments, ok := decodeMessageSegments(message.Message)
 		if !ok || len(segments) == 0 {
-			fallback := append([]platform.MessageSegment(nil), ref.Segments...)
+			fallback := append([]share.MessageSegment(nil), ref.Segments...)
 			if len(fallback) == 0 {
-				fallback = []platform.MessageSegment{textSegment(ref.Text)}
+				fallback = []share.MessageSegment{textSegment(ref.Text)}
 			}
 			return fallback, nil
 		}
@@ -42,7 +40,7 @@ func (a *Adapter) expandForwardReference(event Event) func(context.Context, stri
 
 // expandForwardSegments renders one layer without changing source media indexes.
 // Only actual protocol segments can supply a resource ID; literal text never does.
-func (a *Adapter) expandForwardSegments(ctx context.Context, segments []Segment, selfID int64, original []platform.MessageSegment) ([]platform.MessageSegment, error) {
+func (a *Adapter) expandForwardSegments(ctx context.Context, segments []Segment, selfID int64, original []share.MessageSegment) ([]share.MessageSegment, error) {
 	found := false
 	for _, segment := range segments {
 		found = found || segment.Type == "forward"
@@ -50,10 +48,10 @@ func (a *Adapter) expandForwardSegments(ctx context.Context, segments []Segment,
 	if !found {
 		return nil, nil
 	}
-	var display []platform.MessageSegment
-	var originalMedia []platform.MessageSegment
+	var display []share.MessageSegment
+	var originalMedia []share.MessageSegment
 	for _, segment := range original {
-		if segment.Type == platform.SegmentImage || segment.Type == platform.SegmentFile {
+		if segment.Type == share.SegmentImage || segment.Type == share.SegmentFile {
 			originalMedia = append(originalMedia, segment)
 		}
 	}
@@ -62,10 +60,10 @@ func (a *Adapter) expandForwardSegments(ctx context.Context, segments []Segment,
 		if segment.Type != "forward" {
 			normalized := convertSegments([]Segment{segment}, selfID, ordinaryInput)
 			for _, part := range normalized.Segments {
-				if part.Type == platform.SegmentAt {
+				if part.Type == share.SegmentAt {
 					part = textSegment(part.Text)
 				}
-				if part.Type == platform.SegmentImage || part.Type == platform.SegmentFile {
+				if part.Type == share.SegmentImage || part.Type == share.SegmentFile {
 					if mediaIndex < len(originalMedia) && originalMedia[mediaIndex].Type == part.Type && originalMedia[mediaIndex].MediaID != "" {
 						part = originalMedia[mediaIndex]
 					}
@@ -82,7 +80,7 @@ func (a *Adapter) expandForwardSegments(ctx context.Context, segments []Segment,
 		}
 		content := normalizeForwardNodes(nodes)
 		if len(content) == 0 {
-			content = []platform.MessageSegment{textSegment("[forward]")}
+			content = []share.MessageSegment{textSegment("[forward]")}
 		}
 		display = append(display, content...)
 		display = append(display, textSegment("\n</forward_message>"))
@@ -90,12 +88,12 @@ func (a *Adapter) expandForwardSegments(ctx context.Context, segments []Segment,
 	return display, nil
 }
 
-func normalizeForwardNodes(nodes []forwardNode) []platform.MessageSegment {
-	var out []platform.MessageSegment
+func normalizeForwardNodes(nodes []forwardNode) []share.MessageSegment {
+	var out []share.MessageSegment
 	for _, node := range nodes {
 		content := normalizeForwardContent(node.Content)
 		if len(content) == 0 {
-			content = []platform.MessageSegment{textSegment("[forward]")}
+			content = []share.MessageSegment{textSegment("[forward]")}
 		}
 		if len(out) > 0 {
 			out = append(out, textSegment("\n\n"))
@@ -108,14 +106,14 @@ func normalizeForwardNodes(nodes []forwardNode) []platform.MessageSegment {
 	return out
 }
 
-func forwardContextSegments(reference, current []platform.MessageSegment, text string) []platform.MessageSegment {
-	out := append([]platform.MessageSegment(nil), reference...)
+func forwardContextSegments(reference, current []share.MessageSegment, text string) []share.MessageSegment {
+	out := append([]share.MessageSegment(nil), reference...)
 	if len(current) > 0 {
 		if len(out) > 0 {
 			out = append(out, textSegment("\n\n"))
 		}
 		for _, segment := range current {
-			if segment.Type == platform.SegmentAt {
+			if segment.Type == share.SegmentAt {
 				segment = textSegment(segment.Text)
 			}
 			out = append(out, segment)

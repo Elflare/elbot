@@ -63,18 +63,3 @@ func NotificationTarget(n events.Notification) delivery.Target {
 	}
 	return t
 }
-
-type MediaResolver interface {
-	ResolveMedia(context.Context, MessageSegment, int64) (delivery.Source, error)
-}
-
-type Identity struct {
-	UserID   string
-	Username string
-}
-
-type Mention struct {
-	UserID   string
-	Username string
-	Text     string
-}

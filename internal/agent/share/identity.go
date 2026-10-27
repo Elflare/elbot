@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/platform"
 	"elbot/internal/security"
 	"elbot/internal/session"
 )
@@ -70,7 +69,7 @@ func (r *IdentityResolver) Actor(ctx context.Context) contextinfo.Actor {
 		identity = info.Identity
 	}
 	groupRole := contextinfo.GroupRoleUnknown
-	if msg, ok := platform.MessageContextFrom(ctx); ok {
+	if msg, ok := MessageContextFrom(ctx); ok {
 		groupRole = security.ParseGroupRole(string(msg.GroupRole))
 	}
 	if prefix := platformName + ":"; strings.HasPrefix(platformUserID, prefix) {
@@ -90,7 +89,7 @@ func (r *IdentityResolver) SourceActor(ctx context.Context) contextinfo.Actor {
 		permission := r.permission
 		actor = permission.Actor(info.Identity.ActorID, info.Source.Platform, info.Identity.PlatformUserID, info.Identity.DisplayName)
 		actor.Nickname, actor.GroupCard = info.Identity.Nickname, info.Identity.GroupCard
-		if msg, ok := platform.MessageContextFrom(ctx); ok {
+		if msg, ok := MessageContextFrom(ctx); ok {
 			actor.GroupRole = msg.GroupRole
 		}
 	}

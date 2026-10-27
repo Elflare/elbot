@@ -1,4 +1,4 @@
-// config_test.go 验证随组件迁入的既有行为。
+// input_trigger_test.go 验证 Agent 输入唤醒词的前缀处理。
 
 package share
 

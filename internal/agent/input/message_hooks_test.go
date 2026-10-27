@@ -13,7 +13,6 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	"elbot/internal/platform"
 	"elbot/internal/security"
 )
 
@@ -113,10 +112,10 @@ func TestWaitingInputPreparesMediaWithoutRecomputingWakeup(t *testing.T) {
 	store := newTestStore(t)
 	root := t.TempDir()
 	h.media = media.NewManager(store, root, &media.LocalBackend{Root: root})
-	ctx := platform.WithMessageContext(t.Context(), platform.MessageContext{
-		Conversation:    contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram", ConversationKind: contextinfo.ConversationGroup}},
-		TriggerKeywords: []string{"wake"}, MediaResolver: resolver,
-		Segments: []platform.MessageSegment{{Type: platform.SegmentImage, PlatformFileID: "image"}},
+	ctx := agentshare.WithMessageContext(contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram", ConversationKind: contextinfo.ConversationGroup}}), agentshare.MessageContext{
+
+		TriggerKeywords: []string{"wake"}, ResolveMedia: resolver.ResolveMedia,
+		Segments: []agentshare.MessageSegment{{Type: "image", Media: media.PlatformMedia{Type: "image", PlatformFileID: "image"}}},
 	})
 	if err := h.HandleMessage(ctx, "original"); err != nil {
 		t.Fatal(err)

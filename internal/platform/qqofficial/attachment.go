@@ -3,28 +3,27 @@
 package qqofficial
 
 import (
+	"elbot/internal/platform/share"
 	"fmt"
 	"mime"
 	"net/http"
 	"net/url"
 	"path/filepath"
 	"strings"
-
-	"elbot/internal/platform"
 )
 
-func inboundAttachmentSegments(attachments []messageAttachment) []platform.MessageSegment {
-	segments := make([]platform.MessageSegment, 0, len(attachments))
+func inboundAttachmentSegments(attachments []messageAttachment) []share.MessageSegment {
+	segments := make([]share.MessageSegment, 0, len(attachments))
 	for i, attachment := range attachments {
-		kind := platform.SegmentFile
+		kind := share.SegmentFile
 		if isImageAttachment(attachment) {
-			kind = platform.SegmentImage
+			kind = share.SegmentImage
 		}
 		mimeType := attachmentDeclaredMIMEType(attachment)
 		if mimeType == "file" {
 			mimeType = ""
 		}
-		segments = append(segments, platform.MessageSegment{Type: kind, URL: strings.TrimSpace(attachment.URL), Name: inboundAttachmentName(attachment, nil, i+1), MIMEType: mimeType, Size: attachment.Size})
+		segments = append(segments, share.MessageSegment{Type: kind, URL: strings.TrimSpace(attachment.URL), Name: inboundAttachmentName(attachment, nil, i+1), MIMEType: mimeType, Size: attachment.Size})
 	}
 	return segments
 }

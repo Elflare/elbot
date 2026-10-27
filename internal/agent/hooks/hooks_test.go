@@ -9,7 +9,6 @@ import (
 
 	"elbot/internal/events"
 	"elbot/internal/llm"
-	"elbot/internal/platform"
 )
 
 func TestSingleProviderDetachAndReplace(t *testing.T) {
@@ -114,7 +113,7 @@ func TestCallbackFactsPreserveWakeupAndCallPolicy(t *testing.T) {
 func TestMessageFactsKeepOriginalTextAndPreparedIntent(t *testing.T) {
 	h := NewHookBridge(HookBridgeDeps{})
 	defer h.Close(context.Background())
-	ctx := platform.WithMessageContext(t.Context(), platform.MessageContext{RawText: "wake original", TriggerKeywords: []string{"wake"}})
+	ctx := agentshare.WithMessageContext(t.Context(), agentshare.MessageContext{RawText: "wake original", TriggerKeywords: []string{"wake"}})
 	var seen []agentshare.Message
 	_, err := h.Register(Points{PlatformMessageReceived: func(_ context.Context, _ Facts, message agentshare.Message) (agentshare.PlatformMessageReceivedResult, events.LogResult, error) {
 		seen = append(seen, message)

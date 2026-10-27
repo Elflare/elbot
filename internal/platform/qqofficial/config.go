@@ -3,14 +3,13 @@
 package qqofficial
 
 import (
+	"elbot/internal/platform/share"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
 	"elbot/internal/config"
-	"elbot/internal/platform"
-	"elbot/internal/storage"
 )
 
 const (
@@ -39,22 +38,22 @@ type Config struct {
 	Superadmins              []string
 }
 
-func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory storage.ChatHistoryRepository, superadmins []string, commandPrefixes []string, configEnvDir, attachmentDir string, maxReceiveFileBytes int64, downloadTimeoutSecs int) (*Adapter, error) {
+func NewFromPlatformConfig(raw map[string]any, deps share.AdapterDeps) (*Adapter, error) {
 	var cfg Config
-	if err := platform.DecodeConfig(raw, &cfg); err != nil {
+	if err := share.DecodeConfig(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("decode qqofficial config: %w", err)
 	}
-	cfg.Superadmins = append([]string(nil), superadmins...)
-	cfg.CommandPrefixes = append([]string(nil), commandPrefixes...)
-	cfg.AttachmentDir = strings.TrimSpace(attachmentDir)
-	cfg.MaxReceiveFileBytes = maxReceiveFileBytes
-	cfg.DownloadTimeoutSecs = downloadTimeoutSecs
+	cfg.Superadmins = append([]string(nil), deps.Superadmins...)
+	cfg.CommandPrefixes = append([]string(nil), deps.CommandPrefixes...)
+	cfg.AttachmentDir = strings.TrimSpace(deps.AttachmentDir)
+	cfg.MaxReceiveFileBytes = deps.MaxReceiveFileBytes
+	cfg.DownloadTimeoutSecs = deps.DownloadTimeoutSecs
 	applyDefaults(&cfg)
 	if cfg.Enabled {
 		if strings.TrimSpace(cfg.AppID) == "" {
 			return nil, fmt.Errorf("qqofficial app_id is required")
 		}
-		secret, err := resolveSecret(cfg, configEnvDir)
+		secret, err := resolveSecret(cfg, deps.ConfigDir)
 		if err != nil {
 			return nil, err
 		}
@@ -63,7 +62,9 @@ func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory 
 		}
 		cfg.ClientSecret = secret
 	}
-	return New(cfg, store, chatHistory), nil
+	adapter := New(cfg, deps.Store, deps.ChatHistory)
+	adapter.referenceResolver = deps.ReferenceResolver
+	return adapter, nil
 }
 
 func resolveSecret(cfg Config, configEnvDir string) (string, error) {

@@ -1,13 +1,12 @@
-package share
+package storage
 
 import (
-	"elbot/internal/storage"
 	"testing"
 )
 
 func TestChatMetadataPreservesReferenceSnapshot(t *testing.T) {
-	want := ReplyContext{MessageID: "42", SenderID: "1001", SenderName: "小娅", Text: "原消息"}
-	message := storage.ChatMessage{ReplyToPlatformMessageID: want.MessageID, Metadata: MarshalChatMetadata(want)}
+	want := ChatReply{MessageID: "42", SenderID: "1001", SenderName: "小娅", Text: "原消息"}
+	message := ChatMessage{ReplyToPlatformMessageID: want.MessageID, Metadata: MarshalChatMetadata(want)}
 	got := ChatMessageReply(message)
 	if got.MessageID != want.MessageID || got.SenderID != want.SenderID || got.SenderName != want.SenderName || got.Text != want.Text {
 		t.Fatalf("reply=%+v want=%+v", got, want)

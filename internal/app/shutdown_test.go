@@ -146,3 +146,63 @@ func TestCloseSharedResourcesContinuesAfterOrdinaryError(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = next.Close(context.Background()) })
 }
+
+func TestShutdownOwnsHistoryUntilUsersClose(t *testing.T) {
+	for _, partial := range []bool{false, true} {
+		t.Run(map[bool]string{false: "running", true: "partial construction"}[partial], func(t *testing.T) {
+			history, err := sqlite.NewChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = history.Close() })
+			row := &storage.ChatMessage{Platform: "test", PlatformScopeID: "scope", PlatformMessageID: "message"}
+			if err := history.Repository().Append(t.Context(), row); err != nil {
+				t.Fatal(err)
+			}
+			closed := false
+			cause := errors.New("partial owner close failed")
+			user := &testLifecycle{close: func(ctx context.Context) error {
+				if _, err := history.Repository().GetByPlatformMessage(ctx, "test", "scope", "message"); err != nil {
+					t.Error("history closed before user", err)
+				}
+				closed = true
+				if partial {
+					return cause
+				}
+				return nil
+			}}
+			err = shutdown(t.Context(), businessLines{"tool": {supervisor: user}}, &sharedResources{historyStore: history}, nil)
+			if !closed || (partial && !errors.Is(err, cause)) || (!partial && err != nil) {
+				t.Fatal(closed, err)
+			}
+			if _, err := history.Repository().GetByPlatformMessage(t.Context(), "test", "scope", "message"); err == nil {
+				t.Fatal("App did not close history")
+			}
+		})
+	}
+}
+
+func TestShutdownTimeoutRetainsHistoryForUnfinishedUser(t *testing.T) {
+	history, err := sqlite.NewChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer history.Close()
+	row := &storage.ChatMessage{Platform: "test", PlatformScopeID: "scope", PlatformMessageID: "message"}
+	if err := history.Repository().Append(t.Context(), row); err != nil {
+		t.Fatal(err)
+	}
+	synctest.Test(t, func(t *testing.T) {
+		release := make(chan struct{})
+		user := &testLifecycle{close: func(context.Context) error { <-release; return nil }}
+		err := shutdown(t.Context(), businessLines{"tool": {supervisor: user}}, &sharedResources{historyStore: history}, nil)
+		close(release)
+		synctest.Wait()
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatal(err)
+		}
+		if _, err := history.Repository().GetByPlatformMessage(t.Context(), "test", "scope", "message"); err != nil {
+			t.Fatal("timeout released dependency", err)
+		}
+	})
+}

@@ -147,7 +147,7 @@ func TestMediaAPIHistoryBatchPreservesOrderAndErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	stored := storage.ChatMessage{Platform: "test", PlatformScopeID: "chat", PlatformMessageID: "message", Segments: `[{"type":"file","platform_file_id":"file"}]`}
-	if err := center.History.Append(t.Context(), &stored); err != nil {
+	if err := history.Repository().Append(t.Context(), &stored); err != nil {
 		t.Fatal(err)
 	}
 	row := media.HistoryMessage{ID: stored.ID, Platform: "test", ScopeID: "chat", MessageID: "message", Media: []media.PlatformMedia{{Type: "file", PlatformFileID: "file"}}}

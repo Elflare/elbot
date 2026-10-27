@@ -22,7 +22,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/app/entry.go`：启动参数、局部阶段列表、统一阶段执行与耗时、Lifecycle／可选 Waiter、唯一总管集合、按顺序启动与按能力等待。
 - `internal/app/environment.go`：验证运行模式，定位配置并转为解析符号链接后的绝对路径；TUI／Service 通过 `gofrs/flock` 非阻塞取得对应 `.lock` 文件的独占锁。
 - `internal/app/environment_test.go`：配置定位、路径别名、配置替换保存、跨进程互斥、正常及异常退出后的重新取锁测试，可独立运行。
-- `internal/app/resources.go`：加载配置、构造共享资源并保留部分失败结果；向 `NewMediaCenter`、`NewModelManager` 交付完整配置，媒体与模型侧自行初始化；平台历史归平台线。
+- `internal/app/resources.go`：加载配置、构造共享资源并保留部分失败结果；向 `NewMediaCenter`、`NewModelManager` 交付完整配置，媒体与模型侧自行初始化；独立历史库由 App 持有并在业务使用方退出后关闭。
 - `internal/app/wiring.go`：用具体类型构造各线、连接公开能力并登记到唯一集合；构造失败保留非 nil 部分总管，Platform 按目标接口调用。
 - `internal/app/shutdown.go`：用 `shutdownStep` 声明清理顺序，`runShutdownStep` 按统一 30 秒期限返回结果枚举，`runShutdownSteps` 顺序执行并汇总；普通失败后继续，超时停止后续清理，资源关闭后最后释放配置锁。
 - `internal/app/client.go`：加载配置并调用 `platform.RunClient`，消费 `ClientResult`；明确运行直接返回错误，自动尝试将可回退结果转为信号，实际本地启动由进程入口决定。
@@ -30,7 +30,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/tool/supervisor.go`、`wiring.go`、`lifecycle.go`：Tool 对外入口、组件装配与生命周期。
 - `internal/hook/`：Hook 总管、外部桥接与生命周期；装配内部规则、流水线、控制与插件进程。
 - `internal/platform/`：根部已建立对外与装配骨架，发送路由和通知管理位于内部子包；`module/`、`builtin/` 保留待拆分的旧实现并标注删除，调用边界尚未接通。
-- `internal/background/supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go`：对外总管、七项借用依赖、最小能力注入与生命周期协调。cronBridge 转换存储，elnisBridge 转换存储与媒体。根部持有 Tool／平台订阅，显式启动 Cron Manager，Elnis 就绪后放行 Cron 平台通知；Wait 及时上报整线致命故障，BeginClose 取消组件与订阅，Done 等待实际退出，不公开内部 Runner。
+- `internal/background/supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go`：对外总管、借用依赖、最小能力注入与生命周期协调。cronBridge 转换存储，elnisBridge 转换存储与媒体。根部持有 Tool／平台订阅，显式启动 Cron Manager，Elnis 就绪后放行 Cron 平台通知；Wait 及时上报整线致命故障，BeginClose 取消组件与订阅，Done 等待实际退出，不公开内部 Runner。
 - `internal/background/execution/`：任务目录、后台来源准备与 Agent 公开执行入口转接；`cron/`、`elnis/`、`maintenance/` 承接各业务。
 
 <!-- locator:contextinfo -->
@@ -123,7 +123,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/tool/builtin/cron_contract.go`：Builtin 消费的 CronRepository、CronSaveRequest、创建／更新请求与管理结果，由根部 bridge 实现，不引用 Storage、Config 或 Background 类型。
 - `internal/tool/cron_bridge.go`：转换 Tool 与 Storage 的任务数据和持久化格式，桥接模型校验；写入成功后发布根部 CronChangedEvent，提供 ObserveCronChanged。工具由 wiring 注册，注册及信号由 Tool 生命周期释放。
 - `internal/tool/chat_history/manager.go`：历史组件构造与 Backend 契约；`query.go` 统一检查搜索范围：前台禁止显式 platform／scope，后台必须同时提供；user 仅去除首尾空白，以 SenderQuery 交查询后端同时匹配 ID 或昵称，不解析特殊写法。`media.go` 处理媒体选择、序号与批次获取策略。
-- `internal/tool/chat_history_bridge.go`：消费 Platform 根部公开历史事实，转换组件数据和 Media 历史输入，并注入按目标平台解析媒体的函数；不解析存储 JSON，不访问 Platform 子包。Builtin 根据结构化 Reply 组织引用展示。
+- `internal/tool/chat_history_bridge.go`：直接查询 Storage，通过 Storage 编解码读取历史事实，转换组件数据和 Media 历史输入，并注入按目标平台解析媒体的函数。Builtin 根据结构化 Reply 组织引用展示。
 - `internal/tool/config_bridge.go`：按装配路径读取配置，向 Builtin 的 ElwispCreatorConfigProvider 提供精简配置摘要与读取错误；创建指引与告警由 Builtin 生成。
 - `internal/tool/resident_memory_bridge.go`：实现 Builtin 的 ResidentMemoryService，转换调用者范围、常驻记忆数据及未找到错误。
 - `internal/tool/builtin/elwisp_creator.go`、`resident_memory.go`：各自声明所需服务与数据契约，组织工具参数、指引和展示。
@@ -219,18 +219,20 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 ## 平台适配
 
 - `internal/platform/{supervisor,deps,wiring,lifecycle}.go`：总管、借用依赖、完整配置装配与生命周期；部分构造可清理，停止接入与最终资源释放分离。下层目标契约见 [App 包设计](app-design.md#platform-下层目标契约)。
-- `internal/platform/{contracts,agent,send,public_api,history,client,config}.go`：公开契约、Agent 输入与展示转接、发送、两类 API、历史查询清理、客户端分类转换及配置汇总；按下层已实现来调用，整包仍待迁移。
-- `internal/platform/share/`：内部契约与共享辅助；`adapter_api.go` 定义调用契约的职责，`config.go`、`media.go`、`backoff.go` 已迁入现有辅助实现，消息类型和调用方仍待对接。
+- `internal/platform/{contracts,agent,send,public_api,client,config}.go`：公开契约、Agent 输入与展示转接、发送、两类 API、媒体解析、客户端分类转换及配置汇总；按下层已实现来调用，整包仍待迁移。
+- `internal/platform/share/`：内部契约与共享辅助；`adapter_api.go` 定义调用契约的职责，`config.go`、`backoff.go` 提供共享辅助，`adapter.go` 的 AdapterDeps 接收历史写入、身份查询、两项别名能力及引用恢复函数；运行生命周期与 API 契约仍待接通。
 - `internal/platform/dispatch/{router,media}.go`：复用平台注册表执行发送与显式目标媒体解析；ResolveMedia 不回退到当前或默认平台。`calls.go` 承接 Elvena 平台调用与映射实现，尚未拆入各适配器。
 - `internal/platform/{telegram,qq-onebot}/capability_api.go`：通用能力的平台实现骨架。
-- `internal/platform/refcontext/refcontext.go`：引用消息恢复与上下文处理。
+- `internal/platform/refcontext/refcontext.go`：引用消息恢复与上下文处理；Options 持有 Store 和仅含 GetByPlatformMessage 的历史消费接口，单次请求和结果使用 share 契约，由根部闭包注入适配器。
 - `internal/platform/platform.go`、`module/`、`builtin/`：保留尚未拆分的旧实现，文件头标注迁移后删除；不作为新对外边界。
 - `internal/platform/cli/`：本地／远程 CLI 与 TUI；`ui.go`、`status.go`、`reasoning.go`、`status_format.go` 分别负责展示目标、状态合并、思考流和状态文案。
-- `internal/platform/contracts.go`：客户端分类、纯消息事实和历史查询契约；ChatMessage 公开引用和有序媒体，不暴露存储 JSON。公开 MessageContext 仅含原文、原生载荷和引用，存取复制可变内容。
-- `internal/platform/history.go`：转换公开历史请求、消息事实和未找到错误；ResolveMedia 转换输入后交 dispatch 路由，不另建平台能力表。
-- `internal/platform/share/{message,reference,media}.go`：内部片段、引用和媒体解析契约，以及历史引用元数据与片段的编解码；完整运行消息契约仍待入站链迁移。
+- `internal/platform/contracts.go`：客户端分类与纯消息事实。公开 MessageContext 仅含原文、原生载荷和引用，存取复制可变内容。
+- `internal/platform/public_api.go`：公开平台 API 与 ResolveMedia，转换媒体输入后交 dispatch 路由，不另建平台能力表。
+- `internal/platform/share/{message,reference}.go`：内部路由上下文、片段、引用恢复契约与引用格式化。根部 `agent.go` 转换 Agent 输入，RestoreMessageContext 恢复公开事实及内部路由，不改写目标公共会话事实。
+- `internal/agent/contracts.go`、`share/input.go`：Agent 自有 MessageRequest 与内部输入上下文；平台恢复由根部注入，后台入口清除继承的平台状态。
+- `internal/storage/chat_history.go`：ChatSegment、ChatReply 和持久化编解码，保留片段顺序与来源清洗规则。
 - `internal/media/{types,platform}.go`：自有 PlatformMedia、HistoryMessage；负责媒体缓存、关联和批量获取，通过注入函数解析平台来源，不依赖 Platform。
-- `internal/platform/{lifecycle,contracts,agent}_test.go`：生命周期、公开事实隔离独立测试，以及待接收方契约落地的输入转换与投影测试。
+- `internal/platform/{lifecycle,contracts,agent}_test.go`：生命周期、公开事实隔离独立测试，以及输入转换与投影测试；本轮契约迁移的测试留到 review 运行。
 - `internal/platform/qq-onebot/`：协议转换、forward 展开、长消息与回执。
 - `internal/platform/qqofficial/`、`internal/platform/telegram/`、`internal/platform/headless/`：各平台 runtime。
 - `internal/platform/qqofficial/reference.go`：QQ 引用索引解析、消息 ID 关联、事件原文转换及入站／发送回执索引登记。

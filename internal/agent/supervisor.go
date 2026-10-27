@@ -19,28 +19,51 @@ import (
 
 // Supervisor owns foreground and background execution and its independently managed Session, Request and Turn state.
 type Supervisor struct {
-	signals         signals // Owned event sources; closed after internal producers finish.
-	ctx             context.Context
-	cancel          context.CancelFunc
-	sessions        *session.Service
-	requests        *request.Manager
-	turns           *turn.Manager
-	routes          *routes.Registry
-	contexts        *contextmgr.Service
-	commands        *command.Router
-	background      *agentinput.BackgroundHandler // Prepares task input using owned Session and execution capabilities.
-	handler         *agentinput.MessageHandler
-	completion      *completion.Service
-	execution       *agentexecution.ExecutionCoordinator
-	bridge          *agenthooks.HookBridge
-	bindings        *signalBindings
-	mu              sync.Mutex
-	started, closed bool
-	done            chan struct{}
+	signals               signals // Owned event sources; closed after internal producers finish.
+	ctx                   context.Context
+	cancel                context.CancelFunc
+	sessions              *session.Service
+	requests              *request.Manager
+	turns                 *turn.Manager
+	routes                *routes.Registry
+	contexts              *contextmgr.Service
+	commands              *command.Router
+	background            *agentinput.BackgroundHandler // Prepares task input using owned Session and execution capabilities.
+	handler               *agentinput.MessageHandler
+	completion            *completion.Service
+	execution             *agentexecution.ExecutionCoordinator
+	bridge                *agenthooks.HookBridge
+	bindings              *signalBindings
+	mu                    sync.Mutex
+	started, closed       bool
+	done                  chan struct{}
+	restoreMessageContext func(context.Context, context.Context) context.Context // 注入的平台上下文恢复能力，不读取平台内部值。
 }
 
-func (m *Supervisor) HandleMessage(ctx context.Context, text string) error {
-	return m.handler.HandleMessage(ctx, text)
+func (m *Supervisor) HandleMessage(ctx context.Context, req MessageRequest) error {
+	msg := agentshare.MessageContext{
+		RawText: req.RawText, GroupRole: req.GroupRole, BufferAssistantOutput: req.BufferAssistantOutput,
+		ForkFromMessageID: req.ForkFromMessageID, ResumeSessionID: req.ResumeSessionID,
+		Segments: messageSegments(req.Segments), ContextText: req.ContextText, ContextSegments: messageSegments(req.ContextSegments),
+		Reply: agentshare.ReplyContext{MessageID: req.Reply.MessageID, SenderID: req.Reply.SenderID, SenderName: req.Reply.SenderName, Text: req.Reply.Text, Segments: messageSegments(req.Reply.Segments)},
+		Bot:   agentshare.Identity{UserID: req.Bot.UserID, Username: req.Bot.Username}, TriggerKeywords: req.TriggerKeywords,
+		ResolveMedia: req.ResolveMedia, RestoreMessageContext: m.restoreMessageContext,
+	}
+	for _, mention := range req.Mentions {
+		msg.Mentions = append(msg.Mentions, agentshare.Mention{UserID: mention.UserID, Username: mention.Username, Text: mention.Text})
+	}
+	return m.handler.HandleMessage(agentshare.WithMessageContext(ctx, msg), req.Text)
+}
+
+func messageSegments(input []MessageSegment) []agentshare.MessageSegment {
+	if input == nil {
+		return nil
+	}
+	result := make([]agentshare.MessageSegment, len(input))
+	for i, segment := range input {
+		result[i] = agentshare.MessageSegment{Type: segment.Type, Text: segment.Text, UserID: segment.UserID, Media: segment.Media}
+	}
+	return result
 }
 
 func (m *Supervisor) Complete(ctx context.Context, req completion.Request) ([]completion.Item, error) {

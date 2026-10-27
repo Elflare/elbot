@@ -30,7 +30,8 @@ type integrationPlatform struct {
 	outputs []string
 }
 
-func (*integrationPlatform) PrimaryName() string { return "cli" }
+func (*integrationPlatform) PrimaryName() string                                          { return "cli" }
+func (*integrationPlatform) RestoreMessageContext(ctx, _ context.Context) context.Context { return ctx }
 func (p *integrationPlatform) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -138,7 +139,7 @@ func TestAgentRegistersHookCommandsAndRunsPublicBridge(t *testing.T) {
 	if err != nil || len(items) != 1 || items[0].Text != "integration_suffix" {
 		t.Fatalf("completion=%+v err=%v", items, err)
 	}
-	if err := a.HandleMessage(t.Context(), "/hooks"); err != nil {
+	if err := a.HandleMessage(t.Context(), agent.MessageRequest{Text: "/hooks"}); err != nil {
 		t.Fatal(err)
 	}
 	platform.mu.Lock()
@@ -147,7 +148,7 @@ func TestAgentRegistersHookCommandsAndRunsPublicBridge(t *testing.T) {
 	if !strings.Contains(output, "integration_suffix") {
 		t.Fatalf("command output=%q", output)
 	}
-	if err := a.HandleMessage(t.Context(), "hello"); err != nil {
+	if err := a.HandleMessage(t.Context(), agent.MessageRequest{Text: "hello"}); err != nil {
 		t.Fatal(err)
 	}
 	platform.mu.Lock()
@@ -175,10 +176,10 @@ func TestAgentRegistersHookCommandsAndRunsPublicBridge(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "hooks.toml"), []byte(strings.ReplaceAll(rule, " [hook]", " [reloaded]")), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.HandleMessage(t.Context(), "/hooks reload"); err != nil {
+	if err := a.HandleMessage(t.Context(), agent.MessageRequest{Text: "/hooks reload"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.HandleMessage(t.Context(), "hello again"); err != nil {
+	if err := a.HandleMessage(t.Context(), agent.MessageRequest{Text: "hello again"}); err != nil {
 		t.Fatal(err)
 	}
 	platform.mu.Lock()

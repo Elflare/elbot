@@ -96,9 +96,9 @@ func TestSharedRetrySubscriptionCoversChatCompactAndNaming(t *testing.T) {
 		go func() {
 			switch name {
 			case "chat":
-				result <- runtime.HandleMessage(ctx, "hello")
+				result <- runtime.HandleMessage(ctx, MessageRequest{Text: "hello"})
 			case "compact":
-				err := runtime.HandleMessage(ctx, "/compact")
+				err := runtime.HandleMessage(ctx, MessageRequest{Text: "/compact"})
 				result <- err
 			case "naming":
 				_, err := session.NewTitleGenerator(deps.Models).GenerateTitle(ctx, []storage.Message{{Role: storage.RoleUser, Content: "hello"}})

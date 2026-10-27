@@ -8,7 +8,6 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/platform"
 	"elbot/internal/platform/dispatch"
 	"elbot/internal/platform/notification"
 	"elbot/internal/signal"
@@ -58,7 +57,8 @@ func connectFixtureNotifications(t *testing.T, name string, router *dispatch.Rou
 			route = hub.routes[name]
 			hub.mu.Unlock()
 		}
-		r, _, err := route.SendTo(ctx, platform.NotificationTarget(n), []delivery.Output{delivery.Text(n.Text)})
+		target := delivery.Target{Platform: n.Target.Platform, ScopeID: n.Target.ScopeID}
+		r, _, err := route.SendTo(ctx, target, []delivery.Output{delivery.Text(n.Text)})
 		return events.NotificationReceipt{PlatformMessageIDs: r.PlatformMessageIDs}, err
 	}, signal.ConnectOptions{})
 	if err != nil {

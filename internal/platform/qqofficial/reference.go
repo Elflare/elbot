@@ -4,13 +4,13 @@ package qqofficial
 
 import (
 	"context"
+	"elbot/internal/platform/share"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 
 	globalevents "elbot/internal/events"
-	"elbot/internal/platform/refcontext"
 	"elbot/internal/storage"
 )
 
@@ -50,9 +50,9 @@ func (a *Adapter) resolveInboundReplyID(ctx context.Context, scopeID, refIndex s
 	return id, err
 }
 
-func inboundReferencedMessage(msg inboundMessage, refIndex string) refcontext.ReferencedMessage {
+func inboundReferencedMessage(msg inboundMessage, refIndex string) share.ReferencedMessage {
 	if (refIndex == "" && msg.MessageType != 103) || len(msg.MsgElements) == 0 {
-		return refcontext.ReferencedMessage{}
+		return share.ReferencedMessage{}
 	}
 	element := msg.MsgElements[0]
 	text := normalizedInboundText(inboundMessage{Content: element.Content}, false)
@@ -60,7 +60,7 @@ func inboundReferencedMessage(msg inboundMessage, refIndex string) refcontext.Re
 	if text == "" && len(segments) > 0 {
 		text = "[媒体消息]"
 	}
-	return refcontext.ReferencedMessage{Text: text, Segments: segments}
+	return share.ReferencedMessage{Text: text, Segments: segments}
 }
 
 func (a *Adapter) recordMessageAlias(ctx context.Context, scopeID, alias, messageID string) {

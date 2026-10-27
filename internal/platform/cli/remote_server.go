@@ -5,6 +5,7 @@ package cli
 import (
 	"context"
 	"elbot/internal/events"
+	"elbot/internal/platform/share"
 	"errors"
 	"fmt"
 	"net/http"
@@ -231,7 +232,7 @@ func (s remoteMessageStream) Finish(ctx context.Context) (delivery.Receipt, even
 }
 
 func (s *RemoteServer) messageContext(ctx context.Context, client *remoteClientConn) context.Context {
-	msg := platform.MessageContext{
+	msg := share.MessageContext{
 		Conversation: contextinfo.Conversation{
 			Source: contextinfo.Source{
 				Platform:         s.Name(),
@@ -249,7 +250,7 @@ func (s *RemoteServer) messageContext(ctx context.Context, client *remoteClientC
 		},
 		Sender: s,
 	}
-	return platform.WithMessageContext(ctx, msg)
+	return share.WithMessageContext(ctx, msg)
 }
 
 func (s *RemoteServer) targetClients(ctx context.Context, target delivery.Target) ([]*remoteClientConn, error) {

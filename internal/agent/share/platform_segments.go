@@ -5,32 +5,31 @@ import (
 	"strings"
 
 	"elbot/internal/llm"
-	"elbot/internal/platform"
 )
 
-func PlatformSegmentsToLLM(segments []platform.MessageSegment, fallbackText string) []llm.MessageSegment {
+func PlatformSegmentsToLLM(segments []MessageSegment, fallbackText string) []llm.MessageSegment {
 	out := make([]llm.MessageSegment, 0, len(segments))
 	for _, segment := range segments {
 		switch segment.Type {
-		case platform.SegmentText:
+		case "text":
 			if segment.Text != "" {
 				out = append(out, llm.MessageSegment{Type: llm.SegmentText, Text: segment.Text})
 			}
-		case platform.SegmentImage:
-			if segment.URL != "" || segment.MediaID != "" {
-				out = append(out, llm.MessageSegment{Type: llm.SegmentImage, MediaID: segment.MediaID, URL: segment.URL, MIMEType: segment.MIMEType, Name: segment.Name})
+		case "image":
+			if segment.Media.URL != "" || segment.Media.MediaID != "" {
+				out = append(out, llm.MessageSegment{Type: llm.SegmentImage, MediaID: segment.Media.MediaID, URL: segment.Media.URL, MIMEType: segment.Media.MIMEType, Name: segment.Media.Name})
 			} else {
-				out = append(out, llm.MessageSegment{Type: llm.SegmentText, Text: fileSegmentText(segment.Name, "图片")})
+				out = append(out, llm.MessageSegment{Type: llm.SegmentText, Text: fileSegmentText(segment.Media.Name, "图片")})
 			}
-		case platform.SegmentFile:
+		case "file":
 			// TODO: 后续支持语音、视频和普通文件的真实模型输入；当前统一回滚为文本描述。
 			out = append(out, llm.MessageSegment{
 				Type:     llm.SegmentFile,
-				MediaID:  segment.MediaID,
-				URL:      segment.URL,
-				Text:     fileSegmentText(segment.Name, segment.Text),
-				MIMEType: segment.MIMEType,
-				Name:     segment.Name,
+				MediaID:  segment.Media.MediaID,
+				URL:      segment.Media.URL,
+				Text:     fileSegmentText(segment.Media.Name, segment.Text),
+				MIMEType: segment.Media.MIMEType,
+				Name:     segment.Media.Name,
 			})
 		}
 	}

@@ -5,7 +5,6 @@ import (
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/contextinfo"
 	"elbot/internal/notification/rules"
-	"elbot/internal/platform"
 	"elbot/internal/platform/dispatch"
 	"testing"
 )
@@ -19,7 +18,7 @@ func TestNotificationFactsUseGlobalSignalAndVisionDedup(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer b.Close(context.Background())
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "original"}}, Sender: one})
+	ctx := context.WithValue(contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "original"}}), notificationSenderKey{}, one)
 	conversation, _ := contextinfo.ConversationFromContext(ctx)
 	for range 2 {
 		if _, err := facts.VisionFallbackUsed.Emit(ctx, dialogue.VisionFallbackUsedEvent{SessionID: "one", Conversation: &conversation, Visible: true}); err != nil {

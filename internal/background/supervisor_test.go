@@ -19,6 +19,7 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
+	"elbot/internal/storage/sqlite"
 	"elbot/internal/tool"
 )
 
@@ -46,9 +47,6 @@ func (backgroundPlatformStub) SendTo(context.Context, delivery.Target, []deliver
 func (backgroundPlatformStub) CallPlatformAPI(context.Context, string, string, map[string]any) (json.RawMessage, error) {
 	return nil, nil
 }
-func (backgroundPlatformStub) CleanupChatHistory(context.Context, time.Time) (int, error) {
-	return 0, nil
-}
 
 func backgroundDeps(t *testing.T) (*config.Config, SupervisorDeps) {
 	t.Helper()
@@ -61,7 +59,12 @@ func backgroundDeps(t *testing.T) (*config.Config, SupervisorDeps) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = tools.Close(context.Background()) })
-	return cfg, SupervisorDeps{Store: store, Media: b.media, Tools: tools, Agent: &backgroundExecutionStub{}, Platform: backgroundPlatformStub{}}
+	history, err := sqlite.NewChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = history.Close() })
+	return cfg, SupervisorDeps{Store: store, ChatHistory: history.Repository(), Media: b.media, Tools: tools, Agent: &backgroundExecutionStub{}, Platform: backgroundPlatformStub{}}
 }
 
 func TestBackgroundLifecycleAndBorrowedResources(t *testing.T) {
@@ -117,6 +120,9 @@ func TestBackgroundLifecycleAndBorrowedResources(t *testing.T) {
 	}
 	if _, err := deps.Store.ElnisEvents().Get(t.Context(), row.ID); err != nil {
 		t.Fatal("borrowed store closed", err)
+	}
+	if _, err := deps.ChatHistory.DeleteBefore(t.Context(), time.Time{}); err != nil {
+		t.Fatal("borrowed history closed", err)
 	}
 	if err := m.Start(); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)

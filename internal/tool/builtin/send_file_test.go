@@ -14,7 +14,6 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/platform"
 	workspacepath "elbot/internal/workspace"
 )
 
@@ -68,7 +67,7 @@ func TestSendFileSendsSandboxFile(t *testing.T) {
 	}
 	sendFile := NewSendFileTool(nil)
 	args, _ := json.Marshal(map[string]any{"source": "report.txt"})
-	ctx := platform.WithMessageContext(context.Background(), platform.MessageContext{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot"}}})
+	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot"}})
 	ctx = workspacepath.WithPathScope(contextinfo.WithBackgroundKind(ctx, contextinfo.BackgroundKindCron), workspacepath.PathScope{Dir: cronDir, Restricted: true})
 	result, _, err := callTool(ctx, sendFile, toolshare.CallRequest{Arguments: args})
 	if err != nil {

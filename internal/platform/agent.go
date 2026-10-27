@@ -60,6 +60,15 @@ func (m *Supervisor) handleMessage(ctx context.Context, text string, msg share.M
 	return m.agent.HandleMessage(ctx, messageRequest(text, msg))
 }
 
+// RestoreMessageContext 恢复平台公开事实及内部回复路由；其他上下文仍取自 ctx。
+func (m *Supervisor) RestoreMessageContext(ctx, source context.Context) context.Context {
+	ctx = share.RestoreMessageContext(ctx, source)
+	if msg, ok := MessageContextFrom(source); ok {
+		return WithMessageContext(ctx, msg)
+	}
+	return WithoutMessageContext(ctx)
+}
+
 func messageRequest(text string, msg share.MessageContext) agent.MessageRequest {
 	request := agent.MessageRequest{
 		Text: text, RawText: msg.RawText, GroupRole: msg.GroupRole,

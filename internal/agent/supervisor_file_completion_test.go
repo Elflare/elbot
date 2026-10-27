@@ -55,7 +55,7 @@ func TestSupervisorRollbackAndBindingInvalidation(t *testing.T) {
 	client := &contractChat{}
 	contractModels(t, &deps, client)
 	m := contractSupervisor(t, deps)
-	if err := m.HandleMessage(t.Context(), "@tool:contract_echo edit"); err != nil {
+	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "@tool:contract_echo edit"}); err != nil {
 		t.Fatal(err)
 	}
 	if editor.backup == 0 {
@@ -65,7 +65,7 @@ func TestSupervisorRollbackAndBindingInvalidation(t *testing.T) {
 	if err != nil || string(data) != "after" {
 		t.Fatal(string(data), err)
 	}
-	if err := m.HandleMessage(t.Context(), fmt.Sprintf("/rollback %d", editor.backup)); err != nil {
+	if err := m.HandleMessage(t.Context(), MessageRequest{Text: fmt.Sprintf("/rollback %d", editor.backup)}); err != nil {
 		t.Fatal(err)
 	}
 	data, err = os.ReadFile(path)
@@ -73,17 +73,17 @@ func TestSupervisorRollbackAndBindingInvalidation(t *testing.T) {
 		t.Fatal(string(data), err)
 	}
 	client.requests = nil
-	if err := m.HandleMessage(t.Context(), "@tool:contract_echo edit again"); err != nil {
+	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "@tool:contract_echo edit again"}); err != nil {
 		t.Fatal(err)
 	}
 	oldCtx, oldID := editor.bindingCtx, editor.backup
-	if err := m.HandleMessage(t.Context(), "/new"); err != nil {
+	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "/new"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := files.List(oldCtx); err == nil {
 		t.Fatal("old binding still permits rollback access")
 	}
-	if err := m.HandleMessage(t.Context(), fmt.Sprintf("/rollback %d", oldID)); err != nil {
+	if err := m.HandleMessage(t.Context(), MessageRequest{Text: fmt.Sprintf("/rollback %d", oldID)}); err != nil {
 		t.Fatal(err)
 	}
 	data, err = os.ReadFile(path)

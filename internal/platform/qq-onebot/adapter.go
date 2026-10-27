@@ -23,7 +23,6 @@ import (
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/platform"
-	"elbot/internal/platform/refcontext"
 	"elbot/internal/platform/share"
 	"elbot/internal/security"
 	"elbot/internal/storage"
@@ -69,10 +68,11 @@ func qqTextPages(text string) []string {
 }
 
 type Adapter struct {
-	cfg         Config
-	store       storage.Store
-	chatHistory storage.ChatHistoryRepository
-	transport   *Transport
+	referenceResolver func(context.Context, share.ReferenceOptions) (share.ReferenceResult, error) // 根部注入的引用恢复能力。
+	cfg               Config
+	store             storage.Store
+	chatHistory       storage.ChatHistoryRepository // TODO：适配器子包改造时替换为 AdapterDeps.ChatHistory 的窄能力。
+	transport         *Transport
 	// lastMessageID 记录上一条非零入站消息 ID，用于接收入口去重，断线重连时保留。
 	lastMessageID int64
 }
@@ -83,29 +83,31 @@ type target struct {
 	GroupID     int64
 }
 
-func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory storage.ChatHistoryRepository, superadmins []string, commandPrefixes []string, configEnvDir, attachmentDir string, maxReceiveFileBytes int64, downloadTimeoutSecs int) (*Adapter, error) {
+func NewFromPlatformConfig(raw map[string]any, deps share.AdapterDeps) (*Adapter, error) {
 	var cfg Config
-	if err := platform.DecodeConfig(raw, &cfg); err != nil {
+	if err := share.DecodeConfig(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("decode qqonebot config: %w", err)
 	}
-	cfg.Superadmins = superadmins
-	cfg.CommandPrefixes = append([]string(nil), commandPrefixes...)
-	cfg.AttachmentDir = strings.TrimSpace(attachmentDir)
-	cfg.MaxReceiveFileBytes = maxReceiveFileBytes
-	cfg.DownloadTimeoutSecs = downloadTimeoutSecs
+	cfg.Superadmins = deps.Superadmins
+	cfg.CommandPrefixes = append([]string(nil), deps.CommandPrefixes...)
+	cfg.AttachmentDir = strings.TrimSpace(deps.AttachmentDir)
+	cfg.MaxReceiveFileBytes = deps.MaxReceiveFileBytes
+	cfg.DownloadTimeoutSecs = deps.DownloadTimeoutSecs
 	applyDefaults(&cfg)
 	if err := validateSendFileMode(cfg.SendFileMode); err != nil {
 		return nil, err
 	}
 	envName := strings.TrimSpace(cfg.AccessTokenEnv)
 	if strings.TrimSpace(cfg.AccessToken) == "" && envName != "" {
-		value, _, err := config.ConfigEnv(envName, configEnvDir)
+		value, _, err := config.ConfigEnv(envName, deps.ConfigDir)
 		if err != nil {
 			return nil, fmt.Errorf("resolve qqonebot access token from %s: %w", envName, err)
 		}
 		cfg.AccessToken = strings.TrimSpace(value)
 	}
-	return New(cfg, store, chatHistory), nil
+	adapter := New(cfg, deps.Store, deps.ChatHistory)
+	adapter.referenceResolver = deps.ReferenceResolver
+	return adapter, nil
 }
 
 func applyDefaults(cfg *Config) {
@@ -142,6 +144,7 @@ func validateSendFileMode(mode string) error {
 	}
 }
 
+// TODO：适配器子包改造时替换此旧构造入口，直接消费 AdapterDeps 的窄能力并初始化引用恢复。
 func New(cfg Config, store storage.Store, chatHistory storage.ChatHistoryRepository) *Adapter {
 	applyDefaults(&cfg)
 
@@ -170,7 +173,7 @@ func (a *Adapter) Run(ctx context.Context, handler platform.PlatformHandler) err
 		return nil
 	}
 	interval := time.Duration(a.cfg.ReconnectIntervalSeconds) * time.Second
-	backoff := platform.NewBackoff(interval, 10*time.Second)
+	backoff := share.NewBackoff(interval, 10*time.Second)
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -736,7 +739,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 	normalized := normalizeMessage(event.Message, event.RawMessage, event.SelfID)
 	normalized = a.resolveAtSegments(ctx, event, normalized)
 	if event.MessageType != "private" && event.MessageType != "group" {
-		a.recordChatMessage(ctx, event, normalized, platform.ReplyContext{})
+		a.recordChatMessage(ctx, event, normalized, share.ReplyContext{})
 		return
 	}
 	replyToSenderID, err := a.replyToSenderID(ctx, event, normalized.ReplyID)
@@ -760,7 +763,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 	if event.MessageType == "group" {
 		conversationID = strconv.FormatInt(event.GroupID, 10)
 	}
-	messageCtx := platform.MessageContext{
+	messageCtx := share.MessageContext{
 		Conversation: contextinfo.Conversation{
 			Source: contextinfo.Source{
 				Platform:         a.Name(),
@@ -786,8 +789,8 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 		Segments:              finalMessageSegments(text, currentSegments, nil),
 		RawText:               normalized.Text,
 		PlatformMessage:       append(json.RawMessage(nil), event.Message...),
-		Bot:                   platform.Identity{UserID: strconv.FormatInt(event.SelfID, 10)},
-		Mentions:              append([]platform.Mention(nil), normalized.Mentions...),
+		Bot:                   share.Identity{UserID: strconv.FormatInt(event.SelfID, 10)},
+		Mentions:              append([]share.Mention(nil), normalized.Mentions...),
 		TriggerKeywords:       append([]string(nil), a.cfg.TriggerKeywords...),
 		Meta: map[string]any{
 			"qq_onebot.message_id":   strconv.FormatInt(event.MessageID, 10),
@@ -796,10 +799,10 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 			"qq_onebot.user_id":      strconv.FormatInt(event.UserID, 10),
 		},
 	}
-	msgCtx := platform.WithMessageContext(ctx, messageCtx)
+	msgCtx := share.WithMessageContext(ctx, messageCtx)
 
-	var currentDisplay []platform.MessageSegment
-	if event.MessageType == "private" && !platform.HasCommandPrefix(text, a.cfg.CommandPrefixes) {
+	var currentDisplay []share.MessageSegment
+	if event.MessageType == "private" && !share.HasCommandPrefix(text, a.cfg.CommandPrefixes) {
 		if segments, ok := decodeMessageSegments(event.Message); ok {
 			var err error
 			currentDisplay, err = a.expandForwardSegments(msgCtx, segments, event.SelfID, currentSegments)
@@ -825,11 +828,9 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 	if len(currentDisplay) > 0 {
 		referenceInputText, referenceInputSegments = "", nil
 	}
-	var referenceSegments []platform.MessageSegment
+	var referenceSegments []share.MessageSegment
 	if normalized.ReplyID != "" {
-		ref, err := refcontext.Apply(msgCtx, refcontext.Options{
-			Store:           a.store,
-			ChatHistory:     a.chatHistory,
+		ref, err := a.referenceResolver(msgCtx, share.ReferenceOptions{
 			Platform:        a.Name(),
 			ScopeID:         messageCtx.Conversation.Source.ScopeID,
 			ActorID:         security.ActorID(a.Name(), strconv.FormatInt(event.UserID, 10)),
@@ -869,7 +870,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 		messageCtx.ContextSegments = forwardContextSegments(messageCtx.ContextSegments, currentDisplay, "")
 		var displayText strings.Builder
 		for _, segment := range messageCtx.ContextSegments {
-			if segment.Type == platform.SegmentText {
+			if segment.Type == share.SegmentText {
 				displayText.WriteString(segment.Text)
 			}
 		}
@@ -877,7 +878,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler platform.PlatformHand
 	}
 	a.recordChatMessage(ctx, event, normalized, messageCtx.Reply)
 	messageCtx.Segments = finalMessageSegments(text, currentSegments, nil)
-	msgCtx = platform.WithMessageContext(ctx, messageCtx)
+	msgCtx = share.WithMessageContext(ctx, messageCtx)
 	if strings.TrimSpace(text) == "" && len(currentSegments) == 0 {
 		return
 	}
@@ -888,11 +889,11 @@ func (a *Adapter) resolveAtSegments(ctx context.Context, event Event, msg Normal
 	if event.MessageType != "group" || event.GroupID == 0 || len(msg.Segments) == 0 {
 		return msg
 	}
-	updated := append([]platform.MessageSegment(nil), msg.Segments...)
+	updated := append([]share.MessageSegment(nil), msg.Segments...)
 	replacements := map[string]string{}
 	changed := false
 	for i := range updated {
-		if updated[i].Type != platform.SegmentAt || updated[i].UserID == "" {
+		if updated[i].Type != share.SegmentAt || updated[i].UserID == "" {
 			continue
 		}
 		userID, err := strconv.ParseInt(updated[i].UserID, 10, 64)
@@ -1001,28 +1002,33 @@ func (a *Adapter) replyToSenderID(ctx context.Context, event Event, replyID stri
 	return strconv.FormatInt(data.UserID, 10), nil
 }
 
-func (a *Adapter) referenceFetcher(event Event) func(context.Context, string) (refcontext.ReferencedMessage, bool, error) {
-	return func(ctx context.Context, replyID string) (refcontext.ReferencedMessage, bool, error) {
+func (a *Adapter) referenceFetcher(event Event) func(context.Context, string) (share.ReferencedMessage, bool, error) {
+	return func(ctx context.Context, replyID string) (share.ReferencedMessage, bool, error) {
 		data, err := a.transport.GetMessage(ctx, replyID)
 		if err != nil {
-			return refcontext.ReferencedMessage{}, false, err
+			return share.ReferencedMessage{}, false, err
 		}
 		ref := normalizeMessage(data.Message, data.RawMessage, event.SelfID)
 		label := "引用"
 		if data.UserID != 0 {
 			label = "引用：" + displayName(data.Sender, data.UserID)
 		}
-		return refcontext.ReferencedMessage{SenderID: strconv.FormatInt(data.UserID, 10), SenderName: displayName(data.Sender, data.UserID), Label: label, Text: ref.Text, Segments: ref.Segments}, true, nil
+		return share.ReferencedMessage{SenderID: strconv.FormatInt(data.UserID, 10), SenderName: displayName(data.Sender, data.UserID), Label: label, Text: ref.Text, Segments: ref.Segments}, true, nil
 	}
 }
 
-func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized NormalizedMessage, reply platform.ReplyContext) {
+func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized NormalizedMessage, reply share.ReplyContext) {
 	if (strings.TrimSpace(normalized.Text) == "" && len(normalized.Segments) == 0) || event.MessageID == 0 {
 		return
 	}
 	createdAt := storage.Now()
 	if event.Time > 0 {
 		createdAt = time.Unix(event.Time, 0)
+	}
+	sourceSegments := normalized.Segments
+	segments := make([]storage.ChatSegment, len(sourceSegments))
+	for i, segment := range sourceSegments {
+		segments[i] = storage.ChatSegment{Type: string(segment.Type), Text: segment.Text, UserID: segment.UserID, URL: segment.URL, MediaID: segment.MediaID, PlatformFileID: segment.PlatformFileID, MIMEType: segment.MIMEType, Name: segment.Name, Size: segment.Size}
 	}
 	message := &storage.ChatMessage{
 		Platform:                 a.Name(),
@@ -1033,9 +1039,9 @@ func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized
 		SenderName:               senderName(event.Sender),
 		Text:                     normalized.Text,
 		Raw:                      normalized.Text,
-		Segments:                 platform.MarshalChatSegments(normalized.Segments),
+		Segments:                 storage.MarshalChatSegments(segments),
 		ReplyToPlatformMessageID: normalized.ReplyID,
-		Metadata:                 share.MarshalChatMetadata(share.ReplyContext{MessageID: reply.MessageID, SenderID: reply.SenderID, SenderName: reply.SenderName, Text: reply.Text}),
+		Metadata:                 storage.MarshalChatMetadata(storage.ChatReply{MessageID: reply.MessageID, SenderID: reply.SenderID, SenderName: reply.SenderName, Text: reply.Text}),
 		CreatedAt:                createdAt,
 	}
 	if err := a.chatHistory.Append(ctx, message); err != nil {
@@ -1075,19 +1081,19 @@ func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized
 	}
 }
 
-func finalMessageSegments(text string, current, referenced []platform.MessageSegment) []platform.MessageSegment {
-	out := make([]platform.MessageSegment, 0, 1+len(current)+len(referenced))
+func finalMessageSegments(text string, current, referenced []share.MessageSegment) []share.MessageSegment {
+	out := make([]share.MessageSegment, 0, 1+len(current)+len(referenced))
 	if strings.TrimSpace(text) != "" {
-		out = append(out, platform.MessageSegment{Type: platform.SegmentText, Text: text})
+		out = append(out, share.MessageSegment{Type: share.SegmentText, Text: text})
 	}
 	out = appendNonTextSegments(out, current)
 	out = appendNonTextSegments(out, referenced)
 	return out
 }
 
-func appendNonTextSegments(out []platform.MessageSegment, segments []platform.MessageSegment) []platform.MessageSegment {
+func appendNonTextSegments(out []share.MessageSegment, segments []share.MessageSegment) []share.MessageSegment {
 	for _, segment := range segments {
-		if segment.Type != platform.SegmentText {
+		if segment.Type != share.SegmentText {
 			out = append(out, segment)
 		}
 	}

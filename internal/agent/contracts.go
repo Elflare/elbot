@@ -9,10 +9,55 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/media"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
 	"elbot/internal/tool"
 )
+
+// MessageRequest 是一次平台输入；会话与来源事实通过 contextinfo 提供。
+type MessageRequest struct {
+	Text                  string                                                                     // 交给 Agent 处理的正文。
+	RawText               string                                                                     // 平台原始正文。
+	GroupRole             contextinfo.GroupRole                                                      // 平台群身份，用于行为者权限解析。
+	BufferAssistantOutput bool                                                                       // 是否等待整段助手输出后发送。
+	ForkFromMessageID     string                                                                     // 可选分叉来源。
+	ResumeSessionID       string                                                                     // 可选恢复会话。
+	Segments              []MessageSegment                                                           // 当前输入片段。
+	ContextText           string                                                                     // 引用与当前输入组合的正文。
+	ContextSegments       []MessageSegment                                                           // 有序上下文片段。
+	Reply                 ReplyContext                                                               // 原始引用事实。
+	Bot                   Identity                                                                   // 当前平台机器人身份。
+	Mentions              []Mention                                                                  // 输入中的提及事实。
+	TriggerKeywords       []string                                                                   // 此平台的唤醒词。
+	ResolveMedia          func(context.Context, media.PlatformMedia, int64) (delivery.Source, error) // 延迟解析媒体来源，不在输入转换时下载。
+}
+
+type MessageSegment struct {
+	Type   string              // text、image、file 或 at。
+	Text   string              // 正文或附件说明。
+	UserID string              // 被提及的用户标识。
+	Media  media.PlatformMedia // 媒体来源描述。
+}
+
+type ReplyContext struct {
+	MessageID  string           // 引用的平台消息标识。
+	SenderID   string           // 引用发送者标识。
+	SenderName string           // 引用发送者展示名。
+	Text       string           // 引用正文。
+	Segments   []MessageSegment // 引用原始片段，供媒体关联使用。
+}
+
+type Identity struct {
+	UserID   string // 平台用户标识。
+	Username string // 平台用户名。
+}
+
+type Mention struct {
+	UserID   string // 被提及的平台用户标识。
+	Username string // 被提及的用户名。
+	Text     string // 原始提及文字。
+}
 
 // Points is one provider's callbacks. Nil callbacks preserve the original value
 // or do nothing. Independent Agent requests may call this group concurrently.

@@ -16,7 +16,6 @@ import (
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
-	"elbot/internal/platform"
 	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
 
@@ -237,7 +236,7 @@ func (c *InputCoordinator) ExpireIdleCurrentSession(ctx context.Context) error {
 }
 
 func hasForkFromMessage(ctx context.Context) bool {
-	msg, ok := platform.MessageContextFrom(ctx)
+	msg, ok := agentshare.MessageContextFrom(ctx)
 	return ok && msg.ForkFromMessageID != ""
 }
 

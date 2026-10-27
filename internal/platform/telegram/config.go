@@ -3,14 +3,13 @@
 package telegram
 
 import (
+	"elbot/internal/platform/share"
 	"fmt"
 	"net/url"
 	"strings"
 	"time"
 
 	appconfig "elbot/internal/config"
-	"elbot/internal/platform"
-	"elbot/internal/storage"
 )
 
 const (
@@ -45,14 +44,14 @@ type Config struct {
 	ConfigEnvDir                   string   `toml:"-"`
 }
 
-func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory storage.ChatHistoryRepository, superadmins []string, commandPrefixes []string, configEnvDir string) (*Adapter, error) {
+func NewFromPlatformConfig(raw map[string]any, deps share.AdapterDeps) (*Adapter, error) {
 	var cfg Config
-	if err := platform.DecodeConfig(raw, &cfg); err != nil {
+	if err := share.DecodeConfig(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("decode telegram config: %w", err)
 	}
-	cfg.Superadmins = append([]string(nil), superadmins...)
-	cfg.CommandPrefixes = append([]string(nil), commandPrefixes...)
-	cfg.ConfigEnvDir = configEnvDir
+	cfg.Superadmins = append([]string(nil), deps.Superadmins...)
+	cfg.CommandPrefixes = append([]string(nil), deps.CommandPrefixes...)
+	cfg.ConfigEnvDir = deps.ConfigDir
 	applyDefaults(&cfg)
 	if cfg.Enabled {
 		token, err := cfg.tokenValue()
@@ -66,7 +65,9 @@ func NewFromPlatformConfig(raw map[string]any, store storage.Store, chatHistory 
 			return nil, err
 		}
 	}
-	return New(cfg, store, chatHistory), nil
+	adapter := New(cfg, deps.Store, deps.ChatHistory)
+	adapter.referenceResolver = deps.ReferenceResolver
+	return adapter, nil
 }
 
 func applyDefaults(cfg *Config) {

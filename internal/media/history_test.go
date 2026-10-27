@@ -12,7 +12,7 @@ import (
 	"elbot/internal/testutil"
 )
 
-type brokenHistory struct{ storage.ChatHistoryRepository }
+type brokenHistory struct{}
 
 func (brokenHistory) GetByPlatformMessage(context.Context, string, string, string) (*storage.ChatMessage, error) {
 	return nil, errors.New("history offline")
@@ -30,7 +30,7 @@ func TestHistoryReconciliationAfterInterruptedDeletion(t *testing.T) {
 	m := NewManager(store, root, &LocalBackend{Root: root})
 	m.History = history.Repository()
 	msg := &storage.ChatMessage{Platform: "p", PlatformScopeID: "s", PlatformMessageID: "1", SenderID: "u", CreatedAt: time.Now().Add(-24 * time.Hour)}
-	if err := m.History.Append(ctx, msg); err != nil {
+	if err := history.Repository().Append(ctx, msg); err != nil {
 		t.Fatal(err)
 	}
 	item, err := m.ImportBytes(ctx, []byte("media"), Input{Name: "image.png"})
@@ -56,7 +56,7 @@ func TestHistoryReconciliationAfterInterruptedDeletion(t *testing.T) {
 	}
 	m.History = history.Repository()
 	// Simulate process interruption after the history transaction but before main DB cleanup.
-	if _, err := m.History.DeleteBefore(ctx, time.Now()); err != nil {
+	if _, err := history.Repository().DeleteBefore(ctx, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if refs, _ := store.MediaReferences().ListMediaIDs(ctx, item.ID); len(refs) != 1 {
@@ -79,7 +79,7 @@ func TestHistoryReconciliationAfterInterruptedDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	msg.ID = ""
-	if err := m.History.Append(ctx, msg); err != nil {
+	if err := history.Repository().Append(ctx, msg); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.ReconcileHistory(ctx); err != nil {
@@ -104,7 +104,7 @@ func TestHistoryReconciliationHandlesAttachmentsAcrossPages(t *testing.T) {
 			manager := NewManager(store, root, &LocalBackend{Root: root})
 			manager.History = history.Repository()
 			message := &storage.ChatMessage{Platform: "p", PlatformScopeID: "s", PlatformMessageID: "m", CreatedAt: time.Now().Add(-time.Hour)}
-			if err := manager.History.Append(ctx, message); err != nil {
+			if err := history.Repository().Append(ctx, message); err != nil {
 				t.Fatal(err)
 			}
 			item, err := manager.ImportBytes(ctx, []byte("shared attachments"), Input{Name: "image.png"})
@@ -117,12 +117,12 @@ func TestHistoryReconciliationHandlesAttachmentsAcrossPages(t *testing.T) {
 				}
 			}
 			if name == "missing" || name == "replacement" {
-				if _, err := manager.History.DeleteBefore(ctx, time.Now()); err != nil {
+				if _, err := history.Repository().DeleteBefore(ctx, time.Now()); err != nil {
 					t.Fatal(err)
 				}
 				if name == "replacement" {
 					message.ID = ""
-					if err := manager.History.Append(ctx, message); err != nil {
+					if err := history.Repository().Append(ctx, message); err != nil {
 						t.Fatal(err)
 					}
 				}

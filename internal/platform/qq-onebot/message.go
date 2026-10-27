@@ -3,10 +3,9 @@
 package qqonebot
 
 import (
+	"elbot/internal/platform/share"
 	"encoding/json"
 	"strings"
-
-	"elbot/internal/platform"
 )
 
 type Event struct {
@@ -38,8 +37,8 @@ type Segment struct {
 type NormalizedMessage struct {
 	Text     string
 	ReplyID  string
-	Mentions []platform.Mention
-	Segments []platform.MessageSegment
+	Mentions []share.Mention
+	Segments []share.MessageSegment
 }
 
 func normalizeMessage(raw json.RawMessage, rawMessage string, selfID int64) NormalizedMessage {

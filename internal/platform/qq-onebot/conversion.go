@@ -3,12 +3,11 @@
 package qqonebot
 
 import (
+	"elbot/internal/platform/share"
 	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
-
-	"elbot/internal/platform"
 )
 
 type conversionScene uint8
@@ -30,7 +29,7 @@ func convertSegments(segments []Segment, selfID int64, scene conversionScene) No
 		if label != "" {
 			text = "[" + label + "]"
 		}
-		var part platform.MessageSegment
+		var part share.MessageSegment
 		switch seg.Type {
 		case "text":
 			text = segmentDataString(seg.Data, "text")
@@ -40,12 +39,12 @@ func convertSegments(segments []Segment, selfID int64, scene conversionScene) No
 				if qq == "" || qq == "all" {
 					continue
 				}
-				out.Mentions = append(out.Mentions, platform.Mention{UserID: qq})
+				out.Mentions = append(out.Mentions, share.Mention{UserID: qq})
 				if qq == self {
 					continue
 				}
 				text = atText(qq, "")
-				part = platform.MessageSegment{Type: platform.SegmentAt, Text: text, UserID: qq}
+				part = share.MessageSegment{Type: share.SegmentAt, Text: text, UserID: qq}
 			}
 		case "reply":
 			if scene == ordinaryInput {
@@ -91,12 +90,12 @@ func segmentLabel(kind string) string {
 	}
 }
 
-func normalizeForwardContent(raw json.RawMessage) []platform.MessageSegment {
+func normalizeForwardContent(raw json.RawMessage) []share.MessageSegment {
 	if segments, ok := decodeMessageSegments(raw); ok {
 		return convertSegments(segments, 0, forwardContent).Segments
 	}
 	if text := messageString(raw); text != "" {
-		return []platform.MessageSegment{textSegment(text)}
+		return []share.MessageSegment{textSegment(text)}
 	}
 	return nil
 }
@@ -106,20 +105,20 @@ func normalizePlainText(text string) NormalizedMessage {
 	if text == "" {
 		return NormalizedMessage{}
 	}
-	return NormalizedMessage{Text: text, Segments: []platform.MessageSegment{textSegment(text)}}
+	return NormalizedMessage{Text: text, Segments: []share.MessageSegment{textSegment(text)}}
 }
 
-func textSegment(text string) platform.MessageSegment {
-	return platform.MessageSegment{Type: platform.SegmentText, Text: text}
+func textSegment(text string) share.MessageSegment {
+	return share.MessageSegment{Type: share.SegmentText, Text: text}
 }
 
-func imageSegment(data map[string]any) platform.MessageSegment {
+func imageSegment(data map[string]any) share.MessageSegment {
 	file := firstNonEmpty(segmentDataString(data, "file"), segmentDataString(data, "filename"))
 	url := strings.TrimSpace(segmentDataString(data, "url"))
 	if url == "" && isDirectImageURL(file) {
 		url = file
 	}
-	return platform.MessageSegment{Type: platform.SegmentImage, URL: url, Name: file, PlatformFileID: file, MIMEType: segmentDataString(data, "mime_type"), Size: segmentDataInt64(data, "file_size")}
+	return share.MessageSegment{Type: share.SegmentImage, URL: url, Name: file, PlatformFileID: file, MIMEType: segmentDataString(data, "mime_type"), Size: segmentDataInt64(data, "file_size")}
 }
 
 func isDirectImageURL(value string) bool {
@@ -127,8 +126,8 @@ func isDirectImageURL(value string) bool {
 	return strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") || strings.HasPrefix(value, "base64://") || strings.HasPrefix(value, "data:") || strings.HasPrefix(value, "file://")
 }
 
-func fileSegment(kind string, data map[string]any) platform.MessageSegment {
-	return platform.MessageSegment{Type: platform.SegmentFile, Text: kind, PlatformFileID: firstNonEmpty(segmentDataString(data, "file_id"), segmentDataString(data, "file")), MIMEType: segmentDataString(data, "mime_type"), URL: strings.TrimSpace(segmentDataString(data, "url")), Name: firstNonEmpty(segmentDataString(data, "name"), segmentDataString(data, "file"), segmentDataString(data, "filename"), segmentDataString(data, "file_id")), Size: segmentDataInt64(data, "file_size")}
+func fileSegment(kind string, data map[string]any) share.MessageSegment {
+	return share.MessageSegment{Type: share.SegmentFile, Text: kind, PlatformFileID: firstNonEmpty(segmentDataString(data, "file_id"), segmentDataString(data, "file")), MIMEType: segmentDataString(data, "mime_type"), URL: strings.TrimSpace(segmentDataString(data, "url")), Name: firstNonEmpty(segmentDataString(data, "name"), segmentDataString(data, "file"), segmentDataString(data, "filename"), segmentDataString(data, "file_id")), Size: segmentDataInt64(data, "file_size")}
 }
 
 func segmentDataString(data map[string]any, key string) string {
