@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - 在重构中修复一些可能会出现的bug
+- 修复chat历史搜索工具bug。现在后台、前台都能搜了，且互不影响
 
 ## [v0.6.0 - 2026-10-23]
 
