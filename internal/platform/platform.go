@@ -1,11 +1,10 @@
-// platform.go 保留旧平台契约、消息上下文与通知辅助定义。
-// TODO：按职责迁入contracts.go 与 share 对应文件并更新调用方后删除本文件。
+// platform.go 保留尚未迁移的旧运行契约与通知辅助定义。
+// TODO：迁入 share 对应文件并更新调用方后删除本文件；公开消息事实已归 contracts.go。
 
 package platform
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 
 	"elbot/internal/contextinfo"
@@ -65,38 +64,8 @@ func NotificationTarget(n events.Notification) delivery.Target {
 	return t
 }
 
-type MessageSegmentType string
-
-const (
-	SegmentText  MessageSegmentType = "text"
-	SegmentImage MessageSegmentType = "image"
-	SegmentFile  MessageSegmentType = "file"
-	SegmentAt    MessageSegmentType = "at"
-)
-
-// MessageSegment is one typed part parsed from an inbound platform message.
-type MessageSegment struct {
-	Type           MessageSegmentType `json:"type"`
-	Text           string             `json:"text,omitempty"`
-	UserID         string             `json:"user_id,omitempty"`
-	URL            string             `json:"url,omitempty"`
-	MediaID        string             `json:"media,omitempty"`
-	PlatformFileID string             `json:"platform_file_id,omitempty"`
-	MIMEType       string             `json:"mime_type,omitempty"`
-	Name           string             `json:"name,omitempty"`
-	Size           int64              `json:"size,omitempty"`
-}
-
 type MediaResolver interface {
 	ResolveMedia(context.Context, MessageSegment, int64) (delivery.Source, error)
-}
-
-type ReplyContext struct {
-	MessageID  string
-	SenderID   string
-	SenderName string
-	Text       string
-	Segments   []MessageSegment
 }
 
 type Identity struct {
@@ -108,47 +77,4 @@ type Mention struct {
 	UserID   string
 	Username string
 	Text     string
-}
-
-// MessageContext carries per-message platform routing and actor data.
-type MessageContext struct {
-	contextinfo.Conversation
-	GroupRole             contextinfo.GroupRole
-	Sender                delivery.ContextSender
-	BufferAssistantOutput bool
-	ForkFromMessageID     string
-	ResumeSessionID       string
-	Segments              []MessageSegment
-	ContextText           string
-	ContextSegments       []MessageSegment
-	Reply                 ReplyContext
-	Meta                  map[string]any
-	RawText               string
-	PlatformMessage       json.RawMessage
-	Bot                   Identity
-	Mentions              []Mention
-	TriggerKeywords       []string
-	MediaResolver         MediaResolver
-}
-
-type messageContextKey struct{}
-
-func WithMessageContext(ctx context.Context, msg MessageContext) context.Context {
-	ctx = contextinfo.WithConversation(ctx, msg.Conversation)
-	// Only contextinfo owns the public snapshot. The platform value contains
-	// private state; readers receive a projection of the current public facts.
-	msg.Conversation = contextinfo.Conversation{}
-	return context.WithValue(ctx, messageContextKey{}, msg)
-}
-
-func MessageContextFrom(ctx context.Context) (MessageContext, bool) {
-	msg, ok := ctx.Value(messageContextKey{}).(MessageContext)
-	if ok {
-		msg.Conversation, _ = contextinfo.ConversationFromContext(ctx)
-	}
-	return msg, ok
-}
-
-func WithoutMessageContext(ctx context.Context) context.Context {
-	return context.WithValue(ctx, messageContextKey{}, struct{}{})
 }

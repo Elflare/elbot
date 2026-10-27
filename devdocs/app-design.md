@@ -1,6 +1,6 @@
 # App 包设计
 
-App 使用六文件组织公共运行流程，按下层接口已存在来编写调用；下层按照这些契约实现。Agent、Hook、Tool、Background 已提供根包总管，配置独占已实现；Platform 总管、媒体和模型构造入口、平台客户端接口及进程入口适配仍待完成。完整应用的编译与运行验证需待这些接口接入。
+App 使用六文件组织公共运行流程，按下层接口已存在来编写调用；下层按照这些契约实现。五条业务线已提供根包总管，配置独占已实现；Platform 下层与接收方契约、媒体和模型构造入口及进程入口适配仍待完成。完整应用的编译与运行验证需待这些接口接入。
 
 ## 职责与边界
 
@@ -61,9 +61,9 @@ App 用 `shutdownStep` 记录步骤名称和关闭调用，`runShutdownSteps` �
 `agent.NewSupervisor(ctx, cfg, deps)` 接收 Store、Models、Media、Permission、Logs 及 Tool、Hook、Platform 能力，其中 Hook 仅通过 `Commands() []command.Handler` 提供管理命令，由 Agent 使用标准注册入口接入。公开业务入口为 `HandleMessage`、`RunBackground`、`CopyBackground`、`CleanupSessions`、`SessionTakenOver`、`RegisterHooks`、`StartHookRequest`、`Complete`、`Commands`、`ObserveStatusChanged`、`ObserveBindingChanged`；生命周期使用 `Start`、`BeginClose`、`Close`、`Done`。Hook 的 `ConnectAgent` 注册一组 `agent.Points` 回调并持有解除函数，每个实际 handler 通过 `StartHookRequest` 登记。其他接收方的 `ConnectAgent` 负责自身适配、订阅和释放。其余四条线通过根包 `Supervisor`、`SupervisorDeps`、`NewSupervisor` 及各自生命周期接口接入。
 各条线的对外文件放各条线的根部，内部业务放子包。Agent 的公开回调和事件定义在 contracts.go，内部共享载荷放 share，消费者按实际需要接收最小能力。Agent 根包与子包、Hook、Command、Completion 已通过相关回归；真实 Agent–Hook–Tool 总管接线覆盖命令注册、规则补全和输出回调。Hook 消费 Agent 与 Tool 根部类型，管理查询类型留在 Hook 内部。
 
-Platform 已建立根部十一文件骨架和内部 `share` 契约文件；发送路由、通知管理、共享辅助与 Elvena 平台调用实现已迁入对应子包。新总管和公开能力尚未实现，旧 `platform.go`、`module/`、`builtin/` 标注迁移后删除；消息类型及调用边界仍未接通。
+Platform 根部十一文件已按目标下层契约实现。NewSupervisor 接收完整配置及 Mode、Store、Media、Permission、Logs，持有自有历史 SQLite、适配器、通知连接和 UI；部分失败仍交回总管，借用资源不由 Platform 关闭。公开发送、两类 API 和历史能力转交内部组件，不暴露 Repository 或 Router。旧 `platform.go`、`module/`、`builtin/` 保留迁移后删除标记；下层与旧消费者尚未接通。
 
-Tool 根部创建媒体入口、技能目录与基础环境并一次注入 Skill Manager；Builtin、Skill、发现及 ELwisp 均接入必需的准备／执行契约，Skill 内部不依赖 Tool 根包。Cron 工具只使用 Tool 内部契约，根部 bridge 接入 Storage 和模型校验并发布任务定义变更；Background 根部持有订阅，Cron Manager 合并名称并串行读库刷新。Elnis 已通过自身媒体契约接入媒体中心。Background 整包已完成生命周期接线；完整 App 仍缺 Platform 总管及媒体、模型构造入口。
+Tool 根部创建媒体入口、技能目录与基础环境并一次注入 Skill Manager；Builtin、Skill、发现及 ELwisp 均接入必需的准备／执行契约，Skill 内部不依赖 Tool 根包。Cron 工具只使用 Tool 内部契约，根部 bridge 接入 Storage 和模型校验并发布任务定义变更；Background 根部持有订阅，Cron Manager 合并名称并串行读库刷新。Elnis 已通过自身媒体契约接入媒体中心。Background 整包已完成生命周期接线；完整 App 仍需 Platform 下层契约以及媒体、模型构造入口接通。
 
 Background 根部按四文件组织：`supervisor.go` 定义对外总管并持有组件，`deps.go` 声明 Store、Models、Media、Logs、Agent、Tools、Platform 七项借用依赖，`wiring.go` 负责完整配置装配与边界适配，`lifecycle.go` 协调 Start、Wait、BeginClose、Close、Done。根部不公开内部 Runner 或 Cron CRUD；Cron 工具注册和管理归 Tool。
 
@@ -77,7 +77,7 @@ Elnis 的 `http.go` 构造 HTTP 路由和协议处理，`lifecycle.go` 管理同
 
 具体停止原因由产生结果的组件解释：Elnis 判断正常 HTTP 关闭与致命故障，Background 决定整线关闭，App 协调应用退出。等待上下文取消只代表结束本次观察。Background 的启动／等待取消路径使用已取消上下文向 Runtime 取得已发布结果，不依赖观察协程转存的时机，不解析 HTTP 错误；Runtime 发布启动结果时也保留已记录的运行故障。结果读取之后发生的新故障不属于本次观察范围。
 
-Agent 公开 RunBackground、CopyBackground、CleanupSessions、SessionTakenOver，均连接调用方与 Agent 的取消信号。后台输入准备位于 input，复制、清理和接管查询复用自有 Session。复制元数据使用 map[string]json.RawMessage，接管查询只返回事实；Background 不取得会话存储记录。执行、会话清理、Cron 复制及共享接管查询已接通；Platform 的公开能力仍待完成。App 等待后台调用退出后再关闭 Agent。
+Agent 公开 RunBackground、CopyBackground、CleanupSessions、SessionTakenOver，均连接调用方与 Agent 的取消信号。后台输入准备位于 input，复制、清理和接管查询复用自有 Session。复制元数据使用 map[string]json.RawMessage，接管查询只返回事实；Background 不取得会话存储记录。执行、会话清理、Cron 复制及共享接管查询已接通；Platform 公开能力已写入根部，仍待下层接通。App 等待后台调用退出后再关闭 Agent。
 
 Elvena 请求、Elnis 声明生成与展开、Background 共享请求统一使用 Tool 根包公开类型。工具声明的 JSON 标签保持协议字段名和空值省略规则，CanonicalName、EventKey 由 Elnis 生成，不参与外部声明 JSON。Runner 只准备任务目录与后台来源，并调用 Agent.RunBackground；会话、权限、模型和工具预载归 Agent，报告解析和重试归 Cron、Elnis。
 
@@ -93,6 +93,83 @@ Elvena 请求、Elnis 声明生成与展开、Background 共享请求统一使�
 
 App 与 Agent 不承接 Doctor，配置诊断由配置侧负责。进程入口尚需适配已确认的 `client` 命名和新 App 参数。
 
+## Platform 下层目标契约
+
+以下为根部当前调用的目标签名，供后续下层阶段实现。子包不导入根部或兄弟实现，外部不导入 `platform/share`；Agent、Media、Tool 的旧 Platform 依赖需随各自边界迁移移除，不增加兼容别名。
+
+```go
+// share/adapter.go
+type Runtime interface {
+    Name() string
+    Start(context.Context, MessageHandler) error
+    BeginClose()
+    Wait(context.Context) error
+    Close(context.Context) error
+    delivery.MessageSender
+}
+type MessageHandler func(context.Context, string, MessageContext) error
+// 三个远程适配器；CLI、headless 保留现有构造入口。
+NewFromPlatformConfig(map[string]any, share.AdapterDeps) (*Adapter, error)
+refcontext.Apply(context.Context, refcontext.Options, share.ReferenceOptions) (share.ReferenceResult, error)
+```
+
+AdapterDeps 包含 Store、ChatHistory、Superadmins、CommandPrefixes、ConfigDir、AttachmentDir、MaxReceiveFileBytes、DownloadTimeoutSecs，类型沿用现有构造参数；另有 `ReferenceResolver func(context.Context, ReferenceOptions) (ReferenceResult, error)`。share.ReferenceOptions 只包含 Platform、ScopeID、ActorID、IsSuperadmin、ReplyID、Text、CommandPrefixes、Fetch、Enrich，不携带存储依赖；ReferenceResult、ReferencedMessage 保留现有结果字段，片段使用 share 类型。refcontext.Options 仅包含 Store、ChatHistory，根部装配时固定该依赖值，通过闭包注入引用函数，不新增 Resolver 组件。远程适配器保留 Enabled；所有非 nil 构造结果都纳入所有权，包括未启用与部分失败对象。
+
+Start 同步完成本地启动，不等待远端连通；与 BeginClose 并发安全，关闭后不再接纳输入。正常停止由适配器返回 nil，独立故障返回 error；Wait 响应观察取消并优先返回已发布结果，启动失败仍可 Wait／Close。Close 响应期限且可重试。根部 BeginClose 只停止接入，Wait 等待所有已尝试启动的接入实际退出；服务模式即使全部平台退出也等待外部停止，本地 TUI 退出结束整线。取消等待不停止业务线，也不覆盖已经发布的独立故障。
+
+最终 Close 按 UI → 通知管理与接线 → 适配器 → 历史清理。普通清理错误累计后继续，期限耗尽停在当前步骤并保留后续依赖，重试从该步骤继续；Done 仅在全部自有资源清理实际完成后关闭。发送、展示、通知与历史能力在停止接入后仍保留给尚未退出的使用方。
+
+share/message.go 承接内部 MessageContext、MessageSegment、ReplyContext、Identity、Mention、MediaResolver 以及 WithMessageContext 等路由上下文方法，内部字段沿用旧定义。根部 contracts.go 的公开 MessageContext 独立定义，只含 RawText、PlatformMessage、Reply，引用和片段使用根部自有事实类型；不包含发送器、解析器、会话路由或续接／分叉等运行控制。根部投影和公开存取方法复制原始 JSON 与片段切片，消费者不会共享可变事实；存取不改写 contextinfo。旧消费者需迁移到各自输入契约，不增加兼容字段。
+
+```go
+// Agent 根包接收方契约。
+HandleMessage(context.Context, agent.MessageRequest) error
+type MessageRequest struct {
+    Text, RawText string
+    GroupRole contextinfo.GroupRole
+    BufferAssistantOutput bool
+    ForkFromMessageID, ResumeSessionID string
+    Segments []MessageSegment
+    ContextText string
+    ContextSegments []MessageSegment
+    Reply ReplyContext
+    Bot Identity
+    Mentions []Mention
+    TriggerKeywords []string
+    ResolveMedia func(context.Context, media.PlatformMedia, int64) (delivery.Source, error)
+}
+type MessageSegment struct { Type, Text, UserID string; Media media.PlatformMedia }
+// Media 根包：来源描述，不依赖 Platform。
+type PlatformMedia struct {
+    Type, MediaID, URL, PlatformFileID, MIMEType, Name string
+    Size int64
+}
+```
+
+Agent 自有 ReplyContext 包含 MessageID、SenderID、SenderName、Text、Segments；Identity 包含 UserID、Username；Mention 包含 UserID、Username、Text。公共会话事实通过 contextinfo 传递。转换不下载媒体，ResolveMedia 保留延迟调用，唤醒与等待续接的物化时机保持不变。
+
+CLI SetCompleter 接收 `func(context.Context, completion.Request) ([]completion.Item, error)`，命令消费者接收 `SetCommandCatalog([]command.Info)`。`cli.ConnectUI(cli.AgentEvents)` 返回 UI 和 error，部分 UI 交根部清理。CLI 自有 StatusChangedEvent、BindingChangedEvent、BindingSnapshot 与当前 Agent 公开事件字段对应，根部转换；订阅回调不接收 context，展示目标取自 Conversation。UI 持有订阅，最终 Close 解除订阅并等待展示退出。
+
+dispatch.Options.Primary 和 Router 的 primary 字段只接收 `interface { Name() string; delivery.MessageSender }`，RegisterPlatform 的目标参数使用同一匿名接口，不包含 Start、BeginClose、Wait、Close。根部注册时也按该窄接口交付；完整 Runtime 仅由总管持有。路由通过可选的 share.CapabilityCaller、share.PlatformAPICaller 识别两类调用能力，不接管启停。Media 改为 dispatch 独用的最小接口（Metadata、ImportURL、ImportFile、ImportBytes、ResolveForOutput，沿用现有签名）。保留发送方法，增加 `CallCapability(ctx, platform, name, params)` 和 `CallPlatformAPI(ctx, platform, api, params)`，均返回 `(json.RawMessage, error)`，params 为 `map[string]any`。两个 share 调用接口分别提供去掉 platform 参数的同名方法。
+
+通用入口仅承接已有 message.recall、member.mute、chat.leave，未知或不支持即报错；原生入口不登记名称清单、不映射业务名称，已知名称也不转入通用入口。认证、协议封装和传输错误归适配器。Elvena 映射保留在 dispatch/calls.go，待子包阶段拆入 capability_api.go；不增加头像等未使用能力。
+
+通知沿用 New、AddPlatform、ConnectNotifications，NotificationReceiver 移入 share。Manager 增加 `NotifyPlatformFailure(context.Context, string, error, []events.NotificationTarget)`，负责格式化和异步投递；根部选择仍在运行的平台目标。CLI 增加 `RunClient(ctx, rawConfig, configDir, name) ClientResult` 和自身 ClientCompleted／ClientFallback／ClientFailed 分类，根部只转换为公开结果，规则见上节。
+
+```mermaid
+flowchart TD
+    App --> S["supervisor.go / deps.go：总管与借用依赖"]
+    S --> W["wiring.go：构造、注入与资源所有权"]
+    S --> L["lifecycle.go：启停与最终清理"]
+    S --> A["agent.go：输入转换与展示订阅"]
+    S --> P["contracts.go / send.go / public_api.go / history.go：公开能力"]
+    S --> C["client.go / config.go：结果转换与配置汇总"]
+    W --> I["适配器、dispatch、notification、refcontext：内部实现"]
+    P --> I
+    I --> Share["share：内部协作契约"]
+    A --> Provider["Agent / Media 根部：接收方契约"]
+```
+
 ## 验证与备份
 
 `environment_test.go` 覆盖配置路径优先级、模式验证、相对路径与符号链接、配置替换保存、不同配置并行、取锁失败，以及 TUI／Service 各组合的跨进程互斥。子进程正常关闭和被终止后，锁文件保留且可重新取锁。环境测试可独立运行：`go test internal/app/environment.go internal/app/environment_test.go`。
@@ -100,6 +177,8 @@ App 与 Agent 不承接 Doctor，配置诊断由配置侧负责。进程入口�
 资源测试保留部分失败所有权和提前取消，不在 App 验证模型协议或重载内部实现。退出测试覆盖结果分类、执行顺序、普通失败后继续、共享期限、超时后停止后续步骤，以及存储关闭失败后仍释放日志。期限测试使用 `synctest` 虚拟时间。
 
 App 的阶段执行、登记、启动、可选等待和退出测试可在临时包中隔离尚未实现的构造调用，使用实际函数与共享资源类型，不提供假生产总管。覆盖任意数量业务线、独立故障保留及阻塞关闭下的统一期限。Background 全包测试覆盖同步启动、部分构造、并发启动、订阅取消与实际退出，Elnis 测试覆盖真实监听故障、阻塞 worker／handler 和清理失败恢复；真实 SQLite 验证关闭后的终态、媒体引用及持久化报告保留。完整 App 流程、资源构造及客户端链路仍需下层接口实现后验证。
+
+Platform 生命周期独立验证：`go test -race internal/platform/lifecycle.go internal/platform/lifecycle_test.go`。覆盖重复并发启停、未启动及部分失败清理、TUI／Service 差异、取消观察与故障保留、接入退出后保留资源、清理超时续接和普通失败继续。公开事实独立验证：`go test -race internal/platform/contracts.go internal/platform/contracts_test.go`，覆盖存入和读取的切片隔离、空值、上下文移除及无关上下文保留。agent_test.go 覆盖输入转换、延迟解析和公开事实投影，需目标类型落地后运行。API 分流、客户端结果、真实订阅与历史接线仍需整包验证；当前整包受旧反向依赖循环、CLI 旧 agent/events 引用及 share 缺失类型阻塞，旧消费者使用已移除的公开运行字段也需迁移。
 
 同目录保留 13 份原生产文件和 12 份原测试文件的 `*.go.bak`，不参与构建，未恢复旧装配。
 

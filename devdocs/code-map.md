@@ -18,7 +18,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 启动与装配
 
 - `cmd/elbot/main.go`、`internal/launcher/cli.go`：程序入口、参数与运行模式。
-- `internal/app/` 六文件按下层接口已存在来实现公共流程，Agent、Hook、Tool、Background 已提供根包总管，配置独占已实现；Platform 总管、媒体和模型构造入口、平台客户端接口及进程入口适配仍待完成。13 个原生产文件和 12 个原测试文件保存在 `*.go.bak` 中；职责与调用契约见 [App 包设计](app-design.md)。
+- `internal/app/` 六文件按下层接口已存在来实现公共流程，五条业务线已提供根包总管，配置独占已实现；Platform 下层与接收方契约、媒体和模型构造入口及进程入口适配仍待完成。13 个原生产文件和 12 个原测试文件保存在 `*.go.bak` 中；职责与调用契约见 [App 包设计](app-design.md)。
 - `internal/app/entry.go`：启动参数、局部阶段列表、统一阶段执行与耗时、Lifecycle／可选 Waiter、唯一总管集合、按顺序启动与按能力等待。
 - `internal/app/environment.go`：验证运行模式，定位配置并转为解析符号链接后的绝对路径；TUI／Service 通过 `gofrs/flock` 非阻塞取得对应 `.lock` 文件的独占锁。
 - `internal/app/environment_test.go`：配置定位、路径别名、配置替换保存、跨进程互斥、正常及异常退出后的重新取锁测试，可独立运行。
@@ -218,15 +218,16 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 <!-- locator:platform -->
 ## 平台适配
 
-- `internal/platform/{supervisor,deps,wiring,lifecycle}.go`：总管、借用依赖、装配与生命周期骨架，尚未实现接线。
-- `internal/platform/{contracts,agent,send,public_api,history,client,config}.go`：公开契约、Agent 接入、发送、能力调用、历史、客户端和配置汇总的职责骨架。
+- `internal/platform/{supervisor,deps,wiring,lifecycle}.go`：总管、借用依赖、完整配置装配与生命周期；部分构造可清理，停止接入与最终资源释放分离。下层目标契约见 [App 包设计](app-design.md#platform-下层目标契约)。
+- `internal/platform/{contracts,agent,send,public_api,history,client,config}.go`：公开契约、Agent 输入与展示转接、发送、两类 API、历史查询清理、客户端分类转换及配置汇总；按下层已实现来调用，整包仍待迁移。
 - `internal/platform/share/`：内部契约与共享辅助；`adapter_api.go` 定义调用契约的职责，`config.go`、`media.go`、`backoff.go` 已迁入现有辅助实现，消息类型和调用方仍待对接。
 - `internal/platform/dispatch/{router,media}.go`：发送路由与媒体准备；`calls.go` 承接 Elvena 平台调用与映射实现，尚未拆入各适配器。
 - `internal/platform/{telegram,qq-onebot}/capability_api.go`：通用能力的平台实现骨架。
 - `internal/platform/refcontext/refcontext.go`：引用消息恢复与上下文处理。
 - `internal/platform/platform.go`、`module/`、`builtin/`：保留尚未拆分的旧实现，文件头标注迁移后删除；不作为新对外边界。
 - `internal/platform/cli/`：本地／远程 CLI 与 TUI；`ui.go`、`status.go`、`reasoning.go`、`status_format.go` 分别负责展示目标、状态合并、思考流和状态文案。
-- `internal/platform/module/ui.go`：CLI 状态订阅与思考能力装配。
+- `internal/platform/contracts.go`：客户端分类与纯消息事实契约；公开 MessageContext 仅含原文、原生载荷和引用，存取复制可变内容。
+- `internal/platform/{lifecycle,contracts,agent}_test.go`：生命周期、公开事实隔离独立测试，以及待接收方契约落地的输入转换与投影测试。
 - `internal/platform/qq-onebot/`：协议转换、forward 展开、长消息与回执。
 - `internal/platform/qqofficial/`、`internal/platform/telegram/`、`internal/platform/headless/`：各平台 runtime。
 - `internal/platform/qqofficial/reference.go`：QQ 引用索引解析、消息 ID 关联、事件原文转换及入站／发送回执索引登记。

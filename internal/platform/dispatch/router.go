@@ -18,14 +18,20 @@ import (
 )
 
 type Options struct {
-	Primary            platform.PlatformAdapter
+	Primary interface {
+		Name() string
+		delivery.MessageSender
+	}
 	Store              storage.Store
 	Media              *media.Manager
 	MediaRetentionDays int
 }
 
 type Router struct {
-	primary            platform.PlatformAdapter
+	primary interface {
+		Name() string
+		delivery.MessageSender
+	}
 	mu                 sync.RWMutex
 	senders            map[string]delivery.MessageSender
 	store              storage.Store
