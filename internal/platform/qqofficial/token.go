@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -19,33 +18,38 @@ type tokenSource struct {
 	cfg    Config
 	client *http.Client
 
-	mu        sync.Mutex
-	token     string
-	expiresAt time.Time
+	refreshGate chan struct{} // 串行访问缓存与刷新；等待资格可由调用方取消。
+	token       string        // 最近成功获取的访问令牌。
+	expiresAt   time.Time     // 缓存令牌的过期时间。
 }
 
 func newTokenSource(cfg Config, client *http.Client) *tokenSource {
-	return &tokenSource{cfg: cfg, client: client}
+	return &tokenSource{cfg: cfg, client: client, refreshGate: make(chan struct{}, 1)}
 }
 
 func (s *tokenSource) tokenValue(ctx context.Context) (string, error) {
-	s.mu.Lock()
-	if s.token != "" && time.Until(s.expiresAt) > time.Minute {
-		token := s.token
-		s.mu.Unlock()
-		return token, nil
-	}
-	s.mu.Unlock()
-	return s.refresh(ctx)
+	return s.refresh(ctx, false)
 }
 
-func (s *tokenSource) refresh(ctx context.Context) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.token != "" && time.Until(s.expiresAt) > time.Minute {
+func (s *tokenSource) refresh(ctx context.Context, force bool) (string, error) {
+	select {
+	case s.refreshGate <- struct{}{}:
+		defer func() { <-s.refreshGate }()
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	// 资格和取消可能同时就绪；已取消调用不得读取或清除缓存。
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if !force && s.token != "" && time.Until(s.expiresAt) > time.Minute {
 		return s.token, nil
 	}
-	body, err := json.Marshal(accessTokenRequest{AppID: strings.TrimSpace(s.cfg.AppID), ClientSecret: s.cfg.secret()})
+	if force {
+		s.token = ""
+		s.expiresAt = time.Time{}
+	}
+	body, err := json.Marshal(accessTokenRequest{AppID: strings.TrimSpace(s.cfg.AppID), ClientSecret: s.cfg.ClientSecret})
 	if err != nil {
 		return "", err
 	}
@@ -89,11 +93,7 @@ func (s *tokenSource) refresh(ctx context.Context) (string, error) {
 }
 
 func (s *tokenSource) forceRefresh(ctx context.Context) (string, error) {
-	s.mu.Lock()
-	s.token = ""
-	s.expiresAt = time.Time{}
-	s.mu.Unlock()
-	return s.refresh(ctx)
+	return s.refresh(ctx, true)
 }
 
 func parseExpiresIn(value any) (int64, error) {

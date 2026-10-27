@@ -1,5 +1,4 @@
 // receipt_test.go 验证多项媒体发送部分失败时保留已成功发送的回执。
-// TODO：发送夹具随唯一构造入口迁移。
 
 package qqofficial
 
@@ -29,7 +28,7 @@ func TestNoticeKeepsPartiallySuccessfulMediaReceipt(t *testing.T) {
 		fmt.Fprint(w, `{"id":"sent"}`)
 	}))
 	defer server.Close()
-	a := newQQOfficialSendTestAdapter(server)
+	a := newQQOfficialSendTestAdapter(t, server)
 	out := delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/image.png"}}
 	receipt, _, err := a.SendTo(context.Background(), delivery.Target{Platform: platformName, GroupID: "9"}, []delivery.Output{out, out})
 	if err == nil || len(receipt.SentMessages) != 1 || len(receipt.PlatformMessageIDs) != 1 || receipt.SentMessages[0].ScopeID != "group:9" || receipt.SentMessages[0].OutputIndexes[0] != 0 {

@@ -1,5 +1,4 @@
 // inbound_media_test.go 验证纯媒体入站历史的内容与片段顺序。
-// TODO：迁移入站 handler 和根包类型，使用 Share 与 Storage 契约。
 
 package qqofficial
 
@@ -8,7 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"elbot/internal/platform"
+	"elbot/internal/platform/share"
+	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
 
@@ -19,10 +19,10 @@ func TestPureMediaHistoryPreservesOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer history.Close()
-	a := newTestAdapter(t, Config{}, nil, history.Repository())
+	a := newTestAdapter(t, Config{}, history.Repository())
 	handler := &captureHandler{}
 	image := messageAttachment{URL: "https://example.com/image.png", ContentType: "image/png", Filename: "image.png"}
-	a.handleGroupMessage(ctx, handler, payload{Type: eventGroupMessageCreate}, inboundMessage{
+	a.handleGroupMessage(ctx, handler.HandleMessage, payload{Type: eventGroupMessageCreate}, inboundMessage{
 		ID: "1", GroupOpenID: "9", Author: inboundAuthor{MemberOpenID: "1"},
 		Attachments: []messageAttachment{image, {URL: "https://example.com/file", ContentType: "file", Filename: "file.txt", Size: 5}, image},
 	})
@@ -30,11 +30,11 @@ func TestPureMediaHistoryPreservesOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	segments := platform.UnmarshalChatSegments(row.Segments)
-	if len(segments) != 3 || segments[0].Type != platform.SegmentImage || segments[1].Type != platform.SegmentFile || segments[2] != segments[0] {
+	segments := storage.UnmarshalChatSegments(row.Segments)
+	if len(segments) != 3 || segments[0].Type != "image" || segments[1].Type != "file" || segments[2] != segments[0] {
 		t.Fatalf("ordered history = %#v", segments)
 	}
-	msg, ok := platform.MessageContextFrom(handler.ctx)
+	msg, ok := share.MessageContextFrom(handler.ctx)
 	if !ok || len(msg.Segments) != 3 || msg.Segments[1].Name != "file.txt" {
 		t.Fatalf("handler media = %#v", msg)
 	}

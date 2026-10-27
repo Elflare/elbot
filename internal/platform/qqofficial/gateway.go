@@ -1,5 +1,4 @@
 // gateway.go 负责网关连接、鉴权、心跳、重连原因分类及事件分发。
-// TODO：改用 Share 入站契约，接入 lifecycle.go 的工作跟踪，处理心跳状态同步与协程退出。
 
 package qqofficial
 
@@ -18,7 +17,8 @@ import (
 	"github.com/coder/websocket/wsjson"
 
 	globalevents "elbot/internal/events"
-	"elbot/internal/platform"
+	"elbot/internal/platform/share"
+	"sync/atomic"
 )
 
 type reconnectMode int
@@ -42,11 +42,11 @@ type reconnectReason struct {
 
 type gatewayState struct {
 	sessionID string
-	seq       int64
+	seq       atomic.Int64 // 网关读取与心跳并发访问的最新序号。
 	resume    bool
 }
 
-func (a *Adapter) runGatewayOnce(ctx context.Context, handler platform.PlatformHandler, state *gatewayState) (reconnectReason, error) {
+func (a *Adapter) runGatewayOnce(ctx context.Context, handler share.MessageHandler, state *gatewayState) (reconnectReason, error) {
 	gatewayURL, err := a.client.gateway(ctx)
 	if err != nil {
 		return reconnectReason{mode: reconnectIdentify}, err
@@ -55,7 +55,7 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler platform.PlatformH
 	if err != nil {
 		return reconnectReason{mode: reconnectIdentify}, fmt.Errorf("connect qqofficial gateway: %w", err)
 	}
-	defer conn.Close(websocket.StatusNormalClosure, "reconnect")
+	defer conn.CloseNow()
 
 	var hello payload
 	if err := wsjson.Read(ctx, conn, &hello); err != nil {
@@ -81,8 +81,9 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler platform.PlatformH
 	}
 
 	heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
-	defer cancelHeartbeat()
-	go a.heartbeatLoop(heartbeatCtx, conn, state, interval)
+	heartbeatDone := make(chan struct{})
+	defer func() { cancelHeartbeat(); <-heartbeatDone }()
+	go func() { defer close(heartbeatDone); a.heartbeatLoop(heartbeatCtx, conn, state, interval) }()
 
 	for {
 		var p payload
@@ -90,7 +91,7 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler platform.PlatformH
 			return classifyGatewayError(err), err
 		}
 		if p.Seq != nil {
-			state.seq = *p.Seq
+			state.seq.Store(*p.Seq)
 		}
 		switch p.Op {
 		case opDispatch:
@@ -130,7 +131,7 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler platform.PlatformH
 				}
 			}
 		case opHeartbeat:
-			_ = a.writeGateway(ctx, conn, payload{Op: opHeartbeat, Data: mustJSON(state.seq)})
+			_ = a.writeGateway(ctx, conn, payload{Op: opHeartbeat, Data: mustJSON(state.seq.Load())})
 		case opHeartbeatACK:
 			// a.logDebug(ctx, "qqofficial heartbeat ack")
 		case opReconnect:
@@ -197,7 +198,7 @@ func (a *Adapter) sendResume(ctx context.Context, conn *websocket.Conn, state *g
 	if err != nil {
 		return err
 	}
-	body := resumeData{Token: "QQBot " + token, SessionID: state.sessionID, Seq: state.seq}
+	body := resumeData{Token: "QQBot " + token, SessionID: state.sessionID, Seq: state.seq.Load()}
 	return a.writeGateway(ctx, conn, payload{Op: opResume, Data: mustJSON(body)})
 }
 
@@ -209,7 +210,7 @@ func (a *Adapter) heartbeatLoop(ctx context.Context, conn *websocket.Conn, state
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := a.writeGateway(ctx, conn, payload{Op: opHeartbeat, Data: mustJSON(state.seq)}); err != nil {
+			if err := a.writeGateway(ctx, conn, payload{Op: opHeartbeat, Data: mustJSON(state.seq.Load())}); err != nil {
 				{
 					record := globalevents.LogRecord{
 						Category:     globalevents.LogRuntime,
@@ -243,13 +244,14 @@ func (a *Adapter) heartbeatLoop(ctx context.Context, conn *websocket.Conn, state
 					}
 					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 				}
+				_ = conn.CloseNow()
 				return
 			}
 		}
 	}
 }
 
-func (a *Adapter) handleDispatch(ctx context.Context, handler platform.PlatformHandler, p payload, state *gatewayState) error {
+func (a *Adapter) handleDispatch(ctx context.Context, handler share.MessageHandler, p payload, state *gatewayState) error {
 	switch p.Type {
 	case eventReady:
 		var ready readyData
@@ -296,13 +298,13 @@ func (a *Adapter) handleDispatch(ctx context.Context, handler platform.PlatformH
 		if err := json.Unmarshal(p.Data, &msg); err != nil {
 			return err
 		}
-		go a.handleC2CMessage(ctx, handler, p, msg)
+		a.acceptMessage(ctx, func(ctx context.Context) { a.handleC2CMessage(ctx, handler, p, msg) })
 	case eventGroupAtMessageCreate, eventGroupMessageCreate:
 		var msg inboundMessage
 		if err := json.Unmarshal(p.Data, &msg); err != nil {
 			return err
 		}
-		go a.handleGroupMessage(ctx, handler, p, msg)
+		a.acceptMessage(ctx, func(ctx context.Context) { a.handleGroupMessage(ctx, handler, p, msg) })
 	default:
 		if strings.TrimSpace(p.Type) != "" {
 			{

@@ -1,5 +1,4 @@
 // send_test.go 验证群聊与私聊发送、媒体上传、通知目标及显式投递的回复隔离。
-// TODO：迁移旧构造，通知夹具改用 Share 接收契约，移除对兄弟通知实现的依赖。
 
 package qqofficial
 
@@ -15,7 +14,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/platform/notification"
+	"elbot/internal/signal"
 	"log/slog"
 )
 
@@ -32,7 +31,7 @@ func TestSendChatUsesGroupMessageAPI(t *testing.T) {
 	}))
 	defer server.Close()
 
-	adapter := newQQOfficialSendTestAdapter(server)
+	adapter := newQQOfficialSendTestAdapter(t, server)
 	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ConversationKind: contextinfo.ConversationGroup, ConversationID: "group-1"}, PlatformMessageID: "incoming-1"})
 	receipt, _, err := adapter.SendChat(ctx, []delivery.Output{delivery.Text("hello")})
 	if err != nil {
@@ -61,7 +60,7 @@ func TestSendToUploadsGroupMediaToGroupAPI(t *testing.T) {
 	}))
 	defer server.Close()
 
-	adapter := newQQOfficialSendTestAdapter(server)
+	adapter := newQQOfficialSendTestAdapter(t, server)
 	out := delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/image.png"}}
 	receipt, _, err := adapter.SendTo(context.Background(),
 		delivery.Target{Platform: platformName, GroupID: "group-1"},
@@ -89,23 +88,19 @@ func TestNotificationDeliversExplicitGroupToolText(t *testing.T) {
 	}))
 	defer server.Close()
 
-	adapter := newQQOfficialSendTestAdapter(server)
+	adapter := newQQOfficialSendTestAdapter(t, server)
 	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ConversationKind: contextinfo.ConversationGroup, ConversationID: "group-1"}})
-	m, err := notification.New(adapter.Name())
+	s := signal.New[events.Notification, events.NotificationReceipt]("qqofficial-test")
+	connection, err := adapter.ConnectNotifications(s)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer m.Close(context.Background())
-	s, err := m.AddPlatform(adapter.Name())
+	defer connection.Close(context.Background())
+	n := events.NewNotification(ctx, slog.LevelDebug, "[tool] 正在调用 shell：{}")
+	n.Target = events.NotificationTarget{Platform: platformName, Kind: contextinfo.ConversationGroup, ID: "group-1"}
+	r, err := s.Emit(ctx, n)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if _, err := adapter.ConnectNotifications(s); err != nil {
-		t.Fatal(err)
-	}
-	r, err := events.NotificationRequested.Emit(ctx, events.NewNotification(ctx, slog.LevelDebug, "[tool] 正在调用 shell：{}"))
-	if err != nil {
-		t.Fatalf("send: %v", err)
 	}
 	if len(r[0].Value.PlatformMessageIDs) != 1 || calls.Load() != 1 {
 		t.Fatalf("receipt/calls = %#v/%d", r, calls.Load())
@@ -131,9 +126,9 @@ func TestTargetAPIPathSupportsC2CAndGroup(t *testing.T) {
 	}
 }
 
-func newQQOfficialSendTestAdapter(server *httptest.Server) *Adapter {
+func newQQOfficialSendTestAdapter(t *testing.T, server *httptest.Server) *Adapter {
 	markdown := false
-	adapter := New(Config{AppID: "app", ClientSecret: "secret", MarkdownByDefault: &markdown}, nil)
+	adapter := newTestAdapter(t, Config{AppID: "app", ClientSecret: "secret", MarkdownByDefault: &markdown}, nil)
 	adapter.client.baseURL = server.URL
 	adapter.client.http = server.Client()
 	adapter.client.tokens.client = server.Client()
@@ -153,7 +148,7 @@ func TestExplicitNoticeDoesNotReuseReplySnapshot(t *testing.T) {
 		_, _ = w.Write([]byte(`{"id":"sent"}`))
 	}))
 	defer server.Close()
-	adapter := newQQOfficialSendTestAdapter(server)
+	adapter := newQQOfficialSendTestAdapter(t, server)
 	info := contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ScopeID: "group:original"}, PlatformMessageID: "original-message", PlatformData: messageData{EventID: "event"}}
 	ctx := contextinfo.WithConversation(context.Background(), info)
 	if _, _, err := adapter.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("reply")}); err != nil {

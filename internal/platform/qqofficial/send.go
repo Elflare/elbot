@@ -1,5 +1,4 @@
 // send.go 负责消息编码、媒体上传、实际发送及回执整理。
-// TODO：承接 adapter.go 的发送入口、目标类型与解析、消息序号分配。
 
 package qqofficial
 
@@ -17,7 +16,6 @@ import (
 const (
 	msgTypeText     = 0
 	msgTypeMarkdown = 2
-	msgTypeArk      = 3
 	msgTypeMedia    = 7
 
 	fileTypeImage = 1
@@ -204,39 +202,101 @@ func (a *Adapter) baseMessage(target sendTarget) messageToCreate {
 	return msg
 }
 
-func (a *Adapter) sendArk(ctx context.Context, target sendTarget, ark messageArk) (delivery.Receipt, globalevents.LogResult, error) {
-	if !a.cfg.EnableArk {
-		{
-			err := fmt.Errorf("qqofficial ark is disabled")
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-			return delivery.Receipt{}, logResult, err
-		}
+func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+	ctx, finish, err := a.beginSend(ctx)
+	if err != nil {
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
-	msg := a.baseMessage(target)
-	msg.MsgType = msgTypeArk
-	msg.Ark = &ark
-	resp, err := a.client.sendMessage(ctx, target, msg)
+	defer finish()
+	return a.sendContextOutput(ctx, outputs)
+}
+
+func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+	if target.Empty() {
+		return a.SendChat(ctx, outputs)
+	}
+
+	ctx, finish, err := a.beginSend(ctx)
+	if err != nil {
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+	}
+	defer finish()
+	targets, err := a.targets(target)
 	if err != nil {
 		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		if errors.Is(err, context.Canceled) {
+		if err == context.Canceled {
 			logResult.ResultStatus = globalevents.ResultCanceled
 		}
 		return delivery.Receipt{}, logResult, err
 	}
-	a.recordMessageAlias(ctx, qqOfficialTargetScope(target), resp.ExtInfo.RefIdx, resp.ID)
-	return receiptWithMessageID(resp.ID), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+	var receipt delivery.Receipt
+	for _, target := range targets {
+		target.Proactive = true
+		sent, logResult, err := a.sendOutputs(ctx, target, outputs)
+		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
+		receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
+		if err != nil {
+			return receipt, logResult, err
+		}
+	}
+	return receipt, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
-func metaString(meta map[string]any, key string) string {
-	if meta == nil {
-		return ""
+func (a *Adapter) targets(target delivery.Target) ([]sendTarget, error) {
+	if platformName := strings.TrimSpace(target.Platform); platformName != "" && platformName != a.Name() {
+		return nil, fmt.Errorf("qqofficial cannot send to platform %q", platformName)
 	}
-	switch value := meta[key].(type) {
-	case string:
-		return strings.TrimSpace(value)
-	case fmt.Stringer:
-		return strings.TrimSpace(value.String())
-	default:
-		return ""
+	if target.Superadmins {
+		targets := make([]sendTarget, 0, len(a.cfg.Superadmins))
+		for _, id := range a.cfg.Superadmins {
+			id = strings.TrimSpace(strings.TrimPrefix(id, platformName+":"))
+			if id != "" {
+				targets = append(targets, sendTarget{Kind: targetC2C, OpenID: id})
+			}
+		}
+		if len(targets) == 0 {
+			return nil, fmt.Errorf("qqofficial superadmins are not configured")
+		}
+		return targets, nil
 	}
+	if id := strings.TrimSpace(target.PrivateUserID); id != "" {
+		return []sendTarget{{Kind: targetC2C, OpenID: id}}, nil
+	}
+	if id := strings.TrimSpace(target.GroupID); id != "" {
+		return []sendTarget{{Kind: targetGroup, OpenID: id}}, nil
+	}
+	scope := strings.TrimSpace(target.ScopeID)
+	if strings.HasPrefix(scope, "c2c:") {
+		return []sendTarget{{Kind: targetC2C, OpenID: strings.TrimPrefix(scope, "c2c:")}}, nil
+	}
+	if strings.HasPrefix(scope, "group:") {
+		return []sendTarget{{Kind: targetGroup, OpenID: strings.TrimPrefix(scope, "group:")}}, nil
+	}
+	return nil, fmt.Errorf("qqofficial target missing private_user_id, group_id or scope_id")
 }
+
+func (a *Adapter) nextMsgSeq(msgID string) int {
+	msgID = strings.TrimSpace(msgID)
+	if msgID == "" {
+		return 0
+	}
+	a.seqMu.Lock()
+	defer a.seqMu.Unlock()
+	a.seqByID[msgID]++
+	return a.seqByID[msgID]
+}
+
+type sendTarget struct {
+	Kind      sendTargetKind // 私聊或群聊目标。
+	OpenID    string         // 对应用户或群的开放标识。
+	MsgID     string         // 被回复的平台消息 ID，用于被动发送及序号分配。
+	EventID   string         // 无消息 ID 时使用的事件回复标识。
+	Proactive bool           // 是否属于显式目标的主动发送。
+}
+
+type sendTargetKind string
+
+const (
+	targetC2C   sendTargetKind = "c2c"
+	targetGroup sendTargetKind = "group"
+)

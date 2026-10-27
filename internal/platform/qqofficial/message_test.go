@@ -1,5 +1,4 @@
 // message_test.go 验证入站身份、唤醒事实、引用结果、历史写入、附件转换与连接通知。
-// TODO：迁移旧构造、handler 和根包类型；引用决策通过注入契约验证消费行为。
 
 package qqofficial
 
@@ -14,8 +13,7 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/platform"
-	"elbot/internal/session"
+	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
@@ -25,7 +23,8 @@ type captureHandler struct {
 	ctx  context.Context
 }
 
-func (h *captureHandler) HandleMessage(ctx context.Context, text string) error {
+func (h *captureHandler) HandleMessage(ctx context.Context, text string, msg share.MessageContext) error {
+	ctx = share.WithMessageContext(ctx, msg)
 	h.ctx = ctx
 	h.text = text
 	return nil
@@ -33,9 +32,9 @@ func (h *captureHandler) HandleMessage(ctx context.Context, text string) error {
 
 func TestHandleGroupAtMessageBuildsGroupContext(t *testing.T) {
 	raw := json.RawMessage(`{"id":"msg-1","group_openid":"group-1"}`)
-	adapter := newTestAdapter(t, Config{AppID: "bot-app", TriggerKeywords: []string{"芙莉丝"}}, nil, nil)
+	adapter := newTestAdapter(t, Config{AppID: "bot-app", TriggerKeywords: []string{"芙莉丝"}}, nil)
 	handler := &captureHandler{}
-	adapter.handleGroupMessage(context.Background(), handler, payload{ID: "event-1", Type: eventGroupAtMessageCreate, Data: raw}, inboundMessage{
+	adapter.handleGroupMessage(context.Background(), handler.HandleMessage, payload{ID: "event-1", Type: eventGroupAtMessageCreate, Data: raw}, inboundMessage{
 		ID:          "msg-1",
 		GroupOpenID: "group-1",
 		Author:      inboundAuthor{MemberOpenID: "member-1"},
@@ -45,7 +44,7 @@ func TestHandleGroupAtMessageBuildsGroupContext(t *testing.T) {
 	if handler.text != "你好" {
 		t.Fatalf("text = %q, want stripped group-at text", handler.text)
 	}
-	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	msgCtx, ok := share.MessageContextFrom(handler.ctx)
 	if !ok {
 		t.Fatal("missing message context")
 	}
@@ -71,16 +70,16 @@ func TestHandleGroupAtMessageBuildsGroupContext(t *testing.T) {
 }
 
 func TestHandleOrdinaryGroupMessageKeepsWakeupInputs(t *testing.T) {
-	adapter := newTestAdapter(t, Config{AppID: "bot-app", TriggerKeywords: []string{"芙莉丝"}}, nil, nil)
+	adapter := newTestAdapter(t, Config{AppID: "bot-app", TriggerKeywords: []string{"芙莉丝"}}, nil)
 	handler := &captureHandler{}
-	adapter.handleGroupMessage(context.Background(), handler, payload{Type: eventGroupMessageCreate}, inboundMessage{
+	adapter.handleGroupMessage(context.Background(), handler.HandleMessage, payload{Type: eventGroupMessageCreate}, inboundMessage{
 		ID:          "msg-1",
 		GroupOpenID: "group-1",
 		Author:      inboundAuthor{MemberOpenID: "member-1"},
 		Content:     "芙莉丝，你好",
 	})
 
-	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	msgCtx, ok := share.MessageContextFrom(handler.ctx)
 	if !ok {
 		t.Fatal("missing message context")
 	}
@@ -100,10 +99,16 @@ func TestHandleGroupMessageRecordsChatHistoryBeforeWakeup(t *testing.T) {
 	}
 	defer historyStore.Close()
 	history := historyStore.Repository()
-	adapter := newTestAdapter(t, Config{}, nil, history)
+	adapter := newTestAdapter(t, Config{}, history)
 	mapTestReference(t, adapter, "group:group-1", "REFIDX_reply-1", "reply-1")
+	adapter.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
+		if opts.ReplyID != "reply-1" {
+			t.Fatalf("reply = %q", opts.ReplyID)
+		}
+		return share.ReferenceResult{Reply: share.ReplyContext{MessageID: opts.ReplyID}}, nil
+	}
 	handler := &captureHandler{}
-	adapter.handleGroupMessage(ctx, handler, payload{Type: eventGroupMessageCreate}, inboundMessage{
+	adapter.handleGroupMessage(ctx, handler.HandleMessage, payload{Type: eventGroupMessageCreate}, inboundMessage{
 		ID:           "msg-1",
 		GroupOpenID:  "group-1",
 		Author:       inboundAuthor{MemberOpenID: "member-1"},
@@ -129,48 +134,38 @@ func TestHandleGroupMessageRecordsChatHistoryBeforeWakeup(t *testing.T) {
 }
 
 func TestHandleGroupMessageAppliesAssistantReference(t *testing.T) {
-	ctx := context.Background()
-	store := newQQOfficialTestStore(t)
-	scope := session.Scope{ActorID: "qqofficial:member-1", Platform: platformName, PlatformScopeID: "group:group-1"}
-	first, _ := createQQOfficialAssistantMessages(t, ctx, store, scope)
-	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: platformName, PlatformScopeID: scope.PlatformScopeID, PlatformMessageID: "assistant-1", MessageID: first.ID, SessionID: first.SessionID}); err != nil {
-		t.Fatalf("map assistant: %v", err)
+	a := newTestAdapter(t, Config{}, nil)
+	mapTestReference(t, a, "group:group-1", "REFIDX_assistant-1", "assistant-1")
+	called := false
+	a.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
+		called = true
+		if opts.Platform != platformName || opts.ScopeID != "group:group-1" || opts.ReplyID != "assistant-1" || opts.Text != "继续" {
+			t.Fatalf("options = %+v", opts)
+		}
+		return share.ReferenceResult{ForkFromMessageID: "fork-message", Reply: share.ReplyContext{MessageID: opts.ReplyID}, Text: "resolved"}, nil
 	}
-	adapter := newTestAdapter(t, Config{}, store, nil)
-	mapTestReference(t, adapter, "group:group-1", "REFIDX_assistant-1", "assistant-1")
-	handler := &captureHandler{}
-	adapter.handleGroupMessage(ctx, handler, payload{Type: eventGroupMessageCreate}, inboundMessage{
-		ID:           "msg-1",
-		GroupOpenID:  "group-1",
-		Author:       inboundAuthor{MemberOpenID: "member-1"},
-		Content:      "继续",
-		MessageScene: messageScene{Ext: []string{"ref_msg_idx=REFIDX_assistant-1"}},
-	})
-
-	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
-	if !ok {
-		t.Fatal("missing message context")
-	}
-	if msgCtx.ReplyToMessageID != "assistant-1" || msgCtx.ForkFromMessageID != first.ID {
-		t.Fatalf("reply/fork = %q/%q", msgCtx.ReplyToMessageID, msgCtx.ForkFromMessageID)
+	h := &captureHandler{}
+	a.handleGroupMessage(t.Context(), h.HandleMessage, payload{}, inboundMessage{ID: "msg", GroupOpenID: "group-1", Author: inboundAuthor{MemberOpenID: "member-1", UserOpenID: "user-1"}, Content: "继续", MessageScene: messageScene{Ext: []string{"ref_msg_idx=REFIDX_assistant-1"}}})
+	msg, _ := share.MessageContextFrom(h.ctx)
+	if !called || msg.ForkFromMessageID != "fork-message" || msg.ReplyToMessageID != "assistant-1" || msg.ContextText != "resolved" || h.text != "继续" {
+		t.Fatalf("message = %+v", msg)
 	}
 }
 
 type asyncCaptureHandler struct {
-	result chan platform.MessageContext
+	result chan share.MessageContext
 }
 
-func (h *asyncCaptureHandler) HandleMessage(ctx context.Context, _ string) error {
-	msg, _ := platform.MessageContextFrom(ctx)
+func (h *asyncCaptureHandler) HandleMessage(ctx context.Context, _ string, msg share.MessageContext) error {
 	h.result <- msg
 	return nil
 }
 
 func TestHandleDispatchRoutesOrdinaryGroupMessage(t *testing.T) {
-	adapter := newTestAdapter(t, Config{}, nil, nil)
-	handler := &asyncCaptureHandler{result: make(chan platform.MessageContext, 1)}
+	adapter := newTestAdapter(t, Config{}, nil)
+	handler := &asyncCaptureHandler{result: make(chan share.MessageContext, 1)}
 	data := json.RawMessage(`{"id":"msg-1","group_openid":"group-1","author":{"member_openid":"member-1"},"content":"hello"}`)
-	if err := adapter.handleDispatch(context.Background(), handler, payload{Type: eventGroupMessageCreate, Data: data}, &gatewayState{}); err != nil {
+	if err := adapter.handleDispatch(context.Background(), handler.HandleMessage, payload{Type: eventGroupMessageCreate, Data: data}, &gatewayState{}); err != nil {
 		t.Fatalf("handle dispatch: %v", err)
 	}
 	select {
@@ -184,14 +179,14 @@ func TestHandleDispatchRoutesOrdinaryGroupMessage(t *testing.T) {
 }
 
 func TestHandleC2CMessageUsesCanonicalActorID(t *testing.T) {
-	adapter := newTestAdapter(t, Config{}, nil, nil)
+	adapter := newTestAdapter(t, Config{}, nil)
 	handler := &captureHandler{}
-	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
+	adapter.handleC2CMessage(context.Background(), handler.HandleMessage, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
 		ID:      "msg-1",
 		Author:  inboundAuthor{UserOpenID: "user-1"},
 		Content: "你好",
 	})
-	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	msgCtx, ok := share.MessageContextFrom(handler.ctx)
 	if !ok {
 		t.Fatal("missing message context")
 	}
@@ -204,9 +199,9 @@ func TestHandleC2CMessageUsesCanonicalActorID(t *testing.T) {
 }
 
 func TestHandleC2CMessageAddsFallbackReferenceText(t *testing.T) {
-	adapter := newTestAdapter(t, Config{}, nil, nil)
+	adapter := newTestAdapter(t, Config{}, nil)
 	handler := &captureHandler{}
-	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
+	adapter.handleC2CMessage(context.Background(), handler.HandleMessage, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
 		ID:          "msg-1",
 		Author:      inboundAuthor{UserOpenID: "user-1"},
 		Content:     "你看看有没",
@@ -218,7 +213,7 @@ func TestHandleC2CMessageAddsFallbackReferenceText(t *testing.T) {
 	if handler.text != "你看看有没" {
 		t.Fatalf("text = %q, want current text", handler.text)
 	}
-	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	msgCtx, ok := share.MessageContextFrom(handler.ctx)
 	if !ok {
 		t.Fatal("missing message context")
 	}
@@ -231,53 +226,29 @@ func TestHandleC2CMessageAddsFallbackReferenceText(t *testing.T) {
 }
 
 func TestHandleC2CMessageForksOwnOlderAssistantReference(t *testing.T) {
-	ctx := context.Background()
-	store := newQQOfficialTestStore(t)
-	adapter := newTestAdapter(t, Config{}, store, nil)
-	mapTestReference(t, adapter, "c2c:user-1", "REFIDX_old", "platform-old")
-	svc := session.NewService(store)
-	scope := session.Scope{ActorID: "qqofficial:user-1", Platform: platformName, PlatformScopeID: "c2c:user-1"}
-	s, err := svc.Create(ctx, scope, session.CreateRequest{Title: "source"})
-	if err != nil {
-		t.Fatalf("create session: %v", err)
+	a := newTestAdapter(t, Config{}, nil)
+	mapTestReference(t, a, "c2c:user-1", "REFIDX_old", "platform-old")
+	called := false
+	a.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
+		called = true
+		if opts.Platform != platformName || opts.ScopeID != "c2c:user-1" || opts.ReplyID != "platform-old" || opts.Text != "继续" {
+			t.Fatalf("options = %+v", opts)
+		}
+		return share.ReferenceResult{ForkFromMessageID: "fork-message", Reply: share.ReplyContext{MessageID: opts.ReplyID}, Text: "resolved"}, nil
 	}
-	first := &storage.Message{ID: storage.NewID(), SessionID: s.ID, Role: storage.RoleAssistant, Content: "old answer"}
-	latest := &storage.Message{ID: storage.NewID(), SessionID: s.ID, Role: storage.RoleAssistant, Content: "latest answer"}
-	if err := store.Messages().Append(ctx, first); err != nil {
-		t.Fatalf("append first: %v", err)
-	}
-	if err := store.Messages().Append(ctx, latest); err != nil {
-		t.Fatalf("append latest: %v", err)
-	}
-	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: platformName, PlatformScopeID: scope.PlatformScopeID, PlatformMessageID: "platform-old", MessageID: first.ID, SessionID: s.ID}); err != nil {
-		t.Fatalf("map first: %v", err)
-	}
-
-	handler := &captureHandler{}
-	adapter.handleC2CMessage(ctx, handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
-		ID:          "msg-1",
-		Author:      inboundAuthor{UserOpenID: "user-1"},
-		Content:     "继续",
-		MessageType: 103,
-		MsgElements: []messageElement{{MsgIdx: "REFIDX_old"}},
-	})
-	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
-	if !ok {
-		t.Fatal("missing message context")
-	}
-	if msgCtx.ForkFromMessageID != first.ID {
-		t.Fatalf("fork = %q, want %q", msgCtx.ForkFromMessageID, first.ID)
-	}
-	if handler.text != "继续" {
-		t.Fatalf("text = %q, want original", handler.text)
+	h := &captureHandler{}
+	a.handleC2CMessage(t.Context(), h.HandleMessage, payload{}, inboundMessage{ID: "msg", GroupOpenID: "group-1", Author: inboundAuthor{MemberOpenID: "member-1", UserOpenID: "user-1"}, Content: "继续", MessageScene: messageScene{Ext: []string{"ref_msg_idx=REFIDX_old"}}})
+	msg, _ := share.MessageContextFrom(h.ctx)
+	if !called || msg.ForkFromMessageID != "fork-message" || msg.ReplyToMessageID != "platform-old" || msg.ContextText != "resolved" || h.text != "继续" {
+		t.Fatalf("message = %+v", msg)
 	}
 }
 
 func TestHandleC2CMessageImageAttachmentReachesHandler(t *testing.T) {
 	imageURL := "https://example.com/image.png"
-	adapter := newTestAdapter(t, Config{}, nil, nil)
+	adapter := newTestAdapter(t, Config{}, nil)
 	handler := &captureHandler{}
-	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
+	adapter.handleC2CMessage(context.Background(), handler.HandleMessage, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
 		ID:     "msg-1",
 		Author: inboundAuthor{UserOpenID: "user-1"},
 		Attachments: []messageAttachment{{
@@ -292,7 +263,7 @@ func TestHandleC2CMessageImageAttachmentReachesHandler(t *testing.T) {
 	if handler.text != "" {
 		t.Fatalf("text = %q, want empty", handler.text)
 	}
-	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	msgCtx, ok := share.MessageContextFrom(handler.ctx)
 	if !ok {
 		t.Fatal("missing message context")
 	}
@@ -300,7 +271,7 @@ func TestHandleC2CMessageImageAttachmentReachesHandler(t *testing.T) {
 		t.Fatalf("segments len = %d, want 1", len(msgCtx.Segments))
 	}
 	image := msgCtx.Segments[0]
-	if image.Type != platform.SegmentImage {
+	if image.Type != share.SegmentImage {
 		t.Fatalf("segment type = %q, want image", image.Type)
 	}
 	if image.MIMEType != "image/png" {
@@ -312,9 +283,9 @@ func TestHandleC2CMessageImageAttachmentReachesHandler(t *testing.T) {
 }
 
 func TestHandleC2CMessageStickerAttachmentStripsFaceFallback(t *testing.T) {
-	adapter := newTestAdapter(t, Config{}, nil, nil)
+	adapter := newTestAdapter(t, Config{}, nil)
 	handler := &captureHandler{}
-	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
+	adapter.handleC2CMessage(context.Background(), handler.HandleMessage, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
 		ID:      "msg-1",
 		Author:  inboundAuthor{UserOpenID: "user-1"},
 		Content: `<faceType=6,faceId="0",ext="eyJ0ZXh0IjoiIn0=">`,
@@ -330,19 +301,19 @@ func TestHandleC2CMessageStickerAttachmentStripsFaceFallback(t *testing.T) {
 	if handler.text != "" {
 		t.Fatalf("text = %q, want empty", handler.text)
 	}
-	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	msgCtx, ok := share.MessageContextFrom(handler.ctx)
 	if !ok {
 		t.Fatal("missing message context")
 	}
-	if len(msgCtx.Segments) != 1 || msgCtx.Segments[0].Type != platform.SegmentImage {
+	if len(msgCtx.Segments) != 1 || msgCtx.Segments[0].Type != share.SegmentImage {
 		t.Fatalf("segments = %#v, want image only", msgCtx.Segments)
 	}
 }
 
 func TestHandleC2CMessageTextAndStickerStripsOnlyFaceFallback(t *testing.T) {
-	adapter := newTestAdapter(t, Config{}, nil, nil)
+	adapter := newTestAdapter(t, Config{}, nil)
 	handler := &captureHandler{}
-	adapter.handleC2CMessage(context.Background(), handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
+	adapter.handleC2CMessage(context.Background(), handler.HandleMessage, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
 		ID:      "msg-1",
 		Author:  inboundAuthor{UserOpenID: "user-1"},
 		Content: `看看这个<faceType=6,faceId="0",ext="eyJ0ZXh0IjoiIn0=">`,
@@ -358,18 +329,18 @@ func TestHandleC2CMessageTextAndStickerStripsOnlyFaceFallback(t *testing.T) {
 	if handler.text != "看看这个" {
 		t.Fatalf("text = %q, want cleaned text", handler.text)
 	}
-	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
+	msgCtx, ok := share.MessageContextFrom(handler.ctx)
 	if !ok {
 		t.Fatal("missing message context")
 	}
-	if len(msgCtx.Segments) != 2 || msgCtx.Segments[0].Text != "看看这个" || msgCtx.Segments[1].Type != platform.SegmentImage {
+	if len(msgCtx.Segments) != 2 || msgCtx.Segments[0].Text != "看看这个" || msgCtx.Segments[1].Type != share.SegmentImage {
 		t.Fatalf("segments = %#v, want text + image", msgCtx.Segments)
 	}
 }
 
 func TestInboundAttachmentsKeepRawFile(t *testing.T) {
 	segments := inboundAttachmentSegments([]messageAttachment{{URL: "https://example.com/file", ContentType: "file", Filename: "test.txt", Size: 9}})
-	if len(segments) != 1 || segments[0].Type != platform.SegmentFile || segments[0].URL != "https://example.com/file" || segments[0].Name != "test.txt" || segments[0].Size != 9 || segments[0].MIMEType != "" {
+	if len(segments) != 1 || segments[0].Type != share.SegmentFile || segments[0].URL != "https://example.com/file" || segments[0].Name != "test.txt" || segments[0].Size != 9 || segments[0].MIMEType != "" {
 		t.Fatalf("raw segments = %#v", segments)
 	}
 }
@@ -406,60 +377,22 @@ func TestPrepareSourceUsesStructuredSources(t *testing.T) {
 }
 
 func TestHandleC2CMessageResumesLatestAssistantReference(t *testing.T) {
-	ctx := context.Background()
-	store := newQQOfficialTestStore(t)
-	adapter := newTestAdapter(t, Config{}, store, nil)
-	mapTestReference(t, adapter, "c2c:user-1", "REFIDX_latest", "platform-latest")
-	scope := session.Scope{ActorID: "qqofficial:user-1", Platform: platformName, PlatformScopeID: "c2c:user-1"}
-	_, latest := createQQOfficialAssistantMessages(t, ctx, store, scope)
-	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: platformName, PlatformScopeID: scope.PlatformScopeID, PlatformMessageID: "platform-latest", MessageID: latest.ID, SessionID: latest.SessionID}); err != nil {
-		t.Fatalf("map latest: %v", err)
+	a := newTestAdapter(t, Config{}, nil)
+	mapTestReference(t, a, "c2c:user-1", "REFIDX_latest", "platform-latest")
+	called := false
+	a.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
+		called = true
+		if opts.Platform != platformName || opts.ScopeID != "c2c:user-1" || opts.ReplyID != "platform-latest" || opts.Text != "继续" {
+			t.Fatalf("options = %+v", opts)
+		}
+		return share.ReferenceResult{ResumeSessionID: "resume-session", Reply: share.ReplyContext{MessageID: opts.ReplyID}, Text: "resolved"}, nil
 	}
-
-	handler := &captureHandler{}
-	adapter.handleC2CMessage(ctx, handler, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
-		ID:           "msg-1",
-		Author:       inboundAuthor{UserOpenID: "user-1"},
-		Content:      "继续",
-		MessageScene: messageScene{Ext: []string{"ref_msg_idx=REFIDX_latest"}},
-	})
-	msgCtx, ok := platform.MessageContextFrom(handler.ctx)
-	if !ok {
-		t.Fatal("missing message context")
+	h := &captureHandler{}
+	a.handleC2CMessage(t.Context(), h.HandleMessage, payload{}, inboundMessage{ID: "msg", GroupOpenID: "group-1", Author: inboundAuthor{MemberOpenID: "member-1", UserOpenID: "user-1"}, Content: "继续", MessageScene: messageScene{Ext: []string{"ref_msg_idx=REFIDX_latest"}}})
+	msg, _ := share.MessageContextFrom(h.ctx)
+	if !called || msg.ResumeSessionID != "resume-session" || msg.ForkFromMessageID != "" || msg.ReplyToMessageID != "platform-latest" || msg.ContextText != "resolved" || h.text != "继续" {
+		t.Fatalf("message = %+v", msg)
 	}
-	if msgCtx.ForkFromMessageID != "" || msgCtx.ResumeSessionID != latest.SessionID {
-		t.Fatalf("reference action = fork %q, resume %q", msgCtx.ForkFromMessageID, msgCtx.ResumeSessionID)
-	}
-	if handler.text != "继续" {
-		t.Fatalf("text = %q, want original", handler.text)
-	}
-}
-
-func createQQOfficialAssistantMessages(t *testing.T, ctx context.Context, store storage.Store, scope session.Scope) (*storage.Message, *storage.Message) {
-	t.Helper()
-	s, err := session.NewService(store).Create(ctx, scope, session.CreateRequest{Title: "source"})
-	if err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-	first := &storage.Message{ID: storage.NewID(), SessionID: s.ID, Role: storage.RoleAssistant, Content: "old answer"}
-	latest := &storage.Message{ID: storage.NewID(), SessionID: s.ID, Role: storage.RoleAssistant, Content: "latest answer"}
-	if err := store.Messages().Append(ctx, first); err != nil {
-		t.Fatalf("append first: %v", err)
-	}
-	if err := store.Messages().Append(ctx, latest); err != nil {
-		t.Fatalf("append latest: %v", err)
-	}
-	return first, latest
-}
-
-func newQQOfficialTestStore(t *testing.T) storage.Store {
-	t.Helper()
-	store, err := sqlite.New(context.Background(), filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("sqlite.New: %v", err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
-	return store
 }
 
 func TestReadyPublishesGlobalConnectionWithoutAddingResumeEvent(t *testing.T) {
@@ -475,7 +408,7 @@ func TestReadyPublishesGlobalConnectionWithoutAddingResumeEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer connection.Disconnect()
-	adapter := newTestAdapter(t, Config{}, nil, nil)
+	adapter := newTestAdapter(t, Config{}, nil)
 	state := &gatewayState{}
 	for _, kind := range []string{eventReady, eventResumed, eventReady} {
 		if err := adapter.handleDispatch(context.Background(), nil, payload{Type: kind, Data: json.RawMessage(`{"session_id":"test","user":{"id":"bot","username":"test"}}`)}, state); err != nil {
@@ -487,23 +420,32 @@ func TestReadyPublishesGlobalConnectionWithoutAddingResumeEvent(t *testing.T) {
 	}
 }
 
-func newTestAdapter(t *testing.T, cfg Config, store storage.Store, history storage.ChatHistoryRepository) *Adapter {
+func newTestAdapter(t *testing.T, cfg Config, history storage.ChatHistoryRepository) *Adapter {
 	t.Helper()
-	if store == nil {
-		db, err := sqlite.New(context.Background(), filepath.Join(t.TempDir(), "store.db"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = db.Close() })
-		store = db
-	}
 	if history == nil {
-		db, err := sqlite.NewChatHistory(context.Background(), filepath.Join(t.TempDir(), "history.db"))
+		db, err := sqlite.NewChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = db.Close() })
 		history = db.Repository()
 	}
-	return New(cfg, history)
+	raw := map[string]any{"enabled": cfg.Enabled, "app_id": cfg.AppID, "client_secret": cfg.ClientSecret, "trigger_keywords": cfg.TriggerKeywords}
+	if cfg.MarkdownByDefault != nil {
+		raw["markdown_by_default"] = *cfg.MarkdownByDefault
+	}
+	a, err := NewFromPlatformConfig(raw, Deps{CommonConfig: share.CommonConfig{Superadmins: cfg.Superadmins, CommandPrefixes: cfg.CommandPrefixes}, ChatHistory: history})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.referenceResolver = func(context.Context, share.ReferenceOptions) (share.ReferenceResult, error) {
+		t.Fatal("unexpected reference resolution")
+		return share.ReferenceResult{}, nil
+	}
+	t.Cleanup(func() {
+		if err := a.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	return a
 }

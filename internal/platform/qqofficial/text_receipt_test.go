@@ -1,5 +1,4 @@
 // text_receipt_test.go 验证文本、回复及语音降级回执中的实际平台目标和输出关联。
-// TODO：发送夹具随唯一构造入口迁移。
 
 package qqofficial
 
@@ -16,7 +15,7 @@ import (
 func TestTextReceiptsKeepActualTarget(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `{"id":"sent"}`) }))
 	defer server.Close()
-	a := newQQOfficialSendTestAdapter(server)
+	a := newQQOfficialSendTestAdapter(t, server)
 	for _, target := range []delivery.Target{{PrivateUserID: "user"}, {GroupID: "group"}} {
 		want := "c2c:user"
 		if target.GroupID != "" {

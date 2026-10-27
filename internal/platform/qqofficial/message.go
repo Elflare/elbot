@@ -1,5 +1,4 @@
 // message.go 归一化入站消息、构造平台事实、消费引用恢复结果并写入聊天历史。
-// TODO：改用 Share MessageHandler 显式交付，承接 adapter.go 的入站扩展定义。
 
 package qqofficial
 
@@ -15,7 +14,6 @@ import (
 
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
-	"elbot/internal/platform"
 	"elbot/internal/platform/share"
 	"elbot/internal/security"
 	"elbot/internal/storage"
@@ -32,15 +30,15 @@ const (
 var qqOfficialFaceFallbackPattern = regexp.MustCompile(`<faceType=[^>]*>`)
 var qqOfficialGroupAtPrefixPattern = regexp.MustCompile(`^\s*(?:@\S+\s*|<@!?[^>]+>\s*)`)
 
-func (a *Adapter) handleC2CMessage(ctx context.Context, handler platform.PlatformHandler, p payload, msg inboundMessage) {
+func (a *Adapter) handleC2CMessage(ctx context.Context, handler share.MessageHandler, p payload, msg inboundMessage) {
 	a.handleInboundMessage(ctx, handler, p, msg, contextinfo.ConversationPrivate, false)
 }
 
-func (a *Adapter) handleGroupMessage(ctx context.Context, handler platform.PlatformHandler, p payload, msg inboundMessage) {
+func (a *Adapter) handleGroupMessage(ctx context.Context, handler share.MessageHandler, p payload, msg inboundMessage) {
 	a.handleInboundMessage(ctx, handler, p, msg, contextinfo.ConversationGroup, p.Type == eventGroupAtMessageCreate)
 }
 
-func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.PlatformHandler, p payload, msg inboundMessage, conversation contextinfo.ConversationKind, mentionedBot bool) {
+func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.MessageHandler, p payload, msg inboundMessage, conversation contextinfo.ConversationKind, mentionedBot bool) {
 	senderID, scopeID, _, targetID := inboundRoute(msg, conversation)
 	if senderID == "" {
 		label := "member_openid"
@@ -209,7 +207,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler platform.Pla
 	}
 	a.recordChatMessage(ctx, msg, conversation, senderID, scopeID, text, replyID, messageCtx.Reply)
 	a.recordMessageAlias(ctx, scopeID, msgIndex, msg.ID)
-	_ = handler.HandleMessage(msgCtx, text)
+	_ = handler(msgCtx, text, messageCtx)
 }
 
 func inboundRoute(msg inboundMessage, conversation contextinfo.ConversationKind) (senderID, scopeID string, kind sendTargetKind, targetID string) {
@@ -311,6 +309,12 @@ func isConfiguredSuperadmin(superadmins []string, id string) bool {
 		}
 	}
 	return false
+}
+
+// messageData 是发布后不可变的协议扩展，消息和会话 ID 保存在公共会话事实中。
+type messageData struct {
+	EventID   string // 来源事件标识，供无消息 ID 的回复使用。
+	EventType string // 原生入站事件类型。
 }
 
 func inboundSegments(text string, attachments []share.MessageSegment) []share.MessageSegment {

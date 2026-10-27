@@ -517,7 +517,7 @@ flowchart TD
 
 平台负责输入归一化、历史与输出落地，支持本地／远程 CLI、QQ OneBot、QQ Official、Telegram 和 headless。
 
-Platform 根部按下层目标契约实现总管、装配与公开能力；下层契约见 [App 包设计](app-design.md#platform-下层目标契约)。根部持有适配器与订阅，借用 App 持有的历史库，输入转换为 Agent 自有请求并保留延迟媒体解析。contracts.go 的公开 MessageContext 只表达原文、原生载荷与引用事实，运行能力留在内部。dispatch 只取得名称、发送及可选的 API、媒体解析能力，完整 Runtime 归总管；引用存储依赖通过根部闭包固定，不混入共享请求。public_api.go 将通用能力与原生透传分开路由，不解释平台协议。Share 已定义运行、入站、两类可选 API 和通知接收契约，并提供通知目标转换；CLI、OneBot 已接入运行与通知，Headless 已接入无状态运行契约；OneBot 已实现通用能力与原生 API 分离，其余适配器及 dispatch 调用方仍待接通。旧 platform.go、module/、builtin/ 保留删除标记；旧反向依赖及调用方尚未迁移，整线尚不能编译接通。
+Platform 根部按下层目标契约实现总管、装配与公开能力；下层契约见 [App 包设计](app-design.md#platform-下层目标契约)。根部持有适配器与订阅，借用 App 持有的历史库，输入转换为 Agent 自有请求并保留延迟媒体解析。contracts.go 的公开 MessageContext 只表达原文、原生载荷与引用事实，运行能力留在内部。dispatch 只取得名称、发送及可选的 API、媒体解析能力，完整 Runtime 归总管；引用存储依赖通过根部闭包固定，不混入共享请求。public_api.go 将通用能力与原生透传分开路由，不解释平台协议。Share 已定义运行、入站、两类可选 API 和通知接收契约，并提供通知目标转换；CLI、OneBot、QQ Official 已接入运行与通知，Headless 已接入无状态运行契约；OneBot 已实现通用能力与原生 API 分离，其余适配器及 dispatch 调用方仍待接通。旧 platform.go、module/、builtin/ 保留删除标记；旧反向依赖及调用方尚未迁移，整线尚不能编译接通。
 
 - Platform Supervisor 管理适配器；服务模式各平台退出互不影响，全部退出后仍等待外部停止，本地 TUI 退出结束整线。独立故障记录错误并异步通知其他运行平台的配置超管。BeginClose／Wait 仅停止并等待接入；Close 最后释放 UI、通知和适配器资源，历史库由 App 在所有业务线退出后关闭，Done 表示最终清理完成。
 - Headless 是 Service 模式的无状态主发送占位：Start 仅检查 context，BeginClose 无操作，Wait／Close 立即完成，两种发送入口保持拒绝输出。根部不启动它，只登记最终清理；Service 持续等待外部停止由根部负责，Headless 不持有接入、资源或常驻协程。
@@ -525,7 +525,7 @@ Platform 根部按下层目标契约实现总管、装配与公开能力；下�
 - OneBot 使用自有 Deps，根部注入 CommonConfig、最小历史读写、引用恢复和两项存储查询。Start 异步连接远端；BeginClose 停止输入、重连及临时拨号并取消业务，Wait 等待接入和业务退出，已建立连接继续读取发送响应；Close 最终释放主／临时连接并等待在途操作，可超时重试。写帧排队和等待响应可取消，已开始的帧使用隔离取消且有期限的上下文；Transport 负责响应匹配、关闭清理和旧连接隔离。
 - 思考流直接接收原始增量与结束边界，每次调用独立，首个有效增量打开展示，结束／失败／取消收尾；逐增量刷新接管来源，不重放历史，展示错误不改变业务结果。
 - 原始有序 segments 写入 Chat History 并清洗敏感来源，只在唤醒或 waiting continuation 时物化媒体。引用依次按输出关联、历史、平台能力恢复。
-- 历史片段和引用事实由 Storage 的 ChatSegment、ChatReply 及编解码函数定义，适配器转换后直接写入历史库。Platform 根部接收写入、单条身份查询和两项别名能力，OneBot 只接收前两项，refcontext 只接收历史身份查询；Share 提供独立读写契约。Telegram／QQ Official 已删除闲置 Store，其旧构造与完整历史字段仍待子包阶段替换，不反向放宽契约。Tool 根部直接查询并适配存储记录和错误，Builtin 根据内部引用事实展示；Platform 无历史查询或清理包装。Media 使用自有 PlatformMedia、HistoryMessage 和注入的解析函数，承担缓存、关联及获取上限，不依赖 Platform；目标平台解析由 dispatch 复用平台注册表执行。Agent 通过自有请求中的延迟解析函数物化媒体，按历史身份关联成功的媒体位置。
+- 历史片段和引用事实由 Storage 的 ChatSegment、ChatReply 及编解码函数定义，适配器转换后直接写入历史库。Platform 根部接收写入、单条身份查询和两项别名能力，OneBot 只接收前两项，refcontext 只接收历史身份查询；Share 提供独立读写契约。QQ Official 只接收历史写入与两项别名能力，并已接入 Share 运行、入站和通知契约；停止网关后保留 HTTP 发送，最终关闭等待完整发送及别名入库退出。Telegram 已删除闲置 Store，其旧构造与完整历史字段仍待替换，不反向放宽契约。Tool 根部直接查询并适配存储记录和错误，Builtin 根据内部引用事实展示；Platform 无历史查询或清理包装。Media 使用自有 PlatformMedia、HistoryMessage 和注入的解析函数，承担缓存、关联及获取上限，不依赖 Platform；目标平台解析由 dispatch 复用平台注册表执行。Agent 通过自有请求中的延迟解析函数物化媒体，按历史身份关联成功的媒体位置。
 - 相同 actor／platform／scope 的最后一条 assistant 引用触发 Resume，较早回复触发 Fork。
 - QQ Official 在适配器内解析 `message_scene.ext`、引用类型 `103` 和一层 `msg_elements`；入站 `msg_idx`、发送回执 `ext_info.ref_idx` 按平台／scope 映射到真实消息 ID，存入 Chat History 库并随历史清理。映射命中后复用公共引用恢复；未命中时只展示事件自带文本与附件，不触发 Resume／Fork。
 - OneBot 私聊或显式引用 forward 展开一层，其余情况用占位；纯文本超过 3000 个 Unicode 字符时发合并 forward，失败不退回分条。Telegram 流式分页失败保留已发页回执，不重发整段；CLI 返回空回执。

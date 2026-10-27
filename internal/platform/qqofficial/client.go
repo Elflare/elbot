@@ -1,5 +1,5 @@
 // client.go 负责 HTTP 请求、认证重试及现有消息发送、文件上传等协议操作。
-// 发送与网关接入相互独立；TODO：配合生命周期管理 HTTP 操作与最终资源释放。
+// HTTP 连接池由适配器持有，最终清理等待完整发送退出后释放。
 
 package qqofficial
 
@@ -13,20 +13,18 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
 type apiClient struct {
-	cfg     Config
 	http    *http.Client
 	tokens  *tokenSource
 	baseURL string
 }
 
 func newAPIClient(cfg Config) *apiClient {
-	h := &http.Client{Timeout: cfg.httpTimeout()}
-	return &apiClient{cfg: cfg, http: h, tokens: newTokenSource(cfg, h), baseURL: defaultAPIBaseURL}
+	h := &http.Client{Timeout: cfg.httpTimeout(), Transport: http.DefaultTransport.(*http.Transport).Clone()}
+	return &apiClient{http: h, tokens: newTokenSource(cfg, h), baseURL: defaultAPIBaseURL}
 }
 
 func (c *apiClient) gateway(ctx context.Context) (string, error) {
@@ -106,9 +104,6 @@ func (c *apiClient) doJSONWithRetry(ctx context.Context, method, path string, in
 		body = bytes.NewReader(data)
 	}
 	baseURL := strings.TrimRight(c.baseURL, "/")
-	if baseURL == "" {
-		baseURL = strings.TrimRight(defaultAPIBaseURL, "/")
-	}
 	reqURL := baseURL + path
 	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
 	if err != nil {
@@ -156,12 +151,11 @@ func (c *apiClient) doJSONWithRetry(ctx context.Context, method, path string, in
 type preparedSource struct {
 	URL  string
 	Data []byte
-	Name string
 }
 
 func prepareSource(urlValue, path string, data []byte) (preparedSource, error) {
 	if value := strings.TrimSpace(urlValue); value != "" {
-		return preparedSource{URL: value, Name: filepath.Base(value)}, nil
+		return preparedSource{URL: value}, nil
 	}
 	if len(data) > 0 {
 		return preparedSource{Data: data}, nil
@@ -171,5 +165,5 @@ func prepareSource(urlValue, path string, data []byte) (preparedSource, error) {
 	if err != nil {
 		return preparedSource{}, fmt.Errorf("read source %q: %w", path, err)
 	}
-	return preparedSource{Data: fileData, Name: filepath.Base(path)}, nil
+	return preparedSource{Data: fileData}, nil
 }

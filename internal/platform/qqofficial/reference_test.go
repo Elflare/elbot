@@ -1,5 +1,4 @@
 // reference_test.go 验证引用索引、别名范围、事件引用内容及发送后的别名登记。
-// TODO：迁移旧构造、handler 与根包类型，保留别名存储和引用结果消费断言。
 
 package qqofficial
 
@@ -14,7 +13,7 @@ import (
 	"testing"
 
 	"elbot/internal/delivery"
-	"elbot/internal/platform"
+	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 )
 
@@ -49,20 +48,26 @@ func TestInboundReferenceIndexes(t *testing.T) {
 	}
 }
 
-func TestReferenceUsesIncomingHistoryAndKeepsScope(t *testing.T) {
-	a := newTestAdapter(t, Config{CommandPrefixes: []string{"/"}}, nil, nil)
+func TestReferenceAliasKeepsScope(t *testing.T) {
+	a := newTestAdapter(t, Config{CommandPrefixes: []string{"/"}}, nil)
+	a.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
+		if opts.ScopeID != "group:group" || opts.ReplyID != "original" {
+			t.Fatalf("options = %+v", opts)
+		}
+		return share.ReferenceResult{Reply: share.ReplyContext{MessageID: "original", Text: "meeting at three"}, Text: "[引用:meeting at three]\n\nremember"}, nil
+	}
 	h := &captureHandler{}
-	a.handleGroupMessage(t.Context(), h, payload{Type: eventGroupMessageCreate}, inboundMessage{
+	a.handleGroupMessage(t.Context(), h.HandleMessage, payload{Type: eventGroupMessageCreate}, inboundMessage{
 		ID: "original", GroupOpenID: "group", Author: inboundAuthor{MemberOpenID: "author"}, Content: "meeting at three",
 		MessageScene: messageScene{Ext: []string{"msg_idx=REFIDX_original"}},
 	})
 	for _, group := range []string{"group", "other"} {
 		h = &captureHandler{}
-		a.handleGroupMessage(t.Context(), h, payload{Type: eventGroupAtMessageCreate}, inboundMessage{
+		a.handleGroupMessage(t.Context(), h.HandleMessage, payload{Type: eventGroupAtMessageCreate}, inboundMessage{
 			ID: "reply", GroupOpenID: group, Author: inboundAuthor{MemberOpenID: "reader"}, Content: "@bot remember",
 			MessageScene: messageScene{Ext: []string{"ref_msg_idx=REFIDX_original"}},
 		})
-		got, ok := platform.MessageContextFrom(h.ctx)
+		got, ok := share.MessageContextFrom(h.ctx)
 		if !ok || h.text != "remember" {
 			t.Fatalf("handler context=%v text=%q", ok, h.text)
 		}
@@ -92,18 +97,18 @@ func TestEventReferenceWithoutHistory(t *testing.T) {
 			{name: "ordinary", content: "remember", quote: "not a quote"},
 		} {
 			t.Run(fmt.Sprintf("group=%v/%s", group, tc.name), func(t *testing.T) {
-				a := newTestAdapter(t, Config{CommandPrefixes: []string{"/"}}, nil, nil)
+				a := newTestAdapter(t, Config{CommandPrefixes: []string{"/"}}, nil)
 				msg := inboundMessage{ID: "current", Author: inboundAuthor{UserOpenID: "user", MemberOpenID: "user"}, GroupOpenID: "group",
 					Content: tc.content, MessageType: tc.messageType,
 					MsgElements: []messageElement{{MsgIdx: "REFIDX_unknown", Content: tc.quote, Attachments: tc.attachments}},
 				}
 				h := &captureHandler{}
 				if group {
-					a.handleGroupMessage(t.Context(), h, payload{Type: eventGroupMessageCreate}, msg)
+					a.handleGroupMessage(t.Context(), h.HandleMessage, payload{Type: eventGroupMessageCreate}, msg)
 				} else {
-					a.handleC2CMessage(t.Context(), h, payload{Type: eventC2CMessageCreate}, msg)
+					a.handleC2CMessage(t.Context(), h.HandleMessage, payload{Type: eventC2CMessageCreate}, msg)
 				}
-				got, ok := platform.MessageContextFrom(h.ctx)
+				got, ok := share.MessageContextFrom(h.ctx)
 				if !ok || h.text != tc.content || got.RawText != tc.content || got.ContextText != tc.want {
 					t.Fatalf("context text=%q, want=%q, raw=%q", got.ContextText, tc.want, got.RawText)
 				}
@@ -120,20 +125,41 @@ func TestEventReferenceWithoutHistory(t *testing.T) {
 	}
 }
 
-type failingAliasHistory struct{ storage.ChatHistoryRepository }
+type failingAliasHistory struct{ interfaceHistory }
 
-func TestMappedReferenceMediaAndEventFallback(t *testing.T) {
+type interfaceHistory interface {
+	share.ChatHistoryWriter
+	MapPlatformMessageAlias(context.Context, storage.PlatformMessageAlias) error
+	ResolvePlatformMessageAlias(context.Context, string, string, string) (string, error)
+}
+
+func TestMappedReferenceConsumesResolverMediaAndSuppliesEventFallback(t *testing.T) {
 	for _, fromHistory := range []bool{false, true} {
 		t.Run(fmt.Sprintf("history=%v", fromHistory), func(t *testing.T) {
-			a := newTestAdapter(t, Config{CommandPrefixes: []string{"/"}}, nil, nil)
+			a := newTestAdapter(t, Config{CommandPrefixes: []string{"/"}}, nil)
 			mapTestReference(t, a, "c2c:user", "REFIDX_original", "original")
 			image := messageAttachment{URL: "https://example.com/quote.png", ContentType: "image/png", Filename: "quote.png"}
 			if fromHistory {
-				a.handleC2CMessage(t.Context(), &captureHandler{}, payload{}, inboundMessage{
+				a.handleC2CMessage(t.Context(), (&captureHandler{}).HandleMessage, payload{}, inboundMessage{
 					ID: "original", Author: inboundAuthor{UserOpenID: "user"}, Content: "original text", Attachments: []messageAttachment{image},
 				})
 			}
 			for _, text := range []string{"describe", "/help"} {
+				a.referenceResolver = func(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
+					if opts.ReplyID != "original" || opts.ScopeID != "c2c:user" {
+						t.Fatalf("options = %+v", opts)
+					}
+					if !fromHistory {
+						ref, ok, err := opts.Fetch(ctx, opts.ReplyID)
+						if err != nil || !ok || ref.Text != "original text" || len(ref.Segments) != 2 {
+							t.Fatalf("event reference = %+v, %v", ref, err)
+						}
+					}
+					if text == "/help" {
+						return share.ReferenceResult{Text: text}, nil
+					}
+					return share.ReferenceResult{Text: "[引用:original text]\n\ndescribe", Reply: share.ReplyContext{MessageID: "original", Text: "original text"}, ReferenceSegments: []share.MessageSegment{{Type: share.SegmentImage, URL: image.URL}}}, nil
+				}
 				msg := inboundMessage{ID: "reply", Author: inboundAuthor{UserOpenID: "user"}, Content: text,
 					MessageScene: messageScene{Ext: []string{"ref_msg_idx=REFIDX_original"}},
 				}
@@ -141,8 +167,8 @@ func TestMappedReferenceMediaAndEventFallback(t *testing.T) {
 					msg.MsgElements = []messageElement{{Content: "original text", Attachments: []messageAttachment{image}}}
 				}
 				h := &captureHandler{}
-				a.handleC2CMessage(t.Context(), h, payload{}, msg)
-				got, ok := platform.MessageContextFrom(h.ctx)
+				a.handleC2CMessage(t.Context(), h.HandleMessage, payload{}, msg)
+				got, ok := share.MessageContextFrom(h.ctx)
 				if !ok || got.ReplyToMessageID != "original" || h.text != text || got.ResumeSessionID != "" || got.ForkFromMessageID != "" {
 					t.Fatalf("reference context=%+v", got)
 				}
@@ -180,8 +206,8 @@ func TestSendRegistersReferenceIndexWithoutChangingDelivery(t *testing.T) {
 				fmt.Fprintf(w, `{"id":"sent-%d","ext_info":{"ref_idx":"REFIDX_%d"}}`, calls, calls)
 			}))
 			defer server.Close()
-			a := newTestAdapter(t, Config{CommandPrefixes: []string{"/"}}, nil, nil)
-			a.client = newQQOfficialSendTestAdapter(server).client
+			a := newTestAdapter(t, Config{CommandPrefixes: []string{"/"}}, nil)
+			a.client = newQQOfficialSendTestAdapter(t, server).client
 			if fail {
 				a.chatHistory = failingAliasHistory{a.chatHistory}
 			}

@@ -125,7 +125,6 @@ type messageToCreate struct {
 	MsgType  int              `json:"msg_type"`
 	Markdown *messageMarkdown `json:"markdown,omitempty"`
 	Keyboard *messageKeyboard `json:"keyboard,omitempty"`
-	Ark      *messageArk      `json:"ark,omitempty"`
 	Media    *messageMedia    `json:"media,omitempty"`
 	MsgID    string           `json:"msg_id,omitempty"`
 	EventID  string           `json:"event_id,omitempty"`
@@ -186,26 +185,6 @@ type keyboardButtonAction struct {
 
 type keyboardPermission struct {
 	Type int `json:"type"`
-}
-
-type messageArk struct {
-	TemplateID int            `json:"template_id"`
-	KV         []messageArkKV `json:"kv"`
-}
-
-type messageArkKV struct {
-	Key   string          `json:"key"`
-	Value string          `json:"value,omitempty"`
-	Obj   []messageArkObj `json:"obj,omitempty"`
-}
-
-type messageArkObj struct {
-	ObjKV []messageArkObjKV `json:"obj_kv"`
-}
-
-type messageArkObjKV struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
 }
 
 type messageResponse struct {

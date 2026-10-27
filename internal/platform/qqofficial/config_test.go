@@ -1,9 +1,9 @@
 // config_test.go 验证凭据来源、优先级与配置字段保留。
-// TODO：构造夹具改用本包最小依赖。
 
 package qqofficial
 
 import (
+	"elbot/internal/platform/share"
 	"os"
 	"path/filepath"
 	"testing"
@@ -20,7 +20,7 @@ func TestNewFromPlatformConfigReadsClientSecretFromDotEnv(t *testing.T) {
 		"enabled":           true,
 		"app_id":            "app-id",
 		"client_secret_env": "QQ_SECRET",
-	}, nil, nil, nil, nil, dir, "", 0, 0)
+	}, Deps{CommonConfig: share.CommonConfig{ConfigDir: dir}})
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestNewFromPlatformConfigPrefersSystemEnvironment(t *testing.T) {
 		"enabled":           true,
 		"app_id":            "app-id",
 		"client_secret_env": "QQ_SECRET",
-	}, nil, nil, nil, nil, dir, "", 0, 0)
+	}, Deps{CommonConfig: share.CommonConfig{ConfigDir: dir}})
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestNewFromPlatformConfigPrefersExplicitClientSecret(t *testing.T) {
 		"app_id":            "app-id",
 		"client_secret":     "explicit-secret",
 		"client_secret_env": "QQ_SECRET",
-	}, nil, nil, nil, nil, t.TempDir(), "", 0, 0)
+	}, Deps{CommonConfig: share.CommonConfig{ConfigDir: t.TempDir()}})
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestNewFromPlatformConfigKeepsTriggerKeywords(t *testing.T) {
 	adapter, err := NewFromPlatformConfig(map[string]any{
 		"enabled":          false,
 		"trigger_keywords": []any{"芙莉丝", "bot"},
-	}, nil, nil, nil, nil, t.TempDir(), "", 0, 0)
+	}, Deps{CommonConfig: share.CommonConfig{ConfigDir: t.TempDir()}})
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}

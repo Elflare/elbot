@@ -7,8 +7,8 @@ import (
 	"elbot/internal/storage"
 )
 
-// AdapterDeps 暂供尚未迁移的 QQ Official、Telegram 使用。
-// TODO：参考 qqonebot.Deps，改为平台自有依赖组合；两者迁移后删除本文件。
+// AdapterDeps 暂供尚未迁移的 Telegram 使用。
+// TODO：Telegram 改为平台自有依赖组合后删除本文件。
 type AdapterDeps struct {
 	// ChatHistory 是适配器写入、别名映射和引用查询共同需要的能力。
 	ChatHistory interface {
