@@ -311,7 +311,7 @@ modelmgr 保持根包组织；公开总管为 `ModelManager`，唯一构造入�
 
 公开选择通过 `Selection` 固定客户端、来源与窗口缓存。`ObserveModelRetrying(handler, options)` 只返回观察连接，不交出信号对象；Agent 关闭自己的连接，App 在消费者退出后关闭模型总管。总管关闭等待实际回调退出，超时可以继续等待。llm 协议实现维持现有生命周期，本层不增加工厂或兼容入口。
 
-App 持有具体 `ModelManager`。Agent、Background、Tool 在各自 `deps.go`，Session 在 `title.go`，Contextmgr 在 `service.go` 声明本包 `ModelCapabilities`。Agent 接入模型选择、管理命令及重试观察；Background 只接入模式选择与校验，Tool 只接入校验，Session 只接入命名选择，Contextmgr 只接入选择解析。装配时直接赋值给消费接口，子包继续接收已有最小接口或函数；`SelectionForTurn` 仅要求模式选择能力。窗口解析器由构造入口提供查询回调，按远端元数据、手工配置、配置层补齐的默认窗口取值。
+App 持有具体 `ModelManager`。Agent、Background、Tool、Session 在各自 `deps.go`，Contextmgr 在 `service.go` 声明本包 `ModelCapabilities`。Agent 接入模型选择、管理命令及重试观察；Background 只接入模式选择与校验，Tool 只接入校验，Session 只接入命名选择，Contextmgr 只接入选择解析。装配时直接赋值给消费接口，子包继续接收已有最小接口或函数；`SelectionForTurn` 仅要求模式选择能力。窗口解析器由构造入口提供查询回调，按远端元数据、手工配置、配置层补齐的默认窗口取值。
 
 ```mermaid
 flowchart TD
@@ -323,13 +323,57 @@ flowchart TD
     M --> E["signals.go / logging.go<br/>重试观察与日志"]
 ```
 
+## Session 根部契约
+
+Session 由 Agent 创建、持有和关闭，App 不取得内部 Session。根部 `supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go` 已按下层目标契约实现；其余 9 个根部文件和 23 个内部文件仍为职责骨架。24 份旧生产代码与 21 份旧测试保存在 `*.go.bak` 中，不参与构建。
+
+唯一构造入口为 `NewSupervisor(ctx, cfg, SupervisorDeps)`，接收 Agent 运行 context 和完整配置，消费默认模式及命名触发步数，不重复填配置默认值。必需依赖只在根部检查；构造不启动任务、不查询协议材料或命名模型。部分构造失败保留已取得的组件、停止接纳，并将部分总管交回 Agent 调用 Close。
+
+`SupervisorDeps` 接收借用的 Store、仅含 ResolveNaming 的 Models、ActiveSessionIDs、CheckForeground 和 Materials。活跃事实来自 Agent 执行组件；CheckForeground 在接管准入内调用，只检查兼容性，不执行 I/O 或再次取准入。MaterialResolver／MaterialPreparer 定义在根部 deps.go，PreparedMaterial 的公开结果定义待 contracts.go 实现；根部适配为 branch 自有类型，保留 nil 材料及伴随错误的部分结果。
+
+根部装配消费的下层契约如下，均尚待子包实现：
+
+| 组件入口 | 配置与依赖 |
+|---|---|
+| `binding.NewManager() *Manager` | 自有绑定及准入状态，不接入存储、模型或执行管理器 |
+| `control.NewService(Config, ServiceDeps) *Service` | Config.DefaultMode；Sessions、Messages、Bindings、ActiveSessionIDs、CheckForeground |
+| `branch.NewService(ServiceDeps) *Service` | Sessions、Messages、Dialogues、Bindings、ActiveSessionIDs、MaterialFor |
+| `naming.NewService(Config, ServiceDeps) (*Service, error)` | Config.TriggerStep；Sessions、Messages、ResolveNaming；出错时交回可关闭的部分组件 |
+
+各子包在自己的 service.go 声明独用消费契约，control／branch 的 Bindings 使用 share/binding.go 的共同契约，由根部交付 binding.Manager。Sessions、Messages、Dialogues 字段只声明各组件实际使用的方法，不接收整个 Store。branch 的 MaterialFor 签名为 `func(llm.Origin) (branch.MaterialPreparer, error)`；其 MaterialPreparer 提供 PrepareFork／PrepareCopy，内部 PreparedMaterial 只含 Seed 和 ExpectedCheckpointID，与根部结果显式转换。naming 的 ResolveNaming 直接接收模型选择方法，不获得整个模型总管。
+
+生命周期契约为：
+
+- 根部 Start() 只调用 naming.Start(ctx) error，启动任务接纳，不执行模型调用或业务回调；其他组件不设空 Start。启动及停止由总管状态锁串行化，关闭后禁止重启。
+- BeginClose 幂等地取消运行 context 并调用 naming.BeginClose；父 context 取消进入同一流程。绑定及接管事件源保留到最终 Close，根部的等待协程只观察实际退出信号。
+- Agent 先停止外部调用并等待在途执行退出，再调用 Session.Close(ctx)。根部先等待 naming.Close(ctx) 和 naming.Done，再对 control、binding 发起 BeginClose 并调用 Close(ctx)。命名或日志未退出时，不推进后续阶段。
+- naming、control、binding 均提供 BeginClose()、Close(context.Context) error、Done()；关闭必须并发安全、幂等，固定并保留独立关闭错误，Done 只在任务、订阅和在途回调实际退出后关闭。branch 无自有异步资源，不设空关闭方法。
+- 根部 Close 使用调用方的等待期限，超时后可再次等待；Done 覆盖全部自有资源，不表示单次等待已返回，也不表示借用的 Store、Models 已关闭。只调用 BeginClose 不会提前释放事件源。
+
+Agent 接线尚待迁移：先创建 routes、Turn 和执行视图，再创建 Session；随后创建消费者、注册协议路线与观察连接，最后启动。Session 不提供旧构造入口、独立命名器工厂或补依赖 setter。具体业务入口、公开绑定和事件转换待后续根部文件实现，闲置超时及内存回收策略不在本步变更。
+
+```mermaid
+flowchart TD
+    A["agent/wiring.go<br/>提供完整配置、借用资源与外部能力（待接线）"] --> W["session/wiring.go<br/>构造、配置拆分与材料转换"]
+    W --> D["session/deps.go<br/>外部消费契约"]
+    W --> S["session/supervisor.go<br/>持有组件与总管状态"]
+    S --> L["session/lifecycle.go<br/>启动、停止与实际退出等待"]
+    W --> B["binding/manager.go<br/>绑定与准入组件（待实现）"]
+    W --> C["control/service.go<br/>会话管理组件（待实现）"]
+    W --> R["branch/service.go<br/>派生会话及材料准备（待实现）"]
+    W --> N["naming/service.go<br/>命名任务、信号及日志订阅（待实现）"]
+    B & C & R --> H["share/binding.go<br/>内部绑定协作契约（待实现）"]
+```
+
+当前构建缺少 binding.Manager／NewManager、各子包 Service／ServiceDeps／Config 及构造和生命周期方法、branch.MaterialPreparer／PreparedMaterial，以及根部 PreparedMaterial。只执行格式、静态接线及编译缺口检查，不使用假组件或兼容实现通过编译；生命周期回归须在下层实现后执行。
+
 ## 验证与备份
 
-Modelmgr、App、Agent、Session、Contextmgr、Command/Builtin、Tool 和 Background 相关包已通过 race。模型覆盖真实 Chat／Responses 构造与参数透传、重载凭据、快照隔离、保存失败、构造取消与部分结果、观察连接及关闭超时续接；跨包模型测试使用本地 HTTP 服务和临时 providers 文件，不通过生产工厂注入客户端。
+Session 当前缺少下层实现及公开结果类型，不能执行根部或依赖它的跨包回归；下层接通后需重新验证 App、Agent、Contextmgr、Command/Builtin、Tool 和 Background。模型验证覆盖真实 Chat／Responses 构造与参数透传、重载凭据、快照隔离、保存失败、构造取消与部分结果、观察连接及关闭超时续接；跨包模型测试使用本地 HTTP 服务和临时 providers 文件，不通过生产工厂注入客户端。
 
 媒体结束信号与 Hook 租约并发修复已通过 Media、Agent、Platform、Tool、Hook、Background 全部 52 个包的 race 回归。覆盖独立使用 ID、取消后结束登记、失败维护、重复通知、队列拒收、信号关闭超时，以及慢导入不阻塞其他调用、同租约等待取消、维护不释放在用资源、关闭收尾与同链 Hook 优先级和结果依赖。App 整包已通过 race 验证。
 
-Media、Tool、Agent、Hook、Platform、Background 及 SQLite 的验证范围见上文。原媒体文件保存在 `.go.bak` 中。模型构造与 App 整包已通过 race。全仓编译仍有 launcher 引用旧 App 运行模式常量，以及 security 测试的 string／contextinfo.Role 类型不匹配。
+Media、Tool、Agent、Hook、Platform、Background 及 SQLite 的验证范围见上文。原媒体文件保存在 `.go.bak` 中。模型构造与 App 整包已通过 race。全仓编译尚缺 Session 下层契约与消费者接线；launcher 引用旧 App 运行模式常量，以及 security 测试的 string／contextinfo.Role 类型不匹配也待处理。
 
 CLI 整包与 Share、refcontext、dispatch、notification 的 race 回归通过。CLI 覆盖真实管道和 Linux 伪终端的停止／最终关闭、真实 WebSocket 收尾发送、同步监听失败、并发启停及超时重试、原连接回复、事件乱序与绑定失效、WebSocket 背压期间换绑和展示关闭后连接保留、UI 关闭超时重试、回调收尾期间取消观察仍返回已发布故障、部分 UI 所有权、客户端分类及断线退出。CLI 不再依赖旧 agent/events、Platform 根包或兄弟实现；Headless 整包也通过 race，覆盖无状态生命周期、取消上下文、重复及并发调用、发送失败契约；OneBot、Share、refcontext 的 race 回归通过，覆盖分阶段关闭、临时拨号取消、在途写入取消隔离、关闭重试、重连隔离及原生 API 透传；OneBot 不再依赖根包或兄弟实现。QQ Official、Share、refcontext、notification 的 race 回归通过，覆盖实际 HTTP／WebSocket、心跳序号同步及失败退出、恢复与重新鉴权、并发启停、取消观察与独立故障、收尾发送、完整发送及别名入库等待、关闭超时重试。QQ Official 不再依赖根包或兄弟实现。Telegram、Share、refcontext、notification 与 Background/Cron 的 race 回归通过，覆盖异步远端连接、分阶段关闭、完整操作取消与退出等待、流式等待取消隔离、关闭超时重试、独立连接池释放、身份快照、命令目录并发、引用恢复、配置边界及原生 API。Telegram 生产代码与包内测试均不依赖 Platform 根包或兄弟实现；Background 报告测试通过发送契约注入回执。
 

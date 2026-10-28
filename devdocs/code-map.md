@@ -89,7 +89,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/agent/routes/`：按 APIType 登记 Loop／Compactor／Material。
 - `internal/agent/wiring.go`：消费完整配置与外部业务能力，装配线内组件和协议路线；App 资源准备见 `internal/app/resources.go`。
-- `internal/agent/share/dialogue.go`、`internal/contextmgr/compact_contract.go`：公共循环与压缩契约；Session 材料契约尚待在根部 `contracts.go`、`deps.go` 实现，原定义位于 `internal/session/material.go.bak`。
+- `internal/agent/share/dialogue.go`、`internal/contextmgr/compact_contract.go`：公共循环与压缩契约；Session 材料消费接口已在 `internal/session/deps.go` 定义，公开结果 PreparedMaterial 尚待 `contracts.go` 实现；原定义位于 `internal/session/material.go.bak`。
 - `internal/llm/origin.go`、`internal/modelmgr/compatibility.go`：持久化归属与兼容判断。
 - `internal/llm/api_type.go`、`internal/tool/registry/availability.go`：模型 API 类型与工具可用性。
 
@@ -254,13 +254,13 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 <!-- locator:session -->
 ## Session
 
-`internal/session/` 当前仅有 36 个职责骨架文件，尚无业务实现或接线；24 份旧生产代码和 21 份旧测试均保存在根目录的 `*.go.bak` 中，不参与构建。备份顶部注明职责及迁移去向，迁移完成后删除对应备份。
+`internal/session/` 根部 `supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go` 已实现总管、外部依赖、装配与关闭协调；其余 9 个根部文件及 23 个内部文件仍为职责骨架。24 份旧生产代码和 21 份旧测试均保存在根目录的 `*.go.bak` 中，不参与构建。
 
-Session 现有调用方仍依赖待恢复的公开能力，跨包构建与行为回归需在实现和接线完成后验证；骨架包的构建通过不代表旧测试通过。
+根部按下层契约直接接线，当前缺少组件类型、构造及生命周期方法、branch 材料类型和根部 PreparedMaterial，尚不能编译。契约明细见 [Session 根部契约](app-design.md#session-根部契约)；Agent 实际接线及业务回归待后续完成。
 
 `internal/background/share/takeover.go` 保留 Cron 与 Elnis 共用的接管查询消费契约；Session 公开能力仍待实现。
 
-职责骨架按以下目标组织，路径均相对 `internal/session/`：
+文件职责如下，路径均相对 `internal/session/`；除上述四个根部文件外均待实现：
 
 | 位置 | 文件与目标职责 |
 |---|---|
@@ -288,7 +288,7 @@ Session 现有调用方仍依赖待恢复的公开能力，跨包构建与行为
 - `internal/modelmgr/manager.go`、`client.go`：ModelManager、完整配置构造、部分失败交回与关闭；Chat／Responses 客户端及请求参数装配。
 - `internal/modelmgr/providers.go`、`selection.go`、`context_window.go`：厂商快照、固定选择与窗口缓存。
 - `internal/agent/deps.go`、`internal/background/deps.go`、`internal/tool/deps.go`：各消费方根包的 ModelCapabilities；接线只交付实际使用的模型能力。
-- `internal/contextmgr/service.go`：声明模型解析的 ModelCapabilities；Session 命名选择消费契约待在 `internal/session/deps.go` 实现，原定义位于 `internal/session/title.go.bak`。
+- `internal/contextmgr/service.go`：声明模型解析的 ModelCapabilities；`internal/session/deps.go` 声明仅含 ResolveNaming 的命名选择消费契约，`wiring.go` 将方法注入 naming。
 - `internal/llm/`：独立文本、模型目录、消息／工具／Usage 及 Extra 契约。
 - `internal/llm/httpclient/`：HTTP、重试、SSE 与超时。
 - `internal/llm/chatcompletions/`、`internal/llm/responses/`：独立协议客户端。
