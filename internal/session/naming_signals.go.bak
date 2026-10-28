@@ -1,0 +1,19 @@
+// 职责：定义自动命名信号及其创建和访问入口。
+// TODO(session重构)：待删除：命名内部信号迁入 naming/signals.go，对外观察能力归根部 signals.go 后删除本备份。
+package session
+
+import "elbot/internal/signal"
+
+type NamingSignals struct {
+	Scheduled *signal.Signal[NamingScheduledEvent, signal.Empty]
+	Completed *signal.Signal[NamingCompletedEvent, signal.Empty]
+}
+
+func newNamingSignals() NamingSignals {
+	return NamingSignals{
+		Scheduled: signal.New[NamingScheduledEvent, signal.Empty]("session.naming_scheduled"),
+		Completed: signal.New[NamingCompletedEvent, signal.Empty]("session.naming_completed"),
+	}
+}
+
+func (s *Service) NamingSignals() NamingSignals { return s.namingSignals }

@@ -98,7 +98,7 @@ flowchart TB
 flowchart TD
     B["background/execution/runner.go<br/>计算并创建任务目录、注入调用范围"] --> C["workspace/context.go<br/>路径范围与目录存取能力"]
     B --> F["contextinfo/background.go、context.go<br/>后台来源事实"]
-    S["session/workspace.go<br/>持久化与并发更新"] --> W["workspace/workspace.go、state.go<br/>目录契约、选择与状态编解码"]
+    S["session/control/workspace.go<br/>持久化与并发更新（待实现）"] --> W["workspace/workspace.go、state.go<br/>目录契约、选择与状态编解码"]
     R["workspace/resolve.go<br/>统一路径解析与目标检查"] --> C
     R --> W
     R --> P["workspace/sandbox.go<br/>目录组合与受限路径规则"]
@@ -207,7 +207,7 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    E["agent/dialogue/runner.go、contextmgr/service.go、session/fork.go<br/>对话、压缩与分支入口"] --> R["agent/routes/registry.go<br/>按协议查询业务能力"]
+    E["agent/dialogue/runner.go、contextmgr/service.go、session/branch.go<br/>对话、压缩与分支入口（Session 待实现）"] --> R["agent/routes/registry.go<br/>按协议查询业务能力"]
     E --> M["modelmgr/selection.go、providers.go<br/>固定选择与厂商快照"]
     R --> C["agent/chat/<br/>Chat 循环、摘要与材料"]
     R --> N["agent/responses/<br/>原生循环、压缩与材料"]
@@ -264,7 +264,7 @@ flowchart LR
     W --> R
     R --> C["agent/dialogue/commit.go、responses/persistence.go<br/>固定槽初始化、逐项提交与原生快照"]
     C --> S["storage/sqlite/tool_batch.go、dialogue_repository.go<br/>结果、统计、媒体和发现状态原子保存"]
-    S --> F["session/fork.go、background_copy.go<br/>完整批次复制与 ID 重映射"]
+    S --> F["session/branch/fork.go、copy.go<br/>完整批次复制与 ID 重映射（待实现）"]
     W --> P["processenv/environment.go<br/>环境快照与受管命令构造"]
     P --> U["processenv/process_unix.go<br/>独立进程组及整组终止"]
     P --> V["processenv/process_windows.go<br/>进程树终止及退出判定"]
@@ -533,6 +533,8 @@ Platform 根部负责总管、装配与公开能力；下层契约见 [App 包�
 <!-- locator:session -->
 ## Session 生命周期
 
+Session 当前仅有根部、binding、control、branch、naming、share 的职责骨架；24 份旧生产代码与 21 份旧测试均已改为 `.go.bak`，不参与构建。公开能力与消费者接线尚待实现，下列为待实现的行为契约，文件职责见[代码地图](code-map.md#session)。
+
 - Session 唯一管理 current 和 Binding；切离后原 binding 永久失效，切回建立新 binding，删除使全部相关绑定失效。
 - 准入锁顺序为 Scope → 排序 SessionID → 状态锁；模型、工具、Hook、发送及一般信号在锁外。执行中禁止普通切离／删除，维护跳过忙碌项。
 - ForegroundActivated 在接管提交和新绑定建立后、释放准入前同步派发，订阅者只更新执行内存，不做 I/O 或再次获取准入锁；派发失败不回滚已提交接管。BindingChanged 在锁外发布并清理旧展示与撤销记录。
@@ -542,7 +544,7 @@ Platform 根部负责总管、装配与公开能力；下层契约见 [App 包�
 
 ```mermaid
 flowchart LR
-    S["session/promotion.go、signals.go<br/>提交接管、发布同步事实"] --> E["agent/execution/execution.go、turn/execution.go<br/>保存一致执行快照"]
+    S["session/control/promotion.go、session/signals.go<br/>提交接管、交付公开事件（待实现）"] --> E["agent/execution/execution.go、turn/execution.go<br/>保存一致执行快照"]
     W["agent/signals.go<br/>连接与释放订阅"] -.-> E
     E --> T["agent/dialogue/execution_context.go、agent/tools/toolrun_adapter.go<br/>调用前应用接管快照"]
     E --> O["agent/execution/execution_output.go<br/>发送时刷新去向"]

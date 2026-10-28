@@ -40,7 +40,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/platform/agent.go`、`internal/platform/cli/message.go`：平台消息投影与 CLI 入站来源。
 - `internal/security/`：身份解析、权限与风险策略。
 - `internal/agent/dialogue/execution_context.go`：模型事实与接管上下文刷新。
-- `internal/request/manager.go`、`internal/turn/execution.go`、`internal/session/binding.go`：执行关联、快照与绑定。
+- `internal/request/manager.go`、`internal/turn/execution.go`：执行关联与快照；`internal/session/binding.go` 当前为公开绑定能力骨架，内部契约位于 `session/share/binding.go` 骨架。
 
 <!-- locator:signal -->
 ## 信号与订阅
@@ -50,7 +50,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/contracts.go`：公开 Hook 回调及载荷、状态和绑定快照、后台请求结果（复制元数据为 JSON 原始值）；不暴露内部组件或 Binding 句柄。
 - `internal/agent/signals.go`：Agent 信号源构造及通知、重试、会话清理与接管订阅。
 - `internal/background/cron/lifecycle.go`：Cron 平台连接通知的启动前合并、独立消费队列与关闭等待。
-- `internal/session/naming_signals.go`、`naming_logging.go`、`naming_lifecycle.go`：命名信号、日志与退出。
+- `internal/session/naming/signals.go`、`naming/service.go`：命名信号、日志与退出的职责骨架；原实现与测试均以 `.go.bak` 保留。
 - `internal/modelmgr/signals.go`、`logging.go`：模型重试观察入口与日志；消费者只持有观察连接。
 - `internal/agent/share/logging.go`、`internal/background/share/logging.go`：所属业务日志发布。
 
@@ -89,7 +89,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/agent/routes/`：按 APIType 登记 Loop／Compactor／Material。
 - `internal/agent/wiring.go`：消费完整配置与外部业务能力，装配线内组件和协议路线；App 资源准备见 `internal/app/resources.go`。
-- `internal/agent/share/dialogue.go`、`internal/contextmgr/compact_contract.go`、`internal/session/material.go`：公共循环、压缩和材料契约。
+- `internal/agent/share/dialogue.go`、`internal/contextmgr/compact_contract.go`：公共循环与压缩契约；Session 材料契约尚待在根部 `contracts.go`、`deps.go` 实现，原定义位于 `internal/session/material.go.bak`。
 - `internal/llm/origin.go`、`internal/modelmgr/compatibility.go`：持久化归属与兼容判断。
 - `internal/llm/api_type.go`、`internal/tool/registry/availability.go`：模型 API 类型与工具可用性。
 
@@ -141,7 +141,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/fileops/edit_service.go`、`rollback_service.go`：编辑／撤销准备、预览与提交。
 - `internal/fileops/preview.go`：PrepareFile、PrepareFileEdit 与 PrepareFileWrite 准备业务转换、编辑协议和整文件写入；PreparedFile 固定存在状态、真实目标、批准内容与 revision，统一 diff 和复核提交，支持新建冲突检查与相同内容写入。
 - `internal/fileops/file.go`、`atomic_write.go`、`rollback.go`：结果计算、revision 校验写入、目标锁与撤销备份。
-- `internal/workspace/workspace.go`、`resolve.go`、`state.go`：工作目录契约、路径解析与状态编解码；`internal/session/workspace.go` 负责持久化适配。
+- `internal/workspace/workspace.go`、`resolve.go`、`state.go`：工作目录契约、路径解析与状态编解码；`internal/session/workspace.go` 为公开适配入口骨架，持久化与并发更新的职责骨架位于 `internal/session/control/workspace.go`。
 - `internal/workspace/context.go`：PathScope 与目录存取能力的上下文传递；`workspace.go` 优先选择调用级目录，未指定时读取 Session 或进程目录。
 - `internal/workspace/sandbox.go`：NormalizeRestrictedPath 统一受限相对路径规则，SandboxDir 计算沙盒子目录，ResolveSandboxRelativePath 组合受限绝对路径；不创建目录、组织提示或管理文件生命周期。
 - `internal/tool/share/media.go`：MediaInput、MediaImportOptions、MediaInfo 与历史媒体逐项结果；包含工具需要的参数、JSON 解码约束和通用信息，ID 校验由媒体调用链承担。
@@ -254,13 +254,22 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 <!-- locator:session -->
 ## Session
 
-- `internal/session/service.go`、`types.go`：服务与领域接口。
-- `internal/session/binding.go`、`coordination.go`、`signals.go`：current、准入锁与绑定变化。
-- `internal/session/origin.go`、`promotion.go`、`background.go`：模型归属、前台接管及事实查询、后台准备。
-- `internal/session/fork.go`、`background_copy.go`、`material.go`：Fork、副本与源材料契约。
-- `internal/session/compact.go`、`lifecycle.go`、`expiration.go`：压缩结果创建、生命周期与过期。
-- `internal/session/naming.go`、`naming_lifecycle.go`、`title.go`：命名调度、退出与生成。
-- `internal/background/share/takeover.go`：Cron 与 Elnis 共用的接管查询函数契约，由根部注入 Agent 公开方法。
+`internal/session/` 当前仅有 36 个职责骨架文件，尚无业务实现或接线；24 份旧生产代码和 21 份旧测试均保存在根目录的 `*.go.bak` 中，不参与构建。备份顶部注明职责及迁移去向，迁移完成后删除对应备份。
+
+Session 现有调用方仍依赖待恢复的公开能力，跨包构建与行为回归需在实现和接线完成后验证；骨架包的构建通过不代表旧测试通过。
+
+`internal/background/share/takeover.go` 保留 Cron 与 Elnis 共用的接管查询消费契约；Session 公开能力仍待实现。
+
+职责骨架按以下目标组织，路径均相对 `internal/session/`：
+
+| 位置 | 文件与目标职责 |
+|---|---|
+| 根部 | `supervisor.go` 持有组件，`deps.go` 接入依赖，`wiring.go` 装配，`lifecycle.go` 启停；`contracts.go` 定义公开契约，`operations.go`、`background.go`、`branch.go`、`binding.go`、`origin.go`、`workspace.go`、`naming.go`、`signals.go` 承接对应公开能力 |
+| `binding/` | `manager.go` 管理绑定状态，`coordination.go` 管理准入与租约，`signals.go` 发布绑定事件 |
+| `control/` | `service.go` 定义组件与依赖，`current.go` 管理当前会话和模式，`promotion.go` 恢复与接管，`background.go` 后台准备与接管查询，`query.go` 查询，`management.go` 管理操作，`expiration.go` 过期处理，`origin.go` 归属登记，`workspace.go` 工作目录持久化 |
+| `branch/` | `service.go` 定义组件、依赖与材料准备，`fork.go` 前台分支，`copy.go` 后台副本，`compact.go` 压缩结果创建 |
+| `naming/` | `service.go` 管理组件、任务状态与启停，`naming.go` 调度与提交，`title.go` 生成与规范化，`signals.go` 事件与日志 |
+| `share/` | `session.go` 共享 Scope、会话事实与判定，`binding.go` 内部绑定协作契约，`origin.go` 归属解析与继承 |
 
 <!-- locator:context -->
 ## 上下文、Prompt 与压缩
@@ -279,7 +288,7 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/modelmgr/manager.go`、`client.go`：ModelManager、完整配置构造、部分失败交回与关闭；Chat／Responses 客户端及请求参数装配。
 - `internal/modelmgr/providers.go`、`selection.go`、`context_window.go`：厂商快照、固定选择与窗口缓存。
 - `internal/agent/deps.go`、`internal/background/deps.go`、`internal/tool/deps.go`：各消费方根包的 ModelCapabilities；接线只交付实际使用的模型能力。
-- `internal/session/title.go`、`internal/contextmgr/service.go`：分别声明命名选择与模型解析的 ModelCapabilities。
+- `internal/contextmgr/service.go`：声明模型解析的 ModelCapabilities；Session 命名选择消费契约待在 `internal/session/deps.go` 实现，原定义位于 `internal/session/title.go.bak`。
 - `internal/llm/`：独立文本、模型目录、消息／工具／Usage 及 Extra 契约。
 - `internal/llm/httpclient/`：HTTP、重试、SSE 与超时。
 - `internal/llm/chatcompletions/`、`internal/llm/responses/`：独立协议客户端。

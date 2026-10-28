@@ -1,0 +1,151 @@
+// 职责：提供旧 Session 测试使用的存储、材料与命名夹具。
+// TODO(session重构)：待迁移到 根部及各子包的新测试夹具 的相应测试，迁移完成后删除本备份。
+package session
+
+import (
+	"context"
+	"elbot/internal/llm"
+	"elbot/internal/signal"
+	"elbot/internal/storage"
+	"elbot/internal/testutil"
+	"fmt"
+	"testing"
+	"testing/synctest"
+	"time"
+)
+
+func newTestService(t *testing.T) (*Service, storage.Store) {
+	t.Helper()
+	store := newTestStore(t)
+	svc := NewService(store)
+	svc.SetMaterials(testDisplayMaterials{})
+	return svc, store
+}
+
+type testDisplayMaterials struct{}
+
+func (testDisplayMaterials) MaterialFor(origin llm.Origin) (MaterialPreparer, error) {
+	if origin.APIType != llm.APITypeChat {
+		return nil, fmt.Errorf("native material is not configured in this display fixture")
+	}
+	return DisplayMaterial{}, nil
+}
+
+func newTestStore(t *testing.T) storage.Store {
+	t.Helper()
+	return testutil.NewSQLiteStore(t)
+}
+
+func startTestNaming(t *testing.T, svc *Service) {
+	t.Helper()
+	svc.StartNaming(context.Background())
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := svc.Close(ctx); err != nil {
+			t.Error(err)
+		}
+	})
+}
+
+type storeWithSessionRepository struct {
+	storage.Store
+	sessions storage.SessionRepository
+}
+
+func (s storeWithSessionRepository) Sessions() storage.SessionRepository { return s.sessions }
+
+type failingGetSessionRepository struct {
+	storage.SessionRepository
+	err error
+}
+
+func (r failingGetSessionRepository) Get(context.Context, string) (*storage.Session, error) {
+	return nil, r.err
+}
+
+type fakeTitleGenerator struct {
+	titles []string
+	errs   []error
+	calls  chan []storage.Message
+}
+
+func (g *fakeTitleGenerator) GenerateTitle(ctx context.Context, messages []storage.Message) (TitleResult, error) {
+	select {
+	case g.calls <- append([]storage.Message(nil), messages...):
+	case <-ctx.Done():
+		return TitleResult{}, ctx.Err()
+	}
+	title := ""
+	if len(g.titles) > 0 {
+		title = g.titles[0]
+		g.titles = g.titles[1:]
+	}
+	var err error
+	if len(g.errs) > 0 {
+		err = g.errs[0]
+		g.errs = g.errs[1:]
+	}
+	return TitleResult{RawTitle: title}, err
+}
+
+type fakeNamingNotifier struct {
+	failures chan NamingCompletedEvent
+}
+
+func (n *fakeNamingNotifier) connect(t *testing.T, svc *Service) {
+	t.Helper()
+	c, err := svc.NamingSignals().Completed.Observe(func(ctx context.Context, event NamingCompletedEvent) error {
+		select {
+		case n.failures <- event:
+		default:
+			t.Error("unexpected extra naming completion")
+		}
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Disconnect)
+}
+
+func waitTitle(t *testing.T, store storage.Store, sessionID, want string) {
+	t.Helper()
+	synctest.Wait()
+	session, err := store.Sessions().Get(context.Background(), sessionID)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	if session.Title != want {
+		t.Fatalf("title = %q, want %q", session.Title, want)
+	}
+}
+
+func waitGeneratorCall(t *testing.T, ch <-chan []storage.Message) []storage.Message {
+	t.Helper()
+	select {
+	case messages := <-ch:
+		return messages
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for title generator")
+		return nil
+	}
+}
+
+func ensureNoGeneratorCall(t *testing.T, ch <-chan []storage.Message) {
+	t.Helper()
+	synctest.Wait()
+	select {
+	case messages := <-ch:
+		t.Fatalf("unexpected title generator call: %#v", messages)
+	default:
+	}
+}
+
+func sessionIDs(sessions []storage.SessionSummary) map[string]bool {
+	ids := map[string]bool{}
+	for _, session := range sessions {
+		ids[session.ID] = true
+	}
+	return ids
+}
