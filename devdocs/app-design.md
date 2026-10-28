@@ -3,7 +3,7 @@
 
 # App 包设计
 
-App 使用六文件组织公共运行流程，按下层接口已存在来编写调用；下层按照这些契约实现。五条业务线已提供根包总管，配置独占已实现。Media 已建立字段与签名骨架，业务实现、消费者迁移、模型构造入口及进程入口适配仍待完成；完整应用尚不能编译运行。
+App 使用六文件组织公共运行流程，按下层接口已存在来编写调用；下层按照这些契约实现。五条业务线已提供根包总管，配置独占已实现。Media 根部公开入口与装配已实现，下层业务实现、消费者迁移、模型构造入口及进程入口适配仍待完成；完整应用尚不能编译运行。
 
 ## 职责与边界
 
@@ -99,9 +99,9 @@ Elvena 保留公共协议与来源契约，Call 只包含 Platform、API、Param
 App 与 Agent 不承接 Doctor，配置诊断由配置侧负责。进程入口尚需适配已确认的 `client` 命名和新 App 参数。
 
 <!-- locator:media -->
-## Media 字段与签名骨架
+## Media 根部与下层契约
 
-`internal/media/` 当前只包含类型、字段、接口、签名与职责注释，全部函数以 `panic("TODO")` 占位。15 个生产文件和 12 个测试文件原样保存在同目录的 `*.go.bak` 中，不参与构建。App、Agent、Tool、Hook、Platform、Background 尚未迁移，仍有旧接口调用；Media 包声明可编译不代表完整应用可用。
+`internal/media/` 根部已实现公开入口、类型转换、持有包装、参数 ID 解析与完整配置装配；object、transfer、backend、share 的函数仍以 `panic("TODO")` 占位。15 个生产文件和 12 个测试文件原样保存在同目录的 `*.go.bak` 中，不参与构建。App、Agent、Tool、Hook、Platform、Background 尚未迁移，仍有旧接口调用；Media 各包可编译不代表成功构造或完整应用可用。
 
 ```mermaid
 flowchart TB
@@ -138,9 +138,13 @@ flowchart TB
 - `Backend.Put` 返回位置字符串，Open／Remove 只接收位置；本地位置是文件路径，S3 位置是对象键。`RemoteBackend` 额外提供 PresignGet；LocalBackend 不提供签名方法，后端不接收 storage.Media。
 - `S3Options` 只包含 Endpoint、Region、Bucket、Credentials；`LazyBackend` 保存 factory、backend、mu，只缓存成功构造结果。
 
-### 骨架验证与待完成项
+### 根部装配与验证
 
-已执行 gofmt，`go test ./internal/media/... -run '^$'` 通过五个 Media 包的声明与依赖编译检查，没有运行媒体行为测试。后续填充导入、图片、持有、清理、签名、物化和历史批量实现，再迁移所有消费者的 MediaCenter／Info／MediaInfo／HeldMedia 和清理回调。运行回归需覆盖部分失败、释放重试、并发对象操作、历史对账故障及真实总管接线；骨架编译不替代这些验证。
+`wiring.go` 消费配置包已处理默认值和路径的配置，不重复补默认值或修改输入。base64／hybrid 的对象导入位置为 local，s3 为 s3；交付组件保留原模式。本地目录取沙盒根目录同级的 media。base64 不读取远端凭据；s3／hybrid 通过 ConfigEnv 解析凭据，失败立即返回构造错误，成功后将配置快照和静态凭据交给延迟远端构造。object 构造返回的部分结果先保存再判断错误，中断恢复归其构造入口，随后装配 transfer。History 由 App 后注入。
+
+根部只转换公开与内部数据，平台回调保留 nil、上下文及限制；历史批量转换保留顺序、重复位置和逐项错误。读取器、清理回调及错误原样交回，准备失败不吞掉可重试回调。公开历史错误与 transfer 使用同一错误值，HeldMedia 不增加释放状态或重试控制。
+
+gofmt、五个 Media 包编译及 `go test -race ./internal/media/...` 通过；当前运行测试只覆盖根部凭据解析、环境优先级、缺失凭据与错误不泄露凭据、base64 跳过凭据读取，以及取消、未知模式和无效凭据的构造提前失败。成功构造、参数 ID 完整执行与真实业务链路依赖下层实现。后续填充导入、图片、持有、清理、签名、物化和历史批量实现，再迁移消费者；仍须覆盖释放重试、并发对象操作、历史对账故障及真实总管接线。
 
 ## Platform 下层目标契约
 
@@ -247,7 +251,7 @@ flowchart TD
 
 ## 验证与备份
 
-当前 Media 只通过五个包的声明编译检查；全部函数仍为 TODO panic，媒体行为测试保存在 `.go.bak` 中。依赖 Media 的 Tool、Agent、Hook、Platform、Background 测试须在业务实现与消费签名迁移后重新验证。下列组件用例说明不代表当前 Media 接线或完整应用已通过；App 整包仍待媒体／模型构造实现及进程入口适配。
+当前 Media 根部凭据与构造提前失败测试通过 race，下层函数仍为 TODO panic，原媒体行为测试保存在 `.go.bak` 中。依赖 Media 的 Tool、Agent、Hook、Platform、Background 测试须在下层业务实现与消费签名迁移后重新验证。下列组件用例说明不代表当前 Media 接线或完整应用已通过；App 整包仍待媒体下层、模型构造实现及进程入口适配。
 
 CLI 整包与 Share、refcontext、dispatch、notification 的 race 回归通过。CLI 覆盖真实管道和 Linux 伪终端的停止／最终关闭、真实 WebSocket 收尾发送、同步监听失败、并发启停及超时重试、原连接回复、事件乱序与绑定失效、WebSocket 背压期间换绑和展示关闭后连接保留、UI 关闭超时重试、回调收尾期间取消观察仍返回已发布故障、部分 UI 所有权、客户端分类及断线退出。CLI 不再依赖旧 agent/events、Platform 根包或兄弟实现；Headless 整包也通过 race，覆盖无状态生命周期、取消上下文、重复及并发调用、发送失败契约；OneBot、Share、refcontext 的 race 回归通过，覆盖分阶段关闭、临时拨号取消、在途写入取消隔离、关闭重试、重连隔离及原生 API 透传；OneBot 不再依赖根包或兄弟实现。QQ Official、Share、refcontext、notification 的 race 回归通过，覆盖实际 HTTP／WebSocket、心跳序号同步及失败退出、恢复与重新鉴权、并发启停、取消观察与独立故障、收尾发送、完整发送及别名入库等待、关闭超时重试。QQ Official 不再依赖根包或兄弟实现。Telegram、Share、refcontext、notification 与 Background/Cron 的 race 回归通过，覆盖异步远端连接、分阶段关闭、完整操作取消与退出等待、流式等待取消隔离、关闭超时重试、独立连接池释放、身份快照、命令目录并发、引用恢复、配置边界及原生 API。Telegram 生产代码与包内测试均不依赖 Platform 根包或兄弟实现；Background 报告测试通过发送契约注入回执。
 

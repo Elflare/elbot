@@ -44,10 +44,10 @@ type HistoryFetchOptions struct {
 	MaxFetchAttempts int // 包含失败尝试，非正数不限；缓存不占额度。
 }
 
-// ErrHistoryFetchLimit 由根部转换为公开的额度错误。
+// ErrHistoryFetchLimit 表示获取额度耗尽，根部公开同一个错误值。
 var ErrHistoryFetchLimit = errors.New("history media fetch limit reached")
 
-// ErrHistoryMediaIndex 由根部转换为公开的序号错误。
+// ErrHistoryMediaIndex 表示媒体序号越界，根部公开同一个错误值。
 var ErrHistoryMediaIndex = errors.New("history media index out of range")
 
 // ImportPlatform 解析平台来源并交给对象组件导入，不持久化传输凭据或路径。

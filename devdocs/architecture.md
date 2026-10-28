@@ -393,7 +393,7 @@ flowchart LR
 <!-- locator:media -->
 ### 媒体引用与清理
 
-Media 当前只有字段与签名骨架，所有函数以 TODO panic 占位，原生产及测试文件保存为 `.go.bak`。仅通过五个 Media 包的声明编译检查，业务实现和消费者迁移尚未完成。完整文件职责、字段与契约见 [Media 骨架](app-design.md#media-字段与签名骨架)。
+Media 根部公开入口、转换与装配已实现，下层 object／transfer／backend／share 仍为 TODO 骨架，原生产及测试文件保存为 `.go.bak`。五个包编译与根部凭据、构造提前失败测试通过；下层业务实现和消费者迁移尚未完成。完整文件职责、字段与契约见 [Media 契约](app-design.md#media-根部与下层契约)。
 
 根部 `MediaCenter` 负责公开能力、完整配置拆分和装配，私有持有 object 与 transfer。object 管理对象记录、导入读取、图片处理、引用、回收、历史关联及签名缓存；transfer 通过 share.Objects 编排入站、模型请求和平台交付；backend 只按位置读写对象并提供可选签名能力。子包不导入根部或兄弟实现，share 只承载包内协作。
 
@@ -401,7 +401,7 @@ Media 当前只有字段与签名骨架，所有函数以 TODO panic 占位，�
 
 App 构造后注入 History，再发起历史对账；根部对账、清理调用将当前最小查询接口传给 object，object 不保存 History。媒体中心没有独立关闭步骤。AcquireForLLM 与 ResolveForOutput 返回 `func() error` 清理回调，保留未清理项目、业务及清理错误，支持部分准备失败后的重试。
 
-骨架声明承接以下业务约定，运行实现与回归待完成：
+下层契约承接以下业务约定，运行实现与回归待完成：
 
 - 对象按内容寻址去重，引用事实归 storage；会话、工具参数和后台事务仍由原业务提交，不通过 Media 新增会话写入入口。
 - 模型请求按 ID 复用持有，按实际出现次数累计大小；base64／s3／hybrid 决定交付方式，上传与签名工作退出后再释放持有。

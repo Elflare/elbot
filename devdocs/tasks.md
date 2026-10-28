@@ -29,7 +29,7 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Hook 子包不直接依赖兄弟实现；共享输出转换和协议归 share/output、share/protocol，候选准备与提交隔离回归通过。
 - [x] 管理命令位于 Hook control，内部使用 share 查询类型；根部 Commands 仅交付标准 Handler。
 - [x] Hook 及管理命令测试通过，真实 Agent–Hook–Tool 接线覆盖命令、补全及输出回调。
-- [ ] 实现媒体 NewMediaCenter、模型 NewModelManager 的构造契约。
+- [ ] 完成媒体 NewMediaCenter 下层构造与模型 NewModelManager 的构造契约；Media 根部装配已实现。
 - [x] TUI／Service 按规范化配置路径取得独占锁，退出最后释放；纯客户端不占锁。
 - [ ] 适配进程入口的新 App API 与 `client` 命名。
 - [ ] 下层接口补齐后，验证完整资源构造、App 启停和客户端链路。
@@ -94,12 +94,13 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 
 ## 媒体中心对接
 
-Media 当前为 [字段与签名骨架](app-design.md#media-字段与签名骨架)，函数统一 TODO panic；消费者仍使用旧接口，完整应用不能编译运行。已定函数名、字段、参数及职责写在对应 Go 文件中，不能把声明编译通过视为业务完成。
+Media [根部与下层契约](app-design.md#media-根部与下层契约) 已落盘；根部公开入口和装配已实现，下层仍为 TODO panic。消费者仍使用旧接口，完整应用不能编译运行；根部测试通过不代表下层业务或真实接线已完成。
 
 - [x] 备份 15 个生产文件和 12 个测试文件为原名加 `.bak`；建立根部与 object／transfer／backend／share 的 24 文件骨架。
 - [x] 声明 MediaCenter、完整配置构造、四字段值类型 MediaInfo、Info／ValidateImage、Reference 及公开 HeldMedia。移除旧入口，不提供兼容别名。
 - [x] 声明 object 最小仓储、调用期 History 参数、内部持有 SignedURL、后端位置接口与可返回错误的交付清理回调；gofmt 和五个 Media 包的声明编译检查通过。
-- [ ] 填充完整配置、凭据、后端构造与中断恢复；App 后注入 History 后执行对账。
+- [x] 实现根部公开入口、类型转换、持有包装、参数 ID 解析与完整配置装配；历史错误共用身份，保留部分结果、清理回调和错误。凭据与构造提前失败测试通过 race。
+- [ ] 实现下层后端构造与 object 中断恢复；验证成功装配、参数 ID 完整执行及 App 后注入 History 后的对账。
 - [ ] 实现导入、查询、图片校验与处理、对象持有及引用释放重试、远端副本和签名缓存、历史关联及物理回收。
 - [ ] 实现入站物化、模型请求准备、平台发送准备、历史批量获取，以及部分准备失败和可重试清理。
 - [ ] 迁移 App、Agent、Tool、Hook、Platform、Background 的 MediaCenter／Info／MediaInfo／HeldMedia 与 func() error 清理契约；Tool 保留调用内集合与导出缓存，移除跨边界的存储记录。

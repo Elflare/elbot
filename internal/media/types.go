@@ -1,9 +1,11 @@
-// Package media 提供媒体公开契约；当前仅为字段与签名骨架，业务实现待填充。
+// Package media 提供媒体公开契约和内部组件装配。
 package media
 
 import (
-	"errors"
 	"time"
+
+	"elbot/internal/media/share"
+	"elbot/internal/media/transfer"
 )
 
 // IDPrefix 是内容寻址媒体标识的前缀。
@@ -75,13 +77,13 @@ type HistoryFetchOptions struct {
 }
 
 // ErrHistoryFetchLimit 表示本次未缓存媒体获取额度耗尽。
-var ErrHistoryFetchLimit = errors.New("history media fetch limit reached")
+var ErrHistoryFetchLimit = transfer.ErrHistoryFetchLimit
 
 // ErrHistoryMediaIndex 表示请求的媒体序号超出范围。
-var ErrHistoryMediaIndex = errors.New("history media index out of range")
+var ErrHistoryMediaIndex = transfer.ErrHistoryMediaIndex
 
 // ValidID 只验证媒体标识格式，不查询对象。
-func ValidID(id string) bool { panic("TODO") }
+func ValidID(id string) bool { return share.ValidID(id) }
 
 // SanitizeName 清理展示名称，供媒体边界与发送方共用。
-func SanitizeName(name string) string { panic("TODO") }
+func SanitizeName(name string) string { return share.SanitizeName(name) }
