@@ -1,5 +1,7 @@
 注：此重构不改用户文档
 需要理解整体架构：读 `devdocs/architecture.md`。architecture-principles必读
+旧代码需要删除或者改造，逻辑只做参考，不能强行兼容或者保留。
+review时要看有没过度防御、有没旧逻辑代码，职责、边界是否清晰
 
 # App 包设计
 
