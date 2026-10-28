@@ -315,7 +315,7 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 <!-- locator:media -->
 ## 媒体中心
 
-Media 根部公开入口与装配已实现，object／transfer／backend／share 仍以 TODO panic 占位；15 个生产文件和 12 个测试文件保留为 `*.go.bak`。各包编译及根部凭据、构造提前失败测试通过，消费者与完整应用尚未接入。完整字段、接口与文件职责见 [Media 契约](app-design.md#media-根部与下层契约)。
+Media 根部公开入口与装配及 share 的 ID 校验、名称清理已实现，object／transfer／backend 仍以 TODO panic 占位；15 个生产文件和 12 个测试文件保留为 `*.go.bak`。各包编译及 share 辅助函数、根部参数 ID 提取、凭据与构造提前失败测试通过 race，消费者与完整应用尚未接入。完整字段、接口与文件职责见 [Media 契约](app-design.md#media-根部与下层契约)。
 
 - `internal/media/api.go`、`wiring.go`、`deps.go`：MediaCenter 公开入口、完整配置构造装配、Store／History 消费契约。
 - `internal/media/types.go`、`reference.go`：公开 MediaInfo、来源与历史类型；HeldMedia、Reference 和参数媒体 ID 解析。查询统一命名 Info，公开类型不暴露内部记录。
@@ -324,7 +324,7 @@ Media 根部公开入口与装配已实现，object／transfer／backend／share
 - `internal/media/object/reference.go`、`cleanup.go`、`history.go`：持有凭据、引用回收与历史关联对账；`remote.go`、`locks.go`：副本签名缓存与对象并发控制。
 - `internal/media/transfer/manager.go`、`resolver.go`、`request.go`、`output.go`、`platform.go`：交付配置、入站物化、模型请求、发送准备与历史批量获取，只接收对象协作能力。
 - `internal/media/backend/local.go`、`s3.go`、`remote.go`：本地对象、S3 对象与签名、延迟远端构造；仅接收对象位置，不接收存储记录。
-- `internal/media/share/types.go`、`contracts.go`：包内共同数据、Objects／HeldMedia／Backend／RemoteBackend。内部持有提供 SignedURL，公开持有仅提供 Info／Open／Close。
+- `internal/media/share/types.go`：包内共同数据与常量；`helpers.go`：ID 校验与名称清理，`helpers_test.go` 验证对应规则；`contracts.go`：Objects／HeldMedia／Backend／RemoteBackend。内部持有提供 SignedURL，公开持有仅提供 Info／Open／Close；根部 `reference_test.go` 验证参数 ID 提取。
 - `internal/storage/sqlite/media_repository.go`：元数据与签名缓存。
 - `internal/tool/builtin/chat_history.go`、`get_media.go`、`view_image.go`：历史查询、媒体获取与 Responses 看图。
 - `internal/platform/dispatch/media.go`：输出媒体准备与回执缓存。

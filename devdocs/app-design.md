@@ -101,7 +101,7 @@ App 与 Agent 不承接 Doctor，配置诊断由配置侧负责。进程入口�
 <!-- locator:media -->
 ## Media 根部与下层契约
 
-`internal/media/` 根部已实现公开入口、类型转换、持有包装、参数 ID 解析与完整配置装配；object、transfer、backend、share 的函数仍以 `panic("TODO")` 占位。15 个生产文件和 12 个测试文件原样保存在同目录的 `*.go.bak` 中，不参与构建。App、Agent、Tool、Hook、Platform、Background 尚未迁移，仍有旧接口调用；Media 各包可编译不代表成功构造或完整应用可用。
+`internal/media/` 根部已实现公开入口、类型转换、持有包装、参数 ID 解析与完整配置装配；share 已实现 ID 校验与名称清理，object、transfer、backend 的函数仍以 `panic("TODO")` 占位。15 个生产文件和 12 个测试文件原样保存在同目录的 `*.go.bak` 中，不参与构建。App、Agent、Tool、Hook、Platform、Background 尚未迁移，仍有旧接口调用；Media 各包可编译不代表成功构造或完整应用可用。
 
 ```mermaid
 flowchart TB
@@ -109,7 +109,7 @@ flowchart TB
     O["object/<br/>manager.go：组件、配置、依赖及仓储契约<br/>import.go：导入与归档<br/>read.go：信息、读取及导出<br/>image.go：图片校验、压缩与缩放<br/>reference.go：持有凭据与引用<br/>cleanup.go：回收<br/>history.go：历史缓存、关联与对账<br/>remote.go：副本与签名缓存<br/>locks.go：对象锁"]
     T["transfer/<br/>manager.go：对象能力与交付配置<br/>resolver.go：入站物化<br/>request.go：模型请求准备<br/>output.go：发送准备<br/>platform.go：平台来源及历史批量获取"]
     B["backend/<br/>local.go：本地内容读写<br/>s3.go：S3 配置、读写与签名<br/>remote.go：延迟构造及成功结果缓存"]
-    S["share/<br/>types.go：跨子包数据与辅助<br/>contracts.go：Objects、HeldMedia、Backend、RemoteBackend"]
+    S["share/<br/>types.go：跨子包数据与常量<br/>helpers.go：ID 校验与名称清理<br/>contracts.go：Objects、HeldMedia、Backend、RemoteBackend"]
     R --> O
     R --> T
     R --> B
@@ -134,6 +134,7 @@ flowchart TB
 - `object.Options` 包含 Backend、MaxImportBytes、DownloadTimeout、Media、Now；Backend 只表达规范化后的 local／s3 导入位置。`Deps` 交付最小 MediaRepository、仅 Add／Remove 的 ReferenceRepository、Local 和 Remote；Manager 保存私有依赖、配置及两组对象锁。存储记录、持有凭据、图片内部属性、远端副本与签名缓存只在 object 内部使用。
 - `transfer.Options` 包含 Backend、MaxDirectBase64Bytes、MaxImportBytes、DownloadTimeout；Backend 表达 base64／s3／hybrid 交付策略。Manager 只保存 `share.Objects` 与该配置，不接收仓储、后端或凭据。
 - `share.Objects` 包含 Info、Hold、四项带 ImportLimits 的导入、LoadHistoryMedia、AssociateHistory。`HistoryKey` 包含四项历史身份；`HistoryEntry` 只包含 MediaInfo、Associated、Kind，表达有效缓存与匹配关联。平台来源和批量获取参数只在 transfer 使用，不进入 share。
+- `share.ValidID` 严格接受 `media:` 加 64 位小写十六进制；`SanitizeName` 清理路径或 URL 中的展示名称，处理两种路径分隔符并只进行一次百分号解码；HTTP／HTTPS／file URL 解析失败时返回 `file`，查询参数与片段不进入名称。普通名称中的非法百分号编码保留原文；空值、退化路径及 data／base64 来源返回 `file`。根部公开函数直接转发。
 - 内部 `share.HeldMedia` 额外提供 `SignedURL(ctx)`。transfer 通过已有持有选择 Open 或 SignedURL；上传副本、记录更新和缓存维护均由 object 完成，公开句柄不开放签名能力。
 - `Backend.Put` 返回位置字符串，Open／Remove 只接收位置；本地位置是文件路径，S3 位置是对象键。`RemoteBackend` 额外提供 PresignGet；LocalBackend 不提供签名方法，后端不接收 storage.Media。
 - `S3Options` 只包含 Endpoint、Region、Bucket、Credentials；`LazyBackend` 保存 factory、backend、mu，只缓存成功构造结果。
@@ -144,7 +145,7 @@ flowchart TB
 
 根部只转换公开与内部数据，平台回调保留 nil、上下文及限制；历史批量转换保留顺序、重复位置和逐项错误。读取器、清理回调及错误原样交回，准备失败不吞掉可重试回调。公开历史错误与 transfer 使用同一错误值，HeldMedia 不增加释放状态或重试控制。
 
-gofmt、五个 Media 包编译及 `go test -race ./internal/media/...` 通过；当前运行测试只覆盖根部凭据解析、环境优先级、缺失凭据与错误不泄露凭据、base64 跳过凭据读取，以及取消、未知模式和无效凭据的构造提前失败。成功构造、参数 ID 完整执行与真实业务链路依赖下层实现。后续填充导入、图片、持有、清理、签名、物化和历史批量实现，再迁移消费者；仍须覆盖释放重试、并发对象操作、历史对账故障及真实总管接线。
+gofmt、五个 Media 包编译及 `go test -race ./internal/media/...` 通过；当前运行测试覆盖 share 的 ID 格式与名称清理、根部参数 ID 的精确 JSON 值提取与去重排序，以及凭据解析、环境优先级、缺失凭据与错误不泄露凭据、base64 跳过凭据读取和取消、未知模式、无效凭据的构造提前失败。成功构造与真实业务链路依赖其余下层实现。后续填充导入、图片、持有、清理、签名、物化和历史批量实现，再迁移消费者；仍须覆盖释放重试、并发对象操作、历史对账故障及真实总管接线。
 
 ## Platform 下层目标契约
 
@@ -251,7 +252,7 @@ flowchart TD
 
 ## 验证与备份
 
-当前 Media 根部凭据与构造提前失败测试通过 race，下层函数仍为 TODO panic，原媒体行为测试保存在 `.go.bak` 中。依赖 Media 的 Tool、Agent、Hook、Platform、Background 测试须在下层业务实现与消费签名迁移后重新验证。下列组件用例说明不代表当前 Media 接线或完整应用已通过；App 整包仍待媒体下层、模型构造实现及进程入口适配。
+当前 Media 的 share ID 校验、名称清理及根部参数 ID 提取、凭据与构造提前失败测试通过 race；object、transfer、backend 函数仍为 TODO panic，原媒体行为测试保存在 `.go.bak` 中。依赖 Media 的 Tool、Agent、Hook、Platform、Background 测试须在下层业务实现与消费签名迁移后重新验证。下列组件用例说明不代表当前 Media 接线或完整应用已通过；App 整包仍待媒体下层、模型构造实现及进程入口适配。
 
 CLI 整包与 Share、refcontext、dispatch、notification 的 race 回归通过。CLI 覆盖真实管道和 Linux 伪终端的停止／最终关闭、真实 WebSocket 收尾发送、同步监听失败、并发启停及超时重试、原连接回复、事件乱序与绑定失效、WebSocket 背压期间换绑和展示关闭后连接保留、UI 关闭超时重试、回调收尾期间取消观察仍返回已发布故障、部分 UI 所有权、客户端分类及断线退出。CLI 不再依赖旧 agent/events、Platform 根包或兄弟实现；Headless 整包也通过 race，覆盖无状态生命周期、取消上下文、重复及并发调用、发送失败契约；OneBot、Share、refcontext 的 race 回归通过，覆盖分阶段关闭、临时拨号取消、在途写入取消隔离、关闭重试、重连隔离及原生 API 透传；OneBot 不再依赖根包或兄弟实现。QQ Official、Share、refcontext、notification 的 race 回归通过，覆盖实际 HTTP／WebSocket、心跳序号同步及失败退出、恢复与重新鉴权、并发启停、取消观察与独立故障、收尾发送、完整发送及别名入库等待、关闭超时重试。QQ Official 不再依赖根包或兄弟实现。Telegram、Share、refcontext、notification 与 Background/Cron 的 race 回归通过，覆盖异步远端连接、分阶段关闭、完整操作取消与退出等待、流式等待取消隔离、关闭超时重试、独立连接池释放、身份快照、命令目录并发、引用恢复、配置边界及原生 API。Telegram 生产代码与包内测试均不依赖 Platform 根包或兄弟实现；Background 报告测试通过发送契约注入回执。
 

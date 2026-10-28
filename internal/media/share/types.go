@@ -48,9 +48,3 @@ type HistoryEntry struct {
 	Associated bool      // 已存在与历史身份及媒体匹配的持久关联。
 	Kind       string    // 匹配关联的媒体种类，用于判断是否需要更新。
 }
-
-// ValidID 只检查标识格式，不查询媒体。
-func ValidID(id string) bool { panic("TODO") }
-
-// SanitizeName 清理对象与交付共同使用的展示名称。
-func SanitizeName(name string) string { panic("TODO") }

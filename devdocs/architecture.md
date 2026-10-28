@@ -393,7 +393,7 @@ flowchart LR
 <!-- locator:media -->
 ### 媒体引用与清理
 
-Media 根部公开入口、转换与装配已实现，下层 object／transfer／backend／share 仍为 TODO 骨架，原生产及测试文件保存为 `.go.bak`。五个包编译与根部凭据、构造提前失败测试通过；下层业务实现和消费者迁移尚未完成。完整文件职责、字段与契约见 [Media 契约](app-design.md#media-根部与下层契约)。
+Media 根部公开入口、转换与装配及 share 的 ID 校验、名称清理已实现，下层 object／transfer／backend 仍为 TODO 骨架，原生产及测试文件保存为 `.go.bak`。五个包编译与 share 辅助函数、根部参数 ID 提取、凭据及构造提前失败测试通过 race；其余下层业务实现和消费者迁移尚未完成。完整文件职责、字段与契约见 [Media 契约](app-design.md#media-根部与下层契约)。
 
 根部 `MediaCenter` 负责公开能力、完整配置拆分和装配，私有持有 object 与 transfer。object 管理对象记录、导入读取、图片处理、引用、回收、历史关联及签名缓存；transfer 通过 share.Objects 编排入站、模型请求和平台交付；backend 只按位置读写对象并提供可选签名能力。子包不导入根部或兄弟实现，share 只承载包内协作。
 
