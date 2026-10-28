@@ -393,19 +393,19 @@ flowchart LR
 <!-- locator:media -->
 ### 媒体引用与清理
 
-Media 根部公开入口、转换与装配，share 的 ID 校验与名称清理及 backend 的本地、S3 和延迟构造已实现，下层 object／transfer 仍为 TODO 骨架，原生产及测试文件保存为 `.go.bak`。五个包编译与 backend、share 及根部参数 ID 提取、凭据和构造提前失败测试通过 race；其余下层业务实现和消费者迁移尚未完成。完整文件职责、字段与契约见 [Media 契约](app-design.md#media-根部与下层契约)。
+Media 根部公开入口、转换与装配，share 的 ID 校验与名称清理及 backend 的本地、S3 和延迟构造已实现，object 已实现导入读取、图片处理、引用持有、历史关联、签名缓存与回收，transfer 仍为 TODO 骨架，原生产及测试文件保存为 `.go.bak`。五个包编译与 object、backend、share 及根部参数 ID 提取、凭据和构造提前失败测试通过 race；交付实现和消费者迁移尚未完成。完整文件职责、字段与契约见 [Media 契约](app-design.md#media-根部与下层契约)。
 
 根部 `MediaCenter` 负责公开能力、完整配置拆分和装配，私有持有 object 与 transfer。object 管理对象记录、导入读取、图片处理、引用、回收、历史关联及签名缓存；transfer 通过 share.Objects 编排入站、模型请求和平台交付；backend 只按位置读写对象并提供可选签名能力。子包不导入根部或兄弟实现，share 只承载包内协作。
 
 backend 消费 object 已确认的 ID、内容与位置；S3 客户端只使用根部交付的选项和凭据，并在上传时将不可 Seek 的输入暂存为可回读的临时文件，承担 SDK 签名、校验和及重试所需的传输适配与临时文件释放，原输入仍由调用方关闭。延迟构造仅缓存成功结果，实际操作在初始化锁外执行。本地写入通过同目录临时文件提交，失败不以目标存在推断成功；同步 I/O 在操作开始和写入提交前检查取消。
 
-公开查询命名 Info，导入、读取、导出与历史结果使用值类型 `MediaInfo{ID, Name, MIMEType, Size}`。ValidateImage 校验内容可解码及 MIME；宽高、格式、存储位置与删除状态属于 object 内部。公开 HeldMedia 提供 Info／Open／Close，内部持有额外提供 SignedURL；读取不重复增加引用，关闭失败可重试。Tool 的调用内复用、导出状态和缓存目录仍归 Tool。
+公开查询命名 Info，导入、读取、导出与历史结果使用值类型 `MediaInfo{ID, Name, MIMEType, Size}`。ValidateImage 校验内容可解码及 MIME；宽高、格式、存储位置与删除状态属于 object 内部。公开 HeldMedia 提供 Info／Open／Close，内部持有额外提供 SignedURL；读取不重复增加引用，关闭使用句柄独立锁，失败可重试，不等待其他持有的对象操作。显式 Hold／Open 的最终释放由调用方负责；Open 在打开和释放均失败时仍返回仅供 Close 重试的读取器。Read／Export／ValidateImage 汇总业务与关闭错误，自有引用释放失败则由 object 托管，在 Cleanup 历史对账前重试；失败、取消及并发新增项保留，释放故障阻止本轮后续回收。Tool 的调用内复用、导出状态和缓存目录仍归 Tool。
 
 App 构造后注入 History，再发起历史对账；根部对账、清理调用将当前最小查询接口传给 object，object 不保存 History。媒体中心没有独立关闭步骤。AcquireForLLM 与 ResolveForOutput 返回 `func() error` 清理回调，保留未清理项目、业务及清理错误，支持部分准备失败后的重试。
 
-下层契约承接以下业务约定，运行实现与回归待完成：
+object 实现及 transfer 目标契约遵循以下业务约定：
 
-- 对象按内容寻址去重，引用事实归 storage；会话、工具参数和后台事务仍由原业务提交，不通过 Media 新增会话写入入口。
+- 对象统一经受限导入链处理，名称与来源在入口清理，按最终内容寻址去重；读取只投影信息，不兼容清洗已有记录。引用事实及回收认领互斥归 storage；会话、工具参数和后台事务仍由原业务提交，不通过 Media 新增会话写入入口。
 - 模型请求按 ID 复用持有，按实际出现次数累计大小；base64／s3／hybrid 决定交付方式，上传与签名工作退出后再释放持有。
 - 副本上传和签名缓存由 object 在对象锁内维护；后端只接收位置。签名剩余超过 5 分钟复用，否则按 1 小时刷新，独立故障保留。
 - 历史批量获取保留顺序、重复位置及逐项错误；缓存不占未缓存获取额度。对账仅删除确认失效的历史关联，查询失败停止清理。

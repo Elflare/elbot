@@ -2,24 +2,220 @@ package object
 
 import (
 	"context"
-	"elbot/internal/events"
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
 	"time"
+
+	"elbot/internal/events"
+	"elbot/internal/storage"
 )
 
-// OrphanGrace 从最后一个引用释放时起算，避免立即回收新近使用的对象。
+// OrphanGrace starts when the last reference is released, not at import time.
 const OrphanGrace = time.Hour
 
-// cleanupConcurrency 是单轮对象回收的工作并发上限。
 const cleanupConcurrency = 4
 
-// Cleanup 依次对账历史、清理过期输出、核对引用、认领并回收孤立对象。
-// history 只在本次调用中借用；查询失败阻止误删，独立错误与取消分别保留。
-// 回收等待所有已开始的工作退出后合并真实结果，不提供媒体服务 Close。
-func (m *Manager) Cleanup(ctx context.Context, history History) (events.LogResult, error) {
-	panic("TODO")
+// Cleanup preserves each deletion's source result before joining business errors.
+// A cancellation cannot replace an independently failed deletion in LogResult.
+func (m *Manager) Cleanup(ctx context.Context, history History) (logResult events.LogResult, err error) {
+	cleanupID := storage.NewID()
+	stage := "lock"
+	defer func() {
+		lines := []string{"cleanup_id=" + cleanupID}
+		if stage != "delete" {
+			lines = append(lines, "stage="+stage)
+		}
+		lines = append(lines, strings.Split(logResult.Content, "\n")...)
+		if len(lines) > 50 {
+			omitted := len(lines) - 49
+			lines = append(lines[:49], fmt.Sprintf("truncated=true omitted_details=%d", omitted))
+		}
+		logResult.Content = strings.Join(lines, "\n")
+	}()
+	// Only cleanup rounds serialize here; media operations use per-ID locks.
+	unlock, err := m.cleanupMu.acquire(ctx, "cleanup")
+	if err != nil {
+		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("error=%q", err.Error())}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = events.ResultCanceled
+		}
+		return logResult, err
+	}
+	defer unlock()
+	stage = "release_owned"
+	if err := m.retryReleases(ctx); err != nil {
+		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("error=%q", err.Error())}
+		// 单纯取消与同时发生的独立释放故障分开记录。
+		if err == context.Canceled {
+			logResult.ResultStatus = events.ResultCanceled
+		}
+		return logResult, err
+	}
+	stage = "history_reconcile"
+	if err := m.ReconcileHistory(ctx, history); err != nil {
+		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("error=%q", err.Error())}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = events.ResultCanceled
+		}
+		return logResult, err
+	}
+	stage = "expire_outputs"
+	if err := m.media.ExpireOutputs(ctx, m.options.Now()); err != nil {
+		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("error=%q", err.Error())}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = events.ResultCanceled
+		}
+		return logResult, err
+	}
+	stage = "reference_check"
+	issues, err := m.media.CheckReferences(ctx)
+	if err != nil {
+		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("error=%q", err.Error())}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = events.ResultCanceled
+		}
+		return logResult, err
+	}
+	if len(issues) > 0 {
+		err := fmt.Errorf("media reference inconsistencies prevent cleanup: %v", issues)
+		return events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("issues=%d\n", len(issues)) + strings.Join(issues, "\n")}, err
+	}
+	stage = "claim"
+	items, err := m.media.ClaimOrphans(ctx, m.options.Now().Add(-OrphanGrace))
+	if err != nil {
+		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("error=%q", err.Error())}
+		if errors.Is(err, context.Canceled) {
+			logResult.ResultStatus = events.ResultCanceled
+		}
+		return logResult, err
+	}
+	stage = "delete"
+	// Each worker owns a distinct result slot; errors are joined after all exit.
+	failures := make([]error, len(items))
+	results := make([]events.LogResult, len(items))
+	jobs := make(chan int)
+	var workers sync.WaitGroup
+	for range min(cleanupConcurrency, len(items)) {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for i := range jobs {
+				if ctx.Err() != nil {
+					return
+				}
+				results[i], failures[i] = m.deleteObject(ctx, items[i].ID)
+			}
+		}()
+	}
+dispatch:
+	for i := range items {
+		if ctx.Err() != nil {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			break dispatch
+		case jobs <- i:
+		}
+	}
+	close(jobs)
+	workers.Wait()
+	resultStatus := events.ResultSucceeded
+	counts := map[events.ResultStatus]int{}
+	for _, result := range results {
+		counts[result.ResultStatus]++
+		if result.ResultStatus == events.ResultFailed || (result.ResultStatus == events.ResultCanceled && resultStatus != events.ResultFailed) {
+			resultStatus = result.ResultStatus
+		}
+	}
+	lines := []string{fmt.Sprintf("claimed=%d deleted=%d skipped=%d failed=%d canceled=%d not_started=%d",
+		len(items), counts[events.ResultSucceeded], counts[events.ResultSkipped], counts[events.ResultFailed], counts[events.ResultCanceled], counts[events.ResultUnspecified])}
+	if err := ctx.Err(); err != nil {
+		if resultStatus != events.ResultFailed {
+			resultStatus = events.ResultFailed
+			if err == context.Canceled {
+				resultStatus = events.ResultCanceled
+			}
+		}
+		lines = append(lines, fmt.Sprintf("cleanup_error=%q", err.Error()))
+	}
+	for _, status := range []events.ResultStatus{events.ResultFailed, events.ResultCanceled, events.ResultUnspecified, events.ResultSkipped, events.ResultSucceeded} {
+		for i, result := range results {
+			if result.ResultStatus != status {
+				continue
+			}
+			if status == events.ResultUnspecified {
+				lines = append(lines, fmt.Sprintf("media_id=%s result=not_started backend=%s", items[i].ID, items[i].Backend))
+			} else {
+				lines = append(lines, result.Content)
+			}
+		}
+	}
+	return events.LogResult{ResultStatus: resultStatus, Content: strings.Join(lines, "\n")}, errors.Join(append(failures, ctx.Err())...)
 }
 
-// deleteObject 在对象锁内重新读取记录，释放真实副本后完成存储删除。
-func (m *Manager) deleteObject(ctx context.Context, id string) (events.LogResult, error) {
-	panic("TODO")
+func (m *Manager) deleteObject(ctx context.Context, id string) (logResult events.LogResult, err error) {
+	stage, backend := "lock", ""
+	defer func() {
+		if err != nil {
+			logResult.ResultStatus = events.ResultFailed
+			if errors.Is(err, context.Canceled) {
+				logResult.ResultStatus = events.ResultCanceled
+			}
+		}
+		result := logResult.ResultStatus.String()
+		if logResult.ResultStatus == events.ResultSucceeded {
+			result = "deleted"
+		}
+		content := fmt.Sprintf("media_id=%s result=%s", id, result)
+		if backend != "" {
+			content += " backend=" + backend
+		}
+		if err != nil {
+			content += fmt.Sprintf(" stage=%s error=%q", stage, err.Error())
+		} else if logResult.Content != "" {
+			content += " " + logResult.Content
+		}
+		logResult.Content = content
+	}()
+	unlock, err := m.objects.acquire(ctx, id)
+	if err != nil {
+		return logResult, err
+	}
+	defer unlock()
+	// Read under the object lock rather than deleting from an old snapshot.
+	stage = "read"
+	item, err := m.media.Get(ctx, id)
+	if errors.Is(err, storage.ErrNotFound) {
+		return events.LogResult{ResultStatus: events.ResultSkipped, Content: "reason=unavailable"}, nil
+	}
+	if err != nil {
+		return logResult, err
+	}
+	backend = item.Backend
+	if !item.Deleting {
+		return events.LogResult{ResultStatus: events.ResultSkipped, Content: "reason=unclaimed"}, nil
+	}
+	if item.ObjectKey != "" {
+		stage = "remote_delete"
+		if m.remote == nil {
+			return logResult, fmt.Errorf("remote media backend is unavailable")
+		}
+		if err := m.remote.Remove(ctx, item.ObjectKey); err != nil {
+			return logResult, fmt.Errorf("delete remote media %q: %w", id, err)
+		}
+	}
+	if item.LocalPath != "" {
+		stage = "local_delete"
+		if err := m.local.Remove(ctx, item.LocalPath); err != nil {
+			return logResult, fmt.Errorf("delete local media %q: %w", id, err)
+		}
+	}
+	stage = "finish_delete"
+	if err := m.media.FinishDelete(ctx, id); err != nil {
+		return logResult, fmt.Errorf("finish deleting media %q: %w", id, err)
+	}
+	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }

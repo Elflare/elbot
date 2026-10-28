@@ -1,8 +1,9 @@
-// Package object 管理媒体记录、内容、引用与回收；当前仅为声明骨架。
+// Package object 管理媒体记录、内容、引用与回收。
 package object
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"elbot/internal/config"
@@ -29,13 +30,15 @@ type Deps struct {
 
 // Manager 持有对象状态；不保存构造后才注入的历史查询。
 type Manager struct {
-	options    Options             // 构造时固定的对象配置。
-	media      MediaRepository     // 借用的对象及关联仓储。
-	references ReferenceRepository // 借用的引用仓储。
-	local      share.Backend       // 本地内容后端。
-	remote     share.RemoteBackend // 远端内容及签名后端。
-	objects    objectLocks         // 按媒体 ID 串行对象变更。
-	cleanupMu  objectLocks         // 串行清理轮次，不阻塞不同对象的普通操作。
+	options         Options             // 构造时固定的对象配置。
+	media           MediaRepository     // 借用的对象及关联仓储。
+	references      ReferenceRepository // 借用的引用仓储。
+	local           share.Backend       // 本地内容后端。
+	remote          share.RemoteBackend // 远端内容及签名后端。
+	objects         objectLocks         // 按媒体 ID 串行对象变更。
+	cleanupMu       objectLocks         // 串行清理轮次，不阻塞不同对象的普通操作。
+	pendingReleases []share.HeldMedia   // 便捷方法已结束使用、但尚未释放成功的自有持有。
+	releasesMu      sync.Mutex          // 保护待释放集合；重试期间不持锁。
 }
 
 // MediaRepository 仅包含对象管理实际使用的存储能力。
@@ -70,7 +73,10 @@ type History interface {
 
 // NewManager 保存裁剪后的配置、仓储和后端并执行中断恢复。
 // 部分构造失败仍交回已创建的组件；历史对账由根部注入 History 后发起。
-func NewManager(ctx context.Context, opts Options, deps Deps) (*Manager, error) { panic("TODO") }
+func NewManager(ctx context.Context, opts Options, deps Deps) (*Manager, error) {
+	m := &Manager{options: opts, media: deps.Media, references: deps.References, local: deps.Local, remote: deps.Remote}
+	return m, m.media.RecoverInterrupted(ctx)
+}
 
-// 在编译时核对跨组件契约，不能以占位函数的运行结果代替业务验证。
+// 在编译时核对跨组件契约。
 var _ share.Objects = (*Manager)(nil)

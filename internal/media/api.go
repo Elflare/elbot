@@ -26,6 +26,7 @@ func (m *MediaCenter) Info(ctx context.Context, id string) (MediaInfo, error) {
 }
 
 // ValidateImage 验证图片可解码且 MIME 属于图片，返回通用信息。
+// 自有持有释放失败时保留错误，并由 Cleanup 重试释放。
 func (m *MediaCenter) ValidateImage(ctx context.Context, id string) (MediaInfo, error) {
 	info, err := m.objects.ValidateImage(ctx, id)
 	return MediaInfo(info), err
@@ -56,18 +57,21 @@ func (m *MediaCenter) ImportReader(ctx context.Context, input io.Reader, size in
 }
 
 // Open 为本次读取取得持有；关闭返回读取器时释放该持有，释放失败可重试关闭。
+// 出错时若读取器非 nil，调用方仍须 Close 以重试未完成的释放。
 func (m *MediaCenter) Open(ctx context.Context, id string) (io.ReadCloser, MediaInfo, error) {
 	reader, info, err := m.objects.Open(ctx, id)
 	return reader, MediaInfo(info), err
 }
 
 // Read 读取完整内容并结束本次读取持有，保留读取和清理错误。
+// 释放失败的自有持有交给 Cleanup 重试。
 func (m *MediaCenter) Read(ctx context.Context, id string) ([]byte, MediaInfo, error) {
 	data, info, err := m.objects.Read(ctx, id)
 	return data, MediaInfo(info), err
 }
 
 // Export 写入调用方指定的目标文件，并结束本次读取持有。
+// 释放失败的自有持有交给 Cleanup 重试，原调用仍返回错误。
 func (m *MediaCenter) Export(ctx context.Context, id, destination string) (MediaInfo, error) {
 	info, err := m.objects.Export(ctx, id, destination)
 	return MediaInfo(info), err

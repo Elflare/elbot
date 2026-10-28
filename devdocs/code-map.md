@@ -234,7 +234,7 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/platform/share/{message,reference}.go`：内部路由上下文、片段、引用恢复契约与引用格式化。根部 `agent.go` 转换 Agent 输入，RestoreMessageContext 恢复公开事实及内部路由，不改写目标公共会话事实。
 - `internal/agent/contracts.go`、`share/input.go`：Agent 自有 MessageRequest 与内部输入上下文；平台恢复由根部注入，后台入口清除继承的平台状态。
 - `internal/storage/chat_history.go`：ChatSegment、ChatReply 和持久化编解码，保留片段顺序与来源清洗规则。
-- `internal/media/types.go`、`transfer/platform.go`、`object/history.go`：公开平台与历史类型、内部批量获取、对象缓存与关联；当前仅为字段与签名骨架，消费者迁移待完成。
+- `internal/media/types.go`、`transfer/platform.go`、`object/history.go`：公开平台与历史类型、内部批量获取、对象缓存与关联；对象缓存与关联已实现，transfer 批量获取仍为骨架，消费者迁移待完成。
 - `internal/platform/{lifecycle,contracts,agent}_test.go`：生命周期、公开事实隔离独立测试，以及输入转换与投影测试；本轮契约迁移的测试留到 review 运行。
 - `internal/platform/qq-onebot/adapter.go`：适配器、配置、自有最小 Deps 和唯一 NewFromPlatformConfig 构造入口。根部注入历史、引用恢复和两项存储查询。
 - `internal/platform/qq-onebot/{lifecycle,send}.go`：分阶段启停、重连、输入接纳和临时连接登记；消息发送、输出编码及回执。停止接入后保留已建立连接发送，最终 Close 等待实际释放。
@@ -315,13 +315,13 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 <!-- locator:media -->
 ## 媒体中心
 
-Media 根部公开入口与装配，share 的 ID 校验与名称清理及 backend 的本地、S3 和延迟构造已实现，object／transfer 仍以 TODO panic 占位；15 个生产文件和 12 个测试文件保留为 `*.go.bak`。各包编译及 backend、share 和根部参数 ID 提取、凭据与构造提前失败测试通过 race，消费者与完整应用尚未接入。完整字段、接口与文件职责见 [Media 契约](app-design.md#media-根部与下层契约)。
+Media 根部公开入口与装配，share 的 ID 校验与名称清理及 backend 的本地、S3 和延迟构造已实现，object 的导入读取、图片、持有引用、历史、副本签名及回收已实现，transfer 仍以 TODO panic 占位；15 个生产文件和 12 个测试文件保留为 `*.go.bak`。各包编译及 object、backend、share 和根部参数 ID 提取、凭据与构造提前失败测试通过 race，消费者与完整应用尚未接入。完整字段、接口与文件职责见 [Media 契约](app-design.md#media-根部与下层契约)。
 
 - `internal/media/api.go`、`wiring.go`、`deps.go`：MediaCenter 公开入口、完整配置构造装配、Store／History 消费契约。
 - `internal/media/types.go`、`reference.go`：公开 MediaInfo、来源与历史类型；HeldMedia、Reference 和参数媒体 ID 解析。查询统一命名 Info，公开类型不暴露内部记录。
 - `internal/media/wiring_test.go`：凭据解析、进程环境与 `.env` 优先级、错误保密、base64 跳过凭据及构造提前失败。
-- `internal/media/object/manager.go`：Manager、Options、Deps、最小仓储及调用期 History 契约；`import.go`、`read.go`、`image.go`：导入、查询读取导出及图片处理。
-- `internal/media/object/reference.go`、`cleanup.go`、`history.go`：持有凭据、引用回收与历史关联对账；`remote.go`、`locks.go`：副本签名缓存与对象并发控制。
+- `internal/media/object/manager.go`：Manager、Options、Deps、最小仓储、调用期 History 契约与中断恢复；`import.go`：统一受限导入、一次来源清理、内容去重与失败回滚；`read.go`：mediaInfo 投影、查询读取导出与按记录选择后端；`image.go`：图片解码校验、JPEG 压缩与缩放。
+- `internal/media/object/reference.go`：持有凭据、持久引用、句柄独立同步及 releaseOwned／retryReleases 自有释放重试；`cleanup.go`：自有释放重试、历史对账、引用核对、孤立认领与并行回收；`history.go`：缓存合并、关联与分页对账；`remote.go`：锁内副本上传、持久化及签名刷新；`locks.go`：可取消的按对象串行控制。对应七个测试文件覆盖真实 SQLite、受限导入与图片、释放失败、并发对象操作、历史对账故障和取消后回收重试；`release_test.go` 验证关闭不等待其他持有、便捷方法托管释放、失败与取消时保留待处理项，以及显式持有的所有权边界。
 - `internal/media/transfer/manager.go`、`resolver.go`、`request.go`、`output.go`、`platform.go`：交付配置、入站物化、模型请求、发送准备与历史批量获取，只接收对象协作能力。
 - `internal/media/backend/local.go`：本地临时写入与重命名提交、按位置读取与删除；`s3.go`：仅从交付选项构造客户端、上传输入暂存适配、对象传输与签名；`remote.go`：getBackend 串行构造、缓存成功结果并在锁外转交操作。后端消费已确认的内容与位置，不接收存储记录；对应测试覆盖真实文件、HTTP／HTTPS、配置隔离及并发初始化，`s3_upload_test.go` 覆盖输入回读、重试与资源清理。
 - `internal/media/share/types.go`：包内共同数据与常量；`helpers.go`：ID 校验与名称清理，`helpers_test.go` 验证对应规则；`contracts.go`：Objects／HeldMedia／Backend／RemoteBackend。内部持有提供 SignedURL，公开持有仅提供 Info／Open／Close；根部 `reference_test.go` 验证参数 ID 提取。
