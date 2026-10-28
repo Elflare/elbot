@@ -70,10 +70,10 @@ Cron 与 Elnis 共用 share/report.go 的 ReportMessageMap 和 MapReportReceipt�
 
 ## 媒体与 workspace
 
-- image／file 接受 HTTP(S)、data URI 和完整媒体 ID，不接受外部本地路径或宿主媒体 RPC。
+- image／file 接受 HTTP(S)、data URI 和完整媒体 ID；prepareEvent 在协议入口分类为 delivery.Output/Source，Event.Segments 保存明确来源。原始 Request 仅供协议记录、去重和审计。
 - record、重复、拒绝和排队 URL 不下载；排队已有 ID 建事件引用，LLM 执行时物化，direct 有实际目标才导入。
-- outbox 本地附件在准备时规范化受限相对路径，经 os.Root 打开并检查普通文件，导入后立即建立事件报告引用，只保存稳定 ID；远端工具只操作远端文件。
-- Elnis 的 Media 契约只包含 MaterializeWithLimits、ImportURL、ImportReader、AddEventReference，由根部适配媒体中心；每次物化传递大小及超时限制，导入只返回媒体 ID。已有 ID 在建立引用时统一校验。
+- 后台报告在 ParseJSONResult 中分类来源并规范化受限相对路径；outbox 本地附件经 os.Root 打开并检查普通文件，导入后立即建立事件报告引用，只保存稳定 ID；远端工具只操作远端文件。
+- Elnis 的 Media 契约包含 Info、ImportURL、ImportReader、ImportBytes、AddEventReference，由根部适配媒体中心；每次导入传递大小及超时限制，返回公开 MediaInfo。已有 ID 在协议入口校验格式，建立引用时由对象服务与存储保证对象可用。
 - 引用、输出关联和清理遵循[媒体中心约束](architecture.md#媒体引用与清理)；已发送缓存使用 retention_days，非正值不缓存。
 
 ## Runtime 生命周期与审计

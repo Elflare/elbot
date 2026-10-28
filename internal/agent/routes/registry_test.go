@@ -16,13 +16,13 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/llm"
-	"elbot/internal/media"
 	"elbot/internal/modelmgr"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil/mediatest"
 	"elbot/internal/turn"
 )
 
@@ -148,7 +148,7 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	}
 	contexts := contextmgr.New(contextmgr.Options{Store: store, Compactors: registry})
 	out := &testOutput{t: t, messages: store.Messages()}
-	runner := &dialogue.Runner{Status: testStatus{}, Routes: registry, Preparer: &dialogue.Preparer{Contexts: contexts, Media: media.NewManager(store, t.TempDir(), &media.LocalBackend{Root: t.TempDir()})},
+	runner := &dialogue.Runner{Status: testStatus{}, Routes: registry, Preparer: &dialogue.Preparer{Contexts: contexts, Media: mediatest.New(t, store, t.TempDir())},
 		Messages: loop.messages,
 		Replies:  &dialogue.ReplyCommitter{Persistence: loop.messages.Committer("append_assistant_message"), Output: out},
 		Turns:    turn.NewManager(), View: dialogue.ExecutionView{Sessions: store.Sessions()}}

@@ -27,7 +27,7 @@ type MessageHandler struct {
 	commands MessageCommands
 	input    MessageInput
 	media    interface {
-		ImportPlatform(context.Context, string, func(context.Context, media.PlatformMedia, int64) (delivery.Source, error), media.PlatformMedia) (*storage.Media, error)
+		ImportPlatform(context.Context, string, func(context.Context, media.PlatformMedia, int64) (delivery.Source, error), media.PlatformMedia) (media.MediaInfo, error)
 		AssociateHistory(context.Context, media.HistoryMessage, int, string, string) error
 	}
 	messages interface {
@@ -147,7 +147,7 @@ type MessageHandlerDeps struct {
 	Commands MessageCommands
 	Input    MessageInput
 	Media    interface {
-		ImportPlatform(context.Context, string, func(context.Context, media.PlatformMedia, int64) (delivery.Source, error), media.PlatformMedia) (*storage.Media, error)
+		ImportPlatform(context.Context, string, func(context.Context, media.PlatformMedia, int64) (delivery.Source, error), media.PlatformMedia) (media.MediaInfo, error)
 		AssociateHistory(context.Context, media.HistoryMessage, int, string, string) error
 	}
 	Messages interface {

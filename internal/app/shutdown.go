@@ -77,7 +77,7 @@ func stopBusinessLines(ctx context.Context, lines businessLines) stopResult {
 	return runShutdownSteps(ctx, steps)
 }
 
-// closeSharedResources 不重复关闭借用对象；媒体和权限没有独立关闭步骤。
+// closeSharedResources 在使用方退出后排空媒体通知，再关闭借用存储。
 func closeSharedResources(ctx context.Context, resources *sharedResources) stopResult {
 	if resources == nil {
 		return stopResult{kind: stopCompleted}
@@ -85,6 +85,9 @@ func closeSharedResources(ctx context.Context, resources *sharedResources) stopR
 	var steps []shutdownStep
 	if resources.models != nil {
 		steps = append(steps, shutdownStep{name: "models", close: resources.models.Close})
+	}
+	if resources.media != nil {
+		steps = append(steps, shutdownStep{name: "media", close: resources.media.Close})
 	}
 	if resources.historyStore != nil {
 		steps = append(steps, shutdownStep{name: "chat history", close: func(context.Context) error { return resources.historyStore.Close() }})

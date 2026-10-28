@@ -29,7 +29,8 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Hook 子包不直接依赖兄弟实现；共享输出转换和协议归 share/output、share/protocol，候选准备与提交隔离回归通过。
 - [x] 管理命令位于 Hook control，内部使用 share 查询类型；根部 Commands 仅交付标准 Handler。
 - [x] Hook 及管理命令测试通过，真实 Agent–Hook–Tool 接线覆盖命令、补全及输出回调。
-- [ ] 完成媒体 NewMediaCenter 下层构造与模型 NewModelManager 的构造契约；Media 根部装配已实现。
+- [x] 完成媒体 NewMediaCenter 下层构造、公开契约与消费者接线。
+- [ ] 完成模型 NewModelManager 的构造契约。
 - [x] TUI／Service 按规范化配置路径取得独占锁，退出最后释放；纯客户端不占锁。
 - [ ] 适配进程入口的新 App API 与 `client` 命名。
 - [ ] 下层接口补齐后，验证完整资源构造、App 启停和客户端链路。
@@ -72,7 +73,7 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Platform.RestoreMessageContext 由 Agent 根部注入，后台入口清除继承的平台状态，前台接管恢复平台事实与路由；普通后台输出和默认通知静默，显式目标投递保留。
 - [x] Platform 根部历史能力裁剪为写入、单条身份查询和两项别名方法，refcontext 只接收单条查询；删除总管中转字段。OneBot、QQ Official、Telegram 已使用自有最小 Deps，Share 提供 CommonConfig 与最小历史读写契约；三个远程适配器均已移除完整或闲置 Store。Telegram 只借用 Append 与引用恢复函数，旧共享 AdapterDeps、旧构造及完整历史字段已删除，不增加兼容层。
 - [x] 本轮 Agent、Tool、Media、refcontext、dispatch 测试夹具接入新契约；相关回归通过，覆盖真实 SQLite 范围与昵称匹配、引用及媒体顺序、缓存与额度、入站切片隔离和延迟物化、接管取消链及后台静默／显式投递。Agent 根部内部测试单独通过；App 实际生命周期与历史库清理的隔离 race 回归通过。
-- [ ] 完成媒体／模型构造入口及进程入口适配后，运行 Agent–Hook、App 整包和资源构造测试。Background 历史清理依赖及借用所有权测试已随整包 race 回归通过。
+- [ ] 完成模型构造入口及进程入口适配后，运行 App 整包和资源构造测试；Agent–Hook 真实接线已通过。Background 历史清理依赖及借用所有权测试已随整包 race 回归通过。
 
 ## Platform 剩余接线
 
@@ -90,21 +91,23 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Event 由 Elnis/types.go 定义并注释字段用途，不保留闲置 SegmentPaths；targets.go 的 toDeliveryTarget 与 media.go 的 directText 承担投递准备。Elvena 仅保留协议与来源文件，无闲置结果类型、总线或投递辅助文件。
 - [ ] 更新 Elwisp 生成提示与相关用户示例，停止生成已删除的能力名；保留 Hook platform.call 原生链路，平台选择仍由调用方负责。用户文档随对应迁移阶段更新。
 - [x] 删除旧 platform.go、module/、builtin/ 及旧实现测试，不保留兼容别名；Doctor 使用外部测试包，通过 Platform 根部 ConfigDefinitions 获取配置定义；Platform 根包及全部子包、Doctor 的 race 回归通过。
-- [ ] 补充 Platform 原生 API、客户端结果与真实历史接线集成验证；媒体／模型构造入口及进程入口适配完成后，运行 App 整包与完整应用回归；组件隔离测试不替代真实总管接线和整包通过。
+- [ ] 补充 Platform 原生 API、客户端结果与真实历史接线集成验证；模型构造入口及进程入口适配完成后，运行 App 整包与完整应用回归；组件隔离测试不替代真实总管接线和整包通过。
 
 ## 媒体中心对接
 
-Media [根部与下层契约](app-design.md#media-根部与下层契约) 已落盘；根部公开入口和装配已实现，下层仍为 TODO panic。消费者仍使用旧接口，完整应用不能编译运行；根部测试通过不代表下层业务或真实接线已完成。
+Media [根部与下层契约](app-design.md#media-根部与下层契约)、四个子包与消费者接线均已实现。完整应用仍被 modelmgr.NewModelManager 缺失阻断，全仓编译另有 security 测试的角色类型不匹配；这两项不属于媒体改造。
 
-- [x] 备份 15 个生产文件和 12 个测试文件为原名加 `.bak`；建立根部与 object／transfer／backend／share 的 24 文件骨架。
+- [x] 保留 15 个生产文件和 12 个测试文件的 `.bak` 备份；按根部与 object／transfer／backend／share 组织实现。
 - [x] 声明 MediaCenter、完整配置构造、四字段值类型 MediaInfo、Info／ValidateImage、Reference 及公开 HeldMedia。移除旧入口，不提供兼容别名。
 - [x] 声明 object 最小仓储、调用期 History 参数、内部持有 SignedURL、后端位置接口与可返回错误的交付清理回调；gofmt 和五个 Media 包的声明编译检查通过。
 - [x] 实现根部公开入口、类型转换、持有包装、参数 ID 解析与完整配置装配；历史错误共用身份，保留部分结果、清理回调和错误。凭据与构造提前失败测试通过 race。
-- [ ] 实现下层后端构造与 object 中断恢复；验证成功装配、参数 ID 完整执行及 App 后注入 History 后的对账。
-- [ ] 实现导入、查询、图片校验与处理、对象持有及引用释放重试、远端副本和签名缓存、历史关联及物理回收。
-- [ ] 实现入站物化、模型请求准备、平台发送准备、历史批量获取，以及部分准备失败和可重试清理。
-- [ ] 迁移 App、Agent、Tool、Hook、Platform、Background 的 MediaCenter／Info／MediaInfo／HeldMedia 与 func() error 清理契约；Tool 保留调用内集合与导出缓存，移除跨边界的存储记录。
-- [ ] 迁移并运行真实存储、持有及释放重试、对象并发、历史批量与对账、签名缓存回归，完成消费者整包及总管接线验证。
+- [x] 实现下层后端构造与 object 中断恢复；验证成功装配、参数 ID 完整执行及构造后注入 History 的对账。
+- [x] 实现导入、查询、图片校验与处理、对象持有及引用释放重试、远端副本和签名缓存、历史关联及物理回收。
+- [x] 实现模型请求准备、平台来源及发送准备、历史批量获取，以及部分准备失败和可重试清理。
+- [x] App、Agent、Tool、Hook、Platform、Background 使用 MediaCenter／Info／MediaInfo／HeldMedia 与 func() error 清理契约；Tool 保留调用内集合与导出缓存。
+- [x] 外部格式保持，Hook、Elnis、后台报告在入口一次分类；内部传递明确来源或 MediaID，公开导入统一接收逐次 ImportLimits。
+- [x] Cron 持久化明确来源、按同结构恢复发送；SQLite 引用触发器与审计按 Source.media 工作，替换和失败回滚回归通过。
+- [x] 真实存储、持有及释放重试、对象并发、历史批量与对账、签名缓存、消费者及总管接线回归。
 
 ## Background 目录与依赖
 
@@ -114,9 +117,23 @@ Media [根部与下层契约](app-design.md#media-根部与下层契约) 已落�
 - [x] Elnis 与 Background 整包构建，实际 elnisBridge 与 cronBridge 运行真实存储集成测试。
 - [x] Elnis Runtime 生命周期与 Supervisor 测试已接通；Background 全包通过 race 检查，真实 SQLite 覆盖关闭批量终态、媒体引用与 outbox 保留。
 
+## Agent 边界接入
+
+- [x] 公开 Hook 载荷与订阅事件独立定义在根部；内部共享循环、提交、消息与 Hook 契约放 Share，具体实现留所属子包。
+- [x] 子包不依赖兄弟实现；根部注入实际需要的外部能力、模型选择函数与 Workspace 工厂。
+- [ ] 入站契约迁移后，在 review 阶段重新验证 Agent 子包。
+- [x] Hook.ConnectAgent 使用 agent.Points 与根包嵌套类型；Agent 通过 Commands 注册 Hook 命令，管理结果留在 Hook 内部。
+- [x] Command 与 Completion 使用 Tool 根包查询契约；删除无生产调用的 Notification HookFailure 辅助与测试。
+- [ ] 入站契约迁移后，在 review 阶段迁移 Supervisor 测试夹具并验证整链路及订阅生命周期。
+- [x] Agent 实现 RunBackground、CopyBackground、CleanupSessions，input 承接后台准备；调用方准备目录与后台来源，仍负责报告解析和重试。
+- [x] Elvena 请求、Elnis 工具声明及 Background 共享请求统一使用 Tool 根包类型；Runner 仅准备目录、注入后台来源并调用 Agent.RunBackground，工具声明 JSON 排除内部关联字段。
+
+## modelmgr
+- [ ] 重构对接新代码
+
 ## session包
-    超时只是下一次收到消息时解除绑定
-    过期处理：统一负责“session 不再活跃后，回收各模块内存状态”的管理链路，建议改为自动new一个的逻辑。)
+- [ ] 重构对接新代码
+- [ ] 超时只是下一次收到消息时解除绑定。过期处理：统一负责“session 不再活跃后，回收各模块内存状态”的管理链路，建议改为自动new一个的逻辑。)
 
 ## 后台工具统一预载
 
@@ -142,14 +159,3 @@ Media [根部与下层契约](app-design.md#media-根部与下层契约) 已落�
 
 - MCP 接入：暂不考虑，使用 Skill。
 - 子 Agent：暂不考虑，信息交流会带来噪声或损失。
-
-## Agent 边界接入
-
-- [x] 公开 Hook 载荷与订阅事件独立定义在根部；内部共享循环、提交、消息与 Hook 契约放 Share，具体实现留所属子包。
-- [x] 子包不依赖兄弟实现；根部注入实际需要的外部能力、模型选择函数与 Workspace 工厂。
-- [ ] 入站契约迁移后，在 review 阶段重新验证 Agent 子包。
-- [x] Hook.ConnectAgent 使用 agent.Points 与根包嵌套类型；Agent 通过 Commands 注册 Hook 命令，管理结果留在 Hook 内部。
-- [x] Command 与 Completion 使用 Tool 根包查询契约；删除无生产调用的 Notification HookFailure 辅助与测试。
-- [ ] 入站契约迁移后，在 review 阶段迁移 Supervisor 测试夹具并验证整链路及订阅生命周期。
-- [x] Agent 实现 RunBackground、CopyBackground、CleanupSessions，input 承接后台准备；调用方准备目录与后台来源，仍负责报告解析和重试。
-- [x] Elvena 请求、Elnis 工具声明及 Background 共享请求统一使用 Tool 根包类型；Runner 仅准备目录、注入后台来源并调用 Agent.RunBackground，工具声明 JSON 排除内部关联字段。

@@ -64,7 +64,7 @@ func NewMediaCenter(ctx context.Context, cfg *config.Config, store Store) (*Medi
 		Backend: deliveryConfig.Backend, MaxDirectBase64Bytes: deliveryConfig.MaxDirectBase64Bytes,
 		MaxImportBytes: cfg.PlatformFiles.MaxReceiveFileBytes, DownloadTimeout: timeout,
 	})
-	return m, nil
+	return m, m.connectUsageFinished()
 }
 
 // resolveFileDeliveryCredentials 只为远端模式解析凭据，错误不包含凭据值。

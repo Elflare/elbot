@@ -445,7 +445,7 @@ func (w *worker) handle(ctx context.Context, event share.Event, continuation boo
 	}
 	event.Outputs = append(event.Outputs, outputs...)
 	if result.Message != nil && result.Message.Segments != nil {
-		segments, err := hookoutput.BuildMessageSegments(*result.Message.Segments, w.config.Dir)
+		segments, err := w.manager.BuildMessageSegments(requestCtx, *result.Message.Segments, w.config.Dir)
 		if err != nil {
 			return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 		}

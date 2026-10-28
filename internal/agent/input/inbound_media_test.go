@@ -10,13 +10,15 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/config"
 	"elbot/internal/media"
+	"elbot/internal/testutil/mediatest"
 )
 
 func TestPlatformMediaUnavailableAndMetadata(t *testing.T) {
 	store := newTestStore(t)
 	root := t.TempDir()
-	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
+	center := mediatest.New(t, store, root)
 	a := &MessageHandler{media: center, History: center.History}
 	resolver := &inboundMediaResolver{}
 	msg := agentshare.MessageContext{ResolveMedia: resolver.ResolveMedia}
@@ -25,7 +27,7 @@ func TestPlatformMediaUnavailableAndMetadata(t *testing.T) {
 	if !media.ValidID(got.Media.MediaID) || got.Media.MIMEType != "image/png" || got.Media.Size != 5 || got.Media.PlatformFileID != "" || got.Media.URL != "" {
 		t.Fatalf("materialized metadata = %#v", got)
 	}
-	segment.Media.Size = center.MaxImportBytes + 1
+	segment.Media.Size = config.Default().PlatformFiles.MaxReceiveFileBytes + 1
 	segment.Media.Name = "https://example.com/private/photo.png?rkey=name-secret"
 	got = a.materializePlatformSegment(context.Background(), msg, segment)
 	if got.Type != "text" || got.Text != "[媒体不可用；photo.png]" || resolver.calls != 1 {
@@ -42,9 +44,8 @@ func TestPlatformMediaUnavailableAndMetadata(t *testing.T) {
 func TestPlatformMediaCopiesShareResolutionWithoutDroppingPositions(t *testing.T) {
 	store := newTestStore(t)
 	root := t.TempDir()
-	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
+	center := mediatest.New(t, store, root, func(cfg *config.Config) { cfg.Media.LLMImageMaxLength = 32 })
 	a := &MessageHandler{media: center, History: center.History}
-	center.Media.LLMImageMaxLength = 32
 	var data bytes.Buffer
 	if err := png.Encode(&data, image.NewNRGBA(image.Rect(0, 0, 80, 40))); err != nil {
 		t.Fatal(err)

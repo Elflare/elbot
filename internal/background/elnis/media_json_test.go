@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	background "elbot/internal/background/share"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 )
@@ -51,11 +52,16 @@ func TestReportMediaJSONSources(t *testing.T) {
 		{Type: llm.SegmentImage, URL: item},
 		{Type: llm.SegmentFile, MediaID: item},
 	} {
-		got, err := s.importReportSegments(ctx, []llm.MessageSegment{source}, "report-json", t.TempDir())
-		if err != nil || len(got) != 1 || got[0].MediaID != item || got[0].URL != "" {
+		input, _ := json.Marshal(map[string]any{"report_segments": []llm.MessageSegment{source}})
+		parsed, err := background.ParseJSONResult(string(input))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := s.importReportSegments(ctx, parsed.ReportSegments, "report-json", t.TempDir())
+		if err != nil || len(got) != 1 || got[0].Source.MediaID != item || got[0].Source.URL != "" {
 			t.Fatalf("normalize: %v %v", got, err)
 		}
-		raw, err := json.Marshal(got)
+		raw, err := json.Marshal(background.JSONResult{ReportSegments: got})
 		if err != nil || !strings.Contains(string(raw), `"media":"`+item+`"`) {
 			t.Fatalf("persisted JSON: %s %v", raw, err)
 		}
@@ -65,7 +71,8 @@ func TestReportMediaJSONSources(t *testing.T) {
 		{Type: llm.SegmentImage, MediaID: item, URL: "report.png"},
 		{Type: llm.SegmentImage, URL: "media:bad"},
 	} {
-		if _, err := s.importReportSegments(ctx, []llm.MessageSegment{source}, "report-json", t.TempDir()); err == nil {
+		raw, _ := json.Marshal(map[string]any{"report_segments": []llm.MessageSegment{source}})
+		if _, err := background.ParseJSONResult(string(raw)); err == nil {
 			t.Fatalf("accepted mixed or invalid source: %v", source)
 		}
 	}

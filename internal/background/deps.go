@@ -22,7 +22,7 @@ import (
 type SupervisorDeps struct {
 	Store       storage.Store        // 持久化 Cron 任务及运行状态、Elnis 事件；不取得平台历史仓库。
 	Models      *modelmgr.Service    // 解析和校验后台任务使用的模型选择。
-	Media       *media.Manager       // 提供媒体处理和维护能力。
+	Media       *media.MediaCenter   // 提供媒体处理和维护能力。
 	Logs        *logging.Manager     // 提供日志清理及保留策略。
 	Agent       AgentCapabilities    // 执行后台任务、复制后台会话和清理过期会话。
 	Tools       ToolCapabilities     // 展开后台工具声明并订阅 Cron 定义变更。

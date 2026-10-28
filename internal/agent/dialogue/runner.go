@@ -7,6 +7,7 @@ import (
 	"elbot/internal/contextmgr"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/modelmgr"
 	"elbot/internal/request"
@@ -195,10 +196,10 @@ type RunnerDeps struct {
 		Load(context.Context, string) (*contextmgr.LoadedContext, error)
 	}
 	Media interface {
-		Materialize(context.Context, []llm.MessageSegment) ([]llm.MessageSegment, error)
-		AcquireForLLM(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, func(), error)
+		AcquireForLLM(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, media.UsageID, error)
 	}
-	Identity interface {
+	PublishUsageFinished func(context.Context, media.UsageID) // 根部连接 Media 的结束信号。
+	Identity             interface {
 		Actor(context.Context) contextinfo.Actor
 		IsCLI(context.Context) bool
 	}
@@ -239,7 +240,7 @@ func NewRunner(deps RunnerDeps) *Runner {
 	messages := &MessageStore{Dialogues: deps.Dialogues, Gate: &CommitGate{Sessions: deps.Sessions, Turns: deps.Turns, View: deps.View}}
 	tools.Messages = messages
 	replies := &ReplyCommitter{Output: deps.Output, Persistence: messages.Committer("append_assistant_message")}
-	preparer := &Preparer{Contexts: deps.Contexts, Media: deps.Media, Hooks: deps.Hooks, Tools: tools}
+	preparer := &Preparer{Contexts: deps.Contexts, Media: deps.Media, PublishUsageFinished: deps.PublishUsageFinished, Hooks: deps.Hooks, Tools: tools}
 	messages.Preparer = preparer
 	calls := &CallProcessor{Status: deps.Status, Messages: messages, Preparer: preparer, Hooks: deps.Hooks, Identity: deps.Identity, Tools: tools, Completed: deps.Completed, Vision: deps.Vision}
 	soul := SoulProvider(StaticSoulProvider{Prompt: "You are a helpful assistant."})

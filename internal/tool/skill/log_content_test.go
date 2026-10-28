@@ -3,7 +3,6 @@ package skill
 import toolshare "elbot/internal/tool/share"
 
 import (
-	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -33,8 +32,8 @@ func TestSkillTruncationSeparatesModelAndLog(t *testing.T) {
 		catalog := newCatalog()
 		catalog.Replace([]record{{Name: "output", Kind: KindGo, Root: root, BinaryPath: binary}})
 		callers := []toolshare.Tool{
-			NewGoRunner(&Manager{media: toolmedia.NewMediaRuntime(nil, ""), catalog: catalog}),
-			commandTool{media: toolmedia.NewMediaRuntime(nil, ""), record: record{Name: "output", Root: root}, manifest: AgentSkillManifest{Command: []string{"sh", "output.sh"}}},
+			NewGoRunner(&Manager{media: newTestMediaRuntime(t), catalog: catalog}),
+			commandTool{media: newTestMediaRuntime(t), record: record{Name: "output", Root: root}, manifest: AgentSkillManifest{Command: []string{"sh", "output.sh"}}},
 		}
 		for _, caller := range callers {
 			result, logContent, err := callTool(t.Context(), caller, toolshare.CallRequest{Arguments: json.RawMessage(`{"skill_name":"output","payload":{}}`)})

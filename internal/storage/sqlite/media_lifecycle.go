@@ -37,7 +37,7 @@ func (r *MediaRepository) Touch(ctx context.Context, id string, now time.Time) e
 		return err
 	}
 	if n == 0 {
-		return fmt.Errorf("media unavailable or being deleted")
+		return fmt.Errorf("media unavailable or being deleted: %w", storage.ErrNotFound)
 	}
 	return nil
 }
@@ -110,9 +110,9 @@ func (r *MediaRepository) CheckReferences(ctx context.Context) ([]string, error)
  UNION ALL SELECT 'issue=missing_reference owner_type=output owner_id='||o.owner_id||' media_id='||o.media_id FROM media_outputs o WHERE NOT EXISTS(SELECT 1 FROM media_references r WHERE r.media_id=o.media_id AND r.owner_type='output' AND r.owner_id=o.owner_id)
  UNION ALL SELECT 'issue=missing_reference owner_type=elnis_report owner_id='||d.id||' media_id='||json_extract(d.output,'$.Source.media') FROM elnis_report_deliveries d JOIN elnis_events e ON e.id=d.event_id WHERE e.status NOT IN ('completed','taken_over') AND COALESCE(json_extract(d.output,'$.Source.media'),'')<>'' AND NOT EXISTS(SELECT 1 FROM media_references r WHERE r.owner_type='elnis_report' AND r.owner_id=d.id AND r.media_id=json_extract(d.output,'$.Source.media'))
 
- UNION ALL SELECT 'issue=missing_reference owner_type=cron owner_id='||c.id||' media_id='||json_extract(s.value,'$.media') FROM cron_jobs c,json_each(CASE WHEN json_valid(c.delivery_state) THEN c.delivery_state ELSE '{}' END,'$.report_segments') s
- WHERE COALESCE(json_extract(s.value,'$.media'),'')<>'' AND NOT EXISTS
- (SELECT 1 FROM media_references r WHERE r.owner_type='cron' AND r.owner_id=c.id AND r.media_id=json_extract(s.value,'$.media'))
+ UNION ALL SELECT 'issue=missing_reference owner_type=cron owner_id='||c.id||' media_id='||json_extract(s.value,'$.Source.media') FROM cron_jobs c,json_each(CASE WHEN json_valid(c.delivery_state) THEN c.delivery_state ELSE '{}' END,'$.report_segments') s
+ WHERE COALESCE(json_extract(s.value,'$.Source.media'),'')<>'' AND NOT EXISTS
+ (SELECT 1 FROM media_references r WHERE r.owner_type='cron' AND r.owner_id=c.id AND r.media_id=json_extract(s.value,'$.Source.media'))
  UNION ALL SELECT 'issue=missing_reference owner_type=session_fork owner_id='||f.session_id||' session_id='||f.session_id||' media_id='||f.media_id FROM media_fork_history f WHERE NOT EXISTS(SELECT 1 FROM media_references r WHERE r.owner_type='session_fork' AND r.owner_id=f.session_id AND r.media_id=f.media_id)
  UNION ALL SELECT 'issue=missing_reference owner_type=native_input owner_id='||n.id||' session_id='||n.session_id||' media_id='||s.value FROM native_inputs n,json_tree(CASE WHEN json_valid(n.media_json) THEN n.media_json ELSE '[]' END) s WHERE s.key='media' AND s.type='text' AND s.value<>'' AND NOT EXISTS(SELECT 1 FROM media_references r WHERE r.owner_type='native_input' AND r.owner_id=n.id AND r.media_id=s.value)
  UNION ALL SELECT 'issue=missing_reference owner_type=native_seed owner_id='||n.id||' session_id='||n.session_id||' media_id='||s.value FROM native_seeds n,json_each(n.media_ids_json) s WHERE NOT EXISTS(SELECT 1 FROM media_references r WHERE r.owner_type='native_seed' AND r.owner_id=n.id AND r.media_id=s.value)

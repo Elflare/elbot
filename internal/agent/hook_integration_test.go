@@ -17,11 +17,11 @@ import (
 	"elbot/internal/hook"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
-	"elbot/internal/media"
 	"elbot/internal/modelmgr"
 	"elbot/internal/security"
 	"elbot/internal/signal"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil/mediatest"
 	"elbot/internal/tool"
 )
 
@@ -88,7 +88,7 @@ func TestAgentRegistersHookCommandsAndRunsPublicBridge(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = models.Close(context.Background()) })
-	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
+	center := mediatest.New(t, store, root)
 	permission := security.DefaultPermission()
 	tools, err := tool.NewSupervisor(t.Context(), cfg, tool.SupervisorDeps{Store: store, Models: models, Media: center, Permission: permission})
 	if err != nil {

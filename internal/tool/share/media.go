@@ -44,12 +44,12 @@ type HistoryMediaResult struct {
 	Err   error     // 此项查询或获取失败的原因。
 }
 
-// MediaCall 是 Builtin 与 Skill 共用的单次媒体资源契约；Close 释放本次持有。
+// MediaCall 是 Builtin 与 Skill 共用的单次媒体资源契约；Close 发布本次使用结束。
 type MediaCall interface {
 	Retain(context.Context, string) (MediaInfo, error)
 	Workspace(string) (string, error)
 	Export(context.Context, string, string) (string, MediaInfo, error)
 	Import(context.Context, string, string, MediaImportOptions) (MediaInfo, error)
 	CachedExport(context.Context, string) (string, error)
-	Close() error
+	Close()
 }

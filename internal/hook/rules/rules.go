@@ -15,6 +15,7 @@ import (
 	globalevents "elbot/internal/events"
 	"elbot/internal/hook/share"
 	hookoutput "elbot/internal/hook/share/output"
+	"elbot/internal/llm"
 )
 
 const (
@@ -23,8 +24,9 @@ const (
 )
 
 type Options struct {
-	ConfigDir string
-	Tools     interface {
+	BuildMessageSegments func(context.Context, []hookoutput.MessageSegment, string) ([]llm.MessageSegment, error) // 借用运行时的媒体归档与租约能力。
+	ConfigDir            string
+	Tools                interface {
 		ToolInfo(string) (tool.Info, bool)
 		CallTool(context.Context, tool.CallRequest) (*tool.Result, string, error)
 	} // Borrowed metadata and call operations; no Tool objects escape their owner.

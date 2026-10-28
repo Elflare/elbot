@@ -17,6 +17,7 @@ import (
 	"elbot/internal/media"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil/mediatest"
 	toolregistry "elbot/internal/tool/registry"
 )
 
@@ -64,8 +65,8 @@ func TestRunValidatesExactMediaArguments(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	center := media.NewManager(store, t.TempDir(), &media.LocalBackend{Root: t.TempDir()})
-	item, err := center.ImportBytes(ctx, []byte("tool input"), media.Input{Name: "input.bin"})
+	center := mediatest.New(t, store, t.TempDir())
+	item, err := center.ImportBytes(ctx, []byte("tool input"), media.Input{Name: "input.bin"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +104,7 @@ func TestRunRejectsMissingMediaBeforeExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	center := media.NewManager(store, t.TempDir(), &media.LocalBackend{Root: t.TempDir()})
+	center := mediatest.New(t, store, t.TempDir())
 	missingSession := &storage.Session{ID: "missing-session", Mode: storage.SessionModeWork}
 	recorder := &mediaArgumentRecorder{}
 	registry := toolregistry.NewRegistry(security.DefaultPermission())

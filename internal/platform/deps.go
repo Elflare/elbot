@@ -26,7 +26,7 @@ type SupervisorDeps struct {
 		ResolvePlatformMessageAlias(context.Context, string, string, string) (string, error)
 		GetByPlatformMessage(context.Context, string, string, string) (*storage.ChatMessage, error)
 	}
-	Media      *media.Manager       // 发送媒体准备所需能力，由 dispatch 的消费接口裁剪。
+	Media      *media.MediaCenter   // 发送媒体准备所需能力，由 dispatch 的消费接口裁剪。
 	Permission *security.Permission // 共享权限服务；不由 Platform 关闭。
 	Logs       *logging.Manager     // 共享日志设施；不由 Platform 关闭。
 }

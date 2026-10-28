@@ -2,6 +2,7 @@ package responses
 
 import (
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/media"
 
 	"context"
 	"encoding/json"
@@ -146,11 +147,11 @@ func decodeQueuedInput(input storage.NativeInput) (api.Item, []llm.MessageSegmen
 
 // resolveInputs expands media once, after the actual request's prefix and pending
 // inputs have been assembled. The prefix contains only unresolved material.
-func (s *turnState) resolveInputs(ctx context.Context, inputs []storage.NativeInput, w *nativeWindow) ([]api.Item, func(), error) {
+func (s *turnState) resolveInputs(ctx context.Context, inputs []storage.NativeInput, w *nativeWindow) ([]api.Item, media.UsageID, error) {
 	for _, input := range inputs {
 		item, segments, err := decodeQueuedInput(input)
 		if err != nil {
-			return nil, func() {}, err
+			return nil, "", err
 		}
 		if item.Type != "additional_tools" {
 			w.Materials = append(w.Materials, material{Index: len(w.Items), MessageID: input.MessageID, Segments: segments})

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,7 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/llm"
+	background "elbot/internal/background/share"
+	"elbot/internal/delivery"
 	"elbot/internal/media"
 )
 
@@ -33,37 +35,38 @@ func enableMedia(t *testing.T, s *Service) {
 }
 func testMedia(s *Service) *fakeEventMedia { return s.media.(*fakeEventMedia) }
 func (m *fakeEventMedia) importBytes(ctx context.Context, data []byte, input media.Input) (string, error) {
-	return m.ImportReader(ctx, bytes.NewReader(data), int64(len(data)), input)
+	info, err := m.ImportBytes(ctx, data, input, media.ImportLimits{})
+	return info.ID, err
 }
-func (m *fakeEventMedia) ImportReader(ctx context.Context, reader io.Reader, size int64, input media.Input) (string, error) {
+func (m *fakeEventMedia) ImportBytes(ctx context.Context, data []byte, input media.Input, limits media.ImportLimits) (media.MediaInfo, error) {
+	return m.ImportReader(ctx, bytes.NewReader(data), int64(len(data)), input, limits)
+}
+func (m *fakeEventMedia) ImportReader(ctx context.Context, reader io.Reader, size int64, input media.Input, limits media.ImportLimits) (media.MediaInfo, error) {
+	m.limits = append(m.limits, limits)
+	if m.materializeErr != nil {
+		return media.MediaInfo{}, m.materializeErr
+	}
 	data, err := io.ReadAll(reader)
 	if err != nil {
-		return "", err
+		return media.MediaInfo{}, err
 	}
 	if int64(len(data)) != size {
-		return "", fmt.Errorf("wrong file size")
+		return media.MediaInfo{}, fmt.Errorf("wrong file size")
 	}
 	id := fmt.Sprintf("media:%x", sha256.Sum256(data))
 	m.data[id] = data
 	m.inputs = append(m.inputs, input)
-	return id, nil
+	return media.MediaInfo{ID: id, Name: input.Name, MIMEType: input.MIMEType, Size: size}, nil
 }
-func (m *fakeEventMedia) ImportURL(ctx context.Context, url string, input media.Input) (string, error) {
-	return m.importBytes(ctx, []byte(url), input)
+func (m *fakeEventMedia) ImportURL(ctx context.Context, url string, input media.Input, limits media.ImportLimits) (media.MediaInfo, error) {
+	return m.ImportBytes(ctx, []byte(url), input, limits)
 }
-func (m *fakeEventMedia) MaterializeWithLimits(ctx context.Context, segments []llm.MessageSegment, limits media.ImportLimits) ([]llm.MessageSegment, error) {
-	m.limits = append(m.limits, limits)
-	if m.materializeErr != nil {
-		return nil, m.materializeErr
+func (m *fakeEventMedia) Info(ctx context.Context, id string) (media.MediaInfo, error) {
+	data, ok := m.data[id]
+	if !ok {
+		return media.MediaInfo{}, fmt.Errorf("missing media %s", id)
 	}
-	out := append([]llm.MessageSegment(nil), segments...)
-	for i := range out {
-		if out[i].MediaID == "" {
-			out[i].MediaID, _ = m.ImportURL(ctx, out[i].URL, media.Input{Name: out[i].Name, MIMEType: out[i].MIMEType})
-		}
-		out[i].URL = ""
-	}
-	return out, nil
+	return media.MediaInfo{ID: id, Size: int64(len(data))}, nil
 }
 func (m *fakeEventMedia) AddEventReference(ctx context.Context, id, event, purpose string) error {
 	m.references = append(m.references, [3]string{id, event, purpose})
@@ -158,7 +161,12 @@ func TestReportFileBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	importFile := func(path string) error {
-		_, err := s.importReportSegments(t.Context(), []llm.MessageSegment{{Type: llm.SegmentImage, URL: path, MIMEType: "image/png"}}, "event", dir)
+		raw, _ := json.Marshal(map[string]any{"report_segments": []map[string]string{{"type": "image", "url": path, "mime_type": "image/png"}}})
+		parsed, err := background.ParseJSONResult(string(raw))
+		if err != nil {
+			return err
+		}
+		_, err = s.importReportSegments(t.Context(), parsed.ReportSegments, "event", dir)
 		return err
 	}
 	if err := importFile("input.png"); err != nil {
@@ -191,12 +199,12 @@ func TestReportFileBoundary(t *testing.T) {
 	}
 }
 
-func TestExistingReportMediaUsesReferenceValidation(t *testing.T) {
+func TestExistingReportMediaRequiresExistingObject(t *testing.T) {
 	s, close := newTestService(t, nil)
 	defer close()
 	id := "media:" + strings.Repeat("a", 64)
-	_, err := s.importReportSegments(t.Context(), []llm.MessageSegment{{Type: llm.SegmentFile, MediaID: id}}, "event", t.TempDir())
-	if err == nil || len(testMedia(s).references) != 1 {
+	_, err := s.importReportSegments(t.Context(), []delivery.Output{{Kind: delivery.KindFile, Source: delivery.Source{MediaID: id}}}, "event", t.TempDir())
+	if err == nil || len(testMedia(s).references) != 0 {
 		t.Fatalf("missing reference validation: %v", err)
 	}
 }

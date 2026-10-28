@@ -15,10 +15,11 @@ import (
 	"sync"
 	"time"
 
+	"elbot/internal/delivery"
 	"elbot/internal/events"
 	hookoutput "elbot/internal/hook/share/output"
+	"elbot/internal/llm"
 	"elbot/internal/media"
-	"elbot/internal/storage"
 )
 
 const mediaInlineBytes = 1024 * 1024
@@ -36,22 +37,27 @@ type mediaResult struct {
 }
 
 type mediaLease struct {
-	reference storage.MediaReference
-	expires   time.Time
-	dir       string
-	path      string
+	reference media.Reference // 租约对应的持久引用身份。
+	expires   time.Time       // 最后一次使用后的到期时间，由集合锁保护。
+	dir       string          // 租约拥有的临时目录，由占用者独占访问。
+	path      string          // 已完成导出的路径，由占用者独占访问。
+	retained  bool            // 引用已取得且尚未成功释放，避免重复清理成功项。
+	busy      chan struct{}   // 当前独占操作结束时关闭；等待者可取消。
+	users     int             // 正在使用本租约的调用数，当前独占操作为 0 或 1。
+	cleaning  bool            // 已被维护认领，新使用等待其结束后重新查找。
 }
 
 // mediaAPI is runtime's borrowed media capability, limited to plugin RPC and leases.
 type mediaAPI interface {
-	ImportURL(context.Context, string, media.Input) (*storage.Media, error)
-	ImportReader(context.Context, io.Reader, int64, media.Input) (*storage.Media, error)
-	ImportBytes(context.Context, []byte, media.Input) (*storage.Media, error)
-	Metadata(context.Context, string) (*storage.Media, error)
-	Read(context.Context, string) ([]byte, *storage.Media, error)
-	Export(context.Context, string, string) (*storage.Media, error)
-	AddReference(context.Context, *storage.MediaReference) error
-	RemoveReference(context.Context, storage.MediaReference) error
+	ImportFile(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
+	ImportURL(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
+	ImportReader(context.Context, io.Reader, int64, media.Input, media.ImportLimits) (media.MediaInfo, error)
+	ImportBytes(context.Context, []byte, media.Input, media.ImportLimits) (media.MediaInfo, error)
+	Info(context.Context, string) (media.MediaInfo, error)
+	Read(context.Context, string) ([]byte, media.MediaInfo, error)
+	Export(context.Context, string, string) (media.MediaInfo, error)
+	AddReference(context.Context, media.Reference) error
+	RemoveReference(context.Context, media.Reference) error
 }
 
 type mediaBridge struct {
@@ -68,19 +74,121 @@ func newMediaBridge(api mediaAPI) *mediaBridge {
 
 // MediaRequest is shared by once-exec and Worker Hook RPC dispatchers.
 func (m *Manager) MediaRequest(ctx context.Context, baseDir, method string, raw json.RawMessage) (any, error) {
-	if m.isClosed() {
-		return nil, ErrClosed
+	ctx, finish, err := m.beginMediaCall(ctx)
+	if err != nil {
+		return nil, err
 	}
+	defer finish()
 	return m.media.request(ctx, baseDir, method, raw)
 }
 
-func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw json.RawMessage) (any, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.closed {
-		return nil, ErrClosed
+// BuildMessageSegments 归档已分类来源，租约由运行时持有。
+func (m *Manager) BuildMessageSegments(ctx context.Context, specs []hookoutput.MessageSegment, baseDir string) ([]llm.MessageSegment, error) {
+	ctx, finish, err := m.beginMediaCall(ctx)
+	if err != nil {
+		return nil, err
 	}
-	var metadata *storage.Media
+	defer finish()
+	outputs, err := hookoutput.BuildMessageSegments(specs, baseDir)
+	if err != nil {
+		return nil, err
+	}
+	b := m.media
+	segments := make([]llm.MessageSegment, 0, len(outputs))
+	for i, out := range outputs {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if out.Kind == delivery.KindText {
+			segments = append(segments, llm.MessageSegment{Type: llm.SegmentText, Text: out.Text})
+			continue
+		}
+		input := media.Input{Name: out.Name, MIMEType: out.Source.MIMEType}
+		limits := media.ImportLimits{MaxImportBytes: hookoutput.MaxBase64Bytes}
+		var metadata media.MediaInfo
+		switch {
+		case out.Source.MediaID != "":
+			metadata, err = b.api.Info(ctx, out.Source.MediaID)
+		case out.Source.URL != "":
+			metadata, err = b.api.ImportURL(ctx, out.Source.URL, input, limits)
+		case out.Source.Path != "":
+			metadata, err = b.api.ImportFile(ctx, out.Source.Path, input, limits)
+		default:
+			metadata, err = b.api.ImportBytes(ctx, out.Source.Data, input, limits)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("message.segments[%d]: %w", i, err)
+		}
+		if !strings.HasPrefix(metadata.MIMEType, "image/") {
+			return nil, fmt.Errorf("message.segments[%d]: media must be an image", i)
+		}
+		lease, err := b.retain(ctx, metadata.ID)
+		if err != nil {
+			return nil, err
+		}
+		b.release(lease)
+		segments = append(segments, llm.MessageSegment{Type: llm.SegmentImage, Text: out.Text, MediaID: metadata.ID, Name: metadata.Name, MIMEType: metadata.MIMEType})
+	}
+	return segments, ctx.Err()
+}
+
+// retain 在集合锁内认领租约，引用 I/O 在锁外完成；同租约等待可取消。
+func (b *mediaBridge) retain(ctx context.Context, id string) (*mediaLease, error) {
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		b.mu.Lock()
+		if b.closed {
+			b.mu.Unlock()
+			return nil, ErrClosed
+		}
+		lease := b.leases[id]
+		if lease != nil && lease.busy != nil {
+			done := lease.busy
+			b.mu.Unlock()
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-done:
+				continue
+			}
+		}
+		if lease == nil {
+			lease = &mediaLease{reference: media.Reference{MediaID: id, OwnerType: "hook", OwnerID: b.owner, Purpose: "temporary"}}
+			b.leases[id] = lease
+		}
+		lease.busy, lease.users = make(chan struct{}), 1
+		lease.expires = time.Now().Add(mediaLeaseTTL)
+		b.mu.Unlock()
+		if !lease.retained {
+			if err := b.api.AddReference(ctx, lease.reference); err != nil {
+				b.mu.Lock()
+				if lease.dir == "" {
+					delete(b.leases, id)
+				}
+				lease.users = 0
+				close(lease.busy)
+				lease.busy = nil
+				b.mu.Unlock()
+				return nil, err
+			}
+			lease.retained = true
+		}
+		return lease, nil
+	}
+}
+
+func (b *mediaBridge) release(lease *mediaLease) {
+	b.mu.Lock()
+	lease.users = 0
+	close(lease.busy)
+	lease.busy = nil
+	b.mu.Unlock()
+}
+
+func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw json.RawMessage) (any, error) {
+	var metadata media.MediaInfo
 	var err error
 	switch method {
 	case "media.import":
@@ -110,7 +218,7 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 		input := media.Input{Name: params.Name, MIMEType: params.MIMEType}
 		switch {
 		case params.URL != "":
-			metadata, err = b.api.ImportURL(ctx, params.URL, input)
+			metadata, err = b.api.ImportURL(ctx, params.URL, input, media.ImportLimits{})
 		case params.Path != "":
 			// os.Root rejects traversal and symlinks escaping the plugin directory.
 			if !filepath.IsLocal(params.Path) {
@@ -136,7 +244,7 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 			if input.Name == "" {
 				input.Name = filepath.Base(params.Path)
 			}
-			metadata, err = b.api.ImportReader(ctx, file, info.Size(), input)
+			metadata, err = b.api.ImportReader(ctx, file, info.Size(), input, media.ImportLimits{})
 		default:
 			if base64.StdEncoding.DecodedLen(len(*params.Base64)) > hookoutput.MaxBase64Bytes {
 				return nil, fmt.Errorf("media.import base64 exceeds 10 MiB decoded limit")
@@ -144,7 +252,7 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 			var data []byte
 			data, err = base64.StdEncoding.DecodeString(*params.Base64)
 			if err == nil {
-				metadata, err = b.api.ImportBytes(ctx, data, input)
+				metadata, err = b.api.ImportBytes(ctx, data, input, media.ImportLimits{MaxImportBytes: hookoutput.MaxBase64Bytes})
 			}
 		}
 	case "media.read", "media.export", "media.metadata":
@@ -154,22 +262,18 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 		if err := hookoutput.DecodeJSON(raw, &params); err != nil {
 			return nil, err
 		}
-		metadata, err = b.api.Metadata(ctx, params.MediaID)
+		metadata, err = b.api.Info(ctx, params.MediaID)
 	default:
 		return nil, fmt.Errorf("unsupported hook media method %q", method)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("hook media operation failed: %w", err)
 	}
-	lease := b.leases[metadata.ID]
-	if lease == nil {
-		lease = &mediaLease{reference: storage.MediaReference{MediaID: metadata.ID, OwnerType: "hook", OwnerID: b.owner, Purpose: "temporary"}}
-		if err := b.api.AddReference(ctx, &lease.reference); err != nil {
-			return nil, err
-		}
-		b.leases[metadata.ID] = lease
+	lease, err := b.retain(ctx, metadata.ID)
+	if err != nil {
+		return nil, err
 	}
-	lease.expires = time.Now().Add(mediaLeaseTTL)
+	defer b.release(lease)
 	result := mediaResult{MediaID: metadata.ID, Name: metadata.Name, MIMEType: metadata.MIMEType, Size: metadata.Size, ExpiresAt: lease.expires}
 	if method == "media.read" && metadata.Size <= mediaInlineBytes {
 		data, _, err := b.api.Read(ctx, metadata.ID)
@@ -179,16 +283,17 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 		result.Base64 = base64.StdEncoding.EncodeToString(data)
 	} else if method == "media.export" || method == "media.read" {
 		if lease.path == "" {
-			dir, err := os.MkdirTemp("", "elbot-hook-media-*")
-			if err != nil {
-				return nil, err
+			if lease.dir == "" {
+				lease.dir, err = os.MkdirTemp("", "elbot-hook-media-*")
+				if err != nil {
+					return nil, err
+				}
 			}
-			path := filepath.Join(dir, "media")
+			path := filepath.Join(lease.dir, "media")
 			if _, err := b.api.Export(ctx, metadata.ID, path); err != nil {
-				_ = os.RemoveAll(dir)
 				return nil, err
 			}
-			lease.dir, lease.path = dir, path
+			lease.path = path
 		}
 		result.Path = lease.path
 	}
@@ -197,43 +302,56 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 
 func (b *mediaBridge) prune(ctx context.Context, now time.Time, closeAll bool) (events.LogResult, error) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	if closeAll {
 		b.closed = true
 	}
-	var failures []string
-	logResult := events.LogResult{ResultStatus: events.ResultSkipped, Content: "no Hook media leases due"}
+	selected := make(map[string]*mediaLease)
 	for id, lease := range b.leases {
-		if !closeAll && now.Before(lease.expires) {
+		if lease.users != 0 || lease.cleaning || (!closeAll && now.Before(lease.expires)) {
 			continue
 		}
+		lease.cleaning, lease.busy = true, make(chan struct{})
+		selected[id] = lease
+	}
+	b.mu.Unlock()
+	var failures []error
+	logResult := events.LogResult{ResultStatus: events.ResultSkipped, Content: "no Hook media leases due"}
+	for id, lease := range selected {
 		if logResult.ResultStatus == events.ResultSkipped {
 			logResult = events.LogResult{ResultStatus: events.ResultSucceeded, Content: "Hook media lease release"}
 		}
-		if err := b.api.RemoveReference(ctx, lease.reference); err != nil {
-			failures = append(failures, err.Error())
-			if !errors.Is(err, context.Canceled) {
-				logResult.ResultStatus = events.ResultFailed
-			} else if logResult.ResultStatus != events.ResultFailed {
-				logResult.ResultStatus = events.ResultCanceled
+		if lease.retained {
+			if err := b.api.RemoveReference(ctx, lease.reference); err != nil {
+				failures = append(failures, err)
+				if !errors.Is(err, context.Canceled) {
+					logResult.ResultStatus = events.ResultFailed
+				} else if logResult.ResultStatus != events.ResultFailed {
+					logResult.ResultStatus = events.ResultCanceled
+				}
+				logResult.Content += fmt.Sprintf("\nmedia_id=%s reference_release_error=%v", id, err)
+			} else {
+				lease.retained = false
+				logResult.Content += "\nmedia_id=" + id + " reference_released"
 			}
-			logResult.Content += fmt.Sprintf("\nmedia_id=%s reference_release_error=%v", id, err)
-			continue
 		}
-		logResult.Content += "\nmedia_id=" + id + " reference_released"
 		if lease.dir != "" {
 			if err := os.RemoveAll(lease.dir); err != nil {
-				failures = append(failures, err.Error())
+				failures = append(failures, err)
 				logResult.ResultStatus = events.ResultFailed
 				logResult.Content += fmt.Sprintf("\nmedia_id=%s directory_release_error=%v", id, err)
-				continue
+			} else {
+				lease.dir, lease.path = "", ""
 			}
 		}
-		delete(b.leases, id)
-		logResult.Content += "\nmedia_id=" + id + " released"
+		b.mu.Lock()
+		if !lease.retained && lease.dir == "" {
+			delete(b.leases, id)
+			logResult.Content += "\nmedia_id=" + id + " released"
+		}
+		lease.cleaning = false
+		close(lease.busy)
+		lease.busy = nil
+		b.mu.Unlock()
 	}
-	if len(failures) > 0 {
-		return logResult, fmt.Errorf("release hook media: %s", strings.Join(failures, "; "))
-	}
-	return logResult, nil
+	return logResult, errors.Join(failures...)
 }

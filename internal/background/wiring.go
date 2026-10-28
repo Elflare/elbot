@@ -17,7 +17,6 @@ import (
 	"elbot/internal/background/share"
 	"elbot/internal/config"
 	globalevents "elbot/internal/events"
-	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
@@ -32,7 +31,7 @@ type cronBridge struct {
 
 type elnisBridge struct {
 	repo  storage.ElnisEventRepository // 请求 Storage 持久化事件及报告，转换为内部记录。
-	media *media.Manager               // 转换事件媒体处理的请求与结果。
+	media *media.MediaCenter           // 转换事件媒体处理的请求与结果。
 }
 
 var _ elnis.EventRepository = elnisBridge{}
@@ -154,28 +153,24 @@ func reportMessageMaps(mappings []share.ReportMessageMap) []storage.PlatformMess
 	return rows
 }
 
-func (b elnisBridge) MaterializeWithLimits(ctx context.Context, segments []llm.MessageSegment, limits media.ImportLimits) ([]llm.MessageSegment, error) {
-	return b.media.MaterializeWithLimits(ctx, segments, limits)
+func (b elnisBridge) Info(ctx context.Context, id string) (media.MediaInfo, error) {
+	return b.media.Info(ctx, id)
 }
 
-func (b elnisBridge) ImportURL(ctx context.Context, url string, input media.Input) (string, error) {
-	row, err := b.media.ImportURL(ctx, url, input)
-	if err != nil {
-		return "", err
-	}
-	return row.ID, nil
+func (b elnisBridge) ImportURL(ctx context.Context, url string, input media.Input, limits media.ImportLimits) (media.MediaInfo, error) {
+	return b.media.ImportURL(ctx, url, input, limits)
 }
 
-func (b elnisBridge) ImportReader(ctx context.Context, reader io.Reader, size int64, input media.Input) (string, error) {
-	row, err := b.media.ImportReader(ctx, reader, size, input)
-	if err != nil {
-		return "", err
-	}
-	return row.ID, nil
+func (b elnisBridge) ImportReader(ctx context.Context, reader io.Reader, size int64, input media.Input, limits media.ImportLimits) (media.MediaInfo, error) {
+	return b.media.ImportReader(ctx, reader, size, input, limits)
+}
+
+func (b elnisBridge) ImportBytes(ctx context.Context, data []byte, input media.Input, limits media.ImportLimits) (media.MediaInfo, error) {
+	return b.media.ImportBytes(ctx, data, input, limits)
 }
 
 func (b elnisBridge) AddEventReference(ctx context.Context, mediaID, eventID, purpose string) error {
-	return b.media.AddReference(ctx, &storage.MediaReference{MediaID: mediaID, OwnerType: "elnis_event", OwnerID: eventID, Purpose: purpose})
+	return b.media.AddReference(ctx, media.Reference{MediaID: mediaID, OwnerType: "elnis_event", OwnerID: eventID, Purpose: purpose})
 }
 
 // NewSupervisor 只构造与接线；失败仍返回已取得的总管，由 App 统一清理。

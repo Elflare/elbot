@@ -4,6 +4,7 @@ import (
 	"context"
 	"elbot/internal/media/object"
 	"elbot/internal/media/share"
+	"elbot/internal/signal"
 	"encoding/json"
 	"io"
 	"sort"
@@ -18,18 +19,22 @@ type Reference struct {
 }
 
 // HeldMedia 是单个媒体的公开持有句柄，不公开内部签名能力。
-// 调用方先关闭读取器，再关闭句柄；同一调用的复用集合由调用方管理。
+// 调用方先关闭读取器，再发布 UsageID 使用结束；Media 负责释放持有。
 type HeldMedia struct {
-	held share.HeldMedia // 内部持有凭据，不向调用方开放。
+	held    share.HeldMedia // 内部持有凭据，不向调用方开放。
+	UsageID UsageID         // 本次持有对应的独立使用。
 }
 
 // Hold 为单个媒体取得临时引用，与业务持久引用独立。
 func (m *MediaCenter) Hold(ctx context.Context, id string) (*HeldMedia, error) {
-	held, err := m.objects.Hold(ctx, id)
+	if m.closed.Load() {
+		return nil, signal.ErrClosed
+	}
+	held, usageID, err := m.transfer.Hold(ctx, id)
 	if held == nil {
 		return nil, err
 	}
-	return &HeldMedia{held: held}, err
+	return &HeldMedia{held: held, UsageID: UsageID(usageID)}, err
 }
 
 // Info 返回已持有媒体的通用信息快照。
@@ -37,9 +42,6 @@ func (h *HeldMedia) Info() MediaInfo { return MediaInfo(h.held.Info()) }
 
 // Open 在已有持有下打开内容，不重新查询或增加引用。
 func (h *HeldMedia) Open(ctx context.Context) (io.ReadCloser, error) { return h.held.Open(ctx) }
-
-// Close 释放持有；失败保留凭据供重试，成功后重复调用不重复释放。
-func (h *HeldMedia) Close() error { return h.held.Close() }
 
 // AddReference 添加持久业务引用，不承担 Agent 的会话提交事务。
 func (m *MediaCenter) AddReference(ctx context.Context, reference Reference) error {

@@ -5,7 +5,7 @@ review时要看有没过度防御、有没旧逻辑代码，职责、边界是�
 
 # App 包设计
 
-App 使用六文件组织公共运行流程，按下层接口已存在来编写调用；下层按照这些契约实现。五条业务线已提供根包总管，配置独占已实现。Media 根部公开入口与装配已实现，下层业务实现、消费者迁移、模型构造入口及进程入口适配仍待完成；完整应用尚不能编译运行。
+App 使用六文件组织公共运行流程，按下层接口已存在来编写调用；下层按照这些契约实现。五条业务线已提供根包总管，配置独占、Media 全包和消费者接线已实现。模型构造入口及进程入口适配仍待完成；完整应用尚不能编译运行。
 
 ## 职责与边界
 
@@ -47,7 +47,7 @@ App 消费 `Lifecycle`（Start、BeginClose、Close）和可选的 `Waiter`（Wa
 
 环境、资源、装配或启动失败均进入同一退出流程。入口先取消运行上下文，再以 `context.WithoutCancel` 创建统一清理期限。纯外部取消视为正常停止，混合错误中的独立故障仍保留；运行和清理错误合并返回。
 
-退出先请求各线停止新工作，等待平台接入与后台任务退出，再关闭 Agent、Hook、Tool，最后释放平台发送能力。随后关闭模型管理、独立历史库、共享存储、日志和配置锁。媒体与权限没有独立关闭步骤。
+退出先请求各线停止新工作，等待平台接入与后台任务退出，再关闭 Agent、Hook、Tool，最后释放平台发送能力。随后关闭模型管理，排空 Media 结束信号并执行最终清理，再关闭独立历史库、共享存储、日志和配置锁。权限没有独立关闭步骤。
 
 App 用 `shutdownStep` 记录步骤名称和关闭调用，`runShutdownSteps` 顺序执行并汇总结果；`runShutdownStep` 负责单步等待和统一期限判断。下层 `Close` 保持返回 error，App 内部的 `stopResult` 将控制状态与错误详情分开：
 
@@ -68,11 +68,11 @@ App 用 `shutdownStep` 记录步骤名称和关闭调用，`runShutdownSteps` �
 
 Platform 根部按目标下层契约实现。NewSupervisor 接收完整配置及 Mode、Store、ChatHistory、Media、Permission、Logs，持有适配器、通知连接和 UI；历史库属于 App，Platform 只借用。部分失败仍交回总管。公开发送、原生 API 和媒体解析转交内部组件，不暴露 Repository 或 Router。失败通知已接通；配置定义统一由根部 ConfigDefinitions 提供。
 
-Tool 根部创建媒体入口、技能目录与基础环境并一次注入 Skill Manager；Builtin、Skill、发现及 ELwisp 均接入必需的准备／执行契约，Skill 内部不依赖 Tool 根包。Cron 工具只使用 Tool 内部契约，根部 bridge 接入 Storage 和模型校验并发布任务定义变更；Background 根部持有订阅，Cron Manager 合并名称并串行读库刷新。Elnis 已通过自身媒体契约接入媒体中心。Background 整包已完成生命周期接线；完整 App 仍需媒体、模型构造入口及进程入口接通。
+Tool 根部创建媒体入口、技能目录与基础环境并一次注入 Skill Manager；Builtin、Skill、发现及 ELwisp 均接入必需的准备／执行契约，Skill 内部不依赖 Tool 根包。Cron 工具只使用 Tool 内部契约，根部 bridge 接入 Storage 和模型校验并发布任务定义变更；Background 根部持有订阅，Cron Manager 合并名称并串行读库刷新。Elnis 已通过自身媒体契约接入媒体中心。Background 整包已完成生命周期接线；完整 App 仍需模型构造入口及进程入口接通。
 
 Background 根部按四文件组织：`supervisor.go` 定义对外总管并持有组件，`deps.go` 声明 Store、ChatHistory、Models、Media、Logs、Agent、Tools、Platform 借用依赖，`wiring.go` 负责完整配置装配与边界适配，`lifecycle.go` 协调 Start、Wait、BeginClose、Close、Done。根部不公开内部 Runner 或 Cron CRUD；Cron 工具注册和管理归 Tool。
 
-根部按消费方职责注入最小接口或函数，按需复用提供方根包的公开类型。Runner 的执行接口只包含 Agent.RunBackground，并接收沙盒根目录；Cron 分别接收模型最小接口、发送和会话复制函数；维护组件已接收日志最小接口、会话与历史清理函数、媒体清理接口；维护配置通过 share.MaintenanceJob 交给 Cron，注册回调直接使用函数，由根部接线。历史引用统一在媒体清理时对账。Elnis 分别接收工具声明展开接口、发送、平台 API 和模型选择函数，模型函数只返回 ModelSelection。cronBridge 将 Storage 转换为 Cron 自有 JobRepository 记录，保留原始 JSON 由 Cron 逐条解释；elnisBridge 将 Storage 事件与报告转换为 Elnis 自有 EventRepository 记录，通过 Media 的四项能力物化输入、导入附件和关联事件引用；导入只交付媒体 ID。Cron 与 Elnis 共用 share.ReportMessageMap 和 MapReportReceipt，回执映射仅使用实际 SentMessages。Cron 与 Elnis 共用 share.SessionTakenOver 查询契约，由根部注入 Agent 的公开方法。App 已通过 SupervisorDeps.Agent 交付总管，无需额外的 ConnectAgent。
+根部按消费方职责注入最小接口或函数，按需复用提供方根包的公开类型。Runner 的执行接口只包含 Agent.RunBackground，并接收沙盒根目录；Cron 分别接收模型最小接口、发送和会话复制函数；维护组件已接收日志最小接口、会话与历史清理函数、媒体清理接口；维护配置通过 share.MaintenanceJob 交给 Cron，注册回调直接使用函数，由根部接线。历史引用统一在媒体清理时对账。Elnis 分别接收工具声明展开接口、发送、平台 API 和模型选择函数，模型函数只返回 ModelSelection。cronBridge 将 Storage 转换为 Cron 自有 JobRepository 记录，保留原始 JSON 由 Cron 逐条解释；elnisBridge 将 Storage 事件与报告转换为 Elnis 自有 EventRepository 记录，通过 Media 的信息查询、分类导入和引用能力归档输入、导入附件并关联事件引用；导入返回公开 MediaInfo。Cron 与 Elnis 共用 share.ReportMessageMap 和 MapReportReceipt，回执映射仅使用实际 SentMessages。Cron 与 Elnis 共用 share.SessionTakenOver 查询契约，由根部注入 Agent 的公开方法。App 已通过 SupervisorDeps.Agent 交付总管，无需额外的 ConnectAgent。
 
 Background 构造阶段建立外部订阅；Start 依次完成恢复、维护任务配置、Cron Manager 首次加载与启动、启用的 Elnis 就绪，最后调用 Cron Service.Start 放行平台通知。SetupCron 只配置任务。Manager 在调度启动前排空启动期间登记的任务变更，运行期间串行刷新，收尾只记录原任务 ID 的运行事实，次数由 SQLite 原子累加。Cron 旧管理入口已移除，定义管理归 Tool。
 
@@ -103,15 +103,15 @@ App 与 Agent 不承接 Doctor，配置诊断由配置侧负责。进程入口�
 <!-- locator:media -->
 ## Media 根部与下层契约
 
-`internal/media/` 根部已实现公开入口、类型转换、持有包装、参数 ID 解析与完整配置装配；share 已实现 ID 校验与名称清理，backend 已实现本地读写、S3 传输与签名及延迟构造，object 已实现导入读取、图片处理、持有引用、历史关联、远端副本及回收；transfer 的函数仍以 `panic("TODO")` 占位。15 个生产文件和 12 个测试文件原样保存在同目录的 `*.go.bak` 中，不参与构建。App、Agent、Tool、Hook、Platform、Background 尚未迁移，仍有旧接口调用；Media 各包可编译不代表成功构造或完整应用可用。
+`internal/media/` 根部实现公开入口、类型转换、持有包装、参数 ID 解析与完整配置装配；share 提供内部契约、ID 校验、名称清理及不可用错误判断，backend 实现本地读写、S3 传输与签名及延迟构造，object 实现导入读取、图片处理、持有引用、历史关联、远端副本及回收，transfer 实现平台来源导入、模型交付、发送准备与历史批量获取。15 个生产文件和 12 个测试文件原样保存在同目录的 `*.go.bak` 中，不参与构建。App、Agent、Tool、Hook、Platform、Background 均消费 MediaCenter、MediaInfo、HeldMedia、UsageID 及使用结束信号。
 
 ```mermaid
 flowchart TB
-    R["media 根部<br/>api.go：MediaCenter 与公开业务入口<br/>wiring.go：完整配置、凭据、装配与恢复<br/>deps.go：Store 与 History 消费契约<br/>types.go：公开信息、来源及历史类型<br/>reference.go：公开持有、引用与参数 ID 解析"]
+    R["media 根部<br/>api.go：MediaCenter 与公开业务入口<br/>wiring.go：完整配置、凭据、装配与恢复<br/>deps.go：Store 与 History 消费契约<br/>types.go：公开信息、来源及历史类型<br/>reference.go：公开持有、引用与参数 ID 解析<br/>signals.go：使用结束发布、订阅与关闭"]
     O["object/<br/>manager.go：组件、配置、依赖及仓储契约<br/>import.go：导入与归档<br/>read.go：信息、读取及导出<br/>image.go：图片校验、压缩与缩放<br/>reference.go：持有、引用及自有释放重试<br/>cleanup.go：释放重试与回收编排<br/>history.go：历史缓存、关联与对账<br/>remote.go：副本与签名缓存<br/>locks.go：对象锁"]
-    T["transfer/<br/>manager.go：对象能力与交付配置<br/>resolver.go：入站物化<br/>request.go：模型请求准备<br/>output.go：发送准备<br/>platform.go：平台来源及历史批量获取"]
+    T["transfer/<br/>manager.go：对象能力、交付配置与使用集合<br/>usage.go：持有和目录登记、结束事实与清理<br/>request.go：模型请求准备<br/>output.go：发送准备<br/>platform.go：平台来源及历史批量获取"]
     B["backend/<br/>local.go：本地内容读写<br/>s3.go：S3 配置、读写与签名<br/>remote.go：延迟构造及成功结果缓存"]
-    S["share/<br/>types.go：跨子包数据与常量<br/>helpers.go：ID 校验与名称清理<br/>contracts.go：Objects、HeldMedia、Backend、RemoteBackend"]
+    S["share/<br/>types.go：跨子包数据、错误类型与常量<br/>helpers.go：ID 校验、名称清理及错误判断<br/>contracts.go：Objects、HeldMedia、Backend、RemoteBackend"]
     R --> O
     R --> T
     R --> B
@@ -123,39 +123,84 @@ flowchart TB
 
 ### 根部与公开契约
 
-- `MediaCenter` 只持有私有 `objects *object.Manager`、`transfer *transfer.Manager` 和公开借用的 `History`。`NewMediaCenter(ctx, cfg, store)` 接收完整配置与仅提供 Media／MediaReferences 仓储的 Store；后端、凭据、配置拆分及中断恢复归 Media，部分失败保留已构造结果，不关闭借用资源。
+- `MediaCenter` 私有持有 object、transfer、使用结束信号及订阅连接，并公开借用的 History。`NewMediaCenter(ctx, cfg, store)` 接收完整配置与仅提供 Media／MediaReferences 仓储的 Store；内部配置及中断恢复归 Media，部分失败保留已构造结果，Close 不关闭借用存储。
 - App 构造后注入 `History`，再调用 `ReconcileHistory`。根部调用 object 的 `ReconcileHistory(ctx, history)`、`Cleanup(ctx, history)` 时传入当前最小查询接口，object 不保存 History，也不通过闭包回取总管。
 - `Info` 返回值类型 `MediaInfo{ID, Name, MIMEType, Size}`，只查询信息，不读取内容或取得持有；`ValidateImage` 额外验证可解码与图片 MIME。导入、读取、导出及历史批量结果使用同一四字段快照，不暴露存储位置、后端、来源记录或删除状态。
 - `Reference{MediaID, OwnerType, OwnerID, Purpose}` 表达业务引用身份，持久化时间由 object 负责。Agent 的会话引用仍随自己的消息事务提交。
-- `Hold(ctx, id)` 返回 `*HeldMedia`。公开句柄只有 `Info / Open / Close`；Open 复用持有，调用方先关闭读取器再关闭句柄。Close 失败保留凭据供重试，成功后不重复释放。Tool 保留调用内的句柄集合、导出状态与缓存目录。
-- `AcquireForLLM`、`ResolveForOutput` 的清理回调为 `func() error`，成功清理项移除，失败项保留；准备失败也保留业务错误、清理错误及仍可重试的回调。模型上传工作退出后才能释放持有。
-- 保留 `Input / Source / ImportLimits / PlatformMedia / HistoryMessage`、历史批量契约及错误标识、`IDPrefix / ValidID / SanitizeName / ArgumentMediaIDs`。公开类型独立定义，不通过 share 类型别名公开内部契约。旧 Manager、Metadata、ImageMetadata、OpenHeld、旧构造、RetainSessionToolArguments 与单项 GetHistoryMedia 不属于新 API。
+- `Hold(ctx, id)` 返回 `*HeldMedia`，提供 Info／Open 和 UsageID；公开 Open 返回实际读取器、信息与使用 ID。读取器由使用者关闭，随后发布结束事实；持有释放及失败处理归 Media。不同请求使用同一媒体时拥有独立使用 ID。
+- `AcquireForLLM`、`ResolveForOutput` 返回 UsageID；无资源时为空。准备失败由 Media 标记结束并清理，不交回补清责任。`Workspace(base)` 创建并登记调用私有目录；Tool 负责路径范围与相对路径转换，目录释放归 Media。
+- `ImportURL / ImportFile / ImportBytes / ImportReader` 统一接收末尾参数 `ImportLimits`，零值使用配置限制，非零值只收紧本次导入。`Input / Source / ImportLimits / PlatformMedia / HistoryMessage` 等公开类型独立定义；Source 表达持久化来源事实，share 契约仅供内部协作。
+
+### 使用结束信号
+
+Media 根部的 `signals.go` 建立并持有订阅，`wiring.go` 在交出实例前完成接线。消费者根部的 `agent/signals.go`、`platform/signals.go`、`tool/signals.go` 提供发布适配，各自 wiring 仅装配注入；子包在实际使用结束处触发。
+
+`PublishUsageFinished(ctx, event)` 先在 transfer 登记结束事实，再隔离业务取消并通过现有 signal 唤醒清理。队列拒收或执行超时后记录仍在，既有维护继续处理；清理错误由 Media 记录。重复通知不重复释放已成功项目。全部消费者退出后，`MediaCenter.Close(ctx)` 停止接纳新使用、排空 Drain 信号，再解除订阅并清理 transfer 和 object 的剩余自有资源；超时保留状态供后续关闭继续等待。
+
+```mermaid
+flowchart LR
+    C["Agent / Platform / Tool 子包<br/>实际使用结束"] --> P["各业务根部 signals.go<br/>发布适配"]
+    P --> M["media/signals.go<br/>登记结束事实、发布和订阅"]
+    M --> U["media/transfer/usage.go<br/>清理已结束资源，保留失败项"]
+    W["各业务 wiring.go<br/>装配与注入"] -.-> P
+    A["app/shutdown.go<br/>使用方退出后关闭 Media，再关闭存储"] --> M
+```
 
 ### 内部契约
 
 - `object.Options` 包含 Backend、MaxImportBytes、DownloadTimeout、Media、Now；Backend 只表达规范化后的 local／s3 导入位置。`Deps` 交付最小 MediaRepository、仅 Add／Remove 的 ReferenceRepository、Local 和 Remote；Manager 保存私有依赖、配置、两组对象锁，以及由 releasesMu 保护的 pendingReleases 自有待释放集合。存储记录、持有凭据、图片内部属性、远端副本与签名缓存只在 object 内部使用。
-- `transfer.Options` 包含 Backend、MaxDirectBase64Bytes、MaxImportBytes、DownloadTimeout；Backend 表达 base64／s3／hybrid 交付策略。Manager 只保存 `share.Objects` 与该配置，不接收仓储、后端或凭据。
+- `transfer.Options` 包含 Backend、MaxDirectBase64Bytes、MaxImportBytes、DownloadTimeout；Backend 表达 base64／s3／hybrid 交付策略。Manager 保存 share.Objects、配置和使用集合，不接收仓储、后端或凭据。集合锁不覆盖 I/O，每份使用记录串行清理，结束事实独立登记；成功项目移除，失败项目保留给维护。
 - `share.Objects` 包含 Info、Hold、四项带 ImportLimits 的导入、LoadHistoryMedia、AssociateHistory。`HistoryKey` 包含四项历史身份；`HistoryEntry` 只包含 MediaInfo、Associated、Kind，表达有效缓存与匹配关联。平台来源和批量获取参数只在 transfer 使用，不进入 share。
 - `share.ValidID` 严格接受 `media:` 加 64 位小写十六进制；`SanitizeName` 清理路径或 URL 中的展示名称，处理两种路径分隔符并只进行一次百分号解码；HTTP／HTTPS／file URL 解析失败时返回 `file`，查询参数与片段不进入名称。普通名称中的非法百分号编码保留原文；空值、退化路径及 data／base64 来源返回 `file`。根部公开函数直接转发。
+- `share.UnavailableError{Err}` 只包装明确的对象记录、持有资格或归档内容缺失，保留原始原因；定义在 types.go，方法及 IsUnavailable 在 helpers.go。IsUnavailable 检查普通包装和组合错误，只有全部独立分支均不可用才允许降级。S3 读取将 NoSuchKey／NotFound 转为可匹配 fs.ErrNotExist 的错误，保留 SDK 原因；桶、权限、上传及签名错误不作此转换。SQLite 引用插入的媒体外键／删除保护拒绝及 Touch 无匹配行返回可匹配 storage.ErrNotFound 的错误；object 在相应读取、持有边界转换，transfer 不识别数据库或 SDK 错误。签名缓存未命中仍正常刷新，关闭和回滚错误不包装为不可用。
 - 内部 `share.HeldMedia` 额外提供 `SignedURL(ctx)`。transfer 通过已有持有选择 Open 或 SignedURL；上传副本、记录更新和缓存维护均由 object 完成，公开句柄不开放签名能力。
 - `Backend.Put` 返回位置字符串，Open／Remove 只接收位置；本地位置是文件路径，S3 位置是对象键。有效内容 ID、内容及大小和位置选择由 object 负责，后端不重复校验或补全位置。`RemoteBackend` 额外提供 PresignGet；LocalBackend 不提供签名方法，后端不接收 storage.Media。
 - LocalBackend 将内容写入 `Root/哈希前两位/剩余哈希`；同目录临时文件写完并关闭后重命名，失败清理临时路径，重命名错误直接返回。操作开始及写入提交前检查取消；文件操作同步执行，不承诺中断已阻塞的 I/O。删除不存在的文件视为完成。
 - `S3Options` 只包含 Endpoint、Region、Bucket、Credentials；S3Backend 直接使用这些选项构造 SDK 客户端，自定义端点采用路径式寻址，不加载 AWS 默认配置链，不重复校验根部已解析的凭据。Put 使用 `media/哈希` 对象键，可 Seek 输入直接交付 SDK，其余输入同步暂存到系统临时文件，支持 HTTP／HTTPS 的签名、校验和与重试；暂存前后检查取消，调用结束关闭并删除临时文件，原输入由调用方关闭。读取、删除和签名使用交付的位置，签名期限直接传给 SDK，副本与签名缓存归 object。
 - `LazyBackend` 保存 factory、backend、mu，getBackend 在 mutex 内构造并只缓存成功结果；取得锁后检查取消，失败允许后续调用重试，实际后端操作在锁外执行。根部保证 factory 有效且成功时返回可用后端。
 - object 构造保存已裁剪的配置与依赖并执行中断恢复，失败仍返回组件。四种导入统一进入 ImportReader，逐次限制只能收紧默认大小上限；名称与来源只在导入入口清理，MIME 规范化为媒体类型，图片内容识别优先，压缩后按实际内容生成 ID。同 ID 的去重与提交在对象锁内进行；入库失败使用独立期限回滚内容并保留回滚错误。
-- Info 直接通过 mediaInfo 投影四字段快照，不清洗旧记录，不增加引用；删除中对象不可用。Hold 在对象锁内读取并添加临时引用，引用添加与回收认领的互斥由存储原子保证。已有持有的 Open 不新增引用；Close 使用句柄自己的 mu 串行释放，在独立五秒期限内删除引用，不取得对象锁，失败可重试，成功后重复关闭直接返回。调用方应在读取和签名操作全部结束后关闭持有。显式 Hold／Open 的释放归调用方；Open 出错时若仍返回读取器，仅供 Close 重试释放。
+- Info 直接投影四字段快照，不清洗旧记录；Hold 在对象锁内取得临时引用，存储原子协调引用与回收。内部持有 Open 不新增引用，Close(ctx) 可取消地等待释放资格并使用传入上下文删除引用；失败保留，成功不重复释放。公开 Open 返回真实读取器和 UsageID，读取器关闭后发布结束事实。清理预算由信号、维护或 App 关闭入口交付；准备失败和便捷读取收尾各建立一次独立五秒预算，底层不重新计时。usage 逐项检查取消，保留失败及未开始资源；文件删除只在操作边界检查取消。
 - Read、Export、ValidateImage 独占本次持有，先关闭读取器，再通过 releaseOwned 释放引用，汇总业务与关闭错误。引用释放失败的持有由 object 托管，Cleanup 在历史对账前通过 retryReleases 重试一个快照；关闭操作在集合锁外执行，成功项移除，失败、未开始项和执行期间新登记项均保留。取消等待当前关闭结束，存在释放故障或取消则终止本轮后续清理；仅读取器关闭失败不登记托管项。不增加后台任务，进程重启仍由中断恢复清除遗留临时引用。
 - 图片压缩按配置调整边长与 JPEG 质量，透明区域合成白底；ValidateImage 验证声明的图片 MIME 和实际解码。图片内部属性不进入 share 或公开结果。
 - SignedURL 在对象锁内重读副本事实，缺少远端副本时上传并保存实际位置；失败回滚保留独立错误。签名缓存剩余超过 5 分钟复用，否则按 1 小时刷新；签名失败保留原缓存。读取与删除使用已存位置，不推导旧路径或对象键。
 - 历史缓存按 ID 去重查询，合并匹配历史身份的关联和未过期输出；仅保留与最终媒体匹配的关联标记。对账按所有者分页，只有确认缺失或身份更替才删除关联，查询错误立即返回。Cleanup 完成自有释放重试后，依次对账、清理过期输出并核对引用，再认领孤立对象；最后引用释放后保留 1 小时，每轮至多并行删除 4 个对象，按远端、本地、记录顺序执行，取消等待已开始工作退出，失败记录留待重试。
+- 来源入口调用明确的 Import 方法，逐次限制原样传入 object。进入 Agent 的媒体消息携带 MediaID；Dialogue 克隆消息并清除请求 URL，缺少 ID 时返回错误。模型交付 URL 仅由 AcquireForLLM 在请求副本中生成。
+- AcquireForLLM 克隆消息并按 ID 复用持有，名称及 MIME 采用持有快照，大小按实际出现次数累计；base64 超限失败，s3 使用远端，hybrid 超限才使用远端。每个 ID 只读取或签名一次，最多八个远端 worker；硬错误或取消停止派发并取消同批工作，等待已开始操作退出后再释放，独立故障汇总保留。纯不可用结果替换为含名称和 ID 的文本，不回退交付方式；仅取得持有失败的提示名称使用片段名称清理。
+- ResolveForOutput 只取得一次持有，通过 held.Open 流式写入系统临时目录，关闭读取器和输出文件后交付本地路径与使用 ID。临时目录和持有分别尝试清理；失败项目由 transfer 保存，维护只处理已结束的使用。
+- ImportPlatform 已有 ID 直接查询，否则先检查已知大小，使用直接 URL 或注入解析器，按 MediaID／URL／Path／Data 分派来源；解析器接收上下文和配置大小上限。GetHistoryMediaBatch 按完整历史身份缓存查询、按身份及序号复用结果，缓存不占额度，未缓存失败也占次数；来源中的 ID 保留，不强制重新下载。缺失或 Kind 变化的关联才保存，导入和关联错误逐项返回，缓存查询故障或调用取消终止批量。
 
 ### 根部装配与验证
 
 `wiring.go` 消费配置包已处理默认值和路径的配置，不重复补默认值或修改输入。base64／hybrid 的对象导入位置为 local，s3 为 s3；交付组件保留原模式。本地目录取沙盒根目录同级的 media。base64 不读取远端凭据；s3／hybrid 通过 ConfigEnv 解析凭据，失败立即返回构造错误，成功后将配置快照和静态凭据交给延迟远端构造。object 构造返回的部分结果先保存再判断错误，中断恢复归其构造入口，随后装配 transfer。History 由 App 后注入。
 
-根部只转换公开与内部数据，平台回调保留 nil、上下文及限制；历史批量转换保留顺序、重复位置和逐项错误。读取器、清理回调及错误原样交回，准备失败不吞掉可重试回调。公开历史错误与 transfer 使用同一错误值，HeldMedia 不增加释放状态或重试控制。
+根部转换公开与内部数据，平台回调保留 nil、上下文及限制；历史批量转换保留顺序、重复位置和逐项错误。公开历史错误与 transfer 使用同一错误值，HeldMedia 仅暴露读取能力和使用 ID，不携带清理回调或重试控制。
 
-gofmt、五个 Media 包编译及 `go test -race ./internal/media/...` 通过。backend 测试使用真实文件与本地 HTTP／HTTPS 服务，覆盖本地读写、失败清理与取消，S3 请求、签名、配置来源隔离、不可 Seek 输入与重试、借用输入所有权、临时文件清理及错误和取消传播，以及延迟构造的失败重试、并发复用和锁外操作。share 与根部测试覆盖 ID 格式、名称清理、参数 ID 精确提取与去重排序、凭据解析及构造提前失败。object 测试使用真实 SQLite 和可控后端，覆盖导入去重与大小限制、URL／文件来源、图片压缩及校验、失败回滚、读取和释放错误、持有保护与释放重试、并发上传和签名缓存、历史合并与分页对账、并行回收和取消后重试。媒体中心成功构造与真实交付链路仍依赖 transfer 实现；后续须完成交付与消费者迁移，验证真实总管接线。
+backend 使用真实文件与本地 HTTP／HTTPS 服务验证读写、签名、失败清理、取消和 S3 错误分类；object 使用真实 SQLite 和可控后端验证导入、图片、持有、签名缓存、历史、回收及存储错误语义；share 验证名称、ID 和组合错误判断。transfer 覆盖限制透传、消息隔离、模式选择、持有去重、并发取消、独立故障及清理重试、历史额度与关联。根部真实接线覆盖成功构造、base64／s3／hybrid 导入和模型交付、发送临时文件与引用释放、受限导入及历史缓存。消费者回归覆盖入口分类、Hook 批次租约、Elnis 去重与报告引用、Cron 持久化恢复、SQLite 引用事务与审计、Tool 使用结束及平台真实回执。新增回归覆盖取消、重复通知、队列拒收、关闭超时、失败清理维护，以及 Hook 独立调用、租约互斥和同链有序执行。
+
+gofmt、Media、Agent、Tool、Hook、Platform、Background 及 SQLite 的 race 回归通过。Hook runtime 的测试子进程需要使用 `GORACE=atexit_sleep_ms=0`，避免 race 默认退出等待与一秒关闭期限冲突；竞态检测保持开启。
+
+### 来源入口与消费者
+
+外部协议保留原字段；入口一次解析 URI scheme、校验多来源冲突并输出 `delivery.Output/Source`，HTTP(S) 只规范化 scheme 大小写。内部按 URL、Path、Data、MediaID 调用明确能力，不把类型重新压回混合字符串。实际导入限制、图片处理及名称清理归 object。
+
+- Hook 的 share/output 解析 URL／Path／Base64；runtime.BuildMessageSegments 导入并登记租约，再生成 MediaID 消息。完整调用在 runtime/manager.go 登记到已有关闭取消链和在途计数，下载、导入不占用租约集合锁；纯文本不接触租约锁。同租约操作独占且等待可取消，维护跳过正在使用的租约，清理前标记、锁外执行、成功项移除。关闭取消并等待在途调用，随后清理租约；失败资源保留供后续关闭处理。Worker 直接调用，rules 通过根部注入同名函数；pipeline 继续按优先级与同优先级注册顺序串行等待、传递更新结果。
+- Elnis 的 prepareEvent 分类输入，Event.Segments 保存明确来源。原始 Request 供协议记录、去重与审计；确认事件身份后才导入并关联输入引用，record 模式不下载。
+- 后台 ParseJSONResult 将附件转换为明确来源；JSONResult 的外部序列化投影协议字段。Cron 持久化相同结构并据此恢复发送，HTTP(S) 直接转交，本地 Path 相对任务目录解析；SQLite 触发器及审计读取 `report_segments[].Source.media`；第 26 次迁移更新触发器，既有报告记录原样保留。Elnis 报告本地附件通过 os.Root 受限打开，归档和关联引用后保存 MediaID。
+- Tool 保留调用内 HeldMedia 复用集合、导出状态及共享缓存策略；私有目录和媒体持有都由 Media 登记。Chat、Responses、压缩、重放与 Platform 在实际使用结束后发布使用 ID；实际读取器先关闭，模型流取消后等待退出。清理失败不改写模型、工具或发送结果，平台保留实际回执。
+
+```mermaid
+flowchart TD
+    H["hook/share/output/message.go<br/>解析消息来源"] --> HR["hook/runtime/media.go<br/>导入、租约与 MediaID 消息"]
+    HW["hook/wiring.go<br/>向 rules 注入转换函数"] -.-> HR
+    E["elnis/prepare.go<br/>分类输入并建立事件"] --> EM["elnis/media.go<br/>显式导入与事件引用"]
+    B["background/share/result.go<br/>报告解析与外部序列化"] --> C["cron/delivery.go<br/>按持久化来源发送与恢复"]
+    B --> EM
+    HR --> M["media/api.go<br/>分类导入及限制透传"]
+    EM --> M
+    M --> O["object/import.go<br/>受限归档与对象处理"]
+    HR --> A["agent/dialogue/materials.go<br/>规范消息与模型请求副本"]
+    EM --> A
+```
 
 ## Platform 下层目标契约
 
@@ -234,7 +279,7 @@ CLI SetCompleter 接收 `func(context.Context, completion.Request) ([]completion
 
 `cli.ConnectUI(cli.AgentEvents)` 返回 UI 和 error，部分 UI 交根部清理。event_contracts.go 定义 CLI 自有 StatusChangedEvent、BindingChangedEvent、BindingSnapshot，由根部转换 Agent 公开事件；订阅回调不接收 context，展示目标取自 Conversation，日志事实取自 Execution。状态发布版本与绑定变更版本分别处理，终态释放待发正文但保留版本水位；换绑／解绑清除旧绑定待发状态并拒绝迟到事件；worker 在锁内取出状态即开始发送，在途发送允许完成，新状态随后串行发送。发送上下文保留事件事实并隔离展示停止，远程写入沿用 15 秒超时。UI 消费已交付的独立快照，持有订阅和展示 worker；BeginClose 停止接纳并清空待发状态，Close 解除订阅并等待在途发送及 worker 实际退出，等待超时可重试。
 
-dispatch.Options.Primary 和 Router 的 primary 字段只接收 `interface { Name() string; delivery.MessageSender }`，RegisterPlatform 使用同一匿名接口。完整 Runtime 仅由总管持有，dispatch 不接管启停。Media 接收 Metadata、ImportURL、ImportFile、ImportBytes、ResolveForOutput 五项能力；SaveMediaOutput 接收 `func(context.Context, storage.MediaOutput) error`，根部直接注入 Store.Media().SaveOutput。媒体准备、发送副本解析、临时资源释放与实际回执关联归 media.go；部分发送仅缓存真实回执；回执身份必填校验归存储入口，dispatch 不重复检查并静默跳过，缓存失败记录警告，不改变发送结果或重发。
+dispatch.Options.Primary 和 Router 的 primary 字段只接收 `interface { Name() string; delivery.MessageSender }`，RegisterPlatform 使用同一匿名接口。完整 Runtime 仅由总管持有，dispatch 不接管启停。Media 接收 Info、ImportURL、ImportFile、ImportBytes、ResolveForOutput 五项能力；SaveMediaOutput 接收 `func(context.Context, storage.MediaOutput) error`，根部直接注入 Store.Media().SaveOutput。媒体准备、发送副本解析、使用结束通知与实际回执关联归 media.go，临时资源释放归 Media；部分发送仅缓存真实回执；回执身份必填校验归存储入口，dispatch 不重复检查并静默跳过，缓存失败记录警告，不改变发送结果或重发。
 
 通用能力使用 SendChat、SendTo、StartStream、ResolveMedia 等固定方法；引用恢复沿用 refcontext 入站链路，不提供字符串能力分发表。原生入口 `CallPlatformAPI(ctx, platform, api, params)` 返回 `(json.RawMessage, error)`，params 为 `map[string]any`。calls.go 按显式平台取得适配器、释放注册表锁，再通过 share.PlatformAPICaller 转交原始上下文、接口名和参数；未知或不支持的平台报错，不回退当前或默认平台。OneBot、Telegram 的 capability_api.go 保留原生传输，分别返回原生 Data／result；认证、协议封装和操作生命周期归适配器。Hook platform.call 与 Elnis direct 负责各自的平台选择，Elnis direct 直接消费原生调用声明。
 
@@ -262,7 +307,9 @@ flowchart TD
 
 ## 验证与备份
 
-当前 Media 的 object 对象管理、backend 本地／S3／延迟构造、share ID 校验与名称清理，以及根部参数 ID 提取、凭据与构造提前失败测试通过 race；transfer 函数仍为 TODO panic，原媒体行为测试保存在 `.go.bak` 中。依赖 Media 的 Tool、Agent、Hook、Platform、Background 测试须在交付实现与消费签名迁移后重新验证。下列组件用例说明不代表当前 Media 接线或完整应用已通过；App 整包仍待媒体交付、模型构造实现及进程入口适配。
+媒体结束信号与 Hook 租约并发修复已通过 Media、Agent、Platform、Tool、Hook、Background 全部 52 个包的 race 回归。覆盖独立使用 ID、取消后结束登记、失败维护、重复通知、队列拒收、信号关闭超时，以及慢导入不阻塞其他调用、同租约等待取消、维护不释放在用资源、关闭收尾与同链 Hook 优先级和结果依赖。App 整包验证仍受下述模型构造入口缺失阻塞。
+
+Media、Tool、Agent、Hook、Platform、Background 及 SQLite 的验证范围见上文。原媒体文件保存在 `.go.bak` 中。完整应用仍被缺失的 modelmgr.NewModelManager 阻断；全仓编译检查另发现 security 测试的 string／contextinfo.Role 类型不匹配。App 整包及进程入口仍待模型构造实现后验证。
 
 CLI 整包与 Share、refcontext、dispatch、notification 的 race 回归通过。CLI 覆盖真实管道和 Linux 伪终端的停止／最终关闭、真实 WebSocket 收尾发送、同步监听失败、并发启停及超时重试、原连接回复、事件乱序与绑定失效、WebSocket 背压期间换绑和展示关闭后连接保留、UI 关闭超时重试、回调收尾期间取消观察仍返回已发布故障、部分 UI 所有权、客户端分类及断线退出。CLI 不再依赖旧 agent/events、Platform 根包或兄弟实现；Headless 整包也通过 race，覆盖无状态生命周期、取消上下文、重复及并发调用、发送失败契约；OneBot、Share、refcontext 的 race 回归通过，覆盖分阶段关闭、临时拨号取消、在途写入取消隔离、关闭重试、重连隔离及原生 API 透传；OneBot 不再依赖根包或兄弟实现。QQ Official、Share、refcontext、notification 的 race 回归通过，覆盖实际 HTTP／WebSocket、心跳序号同步及失败退出、恢复与重新鉴权、并发启停、取消观察与独立故障、收尾发送、完整发送及别名入库等待、关闭超时重试。QQ Official 不再依赖根包或兄弟实现。Telegram、Share、refcontext、notification 与 Background/Cron 的 race 回归通过，覆盖异步远端连接、分阶段关闭、完整操作取消与退出等待、流式等待取消隔离、关闭超时重试、独立连接池释放、身份快照、命令目录并发、引用恢复、配置边界及原生 API。Telegram 生产代码与包内测试均不依赖 Platform 根包或兄弟实现；Background 报告测试通过发送契约注入回执。
 
@@ -272,7 +319,7 @@ dispatch、Share、OneBot、Telegram、refcontext、Agent/execution 与 Hook/rul
 
 `environment_test.go` 覆盖配置路径优先级、模式验证、相对路径与符号链接、配置替换保存、不同配置并行、取锁失败，以及 TUI／Service 各组合的跨进程互斥。子进程正常关闭和被终止后，锁文件保留且可重新取锁。环境测试可独立运行：`go test internal/app/environment.go internal/app/environment_test.go`。
 
-资源测试覆盖部分失败所有权、历史库构造失败后保留共享存储和提前取消，不在 App 验证模型协议或重载内部实现；这些构造测试需待媒体／模型入口落地后运行。退出测试覆盖结果分类、执行顺序、普通失败后继续、共享期限、超时后停止后续步骤、存储关闭失败后仍释放日志，以及历史使用方退出前保留历史库、部分失败仍关闭历史库、退出超时不释放历史库。期限测试使用 `synctest` 虚拟时间。
+资源测试覆盖部分失败所有权、历史库构造失败后保留共享存储和提前取消，不在 App 验证模型协议或重载内部实现；这些构造测试需待模型入口落地后运行。退出测试覆盖结果分类、执行顺序、普通失败后继续、共享期限、超时后停止后续步骤、存储关闭失败后仍释放日志，以及历史使用方退出前保留历史库、部分失败仍关闭历史库、退出超时不释放历史库。期限测试使用 `synctest` 虚拟时间。
 
 App 的阶段执行、登记、启动、可选等待和退出测试已在临时包中隔离尚未实现的构造调用并通过 race 验证，使用实际函数、共享资源类型和真实历史 SQLite，不提供假生产总管。覆盖任意数量业务线、独立故障保留及阻塞关闭下的统一期限。Background 的历史清理依赖通过根部直接注入仓库，相关测试及借用资源关闭断言已随整包 race 回归通过。完整 App 流程、资源构造及客户端链路仍需下层接口实现后验证。
 

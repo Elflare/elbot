@@ -25,7 +25,7 @@ type SupervisorDeps struct {
 		GetByPlatformMessage(context.Context, string, string, string) (*storage.ChatMessage, error)
 	} // 借用历史身份查询，用于入站媒体关联。
 	Models     *modelmgr.Service
-	Media      *media.Manager
+	Media      *media.MediaCenter
 	Permission *security.Permission // Shared permission service; Agent does not own its lifecycle.
 	Logs       *logging.Manager
 	Tools      ToolCapabilities

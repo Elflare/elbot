@@ -88,7 +88,7 @@ func TestViewImageSourcesAndPermissions(t *testing.T) {
 	ctx, get, _ := newHistoryMediaToolTest(t)
 	viewer := builtin.NewViewImageTool(get.center, get.manager)
 	data := viewImagePNG(t)
-	item, err := get.mediaCenter.ImportBytes(ctx, data, media.Input{Name: "image.png"})
+	item, err := get.mediaCenter.ImportBytes(ctx, data, media.Input{Name: "image.png"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,14 +131,14 @@ func TestViewImageSourcesAndPermissions(t *testing.T) {
 			t.Fatalf("escaped sandbox: %s", source)
 		}
 	}
-	bad, err := get.mediaCenter.ImportBytes(ctx, []byte("not an image"), media.Input{Name: "broken.png", MIMEType: "image/png"})
+	bad, err := get.mediaCenter.ImportBytes(ctx, []byte("not an image"), media.Input{Name: "broken.png", MIMEType: "image/png"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := call(ctx, bad.ID); err == nil {
 		t.Fatal("accepted broken image")
 	}
-	truncated, err := get.mediaCenter.ImportBytes(ctx, data[:33], media.Input{Name: "truncated.png"})
+	truncated, err := get.mediaCenter.ImportBytes(ctx, data[:33], media.Input{Name: "truncated.png"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"elbot/internal/testutil/mediatest"
 
 	"elbot/internal/events"
 	"elbot/internal/llm"
@@ -15,15 +16,15 @@ import (
 	"elbot/internal/tool/state"
 )
 
-func newTestManager(catalog *registry.Registry, permission *security.Permission, centers ...*media.Manager) *Manager {
+func newTestManager(catalog *registry.Registry, permission *security.Permission, centers ...*media.MediaCenter) *Manager {
 	if permission == nil {
 		permission = security.DefaultPermission()
 	}
-	var center *media.Manager
+	var center *media.MediaCenter
 	if len(centers) > 0 {
 		center = centers[0]
 	}
-	return NewManager(ManagerDeps{Registry: catalog, Permission: permission, Media: toolmedia.NewMediaRuntime(center, ""), InfoAvailableInContext: registry.InfoAvailableInContext, UnavailableReason: registry.UnavailableReason, BackgroundDiscoveredTools: registry.BackgroundDiscoveredTools, DecodeState: state.DecodeState, PrepareUpdate: state.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(catalog).DiscoveryStateUpdate, Log: func(ctx context.Context, record events.LogRecord) {
+	return NewManager(ManagerDeps{Registry: catalog, Permission: permission, Media: toolmedia.NewMediaRuntime(center, "", mediatest.Publisher(center)), InfoAvailableInContext: registry.InfoAvailableInContext, UnavailableReason: registry.UnavailableReason, BackgroundDiscoveredTools: registry.BackgroundDiscoveredTools, DecodeState: state.DecodeState, PrepareUpdate: state.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(catalog).DiscoveryStateUpdate, Log: func(ctx context.Context, record events.LogRecord) {
 		_ = events.EmitLog(context.WithoutCancel(ctx), record)
 	}})
 }

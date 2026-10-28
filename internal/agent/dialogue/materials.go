@@ -2,6 +2,7 @@ package dialogue
 
 import (
 	"context"
+	"elbot/internal/media"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -20,16 +21,10 @@ func (p *Preparer) ArchiveMaterials(ctx context.Context, messages []llm.LLMMessa
 			if segment.Type != llm.SegmentImage && segment.Type != llm.SegmentFile {
 				continue
 			}
-			if segment.MediaID != "" {
-				out[i].Segments[j].URL = ""
-				continue
+			if segment.MediaID == "" {
+				return nil, fmt.Errorf("media segment requires MediaID")
 			}
-			imported, err := p.Media.Materialize(ctx, []llm.MessageSegment{segment})
-			if err != nil {
-				return nil, err
-			}
-
-			out[i].Segments[j] = imported[0]
+			out[i].Segments[j].URL = ""
 		}
 	}
 	return out, ctx.Err()
@@ -38,14 +33,14 @@ func (p *Preparer) ArchiveMaterials(ctx context.Context, messages []llm.LLMMessa
 // PrepareMaterials is the shared media preparation boundary for Chat and Responses.
 // Callers supply all material in one actual request, including replay/continuation
 // prefixes, so the media manager chooses one delivery policy for the whole request.
-// Its release belongs to that request's lifecycle, including HTTP transport retries.
-func (p *Preparer) PrepareMaterials(ctx context.Context, messages []llm.LLMMessage) ([]llm.LLMMessage, func(), error) {
+// Its usage belongs to that request's lifecycle, including HTTP transport retries.
+func (p *Preparer) PrepareMaterials(ctx context.Context, messages []llm.LLMMessage) ([]llm.LLMMessage, media.UsageID, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, func() {}, err
+		return nil, "", err
 	}
-	resolved, release, err := p.Media.AcquireForLLM(ctx, messages)
+	resolved, usageID, err := p.Media.AcquireForLLM(ctx, messages)
 	if err != nil {
-		return nil, release, fmt.Errorf("准备模型媒体: %w", err)
+		return nil, usageID, fmt.Errorf("准备模型媒体: %w", err)
 	}
 	missing := map[string]bool{}
 	for i, message := range messages {
@@ -65,5 +60,12 @@ func (p *Preparer) PrepareMaterials(ctx context.Context, messages []llm.LLMMessa
 		_ = events.EmitLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "dialogue_media_unavailable", Module: "dialogue", Type: events.ContentJSON, Content: string(data)})
 		_, _ = events.NotificationRequested.Emit(ctx, events.NewNotification(ctx, slog.LevelWarn, fmt.Sprintf("有 %d 份媒体无法读取，本次请求已使用缺失提示；原始媒体引用仍保留。", len(missing))))
 	}
-	return resolved, release, nil
+	return resolved, usageID, nil
+}
+
+// FinishMaterials 在实际请求结束处触发根部的信号发布适配。
+func (p *Preparer) FinishMaterials(ctx context.Context, id media.UsageID) {
+	if id != "" {
+		p.PublishUsageFinished(ctx, id)
+	}
 }

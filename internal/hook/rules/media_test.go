@@ -12,6 +12,7 @@ import (
 	"elbot/internal/hook/share"
 	"elbot/internal/media"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil/mediatest"
 )
 
 func TestExecMediaProtocolRoundTrip(t *testing.T) {
@@ -22,13 +23,13 @@ func TestExecMediaProtocolRoundTrip(t *testing.T) {
 	}
 	defer store.Close()
 	root := t.TempDir()
-	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
+	center := mediatest.New(t, store, root)
 	runtime, err := hookruntime.NewManager(hookruntime.Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Media: center})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer runtime.Close(ctx)
-	module := Module{Opts: Options{Log: testLog, Notify: testNotify, Runtime: runtime}}
+	module := Module{Opts: Options{Log: testLog, Notify: testNotify, Runtime: runtime, BuildMessageSegments: runtime.BuildMessageSegments}}
 	got, _, err := module.runRule(ctx, Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("media")}}}, share.Event{Point: share.PointAgentInputPrepared}, false)
 	if err != nil {
 		t.Fatal(err)

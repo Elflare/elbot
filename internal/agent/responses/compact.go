@@ -90,11 +90,11 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 	if err := validateCallLinks(w.Items, false); err != nil {
 		return nil, err
 	}
-	items, release, err := c.Context.Resolve(ctx, w)
+	items, usageID, err := c.Context.Resolve(ctx, w)
+	defer c.Context.Preparer.FinishMaterials(ctx, usageID)
 	if err != nil {
 		return nil, err
 	}
-	defer release()
 	instructions, err := c.System.Build(ctx, agentshare.SystemPromptRequest{Mode: row.Mode, Session: row, Scope: c.Identity.Scope(ctx)})
 	if err != nil {
 		return nil, err

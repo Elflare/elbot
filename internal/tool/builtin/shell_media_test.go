@@ -13,6 +13,7 @@ import (
 
 	"elbot/internal/media"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil/mediatest"
 	"elbot/internal/workspace"
 )
 
@@ -24,13 +25,13 @@ func TestShellMediaInputsAndCleanup(t *testing.T) {
 	}
 	defer store.Close()
 	root := t.TempDir()
-	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
-	item, err := center.ImportBytes(ctx, []byte("shell-media-content"), media.Input{Name: "input.txt"})
+	center := mediatest.New(t, store, root)
+	item, err := center.ImportBytes(ctx, []byte("shell-media-content"), media.Input{Name: "input.txt"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	shell := NewShellTool()
-	shell.Media = toolmedia.NewMediaRuntime(center, t.TempDir())
+	shell.Media = toolmedia.NewMediaRuntime(center, t.TempDir(), mediatest.Publisher(center))
 	command := `cat "$ELBOT_MEDIA_1" "$ELBOT_MEDIA_2"`
 	slow := "sleep 10"
 	if isPowerShellEnv() {
@@ -63,6 +64,9 @@ func TestShellMediaInputsAndCleanup(t *testing.T) {
 			if string(raw) != original {
 				t.Fatal("arguments changed")
 			}
+			if _, err := center.Cleanup(ctx); err != nil {
+				t.Fatal(err)
+			}
 			refs, refErr := store.MediaReferences().ListMediaIDs(ctx, item.ID)
 			if refErr != nil || len(refs) != 0 {
 				t.Fatalf("leaked refs %v %v", refs, refErr)
@@ -78,6 +82,9 @@ func TestShellMediaInputsAndCleanup(t *testing.T) {
 		}
 		if _, err := os.Stat(marker); !os.IsNotExist(err) {
 			t.Fatalf("command ran: %v", err)
+		}
+		if _, err := center.Cleanup(ctx); err != nil {
+			t.Fatal(err)
 		}
 		refs, _ := store.MediaReferences().ListMediaIDs(ctx, item.ID)
 		if len(refs) != 0 {

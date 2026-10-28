@@ -2,6 +2,7 @@ package responses
 
 import (
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/media"
 
 	"context"
 	"encoding/json"
@@ -26,7 +27,8 @@ type Context struct {
 		Calls(context.Context, string) ([]storage.NativeCall, error)
 	}
 	Preparer interface {
-		PrepareMaterials(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, func(), error)
+		PrepareMaterials(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, media.UsageID, error)
+		FinishMaterials(context.Context, media.UsageID)
 	}
 }
 
@@ -377,40 +379,37 @@ func (w *nativeWindow) mediaIDs() []string {
 
 // Resolve obtains protocol-neutral prepared material before assembling input
 // items. Native outputs/reasoning remain opaque and are never media-scanned.
-func (c *Context) Resolve(ctx context.Context, w *nativeWindow) ([]api.Item, func(), error) {
+func (c *Context) Resolve(ctx context.Context, w *nativeWindow) ([]api.Item, media.UsageID, error) {
 	if err := c.Validate(ctx, w); err != nil {
-		return nil, func() {}, err
+		return nil, "", err
 	}
 	messages := make([]llm.LLMMessage, len(w.Materials))
 	for i, material := range w.Materials {
 		messages[i] = llm.LLMMessage{Segments: material.Segments}
 	}
-	prepared, release, err := c.Preparer.PrepareMaterials(ctx, messages)
+	prepared, usageID, err := c.Preparer.PrepareMaterials(ctx, messages)
 	if err != nil {
-		return nil, release, err
+		return nil, usageID, err
 	}
 	items := append([]api.Item(nil), w.Items...)
 	for i, material := range w.Materials {
 		original := items[material.Index]
 		var fields map[string]json.RawMessage
 		if err := json.Unmarshal(original.Raw, &fields); err != nil {
-			release()
-			return nil, func() {}, err
+			return nil, usageID, err
 		}
 		var callID string
 		if original.Type == "function_call_output" {
 			if err := json.Unmarshal(fields["call_id"], &callID); err != nil {
-				release()
-				return nil, func() {}, err
+				return nil, usageID, err
 			}
 		}
 		items[material.Index], err = nativeItem(callID, prepared[i].Segments)
 		if err != nil {
-			release()
-			return nil, func() {}, err
+			return nil, usageID, err
 		}
 	}
-	return items, release, nil
+	return items, usageID, nil
 }
 
 func checkpointCalls(cp *storage.NativeCheckpoint) ([]storage.NativeCall, error) {

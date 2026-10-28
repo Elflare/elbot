@@ -16,11 +16,13 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/media"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil/mediatest"
 	"elbot/internal/tool/builtin"
 	"elbot/internal/tool/chat_history"
 )
@@ -81,10 +83,10 @@ type historyMediaToolFixture struct {
 	manager     *chat_history.Manager
 	history     storage.ChatHistoryRepository
 	center      *toolmedia.MediaRuntime
-	mediaCenter *media.Manager
+	mediaCenter *media.MediaCenter
 }
 
-func newHistoryMediaToolTest(t *testing.T) (context.Context, historyMediaToolFixture, *getMediaResolver) {
+func newHistoryMediaToolTest(t *testing.T, configure ...func(*config.Config)) (context.Context, historyMediaToolFixture, *getMediaResolver) {
 	t.Helper()
 	ctx := context.Background()
 	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "main.db"))
@@ -98,7 +100,7 @@ func newHistoryMediaToolTest(t *testing.T) (context.Context, historyMediaToolFix
 	}
 	t.Cleanup(func() { history.Close() })
 	root := t.TempDir()
-	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
+	center := mediatest.New(t, store, root, configure...)
 	center.History = history.Repository()
 	var segments []media.PlatformMedia
 	for i := 1; i <= 7; i++ {
@@ -119,7 +121,7 @@ func newHistoryMediaToolTest(t *testing.T) (context.Context, historyMediaToolFix
 	}
 	resolver := &getMediaResolver{}
 	ctx = contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ScopeID: "s"}})
-	mediaRuntime := toolmedia.NewMediaRuntime(center, root)
+	mediaRuntime := toolmedia.NewMediaRuntime(center, root, mediatest.Publisher(center))
 	manager := chat_history.NewManager(&chatHistoryBridge{history: history.Repository(), platform: resolver, media: mediaRuntime}, time.Now)
 	return ctx, historyMediaToolFixture{GetMediaTool: builtin.NewGetMediaTool(manager), manager: manager, history: history.Repository(), center: mediaRuntime, mediaCenter: center}, resolver
 }
@@ -213,8 +215,7 @@ func TestHistoryQueriesShowMediaWithoutDownload(t *testing.T) {
 }
 
 func TestGetMediaReturnsCompressedHistoryID(t *testing.T) {
-	ctx, tools, resolver := newHistoryMediaToolTest(t)
-	tools.mediaCenter.Media.LLMImageMaxLength = 32
+	ctx, tools, resolver := newHistoryMediaToolTest(t, func(cfg *config.Config) { cfg.Media.LLMImageMaxLength = 32 })
 	var data bytes.Buffer
 	if err := png.Encode(&data, image.NewNRGBA(image.Rect(0, 0, 80, 40))); err != nil {
 		t.Fatal(err)
@@ -241,7 +242,6 @@ func TestGetMediaReturnsCompressedHistoryID(t *testing.T) {
 	if err != nil || format != "jpeg" || cfg.Width >= 32 || cfg.Height >= 32 || item.MIMEType != "image/jpeg" || !strings.Contains(first.Content, ids[1]) || len(first.Segments) != 0 {
 		t.Fatalf("compressed result = %#v, media %#v, dimensions %#v, %v", first, item, cfg, err)
 	}
-	tools.mediaCenter.Media.LLMImageCompressionThresholdBytes = 1
 	again, _, err := callTool(ctx, tools, request)
 	if err != nil || again.Content != first.Content || resolver.calls != 1 {
 		t.Fatalf("cached result = %#v, calls %d, error %v", again, resolver.calls, err)

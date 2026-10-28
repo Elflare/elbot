@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"elbot/internal/delivery"
 	"elbot/internal/elvena"
 )
 
@@ -57,10 +58,13 @@ func (s *Service) prepareEvent(origin elvena.Origin, req Request) (Event, error)
 	if req.ModelSlot != "" && !isElnisModelSlot(req.ModelSlot) {
 		return Event{}, fmt.Errorf("unsupported model_slot %q", req.ModelSlot)
 	}
+	segments := make([]delivery.Output, 0, len(req.Segments))
 	for i, segment := range req.Segments {
-		if err := validateMediaSegment(segment); err != nil {
+		output, err := validateMediaSegment(segment, s.cfg.Segment.MaxFileBytes)
+		if err != nil {
 			return Event{}, fmt.Errorf("segment %d: %w", i, err)
 		}
+		segments = append(segments, output)
 	}
 	createdAt := time.Now()
 	if strings.TrimSpace(req.CreatedAt) != "" {
@@ -96,6 +100,7 @@ func (s *Service) prepareEvent(origin elvena.Origin, req Request) (Event, error)
 		return Event{}, err
 	}
 	return Event{
+		Segments:         segments,
 		Request:          req,
 		Origin:           origin,
 		EventKey:         req.Elwisp.Name + "/" + req.Source + "/" + req.ID,

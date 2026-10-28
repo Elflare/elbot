@@ -32,7 +32,7 @@ func (m *Manager) LoadHistoryMedia(ctx context.Context, key share.HistoryKey) (m
 			return item, nil
 		}
 		item, err := m.Info(ctx, id)
-		if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		if err != nil && !share.IsUnavailable(err) {
 			return share.MediaInfo{}, err
 		}
 		mediaByID[id] = item

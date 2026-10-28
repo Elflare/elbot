@@ -9,7 +9,7 @@ import (
 	"time"
 
 	background "elbot/internal/background/share"
-	"elbot/internal/llm"
+	"elbot/internal/delivery"
 )
 
 type Metadata struct {
@@ -85,7 +85,7 @@ type CronDeliveryState struct {
 	ReportReady      bool                      `json:"report_ready,omitempty"`
 	TaskCompleted    bool                      `json:"task_completed,omitempty"`
 	Report           string                    `json:"report,omitempty"`
-	ReportSegments   []llm.MessageSegment      `json:"report_segments,omitempty"`
+	ReportSegments   []delivery.Output         `json:"report_segments,omitempty"` // 明确来源的附件，恢复发送不重新解析协议。
 	ReportSessionID  string                    `json:"report_session_id,omitempty"`
 	ReportMessageID  string                    `json:"report_message_id,omitempty"`
 	Targets          []CronDeliveryTargetState `json:"targets,omitempty"`

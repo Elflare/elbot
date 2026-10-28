@@ -7,7 +7,7 @@ import (
 )
 
 // createLatestDBSQL contains the final schema and applied-version baseline through
-// migration 25. Update both together when refreshing this snapshot.
+// migration 26. Update both together when refreshing this snapshot.
 const createLatestDBSQL = `
 CREATE TABLE schema_migrations (
     version INTEGER PRIMARY KEY,
@@ -341,15 +341,15 @@ END;
 
 CREATE TRIGGER media_cron_insert AFTER INSERT ON cron_jobs BEGIN
  INSERT OR IGNORE INTO media_references(media_id,owner_type,owner_id,purpose,created_at)
- SELECT json_extract(value,'$.media'),'cron',NEW.id,'report',strftime('%Y-%m-%dT%H:%M:%fZ','now')
- FROM json_each(CASE WHEN json_valid(NEW.delivery_state) THEN NEW.delivery_state ELSE '{}' END,'$.report_segments') WHERE COALESCE(json_extract(value,'$.media'),'')<>'';
+ SELECT json_extract(value,'$.Source.media'),'cron',NEW.id,'report',strftime('%Y-%m-%dT%H:%M:%fZ','now')
+ FROM json_each(CASE WHEN json_valid(NEW.delivery_state) THEN NEW.delivery_state ELSE '{}' END,'$.report_segments') WHERE COALESCE(json_extract(value,'$.Source.media'),'')<>'';
 END;
 
 CREATE TRIGGER media_cron_update AFTER UPDATE OF delivery_state ON cron_jobs BEGIN
  DELETE FROM media_references WHERE owner_type='cron' AND owner_id=NEW.id;
  INSERT OR IGNORE INTO media_references(media_id,owner_type,owner_id,purpose,created_at)
- SELECT json_extract(value,'$.media'),'cron',NEW.id,'report',strftime('%Y-%m-%dT%H:%M:%fZ','now')
- FROM json_each(CASE WHEN json_valid(NEW.delivery_state) THEN NEW.delivery_state ELSE '{}' END,'$.report_segments') WHERE COALESCE(json_extract(value,'$.media'),'')<>'';
+ SELECT json_extract(value,'$.Source.media'),'cron',NEW.id,'report',strftime('%Y-%m-%dT%H:%M:%fZ','now')
+ FROM json_each(CASE WHEN json_valid(NEW.delivery_state) THEN NEW.delivery_state ELSE '{}' END,'$.report_segments') WHERE COALESCE(json_extract(value,'$.Source.media'),'')<>'';
 END;
 
 CREATE TRIGGER media_cron_delete AFTER DELETE ON cron_jobs BEGIN
@@ -431,7 +431,8 @@ FROM (VALUES
     (22, 'remove_cron_last_error'),
     (23, 'normalize_native_seed_media_ids'),
     (24, 'remove_tool_result_preview'),
-    (25, 'create_media_signed_urls')
+    (25, 'create_media_signed_urls'),
+    (26, 'cron_report_sources')
 );
 `
 

@@ -78,27 +78,25 @@ func TestReportMediaSurvivesWorkspaceRemovalAndRetry(t *testing.T) {
 
 }
 
-func TestDataURIFilenameExtension(t *testing.T) {
+func TestDataURIBytesAndNamePassedToImporter(t *testing.T) {
 	for _, name := range []string{"chart.png", "chart.PNG", "chart", ""} {
 		t.Run(name, func(t *testing.T) {
 			s, close := newTestService(t, nil)
 			defer close()
 			enableMedia(t, s)
-			outputs, err := s.directMediaOutputs(context.Background(), Event{Request: Request{Segments: []Segment{{Kind: SegmentKindImage, URL: "data:image/png;base64,aGVsbG8=", Name: name}}}}, "test")
+			segment, err := validateMediaSegment(Segment{Kind: SegmentKindImage, URL: "data:image/png;base64,aGVsbG8=", Name: name}, s.cfg.Segment.MaxFileBytes)
 			if err != nil {
 				t.Fatal(err)
 			}
-			got := outputs[0].Name
-			if name != "" {
-				want := name
-				if filepath.Ext(want) == "" {
-					want += ".png"
-				}
-				if got != want {
-					t.Fatalf("filename = %q, want %q", got, want)
-				}
-			} else if filepath.Ext(got) != ".png" {
-				t.Fatalf("filename %q", got)
+			if segment.Source.URL != "" || string(segment.Source.Data) != "hello" {
+				t.Fatal(segment)
+			}
+			outputs, err := s.directMediaOutputs(context.Background(), Event{Segments: []delivery.Output{segment}}, "test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if outputs[0].Name != name || testMedia(s).inputs[0].Name != name || string(testMedia(s).data[outputs[0].Source.MediaID]) != "hello" {
+				t.Fatal(outputs)
 			}
 		})
 	}

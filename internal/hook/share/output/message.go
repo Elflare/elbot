@@ -1,23 +1,17 @@
-// 将插件消息描述转换为 LLM 消息片段。
-
+// 将插件消息描述解析为明确来源；导入及租约由运行时负责。
 package output
 
 import (
+	"elbot/internal/delivery"
+	"elbot/internal/media"
 	"encoding/base64"
 	"fmt"
-	"io"
-	"mime"
-	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
-
-	"elbot/internal/llm"
-	"elbot/internal/media"
 )
 
-// MessageSegment is the process Hook wire format for replacing message content.
+// MessageSegment 是进程 Hook 的消息输入协议。
 type MessageSegment struct {
 	Type     string `json:"type"`
 	Text     string `json:"text,omitempty"`
@@ -28,8 +22,8 @@ type MessageSegment struct {
 	MIMEType string `json:"mime_type,omitempty"`
 }
 
-func BuildMessageSegments(specs []MessageSegment, baseDir string) ([]llm.MessageSegment, error) {
-	segments := make([]llm.MessageSegment, 0, len(specs))
+func BuildMessageSegments(specs []MessageSegment, baseDir string) ([]delivery.Output, error) {
+	segments := make([]delivery.Output, 0, len(specs))
 	for i, spec := range specs {
 		segment, err := buildMessageSegment(spec, baseDir)
 		if err != nil {
@@ -40,128 +34,100 @@ func BuildMessageSegments(specs []MessageSegment, baseDir string) ([]llm.Message
 	return segments, nil
 }
 
-func buildMessageSegment(spec MessageSegment, baseDir string) (llm.MessageSegment, error) {
+func buildMessageSegment(spec MessageSegment, baseDir string) (delivery.Output, error) {
 	spec.Type = strings.TrimSpace(spec.Type)
 	spec.URL = strings.TrimSpace(spec.URL)
 	spec.Path = strings.TrimSpace(spec.Path)
 	spec.Base64 = strings.TrimSpace(spec.Base64)
 	spec.Name = strings.TrimSpace(spec.Name)
 	spec.MIMEType = strings.TrimSpace(spec.MIMEType)
-	switch llm.MessageSegmentType(spec.Type) {
-	case llm.SegmentText:
+	switch spec.Type {
+	case "text":
 		if spec.URL != "" || spec.Path != "" || spec.Base64 != "" || spec.Name != "" || spec.MIMEType != "" {
-			return llm.MessageSegment{}, fmt.Errorf("text segment only supports text")
+			return delivery.Output{}, fmt.Errorf("text segment only supports text")
 		}
-		return llm.MessageSegment{Type: llm.SegmentText, Text: spec.Text}, nil
-	case llm.SegmentImage:
+		return delivery.Text(spec.Text), nil
+	case "image":
 		return buildMessageImage(spec, baseDir)
 	default:
-		return llm.MessageSegment{}, fmt.Errorf("unsupported segment type %q", spec.Type)
+		return delivery.Output{}, fmt.Errorf("unsupported segment type %q", spec.Type)
 	}
 }
 
-func buildMessageImage(spec MessageSegment, baseDir string) (llm.MessageSegment, error) {
-	sourceCount := 0
+func buildMessageImage(spec MessageSegment, baseDir string) (delivery.Output, error) {
+	count := 0
 	for _, value := range []string{spec.URL, spec.Path, spec.Base64} {
 		if value != "" {
-			sourceCount++
+			count++
 		}
 	}
-	if sourceCount != 1 {
-		return llm.MessageSegment{}, fmt.Errorf("image segment must provide exactly one of url, path or base64")
+	if count != 1 {
+		return delivery.Output{}, fmt.Errorf("image segment must provide exactly one of url, path or base64")
 	}
+	segment := delivery.Output{Kind: delivery.KindImage, Text: spec.Text, Name: spec.Name, Source: delivery.Source{MIMEType: spec.MIMEType}}
 	for _, value := range []string{spec.URL, spec.Path, spec.Base64} {
 		if strings.HasPrefix(strings.ToLower(value), media.IDPrefix) {
 			if !media.ValidID(value) {
-				return llm.MessageSegment{}, fmt.Errorf("invalid media ID")
+				return delivery.Output{}, fmt.Errorf("invalid media ID")
 			}
-			return llm.MessageSegment{Type: llm.SegmentImage, Text: spec.Text, MediaID: value, Name: spec.Name, MIMEType: spec.MIMEType}, nil
-		}
-	}
-	segment := llm.MessageSegment{Type: llm.SegmentImage, Text: spec.Text, Name: spec.Name, MIMEType: spec.MIMEType}
-	if spec.URL != "" {
-		if strings.HasPrefix(strings.ToLower(spec.URL), "data:") {
-			mimeType, data, err := decodeImageDataURL(spec.URL)
-			if err != nil {
-				return llm.MessageSegment{}, err
-			}
-			if segment.MIMEType != "" && !strings.EqualFold(segment.MIMEType, mimeType) {
-				return llm.MessageSegment{}, fmt.Errorf("mime_type %q does not match data URL %q", segment.MIMEType, mimeType)
-			}
-			segment.MIMEType = mimeType
-			segment.URL = imageDataURL(mimeType, data)
+			segment.Source.MediaID = value
 			return segment, nil
 		}
-		u, err := url.Parse(spec.URL)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return llm.MessageSegment{}, fmt.Errorf("url must be an absolute HTTP(S) URL or image data URL")
-		}
-		if segment.MIMEType != "" && !strings.HasPrefix(strings.ToLower(segment.MIMEType), "image/") {
-			return llm.MessageSegment{}, fmt.Errorf("mime_type must be image/*")
-		}
-		segment.URL = spec.URL
-		return segment, nil
 	}
-
-	var data []byte
-	var err error
-	if spec.Path != "" {
-		path := spec.Path
-		if strings.Contains(path, "://") {
-			return llm.MessageSegment{}, fmt.Errorf("path must be a filesystem path, not a URI")
+	if spec.MIMEType != "" && !strings.HasPrefix(strings.ToLower(spec.MIMEType), "image/") {
+		return delivery.Output{}, fmt.Errorf("mime_type must be image/*")
+	}
+	switch {
+	case spec.URL != "":
+		u, err := url.Parse(spec.URL)
+		if err != nil {
+			return delivery.Output{}, fmt.Errorf("invalid image URL")
 		}
-		if !filepath.IsAbs(path) && strings.TrimSpace(baseDir) != "" {
+		switch strings.ToLower(u.Scheme) {
+		case "data":
+			mimeType, data, err := decodeImageDataURL(spec.URL)
+			if err != nil {
+				return delivery.Output{}, err
+			}
+			if spec.MIMEType != "" && !strings.EqualFold(spec.MIMEType, mimeType) {
+				return delivery.Output{}, fmt.Errorf("mime_type does not match data URL")
+			}
+			segment.Source.MIMEType, segment.Source.Data = mimeType, data
+		case "http", "https":
+			if u.Host == "" {
+				return delivery.Output{}, fmt.Errorf("image URL requires a host")
+			}
+			u.Scheme = strings.ToLower(u.Scheme)
+			segment.Source.URL = u.String()
+		default:
+			return delivery.Output{}, fmt.Errorf("url must be an absolute HTTP(S) URL or image data URL")
+		}
+	case spec.Path != "":
+		if strings.Contains(spec.Path, "://") {
+			return delivery.Output{}, fmt.Errorf("path must be a filesystem path, not a URI")
+		}
+		path := spec.Path
+		if !filepath.IsAbs(path) && baseDir != "" {
 			path = filepath.Join(baseDir, path)
 		}
-		data, err = readLimitedImage(path)
-		if err != nil {
-			return llm.MessageSegment{}, err
-		}
-		if segment.Name == "" {
-			segment.Name = filepath.Base(path)
-		}
-		if segment.MIMEType == "" {
-			segment.MIMEType = mime.TypeByExtension(filepath.Ext(path))
-		}
-	} else {
+		segment.Source.Path = path
+	default:
 		if base64.StdEncoding.DecodedLen(len(spec.Base64)) > MaxBase64Bytes {
-			return llm.MessageSegment{}, fmt.Errorf("base64 image exceeds 10 MiB decoded limit")
+			return delivery.Output{}, fmt.Errorf("base64 image exceeds 10 MiB decoded limit")
 		}
-		data, err = base64.StdEncoding.DecodeString(spec.Base64)
+		data, err := base64.StdEncoding.DecodeString(spec.Base64)
 		if err != nil {
-			return llm.MessageSegment{}, fmt.Errorf("decode base64 image: %w", err)
+			return delivery.Output{}, fmt.Errorf("decode base64 image: %w", err)
 		}
+		segment.Source.Data = data
 	}
-	if segment.MIMEType == "" {
-		segment.MIMEType = http.DetectContentType(data)
-	}
-	if !strings.HasPrefix(strings.ToLower(segment.MIMEType), "image/") {
-		return llm.MessageSegment{}, fmt.Errorf("mime_type must be image/*")
-	}
-	segment.URL = imageDataURL(segment.MIMEType, data)
 	return segment, nil
-}
-
-func readLimitedImage(path string) ([]byte, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("open image path: %w", err)
-	}
-	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, MaxBase64Bytes+1))
-	if err != nil {
-		return nil, fmt.Errorf("read image path: %w", err)
-	}
-	if len(data) > MaxBase64Bytes {
-		return nil, fmt.Errorf("image path exceeds 10 MiB decoded limit")
-	}
-	return data, nil
 }
 
 func decodeImageDataURL(value string) (string, []byte, error) {
 	header, encoded, ok := strings.Cut(value, ",")
-	headerLower := strings.ToLower(header)
-	if !ok || !strings.HasPrefix(headerLower, "data:image/") || !strings.HasSuffix(headerLower, ";base64") {
+	lower := strings.ToLower(header)
+	if !ok || !strings.HasPrefix(lower, "data:image/") || !strings.HasSuffix(lower, ";base64") {
 		return "", nil, fmt.Errorf("image data URL must use base64 encoding")
 	}
 	mimeType := header[len("data:") : len(header)-len(";base64")]
@@ -173,8 +139,4 @@ func decodeImageDataURL(value string) (string, []byte, error) {
 		return "", nil, fmt.Errorf("decode image data URL: %w", err)
 	}
 	return mimeType, data, nil
-}
-
-func imageDataURL(mimeType string, data []byte) string {
-	return "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data)
 }

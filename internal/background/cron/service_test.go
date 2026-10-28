@@ -16,7 +16,6 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
-	"elbot/internal/llm"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/testutil"
@@ -216,7 +215,7 @@ func TestRunLLMSendsReportSegments(t *testing.T) {
 		t.Fatalf("sent kinds = %#v", sent)
 	}
 	updated := mustDecodeTestDelivery(t, repo.jobs["user.cron.test"].DeliveryState)
-	if len(updated.ReportSegments) != 1 || updated.ReportSegments[0].URL != "chart.png" {
+	if len(updated.ReportSegments) != 1 || updated.ReportSegments[0].Source.Path != "chart.png" {
 		t.Fatalf("persisted report segments = %#v", updated.ReportSegments)
 	}
 }
@@ -230,7 +229,7 @@ func TestMissedOnceFallsBackToTextWhenSandboxAttachmentIsMissing(t *testing.T) {
 	}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 2, Title: "日报", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
-	state := CronDeliveryState{RunID: "run", ReportReady: true, TaskCompleted: true, Report: "正文", ReportSegments: []llm.MessageSegment{{Type: llm.SegmentImage, URL: "missing.png"}}, ReportSessionID: "session"}
+	state := CronDeliveryState{RunID: "run", ReportReady: true, TaskCompleted: true, Report: "正文", ReportSegments: []delivery.Output{{Kind: delivery.KindImage, Source: delivery.Source{Path: "missing.png"}}}, ReportSessionID: "session"}
 	repo.jobs[job.Name].DeliveryState = mustMarshalTestDelivery(t, state)
 	repo.jobs[job.Name].DeliveryToken = "session"
 
@@ -270,7 +269,7 @@ func TestMissedOnceFallsBackToURLTextAfterRemoteMediaSendFails(t *testing.T) {
 	}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 2, Title: "日报", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
-	state := CronDeliveryState{RunID: "run", ReportReady: true, TaskCompleted: true, Report: "正文", ReportSegments: []llm.MessageSegment{{Type: llm.SegmentImage, URL: "https://example.com/chart.png"}}, ReportSessionID: "session"}
+	state := CronDeliveryState{RunID: "run", ReportReady: true, TaskCompleted: true, Report: "正文", ReportSegments: []delivery.Output{{Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/chart.png"}}}, ReportSessionID: "session"}
 	repo.jobs[job.Name].DeliveryState = mustMarshalTestDelivery(t, state)
 	repo.jobs[job.Name].DeliveryToken = "session"
 
@@ -328,7 +327,7 @@ func TestMissedOnceReconnectRetriesOnlyPendingFallbackText(t *testing.T) {
 	}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 2, Title: "日报", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
-	state := CronDeliveryState{RunID: "run", ReportReady: true, TaskCompleted: true, Report: "正文", ReportSegments: []llm.MessageSegment{{Type: llm.SegmentImage, URL: "https://example.com/chart.png"}}, ReportSessionID: "session"}
+	state := CronDeliveryState{RunID: "run", ReportReady: true, TaskCompleted: true, Report: "正文", ReportSegments: []delivery.Output{{Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/chart.png"}}}, ReportSessionID: "session"}
 	repo.jobs[job.Name].DeliveryState = mustMarshalTestDelivery(t, state)
 	repo.jobs[job.Name].DeliveryToken = "session"
 

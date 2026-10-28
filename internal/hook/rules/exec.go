@@ -138,7 +138,7 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 	if err != nil {
 		return fail(actionResult{}, logResult, err)
 	}
-	result, updated, err := v2EventResult(event, action, state, rawResult)
+	result, updated, err := m.v2EventResult(runCtx, event, action, state, rawResult)
 	if err != nil {
 		return fail(result, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err)
 	}
@@ -276,7 +276,7 @@ func (m Module) readV2Response(ctx context.Context, reader *bufio.Reader, stdin 
 	}
 }
 
-func v2EventResult(event share.Event, action Action, state state, raw json.RawMessage) (actionResult, share.Event, error) {
+func (m Module) v2EventResult(ctx context.Context, event share.Event, action Action, state state, raw json.RawMessage) (actionResult, share.Event, error) {
 	if len(raw) == 0 {
 		return actionResult{}, event, nil
 	}
@@ -303,7 +303,7 @@ func v2EventResult(event share.Event, action Action, state state, raw json.RawMe
 		event.Outputs = append(event.Outputs, outputs...)
 	}
 	if payload.Message != nil && payload.Message.Segments != nil {
-		segments, err := hookoutput.BuildMessageSegments(*payload.Message.Segments, action.sourceBaseDir())
+		segments, err := m.Opts.BuildMessageSegments(ctx, *payload.Message.Segments, action.sourceBaseDir())
 		if err != nil {
 			return result, event, err
 		}

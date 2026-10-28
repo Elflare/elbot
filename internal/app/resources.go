@@ -20,7 +20,7 @@ type sharedResources struct {
 	logs         *logging.Manager         // App 持有的日志管理。
 	store        storage.Store            // 使用方退出后关闭的共享存储。
 	historyStore *sqlite.ChatHistoryStore // 所有历史使用方退出后关闭的独立历史库。
-	media        *media.Manager           // 共享媒体服务，借用 store。
+	media        *media.MediaCenter       // 共享媒体服务，借用 store。
 	permission   *security.Permission     // 共享权限管理。
 	models       *modelmgr.Service        // 拥有模型选择状态与重载订阅的共享服务。
 }

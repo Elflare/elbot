@@ -9,6 +9,7 @@ import (
 
 	"elbot/internal/media"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil/mediatest"
 	toolmedia "elbot/internal/tool/media"
 )
 
@@ -20,13 +21,13 @@ func TestSandboxMediaCacheRefreshAndExpiry(t *testing.T) {
 	}
 	defer store.Close()
 	root := t.TempDir()
-	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
-	item, err := center.ImportBytes(ctx, []byte("cached"), media.Input{Name: "input.txt"})
+	center := mediatest.New(t, store, root)
+	item, err := center.ImportBytes(ctx, []byte("cached"), media.Input{Name: "input.txt"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	sandbox := t.TempDir()
-	bridge := toolmedia.NewMediaRuntime(center, sandbox)
+	bridge := toolmedia.NewMediaRuntime(center, sandbox, mediatest.Publisher(center))
 	call := bridge.NewCall()
 	path, err := call.CachedExport(ctx, item.ID)
 	if err != nil {
@@ -37,16 +38,12 @@ func TestSandboxMediaCacheRefreshAndExpiry(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Each invocation refreshes once; repeated reads within it reuse the path.
-	if err := call.Close(); err != nil {
-		t.Fatal(err)
-	}
+	call.Close()
 	call = bridge.NewCall()
 	if _, err := call.CachedExport(ctx, item.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := call.Close(); err != nil {
-		t.Fatal(err)
-	}
+	call.Close()
 	cutoff := time.Now().AddDate(0, 0, -7)
 	if deleted, err := cleanupSandbox(ctx, sandbox, cutoff); err != nil || deleted != 0 {
 		t.Fatalf("fresh cache deleted: %d %v", deleted, err)

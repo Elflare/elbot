@@ -7,6 +7,7 @@ import (
 )
 
 // Objects 是交付组件需要的对象能力，不包含仓储或回收控制。
+// Info、Hold 对明确缺失或删除中的对象返回 UnavailableError。
 type Objects interface {
 	Info(ctx context.Context, id string) (MediaInfo, error)
 	Hold(ctx context.Context, id string) (HeldMedia, error)
@@ -19,11 +20,12 @@ type Objects interface {
 }
 
 // HeldMedia 让交付组件在持有期间选择读取或远端 URL；记录留在 object。
+// Open、SignedURL 对确认缺失的已归档内容返回 UnavailableError；其他故障原样保留。
 type HeldMedia interface {
 	Info() MediaInfo
 	Open(context.Context) (io.ReadCloser, error)
 	SignedURL(context.Context) (string, error)
-	Close() error
+	Close(context.Context) error
 }
 
 // Backend 操作对象位置；本地后端不提供签名能力。

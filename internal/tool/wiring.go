@@ -49,7 +49,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Core:   cfg.ResidentMemory.CoreMaxUnits,
 		Normal: cfg.ResidentMemory.NormalMaxUnits,
 	})
-	mediaRuntime := toolmedia.NewMediaRuntime(deps.Media, cfg.Sandbox.Root)
+	mediaRuntime := toolmedia.NewMediaRuntime(deps.Media, cfg.Sandbox.Root, publishMediaUsageFinished(deps.Media))
 	skillRoot := filepath.Join(configDir, "skills")
 	skillManager := skill.NewManager(skillRoot, registry, mediaRuntime, environment)
 	chatHistory := chat_history.NewManager(&chatHistoryBridge{history: deps.ChatHistory, platform: deps.Platform, media: mediaRuntime}, time.Now)

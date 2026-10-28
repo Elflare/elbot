@@ -5,6 +5,7 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/media"
 	"elbot/internal/session"
 	"elbot/internal/tool"
 
@@ -52,7 +53,8 @@ type LoopDeps struct {
 	Preparer interface {
 		PrepareInput(context.Context, agentshare.LoopInput, *storage.Message, string, []llm.MessageSegment, []llm.LLMMessage, []llm.ToolSchema, bool) ([]llm.MessageSegment, []llm.ToolSchema, error)
 		ArchiveMaterials(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, error)
-		PrepareMaterials(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, func(), error)
+		PrepareMaterials(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, media.UsageID, error)
+		FinishMaterials(context.Context, media.UsageID)
 	}
 	Tools interface {
 		Schemas(context.Context, *storage.Session) ([]llm.ToolSchema, error)

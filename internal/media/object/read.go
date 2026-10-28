@@ -18,10 +18,13 @@ func (m *Manager) Info(ctx context.Context, id string) (share.MediaInfo, error) 
 	}
 	item, err := m.media.Get(ctx, id)
 	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return share.MediaInfo{}, &share.UnavailableError{Err: err}
+		}
 		return share.MediaInfo{}, err
 	}
 	if item.Deleting {
-		return share.MediaInfo{}, storage.ErrNotFound
+		return share.MediaInfo{}, &share.UnavailableError{Err: storage.ErrNotFound}
 	}
 	return mediaInfo(item), nil
 }
@@ -29,23 +32,6 @@ func (m *Manager) Info(ctx context.Context, id string) (share.MediaInfo, error) 
 // mediaInfo 只投影通用信息，不兼容修正已有记录。
 func mediaInfo(item *storage.Media) share.MediaInfo {
 	return share.MediaInfo{ID: item.ID, Name: item.Name, MIMEType: item.MIMEType, Size: item.Size}
-}
-
-// Open 取得单次读取持有，读取器 Close 同时负责释放且允许重试失败释放。
-// 打开失败且释放也失败时，返回非 nil 读取器仅供 Close 重试，不可 Read。
-func (m *Manager) Open(ctx context.Context, id string) (io.ReadCloser, share.MediaInfo, error) {
-	held, err := m.Hold(ctx, id)
-	if err != nil {
-		return nil, share.MediaInfo{}, err
-	}
-	reader, err := held.Open(ctx)
-	if err != nil {
-		if cleanupErr := held.Close(); cleanupErr != nil {
-			return &referencedReader{held: held}, held.Info(), errors.Join(err, cleanupErr)
-		}
-		return nil, held.Info(), err
-	}
-	return &referencedReader{ReadCloser: reader, held: held}, held.Info(), nil
 }
 
 // Read 读取完整内容并汇总读取、读取器关闭和引用释放错误。

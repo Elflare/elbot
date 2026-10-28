@@ -17,10 +17,11 @@ import (
 	"elbot/internal/media"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil/mediatest"
 	"elbot/internal/tool/share"
 )
 
-func newMediaAPITest(t *testing.T) (*MediaRuntime, *media.Manager) {
+func newMediaAPITest(t *testing.T) (*MediaRuntime, *media.MediaCenter) {
 	t.Helper()
 	store, err := sqlite.New(t.Context(), filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
@@ -28,8 +29,8 @@ func newMediaAPITest(t *testing.T) (*MediaRuntime, *media.Manager) {
 	}
 	t.Cleanup(func() { store.Close() })
 	root := t.TempDir()
-	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
-	return NewMediaRuntime(center, t.TempDir()), center
+	center := mediatest.New(t, store, root)
+	return NewMediaRuntime(center, t.TempDir(), mediatest.Publisher(center)), center
 }
 
 func TestMediaAPIMetadataAndImageValidation(t *testing.T) {
@@ -38,7 +39,7 @@ func TestMediaAPIMetadataAndImageValidation(t *testing.T) {
 	if err := png.Encode(&imageData, image.NewNRGBA(image.Rect(0, 0, 2, 3))); err != nil {
 		t.Fatal(err)
 	}
-	record, err := center.ImportBytes(t.Context(), imageData.Bytes(), media.Input{Name: "image.png", MIMEType: "image/png"})
+	record, err := center.ImportBytes(t.Context(), imageData.Bytes(), media.Input{Name: "image.png", MIMEType: "image/png"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +56,7 @@ func TestMediaAPIMetadataAndImageValidation(t *testing.T) {
 		}
 	}
 	for _, data := range [][]byte{[]byte("not an image"), imageData.Bytes()[:33]} {
-		invalid, err := center.ImportBytes(t.Context(), data, media.Input{Name: "broken.png", MIMEType: "image/png"})
+		invalid, err := center.ImportBytes(t.Context(), data, media.Input{Name: "broken.png", MIMEType: "image/png"}, media.ImportLimits{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -142,7 +143,7 @@ func TestMediaAPIHistoryBatchPreservesOrderAndErrors(t *testing.T) {
 	}
 	defer history.Close()
 	center.History = history.Repository()
-	record, err := center.ImportBytes(t.Context(), []byte("file"), media.Input{Name: "file.txt", MIMEType: "text/plain"})
+	record, err := center.ImportBytes(t.Context(), []byte("file"), media.Input{Name: "file.txt", MIMEType: "text/plain"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}

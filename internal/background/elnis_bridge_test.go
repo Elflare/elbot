@@ -19,10 +19,10 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/storage"
 	"elbot/internal/testutil"
+	"elbot/internal/testutil/mediatest"
 	"elbot/internal/tool"
 )
 
@@ -30,7 +30,7 @@ func newElnisBridgeFixture(t *testing.T) (elnisBridge, storage.Store) {
 	t.Helper()
 	store := testutil.NewSQLiteStore(t)
 	root := t.TempDir()
-	return elnisBridge{repo: store.ElnisEvents(), media: media.NewManager(store, root, &media.LocalBackend{Root: root})}, store
+	return elnisBridge{repo: store.ElnisEvents(), media: mediatest.New(t, store, root)}, store
 }
 func elnisBridgeRequest(mode string) elnis.Request {
 	return elnis.Request{Version: "elvena.v2", Elwisp: elnis.Elwisp{Name: "watcher"}, Source: "source", ID: "event", Mode: mode, Format: "text", Content: "hello", Targets: []elnis.Target{{Platform: "cli"}}}
@@ -77,7 +77,8 @@ func seedElnisReportMessage(t *testing.T, store storage.Store) {
 func TestElnisBridgeRecordsAndTerminalReferences(t *testing.T) {
 	b, store := newElnisBridgeFixture(t)
 	ctx := t.Context()
-	id, err := b.ImportReader(ctx, strings.NewReader("input"), 5, media.Input{Name: "input.txt"})
+	info, err := b.ImportReader(ctx, strings.NewReader("input"), 5, media.Input{Name: "input.txt"}, media.ImportLimits{})
+	id := info.ID
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +151,8 @@ func TestElnisBridgeReportTransactionsAndRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id, err := b.ImportReader(ctx, strings.NewReader("report"), 6, media.Input{Name: "report.txt"})
+	info, err := b.ImportReader(ctx, strings.NewReader("report"), 6, media.Input{Name: "report.txt"}, media.ImportLimits{})
+	id := info.ID
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,11 +247,9 @@ func TestElnisBridgeReportTransactionsAndRecovery(t *testing.T) {
 	}
 }
 
-func TestElnisBridgeMaterializeLimitsArePerCall(t *testing.T) {
+func TestElnisBridgeImportLimitsArePerCall(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		b, _ := newElnisBridgeFixture(t)
-		b.media.MaxImportBytes = 4
-		b.media.DownloadTimeout = time.Millisecond
 		server := testutil.NewVirtualDefaultHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			select {
 			case <-time.After(50 * time.Millisecond):
@@ -257,18 +257,17 @@ func TestElnisBridgeMaterializeLimitsArePerCall(t *testing.T) {
 			case <-r.Context().Done():
 			}
 		}))
-		segments := []llm.MessageSegment{{Type: llm.SegmentFile, URL: server.URL, Name: "file.txt"}}
-		if _, err := b.MaterializeWithLimits(t.Context(), segments, media.ImportLimits{MaxImportBytes: 3, DownloadTimeout: time.Second}); err == nil {
+		if _, err := b.ImportURL(t.Context(), server.URL, media.Input{Name: "file.txt"}, media.ImportLimits{MaxImportBytes: 3, DownloadTimeout: time.Second}); err == nil {
 			t.Fatal("size limit ignored")
 		}
-		if _, err := b.MaterializeWithLimits(t.Context(), segments, media.ImportLimits{MaxImportBytes: 4, DownloadTimeout: time.Second}); err != nil {
+		if _, err := b.ImportURL(t.Context(), server.URL, media.Input{Name: "file.txt"}, media.ImportLimits{MaxImportBytes: 4, DownloadTimeout: time.Second}); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := b.MaterializeWithLimits(t.Context(), segments, media.ImportLimits{MaxImportBytes: 4, DownloadTimeout: time.Millisecond}); err == nil {
+		if _, err := b.ImportURL(t.Context(), server.URL, media.Input{Name: "file.txt"}, media.ImportLimits{MaxImportBytes: 4, DownloadTimeout: time.Millisecond}); err == nil {
 			t.Fatal("timeout ignored")
 		}
-		if b.media.MaxImportBytes != 4 || b.media.DownloadTimeout != time.Millisecond {
-			t.Fatal("global limits changed")
+		if _, err := b.ImportURL(t.Context(), server.URL, media.Input{}, media.ImportLimits{}); err != nil {
+			t.Fatal("per-call limits changed default imports:", err)
 		}
 	})
 }
@@ -338,7 +337,8 @@ func TestElnisBridgeReportMediaSurvivesWorkspaceRemoval(t *testing.T) {
 
 func TestElnisBridgeCancelledEnqueueReleasesInput(t *testing.T) {
 	b, store := newElnisBridgeFixture(t)
-	id, err := b.ImportReader(t.Context(), strings.NewReader("input"), 5, media.Input{Name: "input.txt"})
+	info, err := b.ImportReader(t.Context(), strings.NewReader("input"), 5, media.Input{Name: "input.txt"}, media.ImportLimits{})
+	id := info.ID
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,7 +365,8 @@ func TestElnisBridgeURLImportAndReferenceValidation(t *testing.T) {
 	b, store := newElnisBridgeFixture(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, "url media") }))
 	defer server.Close()
-	id, err := b.ImportURL(t.Context(), server.URL, media.Input{Name: "download.txt", MIMEType: "text/plain"})
+	info, err := b.ImportURL(t.Context(), server.URL, media.Input{Name: "download.txt", MIMEType: "text/plain"}, media.ImportLimits{})
+	id := info.ID
 	if err != nil || !media.ValidID(id) {
 		t.Fatal(id, err)
 	}
@@ -383,7 +384,7 @@ func TestElnisBridgeURLImportAndReferenceValidation(t *testing.T) {
 	if err := b.AddEventReference(t.Context(), "media:"+strings.Repeat("f", 64), "event", "report"); err == nil {
 		t.Fatal("accepted missing media")
 	}
-	if _, err := b.ImportURL(t.Context(), "invalid", media.Input{}); err == nil {
+	if _, err := b.ImportURL(t.Context(), "invalid", media.Input{}, media.ImportLimits{}); err == nil {
 		t.Fatal("discarded import error")
 	}
 }
@@ -519,7 +520,7 @@ func TestQueuedMediaReferencesRecoverAfterInterruption(t *testing.T) {
 	ctx := context.Background()
 	b, store := newElnisBridgeFixture(t)
 	s := newElnisBridgeService(t, b, elnis.Options{})
-	item, err := b.media.ImportBytes(ctx, []byte("queued"), media.Input{Name: "input.png"})
+	item, err := b.media.ImportBytes(ctx, []byte("queued"), media.Input{Name: "input.png"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}

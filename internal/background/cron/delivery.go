@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"strings"
 	"time"
@@ -14,7 +15,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
-	"elbot/internal/llm"
 	"elbot/internal/session"
 	"elbot/internal/workspace"
 )
@@ -103,7 +103,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 			default:
 				segment := state.ReportSegments[segmentIndex]
 				var scope workspace.PathScope
-				if segment.MediaID == "" && !delivery.IsHTTPMediaSource(segment.URL) {
+				if segment.Source.Path != "" {
 					scope, buildErr = s.cronSandbox(job.Name)
 				}
 				if buildErr == nil {
@@ -304,12 +304,14 @@ func deliveryStatusDone(status DeliveryStatus) bool {
 	return status == DeliveryDelivered || status == DeliveryFallbackDelivered
 }
 
-func reportSegmentFallbackText(segment llm.MessageSegment) string {
-	value := strings.TrimSpace(segment.URL)
-	if delivery.IsHTTPMediaSource(value) {
-		return fmt.Sprintf("url %s 发送失败", value)
+func reportSegmentFallbackText(segment delivery.Output) string {
+	if segment.Source.URL != "" {
+		return fmt.Sprintf("url %s 发送失败", segment.Source.URL)
 	}
-	return fmt.Sprintf("路径 %s 附件发送失败", value)
+	if segment.Source.MediaID != "" {
+		return fmt.Sprintf("媒体 %s 发送失败", segment.Source.MediaID)
+	}
+	return fmt.Sprintf("路径 %s 附件发送失败", segment.Source.Path)
 }
 
 func (s *Service) cronSandbox(jobName string) (workspace.PathScope, error) {
@@ -330,8 +332,13 @@ func decodeDeliveryState(raw string) (CronDeliveryState, error) {
 		return CronDeliveryState{}, nil
 	}
 	var state CronDeliveryState
-	if err := json.Unmarshal([]byte(raw), &state); err != nil {
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&state); err != nil {
 		return CronDeliveryState{}, fmt.Errorf("decode cron delivery state: %w", err)
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		return CronDeliveryState{}, fmt.Errorf("decode cron delivery state: unexpected trailing JSON")
 	}
 	return state, nil
 }

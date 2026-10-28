@@ -3,10 +3,13 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
 	"elbot/internal/storage"
+	sqlitedriver "modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 type MediaRepository struct{ db *sql.DB }
@@ -127,6 +130,11 @@ func (r *MediaReferenceRepository) AddAll(ctx context.Context, refs []storage.Me
 			refs[i].CreatedAt = storage.Now()
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO media_references (media_id, owner_type, owner_id, purpose, session_id, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(media_id, owner_type, owner_id, purpose) DO NOTHING`, refs[i].MediaID, refs[i].OwnerType, refs[i].OwnerID, refs[i].Purpose, nullString(refs[i].SessionID), storage.FormatTime(refs[i].CreatedAt)); err != nil {
+			// 本语句唯一外键指向 media，唯一拒绝插入的触发器保护 deleting 对象。
+			var dbErr *sqlitedriver.Error
+			if errors.As(err, &dbErr) && (dbErr.Code() == sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY || dbErr.Code() == sqlite3.SQLITE_CONSTRAINT_TRIGGER) {
+				return fmt.Errorf("add media reference: %w: %w", storage.ErrNotFound, err)
+			}
 			return fmt.Errorf("add media reference: %w", err)
 		}
 	}

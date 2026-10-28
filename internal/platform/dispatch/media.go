@@ -42,18 +42,18 @@ func (a *Router) prepareMediaOutputs(ctx context.Context, outputs []delivery.Out
 			continue
 		}
 		input := media.Input{Name: out.Name, MIMEType: out.Source.MIMEType}
-		var item *storage.Media
+		var item media.MediaInfo
 		var err error
 		switch {
 		case out.Source.MediaID != "":
-			item, err = a.media.Metadata(ctx, out.Source.MediaID)
+			item, err = a.media.Info(ctx, out.Source.MediaID)
 		case out.Source.URL != "":
 			input.Source.URL = out.Source.URL
-			item, err = a.media.ImportURL(ctx, out.Source.URL, input)
+			item, err = a.media.ImportURL(ctx, out.Source.URL, input, media.ImportLimits{})
 		case out.Source.Path != "":
-			item, err = a.media.ImportFile(ctx, out.Source.Path, input)
+			item, err = a.media.ImportFile(ctx, out.Source.Path, input, media.ImportLimits{})
 		case len(out.Source.Data) > 0:
-			item, err = a.media.ImportBytes(ctx, out.Source.Data, input)
+			item, err = a.media.ImportBytes(ctx, out.Source.Data, input, media.ImportLimits{})
 		}
 		if err != nil {
 			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("prepare output media %d: %v", i, err)}
@@ -73,43 +73,41 @@ func (a *Router) prepareMediaOutputs(ctx context.Context, outputs []delivery.Out
 }
 
 // Resolve only the send copy; Hook events and queued outputs keep media IDs.
-func (a *Router) resolveMediaOutputs(ctx context.Context, outputs []delivery.Output) ([]delivery.Output, func(), globalevents.LogResult, error) {
+func (a *Router) resolveMediaOutputs(ctx context.Context, outputs []delivery.Output) ([]delivery.Output, []media.UsageID, globalevents.LogResult, error) {
 	resolved := append([]delivery.Output(nil), outputs...)
-	var cleanups []func()
-	cleanup := func() {
-		for _, fn := range cleanups {
-			fn()
-		}
-	}
+	var usages []media.UsageID
 	for i, out := range resolved {
 		if out.Source.MediaID == "" {
 			continue
 		}
-		source, release, err := a.media.ResolveForOutput(ctx, out.Source.MediaID)
+		source, usageID, err := a.media.ResolveForOutput(ctx, out.Source.MediaID)
+		if usageID != "" {
+			usages = append(usages, usageID)
+		}
 		if err != nil {
-			cleanup()
 			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("resolve output media %d: %v", i, err)}
 			if errors.Is(err, context.Canceled) {
 				logResult.ResultStatus = globalevents.ResultCanceled
 			}
-			return nil, func() {}, logResult, err
+			return nil, usages, logResult, err
 		}
-		cleanups = append(cleanups, release)
 		resolved[i].Source = source
 	}
-	return resolved, cleanup, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+	return resolved, usages, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
-func (a *Router) sendPreparedMedia(ctx context.Context, outputs []delivery.Output, send func([]delivery.Output) (delivery.Receipt, globalevents.LogResult, error)) (delivery.Receipt, globalevents.LogResult, error) {
+func (a *Router) sendPreparedMedia(ctx context.Context, outputs []delivery.Output, send func([]delivery.Output) (delivery.Receipt, globalevents.LogResult, error)) (receipt delivery.Receipt, logResult globalevents.LogResult, err error) {
 	prepared, logResult, err := a.prepareMediaOutputs(ctx, outputs)
 	if err != nil {
 		return delivery.Receipt{}, logResult, err
 	}
-	resolved, cleanup, logResult, err := a.resolveMediaOutputs(ctx, prepared)
+	resolved, usages, logResult, err := a.resolveMediaOutputs(ctx, prepared)
+	if len(usages) != 0 {
+		defer a.publishUsageFinished(ctx, usages)
+	}
 	if err != nil {
 		return delivery.Receipt{}, logResult, err
 	}
-	defer cleanup()
 	receipt, logResult, sendErr := send(resolved)
 	if logResult.Content != "" {
 		logResult.Content += "\n"

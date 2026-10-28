@@ -7,7 +7,6 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
-	toolmedia "elbot/internal/tool/media"
 	toolregistry "elbot/internal/tool/registry"
 	"encoding/json"
 	"errors"
@@ -22,7 +21,7 @@ func TestPreparedAgentSkillReadUsesExecutionContent(t *testing.T) {
 	dir := filepath.Join(root, "agent", "docx")
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# DOCX")
 	writeAgentSkillConfig(t, dir, "risk = \"low\"\n")
-	manager := NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), toolmedia.NewMediaRuntime(nil, ""), processenv.Environment{})
+	manager := NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), newTestMediaRuntime(t), processenv.Environment{})
 	if err := manager.Reload(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +64,7 @@ func TestAgentSkillWriteRollsBackConfigWhenReloadFails(t *testing.T) {
 				writeAgentSkillConfig(t, dir, tc.oldContent)
 			}
 			registry := toolregistry.NewRegistry(security.DefaultPermission())
-			manager := NewManager(root, registry, toolmedia.NewMediaRuntime(nil, ""), processenv.Environment{})
+			manager := NewManager(root, registry, newTestMediaRuntime(t), processenv.Environment{})
 			if err := manager.Reload(context.Background()); err != nil {
 				t.Fatal(err)
 			}
@@ -108,7 +107,7 @@ func TestAgentSkillWriteCommitsConfigAndReload(t *testing.T) {
 	dir := filepath.Join(root, "agent", "docx")
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# DOCX")
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	manager := NewManager(root, registry, toolmedia.NewMediaRuntime(nil, ""), processenv.Environment{})
+	manager := NewManager(root, registry, newTestMediaRuntime(t), processenv.Environment{})
 	if err := manager.Reload(context.Background()); err != nil {
 		t.Fatal(err)
 	}

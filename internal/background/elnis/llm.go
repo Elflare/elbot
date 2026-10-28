@@ -56,7 +56,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		record.Category, record.EventName = globalevents.LogElnis, "elnis_llm_started"
 		background.LogBackground(ctx, record)
 	}
-	segments, err := s.materializeSegments(ctx, event.Request.Segments, eventID)
+	segments, err := s.materializeSegments(ctx, event.Segments, eventID)
 	if err != nil {
 		persistenceErr := s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
 		content := map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID, "error": fmt.Sprintf("%.2048s", err.Error())}

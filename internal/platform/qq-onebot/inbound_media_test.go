@@ -13,6 +13,7 @@ import (
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil/mediatest"
 )
 
 func TestPureMediaHistoryPreservesOrderWithoutCredentials(t *testing.T) {
@@ -47,8 +48,8 @@ func TestOutputReferenceDoesNotFetchPlatform(t *testing.T) {
 	}
 	defer store.Close()
 	root := t.TempDir()
-	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
-	item, err := center.ImportBytes(ctx, []byte("image"), media.Input{Name: "image.png", MIMEType: "image/png"})
+	center := mediatest.New(t, store, root)
+	item, err := center.ImportBytes(ctx, []byte("image"), media.Input{Name: "image.png", MIMEType: "image/png"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}

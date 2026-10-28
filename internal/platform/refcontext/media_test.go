@@ -11,14 +11,15 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil/mediatest"
 )
 
 func TestReferenceMediaOutputHistoryAndFallbackPriority(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
 	root := t.TempDir()
-	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
-	item, err := center.ImportBytes(ctx, []byte("image"), media.Input{Name: "image.png", MIMEType: "image/png"})
+	center := mediatest.New(t, store, root)
+	item, err := center.ImportBytes(ctx, []byte("image"), media.Input{Name: "image.png", MIMEType: "image/png"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,12 +113,12 @@ func TestReferenceHistoryRestoresStableMediaAssociations(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
 	root := t.TempDir()
-	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
-	image, err := center.ImportBytes(ctx, []byte("image body"), media.Input{Name: "image.png", MIMEType: "image/png"})
+	center := mediatest.New(t, store, root)
+	image, err := center.ImportBytes(ctx, []byte("image body"), media.Input{Name: "image.png", MIMEType: "image/png"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	file, err := center.ImportBytes(ctx, []byte("file body"), media.Input{Name: "file.txt", MIMEType: "text/plain"})
+	file, err := center.ImportBytes(ctx, []byte("file body"), media.Input{Name: "file.txt", MIMEType: "text/plain"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}

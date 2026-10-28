@@ -3,13 +3,13 @@
 package output
 
 import (
+	"bytes"
 	"encoding/base64"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
-	"elbot/internal/llm"
+	"elbot/internal/delivery"
 )
 
 var tinyPNG = []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52}
@@ -34,15 +34,19 @@ func TestBuildMessageSegmentsNormalizesImageSources(t *testing.T) {
 			if err != nil {
 				t.Fatalf("BuildMessageSegments: %v", err)
 			}
-			if len(segments) != 2 || segments[0].Type != llm.SegmentText || segments[1].Type != llm.SegmentImage {
+			if len(segments) != 2 || segments[0].Kind != delivery.KindText || segments[1].Kind != delivery.KindImage {
 				t.Fatalf("segments = %#v", segments)
 			}
 			if test.name == "http url" {
-				if segments[1].URL != test.spec.URL {
-					t.Fatalf("url = %q", segments[1].URL)
+				if segments[1].Source.URL != test.spec.URL {
+					t.Fatalf("source = %+v", segments[1].Source)
 				}
-			} else if !strings.HasPrefix(segments[1].URL, "data:image/png;base64,") {
-				t.Fatalf("url = %q", segments[1].URL)
+			} else if test.name == "relative path" {
+				if segments[1].Source.Path != filepath.Join(dir, "result.png") {
+					t.Fatal(segments[1])
+				}
+			} else if !bytes.Equal(segments[1].Source.Data, tinyPNG) {
+				t.Fatalf("source = %+v", segments[1].Source)
 			}
 		})
 	}
@@ -52,7 +56,9 @@ func TestBuildMessageSegmentsRejectsInvalidImages(t *testing.T) {
 	for _, spec := range []MessageSegment{
 		{Type: "image"},
 		{Type: "image", URL: "https://example.com/a.png", Base64: "YQ=="},
-		{Type: "image", Base64: base64.StdEncoding.EncodeToString([]byte("plain text"))},
+		{Type: "image", Base64: "%%%"},
+		{Type: "image", URL: "ftp://example.com/image.png"},
+		{Type: "image", URL: "http:broken"},
 		{Type: "file", URL: "https://example.com/a.txt"},
 	} {
 		if _, err := BuildMessageSegments([]MessageSegment{spec}, t.TempDir()); err == nil {

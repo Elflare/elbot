@@ -3,32 +3,28 @@ package media
 
 import (
 	"context"
-	"crypto/rand"
-	"errors"
-	"os"
-	"time"
 
-	"elbot/internal/storage"
+	"elbot/internal/media"
 	"elbot/internal/tool/share"
 )
 
-// MediaCall 由单次调用串行使用；Close 后仅允许重试清理。
+// MediaCall 由单次调用串行使用；Close 发布结束事实。
 type MediaCall struct {
 	runtime   *MediaRuntime             // 本次调用借用的统一媒体入口。
-	owner     string                    // 本次调用的临时引用所有者。
 	mediaByID map[string]*retainedMedia // 已持有的记录及本次调用内的导出状态。
-	dir       string                    // 本次调用拥有并在 Close 时删除的临时目录。
+	dir       string                    // 由 Media 持有并负责清理的调用私有目录。
+	dirUsage  media.UsageID             // 私有目录对应的独立使用。
 }
 
 type retainedMedia struct {
-	metadata   *storage.Media         // 内部持有的存储记录，只用于媒体文件操作。
-	ref        storage.MediaReference // 防止媒体在调用期间被清理的引用。
-	exported   bool                   // 是否已导出到调用私有目录。
-	cachedPath string                 // 本次调用已准备的共享缓存路径。
+	metadata   media.MediaInfo  // 已持有媒体的公开信息快照。
+	held       *media.HeldMedia // 防止媒体在调用期间被清理的持有。
+	exported   bool             // 是否已导出到调用私有目录。
+	cachedPath string           // 本次调用已准备的共享缓存路径。
 }
 
 func (r *MediaRuntime) NewCall() share.MediaCall {
-	return &MediaCall{runtime: r, owner: rand.Text(), mediaByID: map[string]*retainedMedia{}}
+	return &MediaCall{runtime: r, mediaByID: map[string]*retainedMedia{}}
 }
 
 // Retain 持有媒体到 Close，仅将通用信息交给工具。
@@ -36,38 +32,33 @@ func (c *MediaCall) Retain(ctx context.Context, id string) (share.MediaInfo, err
 	if item, ok := c.mediaByID[id]; ok {
 		return mediaInfo(item.metadata), ctx.Err()
 	}
-	metadata, err := c.runtime.center.Metadata(ctx, id)
+	held, err := c.runtime.center.Hold(ctx, id)
 	if err != nil {
 		return share.MediaInfo{}, err
 	}
-	return c.retain(ctx, metadata)
-}
-
-func (c *MediaCall) retain(ctx context.Context, metadata *storage.Media) (share.MediaInfo, error) {
-	if item, ok := c.mediaByID[metadata.ID]; ok {
-		return mediaInfo(item.metadata), ctx.Err()
-	}
-	ref := storage.MediaReference{MediaID: metadata.ID, OwnerType: "skill", OwnerID: c.owner, Purpose: "temporary"}
-	if err := c.runtime.center.AddReference(ctx, &ref); err != nil {
-		return share.MediaInfo{}, err
-	}
-	c.mediaByID[metadata.ID] = &retainedMedia{metadata: metadata, ref: ref}
+	metadata := held.Info()
+	c.mediaByID[id] = &retainedMedia{metadata: metadata, held: held}
 	return mediaInfo(metadata), nil
 }
 
-func (c *MediaCall) Close() error {
-	var errs []error
-	if c.dir != "" {
-		errs = append(errs, os.RemoveAll(c.dir))
+func (c *MediaCall) retain(ctx context.Context, metadata media.MediaInfo) (share.MediaInfo, error) {
+	if item, ok := c.mediaByID[metadata.ID]; ok {
+		return mediaInfo(item.metadata), ctx.Err()
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	for id, item := range c.mediaByID {
-		if err := c.runtime.center.RemoveReference(ctx, item.ref); err != nil {
-			errs = append(errs, err)
-		} else {
-			delete(c.mediaByID, id)
-		}
+	return c.Retain(ctx, metadata.ID)
+}
+
+func (c *MediaCall) Close() {
+	ids := make([]media.UsageID, 0, len(c.mediaByID)+1)
+	if c.dirUsage != "" {
+		ids = append(ids, c.dirUsage)
 	}
-	return errors.Join(errs...)
+	for _, item := range c.mediaByID {
+		ids = append(ids, item.held.UsageID)
+	}
+	if len(ids) != 0 {
+		c.runtime.publishUsageFinished(context.Background(), ids)
+	}
+	c.mediaByID = nil
+	c.dir, c.dirUsage = "", ""
 }

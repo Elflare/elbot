@@ -11,6 +11,7 @@ import (
 
 	"elbot/internal/media"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil/mediatest"
 )
 
 func TestSendFileMediaIDBuildsLocalOutput(t *testing.T) {
@@ -21,13 +22,13 @@ func TestSendFileMediaIDBuildsLocalOutput(t *testing.T) {
 	}
 	defer store.Close()
 	root := filepath.Join(t.TempDir(), "sandbox")
-	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
-	resource, err := center.ImportBytes(ctx, []byte("hello"), media.Input{Name: "hello.txt", MIMEType: "text/plain"})
+	center := mediatest.New(t, store, root)
+	resource, err := center.ImportBytes(ctx, []byte("hello"), media.Input{Name: "hello.txt", MIMEType: "text/plain"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatalf("import media: %v", err)
 	}
 
-	toolValue := NewSendFileTool(toolmedia.NewMediaRuntime(center, root))
+	toolValue := NewSendFileTool(toolmedia.NewMediaRuntime(center, root, mediatest.Publisher(center)))
 	arguments, _ := json.Marshal(map[string]string{"source": resource.ID})
 	result, _, err := callTool(ctx, toolValue, toolshare.CallRequest{Arguments: arguments})
 	if err != nil {

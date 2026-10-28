@@ -205,10 +205,7 @@ func TestManagerBuildsCanonicalRuntimeOutputs(t *testing.T) {
 }
 
 func TestManagerBuildsCanonicalRuntimeMessageSegments(t *testing.T) {
-	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
+	manager, _, _, _ := testMediaRuntime(t)
 	config := share.RuntimeConfig{Mode: share.RuntimeModePersistent, Command: runtimeHelperCommand(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 2, EventTimeoutSeconds: 2, MaxWaitSeconds: 30, Restart: share.RuntimeRestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1}, ID: "demo", Dir: t.TempDir()}
 	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
 		t.Fatalf("Apply: %v", err)
@@ -225,7 +222,7 @@ func TestManagerBuildsCanonicalRuntimeMessageSegments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Message.Segments) != 2 || !strings.HasPrefix(got.Message.Segments[1].URL, "data:image/png;base64,") || got.Tool.Result != "截图完成" {
+	if len(got.Message.Segments) != 2 || got.Message.Segments[1].MediaID == "" || got.Message.Segments[1].URL != "" || got.Tool.Result != "截图完成" {
 		t.Fatalf("event = %#v", got)
 	}
 }

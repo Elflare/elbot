@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -79,13 +78,7 @@ func (r GoRunner) call(ctx context.Context, args goRunnerArgs, record record, ru
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	mediaCall := r.manager.media.NewCall()
-	defer func() {
-		err := mediaCall.Close()
-		callErr = errors.Join(callErr, err)
-		if err != nil {
-			logContent = fmt.Sprintf("media_cleanup_error=%v\n%s", err, logContent)
-		}
-	}()
+	defer mediaCall.Close()
 	payload, err := prepareGoMedia(runCtx, args.Payload, mediaCall, record.Root)
 	if err != nil {
 		{

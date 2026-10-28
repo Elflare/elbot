@@ -32,14 +32,15 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	}
 	manager := pipeline.NewManager(LogHook, runtime.Route)
 	opts := rules.Options{
-		ConfigDir:       configDir,
-		Tools:           deps.Tools,
-		Send:            deps.Platform.SendTo,
-		CallPlatformAPI: deps.Platform.CallPlatformAPI,
-		Runtime:         runtime,
-		ProcessEnv:      processenv.New(os.Environ()),
-		Log:             LogHook,
-		Notify:          notify,
+		BuildMessageSegments: runtime.BuildMessageSegments,
+		ConfigDir:            configDir,
+		Tools:                deps.Tools,
+		Send:                 deps.Platform.SendTo,
+		CallPlatformAPI:      deps.Platform.CallPlatformAPI,
+		Runtime:              runtime,
+		ProcessEnv:           processenv.New(os.Environ()),
+		Log:                  LogHook,
+		Notify:               notify,
 	}
 	loadHooks := func() (share.ReloadReport, control.ReloadCandidate, error) {
 		candidate := pipeline.NewManager(LogHook, nil)

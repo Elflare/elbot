@@ -14,6 +14,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/security"
+	"elbot/internal/testutil/mediatest"
 )
 
 type entryProbe struct {
@@ -111,7 +112,7 @@ func TestWaitingInputPreparesMediaWithoutRecomputingWakeup(t *testing.T) {
 	})
 	store := newTestStore(t)
 	root := t.TempDir()
-	h.media = media.NewManager(store, root, &media.LocalBackend{Root: root})
+	h.media = mediatest.New(t, store, root)
 	ctx := agentshare.WithMessageContext(contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram", ConversationKind: contextinfo.ConversationGroup}}), agentshare.MessageContext{
 
 		TriggerKeywords: []string{"wake"}, ResolveMedia: resolver.ResolveMedia,

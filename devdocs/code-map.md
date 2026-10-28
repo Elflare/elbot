@@ -18,7 +18,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 启动与装配
 
 - `cmd/elbot/main.go`、`internal/launcher/cli.go`：程序入口、参数与运行模式。
-- `internal/app/` 六文件按下层接口已存在来实现公共流程，五条业务线已提供根包总管，配置独占已实现；媒体和模型构造入口及进程入口适配仍待完成。13 个原生产文件和 12 个原测试文件保存在 `*.go.bak` 中；职责与调用契约见 [App 包设计](app-design.md)。
+- `internal/app/` 六文件按下层接口已存在来实现公共流程，五条业务线已提供根包总管，配置独占、媒体构造与消费者接线已实现；模型构造入口及进程入口适配仍待完成。13 个原生产文件和 12 个原测试文件保存在 `*.go.bak` 中；职责与调用契约见 [App 包设计](app-design.md)。
 - `internal/app/entry.go`：启动参数、局部阶段列表、统一阶段执行与耗时、Lifecycle／可选 Waiter、唯一总管集合、按顺序启动与按能力等待。
 - `internal/app/environment.go`：验证运行模式，定位配置并转为解析符号链接后的绝对路径；TUI／Service 通过 `gofrs/flock` 非阻塞取得对应 `.lock` 文件的独占锁。
 - `internal/app/environment_test.go`：配置定位、路径别名、配置替换保存、跨进程互斥、正常及异常退出后的重新取锁测试，可独立运行。
@@ -74,7 +74,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/background.go`：后台执行、复制、清理与接管查询公开入口，以及调用方和 Agent 的取消连接；`input/background.go`、`background_deps.go`：后台身份、会话、工具准备与独用消费契约。
 - `internal/background/execution/runner.go`、`runner_deps.go`：任务目录与后台来源准备，以及仅含 Agent.RunBackground 的消费契约。
 - `internal/agent/dialogue/runner.go`、`preparation.go`：公共单轮、组件构造、输入准备与终态失败报告。
-- `internal/agent/dialogue/materials.go`：消息归档与请求媒体准备；共享投影与片段编解码在 `share/dialogue.go`。
+- `internal/agent/dialogue/materials.go`：要求上游媒体 ID、规范消息并准备模型请求副本；共享投影与片段编解码在 `share/dialogue.go`。
 - `internal/agent/dialogue/model_call.go`、`system_prompt.go`：公共模型 Hook、调用观察与 Prompt 来源。
 - `internal/agent/dialogue/message_store.go`、`commit.go`、`reply_commit.go`：消息、工具批次及最终回复提交。
 - `internal/agent/chat/`：Chat Loop、请求、历史、摘要与 seed。
@@ -234,7 +234,7 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/platform/share/{message,reference}.go`：内部路由上下文、片段、引用恢复契约与引用格式化。根部 `agent.go` 转换 Agent 输入，RestoreMessageContext 恢复公开事实及内部路由，不改写目标公共会话事实。
 - `internal/agent/contracts.go`、`share/input.go`：Agent 自有 MessageRequest 与内部输入上下文；平台恢复由根部注入，后台入口清除继承的平台状态。
 - `internal/storage/chat_history.go`：ChatSegment、ChatReply 和持久化编解码，保留片段顺序与来源清洗规则。
-- `internal/media/types.go`、`transfer/platform.go`、`object/history.go`：公开平台与历史类型、内部批量获取、对象缓存与关联；对象缓存与关联已实现，transfer 批量获取仍为骨架，消费者迁移待完成。
+- `internal/media/types.go`、`transfer/platform.go`、`object/history.go`：公开平台与历史类型、批量获取编排、对象缓存与关联；消费者通过根包契约接入。
 - `internal/platform/{lifecycle,contracts,agent}_test.go`：生命周期、公开事实隔离独立测试，以及输入转换与投影测试；本轮契约迁移的测试留到 review 运行。
 - `internal/platform/qq-onebot/adapter.go`：适配器、配置、自有最小 Deps 和唯一 NewFromPlatformConfig 构造入口。根部注入历史、引用恢复和两项存储查询。
 - `internal/platform/qq-onebot/{lifecycle,send}.go`：分阶段启停、重连、输入接纳和临时连接登记；消息发送、输出编码及回执。停止接入后保留已建立连接发送，最终 Close 等待实际释放。
@@ -306,28 +306,36 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/background/elnis/direct.go`：原生调用、直接投递与完成状态；选择平台后通过注入函数转交原始 API 与参数，按顺序执行并在失败或取消时停止。
 - `internal/background/elnis/auth.go`、`prepare.go`、`targets.go`：鉴权、规范化与目标裁决；targets.go 的 toDeliveryTarget 供直接发送与报告投递共用。
 - `internal/background/elnis/repository.go`：Elnis 独用事件仓储、最小记录及写入请求；根部 wiring.go 转换 Storage 记录与错误。
-- `internal/background/elnis/media.go`：四项媒体消费能力、输入物化、直接输出准备与报告附件受限导入；directText 组装直接输出正文。根部适配媒体中心，导入仅返回稳定 ID。
+- `internal/background/elnis/media.go`：协议来源分类、明确来源导入、直接输出准备与报告附件受限导入；directText 组装直接输出正文。prepare.go 保存 Event.Segments，根部适配 MediaInfo、分类导入与事件引用能力。
 - `internal/background/elnis/outbox.go`：报告准备、有序投递与恢复，事务由仓储执行。
 - `internal/storage/sqlite/elnis_event_repository.go`：事件仓储与引用事务。
-- `internal/background/share/`：公共后台类型、JSON 结果、接管检查与日志发布；report.go 提供报告构造及 Cron／Elnis 共用的 ReportMessageMap、MapReportReceipt。
+- `internal/background/share/`：公共后台类型、接管检查与日志发布；result.go 将外部报告解析为明确来源并提供外部协议序列化，report.go 按明确来源构造报告及提供 Cron／Elnis 共用的 ReportMessageMap、MapReportReceipt。
 - [内部架构](elnis-elwisp.md)、[功能说明](../docs/elnis.md)、[配置与协议示例](../docs/elnis-usage.md)。
 
 <!-- locator:media -->
 ## 媒体中心
 
-Media 根部公开入口与装配，share 的 ID 校验与名称清理及 backend 的本地、S3 和延迟构造已实现，object 的导入读取、图片、持有引用、历史、副本签名及回收已实现，transfer 仍以 TODO panic 占位；15 个生产文件和 12 个测试文件保留为 `*.go.bak`。各包编译及 object、backend、share 和根部参数 ID 提取、凭据与构造提前失败测试通过 race，消费者与完整应用尚未接入。完整字段、接口与文件职责见 [Media 契约](app-design.md#media-根部与下层契约)。
+Media 根部入口与装配、object 对象管理、transfer 交付编排、backend 读写及 share 协作契约均已实现；15 个生产文件和 12 个测试文件保留为 `*.go.bak`。App 与五条业务线已接入公开契约，完整应用仍需模型构造与进程入口。完整字段、接口、验证范围与文件职责见 [Media 契约](app-design.md#media-根部与下层契约)。
 
 - `internal/media/api.go`、`wiring.go`、`deps.go`：MediaCenter 公开入口、完整配置构造装配、Store／History 消费契约。
-- `internal/media/types.go`、`reference.go`：公开 MediaInfo、来源与历史类型；HeldMedia、Reference 和参数媒体 ID 解析。查询统一命名 Info，公开类型不暴露内部记录。
+- `internal/media/types.go`、`reference.go`：公开 MediaInfo、UsageID、UsageFinishedEvent、来源与历史类型；HeldMedia 读取与使用身份、Reference 和参数 ID 解析。
+- `internal/media/signals.go`：登记结束事实、发布与持有订阅、排空及最终关闭；`signals_test.go` 验证取消、独立使用、失败维护、重复通知、队列拒收与关闭超时。
+- `internal/agent/signals.go`、`internal/platform/signals.go`、`internal/tool/signals.go`：各消费者的媒体使用结束发布适配，wiring.go 只装配注入。
+- `internal/app/shutdown.go`：使用方退出后排空并关闭 Media，再关闭历史库和共享存储。
 - `internal/media/wiring_test.go`：凭据解析、进程环境与 `.env` 优先级、错误保密、base64 跳过凭据及构造提前失败。
+- `internal/media/transfer_integration_test.go`：真实 SQLite、本地文件及 HTTP 服务下的成功构造、三种交付模式、发送临时文件与持有释放、受限物化和历史批量缓存。
 - `internal/media/object/manager.go`：Manager、Options、Deps、最小仓储、调用期 History 契约与中断恢复；`import.go`：统一受限导入、一次来源清理、内容去重与失败回滚；`read.go`：mediaInfo 投影、查询读取导出与按记录选择后端；`image.go`：图片解码校验、JPEG 压缩与缩放。
-- `internal/media/object/reference.go`：持有凭据、持久引用、句柄独立同步及 releaseOwned／retryReleases 自有释放重试；`cleanup.go`：自有释放重试、历史对账、引用核对、孤立认领与并行回收；`history.go`：缓存合并、关联与分页对账；`remote.go`：锁内副本上传、持久化及签名刷新；`locks.go`：可取消的按对象串行控制。对应七个测试文件覆盖真实 SQLite、受限导入与图片、释放失败、并发对象操作、历史对账故障和取消后回收重试；`release_test.go` 验证关闭不等待其他持有、便捷方法托管释放、失败与取消时保留待处理项，以及显式持有的所有权边界。
-- `internal/media/transfer/manager.go`、`resolver.go`、`request.go`、`output.go`、`platform.go`：交付配置、入站物化、模型请求、发送准备与历史批量获取，只接收对象协作能力。
+- `internal/media/object/reference.go`：持有凭据、持久引用、句柄独立同步及 releaseOwned／retryReleases 自有释放维护、Close 最终收尾；`cleanup.go`：自有释放重试、历史对账、引用核对、孤立认领与并行回收；`history.go`：缓存合并、关联与分页对账；`remote.go`：锁内副本上传、持久化及签名刷新；`locks.go`：可取消的按对象串行控制。对应七个测试文件覆盖真实 SQLite、受限导入与图片、释放失败、并发对象操作、历史对账故障和取消后回收重试；`release_test.go` 验证关闭不等待其他持有、便捷方法托管释放、失败与取消时保留待处理项，以及显式持有的所有权边界和释放等待取消。transfer/usage_cancel_test.go 验证取消后保留未完成资源及清理资格等待取消。
+- `internal/media/transfer/manager.go`：对象能力、配置与使用集合；`usage.go`：持有及私有目录登记、结束事实、已结束资源清理与失败保留；`request.go`：消息副本、持有与交付去重、模式选择、最多八个 worker、不可用降级；`output.go`：发送临时文件准备；`platform.go`：平台解析、历史查询复用、额度及关联编排。
 - `internal/media/backend/local.go`：本地临时写入与重命名提交、按位置读取与删除；`s3.go`：仅从交付选项构造客户端、上传输入暂存适配、对象传输与签名；`remote.go`：getBackend 串行构造、缓存成功结果并在锁外转交操作。后端消费已确认的内容与位置，不接收存储记录；对应测试覆盖真实文件、HTTP／HTTPS、配置隔离及并发初始化，`s3_upload_test.go` 覆盖输入回读、重试与资源清理。
-- `internal/media/share/types.go`：包内共同数据与常量；`helpers.go`：ID 校验与名称清理，`helpers_test.go` 验证对应规则；`contracts.go`：Objects／HeldMedia／Backend／RemoteBackend。内部持有提供 SignedURL，公开持有仅提供 Info／Open／Close；根部 `reference_test.go` 验证参数 ID 提取。
-- `internal/storage/sqlite/media_repository.go`：元数据与签名缓存。
+- `internal/media/share/types.go`：包内共同数据、UnavailableError 定义与常量；`helpers.go`：ID 校验、名称清理、错误方法及 IsUnavailable 纯不可用判断；`helpers_test.go`、`errors_test.go` 验证对应规则；`contracts.go`：Objects／HeldMedia／Backend／RemoteBackend。内部持有提供 SignedURL，公开持有提供 Info／Open 与 UsageID；根部 `reference_test.go` 验证参数 ID 提取。
+- `internal/media/backend/missing_test.go`、`object/unavailable_test.go`：S3 对象缺失与桶／权限错误区分，对象不可用、SQLite 引用删除保护与批量原子性、内容及关闭错误边界。
+- `internal/storage/sqlite/media_repository.go`：元数据、签名缓存及引用；媒体引用外键或删除保护失败返回 ErrNotFound 并保留驱动原因。`media_lifecycle.go`：回收认领、访问与引用检查，Touch 无可用对象时返回 ErrNotFound。
 - `internal/tool/builtin/chat_history.go`、`get_media.go`、`view_image.go`：历史查询、媒体获取与 Responses 看图。
 - `internal/platform/dispatch/media.go`：输出媒体准备与回执缓存。
+- `internal/hook/share/output/message.go`、`runtime/media.go`、`wiring.go`：入口来源分类、锁外导入、租约独占与可取消等待，向 rules 注入 BuildMessageSegments；runtime/manager.go 登记完整调用并先等待退出再清理。`runtime/media_concurrency_test.go` 验证慢导入、同租约等待、维护与关闭交接；`media_order_test.go` 验证优先级、注册顺序和媒体结果依赖。
+- `internal/storage/sqlite/db_init.go`、`migrations.go`、`media_lifecycle.go`：按 Cron 报告 Source.media 维护引用事务与审计；media_json_test.go 验证替换、失败回滚与缺失引用检测。
+- `internal/testutil/mediatest/`：使用真实完整配置构造 MediaCenter 的测试夹具。
 
 <!-- locator:cron -->
 ## Cron 与维护

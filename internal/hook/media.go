@@ -9,24 +9,24 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	"elbot/internal/storage"
 )
 
 // MediaAPI is the host-only media capability. It is never serialized to hook.v2.
 // Go hooks share the center rather than accessing its storage implementation.
 type MediaAPI interface {
-	ImportURL(context.Context, string, media.Input) (*storage.Media, error)
-	ImportFile(context.Context, string, media.Input) (*storage.Media, error)
-	ImportReader(context.Context, io.Reader, int64, media.Input) (*storage.Media, error)
-	ImportBytes(context.Context, []byte, media.Input) (*storage.Media, error)
-	Open(context.Context, string) (io.ReadCloser, *storage.Media, error)
-	Read(context.Context, string) ([]byte, *storage.Media, error)
-	Export(context.Context, string, string) (*storage.Media, error)
-	Metadata(context.Context, string) (*storage.Media, error)
-	AcquireForLLM(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, func(), error)
-	ResolveForOutput(context.Context, string) (delivery.Source, func(), error)
-	AddReference(context.Context, *storage.MediaReference) error
-	RemoveReference(context.Context, storage.MediaReference) error
+	ImportURL(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
+	ImportFile(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
+	ImportReader(context.Context, io.Reader, int64, media.Input, media.ImportLimits) (media.MediaInfo, error)
+	ImportBytes(context.Context, []byte, media.Input, media.ImportLimits) (media.MediaInfo, error)
+	Open(context.Context, string) (io.ReadCloser, media.MediaInfo, media.UsageID, error)
+	Read(context.Context, string) ([]byte, media.MediaInfo, error)
+	Export(context.Context, string, string) (media.MediaInfo, error)
+	Info(context.Context, string) (media.MediaInfo, error)
+	AcquireForLLM(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, media.UsageID, error)
+	ResolveForOutput(context.Context, string) (delivery.Source, media.UsageID, error)
+	PublishUsageFinished(context.Context, media.UsageFinishedEvent)
+	AddReference(context.Context, media.Reference) error
+	RemoveReference(context.Context, media.Reference) error
 }
 
-var _ MediaAPI = (*media.Manager)(nil)
+var _ MediaAPI = (*media.MediaCenter)(nil)

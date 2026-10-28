@@ -39,7 +39,7 @@ flowchart TD
 <!-- locator:startup -->
 ## 启动与装配
 
-App 按下层接口已存在来实现公共流程，下层按照调用契约实现。五条业务线已提供根包总管，配置独占已实现；Platform 下层与接收方契约、媒体和模型构造入口及进程入口适配仍待完成。完整应用的编译与运行验证需待这些接口接入。原 13 个生产文件和 12 个测试文件保存在同目录的 `*.go.bak` 中，不参与构建。
+App 按下层接口已存在来实现公共流程，下层按照调用契约实现。五条业务线已提供根包总管，配置独占、Platform 下层、Media 全包与消费者接线已实现；模型构造入口及进程入口适配仍待完成。完整应用的编译与运行验证需待这些接口接入。原 13 个生产文件和 12 个测试文件保存在同目录的 `*.go.bak` 中，不参与构建。
 
 六文件职责及接口契约见 [App 包设计](app-design.md)。App 加载配置、构造共享资源和各线总管、交付公开能力并协调启停。媒体和模型服务接收完整配置，自行处理后端、凭据、协议客户端、请求参数及恢复／重载；App 不拆解这些初始化细节。共享存储和独立历史库均归 App，Platform 直接写入历史，Tool 直接查询；部分失败交回已取得对象统一清理，订阅由接收方持有和释放。权限管理使用 `security.Permission`，App 与 Agent 不承接 Doctor。
 
@@ -378,12 +378,12 @@ flowchart LR
 
 ### 公共资料与媒体边界
 
-数据库是已提交会话的事实来源。Dialogue 负责公共消息投影、片段编解码、归档及请求副本，Chat／Responses 负责协议编码与循环。
+数据库是已提交会话的事实来源。来源入口完成媒体归档后交出 MediaID；Dialogue 负责公共消息投影、片段编解码、规范消息及请求副本，Chat／Responses 负责协议编码与循环。
 
 ```mermaid
 flowchart LR
     DB["storage/sqlite/<br/>完整消息、原生材料与引用事务"] <--> D["agent/dialogue/materials.go<br/>投影、归档与请求副本"]
-    D <--> M["media/resolver.go、request.go<br/>实体物化、请求持有与交付"]
+    D <--> M["media/api.go、transfer/request.go<br/>请求持有与交付"]
     D --> C["agent/chat/transcript.go、model_call.go<br/>Chat 消息与调用"]
     D --> R["agent/responses/context.go、input.go<br/>原生窗口与请求组装"]
 ```
@@ -393,25 +393,28 @@ flowchart LR
 <!-- locator:media -->
 ### 媒体引用与清理
 
-Media 根部公开入口、转换与装配，share 的 ID 校验与名称清理及 backend 的本地、S3 和延迟构造已实现，object 已实现导入读取、图片处理、引用持有、历史关联、签名缓存与回收，transfer 仍为 TODO 骨架，原生产及测试文件保存为 `.go.bak`。五个包编译与 object、backend、share 及根部参数 ID 提取、凭据和构造提前失败测试通过 race；交付实现和消费者迁移尚未完成。完整文件职责、字段与契约见 [Media 契约](app-design.md#media-根部与下层契约)。
+Media 根部入口、转换与装配及 object、transfer、backend、share 已实现，原生产及测试文件保存为 `.go.bak`。App 与五条业务线使用 MediaCenter、MediaInfo、HeldMedia、UsageID 及使用结束信号。完整文件职责、字段、契约及验证范围见 [Media 契约](app-design.md#media-根部与下层契约)。
 
-根部 `MediaCenter` 负责公开能力、完整配置拆分和装配，私有持有 object 与 transfer。object 管理对象记录、导入读取、图片处理、引用、回收、历史关联及签名缓存；transfer 通过 share.Objects 编排入站、模型请求和平台交付；backend 只按位置读写对象并提供可选签名能力。子包不导入根部或兄弟实现，share 只承载包内协作。
+根部 `MediaCenter` 负责公开能力、完整配置拆分和装配，私有持有 object 与 transfer。object 管理对象记录、导入读取、图片处理、引用、回收、历史关联及签名缓存；transfer 通过 share.Objects 编排平台来源导入、历史批量、模型请求和发送交付；backend 只按位置读写对象并提供可选签名能力。子包不导入根部或兄弟实现，share 只承载包内协作。
 
 backend 消费 object 已确认的 ID、内容与位置；S3 客户端只使用根部交付的选项和凭据，并在上传时将不可 Seek 的输入暂存为可回读的临时文件，承担 SDK 签名、校验和及重试所需的传输适配与临时文件释放，原输入仍由调用方关闭。延迟构造仅缓存成功结果，实际操作在初始化锁外执行。本地写入通过同目录临时文件提交，失败不以目标存在推断成功；同步 I/O 在操作开始和写入提交前检查取消。
 
-公开查询命名 Info，导入、读取、导出与历史结果使用值类型 `MediaInfo{ID, Name, MIMEType, Size}`。ValidateImage 校验内容可解码及 MIME；宽高、格式、存储位置与删除状态属于 object 内部。公开 HeldMedia 提供 Info／Open／Close，内部持有额外提供 SignedURL；读取不重复增加引用，关闭使用句柄独立锁，失败可重试，不等待其他持有的对象操作。显式 Hold／Open 的最终释放由调用方负责；Open 在打开和释放均失败时仍返回仅供 Close 重试的读取器。Read／Export／ValidateImage 汇总业务与关闭错误，自有引用释放失败则由 object 托管，在 Cleanup 历史对账前重试；失败、取消及并发新增项保留，释放故障阻止本轮后续回收。Tool 的调用内复用、导出状态和缓存目录仍归 Tool。
+公开查询命名 Info，导入、读取、导出与历史结果使用值类型 `MediaInfo{ID, Name, MIMEType, Size}`。ValidateImage 校验内容可解码及 MIME；宽高、格式、存储位置与删除状态属于 object 内部。公开 HeldMedia 提供 Info／Open 与 UsageID，内部持有额外提供 SignedURL 和释放能力。读取器由使用者关闭，媒体持有与调用私有目录由 transfer 的使用记录管理。Read／Export／ValidateImage 的自有引用释放失败由 object 托管，在 Cleanup 历史对账前重试；失败、取消及并发新增项保留，释放故障阻止本轮后续回收。Tool 保留调用内复用、导出状态、路径范围与共享缓存管理，调用私有目录由 Media 创建和释放。
 
-App 构造后注入 History，再发起历史对账；根部对账、清理调用将当前最小查询接口传给 object，object 不保存 History。媒体中心没有独立关闭步骤。AcquireForLLM 与 ResolveForOutput 返回 `func() error` 清理回调，保留未清理项目、业务及清理错误，支持部分准备失败后的重试。
+AcquireForLLM、ResolveForOutput 及显式持有返回 UsageID，准备失败由 Media 收尾。Agent／Platform／Tool 在实际使用结束后，通过各自根部 signals.go 发布结束事实，wiring.go 只负责注入。Media 根部 signals.go 先向 transfer 登记结束，再发布信号唤醒清理；业务取消、队列拒收或执行超时不会丢失待清理记录，失败项由既有维护继续处理，不影响已完成的业务结果。
 
-object 实现及 transfer 目标契约遵循以下业务约定：
+App 构造后注入 History，再发起历史对账；根部对账、清理调用将当前最小查询接口传给 object，object 不保存 History。全部消费者退出后，App 调用 MediaCenter.Close 排空信号并清理剩余自有资源，再关闭历史库和共享存储。Media 不关闭借用存储，关闭超时保留状态供再次等待。
+
+object 与 transfer 遵循以下业务约定：
 
 - 对象统一经受限导入链处理，名称与来源在入口清理，按最终内容寻址去重；读取只投影信息，不兼容清洗已有记录。引用事实及回收认领互斥归 storage；会话、工具参数和后台事务仍由原业务提交，不通过 Media 新增会话写入入口。
-- 模型请求按 ID 复用持有，按实际出现次数累计大小；base64／s3／hybrid 决定交付方式，上传与签名工作退出后再释放持有。
+- 模型请求按 ID 复用持有与交付结果，按实际出现次数累计大小，名称及 MIME 使用对象快照；base64／s3／hybrid 决定交付方式，最多八个上传与签名 worker，故障或取消等待已开始工作退出后再释放持有。发送准备只取得一次持有，临时目录和引用分别清理并保留失败项。
+- backend 识别具体内容缺失，storage 表达缺失或删除中的对象，object 将这些事实转换为 share.UnavailableError；transfer 决定模型交付中的文本降级。IsUnavailable 只接受纯不可用错误，组合错误中的关闭、回滚及其他故障不能被降级吞掉；transfer 不依赖数据库或 S3 错误类型。
 - 副本上传和签名缓存由 object 在对象锁内维护；后端只接收位置。签名剩余超过 5 分钟复用，否则按 1 小时刷新，独立故障保留。
-- 历史批量获取保留顺序、重复位置及逐项错误；缓存不占未缓存获取额度。对账仅删除确认失效的历史关联，查询失败停止清理。
+- 历史批量获取按完整历史身份复用缓存，保留顺序、重复位置及逐项错误；缓存不占未缓存获取额度，失败尝试计入额度，已有来源 ID 不强制重新下载。关联匹配时不重复保存。对账仅删除确认失效的历史关联，查询失败停止清理。
 - 最后引用释放后保留 1 小时，清理认领与新增引用互斥；按远端、本地、记录的顺序删除，失败保留待重试，每轮最多并行清理 4 个对象。
 
-现行消费者仍包含 Manager、Metadata、ImageMetadata、OpenHeld 和无错误清理回调等旧签名；迁移前不能将消费者接线或运行回归视为通过。输出回执的存储事务及平台发送事实仍由各自业务层负责。
+外部输入格式保持，Hook、Elnis 与后台报告在协议入口一次分类，内部传递明确的 delivery.Output/Source，归档后使用 MediaID。四个公开 Import 方法接收逐次 ImportLimits，由 object 执行实际限制。Hook runtime 持有输入租约；Elnis 在去重及取得事件身份后才导入，输入与报告引用归事件。Cron 保存明确来源并按相同结构恢复发送，SQLite 引用事务及审计读取 report_segments[].Source.media。外部报告 JSON 由协议投影生成。调用链与文件职责见 [来源入口与消费者](app-design.md#来源入口与消费者)。
 
 <!-- locator:skill -->
 ## Skill
@@ -423,13 +426,15 @@ object 实现及 transfer 目标契约遵循以下业务约定：
 - 创建、修改、finalize、删除、重载与 AgentSkill manifest 提交由 Manager 的 writeMu 串行协调；准备和确认等待不持有写锁，普通技能运行也不持锁。文件准备复用 fileops，manifest 提交后重载失败由 Skill 恢复原文件。
 - 创建预览已知源文件内容；finalize 准备校验和格式化结果，执行时复核源文件、提交格式化、编译并重载，无格式变化时跳过写入。创建或编译失败保留已有部分完成语义。读取实现位于 read_el_skill.go，进程、编译器查找及有界输出位于 process.go，源码处理位于 go_source.go。
 - 媒体在执行阶段准备：shell 用 media_inputs／ELBOT_MEDIA_N，Go 用 payload.media_inputs，TOML 用 type=media 参数；stdout 媒体经 os.Root 校验后导入中心，普通文本 ID 不转换。
-- shell 导出缓存跨调用保留，每次调用首次使用时校验文件并刷新时间，由 sandbox 维护任务清理；Go／TOML 使用调用私有目录，结束即删除。同次调用复用成功导出，不缓存失败结果，结束释放媒体引用。
+- shell 导出缓存跨调用保留，每次调用首次使用时校验文件并刷新时间，由 sandbox 维护任务清理；Go／TOML 使用 Media 登记的调用私有目录，结束时发布使用结束信号，由 Media 清理目录与媒体持有。同次调用复用成功导出，不缓存失败结果。
 - Skill 命令 stdout 保留 1 MiB、stderr 保留 16 KiB，超限继续排空；成功但 stdout 超限时报错，不解析残缺 JSON。
 
 <!-- locator:hook -->
 ## Hook
 
 Hook 根包拥有公开管理入口、装配、外部连接和生命周期；pipeline 先调用注入的 runtime 续接能力，再按事件点和优先级串行执行普通规则，并负责触发错误钩子，control 管查询、重载、进程管理及命令展示，runtime 管进程、RPC、waiting 与 SharedState。根包通过最小消费接口调用子包，不暴露内部组件。子包不得反向导入根包；工具、平台、媒体与日志／通知发布能力由根包装配注入。协议见[Hook 文档](../docs/hooks.md)。
+
+媒体下载、导入、读取、导出及清理在租约集合锁外执行；同租约独占操作的等待可取消，维护只认领到期且未使用的租约。runtime 登记完整媒体调用，关闭时停止接纳、取消并等待在途调用，再清理租约。同一 pipeline 仍按优先级及同优先级注册顺序串行执行，前一个 Hook 的媒体结果转换完成后才运行下一个；结果传递、停止传播及错误中止语义保持不变。
 
 CallOptions 显式携带 Woken、ReadOnlyCalls 和 Observe；Observe 只接收 context 与 handler 名称，桥接从 Agent 事实固定 SessionID，执行方决定实际 handler 的登记起止。runtime.Route 在选中有效续接后登记请求，返回 Event、是否续接、来源 LogResult 与 error。pipeline 将只读策略传给 Handler，由 rules 在每个动作后校验；调用快照供失败恢复使用。根部 fillEventFromContext 只转换并补入外部 context 事实。
 

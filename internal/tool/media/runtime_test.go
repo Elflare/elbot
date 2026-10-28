@@ -11,6 +11,7 @@ import (
 
 	"elbot/internal/media"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil/mediatest"
 	"elbot/internal/tool/share"
 	"elbot/internal/workspace"
 )
@@ -23,12 +24,12 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 	}
 	defer store.Close()
 	root := t.TempDir()
-	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
-	item, err := center.ImportBytes(ctx, []byte("hello"), media.Input{Name: "hello.txt"})
+	center := mediatest.New(t, store, root)
+	item, err := center.ImportBytes(ctx, []byte("hello"), media.Input{Name: "hello.txt"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := NewMediaRuntime(center, t.TempDir())
+	runtime := NewMediaRuntime(center, t.TempDir(), mediatest.Publisher(center))
 	ctx = workspace.WithPathScope(ctx, workspace.PathScope{Dir: t.TempDir(), Restricted: true})
 	errors := make(chan error, 8)
 	for range 8 {
@@ -42,10 +43,7 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 					err = fmt.Errorf("incomplete cache: %q", data)
 				}
 			}
-			closeErr := call.Close()
-			if err == nil {
-				err = closeErr
-			}
+			call.Close()
 			errors <- err
 		}()
 	}
@@ -53,6 +51,9 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 		if err := <-errors; err != nil {
 			t.Fatal(err)
 		}
+	}
+	if _, err := center.Cleanup(ctx); err != nil {
+		t.Fatal(err)
 	}
 	call := runtime.NewCall()
 	path, err := call.CachedExport(ctx, item.ID)
@@ -66,11 +67,12 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 	if err := os.Chtimes(path, old, old); err != nil {
 		t.Fatal(err)
 	}
-	if err := call.Close(); err != nil {
+	call.Close()
+	if _, err := center.Cleanup(ctx); err != nil {
 		t.Fatal(err)
 	}
 	call = runtime.NewCall()
-	t.Cleanup(func() { _ = call.Close() })
+	t.Cleanup(func() { call.Close() })
 	again, err := call.CachedExport(workspace.WithPathScope(ctx, workspace.PathScope{Dir: t.TempDir()}), item.ID)
 	if err != nil || again != path {
 		t.Fatalf("cache path %s: %v", again, err)
@@ -83,7 +85,8 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 	if err != nil || len(refs) != 1 {
 		t.Fatalf("refs %v %v", refs, err)
 	}
-	if err := call.Close(); err != nil {
+	call.Close()
+	if _, err := center.Cleanup(ctx); err != nil {
 		t.Fatal(err)
 	}
 	refs, err = store.MediaReferences().ListMediaIDs(ctx, item.ID)
@@ -115,10 +118,11 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	refs, err = store.MediaReferences().ListMediaIDs(ctx, imported.ID)
-	if err != nil || len(refs) == 0 || refs[0].OwnerType != "skill" {
+	if err != nil || len(refs) == 0 || refs[0].OwnerType != "request" {
 		t.Fatalf("output is not held by the invocation: %v %v", refs, err)
 	}
-	if err := private.Close(); err != nil {
+	private.Close()
+	if _, err := center.Cleanup(ctx); err != nil {
 		t.Fatal(err)
 	}
 	refs, err = store.MediaReferences().ListMediaIDs(ctx, imported.ID)
@@ -154,12 +158,12 @@ func TestMediaExportFailureCanBeRetriedAndCanceled(t *testing.T) {
 			}
 			defer store.Close()
 			root := t.TempDir()
-			center := media.NewManager(store, root, &media.LocalBackend{Root: root})
-			item, err := center.ImportBytes(ctx, []byte("complete content"), media.Input{Name: "input.txt"})
+			center := mediatest.New(t, store, root)
+			item, err := center.ImportBytes(ctx, []byte("complete content"), media.Input{Name: "input.txt"}, media.ImportLimits{})
 			if err != nil {
 				t.Fatal(err)
 			}
-			runtime := NewMediaRuntime(center, t.TempDir())
+			runtime := NewMediaRuntime(center, t.TempDir(), mediatest.Publisher(center))
 			call := runtime.NewCall()
 			defer call.Close()
 			base := t.TempDir()
@@ -200,7 +204,8 @@ func TestMediaExportFailureCanBeRetriedAndCanceled(t *testing.T) {
 			if _, err := export(canceled); !errors.Is(err, context.Canceled) {
 				t.Fatalf("prepared export ignored cancellation: %v", err)
 			}
-			if err := call.Close(); err != nil {
+			call.Close()
+			if _, err := center.Cleanup(ctx); err != nil {
 				t.Fatal(err)
 			}
 			refs, err := store.MediaReferences().ListMediaIDs(ctx, item.ID)
@@ -208,52 +213,5 @@ func TestMediaExportFailureCanBeRetriedAndCanceled(t *testing.T) {
 				t.Fatalf("export references survived close: %v %v", refs, err)
 			}
 		})
-	}
-}
-
-func TestMediaCallCloseFailureRecoveredAtStartup(t *testing.T) {
-	ctx := t.Context()
-	dbPath := filepath.Join(t.TempDir(), "store.db")
-	store, err := sqlite.New(ctx, dbPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	root := t.TempDir()
-	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
-	item, err := center.ImportBytes(ctx, []byte("input"), media.Input{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	call := NewMediaRuntime(center, "").NewCall()
-	base := t.TempDir()
-	path, _, err := call.Export(ctx, item.ID, base)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := call.Close(); err == nil {
-		t.Fatal("closed database did not report reference release failure")
-	}
-	if _, err := os.Stat(filepath.Dir(filepath.Join(base, path))); !os.IsNotExist(err) {
-		t.Fatalf("private directory survived failed reference release: %v", err)
-	}
-	reopened, err := sqlite.New(ctx, dbPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer reopened.Close()
-	refs, err := reopened.MediaReferences().ListMediaIDs(ctx, item.ID)
-	if err != nil || len(refs) != 1 {
-		t.Fatalf("failed release did not leave its temporary reference: %v %v", refs, err)
-	}
-	if err := reopened.Media().RecoverInterrupted(ctx); err != nil {
-		t.Fatal(err)
-	}
-	refs, err = reopened.MediaReferences().ListMediaIDs(ctx, item.ID)
-	if err != nil || len(refs) != 0 {
-		t.Fatalf("references survived startup recovery: %v %v", refs, err)
 	}
 }

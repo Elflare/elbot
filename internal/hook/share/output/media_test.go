@@ -16,7 +16,7 @@ func TestMediaIDSources(t *testing.T) {
 				t.Fatal(err)
 			}
 			segments, err := BuildMessageSegments([]MessageSegment{spec}, "")
-			if err != nil || len(segments) != 1 || segments[0].MediaID != id || segments[0].URL != "" {
+			if err != nil || len(segments) != 1 || segments[0].Source.MediaID != id || segments[0].Source.URL != "" {
 				t.Fatalf("segments=%#v err=%v", segments, err)
 			}
 			for _, kind := range []string{"image", "file", "record"} {
@@ -74,7 +74,7 @@ func TestMediaSourcesRejectMalformedIDs(t *testing.T) {
 func TestMediaSourceDoesNotScanTextOrAddWireField(t *testing.T) {
 	text := "image media:" + strings.Repeat("a", 64)
 	messages, err := BuildMessageSegments([]MessageSegment{{Type: "text", Text: text}}, "")
-	if err != nil || messages[0].Text != text || messages[0].MediaID != "" {
+	if err != nil || messages[0].Text != text || messages[0].Source.MediaID != "" {
 		t.Fatalf("messages=%#v err=%v", messages, err)
 	}
 	outputs, err := BuildGroup(Group{Outputs: []Segment{{Kind: "text", Text: text}}}, BuildOptions{})

@@ -28,7 +28,7 @@ func TestConcurrentSigningSharesReplicaAndRefresh(t *testing.T) {
 				return
 			}
 			defer func() {
-				if err := held.Close(); err != nil {
+				if err := held.Close(t.Context()); err != nil {
 					t.Error(err)
 				}
 			}()
@@ -45,7 +45,7 @@ func TestConcurrentSigningSharesReplicaAndRefresh(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer held.Close()
+	defer held.Close(t.Context())
 	cached, _ := store.Media().GetSignedURL(t.Context(), item.ID)
 	now = cached.ExpiresAt.Add(-signedURLRefreshMargin - time.Nanosecond)
 	if _, err := held.SignedURL(t.Context()); err != nil {
@@ -92,7 +92,7 @@ func TestS3PrimaryUsesStoredKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer held.Close()
+	defer held.Close(t.Context())
 	if _, err := held.SignedURL(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestReplicaPersistenceFailureRollsBackAndPreservesErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer held.Close()
+	defer held.Close(t.Context())
 	persistErr, closeErr, removeErr := errors.New("persist"), errors.New("close"), errors.New("remove")
 	reader, _ := local.Open(t.Context(), item.ID)
 	local.open = func(context.Context, string) (io.ReadCloser, error) {
@@ -169,7 +169,7 @@ func TestSigningHoldsReferenceUntilUploadFinishes(t *testing.T) {
 	if err := awaitTest(t, done); !errors.Is(err, context.Canceled) {
 		t.Fatalf("upload cancellation = %v", err)
 	}
-	if err := held.Close(); err != nil {
+	if err := held.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if refs, _ := store.MediaReferences().ListMediaIDs(t.Context(), item.ID); len(refs) != 0 {

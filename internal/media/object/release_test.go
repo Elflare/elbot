@@ -24,7 +24,7 @@ func TestCloseDoesNotWaitForOtherHoldsObjectLock(t *testing.T) {
 			t.Fatal(err)
 		}
 		if released {
-			if err := held.Close(); err != nil {
+			if err := held.Close(t.Context()); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -33,7 +33,7 @@ func TestCloseDoesNotWaitForOtherHoldsObjectLock(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = held.Close()
+		err = held.Close(t.Context())
 		unlock()
 		if err != nil {
 			t.Fatalf("released=%v: Close waited for unrelated object work: %v", released, err)
@@ -56,7 +56,7 @@ func TestConcurrentCloseReleasesOnce(t *testing.T) {
 	var workers sync.WaitGroup
 	for range 24 {
 		workers.Go(func() {
-			if err := held.Close(); err != nil {
+			if err := held.Close(t.Context()); err != nil {
 				t.Error(err)
 			}
 		})
@@ -87,43 +87,60 @@ func TestReaderCloseFailureDoesNotQueueReleasedHold(t *testing.T) {
 	}
 }
 
+func TestHeldCloseWaitCancellation(t *testing.T) {
+	m, store, _ := newTestManager(t)
+	item := importTestMedia(t, m, "wait cancellation")
+	held, err := m.Hold(t.Context(), item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entered := make(chan struct{})
+	ctx, cancel := context.WithCancel(t.Context())
+	m.references = testReferences{ReferenceRepository: store.MediaReferences(), remove: func(ctx context.Context, ref storage.MediaReference) error {
+		close(entered)
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	done := make(chan error, 1)
+	go func() { done <- held.Close(ctx) }()
+	awaitTest(t, entered)
+	waiting, stop := context.WithCancel(t.Context())
+	stop()
+	if err := held.Close(waiting); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	cancel()
+	if err := awaitTest(t, done); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	m.references = store.MediaReferences()
+	if err := held.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+}
 func TestExplicitHoldsAreNotReleasedByCleanup(t *testing.T) {
-	for _, operation := range []string{"hold", "open"} {
-		t.Run(operation, func(t *testing.T) {
-			m, store, _ := newTestManager(t)
-			item := importTestMedia(t, m, "caller owns release")
-			var close func() error
-			if operation == "hold" {
-				held, err := m.Hold(t.Context(), item.ID)
-				if err != nil {
-					t.Fatal(err)
-				}
-				close = held.Close
-			} else {
-				reader, _, err := m.Open(t.Context(), item.ID)
-				if err != nil {
-					t.Fatal(err)
-				}
-				close = reader.Close
-			}
-			failure := errors.New("release failed")
-			m.references = testReferences{ReferenceRepository: m.references, remove: func(context.Context, storage.MediaReference) error { return failure }}
-			if err := close(); !errors.Is(err, failure) {
-				t.Fatalf("Close = %v", err)
-			}
-			m.references = store.MediaReferences()
-			m.options.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
-			if _, err := m.Cleanup(t.Context(), nil); err != nil {
-				t.Fatal(err)
-			}
-			refs, err := store.MediaReferences().ListMediaIDs(t.Context(), item.ID)
-			if err != nil || len(refs) != 1 {
-				t.Fatalf("caller hold was taken over: %#v %v", refs, err)
-			}
-			if err := close(); err != nil {
-				t.Fatal(err)
-			}
-		})
+	m, store, _ := newTestManager(t)
+	item := importTestMedia(t, m, "caller owns release")
+	held, err := m.Hold(t.Context(), item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failure := errors.New("release failed")
+	m.references = testReferences{ReferenceRepository: m.references, remove: func(context.Context, storage.MediaReference) error { return failure }}
+	if err := held.Close(t.Context()); !errors.Is(err, failure) {
+		t.Fatalf("Close = %v", err)
+	}
+	m.references = store.MediaReferences()
+	m.options.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
+	if _, err := m.Cleanup(t.Context(), nil); err != nil {
+		t.Fatal(err)
+	}
+	refs, err := store.MediaReferences().ListMediaIDs(t.Context(), item.ID)
+	if err != nil || len(refs) != 1 {
+		t.Fatalf("caller hold was taken over: %#v %v", refs, err)
+	}
+	if err := held.Close(t.Context()); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -189,9 +206,9 @@ func TestOwnedReleaseCancellationPreservesPendingAndNewItems(t *testing.T) {
 				case first.ID:
 					close(entered)
 					<-release
-					// Cleanup 的取消不提前终止已开始的独立释放。
-					if ctx.Err() != nil {
-						t.Error("release inherited Cleanup cancellation")
+					// 已开始的释放也接收本轮取消。
+					if ctx.Err() == nil {
+						t.Error("release did not inherit Cleanup cancellation")
 					}
 					if failCurrent {
 						return failure
@@ -223,7 +240,7 @@ func TestOwnedReleaseCancellationPreservesPendingAndNewItems(t *testing.T) {
 			}
 			close(release)
 			got := awaitTest(t, done)
-			wantStatus, wantPending := events.ResultCanceled, 2
+			wantStatus, wantPending := events.ResultCanceled, 3
 			if failCurrent {
 				wantStatus, wantPending = events.ResultFailed, 3
 			}

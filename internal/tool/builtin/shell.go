@@ -6,7 +6,6 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -140,13 +139,7 @@ func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (
 		environment := t.ProcessEnv
 		if len(args.MediaInputs) > 0 {
 			mediaCall := t.Media.NewCall()
-			defer func() {
-				err := mediaCall.Close()
-				callErr = errors.Join(callErr, err)
-				if err != nil {
-					logContent = fmt.Sprintf("media_cleanup_error=%v\n%s", err, logContent)
-				}
-			}()
+			defer mediaCall.Close()
 			variables := make(map[string]string, len(args.MediaInputs))
 			for i, input := range args.MediaInputs {
 				path, err := mediaCall.CachedExport(runCtx, input.MediaID)

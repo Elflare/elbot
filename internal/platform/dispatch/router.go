@@ -18,24 +18,26 @@ import (
 )
 
 type Options struct {
-	Primary interface {
+	PublishUsageFinished func(context.Context, []media.UsageID) // 根部发布媒体使用结束。
+	Primary              interface {
 		Name() string
 		delivery.MessageSender
 	}
 	// SaveMediaOutput 关联实际发送消息与媒体，由根部注入借用的存储能力。
 	SaveMediaOutput func(context.Context, storage.MediaOutput) error
 	Media           interface {
-		Metadata(context.Context, string) (*storage.Media, error)
-		ImportURL(context.Context, string, media.Input) (*storage.Media, error)
-		ImportFile(context.Context, string, media.Input) (*storage.Media, error)
-		ImportBytes(context.Context, []byte, media.Input) (*storage.Media, error)
-		ResolveForOutput(context.Context, string) (delivery.Source, func(), error)
+		Info(context.Context, string) (media.MediaInfo, error)
+		ImportURL(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
+		ImportFile(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
+		ImportBytes(context.Context, []byte, media.Input, media.ImportLimits) (media.MediaInfo, error)
+		ResolveForOutput(context.Context, string) (delivery.Source, media.UsageID, error)
 	}
 	MediaRetentionDays int
 }
 
 type Router struct {
-	primary interface {
+	publishUsageFinished func(context.Context, []media.UsageID) // 实际发送结束后的事实通知。
+	primary              interface {
 		Name() string
 		delivery.MessageSender
 	}
@@ -43,17 +45,18 @@ type Router struct {
 	senders         map[string]delivery.MessageSender
 	saveMediaOutput func(context.Context, storage.MediaOutput) error
 	media           interface {
-		Metadata(context.Context, string) (*storage.Media, error)
-		ImportURL(context.Context, string, media.Input) (*storage.Media, error)
-		ImportFile(context.Context, string, media.Input) (*storage.Media, error)
-		ImportBytes(context.Context, []byte, media.Input) (*storage.Media, error)
-		ResolveForOutput(context.Context, string) (delivery.Source, func(), error)
+		Info(context.Context, string) (media.MediaInfo, error)
+		ImportURL(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
+		ImportFile(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
+		ImportBytes(context.Context, []byte, media.Input, media.ImportLimits) (media.MediaInfo, error)
+		ResolveForOutput(context.Context, string) (delivery.Source, media.UsageID, error)
 	}
 	mediaRetentionDays int
 }
 
 func New(opts Options) *Router {
 	r := &Router{primary: opts.Primary, senders: make(map[string]delivery.MessageSender), saveMediaOutput: opts.SaveMediaOutput, media: opts.Media, mediaRetentionDays: opts.MediaRetentionDays}
+	r.publishUsageFinished = opts.PublishUsageFinished
 	r.RegisterPlatform(opts.Primary)
 	return r
 }

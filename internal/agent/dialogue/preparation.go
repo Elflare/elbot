@@ -8,18 +8,19 @@ import (
 	"elbot/internal/elyph"
 	"elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/media"
 	"elbot/internal/storage"
 	"fmt"
 	"log/slog"
 )
 
 type Preparer struct {
-	Contexts interface {
+	PublishUsageFinished func(context.Context, media.UsageID) // 根部注入的使用结束发布能力。
+	Contexts             interface {
 		Load(context.Context, string) (*contextmgr.LoadedContext, error)
 	}
 	Media interface {
-		Materialize(context.Context, []llm.MessageSegment) ([]llm.MessageSegment, error)
-		AcquireForLLM(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, func(), error)
+		AcquireForLLM(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, media.UsageID, error)
 	}
 	Hooks interface {
 		LLMTurnPrepared(context.Context, agentshare.Session, agentshare.LLMInput) (agentshare.LLMInputResult, events.LogResult, error)

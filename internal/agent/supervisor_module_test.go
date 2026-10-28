@@ -14,7 +14,6 @@ import (
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
-	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/modelmgr"
 	"elbot/internal/platform/dispatch"
@@ -22,6 +21,7 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil/mediatest"
 	"elbot/internal/tool/discovery"
 	"elbot/internal/tool/execution"
 	toolmedia "elbot/internal/tool/media"
@@ -104,18 +104,18 @@ func isolatedModuleDeps(t *testing.T) SupervisorDeps {
 	registry := toolregistry.NewRegistry(permission)
 	sender := dispatch.New(dispatch.Options{Primary: &assemblyPlatform{}})
 	root := t.TempDir()
-	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
+	center := mediatest.New(t, store, root)
 	return SupervisorDeps{
 		Media: center, Store: store, ChatHistory: history.Repository(), Models: models, Permission: permission,
 		Platform: isolatedPlatformCapabilities{sender},
 		Hooks:    isolatedHookCapabilities{},
 		Tools: isolatedToolCapabilities{
-			Registry: registry, Manager: execution.NewManager(execution.ManagerDeps{Registry: registry, Permission: permission, Media: toolmedia.NewMediaRuntime(center, root), InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, DecodeState: toolstate.DecodeState, PrepareUpdate: toolstate.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(registry).DiscoveryStateUpdate, Log: func(context.Context, events.LogRecord) {}}),
+			Registry: registry, Manager: execution.NewManager(execution.ManagerDeps{Registry: registry, Permission: permission, Media: toolmedia.NewMediaRuntime(center, root, mediatest.Publisher(center)), InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, DecodeState: toolstate.DecodeState, PrepareUpdate: toolstate.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(registry).DiscoveryStateUpdate, Log: func(context.Context, events.LogRecord) {}}),
 			PreloadService: preload.NewPreloadService(preload.PreloadOptions{Registry: registry, Resolver: discovery.NewResolver(registry), NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery, LoadDiscoveryContent: discovery.LoadDiscoveryContent, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools}),
 			StateService:   toolstate.NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools),
 			Store:          resident.NewStore(filepath.Join(t.TempDir(), "memory.toml")),
 			Service:        fileops.NewService(nil),
-			skills:         skill.NewManager(t.TempDir(), registry, toolmedia.NewMediaRuntime(center, root), processenv.New(nil)),
+			skills:         skill.NewManager(t.TempDir(), registry, toolmedia.NewMediaRuntime(center, root, mediatest.Publisher(center)), processenv.New(nil)),
 		},
 	}
 }

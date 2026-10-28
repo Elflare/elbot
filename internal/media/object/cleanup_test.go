@@ -38,7 +38,7 @@ func TestCleanupDeletesRemoteThenLocalAndRetries(t *testing.T) {
 	if _, err := held.SignedURL(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if err := held.Close(); err != nil {
+	if err := held.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	var calls []string

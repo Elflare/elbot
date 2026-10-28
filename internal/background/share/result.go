@@ -3,7 +3,13 @@ package share
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
+
+	"elbot/internal/delivery"
+	"elbot/internal/llm"
+	"elbot/internal/media"
+	"elbot/internal/workspace"
 )
 
 func ParseJSONResult(text string) (JSONResult, error) {
@@ -17,11 +23,81 @@ func ParseJSONResult(text string) (JSONResult, error) {
 	if start < 0 || end < start {
 		return JSONResult{}, fmt.Errorf("json object not found")
 	}
-	var result JSONResult
-	if err := json.Unmarshal([]byte(text[start:end+1]), &result); err != nil {
+	var raw struct {
+		Completed      bool                 `json:"completed"`
+		NeedReport     bool                 `json:"need_report"`
+		Report         string               `json:"report"`
+		ReportSegments []llm.MessageSegment `json:"report_segments"`
+	}
+	if err := json.Unmarshal([]byte(text[start:end+1]), &raw); err != nil {
 		return JSONResult{}, err
 	}
+	result := JSONResult{Completed: raw.Completed, NeedReport: raw.NeedReport, Report: raw.Report}
+	for i, segment := range raw.ReportSegments {
+		var kind delivery.Kind
+		switch segment.Type {
+		case llm.SegmentImage:
+			kind = delivery.KindImage
+		case llm.SegmentFile:
+			kind = delivery.KindFile
+		default:
+			return JSONResult{}, fmt.Errorf("report segment %d: unsupported type %q", i, segment.Type)
+		}
+		out := delivery.Output{Kind: kind, Name: segment.Name, Source: delivery.Source{MIMEType: segment.MIMEType}}
+		value := strings.TrimSpace(segment.URL)
+		if segment.MediaID != "" {
+			if value != "" || !media.ValidID(segment.MediaID) {
+				return JSONResult{}, fmt.Errorf("report segment %d: invalid or mixed media source", i)
+			}
+			out.Source.MediaID = segment.MediaID
+		} else if path, err := workspace.NormalizeRestrictedPath(value); err == nil {
+			out.Source.Path = path
+		} else {
+			u, err := url.Parse(value)
+			if err != nil {
+				return JSONResult{}, fmt.Errorf("report segment %d: invalid source", i)
+			}
+			switch strings.ToLower(u.Scheme) {
+			case "media":
+				if !media.ValidID(value) {
+					return JSONResult{}, fmt.Errorf("report segment %d: invalid media ID", i)
+				}
+				out.Source.MediaID = value
+			case "http", "https":
+				if u.Host == "" {
+					return JSONResult{}, fmt.Errorf("report segment %d: URL requires a host", i)
+				}
+				u.Scheme = strings.ToLower(u.Scheme)
+				out.Source.URL = u.String()
+			case "":
+				return JSONResult{}, fmt.Errorf("report segment %d: invalid local path", i)
+			default:
+				return JSONResult{}, fmt.Errorf("report segment %d: unsupported source scheme %q", i, u.Scheme)
+			}
+		}
+		result.ReportSegments = append(result.ReportSegments, out)
+	}
 	return result, nil
+}
+
+// MarshalJSON 只输出既有外部协议字段，不暴露内部发送结构。
+func (r JSONResult) MarshalJSON() ([]byte, error) {
+	segments := make([]llm.MessageSegment, 0, len(r.ReportSegments))
+	for _, out := range r.ReportSegments {
+		segment := llm.MessageSegment{Type: llm.MessageSegmentType(out.Kind), Name: out.Name, MIMEType: out.Source.MIMEType, MediaID: out.Source.MediaID}
+		if out.Source.URL != "" {
+			segment.URL = out.Source.URL
+		} else {
+			segment.URL = out.Source.Path
+		}
+		segments = append(segments, segment)
+	}
+	return json.Marshal(struct {
+		Completed      bool                 `json:"completed"`
+		NeedReport     bool                 `json:"need_report"`
+		Report         string               `json:"report"`
+		ReportSegments []llm.MessageSegment `json:"report_segments,omitempty"`
+	}{r.Completed, r.NeedReport, r.Report, segments})
 }
 
 func DefaultJSONRetryPrompt() string {

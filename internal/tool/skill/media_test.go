@@ -13,13 +13,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"elbot/internal/media"
 	"elbot/internal/processenv"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil/mediatest"
 )
 
 func TestSkillMediaBridge(t *testing.T) {
@@ -31,12 +31,12 @@ func TestSkillMediaBridge(t *testing.T) {
 	}
 	defer store.Close()
 	root := t.TempDir()
-	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
-	item, err := center.ImportBytes(ctx, []byte("input"), media.Input{Name: "in.txt"})
+	center := mediatest.New(t, store, root)
+	item, err := center.ImportBytes(ctx, []byte("input"), media.Input{Name: "in.txt"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	mediaRuntime := toolmedia.NewMediaRuntime(center, t.TempDir())
+	mediaRuntime := toolmedia.NewMediaRuntime(center, t.TempDir(), mediatest.Publisher(center))
 	dir := t.TempDir()
 	binary, err := os.Executable()
 	if err != nil {
@@ -59,7 +59,7 @@ func TestSkillMediaBridge(t *testing.T) {
 	assertPrepared := func(t *testing.T) {
 		t.Helper()
 		refs, err := store.MediaReferences().ListMediaIDs(ctx, item.ID)
-		if err != nil || len(refs) != 1 || refs[0].OwnerType != "skill" {
+		if err != nil || len(refs) != 1 || refs[0].OwnerType != "request" {
 			t.Fatalf("input was not retained before execution: %v %v", refs, err)
 		}
 		matches, err := filepath.Glob(filepath.Join(dir, ".media-call-*"))
@@ -69,6 +69,9 @@ func TestSkillMediaBridge(t *testing.T) {
 	}
 	assertCleanup := func(t *testing.T) {
 		t.Helper()
+		if _, err := center.Cleanup(ctx); err != nil {
+			t.Fatal(err)
+		}
 		refs, err := store.MediaReferences().ListMediaIDs(ctx, item.ID)
 		if err != nil || len(refs) != 0 {
 			t.Fatalf("refs %v %v", refs, err)
@@ -97,7 +100,7 @@ func TestSkillMediaBridge(t *testing.T) {
 								want = time.Second
 							}
 							deadline, ok := ctx.Deadline()
-							if !ok || deadline.Sub(time.Now()) != want || ctx.Err() != nil {
+							if !ok || time.Until(deadline) > want || ctx.Err() != nil {
 								t.Fatalf("wrong deadline: %v %v %v", deadline, ok, ctx.Err())
 							}
 							assertPrepared(t)
@@ -141,6 +144,9 @@ func TestSkillMediaBridge(t *testing.T) {
 						if readErr != nil || string(data) != "output" || segment.URL != "" {
 							t.Fatalf("result media %#v %q %v", segment, data, readErr)
 						}
+						if _, err := center.Cleanup(ctx); err != nil {
+							t.Fatal(err)
+						}
 						refs, _ := store.MediaReferences().ListMediaIDs(ctx, segment.MediaID)
 						if len(refs) != 0 {
 							t.Fatal("output refs leaked")
@@ -174,11 +180,7 @@ func TestSkillMediaBridge(t *testing.T) {
 					}
 					assertCleanup(t)
 				}
-				if mode == "wait" {
-					synctest.Test(t, run)
-				} else {
-					run(t)
-				}
+				run(t)
 			})
 		}
 		t.Run(kind+"/cancel running", func(t *testing.T) {
@@ -219,7 +221,7 @@ func TestSkillMediaBridge(t *testing.T) {
 	if err != nil || string(unchanged) != string(raw) {
 		t.Fatalf("ordinary Go payload changed: %s %v", unchanged, err)
 	}
-	large, err := center.ImportBytes(ctx, []byte(strings.Repeat("x", 1024*1024+1)), media.Input{Name: "large.bin"})
+	large, err := center.ImportBytes(ctx, []byte(strings.Repeat("x", 1024*1024+1)), media.Input{Name: "large.bin"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +246,7 @@ func TestSkillMediaBridge(t *testing.T) {
 	if len(payload.Inputs) != 4 || payload.Inputs[0] != payload.Inputs[2] || payload.Inputs[1] != payload.Inputs[3] {
 		t.Fatalf("input order or duplicate entries changed: %#v", payload)
 	}
-	for i, metadata := range []*storage.Media{large, item} {
+	for i, metadata := range []media.MediaInfo{large, item} {
 		input := payload.Inputs[i]
 		if input.MediaID != metadata.ID || input.Name != metadata.Name || input.MIMEType != metadata.MIMEType || input.Size != metadata.Size {
 			t.Fatalf("input metadata %#v, want %#v", input, metadata)

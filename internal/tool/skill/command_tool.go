@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -100,13 +99,7 @@ func (t commandTool) call(ctx context.Context, raw json.RawMessage, args []strin
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	mediaCall := t.media.NewCall()
-	defer func() {
-		err := mediaCall.Close()
-		callErr = errors.Join(callErr, err)
-		if err != nil {
-			logContent = fmt.Sprintf("media_cleanup_error=%v\n%s", err, logContent)
-		}
-	}()
+	defer mediaCall.Close()
 	if schemaContainsMedia(t.manifest.Parameters) {
 		prepared, err := prepareCommandMedia(runCtx, raw, t.manifest, mediaCall, t.record.Root)
 		if err != nil {

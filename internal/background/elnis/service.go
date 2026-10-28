@@ -13,7 +13,6 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/elvena"
 	globalevents "elbot/internal/events"
-	"elbot/internal/media"
 	"elbot/internal/tool"
 )
 
@@ -264,9 +263,9 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 	}
 	var mediaIDs []string
 	if req.Mode != ModeRecord {
-		for _, seg := range req.Segments {
-			if media.ValidID(seg.URL) {
-				mediaIDs = append(mediaIDs, seg.URL)
+		for _, seg := range event.Segments {
+			if seg.Source.MediaID != "" {
+				mediaIDs = append(mediaIDs, seg.Source.MediaID)
 			}
 		}
 	}

@@ -3,6 +3,7 @@ package responses
 import (
 	"context"
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/media"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -128,23 +129,25 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMes
 		}
 	}
 	replay := !store && (s.checkpoint != nil || s.seed != nil) || request.PreviousResponseID == "" && s.seed != nil || request.PreviousResponseID != "" && baseURL != origin.BaseURL
-	var release func()
+	var usageID media.UsageID
 	if replay {
-		request, release, err = s.replayRequest(ctx, request, inputs, consumed, origin)
+		request, usageID, err = s.replayRequest(ctx, request, inputs, consumed, origin)
 	} else {
-		request.Input, release, err = s.resolveInputs(ctx, inputs, w)
+		request.Input, usageID, err = s.resolveInputs(ctx, inputs, w)
 	}
+	defer func() {
+		s.route.Preparer.FinishMaterials(ctx, usageID)
+	}()
 	if err != nil {
 		return final, err
 	}
-	defer func() { release() }()
 	started := time.Now()
 	result, err := s.nativeCall(ctx, client, request, consumed, stream, observation)
 	if err != nil && request.PreviousResponseID != "" && !result.OutputStarted && result.FactsSaved && api.PreviousResponseUnavailable(err) {
 		observation.Publish(ctx, err)
 		observation = s.route.Calls.Begin(s.session.ID, s.selection)
-		release()
-		request, release, err = s.replayRequest(ctx, request, inputs, consumed, origin)
+		s.route.Preparer.FinishMaterials(ctx, usageID)
+		request, usageID, err = s.replayRequest(ctx, request, inputs, consumed, origin)
 		if err != nil {
 			return final, err
 		}
@@ -192,15 +195,15 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMes
 	return final, nil
 }
 
-func (s *turnState) replayRequest(ctx context.Context, request api.Request, inputs []storage.NativeInput, consumed []string, target llm.Origin) (api.Request, func(), error) {
+func (s *turnState) replayRequest(ctx context.Context, request api.Request, inputs []storage.NativeInput, consumed []string, target llm.Origin) (api.Request, media.UsageID, error) {
 	if s.window == nil {
 		records, err := s.route.Repository.LoadNativeWindow(ctx, s.session, s.checkpoint)
 		if err != nil {
-			return request, func() {}, err
+			return request, "", err
 		}
 		s.window, err = s.route.Context.Load(ctx, s.session, s.checkpoint, records)
 		if err != nil {
-			return request, func() {}, err
+			return request, "", err
 		}
 	}
 	// resolveInputs appends pending inputs; preserve the cached committed prefix.
@@ -208,7 +211,7 @@ func (s *turnState) replayRequest(ctx context.Context, request api.Request, inpu
 	w.Items = append([]api.Item(nil), w.Items...)
 	w.Materials = append([]material(nil), w.Materials...)
 	if err := checkWindowTarget(&w, target); err != nil {
-		return request, func() {}, err
+		return request, "", err
 	}
 	request.PreviousResponseID = ""
 	// A retry replaces the actual-input manifest while the consumed-input list
@@ -218,17 +221,16 @@ func (s *turnState) replayRequest(ctx context.Context, request api.Request, inpu
 		refs = append(refs, inputReference{Kind: "input", ID: id})
 	}
 	s.requestReferences = refs
-	var release func()
+	var usageID media.UsageID
 	var err error
-	request.Input, release, err = s.resolveInputs(ctx, inputs, &w)
+	request.Input, usageID, err = s.resolveInputs(ctx, inputs, &w)
 	if err != nil {
-		return request, release, err
+		return request, usageID, err
 	}
 	if err := validateCallLinks(request.Input, false); err != nil {
-		release()
-		return request, func() {}, err
+		return request, usageID, err
 	}
-	return request, release, nil
+	return request, usageID, nil
 }
 
 func outputItems(response *api.Response, completed map[int]api.Item) []api.Item {

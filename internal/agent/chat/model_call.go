@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/media"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -23,7 +24,8 @@ type Caller struct {
 		Committer(string) agentshare.MessageCommitter
 	}
 	Preparer interface {
-		PrepareMaterials(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, func(), error)
+		PrepareMaterials(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, media.UsageID, error)
+		FinishMaterials(context.Context, media.UsageID)
 	}
 	Calls interface {
 		Begin(string, modelmgr.Selection) agentshare.CallObservation
@@ -56,11 +58,11 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 	if err != nil {
 		return llmCallResult{}, err
 	}
-	requestMessages, cleanup, err := c.Preparer.PrepareMaterials(ctx, input.RequestMessages)
+	requestMessages, usageID, err := c.Preparer.PrepareMaterials(ctx, input.RequestMessages)
+	defer c.Preparer.FinishMaterials(ctx, usageID)
 	if err != nil {
 		return llmCallResult{}, err
 	}
-	defer cleanup()
 	baseMessages, tools := input.Messages, input.Tools
 	req := chatcompletions.Request{
 		Model:     selection.Model,
@@ -70,7 +72,15 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 	}
 	observation.LogRecord().EventName = "llm_usage"
 	observation.LogRecord().ResultStatus = events.ResultCanceled
-	ch, err := client.Stream(ctx, req)
+	callCtx, cancel := context.WithCancel(ctx)
+	ch, err := client.Stream(callCtx, req)
+	defer func() {
+		cancel()
+		if ch != nil {
+			for range ch {
+			}
+		}
+	}()
 	if err != nil {
 		completed.Err = err
 		observation.LogRecord().Content = fmt.Sprintf("call_error=%v", err)

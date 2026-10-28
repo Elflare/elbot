@@ -2,14 +2,17 @@ package backend
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"time"
 
 	"elbot/internal/media/share"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/smithy-go"
 )
 
 // S3Options 只描述 S3 后端构造，不携带完整应用或交付配置。
@@ -82,6 +85,10 @@ func (b *S3Backend) Put(ctx context.Context, id string, input io.Reader, size in
 func (b *S3Backend) Open(ctx context.Context, location string) (io.ReadCloser, error) {
 	output, err := b.client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(b.bucket), Key: aws.String(location)})
 	if err != nil {
+		var remoteErr smithy.APIError
+		if errors.As(err, &remoteErr) && (remoteErr.ErrorCode() == "NoSuchKey" || remoteErr.ErrorCode() == "NotFound") {
+			return nil, fmt.Errorf("get media object: %w: %w", fs.ErrNotExist, err)
+		}
 		return nil, fmt.Errorf("get media object: %w", err)
 	}
 	return output.Body, nil

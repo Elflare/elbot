@@ -151,10 +151,16 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		}
 	}()
 	callCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
 	observation.LogRecord().EventName = "llm_usage"
 	observation.LogRecord().ResultStatus = globalevents.ResultCanceled
 	events, err := client.StreamPrepared(callCtx, prepared)
+	defer func() {
+		cancel()
+		if events != nil {
+			for range events {
+			}
+		}
+	}()
 	if err != nil {
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultCanceled, slog.LevelInfo

@@ -26,6 +26,8 @@ import (
 	"elbot/internal/hook/share"
 	"elbot/internal/llm"
 	"elbot/internal/signal"
+	"elbot/internal/testutil"
+	"elbot/internal/testutil/mediatest"
 )
 
 func TestExecActionDefaultStdinIncludesEvent(t *testing.T) {
@@ -223,7 +225,16 @@ func TestExecDoneEmptyMessageClearsConfiguredField(t *testing.T) {
 }
 
 func TestExecDoneSegmentsReplacesToolResultContent(t *testing.T) {
-	module := Module{Opts: Options{Log: testLog, Notify: testNotify}}
+	runtime, err := hookruntime.NewManager(hookruntime.Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Media: mediatest.New(t, testutil.NewSQLiteStore(t), t.TempDir())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := runtime.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	module := Module{Opts: Options{Log: testLog, Notify: testNotify, BuildMessageSegments: runtime.BuildMessageSegments}}
 	event := share.Event{
 		Point:   share.PointToolCallCompleted,
 		Message: share.MessagePayload{Role: string(llm.RoleTool), Segments: llm.TextSegments("old")},
@@ -235,7 +246,7 @@ func TestExecDoneSegmentsReplacesToolResultContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
-	if len(got.Message.Segments) != 2 || got.Message.Segments[1].Type != llm.SegmentImage || !strings.HasPrefix(got.Message.Segments[1].URL, "data:image/png;base64,") {
+	if len(got.Message.Segments) != 2 || got.Message.Segments[1].Type != llm.SegmentImage || got.Message.Segments[1].MediaID == "" || got.Message.Segments[1].URL != "" {
 		t.Fatalf("segments = %#v", got.Message.Segments)
 	}
 	if got.Tool.Result != "截图完成" {

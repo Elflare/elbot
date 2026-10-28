@@ -37,12 +37,32 @@ type Manager struct {
 	closed        bool
 	// workWG joins owned asynchronous work, including tasks whose worker left an index.
 	// New work is admitted under mu; counted tasks register cleanup before returning.
-	workWG    sync.WaitGroup
-	closeDone chan struct{}
-	closeErr  error
+	workWG         sync.WaitGroup
+	closeDone      chan struct{}
+	closeErr       error
+	workerCloseErr error         // worker 退出结果独立于可重试的媒体清理结果。
+	closeMedia     chan struct{} // 串行关闭重试；等待可由调用方取消。
 }
 
 var ErrClosed = errors.New("hook runtime manager is closed")
+
+// beginMediaCall 与关闭原子登记完整调用；取消链和在途计数归 runtime。
+func (m *Manager) beginMediaCall(ctx context.Context) (context.Context, func(), error) {
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return nil, nil, ErrClosed
+	}
+	if err := ctx.Err(); err != nil {
+		m.mu.Unlock()
+		return nil, nil, err
+	}
+	m.workWG.Add(1)
+	callCtx, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(m.rootCtx, cancel)
+	m.mu.Unlock()
+	return callCtx, func() { stop(); cancel(); m.workWG.Done() }, nil
+}
 
 func NewManager(opts Options) (*Manager, error) {
 	if err := os.MkdirAll(opts.SharedDir, 0o755); err != nil {
@@ -65,6 +85,7 @@ func NewManager(opts Options) (*Manager, error) {
 		rootCtx:      rootCtx,
 		rootCancel:   rootCancel,
 		closeDone:    make(chan struct{}),
+		closeMedia:   make(chan struct{}, 1),
 	}
 	go m.cleanSharedState(cleanupCtx)
 	return m, nil
@@ -258,7 +279,21 @@ func (m *Manager) Close(ctx context.Context) error {
 	if m.closed {
 		done := m.closeDone
 		m.mu.Unlock()
-		return m.waitClose(ctx, done)
+		if err := m.waitClose(ctx, done); err == nil || ctx.Err() != nil {
+			return err
+		}
+		select {
+		case m.closeMedia <- struct{}{}:
+			defer func() { <-m.closeMedia }()
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		_, err := m.media.prune(ctx, time.Now(), true)
+		m.mu.Lock()
+		m.closeErr = errors.Join(m.workerCloseErr, err)
+		err = m.closeErr
+		m.mu.Unlock()
+		return err
 	}
 	m.closed = true
 	m.rootCancel()
@@ -282,7 +317,10 @@ func (m *Manager) Close(ctx context.Context) error {
 func (m *Manager) waitClose(ctx context.Context, done <-chan struct{}) error {
 	select {
 	case <-done:
-		return m.closeErr
+		m.mu.RLock()
+		err := m.closeErr
+		m.mu.RUnlock()
+		return err
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -312,7 +350,8 @@ func (m *Manager) finishClose(ctx context.Context, workers []*worker) {
 		m.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: level, EventName: "prune_hook_media", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: logResult.Content, ResultStatus: logResult.ResultStatus})
 	}
 	m.mu.Lock()
-	m.closeErr = errors.Join(append(workerErrs, err)...)
+	m.workerCloseErr = errors.Join(workerErrs...)
+	m.closeErr = errors.Join(m.workerCloseErr, err)
 	close(m.closeDone)
 	m.mu.Unlock()
 }

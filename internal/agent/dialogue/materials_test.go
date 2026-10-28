@@ -5,7 +5,6 @@ import (
 
 	"context"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -19,36 +18,32 @@ import (
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil/mediatest"
 	"elbot/internal/turn"
 )
 
-type materialBackend struct {
-	media.LocalBackend
-	reads int
-}
-
-func (b *materialBackend) Open(ctx context.Context, item *storage.Media) (io.ReadCloser, error) {
-	b.reads++
-	return b.LocalBackend.Open(ctx, item)
-}
-
-func TestMaterialsKeepCanonicalOriginalAndReadOnce(t *testing.T) {
+func TestMaterialsKeepCanonicalOriginalAndMissingPlaceholder(t *testing.T) {
 	store, err := sqlite.New(t.Context(), filepath.Join(t.TempDir(), "db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
 	root := t.TempDir()
-	backend := &materialBackend{LocalBackend: media.LocalBackend{Root: root}}
-	center := media.NewManager(store, root, backend)
-	preparer := &Preparer{Media: center}
-	input := []llm.LLMMessage{{Role: llm.RoleUser, Segments: []llm.MessageSegment{{Type: llm.SegmentImage, URL: "data:image/png;base64,aW1hZ2U=", Name: "image.png"}}}}
+	center := mediatest.New(t, store, root)
+	preparer := &Preparer{Media: center, PublishUsageFinished: func(ctx context.Context, id media.UsageID) {
+		center.PublishUsageFinished(ctx, media.UsageFinishedEvent{UsageIDs: []media.UsageID{id}})
+	}}
+	info, err := center.ImportBytes(t.Context(), []byte("image"), media.Input{Name: "image.png", MIMEType: "image/png"}, media.ImportLimits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := []llm.LLMMessage{{Role: llm.RoleUser, Segments: []llm.MessageSegment{{Type: llm.SegmentImage, MediaID: info.ID, URL: "stale-request-url", Name: info.Name, MIMEType: info.MIMEType}}}}
 	canonical, err := preparer.ArchiveMaterials(t.Context(), input)
 	if err != nil {
 		t.Fatal(err)
 	}
 	segment := canonical[0].Segments[0]
-	if segment.MediaID == "" || segment.URL != "" || input[0].Segments[0].MediaID != "" {
+	if segment.MediaID != info.ID || segment.URL != "" || input[0].Segments[0].URL != "stale-request-url" {
 		t.Fatal("archive mutated input or retained image entity")
 	}
 	canonical = append(canonical, llm.CloneMessages(canonical)...)
@@ -57,11 +52,14 @@ func TestMaterialsKeepCanonicalOriginalAndReadOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	release()
-	if backend.reads != 1 || prepared[0].Segments[0].URL != input[0].Segments[0].URL || !reflect.DeepEqual(canonical, original) {
-		t.Fatalf("reads=%d canonical changed=%v", backend.reads, !reflect.DeepEqual(canonical, original))
+	preparer.FinishMaterials(t.Context(), release)
+	if _, err := center.Cleanup(t.Context()); err != nil {
+		t.Fatal(err)
 	}
-	metadata, err := center.Metadata(t.Context(), segment.MediaID)
+	if prepared[0].Segments[0].URL != "data:image/png;base64,aW1hZ2U=" || !reflect.DeepEqual(canonical, original) {
+		t.Fatal("prepared content or canonical copy changed")
+	}
+	metadata, err := store.Media().Get(t.Context(), segment.MediaID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +68,7 @@ func TestMaterialsKeepCanonicalOriginalAndReadOnce(t *testing.T) {
 	}
 	// Existing references archive without opening entities, even after deletion.
 	archived, err := preparer.ArchiveMaterials(t.Context(), prepared)
-	if err != nil || !reflect.DeepEqual(archived, canonical) || backend.reads != 1 {
+	if err != nil || !reflect.DeepEqual(archived, canonical) {
 		t.Fatalf("archive re-read existing media: %v", err)
 	}
 	logs := 0
@@ -91,9 +89,12 @@ func TestMaterialsKeepCanonicalOriginalAndReadOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	release()
-	if backend.reads != 2 || logs != 1 || prepared[0].Segments[0].Type != llm.SegmentText || !reflect.DeepEqual(canonical, original) {
-		t.Fatalf("missing handling: reads=%d logs=%d", backend.reads, logs)
+	preparer.FinishMaterials(t.Context(), release)
+	if _, err := center.Cleanup(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if logs != 1 || prepared[0].Segments[0].Type != llm.SegmentText || !reflect.DeepEqual(canonical, original) {
+		t.Fatalf("missing handling: logs=%d", logs)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -105,6 +106,16 @@ func TestMaterialsKeepCanonicalOriginalAndReadOnce(t *testing.T) {
 	}
 	if _, _, err := preparer.PrepareMaterials(t.Context(), canonical); err == nil {
 		t.Fatal("database error converted to a missing-media placeholder")
+	}
+}
+
+func TestArchiveMaterialsRequiresUpstreamMediaID(t *testing.T) {
+	p := &Preparer{}
+	for _, source := range []string{"HTTP://example.test/file?secret=token", "/tmp/image", "data:image/png;base64,aA=="} {
+		_, err := p.ArchiveMaterials(t.Context(), []llm.LLMMessage{{Segments: []llm.MessageSegment{{Type: llm.SegmentImage, URL: source}}}})
+		if err == nil || strings.Contains(err.Error(), source) {
+			t.Fatalf("unarchived source accepted or exposed: %v", err)
+		}
 	}
 }
 
@@ -200,8 +211,8 @@ func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 	repository := &countedDialogueRepository{DialogueRepository: store.Dialogues()}
 	committer := &ToolTranscriptCommitter{Messages: &MessageStore{Dialogues: repository, Gate: &CommitGate{Sessions: session.NewService(store), Turns: turn.NewManager()}}}
 	root := t.TempDir()
-	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
-	item, err := center.ImportBytes(ctx, []byte("tool input"), media.Input{Name: "input.bin"})
+	center := mediatest.New(t, store, root)
+	item, err := center.ImportBytes(ctx, []byte("tool input"), media.Input{Name: "input.bin"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +232,7 @@ func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 	if err != nil || len(refs) != 1 || refs[0].MediaID != item.ID {
 		t.Fatalf("initial media references=%+v error=%v", refs, err)
 	}
-	item, err = center.ImportBytes(ctx, []byte("prepared tool input"), media.Input{Name: "prepared.bin"})
+	item, err = center.ImportBytes(ctx, []byte("prepared tool input"), media.Input{Name: "prepared.bin"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -43,7 +43,7 @@ func (c *MediaCall) CachedExport(ctx context.Context, id string) (string, error)
 		}
 	} else if !os.IsNotExist(err) {
 		return "", err
-	} else if err := c.write(ctx, root, name, c.mediaByID[id].metadata); err != nil {
+	} else if err := c.write(ctx, root, name, c.mediaByID[id].held); err != nil {
 		return "", err
 	}
 	now := time.Now()

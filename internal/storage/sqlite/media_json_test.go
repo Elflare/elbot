@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"elbot/internal/background/cron"
+	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/storage"
 )
@@ -23,7 +24,7 @@ func TestMediaAuditDetectsMissingCronReference(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := json.Marshal(cron.CronDeliveryState{RunID: "run", ReportSegments: []llm.MessageSegment{{Type: llm.SegmentImage, MediaID: id}}})
+	data, err := json.Marshal(cron.CronDeliveryState{RunID: "run", ReportSegments: []delivery.Output{{Kind: delivery.KindImage, Source: delivery.Source{MediaID: id}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +105,7 @@ func TestMediaJSONReferenceTransactions(t *testing.T) {
 	}
 	state := func(id string) string {
 		t.Helper()
-		data, err := json.Marshal(cron.CronDeliveryState{RunID: "run", ReportReady: true, ReportSegments: []llm.MessageSegment{{Type: llm.SegmentImage, MediaID: id}}})
+		data, err := json.Marshal(cron.CronDeliveryState{RunID: "run", ReportReady: true, ReportSegments: []delivery.Output{{Kind: delivery.KindImage, Source: delivery.Source{MediaID: id}}}})
 		if err != nil {
 			t.Fatal(err)
 		}

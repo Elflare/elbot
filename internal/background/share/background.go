@@ -6,6 +6,7 @@ import (
 	"context"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/delivery"
 	"elbot/internal/llm"
 )
 
@@ -53,8 +54,8 @@ type RunResult struct {
 }
 
 type JSONResult struct {
-	Completed      bool                 `json:"completed"`
-	NeedReport     bool                 `json:"need_report"`
-	ReportSegments []llm.MessageSegment `json:"report_segments,omitempty"`
-	Report         string               `json:"report"`
+	Completed      bool              `json:"completed"`
+	NeedReport     bool              `json:"need_report"`
+	ReportSegments []delivery.Output `json:"report_segments,omitempty"` // 已分类的附件；路径为任务目录内的相对路径。
+	Report         string            `json:"report"`
 }

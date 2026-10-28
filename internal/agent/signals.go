@@ -7,6 +7,7 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/events"
 	"elbot/internal/fileops"
+	"elbot/internal/media"
 	"elbot/internal/modelmgr"
 	"elbot/internal/notification/rules"
 	"elbot/internal/session"
@@ -14,6 +15,12 @@ import (
 	"errors"
 	"log/slog"
 )
+
+func publishMediaUsageFinished(center *media.MediaCenter) func(context.Context, media.UsageID) {
+	return func(ctx context.Context, id media.UsageID) {
+		center.PublishUsageFinished(ctx, media.UsageFinishedEvent{UsageIDs: []media.UsageID{id}})
+	}
+}
 
 func (b *signalBindings) connectAgentNotifications(events signals) error {
 	vision := rules.NewVisionNotices()

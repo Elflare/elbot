@@ -209,7 +209,7 @@ func TestRecoveryAndPartialConstruction(t *testing.T) {
 	if err != nil || len(refs) != 1 || refs[0].OwnerID != "business" {
 		t.Fatalf("recovery refs = %#v %v", refs, err)
 	}
-	_ = held.Close()
+	_ = held.Close(t.Context())
 	failure := errors.New("recovery failed")
 	partial, err := NewManager(t.Context(), m.options, Deps{Media: testRepository{recover: func(context.Context) error { return failure }}})
 	if partial == nil || !errors.Is(err, failure) {

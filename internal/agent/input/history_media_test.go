@@ -3,11 +3,13 @@ package input
 import (
 	"context"
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/media"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil/mediatest"
 	"path/filepath"
 	"testing"
 )
@@ -21,13 +23,13 @@ func TestInboundMediaAssociatesHistoryPositions(t *testing.T) {
 	}
 	defer history.Close()
 	root := t.TempDir()
-	center := media.NewManager(store, root, &media.LocalBackend{Root: root})
+	center := mediatest.New(t, store, root)
 	center.History = history.Repository()
 	a := &MessageHandler{media: center, History: center.History}
 	resolver := &inboundMediaResolver{}
-	segments := []agentshare.MessageSegment{{Type: "image", Media: media.PlatformMedia{Type: "image", PlatformFileID: "bad", Size: center.MaxImportBytes + 1}}, {Type: "text", Text: "hello"}, {Type: "image", Media: media.PlatformMedia{Type: "image", PlatformFileID: "good"}}}
+	segments := []agentshare.MessageSegment{{Type: "image", Media: media.PlatformMedia{Type: "image", PlatformFileID: "bad", Size: config.Default().PlatformFiles.MaxReceiveFileBytes + 1}}, {Type: "text", Text: "hello"}, {Type: "image", Media: media.PlatformMedia{Type: "image", PlatformFileID: "good"}}}
 	row := &storage.ChatMessage{Platform: "p", PlatformScopeID: "s", PlatformMessageID: "1", SenderID: "u", Segments: storage.MarshalChatSegments([]storage.ChatSegment{
-		{Type: "image", PlatformFileID: "bad", Size: center.MaxImportBytes + 1}, {Type: "text", Text: "hello"}, {Type: "image", PlatformFileID: "good"},
+		{Type: "image", PlatformFileID: "bad", Size: config.Default().PlatformFiles.MaxReceiveFileBytes + 1}, {Type: "text", Text: "hello"}, {Type: "image", PlatformFileID: "good"},
 	})}
 	if err := history.Repository().Append(ctx, row); err != nil {
 		t.Fatal(err)
@@ -47,11 +49,11 @@ func TestInboundMediaAssociatesHistoryPositions(t *testing.T) {
 	if err != nil || len(ids) != 1 || ids[2] != resolved.Segments[2].Media.MediaID {
 		t.Fatalf("position association = %#v %v", ids, err)
 	}
-	item, err := center.GetHistoryMedia(ctx, historyMessage, 2, func(ctx context.Context, _ string, source media.PlatformMedia, limit int64) (delivery.Source, error) {
+	items, err := center.GetHistoryMediaBatch(ctx, []media.HistoryMediaRequest{{Message: historyMessage, Index: 2}}, func(ctx context.Context, _ string, source media.PlatformMedia, limit int64) (delivery.Source, error) {
 		return resolver.ResolveMedia(ctx, source, limit)
-	})
-	if err != nil || item.ID != ids[2] || resolver.calls != 1 {
-		t.Fatalf("reimport = %#v %v calls %d", item, err, resolver.calls)
+	}, media.HistoryFetchOptions{MaxFetchAttempts: 1})
+	if err != nil || len(items) != 1 || items[0].Err != nil || items[0].Media.ID != ids[2] || resolver.calls != 1 {
+		t.Fatalf("reimport = %#v %v calls %d", items, err, resolver.calls)
 	}
 	original, err := center.History.GetByPlatformMessage(ctx, "p", "s", "1")
 	if err != nil || original.Segments != row.Segments {

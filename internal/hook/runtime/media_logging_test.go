@@ -12,27 +12,27 @@ import (
 	"time"
 
 	"elbot/internal/events"
-	"elbot/internal/storage"
+	"elbot/internal/media"
 )
 
 type releaseMediaAPI struct {
 	mediaAPI
-	release func(context.Context, storage.MediaReference) error
+	release func(context.Context, media.Reference) error
 }
 
-func (a releaseMediaAPI) RemoveReference(ctx context.Context, ref storage.MediaReference) error {
+func (a releaseMediaAPI) RemoveReference(ctx context.Context, ref media.Reference) error {
 	return a.release(ctx, ref)
 }
 
 func TestMediaPruneKeepsIndependentFailureAndCancellation(t *testing.T) {
-	bridge := newMediaBridge(releaseMediaAPI{release: func(_ context.Context, ref storage.MediaReference) error {
+	bridge := newMediaBridge(releaseMediaAPI{release: func(_ context.Context, ref media.Reference) error {
 		if ref.MediaID == "cancel" {
 			return context.Canceled
 		}
 		return errors.New("independent reference failure")
 	}})
 	for _, id := range []string{"cancel", "failure"} {
-		bridge.leases[id] = &mediaLease{reference: storage.MediaReference{MediaID: id}}
+		bridge.leases[id] = &mediaLease{retained: true, reference: media.Reference{MediaID: id}}
 	}
 	outcome, err := bridge.prune(t.Context(), time.Now(), true)
 	if err == nil || outcome.ResultStatus != events.ResultFailed || !strings.Contains(outcome.Content, "cancel") || !strings.Contains(outcome.Content, "independent reference failure") || len(bridge.leases) != 2 {
@@ -45,8 +45,8 @@ func TestMediaPruneKeepsDirectoryFailureAfterReferenceRelease(t *testing.T) {
 	if err := os.WriteFile(file, []byte("file"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	bridge := newMediaBridge(releaseMediaAPI{release: func(context.Context, storage.MediaReference) error { return nil }})
-	bridge.leases["lease"] = &mediaLease{dir: filepath.Join(file, "child")}
+	bridge := newMediaBridge(releaseMediaAPI{release: func(context.Context, media.Reference) error { return nil }})
+	bridge.leases["lease"] = &mediaLease{retained: true, dir: filepath.Join(file, "child")}
 	outcome, err := bridge.prune(t.Context(), time.Now(), true)
 	if err == nil || outcome.ResultStatus != events.ResultFailed || !strings.Contains(outcome.Content, "directory_release_error") {
 		t.Fatalf("outcome=%+v err=%v", outcome, err)
@@ -57,11 +57,11 @@ func TestRuntimeCloseUsesCallerMediaCleanupContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.WithValue(t.Context(), "cleanup-budget", "caller"))
 	cancel()
 	observed := make(chan context.Context, 1)
-	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Media: releaseMediaAPI{release: func(ctx context.Context, _ storage.MediaReference) error { observed <- ctx; return ctx.Err() }}})
+	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Media: releaseMediaAPI{release: func(ctx context.Context, _ media.Reference) error { observed <- ctx; return ctx.Err() }}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager.media.leases["lease"] = &mediaLease{}
+	manager.media.leases["lease"] = &mediaLease{retained: true}
 	records := captureHookRecords(t)
 	manager.Close(ctx)
 	select {

@@ -605,6 +605,25 @@ CREATE TABLE media_signed_urls (
 );
 `,
 	},
+	{
+		version: 26,
+		name:    "cron_report_sources",
+		sql: `
+DROP TRIGGER media_cron_insert;
+DROP TRIGGER media_cron_update;
+CREATE TRIGGER media_cron_insert AFTER INSERT ON cron_jobs BEGIN
+ INSERT OR IGNORE INTO media_references(media_id,owner_type,owner_id,purpose,created_at)
+ SELECT json_extract(value,'$.Source.media'),'cron',NEW.id,'report',strftime('%Y-%m-%dT%H:%M:%fZ','now')
+ FROM json_each(CASE WHEN json_valid(NEW.delivery_state) THEN NEW.delivery_state ELSE '{}' END,'$.report_segments') WHERE COALESCE(json_extract(value,'$.Source.media'),'')<>'';
+END;
+CREATE TRIGGER media_cron_update AFTER UPDATE OF delivery_state ON cron_jobs BEGIN
+ DELETE FROM media_references WHERE owner_type='cron' AND owner_id=NEW.id;
+ INSERT OR IGNORE INTO media_references(media_id,owner_type,owner_id,purpose,created_at)
+ SELECT json_extract(value,'$.Source.media'),'cron',NEW.id,'report',strftime('%Y-%m-%dT%H:%M:%fZ','now')
+ FROM json_each(CASE WHEN json_valid(NEW.delivery_state) THEN NEW.delivery_state ELSE '{}' END,'$.report_segments') WHERE COALESCE(json_extract(value,'$.Source.media'),'')<>'';
+END;
+`,
+	},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {
