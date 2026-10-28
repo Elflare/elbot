@@ -19,8 +19,6 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 
-	"elbot/internal/modelmgr"
-
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
@@ -82,14 +80,14 @@ func TestDynamicProviderClientPublishesRequestLog(t *testing.T) {
 		t.Fatalf("create zhipu client: %v", err)
 	}
 	captureLogs(t, slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	models := newTestModels(t, modelmgr.Options{
+	models := newTestModels(t, testModelOptions{
 		Clients:     map[string]llm.Client{"deepseek": &fakeLLM{}, "zhipu": zhipu},
 		ModeModels:  modeModels,
 		Providers:   providers,
 		DefaultMode: storage.SessionModeWork,
 	})
 
-	ch, err := models.ClientForProvider("zhipu").(chatcompletions.Streamer).Stream(context.Background(), chatcompletions.Request{
+	ch, err := models.Resolve(config.ModelSelection{Provider: "zhipu", Model: "glm-4-flash"}).Client.(chatcompletions.Streamer).Stream(context.Background(), chatcompletions.Request{
 		Model:    "glm-4-flash",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("动态 provider 请求")}},
 	})

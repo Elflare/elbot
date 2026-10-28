@@ -22,7 +22,7 @@ type sharedResources struct {
 	historyStore *sqlite.ChatHistoryStore // 所有历史使用方退出后关闭的独立历史库。
 	media        *media.MediaCenter       // 共享媒体服务，借用 store。
 	permission   *security.Permission     // 共享权限管理。
-	models       *modelmgr.Service        // 拥有模型选择状态与重载订阅的共享服务。
+	models       *modelmgr.ModelManager   // 拥有模型选择状态、厂商快照与重试信号。
 }
 
 // prepareResources 只消费已定位路径；失败时返回部分结果，不自行清理。
@@ -58,8 +58,6 @@ func prepareResources(ctx context.Context, resolvedConfigPath string) (*sharedRe
 	}
 	resources.permission = security.NewPermission(cfg.Security.UserMaxToolRisk, cfg.Security.SuperadminConfirmRisk, cfg.Security.Superadmins)
 
-	// TODO: 模型侧实现 NewModelManager，接收完整配置；
-	// 协议客户端、请求参数和 providers 重载均由模型侧负责。
 	resources.models, err = modelmgr.NewModelManager(ctx, cfg)
 	if err != nil {
 		return resources, fmt.Errorf("prepare models: %w", err)

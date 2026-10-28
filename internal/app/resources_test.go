@@ -44,6 +44,11 @@ func cleanupAppResources(t *testing.T, r *sharedResources) {
 				t.Error(err)
 			}
 		}
+		if r.media != nil {
+			if err := r.media.Close(context.Background()); err != nil {
+				t.Error(err)
+			}
+		}
 		if r.historyStore != nil {
 			if err := r.historyStore.Close(); err != nil {
 				t.Error(err)
@@ -98,5 +103,37 @@ func TestPrepareResourcesCanceledBeforeAcquisition(t *testing.T) {
 	r, err := prepareResources(ctx, "unused")
 	if !errors.Is(err, context.Canceled) || r.logs != nil || r.store != nil {
 		t.Fatalf("resources=%#v error=%v", r, err)
+	}
+}
+
+func TestPrepareResourcesConstructsConfiguredModels(t *testing.T) {
+	path := appConfigFixture(t)
+	r, err := prepareResources(t.Context(), path)
+	cleanupAppResources(t, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected := r.models.ResolveMode("work")
+	if selected.Client == nil || selected.Provider != "chat" || selected.Model != "m" {
+		t.Fatalf("selection=%+v", selected)
+	}
+}
+
+func TestPrepareResourcesRetainsPartialModelsForCleanup(t *testing.T) {
+	path := appConfigFixture(t)
+	providersPath := filepath.Join(filepath.Dir(path), "providers.toml")
+	file, err := os.OpenFile(providersPath, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, writeErr := file.WriteString("proxy = '://invalid'\n")
+	closeErr := file.Close()
+	if err := errors.Join(writeErr, closeErr); err != nil {
+		t.Fatal(err)
+	}
+	r, err := prepareResources(t.Context(), path)
+	cleanupAppResources(t, r)
+	if err == nil || !strings.Contains(err.Error(), "prepare models") || r.models == nil || r.media == nil || r.historyStore == nil {
+		t.Fatalf("resources=%+v error=%v", r, err)
 	}
 }

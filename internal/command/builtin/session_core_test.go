@@ -4,7 +4,6 @@ import (
 	"context"
 	"elbot/internal/command"
 	"elbot/internal/config"
-	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/request"
 	"elbot/internal/session"
@@ -17,8 +16,7 @@ import (
 
 func TestStatusSessionMarkers(t *testing.T) {
 	ctx := context.Background()
-	models, err := modelmgr.New(modelmgr.Options{
-		Clients:    map[string]llm.Client{"test": struct{ llm.Client }{}},
+	models, err := modelmgr.NewModelManager(t.Context(), &config.Config{
 		Providers:  map[string]config.ProviderConfig{"test": {Models: []string{"model"}}},
 		ModeModels: map[string]config.ModelSelection{"work": {Provider: "test", Model: "model"}},
 	})

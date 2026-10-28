@@ -15,7 +15,7 @@ type metadataLLM struct {
 }
 
 func TestWindowResolverConcurrentCacheAccess(t *testing.T) {
-	resolver := NewWindowResolver(
+	resolver := newWindowResolver(
 		config.ModelMetadataConfig{DefaultContextWindow: 100},
 		map[string]config.ProviderConfig{"p": {ModelConfigs: map[string]config.ModelConfig{"manual": {ContextWindow: 200}}}},
 		func(string) llm.Client {
@@ -51,7 +51,7 @@ func TestWindowResolverPriority(t *testing.T) {
 			"fallback": {ContextWindow: 12000},
 		}},
 	}
-	resolver := NewWindowResolver(
+	resolver := newWindowResolver(
 		config.ModelMetadataConfig{DefaultContextWindow: 8192},
 		providers,
 		func(provider string) llm.Client {
@@ -70,8 +70,5 @@ func TestWindowResolverPriority(t *testing.T) {
 	}
 	if got := resolver.Resolve(context.Background(), "p", "unknown"); got != 8192 {
 		t.Fatalf("default window = %d", got)
-	}
-	if got := (&WindowResolver{}).Resolve(context.Background(), "p", "unknown"); got != config.DefaultContextWindow {
-		t.Fatalf("built-in default window = %d", got)
 	}
 }

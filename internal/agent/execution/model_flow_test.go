@@ -43,7 +43,7 @@ func TestModelOptionsFetchesProvidersInParallel(t *testing.T) {
 		storage.SessionModeWork: {Provider: "local", Model: "local-model"},
 		storage.SessionModeChat: {Provider: "local", Model: "local-model"},
 	}
-	models := newTestModels(t, modelmgr.Options{
+	models := newTestModels(t, testModelOptions{
 		Clients:     map[string]llm.Client{"local": &fakeLLM{models: []string{"local-model"}}},
 		ModeModels:  modeModels,
 		Providers:   providers,
@@ -92,7 +92,7 @@ func TestModelOptionsCachesProviderModelsUntilFresh(t *testing.T) {
 		storage.SessionModeWork: {Provider: "local", Model: "local-model"},
 		storage.SessionModeChat: {Provider: "local", Model: "local-model"},
 	}
-	models := newTestModels(t, modelmgr.Options{
+	models := newTestModels(t, testModelOptions{
 		Clients:     map[string]llm.Client{"local": &fakeLLM{models: []string{"local-model"}}},
 		ModeModels:  modeModels,
 		Providers:   providers,

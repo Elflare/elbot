@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"elbot/internal/command"
+	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/fileops"
@@ -14,6 +15,7 @@ import (
 	"elbot/internal/modelmgr"
 	"elbot/internal/security"
 	"elbot/internal/session"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 )
@@ -24,13 +26,30 @@ type SupervisorDeps struct {
 	ChatHistory interface {
 		GetByPlatformMessage(context.Context, string, string, string) (*storage.ChatMessage, error)
 	} // 借用历史身份查询，用于入站媒体关联。
-	Models     *modelmgr.Service
+	Models     ModelCapabilities
 	Media      *media.MediaCenter
 	Permission *security.Permission // Shared permission service; Agent does not own its lifecycle.
 	Logs       *logging.Manager
 	Tools      ToolCapabilities
 	Hooks      HookCapabilities
 	Platform   PlatformCapabilities
+}
+
+// ModelCapabilities 声明 Agent 的模型选择、管理命令和重试观察能力；生命周期归 App。
+type ModelCapabilities interface {
+	Resolve(config.ModelSelection) modelmgr.Selection
+	ResolveMode(string) modelmgr.Selection
+	ResolveCompact(modelmgr.Selection) modelmgr.Selection
+	ResolveNaming(context.Context) modelmgr.NamingSelection
+	ReloadProviders(context.Context) error
+	CurrentModelForMode(mode string) modelmgr.ModelOption
+	CurrentCompactModel(mode string) modelmgr.ModelOption
+	PrepareModel(arg string) (modelmgr.ModelOption, error)
+	CommitModelForMode(mode string, selected modelmgr.ModelOption) (modelmgr.ModelOption, error)
+	SelectCompactModel(arg string) (modelmgr.ModelOption, error)
+	SelectNamingModel(arg string) (modelmgr.ModelOption, error)
+	ModelList(query string, opts modelmgr.ModelListOptions) modelmgr.ModelListResult
+	ObserveModelRetrying(handler func(context.Context, modelmgr.ModelRetryingEvent) error, options signal.ConnectOptions) (*signal.Connection, error)
 }
 
 // ToolCapabilities declares the Tool operations consumed by Agent without exposing owned components.

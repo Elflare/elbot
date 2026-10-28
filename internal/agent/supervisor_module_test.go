@@ -85,6 +85,13 @@ func (isolatedClient) Stream(context.Context, chatcompletions.Request) (<-chan c
 
 func isolatedModuleDeps(t *testing.T) SupervisorDeps {
 	t.Helper()
+	deps, _ := isolatedModuleResources(t)
+	return deps
+}
+
+// 需要跨消费者接线或控制生命周期的测试由装配方持有具体模型对象。
+func isolatedModuleResources(t *testing.T) (SupervisorDeps, *modelmgr.ModelManager) {
+	t.Helper()
 	store, err := sqlite.New(t.Context(), ":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -95,7 +102,7 @@ func isolatedModuleDeps(t *testing.T) SupervisorDeps {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = history.Close() })
-	models, err := modelmgr.New(modelmgr.Options{Clients: map[string]llm.Client{"p": isolatedClient{}}, Providers: map[string]config.ProviderConfig{"p": {Models: []string{"m"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}, DefaultMode: "work"})
+	models, err := newConfiguredTestModels(t, testModelOptions{Clients: map[string]llm.Client{"p": isolatedClient{}}, Providers: map[string]config.ProviderConfig{"p": {Models: []string{"m"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}, DefaultMode: "work"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +124,7 @@ func isolatedModuleDeps(t *testing.T) SupervisorDeps {
 			Service:        fileops.NewService(nil),
 			skills:         skill.NewManager(t.TempDir(), registry, toolmedia.NewMediaRuntime(center, root, mediatest.Publisher(center)), processenv.New(nil)),
 		},
-	}
+	}, models
 }
 
 func TestStandaloneDialogueOwnsStateAndBorrowsOnlyCapabilities(t *testing.T) {
@@ -160,7 +167,7 @@ func TestStandaloneDialogueOwnsStateAndBorrowsOnlyCapabilities(t *testing.T) {
 	if _, err := deps.Store.Messages().ListBySession(ctx, rows[0].ID); err != nil {
 		t.Fatal("borrowed Store closed", err)
 	}
-	if deps.Models.ClientForProvider("p") == nil {
+	if deps.Models.ResolveMode("work").Client == nil {
 		t.Fatal("borrowed models changed")
 	}
 	if err := m.Start(); err == nil {
@@ -169,8 +176,8 @@ func TestStandaloneDialogueOwnsStateAndBorrowsOnlyCapabilities(t *testing.T) {
 }
 
 func TestDialoguePartialConstructionCleansOwnedState(t *testing.T) {
-	deps := isolatedModuleDeps(t)
-	if err := deps.Models.ModelRetrying().Close(t.Context()); err != nil {
+	deps, models := isolatedModuleResources(t)
+	if err := models.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	m, err := NewSupervisor(t.Context(), isolatedAgentConfig(), deps)

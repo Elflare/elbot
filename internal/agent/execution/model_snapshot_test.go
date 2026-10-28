@@ -75,21 +75,17 @@ func TestNamingFallbackKeepsContextSelectionAcrossSwitchAndReload(t *testing.T) 
 	next := &fakeLLM{titleReplies: []string{"new title"}}
 	clients := map[string]llm.Client{"naming": naming, "old": old, "next": next}
 	providers := map[string]config.ProviderConfig{"naming": {Models: []string{"title"}}, "old": {Models: []string{"first"}}, "next": {Models: []string{"second"}}}
-	models := newTestModels(t, modelmgr.Options{
+	cfg := testModelConfig(t, testModelOptions{
 		Clients:     clients,
 		Providers:   providers,
 		ModeModels:  map[string]config.ModelSelection{storage.SessionModeWork: {Provider: "old", Model: "first"}},
 		NamingModel: config.ModelSelection{Provider: "naming", Model: "title"},
-		LoadProviders: func(context.Context) (config.ProviderFile, error) {
-			return config.ProviderFile{Providers: providers}, nil
-		},
-		BuildClient: func(name string, _ config.ProviderConfig) (llm.Client, error) {
-			if name == "old" {
-				return next, nil
-			}
-			return clients[name], nil
-		},
 	})
+	models, err := modelmgr.NewModelManager(t.Context(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = models.Close(context.Background()) })
 	g := session.NewTitleGenerator(models)
 	messages := []storage.Message{{Role: storage.RoleUser, Content: "name this"}}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -104,12 +100,16 @@ func TestNamingFallbackKeepsContextSelectionAcrossSwitchAndReload(t *testing.T) 
 		done <- err
 	}()
 	awaitModelBarrier(t, started)
-	if _, err := models.SelectModelForMode(storage.SessionModeWork, "next/second"); err != nil {
+	if _, err := models.CommitModelForMode(storage.SessionModeWork, modelmgr.ModelOption{Provider: "next", Model: "second"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := models.SelectNamingModel("next/second"); err != nil {
 		t.Fatal(err)
 	}
+	replacement := cfg.Providers["old"]
+	replacement.BaseURL = cfg.Providers["next"].BaseURL
+	cfg.Providers["old"] = replacement
+	writeTestProviders(t, cfg)
 	if err := models.ReloadProviders(ctx); err != nil {
 		t.Fatal(err)
 	}

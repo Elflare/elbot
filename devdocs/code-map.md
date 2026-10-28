@@ -18,7 +18,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 启动与装配
 
 - `cmd/elbot/main.go`、`internal/launcher/cli.go`：程序入口、参数与运行模式。
-- `internal/app/` 六文件按下层接口已存在来实现公共流程，五条业务线已提供根包总管，配置独占、媒体构造与消费者接线已实现；模型构造入口及进程入口适配仍待完成。13 个原生产文件和 12 个原测试文件保存在 `*.go.bak` 中；职责与调用契约见 [App 包设计](app-design.md)。
+- `internal/app/` 六文件按下层接口已存在来实现公共流程，五条业务线已提供根包总管，配置独占、媒体构造与消费者接线已实现；模型构造入口已实现，进程入口适配仍待完成。13 个原生产文件和 12 个原测试文件保存在 `*.go.bak` 中；职责与调用契约见 [App 包设计](app-design.md)。
 - `internal/app/entry.go`：启动参数、局部阶段列表、统一阶段执行与耗时、Lifecycle／可选 Waiter、唯一总管集合、按顺序启动与按能力等待。
 - `internal/app/environment.go`：验证运行模式，定位配置并转为解析符号链接后的绝对路径；TUI／Service 通过 `gofrs/flock` 非阻塞取得对应 `.lock` 文件的独占锁。
 - `internal/app/environment_test.go`：配置定位、路径别名、配置替换保存、跨进程互斥、正常及异常退出后的重新取锁测试，可独立运行。
@@ -51,7 +51,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/signals.go`：Agent 信号源构造及通知、重试、会话清理与接管订阅。
 - `internal/background/cron/lifecycle.go`：Cron 平台连接通知的启动前合并、独立消费队列与关闭等待。
 - `internal/session/naming_signals.go`、`naming_logging.go`、`naming_lifecycle.go`：命名信号、日志与退出。
-- `internal/modelmgr/signals.go`、`logging.go`：模型重试信号与日志。
+- `internal/modelmgr/signals.go`、`logging.go`：模型重试观察入口与日志；消费者只持有观察连接。
 - `internal/agent/share/logging.go`、`internal/background/share/logging.go`：所属业务日志发布。
 
 <!-- locator:config -->
@@ -275,8 +275,11 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 <!-- locator:llm -->
 ## 模型服务与 LLM 客户端
 
-- `internal/modelmgr/`：模型选择、兼容性、目录、状态与重试信号。
+- `internal/modelmgr/`：全部留在根包，负责模型选择、兼容性、目录、状态与重试信号。
+- `internal/modelmgr/manager.go`、`client.go`：ModelManager、完整配置构造、部分失败交回与关闭；Chat／Responses 客户端及请求参数装配。
 - `internal/modelmgr/providers.go`、`selection.go`、`context_window.go`：厂商快照、固定选择与窗口缓存。
+- `internal/agent/deps.go`、`internal/background/deps.go`、`internal/tool/deps.go`：各消费方根包的 ModelCapabilities；接线只交付实际使用的模型能力。
+- `internal/session/title.go`、`internal/contextmgr/service.go`：分别声明命名选择与模型解析的 ModelCapabilities。
 - `internal/llm/`：独立文本、模型目录、消息／工具／Usage 及 Extra 契约。
 - `internal/llm/httpclient/`：HTTP、重试、SSE 与超时。
 - `internal/llm/chatcompletions/`、`internal/llm/responses/`：独立协议客户端。
@@ -315,7 +318,7 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 <!-- locator:media -->
 ## 媒体中心
 
-Media 根部入口与装配、object 对象管理、transfer 交付编排、backend 读写及 share 协作契约均已实现；15 个生产文件和 12 个测试文件保留为 `*.go.bak`。App 与五条业务线已接入公开契约，完整应用仍需模型构造与进程入口。完整字段、接口、验证范围与文件职责见 [Media 契约](app-design.md#media-根部与下层契约)。
+Media 根部入口与装配、object 对象管理、transfer 交付编排、backend 读写及 share 协作契约均已实现；15 个生产文件和 12 个测试文件保留为 `*.go.bak`。App 与五条业务线已接入公开契约，模型构造和 App 整包已通过 race，完整应用仍需进程入口适配。完整字段、接口、验证范围与文件职责见 [Media 契约](app-design.md#media-根部与下层契约)。
 
 - `internal/media/api.go`、`wiring.go`、`deps.go`：MediaCenter 公开入口、完整配置构造装配、Store／History 消费契约。
 - `internal/media/types.go`、`reference.go`：公开 MediaInfo、UsageID、UsageFinishedEvent、来源与历史类型；HeldMedia 读取与使用身份、Reference 和参数 ID 解析。

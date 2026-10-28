@@ -39,7 +39,7 @@ flowchart TD
 <!-- locator:startup -->
 ## 启动与装配
 
-App 按下层接口已存在来实现公共流程，下层按照调用契约实现。五条业务线已提供根包总管，配置独占、Platform 下层、Media 全包与消费者接线已实现；模型构造入口及进程入口适配仍待完成。完整应用的编译与运行验证需待这些接口接入。原 13 个生产文件和 12 个测试文件保存在同目录的 `*.go.bak` 中，不参与构建。
+App 按下层接口已存在来实现公共流程，下层按照调用契约实现。五条业务线已提供根包总管，配置独占、Platform 下层、Media 全包与消费者接线已实现；模型构造入口及 App 整包验证已完成，进程入口适配仍待完成。原 13 个生产文件和 12 个测试文件保存在同目录的 `*.go.bak` 中，不参与构建。
 
 六文件职责及接口契约见 [App 包设计](app-design.md)。App 加载配置、构造共享资源和各线总管、交付公开能力并协调启停。媒体和模型服务接收完整配置，自行处理后端、凭据、协议客户端、请求参数及恢复／重载；App 不拆解这些初始化细节。共享存储和独立历史库均归 App，Platform 直接写入历史，Tool 直接查询；部分失败交回已取得对象统一清理，订阅由接收方持有和释放。权限管理使用 `security.Permission`，App 与 Agent 不承接 Doctor。
 
@@ -554,8 +554,12 @@ flowchart LR
 <!-- locator:llm -->
 ## 模型服务与客户端
 
+`modelmgr.ModelManager` 全部在根包按文件分工。`NewModelManager(ctx, cfg)` 接收已加载配置，自行装配 Chat／Responses 客户端和请求参数；部分初始化对象交回 App 关闭。`ReloadProviders(ctx)` 只重读 providers 文件及主配置目录下的凭据，不重读主配置或模型槽，也没有配置监听订阅。重试事件通过 `ObserveModelRetrying(handler, options)` 交付观察连接，消费者持有连接；总管关闭信号并等待回调，超时允许继续等待。
+
 - modelmgr 唯一持有模式／槽位、命名／压缩选择、厂商运行时与目录／窗口缓存；后台默认 work，Elnis 可选 elwisp1/2/3，Cron 可指定模型。
+- App 持有具体 ModelManager 并负责关闭；Agent、Background、Tool、Session、Contextmgr 分别在根包声明 ModelCapabilities，只接入各自实际使用的能力，再按现有最小接口或函数交给子包。
 - 厂商重载串行准备全部客户端后原子发布，新快照拥有独立缓存；在途轮继续用旧快照，旧请求不回写新缓存。模型目录并行查询 provider，编号在筛选前分配，结果返回副本。
+- 私有窗口解析器按远端元数据、手工配置、配置默认窗口依次取值；回调由构造入口提供，默认窗口由配置层补齐。
 - 模型切换先原子保存 state.toml 再发布内存，失败保留旧选择；命名与摘要固定各自选择和 fallback，Prepared Hook 不改模型身份。
 - httpclient 管代理、可取消的初始交换重试、SSE 与超时，断流不重放；鉴权、编解码与终态归客户端。Extra 只补字段，重名发送前拒绝；重试通知跟随真实调用 context。
 

@@ -17,7 +17,7 @@ func cloneModes(modes map[string]config.ModelSelection) map[string]config.ModelS
 	return result
 }
 
-func (s *Service) snapshot() runtimeState {
+func (s *ModelManager) snapshot() runtimeState {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	state := s.state
@@ -27,7 +27,7 @@ func (s *Service) snapshot() runtimeState {
 
 // commit serializes writers, but leaves the published snapshot readable during
 // persistence. A failed save never changes the state seen by other callers.
-func (s *Service) commit(update func(*runtimeState)) error {
+func (s *ModelManager) commit(update func(*runtimeState)) error {
 	s.commitMu.Lock()
 	defer s.commitMu.Unlock()
 	next := s.snapshot()

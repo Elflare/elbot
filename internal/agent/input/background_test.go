@@ -96,7 +96,16 @@ func TestBackgroundPreparationKeepsContextAndMultimodalSkillMaterial(t *testing.
 	}
 	actor, _ := contextinfo.ActorFromContext(h.runContext)
 	permission, _ := security.PermissionFromContext(h.runContext)
-	selected := modelmgr.SelectionOverrideFromContext(h.runContext)
+	models, err := modelmgr.NewModelManager(t.Context(), &config.Config{Providers: map[string]config.ProviderConfig{"provider": {}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "provider", Model: "default"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := models.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	selected := modelmgr.SelectionForTurn(h.runContext, models, nil).ModelSelection
 	if actor != req.Actor || permission != h.permission || selected != (config.ModelSelection{Provider: "provider", Model: "model"}) {
 		t.Fatalf("actor=%+v permission=%p selection=%+v", actor, permission, selected)
 	}

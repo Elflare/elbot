@@ -8,7 +8,6 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
-	"elbot/internal/modelmgr"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"slices"
@@ -51,7 +50,7 @@ func (v *contractChat) Stream(_ context.Context, req chatcompletions.Request) (<
 
 func contractModels(t *testing.T, deps *SupervisorDeps, client llm.Client) {
 	t.Helper()
-	models, err := modelmgr.New(modelmgr.Options{Clients: map[string]llm.Client{"p": client}, Providers: map[string]config.ProviderConfig{"p": {Models: []string{"m"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}, DefaultMode: "work"})
+	models, err := newConfiguredTestModels(t, testModelOptions{Clients: map[string]llm.Client{"p": client}, Providers: map[string]config.ProviderConfig{"p": {Models: []string{"m"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}, DefaultMode: "work"})
 	if err != nil {
 		t.Fatal(err)
 	}

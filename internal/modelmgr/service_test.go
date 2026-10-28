@@ -34,8 +34,8 @@ func (c *testClient) ListModels(ctx context.Context) ([]string, error) {
 	return nil, nil
 }
 
-func testOptions() Options {
-	return Options{
+func testOptions() testModelOptions {
+	return testModelOptions{
 		Clients:     map[string]llm.Client{"p": &testClient{}, "q": &testClient{}},
 		Providers:   map[string]config.ProviderConfig{"p": {Models: []string{"a", "b", "c"}}, "q": {Models: []string{"a", "z"}}},
 		ModeModels:  map[string]config.ModelSelection{"work": {Provider: "p", Model: "a"}, "chat": {Provider: "q", Model: "z"}},
@@ -43,9 +43,9 @@ func testOptions() Options {
 	}
 }
 
-func newTestService(t *testing.T, opts Options) *Service {
+func newTestService(t *testing.T, opts testModelOptions) *ModelManager {
 	t.Helper()
-	s, err := New(opts)
+	s, err := buildTestManager(t, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,18 +71,18 @@ func TestValidateTaskSelectionDoesNotChangeSharedModels(t *testing.T) {
 func TestNewValidatesSelectionsAndOwnsInputMaps(t *testing.T) {
 	for _, tc := range []struct {
 		name, want string
-		change     func(*Options)
+		change     func(*testModelOptions)
 	}{
-		{"work", "mode_models.work", func(o *Options) { delete(o.ModeModels, "work") }},
-		{"client", `client not found for provider "p"`, func(o *Options) { delete(o.Clients, "p") }},
-		{"provider", `provider "missing" not found`, func(o *Options) { o.ModeModels["chat"] = config.ModelSelection{Provider: "missing", Model: "a"} }},
-		{"naming", "naming_model provider/model", func(o *Options) { o.NamingModel.Model = "a" }},
-		{"compact", "compact_model provider/model", func(o *Options) { o.CompactModel.Provider = "p" }},
+		{"provider", `provider "missing" not found`, func(o *testModelOptions) {
+			o.ModeModels["chat"] = config.ModelSelection{Provider: "missing", Model: "a"}
+		}},
+		{"naming", "naming_model provider/model", func(o *testModelOptions) { o.NamingModel.Model = "a" }},
+		{"compact", "compact_model provider/model", func(o *testModelOptions) { o.CompactModel.Provider = "p" }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			opts := testOptions()
 			tc.change(&opts)
-			if _, err := New(opts); err == nil || !strings.Contains(err.Error(), tc.want) {
+			if _, err := buildTestManager(t, opts); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("New error = %v, want %q", err, tc.want)
 			}
 		})
@@ -119,7 +119,7 @@ func TestSelectionsPersistAndRestoreWithFallbacks(t *testing.T) {
 		t.Fatalf("naming fallback = %#v", got)
 	}
 	for _, mode := range []string{"work", "chat", "elwisp1", "elwisp2", "elwisp3"} {
-		if _, err := s.SelectModelForMode(mode, "p/b"); err != nil {
+		if _, err := selectTestModel(s, mode, "p/b"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -178,7 +178,7 @@ func TestSaveFailureNeverPublishesAnySlot(t *testing.T) {
 			case "naming":
 				_, err = s.SelectNamingModel("p/b")
 			default:
-				_, err = s.SelectModelForMode(slot, "p/b")
+				_, err = selectTestModel(s, slot, "p/b")
 			}
 			if !errors.Is(err, failure) {
 				t.Fatalf("error = %v", err)
@@ -220,7 +220,7 @@ func TestConcurrentCommitsPublishOnlySavedSnapshots(t *testing.T) {
 				return config.SaveState(path, state)
 			}
 			first, second := make(chan error, 1), make(chan error, 1)
-			go func() { _, err := s.SelectModelForMode("work", "p/b"); first <- err }()
+			go func() { _, err := selectTestModel(s, "work", "p/b"); first <- err }()
 			waitSignal(t, entered)
 			go func() { _, err := s.SelectNamingModel("p/c"); second <- err }()
 			read := make(chan NamingSelection, 1)
@@ -270,7 +270,7 @@ func TestConcurrentReadersSwitchesAndCatalogRefresh(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < 12; j++ {
 				if i%3 == 0 {
-					if _, err := s.SelectModelForMode("work", []string{"p/a", "p/b"}[j%2]); err != nil {
+					if _, err := selectTestModel(s, "work", []string{"p/a", "p/b"}[j%2]); err != nil {
 						t.Error(err)
 					}
 				} else {

@@ -7,11 +7,10 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextmgr"
 	"elbot/internal/llm"
-	"elbot/internal/modelmgr"
 )
 
 func TestContextRuntimeEvaluatesThresholdWithoutStickyState(t *testing.T) {
-	models := newTestModels(t, modelmgr.Options{
+	models := newTestModels(t, testModelOptions{
 		Clients: map[string]llm.Client{"p": &fakeLLM{}}, Providers: map[string]config.ProviderConfig{"p": {}},
 		ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}},
 		Metadata:   config.ModelMetadataConfig{DefaultContextWindow: 100},

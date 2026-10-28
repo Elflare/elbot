@@ -108,7 +108,8 @@ func TestExecutionViewKeepsRequestCancellationAndClearsBackgroundOverrides(t *te
 	if contextinfo.BackgroundContext(refreshed) {
 		t.Fatal("retained background identity")
 	}
-	if selection := modelmgr.SelectionOverrideFromContext(refreshed); selection.Provider != "" || selection.Model != "" {
+	models := newTestModels(t, testModelOptions{Providers: map[string]config.ProviderConfig{"p": {}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}})
+	if selection := modelmgr.SelectionForTurn(refreshed, models, nil); selection.Provider != "p" || selection.Model != "m" {
 		t.Fatalf("retained model override: %+v", selection)
 	}
 	if got, _ := contextinfo.ActorFromContext(refreshed); got != actor || turn.AttemptFromContext(refreshed) != "attempt" || refreshed.Err() != nil {

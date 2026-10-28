@@ -41,7 +41,7 @@ func TestCatalogCachesErrorsAndRefreshesIndependentProviders(t *testing.T) {
 	if fresh.Options[0].Index != 2 || fresh.Options[3].Model != "remote" {
 		t.Fatalf("filtered indices/order = %#v", fresh.Options)
 	}
-	if _, err := s.SelectModelForMode("work", "5"); err != nil {
+	if _, err := selectTestModel(s, "work", "5"); err != nil {
 		t.Fatal(err)
 	}
 	if got := s.ResolveMode("work"); got.Model != "remote" {
@@ -77,11 +77,11 @@ func TestCatalogFetchesProvidersConcurrently(t *testing.T) {
 func TestModelMatchingAndCatalogMarks(t *testing.T) {
 	s := newTestService(t, testOptions())
 	for _, tc := range []struct{ arg, want string }{{"0", "out of range"}, {"99", "out of range"}, {"a", "ambiguous"}, {"absent", "not found"}, {"", "usage:"}} {
-		if _, err := s.SelectModelForMode("work", tc.arg); err == nil || !strings.Contains(err.Error(), tc.want) {
+		if _, err := selectTestModel(s, "work", tc.arg); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Fatalf("select %q = %v, want %s", tc.arg, err, tc.want)
 		}
 	}
-	if _, err := s.SelectModelForMode("elwisp2", "Q/Z"); err != nil {
+	if _, err := selectTestModel(s, "elwisp2", "Q/Z"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.SelectCompactModel("p/b"); err != nil {

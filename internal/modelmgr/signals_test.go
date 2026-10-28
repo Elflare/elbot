@@ -32,7 +32,7 @@ func TestRetryLogsWithoutNotificationSubscriber(t *testing.T) {
 	opts := testOptions()
 	client := &retryClient{}
 	opts.Clients["p"] = client
-	service, err := New(opts)
+	service, err := buildTestManager(t, opts)
 	if err != nil {
 		t.Fatal(err)
 	}

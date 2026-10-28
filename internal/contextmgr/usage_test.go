@@ -13,11 +13,10 @@ import (
 
 func TestStatusCompactLayout(t *testing.T) {
 	selection := config.ModelSelection{Provider: "test", Model: "model"}
-	models, err := modelmgr.New(modelmgr.Options{
-		Clients:    map[string]llm.Client{"test": struct{ llm.Client }{}},
-		Providers:  map[string]config.ProviderConfig{"test": {Models: []string{"model"}}},
-		ModeModels: map[string]config.ModelSelection{"work": selection},
-		Metadata:   config.ModelMetadataConfig{DefaultContextWindow: 128000},
+	models, err := modelmgr.NewModelManager(t.Context(), &config.Config{
+		Providers:     map[string]config.ProviderConfig{"test": {Models: []string{"model"}}},
+		ModeModels:    map[string]config.ModelSelection{"work": selection},
+		ModelMetadata: config.ModelMetadataConfig{DefaultContextWindow: 128000},
 	})
 	if err != nil {
 		t.Fatal(err)

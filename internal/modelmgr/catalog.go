@@ -42,7 +42,7 @@ type providerCatalog struct {
 	err        error
 }
 
-func (s *Service) ModelList(query string, opts ModelListOptions) ModelListResult {
+func (s *ModelManager) ModelList(query string, opts ModelListOptions) ModelListResult {
 	query = strings.ToLower(strings.TrimSpace(query))
 	snapshot := s.providerSnapshot()
 	providers := make([]string, 0, len(snapshot.catalogs))
@@ -95,7 +95,7 @@ func (s *Service) ModelList(query string, opts ModelListOptions) ModelListResult
 	return result
 }
 
-func (s *Service) providerModels(snapshot *providerSet, name string, fresh bool) ([]string, error) {
+func (s *ModelManager) providerModels(snapshot *providerSet, name string, fresh bool) ([]string, error) {
 	p := snapshot.catalogs[name]
 	// Serialize refreshes for this provider so a slower old fetch cannot replace
 	// a newer result. Other providers and model selections remain independent.

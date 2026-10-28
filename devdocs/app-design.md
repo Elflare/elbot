@@ -5,7 +5,7 @@ review时要看有没过度防御、有没旧逻辑代码，职责、边界是�
 
 # App 包设计
 
-App 使用六文件组织公共运行流程，按下层接口已存在来编写调用；下层按照这些契约实现。五条业务线已提供根包总管，配置独占、Media 全包和消费者接线已实现。模型构造入口及进程入口适配仍待完成；完整应用尚不能编译运行。
+App 使用六文件组织公共运行流程，按下层接口已存在来编写调用；下层按照这些契约实现。五条业务线已提供根包总管，配置独占、Media 全包和消费者接线已实现。模型构造入口及 App 整包验证已完成；进程入口适配仍待完成。
 
 ## 职责与边界
 
@@ -68,7 +68,7 @@ App 用 `shutdownStep` 记录步骤名称和关闭调用，`runShutdownSteps` �
 
 Platform 根部按目标下层契约实现。NewSupervisor 接收完整配置及 Mode、Store、ChatHistory、Media、Permission、Logs，持有适配器、通知连接和 UI；历史库属于 App，Platform 只借用。部分失败仍交回总管。公开发送、原生 API 和媒体解析转交内部组件，不暴露 Repository 或 Router。失败通知已接通；配置定义统一由根部 ConfigDefinitions 提供。
 
-Tool 根部创建媒体入口、技能目录与基础环境并一次注入 Skill Manager；Builtin、Skill、发现及 ELwisp 均接入必需的准备／执行契约，Skill 内部不依赖 Tool 根包。Cron 工具只使用 Tool 内部契约，根部 bridge 接入 Storage 和模型校验并发布任务定义变更；Background 根部持有订阅，Cron Manager 合并名称并串行读库刷新。Elnis 已通过自身媒体契约接入媒体中心。Background 整包已完成生命周期接线；完整 App 仍需模型构造入口及进程入口接通。
+Tool 根部创建媒体入口、技能目录与基础环境并一次注入 Skill Manager；Builtin、Skill、发现及 ELwisp 均接入必需的准备／执行契约，Skill 内部不依赖 Tool 根包。Cron 工具只使用 Tool 内部契约，根部 bridge 接入 Storage 和模型校验并发布任务定义变更；Background 根部持有订阅，Cron Manager 合并名称并串行读库刷新。Elnis 已通过自身媒体契约接入媒体中心。Background 整包已完成生命周期接线；App 整包已通过 race，完整进程运行仍需入口适配。
 
 Background 根部按四文件组织：`supervisor.go` 定义对外总管并持有组件，`deps.go` 声明 Store、ChatHistory、Models、Media、Logs、Agent、Tools、Platform 借用依赖，`wiring.go` 负责完整配置装配与边界适配，`lifecycle.go` 协调 Start、Wait、BeginClose、Close、Done。根部不公开内部 Runner 或 Cron CRUD；Cron 工具注册和管理归 Tool。
 
@@ -305,11 +305,31 @@ flowchart TD
 
 历史链路使用 Storage 的 `ChatMessage`、查询契约及 `ErrNotFound`；`storage/chat_history.go` 的 `ChatSegment`、`ChatReply` 和编解码函数维护持久化事实。适配器将内部片段转换后直接入库；Tool 根部查询并转换为内部消息，Builtin 仅负责展示。Platform 不保留历史查询、清理包装或历史专用公开类型。Media 的 `PlatformMedia`、`HistoryMessage` 只携带来源和历史身份；批量获取接受包含目标平台的解析函数。根部 `ResolveMedia` 转换参数并转发，dispatch 复用已有平台注册表选择解析器；未知或不支持的平台返回错误，不回退，不另设总管路由表。历史范围规则只在 Tool 历史组件校验，SQL 对昵称执行字面包含匹配。
 
+## 模型根部契约
+
+modelmgr 保持根包组织；公开总管为 `ModelManager`，唯一构造入口为 `NewModelManager(ctx, cfg)`。App 交付已加载的完整配置并接收部分结果，模型侧构造协议客户端、请求参数、厂商快照和重试日志连接。`ReloadProviders(ctx)` 读取指定 providers 文件，使用主配置目录重新解析凭据；不重读主配置与 state，不改当前模型选择。全部客户端及缓存准备成功后一次发布，在途调用保留旧快照。
+
+公开选择通过 `Selection` 固定客户端、来源与窗口缓存。`ObserveModelRetrying(handler, options)` 只返回观察连接，不交出信号对象；Agent 关闭自己的连接，App 在消费者退出后关闭模型总管。总管关闭等待实际回调退出，超时可以继续等待。llm 协议实现维持现有生命周期，本层不增加工厂或兼容入口。
+
+App 持有具体 `ModelManager`。Agent、Background、Tool 在各自 `deps.go`，Session 在 `title.go`，Contextmgr 在 `service.go` 声明本包 `ModelCapabilities`。Agent 接入模型选择、管理命令及重试观察；Background 只接入模式选择与校验，Tool 只接入校验，Session 只接入命名选择，Contextmgr 只接入选择解析。装配时直接赋值给消费接口，子包继续接收已有最小接口或函数；`SelectionForTurn` 仅要求模式选择能力。窗口解析器由构造入口提供查询回调，按远端元数据、手工配置、配置层补齐的默认窗口取值。
+
+```mermaid
+flowchart TD
+    App["App resources.go<br/>交付配置与接收部分结果"] --> M["manager.go<br/>总管、构造与关闭"]
+    M --> C["client.go<br/>协议客户端及请求参数"]
+    M --> P["providers.go<br/>厂商快照与重载"]
+    M --> S["selection.go / state.go<br/>选择与持久化提交"]
+    P --> Q["catalog.go / context_window.go<br/>目录与窗口缓存"]
+    M --> E["signals.go / logging.go<br/>重试观察与日志"]
+```
+
 ## 验证与备份
 
-媒体结束信号与 Hook 租约并发修复已通过 Media、Agent、Platform、Tool、Hook、Background 全部 52 个包的 race 回归。覆盖独立使用 ID、取消后结束登记、失败维护、重复通知、队列拒收、信号关闭超时，以及慢导入不阻塞其他调用、同租约等待取消、维护不释放在用资源、关闭收尾与同链 Hook 优先级和结果依赖。App 整包验证仍受下述模型构造入口缺失阻塞。
+Modelmgr、App、Agent、Session、Contextmgr、Command/Builtin、Tool 和 Background 相关包已通过 race。模型覆盖真实 Chat／Responses 构造与参数透传、重载凭据、快照隔离、保存失败、构造取消与部分结果、观察连接及关闭超时续接；跨包模型测试使用本地 HTTP 服务和临时 providers 文件，不通过生产工厂注入客户端。
 
-Media、Tool、Agent、Hook、Platform、Background 及 SQLite 的验证范围见上文。原媒体文件保存在 `.go.bak` 中。完整应用仍被缺失的 modelmgr.NewModelManager 阻断；全仓编译检查另发现 security 测试的 string／contextinfo.Role 类型不匹配。App 整包及进程入口仍待模型构造实现后验证。
+媒体结束信号与 Hook 租约并发修复已通过 Media、Agent、Platform、Tool、Hook、Background 全部 52 个包的 race 回归。覆盖独立使用 ID、取消后结束登记、失败维护、重复通知、队列拒收、信号关闭超时，以及慢导入不阻塞其他调用、同租约等待取消、维护不释放在用资源、关闭收尾与同链 Hook 优先级和结果依赖。App 整包已通过 race 验证。
+
+Media、Tool、Agent、Hook、Platform、Background 及 SQLite 的验证范围见上文。原媒体文件保存在 `.go.bak` 中。模型构造与 App 整包已通过 race。全仓编译仍有 launcher 引用旧 App 运行模式常量，以及 security 测试的 string／contextinfo.Role 类型不匹配。
 
 CLI 整包与 Share、refcontext、dispatch、notification 的 race 回归通过。CLI 覆盖真实管道和 Linux 伪终端的停止／最终关闭、真实 WebSocket 收尾发送、同步监听失败、并发启停及超时重试、原连接回复、事件乱序与绑定失效、WebSocket 背压期间换绑和展示关闭后连接保留、UI 关闭超时重试、回调收尾期间取消观察仍返回已发布故障、部分 UI 所有权、客户端分类及断线退出。CLI 不再依赖旧 agent/events、Platform 根包或兄弟实现；Headless 整包也通过 race，覆盖无状态生命周期、取消上下文、重复及并发调用、发送失败契约；OneBot、Share、refcontext 的 race 回归通过，覆盖分阶段关闭、临时拨号取消、在途写入取消隔离、关闭重试、重连隔离及原生 API 透传；OneBot 不再依赖根包或兄弟实现。QQ Official、Share、refcontext、notification 的 race 回归通过，覆盖实际 HTTP／WebSocket、心跳序号同步及失败退出、恢复与重新鉴权、并发启停、取消观察与独立故障、收尾发送、完整发送及别名入库等待、关闭超时重试。QQ Official 不再依赖根包或兄弟实现。Telegram、Share、refcontext、notification 与 Background/Cron 的 race 回归通过，覆盖异步远端连接、分阶段关闭、完整操作取消与退出等待、流式等待取消隔离、关闭超时重试、独立连接池释放、身份快照、命令目录并发、引用恢复、配置边界及原生 API。Telegram 生产代码与包内测试均不依赖 Platform 根包或兄弟实现；Background 报告测试通过发送契约注入回执。
 
@@ -319,9 +339,9 @@ dispatch、Share、OneBot、Telegram、refcontext、Agent/execution 与 Hook/rul
 
 `environment_test.go` 覆盖配置路径优先级、模式验证、相对路径与符号链接、配置替换保存、不同配置并行、取锁失败，以及 TUI／Service 各组合的跨进程互斥。子进程正常关闭和被终止后，锁文件保留且可重新取锁。环境测试可独立运行：`go test internal/app/environment.go internal/app/environment_test.go`。
 
-资源测试覆盖部分失败所有权、历史库构造失败后保留共享存储和提前取消，不在 App 验证模型协议或重载内部实现；这些构造测试需待模型入口落地后运行。退出测试覆盖结果分类、执行顺序、普通失败后继续、共享期限、超时后停止后续步骤、存储关闭失败后仍释放日志，以及历史使用方退出前保留历史库、部分失败仍关闭历史库、退出超时不释放历史库。期限测试使用 `synctest` 虚拟时间。
+资源测试覆盖部分失败所有权、历史库构造失败后保留共享存储和提前取消，新增真实模型构造成功与构造失败后保留部分模型对象的清理验证；协议与重载内部实现由 modelmgr 测试覆盖。退出测试覆盖结果分类、执行顺序、普通失败后继续、共享期限、超时后停止后续步骤、存储关闭失败后仍释放日志，以及历史使用方退出前保留历史库、部分失败仍关闭历史库、退出超时不释放历史库。期限测试使用 `synctest` 虚拟时间。
 
-App 的阶段执行、登记、启动、可选等待和退出测试已在临时包中隔离尚未实现的构造调用并通过 race 验证，使用实际函数、共享资源类型和真实历史 SQLite，不提供假生产总管。覆盖任意数量业务线、独立故障保留及阻塞关闭下的统一期限。Background 的历史清理依赖通过根部直接注入仓库，相关测试及借用资源关闭断言已随整包 race 回归通过。完整 App 流程、资源构造及客户端链路仍需下层接口实现后验证。
+App 的阶段执行、登记、启动、可选等待、资源构造和退出测试已在实际 App 整包中通过 race 验证，使用实际函数、共享资源类型和真实历史 SQLite。覆盖任意数量业务线、独立故障保留及阻塞关闭下的统一期限。Background 的历史清理依赖通过根部直接注入仓库，相关测试及借用资源关闭断言已随整包 race 回归通过。完整进程运行与客户端跨根部链路仍需后续验证。
 
 Platform 根包整包 race 验证覆盖重复并发启停、未启动及部分失败清理、TUI／Service 差异、取消观察与故障保留、接入退出后保留资源、清理超时续接、普通失败继续及故障通知接线。公开事实测试覆盖存取切片隔离、空值、上下文移除，以及平台事实与公共会话事实互不改写；agent_test.go 覆盖输入转换、延迟解析和公开事实投影。原生 API 跨根部接线、客户端结果和真实历史接线仍需补充集成验证；完整 App 与剩余接线验证见 [任务清单](tasks.md#platform-剩余接线)。
 

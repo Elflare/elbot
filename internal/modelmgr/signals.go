@@ -22,4 +22,7 @@ type ModelRetryingEvent struct {
 	Retry llm.RetryEvent
 }
 
-func (s *Service) ModelRetrying() *signal.Signal[ModelRetryingEvent, signal.Empty] { return s.retrying }
+// ObserveModelRetrying 只交付订阅连接；发布与关闭信号归模型总管。
+func (s *ModelManager) ObserveModelRetrying(handler func(context.Context, ModelRetryingEvent) error, options signal.ConnectOptions) (*signal.Connection, error) {
+	return s.retrying.Observe(handler, options)
+}

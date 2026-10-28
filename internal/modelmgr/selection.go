@@ -32,7 +32,7 @@ func (state runtimeState) mode(mode string) config.ModelSelection {
 	return selected
 }
 
-func (s *Service) Resolve(selected config.ModelSelection) Selection {
+func (s *ModelManager) Resolve(selected config.ModelSelection) Selection {
 	return s.providerSnapshot().resolve(selected)
 }
 
@@ -49,17 +49,17 @@ func (s Selection) ContextWindow(ctx context.Context) int {
 }
 
 // ValidateSelection checks an explicit task choice without changing shared state.
-func (s *Service) ValidateSelection(selected config.ModelSelection) error {
+func (s *ModelManager) ValidateSelection(selected config.ModelSelection) error {
 	if selected.Provider == "" || selected.Model == "" {
 		return fmt.Errorf("model provider/model must both be set")
 	}
-	if s.ClientForProvider(selected.Provider) == nil {
+	if s.providerSnapshot().clients[selected.Provider] == nil {
 		return fmt.Errorf("model provider %q not found", selected.Provider)
 	}
 	return nil
 }
 
-func (s *Service) ResolveMode(mode string) Selection {
+func (s *ModelManager) ResolveMode(mode string) Selection {
 	s.mu.RLock()
 	selected := s.state.mode(mode)
 	providers := s.providers
@@ -67,7 +67,7 @@ func (s *Service) ResolveMode(mode string) Selection {
 	return providers.resolve(selected)
 }
 
-func (s *Service) ResolveCompact(fallback Selection) Selection {
+func (s *ModelManager) ResolveCompact(fallback Selection) Selection {
 	s.mu.RLock()
 	selected := s.state.compact
 	s.mu.RUnlock()
@@ -77,7 +77,7 @@ func (s *Service) ResolveCompact(fallback Selection) Selection {
 	return fallback.providers.resolve(selected)
 }
 
-func (s *Service) ResolveNaming(ctx context.Context) NamingSelection {
+func (s *ModelManager) ResolveNaming(ctx context.Context) NamingSelection {
 	fallback, _ := contextinfo.ModelFromContext(ctx)
 	s.mu.RLock()
 	naming := s.state.naming
@@ -86,12 +86,12 @@ func (s *Service) ResolveNaming(ctx context.Context) NamingSelection {
 	return NamingSelection{Naming: providers.resolve(naming), Fallback: providers.resolve(config.ModelSelection{Provider: fallback.Provider, Model: fallback.Model})}
 }
 
-func (s *Service) CurrentModelForMode(mode string) ModelOption {
+func (s *ModelManager) CurrentModelForMode(mode string) ModelOption {
 	selected := s.ResolveMode(mode)
 	return ModelOption{Provider: selected.Provider, Model: selected.Model}
 }
 
-func (s *Service) CurrentCompactModel(mode string) ModelOption {
+func (s *ModelManager) CurrentCompactModel(mode string) ModelOption {
 	state := s.snapshot()
 	selected := state.compact
 	if selected.Provider == "" || selected.Model == "" {
@@ -100,20 +100,12 @@ func (s *Service) CurrentCompactModel(mode string) ModelOption {
 	return ModelOption{Provider: selected.Provider, Model: selected.Model, Compact: true}
 }
 
-func (s *Service) SelectModelForMode(mode, arg string) (ModelOption, error) {
-	selected, err := s.selectModelOption(arg)
-	if err != nil {
-		return ModelOption{}, err
-	}
-	return s.CommitModelForMode(mode, selected)
-}
-
 // PrepareModel resolves catalog input without changing any shared selection.
-func (s *Service) PrepareModel(arg string) (ModelOption, error) {
+func (s *ModelManager) PrepareModel(arg string) (ModelOption, error) {
 	return s.selectModelOption(arg)
 }
 
-func (s *Service) CommitModelForMode(mode string, selected ModelOption) (ModelOption, error) {
+func (s *ModelManager) CommitModelForMode(mode string, selected ModelOption) (ModelOption, error) {
 	if err := s.ValidateSelection(config.ModelSelection{Provider: selected.Provider, Model: selected.Model}); err != nil {
 		return ModelOption{}, err
 	}
@@ -130,7 +122,7 @@ func (s *Service) CommitModelForMode(mode string, selected ModelOption) (ModelOp
 	return selected, nil
 }
 
-func (s *Service) SelectCompactModel(arg string) (ModelOption, error) {
+func (s *ModelManager) SelectCompactModel(arg string) (ModelOption, error) {
 	selected, err := s.selectModelOption(arg)
 	if err != nil {
 		return ModelOption{}, err
@@ -145,7 +137,7 @@ func (s *Service) SelectCompactModel(arg string) (ModelOption, error) {
 	return selected, nil
 }
 
-func (s *Service) SelectNamingModel(arg string) (ModelOption, error) {
+func (s *ModelManager) SelectNamingModel(arg string) (ModelOption, error) {
 	selected, err := s.selectModelOption(arg)
 	if err != nil {
 		return ModelOption{}, err
@@ -160,7 +152,7 @@ func (s *Service) SelectNamingModel(arg string) (ModelOption, error) {
 	return selected, nil
 }
 
-func (s *Service) selectModelOption(arg string) (ModelOption, error) {
+func (s *ModelManager) selectModelOption(arg string) (ModelOption, error) {
 	name := strings.TrimSpace(arg)
 	if name == "" {
 		return ModelOption{}, fmt.Errorf("usage: /model <name or number>")

@@ -1,0 +1,39 @@
+package modelmgr
+
+import (
+	"time"
+
+	"elbot/internal/config"
+	"elbot/internal/llm"
+	"elbot/internal/llm/chatcompletions"
+	"elbot/internal/llm/httpclient"
+	"elbot/internal/llm/responses"
+)
+
+func buildModelClient(provider config.ProviderConfig, request config.LLMRequestConfig) (llm.Client, error) {
+	opts := requestOptions(request, provider.Proxy)
+	if provider.EffectiveAPIMode() == "response" {
+		return responses.New(provider.BaseURL, provider.APIKey, provider.ExtraPayload, modelExtraPayloads(provider.ModelConfigs), opts)
+	}
+	return chatcompletions.New(provider.BaseURL, provider.APIKey, provider.ExtraPayload, modelExtraPayloads(provider.ModelConfigs), opts)
+}
+
+func requestOptions(cfg config.LLMRequestConfig, proxy string) httpclient.Options {
+	return httpclient.Options{
+		FirstChunkTimeout: time.Duration(cfg.FirstChunkTimeoutSeconds) * time.Second,
+		StreamIdleTimeout: time.Duration(cfg.StreamIdleTimeoutSeconds) * time.Second,
+		MaxRetries:        cfg.MaxRetries,
+		RetryInitialDelay: time.Duration(cfg.RetryInitialDelaySeconds) * time.Second,
+		Proxy:             proxy,
+	}
+}
+
+func modelExtraPayloads(modelConfigs map[string]config.ModelConfig) map[string]map[string]any {
+	out := make(map[string]map[string]any)
+	for model, cfg := range modelConfigs {
+		if cfg.ExtraPayload != nil {
+			out[model] = cfg.ExtraPayload
+		}
+	}
+	return out
+}

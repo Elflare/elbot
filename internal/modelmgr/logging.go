@@ -9,7 +9,7 @@ import (
 	"elbot/internal/signal"
 )
 
-func (s *Service) connectLogSignals() error {
+func (s *ModelManager) connectLogSignals() error {
 	connection, err := s.retrying.Observe(logModelRetry, signal.ConnectOptions{})
 	if err != nil {
 		return err

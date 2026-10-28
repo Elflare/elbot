@@ -8,49 +8,47 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
-	api "elbot/internal/llm/responses"
 	"elbot/internal/modelmgr"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"sync"
 	"testing"
 	"time"
 )
 
-type contractResponse struct {
-	*api.Client
-	requests []api.PreparedRequest
-}
-
-func (c *contractResponse) StreamPrepared(_ context.Context, req api.PreparedRequest) (<-chan api.Event, error) {
-	c.requests = append(c.requests, req)
-	raw := `{"id":"response-1","status":"completed","output":[{"type":"function_call","id":"item-1","call_id":"contract-call","name":"contract_echo","arguments":"{}","status":"completed"}]}`
-	if len(c.requests) > 1 {
-		raw = `{"id":"response-2","status":"completed","output":[{"type":"message","id":"item-2","role":"assistant","status":"completed","content":[{"type":"output_text","text":"native answer"}]}]}`
-	}
-	var response api.Response
-	if err := json.Unmarshal([]byte(raw), &response); err != nil {
-		return nil, err
-	}
-	ch := make(chan api.Event, 1)
-	ch <- api.Event{Type: "response.completed", Response: &response}
-	close(ch)
-	return ch, nil
-}
 func TestSupervisorNativeResponseToolTurn(t *testing.T) {
 	deps := isolatedModuleDeps(t)
 	echo := &contractTool{}
 	if err := deps.Tools.(isolatedToolCapabilities).Registry.Register(echo); err != nil {
 		t.Fatal(err)
 	}
-	base, err := api.New("https://unused.invalid", "", nil, nil, api.RequestOptions{})
-	if err != nil {
-		t.Fatal(err)
+	var requests []struct {
+		ToolChoice struct{ Tools []struct{ Name string } } `json:"tool_choice"`
 	}
-	client := &contractResponse{Client: base}
-	models, err := modelmgr.New(modelmgr.Options{Clients: map[string]llm.Client{"p": client}, Providers: map[string]config.ProviderConfig{"p": {APIMode: "response", Models: []string{"m"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}, DefaultMode: "work"})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ToolChoice struct{ Tools []struct{ Name string } } `json:"tool_choice"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Error(err)
+			http.Error(w, "bad request", 400)
+			return
+		}
+		requests = append(requests, req)
+		raw := `{"id":"response-1","status":"completed","output":[{"type":"function_call","id":"item-1","call_id":"contract-call","name":"contract_echo","arguments":"{}","status":"completed"}]}`
+		if len(requests) > 1 {
+			raw = `{"id":"response-2","status":"completed","output":[{"type":"message","id":"item-2","role":"assistant","status":"completed","content":[{"type":"output_text","text":"native answer"}]}]}`
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":%s}\n\n", raw)
+	}))
+	t.Cleanup(server.Close)
+	models, err := modelmgr.NewModelManager(t.Context(), &config.Config{Providers: map[string]config.ProviderConfig{"p": {BaseURL: server.URL, APIMode: "response", Models: []string{"m"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,10 +58,10 @@ func TestSupervisorNativeResponseToolTurn(t *testing.T) {
 	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "@tool:contract_echo hello"}); err != nil {
 		t.Fatal(err)
 	}
-	if echo.calls != 1 || len(client.requests) != 2 {
-		t.Fatalf("calls=%d requests=%d", echo.calls, len(client.requests))
+	if echo.calls != 1 || len(requests) != 2 {
+		t.Fatalf("calls=%d requests=%d", echo.calls, len(requests))
 	}
-	if !slices.Contains(client.requests[0].AllowedTools(), echo.Name()) {
+	if !slices.ContainsFunc(requests[0].ToolChoice.Tools, func(tool struct{ Name string }) bool { return tool.Name == echo.Name() }) {
 		t.Fatal("native schema missing")
 	}
 	rows, err := deps.Store.Sessions().List(t.Context(), storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 10})

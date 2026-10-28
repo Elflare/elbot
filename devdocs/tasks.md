@@ -30,7 +30,7 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] 管理命令位于 Hook control，内部使用 share 查询类型；根部 Commands 仅交付标准 Handler。
 - [x] Hook 及管理命令测试通过，真实 Agent–Hook–Tool 接线覆盖命令、补全及输出回调。
 - [x] 完成媒体 NewMediaCenter 下层构造、公开契约与消费者接线。
-- [ ] 完成模型 NewModelManager 的构造契约。
+- [x] 完成模型 NewModelManager 的完整配置构造、部分失败交回与关闭契约。
 - [x] TUI／Service 按规范化配置路径取得独占锁，退出最后释放；纯客户端不占锁。
 - [ ] 适配进程入口的新 App API 与 `client` 命名。
 - [ ] 下层接口补齐后，验证完整资源构造、App 启停和客户端链路。
@@ -73,7 +73,7 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Platform.RestoreMessageContext 由 Agent 根部注入，后台入口清除继承的平台状态，前台接管恢复平台事实与路由；普通后台输出和默认通知静默，显式目标投递保留。
 - [x] Platform 根部历史能力裁剪为写入、单条身份查询和两项别名方法，refcontext 只接收单条查询；删除总管中转字段。OneBot、QQ Official、Telegram 已使用自有最小 Deps，Share 提供 CommonConfig 与最小历史读写契约；三个远程适配器均已移除完整或闲置 Store。Telegram 只借用 Append 与引用恢复函数，旧共享 AdapterDeps、旧构造及完整历史字段已删除，不增加兼容层。
 - [x] 本轮 Agent、Tool、Media、refcontext、dispatch 测试夹具接入新契约；相关回归通过，覆盖真实 SQLite 范围与昵称匹配、引用及媒体顺序、缓存与额度、入站切片隔离和延迟物化、接管取消链及后台静默／显式投递。Agent 根部内部测试单独通过；App 实际生命周期与历史库清理的隔离 race 回归通过。
-- [ ] 完成模型构造入口及进程入口适配后，运行 App 整包和资源构造测试；Agent–Hook 真实接线已通过。Background 历史清理依赖及借用所有权测试已随整包 race 回归通过。
+- [x] 模型构造接入后，App 整包和资源构造测试通过 race；Agent–Hook 真实接线及 Background 历史清理借用所有权回归通过。
 
 ## Platform 剩余接线
 
@@ -91,11 +91,11 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Event 由 Elnis/types.go 定义并注释字段用途，不保留闲置 SegmentPaths；targets.go 的 toDeliveryTarget 与 media.go 的 directText 承担投递准备。Elvena 仅保留协议与来源文件，无闲置结果类型、总线或投递辅助文件。
 - [ ] 更新 Elwisp 生成提示与相关用户示例，停止生成已删除的能力名；保留 Hook platform.call 原生链路，平台选择仍由调用方负责。用户文档随对应迁移阶段更新。
 - [x] 删除旧 platform.go、module/、builtin/ 及旧实现测试，不保留兼容别名；Doctor 使用外部测试包，通过 Platform 根部 ConfigDefinitions 获取配置定义；Platform 根包及全部子包、Doctor 的 race 回归通过。
-- [ ] 补充 Platform 原生 API、客户端结果与真实历史接线集成验证；模型构造入口及进程入口适配完成后，运行 App 整包与完整应用回归；组件隔离测试不替代真实总管接线和整包通过。
+- [ ] 补充 Platform 原生 API、客户端结果与真实历史接线集成验证；App 整包已通过 race，进程入口适配后仍需完整应用回归；组件隔离测试不替代真实总管接线和整包通过。
 
 ## 媒体中心对接
 
-Media [根部与下层契约](app-design.md#media-根部与下层契约)、四个子包与消费者接线均已实现。完整应用仍被 modelmgr.NewModelManager 缺失阻断，全仓编译另有 security 测试的角色类型不匹配；这两项不属于媒体改造。
+Media [根部与下层契约](app-design.md#media-根部与下层契约)、四个子包与消费者接线均已实现。模型构造及 App 整包已通过 race；全仓编译仍有 launcher 旧运行模式常量引用和 security 测试角色类型不匹配，这两项不属于媒体改造。
 
 - [x] 保留 15 个生产文件和 12 个测试文件的 `.bak` 备份；按根部与 object／transfer／backend／share 组织实现。
 - [x] 声明 MediaCenter、完整配置构造、四字段值类型 MediaInfo、Info／ValidateImage、Reference 及公开 HeldMedia。移除旧入口，不提供兼容别名。
@@ -129,7 +129,9 @@ Media [根部与下层契约](app-design.md#media-根部与下层契约)、四�
 - [x] Elvena 请求、Elnis 工具声明及 Background 共享请求统一使用 Tool 根包类型；Runner 仅准备目录、注入后台来源并调用 Agent.RunBackground，工具声明 JSON 排除内部关联字段。
 
 ## modelmgr
-- [ ] 重构对接新代码
+- [x] 根包 ModelManager 接收完整配置，自行构造客户端、请求参数与 providers 重载；删除旧 Options／New 工厂入口。
+- [x] 重试信号改为观察入口，消费者持有连接；部分构造结果与关闭超时续接已验证。
+- [x] 模型、App 与相关消费者通过 race；跨包测试迁移到真实本地 HTTP 和 providers 文件。
 
 ## session包
 - [ ] 重构对接新代码
@@ -143,7 +145,7 @@ Media [根部与下层契约](app-design.md#media-根部与下层契约)、四�
 - [x] Cron 提供本地预载名单；Elnis 授权并适配 `ELwispTools`，补齐内部字段 `CanonicalName`、`EventKey`。
 - [x] Background Runner 只接入 Agent.RunBackground，Elnis 只借用 Tool.BackgroundSelections；新会话由 Agent 预载并提交，续跑沿用已提交集合。
 - [x] State 统一保存完整 `DiscoveredTool` 声明，删除名称补查目录路径；后台旧声明转换入口已移除。
-- [x] Cron／Elnis／Background 内部接线与存储链路通过整包测试；App 通过 Tools 交付 Tool 总管，内部能力分配由 Background 负责。完整应用链路仍等待 Platform 与共享资源构造入口。
+- [x] Cron／Elnis／Background 内部接线与存储链路通过整包测试；App 通过 Tools 交付 Tool 总管，内部能力分配由 Background 负责。共享资源构造与 App 整包已通过 race；完整进程链路仍待入口适配。
 
 
 ## 不一定实现

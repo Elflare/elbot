@@ -13,17 +13,22 @@ import (
 	"elbot/internal/storage"
 )
 
+// ModelCapabilities 只声明查询模型窗口所需的选择解析能力。
+type ModelCapabilities interface {
+	Resolve(config.ModelSelection) modelmgr.Selection
+}
+
 type Options struct {
 	Compactors CompactorResolver
 	Store      storage.Store
-	Models     *modelmgr.Service
+	Models     ModelCapabilities
 	Config     config.ContextConfig
 }
 
 type Service struct {
 	compactors   CompactorResolver
 	store        storage.Store
-	models       *modelmgr.Service
+	models       ModelCapabilities
 	loader       Loader
 	mu           sync.Mutex
 	usageWriteMu sync.Mutex

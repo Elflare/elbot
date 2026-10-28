@@ -15,14 +15,15 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/hook"
-	"elbot/internal/llm"
-	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
 	"elbot/internal/security"
 	"elbot/internal/signal"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
 	"elbot/internal/tool"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 )
 
 type integrationPlatform struct {
@@ -49,19 +50,6 @@ func (*integrationPlatform) CallPlatformAPI(context.Context, string, string, map
 	return nil, nil
 }
 
-type integrationClient struct{}
-
-func (integrationClient) ListModels(context.Context) ([]string, error) { return []string{"m"}, nil }
-func (integrationClient) GenerateText(context.Context, llm.TextRequest) (llm.TextResult, error) {
-	return llm.TextResult{Text: "title"}, nil
-}
-func (integrationClient) Stream(context.Context, chatcompletions.Request) (<-chan chatcompletions.Chunk, error) {
-	ch := make(chan chatcompletions.Chunk, 1)
-	ch <- chatcompletions.Chunk{DeltaContent: "answer"}
-	close(ch)
-	return ch, nil
-}
-
 func TestAgentRegistersHookCommandsAndRunsPublicBridge(t *testing.T) {
 	root := t.TempDir()
 	cfg := &config.Config{ConfigPath: filepath.Join(root, "config.toml")}
@@ -83,7 +71,20 @@ func TestAgentRegistersHookCommandsAndRunsPublicBridge(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	models, err := modelmgr.New(modelmgr.Options{Clients: map[string]llm.Client{"p": integrationClient{}}, Providers: map[string]config.ProviderConfig{"p": {Models: []string{"m"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}, DefaultMode: "work"})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			fmt.Fprint(w, `{"data":[{"id":"m"}]}`)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, `data: {"choices":[{"delta":{"content":"answer"},"finish_reason":"stop"}]}
+
+data: [DONE]
+
+`)
+	}))
+	t.Cleanup(server.Close)
+	models, err := modelmgr.NewModelManager(t.Context(), &config.Config{Providers: map[string]config.ProviderConfig{"p": {BaseURL: server.URL, Models: []string{"m"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}})
 	if err != nil {
 		t.Fatal(err)
 	}

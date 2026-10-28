@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	agenthooks "elbot/internal/agent/hooks"
-	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/llm"
@@ -21,36 +20,12 @@ import (
 	"elbot/internal/storage/sqlite"
 )
 
-var testProviderFiles sync.Map
-
-func newTestModels(t *testing.T, opts modelmgr.Options) *modelmgr.Service {
+func newTestModels(t *testing.T, opts testModelOptions) *modelmgr.ModelManager {
 	t.Helper()
-	if opts.Clients == nil {
-		opts.Clients = map[string]llm.Client{}
-	}
-	for name, provider := range opts.Providers {
-		if opts.Clients[name] == nil && provider.BaseURL != "" {
-			client, err := chatcompletions.New(provider.BaseURL, provider.APIKey, provider.ExtraPayload, nil, chatcompletions.RequestOptions{Proxy: provider.Proxy})
-			if err != nil {
-				t.Fatalf("create test provider %s: %v", name, err)
-			}
-			opts.Clients[name] = client
-		}
-	}
-
-	file := &config.ProviderFile{Providers: opts.Providers, ModelMetadata: opts.Metadata}
-	if opts.LoadProviders == nil {
-		opts.LoadProviders = func(context.Context) (config.ProviderFile, error) { return *file, nil }
-	}
-	if opts.BuildClient == nil {
-		opts.BuildClient = func(name string, _ config.ProviderConfig) (llm.Client, error) { return opts.Clients[name], nil }
-	}
-	models, err := modelmgr.New(opts)
+	models, err := newConfiguredTestModels(t, opts)
 	if err != nil {
-		t.Fatalf("modelmgr.New: %v", err)
+		t.Fatal(err)
 	}
-	testProviderFiles.Store(models, file)
-	t.Cleanup(func() { testProviderFiles.Delete(models); _ = models.Close(context.Background()) })
 	return models
 }
 

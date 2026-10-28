@@ -31,8 +31,8 @@ func (b *signalBindings) connectAgentNotifications(events signals) error {
 	)
 }
 
-func (b *signalBindings) connectModels(models *modelmgr.Service) error {
-	return connectSignal(b, models.ModelRetrying(), func(ctx context.Context, e modelmgr.ModelRetryingEvent) error {
+func (b *signalBindings) connectModels(models ModelCapabilities) error {
+	connection, err := models.ObserveModelRetrying(func(ctx context.Context, e modelmgr.ModelRetryingEvent) error {
 		ctx = e.CallContext
 		if ctx.Err() != nil {
 			return nil
@@ -44,6 +44,10 @@ func (b *signalBindings) connectModels(models *modelmgr.Service) error {
 		_, err := events.NotificationRequested.EmitAsync(ctx, events.NewNotification(ctx, slog.LevelWarn, text))
 		return err
 	}, signal.ConnectOptions{})
+	if connection != nil {
+		b.connections = append(b.connections, connection)
+	}
+	return err
 }
 
 // signalBindings owns subscriptions before platforms start, including

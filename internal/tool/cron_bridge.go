@@ -10,7 +10,6 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-	"elbot/internal/modelmgr"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/tool/builtin"
@@ -35,7 +34,7 @@ func (m *Supervisor) ObserveCronChanged(handler func(CronChangedEvent) error, op
 
 type cronBridge struct {
 	repo    storage.CronJobRepository                      // 借用共享存储，不持有数据库生命周期。
-	models  *modelmgr.Service                              // 借用模型选择校验能力。
+	models  ModelCapabilities                              // 借用模型选择校验能力。
 	changed *signal.Signal[CronChangedEvent, signal.Empty] // Tool 实例拥有的任务定义变更信号。
 }
 

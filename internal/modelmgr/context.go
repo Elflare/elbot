@@ -13,7 +13,9 @@ func WithSelectionOverride(ctx context.Context, selected config.ModelSelection) 
 	return context.WithValue(ctx, selectionOverrideKey{}, selected)
 }
 
-func SelectionForTurn(ctx context.Context, models *Service, row *storage.Session) Selection {
+func SelectionForTurn(ctx context.Context, models interface {
+	ResolveMode(string) Selection
+}, row *storage.Session) Selection {
 	mode := storage.SessionModeWork
 	if row != nil && row.Mode != "" && row.Mode != storage.SessionModeBackground {
 		mode = row.Mode
@@ -29,9 +31,4 @@ func SelectionForTurn(ctx context.Context, models *Service, row *storage.Session
 		}
 	}
 	return selection.providers.resolve(selected)
-}
-
-func SelectionOverrideFromContext(ctx context.Context) config.ModelSelection {
-	selected, _ := ctx.Value(selectionOverrideKey{}).(config.ModelSelection)
-	return selected
 }

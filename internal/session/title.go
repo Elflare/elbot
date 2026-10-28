@@ -10,11 +10,16 @@ import (
 	"elbot/internal/storage"
 )
 
-type titleGenerator struct {
-	models *modelmgr.Service
+// ModelCapabilities 只声明命名任务所需的固定模型选择能力。
+type ModelCapabilities interface {
+	ResolveNaming(context.Context) modelmgr.NamingSelection
 }
 
-func NewTitleGenerator(models *modelmgr.Service) TitleGenerator {
+type titleGenerator struct {
+	models ModelCapabilities
+}
+
+func NewTitleGenerator(models ModelCapabilities) TitleGenerator {
 	return &titleGenerator{models: models}
 }
 

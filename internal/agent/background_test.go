@@ -15,7 +15,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
-	"elbot/internal/modelmgr"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -25,7 +24,7 @@ import (
 
 func newBackgroundAgent(t *testing.T) (*Supervisor, SupervisorDeps, *tool.Supervisor, context.Context) {
 	t.Helper()
-	deps := isolatedModuleDeps(t)
+	deps, models := isolatedModuleResources(t)
 	cfg := isolatedAgentConfig()
 	root := t.TempDir()
 	cfg.ConfigPath = filepath.Join(root, "config.toml")
@@ -43,7 +42,7 @@ KEEP_BACKGROUND_GUIDANCE`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	tools, err := tool.NewSupervisor(t.Context(), cfg, tool.SupervisorDeps{
-		Store: deps.Store, Models: deps.Models, Media: deps.Media, Permission: deps.Permission,
+		Store: deps.Store, Models: models, Media: deps.Media, Permission: deps.Permission,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -287,7 +286,7 @@ func TestBackgroundCancellationDuringExecution(t *testing.T) {
 		t.Run(map[bool]string{false: "caller", true: "agent"}[shutdown], func(t *testing.T) {
 			deps := isolatedModuleDeps(t)
 			client := backgroundBlockingClient{entered: make(chan struct{})}
-			models, err := modelmgr.New(modelmgr.Options{
+			models, err := newConfiguredTestModels(t, testModelOptions{
 				Clients: map[string]llm.Client{"p": client}, Providers: map[string]config.ProviderConfig{"p": {Models: []string{"m"}}},
 				ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}, DefaultMode: "work",
 			})

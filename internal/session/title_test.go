@@ -10,9 +10,6 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-	"elbot/internal/llm"
-	"elbot/internal/llm/chatcompletions"
-	"elbot/internal/llm/responses"
 	"elbot/internal/modelmgr"
 	"elbot/internal/storage"
 )
@@ -54,16 +51,7 @@ func TestTitleGeneratorUsesConfiguredOrContextModelProtocol(t *testing.T) {
 				}
 			}))
 			defer srv.Close()
-			chat, err := chatcompletions.New(srv.URL, "test-key", nil, nil, chatcompletions.RequestOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			response, err := responses.New(srv.URL, "test-key", nil, nil, responses.RequestOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			opts := modelmgr.Options{
-				Clients: map[string]llm.Client{"chat": chat, "response": response},
+			opts := config.Config{
 				Providers: map[string]config.ProviderConfig{
 					"chat":     {BaseURL: srv.URL, Models: []string{"dialogue-chat", "title-chat"}},
 					"response": {BaseURL: srv.URL, APIMode: "response", Models: []string{"work-response", "dialogue-response", "title-response"}},
@@ -74,7 +62,7 @@ func TestTitleGeneratorUsesConfiguredOrContextModelProtocol(t *testing.T) {
 			if tc.configured != "" {
 				opts.NamingModel = config.ModelSelection{Provider: tc.configured, Model: "title-" + tc.configured}
 			}
-			models, err := modelmgr.New(opts)
+			models, err := modelmgr.NewModelManager(t.Context(), &opts)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"elbot/internal/agent"
+	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/logging"
@@ -21,7 +22,7 @@ import (
 // 根部向子包注入实际需要的最小接口或函数，公开数据类型可以按需复用。
 type SupervisorDeps struct {
 	Store       storage.Store        // 持久化 Cron 任务及运行状态、Elnis 事件；不取得平台历史仓库。
-	Models      *modelmgr.Service    // 解析和校验后台任务使用的模型选择。
+	Models      ModelCapabilities    // 解析和校验后台任务使用的模型选择。
 	Media       *media.MediaCenter   // 提供媒体处理和维护能力。
 	Logs        *logging.Manager     // 提供日志清理及保留策略。
 	Agent       AgentCapabilities    // 执行后台任务、复制后台会话和清理过期会话。
@@ -30,6 +31,12 @@ type SupervisorDeps struct {
 	ChatHistory interface {
 		DeleteBefore(context.Context, time.Time) (int, error)
 	} // 仅借用历史清理能力，数据库由 App 持有。
+}
+
+// ModelCapabilities 只声明后台任务的模型选择与校验能力。
+type ModelCapabilities interface {
+	ResolveMode(string) modelmgr.Selection
+	ValidateSelection(config.ModelSelection) error
 }
 
 // AgentCapabilities 只描述后台业务操作，不取得 Agent 的 Session、执行器或权限对象。
