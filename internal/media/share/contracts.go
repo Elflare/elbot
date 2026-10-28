@@ -27,6 +27,8 @@ type HeldMedia interface {
 }
 
 // Backend 操作对象位置；本地后端不提供签名能力。
+// 对象层负责交付有效内容 ID、已确认的内容及大小，并选定读取和删除的位置。
+// 后端不重新校验内容，也不从缺失的位置推断存储路径。
 type Backend interface {
 	Put(ctx context.Context, id string, input io.Reader, size int64, contentType string) (location string, err error)
 	Open(ctx context.Context, location string) (io.ReadCloser, error)

@@ -393,9 +393,11 @@ flowchart LR
 <!-- locator:media -->
 ### 媒体引用与清理
 
-Media 根部公开入口、转换与装配及 share 的 ID 校验、名称清理已实现，下层 object／transfer／backend 仍为 TODO 骨架，原生产及测试文件保存为 `.go.bak`。五个包编译与 share 辅助函数、根部参数 ID 提取、凭据及构造提前失败测试通过 race；其余下层业务实现和消费者迁移尚未完成。完整文件职责、字段与契约见 [Media 契约](app-design.md#media-根部与下层契约)。
+Media 根部公开入口、转换与装配，share 的 ID 校验与名称清理及 backend 的本地、S3 和延迟构造已实现，下层 object／transfer 仍为 TODO 骨架，原生产及测试文件保存为 `.go.bak`。五个包编译与 backend、share 及根部参数 ID 提取、凭据和构造提前失败测试通过 race；其余下层业务实现和消费者迁移尚未完成。完整文件职责、字段与契约见 [Media 契约](app-design.md#media-根部与下层契约)。
 
 根部 `MediaCenter` 负责公开能力、完整配置拆分和装配，私有持有 object 与 transfer。object 管理对象记录、导入读取、图片处理、引用、回收、历史关联及签名缓存；transfer 通过 share.Objects 编排入站、模型请求和平台交付；backend 只按位置读写对象并提供可选签名能力。子包不导入根部或兄弟实现，share 只承载包内协作。
+
+backend 消费 object 已确认的 ID、内容与位置；S3 客户端只使用根部交付的选项和凭据，并在上传时将不可 Seek 的输入暂存为可回读的临时文件，承担 SDK 签名、校验和及重试所需的传输适配与临时文件释放，原输入仍由调用方关闭。延迟构造仅缓存成功结果，实际操作在初始化锁外执行。本地写入通过同目录临时文件提交，失败不以目标存在推断成功；同步 I/O 在操作开始和写入提交前检查取消。
 
 公开查询命名 Info，导入、读取、导出与历史结果使用值类型 `MediaInfo{ID, Name, MIMEType, Size}`。ValidateImage 校验内容可解码及 MIME；宽高、格式、存储位置与删除状态属于 object 内部。公开 HeldMedia 提供 Info／Open／Close，内部持有额外提供 SignedURL；读取不重复增加引用，关闭失败可重试。Tool 的调用内复用、导出状态和缓存目录仍归 Tool。
 

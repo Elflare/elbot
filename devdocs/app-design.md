@@ -103,7 +103,7 @@ App 与 Agent 不承接 Doctor，配置诊断由配置侧负责。进程入口�
 <!-- locator:media -->
 ## Media 根部与下层契约
 
-`internal/media/` 根部已实现公开入口、类型转换、持有包装、参数 ID 解析与完整配置装配；share 已实现 ID 校验与名称清理，object、transfer、backend 的函数仍以 `panic("TODO")` 占位。15 个生产文件和 12 个测试文件原样保存在同目录的 `*.go.bak` 中，不参与构建。App、Agent、Tool、Hook、Platform、Background 尚未迁移，仍有旧接口调用；Media 各包可编译不代表成功构造或完整应用可用。
+`internal/media/` 根部已实现公开入口、类型转换、持有包装、参数 ID 解析与完整配置装配；share 已实现 ID 校验与名称清理，backend 已实现本地读写、S3 传输与签名及延迟构造，object、transfer 的函数仍以 `panic("TODO")` 占位。15 个生产文件和 12 个测试文件原样保存在同目录的 `*.go.bak` 中，不参与构建。App、Agent、Tool、Hook、Platform、Background 尚未迁移，仍有旧接口调用；Media 各包可编译不代表成功构造或完整应用可用。
 
 ```mermaid
 flowchart TB
@@ -138,8 +138,10 @@ flowchart TB
 - `share.Objects` 包含 Info、Hold、四项带 ImportLimits 的导入、LoadHistoryMedia、AssociateHistory。`HistoryKey` 包含四项历史身份；`HistoryEntry` 只包含 MediaInfo、Associated、Kind，表达有效缓存与匹配关联。平台来源和批量获取参数只在 transfer 使用，不进入 share。
 - `share.ValidID` 严格接受 `media:` 加 64 位小写十六进制；`SanitizeName` 清理路径或 URL 中的展示名称，处理两种路径分隔符并只进行一次百分号解码；HTTP／HTTPS／file URL 解析失败时返回 `file`，查询参数与片段不进入名称。普通名称中的非法百分号编码保留原文；空值、退化路径及 data／base64 来源返回 `file`。根部公开函数直接转发。
 - 内部 `share.HeldMedia` 额外提供 `SignedURL(ctx)`。transfer 通过已有持有选择 Open 或 SignedURL；上传副本、记录更新和缓存维护均由 object 完成，公开句柄不开放签名能力。
-- `Backend.Put` 返回位置字符串，Open／Remove 只接收位置；本地位置是文件路径，S3 位置是对象键。`RemoteBackend` 额外提供 PresignGet；LocalBackend 不提供签名方法，后端不接收 storage.Media。
-- `S3Options` 只包含 Endpoint、Region、Bucket、Credentials；`LazyBackend` 保存 factory、backend、mu，只缓存成功构造结果。
+- `Backend.Put` 返回位置字符串，Open／Remove 只接收位置；本地位置是文件路径，S3 位置是对象键。有效内容 ID、内容及大小和位置选择由 object 负责，后端不重复校验或补全位置。`RemoteBackend` 额外提供 PresignGet；LocalBackend 不提供签名方法，后端不接收 storage.Media。
+- LocalBackend 将内容写入 `Root/哈希前两位/剩余哈希`；同目录临时文件写完并关闭后重命名，失败清理临时路径，重命名错误直接返回。操作开始及写入提交前检查取消；文件操作同步执行，不承诺中断已阻塞的 I/O。删除不存在的文件视为完成。
+- `S3Options` 只包含 Endpoint、Region、Bucket、Credentials；S3Backend 直接使用这些选项构造 SDK 客户端，自定义端点采用路径式寻址，不加载 AWS 默认配置链，不重复校验根部已解析的凭据。Put 使用 `media/哈希` 对象键，可 Seek 输入直接交付 SDK，其余输入同步暂存到系统临时文件，支持 HTTP／HTTPS 的签名、校验和与重试；暂存前后检查取消，调用结束关闭并删除临时文件，原输入由调用方关闭。读取、删除和签名使用交付的位置，签名期限直接传给 SDK，副本与签名缓存归 object。
+- `LazyBackend` 保存 factory、backend、mu，getBackend 在 mutex 内构造并只缓存成功结果；取得锁后检查取消，失败允许后续调用重试，实际后端操作在锁外执行。根部保证 factory 有效且成功时返回可用后端。
 
 ### 根部装配与验证
 
@@ -147,7 +149,7 @@ flowchart TB
 
 根部只转换公开与内部数据，平台回调保留 nil、上下文及限制；历史批量转换保留顺序、重复位置和逐项错误。读取器、清理回调及错误原样交回，准备失败不吞掉可重试回调。公开历史错误与 transfer 使用同一错误值，HeldMedia 不增加释放状态或重试控制。
 
-gofmt、五个 Media 包编译及 `go test -race ./internal/media/...` 通过；当前运行测试覆盖 share 的 ID 格式与名称清理、根部参数 ID 的精确 JSON 值提取与去重排序，以及凭据解析、环境优先级、缺失凭据与错误不泄露凭据、base64 跳过凭据读取和取消、未知模式、无效凭据的构造提前失败。成功构造与真实业务链路依赖其余下层实现。后续填充导入、图片、持有、清理、签名、物化和历史批量实现，再迁移消费者；仍须覆盖释放重试、并发对象操作、历史对账故障及真实总管接线。
+gofmt、五个 Media 包编译及 `go test -race ./internal/media/...` 通过。backend 测试使用真实文件与本地 HTTP／HTTPS 服务，覆盖本地读写、失败清理与取消，S3 请求、签名、配置来源隔离、不可 Seek 输入与重试、借用输入所有权、临时文件清理及错误和取消传播，以及延迟构造的失败重试、并发复用和锁外操作。share 与根部测试覆盖 ID 格式、名称清理、参数 ID 精确提取与去重排序、凭据解析及构造提前失败。媒体中心成功构造与真实业务链路依赖 object、transfer 实现；后续仍须完成对象管理、交付与消费者迁移，覆盖释放重试、并发对象操作、历史对账故障及真实总管接线。
 
 ## Platform 下层目标契约
 
@@ -254,7 +256,7 @@ flowchart TD
 
 ## 验证与备份
 
-当前 Media 的 share ID 校验、名称清理及根部参数 ID 提取、凭据与构造提前失败测试通过 race；object、transfer、backend 函数仍为 TODO panic，原媒体行为测试保存在 `.go.bak` 中。依赖 Media 的 Tool、Agent、Hook、Platform、Background 测试须在下层业务实现与消费签名迁移后重新验证。下列组件用例说明不代表当前 Media 接线或完整应用已通过；App 整包仍待媒体下层、模型构造实现及进程入口适配。
+当前 Media 的 backend 本地、S3 与延迟构造，share ID 校验、名称清理及根部参数 ID 提取、凭据与构造提前失败测试通过 race；object、transfer 函数仍为 TODO panic，原媒体行为测试保存在 `.go.bak` 中。依赖 Media 的 Tool、Agent、Hook、Platform、Background 测试须在下层业务实现与消费签名迁移后重新验证。下列组件用例说明不代表当前 Media 接线或完整应用已通过；App 整包仍待媒体下层、模型构造实现及进程入口适配。
 
 CLI 整包与 Share、refcontext、dispatch、notification 的 race 回归通过。CLI 覆盖真实管道和 Linux 伪终端的停止／最终关闭、真实 WebSocket 收尾发送、同步监听失败、并发启停及超时重试、原连接回复、事件乱序与绑定失效、WebSocket 背压期间换绑和展示关闭后连接保留、UI 关闭超时重试、回调收尾期间取消观察仍返回已发布故障、部分 UI 所有权、客户端分类及断线退出。CLI 不再依赖旧 agent/events、Platform 根包或兄弟实现；Headless 整包也通过 race，覆盖无状态生命周期、取消上下文、重复及并发调用、发送失败契约；OneBot、Share、refcontext 的 race 回归通过，覆盖分阶段关闭、临时拨号取消、在途写入取消隔离、关闭重试、重连隔离及原生 API 透传；OneBot 不再依赖根包或兄弟实现。QQ Official、Share、refcontext、notification 的 race 回归通过，覆盖实际 HTTP／WebSocket、心跳序号同步及失败退出、恢复与重新鉴权、并发启停、取消观察与独立故障、收尾发送、完整发送及别名入库等待、关闭超时重试。QQ Official 不再依赖根包或兄弟实现。Telegram、Share、refcontext、notification 与 Background/Cron 的 race 回归通过，覆盖异步远端连接、分阶段关闭、完整操作取消与退出等待、流式等待取消隔离、关闭超时重试、独立连接池释放、身份快照、命令目录并发、引用恢复、配置边界及原生 API。Telegram 生产代码与包内测试均不依赖 Platform 根包或兄弟实现；Background 报告测试通过发送契约注入回执。
 
