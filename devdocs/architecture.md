@@ -533,7 +533,9 @@ Platform 根部负责总管、装配与公开能力；下层契约见 [App 包�
 <!-- locator:session -->
 ## Session 生命周期
 
-Session 根部已实现 Supervisor、SupervisorDeps、NewSupervisor 及 Start／BeginClose／Close／Done，接收 Agent 运行 context、完整配置与借用能力；构造不启动任务或调用模型、材料解析器。下层组件、其余公开能力及 Agent 接线尚待实现，当前不能编译，详细消费契约见 [Session 根部契约](app-design.md#session-根部契约)。24 份旧生产代码与 21 份旧测试保存在 `.go.bak` 中，不参与构建。
+Session 根部 13 个文件已实现 Supervisor、完整配置装配、生命周期、公开业务入口及类型转换；构造不启动任务或调用模型、材料解析器。下层组件及 Agent 接线尚待实现，当前不能编译，详细消费契约见 [Session 根部契约](app-design.md#session-根部契约)。24 份旧生产代码与 21 份旧测试保存在 `.go.bak` 中，不参与构建。
+
+根部将管理、后台准备、归属登记及工作目录操作交给 control，Fork／压缩／后台复制交给 branch，准入交给 binding，命名触发交给 naming。公开 Binding 为内部句柄的独立定义类型，通过指针转换保持同一绑定身份；context 与事件共用原句柄，不复制原子状态或增加包装缓存。ObserveBindingChanged／ObserveForegroundActivated 只返回调用方拥有的连接；命名事件及日志投影留在内部。WorkspaceStore 由总管按 SessionID 创建，不暴露仓库；根部不重复业务校验和持久化逻辑。
 
 根部 BeginClose 只停止命名接纳并取消运行，保留绑定及接管事件源。Agent 等在途执行退出后调用 Close；根部先等待命名及日志收尾，再关闭 control、binding 事件源并等待回调。全部自有资源退出后才关闭 Done，超时可继续等待，不关闭借用存储和模型；并发关闭及部分结果的实际行为待下层接通后验证。
 
@@ -548,7 +550,8 @@ Session 根部已实现 Supervisor、SupervisorDeps、NewSupervisor 及 Start／
 
 ```mermaid
 flowchart LR
-    S["session/control/promotion.go、session/signals.go<br/>提交接管、交付公开事件（待实现）"] --> E["agent/execution/execution.go、turn/execution.go<br/>保存一致执行快照"]
+    S["session/control/promotion.go<br/>提交接管（待实现）"] --> R["session/signals.go<br/>公开事件转换与观察连接"]
+    R --> E["agent/execution/execution.go、turn/execution.go<br/>保存一致执行快照（Session 接线待迁移）"]
     W["agent/signals.go<br/>连接与释放订阅"] -.-> E
     E --> T["agent/dialogue/execution_context.go、agent/tools/toolrun_adapter.go<br/>调用前应用接管快照"]
     E --> O["agent/execution/execution_output.go<br/>发送时刷新去向"]

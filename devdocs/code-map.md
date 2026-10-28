@@ -254,13 +254,13 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 <!-- locator:session -->
 ## Session
 
-`internal/session/` 根部 `supervisor.go`、`deps.go`、`wiring.go`、`lifecycle.go` 已实现总管、外部依赖、装配与关闭协调；其余 9 个根部文件及 23 个内部文件仍为职责骨架。24 份旧生产代码和 21 份旧测试均保存在根目录的 `*.go.bak` 中，不参与构建。
+`internal/session/` 根部 13 个文件已实现总管、外部依赖、装配、关闭协调及公开业务入口；23 个内部文件仍为职责骨架。24 份旧生产代码和 21 份旧测试均保存在根目录的 `*.go.bak` 中，不参与构建。
 
-根部按下层契约直接接线，当前缺少组件类型、构造及生命周期方法、branch 材料类型和根部 PreparedMaterial，尚不能编译。契约明细见 [Session 根部契约](app-design.md#session-根部契约)；Agent 实际接线及业务回归待后续完成。
+根部按下层契约直接接线，公开请求、结果、绑定和事件已定义；当前缺少下层组件、内部类型与业务实现，尚不能编译。契约明细见 [Session 根部契约](app-design.md#session-根部契约)；Agent 实际接线及业务回归待后续完成。
 
-`internal/background/share/takeover.go` 保留 Cron 与 Elnis 共用的接管查询消费契约；Session 公开能力仍待实现。
+`internal/background/share/takeover.go` 保留 Cron 与 Elnis 共用的接管查询消费契约；Session 根部 SessionTakenOver 委托 control 查询。公开观察入口仅包含绑定变化和前台接管，命名事件及日志投影留在 naming 内部；WorkspaceStore 由总管按 SessionID 创建，不交付仓库。
 
-文件职责如下，路径均相对 `internal/session/`；除上述四个根部文件外均待实现：
+文件职责如下，路径均相对 `internal/session/`；根部已实现，子包仍待实现：
 
 | 位置 | 文件与目标职责 |
 |---|---|
