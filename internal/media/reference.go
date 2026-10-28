@@ -2,110 +2,41 @@ package media
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
-	"fmt"
+	"elbot/internal/media/share"
 	"io"
-	"sort"
-	"sync"
-	"time"
-
-	"elbot/internal/events"
-	"elbot/internal/storage"
 )
 
-// RetainSessionToolArguments keeps exact media ID values from an executed tool call for its Session.
-// Its log result describes the reference transaction independently of the original
-// business error; arguments without media references do not invent a save.
-func (m *Manager) RetainSessionToolArguments(ctx context.Context, sessionID, arguments string) (events.LogResult, error) {
-	if sessionID == "" {
-		err := errors.New("session ID is required for tool media references")
-		return events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}, err
-	}
-	ids := ArgumentMediaIDs(arguments)
-	if len(ids) == 0 {
-		return events.LogResult{ResultStatus: events.ResultSkipped, Content: "tool arguments contain no media references"}, nil
-	}
-	createdAt := m.Now()
-	references := make([]storage.MediaReference, 0, len(ids))
-	for _, id := range ids {
-		references = append(references, storage.MediaReference{
-			MediaID: id, OwnerType: "session_tool", OwnerID: sessionID,
-			Purpose: "input", SessionID: sessionID, CreatedAt: createdAt,
-		})
-	}
-	if err := m.Store.MediaReferences().AddAll(ctx, references); err != nil {
-		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("retain tool media references: count=%d error=%v", len(references), err)}
-		// AddAll returns one transaction failure, before this source wraps it.
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = events.ResultCanceled
-		}
-		return logResult, err
-	}
-	return events.LogResult{ResultStatus: events.ResultSucceeded, Content: fmt.Sprintf("retained tool media references: count=%d", len(references))}, nil
+// Reference 只表达持久引用的业务身份，时间及存储字段归对象管理。
+type Reference struct {
+	MediaID   string // 被引用媒体。
+	OwnerType string // 引用所属业务类别。
+	OwnerID   string // 引用所属业务对象。
+	Purpose   string // 引用用途。
 }
 
-func ArgumentMediaIDs(arguments string) []string {
-	var value any
-	if err := json.Unmarshal([]byte(arguments), &value); err != nil {
-		return nil
-	}
-	seen := map[string]bool{}
-	var visit func(any)
-	visit = func(value any) {
-		switch value := value.(type) {
-		case string:
-			if ValidID(value) {
-				seen[value] = true
-			}
-		case []any:
-			for _, item := range value {
-				visit(item)
-			}
-		case map[string]any:
-			for _, item := range value {
-				visit(item)
-			}
-		}
-	}
-	visit(value)
-	ids := make([]string, 0, len(seen))
-	for id := range seen {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	return ids
+// HeldMedia 是单个媒体的公开持有句柄，不公开内部签名能力。
+// 调用方先关闭读取器，再关闭句柄；同一调用的复用集合由调用方管理。
+type HeldMedia struct {
+	held share.HeldMedia // 内部持有凭据，不向调用方开放。
 }
 
-// Hold keeps an in-flight consumer alive independently of persistent owners.
-func (m *Manager) Hold(ctx context.Context, id string) (func() error, error) {
-	metadata, err := m.Metadata(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	return m.holdMedia(ctx, metadata)
-}
+// Hold 为单个媒体取得临时引用，与业务持久引用独立。
+func (m *MediaCenter) Hold(ctx context.Context, id string) (*HeldMedia, error) { panic("TODO") }
 
-func (m *Manager) holdMedia(ctx context.Context, metadata *storage.Media) (func() error, error) {
-	ref := storage.MediaReference{MediaID: metadata.ID, OwnerType: "request", OwnerID: storage.NewID(), Purpose: "temporary"}
-	if err := m.Store.MediaReferences().Add(ctx, &ref); err != nil {
-		return nil, err
-	}
-	return func() error {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		return m.Store.MediaReferences().Remove(cleanupCtx, ref)
-	}, nil
-}
+// Info 返回已持有媒体的通用信息快照。
+func (h *HeldMedia) Info() MediaInfo { panic("TODO") }
 
-type referencedReader struct {
-	io.ReadCloser
-	release func() error
-	once    sync.Once
-	err     error
-}
+// Open 在已有持有下打开内容，不重新查询或增加引用。
+func (h *HeldMedia) Open(ctx context.Context) (io.ReadCloser, error) { panic("TODO") }
 
-func (r *referencedReader) Close() error {
-	r.once.Do(func() { r.err = errors.Join(r.ReadCloser.Close(), r.release()) })
-	return r.err
-}
+// Close 释放持有；失败保留凭据供重试，成功后重复调用不重复释放。
+func (h *HeldMedia) Close() error { panic("TODO") }
+
+// AddReference 添加持久业务引用，不承担 Agent 的会话提交事务。
+func (m *MediaCenter) AddReference(ctx context.Context, reference Reference) error { panic("TODO") }
+
+// RemoveReference 删除指定业务身份的引用。
+func (m *MediaCenter) RemoveReference(ctx context.Context, reference Reference) error { panic("TODO") }
+
+// ArgumentMediaIDs 提取 JSON 参数中完整的媒体标识值，去重并排序。
+func ArgumentMediaIDs(arguments string) []string { panic("TODO") }

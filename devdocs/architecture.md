@@ -390,33 +390,26 @@ flowchart LR
 
 工具结果保留完整正文与 segments，提交成功后才进入活跃上下文。归档保存稳定媒体 ID，请求展开 URL／base64 仅供当次发送，不回写或从 HTTP 正文反向恢复归档。
 
+<!-- locator:media -->
 ### 媒体引用与清理
 
-Tool 装配创建统一 `MediaRuntime`，Builtin、Skill 与 Execution 通过它访问媒体；内部媒体中心与缓存根目录为私有依赖。导入使用 `share.MediaImportOptions{Name, MIMEType}`，由入口转换为媒体中心参数；Builtin 通过入口的 IDPrefix、ValidID 识别媒体 ID。查询、导入、持有、导出及历史媒体批量结果仅向工具返回 `share.MediaInfo{ID, Name, MIMEType, Size}`；`storage.Media` 留在媒体实现内部。`ValidateImage` 请求中心验证图片并返回通用信息，图片宽高和实际格式仅由媒体中心内部消费。文件发送工具直接接收 Tool 媒体入口，负责名称、MIME 与发送输出的组织。
+Media 当前只有字段与签名骨架，所有函数以 TODO panic 占位，原生产及测试文件保存为 `.go.bak`。仅通过五个 Media 包的声明编译检查，业务实现和消费者迁移尚未完成。完整文件职责、字段与契约见 [Media 骨架](app-design.md#media-字段与签名骨架)。
 
-`share.MediaInput` 只处理 JSON 解码、字段类型与未知字段约束，不依赖媒体中心。Shell／Skill 将解码后的 ID 传给 Tool/media 的 CachedExport／Export，经 Retain 调用媒体中心 Metadata，复用中心已有的 ID 校验和查询；媒体准备失败时不启动命令。
+根部 `MediaCenter` 负责公开能力、完整配置拆分和装配，私有持有 object 与 transfer。object 管理对象记录、导入读取、图片处理、引用、回收、历史关联及签名缓存；transfer 通过 share.Objects 编排入站、模型请求和平台交付；backend 只按位置读写对象并提供可选签名能力。子包不导入根部或兄弟实现，share 只承载包内协作。
 
-```mermaid
-flowchart TD
-    T["builtin、skill、execution<br/>工具业务与执行"] --> R["tool/media/runtime.go<br/>统一媒体入口、精简结果转换"]
-    T --> S["tool/share/media.go<br/>媒体参数与通用信息契约"]
-    R --> C["tool/media/call.go<br/>调用状态、引用持有与清理"]
-    F["tool/media/files.go<br/>调用目录、文件导入导出"] --> C
-    K["tool/media/cache.go<br/>共享缓存使用与刷新"] --> C
-    F --> W["workspace/sandbox.go<br/>相对路径规则"]
-    K --> W
-```
+公开查询命名 Info，导入、读取、导出与历史结果使用值类型 `MediaInfo{ID, Name, MIMEType, Size}`。ValidateImage 校验内容可解码及 MIME；宽高、格式、存储位置与删除状态属于 object 内部。公开 HeldMedia 提供 Info／Open／Close，内部持有额外提供 SignedURL；读取不重复增加引用，关闭失败可重试。Tool 的调用内复用、导出状态和缓存目录仍归 Tool。
 
-- 媒体按 SHA-256 去重，media_references 是引用事实来源；消息、工具参数、Fork、Cron、Elnis 和输出关联通过事务维护引用，读取／发送另持临时引用。
-- MediaCall 按 ID 复用调用内元数据、持有和成功导出；OpenHeld 使用已持有记录，同次调用串行，Close 释放引用，失败释放可重试。
-- 工具通过确认后、实际执行前关联 JSON 参数中的完整媒体 ID，不扫描自由文本；调用失败保留引用，执行前拒绝不建引用。
-- PrepareMaterials 将完整请求一次交 AcquireForLLM，唯一 ID 只读及持有一次，大小按实际出现次数累计。hybrid 超限全部 S3，否则全部 base64；纯 base64 超限报错，持有持续到该次 HTTP 请求结束。
-- 签名 URL 独立持久化；逐对象锁内按需上传和签名，剩余超过 5 分钟复用，否则按 1 小时刷新。签名或缓存故障返回业务出口报告。
-- 只有实体确实缺失时生成请求占位文字并通知；权限、取消、超时或仓储故障仍报错。Fork／后台副本 seed 独立持有完整窗口素材，不打开媒体实体。
-- 入库清洗名称与敏感来源，图片按限制转白底 JPEG。Chat History 查询不下载，get_media／view_image 限当前平台和 scope；历史批量获取最多尝试 5 个未缓存位置，缓存不占预算。
-- 输出回执按媒体位置关联；缓存故障只记 WARN，不改送达事实或触发重发。跨库历史对账复用消息归属查询，查询故障保守停止。
-- 最后引用释放后保留 1 小时；清理认领与新增引用互斥，按远端 → 本地 → 记录删除，失败留待重试。相同 ID 的导入／上传／删除互斥，每轮最多并行清理 4 个对象。
-- 清理前发现引用异常即停止。启动先清理临时引用，再由 Elnis 裁决历史中断事件，即使禁用 Elnis 也执行；状态与引用释放原子提交，失败阻止启动，持久化 outbox 保留。
+App 构造后注入 History，再发起历史对账；根部对账、清理调用将当前最小查询接口传给 object，object 不保存 History。媒体中心没有独立关闭步骤。AcquireForLLM 与 ResolveForOutput 返回 `func() error` 清理回调，保留未清理项目、业务及清理错误，支持部分准备失败后的重试。
+
+骨架声明承接以下业务约定，运行实现与回归待完成：
+
+- 对象按内容寻址去重，引用事实归 storage；会话、工具参数和后台事务仍由原业务提交，不通过 Media 新增会话写入入口。
+- 模型请求按 ID 复用持有，按实际出现次数累计大小；base64／s3／hybrid 决定交付方式，上传与签名工作退出后再释放持有。
+- 副本上传和签名缓存由 object 在对象锁内维护；后端只接收位置。签名剩余超过 5 分钟复用，否则按 1 小时刷新，独立故障保留。
+- 历史批量获取保留顺序、重复位置及逐项错误；缓存不占未缓存获取额度。对账仅删除确认失效的历史关联，查询失败停止清理。
+- 最后引用释放后保留 1 小时，清理认领与新增引用互斥；按远端、本地、记录的顺序删除，失败保留待重试，每轮最多并行清理 4 个对象。
+
+现行消费者仍包含 Manager、Metadata、ImageMetadata、OpenHeld 和无错误清理回调等旧签名；迁移前不能将消费者接线或运行回归视为通过。输出回执的存储事务及平台发送事实仍由各自业务层负责。
 
 <!-- locator:skill -->
 ## Skill

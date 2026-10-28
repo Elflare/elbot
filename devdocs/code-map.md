@@ -234,7 +234,7 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/platform/share/{message,reference}.go`：内部路由上下文、片段、引用恢复契约与引用格式化。根部 `agent.go` 转换 Agent 输入，RestoreMessageContext 恢复公开事实及内部路由，不改写目标公共会话事实。
 - `internal/agent/contracts.go`、`share/input.go`：Agent 自有 MessageRequest 与内部输入上下文；平台恢复由根部注入，后台入口清除继承的平台状态。
 - `internal/storage/chat_history.go`：ChatSegment、ChatReply 和持久化编解码，保留片段顺序与来源清洗规则。
-- `internal/media/{types,platform}.go`：自有 PlatformMedia、HistoryMessage；负责媒体缓存、关联和批量获取，通过注入函数解析平台来源，不依赖 Platform。
+- `internal/media/types.go`、`transfer/platform.go`、`object/history.go`：公开平台与历史类型、内部批量获取、对象缓存与关联；当前仅为字段与签名骨架，消费者迁移待完成。
 - `internal/platform/{lifecycle,contracts,agent}_test.go`：生命周期、公开事实隔离独立测试，以及输入转换与投影测试；本轮契约迁移的测试留到 review 运行。
 - `internal/platform/qq-onebot/adapter.go`：适配器、配置、自有最小 Deps 和唯一 NewFromPlatformConfig 构造入口。根部注入历史、引用恢复和两项存储查询。
 - `internal/platform/qq-onebot/{lifecycle,send}.go`：分阶段启停、重连、输入接纳和临时连接登记；消息发送、输出编码及回执。停止接入后保留已建立连接发送，最终 Close 等待实际释放。
@@ -312,12 +312,18 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 - `internal/background/share/`：公共后台类型、JSON 结果、接管检查与日志发布；report.go 提供报告构造及 Cron／Elnis 共用的 ReportMessageMap、MapReportReceipt。
 - [内部架构](elnis-elwisp.md)、[功能说明](../docs/elnis.md)、[配置与协议示例](../docs/elnis-usage.md)。
 
+<!-- locator:media -->
 ## 媒体中心
 
-- `internal/media/manager.go`、`resolver.go`：导入、公开读取与入站物化。
-- `internal/media/request.go`：完整模型请求的媒体持有、交付选择与签名 URL。
-- `internal/media/reference.go`、`lifecycle.go`：引用、存活保护与物理清理。
-- `internal/media/platform.go`、`history.go`：平台媒体、历史批量获取与跨库对账。
+Media 当前仅为字段与签名骨架，所有函数以 TODO panic 占位；15 个生产文件和 12 个测试文件保留为 `*.go.bak`。只通过 Media 包编译检查，消费者与完整应用尚未接入。完整字段、接口与文件职责见 [Media 骨架](app-design.md#media-字段与签名骨架)。
+
+- `internal/media/api.go`、`wiring.go`、`deps.go`：MediaCenter 公开入口、完整配置构造装配、Store／History 消费契约。
+- `internal/media/types.go`、`reference.go`：公开 MediaInfo、来源与历史类型；HeldMedia、Reference 和参数媒体 ID 解析。查询统一命名 Info，公开类型不暴露内部记录。
+- `internal/media/object/manager.go`：Manager、Options、Deps、最小仓储及调用期 History 契约；`import.go`、`read.go`、`image.go`：导入、查询读取导出及图片处理。
+- `internal/media/object/reference.go`、`cleanup.go`、`history.go`：持有凭据、引用回收与历史关联对账；`remote.go`、`locks.go`：副本签名缓存与对象并发控制。
+- `internal/media/transfer/manager.go`、`resolver.go`、`request.go`、`output.go`、`platform.go`：交付配置、入站物化、模型请求、发送准备与历史批量获取，只接收对象协作能力。
+- `internal/media/backend/local.go`、`s3.go`、`remote.go`：本地对象、S3 对象与签名、延迟远端构造；仅接收对象位置，不接收存储记录。
+- `internal/media/share/types.go`、`contracts.go`：包内共同数据、Objects／HeldMedia／Backend／RemoteBackend。内部持有提供 SignedURL，公开持有仅提供 Info／Open／Close。
 - `internal/storage/sqlite/media_repository.go`：元数据与签名缓存。
 - `internal/tool/builtin/chat_history.go`、`get_media.go`、`view_image.go`：历史查询、媒体获取与 Responses 看图。
 - `internal/platform/dispatch/media.go`：输出媒体准备与回执缓存。

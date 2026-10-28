@@ -94,12 +94,16 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 
 ## 媒体中心对接
 
-Tool 媒体层已统一向工具返回 `share.MediaInfo`，图片宽高、实际格式、存储位置和清理状态不属于工具契约。媒体中心后续使用自身公开类型，不能反向依赖 Tool 或其 Share。
+Media 当前为 [字段与签名骨架](app-design.md#media-字段与签名骨架)，函数统一 TODO panic；消费者仍使用旧接口，完整应用不能编译运行。已定函数名、字段、参数及职责写在对应 Go 文件中，不能把声明编译通过视为业务完成。
 
-- [ ] 整理媒体中心的公开结果：通用媒体信息与内部存储记录分离，查询、导入及历史媒体结果不泄漏后端和对象位置；Tool 在自身入口转换为 Share 数据。
-- [ ] 明确图片有效性校验接口，保持内容可解码及 MIME 校验语义；当前 Tool 的 ValidateImage 使用中心 ImageMetadata。图片宽高和实际格式继续在媒体中心内部消费。
-- [ ] 收敛调用期引用与已持有媒体的读取能力：支持同一调用复用、失败释放重试及中断恢复；Tool 当前通过中心公开方法管理临时引用，内部持有存储记录供 OpenHeld 使用。
-- [x] Elnis 通过 Media 契约导入及物化；本地报告使用 os.Root 限制路径，直接建立事件引用，无 Tool 媒体运行时依赖。
+- [x] 备份 15 个生产文件和 12 个测试文件为原名加 `.bak`；建立根部与 object／transfer／backend／share 的 24 文件骨架。
+- [x] 声明 MediaCenter、完整配置构造、四字段值类型 MediaInfo、Info／ValidateImage、Reference 及公开 HeldMedia。移除旧入口，不提供兼容别名。
+- [x] 声明 object 最小仓储、调用期 History 参数、内部持有 SignedURL、后端位置接口与可返回错误的交付清理回调；gofmt 和五个 Media 包的声明编译检查通过。
+- [ ] 填充完整配置、凭据、后端构造与中断恢复；App 后注入 History 后执行对账。
+- [ ] 实现导入、查询、图片校验与处理、对象持有及引用释放重试、远端副本和签名缓存、历史关联及物理回收。
+- [ ] 实现入站物化、模型请求准备、平台发送准备、历史批量获取，以及部分准备失败和可重试清理。
+- [ ] 迁移 App、Agent、Tool、Hook、Platform、Background 的 MediaCenter／Info／MediaInfo／HeldMedia 与 func() error 清理契约；Tool 保留调用内集合与导出缓存，移除跨边界的存储记录。
+- [ ] 迁移并运行真实存储、持有及释放重试、对象并发、历史批量与对账、签名缓存回归，完成消费者整包及总管接线验证。
 
 ## Background 目录与依赖
 
