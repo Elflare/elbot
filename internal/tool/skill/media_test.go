@@ -31,7 +31,7 @@ func TestSkillMediaBridge(t *testing.T) {
 	}
 	defer store.Close()
 	root := t.TempDir()
-	center := mediatest.New(t, store, root)
+	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
 	item, err := center.ImportBytes(ctx, []byte("input"), media.Input{Name: "in.txt"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)

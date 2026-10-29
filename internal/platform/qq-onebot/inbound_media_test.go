@@ -48,7 +48,7 @@ func TestOutputReferenceDoesNotFetchPlatform(t *testing.T) {
 	}
 	defer store.Close()
 	root := t.TempDir()
-	center := mediatest.New(t, store, root)
+	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
 	item, err := center.ImportBytes(ctx, []byte("image"), media.Input{Name: "image.png", MIMEType: "image/png"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)

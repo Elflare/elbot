@@ -24,7 +24,7 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 	}
 	defer store.Close()
 	root := t.TempDir()
-	center := mediatest.New(t, store, root)
+	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
 	item, err := center.ImportBytes(ctx, []byte("hello"), media.Input{Name: "hello.txt"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
@@ -158,7 +158,7 @@ func TestMediaExportFailureCanBeRetriedAndCanceled(t *testing.T) {
 			}
 			defer store.Close()
 			root := t.TempDir()
-			center := mediatest.New(t, store, root)
+			center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
 			item, err := center.ImportBytes(ctx, []byte("complete content"), media.Input{Name: "input.txt"}, media.ImportLimits{})
 			if err != nil {
 				t.Fatal(err)

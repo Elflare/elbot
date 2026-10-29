@@ -1,12 +1,13 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"sort"
+	"slices"
 	"time"
 
 	"elbot/internal/events"
@@ -33,13 +34,90 @@ type Waiter interface {
 	Wait(context.Context) error
 }
 
-type businessLine struct {
-	supervisor Lifecycle // 已取得的总管，包括部分构造失败时需要清理的对象。
-	startOrder int       // App 的启动次序，与构造和关闭次序独立。
+// componentKind 标识 App、业务线及共享资源；显示文本只在输出边界使用。
+type componentKind uint8
+
+const (
+	componentApp componentKind = iota
+	componentTool
+	componentAgent
+	componentHook
+	componentPlatform
+	componentBackground
+	componentModels
+	componentMedia
+	componentChatHistory
+	componentStorage
+	componentLogs
+	componentConfigLock
+)
+
+func (kind componentKind) String() string {
+	return [...]string{
+		componentApp: "app", componentTool: "tool", componentAgent: "agent",
+		componentHook: "hook", componentPlatform: "platform", componentBackground: "background",
+		componentModels: "models", componentMedia: "media", componentChatHistory: "chat history",
+		componentStorage: "storage", componentLogs: "logs", componentConfigLock: "config lock",
+	}[kind]
 }
 
-// businessLines 是唯一的总管集合；名称用于错误归属和分阶段关闭。
-type businessLines map[string]businessLine
+// lifecyclePhase 标识编排阶段；关闭阶段按停止请求、接入退出、最终关闭排列。
+type lifecyclePhase uint8
+
+const (
+	phaseEnvironment lifecyclePhase = iota
+	phaseResources
+	phaseWiring
+	phaseBuild
+	phaseConnect
+	phaseStart
+	phaseWait
+	phaseBeginClose
+	phaseWaitIngress
+	phaseClose
+)
+
+func (phase lifecyclePhase) String() string {
+	return [...]string{
+		phaseEnvironment: "environment", phaseResources: "resources", phaseWiring: "wiring",
+		phaseBuild: "build", phaseConnect: "connect", phaseStart: "start", phaseWait: "wait",
+		phaseBeginClose: "begin close", phaseWaitIngress: "wait ingress", phaseClose: "close",
+	}[phase]
+}
+
+// lifecycleError 保留组件、阶段与原始错误链；仅在展示时组合文本。
+type lifecycleError struct {
+	component componentKind  // 失败步骤所属的组件。
+	phase     lifecyclePhase // 失败步骤的编排阶段。
+	cause     error          // 原始错误或多个错误的汇总，供 errors.Is/As 解包。
+}
+
+func (err *lifecycleError) Error() string {
+	return fmt.Sprintf("%s %s: %v", err.component, err.phase, err.cause)
+}
+
+func (err *lifecycleError) Unwrap() error {
+	return err.cause
+}
+
+type businessLine struct {
+	kind        componentKind               // 日志及错误所属的业务线。
+	supervisor  Lifecycle                   // 已取得的非 nil 总管，包含部分构造结果。
+	startOrder  int                         // 启动次序，与构造及关闭次序独立。
+	beginOrder  int                         // 发起停止的次序，所有停止请求先于接入等待。
+	closeOrder  int                         // 最终关闭次序，使用方先于依赖方。
+	waitIngress func(context.Context) error // 可选的接入退出等待；期间保留输出能力。
+}
+
+// businessLines 是唯一的总管登记表，只保存装配阶段已取得的总管。
+type businessLines []businessLine
+
+// inStartOrder 返回按登记的启动次序排序的副本，不改变原登记顺序。
+func (lines businessLines) inStartOrder() []businessLine {
+	ordered := slices.Clone(lines)
+	slices.SortStableFunc(ordered, func(a, b businessLine) int { return cmp.Compare(a.startOrder, b.startOrder) })
+	return ordered
+}
 
 // startupTiming 记录总起点及四个入口阶段。
 type startupTiming struct {
@@ -49,13 +127,13 @@ type startupTiming struct {
 }
 
 type startupStage struct {
-	name     string        // 环境、资源、装配或启动阶段名称。
-	duration time.Duration // 当前阶段耗时。
+	phase    lifecyclePhase // 环境、资源、装配或启动阶段。
+	duration time.Duration  // 当前阶段耗时。
 }
 
 type startupStep struct {
-	name string       // 阶段名称，用于错误归属及完成耗时。
-	run  func() error // 先保存本阶段取得的资源，再交回错误。
+	phase lifecyclePhase // 阶段身份，用于错误归属及完成耗时。
+	run   func() error   // 先保存本阶段取得的资源，再交回错误。
 }
 
 // Run 组织完整运行；正常外部取消返回 nil，其他错误与清理错误合并。
@@ -81,19 +159,19 @@ func Run(ctx context.Context, opts Options) (err error) {
 	}()
 	var configPath string
 	steps := []startupStep{
-		{name: "environment", run: func() error {
+		{phase: phaseEnvironment, run: func() error {
 			configPath, configLock, err = prepareEnvironment(opts.ConfigPath, opts.Mode)
 			return err
 		}},
-		{name: "resources", run: func() error {
+		{phase: phaseResources, run: func() error {
 			resources, err = prepareResources(runCtx, configPath)
 			return err
 		}},
-		{name: "wiring", run: func() error {
+		{phase: phaseWiring, run: func() error {
 			lines, err = buildBusinessLines(runCtx, resources, opts.Mode)
 			return err
 		}},
-		{name: "start", run: func() error { return startBusinessLines(runCtx, lines) }},
+		{phase: phaseStart, run: func() error { return startBusinessLines(runCtx, lines) }},
 	}
 	if err = runStartupSteps(runCtx, steps, &timing); err != nil {
 		return err
@@ -115,32 +193,21 @@ func runStartupSteps(ctx context.Context, steps []startupStep, timing *startupTi
 			return err
 		}
 		if err := step.run(); err != nil {
-			return fmt.Errorf("startup %s: %w", step.name, err)
+			return &lifecycleError{component: componentApp, phase: step.phase, cause: err}
 		}
-		timing.markStage(step.name)
+		timing.markStage(step.phase)
 	}
 	return ctx.Err()
 }
 
 // startBusinessLines 在全部构造和接线完成后按依赖顺序启动。
 func startBusinessLines(ctx context.Context, lines businessLines) error {
-	names := make([]string, 0, len(lines))
-	for name := range lines {
-		names = append(names, name)
-	}
-	sort.Slice(names, func(i, j int) bool {
-		a, b := names[i], names[j]
-		if lines[a].startOrder != lines[b].startOrder {
-			return lines[a].startOrder < lines[b].startOrder
-		}
-		return a < b
-	})
-	for _, name := range names {
+	for _, line := range lines.inStartOrder() {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := lines[name].supervisor.Start(); err != nil {
-			return fmt.Errorf("start %s: %w", name, err)
+		if err := line.supervisor.Start(); err != nil {
+			return &lifecycleError{component: line.kind, phase: phaseStart, cause: err}
 		}
 	}
 	return ctx.Err()
@@ -150,13 +217,13 @@ func startBusinessLines(ctx context.Context, lines businessLines) error {
 // Platform 继续解释 TUI／Service 的退出语义；Background 在故障时不等待清理。
 func waitBusinessLines(ctx context.Context, lines businessLines) error {
 	type participant struct {
-		name   string
+		kind   componentKind
 		waiter Waiter
 	}
 	var participants []participant
-	for name, line := range lines {
+	for _, line := range lines {
 		if waiter, ok := line.supervisor.(Waiter); ok {
-			participants = append(participants, participant{name, waiter})
+			participants = append(participants, participant{line.kind, waiter})
 		}
 	}
 	if len(participants) == 0 {
@@ -166,12 +233,12 @@ func waitBusinessLines(ctx context.Context, lines businessLines) error {
 	waitCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	type result struct {
-		name string
+		kind componentKind
 		err  error
 	}
 	results := make(chan result, len(participants))
 	for _, participant := range participants {
-		go func() { results <- result{participant.name, participant.waiter.Wait(waitCtx)} }()
+		go func() { results <- result{participant.kind, participant.waiter.Wait(waitCtx)} }()
 	}
 	var errs []error
 	for range participants {
@@ -179,7 +246,7 @@ func waitBusinessLines(ctx context.Context, lines businessLines) error {
 		// 首个结果结束运行等待；另一 Wait 必须响应等待上下文，实际收尾由 Close 负责。
 		cancel()
 		if result.err != nil && !isOnlyCancellation(result.err, waitCtx.Err()) {
-			errs = append(errs, fmt.Errorf("wait %s: %w", result.name, result.err))
+			errs = append(errs, &lifecycleError{component: result.kind, phase: phaseWait, cause: result.err})
 		}
 	}
 	return errors.Join(append(errs, ctx.Err())...)
@@ -202,9 +269,9 @@ func isOnlyCancellation(err, cancellation error) bool {
 	return true
 }
 
-func (t *startupTiming) markStage(name string) {
+func (t *startupTiming) markStage(phase lifecyclePhase) {
 	now := time.Now()
-	t.stages = append(t.stages, startupStage{name: name, duration: now.Sub(t.stageStartedAt)})
+	t.stages = append(t.stages, startupStage{phase: phase, duration: now.Sub(t.stageStartedAt)})
 	t.stageStartedAt = now
 }
 
@@ -219,7 +286,7 @@ func (t *startupTiming) log(ctx context.Context) {
 		_ = events.EmitLog(ctx, events.LogRecord{
 			Category: events.LogRuntime, Module: "app", Level: slog.LevelDebug,
 			EventName: "startup_stage", Type: events.ContentText,
-			Content:      fmt.Sprintf("stage=%s\nduration=%s", stage.name, stage.duration),
+			Content:      fmt.Sprintf("stage=%s\nduration=%s", stage.phase, stage.duration),
 			ResultStatus: events.ResultSucceeded,
 		})
 	}

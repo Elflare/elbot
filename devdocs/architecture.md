@@ -45,19 +45,19 @@ App 实现公共流程，下层按照调用契约实现。五条业务线已提�
 
 TUI 和 Service 在创建资源前，按配置文件的绝对路径及符号链接解析结果取得独立 `.lock` 文件的非阻塞独占锁；同配置重复启动立即报错，不同配置分别运行，纯客户端不取锁。入口持有锁，统一退出流程在资源关闭后释放；锁文件保留，退出超时则由进程退出释放锁。
 
-入口用局部阶段列表统一执行环境、资源、装配和启动，记录成功阶段耗时；每步先保存部分结果再交回错误。唯一的业务线集合登记 Lifecycle、名称和启动顺序，按 Tool → Agent → Hook → Platform → Background 启动。App 自动筛选可选 Waiter 并发等待，首个结果触发取消并回收其余等待，保留独立故障。Platform 解释退出语义，Background 及时上报致命故障。退出先停止新工作、等待使用方收尾，再释放依赖；平台发送能力和 App 持有的历史库保留到使用方退出。
+入口用局部阶段列表统一执行环境、资源、装配和启动，记录成功阶段耗时；每步先保存部分结果再交回错误。App 用 `componentKind`、`lifecyclePhase` 保存编排身份，`lifecycleError` 保留组件、阶段及原始错误链，仅在错误或日志输出时转换文本。唯一的业务线登记表保存 Lifecycle、启动／停止／关闭次序与可选接入等待；装配时先登记非 nil 部分总管，再处理构造错误，Platform 在同一登记项绑定 WaitIngress。App 稳定排序副本，按 Tool → Agent → Hook → Platform → Background 启动；关闭步骤由登记表生成，按 BeginClose → WaitIngress → Close 阶段及登记次序排序。App 自动筛选可选 Waiter 并发等待，首个结果触发取消并回收其余等待，保留独立故障。Platform 解释退出语义，Background 及时上报致命故障。退出先停止新工作、等待使用方收尾，再释放依赖；平台发送能力和 App 持有的历史库保留到使用方退出。
 
-退出步骤共用独立的 30 秒预算。App 的 `runShutdownStep` 将结果分为完成、失败、超时，`runShutdownSteps` 按序执行并汇总；普通错误保留后继续清理，统一期限耗尽立即停止后续清理。下层 Close 保持返回 error，其业务超时错误不直接等同于 App 的统一期限耗尽。最终错误交回进程入口处理。
+退出步骤共用独立的 30 秒预算，覆盖每项 BeginClose、平台接入等待、Close 和资源释放；即使 BeginClose 阻塞，App 也按期限返回，不继续释放依赖和配置锁。App 的 `runShutdownStep` 将结果分为完成、失败、超时，`runShutdownSteps` 按序执行并汇总；普通错误保留后继续清理，统一期限耗尽立即停止后续清理。下层 Close 保持返回 error，其业务超时错误不直接等同于 App 的统一期限耗尽。最终错误交回进程入口处理。
 
 客户端通过 `platform.RunClient(ctx, cfg, name)` 一次获得 `ClientResult{Kind, Err}`。Platform 负责连接选择与结果分类；App 的明确运行入口直接返回错误，自动尝试入口只将 `ClientFallback` 转为回退信号。App 不解析 URL 或重新组合回退条件。Launcher 只解析 Command，不依赖 App；main 将默认命令映射到 `TryRunClient`，仅收到 `ErrClientFallback` 才启动 TUI，显式 `client` 调用 `RunClient` 且不回退，`run`／`service run` 分别启动 TUI／Service。main 处理进程信号与退出码，本地启动及清理错误由 App 交回。
 
 ```mermaid
 flowchart TB
-    E["app/entry.go<br/>入口、计时、启动与等待"]
+    E["app/entry.go<br/>枚举、结构化错误、启动与等待"]
     ENV["app/environment.go<br/>运行模式、配置路径与配置锁"]
     R["app/resources.go<br/>共享资源构造与所有权"]
-    W["app/wiring.go<br/>总管构造与公开能力接线"]
-    S["app/shutdown.go<br/>统一期限、结果分类与清理顺序"]
+    W["app/wiring.go<br/>总管构造、顺序登记与公开能力接线"]
+    S["app/shutdown.go<br/>步骤生成排序、统一期限与结果分类"]
     C["app/client.go<br/>结果分派与回退信号"]
     E --> ENV & R & W & S
     ENV -->|配置路径| R
@@ -406,7 +406,7 @@ backend 消费 object 已确认的 ID、内容与位置；S3 客户端只使用�
 
 AcquireForLLM、ResolveForOutput 及显式持有返回 UsageID，准备失败由 Media 收尾。Agent／Platform／Tool 在实际使用结束后，通过各自根部 signals.go 发布结束事实，wiring.go 只负责注入。Media 根部 signals.go 先向 transfer 登记结束，再发布信号唤醒清理；业务取消、队列拒收或执行超时不会丢失待清理记录，失败项由既有维护继续处理，不影响已完成的业务结果。
 
-App 构造后注入 History，再发起历史对账；根部对账、清理调用将当前最小查询接口传给 object，object 不保存 History。全部消费者退出后，App 调用 MediaCenter.Close 排空信号并清理剩余自有资源，再关闭历史库和共享存储。Media 不关闭借用存储，关闭超时保留状态供再次等待。
+App 通过 MediaCenterDeps 在构造时交付 Store 和 ChatHistory；Media 私有保存历史查询，在组件与信号装配后完成首次对账，失败返回部分对象及错误。根部对账、清理调用将借用的最小查询接口传给 object，object 不保存 History。全部消费者退出后，App 调用 MediaCenter.Close 排空信号并清理剩余自有资源，再关闭历史库和共享存储。Media 不关闭借用存储，关闭超时保留状态供再次等待。
 
 object 与 transfer 遵循以下业务约定：
 

@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"fmt"
 
 	"elbot/internal/config"
 	"elbot/internal/logging"
@@ -20,7 +19,7 @@ type sharedResources struct {
 	logs         *logging.Manager         // App 持有的日志管理。
 	store        storage.Store            // 使用方退出后关闭的共享存储。
 	historyStore *sqlite.ChatHistoryStore // 所有历史使用方退出后关闭的独立历史库。
-	media        *media.MediaCenter       // 共享媒体服务，借用 store。
+	media        *media.MediaCenter       // 共享媒体服务，借用媒体存储与历史查询。
 	permission   *security.Permission     // 共享权限管理。
 	models       *modelmgr.ModelManager   // 拥有模型选择状态、厂商快照与重试信号。
 }
@@ -33,34 +32,35 @@ func prepareResources(ctx context.Context, resolvedConfigPath string) (*sharedRe
 	}
 	cfg, err := config.Load(resolvedConfigPath)
 	if err != nil {
-		return resources, fmt.Errorf("load config: %w", err)
+		return resources, err
 	}
 	resources.config = cfg
 	resources.logs, err = logging.NewManager(cfg.Runtime.LogLevel, cfg.Storage.SessionsSQLitePath, cfg.Runtime.LogRetentionDays)
 	if err != nil {
-		return resources, fmt.Errorf("prepare logs: %w", err)
+		return resources, &lifecycleError{component: componentLogs, phase: phaseBuild, cause: err}
 	}
 	store, err := sqlite.New(ctx, cfg.Storage.SessionsSQLitePath)
 	if err != nil {
-		return resources, fmt.Errorf("prepare storage: %w", err)
+		return resources, &lifecycleError{component: componentStorage, phase: phaseBuild, cause: err}
 	}
 	resources.store = store
 	resources.historyStore, err = sqlite.NewChatHistory(ctx, cfg.Storage.ChatHistorySQLitePath)
 	if err != nil {
-		return resources, fmt.Errorf("prepare chat history: %w", err)
+		return resources, &lifecycleError{component: componentChatHistory, phase: phaseBuild, cause: err}
 	}
 
-	// 媒体侧通过 NewMediaCenter 接收完整配置并借用共享存储；
-	// 后端、凭据、配置应用和中断恢复均由媒体侧负责。
-	resources.media, err = media.NewMediaCenter(ctx, cfg, resources.store)
+	// 媒体侧接收完整配置及借用依赖，负责后端、凭据、恢复与首次历史对账。
+	resources.media, err = media.NewMediaCenter(ctx, cfg, media.MediaCenterDeps{
+		Store: resources.store, ChatHistory: resources.historyStore.Repository(),
+	})
 	if err != nil {
-		return resources, fmt.Errorf("prepare media: %w", err)
+		return resources, &lifecycleError{component: componentMedia, phase: phaseBuild, cause: err}
 	}
 	resources.permission = security.NewPermission(cfg.Security.UserMaxToolRisk, cfg.Security.SuperadminConfirmRisk, cfg.Security.Superadmins)
 
 	resources.models, err = modelmgr.NewModelManager(ctx, cfg)
 	if err != nil {
-		return resources, fmt.Errorf("prepare models: %w", err)
+		return resources, &lifecycleError{component: componentModels, phase: phaseBuild, cause: err}
 	}
 	return resources, nil
 }

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -21,22 +20,67 @@ func TestShutdownStepDeadlineDoesNotWaitForUncooperativeCloser(t *testing.T) {
 		defer cancel()
 		release := make(chan struct{})
 		defer close(release)
-		result := runShutdownStep(ctx, "blocked owner", func(context.Context) error { <-release; return nil })
-		if result.kind != stopTimedOut || !errors.Is(result.err, context.DeadlineExceeded) || !strings.Contains(result.err.Error(), "blocked owner") {
+		result := runShutdownStep(ctx, shutdownStep{component: componentAgent, phase: phaseClose, close: func(context.Context) error { <-release; return nil }})
+		requireLifecycleError(t, result.err, componentAgent, phaseClose)
+		if result.kind != stopTimedOut || !errors.Is(result.err, context.DeadlineExceeded) {
 			t.Fatalf("result=%+v", result)
 		}
 		called := false
-		result = runShutdownStep(ctx, "next dependency", func(context.Context) error { called = true; return nil })
+		result = runShutdownStep(ctx, shutdownStep{component: componentTool, phase: phaseClose, close: func(context.Context) error { called = true; return nil }})
+		requireLifecycleError(t, result.err, componentTool, phaseClose)
 		if result.kind != stopTimedOut || !errors.Is(result.err, context.DeadlineExceeded) || called {
 			t.Fatalf("started a dependency after deadline: result=%+v called=%v", result, called)
 		}
 	})
 }
 
-func TestShutdownStepPreservesNamedCause(t *testing.T) {
+func TestShutdownBeginCloseHonorsSharedDeadline(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		release := make(chan struct{})
+		closed := false
+		lines := businessLines{
+			{kind: componentPlatform, beginOrder: 1,
+				supervisor:  &testLifecycle{begin: func() { time.Sleep(10 * time.Second) }},
+				waitIngress: func(context.Context) error { closed = true; return nil },
+			},
+			{kind: componentBackground, beginOrder: 2, supervisor: &testLifecycle{
+				begin: func() { <-release },
+				close: func(context.Context) error { closed = true; return nil },
+			}},
+		}
+		started := time.Now()
+		result := make(chan error, 1)
+		var elapsed time.Duration
+		go func() {
+			err := shutdown(t.Context(), lines, nil, nil)
+			elapsed = time.Since(started)
+			result <- err
+		}()
+		time.Sleep(shutdownTimeout + time.Second)
+		synctest.Wait()
+		select {
+		case err := <-result:
+			requireLifecycleError(t, err, componentBackground, phaseBeginClose)
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Errorf("timeout cause = %v", err)
+			}
+			if elapsed != shutdownTimeout || closed {
+				t.Errorf("elapsed=%s later step ran=%v", elapsed, closed)
+			}
+			close(release)
+		default:
+			t.Error("shutdown did not return at its deadline while BeginClose blocked")
+			close(release)
+			<-result
+		}
+	})
+}
+
+func TestShutdownStepPreservesTypedCause(t *testing.T) {
 	for _, cause := range []error{errors.New("close failed"), context.DeadlineExceeded} {
-		result := runShutdownStep(t.Context(), "models", func(context.Context) error { return cause })
-		if result.kind != stopFailed || !errors.Is(result.err, cause) || !strings.Contains(result.err.Error(), "models") {
+		result := runShutdownStep(t.Context(), shutdownStep{component: componentModels, phase: phaseClose, close: func(context.Context) error { return cause }})
+		requireLifecycleError(t, result.err, componentModels, phaseClose)
+		if result.kind != stopFailed || !errors.Is(result.err, cause) {
 			t.Fatalf("result=%+v", result)
 		}
 	}
@@ -57,7 +101,7 @@ func TestShutdownStepsPreservesOrderAndErrors(t *testing.T) {
 			var order []int
 			var steps []shutdownStep
 			for i, err := range tt.errors {
-				steps = append(steps, shutdownStep{name: "resource", close: func(context.Context) error {
+				steps = append(steps, shutdownStep{component: componentMedia, phase: phaseClose, close: func(context.Context) error {
 					order = append(order, i)
 					return err
 				}})
@@ -88,15 +132,15 @@ func TestShutdownStepsSharesDeadlineAndStopsDependencies(t *testing.T) {
 		called := false
 		started := time.Now()
 		result := runShutdownSteps(ctx, []shutdownStep{
-			{name: "first owner", close: func(context.Context) error {
+			{component: componentAgent, phase: phaseClose, close: func(context.Context) error {
 				time.Sleep(600 * time.Millisecond)
 				return cause
 			}},
-			{name: "blocked owner", close: func(context.Context) error {
+			{component: componentTool, phase: phaseClose, close: func(context.Context) error {
 				<-release
 				return nil
 			}},
-			{name: "next dependency", close: func(context.Context) error {
+			{component: componentPlatform, phase: phaseClose, close: func(context.Context) error {
 				called = true
 				return nil
 			}},
@@ -107,9 +151,12 @@ func TestShutdownStepsSharesDeadlineAndStopsDependencies(t *testing.T) {
 		if called || time.Since(started) != time.Second {
 			t.Fatalf("called=%v elapsed=%s", called, time.Since(started))
 		}
-		if !strings.Contains(result.err.Error(), "blocked owner") || strings.Contains(result.err.Error(), "next dependency") {
-			t.Fatalf("wrong timeout owner: %v", result.err)
+		joined := result.err.(interface{ Unwrap() []error }).Unwrap()
+		if len(joined) != 2 {
+			t.Fatalf("failures=%v", joined)
 		}
+		requireLifecycleError(t, joined[0], componentAgent, phaseClose)
+		requireLifecycleError(t, joined[1], componentTool, phaseClose)
 	})
 }
 
@@ -136,7 +183,8 @@ func TestCloseSharedResourcesContinuesAfterOrdinaryError(t *testing.T) {
 	cause := errors.New("injected storage close failure")
 	r := &sharedResources{logs: logs, store: failingResourceStore{Store: store, cause: cause}}
 	result := closeSharedResources(t.Context(), r)
-	if result.kind != stopFailed || !errors.Is(result.err, cause) || !strings.Contains(result.err.Error(), "storage") {
+	requireLifecycleError(t, result.err, componentStorage, phaseClose)
+	if result.kind != stopFailed || !errors.Is(result.err, cause) {
 		t.Fatalf("result=%+v", result)
 	}
 	// 存储关闭失败后仍须释放日志所有权，才能创建下一实例。
@@ -171,7 +219,7 @@ func TestShutdownOwnsHistoryUntilUsersClose(t *testing.T) {
 				}
 				return nil
 			}}
-			err = shutdown(t.Context(), businessLines{"tool": {supervisor: user}}, &sharedResources{historyStore: history}, nil)
+			err = shutdown(t.Context(), businessLines{{kind: componentTool, supervisor: user}}, &sharedResources{historyStore: history}, nil)
 			if !closed || (partial && !errors.Is(err, cause)) || (!partial && err != nil) {
 				t.Fatal(closed, err)
 			}
@@ -181,6 +229,10 @@ func TestShutdownOwnsHistoryUntilUsersClose(t *testing.T) {
 		})
 	}
 }
+
+type testConfigLock struct{ closed bool }
+
+func (l *testConfigLock) Close() error { l.closed = true; return nil }
 
 func TestShutdownTimeoutRetainsHistoryForUnfinishedUser(t *testing.T) {
 	history, err := sqlite.NewChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
@@ -192,17 +244,32 @@ func TestShutdownTimeoutRetainsHistoryForUnfinishedUser(t *testing.T) {
 	if err := history.Repository().Append(t.Context(), row); err != nil {
 		t.Fatal(err)
 	}
-	synctest.Test(t, func(t *testing.T) {
-		release := make(chan struct{})
-		user := &testLifecycle{close: func(context.Context) error { <-release; return nil }}
-		err := shutdown(t.Context(), businessLines{"tool": {supervisor: user}}, &sharedResources{historyStore: history}, nil)
-		close(release)
-		synctest.Wait()
-		if !errors.Is(err, context.DeadlineExceeded) {
-			t.Fatal(err)
-		}
-		if _, err := history.Repository().GetByPlatformMessage(t.Context(), "test", "scope", "message"); err != nil {
-			t.Fatal("timeout released dependency", err)
-		}
-	})
+	for _, phase := range []lifecyclePhase{phaseBeginClose, phaseClose} {
+		t.Run(phase.String(), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				release := make(chan struct{})
+				defer close(release)
+				user := &testLifecycle{}
+				if phase == phaseBeginClose {
+					user.begin = func() { <-release }
+				} else {
+					user.begin = func() { time.Sleep(10 * time.Second) }
+					user.close = func(context.Context) error { <-release; return nil }
+				}
+				lock := &testConfigLock{}
+				started := time.Now()
+				err := shutdown(t.Context(), businessLines{{kind: componentTool, supervisor: user}}, &sharedResources{historyStore: history}, lock)
+				requireLifecycleError(t, err, componentTool, phase)
+				if !errors.Is(err, context.DeadlineExceeded) || time.Since(started) != shutdownTimeout {
+					t.Fatalf("elapsed=%s error=%v", time.Since(started), err)
+				}
+				if lock.closed {
+					t.Fatal("timeout released config lock")
+				}
+				if _, err := history.Repository().GetByPlatformMessage(t.Context(), "test", "scope", "message"); err != nil {
+					t.Fatal("timeout released dependency", err)
+				}
+			})
+		})
+	}
 }

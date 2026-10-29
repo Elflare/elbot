@@ -108,7 +108,7 @@ func TestWaitingInputPreparesMediaWithoutRecomputingWakeup(t *testing.T) {
 	})
 	store := newTestStore(t)
 	root := t.TempDir()
-	h.media = mediatest.New(t, store, root)
+	h.media = mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
 	ctx := agentshare.WithMessageContext(contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram", ConversationKind: contextinfo.ConversationGroup}}), agentshare.MessageContext{
 
 		TriggerKeywords: []string{"wake"}, ResolveMedia: resolver.ResolveMedia,

@@ -54,7 +54,7 @@ func newUsageCenter(t *testing.T) (*MediaCenter, *sqlite.Store, *controlledRefer
 	cfg := config.Default()
 	cfg.Sandbox.Root = filepath.Join(t.TempDir(), "sandbox")
 	cfg.FileDelivery.Backend = "base64"
-	m, err := NewMediaCenter(t.Context(), cfg, usageStore{Store: store, refs: refs})
+	m, err := NewMediaCenter(t.Context(), cfg, MediaCenterDeps{Store: usageStore{Store: store, refs: refs}})
 	if err != nil {
 		t.Fatal(err)
 	}

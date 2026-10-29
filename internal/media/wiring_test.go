@@ -10,6 +10,9 @@ import (
 	"testing"
 
 	"elbot/internal/config"
+	"elbot/internal/storage"
+	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 )
 
 func TestResolveFileDeliveryCredentials(t *testing.T) {
@@ -104,8 +107,8 @@ func TestNewMediaCenterEarlyFailure(t *testing.T) {
 				cancel()
 			}
 			// 无需 Store 即可拒绝取消或无效配置；此时不应创建对象与传输组件。
-			center, err := NewMediaCenter(ctx, cfg, nil)
-			if err == nil || center == nil || center.objects != nil || center.transfer != nil || center.History != nil {
+			center, err := NewMediaCenter(ctx, cfg, MediaCenterDeps{})
+			if err == nil || center == nil || center.objects != nil || center.transfer != nil || center.chatHistory != nil {
 				t.Fatalf("unexpected early construction result: %v, %v", center, err)
 			}
 			if mode == "canceled" && !errors.Is(err, context.Canceled) {
@@ -119,6 +122,96 @@ func TestNewMediaCenterEarlyFailure(t *testing.T) {
 			}
 			if !reflect.DeepEqual(*cfg, before) {
 				t.Fatal("constructor changed caller configuration")
+			}
+		})
+	}
+}
+
+type unavailableHistory struct{ cause error }
+
+func (h unavailableHistory) GetByPlatformMessage(context.Context, string, string, string) (*storage.ChatMessage, error) {
+	return nil, h.cause
+}
+
+func TestNewMediaCenterReconcilesHistoryAndRetainsBorrowedStores(t *testing.T) {
+	for _, state := range []string{"current", "missing", "replaced", "unavailable", "without history"} {
+		t.Run(state, func(t *testing.T) {
+			store := testutil.NewSQLiteStore(t)
+			history, err := sqlite.NewChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = history.Close() })
+			row := &storage.ChatMessage{ID: "missing-history", Platform: "test", PlatformScopeID: "scope", PlatformMessageID: "message"}
+			if state != "missing" && state != "without history" {
+				if err := history.Repository().Append(t.Context(), row); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cfg := config.Default()
+			cfg.Sandbox.Root = filepath.Join(t.TempDir(), "sandbox")
+			cfg.FileDelivery.Backend = "base64"
+			seed, err := NewMediaCenter(t.Context(), cfg, MediaCenterDeps{Store: store})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = seed.Close(context.Background()) })
+			item, err := seed.ImportBytes(t.Context(), []byte("history media"), Input{Name: "file.txt", MIMEType: "text/plain"}, ImportLimits{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			key := HistoryMessage{ID: row.ID, Platform: row.Platform, ScopeID: row.PlatformScopeID, MessageID: row.PlatformMessageID}
+			if state == "replaced" {
+				key.ID = "previous-history"
+			}
+			if err := seed.AssociateHistory(t.Context(), key, 1, "file", item.ID); err != nil {
+				t.Fatal(err)
+			}
+			if err := seed.Close(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+
+			failure := errors.New("history unavailable")
+			var query History = history.Repository()
+			switch state {
+			case "unavailable":
+				query = unavailableHistory{cause: failure}
+			case "without history":
+				query = nil
+			}
+			center, err := NewMediaCenter(t.Context(), cfg, MediaCenterDeps{Store: store, ChatHistory: query})
+			if center == nil {
+				t.Fatal("constructor lost partial ownership")
+			}
+			t.Cleanup(func() { _ = center.Close(context.Background()) })
+			if state == "unavailable" {
+				if !errors.Is(err, failure) || !strings.Contains(err.Error(), "reconcile history media") {
+					t.Fatalf("reconciliation error = %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			items, err := store.Media().FindHistory(t.Context(), key.Platform, key.ScopeID, key.MessageID)
+			want := 1
+			if state == "missing" || state == "replaced" {
+				want = 0
+			}
+			if err != nil || len(items) != want {
+				t.Fatalf("history associations=%v error=%v", items, err)
+			}
+			if err := center.Close(t.Context()); err != nil {
+				t.Fatal("cannot close constructed or partial media", err)
+			}
+			if _, err := store.Media().Get(t.Context(), item.ID); err != nil {
+				t.Fatal("Media closed borrowed media store", err)
+			}
+			_, err = history.Repository().GetByPlatformMessage(t.Context(), key.Platform, key.ScopeID, key.MessageID)
+			if state == "missing" || state == "without history" {
+				if !errors.Is(err, storage.ErrNotFound) {
+					t.Fatalf("history lookup = %v", err)
+				}
+			} else if err != nil {
+				t.Fatal("Media closed borrowed history store", err)
 			}
 		})
 	}

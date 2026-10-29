@@ -16,12 +16,13 @@ import (
 	"elbot/internal/hook/runtime"
 	"elbot/internal/hook/share"
 	hookoutput "elbot/internal/hook/share/output"
+	"elbot/internal/media"
 	"elbot/internal/testutil"
 	"elbot/internal/testutil/mediatest"
 )
 
 func TestMediaImportKeepsPipelinePriorityAndResultDependency(t *testing.T) {
-	center := mediatest.New(t, testutil.NewSQLiteStore(t), t.TempDir())
+	center := mediatest.New(t, media.MediaCenterDeps{Store: testutil.NewSQLiteStore(t)}, t.TempDir())
 	log := func(context.Context, events.LogRecord) {}
 	run, err := runtime.NewManager(runtime.Options{SharedDir: t.TempDir(), Media: center, Log: log, Notify: func(context.Context, events.Notification) error { return nil }})
 	if err != nil {

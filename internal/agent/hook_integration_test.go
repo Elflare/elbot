@@ -15,6 +15,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/hook"
+	"elbot/internal/media"
 	"elbot/internal/modelmgr"
 	"elbot/internal/security"
 	"elbot/internal/signal"
@@ -89,7 +90,7 @@ data: [DONE]
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = models.Close(context.Background()) })
-	center := mediatest.New(t, store, root)
+	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
 	permission := security.DefaultPermission()
 	tools, err := tool.NewSupervisor(t.Context(), cfg, tool.SupervisorDeps{Store: store, Models: models, Media: center, Permission: permission})
 	if err != nil {

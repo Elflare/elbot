@@ -6,8 +6,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
+	"slices"
 	"testing"
+
+	"elbot/internal/config"
+	"elbot/internal/media"
+	"elbot/internal/platform"
+	"elbot/internal/storage/sqlite"
 )
 
 func appConfigFixture(t *testing.T) string {
@@ -74,7 +79,8 @@ func TestPrepareResourcesReturnsStoreWhenHistoryConstructionFails(t *testing.T) 
 	}
 	r, err := prepareResources(t.Context(), path)
 	cleanupAppResources(t, r)
-	if err == nil || !strings.Contains(err.Error(), "prepare chat history") || r.store == nil || r.historyStore != nil || r.media != nil {
+	requireLifecycleError(t, err, componentChatHistory, phaseBuild)
+	if r.store == nil || r.historyStore != nil || r.media != nil {
 		t.Fatalf("resources=%+v err=%v", r, err)
 	}
 }
@@ -86,9 +92,7 @@ func TestPrepareResourcesReturnsPartialOwnership(t *testing.T) {
 	}
 	r, err := prepareResources(t.Context(), path)
 	cleanupAppResources(t, r)
-	if err == nil || !strings.Contains(err.Error(), "prepare storage") {
-		t.Fatalf("error=%v", err)
-	}
+	requireLifecycleError(t, err, componentStorage, phaseBuild)
 	if r.config == nil || r.logs == nil || r.store != nil || r.media != nil || r.models != nil {
 		t.Fatalf("partial=%#v", r)
 	}
@@ -133,7 +137,111 @@ func TestPrepareResourcesRetainsPartialModelsForCleanup(t *testing.T) {
 	}
 	r, err := prepareResources(t.Context(), path)
 	cleanupAppResources(t, r)
-	if err == nil || !strings.Contains(err.Error(), "prepare models") || r.models == nil || r.media == nil || r.historyStore == nil {
+	requireLifecycleError(t, err, componentModels, phaseBuild)
+	if r.models == nil || r.media == nil || r.historyStore == nil {
 		t.Fatalf("resources=%+v error=%v", r, err)
+	}
+}
+
+func TestPrepareResourcesReconcilesMediaBeforeBusinessWiring(t *testing.T) {
+	path := appConfigFixture(t)
+	store, err := sqlite.New(t.Context(), filepath.Join(filepath.Dir(path), "sessions.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	cfg := config.Default()
+	cfg.Sandbox.Root = filepath.Join(filepath.Dir(path), "sandbox")
+	cfg.FileDelivery.Backend = "base64"
+	seed, err := media.NewMediaCenter(t.Context(), cfg, media.MediaCenterDeps{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer seed.Close(context.Background())
+	item, err := seed.ImportBytes(t.Context(), []byte("history media"), media.Input{Name: "file.txt", MIMEType: "text/plain"}, media.ImportLimits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := seed.AssociateHistory(t.Context(), media.HistoryMessage{
+		ID: "deleted", Platform: "test", ScopeID: "scope", MessageID: "message",
+	}, 1, "file", item.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := seed.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	r, err := prepareResources(t.Context(), path)
+	cleanupAppResources(t, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, err := r.store.Media().ListHistory(t.Context(), "", 10)
+	if err != nil || len(items) != 0 {
+		t.Fatalf("startup retained stale history associations: %v, %v", items, err)
+	}
+}
+
+func TestBuildBusinessLinesPreservesPartialPlatform(t *testing.T) {
+	r, err := prepareResources(t.Context(), appConfigFixture(t))
+	cleanupAppResources(t, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.config.Platform["cli"] = map[string]any{"enabled": "invalid boolean"}
+	lines, err := buildBusinessLines(t.Context(), r, RunModeService)
+	t.Cleanup(func() {
+		if result := stopBusinessLines(context.Background(), lines); result.err != nil {
+			t.Error(result.err)
+		}
+	})
+	requireLifecycleError(t, err, componentPlatform, phaseBuild)
+	if len(lines) != 1 || lines[0].kind != componentPlatform || lines[0].supervisor == nil || lines[0].waitIngress == nil {
+		t.Fatalf("incorrect partial ownership: %+v", lines)
+	}
+}
+
+func TestBuildBusinessLinesRegistersProductionOrderAndIngress(t *testing.T) {
+	r, err := prepareResources(t.Context(), appConfigFixture(t))
+	cleanupAppResources(t, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines, err := buildBusinessLines(t.Context(), r, RunModeService)
+	t.Cleanup(func() {
+		if result := stopBusinessLines(context.Background(), lines); result.err != nil {
+			t.Error(result.err)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ordered := lines.inStartOrder()
+	want := []componentKind{componentTool, componentAgent, componentHook, componentPlatform, componentBackground}
+	var got []componentKind
+	for _, line := range ordered {
+		got = append(got, line.kind)
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("startup order=%v", got)
+	}
+	for i, line := range ordered {
+		if line.beginOrder != []int{5, 3, 4, 1, 2}[i] || line.closeOrder != []int{4, 2, 3, 5, 1}[i] {
+			t.Fatalf("shutdown registration=%+v", line)
+		}
+		if (line.waitIngress != nil) != (line.kind == componentPlatform) {
+			t.Fatalf("ingress registration=%+v", line)
+		}
+		if line.kind == componentPlatform {
+			if _, ok := line.supervisor.(*platform.Supervisor); !ok {
+				t.Fatalf("platform supervisor=%T", line.supervisor)
+			}
+			line.supervisor.BeginClose()
+			if err := line.waitIngress(t.Context()); err != nil {
+				t.Fatalf("registered ingress wait: %v", err)
+			}
+		}
 	}
 }

@@ -22,7 +22,7 @@ func TestSendFileMediaIDBuildsLocalOutput(t *testing.T) {
 	}
 	defer store.Close()
 	root := filepath.Join(t.TempDir(), "sandbox")
-	center := mediatest.New(t, store, root)
+	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
 	resource, err := center.ImportBytes(ctx, []byte("hello"), media.Input{Name: "hello.txt", MIMEType: "text/plain"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatalf("import media: %v", err)

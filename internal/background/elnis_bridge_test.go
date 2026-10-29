@@ -30,7 +30,7 @@ func newElnisBridgeFixture(t *testing.T) (elnisBridge, storage.Store) {
 	t.Helper()
 	store := testutil.NewSQLiteStore(t)
 	root := t.TempDir()
-	return elnisBridge{repo: store.ElnisEvents(), media: mediatest.New(t, store, root)}, store
+	return elnisBridge{repo: store.ElnisEvents(), media: mediatest.New(t, media.MediaCenterDeps{Store: store}, root)}, store
 }
 func elnisBridgeRequest(mode string) elnis.Request {
 	return elnis.Request{Version: "elvena.v2", Elwisp: elnis.Elwisp{Name: "watcher"}, Source: "source", ID: "event", Mode: mode, Format: "text", Content: "hello", Targets: []elnis.Target{{Platform: "cli"}}}

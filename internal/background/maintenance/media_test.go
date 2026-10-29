@@ -21,7 +21,7 @@ func TestSandboxMediaCacheRefreshAndExpiry(t *testing.T) {
 	}
 	defer store.Close()
 	root := t.TempDir()
-	center := mediatest.New(t, store, root)
+	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
 	item, err := center.ImportBytes(ctx, []byte("cached"), media.Input{Name: "input.txt"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)

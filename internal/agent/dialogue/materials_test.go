@@ -28,7 +28,7 @@ func TestMaterialsKeepCanonicalOriginalAndMissingPlaceholder(t *testing.T) {
 	}
 	defer store.Close()
 	root := t.TempDir()
-	center := mediatest.New(t, store, root)
+	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
 	preparer := &Preparer{Media: center, PublishUsageFinished: func(ctx context.Context, id media.UsageID) {
 		center.PublishUsageFinished(ctx, media.UsageFinishedEvent{UsageIDs: []media.UsageID{id}})
 	}}
@@ -210,7 +210,7 @@ func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 	repository := &countedDialogueRepository{DialogueRepository: store.Dialogues()}
 	committer := &ToolTranscriptCommitter{Messages: &MessageStore{Dialogues: repository, Gate: &CommitGate{Sessions: newSessionSupervisor(t, store), Turns: turn.NewManager()}}}
 	root := t.TempDir()
-	center := mediatest.New(t, store, root)
+	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
 	item, err := center.ImportBytes(ctx, []byte("tool input"), media.Input{Name: "input.bin"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)

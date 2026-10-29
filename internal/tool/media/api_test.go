@@ -21,7 +21,7 @@ import (
 	"elbot/internal/tool/share"
 )
 
-func newMediaAPITest(t *testing.T) (*MediaRuntime, *media.MediaCenter) {
+func newMediaAPITest(t *testing.T, history media.History) (*MediaRuntime, *media.MediaCenter) {
 	t.Helper()
 	store, err := sqlite.New(t.Context(), filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
@@ -29,12 +29,12 @@ func newMediaAPITest(t *testing.T) (*MediaRuntime, *media.MediaCenter) {
 	}
 	t.Cleanup(func() { store.Close() })
 	root := t.TempDir()
-	center := mediatest.New(t, store, root)
+	center := mediatest.New(t, media.MediaCenterDeps{Store: store, ChatHistory: history}, root)
 	return NewMediaRuntime(center, t.TempDir(), mediatest.Publisher(center)), center
 }
 
 func TestMediaAPIMetadataAndImageValidation(t *testing.T) {
-	runtime, center := newMediaAPITest(t)
+	runtime, center := newMediaAPITest(t, nil)
 	var imageData bytes.Buffer
 	if err := png.Encode(&imageData, image.NewNRGBA(image.Rect(0, 0, 2, 3))); err != nil {
 		t.Fatal(err)
@@ -80,7 +80,7 @@ func TestMediaAPIMetadataAndImageValidation(t *testing.T) {
 }
 
 func TestMediaAPIImportsAndNormalizedCallPath(t *testing.T) {
-	runtime, _ := newMediaAPITest(t)
+	runtime, _ := newMediaAPITest(t, nil)
 	base := t.TempDir()
 	if err := os.Mkdir(filepath.Join(base, "nested"), 0700); err != nil {
 		t.Fatal(err)
@@ -116,7 +116,7 @@ func TestMediaAPIImportsAndNormalizedCallPath(t *testing.T) {
 }
 
 func TestMediaExportsRejectInvalidDecodedIDs(t *testing.T) {
-	runtime, _ := newMediaAPITest(t)
+	runtime, _ := newMediaAPITest(t, nil)
 	for _, raw := range []string{`null`, `{}`, `{"media":null}`, `{"media":""}`, `{"media":"bad"}`} {
 		t.Run(raw, func(t *testing.T) {
 			var input share.MediaInput
@@ -136,13 +136,12 @@ func TestMediaExportsRejectInvalidDecodedIDs(t *testing.T) {
 }
 
 func TestMediaAPIHistoryBatchPreservesOrderAndErrors(t *testing.T) {
-	runtime, center := newMediaAPITest(t)
 	history, err := sqlite.NewChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer history.Close()
-	center.History = history.Repository()
+	t.Cleanup(func() { _ = history.Close() })
+	runtime, center := newMediaAPITest(t, history.Repository())
 	record, err := center.ImportBytes(t.Context(), []byte("file"), media.Input{Name: "file.txt", MIMEType: "text/plain"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)

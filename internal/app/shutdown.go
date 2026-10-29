@@ -1,10 +1,11 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"errors"
-	"fmt"
 	"io"
+	"slices"
 	"time"
 )
 
@@ -26,10 +27,12 @@ type stopResult struct {
 	err  error    // 当前步骤或已执行步骤的错误详情。
 }
 
-// shutdownStep 描述一个有名称的关闭步骤。
+// shutdownStep 描述一个关闭步骤；业务线按阶段和次序排序，共享资源按声明顺序执行。
 type shutdownStep struct {
-	name  string                      // 错误中标识该步骤所属的业务线或资源。
-	close func(context.Context) error // 关闭自有资源或等待已请求停止的任务。
+	component componentKind               // 步骤所属的业务线或资源。
+	close     func(context.Context) error // 关闭自有资源或等待已请求停止的任务。
+	phase     lifecyclePhase              // 停止请求、接入退出或最终关闭阶段。
+	order     int                         // 业务线在当前阶段的执行次序。
 }
 
 // shutdown 在运行取消后继续清理；一旦超时，不释放可能仍被使用的依赖。
@@ -48,7 +51,10 @@ func shutdown(ctx context.Context, lines businessLines, resources *sharedResourc
 		return err
 	}
 	if configLock != nil {
-		result = runShutdownStep(ctx, "config lock", func(context.Context) error { return configLock.Close() })
+		result = runShutdownStep(ctx, shutdownStep{
+			component: componentConfigLock, phase: phaseClose,
+			close: func(context.Context) error { return configLock.Close() },
+		})
 		err = errors.Join(err, result.err)
 	}
 	return err
@@ -56,26 +62,31 @@ func shutdown(ctx context.Context, lines businessLines, resources *sharedResourc
 
 // stopBusinessLines 先停止新工作，再按使用方到依赖方的顺序关闭。
 func stopBusinessLines(ctx context.Context, lines businessLines) stopResult {
-	// Platform 先停止接入；Hook、Tool 保留已接纳工作的能力，直到各自 Close。
-	for _, name := range []string{"platform", "background", "agent", "hook", "tool"} {
-		if line, ok := lines[name]; ok {
-			line.supervisor.BeginClose()
-		}
-	}
-
 	var steps []shutdownStep
-	// Platform.WaitIngress 等待接入与回调结束，发送能力留到 Close；历史库由 App 关闭。
-	// 正常停止返回 nil；独立故障和等待超时返回错误，由 Platform 解释停止原因。
-	if line, ok := lines["platform"]; ok {
-		steps = append(steps, shutdownStep{name: "platform ingress", close: line.supervisor.(interface {
-			WaitIngress(context.Context) error
-		}).WaitIngress})
-	}
-	for _, name := range []string{"background", "agent", "hook", "tool", "platform"} {
-		if line, ok := lines[name]; ok {
-			steps = append(steps, shutdownStep{name: name, close: line.supervisor.Close})
+	for _, line := range lines {
+		steps = append(steps, shutdownStep{
+			component: line.kind, phase: phaseBeginClose, order: line.beginOrder,
+			close: func(context.Context) error {
+				line.supervisor.BeginClose()
+				return nil
+			},
+		})
+		if line.waitIngress != nil {
+			steps = append(steps, shutdownStep{
+				component: line.kind, phase: phaseWaitIngress, order: line.beginOrder,
+				close: line.waitIngress,
+			})
 		}
+		steps = append(steps, shutdownStep{
+			component: line.kind, phase: phaseClose, order: line.closeOrder, close: line.supervisor.Close,
+		})
 	}
+	slices.SortStableFunc(steps, func(a, b shutdownStep) int {
+		if phase := cmp.Compare(a.phase, b.phase); phase != 0 {
+			return phase
+		}
+		return cmp.Compare(a.order, b.order)
+	})
 	return runShutdownSteps(ctx, steps)
 }
 
@@ -86,19 +97,19 @@ func closeSharedResources(ctx context.Context, resources *sharedResources) stopR
 	}
 	var steps []shutdownStep
 	if resources.models != nil {
-		steps = append(steps, shutdownStep{name: "models", close: resources.models.Close})
+		steps = append(steps, shutdownStep{component: componentModels, phase: phaseClose, close: resources.models.Close})
 	}
 	if resources.media != nil {
-		steps = append(steps, shutdownStep{name: "media", close: resources.media.Close})
+		steps = append(steps, shutdownStep{component: componentMedia, phase: phaseClose, close: resources.media.Close})
 	}
 	if resources.historyStore != nil {
-		steps = append(steps, shutdownStep{name: "chat history", close: func(context.Context) error { return resources.historyStore.Close() }})
+		steps = append(steps, shutdownStep{component: componentChatHistory, phase: phaseClose, close: func(context.Context) error { return resources.historyStore.Close() }})
 	}
 	if resources.store != nil {
-		steps = append(steps, shutdownStep{name: "storage", close: func(context.Context) error { return resources.store.Close() }})
+		steps = append(steps, shutdownStep{component: componentStorage, phase: phaseClose, close: func(context.Context) error { return resources.store.Close() }})
 	}
 	if resources.logs != nil {
-		steps = append(steps, shutdownStep{name: "logs", close: resources.logs.Close})
+		steps = append(steps, shutdownStep{component: componentLogs, phase: phaseClose, close: resources.logs.Close})
 	}
 	return runShutdownSteps(ctx, steps)
 }
@@ -107,7 +118,7 @@ func closeSharedResources(ctx context.Context, resources *sharedResources) stopR
 func runShutdownSteps(ctx context.Context, steps []shutdownStep) stopResult {
 	var errs []error
 	for _, step := range steps {
-		result := runShutdownStep(ctx, step.name, step.close)
+		result := runShutdownStep(ctx, step)
 		switch result.kind {
 		case stopCompleted:
 			continue
@@ -125,23 +136,23 @@ func runShutdownSteps(ctx context.Context, steps []shutdownStep) stopResult {
 
 // runShutdownStep 独立执行关闭调用，即使关闭方忽略取消，也按统一期限返回。
 // 结果缓冲允许超时后仍在运行的关闭调用自行结束，无需等待接收方。
-func runShutdownStep(ctx context.Context, name string, close func(context.Context) error) stopResult {
+func runShutdownStep(ctx context.Context, step shutdownStep) stopResult {
 	if err := ctx.Err(); err != nil {
-		return stopResult{kind: stopTimedOut, err: fmt.Errorf("close %s: %w", name, err)}
+		return stopResult{kind: stopTimedOut, err: &lifecycleError{component: step.component, phase: step.phase, cause: err}}
 	}
 	result := make(chan error, 1)
-	go func() { result <- close(ctx) }()
+	go func() { result <- step.close(ctx) }()
 	select {
 	case err := <-result:
 		// 关闭完成与期限到达可能同时发生；统一在这里分类，保留关闭错误。
 		if ctx.Err() != nil {
-			return stopResult{kind: stopTimedOut, err: fmt.Errorf("close %s: %w", name, errors.Join(err, ctx.Err()))}
+			return stopResult{kind: stopTimedOut, err: &lifecycleError{component: step.component, phase: step.phase, cause: errors.Join(err, ctx.Err())}}
 		}
 		if err != nil {
-			return stopResult{kind: stopFailed, err: fmt.Errorf("close %s: %w", name, err)}
+			return stopResult{kind: stopFailed, err: &lifecycleError{component: step.component, phase: step.phase, cause: err}}
 		}
 		return stopResult{kind: stopCompleted}
 	case <-ctx.Done():
-		return stopResult{kind: stopTimedOut, err: fmt.Errorf("close %s: %w", name, ctx.Err())}
+		return stopResult{kind: stopTimedOut, err: &lifecycleError{component: step.component, phase: step.phase, cause: ctx.Err()}}
 	}
 }

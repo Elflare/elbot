@@ -68,7 +68,7 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 			t.Setenv(cfg.FileDelivery.S3SecretKeyEnv, "secret")
 			store := testutil.NewSQLiteStore(t)
 			var usageID UsageID
-			m, err := NewMediaCenter(t.Context(), cfg, store)
+			m, err := NewMediaCenter(t.Context(), cfg, MediaCenterDeps{Store: store})
 			t.Cleanup(func() {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
@@ -150,7 +150,7 @@ func TestMediaCenterHistoryAndBoundedImport(t *testing.T) {
 	cfg.FileDelivery.Backend = "base64"
 	cfg.Sandbox.Root = filepath.Join(t.TempDir(), "sandbox")
 	store := testutil.NewSQLiteStore(t)
-	m, err := NewMediaCenter(t.Context(), cfg, store)
+	m, err := NewMediaCenter(t.Context(), cfg, MediaCenterDeps{Store: store})
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()

@@ -18,8 +18,8 @@ import (
 func TestPlatformMediaUnavailableAndMetadata(t *testing.T) {
 	store := newTestStore(t)
 	root := t.TempDir()
-	center := mediatest.New(t, store, root)
-	a := &MessageHandler{media: center, History: center.History}
+	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
+	a := &MessageHandler{media: center}
 	resolver := &inboundMediaResolver{}
 	msg := agentshare.MessageContext{ResolveMedia: resolver.ResolveMedia}
 	segment := agentshare.MessageSegment{Type: "image", Media: media.PlatformMedia{Type: "image", PlatformFileID: "image"}}
@@ -44,8 +44,8 @@ func TestPlatformMediaUnavailableAndMetadata(t *testing.T) {
 func TestPlatformMediaCopiesShareResolutionWithoutDroppingPositions(t *testing.T) {
 	store := newTestStore(t)
 	root := t.TempDir()
-	center := mediatest.New(t, store, root, func(cfg *config.Config) { cfg.Media.LLMImageMaxLength = 32 })
-	a := &MessageHandler{media: center, History: center.History}
+	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root, func(cfg *config.Config) { cfg.Media.LLMImageMaxLength = 32 })
+	a := &MessageHandler{media: center}
 	var data bytes.Buffer
 	if err := png.Encode(&data, image.NewNRGBA(image.Rect(0, 0, 80, 40))); err != nil {
 		t.Fatal(err)

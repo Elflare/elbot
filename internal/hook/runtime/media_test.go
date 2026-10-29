@@ -31,7 +31,7 @@ func testMediaRuntime(t *testing.T, configure ...func(*config.Config)) (*Manager
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	root := t.TempDir()
-	center := mediatest.New(t, store, root, configure...)
+	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root, configure...)
 	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Media: center})
 	if err != nil {
 		t.Fatal(err)

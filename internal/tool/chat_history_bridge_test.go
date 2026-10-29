@@ -100,8 +100,7 @@ func newHistoryMediaToolTest(t *testing.T, configure ...func(*config.Config)) (c
 	}
 	t.Cleanup(func() { history.Close() })
 	root := t.TempDir()
-	center := mediatest.New(t, store, root, configure...)
-	center.History = history.Repository()
+	center := mediatest.New(t, media.MediaCenterDeps{Store: store, ChatHistory: history.Repository()}, root, configure...)
 	var segments []media.PlatformMedia
 	for i := 1; i <= 7; i++ {
 		segments = append(segments, media.PlatformMedia{Type: "image", PlatformFileID: fmt.Sprint(i)})

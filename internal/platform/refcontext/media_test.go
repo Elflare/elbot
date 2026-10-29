@@ -17,7 +17,7 @@ func TestReferenceMediaOutputHistoryAndFallbackPriority(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
 	root := t.TempDir()
-	center := mediatest.New(t, store, root)
+	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
 	item, err := center.ImportBytes(ctx, []byte("image"), media.Input{Name: "image.png", MIMEType: "image/png"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
@@ -112,7 +112,7 @@ func TestReferenceHistoryRestoresStableMediaAssociations(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
 	root := t.TempDir()
-	center := mediatest.New(t, store, root)
+	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
 	image, err := center.ImportBytes(ctx, []byte("image body"), media.Input{Name: "image.png", MIMEType: "image/png"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)

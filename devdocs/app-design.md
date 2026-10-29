@@ -13,19 +13,19 @@ App 负责共享资源、总管构造、跨线接线和启停协调。每条业�
 
 | 文件 | 职责 |
 |---|---|
-| `entry.go` | 局部启动阶段列表、统一业务线集合、部分失败清理、按能力等待及耗时统计 |
+| `entry.go` | 组件与阶段枚举、结构化错误、启动阶段列表、总管登记表、按能力等待及耗时统计 |
 | `environment.go` | 验证 TUI／Service 模式，定位并规范化配置路径，取得同配置本地实例的独占锁 |
 | `resources.go` | 加载配置、构造共享资源并交付依赖；失败仍交回已取得的资源 |
-| `wiring.go` | 构造五条线总管，交付共享资源和公开业务能力；连接 Hook、Platform 与 Agent |
-| `shutdown.go` | 停止新工作、按结果枚举协调清理；全部步骤共享独立的 30 秒期限 |
+| `wiring.go` | 构造并登记五条线的总管、执行次序与可选接入等待；交付能力并连接 Hook、Platform 与 Agent |
+| `shutdown.go` | 从登记表生成类型化步骤，按阶段与次序清理；全部步骤共享独立的 30 秒期限 |
 | `client.go` | 明确运行客户端和自动尝试；消费平台分类结果，返回错误或回退信号 |
 
 ```mermaid
 flowchart TB
-    E["entry.go<br/>入口、计时、启动与等待"] --> ENV["environment.go<br/>模式、配置路径与配置锁"]
+    E["entry.go<br/>枚举、结构化错误、启动与等待"] --> ENV["environment.go<br/>模式、配置路径与配置锁"]
     E --> R["resources.go<br/>共享资源构造与所有权"]
-    E --> W["wiring.go<br/>总管构造与能力接线"]
-    E --> S["shutdown.go<br/>统一期限、结果分类与清理顺序"]
+    E --> W["wiring.go<br/>总管构造、顺序登记与能力接线"]
+    E --> S["shutdown.go<br/>步骤生成排序、统一期限与结果分类"]
     S -.->|最后释放配置锁| ENV
     R --> M["媒体与模型服务<br/>接收完整配置，自行初始化"]
     W --> A["agent.Supervisor<br/>公开业务能力"]
@@ -39,9 +39,21 @@ flowchart TB
 
 锁句柄以 `io.Closer` 交给 `Run` 持有，在资源构造前取得，由统一退出流程最后释放。锁文件保留，避免配置替换保存或删除锁文件造成互斥失效；进程退出时由操作系统释放锁。统一退出超时后不提前释放锁，等待进程退出。
 
-`Run` 用局部 `startupStep` 列表声明 environment、resources、wiring、start，由 `runStartupSteps` 统一检查取消、执行、标注错误并记录成功阶段耗时。阶段先保存已取得的资源，再返回错误；失败停止后续阶段，统一进入清理。
+`Run` 用局部 `startupStep` 列表声明 `phaseEnvironment`、`phaseResources`、`phaseWiring`、`phaseStart`，由 `runStartupSteps` 统一检查取消、执行、标注错误并记录成功阶段耗时。阶段先保存已取得的资源，再返回错误；失败停止后续阶段，统一进入清理。
 
-App 消费 `Lifecycle`（Start、BeginClose、Close）和可选的 `Waiter`（Wait），下层通过方法集实现，不反向依赖 App。唯一的 `businessLines` 集合保存名称、总管和启动顺序，具体类型只在装配时接线。构造后立即登记非 nil 的部分结果；按 Tool → Agent → Hook → Platform → Background 启动。
+App 消费 `Lifecycle`（Start、BeginClose、Close）和可选的 `Waiter`（Wait），下层通过方法集实现，不反向依赖 App。唯一的 `businessLines` 登记表保存组件枚举、总管、启动／停止／关闭次序及可选 `waitIngress`。App 在取得非 nil 具体总管后调用 `register`，再处理构造错误；Platform 在同一登记项绑定 `WaitIngress` 方法。具体类型只用于装配，不另设 Platform 生命周期接口。
+
+次序只在 `wiring.go` 的登记项声明；`inStartOrder()` 稳定排序副本，不改变登记顺序，同次序保留登记先后。生产次序如下：
+
+| 业务线 | Start | BeginClose | Close |
+|---|---:|---:|---:|
+| Tool | 1 | 5 | 4 |
+| Agent | 2 | 3 | 2 |
+| Hook | 3 | 4 | 3 |
+| Platform | 4 | 1 | 5 |
+| Background | 5 | 2 | 1 |
+
+`componentKind` 统一标识 App、业务线、共享资源及配置锁；`lifecyclePhase` 统一标识启动、构造、连接、等待及关闭阶段。步骤和耗时记录始终保存枚举，显示文本集中在各自的 `String()`。编排失败使用 `lifecycleError{component, phase, cause}`，仅 `Error()` 组合展示文本，`Unwrap()` 保留原始错误链；身份断言使用 `errors.As`，原因匹配使用 `errors.Is`。资源构造失败归对应组件的 `phaseBuild`，外层资源准备失败归 App 的 `phaseResources`。
 
 `waitBusinessLines` 遍历集合筛选 Waiter，按实际数量并发等待；首个结果结束运行等待，取消并回收其余等待，保留独立故障。没有参与者时等待外部取消。Wait 必须响应等待上下文，取消等待不停止业务线。Platform 的 Wait 及时报告整线停止，WaitIngress 等待接入及已接纳回调实际退出；本地 CLI 的 WaitExit 提供退出信号。App 在统一关闭期限内调用 WaitIngress，不在运行等待阶段等待回调。Background 的致命故障及时返回，实际清理由 Close 等待。
 
@@ -49,7 +61,7 @@ App 消费 `Lifecycle`（Start、BeginClose、Close）和可选的 `Waiter`（Wa
 
 退出先请求各线停止新工作，等待平台接入与后台任务退出，再关闭 Agent、Hook、Tool，最后释放平台发送能力。随后关闭模型管理，排空 Media 结束信号并执行最终清理，再关闭独立历史库、共享存储、日志和配置锁。权限没有独立关闭步骤。
 
-App 用 `shutdownStep` 记录步骤名称和关闭调用，`runShutdownSteps` 顺序执行并汇总结果；`runShutdownStep` 负责单步等待和统一期限判断。下层 `Close` 保持返回 error，App 内部的 `stopResult` 将控制状态与错误详情分开：
+App 遍历登记表生成 `shutdownStep{component, phase, order, close}`，按 BeginClose → WaitIngress → Close 阶段及登记次序稳定排序，接入等待使用 `beginOrder`。执行器不区分具体业务线；共享资源按依赖顺序声明组件枚举与 `phaseClose`。`runShutdownSteps` 顺序执行并汇总，`runShutdownStep(ctx, step)` 接收完整步骤，负责单步等待、错误归属和统一期限判断。下层 `Close` 保持返回 error，App 内部的 `stopResult` 将控制状态与错误详情分开：
 
 | 状态 | 含义与处理 |
 |---|---|
@@ -57,9 +69,9 @@ App 用 `shutdownStep` 记录步骤名称和关闭调用，`runShutdownSteps` �
 | `stopFailed` | 步骤返回错误，保留错误并继续清理 |
 | `stopTimedOut` | App 的统一期限耗尽，保留此前错误并停止后续清理 |
 
-业务自身返回超时错误不等于 App 的统一期限耗尽。关闭调用即使忽略取消，App 也只等待到统一期限；超时后不继续释放可能仍被使用的依赖。
+业务自身返回超时错误不等于 App 的统一期限耗尽。BeginClose 或关闭调用即使阻塞或忽略取消，App 也只等待到统一期限；包装不会强制终止仍在运行的调用，超时后不继续释放可能仍被使用的依赖和配置锁。
 
-共享存储及独立的历史 SQLite 均由 App 构造、持有和关闭。Platform 直接写历史库，Tool 根部直接查询；Agent、Media 借用单条历史身份查询，Background 借用过期清理。App 通过 `media.NewMediaCenter(ctx, cfg, store)` 交付完整配置和共享存储，媒体侧负责后端、凭据、配置应用和中断恢复；通过 `modelmgr.NewModelManager(ctx, cfg)` 交付完整配置，模型侧负责协议客户端、请求参数和 providers 重载。两个构造入口均返回资源及错误，App 接收部分结果并统一清理，不拆解内部初始化。App 在业务线构造前注入 Media.History 并执行历史引用对账，查询失败阻止启动；历史库在全部业务使用方退出后关闭，部分构造失败与正常退出共用清理流程。
+共享存储及独立的历史 SQLite 均由 App 构造、持有和关闭。Platform 直接写历史库，Tool 根部直接查询；Agent、Media 借用单条历史身份查询，Background 借用过期清理。App 通过 `media.NewMediaCenter(ctx, cfg, media.MediaCenterDeps{Store, ChatHistory})` 交付完整配置、媒体存储与历史查询，媒体侧负责后端、凭据、配置应用、中断恢复和首次历史对账；通过 `modelmgr.NewModelManager(ctx, cfg)` 交付完整配置，模型侧负责协议客户端、请求参数和 providers 重载。两个构造入口均返回资源及错误，App 接收部分结果并统一清理，不拆解内部初始化。Media 构造中的历史查询失败阻止启动，App 业务接线不再承担媒体初始化；历史库在全部业务使用方退出后关闭，部分构造失败与正常退出共用清理流程。
 
 ## 对外调用契约
 
@@ -125,7 +137,7 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    R["media 根部<br/>api.go：MediaCenter 与公开业务入口<br/>wiring.go：完整配置、凭据、装配与恢复<br/>deps.go：Store 与 History 消费契约<br/>types.go：公开信息、来源及历史类型<br/>reference.go：公开持有、引用与参数 ID 解析<br/>signals.go：使用结束发布、订阅与关闭"]
+    R["media 根部<br/>api.go：MediaCenter 与公开业务入口<br/>wiring.go：完整配置、装配、恢复与首次历史对账<br/>deps.go：MediaCenterDeps 与 Store／History 消费契约<br/>types.go：公开信息、来源及历史类型<br/>reference.go：公开持有、引用与参数 ID 解析<br/>signals.go：使用结束发布、订阅与关闭"]
     O["object/<br/>manager.go：组件、配置、依赖及仓储契约<br/>import.go：导入与归档<br/>read.go：信息、读取及导出<br/>image.go：图片校验、压缩与缩放<br/>reference.go：持有、引用及自有释放重试<br/>cleanup.go：释放重试与回收编排<br/>history.go：历史缓存、关联与对账<br/>remote.go：副本与签名缓存<br/>locks.go：对象锁"]
     T["transfer/<br/>manager.go：对象能力、交付配置与使用集合<br/>usage.go：持有和目录登记、结束事实与清理<br/>request.go：模型请求准备<br/>output.go：发送准备<br/>platform.go：平台来源及历史批量获取"]
     B["backend/<br/>local.go：本地内容读写<br/>s3.go：S3 配置、读写与签名<br/>remote.go：延迟构造及成功结果缓存"]
@@ -141,8 +153,8 @@ flowchart TB
 
 ### 根部与公开契约
 
-- `MediaCenter` 私有持有 object、transfer、使用结束信号及订阅连接，并公开借用的 History。`NewMediaCenter(ctx, cfg, store)` 接收完整配置与仅提供 Media／MediaReferences 仓储的 Store；内部配置及中断恢复归 Media，部分失败保留已构造结果，Close 不关闭借用存储。
-- App 构造后注入 `History`，再调用 `ReconcileHistory`。根部调用 object 的 `ReconcileHistory(ctx, history)`、`Cleanup(ctx, history)` 时传入当前最小查询接口，object 不保存 History，也不通过闭包回取总管。
+- `MediaCenter` 私有持有 object、transfer、chatHistory、使用结束信号及订阅连接。`NewMediaCenter(ctx, cfg, deps MediaCenterDeps)` 接收完整配置与借用能力；deps.go 的 MediaCenterDeps 包含 Store（仅提供 Media／MediaReferences 仓储）和 ChatHistory（History 最小查询接口）。内部配置、中断恢复与首次历史对账归 Media，部分失败保留已构造结果，Close 不关闭借用存储。
+- 构造完成组件及信号装配后，根部调用 object 的 `ReconcileHistory(ctx, history)`；公开 Cleanup 继续将私有保存的历史查询传给 `Cleanup(ctx, history)`。object 不保存 History，也不通过闭包回取总管；根部不公开独立对账入口。生产 App 始终交付历史查询，无历史能力的独立场景可显式省略 ChatHistory，此时跳过对账。
 - `Info` 返回值类型 `MediaInfo{ID, Name, MIMEType, Size}`，只查询信息，不读取内容或取得持有；`ValidateImage` 额外验证可解码与图片 MIME。导入、读取、导出及历史批量结果使用同一四字段快照，不暴露存储位置、后端、来源记录或删除状态。
 - `Reference{MediaID, OwnerType, OwnerID, Purpose}` 表达业务引用身份，持久化时间由 object 负责。Agent 的会话引用仍随自己的消息事务提交。
 - `Hold(ctx, id)` 返回 `*HeldMedia`，提供 Info／Open 和 UsageID；公开 Open 返回实际读取器、信息与使用 ID。读取器由使用者关闭，随后发布结束事实；持有释放及失败处理归 Media。不同请求使用同一媒体时拥有独立使用 ID。
@@ -189,7 +201,7 @@ flowchart LR
 
 ### 根部装配与验证
 
-`wiring.go` 消费配置包已处理默认值和路径的配置，不重复补默认值或修改输入。base64／hybrid 的对象导入位置为 local，s3 为 s3；交付组件保留原模式。本地目录取沙盒根目录同级的 media。base64 不读取远端凭据；s3／hybrid 通过 ConfigEnv 解析凭据，失败立即返回构造错误，成功后将配置快照和静态凭据交给延迟远端构造。object 构造返回的部分结果先保存再判断错误，中断恢复归其构造入口，随后装配 transfer。History 由 App 后注入。
+`wiring.go` 消费配置包已处理默认值和路径的配置，不重复补默认值或修改输入。base64／hybrid 的对象导入位置为 local，s3 为 s3；交付组件保留原模式。本地目录取沙盒根目录同级的 media。base64 不读取远端凭据；s3／hybrid 通过 ConfigEnv 解析凭据，失败立即返回构造错误，成功后将配置快照和静态凭据交给延迟远端构造。object 构造返回的部分结果先保存再判断错误，中断恢复归其构造入口，随后装配 transfer 和使用结束信号，再使用构造时借用的 ChatHistory 完成首次历史对账；任一步失败均交回部分 Media 对象。
 
 根部转换公开与内部数据，平台回调保留 nil、上下文及限制；历史批量转换保留顺序、重复位置和逐项错误。公开历史错误与 transfer 使用同一错误值，HeldMedia 仅暴露读取能力和使用 ID，不携带清理回调或重试控制。
 
@@ -512,7 +524,7 @@ dispatch、Share、OneBot、Telegram、refcontext、Agent/execution 与 Hook/rul
 
 资源测试覆盖部分失败所有权、历史库构造失败后保留共享存储和提前取消，新增真实模型构造成功与构造失败后保留部分模型对象的清理验证；协议与重载内部实现由 modelmgr 测试覆盖。退出测试覆盖结果分类、执行顺序、普通失败后继续、共享期限、超时后停止后续步骤、存储关闭失败后仍释放日志，以及历史使用方退出前保留历史库、部分失败仍关闭历史库、退出超时不释放历史库。期限测试使用 `synctest` 虚拟时间。
 
-App 的阶段执行、登记、启动、可选等待、资源构造和退出测试已在实际 App 整包中通过 race 验证，使用实际函数、共享资源类型和真实历史 SQLite。覆盖任意数量业务线、独立故障保留及阻塞关闭下的统一期限。Background 的历史清理依赖通过根部直接注入仓库，相关测试及借用资源关闭断言已随整包 race 回归通过。`cmd/elbot/main_test.go` 通过真实子进程覆盖默认回退、显式客户端失败不回退、指定连接不回退、旧命令拒绝、握手期间取消不触发本地启动，以及 Service 完整启动、信号退出和配置锁释放；测试使用临时配置与真实 SQLite，不连接外部模型或平台。入口、launcher、security、App 与 CLI 五个包通过 race。
+App 的阶段执行、部分总管保存、启动、可选等待、资源构造和退出测试已在实际 App 整包中通过 race 验证，使用实际函数、共享资源类型和真实历史 SQLite。覆盖登记项的启动与分阶段关闭次序、同次序稳定排序、空登记表、不同数量的可选等待者、非 Platform 接入等待及真实装配的顺序与能力登记；通过结构化错误检查组件、阶段、原始原因及纯取消分类，并验证 BeginClose 阻塞、跨阶段共用期限和超时保留依赖与配置锁。媒体构造测试覆盖首次对账、查询失败的部分结果与借用资源所有权，App 资源测试验证业务接线前完成对账。Background 的历史清理依赖通过根部直接注入仓库，相关测试及借用资源关闭断言已随整包 race 回归通过。`cmd/elbot/main_test.go` 通过真实子进程覆盖默认回退、显式客户端失败不回退、指定连接不回退、旧命令拒绝、握手期间取消不触发本地启动，以及 Service 完整启动、信号退出和配置锁释放；测试使用临时配置与真实 SQLite，不连接外部模型或平台。入口、launcher、security、App 与 CLI 五个包通过 race。
 
 Platform 根包整包 race 验证覆盖重复并发启停、未启动及部分失败清理、TUI／Service 差异、取消观察与故障保留、接入退出后保留资源、清理超时续接、普通失败继续及故障通知接线。公开事实测试覆盖存取切片隔离、空值、上下文移除，以及平台事实与公共会话事实互不改写；agent_test.go 覆盖输入转换、延迟解析和公开事实投影。原生 API 跨根部接线和真实历史接线的完整集成验证暂缓，不新增大型测试设施；现有覆盖与验证缺口见 [任务清单](tasks.md#platform-剩余接线)。
 

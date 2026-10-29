@@ -25,6 +25,7 @@ import (
 	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/hook/share"
 	"elbot/internal/llm"
+	"elbot/internal/media"
 	"elbot/internal/signal"
 	"elbot/internal/testutil"
 	"elbot/internal/testutil/mediatest"
@@ -225,7 +226,7 @@ func TestExecDoneEmptyMessageClearsConfiguredField(t *testing.T) {
 }
 
 func TestExecDoneSegmentsReplacesToolResultContent(t *testing.T) {
-	runtime, err := hookruntime.NewManager(hookruntime.Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Media: mediatest.New(t, testutil.NewSQLiteStore(t), t.TempDir())})
+	runtime, err := hookruntime.NewManager(hookruntime.Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Media: mediatest.New(t, media.MediaCenterDeps{Store: testutil.NewSQLiteStore(t)}, t.TempDir())})
 	if err != nil {
 		t.Fatal(err)
 	}

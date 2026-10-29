@@ -10,7 +10,7 @@ import (
 	"elbot/internal/media"
 )
 
-func New(t *testing.T, store media.Store, root string, configure ...func(*config.Config)) *media.MediaCenter {
+func New(t *testing.T, deps media.MediaCenterDeps, root string, configure ...func(*config.Config)) *media.MediaCenter {
 	t.Helper()
 	cfg := config.Default()
 	cfg.Sandbox.Root = filepath.Join(root, "sandbox")
@@ -18,11 +18,13 @@ func New(t *testing.T, store media.Store, root string, configure ...func(*config
 	for _, apply := range configure {
 		apply(cfg)
 	}
-	center, err := media.NewMediaCenter(t.Context(), cfg, store)
+	center, err := media.NewMediaCenter(t.Context(), cfg, deps)
+	if center != nil {
+		t.Cleanup(func() { _ = center.Close(context.Background()) })
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = center.Close(context.Background()) })
 	return center
 }
 

@@ -19,10 +19,9 @@ import (
 
 // NewMediaCenter 接收完整配置，在根部拆分对象、交付和后端配置并装配。
 // 本地对象目录沿用沙盒根目录同级的 media；凭据解析归根部，远端后端延迟构造。
-// 构造负责中断恢复，失败仍返回已构造的部分结果，不关闭借用存储。
-// History 由 App 随后注入，历史对账通过公开 ReconcileHistory 单独执行。
-func NewMediaCenter(ctx context.Context, cfg *config.Config, store Store) (*MediaCenter, error) {
-	m := &MediaCenter{}
+// 构造负责中断恢复和首次历史对账，失败仍返回已构造的部分结果，不关闭借用存储。
+func NewMediaCenter(ctx context.Context, cfg *config.Config, deps MediaCenterDeps) (*MediaCenter, error) {
+	m := &MediaCenter{chatHistory: deps.ChatHistory}
 	if err := ctx.Err(); err != nil {
 		return m, err
 	}
@@ -55,7 +54,7 @@ func NewMediaCenter(ctx context.Context, cfg *config.Config, store Store) (*Medi
 		Backend: objectBackend, MaxImportBytes: cfg.PlatformFiles.MaxReceiveFileBytes,
 		DownloadTimeout: timeout, Media: cfg.Media, Now: storage.Now,
 	}, object.Deps{
-		Media: store.Media(), References: store.MediaReferences(), Local: local, Remote: remote,
+		Media: deps.Store.Media(), References: deps.Store.MediaReferences(), Local: local, Remote: remote,
 	})
 	if err != nil {
 		return m, fmt.Errorf("media objects: %w", err)
@@ -64,7 +63,13 @@ func NewMediaCenter(ctx context.Context, cfg *config.Config, store Store) (*Medi
 		Backend: deliveryConfig.Backend, MaxDirectBase64Bytes: deliveryConfig.MaxDirectBase64Bytes,
 		MaxImportBytes: cfg.PlatformFiles.MaxReceiveFileBytes, DownloadTimeout: timeout,
 	})
-	return m, m.connectUsageFinished()
+	if err := m.connectUsageFinished(); err != nil {
+		return m, err
+	}
+	if err := m.objects.ReconcileHistory(ctx, m.chatHistory); err != nil {
+		return m, fmt.Errorf("reconcile history media: %w", err)
+	}
+	return m, nil
 }
 
 // resolveFileDeliveryCredentials 只为远端模式解析凭据，错误不包含凭据值。

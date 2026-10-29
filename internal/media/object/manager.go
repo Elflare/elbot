@@ -28,7 +28,7 @@ type Deps struct {
 	Remote     share.RemoteBackend // 延迟初始化的远端对象及签名能力，可无配置。
 }
 
-// Manager 持有对象状态；不保存构造后才注入的历史查询。
+// Manager 持有对象状态；历史查询由根部在对账、清理时交付，不保存到组件。
 type Manager struct {
 	options         Options             // 构造时固定的对象配置。
 	media           MediaRepository     // 借用的对象及关联仓储。
@@ -72,7 +72,7 @@ type History interface {
 }
 
 // NewManager 保存裁剪后的配置、仓储和后端并执行中断恢复。
-// 部分构造失败仍交回已创建的组件；历史对账由根部注入 History 后发起。
+// 部分构造失败仍交回已创建的组件；首次历史对账由根部构造流程发起。
 func NewManager(ctx context.Context, opts Options, deps Deps) (*Manager, error) {
 	m := &Manager{options: opts, media: deps.Media, references: deps.References, local: deps.Local, remote: deps.Remote}
 	return m, m.media.RecoverInterrupted(ctx)

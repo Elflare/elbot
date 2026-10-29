@@ -11,6 +11,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
+	"elbot/internal/media"
 	"elbot/internal/modelmgr"
 	"elbot/internal/platform/dispatch"
 	"elbot/internal/security"
@@ -93,7 +94,7 @@ func configuredModuleResources(t *testing.T, cfg *config.Config) (SupervisorDeps
 	t.Cleanup(func() { _ = models.Close(context.Background()) })
 	permission := security.DefaultPermission()
 	sender := dispatch.New(dispatch.Options{Primary: &assemblyPlatform{}})
-	center := mediatest.New(t, store, t.TempDir())
+	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, t.TempDir())
 	tools, err := tool.NewSupervisor(t.Context(), cfg, tool.SupervisorDeps{Store: store, ChatHistory: history.Repository(), Models: models, Media: center, Permission: permission})
 	if err != nil {
 		t.Fatal(err)

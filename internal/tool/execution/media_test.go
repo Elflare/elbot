@@ -65,7 +65,7 @@ func TestRunValidatesExactMediaArguments(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	center := mediatest.New(t, store, t.TempDir())
+	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, t.TempDir())
 	item, err := center.ImportBytes(ctx, []byte("tool input"), media.Input{Name: "input.bin"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
@@ -104,7 +104,7 @@ func TestRunRejectsMissingMediaBeforeExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	center := mediatest.New(t, store, t.TempDir())
+	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, t.TempDir())
 	missingSession := &storage.Session{ID: "missing-session", Mode: storage.SessionModeWork}
 	recorder := &mediaArgumentRecorder{}
 	registry := toolregistry.NewRegistry(security.DefaultPermission())

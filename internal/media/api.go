@@ -21,7 +21,7 @@ type MediaCenter struct {
 	closed          atomic.Bool                                      // 关闭后停止接纳新的媒体使用，已结束事实仍可登记。
 	objects         *object.Manager                                  // 对象、引用、历史关联与回收。
 	transfer        *transfer.Manager                                // 入站、模型请求和平台交付。
-	History         History                                          // App 在启动业务前注入；对账和清理调用时传给对象管理。
+	chatHistory     History                                          // 构造时借用的历史身份查询，对账和清理时传给对象管理。
 	usageFinished   *signal.Signal[UsageFinishedEvent, signal.Empty] // 本实例的使用结束通知。
 	usageConnection *signal.Connection                               // Media 持有订阅，排空后解除。
 }
@@ -182,15 +182,10 @@ func (m *MediaCenter) GetHistoryMediaBatch(ctx context.Context, requests []Histo
 	return converted, err
 }
 
-// ReconcileHistory 将当前 History 传给对象管理，只移除确认失效的关联。
-func (m *MediaCenter) ReconcileHistory(ctx context.Context) error {
-	return m.objects.ReconcileHistory(ctx, m.History)
-}
-
-// Cleanup 将当前 History 传给对象管理，协调对账、过期与孤立对象回收。
+// Cleanup 将借用的历史查询传给对象管理，协调对账、过期与孤立对象回收。
 func (m *MediaCenter) Cleanup(ctx context.Context) (events.LogResult, error) {
 	if err := m.transfer.CleanupUsages(ctx, nil); err != nil {
 		return events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}, err
 	}
-	return m.objects.Cleanup(ctx, m.History)
+	return m.objects.Cleanup(ctx, m.chatHistory)
 }
