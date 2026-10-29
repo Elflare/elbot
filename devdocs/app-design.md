@@ -5,7 +5,7 @@ review时要看有没过度防御、有没旧逻辑代码，职责、边界是�
 
 # App 包设计
 
-App 使用六文件组织公共运行流程，按下层接口已存在来编写调用；下层按照这些契约实现。五条业务线已提供根包总管，配置独占、Media 全包和消费者接线已实现。模型构造入口及 App 整包验证已完成；进程入口适配仍待完成。
+App 使用六文件组织公共运行流程，下层按照这些契约实现。五条业务线已提供根包总管，配置独占、Media 全包、模型构造与消费者接线已实现。进程入口已接入新 App API，全仓测试、入口相关 race 与临时配置的 Service 启停验证通过。
 
 ## 职责与边界
 
@@ -68,7 +68,7 @@ App 用 `shutdownStep` 记录步骤名称和关闭调用，`runShutdownSteps` �
 
 Platform 根部按目标下层契约实现。NewSupervisor 接收完整配置及 Mode、Store、ChatHistory、Media、Permission、Logs，持有适配器、通知连接和 UI；历史库属于 App，Platform 只借用。部分失败仍交回总管。公开发送、原生 API 和媒体解析转交内部组件，不暴露 Repository 或 Router。失败通知已接通；配置定义统一由根部 ConfigDefinitions 提供。
 
-Tool 根部创建媒体入口、技能目录与基础环境并一次注入 Skill Manager；Builtin、Skill、发现及 ELwisp 均接入必需的准备／执行契约，Skill 内部不依赖 Tool 根包。Cron 工具只使用 Tool 内部契约，根部 bridge 接入 Storage 和模型校验并发布任务定义变更；Background 根部持有订阅，Cron Manager 合并名称并串行读库刷新。Elnis 已通过自身媒体契约接入媒体中心。Background 整包已完成生命周期接线；App 整包已通过 race，完整进程运行仍需入口适配。
+Tool 根部创建媒体入口、技能目录与基础环境并一次注入 Skill Manager；Builtin、Skill、发现及 ELwisp 均接入必需的准备／执行契约，Skill 内部不依赖 Tool 根包。Cron 工具只使用 Tool 内部契约，根部 bridge 接入 Storage 和模型校验并发布任务定义变更；Background 根部持有订阅，Cron Manager 合并名称并串行读库刷新。Elnis 已通过自身媒体契约接入媒体中心。Background 整包已完成生命周期接线；App 整包及 Service 进程启停已通过 race。
 
 Background 根部按四文件组织：`supervisor.go` 定义对外总管并持有组件，`deps.go` 声明 Store、ChatHistory、Models、Media、Logs、Agent、Tools、Platform 借用依赖，`wiring.go` 负责完整配置装配与边界适配，`lifecycle.go` 协调 Start、Wait、BeginClose、Close、Done。根部不公开内部 Runner 或 Cron CRUD；Cron 工具注册和管理归 Tool。
 
@@ -98,7 +98,25 @@ Elvena 保留公共协议与来源契约，Call 只包含 Platform、API、Param
 
 指定连接、远端失败、配置、认证、握手和取消均不归为可回退。App 不解析连接地址或重新判断失败性质。`RunClient` 直接返回 Err；`TryRunClient` 只将 `ClientFallback` 转换为 `ErrClientFallback`，其他结果返回 Err。实际本地启动由进程入口决定。
 
-App 与 Agent 不承接 Doctor，配置诊断由配置侧负责。进程入口尚需适配已确认的 `client` 命名和新 App 参数。
+`launcher.Options` 只保存参数和 `Command`，不依赖 App，也不保存运行模式。`main` 持有进程信号上下文，分派命令并处理退出码；不重复解析客户端失败性质，不吞掉本地运行返回的启动或清理错误。
+
+| 命令 | launcher 意图 | main 调用 |
+|---|---|---|
+| 无子命令 | `CommandAuto` | `TryRunClient`；仅 `ErrClientFallback` 时调用 TUI `Run` |
+| `run` | `CommandRun` | TUI `Run` |
+| `client` | `CommandClient` | `RunClient`，失败不回退 |
+| `service run` | `CommandService` | Service `Run` |
+| `completion` | `CommandCompletion` | 输出 Shell 补全 |
+
+```mermaid
+flowchart LR
+    L["launcher/cli.go<br/>参数、帮助、补全"] --> M["cmd/elbot/main.go<br/>信号、命令分派、退出码"]
+    M --> C["app/client.go<br/>客户端调用与回退信号"]
+    M --> E["app/entry.go<br/>本地启动、等待、关闭"]
+    E --> ENV["app/environment.go<br/>TUI／Service 校验、配置锁"]
+```
+
+客户端命令统一为 `client`，帮助和所有 Shell 补全同步提供 `-c`／`--client`；不保留 `cli` 命令别名。App 与 Agent 不承接 Doctor，配置诊断由配置侧负责。
 
 <!-- locator:media -->
 ## Media 根部与下层契约
@@ -476,13 +494,13 @@ flowchart TD
 
 ## 验证与备份
 
-Agent、Session、Command、Completion、Contextmgr、Tool、Background、Platform、App、SQLite 及 Fileops 共 52 个包通过 race 回归；SQLite 整包不再受旧 Session 消费者阻断。全仓编译的剩余阻塞为下述 launcher 和 security 测试问题。
+Agent、Session、Command、Completion、Contextmgr、Tool、Background、Platform、App、SQLite 及 Fileops 共 52 个包通过 race 回归；SQLite 整包不再受旧 Session 消费者阻断。全仓测试与 ElBot 二进制构建通过。
 
 Session 与 Agent 接线回归覆盖独立请求、stopping、实际退出后重新计时、追加确认过期、权限期限、原 Binding 同步释放、观察失败、迟到终态及恢复后授权清除。测试检查状态所属容器及原句柄释放，不依赖 GC 时机或进程内存波动。模型验证覆盖真实 Chat／Responses 构造与参数透传、重载凭据、快照隔离、保存失败、构造取消与部分结果、观察连接及关闭超时续接；跨包模型测试使用本地 HTTP 服务和临时 providers 文件。
 
 媒体结束信号与 Hook 租约并发修复已通过 Media、Agent、Platform、Tool、Hook、Background 全部 52 个包的 race 回归。覆盖独立使用 ID、取消后结束登记、失败维护、重复通知、队列拒收、信号关闭超时，以及慢导入不阻塞其他调用、同租约等待取消、维护不释放在用资源、关闭收尾与同链 Hook 优先级和结果依赖。App 整包已通过 race 验证。
 
-Media、Tool、Agent、Hook、Platform、Background 及 SQLite 的验证范围见上文。原媒体文件保存在 `.go.bak` 中。全仓编译仍受 launcher 引用旧 App 运行模式常量，以及 security 测试的 string／contextinfo.Role 类型不匹配阻塞；Session 旧接口引用已清除。
+Media、Tool、Agent、Hook、Platform、Background 及 SQLite 的验证范围见上文。原媒体文件保存在 `.go.bak` 中。Session 旧接口与进程入口旧 App API 引用已清除；security 权限测试使用 `contextinfo.Role`，保留权限先于后台自动确认的断言。
 
 CLI 整包与 Share、refcontext、dispatch、notification 的 race 回归通过。CLI 覆盖真实管道和 Linux 伪终端的停止／最终关闭、真实 WebSocket 收尾发送、同步监听失败、并发启停及超时重试、原连接回复、事件乱序与绑定失效、WebSocket 背压期间换绑和展示关闭后连接保留、UI 关闭超时重试、回调收尾期间取消观察仍返回已发布故障、部分 UI 所有权、客户端分类及断线退出。CLI 不再依赖旧 agent/events、Platform 根包或兄弟实现；Headless 整包也通过 race，覆盖无状态生命周期、取消上下文、重复及并发调用、发送失败契约；OneBot、Share、refcontext 的 race 回归通过，覆盖分阶段关闭、临时拨号取消、在途写入取消隔离、关闭重试、重连隔离及原生 API 透传；OneBot 不再依赖根包或兄弟实现。QQ Official、Share、refcontext、notification 的 race 回归通过，覆盖实际 HTTP／WebSocket、心跳序号同步及失败退出、恢复与重新鉴权、并发启停、取消观察与独立故障、收尾发送、完整发送及别名入库等待、关闭超时重试。QQ Official 不再依赖根包或兄弟实现。Telegram、Share、refcontext、notification 与 Background/Cron 的 race 回归通过，覆盖异步远端连接、分阶段关闭、完整操作取消与退出等待、流式等待取消隔离、关闭超时重试、独立连接池释放、身份快照、命令目录并发、引用恢复、配置边界及原生 API。Telegram 生产代码与包内测试均不依赖 Platform 根包或兄弟实现；Background 报告测试通过发送契约注入回执。
 
@@ -494,8 +512,8 @@ dispatch、Share、OneBot、Telegram、refcontext、Agent/execution 与 Hook/rul
 
 资源测试覆盖部分失败所有权、历史库构造失败后保留共享存储和提前取消，新增真实模型构造成功与构造失败后保留部分模型对象的清理验证；协议与重载内部实现由 modelmgr 测试覆盖。退出测试覆盖结果分类、执行顺序、普通失败后继续、共享期限、超时后停止后续步骤、存储关闭失败后仍释放日志，以及历史使用方退出前保留历史库、部分失败仍关闭历史库、退出超时不释放历史库。期限测试使用 `synctest` 虚拟时间。
 
-App 的阶段执行、登记、启动、可选等待、资源构造和退出测试已在实际 App 整包中通过 race 验证，使用实际函数、共享资源类型和真实历史 SQLite。覆盖任意数量业务线、独立故障保留及阻塞关闭下的统一期限。Background 的历史清理依赖通过根部直接注入仓库，相关测试及借用资源关闭断言已随整包 race 回归通过。完整进程运行与客户端跨根部链路仍需后续验证。
+App 的阶段执行、登记、启动、可选等待、资源构造和退出测试已在实际 App 整包中通过 race 验证，使用实际函数、共享资源类型和真实历史 SQLite。覆盖任意数量业务线、独立故障保留及阻塞关闭下的统一期限。Background 的历史清理依赖通过根部直接注入仓库，相关测试及借用资源关闭断言已随整包 race 回归通过。`cmd/elbot/main_test.go` 通过真实子进程覆盖默认回退、显式客户端失败不回退、指定连接不回退、旧命令拒绝、握手期间取消不触发本地启动，以及 Service 完整启动、信号退出和配置锁释放；测试使用临时配置与真实 SQLite，不连接外部模型或平台。入口、launcher、security、App 与 CLI 五个包通过 race。
 
-Platform 根包整包 race 验证覆盖重复并发启停、未启动及部分失败清理、TUI／Service 差异、取消观察与故障保留、接入退出后保留资源、清理超时续接、普通失败继续及故障通知接线。公开事实测试覆盖存取切片隔离、空值、上下文移除，以及平台事实与公共会话事实互不改写；agent_test.go 覆盖输入转换、延迟解析和公开事实投影。原生 API 跨根部接线、客户端结果和真实历史接线仍需补充集成验证；完整 App 与剩余接线验证见 [任务清单](tasks.md#platform-剩余接线)。
+Platform 根包整包 race 验证覆盖重复并发启停、未启动及部分失败清理、TUI／Service 差异、取消观察与故障保留、接入退出后保留资源、清理超时续接、普通失败继续及故障通知接线。公开事实测试覆盖存取切片隔离、空值、上下文移除，以及平台事实与公共会话事实互不改写；agent_test.go 覆盖输入转换、延迟解析和公开事实投影。原生 API 跨根部接线和真实历史接线仍需补充集成验证，见 [任务清单](tasks.md#platform-剩余接线)。
 
 同目录保留 13 份原生产文件和 12 份原测试文件的 `*.go.bak`，不参与构建，未恢复旧装配。

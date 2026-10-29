@@ -63,7 +63,7 @@ func TestCheckToolKeepsPermissionBeforeBackgroundConfirmation(t *testing.T) {
 	permission := NewPermission("low", "high", nil)
 	tests := []struct {
 		name           string
-		role           string
+		role           contextinfo.Role
 		tool           string
 		risk           RiskLevel
 		ownerScoped    bool

@@ -39,7 +39,7 @@ flowchart TD
 <!-- locator:startup -->
 ## 启动与装配
 
-App 按下层接口已存在来实现公共流程，下层按照调用契约实现。五条业务线已提供根包总管，配置独占、Platform 下层、Media 全包与消费者接线已实现；模型构造入口及 App 整包验证已完成，进程入口适配仍待完成。原 13 个生产文件和 12 个测试文件保存在同目录的 `*.go.bak` 中，不参与构建。
+App 实现公共流程，下层按照调用契约实现。五条业务线已提供根包总管，配置独占、Platform 下层、Media 全包、模型构造与消费者接线已实现；进程入口接入新 App API，全仓测试和临时配置的 Service 启停验证通过。原 13 个生产文件和 12 个测试文件保存在同目录的 `*.go.bak` 中，不参与构建。
 
 六文件职责及接口契约见 [App 包设计](app-design.md)。App 加载配置、构造共享资源和各线总管、交付公开能力并协调启停。媒体和模型服务接收完整配置，自行处理后端、凭据、协议客户端、请求参数及恢复／重载；App 不拆解这些初始化细节。共享存储和独立历史库均归 App，Platform 直接写入历史，Tool 直接查询；部分失败交回已取得对象统一清理，订阅由接收方持有和释放。权限管理使用 `security.Permission`，App 与 Agent 不承接 Doctor。
 
@@ -49,7 +49,7 @@ TUI 和 Service 在创建资源前，按配置文件的绝对路径及符号链�
 
 退出步骤共用独立的 30 秒预算。App 的 `runShutdownStep` 将结果分为完成、失败、超时，`runShutdownSteps` 按序执行并汇总；普通错误保留后继续清理，统一期限耗尽立即停止后续清理。下层 Close 保持返回 error，其业务超时错误不直接等同于 App 的统一期限耗尽。最终错误交回进程入口处理。
 
-客户端通过 `platform.RunClient(ctx, cfg, name)` 一次获得 `ClientResult{Kind, Err}`。Platform 负责连接选择与结果分类；App 的明确运行入口直接返回错误，自动尝试入口只将 `ClientFallback` 转为回退信号。App 不解析 URL 或重新组合回退条件，实际本地启动由进程入口决定。
+客户端通过 `platform.RunClient(ctx, cfg, name)` 一次获得 `ClientResult{Kind, Err}`。Platform 负责连接选择与结果分类；App 的明确运行入口直接返回错误，自动尝试入口只将 `ClientFallback` 转为回退信号。App 不解析 URL 或重新组合回退条件。Launcher 只解析 Command，不依赖 App；main 将默认命令映射到 `TryRunClient`，仅收到 `ErrClientFallback` 才启动 TUI，显式 `client` 调用 `RunClient` 且不回退，`run`／`service run` 分别启动 TUI／Service。main 处理进程信号与退出码，本地启动及清理错误由 App 交回。
 
 ```mermaid
 flowchart TB

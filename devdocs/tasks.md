@@ -32,10 +32,10 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] 完成媒体 NewMediaCenter 下层构造、公开契约与消费者接线。
 - [x] 完成模型 NewModelManager 的完整配置构造、部分失败交回与关闭契约。
 - [x] TUI／Service 按规范化配置路径取得独占锁，退出最后释放；纯客户端不占锁。
-- [ ] 适配进程入口的新 App API 与 `client` 命名。
-- [ ] 下层接口补齐后，验证完整资源构造、App 启停和客户端链路。
+- [x] 进程入口接入新 App API 与 `client` 命名；launcher 只解析 Command，不依赖 App，不保留旧命令别名或旧运行模式。
+- [x] 临时配置验证完整资源构造、Service 启动、信号退出与配置锁释放；真实进程验证默认回退、指定连接及显式客户端不回退、取消不触发本地启动。
 
-退出辅助函数与共享资源关闭测试可通过临时 overlay 隔离缺失的下层调用，使用实际函数，不提供假总管；完整应用暂不能构建运行。App 的 13 个原生产文件和 12 个原测试文件保存在 `*.go.bak` 中，不参与构建。
+全仓测试及 ElBot 二进制构建通过；进程入口、launcher、security、App 与 CLI 五个包通过 race，security 测试直接使用 contextinfo.Role。进程验证使用临时配置与真实 SQLite，不连接外部模型或平台。App 的 13 个原生产文件和 12 个原测试文件保存在 `*.go.bak` 中，不参与构建。
 
 ## Tool 执行子包
 
@@ -91,11 +91,11 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Event 由 Elnis/types.go 定义并注释字段用途，不保留闲置 SegmentPaths；targets.go 的 toDeliveryTarget 与 media.go 的 directText 承担投递准备。Elvena 仅保留协议与来源文件，无闲置结果类型、总线或投递辅助文件。
 - [ ] 更新 Elwisp 生成提示与相关用户示例，停止生成已删除的能力名；保留 Hook platform.call 原生链路，平台选择仍由调用方负责。用户文档随对应迁移阶段更新。
 - [x] 删除旧 platform.go、module/、builtin/ 及旧实现测试，不保留兼容别名；Doctor 使用外部测试包，通过 Platform 根部 ConfigDefinitions 获取配置定义；Platform 根包及全部子包、Doctor 的 race 回归通过。
-- [ ] 补充 Platform 原生 API、客户端结果与真实历史接线集成验证；App 整包已通过 race，进程入口适配后仍需完整应用回归；组件隔离测试不替代真实总管接线和整包通过。
+- [ ] 补充 Platform 原生 API 与真实历史接线集成验证；客户端结果已通过进程入口跨根部验证，App 整包与 Service 启停通过 race；组件隔离测试不替代真实总管接线。
 
 ## 媒体中心对接
 
-Media [根部与下层契约](app-design.md#media-根部与下层契约)、四个子包与消费者接线均已实现。模型构造及 App 整包已通过 race；全仓编译仍有 launcher 旧运行模式常量引用和 security 测试角色类型不匹配，这两项不属于媒体改造。
+Media [根部与下层契约](app-design.md#media-根部与下层契约)、四个子包与消费者接线均已实现。模型构造及 App 整包已通过 race，全仓测试与构建通过。
 
 - [x] 保留 15 个生产文件和 12 个测试文件的 `.bak` 备份；按根部与 object／transfer／backend／share 组织实现。
 - [x] 声明 MediaCenter、完整配置构造、四字段值类型 MediaInfo、Info／ValidateImage、Reference 及公开 HeldMedia。移除旧入口，不提供兼容别名。
@@ -140,7 +140,7 @@ Media [根部与下层契约](app-design.md#media-根部与下层契约)、四�
 - [x] branch 四文件实现 Fork、压缩派生、后台复制及锁外材料准备，经 share.BindingCoordinator 接入 Control；Fork 禁止跨用户，后台来源生成 work 分支；后台压缩严格匹配执行归属，CLI 不豁免。真实 SQLite／Binding／Control 组合 race 覆盖权限、提交冲突、原子保存、消息重映射、计时与释放，见 [Branch 派生与材料提交](app-design.md#branch-派生与材料提交)。
 - [x] Naming 四文件实现最小依赖、固定模型快照、持久化完成事实、三次生成失败后的文本 fallback、任务生命周期和退役缓存释放；根部组合 ForgetSession 与外部释放，旧 Session 备份清理，公开入口及内部组件以真实 SQLite／本地 HTTP 验证。
 - [x] Agent 合并 Request／Turn 活跃事实，有效输入上报活动，执行、压缩、追加等待及独立 Hook 在真实退出后通知；同步释放执行快照、自动确认和原 Binding 的撤销记录。消费者及测试已迁移，约定见 [跨模块活动与释放](app-design.md#跨模块活动与释放)。
-- [x] Session 收尾影响范围 52 个包 race 通过，包含 App、SQLite 整包；全仓编译仍有既存 launcher 旧 App 常量及 security 测试角色类型阻塞。
+- [x] Session 收尾影响范围 52 个包 race 通过，包含 App、SQLite 整包；全仓测试与构建通过。
 
 ## 后台工具统一预载
 

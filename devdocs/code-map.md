@@ -17,8 +17,10 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:startup -->
 ## 启动与装配
 
-- `cmd/elbot/main.go`、`internal/launcher/cli.go`：程序入口、参数与运行模式。
-- `internal/app/` 六文件按下层接口已存在来实现公共流程，五条业务线已提供根包总管，配置独占、媒体构造与消费者接线已实现；模型构造入口已实现，进程入口适配仍待完成。13 个原生产文件和 12 个原测试文件保存在 `*.go.bak` 中；职责与调用契约见 [App 包设计](app-design.md)。
+- `internal/launcher/cli.go`：解析参数与 Command，提供帮助和 Shell 补全，不依赖 App。
+- `cmd/elbot/main.go`：进程信号、命令分派与退出码；默认尝试客户端，仅收到回退信号才启动本地 TUI；显式 `client` 不回退，`run`／`service run` 分别启动 TUI／Service。
+- `cmd/elbot/main_test.go`：真实子进程验证命令分派、客户端取消不回退、Service 完整启动与信号退出、配置锁释放。
+- `internal/app/` 六文件实现公共流程，五条业务线已提供根包总管，配置独占、媒体与模型构造、消费者及进程入口接线已实现。13 个原生产文件和 12 个原测试文件保存在 `*.go.bak` 中；职责与调用契约见 [App 包设计](app-design.md)。
 - `internal/app/entry.go`：启动参数、局部阶段列表、统一阶段执行与耗时、Lifecycle／可选 Waiter、唯一总管集合、按顺序启动与按能力等待。
 - `internal/app/environment.go`：验证运行模式，定位配置并转为解析符号链接后的绝对路径；TUI／Service 通过 `gofrs/flock` 非阻塞取得对应 `.lock` 文件的独占锁。
 - `internal/app/environment_test.go`：配置定位、路径别名、配置替换保存、跨进程互斥、正常及异常退出后的重新取锁测试，可独立运行。

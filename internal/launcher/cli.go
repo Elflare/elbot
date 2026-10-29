@@ -5,21 +5,22 @@ import (
 	"io"
 	"os"
 	"strings"
-
-	"elbot/internal/app"
 )
 
+// Command 表达命令意图，由进程入口映射到 App 的运行能力。
 type Command string
 
 const (
+	CommandAuto       Command = "auto" // 未指定子命令；先尝试客户端，收到回退信号才本地启动。
 	CommandRun        Command = "run"
+	CommandClient     Command = "client"
+	CommandService    Command = "service"
 	CommandCompletion Command = "completion"
 )
 
 type Options struct {
 	ConfigPath string
 	ClientName string
-	Mode       app.RunMode
 	Command    Command
 	Completion string
 	Help       bool
@@ -27,7 +28,7 @@ type Options struct {
 }
 
 func ParseArgs(args []string) (Options, error) {
-	opts := Options{Mode: app.RunModeAuto, Command: CommandRun}
+	opts := Options{Command: CommandAuto}
 	positionals := []string{}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -73,17 +74,17 @@ func ParseArgs(args []string) (Options, error) {
 		if len(positionals) != 1 {
 			return Options{}, fmt.Errorf("usage: elbot run [--config path]")
 		}
-		opts.Mode = app.RunModeFull
-	case "cli":
+		opts.Command = CommandRun
+	case "client":
 		if len(positionals) != 1 {
-			return Options{}, fmt.Errorf("usage: elbot cli [--config path] [-c name]")
+			return Options{}, fmt.Errorf("usage: elbot client [--config path] [-c name]")
 		}
-		opts.Mode = app.RunModeCLIOnly
+		opts.Command = CommandClient
 	case "service":
 		if len(positionals) != 2 || positionals[1] != "run" {
 			return Options{}, fmt.Errorf("usage: elbot service run [--config path]")
 		}
-		opts.Mode = app.RunModeService
+		opts.Command = CommandService
 	case "completion":
 		if len(positionals) != 2 || !SupportedCompletionShell(positionals[1]) {
 			return Options{}, fmt.Errorf("usage: elbot completion [auto|bash|zsh|fish|nushell|powershell]")
@@ -109,15 +110,15 @@ func WriteUsage(w io.Writer) {
 	fmt.Fprint(w, `Usage:
   elbot [--config path] [-c name]
   elbot run [--config path]
-  elbot cli [--config path] [-c name]
+  elbot client [--config path] [-c name]
   elbot service run [--config path]
   elbot completion [auto|bash|zsh|fish|nushell|powershell]
 
 Default: try the default CLI connection; fall back to local startup when eligible.
 
 Commands:
-  run          Run local CLI with enabled platforms and background tasks.
-  cli          Run the CLI client and connect to a server.
+  run          Run local TUI with enabled platforms and background tasks.
+  client       Run the CLI client and connect to a server.
   service run  Run a headless service with enabled platforms and an optional CLI server.
   completion   Generate shell completion scripts.
 
@@ -181,6 +182,9 @@ _elbot_completion() {
       COMPREPLY=( $(compgen -f -- "$cur") )
       return 0
       ;;
+    -c|--client)
+      return 0
+      ;;
     completion)
       COMPREPLY=( $(compgen -W "auto bash zsh fish nushell powershell" -- "$cur") )
       return 0
@@ -191,7 +195,7 @@ _elbot_completion() {
       ;;
   esac
 
-  COMPREPLY=( $(compgen -W "run cli service completion --config --help --version" -- "$cur") )
+  COMPREPLY=( $(compgen -W "run client service completion -c --client --config --help --version" -- "$cur") )
 }
 complete -F _elbot_completion elbot
 `)
@@ -201,9 +205,10 @@ func writeZshCompletion(w io.Writer) {
 	fmt.Fprint(w, `#compdef elbot
 _arguments -C \
   '--config[Path to TOML config file]:config file:_files' \
+  '(-c --client)'{-c,--client}'[CLI connection profile name]:profile:' \
   '--help[Show help]' \
   '--version[Show version]' \
-  '1:command:(run cli service completion)' \
+  '1:command:(run client service completion)' \
   '2:subcommand:->subcmd'
 case $words[2] in
   service)
@@ -218,13 +223,14 @@ esac
 
 func writeFishCompletion(w io.Writer) {
 	fmt.Fprint(w, `complete -c elbot -f
-complete -c elbot -n "__fish_use_subcommand" -a "run" -d "Run full foreground mode"
-complete -c elbot -n "__fish_use_subcommand" -a "cli" -d "Run the CLI client and connect to a server"
+complete -c elbot -n "__fish_use_subcommand" -a "run" -d "Run local TUI with enabled platforms and background tasks"
+complete -c elbot -n "__fish_use_subcommand" -a "client" -d "Run the CLI client and connect to a server"
 complete -c elbot -n "__fish_use_subcommand" -a "service" -d "Service commands"
 complete -c elbot -n "__fish_use_subcommand" -a "completion" -d "Generate shell completions"
 complete -c elbot -n "__fish_seen_subcommand_from service" -a "run" -d "Run headless service mode"
 complete -c elbot -n "__fish_seen_subcommand_from completion" -a "auto bash zsh fish nushell powershell"
 complete -c elbot -l config -r -d "Path to TOML config file"
+complete -c elbot -s c -l client -r -d "CLI connection profile name"
 complete -c elbot -s h -l help -d "Show help"
 complete -c elbot -l version -d "Show version"
 `)
@@ -233,8 +239,8 @@ complete -c elbot -l version -d "Show version"
 func writeNushellCompletion(w io.Writer) {
 	fmt.Fprint(w, `def "nu-complete elbot commands" [] {
   [
-    {value: "run", description: "Run full foreground mode"}
-    {value: "cli", description: "Run the CLI client and connect to a server"}
+    {value: "run", description: "Run local TUI with enabled platforms and background tasks"}
+    {value: "client", description: "Run the CLI client and connect to a server"}
     {value: "service", description: "Service commands"}
     {value: "completion", description: "Generate shell completions"}
   ]
@@ -252,6 +258,7 @@ export extern "elbot" [
   command?: string@"nu-complete elbot commands"
   subcommand?: string
   --config: path
+  --client(-c): string
   --help(-h)
   --version
 ]
@@ -273,7 +280,7 @@ func writePowerShellCompletion(w io.Writer) {
 	fmt.Fprint(w, `Register-ArgumentCompleter -Native -CommandName elbot -ScriptBlock {
   param($wordToComplete, $commandAst, $cursorPosition)
   $words = $commandAst.CommandElements | ForEach-Object { $_.ToString() }
-  $candidates = @('run', 'cli', 'service', 'completion', '--config', '--help', '--version')
+  $candidates = @('run', 'client', 'service', 'completion', '-c', '--client', '--config', '--help', '--version')
   if ($words -contains 'service') { $candidates = @('run') }
   if ($words -contains 'completion') { $candidates = @('auto', 'bash', 'zsh', 'fish', 'powershell') }
   $candidates | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
