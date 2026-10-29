@@ -5,7 +5,6 @@ import (
 	"elbot/internal/modelmgr"
 	"elbot/internal/notification/rules"
 	"elbot/internal/workspace"
-	"fmt"
 	"time"
 
 	chatroute "elbot/internal/agent/chat"
@@ -32,7 +31,6 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/tool"
 	"elbot/internal/turn"
 )
 
@@ -180,9 +178,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		System:     runner.System,
 	})
 	bindProtocolRoutes(m.routes, chat, response)
-	if err := m.contexts.CheckCompaction(llm.Origin{APIType: llm.APITypeChat}); err != nil {
-		return m, fmt.Errorf("context compaction wiring: %w", err)
-	}
 	execution := agentexecution.NewExecutionCoordinator(ctx, agentexecution.ExecutionCoordinatorDeps{
 		Sessions:    m.sessions,
 		SessionRows: deps.Store.Sessions(),
@@ -287,21 +282,14 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		completion.ForkMessageSource{Router: m.commands, Sessions: m.sessions, Store: deps.Store, Scope: identity.Scope},
 		completion.ToolDirectiveSource{
 			Context: func(ctx context.Context) (context.Context, error) {
+				ctx = contextinfo.WithActor(security.WithPermission(ctx, deps.Permission), identity.Actor(ctx))
 				row, err := m.sessions.Current(ctx, identity.Scope(ctx))
 				if err != nil && err != storage.ErrNotFound {
 					return ctx, err
 				}
 				return execution.ModelContext(ctx, row)
 			},
-			Registry:   func() completion.ToolCapabilities { return deps.Tools },
-			Actor:      identity.Actor,
-			Permission: func() *security.Permission { return deps.Permission },
-			Tags: func(ctx context.Context, _ completion.ToolCapabilities, actor contextinfo.Actor, _ *security.Permission) ([]string, error) {
-				return deps.Tools.ToolTags(contextinfo.WithActor(ctx, actor))
-			},
-			ToolNamesByTag: func(ctx context.Context, _ completion.ToolCapabilities, tag string, query tool.ToolQuery) ([]string, error) {
-				return deps.Tools.ToolNamesByTag(ctx, tag, query)
-			},
+			Tools: deps.Tools,
 		},
 		completion.RouterSource{Router: m.commands, Actor: identity.Actor},
 	)

@@ -30,7 +30,7 @@ func TestEnrichHistoryReferencePreservesOriginalMediaPositions(t *testing.T) {
 		original[1],
 	}
 	calls := 0
-	result, err := Apply(ctx, Options{Store: newRefTestStore(t), ChatHistory: history.Repository()}, share.ReferenceOptions{Platform: "qqonebot", ScopeID: "group:9", ReplyID: "123", Text: "问题", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
+	result, err := Apply(ctx, newRefTestOptions(newRefTestStore(t), history.Repository()), share.ReferenceOptions{Platform: "qqonebot", ScopeID: "group:9", ReplyID: "123", Text: "问题", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
 		t.Fatal("history unexpectedly bypassed")
 		return share.ReferencedMessage{}, false, nil
 	}, Enrich: func(_ context.Context, id string, ref share.ReferencedMessage) ([]share.MessageSegment, error) {
@@ -72,7 +72,7 @@ func TestEnrichCanonicalAssistantKeepsReferenceDecisions(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
-			result, err := Apply(ctx, Options{ChatHistory: newRefTestHistory(t), Store: store}, share.ReferenceOptions{Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: tc.actor, ReplyID: tc.reply, Text: tc.text, CommandPrefixes: []string{"/"}, Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
+			result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: tc.actor, ReplyID: tc.reply, Text: tc.text, CommandPrefixes: []string{"/"}, Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
 				return share.ReferencedMessage{Text: "[forward]", Segments: []share.MessageSegment{{Type: share.SegmentText, Text: "[forward]"}}}, true, nil
 			}, Enrich: func(_ context.Context, _ string, ref share.ReferencedMessage) ([]share.MessageSegment, error) {
 				calls++

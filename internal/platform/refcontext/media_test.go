@@ -39,7 +39,7 @@ func TestReferenceMediaOutputHistoryAndFallbackPriority(t *testing.T) {
 		}
 	}
 	calls := 0
-	deps := Options{Store: store, ChatHistory: history.Repository()}
+	deps := newRefTestOptions(store, history.Repository())
 	opts := share.ReferenceOptions{Platform: "telegram", ScopeID: "group:9", Text: "看看", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
 		calls++
 		return share.ReferencedMessage{Segments: raw}, true, nil
@@ -78,7 +78,7 @@ func TestLatestAssistantResumesWithoutMediaAndOlderForkRestores(t *testing.T) {
 	mapPlatformMessage(t, ctx, store, scope, "old", first)
 	mapPlatformMessage(t, ctx, store, scope, "latest", latest)
 	calls := 0
-	deps := Options{ChatHistory: newRefTestHistory(t), Store: store}
+	deps := newRefTestOptions(store, newRefTestHistory(t))
 	opts := share.ReferenceOptions{Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "latest", Text: "继续", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
 		calls++
 		return share.ReferencedMessage{Segments: []share.MessageSegment{{Type: share.SegmentImage, PlatformFileID: "image"}}}, true, nil
@@ -164,7 +164,7 @@ func TestReferenceHistoryRestoresStableMediaAssociations(t *testing.T) {
 	}
 
 	fetchCalls := 0
-	got, err := Apply(ctx, Options{Store: store, ChatHistory: history.Repository()}, share.ReferenceOptions{Platform: row.Platform, ScopeID: row.PlatformScopeID, ReplyID: row.PlatformMessageID, Text: "看看", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
+	got, err := Apply(ctx, newRefTestOptions(store, history.Repository()), share.ReferenceOptions{Platform: row.Platform, ScopeID: row.PlatformScopeID, ReplyID: row.PlatformMessageID, Text: "看看", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
 		fetchCalls++
 		return share.ReferencedMessage{}, false, nil
 	}})

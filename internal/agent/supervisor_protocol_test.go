@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -23,10 +24,7 @@ import (
 
 func TestSupervisorNativeResponseToolTurn(t *testing.T) {
 	deps := isolatedModuleDeps(t)
-	echo := &contractTool{}
-	if err := deps.Tools.(isolatedToolCapabilities).Registry.Register(echo); err != nil {
-		t.Fatal(err)
-	}
+	args := contractReadFile(t)
 	var requests []struct {
 		ToolChoice struct{ Tools []struct{ Name string } } `json:"tool_choice"`
 	}
@@ -40,7 +38,7 @@ func TestSupervisorNativeResponseToolTurn(t *testing.T) {
 			return
 		}
 		requests = append(requests, req)
-		raw := `{"id":"response-1","status":"completed","output":[{"type":"function_call","id":"item-1","call_id":"contract-call","name":"contract_echo","arguments":"{}","status":"completed"}]}`
+		raw := fmt.Sprintf(`{"id":"response-1","status":"completed","output":[{"type":"function_call","id":"item-1","call_id":"contract-call","name":"read_file","arguments":%q,"status":"completed"}]}`, args)
 		if len(requests) > 1 {
 			raw = `{"id":"response-2","status":"completed","output":[{"type":"message","id":"item-2","role":"assistant","status":"completed","content":[{"type":"output_text","text":"native answer"}]}]}`
 		}
@@ -55,13 +53,13 @@ func TestSupervisorNativeResponseToolTurn(t *testing.T) {
 	t.Cleanup(func() { _ = models.Close(context.Background()) })
 	deps.Models = models
 	m := contractSupervisor(t, deps)
-	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "@tool:contract_echo hello"}); err != nil {
+	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "@tool:read_file hello"}); err != nil {
 		t.Fatal(err)
 	}
-	if echo.calls != 1 || len(requests) != 2 {
-		t.Fatalf("calls=%d requests=%d", echo.calls, len(requests))
+	if len(requests) != 2 {
+		t.Fatalf("requests=%d", len(requests))
 	}
-	if !slices.ContainsFunc(requests[0].ToolChoice.Tools, func(tool struct{ Name string }) bool { return tool.Name == echo.Name() }) {
+	if !slices.ContainsFunc(requests[0].ToolChoice.Tools, func(tool struct{ Name string }) bool { return tool.Name == "read_file" }) {
 		t.Fatal("native schema missing")
 	}
 	rows, err := deps.Store.Sessions().List(t.Context(), storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 10})
@@ -72,7 +70,9 @@ func TestSupervisorNativeResponseToolTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if messages[len(messages)-1].Content != "native answer" || !slices.ContainsFunc(messages, func(v storage.Message) bool { return v.ToolCallID == "contract-call" && v.Content == "contract result" }) {
+	if messages[len(messages)-1].Content != "native answer" || !slices.ContainsFunc(messages, func(v storage.Message) bool {
+		return v.ToolCallID == "contract-call" && strings.Contains(v.Content, "contract result")
+	}) {
 		t.Fatalf("native transcript: %#v", messages)
 	}
 }

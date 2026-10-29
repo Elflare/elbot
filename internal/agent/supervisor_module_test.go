@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"path/filepath"
 	"testing"
 	"time"
@@ -10,36 +9,16 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
-	"elbot/internal/events"
-	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
-	"elbot/internal/memory/resident"
 	"elbot/internal/modelmgr"
 	"elbot/internal/platform/dispatch"
-	"elbot/internal/processenv"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
-	"elbot/internal/tool/discovery"
-	"elbot/internal/tool/execution"
-	toolmedia "elbot/internal/tool/media"
-	"elbot/internal/tool/preload"
-	toolregistry "elbot/internal/tool/registry"
-	"elbot/internal/tool/skill"
-	toolstate "elbot/internal/tool/state"
+	"elbot/internal/tool"
 )
-
-type isolatedToolCapabilities struct {
-	*toolregistry.Registry
-	*execution.Manager
-	*preload.PreloadService
-	*toolstate.StateService
-	*resident.Store
-	*fileops.Service
-	skills *skill.Manager
-}
 
 type isolatedHookCapabilities struct{}
 
@@ -51,9 +30,6 @@ func (isolatedPlatformCapabilities) RestoreMessageContext(ctx, _ context.Context
 	return ctx
 }
 
-func (isolatedPlatformCapabilities) CallPlatformAPI(context.Context, string, string, map[string]any) (json.RawMessage, error) {
-	return nil, nil
-}
 func (isolatedPlatformCapabilities) PrimaryName() string { return "cli" }
 func (isolatedPlatformCapabilities) StartReasoning(context.Context) delivery.ReasoningStream {
 	return nil
@@ -92,6 +68,14 @@ func isolatedModuleDeps(t *testing.T) SupervisorDeps {
 // 需要跨消费者接线或控制生命周期的测试由装配方持有具体模型对象。
 func isolatedModuleResources(t *testing.T) (SupervisorDeps, *modelmgr.ModelManager) {
 	t.Helper()
+	cfg := isolatedAgentConfig()
+	root := t.TempDir()
+	cfg.ConfigPath = filepath.Join(root, "config.toml")
+	cfg.Sandbox.Root = root
+	return configuredModuleResources(t, cfg)
+}
+func configuredModuleResources(t *testing.T, cfg *config.Config) (SupervisorDeps, *modelmgr.ModelManager) {
+	t.Helper()
 	store, err := sqlite.New(t.Context(), ":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -108,22 +92,22 @@ func isolatedModuleResources(t *testing.T) (SupervisorDeps, *modelmgr.ModelManag
 	}
 	t.Cleanup(func() { _ = models.Close(context.Background()) })
 	permission := security.DefaultPermission()
-	registry := toolregistry.NewRegistry(permission)
 	sender := dispatch.New(dispatch.Options{Primary: &assemblyPlatform{}})
-	root := t.TempDir()
-	center := mediatest.New(t, store, root)
+	center := mediatest.New(t, store, t.TempDir())
+	tools, err := tool.NewSupervisor(t.Context(), cfg, tool.SupervisorDeps{Store: store, ChatHistory: history.Repository(), Models: models, Media: center, Permission: permission})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := tools.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
 	return SupervisorDeps{
 		Media: center, Store: store, ChatHistory: history.Repository(), Models: models, Permission: permission,
 		Platform: isolatedPlatformCapabilities{sender},
 		Hooks:    isolatedHookCapabilities{},
-		Tools: isolatedToolCapabilities{
-			Registry: registry, Manager: execution.NewManager(execution.ManagerDeps{Registry: registry, Permission: permission, Media: toolmedia.NewMediaRuntime(center, root, mediatest.Publisher(center)), InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, DecodeState: toolstate.DecodeState, PrepareUpdate: toolstate.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(registry).DiscoveryStateUpdate, Log: func(context.Context, events.LogRecord) {}}),
-			PreloadService: preload.NewPreloadService(preload.PreloadOptions{Registry: registry, Resolver: discovery.NewResolver(registry), NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery, LoadDiscoveryContent: discovery.LoadDiscoveryContent, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools}),
-			StateService:   toolstate.NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools),
-			Store:          resident.NewStore(filepath.Join(t.TempDir(), "memory.toml")),
-			Service:        fileops.NewService(nil),
-			skills:         skill.NewManager(t.TempDir(), registry, toolmedia.NewMediaRuntime(center, root, mediatest.Publisher(center)), processenv.New(nil)),
-		},
+		Tools:    tools,
 	}, models
 }
 

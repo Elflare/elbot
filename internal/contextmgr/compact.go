@@ -33,12 +33,6 @@ func (s *Service) Compact(ctx context.Context, current *storage.Session, reason 
 	return compactor.Prepare(ctx, current, reason, fallback)
 }
 
-// CheckCompaction verifies startup wiring without executing a compression.
-func (s *Service) CheckCompaction(origin llm.Origin) error {
-	_, err := s.resolveCompactor(origin)
-	return err
-}
-
 func (s *Service) resolveCompactor(origin llm.Origin) (Compactor, error) {
 	return s.compactors.CompactorFor(origin)
 }

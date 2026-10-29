@@ -43,7 +43,7 @@ flowchart TB
 
 App 消费 `Lifecycle`（Start、BeginClose、Close）和可选的 `Waiter`（Wait），下层通过方法集实现，不反向依赖 App。唯一的 `businessLines` 集合保存名称、总管和启动顺序，具体类型只在装配时接线。构造后立即登记非 nil 的部分结果；按 Tool → Agent → Hook → Platform → Background 启动。
 
-`waitBusinessLines` 遍历集合筛选 Waiter，按实际数量并发等待；首个结果结束运行等待，取消并回收其余等待，保留独立故障。没有参与者时等待外部取消。Wait 必须响应等待上下文，取消等待不停止业务线。Platform 自行解释 TUI／Service 的退出语义；Background 的致命故障及时返回，实际清理由 Close 等待。
+`waitBusinessLines` 遍历集合筛选 Waiter，按实际数量并发等待；首个结果结束运行等待，取消并回收其余等待，保留独立故障。没有参与者时等待外部取消。Wait 必须响应等待上下文，取消等待不停止业务线。Platform 的 Wait 及时报告整线停止，WaitIngress 等待接入及已接纳回调实际退出；本地 CLI 的 WaitExit 提供退出信号。App 在统一关闭期限内调用 WaitIngress，不在运行等待阶段等待回调。Background 的致命故障及时返回，实际清理由 Close 等待。
 
 环境、资源、装配或启动失败均进入同一退出流程。入口先取消运行上下文，再以 `context.WithoutCancel` 创建统一清理期限。纯外部取消视为正常停止，混合错误中的独立故障仍保留；运行和清理错误合并返回。
 
@@ -66,7 +66,7 @@ App 用 `shutdownStep` 记录步骤名称和关闭调用，`runShutdownSteps` �
 `agent.NewSupervisor(ctx, cfg, deps)` 接收 Store、ChatHistory、Models、Media、Permission、Logs 及 Tool、Hook、Platform 能力，其中 Hook 仅通过 `Commands() []command.Handler` 提供管理命令，由 Agent 使用标准注册入口接入。公开业务入口为 `HandleMessage`、`RunBackground`、`CopyBackground`、`CleanupSessions`、`SessionTakenOver`、`RegisterHooks`、`StartHookRequest`、`Complete`、`Commands`、`ObserveStatusChanged`、`ObserveBindingChanged`；生命周期使用 `Start`、`BeginClose`、`Close`、`Done`。Hook 的 `ConnectAgent` 注册一组 `agent.Points` 回调并持有解除函数，每个实际 handler 通过 `StartHookRequest` 登记。其他接收方的 `ConnectAgent` 负责自身适配、订阅和释放。其余四条线通过根包 `Supervisor`、`SupervisorDeps`、`NewSupervisor` 及各自生命周期接口接入。
 各条线的对外文件放各条线的根部，内部业务放子包。Agent 的公开回调和事件定义在 contracts.go，内部共享载荷放 share，消费者按实际需要接收最小能力。Agent 根包与子包、Hook、Command、Completion 已通过相关回归；真实 Agent–Hook–Tool 总管接线覆盖命令注册、规则补全和输出回调。Hook 消费 Agent 与 Tool 根部类型，管理查询类型留在 Hook 内部。
 
-Platform 根部构造并持有下层组件，统一提供公开能力。NewSupervisor 接收完整配置及 Mode、Store、ChatHistory、Media、Permission、Logs，持有适配器、通知连接和 UI；历史库属于 App，Platform 只借用。部分失败仍交回总管。公开发送、原生 API 和媒体解析转交内部组件，不暴露 Repository 或 Router。失败通知已接通；配置定义统一由根部 ConfigDefinitions 提供。
+Platform 根部构造并持有下层组件，统一提供公开能力。NewSupervisor 接收完整配置及 Mode、Store、ChatHistory、Media，持有适配器、通知连接和 UI；历史库属于 App，Platform 只借用。部分失败仍交回总管。公开发送、原生 API 和媒体解析转交内部组件，不暴露 Repository 或 Router。失败通知已接通；配置定义统一由根部 ConfigDefinitions 提供。
 
 Tool 根部创建媒体入口、技能目录与基础环境并一次注入 Skill Manager；Builtin、Skill、发现及 ELwisp 均接入必需的准备／执行契约，Skill 内部不依赖 Tool 根包。Cron 工具只使用 Tool 内部契约，根部 bridge 接入 Storage 和模型校验并发布任务定义变更；Background 根部持有订阅，Cron Manager 合并名称并串行读库刷新。Elnis 已通过自身媒体契约接入媒体中心。Background 整包已完成生命周期接线；App 整包及 Service 进程启停已通过 race。
 
@@ -244,11 +244,11 @@ refcontext.Apply(context.Context, refcontext.Options, share.ReferenceOptions) (s
 
 share/config.go 的 CommonConfig 包含 Superadmins、CommandPrefixes、ConfigDir、AttachmentDir、MaxReceiveFileBytes、DownloadTimeoutSecs；share/history_contracts.go 定义 ChatHistoryWriter（Append）和 ChatHistoryReader（GetByPlatformMessage）。OneBot 在 adapter.go 声明自有 Deps，嵌入 CommonConfig，历史只组合这两项能力，另接收 ReferenceResolver、FindByPlatformMessage 和 FindOutputs。根部直接注入存储方法值，不交付完整 Store，不增加查询转发层。
 
-根部 SupervisorDeps.ChatHistory 按实际使用接收 Append、GetByPlatformMessage、MapPlatformMessageAlias、ResolvePlatformMessageAlias；总管不保存仅用于中转的 history 字段。refcontext.Options.ChatHistory 只包含 GetByPlatformMessage。Telegram 的 Deps 嵌入 CommonConfig，历史只接收 ChatHistoryWriter，另接收 ReferenceResolver；旧 share/adapter.go 与根部共用依赖装配已删除。QQ Official 的 Deps 嵌入 CommonConfig，历史只组合 ChatHistoryWriter 和两项别名方法，另接收 ReferenceResolver；不持有完整历史仓库。Storage 参数和返回类型保持一致。
+根部 SupervisorDeps.ChatHistory 按实际使用接收 Append、GetByPlatformMessage、MapPlatformMessageAlias、ResolvePlatformMessageAlias；总管不保存仅用于中转的 history 字段。refcontext.Options.ChatHistory 只包含 GetByPlatformMessage；引用 fork 命令一次解析前缀和名称，重写时保留匹配的配置前缀，权限仍由命令业务链路判断。Telegram 的 Deps 嵌入 CommonConfig，历史只接收 ChatHistoryWriter，另接收 ReferenceResolver；旧 share/adapter.go 与根部共用依赖装配已删除。QQ Official 的 Deps 嵌入 CommonConfig，历史只组合 ChatHistoryWriter 和两项别名方法，另接收 ReferenceResolver；不持有完整历史仓库。Storage 参数和返回类型保持一致。
 
-share.ReferenceOptions 只包含 Platform、ScopeID、ActorID、IsSuperadmin、ReplyID、Text、CommandPrefixes、Fetch、Enrich，不携带存储依赖；ReferenceResult、ReferencedMessage 保留现有结果字段，片段使用 share 类型。refcontext.Options 仅包含 Store、ChatHistory，根部装配时固定该依赖值，通过闭包注入引用函数，不新增 Resolver 组件。远程适配器保留 Enabled；所有非 nil 构造结果都纳入所有权，包括未启用与部分失败对象。OneBot、QQ Official、Telegram 已删除旧 New、Run 和完整历史字段，仅保留 NewFromPlatformConfig。QQ Official 的凭据与默认值在构造阶段确定，不保留闲置媒体配置或运行期环境凭据兜底。Telegram 只在启用时解析凭据与代理并创建自有 HTTP 连接池，默认值及格式只在构造阶段确定；禁用对象跳过凭据解析，不创建 HTTP 客户端，仍可正常关闭。
+share.ReferenceOptions 只包含 Platform、ScopeID、ActorID、IsSuperadmin、ReplyID、Text、CommandPrefixes、Fetch、Enrich，不携带存储依赖；ReferenceResult、ReferencedMessage 保留现有结果字段，片段使用 share 类型。refcontext.Options 只接收 FindByPlatformMessage、GetSession、ListBySession、FindHistory、GetMedia、FindOutputs 六个查询函数及 ChatHistory，根部直接注入存储方法值并固定依赖，通过闭包注入引用函数，不新增 Resolver 组件。远程适配器保留 Enabled；所有非 nil 构造结果都纳入所有权，包括未启用与部分失败对象。OneBot、QQ Official、Telegram 已删除旧 New、Run 和完整历史字段，仅保留 NewFromPlatformConfig。QQ Official 的凭据与默认值在构造阶段确定，不保留闲置媒体配置或运行期环境凭据兜底。Telegram 只在启用时解析凭据与代理并创建自有 HTTP 连接池，默认值及格式只在构造阶段确定；禁用对象跳过凭据解析，不创建 HTTP 客户端，仍可正常关闭。
 
-Start 同步完成本地启动，不等待远端连通；与 BeginClose 并发安全，关闭后不再接纳输入。正常停止由适配器返回 nil，独立故障返回 error；Wait 响应观察取消并优先返回已发布结果；独立运行故障已记录而业务仍在收尾时，取消观察仍返回该故障，不提前宣告退出。启动失败仍可 Wait／Close。Close 响应期限且可重试。根部 BeginClose 只停止接入，Wait 等待所有已尝试启动的接入实际退出；服务模式即使全部平台退出也等待外部停止，本地 TUI 退出结束整线。取消等待不停止业务线，也不覆盖已经发布的独立故障。
+Start 同步完成本地启动，不等待远端连通；与 BeginClose 并发安全，关闭后不再接纳输入。正常停止由适配器返回 nil，独立故障返回 error；Wait 响应观察取消并优先返回已发布结果；独立运行故障已记录而业务仍在收尾时，取消观察仍返回该故障，不提前宣告退出。启动失败仍可 Wait／Close。Close 响应期限且可重试。根部 BeginClose 只停止接入，Wait 及时报告整线停止，WaitIngress 等待所有已尝试启动的接入及回调实际退出。CLI 的 WaitExit 复用 inputDone 观察退出信号，不等待回调；适配器的 Wait 保持实际退出语义。根部只给本地 CLI 登记退出观察，原观察协程继续等待实际退出并记录、通知故障，最终由 WaitIngress／Close 回收。服务模式即使全部平台退出也等待外部停止，本地 TUI 退出结束整线。取消等待不停止业务线，也不覆盖已经发布的独立故障。
 
 最终 Close 按 UI → 通知管理与接线 → 适配器清理，不关闭借用的历史库。普通清理错误累计后继续，期限耗尽停在当前步骤并保留后续依赖，重试从该步骤继续；Done 仅在全部自有资源清理实际完成后关闭。发送、展示与通知能力在停止接入后仍保留给尚未退出的使用方；App 保持历史库存活直到全部业务使用方退出。
 
@@ -516,4 +516,4 @@ App 的阶段执行、登记、启动、可选等待、资源构造和退出测�
 
 Platform 根包整包 race 验证覆盖重复并发启停、未启动及部分失败清理、TUI／Service 差异、取消观察与故障保留、接入退出后保留资源、清理超时续接、普通失败继续及故障通知接线。公开事实测试覆盖存取切片隔离、空值、上下文移除，以及平台事实与公共会话事实互不改写；agent_test.go 覆盖输入转换、延迟解析和公开事实投影。原生 API 跨根部接线和真实历史接线的完整集成验证暂缓，不新增大型测试设施；现有覆盖与验证缺口见 [任务清单](tasks.md#platform-剩余接线)。
 
-同目录保留 13 份原生产文件和 12 份原测试文件的 `*.go.bak`，不参与构建，未恢复旧装配。
+App 不保留 `*.go.bak`，Media 的 27 份备份仍保留。Platform 的 Wait／WaitIngress 分离、引用命令前缀保留及最小查询依赖已完成代码核对和格式化，尚未运行这些修正后的测试与构建。

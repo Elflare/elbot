@@ -1,21 +1,13 @@
 package completion
 
-import toolshare "elbot/internal/tool/share"
-
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
-	"elbot/internal/llm"
-	"elbot/internal/security"
 	"elbot/internal/tool"
-	"elbot/internal/tool/discovery"
-	"elbot/internal/tool/preload"
-	"elbot/internal/tool/registry"
 )
 
 type staticSource []Item
@@ -82,23 +74,7 @@ func TestRouterSourceFiltersCommandsByActor(t *testing.T) {
 	}
 }
 func TestToolDirectiveSourceCompletesOnlyPlainTools(t *testing.T) {
-	registry := registry.NewRegistry(security.DefaultPermission())
-	_ = registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry)))
-	_ = registry.Register(completionTestTool{name: "web_search", description: "search", tags: []string{"web"}})
-	_ = registry.Register(completionTestTool{name: "web_extract", description: "extract", tags: []string{"web"}})
-	_ = registry.Register(completionTestTool{name: "shell", description: "shell"})
-	_ = registry.Register(completionTestTool{name: "hidden_tool", hidden: true})
-	_ = registry.Register(completionTestSkill{completionTestTool: completionTestTool{name: "docx"}})
-	source := ToolDirectiveSource{
-		Registry: func() ToolCapabilities { return completionCatalog{registry} },
-		Actor:    func(context.Context) contextinfo.Actor { return contextinfo.Actor{Role: contextinfo.RoleSuperadmin} },
-		Tags: func(ctx context.Context, _ ToolCapabilities, actor contextinfo.Actor, permission *security.Permission) ([]string, error) {
-			return preload.NewPreloadService(preload.PreloadOptions{Registry: registry}).Tags(contextinfo.WithActor(security.WithPermission(ctx, permission), actor))
-		},
-		ToolNamesByTag: func(ctx context.Context, _ ToolCapabilities, tag string, query tool.ToolQuery) ([]string, error) {
-			return preload.NewPreloadService(preload.PreloadOptions{Registry: registry}).ToolNamesByTag(ctx, tag, toolshare.ToolQuery{Kind: query.Kind, Names: query.Names, IncludeHidden: query.IncludeHidden, IncludeDiscover: query.IncludeDiscover})
-		},
-	}
+	source := ToolDirectiveSource{Tools: completionCatalog{tools: []tool.Info{{Name: "web_extract"}, {Name: "web_search"}, {Name: "shell"}}, skills: []tool.Info{{Name: "docx"}}, tags: []string{"web"}, names: []string{"web_extract", "web_search"}}}
 
 	items, _ := source.Complete(context.Background(), Request{Text: "查 @tool:we", Cursor: len("查 @tool:we")})
 	if len(items) != 3 || items[0].Text != "@tool:web" || items[0].Label != "web <tag>" || items[0].Kind != KindToolTagDirective || items[1].Text != "@tool:web_extract" || items[2].Text != "@tool:web_search" || items[0].ReplaceStart != len("查 ") || items[0].ReplaceEnd != len("查 @tool:we") {
@@ -126,20 +102,7 @@ func TestToolDirectiveSourceCompletesOnlyPlainTools(t *testing.T) {
 }
 
 func TestToolDirectiveSourceCompletesSkillsSeparately(t *testing.T) {
-	registry := registry.NewRegistry(security.DefaultPermission())
-	_ = registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry)))
-	_ = registry.Register(completionTestTool{name: "doc_tool", description: "plain"})
-	_ = registry.Register(completionTestSkill{completionTestTool: completionTestTool{name: "docx", description: "skill"}})
-	source := ToolDirectiveSource{
-		Registry: func() ToolCapabilities { return completionCatalog{registry} },
-		Actor:    func(context.Context) contextinfo.Actor { return contextinfo.Actor{Role: contextinfo.RoleSuperadmin} },
-		Tags: func(ctx context.Context, _ ToolCapabilities, actor contextinfo.Actor, permission *security.Permission) ([]string, error) {
-			return preload.NewPreloadService(preload.PreloadOptions{Registry: registry}).Tags(contextinfo.WithActor(security.WithPermission(ctx, permission), actor))
-		},
-		ToolNamesByTag: func(ctx context.Context, _ ToolCapabilities, tag string, query tool.ToolQuery) ([]string, error) {
-			return preload.NewPreloadService(preload.PreloadOptions{Registry: registry}).ToolNamesByTag(ctx, tag, toolshare.ToolQuery{Kind: query.Kind, Names: query.Names, IncludeHidden: query.IncludeHidden, IncludeDiscover: query.IncludeDiscover})
-		},
-	}
+	source := ToolDirectiveSource{Tools: completionCatalog{tools: []tool.Info{{Name: "doc_tool"}}, skills: []tool.Info{{Name: "docx"}}}}
 
 	items, _ := source.Complete(context.Background(), Request{Text: "查 @skill:do", Cursor: len("查 @skill:do")})
 	if len(items) != 1 || items[0].Text != "@skill:docx" || items[0].Kind != KindSkillDirective || items[0].ReplaceStart != len("查 ") || items[0].ReplaceEnd != len("查 @skill:do") {
@@ -163,22 +126,7 @@ func TestToolDirectiveSourceCompletesSkillsSeparately(t *testing.T) {
 }
 
 func TestToolDirectiveSourceCompletesConfiguredTags(t *testing.T) {
-	registry := registry.NewRegistry(security.DefaultPermission())
-	_ = registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry)))
-	_ = registry.Register(completionTestTool{name: "alpha", description: "alpha"})
-	source := ToolDirectiveSource{
-		Registry: func() ToolCapabilities { return completionCatalog{registry} },
-		Actor:    func(context.Context) contextinfo.Actor { return contextinfo.Actor{Role: contextinfo.RoleSuperadmin} },
-		Tags: func(context.Context, ToolCapabilities, contextinfo.Actor, *security.Permission) ([]string, error) {
-			return []string{"agent"}, nil
-		},
-		ToolNamesByTag: func(_ context.Context, _ ToolCapabilities, tag string, _ tool.ToolQuery) ([]string, error) {
-			if tag == "agent" {
-				return []string{"alpha"}, nil
-			}
-			return nil, nil
-		},
-	}
+	source := ToolDirectiveSource{Tools: completionCatalog{tools: []tool.Info{{Name: "alpha"}}, tags: []string{"agent"}, names: []string{"alpha"}}}
 
 	items, _ := source.Complete(context.Background(), Request{Text: "@tool:ag", Cursor: len("@tool:ag")})
 	if len(items) != 1 || items[0].Text != "@tool:agent" || items[0].Description != "1 tool" {
@@ -196,33 +144,6 @@ func TestRouterSourceCompletesCommandArgs(t *testing.T) {
 		t.Fatalf("Complete = %#v", items)
 	}
 }
-
-type completionTestTool struct {
-	name        string
-	description string
-	hidden      bool
-	adminOnly   bool
-	apiTypes    []llm.APIType
-	tags        []string
-}
-
-func (t completionTestTool) Name() string { return t.name }
-func (t completionTestTool) Info() toolshare.Info {
-	return toolshare.Info{Name: t.name, Description: t.description, Risk: toolshare.RiskLow, Hidden: t.hidden, Tags: t.tags, SuperadminOnly: t.adminOnly, APITypes: t.apiTypes}
-}
-func (t completionTestTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Name: t.name}
-}
-func (t completionTestTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
-		return nil, "", nil
-	}), nil
-}
-
-type completionTestSkill struct{ completionTestTool }
-
-func (s completionTestSkill) Detail() string          { return "detail" }
-func (s completionTestSkill) ActivateTools() []string { return nil }
 
 type commandArgCompleter struct{}
 
@@ -243,68 +164,79 @@ func TestTextsDropsEmptyItems(t *testing.T) {
 	}
 }
 
-type completionCatalog struct{ *registry.Registry }
-
-func (r completionCatalog) QueryTools(ctx context.Context, query tool.ToolQuery) ([]tool.Info, error) {
-	values, err := r.Registry.QueryTools(ctx, toolshare.ToolQuery{Kind: query.Kind, Names: query.Names, IncludeHidden: query.IncludeHidden, IncludeDiscover: query.IncludeDiscover})
-	if err != nil {
-		return nil, err
-	}
-	infos := make([]tool.Info, 0, len(values))
-	for _, value := range values {
-		info := value.Info()
-		infos = append(infos, tool.Info{Name: info.Name, Description: info.Description, Hidden: info.Hidden, Tags: info.Tags})
-	}
-	return infos, nil
+// completionCatalog supplies query results; filtering policy belongs to Tool.
+type completionCatalog struct {
+	tools, skills    []tool.Info
+	tags, names      []string
+	query            func(context.Context, tool.ToolQuery) ([]tool.Info, error)
+	tagErr, namesErr error
 }
 
-func TestToolCompletionPreservesActorModelAndReplacementRange(t *testing.T) {
-	registry := registry.NewRegistry(security.DefaultPermission())
-	for _, candidate := range []completionTestTool{
-		{name: "visible"},
-		{name: "admin", adminOnly: true},
-		{name: "hidden", hidden: true},
-		{name: "responses", apiTypes: []llm.APIType{llm.APIType("responses")}},
-	} {
-		if err := registry.Register(candidate); err != nil {
-			t.Fatal(err)
-		}
+func (c completionCatalog) QueryTools(ctx context.Context, q tool.ToolQuery) ([]tool.Info, error) {
+	if c.query != nil {
+		return c.query(ctx, q)
 	}
-	for _, tc := range []struct {
-		role      contextinfo.Role
-		api, want string
-	}{
-		{contextinfo.RoleUser, "", "@tool:visible"},
-		{contextinfo.RoleSuperadmin, "responses", "@tool:admin,@tool:responses,@tool:visible"},
-	} {
-		source := ToolDirectiveSource{
-			Registry: func() ToolCapabilities { return completionCatalog{registry} },
-			Actor:    func(context.Context) contextinfo.Actor { return contextinfo.Actor{Role: tc.role} },
-			Tags: func(context.Context, ToolCapabilities, contextinfo.Actor, *security.Permission) ([]string, error) {
-				return nil, nil
-			},
-		}
-		ctx := contextinfo.WithModel(t.Context(), contextinfo.Model{APIType: tc.api})
-		text := "中文 @tool: trailing"
-		cursor := len("中文 @tool:")
-		items, err := source.Complete(ctx, Request{Text: text, Cursor: cursor})
-		if err != nil {
-			t.Fatal(err)
-		}
-		var names []string
-		for _, item := range items {
-			names = append(names, item.Text)
-			if item.ReplaceStart != len("中文 ") || item.ReplaceEnd != cursor {
-				t.Fatalf("range=%+v", item)
+	if q.Kind == "skill" {
+		return c.skills, nil
+	}
+	return c.tools, nil
+}
+func (c completionCatalog) ToolTags(context.Context) ([]string, error) { return c.tags, c.tagErr }
+func (c completionCatalog) ToolNamesByTag(_ context.Context, _ string, q tool.ToolQuery) ([]string, error) {
+	if q.Kind != "tool" {
+		return nil, errors.New("tag query must select tools")
+	}
+	return c.names, c.namesErr
+}
+func TestToolCompletionPreservesPreparedContextAndReplacementRange(t *testing.T) {
+	ctx := contextinfo.WithModel(t.Context(), contextinfo.Model{APIType: "chat"})
+	source := ToolDirectiveSource{
+		Context: func(ctx context.Context) (context.Context, error) {
+			return contextinfo.WithActor(ctx, contextinfo.Actor{ID: "user", Role: contextinfo.RoleUser}), nil
+		},
+		Tools: completionCatalog{query: func(ctx context.Context, q tool.ToolQuery) ([]tool.Info, error) {
+			actor, _ := contextinfo.ActorFromContext(ctx)
+			model, _ := contextinfo.ModelFromContext(ctx)
+			if actor.ID != "user" || model.APIType != "chat" || q.Kind != "tool" {
+				t.Fatalf("context or query lost: %+v %+v %+v", actor, model, q)
 			}
-		}
-		if got := strings.Join(names, ","); got != tc.want {
-			t.Fatalf("got=%q want=%q", got, tc.want)
-		}
-		canceled, cancel := context.WithCancel(ctx)
-		cancel()
-		if _, err := source.Complete(canceled, Request{Text: "@tool:v"}); !errors.Is(err, context.Canceled) {
-			t.Fatalf("query error=%v", err)
-		}
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			return []tool.Info{{Name: "visible"}}, nil
+		}},
+	}
+	cursor := len("中文 @tool:")
+	items, err := source.Complete(ctx, Request{Text: "中文 @tool: trailing", Cursor: cursor})
+	if err != nil || len(items) != 1 || items[0].Text != "@tool:visible" || items[0].ReplaceStart != len("中文 ") || items[0].ReplaceEnd != cursor {
+		t.Fatalf("items=%+v err=%v", items, err)
+	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := source.Complete(canceled, Request{Text: "@tool:v"}); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+}
+func TestToolCompletionPropagatesPreparationAndQueryErrors(t *testing.T) {
+	failure := errors.New("query failed")
+	for _, stage := range []string{"context", "tools", "tags", "names"} {
+		t.Run(stage, func(t *testing.T) {
+			catalog := completionCatalog{tags: []string{"web"}}
+			source := ToolDirectiveSource{}
+			switch stage {
+			case "context":
+				source.Context = func(context.Context) (context.Context, error) { return nil, failure }
+			case "tools":
+				catalog.query = func(context.Context, tool.ToolQuery) ([]tool.Info, error) { return nil, failure }
+			case "tags":
+				catalog.tagErr = failure
+			case "names":
+				catalog.namesErr = failure
+			}
+			source.Tools = catalog
+			if _, err := source.Complete(t.Context(), Request{Text: "@tool:w"}); !errors.Is(err, failure) {
+				t.Fatal(err)
+			}
+		})
 	}
 }

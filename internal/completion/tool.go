@@ -5,9 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"elbot/internal/contextinfo"
 	"elbot/internal/directive"
-	"elbot/internal/security"
 	"elbot/internal/tool"
 )
 
@@ -18,21 +16,13 @@ const KindSkillDirective = "skill_directive"
 // ToolCapabilities is the catalog view needed by directive completion.
 type ToolCapabilities interface {
 	QueryTools(context.Context, tool.ToolQuery) ([]tool.Info, error)
+	ToolTags(context.Context) ([]string, error)
+	ToolNamesByTag(context.Context, string, tool.ToolQuery) ([]string, error)
 }
 
-type ToolRegistryFunc func() ToolCapabilities
-type ActorFunc func(context.Context) contextinfo.Actor
-type PermissionFunc func() *security.Permission
-type ToolTagsFunc func(context.Context, ToolCapabilities, contextinfo.Actor, *security.Permission) ([]string, error)
-type ToolNamesByTagFunc func(context.Context, ToolCapabilities, string, tool.ToolQuery) ([]string, error)
-
 type ToolDirectiveSource struct {
-	Context        func(context.Context) (context.Context, error)
-	Registry       ToolRegistryFunc
-	Actor          ActorFunc
-	Permission     PermissionFunc
-	Tags           ToolTagsFunc
-	ToolNamesByTag ToolNamesByTagFunc
+	Context func(context.Context) (context.Context, error) // 准备查询所需身份、权限与模型上下文。
+	Tools   ToolCapabilities                               // 只借用工具、技能及标签查询能力。
 }
 
 func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) ([]Item, error) {
@@ -48,27 +38,17 @@ func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) ([]Item,
 			return nil, err
 		}
 	}
-	registry := s.registry()
-	actor := contextinfo.Actor{}
-	if s.Actor != nil {
-		actor = s.Actor(ctx)
-	}
-	permission := security.DefaultPermission()
-	if s.Permission != nil && s.Permission() != nil {
-		permission = s.Permission()
-	}
-	ctx = contextinfo.WithActor(security.WithPermission(ctx, permission), actor)
 	if token := directive.ParseSkillCompletionToken(req.Text, cursor); token.OK {
-		return s.completeSkills(ctx, registry, actor, permission, token, cursor)
+		return s.completeSkills(ctx, token, cursor)
 	}
 	if token.PrefixOnly {
 		return []Item{{Text: token.Prefix, Label: token.Prefix, Kind: KindToolDirective, ReplaceStart: token.Start, ReplaceEnd: cursor}}, nil
 	}
-	tags, err := s.matchingTags(ctx, registry, actor, permission, token.Query)
+	tags, err := s.matchingTags(ctx, token.Query)
 	if err != nil {
 		return nil, err
 	}
-	infos, err := s.matchingTools(ctx, registry, actor, permission, token.Query)
+	infos, err := s.matchingTools(ctx, token.Query)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +57,7 @@ func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) ([]Item,
 	for _, tag := range tags {
 		text := token.Prefix + tag
 		seenText[text] = true
-		description, err := s.tagDescription(ctx, registry, actor, permission, tag)
+		description, err := s.tagDescription(ctx, tag)
 		if err != nil {
 			return nil, err
 		}
@@ -94,15 +74,11 @@ func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) ([]Item,
 
 }
 
-func (s ToolDirectiveSource) registry() ToolCapabilities {
-	return s.Registry()
-}
-
-func (s ToolDirectiveSource) completeSkills(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, permission *security.Permission, token directive.SkillCompletionToken, cursor int) ([]Item, error) {
+func (s ToolDirectiveSource) completeSkills(ctx context.Context, token directive.SkillCompletionToken, cursor int) ([]Item, error) {
 	if token.PrefixOnly {
 		return []Item{{Text: token.Prefix, Label: token.Prefix, Kind: KindSkillDirective, ReplaceStart: token.Start, ReplaceEnd: cursor}}, nil
 	}
-	infos, err := s.matchingSkills(ctx, registry, actor, permission, token.Query)
+	infos, err := s.matchingSkills(ctx, token.Query)
 	if err != nil {
 		return nil, err
 	}
@@ -113,18 +89,18 @@ func (s ToolDirectiveSource) completeSkills(ctx context.Context, registry ToolCa
 	return out, nil
 }
 
-func (s ToolDirectiveSource) matchingTags(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, permission *security.Permission, query string) ([]string, error) {
-	candidates, err := s.allowedTags(ctx, registry, actor, permission)
+func (s ToolDirectiveSource) matchingTags(ctx context.Context, query string) ([]string, error) {
+	candidates, err := s.Tools.ToolTags(ctx)
 	return matchStrings(candidates, query), err
 }
 
-func (s ToolDirectiveSource) matchingTools(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, permission *security.Permission, query string) ([]tool.Info, error) {
-	infos, err := registry.QueryTools(ctx, tool.ToolQuery{Kind: "tool"})
+func (s ToolDirectiveSource) matchingTools(ctx context.Context, query string) ([]tool.Info, error) {
+	infos, err := s.Tools.QueryTools(ctx, tool.ToolQuery{Kind: "tool"})
 	return matchInfos(infos, query), err
 }
 
-func (s ToolDirectiveSource) matchingSkills(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, permission *security.Permission, query string) ([]tool.Info, error) {
-	infos, err := registry.QueryTools(ctx, tool.ToolQuery{Kind: "skill"})
+func (s ToolDirectiveSource) matchingSkills(ctx context.Context, query string) ([]tool.Info, error) {
+	infos, err := s.Tools.QueryTools(ctx, tool.ToolQuery{Kind: "skill"})
 	return matchInfos(infos, query), err
 }
 
@@ -149,12 +125,8 @@ func matchInfos(candidates []tool.Info, query string) []tool.Info {
 	return fuzzy
 }
 
-func (s ToolDirectiveSource) allowedTags(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, permission *security.Permission) ([]string, error) {
-	return s.Tags(ctx, registry, actor, permission)
-}
-
-func (s ToolDirectiveSource) tagDescription(ctx context.Context, registry ToolCapabilities, actor contextinfo.Actor, permission *security.Permission, tag string) (string, error) {
-	names, err := s.ToolNamesByTag(ctx, registry, tag, tool.ToolQuery{Kind: "tool"})
+func (s ToolDirectiveSource) tagDescription(ctx context.Context, tag string) (string, error) {
+	names, err := s.Tools.ToolNamesByTag(ctx, tag, tool.ToolQuery{Kind: "tool"})
 	if err != nil {
 		return "", err
 	}

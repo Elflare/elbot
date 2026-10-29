@@ -5,8 +5,6 @@ import (
 	"elbot/internal/agent/dialogue"
 	agentexecution "elbot/internal/agent/execution"
 	agentshare "elbot/internal/agent/share"
-	"elbot/internal/command"
-	"elbot/internal/completion"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/platform/dispatch"
@@ -19,13 +17,9 @@ import (
 )
 
 type assemblyPlatform struct {
-	mu        sync.Mutex
-	outputs   []string
-	catalog   []command.Info
-	completer *completion.Service
+	mu      sync.Mutex
+	outputs []string
 }
-
-type notificationSenderKey struct{}
 
 func connectTestNotifications(t *testing.T, router *dispatch.Router) *notification.Manager {
 	t.Helper()
@@ -39,11 +33,7 @@ func connectTestNotifications(t *testing.T, router *dispatch.Router) *notificati
 		t.Fatal(err)
 	}
 	_, err = s.Connect(func(ctx context.Context, n events.Notification) (events.NotificationReceipt, error) {
-		var sender delivery.MessageSender = router
-		if original, ok := ctx.Value(notificationSenderKey{}).(delivery.MessageSender); ok {
-			sender = original
-		}
-		r, _, err := sender.SendTo(ctx, delivery.Target{Platform: n.Target.Platform, ScopeID: n.Target.ScopeID}, []delivery.Output{delivery.Text(n.Text)})
+		r, _, err := router.SendTo(ctx, delivery.Target{Platform: n.Target.Platform, ScopeID: n.Target.ScopeID}, []delivery.Output{delivery.Text(n.Text)})
 		return events.NotificationReceipt{PlatformMessageIDs: r.PlatformMessageIDs}, err
 	}, signal.ConnectOptions{})
 	if err != nil {
@@ -64,10 +54,6 @@ func (p *assemblyPlatform) SendChat(_ context.Context, outputs []delivery.Output
 func (p *assemblyPlatform) SendTo(ctx context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	return p.SendChat(ctx, noticeOutputs)
 }
-
-func (p *assemblyPlatform) SetCommandCatalog(infos []command.Info) { p.catalog = infos }
-
-func (p *assemblyPlatform) SetCompleter(service *completion.Service) { p.completer = service }
 
 func (p *assemblyPlatform) text() string {
 	p.mu.Lock()

@@ -30,7 +30,7 @@ type Supervisor struct {
 // NewSupervisor 接收完整配置；部分构造失败仍返回总管，由 App 统一清理。
 func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps) (*Supervisor, error) {
 	m := &Supervisor{}
-	m.lifecycle.init(ctx, deps.Mode)
+	m.lifecycle.init(ctx)
 	err := m.wire(cfg, deps)
 	if err != nil {
 		m.prepare = func() error { return err }

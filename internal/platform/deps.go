@@ -8,9 +8,7 @@ import (
 	"elbot/internal/agent"
 	"elbot/internal/command"
 	"elbot/internal/completion"
-	"elbot/internal/logging"
 	"elbot/internal/media"
-	"elbot/internal/security"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 )
@@ -26,9 +24,7 @@ type SupervisorDeps struct {
 		ResolvePlatformMessageAlias(context.Context, string, string, string) (string, error)
 		GetByPlatformMessage(context.Context, string, string, string) (*storage.ChatMessage, error)
 	}
-	Media      *media.MediaCenter   // 发送媒体准备所需能力，由 dispatch 的消费接口裁剪。
-	Permission *security.Permission // 共享权限服务；不由 Platform 关闭。
-	Logs       *logging.Manager     // 共享日志设施；不由 Platform 关闭。
+	Media *media.MediaCenter // 发送媒体准备所需能力，由 dispatch 的消费接口裁剪。
 }
 
 // AgentCapabilities 按目标 Agent 公开契约接线，不向子包交付完整总管。

@@ -39,7 +39,7 @@ flowchart TD
 <!-- locator:startup -->
 ## 启动与装配
 
-App 实现公共流程，下层按照调用契约实现。五条业务线已提供根包总管，配置独占、Platform 下层、Media 全包、模型构造与消费者接线已实现；进程入口接入新 App API，全仓测试和临时配置的 Service 启停验证通过。原 13 个生产文件和 12 个测试文件保存在同目录的 `*.go.bak` 中，不参与构建。
+App 实现公共流程，下层按照调用契约实现。五条业务线已提供根包总管，配置独占、Platform 下层、Media 全包、模型构造与消费者接线已实现；进程入口接入新 App API，全仓测试和临时配置的 Service 启停验证通过。App 不保留迁移备份。
 
 六文件职责及接口契约见 [App 包设计](app-design.md)。App 加载配置、构造共享资源和各线总管、交付公开能力并协调启停。媒体和模型服务接收完整配置，自行处理后端、凭据、协议客户端、请求参数及恢复／重载；App 不拆解这些初始化细节。共享存储和独立历史库均归 App，Platform 直接写入历史，Tool 直接查询；部分失败交回已取得对象统一清理，订阅由接收方持有和释放。权限管理使用 `security.Permission`，App 与 Agent 不承接 Doctor。
 
@@ -156,7 +156,7 @@ flowchart TD
 
 Agent 总管持有模型完成、状态变化、视觉降级三个线内事件信号。`BeginClose` 拒绝两类公开入口的新订阅，但保留信号供在途工作发布收尾事件。App 等待平台接入和后台生产者退出后调用 Agent 的 `Close`；`Close` 等待内部组件收尾，再关闭信号，沿用各订阅的关闭策略。`Done` 等待信号回调实际退出，单独调用 `BeginClose` 不会完成 `Done`，`Close` 超时也不会提前完成它。外部消费者自行管理其异步工作的生命周期。
 
-工具预加载和补全标签由 Tool 能力提供；执行 Schema 统一经工具执行能力生成，提示词只消费工具名称。Agent 不另设自定义 Schema Provider 或 Registry 回退。整链路测试通过真实 `NewSupervisor` 构造，子组件单测在各所属包中维护。
+工具预加载和补全标签由 Tool 能力提供；执行 Schema 统一经工具执行能力生成，提示词只消费工具名称。Completion 的 ToolDirectiveSource 通过 Tools 消费 QueryTools、ToolTags、ToolNamesByTag 三项能力，Agent 在 Context 回调统一准备身份、权限与模型上下文。Agent 不另设自定义 Schema Provider 或 Registry 回退。整链路测试构造真实 Agent 和 Tool 总管，使用内置文件工具与临时技能资产；子组件单测在各所属包中维护。Agent 通知测试检查实际发布的来源、正文及去重，平台投递由平台测试验证。
 
 根包 `agent.Supervisor` 接收完整配置和借用依赖，持有 Session、Request、Turn、协议路线及订阅。公开 Hook 回调及嵌套数据、状态和绑定事件定义在 `contracts.go`；根部转换为内部契约，每个订阅者获得独立快照。后台请求、结果与复制请求也在此定义；background.go 提供执行、复制与过期清理入口，连接调用方与 Agent 的取消信号。input/background.go 准备身份、会话、模型上下文和新会话预载，复用现有执行协调器；复制与清理委托自有 Session，复制元数据使用 JSON 原始值。调用方提供已准备的工作目录范围与后台来源，并在 Close 前等待这些同步调用退出。Background Runner 只准备任务目录和后台来源，通过 Agent.RunBackground 进入这条执行链。
 
@@ -517,9 +517,9 @@ flowchart TD
 
 平台负责输入归一化、历史与输出落地，支持本地／远程 CLI、QQ OneBot、QQ Official、Telegram 和 headless。
 
-Platform 根部负责总管、装配与公开能力；下层契约见 [App 包设计](app-design.md#platform-下层目标契约)。根部持有适配器与订阅，借用 App 持有的历史库，输入转换为 Agent 自有请求并保留延迟媒体解析。contracts.go 的公开 MessageContext 只表达原文、原生载荷与引用事实，运行能力留在内部。dispatch 只取得名称、发送及可选原生 API、媒体解析能力，完整 Runtime 归总管；媒体回执通过根部注入的 SaveMediaOutput 持久化。通用能力使用固定方法，public_api.go 转交原生 API 与媒体解析，calls.go 只按显式平台查找并在锁外转发。引用恢复依赖通过根部闭包固定，不混入共享请求。Share 定义运行、入站、可选原生 API 和通知契约；CLI、OneBot、QQ Official、Telegram 已接入运行与通知，Headless 已接入无状态运行契约，OneBot 与 Telegram 提供原生传输。故障通知由根部选择目标并记录日志，notification.Manager 通过既有信号异步投递，通知能力保留到最终关闭。配置定义统一由根部 ConfigDefinitions 提供。
+Platform 根部负责总管、装配与公开能力；下层契约见 [App 包设计](app-design.md#platform-下层目标契约)。根部持有适配器与订阅，借用 App 持有的历史库，输入转换为 Agent 自有请求并保留延迟媒体解析。contracts.go 的公开 MessageContext 只表达原文、原生载荷与引用事实，运行能力留在内部。dispatch 只取得名称、发送及可选原生 API、媒体解析能力，完整 Runtime 归总管；媒体回执通过根部注入的 SaveMediaOutput 持久化。通用能力使用固定方法，public_api.go 转交原生 API 与媒体解析，calls.go 只按显式平台查找并在锁外转发。引用恢复只接收根部注入的六项会话／消息／媒体查询函数和最小历史身份查询，依赖通过闭包固定，不混入共享请求。Share 定义运行、入站、可选原生 API 和通知契约；CLI、OneBot、QQ Official、Telegram 已接入运行与通知，Headless 已接入无状态运行契约，OneBot 与 Telegram 提供原生传输。故障通知由根部选择目标并记录日志，notification.Manager 通过既有信号异步投递，通知能力保留到最终关闭。配置定义统一由根部 ConfigDefinitions 提供。
 
-- Platform Supervisor 管理适配器；服务模式各平台退出互不影响，全部退出后仍等待外部停止，本地 TUI 退出结束整线。独立故障记录错误并异步通知其他运行平台的配置超管。BeginClose／Wait 仅停止并等待接入；Close 最后释放 UI、通知和适配器资源，历史库由 App 在所有业务线退出后关闭，Done 表示最终清理完成。
+- Platform Supervisor 管理适配器；服务模式各平台退出互不影响，全部退出后仍等待外部停止，本地 TUI 退出结束整线。独立故障记录错误并异步通知其他运行平台的配置超管。BeginClose 停止接入，Wait 及时报告整线停止，让 App 开始统一关闭期限；WaitIngress 在期限内等待接入及回调实际退出。CLI 的 WaitExit 只观察本地退出信号，适配器 Wait 仍等待实际退出。Close 最后释放 UI、通知和适配器资源，历史库由 App 在所有业务线退出后关闭，Done 表示最终清理完成。
 - Headless 是 Service 模式的无状态主发送占位：Start 仅检查 context，BeginClose 无操作，Wait／Close 立即完成，两种发送入口保持拒绝输出。根部不启动它，只登记最终清理；Service 持续等待外部停止由根部负责，Headless 不持有接入、资源或常驻协程。
 - CLI 已实现本地／远程服务的分阶段生命周期：同步确认终端或监听就绪，停止业务接入后保留展示与连接发送，最终 Close 等待终端和连接处理退出；管道读取可取消，终端以正常退出消息收尾。CLI 拥有自有事件契约和状态订阅，展示目标来自事件事实，状态版本与绑定版本分别处理。换绑清除旧绑定待发状态并拒绝迟到事件，已开始的发送允许完成，新状态随后串行发送；展示关闭等待在途发送，不取消共享连接上的写入。取消 Wait 观察时优先返回已记录的独立运行故障，不提前宣告接入退出。远程默认回复固定原连接，断开即失败，显式目标按多连接规则发送。客户端连接选择和结果分类归 CLI，已连接后断线结束展示并返回失败。
 - OneBot 使用自有 Deps，根部注入 CommonConfig、最小历史读写、引用恢复和两项存储查询。Start 异步连接远端；BeginClose 停止输入、重连及临时拨号并取消业务，Wait 等待接入和业务退出，已建立连接继续读取发送响应；Close 最终释放主／临时连接并等待在途操作，可超时重试。写帧排队和等待响应可取消，已开始的帧使用隔离取消且有期限的上下文；Transport 负责响应匹配、关闭清理和旧连接隔离。

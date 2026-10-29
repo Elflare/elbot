@@ -12,14 +12,14 @@ import (
 
 func testLifecycle() *lifecycle {
 	l := &lifecycle{}
-	l.init(context.Background(), "service")
+	l.init(context.Background())
 	return l
 }
 
 func testRuntime(name string, critical bool, result error) (*platformLifecycle, chan struct{}) {
 	done := make(chan struct{})
 	var once sync.Once
-	return &platformLifecycle{name: name, stopApp: critical,
+	runtime := &platformLifecycle{name: name,
 		start:      func(context.Context) error { return nil },
 		beginClose: func() { once.Do(func() { close(done) }) },
 		wait: func(ctx context.Context) error {
@@ -34,7 +34,11 @@ func testRuntime(name string, critical bool, result error) (*platformLifecycle, 
 			case <-ctx.Done():
 				return ctx.Err()
 			}
-		}}, done
+		}}
+	if critical {
+		runtime.waitExit = runtime.wait
+	}
+	return runtime, done
 }
 
 func TestServiceExitDoesNotStopLine(t *testing.T) {
@@ -66,9 +70,19 @@ func TestTUIExitStopsIngressAndPreservesResources(t *testing.T) {
 		t.Run(fmtTestError(fault), func(t *testing.T) {
 			l := testLifecycle()
 			r, _ := testRuntime("cli", true, fault)
+			release := make(chan struct{}, 1)
+			defer close(release)
+			r.wait = func(ctx context.Context) error {
+				select {
+				case <-release:
+					return fault
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
 			l.runtimes = []*platformLifecycle{r}
 			var closed atomic.Bool
-			l.closeSteps = []closeStep{{"output/history", func(context.Context) error { closed.Store(true); return nil }}}
+			l.closeSteps = []closeStep{{"ui", func(context.Context) error { closed.Store(true); return nil }}}
 			if err := l.Start(); err != nil {
 				t.Fatal(err)
 			}
@@ -77,12 +91,22 @@ func TestTUIExitStopsIngressAndPreservesResources(t *testing.T) {
 				t.Fatalf("Wait = %v", err)
 			}
 			if closed.Load() {
-				t.Fatal("ingress exit closed output/history")
+				t.Fatal("exit signal closed UI")
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			if err := l.WaitIngress(ctx); !errors.Is(err, context.Canceled) {
+				t.Fatalf("ingress completed while callback remains: %v", err)
 			}
 			select {
 			case <-l.Done():
 				t.Fatal("Done before final Close")
 			default:
+			}
+			// 放行回调后才允许最终关闭展示资源。
+			release <- struct{}{}
+			if err := l.WaitIngress(context.Background()); !errors.Is(err, fault) {
+				t.Fatalf("WaitIngress = %v", err)
 			}
 			if err := l.Close(context.Background()); err != nil {
 				t.Fatal(err)
@@ -167,16 +191,16 @@ func TestCloseDeadlineRetainsDependenciesAndCanResume(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	first := true
 	l.closeSteps = []closeStep{
-		{"adapter", func(context.Context) error {
+		{"ui", func(context.Context) error {
 			if first {
 				first = false
 				cancel()
 				return context.Canceled
 			}
-			order = append(order, "adapter")
+			order = append(order, "ui")
 			return nil
 		}},
-		{"history", func(context.Context) error { order = append(order, "history"); return nil }},
+		{"adapter", func(context.Context) error { order = append(order, "adapter"); return nil }},
 	}
 	if err := l.Close(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
@@ -192,7 +216,7 @@ func TestCloseDeadlineRetainsDependenciesAndCanResume(t *testing.T) {
 	if err := l.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(order, []string{"adapter", "history"}) {
+	if !reflect.DeepEqual(order, []string{"ui", "adapter"}) {
 		t.Fatal(order)
 	}
 	select {
@@ -210,7 +234,7 @@ func TestCanceledWaitReadsPublishedFaultBeforeObserver(t *testing.T) {
 	fault := errors.Join(context.Canceled, errors.New("independent failure"))
 	observerEntered, release := make(chan struct{}), make(chan struct{})
 	r, _ := testRuntime("cli", true, nil)
-	r.wait = func(ctx context.Context) error {
+	r.waitExit = func(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return fault
 		}
@@ -237,16 +261,16 @@ func TestCanceledWaitReadsPublishedFaultBeforeObserver(t *testing.T) {
 func TestUnstartedPartialConstructionAndCleanupFailure(t *testing.T) {
 	l := testLifecycle()
 	fault := errors.New("cleanup failed")
-	var historyClosed bool
+	var adapterClosed bool
 	l.closeSteps = []closeStep{
-		{"partial adapter", func(context.Context) error { return fault }},
-		{"history", func(context.Context) error { historyClosed = true; return nil }},
+		{"ui", func(context.Context) error { return fault }},
+		{"adapter", func(context.Context) error { adapterClosed = true; return nil }},
 	}
 	if err := l.Close(context.Background()); !errors.Is(err, fault) {
 		t.Fatal(err)
 	}
-	if !historyClosed {
-		t.Fatal("ordinary failure skipped history cleanup")
+	if !adapterClosed {
+		t.Fatal("ordinary failure skipped adapter cleanup")
 	}
 	if err := l.Close(context.Background()); !errors.Is(err, fault) {
 		t.Fatal(err)
@@ -256,7 +280,7 @@ func TestUnstartedPartialConstructionAndCleanupFailure(t *testing.T) {
 func TestParentCancellationStopsIngress(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	l := &lifecycle{}
-	l.init(ctx, "service")
+	l.init(ctx)
 	r, _ := testRuntime("remote", false, nil)
 	l.runtimes = []*platformLifecycle{r}
 	if err := l.Start(); err != nil {

@@ -32,9 +32,14 @@ func TestLocalWaitPreservesFaultWhileCompletionDrains(t *testing.T) {
 	if _, err := writer.WriteString(strings.Repeat("x", bufio.MaxScanTokenSize)); err != nil {
 		t.Fatal(err)
 	}
-	<-a.inputDone
+	if err := a.WaitExit(t.Context()); !errors.Is(err, bufio.ErrTooLong) {
+		t.Fatalf("exit signal lost scanner fault: %v", err)
+	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
+	if err := a.WaitExit(ctx); !errors.Is(err, bufio.ErrTooLong) {
+		t.Fatalf("canceled exit observation lost scanner fault: %v", err)
+	}
 	if err := a.Wait(ctx); !errors.Is(err, bufio.ErrTooLong) {
 		t.Fatalf("published scanner fault lost while completion drains: %v", err)
 	}

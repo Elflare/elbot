@@ -1,7 +1,5 @@
 package agent
 
-import toolshare "elbot/internal/tool/share"
-
 import (
 	"context"
 	"elbot/internal/completion"
@@ -10,37 +8,39 @@ import (
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 )
 
-type contractTool struct{ calls int }
-
-func (*contractTool) Name() string { return "contract_echo" }
-func (v *contractTool) Info() toolshare.Info {
-	return toolshare.Info{Name: v.Name(), Source: toolshare.SourceBuiltin, Risk: toolshare.RiskSafe, Tags: []string{"contract"}}
-}
-func (v *contractTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Name: v.Name(), Parameters: map[string]any{"type": "object", "properties": map[string]any{}}}
-}
-func (v *contractTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: v.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
-		v.calls++
-		return &toolshare.Result{Content: "contract result"}, "", nil
-	}), nil
+func contractReadFile(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "input.txt")
+	if err := os.WriteFile(path, []byte("contract result"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	args, err := json.Marshal(map[string]string{"path": path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(args)
 }
 
 type contractChat struct {
 	isolatedClient
 	requests []chatcompletions.Request
+	call     llm.ToolCallRequest
 }
 
 func (v *contractChat) Stream(_ context.Context, req chatcompletions.Request) (<-chan chatcompletions.Chunk, error) {
 	v.requests = append(v.requests, req)
 	ch := make(chan chatcompletions.Chunk, 1)
 	if len(v.requests) == 1 {
-		ch <- chatcompletions.Chunk{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "contract-call", Name: "contract_echo", Args: "{}"}}}
+		ch <- chatcompletions.Chunk{ToolCallDeltas: []chatcompletions.ToolCallDelta{{ID: "contract-call", Name: v.call.Name, Args: v.call.Arguments}}}
 	} else {
 		ch <- chatcompletions.Chunk{DeltaContent: "contract answer"}
 	}
@@ -78,24 +78,20 @@ func contractSupervisor(t *testing.T, deps SupervisorDeps) *Supervisor {
 
 func TestSupervisorToolPreloadExecutionAndPersistence(t *testing.T) {
 	deps := isolatedModuleDeps(t)
-	echo := &contractTool{}
-	if err := deps.Tools.(isolatedToolCapabilities).Registry.Register(echo); err != nil {
-		t.Fatal(err)
-	}
-	client := &contractChat{}
+	client := &contractChat{call: llm.ToolCallRequest{Name: "read_file", Arguments: contractReadFile(t)}}
 	contractModels(t, &deps, client)
 	m := contractSupervisor(t, deps)
-	items, err := m.Complete(t.Context(), completion.Request{Text: "@tool:contract"})
-	if err != nil || !slices.Contains(completion.Texts(items), "@tool:contract_echo") || !slices.Contains(completion.Texts(items), "@tool:contract") {
+	items, err := m.Complete(t.Context(), completion.Request{Text: "@tool:read_file"})
+	if err != nil || !slices.Contains(completion.Texts(items), "@tool:read_file") {
 		t.Fatalf("completion: %v %v", items, err)
 	}
-	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "@tool:contract_echo hello"}); err != nil {
+	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "@tool:read_file hello"}); err != nil {
 		t.Fatal(err)
 	}
-	if echo.calls != 1 || len(client.requests) != 2 {
-		t.Fatalf("calls=%d requests=%d", echo.calls, len(client.requests))
+	if len(client.requests) != 2 {
+		t.Fatalf("requests=%d", len(client.requests))
 	}
-	if !slices.ContainsFunc(client.requests[0].Tools, func(v llm.ToolSchema) bool { return v.Name == echo.Name() }) {
+	if !slices.ContainsFunc(client.requests[0].Tools, func(v llm.ToolSchema) bool { return v.Name == "read_file" }) {
 		t.Fatal("preloaded schema missing")
 	}
 	rows, err := deps.Store.Sessions().List(t.Context(), storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 10})
@@ -106,7 +102,9 @@ func TestSupervisorToolPreloadExecutionAndPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.ContainsFunc(messages, func(v storage.Message) bool { return v.ToolCallID == "contract-call" && v.Content == "contract result" }) {
+	if !slices.ContainsFunc(messages, func(v storage.Message) bool {
+		return v.ToolCallID == "contract-call" && strings.Contains(v.Content, "contract result")
+	}) {
 		t.Fatalf("missing persisted tool result: %#v", messages)
 	}
 	if messages[len(messages)-1].Content != "contract answer" {

@@ -24,7 +24,6 @@ import (
 
 func newBackgroundAgent(t *testing.T) (*Supervisor, SupervisorDeps, *tool.Supervisor, context.Context) {
 	t.Helper()
-	deps, models := isolatedModuleResources(t)
 	cfg := isolatedAgentConfig()
 	root := t.TempDir()
 	cfg.ConfigPath = filepath.Join(root, "config.toml")
@@ -41,17 +40,11 @@ description: Task guidance
 KEEP_BACKGROUND_GUIDANCE`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	tools, err := tool.NewSupervisor(t.Context(), cfg, tool.SupervisorDeps{
-		Store: deps.Store, Models: models, Media: deps.Media, Permission: deps.Permission,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = tools.Close(context.Background()) })
+	deps, _ := configuredModuleResources(t, cfg)
+	tools := deps.Tools.(*tool.Supervisor)
 	if err := tools.Reload(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	deps.Tools = tools
 	m, err := NewSupervisor(t.Context(), cfg, deps)
 	if err != nil {
 		t.Fatal(err)

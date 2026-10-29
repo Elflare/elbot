@@ -43,6 +43,13 @@ type testWaitingLine struct {
 
 func (l *testWaitingLine) Wait(ctx context.Context) error { return l.wait(ctx) }
 
+type testIngressLine struct {
+	testLifecycle
+	waitIngress func(context.Context) error
+}
+
+func (l *testIngressLine) WaitIngress(ctx context.Context) error { return l.waitIngress(ctx) }
+
 func TestStartupStepsRunInOrderAndMeasureCompletedStages(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var order []string
@@ -262,7 +269,7 @@ func TestStopBusinessLinesPreservesIngressAndDependencyPhases(t *testing.T) {
 		}
 		var owner Lifecycle = &lifecycle
 		if name == "platform" {
-			owner = &testWaitingLine{testLifecycle: lifecycle, wait: func(context.Context) error {
+			owner = &testIngressLine{testLifecycle: lifecycle, waitIngress: func(context.Context) error {
 				order = append(order, "wait ingress")
 				return nil
 			}}

@@ -15,9 +15,9 @@ type platformLifecycle struct {
 	start      func(context.Context) error
 	beginClose func()
 	wait       func(context.Context) error
-	stopApp    bool // 本地 TUI 结束时结束整线；服务适配器退出仅隔离该平台。
-	attempted  bool // Start 已被调用，包含部分启动失败，必须等待真实退出。
-	running    bool // 用于向仍在运行的平台发送故障通知。
+	waitExit   func(context.Context) error // 本地 CLI 的退出信号；服务适配器不结束整线。
+	attempted  bool                        // Start 已被调用，包含部分启动失败，必须等待真实退出。
+	running    bool                        // 用于向仍在运行的平台发送故障通知。
 }
 
 type closeStep struct {
@@ -46,7 +46,7 @@ type lifecycle struct {
 	closeErr         error
 }
 
-func (l *lifecycle) init(ctx context.Context, _ string) {
+func (l *lifecycle) init(ctx context.Context) {
 	l.parent = ctx
 	l.ctx, l.cancel = context.WithCancel(ctx)
 	l.startupDone = make(chan struct{})
@@ -113,22 +113,23 @@ func (l *lifecycle) Start() error {
 
 func (l *lifecycle) observe(runtime *platformLifecycle) {
 	defer l.monitorWG.Done()
+	if runtime.waitExit != nil {
+		_ = runtime.waitExit(context.Background())
+		l.BeginClose()
+	}
 	err := runtime.wait(context.Background())
 	l.mu.Lock()
 	runtime.running = false
-	if runtime.stopApp && err != nil {
+	if runtime.waitExit != nil && err != nil {
 		l.runErr = errors.Join(l.runErr, fmt.Errorf("%s: %w", runtime.name, err))
 	}
 	l.mu.Unlock()
-	if runtime.stopApp {
-		l.BeginClose()
-	}
 	if err != nil && l.onFailure != nil {
 		l.onFailure(runtime.name, err)
 	}
 }
 
-// BeginClose 只停止接入；UI、通知、发送连接和历史留给最终 Close。
+// BeginClose 只停止接入；UI、通知和发送连接留给最终 Close。
 func (l *lifecycle) BeginClose() {
 	l.mu.Lock()
 	if l.closing {
@@ -153,47 +154,52 @@ func (l *lifecycle) BeginClose() {
 	}()
 }
 
-// Wait 的取消只结束本次观察；故障由适配器解释，根部不解析协议错误。
+// Wait 观察整线停止，不等待接入回调收尾；取消观察不停止业务线。
 func (l *lifecycle) Wait(ctx context.Context) error {
-	result := func() error {
-		l.mu.Lock()
-		defer l.mu.Unlock()
-		return errors.Join(l.startErr, l.runErr)
+	select {
+	case <-l.ctx.Done():
+	case <-ctx.Done():
 	}
+	l.mu.Lock()
+	err := errors.Join(l.startErr, l.runErr)
+	var critical []*platformLifecycle
+	for _, runtime := range l.runtimes {
+		if runtime.waitExit != nil && runtime.attempted {
+			critical = append(critical, runtime)
+		}
+	}
+	l.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	// 直接读取 CLI 已发布结果，不等待回调，也不依赖观察协程的调度时机。
+	observation, cancel := context.WithCancel(ctx)
+	cancel()
+	for _, runtime := range critical {
+		if fault := runtime.waitExit(observation); fault != nil && fault != observation.Err() {
+			return fmt.Errorf("%s: %w", runtime.name, fault)
+		}
+	}
+	if l.ctx.Err() != nil {
+		return nil
+	}
+	return ctx.Err()
+}
+
+// WaitIngress 等待所有已尝试启动的接入及回调实际退出，不释放发送资源。
+func (l *lifecycle) WaitIngress(ctx context.Context) error {
 	select {
 	case <-l.ingressDone:
-		return result()
-	default:
-	}
-	select {
-	case <-l.ingressDone:
-		return result()
 	case <-ctx.Done():
 		select {
 		case <-l.ingressDone:
-			return result()
 		default:
+			return errors.Join(l.Wait(ctx), ctx.Err())
 		}
-		l.mu.Lock()
-		err := errors.Join(l.startErr, l.runErr)
-		var critical []*platformLifecycle
-		for _, runtime := range l.runtimes {
-			if runtime.stopApp && runtime.attempted {
-				critical = append(critical, runtime)
-			}
-		}
-		l.mu.Unlock()
-		if err != nil {
-			return err
-		}
-		// 直接读取组件已发布结果，不依赖观察协程的调度时机。
-		for _, runtime := range critical {
-			if fault := runtime.wait(ctx); fault != nil && fault != ctx.Err() {
-				return fmt.Errorf("%s: %w", runtime.name, fault)
-			}
-		}
-		return ctx.Err()
 	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return errors.Join(l.startErr, l.runErr)
 }
 
 func (l *lifecycle) Close(ctx context.Context) error {

@@ -38,11 +38,12 @@ func DecodeConfig(raw map[string]any, out any) error {
 }
 
 func HasCommandPrefix(text string, prefixes []string) bool {
-	_, ok := CommandName(text, prefixes)
+	_, _, ok := CommandName(text, prefixes)
 	return ok
 }
 
-func CommandName(text string, prefixes []string) (string, bool) {
+// CommandName 返回实际匹配的前缀与命令名，供引用重写保留命令入口。
+func CommandName(text string, prefixes []string) (string, string, bool) {
 	text = strings.TrimSpace(text)
 	for _, prefix := range prefixes {
 		prefix = strings.TrimSpace(prefix)
@@ -51,10 +52,10 @@ func CommandName(text string, prefixes []string) (string, bool) {
 		}
 		rest := strings.TrimSpace(strings.TrimPrefix(text, prefix))
 		if rest == "" {
-			return "", true
+			return prefix, "", true
 		}
 		name, _, _ := strings.Cut(rest, " ")
-		return strings.TrimSpace(name), true
+		return prefix, strings.TrimSpace(name), true
 	}
-	return "", false
+	return "", "", false
 }

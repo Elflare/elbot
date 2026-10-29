@@ -35,11 +35,12 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps) error {
 	}
 	var err error
 	if deps.Mode == "tui" {
-		m.primary = cli.New()
-		m.ownRuntime(m.primary, true, true)
+		adapter := cli.New()
+		m.primary = adapter
+		m.ownRuntime(adapter, true, adapter.WaitExit)
 	} else {
 		m.primary = headless.New()
-		m.ownRuntime(m.primary, false, false)
+		m.ownRuntime(m.primary, false, nil)
 		cliConfig, err := cli.NewConfigFromPlatformConfig(cfg.Platform["cli"])
 		if err != nil {
 			return err
@@ -47,7 +48,7 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps) error {
 		if cliConfig.Enabled && cliConfig.Server.Enabled {
 			adapter, err := cli.NewRemoteServer(cli.RemoteServerOptions{Config: cliConfig, ConfigDir: filepath.Dir(cfg.ConfigPath), Superadmins: cfg.Security.Superadmins["cli"]})
 			if adapter != nil {
-				m.ownRuntime(adapter, err == nil, false)
+				m.ownRuntime(adapter, err == nil, nil)
 			}
 			if err != nil {
 				return err
@@ -55,7 +56,15 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps) error {
 		}
 	}
 	// 引用恢复只在根部连接；适配器不导入 refcontext 兄弟包。
-	referenceDeps := refcontext.Options{Store: deps.Store, ChatHistory: deps.ChatHistory}
+	referenceDeps := refcontext.Options{
+		FindByPlatformMessage: deps.Store.Messages().FindByPlatformMessage,
+		GetSession:            deps.Store.Sessions().Get,
+		ListBySession:         deps.Store.Messages().ListBySession,
+		FindHistory:           deps.Store.Media().FindHistory,
+		GetMedia:              deps.Store.Media().Get,
+		FindOutputs:           deps.Store.Media().FindOutputs,
+		ChatHistory:           deps.ChatHistory,
+	}
 	if raw, ok := cfg.Platform["qqofficial"]; ok {
 		adapter, err := qqofficial.NewFromPlatformConfig(raw, qqofficial.Deps{
 			CommonConfig: share.CommonConfig{Superadmins: cfg.Security.Superadmins["qqofficial"], CommandPrefixes: cfg.Commands.Prefixes, ConfigDir: filepath.Dir(cfg.ConfigPath)},
@@ -65,7 +74,7 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps) error {
 			},
 		})
 		if adapter != nil {
-			m.ownRuntime(adapter, err == nil && adapter.Enabled(), false)
+			m.ownRuntime(adapter, err == nil && adapter.Enabled(), nil)
 		}
 		if err != nil {
 			return err
@@ -86,7 +95,7 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps) error {
 			FindOutputs:           deps.Store.Media().FindOutputs,
 		})
 		if adapter != nil {
-			m.ownRuntime(adapter, err == nil && adapter.Enabled(), false)
+			m.ownRuntime(adapter, err == nil && adapter.Enabled(), nil)
 		}
 		if err != nil {
 			return err
@@ -101,7 +110,7 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps) error {
 			},
 		})
 		if adapter != nil {
-			m.ownRuntime(adapter, err == nil && adapter.Enabled(), false)
+			m.ownRuntime(adapter, err == nil && adapter.Enabled(), nil)
 		}
 		if err != nil {
 			return err
@@ -169,13 +178,13 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps) error {
 	return nil
 }
 
-func (m *Supervisor) ownRuntime(adapter share.Runtime, active, stopApp bool) {
+func (m *Supervisor) ownRuntime(adapter share.Runtime, active bool, waitExit func(context.Context) error) {
 	m.adapters = append(m.adapters, adapter)
 	if !active {
 		return
 	}
 	m.runtimes = append(m.runtimes, &platformLifecycle{
-		name: adapter.Name(), stopApp: stopApp,
+		name: adapter.Name(), waitExit: waitExit,
 		start:      func(ctx context.Context) error { return adapter.Start(ctx, m.handleMessage) },
 		beginClose: adapter.BeginClose, wait: adapter.Wait,
 	})

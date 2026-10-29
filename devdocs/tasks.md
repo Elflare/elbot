@@ -1,6 +1,6 @@
 # 架构优化
 
-职责与依赖遵循[架构原则](architecture.md#架构原则)，各包契约见 [App 包设计](app-design.md)。主体实现及进程入口已接通，全仓测试与构建通过；完成状态与验证范围分别记录。App、Media 的 `.bak` 文件暂时保留，不参与构建。
+职责与依赖遵循[架构原则](architecture.md#架构原则)，各包契约见 [App 包设计](app-design.md)。主体实现及进程入口已接通，全仓测试与构建通过；完成状态与验证范围分别记录。App 不保留迁移备份，Media 的 27 份 `.bak` 暂时保留，不参与构建。
 
 ## App 包架构梳理
 
@@ -30,7 +30,7 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] 进程入口接入新 App API 与 `client` 命名；launcher 只解析 Command，不依赖 App，不保留旧命令别名或旧运行模式。
 - [x] 临时配置验证完整资源构造、Service 启动、信号退出与配置锁释放；真实进程验证默认回退、指定连接及显式客户端不回退、取消不触发本地启动。
 
-全仓测试及 ElBot 二进制构建通过；进程入口、launcher、security、App 与 CLI 五个包通过 race，security 测试直接使用 contextinfo.Role。进程验证使用临时配置与真实 SQLite，不连接外部模型或平台。App 的 13 个原生产文件和 12 个原测试文件保存在 `*.go.bak` 中，不参与构建。
+全仓测试及 ElBot 二进制构建通过；进程入口、launcher、security、App 与 CLI 五个包通过 race，security 测试直接使用 contextinfo.Role。进程验证使用临时配置与真实 SQLite，不连接外部模型或平台。App 不保留 `*.go.bak`。
 
 ## Tool 执行子包
 

@@ -192,6 +192,23 @@ func (a *Adapter) BeginClose() {
 	}()
 }
 
+// WaitExit 观察本地退出信号，回调收尾仍由 Wait 等待。
+func (a *Adapter) WaitExit(ctx context.Context) error {
+	select {
+	case <-a.inputDone:
+	case <-ctx.Done():
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if err := errors.Join(a.startErr, a.runErr); err != nil {
+		return err
+	}
+	if a.inputStopped {
+		return nil
+	}
+	return ctx.Err()
+}
+
 func (a *Adapter) Wait(ctx context.Context) error {
 	select {
 	case <-a.done:

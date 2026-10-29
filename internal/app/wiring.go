@@ -24,7 +24,6 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 	}
 	platformSupervisor, err := platform.NewSupervisor(ctx, cfg, platform.SupervisorDeps{
 		Mode: string(mode), Store: resources.store, Media: resources.media, ChatHistory: history,
-		Permission: resources.permission, Logs: resources.logs,
 	})
 	if err := register(lines, "platform", 4, platformSupervisor, err); err != nil {
 		return lines, err

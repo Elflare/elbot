@@ -1,86 +1,78 @@
 package agent
 
-import toolshare "elbot/internal/tool/share"
-
 import (
 	"context"
+	"elbot/internal/completion"
+	"elbot/internal/config"
+	"elbot/internal/contextinfo"
+	"elbot/internal/fileops"
+	"elbot/internal/llm"
+	"elbot/internal/security"
+	"elbot/internal/tool"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"testing"
-
-	"elbot/internal/completion"
-	"elbot/internal/contextinfo"
-	"elbot/internal/fileops"
 )
 
-type contractFileTool struct {
-	contractTool
-	files      *fileops.Service
-	path       string
-	backup     uint64
+type recordingBindingTools struct {
+	ToolCapabilities
 	bindingCtx context.Context
 }
 
-func (v *contractFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: v.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
-		v.bindingCtx = context.WithoutCancel(ctx)
-		_, _, err := v.files.Edit(ctx, fileops.EditRequest{Path: v.path, Edits: []fileops.Edit{{Operation: "replace_text", OldText: "before", NewText: new("after")}}})
-		if err != nil {
-			return nil, "", err
-		}
-		records, err := v.files.List(ctx)
-		if err != nil {
-			return nil, "", err
-		}
-		if len(records) != 1 {
-			return nil, "", fmt.Errorf("backups=%d", len(records))
-		}
-		v.backup = records[0].ID
-		return &toolshare.Result{Content: "edited"}, "", nil
-	}), nil
+func (r *recordingBindingTools) WithBinding(ctx context.Context, b fileops.Binding, a ...fileops.CommitAdmission) context.Context {
+	ctx = r.ToolCapabilities.WithBinding(ctx, b, a...)
+	r.bindingCtx = context.WithoutCancel(ctx)
+	return ctx
 }
 func TestSupervisorRollbackAndBindingInvalidation(t *testing.T) {
 	deps := isolatedModuleDeps(t)
-	files := deps.Tools.(isolatedToolCapabilities).Service
+	deps.Permission.SuperadminConfirmRisk = security.RiskCritical
+	files := &recordingBindingTools{ToolCapabilities: deps.Tools}
+	deps.Tools = files
 	path := filepath.Join(t.TempDir(), "file")
 	if err := os.WriteFile(path, []byte("before"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	editor := &contractFileTool{files: files, path: path}
-	if err := deps.Tools.(isolatedToolCapabilities).Registry.Register(editor); err != nil {
+	args, err := json.Marshal(map[string]any{"path": path, "edits": []map[string]string{{"operation": "replace_text", "old_text": "before", "new_text": "after"}}})
+	if err != nil {
 		t.Fatal(err)
 	}
-	client := &contractChat{}
+	client := &contractChat{call: llm.ToolCallRequest{Name: "edit_file", Arguments: string(args)}}
 	contractModels(t, &deps, client)
 	m := contractSupervisor(t, deps)
-	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "@tool:contract_echo edit"}); err != nil {
-		t.Fatal(err)
+	edit := func() uint64 {
+		t.Helper()
+		client.requests = nil
+		if err := m.HandleMessage(t.Context(), MessageRequest{Text: "@tool:edit_file edit"}); err != nil {
+			t.Fatal(err)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil || string(data) != "after" {
+			t.Fatal(string(data), err)
+		}
+		records, err := files.ListRollbacks(files.bindingCtx)
+		if err != nil || len(records) != 1 {
+			t.Fatalf("records=%+v err=%v", records, err)
+		}
+		return records[0].ID
 	}
-	if editor.backup == 0 {
-		t.Fatal("tool edit did not create backup")
+	id := edit()
+	if err := m.HandleMessage(t.Context(), MessageRequest{Text: fmt.Sprintf("/rollback %d", id)}); err != nil {
+		t.Fatal(err)
 	}
 	data, err := os.ReadFile(path)
-	if err != nil || string(data) != "after" {
-		t.Fatal(string(data), err)
-	}
-	if err := m.HandleMessage(t.Context(), MessageRequest{Text: fmt.Sprintf("/rollback %d", editor.backup)}); err != nil {
-		t.Fatal(err)
-	}
-	data, err = os.ReadFile(path)
 	if err != nil || string(data) != "before" {
 		t.Fatal(string(data), err)
 	}
-	client.requests = nil
-	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "@tool:contract_echo edit again"}); err != nil {
-		t.Fatal(err)
-	}
-	oldCtx, oldID := editor.bindingCtx, editor.backup
+	oldID := edit()
+	oldCtx := files.bindingCtx
 	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "/new"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := files.List(oldCtx); err == nil {
+	if _, err := files.ListRollbacks(oldCtx); err == nil {
 		t.Fatal("old binding still permits rollback access")
 	}
 	if err := m.HandleMessage(t.Context(), MessageRequest{Text: fmt.Sprintf("/rollback %d", oldID)}); err != nil {
@@ -91,29 +83,22 @@ func TestSupervisorRollbackAndBindingInvalidation(t *testing.T) {
 		t.Fatal("new session used old backup", string(data), err)
 	}
 }
-
-type contractPrivateTool struct{ contractTool }
-
-func (*contractPrivateTool) Name() string { return "contract_private" }
-func (v *contractPrivateTool) Info() toolshare.Info {
-	return toolshare.Info{Name: v.Name(), Risk: toolshare.RiskSafe, SuperadminOnly: true, Tags: []string{"private"}}
-}
-
-type contractSkill struct{ contractTool }
-
-func (*contractSkill) Name() string { return "contract_skill" }
-func (v *contractSkill) Info() toolshare.Info {
-	return toolshare.Info{Name: v.Name(), Source: toolshare.SourceSkillAgent, Risk: toolshare.RiskSafe, OwnerScoped: true}
-}
-func (*contractSkill) Detail() string          { return "skill instructions" }
-func (*contractSkill) ActivateTools() []string { return nil }
 func TestSupervisorCompletionUsesPermissionsTagsAndSkills(t *testing.T) {
-	deps := isolatedModuleDeps(t)
-	registry := deps.Tools.(isolatedToolCapabilities).Registry
-	for _, v := range []toolshare.Tool{&contractTool{}, &contractPrivateTool{}, &contractSkill{}} {
-		if err := registry.Register(v); err != nil {
-			t.Fatal(err)
-		}
+	cfg := isolatedAgentConfig()
+	root := t.TempDir()
+	cfg.ConfigPath = filepath.Join(root, "config.toml")
+	cfg.Sandbox.Root = root
+	cfg.ToolTags = config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"private": {Tools: []string{"read_file"}}}}
+	dir := filepath.Join(root, "skills", "agent", "contract_skill")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: contract_skill\ndescription: test guidance\n---\nskill instructions"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	deps, _ := configuredModuleResources(t, cfg)
+	if err := deps.Tools.(*tool.Supervisor).Reload(t.Context()); err != nil {
+		t.Fatal(err)
 	}
 	m := contractSupervisor(t, deps)
 	user := contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "user", Role: contextinfo.RoleUser})
@@ -124,7 +109,8 @@ func TestSupervisorCompletionUsesPermissionsTagsAndSkills(t *testing.T) {
 	}{
 		{t.Context(), "@tool:private", "@tool:private", true},
 		{user, "@tool:private", "@tool:private", false},
-		{user, "@tool:contract_private", "@tool:contract_private", false},
+		{t.Context(), "@tool:read_file", "@tool:read_file", true},
+		{user, "@tool:read_file", "@tool:read_file", false},
 		{t.Context(), "@skill:contract", "@skill:contract_skill", true},
 		{user, "@skill:contract", "@skill:contract_skill", true},
 		{t.Context(), "@tool:contract_skill", "@tool:contract_skill", false},

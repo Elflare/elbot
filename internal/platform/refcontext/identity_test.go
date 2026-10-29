@@ -34,7 +34,7 @@ func TestReferenceBackgroundIdentityUsesMode(t *testing.T) {
 				t.Fatal(err)
 			}
 			mapPlatformMessage(t, t.Context(), store, scope, "reply", msg)
-			got, err := Apply(t.Context(), Options{Store: store, ChatHistory: newRefTestHistory(t)}, share.ReferenceOptions{ActorID: "u", Platform: "p", ScopeID: scope.PlatformScopeID, ReplyID: "reply", Text: "continue", IsSuperadmin: tc.admin})
+			got, err := Apply(t.Context(), newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{ActorID: "u", Platform: "p", ScopeID: scope.PlatformScopeID, ReplyID: "reply", Text: "continue", IsSuperadmin: tc.admin})
 			if err != nil {
 				t.Fatal(err)
 			}
