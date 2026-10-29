@@ -325,13 +325,13 @@ flowchart TD
 
 ## Session 根部契约
 
-Session 由 Agent 创建、持有和关闭，App 不取得内部 Session。根部 13 个文件、share 和 binding 各 3 个文件、control 的 9 个文件及 branch 的 4 个文件已实现；naming 的 4 个文件仍为职责骨架。7 份 Naming 生产迁移参考与 15 份待迁移或集成验证的旧测试保存在 `*.go.bak` 中，不参与构建。naming 和 Agent 接线尚未完成，根部暂不能编译。
+Session 由 Agent 创建、持有和关闭，App 不取得内部 Session。根部 13 个文件、share 和 binding 各 3 个文件、control 的 9 个文件、branch 和 naming 各 4 个文件均已实现，根部可独立编译验证；包内不保留旧入口或迁移备份。Agent 接线及跨模块释放仍待完成。
 
 唯一构造入口为 `NewSupervisor(ctx, cfg, SupervisorDeps)`，接收 Agent 运行 context 和完整配置，消费默认模式、闲置期限及命名触发步数，不重复填配置默认值。必需依赖只在根部检查；构造不启动任务、不查询协议材料或命名模型。部分构造失败保留已取得的组件、停止接纳，并将部分总管交回 Agent 调用 Close。
 
 `SupervisorDeps` 接收借用的 Store、仅含 ResolveNaming 的 Models、ActiveSessionIDs、CheckForeground、Materials，以及 IsSuperadmin、ReleaseSession、ReleaseBinding。活跃事实来自 Agent 执行组件；CheckForeground 在接管准入内调用，只检查兼容性，不执行 I/O 或再次取准入。权限查询接收公开 Scope，释放分别接收 SessionID 和公开 Binding；根部转换后交给 control。MaterialResolver／MaterialPreparer 定义在根部 deps.go，PreparedMaterial 在 contracts.go 定义 Seed 和 ExpectedCheckpointID；根部适配为 branch 自有类型，保留 nil 材料及伴随错误的部分结果。
 
-根部装配消费的下层契约如下；binding、control、branch 已实现，naming 待实现：
+根部装配消费的下层契约如下：
 
 | 组件入口 | 配置与依赖 |
 |---|---|
@@ -380,12 +380,23 @@ binding 与 share 的 race 回归覆盖句柄身份、条件和批量解绑、�
 - CreateCompacted 接受不同于来源的预分配目标 ID，继承来源模式、归属及请求元数据，并设置压缩标题事实。前台来源核对当前及上下文原绑定，成功后切换；后台来源在 Session 准入内匹配执行的用户、平台和任务范围，不依赖 ConversationKind，CLI 也不豁免归属；不激活 current，准入期间被接管则拒绝。压缩属于执行交接，不使用普通切换的忙碌拒绝。
 - CopyBackground 的目标 Scope 表达副本归属，可用于向不同接收者复制；来源须是空闲、未接管后台。副本使用请求业务字段、新后台身份及来源协议归属，不继承来源杂项元数据或执行状态。消息分配新 ID，重映射工具结果消息关联，清除旧父消息与回复引用，不改变前台绑定。
 - share/session.go 的 BackgroundTitle、BackgroundMetadata 供 Control 和 Branch 共用；标题按 Unicode 首字符处理；元数据辅助只更新调用方自有字段集合中的权威后台／标题字段。Control 合并准备请求，Branch 负责复制继承。Fork／前台压缩的 SetCurrent 通过 Control，统一激活计时和同步退役。
-- Branch／Control／Binding／share 的 race 回归使用真实 SQLite 和组件，覆盖权限、模式、批次边界、锁外准备与提交冲突、原子保存、消息重映射、计时和活动源延迟释放。根部集成仍待 Naming 实现。
+- Branch／Control／Binding／share 的 race 回归使用真实 SQLite 和组件，覆盖权限、模式、批次边界、锁外准备与提交冲突、原子保存、消息重映射、计时和活动源延迟释放。根部测试覆盖材料 nil／部分错误转换及原 Binding 身份。
+
+### Naming 命名与缓存回收
+
+- service.go 定义独用最小依赖：Sessions.Get／Mutate、Messages.ListBySession 和 ResolveNaming 函数；管理配置、任务接纳、缓存退役与生命周期。naming.go 负责准备、调度、重试和事务提交；title.go 负责模型调用、提示词及标题规范化；signals.go 持有内部事件、日志投影和订阅。不提供独立命名器工厂、补依赖 setter 或内部信号 getter。
+- 读取存储前按 SessionID 占位，准备、生成及终态通知期间统一去重。准备随触发调用和组件取消；接纳后的任务只绑定组件生命周期，复制 Execution／Model 事实，不持有整个 Turn 的 context。非空 user／assistant 消息只过滤一次，达到 TriggerStep 后取最前 N 条供模型命名。
+- 每次生成只解析一次 NamingSelection，专用模型失败且任务未取消时使用同一快照中的上下文模型；未配置专用模型时直接使用上下文模型，不推断 work 默认模型。真实 HTTP 测试覆盖 Chat／Responses 的独立文本请求及切换、重载期间的快照稳定性。
+- 标题统一清理空白、换行及外围引号，按 Unicode 截到 40 字符并加省略号；空标题和 New session 无效。成功写入标题时，同一 Mutate 设置 title_renamed=true 和 title_source=auto／fallback，保留其他原始 JSON 字段；事务内读取最新保护标记，手动、后台及压缩标题优先。缓存淘汰或组件重建后依靠持久化事实跳过已完成命名。
+- 生成链失败或最终输出无效才增加失败次数；前两次保留原标题，下次触发再试，第三次使用已加载历史中的首条非空用户消息作为文本 fallback。达到上限后不再调用模型，fallback 保存失败仅在下次触发重试保存；无有效用户文本时保留原标题，不伪造完成标记。准备及存储错误不计入生成失败，取消不写入、不 fallback、不增加失败数。失败计数只属于本次缓存生命期。
+- ForgetSession 只改内存：闲置项立即删除，在途项标记退役并保留去重，任务收尾后删除，不通过 SessionID 重新创建状态。命名不续期。根部将 ForgetSession 与外部 ReleaseSession 组合交给 Control，Agent 不直接管理命名缓存。
+- BeginClose 停止接纳并取消任务；Close 等准备、生成和终态通知结束，再等待信号、日志订阅及实际回调退出，清空缓存后关闭 Done。调用方超时可续等，关闭后不能重启。事件保留准备、生成、验证、保存、fallback 和取消事实；终态日志不随业务取消丢失，生成失败即使 fallback 成功也保留审计记录，投递失败不重做业务。
+- Session 根部及全部子包通过整包 race 回归。SQLite 的 19 份独立测试通过 race；整包仍被 cron_media_migration_test.go、media_json_test.go 引入的旧消费者接口阻断，涉及 completion、command/builtin 和 Agent，待消费者接线阶段迁移。
 
 ### 跨模块释放的待接线部分
 
 - Agent 阶段移除旧入站过期入口，合并 Request／Turn 活跃事实并覆盖模型、工具、压缩、确认等待及 stopping；有效输入、成功、失败和取消后的真实收尾接入活动入口。外部 ReleaseSession 只释放 Agent 自有执行状态和自动确认，ReleaseBinding 释放撤销记录。
-- Naming 阶段实现 ForgetSession，由 Session 根部与外部 ReleaseSession 组合；在途命名保留到真实退出，再删除退役缓存。恢复会话只重建持久化内容，不恢复旧自动确认或撤销状态。相关文件保留 TODO，不提供空实现或旧 API 兼容层。
+- Session 根部已组合 Naming.ForgetSession 与外部 ReleaseSession，在途任务收尾后删除退役缓存；完整释放效果仍需 Agent 接入各状态所有者后验证。恢复会话只重建持久化内容，不恢复旧自动确认或撤销状态。Agent 对应文件保留 TODO，不提供空实现或旧 API 兼容层。
 
 ### 公开能力与下层业务契约
 
@@ -433,7 +444,11 @@ flowchart TD
     R --> RF["branch/fork.go<br/>权限、批次边界与前台分支"]
     R --> RC["branch/compact.go<br/>压缩继承与提交"]
     R --> RB["branch/copy.go<br/>后台历史复制及消息重映射"]
-    W --> N["naming/service.go<br/>命名任务、信号及日志订阅（待实现）"]
+    W --> N["naming/service.go<br/>接纳、任务状态、ForgetSession 与生命周期"]
+    N --> NN["naming/naming.go<br/>准备、调度、重试与事务提交"]
+    NN --> NG["naming/title.go<br/>模型快照、提示词与标题规范化"]
+    NN --> NS["naming/signals.go<br/>内部事件、日志投影及订阅"]
+    W -->|组合 Naming 与外部释放回调| C
     B & C & R --> H["share/binding.go<br/>绑定句柄、context 与 BindingCoordinator"]
     S --> API["contracts.go<br/>公开请求、结果、错误与事件"]
     S --> O["operations.go、background.go、origin.go<br/>管理、后台与归属入口"]

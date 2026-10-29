@@ -1,5 +1,3 @@
-// 职责：验证模型归属登记、解析与继承。
-// TODO(session重构)：待迁移到 control/origin.go、share/origin.go 的相应测试，迁移完成后删除本备份。
 package session
 
 import (
@@ -9,7 +7,6 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
-	"elbot/internal/storage"
 )
 
 func TestOriginRegistrationPreservesHistoryAndOtherMetadata(t *testing.T) {
@@ -97,24 +94,5 @@ func TestOriginRegistrationRejectsStaleBindingAndKeepsPartialChat(t *testing.T) 
 	cancel()
 	if _, err := svc.RegisterOrigin(canceled, row.ID, target); err == nil {
 		t.Fatal("canceled registration was admitted")
-	}
-}
-
-func TestOriginInheritanceDoesNotImportRuntimeMetadata(t *testing.T) {
-	source := &storage.Session{Metadata: `{"llm_origin":{"protocol":"chat","provider":"historical","base_url":"https://old.invalid"},"last_usage":{"total_tokens":12}}`}
-	inherited, err := InheritOrigin(source, `{"unknown":9007199254740993,"llm_origin":{"protocol":"response","provider":"wrong"}}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	copyOrigin, _, err := Origin(&storage.Session{Metadata: inherited})
-	if err != nil || copyOrigin.Provider != "historical" || copyOrigin.APIType != llm.APITypeChat || strings.Contains(inherited, "last_usage") || !strings.Contains(inherited, "9007199254740993") {
-		t.Fatalf("inheritance = %s, %v", inherited, err)
-	}
-	inherited, err = InheritOrigin(&storage.Session{}, inherited)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, known, err := Origin(&storage.Session{Metadata: inherited}); err != nil || known {
-		t.Fatalf("missing source borrowed target ownership: %s, %v", inherited, err)
 	}
 }

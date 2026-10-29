@@ -1,6 +1,4 @@
-// 职责：验证命名模型选择及标题生成。
-// TODO(session重构)：待迁移到 naming/title.go 的相应测试，迁移完成后删除本备份。
-package session
+package naming
 
 import (
 	"context"
@@ -8,12 +6,16 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"sync"
 	"testing"
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/modelmgr"
 	"elbot/internal/storage"
+	"github.com/pelletier/go-toml/v2"
 )
 
 func TestTitleGeneratorUsesConfiguredOrContextModelProtocol(t *testing.T) {
@@ -73,7 +75,8 @@ func TestTitleGeneratorUsesConfiguredOrContextModelProtocol(t *testing.T) {
 			if tc.current != "" {
 				ctx = contextinfo.WithModel(ctx, contextinfo.Model{Provider: tc.current, Model: "dialogue-" + tc.current, APIType: tc.current})
 			}
-			result, err := NewTitleGenerator(models).GenerateTitle(ctx, []storage.Message{{Role: storage.RoleUser, Content: "name this conversation"}})
+			service := &Service{deps: ServiceDeps{ResolveNaming: models.ResolveNaming}}
+			result, err := service.generateTitle(ctx, []storage.Message{{Role: storage.RoleUser, Content: "name this conversation"}})
 			if tc.target == "" {
 				if err == nil || len(requests) != 0 {
 					t.Fatalf("missing model fell back to work: result=%+v err=%v requests=%d", result, err, len(requests))
@@ -107,5 +110,93 @@ func TestTitleGeneratorUsesConfiguredOrContextModelProtocol(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestNamingFallbackUsesSnapshotAcrossSelectionAndReload(t *testing.T) {
+	started, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(release) }) }
+	requests := make(chan string, 8)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			fmt.Fprint(w, `{"data":[{"id":"title"},{"id":"first"},{"id":"second"}]}`)
+			return
+		}
+		var body struct {
+			Model string `json:"model"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			http.Error(w, "bad request", 400)
+			return
+		}
+		requests <- r.URL.Path + ":" + body.Model
+		if r.URL.Path == "/naming/chat/completions" {
+			close(started)
+			<-release
+			http.Error(w, "naming failed", 400)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"content\":%q},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n", body.Model+" title")
+	}))
+	defer srv.Close()
+	defer unblock()
+	dir := t.TempDir()
+	cfg := &config.Config{ConfigPath: filepath.Join(dir, "config.toml"), ProvidersConfigPath: filepath.Join(dir, "providers.toml"), StateConfigPath: filepath.Join(dir, "state.toml"),
+		Providers: map[string]config.ProviderConfig{
+			"naming": {BaseURL: srv.URL + "/naming", Models: []string{"title"}},
+			"old":    {BaseURL: srv.URL + "/old", Models: []string{"first"}},
+			"next":   {BaseURL: srv.URL + "/next", Models: []string{"second"}},
+		}, NamingModel: config.ModelSelection{Provider: "naming", Model: "title"}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "old", Model: "first"}}}
+	models, err := modelmgr.NewModelManager(t.Context(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer models.Close(context.Background())
+	s := &Service{deps: ServiceDeps{ResolveNaming: models.ResolveNaming}}
+	ctx := contextinfo.WithModel(t.Context(), contextinfo.Model{Provider: "old", Model: "first", APIType: "chat"})
+	results := make(chan TitleResult, 1)
+	errs := make(chan error, 1)
+	go func() {
+		result, err := s.generateTitle(ctx, []storage.Message{{Role: storage.RoleUser, Content: "user"}})
+		results <- result
+		errs <- err
+	}()
+	receive(t, started)
+	if _, err := models.CommitModelForMode("work", modelmgr.ModelOption{Provider: "next", Model: "second"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := models.SelectNamingModel("next/second"); err != nil {
+		t.Fatal(err)
+	}
+	provider := cfg.Providers["old"]
+	provider.BaseURL = srv.URL + "/next"
+	cfg.Providers["old"] = provider
+	data, err := toml.Marshal(config.ProviderFile{Providers: cfg.Providers})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg.ProvidersConfigPath, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := models.ReloadProviders(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	unblock()
+	result := receive(t, results)
+	if err := receive(t, errs); err != nil || result.Provider != "old" || result.Model != "first" || result.RawTitle != "first title" {
+		t.Fatalf("original=%+v %v", result, err)
+	}
+	if got := receive(t, requests); got != "/naming/chat/completions:title" {
+		t.Fatal(got)
+	}
+	if got := receive(t, requests); got != "/old/chat/completions:first" {
+		t.Fatal("fallback changed during request", got)
+	}
+	result, err = s.generateTitle(ctx, []storage.Message{{Role: storage.RoleUser, Content: "user"}})
+	if err != nil || result.Provider != "next" || result.RawTitle != "second title" {
+		t.Fatalf("new=%+v %v", result, err)
 	}
 }

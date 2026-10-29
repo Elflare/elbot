@@ -533,13 +533,15 @@ Platform 根部负责总管、装配与公开能力；下层契约见 [App 包�
 <!-- locator:session -->
 ## Session 生命周期
 
-Session 根部 13 个文件、share 和 binding 各 3 个文件、control 的 9 个文件及 branch 的 4 个文件已实现总管、契约、绑定准入、会话业务、局部计时与派生。构造不启动任务或调用模型、材料解析器。naming 及 Agent 接线尚待实现，根部当前不能编译，详细消费契约见 [Session 根部契约](app-design.md#session-根部契约)。7 份 Naming 生产迁移参考与 15 份待迁移或集成验证的旧测试保存在 `.go.bak` 中，不参与构建。
+Session 根部 13 个文件、share 和 binding 各 3 个文件、control 的 9 个文件、branch 和 naming 各 4 个文件已实现总管、契约、绑定准入、会话业务、局部计时、派生及命名。构造不启动任务或调用模型、材料解析器，包内不保留迁移备份或旧 API。根部可独立编译验证，Agent 接线尚待完成；消费契约见 [Session 根部契约](app-design.md#session-根部契约)。
 
 根部将管理、后台准备、归属登记及工作目录操作交给 control，Fork／压缩／后台复制交给 branch，准入交给 binding，命名触发交给 naming。公开 Binding 为内部句柄的独立定义类型，通过指针转换保持同一绑定身份；context 与事件共用原句柄，不复制原子状态或增加包装缓存。ObserveBindingChanged／ObserveForegroundActivated 只返回调用方拥有的连接；命名事件及日志投影留在内部。WorkspaceStore 由总管按 SessionID 创建，不暴露仓库；根部不重复业务校验和持久化逻辑。
 
-根部 Start 启用命名接纳和 Control 计时；BeginClose 停止接纳与调度、取消运行并撤销 timer，保留绑定及接管事件源。Agent 等在途执行退出后调用 Close；根部依次等待 naming、control、binding 实际退出，定时回调退出前不关闭底层准入。全部自有资源退出后才关闭 Done，超时可继续等待，不关闭借用存储和模型；根部完整接线仍待其余下层实现后验证。
+根部 Start 启用命名接纳和 Control 计时；BeginClose 停止接纳与调度、取消运行并撤销 timer，保留绑定及接管事件源。Agent 等在途执行退出后调用 Close；根部依次等待 naming、control、binding 实际退出，定时回调退出前不关闭底层准入。全部自有资源退出后才关闭 Done，超时可继续等待，不关闭借用存储和模型。根部测试覆盖原 Binding 身份、释放组合、材料部分结果及关闭顺序。
 
-当前后台身份唯一由 Mode == background 决定；Session、SQLite 列表和 Platform 引用回复均使用该模式事实，不根据来源元数据、任务 ScopeID 前缀或接管记录推断。WasPromoted 独立读取接管历史。CanAccess 对非 nil 会话执行访问规则：CLI 可跨用户和平台管理，其余入口要求用户及平台相同；后台限私聊，前台限同 ScopeID。share 的 BindingCoordinator 只声明共享准入与绑定读写，管理状态、锁和事件归 binding；NewBinding 与 Invalidate 仅供绑定管理组件使用。share 与 Platform/refcontext 整包及 SQLite 独立身份回归已通过 race，整包接线验证仍待下层完成。
+Naming 准备和生成统一占位，任务归组件而非触发 Turn；只接收仓库最小接口与 ResolveNaming 函数。一次模型选择固定专用及上下文 fallback 快照，完成标题与 title_renamed／title_source 在同一事务提交。前三次生成失败中的前两次保留原标题，第三次才使用用户文本；存储失败不计入生成次数。ForgetSession 删除闲置缓存，在途任务标记退役后于收尾删除；命名不刷新闲置期限。内部事件及日志由组件持有，Close 等实际回调退出；见 [Naming 命名与缓存回收](app-design.md#naming-命名与缓存回收)。
+
+当前后台身份唯一由 Mode == background 决定；Session、SQLite 列表和 Platform 引用回复均使用该模式事实，不根据来源元数据、任务 ScopeID 前缀或接管记录推断。WasPromoted 独立读取接管历史。CanAccess 对非 nil 会话执行访问规则：CLI 可跨用户和平台管理，其余入口要求用户及平台相同；后台限私聊，前台限同 ScopeID。share 的 BindingCoordinator 只声明共享准入与绑定读写，管理状态、锁和事件归 binding；NewBinding 与 Invalidate 仅供绑定管理组件使用。share 与 Platform/refcontext 整包及 SQLite 独立身份回归已通过 race。
 
 binding 的锁项同时登记持有者和等待者，引用归零即删除，等待取消和部分获取失败也会释放引用。租约可重入，释放后清空组件、key 与事件引用；最外层准入退出后交付事件，不继承触发请求取消。BeginClose 停止准入与订阅接纳并唤醒等待者；Close 等准入和已提交事件退出，再关闭信号、等待真实回调退出并释放绑定。binding 与 share 的 race 回归已通过。
 
@@ -563,7 +565,7 @@ flowchart LR
 
 - Fork／后台复制在锁外准备材料，提交时复核业务状态，checkpoint 由存储事务复核，后台复制比较完整 pending 输入记录而不解析原生 JSON；Session、消息、seed 与媒体引用原子保存。Fork 仅允许自己的会话，CLI 也不豁免用户归属；后台来源生成 work 前台分支，来源保持原样。Responses 按不可变快照取完整批次材料，不重跑工具；后台副本不激活前台或继承运行状态。后台压缩匹配执行的用户、平台和任务范围，不要求私聊类型，CLI 不豁免归属。派生切换通过 Control，行为和回归见 [Branch 派生与材料提交](app-design.md#branch-派生与材料提交)。
 - 命名受应用生命周期管理，Turn 结束不取消；Scheduled 表达调度，Completed 表达终态，取消后不写标题或 fallback。TTL 和 /new 只清除 current，下一条输入再建记录。
-- control 已实现事件驱动的局部定时器，独立于 UpdatedAt，按 ConversationKind 和权限选择 TTL；group/channel 使用群聊期限，其余使用私聊期限，非正值禁用。RecordActivity 与 SessionIdle 分别承接有效输入和真实执行收尾，忙碌时等待结束通知，不周期扫描。解绑移除 timer 和绑定引用，无其他绑定且无活动工作才释放会话状态；历史保留。Branch／Control／Binding／share race 回归已通过，整条内存释放链仍待 Naming、Agent 接线；见 [Control 业务与主动过期](app-design.md#control-业务与主动过期)及[待接线部分](app-design.md#跨模块释放的待接线部分)。
+- control 已实现事件驱动的局部定时器，独立于 UpdatedAt，按 ConversationKind 和权限选择 TTL；group/channel 使用群聊期限，其余使用私聊期限，非正值禁用。RecordActivity 与 SessionIdle 分别承接有效输入和真实执行收尾，忙碌时等待结束通知，不周期扫描。解绑移除 timer 和绑定引用，无其他绑定且无活动工作才释放会话状态；历史保留。根部已组合 Naming.ForgetSession 与外部释放，整条内存释放链仍待 Agent 接线；见 [Control 业务与主动过期](app-design.md#control-业务与主动过期)及[待接线部分](app-design.md#跨模块释放的待接线部分)。
 
 <!-- locator:llm -->
 ## 模型服务与客户端

@@ -40,7 +40,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/platform/agent.go`、`internal/platform/cli/message.go`：平台消息投影与 CLI 入站来源。
 - `internal/security/`：身份解析、权限与风险策略。
 - `internal/agent/dialogue/execution_context.go`：模型事实与接管上下文刷新。
-- `internal/request/manager.go`、`internal/turn/execution.go`：执行关联与快照；`internal/session/binding.go` 提供公开绑定转换，`session/share/binding.go` 定义句柄、context 与 BindingCoordinator；绑定管理组件尚待实现。
+- `internal/request/manager.go`、`internal/turn/execution.go`：执行关联与快照；`internal/session/binding.go` 提供公开绑定转换，`session/share/binding.go` 定义句柄、context 与 BindingCoordinator；`session/binding/` 管理绑定状态、准入及回收。
 
 <!-- locator:signal -->
 ## 信号与订阅
@@ -50,7 +50,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/contracts.go`：公开 Hook 回调及载荷、状态和绑定快照、后台请求结果（复制元数据为 JSON 原始值）；不暴露内部组件或 Binding 句柄。
 - `internal/agent/signals.go`：Agent 信号源构造及通知、重试、会话清理与接管订阅。
 - `internal/background/cron/lifecycle.go`：Cron 平台连接通知的启动前合并、独立消费队列与关闭等待。
-- `internal/session/naming/signals.go`、`naming/service.go`：命名信号、日志与退出的职责骨架；原实现与测试均以 `.go.bak` 保留。
+- `internal/session/naming/signals.go`、`naming/service.go`：内部命名信号、日志投影、任务接纳、退役缓存与实际退出等待。
 - `internal/modelmgr/signals.go`、`logging.go`：模型重试观察入口与日志；消费者只持有观察连接。
 - `internal/agent/share/logging.go`、`internal/background/share/logging.go`：所属业务日志发布。
 
@@ -141,7 +141,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/fileops/edit_service.go`、`rollback_service.go`：编辑／撤销准备、预览与提交。
 - `internal/fileops/preview.go`：PrepareFile、PrepareFileEdit 与 PrepareFileWrite 准备业务转换、编辑协议和整文件写入；PreparedFile 固定存在状态、真实目标、批准内容与 revision，统一 diff 和复核提交，支持新建冲突检查与相同内容写入。
 - `internal/fileops/file.go`、`atomic_write.go`、`rollback.go`：结果计算、revision 校验写入、目标锁与撤销备份。
-- `internal/workspace/workspace.go`、`resolve.go`、`state.go`：工作目录契约、路径解析与状态编解码；`internal/session/workspace.go` 为公开适配入口骨架，持久化与并发更新的职责骨架位于 `internal/session/control/workspace.go`。
+- `internal/workspace/workspace.go`、`resolve.go`、`state.go`：工作目录契约、路径解析与状态编解码；`internal/session/workspace.go` 为公开适配入口，持久化与并发更新位于 `internal/session/control/workspace.go`。
 - `internal/workspace/context.go`：PathScope 与目录存取能力的上下文传递；`workspace.go` 优先选择调用级目录，未指定时读取 Session 或进程目录。
 - `internal/workspace/sandbox.go`：NormalizeRestrictedPath 统一受限相对路径规则，SandboxDir 计算沙盒子目录，ResolveSandboxRelativePath 组合受限绝对路径；不创建目录、组织提示或管理文件生命周期。
 - `internal/tool/share/media.go`：MediaInput、MediaImportOptions、MediaInfo 与历史媒体逐项结果；包含工具需要的参数、JSON 解码约束和通用信息，ID 校验由媒体调用链承担。
@@ -254,13 +254,13 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 <!-- locator:session -->
 ## Session
 
-`internal/session/` 根部 13 个文件、share／binding 各 3 个文件、control 的 9 个文件及 branch 的 4 个文件已实现；naming 的 4 个文件仍为职责骨架。7 份 Naming 生产迁移参考与 15 份待迁移或集成验证的旧测试保存在根目录的 `*.go.bak` 中，不参与构建。
+`internal/session/` 根部 13 个文件、share／binding 各 3 个文件、control 的 9 个文件、branch／naming 各 4 个文件均已实现；包内不保留旧入口和迁移备份。
 
-根部按下层契约直接接线，公开请求、结果、绑定、事件及活动入口已定义；当前缺少 naming 实现，尚不能编译。契约明细见 [Session 根部契约](app-design.md#session-根部契约)；Agent 实际接线及整链路回归待后续完成。
+根部按下层契约直接接线，公开请求、结果、绑定、事件及活动入口已实现并可独立验证。契约明细见 [Session 根部契约](app-design.md#session-根部契约)；Agent 实际接线及整链路回归待后续完成。
 
 `internal/background/share/takeover.go` 保留 Cron 与 Elnis 共用的接管查询消费契约；Session 根部 SessionTakenOver 委托 control 查询。公开观察入口仅包含绑定变化和前台接管，命名事件及日志投影留在 naming 内部；WorkspaceStore 由总管按 SessionID 创建，不交付仓库。
 
-文件职责如下，路径均相对 `internal/session/`；根部、share、binding、control、branch 已实现，naming 仍待实现：
+文件职责如下，路径均相对 `internal/session/`：
 
 | 位置 | 文件与目标职责 |
 |---|---|
@@ -268,12 +268,12 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 | `binding/` | `manager.go` 管理绑定、条件清理与生命周期，`coordination.go` 管理可取消准入、重入租约及空闲锁项回收，`signals.go` 在最外层准入释放后发布绑定事件 |
 | `control/` | `service.go` 定义组件、最小依赖与启停，`current.go` 管理当前会话、模式及切换编排，`promotion.go` 恢复、接管及同步事件，`background.go` 后台准备与接管查询，`query.go` 查询，`management.go` 管理操作，`expiration.go` 局部计时、活动记录、退役和历史清理，`origin.go` 归属登记，`workspace.go` 工作目录持久化 |
 | `branch/` | `service.go` 定义组件、依赖与材料准备，`fork.go` 前台分支，`copy.go` 后台副本，`compact.go` 压缩结果创建 |
-| `naming/` | `service.go` 管理组件、任务状态与启停，`naming.go` 调度与提交，`title.go` 生成与规范化，`signals.go` 事件与日志 |
+| `naming/` | `service.go` 管理组件、任务状态、退役缓存与启停，`naming.go` 准备、重试与完成事实事务提交，`title.go` 固定模型快照、生成与规范化，`signals.go` 内部事件、日志及订阅 |
 | `share/` | `session.go` 共享 Scope、按 Mode 判定身份、访问规则、后台标题／元数据与错误，`binding.go` 绑定句柄、context 和 BindingCoordinator，`origin.go` 归属解析与继承 |
 
-`internal/storage/sqlite/session_repository.go` 的列表筛选与 `internal/platform/refcontext/refcontext.go` 的引用回复均以 Mode 判定后台身份，不使用元数据或任务范围前缀。control、binding、share、Platform/refcontext 的整包 race 及 SQLite 独立身份回归已通过；Control 测试使用真实 Binding 和 SQLite。Session 根部与依赖其旧接口的测试仍待下层接通。
+`internal/storage/sqlite/session_repository.go` 的列表筛选与 `internal/platform/refcontext/refcontext.go` 的引用回复均以 Mode 判定后台身份，不使用元数据或任务范围前缀。Session 测试使用真实 Binding、Control 和 SQLite，Naming 使用真实本地 HTTP 验证协议及模型快照；Agent 依赖旧接口的测试在其接线阶段迁移。
 
-Control 局部计时和根部配置、活动入口、启停已实现，Branch 经共享契约接入 Control；真实 SQLite、Binding、Control 与 Branch 组合 race 回归通过。待接线：Naming 实现退役缓存释放，由 Session 根部组合；Agent 移除旧入站超时入口，提供活跃事实、活动上报及自身状态释放。约定见 [Branch 派生与材料提交](app-design.md#branch-派生与材料提交)及[待接线部分](app-design.md#跨模块释放的待接线部分)。
+Control 局部计时和根部配置、活动入口、启停已实现，Branch 经共享契约接入 Control；根部将 Naming.ForgetSession 与外部 ReleaseSession 组合，覆盖过期、原 Binding 释放及关闭顺序。Naming 完成事实持久化，三次生成失败后才用用户文本 fallback，退役任务收尾后删除缓存。待 Agent 移除旧入站超时入口，提供活跃事实、活动上报及自身状态释放。约定见 [Naming 命名与缓存回收](app-design.md#naming-命名与缓存回收)及[待接线部分](app-design.md#跨模块释放的待接线部分)。
 
 <!-- locator:context -->
 ## 上下文、Prompt 与压缩

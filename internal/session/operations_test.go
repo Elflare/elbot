@@ -1,5 +1,3 @@
-// 职责：验证会话改名、归档、置顶及删除操作。
-// TODO(session重构)：待迁移到 control/management.go 的相应测试，迁移完成后删除本备份。
 package session
 
 import (

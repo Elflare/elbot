@@ -1,5 +1,3 @@
-// 职责：验证工作目录状态持久化、条件更新及绑定校验。
-// TODO(session重构)：待迁移到 control/workspace.go 和根部工作目录入口 的相应测试，迁移完成后删除本备份。
 package session
 
 import (
@@ -36,7 +34,7 @@ func TestMissingWorkspaceFallbackPersistsAfterPromotion(t *testing.T) {
 	if _, err := svc.Resume(ctx, scope, row.ID); err != nil {
 		t.Fatal(err)
 	}
-	adapter := NewWorkspaceStore(svc, store.Sessions(), row.ID)
+	adapter := svc.WorkspaceStore(row.ID)
 	cwd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -59,20 +57,20 @@ func TestMissingWorkspaceFallbackPersistsAfterPromotion(t *testing.T) {
 	if _, exists := fields["workspace_dir"]; exists || !WasPromoted(latest) || string(fields["unknown"]) != "\"preserved\"" || len(state.AgentNoticeDirs) != 1 || state.AgentNoticeDirs[0] != missing {
 		t.Fatalf("metadata changed incorrectly: %s", latest.Metadata)
 	}
-	restarted := NewWorkspaceStore(NewService(store), store.Sessions(), row.ID)
+	restarted := newTestSupervisor(t, store, nil).WorkspaceStore(row.ID)
 	if got, err := restarted.GetWorkspaceDir(ctx); err != nil || got != "" {
 		t.Fatalf("persisted workspace=%q err=%v", got, err)
 	}
 }
 
 func TestConditionalWorkspaceClearPreservesNewSelection(t *testing.T) {
-	svc, store := newTestService(t)
+	svc, _ := newTestService(t)
 	ctx := context.Background()
 	row, err := svc.Create(ctx, Scope{ActorID: "owner", IsCLI: true}, CreateRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapter := NewWorkspaceStore(svc, store.Sessions(), row.ID)
+	adapter := svc.WorkspaceStore(row.ID)
 	if err := adapter.SetWorkspaceDir(ctx, "/old"); err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +97,7 @@ func TestWorkspaceMutationsPreserveConcurrentFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapter := NewWorkspaceStore(svc, store.Sessions(), row.ID)
+	adapter := svc.WorkspaceStore(row.ID)
 	const count = 16
 	failures := make(chan error, count*2)
 	var wg sync.WaitGroup
@@ -175,7 +173,7 @@ func TestWorkspaceRejectsMalformedMetadataAndExpiredBinding(t *testing.T) {
 			if err := store.Sessions().Create(ctx, row); err != nil {
 				t.Fatal(err)
 			}
-			adapter := NewWorkspaceStore(svc, store.Sessions(), row.ID)
+			adapter := svc.WorkspaceStore(row.ID)
 			if _, err := adapter.GetWorkspaceDir(ctx); err == nil {
 				t.Fatal("accepted corrupt workspace")
 			}
@@ -188,7 +186,7 @@ func TestWorkspaceRejectsMalformedMetadataAndExpiredBinding(t *testing.T) {
 			}
 		})
 	}
-	svc, store := newTestService(t)
+	svc, _ := newTestService(t)
 	ctx := context.Background()
 	scope := Scope{ActorID: "owner", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 	row, err := svc.Create(ctx, scope, CreateRequest{})
@@ -199,7 +197,7 @@ func TestWorkspaceRejectsMalformedMetadataAndExpiredBinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapter := NewWorkspaceStore(svc, store.Sessions(), row.ID)
+	adapter := svc.WorkspaceStore(row.ID)
 	old := WithBinding(ctx, binding)
 	if _, err := svc.Create(ctx, scope, CreateRequest{}); err != nil {
 		t.Fatal(err)

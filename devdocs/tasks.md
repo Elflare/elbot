@@ -138,7 +138,8 @@ Media [根部与下层契约](app-design.md#media-根部与下层契约)、四�
 - [ ] 重构对接新代码
 - [x] control 九个文件实现会话业务、切换编排、局部定时器和退役调用；根部接入配置、权限与释放契约、活动入口及启停。计时独立于 UpdatedAt，按 ConversationKind 分类 TTL，忙碌时等真实收尾再计时；到期解绑，下一条输入再创建。Control／Binding／share race 回归通过。
 - [x] branch 四文件实现 Fork、压缩派生、后台复制及锁外材料准备，经 share.BindingCoordinator 接入 Control；Fork 禁止跨用户，后台来源生成 work 分支；后台压缩严格匹配执行归属，CLI 不豁免。真实 SQLite／Binding／Control 组合 race 覆盖权限、提交冲突、原子保存、消息重映射、计时与释放，见 [Branch 派生与材料提交](app-design.md#branch-派生与材料提交)。
-- [ ] Naming 实现 ForgetSession 并由 Session 根部组合释放；Agent 移除旧入站过期入口、接入活动上报和完整活跃事实，补齐执行快照、自动确认及撤销记录回收。对应文件保留 TODO，完整约定见 [待接线部分](app-design.md#跨模块释放的待接线部分)。
+- [x] Naming 四文件实现最小依赖、固定模型快照、持久化完成事实、三次生成失败后的文本 fallback、任务生命周期和退役缓存释放；根部组合 ForgetSession 与外部释放，旧 Session 备份清理，公开入口及内部组件以真实 SQLite／本地 HTTP 验证。
+- [ ] Agent 移除旧入站过期入口、接入活动上报和完整活跃事实，补齐执行快照、自动确认及撤销记录回收；迁移仍依赖旧 Session 接口的消费者和测试。对应文件保留 TODO，完整约定见 [待接线部分](app-design.md#跨模块释放的待接线部分)。
 
 ## 后台工具统一预载
 

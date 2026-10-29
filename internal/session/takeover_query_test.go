@@ -1,5 +1,3 @@
-// 职责：验证前台接管事实查询及存储错误传播。
-// TODO(session重构)：待迁移到 control/background.go 的相应测试，迁移完成后删除本备份。
 package session
 
 import (
@@ -49,7 +47,7 @@ func (r takeoverQueryRepo) Get(context.Context, string) (*storage.Session, error
 
 func TestSessionTakenOverPropagatesStorageFailure(t *testing.T) {
 	want := errors.New("read failed")
-	s := NewService(takeoverQueryStore{repo: takeoverQueryRepo{err: want}})
+	s := newTestSupervisor(t, takeoverQueryStore{Store: newTestStore(t), repo: takeoverQueryRepo{err: want}}, nil)
 	t.Cleanup(func() { _ = s.Close(context.Background()) })
 	if taken, err := s.SessionTakenOver(t.Context(), "session"); taken || !errors.Is(err, want) {
 		t.Fatalf("lookup=%v,%v", taken, err)

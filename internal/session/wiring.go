@@ -58,7 +58,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 
 	sessions, messages := deps.Store.Sessions(), deps.Store.Messages()
 	s.bindings = binding.NewManager()
-	// TODO(naming阶段)：将 naming.ForgetSession 与外部 ReleaseSession 组合后交给 control，命名缓存不交由 Agent 清理。
 	s.control = control.NewService(
 		control.Config{DefaultMode: cfg.Session.DefaultMode, IdleExpiration: control.IdleExpirationConfig(cfg.Session.IdleExpiration)},
 		control.ServiceDeps{
@@ -68,8 +67,11 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 			ActiveSessionIDs: deps.ActiveSessionIDs,
 			CheckForeground:  deps.CheckForeground,
 			IsSuperadmin:     func(scope share.Scope) bool { return deps.IsSuperadmin(Scope(scope)) },
-			ReleaseSession:   deps.ReleaseSession,
-			ReleaseBinding:   func(binding *share.Binding) { deps.ReleaseBinding((*Binding)(binding)) },
+			ReleaseSession: func(id string) {
+				s.naming.ForgetSession(id)
+				deps.ReleaseSession(id)
+			},
+			ReleaseBinding: func(binding *share.Binding) { deps.ReleaseBinding((*Binding)(binding)) },
 		},
 	)
 	materials := deps.Materials

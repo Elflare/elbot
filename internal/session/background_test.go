@@ -1,5 +1,3 @@
-// 职责：验证后台准备及现有会话字段保留。
-// TODO(session重构)：待迁移到 control/background.go 的相应测试，迁移完成后删除本备份。
 package session
 
 import (
