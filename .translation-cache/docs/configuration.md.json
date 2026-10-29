@@ -1696,6 +1696,14 @@
       "translation": "It is recommended to split the Elnis configuration into a separate __ELBOT_CODE_0__, while __ELBOT_CODE_1__ only retains the entry path.\n",
       "updated_at": 1781749596
     },
+    "docs/configuration.md:paragraph:2ddee5b0934ba6ac9fa9dbac332bc47487dc47a0e497593bf0757aeb6a9053b8": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 只检查本地文件路径、普通文件类型、文件名和 MIME，不使用 __ELBOT_CODE_1__ 限制向聊天平台发送的文件。",
+      "source_file": "docs/configuration.md",
+      "source_hash": "2ddee5b0934ba6ac9fa9dbac332bc47487dc47a0e497593bf0757aeb6a9053b8",
+      "translation": "__ELBOT_CODE_0__ only checks local file paths, common file types, filenames, and MIME, and does not use __ELBOT_CODE_1__ to restrict files sent to the chat platform.",
+      "updated_at": 1793285490
+    },
     "docs/configuration.md:paragraph:2e2afdf7a4e6c8843933950b1706b673ea98bb3bab5943b9e84d69348b8fc364": {
       "kind": "paragraph",
       "source": "这里的基础 PATH 是 ElBot 启动时已经获得的进程 PATH；",
@@ -2239,6 +2247,14 @@
       "source_hash": "95755188ea8e01d267a52107d659855fcbb008678d0ae5dc7a0367bef9195f30",
       "translation": "Both Chat Completions and Responses clients can be used for naming and text summaries of Chat Sessions.",
       "updated_at": 1791301591
+    },
+    "docs/configuration.md:paragraph:961920f6ec241265d339e22bc39b59f5f22132aa96c5725b5b6a292a59dddfca": {
+      "kind": "paragraph",
+      "source": "模型请求的交付限制由 Media 处理，聊天平台的发送方式由相应平台配置控制。\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "961920f6ec241265d339e22bc39b59f5f22132aa96c5725b5b6a292a59dddfca",
+      "translation": "Delivery restrictions for model requests are handled by Media, and the sending method for the chat platform is controlled by the corresponding platform configuration.\n",
+      "updated_at": 1793285490
     },
     "docs/configuration.md:paragraph:98eb7743b6382d1927f6e0c8096646fef84bd7543d6a077816680a510239c6c1": {
       "kind": "paragraph",
@@ -3058,8 +3074,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "7ea84ea5a08a32e06c668c276e7b10683b56b22aa8c8909215ec1a4cdbc95693",
+  "source_hash": "b5d029cacc225b7ce1d9e9fb742922f3d9a6fdf384aa1b1eaee51fb242ed3eb8",
   "target": "docs.en/configuration.md",
-  "updated_at": 1792502081,
+  "updated_at": 1793285490,
   "version": 2
 }

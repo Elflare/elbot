@@ -457,6 +457,8 @@ download_timeout_secs = 60
 
 `app.toml`'s `[file_delivery]` controls media delivery in model requests. The total raw bytes of media are calculated based on the complete request actually sent; if the same media appears multiple times, it will be counted multiple times, but reading, uploading, and signing are reused based on the media ID.
 
+`send_file` only checks local file paths, common file types, filenames, and MIME, and does not use `[file_delivery]` to restrict files sent to the chat platform. Delivery restrictions for model requests are handled by Media, and the sending method for the chat platform is controlled by the corresponding platform configuration.
+
 - `base64`: Stop the request when the total exceeds `max_direct_base64_bytes`, and explicitly report the actual total and the configured limit.
 - `hybrid`: Use base64 for all if the total is less than or equal to the limit; use S3 for all if it exceeds the limit.
 - `s3`: Use pre-signed download links for all. Existing local media will be uploaded when remote delivery is required, reusing the recorded object keys. S3 configuration, upload, or signing failures will result in explicit errors and will not fall back to hybrid delivery.
