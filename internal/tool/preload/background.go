@@ -105,7 +105,7 @@ func (s *PreloadService) PrepareBackground(ctx context.Context, req share.Backgr
 			TimeoutSeconds: declaration.TimeoutSeconds, ForegroundOnly: declaration.ForegroundOnly,
 		})
 	}
-	result.Update.Tools = s.BackgroundDiscoveredTools(ctx, result.Update.Tools)
+	result.Update.Tools = s.BackgroundDiscoveredTools(result.Update.Tools)
 	for i, name := range names {
 		if preparedTools.Accepted[i] || preparedSkills.Accepted[i] {
 			result.Update.Tags = append(result.Update.Tags, tags[name]...)

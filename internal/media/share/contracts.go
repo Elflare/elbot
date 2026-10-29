@@ -14,7 +14,6 @@ type Objects interface {
 	ImportBytes(ctx context.Context, data []byte, input Input, limits ImportLimits) (MediaInfo, error)
 	ImportURL(ctx context.Context, rawURL string, input Input, limits ImportLimits) (MediaInfo, error)
 	ImportFile(ctx context.Context, path string, input Input, limits ImportLimits) (MediaInfo, error)
-	ImportReader(ctx context.Context, input io.Reader, size int64, spec Input, limits ImportLimits) (MediaInfo, error)
 	LoadHistoryMedia(ctx context.Context, key HistoryKey) (map[int]HistoryEntry, error)
 	AssociateHistory(ctx context.Context, key HistoryKey, index int, kind, id string) error
 }

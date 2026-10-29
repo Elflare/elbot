@@ -51,7 +51,7 @@ func (r *Registry) QueryTools(ctx context.Context, query share.ToolQuery) ([]sha
 	r.mu.RLock()
 	candidates := make([]share.Tool, 0, len(r.tools))
 	for _, candidate := range r.tools {
-		candidates = append(candidates, candidate.Tool)
+		candidates = append(candidates, candidate)
 	}
 	r.mu.RUnlock()
 	var tools []share.Tool
@@ -94,7 +94,7 @@ func (r *Registry) QueryToolInfos(ctx context.Context, query share.ToolQuery) ([
 }
 
 // BackgroundDiscoveredTools applies background restrictions to executable discovery metadata.
-func BackgroundDiscoveredTools(ctx context.Context, items []share.DiscoveredTool) []share.DiscoveredTool {
+func BackgroundDiscoveredTools(items []share.DiscoveredTool) []share.DiscoveredTool {
 	var result []share.DiscoveredTool
 	for _, item := range items {
 		if item.ForegroundOnly {
@@ -107,7 +107,7 @@ func BackgroundDiscoveredTools(ctx context.Context, items []share.DiscoveredTool
 				break
 			}
 		}
-		if allowed && InfoAvailableInContext(ctx, share.Info{ForegroundOnly: item.ForegroundOnly}) {
+		if allowed {
 			result = append(result, item)
 		}
 	}

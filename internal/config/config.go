@@ -191,7 +191,6 @@ type FileDeliveryConfig struct {
 	S3Bucket             string `toml:"s3_bucket"`
 	S3AccessKeyEnv       string `toml:"s3_access_key_env"`
 	S3SecretKeyEnv       string `toml:"s3_secret_key_env"`
-	S3PublicBaseURL      string `toml:"s3_public_base_url"`
 }
 
 type PlatformConfig map[string]map[string]any

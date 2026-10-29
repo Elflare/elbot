@@ -160,7 +160,6 @@ func (c logCommand) Handle(ctx context.Context, req command.Request) (*command.R
 }
 
 func (c logCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
-	_ = ctx
 	token := command.CurrentCompletionToken(req)
 	previous := previousLogToken(req.Raw, token.Start)
 	if c.audit && previous == "--run_source" {
@@ -176,7 +175,7 @@ func (c logCommand) Complete(ctx context.Context, req command.CompletionRequest)
 		return completeStringOptions([]string{"llm_usage", "llm_error", "session_naming_completed", "tool_call_prepared", "tool_call_completed", "permission_denied", "session_resume", "session_fork", "hook_tool_call_completed", "hook_tool_log"}, token.Text, token.Start, token.End, "audit_event")
 	}
 	if c.audit && previous == "--tool" && !strings.HasPrefix(token.Text, "-") {
-		return completeToolNames(c.deps, token.Text, token.Start, token.End)
+		return completeToolNames(ctx, c.deps, token.Text, token.Start, token.End)
 	}
 	if c.elwisp && previous == "--mode" {
 		return completeStringOptions([]string{"record", "direct", "llm"}, token.Text, token.Start, token.End, "elnis_mode")

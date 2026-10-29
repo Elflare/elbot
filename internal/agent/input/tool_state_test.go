@@ -137,12 +137,8 @@ func (t agentDetailTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 	}), nil
 }
 
-func (t agentDetailTool) Detail() string {
-	return toolshare.RenderDetailBlocks([]toolshare.DetailBlock{t.DetailBlock()})
-}
-
-func (t agentDetailTool) DetailBlock() toolshare.DetailBlock {
-	return toolshare.DetailBlock{Content: t.detail, Format: t.format}
+func (t agentDetailTool) LoadDetail(context.Context) (toolshare.DetailBlock, error) {
+	return toolshare.DetailBlock{Content: t.detail, Format: t.format}, nil
 }
 
 func (t agentDetailTool) ActivateTools() []string { return t.activate }

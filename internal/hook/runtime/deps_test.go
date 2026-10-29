@@ -21,21 +21,21 @@ func testNotify(ctx context.Context, notice events.Notification) error {
 
 type testTools struct{ *registry.Registry }
 
-func (t testTools) ToolInfo(name string) (tool.Info, bool) {
+func (t testTools) ToolInfo(ctx context.Context, name string) (tool.Info, bool, error) {
 	value, ok := t.Get(name)
 	if !ok {
-		return tool.Info{}, false
+		return tool.Info{}, false, nil
 	}
 	info := value.Info()
-	return tool.Info{Name: info.Name, Description: info.Description, Risk: info.Risk, Source: tool.Source(info.Source), Hidden: info.Hidden, SuperadminOnly: info.SuperadminOnly, APITypes: info.APITypes, ForegroundOnly: info.ForegroundOnly, OwnerScoped: info.OwnerScoped, Tags: info.Tags, DependsOn: info.DependsOn, NeedsElyphRules: info.NeedsElyphRules}, true
+	return tool.Info{Name: info.Name, Description: info.Description, Risk: info.Risk, Source: tool.Source(info.Source), Hidden: info.Hidden, SuperadminOnly: info.SuperadminOnly, APITypes: info.APITypes, ForegroundOnly: info.ForegroundOnly, OwnerScoped: info.OwnerScoped, Tags: info.Tags, DependsOn: info.DependsOn, NeedsElyphRules: info.NeedsElyphRules}, true, nil
 }
 
-func (t testTools) ToolSchema(name string) (llm.ToolSchema, bool) {
+func (t testTools) ToolSchema(ctx context.Context, name string) (llm.ToolSchema, bool, error) {
 	value, ok := t.Get(name)
 	if !ok {
-		return llm.ToolSchema{}, false
+		return llm.ToolSchema{}, false, nil
 	}
-	return value.Schema(), true
+	return value.Schema(), true, nil
 }
 
 func (t testTools) CallTool(ctx context.Context, call tool.CallRequest) (*tool.Result, string, error) {

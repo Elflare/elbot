@@ -48,19 +48,6 @@ func (d descriptor) PrepareCall(context.Context, toolshare.CallRequest) (*toolsh
 	return nil, fmt.Errorf("skill %q is a document skill; query it with discover_tool", d.record.Name)
 }
 
-func (d descriptor) Detail() string {
-	block, err := d.LoadDetail(context.Background())
-	if err != nil {
-		return ""
-	}
-	return toolshare.RenderDetailBlocks([]toolshare.DetailBlock{block})
-}
-
-func (d descriptor) DetailBlock() toolshare.DetailBlock {
-	block, _ := d.LoadDetail(context.Background())
-	return block
-}
-
 func (d descriptor) LoadDetail(ctx context.Context) (toolshare.DetailBlock, error) {
 	block, err := loadRecordDetail(d.record)
 	if err != nil {

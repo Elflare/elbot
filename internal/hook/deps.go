@@ -18,8 +18,8 @@ import (
 type SupervisorDeps struct {
 	Media MediaAPI // Shared media center; runtime owns only its own media leases.
 	Tools interface {
-		ToolInfo(string) (tool.Info, bool)
-		ToolSchema(string) (llm.ToolSchema, bool)
+		ToolInfo(context.Context, string) (tool.Info, bool, error)
+		ToolSchema(context.Context, string) (llm.ToolSchema, bool, error)
 		CallTool(context.Context, tool.CallRequest) (*tool.Result, string, error)
 	} // Tool metadata, schema and invocation, without exposing callable Tool objects.
 	Platform interface {

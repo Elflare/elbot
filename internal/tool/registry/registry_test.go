@@ -76,16 +76,6 @@ func TestRegistryTagsAndNamesByTag(t *testing.T) {
 	}
 }
 
-func TestRegistryUnregisterBuiltinRejected(t *testing.T) {
-	registry := NewRegistry(security.DefaultPermission())
-	if err := registry.Register(fakeTool{name: "builtin", source: toolshare.SourceBuiltin}); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.Unregister("builtin"); err == nil {
-		t.Fatal("expected builtin unregister error")
-	}
-}
-
 func TestRegistryReplaceSourcesReplacesCompleteSnapshot(t *testing.T) {
 	registry := NewRegistry(security.DefaultPermission())
 	for _, item := range []toolshare.Tool{

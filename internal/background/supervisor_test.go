@@ -59,6 +59,9 @@ func backgroundDeps(t *testing.T) (*config.Config, SupervisorDeps) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = tools.Close(context.Background()) })
+	if err := tools.Start(); err != nil {
+		t.Fatal(err)
+	}
 	history, err := sqlite.NewChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)

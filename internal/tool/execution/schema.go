@@ -38,7 +38,7 @@ func (m *Manager) Schemas(ctx context.Context, view share.Context, discovered []
 		}
 	}
 	if view.Mode == storage.SessionModeBackground {
-		discovered = m.BackgroundDiscoveredTools(ctx, discovered)
+		discovered = m.BackgroundDiscoveredTools(discovered)
 	}
 	for _, item := range discovered {
 		if view.Mode != storage.SessionModeBackground && !m.InfoAvailableInContext(ctx, share.Info{ForegroundOnly: item.ForegroundOnly}) {

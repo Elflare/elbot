@@ -19,9 +19,9 @@ type PreloadOptions struct {
 	Resolver interface {
 		Resolve(context.Context, []share.Tool) (*share.DiscoveryResult, map[string]share.Tool, error)
 	} // 根部注入的发现解析。
-	NativeDiscoveredToolsFromDiscovery func(*share.DiscoveryResult) []share.DiscoveredTool                  // 已解析结果转换。
-	LoadDiscoveryContent               func(context.Context, share.Tool) (string, bool, bool, error)        // 动态发现说明。
-	BackgroundDiscoveredTools          func(context.Context, []share.DiscoveredTool) []share.DiscoveredTool // 后台资格筛选。
+	NativeDiscoveredToolsFromDiscovery func(*share.DiscoveryResult) []share.DiscoveredTool           // 已解析结果转换。
+	LoadDiscoveryContent               func(context.Context, share.Tool) (string, bool, bool, error) // 动态发现说明。
+	BackgroundDiscoveredTools          func([]share.DiscoveredTool) []share.DiscoveredTool           // 后台资格筛选。
 	Registry                           interface {
 		Get(string) (share.Tool, bool)
 		QueryTools(context.Context, share.ToolQuery) ([]share.Tool, error)
@@ -115,7 +115,7 @@ func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, na
 		}
 		detailer := candidate.(share.DetailProvider)
 		if !seen[name] {
-			block, err := skillDetailBlock(ctx, candidate, detailer)
+			block, err := detailer.LoadDetail(ctx)
 			if err == nil {
 				err = ctx.Err()
 			}
@@ -209,16 +209,6 @@ func (s *PreloadService) discoveryContent(ctx context.Context, details *share.Di
 		}
 	}
 	return strings.Join(parts, "\n\n"), nil
-}
-
-func skillDetailBlock(ctx context.Context, candidate share.Tool, detailer share.DetailProvider) (share.DetailBlock, error) {
-	if loader, ok := candidate.(share.LazyDetailProvider); ok {
-		return loader.LoadDetail(ctx)
-	}
-	if structured, ok := candidate.(share.StructuredDetailProvider); ok {
-		return structured.DetailBlock(), nil
-	}
-	return share.DetailBlock{Content: detailer.Detail()}, nil
 }
 
 func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name string, background bool) ([]share.DiscoveredTool, error) {

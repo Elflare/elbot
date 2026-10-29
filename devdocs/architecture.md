@@ -289,6 +289,8 @@ flowchart LR
 <!-- locator:tool -->
 ## Tool Runtime、工具状态与文件
 
+Tool.Start 立即启动首次 Skill 异步扫描，目录查询、预加载、schema 筛选、执行及技能删除在根部等待同一次加载。等待者取消不取消共享扫描；Close 取消并等待扫描和自有信号退出。首次失败交回调用方，由显式 Reload 重试；重载失败保留上次成功目录。List、ToolInfo、ToolSchema 均接收 context 并返回 error，未就绪或加载错误不解释成工具不存在。技能删除统一通过 Remove 删除目录并重载。
+
 Tool 拥有注册、schema、风险评估与执行器；Permission.CheckTool 根据身份、工具属性和后台事实决定拒绝、直接执行或交互确认。Tool 执行决定，Agent 承接交互确认。StateService 解释工具状态，PreloadService 返回待提交状态、材料和语言需求。
 
 Execution 由 Manager 私有持有 Registry、Permission、Media 和日志发布函数，依赖在构造时一次注入，向 Tool 根部提供 Schemas、Run、CallTool。单次调用的 executionResult 留在包内；Share 只提供跨包协作契约。批次准备、确认、并发调度和完成处理是同一 Manager 的包内流程；App 与其他业务线只调用 Tool 总管。CallTool 是调用方已授权的原生直接调用，保留原始业务结果、日志正文和错误；Hook 负责自身策略，不进入模型批次和交互确认。
@@ -310,6 +312,7 @@ flowchart TD
 - ELyph 通用规则由 elyph/rules.go 提供，工具、Skill 与后台任务声明需求，输入／工具 Runner 在正文 Hook 后组装。首次展示状态与携带规则的消息原子提交，同 Session 共享，压缩新 Session 重置。
 - 输入指令、发现与后台首轮预加载在一次提交中合并状态，失败保留原状态；准备在准入锁外，提交复核取消、binding、模式和压缩状态。
 - tool.Info.APITypes 限制协议可用性，空集合不限；view_image 仅供 Responses。前台 chat 过滤工具、Skill 和 tag。
+- Skill 的 DetailProvider 统一提供 LoadDetail(ctx) 与 ActivateTools；Discovery、Preload 使用同一带上下文和错误返回的详情契约，目录加载由根部协调。
 - Registry 统一筛选运行资格，Discovery 的 Resolve 接收已筛选对象并解析依赖，Preload 使用返回的同一批对象读取动态说明。标签授权展开只读取目录与配置成员，不按当前模型、权限或前后台事实缩减声明。
 - Execution 的基础 schema 仅为通过 Registry 筛选的 discover_tool，限 Work 且未禁用基础工具；Chat 不开放工具，Background 只使用已发现声明。已发现 schema 不按目录重建，按输入顺序去重并复制；远程调用按 CanonicalName（为空时用 Name）定位，向端点发送原始 Name 与 EventKey。
 - PrepareBackground 接收 BackgroundPreloadRequest；AllowedToolNames 仅约束本地根工具，nil 不额外限制，空切片禁止本地根工具。它复用 PrepareTools／PrepareSkills，合并说明、Skill 文档、wrapper 和 ELwispTools 声明，并经 Registry 的后台规则过滤 discover_tool、workspace 与 ForegroundOnly 工具，返回待提交状态。外部声明的 CanonicalName、EventKey 由适配方提供，schema 在预载时复制；ActivateTools 声明的可执行 Skill 直接加载自身 schema，纯文档 Skill 不生成调用接口。调用方迁移与续跑约束见 [后台工具统一预载](tasks.md#后台工具统一预载)。
@@ -337,7 +340,7 @@ flowchart TD
     G --> MM["模型服务：选择校验"]
 ```
 
-Cron 工具由 Tool 根部构造并注册。Builtin 使用 Tool 自有的 `CronRepository`、`CronSaveRequest` 和 `CronInfo`，负责参数、任务规则、更新合并与结果展示；模型校验通过单独注入的函数调用。根部 `cronBridge` 转换 Storage 任务定义、记录及状态投影，持久化 JSON、数据库任务名称和外部服务类型不进入 Builtin 或 Share。定义写入成功后，根部发布仅携带任务标识的 `CronChangedEvent`；`ObserveCronChanged` 的连接由订阅方持有。Tool 持有工具注册和信号生命周期，BeginClose 保留收尾调用，Close 释放自有资源。Background 根部持有订阅，回调只登记任务名称；Cron Manager 串行重新读库并刷新调度，见 [Cron 与后台任务](#cron-与后台任务)。
+Cron 工具由 Tool 根部构造并注册。Builtin 使用 Tool 自有的 `CronRepository`、`CronSaveRequest` 和 `CronInfo`，负责参数、任务规则、更新合并与结果展示；模型校验通过单独注入的函数调用。根部 `cronBridge` 转换 Storage 任务定义、记录及状态投影，持久化 JSON、数据库任务名称和外部服务类型不进入 Builtin 或 Share。定义写入成功后，根部发布仅携带任务标识的 `CronChangedEvent`；`ObserveCronChanged` 的连接由订阅方持有。Cron 与其他内置工具使用同一 Registry 普通注册，注册随 Tool 实例存活；BeginClose 保留收尾调用，Close 等待自有信号退出。Background 根部持有订阅，回调只登记任务名称；Cron Manager 串行重新读库并刷新调度，见 [Cron 与后台任务](#cron-与后台任务)。
 
 常驻记忆和 Elwisp 创建指引各自在现有 Builtin 文件声明所需契约，Tool 根部实现适配。`configBridge` 每次按装配时的配置路径重新读取，只交付地址、路径、授权工具、token 名称／环境变量名及读取错误；Builtin 根据配置事实或读取错误生成创建指引与告警。`residentMemoryBridge` 持有 Store，将当前 Actor 转为存储范围并转换数据和未找到错误。Builtin 不持有 Config、常驻记忆 Store 或 Session 范围。
 

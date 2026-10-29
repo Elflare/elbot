@@ -14,24 +14,25 @@ import (
 
 type optionalTool struct{ fakeTool }
 
-func (optionalTool) Detail() string          { return "skill detail" }
+func (optionalTool) LoadDetail(context.Context) (share.DetailBlock, error) {
+	return share.DetailBlock{Content: "skill detail"}, nil
+}
 func (optionalTool) ActivateTools() []string { return nil }
 
-func TestRegisterOwnedPreservesOptionalInterfaces(t *testing.T) {
+func TestRegistryPreservesSkillCapabilities(t *testing.T) {
 	r := NewRegistry(security.DefaultPermission())
 	original := &optionalTool{fakeTool: fakeTool{name: "skill", source: share.SourceSkillGo}}
-	release, err := r.RegisterOwned(original)
-	if err != nil {
+	if err := r.Register(original); err != nil {
 		t.Fatal(err)
 	}
-	defer release()
 	got, ok := r.Get("skill")
 	if !ok || got != original {
 		t.Fatalf("Get = %T, %v; want original tool", got, ok)
 	}
-	detail, ok := got.(share.DetailProvider)
-	if !ok || detail.Detail() != "skill detail" {
-		t.Fatal("lost DetailProvider")
+	detail := got.(share.DetailProvider)
+	block, err := detail.LoadDetail(t.Context())
+	if err != nil || block.Content != "skill detail" {
+		t.Fatal(block, err)
 	}
 	tools, err := r.QueryTools(context.Background(), share.ToolQuery{Kind: "skill"})
 	if err != nil || len(tools) != 1 || tools[0] != original {
@@ -40,57 +41,6 @@ func TestRegisterOwnedPreservesOptionalInterfaces(t *testing.T) {
 	tools, err = r.QueryTools(context.Background(), share.ToolQuery{Kind: "tool"})
 	if err != nil || len(tools) != 0 {
 		t.Fatalf("plain query = %v, %v", tools, err)
-	}
-}
-
-func TestRegisterOwnedAtomicAndReleaseIdentity(t *testing.T) {
-	r := NewRegistry(security.DefaultPermission())
-	builtin := fakeTool{name: "builtin", source: share.SourceBuiltin}
-	releaseBuiltin, err := r.RegisterOwned(builtin)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := r.RegisterOwned(fakeTool{name: "fresh"}, builtin); err == nil {
-		t.Fatal("expected conflict")
-	}
-	if _, ok := r.Get("fresh"); ok {
-		t.Fatal("partially registered failed batch")
-	}
-	if _, err := r.RegisterOwned(fakeTool{name: "dup"}, fakeTool{name: "dup"}); err == nil {
-		t.Fatal("expected duplicate error")
-	}
-	if _, ok := r.Get("dup"); ok {
-		t.Fatal("registered duplicate batch")
-	}
-	original := fakeTool{name: "skill", source: share.SourceSkillGo, tags: []string{"original"}}
-	release, err := r.RegisterOwned(original)
-	if err != nil {
-		t.Fatal(err)
-	}
-	replacement := fakeTool{name: "skill", source: share.SourceSkillGo, tags: []string{"replacement"}}
-	if err := r.ReplaceSources([]share.Source{share.SourceSkillGo}, []share.Tool{replacement}); err != nil {
-		t.Fatal(err)
-	}
-	release()
-	release()
-	info, ok := r.ToolInfo("skill")
-	if !ok || len(info.Tags) != 1 || info.Tags[0] != "replacement" {
-		t.Fatal("old release removed replacement")
-	}
-	releaseBuiltin()
-	releaseBuiltin()
-	if _, ok := r.Get("builtin"); ok {
-		t.Fatal("retained owned builtin")
-	}
-	if err := r.Unregister("skill"); err != nil {
-		t.Fatal(err)
-	}
-	if err := r.Register(original); err != nil {
-		t.Fatal(err)
-	}
-	release()
-	if _, ok := r.Get("skill"); !ok {
-		t.Fatal("old release removed later registration")
 	}
 }
 

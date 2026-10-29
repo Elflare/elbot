@@ -108,7 +108,7 @@ func (r *Resolver) addDiscoveryDetail(ctx context.Context, target share.Tool, ta
 	seen[name] = true
 	info := target.Info()
 	discovered := share.DiscoveryItem{Info: publicInfo(info), NeedsElyphRules: info.NeedsElyphRules}
-	if loader, ok := target.(share.LazyDetailProvider); ok {
+	if loader, ok := target.(share.DetailProvider); ok {
 		block, err := loader.LoadDetail(ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -122,14 +122,6 @@ func (r *Resolver) addDiscoveryDetail(ctx context.Context, target share.Tool, ta
 		}
 		discovered.DetailBlock = block
 		discovered.Detail = share.RenderDetailBlocks([]share.DetailBlock{block})
-	} else if detailer, ok := target.(share.DetailProvider); ok {
-		if structured, ok := target.(share.StructuredDetailProvider); ok {
-			discovered.DetailBlock = structured.DetailBlock()
-			discovered.Detail = share.RenderDetailBlocks([]share.DetailBlock{discovered.DetailBlock})
-		} else {
-			discovered.Detail = detailer.Detail()
-			discovered.DetailBlock = share.DetailBlock{Content: discovered.Detail}
-		}
 	} else {
 		schema := target.Schema()
 		discovered.Schema = &schema

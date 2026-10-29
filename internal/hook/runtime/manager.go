@@ -167,7 +167,11 @@ func (m *Manager) Apply(configs []share.RuntimeConfig, commit func(string)) erro
 
 func (m *Manager) validateConfig(config share.RuntimeConfig) error {
 	for _, name := range config.Tools.Allow {
-		if _, ok := m.opts.Tools.ToolInfo(name); !ok {
+		_, ok, err := m.opts.Tools.ToolInfo(m.rootCtx, name)
+		if err != nil {
+			return err
+		}
+		if !ok {
 			return fmt.Errorf("runtime tools.allow references unknown tool %q", name)
 		}
 	}

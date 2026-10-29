@@ -20,7 +20,7 @@ import (
 type ToolExecutor struct {
 	Messages *MessageStore
 	Manager  interface {
-		ToolInfo(string) (tool.Info, bool)
+		ToolInfo(context.Context, string) (tool.Info, bool, error)
 		FilterSchemas(context.Context, []llm.ToolSchema) ([]llm.ToolSchema, error)
 		Run(context.Context, tool.RunnerDeps, tool.RunRequest) tool.RunResult
 		Schemas(context.Context, tool.Context, []tool.DiscoveredTool) ([]llm.ToolSchema, error)

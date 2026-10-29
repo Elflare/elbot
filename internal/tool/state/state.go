@@ -14,7 +14,7 @@ import (
 
 // StateService has no second writable cache. All updates merge the latest row.
 type StateService struct {
-	backgroundDiscoveredTools func(context.Context, []toolshare.DiscoveredTool) []toolshare.DiscoveredTool // 根部注入的后台声明资格筛选。
+	backgroundDiscoveredTools func([]toolshare.DiscoveredTool) []toolshare.DiscoveredTool // 根部注入的后台声明资格筛选。
 	store                     interface {
 		Get(context.Context, string) (*storage.Session, error)
 		Mutate(context.Context, string, func(*storage.Session) error) (*storage.Session, error)
@@ -24,7 +24,7 @@ type StateService struct {
 func NewStateService(store interface {
 	Get(context.Context, string) (*storage.Session, error)
 	Mutate(context.Context, string, func(*storage.Session) error) (*storage.Session, error)
-}, backgroundDiscoveredTools func(context.Context, []toolshare.DiscoveredTool) []toolshare.DiscoveredTool) *StateService {
+}, backgroundDiscoveredTools func([]toolshare.DiscoveredTool) []toolshare.DiscoveredTool) *StateService {
 	return &StateService{store: store, backgroundDiscoveredTools: backgroundDiscoveredTools}
 }
 
@@ -165,7 +165,7 @@ func (s *StateService) DiscoveredToolsForSession(ctx context.Context, id string,
 	}
 	items := state.DiscoveredTools
 	if background {
-		items = s.backgroundDiscoveredTools(ctx, items)
+		items = s.backgroundDiscoveredTools(items)
 	}
 	return items, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "tool state loaded"}, nil
 }

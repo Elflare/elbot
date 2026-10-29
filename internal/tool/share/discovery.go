@@ -44,8 +44,9 @@ type DiscoveryText struct {
 	Details string
 }
 
+// DetailProvider 提供按调用上下文加载的技能详情和需要激活的工具名称。
 type DetailProvider interface {
-	Detail() string
+	LoadDetail(context.Context) (DetailBlock, error)
 	ActivateTools() []string
 }
 
@@ -62,16 +63,6 @@ type DiscoveryContentProvider interface {
 // current tool execution context, such as the active workspace.
 type ContextDiscoveryContentProvider interface {
 	DiscoveryContent(context.Context) (content string, override bool, err error)
-}
-
-type StructuredDetailProvider interface {
-	DetailBlock() DetailBlock
-}
-
-// LazyDetailProvider loads detail content only when a tool is discovered or preloaded.
-// The context carries the actor used by the caller for access checks.
-type LazyDetailProvider interface {
-	LoadDetail(context.Context) (DetailBlock, error)
 }
 
 const (

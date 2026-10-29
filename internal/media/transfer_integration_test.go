@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"elbot/internal/config"
 	"elbot/internal/delivery"
@@ -49,7 +50,7 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 					t.Errorf("unexpected method %s", r.Method)
 				}
 			}))
-			defer server.Close()
+			t.Cleanup(server.Close)
 			cfg := config.Default()
 			cfg.ConfigPath = filepath.Join(t.TempDir(), "config.toml")
 			cfg.Sandbox.Root = filepath.Join(t.TempDir(), "sandbox")
@@ -66,7 +67,18 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 			t.Setenv(cfg.FileDelivery.S3AccessKeyEnv, "access")
 			t.Setenv(cfg.FileDelivery.S3SecretKeyEnv, "secret")
 			store := testutil.NewSQLiteStore(t)
+			var usageID UsageID
 			m, err := NewMediaCenter(t.Context(), cfg, store)
+			t.Cleanup(func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if usageID != "" {
+					m.PublishUsageFinished(ctx, UsageFinishedEvent{UsageIDs: []UsageID{usageID}})
+				}
+				if err := m.Close(ctx); err != nil {
+					t.Error(err)
+				}
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -76,7 +88,7 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 			}
 			id := info.ID
 			segments := []llm.MessageSegment{{Type: llm.SegmentFile, MediaID: id, Name: info.Name, MIMEType: info.MIMEType}}
-			prepared, cleanup, err := m.AcquireForLLM(t.Context(), []llm.LLMMessage{{Segments: append(segments, segments[0])}})
+			prepared, usageID, err := m.AcquireForLLM(t.Context(), []llm.LLMMessage{{Segments: append(segments, segments[0])}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -95,11 +107,12 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 			} else if !strings.HasPrefix(value, server.URL) || !strings.Contains(value, "X-Amz-Signature") {
 				t.Fatal(value)
 			}
-			m.PublishUsageFinished(t.Context(), UsageFinishedEvent{UsageIDs: []UsageID{cleanup}})
+			m.PublishUsageFinished(t.Context(), UsageFinishedEvent{UsageIDs: []UsageID{usageID}})
+			usageID = ""
 			if _, err := m.Cleanup(t.Context()); err != nil {
 				t.Fatal(err)
 			}
-			source, cleanup, err := m.ResolveForOutput(t.Context(), id)
+			source, usageID, err := m.ResolveForOutput(t.Context(), id)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -111,7 +124,8 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 			if err != nil || len(refs) != 1 {
 				t.Fatalf("output holds=%d %v", len(refs), err)
 			}
-			m.PublishUsageFinished(t.Context(), UsageFinishedEvent{UsageIDs: []UsageID{cleanup}})
+			m.PublishUsageFinished(t.Context(), UsageFinishedEvent{UsageIDs: []UsageID{usageID}})
+			usageID = ""
 			if _, err := m.Cleanup(t.Context()); err != nil {
 				t.Fatal(err)
 			}
@@ -137,6 +151,13 @@ func TestMediaCenterHistoryAndBoundedImport(t *testing.T) {
 	cfg.Sandbox.Root = filepath.Join(t.TempDir(), "sandbox")
 	store := testutil.NewSQLiteStore(t)
 	m, err := NewMediaCenter(t.Context(), cfg, store)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := m.Close(ctx); err != nil {
+			t.Error(err)
+		}
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

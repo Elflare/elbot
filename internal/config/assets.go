@@ -138,7 +138,6 @@ s3_region = "auto"
 s3_bucket = ""
 s3_access_key_env = "ELBOT_S3_ACCESS_KEY_ID"
 s3_secret_key_env = "ELBOT_S3_SECRET_ACCESS_KEY"
-s3_public_base_url = ""
 
 [media]
 # Images exceeding either limit are stored as compressed JPEGs on import; originals are not kept.

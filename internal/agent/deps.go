@@ -54,11 +54,10 @@ type ModelCapabilities interface {
 
 // ToolCapabilities declares the Tool operations consumed by Agent without exposing owned components.
 type ToolCapabilities interface {
-	List() []tool.Info
-	Unregister(string) error
+	List(context.Context) ([]tool.Info, error)
 	Remove(context.Context, string) error
 	Reload(context.Context) error
-	ToolInfo(string) (tool.Info, bool)
+	ToolInfo(context.Context, string) (tool.Info, bool, error)
 	FilterSchemas(context.Context, []llm.ToolSchema) ([]llm.ToolSchema, error)
 	QueryTools(context.Context, tool.ToolQuery) ([]tool.Info, error)
 	ToolTags(context.Context) ([]string, error)

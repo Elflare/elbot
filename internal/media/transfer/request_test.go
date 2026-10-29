@@ -16,10 +16,8 @@ import (
 )
 
 type fakeObjects struct {
-	share.Objects
 	hold      func(context.Context, string) (share.HeldMedia, error)
 	info      func(context.Context, string) (share.MediaInfo, error)
-	reader    func(context.Context, io.Reader, int64, share.Input, share.ImportLimits) (share.MediaInfo, error)
 	url       func(context.Context, string, share.Input, share.ImportLimits) (share.MediaInfo, error)
 	file      func(context.Context, string, share.Input, share.ImportLimits) (share.MediaInfo, error)
 	bytes     func(context.Context, []byte, share.Input, share.ImportLimits) (share.MediaInfo, error)
@@ -32,9 +30,6 @@ func (f *fakeObjects) Hold(ctx context.Context, id string) (share.HeldMedia, err
 }
 func (f *fakeObjects) Info(ctx context.Context, id string) (share.MediaInfo, error) {
 	return f.info(ctx, id)
-}
-func (f *fakeObjects) ImportReader(ctx context.Context, r io.Reader, size int64, input share.Input, limits share.ImportLimits) (share.MediaInfo, error) {
-	return f.reader(ctx, r, size, input, limits)
 }
 func (f *fakeObjects) ImportURL(ctx context.Context, u string, input share.Input, limits share.ImportLimits) (share.MediaInfo, error) {
 	return f.url(ctx, u, input, limits)

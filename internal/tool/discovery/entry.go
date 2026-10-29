@@ -13,8 +13,7 @@ import (
 )
 
 type discoverTool struct {
-	resolver       *Resolver                   // 解析已注册目录中的发现请求。
-	beforeDiscover func(context.Context) error // 仅工具入口触发的 Skill 加载回调。
+	resolver *Resolver // 解析已注册目录中的发现请求。
 }
 
 type discoverArgs struct {
@@ -22,12 +21,8 @@ type discoverArgs struct {
 	Names []string `json:"names"`
 }
 
-func NewDiscoverTool(resolver *Resolver, before ...func(context.Context) error) share.Tool {
-	var hook func(context.Context) error
-	if len(before) > 0 {
-		hook = before[0]
-	}
-	return discoverTool{resolver: resolver, beforeDiscover: hook}
+func NewDiscoverTool(resolver *Resolver) share.Tool {
+	return discoverTool{resolver: resolver}
 }
 
 func (t discoverTool) Name() string { return "discover_tool" }
@@ -63,11 +58,6 @@ func (t discoverTool) PrepareCall(ctx context.Context, req share.CallRequest) (*
 		defer func() { logContent = share.TruncateLogContent(logContent, 1024) }()
 		if err := ctx.Err(); err != nil {
 			return nil, err.Error(), err
-		}
-		if t.beforeDiscover != nil {
-			if err := t.beforeDiscover(ctx); err != nil {
-				return nil, err.Error(), err
-			}
 		}
 		result, targets, err := t.resolver.discover(ctx, names)
 		if err != nil {

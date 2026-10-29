@@ -27,7 +27,7 @@ type Options struct {
 	BuildMessageSegments func(context.Context, []hookoutput.MessageSegment, string) ([]llm.MessageSegment, error) // 借用运行时的媒体归档与租约能力。
 	ConfigDir            string
 	Tools                interface {
-		ToolInfo(string) (tool.Info, bool)
+		ToolInfo(context.Context, string) (tool.Info, bool, error)
 		CallTool(context.Context, tool.CallRequest) (*tool.Result, string, error)
 	} // Borrowed metadata and call operations; no Tool objects escape their owner.
 

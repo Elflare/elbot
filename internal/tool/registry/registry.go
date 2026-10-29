@@ -1,4 +1,4 @@
-// 管理工具注册、替换、注销和目录查询。
+// 管理工具注册、来源替换和目录查询。
 package registry
 
 import (
@@ -13,14 +13,9 @@ import (
 	toolshare "elbot/internal/tool/share"
 )
 
-// registration 的指针标识一次注册；Tool 保存原对象，查询时不暴露包装。
-type registration struct {
-	toolshare.Tool // 保留工具原有的动态类型与可选能力。
-}
-
 type Registry struct {
-	mu         sync.RWMutex             // 保护注册目录及原子替换。
-	tools      map[string]*registration // 名称到注册记录，释放时按记录身份核对。
+	mu         sync.RWMutex              // 保护注册目录及原子替换。
+	tools      map[string]toolshare.Tool // 名称到当前工具对象。
 	permission interface {
 		CanUseTool(contextinfo.Actor, security.RiskLevel, bool) bool
 	} // 根部只交付目录筛选需要的权限能力。
@@ -29,7 +24,7 @@ type Registry struct {
 func NewRegistry(permission interface {
 	CanUseTool(contextinfo.Actor, security.RiskLevel, bool) bool
 }) *Registry {
-	return &Registry{tools: map[string]*registration{}, permission: permission}
+	return &Registry{tools: map[string]toolshare.Tool{}, permission: permission}
 }
 
 func (r *Registry) Register(tool toolshare.Tool) error {
@@ -45,46 +40,8 @@ func (r *Registry) Register(tool toolshare.Tool) error {
 	if _, exists := r.tools[name]; exists {
 		return fmt.Errorf("tool %q already registered", name)
 	}
-	r.tools[name] = &registration{Tool: tool}
+	r.tools[name] = tool
 	return nil
-}
-
-// RegisterOwned registers one owner's tools atomically and returns an idempotent release.
-// The release removes only these exact registrations, including builtin business tools.
-func (r *Registry) RegisterOwned(tools ...toolshare.Tool) (func(), error) {
-	entries := make(map[string]*registration, len(tools))
-	for _, t := range tools {
-		if t == nil {
-			return nil, fmt.Errorf("tool is nil")
-		}
-		name := strings.TrimSpace(t.Name())
-		if name == "" {
-			return nil, fmt.Errorf("tool name is required")
-		}
-		if _, exists := entries[name]; exists {
-			return nil, fmt.Errorf("tool %q already registered", name)
-		}
-		entries[name] = &registration{Tool: t}
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for name := range entries {
-		if _, exists := r.tools[name]; exists {
-			return nil, fmt.Errorf("tool %q already registered", name)
-		}
-	}
-	for name, t := range entries {
-		r.tools[name] = t
-	}
-	return func() {
-		r.mu.Lock()
-		defer r.mu.Unlock()
-		for name, t := range entries {
-			if r.tools[name] == t {
-				delete(r.tools, name)
-			}
-		}
-	}, nil
 }
 
 // ReplaceSources atomically replaces every tool owned by the selected sources.
@@ -141,31 +98,16 @@ func (r *Registry) ReplaceSources(sources []toolshare.Source, replacements []too
 		return fmt.Errorf("replace tool sources: %s", strings.Join(problems, "; "))
 	}
 
-	next := make(map[string]*registration, len(r.tools)+len(candidates))
+	next := make(map[string]toolshare.Tool, len(r.tools)+len(candidates))
 	for name, existing := range r.tools {
 		if !sourceSet[existing.Info().Source] {
 			next[name] = existing
 		}
 	}
 	for _, candidate := range candidates {
-		next[candidate.name] = &registration{Tool: candidate.tool}
+		next[candidate.name] = candidate.tool
 	}
 	r.tools = next
-	return nil
-}
-
-func (r *Registry) Unregister(name string) error {
-	name = strings.TrimSpace(name)
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	tool, ok := r.tools[name]
-	if !ok {
-		return fmt.Errorf("tool %q not found", name)
-	}
-	if tool.Info().Source == toolshare.SourceBuiltin {
-		return fmt.Errorf("cannot uninstall builtin tool %q", name)
-	}
-	delete(r.tools, name)
 	return nil
 }
 
@@ -176,7 +118,7 @@ func (r *Registry) Get(name string) (toolshare.Tool, bool) {
 	if !ok {
 		return nil, false
 	}
-	return tool.Tool, true
+	return tool, true
 }
 
 // ToolInfo 返回目录元数据；不执行上下文资格筛选。

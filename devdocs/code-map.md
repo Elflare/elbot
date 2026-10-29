@@ -119,11 +119,12 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:tool -->
 ## Tool Runtime、工具状态与文件
 
+- `internal/tool/supervisor.go`、`lifecycle.go`：目录能力等待首次 Skill 加载，Start 发起异步扫描，Close 等待扫描和信号退出；查询传递 context 与加载错误。
 - `internal/tool/registry/`、`execution/`、`builtin/`：工具目录、执行核心与内置工具。
 - `internal/tool/share/`：公共定义、schema 构造与纯数据辅助。
 - `internal/tool/share/definition.go`、`prepared.go`、`risk.go`：Tool 的必需 PrepareCall 入口；PreparedCall 固定参数、完整风险、预览和执行回调，提供 Preview、RiskAssessment、Call 与参数匹配检查。
 - `internal/tool/builtin/cron_contract.go`：Builtin 消费的 CronRepository、CronSaveRequest、创建／更新请求与管理结果，由根部 bridge 实现，不引用 Storage、Config 或 Background 类型。
-- `internal/tool/cron_bridge.go`：转换 Tool 与 Storage 的任务数据和持久化格式，桥接模型校验；写入成功后发布根部 CronChangedEvent，提供 ObserveCronChanged。工具由 wiring 注册，注册及信号由 Tool 生命周期释放。
+- `internal/tool/cron_bridge.go`：转换 Tool 与 Storage 的任务数据和持久化格式，桥接模型校验；写入成功后发布根部 CronChangedEvent，提供 ObserveCronChanged。工具由 wiring 普通注册，信号由 Tool 生命周期排空。
 - `internal/tool/chat_history/manager.go`：历史组件构造与 Backend 契约；`query.go` 统一检查搜索范围：前台禁止显式 platform／scope，后台必须同时提供；user 仅去除首尾空白，以 SenderQuery 交查询后端同时匹配 ID 或昵称，不解析特殊写法。`media.go` 处理媒体选择、序号与批次获取策略。
 - `internal/tool/chat_history_bridge.go`：直接查询 Storage，通过 Storage 编解码读取历史事实，转换组件数据和 Media 历史输入，并注入按目标平台解析媒体的函数。Builtin 根据结构化 Reply 组织引用展示。
 - `internal/tool/config_bridge.go`：按装配路径读取配置，向 Builtin 的 ElwispCreatorConfigProvider 提供精简配置摘要与读取错误；创建指引与告警由 Builtin 生成。
@@ -168,10 +169,10 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## Skill 与 ELyph
 
 - `internal/elyph/`、`rules.go`：语言解析、lint、公共规则卡与展示判定。
-- `internal/tool/discovery/`：发现入口、摘要、详情、语言需求与激活状态更新。
+- `internal/tool/discovery/`：发现入口、摘要、详情、语言需求与激活状态更新；与 Preload 共用 share.DetailProvider 的 LoadDetail 和 ActivateTools 契约。
 - `internal/agent/dialogue/preparation.go`、`model_call.go`、`internal/tool/execution/runner.go`：输入与工具结果的规则卡组装。
 - `internal/storage/dialogue.go`、`internal/storage/sqlite/dialogue_repository.go`、`internal/contextmgr/state.go`：规则展示状态提交与压缩重置。
-- `internal/tool/skill/manager.go`：私有持有技能目录、注册目录、媒体入口和基础环境；协调扫描候选、构造工具、替换注册、更新活动目录与删除技能，重载、删除和 manifest 写入共用写入锁。
+- `internal/tool/skill/manager.go`：私有持有技能目录、注册目录、媒体入口和基础环境；持有首次异步加载及等待状态，重载失败保留可用目录；协调扫描候选、构造工具、替换注册、更新活动目录与删除技能，重载、删除和 manifest 写入共用写入锁。
 - `internal/tool/skill/scanner.go`、`catalog.go`：扫描器只读取文件并生成候选记录；catalog 保存已成功注册的活动记录，两者均为 Skill 包内实现。
 - `internal/tool/skill/command_tool.go`、`go_runner.go`：准备命令／Go 调用的参数、风险、目标与操作预览；执行阶段读取技能环境并准备媒体，GoRunner 固定所选活动记录。
 - `internal/tool/skill/skill_md_parser.go`、`elbot_skill_manifest.go`：SKILL.md 元数据与正文解析、ELBOT_SKILL.toml 解析校验与 schema 构造。

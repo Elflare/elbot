@@ -151,6 +151,9 @@ func TestToolNotificationRefreshesCronThroughRealStorage(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = tools.Close(context.Background()) })
+	if err := tools.Start(); err != nil {
+		t.Fatal(err)
+	}
 	b := cronBridge{repo: store.CronJobs()}
 	m := elcron.NewManager(b)
 	if err := m.RegisterHandler(elcron.UserHandlerName, func(context.Context, elcron.Job) (events.LogResult, error) {

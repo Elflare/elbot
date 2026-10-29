@@ -68,7 +68,7 @@ App 用 `shutdownStep` 记录步骤名称和关闭调用，`runShutdownSteps` �
 
 Platform 根部构造并持有下层组件，统一提供公开能力。NewSupervisor 接收完整配置及 Mode、Store、ChatHistory、Media，持有适配器、通知连接和 UI；历史库属于 App，Platform 只借用。部分失败仍交回总管。公开发送、原生 API 和媒体解析转交内部组件，不暴露 Repository 或 Router。失败通知已接通；配置定义统一由根部 ConfigDefinitions 提供。
 
-Tool 根部创建媒体入口、技能目录与基础环境并一次注入 Skill Manager；Builtin、Skill、发现及 ELwisp 均接入必需的准备／执行契约，Skill 内部不依赖 Tool 根包。Cron 工具只使用 Tool 内部契约，根部 bridge 接入 Storage 和模型校验并发布任务定义变更；Background 根部持有订阅，Cron Manager 合并名称并串行读库刷新。Elnis 已通过自身媒体契约接入媒体中心。Background 整包已完成生命周期接线；App 整包及 Service 进程启停已通过 race。
+Tool 根部创建媒体入口、技能目录与基础环境并一次注入 Skill Manager。Start 立即发起异步加载，目录能力在根部可取消地等待同一次扫描；首次失败通过调用返回，由显式 Reload 重试，后续重载失败保留可用目录。Close 取消扫描并等待实际退出。List、ToolInfo、ToolSchema 接收 context 并返回加载错误；技能详情统一使用 DetailProvider.LoadDetail，删除统一通过 Remove。Builtin、Skill、发现及 ELwisp 均接入必需的准备／执行契约，Skill 内部不依赖 Tool 根包。Cron 工具只使用 Tool 内部契约，根部 bridge 接入 Storage 和模型校验并发布任务定义变更；Background 根部持有订阅，Cron Manager 合并名称并串行读库刷新。Elnis 已通过自身媒体契约接入媒体中心。Background 整包已完成生命周期接线；App 整包及 Service 进程启停已通过 race。
 
 Background 根部按四文件组织：`supervisor.go` 定义对外总管并持有组件，`deps.go` 声明 Store、ChatHistory、Models、Media、Logs、Agent、Tools、Platform 借用依赖，`wiring.go` 负责完整配置装配与边界适配，`lifecycle.go` 协调 Start、Wait、BeginClose、Close、Done。根部不公开内部 Runner 或 Cron CRUD；Cron 工具注册和管理归 Tool。
 
@@ -168,7 +168,7 @@ flowchart LR
 
 - `object.Options` 包含 Backend、MaxImportBytes、DownloadTimeout、Media、Now；Backend 只表达规范化后的 local／s3 导入位置。`Deps` 交付最小 MediaRepository、仅 Add／Remove 的 ReferenceRepository、Local 和 Remote；Manager 保存私有依赖、配置、两组对象锁，以及由 releasesMu 保护的 pendingReleases 自有待释放集合。存储记录、持有凭据、图片内部属性、远端副本与签名缓存只在 object 内部使用。
 - `transfer.Options` 包含 Backend、MaxDirectBase64Bytes、MaxImportBytes、DownloadTimeout；Backend 表达 base64／s3／hybrid 交付策略。Manager 保存 share.Objects、配置和使用集合，不接收仓储、后端或凭据。集合锁不覆盖 I/O，每份使用记录串行清理，结束事实独立登记；成功项目移除，失败项目保留给维护。
-- `share.Objects` 包含 Info、Hold、四项带 ImportLimits 的导入、LoadHistoryMedia、AssociateHistory。`HistoryKey` 包含四项历史身份；`HistoryEntry` 只包含 MediaInfo、Associated、Kind，表达有效缓存与匹配关联。平台来源和批量获取参数只在 transfer 使用，不进入 share。
+- `share.Objects` 包含 Info、Hold、带 ImportLimits 的 ImportBytes／ImportURL／ImportFile、LoadHistoryMedia、AssociateHistory。`HistoryKey` 包含四项历史身份；`HistoryEntry` 只包含 MediaInfo、Associated、Kind，表达有效缓存与匹配关联。平台来源和批量获取参数只在 transfer 使用，不进入 share。
 - `share.ValidID` 严格接受 `media:` 加 64 位小写十六进制；`SanitizeName` 清理路径或 URL 中的展示名称，处理两种路径分隔符并只进行一次百分号解码；HTTP／HTTPS／file URL 解析失败时返回 `file`，查询参数与片段不进入名称。普通名称中的非法百分号编码保留原文；空值、退化路径及 data／base64 来源返回 `file`。根部公开函数直接转发。
 - `share.UnavailableError{Err}` 只包装明确的对象记录、持有资格或归档内容缺失，保留原始原因；定义在 types.go，方法及 IsUnavailable 在 helpers.go。IsUnavailable 检查普通包装和组合错误，只有全部独立分支均不可用才允许降级。S3 读取将 NoSuchKey／NotFound 转为可匹配 fs.ErrNotExist 的错误，保留 SDK 原因；桶、权限、上传及签名错误不作此转换。SQLite 引用插入的媒体外键／删除保护拒绝及 Touch 无匹配行返回可匹配 storage.ErrNotFound 的错误；object 在相应读取、持有边界转换，transfer 不识别数据库或 SDK 错误。签名缓存未命中仍正常刷新，关闭和回滚错误不包装为不可用。
 - 内部 `share.HeldMedia` 额外提供 `SignedURL(ctx)`。transfer 通过已有持有选择 Open 或 SignedURL；上传副本、记录更新和缓存维护均由 object 完成，公开句柄不开放签名能力。

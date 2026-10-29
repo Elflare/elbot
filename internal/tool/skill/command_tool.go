@@ -41,19 +41,6 @@ func (t commandTool) Schema() llm.ToolSchema {
 	return t.manifest.Schema(t.record.Name, t.record.Description)
 }
 
-func (t commandTool) Detail() string {
-	block, err := t.LoadDetail(context.Background())
-	if err != nil {
-		return ""
-	}
-	return toolshare.RenderDetailBlocks([]toolshare.DetailBlock{block})
-}
-
-func (t commandTool) DetailBlock() toolshare.DetailBlock {
-	block, _ := t.LoadDetail(context.Background())
-	return block
-}
-
 func (t commandTool) LoadDetail(ctx context.Context) (toolshare.DetailBlock, error) {
 	block, err := loadRecordDetail(t.record)
 	if err != nil {

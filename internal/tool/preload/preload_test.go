@@ -58,11 +58,10 @@ type preloadSkill struct {
 	activate []string
 }
 
-func (s *preloadSkill) Detail() string          { return "skill instructions" }
 func (s *preloadSkill) ActivateTools() []string { return s.activate }
 func (s *preloadSkill) LoadDetail(context.Context) (share.DetailBlock, error) {
 	s.calls++
-	return share.DetailBlock{Content: s.Detail()}, s.err
+	return share.DetailBlock{Content: "skill instructions"}, s.err
 }
 
 func (t *preloadContentTool) DiscoveryContent(context.Context) (string, bool, error) {

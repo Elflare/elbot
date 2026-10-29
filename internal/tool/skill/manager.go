@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"sync"
-	"time"
 
 	"elbot/internal/fileops"
 	"elbot/internal/processenv"
@@ -27,10 +26,9 @@ type Manager struct {
 
 	writeMu sync.Mutex    // 串行化技能写入与重载；等待用户确认时不持有。
 	mu      sync.Mutex    // 保护加载状态及等待通知。
-	loaded  bool          // 最近一次加载结果是否成功，可直接复用活动目录。
-	loading bool          // 是否已有 EnsureLoaded 正在加载。
-	done    chan struct{} // 当前 EnsureLoaded 加载结束通知。
-	lastErr error         // 最近一次加载或管理操作的错误。
+	loaded  bool          // 已成功加载过目录；重载失败仍保留上次可用目录。
+	done    chan struct{} // 首次异步扫描的退出通知；nil 表示尚未启动。
+	lastErr error         // 最近一次加载错误，首次加载失败时交给等待者。
 }
 
 // NewManager 接收根部已确定的目录与完整依赖，不自行选择默认配置目录或启动加载。
@@ -82,65 +80,60 @@ func (m *Manager) toolForRecord(record record) toolshare.Tool {
 
 func (m *Manager) setReloadResult(err error) {
 	m.mu.Lock()
-	m.loaded = err == nil
+	m.loaded = m.loaded || err == nil
 	m.lastErr = err
 	m.mu.Unlock()
 }
 
-func (m *Manager) EnsureLoaded(ctx context.Context) error {
+// Start 发起一次异步加载；扫描使用所属 Tool 的生命周期，不受等待者取消影响。
+func (m *Manager) Start(ctx context.Context) <-chan struct{} {
 	m.mu.Lock()
-	if m.loaded {
-		err := m.lastErr
-		m.mu.Unlock()
-		return err
+	defer m.mu.Unlock()
+	if m.done != nil {
+		return m.done
 	}
-	if m.loading {
-		done := m.done
-		m.mu.Unlock()
-		select {
-		case <-done:
-			m.mu.Lock()
-			err := m.lastErr
-			m.mu.Unlock()
-			return err
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-	m.loading = true
 	m.done = make(chan struct{})
 	done := m.done
-	m.mu.Unlock()
-
-	m.writeMu.Lock()
-	defer m.writeMu.Unlock()
-	err := m.reloadLocked(ctx)
-
-	m.mu.Lock()
-	m.loaded = err == nil
-	m.loading = false
-	m.lastErr = err
-	close(done)
-	m.mu.Unlock()
-	return err
-}
-
-func (m *Manager) StartDelayedReload(ctx context.Context, delay time.Duration) <-chan struct{} {
-	done := make(chan struct{})
+	if m.loaded {
+		close(done)
+		return done
+	}
 	go func() {
 		defer close(done)
-		if delay > 0 {
-			timer := time.NewTimer(delay)
-			select {
-			case <-timer.C:
-			case <-ctx.Done():
-				timer.Stop()
-				return
-			}
-		}
-		_ = m.EnsureLoaded(ctx)
+		_ = m.Reload(ctx)
 	}()
 	return done
+}
+
+// EnsureLoaded 只等待首次加载；失败由显式 Reload 重试，不在查询时重新扫描。
+func (m *Manager) EnsureLoaded(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	if m.loaded {
+		m.mu.Unlock()
+		return nil
+	}
+	done, err := m.done, m.lastErr
+	m.mu.Unlock()
+	if done == nil {
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("skill manager has not started")
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-done:
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.loaded {
+		return nil
+	}
+	return m.lastErr
 }
 
 func (m *Manager) Remove(ctx context.Context, name string) (err error) {

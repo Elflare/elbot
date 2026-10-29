@@ -48,12 +48,16 @@ func completeRequestIDs(requests []request.Request, query string, start, end int
 	return out
 }
 
-func completeToolNames(deps Deps, query string, start, end int) []command.Completion {
+func completeToolNames(ctx context.Context, deps Deps, query string, start, end int) []command.Completion {
 	if deps.Tools == nil {
 		return nil
 	}
+	infos, err := deps.Tools.List(ctx)
+	if err != nil {
+		return nil
+	}
 	out := []command.Completion{}
-	for _, info := range deps.Tools.List() {
+	for _, info := range infos {
 		if query != "" && !strings.HasPrefix(info.Name, query) {
 			continue
 		}

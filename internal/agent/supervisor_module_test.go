@@ -103,6 +103,9 @@ func configuredModuleResources(t *testing.T, cfg *config.Config) (SupervisorDeps
 			t.Error(err)
 		}
 	})
+	if err := tools.Start(); err != nil {
+		t.Fatal(err)
+	}
 	return SupervisorDeps{
 		Media: center, Store: store, ChatHistory: history.Repository(), Models: models, Permission: permission,
 		Platform: isolatedPlatformCapabilities{sender},

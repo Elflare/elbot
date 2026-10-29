@@ -356,8 +356,9 @@ func TestManagerRemoveDeletesDirectoryAndReloads(t *testing.T) {
 
 func TestAgentDescriptorDetailWithoutActor(t *testing.T) {
 	d := newDescriptor(record{Name: "docx", Detail: "# DOCX", Kind: KindAgent})
-	if d.Detail() != "# DOCX" || d.DetailBlock().Content != "# DOCX" || len(d.ActivateTools()) != 1 || d.ActivateTools()[0] != AgentSkillManagerName {
-		t.Fatalf("detail=%q activate=%#v", d.Detail(), d.ActivateTools())
+	block, err := d.LoadDetail(t.Context())
+	if err != nil || block.Content != "# DOCX" || len(d.ActivateTools()) != 1 || d.ActivateTools()[0] != AgentSkillManagerName {
+		t.Fatalf("detail=%+v activate=%#v err=%v", block, d.ActivateTools(), err)
 	}
 }
 

@@ -82,9 +82,10 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	})
 	m.state = toolstate.NewStateService(deps.Store.Sessions(), toolregistry.BackgroundDiscoveredTools)
 	cron := cronBridge{repo: deps.Store.CronJobs(), models: deps.Models, changed: m.cronChanged}
-	m.releaseCronTools, err = registry.RegisterOwned(builtin.NewCronTools(cron, cron.ValidateSelection, time.Now)...)
-	if err != nil {
-		return m, fmt.Errorf("register cron tools: %w", err)
+	for _, cronTool := range builtin.NewCronTools(cron, cron.ValidateSelection, time.Now) {
+		if err := registry.Register(cronTool); err != nil {
+			return m, fmt.Errorf("register cron tools: %w", err)
+		}
 	}
 	return m, nil
 }
@@ -105,7 +106,7 @@ type registerOptions struct {
 
 func registerAll(registry *toolregistry.Registry, opts registerOptions) error {
 	mediaRuntime := opts.media
-	if err := registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry), opts.skillManager.EnsureLoaded)); err != nil {
+	if err := registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry))); err != nil {
 		return err
 	}
 	if err := registry.Register(builtin.NewWorkspaceTool()); err != nil {

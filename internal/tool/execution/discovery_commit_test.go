@@ -50,7 +50,7 @@ func TestDiscoveryStateTravelsWithResultAndAdvancesAfterCommit(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			permission := security.DefaultPermission()
 			catalog := registry.NewRegistry(permission)
-			for _, candidate := range []share.Tool{fakeTool{name: "new", risk: share.RiskLow}, discovery.NewDiscoverTool(discovery.NewResolver(catalog), nil)} {
+			for _, candidate := range []share.Tool{fakeTool{name: "new", risk: share.RiskLow}, discovery.NewDiscoverTool(discovery.NewResolver(catalog))} {
 				if err := catalog.Register(candidate); err != nil {
 					t.Fatal(err)
 				}

@@ -36,9 +36,8 @@ type testSkill struct {
 	activate []string
 }
 
-func (t testSkill) Detail() string                 { return t.block.Content }
-func (t testSkill) DetailBlock() share.DetailBlock { return t.block }
-func (t testSkill) ActivateTools() []string        { return t.activate }
+func (t testSkill) LoadDetail(context.Context) (share.DetailBlock, error) { return t.block, nil }
+func (t testSkill) ActivateTools() []string                               { return t.activate }
 
 type testLazySkill struct {
 	testSkill
@@ -204,37 +203,6 @@ func TestDiscoverSkillDetailsFailuresAndCancellation(t *testing.T) {
 	cancel()
 	if _, err := resolver.Discover(ctx, nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled list = %v", err)
-	}
-}
-
-func TestDiscoverToolOwnsLoadingCallback(t *testing.T) {
-	resolver, r := newTestResolver(t)
-	loads := 0
-	tool := NewDiscoverTool(resolver, func(context.Context) error {
-		loads++
-		return r.Register(plainTool("loaded"))
-	})
-	before, err := resolver.Discover(context.Background(), nil)
-	if err != nil || len(before.Tools) != 0 || loads != 0 {
-		t.Fatalf("resolver triggered loading: %+v, %v", before, err)
-	}
-	result, log, err := callTool(context.Background(), tool, share.CallRequest{Arguments: json.RawMessage(`{"name":"loaded"}`)})
-	if err != nil || loads != 1 {
-		t.Fatalf("tool load = %d, %v", loads, err)
-	}
-	if !strings.Contains(result.Content, "已发现：loaded") || log != "found=1 errors=0\nloaded" {
-		t.Fatalf("result/log = %+v / %q", result, log)
-	}
-	if _, err := resolver.DiscoverDetails(context.Background(), []string{"loaded"}); err != nil {
-		t.Fatal(err)
-	}
-	if loads != 1 {
-		t.Fatal("resolver repeated loading callback")
-	}
-	want := errors.New("load failed")
-	tool = NewDiscoverTool(resolver, func(context.Context) error { return want })
-	if _, _, err := callTool(context.Background(), tool, share.CallRequest{}); !errors.Is(err, want) {
-		t.Fatalf("load failure = %v", err)
 	}
 }
 

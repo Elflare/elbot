@@ -44,8 +44,8 @@ type Info struct {
 type Options struct {
 	Media mediaAPI // Borrowed media center; runtime owns only its own leases.
 	Tools interface {
-		ToolInfo(string) (tool.Info, bool)
-		ToolSchema(string) (llm.ToolSchema, bool)
+		ToolInfo(context.Context, string) (tool.Info, bool, error)
+		ToolSchema(context.Context, string) (llm.ToolSchema, bool, error)
 		CallTool(context.Context, tool.CallRequest) (*tool.Result, string, error)
 	} // Metadata, schema and invocation without exposing Tool objects.
 

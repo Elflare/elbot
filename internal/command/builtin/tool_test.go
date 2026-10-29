@@ -17,9 +17,8 @@ type fakeToolService struct {
 	query   func(context.Context, toolshare.ToolQuery) ([]toolshare.Info, error)
 }
 
-func (s *fakeToolService) List() []toolshare.Info       { return s.infos }
-func (s *fakeToolService) Unregister(string) error      { return nil }
-func (s *fakeToolService) Reload(context.Context) error { return nil }
+func (s *fakeToolService) List(context.Context) ([]toolshare.Info, error) { return s.infos, nil }
+func (s *fakeToolService) Reload(context.Context) error                   { return nil }
 func (s *fakeToolService) Remove(_ context.Context, name string) error {
 	s.removed = append(s.removed, name)
 	return nil

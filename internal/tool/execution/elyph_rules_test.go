@@ -28,7 +28,6 @@ func (t ruleDetailTool) Info() toolshare.Info {
 	return toolshare.Info{Name: t.name, Risk: toolshare.RiskSafe}
 }
 func (ruleDetailTool) Schema() llm.ToolSchema  { return llm.ToolSchema{} }
-func (t ruleDetailTool) Detail() string        { return "#skill " + t.name + " - body" }
 func (ruleDetailTool) ActivateTools() []string { return nil }
 func (t ruleDetailTool) LoadDetail(ctx context.Context) (toolshare.DetailBlock, error) {
 	if t.wait != nil {
@@ -38,11 +37,11 @@ func (t ruleDetailTool) LoadDetail(ctx context.Context) (toolshare.DetailBlock, 
 			return toolshare.DetailBlock{}, ctx.Err()
 		}
 	}
-	return toolshare.DetailBlock{Content: t.Detail(), Format: "elyph"}, nil
+	return toolshare.DetailBlock{Content: "#skill " + t.name + " - body", Format: "elyph"}, nil
 }
 func (t ruleDetailTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
-		return &toolshare.Result{Content: t.Detail(), NeedsElyphRules: true}, "", nil
+		return &toolshare.Result{Content: "#skill " + t.name + " - body", NeedsElyphRules: true}, "", nil
 	}), nil
 }
 
@@ -69,7 +68,7 @@ func TestRuleCardFollowsCompletionOrderAndSurvivesLaterCommitFailure(t *testing.
 	defer cancel()
 	secondFinished := make(chan struct{})
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	for _, candidate := range []toolshare.Tool{discovery.NewDiscoverTool(discovery.NewResolver(registry), nil), ruleDetailTool{name: "alpha", wait: secondFinished}, ruleDetailTool{name: "beta"}} {
+	for _, candidate := range []toolshare.Tool{discovery.NewDiscoverTool(discovery.NewResolver(registry)), ruleDetailTool{name: "alpha", wait: secondFinished}, ruleDetailTool{name: "beta"}} {
 		if err := registry.Register(candidate); err != nil {
 			t.Fatal(err)
 		}
@@ -105,7 +104,7 @@ func TestRuleCardFollowsCompletionOrderAndSurvivesLaterCommitFailure(t *testing.
 
 func TestDiscoveryListAndFailuresDoNotConsumeRules(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	_ = registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry), nil))
+	_ = registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry)))
 	_ = registry.Register(ruleDetailTool{name: "alpha"})
 	runner := newTestManager(registry, security.DefaultPermission())
 	row := &storage.Session{ID: "s", Mode: storage.SessionModeWork}

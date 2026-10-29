@@ -37,10 +37,8 @@ func (c toolsCommand) Handle(ctx context.Context, req command.Request) (*command
 	}
 	switch fields[0] {
 	case "reload":
-		if deps.Skills != nil {
-			if err := deps.Skills.Reload(ctx); err != nil {
-				return nil, err
-			}
+		if err := deps.Skills.Reload(ctx); err != nil {
+			return nil, err
 		}
 		return &command.Result{Content: "skill reload completed"}, nil
 	case "uninstall", "remove":
@@ -51,12 +49,7 @@ func (c toolsCommand) Handle(ctx context.Context, req command.Request) (*command
 		if !hasFlag(fields[2:], "--confirm") {
 			return &command.Result{Content: fmt.Sprintf("将删除外置 skill %q 及其目录。确认请执行：/tools remove %s --confirm", name, name)}, nil
 		}
-		var err error
-		if deps.Skills != nil {
-			err = deps.Skills.Remove(ctx, name)
-		} else {
-			err = deps.Tools.Unregister(name)
-		}
+		err := deps.Skills.Remove(ctx, name)
 		if err != nil {
 			return &command.Result{Content: fmt.Sprintf("remove failed: %v", err)}, nil
 		}
@@ -67,7 +60,6 @@ func (c toolsCommand) Handle(ctx context.Context, req command.Request) (*command
 }
 
 func (c toolsCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
-	_ = ctx
 	token := command.CurrentCompletionToken(req)
 	fields := strings.Fields(req.Args)
 	if len(fields) == 0 || command.IsFirstArg(req, token) {
@@ -81,7 +73,7 @@ func (c toolsCommand) Complete(ctx context.Context, req command.CompletionReques
 		return nil
 	}
 	if len(fields) <= 2 && !strings.HasPrefix(token.Text, "--") {
-		return completeToolNames(c.deps, token.Text, token.Start, token.End)
+		return completeToolNames(ctx, c.deps, token.Text, token.Start, token.End)
 	}
 	return completeConfirmFlag(req.Args, token)
 }

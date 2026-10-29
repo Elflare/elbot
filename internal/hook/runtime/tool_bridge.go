@@ -164,9 +164,11 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		logHook("hook_tool_call_completed", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})
 		return nil, err
 	}
-	info, ok := w.manager.opts.Tools.ToolInfo(name)
-	if !ok {
-		err := fmt.Errorf("tool %q not found", name)
+	info, ok, err := w.manager.opts.Tools.ToolInfo(callCtx, name)
+	if err == nil && !ok {
+		err = fmt.Errorf("tool %q not found", name)
+	}
+	if err != nil {
 		logHook("hook_tool_call_completed", globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()})
 		return nil, err
 	}
@@ -267,10 +269,13 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	return map[string]any{"content": result.Content, "segments": result.Segments, "warnings": result.Warnings, "receipts": []delivery.Receipt{receipt}}, nil
 }
 
-func (w *worker) schemas() ([]llm.ToolSchema, error) {
+func (w *worker) schemas(ctx context.Context) ([]llm.ToolSchema, error) {
 	out := make([]llm.ToolSchema, 0, len(w.config.Tools.Allow))
 	for _, name := range w.config.Tools.Allow {
-		schema, ok := w.manager.opts.Tools.ToolSchema(name)
+		schema, ok, err := w.manager.opts.Tools.ToolSchema(ctx, name)
+		if err != nil {
+			return nil, err
+		}
 		if !ok {
 			return nil, fmt.Errorf("tool %q no longer exists", name)
 		}

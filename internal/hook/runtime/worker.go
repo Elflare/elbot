@@ -177,7 +177,7 @@ func (w *worker) run() {
 
 	ctx, cancel := context.WithTimeout(w.manager.rootCtx, time.Duration(w.config.StartupTimeoutSeconds)*time.Second)
 	defer cancel()
-	schemas, err := w.schemas()
+	schemas, err := w.schemas(ctx)
 	if err != nil {
 		w.startFailed(err)
 		w.kill()

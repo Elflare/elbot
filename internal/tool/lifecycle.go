@@ -4,10 +4,9 @@ package tool
 import (
 	"context"
 	"fmt"
-	"time"
 )
 
-// Start 启动首次 Skill 延迟加载；加载完成不代表 Tool 生命周期结束。
+// Start 启动首次 Skill 异步加载；加载完成不代表 Tool 生命周期结束。
 func (m *Supervisor) Start() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -21,7 +20,7 @@ func (m *Supervisor) Start() error {
 		return err
 	}
 	m.started = true
-	done := m.catalog.skillManager.StartDelayedReload(m.ctx, time.Second)
+	done := m.catalog.skillManager.Start(m.ctx)
 	go func() {
 		<-m.ctx.Done()
 		<-done
@@ -47,10 +46,6 @@ func (m *Supervisor) Close(ctx context.Context) error {
 	m.BeginClose()
 	m.mu.Lock()
 	m.cancel()
-	if m.releaseCronTools != nil {
-		m.releaseCronTools()
-		m.releaseCronTools = nil
-	}
 	m.cronChanged.BeginClose()
 	if !m.started {
 		select {

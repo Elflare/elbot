@@ -106,7 +106,11 @@ func (p *Preparer) PrepareInput(ctx context.Context, in agentshare.LoopInput, us
 	// requirements still apply even without a fresh discovery call.
 	if p.Tools != nil && p.Tools.Manager != nil {
 		for _, schema := range tools {
-			if info, ok := p.Tools.Manager.ToolInfo(schema.Name); ok {
+			info, ok, err := p.Tools.Manager.ToolInfo(ctx, schema.Name)
+			if err != nil {
+				return nil, nil, err
+			}
+			if ok {
 				needsElyphRules = needsElyphRules || info.NeedsElyphRules
 			}
 		}

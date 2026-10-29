@@ -256,7 +256,6 @@ s3_region = "auto"
 s3_bucket = "elbot-files"
 s3_access_key_env = "ELBOT_TEST_S3_ACCESS"
 s3_secret_key_env = "ELBOT_TEST_S3_SECRET"
-s3_public_base_url = "https://files.example"
 
 [platform_files]
 max_receive_file_bytes = 456789
@@ -387,7 +386,7 @@ prompt = "Use agent tools."
 	if cfg.Sandbox.Root != filepath.Clean(filepath.Join(configDir, "../data/sandbox")) {
 		t.Fatalf("sandbox root = %q", cfg.Sandbox.Root)
 	}
-	wantFileDelivery := FileDeliveryConfig{MaxDirectBase64Bytes: 123456, Backend: "base64", S3Endpoint: "https://r2.example", S3Region: "auto", S3Bucket: "elbot-files", S3AccessKeyEnv: "ELBOT_TEST_S3_ACCESS", S3SecretKeyEnv: "ELBOT_TEST_S3_SECRET", S3PublicBaseURL: "https://files.example"}
+	wantFileDelivery := FileDeliveryConfig{MaxDirectBase64Bytes: 123456, Backend: "base64", S3Endpoint: "https://r2.example", S3Region: "auto", S3Bucket: "elbot-files", S3AccessKeyEnv: "ELBOT_TEST_S3_ACCESS", S3SecretKeyEnv: "ELBOT_TEST_S3_SECRET"}
 	if !reflect.DeepEqual(cfg.FileDelivery, wantFileDelivery) {
 		t.Fatalf("file_delivery = %#v, want %#v", cfg.FileDelivery, wantFileDelivery)
 	}

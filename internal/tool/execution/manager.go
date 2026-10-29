@@ -27,13 +27,13 @@ type ManagerDeps struct {
 	Media interface {
 		Metadata(context.Context, string) (toolshare.MediaInfo, error)
 	} // 参数引用的媒体查询。
-	Log                       func(context.Context, events.LogRecord)                                      // 执行记录发布。
-	InfoAvailableInContext    func(context.Context, toolshare.Info) bool                                   // schema 上下文资格。
-	UnavailableReason         func(context.Context, toolshare.Info) string                                 // 解析拒绝原因。
-	BackgroundDiscoveredTools func(context.Context, []toolshare.DiscoveredTool) []toolshare.DiscoveredTool // 后台声明筛选。
-	DecodeState               func(string) (toolshare.State, error)                                        // 会话工具状态解码。
-	PrepareUpdate             func(string, toolshare.StateUpdate) (storage.SessionMetadata, error)         // 随结果原子提交的元数据补丁。
-	DiscoveryStateUpdate      func(context.Context, *toolshare.Result) (toolshare.StateUpdate, error)      // 本次发现或激活结果。
+	Log                       func(context.Context, events.LogRecord)                                 // 执行记录发布。
+	InfoAvailableInContext    func(context.Context, toolshare.Info) bool                              // schema 上下文资格。
+	UnavailableReason         func(context.Context, toolshare.Info) string                            // 解析拒绝原因。
+	BackgroundDiscoveredTools func([]toolshare.DiscoveredTool) []toolshare.DiscoveredTool             // 后台声明筛选。
+	DecodeState               func(string) (toolshare.State, error)                                   // 会话工具状态解码。
+	PrepareUpdate             func(string, toolshare.StateUpdate) (storage.SessionMetadata, error)    // 随结果原子提交的元数据补丁。
+	DiscoveryStateUpdate      func(context.Context, *toolshare.Result) (toolshare.StateUpdate, error) // 本次发现或激活结果。
 }
 
 type Manager struct{ ManagerDeps }
@@ -66,7 +66,7 @@ func (m *Manager) resolve(ctx context.Context, name string, discovered []toolsha
 		if modelName != name {
 			continue
 		}
-		if mode == storage.SessionModeBackground && len(m.BackgroundDiscoveredTools(ctx, []toolshare.DiscoveredTool{discoveredTool})) == 0 {
+		if mode == storage.SessionModeBackground && len(m.BackgroundDiscoveredTools([]toolshare.DiscoveredTool{discoveredTool})) == 0 {
 			continue
 		}
 		discoveredCopy := discoveredTool

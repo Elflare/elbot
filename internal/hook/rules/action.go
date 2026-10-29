@@ -290,9 +290,12 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 		err = fmt.Errorf("tool is required")
 		logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()}
 	default:
-		_, ok := m.Opts.Tools.ToolInfo(name)
-		if !ok {
+		var ok bool
+		_, ok, err = m.Opts.Tools.ToolInfo(ctx, name)
+		if err == nil && !ok {
 			err = fmt.Errorf("tool %q not found", name)
+		}
+		if err != nil {
 			logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()}
 		} else if err = ctx.Err(); err != nil {
 			logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()}

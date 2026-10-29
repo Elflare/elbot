@@ -40,7 +40,7 @@ func (value foregroundOnlyTestTool) PrepareCall(ctx context.Context, req toolsha
 
 func TestForegroundOnlyToolHiddenInBackgroundSchemas(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if err := registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry), nil)); err != nil {
+	if err := registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry))); err != nil {
 		t.Fatal(err)
 	}
 	if err := registry.Register(foregroundOnlyTestTool{}); err != nil {
@@ -62,7 +62,7 @@ func TestForegroundOnlyToolHiddenInBackgroundSchemas(t *testing.T) {
 
 func TestSchemasKeepStableOrderAcrossBatchAndIncrementalDiscovery(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if err := registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry), nil)); err != nil {
+	if err := registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry))); err != nil {
 		t.Fatal(err)
 	}
 	manager := newTestManager(registry, security.DefaultPermission())

@@ -38,7 +38,7 @@ func TestRunKeepsSelectedObjectAcrossCatalogChanges(t *testing.T) {
 				if action == "replace" {
 					err = catalog.ReplaceSources([]share.Source{share.SourceSkillGo}, []share.Tool{replacement})
 				} else {
-					err = catalog.Unregister(original.Name())
+					err = catalog.ReplaceSources([]share.Source{share.SourceSkillGo}, nil)
 				}
 				if err != nil {
 					t.Fatal(err)

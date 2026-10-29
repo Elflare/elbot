@@ -48,7 +48,7 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 	if err := registry.Register(image); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry), nil)); err != nil {
+	if err := registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry))); err != nil {
 		t.Fatal(err)
 	}
 	manager := newTestManager(registry, security.DefaultPermission())
