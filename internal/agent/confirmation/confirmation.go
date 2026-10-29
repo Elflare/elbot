@@ -30,6 +30,8 @@ type ConfirmationPolicy struct {
 	userConfirmationTimeout time.Duration
 }
 
+// TODO(session重构)：实现 ForgetSession，释放 autoConfirmSession／autoConfirmTools；
+// 由根部在会话无绑定且真实闲置后调用，恢复旧会话不恢复旧激活的自动确认。
 type ConfirmationCoordinator struct {
 	sessions interface {
 		CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)

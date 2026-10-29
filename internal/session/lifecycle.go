@@ -7,6 +7,8 @@ import (
 	"errors"
 )
 
+// TODO(session重构)：control 局部定时器实现后，Start 启用调度，BeginClose 停止续期并撤销定时器，
+// Close 等待已触发回调真实退出后再关闭事件源；构造阶段仍不启动任务。
 // Start 只启动命名任务接纳；其他组件在构造时完成同步准备。
 // 命名 Start 不执行模型调用或发布业务事件，可以在总管状态锁内调用。
 func (s *Supervisor) Start() error {

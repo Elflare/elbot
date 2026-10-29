@@ -51,6 +51,9 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 
 	sessions, messages := deps.Store.Sessions(), deps.Store.Messages()
 	s.bindings = binding.NewManager()
+	// TODO(session重构)：control 完成后，向其注入闲置配置、权限查询与同步释放能力；
+	// 根部将 naming 的 ForgetSession 与外部 ReleaseSession 组合后交给 control，命名缓存不交由 Agent 清理。
+	// branch.Bindings 改接 control 提供的 share.BindingCoordinator，避免派生切换绕过计时和退役。
 	s.control = control.NewService(
 		control.Config{DefaultMode: cfg.Session.DefaultMode},
 		control.ServiceDeps{

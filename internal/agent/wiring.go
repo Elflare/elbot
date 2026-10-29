@@ -37,6 +37,10 @@ import (
 )
 
 func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps) (*Supervisor, error) {
+	// TODO(session重构)：后续迁移 NewSupervisor 时注入 IsSuperadmin、ReleaseSession、ReleaseBinding；
+	// ReleaseSession 只连接 Agent 自有执行状态和自动确认的 ForgetSession，ReleaseBinding 复用撤销记录 Forget。
+	// 合并 Request／Turn 活跃事实，并将有效输入及真实执行收尾接入 RecordActivity／SessionIdle；
+	// 不恢复旧激活的自动确认或撤销记录，不用 BindingChanged 代替必需的同步释放。
 	ctx, cancel := context.WithCancel(ctx)
 	m := &Supervisor{ctx: ctx, cancel: cancel, signals: newSignals(), bindings: &signalBindings{}, done: make(chan struct{})}
 	m.routes = routes.New()

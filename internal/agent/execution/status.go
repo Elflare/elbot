@@ -18,6 +18,8 @@ import (
 
 // StatusRecorder is the synchronous source of runtime snapshots. Display
 // delivery happens after Record returns and never while its mutex is held.
+// TODO(session重构)：实现 ForgetSession，由根部接入 Session 的同步退役流程，删除 snapshots／owners。
+// 与状态发布串行协调，旧执行的迟到结果不得重新建立已释放状态；恢复会话时按需读取持久化用量。
 type StatusRecorder struct {
 	publishMu sync.Mutex
 	mu        sync.Mutex

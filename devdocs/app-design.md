@@ -325,13 +325,13 @@ flowchart TD
 
 ## Session 根部契约
 
-Session 由 Agent 创建、持有和关闭，App 不取得内部 Session。根部 13 个文件已实现总管、装配、生命周期、公开业务入口及类型转换；share 的 3 个文件已实现共享契约与规则，其余 20 个内部文件仍为职责骨架。24 份旧生产代码与 21 份旧测试保存在 `*.go.bak` 中，不参与构建。下层组件和 Agent 接线尚未完成，根部暂不能编译。
+Session 由 Agent 创建、持有和关闭，App 不取得内部 Session。根部 13 个文件已实现总管、装配、生命周期、公开业务入口及类型转换；share 和 binding 各 3 个文件已实现，其余 17 个内部文件仍为职责骨架。22 份旧生产代码与 20 份旧测试保存在 `*.go.bak` 中，不参与构建。control、branch、naming 和 Agent 接线尚未完成，根部暂不能编译。
 
 唯一构造入口为 `NewSupervisor(ctx, cfg, SupervisorDeps)`，接收 Agent 运行 context 和完整配置，消费默认模式及命名触发步数，不重复填配置默认值。必需依赖只在根部检查；构造不启动任务、不查询协议材料或命名模型。部分构造失败保留已取得的组件、停止接纳，并将部分总管交回 Agent 调用 Close。
 
 `SupervisorDeps` 接收借用的 Store、仅含 ResolveNaming 的 Models、ActiveSessionIDs、CheckForeground 和 Materials。活跃事实来自 Agent 执行组件；CheckForeground 在接管准入内调用，只检查兼容性，不执行 I/O 或再次取准入。MaterialResolver／MaterialPreparer 定义在根部 deps.go，PreparedMaterial 在 contracts.go 定义 Seed 和 ExpectedCheckpointID；根部适配为 branch 自有类型，保留 nil 材料及伴随错误的部分结果。
 
-根部装配消费的下层契约如下，均尚待子包实现：
+根部装配消费的下层契约如下；binding 已实现，其余组件待实现：
 
 | 组件入口 | 配置与依赖 |
 |---|---|
@@ -350,7 +350,25 @@ Session 由 Agent 创建、持有和关闭，App 不取得内部 Session。根�
 - naming、control、binding 均提供 BeginClose()、Close(context.Context) error、Done()；关闭必须并发安全、幂等，固定并保留独立关闭错误，Done 只在任务、订阅和在途回调实际退出后关闭。branch 无自有异步资源，不设空关闭方法。
 - 根部 Close 使用调用方的等待期限，超时后可再次等待；Done 覆盖全部自有资源，不表示单次等待已返回，也不表示借用的 Store、Models 已关闭。只调用 BeginClose 不会提前释放事件源。
 
-Agent 接线尚待迁移：先创建 routes、Turn 和执行视图，再创建 Session；随后创建消费者、注册协议路线与观察连接，最后启动。Session 不提供旧构造入口、独立命名器工厂或补依赖 setter。闲置超时及内存回收策略保持现行契约。
+Agent 接线尚待迁移：先创建 routes、Turn 和执行视图，再创建 Session；随后创建消费者、注册协议路线与观察连接，最后启动。Session 不提供旧构造入口、独立命名器工厂或补依赖 setter。主动过期和跨模块释放的后续约定见下文，本阶段只实现 binding 自有状态回收。
+
+### Binding 实现与回收
+
+binding.Manager 提供 CurrentBinding、SetCurrent、ClearBinding、ClearSessionBindings 及四种准入。写操作由调用方在相应准入内执行；同一当前 ID 不重新激活，条件解绑比较原始句柄，按 Session 清理失效全部匹配绑定。版本在组件范围内单调递增，解绑也递增；关闭后不再接纳准入或订阅。
+
+coordination.go 使用 Scope → 排序去重 SessionID → 状态锁的顺序，同类新增 key 也按字典序取得。租约沿 context 重入；调用方先结束嵌套操作，再释放外层。锁项引用包含持有者及等待者，等待前登记，取消或释放时减少，归零时在同一管理锁内移除。释放后的租约清除 Manager、key 和事件引用；保留外层租约链以支持外层尚未释放时继续使用原 context。
+
+signals.go 将变化暂存在最外层有效租约，准入全部释放后发布，隔离触发请求取消；事件持有原绑定句柄，消费者按 Version 处理并发交付。事件失败通过 slog 记录一次包含版本、旧／新 SessionID 和错误的摘要，不回滚已提交状态、不重试；必需业务释放不能依赖观察者成功。BeginClose 停止新准入并唤醒等待者，保留事件源；Close 等待准入释放和已提交事件交付，再关闭信号、等待真实回调退出并清除剩余绑定。超时只结束本次等待，Done 不提前关闭。
+
+binding 与 share 的 race 回归覆盖句柄身份、条件和批量解绑、锁顺序、重入、取消及部分准入回收、同 key 并发互斥、锁外回调、请求取消后的已提交事件，以及队列满／投递超时的失败摘要与不重发、关闭超时续接和忽略取消的真实回调退出。
+
+### 主动过期与跨模块释放（待对应阶段实现）
+
+- control 使用事件驱动的绑定局部定时器，不周期扫描。计时独立于 UpdatedAt；激活、有效用户输入及执行实际结束续期，模型回复、失败和取消后的收尾均算活动，命名和元数据更新不续期。沿用 TTL 分类及非正值禁用规则。
+- 到期在准入内复核绑定身份、调度版本、截止时间和 Request／Turn 活跃事实；模型、工具、压缩、确认等待及 stopping 不回收，真实闲置后再计时。过期只解绑并释放闲置状态，保留历史，下条输入再建会话。
+- 根部新增 RecordActivity、SessionIdle，并注入 IsSuperadmin、ReleaseSession、ReleaseBinding。control 实现 share.BindingCoordinator，branch 由根部改接该实现，统一切换后的计时与退役；binding 不承担业务计时。
+- 必需释放为准入内的同步内存操作，不做 I/O、不等待任务、不再次取准入。无其他绑定且无活动工作后释放执行快照与自动确认缓存，撤销记录按旧绑定释放。Agent 提供的 ReleaseSession 只释放其自有执行状态与自动确认；Session 根部将该能力与 naming 的 ForgetSession 组合后交给 control。命名任务仍运行时保留到真实退出，再删除退役缓存；恢复旧会话仅重建持久化内容。
+- control 阶段同时调整根部生命周期：Start 启用调度，BeginClose 停止续期并撤销定时器，Close 等待已触发回调真实退出。相关 TODO 已留在 control、branch、naming、Session 装配与生命周期，以及 Agent 装配和状态所有者中；本阶段不新增这些能力的空实现。
 
 ### 公开能力与下层业务契约
 
@@ -367,7 +385,7 @@ Agent 接线尚待迁移：先创建 routes、Turn 和执行视图，再创建 S
 | `naming.go` | MaybeScheduleNaming 委托 naming；任务不随触发 Turn 结束，命名事件、生成器和日志投影均留在 naming 内部 |
 | `signals.go` | ObserveBindingChanged、ObserveForegroundActivated 分别委托 binding、control 的同名观察入口，只交回调用方拥有的连接 |
 
-control 在 service.go 定义 CreateRequest、ActivateModeRequest／Result、Status、BackgroundRequest；在 expiration.go 定义 IdleExpirationConfig、ExpireIdleRequest／Result。branch 在对应业务文件定义 BackgroundCopyRequest、CompactedRequest，材料类型留在 service.go。字段与根部对应类型一致，Scope 改用 share.Scope；下层业务方法参数和返回值与根部对应入口一致，只替换所属请求、结果和绑定类型。IdleExpirationConfig.TTLMinutes 接收 share.Scope 与角色标记，根部的同名能力只转交该规则。闲置期限仍由 ExpireIdleRequest 携带，过期只解除 current，下一条输入再建会话。
+control 在 service.go 定义 CreateRequest、ActivateModeRequest／Result、Status、BackgroundRequest；在 expiration.go 定义闲置过期能力。branch 在对应业务文件定义 BackgroundCopyRequest、CompactedRequest，材料类型留在 service.go。字段与根部对应类型一致，Scope 改用 share.Scope；下层业务方法参数和返回值与根部对应入口一致，只替换所属请求、结果和绑定类型。根部当前仍保留携带配置的 ExpireIdleRequest 骨架；control 阶段按上述主动过期约定统一消费完整配置并调整入口，不恢复基于 UpdatedAt 的入站过期逻辑。
 
 share.Scope 与公开 Scope 保持相同字段结构，Key 使用 ActorID、Platform、PlatformScopeID 的零字符分隔编码，不包含入口语义。share/session.go 提供 IsBackground、WasPromoted、CanAccess、ErrSessionBusy、ErrForegroundSession。仅 control 使用的 ErrChatModeRequiresEmptySession 归 control。根部三个公开错误直接引用内部错误值，保持 errors.Is 身份。
 
@@ -389,7 +407,7 @@ flowchart TD
     W --> D["session/deps.go<br/>外部消费契约"]
     W --> S["session/supervisor.go<br/>持有组件与总管状态"]
     S --> L["session/lifecycle.go<br/>启动、停止与实际退出等待"]
-    W --> B["binding/manager.go<br/>绑定与准入组件（待实现）"]
+    W --> B["binding/manager.go：绑定状态与生命周期<br/>coordination.go：准入、租约与锁项回收<br/>signals.go：锁外绑定事件"]
     W --> C["control/service.go<br/>会话管理组件（待实现）"]
     W --> R["branch/service.go<br/>派生会话及材料准备（待实现）"]
     W --> N["naming/service.go<br/>命名任务、信号及日志订阅（待实现）"]
