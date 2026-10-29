@@ -1,61 +1,17 @@
-// 职责：定义现有 Scope、会话请求与结果、命名配置及事件。
-// TODO(session重构)：待删除：公开契约归 contracts.go，内部共享定义归 share/session.go，命名独用定义归 naming/service.go、naming/signals.go，迁移完成后删除本备份。
+// 职责：保留尚未迁移的命名配置、生成契约及事件。
+// TODO(naming阶段)：命名独用定义迁入 naming/service.go、naming/signals.go 后删除本备份。
 package session
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"time"
 
 	"elbot/internal/storage"
 )
 
-type Scope struct {
-	ConversationKind contextinfo.ConversationKind
-	ActorID          string
-	Platform         string
-	PlatformScopeID  string
-	IsCLI            bool
-}
-
-// Key identifies the actor/platform/scope that owns a current session.
-func (s Scope) Key() string {
-	return s.ActorID + "\x00" + s.Platform + "\x00" + s.PlatformScopeID
-}
-
-type CreateRequest struct {
-	// ID may be preallocated for an execution handoff holding both session gates.
-	ID       string
-	Title    string
-	Mode     string
-	Metadata string
-}
-
-type ActivateModeRequest struct {
-	Mode            string
-	NewSessionTitle string
-}
-
-type ActivateModeResult struct {
-	Session       *storage.Session
-	AlreadyActive bool
-}
-
-type Status struct {
-	Session           *storage.Session
-	MessageCount      int
-	LastUserContent   string
-	LastAnswerContent string
-}
-
 type NamingConfig struct {
 	TriggerStep int
-}
-
-type Config struct {
-	NamingConfig
-	DefaultMode string
 }
 
 type TitleResult struct {

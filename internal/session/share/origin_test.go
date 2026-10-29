@@ -35,11 +35,18 @@ func TestOriginReadsSavedFacts(t *testing.T) {
 func TestInheritOriginPreservesTargetMetadataOnly(t *testing.T) {
 	source := &storage.Session{Metadata: `{"llm_origin":{"protocol":"chat","provider":"historical"},"last_usage":{"total_tokens":12}}`}
 	target := `{"unknown":9007199254740993,"nested":{"keep":true},"llm_origin":{"protocol":"response","provider":"wrong"}}`
-	got, err := share.InheritOrigin(source, target)
+	origin, _, err := share.Origin(source)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fields, err := storage.DecodeSessionMetadata(got)
+	fields, err := storage.DecodeSessionMetadata(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := share.InheritOrigin(origin, fields); err != nil {
+		t.Fatal(err)
+	}
+	got, err := fields.Encode()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,20 +57,10 @@ func TestInheritOriginPreservesTargetMetadataOnly(t *testing.T) {
 	if source.Metadata != `{"llm_origin":{"protocol":"chat","provider":"historical"},"last_usage":{"total_tokens":12}}` {
 		t.Fatal("inheritance mutated source")
 	}
-	got, err = share.InheritOrigin(nil, got)
-	if err != nil {
+	if err := share.InheritOrigin(llm.Origin{}, fields); err != nil {
 		t.Fatal(err)
 	}
-	fields, err = storage.DecodeSessionMetadata(got)
-	if err != nil || fields["llm_origin"] != nil || string(fields["unknown"]) != "9007199254740993" {
-		t.Fatalf("missing source retained target ownership or lost metadata: %s, %v", got, err)
-	}
-	for _, tc := range []struct{ source, target string }{
-		{`{broken`, target},
-		{source.Metadata, `{broken`},
-	} {
-		if _, err := share.InheritOrigin(&storage.Session{Metadata: tc.source}, tc.target); err == nil {
-			t.Fatal("invalid metadata accepted during inheritance")
-		}
+	if fields["llm_origin"] != nil || string(fields["unknown"]) != "9007199254740993" {
+		t.Fatalf("missing source retained target ownership or lost metadata: %+v", fields)
 	}
 }

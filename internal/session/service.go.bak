@@ -1,10 +1,8 @@
-// 职责：持有现有 Session 全部状态并实现构造、当前会话操作及访问判断。
-// TODO(session重构)：会话操作已迁入 control；仅保留待迁移的 naming 状态及 branch 标题辅助参考，完成后删除本备份。
+// 职责：保留尚未迁移的命名状态、构造及默认标题参考。
+// TODO(naming阶段)：仅保留命名状态、构造及 defaultTitle 的迁移参考，Naming 完成后删除本备份。
 package session
 
 import (
-	"context"
-	"errors"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -14,154 +12,27 @@ import (
 )
 
 type Service struct {
-	store               storage.Store
-	mu                  sync.Mutex
-	bindingVersion      uint64 // Monotonic committed binding-change version within this service, including unbinding; protected by mu.
-	current             map[string]*Binding
-	gates               map[string]*scopeGate
-	changed             *signal.Signal[BindingChangedEvent, signal.Empty]
-	activeSessionIDs    func() []string
-	foregroundActivated *signal.Signal[ForegroundActivatedEvent, signal.Empty]
-	foregroundCheck     func(context.Context, *storage.Session) error
-	materials           MaterialResolver
-	namingConfig        NamingConfig
-	titleGen            TitleGenerator
-	namingSignals       NamingSignals
-	logConnections      []*signal.Connection
-	namingStates        map[string]namingState
-	naming              namingLifecycle
-	defaultMode         string
-}
-
-func NewService(store storage.Store) *Service {
-	return NewServiceWithNaming(store, NamingConfig{TriggerStep: 1}, nil)
+	store          storage.Store
+	mu             sync.Mutex
+	namingConfig   NamingConfig
+	titleGen       TitleGenerator
+	namingSignals  NamingSignals
+	logConnections []*signal.Connection
+	namingStates   map[string]namingState
+	naming         namingLifecycle
 }
 
 func NewServiceWithNaming(store storage.Store, cfg NamingConfig, titleGen TitleGenerator) *Service {
-	return NewServiceWithConfig(store, Config{NamingConfig: cfg, DefaultMode: storage.SessionModeWork}, titleGen)
-}
-
-func NewServiceWithConfig(store storage.Store, cfg Config, titleGen TitleGenerator) *Service {
 	s := &Service{
-		store:               store,
-		current:             map[string]*Binding{},
-		gates:               map[string]*scopeGate{},
-		changed:             signal.New[BindingChangedEvent, signal.Empty]("session.binding_changed"),
-		foregroundActivated: signal.New[ForegroundActivatedEvent, signal.Empty]("session.foreground_activated"),
-		namingConfig:        cfg.NamingConfig,
-		titleGen:            titleGen,
-		namingSignals:       newNamingSignals(),
-		namingStates:        map[string]namingState{},
-		naming:              namingLifecycle{done: make(chan struct{})},
-		defaultMode:         cfg.DefaultMode,
+		store:         store,
+		namingConfig:  cfg,
+		titleGen:      titleGen,
+		namingSignals: newNamingSignals(),
+		namingStates:  map[string]namingState{},
+		naming:        namingLifecycle{done: make(chan struct{})},
 	}
 	s.connectLogSignals()
 	return s
-}
-
-func (s *Service) GetOrCreateCurrent(ctx context.Context, scope Scope, firstMessage string) (*storage.Session, error) {
-	ctx, release, err := s.EnterActivation(ctx, scope)
-	if err != nil {
-		return nil, err
-	}
-	defer release()
-	current, err := s.Current(ctx, scope)
-	if err == nil {
-		return current, nil
-	}
-	if !errors.Is(err, storage.ErrNotFound) {
-		return nil, err
-	}
-
-	return s.Create(ctx, scope, CreateRequest{Title: defaultTitle(firstMessage)})
-}
-
-func (s *Service) Create(ctx context.Context, scope Scope, req CreateRequest) (*storage.Session, error) {
-	ctx, release, err := s.EnterActivation(ctx, scope)
-	if err != nil {
-		return nil, err
-	}
-	defer release()
-	if err := s.canReplaceCurrent(scope, ""); err != nil {
-		return nil, err
-	}
-	if req.Mode == "" {
-		req.Mode = s.defaultMode
-	}
-	if err := validateMode(req.Mode); err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(req.Title) == "" {
-		req.Title = "New session"
-	}
-	session := &storage.Session{
-		ID:              req.ID,
-		OwnerID:         scope.ActorID,
-		Platform:        scope.Platform,
-		PlatformScopeID: scope.PlatformScopeID,
-		Mode:            req.Mode,
-		Status:          storage.SessionStatusActive,
-		Title:           req.Title,
-		Metadata:        req.Metadata,
-	}
-	if err := s.store.Sessions().Create(ctx, session); err != nil {
-		return nil, err
-	}
-	s.setCurrent(ctx, scope, session.ID)
-	return session, nil
-}
-
-func (s *Service) DefaultMode() string {
-	if s.defaultMode == "" {
-		return storage.SessionModeWork
-	}
-	return s.defaultMode
-}
-
-func (s *Service) Resume(ctx context.Context, scope Scope, sessionID string) (*storage.Session, error) {
-	return s.activateExisting(ctx, scope, sessionID, false)
-}
-
-func (s *Service) Current(ctx context.Context, scope Scope) (*storage.Session, error) {
-	row, _, err := s.CurrentBound(ctx, scope)
-	return row, err
-}
-
-func (s *Service) ResetCurrent(ctx context.Context, scope Scope) error {
-	ctx, release, err := s.EnterActivation(ctx, scope)
-	if err != nil {
-		return err
-	}
-	defer release()
-	if err := s.canReplaceCurrent(scope, ""); err != nil {
-		return err
-	}
-	s.setCurrent(ctx, scope, "")
-	return nil
-}
-
-func (s *Service) scopeKey(scope Scope) string {
-	return scope.Key()
-}
-
-func (s *Service) canAccess(scope Scope, session *storage.Session) bool {
-	if scope.IsCLI {
-		return true
-	}
-	if session.OwnerID != scope.ActorID || session.Platform != scope.Platform {
-		return false
-	}
-	return session.PlatformScopeID == scope.PlatformScopeID || (scope.acceptsBackground() && IsBackground(session))
-}
-
-func isBackgroundSession(row *storage.Session) bool { return IsBackground(row) }
-
-func forkTitle(title string) string {
-	title = strings.TrimSpace(title)
-	if title == "" {
-		title = "New session"
-	}
-	return defaultTitle("Fork: " + title)
 }
 
 func defaultTitle(text string) string {

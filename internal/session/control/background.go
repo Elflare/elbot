@@ -46,7 +46,7 @@ func (s *Service) PrepareBackground(ctx context.Context, scope share.Scope, req 
 	}
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
-		title = backgroundTitle(req.Kind, req.Name)
+		title = share.BackgroundTitle(req.Kind, req.Name)
 	}
 	row := &storage.Session{ID: id, OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID,
 		Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive, Title: title, Metadata: metadata}
@@ -82,23 +82,8 @@ func backgroundMetadata(raw string, req BackgroundRequest) (string, error) {
 			}
 		}
 	}
-	// 身份与命名事实由 Session 设置，附加字段不能覆盖。
-	for key, value := range map[string]any{"title_renamed": true, "title_source": req.Kind, "background_kind": req.Kind, "background_name": req.Name} {
-		if err := fields.Set(key, value); err != nil {
-			return "", err
-		}
+	if err := share.BackgroundMetadata(fields, req.Kind, req.Name); err != nil {
+		return "", err
 	}
 	return fields.Encode()
-}
-
-func backgroundTitle(kind, name string) string {
-	kind, name = strings.TrimSpace(kind), strings.TrimSpace(name)
-	if kind == "" {
-		kind = "Background"
-	}
-	title := strings.ToUpper(kind[:1]) + kind[1:]
-	if name != "" {
-		title += ": " + name
-	}
-	return title
 }

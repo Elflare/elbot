@@ -26,6 +26,21 @@ func TestScopeKeyUsesOnlyBindingIdentity(t *testing.T) {
 	}
 }
 
+func TestBackgroundTitlePreservesUnicode(t *testing.T) {
+	for _, tc := range []struct{ kind, name, want string }{
+		{"cron", "job", "Cron: job"},
+		{" 后台 ", " 日报 ", "后台: 日报"},
+		{"équipe", "", "Équipe"},
+		{"🔥任务", "日报", "🔥任务: 日报"},
+		{" ", " job ", "Background: job"},
+		{"", "", "Background"},
+	} {
+		if got := share.BackgroundTitle(tc.kind, tc.name); got != tc.want {
+			t.Errorf("BackgroundTitle(%q, %q) = %q, want %q", tc.kind, tc.name, got, tc.want)
+		}
+	}
+}
+
 func TestBackgroundIdentityUsesModeOnly(t *testing.T) {
 	if share.IsBackground(nil) || share.WasPromoted(nil) {
 		t.Fatal("nil session has identity facts")

@@ -4,6 +4,8 @@ package share
 
 import (
 	"errors"
+	"strings"
+	"unicode/utf8"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/storage"
@@ -53,4 +55,27 @@ func CanAccess(scope Scope, row *storage.Session) bool {
 		return scope.ConversationKind == contextinfo.ConversationPrivate
 	}
 	return row.PlatformScopeID == scope.PlatformScopeID
+}
+
+// BackgroundMetadata 在调用方自有集合中设置后台身份及标题事实，覆盖同名业务字段。
+func BackgroundMetadata(fields storage.SessionMetadata, kind, name string) error {
+	for key, value := range map[string]any{"title_renamed": true, "title_source": kind, "background_kind": kind, "background_name": name} {
+		if err := fields.Set(key, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func BackgroundTitle(kind, name string) string {
+	kind, name = strings.TrimSpace(kind), strings.TrimSpace(name)
+	if kind == "" {
+		kind = "Background"
+	}
+	_, size := utf8.DecodeRuneInString(kind)
+	title := strings.ToUpper(kind[:size]) + kind[size:]
+	if name != "" {
+		title += ": " + name
+	}
+	return title
 }

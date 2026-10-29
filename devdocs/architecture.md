@@ -207,7 +207,7 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    E["agent/dialogue/runner.go、contextmgr/service.go、session/branch.go<br/>对话、压缩与分支入口（Session 待实现）"] --> R["agent/routes/registry.go<br/>按协议查询业务能力"]
+    E["agent/dialogue/runner.go、contextmgr/service.go、session/branch.go<br/>对话、压缩与分支入口（Session 总管待接通）"] --> R["agent/routes/registry.go<br/>按协议查询业务能力"]
     E --> M["modelmgr/selection.go、providers.go<br/>固定选择与厂商快照"]
     R --> C["agent/chat/<br/>Chat 循环、摘要与材料"]
     R --> N["agent/responses/<br/>原生循环、压缩与材料"]
@@ -264,7 +264,7 @@ flowchart LR
     W --> R
     R --> C["agent/dialogue/commit.go、responses/persistence.go<br/>固定槽初始化、逐项提交与原生快照"]
     C --> S["storage/sqlite/tool_batch.go、dialogue_repository.go<br/>结果、统计、媒体和发现状态原子保存"]
-    S --> F["session/branch/fork.go、copy.go<br/>完整批次复制与 ID 重映射（待实现）"]
+    S --> F["session/branch/fork.go、copy.go<br/>完整批次复制与 ID 重映射"]
     W --> P["processenv/environment.go<br/>环境快照与受管命令构造"]
     P --> U["processenv/process_unix.go<br/>独立进程组及整组终止"]
     P --> V["processenv/process_windows.go<br/>进程树终止及退出判定"]
@@ -533,7 +533,7 @@ Platform 根部负责总管、装配与公开能力；下层契约见 [App 包�
 <!-- locator:session -->
 ## Session 生命周期
 
-Session 根部 13 个文件、share 和 binding 各 3 个文件、control 的 9 个文件已实现总管、契约、绑定准入、会话业务及局部计时。构造不启动任务或调用模型、材料解析器。branch、naming 及 Agent 接线尚待实现，根部当前不能编译，详细消费契约见 [Session 根部契约](app-design.md#session-根部契约)。14 份旧生产代码与 19 份旧测试保存在 `.go.bak` 中，不参与构建。
+Session 根部 13 个文件、share 和 binding 各 3 个文件、control 的 9 个文件及 branch 的 4 个文件已实现总管、契约、绑定准入、会话业务、局部计时与派生。构造不启动任务或调用模型、材料解析器。naming 及 Agent 接线尚待实现，根部当前不能编译，详细消费契约见 [Session 根部契约](app-design.md#session-根部契约)。7 份 Naming 生产迁移参考与 15 份待迁移或集成验证的旧测试保存在 `.go.bak` 中，不参与构建。
 
 根部将管理、后台准备、归属登记及工作目录操作交给 control，Fork／压缩／后台复制交给 branch，准入交给 binding，命名触发交给 naming。公开 Binding 为内部句柄的独立定义类型，通过指针转换保持同一绑定身份；context 与事件共用原句柄，不复制原子状态或增加包装缓存。ObserveBindingChanged／ObserveForegroundActivated 只返回调用方拥有的连接；命名事件及日志投影留在内部。WorkspaceStore 由总管按 SessionID 创建，不暴露仓库；根部不重复业务校验和持久化逻辑。
 
@@ -561,9 +561,9 @@ flowchart LR
     E --> O["agent/execution/execution_output.go<br/>发送时刷新去向"]
 ```
 
-- Fork／后台复制在锁外准备材料，提交复核 binding、checkpoint、pending 和取消；Session、消息、seed 与媒体引用原子保存。Responses 按分叉时的不可变快照取材料，包含对应工具批次结果、排除之后追加的结果，不重跑历史工具；后台副本不激活前台或继承执行／工具状态。
+- Fork／后台复制在锁外准备材料，提交时复核业务状态，checkpoint 由存储事务复核，后台复制比较完整 pending 输入记录而不解析原生 JSON；Session、消息、seed 与媒体引用原子保存。Fork 仅允许自己的会话，CLI 也不豁免用户归属；后台来源生成 work 前台分支，来源保持原样。Responses 按不可变快照取完整批次材料，不重跑工具；后台副本不激活前台或继承运行状态。后台压缩匹配执行的用户、平台和任务范围，不要求私聊类型，CLI 不豁免归属。派生切换通过 Control，行为和回归见 [Branch 派生与材料提交](app-design.md#branch-派生与材料提交)。
 - 命名受应用生命周期管理，Turn 结束不取消；Scheduled 表达调度，Completed 表达终态，取消后不写标题或 fallback。TTL 和 /new 只清除 current，下一条输入再建记录。
-- control 已实现事件驱动的局部定时器，独立于 UpdatedAt，按 ConversationKind 和权限选择 TTL；group/channel 使用群聊期限，其余使用私聊期限，非正值禁用。RecordActivity 与 SessionIdle 分别承接有效输入和真实执行收尾，忙碌时等待结束通知，不周期扫描。解绑移除 timer 和绑定引用，无其他绑定且无活动工作才释放会话状态；历史保留。Control／Binding／share race 回归已通过，整条内存释放链仍待 Branch、Naming、Agent 接线；见 [Control 业务与主动过期](app-design.md#control-业务与主动过期)及[待接线部分](app-design.md#跨模块释放的待接线部分)。
+- control 已实现事件驱动的局部定时器，独立于 UpdatedAt，按 ConversationKind 和权限选择 TTL；group/channel 使用群聊期限，其余使用私聊期限，非正值禁用。RecordActivity 与 SessionIdle 分别承接有效输入和真实执行收尾，忙碌时等待结束通知，不周期扫描。解绑移除 timer 和绑定引用，无其他绑定且无活动工作才释放会话状态；历史保留。Branch／Control／Binding／share race 回归已通过，整条内存释放链仍待 Naming、Agent 接线；见 [Control 业务与主动过期](app-design.md#control-业务与主动过期)及[待接线部分](app-design.md#跨模块释放的待接线部分)。
 
 <!-- locator:llm -->
 ## 模型服务与客户端

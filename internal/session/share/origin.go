@@ -35,22 +35,12 @@ func Origin(row *storage.Session) (llm.Origin, bool, error) {
 	return origin, true, nil
 }
 
-// InheritOrigin 只继承材料归属，不带入源会话的其他元数据或运行状态。
-func InheritOrigin(source *storage.Session, metadata string) (string, error) {
-	origin, known, err := Origin(source)
-	if err != nil {
-		return "", err
-	}
-	fields, err := storage.DecodeSessionMetadata(metadata)
-	if err != nil {
-		return "", err
-	}
-	if known {
-		if err := fields.Set(originMetadataKey, origin); err != nil {
-			return "", err
-		}
-	} else {
+// InheritOrigin 将 Origin 已解析的材料归属写入调用方自有字段集合。
+// 零值表示来源无归属；不带入源运行状态，最终编码由调用方完成。
+func InheritOrigin(origin llm.Origin, fields storage.SessionMetadata) error {
+	if origin.APIType == "" {
 		delete(fields, originMetadataKey)
+		return nil
 	}
-	return fields.Encode()
+	return fields.Set(originMetadataKey, origin)
 }

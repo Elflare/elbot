@@ -73,12 +73,11 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		},
 	)
 	materials := deps.Materials
-	// TODO(branch阶段)：Bindings 改接 s.control，统一派生切换的计时与退役。
 	s.branches = branch.NewService(branch.ServiceDeps{
 		Sessions:         sessions,
 		Messages:         messages,
 		Dialogues:        deps.Store.Dialogues(),
-		Bindings:         s.bindings,
+		Bindings:         s.control,
 		ActiveSessionIDs: deps.ActiveSessionIDs,
 		MaterialFor: func(origin llm.Origin) (branch.MaterialPreparer, error) {
 			preparer, err := materials.MaterialFor(origin)
