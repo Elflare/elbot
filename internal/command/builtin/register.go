@@ -84,7 +84,7 @@ type Deps struct {
 	Router   *command.Router
 	Sessions *session.Supervisor
 	Requests *request.Manager
-	Turns    *turn.Manager
+	Turns    *turn.Supervisor
 	Store    storage.Store
 	Scope    func(context.Context) session.Scope
 	Models   ModelService

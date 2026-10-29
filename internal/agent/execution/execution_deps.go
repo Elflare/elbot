@@ -60,21 +60,19 @@ type ExecutionCoordinatorDeps struct {
 	}
 	Turns interface {
 		AppendPendingInput(string, turn.Input) bool
-		AppendWait(string) *turn.AppendWait
+		BeginAppend(string, string, turn.Input) *turn.AppendWait
 		CanCompact(string, *turn.Execution) bool
 		CancelAppend(string) bool
 		CompleteCompactRun(string, string) bool
-		CompleteLLMInput(string, ...string) (turn.Input, bool)
-		Execution(string) *turn.Execution
-		FinishRequest(string, ...string)
-		InterruptLLMInput(string, turn.Input) bool
-		MatchesAttempt(string, string) bool
+		CompleteTurn(string, string) (turn.Input, bool)
+		FinishAttempt(string, string)
 		ReserveExecution(string, turn.Input, *turn.Execution) bool
 		ResumeAppend(string) (turn.Input, *turn.Execution, bool)
 		Snapshot(string) turn.Snapshot
 		StartCompactRun(string, string, *turn.Execution) bool
-		StartExecution(string, turn.Input, *turn.Execution, string) bool
-		StopSession(string, ...string)
+		StartAttempt(string, turn.Input, *turn.Execution, string) bool
+		StopSession(string)
+		StopAttempt(string, string)
 	}
 	Requests interface {
 		CancelSession(string) int

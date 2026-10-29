@@ -19,7 +19,7 @@ type RiskConfirmationSource struct {
 	Sessions interface {
 		Current(context.Context, session.Scope) (*storage.Session, error)
 	}
-	Turns        *turn.Manager
+	Turns        *turn.Supervisor
 	Scope        ScopeFunc
 	CommandNames []string
 }

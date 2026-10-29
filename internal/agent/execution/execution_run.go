@@ -85,28 +85,28 @@ func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.
 	attempt := storage.NewID()
 	ctx = turn.WithAttempt(ctx, attempt)
 	execution := turn.ExecutionFromContext(ctx)
-	started := c.turns.StartExecution(session.ID, agentshare.InboundTurnInput(ctx, text), execution, attempt)
+	started := c.turns.StartAttempt(session.ID, agentshare.InboundTurnInput(ctx, text), execution, attempt)
 	if !started {
 		release()
-		if c.turns.Execution(session.ID) == execution {
+		if c.turns.Snapshot(session.ID).Execution == execution {
 			return session, turn.Input{}, nil
 		}
 		return session, turn.Input{}, errExecutionConflict
 	}
 	// Restore durable usage before cancellation can publish the first snapshot.
 	if _, err := c.status.Usage(session); err != nil {
-		c.turns.FinishRequest(session.ID, attempt)
+		c.turns.FinishAttempt(session.ID, attempt)
 		release()
 		return session, turn.Input{}, err
 	}
 	// Keep the request registered through terminal status and Turn cleanup,
-	// including the interval after CompleteLLMInput removes the Turn.
+	// including the interval after CompleteTurn removes the Turn.
 	reqInfo, reqCtx, done := c.requests.Start(ctx, request.StartRequest{SessionID: session.ID, Kind: request.KindTurn, Label: "chat", Timeout: c.responseTimeout})
 	release()
 	stopObserver := sync.OnceFunc(c.observeRequestStop(reqCtx, session.ID, attempt))
 	defer func() {
 		stopObserver()
-		c.turns.FinishRequest(session.ID, attempt)
+		c.turns.FinishAttempt(session.ID, attempt)
 		done()
 	}()
 	result, pending := c.runTurn(ctx, reqCtx, reqInfo.ID, session, text, out, selection)
@@ -120,8 +120,9 @@ func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.
 func (c *ExecutionCoordinator) finishAttempt(ctx context.Context, session *storage.Session, out agentshare.Output, result agentshare.TurnResult) error {
 	attempt := turn.AttemptFromContext(ctx)
 	execution := turn.ExecutionFromContext(ctx)
+	current := c.turns.Snapshot(session.ID)
 	if err := result.Err; err != nil && !result.QuietCancellation {
-		if !c.turns.MatchesAttempt(session.ID, attempt) || c.turns.Snapshot(session.ID).Phase == turn.PhaseAwaitAppendConfirm {
+		if current.Attempt != attempt || current.Phase == turn.PhaseAwaitAppendConfirm {
 			return nil
 		}
 		execution.Finish(err)
@@ -130,11 +131,11 @@ func (c *ExecutionCoordinator) finishAttempt(ctx context.Context, session *stora
 		status.FinishedAt = storage.Now()
 		status.Error = err.Error()
 		c.status.Record(ctx, status)
-		c.turns.StopSession(session.ID, attempt)
+		c.turns.StopAttempt(session.ID, attempt)
 		return err
 	}
 	status := c.status.Snapshot(session.ID)
-	if status.Running() && (c.turns.Snapshot(session.ID).Phase == turn.PhaseIdle || c.turns.MatchesAttempt(session.ID, attempt)) {
+	if status.Running() && (current.Phase == turn.PhaseIdle || current.Attempt == attempt) {
 		c.status.Record(ctx, runtimeDoneStatus(status, storage.Now()))
 	}
 	return nil
@@ -151,7 +152,8 @@ func (c *ExecutionCoordinator) runTurn(ctx, reqCtx context.Context, requestID st
 		}
 		return result, turn.Input{}
 	}
-	if !c.turns.MatchesAttempt(session.ID, turn.AttemptFromContext(ctx)) || c.turns.Snapshot(session.ID).Phase == turn.PhaseStopping {
+	current := c.turns.Snapshot(session.ID)
+	if current.Attempt != turn.AttemptFromContext(ctx) || current.Phase == turn.PhaseStopping {
 		return agentshare.TurnResult{Outcome: agentshare.Canceled, Err: context.Canceled, QuietCancellation: true}, turn.Input{}
 	}
 	result := c.dialogue.RunTurn(ctx, reqCtx, agentshare.TurnInput{Session: session, Text: text, Selection: selection, RequestID: requestID, Prepared: prepared}, out)
@@ -183,7 +185,7 @@ func (c *ExecutionCoordinator) observeRequestStop(ctx context.Context, sessionID
 		if c.turns.Snapshot(sessionID).Phase == turn.PhaseAwaitAppendConfirm {
 			return
 		}
-		c.turns.StopSession(sessionID, attempt)
+		c.turns.StopAttempt(sessionID, attempt)
 		status := c.status.Snapshot(sessionID)
 		status.SessionID, status.Phase = sessionID, runtimestatus.PhaseStopping
 		c.status.Record(ctx, status)
@@ -219,7 +221,7 @@ func (c *ExecutionCoordinator) finishCompletedTurn(ctx context.Context, session 
 	if c.shouldCompact(ctx, session, nextSelection) {
 		_, _, _ = out.SendAssistant(ctx, "compact status: will compact before next request")
 	}
-	pending, completed := c.turns.CompleteLLMInput(session.ID, turn.AttemptFromContext(ctx))
+	pending, completed := c.turns.CompleteTurn(session.ID, turn.AttemptFromContext(ctx))
 	if !completed {
 		return turn.Input{}, nil
 	}
@@ -232,7 +234,8 @@ func (c *ExecutionCoordinator) finishCompletedTurn(ctx context.Context, session 
 }
 
 func (c *ExecutionCoordinator) handleTurnContextDone(ctx context.Context, sessionID string, err error, out agentshare.Output) {
-	if c.turns.Execution(sessionID) != turn.ExecutionFromContext(ctx) || (c.turns.Snapshot(sessionID).Phase != turn.PhaseAwaitAppendConfirm && c.turns.MatchesAttempt(sessionID, turn.AttemptFromContext(ctx))) {
+	current := c.turns.Snapshot(sessionID)
+	if current.Execution != turn.ExecutionFromContext(ctx) || (current.Phase != turn.PhaseAwaitAppendConfirm && current.Attempt == turn.AttemptFromContext(ctx)) {
 		if e := turn.ExecutionFromContext(ctx); e != nil {
 			e.Finish(err)
 		}

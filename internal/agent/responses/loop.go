@@ -47,8 +47,8 @@ type Loop struct {
 	}
 	Context *Context
 	Turns   interface {
-		StartToolPhase(string, ...string) bool
-		DrainMergedInput(string, ...string) turn.Input
+		StartToolPhase(string, string) bool
+		DrainMergedInput(string, string) turn.Input
 	}
 	View interface {
 		Context(context.Context) context.Context

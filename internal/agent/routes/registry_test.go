@@ -137,7 +137,7 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	}
 	registry := routes.New()
 	sessions := newSessionSupervisor(t, store)
-	turns := turn.NewManager()
+	turns := turn.NewSupervisor()
 	loop, compactor := &testLoop{t: t, messages: &dialogue.MessageStore{Dialogues: store.Dialogues(), Gate: &dialogue.CommitGate{Sessions: sessions, Turns: turns, View: dialogue.ExecutionView{Sessions: store.Sessions()}}}}, &testCompactor{}
 	origin := llm.Origin{Provider: "test-provider", APIType: testProtocol, BaseURL: "https://test.invalid"}
 	client := &testClient{}
@@ -152,7 +152,7 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	runner := &dialogue.Runner{Status: testStatus{}, Routes: registry, Preparer: &dialogue.Preparer{Contexts: contexts, Media: mediatest.New(t, media.MediaCenterDeps{Store: store}, t.TempDir())},
 		Messages: loop.messages,
 		Replies:  &dialogue.ReplyCommitter{Persistence: loop.messages.Committer("append_assistant_message"), Output: out},
-		Turns:    turn.NewManager(), View: dialogue.ExecutionView{Sessions: store.Sessions()}}
+		Turns:    turn.NewSupervisor(), View: dialogue.ExecutionView{Sessions: store.Sessions()}}
 	in := agentshare.TurnInput{
 		Session:   row,
 		Text:      "incoming",

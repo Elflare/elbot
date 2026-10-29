@@ -247,7 +247,7 @@ func TestBackgroundCleanupSkipsBusySessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !m.turns.StartExecution(busy.ID, turn.Input{Text: "work"}, turn.NewExecution("busy"), "attempt") {
+	if !m.turns.StartAttempt(busy.ID, turn.Input{Text: "work"}, turn.NewExecution("busy"), "attempt") {
 		t.Fatal("could not mark busy")
 	}
 	defer m.turns.StopSession(busy.ID)

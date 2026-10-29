@@ -31,7 +31,7 @@ func TestLifecycleCommandsArchiveAndArchives(t *testing.T) {
 	deps := Deps{
 		Sessions:     svc,
 		Requests:     request.NewManager(0),
-		Turns:        turn.NewManager(),
+		Turns:        turn.NewSupervisor(),
 		Store:        store,
 		Scope:        func(context.Context) session.Scope { return scope },
 		SessionState: selections,

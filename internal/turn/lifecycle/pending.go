@@ -23,7 +23,7 @@ func (m *Manager) DrainMergedInput(sessionID, attempt string) Input {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn := m.turns[sessionID]
-	if !matches(turn, []string{attempt}) || len(turn.pending) == 0 {
+	if !matches(turn, attempt) || len(turn.pending) == 0 {
 		return Input{}
 	}
 	merged := mergeInputs(turn.pending)

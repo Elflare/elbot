@@ -121,9 +121,9 @@ type PendingUserMessage struct {
 }
 
 func DrainPending(turns interface {
-	DrainMergedInput(string, ...string) turn.Input
-}, sessionID string, expected ...string) *PendingUserMessage {
-	pending := turns.DrainMergedInput(sessionID, expected...)
+	DrainMergedInput(string, string) turn.Input
+}, sessionID string, expected string) *PendingUserMessage {
+	pending := turns.DrainMergedInput(sessionID, expected)
 	if pending.Text == "" && len(pending.Segments) == 0 {
 		return nil
 	}

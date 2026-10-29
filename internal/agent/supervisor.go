@@ -24,7 +24,7 @@ type Supervisor struct {
 	cancel                context.CancelFunc
 	sessions              *session.Supervisor
 	requests              *request.Manager
-	turns                 *turn.Manager
+	turns                 *turn.Supervisor
 	routes                *routes.Registry
 	contexts              *contextmgr.Service
 	commands              *command.Router

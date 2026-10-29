@@ -16,7 +16,7 @@ import (
 )
 
 func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
-	turns := turn.NewManager()
+	turns := turn.NewSupervisor()
 	events := signal.New[StatusChangedEvent, signal.Empty]("status")
 	var observed []StatusChangedEvent
 	_, _ = events.Observe(func(_ context.Context, e StatusChangedEvent) error {
@@ -27,11 +27,11 @@ func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 	old, current := turn.NewExecution("old"), turn.NewExecution("current")
 	oldCtx := turn.WithAttempt(turn.WithExecution(context.Background(), old), "old-attempt")
 	ctx := turn.WithAttempt(turn.WithExecution(context.Background(), current), "current-attempt")
-	turns.StartExecution("s", turn.Input{}, old, "old-attempt")
+	turns.StartAttempt("s", turn.Input{}, old, "old-attempt")
 	r.Record(oldCtx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseLLM})
-	turns.StopSession("s", "old-attempt")
-	turns.FinishRequest("s", "old-attempt")
-	turns.StartExecution("s", turn.Input{}, current, "current-attempt")
+	turns.StopAttempt("s", "old-attempt")
+	turns.FinishAttempt("s", "old-attempt")
+	turns.StartAttempt("s", turn.Input{}, current, "current-attempt")
 	usage := &llm.Usage{TotalTokens: func() *int64 { n := int64(42); return &n }()}
 	r.RecordUsage(ctx, "s", usage)
 	r.RecordUsage(oldCtx, "s", &llm.Usage{})
@@ -42,8 +42,8 @@ func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 	if len(observed) != 2 || observed[1].Version != observed[0].Version+1 || (observed[1].Snapshot.Usage.TotalTokens == nil || *observed[1].Snapshot.Usage.TotalTokens != 42) || (r.Snapshot("s").Usage.TotalTokens == nil || *r.Snapshot("s").Usage.TotalTokens != 42) {
 		t.Fatalf("old attempt/snapshot leaked: %+v", observed)
 	}
-	turns.StopSession("s", "current-attempt")
-	turns.FinishRequest("s", "current-attempt")
+	turns.StopAttempt("s", "current-attempt")
+	turns.FinishAttempt("s", "current-attempt")
 	r.Record(ctx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseDone})
 	if r.Snapshot("s").Phase != runtimestatus.PhaseDone {
 		t.Fatal("matching terminal rejected after turn cleanup")

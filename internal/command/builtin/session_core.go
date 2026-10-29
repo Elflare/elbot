@@ -12,7 +12,6 @@ import (
 	globalevents "elbot/internal/events"
 	"elbot/internal/modelmgr"
 	"elbot/internal/storage"
-	"elbot/internal/turn"
 )
 
 func NewNew(deps Deps) command.Handler {
@@ -113,7 +112,7 @@ func formatToolUsage(ctx context.Context, deps Deps, sessionID string, live map[
 			}
 		}
 	}
-	persisted, current := turn.ToolsString(usage), turn.ToolsString(live)
+	persisted, current := toolsString(usage), toolsString(live)
 	if persisted == "" {
 		persisted = "none"
 	}

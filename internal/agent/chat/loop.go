@@ -35,8 +35,8 @@ type Loop struct {
 		ConsumeSeed(context.Context, string) (*storage.Session, error)
 	}
 	Turns interface {
-		StartToolPhase(string, ...string) bool
-		DrainMergedInput(string, ...string) turn.Input
+		StartToolPhase(string, string) bool
+		DrainMergedInput(string, string) turn.Input
 	}
 	View interface {
 		Context(context.Context) context.Context
@@ -117,8 +117,8 @@ type LoopDeps struct {
 		ResolveCompact(modelmgr.Selection) modelmgr.Selection
 	}
 	Turns interface {
-		StartToolPhase(string, ...string) bool
-		DrainMergedInput(string, ...string) turn.Input
+		StartToolPhase(string, string) bool
+		DrainMergedInput(string, string) turn.Input
 	}
 	View interface {
 		Context(context.Context) context.Context

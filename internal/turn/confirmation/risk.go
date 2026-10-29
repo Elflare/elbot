@@ -35,14 +35,14 @@ func WaitRisk(ctx context.Context, w *share.RiskWait, timeout time.Duration) sha
 		case <-ctx.Done():
 			return share.RiskResult{Outcome: share.RiskCanceled, Err: ctx.Err()}
 		case <-timerC:
-			removed := w.Cancel()
+			removed := w.Expire()
 			if ctx.Err() != nil {
 				return share.RiskResult{Outcome: share.RiskCanceled, Err: ctx.Err()}
 			}
 			if removed {
 				return share.RiskResult{Outcome: share.RiskExpired}
 			}
-			return share.RiskResult{Outcome: share.RiskStale}
+			timer.Reset(timeout)
 		}
 	}
 }

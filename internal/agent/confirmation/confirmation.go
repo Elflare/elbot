@@ -41,11 +41,11 @@ type ConfirmationCoordinator struct {
 		CancelSession(string) int
 	}
 	turns interface {
-		BeginRiskConfirmation(string, turn.RiskConfirmation, ...string) *turn.RiskConfirmationWait
+		BeginRiskConfirmation(string, turn.RiskConfirmation, string) *turn.RiskConfirmationWait
 		PendingRiskConfirmation(string) (turn.RiskConfirmation, bool)
 		RefreshRiskConfirmation(string) bool
-		ResolveRiskConfirmation(string, turn.RiskConfirmationResponse) bool
-		StopSession(string, ...string)
+		ResolveRiskConfirmation(string, turn.RiskDecision) bool
+		StopSession(string)
 	}
 	commands interface {
 		IsCommand(string) bool
@@ -139,17 +139,17 @@ func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 		return c.output.SendChat(ctx, riskConfirmationDetailText(confirmation))
 	case "confirm", "c":
 		observed = confirmationAction(ctx, sessionID, "confirm", confirmation, parsed.Args)
-		c.turns.ResolveRiskConfirmation(sessionID, turn.RiskConfirmationResponse{Confirmed: true, Extra: parsed.Args})
+		c.turns.ResolveRiskConfirmation(sessionID, turn.RiskDecision{Action: turn.RiskConfirm, Extra: parsed.Args})
 	case "confirmtool", "ct":
 		observed = confirmationAction(ctx, sessionID, "confirmtool", confirmation, parsed.Args)
-		c.turns.ResolveRiskConfirmation(sessionID, turn.RiskConfirmationResponse{Confirmed: true, ConfirmTool: true, Extra: parsed.Args})
+		c.turns.ResolveRiskConfirmation(sessionID, turn.RiskDecision{Action: turn.RiskConfirmTool, Extra: parsed.Args})
 	case "confirmall", "ca":
 		observed = confirmationAction(ctx, sessionID, "confirmall", confirmation, parsed.Args)
-		c.turns.ResolveRiskConfirmation(sessionID, turn.RiskConfirmationResponse{Confirmed: true, ConfirmAll: true, Extra: parsed.Args})
+		c.turns.ResolveRiskConfirmation(sessionID, turn.RiskDecision{Action: turn.RiskConfirmAll, Extra: parsed.Args})
 
 	case "reject":
 		observed = confirmationAction(ctx, sessionID, "reject", confirmation, parsed.Args)
-		c.turns.ResolveRiskConfirmation(sessionID, turn.RiskConfirmationResponse{Rejected: true, Reason: parsed.Args})
+		c.turns.ResolveRiskConfirmation(sessionID, turn.RiskDecision{Action: turn.RiskReject, Reason: parsed.Args})
 	case "stop":
 		observed = confirmationAction(ctx, sessionID, "stop", confirmation, "")
 		c.turns.StopSession(sessionID)
@@ -304,8 +304,9 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 			return tool.ConfirmResult{Stopped: true}, fmt.Errorf("send risk confirmation: %w", err)
 		}
 	}
-	resp, ok, resultStatus := wait.Wait(ctx, timeout)
-	if resp.Expired {
+	result := wait.Wait(ctx, timeout)
+	resp := result.Decision
+	if result.Outcome == turn.RiskExpired {
 		c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "expire", resp.Extra, "confirmation wait expired", events.ResultFailed, slog.LevelInfo)
 		err := c.output.SendChat(context.WithoutCancel(ctx), "高风险工具确认已过期，当前处理已停止。")
 		return tool.ConfirmResult{
@@ -315,7 +316,14 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 			Stopped: true,
 		}, err
 	}
-	if !ok || resp.Stopped {
+	if result.Outcome != turn.RiskAnswered {
+		resultStatus := events.ResultSkipped
+		if result.Outcome == turn.RiskCanceled {
+			resultStatus = events.ResultCanceled
+			if result.Err == context.DeadlineExceeded {
+				resultStatus = events.ResultFailed
+			}
+		}
 		action, reason := "skip", "confirmation wait is no longer current"
 		switch resultStatus {
 		case events.ResultCanceled:
@@ -334,19 +342,19 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 			Stopped: true,
 		}, nil
 	}
-	if resp.ConfirmTool {
+	if resp.Action == turn.RiskConfirmTool {
 		c.setToolAutoConfirmed(sessionID, call.Name)
 		if err := c.output.SendChat(ctx, fmt.Sprintf("已为当前 Session 自动确认后续 %s 工具调用。", call.Name)); err != nil {
 			return tool.ConfirmResult{Allowed: true, Extra: resp.Extra}, err
 		}
 	}
-	if resp.ConfirmAll {
+	if resp.Action == turn.RiskConfirmAll {
 		c.setSessionAutoConfirmed(sessionID)
 		if err := c.output.SendChat(ctx, "已为当前 Session 自动确认后续高风险工具调用。"); err != nil {
 			return tool.ConfirmResult{Allowed: true, Extra: resp.Extra}, err
 		}
 	}
-	if resp.Rejected {
+	if resp.Action == turn.RiskReject {
 		reason := strings.TrimSpace(resp.Reason)
 		if reason == "" {
 			reason = "user rejected"
@@ -364,10 +372,10 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 		}, nil
 	}
 	action := "confirm"
-	if resp.ConfirmTool {
+	if resp.Action == turn.RiskConfirmTool {
 		action = "confirmtool"
 	}
-	if resp.ConfirmAll {
+	if resp.Action == turn.RiskConfirmAll {
 		action = "confirmall"
 	}
 	c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, action, resp.Extra, "", events.ResultSucceeded, slog.LevelInfo)

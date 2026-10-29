@@ -2,6 +2,7 @@ package input
 
 import (
 	"context"
+	agentshare "elbot/internal/agent/share"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -56,7 +57,7 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 	if sessionErr == nil {
 		snapshot = e.turns.Snapshot(sessionRow.ID)
 	}
-	if sessionErr == nil && snapshot.Phase == turn.PhaseAwaitAppendConfirm && (turn.IsConfirm(text) || turn.IsCancel(text)) {
+	if sessionErr == nil && snapshot.Phase == turn.PhaseAwaitAppendConfirm && (agentshare.IsAppendConfirm(text) || agentshare.IsAppendCancel(text)) {
 		return true, e.execution.ResumeAppend(ctx, sessionRow, text)
 	}
 	if sessionErr == nil && snapshot.Phase == turn.PhaseAwaitRiskConfirm && e.IsRiskConfirmationCommand(text) {

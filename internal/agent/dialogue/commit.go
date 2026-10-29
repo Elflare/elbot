@@ -23,8 +23,7 @@ type CommitGate struct {
 		EnterSessions(context.Context, ...string) (context.Context, func(), error)
 	}
 	Turns interface {
-		Execution(string) *turn.Execution
-		MatchesAttempt(string, string) bool
+		Snapshot(string) turn.Snapshot
 	}
 	View ExecutionView
 }
@@ -48,7 +47,8 @@ func (g *CommitGate) Enter(ctx context.Context, sessionID string) (context.Conte
 		return ctx, nil, err
 	}
 	if execution := turn.ExecutionFromContext(ctx); execution != nil {
-		if g.Turns.Execution(sessionID) != execution || !g.Turns.MatchesAttempt(sessionID, turn.AttemptFromContext(ctx)) {
+		current := g.Turns.Snapshot(sessionID)
+		if current.Execution != execution || current.Attempt != turn.AttemptFromContext(ctx) {
 			release()
 			return ctx, nil, fmt.Errorf("message execution attempt expired")
 		}

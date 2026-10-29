@@ -14,15 +14,15 @@ import (
 )
 
 func TestStatusRetirementRejectsLatePublicationAndIdleCacheRecreation(t *testing.T) {
-	turns := turn.NewManager()
+	turns := turn.NewSupervisor()
 	changed := signal.New[StatusChangedEvent, signal.Empty]("retirement")
 	defer changed.Close(context.Background())
 	r := NewStatusRecorder(StatusRecorderDeps{View: dialogue.ExecutionView{}, Turns: turns, Changed: changed})
 	e := turn.NewExecution("old")
 	ctx := turn.WithAttempt(turn.WithExecution(t.Context(), e), "old-attempt")
-	turns.StartExecution("s", turn.Input{}, e, "old-attempt")
+	turns.StartAttempt("s", turn.Input{}, e, "old-attempt")
 	r.Record(ctx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseLLM})
-	turns.FinishRequest("s", "old-attempt")
+	turns.FinishAttempt("s", "old-attempt")
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Go(func() {
@@ -51,7 +51,7 @@ func TestStatusRetirementRejectsLatePublicationAndIdleCacheRecreation(t *testing
 		t.Fatal("idle status query recreated the cache")
 	}
 	next := turn.NewExecution("next")
-	turns.StartExecution("s", turn.Input{}, next, "next-attempt")
+	turns.StartAttempt("s", turn.Input{}, next, "next-attempt")
 	if _, err := r.Usage(row); err != nil {
 		t.Fatal(err)
 	}
@@ -64,13 +64,13 @@ func TestStatusRetirementRejectsLatePublicationAndIdleCacheRecreation(t *testing
 }
 
 func TestStatusRetirementDoesNotWaitForDisplayCallback(t *testing.T) {
-	turns := turn.NewManager()
+	turns := turn.NewSupervisor()
 	changed := signal.New[StatusChangedEvent, signal.Empty]("retirement-blocked")
 	defer changed.Close(context.Background())
 	r := NewStatusRecorder(StatusRecorderDeps{View: dialogue.ExecutionView{}, Turns: turns, Changed: changed})
 	e := turn.NewExecution("old")
 	ctx := turn.WithAttempt(turn.WithExecution(t.Context(), e), "attempt")
-	turns.StartExecution("s", turn.Input{}, e, "attempt")
+	turns.StartAttempt("s", turn.Input{}, e, "attempt")
 	started, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	_, err := changed.Observe(func(context.Context, StatusChangedEvent) error { close(started); <-release; return nil }, signal.ConnectOptions{})
 	if err != nil {
@@ -81,7 +81,7 @@ func TestStatusRetirementDoesNotWaitForDisplayCallback(t *testing.T) {
 		close(done)
 	}()
 	<-started
-	turns.FinishRequest("s", "attempt")
+	turns.FinishAttempt("s", "attempt")
 	r.ForgetSession("s")
 	close(release)
 	<-done

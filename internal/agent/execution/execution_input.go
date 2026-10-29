@@ -30,7 +30,7 @@ func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, row *storage.Se
 			return err
 		}
 		switch {
-		case turn.IsConfirm(text):
+		case agentshare.IsAppendConfirm(text):
 			snapshot := c.turns.Snapshot(row.ID)
 			if snapshot.Phase != turn.PhaseAwaitAppendConfirm {
 				release()
@@ -52,7 +52,7 @@ func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, row *storage.Se
 			ctx = agentshare.WithInboundTurnInput(ctx, merged)
 			release()
 			return c.Run(ctx, row, merged.Text, foregroundTurnOutput{sender: c.output})
-		case turn.IsCancel(text):
+		case agentshare.IsAppendCancel(text):
 			c.turns.CancelAppend(row.ID)
 			release()
 			return c.output.SendChat(ctx, "已取消追加，正在结束本轮处理。")
@@ -118,12 +118,12 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 				release()
 				return agentshare.InputHandled, context.Canceled
 			}
-			if !c.turns.InterruptLLMInput(session.ID, agentshare.InboundTurnInput(ctx, text)) {
+			wait := c.turns.BeginAppend(session.ID, snapshot.Attempt, agentshare.InboundTurnInput(ctx, text))
+			if wait == nil {
 				finishWait()
 				release()
 				return agentshare.InputHandled, nil
 			}
-			wait := c.turns.AppendWait(session.ID)
 			c.requests.CancelSession(session.ID)
 			release()
 			timeout := c.waitPolicy.WaitTimeout(ctx)

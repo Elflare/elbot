@@ -31,7 +31,7 @@ func (m *Manager) StartToolPhase(sessionID, attempt string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn := m.turns[sessionID]
-	if !matches(turn, []string{attempt}) || turn.phase != PhaseLLM {
+	if !matches(turn, attempt) || turn.phase != PhaseLLM {
 		return false
 	}
 	turn.phase = PhaseTool
@@ -41,12 +41,12 @@ func (m *Manager) CompleteTurn(sessionID, attempt string) (Input, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn := m.turns[sessionID]
-	if !matches(turn, []string{attempt}) || (turn.phase != PhaseLLM && turn.phase != PhaseTool && turn.phase != PhaseAwaitRiskConfirm) {
+	if !matches(turn, attempt) || (turn.phase != PhaseLLM && turn.phase != PhaseTool && turn.phase != PhaseAwaitRiskConfirm) {
 		return Input{}, false
 	}
 	pending := mergeInputs(turn.pending)
 	if turn.execution == nil {
-		removeTurn(m.turns, sessionID, turn)
+		removeTurn(m.turns, sessionID, turn, false)
 	} else if pending.Text != "" || len(pending.Segments) > 0 {
 		finishAttempt(turn)
 		m.turns[sessionID] = &state{phase: PhaseLLM, originalInput: pending, tools: map[string]int{}, execution: turn.execution, reserved: true, compactReady: true}
@@ -60,20 +60,20 @@ func (m *Manager) FinishAttempt(sessionID, attempt string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn := m.turns[sessionID]
-	if !matches(turn, []string{attempt}) {
+	if !matches(turn, attempt) {
 		return
 	}
 	if turn.phase == PhaseAwaitAppendConfirm {
 		finishAttempt(turn)
 		return
 	}
-	removeTurn(m.turns, sessionID, turn)
+	removeTurn(m.turns, sessionID, turn, false)
 }
 func (m *Manager) StopAttempt(sessionID, attempt string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	current := m.turns[sessionID]
-	if !matches(current, []string{attempt}) {
+	if !matches(current, attempt) {
 		return
 	}
 	beginStopTurn(m.turns, sessionID, current)
@@ -143,8 +143,8 @@ func refreshWait(turn *state) {
 	default:
 	}
 }
-func removeTurn(turns map[string]*state, sessionID string, turn *state, preserve ...bool) {
-	if turn.execution != nil && (len(preserve) == 0 || !preserve[0]) {
+func removeTurn(turns map[string]*state, sessionID string, turn *state, preserve bool) {
+	if turn.execution != nil && !preserve {
 		turn.execution.Finish(context.Canceled)
 	}
 	finishAttempt(turn)
@@ -163,7 +163,7 @@ func finishAttempt(turn *state) {
 }
 func beginStopTurn(turns map[string]*state, sessionID string, turn *state) {
 	if turn.attemptDone == nil {
-		removeTurn(turns, sessionID, turn)
+		removeTurn(turns, sessionID, turn, false)
 		return
 	}
 	stopTurn(turn)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"elbot/internal/command"
 	"elbot/internal/session"
@@ -21,7 +20,7 @@ func TestRiskConfirmationSourceCompletesOnlyDuringRiskPhase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	turns := turn.NewManager()
+	turns := turn.NewSupervisor()
 	router := command.NewRouter([]string{"/"})
 	source := RiskConfirmationSource{
 		Router:       router,
@@ -33,22 +32,17 @@ func TestRiskConfirmationSourceCompletesOnlyDuringRiskPhase(t *testing.T) {
 	if got, _ := source.Complete(ctx, Request{Text: "/c"}); len(got) != 0 {
 		t.Fatalf("Complete before risk phase = %#v", got)
 	}
-	if !turns.StartLLM(sess.ID, "run") || !turns.StartToolPhase(sess.ID) {
+	if !turns.StartAttempt(sess.ID, turn.Input{Text: "run"}, turn.NewExecution("run"), "attempt") || !turns.StartToolPhase(sess.ID, "attempt") {
 		t.Fatal("failed to start tool phase")
 	}
-	done := make(chan turn.RiskConfirmationResponse, 1)
-	go func() {
-		resp, _ := turns.AwaitRiskConfirmation(sess.ID, turn.RiskConfirmation{ID: "call_1", ToolName: "shell", Risk: "high"})
-		done <- resp
-	}()
-	waitForRiskPhase(t, turns, sess.ID)
+	wait := turns.BeginRiskConfirmation(sess.ID, turn.RiskConfirmation{ID: "call_1", ToolName: "shell", Risk: "high"}, "attempt")
+	defer turns.FinishAttempt(sess.ID, "attempt")
+	defer wait.Cancel()
 
 	got, _ := source.Complete(ctx, Request{Text: "/c"})
 	if len(got) != 2 || got[0].Text != "/confirm" || got[1].Text != "/c" {
 		t.Fatalf("Complete during risk phase = %#v", got)
 	}
-	turns.ResolveRiskConfirmation(sess.ID, turn.RiskConfirmationResponse{Stopped: true})
-	<-done
 }
 
 func TestForkMessageSourceCompletesAssistantMessageIDs(t *testing.T) {
@@ -93,16 +87,4 @@ func newCompletionTestStore(t *testing.T) storage.Store {
 
 func testScope() session.Scope {
 	return session.Scope{ActorID: "cli:local", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
-}
-
-func waitForRiskPhase(t *testing.T, turns *turn.Manager, sessionID string) {
-	t.Helper()
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		if turns.Snapshot(sessionID).Phase == turn.PhaseAwaitRiskConfirm {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatal("did not enter risk confirmation phase")
 }

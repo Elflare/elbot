@@ -41,8 +41,8 @@ type LoopDeps struct {
 		Calls(context.Context, string) ([]storage.NativeCall, error)
 	}
 	Turns interface {
-		StartToolPhase(string, ...string) bool
-		DrainMergedInput(string, ...string) turn.Input
+		StartToolPhase(string, string) bool
+		DrainMergedInput(string, string) turn.Input
 	}
 	View interface {
 		Context(context.Context) context.Context

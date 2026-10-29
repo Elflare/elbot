@@ -19,7 +19,7 @@ import (
 )
 
 func (c *ExecutionCoordinator) AdoptForeground(ctx context.Context, row *storage.Session, binding *session.Binding) {
-	if execution := c.turns.Execution(row.ID); execution != nil {
+	if execution := c.turns.Snapshot(row.ID).Execution; execution != nil {
 		ctx = contextinfo.WithActor(ctx, c.identity.Actor(ctx))
 		execution.Adopt(session.WithBinding(ctx, binding), *row)
 	}
@@ -49,21 +49,19 @@ type ExecutionCoordinator struct {
 	}
 	turns interface {
 		AppendPendingInput(string, turn.Input) bool
-		AppendWait(string) *turn.AppendWait
+		BeginAppend(string, string, turn.Input) *turn.AppendWait
 		CanCompact(string, *turn.Execution) bool
 		CancelAppend(string) bool
 		CompleteCompactRun(string, string) bool
-		CompleteLLMInput(string, ...string) (turn.Input, bool)
-		Execution(string) *turn.Execution
-		FinishRequest(string, ...string)
-		InterruptLLMInput(string, turn.Input) bool
-		MatchesAttempt(string, string) bool
+		CompleteTurn(string, string) (turn.Input, bool)
+		FinishAttempt(string, string)
 		ReserveExecution(string, turn.Input, *turn.Execution) bool
 		ResumeAppend(string) (turn.Input, *turn.Execution, bool)
 		Snapshot(string) turn.Snapshot
 		StartCompactRun(string, string, *turn.Execution) bool
-		StartExecution(string, turn.Input, *turn.Execution, string) bool
-		StopSession(string, ...string)
+		StartAttempt(string, turn.Input, *turn.Execution, string) bool
+		StopSession(string)
+		StopAttempt(string, string)
 	}
 	requests interface {
 		CancelSession(string) int
@@ -101,13 +99,14 @@ func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, te
 		ctx = turn.WithExecution(ctx, execution)
 	}
 	defer func() {
-		// An error before StartExecution must also retire a reservation inherited
+		// An error before StartAttempt must also retire a reservation inherited
 		// from append confirmation or compaction. Never stop another execution.
 		if runErr != nil {
 			_, release, err := c.sessions.EnterSessions(context.WithoutCancel(ctx), row.ID)
 			if err == nil {
-				if c.turns.Execution(row.ID) == execution && c.turns.MatchesAttempt(row.ID, "") {
-					c.turns.StopSession(row.ID, "")
+				current := c.turns.Snapshot(row.ID)
+				if current.Execution == execution && current.Attempt == "" {
+					c.turns.StopAttempt(row.ID, "")
 				}
 				release()
 			}
@@ -124,7 +123,7 @@ func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, te
 			return err
 		}
 		if pending.Text == "" && len(pending.Segments) == 0 {
-			if c.turns.Execution(next.ID) != execution {
+			if c.turns.Snapshot(next.ID).Execution != execution {
 				execution.Finish(nil)
 			}
 			return nil
@@ -169,7 +168,7 @@ func (c *ExecutionCoordinator) RunBackground(ctx context.Context, row *storage.S
 	if result.Err != nil && ctx.Err() != nil {
 		_, release, err := c.sessions.EnterSessions(context.WithoutCancel(ctx), result.SessionID)
 		if err == nil {
-			if c.turns.Execution(result.SessionID) == execution {
+			if c.turns.Snapshot(result.SessionID).Execution == execution {
 				c.requests.CancelSession(result.SessionID)
 				c.turns.StopSession(result.SessionID)
 			}

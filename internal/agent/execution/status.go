@@ -25,7 +25,6 @@ type StatusRecorder struct {
 	owners    map[string]contextinfo.Execution
 	version   uint64
 	turns     interface {
-		ExecutionAttempt(string) (*turn.Execution, string, bool)
 		Snapshot(string) turn.Snapshot
 	}
 	changed *signal.Signal[StatusChangedEvent, signal.Empty]
@@ -57,10 +56,11 @@ func (r *StatusRecorder) record(ctx context.Context, snapshot runtimestatus.Snap
 	r.mu.Lock()
 	owner, _ := contextinfo.ExecutionFromContext(ctx)
 	owner.SessionID = snapshot.SessionID
-	e, attempt, active := r.turns.ExecutionAttempt(snapshot.SessionID)
+	current := r.turns.Snapshot(snapshot.SessionID)
+	active := current.Phase != turn.PhaseIdle
 	previous := r.owners[snapshot.SessionID]
 	terminal := snapshot.Phase == runtimestatus.PhaseDone || snapshot.Phase == runtimestatus.PhaseError
-	valid := active && e == turn.ExecutionFromContext(ctx) && attempt == owner.Attempt
+	valid := active && current.Execution == turn.ExecutionFromContext(ctx) && current.Attempt == owner.Attempt
 	if !active {
 		valid = terminal && owner.Attempt != "" && previous.Attempt == owner.Attempt && previous.RunID == owner.RunID
 	}
@@ -78,7 +78,7 @@ func (r *StatusRecorder) record(ctx context.Context, snapshot runtimestatus.Snap
 		snapshot.Usage = r.snapshots[snapshot.SessionID].Usage
 		snapshot = mergeRuntimeStatus(r.snapshots[snapshot.SessionID], snapshot)
 	}
-	if !terminal && r.turns.Snapshot(snapshot.SessionID).Phase == turn.PhaseStopping {
+	if !terminal && current.Phase == turn.PhaseStopping {
 		snapshot.Phase = runtimestatus.PhaseStopping
 	}
 	snapshot.Usage = agentshare.CloneUsage(snapshot.Usage)
@@ -116,7 +116,7 @@ func (r *StatusRecorder) Usage(row *storage.Session) (*llm.Usage, error) {
 			return nil, err
 		}
 		snapshot.SessionID, snapshot.Usage = row.ID, agentshare.CloneUsage(state.LastUsage)
-		if _, _, active := r.turns.ExecutionAttempt(row.ID); active {
+		if r.turns.Snapshot(row.ID).Phase != turn.PhaseIdle {
 			r.snapshots[row.ID] = snapshot
 		}
 	}
@@ -186,7 +186,6 @@ type StatusRecorderDeps struct {
 		Context(context.Context) context.Context
 	} // Refreshes source facts after foreground adoption.
 	Turns interface {
-		ExecutionAttempt(string) (*turn.Execution, string, bool)
 		Snapshot(string) turn.Snapshot
 	}
 	Changed *signal.Signal[StatusChangedEvent, signal.Empty]

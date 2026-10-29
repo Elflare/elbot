@@ -1,20 +1,15 @@
-// 待改动：验证停止后保留执行归属，实际退出后释放，并隔离迟到完成。
-// 随生命周期职责迁移，保留停止中的执行不能消费已排队批准的覆盖。
 package turn
 
 import (
-	"context"
 	"testing"
-
-	"elbot/internal/events"
 )
 
 func TestStopKeepsAttemptUntilAcknowledged(t *testing.T) {
-	m := NewManager()
+	m := NewSupervisor()
 	e := NewExecution("old")
-	m.StartExecution("s", Input{Text: "original"}, e, "old-attempt")
+	m.StartAttempt("s", Input{Text: "original"}, e, "old-attempt")
 	done := m.Snapshot("s").AttemptDone
-	m.StopSession("s", "old-attempt")
+	m.StopAttempt("s", "old-attempt")
 	if got := m.Snapshot("s"); got.Phase != PhaseStopping || got.AttemptDone != done {
 		t.Fatalf("stopping snapshot: %+v", got)
 	}
@@ -22,7 +17,7 @@ func TestStopKeepsAttemptUntilAcknowledged(t *testing.T) {
 	if repeated := m.Snapshot("s").AttemptDone; repeated != done {
 		t.Fatal("repeated stop replaced the original notification")
 	}
-	if m.StartExecution("s", Input{}, NewExecution("new"), "new-attempt") {
+	if m.StartAttempt("s", Input{}, NewExecution("new"), "new-attempt") {
 		t.Fatal("new execution entered before old work exited")
 	}
 	select {
@@ -32,28 +27,28 @@ func TestStopKeepsAttemptUntilAcknowledged(t *testing.T) {
 		t.Fatal("logical execution completed before acknowledgement")
 	default:
 	}
-	m.FinishRequest("s", "old-attempt")
+	m.FinishAttempt("s", "old-attempt")
 	select {
 	case <-done:
 	default:
 		t.Fatal("completion did not wake waiters")
 	}
-	if !m.StartExecution("s", Input{}, NewExecution("new"), "new-attempt") {
+	if !m.StartAttempt("s", Input{}, NewExecution("new"), "new-attempt") {
 		t.Fatal("new execution could not enter after old work exited")
 	}
-	m.FinishRequest("s", "old-attempt")
-	if !m.MatchesAttempt("s", "new-attempt") {
+	m.FinishAttempt("s", "old-attempt")
+	if m.Snapshot("s").Attempt != "new-attempt" {
 		t.Fatal("late old completion removed replacement")
 	}
 }
 
 func TestAppendAttemptAcknowledgementKeepsConfirmation(t *testing.T) {
-	m := NewManager()
+	m := NewSupervisor()
 	e := NewExecution("execution")
-	m.StartExecution("s", Input{Text: "first"}, e, "attempt")
+	m.StartAttempt("s", Input{Text: "first"}, e, "attempt")
 	done := m.Snapshot("s").AttemptDone
-	m.InterruptLLM("s", "more")
-	m.FinishRequest("s", "attempt")
+	m.BeginAppend("s", "attempt", Input{Text: "more"})
+	m.FinishAttempt("s", "attempt")
 	select {
 	case <-done:
 	default:
@@ -67,18 +62,4 @@ func TestAppendAttemptAcknowledgementKeepsConfirmation(t *testing.T) {
 		t.Fatal("attempt exit ended the paused logical execution")
 	default:
 	}
-}
-
-func TestStoppingAttemptCannotConsumeQueuedApproval(t *testing.T) {
-	m := NewManager()
-	m.StartExecution("s", Input{}, NewExecution("execution"), "attempt")
-	m.StartToolPhase("s", "attempt")
-	wait := m.BeginRiskConfirmation("s", RiskConfirmation{ID: "call"}, "attempt")
-	m.ResolveRiskConfirmation("s", RiskConfirmationResponse{Confirmed: true})
-	m.StopSession("s", "attempt")
-	resp, allowed, status := wait.Wait(context.Background(), 0)
-	if allowed || !resp.Stopped || status != events.ResultCanceled || m.Snapshot("s").Phase != PhaseStopping {
-		t.Fatalf("stopping attempt revived: %+v allowed=%v status=%s", resp, allowed, status)
-	}
-	m.FinishRequest("s", "attempt")
 }

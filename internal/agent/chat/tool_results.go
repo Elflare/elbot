@@ -11,9 +11,9 @@ import (
 )
 
 func drainPendingUserInput(turns interface {
-	DrainMergedInput(string, ...string) turn.Input
-}, id string, messages []llm.LLMMessage, expected ...string) ([]llm.LLMMessage, *agentshare.PendingUserMessage) {
-	pending := agentshare.DrainPending(turns, id, expected...)
+	DrainMergedInput(string, string) turn.Input
+}, id string, messages []llm.LLMMessage, expected string) ([]llm.LLMMessage, *agentshare.PendingUserMessage) {
+	pending := agentshare.DrainPending(turns, id, expected)
 	if pending == nil {
 		return messages, nil
 	}

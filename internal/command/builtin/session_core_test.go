@@ -59,12 +59,23 @@ func TestStatusSessionMarkers(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			requests := request.NewManager(0)
+			_, _, done := requests.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn, Label: "chat"})
+			defer done()
 			result, err := NewStatus(Deps{
-				Sessions: svc, Models: models, Requests: request.NewManager(0), Turns: turn.NewManager(),
+				Sessions: svc, Models: models, Requests: requests, Turns: turn.NewSupervisor(),
 				Store: store, Scope: func(context.Context) session.Scope { return scope },
 			}).Handle(ctx, command.Request{})
 			if err != nil {
 				t.Fatal(err)
+			}
+			for _, want := range []string{"  id: " + row.ID, "  title: status test", "active requests:", "[1] chat turn request"} {
+				if !strings.Contains(result.Content, want) {
+					t.Fatalf("status missing %q:\n%s", want, result.Content)
+				}
+			}
+			if strings.Contains(result.Content, "      session:") || strings.Count(result.Content, "status test") != 1 {
+				t.Fatalf("status repeats session information:\n%s", result.Content)
 			}
 			want := "  message count: 0\n" + tc.want + "  created at: "
 			if !strings.Contains(result.Content, want) {

@@ -37,11 +37,11 @@ type ConfirmationCoordinatorDeps struct {
 		CancelSession(string) int
 	}
 	Turns interface {
-		BeginRiskConfirmation(string, turn.RiskConfirmation, ...string) *turn.RiskConfirmationWait
+		BeginRiskConfirmation(string, turn.RiskConfirmation, string) *turn.RiskConfirmationWait
 		PendingRiskConfirmation(string) (turn.RiskConfirmation, bool)
 		RefreshRiskConfirmation(string) bool
-		ResolveRiskConfirmation(string, turn.RiskConfirmationResponse) bool
-		StopSession(string, ...string)
+		ResolveRiskConfirmation(string, turn.RiskDecision) bool
+		StopSession(string)
 	}
 	Commands interface {
 		IsCommand(string) bool

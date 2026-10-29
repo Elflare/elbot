@@ -3,8 +3,62 @@ package turn
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 )
+
+// Inject refresh after the timer fires but before expiry commits. This forces
+// the race without relying on select scheduling or wall-clock sleeps.
+func TestRefreshWinsPendingExpiry(t *testing.T) {
+	for _, risk := range []bool{false, true} {
+		t.Run(map[bool]string{false: "append", true: "risk"}[risk], func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				s := NewSupervisor()
+				s.StartAttempt("s", Input{}, NewExecution("run"), "a")
+				done := make(chan bool, 1)
+				if risk {
+					s.StartToolPhase("s", "a")
+					w := s.BeginRiskConfirmation("s", RiskConfirmation{ID: "call"}, "a")
+					expire := w.wait.Expire
+					first := true
+					w.wait.Expire = func() bool {
+						if first {
+							first = false
+							s.RefreshRiskConfirmation("s")
+						}
+						return expire()
+					}
+					go func() { done <- w.Wait(t.Context(), time.Second).Outcome == RiskExpired }()
+				} else {
+					w := s.BeginAppend("s", "a", Input{Text: "more"})
+					expire := w.wait.Expire
+					first := true
+					w.wait.Expire = func() bool {
+						if first {
+							first = false
+							s.AppendPendingInput("s", Input{Text: "latest"})
+						}
+						return expire()
+					}
+					go func() { done <- w.Wait(t.Context(), time.Second) }()
+				}
+				synctest.Wait()
+				time.Sleep(time.Second)
+				synctest.Wait()
+				select {
+				case <-done:
+					t.Fatal("accepted refresh lost to old timer")
+				default:
+				}
+				time.Sleep(time.Second)
+				if !<-done || s.Snapshot("s").Phase != PhaseStopping {
+					t.Fatal("refreshed wait did not expire")
+				}
+				s.FinishAttempt("s", "a")
+			})
+		})
+	}
+}
 
 func TestSupervisorAppendAndAttemptOwnership(t *testing.T) {
 	s := NewSupervisor()

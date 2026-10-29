@@ -38,7 +38,7 @@ func (m *Manager) AddToolUse(sessionID, name, attempt string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn := m.turns[sessionID]
-	if !matches(turn, []string{attempt}) {
+	if !matches(turn, attempt) {
 		return
 	}
 	turn.tools[name]++
@@ -69,8 +69,8 @@ func snapshot(sessionID string, turn *state) Snapshot {
 	}
 	return Snapshot{SessionID: sessionID, Phase: turn.phase, PendingCount: len(turn.pending), Tools: tools, AttemptDone: turn.attemptDone, Execution: turn.execution, Attempt: turn.attempt}
 }
-func matches(turn *state, expected []string) bool {
-	return turn != nil && (len(expected) == 0 || turn.attempt == expected[0])
+func matches(turn *state, expected string) bool {
+	return turn != nil && turn.attempt == expected
 }
 
 type Phase string

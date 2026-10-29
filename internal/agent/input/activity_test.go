@@ -81,7 +81,7 @@ func TestSuccessfulPureDirectivesRenewOriginalBinding(t *testing.T) {
 				ctx := session.WithBinding(t.Context(), binding)
 				coordinator := NewInputCoordinator(InputCoordinatorDeps{
 					Sessions: sessions, SessionRows: store.Sessions(), Identity: identity,
-					Execution: directiveExecution{}, Turns: turn.NewManager(), Hooks: activityTestHooks{}, Output: activityTestOutput{},
+					Execution: directiveExecution{}, Turns: turn.NewSupervisor(), Hooks: activityTestHooks{}, Output: activityTestOutput{},
 					Preloader: activityTestPreloader{}, ToolState: directiveState{toolstate.NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)},
 					NewWorkspaceStore: func(id string) workspace.WorkspaceStore { return sessions.WorkspaceStore(id) },
 				})

@@ -3,12 +3,26 @@ package builtin
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"elbot/internal/contextmgr"
 	"elbot/internal/storage"
 )
+
+func toolsString(tools map[string]int) string {
+	names := make([]string, 0, len(tools))
+	for name := range tools {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	parts := make([]string, 0, len(names))
+	for _, name := range names {
+		parts = append(parts, fmt.Sprintf("%s x%d", name, tools[name]))
+	}
+	return strings.Join(parts, ", ")
+}
 
 func sessionPageSize(deps Deps) int {
 	pageSize, _ := deps.SessionState.config()

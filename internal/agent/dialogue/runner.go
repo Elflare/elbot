@@ -33,8 +33,6 @@ type Runner struct {
 	Messages *MessageStore
 	Replies  *ReplyCommitter
 	Turns    interface {
-		Execution(string) *turn.Execution
-		MatchesAttempt(string, string) bool
 		Snapshot(string) turn.Snapshot
 	}
 	View ExecutionView
@@ -96,10 +94,11 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 		if result.Outcome == agentshare.Completed {
 			return
 		}
-		execution := r.Turns.Execution(in.Session.ID)
-		if execution != nil && execution == turn.ExecutionFromContext(ctx) && r.Turns.Snapshot(in.Session.ID).Phase == turn.PhaseAwaitAppendConfirm {
+		current := r.Turns.Snapshot(in.Session.ID)
+		execution := current.Execution
+		if execution != nil && execution == turn.ExecutionFromContext(ctx) && current.Phase == turn.PhaseAwaitAppendConfirm {
 			result.Outcome = agentshare.Paused
-		} else if execution != nil && !r.Turns.MatchesAttempt(in.Session.ID, turn.AttemptFromContext(ctx)) {
+		} else if execution != nil && current.Attempt != turn.AttemptFromContext(ctx) {
 			result.Outcome = agentshare.Superseded
 		}
 		if result.Outcome == agentshare.Failed && result.Err != nil {
@@ -188,8 +187,6 @@ type RunnerDeps struct {
 		EnterSessions(context.Context, ...string) (context.Context, func(), error)
 	}
 	Turns interface {
-		Execution(string) *turn.Execution
-		MatchesAttempt(string, string) bool
 		Snapshot(string) turn.Snapshot
 	}
 	Contexts interface {

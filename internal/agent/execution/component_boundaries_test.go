@@ -31,12 +31,12 @@ func (p *statusReadingPlatform) SetRuntimeStatus(_ context.Context, sent runtime
 }
 
 func TestComponentStatusCommittedBeforeObserversAndCancellation(t *testing.T) {
-	turns := turn.NewManager()
+	turns := turn.NewSupervisor()
 	contexts := map[string]context.Context{}
 	for _, id := range []string{"s1", "s2", "s3"} {
 		execution := turn.NewExecution(id)
 		contexts[id] = turn.WithAttempt(turn.WithExecution(t.Context(), execution), "attempt")
-		turns.StartExecution(id, turn.Input{}, execution, "attempt")
+		turns.StartAttempt(id, turn.Input{}, execution, "attempt")
 	}
 	recorder := NewStatusRecorder(StatusRecorderDeps{View: dialogue.ExecutionView{}, Turns: turns, Changed: signal.New[StatusChangedEvent, signal.Empty]("test.status")})
 	t.Cleanup(func() { _ = recorder.changed.Close(context.Background()) })

@@ -58,12 +58,6 @@ type Result struct {
 }
 type RiskAction string
 
-// AppendWait identifies one registered append confirmation.
-// Its private state will move behind the confirmation component during migration.
-
-// RiskConfirmationWait owns one confirmation, including responses received before Wait.
-// The caller must wait on it or cancel it after publishing the prompt.
-
 const (
 	RiskConfirm     RiskAction = "confirm"
 	RiskConfirmTool RiskAction = "confirm_tool"

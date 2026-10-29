@@ -17,7 +17,7 @@ func (m *Manager) BeginRiskConfirmation(sessionID string, confirmation RiskConfi
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn := m.turns[sessionID]
-	if !matches(turn, []string{attempt}) || turn.phase != PhaseTool {
+	if !matches(turn, attempt) || turn.phase != PhaseTool {
 		return nil
 	}
 	turn.phase = PhaseAwaitRiskConfirm
@@ -27,6 +27,20 @@ func (m *Manager) BeginRiskConfirmation(sessionID string, confirmation RiskConfi
 	turn.riskDone = make(chan struct{})
 	response := turn.riskResponse
 	return &share.RiskWait{Response: response, Refresh: turn.waitRefresh, Done: turn.riskDone,
+		Expire: func() bool {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			if m.turns[sessionID] != turn || turn.phase != PhaseAwaitRiskConfirm || turn.riskResponse != response {
+				return false
+			}
+			select {
+			case <-turn.waitRefresh:
+				return false
+			default:
+			}
+			beginStopTurn(m.turns, sessionID, turn)
+			return true
+		},
 		Cancel: func() bool {
 			m.mu.Lock()
 			defer m.mu.Unlock()
@@ -101,7 +115,7 @@ func (m *Manager) BeginAppend(sessionID, attempt string, input Input) *share.App
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn := m.turns[sessionID]
-	if !matches(turn, []string{attempt}) || turn.phase != PhaseLLM {
+	if !matches(turn, attempt) || turn.phase != PhaseLLM {
 		return nil
 	}
 	turn.phase = PhaseAwaitAppendConfirm
@@ -109,7 +123,20 @@ func (m *Manager) BeginAppend(sessionID, attempt string, input Input) *share.App
 	turn.appendDone = make(chan struct{})
 	appendPending(turn, input)
 	done := turn.appendDone
-	return &share.AppendWait{Refresh: turn.waitRefresh, Done: done, Cancel: func() bool {
+	return &share.AppendWait{Refresh: turn.waitRefresh, Done: done, Expire: func() bool {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if m.turns[sessionID] != turn || turn.phase != PhaseAwaitAppendConfirm || turn.appendDone != done {
+			return false
+		}
+		select {
+		case <-turn.waitRefresh:
+			return false
+		default:
+		}
+		beginStopTurn(m.turns, sessionID, turn)
+		return true
+	}, Cancel: func() bool {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		if m.turns[sessionID] != turn || turn.phase != PhaseAwaitAppendConfirm || turn.appendDone != done {

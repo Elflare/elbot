@@ -17,7 +17,7 @@ import (
 	"elbot/internal/turn"
 )
 
-type usageTestTurns struct{ *turn.Manager }
+type usageTestTurns struct{ *turn.Supervisor }
 
 func (usageTestTurns) CanCompact(string, *turn.Execution) bool { return false }
 
@@ -78,7 +78,7 @@ func TestExecutionRestoresUsageBeforeCancellationAndCleansUpFailure(t *testing.T
 		t.Run(tc.name, func(t *testing.T) {
 			store := newTestStore(t)
 			sessions := newSessionSupervisor(t, store)
-			turns := usageTestTurns{turn.NewManager()}
+			turns := usageTestTurns{turn.NewSupervisor()}
 			requests := &usageTestRequests{Manager: request.NewManager(0), cancelOnStart: tc.cancel}
 			view := dialogue.ExecutionView{Sessions: store.Sessions()}
 			changed := signal.New[StatusChangedEvent, signal.Empty]("usage-initialization")

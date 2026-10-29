@@ -45,7 +45,7 @@
 
 按包记录具体问题、精简建议、讨论结论与验证结果，确认方案后再实施。任务入口见 [任务清单](tasks.md)。
 
-当前进度：`internal/app`、`internal/delivery`、`internal/hook/runtime` 已完成一轮精简；`internal/turn` 正在并行精简，其余包待审查。
+当前进度：`internal/app`、`internal/delivery`、`internal/hook/runtime`、`internal/turn` 已完成一轮审查与调整，其余包待审查。
 
 ### delivery
 
@@ -69,8 +69,13 @@
 | --- | --- | --- |
 | `internal/app` | 已完成一轮；本文件未登记具体改动及对比数据。 | 基线为 719 行。 |
 | `internal/delivery` | 统一发送与投递信息契约、复用目标校验结果、收拢降级文案并清理重复日志处理。 | 479 → 415，减少 64 行（约 13.4%）。 |
+| `internal/turn`（含子包） | 完成生命周期与确认等待职责拆分、新接口及调用方迁移、刷新与过期原子裁决；删除旧接口测试，保留有效行为覆盖。 | 932 → 1,010，增加 78 行（约 8.4%）；当前共 11 个生产文件，含装配与内部契约，未实现总代码量下降。 |
 | `internal/hook/runtime` | 合并调用与授权状态，隔离临时进程与 waiting 归属，修正回包竞态、资源回收和 CAS 淘汰顺序。 | 2,836 → 2,772，减少 64 行（约 2.3%）。 |
 
 delivery 本轮连同 Hook 调用方共净减 70 行非测试 Go 代码，未拆分文件。回归覆盖表情名称、发送时机重设与复制隔离、目标选择与冲突、Hook 来源、媒体降级及日志与业务结果独立；已执行 `gofmt`，相关包测试与 `go test ./...` 通过。
 
-hook/runtime 本轮新增 12 个回归用例，覆盖 token 与路由锁回收、跨 Worker 取消和授权隔离、临时进程与 waiting 归属、失败响应不发布租约、并发回包与退出、活动状态和关闭收尾，以及 CAS 过期项优先回收。已执行 `gofmt`，runtime、control、pipeline、rules、share 及其子包的测试和竞态检查通过（竞态检查设置 `GORACE=atexit_sleep_ms=0`，避免测试辅助进程的退出延时影响关闭期限）。Hook 根包验证受并行 `turn` 接口迁移的编译错误阻塞，尚未完成。
+turn 已完成五项 review 修复：统一 `Supervisor`、attempt 与 `Snapshot` 契约；`BeginAppend` 一次登记返回等待句柄；`RiskDecision`／`RiskResult` 分离用户动作与等待终态；生命周期锁内通过 `Expire` 裁决待处理刷新；确认词与计数展示分别归 Agent、Command。删除 `turn/manager.go` 及重复旧等待测试，收紧内部可选参数，清除迁移占位。
+
+turn 回归保留输入与媒体合并、工具计数、停止后等待真实退出、提前回复和迟到清理；使用 `testing/synctest` 覆盖旧计时器触发后的刷新竞争及再次过期。调用方验证批准范围、拒绝、停止、过期、取消及提示发送失败。已执行 `gofmt`；相关包测试、`go test ./...` 及 Turn、Agent confirmation／execution／dialogue 的竞态检查通过。
+
+hook/runtime 本轮新增 12 个回归用例，覆盖 token 与路由锁回收、跨 Worker 取消和授权隔离、临时进程与 waiting 归属、失败响应不发布租约、并发回包与退出、活动状态和关闭收尾，以及 CAS 过期项优先回收。已执行 `gofmt`，runtime、control、pipeline、rules、share 及其子包的测试和竞态检查通过（竞态检查设置 `GORACE=atexit_sleep_ms=0`，避免测试辅助进程的退出延时影响关闭期限）。Turn 接口迁移完成后，全仓回归已覆盖 Hook 根包并通过。

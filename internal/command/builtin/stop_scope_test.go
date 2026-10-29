@@ -31,7 +31,7 @@ func TestStopUserScopeResolutionAndChildren(t *testing.T) {
 			root, rootCtx := start(row.ID, "", request.KindTurn)
 			_, toolCtx := start(row.ID, root.ID, request.KindTool)
 			hookReq, hookCtx := start(row.ID, root.ID, request.KindHook)
-			cmd := NewStop(Deps{Sessions: sessions, Requests: requests, Turns: turn.NewManager(), Scope: func(context.Context) session.Scope { return scope }})
+			cmd := NewStop(Deps{Sessions: sessions, Requests: requests, Turns: turn.NewSupervisor(), Scope: func(context.Context) session.Scope { return scope }})
 			completer := cmd.(command.Completer)
 			completions := completer.Complete(ctx, command.CompletionRequest{Raw: "/stop ", Prefix: "/", Name: "stop", Cursor: 6})
 			if len(completions) != 3 {
@@ -111,7 +111,7 @@ func TestStopRejectsMissingOrExpiredCurrent(t *testing.T) {
 				}
 				ctx = session.WithBinding(ctx, binding)
 			}
-			cmd := NewStop(Deps{Sessions: svc, Requests: requests, Turns: turn.NewManager(), Scope: func(context.Context) session.Scope { return scope }})
+			cmd := NewStop(Deps{Sessions: svc, Requests: requests, Turns: turn.NewSupervisor(), Scope: func(context.Context) session.Scope { return scope }})
 			for _, arg := range []string{r.ID, "1", ""} {
 				result, err := cmd.Handle(ctx, command.Request{Args: arg})
 				if err != nil {

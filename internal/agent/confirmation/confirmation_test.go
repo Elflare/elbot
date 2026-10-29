@@ -8,8 +8,10 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/security"
 	"elbot/internal/storage/sqlite"
+	"errors"
 
 	"testing"
+	"testing/synctest"
 	"time"
 
 	agentshare "elbot/internal/agent/share"
@@ -25,7 +27,7 @@ import (
 )
 
 func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
-	for _, command := range []string{"/confirmtool extra", "/confirmall extra", "/reject reason", "/stop"} {
+	for _, command := range []string{"/confirm extra", "/confirmtool extra", "/confirmall extra", "/reject reason", "/stop"} {
 		t.Run(command, func(t *testing.T) {
 			store, err := sqlite.New(t.Context(), ":memory:")
 			if err != nil {
@@ -39,12 +41,12 @@ func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			turns := turn.NewManager()
+			turns := turn.NewSupervisor()
 			defer turns.StopAll()
 			ctx := t.Context()
 			execution := turn.NewExecution("confirmation")
 			requestCtx := turn.WithAttempt(turn.WithExecution(ctx, execution), "attempt")
-			if !turns.StartExecution(row.ID, turn.Input{Text: "hello"}, execution, "attempt") || !turns.StartToolPhase(row.ID, "attempt") {
+			if !turns.StartAttempt(row.ID, turn.Input{Text: "hello"}, execution, "attempt") || !turns.StartToolPhase(row.ID, "attempt") {
 				t.Fatal("start tools")
 			}
 			coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{Sessions: sessions, Requests: request.NewManager(0), Turns: turns, Commands: commandpkg.NewRouter([]string{"/"}), Identity: identity, Output: confirmationOutput{}, Policy: NewConfirmationPolicy(ConfirmationPolicyDeps{Identity: identity, UserConfirmationTimeout: time.Second})})
@@ -66,7 +68,7 @@ func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 			}
 			select {
 			case result := <-done:
-				allowed := command == "/confirmtool extra" || command == "/confirmall extra"
+				allowed := command == "/confirm extra" || command == "/confirmtool extra" || command == "/confirmall extra"
 				if result.Allowed != allowed || result.Stopped != (command == "/stop") || (allowed && result.Extra != "extra") {
 					t.Fatalf("confirmation result=%+v", result)
 				}
@@ -83,9 +85,47 @@ func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 	}
 }
 
-type confirmationOutput struct{}
+func TestConfirmationTerminationAndPromptFailure(t *testing.T) {
+	for _, mode := range []string{"expired", "canceled", "prompt_failed"} {
+		t.Run(mode, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				turns := turn.NewSupervisor()
+				execution := turn.NewExecution("run")
+				turns.StartAttempt("s", turn.Input{}, execution, "a")
+				turns.StartToolPhase("s", "a")
+				ctx, cancel := context.WithCancel(turn.WithAttempt(turn.WithExecution(t.Context(), execution), "a"))
+				defer cancel()
+				output := confirmationOutput{}
+				if mode == "canceled" {
+					cancel()
+				}
+				if mode == "prompt_failed" {
+					output.err = errors.New("delivery failed")
+				}
+				coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{Turns: turns, Output: output, Policy: fixedWaitPolicy(time.Second)})
+				result, err := coordinator.AwaitToolConfirmation(ctx, "s", llm.ToolCallRequest{ID: "call", Name: "danger", Arguments: "{}"}, toolshare.RiskAssessment{Level: security.RiskHigh}, "detail")
+				if !result.Stopped || result.Allowed || !errors.Is(err, output.err) {
+					t.Fatalf("result=%+v err=%v", result, err)
+				}
+				if turns.Snapshot("s").Phase != turn.PhaseStopping {
+					t.Fatal("confirmation failure did not stop attempt")
+				}
+				turns.FinishAttempt("s", "a")
+			})
+		})
+	}
+}
+
+type fixedWaitPolicy time.Duration
+
+func (p fixedWaitPolicy) WaitTimeout(context.Context) time.Duration { return time.Duration(p) }
+
+type confirmationOutput struct{ err error }
 
 func (confirmationOutput) SendChat(context.Context, string) error { return nil }
-func (confirmationOutput) SendAssistant(context.Context, string) (delivery.Receipt, events.LogResult, error) {
+func (o confirmationOutput) SendAssistant(context.Context, string) (delivery.Receipt, events.LogResult, error) {
+	if o.err != nil {
+		return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultFailed}, o.err
+	}
 	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }

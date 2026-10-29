@@ -30,7 +30,10 @@ func WaitAppend(ctx context.Context, w *share.AppendWait, timeout time.Duration)
 				timer.Reset(timeout)
 			}
 		case <-timerC:
-			return w.Cancel() && ctx.Err() == nil
+			if w.Expire() {
+				return ctx.Err() == nil
+			}
+			timer.Reset(timeout)
 		}
 	}
 }

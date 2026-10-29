@@ -9,6 +9,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
 	"elbot/internal/request"
+	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
@@ -28,7 +29,7 @@ func TestRequestsCommandFormatsTree(t *testing.T) {
 	_, _, hookDone := manager.Start(ctx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindHook, Label: "gpt_image_draw_fullwidth"})
 	defer hookDone()
 
-	cmd := NewRequests(Deps{Requests: manager, Store: store, Turns: turn.NewManager()})
+	cmd := NewRequests(Deps{Requests: manager, Store: store, Turns: turn.NewSupervisor()})
 	result, err := cmd.Handle(ctx, command.Request{})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
@@ -64,11 +65,74 @@ func TestFormatActiveRequestsUsesTree(t *testing.T) {
 	_, _, hookDone := manager.Start(ctx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindHook, Label: "gpt_image_draw_fullwidth"})
 	defer hookDone()
 
-	got := formatActiveRequests(ctx, Deps{Requests: manager, Store: store, Turns: turn.NewManager()}, manager.ListBySession("s1"))
-	for _, want := range []string{"[1] chat turn request", "[1.1]", "[1.2]", "shell tool request", "gpt_image_draw_fullwidth hook request"} {
+	got := formatActiveRequests(ctx, Deps{Requests: manager, Store: store, Turns: turn.NewSupervisor()}, manager.ListBySession("s1"))
+	for _, want := range []string{"[1] chat turn request", "[1.1]", "[1.2]", "shell tool request", "gpt_image_draw_fullwidth hook request", "mode: work", "tool: shell", "hook: gpt_image_draw_fullwidth"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("active requests output missing %q:\n%s", want, got)
 		}
+	}
+	if strings.Contains(got, "session:") || strings.Contains(got, sessionRow.Title) {
+		t.Fatalf("active requests repeats session information:\n%s", got)
+	}
+}
+
+func TestRequestCommandsWithoutActiveRequests(t *testing.T) {
+	ctx := context.Background()
+	deps := Deps{Requests: request.NewManager(0)}
+	result, err := NewRequests(deps).Handle(ctx, command.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Content != "no active requests" {
+		t.Fatalf("requests = %q", result.Content)
+	}
+	if got := formatActiveRequests(ctx, deps, nil); got != "active requests: none" {
+		t.Fatalf("active requests = %q", got)
+	}
+}
+
+func TestRequestFormatsPreserveDetails(t *testing.T) {
+	ctx := context.Background()
+	store := newCommandTestStore(t)
+	row := &storage.Session{ID: "s1", Title: "运行会话", Mode: storage.SessionModeWork, CreatedAt: storage.Now(), UpdatedAt: storage.Now()}
+	if err := store.Sessions().Create(ctx, row); err != nil {
+		t.Fatal(err)
+	}
+	turns := turn.NewSupervisor()
+	if !turns.StartAttempt(row.ID, turn.Input{}, turn.NewExecution("run"), "attempt") {
+		t.Fatal("failed to start attempt")
+	}
+	t.Cleanup(func() {
+		turns.StopSession(row.ID)
+		turns.FinishAttempt(row.ID, "attempt")
+	})
+	turns.StartToolPhase(row.ID, "attempt")
+	turns.AddToolUse(row.ID, "shell", "attempt")
+	turns.AddToolUse(row.ID, "shell", "attempt")
+	manager := request.NewManager(0)
+	_, _, done := manager.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn, Label: "chat"})
+	defer done()
+	deps := Deps{Store: store, Turns: turns, RuntimeStatus: func(sessionID string) runtimestatus.Snapshot {
+		if sessionID != row.ID {
+			t.Fatalf("runtime session = %q, want %q", sessionID, row.ID)
+		}
+		return runtimestatus.Snapshot{Phase: runtimestatus.PhaseTool, ToolName: "shell", StageStartedAt: time.Now()}
+	}}
+	for _, tc := range []struct {
+		name   string
+		format func(context.Context, Deps, []request.Request) string
+	}{
+		{name: "requests", format: formatRequests},
+		{name: "status", format: formatActiveRequests},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.format(ctx, deps, manager.List())
+			for _, want := range []string{"phase: tool shell (", "mode: work", "tools: shell x2"} {
+				if !strings.Contains(got, want) {
+					t.Fatalf("output missing %q:\n%s", want, got)
+				}
+			}
+		})
 	}
 }
 
@@ -79,7 +143,7 @@ func TestStopCommandCancelsNumberedHookRequest(t *testing.T) {
 	defer turnDone()
 	_, hookCtx, _ := manager.Start(turnCtx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindHook, Label: "gpt_image_draw_fullwidth"})
 
-	cmd := NewStop(Deps{Sessions: newSessionSupervisor(t, newCommandTestStore(t)), Requests: manager, Turns: turn.NewManager()})
+	cmd := NewStop(Deps{Sessions: newSessionSupervisor(t, newCommandTestStore(t)), Requests: manager, Turns: turn.NewSupervisor()})
 	if _, err := cmd.Handle(ctx, command.Request{Args: "1.1"}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -98,7 +162,7 @@ func TestStopCommandCancelsNumberedChildRequest(t *testing.T) {
 	defer turnDone()
 	_, toolCtx, _ := manager.Start(turnCtx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindTool, Label: "shell"})
 
-	cmd := NewStop(Deps{Sessions: newSessionSupervisor(t, newCommandTestStore(t)), Requests: manager, Turns: turn.NewManager()})
+	cmd := NewStop(Deps{Sessions: newSessionSupervisor(t, newCommandTestStore(t)), Requests: manager, Turns: turn.NewSupervisor()})
 	if _, err := cmd.Handle(ctx, command.Request{Args: "1.1"}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -118,7 +182,7 @@ func TestStopCommandCancelsNumberedTurnAndChildren(t *testing.T) {
 	_, toolCtx, toolDone := manager.Start(turnCtx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindTool, Label: "shell"})
 	defer toolDone()
 
-	cmd := NewStop(Deps{Sessions: newSessionSupervisor(t, newCommandTestStore(t)), Requests: manager, Turns: turn.NewManager()})
+	cmd := NewStop(Deps{Sessions: newSessionSupervisor(t, newCommandTestStore(t)), Requests: manager, Turns: turn.NewSupervisor()})
 	if _, err := cmd.Handle(ctx, command.Request{Args: "1"}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
