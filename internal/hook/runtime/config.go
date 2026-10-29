@@ -15,7 +15,6 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/hook/share"
 	"elbot/internal/llm"
 )
 
@@ -30,16 +29,6 @@ const (
 	StatusStopped  Status = "stopped"
 	StatusFailed   Status = "failed"
 )
-
-type Info struct {
-	ID          string
-	Description string
-	Mode        share.RuntimeMode
-	Status      Status
-	Detail      string
-	Active      int
-	Waiting     int
-}
 
 type Options struct {
 	Media mediaAPI // Borrowed media center; runtime owns only its own leases.

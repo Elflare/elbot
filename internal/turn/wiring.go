@@ -1,36 +1,42 @@
-// 构造 Turn 总管，并转接公开确认结果。
+// 装配组件并转接公开句柄和内部契约。
 package turn
 
 import (
 	"context"
+	"elbot/internal/turn/confirmation"
+	"elbot/internal/turn/lifecycle"
+	"elbot/internal/turn/share"
 	"time"
-
-	"elbot/internal/events"
 )
 
-func NewSupervisor() *Supervisor {
-	return &Supervisor{turns: map[string]*state{}}
-}
-
-func (w *RiskConfirmationWait) Wait(ctx context.Context, timeout time.Duration) RiskResult {
-	resp, ok, status := w.wait(ctx, timeout)
-	result := RiskResult{Outcome: RiskStale}
-	switch {
-	case ok:
-		result.Outcome = RiskAnswered
-		result.Decision = RiskDecision{Action: RiskConfirm, Extra: resp.Extra, Reason: resp.Reason}
-		switch {
-		case resp.Rejected:
-			result.Decision.Action = RiskReject
-		case resp.ConfirmAll:
-			result.Decision.Action = RiskConfirmAll
-		case resp.ConfirmTool:
-			result.Decision.Action = RiskConfirmTool
-		}
-	case resp.Expired:
-		result.Outcome = RiskExpired
-	case status == events.ResultCanceled || status == events.ResultFailed:
-		result.Outcome, result.Err = RiskCanceled, ctx.Err()
+func NewSupervisor() *Supervisor { return &Supervisor{lifecycle: lifecycle.NewManager()} }
+func executionContract(e *Execution) lifecycle.Execution {
+	if e == nil {
+		return nil
 	}
-	return result
+	return e
+}
+func publicExecution(e lifecycle.Execution) *Execution {
+	if e == nil {
+		return nil
+	}
+	return e.(*Execution)
+}
+func publicSnapshot(s lifecycle.Snapshot) Snapshot {
+	return Snapshot{SessionID: s.SessionID, Phase: Phase(s.Phase), PendingCount: s.PendingCount, Tools: s.Tools, AttemptDone: s.AttemptDone, Execution: publicExecution(s.Execution), Attempt: s.Attempt}
+}
+func (w *AppendWait) Wait(ctx context.Context, timeout time.Duration) bool {
+	if w == nil {
+		return false
+	}
+	return confirmation.WaitAppend(ctx, w.wait, timeout)
+}
+func (w *RiskConfirmationWait) Cancel() bool { return w != nil && w.wait.Cancel() }
+func (w *RiskConfirmationWait) Wait(ctx context.Context, timeout time.Duration) RiskResult {
+	var wait *share.RiskWait
+	if w != nil {
+		wait = w.wait
+	}
+	r := confirmation.WaitRisk(ctx, wait, timeout)
+	return RiskResult{Decision: RiskDecision{Action: RiskAction(r.Decision.Action), Extra: r.Decision.Extra, Reason: r.Decision.Reason}, Outcome: RiskOutcome(r.Outcome), Err: r.Err}
 }

@@ -4,6 +4,7 @@ package runtime
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -44,11 +45,16 @@ type worker struct {
 	reloadPrep   bool
 	writeMu      sync.Mutex
 	routeMu      sync.Mutex
-	routeLocks   map[routeKey]chan struct{}
+	routeLocks   map[routeKey]*routeLock
+}
+
+type routeLock struct {
+	ready chan struct{} // 容量为一的串行令牌，取得后独占该路由。
+	refs  int           // 持有者与等待者总数，由 routeMu 保护。
 }
 
 func newWorker(manager *Manager, config share.RuntimeConfig) *worker {
-	return &worker{manager: manager, config: config, status: StatusStopped, restartDelay: time.Duration(config.Restart.InitialDelaySeconds) * time.Second, pending: map[string]chan frame{}, routeLocks: map[routeKey]chan struct{}{}}
+	return &worker{manager: manager, config: config, status: StatusStopped, restartDelay: time.Duration(config.Restart.InitialDelaySeconds) * time.Second, pending: map[string]chan frame{}, routeLocks: map[routeKey]*routeLock{}}
 }
 
 func (w *worker) start() error {
@@ -98,10 +104,10 @@ func (w *worker) waitReady(ctx context.Context) (globalevents.LogResult, error) 
 	}
 }
 
-func (w *worker) info() Info {
+func (w *worker) info() share.RuntimeInfo {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return Info{ID: w.config.ID, Description: w.config.Description, Mode: w.config.ModeOrOnce(), Status: w.status, Detail: w.detail, Active: w.active}
+	return share.RuntimeInfo{ID: w.config.ID, Description: w.config.Description, Mode: string(w.config.ModeOrOnce()), Status: string(w.status), Detail: w.detail, Active: w.active}
 }
 
 func (w *worker) setStatus(status Status, detail string) {
@@ -238,7 +244,7 @@ func (w *worker) waitLoop(cmd *exec.Cmd) {
 	w.mu.Unlock()
 	if !stopping && !manualStop {
 		w.manager.mu.Lock()
-		w.manager.clearRoutesLocked(w.config.ID)
+		w.manager.clearWorkerLocked(w)
 		for key, transient := range w.manager.transient {
 			if transient == w {
 				delete(w.manager.transient, key)
@@ -316,6 +322,9 @@ func (w *worker) stop(ctx context.Context) (logResult globalevents.LogResult, er
 	cmd := w.cmd
 	done := w.done
 	w.mu.Unlock()
+	w.manager.mu.Lock()
+	w.manager.clearWorkerLocked(w)
+	w.manager.mu.Unlock()
 	if cmd == nil {
 		w.mu.Lock()
 		w.stopping = false
@@ -373,7 +382,14 @@ func (w *worker) kill() {
 	}
 }
 
-func (w *worker) handle(ctx context.Context, event share.Event, continuation bool, defaults share.Control) (share.Event, globalevents.LogResult, error) {
+func (w *worker) handle(ctx context.Context, event share.Event, continuation bool, defaults share.Control) (_ share.Event, _ globalevents.LogResult, err error) {
+	var token string
+	// Keep the invocation counted until route release and all other cleanup finish.
+	defer func() {
+		if token != "" {
+			w.manager.endInvocation(token)
+		}
+	}()
 	key := routeKeyFor(event)
 	unlock, err := w.lockRoute(ctx, key)
 	if err != nil {
@@ -384,6 +400,13 @@ func (w *worker) handle(ctx context.Context, event share.Event, continuation boo
 		return event, logResult, err
 	}
 	defer unlock()
+	defer func() {
+		w.manager.mu.Lock()
+		if err != nil || w.manager.routes[key].Worker != w {
+			w.manager.stopTransient(key, w)
+		}
+		w.manager.mu.Unlock()
+	}()
 	w.mu.Lock()
 	status := w.status
 	if w.manualStop {
@@ -393,25 +416,19 @@ func (w *worker) handle(ctx context.Context, event share.Event, continuation boo
 	}
 	if status == StatusReady || status == StatusRunning {
 		w.active++
+		w.status, w.detail = StatusRunning, ""
 	}
 	w.mu.Unlock()
 	if status != StatusReady && status != StatusRunning {
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook worker %q is %s", w.config.ID, status)}, fmt.Errorf("hook worker %q is %s", w.config.ID, status)
 	}
 	defer w.finishHandle()
-	w.setStatus(StatusRunning, "")
-	defer func() {
-		w.mu.Lock()
-		if w.cmd != nil && w.status == StatusRunning {
-			w.status = StatusReady
-		}
-		w.mu.Unlock()
-	}()
 	requestCtx, cancel := context.WithTimeout(ctx, time.Duration(w.config.EventTimeoutSeconds)*time.Second)
-	w.manager.beginInvocation(key, w.config.ID, cancel)
-	defer w.manager.endInvocation(key, cancel)
-	defer cancel()
-	token := w.manager.putToolContext(w.config.ID, requestCtx, event, time.Duration(w.config.EventTimeoutSeconds)*time.Second)
+	token, err = w.manager.beginInvocation(w, requestCtx, event, cancel)
+	if err != nil {
+		cancel()
+		return event, globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: err.Error()}, err
+	}
 	params := eventHandle{
 		EventHandleParams: hookprotocol.EventHandleParams{Event: event, Match: share.EventMatchContext(event)},
 		Continuation:      continuation,
@@ -431,11 +448,7 @@ func (w *worker) handle(ctx context.Context, event share.Event, continuation boo
 		}
 	}
 	switch result.Status {
-	case "", "completed":
-	case "waiting":
-		if err := w.manager.setLease(w.config.ID, event, result, defaults); err != nil {
-			return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
-		}
+	case "", "completed", "waiting":
 	default:
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "unsupported hook event status: " + result.Status}, fmt.Errorf("unsupported hook event status %q", result.Status)
 	}
@@ -471,8 +484,12 @@ func (w *worker) handle(ctx context.Context, event share.Event, continuation boo
 	if stopPropagation {
 		event.Control.StopPropagation = true
 	}
-	if continuation && result.Status != "waiting" {
-		w.manager.clearLease(w.config.ID, event)
+	if result.Status == "waiting" {
+		if err := w.manager.setLease(w, requestCtx, event, result, defaults); err != nil {
+			return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+		}
+	} else if continuation {
+		w.manager.clearLease(w, event)
 	}
 	return event, logResult, nil
 }
@@ -480,6 +497,9 @@ func (w *worker) handle(ctx context.Context, event share.Event, continuation boo
 func (w *worker) finishHandle() {
 	w.mu.Lock()
 	w.active--
+	if w.active == 0 && w.status == StatusRunning {
+		w.status = StatusReady
+	}
 	reload := w.takeReloadLocked()
 	w.mu.Unlock()
 	w.runReload(reload)
@@ -573,16 +593,26 @@ func (w *worker) lockRoute(ctx context.Context, key routeKey) (func(), error) {
 	w.routeMu.Lock()
 	lock := w.routeLocks[key]
 	if lock == nil {
-		lock = make(chan struct{}, 1)
-		lock <- struct{}{}
+		lock = &routeLock{ready: make(chan struct{}, 1)}
+		lock.ready <- struct{}{}
 		w.routeLocks[key] = lock
 	}
+	lock.refs++
 	w.routeMu.Unlock()
+	release := func() {
+		w.routeMu.Lock()
+		lock.refs--
+		if lock.refs == 0 {
+			delete(w.routeLocks, key)
+		}
+		w.routeMu.Unlock()
+	}
 	select {
 	case <-ctx.Done():
+		release()
 		return nil, ctx.Err()
-	case <-lock:
-		return func() { lock <- struct{}{} }, nil
+	case <-lock.ready:
+		return func() { lock.ready <- struct{}{}; release() }, nil
 	}
 }
 
@@ -680,7 +710,7 @@ func (w *worker) readLoop(reader io.Reader) {
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 64*1024), share.MaxProtocolFrameBytes)
 	for scanner.Scan() {
-		line := bytesTrim(scanner.Bytes())
+		line := bytes.TrimSpace(scanner.Bytes())
 		if len(line) == 0 {
 			continue
 		}
@@ -725,10 +755,6 @@ func (w *worker) readLoop(reader io.Reader) {
 	}
 }
 
-func bytesTrim(value []byte) []byte {
-	return []byte(strings.TrimSpace(string(value)))
-}
-
 func (w *worker) deliverResponse(value frame) {
 	if hookprotocol.ValidateID(value.ID, "host:") != nil {
 		w.setStatus(StatusDegraded, "response id must use host: prefix")
@@ -736,9 +762,10 @@ func (w *worker) deliverResponse(value frame) {
 		return
 	}
 	w.mu.Lock()
+	defer w.mu.Unlock()
 	pending := w.pending[value.ID]
-	w.mu.Unlock()
 	if pending != nil {
+		delete(w.pending, value.ID)
 		pending <- value
 	}
 }

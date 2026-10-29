@@ -22,11 +22,10 @@ type Manager struct {
 	mu            sync.RWMutex
 	opts          Options
 	workers       map[string]*worker
-	transient     map[routeKey]*worker
+	transient     map[workerRoute]*worker
 	configs       map[string]share.RuntimeConfig
 	routes        map[routeKey]lease
-	running       map[routeKey]invocation
-	tokens        map[string]toolContext
+	tokens        map[string]invocation // 活动事件按 token 登记，同时供取消与工具授权使用。
 	shared        *SharedState
 	media         *mediaBridge
 	sharedCancel  context.CancelFunc
@@ -73,11 +72,10 @@ func NewManager(opts Options) (*Manager, error) {
 	m := &Manager{
 		opts:         opts,
 		workers:      map[string]*worker{},
-		transient:    map[routeKey]*worker{},
+		transient:    map[workerRoute]*worker{},
 		configs:      map[string]share.RuntimeConfig{},
 		routes:       map[routeKey]lease{},
-		running:      map[routeKey]invocation{},
-		tokens:       map[string]toolContext{},
+		tokens:       map[string]invocation{},
 		shared:       NewSharedState(),
 		media:        newMediaBridge(opts.Media),
 		sharedCancel: cleanupCancel,
@@ -101,15 +99,21 @@ func (m *Manager) cleanSharedState(ctx context.Context) {
 			return
 		case <-ticker.C:
 			m.shared.PruneExpired()
-			if logResult, _ := m.media.prune(ctx, time.Now(), false); logResult.ResultStatus != globalevents.ResultSkipped {
-				level := slog.LevelInfo
-				if logResult.ResultStatus == globalevents.ResultFailed {
-					level = slog.LevelError
-				}
-				m.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: level, EventName: "prune_hook_media", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: logResult.Content, ResultStatus: logResult.ResultStatus})
-			}
+			_ = m.pruneMedia(ctx, false)
 		}
 	}
+}
+
+func (m *Manager) pruneMedia(ctx context.Context, closeAll bool) error {
+	logResult, err := m.media.prune(ctx, time.Now(), closeAll)
+	if logResult.ResultStatus != globalevents.ResultSkipped {
+		level := slog.LevelInfo
+		if logResult.ResultStatus == globalevents.ResultFailed {
+			level = slog.LevelError
+		}
+		m.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: level, EventName: "prune_hook_media", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: logResult.Content, ResultStatus: logResult.ResultStatus})
+	}
+	return err
 }
 
 func (m *Manager) SharedRequest(method string, params json.RawMessage) (any, error) {
@@ -249,12 +253,6 @@ func (m *Manager) ReplacePlugin(id string, config *share.RuntimeConfig, commit f
 			delete(m.transient, key)
 		}
 	}
-	m.clearRoutesLocked(id)
-	for token, value := range m.tokens {
-		if value.HookID == id {
-			delete(m.tokens, token)
-		}
-	}
 	delete(m.workers, id)
 	if config == nil {
 		delete(m.configs, id)
@@ -292,7 +290,7 @@ func (m *Manager) Close(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		}
-		_, err := m.media.prune(ctx, time.Now(), true)
+		err := m.pruneMedia(ctx, true)
 		m.mu.Lock()
 		m.closeErr = errors.Join(m.workerCloseErr, err)
 		err = m.closeErr
@@ -309,8 +307,9 @@ func (m *Manager) Close(ctx context.Context) error {
 		workers = append(workers, worker)
 	}
 	m.routes = map[routeKey]lease{}
-	m.running = map[routeKey]invocation{}
-	m.tokens = map[string]toolContext{}
+	for _, invocation := range m.tokens {
+		invocation.Cancel()
+	}
 	m.mu.Unlock()
 
 	m.sharedCancel()
@@ -334,7 +333,6 @@ func (m *Manager) finishClose(ctx context.Context, workers []*worker) {
 	workerErrs := make([]error, len(workers))
 	var wg sync.WaitGroup
 	for i, worker := range workers {
-		i, worker := i, worker
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -345,14 +343,7 @@ func (m *Manager) finishClose(ctx context.Context, workers []*worker) {
 	m.workWG.Wait()
 	<-m.sharedDone
 
-	logResult, err := m.media.prune(ctx, time.Now(), true)
-	if logResult.ResultStatus != globalevents.ResultSkipped {
-		level := slog.LevelInfo
-		if logResult.ResultStatus == globalevents.ResultFailed {
-			level = slog.LevelError
-		}
-		m.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: level, EventName: "prune_hook_media", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: logResult.Content, ResultStatus: logResult.ResultStatus})
-	}
+	err := m.pruneMedia(ctx, true)
 	m.mu.Lock()
 	m.workerCloseErr = errors.Join(workerErrs...)
 	m.closeErr = errors.Join(m.workerCloseErr, err)
@@ -384,9 +375,9 @@ func (m *Manager) isClosed() bool {
 func (m *Manager) List() []share.RuntimeInfo {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	itemsByID := map[string]Info{}
+	itemsByID := map[string]share.RuntimeInfo{}
 	for id, config := range m.configs {
-		itemsByID[id] = Info{ID: id, Description: config.Description, Mode: config.ModeOrOnce()}
+		itemsByID[id] = share.RuntimeInfo{ID: id, Description: config.Description, Mode: string(config.ModeOrOnce())}
 	}
 	for id, worker := range m.workers {
 		itemsByID[id] = worker.info()
@@ -396,24 +387,25 @@ func (m *Manager) List() []share.RuntimeInfo {
 
 		workerInfo := worker.info()
 		info.Active += workerInfo.Active
-		if workerInfo.Status == StatusRunning {
-			info.Status = StatusRunning
+		if workerInfo.Status == string(StatusRunning) {
+			info.Status = string(StatusRunning)
 		} else if info.Status == "" {
 			info.Status = workerInfo.Status
 		}
 		itemsByID[worker.config.ID] = info
 	}
 	for _, lease := range m.routes {
-		info := itemsByID[lease.HookID]
+		id := lease.Worker.config.ID
+		info := itemsByID[id]
 		info.Waiting++
-		itemsByID[lease.HookID] = info
+		itemsByID[id] = info
 	}
 	items := make([]share.RuntimeInfo, 0, len(itemsByID))
 	for _, info := range itemsByID {
-		if info.Mode == share.RuntimeModeTransient && info.Status == "" {
-			info.Status = StatusStopped
+		if info.Mode == string(share.RuntimeModeTransient) && info.Status == "" {
+			info.Status = string(StatusStopped)
 		}
-		items = append(items, share.RuntimeInfo{ID: info.ID, Description: info.Description, Mode: string(info.Mode), Status: string(info.Status), Detail: info.Detail, Active: info.Active, Waiting: info.Waiting})
+		items = append(items, info)
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
 	return items
@@ -439,9 +431,6 @@ func (m *Manager) Stop(ctx context.Context, id string) (bool, error) {
 	persistent := m.worker(id)
 	if persistent != nil {
 		_, stopErr := persistent.stop(ctx)
-		m.mu.Lock()
-		m.clearRoutesLocked(id)
-		m.mu.Unlock()
 		return true, stopErr
 	}
 	m.mu.Lock()
@@ -454,11 +443,9 @@ func (m *Manager) Stop(ctx context.Context, id string) (bool, error) {
 	for key, transient := range m.transient {
 		if transient.config.ID == id {
 			delete(m.transient, key)
-			delete(m.routes, key)
 			workers = append(workers, transient)
 		}
 	}
-	m.clearRoutesLocked(id)
 	m.mu.Unlock()
 	stopErrs := make([]error, len(workers))
 	for i, transient := range workers {
@@ -514,9 +501,6 @@ func (m *Manager) Handle(ctx context.Context, id string, event share.Event, defa
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "worker not dispatched"}, nil
 	}
 	updated, logResult, err := worker.handle(ctx, event, false, defaults)
-	if config.ModeOrOnce() == share.RuntimeModeTransient && (err != nil || !m.hasLease(event)) {
-		m.stopTransient(routeKeyFor(event), worker)
-	}
 	if err == nil {
 		if updated.Metadata == nil {
 			updated.Metadata = map[string]any{}
@@ -551,11 +535,12 @@ func (m *Manager) startTransient(ctx context.Context, config share.RuntimeConfig
 			}
 		}
 	}
-	worker := m.transient[key]
+	route := workerRoute{HookID: config.ID, Route: key}
+	worker := m.transient[route]
 	created := false
 	if worker == nil {
 		worker = newWorker(m, config)
-		m.transient[key] = worker
+		m.transient[route] = worker
 		created = true
 	}
 	m.mu.Unlock()
@@ -566,27 +551,30 @@ func (m *Manager) startTransient(ctx context.Context, config share.RuntimeConfig
 	}
 	logResult, err := worker.waitReady(ctx)
 	if err != nil {
+		m.mu.Lock()
 		m.stopTransient(key, worker)
+		m.mu.Unlock()
 		return nil, logResult, err
 	}
 	return worker, logResult, nil
 }
 
+// stopTransient 要求持有 m.mu；移除索引与登记异步退出必须原子完成。
 func (m *Manager) stopTransient(key routeKey, wanted *worker) {
-	m.mu.Lock()
 	if m.closed {
-		m.mu.Unlock()
 		return // Close already owns stopping the indexed workers.
 	}
-	worker := m.transient[key]
-	if worker == nil || (wanted != nil && worker != wanted) {
-		m.mu.Unlock()
+	route := workerRoute{HookID: wanted.config.ID, Route: key}
+	worker := m.transient[route]
+	if worker != wanted {
 		return
 	}
-	delete(m.transient, key)
-	delete(m.routes, key)
+	delete(m.transient, route)
+	m.clearWorkerLocked(worker)
+	worker.mu.Lock()
+	worker.manualStop = true
+	worker.mu.Unlock()
 	m.workWG.Add(1)
-	m.mu.Unlock()
 	go func() {
 		defer m.workWG.Done()
 		_, _ = worker.stop(context.Background())

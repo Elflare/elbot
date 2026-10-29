@@ -110,6 +110,8 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## Request、Turn 与状态
 
 - `internal/request/`、`internal/turn/`：分别负责请求树与取消、单轮状态与执行协调。
+- `internal/turn/supervisor.go`、`contracts.go`、`wiring.go`：公开业务入口、契约与内部组件装配；`execution.go` 管逻辑执行身份、接管和最终结果。
+- `internal/turn/lifecycle/`：唯一持有状态表与锁，管理 attempt、pending、工具计数及确认登记；`confirmation/` 管等待与超时，使用 `share/` 中登记结果携带的回调修改状态。
 - `internal/agent/execution/execution.go`、`execution_run.go`：前后台执行、接管与跨轮收尾。
 - `internal/agent/execution/execution_admission.go`、`execution_input.go`、`execution_lifecycle.go`：分别负责执行准入、输入处理与关闭。
 - `internal/processenv/environment.go`、`process_unix.go`、`process_windows.go`：分别负责进程环境与命令构造、Unix 进程组及 Windows 进程树管理。

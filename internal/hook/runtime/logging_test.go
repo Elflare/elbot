@@ -74,7 +74,7 @@ func TestPluginToolStartPrecedesBodyAndEndHasElapsed(t *testing.T) {
 	}
 	defer manager.Close(t.Context())
 	worker := newWorker(manager, share.RuntimeConfig{ID: "test", Tools: share.RuntimeToolsConfig{Allow: []string{"logging_tool"}}})
-	token := manager.putToolContext("test", t.Context(), share.Event{}, time.Minute)
+	token := testToolContext(t, worker, t.Context(), share.Event{})
 	raw, _ := json.Marshal(map[string]string{"name": "logging_tool", "tool_context": token})
 	if _, err := worker.callTool(raw); err != nil {
 		t.Fatal(err)
@@ -116,7 +116,7 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 			defer manager.Close(context.Background())
 			worker := newWorker(manager, share.RuntimeConfig{ID: "test", EventTimeoutSeconds: 10, Tools: share.RuntimeToolsConfig{Allow: []string{"logging_tool"}}})
 			ctx := contextinfo.WithActor(contextinfo.WithExecution(t.Context(), contextinfo.Execution{SessionID: "context-session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}), contextinfo.Actor{ID: "context-actor"})
-			token := manager.putToolContext("test", ctx, share.Event{Session: share.SessionContext{ID: "trigger-session"}, Actor: share.ActorContext{ID: "trigger-actor"}}, time.Minute)
+			token := testToolContext(t, worker, ctx, share.Event{Session: share.SessionContext{ID: "trigger-session"}, Actor: share.ActorContext{ID: "trigger-actor"}})
 			raw, _ := json.Marshal(map[string]any{"name": "logging_tool", "tool_context": token})
 			_, err = worker.callTool(raw)
 			if !errors.Is(err, tc.err) || len(*records) != 2 {
@@ -172,7 +172,7 @@ func TestPluginToolArgumentPreviewDoesNotChangeInvocation(t *testing.T) {
 	}
 	defer manager.Close(context.Background())
 	worker := newWorker(manager, share.RuntimeConfig{ID: "test", EventTimeoutSeconds: 10, Tools: share.RuntimeToolsConfig{Allow: []string{"logging_tool"}}})
-	token := manager.putToolContext("test", t.Context(), share.Event{}, time.Minute)
+	token := testToolContext(t, worker, t.Context(), share.Event{})
 	raw, _ := json.Marshal(map[string]any{"name": "logging_tool", "tool_context": token, "arguments": json.RawMessage(args)})
 	if _, err = worker.callTool(raw); err != nil {
 		t.Fatal(err)
@@ -222,7 +222,7 @@ func TestToolAuditUsesTriggerActorAndKeepsEnteredCancellation(t *testing.T) {
 			}
 			defer manager.Close(context.Background())
 			worker := newWorker(manager, share.RuntimeConfig{ID: "test", EventTimeoutSeconds: 10, Tools: share.RuntimeToolsConfig{Allow: []string{"logging_tool"}}})
-			token := manager.putToolContext("test", ctx, share.Event{Session: share.SessionContext{ID: tc.sessionID}, Actor: share.ActorContext{ID: tc.sessionActor}}, time.Minute)
+			token := testToolContext(t, worker, ctx, share.Event{Session: share.SessionContext{ID: tc.sessionID}, Actor: share.ActorContext{ID: tc.sessionActor}})
 			raw, _ := json.Marshal(map[string]any{"name": "logging_tool", "tool_context": token})
 			_, err = worker.callTool(raw)
 			if !errors.Is(err, context.Canceled) || len(*records) != 1 || (*records)[0].ResultStatus != events.ResultCanceled || (*records)[0].Level != slog.LevelInfo {

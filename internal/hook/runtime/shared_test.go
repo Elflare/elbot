@@ -14,18 +14,18 @@ import (
 
 func TestSharedStateSetGetAndCompareAndSwap(t *testing.T) {
 	state := NewSharedState()
-	if err := state.Set("weather/latest", json.RawMessage(`{"temp":20}`)); err != nil {
+	if err := state.SetWithTTL("weather/latest", json.RawMessage(`{"temp":20}`), defaultSharedTTL); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
 	value, ok := state.Get("weather/latest")
 	if !ok || string(value) != `{"temp":20}` {
 		t.Fatalf("Get = %s, %v", value, ok)
 	}
-	swapped, err := state.CompareAndSwap("weather/latest", json.RawMessage(`{"temp":20}`), json.RawMessage(`{"temp":21}`))
+	swapped, err := state.CompareAndSwapWithTTL("weather/latest", json.RawMessage(`{"temp":20}`), json.RawMessage(`{"temp":21}`), defaultSharedTTL)
 	if err != nil || !swapped {
 		t.Fatalf("CompareAndSwap = %v, %v", swapped, err)
 	}
-	swapped, err = state.CompareAndSwap("weather/latest", json.RawMessage(`{"temp":20}`), json.RawMessage(`{"temp":22}`))
+	swapped, err = state.CompareAndSwapWithTTL("weather/latest", json.RawMessage(`{"temp":20}`), json.RawMessage(`{"temp":22}`), defaultSharedTTL)
 	if err != nil || swapped {
 		t.Fatalf("stale CompareAndSwap = %v, %v", swapped, err)
 	}
@@ -74,7 +74,7 @@ func TestSharedStateHandleRequest(t *testing.T) {
 
 func TestSharedStateRejectsInvalidKeysAndValues(t *testing.T) {
 	state := NewSharedState()
-	if err := state.Set("flat-key", json.RawMessage(`1`)); err != nil {
+	if err := state.SetWithTTL("flat-key", json.RawMessage(`1`), defaultSharedTTL); err != nil {
 		t.Fatalf("Set flat key: %v", err)
 	}
 	for _, tc := range []struct {
@@ -86,7 +86,7 @@ func TestSharedStateRejectsInvalidKeysAndValues(t *testing.T) {
 		{key: strings.Repeat("k", maxSharedKeyBytes+1), value: json.RawMessage(`1`)},
 		{key: "demo/value", value: json.RawMessage(`not-json`)},
 	} {
-		if err := state.Set(tc.key, tc.value); err == nil {
+		if err := state.SetWithTTL(tc.key, tc.value, defaultSharedTTL); err == nil {
 			t.Fatalf("Set(%q, %s) succeeded", tc.key, tc.value)
 		}
 	}

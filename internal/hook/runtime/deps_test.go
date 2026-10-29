@@ -5,10 +5,25 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"elbot/internal/events"
+	"elbot/internal/hook/share"
 	"elbot/internal/llm"
 	"elbot/internal/tool"
 	"elbot/internal/tool/registry"
+	"testing"
+	"time"
 )
+
+// Tool bridge tests supply an active event without running a worker process.
+func testToolContext(t *testing.T, w *worker, ctx context.Context, event share.Event) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	token := randomID("ctx")
+	w.manager.mu.Lock()
+	w.manager.tokens[token] = invocation{Worker: w, Event: event, Context: ctx, Cancel: cancel}
+	w.manager.mu.Unlock()
+	t.Cleanup(cancel)
+	return token
+}
 
 func testLog(ctx context.Context, record events.LogRecord) {
 	_ = events.EmitLog(context.WithoutCancel(ctx), record)

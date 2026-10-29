@@ -1,7 +1,10 @@
 // 定义 Turn 的公开输入、快照、执行结果和确认契约。
 package turn
 
-import "elbot/internal/llm"
+import (
+	"elbot/internal/llm"
+	"elbot/internal/turn/share"
+)
 
 type Phase string
 
@@ -57,23 +60,9 @@ type RiskAction string
 
 // AppendWait identifies one registered append confirmation.
 // Its private state will move behind the confirmation component during migration.
-type AppendWait struct {
-	manager   *Supervisor
-	sessionID string
-	state     *state
-	refresh   <-chan struct{}
-	done      <-chan struct{}
-}
 
 // RiskConfirmationWait owns one confirmation, including responses received before Wait.
 // The caller must wait on it or cancel it after publishing the prompt.
-type RiskConfirmationWait struct {
-	manager   *Supervisor
-	sessionID string
-	turn      *state
-	response  chan riskResponse
-	refresh   chan struct{}
-}
 
 const (
 	RiskConfirm     RiskAction = "confirm"
@@ -103,3 +92,7 @@ type RiskResult struct {
 	Outcome  RiskOutcome
 	Err      error // Request cancellation or deadline; nil for user stop or wait expiry.
 }
+
+type AppendWait struct{ wait *share.AppendWait }
+
+type RiskConfirmationWait struct{ wait *share.RiskWait }

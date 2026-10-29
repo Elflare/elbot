@@ -135,10 +135,6 @@ func (s *SharedState) Get(key string) (json.RawMessage, bool) {
 	return append(json.RawMessage(nil), entry.value...), true
 }
 
-func (s *SharedState) Set(key string, value json.RawMessage) error {
-	return s.SetWithTTL(key, value, defaultSharedTTL)
-}
-
 func (s *SharedState) SetWithTTL(key string, value json.RawMessage, ttl time.Duration) error {
 	key, value, err := normalizeSharedValue(key, value)
 	if err != nil {
@@ -151,16 +147,7 @@ func (s *SharedState) SetWithTTL(key string, value json.RawMessage, ttl time.Dur
 	entry := sharedEntry{value: value, ttl: ttl, lastAccess: now}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.pruneExpiredLocked(now)
-	if err := s.makeRoomLocked(key, entry); err != nil {
-		return err
-	}
-	if previous, ok := s.items[key]; ok {
-		s.size -= sharedEntrySize(key, previous)
-	}
-	s.items[key] = entry
-	s.size += sharedEntrySize(key, entry)
-	return nil
+	return s.storeLocked(key, entry)
 }
 
 func (s *SharedState) Delete(key string) bool {
@@ -184,7 +171,7 @@ func (s *SharedState) List(prefix string) []string {
 	s.pruneExpiredLocked(now)
 	keys := make([]string, 0, len(s.items))
 	for key := range s.items {
-		if prefix == "" || strings.HasPrefix(key, prefix) {
+		if strings.HasPrefix(key, prefix) {
 			keys = append(keys, key)
 		}
 	}
@@ -192,12 +179,8 @@ func (s *SharedState) List(prefix string) []string {
 	return keys
 }
 
-// CompareAndSwap atomically replaces a value only when expected matches the
+// CompareAndSwapWithTTL atomically replaces a value only when expected matches the
 // current JSON value. A nil expected value means the key must not exist.
-func (s *SharedState) CompareAndSwap(key string, expected, value json.RawMessage) (bool, error) {
-	return s.CompareAndSwapWithTTL(key, expected, value, defaultSharedTTL)
-}
-
 func (s *SharedState) CompareAndSwapWithTTL(key string, expected, value json.RawMessage, ttl time.Duration) (bool, error) {
 	key, value, err := normalizeSharedValue(key, value)
 	if err != nil {
@@ -207,10 +190,10 @@ func (s *SharedState) CompareAndSwapWithTTL(key string, expected, value json.Raw
 		return false, fmt.Errorf("shared ttl must not be negative")
 	}
 	if len(expected) > 0 {
-		if !json.Valid(expected) {
+		expected, err = compactJSON(expected)
+		if err != nil {
 			return false, fmt.Errorf("shared expected value must be valid JSON")
 		}
-		expected = compactJSON(expected)
 	}
 	now := s.now()
 	s.mu.Lock()
@@ -228,15 +211,21 @@ func (s *SharedState) CompareAndSwapWithTTL(key string, expected, value json.Raw
 		return false, nil
 	}
 	entry := sharedEntry{value: value, ttl: ttl, lastAccess: now}
+	err = s.storeLocked(key, entry)
+	return err == nil, err
+}
+
+func (s *SharedState) storeLocked(key string, entry sharedEntry) error {
+	s.pruneExpiredLocked(entry.lastAccess)
 	if err := s.makeRoomLocked(key, entry); err != nil {
-		return false, err
+		return err
 	}
-	if exists {
-		s.size -= sharedEntrySize(key, current)
+	if previous, ok := s.items[key]; ok {
+		s.size -= sharedEntrySize(key, previous)
 	}
 	s.items[key] = entry
 	s.size += sharedEntrySize(key, entry)
-	return true, nil
+	return nil
 }
 
 func (s *SharedState) PruneExpired() int {
@@ -323,21 +312,20 @@ func normalizeSharedValue(key string, value json.RawMessage) (string, json.RawMe
 	if len(key) > maxSharedKeyBytes {
 		return "", nil, fmt.Errorf("shared key exceeds %d byte limit", maxSharedKeyBytes)
 	}
-	if len(value) == 0 || !json.Valid(value) {
+	compact, err := compactJSON(value)
+	if err != nil {
 		return "", nil, fmt.Errorf("shared value must be valid JSON")
 	}
-	var compact bytes.Buffer
-	_ = json.Compact(&compact, value)
-	if compact.Len() > maxSharedValueBytes {
+	if len(compact) > maxSharedValueBytes {
 		return "", nil, fmt.Errorf("shared value exceeds %d MiB limit", maxSharedValueBytes>>20)
 	}
-	return key, append(json.RawMessage(nil), compact.Bytes()...), nil
+	return key, compact, nil
 }
 
-func compactJSON(value json.RawMessage) []byte {
+func compactJSON(value json.RawMessage) ([]byte, error) {
 	var compact bytes.Buffer
-	_ = json.Compact(&compact, value)
-	return compact.Bytes()
+	err := json.Compact(&compact, value)
+	return compact.Bytes(), err
 }
 
 func sharedTTL(ttlSeconds *int64) (time.Duration, error) {

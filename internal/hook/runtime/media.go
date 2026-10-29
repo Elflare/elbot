@@ -43,8 +43,6 @@ type mediaLease struct {
 	path      string          // 已完成导出的路径，由占用者独占访问。
 	retained  bool            // 引用已取得且尚未成功释放，避免重复清理成功项。
 	busy      chan struct{}   // 当前独占操作结束时关闭；等待者可取消。
-	users     int             // 正在使用本租约的调用数，当前独占操作为 0 或 1。
-	cleaning  bool            // 已被维护认领，新使用等待其结束后重新查找。
 }
 
 // mediaAPI is runtime's borrowed media capability, limited to plugin RPC and leases.
@@ -158,7 +156,7 @@ func (b *mediaBridge) retain(ctx context.Context, id string) (*mediaLease, error
 			lease = &mediaLease{reference: media.Reference{MediaID: id, OwnerType: "hook", OwnerID: b.owner, Purpose: "temporary"}}
 			b.leases[id] = lease
 		}
-		lease.busy, lease.users = make(chan struct{}), 1
+		lease.busy = make(chan struct{})
 		lease.expires = time.Now().Add(mediaLeaseTTL)
 		b.mu.Unlock()
 		if !lease.retained {
@@ -167,7 +165,6 @@ func (b *mediaBridge) retain(ctx context.Context, id string) (*mediaLease, error
 				if lease.dir == "" {
 					delete(b.leases, id)
 				}
-				lease.users = 0
 				close(lease.busy)
 				lease.busy = nil
 				b.mu.Unlock()
@@ -181,7 +178,6 @@ func (b *mediaBridge) retain(ctx context.Context, id string) (*mediaLease, error
 
 func (b *mediaBridge) release(lease *mediaLease) {
 	b.mu.Lock()
-	lease.users = 0
 	close(lease.busy)
 	lease.busy = nil
 	b.mu.Unlock()
@@ -307,10 +303,10 @@ func (b *mediaBridge) prune(ctx context.Context, now time.Time, closeAll bool) (
 	}
 	selected := make(map[string]*mediaLease)
 	for id, lease := range b.leases {
-		if lease.users != 0 || lease.cleaning || (!closeAll && now.Before(lease.expires)) {
+		if lease.busy != nil || (!closeAll && now.Before(lease.expires)) {
 			continue
 		}
-		lease.cleaning, lease.busy = true, make(chan struct{})
+		lease.busy = make(chan struct{})
 		selected[id] = lease
 	}
 	b.mu.Unlock()
@@ -348,7 +344,6 @@ func (b *mediaBridge) prune(ctx context.Context, now time.Time, closeAll bool) (
 			delete(b.leases, id)
 			logResult.Content += "\nmedia_id=" + id + " released"
 		}
-		lease.cleaning = false
 		close(lease.busy)
 		lease.busy = nil
 		b.mu.Unlock()

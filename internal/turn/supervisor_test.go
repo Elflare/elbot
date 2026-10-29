@@ -3,6 +3,7 @@ package turn
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 func TestSupervisorAppendAndAttemptOwnership(t *testing.T) {
@@ -37,6 +38,61 @@ func TestSupervisorAppendAndAttemptOwnership(t *testing.T) {
 		t.Fatal("stop released active work")
 	}
 	s.FinishAttempt("s", "new")
+}
+
+func TestRiskCallbacksKeepReplacementAndRejectStoppedApproval(t *testing.T) {
+	s := NewSupervisor()
+	s.StartAttempt("s", Input{}, NewExecution("run"), "a")
+	s.StartToolPhase("s", "a")
+	first := s.BeginRiskConfirmation("s", RiskConfirmation{ID: "first"}, "a")
+	s.ResolveRiskConfirmation("s", RiskDecision{Action: RiskConfirm})
+	if first.Wait(t.Context(), 0).Outcome != RiskAnswered {
+		t.Fatal("early response lost")
+	}
+	second := s.BeginRiskConfirmation("s", RiskConfirmation{ID: "second"}, "a")
+	if first.Cancel() {
+		t.Fatal("old callback canceled replacement")
+	}
+	if pending, ok := s.PendingRiskConfirmation("s"); !ok || pending.ID != "second" {
+		t.Fatal("replacement missing")
+	}
+	s.ResolveRiskConfirmation("s", RiskDecision{Action: RiskConfirm})
+	s.StopAttempt("s", "a")
+	if result := second.Wait(t.Context(), 0); result.Outcome != RiskCanceled {
+		t.Fatalf("stopped approval: %+v", result)
+	}
+	if s.Snapshot("s").Phase != PhaseStopping {
+		t.Fatal("active attempt released early")
+	}
+	s.FinishAttempt("s", "a")
+}
+
+func TestConfirmationCallbacksExpireAndIgnoreOldAppend(t *testing.T) {
+	s := NewSupervisor()
+	e := NewExecution("run")
+	s.StartAttempt("s", Input{Text: "original"}, e, "a")
+	old := s.BeginAppend("s", "a", Input{Text: "more"})
+	s.FinishAttempt("s", "a")
+	_, _, ok := s.ResumeAppend("s")
+	if !ok {
+		t.Fatal("resume failed")
+	}
+	replacement := s.BeginAppend("s", "", Input{Text: "latest"})
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if old.Wait(ctx, 0) || s.Snapshot("s").Phase != PhaseAwaitAppendConfirm {
+		t.Fatal("old cancellation changed replacement")
+	}
+	if !replacement.Wait(t.Context(), time.Millisecond) || s.Snapshot("s").Phase != PhaseIdle {
+		t.Fatal("append expiry failed")
+	}
+	s.StartAttempt("s", Input{}, e, "b")
+	s.StartToolPhase("s", "b")
+	risk := s.BeginRiskConfirmation("s", RiskConfirmation{ID: "risk"}, "b")
+	if result := risk.Wait(t.Context(), time.Millisecond); result.Outcome != RiskExpired {
+		t.Fatalf("risk expiry: %+v", result)
+	}
+	s.FinishAttempt("s", "b")
 }
 
 func TestSupervisorRiskDecisionAndTermination(t *testing.T) {

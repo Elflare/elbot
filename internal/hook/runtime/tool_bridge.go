@@ -5,6 +5,7 @@ package runtime
 import "elbot/internal/tool"
 
 import (
+	"bytes"
 	"context"
 	"elbot/internal/hook/share"
 	"encoding/json"
@@ -32,7 +33,7 @@ func (w *worker) pluginRequest(value frame) (any, error) {
 	switch value.Method {
 	case "hooks.reload":
 		var params map[string]json.RawMessage
-		if len(bytesTrim(value.Params)) > 0 {
+		if len(bytes.TrimSpace(value.Params)) > 0 {
 			if err := json.Unmarshal(value.Params, &params); err != nil {
 				return nil, err
 			}
@@ -97,7 +98,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	w.manager.mu.RLock()
 	contextValue, ok := w.manager.tokens[invocation]
 	w.manager.mu.RUnlock()
-	if ok && contextValue.HookID == w.config.ID {
+	if ok && contextValue.Worker == w {
 		callCtx = contextValue.Context
 		if contextValue.Event.Session.ID != "" {
 			actor = contextinfo.Actor{ID: contextValue.Event.Actor.ID, Platform: contextValue.Event.Platform.Name, PlatformUserID: contextValue.Event.Actor.UserID}
@@ -125,7 +126,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 			record.Level = slog.LevelError
 		}
 		facts, _ := contextinfo.ExecutionFromContext(callCtx)
-		if contextValue.HookID == w.config.ID && contextValue.Event.Session.ID != "" {
+		if contextValue.Worker == w && contextValue.Event.Session.ID != "" {
 			record.Identity.SessionID = &contextValue.Event.Session.ID
 		} else if facts.SessionID != "" {
 			record.Identity.SessionID = &facts.SessionID
@@ -184,7 +185,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		if params.Background {
 			token = params.Origin
 		}
-		contextValue, ok := w.manager.takeToolContext(token, w.config.ID)
+		contextValue, ok := w.manager.takeToolContext(token, w)
 		if !ok {
 			err := fmt.Errorf("invalid, expired or exhausted hook context")
 			logHook("hook_tool_call_completed", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})

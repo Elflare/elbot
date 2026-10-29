@@ -66,7 +66,7 @@ func TestRuntimeCloseJoinsPluginToolRequests(t *testing.T) {
 			w.stdin = discardWriteCloser{}
 			params := map[string]any{"name": "logging_tool", "background": true, "target": map[string]string{"platform": "cli"}}
 			if mode != "standalone" {
-				token := manager.putToolContext("test", t.Context(), share.Event{}, time.Minute)
+				token := testToolContext(t, w, t.Context(), share.Event{})
 				if mode == "foreground" {
 					params["background"], params["tool_context"] = false, token
 				} else {
@@ -112,9 +112,12 @@ func TestRuntimeCloseJoinsRemovedTransient(t *testing.T) {
 	unblock := sync.OnceFunc(func() { close(w.done) })
 	closeRuntimeAfterRelease(t, manager, unblock)
 	key := routeKey{ActorID: "test"}
-	manager.transient[key] = w
+	route := workerRoute{HookID: w.config.ID, Route: key}
+	manager.transient[route] = w
+	manager.mu.Lock()
 	manager.stopTransient(key, w)
-	if _, ok := manager.transient[key]; ok {
+	manager.mu.Unlock()
+	if _, ok := manager.transient[route]; ok {
 		t.Fatal("transient still indexed")
 	}
 	assertRuntimeStillClosing(t, manager)
