@@ -672,6 +672,14 @@
       "translation": "If you want ElBot to help you generate an Elwisp listener, you can submit a request to the superadmin Session in work mode, for example:\n",
       "updated_at": 1781779450
     },
+    "docs/elnis-usage.md:paragraph:70c205c61dba21109cd5ea5682eb9853837ee7898d0a7c0afaeb60c79db5c994": {
+      "kind": "paragraph",
+      "source": "这个事件只执行 API，不发送额外消息。\n",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "70c205c61dba21109cd5ea5682eb9853837ee7898d0a7c0afaeb60c79db5c994",
+      "translation": "This event only executes the API and does not send additional messages.\n",
+      "updated_at": 1793285586
+    },
     "docs/elnis-usage.md:paragraph:74d9bfb1c1843b09c07c3521eb60ae7ad1d9ff7cc263f9e9782db377598fd539": {
       "kind": "paragraph",
       "source": "禁用配置中的 __ELBOT_CODE_0__ 表示禁用该平台所有投递。\n",
@@ -792,6 +800,14 @@
       "translation": "Semantics:\n",
       "updated_at": 1782033114
     },
+    "docs/elnis-usage.md:paragraph:cd1efccdfcd3f9096d16224d9cbff39bde804a6da98098fbd991efeaa8be8210": {
+      "kind": "paragraph",
+      "source": "通过 QQ OneBot 原生接口 __ELBOT_CODE_0__ 撤回消息，__ELBOT_CODE_1__ 为平台消息 ID。",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "cd1efccdfcd3f9096d16224d9cbff39bde804a6da98098fbd991efeaa8be8210",
+      "translation": "Withdraw a message via the QQ OneBot native interface __ELBOT_CODE_0__, where __ELBOT_CODE_1__ is the platform message ID.",
+      "updated_at": 1793285586
+    },
     "docs/elnis-usage.md:paragraph:d123f0b37756a85fe6bca4c81305c3339d55bd851d8835bcea9dbfc114b0ee43": {
       "kind": "paragraph",
       "source": "Elwisp 远端工具仅操作自己的文件，不获得宿主媒体导出路径、RPC 或存储凭据。\n",
@@ -856,6 +872,14 @@
       "translation": "Can be empty in direct/record mode, but at least one of __ELBOT_CODE_0__, __ELBOT_CODE_1__, or __ELBOT_CODE_2__ must be provided.",
       "updated_at": 1782395349
     },
+    "docs/elnis-usage.md:table:0239ee4502a4b91324a340220a56226f0103b8a9bfa7bc56456d3270895baf09": {
+      "kind": "table",
+      "source": "每项包含 __ELBOT_CODE_0__（平台名称）、__ELBOT_CODE_1__（原生接口名）、__ELBOT_CODE_2__（原生参数）；",
+      "source_file": "docs/elnis-usage.md",
+      "source_hash": "0239ee4502a4b91324a340220a56226f0103b8a9bfa7bc56456d3270895baf09",
+      "translation": "Each item contains __ELBOT_CODE_0__ (platform name), __ELBOT_CODE_1__ (native interface name), and __ELBOT_CODE_2__ (native parameters);",
+      "updated_at": 1793285586
+    },
     "docs/elnis-usage.md:table:0250510547f02dc95c376267491814c698dc8f9b58256d5afe9f10609b16ddb4": {
       "kind": "table",
       "source": "Elnis LLM 模型槽位，仅支持 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__；未填写或对应槽位未配置时回退到 __ELBOT_CODE_3__。",
@@ -880,13 +904,13 @@
       "translation": "Specific event source, such as service name, script name, or RSS name.",
       "updated_at": 1781709646
     },
-    "docs/elnis-usage.md:table:0748071790b55dd6b123f52b44f9540c9cc83eade6f63f1f0228d0accd080ff9": {
+    "docs/elnis-usage.md:table:076d83da24955946cba2fbf3e4b4e4d4a7420d01ae2839e19d2b99b4a11782d1": {
       "kind": "table",
-      "source": "Elvena v3 动作调用数组。",
+      "source": "平台原生 API 调用数组。",
       "source_file": "docs/elnis-usage.md",
-      "source_hash": "0748071790b55dd6b123f52b44f9540c9cc83eade6f63f1f0228d0accd080ff9",
-      "translation": "Elvena v3 action call array.",
-      "updated_at": 1782376360
+      "source_hash": "076d83da24955946cba2fbf3e4b4e4d4a7420d01ae2839e19d2b99b4a11782d1",
+      "translation": "An array of platform native API calls.",
+      "updated_at": 1793285586
     },
     "docs/elnis-usage.md:table:0c70665b6eb65f1aebf3b59f684ce52ed3473b2443ed4b4e0b815e2e9d66b8c2": {
       "kind": "table",
@@ -968,13 +992,13 @@
       "translation": "Description",
       "updated_at": 1781709646
     },
-    "docs/elnis-usage.md:table:46bff1a1c1be1121c2ccf85556b8c74b154ae0f286953c2a9bdad0fcc2af8c83": {
+    "docs/elnis-usage.md:table:4509d2c077727573b3059523304088a0594fbf5e37d02df04e370a9b482a4d40": {
       "kind": "table",
-      "source": "__ELBOT_CODE_0__ 透传平台原始 API，__ELBOT_CODE_1__ 使用统一能力名；",
+      "source": "省略 __ELBOT_CODE_0__ 时使用首个解析目标的平台，__ELBOT_CODE_1__ 与 __ELBOT_CODE_2__ 直接交给该平台执行。",
       "source_file": "docs/elnis-usage.md",
-      "source_hash": "46bff1a1c1be1121c2ccf85556b8c74b154ae0f286953c2a9bdad0fcc2af8c83",
-      "translation": "__ELBOT_CODE_0__ passes through the platform's original API, while __ELBOT_CODE_1__ uses a unified capability name;",
-      "updated_at": 1782376360
+      "source_hash": "4509d2c077727573b3059523304088a0594fbf5e37d02df04e370a9b482a4d40",
+      "translation": "When __ELBOT_CODE_0__ is omitted, the platform of the first parsed target is used, and __ELBOT_CODE_1__ and __ELBOT_CODE_2__ are passed directly to that platform for execution.",
+      "updated_at": 1793285586
     },
     "docs/elnis-usage.md:table:49ecd0e342d6d23bd00d67094e2ad0e9859dd17d7337b809300a7c912ccea764": {
       "kind": "table",
@@ -991,14 +1015,6 @@
       "source_hash": "5a0d2ee77780227fe3aab9508c5d7420f14a799fca34d6a4353bab44f48775fd",
       "translation": "text (Required)",
       "updated_at": 1781929269
-    },
-    "docs/elnis-usage.md:table:5df1524716e01f35b94ffd9aa6099dc1a002b1b6dd451113c702b81a296e641f": {
-      "kind": "table",
-      "source": "首批 capability 包含 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__。",
-      "source_file": "docs/elnis-usage.md",
-      "source_hash": "5df1524716e01f35b94ffd9aa6099dc1a002b1b6dd451113c702b81a296e641f",
-      "translation": "The first batch of capabilities includes __ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__.",
-      "updated_at": 1782376360
     },
     "docs/elnis-usage.md:table:6a72a3285b0a6bdd0068edaba9381b50a6dc3ab780a5f5119c35ca1e9964e753": {
       "kind": "table",
@@ -1146,8 +1162,8 @@
     }
   },
   "source": "docs/elnis-usage.md",
-  "source_hash": "06cf26b4508091a84d0c12d450519ab1129dd6b7915c4c58b20db7eb75bb56c0",
+  "source_hash": "4867e5a97e710c627dbb3ab6ec01025c12f7cffcf764193db11255d6d4043eb4",
   "target": "docs.en/elnis-usage.md",
-  "updated_at": 1791193891,
+  "updated_at": 1793285586,
   "version": 2
 }

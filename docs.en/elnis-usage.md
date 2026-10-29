@@ -146,6 +146,8 @@ If the same `elwisp.name + source + id` is sent again, Elnis will return duplica
 
 ### direct calls-only example
 
+Withdraw a message via the QQ OneBot native interface `delete_msg`, where `params.message_id` is the platform message ID. This event only executes the API and does not send additional messages.
+
 ```json
 {
   "version": "elvena.v3",
@@ -156,10 +158,8 @@ If the same `elwisp.name + source + id` is sent again, Elnis will return duplica
   "targets": [{"platform": "qqonebot", "type": "group", "id": "987654321"}],
   "calls": [
     {
-      "kind": "capability",
-      "name": "message.recall",
       "platform": "qqonebot",
-      "target": {"platform": "qqonebot", "type": "group", "id": "987654321"},
+      "api": "delete_msg",
       "params": {"message_id": 1024}
     }
   ]
@@ -259,7 +259,7 @@ Common fields:
 | `tool_list_names` | No | The ElBot internal tool name or Skill name preloaded for background tasks; Ordinary tools inject the schema, while Skills inject task descriptions and automatically inject the corresponding runner; Must be within the Elnis `allowed_tools` adjudication range; `discover_tool` will be ignored. |
 | `tools` | No | External tools declared by Elwisp with events; allowed by default, rejected when hitting the `disabled_external_tools` of that Elwisp. |
 | `targets` | Yes | Elwisp expects a delivery target array: `{"platform":"telegram"}` indicates sending to the platform superadmin, `type=private/group` with `id` indicates sending to a specified private chat/group chat, and `{"platform":"all"}` indicates all enabled platform superadmins. The final decision is still made by Elnis. |
-| `calls` | No | Elvena v3 action call array. `kind="raw"` passes through the platform's original API, while `kind="capability"` uses a unified capability name; The first batch of capabilities includes `message.recall`, `member.mute`, and `chat.leave`. When a direct request only has `calls` and lacks `content`/`segments`, it only executes the API and does not send a message. |
+| `calls` | No | An array of platform native API calls. Each item contains `platform` (platform name), `api` (native interface name), and `params` (native parameters); When `platform` is omitted, the platform of the first parsed target is used, and `api` and `params` are passed directly to that platform for execution. When a direct request only has `calls` and lacks `content`/`segments`, it only executes the API and does not send a message. |
 | `meta` | No | Original supplementary data, used only for recording and prompt attachment. |
 
 The HTTP response only indicates that Elnis has received or rejected the request, and does not wait for the LLM to complete.
