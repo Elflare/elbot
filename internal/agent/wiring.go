@@ -253,7 +253,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Compact:            execution,
 		Tools:              deps.Tools,
 		Skills:             deps.Tools,
-		FileRollback:       fileRollbackCapabilities{deps.Tools},
+		FileRollback:       fileRollbackCapabilities{tools: deps.Tools},
 		PrepareFileContext: fileCommands.PrepareFileCommand,
 		SessionState:       sessionCommands,
 		Logs:               logging.Reader{Dir: deps.Logs.LogDir()},
@@ -317,10 +317,19 @@ func wireCommands(deps agentinput.CommandExecutorDeps, modules commandbuiltin.De
 }
 
 // fileRollbackCapabilities adapts the command's List name to Tool's rollback operation.
-type fileRollbackCapabilities struct{ ToolCapabilities }
+type fileRollbackCapabilities struct {
+	tools interface {
+		ListRollbacks(context.Context) ([]fileops.RollbackInfo, error)
+		RollbackByID(context.Context, uint64) (fileops.RollbackResult, error)
+	}
+}
 
 func (c fileRollbackCapabilities) List(ctx context.Context) ([]fileops.RollbackInfo, error) {
-	return c.ListRollbacks(ctx)
+	return c.tools.ListRollbacks(ctx)
+}
+
+func (c fileRollbackCapabilities) RollbackByID(ctx context.Context, id uint64) (fileops.RollbackResult, error) {
+	return c.tools.RollbackByID(ctx, id)
 }
 
 func bindProtocolRoutes(registry *routes.Registry, chat *chatroute.Loop, response *responseroute.Loop) {
