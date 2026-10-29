@@ -89,7 +89,7 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] notification.Manager 实现 NotifyPlatformFailure，复用既有异步信号；根部选择存活平台和去重管理员目标。Platform 根包、notification、Share 与 Agent/execution 的 race 回归通过，覆盖实际路由、停止接入后通知、取消排队及在途工作、等待回调退出和超时重试；旧上下文测试已按当前公开事实契约清理。
 - [x] Elvena Call 只包含 Platform／API／Params；Elnis direct 按既有平台选择规则直接转发原生调用，保留顺序执行、遇错停止及 calls-only 行为，无能力映射或兼容包装。Elvena、Background 根包及全部子包、dispatch 的 race 回归通过，覆盖 HTTP 原生请求、失败与取消、真实 SQLite 接线、去重恢复和借用资源生命周期。
 - [x] Event 由 Elnis/types.go 定义并注释字段用途，不保留闲置 SegmentPaths；targets.go 的 toDeliveryTarget 与 media.go 的 directText 承担投递准备。Elvena 仅保留协议与来源文件，无闲置结果类型、总线或投递辅助文件。
-- [ ] 更新 Elwisp 生成提示与相关用户示例，停止生成已删除的能力名；保留 Hook platform.call 原生链路，平台选择仍由调用方负责。用户文档随对应迁移阶段更新。
+- [x] Elwisp 生成提示与中文用户示例统一使用 platform／api／params 原生调用，说明平台选择与 calls-only 行为；生成提示回归校验示例 JSON 和调用字段。Hook platform.call 沿用原生链路。
 - [x] 删除旧 platform.go、module/、builtin/ 及旧实现测试，不保留兼容别名；Doctor 使用外部测试包，通过 Platform 根部 ConfigDefinitions 获取配置定义；Platform 根包及全部子包、Doctor 的 race 回归通过。
 - [ ] 补充 Platform 原生 API 与真实历史接线集成验证；客户端结果已通过进程入口跨根部验证，App 整包与 Service 启停通过 race；组件隔离测试不替代真实总管接线。
 

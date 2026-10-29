@@ -106,9 +106,10 @@ func buildElwispCreatorGuide(cfg ElwispCreatorConfig, err error) string {
 // media_boundary: Elwisp 只管理自身文件，不提供媒体 RPC；其远端工具不接收 ElBot 媒体文件或导出路径。
 // report_media: report_segments 的 url 使用 workspace 相对路径或完整 media:<sha256>；宿主导入后 outbox 保存稳定 ID。
 // targets: 必填数组；{"platform":"cli"} 表示投递到 cli 超级管理员；{"platform":"telegram","type":"private","id":"123"} 表示指定私聊；{"platform":"all"} 表示所有已启用平台超级管理员。
+// calls: 每项包含 platform、api、params，api 为平台原生接口名，params 为原生参数；省略 platform 时使用首个解析目标的平台。direct 请求只有 calls 而没有 content/segments 时只执行 API，不发送消息。
 // model_slot: elwisp1 | elwisp2 | elwisp3；未配置时由 Elnis fallback。
 // minimal_direct_payload: {"version":"elvena.v3","elwisp":{"name":"example-elwisp","tags":["example"]},"source":"example-source","id":"stable-event-id","mode":"direct","title":"事件标题","content":"可直接通知给管理员的文本。","targets":[{"platform":"cli"}]}
-// minimal_direct_calls_payload: {"version":"elvena.v3","elwisp":{"name":"example-elwisp"},"source":"example-source","id":"stable-event-id","mode":"direct","targets":[{"platform":"qqonebot","type":"group","id":"987654321"}],"calls":[{"kind":"capability","name":"message.recall","platform":"qqonebot","target":{"platform":"qqonebot","type":"group","id":"987654321"},"params":{"message_id":1024}}]}
+// minimal_direct_calls_payload: {"version":"elvena.v3","elwisp":{"name":"example-elwisp"},"source":"example-source","id":"stable-event-id","mode":"direct","targets":[{"platform":"qqonebot","type":"group","id":"987654321"}],"calls":[{"platform":"qqonebot","api":"delete_msg","params":{"message_id":1024}}]}
 // minimal_llm_payload: {"version":"elvena.v3","elwisp":{"name":"example-elwisp","tags":["example"]},"source":"example-source","id":"stable-event-id","mode":"llm","title":"需要分析的事件","format":"elyph","content":"#task review_event - 判断事件是否需要通知\n<- $event:object!\n-> $report:str\n** 基于事件内容、meta 和工具结果判断\n~ 编造日志、指标或结论\n> 如果需要通知，给出原因和建议；否则说明无需打扰。","tool_list_names":[],"targets":[{"platform":"cli"}],"meta":{}}
 `)
 	b.WriteString(`** 如果 current_elnis 有 warning，先提醒用户处理。

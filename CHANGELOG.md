@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 人工逐包、逐文件、逐函数、逐字段指导AI重构App到业务层，再次收拢边界、分清职责
 - `/status` 显示优化
+- 修改了 Elwisp 协议，统一使用 `platform`、`api`、`params` 描述平台原生 API 调用。
 
 ### Fixed
 

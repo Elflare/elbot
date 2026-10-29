@@ -144,6 +144,8 @@ curl -sS http://127.0.0.1:32170/elvena/v3/events \
 
 ### direct calls-only 示例
 
+通过 QQ OneBot 原生接口 `delete_msg` 撤回消息，`params.message_id` 为平台消息 ID。这个事件只执行 API，不发送额外消息。
+
 ```json
 {
   "version": "elvena.v3",
@@ -154,10 +156,8 @@ curl -sS http://127.0.0.1:32170/elvena/v3/events \
   "targets": [{"platform": "qqonebot", "type": "group", "id": "987654321"}],
   "calls": [
     {
-      "kind": "capability",
-      "name": "message.recall",
       "platform": "qqonebot",
-      "target": {"platform": "qqonebot", "type": "group", "id": "987654321"},
+      "api": "delete_msg",
       "params": {"message_id": 1024}
     }
   ]
@@ -257,7 +257,7 @@ QQ OneBot、QQ Official、Telegram 支持在引用回复中恢复关联媒体；
 | `tool_list_names` | 否 | 后台任务预加载的 ElBot 内部工具名或 Skill 名；普通工具注入 schema，Skill 注入任务说明并自动注入对应 runner；必须在 Elnis `allowed_tools` 裁决范围内，`discover_tool` 会被忽略。 |
 | `tools` | 否 | Elwisp 随事件声明的外部工具；默认允许，命中该 Elwisp 的 `disabled_external_tools` 时拒绝。 |
 | `targets` | 是 | Elwisp 期望投递目标数组，`{"platform":"telegram"}` 表示发给平台超级管理员，`type=private/group` 且带 `id` 时发指定私聊/群聊，`{"platform":"all"}` 表示所有已启用平台超级管理员。最终仍由 Elnis 裁决。 |
-| `calls` | 否 | Elvena v3 动作调用数组。`kind="raw"` 透传平台原始 API，`kind="capability"` 使用统一能力名；首批 capability 包含 `message.recall`、`member.mute`、`chat.leave`。direct 请求只有 `calls` 且没有 `content`/`segments` 时只执行 API，不发送消息。 |
+| `calls` | 否 | 平台原生 API 调用数组。每项包含 `platform`（平台名称）、`api`（原生接口名）、`params`（原生参数）；省略 `platform` 时使用首个解析目标的平台，`api` 与 `params` 直接交给该平台执行。direct 请求只有 `calls` 且没有 `content`/`segments` 时只执行 API，不发送消息。 |
 | `meta` | 否 | 原始补充数据，只做记录和 prompt 附加。 |
 
 HTTP 响应只表示 Elnis 已接收或拒绝请求，不等待 LLM 完成。

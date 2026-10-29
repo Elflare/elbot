@@ -4,7 +4,9 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -70,6 +72,30 @@ func TestElwispCreatorToolCallReturnsGuide(t *testing.T) {
 		if !strings.Contains(result.Content, forbidden) {
 			t.Fatalf("guide missing forbidden rule %q: %s", forbidden, result.Content)
 		}
+	}
+	_, example, found := strings.Cut(result.Content, "// minimal_direct_calls_payload: ")
+	if !found {
+		t.Fatal("guide missing direct calls example")
+	}
+	example, _, _ = strings.Cut(example, "\n")
+	var payload struct {
+		Mode    string           `json:"mode"`
+		Targets []map[string]any `json:"targets"`
+		Calls   []map[string]any `json:"calls"`
+	}
+	if err := json.Unmarshal([]byte(example), &payload); err != nil {
+		t.Fatalf("invalid example JSON: %v", err)
+	}
+	if payload.Mode != "direct" || len(payload.Targets) != 1 || payload.Targets[0]["platform"] != "qqonebot" || len(payload.Calls) != 1 {
+		t.Fatalf("unexpected direct payload: %+v", payload)
+	}
+	wantCall := map[string]any{
+		"platform": "qqonebot",
+		"api":      "delete_msg",
+		"params":   map[string]any{"message_id": float64(1024)},
+	}
+	if !reflect.DeepEqual(payload.Calls[0], wantCall) {
+		t.Fatalf("native recall example = %#v, want %#v", payload.Calls[0], wantCall)
 	}
 }
 
