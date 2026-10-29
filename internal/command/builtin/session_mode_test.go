@@ -14,7 +14,7 @@ func TestModeCommandsReturnBoundContinuation(t *testing.T) {
 	ctx := context.Background()
 	store := newCommandTestStore(t)
 
-	svc := session.NewService(store)
+	svc := newSessionSupervisor(t, store)
 	tests := []struct {
 		name    string
 		scope   session.Scope
@@ -49,7 +49,7 @@ func TestChatCommandDoesNotContinueWhenHistoryBlocksSwitch(t *testing.T) {
 	ctx := context.Background()
 	store := newCommandTestStore(t)
 
-	svc := session.NewService(store)
+	svc := newSessionSupervisor(t, store)
 	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 	work, err := svc.Create(ctx, scope, session.CreateRequest{Title: "work"})
 	if err != nil {

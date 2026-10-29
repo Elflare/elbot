@@ -11,7 +11,6 @@ import (
 	"elbot/internal/tool"
 	"elbot/internal/workspace"
 	"log/slog"
-	"time"
 
 	"elbot/internal/turn"
 )
@@ -37,11 +36,6 @@ type InputConfirmations interface {
 	SubmitResponse(context.Context, string, string) error
 }
 
-type InputWaitPolicy interface {
-	WaitTimeout(context.Context) time.Duration
-	IdleExpiration() session.IdleExpirationConfig
-}
-
 // InputCoordinatorDeps declares only the capabilities consumed by InputCoordinator.
 type InputCoordinatorDeps struct {
 	// NewWorkspaceStore binds workspace operations to the admitted session.
@@ -51,7 +45,7 @@ type InputCoordinatorDeps struct {
 		Resume(context.Context, session.Scope, string) (*storage.Session, error)
 		CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
 		Current(context.Context, session.Scope) (*storage.Session, error)
-		ExpireIdleCurrent(context.Context, session.ExpireIdleRequest) (session.ExpireIdleResult, error)
+		RecordActivity(context.Context, *session.Binding) error
 	}
 	SessionRows interface {
 		Get(context.Context, string) (*storage.Session, error)
@@ -71,5 +65,4 @@ type InputCoordinatorDeps struct {
 	ToolState interface {
 		Commit(context.Context, string, tool.StateUpdate) (tool.StateCommit, events.LogResult, error)
 	}
-	WaitPolicy InputWaitPolicy
 }

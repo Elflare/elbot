@@ -14,7 +14,6 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -129,7 +128,7 @@ func TestToolTranscriptMirrorMatchesFullDatabaseFacts(t *testing.T) {
 	if err := store.Sessions().Create(t.Context(), row); err != nil {
 		t.Fatal(err)
 	}
-	committer := &ToolTranscriptCommitter{Messages: &MessageStore{Dialogues: store.Dialogues(), Gate: &CommitGate{Sessions: session.NewService(store), Turns: turn.NewManager(), View: ExecutionView{Sessions: store.Sessions()}}}}
+	committer := &ToolTranscriptCommitter{Messages: &MessageStore{Dialogues: store.Dialogues(), Gate: &CommitGate{Sessions: newSessionSupervisor(t, store), Turns: turn.NewManager(), View: ExecutionView{Sessions: store.Sessions()}}}}
 	calls := []llm.ToolCallRequest{{ID: "one", Name: "discover_tool", Arguments: `{"names":["one","two"]}`}, {ID: "two", Name: "large", Arguments: `{"all":true}`}}
 	head := agentshare.ToolCallStorageMessage(row.ID, "calling", "calling", calls)
 	if _, err := committer.Begin(t.Context(), &head); err != nil {
@@ -209,7 +208,7 @@ func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	repository := &countedDialogueRepository{DialogueRepository: store.Dialogues()}
-	committer := &ToolTranscriptCommitter{Messages: &MessageStore{Dialogues: repository, Gate: &CommitGate{Sessions: session.NewService(store), Turns: turn.NewManager()}}}
+	committer := &ToolTranscriptCommitter{Messages: &MessageStore{Dialogues: repository, Gate: &CommitGate{Sessions: newSessionSupervisor(t, store), Turns: turn.NewManager()}}}
 	root := t.TempDir()
 	center := mediatest.New(t, store, root)
 	item, err := center.ImportBytes(ctx, []byte("tool input"), media.Input{Name: "input.bin"}, media.ImportLimits{})

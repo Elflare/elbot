@@ -8,7 +8,11 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/request"
+	"elbot/internal/signal"
+	"errors"
+	"log/slog"
 	"strings"
+	"sync"
 )
 
 // RegisterHooks accepts one provider. Detaching does not interrupt callbacks
@@ -99,11 +103,29 @@ func (m *Supervisor) RegisterHooks(points Points) (func(), error) {
 // Empty session IDs are valid before input binding. Provider-global work that
 // does not participate in Agent execution must not use this entrypoint.
 func (m *Supervisor) StartHookRequest(ctx context.Context, sessionID, name string) (context.Context, func()) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID != "" {
+		locked, release, err := m.sessions.EnterSessions(ctx, sessionID)
+		if err != nil {
+			stopped, cancel := context.WithCancel(ctx)
+			cancel()
+			return stopped, func() {}
+		}
+		ctx = locked
+		defer release()
+	}
 	_, runCtx, done := m.requests.Start(ctx, request.StartRequest{
 		ParentID:  contextinfo.RootRequestIDFromContext(ctx),
-		SessionID: strings.TrimSpace(sessionID),
+		SessionID: sessionID,
 		Kind:      request.KindHook,
 		Label:     strings.TrimSpace(name),
 	})
-	return runCtx, done
+	return runCtx, sync.OnceFunc(func() {
+		done()
+		if sessionID != "" {
+			if err := m.sessions.SessionIdle(context.WithoutCancel(ctx), sessionID); err != nil && !errors.Is(err, signal.ErrClosed) {
+				slog.WarnContext(ctx, "hook session idle notification failed", "session_id", sessionID, "error", err)
+			}
+		}
+	})
 }

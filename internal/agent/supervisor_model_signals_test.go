@@ -12,7 +12,6 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/modelmgr"
 	"elbot/internal/platform/dispatch"
-	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"fmt"
@@ -39,6 +38,7 @@ func TestSharedRetrySubscriptionCoversChatCompactAndNaming(t *testing.T) {
 	deps := isolatedModuleDeps(t)
 	cfg := isolatedAgentConfig()
 	cfg.Context = config.Default().Context
+	cfg.Session.Naming.TriggerStep = 1
 	calls := make(chan context.Context, 4)
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -76,6 +76,17 @@ data: [DONE]
 	}
 	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "local"}, Identity: contextinfo.Identity{PlatformUserID: "local"}})
 	ctx = contextinfo.WithModel(ctx, contextinfo.Model{Provider: "p", Model: "m", APIType: "chat"})
+	namingDone := make(chan struct{}, 1)
+	logs, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+		if record.EventName == "session_naming_completed" && record.Category == events.LogRuntime {
+			namingDone <- struct{}{}
+		}
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = logs.Close(context.Background()) })
 	for _, name := range []string{"chat", "compact", "naming"} {
 		result := make(chan error, 1)
 		go func() {
@@ -86,8 +97,22 @@ data: [DONE]
 				err := runtime.HandleMessage(ctx, MessageRequest{Text: "/compact"})
 				result <- err
 			case "naming":
-				_, err := session.NewTitleGenerator(deps.Models).GenerateTitle(ctx, []storage.Message{{Role: storage.RoleUser, Content: "hello"}})
-				result <- err
+				row := &storage.Session{ID: storage.NewID(), OwnerID: "cli:local", Platform: "cli", PlatformScopeID: "local", Mode: storage.SessionModeWork, Title: "New session", Status: storage.SessionStatusActive}
+				if err := deps.Store.Sessions().Create(ctx, row); err != nil {
+					result <- err
+					return
+				}
+				if err := deps.Store.Messages().Append(ctx, &storage.Message{SessionID: row.ID, Role: storage.RoleUser, Content: "hello"}); err != nil {
+					result <- err
+					return
+				}
+				if err := runtime.Start(); err != nil {
+					result <- err
+					return
+				}
+				runtime.sessions.MaybeScheduleNaming(ctx, row.ID)
+				<-namingDone
+				result <- runtime.sessions.Close(context.Background())
 			}
 		}()
 		var call context.Context
@@ -98,11 +123,20 @@ data: [DONE]
 		}
 		select {
 		case scope := <-p.retryNotices:
-			if scope != "local" {
+			wantScope := "local"
+			if name == "naming" {
+				wantScope = ""
+			}
+			if scope != wantScope {
 				t.Fatal("lost original source", scope)
 			}
 		case <-time.After(5 * time.Second):
 			t.Fatalf("%s retry never reached subscriber", name)
+		}
+		if name == "naming" {
+			if _, ok := contextinfo.ConversationFromContext(call); ok {
+				t.Fatal("naming retained the inbound conversation")
+			}
 		}
 		select {
 		case err := <-result:

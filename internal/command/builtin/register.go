@@ -83,7 +83,7 @@ type DoctorService interface {
 type Deps struct {
 	Doctor   DoctorService
 	Router   *command.Router
-	Sessions *session.Service
+	Sessions *session.Supervisor
 	Requests *request.Manager
 	Turns    *turn.Manager
 	Store    storage.Store

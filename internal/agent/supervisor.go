@@ -22,7 +22,7 @@ type Supervisor struct {
 	signals               signals // Owned event sources; closed after internal producers finish.
 	ctx                   context.Context
 	cancel                context.CancelFunc
-	sessions              *session.Service
+	sessions              *session.Supervisor
 	requests              *request.Manager
 	turns                 *turn.Manager
 	routes                *routes.Registry
@@ -109,7 +109,7 @@ func (m *Supervisor) ObserveBindingChanged(handler func(BindingChangedEvent) err
 	if m.closed {
 		return nil, signal.ErrClosed
 	}
-	return m.sessions.BindingChanged().Observe(func(_ context.Context, event session.BindingChangedEvent) error {
+	return m.sessions.ObserveBindingChanged(func(_ context.Context, event session.BindingChangedEvent) error {
 		snapshot := BindingChangedEvent{Version: event.Version}
 		if event.Old != nil {
 			snapshot.Old = &BindingSnapshot{Scope: event.Old.Scope(), SessionID: event.Old.SessionID(), Version: event.Old.Version()}

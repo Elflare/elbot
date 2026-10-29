@@ -16,10 +16,8 @@ import (
 	"elbot/internal/turn"
 )
 
-// StatusRecorder is the synchronous source of runtime snapshots. Display
-// delivery happens after Record returns and never while its mutex is held.
-// TODO(session重构)：实现 ForgetSession，由根部接入 Session 的同步退役流程，删除 snapshots／owners。
-// 与状态发布串行协调，旧执行的迟到结果不得重新建立已释放状态；恢复会话时按需读取持久化用量。
+// StatusRecorder commits runtime snapshots before display delivery, which
+// never holds the state mutex.
 type StatusRecorder struct {
 	publishMu sync.Mutex
 	mu        sync.Mutex
@@ -48,8 +46,8 @@ func (r *StatusRecorder) RecordUsage(ctx context.Context, sessionID string, usag
 }
 
 func (r *StatusRecorder) record(ctx context.Context, snapshot runtimestatus.Snapshot, usageOnly bool) {
-	// Status subscribers only update in-memory projections. Serialize publication
-	// so a retired target cannot be recreated by an older concurrent emission.
+	// Serialize publication; subscribers use version and binding facts to reject
+	// delayed events for retired activations.
 	r.publishMu.Lock()
 	defer r.publishMu.Unlock()
 	ctx = r.view.Context(ctx)
@@ -103,7 +101,8 @@ func (r *StatusRecorder) record(ctx context.Context, snapshot runtimestatus.Snap
 	agentshare.Emit(context.WithoutCancel(ctx), r.changed, event)
 }
 
-// Usage restores the durable snapshot once; fresh observations always win.
+// Usage restores durable usage for an active execution; idle queries do not
+// retain session state. Fresh in-memory observations always win.
 func (r *StatusRecorder) Usage(row *storage.Session) (*llm.Usage, error) {
 	if row == nil {
 		return nil, nil
@@ -117,7 +116,9 @@ func (r *StatusRecorder) Usage(row *storage.Session) (*llm.Usage, error) {
 			return nil, err
 		}
 		snapshot.SessionID, snapshot.Usage = row.ID, agentshare.CloneUsage(state.LastUsage)
-		r.snapshots[row.ID] = snapshot
+		if _, _, active := r.turns.ExecutionAttempt(row.ID); active {
+			r.snapshots[row.ID] = snapshot
+		}
 	}
 	return agentshare.CloneUsage(snapshot.Usage), nil
 }
@@ -128,6 +129,15 @@ func (r *StatusRecorder) Snapshot(sessionID string) runtimestatus.Snapshot {
 	snapshot := r.snapshots[sessionID]
 	snapshot.Usage = agentshare.CloneUsage(snapshot.Usage)
 	return snapshot
+}
+
+// ForgetSession 在无绑定且执行真实退出后调用；删除归属使迟到终态失去写入资格。
+// 不等待观察者：事件只含快照，外部按绑定及版本处理已提交的通知。
+func (r *StatusRecorder) ForgetSession(sessionID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.snapshots, sessionID)
+	delete(r.owners, sessionID)
 }
 
 func mergeRuntimeStatus(previous, next runtimestatus.Snapshot) runtimestatus.Snapshot {

@@ -9,7 +9,6 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
 	"elbot/internal/request"
-	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
@@ -80,7 +79,7 @@ func TestStopCommandCancelsNumberedHookRequest(t *testing.T) {
 	defer turnDone()
 	_, hookCtx, _ := manager.Start(turnCtx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindHook, Label: "gpt_image_draw_fullwidth"})
 
-	cmd := NewStop(Deps{Sessions: session.NewService(newCommandTestStore(t)), Requests: manager, Turns: turn.NewManager()})
+	cmd := NewStop(Deps{Sessions: newSessionSupervisor(t, newCommandTestStore(t)), Requests: manager, Turns: turn.NewManager()})
 	if _, err := cmd.Handle(ctx, command.Request{Args: "1.1"}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -99,7 +98,7 @@ func TestStopCommandCancelsNumberedChildRequest(t *testing.T) {
 	defer turnDone()
 	_, toolCtx, _ := manager.Start(turnCtx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindTool, Label: "shell"})
 
-	cmd := NewStop(Deps{Sessions: session.NewService(newCommandTestStore(t)), Requests: manager, Turns: turn.NewManager()})
+	cmd := NewStop(Deps{Sessions: newSessionSupervisor(t, newCommandTestStore(t)), Requests: manager, Turns: turn.NewManager()})
 	if _, err := cmd.Handle(ctx, command.Request{Args: "1.1"}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -119,7 +118,7 @@ func TestStopCommandCancelsNumberedTurnAndChildren(t *testing.T) {
 	_, toolCtx, toolDone := manager.Start(turnCtx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindTool, Label: "shell"})
 	defer toolDone()
 
-	cmd := NewStop(Deps{Sessions: session.NewService(newCommandTestStore(t)), Requests: manager, Turns: turn.NewManager()})
+	cmd := NewStop(Deps{Sessions: newSessionSupervisor(t, newCommandTestStore(t)), Requests: manager, Turns: turn.NewManager()})
 	if _, err := cmd.Handle(ctx, command.Request{Args: "1"}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -140,7 +139,7 @@ func TestStopCommandCompletesRequestIDs(t *testing.T) {
 	started, _, done := manager.Start(context.Background(), request.StartRequest{SessionID: "s1", Kind: request.KindLLM, Label: "chat"})
 	defer done()
 
-	cmd := NewStop(Deps{Sessions: session.NewService(newCommandTestStore(t)), Requests: manager}).(command.Completer)
+	cmd := NewStop(Deps{Sessions: newSessionSupervisor(t, newCommandTestStore(t)), Requests: manager}).(command.Completer)
 	prefix := started.ID[:8]
 	got := cmd.Complete(contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin}), command.CompletionRequest{Raw: "/stop " + prefix, Prefix: "/", Name: "stop", Args: prefix, Cursor: len("/stop ") + len(prefix)})
 	if len(got) != 1 || got[0].Text != started.ID || got[0].Kind != "request_id" {

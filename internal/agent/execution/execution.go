@@ -3,6 +3,9 @@ package execution
 import (
 	"context"
 	"elbot/internal/llm"
+	"elbot/internal/signal"
+	"errors"
+	"log/slog"
 	"time"
 
 	agentshare "elbot/internal/agent/share"
@@ -38,6 +41,8 @@ type ExecutionCoordinator struct {
 		MaybeScheduleNaming(context.Context, string)
 		RegisterOrigin(context.Context, string, llm.Origin) (*storage.Session, error)
 		Resume(context.Context, session.Scope, string) (*storage.Session, error)
+		RecordActivity(context.Context, *session.Binding) error
+		SessionIdle(context.Context, string) error
 	}
 	sessionRows interface {
 		Get(context.Context, string) (*storage.Session, error)
@@ -90,18 +95,31 @@ type ExecutionCoordinator struct {
 	responseTimeout time.Duration
 }
 
-func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, text string, out agentshare.Output) error {
-	if _, err := c.status.Usage(row); err != nil {
-		return err
-	}
+func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, text string, out agentshare.Output) (runErr error) {
 	execution := turn.ExecutionFromContext(ctx)
 	if execution == nil {
 		execution = turn.NewExecution(storage.NewID())
 		ctx = turn.WithExecution(ctx, execution)
 	}
+	defer func() {
+		// An error before StartExecution must also retire a reservation inherited
+		// from append confirmation or compaction. Never stop another execution.
+		if runErr != nil {
+			_, release, err := c.sessions.EnterSessions(context.WithoutCancel(ctx), row.ID)
+			if err == nil {
+				if c.turns.Execution(row.ID) == execution && c.turns.MatchesAttempt(row.ID, "") {
+					c.turns.StopSession(row.ID, "")
+				}
+				release()
+			}
+		}
+		c.sessionIdle(ctx, row.ID)
+	}()
 	out = executionTurnOutput{view: c.view, foreground: foregroundTurnOutput{sender: c.output}, execution: execution, fallback: out}
 	for {
 		next, pending, err := c.runAttempt(ctx, row, text, out)
+		previousID := row.ID
+		row = next
 		if err != nil {
 			execution.Finish(err)
 			return err
@@ -113,7 +131,7 @@ func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, te
 			return nil
 		}
 		ctx = c.view.Context(ctx)
-		if next.ID != row.ID && !agentshare.IsBackgroundSession(next) {
+		if next.ID != previousID && !agentshare.IsBackgroundSession(next) {
 			_, binding, err := c.sessions.CurrentBound(ctx, c.identity.Scope(ctx))
 			if err != nil {
 				execution.Finish(err)
@@ -125,9 +143,16 @@ func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, te
 			}
 			ctx = session.WithBinding(ctx, binding)
 		}
-		row = next
 		text = pending.Text
 		ctx = agentshare.WithInboundTurnInput(ctx, pending)
+	}
+}
+
+// sessionIdle runs outside business admission, after the owning work has joined.
+// Shutdown intentionally stops timers; other failures remain observable.
+func (c *ExecutionCoordinator) sessionIdle(ctx context.Context, id string) {
+	if err := c.sessions.SessionIdle(context.WithoutCancel(ctx), id); err != nil && !errors.Is(err, signal.ErrClosed) {
+		slog.WarnContext(ctx, "session idle notification failed", "session_id", id, "error", err)
 	}
 }
 

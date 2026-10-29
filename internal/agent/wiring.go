@@ -37,14 +37,9 @@ import (
 )
 
 func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps) (*Supervisor, error) {
-	// TODO(session重构)：后续迁移 NewSupervisor 时注入 IsSuperadmin、ReleaseSession、ReleaseBinding；
-	// ReleaseSession 只连接 Agent 自有执行状态和自动确认的 ForgetSession，ReleaseBinding 复用撤销记录 Forget。
-	// 合并 Request／Turn 活跃事实，并将有效输入及真实执行收尾接入 RecordActivity／SessionIdle；
-	// 不恢复旧激活的自动确认或撤销记录，不用 BindingChanged 代替必需的同步释放。
 	ctx, cancel := context.WithCancel(ctx)
 	m := &Supervisor{ctx: ctx, cancel: cancel, signals: newSignals(), bindings: &signalBindings{}, done: make(chan struct{})}
 	m.routes = routes.New()
-	m.sessions = session.NewServiceWithConfig(deps.Store, session.Config{NamingConfig: session.NamingConfig{TriggerStep: cfg.Session.Naming.TriggerStep}, DefaultMode: cfg.Session.DefaultMode}, session.NewTitleGenerator(deps.Models))
 	m.requests = request.NewManager(0)
 	m.turns = turn.NewManager()
 	m.contexts = contextmgr.New(contextmgr.Options{Compactors: m.routes, Store: deps.Store, Models: deps.Models, Config: cfg.Context})
@@ -59,9 +54,47 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	})
 	m.bridge = bridge
 	status := agentexecution.NewStatusRecorder(agentexecution.StatusRecorderDeps{View: view, Turns: m.turns, Changed: signals.StatusChanged})
+	// 构造不执行释放回调；全部消费者赋值后才启动 Session。
+	var confirmations *agentconfirmation.ConfirmationCoordinator
+	var err error
+	m.sessions, err = session.NewSupervisor(ctx, cfg, session.SupervisorDeps{
+		Store: deps.Store, Models: deps.Models, Materials: m.routes,
+		ActiveSessionIDs: func() []string {
+			active := make(map[string]struct{})
+			for _, snapshot := range m.turns.SnapshotAll() {
+				if snapshot.Phase != turn.PhaseIdle {
+					active[snapshot.SessionID] = struct{}{}
+				}
+			}
+			for _, request := range m.requests.List() {
+				if request.SessionID != "" {
+					active[request.SessionID] = struct{}{}
+				}
+			}
+			ids := make([]string, 0, len(active))
+			for id := range active {
+				ids = append(ids, id)
+			}
+			return ids
+		},
+		CheckForeground: func(_ context.Context, source *storage.Session) error {
+			return view.CheckSelection(source, deps.Models.ResolveMode(storage.SessionModeWork))
+		},
+		IsSuperadmin: func(scope session.Scope) bool {
+			return deps.Permission.Actor(scope.ActorID, scope.Platform, "", "").Role == contextinfo.RoleSuperadmin
+		},
+		ReleaseSession: func(id string) {
+			status.ForgetSession(id)
+			confirmations.ForgetSession(id)
+		},
+		ReleaseBinding: func(binding *session.Binding) { deps.Tools.Forget(binding) },
+	})
+	if err != nil {
+		return m, err
+	}
 	output := agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{Dispatcher: deps.Platform, Hooks: bridge, Reasoning: deps.Platform.StartReasoning})
-	policy := agentconfirmation.NewConfirmationPolicy(agentconfirmation.ConfirmationPolicyDeps{Identity: identity, IdleExpiration: sessionIdleExpirationConfig(cfg.Session.IdleExpiration), UserConfirmationTimeout: 10 * time.Minute})
-	confirmations := agentconfirmation.NewConfirmationCoordinator(agentconfirmation.ConfirmationCoordinatorDeps{
+	policy := agentconfirmation.NewConfirmationPolicy(agentconfirmation.ConfirmationPolicyDeps{Identity: identity, IdleExpiration: cfg.Session.IdleExpiration, UserConfirmationTimeout: 10 * time.Minute})
+	confirmations = agentconfirmation.NewConfirmationCoordinator(agentconfirmation.ConfirmationCoordinatorDeps{
 		Sessions: m.sessions,
 		Requests: m.requests,
 		Turns:    m.turns,
@@ -73,7 +106,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	toolRuntime := agenttools.NewToolRuntimeState(agenttools.ToolRuntimeStateDeps{Manager: deps.Tools, FileRollback: deps.Tools, Identity: identity})
 	toolDeps := agenttools.NewToolRunDeps(agenttools.ToolRunDeps{
 		NewWorkspaceStore: func(id string) workspace.WorkspaceStore {
-			return session.NewWorkspaceStore(m.sessions, deps.Store.Sessions(), id)
+			return m.sessions.WorkspaceStore(id)
 		},
 		Status:        status,
 		Hooks:         bridge,
@@ -147,13 +180,9 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		System:     runner.System,
 	})
 	bindProtocolRoutes(m.routes, chat, response)
-	m.sessions.SetMaterials(m.routes)
 	if err := m.contexts.CheckCompaction(llm.Origin{APIType: llm.APITypeChat}); err != nil {
 		return m, fmt.Errorf("context compaction wiring: %w", err)
 	}
-	m.sessions.SetForegroundCheck(func(_ context.Context, source *storage.Session) error {
-		return view.CheckSelection(source, deps.Models.ResolveMode(storage.SessionModeWork))
-	})
 	execution := agentexecution.NewExecutionCoordinator(ctx, agentexecution.ExecutionCoordinatorDeps{
 		Sessions:    m.sessions,
 		SessionRows: deps.Store.Sessions(),
@@ -179,21 +208,12 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 			return security.WithPermission(ctx, deps.Permission)
 		},
 		EnsureWorkspaceDir: func(ctx context.Context, id, dir string) error {
-			return session.NewWorkspaceStore(m.sessions, deps.Store.Sessions(), id).EnsureWorkspaceDir(ctx, dir)
+			return m.sessions.WorkspaceStore(id).EnsureWorkspaceDir(ctx, dir)
 		},
-	})
-	m.sessions.SetActivitySource(func() []string {
-		var ids []string
-		for _, active := range m.turns.SnapshotAll() {
-			if active.Phase != turn.PhaseIdle {
-				ids = append(ids, active.SessionID)
-			}
-		}
-		return ids
 	})
 	input := agentinput.NewInputCoordinator(agentinput.InputCoordinatorDeps{
 		NewWorkspaceStore: func(id string) workspace.WorkspaceStore {
-			return session.NewWorkspaceStore(m.sessions, deps.Store.Sessions(), id)
+			return m.sessions.WorkspaceStore(id)
 		},
 		Sessions:      m.sessions,
 		SessionRows:   deps.Store.Sessions(),
@@ -205,11 +225,10 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Confirmations: confirmations,
 		Preloader:     deps.Tools,
 		ToolState:     deps.Tools,
-		WaitPolicy:    policy,
 	})
 	fileCommands := agentinput.NewFileCommandPreparer(agentinput.FileCommandPreparerDeps{
 		NewWorkspaceStore: func(id string) workspace.WorkspaceStore {
-			return session.NewWorkspaceStore(m.sessions, deps.Store.Sessions(), id)
+			return m.sessions.WorkspaceStore(id)
 		},
 		Service:  deps.Tools,
 		Sessions: m.sessions,
@@ -290,7 +309,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	if err := bindings.connectAgentNotifications(signals); err != nil {
 		return m, err
 	}
-	if err := bindings.connectSession(m.sessions, deps.Tools, execution); err != nil {
+	if err := bindings.connectSession(m.sessions, execution); err != nil {
 		return m, err
 	}
 	if err := m.bindings.connectModels(deps.Models); err != nil {
@@ -298,15 +317,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	}
 	m.handler = handler
 	return m, nil
-}
-
-func sessionIdleExpirationConfig(cfg config.SessionIdleExpirationConfig) session.IdleExpirationConfig {
-	return session.IdleExpirationConfig{
-		GroupUserTTLMinutes:         cfg.GroupUserTTLMinutes,
-		GroupSuperadminTTLMinutes:   cfg.GroupSuperadminTTLMinutes,
-		PrivateUserTTLMinutes:       cfg.PrivateUserTTLMinutes,
-		PrivateSuperadminTTLMinutes: cfg.PrivateSuperadminTTLMinutes,
-	}
 }
 
 // wireCommands constructs the command consumer and registers its modules.

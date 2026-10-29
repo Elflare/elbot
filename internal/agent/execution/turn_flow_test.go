@@ -19,6 +19,7 @@ func TestConfirmationWaitTimeoutUsesSessionTTLAsUpperBound(t *testing.T) {
 		name    string
 		role    contextinfo.Role
 		scopeID string
+		kind    contextinfo.ConversationKind
 		cfg     config.SessionIdleExpirationConfig
 		want    time.Duration
 	}{
@@ -33,6 +34,7 @@ func TestConfirmationWaitTimeoutUsesSessionTTLAsUpperBound(t *testing.T) {
 			name:    "user shorter session TTL",
 			role:    contextinfo.RoleUser,
 			scopeID: "group:1",
+			kind:    contextinfo.ConversationGroup,
 			cfg:     config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 5},
 			want:    5 * time.Minute,
 		},
@@ -40,6 +42,7 @@ func TestConfirmationWaitTimeoutUsesSessionTTLAsUpperBound(t *testing.T) {
 			name:    "user longer session TTL",
 			role:    contextinfo.RoleUser,
 			scopeID: "group:1",
+			kind:    contextinfo.ConversationGroup,
 			cfg:     config.SessionIdleExpirationConfig{GroupUserTTLMinutes: 20},
 			want:    10 * time.Minute,
 		},
@@ -48,6 +51,7 @@ func TestConfirmationWaitTimeoutUsesSessionTTLAsUpperBound(t *testing.T) {
 			name:    "superadmin session TTL",
 			role:    contextinfo.RoleSuperadmin,
 			scopeID: "group:1",
+			kind:    contextinfo.ConversationGroup,
 			cfg:     config.SessionIdleExpirationConfig{GroupSuperadminTTLMinutes: 20},
 			want:    20 * time.Minute,
 		},
@@ -57,10 +61,10 @@ func TestConfirmationWaitTimeoutUsesSessionTTLAsUpperBound(t *testing.T) {
 
 			policy := agentconfirmation.NewConfirmationPolicy(agentconfirmation.ConfirmationPolicyDeps{
 				Identity:                agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{Permission: security.DefaultPermission(), PlatformName: "test"}),
-				IdleExpiration:          sessionIdleExpirationConfig(tt.cfg),
+				IdleExpiration:          tt.cfg,
 				UserConfirmationTimeout: 10 * time.Minute,
 			})
-			ctx := agentshare.WithMessageContext(contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ScopeID: tt.scopeID}, Identity: contextinfo.Identity{PlatformUserID: "1"}}), agentshare.MessageContext{})
+			ctx := agentshare.WithMessageContext(contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ScopeID: tt.scopeID, ConversationKind: tt.kind}, Identity: contextinfo.Identity{PlatformUserID: "1"}}), agentshare.MessageContext{})
 			ctx = contextinfo.WithActor(ctx, contextinfo.Actor{ID: "test:1", Role: tt.role})
 			if got := policy.WaitTimeout(ctx); got != tt.want {
 				t.Fatalf("confirmation timeout = %s, want %s", got, tt.want)

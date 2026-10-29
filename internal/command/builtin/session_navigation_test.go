@@ -70,7 +70,7 @@ func TestPreviewContentTruncatesLongMessages(t *testing.T) {
 func TestResumeAndForkTruncateHistoryWithoutChangingMessages(t *testing.T) {
 	ctx := context.Background()
 	store := newCommandTestStore(t)
-	svc := session.NewService(store)
+	svc := newSessionSupervisor(t, store)
 	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 	parent, err := svc.Create(ctx, scope, session.CreateRequest{Title: "parent"})
 	if err != nil {
@@ -130,7 +130,7 @@ func TestResumeCommandCompletesSessionIDs(t *testing.T) {
 	ctx := context.Background()
 	store := newCommandTestStore(t)
 
-	svc := session.NewService(store)
+	svc := newSessionSupervisor(t, store)
 	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 	first, err := svc.Create(ctx, scope, session.CreateRequest{Title: "first"})
 	if err != nil {
@@ -157,7 +157,7 @@ func TestResumeCommandEmitsAudit(t *testing.T) {
 	ctx := context.Background()
 	store := newCommandTestStore(t)
 
-	svc := session.NewService(store)
+	svc := newSessionSupervisor(t, store)
 	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 	created, err := svc.Create(ctx, scope, session.CreateRequest{Title: "audited"})
 	if err != nil {
@@ -197,7 +197,7 @@ func TestResumeCommandEmitsAudit(t *testing.T) {
 func TestResumeCommandUsesRecentNonCurrentGlobalIndex(t *testing.T) {
 	ctx := context.Background()
 	store := newCommandTestStore(t)
-	svc := session.NewService(store)
+	svc := newSessionSupervisor(t, store)
 	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 	now := storage.Now()
 
@@ -262,7 +262,7 @@ func TestSessionsCommandCLIListsAllPlatformOwners(t *testing.T) {
 	ctx := context.Background()
 	store := newCommandTestStore(t)
 
-	svc := session.NewService(store)
+	svc := newSessionSupervisor(t, store)
 	qqScope := session.Scope{ActorID: "qqonebot:42", Platform: "qqonebot", PlatformScopeID: "group:9"}
 	qqSession, err := svc.Create(ctx, qqScope, session.CreateRequest{Title: "qq visible"})
 	if err != nil {
@@ -322,7 +322,7 @@ func TestForkMessagesUseForkContextAndForkShowsHistory(t *testing.T) {
 	ctx := context.Background()
 	store := newCommandTestStore(t)
 
-	svc := session.NewService(store)
+	svc := newSessionSupervisor(t, store)
 	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 	parent, err := svc.Create(ctx, scope, session.CreateRequest{Title: "parent"})
 	if err != nil {

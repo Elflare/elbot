@@ -256,7 +256,7 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 
 `internal/session/` 根部 13 个文件、share／binding 各 3 个文件、control 的 9 个文件、branch／naming 各 4 个文件均已实现；包内不保留旧入口和迁移备份。
 
-根部按下层契约直接接线，公开请求、结果、绑定、事件及活动入口已实现并可独立验证。契约明细见 [Session 根部契约](app-design.md#session-根部契约)；Agent 实际接线及整链路回归待后续完成。
+根部按下层契约直接接线，公开请求、结果、绑定、事件及活动入口由 Agent 和消费者使用。Agent 的 wiring.go 负责新总管构造、Request／Turn 活跃集合、权限及同步释放；lifecycle.go 协调启动和实际退出。契约明细见 [Session 根部契约](app-design.md#session-根部契约)。
 
 `internal/background/share/takeover.go` 保留 Cron 与 Elnis 共用的接管查询消费契约；Session 根部 SessionTakenOver 委托 control 查询。公开观察入口仅包含绑定变化和前台接管，命名事件及日志投影留在 naming 内部；WorkspaceStore 由总管按 SessionID 创建，不交付仓库。
 
@@ -271,9 +271,9 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 | `naming/` | `service.go` 管理组件、任务状态、退役缓存与启停，`naming.go` 准备、重试与完成事实事务提交，`title.go` 固定模型快照、生成与规范化，`signals.go` 内部事件、日志及订阅 |
 | `share/` | `session.go` 共享 Scope、按 Mode 判定身份、访问规则、后台标题／元数据与错误，`binding.go` 绑定句柄、context 和 BindingCoordinator，`origin.go` 归属解析与继承 |
 
-`internal/storage/sqlite/session_repository.go` 的列表筛选与 `internal/platform/refcontext/refcontext.go` 的引用回复均以 Mode 判定后台身份，不使用元数据或任务范围前缀。Session 测试使用真实 Binding、Control 和 SQLite，Naming 使用真实本地 HTTP 验证协议及模型快照；Agent 依赖旧接口的测试在其接线阶段迁移。
+`internal/storage/sqlite/session_repository.go` 的列表筛选与 `internal/platform/refcontext/refcontext.go` 的引用回复均以 Mode 判定后台身份，不使用元数据或任务范围前缀。Session 及消费者测试使用真实总管、Binding、Control 和 SQLite，Naming 使用真实本地 HTTP 验证协议及模型快照。
 
-Control 局部计时和根部配置、活动入口、启停已实现，Branch 经共享契约接入 Control；根部将 Naming.ForgetSession 与外部 ReleaseSession 组合，覆盖过期、原 Binding 释放及关闭顺序。Naming 完成事实持久化，三次生成失败后才用用户文本 fallback，退役任务收尾后删除缓存。待 Agent 移除旧入站超时入口，提供活跃事实、活动上报及自身状态释放。约定见 [Naming 命名与缓存回收](app-design.md#naming-命名与缓存回收)及[待接线部分](app-design.md#跨模块释放的待接线部分)。
+Control 局部计时由 Agent 活动与真实收尾驱动，Branch 经共享契约接入 Control；根部组合 Naming.ForgetSession 与外部 ReleaseSession。Agent 的 execution/status.go 释放快照及归属，confirmation/confirmation.go 释放自动确认，Tool 按原 Binding 释放撤销记录；hook_bridge.go 收尾独立请求，execution 负责执行、压缩及追加等待的收尾。Naming 完成事实持久化，三次生成失败后才用用户文本 fallback，退役任务退出后删除缓存。约定见 [Naming 命名与缓存回收](app-design.md#naming-命名与缓存回收)及[跨模块活动与释放](app-design.md#跨模块活动与释放)。
 
 <!-- locator:context -->
 ## 上下文、Prompt 与压缩

@@ -6,6 +6,7 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/session"
+	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
 
@@ -14,8 +15,10 @@ const KindRiskConfirmation = "risk_confirmation"
 type ScopeFunc func(context.Context) session.Scope
 
 type RiskConfirmationSource struct {
-	Router       *command.Router
-	Sessions     *session.Service
+	Router   *command.Router
+	Sessions interface {
+		Current(context.Context, session.Scope) (*storage.Session, error)
+	}
 	Turns        *turn.Manager
 	Scope        ScopeFunc
 	CommandNames []string

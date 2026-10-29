@@ -16,7 +16,7 @@ func TestLifecycleCommandsArchiveAndArchives(t *testing.T) {
 	ctx := context.Background()
 	store := newCommandTestStore(t)
 
-	svc := session.NewService(store)
+	svc := newSessionSupervisor(t, store)
 	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 	first, err := svc.Create(ctx, scope, session.CreateRequest{Title: "first"})
 	if err != nil {
@@ -87,7 +87,7 @@ func TestLifecycleCommandsArchiveAndArchives(t *testing.T) {
 func TestArchiveCurrentConfirmationPinsSessionID(t *testing.T) {
 	ctx := context.Background()
 	store := newCommandTestStore(t)
-	svc := session.NewService(store)
+	svc := newSessionSupervisor(t, store)
 	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 	current, err := svc.Create(ctx, scope, session.CreateRequest{Title: "current"})
 	if err != nil {
@@ -134,7 +134,7 @@ func TestSessionTargetCommandsCompleteSessionIDsAndConfirm(t *testing.T) {
 	ctx := context.Background()
 	store := newCommandTestStore(t)
 
-	svc := session.NewService(store)
+	svc := newSessionSupervisor(t, store)
 	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 	first, err := svc.Create(ctx, scope, session.CreateRequest{Title: "first"})
 	if err != nil {

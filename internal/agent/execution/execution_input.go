@@ -7,11 +7,13 @@ import (
 	"time"
 
 	agentshare "elbot/internal/agent/share"
+	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
 
 func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, row *storage.Session, text string) error {
+	defer c.sessionIdle(ctx, row.ID)
 	for {
 		locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), row.ID)
 		if err != nil {
@@ -19,6 +21,11 @@ func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, row *storage.Se
 		}
 		locked, err = agentshare.CaptureSessionBinding(locked, c.sessions, c.identity, row)
 		if err != nil {
+			release()
+			return err
+		}
+		binding, _ := sessionpkg.BindingFromContext(locked)
+		if err := c.sessions.RecordActivity(locked, binding); err != nil {
 			release()
 			return err
 		}
@@ -85,6 +92,13 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 		}
 		ctx = locked
 		snapshot := c.turns.Snapshot(session.ID)
+		if snapshot.Phase != turn.PhaseStopping && snapshot.Phase != turn.PhaseAwaitRiskConfirm && snapshot.Phase != turn.PhaseAwaitAppendConfirm {
+			binding, _ := sessionpkg.BindingFromContext(ctx)
+			if err := c.sessions.RecordActivity(ctx, binding); err != nil {
+				release()
+				return agentshare.InputHandled, err
+			}
+		}
 		switch snapshot.Phase {
 		case turn.PhaseStopping:
 			release()
@@ -116,6 +130,7 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 			err := c.output.SendChat(ctx, appendConfirmPromptText(timeout))
 			go func() {
 				defer finishWait()
+				defer c.sessionIdle(waitCtx, session.ID)
 				if wait.Wait(waitCtx, timeout) {
 					_ = c.output.SendChat(waitCtx, "追加确认已过期，待追加内容已丢弃，本轮处理已停止。")
 				}

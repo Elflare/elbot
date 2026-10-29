@@ -13,6 +13,9 @@ func (m *Supervisor) BeginClose() {
 	}
 	m.closed = true
 	m.cancel()
+	if m.sessions != nil {
+		m.sessions.BeginClose()
+	}
 	if m.execution != nil {
 		m.execution.BeginClose()
 	}
@@ -46,7 +49,7 @@ func (m *Supervisor) Done() <-chan struct{} { return m.done }
 func (m *Supervisor) Close(ctx context.Context) error {
 	m.BeginClose()
 	var errs []error
-	// Disconnect producers before waiting for final expiry output and session naming.
+	// Disconnect observers before joining owned execution and Session resources.
 	errs = append(errs, m.bindings.Close(ctx))
 	if !m.bindings.stopped() {
 		return errors.Join(errs...)
@@ -106,7 +109,9 @@ func (m *Supervisor) Start() error {
 	if m.started {
 		return nil
 	}
+	if err := m.sessions.Start(); err != nil {
+		return err
+	}
 	m.started = true
-	m.sessions.StartNaming(m.ctx)
 	return nil
 }

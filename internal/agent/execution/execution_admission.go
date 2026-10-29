@@ -123,9 +123,6 @@ func (c *ExecutionCoordinator) sessionForInput(ctx context.Context, text string)
 		if msg.ResumeSessionID != "" {
 			return c.sessions.Resume(ctx, c.identity.Scope(ctx), msg.ResumeSessionID)
 		}
-		if msg.ForkFromMessageID != "" {
-			return c.sessions.Fork(ctx, c.identity.Scope(ctx), msg.ForkFromMessageID)
-		}
 	}
 	return c.sessions.GetOrCreateCurrent(ctx, c.identity.Scope(ctx), text)
 }

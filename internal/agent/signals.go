@@ -6,7 +6,6 @@ import (
 	agentexecution "elbot/internal/agent/execution"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/events"
-	"elbot/internal/fileops"
 	"elbot/internal/media"
 	"elbot/internal/modelmgr"
 	"elbot/internal/notification/rules"
@@ -56,17 +55,9 @@ type signalBindings struct {
 	connections []*signal.Connection
 }
 
-func (b *signalBindings) connectSession(sessions *session.Service, rollback interface{ Forget(fileops.Binding) }, execution *agentexecution.ExecutionCoordinator) error {
-	if err := connectSignal(b, sessions.ForegroundActivated(), func(ctx context.Context, event session.ForegroundActivatedEvent) error {
+func (b *signalBindings) connectSession(sessions *session.Supervisor, execution *agentexecution.ExecutionCoordinator) error {
+	connection, err := sessions.ObserveForegroundActivated(func(ctx context.Context, event session.ForegroundActivatedEvent) error {
 		execution.AdoptForeground(ctx, &event.Session, event.Binding)
-		return nil
-	}, signal.ConnectOptions{}); err != nil {
-		return err
-	}
-	connection, err := sessions.BindingChanged().Observe(func(ctx context.Context, event session.BindingChangedEvent) error {
-		if event.Old != nil {
-			rollback.Forget(event.Old)
-		}
 		return nil
 	}, signal.ConnectOptions{})
 	if err != nil {

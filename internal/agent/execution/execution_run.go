@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
@@ -85,16 +86,31 @@ func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.
 	ctx = turn.WithAttempt(ctx, attempt)
 	execution := turn.ExecutionFromContext(ctx)
 	started := c.turns.StartExecution(session.ID, agentshare.InboundTurnInput(ctx, text), execution, attempt)
-	release()
 	if !started {
+		release()
 		if c.turns.Execution(session.ID) == execution {
 			return session, turn.Input{}, nil
 		}
 		return session, turn.Input{}, errExecutionConflict
 	}
-	defer c.turns.FinishRequest(session.ID, attempt)
-
-	result, pending := c.runTurn(ctx, session, text, out, selection)
+	// Restore durable usage before cancellation can publish the first snapshot.
+	if _, err := c.status.Usage(session); err != nil {
+		c.turns.FinishRequest(session.ID, attempt)
+		release()
+		return session, turn.Input{}, err
+	}
+	// Keep the request registered through terminal status and Turn cleanup,
+	// including the interval after CompleteLLMInput removes the Turn.
+	reqInfo, reqCtx, done := c.requests.Start(ctx, request.StartRequest{SessionID: session.ID, Kind: request.KindTurn, Label: "chat", Timeout: c.responseTimeout})
+	release()
+	stopObserver := sync.OnceFunc(c.observeRequestStop(reqCtx, session.ID, attempt))
+	defer func() {
+		stopObserver()
+		c.turns.FinishRequest(session.ID, attempt)
+		done()
+	}()
+	result, pending := c.runTurn(ctx, reqCtx, reqInfo.ID, session, text, out, selection)
+	stopObserver()
 	if err := c.finishAttempt(ctx, session, out, result); err != nil {
 		return session, turn.Input{}, err
 	}
@@ -124,7 +140,7 @@ func (c *ExecutionCoordinator) finishAttempt(ctx context.Context, session *stora
 	return nil
 }
 
-func (c *ExecutionCoordinator) runTurn(ctx context.Context, session *storage.Session, text string, out agentshare.Output, selection modelmgr.Selection) (agentshare.TurnResult, turn.Input) {
+func (c *ExecutionCoordinator) runTurn(ctx, reqCtx context.Context, requestID string, session *storage.Session, text string, out agentshare.Output, selection modelmgr.Selection) (agentshare.TurnResult, turn.Input) {
 	prepared, err := c.dialogue.PrepareTurn(ctx, agentshare.TurnInput{Session: session, Text: text, Input: agentshare.InboundTurnInput(ctx, text), ReplyToPlatformMessageID: agentshare.InboundReplyMessageID(ctx), Selection: selection})
 	if err != nil {
 		result := agentshare.TurnResult{Outcome: agentshare.Failed, Err: err}
@@ -135,27 +151,10 @@ func (c *ExecutionCoordinator) runTurn(ctx context.Context, session *storage.Ses
 		}
 		return result, turn.Input{}
 	}
-	locked, releaseRequest, err := c.sessions.EnterSessions(ctx, session.ID)
-	if err != nil {
-		result := agentshare.TurnResult{Outcome: agentshare.Failed, Err: err}
-		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
-			result.Outcome = agentshare.Canceled
-		} else {
-			agentshare.ReportFailure(ctx, session.ID, err, out.Notify)
-		}
-		return result, turn.Input{}
-	}
 	if !c.turns.MatchesAttempt(session.ID, turn.AttemptFromContext(ctx)) || c.turns.Snapshot(session.ID).Phase == turn.PhaseStopping {
-		releaseRequest()
 		return agentshare.TurnResult{Outcome: agentshare.Canceled, Err: context.Canceled, QuietCancellation: true}, turn.Input{}
 	}
-	reqCtxInfo, reqCtx, done := c.requests.Start(locked, request.StartRequest{SessionID: session.ID, Kind: request.KindTurn, Label: "chat", Timeout: c.responseTimeout})
-	releaseRequest()
-	defer done()
-	stopObserver := c.observeRequestStop(reqCtx, session.ID, turn.AttemptFromContext(ctx))
-	defer stopObserver()
-
-	result := c.dialogue.RunTurn(ctx, reqCtx, agentshare.TurnInput{Session: session, Text: text, Selection: selection, RequestID: reqCtxInfo.ID, Prepared: prepared}, out)
+	result := c.dialogue.RunTurn(ctx, reqCtx, agentshare.TurnInput{Session: session, Text: text, Selection: selection, RequestID: requestID, Prepared: prepared}, out)
 	if result.QuietCancellation {
 		c.handleTurnContextDone(ctx, session.ID, reqCtx.Err(), out)
 		return result, turn.Input{}

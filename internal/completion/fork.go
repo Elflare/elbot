@@ -14,9 +14,11 @@ const KindForkMessage = "fork_message"
 
 type ForkMessageSource struct {
 	Router   *command.Router
-	Sessions *session.Service
-	Store    storage.Store
-	Scope    ScopeFunc
+	Sessions interface {
+		Current(context.Context, session.Scope) (*storage.Session, error)
+	}
+	Store storage.Store
+	Scope ScopeFunc
 }
 
 func (s ForkMessageSource) Complete(ctx context.Context, req Request) ([]Item, error) {

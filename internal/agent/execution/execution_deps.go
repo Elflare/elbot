@@ -52,6 +52,8 @@ type ExecutionCoordinatorDeps struct {
 		MaybeScheduleNaming(context.Context, string)
 		RegisterOrigin(context.Context, string, llm.Origin) (*storage.Session, error)
 		Resume(context.Context, session.Scope, string) (*storage.Session, error)
+		RecordActivity(context.Context, *session.Binding) error
+		SessionIdle(context.Context, string) error
 	}
 	SessionRows interface {
 		Get(context.Context, string) (*storage.Session, error)

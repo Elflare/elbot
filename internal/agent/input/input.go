@@ -4,16 +4,13 @@ import (
 	"context"
 	"elbot/internal/tool"
 	"elbot/internal/workspace"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/command"
-	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
 	sessionpkg "elbot/internal/session"
@@ -32,7 +29,7 @@ type InputCoordinator struct {
 		Resume(context.Context, sessionpkg.Scope, string) (*storage.Session, error)
 		CurrentBound(context.Context, sessionpkg.Scope) (*storage.Session, *sessionpkg.Binding, error)
 		Current(context.Context, sessionpkg.Scope) (*storage.Session, error)
-		ExpireIdleCurrent(context.Context, sessionpkg.ExpireIdleRequest) (sessionpkg.ExpireIdleResult, error)
+		RecordActivity(context.Context, *sessionpkg.Binding) error
 	}
 	sessionRows interface {
 		Get(context.Context, string) (*storage.Session, error)
@@ -52,7 +49,6 @@ type InputCoordinator struct {
 	toolState interface {
 		Commit(context.Context, string, tool.StateUpdate) (tool.StateCommit, globalevents.LogResult, error)
 	}
-	waitPolicy InputWaitPolicy
 }
 
 func compactCommandBlockedText(command string) string {
@@ -164,6 +160,10 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 				}
 				*session = *latest
 			}
+			if len(directives.Injected) > 0 || len(directives.Existing) > 0 || len(skillDirectives.Skills) > 0 {
+				binding, _ := sessionpkg.BindingFromContext(ctx)
+				return c.sessions.RecordActivity(ctx, binding)
+			}
 			return nil
 		}
 	}
@@ -176,71 +176,6 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 		return c.confirmations.SubmitResponse(ctx, session.ID, text)
 	}
 	return nil
-}
-
-// TODO(agent接线)：删除入站 ExpireIdleCurrentSession 及旧 TTL 消费契约；
-// 有效输入持原绑定调用 Session.RecordActivity，实际执行收尾统一调用 SessionIdle。
-// Control 已改为主动计时，不恢复此处按 UpdatedAt 检查的旧入口。
-func (c *InputCoordinator) ExpireIdleCurrentSession(ctx context.Context) error {
-	current, err := c.sessions.Current(ctx, c.identity.Scope(ctx))
-	if errors.Is(err, storage.ErrNotFound) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if c.turns.Snapshot(current.ID).Phase != turn.PhaseIdle {
-		return nil
-	}
-	actor := c.identity.Actor(ctx)
-	result, err := c.sessions.ExpireIdleCurrent(ctx, sessionpkg.ExpireIdleRequest{
-		Scope:        c.identity.Scope(ctx),
-		IsSuperadmin: actor.Role == contextinfo.RoleSuperadmin,
-		Config:       c.waitPolicy.IdleExpiration(),
-		Now:          time.Now(),
-	})
-	if err != nil {
-		return err
-	}
-	if result.Expired {
-		{
-			content, _ := json.Marshal(map[string]any{"actor_id": actor.ID, "ttl_minutes": result.TTLMinutes})
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogAudit,
-				Level:        slog.LevelInfo,
-				EventName:    "session_idle_expired",
-				Module:       "agent",
-				Type:         globalevents.ContentJSON,
-				Content:      string(content),
-				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultSucceeded,
-			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			record.Identity.SessionID = &result.SessionID
-			_ = globalevents.EmitLog(ctx, record)
-		}
-	}
-	return nil
-}
-
-func hasForkFromMessage(ctx context.Context) bool {
-	msg, ok := agentshare.MessageContextFrom(ctx)
-	return ok && msg.ForkFromMessageID != ""
 }
 
 // NewInputCoordinator initializes InputCoordinator without installing cross-service callbacks.
@@ -257,6 +192,5 @@ func NewInputCoordinator(deps InputCoordinatorDeps) *InputCoordinator {
 		confirmations:     deps.Confirmations,
 		preloader:         deps.Preloader,
 		toolState:         deps.ToolState,
-		waitPolicy:        deps.WaitPolicy,
 	}
 }

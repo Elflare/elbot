@@ -325,7 +325,7 @@ flowchart TD
 
 ## Session 根部契约
 
-Session 由 Agent 创建、持有和关闭，App 不取得内部 Session。根部 13 个文件、share 和 binding 各 3 个文件、control 的 9 个文件、branch 和 naming 各 4 个文件均已实现，根部可独立编译验证；包内不保留旧入口或迁移备份。Agent 接线及跨模块释放仍待完成。
+Session 由 Agent 创建、持有和关闭，App 不取得内部 Session。根部 13 个文件、share 和 binding 各 3 个文件、control 的 9 个文件、branch 和 naming 各 4 个文件均已实现；Agent 及消费者使用新总管，包内不保留旧入口或迁移备份。
 
 唯一构造入口为 `NewSupervisor(ctx, cfg, SupervisorDeps)`，接收 Agent 运行 context 和完整配置，消费默认模式、闲置期限及命名触发步数，不重复填配置默认值。必需依赖只在根部检查；构造不启动任务、不查询协议材料或命名模型。部分构造失败保留已取得的组件、停止接纳，并将部分总管交回 Agent 调用 Close。
 
@@ -350,7 +350,7 @@ Session 由 Agent 创建、持有和关闭，App 不取得内部 Session。根�
 - naming、control、binding 均提供 BeginClose()、Close(context.Context) error、Done()；关闭必须并发安全、幂等，固定并保留独立关闭错误，Done 只在任务、订阅和在途回调实际退出后关闭。branch 无自有异步资源，不设空关闭方法。
 - 根部 Close 使用调用方的等待期限，超时后可再次等待；Done 覆盖全部自有资源，不表示单次等待已返回，也不表示借用的 Store、Models 已关闭。只调用 BeginClose 不会提前释放事件源。
 
-Agent 接线尚待迁移：先创建 routes、Turn 和执行视图，再创建 Session；随后创建消费者、注册协议路线与观察连接，最后启动。Session 不提供旧构造入口、独立命名器工厂或补依赖 setter。Control 业务及局部回收已实现，跨模块释放的完整效果仍待各状态所有者接线验证。
+Agent 先创建 routes、Request、Turn 和执行视图，再创建 Session；随后创建消费者、注册协议路线与观察连接，最后启动。Session 不提供旧构造入口、独立命名器工厂或补依赖 setter。权限通过 Permission.Actor 从 Scope 的规范行为者 ID 解析；Workspace 使用总管方法，绑定及接管通过公开 Observe 方法订阅。必需释放在构造时交付，观察订阅只负责展示及接管。
 
 ### Binding 实现与回收
 
@@ -391,12 +391,14 @@ binding 与 share 的 race 回归覆盖句柄身份、条件和批量解绑、�
 - 生成链失败或最终输出无效才增加失败次数；前两次保留原标题，下次触发再试，第三次使用已加载历史中的首条非空用户消息作为文本 fallback。达到上限后不再调用模型，fallback 保存失败仅在下次触发重试保存；无有效用户文本时保留原标题，不伪造完成标记。准备及存储错误不计入生成失败，取消不写入、不 fallback、不增加失败数。失败计数只属于本次缓存生命期。
 - ForgetSession 只改内存：闲置项立即删除，在途项标记退役并保留去重，任务收尾后删除，不通过 SessionID 重新创建状态。命名不续期。根部将 ForgetSession 与外部 ReleaseSession 组合交给 Control，Agent 不直接管理命名缓存。
 - BeginClose 停止接纳并取消任务；Close 等准备、生成和终态通知结束，再等待信号、日志订阅及实际回调退出，清空缓存后关闭 Done。调用方超时可续等，关闭后不能重启。事件保留准备、生成、验证、保存、fallback 和取消事实；终态日志不随业务取消丢失，生成失败即使 fallback 成功也保留审计记录，投递失败不重做业务。
-- Session 根部及全部子包通过整包 race 回归。SQLite 的 19 份独立测试通过 race；整包仍被 cron_media_migration_test.go、media_json_test.go 引入的旧消费者接口阻断，涉及 completion、command/builtin 和 Agent，待消费者接线阶段迁移。
+- Session 根部及全部子包通过整包 race 回归；消费者测试使用真实总管与 SQLite，模型选择和命名通过公开业务入口验证，不恢复独立命名器。
 
-### 跨模块释放的待接线部分
+### 跨模块活动与释放
 
-- Agent 阶段移除旧入站过期入口，合并 Request／Turn 活跃事实并覆盖模型、工具、压缩、确认等待及 stopping；有效输入、成功、失败和取消后的真实收尾接入活动入口。外部 ReleaseSession 只释放 Agent 自有执行状态和自动确认，ReleaseBinding 释放撤销记录。
-- Session 根部已组合 Naming.ForgetSession 与外部 ReleaseSession，在途任务收尾后删除退役缓存；完整释放效果仍需 Agent 接入各状态所有者后验证。恢复会话只重建持久化内容，不恢复旧自动确认或撤销状态。Agent 对应文件保留 TODO，不提供空实现或旧 API 兼容层。
+- Agent 根部合并 Request／Turn 活跃事实，覆盖独立 Hook、模型、工具、压缩、确认等待及 stopping。有效普通输入、追加内容、确认操作及成功的工具／Skill 输入指令持原 Binding 上报活动；管理操作和无效确认不续期。确认等待策略直接消费期限配置，按 ConversationKind 分类，不从 ScopeID 前缀猜测。
+- Turn 请求在同一次准入中登记，保持到终态记录和 Turn 收尾完成；成功、失败和取消均由执行所有者在业务准入外调用 SessionIdle。压缩源会话、追加确认等待和独立 Hook 各自在真实退出后通知；取消只标记 stopping，不提前清除活动事实。准备失败时释放本执行继承的预约，不能停止其他执行。
+- Session 根部组合 Naming.ForgetSession 与外部 ReleaseSession；Agent 仅连接执行状态和自动确认的 ForgetSession，ReleaseBinding 同步调用 Tool 的撤销记录释放。释放不依赖 BindingChanged 观察者，不做 I/O、不等待观察回调、不重新准入。
+- 执行状态删除 snapshots／owners 后拒绝旧执行迟到终态，闲置状态查询只读持久化用量，不重建缓存；恢复后的新执行在建立 Turn 后、登记 Request 和启动取消观察器前恢复用量；恢复失败清理本次 Turn。自动确认和撤销记录不随历史恢复。命名在途任务保留退役占位，任务退出后清除。
 
 ### 公开能力与下层业务契约
 
@@ -431,7 +433,10 @@ WorkspaceStore 私有持有 control.Service 和 sessionID，不接收仓库，�
 
 ```mermaid
 flowchart TD
-    A["agent/wiring.go<br/>提供完整配置、借用资源与外部能力（待接线）"] --> W["session/wiring.go<br/>构造、配置拆分与材料转换"]
+    A["agent/wiring.go<br/>完整配置、活跃查询、权限及同步释放接线"] --> W["session/wiring.go<br/>构造、配置拆分与材料转换"]
+    A --> AS["agent/execution/status.go<br/>执行快照、归属与退役释放"]
+    A --> AC["agent/confirmation/confirmation.go<br/>确认策略及自动确认状态释放"]
+    A --> AT["tool/supervisor.go<br/>按原 Binding 释放撤销记录"]
     W --> D["session/deps.go<br/>外部消费契约"]
     W --> S["session/supervisor.go<br/>持有组件与总管状态"]
     S --> L["session/lifecycle.go<br/>启动、停止与实际退出等待"]
@@ -469,15 +474,15 @@ flowchart TD
     E --> B & C
 ```
 
-当前根部构建缺少 naming.Service 及其构造、生命周期和业务方法。binding、control、branch、share 与 Platform/refcontext 的整包 race 已通过；SQLite 身份筛选独立回归覆盖模式、来源和接管历史冲突。SQLite 整包及 Session 根部集成仍被未完成依赖阻塞，不用假组件通过编译。Naming 接通后验证根部事件转换与回调错误、材料 nil／部分结果及关闭超时续等。
-
 ## 验证与备份
 
-Session 根部公开能力及结果类型已实现，当前仍缺少下层实现，不能执行根部或依赖它的跨包回归；下层及消费者接通后需重新验证 App、Agent、Contextmgr、Command/Builtin、Tool 和 Background。模型验证覆盖真实 Chat／Responses 构造与参数透传、重载凭据、快照隔离、保存失败、构造取消与部分结果、观察连接及关闭超时续接；跨包模型测试使用本地 HTTP 服务和临时 providers 文件，不通过生产工厂注入客户端。
+Agent、Session、Command、Completion、Contextmgr、Tool、Background、Platform、App、SQLite 及 Fileops 共 52 个包通过 race 回归；SQLite 整包不再受旧 Session 消费者阻断。全仓编译的剩余阻塞为下述 launcher 和 security 测试问题。
+
+Session 与 Agent 接线回归覆盖独立请求、stopping、实际退出后重新计时、追加确认过期、权限期限、原 Binding 同步释放、观察失败、迟到终态及恢复后授权清除。测试检查状态所属容器及原句柄释放，不依赖 GC 时机或进程内存波动。模型验证覆盖真实 Chat／Responses 构造与参数透传、重载凭据、快照隔离、保存失败、构造取消与部分结果、观察连接及关闭超时续接；跨包模型测试使用本地 HTTP 服务和临时 providers 文件。
 
 媒体结束信号与 Hook 租约并发修复已通过 Media、Agent、Platform、Tool、Hook、Background 全部 52 个包的 race 回归。覆盖独立使用 ID、取消后结束登记、失败维护、重复通知、队列拒收、信号关闭超时，以及慢导入不阻塞其他调用、同租约等待取消、维护不释放在用资源、关闭收尾与同链 Hook 优先级和结果依赖。App 整包已通过 race 验证。
 
-Media、Tool、Agent、Hook、Platform、Background 及 SQLite 的验证范围见上文。原媒体文件保存在 `.go.bak` 中。模型构造与 App 整包已通过 race。全仓编译尚缺 Session 下层契约与消费者接线；launcher 引用旧 App 运行模式常量，以及 security 测试的 string／contextinfo.Role 类型不匹配也待处理。
+Media、Tool、Agent、Hook、Platform、Background 及 SQLite 的验证范围见上文。原媒体文件保存在 `.go.bak` 中。全仓编译仍受 launcher 引用旧 App 运行模式常量，以及 security 测试的 string／contextinfo.Role 类型不匹配阻塞；Session 旧接口引用已清除。
 
 CLI 整包与 Share、refcontext、dispatch、notification 的 race 回归通过。CLI 覆盖真实管道和 Linux 伪终端的停止／最终关闭、真实 WebSocket 收尾发送、同步监听失败、并发启停及超时重试、原连接回复、事件乱序与绑定失效、WebSocket 背压期间换绑和展示关闭后连接保留、UI 关闭超时重试、回调收尾期间取消观察仍返回已发布故障、部分 UI 所有权、客户端分类及断线退出。CLI 不再依赖旧 agent/events、Platform 根包或兄弟实现；Headless 整包也通过 race，覆盖无状态生命周期、取消上下文、重复及并发调用、发送失败契约；OneBot、Share、refcontext 的 race 回归通过，覆盖分阶段关闭、临时拨号取消、在途写入取消隔离、关闭重试、重连隔离及原生 API 透传；OneBot 不再依赖根包或兄弟实现。QQ Official、Share、refcontext、notification 的 race 回归通过，覆盖实际 HTTP／WebSocket、心跳序号同步及失败退出、恢复与重新鉴权、并发启停、取消观察与独立故障、收尾发送、完整发送及别名入库等待、关闭超时重试。QQ Official 不再依赖根包或兄弟实现。Telegram、Share、refcontext、notification 与 Background/Cron 的 race 回归通过，覆盖异步远端连接、分阶段关闭、完整操作取消与退出等待、流式等待取消隔离、关闭超时重试、独立连接池释放、身份快照、命令目录并发、引用恢复、配置边界及原生 API。Telegram 生产代码与包内测试均不依赖 Platform 根包或兄弟实现；Background 报告测试通过发送契约注入回执。
 

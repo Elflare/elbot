@@ -69,7 +69,15 @@ func TestCleanupUsesInjectedLiveSessionService(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	live := session.NewService(store)
+	busy := ""
+	live := newSessionSupervisor(t, store, func(deps *session.SupervisorDeps) {
+		deps.ActiveSessionIDs = func() []string {
+			if busy != "" {
+				return []string{busy}
+			}
+			return nil
+		}
+	})
 	scope := session.Scope{ActorID: "u", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 	row, err := live.Create(ctx, scope, session.CreateRequest{})
 	if err != nil {
@@ -83,13 +91,7 @@ func TestCleanupUsesInjectedLiveSessionService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	busy := true
-	live.SetActivitySource(func() []string {
-		if busy {
-			return []string{row.ID}
-		}
-		return nil
-	})
+	busy = row.ID
 	svc := NewServiceWithConfig(nil, nil, &config.Config{Maintenance: config.MaintenanceConfig{SessionCleanup: config.MaintenanceCleanupConfig{Enabled: true, RetentionDays: 1}}}, live.CleanupExpired)
 	if logResult, err := svc.RunSessionCleanup(ctx); err != nil || logResult.ResultStatus != events.ResultSucceeded || !strings.Contains(logResult.Content, "deleted=0") {
 		t.Fatalf("cleanup=%#v error=%v", logResult, err)
@@ -97,7 +99,7 @@ func TestCleanupUsesInjectedLiveSessionService(t *testing.T) {
 	if !binding.Valid() {
 		t.Fatal("busy current was deleted")
 	}
-	busy = false
+	busy = ""
 	if logResult, err := svc.RunSessionCleanup(ctx); err != nil || logResult.ResultStatus != events.ResultSucceeded || !strings.Contains(logResult.Content, "deleted=1") {
 		t.Fatalf("cleanup=%#v error=%v", logResult, err)
 	}

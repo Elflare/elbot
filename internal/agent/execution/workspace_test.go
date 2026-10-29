@@ -10,8 +10,6 @@ import (
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/security"
-	"elbot/internal/session"
-	sessionstate "elbot/internal/session"
 	"elbot/internal/storage"
 	toolstate "elbot/internal/tool/state"
 	"elbot/internal/workspace"
@@ -38,7 +36,7 @@ func TestSessionWorkspaceStorePersistsWithoutDroppingMetadata(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	session := newWorkspaceTestSession(t, ctx, store, `{"unknown":"keep","tool_tags":["agent"]}`)
-	workspaceStore := sessionstate.NewWorkspaceStore(nil, store.Sessions(), session.ID)
+	workspaceStore := newSessionSupervisor(t, store).WorkspaceStore(session.ID)
 	if err := workspaceStore.SetWorkspaceDir(ctx, "C:/work/project"); err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +78,7 @@ func TestSessionWorkspaceStoreClear(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 	session := newWorkspaceTestSession(t, ctx, store, `{"workspace_dir":"C:/work/project","unknown":"keep"}`)
-	workspaceStore := sessionstate.NewWorkspaceStore(nil, store.Sessions(), session.ID)
+	workspaceStore := newSessionSupervisor(t, store).WorkspaceStore(session.ID)
 	if err := workspaceStore.ClearWorkspaceDir(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +106,7 @@ func TestSessionWorkspaceStoreMarksNoticeWithoutChangingWorkspace(t *testing.T) 
 	ctx := context.Background()
 	store := newTestStore(t)
 	session := newWorkspaceTestSession(t, ctx, store, `{"workspace_dir":"C:/work/project"}`)
-	workspaceStore := sessionstate.NewWorkspaceStore(nil, store.Sessions(), session.ID)
+	workspaceStore := newSessionSupervisor(t, store).WorkspaceStore(session.ID)
 
 	if err := workspaceStore.MarkWorkspaceAgentNoticeDir(ctx, "C:/work/project"); err != nil {
 		t.Fatal(err)
@@ -137,8 +135,8 @@ func TestSessionWorkspaceStoreIsSessionScoped(t *testing.T) {
 	store := newTestStore(t)
 	first := newWorkspaceTestSession(t, ctx, store, "")
 	second := newWorkspaceTestSession(t, ctx, store, "")
-	firstStore := sessionstate.NewWorkspaceStore(nil, store.Sessions(), first.ID)
-	secondStore := sessionstate.NewWorkspaceStore(nil, store.Sessions(), second.ID)
+	firstStore := newSessionSupervisor(t, store).WorkspaceStore(first.ID)
+	secondStore := newSessionSupervisor(t, store).WorkspaceStore(second.ID)
 	if err := firstStore.SetWorkspaceDir(ctx, "C:/first"); err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +162,7 @@ func TestAgentToolRunDepsInjectsWorkspaceStoreForForegroundOnly(t *testing.T) {
 	foreground := newWorkspaceTestSession(t, ctx, store, "")
 	background := newWorkspaceTestSession(t, ctx, store, `{"background_kind":"cron"}`)
 	background.Mode = storage.SessionModeBackground
-	deps := agenttools.NewToolRunDeps(agenttools.ToolRunDeps{Sessions: session.NewService(store), NewWorkspaceStore: func(id string) workspace.WorkspaceStore { return session.NewWorkspaceStore(nil, store.Sessions(), id) }, Identity: agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{Permission: security.DefaultPermission()}), Runtime: agenttools.NewToolRuntimeState(agenttools.ToolRuntimeStateDeps{FileRollback: fileops.NewService(nil)})}).ForTurn(nil, "")
+	deps := agenttools.NewToolRunDeps(agenttools.ToolRunDeps{Sessions: newSessionSupervisor(t, store), NewWorkspaceStore: func(id string) workspace.WorkspaceStore { return newSessionSupervisor(t, store).WorkspaceStore(id) }, Identity: agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{Permission: security.DefaultPermission()}), Runtime: agenttools.NewToolRuntimeState(agenttools.ToolRuntimeStateDeps{FileRollback: fileops.NewService(nil)})}).ForTurn(nil, "")
 	withStore := deps.PrepareToolContext(ctx, foreground, llm.ToolCallRequest{Name: "read_file"})
 	if _, ok := workspace.WorkspaceStoreFromContext(withStore); !ok {
 		t.Fatal("expected foreground workspace store")

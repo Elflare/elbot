@@ -55,6 +55,7 @@ func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.
 	defer func() {
 		done()
 		c.turns.CompleteCompactRun(current.ID, info.ID)
+		c.sessionIdle(ctx, current.ID)
 	}()
 	stopObserver := c.observeRequestStop(reqCtx, current.ID, info.ID)
 	defer stopObserver()

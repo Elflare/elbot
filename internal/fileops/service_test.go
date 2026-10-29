@@ -22,7 +22,7 @@ import (
 
 type fileFixture struct {
 	ctx      context.Context
-	sessions *session.Service
+	sessions *session.Supervisor
 	files    *fileops.Service
 	binding  *session.Binding
 	row      *storage.Session
@@ -36,7 +36,7 @@ func newFileFixture(t *testing.T) *fileFixture {
 	t.Helper()
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin})
 	store := testutil.NewSQLiteStore(t)
-	sessions := session.NewService(store)
+	sessions := newSessionSupervisor(t, store)
 	scope := session.Scope{ActorID: "admin", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 	row, err := sessions.Create(ctx, scope, session.CreateRequest{Title: "files"})
 	if err != nil {
@@ -46,7 +46,7 @@ func newFileFixture(t *testing.T) *fileFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	work := session.NewWorkspaceStore(sessions, store.Sessions(), row.ID)
+	work := sessions.WorkspaceStore(row.ID)
 	dir := t.TempDir()
 	if err := work.SetWorkspaceDir(ctx, dir); err != nil {
 		t.Fatal(err)

@@ -99,7 +99,7 @@ func TestBackgroundPublicRunPreloadContinuationAndCopy(t *testing.T) {
 	if err != nil || len(messages) != 2 || !strings.Contains(messages[0].Content, "KEEP_BACKGROUND_GUIDANCE") || messages[1].ID != result.MessageID {
 		t.Fatalf("history=%+v err=%v", messages, err)
 	}
-	saved := session.NewWorkspaceStore(m.sessions, deps.Store.Sessions(), row.ID)
+	saved := m.sessions.WorkspaceStore(row.ID)
 	dir, err := saved.GetWorkspaceDir(ctx)
 	path, _ := workspace.PathScopeFromContext(ctx)
 	if err != nil || dir != path.Dir {

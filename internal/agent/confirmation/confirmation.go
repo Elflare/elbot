@@ -2,6 +2,7 @@ package confirmation
 
 import (
 	"context"
+	"elbot/internal/config"
 	"elbot/internal/security"
 	"elbot/internal/tool"
 	"encoding/json"
@@ -23,19 +24,18 @@ import (
 	"elbot/internal/turn"
 )
 
-// ConfirmationPolicy is shared by append and tool confirmations and idle expiry.
+// ConfirmationPolicy bounds append and tool confirmation waits using session TTL configuration.
 type ConfirmationPolicy struct {
 	identity                ConfirmationIdentity
-	idleExpiration          session.IdleExpirationConfig
+	idleExpiration          config.SessionIdleExpirationConfig
 	userConfirmationTimeout time.Duration
 }
 
-// TODO(session重构)：实现 ForgetSession，释放 autoConfirmSession／autoConfirmTools；
-// 由根部在会话无绑定且真实闲置后调用，恢复旧会话不恢复旧激活的自动确认。
 type ConfirmationCoordinator struct {
 	sessions interface {
 		CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
 		EnterActivation(context.Context, session.Scope, ...string) (context.Context, func(), error)
+		RecordActivity(context.Context, *session.Binding) error
 	}
 	requests interface {
 		CancelSession(string) int
@@ -62,7 +62,18 @@ type ConfirmationCoordinator struct {
 func (p *ConfirmationPolicy) WaitTimeout(ctx context.Context) time.Duration {
 	actor := p.identity.Actor(ctx)
 	isSuperadmin := actor.Role == contextinfo.RoleSuperadmin
-	ttlMinutes := p.idleExpiration.TTLMinutes(p.identity.Scope(ctx), isSuperadmin)
+	cfg := p.idleExpiration
+	ttlMinutes := cfg.PrivateUserTTLMinutes
+	if isSuperadmin {
+		ttlMinutes = cfg.PrivateSuperadminTTLMinutes
+	}
+	scope := p.identity.Scope(ctx)
+	if scope.ConversationKind == "group" || scope.ConversationKind == "channel" {
+		ttlMinutes = cfg.GroupUserTTLMinutes
+		if isSuperadmin {
+			ttlMinutes = cfg.GroupSuperadminTTLMinutes
+		}
+	}
 	var sessionTimeout time.Duration
 	if ttlMinutes > 0 {
 		sessionTimeout = time.Duration(ttlMinutes) * time.Minute
@@ -111,6 +122,13 @@ func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 
 	parsed := c.commands.Parse(text)
 	switch parsed.Name {
+	case "detail", "details", "confirm", "c", "confirmtool", "ct", "confirmall", "ca", "reject", "stop":
+		binding, _ := session.BindingFromContext(ctx)
+		if err := c.sessions.RecordActivity(ctx, binding); err != nil {
+			return err
+		}
+	}
+	switch parsed.Name {
 	case "detail", "details":
 		if !c.turns.RefreshRiskConfirmation(sessionID) {
 			release()
@@ -139,9 +157,7 @@ func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 		release()
 		return c.output.SendChat(context.WithoutCancel(ctx), "正在停止，等待执行收尾。")
 	default:
-		if hasConfirmation {
-			observed = confirmationAction(ctx, sessionID, "invalid_command", confirmation, parsed.Name)
-		}
+		observed = confirmationAction(ctx, sessionID, "invalid_command", confirmation, parsed.Name)
 		release()
 		return c.output.SendChat(ctx, riskConfirmationWaitingText())
 
@@ -381,6 +397,12 @@ func NewConfirmationPolicy(deps ConfirmationPolicyDeps) *ConfirmationPolicy {
 	}
 }
 
-func (p *ConfirmationPolicy) IdleExpiration() session.IdleExpirationConfig { return p.idleExpiration }
+// ForgetSession 只释放已退役会话的内存授权，不改变持久化历史。
+func (c *ConfirmationCoordinator) ForgetSession(sessionID string) {
+	c.autoConfirmMu.Lock()
+	defer c.autoConfirmMu.Unlock()
+	delete(c.autoConfirmSession, sessionID)
+	delete(c.autoConfirmTools, sessionID)
+}
 
 const defaultUserConfirmationTimeout = 10 * time.Minute

@@ -15,7 +15,7 @@ func TestStopUserScopeResolutionAndChildren(t *testing.T) {
 	for _, target := range []string{"number", "id", "tool", "hook", "all"} {
 		t.Run(target, func(t *testing.T) {
 			ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleUser})
-			sessions := session.NewService(newCommandTestStore(t))
+			sessions := newSessionSupervisor(t, newCommandTestStore(t))
 			scope := session.Scope{ActorID: "qq:one", Platform: "qq", PlatformScopeID: "one"}
 			row, err := sessions.Create(ctx, scope, session.CreateRequest{Title: "current"})
 			if err != nil {
@@ -84,7 +84,7 @@ func TestStopRejectsMissingOrExpiredCurrent(t *testing.T) {
 	for _, state := range []string{"no current", "other current", "resumed current"} {
 		t.Run(state, func(t *testing.T) {
 			ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleUser})
-			svc := session.NewService(newCommandTestStore(t))
+			svc := newSessionSupervisor(t, newCommandTestStore(t))
 			scope := session.Scope{ActorID: "one", Platform: "qq", PlatformScopeID: "one"}
 			source, err := svc.Create(ctx, scope, session.CreateRequest{})
 			if err != nil {

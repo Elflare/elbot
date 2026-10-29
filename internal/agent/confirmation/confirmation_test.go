@@ -32,7 +32,7 @@ func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer store.Close()
-			sessions := session.NewService(store)
+			sessions := newSessionSupervisor(t, store)
 			defer sessions.Close(context.Background())
 			identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Permission: security.DefaultPermission()})
 			row, err := sessions.Create(t.Context(), identity.Scope(t.Context()), session.CreateRequest{Title: "confirmation"})

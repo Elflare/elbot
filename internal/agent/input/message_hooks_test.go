@@ -27,10 +27,6 @@ func (p *entryProbe) HandleInput(_ context.Context, text string) error {
 	p.text = text
 	return nil
 }
-func (p *entryProbe) ExpireIdleCurrentSession(context.Context) error {
-	p.order = append(p.order, "expire")
-	return nil
-}
 func (p *entryProbe) Handle(_ context.Context, text string) (bool, error) {
 	p.order = append(p.order, "command")
 	return false, nil
@@ -81,7 +77,7 @@ func TestInboundCallbackOutputPrecedesConsumeAndDispatch(t *testing.T) {
 			}
 			want := []string{"route?", "received", "outputs"}
 			if !consume {
-				want = append(want, "expire", "command", "input")
+				want = append(want, "command", "input")
 			}
 			if !reflect.DeepEqual(p.order, want) {
 				t.Fatalf("order=%v want=%v", p.order, want)

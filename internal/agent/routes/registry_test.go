@@ -135,7 +135,7 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry := routes.New()
-	sessions := session.NewService(store)
+	sessions := newSessionSupervisor(t, store)
 	turns := turn.NewManager()
 	loop, compactor := &testLoop{t: t, messages: &dialogue.MessageStore{Dialogues: store.Dialogues(), Gate: &dialogue.CommitGate{Sessions: sessions, Turns: turns, View: dialogue.ExecutionView{Sessions: store.Sessions()}}}}, &testCompactor{}
 	origin := llm.Origin{Provider: "test-provider", APIType: testProtocol, BaseURL: "https://test.invalid"}

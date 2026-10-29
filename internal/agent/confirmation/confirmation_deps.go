@@ -2,6 +2,7 @@ package confirmation
 
 import (
 	"context"
+	"elbot/internal/config"
 	"time"
 
 	agentshare "elbot/internal/agent/share"
@@ -30,6 +31,7 @@ type ConfirmationCoordinatorDeps struct {
 	Sessions interface {
 		CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
 		EnterActivation(context.Context, session.Scope, ...string) (context.Context, func(), error)
+		RecordActivity(context.Context, *session.Binding) error
 	}
 	Requests interface {
 		CancelSession(string) int
@@ -53,6 +55,6 @@ type ConfirmationCoordinatorDeps struct {
 // ConfirmationPolicyDeps declares only the capabilities consumed by ConfirmationPolicy.
 type ConfirmationPolicyDeps struct {
 	Identity                ConfirmationIdentity
-	IdleExpiration          session.IdleExpirationConfig
+	IdleExpiration          config.SessionIdleExpirationConfig
 	UserConfirmationTimeout time.Duration
 }

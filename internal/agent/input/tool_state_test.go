@@ -36,12 +36,12 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	_ = registry.Register(agentDetailTool{name: "doc", source: toolshare.SourceSkillAgent, detail: "#skill doc", format: "elyph", activate: []string{"wrapper"}})
 
 	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Permission: permission})
-	sessions := session.NewService(store)
+	sessions := newSessionSupervisor(t, store)
 	t.Cleanup(func() { _ = sessions.Close(context.Background()) })
 	stateService := toolstate.NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)
 	coordinator := NewInputCoordinator(InputCoordinatorDeps{Sessions: sessions, SessionRows: store.Sessions(), Identity: identity, Execution: directiveExecution{}, ToolState: directiveState{stateService},
 		NewWorkspaceStore: func(id string) workspace.WorkspaceStore {
-			return session.NewWorkspaceStore(sessions, store.Sessions(), id)
+			return sessions.WorkspaceStore(id)
 		},
 		Preloader: directivePreloader{preload.NewPreloadService(preload.PreloadOptions{Registry: registry, Resolver: discovery.NewResolver(registry), NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery, LoadDiscoveryContent: discovery.LoadDiscoveryContent, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"worker": {Tools: []string{"alpha"}, Prompt: "TAG"}}}})}})
 

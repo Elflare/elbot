@@ -29,17 +29,11 @@ func (constructorCommands) Handle(context.Context, string) (bool, error) { retur
 func (constructorCommands) IsCommand(string) bool { return false }
 
 type constructorInput struct {
-	text    string
-	expired bool
+	text string
 }
 
 func (i *constructorInput) HandleInput(_ context.Context, text string) error {
 	i.text = text
-	return nil
-}
-
-func (i *constructorInput) ExpireIdleCurrentSession(context.Context) error {
-	i.expired = true
 	return nil
 }
 
@@ -60,7 +54,7 @@ func TestMessageEntryConstructsWithOnlyConsumptionCapabilities(t *testing.T) {
 	if err := entry.HandleMessage(t.Context(), "plain input"); err != nil {
 		t.Fatal(err)
 	}
-	if input.text != "plain input" || !input.expired {
+	if input.text != "plain input" {
 		t.Fatalf("input=%+v", input)
 	}
 }

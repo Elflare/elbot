@@ -40,7 +40,7 @@ func TestStatusSessionMarkers(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newCommandTestStore(t)
-			svc := session.NewService(store)
+			svc := newSessionSupervisor(t, store)
 			scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 			row, err := svc.Create(ctx, scope, session.CreateRequest{Title: "status test"})
 			if err != nil {

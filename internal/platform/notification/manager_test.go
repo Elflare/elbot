@@ -290,7 +290,7 @@ func TestQueuedNotificationRejectsExpiredBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	sessions := session.NewService(store)
+	sessions := newSessionSupervisor(t, store)
 	scope := session.Scope{ActorID: "cli:one", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 	if _, err := sessions.Create(context.Background(), scope, session.CreateRequest{}); err != nil {
 		t.Fatal(err)

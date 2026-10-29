@@ -99,11 +99,6 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 	text = agentshare.StripWakeupPrefix(ctx, text)
 	segments = agentshare.ReplaceInboundTextSegments(ctx, text)
 	ctx = agentshare.WithInboundSegments(ctx, segments)
-	if !hasForkFromMessage(ctx) {
-		if err := h.input.ExpireIdleCurrentSession(ctx); err != nil {
-			return err
-		}
-	}
 	if handled, err := h.commands.Handle(ctx, text); handled {
 		return err
 	}
@@ -133,7 +128,6 @@ type MessageCommands interface {
 
 type MessageInput interface {
 	HandleInput(context.Context, string) error
-	ExpireIdleCurrentSession(context.Context) error
 }
 
 // MessageHandlerDeps declares only the capabilities consumed by MessageHandler.

@@ -207,7 +207,7 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    E["agent/dialogue/runner.go、contextmgr/service.go、session/branch.go<br/>对话、压缩与分支入口（Session 总管待接通）"] --> R["agent/routes/registry.go<br/>按协议查询业务能力"]
+    E["agent/dialogue/runner.go、contextmgr/service.go、session/branch.go<br/>对话、压缩与分支入口"] --> R["agent/routes/registry.go<br/>按协议查询业务能力"]
     E --> M["modelmgr/selection.go、providers.go<br/>固定选择与厂商快照"]
     R --> C["agent/chat/<br/>Chat 循环、摘要与材料"]
     R --> N["agent/responses/<br/>原生循环、压缩与材料"]
@@ -248,7 +248,7 @@ Chat／Responses 共用 Dialogue 的 Prompt、Hook、ToolRun、媒体与提交�
 - 首次启动竞争时，AcceptInput 只对尚未执行的输入重新准入，保留 binding 与准备结果，不重跑 Hook；后续执行错误不触发输入重放。
 - 风险确认先在锁内登记等待对象，再锁外发提示；响应、取消及迟到清理固定同一等待对象。追加确认等待和过期提示受应用生命周期管理。
 - StatusRecorder 同步校验执行归属、保存并发布单调版本；CLI 按 Session 与原始展示目标合并状态，绑定失效清理积压。后台无 CLI 展示目标，接管仅展示之后的状态与增量。
-- 当前 usage 唯一由 StatusRecorder 持有；CLI、`/status`、压缩判断和轮末持久化均读此处。首次从已加载的 Session 元数据恢复，厂商返回后立即更新，nil usage 保留已知值；contextmgr 仅负责轮末持久化。工具统计分别显示已持久化累计与当前 Turn，不相加。
+- 当前 usage 唯一由 StatusRecorder 持有；CLI、`/status`、压缩判断和轮末持久化均读此处。执行首次读取时从已加载的 Session 元数据恢复，闲置查询不建立缓存；厂商返回后立即更新，nil usage 保留已知值，contextmgr 负责轮末持久化。退役删除快照和归属，旧执行迟到终态不能重建状态。工具统计分别显示已持久化累计与当前 Turn，不相加。
 
 <!-- locator:tool-flow -->
 ## 工具调用链路
@@ -533,7 +533,7 @@ Platform 根部负责总管、装配与公开能力；下层契约见 [App 包�
 <!-- locator:session -->
 ## Session 生命周期
 
-Session 根部 13 个文件、share 和 binding 各 3 个文件、control 的 9 个文件、branch 和 naming 各 4 个文件已实现总管、契约、绑定准入、会话业务、局部计时、派生及命名。构造不启动任务或调用模型、材料解析器，包内不保留迁移备份或旧 API。根部可独立编译验证，Agent 接线尚待完成；消费契约见 [Session 根部契约](app-design.md#session-根部契约)。
+Session 根部 13 个文件、share 和 binding 各 3 个文件、control 的 9 个文件、branch 和 naming 各 4 个文件已实现总管、契约、绑定准入、会话业务、局部计时、派生及命名。Agent 使用 NewSupervisor 交付完整配置和最小外部能力，先准备 Request／Turn／routes，再装配 Session 与消费者。构造不启动任务或调用模型、材料解析器，包内不保留迁移备份或旧 API；消费契约见 [Session 根部契约](app-design.md#session-根部契约)。
 
 根部将管理、后台准备、归属登记及工作目录操作交给 control，Fork／压缩／后台复制交给 branch，准入交给 binding，命名触发交给 naming。公开 Binding 为内部句柄的独立定义类型，通过指针转换保持同一绑定身份；context 与事件共用原句柄，不复制原子状态或增加包装缓存。ObserveBindingChanged／ObserveForegroundActivated 只返回调用方拥有的连接；命名事件及日志投影留在内部。WorkspaceStore 由总管按 SessionID 创建，不暴露仓库；根部不重复业务校验和持久化逻辑。
 
@@ -545,11 +545,12 @@ Naming 准备和生成统一占位，任务归组件而非触发 Turn；只接�
 
 binding 的锁项同时登记持有者和等待者，引用归零即删除，等待取消和部分获取失败也会释放引用。租约可重入，释放后清空组件、key 与事件引用；最外层准入退出后交付事件，不继承触发请求取消。BeginClose 停止准入与订阅接纳并唤醒等待者；Close 等准入和已提交事件退出，再关闭信号、等待真实回调退出并释放绑定。binding 与 share 的 race 回归已通过。
 
-会话行为及待接通的业务约定如下，文件职责见[代码地图](code-map.md#session)。
+会话行为如下，文件职责见[代码地图](code-map.md#session)。
 
 - Session 唯一管理 current 和 Binding；切离后原 binding 永久失效，切回建立新 binding，删除使全部相关绑定失效。
 - 准入锁顺序为 Scope → 排序 SessionID → 状态锁；模型、工具、Hook、发送及一般信号在锁外。执行中禁止普通切离／删除，维护跳过忙碌项。
-- ForegroundActivated 在接管提交和新绑定建立后、释放准入前同步派发，订阅者只更新执行内存，不做 I/O 或再次获取准入锁；派发失败不回滚已提交接管。BindingChanged 在锁外发布供展示使用；control 通过根部注入的同步释放函数调用状态所有者，不依赖观察者成功，所有者实际接线仍待对应阶段。
+- ForegroundActivated 在接管提交和新绑定建立后、释放准入前同步派发，订阅者只更新执行内存，不做 I/O 或再次获取准入锁；派发失败不回滚已提交接管。BindingChanged 在锁外发布供展示使用；control 通过根部注入的同步释放函数调用执行快照、自动确认及撤销记录的所有者，不依赖观察者成功。
+- 活跃事实合并 Request 和 Turn，包含独立 Hook、确认等待及 stopping。有效输入持原 Binding 调用 RecordActivity，取消不提前移除请求；终态发布和 Turn 收尾后，执行、压缩源及追加等待在准入外调用 SessionIdle，独立 Hook 在实际 handler 退出后通知。主动过期只解绑并保留历史，恢复建立新 Binding，不恢复旧授权或撤销记录。
 - 首次主对话准入保存 llm_origin 的 protocol、provider、base_url，失败拒绝调用；压缩／Fork／后台副本继承归属。
 - 后台准备不激活 current，复用拒绝已接管会话；所属用户同平台私聊或 CLI 管理入口可恢复。永久接管改为前台 Scope／work，保留历史和 workspace，在途调用不重启；后续调用与发送使用刷新来源。
 - 接管提示追加为请求末尾的合成 user 消息，解除后台无人值守、自动汇报及强制 JSON 要求，不写入 system prompt 或展示历史。
@@ -557,7 +558,7 @@ binding 的锁项同时登记持有者和等待者，引用归零即删除，等
 ```mermaid
 flowchart LR
     S["session/control/promotion.go<br/>提交接管并同步交付事实"] --> R["session/signals.go<br/>公开事件转换与观察连接"]
-    R --> E["agent/execution/execution.go、turn/execution.go<br/>保存一致执行快照（Session 接线待迁移）"]
+    R --> E["agent/execution/execution.go、turn/execution.go<br/>保存一致执行快照"]
     W["agent/signals.go<br/>连接与释放订阅"] -.-> E
     E --> T["agent/dialogue/execution_context.go、agent/tools/toolrun_adapter.go<br/>调用前应用接管快照"]
     E --> O["agent/execution/execution_output.go<br/>发送时刷新去向"]
@@ -565,7 +566,7 @@ flowchart LR
 
 - Fork／后台复制在锁外准备材料，提交时复核业务状态，checkpoint 由存储事务复核，后台复制比较完整 pending 输入记录而不解析原生 JSON；Session、消息、seed 与媒体引用原子保存。Fork 仅允许自己的会话，CLI 也不豁免用户归属；后台来源生成 work 前台分支，来源保持原样。Responses 按不可变快照取完整批次材料，不重跑工具；后台副本不激活前台或继承运行状态。后台压缩匹配执行的用户、平台和任务范围，不要求私聊类型，CLI 不豁免归属。派生切换通过 Control，行为和回归见 [Branch 派生与材料提交](app-design.md#branch-派生与材料提交)。
 - 命名受应用生命周期管理，Turn 结束不取消；Scheduled 表达调度，Completed 表达终态，取消后不写标题或 fallback。TTL 和 /new 只清除 current，下一条输入再建记录。
-- control 已实现事件驱动的局部定时器，独立于 UpdatedAt，按 ConversationKind 和权限选择 TTL；group/channel 使用群聊期限，其余使用私聊期限，非正值禁用。RecordActivity 与 SessionIdle 分别承接有效输入和真实执行收尾，忙碌时等待结束通知，不周期扫描。解绑移除 timer 和绑定引用，无其他绑定且无活动工作才释放会话状态；历史保留。根部已组合 Naming.ForgetSession 与外部释放，整条内存释放链仍待 Agent 接线；见 [Control 业务与主动过期](app-design.md#control-业务与主动过期)及[待接线部分](app-design.md#跨模块释放的待接线部分)。
+- control 使用事件驱动的局部定时器，独立于 UpdatedAt，按 ConversationKind 和权限选择 TTL；group/channel 使用群聊期限，其余使用私聊期限，非正值禁用。RecordActivity 与 SessionIdle 分别承接有效输入和真实执行收尾，忙碌时等待结束通知，不周期扫描。解绑移除 timer 和绑定引用，无其他绑定且无活动工作才释放会话状态；历史保留。根部组合 Naming.ForgetSession 与 Agent 的同步释放；见 [Control 业务与主动过期](app-design.md#control-业务与主动过期)及[跨模块活动与释放](app-design.md#跨模块活动与释放)。
 
 <!-- locator:llm -->
 ## 模型服务与客户端
