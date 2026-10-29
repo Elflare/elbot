@@ -136,8 +136,8 @@ Media [根部与下层契约](app-design.md#media-根部与下层契约)、四�
 ## session包
 - [x] binding 实现绑定身份、版本、条件及批量解绑、可取消重入准入、空闲锁项回收、锁外事件与可续等关闭；binding／share race 回归通过。
 - [ ] 重构对接新代码
-- [ ] control 阶段实现事件驱动的绑定局部定时器：独立于 UpdatedAt，激活、输入及执行真实收尾续期，忙碌时不清理；到期解绑，下一条输入再创建。
-- [ ] branch 经 share.BindingCoordinator 接入 control 的切换编排；根部注入权限查询与同步释放，补齐执行快照、自动确认、撤销记录及命名缓存回收。已在对应文件留 TODO，完整约定见 [Session 设计](app-design.md#主动过期与跨模块释放待对应阶段实现)。
+- [x] control 九个文件实现会话业务、切换编排、局部定时器和退役调用；根部接入配置、权限与释放契约、活动入口及启停。计时独立于 UpdatedAt，按 ConversationKind 分类 TTL，忙碌时等真实收尾再计时；到期解绑，下一条输入再创建。Control／Binding／share race 回归通过。
+- [ ] branch 经 share.BindingCoordinator 接入 control；Naming 实现 ForgetSession 并由 Session 根部组合释放；Agent 移除旧入站过期入口、接入活动上报和完整活跃事实，补齐执行快照、自动确认及撤销记录回收。对应文件保留 TODO，完整约定见 [待接线部分](app-design.md#跨模块释放的待接线部分)。
 
 ## 后台工具统一预载
 

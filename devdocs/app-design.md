@@ -325,32 +325,32 @@ flowchart TD
 
 ## Session 根部契约
 
-Session 由 Agent 创建、持有和关闭，App 不取得内部 Session。根部 13 个文件已实现总管、装配、生命周期、公开业务入口及类型转换；share 和 binding 各 3 个文件已实现，其余 17 个内部文件仍为职责骨架。22 份旧生产代码与 20 份旧测试保存在 `*.go.bak` 中，不参与构建。control、branch、naming 和 Agent 接线尚未完成，根部暂不能编译。
+Session 由 Agent 创建、持有和关闭，App 不取得内部 Session。根部 13 个文件、share 和 binding 各 3 个文件及 control 的 9 个文件已实现；branch 和 naming 的 8 个内部文件仍为职责骨架。14 份旧生产代码与 19 份旧测试保存在 `*.go.bak` 中，不参与构建。branch、naming 和 Agent 接线尚未完成，根部暂不能编译。
 
-唯一构造入口为 `NewSupervisor(ctx, cfg, SupervisorDeps)`，接收 Agent 运行 context 和完整配置，消费默认模式及命名触发步数，不重复填配置默认值。必需依赖只在根部检查；构造不启动任务、不查询协议材料或命名模型。部分构造失败保留已取得的组件、停止接纳，并将部分总管交回 Agent 调用 Close。
+唯一构造入口为 `NewSupervisor(ctx, cfg, SupervisorDeps)`，接收 Agent 运行 context 和完整配置，消费默认模式、闲置期限及命名触发步数，不重复填配置默认值。必需依赖只在根部检查；构造不启动任务、不查询协议材料或命名模型。部分构造失败保留已取得的组件、停止接纳，并将部分总管交回 Agent 调用 Close。
 
-`SupervisorDeps` 接收借用的 Store、仅含 ResolveNaming 的 Models、ActiveSessionIDs、CheckForeground 和 Materials。活跃事实来自 Agent 执行组件；CheckForeground 在接管准入内调用，只检查兼容性，不执行 I/O 或再次取准入。MaterialResolver／MaterialPreparer 定义在根部 deps.go，PreparedMaterial 在 contracts.go 定义 Seed 和 ExpectedCheckpointID；根部适配为 branch 自有类型，保留 nil 材料及伴随错误的部分结果。
+`SupervisorDeps` 接收借用的 Store、仅含 ResolveNaming 的 Models、ActiveSessionIDs、CheckForeground、Materials，以及 IsSuperadmin、ReleaseSession、ReleaseBinding。活跃事实来自 Agent 执行组件；CheckForeground 在接管准入内调用，只检查兼容性，不执行 I/O 或再次取准入。权限查询接收公开 Scope，释放分别接收 SessionID 和公开 Binding；根部转换后交给 control。MaterialResolver／MaterialPreparer 定义在根部 deps.go，PreparedMaterial 在 contracts.go 定义 Seed 和 ExpectedCheckpointID；根部适配为 branch 自有类型，保留 nil 材料及伴随错误的部分结果。
 
-根部装配消费的下层契约如下；binding 已实现，其余组件待实现：
+根部装配消费的下层契约如下；binding、control 已实现，branch、naming 待实现：
 
 | 组件入口 | 配置与依赖 |
 |---|---|
 | `binding.NewManager() *Manager` | 自有绑定及准入状态，不接入存储、模型或执行管理器 |
-| `control.NewService(Config, ServiceDeps) *Service` | Config.DefaultMode；Sessions、Messages、Bindings、ActiveSessionIDs、CheckForeground |
+| `control.NewService(Config, ServiceDeps) *Service` | Config.DefaultMode／IdleExpiration；Sessions、Messages、Bindings、ActiveSessionIDs、CheckForeground、IsSuperadmin、ReleaseSession、ReleaseBinding |
 | `branch.NewService(ServiceDeps) *Service` | Sessions、Messages、Dialogues、Bindings、ActiveSessionIDs、MaterialFor |
 | `naming.NewService(Config, ServiceDeps) (*Service, error)` | Config.TriggerStep；Sessions、Messages、ResolveNaming；出错时交回可关闭的部分组件 |
 
-各子包在自己的 service.go 声明独用消费契约。share/binding.go 的 BindingCoordinator 定义 EnterSessions、EnterActivation、CurrentBinding、SetCurrent，供 control／branch 协作；control 的消费接口嵌入该接口并声明独用的 EnterScope、EnterBinding 和条件清理能力，由根部交付 binding.Manager。CurrentBinding 返回原始句柄；SetCurrent 在对应准入内提交，空 ID 表示解绑，版本、失效及延后事件由 binding 实现。Sessions、Messages、Dialogues 字段只声明各组件实际使用的方法，不接收整个 Store。branch 的 MaterialFor 签名为 `func(llm.Origin) (branch.MaterialPreparer, error)`；其 MaterialPreparer 提供 PrepareFork／PrepareCopy，内部 PreparedMaterial 只含 Seed 和 ExpectedCheckpointID，与根部结果显式转换。naming 的 ResolveNaming 直接接收模型选择方法，不获得整个模型总管。
+各子包在自己的 service.go 声明独用消费契约。share/binding.go 的 BindingCoordinator 定义 EnterSessions、EnterActivation、CurrentBinding、SetCurrent；control 消费该接口及独用的 EnterScope、EnterBinding、ClearSessionBindings，由根部交付 binding.Manager。control 同时实现 BindingCoordinator，委托底层准入并统一绑定切换后的计时与退役；branch 阶段再改接该实现。CurrentBinding 返回原始句柄；SetCurrent 在对应准入内提交，空 ID 表示解绑，版本、失效及延后事件由 binding 实现。Sessions、Messages、Dialogues 字段只声明各组件实际使用的方法，不接收整个 Store。control 的 Messages 仅提供 ListBySession。branch 的 MaterialFor 签名为 `func(llm.Origin) (branch.MaterialPreparer, error)`；其 MaterialPreparer 提供 PrepareFork／PrepareCopy，内部 PreparedMaterial 只含 Seed 和 ExpectedCheckpointID，与根部结果显式转换。naming 的 ResolveNaming 直接接收模型选择方法，不获得整个模型总管。
 
 生命周期契约为：
 
-- 根部 Start() 只调用 naming.Start(ctx) error，启动任务接纳，不执行模型调用或业务回调；其他组件不设空 Start。启动及停止由总管状态锁串行化，关闭后禁止重启。
-- BeginClose 幂等地取消运行 context 并调用 naming.BeginClose；父 context 取消进入同一流程。绑定及接管事件源保留到最终 Close，根部的等待协程只观察实际退出信号。
-- Agent 先停止外部调用并等待在途执行退出，再调用 Session.Close(ctx)。根部先等待 naming.Close(ctx) 和 naming.Done，再对 control、binding 发起 BeginClose 并调用 Close(ctx)。命名或日志未退出时，不推进后续阶段。
+- 根部 Start() 启用 naming 的任务接纳及 control 的局部计时，不执行模型调用；启动及停止由总管状态锁串行化，关闭后禁止重启。
+- BeginClose 幂等地取消运行 context 并停止 naming 接纳、control 调度；父 context 取消进入同一流程。control 撤销 timer 并取消等待准入的定时回调，绑定及接管事件源保留到最终 Close。
+- Agent 先停止外部调用并等待在途执行退出，再调用 Session.Close(ctx)。根部依次等待 naming、control、binding 实际退出，前一阶段未完成不推进下一阶段；control 的定时回调退出前不关闭底层 Binding。
 - naming、control、binding 均提供 BeginClose()、Close(context.Context) error、Done()；关闭必须并发安全、幂等，固定并保留独立关闭错误，Done 只在任务、订阅和在途回调实际退出后关闭。branch 无自有异步资源，不设空关闭方法。
 - 根部 Close 使用调用方的等待期限，超时后可再次等待；Done 覆盖全部自有资源，不表示单次等待已返回，也不表示借用的 Store、Models 已关闭。只调用 BeginClose 不会提前释放事件源。
 
-Agent 接线尚待迁移：先创建 routes、Turn 和执行视图，再创建 Session；随后创建消费者、注册协议路线与观察连接，最后启动。Session 不提供旧构造入口、独立命名器工厂或补依赖 setter。主动过期和跨模块释放的后续约定见下文，本阶段只实现 binding 自有状态回收。
+Agent 接线尚待迁移：先创建 routes、Turn 和执行视图，再创建 Session；随后创建消费者、注册协议路线与观察连接，最后启动。Session 不提供旧构造入口、独立命名器工厂或补依赖 setter。Control 业务及局部回收已实现，跨模块释放的完整效果仍待各状态所有者接线验证。
 
 ### Binding 实现与回收
 
@@ -362,13 +362,20 @@ signals.go 将变化暂存在最外层有效租约，准入全部释放后发布
 
 binding 与 share 的 race 回归覆盖句柄身份、条件和批量解绑、锁顺序、重入、取消及部分准入回收、同 key 并发互斥、锁外回调、请求取消后的已提交事件，以及队列满／投递超时的失败摘要与不重发、关闭超时续接和忽略取消的真实回调退出。
 
-### 主动过期与跨模块释放（待对应阶段实现）
+### Control 业务与主动过期
 
-- control 使用事件驱动的绑定局部定时器，不周期扫描。计时独立于 UpdatedAt；激活、有效用户输入及执行实际结束续期，模型回复、失败和取消后的收尾均算活动，命名和元数据更新不续期。沿用 TTL 分类及非正值禁用规则。
-- 到期在准入内复核绑定身份、调度版本、截止时间和 Request／Turn 活跃事实；模型、工具、压缩、确认等待及 stopping 不回收，真实闲置后再计时。过期只解绑并释放闲置状态，保留历史，下条输入再建会话。
-- 根部新增 RecordActivity、SessionIdle，并注入 IsSuperadmin、ReleaseSession、ReleaseBinding。control 实现 share.BindingCoordinator，branch 由根部改接该实现，统一切换后的计时与退役；binding 不承担业务计时。
-- 必需释放为准入内的同步内存操作，不做 I/O、不等待任务、不再次取准入。无其他绑定且无活动工作后释放执行快照与自动确认缓存，撤销记录按旧绑定释放。Agent 提供的 ReleaseSession 只释放其自有执行状态与自动确认；Session 根部将该能力与 naming 的 ForgetSession 组合后交给 control。命名任务仍运行时保留到真实退出，再删除退役缓存；恢复旧会话仅重建持久化内容。
-- control 阶段同时调整根部生命周期：Start 启用调度，BeginClose 停止续期并撤销定时器，Close 等待已触发回调真实退出。相关 TODO 已留在 control、branch、naming、Session 装配与生命周期，以及 Agent 装配和状态所有者中；本阶段不新增这些能力的空实现。
+- control 的九个文件实现当前会话、模式、查询、管理、后台准备、接管、工作目录、协议登记和历史清理。写操作在准入内的最新存储记录上判断访问资格；创建预分配目标 ID，一次取得源、目标 Session 准入。后台复用必须是未接管的 background 会话，接管原子提交前台归属与 work 模式。
+- 计时使用绑定局部 timer，不周期扫描、不读取 UpdatedAt。ConversationKind 为 group/channel 时使用群聊 TTL，其余使用私聊 TTL，再按权限选择；非正值禁用，不猜测 ScopeID 前缀。构造不启动 timer，Start 启用已有排期。
+- 根部提供 RecordActivity(ctx, binding) error 和 SessionIdle(ctx, sessionID) error。有效输入持原绑定续期；SessionIdle 从业务准入外调用，在同一次 Session 准入内查询活跃事实、以统一完成时刻更新全部关联绑定期限并撤销旧调度，不再取得 Scope。无绑定时在状态锁外同步释放；停止调度后有绑定返回 ErrClosed，无绑定仍可完成释放。改名、命名及元数据更新不续期。
+- 定时回调通过 EnterBinding 取得原绑定的 Scope／Session 准入并由 Binding 校验身份，不等待后来激活的新 Session；Control 只复核调度版本、期限和 ActiveSessionIDs。忙碌时停用本轮 timer，等待真实结束通知重新计时。到期只解绑并保留历史，下条输入再创建。Control 的索引不缓存存储行，解绑移除 timer 及绑定引用，最后一个绑定离开后删除 Session 索引。
+- ReleaseBinding 在解绑后同步调用；ReleaseSession 仅在无其他绑定且无活动工作时调用，仍在收尾的会话由 SessionIdle 再复核。释放函数须幂等，不做 I/O、不等待、不重新准入，也不依赖 BindingChanged 成功。历史删除成功后失效全部关联绑定；维护跳过活跃项并保留出错前的实际删除数量。
+- BeginClose 停止调度并取消定时准入等待；Close 等待已触发回调及接管观察者真实退出，超时可续等。Control／Binding／share 的 race 回归覆盖真实 SQLite 业务、多绑定、迟到回调、期限续期、元数据并发、同步释放和关闭。
+
+### 跨模块释放的待接线部分
+
+- Branch 阶段将根部 branch.Bindings 改接 control 提供的共享契约，派生业务不再绕过切换编排。
+- Agent 阶段移除旧入站过期入口，合并 Request／Turn 活跃事实并覆盖模型、工具、压缩、确认等待及 stopping；有效输入、成功、失败和取消后的真实收尾接入活动入口。外部 ReleaseSession 只释放 Agent 自有执行状态和自动确认，ReleaseBinding 释放撤销记录。
+- Naming 阶段实现 ForgetSession，由 Session 根部与外部 ReleaseSession 组合；在途命名保留到真实退出，再删除退役缓存。恢复会话只重建持久化内容，不恢复旧自动确认或撤销状态。相关文件保留 TODO，不提供空实现或旧 API 兼容层。
 
 ### 公开能力与下层业务契约
 
@@ -376,7 +383,7 @@ binding 与 share 的 race 回归覆盖句柄身份、条件和批量解绑、�
 
 | 根部文件 | 公开能力与下层调用 |
 |---|---|
-| `operations.go` | GetOrCreateCurrent、Create、DefaultMode、Current、Resume、ResetCurrent、ActivateMode、ListPage、ListResumablePage、Status、Rename、Archive、Unarchive、Pin、Unpin、Delete、CleanupExpired、ExpireIdleCurrent 委托 control 同名方法；List 使用 ListPage 的第一页 |
+| `operations.go` | GetOrCreateCurrent、Create、DefaultMode、Current、Resume、ResetCurrent、ActivateMode、ListPage、ListResumablePage、Status、Rename、Archive、Unarchive、Pin、Unpin、Delete、CleanupExpired、RecordActivity、SessionIdle 委托 control 同名方法；List 使用 ListPage 的第一页 |
 | `background.go` | PrepareBackground、SessionTakenOver 委托 control；CopyBackground 委托 branch；IsBackground、WasPromoted 复用 share 的会话事实规则 |
 | `branch.go` | Fork、CreateCompacted 委托 branch；DisplayMaterial 由无原生材料的协议路线显式选择，PrepareFork／PrepareCopy 均返回 nil 材料 |
 | `binding.go` | CurrentBound 委托 control；EnterScope、EnterSessions、EnterActivation、EnterBinding 委托 binding；提供只读 Binding 和 context 存取 |
@@ -385,11 +392,11 @@ binding 与 share 的 race 回归覆盖句柄身份、条件和批量解绑、�
 | `naming.go` | MaybeScheduleNaming 委托 naming；任务不随触发 Turn 结束，命名事件、生成器和日志投影均留在 naming 内部 |
 | `signals.go` | ObserveBindingChanged、ObserveForegroundActivated 分别委托 binding、control 的同名观察入口，只交回调用方拥有的连接 |
 
-control 在 service.go 定义 CreateRequest、ActivateModeRequest／Result、Status、BackgroundRequest；在 expiration.go 定义闲置过期能力。branch 在对应业务文件定义 BackgroundCopyRequest、CompactedRequest，材料类型留在 service.go。字段与根部对应类型一致，Scope 改用 share.Scope；下层业务方法参数和返回值与根部对应入口一致，只替换所属请求、结果和绑定类型。根部当前仍保留携带配置的 ExpireIdleRequest 骨架；control 阶段按上述主动过期约定统一消费完整配置并调整入口，不恢复基于 UpdatedAt 的入站过期逻辑。
+control 在 service.go 定义 CreateRequest、ActivateModeRequest／Result、Status、BackgroundRequest；在 expiration.go 定义自有闲置配置和活动处理。branch 在对应业务文件定义 BackgroundCopyRequest、CompactedRequest，材料类型留在 service.go。字段与根部对应类型一致，Scope 改用 share.Scope；下层业务方法参数和返回值与根部对应入口一致，只替换所属请求、结果和绑定类型。公开契约不提供逐次传入 TTL 的请求或基于 UpdatedAt 的入站过期入口。
 
 share.Scope 与公开 Scope 保持相同字段结构，Key 使用 ActorID、Platform、PlatformScopeID 的零字符分隔编码，不包含入口语义。share/session.go 提供 IsBackground、WasPromoted、CanAccess、ErrSessionBusy、ErrForegroundSession。仅 control 使用的 ErrChatModeRequiresEmptySession 归 control。根部三个公开错误直接引用内部错误值，保持 errors.Is 身份。
 
-当前后台身份唯一由 Mode == background 决定，SQLite 列表与 Platform 引用回复使用同一模式事实。background_kind 只表示来源，cron:／elnis: 只表示任务范围，foreground_origin 只表示接管历史，均不覆盖当前模式。CanAccess 接收已取得的非 nil 会话：CLI 可跨用户、平台和范围管理；其他入口先匹配用户与平台，后台仅允许私聊访问，前台要求 ScopeID 相同。SQL 的 IncludeSamePlatformBackground 扩展同用户同平台的后台列表，否则排除后台模式；不根据前缀或元数据补猜身份，不迁移旧数据。control 后续创建后台会话必须写入 background 模式，接管必须原子提交前台 Scope、work 模式和接管记录；复用后台任务仍通过 WasPromoted 拒绝已接管会话。
+当前后台身份唯一由 Mode == background 决定，SQLite 列表与 Platform 引用回复使用同一模式事实。background_kind 只表示来源，cron:／elnis: 只表示任务范围，foreground_origin 只表示接管历史，均不覆盖当前模式。CanAccess 接收已取得的非 nil 会话：CLI 可跨用户、平台和范围管理；其他入口先匹配用户与平台，后台仅允许私聊访问，前台要求 ScopeID 相同。SQL 的 IncludeSamePlatformBackground 扩展同用户同平台的后台列表，否则排除后台模式；不根据前缀或元数据补猜身份，不迁移旧数据。
 
 share/origin.go 的 Origin 只解析已保存的 llm_origin，未记录返回 false，非法元数据或缺少 protocol 返回错误；允许仅已知协议，不查询当前配置或补造 provider。InheritOrigin 只覆盖目标的 llm_origin；源无归属则删除目标归属，保留目标其余原始 JSON，不导入源运行状态。
 
@@ -408,7 +415,10 @@ flowchart TD
     W --> S["session/supervisor.go<br/>持有组件与总管状态"]
     S --> L["session/lifecycle.go<br/>启动、停止与实际退出等待"]
     W --> B["binding/manager.go：绑定状态与生命周期<br/>coordination.go：准入、租约与锁项回收<br/>signals.go：锁外绑定事件"]
-    W --> C["control/service.go<br/>会话管理组件（待实现）"]
+    W --> C["control/service.go：构造、依赖与启停<br/>current.go：会话、模式与切换<br/>expiration.go：计时、退役及历史清理"]
+    C --> CQ["query.go：列表与状态<br/>management.go：改名、归档、置顶与删除"]
+    C --> CP["promotion.go：恢复、接管与事件<br/>background.go：后台准备与接管查询"]
+    C --> CW["origin.go：协议登记<br/>workspace.go：工作目录持久化"]
     W --> R["branch/service.go<br/>派生会话及材料准备（待实现）"]
     W --> N["naming/service.go<br/>命名任务、信号及日志订阅（待实现）"]
     B & C & R --> H["share/binding.go<br/>绑定句柄、context 与 BindingCoordinator"]

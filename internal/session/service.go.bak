@@ -1,5 +1,5 @@
 // 职责：持有现有 Session 全部状态并实现构造、当前会话操作及访问判断。
-// TODO(session重构)：待删除：总管与装配归 supervisor.go、wiring.go，各组件状态迁入对应子包，会话操作与共用判定归 control/current.go、share/session.go 后删除本备份。
+// TODO(session重构)：会话操作已迁入 control；仅保留待迁移的 naming 状态及 branch 标题辅助参考，完成后删除本备份。
 package session
 
 import (

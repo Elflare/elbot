@@ -98,7 +98,7 @@ flowchart TB
 flowchart TD
     B["background/execution/runner.go<br/>计算并创建任务目录、注入调用范围"] --> C["workspace/context.go<br/>路径范围与目录存取能力"]
     B --> F["contextinfo/background.go、context.go<br/>后台来源事实"]
-    S["session/control/workspace.go<br/>持久化与并发更新（待实现）"] --> W["workspace/workspace.go、state.go<br/>目录契约、选择与状态编解码"]
+    S["session/control/workspace.go<br/>持久化与并发更新"] --> W["workspace/workspace.go、state.go<br/>目录契约、选择与状态编解码"]
     R["workspace/resolve.go<br/>统一路径解析与目标检查"] --> C
     R --> W
     R --> P["workspace/sandbox.go<br/>目录组合与受限路径规则"]
@@ -533,11 +533,11 @@ Platform 根部负责总管、装配与公开能力；下层契约见 [App 包�
 <!-- locator:session -->
 ## Session 生命周期
 
-Session 根部 13 个文件已实现 Supervisor、完整配置装配、生命周期、公开业务入口及类型转换；share 的 3 个文件已实现内部协作契约、模式身份、访问规则和归属继承，binding 的 3 个文件已实现绑定、准入、锁项回收与事件生命周期。构造不启动任务或调用模型、材料解析器。control、branch、naming 及 Agent 接线尚待实现，根部当前不能编译，详细消费契约见 [Session 根部契约](app-design.md#session-根部契约)。22 份旧生产代码与 20 份旧测试保存在 `.go.bak` 中，不参与构建。
+Session 根部 13 个文件、share 和 binding 各 3 个文件、control 的 9 个文件已实现总管、契约、绑定准入、会话业务及局部计时。构造不启动任务或调用模型、材料解析器。branch、naming 及 Agent 接线尚待实现，根部当前不能编译，详细消费契约见 [Session 根部契约](app-design.md#session-根部契约)。14 份旧生产代码与 19 份旧测试保存在 `.go.bak` 中，不参与构建。
 
 根部将管理、后台准备、归属登记及工作目录操作交给 control，Fork／压缩／后台复制交给 branch，准入交给 binding，命名触发交给 naming。公开 Binding 为内部句柄的独立定义类型，通过指针转换保持同一绑定身份；context 与事件共用原句柄，不复制原子状态或增加包装缓存。ObserveBindingChanged／ObserveForegroundActivated 只返回调用方拥有的连接；命名事件及日志投影留在内部。WorkspaceStore 由总管按 SessionID 创建，不暴露仓库；根部不重复业务校验和持久化逻辑。
 
-根部 BeginClose 只停止命名接纳并取消运行，保留绑定及接管事件源。Agent 等在途执行退出后调用 Close；根部先等待命名及日志收尾，再关闭 control、binding 事件源并等待回调。全部自有资源退出后才关闭 Done，超时可继续等待，不关闭借用存储和模型；并发关闭及部分结果的实际行为待下层接通后验证。
+根部 Start 启用命名接纳和 Control 计时；BeginClose 停止接纳与调度、取消运行并撤销 timer，保留绑定及接管事件源。Agent 等在途执行退出后调用 Close；根部依次等待 naming、control、binding 实际退出，定时回调退出前不关闭底层准入。全部自有资源退出后才关闭 Done，超时可继续等待，不关闭借用存储和模型；根部完整接线仍待其余下层实现后验证。
 
 当前后台身份唯一由 Mode == background 决定；Session、SQLite 列表和 Platform 引用回复均使用该模式事实，不根据来源元数据、任务 ScopeID 前缀或接管记录推断。WasPromoted 独立读取接管历史。CanAccess 对非 nil 会话执行访问规则：CLI 可跨用户和平台管理，其余入口要求用户及平台相同；后台限私聊，前台限同 ScopeID。share 的 BindingCoordinator 只声明共享准入与绑定读写，管理状态、锁和事件归 binding；NewBinding 与 Invalidate 仅供绑定管理组件使用。share 与 Platform/refcontext 整包及 SQLite 独立身份回归已通过 race，整包接线验证仍待下层完成。
 
@@ -547,14 +547,14 @@ binding 的锁项同时登记持有者和等待者，引用归零即删除，等
 
 - Session 唯一管理 current 和 Binding；切离后原 binding 永久失效，切回建立新 binding，删除使全部相关绑定失效。
 - 准入锁顺序为 Scope → 排序 SessionID → 状态锁；模型、工具、Hook、发送及一般信号在锁外。执行中禁止普通切离／删除，维护跳过忙碌项。
-- ForegroundActivated 在接管提交和新绑定建立后、释放准入前同步派发，订阅者只更新执行内存，不做 I/O 或再次获取准入锁；派发失败不回滚已提交接管。BindingChanged 在锁外发布供展示使用；必需状态释放将在 control 阶段通过根部注入的同步能力完成，不依赖观察者成功。
+- ForegroundActivated 在接管提交和新绑定建立后、释放准入前同步派发，订阅者只更新执行内存，不做 I/O 或再次获取准入锁；派发失败不回滚已提交接管。BindingChanged 在锁外发布供展示使用；control 通过根部注入的同步释放函数调用状态所有者，不依赖观察者成功，所有者实际接线仍待对应阶段。
 - 首次主对话准入保存 llm_origin 的 protocol、provider、base_url，失败拒绝调用；压缩／Fork／后台副本继承归属。
 - 后台准备不激活 current，复用拒绝已接管会话；所属用户同平台私聊或 CLI 管理入口可恢复。永久接管改为前台 Scope／work，保留历史和 workspace，在途调用不重启；后续调用与发送使用刷新来源。
 - 接管提示追加为请求末尾的合成 user 消息，解除后台无人值守、自动汇报及强制 JSON 要求，不写入 system prompt 或展示历史。
 
 ```mermaid
 flowchart LR
-    S["session/control/promotion.go<br/>提交接管（待实现）"] --> R["session/signals.go<br/>公开事件转换与观察连接"]
+    S["session/control/promotion.go<br/>提交接管并同步交付事实"] --> R["session/signals.go<br/>公开事件转换与观察连接"]
     R --> E["agent/execution/execution.go、turn/execution.go<br/>保存一致执行快照（Session 接线待迁移）"]
     W["agent/signals.go<br/>连接与释放订阅"] -.-> E
     E --> T["agent/dialogue/execution_context.go、agent/tools/toolrun_adapter.go<br/>调用前应用接管快照"]
@@ -563,7 +563,7 @@ flowchart LR
 
 - Fork／后台复制在锁外准备材料，提交复核 binding、checkpoint、pending 和取消；Session、消息、seed 与媒体引用原子保存。Responses 按分叉时的不可变快照取材料，包含对应工具批次结果、排除之后追加的结果，不重跑历史工具；后台副本不激活前台或继承执行／工具状态。
 - 命名受应用生命周期管理，Turn 结束不取消；Scheduled 表达调度，Completed 表达终态，取消后不写标题或 fallback。TTL 和 /new 只清除 current，下一条输入再建记录。
-- 主动过期尚未实现：control 将使用事件驱动的局部定时器，独立于 UpdatedAt 计时，用户输入和执行实际收尾续期。真实闲置后统一释放无绑定会话的临时状态，历史保留；完整约定与各阶段职责见 [主动过期与跨模块释放](app-design.md#主动过期与跨模块释放待对应阶段实现)。本阶段仅完成 binding 自有状态回收。
+- control 已实现事件驱动的局部定时器，独立于 UpdatedAt，按 ConversationKind 和权限选择 TTL；group/channel 使用群聊期限，其余使用私聊期限，非正值禁用。RecordActivity 与 SessionIdle 分别承接有效输入和真实执行收尾，忙碌时等待结束通知，不周期扫描。解绑移除 timer 和绑定引用，无其他绑定且无活动工作才释放会话状态；历史保留。Control／Binding／share race 回归已通过，整条内存释放链仍待 Branch、Naming、Agent 接线；见 [Control 业务与主动过期](app-design.md#control-业务与主动过期)及[待接线部分](app-design.md#跨模块释放的待接线部分)。
 
 <!-- locator:llm -->
 ## 模型服务与客户端

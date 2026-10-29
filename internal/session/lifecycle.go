@@ -7,10 +7,7 @@ import (
 	"errors"
 )
 
-// TODO(session重构)：control 局部定时器实现后，Start 启用调度，BeginClose 停止续期并撤销定时器，
-// Close 等待已触发回调真实退出后再关闭事件源；构造阶段仍不启动任务。
-// Start 只启动命名任务接纳；其他组件在构造时完成同步准备。
-// 命名 Start 不执行模型调用或发布业务事件，可以在总管状态锁内调用。
+// Start 启用命名接纳及 Control 局部计时；构造阶段不启动任务。
 func (s *Supervisor) Start() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -24,6 +21,9 @@ func (s *Supervisor) Start() error {
 		return nil
 	}
 	if err := s.naming.Start(s.ctx); err != nil {
+		return err
+	}
+	if err := s.control.Start(s.ctx); err != nil {
 		return err
 	}
 	s.started = true
@@ -42,6 +42,7 @@ func (s *Supervisor) BeginClose() {
 		s.stopParent()
 	}
 	s.cancel()
+	s.control.BeginClose()
 	if s.naming != nil {
 		s.naming.BeginClose()
 	}
@@ -76,10 +77,14 @@ func (s *Supervisor) Close(ctx context.Context) error {
 		}
 	}
 
-	// Agent 已收回事件生产方；先停止两个源，再等待各自的在途回调。
-	s.control.BeginClose()
-	s.bindings.BeginClose()
-	errs = append(errs, s.control.Close(ctx), s.bindings.Close(ctx))
+	// Control 的定时回调仍可能持有准入；它实际退出后才能关闭 Binding。
+	errs = append(errs, s.control.Close(ctx))
+	select {
+	case <-s.control.Done():
+	default:
+		return errors.Join(errs...)
+	}
+	errs = append(errs, s.bindings.Close(ctx))
 
 	select {
 	case <-s.done:

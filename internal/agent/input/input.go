@@ -178,6 +178,9 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 	return nil
 }
 
+// TODO(agent接线)：删除入站 ExpireIdleCurrentSession 及旧 TTL 消费契约；
+// 有效输入持原绑定调用 Session.RecordActivity，实际执行收尾统一调用 SessionIdle。
+// Control 已改为主动计时，不恢复此处按 UpdatedAt 检查的旧入口。
 func (c *InputCoordinator) ExpireIdleCurrentSession(ctx context.Context) error {
 	current, err := c.sessions.Current(ctx, c.identity.Scope(ctx))
 	if errors.Is(err, storage.ErrNotFound) {

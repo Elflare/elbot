@@ -95,10 +95,13 @@ func (s *Supervisor) CleanupExpired(ctx context.Context, cutoff time.Time) (int,
 	return s.control.CleanupExpired(ctx, cutoff)
 }
 
-func (s *Supervisor) ExpireIdleCurrent(ctx context.Context, req ExpireIdleRequest) (ExpireIdleResult, error) {
-	result, err := s.control.ExpireIdleCurrent(ctx, control.ExpireIdleRequest{
-		Scope: share.Scope(req.Scope), IsSuperadmin: req.IsSuperadmin,
-		Config: control.IdleExpirationConfig(req.Config), Now: req.Now,
-	})
-	return ExpireIdleResult{Expired: result.Expired, SessionID: result.SessionID, TTLMinutes: result.TTLMinutes}, err
+// RecordActivity 由有效输入入口调用，旧激活不能为新绑定续期。
+func (s *Supervisor) RecordActivity(ctx context.Context, binding *Binding) error {
+	return s.control.RecordActivity(ctx, (*share.Binding)(binding))
+}
+
+// SessionIdle 由实际执行收尾在业务准入外调用；失败和取消也须在真实退出后上报。
+// 取消执行的收尾使用独立的清理 context，避免把已完成通知随请求一起取消。
+func (s *Supervisor) SessionIdle(ctx context.Context, sessionID string) error {
+	return s.control.SessionIdle(ctx, sessionID)
 }

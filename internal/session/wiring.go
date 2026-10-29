@@ -12,6 +12,7 @@ import (
 	"elbot/internal/session/branch"
 	"elbot/internal/session/control"
 	"elbot/internal/session/naming"
+	"elbot/internal/session/share"
 	"elbot/internal/storage"
 )
 
@@ -35,6 +36,12 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		return nil, fmt.Errorf("session foreground check is required")
 	case deps.Materials == nil:
 		return nil, fmt.Errorf("session materials are required")
+	case deps.IsSuperadmin == nil:
+		return nil, fmt.Errorf("session permission query is required")
+	case deps.ReleaseSession == nil:
+		return nil, fmt.Errorf("session release is required")
+	case deps.ReleaseBinding == nil:
+		return nil, fmt.Errorf("binding release is required")
 	}
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -51,20 +58,22 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 
 	sessions, messages := deps.Store.Sessions(), deps.Store.Messages()
 	s.bindings = binding.NewManager()
-	// TODO(session重构)：control 完成后，向其注入闲置配置、权限查询与同步释放能力；
-	// 根部将 naming 的 ForgetSession 与外部 ReleaseSession 组合后交给 control，命名缓存不交由 Agent 清理。
-	// branch.Bindings 改接 control 提供的 share.BindingCoordinator，避免派生切换绕过计时和退役。
+	// TODO(naming阶段)：将 naming.ForgetSession 与外部 ReleaseSession 组合后交给 control，命名缓存不交由 Agent 清理。
 	s.control = control.NewService(
-		control.Config{DefaultMode: cfg.Session.DefaultMode},
+		control.Config{DefaultMode: cfg.Session.DefaultMode, IdleExpiration: control.IdleExpirationConfig(cfg.Session.IdleExpiration)},
 		control.ServiceDeps{
 			Sessions:         sessions,
 			Messages:         messages,
 			Bindings:         s.bindings,
 			ActiveSessionIDs: deps.ActiveSessionIDs,
 			CheckForeground:  deps.CheckForeground,
+			IsSuperadmin:     func(scope share.Scope) bool { return deps.IsSuperadmin(Scope(scope)) },
+			ReleaseSession:   deps.ReleaseSession,
+			ReleaseBinding:   func(binding *share.Binding) { deps.ReleaseBinding((*Binding)(binding)) },
 		},
 	)
 	materials := deps.Materials
+	// TODO(branch阶段)：Bindings 改接 s.control，统一派生切换的计时与退役。
 	s.branches = branch.NewService(branch.ServiceDeps{
 		Sessions:         sessions,
 		Messages:         messages,

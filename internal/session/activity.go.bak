@@ -1,5 +1,5 @@
 // 职责：读取活跃会话并判断会话切换或删除是否允许。
-// TODO(session重构)：待删除：依赖接入归 deps.go，消费契约归 control/service.go、branch/service.go，共用判定归 share/session.go 后删除本备份。
+// TODO(branch阶段)：control 已通过必需的 ActiveSessionIDs 消费活跃事实；此备份仅供 branch 迁移参考，禁止恢复 setter 或缺依赖降级。
 package session
 
 import "errors"

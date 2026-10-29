@@ -1,5 +1,5 @@
 // 职责：准备后台会话并设置后台身份和标题。
-// TODO(session重构)：待删除：公开准备、复制及接管查询入口归 background.go，实现归 control/background.go、branch/copy.go，迁移完成后删除本备份。
+// TODO(branch阶段)：后台准备已迁入 control/background.go；仅保留副本所需元数据与标题参考，branch/copy.go 完成后删除。
 package session
 
 import (

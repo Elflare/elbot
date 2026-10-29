@@ -3,8 +3,6 @@
 package session
 
 import (
-	"time"
-
 	"elbot/internal/contextinfo"
 	"elbot/internal/session/control"
 	"elbot/internal/session/share"
@@ -84,31 +82,6 @@ type CompactedRequest struct {
 type PreparedMaterial struct {
 	Seed                 *storage.NativeSeed // 新会话的原生种子。
 	ExpectedCheckpointID string              // 材料对应的源 checkpoint，提交时用于复核。
-}
-
-// IdleExpirationConfig 保留现行按范围和角色选择的闲置期限，单位为分钟。
-type IdleExpirationConfig struct {
-	GroupUserTTLMinutes         int // 群聊普通用户的闲置期限。
-	GroupSuperadminTTLMinutes   int // 群聊超级管理员的闲置期限。
-	PrivateUserTTLMinutes       int // 私聊普通用户的闲置期限。
-	PrivateSuperadminTTLMinutes int // 私聊超级管理员的闲置期限。
-}
-
-func (c IdleExpirationConfig) TTLMinutes(scope Scope, isSuperadmin bool) int {
-	return control.IdleExpirationConfig(c).TTLMinutes(share.Scope(scope), isSuperadmin)
-}
-
-type ExpireIdleRequest struct {
-	Scope        Scope                // 待检查的前台范围。
-	IsSuperadmin bool                 // 用于选择角色对应的闲置期限。
-	Config       IdleExpirationConfig // 本次检查使用的现行配置。
-	Now          time.Time            // 检查时刻；零值由 control 取当前时间。
-}
-
-type ExpireIdleResult struct {
-	Expired    bool   // 是否已解除过期 current 绑定。
-	SessionID  string // 被解除绑定的会话。
-	TTLMinutes int    // 本次实际应用的闲置期限。
 }
 
 type BindingChangedEvent struct {

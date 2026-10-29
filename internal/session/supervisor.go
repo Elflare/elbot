@@ -23,7 +23,7 @@ type Supervisor struct {
 	cancel context.CancelFunc // 停止总管运行上下文，不关闭借用资源。
 
 	mu         sync.Mutex    // 串行化启动、停止及父 context 回调的登记。
-	started    bool          // 命名任务接纳已启动；由 mu 保护。
+	started    bool          // 命名接纳与 Control 计时已启动；由 mu 保护。
 	closed     bool          // 已进入停止阶段，永久禁止再次启动；由 mu 保护。
 	stopParent func() bool   // 解除父 context 的停止回调；由 mu 保护。
 	done       chan struct{} // 全部自有任务、订阅与事件源实际退出后关闭。
