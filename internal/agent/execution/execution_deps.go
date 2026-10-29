@@ -61,7 +61,6 @@ type ExecutionCoordinatorDeps struct {
 	Turns interface {
 		AppendPendingInput(string, turn.Input) bool
 		AppendWait(string) *turn.AppendWait
-		AttachExecution(string, string, *turn.Execution)
 		CanCompact(string, *turn.Execution) bool
 		CancelAppend(string) bool
 		CompleteCompactRun(string, string) bool
@@ -73,7 +72,7 @@ type ExecutionCoordinatorDeps struct {
 		ReserveExecution(string, turn.Input, *turn.Execution) bool
 		ResumeAppend(string) (turn.Input, *turn.Execution, bool)
 		Snapshot(string) turn.Snapshot
-		StartCompactRun(string, string, ...*turn.Execution) bool
+		StartCompactRun(string, string, *turn.Execution) bool
 		StartExecution(string, turn.Input, *turn.Execution, string) bool
 		StopSession(string, ...string)
 	}

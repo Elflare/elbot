@@ -49,7 +49,6 @@ func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.
 		release()
 		return nil, fmt.Errorf("当前会话正在处理其他任务，无法压缩")
 	}
-	c.turns.AttachExecution(current.ID, info.ID, turn.ExecutionFromContext(ctx))
 	reqCtx = turn.WithAttempt(reqCtx, info.ID)
 	release()
 	defer func() {

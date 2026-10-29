@@ -1,3 +1,5 @@
+// 待删除：当前混合了承载状态、输入处理、确认等待与公开定义等职责。
+// 将这些职责迁入已建立的对应文件后删除本文件。
 package turn
 
 import (
@@ -5,216 +7,27 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"elbot/internal/events"
 	"elbot/internal/llm"
 )
 
-type Phase string
-
-const (
-	PhaseIdle               Phase = "idle"
-	PhaseLLM                Phase = "llm"
-	PhaseTool               Phase = "tool"
-	PhaseAwaitRiskConfirm   Phase = "awaiting_risk_confirm"
-	PhaseAwaitAppendConfirm Phase = "awaiting_append_confirm"
-	PhaseCompact            Phase = "compact"
-	PhaseStopping           Phase = "stopping"
-)
-
-type RiskConfirmation struct {
-	ID        string
-	ToolName  string
-	Arguments string
-	Risk      string
-	Summary   string
-	Detail    string
-}
-
-type RiskConfirmationResponse struct {
-	Confirmed   bool
-	Rejected    bool
-	Stopped     bool
-	Expired     bool
-	ConfirmAll  bool
-	ConfirmTool bool
-	Extra       string
-	Reason      string
-}
-
-type Snapshot struct {
-	SessionID    string
-	Phase        Phase
-	PendingCount int
-	Tools        map[string]int
-	// AttemptDone closes when the current attempt has finished its actual work.
-	// It is nil when a confirmation is waiting without an active attempt.
-	AttemptDone <-chan struct{}
-}
-
-type Input struct {
-	// NeedsElyphRules travels with queued input until its destination session is known.
-	NeedsElyphRules bool
-	Text            string
-	PlatformText    string
-	Segments        []llm.MessageSegment
-}
-
-type Manager struct {
-	mu    sync.Mutex
-	turns map[string]*state
-}
-
 type state struct {
 	execution     *Execution
 	compactReady  bool
 	reserved      bool
-	compactRun    string
+	attempt       string // Current request or compaction attempt; empty while reserved for continuation.
 	phase         Phase
 	originalInput Input
 	pending       []Input
 	riskConfirm   *RiskConfirmation
-	riskResponse  chan RiskConfirmationResponse
+	riskResponse  chan riskResponse
 	waitRefresh   chan struct{}
 	appendDone    chan struct{}
 	tools         map[string]int
 	// attemptDone belongs to this attempt and survives cancellation until its owner finishes.
 	attemptDone chan struct{}
-}
-
-func NewManager() *Manager {
-	return &Manager{turns: map[string]*state{}}
-}
-
-func (m *Manager) StartCompact(sessionID string) bool {
-	return m.StartCompactRun(sessionID, "")
-}
-
-func (m *Manager) StartCompactRun(sessionID, runID string, execution ...*Execution) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if old := m.turns[sessionID]; old != nil {
-		if len(execution) == 0 || !old.reserved || !old.compactReady || old.phase != PhaseLLM || old.execution != execution[0] {
-			return false
-		}
-	}
-	m.turns[sessionID] = &state{phase: PhaseCompact, compactRun: runID, tools: map[string]int{}, attemptDone: make(chan struct{})}
-	return true
-}
-
-func (m *Manager) CompleteCompact(sessionID string) bool {
-	return m.CompleteCompactRun(sessionID, "")
-}
-
-func (m *Manager) CompleteCompactRun(sessionID, runID string) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	turn, ok := m.turns[sessionID]
-	if !ok || (turn.phase != PhaseCompact && turn.phase != PhaseStopping) || turn.compactRun != runID {
-		return false
-	}
-	removeTurn(m.turns, sessionID, turn, true)
-	return true
-}
-
-func (m *Manager) StartLLM(sessionID, input string) bool {
-	return m.StartLLMInput(sessionID, textInput(input))
-}
-
-func (m *Manager) StartLLMInput(sessionID string, input Input) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if _, exists := m.turns[sessionID]; exists {
-		return false
-	}
-	m.turns[sessionID] = &state{phase: PhaseLLM, originalInput: normalizeInput(input), tools: map[string]int{}}
-	return true
-}
-
-func (m *Manager) InterruptLLM(sessionID, input string) bool {
-	return m.InterruptLLMInput(sessionID, textInput(input))
-}
-
-func (m *Manager) InterruptLLMInput(sessionID string, input Input) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	turn, ok := m.turns[sessionID]
-	if !ok || turn.phase != PhaseLLM {
-		return false
-	}
-	turn.phase = PhaseAwaitAppendConfirm
-	turn.waitRefresh = make(chan struct{}, 1)
-	turn.appendDone = make(chan struct{})
-	appendPending(turn, input)
-	return true
-}
-
-func (m *Manager) AppendPending(sessionID, input string) bool {
-	return m.AppendPendingInput(sessionID, textInput(input))
-}
-
-func (m *Manager) AppendPendingInput(sessionID string, input Input) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	turn, ok := m.turns[sessionID]
-	if !ok || (turn.phase != PhaseAwaitAppendConfirm && turn.phase != PhaseTool) {
-		return false
-	}
-	if appendPending(turn, input) && turn.phase == PhaseAwaitAppendConfirm {
-		refreshWait(turn)
-	}
-	return true
-}
-
-func (m *Manager) ConfirmAppend(sessionID string) (string, bool) {
-	input, ok := m.ConfirmAppendInput(sessionID)
-	return input.Text, ok
-}
-
-func (m *Manager) ConfirmAppendInput(sessionID string) (Input, bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	turn, ok := m.turns[sessionID]
-	if !ok || turn.phase != PhaseAwaitAppendConfirm {
-		return Input{}, false
-	}
-	merged := mergeInputs(append([]Input{turn.originalInput}, turn.pending...))
-	removeTurn(m.turns, sessionID, turn)
-	return merged, true
-}
-
-func (m *Manager) CancelAppend(sessionID string) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	turn, ok := m.turns[sessionID]
-	if !ok || turn.phase != PhaseAwaitAppendConfirm {
-		return false
-	}
-	beginStopTurn(m.turns, sessionID, turn)
-	return true
-}
-
-// AppendWait captures one confirmation instance before its worker is started.
-// A resumed attempt, including another wait on the same state, cannot be removed
-// by a delayed worker belonging to this instance.
-func (m *Manager) AppendWait(sessionID string) *AppendWait {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	turn, ok := m.turns[sessionID]
-	if !ok || turn.phase != PhaseAwaitAppendConfirm || turn.appendDone == nil {
-		return nil
-	}
-	return &AppendWait{manager: m, sessionID: sessionID, state: turn, refresh: turn.waitRefresh, done: turn.appendDone}
-}
-
-type AppendWait struct {
-	manager   *Manager
-	sessionID string
-	state     *state
-	refresh   <-chan struct{}
-	done      <-chan struct{}
 }
 
 // Wait returns true only for expiry. Application cancellation discards this
@@ -258,40 +71,6 @@ func (w *AppendWait) Wait(ctx context.Context, timeout time.Duration) bool {
 		}
 	}
 }
-func (m *Manager) AwaitRiskConfirmation(sessionID string, confirmation RiskConfirmation) (RiskConfirmationResponse, bool) {
-	return m.AwaitRiskConfirmationContext(context.Background(), sessionID, confirmation, 0)
-}
-
-func (m *Manager) AwaitRiskConfirmationContext(ctx context.Context, sessionID string, confirmation RiskConfirmation, timeout time.Duration, expected ...string) (RiskConfirmationResponse, bool) {
-	resp, ok, _ := m.BeginRiskConfirmation(sessionID, confirmation, expected...).Wait(ctx, timeout)
-	return resp, ok
-}
-
-// RiskConfirmationWait owns one registered confirmation, including a response
-// received before Wait starts. It must be waited on or canceled by its caller.
-type RiskConfirmationWait struct {
-	manager   *Manager
-	sessionID string
-	turn      *state
-	response  chan RiskConfirmationResponse
-	refresh   chan struct{}
-}
-
-// BeginRiskConfirmation registers the attempt and response channel atomically.
-// The caller can then publish the prompt without holding the manager lock.
-func (m *Manager) BeginRiskConfirmation(sessionID string, confirmation RiskConfirmation, expected ...string) *RiskConfirmationWait {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	turn, ok := m.turns[sessionID]
-	if !ok || !matches(turn, expected) || turn.phase != PhaseTool {
-		return nil
-	}
-	turn.phase = PhaseAwaitRiskConfirm
-	turn.riskConfirm = &confirmation
-	turn.riskResponse = make(chan RiskConfirmationResponse, 1)
-	turn.waitRefresh = make(chan struct{}, 1)
-	return &RiskConfirmationWait{manager: m, sessionID: sessionID, turn: turn, response: turn.riskResponse, refresh: turn.waitRefresh}
-}
 
 // Cancel removes only this wait; a later confirmation on the same Turn is safe.
 func (w *RiskConfirmationWait) Cancel() bool {
@@ -310,17 +89,18 @@ func (w *RiskConfirmationWait) Cancel() bool {
 
 // Wait retains the original response/acceptance contract and declares its own
 // terminal result before stop, expiry and stale-wait facts collapse into false.
-func (w *RiskConfirmationWait) Wait(ctx context.Context, timeout time.Duration) (RiskConfirmationResponse, bool, events.ResultStatus) {
+func (w *RiskConfirmationWait) wait(ctx context.Context, timeout time.Duration) (resp riskResponse, ok bool, resultStatus events.ResultStatus) {
 	if w == nil {
-		return RiskConfirmationResponse{Stopped: true}, false, events.ResultSkipped
+		return riskResponse{Stopped: true}, false, events.ResultSkipped
 	}
 	defer w.Cancel()
-	if ctx.Err() != nil {
-		resultStatus := events.ResultCanceled
-		if ctx.Err() == context.DeadlineExceeded {
+	defer func() {
+		if resultStatus == events.ResultCanceled && ctx.Err() == context.DeadlineExceeded {
 			resultStatus = events.ResultFailed
 		}
-		return RiskConfirmationResponse{Stopped: true}, false, resultStatus
+	}()
+	if ctx.Err() != nil {
+		return riskResponse{Stopped: true}, false, events.ResultCanceled
 	}
 	m := w.manager
 	var timer *time.Timer
@@ -344,11 +124,7 @@ func (w *RiskConfirmationWait) Wait(ctx context.Context, timeout time.Duration) 
 				beginStopTurn(m.turns, w.sessionID, current)
 				m.mu.Unlock()
 				resp.Stopped = true
-				resultStatus := events.ResultCanceled
-				if ctx.Err() == context.DeadlineExceeded {
-					resultStatus = events.ResultFailed
-				}
-				return resp, false, resultStatus
+				return resp, false, events.ResultCanceled
 			}
 			current.riskConfirm = nil
 			current.riskResponse = nil
@@ -371,178 +147,16 @@ func (w *RiskConfirmationWait) Wait(ctx context.Context, timeout time.Duration) 
 				resultStatus = events.ResultFailed
 			} else if ctx.Err() != nil {
 				resultStatus = events.ResultCanceled
-				if ctx.Err() == context.DeadlineExceeded {
-					resultStatus = events.ResultFailed
-				}
 			}
-			return RiskConfirmationResponse{Stopped: true, Expired: removed && ctx.Err() == nil}, false, resultStatus
+			return riskResponse{Stopped: true, Expired: removed && ctx.Err() == nil}, false, resultStatus
 		case <-ctx.Done():
-			resultStatus := events.ResultCanceled
-			if ctx.Err() == context.DeadlineExceeded {
-				resultStatus = events.ResultFailed
-			}
-			return RiskConfirmationResponse{Stopped: true}, false, resultStatus
+			return riskResponse{Stopped: true}, false, events.ResultCanceled
 		}
 	}
 }
 
-func (m *Manager) ResolveRiskConfirmation(sessionID string, resp RiskConfirmationResponse) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	turn, ok := m.turns[sessionID]
-	if !ok || turn.phase != PhaseAwaitRiskConfirm || turn.riskResponse == nil {
-		return false
-	}
-	select {
-	case turn.riskResponse <- resp:
-		return true
-	default:
-		return false
-	}
-}
-
-func (m *Manager) RefreshRiskConfirmation(sessionID string) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	turn, ok := m.turns[sessionID]
-	if !ok || turn.phase != PhaseAwaitRiskConfirm || turn.riskResponse == nil {
-		return false
-	}
-	refreshWait(turn)
-	return true
-}
-func (m *Manager) PendingRiskConfirmation(sessionID string) (RiskConfirmation, bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	turn, ok := m.turns[sessionID]
-	if !ok || turn.phase != PhaseAwaitRiskConfirm || turn.riskConfirm == nil {
-		return RiskConfirmation{}, false
-	}
-	return *turn.riskConfirm, true
-}
-
-func (m *Manager) StartToolPhase(sessionID string, expected ...string) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	turn, ok := m.turns[sessionID]
-	if !ok || !matches(turn, expected) || turn.phase != PhaseLLM {
-		return false
-	}
-	turn.phase = PhaseTool
-	return true
-}
-
-func (m *Manager) CompleteLLM(sessionID string) (string, bool) {
-	input, ok := m.CompleteLLMInput(sessionID)
-	return input.Text, ok
-}
-
-func (m *Manager) CompleteLLMInput(sessionID string, expected ...string) (Input, bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	turn, ok := m.turns[sessionID]
-	if !ok || !matches(turn, expected) || (turn.phase != PhaseLLM && turn.phase != PhaseTool && turn.phase != PhaseAwaitRiskConfirm) {
-		return Input{}, false
-	}
-	pending := mergeInputs(turn.pending)
-	if turn.execution == nil {
-		removeTurn(m.turns, sessionID, turn)
-	} else if pending.Text != "" || len(pending.Segments) > 0 {
-		finishAttempt(turn)
-		m.turns[sessionID] = &state{phase: PhaseLLM, originalInput: pending, tools: map[string]int{}, execution: turn.execution, reserved: true, compactReady: true}
-	} else {
-		removeTurn(m.turns, sessionID, turn, true)
-	}
-	return pending, true
-}
-
-func (m *Manager) FinishRequest(sessionID string, expected ...string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	turn, ok := m.turns[sessionID]
-	if !ok || !matches(turn, expected) {
-		return
-	}
-	if turn.phase == PhaseAwaitAppendConfirm {
-		finishAttempt(turn)
-		return
-	}
-	removeTurn(m.turns, sessionID, turn)
-}
-
 // StopSession keeps an active attempt reserved until its owner acknowledges
 // completion. Waiters use Snapshot.AttemptDone to join that attempt.
-func (m *Manager) StopSession(sessionID string, expected ...string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	current := m.turns[sessionID]
-	if !matches(current, expected) {
-		return
-	}
-	beginStopTurn(m.turns, sessionID, current)
-}
-
-func (m *Manager) StopAll() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for sessionID, turn := range m.turns {
-		beginStopTurn(m.turns, sessionID, turn)
-	}
-}
-
-func (m *Manager) DrainMerged(sessionID string) string {
-	return m.DrainMergedInput(sessionID).Text
-}
-
-func (m *Manager) DrainMergedInput(sessionID string, expected ...string) Input {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	turn, ok := m.turns[sessionID]
-	if !ok || !matches(turn, expected) || len(turn.pending) == 0 {
-		return Input{}
-	}
-	merged := mergeInputs(turn.pending)
-	turn.pending = nil
-	return merged
-}
-
-func (m *Manager) AddToolUse(sessionID, name string, expected ...string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	turn := m.turns[sessionID]
-	if len(expected) > 0 && !matches(turn, expected) {
-		return
-	}
-	if turn == nil {
-		turn = &state{phase: PhaseTool, tools: map[string]int{}}
-		m.turns[sessionID] = turn
-	}
-	if turn.tools == nil {
-		turn.tools = map[string]int{}
-	}
-	turn.tools[name]++
-}
-
-func (m *Manager) Snapshot(sessionID string) Snapshot {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	turn, ok := m.turns[sessionID]
-	if !ok {
-		return Snapshot{SessionID: sessionID, Phase: PhaseIdle}
-	}
-	return snapshot(sessionID, turn)
-}
-
-func (m *Manager) SnapshotAll() []Snapshot {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	out := make([]Snapshot, 0, len(m.turns))
-	for sessionID, turn := range m.turns {
-		out = append(out, snapshot(sessionID, turn))
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].SessionID < out[j].SessionID })
-	return out
-}
 
 func IsConfirm(text string) bool {
 	switch strings.ToLower(strings.TrimSpace(text)) {
@@ -587,10 +201,10 @@ func appendPending(turn *state, input Input) bool {
 	return true
 }
 
+// mergeInputs combines inputs already normalized at admission or enqueue time.
 func mergeInputs(inputs []Input) Input {
 	clean := []Input{}
 	for _, input := range inputs {
-		input = normalizeInput(input)
 		if input.Text != "" || len(input.Segments) > 0 {
 			clean = append(clean, input)
 		}
@@ -611,11 +225,6 @@ func mergeInputs(inputs []Input) Input {
 		platformTexts = append(platformTexts, input.PlatformText)
 	}
 	return Input{Text: llm.SegmentsTextOnly(segments), PlatformText: mergeTextInputs(platformTexts), Segments: segments, NeedsElyphRules: needsElyphRules}
-}
-
-func textInput(text string) Input {
-	text = strings.TrimSpace(text)
-	return Input{Text: text, PlatformText: text, Segments: llm.TextSegments(text)}
 }
 
 func normalizeInput(input Input) Input {
@@ -653,9 +262,6 @@ func mergeTextInputs(inputs []string) string {
 }
 
 func refreshWait(turn *state) {
-	if turn == nil || turn.waitRefresh == nil {
-		return
-	}
 	select {
 	case turn.waitRefresh <- struct{}{}:
 	default:
@@ -673,10 +279,6 @@ func resetTimer(timer *time.Timer, timeout time.Duration) {
 }
 
 func removeTurn(turns map[string]*state, sessionID string, turn *state, preserve ...bool) {
-	if turn == nil {
-		delete(turns, sessionID)
-		return
-	}
 	if turn.execution != nil && (len(preserve) == 0 || !preserve[0]) {
 		turn.execution.Finish(context.Canceled)
 	}
@@ -710,11 +312,11 @@ func beginStopTurn(turns map[string]*state, sessionID string, turn *state) {
 	}
 }
 func stopTurn(turn *state) {
-	if turn == nil || turn.phase != PhaseAwaitRiskConfirm || turn.riskResponse == nil {
+	if turn.phase != PhaseAwaitRiskConfirm || turn.riskResponse == nil {
 		return
 	}
 	select {
-	case turn.riskResponse <- RiskConfirmationResponse{Stopped: true}:
+	case turn.riskResponse <- riskResponse{Stopped: true}:
 	default:
 	}
 }
@@ -724,5 +326,20 @@ func snapshot(sessionID string, turn *state) Snapshot {
 	for name, count := range turn.tools {
 		tools[name] = count
 	}
-	return Snapshot{SessionID: sessionID, Phase: turn.phase, PendingCount: len(turn.pending), Tools: tools, AttemptDone: turn.attemptDone}
+	return Snapshot{SessionID: sessionID, Phase: turn.phase, PendingCount: len(turn.pending), Tools: tools, AttemptDone: turn.attemptDone, Execution: turn.execution, Attempt: turn.attempt}
+}
+
+func matches(turn *state, expected []string) bool {
+	return turn != nil && (len(expected) == 0 || turn.attempt == expected[0])
+}
+
+type riskResponse struct {
+	Confirmed   bool
+	Rejected    bool
+	Stopped     bool
+	Expired     bool
+	ConfirmAll  bool
+	ConfirmTool bool
+	Extra       string
+	Reason      string
 }

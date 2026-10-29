@@ -1,3 +1,4 @@
+// 管理跨 attempt 的逻辑 Execution、接管、最终结果、完成通知与上下文绑定。
 package turn
 
 import (
@@ -18,18 +19,7 @@ type Execution struct {
 	foregroundSession storage.Session // Immutable committed handoff snapshot, paired with foreground under mu.
 	result            Result
 	done              chan struct{}
-	once              sync.Once
 	finished          bool
-}
-
-type Result struct {
-	RunID     string
-	SessionID string
-	MessageID string
-	Text      string
-	TakenOver bool
-	Outcome   string
-	Err       error
 }
 
 func NewExecution(id string) *Execution {
@@ -63,20 +53,21 @@ func (e *Execution) SetResult(sessionID, messageID, text string) {
 	e.result.SessionID, e.result.MessageID, e.result.Text = sessionID, messageID, text
 }
 func (e *Execution) Finish(err error) {
-	e.once.Do(func() {
-		e.mu.Lock()
-		e.finished = true
-		e.result.Err = err
-		e.result.Outcome = "completed"
-		if err != nil {
-			e.result.Outcome = "failed"
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				e.result.Outcome = "cancelled"
-			}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.finished {
+		return
+	}
+	e.finished = true
+	e.result.Err = err
+	e.result.Outcome = "completed"
+	if err != nil {
+		e.result.Outcome = "failed"
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			e.result.Outcome = "cancelled"
 		}
-		e.mu.Unlock()
-		close(e.done)
-	})
+	}
+	close(e.done)
 }
 func (e *Execution) Wait(ctx context.Context) Result {
 	select {
@@ -115,90 +106,7 @@ func AttemptFromContext(ctx context.Context) string {
 	return facts.Attempt
 }
 
-func matches(turn *state, expected []string) bool {
-	return turn != nil && (len(expected) == 0 || turn.compactRun == expected[0])
-}
-
-func (m *Manager) Execution(sessionID string) *Execution {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if s := m.turns[sessionID]; s != nil {
-		return s.execution
-	}
-	return nil
-}
-
 // ResumeAppend keeps the logical execution but removes the old attempt before
 // the caller admits a new request under the session admission gate.
-func (m *Manager) ResumeAppend(sessionID string) (Input, *Execution, bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	s := m.turns[sessionID]
-	if s == nil || s.phase != PhaseAwaitAppendConfirm {
-		return Input{}, nil, false
-	}
-	input := mergeInputs(append([]Input{s.originalInput}, s.pending...))
-	e := s.execution
-	if s.appendDone != nil {
-		close(s.appendDone)
-		s.appendDone = nil
-	}
-	s.phase = PhaseLLM
-	s.originalInput = input
-	s.pending = nil
-	s.compactRun = ""
-	s.reserved = true
-	return input, e, true
-}
-
-func (m *Manager) StartExecution(sessionID string, input Input, e *Execution, attempt string) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if old := m.turns[sessionID]; old != nil && !(old.reserved && old.execution == e && old.phase == PhaseLLM) {
-		return false
-	}
-	m.turns[sessionID] = &state{phase: PhaseLLM, originalInput: normalizeInput(input), tools: map[string]int{}, execution: e, compactRun: attempt, attemptDone: make(chan struct{})}
-	return true
-}
-
-func (m *Manager) AttachExecution(sessionID, attempt string, e *Execution) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if s := m.turns[sessionID]; matches(s, []string{attempt}) {
-		s.execution = e
-	}
-}
-
-func (m *Manager) MatchesAttempt(sessionID, attempt string) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return matches(m.turns[sessionID], []string{attempt})
-}
 
 // ExecutionAttempt reads both owners under the same lock for status validation.
-func (m *Manager) ExecutionAttempt(sessionID string) (*Execution, string, bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	s := m.turns[sessionID]
-	if s == nil {
-		return nil, "", false
-	}
-	return s.execution, s.compactRun, true
-}
-
-func (m *Manager) ReserveExecution(sessionID string, input Input, e *Execution) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.turns[sessionID] != nil {
-		return false
-	}
-	m.turns[sessionID] = &state{phase: PhaseLLM, originalInput: normalizeInput(input), tools: map[string]int{}, execution: e, reserved: true}
-	return true
-}
-
-func (m *Manager) CanCompact(sessionID string, e *Execution) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	s := m.turns[sessionID]
-	return s == nil || (s.reserved && s.compactReady && s.phase == PhaseLLM && s.execution == e)
-}
