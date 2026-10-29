@@ -6,10 +6,13 @@ import (
 	"testing"
 
 	"elbot/internal/platform/share"
-	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
+
+type referenceTestScope struct {
+	ActorID, Platform, PlatformScopeID string
+}
 
 // Fixture encoding uses the storage format; refcontext consumes platform facts after decoding.
 func encodeReferenceSegments(segments []share.MessageSegment) string {
@@ -39,7 +42,7 @@ func TestApplyFallsBackToReferencedText(t *testing.T) {
 func TestApplyForksOwnOlderAssistantReference(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
-	scope := session.Scope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
+	scope := referenceTestScope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
 	first, _ := createAssistantMessages(t, ctx, store, scope)
 	mapPlatformMessage(t, ctx, store, scope, "p-old", first)
 
@@ -58,7 +61,7 @@ func TestApplyForksOwnOlderAssistantReference(t *testing.T) {
 func TestApplyLatestOwnAssistantReferenceResumes(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
-	scope := session.Scope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
+	scope := referenceTestScope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
 	_, latest := createAssistantMessages(t, ctx, store, scope)
 	mapPlatformMessage(t, ctx, store, scope, "p-latest", latest)
 
@@ -77,8 +80,8 @@ func TestApplyLatestOwnAssistantReferenceResumes(t *testing.T) {
 func TestApplySuperadminBackgroundReferenceResumes(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
-	scope := session.Scope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
-	bg := &storage.Session{OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: "elnis:event-1", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "elnis"}
+	scope := referenceTestScope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
+	bg := &storage.Session{OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: "elnis:event-1", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive, Title: "elnis"}
 	if err := store.Sessions().Create(ctx, bg); err != nil {
 		t.Fatalf("create background session: %v", err)
 	}
@@ -103,8 +106,8 @@ func TestApplySuperadminBackgroundReferenceResumes(t *testing.T) {
 func TestApplyUserBackgroundReferenceFallsBack(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
-	scope := session.Scope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
-	bg := &storage.Session{OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: "cron:user.cron.test", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "cron"}
+	scope := referenceTestScope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
+	bg := &storage.Session{OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: "cron:user.cron.test", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive, Title: "cron"}
 	if err := store.Sessions().Create(ctx, bg); err != nil {
 		t.Fatalf("create background session: %v", err)
 	}
@@ -130,7 +133,7 @@ func TestApplyUserBackgroundReferenceFallsBack(t *testing.T) {
 func TestApplyOtherSessionAssistantReferenceFallsBack(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
-	otherScope := session.Scope{ActorID: "qqofficial:user-2", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
+	otherScope := referenceTestScope{ActorID: "qqofficial:user-2", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
 	msg, _ := createAssistantMessages(t, ctx, store, otherScope)
 	mapPlatformMessage(t, ctx, store, otherScope, "p-other", msg)
 
@@ -150,7 +153,7 @@ func TestApplyOtherSessionAssistantReferenceFallsBack(t *testing.T) {
 func TestApplyOtherScopeAssistantReferenceFallsBack(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
-	currentScope := session.Scope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
+	currentScope := referenceTestScope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
 	otherScope := currentScope
 	otherScope.PlatformScopeID = "c2c:user-2"
 	msg, _ := createAssistantMessages(t, ctx, store, otherScope)
@@ -169,7 +172,7 @@ func TestApplyOtherScopeAssistantReferenceFallsBack(t *testing.T) {
 func TestApplyForkCommandUsesReferencedAssistantID(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
-	scope := session.Scope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
+	scope := referenceTestScope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
 	msg, _ := createAssistantMessages(t, ctx, store, scope)
 	mapPlatformMessage(t, ctx, store, scope, "p-old", msg)
 
@@ -203,10 +206,10 @@ func TestFormatReferenceTextUsesPlatformIdentifierLabels(t *testing.T) {
 	}
 }
 
-func createAssistantMessages(t *testing.T, ctx context.Context, store storage.Store, scope session.Scope) (*storage.Message, *storage.Message) {
+func createAssistantMessages(t *testing.T, ctx context.Context, store storage.Store, scope referenceTestScope) (*storage.Message, *storage.Message) {
 	t.Helper()
-	s, err := session.NewService(store).Create(ctx, scope, session.CreateRequest{Title: "source"})
-	if err != nil {
+	s := &storage.Session{OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID, Mode: storage.SessionModeWork, Title: "source"}
+	if err := store.Sessions().Create(ctx, s); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 	first := &storage.Message{ID: storage.NewID(), SessionID: s.ID, Role: storage.RoleAssistant, Content: "old"}
@@ -220,7 +223,7 @@ func createAssistantMessages(t *testing.T, ctx context.Context, store storage.St
 	return first, latest
 }
 
-func mapPlatformMessage(t *testing.T, ctx context.Context, store storage.Store, scope session.Scope, platformMessageID string, msg *storage.Message) {
+func mapPlatformMessage(t *testing.T, ctx context.Context, store storage.Store, scope referenceTestScope, platformMessageID string, msg *storage.Message) {
 	t.Helper()
 	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID, PlatformMessageID: platformMessageID, MessageID: msg.ID, SessionID: msg.SessionID}); err != nil {
 		t.Fatalf("map message: %v", err)

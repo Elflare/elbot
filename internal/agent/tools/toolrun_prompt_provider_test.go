@@ -82,7 +82,7 @@ func TestPromptNamesQueryErrorsAndModes(t *testing.T) {
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	got, err := provider.ToolNames(ctx, storage.SessionModeWork, &storage.Session{Metadata: `{"background_kind":"cron"}`}, session.Scope{})
+	got, err := provider.ToolNames(ctx, storage.SessionModeWork, &storage.Session{Mode: storage.SessionModeBackground}, session.Scope{})
 	if err != nil || len(got.Tools)+len(got.Skills) != 0 {
 		t.Fatalf("background session: names = %#v, error = %v", got, err)
 	}

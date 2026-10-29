@@ -177,15 +177,13 @@ func (r *SessionRepository) List(ctx context.Context, req storage.ListSessionsRe
 	if !req.IncludeAllPlatforms {
 		where = append(where, "owner_id = ?", "platform = ?")
 		args = append(args, req.ActorID, req.Platform)
-		// Metadata classifies custom background scopes as well as cron/elnis
-		// prefixes; promotion is persistent and takes precedence.
-		backgroundExpr := "(COALESCE(CASE WHEN json_valid(s.metadata) THEN json_type(s.metadata, '$.foreground_origin') END, '') = '' AND (platform_scope_id LIKE 'cron:%' OR platform_scope_id LIKE 'elnis:%' OR COALESCE(CASE WHEN json_valid(s.metadata) THEN trim(json_extract(s.metadata, '$.background_kind')) END, '') <> ''))"
+		// Current identity is determined only by mode, as in Session's access rule.
 		if req.IncludeSamePlatformBackground {
-			where = append(where, "(platform_scope_id = ? OR "+backgroundExpr+")")
-			args = append(args, req.PlatformScopeID)
+			where = append(where, "(platform_scope_id = ? OR s.mode = ?)")
+			args = append(args, req.PlatformScopeID, storage.SessionModeBackground)
 		} else {
-			where = append(where, "platform_scope_id = ?", "NOT "+backgroundExpr)
-			args = append(args, req.PlatformScopeID)
+			where = append(where, "platform_scope_id = ?", "s.mode <> ?")
+			args = append(args, req.PlatformScopeID, storage.SessionModeBackground)
 		}
 	}
 	if req.ArchivedOnly {

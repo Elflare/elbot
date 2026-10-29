@@ -23,7 +23,7 @@ type Scope struct {
 	ActorID          string                       // 会话所属用户。
 	Platform         string                       // 平台标识。
 	PlatformScopeID  string                       // 平台内的会话范围。
-	IsCLI            bool                         // 本地管理入口，可跨平台管理所属会话。
+	IsCLI            bool                         // 本地管理入口，可跨用户、平台和范围管理会话。
 }
 
 // Key 返回 current 绑定的范围身份，不包含可变的会话状态。

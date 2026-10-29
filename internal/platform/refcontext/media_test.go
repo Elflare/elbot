@@ -8,7 +8,6 @@ import (
 
 	"elbot/internal/media"
 	"elbot/internal/platform/share"
-	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
@@ -74,7 +73,7 @@ func TestReferenceMediaOutputHistoryAndFallbackPriority(t *testing.T) {
 func TestLatestAssistantResumesWithoutMediaAndOlderForkRestores(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
-	scope := session.Scope{ActorID: "telegram:1", Platform: "telegram", PlatformScopeID: "group:9"}
+	scope := referenceTestScope{ActorID: "telegram:1", Platform: "telegram", PlatformScopeID: "group:9"}
 	first, latest := createAssistantMessages(t, ctx, store, scope)
 	mapPlatformMessage(t, ctx, store, scope, "old", first)
 	mapPlatformMessage(t, ctx, store, scope, "latest", latest)

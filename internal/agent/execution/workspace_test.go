@@ -163,6 +163,7 @@ func TestAgentToolRunDepsInjectsWorkspaceStoreForForegroundOnly(t *testing.T) {
 	store := newTestStore(t)
 	foreground := newWorkspaceTestSession(t, ctx, store, "")
 	background := newWorkspaceTestSession(t, ctx, store, `{"background_kind":"cron"}`)
+	background.Mode = storage.SessionModeBackground
 	deps := agenttools.NewToolRunDeps(agenttools.ToolRunDeps{Sessions: session.NewService(store), NewWorkspaceStore: func(id string) workspace.WorkspaceStore { return session.NewWorkspaceStore(nil, store.Sessions(), id) }, Identity: agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{Permission: security.DefaultPermission()}), Runtime: agenttools.NewToolRuntimeState(agenttools.ToolRuntimeStateDeps{FileRollback: fileops.NewService(nil)})}).ForTurn(nil, "")
 	withStore := deps.PrepareToolContext(ctx, foreground, llm.ToolCallRequest{Name: "read_file"})
 	if _, ok := workspace.WorkspaceStoreFromContext(withStore); !ok {

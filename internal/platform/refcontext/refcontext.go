@@ -101,8 +101,7 @@ func referencedSession(ctx context.Context, deps Options, msg *storage.Message) 
 }
 
 func isBackgroundSession(session *storage.Session) bool {
-	scopeID := strings.TrimSpace(session.PlatformScopeID)
-	return strings.HasPrefix(scopeID, "cron:") || strings.HasPrefix(scopeID, "elnis:")
+	return session.Mode == storage.SessionModeBackground
 }
 
 func isLatestAssistant(ctx context.Context, store storage.Store, msg *storage.Message) (bool, error) {

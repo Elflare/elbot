@@ -325,7 +325,7 @@ flowchart TD
 
 ## Session 根部契约
 
-Session 由 Agent 创建、持有和关闭，App 不取得内部 Session。根部 13 个文件已按下层目标契约实现总管、装配、生命周期、公开业务入口及类型转换；23 个内部文件仍为职责骨架。24 份旧生产代码与 21 份旧测试保存在 `*.go.bak` 中，不参与构建。下层组件和 Agent 接线尚未完成，根部暂不能编译。
+Session 由 Agent 创建、持有和关闭，App 不取得内部 Session。根部 13 个文件已实现总管、装配、生命周期、公开业务入口及类型转换；share 的 3 个文件已实现共享契约与规则，其余 20 个内部文件仍为职责骨架。24 份旧生产代码与 21 份旧测试保存在 `*.go.bak` 中，不参与构建。下层组件和 Agent 接线尚未完成，根部暂不能编译。
 
 唯一构造入口为 `NewSupervisor(ctx, cfg, SupervisorDeps)`，接收 Agent 运行 context 和完整配置，消费默认模式及命名触发步数，不重复填配置默认值。必需依赖只在根部检查；构造不启动任务、不查询协议材料或命名模型。部分构造失败保留已取得的组件、停止接纳，并将部分总管交回 Agent 调用 Close。
 
@@ -340,7 +340,7 @@ Session 由 Agent 创建、持有和关闭，App 不取得内部 Session。根�
 | `branch.NewService(ServiceDeps) *Service` | Sessions、Messages、Dialogues、Bindings、ActiveSessionIDs、MaterialFor |
 | `naming.NewService(Config, ServiceDeps) (*Service, error)` | Config.TriggerStep；Sessions、Messages、ResolveNaming；出错时交回可关闭的部分组件 |
 
-各子包在自己的 service.go 声明独用消费契约，control／branch 的 Bindings 使用 share/binding.go 的共同契约，由根部交付 binding.Manager。Sessions、Messages、Dialogues 字段只声明各组件实际使用的方法，不接收整个 Store。branch 的 MaterialFor 签名为 `func(llm.Origin) (branch.MaterialPreparer, error)`；其 MaterialPreparer 提供 PrepareFork／PrepareCopy，内部 PreparedMaterial 只含 Seed 和 ExpectedCheckpointID，与根部结果显式转换。naming 的 ResolveNaming 直接接收模型选择方法，不获得整个模型总管。
+各子包在自己的 service.go 声明独用消费契约。share/binding.go 的 BindingCoordinator 定义 EnterSessions、EnterActivation、CurrentBinding、SetCurrent，供 control／branch 协作；control 的消费接口嵌入该接口并声明独用的 EnterScope、EnterBinding 和条件清理能力，由根部交付 binding.Manager。CurrentBinding 返回原始句柄；SetCurrent 在对应准入内提交，空 ID 表示解绑，版本、失效及延后事件由 binding 实现。Sessions、Messages、Dialogues 字段只声明各组件实际使用的方法，不接收整个 Store。branch 的 MaterialFor 签名为 `func(llm.Origin) (branch.MaterialPreparer, error)`；其 MaterialPreparer 提供 PrepareFork／PrepareCopy，内部 PreparedMaterial 只含 Seed 和 ExpectedCheckpointID，与根部结果显式转换。naming 的 ResolveNaming 直接接收模型选择方法，不获得整个模型总管。
 
 生命周期契约为：
 
@@ -369,11 +369,15 @@ Agent 接线尚待迁移：先创建 routes、Turn 和执行视图，再创建 S
 
 control 在 service.go 定义 CreateRequest、ActivateModeRequest／Result、Status、BackgroundRequest；在 expiration.go 定义 IdleExpirationConfig、ExpireIdleRequest／Result。branch 在对应业务文件定义 BackgroundCopyRequest、CompactedRequest，材料类型留在 service.go。字段与根部对应类型一致，Scope 改用 share.Scope；下层业务方法参数和返回值与根部对应入口一致，只替换所属请求、结果和绑定类型。IdleExpirationConfig.TTLMinutes 接收 share.Scope 与角色标记，根部的同名能力只转交该规则。闲置期限仍由 ExpireIdleRequest 携带，过期只解除 current，下一条输入再建会话。
 
-share.Scope 与公开 Scope 保持相同字段结构并提供 Key。share/session.go 提供 IsBackground、WasPromoted、ErrSessionBusy、ErrForegroundSession；share/origin.go 提供 Origin 与内部归属继承。仅 control 使用的 ErrChatModeRequiresEmptySession 归 control。根部三个公开错误直接引用内部错误值，保持 errors.Is 身份。
+share.Scope 与公开 Scope 保持相同字段结构，Key 使用 ActorID、Platform、PlatformScopeID 的零字符分隔编码，不包含入口语义。share/session.go 提供 IsBackground、WasPromoted、CanAccess、ErrSessionBusy、ErrForegroundSession。仅 control 使用的 ErrChatModeRequiresEmptySession 归 control。根部三个公开错误直接引用内部错误值，保持 errors.Is 身份。
 
-公开 Binding 使用 `type Binding share.Binding`，以指针转换共享原始地址，不复制原子状态或建立包装缓存。share.Binding 的字段保持私有，根部只实现 Scope、SessionID、Version、Valid，内部修改方法不会成为公开 Binding 的方法。share.Binding.Valid 必须支持 nil 并返回 false；建立与失效仍由 binding 组件唯一负责。control.CurrentBound 返回会话快照及 `*share.Binding`，根部转换时保留绑定和错误；同一次绑定在查询、context 和事件中保持指针身份，切离后不复用。
+当前后台身份唯一由 Mode == background 决定，SQLite 列表与 Platform 引用回复使用同一模式事实。background_kind 只表示来源，cron:／elnis: 只表示任务范围，foreground_origin 只表示接管历史，均不覆盖当前模式。CanAccess 接收已取得的非 nil 会话：CLI 可跨用户、平台和范围管理；其他入口先匹配用户与平台，后台仅允许私聊访问，前台要求 ScopeID 相同。SQL 的 IncludeSamePlatformBackground 扩展同用户同平台的后台列表，否则排除后台模式；不根据前缀或元数据补猜身份，不迁移旧数据。control 后续创建后台会话必须写入 background 模式，接管必须原子提交前台 Scope、work 模式和接管记录；复用后台任务仍通过 WasPromoted 拒绝已接管会话。
 
-share/binding.go 提供 WithBinding、BindingFromContext 及唯一的内部 context key：前者接受 nil 覆盖原绑定，后者在缺失或 nil 时返回 false。根部 WithBinding 同步维护 contextinfo.Execution.SessionID，清除绑定时只清除此字段并保留其他执行事实。准入方法沿用原 context 传递内部租约，Scope → 排序 SessionID → 状态锁的顺序及取消校验全部归 binding，不在根部重复检查。
+share/origin.go 的 Origin 只解析已保存的 llm_origin，未记录返回 false，非法元数据或缺少 protocol 返回错误；允许仅已知协议，不查询当前配置或补造 provider。InheritOrigin 只覆盖目标的 llm_origin；源无归属则删除目标归属，保留目标其余原始 JSON，不导入源运行状态。
+
+公开 Binding 使用 `type Binding share.Binding`，以指针转换共享原始地址，不复制原子状态或建立包装缓存。share.Binding 的字段保持私有，根部只实现 Scope、SessionID、Version、Valid，内部修改方法不会成为公开 Binding 的方法。NewBinding(scope, sessionID, version) 与 Invalidate 仅供 binding 管理组件建立和永久失效句柄；有效性使用原子状态，其余字段创建后不可变，零值和 nil 的 Valid 返回 false。control.CurrentBound 返回会话快照及 `*share.Binding`，根部转换时保留绑定和错误；同一次绑定在查询、context 和事件中保持指针身份，切离后不复用。
+
+share/binding.go 提供 WithBinding、BindingFromContext 及唯一的内部 context key：前者接受 nil 覆盖原绑定，后者在缺失或 nil 时返回 false，失效句柄仍原样返回以供准入校验。根部 WithBinding 同步维护 contextinfo.Execution.SessionID，清除绑定时只清除此字段并保留其他执行事实；share 不改写公共 Execution。准入方法沿用原 context 传递内部租约，Scope → 排序 SessionID → 状态锁的顺序及取消校验全部归 binding，不在根部重复检查。
 
 binding/signals.go 提供 BindingChangedEvent{Version, Old, New}，control/promotion.go 提供 ForegroundActivatedEvent{Session, Binding}，其中绑定均为 `*share.Binding`。两个组件观察入口接收 `func(context.Context, Event) error` 和 signal.ConnectOptions，返回 `(*signal.Connection, error)`；根部直接注册转换回调，不建立第二个事件源或中转订阅。BindingChanged 在准入外发布，ForegroundActivated 在提交后、准入释放前同步交付；根部透传回调错误，不回滚已提交接管，接管回调不得 I/O 或再次获取准入。
 
@@ -389,11 +393,14 @@ flowchart TD
     W --> C["control/service.go<br/>会话管理组件（待实现）"]
     W --> R["branch/service.go<br/>派生会话及材料准备（待实现）"]
     W --> N["naming/service.go<br/>命名任务、信号及日志订阅（待实现）"]
-    B & C & R --> H["share/binding.go<br/>内部绑定协作契约（待实现）"]
+    B & C & R --> H["share/binding.go<br/>绑定句柄、context 与 BindingCoordinator"]
     S --> API["contracts.go<br/>公开请求、结果、错误与事件"]
     S --> O["operations.go、background.go、origin.go<br/>管理、后台与归属入口"]
     O --> C
-    O --> F["share/session.go、share/origin.go<br/>共享事实与归属规则（待实现）"]
+    O --> F["share/session.go、share/origin.go<br/>模式身份、访问规则与归属继承"]
+    C & R --> F
+    DB["storage/sqlite/session_repository.go<br/>按模式筛选会话列表"]
+    REF["platform/refcontext/refcontext.go<br/>按模式选择引用回复行为"]
     S --> P["branch.go、background.go<br/>Fork、压缩、后台副本与材料契约"]
     P --> R
     S --> BC["binding.go<br/>公开句柄、context 与准入"]
@@ -406,7 +413,7 @@ flowchart TD
     E --> B & C
 ```
 
-当前构建缺少 binding.Manager、各子包 Service 及其构造、生命周期和业务方法，以及 share／control／branch 的内部类型、事件和共享规则。根部公开类型已补齐。只执行格式、静态接线及编译缺口检查，不使用假组件或兼容实现通过编译；下层接通后验证绑定指针身份与永久失效、context 清除、事件转换与回调错误、材料 nil／部分结果、工作目录条件更新及关闭超时续等。
+当前构建缺少 binding.Manager、各子包 Service 及其构造、生命周期和业务方法，以及 control／branch 的内部类型和事件。根部公开类型和 share 已补齐。share 与 Platform/refcontext 整包 race 通过，覆盖绑定身份与永久失效、context 清除、访问矩阵、归属继承、模式身份和引用回复。SQLite 使用全部生产文件与 session_identity_test.go 的独立 race 回归，覆盖模式、来源和接管历史冲突下的列表筛选；整包测试仍被 Session 依赖阻塞，不用假组件通过编译。下层接通后验证根部事件转换与回调错误、材料 nil／部分结果、工作目录条件更新及关闭超时续等。
 
 ## 验证与备份
 

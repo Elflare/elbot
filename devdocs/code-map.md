@@ -40,7 +40,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/platform/agent.go`、`internal/platform/cli/message.go`：平台消息投影与 CLI 入站来源。
 - `internal/security/`：身份解析、权限与风险策略。
 - `internal/agent/dialogue/execution_context.go`：模型事实与接管上下文刷新。
-- `internal/request/manager.go`、`internal/turn/execution.go`：执行关联与快照；`internal/session/binding.go` 当前为公开绑定能力骨架，内部契约位于 `session/share/binding.go` 骨架。
+- `internal/request/manager.go`、`internal/turn/execution.go`：执行关联与快照；`internal/session/binding.go` 提供公开绑定转换，`session/share/binding.go` 定义句柄、context 与 BindingCoordinator；绑定管理组件尚待实现。
 
 <!-- locator:signal -->
 ## 信号与订阅
@@ -89,7 +89,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/agent/routes/`：按 APIType 登记 Loop／Compactor／Material。
 - `internal/agent/wiring.go`：消费完整配置与外部业务能力，装配线内组件和协议路线；App 资源准备见 `internal/app/resources.go`。
-- `internal/agent/share/dialogue.go`、`internal/contextmgr/compact_contract.go`：公共循环与压缩契约；Session 材料消费接口已在 `internal/session/deps.go` 定义，公开结果 PreparedMaterial 尚待 `contracts.go` 实现；原定义位于 `internal/session/material.go.bak`。
+- `internal/agent/share/dialogue.go`、`internal/contextmgr/compact_contract.go`：公共循环与压缩契约；Session 材料消费接口在 `internal/session/deps.go` 定义，公开结果 PreparedMaterial 位于 `contracts.go`，branch 内部实现尚待完成。
 - `internal/llm/origin.go`、`internal/modelmgr/compatibility.go`：持久化归属与兼容判断。
 - `internal/llm/api_type.go`、`internal/tool/registry/availability.go`：模型 API 类型与工具可用性。
 
@@ -254,13 +254,13 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 <!-- locator:session -->
 ## Session
 
-`internal/session/` 根部 13 个文件已实现总管、外部依赖、装配、关闭协调及公开业务入口；23 个内部文件仍为职责骨架。24 份旧生产代码和 21 份旧测试均保存在根目录的 `*.go.bak` 中，不参与构建。
+`internal/session/` 根部 13 个文件已实现总管、外部依赖、装配、关闭协调及公开业务入口；share 的 3 个文件已实现，其余 20 个内部文件仍为职责骨架。24 份旧生产代码和 21 份旧测试均保存在根目录的 `*.go.bak` 中，不参与构建。
 
 根部按下层契约直接接线，公开请求、结果、绑定和事件已定义；当前缺少下层组件、内部类型与业务实现，尚不能编译。契约明细见 [Session 根部契约](app-design.md#session-根部契约)；Agent 实际接线及业务回归待后续完成。
 
 `internal/background/share/takeover.go` 保留 Cron 与 Elnis 共用的接管查询消费契约；Session 根部 SessionTakenOver 委托 control 查询。公开观察入口仅包含绑定变化和前台接管，命名事件及日志投影留在 naming 内部；WorkspaceStore 由总管按 SessionID 创建，不交付仓库。
 
-文件职责如下，路径均相对 `internal/session/`；根部已实现，子包仍待实现：
+文件职责如下，路径均相对 `internal/session/`；根部与 share 已实现，其余子包仍待实现：
 
 | 位置 | 文件与目标职责 |
 |---|---|
@@ -269,7 +269,9 @@ Hook 根包装配内部组件，子包通过 share 共享定义并接收外部�
 | `control/` | `service.go` 定义组件与依赖，`current.go` 管理当前会话和模式，`promotion.go` 恢复与接管，`background.go` 后台准备与接管查询，`query.go` 查询，`management.go` 管理操作，`expiration.go` 过期处理，`origin.go` 归属登记，`workspace.go` 工作目录持久化 |
 | `branch/` | `service.go` 定义组件、依赖与材料准备，`fork.go` 前台分支，`copy.go` 后台副本，`compact.go` 压缩结果创建 |
 | `naming/` | `service.go` 管理组件、任务状态与启停，`naming.go` 调度与提交，`title.go` 生成与规范化，`signals.go` 事件与日志 |
-| `share/` | `session.go` 共享 Scope、会话事实与判定，`binding.go` 内部绑定协作契约，`origin.go` 归属解析与继承 |
+| `share/` | `session.go` 共享 Scope、按 Mode 判定身份、访问规则与错误，`binding.go` 绑定句柄、context 和 BindingCoordinator，`origin.go` 归属解析与继承 |
+
+`internal/storage/sqlite/session_repository.go` 的列表筛选与 `internal/platform/refcontext/refcontext.go` 的引用回复均以 Mode 判定后台身份，不使用元数据或任务范围前缀。share、Platform/refcontext 的整包 race 及 SQLite 独立身份回归已通过；Session 根部与依赖其旧接口的测试仍待下层接通。
 
 <!-- locator:context -->
 ## 上下文、Prompt 与压缩

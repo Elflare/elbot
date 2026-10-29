@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"elbot/internal/platform/share"
-	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
@@ -58,7 +57,7 @@ func TestEnrichHistoryReferencePreservesOriginalMediaPositions(t *testing.T) {
 func TestEnrichCanonicalAssistantKeepsReferenceDecisions(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
-	scope := session.Scope{ActorID: "qqonebot:1", Platform: "qqonebot", PlatformScopeID: "group:9"}
+	scope := referenceTestScope{ActorID: "qqonebot:1", Platform: "qqonebot", PlatformScopeID: "group:9"}
 	first, latest := createAssistantMessages(t, ctx, store, scope)
 	mapPlatformMessage(t, ctx, store, scope, "old-forward", first)
 	mapPlatformMessage(t, ctx, store, scope, "latest-forward", latest)
