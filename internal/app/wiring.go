@@ -62,7 +62,7 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 		return lines, err
 	}
 	// 具体类型只用于装配；连接及订阅由接收方持有和释放。
-	// Hook 注册 Points 并登记实际 handler；Platform 的目标接口接入消息、命令及快照订阅。
+	// Hook 注册 Points 并登记实际 handler；Platform 接入消息、命令及快照订阅。
 	if err := hookSupervisor.ConnectAgent(agentSupervisor); err != nil {
 		return lines, fmt.Errorf("connect hook agent: %w", err)
 	}

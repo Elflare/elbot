@@ -64,7 +64,7 @@ func stopBusinessLines(ctx context.Context, lines businessLines) stopResult {
 	}
 
 	var steps []shutdownStep
-	// TODO: Platform.Wait 等待接入循环结束，发送能力留到 Close；历史库由 App 关闭。
+	// Platform.Wait 等待接入循环结束，发送能力留到 Close；历史库由 App 关闭。
 	// 正常停止返回 nil；独立故障和等待超时返回错误，由 Platform 解释停止原因。
 	if line, ok := lines["platform"]; ok {
 		steps = append(steps, shutdownStep{name: "platform ingress", close: line.supervisor.(Waiter).Wait})

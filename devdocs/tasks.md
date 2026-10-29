@@ -1,11 +1,6 @@
 # 架构优化
-总体原则：
-1. 从上往下层设计。
-2. 把app包梳理，把所有要改动的文件重命名为原名.bak
-3. 把要写的文件创建好（名字需讨论）
-4. 每个文件只写字段、函数名字和签名和注释，函数内容就写几句注释，大致说他应该干什么，逻辑就直接写pass（字段、函数、签名需讨论）
-5. 所有架构搭完后，可以参考对应的bak文件（可能名字要改，但是可以参考），把自己职责相关的内容填进去
-6. 先不管下层内容，也不管还没写完代码的报错
+
+职责与依赖遵循[架构原则](architecture.md#架构原则)，各包契约见 [App 包设计](app-design.md)。主体实现及进程入口已接通，全仓测试与构建通过；完成状态与验证范围分别记录。App、Media 的 `.bak` 文件暂时保留，不参与构建。
 
 ## App 包架构梳理
 
@@ -17,7 +12,7 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] 退出步骤使用结果枚举和共用批量执行函数，保持统一 30 秒预算与部分失败清理。
 - [x] 统一权限管理类型及现行调用方为 `Permission`。
 - [x] 测试覆盖资源部分失败、环境参数和退出辅助逻辑；期限测试使用虚拟时间。
-- [x] Tool、Platform、Background 根部目标总管与 Platform.RunClient 分类契约已实现；Platform 剩余下层接线见专节。
+- [x] Tool、Platform、Background 根部总管与 Platform.RunClient 分类契约已实现；Platform 接线及验证范围见专节。
 - [x] 收窄 Agent 的 Hook 边界：声明根包 `agent.Points`，提供 `RegisterHooks`、`StartHookRequest`，业务流程仅调用 Agent 自有扩展点；Hook 仅提供标准管理命令，由 Agent 注册。
 - [x] Hook 根包实现 ConnectAgent：注册并持有一组回调，转换业务参数与 Hook Event 并处理结果转换；逐 handler 登记回调只传 context 与名称，不持有 Agent 内部组件。
 - [x] Hook 根部 context_to_event.go 负责外部事实转换；pipeline 组织续接、普通规则及错误钩子，构造时注入日志和 runtime 续接能力；注册查询契约与事件辅助逻辑归 share。
@@ -39,10 +34,11 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 
 ## Tool 执行子包
 
-- [x] Execution 使用 Manager 承担执行流程，Tool 根部转发公开能力；内部直接依赖 Registry、Discovery、State、Share，不反向依赖 Tool 根包。
+- [x] Execution 使用 Manager 承担执行流程，Tool 根部转发公开能力并注入目录查询、发现与状态处理能力；内部通过消费接口、函数和 Share 契约协作，不直接依赖兄弟组件或 Tool 根包。
 - [x] Share 提供准备契约；单次调用固定工具对象，统一风险与权限决定，保留批次并发、确认、日志和逐项提交。
 - [x] Builtin 的 Config／常驻记忆外部依赖由 Tool 根部适配；长期记忆更新复用公共文件预览，媒体导入参数和 ID 辅助通过 Tool 入口访问。
-- [ ] Skill 完成依赖整理后，运行真实工具的集成测试及 Tool 根部整链路验证；文件编辑／撤销批次测试位于 Builtin，配置与常驻记忆真实适配测试位于 Tool 根部。
+- [x] Skill 依赖由 Tool 根部装配并注入，通过内部契约协作；文件编辑／撤销批次测试位于 Builtin，配置与常驻记忆真实适配测试位于 Tool 根部。
+- [ ] 暂缓 Tool 总管装配、Skill 加载和工具执行的完整集成验证，不新增大型测试设施；现有组件与桥接测试不替代这项验证。
 
 ## Tool 历史与后台管理对接
 
@@ -55,7 +51,7 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] Cron 使用自有 JobRepository、记录和 JSON 模型，由根部转换 Storage；会话复制与共享接管查询接入 Agent，移除旧 Service 管理入口。
 - [x] Elnis 使用独用 EventRepository、Media 契约与发送、平台 API 函数；根部转换存储及媒体类型，共用回执映射归 share。
 - [x] Agent 根包提供后台执行、会话复制与过期清理；复制元数据使用 JSON 原始值，输入组件通过最小能力完成准备。
-- [x] 历史库归 App，Platform 直接写、Tool 直接读；Background 清理直接注入历史仓库 DeleteBefore。Platform 公开发送与 API 的剩余接线见下节。
+- [x] 历史库归 App，Platform 直接写、Tool 直接读；Background 清理直接注入历史仓库 DeleteBefore。Platform 公开发送与 API 接线及验证范围见下节。
 - [x] Tool.ObserveCronChanged 接入 Cron.RefreshJob；通知只登记名称，启动与运行期串行重新读库，覆盖修改、禁用、删除、同名重建及读取期间再变更。
 - [x] 维护组件使用会话、历史清理函数及媒体 Cleanup 最小接口；共享维护配置由 share.MaintenanceJob 表达，Cron 适配回调与任务配置，根部负责接线。历史引用在媒体清理时统一对账。
 - [x] SetupCron 只配置维护任务，由根部显式启动 Manager；注册、配置、清理结果传递和配置不启动调度的回归已覆盖。
@@ -84,14 +80,14 @@ App 的公共流程和 Agent 对接已实现，资源服务及其他业务线按
 - [x] QQ Official 接入 Share 运行、入站与通知契约及自有最小 Deps；移除旧 New／Run、完整历史字段、闲置配置与非法依赖。race 回归覆盖网关重连分类、心跳同步与退出、并发启停、独立故障保留、停止接入后的发送、在途 HTTP 取消及别名入库等待、关闭超时重试、令牌刷新等待取消与 401 单次重试。
 - [x] Telegram 接入 Share 运行、入站、通知和原生 API 契约；使用自有最小 Deps，删除旧 New／Run 与 share/adapter.go。race 覆盖异步连接、并发启停、实际退出、收尾发送、完整操作取消、关闭超时重试、独立连接池清理、可取消流式等待、身份快照、命令目录并发、引用与历史、配置边界及 原生 API 透传。
 - [x] CLI 移除旧 agent/events 与 Platform 根包依赖，接入自有事件、ConnectUI 和函数式补全；通过事件版本、部分 UI 所有权、订阅释放、后台静默和原连接回复回归；换绑清除旧待发状态，在途发送按序完成，真实 WebSocket 背压覆盖换绑和展示关闭后连接保留，UI 关闭可超时重试。命令信息由补全入口消费，不保存闲置目录。
-- [x] CLI 客户端实现分类结果，根部仅转换；验证指定连接、默认本机拨号失败回退、远端与认证失败不回退、取消及已连接后断线退出。CLI 与四个相关组件通过 race，跨根部接线仍待整包验证。
+- [x] CLI 客户端实现分类结果，根部仅转换；验证指定连接、默认本机拨号失败回退、远端与认证失败不回退、取消及已连接后断线退出。CLI 与四个相关组件通过 race；进程入口测试覆盖跨根部的默认回退、显式及指定连接不回退、取消不触发本地启动。
 - [x] dispatch.Router 按显式平台转发 CallPlatformAPI；通用发送、流式与媒体能力保留固定方法，引用恢复沿用入站链路。媒体回执通过根部注入 SaveMediaOutput；删除字符串能力分发表、撤回／禁言／退群映射及 dispatch 旧 Elvena 执行代码。
 - [x] notification.Manager 实现 NotifyPlatformFailure，复用既有异步信号；根部选择存活平台和去重管理员目标。Platform 根包、notification、Share 与 Agent/execution 的 race 回归通过，覆盖实际路由、停止接入后通知、取消排队及在途工作、等待回调退出和超时重试；旧上下文测试已按当前公开事实契约清理。
 - [x] Elvena Call 只包含 Platform／API／Params；Elnis direct 按既有平台选择规则直接转发原生调用，保留顺序执行、遇错停止及 calls-only 行为，无能力映射或兼容包装。Elvena、Background 根包及全部子包、dispatch 的 race 回归通过，覆盖 HTTP 原生请求、失败与取消、真实 SQLite 接线、去重恢复和借用资源生命周期。
 - [x] Event 由 Elnis/types.go 定义并注释字段用途，不保留闲置 SegmentPaths；targets.go 的 toDeliveryTarget 与 media.go 的 directText 承担投递准备。Elvena 仅保留协议与来源文件，无闲置结果类型、总线或投递辅助文件。
 - [x] Elwisp 生成提示与中文用户示例统一使用 platform／api／params 原生调用，说明平台选择与 calls-only 行为；生成提示回归校验示例 JSON 和调用字段。Hook platform.call 沿用原生链路。
 - [x] 删除旧 platform.go、module/、builtin/ 及旧实现测试，不保留兼容别名；Doctor 使用外部测试包，通过 Platform 根部 ConfigDefinitions 获取配置定义；Platform 根包及全部子包、Doctor 的 race 回归通过。
-- [ ] 补充 Platform 原生 API 与真实历史接线集成验证；客户端结果已通过进程入口跨根部验证，App 整包与 Service 启停通过 race；组件隔离测试不替代真实总管接线。
+- [ ] 暂缓 Platform 原生 API 与真实历史接线的完整集成验证，不新增大型测试设施；客户端结果已通过进程入口跨根部验证，App 整包与 Service 启停通过 race，组件隔离测试不替代这项验证。
 
 ## 媒体中心对接
 
@@ -113,7 +109,7 @@ Media [根部与下层契约](app-design.md#media-根部与下层契约)、四�
 
 - [x] 根部按总管、依赖、装配、生命周期四文件组织；Cron 独用数据契约放在 cron 子包；内部业务收进 execution、cron、elnis、maintenance，共享定义与辅助能力归 share。
 - [x] 移除旧 module 和 Background 持有的 Cron 工具注册；公共结果使用方依赖 share。
-- [ ] 完成 Platform 剩余下层公开能力接线，验证完整 App 总管接线。
+- [x] Background 通过 App 接入 Agent、Tool、Platform 的公开能力；临时配置的 Service 测试覆盖实际 App 总管装配和启停，原生 API 与历史链路的完整集成验证见 Platform 专节。
 - [x] Elnis 与 Background 整包构建，实际 elnisBridge 与 cronBridge 运行真实存储集成测试。
 - [x] Elnis Runtime 生命周期与 Supervisor 测试已接通；Background 全包通过 race 检查，真实 SQLite 覆盖关闭批量终态、媒体引用与 outbox 保留。
 
@@ -121,10 +117,10 @@ Media [根部与下层契约](app-design.md#media-根部与下层契约)、四�
 
 - [x] 公开 Hook 载荷与订阅事件独立定义在根部；内部共享循环、提交、消息与 Hook 契约放 Share，具体实现留所属子包。
 - [x] 子包不依赖兄弟实现；根部注入实际需要的外部能力、模型选择函数与 Workspace 工厂。
-- [ ] 入站契约迁移后，在 review 阶段重新验证 Agent 子包。
+- [x] Agent 子包已接入新的入站与 Session 契约，通过相关 race 回归及全仓测试。
 - [x] Hook.ConnectAgent 使用 agent.Points 与根包嵌套类型；Agent 通过 Commands 注册 Hook 命令，管理结果留在 Hook 内部。
 - [x] Command 与 Completion 使用 Tool 根包查询契约；删除无生产调用的 Notification HookFailure 辅助与测试。
-- [ ] 入站契约迁移后，在 review 阶段迁移 Supervisor 测试夹具并验证整链路及订阅生命周期。
+- [x] Supervisor 测试夹具使用当前公开契约，覆盖工具预载、执行与持久化、后台运行与复制、绑定订阅、信号关闭及超时续等；真实 Agent–Hook–Tool 接线覆盖命令、补全和输出回调。
 - [x] Agent 实现 RunBackground、CopyBackground、CleanupSessions，input 承接后台准备；调用方准备目录与后台来源，仍负责报告解析和重试。
 - [x] Elvena 请求、Elnis 工具声明及 Background 共享请求统一使用 Tool 根包类型；Runner 仅准备目录、注入后台来源并调用 Agent.RunBackground，工具声明 JSON 排除内部关联字段。
 
@@ -150,7 +146,7 @@ Media [根部与下层契约](app-design.md#media-根部与下层契约)、四�
 - [x] Cron 提供本地预载名单；Elnis 授权并适配 `ELwispTools`，补齐内部字段 `CanonicalName`、`EventKey`。
 - [x] Background Runner 只接入 Agent.RunBackground，Elnis 只借用 Tool.BackgroundSelections；新会话由 Agent 预载并提交，续跑沿用已提交集合。
 - [x] State 统一保存完整 `DiscoveredTool` 声明，删除名称补查目录路径；后台旧声明转换入口已移除。
-- [x] Cron／Elnis／Background 内部接线与存储链路通过整包测试；App 通过 Tools 交付 Tool 总管，内部能力分配由 Background 负责。共享资源构造与 App 整包已通过 race；完整进程链路仍待入口适配。
+- [x] Cron／Elnis／Background 内部接线与存储链路通过整包测试；App 通过 Tools 交付 Tool 总管，内部能力分配由 Background 负责。共享资源构造与 App 整包已通过 race；进程入口已适配，临时配置的 Service 启停验证通过。
 
 
 ## 不一定实现

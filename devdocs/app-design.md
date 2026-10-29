@@ -66,7 +66,7 @@ App 用 `shutdownStep` 记录步骤名称和关闭调用，`runShutdownSteps` �
 `agent.NewSupervisor(ctx, cfg, deps)` 接收 Store、ChatHistory、Models、Media、Permission、Logs 及 Tool、Hook、Platform 能力，其中 Hook 仅通过 `Commands() []command.Handler` 提供管理命令，由 Agent 使用标准注册入口接入。公开业务入口为 `HandleMessage`、`RunBackground`、`CopyBackground`、`CleanupSessions`、`SessionTakenOver`、`RegisterHooks`、`StartHookRequest`、`Complete`、`Commands`、`ObserveStatusChanged`、`ObserveBindingChanged`；生命周期使用 `Start`、`BeginClose`、`Close`、`Done`。Hook 的 `ConnectAgent` 注册一组 `agent.Points` 回调并持有解除函数，每个实际 handler 通过 `StartHookRequest` 登记。其他接收方的 `ConnectAgent` 负责自身适配、订阅和释放。其余四条线通过根包 `Supervisor`、`SupervisorDeps`、`NewSupervisor` 及各自生命周期接口接入。
 各条线的对外文件放各条线的根部，内部业务放子包。Agent 的公开回调和事件定义在 contracts.go，内部共享载荷放 share，消费者按实际需要接收最小能力。Agent 根包与子包、Hook、Command、Completion 已通过相关回归；真实 Agent–Hook–Tool 总管接线覆盖命令注册、规则补全和输出回调。Hook 消费 Agent 与 Tool 根部类型，管理查询类型留在 Hook 内部。
 
-Platform 根部按目标下层契约实现。NewSupervisor 接收完整配置及 Mode、Store、ChatHistory、Media、Permission、Logs，持有适配器、通知连接和 UI；历史库属于 App，Platform 只借用。部分失败仍交回总管。公开发送、原生 API 和媒体解析转交内部组件，不暴露 Repository 或 Router。失败通知已接通；配置定义统一由根部 ConfigDefinitions 提供。
+Platform 根部构造并持有下层组件，统一提供公开能力。NewSupervisor 接收完整配置及 Mode、Store、ChatHistory、Media、Permission、Logs，持有适配器、通知连接和 UI；历史库属于 App，Platform 只借用。部分失败仍交回总管。公开发送、原生 API 和媒体解析转交内部组件，不暴露 Repository 或 Router。失败通知已接通；配置定义统一由根部 ConfigDefinitions 提供。
 
 Tool 根部创建媒体入口、技能目录与基础环境并一次注入 Skill Manager；Builtin、Skill、发现及 ELwisp 均接入必需的准备／执行契约，Skill 内部不依赖 Tool 根包。Cron 工具只使用 Tool 内部契约，根部 bridge 接入 Storage 和模型校验并发布任务定义变更；Background 根部持有订阅，Cron Manager 合并名称并串行读库刷新。Elnis 已通过自身媒体契约接入媒体中心。Background 整包已完成生命周期接线；App 整包及 Service 进程启停已通过 race。
 
@@ -514,6 +514,6 @@ dispatch、Share、OneBot、Telegram、refcontext、Agent/execution 与 Hook/rul
 
 App 的阶段执行、登记、启动、可选等待、资源构造和退出测试已在实际 App 整包中通过 race 验证，使用实际函数、共享资源类型和真实历史 SQLite。覆盖任意数量业务线、独立故障保留及阻塞关闭下的统一期限。Background 的历史清理依赖通过根部直接注入仓库，相关测试及借用资源关闭断言已随整包 race 回归通过。`cmd/elbot/main_test.go` 通过真实子进程覆盖默认回退、显式客户端失败不回退、指定连接不回退、旧命令拒绝、握手期间取消不触发本地启动，以及 Service 完整启动、信号退出和配置锁释放；测试使用临时配置与真实 SQLite，不连接外部模型或平台。入口、launcher、security、App 与 CLI 五个包通过 race。
 
-Platform 根包整包 race 验证覆盖重复并发启停、未启动及部分失败清理、TUI／Service 差异、取消观察与故障保留、接入退出后保留资源、清理超时续接、普通失败继续及故障通知接线。公开事实测试覆盖存取切片隔离、空值、上下文移除，以及平台事实与公共会话事实互不改写；agent_test.go 覆盖输入转换、延迟解析和公开事实投影。原生 API 跨根部接线和真实历史接线仍需补充集成验证，见 [任务清单](tasks.md#platform-剩余接线)。
+Platform 根包整包 race 验证覆盖重复并发启停、未启动及部分失败清理、TUI／Service 差异、取消观察与故障保留、接入退出后保留资源、清理超时续接、普通失败继续及故障通知接线。公开事实测试覆盖存取切片隔离、空值、上下文移除，以及平台事实与公共会话事实互不改写；agent_test.go 覆盖输入转换、延迟解析和公开事实投影。原生 API 跨根部接线和真实历史接线的完整集成验证暂缓，不新增大型测试设施；现有覆盖与验证缺口见 [任务清单](tasks.md#platform-剩余接线)。
 
 同目录保留 13 份原生产文件和 12 份原测试文件的 `*.go.bak`，不参与构建，未恢复旧装配。

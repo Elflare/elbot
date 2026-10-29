@@ -103,7 +103,7 @@ func TestNewMediaCenterEarlyFailure(t *testing.T) {
 				ctx, cancel = context.WithCancel(ctx)
 				cancel()
 			}
-			// nil Store and real TODO constructors make accidental downstream work fail.
+			// 无需 Store 即可拒绝取消或无效配置；此时不应创建对象与传输组件。
 			center, err := NewMediaCenter(ctx, cfg, nil)
 			if err == nil || center == nil || center.objects != nil || center.transfer != nil || center.History != nil {
 				t.Fatalf("unexpected early construction result: %v, %v", center, err)

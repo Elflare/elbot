@@ -164,7 +164,7 @@ Agent 总管持有模型完成、状态变化、视觉降级三个线内事件�
 
 兄弟子包通过消费接口及 `share` 协作。Loop、准备结果、提交、消息转换及接管提示归 `share/dialogue.go`；Hook 载荷与调用上下文辅助归 `share/hooks.go`。ExecutionView、Preparer、CallProcessor、MessageStore、CommitGate 和 ToolTranscriptCommitter 的实现保留在 Dialogue；Chat／Responses 只取得所需能力。信号源统一由根部构造，模型完成事实归 Share，状态事实归 Execution，视觉降级事实归 Dialogue。
 
-Hook、Command、Completion 已消费根包公开契约，Agent 根部与真实 Tool 接线的回归可独立运行；Background 的会话复制、清理及其余业务线仍待接入，完整应用尚不能运行。
+Hook、Command、Completion 已消费根包公开契约，Agent 根部与真实 Tool 接线的回归可独立运行；Background 已接入 Agent 的后台执行、会话复制与清理能力。App 已完成各线总管装配及进程入口接线，全仓测试、构建与临时配置的 Service 启停验证通过。
 
 ```mermaid
 flowchart TD
@@ -313,7 +313,7 @@ flowchart TD
 - Registry 统一筛选运行资格，Discovery 的 Resolve 接收已筛选对象并解析依赖，Preload 使用返回的同一批对象读取动态说明。标签授权展开只读取目录与配置成员，不按当前模型、权限或前后台事实缩减声明。
 - Execution 的基础 schema 仅为通过 Registry 筛选的 discover_tool，限 Work 且未禁用基础工具；Chat 不开放工具，Background 只使用已发现声明。已发现 schema 不按目录重建，按输入顺序去重并复制；远程调用按 CanonicalName（为空时用 Name）定位，向端点发送原始 Name 与 EventKey。
 - PrepareBackground 接收 BackgroundPreloadRequest；AllowedToolNames 仅约束本地根工具，nil 不额外限制，空切片禁止本地根工具。它复用 PrepareTools／PrepareSkills，合并说明、Skill 文档、wrapper 和 ELwispTools 声明，并经 Registry 的后台规则过滤 discover_tool、workspace 与 ForegroundOnly 工具，返回待提交状态。外部声明的 CanonicalName、EventKey 由适配方提供，schema 在预载时复制；ActivateTools 声明的可执行 Skill 直接加载自身 schema，纯文档 Skill 不生成调用接口。调用方迁移与续跑约束见 [后台工具统一预载](tasks.md#后台工具统一预载)。
-- Tool 根部在内部构造 StateService，只向 State 交付 Store；装配结构 runtime、registerOptions、registerAll 及组件字段均为包内实现。App 交付完整配置和共享依赖，不取得 StateService。根部的 DecodeState、DiscoveredToolsForSession、Commit 转发状态能力；State 复用 Registry 的后台资格筛选规则，不查询目录重建声明。后台调用方的总管接线仍待完成，见 [后台工具统一预载](tasks.md#后台工具统一预载)。
+- Tool 根部在内部构造 StateService，只向 State 交付 Store；装配结构 runtime、registerOptions、registerAll 及组件字段均为包内实现。App 交付完整配置和共享依赖，不取得 StateService。根部的 DecodeState、DiscoveredToolsForSession、Commit 转发状态能力；State 复用根部注入的后台资格筛选函数，不查询目录重建声明。Agent 通过 Tool 总管准备和提交后台工具状态，Background 通过 Agent.RunBackground 接入，见 [后台工具统一预载](tasks.md#后台工具统一预载)。
 - 普通预载由调用方经根部 Commit 提交；Execution 调用 State.PrepareUpdate，从当前会话快照生成仅含工具字段的元数据补丁，与工具结果原子提交，不另作独立状态提交。合并、名称集合、排序和存储字段编码均在 State 内部；PrepareUpdate 不进入总管公开接口。读取从元数据解码出独立对象；Commit 返回序列化后重新解码的状态，避免与输入声明共享 schema。
 
 聊天历史由 `chat_history.Manager` 处理当前聊天范围、用户／时间筛选、数量限制和媒体选择。Builtin 负责 schema、参数规范化与结果展示；组件的 Backend 由根部 `chatHistoryBridge` 实现，根部直接查询 Storage 并转换历史记录与引用事实，并通过 Tool 媒体入口获取选中的媒体。查询仅整理媒体描述及已有 ID，不触发下载；同次媒体调用复用消息查询，保留请求顺序和重复项，未缓存媒体的获取尝试上限为 5。`view_image` 在获取前完成历史图片选择校验，获取后通过媒体入口校验图片内容。

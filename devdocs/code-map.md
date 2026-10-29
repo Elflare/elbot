@@ -25,7 +25,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/app/environment.go`：验证运行模式，定位配置并转为解析符号链接后的绝对路径；TUI／Service 通过 `gofrs/flock` 非阻塞取得对应 `.lock` 文件的独占锁。
 - `internal/app/environment_test.go`：配置定位、路径别名、配置替换保存、跨进程互斥、正常及异常退出后的重新取锁测试，可独立运行。
 - `internal/app/resources.go`：加载配置、构造共享资源并保留部分失败结果；向 `NewMediaCenter`、`NewModelManager` 交付完整配置，媒体与模型侧自行初始化；独立历史库由 App 持有并在业务使用方退出后关闭。
-- `internal/app/wiring.go`：用具体类型构造各线、连接公开能力并登记到唯一集合；构造失败保留非 nil 部分总管，Platform 按目标接口调用。
+- `internal/app/wiring.go`：用具体类型构造各线、连接公开能力并登记到唯一集合；构造失败保留非 nil 部分总管，Hook 与 Platform 通过 ConnectAgent 接入 Agent。
 - `internal/app/shutdown.go`：用 `shutdownStep` 声明清理顺序，`runShutdownStep` 按统一 30 秒期限返回结果枚举，`runShutdownSteps` 顺序执行并汇总；普通失败后继续，超时停止后续清理，资源关闭后最后释放配置锁。
 - `internal/app/client.go`：加载配置并调用 `platform.RunClient`，消费 `ClientResult`；明确运行直接返回错误，自动尝试将可回退结果转为信号，实际本地启动由进程入口决定。
 - `internal/agent/`：`Supervisor` 是 App 对接入口；`supervisor.go` 定义总管与公开能力，`deps.go` 声明共享资源和 `ToolCapabilities`、`HookCapabilities`、`PlatformCapabilities` 三类业务接口，`wiring.go` 拆分配置、构造线内组件并接线，`lifecycle.go` 管理启停，`signals.go` 持有通知与状态订阅。
@@ -333,7 +333,7 @@ Control 局部计时由 Agent 活动与真实收尾驱动，Branch 经共享契�
 <!-- locator:media -->
 ## 媒体中心
 
-Media 根部入口与装配、object 对象管理、transfer 交付编排、backend 读写及 share 协作契约均已实现；15 个生产文件和 12 个测试文件保留为 `*.go.bak`。App 与五条业务线已接入公开契约，模型构造和 App 整包已通过 race，完整应用仍需进程入口适配。完整字段、接口、验证范围与文件职责见 [Media 契约](app-design.md#media-根部与下层契约)。
+Media 根部入口与装配、object 对象管理、transfer 交付编排、backend 读写及 share 协作契约均已实现；15 个生产文件和 12 个测试文件保留为 `*.go.bak`。App 与五条业务线已接入公开契约，模型构造和 App 整包已通过 race；进程入口已适配，全仓测试、构建与临时配置的 Service 启停验证通过。完整字段、接口、验证范围与文件职责见 [Media 契约](app-design.md#media-根部与下层契约)。
 
 - `internal/media/api.go`、`wiring.go`、`deps.go`：MediaCenter 公开入口、完整配置构造装配、Store／History 消费契约。
 - `internal/media/types.go`、`reference.go`：公开 MediaInfo、UsageID、UsageFinishedEvent、来源与历史类型；HeldMedia 读取与使用身份、Reference 和参数 ID 解析。

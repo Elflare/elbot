@@ -55,7 +55,7 @@ type ToolCapabilities interface {
 }
 
 // PlatformCapabilities 按平台公开能力接入。
-// TODO: Platform 总管实现这些方法；Background 不兼容旧平台组件或调用器解析器。
+// App 注入 Platform 总管，Background 根部向内部组件交付所需的发送与原生 API 函数。
 type PlatformCapabilities interface {
 	SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
 	CallPlatformAPI(ctx context.Context, platform, api string, params map[string]any) (json.RawMessage, error)

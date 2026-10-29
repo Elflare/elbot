@@ -50,7 +50,7 @@ func prepareResources(ctx context.Context, resolvedConfigPath string) (*sharedRe
 		return resources, fmt.Errorf("prepare chat history: %w", err)
 	}
 
-	// TODO: 媒体侧实现 NewMediaCenter，接收完整配置并借用共享存储；
+	// 媒体侧通过 NewMediaCenter 接收完整配置并借用共享存储；
 	// 后端、凭据、配置应用和中断恢复均由媒体侧负责。
 	resources.media, err = media.NewMediaCenter(ctx, cfg, resources.store)
 	if err != nil {
