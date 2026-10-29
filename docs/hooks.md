@@ -266,6 +266,7 @@ outputs = [
   { kind = "text", text = "检测到关键词" },
   { kind = "image", path = "assets/alert.png", name = "alert.png" },
   { kind = "record", path = "assets/alert.mp3", name = "alert.mp3" },
+  { kind = "emoticon", emoticon_id = "14", name = "微笑" },
   { kind = "at", user_id = "10001" },
   { kind = "reply", message_id = "456", text = "引用回复" },
 ]
@@ -286,12 +287,15 @@ outputs = [
 | 字段 | 说明 |
 | --- | --- |
 | `kind` | `text`、`image`、`file`、`record`、`emoticon`、`at`、`reply`；默认 `text`。 |
-| `text` | 文本、媒体 fallback、回复正文或原生表情 fallback。 |
+| `text` | 文本、媒体 fallback 或回复正文。 |
 | `url` / `path` / `base64` | `image`、`file`、`record` 必须且只能选择一种来源。任一字段的完整值均可填写 `media:<sha256>`，由 Host 在发送边界解析；否则 `url` 接受 HTTP(S)，`path` 按文件系统路径相对插件目录解析，`base64` 解码后最大 10 MiB。 |
-| `name` / `mime_type` | 图片、文件或语音的显示名和 MIME 类型；`name` 也可作为原生表情的可读名称。 |
+| `name` | 图片、文件或语音的显示名；`emoticon` 必填的非空表情名称。 |
+| `mime_type` | 图片、文件或语音的 MIME 类型。 |
 | `user_id` | `kind = "at"` 的非空平台用户 ID。 |
 | `message_id` | `kind = "reply"` 的非空平台消息 ID。 |
 | `emoticon_id` | `kind = "emoticon"` 的非空平台原生表情或贴纸 ID；原生表情不接受媒体来源。 |
+
+原生表情使用 `emoticon_id` 发送，可读内容只取必填的 `name`。纯文本展示时统一显示 `[表情: 名称]`。
 
 `outputs` 是一条消息的片段组。发送多条消息需要多个 `send` action 或多次 `output.send`。
 
@@ -672,6 +676,8 @@ trigger rule 已匹配的首次调用通常无需重复校验同一指令；wait
 `llm` 包含 `provider`、`model`、`messages`、`tools`、`usage`、`source_text`、`text`、`tool_calls`、`elapsed_ms`。其中嵌套 `messages`、`tool_calls`、`usage` 沿用 Go 导出的 JSON 名：`Role/Segments/Name/ToolCallID/ToolCalls`、`ID/Name/Arguments`、`PromptTokens/CompletionTokens/TotalTokens/CacheHitTokens`。
 
 `tool` 包含 `id`、`name`、`arguments`（JSON 字符串）、`risk`、`result`、`error`。prepared 阶段主要提供 `id/name/arguments`；completed 阶段还提供 `risk/result/error`，对应工具消息的完整内容位于 `message.segments`。
+
+`event.outputs` 是事件已累积的输出快照，数组项使用 Go 导出的 JSON 字段名，例如 `Kind`、`Text`、`Name`、`EmoticonID`、`Delivery`。`Delivery` 对象包含 `Timing`、`HookPoint`、`HookName`、`HookMode`：分别表示发送时机、来源 Hook 点、名称和执行模式；空 `Timing` 表示立即发送，非 Hook 输出的来源字段为空。插件新增输出时仍使用“统一输出”章节的小写 segment 字段及组级 `target`、`timing`。
 
 可用于 `if`、`match.field` 和模板的文本字段：
 

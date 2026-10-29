@@ -16,7 +16,7 @@ It supports general chat, tool calling, Hook extensions, long-term task scheduli
 | Metric           | Value                            |
 | -------------- | ------------------------------- |
 | Local startup time   | ~10ms (Tested on N5105, SATA SSD) |
-| Resident memory       | ~30MB                           |
+| Resident memory       | ~50MB                           |
 | Binary file size | <20MB                           |
 
 **Token-efficient tool discovery**: Research shows that many ordinary users still primarily use LLM-like products as advanced search engines, writing assistants, and listening objects; frequent tool calls are not the norm for all conversations.

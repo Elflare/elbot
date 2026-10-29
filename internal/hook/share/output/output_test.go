@@ -60,12 +60,25 @@ func TestBuildGroupMediaSources(t *testing.T) {
 }
 
 func TestBuildGroupNativeEmoticon(t *testing.T) {
-	outputs, err := BuildGroup(Group{Outputs: []Segment{{Kind: "emoticon", EmoticonID: "14", Name: "微笑"}}}, BuildOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if outputs[0].Kind != delivery.KindEmoticon || outputs[0].EmoticonID != "14" || outputs[0].Source.Path != "" || outputs[0].Source.URL != "" || len(outputs[0].Source.Data) != 0 {
-		t.Fatalf("output = %#v", outputs[0])
+	for _, name := range []string{"微笑", "", " \t "} {
+		t.Run(name, func(t *testing.T) {
+			outputs, err := BuildGroup(Group{Outputs: []Segment{{Kind: "emoticon", EmoticonID: "14", Name: name, Text: "不作为名称"}}}, BuildOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			out := outputs[0]
+			if out.Kind != delivery.KindEmoticon || out.EmoticonID != "14" || out.Name != strings.TrimSpace(name) || out.Text != "" || out.Source.Path != "" || out.Source.URL != "" || len(out.Source.Data) != 0 {
+				t.Fatalf("output = %#v", out)
+			}
+			_, err = delivery.ValidateOutputs(outputs)
+			if strings.TrimSpace(name) == "" {
+				if err == nil || !strings.Contains(err.Error(), "requires a name") {
+					t.Fatalf("missing name: %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

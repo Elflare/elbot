@@ -278,7 +278,7 @@ func TestSendContextOutputReturnsSendFailureWithoutFallbackMessage(t *testing.T)
 	adapter.transport = transport
 	ctx := testTargetContext(target{MessageType: "private", UserID: 1})
 
-	_, _, err := adapter.SendChat(ctx, []delivery.Output{delivery.Emoticon("14", "开心", "")})
+	_, _, err := adapter.SendChat(ctx, []delivery.Output{delivery.Emoticon("14", "开心")})
 	if err == nil {
 		t.Fatal("SendChat error is nil")
 	}

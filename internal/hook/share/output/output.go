@@ -127,7 +127,7 @@ func buildSegment(spec Segment, baseDir string, target delivery.Target, timing s
 		if spec.EmoticonID == "" {
 			return out, fmt.Errorf("emoticon_id is required for emoticon output")
 		}
-		out = delivery.Emoticon(spec.EmoticonID, spec.Name, spec.Text)
+		out = delivery.Emoticon(spec.EmoticonID, spec.Name)
 	case delivery.KindAt:
 		if err := rejectFields(spec, "text", spec.Text, "url", spec.URL, "path", spec.Path, "base64", spec.Base64, "name", spec.Name, "mime_type", spec.MIMEType, "message_id", spec.MessageID, "emoticon_id", spec.EmoticonID); err != nil {
 			return out, err

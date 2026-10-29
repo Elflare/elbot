@@ -516,9 +516,10 @@ func TestManagerStopsPropagation(t *testing.T) {
 }
 func TestManagerMarksHookOutputs(t *testing.T) {
 	manager := newTestManager()
+	output := delivery.WithDeliveryTiming(delivery.Text("connected"), delivery.DeliveryAfterAssistant)
 
 	manager.Register(share.Registration{Point: share.PointPlatformConnected, Priority: 0, Name: "notify.connected", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
-		event.Outputs = append(event.Outputs, delivery.Text("connected"))
+		event.Outputs = append(event.Outputs, output)
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
 
@@ -529,9 +530,21 @@ func TestManagerMarksHookOutputs(t *testing.T) {
 	if len(event.Outputs) != 1 {
 		t.Fatalf("outputs = %d, want 1", len(event.Outputs))
 	}
-	meta := event.Outputs[0].Meta
-	if meta[delivery.MetaHookName] != "notify.connected" || meta[delivery.MetaHookPoint] != string(share.PointPlatformConnected) || meta[delivery.MetaHookMode] != "run" {
-		t.Fatalf("output meta = %#v", meta)
+	info := event.Outputs[0].Delivery
+	if info != (delivery.DeliveryInfo{Timing: delivery.DeliveryAfterAssistant, HookName: "notify.connected", HookPoint: string(share.PointPlatformConnected), HookMode: "run"}) {
+		t.Fatalf("delivery info = %#v", info)
+	}
+	if output.Delivery != (delivery.DeliveryInfo{Timing: delivery.DeliveryAfterAssistant}) {
+		t.Fatalf("marking changed original output: %#v", output.Delivery)
+	}
+}
+
+func TestMarkHookOutputsPreservesExistingSource(t *testing.T) {
+	info := delivery.DeliveryInfo{Timing: delivery.DeliveryAfterAssistant, HookName: "inner", HookPoint: "inner.point", HookMode: "run"}
+	event := share.Event{Point: share.PointPlatformConnected, Outputs: []delivery.Output{{Kind: delivery.KindText, Text: "hello", Delivery: info}}}
+	got := markHookOutputs(event, 0, registration{name: "outer"}, "notify")
+	if got.Outputs[0].Delivery != info {
+		t.Fatalf("source changed: %#v, want %#v", got.Outputs[0].Delivery, info)
 	}
 }
 

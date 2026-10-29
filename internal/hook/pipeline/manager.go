@@ -12,7 +12,6 @@ import (
 	"sync"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/hook/share"
 	"elbot/internal/llm"
@@ -426,23 +425,18 @@ func markHookOutputs(event share.Event, start int, reg registration, mode string
 		start = len(event.Outputs)
 	}
 	for i := start; i < len(event.Outputs); i++ {
-		meta := event.Outputs[i].Meta
-		if meta == nil {
-			meta = map[string]any{}
+		info := &event.Outputs[i].Delivery
+		if info.HookPoint == "" {
+			info.HookPoint = string(event.Point)
 		}
-		setOutputMeta(meta, delivery.MetaHookPoint, string(event.Point))
-		setOutputMeta(meta, delivery.MetaHookName, reg.name)
-		setOutputMeta(meta, delivery.MetaHookMode, mode)
-		event.Outputs[i].Meta = meta
+		if info.HookName == "" {
+			info.HookName = reg.name
+		}
+		if info.HookMode == "" {
+			info.HookMode = mode
+		}
 	}
 	return event
-}
-
-func setOutputMeta(meta map[string]any, key, value string) {
-	if _, exists := meta[key]; exists {
-		return
-	}
-	meta[key] = value
 }
 
 func (m *Manager) logHook(ctx context.Context, mode string, reg registration, before, after share.Event, logResult globalevents.LogResult) {

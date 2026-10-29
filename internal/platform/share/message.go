@@ -61,7 +61,7 @@ type Mention struct {
 type MessageContext struct {
 	contextinfo.Conversation                        // 读写边界投影的公共会话事实。
 	GroupRole                contextinfo.GroupRole  // 入站行为者的群身份。
-	Sender                   delivery.ContextSender // 当前协议消息的回复通道。
+	Sender                   delivery.MessageSender // 当前协议消息的回复通道。
 	BufferAssistantOutput    bool                   // 是否缓冲完整助手输出。
 	ForkFromMessageID        string                 // 分叉来源消息。
 	ResumeSessionID          string                 // 恢复的会话。

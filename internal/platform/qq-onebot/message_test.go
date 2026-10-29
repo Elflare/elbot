@@ -431,7 +431,7 @@ func TestFinalMessageSegmentsIncludesReferenceImage(t *testing.T) {
 }
 
 func TestOutputSegments(t *testing.T) {
-	segments, err := outputSegments(sendFileModeBase64, delivery.Emoticon("178", "滑稽", ""))
+	segments, err := outputSegments(sendFileModeBase64, delivery.Emoticon("178", "滑稽"))
 	if err != nil {
 		t.Fatalf("outputSegments emoticon: %v", err)
 	}

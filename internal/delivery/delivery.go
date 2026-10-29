@@ -32,13 +32,6 @@ type Target struct {
 }
 
 const (
-	MetaHookPoint      = "hook.point"
-	MetaHookName       = "hook.name"
-	MetaHookMode       = "hook.mode"
-	MetaDeliveryTiming = "delivery.timing"
-)
-
-const (
 	DeliveryImmediate      = "immediate"
 	DeliveryAfterAssistant = "after_assistant"
 )
@@ -72,32 +65,32 @@ func IsHTTPMediaSource(value string) bool {
 	return strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://")
 }
 
+// DeliveryInfo 保存输出的发送时机与 Hook 来源，随 Output 按值复制。
+type DeliveryInfo struct {
+	Timing    string // 发送时机：immediate 或 after_assistant；空值表示立即发送。
+	HookPoint string // 产生输出的 Hook 点；非 Hook 输出为空。
+	HookName  string // 产生输出的 Hook 名称，用于日志和错误归属。
+	HookMode  string // Hook 执行模式：run 或 notify；非 Hook 输出为空。
+}
+
 type Output struct {
 	Kind                     Kind
 	Text                     string
 	Name                     string
 	EmoticonID               string
-	AltText                  string
 	ReplyToPlatformMessageID string
 	Source                   Source
 	Target                   Target
-	Meta                     map[string]any
+	Delivery                 DeliveryInfo // 发送时机与产生该输出的 Hook 来源。
 }
 
 func WithDeliveryTiming(out Output, timing string) Output {
-	timing = strings.TrimSpace(timing)
-	if timing == "" || timing == DeliveryImmediate {
-		return out
-	}
-	if out.Meta == nil {
-		out.Meta = map[string]any{}
-	}
-	out.Meta[MetaDeliveryTiming] = timing
+	out.Delivery.Timing = strings.TrimSpace(timing)
 	return out
 }
 
 func DeliveryTiming(out Output) string {
-	timing := outputMetaString(out, MetaDeliveryTiming)
+	timing := strings.TrimSpace(out.Delivery.Timing)
 	if timing == "" {
 		return DeliveryImmediate
 	}
@@ -133,16 +126,8 @@ func Text(text string) Output {
 	return Output{Kind: KindText, Text: text}
 }
 
-func Emoticon(id, name, text string) Output {
-	id = strings.TrimSpace(id)
-	name = strings.TrimSpace(name)
-	out := Output{Kind: KindEmoticon, EmoticonID: id, Name: name, Text: strings.TrimSpace(text)}
-	if name != "" {
-		out.AltText = "[表情: " + name + "]"
-	} else if out.Text != "" {
-		out.AltText = out.Text
-	}
-	return out
+func Emoticon(id, name string) Output {
+	return Output{Kind: KindEmoticon, EmoticonID: strings.TrimSpace(id), Name: strings.TrimSpace(name)}
 }
 
 func ImagePath(path string) Output {
@@ -158,19 +143,14 @@ func RecordPath(path string) Output {
 }
 
 func At(userID string) Output {
-	userID = strings.TrimSpace(userID)
-	out := Output{Kind: KindAt, Name: userID}
-	if userID != "" {
-		out.AltText = "@" + userID
-	}
-	return out
+	return Output{Kind: KindAt, Name: strings.TrimSpace(userID)}
 }
 
 func Reply(platformMessageID, text string) Output {
 	return Output{Kind: KindReply, Text: text, ReplyToPlatformMessageID: strings.TrimSpace(platformMessageID)}
 }
 
-// Receipt describes platform messages produced by a send operation.
+// SentMessage describes a platform message produced by a send operation.
 type SentMessage struct {
 	PlatformMessageID string
 	Platform          string
@@ -215,18 +195,11 @@ type MessageSender interface {
 	SendTo(ctx context.Context, target Target, outputs []Output) (Receipt, globalevents.LogResult, error)
 }
 
-// ContextSender can send a reply using routing information carried by ctx.
-type ContextSender interface {
-	MessageSender
-}
-
-type Sender = MessageSender
-
 type Manager struct {
-	Sender Sender
+	Sender MessageSender
 }
 
-func NewManager(sender Sender) Manager {
+func NewManager(sender MessageSender) Manager {
 	return Manager{Sender: sender}
 }
 
@@ -238,7 +211,7 @@ func (m Manager) SendChat(ctx context.Context, outputs []Output) (Receipt, globa
 		}
 		return Receipt{}, logResult, err
 	}
-	if err := ValidateOutputs(outputs); err != nil {
+	if _, err := ValidateOutputs(outputs); err != nil {
 		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
 	return m.Sender.SendChat(ctx, outputs)
@@ -255,16 +228,12 @@ func (m Manager) SendTo(ctx context.Context, target Target, outputs []Output) (R
 	if len(outputs) == 0 {
 		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped}, nil
 	}
-	if err := ValidateOutputs(outputs); err != nil {
+	outputTarget, err := ValidateOutputs(outputs)
+	if err != nil {
 		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
 	if target.Empty() {
-		for _, out := range outputs {
-			if !out.Target.Empty() {
-				target = out.Target
-				break
-			}
-		}
+		target = outputTarget
 	}
 	receipt, logResult, err := m.Sender.SendTo(ctx, target, outputs)
 	LogSendResult(ctx, target, outputs[0], logResult)
@@ -274,59 +243,44 @@ func (m Manager) SendTo(ctx context.Context, target Target, outputs []Output) (R
 // LogSendResult publishes the sending source's result. Native notification
 // senders use this boundary when their protocol cannot use ordinary chat output.
 func LogSendResult(ctx context.Context, target Target, out Output, logResult globalevents.LogResult) {
-	if logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled {
-
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		record := globalevents.LogRecord{
-			Category: globalevents.LogRuntime, Level: slog.LevelError,
-			EventName: "chat_output_failed", Module: "delivery", ResultStatus: logResult.ResultStatus,
-			Content: fmt.Sprintf("chat output failed: platform=%s hook=%q hook_point=%q hook_mode=%q\n%s", target.Platform, outputMetaString(out, MetaHookName), outputMetaString(out, MetaHookPoint), outputMetaString(out, MetaHookMode), logResult.Content),
-		}
-		if logResult.ResultStatus == globalevents.ResultCanceled {
-			record.Level = slog.LevelInfo
-			record.ResultStatus = globalevents.ResultCanceled
-		}
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+	if logResult.ResultStatus != globalevents.ResultFailed && logResult.ResultStatus != globalevents.ResultCanceled {
+		return
 	}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	record := globalevents.LogRecord{
+		Category: globalevents.LogRuntime, Level: slog.LevelError,
+		EventName: "chat_output_failed", Module: "delivery", ResultStatus: logResult.ResultStatus,
+		Content: fmt.Sprintf("chat output failed: platform=%s hook=%q hook_point=%q hook_mode=%q\n%s", target.Platform, strings.TrimSpace(out.Delivery.HookName), strings.TrimSpace(out.Delivery.HookPoint), strings.TrimSpace(out.Delivery.HookMode), logResult.Content),
+	}
+	if logResult.ResultStatus == globalevents.ResultCanceled {
+		record.Level = slog.LevelInfo
+	}
+	if facts.SessionID != "" {
+		record.Identity.SessionID = &facts.SessionID
+	}
+	if facts.RunID != "" {
+		record.Identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		record.Identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		record.Identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		record.Identity.RootRequestID = &facts.RootRequestID
+	}
+	_ = globalevents.EmitLog(ctx, record)
 }
 
 func wrapOutputSourceError(out Output, err error) error {
 	if err == nil {
 		return nil
 	}
-	if hookName := outputMetaString(out, MetaHookName); hookName != "" {
+	if hookName := strings.TrimSpace(firstNonEmpty(out.Delivery.HookName, out.Delivery.HookPoint)); hookName != "" {
 		return fmt.Errorf("hook %s output: %w", hookName, err)
 	}
-	if hookPoint := outputMetaString(out, MetaHookPoint); hookPoint != "" {
-		return fmt.Errorf("hook %s output: %w", hookPoint, err)
-	}
 	return err
-}
-
-func outputMetaString(out Output, key string) string {
-	if out.Meta == nil {
-		return ""
-	}
-	value, ok := out.Meta[key].(string)
-	if !ok {
-		return ""
-	}
-	return strings.TrimSpace(value)
 }
 
 func FallbackOutput(outputs []Output) Output {
@@ -356,10 +310,10 @@ func ValidateOutputsTarget(outputs []Output) (Target, error) {
 	return target, nil
 }
 
-func ValidateOutputs(outputs []Output) error {
+func ValidateOutputs(outputs []Output) (Target, error) {
 	for i, out := range outputs {
 		if err := ValidateDeliveryTiming(DeliveryTiming(out)); err != nil {
-			return fmt.Errorf("outputs[%d]: %w", i, err)
+			return Target{}, fmt.Errorf("outputs[%d]: %w", i, err)
 		}
 		sourceCount := 0
 		if strings.TrimSpace(out.Source.Path) != "" {
@@ -377,65 +331,55 @@ func ValidateOutputs(outputs []Output) error {
 		switch out.Kind {
 		case KindText:
 			if sourceCount != 0 {
-				return fmt.Errorf("outputs[%d]: text output cannot have a media source", i)
+				return Target{}, fmt.Errorf("outputs[%d]: text output cannot have a media source", i)
 			}
 		case KindImage, KindFile, KindRecord:
 			if sourceCount != 1 {
-				return fmt.Errorf("outputs[%d]: image/file/record output must have exactly one media source", i)
+				return Target{}, fmt.Errorf("outputs[%d]: image/file/record output must have exactly one media source", i)
 			}
 			if path := strings.TrimSpace(out.Source.Path); strings.Contains(path, "://") {
-				return fmt.Errorf("outputs[%d]: media path must be a filesystem path, not a URI", i)
+				return Target{}, fmt.Errorf("outputs[%d]: media path must be a filesystem path, not a URI", i)
 			}
 			if value := strings.TrimSpace(out.Source.URL); value != "" {
 				u, err := url.Parse(value)
 				if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-					return fmt.Errorf("outputs[%d]: media URL must be an absolute HTTP(S) URL", i)
+					return Target{}, fmt.Errorf("outputs[%d]: media URL must be an absolute HTTP(S) URL", i)
 				}
 			}
 		case KindEmoticon:
 			if sourceCount != 0 {
-				return fmt.Errorf("outputs[%d]: emoticon output cannot have a media source", i)
+				return Target{}, fmt.Errorf("outputs[%d]: emoticon output cannot have a media source", i)
 			}
 			if strings.TrimSpace(out.EmoticonID) == "" {
-				return fmt.Errorf("outputs[%d]: emoticon output requires an emoticon ID", i)
+				return Target{}, fmt.Errorf("outputs[%d]: emoticon output requires an emoticon ID", i)
+			}
+			if strings.TrimSpace(out.Name) == "" {
+				return Target{}, fmt.Errorf("outputs[%d]: emoticon output requires a name", i)
 			}
 		case KindAt:
 			if strings.TrimSpace(out.Name) == "" {
-				return fmt.Errorf("outputs[%d]: at output requires a user ID", i)
+				return Target{}, fmt.Errorf("outputs[%d]: at output requires a user ID", i)
 			}
 		case KindReply:
 			if strings.TrimSpace(out.ReplyToPlatformMessageID) == "" {
-				return fmt.Errorf("outputs[%d]: reply output requires a message ID", i)
+				return Target{}, fmt.Errorf("outputs[%d]: reply output requires a message ID", i)
 			}
 		default:
-			return fmt.Errorf("outputs[%d]: unsupported output kind %q", i, out.Kind)
+			return Target{}, fmt.Errorf("outputs[%d]: unsupported output kind %q", i, out.Kind)
 		}
 	}
-	_, err := ValidateOutputsTarget(outputs)
-	return err
+	return ValidateOutputsTarget(outputs)
 }
 
 func FallbackText(out Output) string {
-	if out.AltText != "" {
-		return out.AltText
-	}
+	var label string
 	switch out.Kind {
 	case KindText:
 		return out.Text
 	case KindEmoticon:
-		name := strings.TrimSpace(out.Name)
-		if name == "" {
-			name = strings.TrimSpace(out.Text)
-		}
-		if name == "" {
-			return ""
-		}
-		return fmt.Sprintf("[表情: %s]", name)
+		return fmt.Sprintf("[表情: %s]", strings.TrimSpace(out.Name))
 	case KindAt:
-		name := strings.TrimSpace(out.Name)
-		if name == "" {
-			name = strings.TrimSpace(out.Text)
-		}
+		name := strings.TrimSpace(firstNonEmpty(out.Name, out.Text))
 		if name == "" {
 			return ""
 		}
@@ -447,26 +391,18 @@ func FallbackText(out Output) string {
 		}
 		return fmt.Sprintf("[引用消息 %s]\n%s", replyID, out.Text)
 	case KindImage:
-		label := firstNonEmpty(out.Name, out.Source.URL, out.Source.Path, out.Text)
-		if label == "" {
-			return "[图片]"
-		}
-		return fmt.Sprintf("[图片: %s]", label)
+		label = "图片"
 	case KindFile:
-		label := firstNonEmpty(out.Name, out.Source.URL, out.Source.Path, out.Text)
-		if label == "" {
-			return "[文件]"
-		}
-		return fmt.Sprintf("[文件: %s]", label)
+		label = "文件"
 	case KindRecord:
-		label := firstNonEmpty(out.Name, out.Source.URL, out.Source.Path, out.Text)
-		if label == "" {
-			return "[语音]"
-		}
-		return fmt.Sprintf("[语音: %s]", label)
+		label = "语音"
 	default:
-		return firstNonEmpty(out.Text, out.Name, out.AltText)
+		return firstNonEmpty(out.Text, out.Name)
 	}
+	if name := firstNonEmpty(out.Name, out.Source.URL, out.Source.Path, out.Text); name != "" {
+		label += ": " + name
+	}
+	return "[" + label + "]"
 }
 
 func firstNonEmpty(values ...string) string {
