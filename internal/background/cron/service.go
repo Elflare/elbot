@@ -49,16 +49,16 @@ type Service struct {
 	sendTarget       TargetSenderFunc
 	runner           LLMRunner
 	models           Models
+	media            background.ReportMedia
 	copyBackground   func(context.Context, agent.BackgroundCopyRequest) (string, error)
 	sessionTakenOver background.SessionTakenOver
 	enabledPlatforms []PlatformTarget
 	sandboxRoot      string
 	now              func() time.Time
 
-	mu                 sync.Mutex
-	connectedPlatforms map[string]bool
-	deliveryGates      map[string]chan struct{}
-	platformEvents     platformSubscriptions
+	mu             sync.Mutex
+	deliveryGates  map[string]*deliveryGate
+	platformEvents platformSubscriptions
 }
 
 type Options struct {
@@ -68,6 +68,7 @@ type Options struct {
 	SendTarget       TargetSenderFunc
 	Runner           LLMRunner
 	Models           Models
+	Media            background.ReportMedia
 	CopyBackground   func(context.Context, agent.BackgroundCopyRequest) (string, error)
 	SessionTakenOver background.SessionTakenOver
 	EnabledPlatforms []PlatformTarget
@@ -76,14 +77,14 @@ type Options struct {
 
 func NewService(opts Options) *Service {
 	s := &Service{
-		manager:            opts.Manager,
-		store:              opts.Store,
-		sendTarget:         opts.SendTarget,
-		runner:             opts.Runner,
-		sandboxRoot:        opts.SandboxRoot,
-		now:                time.Now,
-		connectedPlatforms: map[string]bool{},
-		deliveryGates:      map[string]chan struct{}{},
+		manager:       opts.Manager,
+		store:         opts.Store,
+		sendTarget:    opts.SendTarget,
+		runner:        opts.Runner,
+		sandboxRoot:   opts.SandboxRoot,
+		now:           time.Now,
+		media:         opts.Media,
+		deliveryGates: map[string]*deliveryGate{},
 	}
 	s.enabledPlatforms = normalizePlatformTargets(opts.EnabledPlatforms)
 	s.models = opts.Models

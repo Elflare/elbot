@@ -46,15 +46,6 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func firstNonEmptyStr(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
-}
-
 func uniqueSorted(values []string) []string {
 	seen := map[string]bool{}
 	out := []string{}

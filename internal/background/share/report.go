@@ -1,14 +1,22 @@
 package share
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"elbot/internal/delivery"
+	"elbot/internal/media"
 	"elbot/internal/workspace"
 )
+
+// ReportMedia 只接收已在任务目录边界内打开的附件流。
+type ReportMedia interface {
+	ImportReader(context.Context, io.Reader, int64, media.Input, media.ImportLimits) (media.MediaInfo, error)
+}
 
 type ReportMessageMap struct {
 	Platform          string // 实际发送平台。
@@ -34,36 +42,37 @@ func PathInstruction() string {
 	return "后台任务的本地附件路径必须基于任务工作目录，使用相对路径；不得使用绝对路径、~、冒号或 .. 路径段。"
 }
 
-func BuildReportOutputs(report string, segments []delivery.Output, scope workspace.PathScope) ([]delivery.Output, error) {
-	outputs := []delivery.Output{}
-	if text := strings.TrimSpace(report); text != "" {
-		outputs = append(outputs, delivery.Text(text))
-	}
-	for i, segment := range segments {
-		out, err := BuildReportSegmentOutput(segment, scope)
-		if err != nil {
-			return nil, fmt.Errorf("report segment %d: %w", i, err)
-		}
-		outputs = append(outputs, out)
-	}
-	return outputs, nil
-}
-
-func BuildReportSegmentOutput(segment delivery.Output, scope workspace.PathScope) (delivery.Output, error) {
+// BuildReportSegmentOutput 在任务目录内打开本地附件，只向发送方交付媒体 ID。
+func BuildReportSegmentOutput(ctx context.Context, segment delivery.Output, scope workspace.PathScope, importer ReportMedia, limits media.ImportLimits) (out delivery.Output, err error) {
 	if segment.Source.Path == "" {
 		return segment, nil
 	}
-	if scope.Dir == "" {
-		return delivery.Output{}, fmt.Errorf("report workspace is required")
-	}
-	path := filepath.Join(scope.Dir, segment.Source.Path)
-	info, err := os.Stat(path)
+	root, err := os.OpenRoot(scope.Dir)
 	if err != nil {
-		return delivery.Output{}, fmt.Errorf("stat: %w", err)
+		return delivery.Output{}, err
 	}
-	if !info.Mode().IsRegular() {
+	defer func() { err = errors.Join(err, root.Close()) }()
+	file, err := root.Open(segment.Source.Path)
+	if err != nil {
+		return delivery.Output{}, fmt.Errorf("open report media: %w", err)
+	}
+	defer func() { err = errors.Join(err, file.Close()) }()
+	stat, err := file.Stat()
+	if err != nil {
+		return delivery.Output{}, err
+	}
+	if !stat.Mode().IsRegular() {
 		return delivery.Output{}, fmt.Errorf("report media must be a regular file")
 	}
-	segment.Source.Path = path
+	input := media.Input{Name: segment.Name, MIMEType: segment.Source.MIMEType}
+	if input.Name == "" {
+		input.Name = filepath.Base(segment.Source.Path)
+	}
+	info, err := importer.ImportReader(ctx, file, stat.Size(), input, limits)
+	if err != nil {
+		return delivery.Output{}, err
+	}
+	segment.Source = delivery.Source{MediaID: info.ID, MIMEType: info.MIMEType}
+	segment.Name = info.Name
 	return segment, nil
 }

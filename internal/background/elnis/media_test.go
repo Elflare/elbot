@@ -65,7 +65,7 @@ func TestReportMediaSurvivesWorkspaceRemovalAndRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	fail = false
-	if _, err := s.recoverReports(ctx, true); err != nil {
+	if _, err := s.recoverReports(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if len(sent) != 2 {

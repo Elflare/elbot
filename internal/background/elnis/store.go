@@ -129,16 +129,3 @@ func setFromStrings(values []string) map[string]bool {
 	}
 	return out
 }
-
-func backgroundToolNames(values []string) []string {
-	seen := map[string]bool{}
-	out := []string{}
-	for _, value := range trimStrings(values) {
-		if seen[value] {
-			continue
-		}
-		seen[value] = true
-		out = append(out, value)
-	}
-	return out
-}

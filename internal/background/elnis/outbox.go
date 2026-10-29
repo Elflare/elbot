@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	background "elbot/internal/background/share"
@@ -42,10 +43,11 @@ func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resul
 	}
 	resultJSON = string(encoded)
 
-	outputs, err := background.BuildReportOutputs(result.Report, result.ReportSegments, workspace.PathScope{Dir: dir, Restricted: true})
-	if err != nil {
-		return false, err
+	outputs := make([]delivery.Output, 0, 1+len(result.ReportSegments))
+	if text := strings.TrimSpace(result.Report); text != "" {
+		outputs = append(outputs, delivery.Text(text))
 	}
+	outputs = append(outputs, result.ReportSegments...)
 	if len(outputs) == 0 {
 		return false, s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusCompleted, sessionID, resultJSON, "")
 	}
@@ -278,17 +280,8 @@ func (s *Service) resetDeliveringReports(ctx context.Context) error {
 }
 
 // recoverReports owns one recovery pass; each report retains its declared result.
-func (s *Service) recoverReports(ctx context.Context, resetDelivering bool) (globalevents.LogResult, error) {
+func (s *Service) recoverReports(ctx context.Context) (globalevents.LogResult, error) {
 	repo := s.store
-	if resetDelivering {
-		if err := s.resetDeliveringReports(ctx); err != nil {
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-			if errors.Is(err, context.Canceled) {
-				logResult.ResultStatus = globalevents.ResultCanceled
-			}
-			return logResult, err
-		}
-	}
 	ids, err := repo.ListResultReadyReportIDs(ctx, StatusResultReady)
 	if err != nil {
 		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}

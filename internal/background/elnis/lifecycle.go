@@ -262,7 +262,7 @@ func (r *Runtime) reportWorker(ctx context.Context) {
 	}
 	// Both attempts use the same recovery path and differ only in their log event.
 	recover := func(name string) {
-		result, _ := r.service.recoverReports(ctx, false)
+		result, _ := r.service.recoverReports(ctx)
 		if result.ResultStatus != globalevents.ResultFailed && result.ResultStatus != globalevents.ResultCanceled {
 			return
 		}

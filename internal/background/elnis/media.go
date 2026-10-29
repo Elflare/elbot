@@ -4,26 +4,24 @@ package elnis
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
-	"io"
 	"mime"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
+	background "elbot/internal/background/share"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/media"
+	"elbot/internal/workspace"
 )
 
 // Media 是事件输入和报告附件需要的归档与引用能力。
 type Media interface {
+	background.ReportMedia
 	Info(context.Context, string) (media.MediaInfo, error)
 	ImportURL(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
-	ImportReader(context.Context, io.Reader, int64, media.Input, media.ImportLimits) (media.MediaInfo, error)
 	ImportBytes(context.Context, []byte, media.Input, media.ImportLimits) (media.MediaInfo, error)
 	AddEventReference(ctx context.Context, mediaID, eventID, purpose string) error
 }
@@ -142,51 +140,29 @@ func (s *Service) directMediaOutputs(ctx context.Context, event Event, eventID s
 	return outputs, nil
 }
 
-func (s *Service) importReportSegments(ctx context.Context, segments []delivery.Output, eventID string, workspace string) ([]delivery.Output, error) {
+func (s *Service) importReportSegments(ctx context.Context, segments []delivery.Output, eventID string, dir string) ([]delivery.Output, error) {
 	out := append([]delivery.Output(nil), segments...)
 	limits := media.ImportLimits{MaxImportBytes: s.cfg.Segment.MaxFileBytes, DownloadTimeout: time.Duration(s.cfg.Segment.DownloadTimeoutSecs) * time.Second}
 	for i, seg := range out {
-		var info media.MediaInfo
 		var err error
-		input := media.Input{Name: seg.Name, MIMEType: seg.Source.MIMEType}
-		switch {
-		case seg.Source.MediaID != "":
-			info, err = s.media.Info(ctx, seg.Source.MediaID)
-		case seg.Source.URL != "":
-			info, err = s.media.ImportURL(ctx, seg.Source.URL, input, limits)
-		default:
-			info, err = func() (info media.MediaInfo, err error) {
-				root, err := os.OpenRoot(workspace)
-				if err != nil {
-					return info, err
-				}
-				defer func() { err = errors.Join(err, root.Close()) }()
-				file, err := root.Open(seg.Source.Path)
-				if err != nil {
-					return info, fmt.Errorf("open report media: %w", err)
-				}
-				defer func() { err = errors.Join(err, file.Close()) }()
-				stat, err := file.Stat()
-				if err != nil {
-					return info, err
-				}
-				if !stat.Mode().IsRegular() {
-					return info, fmt.Errorf("report media must be a regular file")
-				}
-				if input.Name == "" {
-					input.Name = filepath.Base(seg.Source.Path)
-				}
-				return s.media.ImportReader(ctx, file, stat.Size(), input, limits)
-			}()
+		if seg.Source.Path != "" {
+			out[i], err = background.BuildReportSegmentOutput(ctx, seg, workspace.PathScope{Dir: dir, Restricted: true}, s.media, limits)
+		} else {
+			var info media.MediaInfo
+			if seg.Source.MediaID != "" {
+				info, err = s.media.Info(ctx, seg.Source.MediaID)
+			} else {
+				info, err = s.media.ImportURL(ctx, seg.Source.URL, media.Input{Name: seg.Name, MIMEType: seg.Source.MIMEType}, limits)
+			}
+			out[i].Source = delivery.Source{MediaID: info.ID, MIMEType: info.MIMEType}
+			out[i].Name = info.Name
 		}
 		if err != nil {
 			return nil, err
 		}
-		if err := s.media.AddEventReference(ctx, info.ID, eventID, "report"); err != nil {
+		if err := s.media.AddEventReference(ctx, out[i].Source.MediaID, eventID, "report"); err != nil {
 			return nil, err
 		}
-		out[i].Source = delivery.Source{MediaID: info.ID, MIMEType: info.MIMEType}
-		out[i].Name = info.Name
 	}
 	return out, nil
 }

@@ -561,7 +561,7 @@ func TestRunLLMEventRetriesOnlyIncompleteReportDeliveries(t *testing.T) {
 		t.Fatalf("deliveries after failure = %#v", deliveries)
 	}
 
-	if _, err := service.recoverReports(context.Background(), false); err != nil {
+	if _, err := service.recoverReports(context.Background()); err != nil {
 		t.Fatalf("recoverReports: %v", err)
 	}
 	record, err = testRepo(service).snapshot(context.Background(), queued.EventID)
@@ -618,7 +618,7 @@ func TestRunLLMEventRetriesWhenReceiptPersistenceFails(t *testing.T) {
 	if err != nil || len(pending) != 1 || pending[0].Status != "pending" || pending[0].Receipt != "" {
 		t.Fatalf("delivery did not roll back: %#v %v", pending, err)
 	}
-	if _, err := service.recoverReports(context.Background(), false); err != nil {
+	if _, err := service.recoverReports(context.Background()); err != nil {
 		t.Fatalf("recoverReports: %v", err)
 	}
 	record, err = testRepo(service).snapshot(context.Background(), queued.EventID)
@@ -667,7 +667,10 @@ func TestRecoverReportsResetsInterruptedDeliveringEvent(t *testing.T) {
 		t.Fatalf("ClaimReport = %v, %v", claimed, err)
 	}
 
-	if _, err := service.recoverReports(context.Background(), true); err != nil {
+	if err := service.resetDeliveringReports(context.Background()); err != nil {
+		t.Fatalf("resetDeliveringReports: %v", err)
+	}
+	if _, err := service.recoverReports(context.Background()); err != nil {
 		t.Fatalf("recoverReports: %v", err)
 	}
 	record, err := testRepo(service).snapshot(context.Background(), queued.EventID)
@@ -720,7 +723,10 @@ func TestRecoverReportsDoesNotResendPersistedReceipt(t *testing.T) {
 		t.Fatalf("MarkReportDeliveryDelivered: %v", err)
 	}
 
-	if _, err := service.recoverReports(context.Background(), true); err != nil {
+	if err := service.resetDeliveringReports(context.Background()); err != nil {
+		t.Fatalf("resetDeliveringReports: %v", err)
+	}
+	if _, err := service.recoverReports(context.Background()); err != nil {
 		t.Fatalf("recoverReports: %v", err)
 	}
 	record, err := testRepo(service).snapshot(context.Background(), queued.EventID)

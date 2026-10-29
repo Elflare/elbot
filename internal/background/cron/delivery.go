@@ -15,6 +15,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
+	"elbot/internal/media"
 	"elbot/internal/session"
 	"elbot/internal/workspace"
 )
@@ -23,6 +24,11 @@ type resolvedCronTarget struct {
 	key      string
 	platform string
 	target   delivery.Target
+}
+
+type deliveryGate struct {
+	token chan struct{} // 单个任务的互斥令牌。
+	refs  int           // 持有者与等待者的总数，由 Service.mu 保护。
 }
 
 func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, state CronDeliveryState, platformFilter string, recovery bool) (logResult globalevents.LogResult, err error) {
@@ -88,7 +94,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 			var buildErr error
 			status := DeliveryDelivered
 			segmentIndex := index
-			if strings.TrimSpace(state.Report) != "" {
+			if state.NeedReport && strings.TrimSpace(state.Report) != "" {
 				segmentIndex--
 			}
 			switch {
@@ -107,9 +113,9 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 					scope, buildErr = s.cronSandbox(job.Name)
 				}
 				if buildErr == nil {
-					out, buildErr = background.BuildReportSegmentOutput(segment, scope)
+					out, buildErr = background.BuildReportSegmentOutput(ctx, segment, scope, s.media, media.ImportLimits{})
 				}
-				if buildErr != nil && (!recovery || ctx.Err() != nil) {
+				if buildErr != nil && (!recovery || !state.NeedReport || ctx.Err() != nil) {
 					logResult.ResultStatus = globalevents.ResultFailed
 				}
 			}
@@ -122,7 +128,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 					logResult.ResultStatus = result.ResultStatus
 				}
 			}
-			if buildErr != nil && outputID != "text" && status != DeliveryFallbackDelivered && recovery && ctx.Err() == nil {
+			if buildErr != nil && outputID != "text" && status != DeliveryFallbackDelivered && state.NeedReport && recovery && ctx.Err() == nil {
 				logResult.Content += fmt.Sprintf("\nattachment_error=%v", buildErr)
 				outputState.Status = DeliveryFallbackPending
 				outputState.FallbackText = reportSegmentFallbackText(state.ReportSegments[segmentIndex])
@@ -253,7 +259,7 @@ func (s *Service) deliveryComplete(meta Metadata, state CronDeliveryState) bool 
 
 func deliveryOutputIDs(state CronDeliveryState) []string {
 	ids := []string{}
-	if strings.TrimSpace(state.Report) != "" {
+	if state.NeedReport && strings.TrimSpace(state.Report) != "" {
 		ids = append(ids, "text")
 	}
 	for index := range state.ReportSegments {
@@ -351,19 +357,33 @@ func (s *Service) lockDeliveryJob(ctx context.Context, jobName string) (func(), 
 	s.mu.Lock()
 	gate := s.deliveryGates[jobName]
 	if gate == nil {
-		gate = make(chan struct{}, 1)
+		gate = &deliveryGate{token: make(chan struct{}, 1)}
 		s.deliveryGates[jobName] = gate
 	}
+	gate.refs++
 	s.mu.Unlock()
+	release := func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		gate.refs--
+		if gate.refs == 0 {
+			delete(s.deliveryGates, jobName)
+		}
+	}
 	select {
 	case <-ctx.Done():
+		release()
 		return nil, ctx.Err()
-	case gate <- struct{}{}:
+	case gate.token <- struct{}{}:
+		unlock := func() {
+			<-gate.token
+			release()
+		}
 		if err := ctx.Err(); err != nil {
-			<-gate
+			unlock()
 			return nil, err
 		}
-		return func() { <-gate }, nil
+		return unlock, nil
 	}
 }
 

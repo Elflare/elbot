@@ -241,7 +241,7 @@ func TestElnisRecoveryKeepsDeclaredFailureWithNilBusinessError(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(connection.Disconnect)
-	logResult, err := service.recoverReports(t.Context(), false)
+	logResult, err := service.recoverReports(t.Context())
 	if err != nil || logResult.ResultStatus != events.ResultFailed || len(records) != 1 || records[0].ResultStatus != events.ResultFailed || !strings.Contains(records[0].Content, "recovery partially delivered") {
 		t.Fatalf("recovery result=%#v error=%v records=%#v", logResult, err, records)
 	}

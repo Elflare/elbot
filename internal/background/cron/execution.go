@@ -114,6 +114,7 @@ func (s *Service) prepareDelivery(ctx context.Context, job Job, meta Metadata) (
 	switch meta.Trigger.Mode {
 	case TriggerDirect:
 		state.ReportReady, state.TaskCompleted = true, true
+		state.NeedReport = true
 		state.Report = strings.TrimSpace(meta.Trigger.Message)
 	case TriggerLLM:
 		state, _, logResult, err = s.runLLMReport(ctx, job, meta, state)
@@ -136,6 +137,7 @@ func (s *Service) prepareDelivery(ctx context.Context, job Job, meta Metadata) (
 		ctx = context.WithoutCancel(ctx)
 	}
 	nextToken := firstNonEmpty(state.ReportSessionID, state.RunID)
+	state.DeliveryComplete = s.deliveryComplete(meta, state)
 	encoded, encodeErr := encodeDeliveryState(state)
 	if encodeErr != nil {
 		return job, state, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: content + fmt.Sprintf("\nencode_error=%q", encodeErr.Error())}, errors.Join(err, encodeErr)
@@ -222,6 +224,7 @@ func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, stat
 	if err != nil {
 		message := cronParseFailedMessage(meta.Title, result.SessionID, err)
 		state.ReportReady = true
+		state.NeedReport = true
 		state.Report = message
 		state.ReportSessionID = result.SessionID
 		state.ReportMessageID = result.MessageID
@@ -276,6 +279,7 @@ func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, stat
 	}
 	state.ReportReady = true
 	state.TaskCompleted = parsed.Completed
+	state.NeedReport = parsed.NeedReport
 	state.ReportSegments = parsed.ReportSegments
 	state.ReportSessionID = result.SessionID
 	state.ReportMessageID = result.MessageID
@@ -339,12 +343,12 @@ func cronPrompt(message string) string {
 ** 信息不足时，在最终 JSON 的 report 填写失败或阻塞原因
 ** 只能调用本任务提供的工具；没有提供工具时，基于已有信息完成或报告阻塞
 ** 所有路径参数必须使用相对路径，基于当前任务工作目录解析；不要使用绝对路径、~、.. 或 cd。
-** 有投递目标、任务要求通知或产生需要目标知道的结果/失败/阻塞原因时，应设置 need_report=true 并在 report 写自然语言汇报
+** 需要向目标说明处理结果、失败或阻塞原因时，应设置 need_report=true 并在 report 写自然语言汇报；仅发送附件时可设置 need_report=false
 ** 最终回复必须是严格 JSON
 ** JSON 格式：{"completed":true,"need_report":false,"report":"","report_segments":[]}
 ** report_segments 可选数组，元素为 {"type":"image|file","url":"相对路径或 HTTP(S) URL"}，用于附带图片或文件。本地图片/文件须先保存在当前任务工作目录内；远程 URL 会原样交给平台，不会下载
 ** completed 表示是否完成任务
-** need_report 表示是否需要向目标平台汇报；成功、失败或阻塞都可以请求汇报
+** need_report 只控制是否向目标平台发送 report 正文；成功、失败或阻塞都可以请求汇报。report_segments 附件始终保存并发送，不受 need_report 影响
 ** report 为需要发给用户的汇报，可填写处理结果、失败原因或阻塞原因
 ~ 把任务当作前台用户对话
 ~ 闲聊
@@ -357,7 +361,7 @@ Cron 任务内容：
 }
 
 func cronFormatRetryPrompt() string {
-	return background.DefaultJSONRetryPrompt()
+	return background.DefaultJSONRetryPrompt() + "在 Cron 中，need_report 只控制 report 正文是否发送；report_segments 附件始终保存并发送，不受 need_report 影响。"
 }
 
 func parseLLMResult(text string) (CronLLMResult, error) {

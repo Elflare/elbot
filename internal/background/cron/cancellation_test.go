@@ -45,6 +45,12 @@ func TestDeliveryGateWaitCanBeCancelled(t *testing.T) {
 		done <- err
 	}()
 	<-started
+	s.mu.Lock()
+	refs := s.deliveryGates[normalizeJobName("same")].refs
+	s.mu.Unlock()
+	if refs != 2 {
+		t.Fatalf("holder and waiter refs=%d", refs)
+	}
 	cancel()
 	select {
 	case err := <-done:
@@ -55,11 +61,55 @@ func TestDeliveryGateWaitCanBeCancelled(t *testing.T) {
 		t.Fatal("gate ignored cancellation")
 	}
 	unlock()
+	if len(s.deliveryGates) != 0 {
+		t.Fatal("canceled waiter retained delivery gate")
+	}
 	unlock, err = s.lockDeliveryJob(context.Background(), "same")
 	if err != nil {
 		t.Fatal(err)
 	}
 	unlock()
+	if len(s.deliveryGates) != 0 {
+		t.Fatal("released holder retained delivery gate")
+	}
+}
+
+func TestDeliveryGateStaysSharedUntilLastWaiterExits(t *testing.T) {
+	s := newTestCronService(t, Options{})
+	unlock, err := s.lockDeliveryJob(t.Context(), "same")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate := s.deliveryGates[normalizeJobName("same")]
+	acquired := make(chan func(), 2)
+	for range 2 {
+		ctx := &gateWaitContext{Context: t.Context(), started: make(chan struct{})}
+		go func() {
+			release, err := s.lockDeliveryJob(ctx, "same")
+			if err == nil {
+				acquired <- release
+			}
+		}()
+		<-ctx.started
+	}
+	unlock()
+	for remaining := 2; remaining > 0; remaining-- {
+		select {
+		case release := <-acquired:
+			s.mu.Lock()
+			shared := s.deliveryGates[normalizeJobName("same")] == gate && gate.refs == remaining
+			s.mu.Unlock()
+			release()
+			if !shared {
+				t.Fatal("delivery gate changed while callers were waiting")
+			}
+		case <-time.After(time.Second):
+			t.Fatal("waiting caller did not acquire delivery gate")
+		}
+	}
+	if len(s.deliveryGates) != 0 {
+		t.Fatal("last caller retained delivery gate")
+	}
 }
 
 func TestRecoveryCancellationDoesNotSendFailureNotice(t *testing.T) {

@@ -70,7 +70,7 @@ func TestInjectedTakeoverQueryStopsPreparedDelivery(t *testing.T) {
 		return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	}})
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Schedule: CronSchedule{Mode: ScheduleOnce}, Target: CronTarget{SourcePlatform: "cli"}})
-	state := CronDeliveryState{RunID: "run", ReportReady: true, Report: "unsent", ReportSessionID: "adopted"}
+	state := CronDeliveryState{RunID: "run", ReportReady: true, NeedReport: true, Report: "unsent", ReportSessionID: "adopted"}
 	repo.jobs[job.Name].DeliveryToken = "run"
 	job.DeliveryToken = "run"
 	if _, err := svc.deliverPrepared(t.Context(), *job, mustDecodeTestMetadata(t, job.Metadata), state, "", false); err != nil {

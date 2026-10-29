@@ -8,23 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sort"
 	"strings"
 
 	globalevents "elbot/internal/events"
 )
 
-func (s *Service) RunMissedOnce(ctx context.Context) {
-	for _, platformName := range s.connectedPlatformNames() {
-		s.runMissedOnceForPlatform(ctx, platformName)
-	}
-}
-
 func (s *Service) handlePlatformConnected(ctx context.Context, platformName string) {
 	platformName = strings.TrimSpace(platformName)
-	s.mu.Lock()
-	s.connectedPlatforms[platformName] = true
-	s.mu.Unlock()
 	{
 		record := globalevents.LogRecord{
 			Category:     globalevents.LogRuntime,
@@ -236,8 +226,6 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 			if ctx.Err() != nil {
 				return
 			}
-			// The sender owns failures of this asynchronous notice.
-			_, _ = s.sendToPlatforms(ctx, job.Name, []string{"cli"}, fmt.Sprintf("cron 补跑失败：%s\n错误：%v", job.Name, deliverErr))
 			continue
 		}
 		{
@@ -281,17 +269,19 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 	}
 }
 
-func (s *Service) deliverMissedOnce(ctx context.Context, job Job, meta Metadata, platformName string) (globalevents.LogResult, error) {
+func (s *Service) deliverMissedOnce(ctx context.Context, job Job, meta Metadata, platformName string) (logResult globalevents.LogResult, err error) {
 	content := "operation=deliverMissedOnce"
 	job, state, logResult, prepareErr := s.prepareDelivery(ctx, job, meta)
+	defer func() {
+		if err != nil && ctx.Err() == nil && (!state.ReportReady || state.NeedReport) {
+			// 正文关闭时只保留失败日志；发送方记录通知自身的投递结果。
+			_, _ = s.sendToPlatforms(ctx, job.Name, []string{"cli"}, fmt.Sprintf("cron 补跑失败：%s\n错误：%v", job.Name, err))
+		}
+	}()
 	resultStatus := logResult.ResultStatus
 	content += "\n" + logResult.Content
 	if !state.ReportReady {
-		{
-			err := prepareErr
-			logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-			return logResult, err
-		}
+		return globalevents.LogResult{ResultStatus: resultStatus, Content: content}, prepareErr
 	}
 	logResult, deliverErr := s.deliverPrepared(ctx, job, meta, state, platformName, true)
 	status := logResult.ResultStatus
@@ -301,11 +291,7 @@ func (s *Service) deliverMissedOnce(ctx context.Context, job Job, meta Metadata,
 	} else if resultStatus == globalevents.ResultCanceled || status == globalevents.ResultCanceled {
 		status = globalevents.ResultCanceled
 	}
-	{
-		err := errors.Join(prepareErr, deliverErr)
-		logResult := globalevents.LogResult{ResultStatus: status, Content: content}
-		return logResult, err
-	}
+	return globalevents.LogResult{ResultStatus: status, Content: content}, errors.Join(prepareErr, deliverErr)
 }
 
 func missedOnceReportText(title, report string) string {
@@ -315,15 +301,4 @@ func missedOnceReportText(title, report string) string {
 		return prefix
 	}
 	return prefix + "\n\n" + report
-}
-
-func (s *Service) connectedPlatformNames() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := []string{}
-	for platformName := range s.connectedPlatforms {
-		out = append(out, platformName)
-	}
-	sort.Strings(out)
-	return out
 }

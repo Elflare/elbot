@@ -84,6 +84,7 @@ type CronDeliveryState struct {
 	RunID            string                    `json:"run_id"`
 	ReportReady      bool                      `json:"report_ready,omitempty"`
 	TaskCompleted    bool                      `json:"task_completed,omitempty"`
+	NeedReport       bool                      `json:"need_report"` // 是否发送汇报正文；附件保存与投递不受此开关影响。
 	Report           string                    `json:"report,omitempty"`
 	ReportSegments   []delivery.Output         `json:"report_segments,omitempty"` // 明确来源的附件，恢复发送不重新解析协议。
 	ReportSessionID  string                    `json:"report_session_id,omitempty"`

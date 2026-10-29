@@ -325,10 +325,10 @@ Control 局部计时由 Agent 活动与真实收尾驱动，Branch 经共享契�
 - `internal/background/elnis/direct.go`：原生调用、直接投递与完成状态；选择平台后通过注入函数转交原始 API 与参数，按顺序执行并在失败或取消时停止。
 - `internal/background/elnis/auth.go`、`prepare.go`、`targets.go`：鉴权、规范化与目标裁决；targets.go 的 toDeliveryTarget 供直接发送与报告投递共用。
 - `internal/background/elnis/repository.go`：Elnis 独用事件仓储、最小记录及写入请求；根部 wiring.go 转换 Storage 记录与错误。
-- `internal/background/elnis/media.go`：协议来源分类、明确来源导入、直接输出准备与报告附件受限导入；directText 组装直接输出正文。prepare.go 保存 Event.Segments，根部适配 MediaInfo、分类导入与事件引用能力。
-- `internal/background/elnis/outbox.go`：报告准备、有序投递与恢复，事务由仓储执行。
+- `internal/background/elnis/media.go`：协议来源分类、明确来源导入、直接输出准备与报告附件引用；本地附件复用 share/report.go 的受限打开与流式导入，directText 组装直接输出正文。prepare.go 保存 Event.Segments，根部适配 MediaInfo、分类导入与事件引用能力。
+- `internal/background/elnis/outbox.go`：报告输出拼装、持久化准备、有序投递与待投递报告恢复，事务由仓储执行；中断投递重置由 lifecycle.go 在启动时单独调用。
 - `internal/storage/sqlite/elnis_event_repository.go`：事件仓储与引用事务。
-- `internal/background/share/`：公共后台类型、接管检查与日志发布；result.go 将外部报告解析为明确来源并提供外部协议序列化，report.go 按明确来源构造报告及提供 Cron／Elnis 共用的 ReportMessageMap、MapReportReceipt。
+- `internal/background/share/`：公共后台类型、接管检查与日志发布；result.go 将外部报告解析为明确来源并提供外部协议序列化。report.go 提供 Cron／Elnis 共用的 ReportMedia 最小接口、附件受限打开与流式导入，以及 ReportMessageMap、MapReportReceipt 实际回执映射。
 - [内部架构](elnis-elwisp.md)、[功能说明](../docs/elnis.md)、[配置与协议示例](../docs/elnis-usage.md)。
 
 <!-- locator:media -->
@@ -364,7 +364,7 @@ Media 根部入口与装配、object 对象管理、transfer 交付编排、back
 - `internal/background/cron/repository.go`、`model.go`：独用持久化契约、任务快照与 JSON 模型；根部 wiring.go 实现存储转换。
 - `internal/background/cron/refresh.go`：只登记名称的刷新入口，首次加载协调与运行期串行重新读库。
 - `internal/background/cron/lifecycle.go`：平台通知启动前合并、启动后消费和退出等待。
-- `internal/background/cron/models.go`、`delivery.go`、`recovery.go`：任务模型、逐项投递与连接恢复。
+- `internal/background/cron/models.go`、`delivery.go`、`recovery.go`：任务模型、逐项投递与连接恢复；NeedReport 只控制正文，附件独立投递，任务锁在持有者与等待者全部退出后释放。
 - `internal/background/maintenance/maintenance.go`：维护清理、处理器注册与任务配置；通过最小接口和函数使用外部能力，不启动调度器。
 - `internal/background/share/maintenance.go`：维护组件与 Cron 共用的 MaintenanceJob 配置。
 - `internal/background/cron/maintenance.go`：维护回调与共享配置适配，复用 Cron 的任务校验、启用和禁用。

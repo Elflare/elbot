@@ -637,7 +637,8 @@ flowchart TD
     W --> EM["elnis/media.go：媒体契约与受限附件导入"]
     L --> EL["elnis/lifecycle.go：监听就绪、workers、故障观察与批量收尾"]
     W --> EH["elnis/http.go：HTTP 构造与请求协议"]
-    E --> SR["share/report.go：报告构造与实际回执映射"]
+    E --> SR["share/report.go：最小媒体契约、附件受限打开与实际回执映射"]
+    EM --> SR
     C --> SR
     W --> X["execution/runner.go、runner_deps.go：任务目录与 Agent 执行转接"]
     W --> M["maintenance/maintenance.go：维护任务与清理"]
@@ -653,7 +654,7 @@ Tool 管理任务定义，Background 负责调度、执行与投递状态。构�
 
 根部启动顺序为恢复 → SetupCron 配置维护任务 → Manager.Start → 启用的 Elnis 就绪 → Cron Service.Start。平台通知在 Service.Start 前按平台合并，并保留最新上下文的值，不继承发出方取消；此时不创建 worker。前置步骤成功后放行，同平台串行、不同平台独立，Start 不等待恢复任务完成。关闭清空缓存并取消队列，Close 超时不会提前关闭 Done；生命周期不关闭借用资源。
 
-Elnis Start 同步重置投递状态、绑定监听并启动 workers；禁用时根部仍恢复中断执行。退出先关闭接入与连接、取消执行，等待 handler、Serve 和 workers 真实退出，再批量失败化未形成报告的执行并原子释放引用，保留持久化报告。收尾写入隔离取消并限时 5 秒，失败交回 Close，由下次启动恢复兜底。
+Elnis Start 同步重置投递状态、绑定监听并启动 workers；报告恢复只处理待投递记录，不重置正在投递的报告。禁用时根部仍恢复中断执行。退出先关闭接入与连接、取消执行，等待 handler、Serve 和 workers 真实退出，再批量失败化未形成报告的执行并原子释放引用，保留持久化报告。收尾写入隔离取消并限时 5 秒，失败交回 Close，由下次启动恢复兜底。
 
 Runtime.Wait 的致命运行故障由根部观察，触发 Background 整线 BeginClose 并通过 Background.Wait 及时交给 App；正常 Wait 等待实际 Done，取消等待不关闭组件。根部对订阅调用 BeginClose 并等待已接纳回调退出。Done 包含组件和观察工作真实退出，Close 只返回清理结果；单个事件或投递失败不升级为整线故障。
 
@@ -665,6 +666,7 @@ Runtime.Wait 的致命运行故障由根部观察，触发 Background 整线 Beg
 - Cron／Elnis 后台 sandbox 的 shell 非 critical 风险自动确认；critical 拒绝执行并返回提醒。
 - 任务 provider／model 成对校验，省略更新保留，同时清空回到 work；配置更新返回完整任务并保留运行事实，安排调度仅在下一次运行时间变化时保存。
 - Handler 返回来源 LogResult 与原始 error，由调度器在状态保存后发布一份整体运行日志；触发、逐目标投递审计与正常对话日志独立保留。
-- once 分开保存任务配置与 Delivery，TaskCompleted 表达任务结论，ReportReady 表达报告可复用，全部投递完成后才禁用。
-- 连接恢复可为过期的一次性任务首次生成报告；同轮已有报告直接复用，不重跑 LLM。恢复使用最新配置和逐目标／output 状态，同任务投递互斥可取消。附件失败同轮降级文字，再失败等下次连接。
+- once 分开保存任务配置与 Delivery，TaskCompleted 表达任务结论，ReportReady 表达报告可复用。NeedReport 只控制汇报正文，正文和附件记录照常保存，附件始终投递；待发送内容全部完成后才禁用，没有待发送内容时直接完成。
+- Cron 本地附件保留任务目录文件及相对路径，实际投递时通过 share.ReportMedia 导入；share/report.go 使用 os.Root 打开附件并将文件流交给 Media.ImportReader，下游只收到 MediaID，不重新打开任务路径。Elnis 复用同一受限打开边界，另行管理事件引用。
+- 连接恢复可为过期的一次性任务首次生成报告；同轮已有报告直接复用，不重跑 LLM。恢复使用最新配置和逐目标／output 状态，同任务投递互斥可取消，锁条目在持有者和等待者全部退出后回收。允许正文时，附件失败同轮降级文字，再失败等下次连接；NeedReport=false 时只记录失败并保留附件重试，不发送降级文字或补跑失败通知。
 - 报告落库前可能重新执行，发送成功但回执未落库时可能重复投递。
