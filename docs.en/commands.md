@@ -57,7 +57,7 @@ Model selection takes effect globally by mode/slot and is saved to `state.toml`;
 | `/clean --confirm` | Delete expired Sessions that are not archived or pinned. |
 
 - Except for `/rename` and `/delete`, commands with `[编号或 session_id]` act on the current Session when parameters are omitted; IDs are displayed by `/sessions` and `/archives`, and can be reused by these commands.
-- `/resume 1` directly restores the most recently updated non-current Session without needing to execute a bare `/resume` first; IDs are sorted by update time, unaffected by pinning, and pagination is continuous.
+- `/resume 1` directly restores the most recently updated non-current Session without needing to first execute a bare `/resume`; IDs are sorted by update time, and pagination is continuous.
 - CLI is a local high-privilege entry point, allowing viewing and managing Sessions across platforms; Non-CLI platforms only see the current platform and scope. Cron/Elnis background Sessions can only be restored via private chat on the same platform by the owning user, or via the CLI management entry point; they are not displayed in group chats or channels, and cannot be bypassed via direct ID, message quoting, or unarchiving; The first recovery will permanently transfer ownership to the foreground; switching away will not restore the background identity.
 - While the current Session is processing, switching commands such as `/new`, `/resume`, `/fork`, `/chat`, and `/work` cannot be executed; `/stop` is required first.
 - Deletion is a permanent operation and requires `--confirm`; Sessions currently executing cannot be deleted, and automatic cleanup will also skip them.

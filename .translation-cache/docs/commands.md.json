@@ -80,6 +80,14 @@
       "translation": "Request Management",
       "updated_at": 1781514917
     },
+    "docs/commands.md:list:0160d5d3e5f0a241b89e7073c68401cd4dc7fa32356b666c854880dd8dcaa4cb": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 直接恢复最近更新的非当前 Session，无需先执行裸 __ELBOT_CODE_1__；编号按更新时间排列，翻页连续。",
+      "source_file": "docs/commands.md",
+      "source_hash": "0160d5d3e5f0a241b89e7073c68401cd4dc7fa32356b666c854880dd8dcaa4cb",
+      "translation": "__ELBOT_CODE_0__ directly restores the most recently updated non-current Session without needing to first execute a bare __ELBOT_CODE_1__; IDs are sorted by update time, and pagination is continuous.",
+      "updated_at": 1793356431
+    },
     "docs/commands.md:list:05cb024aa6beed50922ae3ed4a2f174ca8610d56a81ca8e66b7aea7a4c0e7974": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 为超级管理员命令。",
@@ -270,14 +278,6 @@
       "source_file": "docs/commands.md",
       "source_hash": "b53d03e31133e4521a68dab6420a84a0e6f0bf22206e5c313def11ebd919022f",
       "translation": "IDs are displayed by __ELBOT_CODE_0__ and __ELBOT_CODE_1__, and can be reused by these commands.",
-      "updated_at": 1793351491
-    },
-    "docs/commands.md:list:b61729c65baa89b03dc38ce14c661eaf39f072f72d1f29e0c4cdb91cbcaaadb5": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__ 直接恢复最近更新的非当前 Session，无需先执行裸 __ELBOT_CODE_1__；编号按更新时间排列、不受置顶影响，翻页连续。",
-      "source_file": "docs/commands.md",
-      "source_hash": "b61729c65baa89b03dc38ce14c661eaf39f072f72d1f29e0c4cdb91cbcaaadb5",
-      "translation": "__ELBOT_CODE_0__ directly restores the most recently updated non-current Session without needing to execute a bare __ELBOT_CODE_1__ first; IDs are sorted by update time, unaffected by pinning, and pagination is continuous.",
       "updated_at": 1793351491
     },
     "docs/commands.md:list:b9768afbd60a3d931fd5663400a16545a5e23b3ebf3c244d8deb45bf22ac7b4a": {
@@ -1210,8 +1210,8 @@
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "5df6fa181c449664fe357b19c6e3b2c84fded9ab625e756df797c3414f8cad79",
+  "source_hash": "942fb81f3cab0989d0c824cabdaa46895f8eb44ef89d741f35e9a82e01cd03e5",
   "target": "docs.en/commands.md",
-  "updated_at": 1793351491,
+  "updated_at": 1793356431,
   "version": 2
 }
