@@ -154,14 +154,11 @@ curl -sS http://127.0.0.1:32170/elvena/v3/events \
 }
 ```
 
-
 ## Segments（多模态消息段）
 
-Elvena v3 支持通过 `segments` 字段发送图片和文件。`content` 保留为纯文本 fallback；direct/record 请求中 `content`、`segments`、`calls` 至少提供一个，LLM 模式仍必须提供 `content`。
+`segments` 用于发送图片和文件，`content` 保留为纯文本 fallback。direct/record 请求中 `content`、`segments`、`calls` 至少提供一个；llm 模式仍必须提供 `content`。
 
-`segments` 为空时行为不变，非空时优先 segments 渲染，content 作为附加文本。
-
-### Segment 字段
+`segments` 为空时行为不变；非空时优先按 segments 渲染，`content` 作为附加文本。
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | ---: | :---: | --- |
@@ -171,17 +168,14 @@ Elvena v3 支持通过 `segments` 字段发送图片和文件。`content` 保留
 | `name` | string | 否 | 文件名，用于下载保存和展示。 |
 | `mime_type` | string | 否 | MIME 类型提示。 |
 
-### 下载与存储
+下载与存储：
 
-- record、拒绝、重复或仅排队的事件不下载来源媒体。排队任务已有的媒体 ID 会建立引用。
-- direct 有实际投递目标时，导入或复用 Media Center 媒体，不保留 Elnis sandbox 下载副本。
-- LLM 输入在实际执行时物化为稳定媒体 ID，Session 保存 ID，请求发送前再解析。
-- workspace 普通工作文件继续由 sandbox 管理；报告附件在确定需要持久化投递时导入中心。
-- 文件名已有扩展名（包括 `.PNG`）时保留原名，仅无扩展名时补全。
-- direct 模式同样支持 image/file 输出，平台不支持时自动降级为文字描述。
-- 文件大小受 `elnis.toml` 的 `[segment].max_file_bytes` 限制（默认 100MB）。
-- `data:` URI 仅支持 base64 编码，解码后同样受限。
-- `file://` 等本地协议禁止。
+- **按需下载**：record、拒绝、重复或仅排队的事件不下载来源媒体；排队任务已有的媒体 ID 会建立引用。
+- **direct**：有实际投递目标时导入或复用 Media Center 媒体，不保留 Elnis sandbox 下载副本；同样支持 image/file 输出，平台不支持时自动降级为文字描述。
+- **llm**：输入在实际执行时物化为稳定媒体 ID，Session 保存 ID，请求发送前再解析。
+- **workspace**：普通工作文件继续由 sandbox 管理；报告附件在确定需要持久化投递时导入中心。
+- **文件名**：已有扩展名（包括 `.PNG`）时保留原名，仅无扩展名时补全。
+- **限制**：文件大小受 `elnis.toml` 的 `[segment].max_file_bytes` 限制（默认 100MB）；`data:` URI 仅支持 base64 编码且解码后同样受限；`file://` 等本地协议禁止。
 
 ### 示例
 
@@ -205,8 +199,11 @@ Elvena v3 支持通过 `segments` 字段发送图片和文件。`content` 保留
 
 ### LLM 结果中的 report_segments
 
-后台 LLM 处理事件后，`JSONResult` 的 `report_segments` 可附带图片/文件。使用 `url` 时填写当前任务工作目录内的相对路径，不能使用绝对路径、`~`、`..` 或逃逸目录的 symlink/junction；已有 HTTP(S) 来源仍兼容。也可在 `url` 中填写 `media:<sha256>` 引用中心资源。宿主在准备报告时导入附件，outbox 保存稳定媒体 ID，因此原 workspace 文件删除后仍可重试。
+后台 LLM 处理事件后，`JSONResult` 的 `report_segments` 可附带图片 / 文件：
 
+- `url` 填当前任务工作目录内的相对路径，不能用绝对路径、`~`、`..` 或逃逸目录的 symlink/junction；已有 HTTP(S) 来源仍兼容。
+- `url` 也可填 `media:<sha256>` 引用中心资源。
+- 宿主在准备报告时导入附件，outbox 保存稳定媒体 ID，因此原 workspace 文件删除后仍可重试。
 
 ```json
 {
@@ -216,20 +213,23 @@ Elvena v3 支持通过 `segments` 字段发送图片和文件。`content` 保留
   "report_segments": [
     {"type": "image", "url": "chart.png"}
   ]
-
 }
 ```
 
-
 ### 输出关联与清理
 
-发送期间和 outbox 待重试期间，媒体保留有效引用。成功发送的媒体会与对应平台消息关联，供后续引用回复使用；无法确定对应关系时不建立猜测关联。
+媒体引用分四级，按顺序释放：
 
-已发送缓存保留期复用 `app.toml` 的 `[maintenance.sandbox_cleanup].retention_days`，非正值不保留发送后的缓存。缓存过期释放关联引用；Session、Transcript、fork 和待重试报告的独立引用仍保留。所有引用消失后经过 1 小时孤儿宽限期，媒体维护任务才清理本体和记录；失败保留删除状态供重试。宽限期起点保存在数据库，关闭 ElBot 的时间也计入，重启不重置；达到宽限期后在下一次媒体维护任务执行时清理，并非一小时整立即删除。该任务复用 sandbox 的清理时间表，但不按目录文件年龄删除 Media Center 内容。
+1. **发送中 / outbox 待重试**：保留有效引用。
+2. **成功发送后**：与对应平台消息关联，供后续引用回复使用（无法确定对应关系时不建立猜测关联）。
+3. **已发送缓存**：保留期复用 `app.toml` 的 `[maintenance.sandbox_cleanup].retention_days`，非正值不保留；缓存过期只释放关联引用，Session、Transcript、fork 和待重试报告的独立引用仍保留。
+4. **孤儿清理**：所有引用消失后经过 1 小时宽限期，媒体维护任务才清理本体和记录；删除失败保留状态供重试。
 
-QQ OneBot、QQ Official、Telegram 支持在引用回复中恢复关联媒体；回复自己 Session 的最后一条 assistant 消息会自动恢复该 Session，回复更早的 assistant 消息会从该位置 Fork。Elwisp 远端工具仅操作自己的文件，不获得宿主媒体导出路径、RPC 或存储凭据。
+宽限期起点存在数据库里，关闭 ElBot 的时间也计入、重启不重置；达到宽限期后在**下一次**维护任务执行时清理，不是一小时整立即删除。该任务复用 sandbox 的清理时间表，但不按目录文件年龄删 Media Center 内容。
 
-常用字段：
+QQ OneBot、QQ Official、Telegram 支持在引用回复中恢复关联媒体：回复自己 Session 的最后一条 assistant 消息会恢复该 Session，回复更早的则从该位置 Fork。Elwisp 远端工具仅操作自己的文件，不获得宿主媒体导出路径、RPC 或存储凭据。
+
+## 字段与响应
 
 | 字段 | 必填 | 说明 |
 | --- | ---: | --- |
@@ -242,16 +242,15 @@ QQ OneBot、QQ Official、Telegram 支持在引用回复中恢复关联媒体；
 | `mode` | 是 | `record`、`direct` 或 `llm`。 |
 | `title` | 否 | 事件标题，用于通知和后台 Session 标题。 |
 | `format` | 否 | `text` 或 `elyph`，默认 `text`。 |
-| `content` | 否 | 事件主体。LLM 模式必填，推荐使用 ELyph Task Notation（任务表示法）`#task`；direct/record 模式可为空，但 `content`、`segments`、`calls` 至少提供一个。 |
-| `model_slot` | 否 | Elnis LLM 模型槽位，仅支持 `elwisp1`、`elwisp2`、`elwisp3`；未填写或对应槽位未配置时回退到 `work`。 |
-| `tool_list_names` | 否 | 后台任务预加载的 ElBot 内部工具名或 Skill 名；普通工具注入 schema，Skill 注入任务说明并自动注入对应 runner；必须在 Elnis `allowed_tools` 裁决范围内，`discover_tool` 会被忽略。 |
+| `content` | 否 | 事件主体。llm 模式必填，推荐用 ELyph `#task`；direct/record 可为空，但 `content`、`segments`、`calls` 至少提供一个。 |
+| `model_slot` | 否 | 仅 `elwisp1`、`elwisp2`、`elwisp3`；未填或对应槽位未配置时回退 `work`。 |
+| `tool_list_names` | 否 | 后台任务预加载的内部工具名或 Skill 名；普通工具注入 schema，Skill 注入说明并自动注入 runner；须在 Elnis `allowed_tools` 范围内，`discover_tool` 被忽略。 |
 | `tools` | 否 | Elwisp 随事件声明的外部工具；默认允许，命中该 Elwisp 的 `disabled_external_tools` 时拒绝。 |
-| `targets` | 是 | Elwisp 期望投递目标数组，`{"platform":"telegram"}` 表示发给平台超级管理员，`type=private/group` 且带 `id` 时发指定私聊/群聊，`{"platform":"all"}` 表示所有已启用平台超级管理员。最终仍由 Elnis 裁决。 |
-| `calls` | 否 | 平台原生 API 调用数组。每项包含 `platform`（平台名称）、`api`（原生接口名）、`params`（原生参数）；省略 `platform` 时使用首个解析目标的平台，`api` 与 `params` 直接交给该平台执行。direct 请求只有 `calls` 且没有 `content`/`segments` 时只执行 API，不发送消息。 |
+| `targets` | 是 | 期望投递目标数组，语义见[投递目标](#投递目标与安全边界)；最终由 Elnis 裁决。 |
+| `calls` | 否 | 平台原生 API 调用数组。每项含 `platform`、`api`、`params`；省略 `platform` 时用首个解析目标的平台。direct 请求只有 `calls` 且无 `content`/`segments` 时只执行 API，不发消息。 |
 | `meta` | 否 | 原始补充数据，只做记录和 prompt 附加。 |
 
-HTTP 响应只表示 Elnis 已接收或拒绝请求，不等待 LLM 完成。
-
+HTTP 响应只表示 Elnis 已接收或拒绝请求，不等待 LLM 完成：
 
 ```json
 {
@@ -263,40 +262,22 @@ HTTP 响应只表示 Elnis 已接收或拒绝请求，不等待 LLM 完成。
 }
 ```
 
-每个 HTTP 请求体必须且只能包含一个 JSON 值，尾随空白允许，尾随第二个 JSON 值或非法内容会返回 `400`。未知字段会被忽略，不参与协议语义、规范化、事件 `content_hash` 或审计；需要正式语义的字段应加入对应 Elvena 协议版本。
-
+每个请求体必须且只能包含一个 JSON 值，尾随空白允许，第二个 JSON 值或非法内容返回 `400`。未知字段被忽略，不参与协议语义、规范化、事件 `content_hash` 或审计；需要正式语义的字段应加入对应协议版本。
 
 ## 投递目标与安全边界
 
-Elwisp 可以在 `targets` 中声明期望目标，但最终目标由 Elnis 裁决。
-
-`targets` 必须是数组：
-
-```json
-{
-  "targets": [
-    {"platform": "telegram"},
-    {"platform": "telegram", "type": "private", "id": "123456789"},
-    {"platform": "qqonebot", "type": "group", "id": "987654321"},
-    {"platform": "all"}
-  ]
-}
-```
-
-语义：
+`targets` 必须是数组，Elwisp 只能声明期望目标，最终由 Elnis 裁决：
 
 - 只写 `platform`：投递到该平台超级管理员。
-- `type=private`：投递到指定平台私聊。
-- `type=group`：投递到指定平台群聊。
-- `platform=all`：投递到所有已启用平台超级管理员，不能同时写 `type` 或 `id`。
+- `type=private` / `type=group` + `id`：投递到指定平台私聊 / 群聊。
+- `platform=all`：投递到所有已启用平台的超级管理员，不能同时写 `type` 或 `id`。
 
 Elnis 默认允许投递；命中 `[delivery_disabled].targets` 或单 Elwisp `disabled_targets` 时才禁止。禁用配置中的 `{ platform = "telegram" }` 表示禁用该平台所有投递。
 
 安全约定：
 
-- token 名只用于日志和审计，不等同于 Elwisp 身份。
-- token 原文不写日志。
-- `model_slot` 只能选择 `elwisp1`、`elwisp2`、`elwisp3`，不能指定任意内部模式名。
-- Elwisp 不能绕过 Tool Runtime 和 Security Policy 调用 ElBot 内部工具；`tool_list_names` 中的工具名或 Skill 名都会经过 Elnis `allowed_tools` 裁决。
-- Elwisp 声明的外部 `tools` 默认允许，并通过 ToolRun 以 `elwisp_<elwisp>_<tool>` 形式注入为模型可调用函数名；单个 Elwisp 可用 `disabled_external_tools` 禁用指定工具。
+- token 名只用于日志和审计，不等同于 Elwisp 身份；token 原文不写日志。
+- `model_slot` 只能选 `elwisp1/2/3`，不能指定任意内部模式名。
+- Elwisp 不能绕过 Tool Runtime 和 Security Policy 调用内部工具；`tool_list_names` 中的名字都会经过 `allowed_tools` 裁决。
+- 外部 `tools` 默认允许，并通过 ToolRun 以 `elwisp_<elwisp>_<tool>` 形式注入为模型可调用函数名；单个 Elwisp 可用 `disabled_external_tools` 禁用。
 - 外部工具调用由 Elnis 对声明的 endpoint 发起 HTTP JSON POST；外部工具自身负责实际风险边界，Elnis 侧按 low 风险处理。

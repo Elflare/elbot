@@ -9,13 +9,15 @@
 | **Transient Worker** | `[plugin.runtime] mode = "transient"`；命中 trigger rule 后启动，waiting 会话结束后退出。 | 短期有状态、多轮交互。 |
 | **Persistent Worker** | `[plugin.runtime] mode = "persistent"`；随 ElBot 启动并常驻。 | 长期状态、后台任务、频繁事件。 |
 
-Transient Worker 与 Persistent Worker 统称 **Worker Hook**；一次性 exec Hook 与 Worker Hook 统称 **进程 Hook**。`mode = "once"` 不创建 Worker，仍按规则 Hook 运行；只有规则配置了 `type = "exec"` 才会启动一次性 exec Hook。所有产生 outputs 的入口使用同一套 segment。
+- Transient + Persistent 统称 **Worker Hook**；一次性 exec + Worker 统称 **进程 Hook**。
+- `mode = "once"` 不创建 Worker，仍按规则 Hook 运行；只有规则配了 `type = "exec"` 才会启动一次性 exec Hook。
+- 所有产生 outputs 的入口使用同一套 segment。
 
-Hook 示例见 [Hook Showcase](https://github.com/Elfreese/elbot-showcase/blob/main/hooks/README.md)。
+示例见 [Hook Showcase](https://github.com/Elfreese/elbot-showcase/blob/main/hooks/README.md)。
 
 ## 配置位置
 
-配置目录的 `plugins/hooks.toml` 是规则入口。它可以直接包含 `[[rules]]`，也可以引用插件目录：
+配置目录的 `plugins/hooks.toml` 是规则入口，可以直接包含 `[[rules]]`，也可以引用插件目录：
 
 ```toml
 [[plugins]]
@@ -23,19 +25,16 @@ name = "weather"
 # 默认读取 plugins/weather/hook.toml
 ```
 
-`[[plugins]]` 字段：
-
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
-| `name` | 是 | 插件标识和默认目录名；Worker Hook 同时把它作为 worker ID。Worker ID 只能使用小写字母、数字、`-`、`_`；规则插件也建议遵守此格式。 |
-| `enabled` | 否 | 是否加载，默认 `true`。修改根配置后需要管理员执行全局 `/hooks reload`。 |
+| `name` | 是 | 插件标识和默认目录名；Worker Hook 同时把它作为 worker ID。Worker ID 只能用小写字母、数字、`-`、`_`，规则插件也建议遵守。 |
+| `enabled` | 否 | 是否加载，默认 `true`。改根配置后需管理员执行全局 `/hooks reload`。 |
 | `path` | 否 | 相对 `plugins/` 的配置路径，默认 `<name>/hook.toml`；不能是绝对路径或逃出 `plugins/`。 |
 
-插件源码、`hook.toml` 和插件私有状态文件放在 `plugins/<id>/`。ElBot 额外创建 `plugins/_shared/` 供所有 Hook 共享文件；它不是插件目录，也不会被扫描。
-
-根 `hooks.toml` 的解析失败会使本次规则配置加载失败；单个被引用插件配置有误时，该插件会被跳过，其他插件照常加载。TOML 使用严格字段校验，未知字段会报错。规则空 `name` 当前会自动命名为 `rule.<序号>`，重复名称会自动追加序号；不要依赖这种兼容行为。
-
-直接写在根 `plugins/hooks.toml` 中的规则可以各自配置阻断范围。独立插件不在各条规则重复配置，而是在插件 `hook.toml` 的 `[plugin]` 中配置一次，对该插件全部规则和 Worker 生效。插件规则误写这三个字段时会产生 warning，但插件仍正常加载，误写字段会被忽略。
+- 插件源码、`hook.toml` 和私有状态文件放 `plugins/<id>/`；`plugins/_shared/` 是所有 Hook 共享文件的地方，不是插件目录、不会被扫描。
+- 根 `hooks.toml` 解析失败会使本次规则配置加载失败；单个被引用插件配置有误时只跳过该插件，其他照常加载。TOML 采用严格字段校验，未知字段报错。
+- 根规则空 `name` 会自动命名为 `rule.<序号>`，重名自动追加序号；不要依赖这个兼容行为。
+- 阻断范围：直接写在根 `hooks.toml` 的规则各自配置；独立插件在 `hook.toml` 的 `[plugin]` 中配一次，对该插件全部规则和 Worker 生效。插件规则误写这三个字段会出 warning，但插件仍正常加载、字段被忽略。
 
 ## 规则 Hook
 
@@ -74,9 +73,9 @@ text = "你好呀"
 | `consume` | 否 | 在 `platform.message.received` 中为 `true` 时，发送当前 outputs 后不再进入命令或主 LLM。 |
 | `stop_propagation` | 否 | 为 `true` 时停止当前 Hook 点之后的规则；不停止 Agent 主流程。 |
 
-`wakeup = "any"` 和 `wakeup = "forbidden"` 允许 Hook 观察未唤起消息，但不会让主 LLM 自动处理它们。`forbidden` 规则遇到已唤起消息时会直接跳过，不影响后续插件、命令或主 LLM。
-
-根规则的阻断检查先于普通匹配和 action 执行，因此命中后不会启动 exec 进程；其他规则不受影响。三项均为精确匹配且不支持通配符，`blocked_group` 同时识别 `group` 和 `supergroup` scope。
+- `wakeup = "any"` / `"forbidden"` 可以让 Hook 观察未唤起消息，但不会让主 LLM 自动处理它们；`forbidden` 遇到已唤起消息直接跳过，不影响后续插件、命令或主 LLM。
+- 根规则的阻断检查在普通匹配和 action 执行之前，命中后不会启动 exec 进程，也不影响其他规则。
+- 三项阻断都是精确匹配、不支持通配符；`blocked_group` 同时识别 `group` 和 `supergroup` scope。
 
 ### Hook 点
 
@@ -95,13 +94,11 @@ text = "你好呀"
 | `platform.message.sent` | assistant chat 或 preview 成功发送后的通知 | `message` | 无 | 否 |
 | `error.occurred` | Hook/Agent 阶段报错时的通知 | 原事件上下文、`error.message` | 无 | 否 |
 
-`send` action 虽可在所有 Hook 点创建 output intent，但只有上表“outputs 会被发送”的点会消费它。`timing = "after_assistant"` 当前也只有 `llm.response.received` 的输出会真正延后；其他点的输出仍按当前流程立即发送。
-
-`llm.tools` 是只读的业务工具定义数组，每项包含 `name`、`description` 和 `parameters`，不包含某个 API 的工具包装。协议请求编码由客户端完成。
-
-最终 assistant 文本通常先经过 `agent.turn.output.prepared`，再经过 `agent.output.prepared`。不要在两个点配置同一 append/prepend 规则，否则文本会被处理两次。
-
-工具提示先按工具分别添加一次 `[tool]` 前缀，再合并为一条通知，整体经过一次 `agent.output.prepared`。Hook 收到的是带前缀的完整文本，可以修改前缀和正文；发送时直接使用 Hook 返回的文本。
+- `send` action 可在所有 Hook 点创建 output intent，但只有表中“outputs 会被发送”为“是”的点会消费它。
+- `timing = "after_assistant"` 当前只有 `llm.response.received` 的输出会真正延后，其他点仍立即发送。
+- `llm.tools` 是只读的业务工具定义数组，每项含 `name`、`description`、`parameters`，不含某个 API 的工具包装；协议请求编码由客户端完成。
+- 最终 assistant 文本通常先经 `agent.turn.output.prepared`，再经 `agent.output.prepared`。不要在两个点配同一条 append/prepend，否则会被处理两次。
+- 工具提示先按工具分别加一次 `[tool]` 前缀再合并为一条通知，整体经过一次 `agent.output.prepared`。Hook 收到的是带前缀的完整文本，可修改前缀和正文；发送时直接用 Hook 返回的文本。
 
 ### 匹配条件与角色
 
@@ -121,7 +118,7 @@ match = [
 ]
 ```
 
-`always = true` 表示无条件匹配，不能与 `if/op/value` 或 `match` 混用。
+- `always = true` 表示无条件匹配，不能与 `if/op/value` 或 `match` 混用。
 
 | `op` | 字段要求 | 行为 |
 | --- | --- | --- |
@@ -132,7 +129,8 @@ match = [
 | `startswith` / `endswith` | `field/value` | 前缀或后缀匹配。 |
 | `regex` | `field/value` | Go RE2 正则的第一个子串命中。 |
 
-`regex` 不是全字段匹配；需要全字段约束时在正则中使用 `^`、`$`。捕获中 `group.0` 是完整命中，后续分组从 `group.1` 开始。多个 regex 条件的序号从 `0` 开始，只计算 regex 条件本身。
+- `regex` 不是全字段匹配，需要全字段约束时在正则里用 `^`、`$`。
+- 捕获中 `group.0` 是完整命中，后续分组从 `group.1` 开始；多个 regex 条件的序号从 `0` 开始，只计算 regex 条件本身。
 
 角色字段：
 
@@ -146,37 +144,31 @@ group_roles = ["owner", "admin", "member", "unknown"]
 
 ### action 写法与执行顺序
 
-每条规则选择一种形式：
+每条规则选一种形式：`action = "..."` 单个内联、`actions = [...]` 数组、`[[rules.actions]]` 数组表。
 
 ```toml
-# 单个内联 action。
+# 单个内联 action
 action = "append"
 field = "llm.text"
 text = "\n处理完成。"
-```
 
-```toml
-# 内联 actions 数组，按数组顺序执行。
+# actions 数组，按数组顺序执行
 actions = [
-  { type = "tool", action_name = "search", tool = "web_search", arguments = "{\"query\":\"{{message.text}}\"}" },
+  { type = "tool", action_name = "search", tool = "web_search", arguments = '{"query":"{{message.text}}"}' },
   { type = "send", text = "{{actions.search.result}}" },
 ]
+
+# [[rules.actions]] 数组表，按声明顺序执行
+# [[rules.actions]]
+# action_name = "search"
+# type = "tool"
+# tool = "web_search"
+# arguments = '{"query":"{{message.text}}"}'
 ```
 
-```toml
-# TOML array table，按声明顺序执行。
-[[rules.actions]]
-action_name = "search"
-type = "tool"
-tool = "web_search"
-arguments = "{\"query\":\"{{message.text}}\"}"
-
-[[rules.actions]]
-type = "send"
-text = "{{actions.search.result}}"
-```
-
-`action = "..."` 不能和 `actions` 混用。`actions = [...]` 与 `[[rules.actions]]` 都使用 `type` 和 `arguments`；`action_name` 在两种 actions 形式中都可用。内联 `action = "tool"` 的参数字段同样是 `arguments`，不是 `args`。
+- `action = "..."` 不能和 `actions` 混用。
+- `actions = [...]` 与 `[[rules.actions]]` 都用 `type` 和 `arguments`；`action_name` 在两种 actions 形式中都可用。
+- 内联 `action = "tool"` 的参数字段也是 `arguments`，不是 `args`。
 
 | 类型 | 主要字段 | 作用 |
 | --- | --- | --- |
@@ -187,40 +179,38 @@ text = "{{actions.search.result}}"
 | `tool` | `tool`、`arguments`、可选 `action_name` | 调用已注册工具。 |
 | `exec` | `command`、`cwd`、`timeout_seconds`、`field`、`timing`、可选 `action_name` | 启动一次性 `hook.v2` 进程。 |
 
-命名的 `tool` / `exec` action 可供后续 action 使用：
+命名的 `tool` / `exec` action 可供后续 action 引用：`{{actions.<name>.result}}`、`{{actions.<name>.error}}`。
 
-```text
-{{actions.<name>.result}}
-{{actions.<name>.error}}
-```
-
-未命名 `tool` 使用工具名作为结果名；未命名 `exec` 使用 `exec`。同一规则内多个未命名 exec 会覆盖同一结果，需模板引用时应显式命名。
+未命名 `tool` 用工具名作为结果名；未命名 `exec` 用 `exec`。同一规则内多个未命名 exec 会覆盖同一结果，需模板引用时应显式命名。
 
 ### 文本 action
 
-可编辑字段严格取决于 Hook 点，见上方 Hook 点表。其他字段即使可匹配或可作为模板，也不能编辑。
+可编辑字段严格取决于 Hook 点（见上表），其他字段即使可匹配、可作模板也不能编辑。
 
 对 `message.text` 和 `llm.latest_user_text`：
 
-- `prepend` / `append` 修改首个或最后一个 text segment；没有 text segment 时新增 text segment；图片和文件保留。
+- `prepend` / `append` 改首个或最后一个 text segment；没有 text segment 时新增；图片和文件保留。
 - `replace` / `delete` 只处理 text segment；图片和文件保留。
-- exec response 的 `message.text` 覆写只替换 text segment，原图片和文件 segment 会保留。
-
-进程 Hook 还可直接返回 `message.segments` 替换当前消息的完整内容；显式空数组表示清空。若同一 response 同时返回 `message.text` 和 `message.segments`，以 `message.segments` 为准。
+- exec response 的 `message.text` 覆写只替换 text segment，原图片和文件 segment 保留。
+- 进程 Hook 可直接返回 `message.segments` 替换完整内容，显式空数组表示清空；同一 response 同时返回 `message.text` 和 `message.segments` 时以 `message.segments` 为准。
 
 ### 消息内容修改
 
-`message.segments` 始终指向当前 Hook 点明确绑定的新消息，不表示完整历史：
+`message.segments` 始终指向当前 Hook 点明确绑定的**新消息**，不表示完整历史：
 
-- `platform.message.received`、`agent.input.prepared` 和 `llm.turn.prepared` 绑定本 turn 初始用户消息。
-- `llm.request.prepared` 只在工具流程下一次请求前存在新 pending 时绑定该 pending；没有 pending 时不提供可编辑消息，不能再次修改本 turn 初始输入。
-- `tool.call.completed` 绑定已经实际进入工具执行阶段后产生的工具结果；预检失败、确认拒绝或启动前失败不触发该点。
+- `platform.message.received`、`agent.input.prepared`、`llm.turn.prepared`：绑定本 turn 初始用户消息。
+- `llm.request.prepared`：只在工具流程下次请求前存在新 pending 时绑定该 pending；无 pending 时不提供可编辑消息，不能再次修改本 turn 初始输入。
+- `tool.call.completed`：绑定实际进入工具执行后产生的工具结果；预检失败、确认拒绝或启动前失败不触发。
 
-`llm.messages` 是业务工作上下文，包含 system、历史消息、当前消息和工具消息，但对普通 Hook 只读。Chat 将它组织为模型请求；Responses 以原生记录续链，请求只发送新增输入与工具结果。Hook 不能修改 system 或历史消息。`llm.latest_user_text` 是当前绑定用户消息文字部分的兼容视图，不再表示历史中最后一个 `role=user`；没有绑定消息时为空。
+`llm.messages` 是业务工作上下文（system、历史、当前消息和工具消息），对普通 Hook 只读——Chat 用它组织请求，Responses 以原生记录续链、只发新增输入与工具结果。Hook 不能修改 system 或历史消息。
 
-用户或 pending 的 Hook 修改会在模型请求前写入会话历史；工具完成 Hook 的修改也会写入 transcript。纯文本继续只保存 `content`，包含图片等非文本内容时额外保存完整 segments。`message.platform_text` 始终保留平台原文，不随 segments 修改。
+`llm.latest_user_text` 是当前绑定用户消息文字部分的兼容视图，不再表示历史中最后一个 `role=user`；没有绑定消息时为空。
 
-例如平台原消息是“这是狗”，进程 Hook 可用同一个 response 将模型实际看到并持久化的内容改为“这是猫”并附图，而 `message.platform_text` 仍为“这是狗”。其中`result`字段为：
+- 用户或 pending 的 Hook 修改会在模型请求前写入会话历史；工具完成 Hook 的修改也写入 transcript。
+- 纯文本只保存 `content`，含图片等非文本内容时额外保存完整 segments。
+- `message.platform_text` 始终保留平台原文，不随 segments 修改。
+
+例：平台原消息是“这是狗”，进程 Hook 用同一个 response 把模型看到并持久化的内容改为“这是猫”并附图，而 `message.platform_text` 仍为“这是狗”：
 
 ```json
 {
@@ -233,21 +223,22 @@ text = "{{actions.search.result}}"
 }
 ```
 
-图片可使用 HTTP(S) `url`、相对插件目录的 `path` 或最大 10 MiB 的 `base64`，path/base64 会规范化为模型可读取的数据 URL。`message.segments` 修改 LLM 输入和会话历史；`outputs` 创建发送到平台的输出意图，两者不会互相转换。
-
-工具完成事件中的 `message.role` 为 `tool`，`message.segments` 是工具的原始多模态结果，`tool.name` 和 `tool.id` 标识工具及本次调用。工具准备事件中的 `tool.id` 和 `tool.name` 只读。Chat 的 `tool.arguments` 可以改写，实际参数会在工具执行前写回调用头，并用于执行和后续请求。
-
-Responses 模型返回的调用集合、ID、名称和参数全部只读，适用于 Go Handler、规则和进程 Hook；尝试改写会报错并停止该次 Hook，工具准备失败时以原 `call_id` 返回错误结果。输入、展示文本和工具结果仍可改写。该限制保证本地执行与服务端已保存的 function call 一致。
+- 图片可用 HTTP(S) `url`、相对插件目录的 `path`，或最大 10 MiB 的 `base64`；path/base64 会规范化为模型可读的数据 URL。
+- `message.segments` 修改 LLM 输入和会话历史；`outputs` 创建发送到平台的输出意图，两者不互相转换。
+- 工具完成事件中 `message.role` 为 `tool`，`message.segments` 是工具的原始多模态结果，`tool.name` 和 `tool.id` 标识工具与本次调用；工具准备事件中的 `tool.id` 和 `tool.name` 只读。
+- Chat 的 `tool.arguments` 可改写，实际参数会在工具执行前写回调用头，并用于执行和后续请求。
+- Responses 模型返回的调用集合、ID、名称和参数全部只读（Go Handler、规则和进程 Hook 都一样）；改写会报错并停止该次 Hook，工具准备失败时以原 `call_id` 返回错误结果。输入、展示文本和工具结果仍可改写。该限制保证本地执行与服务端已保存的 function call 一致。
 
 ## 统一输出
 
-规则 `send`、`output.send`、一次性 exec Hook 和 Worker Hook 的 response 使用同一套 outputs segment。`target` 和 `timing` 属于整组 outputs，不属于单个 segment。
+规则 `send`、`output.send`、一次性 exec Hook 和 Worker Hook 的 response 使用同一套 outputs segment。`target` 和 `timing` 属于**整组** outputs，不属于单个 segment。
 
 ### TOML 写法
 
-单 segment 可直接写在 `send` action：
+单 segment 可直接写在 `send` action（等价于单元素 `outputs`，两者不能同时出现）：
 
 ```toml
+[[rules.actions]]
 type = "send"
 kind = "reply"
 message_id = "{{platform.reply_to_message_id}}"
@@ -256,7 +247,7 @@ timing = "immediate"
 target.group_id = "123456"
 ```
 
-该写法等价于单元素 `outputs`，两者不能同时出现。多 segment 写法：
+多 segment 用 `outputs` 数组：
 
 ```toml
 [[rules.actions]]
@@ -274,7 +265,7 @@ outputs = [
 
 ### JSON 写法
 
-进程 Hook response 和 `output.send` 使用相同结构：
+进程 Hook response 和 `output.send` 用同一结构：
 
 ```json
 {
@@ -288,20 +279,19 @@ outputs = [
 | --- | --- |
 | `kind` | `text`、`image`、`file`、`record`、`emoticon`、`at`、`reply`；默认 `text`。 |
 | `text` | 文本、媒体 fallback 或回复正文。 |
-| `url` / `path` / `base64` | `image`、`file`、`record` 必须且只能选择一种来源。任一字段的完整值均可填写 `media:<sha256>`，由 Host 在发送边界解析；否则 `url` 接受 HTTP(S)，`path` 按文件系统路径相对插件目录解析，`base64` 解码后最大 10 MiB。 |
-| `name` | 图片、文件或语音的显示名；`emoticon` 必填的非空表情名称。 |
+| `url` / `path` / `base64` | `image`、`file`、`record` 必须且只能选一种来源。任一字段的完整值都可填 `media:<sha256>`，由 Host 在发送边界解析；否则 `url` 接受 HTTP(S)，`path` 相对插件目录解析，`base64` 解码后最大 10 MiB。 |
+| `name` | 图片、文件或语音的显示名；`emoticon` 必填的非空表情名。 |
 | `mime_type` | 图片、文件或语音的 MIME 类型。 |
 | `user_id` | `kind = "at"` 的非空平台用户 ID。 |
 | `message_id` | `kind = "reply"` 的非空平台消息 ID。 |
 | `emoticon_id` | `kind = "emoticon"` 的非空平台原生表情或贴纸 ID；原生表情不接受媒体来源。 |
 
-原生表情使用 `emoticon_id` 发送，可读内容只取必填的 `name`。纯文本展示时统一显示 `[表情: 名称]`。
-
-`outputs` 是一条消息的片段组。发送多条消息需要多个 `send` action 或多次 `output.send`。
+- 原生表情用 `emoticon_id` 发送，可读内容只取必填的 `name`；纯文本展示时统一显示 `[表情: 名称]`。
+- `outputs` 是**一条消息**的片段组；发多条消息需要多个 `send` action 或多次 `output.send`。
 
 ### target、timing 与路径
 
-规则 TOML 使用 snake_case target：
+TOML 与 JSON 的 target 都用 snake_case，省略时沿用当前事件：
 
 ```toml
 target.platform = "qqonebot"
@@ -311,9 +301,9 @@ target.group_id = "123456"
 target.superadmins = true
 ```
 
-JSON 与 TOML target 都使用上述 snake_case 字段；省略时沿用当前事件。`timing` 为 `immediate`（默认）或 `after_assistant`，实际生效范围见 Hook 点表。
-
-媒体相对路径按声明规则的插件目录解析；根 `plugins/hooks.toml` 的规则相对 `plugins/`。大媒体应写入插件目录或 `_shared/` 后返回 `path` 或 `url`。单个 `hook.v2` JSON Lines 帧最大 16 MiB，不要内联大数据。
+- `timing`：`immediate`（默认）或 `after_assistant`，实际生效范围见 Hook 点表。
+- 媒体相对路径按声明规则的插件目录解析；根 `plugins/hooks.toml` 的规则相对 `plugins/`。
+- 大媒体应写入插件目录或 `_shared/` 后返回 `path` 或 `url`；单个 `hook.v2` JSON Lines 帧最大 16 MiB，不要内联大数据。
 
 ## 进程 Hook 编程接口
 
@@ -323,7 +313,9 @@ Host 先发送 `system.init`，成功后发送 `event.handle`。一次性 exec H
 
 ### 完整交互示例
 
-以下是一次性 exec Hook 的完整往返；代码块中每行都是一个 JSON Lines 帧。Host 写入 Hook stdin：
+一次性 exec Hook 的完整往返；代码块中每行都是一个 JSON Lines 帧。
+
+Host 写入 Hook stdin：
 
 ```jsonl
 {"type":"request","id":"host:init","method":"system.init","params":{"version":"hook.v2","runtime":{"plugin_name":"demo","plugin_dir":"C:/elbot/plugins/demo","config_path":"C:/elbot/plugins/demo/hook.toml","rule_name":"weather","cwd":"C:/elbot/plugins/demo"}}}
@@ -335,10 +327,10 @@ Hook 从 stdout 返回成功 response：
 {"type":"response","id":"host:init","ok":true,"result":{}}
 ```
 
-随后 Host 发送当前事件：
+随后 Host 发送当前事件（`event` 内部字段见文末 [Event 与模板字段](#event-与模板字段)）：
 
 ```jsonl
-{"type":"request","id":"host:event","method":"event.handle","params":{"event":{"id":"evt-123","point":"platform.message.received","time":"2026-07-14T12:00:00+08:00","metadata":{"match":{}},"control":{"consume":false,"stop_propagation":false},"platform":{"name":"qqonebot","scope_id":"group:123456","user_id":"10001","conversation_id":"group:123456","message_id":"789","reply_to_message_id":""},"actor":{"id":"qqonebot:10001","role":"user","group_role":"member","user_id":"10001","nickname":"Alice","group_card":"","display_name":"Alice"},"session":{"id":"session-123","mode":"group","title":"","status":""},"request":{"id":"","kind":"","session_id":"","phase":""},"message":{"id":"789","role":"user","platform_text":"天气 上海","intent_text":"天气 上海","segments":[{"type":"text","text":"天气 上海"}]},"llm":{"provider":"","model":""},"tool":{"id":"","name":""}},"match":{},"runtime":{"plugin_name":"demo","plugin_dir":"C:/elbot/plugins/demo","config_path":"C:/elbot/plugins/demo/hook.toml","rule_name":"weather","cwd":"C:/elbot/plugins/demo"}}}
+{"type":"request","id":"host:event","method":"event.handle","params":{"event":{"id":"evt-123","point":"platform.message.received","platform":{...},"actor":{...},"session":{...},"message":{...}},"match":{},"runtime":{...}}}
 ```
 
 Hook 返回处理结果：
@@ -347,17 +339,17 @@ Hook 返回处理结果：
 {"type":"response","id":"host:event","ok":true,"result":{"status":"completed","matched":true,"result":"weather accepted","message":{"text":"查询上海天气"},"outputs":[{"kind":"text","text":"正在查询……"}],"target":{"platform":"qqonebot","scope_id":"group:123456"},"timing":"immediate","pass_through":false}}
 ```
 
-工具完成 Hook 可以直接返回文本和图片：
+工具完成 Hook 可直接返回文本和图片：
 
 ```jsonl
 {"type":"response","id":"host:event","ok":true,"result":{"status":"completed","message":{"segments":[{"type":"text","text":"截图完成"},{"type":"image","path":"result.png","mime_type":"image/png"}]}}}
 ```
 
-图片 segment 必须且只能提供 `url`、`path`、`base64` 之一。任一来源字段都可以填写完整的 `media:<sha256>`，例如 `{"type":"image","url":"media:<sha256>"}`；Host 将其规范化为内部媒体引用，不把中心路径或 presigned URL 写入该引用。不增加独立的 segment `media` 字段，也不升级 hook.v2。媒体 ID 必须使用 64 位小写十六进制 SHA-256；不扫描普通文本中的 ID，混合来源会被拒绝。
-
-其他来源保持原有行为：`url` 接受绝对 HTTP(S) URL 或 `data:image/...;base64,...`，相对 `path` 按插件目录解析；path、base64 和 data URL 解码后最大 10 MiB，并在进入 Agent canonical message 时由宿主按需物化。目前该替换协议支持 `text` 和 `image` segment。
-
-处理失败时省略 `result`，返回 `{"type":"response","id":"host:event","ok":false,"error":"error message"}`。response 的 `id` 必须与 request 相同。
+- 图片 segment 必须且只能提供 `url`、`path`、`base64` 之一。任一来源字段都可填完整的 `media:<sha256>`，例如 `{"type":"image","url":"media:<sha256>"}`；Host 将其规范化为内部媒体引用，不把中心路径或 presigned URL 写入该引用。不增加独立的 segment `media` 字段，也不升级 `hook.v2`。
+- 媒体 ID 必须是 64 位小写十六进制 SHA-256；不扫描普通文本中的 ID，混合来源会被拒绝。
+- 其他来源：`url` 接受绝对 HTTP(S) URL 或 `data:image/...;base64,...`，相对 `path` 按插件目录解析；path、base64 和 data URL 解码后最大 10 MiB，并在进入 Agent canonical message 时由宿主按需物化。
+- 目前该替换协议支持 `text` 和 `image` segment。
+- 处理失败时省略 `result`，返回 `{"type":"response","id":"host:event","ok":false,"error":"error message"}`；response 的 `id` 必须与 request 相同。
 
 ### system.init.params
 
@@ -427,9 +419,9 @@ Host 从 stdin 返回相同 `id`；`result` 的具体结构由平台 API 决定�
 | `media.export` | 一次性/Worker | `media`；返回受控临时文件 `path`。 |
 | `media.metadata` | 一次性/Worker | `media`；只返回名称、MIME 和大小等安全元数据。 |
 
-媒体临时引用在 Hook runtime 生命周期内管理，过期或关闭时释放；第一版不提供 `media.delete`。Hook 不可访问 SQLite、媒体根目录或 S3 凭据。
-
-`media.*` 请求与结果中的 `media` 是媒体 API 的标识参数，保留不变；将返回的 ID 用于消息替换或输出时，填写到现有 `url`、`path` 或 `base64` 字段之一。
+- 媒体临时引用在 Hook runtime 生命周期内管理，过期或关闭时释放；第一版不提供 `media.delete`。
+- Hook 不可访问 SQLite、媒体根目录或 S3 凭据。
+- `media.*` 的 `media` 是媒体 API 的标识参数，保留不变；把返回的 ID 用于消息替换或输出时，填到现有 `url`、`path` 或 `base64` 字段之一。
 
 ### 共享状态
 
@@ -443,11 +435,12 @@ Host 从 stdin 返回相同 `id`；`result` 的具体结构由平台 API 决定�
 | `shared.list` | `{"prefix":"weather/"}` | `{"keys":["weather/cache",...]}`；按字典序排列，空 prefix 列出全部。 |
 | `shared.compare_and_swap` | `{"key":"weather/cache","expected":<旧 JSON>,"value":<新 JSON>,"ttl_seconds":600}` | `{"swapped":true/false}` |
 
-`ttl_seconds` 是空闲超时：省略时默认 600 秒；正数会在成功 `get`、`set` 或 CAS 时重新计时；`0` 不按时间过期；负数非法。`list` 和失败的 CAS 不刷新时间，过期 key 视为不存在。
-
-key 去除首尾空白后必须非空，最长 256 字节。建议使用 `users/<platform>/<id>`、`cache/<name>` 等前缀避免冲突，但前缀不是权限边界。value 必须是合法 JSON，压缩后单值最大 1 MiB；共享区最多 10,000 条，key 与 value 合计最大 32 MiB。
-
-达到上限时先删除过期项，再按最近使用时间淘汰最冷数据；`ttl_seconds = 0` 也可能被淘汰。CAS 按压缩后的 JSON 原子比较；省略 `expected` 表示仅当 key 不存在时写入，显式 `expected: null` 只匹配 JSON `null`。共享状态跨 Hook 重启和 `/hooks reload` 保留，ElBot 重启后清空；需要持久化时写入插件目录或 `_shared/`。
+- `ttl_seconds` 是空闲超时：省略时默认 600 秒；正数会在成功 `get`、`set` 或 CAS 时重新计时；`0` 不按时间过期；负数非法。`list` 和失败的 CAS 不刷新时间，过期 key 视为不存在。
+- key 去除首尾空白后必须非空，最长 256 字节。建议用 `users/<platform>/<id>`、`cache/<name>` 等前缀避免冲突，但前缀不是权限边界。
+- value 必须是合法 JSON，压缩后单值最大 1 MiB；共享区最多 10,000 条，key 与 value 合计最大 32 MiB。
+- 达到上限时先删过期项，再按最近使用时间淘汰最冷数据；`ttl_seconds = 0` 也可能被淘汰。
+- CAS 按压缩后的 JSON 原子比较：省略 `expected` 表示仅当 key 不存在时写入，显式 `expected: null` 只匹配 JSON `null`。
+- 共享状态跨 Hook 重启和 `/hooks reload` 保留，ElBot 重启后清空；需要持久化时写入插件目录或 `_shared/`。
 
 ### 进程环境
 
@@ -532,9 +525,8 @@ stop_propagation = true
 | `blocked_group` | 完全不分发指定群的事件，格式 `<platform>:<平台原始群 ID>`。 |
 | `blocked_id` | 完全不分发指定用户事件，格式 `<platform>:<平台原始用户 ID>`。 |
 
-阻断三项任一命中即不调用该插件规则或 `event.handle`；其他插件不受影响。匹配精确、不支持通配符；`blocked_group` 同时识别 `group` 和 `supergroup` scope。
-
-插件内所有规则（包括 exec action）、Worker trigger 和 waiting 路由统一使用 `[plugin]` 的阻断配置。若在插件内的 `[[rules]]` 误写 `blocked_platform`、`blocked_group` 或 `blocked_id`，加载和 reload 会返回 warning 并忽略这些规则级字段，不会阻止插件运行。
+- 阻断三项任一命中即不调用该插件规则或 `event.handle`；其他插件不受影响。匹配精确、不支持通配符；`blocked_group` 同时识别 `group` 和 `supergroup` scope。
+- 插件内所有规则（包括 exec action）、Worker trigger 和 waiting 路由统一用 `[plugin]` 的阻断配置。若在插件的 `[[rules]]` 误写这三个字段，加载和 reload 会返回 warning 并忽略规则级字段，不会阻止插件运行。
 
 `[plugin.runtime]` 在 `mode = "persistent"` 或 `mode = "transient"` 时需要以下字段；`mode` 只能是 `once`、`persistent` 或 `transient`，省略时为 `once`。`once` 不创建 worker，也不要求其余 runtime 字段。
 
@@ -563,18 +555,17 @@ stop_propagation = true
 | `allow` | 前台 `tool.call` 可使用的工具名；Host 在 `system.init.params.tools` 下发对应 schema。 |
 | `background_allow` | 后台可使用的工具名，必须同时出现在 `allow`。 |
 
-Worker trigger rule 复用规则 Hook 的匹配、角色、priority、`wakeup`、`consume` 和 `stop_propagation`；配置 `action` 或 `actions` 会校验失败。`pass_through` 省略时使用规则中的两个控制字段。
-
-Worker 状态为 `starting`、`ready`、`running`、`degraded`、`stopping`、`stopped` 或 `failed`。停止时 Host 先请求 `system.shutdown`；发送请求、等待响应和优雅退出共用一次 `shutdown_timeout_seconds` 预算，到期立即强制结束进程。强杀后的实际退出另有有界等待；关闭调用返回超时不代表进程已退出。
-
-Host 关闭 Hook runtime 时停止接纳新的插件请求和取消通知，撤销 waiting 定时器，取消在途工具调用，并等待进程、插件请求、已登记的通知与定时回调、重载和资源清理实际结束。取消通知和插件响应的协议发送受 runtime 关闭取消及 `event_timeout_seconds` 约束。后台工具调用也受 runtime 关闭取消约束；即使调用忽略取消，关闭等待超时也不会把它视为已经退出。
+- Worker trigger rule 复用规则 Hook 的匹配、角色、priority、`wakeup`、`consume` 和 `stop_propagation`；配置 `action` 或 `actions` 会校验失败。`pass_through` 省略时用规则中的两个控制字段。
+- Worker 状态：`starting`、`ready`、`running`、`degraded`、`stopping`、`stopped`、`failed`。
+- 停止时 Host 先请求 `system.shutdown`；发送请求、等待响应和优雅退出共用一次 `shutdown_timeout_seconds` 预算，到期立即强杀。强杀后的实际退出另有有界等待；关闭调用返回超时不代表进程已退出。
+- Host 关闭 Hook runtime 时：停止接纳新的插件请求和取消通知、撤销 waiting 定时器、取消在途工具调用，并等待进程、插件请求、已登记的通知与定时回调、重载和资源清理实际结束。
+- 取消通知和插件响应的协议发送受 runtime 关闭取消及 `event_timeout_seconds` 约束。后台工具调用也受 runtime 关闭取消约束；即使调用忽略取消，关闭等待超时也不会把它视为已退出。
 
 ### waiting、并发与取消
 
-需要继续收集输入时返回 `status = "waiting"`、`conversation_id` 和 `expires_at`；`expires_at` 必须晚于当前时间，且剩余时间不超过 `max_wait_seconds`。完成时返回 `completed` 或省略 status。
-
-同一 `platform + scope_id + actor.id` 在同一个 worker 内串行，不同路由可并行。waiting 租约也以该三元组为 key：
-
+- 需要继续收集输入时返回 `status = "waiting"`、`conversation_id` 和 `expires_at`：`expires_at` 必须晚于当前时间，剩余时间不超过 `max_wait_seconds`。
+- 完成时返回 `completed` 或省略 status。
+- 同一 `platform + scope_id + actor.id` 在同一 worker 内串行，不同路由可并行。waiting 租约也以该三元组为 key。
 - 正常串行分发中，首个返回 `waiting` 的 worker 持有该路由，后续 worker trigger rule 不会再分发该路由。实现每条路由只存一份租约；若并发事件使多个 worker 同时竞争，最后写入者覆盖此前租约。因此多个 worker Hook 可能匹配同一路由时，应使用 `priority`、更严格条件或 `stop_propagation` 明确归属。
 - waiting 存在时优先处理续接，续接放行后执行普通 `platform.message.received` 规则；对应 worker trigger rule 不会再次触发。
 - Host 先将后续消息以 `continuation = true` 路由给持有租约的 Hook；插件返回 `pass_through = true` 时，再从后续规则继续传播，最后可进入命令或主 LLM。
@@ -583,8 +574,9 @@ Host 关闭 Hook runtime 时停止接纳新的插件请求和取消通知，撤�
 - continuation 返回 `completed` 或省略 `status` 后，Host 立即释放租约；对于 transient worker，同时关闭该进程。再次返回 `waiting` 则以新 ID、过期时间续期。
 - waiting 通过一次性定时器主动到期，不需要新消息或路由查询触发。到期释放租约并关闭所属 Transient Worker，Persistent Worker 保留进程。已经开始的续接由事件超时约束；到期回调等待该路由执行结束后复核租约，旧回调不会删除续期或替换后的租约。
 - 阻断策略命中、worker 退出、停止或重载会清理该插件租约。
-
-用户发送精确的 `/cancel` 时，Host 取消该路由当前执行或 waiting 会话，并关闭 Transient Worker；Persistent Worker 在没有协议写入故障时保留进程和内存。续接的 `event.cancel` 使用插件租约的 `conversation_id`，普通事件使用平台会话 ID，不改写事件原始上下文。取消通知异步发送，不阻塞原调用返回；若通知自身写入阻塞直至超时，同样按协议写入故障结束该进程。
+- 用户发送精确的 `/cancel` 时，Host 取消该路由当前执行或 waiting 会话，并关闭 Transient Worker；Persistent Worker 在没有协议写入故障时保留进程和内存。
+- 续接的 `event.cancel` 用插件租约的 `conversation_id`，普通事件用平台会话 ID，不改写事件原始上下文。
+- 取消通知异步发送，不阻塞原调用返回；若通知自身写入阻塞至超时，同样按协议写入故障结束该进程。
 
 ```json
 {"type":"event","method":"event.cancel","params":{"conversation_id":"weather-42"}}
@@ -600,9 +592,9 @@ Worker Hook 自行维护 LLM loop、业务状态和工具使用决策。Host 对
 {"type":"request","id":"plugin:tool-1","method":"tool.call","params":{"name":"web_search","arguments":{"query":"上海天气"},"tool_context":"ctx:..."}}
 ```
 
-`arguments` 为 JSON 值，无参数时可为 `{}`。单次 `event.handle` 的 `tool_context` 最多可调用 32 次，且在 `event_timeout_seconds` 到期、取消或 worker 重载后失效。
+`arguments` 为 JSON 值，无参数时可为 `{}`。单次 `event.handle` 的 `tool_context` 最多调用 32 次，且在 `event_timeout_seconds` 到期、取消或 worker 重载后失效。
 
-后台调用必须位于 `background_allow`：有 Host 签发上下文时把它放入 `origin`；没有有效 `origin` 时必须给显式 `target`。后台无 origin 时调用主体为 `hook:<id>`，插件应特别谨慎处理授权。
+后台调用必须位于 `background_allow`：有 Host 签发上下文时放进 `origin`；没有有效 `origin` 时必须给显式 `target`。后台无 origin 时调用主体为 `hook:<id>`，插件应特别谨慎处理授权。
 
 成功 response 的 `result`：
 
@@ -632,7 +624,13 @@ Host 会先完整读取并校验候选配置。失败时返回 `ok=false`，旧�
 
 ## Event 与模板字段
 
-`event` 顶层包含 `id`、`point`、`time`、`metadata`、`control`、`platform`、`actor`、`session`、`request`、`message`、`llm`、`tool`；可能还有 `outputs`、`error`。与当前 Hook 点无关的字段会是零值、空对象或被省略，插件必须按可空值处理。
+- `event` 顶层包含 `id`、`point`、`time`、`metadata`、`control`、`platform`、`actor`、`session`、`request`、`message`、`llm`、`tool`；可能还有 `outputs`、`error`。
+- 与当前 Hook 点无关的字段会是零值、空对象或被省略，插件必须按可空值处理。
+- `segments` 保留平台归一化后的原始内容；处理文本指令时优先读已去除唤醒前缀的 `intent_text`，为空再拼接 text segments。
+- trigger rule 已匹配的首次调用通常无需重复校验同一指令；waiting continuation 只捕获同一 platform、scope 和 actor。业务参数、授权和插件权限仍由插件校验。
+- `llm` 包含 `provider`、`model`、`messages`、`tools`、`usage`、`source_text`、`text`、`tool_calls`、`elapsed_ms`。其中嵌套 `messages`、`tool_calls`、`usage` 沿用 Go 导出的 JSON 名：`Role/Segments/Name/ToolCallID/ToolCalls`、`ID/Name/Arguments`、`PromptTokens/CompletionTokens/TotalTokens/CacheHitTokens`。
+- `tool` 包含 `id`、`name`、`arguments`（JSON 字符串）、`risk`、`result`、`error`。prepared 阶段主要提供 `id/name/arguments`；completed 阶段还提供 `risk/result/error`，对应工具消息的完整内容位于 `message.segments`。
+- `event.outputs` 是事件已累积的输出快照，数组项用 Go 导出的 JSON 字段名，例如 `Kind`、`Text`、`Name`、`EmoticonID`、`Delivery`。`Delivery` 含 `Timing`、`HookPoint`、`HookName`、`HookMode`；空 `Timing` 表示立即发送，非 Hook 输出的来源字段为空。插件新增输出时仍用“统一输出”章节的小写 segment 字段及组级 `target`、`timing`。
 
 | 对象 | 字段 |
 | --- | --- |
@@ -657,7 +655,7 @@ Host 会先完整读取并校验候选配置。失败时返回 `ok=false`，旧�
 
 ### 读取用户输入
 
-`segments` 保留平台归一化后的原始内容；处理文本指令时优先读取已去除唤醒前缀的 `intent_text`，为空再拼接 text segments：
+`segments` 保留平台归一化后的原始内容；处理文本指令时优先读已去除唤醒前缀的 `intent_text`，为空再拼接 text segments：
 
 ```python
 def message_text(event):
@@ -671,14 +669,6 @@ def message_text(event):
         if item.get("type") == "text"
     ).strip()
 ```
-
-trigger rule 已匹配的首次调用通常无需重复校验同一指令；waiting continuation 只捕获同一 platform、scope 和 actor。业务参数、授权和插件权限仍由插件校验。
-
-`llm` 包含 `provider`、`model`、`messages`、`tools`、`usage`、`source_text`、`text`、`tool_calls`、`elapsed_ms`。其中嵌套 `messages`、`tool_calls`、`usage` 沿用 Go 导出的 JSON 名：`Role/Segments/Name/ToolCallID/ToolCalls`、`ID/Name/Arguments`、`PromptTokens/CompletionTokens/TotalTokens/CacheHitTokens`。
-
-`tool` 包含 `id`、`name`、`arguments`（JSON 字符串）、`risk`、`result`、`error`。prepared 阶段主要提供 `id/name/arguments`；completed 阶段还提供 `risk/result/error`，对应工具消息的完整内容位于 `message.segments`。
-
-`event.outputs` 是事件已累积的输出快照，数组项使用 Go 导出的 JSON 字段名，例如 `Kind`、`Text`、`Name`、`EmoticonID`、`Delivery`。`Delivery` 对象包含 `Timing`、`HookPoint`、`HookName`、`HookMode`：分别表示发送时机、来源 Hook 点、名称和执行模式；空 `Timing` 表示立即发送，非 Hook 输出的来源字段为空。插件新增输出时仍使用“统一输出”章节的小写 segment 字段及组级 `target`、`timing`。
 
 可用于 `if`、`match.field` 和模板的文本字段：
 
