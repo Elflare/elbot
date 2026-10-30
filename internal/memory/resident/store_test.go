@@ -223,3 +223,124 @@ func TestStoreWriteAndDeleteRefreshCache(t *testing.T) {
 		t.Fatalf("Read deleted cached error = %v", err)
 	}
 }
+
+func TestStoreRejectedWritePreservesRecords(t *testing.T) {
+	ctx := context.Background()
+	scope := session.Scope{Platform: "cli", ActorID: "cli:local"}
+	other := session.Scope{Platform: "cli", ActorID: "cli:other"}
+	missing := session.Scope{Platform: "cli", ActorID: "cli:missing"}
+	for _, operation := range []string{"core", "normal", "append", "new"} {
+		t.Run(operation, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "memories.toml")
+			store := NewStoreWithLimits(path, Limits{Core: 1, Normal: 1})
+			for _, target := range []session.Scope{scope, other} {
+				if err := store.WriteNormal(ctx, target, "keep"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch operation {
+			case "core":
+				err = store.WriteCore(ctx, scope, "two words")
+			case "normal":
+				err = store.WriteNormal(ctx, scope, "two words")
+			case "append":
+				err = store.AppendNormal(ctx, scope, "extra")
+			case "new":
+				err = store.WriteNormal(ctx, missing, "two words")
+			}
+			if err == nil || !strings.Contains(err.Error(), "too long") {
+				t.Fatalf("rejected write error = %v", err)
+			}
+			for _, target := range []session.Scope{scope, other} {
+				memory, err := store.Read(ctx, target)
+				if err != nil || memory != (Memory{Normal: "keep"}) {
+					t.Fatalf("Read %s after rejected write = %#v, %v", target.ActorID, memory, err)
+				}
+			}
+			if _, err := store.Read(ctx, missing); !errors.Is(err, ErrNotFound) {
+				t.Fatalf("Read missing after rejected write = %v", err)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil || string(after) != string(before) {
+				t.Fatalf("file changed after rejected write: %v", err)
+			}
+		})
+	}
+}
+
+func TestStoreUnchangedWritePreservesFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "memories.toml")
+	data := "[[resident_memories]]\nplatform = \"cli\"\nactor_id = \"cli:local\"\ncore = \"core\"\nnormal = \"normal\"\ncreated_at = \"t1\"\nupdated_at = \"t2\"\n"
+	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	oldTime := time.Unix(946684800, 0)
+	if err := os.Chtimes(path, oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewStore(path)
+	scope := session.Scope{Platform: "cli", ActorID: "cli:local"}
+	for _, operation := range []string{"core", "normal", "delete missing"} {
+		switch operation {
+		case "core":
+			err = store.WriteCore(context.Background(), scope, " core ")
+		case "normal":
+			err = store.WriteNormal(context.Background(), scope, " normal ")
+		case "delete missing":
+			err = store.DeleteNormal(context.Background(), session.Scope{Platform: "cli", ActorID: "cli:missing"})
+		}
+		if err != nil {
+			t.Fatalf("%s: %v", operation, err)
+		}
+		after, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		content, err := os.ReadFile(path)
+		if err != nil || string(content) != data || !after.ModTime().Equal(before.ModTime()) {
+			t.Fatalf("%s rewrote unchanged file: %v", operation, err)
+		}
+	}
+}
+
+func TestStoreAppendNormalFromExternalFile(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		data string
+		want Memory
+	}{
+		{name: "empty", want: Memory{Normal: "new"}},
+		{name: "whitespace", data: " \t\n", want: Memory{Normal: "new"}},
+		{name: "comment", data: "# empty memory\n", want: Memory{Normal: "new"}},
+		{name: "existing", data: "[[resident_memories]]\nplatform = \"cli\"\nactor_id = \"cli:local\"\ncore = \" core \"\nnormal = \" old \"\n", want: Memory{Core: "core", Normal: "old new"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "memories.toml")
+			if err := os.WriteFile(path, []byte(tc.data), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			store := NewStore(path)
+			scope := session.Scope{Platform: "cli", ActorID: "cli:local"}
+			if err := store.AppendNormal(context.Background(), scope, " \t "); err == nil {
+				t.Fatal("AppendNormal accepted empty content")
+			}
+			if err := store.AppendNormal(context.Background(), scope, " new "); err != nil {
+				t.Fatal(err)
+			}
+			for _, reader := range []*Store{store, NewStore(path)} {
+				memory, err := reader.Read(context.Background(), scope)
+				if err != nil || memory != tc.want {
+					t.Fatalf("appended memory = %#v, %v; want %#v", memory, err, tc.want)
+				}
+			}
+		})
+	}
+}
