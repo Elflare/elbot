@@ -72,6 +72,14 @@
       "translation": "ELyph syntax is no longer validated during ElBot startup to avoid slowing down the startup speed.",
       "updated_at": 1782711341
     },
+    "CHANGELOG.md:list:08c9568e35ba6d1428f1efb280a3f39fceb7bcd2860c7c015989a27f6de71cb9": {
+      "kind": "list",
+      "source": "人工逐包、逐文件、逐函数、逐字段指导AI重构App到业务层，再次收拢边界、分清职责、精简代码。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "08c9568e35ba6d1428f1efb280a3f39fceb7bcd2860c7c015989a27f6de71cb9",
+      "translation": "Manually guided the AI to refactor the App to the business layer package by package, file by file, function by function, and field by field, further tightening boundaries, clarifying responsibilities, and streamlining code.",
+      "updated_at": 1793379505
+    },
     "CHANGELOG.md:list:08f91818a013c09222e4b70f36d80805e3dd4ae218d1fb3b829338480715781c": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 兼容 LLM 偶尔生成的整数字符串，避免有效行号因 JSON 类型偏差导致读取失败。",
@@ -528,6 +536,14 @@
       "translation": "Source files for resident memory and long-term memory are now included in general FileGuard protection; reading will suggest using memory tools, and direct writing via general file tools or shell will be rejected.",
       "updated_at": 1782722558
     },
+    "CHANGELOG.md:list:3cd864f36b321a29a6959aeb04de65b77b37e319fc7f979cdd1835cd18844829": {
+      "kind": "list",
+      "source": "移除派生字段 __ELBOT_CODE_0__。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "3cd864f36b321a29a6959aeb04de65b77b37e319fc7f979cdd1835cd18844829",
+      "translation": "Removed derived field __ELBOT_CODE_0__.",
+      "updated_at": 1793379505
+    },
     "CHANGELOG.md:list:3f12d36ddeb77f5aa2c07362139ff4e2638f700877ec1fa53d908de5984c69a3": {
       "kind": "list",
       "source": "持久 Worker 则收到 __ELBOT_CODE_0__ 并继续复用。",
@@ -671,6 +687,14 @@
       "source_hash": "4d642403ed3e06565cbb97a31f7584ac7d981078761fce79f5ef349bae0a4fbb",
       "translation": "Optimize CLI UI logic",
       "updated_at": 1791715549
+    },
+    "CHANGELOG.md:list:4f287e238802043a5db802334691bab30059de6fbad0ba4062736f723fbf4918": {
+      "kind": "list",
+      "source": "Hook 事件输出快照的投递信息从 __ELBOT_CODE_0__ 改为 __ELBOT_CODE_1__ 对象，包含 __ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__、__ELBOT_CODE_5__；",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "4f287e238802043a5db802334691bab30059de6fbad0ba4062736f723fbf4918",
+      "translation": "The delivery information for hooked event output snapshots has been changed from __ELBOT_CODE_0__ to the __ELBOT_CODE_1__ object, which includes __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__, and __ELBOT_CODE_5__;",
+      "updated_at": 1793379505
     },
     "CHANGELOG.md:list:50e8edceef9ba9f05ab3e29be70643e7d1e29373c088d70a65ef6b30249494e3": {
       "kind": "list",
@@ -840,6 +864,14 @@
       "translation": "__ELBOT_CODE_0__ audit events changed from debug level to info level; token consumption data can now be recorded by default with __ELBOT_CODE_1__.",
       "updated_at": 1782884148
     },
+    "CHANGELOG.md:list:628c43339e8e2cb08a0a25f324f9d76c38db095cd26134fe3cab844b4ce30190": {
+      "kind": "list",
+      "source": "精简提示信息。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "628c43339e8e2cb08a0a25f324f9d76c38db095cd26134fe3cab844b4ce30190",
+      "translation": "Streamlined prompt messages.",
+      "updated_at": 1793379505
+    },
     "CHANGELOG.md:list:6334b714c49767d658140327c9bf03a57a985af5160608af63cbecdc94c619b2": {
       "kind": "list",
       "source": "Session 绑定由 Session 服务统一同步失效，修复旧工具／确认在切走再恢复后复活，以及延迟撤销清理影响新绑定的问题；",
@@ -855,6 +887,14 @@
       "source_hash": "6591817f82efe0b2c5e6a0f20415974f7b06b4e8cd819ab6c957df0b3a56c245",
       "translation": "Fixed the issue where rule cards were repeatedly injected into the context when performing tool discovery or inline preloading of multiple ELyph Skills;",
       "updated_at": 1783334583
+    },
+    "CHANGELOG.md:list:664f4afdee59fb9185a7a5e61b836a6a1da0789e49f7ae7693ded7268c706c0d": {
+      "kind": "list",
+      "source": "修复 __ELBOT_CODE_0__ 忽略置顶的问题。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "664f4afdee59fb9185a7a5e61b836a6a1da0789e49f7ae7693ded7268c706c0d",
+      "translation": "Fixed the issue where __ELBOT_CODE_0__ ignored pinning.",
+      "updated_at": 1793379505
     },
     "CHANGELOG.md:list:67ae63dbf2f51393cb281ef7f0bc542b6cc115feb6a128fbe07c9bcaf6691b42": {
       "kind": "list",
@@ -944,13 +984,13 @@
       "translation": "__ELBOT_CODE_0__ now restores non-current Sessions directly based on the most recent update time; __ELBOT_CODE_1__ represents the most recent item, and it is no longer required to first execute a bare __ELBOT_CODE_2__ to establish numbering.",
       "updated_at": 1784276217
     },
-    "CHANGELOG.md:list:6e755a9ddb4d7686123cb88afec69960ec5e5d6fa7d8ba60a63216b8c9cd751c": {
+    "CHANGELOG.md:list:6e3be1a37315f231267f404a90176ca524e36d9df446dc320e3a281f7f7129dc": {
       "kind": "list",
-      "source": "人工逐包、逐文件、逐函数、逐字段指导AI重构App到业务层，再次收拢边界、分清职责",
+      "source": "修复首次进入或 __ELBOT_CODE_0__ 后，一些命令因没有当前 Session 而报 __ELBOT_CODE_1__ 的问题。",
       "source_file": "CHANGELOG.md",
-      "source_hash": "6e755a9ddb4d7686123cb88afec69960ec5e5d6fa7d8ba60a63216b8c9cd751c",
-      "translation": "Manually guided the AI to refactor the App to the business layer package by package, file by file, function by function, and field by field, further tightening boundaries and clarifying responsibilities",
-      "updated_at": 1792940905
+      "source_hash": "6e3be1a37315f231267f404a90176ca524e36d9df446dc320e3a281f7f7129dc",
+      "translation": "Fixed the issue where some commands reported __ELBOT_CODE_1__ due to the absence of a current Session after first entry or __ELBOT_CODE_0__.",
+      "updated_at": 1793379505
     },
     "CHANGELOG.md:list:6e825de7a3fb0a65300d30be0edd7d8051380fa20be7239c89d4c991c8928362": {
       "kind": "list",
@@ -999,14 +1039,6 @@
       "source_hash": "724d7413284e7fd78ea7267adc35cf07734d88c82a66dd3a6bd95024ad16c090",
       "translation": "Failure or blocking reports from LLM returning __ELBOT_CODE_0__ will now also be frozen and complete the re-delivery.",
       "updated_at": 1784437461
-    },
-    "CHANGELOG.md:list:72864fa4bdc52c5e36342daab00a6259d85a196f03856105ed936ca312fe14c0": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__ 显示优化",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "72864fa4bdc52c5e36342daab00a6259d85a196f03856105ed936ca312fe14c0",
-      "translation": "__ELBOT_CODE_0__ display optimization",
-      "updated_at": 1792733637
     },
     "CHANGELOG.md:list:739650cce75243839abd165c6d01f1367cbe946e89683ed8f68888b4e3a097b8": {
       "kind": "list",
@@ -1071,6 +1103,14 @@
       "source_hash": "77ae9951fcdb074ce3197606d3bcda43ebb29a1e7431e3226b28b8c30d008ce8",
       "translation": "__ELBOT_CODE_0__ and __ELBOT_CODE_1__ previously completely rejected text files exceeding 2 MiB;",
       "updated_at": 1788138091
+    },
+    "CHANGELOG.md:list:796f6387637b35a9c89380048e364fa83f236cb7bf47576f4b222dcceb0727e9": {
+      "kind": "list",
+      "source": "Hook 原生表情输出统一使用必填的 __ELBOT_CODE_0__，__ELBOT_CODE_1__ 不再参与表情构造或降级；纯文本展示统一为 __ELBOT_CODE_2__。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "796f6387637b35a9c89380048e364fa83f236cb7bf47576f4b222dcceb0727e9",
+      "translation": "Hooked native emoji output now uniformly uses the required __ELBOT_CODE_0__; __ELBOT_CODE_1__ is no longer involved in emoji construction or fallback; plain text display is unified as __ELBOT_CODE_2__.",
+      "updated_at": 1793379505
     },
     "CHANGELOG.md:list:79e13956de2275bf7954e4071d4c7b43e177af53dfe03d7cdaac4cbd1cab4431": {
       "kind": "list",
@@ -1255,6 +1295,14 @@
       "source_hash": "8a6b94368cf2dede5354c5ff825af2af6857a380c6456fdb37a5cae19284d736",
       "translation": "Skill reload is now changed to be serial, fully validated, and atomically replaced; the old registry, catalog, and AgentSkill configuration are retained in case of name conflicts or candidate failures.",
       "updated_at": 1784340385
+    },
+    "CHANGELOG.md:list:8c15995b456e757f79912ccb8a2750b8fc22bc7713fffc0e633e327ac0b9fbd8": {
+      "kind": "list",
+      "source": "__ELBOT_CODE_0__ 的 active requests 不再重复显示 Session 标题；直接使用 __ELBOT_CODE_1__ 时仍保留该信息。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "8c15995b456e757f79912ccb8a2750b8fc22bc7713fffc0e633e327ac0b9fbd8",
+      "translation": "Active requests in __ELBOT_CODE_0__ no longer repeatedly display the Session title; this information is still retained when using __ELBOT_CODE_1__ directly.",
+      "updated_at": 1793379505
     },
     "CHANGELOG.md:list:8c30da44dfd5da697c3be775652c2559cb146f73b97cec1a08b7e5199bde956b": {
       "kind": "list",
@@ -1560,6 +1608,14 @@
       "translation": "Hook platform context now populates the current platform message ID __ELBOT_CODE_0__ and the referenced/reply target message ID __ELBOT_CODE_1__, facilitating the processing of referenced messages by rule Hooks, such as recalling a referenced message.",
       "updated_at": 1782395477
     },
+    "CHANGELOG.md:list:a731437c68c6cc96eaaa7f8a94d8f45f77357fc0c755337f9c91621070df56c5": {
+      "kind": "list",
+      "source": "修复chat历史搜索工具bug。现在后台、前台都能搜了，且互不影响。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "a731437c68c6cc96eaaa7f8a94d8f45f77357fc0c755337f9c91621070df56c5",
+      "translation": "Fixed the chat history search tool bug. Now both background and foreground can perform searches without affecting each other.",
+      "updated_at": 1793379505
+    },
     "CHANGELOG.md:list:a7e52b1d5e396c5785811e30fc84657b301e3fff959027918e68c882c5499953": {
       "kind": "list",
       "source": "新增媒体中心，统一管理所有媒体文件",
@@ -1616,14 +1672,6 @@
       "translation": "Skill scanning has been changed to delayed execution after startup, with a fallback to ensure scanning upon the first use of __ELBOT_CODE_0__, reducing startup blocking.",
       "updated_at": 1783074551
     },
-    "CHANGELOG.md:list:ab70b2260c9d93732f581cc5f68629aa4a07434e0f572125f53682cea05dc262": {
-      "kind": "list",
-      "source": "新增配置文件锁，防止多个实例使用同一份配置文件",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "ab70b2260c9d93732f581cc5f68629aa4a07434e0f572125f53682cea05dc262",
-      "translation": "Added a configuration file lock to prevent multiple instances from using the same configuration file",
-      "updated_at": 1792940905
-    },
     "CHANGELOG.md:list:ac3afc51b6a800e97966f71f733c8b5c6a8ed82d2528465a388929465e7a17c6": {
       "kind": "list",
       "source": "__ELBOT_CODE_0__ 现在复用 __ELBOT_CODE_1__ 的 __ELBOT_CODE_2__ 编辑说明与执行能力，并在确认前预检编辑、ELyph 语法和 no-op 修改，在高风险确认详情中展示预检 diff。",
@@ -1663,6 +1711,14 @@
       "source_hash": "afe2553606064d39abf0bf40a33a71cc6655ec21a19299326f5f05165c02bbab",
       "translation": "Now JSON arrays and objects will be compressed into a single argv parameter and passed to the corresponding __ELBOT_CODE_0__ flag.",
       "updated_at": 1788869399
+    },
+    "CHANGELOG.md:list:b069c95d09b380f03e5aaf55355c78adf1f4717fe88938d8eaf99924cf9eada4": {
+      "kind": "list",
+      "source": "修改了 Elwisp 协议，统一使用 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__ 描述平台原生 API 调用。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "b069c95d09b380f03e5aaf55355c78adf1f4717fe88938d8eaf99924cf9eada4",
+      "translation": "Modified the Elwisp protocol to uniformly use __ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__ to describe platform native API calls.",
+      "updated_at": 1793379505
     },
     "CHANGELOG.md:list:b092b1ca80d349920aca29ab8484e2821631ed1c5992b5449db3e8150a3c430a": {
       "kind": "list",
@@ -1863,6 +1919,14 @@
       "source_hash": "c975eb5ea81074e512045d3db3c8162aaabc288a0ffd73a973da3be406a6632d",
       "translation": "Fixed an issue where a completed one-time LLM Cron would directly reuse the old report and fail to create a new background Session after being re-enabled or rescheduled; notification failures and platform reconnections still resend the same round of persisted results.",
       "updated_at": 1784340385
+    },
+    "CHANGELOG.md:list:ca85b69afe2ca524d1ebd0b888ec1877bc32baaeddb7cc73a5aed8a7da0a2145": {
+      "kind": "list",
+      "source": "新增配置文件锁，防止多个实例使用同一份配置文件。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "ca85b69afe2ca524d1ebd0b888ec1877bc32baaeddb7cc73a5aed8a7da0a2145",
+      "translation": "Added a configuration file lock to prevent multiple instances from using the same configuration file.",
+      "updated_at": 1793379505
     },
     "CHANGELOG.md:list:cad7699784210eb94d03a9c5d03500978edac0870f59b3c4be7afbea516f4838": {
       "kind": "list",
@@ -2264,6 +2328,14 @@
       "translation": "Official support for quoted replies in QQ private and group chats",
       "updated_at": 1792458312
     },
+    "CHANGELOG.md:list:eee87f4b052ed8a620403666bcfec0b6802bf6eae3eae4a3ad5c206de41b7c00": {
+      "kind": "list",
+      "source": "在重构中修复一些可能会出现的bug。",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "eee87f4b052ed8a620403666bcfec0b6802bf6eae3eae4a3ad5c206de41b7c00",
+      "translation": "Fixed some potential bugs during refactoring.",
+      "updated_at": 1793379505
+    },
     "CHANGELOG.md:list:ef6588782632f866ab4b19fd530b98068c98b122ae747795f4ea20470edff7e6": {
       "kind": "list",
       "source": "上下文压缩改为保留历史用户原话、过滤工具结果，成功后切换到 __ELBOT_CODE_0__ 独立 Session，并将压缩内容与新输入固定物化为首条用户消息；",
@@ -2378,8 +2450,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "912e2ff88195f2b6f33f753e949ec0a79c45e84d19d5ee380d40d57ea95f3f62",
+  "source_hash": "2b29896f41f3291ea14741074e9cdea3fd6fc41a9d5194086b4af02cc41dc414",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1792940905,
+  "updated_at": 1793379505,
   "version": 2
 }

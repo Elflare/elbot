@@ -11,12 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added a configuration file lock to prevent multiple instances from using the same configuration file
+- Added a configuration file lock to prevent multiple instances from using the same configuration file.
 
 ### Changed
 
-- Manually guided the AI to refactor the App to the business layer package by package, file by file, function by function, and field by field, further tightening boundaries and clarifying responsibilities
-- `/status` display optimization
+- Manually guided the AI to refactor the App to the business layer package by package, file by file, function by function, and field by field, further tightening boundaries, clarifying responsibilities, and streamlining code.
+- Streamlined prompt messages.
+- Hooked native emoji output now uniformly uses the required `name`; `text` is no longer involved in emoji construction or fallback; plain text display is unified as `[表情: 名称]`.
+- The delivery information for hooked event output snapshots has been changed from `Meta` to the `Delivery` object, which includes `Timing`, `HookPoint`, `HookName`, and `HookMode`; Removed derived field `AltText`.
+- Active requests in `/status` no longer repeatedly display the Session title; this information is still retained when using `/requests` directly.
+- Modified the Elwisp protocol to uniformly use `platform`, `api`, and `params` to describe platform native API calls.
+
+### Fixed
+
+- Fixed the issue where some commands reported `not found` due to the absence of a current Session after first entry or `/new`.
+- Fixed the issue where `/resume` ignored pinning.
+- Fixed some potential bugs during refactoring.
+- Fixed the chat history search tool bug. Now both background and foreground can perform searches without affecting each other.
 
 ## [v0.6.0 - 2026-10-23]
 
