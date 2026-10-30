@@ -45,7 +45,7 @@
 
 按包记录具体问题、精简建议、讨论结论与验证结果，确认方案后再实施。任务入口见 [任务清单](tasks.md)。
 
-当前进度：`internal/app`、`internal/delivery`、`internal/turn`、`internal/tool/builtin`、`internal/memory/resident`、`internal/hook/rules`、`internal/storage/sqlite` 已完成一轮审查与调整；`internal/config` 已完成第三轮精简；`internal/hook/runtime` 已完成第三轮精简；`internal/hook/control`、`internal/background/cron` 已完成一轮精简，其余包进度分别记录。
+当前进度：`internal/app`、`internal/delivery`、`internal/turn`、`internal/tool/builtin`、`internal/memory/resident`、`internal/hook/rules`、`internal/storage/sqlite` 已完成一轮审查与调整；`internal/config` 已完成第三轮精简；`internal/hook/runtime` 已完成第三轮精简；`internal/hook/control`、`internal/background/cron`、`internal/request`、`internal/tool/preload` 已完成一轮精简，其余包进度分别记录。
 
 ### delivery
 
@@ -132,10 +132,31 @@
 - 十处日志身份提取共用 cronLogIdentity，发送日志保留报告 SessionID 优先；任务和发送完成日志各自统一构造，由源头结果决定事件名与级别，业务错误独立返回。
 - 错误返回删除重复判断、变量复制与嵌套；目标解析删除未使用参数，管理员 ID 复用入口归一化结果。保留恢复重读、逐项接管检查、条件提交、迟到回执、取消收尾和生命周期同步。
 
+### command/builtin
+
+- audit／runtime／elwisp 共用 formatLogEntries，保留各自标题、状态文案、正文顺序、旧文本字段及 raw 展示；用量统计复用单次 JSON 解码，仅模型分组读取 provider／model，删除无消费者的 bucket key。
+- 模型与会话补全复用 CurrentCompletionToken，模型选项复用 CompleteStaticOptions；模糊匹配只归一化一次并检查完整 provider/model，保留候选顺序和去重。模型成功文案合并同形分支。
+- 会话目标去空白集中在已有解析边界，工具确认标记使用 slices.Contains；确认、权限和 SessionEffect 契约保持不变。
+- 回归补充 JSON 三种分组、大整数及无效数字类型、光标位置、大小写模糊匹配与去重、所有模型目标成功文案，并沿用日志、会话和工具确认测试。gofmt、go test ./internal/command/... ./internal/agent/input、go test -race ./internal/command/builtin 均通过。
+
+### request
+
+- 完成清理由 Start 的一次性 done 闭包直接删除登记并取消 context；CancelSession／CancelAll 共用 cancelMatching，保留锁内标记、锁外取消及空 SessionID 精确匹配。
+- 取消与超时只进入 stopping，实际执行结束后才释放登记；父 context 取消的请求不重复计入批量取消结果。
+
+### tool/preload
+
+- 三处日志基础记录共用 preloadLogRecord，显式 SessionID 优先；事件、等级和结果由业务分支决定，缺失的上下文身份不补值。
+- 标签目录与配置名单共用 namesByTag 合并、排序和去重；空名单保持非 nil，授权展开与运行资格筛选分离，返回名单不共享配置缓存切片。
+- 标签文件缺失与正常读取共用归一化和缓存提交，读取／解析失败保留原缓存并返回错误；文件状态比较保留时间 Equal 语义。删除已归一化名称和提示的重复处理，保留内容加载后的取消检查。
+
 ## 已完成精简
 
 | 包 | 完成情况 | 非测试 Go 行数 |
 | --- | --- | --- |
+| `internal/request` | 完成清理收回一次性闭包，合并批量取消流程。 | 212 → 195，减少 17 行（约 8.0%），仍为 1 个生产文件。 |
+| `internal/tool/preload` | 共用日志记录和标签名单合并，收拢缓存提交，删除重复处理。 | 608 → 571，减少 37 行（约 6.1%），仍为 3 个生产文件。 |
+| `internal/command/builtin` | 合并日志展示，复用用量解析和补全工具，删除重复匹配、去空白及无用字段。 | 本轮 3,854 → 3,726，减少 128 行（约 3.3%），仍为 18 个生产文件。 |
 | `internal/background/cron` | 合并执行和完成日志，统一身份提取，删除重复返回值、包装与检查。 | 2,693 → 2,413，减少 280 行（约 10.4%），仍为 11 个生产文件。 |
 | `internal/logging` | 删除重复解析、归一化和无用分配，简化扫描与匹配循环，移除未使用参数。 | 971 → 955，减少 16 行（约 1.6%），仍为 4 个生产文件。 |
 | `internal/hook/pipeline` | 共用 handler 执行收尾并补齐 context 取消，简化插件替换、活动计数及重复处理。 | 本轮 522 → 499，减少 23 行；相对初始基线 528 行累计减少 29 行（约 5.5%），仍为 2 个生产文件。 |
@@ -149,6 +170,8 @@
 | `internal/hook/rules` | 已完成第二轮；统一路径与 stderr 入口校验，删除无效等待状态，快捷输出直接比较零值，协议日志复用错误正文。 | 本轮 2,152 → 2,141，减少 11 行；相对初始基线 2,640 行累计减少 499 行（约 18.9%），仍为 8 个生产文件。 |
 | `internal/hook/control` | 合并列表展示与活动数统计，删除冗余重载、停止包装及重复处理。 | 490 → 459，减少 31 行（约 6.3%），仍为 2 个生产文件。 |
 | `internal/config` | 已完成第三轮；删除无效路径状态与重复兜底，内联会话超时默认值，简化诊断分支，厂商刷新单次解码。 | 本轮 2,580 → 2,542，减少 38 行；相对初始基线 2,611 行累计减少 69 行（约 2.6%），仍为 8 个生产文件。 |
+
+request／tool/preload 回归覆盖父级取消、空 SessionID 精确匹配、取消后保留登记、三处日志身份和状态、标签合并与空名单查询边界，以及配置文件创建、更新、删除、错误恢复和缓存隔离。request 生产代码净减 17 行、测试净增 36 行；tool/preload 生产代码净减 37 行、测试净增 184 行；两包生产代码合计净减 54 行，测试净增 220 行，Go 代码合计增加 166 行。已执行 `gofmt`、`go test ./internal/request ./internal/tool/...`、`GORACE=atexit_sleep_ms=0 go test -race ./internal/request ./internal/tool/preload` 和本轮 diff 检查，均通过。
 
 delivery 本轮连同 Hook 调用方共净减 70 行非测试 Go 代码，未拆分文件。回归覆盖表情名称、发送时机重设与复制隔离、目标选择与冲突、Hook 来源、媒体降级及日志与业务结果独立；已执行 `gofmt`，相关包测试与 `go test ./...` 通过。
 

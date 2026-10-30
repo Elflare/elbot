@@ -109,15 +109,8 @@ func resumePage(ctx context.Context, deps Deps, page int) (*command.Result, erro
 }
 
 func (c resumeCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
-	cursor := req.Cursor
-	if cursor <= 0 || cursor > len(req.Raw) {
-		cursor = len(req.Raw)
-	}
-	tokenStart := cursor
-	for tokenStart > 0 && req.Raw[tokenStart-1] != ' ' && req.Raw[tokenStart-1] != '\t' {
-		tokenStart--
-	}
-	query := strings.TrimSpace(req.Raw[tokenStart:cursor])
+	token := command.CurrentCompletionToken(req)
+	query := strings.TrimSpace(token.Text)
 	if query == "--page" || strings.HasPrefix(query, "--") {
 		return nil
 	}
@@ -128,7 +121,7 @@ func (c resumeCommand) Complete(ctx context.Context, req command.CompletionReque
 	out := []command.Completion{}
 	for _, session := range sessions {
 		if query == "" || strings.HasPrefix(session.ID, query) {
-			out = append(out, command.Completion{Text: session.ID, Label: session.ID, Description: emptyTitle(session.Title), Kind: "session_id", ReplaceStart: tokenStart, ReplaceEnd: cursor})
+			out = append(out, command.Completion{Text: session.ID, Label: session.ID, Description: emptyTitle(session.Title), Kind: "session_id", ReplaceStart: token.Start, ReplaceEnd: token.End})
 		}
 	}
 	return out

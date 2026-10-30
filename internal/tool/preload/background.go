@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strings"
 
-	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/tool/share"
@@ -29,11 +28,10 @@ func (s *PreloadService) BackgroundSelections(ctx context.Context, selectors []s
 			continue
 		}
 		tag := normalizeToolTag(name)
-		configured, err := s.tags.configuredToolNamesByTag(ctx, tag)
+		roots, err := s.namesByTag(ctx, tag)
 		if err != nil {
 			return nil, err
 		}
-		roots := uniqueNames(append(s.Registry.NamesByTag(tag), configured...))
 		if len(roots) == 0 {
 			roots, tag = []string{name}, ""
 		}
@@ -43,20 +41,7 @@ func (s *PreloadService) BackgroundSelections(ctx context.Context, selectors []s
 }
 
 func (s *PreloadService) PrepareBackground(ctx context.Context, req share.BackgroundPreloadRequest) (share.BackgroundPreload, error) {
-	record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "tool", Identity: globalevents.LogIdentity{SessionID: &req.SessionID}}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if facts.RunID != "" {
-		record.Identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		record.Identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		record.Identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		record.Identity.RootRequestID = &facts.RootRequestID
-	}
+	record := preloadLogRecord(ctx, req.SessionID)
 	skip := func(name, reason string) {
 		record.EventName = "background_preload_skipped"
 		record.Level = slog.LevelInfo

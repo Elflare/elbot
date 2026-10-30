@@ -54,6 +54,38 @@ func (s fakeModelService) ModelList(query string, opts modelmgr.ModelListOptions
 	return modelmgr.ModelListResult{Options: out}
 }
 
+func TestModelCompletionCursorAndFuzzyCase(t *testing.T) {
+	model := modelmgr.ModelOption{Provider: "DeepSeek", Model: "deepseek-v3"}
+	completer := NewModel(Deps{Models: fakeModelService{models: []modelmgr.ModelOption{model, model}}}).(command.Completer)
+	for _, tc := range []struct {
+		raw         string
+		cursor, end int
+	}{
+		{"/model\tDPSK trailing", 11, 11},
+		{"/model DPSK", 0, 11},
+		{"/model DPSK", 100, 11},
+		{"/model ", 0, 7},
+	} {
+		got := completer.Complete(t.Context(), command.CompletionRequest{Raw: tc.raw, Args: tc.raw[7:], Cursor: tc.cursor})
+		if len(got) != 1 || got[0].Text != "DeepSeek/deepseek-v3" || got[0].ReplaceStart != 7 || got[0].ReplaceEnd != tc.end {
+			t.Fatalf("%+v: %+v", tc, got)
+		}
+	}
+}
+
+func TestModelCommandSuccessTextForEveryTarget(t *testing.T) {
+	for _, target := range []string{"", "chat", "work", "elwisp1", "elwisp2", "elwisp3", "compact", "naming"} {
+		args, want := "model", "switched to model: /"
+		if target != "" {
+			args, want = "--"+target+" model", "switched "+target+" model: /"
+		}
+		got, err := NewModel(Deps{Models: fakeModelService{}}).Handle(t.Context(), command.Request{Args: args})
+		if err != nil || got.Content != want {
+			t.Fatalf("target=%s got=%+v err=%v", target, got, err)
+		}
+	}
+}
+
 func TestModelCommandCompletesOptions(t *testing.T) {
 	completer := NewModel(Deps{Models: fakeModelService{}}).(command.Completer)
 	got := completer.Complete(context.Background(), command.CompletionRequest{Raw: "/model --", Prefix: "/", Name: "model", Args: "--", Cursor: len("/model --")})

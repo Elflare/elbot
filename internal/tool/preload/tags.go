@@ -51,16 +51,16 @@ func (s *toolTagConfigSource) configuredTags(ctx context.Context) ([]string, err
 	return out, nil
 }
 
-func (s *toolTagConfigSource) configuredToolNamesByTag(ctx context.Context, tag string) ([]string, error) {
+func (s *PreloadService) namesByTag(ctx context.Context, tag string) ([]string, error) {
 	tag = normalizeToolTag(tag)
 	if tag == "" {
-		return nil, nil
+		return []string{}, nil
 	}
-	cfg, err := s.load(ctx)
+	cfg, err := s.tags.load(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return append([]string(nil), cfg.Tags[tag].Tools...), nil
+	return uniqueNames(append(s.Registry.NamesByTag(tag), cfg.Tags[tag].Tools...)), nil
 }
 
 func (s *toolTagConfigSource) load(ctx context.Context) (config.ToolTagsConfig, error) {
@@ -76,21 +76,17 @@ func (s *toolTagConfigSource) load(ctx context.Context) (config.ToolTagsConfig, 
 	if err != nil {
 		return config.ToolTagsConfig{}, err
 	}
-	if s.cache.loaded && sameToolTagFileState(s.cache.state, state) {
+	if s.cache.loaded && s.cache.state.size == state.size && s.cache.state.modTime.Equal(state.modTime) {
 		return s.cache.config, nil
 	}
 	data, err := os.ReadFile(s.path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			cfg := config.ToolTagsConfig{}
-			s.cache = toolTagConfigCache{loaded: true, config: cfg, state: state}
-			return cfg, nil
-		}
-		return config.ToolTagsConfig{}, fmt.Errorf("read tool tags config %q: %w", s.path, err)
-	}
 	var cfg config.ToolTagsConfig
-	if err := toml.Unmarshal(data, &cfg); err != nil {
-		return config.ToolTagsConfig{}, fmt.Errorf("parse tool tags config %q: %w", s.path, err)
+	if err == nil {
+		if err := toml.Unmarshal(data, &cfg); err != nil {
+			return config.ToolTagsConfig{}, fmt.Errorf("parse tool tags config %q: %w", s.path, err)
+		}
+	} else if !os.IsNotExist(err) {
+		return config.ToolTagsConfig{}, fmt.Errorf("read tool tags config %q: %w", s.path, err)
 	}
 	cfg = normalizeToolTagsConfig(cfg)
 	s.cache = toolTagConfigCache{loaded: true, config: cfg, state: state}
@@ -106,10 +102,6 @@ func currentToolTagFileState(path string) (toolTagFileState, error) {
 		return toolTagFileState{}, fmt.Errorf("stat tool tags config %q: %w", path, err)
 	}
 	return toolTagFileState{size: info.Size(), modTime: info.ModTime()}, nil
-}
-
-func sameToolTagFileState(left, right toolTagFileState) bool {
-	return left.size == right.size && left.modTime.Equal(right.modTime)
 }
 
 func normalizeToolTagsConfig(cfg config.ToolTagsConfig) config.ToolTagsConfig {
@@ -152,7 +144,7 @@ func (s *PreloadService) TagPrompts(ctx context.Context, tags []string) ([]share
 	}
 	var result []share.TagPrompt
 	for _, tag := range tags {
-		if entry, ok := cfg.Tags[normalizeToolTag(tag)]; ok && strings.TrimSpace(entry.Prompt) != "" {
+		if entry := cfg.Tags[normalizeToolTag(tag)]; entry.Prompt != "" {
 			result = append(result, share.TagPrompt{Tag: tag, Prompt: entry.Prompt})
 		}
 	}
@@ -161,12 +153,10 @@ func (s *PreloadService) TagPrompts(ctx context.Context, tags []string) ([]share
 
 // ToolNamesByTag uses the same configured and built-in tags for discovery and completion.
 func (s *PreloadService) ToolNamesByTag(ctx context.Context, tag string, query share.ToolQuery) ([]string, error) {
-	names := s.Registry.NamesByTag(tag)
-	configured, err := s.tags.configuredToolNamesByTag(ctx, tag)
+	names, err := s.namesByTag(ctx, tag)
 	if err != nil {
 		return nil, err
 	}
-	names = uniqueNames(append(names, configured...))
 	if query.Names != nil {
 		names = slices.DeleteFunc(names, func(name string) bool { return !slices.Contains(query.Names, name) })
 	}

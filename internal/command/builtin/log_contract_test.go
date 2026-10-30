@@ -87,7 +87,7 @@ func TestDamagedLogsAreReportedWithoutMatchedEntries(t *testing.T) {
 
 func TestLogQueriesPutToolBelowHeader(t *testing.T) {
 	for _, event := range []string{"tool_call_completed", "hook_tool_call_completed"} {
-		for _, format := range []func(bool) func([]logging.LogEntry) string{formatAuditEntries, formatRuntimeLogEntries, formatElwispLogEntries} {
+		for _, title := range []string{"audit events", "runtime logs", "elwisp logs"} {
 			entry := logging.LogEntry{
 				Level:     "INFO",
 				EventName: event,
@@ -95,15 +95,15 @@ func TestLogQueriesPutToolBelowHeader(t *testing.T) {
 				Content:   `{"tool":"shell","result":"done","actor_id":"user","nested":{"tool":"nested","actor_id":"inner"}}`,
 				Raw:       "ORIGINAL_PHYSICAL_RECORD",
 			}
-			content := format(false)([]logging.LogEntry{entry})
+			content := formatLogEntries(title, false)([]logging.LogEntry{entry})
 			_, body, found := strings.Cut(content, formatLogEntryTime(entry)+"  INFO  "+event+"\n")
 			want := "tool: shell\nresult: done\nactor_id: user\nnested: \n  tool: nested\n  actor_id: inner"
-			if !found || strings.TrimSpace(body) != want {
+			if !found || strings.TrimSpace(body) != want || !strings.HasPrefix(content, title+":\n") {
 				t.Fatalf("unexpected field order for %s: %s", event, content)
 			}
-			raw := format(true)([]logging.LogEntry{entry})
+			raw := formatLogEntries(title, true)([]logging.LogEntry{entry})
 			_, rawBody, found := strings.Cut(raw, "\n")
-			if !found || strings.TrimSpace(rawBody) != entry.Raw {
+			if !found || strings.TrimSpace(rawBody) != entry.Raw || !strings.HasPrefix(raw, title+":\n") {
 				t.Fatalf("raw record changed: %s", raw)
 			}
 		}
@@ -115,7 +115,7 @@ func TestLogQueriesPutToolBelowHeader(t *testing.T) {
 }
 
 func TestLogQueryResultHeaders(t *testing.T) {
-	for _, format := range []func(bool) func([]logging.LogEntry) string{formatAuditEntries, formatRuntimeLogEntries, formatElwispLogEntries} {
+	for _, title := range []string{"audit events", "runtime logs", "elwisp logs"} {
 		for _, tc := range []struct {
 			status events.ResultStatus
 			suffix string
@@ -125,7 +125,7 @@ func TestLogQueryResultHeaders(t *testing.T) {
 			{events.ResultRejected, "  已拒绝"}, {events.ResultSkipped, "  已跳过"},
 		} {
 			entry := logging.LogEntry{Level: "INFO", EventName: "event", ResultStatus: tc.status, Content: "body"}
-			got := format(false)([]logging.LogEntry{entry})
+			got := formatLogEntries(title, false)([]logging.LogEntry{entry})
 			want := formatLogEntryTime(entry) + "  INFO  event" + tc.suffix + "\nbody"
 			if !strings.HasSuffix(got, want) {
 				t.Fatalf("got=%q want suffix=%q", got, want)

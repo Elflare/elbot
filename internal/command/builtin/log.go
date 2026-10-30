@@ -143,20 +143,20 @@ func (c logCommand) Handle(ctx context.Context, req command.Request) (*command.R
 		if err != nil {
 			return nil, err
 		}
-		return queryLogs(ctx, c.deps, query, formatAuditEntries(query.Raw))
+		return queryLogs(ctx, c.deps, query, formatLogEntries("audit events", query.Raw))
 	}
 	if c.elwisp {
 		query, err := parseElwispLogQuery(req.Args)
 		if err != nil {
 			return nil, err
 		}
-		return queryLogs(ctx, c.deps, query, formatElwispLogEntries(query.Raw))
+		return queryLogs(ctx, c.deps, query, formatLogEntries("elwisp logs", query.Raw))
 	}
 	query, err := parseRuntimeLogQuery(req.Args)
 	if err != nil {
 		return nil, err
 	}
-	return queryLogs(ctx, c.deps, query, formatRuntimeLogEntries(query.Raw))
+	return queryLogs(ctx, c.deps, query, formatLogEntries("runtime logs", query.Raw))
 }
 
 func (c logCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -592,89 +592,13 @@ func parseLogTime(value string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("invalid time: %s", value)
 }
 
-func formatAuditEntries(raw bool) func([]logging.LogEntry) string {
+func formatLogEntries(title string, raw bool) func([]logging.LogEntry) string {
 	return func(entries []logging.LogEntry) string {
 		if raw {
-			return formatRawLogEntries("audit events", entries)
+			return formatRawLogEntries(title, entries)
 		}
 		var sb strings.Builder
-		sb.WriteString("audit events:\n")
-		for i, entry := range entries {
-			if i > 0 {
-				sb.WriteString("\n\n")
-			}
-			result := ""
-			switch entry.ResultStatus {
-			case events.ResultSucceeded:
-				result = "成功"
-			case events.ResultFailed:
-				result = "失败"
-			case events.ResultCanceled:
-				result = "已取消"
-			case events.ResultRejected:
-				result = "已拒绝"
-			case events.ResultSkipped:
-				result = "已跳过"
-			}
-			fmt.Fprintf(&sb, "%s  %s  %s", formatLogEntryTime(entry), entry.Level, entry.EventName)
-			if result != "" {
-				sb.WriteString("  " + result)
-			}
-			sb.WriteByte('\n')
-			sb.WriteString(formatLogContent(entry))
-			if entry.LegacyFields != nil {
-				appendRuntimeLogFields(&sb, entry.LegacyFields)
-			}
-		}
-		return sb.String()
-	}
-}
-
-func formatRuntimeLogEntries(raw bool) func([]logging.LogEntry) string {
-	return func(entries []logging.LogEntry) string {
-		if raw {
-			return formatRawLogEntries("runtime logs", entries)
-		}
-		var sb strings.Builder
-		sb.WriteString("runtime logs:\n")
-		for i, entry := range entries {
-			if i > 0 {
-				sb.WriteString("\n\n")
-			}
-			result := ""
-			switch entry.ResultStatus {
-			case events.ResultSucceeded:
-				result = "成功"
-			case events.ResultFailed:
-				result = "失败"
-			case events.ResultCanceled:
-				result = "已取消"
-			case events.ResultRejected:
-				result = "已拒绝"
-			case events.ResultSkipped:
-				result = "已跳过"
-			}
-			fmt.Fprintf(&sb, "%s  %s  %s", formatLogEntryTime(entry), entry.Level, entry.EventName)
-			if result != "" {
-				sb.WriteString("  " + result)
-			}
-			sb.WriteByte('\n')
-			sb.WriteString(formatLogContent(entry))
-			if entry.LegacyFields != nil {
-				appendRuntimeLogFields(&sb, entry.LegacyFields)
-			}
-		}
-		return sb.String()
-	}
-}
-
-func formatElwispLogEntries(raw bool) func([]logging.LogEntry) string {
-	return func(entries []logging.LogEntry) string {
-		if raw {
-			return formatRawLogEntries("elwisp logs", entries)
-		}
-		var sb strings.Builder
-		sb.WriteString("elwisp logs:\n")
+		sb.WriteString(title + ":\n")
 		for i, entry := range entries {
 			if i > 0 {
 				sb.WriteString("\n\n")

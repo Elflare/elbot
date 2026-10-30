@@ -3,6 +3,7 @@ package builtin
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"elbot/internal/command"
@@ -46,7 +47,7 @@ func (c toolsCommand) Handle(ctx context.Context, req command.Request) (*command
 			return &command.Result{Content: "usage: /tools remove <name> --confirm"}, nil
 		}
 		name := fields[1]
-		if !hasFlag(fields[2:], "--confirm") {
+		if !slices.Contains(fields[2:], "--confirm") {
 			return &command.Result{Content: fmt.Sprintf("将删除外置 skill %q 及其目录。确认请执行：/tools remove %s --confirm", name, name)}, nil
 		}
 		err := deps.Skills.Remove(ctx, name)
@@ -96,15 +97,6 @@ func formatTools(ctx context.Context, deps Deps) (string, error) {
 		sb.WriteString(fmt.Sprintf("  %s [%s]%s %s\n", info.Name, info.Source, tags, info.Description))
 	}
 	return trimTrailingNewlines(sb.String()), nil
-}
-
-func hasFlag(fields []string, flag string) bool {
-	for _, field := range fields {
-		if field == flag {
-			return true
-		}
-	}
-	return false
 }
 
 type ToolModule struct{}

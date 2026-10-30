@@ -36,6 +36,29 @@ func makeUsageEntry(t time.Time, provider, model, sessionID string, prompt, comp
 	}
 }
 
+func TestUsageJSONGroupingPreservesTokenTypes(t *testing.T) {
+	sessionID := "session"
+	entry := logging.LogEntry{
+		Time:     time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC),
+		Identity: events.LogIdentity{SessionID: &sessionID},
+		Type:     events.ContentJSON,
+		Content:  `{"provider":" p ","model":" m ","prompt_tokens":9007199254740993,"completion_tokens":"2","total_tokens":-1}`,
+	}
+	for group, key := range map[usageGroupKey]string{groupByModel: "p/m", groupByDay: "2026-10-30", groupBySession: "session"} {
+		got := formatUsageSummary([]logging.LogEntry{entry}, logging.LogQuery{}, group)
+		if !strings.Contains(got, "["+key+"] calls: 1") || !strings.Contains(got, "prompt: 9,007,199,254,740,993 | completion: null | total: null") {
+			t.Fatalf("group=%s: %s", group, got)
+		}
+	}
+	for _, body := range []string{`{"provider":12,"model":null}`, `{}`} {
+		entry.Content = body
+		got := formatUsageSummary([]logging.LogEntry{entry}, logging.LogQuery{}, groupByModel)
+		if !strings.Contains(got, "[unknown-model] calls: 1") {
+			t.Fatal(got)
+		}
+	}
+}
+
 func TestUsageDefaultQueryByModel(t *testing.T) {
 	entries := []logging.LogEntry{
 		makeUsageEntry(time.Date(2026, 7, 1, 10, 0, 0, 0, time.Local), "deepseek", "deepseek-v4", "sess-1", 1000, 200, 1200, 500, 1500),

@@ -107,35 +107,18 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 	if err != nil {
 		return &command.Result{Content: err.Error()}, nil
 	}
-	switch target {
-	case modelTargetChat:
-		return &command.Result{Content: fmt.Sprintf("switched chat model: %s/%s", selected.Provider, selected.Model)}, nil
-	case modelTargetWork:
-		return &command.Result{Content: fmt.Sprintf("switched work model: %s/%s", selected.Provider, selected.Model)}, nil
-	case modelTargetElwisp1, modelTargetElwisp2, modelTargetElwisp3:
-		return &command.Result{Content: fmt.Sprintf("switched %s model: %s/%s", target, selected.Provider, selected.Model)}, nil
-	case modelTargetCompact:
-		return &command.Result{Content: fmt.Sprintf("switched compact model: %s/%s", selected.Provider, selected.Model)}, nil
-	case modelTargetNaming:
-		return &command.Result{Content: fmt.Sprintf("switched naming model: %s/%s", selected.Provider, selected.Model)}, nil
-	default:
+	if target == modelTargetCurrent {
 		return &command.Result{Content: fmt.Sprintf("switched to model: %s/%s", selected.Provider, selected.Model)}, nil
 	}
+	return &command.Result{Content: fmt.Sprintf("switched %s model: %s/%s", target, selected.Provider, selected.Model)}, nil
 }
 
 func (c modelCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
 	_ = ctx
-	cursor := req.Cursor
-	if cursor <= 0 || cursor > len(req.Raw) {
-		cursor = len(req.Raw)
-	}
-	tokenStart := cursor
-	for tokenStart > 0 && req.Raw[tokenStart-1] != ' ' && req.Raw[tokenStart-1] != '\t' {
-		tokenStart--
-	}
-	query := req.Raw[tokenStart:cursor]
+	token := command.CurrentCompletionToken(req)
+	query := token.Text
 	if strings.HasPrefix(query, "-") {
-		return completeModelOptions(query, tokenStart, cursor)
+		return completeModelOptions(query, token.Start, token.End)
 	}
 	if optionOnlyModelArgs(req.Args) || c.deps.Models == nil {
 		return nil
@@ -153,21 +136,21 @@ func (c modelCommand) Complete(ctx context.Context, req command.CompletionReques
 			continue
 		}
 		seen[text] = true
-		out = append(out, command.Completion{Text: text, Label: model.Model, Description: model.Provider, Kind: "model", ReplaceStart: tokenStart, ReplaceEnd: cursor})
+		out = append(out, command.Completion{Text: text, Label: model.Model, Description: model.Provider, Kind: "model", ReplaceStart: token.Start, ReplaceEnd: token.End})
 	}
 	return out
 }
 
 func (c modelCommand) fuzzyModelOptions(query string) []modelmgr.ModelOption {
 	query = strings.ToLower(strings.TrimSpace(query))
-	if query == "" || c.deps.Models == nil {
+	if query == "" {
 		return nil
 	}
 	items := c.deps.Models.ModelList("", modelmgr.ModelListOptions{}).Options
 	out := make([]modelmgr.ModelOption, 0, len(items))
 	for _, model := range items {
 		providerModel := strings.ToLower(model.Provider + "/" + model.Model)
-		if fuzzySubsequenceMatch(providerModel, query) || fuzzySubsequenceMatch(strings.ToLower(model.Model), query) || fuzzySubsequenceMatch(strings.ToLower(model.Provider), query) {
+		if fuzzySubsequenceMatch(providerModel, query) {
 			out = append(out, model)
 		}
 	}
@@ -175,11 +158,6 @@ func (c modelCommand) fuzzyModelOptions(query string) []modelmgr.ModelOption {
 }
 
 func fuzzySubsequenceMatch(value, query string) bool {
-	if query == "" {
-		return true
-	}
-	value = strings.ToLower(value)
-	query = strings.ToLower(query)
 	j := 0
 	for i := 0; i < len(value) && j < len(query); i++ {
 		if value[i] == query[j] {
@@ -190,27 +168,18 @@ func fuzzySubsequenceMatch(value, query string) bool {
 }
 
 func completeModelOptions(query string, start, end int) []command.Completion {
-	options := []struct {
-		Text        string
-		Description string
-	}{
-		{"--chat", "Switch chat mode model"},
-		{"--work", "Switch work mode model"},
-		{"--elwisp1", "Switch Elnis elwisp1 model slot"},
-		{"--elwisp2", "Switch Elnis elwisp2 model slot"},
-		{"--elwisp3", "Switch Elnis elwisp3 model slot"},
-		{"--compact", "Switch context compact model"},
-		{"--naming", "Switch session naming model"},
-		{"-c", "Switch context compact model"},
-		{"-n", "Switch session naming model"},
+	options := []command.CompletionOption{
+		{Text: "--chat", Description: "Switch chat mode model"},
+		{Text: "--work", Description: "Switch work mode model"},
+		{Text: "--elwisp1", Description: "Switch Elnis elwisp1 model slot"},
+		{Text: "--elwisp2", Description: "Switch Elnis elwisp2 model slot"},
+		{Text: "--elwisp3", Description: "Switch Elnis elwisp3 model slot"},
+		{Text: "--compact", Description: "Switch context compact model"},
+		{Text: "--naming", Description: "Switch session naming model"},
+		{Text: "-c", Description: "Switch context compact model"},
+		{Text: "-n", Description: "Switch session naming model"},
 	}
-	out := []command.Completion{}
-	for _, option := range options {
-		if strings.HasPrefix(option.Text, query) {
-			out = append(out, command.Completion{Text: option.Text, Label: option.Text, Description: option.Description, Kind: "model_option", ReplaceStart: start, ReplaceEnd: end})
-		}
-	}
-	return out
+	return command.CompleteStaticOptions(options, query, start, end, "model_option")
 }
 
 func optionOnlyModelArgs(args string) bool {

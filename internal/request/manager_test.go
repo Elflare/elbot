@@ -119,3 +119,39 @@ func assertCanceled(t *testing.T, ctx context.Context) {
 		t.Fatal("context was not canceled")
 	}
 }
+
+func TestBatchCancelKeepsInheritedStopsAndMatchesEmptySession(t *testing.T) {
+	m := NewManager(0)
+	parent, stopParent := context.WithCancel(t.Context())
+	inherited, inheritedCtx, doneInherited := m.Start(parent, StartRequest{})
+	defer doneInherited()
+	empty, emptyCtx, doneEmpty := m.Start(t.Context(), StartRequest{})
+	defer doneEmpty()
+	_, otherCtx, doneOther := m.Start(t.Context(), StartRequest{SessionID: "other"})
+	defer doneOther()
+	stopParent()
+	assertCanceled(t, inheritedCtx)
+	if got, ok := m.Get(inherited.ID); !ok || !got.Stopping {
+		t.Fatalf("inherited cancellation lost request: %+v, %v", got, ok)
+	}
+	if got := m.CancelSession(""); got != 1 {
+		t.Fatalf("CancelSession(empty) = %d, want 1", got)
+	}
+	assertCanceled(t, emptyCtx)
+	if otherCtx.Err() != nil || m.CancelSession("") != 0 || len(m.List()) != 3 {
+		t.Fatal("session cancellation changed scope, count or registration")
+	}
+	if got, ok := m.Get(empty.ID); !ok || !got.Stopping {
+		t.Fatalf("canceled request lost: %+v, %v", got, ok)
+	}
+	if got := m.CancelAll(); got != 1 {
+		t.Fatalf("CancelAll = %d, want only remaining request", got)
+	}
+	assertCanceled(t, otherCtx)
+	doneInherited()
+	doneEmpty()
+	doneOther()
+	if len(m.List()) != 0 {
+		t.Fatal("completed requests remained registered")
+	}
+}

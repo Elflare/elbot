@@ -88,20 +88,7 @@ func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, na
 	for _, candidate := range candidates {
 		targets[candidate.Name()] = candidate
 	}
-	record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "tool", Identity: globalevents.LogIdentity{SessionID: &sessionID}}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if facts.RunID != "" {
-		record.Identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		record.Identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		record.Identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		record.Identity.RootRequestID = &facts.RootRequestID
-	}
+	record := preloadLogRecord(ctx, sessionID)
 
 	result := share.SkillPreload{Accepted: make([]bool, len(names))}
 	seen := map[string]bool{}
@@ -120,14 +107,11 @@ func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, na
 				err = ctx.Err()
 			}
 			if err != nil {
-				level := slog.LevelError
-				if errors.Is(err, context.Canceled) {
-					level = slog.LevelInfo
-				}
 				record.EventName = "skill_preload_failed"
-				record.Level = level
+				record.Level = slog.LevelError
 				record.ResultStatus = globalevents.ResultFailed
 				if errors.Is(err, context.Canceled) {
+					record.Level = slog.LevelInfo
 					record.ResultStatus = globalevents.ResultCanceled
 				}
 				record.Content = fmt.Sprintf("skill preload failed: tool=%s error=%v", name, err)
@@ -157,11 +141,11 @@ func (s *PreloadService) discoverDirective(ctx context.Context, name string) (*s
 	names, tag := []string{name}, ""
 	if _, exists := s.Registry.Get(name); !exists {
 		tag = normalizeToolTag(name)
-		configured, err := s.tags.configuredToolNamesByTag(ctx, tag)
+		var err error
+		names, err = s.namesByTag(ctx, tag)
 		if err != nil {
 			return nil, nil, "", err
 		}
-		names = uniqueNames(append(s.Registry.NamesByTag(tag), configured...))
 	}
 	candidates, err := s.Registry.QueryTools(ctx, share.ToolQuery{Names: names, Kind: "tool"})
 	if err != nil {
@@ -212,23 +196,9 @@ func (s *PreloadService) discoveryContent(ctx context.Context, details *share.Di
 }
 
 func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name string, background bool) ([]share.DiscoveredTool, error) {
-	record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "tool", Identity: globalevents.LogIdentity{SessionID: &sessionID}}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if facts.RunID != "" {
-		record.Identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		record.Identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		record.Identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		record.Identity.RootRequestID = &facts.RootRequestID
-	}
+	record := preloadLogRecord(ctx, sessionID)
 
-	name = strings.TrimSpace(name)
-	if name == "" || name == "discover_tool" {
+	if name == "discover_tool" {
 		return nil, nil
 	}
 	eventName, key := "skill_wrapper_preload_skipped", "tool"
@@ -267,4 +237,22 @@ func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name str
 		return nil, nil
 	}
 	return []share.DiscoveredTool{{Name: info.Name, Source: share.SourceKindNative, Description: info.Description, Schema: share.CloneSchema(schema), ForegroundOnly: info.ForegroundOnly}}, nil
+}
+
+func preloadLogRecord(ctx context.Context, sessionID string) globalevents.LogRecord {
+	record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "tool", Identity: globalevents.LogIdentity{SessionID: &sessionID}}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.RunID != "" {
+		record.Identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		record.Identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		record.Identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		record.Identity.RootRequestID = &facts.RootRequestID
+	}
+	return record
 }

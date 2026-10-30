@@ -251,7 +251,6 @@ func parseUsageQuery(args string) (logging.LogQuery, usageGroupKey, *usageCallRa
 }
 
 type usageBucket struct {
-	key   string
 	calls int
 	// Token and elapsed totals use -1 for unknown; overflow also becomes unknown.
 	promptTokens     int64
@@ -264,22 +263,22 @@ type usageBucket struct {
 func formatUsageSummary(entries []logging.LogEntry, query logging.LogQuery, groupBy usageGroupKey) string {
 	buckets := map[string]*usageBucket{}
 	var order []string
-	grand := &usageBucket{key: "total"}
+	grand := &usageBucket{}
 
 	for _, entry := range entries {
 		fields := entry.LegacyFields
+		var content map[string]json.RawMessage
 		if entry.Type == events.ContentJSON {
-			var content map[string]json.RawMessage
 			_ = json.Unmarshal([]byte(entry.Content), &content)
 			fields = map[string]string{}
 			for key, value := range content {
 				fields[key] = string(value)
 			}
 		}
-		key := usageGroupKeyFor(entry, groupBy)
+		key := usageGroupKeyFor(entry, groupBy, content)
 		b := buckets[key]
 		if b == nil {
-			b = &usageBucket{key: key}
+			b = &usageBucket{}
 			buckets[key] = b
 			order = append(order, key)
 		}
@@ -316,19 +315,7 @@ func formatUsageSummary(entries []logging.LogEntry, query logging.LogQuery, grou
 	return sb.String()
 }
 
-func usageGroupKeyFor(entry logging.LogEntry, groupBy usageGroupKey) string {
-	fields := entry.LegacyFields
-	if entry.Type == events.ContentJSON {
-		var content map[string]json.RawMessage
-		_ = json.Unmarshal([]byte(entry.Content), &content)
-		fields = map[string]string{}
-		for key, value := range content {
-			var text string
-			if json.Unmarshal(value, &text) == nil {
-				fields[key] = text
-			}
-		}
-	}
+func usageGroupKeyFor(entry logging.LogEntry, groupBy usageGroupKey, content map[string]json.RawMessage) string {
 	switch groupBy {
 	case groupByDay:
 		if entry.Time.IsZero() {
@@ -341,8 +328,15 @@ func usageGroupKeyFor(entry logging.LogEntry, groupBy usageGroupKey) string {
 		}
 		return "unknown-session"
 	default:
-		provider := strings.TrimSpace(fields["provider"])
-		model := strings.TrimSpace(fields["model"])
+		var provider, model string
+		if entry.Type == events.ContentJSON {
+			_ = json.Unmarshal(content["provider"], &provider)
+			_ = json.Unmarshal(content["model"], &model)
+		} else {
+			provider, model = entry.LegacyFields["provider"], entry.LegacyFields["model"]
+		}
+		provider = strings.TrimSpace(provider)
+		model = strings.TrimSpace(model)
 		if provider != "" && model != "" {
 			return provider + "/" + model
 		}

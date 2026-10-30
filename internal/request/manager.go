@@ -109,7 +109,10 @@ func (m *Manager) Start(parent context.Context, start StartRequest) (Request, co
 	m.mu.Unlock()
 
 	done := sync.OnceFunc(func() {
-		m.finish(req.ID)
+		m.mu.Lock()
+		delete(m.active, req.ID)
+		m.mu.Unlock()
+		cancel()
 	})
 
 	return req, ctx, done
@@ -162,26 +165,18 @@ func (m *Manager) Cancel(id string) bool {
 }
 
 func (m *Manager) CancelSession(sessionID string) int {
-	m.mu.Lock()
-	active := []*activeRequest{}
-	for _, req := range m.active {
-		if req.request.SessionID == sessionID && !req.snapshot().Stopping {
-			req.request.Stopping = true
-			active = append(active, req)
-		}
-	}
-	m.mu.Unlock()
-	for _, req := range active {
-		req.cancel()
-	}
-	return len(active)
+	return m.cancelMatching(func(req Request) bool { return req.SessionID == sessionID })
 }
 
 func (m *Manager) CancelAll() int {
+	return m.cancelMatching(func(Request) bool { return true })
+}
+
+func (m *Manager) cancelMatching(match func(Request) bool) int {
 	m.mu.Lock()
 	active := make([]*activeRequest, 0, len(m.active))
 	for _, req := range m.active {
-		if !req.snapshot().Stopping {
+		if match(req.request) && !req.snapshot().Stopping {
 			req.request.Stopping = true
 			active = append(active, req)
 		}
@@ -191,18 +186,6 @@ func (m *Manager) CancelAll() int {
 		req.cancel()
 	}
 	return len(active)
-}
-
-func (m *Manager) finish(id string) {
-	m.mu.Lock()
-	active, ok := m.active[id]
-	if ok {
-		delete(m.active, id)
-	}
-	m.mu.Unlock()
-	if ok {
-		active.cancel()
-	}
 }
 
 func (r *activeRequest) snapshot() Request {

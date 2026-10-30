@@ -53,7 +53,7 @@ func NewUnarchive(deps Deps) command.Handler {
 		description: "Unarchive a session. Defaults to current session.",
 		archived:    true,
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
-			sessionID, err := resolveSessionTarget(ctx, deps, strings.TrimSpace(req.Args))
+			sessionID, err := resolveSessionTarget(ctx, deps, req.Args)
 			if err != nil {
 				return nil, err
 			}
@@ -73,7 +73,7 @@ func NewPin(deps Deps) command.Handler {
 		usage:       "/pin [number|session_id]",
 		description: "Pin a session. Defaults to current session.",
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
-			sessionID, err := resolveSessionTarget(ctx, deps, strings.TrimSpace(req.Args))
+			sessionID, err := resolveSessionTarget(ctx, deps, req.Args)
 			if err != nil {
 				return nil, err
 			}
@@ -93,7 +93,7 @@ func NewUnpin(deps Deps) command.Handler {
 		usage:       "/unpin [number|session_id]",
 		description: "Unpin a session. Defaults to current session.",
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
-			sessionID, err := resolveSessionTarget(ctx, deps, strings.TrimSpace(req.Args))
+			sessionID, err := resolveSessionTarget(ctx, deps, req.Args)
 			if err != nil {
 				return nil, err
 			}
@@ -155,7 +155,7 @@ func NewDelete(deps Deps) command.Handler {
 		confirm:     true,
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
 			target, confirmed := parseTargetConfirm(req.Args)
-			if strings.TrimSpace(target) == "" {
+			if target == "" {
 				return nil, fmt.Errorf("usage: /delete <number|session_id> --confirm")
 			}
 			if !confirmed {
