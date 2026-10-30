@@ -47,12 +47,8 @@ type shellData struct {
 	ExitCode int    `json:"exit_code"`
 }
 
-func NewShellTool(fileGuard ...*FileGuard) ShellTool {
-	return NewShellToolWithEnvironment(processenv.Environment{}, fileGuard...)
-}
-
-func NewShellToolWithEnvironment(environment processenv.Environment, fileGuard ...*FileGuard) ShellTool {
-	return ShellTool{FileGuard: firstFileGuard(fileGuard), ProcessEnv: environment}
+func NewShellTool(environment processenv.Environment, fileGuard *FileGuard) ShellTool {
+	return ShellTool{FileGuard: fileGuard, ProcessEnv: environment}
 }
 
 func (ShellTool) Name() string {
@@ -113,27 +109,45 @@ func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (
 		timeout = time.Duration(args.TimeoutMS) * time.Millisecond
 	}
 
-	if err := rejectShellDirectoryChange(cmdText); err != nil {
-		return nil, err
+	var file *syntax.File
+	var parseErr error
+	powerShell := isPowerShellEnv()
+	if !powerShell {
+		file, parseErr = syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(cmdText), "")
+		if parseErr == nil {
+			if err := rejectBashShellDirectoryChange(file); err != nil {
+				return nil, err
+			}
+		}
 	}
-	workDir, err := resolveShellWorkDir(ctx)
+	workDir, err := workspace.CurrentWorkspaceDir(ctx)
 	if err != nil {
 		return nil, err
 	}
-	advice := analyzeShellAdvice(cmdText, workDir, t.FileGuard)
-	if advice.blockErr != nil {
-		return nil, advice.blockErr
+	var advice shellAdvice
+	assessment := toolshare.RiskAssessment{Level: toolshare.RiskHigh}
+	switch {
+	case powerShell:
+		assessment.Reasons = []string{"PowerShell 环境无法用 bash AST 解析命令，需要用户确认"}
+	case parseErr != nil:
+		assessment.Reasons = []string{"shell AST 解析失败，按高风险处理: " + parseErr.Error()}
+	default:
+		advice = analyzeBashShellAdvice(file, workDir, t.FileGuard)
+		if advice.blockErr != nil {
+			return nil, advice.blockErr
+		}
+		assessment = classifyBashShellCommand(file)
 	}
-	assessment := classifyShellCommand(cmdText)
-	if scope, ok := workspace.PathScopeFromContext(ctx); ok && scope.Restricted {
-		assessment = applyShellSandboxRisk(cmdText, assessment)
-	}
-	if assessment.Level == "" {
-		assessment.Level = t.Info().Risk
+	if scope, ok := workspace.PathScopeFromContext(ctx); ok && scope.Restricted && !powerShell {
+		if parseErr != nil {
+			assessment.Level = toolshare.RiskCritical
+			assessment.Reasons = append(assessment.Reasons, "受限调用无法解析 shell AST: "+parseErr.Error())
+		} else {
+			assessment = applyBashShellSandboxRisk(file, assessment)
+		}
 	}
 	preview := fmt.Sprintf("命令：%s\n工作目录：%s\n超时：%s", cmdText, workDir, timeout)
-	return toolshare.NewPreparedCall(req, assessment, preview, func(ctx context.Context) (result *toolshare.Result, logContent string, callErr error) {
-		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+	return toolshare.NewPreparedCall(req, assessment, preview, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
 		runCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		environment := t.ProcessEnv
@@ -144,10 +158,8 @@ func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (
 			for i, input := range args.MediaInputs {
 				path, err := mediaCall.CachedExport(runCtx, input.MediaID)
 				if err != nil {
-					{
-						callErr := fmt.Errorf("prepare shell media: %w", err)
-						return nil, callErr.Error(), callErr
-					}
+					callErr := fmt.Errorf("prepare shell media: %w", err)
+					return nil, callErr.Error(), callErr
 				}
 				variables[fmt.Sprintf("ELBOT_MEDIA_%d", i+1)] = path
 			}
@@ -164,10 +176,8 @@ func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
 		} else if err != nil {
-			{
-				callErr := fmt.Errorf("run shell: %w", err)
-				return nil, callErr.Error(), callErr
-			}
+			callErr := fmt.Errorf("run shell: %w", err)
+			return nil, callErr.Error(), callErr
 		}
 		data := shellData{Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: exitCode}
 		logContent = fmt.Sprintf("exit_code=%d", exitCode)
@@ -177,10 +187,8 @@ func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (
 		if stdout := strings.TrimRight(data.Stdout, "\r\n"); stdout != "" {
 			logContent += "\nstdout:\n" + stdout
 		}
-		{
-			result := &toolshare.Result{Content: formatShellContent(data), Warnings: advice.warnings}
-			return result, logContent, nil
-		}
+		result := &toolshare.Result{Content: formatShellContent(data), Warnings: advice.warnings}
+		return result, logContent, nil
 	}), nil
 }
 
@@ -198,23 +206,7 @@ func decodeShellArgs(req toolshare.CallRequest) (shellArgs, string, error) {
 	return args, cmdText, nil
 }
 
-func resolveShellWorkDir(ctx context.Context) (string, error) {
-	return workspace.CurrentWorkspaceDir(ctx)
-}
-
-func rejectShellDirectoryChange(cmdText string) error {
-	if isPowerShellEnv() {
-		return nil
-	}
-	return rejectBashShellDirectoryChange(cmdText)
-}
-
-func rejectBashShellDirectoryChange(cmdText string) error {
-	parser := syntax.NewParser(syntax.Variant(syntax.LangBash))
-	file, err := parser.Parse(strings.NewReader(cmdText), "")
-	if err != nil {
-		return nil
-	}
+func rejectBashShellDirectoryChange(file *syntax.File) error {
 	var blocked string
 	syntax.Walk(file, func(node syntax.Node) bool {
 		if blocked != "" {

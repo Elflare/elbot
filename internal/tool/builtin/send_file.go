@@ -84,8 +84,7 @@ func (t SendFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 		}
 		source = resolved.Path
 	}
-	return toolshare.NewPreparedCall(req, assessment, fmt.Sprintf("发送文件：%s", source), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+	return toolshare.NewPreparedCall(req, assessment, fmt.Sprintf("发送文件：%s", source), func(ctx context.Context) (*toolshare.Result, string, error) {
 		backgroundKind, _ := contextinfo.BackgroundKindFromContext(ctx)
 		out, warnings, label, err := t.buildOutput(ctx, args, source, resolved)
 		if err != nil {
@@ -96,10 +95,8 @@ func (t SendFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 				out.Target = delivery.Target{Platform: info.Source.Platform, Superadmins: true}
 			}
 		}
-		{
-			result := &toolshare.Result{Content: fmt.Sprintf("已发送文件：%s", label), Warnings: warnings, Outputs: []delivery.Output{out}}
-			return result, fmt.Sprintf("file output prepared: %s", label), nil
-		}
+		result := &toolshare.Result{Content: fmt.Sprintf("已发送文件：%s", label), Warnings: warnings, Outputs: []delivery.Output{out}}
+		return result, fmt.Sprintf("file output prepared: %s", label), nil
 	}), nil
 }
 

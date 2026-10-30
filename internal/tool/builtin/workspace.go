@@ -75,14 +75,10 @@ func (t WorkspaceTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 	var args workspaceArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			{
-				callErr := fmt.Errorf("parse workspace arguments: %w", err)
-				return nil, callErr
-			}
+			return nil, fmt.Errorf("parse workspace arguments: %w", err)
 		}
 	}
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("工作目录：%s\n重置：%t", args.Path, args.Reset), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 		store, hasStore := workspace.WorkspaceStoreFromContext(ctx)
 		if args.Reset {
 			dir, err := defaultWorkspaceDir()
@@ -101,34 +97,24 @@ func (t WorkspaceTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 						content += "\n\n" + instructions
 					}
 					if err := noticeStore.ClearWorkspaceDirWithAgentNotice(ctx, dir, markNotice); err != nil {
-						{
-							callErr := fmt.Errorf("reset workspace: %w", err)
-							return nil, callErr.Error(), callErr
-						}
-					}
-					{
-						result := &toolshare.Result{Content: content}
-						return result, logContent, nil
-					}
-				}
-				if err := store.ClearWorkspaceDir(ctx); err != nil {
-					{
 						callErr := fmt.Errorf("reset workspace: %w", err)
 						return nil, callErr.Error(), callErr
 					}
+					result := &toolshare.Result{Content: content}
+					return result, logContent, nil
+				}
+				if err := store.ClearWorkspaceDir(ctx); err != nil {
+					callErr := fmt.Errorf("reset workspace: %w", err)
+					return nil, callErr.Error(), callErr
 				}
 			}
-			{
-				result := &toolshare.Result{Content: content}
-				return result, logContent, nil
-			}
+			result := &toolshare.Result{Content: content}
+			return result, logContent, nil
 		}
 		if path := strings.TrimSpace(args.Path); path != "" {
 			if !hasStore {
-				{
-					callErr := fmt.Errorf("workspace is unavailable in this context")
-					return nil, callErr.Error(), callErr
-				}
+				callErr := fmt.Errorf("workspace is unavailable in this context")
+				return nil, callErr.Error(), callErr
 			}
 			dir, err := workspace.ValidateWorkspaceDir(path)
 			if err != nil {
@@ -147,35 +133,25 @@ func (t WorkspaceTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 					content += "\n\n" + instructions
 				}
 				if err := noticeStore.SetWorkspaceDirWithAgentNotice(ctx, dir, markNotice); err != nil {
-					{
-						callErr := fmt.Errorf("set workspace: %w", err)
-						return nil, callErr.Error(), callErr
-					}
-				}
-				{
-					result := &toolshare.Result{Content: content}
-					return result, logContent, nil
-				}
-			}
-			if err := store.SetWorkspaceDir(ctx, dir); err != nil {
-				{
 					callErr := fmt.Errorf("set workspace: %w", err)
 					return nil, callErr.Error(), callErr
 				}
-			}
-			{
 				result := &toolshare.Result{Content: content}
 				return result, logContent, nil
 			}
+			if err := store.SetWorkspaceDir(ctx, dir); err != nil {
+				callErr := fmt.Errorf("set workspace: %w", err)
+				return nil, callErr.Error(), callErr
+			}
+			result := &toolshare.Result{Content: content}
+			return result, logContent, nil
 		}
 		dir, err := workspace.CurrentWorkspaceDir(ctx)
 		if err != nil {
 			return nil, err.Error(), err
 		}
-		{
-			result := &toolshare.Result{Content: fmt.Sprintf("current workspace: %s", dir)}
-			return result, result.Content, nil
-		}
+		result := &toolshare.Result{Content: fmt.Sprintf("current workspace: %s", dir)}
+		return result, result.Content, nil
 	}), nil
 }
 

@@ -55,7 +55,6 @@ func (t discoverTool) PrepareCall(ctx context.Context, req share.CallRequest) (*
 		names = append([]string{args.Name}, names...)
 	}
 	return share.NewPreparedCall(req, share.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (_ *share.Result, logContent string, _ error) {
-		defer func() { logContent = share.TruncateLogContent(logContent, 1024) }()
 		if err := ctx.Err(); err != nil {
 			return nil, err.Error(), err
 		}

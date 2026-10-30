@@ -81,20 +81,28 @@ func NewManager(opts Options) (*Manager, error) {
 		closeMedia: make(chan struct{}, 1),
 	}
 	m.workWG.Add(2)
-	go m.cleanSharedState(rootCtx)
-	go m.cleanMedia(rootCtx)
+	go m.maintain(rootCtx, m.shared.wake, func() time.Time {
+		m.shared.mu.Lock()
+		defer m.shared.mu.Unlock()
+		m.shared.pruneExpiredLocked(m.shared.now())
+		return m.shared.expiry.next()
+	})
+	go m.maintain(rootCtx, m.media.wake, func() time.Time {
+		_ = m.pruneMedia(rootCtx, false)
+		m.media.mu.Lock()
+		defer m.media.mu.Unlock()
+		return m.media.expiry.next()
+	})
 	return m, nil
 }
 
-func (m *Manager) cleanSharedState(ctx context.Context) {
+// maintain 为每个集合独立调度；sweep 完成清理并返回下一次到期时间。
+func (m *Manager) maintain(ctx context.Context, wake <-chan struct{}, sweep func() time.Time) {
 	defer m.workWG.Done()
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 	for ctx.Err() == nil {
-		m.shared.mu.Lock()
-		m.shared.pruneExpiredLocked(m.shared.now())
-		next := m.shared.expiry.next()
-		m.shared.mu.Unlock()
+		next := sweep()
 		var due <-chan time.Time
 		if next.IsZero() {
 			timer.Stop()
@@ -105,32 +113,7 @@ func (m *Manager) cleanSharedState(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-m.shared.wake:
-		case <-due:
-		}
-	}
-}
-
-func (m *Manager) cleanMedia(ctx context.Context) {
-	defer m.workWG.Done()
-	timer := time.NewTimer(0)
-	defer timer.Stop()
-	for ctx.Err() == nil {
-		_ = m.pruneMedia(ctx, false)
-		m.media.mu.Lock()
-		next := m.media.expiry.next()
-		m.media.mu.Unlock()
-		var due <-chan time.Time
-		if next.IsZero() {
-			timer.Stop()
-		} else {
-			timer.Reset(time.Until(next))
-			due = timer.C
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-m.media.wake:
+		case <-wake:
 		case <-due:
 		}
 	}
@@ -262,14 +245,7 @@ func (m *Manager) ReplacePlugin(id string, config *share.RuntimeConfig, commit f
 	}
 	if len(workers) > 0 {
 		m.mu.Unlock()
-		failures := make([]error, len(workers))
-		var wg sync.WaitGroup
-		for i, old := range workers {
-			wg.Add(1)
-			go func() { defer wg.Done(); _, failures[i] = old.stop(context.Background()) }()
-		}
-		wg.Wait()
-		if err := errors.Join(failures...); err != nil {
+		if err := stopWorkers(workers); err != nil {
 			return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook %s stop: %v", id, err)}, fmt.Errorf("hook %s stop: %w", id, err)
 		}
 		m.mu.Lock()
@@ -296,7 +272,7 @@ func (m *Manager) ReplacePlugin(id string, config *share.RuntimeConfig, commit f
 	commit()
 	m.mu.Unlock()
 	if next != nil {
-		if err := m.startWorker(next); err != nil {
+		if err := m.startTask(next.run); err != nil {
 			return globalevents.LogResult{ResultStatus: globalevents.ResultCanceled, Content: err.Error()}, err
 		}
 	}
@@ -360,28 +336,34 @@ func (m *Manager) waitClose(ctx context.Context, done <-chan struct{}) error {
 	}
 }
 
-func (m *Manager) finishClose(ctx context.Context, workers []*worker) {
-	workerErrs := make([]error, len(workers))
+func stopWorkers(workers []*worker) error {
+	failures := make([]error, len(workers))
 	var wg sync.WaitGroup
 	for i, worker := range workers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, workerErrs[i] = worker.stop(context.Background())
+			_, failures[i] = worker.stop(context.Background())
 		}()
 	}
 	wg.Wait()
+	return errors.Join(failures...)
+}
+
+func (m *Manager) finishClose(ctx context.Context, workers []*worker) {
+	err := stopWorkers(workers)
 	m.workWG.Wait()
 
-	err := m.pruneMedia(ctx, true)
+	closeErr := m.pruneMedia(ctx, true)
 	m.mu.Lock()
-	m.workerCloseErr = errors.Join(workerErrs...)
-	m.closeErr = errors.Join(m.workerCloseErr, err)
+	m.workerCloseErr = err
+	m.closeErr = errors.Join(m.workerCloseErr, closeErr)
 	close(m.closeDone)
 	m.mu.Unlock()
 }
 
-func (m *Manager) startWorker(worker *worker) error {
+// startTask 要求调用者未持有 m.mu；关闭检查与任务登记原子完成。
+func (m *Manager) startTask(task func()) error {
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
@@ -391,7 +373,7 @@ func (m *Manager) startWorker(worker *worker) error {
 	m.mu.Unlock()
 	go func() {
 		defer m.workWG.Done()
-		worker.run()
+		task()
 	}()
 	return nil
 }
@@ -575,7 +557,7 @@ func (m *Manager) startTransient(ctx context.Context, config share.RuntimeConfig
 	}
 	m.mu.Unlock()
 	if created {
-		if err := m.startWorker(worker); err != nil {
+		if err := m.startTask(worker.run); err != nil {
 			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 		}
 	}

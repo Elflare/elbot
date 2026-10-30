@@ -4,6 +4,8 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/fileops"
+	"elbot/internal/processenv"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -101,7 +103,7 @@ func TestElwispCreatorToolCallReturnsGuide(t *testing.T) {
 
 func TestElwispCreatorDependencyDiscovery(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.NewPermission("critical", "critical", nil))
-	for _, item := range []toolshare.Tool{NewElwispCreatorTool(nil), NewReadFileTool(), NewEditFileTool(), NewShellTool(), NewRollbackFileTool(nil), NewWorkspaceTool()} {
+	for _, item := range []toolshare.Tool{NewElwispCreatorTool(nil), NewReadFileTool(nil), NewEditFileTool(fileops.NewService(nil)), NewShellTool(processenv.Environment{}, nil), NewRollbackFileTool(nil), NewWorkspaceTool()} {
 		if err := registry.Register(item); err != nil {
 			t.Fatal(err)
 		}

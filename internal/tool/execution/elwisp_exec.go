@@ -64,7 +64,6 @@ func executeELwispTool(ctx context.Context, req *http.Request, timeout time.Dura
 		if callErr != nil {
 			logContent = callErr.Error() + "\n" + logContent
 		}
-		logContent = toolshare.TruncateLogContent(logContent, 1024)
 	}()
 	toolCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

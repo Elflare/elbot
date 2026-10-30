@@ -33,7 +33,7 @@ const (
 	longMemoryMaxLimit       = 10
 )
 
-type LongMemoryTool struct{ store *longMemoryStore }
+type LongMemoryTool struct{}
 type LongMemorySearchTool struct{ store *longMemoryStore }
 type LongMemoryWriteTool struct{ store *longMemoryStore }
 
@@ -128,7 +128,7 @@ type longMemoryStore struct {
 func NewLongMemoryTools(rootDir string) []toolshare.Tool {
 	store := newLongMemoryStore(rootDir)
 	return []toolshare.Tool{
-		LongMemoryTool{store: store},
+		LongMemoryTool{},
 		LongMemorySearchTool{store: store},
 		LongMemoryWriteTool{store: store},
 	}
@@ -147,12 +147,9 @@ func (t LongMemoryTool) Schema() llm.ToolSchema {
 	return longMemoryBuilder(t.Name(), t.Info().Description).BuildSchema()
 }
 func (t LongMemoryTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
-		{
-			result := textResult("long_memory 是长期记忆入口。请按需调用 long_memory_search 或 long_memory_write。long_memory_search 不传 keywords/category 时会返回分类目录。")
-			return result, "long_memory guide returned", nil
-		}
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (*toolshare.Result, string, error) {
+		result := textResult("long_memory 是长期记忆入口。请按需调用 long_memory_search 或 long_memory_write。long_memory_search 不传 keywords/category 时会返回分类目录。")
+		return result, "long_memory guide returned", nil
 	}), nil
 }
 
@@ -174,26 +171,21 @@ func (t LongMemorySearchTool) PrepareCall(ctx context.Context, req toolshare.Cal
 	if err := lmDecodeArgs(req.Arguments, &args, t.Name()); err != nil {
 		return nil, err
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (*toolshare.Result, string, error) {
 		if strings.TrimSpace(args.Keywords) == "" && strings.TrimSpace(args.Category) == "" {
 			content, err := t.store.categories(ctx)
 			if err != nil {
 				return nil, err.Error(), err
 			}
-			{
-				result := textResult(content)
-				return result, result.Content, nil
-			}
+			result := textResult(content)
+			return result, result.Content, nil
 		}
 		content, err := t.store.search(ctx, args)
 		if err != nil {
 			return nil, err.Error(), err
 		}
-		{
-			result := textResult(content)
-			return result, result.Content, nil
-		}
+		result := textResult(content)
+		return result, result.Content, nil
 	}), nil
 }
 
@@ -224,8 +216,7 @@ func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.Call
 	case "save":
 		record := longMemoryRecord{Category: cleanLongMemoryText(args.Category), Title: cleanLongMemoryText(args.Title), Summary: cleanLongMemoryText(args.Summary), Keywords: strings.Join(splitLongMemoryKeywords(args.Keywords), " "), Content: strings.TrimSpace(args.Content)}
 		detail := fmt.Sprintf("操作：新建长期记忆\n分类：%s\n标题：%s\n摘要：%s\n关键词：%s\n正文：\n%s", record.Category, record.Title, record.Summary, record.Keywords, record.Content)
-		return toolshare.NewPreparedCall(req, assessment, detail, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-			defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+		return toolshare.NewPreparedCall(req, assessment, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
 			record, err := t.store.save(ctx, record)
 			if err != nil {
 				return nil, err.Error(), err
@@ -238,8 +229,7 @@ func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.Call
 		if err != nil {
 			return nil, err
 		}
-		return toolshare.NewPreparedCall(req, assessment, longMemoryUpdateRiskDetail(args, preview), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-			defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+		return toolshare.NewPreparedCall(req, assessment, longMemoryUpdateRiskDetail(args, preview), func(ctx context.Context) (*toolshare.Result, string, error) {
 			record, err := t.store.update(ctx, preview)
 			if err != nil {
 				return nil, err.Error(), err
@@ -282,8 +272,7 @@ func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.Call
 			record.Title, record.Category, record.Summary = parsed.Meta.Title, parsed.Meta.Category, parsed.Meta.Summary
 		}
 		detail := fmt.Sprintf("操作：永久删除长期记忆\nID：%d\n标题：%s\n分类：%s\n摘要：%s\n文件：%s", record.ID, record.Title, record.Category, record.Summary, record.FilePath)
-		return toolshare.NewPreparedCall(req, assessment, detail, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-			defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+		return toolshare.NewPreparedCall(req, assessment, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
 			path, err := t.store.delete(ctx, record, target, revision)
 			if err != nil {
 				return nil, err.Error(), err

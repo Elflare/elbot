@@ -25,7 +25,6 @@ type FileGuard struct {
 }
 
 type FileGuardRule struct {
-	Name         string
 	Root         string
 	ExactPath    string
 	ReadWarnings []string
@@ -106,7 +105,6 @@ func (r FileGuardRule) matches(path string) bool {
 
 func NewElSkillFileGuardRule(skillRoot string) FileGuardRule {
 	return FileGuardRule{
-		Name:         "el_skill",
 		Root:         skillRoot,
 		ReadWarnings: []string{warnUseReadElSkill},
 		WriteError:   warnUseModifyElSkill,
@@ -122,7 +120,6 @@ func NewElSkillFileGuardRule(skillRoot string) FileGuardRule {
 
 func NewResidentMemoryFileGuardRule(path string) FileGuardRule {
 	return FileGuardRule{
-		Name:         "resident_memory",
 		ExactPath:    path,
 		ReadWarnings: []string{warnUseReadMemory},
 		WriteError:   warnUseModifyMemory,
@@ -131,7 +128,6 @@ func NewResidentMemoryFileGuardRule(path string) FileGuardRule {
 
 func NewLongMemoryFileGuardRule(rootDir string) FileGuardRule {
 	return FileGuardRule{
-		Name:         "long_memory",
 		Root:         filepath.Join(rootDir, "memories"),
 		ReadWarnings: []string{warnUseReadLongMemory},
 		WriteError:   warnUseModifyLongMemory,
@@ -139,20 +135,6 @@ func NewLongMemoryFileGuardRule(rootDir string) FileGuardRule {
 			return strings.EqualFold(filepath.Ext(rel), ".md")
 		},
 	}
-}
-
-func firstFileGuard(values []*FileGuard) *FileGuard {
-	if len(values) == 0 {
-		return nil
-	}
-	return values[0]
-}
-
-func firstString(values []string) string {
-	if len(values) == 0 {
-		return ""
-	}
-	return strings.TrimSpace(values[0])
 }
 
 func absClean(path string) (string, error) {

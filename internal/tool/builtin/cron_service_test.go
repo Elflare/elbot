@@ -164,3 +164,45 @@ func TestCronScheduleRoundsCurrentMinute(t *testing.T) {
 		t.Fatalf("rounded update retained previous delivery: %+v", saved)
 	}
 }
+
+func TestCronWriteResultsAndErrors(t *testing.T) {
+	for _, operation := range []string{"create", "update", "disable", "delete"} {
+		for _, fail := range []bool{false, true} {
+			t.Run(operation+map[bool]string{false: "/success", true: "/failure"}[fail], func(t *testing.T) {
+				repo := &cronRepositoryStub{info: CronInfo{Name: "reminder", SourcePlatform: "qq", ScheduleMode: "cron", CronExpr: "* * * * *", TriggerMode: "direct", Message: "hello"}}
+				if fail {
+					repo.err = errors.New("repository unavailable")
+				}
+				args, err := json.Marshal(map[string]any{"operation": operation, "name": "reminder", "schedule_mode": "cron", "cron_expr": "* * * * *", "trigger_mode": "direct", "message": "hello"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Platform: "qq"})
+				result, logContent, err := callTool(ctx, cronTestTools(repo, nil)[2], share.CallRequest{Arguments: args})
+				if fail {
+					if result != nil || err != repo.err || logContent != repo.err.Error() {
+						t.Fatalf("result=%+v log=%q error=%v", result, logContent, err)
+					}
+					return
+				}
+				if err != nil || result == nil {
+					t.Fatalf("result=%+v error=%v", result, err)
+				}
+				var response struct {
+					OK  bool      `json:"ok"`
+					Job *CronInfo `json:"job"`
+				}
+				if err := json.Unmarshal([]byte(result.Content), &response); err != nil || !response.OK || logContent != result.Content {
+					t.Fatalf("result=%+v log=%q decode error=%v", result, logContent, err)
+				}
+				if operation == "create" || operation == "update" {
+					if response.Job == nil || response.Job.Name != "reminder" || len(repo.saved) != 1 {
+						t.Fatalf("job=%+v saved=%+v", response.Job, repo.saved)
+					}
+				} else if response.Job != nil || repo.name != "reminder" {
+					t.Fatalf("job=%+v target=%q", response.Job, repo.name)
+				}
+			})
+		}
+	}
+}

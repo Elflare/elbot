@@ -34,9 +34,10 @@ func (p *PreparedCall) RiskAssessment() RiskAssessment {
 }
 
 // Call 只执行准备好的操作；调用身份、取消和授权由执行入口检查。
-// 工具日志正文自行概括并限制为 1024 rune，业务结果不随日志截断。
+// 工具回调自行概括日志正文；此处统一限制为 1024 rune，业务结果和错误保持完整。
 func (p *PreparedCall) Call(ctx context.Context) (*Result, string, error) {
-	return p.run(ctx)
+	result, logContent, err := p.run(ctx)
+	return result, TruncateLogContent(logContent, 1024), err
 }
 
 func (p *PreparedCall) Matches(req CallRequest) bool {

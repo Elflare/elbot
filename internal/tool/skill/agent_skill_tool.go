@@ -73,8 +73,7 @@ func (t AgentSkillTool) PrepareCall(ctx context.Context, req toolshare.CallReque
 	}), nil
 }
 
-func (t AgentSkillTool) call(ctx context.Context, preview agentSkillPreview) (_ *toolshare.Result, logContent string, _ error) {
-	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+func (t AgentSkillTool) call(ctx context.Context, preview agentSkillPreview) (*toolshare.Result, string, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err.Error(), err
 	}

@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/processenv"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -355,7 +356,7 @@ func TestDiscoverToolsResetsMissingWorkspace(t *testing.T) {
 			ctx := workspace.WithWorkspaceStore(context.Background(), store)
 			ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 			registry := toolregistry.NewRegistry(security.NewPermission("critical", "critical", nil))
-			for _, item := range []toolshare.Tool{NewWorkspaceTool(), NewShellTool(), NewReadFileTool(), NewRollbackFileTool(nil)} {
+			for _, item := range []toolshare.Tool{NewWorkspaceTool(), NewShellTool(processenv.Environment{}, nil), NewReadFileTool(nil), NewRollbackFileTool(nil)} {
 				if err := registry.Register(item); err != nil {
 					t.Fatal(err)
 				}

@@ -134,8 +134,7 @@ func (t FinalizeElSkillTool) PrepareCall(ctx context.Context, req toolshare.Call
 		preview += "\ndiff:\n" + prepared.Preview().Diff
 	}
 	content := report.String()
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, preview, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, preview, func(ctx context.Context) (*toolshare.Result, string, error) {
 		t.manager.writeMu.Lock()
 		defer t.manager.writeMu.Unlock()
 		checkSource := func(path, target, revision string) error {

@@ -49,18 +49,16 @@ type webExtractArgs struct {
 }
 
 type jinaResponse struct {
-	URL       string            `json:"url"`
-	Title     string            `json:"title"`
-	Content   string            `json:"content"`
-	Timestamp string            `json:"timestamp"`
-	Data      *jinaResponseData `json:"data"`
+	URL     string            `json:"url"`
+	Title   string            `json:"title"`
+	Content string            `json:"content"`
+	Data    *jinaResponseData `json:"data"`
 }
 
 type jinaResponseData struct {
-	URL       string `json:"url"`
-	Title     string `json:"title"`
-	Content   string `json:"content"`
-	Timestamp string `json:"timestamp"`
+	URL     string `json:"url"`
+	Title   string `json:"title"`
+	Content string `json:"content"`
 }
 
 type webExtractData struct {
@@ -77,11 +75,10 @@ type webExtractData struct {
 }
 
 type cachedExtract struct {
-	url       string
-	title     string
-	source    string
-	content   string
-	fetchedAt time.Time
+	url     string
+	title   string
+	source  string
+	content string
 }
 
 type extractCache struct {
@@ -110,12 +107,8 @@ type extractProxyConfig struct {
 	cacheKey string
 }
 
-func NewWebExtractTool(environment ...processenv.Environment) *WebExtractTool {
-	var processEnv processenv.Environment
-	if len(environment) > 0 {
-		processEnv = environment[0]
-	}
-	return &WebExtractTool{endpoint: defaultExtractEndpoint, cache: newExtractCache(), processEnv: processEnv}
+func NewWebExtractTool(environment processenv.Environment) *WebExtractTool {
+	return &WebExtractTool{endpoint: defaultExtractEndpoint, cache: newExtractCache(), processEnv: environment}
 }
 
 func (*WebExtractTool) Name() string {
@@ -150,18 +143,12 @@ func (t *WebExtractTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 	var args webExtractArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			{
-				callErr := fmt.Errorf("parse web_extract arguments: %w", err)
-				return nil, callErr
-			}
+			return nil, fmt.Errorf("parse web_extract arguments: %w", err)
 		}
 	}
 	url := strings.TrimSpace(args.URL)
 	if url == "" {
-		{
-			callErr := fmt.Errorf("url is required")
-			return nil, callErr
-		}
+		return nil, fmt.Errorf("url is required")
 	}
 	selector := strings.TrimSpace(args.RemoveSelector)
 	if selector == "" {
@@ -191,8 +178,7 @@ func (t *WebExtractTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 	if args.TimeoutMS > 0 {
 		timeout = time.Duration(args.TimeoutMS) * time.Millisecond
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("提取网页：%s", url), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("提取网页：%s", url), func(ctx context.Context) (*toolshare.Result, string, error) {
 		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		entry, cached, err := cache.getOrFetch(ctx, key, args.ForceRefresh, func(fetchCtx context.Context) (cachedExtract, error) {
@@ -205,10 +191,8 @@ func (t *WebExtractTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 			return nil, err.Error(), err
 		}
 		data := sliceExtract(entry, args.Offset, args.MaxChars, cached)
-		{
-			result := &toolshare.Result{Content: formatExtractContent(data)}
-			return result, fmt.Sprintf("url=%s range=%d-%d/%d cached=%t source=%s\n%s\n%s", data.URL, data.Offset, data.Offset+data.ReturnedChars, data.TotalChars, data.Cached, data.Source, data.Title, data.Content), nil
-		}
+		result := &toolshare.Result{Content: formatExtractContent(data)}
+		return result, fmt.Sprintf("url=%s range=%d-%d/%d cached=%t source=%s\n%s\n%s", data.URL, data.Offset, data.Offset+data.ReturnedChars, data.TotalChars, data.Cached, data.Source, data.Title, data.Content), nil
 	}), nil
 }
 
@@ -254,12 +238,11 @@ func normalizeJinaResponse(data jinaResponse, fallbackURL string) cachedExtract 
 		data.URL = data.Data.URL
 		data.Title = data.Data.Title
 		data.Content = data.Data.Content
-		data.Timestamp = data.Data.Timestamp
 	}
 	if data.URL == "" {
 		data.URL = fallbackURL
 	}
-	return cachedExtract{url: data.URL, title: data.Title, source: "jina", content: data.Content, fetchedAt: time.Now()}
+	return cachedExtract{url: data.URL, title: data.Title, source: "jina", content: data.Content}
 }
 
 func jinaReaderURL(endpoint, targetURL string) (string, error) {
@@ -289,7 +272,7 @@ func (t *WebExtractTool) fetchDirect(ctx context.Context, targetURL string, prox
 		return cachedExtract{}, fmt.Errorf("direct extract HTTP %d: %s", resp.StatusCode, truncateHTTPBody(respBody))
 	}
 	title, content := extractSimpleHTMLText(string(respBody))
-	return cachedExtract{url: targetURL, title: title, source: "direct", content: content, fetchedAt: time.Now()}, nil
+	return cachedExtract{url: targetURL, title: title, source: "direct", content: content}, nil
 }
 
 func sliceExtract(entry cachedExtract, offset, maxChars int, cached bool) webExtractData {

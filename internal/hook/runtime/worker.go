@@ -61,7 +61,7 @@ func (w *worker) start() error {
 	w.mu.Lock()
 	w.manualStop = false
 	w.mu.Unlock()
-	return w.manager.startWorker(w)
+	return w.manager.startTask(w.run)
 }
 
 func (w *worker) waitReady(ctx context.Context) (globalevents.LogResult, error) {
@@ -263,15 +263,7 @@ func (w *worker) shouldRestart() bool {
 }
 
 func (w *worker) restartLater() {
-	w.manager.mu.Lock()
-	if w.manager.closed {
-		w.manager.mu.Unlock()
-		return
-	}
-	w.manager.workWG.Add(1)
-	w.manager.mu.Unlock()
-	go func() {
-		defer w.manager.workWG.Done()
+	_ = w.manager.startTask(func() {
 		w.mu.Lock()
 		delay := w.restartDelay
 		maxDelay := time.Duration(w.config.Restart.MaxDelaySeconds) * time.Second
@@ -288,8 +280,8 @@ func (w *worker) restartLater() {
 		case <-w.manager.rootCtx.Done():
 			return
 		}
-		_ = w.manager.startWorker(w)
-	}()
+		_ = w.manager.startTask(w.run)
+	})
 }
 
 func (w *worker) stop(ctx context.Context) (logResult globalevents.LogResult, err error) {
@@ -456,17 +448,16 @@ func (w *worker) handle(ctx context.Context, event share.Event, continuation boo
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
 	event.Outputs = append(event.Outputs, outputs...)
-	if result.Message != nil && result.Message.Segments != nil {
-		segments, err := w.manager.BuildMessageSegments(requestCtx, *result.Message.Segments, w.config.Dir)
-		if err != nil {
-			return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+	if result.Message != nil && (result.Message.Segments != nil || result.Message.Text != nil) {
+		if result.Message.Segments != nil {
+			segments, err := w.manager.BuildMessageSegments(requestCtx, *result.Message.Segments, w.config.Dir)
+			if err != nil {
+				return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+			}
+			event.Message.Segments = segments
+		} else {
+			event.Message.Segments = llm.SetSegmentText(event.Message.Segments, *result.Message.Text)
 		}
-		event.Message.Segments = segments
-		if event.Point == share.PointToolCallCompleted {
-			event.Tool.Result = llm.SegmentsTextOnly(segments)
-		}
-	} else if result.Message != nil && result.Message.Text != nil {
-		event.Message.Segments = llm.SetSegmentText(event.Message.Segments, *result.Message.Text)
 		if event.Point == share.PointToolCallCompleted {
 			event.Tool.Result = llm.SegmentsTextOnly(event.Message.Segments)
 		}
@@ -560,15 +551,7 @@ func (w *worker) runReload(reload func() (globalevents.LogResult, error)) {
 	if reload == nil {
 		return
 	}
-	w.manager.mu.Lock()
-	if w.manager.closed {
-		w.manager.mu.Unlock()
-		return
-	}
-	w.manager.workWG.Add(1)
-	w.manager.mu.Unlock()
-	go func() {
-		defer w.manager.workWG.Done()
+	_ = w.manager.startTask(func() {
 		if logResult, _ := reload(); logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled {
 			level := slog.LevelInfo
 			if logResult.ResultStatus == globalevents.ResultFailed {
@@ -585,7 +568,7 @@ func (w *worker) runReload(reload func() (globalevents.LogResult, error)) {
 				ResultStatus: logResult.ResultStatus,
 			})
 		}
-	}()
+	})
 }
 
 func (w *worker) lockRoute(ctx context.Context, key routeKey) (func(), error) {
@@ -616,23 +599,15 @@ func (w *worker) lockRoute(ctx context.Context, key routeKey) (func(), error) {
 }
 
 func (w *worker) notifyCancel(conversationID string) {
-	w.manager.mu.Lock()
-	if w.manager.closed {
-		w.manager.mu.Unlock()
-		return
-	}
-	w.manager.workWG.Add(1)
-	w.manager.mu.Unlock()
 	params := map[string]string{}
 	if strings.TrimSpace(conversationID) != "" {
 		params["conversation_id"] = conversationID
 	}
-	go func() {
-		defer w.manager.workWG.Done()
+	_ = w.manager.startTask(func() {
 		ctx, cancel := context.WithTimeout(w.manager.rootCtx, time.Duration(w.config.EventTimeoutSeconds)*time.Second)
 		defer cancel()
 		_ = w.write(ctx, frame{Type: "event", Method: "event.cancel", Params: mustJSON(params)})
-	}()
+	})
 }
 
 func (w *worker) request(ctx context.Context, method string, params any) (json.RawMessage, globalevents.LogResult, error) {
@@ -774,21 +749,12 @@ func (w *worker) readLoop(reader io.Reader) {
 				w.kill()
 				return
 			}
-			w.manager.mu.Lock()
-			if w.manager.closed {
-				w.manager.mu.Unlock()
+			if err := w.manager.startTask(func() { w.handlePluginRequest(value) }); err != nil {
 				ok := false
 				ctx, cancel := context.WithTimeout(w.manager.rootCtx, time.Duration(w.config.EventTimeoutSeconds)*time.Second)
 				_ = w.write(ctx, frame{Type: "response", ID: value.ID, OK: &ok, Error: ErrClosed.Error()})
 				cancel()
-				continue
 			}
-			w.manager.workWG.Add(1)
-			w.manager.mu.Unlock()
-			go func() {
-				defer w.manager.workWG.Done()
-				w.handlePluginRequest(value)
-			}()
 		case "event":
 			w.handlePluginEvent(value)
 		default:

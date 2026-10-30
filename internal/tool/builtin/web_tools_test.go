@@ -60,7 +60,7 @@ func TestWebSearchToolSendsDefaults(t *testing.T) {
 	}))
 	defer server.Close()
 
-	search := NewWebSearchTool()
+	search := NewWebSearchTool(processenv.Environment{})
 	search.endpoint = server.URL
 	result, logContent, err := callTool(context.Background(), search, toolshare.CallRequest{Arguments: []byte(`{"query":"elbot"}`)})
 	if err != nil {
@@ -77,7 +77,7 @@ func TestWebSearchToolSendsDefaults(t *testing.T) {
 func TestWebSearchToolRequiresKey(t *testing.T) {
 	t.Setenv(tavilyAPIKeyEnv, "")
 
-	_, _, err := callTool(context.Background(), NewWebSearchTool(), toolshare.CallRequest{Arguments: []byte(`{"query":"elbot"}`)})
+	_, _, err := callTool(context.Background(), NewWebSearchTool(processenv.Environment{}), toolshare.CallRequest{Arguments: []byte(`{"query":"elbot"}`)})
 	if err == nil || !strings.Contains(err.Error(), tavilyAPIKeyEnv) {
 		t.Fatalf("err = %v", err)
 	}
@@ -106,7 +106,7 @@ func TestWebExtractToolSlicesAndCaches(t *testing.T) {
 	}))
 	defer server.Close()
 
-	extract := NewWebExtractTool()
+	extract := NewWebExtractTool(processenv.Environment{})
 	extract.client = server.Client()
 	extract.endpoint = server.URL
 	first, logContent, err := callTool(context.Background(), extract, toolshare.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)})
@@ -141,7 +141,7 @@ func TestWebExtractToolForceRefreshReplacesCache(t *testing.T) {
 	}))
 	defer server.Close()
 
-	extract := NewWebExtractTool()
+	extract := NewWebExtractTool(processenv.Environment{})
 	extract.client = server.Client()
 	extract.endpoint = server.URL
 	first, _, err := callTool(context.Background(), extract, toolshare.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)})
@@ -182,7 +182,7 @@ func TestWebExtractToolFailedForceRefreshPreservesCache(t *testing.T) {
 	}))
 	defer server.Close()
 
-	extract := NewWebExtractTool()
+	extract := NewWebExtractTool(processenv.Environment{})
 	extract.client = server.Client()
 	extract.endpoint = server.URL
 	if _, _, err := callTool(context.Background(), extract, toolshare.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)}); err != nil {
@@ -208,7 +208,7 @@ func TestWebExtractDefaultClientUsesConfiguredProxy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	extract := NewWebExtractTool()
+	extract := NewWebExtractTool(processenv.Environment{})
 	transport, ok := extract.httpClient(proxy).Transport.(*http.Transport)
 	if !ok || transport.Proxy == nil {
 		t.Fatalf("transport = %#v", extract.httpClient(proxy).Transport)
@@ -275,7 +275,7 @@ func TestWebExtractConcurrentPaginationAndCancellation(t *testing.T) {
 					return client, nil
 				}}
 				defer transport.CloseIdleConnections()
-				extract := NewWebExtractTool()
+				extract := NewWebExtractTool(processenv.Environment{})
 				extract.client = &http.Client{Transport: transport}
 				firstCtx, firstCancel := context.WithCancel(t.Context())
 				defer firstCancel()
@@ -521,7 +521,7 @@ func TestWebExtractToolDirectFallbackWithoutJinaKey(t *testing.T) {
 	}))
 	defer server.Close()
 
-	extract := NewWebExtractTool()
+	extract := NewWebExtractTool(processenv.Environment{})
 	result, _, err := callTool(context.Background(), extract, toolshare.CallRequest{Arguments: []byte(`{"url":"` + server.URL + `","proxy":"disabled"}`)})
 	if err != nil {
 		t.Fatal(err)
@@ -546,7 +546,7 @@ func TestWebExtractToolCanDisableJina(t *testing.T) {
 	}))
 	defer server.Close()
 
-	extract := NewWebExtractTool()
+	extract := NewWebExtractTool(processenv.Environment{})
 	extract.client = server.Client()
 	extract.endpoint = "http://127.0.0.1:1"
 	result, _, err := callTool(context.Background(), extract, toolshare.CallRequest{Arguments: []byte(`{"url":"` + server.URL + `","jina":false}`)})

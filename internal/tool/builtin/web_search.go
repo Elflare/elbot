@@ -76,12 +76,8 @@ type tavilyResult struct {
 	Score   float64 `json:"score"`
 }
 
-func NewWebSearchTool(environment ...processenv.Environment) WebSearchTool {
-	var processEnv processenv.Environment
-	if len(environment) > 0 {
-		processEnv = environment[0]
-	}
-	return WebSearchTool{client: &http.Client{Timeout: 15 * time.Second}, endpoint: defaultSearchEndpoint, processEnv: processEnv}
+func NewWebSearchTool(environment processenv.Environment) WebSearchTool {
+	return WebSearchTool{client: &http.Client{Timeout: 15 * time.Second}, endpoint: defaultSearchEndpoint, processEnv: environment}
 }
 
 func (WebSearchTool) Name() string {
@@ -117,43 +113,28 @@ func (t WebSearchTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 	var args webSearchArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			{
-				callErr := fmt.Errorf("parse web_search arguments: %w", err)
-				return nil, callErr
-			}
+			return nil, fmt.Errorf("parse web_search arguments: %w", err)
 		}
 	}
 	query := strings.TrimSpace(args.Query)
 	if query == "" {
-		{
-			callErr := fmt.Errorf("query is required")
-			return nil, callErr
-		}
+		return nil, fmt.Errorf("query is required")
 	}
 	apiKey, ok := t.processEnv.Lookup(tavilyAPIKeyEnv)
 	if !ok || strings.TrimSpace(apiKey) == "" {
-		{
-			callErr := fmt.Errorf("%s is required; set it in environment or config .env", tavilyAPIKeyEnv)
-			return nil, callErr
-		}
+		return nil, fmt.Errorf("%s is required; set it in environment or config .env", tavilyAPIKeyEnv)
 	}
 	payload := normalizeTavilyRequest(args, query)
 	body, err := json.Marshal(payload)
 	if err != nil {
-		{
-			callErr := fmt.Errorf("marshal Tavily request: %w", err)
-			return nil, callErr
-		}
+		return nil, fmt.Errorf("marshal Tavily request: %w", err)
 	}
 
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("搜索：%s", query), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, t.searchEndpoint(), bytes.NewReader(body))
 		if err != nil {
-			{
-				callErr := fmt.Errorf("create Tavily request: %w", err)
-				return nil, callErr.Error(), callErr
-			}
+			callErr := fmt.Errorf("create Tavily request: %w", err)
+			return nil, callErr.Error(), callErr
 		}
 		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 		httpReq.Header.Set("Content-Type", "application/json")
@@ -161,40 +142,30 @@ func (t WebSearchTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 		client := t.httpClient()
 		resp, err := client.Do(httpReq)
 		if err != nil {
-			{
-				callErr := fmt.Errorf("Tavily request: %w", err)
-				return nil, callErr.Error(), callErr
-			}
+			callErr := fmt.Errorf("Tavily request: %w", err)
+			return nil, callErr.Error(), callErr
 		}
 		defer resp.Body.Close()
 		respBody, err := io.ReadAll(resp.Body)
 		if err != nil {
-			{
-				callErr := fmt.Errorf("read Tavily response: %w", err)
-				return nil, callErr.Error(), callErr
-			}
+			callErr := fmt.Errorf("read Tavily response: %w", err)
+			return nil, callErr.Error(), callErr
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			{
-				callErr := fmt.Errorf("Tavily HTTP %d: %s", resp.StatusCode, truncateHTTPBody(respBody))
-				return nil, callErr.Error(), callErr
-			}
+			callErr := fmt.Errorf("Tavily HTTP %d: %s", resp.StatusCode, truncateHTTPBody(respBody))
+			return nil, callErr.Error(), callErr
 		}
 		var data tavilyResponse
 		if err := json.Unmarshal(respBody, &data); err != nil {
-			{
-				callErr := fmt.Errorf("parse Tavily response: %w", err)
-				return nil, callErr.Error(), callErr
-			}
+			callErr := fmt.Errorf("parse Tavily response: %w", err)
+			return nil, callErr.Error(), callErr
 		}
-		{
-			result := &toolshare.Result{Content: formatTavilyContent(data)}
-			logContent = fmt.Sprintf("results=%d", len(data.Results))
-			for _, item := range data.Results {
-				logContent += fmt.Sprintf("\n%s %s", item.Title, item.URL)
-			}
-			return result, logContent, nil
+		result := &toolshare.Result{Content: formatTavilyContent(data)}
+		logContent = fmt.Sprintf("results=%d", len(data.Results))
+		for _, item := range data.Results {
+			logContent += fmt.Sprintf("\n%s %s", item.Title, item.URL)
 		}
+		return result, logContent, nil
 	}), nil
 }
 

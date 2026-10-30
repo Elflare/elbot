@@ -13,19 +13,7 @@ type shellAdvice struct {
 	blockErr error
 }
 
-func analyzeShellAdvice(cmdText, workDir string, fileGuard *FileGuard) shellAdvice {
-	if isPowerShellEnv() {
-		return shellAdvice{}
-	}
-	return analyzeBashShellAdvice(cmdText, workDir, fileGuard)
-}
-
-func analyzeBashShellAdvice(cmdText, workDir string, fileGuard *FileGuard) shellAdvice {
-	parser := syntax.NewParser(syntax.Variant(syntax.LangBash))
-	file, err := parser.Parse(strings.NewReader(cmdText), "")
-	if err != nil {
-		return shellAdvice{}
-	}
+func analyzeBashShellAdvice(file *syntax.File, workDir string, fileGuard *FileGuard) shellAdvice {
 	advice := &shellAdvice{}
 	syntax.Walk(file, func(node syntax.Node) bool {
 		if advice.blockErr != nil {

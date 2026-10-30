@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/processenv"
 	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
 	"os"
@@ -30,7 +31,7 @@ func TestShellMediaInputsAndCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	shell := NewShellTool()
+	shell := NewShellTool(processenv.Environment{}, nil)
 	shell.Media = toolmedia.NewMediaRuntime(center, t.TempDir(), mediatest.Publisher(center))
 	command := `cat "$ELBOT_MEDIA_1" "$ELBOT_MEDIA_2"`
 	slow := "sleep 10"

@@ -16,12 +16,10 @@ import (
 )
 
 type CronTool struct {
-	service *cronService
-	now     func() time.Time
+	now func() time.Time
 }
 type CronQueryTool struct {
 	service *cronService
-	now     func() time.Time
 }
 type CronWriteTool struct {
 	service *cronService
@@ -57,7 +55,7 @@ type cronWriteArgs struct {
 
 func NewCronTools(repo CronRepository, validateModel func(provider, model string) error, now func() time.Time) []toolshare.Tool {
 	service := &cronService{repo: repo, validateModel: validateModel, now: now}
-	return []toolshare.Tool{CronTool{service: service, now: now}, CronQueryTool{service: service, now: now}, CronWriteTool{service: service, now: now}}
+	return []toolshare.Tool{CronTool{now: now}, CronQueryTool{service: service}, CronWriteTool{service: service, now: now}}
 }
 
 // cronService 只处理任务规则；读写和模型校验均通过根部注入的能力完成。
@@ -262,13 +260,10 @@ func (t CronTool) Schema() llm.ToolSchema {
 	return cronBuilder(t.Name(), t.Info().Description).BuildSchema()
 }
 func (t CronTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (*toolshare.Result, string, error) {
 		now := t.now().Format("2006-01-02 15:04:05")
-		{
-			result := textResult("cron 是定时任务管理入口。当前本地时间：" + now + "。请调用 cron_query 或 cron_write。cron_query 不传 name 时列出 cron，传 name 时查询单个 cron。")
-			return result, "cron guide returned; current_time=" + now, nil
-		}
+		result := textResult("cron 是定时任务管理入口。当前本地时间：" + now + "。请调用 cron_query 或 cron_write。cron_query 不传 name 时列出 cron，传 name 时查询单个 cron。")
+		return result, "cron guide returned; current_time=" + now, nil
 	}), nil
 }
 
@@ -295,43 +290,38 @@ func (t CronQueryTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 	if err := decodeArgs(req.Arguments, &args); err != nil {
 		return nil, err
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (*toolshare.Result, string, error) {
 		if strings.TrimSpace(args.Name) != "" {
 			view, err := t.service.GetCron(ctx, args.Name, actorFromContext(ctx))
 			if err != nil {
 				return nil, err.Error(), err
 			}
-			{
-				result, callErr := jsonResult(view)
-				if result != nil {
-					result.NeedsElyphRules = view.TriggerMode == "llm"
-				}
-				logContent := fmt.Sprintf("name=%s enabled=%t completed=%t", view.Name, view.Enabled, view.Completed)
-				if callErr != nil {
-					logContent = callErr.Error()
-				}
-				return result, logContent, callErr
+			result, callErr := jsonResult(view)
+			if result != nil {
+				result.NeedsElyphRules = view.TriggerMode == "llm"
 			}
-		}
-		views, err := t.service.ListCrons(ctx, args.IncludeDisabled, args.IncludeCompleted, actorFromContext(ctx))
-		if err != nil {
-			return nil, err.Error(), err
-		}
-		{
-			result, callErr := jsonResult(views)
-			logContent := fmt.Sprintf("returned=%d", len(views))
-			for _, view := range views {
-				if result != nil && view.TriggerMode == "llm" {
-					result.NeedsElyphRules = true
-				}
-				logContent += fmt.Sprintf("\nname=%s enabled=%t completed=%t", view.Name, view.Enabled, view.Completed)
-			}
+			logContent := fmt.Sprintf("name=%s enabled=%t completed=%t", view.Name, view.Enabled, view.Completed)
 			if callErr != nil {
 				logContent = callErr.Error()
 			}
 			return result, logContent, callErr
 		}
+		views, err := t.service.ListCrons(ctx, args.IncludeDisabled, args.IncludeCompleted, actorFromContext(ctx))
+		if err != nil {
+			return nil, err.Error(), err
+		}
+		result, callErr := jsonResult(views)
+		logContent := fmt.Sprintf("returned=%d", len(views))
+		for _, view := range views {
+			if result != nil && view.TriggerMode == "llm" {
+				result.NeedsElyphRules = true
+			}
+			logContent += fmt.Sprintf("\nname=%s enabled=%t completed=%t", view.Name, view.Enabled, view.Completed)
+		}
+		if callErr != nil {
+			logContent = callErr.Error()
+		}
+		return result, logContent, callErr
 	}), nil
 }
 
@@ -368,81 +358,38 @@ func (t CronWriteTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 	if err := decodeArgs(req.Arguments, &args); err != nil {
 		return nil, err
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("操作：%s\n任务：%s", args.Operation, args.Name), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("操作：%s\n任务：%s", args.Operation, args.Name), func(ctx context.Context) (*toolshare.Result, string, error) {
+		var result *toolshare.Result
+		var callErr error
 		switch strings.ToLower(strings.TrimSpace(args.Operation)) {
 		case "create":
-			{
-				result, callErr := t.create(ctx, args)
-				logContent := ""
-				if result != nil {
-					logContent = result.Content
-				}
-				if callErr != nil {
-					if logContent != "" {
-						logContent += "\n"
-					}
-					logContent += callErr.Error()
-				}
-				return result, logContent, callErr
-			}
+			result, callErr = t.create(ctx, args)
 		case "update":
-			{
-				result, callErr := t.update(ctx, args)
-				logContent := ""
-				if result != nil {
-					logContent = result.Content
-				}
-				if callErr != nil {
-					if logContent != "" {
-						logContent += "\n"
-					}
-					logContent += callErr.Error()
-				}
-				return result, logContent, callErr
-			}
+			result, callErr = t.update(ctx, args)
 		case "disable":
 			if err := t.service.DisableCron(ctx, args.Name, actorFromContext(ctx)); err != nil {
 				return nil, err.Error(), err
 			}
-			{
-				result, callErr := jsonResult(map[string]any{"ok": true})
-				logContent := ""
-				if result != nil {
-					logContent = result.Content
-				}
-				if callErr != nil {
-					if logContent != "" {
-						logContent += "\n"
-					}
-					logContent += callErr.Error()
-				}
-				return result, logContent, callErr
-			}
+			result, callErr = jsonResult(map[string]any{"ok": true})
 		case "delete":
 			if err := t.service.DeleteCron(ctx, args.Name, actorFromContext(ctx)); err != nil {
 				return nil, err.Error(), err
 			}
-			{
-				result, callErr := jsonResult(map[string]any{"ok": true})
-				logContent := ""
-				if result != nil {
-					logContent = result.Content
-				}
-				if callErr != nil {
-					if logContent != "" {
-						logContent += "\n"
-					}
-					logContent += callErr.Error()
-				}
-				return result, logContent, callErr
-			}
+			result, callErr = jsonResult(map[string]any{"ok": true})
 		default:
-			{
-				callErr := fmt.Errorf("operation must be create, update, disable, or delete")
-				return nil, callErr.Error(), callErr
-			}
+			callErr = fmt.Errorf("operation must be create, update, disable, or delete")
 		}
+		logContent := ""
+		if result != nil {
+			logContent = result.Content
+		}
+		if callErr != nil {
+			if logContent != "" {
+				logContent += "\n"
+			}
+			logContent += callErr.Error()
+		}
+		return result, logContent, callErr
 	}), nil
 }
 

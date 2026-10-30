@@ -3,6 +3,7 @@ package share
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -50,5 +51,36 @@ func TestPreparedCallRunsOnlyOnExecution(t *testing.T) {
 	result, logContent, err := prepared.Call(ctx)
 	if executionContext != ctx || result != wantResult || logContent != "independent log" || err != wantErr {
 		t.Fatalf("context=%v result=%+v log=%q error=%v", executionContext, result, logContent, err)
+	}
+}
+
+func TestPreparedCallBoundsOnlyLogContent(t *testing.T) {
+	body := strings.Repeat("雪🔥", 700) + "BUSINESS_TAIL"
+	failure := errors.New(body)
+	for _, tt := range []struct {
+		name    string
+		log     string
+		wantLog string
+		result  *Result
+		err     error
+	}{
+		{name: "short", log: "summary", wantLog: "summary", result: &Result{Content: body}},
+		{name: "boundary", log: strings.Repeat("雪", 1024), wantLog: strings.Repeat("雪", 1024)},
+		{name: "unicode", log: body, wantLog: strings.Repeat("雪🔥", 511) + "雪…", result: &Result{Content: body}},
+		{name: "partial failure", log: body, wantLog: strings.Repeat("雪🔥", 511) + "雪…", result: &Result{Content: body}, err: failure},
+		{name: "failure", log: body, wantLog: strings.Repeat("雪🔥", 511) + "雪…", err: failure},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			prepared := NewPreparedCall(CallRequest{}, RiskAssessment{}, "", func(context.Context) (*Result, string, error) {
+				return tt.result, tt.log, tt.err
+			})
+			result, logContent, err := prepared.Call(t.Context())
+			if result != tt.result || err != tt.err || logContent != tt.wantLog {
+				t.Fatalf("result=%v log=%q error=%v", result, logContent, err)
+			}
+			if result != nil && result.Content != body {
+				t.Fatal("business content was truncated")
+			}
+		})
 	}
 }

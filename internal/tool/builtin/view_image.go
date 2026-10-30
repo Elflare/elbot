@@ -142,8 +142,7 @@ func (t ViewImageTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 	if path.Path != "" {
 		preview = fmt.Sprintf("查看图片：%s", path.Path)
 	}
-	return toolshare.NewPreparedCall(req, assessment, preview, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+	return toolshare.NewPreparedCall(req, assessment, preview, func(ctx context.Context) (*toolshare.Result, string, error) {
 		if args.Source == "" {
 			return t.viewMessages(ctx, args)
 		}
@@ -165,14 +164,12 @@ func (t ViewImageTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 		if err != nil {
 			return nil, err.Error(), err
 		}
-		{
-			var warnings []string
-			if path.WasAbs && !contextinfo.BackgroundContext(ctx) {
-				warnings = append(warnings, toolshare.AbsolutePathWorkspaceWarning)
-			}
-			result := &toolshare.Result{Segments: []llm.MessageSegment{imageResultSegment(item)}, Warnings: warnings}
-			return result, fmt.Sprintf("image prepared media_id=%s source=%s", item.ID, args.Source), nil
+		var warnings []string
+		if path.WasAbs && !contextinfo.BackgroundContext(ctx) {
+			warnings = append(warnings, toolshare.AbsolutePathWorkspaceWarning)
 		}
+		result := &toolshare.Result{Segments: []llm.MessageSegment{imageResultSegment(item)}, Warnings: warnings}
+		return result, fmt.Sprintf("image prepared media_id=%s source=%s", item.ID, args.Source), nil
 	}), nil
 }
 

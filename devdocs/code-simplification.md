@@ -45,7 +45,7 @@
 
 按包记录具体问题、精简建议、讨论结论与验证结果，确认方案后再实施。任务入口见 [任务清单](tasks.md)。
 
-当前进度：`internal/app`、`internal/delivery`、`internal/hook/runtime`、`internal/turn` 已完成一轮审查与调整，其余包待审查。
+当前进度：`internal/app`、`internal/delivery`、`internal/turn`、`internal/tool/builtin` 已完成一轮审查与调整；`internal/hook/runtime` 已完成第二轮精简，其余包进度分别记录。
 
 ### delivery
 
@@ -61,7 +61,16 @@
 - 临时 Worker 按插件与路由索引；waiting 直接持有所属 Worker，统一查询和过期处理。租约覆盖、停止及退出只清理对应实例；事件输出和消息校验成功后才发布 waiting。
 - RPC 回包在同一把锁内取走 pending 项并投递一次，退出只关闭剩余请求；重复回包不阻塞。路由锁在持有者和等待者全部离开后回收，Worker 状态在最后一个活动调用结束后恢复 ready。
 - 媒体租约仅使用 `busy` 表示独占，清理和重试共用日志入口；共享 KV 的 Set/CAS 共用写入路径，先清理过期项再执行 LRU 淘汰，JSON 压缩同时完成校验。
-- 删除重复的运行信息类型、字节裁剪封装和只被测试使用的默认 TTL 包装方法；实现仍位于原有 8 个生产文件。
+- 普通后台任务通过 `startTask` 原子检查关闭并登记收尾计数；持锁登记的进程退出、调用与 waiting 定时器保留各自原子边界。配置替换与整体关闭共用 `stopWorkers` 并发停止并汇总错误。
+- KV 与媒体通过 `maintain` 共用调度循环实现，但各自独立运行；清理后读取下一期限，保留到期索引、唤醒、媒体重试及关闭等待，媒体 I/O 不阻塞 KV 到期。
+- 消息修改后统一同步工具结果，保留 segments 优先级及空修改语义；工具授权复用审计阶段已选定的 invocation。当前共 9 个生产文件，无新增包、文件或公共接口。
+
+### tool/builtin
+
+- `PreparedCall.Call` 统一将独立日志正文限制为 1024 rune；工具回调生成摘要，业务结果与原始错误完整返回。准备失败及执行前拒绝仍由执行层限制日志长度。
+- Shell 在准备阶段解析一次 Bash AST，复用于目录切换、文件保护与警告、风险分类和受限路径检查；保持检查顺序、解析失败及 PowerShell 的风险策略。
+- 文件搜索与 Cron 写操作各自共用结果和日志收尾；删除无意义嵌套块、无消费者字段和辅助函数。
+- Shell、文件与 Web 工具显式接收构造依赖；编辑与撤销工具共用装配层注入的 `fileops.Service`。实现仍位于原有 21 个生产文件，工具参数、业务输出与持久化格式保持现有契约。
 
 ## 已完成精简
 
@@ -70,7 +79,8 @@
 | `internal/app` | 已完成一轮；本文件未登记具体改动及对比数据。 | 基线为 719 行。 |
 | `internal/delivery` | 统一发送与投递信息契约、复用目标校验结果、收拢降级文案并清理重复日志处理。 | 479 → 415，减少 64 行（约 13.4%）。 |
 | `internal/turn`（含子包） | 完成生命周期与确认等待职责拆分、新接口及调用方迁移、刷新与过期原子裁决；删除旧接口测试，保留有效行为覆盖。 | 932 → 1,010，增加 78 行（约 8.4%）；当前共 11 个生产文件，含装配与内部契约，未实现总代码量下降。 |
-| `internal/hook/runtime` | 合并调用与授权状态，隔离临时进程与 waiting 归属，修正回包竞态、资源回收和 CAS 淘汰顺序。 | 2,836 → 2,772，减少 64 行（约 2.3%）。 |
+| `internal/hook/runtime` | 已完成第二轮；收拢后台任务登记、并发停止与维护循环，去除消息结果和授权 token 的重复处理，保留已有修复。 | 本轮 3,051 → 2,995，减少 56 行（约 1.8%），仍为 9 个生产文件；相对初始基线 2,836 行仍增加 159 行。 |
+| `internal/tool/builtin` | 统一日志截断、复用 Shell AST、合并分支收尾、清理无效状态并显式注入依赖。 | 7,311 → 6,988，减少 323 行（约 4.4%），仍为 21 个生产文件。 |
 
 delivery 本轮连同 Hook 调用方共净减 70 行非测试 Go 代码，未拆分文件。回归覆盖表情名称、发送时机重设与复制隔离、目标选择与冲突、Hook 来源、媒体降级及日志与业务结果独立；已执行 `gofmt`，相关包测试与 `go test ./...` 通过。
 
@@ -78,4 +88,10 @@ turn 已完成五项 review 修复：统一 `Supervisor`、attempt 与 `Snapshot
 
 turn 回归保留输入与媒体合并、工具计数、停止后等待真实退出、提前回复和迟到清理；使用 `testing/synctest` 覆盖旧计时器触发后的刷新竞争及再次过期。调用方验证批准范围、拒绝、停止、过期、取消及提示发送失败。已执行 `gofmt`；相关包测试、`go test ./...` 及 Turn、Agent confirmation／execution／dialogue 的竞态检查通过。
 
-hook/runtime 本轮新增 12 个回归用例，覆盖 token 与路由锁回收、跨 Worker 取消和授权隔离、临时进程与 waiting 归属、失败响应不发布租约、并发回包与退出、活动状态和关闭收尾，以及 CAS 过期项优先回收。已执行 `gofmt`，runtime、control、pipeline、rules、share 及其子包的测试和竞态检查通过（竞态检查设置 `GORACE=atexit_sleep_ms=0`，避免测试辅助进程的退出延时影响关闭期限）。Turn 接口迁移完成后，全仓回归已覆盖 Hook 根包并通过。
+hook/runtime 本轮基线取继续精简前的 3,051 行，保留既有关闭、可取消写入及到期维护修复。已有生命周期、授权、RPC、租约及重试回归保留；补充消息修改表驱动测试，覆盖未提供修改、空消息对象、text、空 text、segments 优先及空 segments 优先，并分别验证工具完成和普通消息事件。测试代码增加 47 行，本轮 Go 代码合计净减 9 行。
+
+hook/runtime 已执行 `gofmt`，包测试及 `GORACE=atexit_sleep_ms=0 go test -race ./internal/hook/runtime` 通过。全仓回归已覆盖 Hook 全部包并通过；rules 的日志测试遵循 Tool 统一的 1024 rune 日志契约。
+
+tool/builtin 本轮连同 Tool 内部调用方共净减 332 行非测试 Go 代码。回归覆盖日志边界与完整业务结果、Shell 检查顺序与解析失败、Cron 四种写操作的结果和错误；相关构造调用及 Hook 日志测试已迁移。已执行 `gofmt`，`go test ./...` 通过。
+
+Tool 竞态检查中除 execution 外的包均通过，无数据竞争报告。execution 的 `TestRunConcurrentFailuresKeepOriginalResultOrderAndFlushOnce` 存在调度顺序断言不稳定，使用改动前执行边界的 Go overlay 已复现；本轮未调整执行调度。初次竞态检查还出现取消完成断言失败，单独重复检查及最终整包检查未再次出现。

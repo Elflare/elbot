@@ -70,7 +70,6 @@ func (t commandTool) PrepareCall(ctx context.Context, req toolshare.CallRequest)
 }
 
 func (t commandTool) call(ctx context.Context, raw json.RawMessage, args []string, run func(context.Context, string, *exec.Cmd, toolshare.MediaCall) (*toolshare.Result, error)) (result *toolshare.Result, logContent string, callErr error) {
-	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 
 	dotEnv, err := config.LoadEnvFile(filepath.Join(t.record.Root, ".env"))
 	if err != nil {

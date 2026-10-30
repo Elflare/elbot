@@ -18,15 +18,8 @@ var windowsAbsPathPattern = regexp.MustCompile(`^[A-Za-z]:/`)
 
 // 受限调用使用轻量路径约束，不是完整 OS 级沙箱。
 // 命令分析由 Shell 负责，路径范围不代表后台身份。
-func applyShellSandboxRisk(cmdText string, assessment toolshare.RiskAssessment) toolshare.RiskAssessment {
-	if isPowerShellEnv() {
-		return assessment
-	}
-	return applyBashShellSandboxRisk(cmdText, assessment)
-}
-
-func applyBashShellSandboxRisk(cmdText string, assessment toolshare.RiskAssessment) toolshare.RiskAssessment {
-	violations := validateBashShellSandboxCommand(cmdText)
+func applyBashShellSandboxRisk(file *syntax.File, assessment toolshare.RiskAssessment) toolshare.RiskAssessment {
+	violations := validateBashShellSandboxCommand(file)
 	if len(violations) == 0 {
 		return assessment
 	}
@@ -37,12 +30,7 @@ func applyBashShellSandboxRisk(cmdText string, assessment toolshare.RiskAssessme
 	return assessment
 }
 
-func validateBashShellSandboxCommand(cmdText string) []string {
-	parser := syntax.NewParser(syntax.Variant(syntax.LangBash))
-	file, err := parser.Parse(strings.NewReader(cmdText), "")
-	if err != nil {
-		return []string{"受限调用无法解析 shell AST: " + err.Error()}
-	}
+func validateBashShellSandboxCommand(file *syntax.File) []string {
 	checker := &shellSandboxChecker{}
 	syntax.Walk(file, func(node syntax.Node) bool {
 		switch n := node.(type) {

@@ -12,35 +12,12 @@ import (
 )
 
 type shellRiskClassifier struct {
-	level       toolshare.RiskLevel
-	reasons     []string
-	commands    []string
-	pipeline    []string
-	parseFailed bool
+	level    toolshare.RiskLevel
+	reasons  []string
+	pipeline []string
 }
 
-func classifyShellCommand(cmdText string) toolshare.RiskAssessment {
-	cmdText = strings.TrimSpace(cmdText)
-	if cmdText == "" {
-		return toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"命令为空，无法判断风险"}}
-	}
-	if isPowerShellEnv() {
-		return toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"PowerShell 环境无法用 bash AST 解析命令，需要用户确认"}}
-	}
-	return classifyBashShellCommand(cmdText)
-}
-
-func classifyBashShellCommand(cmdText string) toolshare.RiskAssessment {
-	cmdText = strings.TrimSpace(cmdText)
-	if cmdText == "" {
-		return toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"命令为空，无法判断风险"}}
-	}
-	parser := syntax.NewParser(syntax.Variant(syntax.LangBash))
-	file, err := parser.Parse(strings.NewReader(cmdText), "")
-	if err != nil {
-		return toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"shell AST 解析失败，按高风险处理: " + err.Error()}}
-	}
-
+func classifyBashShellCommand(file *syntax.File) toolshare.RiskAssessment {
 	c := &shellRiskClassifier{level: toolshare.RiskLow}
 	syntax.Walk(file, func(node syntax.Node) bool {
 		switch n := node.(type) {
@@ -73,7 +50,6 @@ func (c *shellRiskClassifier) classifyCall(call *syntax.CallExpr) {
 	}
 	name = commandBase(name)
 	args := literalArgs(call.Args[1:])
-	c.commands = append(c.commands, name)
 	c.pipeline = append(c.pipeline, name)
 
 	switch name {

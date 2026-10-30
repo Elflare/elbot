@@ -139,8 +139,7 @@ func (t CreateElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRe
 		files = append(files, file)
 		preview.WriteString(file.Preview().Diff)
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, preview.String(), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, preview.String(), func(ctx context.Context) (*toolshare.Result, string, error) {
 		t.manager.writeMu.Lock()
 		defer t.manager.writeMu.Unlock()
 		if _, exists := t.manager.registry.Get(name); exists {

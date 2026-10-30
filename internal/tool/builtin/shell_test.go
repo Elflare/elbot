@@ -20,7 +20,7 @@ import (
 )
 
 func TestShellToolMissingCmdHintsExpectedArgument(t *testing.T) {
-	shell := NewShellTool()
+	shell := NewShellTool(processenv.Environment{}, nil)
 	args, _ := json.Marshal(map[string]any{"Command": "ls"})
 	_, err := preparedRisk(context.Background(), shell, toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), `use {"cmd":"..."}`) {
@@ -33,13 +33,13 @@ func TestShellToolMissingCmdHintsExpectedArgument(t *testing.T) {
 }
 
 func TestShellToolHasAgentTag(t *testing.T) {
-	if got := strings.Join(NewShellTool().Info().Tags, ","); got != "agent" {
+	if got := strings.Join(NewShellTool(processenv.Environment{}, nil).Info().Tags, ","); got != "agent" {
 		t.Fatalf("shell tags = %q", got)
 	}
 }
 
 func TestShellToolRunsArbitraryCommand(t *testing.T) {
-	shell := NewShellTool()
+	shell := NewShellTool(processenv.Environment{}, nil)
 	args, _ := json.Marshal(map[string]any{"cmd": "echo elbot-shell-test"})
 	result, _, err := callTool(context.Background(), shell, toolshare.CallRequest{Arguments: args})
 	if err != nil {
@@ -69,7 +69,7 @@ func TestShellLogOutputSeparators(t *testing.T) {
 				}
 			}
 			ctx := workspacepath.WithWorkspaceStore(t.Context(), &testWorkspaceStore{dir: dir})
-			result, logContent, err := callTool(ctx, NewShellTool(), toolshare.CallRequest{Arguments: json.RawMessage(`{"cmd":"cat stdout.txt; cat stderr.txt >&2"}`)})
+			result, logContent, err := callTool(ctx, NewShellTool(processenv.Environment{}, nil), toolshare.CallRequest{Arguments: json.RawMessage(`{"cmd":"cat stdout.txt; cat stderr.txt >&2"}`)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -132,7 +132,7 @@ func TestShellToolOutputLimit(t *testing.T) {
 			}
 			ctx := workspacepath.WithWorkspaceStore(t.Context(), &testWorkspaceStore{dir: dir})
 			args, _ := json.Marshal(map[string]any{"cmd": "cat stdout.txt & cat stderr.txt >&2 & wait; exit 7"})
-			result, logContent, err := callTool(ctx, NewShellTool(), toolshare.CallRequest{Arguments: args})
+			result, logContent, err := callTool(ctx, NewShellTool(processenv.Environment{}, nil), toolshare.CallRequest{Arguments: args})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -155,7 +155,7 @@ func TestAnalyzeBashShellAdviceWarnsForCat(t *testing.T) {
 	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	advice := analyzeBashShellAdvice("cat "+filepath.ToSlash(path), filepath.Dir(path), nil)
+	advice := analyzeBashShellAdvice(parseBashForTest(t, "cat "+filepath.ToSlash(path)), filepath.Dir(path), nil)
 	text := toolshare.AppendWarnings("", advice.warnings)
 	if !strings.Contains(text, "read_file") {
 		t.Fatalf("expected read_file warning, got:\n%s", text)
@@ -171,7 +171,7 @@ func TestAnalyzeBashShellAdviceWarnsForCatElSkill(t *testing.T) {
 	if err := os.WriteFile(path, []byte("#skill reader - Reader.\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	advice := analyzeBashShellAdvice("cat "+filepath.ToSlash(path), root, NewFileGuard(NewElSkillFileGuardRule(root)))
+	advice := analyzeBashShellAdvice(parseBashForTest(t, "cat "+filepath.ToSlash(path)), root, NewFileGuard(NewElSkillFileGuardRule(root)))
 	text := toolshare.AppendWarnings("", advice.warnings)
 	if !strings.Contains(text, "read_file") || !strings.Contains(text, "read_el_skill") {
 		t.Fatalf("expected read_file and read_el_skill warnings, got:\n%s", text)
@@ -188,7 +188,7 @@ func TestAnalyzeBashShellAdviceRejectsSedEditElSkill(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
-	advice := analyzeBashShellAdvice("sed -i 's/Writer/Changed/' "+filepath.ToSlash(path), root, NewFileGuard(NewElSkillFileGuardRule(root)))
+	advice := analyzeBashShellAdvice(parseBashForTest(t, "sed -i 's/Writer/Changed/' "+filepath.ToSlash(path)), root, NewFileGuard(NewElSkillFileGuardRule(root)))
 	if advice.blockErr == nil || !strings.Contains(advice.blockErr.Error(), "modify_el_skill") {
 		t.Fatalf("expected modify_el_skill error, got %v", advice.blockErr)
 	}
@@ -199,7 +199,7 @@ func TestAnalyzeBashShellAdviceWarnsForCatResidentMemory(t *testing.T) {
 	if err := os.WriteFile(path, []byte("[[resident_memories]]\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	advice := analyzeBashShellAdvice("cat "+filepath.ToSlash(path), filepath.Dir(path), NewFileGuard(NewResidentMemoryFileGuardRule(path)))
+	advice := analyzeBashShellAdvice(parseBashForTest(t, "cat "+filepath.ToSlash(path)), filepath.Dir(path), NewFileGuard(NewResidentMemoryFileGuardRule(path)))
 	text := toolshare.AppendWarnings("", advice.warnings)
 	if !strings.Contains(text, "read_file") || !strings.Contains(text, "resident_memory_read") {
 		t.Fatalf("expected read_file and resident_memory_read warnings, got:\n%s", text)
@@ -212,7 +212,7 @@ func TestAnalyzeBashShellAdviceRejectsRedirectToResidentMemory(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
-	advice := analyzeBashShellAdvice("echo changed > "+filepath.ToSlash(path), filepath.Dir(path), NewFileGuard(NewResidentMemoryFileGuardRule(path)))
+	advice := analyzeBashShellAdvice(parseBashForTest(t, "echo changed > "+filepath.ToSlash(path)), filepath.Dir(path), NewFileGuard(NewResidentMemoryFileGuardRule(path)))
 	if advice.blockErr == nil || !strings.Contains(advice.blockErr.Error(), "resident_memory_normal") {
 		t.Fatalf("expected resident memory error, got %v", advice.blockErr)
 	}
@@ -287,7 +287,7 @@ func TestShellToolUsesWorkspaceDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
-	shell := NewShellTool()
+	shell := NewShellTool(processenv.Environment{}, nil)
 	args, _ := json.Marshal(map[string]any{"cmd": "echo workspace > workspace.txt"})
 	if _, _, err := callTool(ctx, shell, toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
@@ -298,7 +298,7 @@ func TestShellToolUsesWorkspaceDir(t *testing.T) {
 }
 
 func TestRejectBashShellDirectoryChangeCommand(t *testing.T) {
-	err := rejectBashShellDirectoryChange("cd internal && pwd")
+	err := rejectBashShellDirectoryChange(parseBashForTest(t, "cd internal && pwd"))
 	if err == nil || !strings.Contains(err.Error(), "workspace") {
 		t.Fatalf("expected cd rejection, got %v", err)
 	}
@@ -309,7 +309,7 @@ func TestAnalyzeBashShellAdviceWarnsForCommandPathArgument(t *testing.T) {
 	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	advice := analyzeBashShellAdvice("cat "+filepath.ToSlash(path), filepath.Dir(path), nil)
+	advice := analyzeBashShellAdvice(parseBashForTest(t, "cat "+filepath.ToSlash(path)), filepath.Dir(path), nil)
 	text := toolshare.AppendWarnings("", advice.warnings)
 	if !strings.Contains(text, warnUseWorkspace) {
 		t.Fatalf("expected path argument warning, got:\n%s", text)
@@ -321,7 +321,7 @@ func TestShellToolUsesSandboxDir(t *testing.T) {
 	if err := os.MkdirAll(sandboxDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	shell := NewShellTool()
+	shell := NewShellTool(processenv.Environment{}, nil)
 	args, _ := json.Marshal(map[string]any{"cmd": "pwd > cwd.txt"})
 	ctx := workspacepath.WithPathScope(contextinfo.WithBackgroundKind(context.Background(), contextinfo.BackgroundKindCron), workspacepath.PathScope{Dir: sandboxDir, Restricted: true})
 	if _, _, err := callTool(ctx, shell, toolshare.CallRequest{Arguments: args}); err != nil {
@@ -338,7 +338,7 @@ func TestShellToolUsesSandboxDir(t *testing.T) {
 
 func TestShellToolCancelStopsCommand(t *testing.T) {
 	workspace := t.TempDir()
-	shell := NewShellTool()
+	shell := NewShellTool(processenv.Environment{}, nil)
 	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -380,7 +380,7 @@ func TestShellToolCancelStopsCommand(t *testing.T) {
 
 func TestShellToolRunsLS(t *testing.T) {
 
-	shell := NewShellTool()
+	shell := NewShellTool(processenv.Environment{}, nil)
 	args, _ := json.Marshal(map[string]any{"cmd": "ls", "timeout_ms": 5000})
 	result, _, err := callTool(context.Background(), shell, toolshare.CallRequest{Arguments: args})
 	if err != nil {
@@ -393,7 +393,7 @@ func TestShellToolRunsLS(t *testing.T) {
 
 func TestShellToolUsesConfiguredEnvironment(t *testing.T) {
 	environment := processenv.New(os.Environ()).Overlay(map[string]string{"ELBOT_SHELL_ENV_TEST": "from-config"})
-	shell := NewShellToolWithEnvironment(environment)
+	shell := NewShellTool(environment, nil)
 	cmdText := `printf %s "$ELBOT_SHELL_ENV_TEST"`
 	if runtime.GOOS == "windows" {
 		cmdText = `Write-Output $env:ELBOT_SHELL_ENV_TEST`

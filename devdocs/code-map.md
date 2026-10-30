@@ -126,7 +126,9 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/tool/supervisor.go`、`lifecycle.go`：分别负责 Tool 公开入口与加载／关闭生命周期。
 - `internal/tool/registry/`、`execution/`、`builtin/`：工具目录、执行核心与内置工具。
 - `internal/tool/share/`：公共定义、schema 构造与纯数据辅助。
-- `internal/tool/share/definition.go`、`prepared.go`、`risk.go`：分别定义工具接口、准备结果与风险。
+- `internal/tool/share/definition.go`、`risk.go`：分别定义工具接口与风险；`prepared.go` 保存准备结果，执行回调并统一截断独立日志正文。
+- `internal/tool/wiring.go`：装配内置工具的显式依赖，向编辑与撤销工具注入同一文件操作服务。
+- `internal/tool/builtin/shell.go`：准备命令、解析一次 Bash AST 并执行；`shell_warnings.go`、`shell_risk.go`、`shell_sandbox.go` 复用 AST，分别负责文件保护与警告、风险分类、受限路径检查。
 - `internal/tool/builtin/cron_contract.go`：Cron 工具的存储与管理契约。
 - `internal/tool/cron_bridge.go`：Cron 存储适配、模型校验与任务变更通知。
 - `internal/tool/chat_history/manager.go`：历史查询组件与 Backend 契约；`query.go` 管查询，`media.go` 管媒体选择与获取。
@@ -201,8 +203,8 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/hook/control/service.go`：插件查询、重载与进程管理。
 - `internal/hook/control/command.go`：Hook 管理命令与补全；`internal/hook/share/logging.go` 管日志摘要。
 - `internal/hook/runtime/`：插件进程、RPC 与续接；`runtime/routes.go` 管 waiting 路由、一次性到期定时器及撤销计数，`runtime/media.go` 管媒体租约、释放通知和有上限的清理退避。
-- `internal/hook/runtime/manager.go`、`worker.go`：分别负责运行任务管理与实际退出等待，以及插件进程、可取消协议写入和统一关闭预算；`lifecycle_test.go` 测试运行时关闭，`behavior_test.go` 覆盖管道阻塞、续接取消及 waiting 到期竞态。
-- `internal/hook/runtime/expiry.go`：KV／媒体共用的带索引最小堆；`shared.go` 管 KV 续期与到期删除，`manager.go` 管两个独立维护循环及退出等待；`expiry_test.go` 验证调度、退避、错误日志与关闭。
+- `internal/hook/runtime/manager.go`、`worker.go`：分别负责运行任务登记、并发停止与实际退出等待，以及插件进程、可取消协议写入和统一关闭预算；`lifecycle_test.go` 测试运行时关闭，`behavior_test.go` 覆盖管道阻塞、续接取消及 waiting 到期竞态。
+- `internal/hook/runtime/expiry.go`：KV／媒体共用的带索引最小堆；`shared.go` 管 KV 续期与到期删除，`manager.go` 的 `maintain` 共用调度循环实现、独立运行 KV／媒体维护并等待退出；`expiry_test.go` 验证调度、退避、错误日志与关闭。
 - `internal/hook/runtime/maintenance_bench_test.go`：使用实际到期索引测量 KV／媒体维护、续期与到期成本；逐项定时器保留为调度成本对照，不包含真实媒体 I/O。
 - `internal/hook/media.go`、`logging.go`：分别负责媒体契约与日志通知；`share/output/` 转换输出，`share/protocol/` 编解码 hook.v2。
 - `internal/hook/agent_bridge_test.go`、`supervisor_test.go`、`wiring_test.go`：分别测试 Agent 桥接、总管与装配；`pipeline/continuation_test.go` 测试续接。

@@ -38,8 +38,7 @@ func newRollbackFixture(t *testing.T) *rollbackFixture {
 	binding := newRollbackTestBinding()
 	workspace := &testWorkspaceStore{dir: t.TempDir()}
 	base := workspacepath.WithWorkspaceStore(contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin}), workspace)
-	edit := NewEditFileTool(guard)
-	edit.Rollback = service
+	edit := NewEditFileTool(service)
 	return &rollbackFixture{binding: binding, service: service, edit: edit, rollback: NewRollbackFileTool(service), workspace: workspace, base: base}
 }
 
@@ -180,7 +179,6 @@ func TestRollbackToolFileGuardChecksActualTarget(t *testing.T) {
 	if _, _, err := callTool(f.ctx(), f.rollback, rollbackRequest(link)); err == nil || !strings.Contains(err.Error(), "protected target") {
 		t.Fatalf("guard: %v", err)
 	}
-	f.edit.FileGuard = guard
 	raw, _ := json.Marshal(map[string]any{"path": link, "expected_revision": fileops.ContentRevision([]byte("two")), "edits": []map[string]any{{"operation": "overwrite", "new_text": "three"}}})
 	if _, _, err := callTool(f.ctx(), f.edit, toolshare.CallRequest{Arguments: raw}); err == nil || !strings.Contains(err.Error(), "protected target") {
 		t.Fatalf("edit guard: %v", err)
@@ -193,7 +191,7 @@ func TestRollbackToolFileGuardChecksActualTarget(t *testing.T) {
 
 func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.NewPermission("critical", "critical", nil))
-	for _, item := range []toolshare.Tool{NewWorkspaceTool(), NewReadFileTool(), NewEditFileTool(), NewRollbackFileTool(fileops.NewService(nil))} {
+	for _, item := range []toolshare.Tool{NewWorkspaceTool(), NewReadFileTool(nil), NewEditFileTool(fileops.NewService(nil)), NewRollbackFileTool(fileops.NewService(nil))} {
 		if err := registry.Register(item); err != nil {
 			t.Fatal(err)
 		}

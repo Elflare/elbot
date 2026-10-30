@@ -161,8 +161,7 @@ func elSkillTargetPath(manager *Manager, name, target string) (string, string, e
 	return path, target, nil
 }
 
-func (t ModifyElSkillTool) call(ctx context.Context, preview modifyElSkillPreview) (_ *toolshare.Result, logContent string, _ error) {
-	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+func (t ModifyElSkillTool) call(ctx context.Context, preview modifyElSkillPreview) (*toolshare.Result, string, error) {
 	t.manager.writeMu.Lock()
 	defer t.manager.writeMu.Unlock()
 	result, err := preview.File.Commit(ctx)

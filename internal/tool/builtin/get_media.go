@@ -44,50 +44,31 @@ func (GetMediaTool) Schema() llm.ToolSchema {
 func (t GetMediaTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	var args getMediaArgs
 	if err := json.Unmarshal(req.Arguments, &args); err != nil {
-		{
-			callErr := fmt.Errorf("parse get_media arguments: %w", err)
-			return nil, callErr
-		}
+		return nil, fmt.Errorf("parse get_media arguments: %w", err)
 	}
 	if len(args.MessageIDs) == 0 {
-		{
-			callErr := fmt.Errorf("message_id must be a nonempty array")
-			return nil, callErr
-		}
+		return nil, fmt.Errorf("message_id must be a nonempty array")
 	}
 	if args.MediaIndex != nil && len(args.MediaIndex) != len(args.MessageIDs) {
-		{
-			callErr := fmt.Errorf("media_index must match message_id length")
-			return nil, callErr
-		}
+		return nil, fmt.Errorf("media_index must match message_id length")
 	}
 	for i, id := range args.MessageIDs {
 		args.MessageIDs[i] = parseChatHistoryMessageID(id)
 		if args.MessageIDs[i] == "" {
-			{
-				callErr := fmt.Errorf("message_id must not contain empty IDs")
-				return nil, callErr
-			}
+			return nil, fmt.Errorf("message_id must not contain empty IDs")
 		}
 		if args.MediaIndex != nil {
 			if len(args.MediaIndex[i]) == 0 {
-				{
-					callErr := fmt.Errorf("media_index entries must not be empty")
-					return nil, callErr
-				}
+				return nil, fmt.Errorf("media_index entries must not be empty")
 			}
 			for _, index := range args.MediaIndex[i] {
 				if index < 1 {
-					{
-						callErr := fmt.Errorf("media_index must contain positive integers")
-						return nil, callErr
-					}
+					return nil, fmt.Errorf("media_index must contain positive integers")
 				}
 			}
 		}
 	}
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("获取消息媒体：%s", strings.Join(args.MessageIDs, ", ")), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 		results, err := t.history.GetMedia(ctx, toolshare.MediaRequest{MessageIDs: args.MessageIDs, MediaIndex: args.MediaIndex})
 		if errors.Is(err, toolshare.ErrNoChatContext) {
 			return &toolshare.Result{Content: err.Error()}, err.Error(), nil
@@ -115,10 +96,8 @@ func (t GetMediaTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 			}
 			lines = append(lines, fmt.Sprintf("[#%s] %d. %s", result.MessageID, result.Index, text))
 		}
-		{
-			result := &toolshare.Result{Content: strings.Join(lines, "\n")}
-			return result, result.Content + logContent, nil
-		}
+		result := &toolshare.Result{Content: strings.Join(lines, "\n")}
+		return result, result.Content + logContent, nil
 	}), nil
 }
 

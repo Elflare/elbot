@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"elbot/internal/hook/share"
+	"elbot/internal/llm"
 )
 
 func simplificationManager(t *testing.T) *Manager {
@@ -46,6 +47,52 @@ func TestWorkerInvocationReleasesToolContext(t *testing.T) {
 	}
 	if len(m.tokens) != 0 {
 		t.Fatalf("completed event retained %d tool contexts", len(m.tokens))
+	}
+}
+
+func TestWorkerMessagePatchPreservesToolResult(t *testing.T) {
+	for _, test := range []struct {
+		name, response, wantText, wantResult string
+	}{
+		{"unchanged", "{}", "before", "original"},
+		{"empty_message", `{"message":{}}`, "before", "original"},
+		{"text", `{"message":{"text":"after"}}`, "after", "after"},
+		{"empty_text", `{"message":{"text":""}}`, "", ""},
+		{"segments_first", `{"message":{"segments":[{"type":"text","text":"segments"}],"text":"ignored"}}`, "segments", "segments"},
+		{"empty_segments_first", `{"message":{"segments":[],"text":"ignored"}}`, "", ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m := simplificationManager(t)
+			w := newWorker(m, share.RuntimeConfig{ID: "demo", EventTimeoutSeconds: 2})
+			w.status = StatusReady
+			w.stdin = protocolTestWriter{write: func(data []byte) error {
+				var request frame
+				if err := json.Unmarshal(data, &request); err != nil {
+					return err
+				}
+				ok := true
+				w.deliverResponse(frame{ID: request.ID, OK: &ok, Result: json.RawMessage(test.response)})
+				return nil
+			}}
+			for _, point := range []share.Point{share.PointToolCallCompleted, share.PointPlatformMessageReceived} {
+				event := share.Event{
+					Point:   point,
+					Message: share.MessagePayload{Segments: []llm.MessageSegment{{Type: llm.SegmentText, Text: "before"}}},
+					Tool:    share.ToolPayload{Result: "original"},
+				}
+				got, _, err := w.handle(t.Context(), event, false, "", share.Control{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				wantResult := test.wantResult
+				if point != share.PointToolCallCompleted {
+					wantResult = "original"
+				}
+				if llm.SegmentsTextOnly(got.Message.Segments) != test.wantText || got.Tool.Result != wantResult {
+					t.Fatalf("point=%s message=%#v tool=%#v", point, got.Message, got.Tool)
+				}
+			}
+		})
 	}
 }
 

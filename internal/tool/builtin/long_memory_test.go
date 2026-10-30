@@ -425,7 +425,7 @@ func TestLongMemorySearchAndWriteTools(t *testing.T) {
 	t.Cleanup(func() { _ = store.close() })
 	var searchTool *LongMemorySearchTool
 	var writeTool *LongMemoryWriteTool
-	for _, memoryTool := range []toolshare.Tool{LongMemoryTool{store: store}, LongMemorySearchTool{store: store}, LongMemoryWriteTool{store: store}} {
+	for _, memoryTool := range []toolshare.Tool{LongMemoryTool{}, LongMemorySearchTool{store: store}, LongMemoryWriteTool{store: store}} {
 		switch typed := memoryTool.(type) {
 		case LongMemorySearchTool:
 			searchTool = &typed

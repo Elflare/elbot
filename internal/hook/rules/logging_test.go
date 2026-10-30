@@ -199,7 +199,7 @@ func (t *argumentLoggingTool) PrepareCall(ctx context.Context, call toolshare.Ca
 }
 
 func TestRulesJSONTruncationPreservesUnicodeMarkerAndBusinessData(t *testing.T) {
-	for _, length := range []int{255, 256, 257, 511, 512, 513, 2049} {
+	for _, length := range []int{255, 256, 257, 511, 512, 513, 1023, 1024, 1025, 2049} {
 		t.Run(fmt.Sprint(length), func(t *testing.T) {
 			body := strings.Repeat("雪", length)
 			registry := tool.NewRegistry(security.DefaultPermission())
@@ -221,7 +221,7 @@ func TestRulesJSONTruncationPreservesUnicodeMarkerAndBusinessData(t *testing.T) 
 			if length > 512 {
 				want = strings.Repeat("雪", 511) + "…"
 			}
-			// The publishing layer limits arguments, not a tool's independent body.
+			// Publishing bounds arguments; PreparedCall independently bounds the tool log.
 			if content["arguments"] != want {
 				t.Fatalf("prepared arguments=%v", content["arguments"])
 			}
@@ -229,7 +229,11 @@ func TestRulesJSONTruncationPreservesUnicodeMarkerAndBusinessData(t *testing.T) 
 			if err := json.Unmarshal([]byte((*records)[1].Content), &content); err != nil {
 				t.Fatal(err)
 			}
-			if content["result"] != body {
+			want = body
+			if length > 1024 {
+				want = strings.Repeat("雪", 1023) + "…"
+			}
+			if content["result"] != want {
 				t.Fatalf("completed content=%v", content)
 			}
 		})

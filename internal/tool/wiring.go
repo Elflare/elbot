@@ -158,8 +158,7 @@ func registerAll(registry *toolregistry.Registry, opts registerOptions) error {
 		builtin.NewLongMemoryFileGuardRule(opts.longMemoryDir),
 	)
 	opts.fileRollback.CheckWrite = fileGuard.CheckWrite
-	editFile := builtin.NewEditFileTool(fileGuard)
-	editFile.Rollback = opts.fileRollback
+	editFile := builtin.NewEditFileTool(opts.fileRollback)
 	if err := registry.Register(builtin.NewReadFileTool(fileGuard)); err != nil {
 		return err
 	}
@@ -169,7 +168,7 @@ func registerAll(registry *toolregistry.Registry, opts registerOptions) error {
 	if err := registry.Register(builtin.NewRollbackFileTool(opts.fileRollback)); err != nil {
 		return err
 	}
-	shell := builtin.NewShellToolWithEnvironment(opts.processEnv, fileGuard)
+	shell := builtin.NewShellTool(opts.processEnv, fileGuard)
 	shell.Media = mediaRuntime
 	if err := registry.Register(shell); err != nil {
 		return err

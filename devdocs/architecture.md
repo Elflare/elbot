@@ -162,7 +162,8 @@ flowchart LR
     R["tool/execution/runner.go<br/>批次编排与完成队列"] --> P["tool/execution/prepared.go<br/>解析、授权与风险准备"]
     P --> Q["agent/confirmation/confirmation.go<br/>自动放行或交互确认"]
     Q --> E["tool/execution/executor.go、elwisp_exec.go<br/>执行固定调用"]
-    E --> R
+    E --> L["tool/share/prepared.go<br/>执行回调与统一日志截断"]
+    L --> R
     R --> C["agent/dialogue/commit.go、responses/persistence.go<br/>结果槽、逐项提交与快照"]
     C --> S["storage/sqlite/tool_batch.go、dialogue_repository.go<br/>结果与相关状态原子保存"]
 ```
@@ -172,13 +173,15 @@ flowchart LR
 - 副作用前保存整批调用及稳定结果槽；结果、统计、媒体引用与发现状态逐项原子提交，全部完成才续跑模型。返回后但提交前中断仍视为未知，保存失败不重做已完成动作。
 - 准备及完成处理前应用接管快照；已准备调用的权限与沙箱固定，发送使用最新去向。完成 Hook 只处理实际执行结果；Chat 可改工具参数，Responses 保持原生调用不变。
 - 请求拥有的外部命令由 processenv 统一取消进程树，并等待输出收集退出；已脱离进程组的守护进程和远端已提交动作不在取消保证内。
-- 实际调用的开始／结束审计先于后续发送、Hook 和提交，保留原始执行结论，日志摘要不截断业务结果。
+- 实际调用的开始／结束审计先于后续发送、Hook 和提交，保留原始执行结论。工具回调生成独立日志摘要，`PreparedCall.Call` 统一限制为 1024 rune，业务结果和原始错误保持完整；准备失败及执行前拒绝由执行层单独限制日志长度。
 
 <!-- locator:tool -->
 ## Tool Runtime、工具状态与文件
 
 Tool 拥有目录、schema、风险准备、执行与工具状态；Permission 决定拒绝、放行或确认，Agent 承接交互。内置工具表达业务规则，根部适配存储、模型、媒体等外部能力。
 
+- 内置工具构造显式接收环境、文件保护或服务依赖；装配层向编辑与撤销工具注入同一 `fileops.Service`。
+- Shell 准备阶段只解析一次 Bash AST，依次检查目录切换、工作目录、文件保护与警告、命令风险和受限路径。解析失败保持高风险，受限调用提升至 critical；PowerShell 保持现有高风险策略。
 - 首次 Skill 扫描由目录消费方共享等待，单个等待者取消不取消扫描；加载错误不能解释为工具不存在，重载失败保留旧目录。
 - Session 的 discovered_tools 完整声明是已发现工具的唯一事实，不按当前目录重建 schema。发现／预载状态与对应材料或工具结果原子提交，成功后才更新执行快照。
 - Registry 统一筛选协议、模式与权限资格。Chat 不开放工具，Work 可通过基础 discover_tool 发现，Background 使用预载声明；标签授权声明不因当前运行资格而缩减。

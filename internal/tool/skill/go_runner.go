@@ -66,7 +66,6 @@ func (r GoRunner) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*
 }
 
 func (r GoRunner) call(ctx context.Context, args goRunnerArgs, record record, run func(context.Context, string, *exec.Cmd, toolshare.MediaCall) (*toolshare.Result, error)) (result *toolshare.Result, logContent string, callErr error) {
-	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 
 	dotEnv, err := config.LoadEnvFile(filepath.Join(record.Root, ".env"))
 	if err != nil {

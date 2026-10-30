@@ -32,8 +32,7 @@ type ReadFileTool struct {
 }
 
 type EditFileTool struct {
-	FileGuard *FileGuard
-	Rollback  *fileops.Service
+	Rollback *fileops.Service
 }
 
 type readFileArgs struct {
@@ -81,8 +80,8 @@ type editFileArgs struct {
 	Edits            []fileops.Edit `json:"edits"`
 }
 
-func NewReadFileTool(fileGuard ...*FileGuard) ReadFileTool {
-	return ReadFileTool{FileGuard: firstFileGuard(fileGuard), astCache: newDirectoryASTCache()}
+func NewReadFileTool(fileGuard *FileGuard) ReadFileTool {
+	return ReadFileTool{FileGuard: fileGuard, astCache: newDirectoryASTCache()}
 }
 
 func (ReadFileTool) Name() string {
@@ -131,10 +130,7 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 	var args readFileArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			{
-				callErr := fmt.Errorf("parse read_file arguments: %w", err)
-				return nil, callErr
-			}
+			return nil, fmt.Errorf("parse read_file arguments: %w", err)
 		}
 	}
 	mode, err := normalizeReadFileMode(args.Mode)
@@ -150,8 +146,7 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 	if isSensitiveReadFile(path) {
 		assessment = toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"读取可能包含凭据的敏感文件，需要用户确认"}}
 	}
-	return toolshare.NewPreparedCall(req, assessment, fmt.Sprintf("读取：%s\n模式：%s", path, mode), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+	return toolshare.NewPreparedCall(req, assessment, fmt.Sprintf("读取：%s\n模式：%s", path, mode), func(ctx context.Context) (*toolshare.Result, string, error) {
 		var warnings []string
 		if resolved.WasAbs && !contextinfo.BackgroundContext(ctx) {
 			warnings = append(warnings, toolshare.AbsolutePathWorkspaceWarning)
@@ -160,115 +155,77 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 		if err != nil {
 			return nil, err.Error(), err
 		}
+		var result *toolshare.Result
 		if info.IsDir() {
 			if mode == readFileModeRead {
-				{
-					callErr := fmt.Errorf("read mode requires a file path")
-					return nil, callErr.Error(), callErr
-				}
+				callErr := fmt.Errorf("read mode requires a file path")
+				return nil, callErr.Error(), callErr
 			}
-			{
-				result, callErr := readFileDirectorySearch(ctx, path, mode, args, warnings, t.astCache)
-				logContent := ""
-				if result != nil {
-					logContent = result.Content
-				}
-				if callErr != nil {
-					logContent = callErr.Error() + "\n" + logContent
-				}
-				return result, logContent, callErr
-			}
-		}
-		if info.Size() > fileToolMaxBytes {
-			{
+			result, err = readFileDirectorySearch(ctx, path, mode, args, warnings, t.astCache)
+		} else {
+			if info.Size() > fileToolMaxBytes {
 				callErr := fmt.Errorf("file too large: %d bytes exceeds %d", info.Size(), fileToolMaxBytes)
 				return nil, callErr.Error(), callErr
 			}
-		}
-		largeFile := info.Size() > fileToolDetailedMaxBytes
-		if largeFile && (mode == readFileModeAST || mode == readFileModeASTFunction) {
-			{
+			largeFile := info.Size() > fileToolDetailedMaxBytes
+			if largeFile && (mode == readFileModeAST || mode == readFileModeASTFunction) {
 				callErr := fmt.Errorf("%s mode is disabled for this %d-byte file; use read or grep mode", mode, info.Size())
 				return nil, callErr.Error(), callErr
 			}
-		}
-		file, err := fileops.ReadFileWithLimit(path, args.Encoding, fileToolMaxBytes)
-		if err != nil {
-			return nil, err.Error(), err
-		}
-		lines := fileops.SplitLines(file.Text)
-		warnings = append(warnings, t.FileGuard.ReadWarnings(path)...)
-		if largeFile {
-			warnings = append(warnings, fmt.Sprintf("large file: %d bytes; ast and ast_function modes are disabled", info.Size()))
-		}
-		switch mode {
-		case readFileModeGrep:
-			{
-				result, callErr := readFileGrepResult(file, lines, args.Query, args.ContextLines, args.MaxMatches, args.Index, warnings)
-				logContent := ""
-				if result != nil {
-					logContent = result.Content
-				}
-				if callErr != nil {
-					logContent = callErr.Error() + "\n" + logContent
-				}
-				return result, logContent, callErr
+			var file fileops.File
+			file, err = fileops.ReadFileWithLimit(path, args.Encoding, fileToolMaxBytes)
+			if err != nil {
+				return nil, err.Error(), err
 			}
-		case readFileModeAST:
-			{
-				result, callErr := readFileASTResult(file, args.Query, args.ContextLines, args.MaxMatches, args.Index, warnings)
-				logContent := ""
-				if result != nil {
-					logContent = result.Content
-				}
-				if callErr != nil {
-					logContent = callErr.Error() + "\n" + logContent
-				}
-				return result, logContent, callErr
+			lines := fileops.SplitLines(file.Text)
+			warnings = append(warnings, t.FileGuard.ReadWarnings(path)...)
+			if largeFile {
+				warnings = append(warnings, fmt.Sprintf("large file: %d bytes; ast and ast_function modes are disabled", info.Size()))
 			}
-		case readFileModeASTFunction:
-			{
-				result, callErr := readFileASTFunctionResult(file, args.Query, args.MaxMatches, args.Index, warnings)
-				logContent := ""
-				if result != nil {
-					logContent = result.Content
+			switch mode {
+			case readFileModeGrep:
+				result, err = readFileGrepResult(file, lines, args.Query, args.ContextLines, args.MaxMatches, args.Index, warnings)
+			case readFileModeAST:
+				result, err = readFileASTResult(file, args.Query, args.ContextLines, args.MaxMatches, args.Index, warnings)
+			case readFileModeASTFunction:
+				result, err = readFileASTFunctionResult(file, args.Query, args.MaxMatches, args.Index, warnings)
+			case readFileModeRead:
+				start, end, truncated, err := fileops.NormalizeReadRange(len(lines), int(args.StartLine), args.EndLine)
+				if err != nil {
+					return nil, err.Error(), err
 				}
-				if callErr != nil {
-					logContent = callErr.Error() + "\n" + logContent
+				var b strings.Builder
+				fmt.Fprintf(&b, "file: %s\n", file.Path)
+				fmt.Fprintf(&b, "encoding: %s\n", file.Encoding)
+				fmt.Fprintf(&b, "revision: %s\n", fileops.ContentRevision(file.Bytes))
+				if len(lines) == 0 {
+					fmt.Fprintf(&b, "lines: 0/0\n")
+					fmt.Fprintf(&b, "empty: true\n")
+					fmt.Fprintf(&b, "truncated: %t\n", truncated)
+					b.WriteString("content:\n")
+					result := &toolshare.Result{Content: b.String(), Warnings: warnings}
+					return result, fmt.Sprintf("file=%s mode=%s lines=0/0 empty=true", file.Path, mode), nil
 				}
-				return result, logContent, callErr
-			}
-		}
-		start, end, truncated, err := fileops.NormalizeReadRange(len(lines), int(args.StartLine), args.EndLine)
-		if err != nil {
-			return nil, err.Error(), err
-		}
-		var b strings.Builder
-		fmt.Fprintf(&b, "file: %s\n", file.Path)
-		fmt.Fprintf(&b, "encoding: %s\n", file.Encoding)
-		fmt.Fprintf(&b, "revision: %s\n", fileops.ContentRevision(file.Bytes))
-		if len(lines) == 0 {
-			fmt.Fprintf(&b, "lines: 0/0\n")
-			fmt.Fprintf(&b, "empty: true\n")
-			fmt.Fprintf(&b, "truncated: %t\n", truncated)
-			b.WriteString("content:\n")
-			{
-				result := &toolshare.Result{Content: b.String(), Warnings: warnings}
-				return result, fmt.Sprintf("file=%s mode=%s lines=0/0 empty=true", file.Path, mode), nil
-			}
-		}
 
-		fmt.Fprintf(&b, "lines: %d-%d/%d\n", start, end, len(lines))
-		fmt.Fprintf(&b, "truncated: %t\n", truncated)
-		b.WriteString("content:\n")
-		width := len(fmt.Sprintf("%d", end))
-		for i := start; i <= end; i++ {
-			fmt.Fprintf(&b, "%*d | %s\n", width, i, lines[i-1])
+				fmt.Fprintf(&b, "lines: %d-%d/%d\n", start, end, len(lines))
+				fmt.Fprintf(&b, "truncated: %t\n", truncated)
+				b.WriteString("content:\n")
+				width := len(fmt.Sprintf("%d", end))
+				for i := start; i <= end; i++ {
+					fmt.Fprintf(&b, "%*d | %s\n", width, i, lines[i-1])
+				}
+				result := &toolshare.Result{Content: b.String(), Warnings: warnings}
+				return result, fmt.Sprintf("file=%s mode=%s lines=%d-%d/%d truncated=%t\n%s", file.Path, mode, start, end, len(lines), truncated, strings.Join(lines[start-1:end], "\n")), nil
+			}
 		}
-		{
-			result := &toolshare.Result{Content: b.String(), Warnings: warnings}
-			return result, fmt.Sprintf("file=%s mode=%s lines=%d-%d/%d truncated=%t\n%s", file.Path, mode, start, end, len(lines), truncated, strings.Join(lines[start-1:end], "\n")), nil
+		logContent := ""
+		if result != nil {
+			logContent = result.Content
 		}
+		if err != nil {
+			logContent = err.Error() + "\n" + logContent
+		}
+		return result, logContent, err
 	}), nil
 }
 
@@ -338,9 +295,8 @@ func readFileGrepResult(file fileops.File, lines []string, grep string, contextL
 	return &toolshare.Result{Content: b.String(), Warnings: warnings}, nil
 }
 
-func NewEditFileTool(fileGuard ...*FileGuard) EditFileTool {
-	guard := firstFileGuard(fileGuard)
-	return EditFileTool{FileGuard: guard, Rollback: fileops.NewService(guard.CheckWrite)}
+func NewEditFileTool(service *fileops.Service) EditFileTool {
+	return EditFileTool{Rollback: service}
 }
 
 func (EditFileTool) Name() string {
@@ -546,7 +502,6 @@ func fileToolEditOptions() fileops.EditFileOptions {
 }
 
 func (t EditFileTool) call(ctx context.Context, prepared *fileops.PreparedEdit) (_ *toolshare.Result, logContent string, _ error) {
-	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 	result, resolved, err := prepared.Commit(ctx)
 	if err != nil {
 		return nil, err.Error(), err
@@ -563,10 +518,8 @@ func (t EditFileTool) call(ctx context.Context, prepared *fileops.PreparedEdit) 
 	if lease, _ := t.Rollback.EditSession(ctx); lease != nil && !result.RollbackAvailable {
 		warnings = append(warnings, "文件已编辑，但撤销备份因会话失效或容量限制未保留。")
 	}
-	{
-		logContent = fmt.Sprintf("edited=%s created=%t dry_run=%t rollback_available=%t\ndiff:\n%s", result.Path, result.Created, result.DryRun, result.RollbackAvailable, result.Diff)
-		return &toolshare.Result{Content: content, Warnings: warnings}, logContent, nil
-	}
+	logContent = fmt.Sprintf("edited=%s created=%t dry_run=%t rollback_available=%t\ndiff:\n%s", result.Path, result.Created, result.DryRun, result.RollbackAvailable, result.Diff)
+	return &toolshare.Result{Content: content, Warnings: warnings}, logContent, nil
 }
 
 func editServiceRequest(args editFileArgs) fileops.EditRequest {
@@ -580,8 +533,4 @@ func decodeStrictFileArgs(raw json.RawMessage, args any) error {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	return dec.Decode(args)
-}
-
-func resolveFileToolPath(ctx context.Context, rawPath string, allowCreate bool) (workspace.ResolvedPath, error) {
-	return workspace.ResolveWorkspacePath(ctx, rawPath, workspace.PathResolveOptions{AllowCreate: allowCreate})
 }

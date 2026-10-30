@@ -90,12 +90,9 @@ func (t ResidentMemoryTool) Schema() llm.ToolSchema {
 	return toolshare.NewBuilder(t.Name()).Description(t.Info().Description).BuildSchema()
 }
 func (t ResidentMemoryTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
-		{
-			result := &toolshare.Result{Content: "resident_memory 是常驻记忆管理入口。请调用 resident_memory_read、resident_memory_normal 或 resident_memory_core。"}
-			return result, "resident_memory guide returned", nil
-		}
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (*toolshare.Result, string, error) {
+		result := &toolshare.Result{Content: "resident_memory 是常驻记忆管理入口。请调用 resident_memory_read、resident_memory_normal 或 resident_memory_core。"}
+		return result, "resident_memory guide returned", nil
 	}), nil
 }
 
@@ -118,32 +115,26 @@ func (t ResidentMemoryReadTool) PrepareCall(ctx context.Context, req toolshare.C
 		section = "all"
 	}
 	if section != "all" && section != "core" && section != "normal" {
-		{
-			callErr := fmt.Errorf("section must be all, core or normal")
-			return nil, callErr
-		}
+		return nil, fmt.Errorf("section must be all, core or normal")
 	}
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
 		memory, err := t.service.Read(ctx)
 		if err != nil {
 			return nil, err.Error(), err
 		}
-		result := memoryReadResult{Limits: t.service.LimitsOrDefault(), Status: "ok"}
+		data := memoryReadResult{Limits: t.service.LimitsOrDefault(), Status: "ok"}
 		if section == "all" || section == "core" {
-			result.Core = memory.Core
+			data.Core = memory.Core
 		}
 		if section == "all" || section == "normal" {
-			result.Normal = memory.Normal
+			data.Normal = memory.Normal
 		}
-		logContent = fmt.Sprintf("section=%s core_bytes=%d normal_bytes=%d", section, len(result.Core), len(result.Normal))
-		{
-			result, callErr := memoryJSONResult(result)
-			if callErr != nil {
-				logContent = callErr.Error()
-			}
-			return result, logContent, callErr
+		logContent = fmt.Sprintf("section=%s core_bytes=%d normal_bytes=%d", section, len(data.Core), len(data.Normal))
+		result, callErr := memoryJSONResult(data)
+		if callErr != nil {
+			logContent = callErr.Error()
 		}
+		return result, logContent, callErr
 	}), nil
 }
 
@@ -162,50 +153,37 @@ func (t ResidentMemoryNormalTool) PrepareCall(ctx context.Context, req toolshare
 	if err := decodeMemoryArgs(req.Arguments, &args); err != nil {
 		return nil, err
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("操作：%s\n范围：普通常驻记忆", args.Action), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("操作：%s\n范围：普通常驻记忆", args.Action), func(ctx context.Context) (*toolshare.Result, string, error) {
 		switch strings.ToLower(strings.TrimSpace(args.Action)) {
 		case "append", "add":
 			if args.Content == nil {
-				{
-					callErr := fmt.Errorf("normal content is required")
-					return nil, callErr.Error(), callErr
-				}
+				callErr := fmt.Errorf("normal content is required")
+				return nil, callErr.Error(), callErr
 			}
 			if err := t.service.AppendNormal(ctx, *args.Content); err != nil {
 				return nil, err.Error(), err
 			}
-			{
-				result := &toolshare.Result{Content: "已追加普通常驻记忆。"}
-				return result, result.Content, nil
-			}
+			result := &toolshare.Result{Content: "已追加普通常驻记忆。"}
+			return result, result.Content, nil
 		case "write", "set", "update":
 			if args.Content == nil {
-				{
-					callErr := fmt.Errorf("normal content is required")
-					return nil, callErr.Error(), callErr
-				}
+				callErr := fmt.Errorf("normal content is required")
+				return nil, callErr.Error(), callErr
 			}
 			if err := t.service.WriteNormal(ctx, *args.Content); err != nil {
 				return nil, err.Error(), err
 			}
-			{
-				result := &toolshare.Result{Content: "已更新普通常驻记忆。"}
-				return result, result.Content, nil
-			}
+			result := &toolshare.Result{Content: "已更新普通常驻记忆。"}
+			return result, result.Content, nil
 		case "delete", "clear":
 			if err := t.service.DeleteNormal(ctx); err != nil {
 				return nil, err.Error(), err
 			}
-			{
-				result := &toolshare.Result{Content: "已清空普通常驻记忆。"}
-				return result, result.Content, nil
-			}
+			result := &toolshare.Result{Content: "已清空普通常驻记忆。"}
+			return result, result.Content, nil
 		default:
-			{
-				callErr := fmt.Errorf("action must be append, write or delete")
-				return nil, callErr.Error(), callErr
-			}
+			callErr := fmt.Errorf("action must be append, write or delete")
+			return nil, callErr.Error(), callErr
 		}
 	}), nil
 }
@@ -225,20 +203,14 @@ func (t ResidentMemoryCoreTool) PrepareCall(ctx context.Context, req toolshare.C
 		return nil, err
 	}
 	if args.Content == nil {
-		{
-			callErr := fmt.Errorf("core content is required")
-			return nil, callErr
-		}
+		return nil, fmt.Errorf("core content is required")
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("覆盖核心常驻记忆：\n%s", *args.Content), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-		defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("覆盖核心常驻记忆：\n%s", *args.Content), func(ctx context.Context) (*toolshare.Result, string, error) {
 		if err := t.service.WriteCore(ctx, *args.Content); err != nil {
 			return nil, err.Error(), err
 		}
-		{
-			result := &toolshare.Result{Content: "已更新核心常驻记忆。"}
-			return result, result.Content, nil
-		}
+		result := &toolshare.Result{Content: "已更新核心常驻记忆。"}
+		return result, result.Content, nil
 	}), nil
 }
 

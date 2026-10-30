@@ -189,8 +189,7 @@ func TestRunEditPreservesConfirmationSnapshot(t *testing.T) {
 			if err := os.WriteFile(path, []byte("before"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			editor := NewEditFileTool()
-			editor.Rollback = service
+			editor := NewEditFileTool(service)
 			registry := toolregistry.NewRegistry(security.DefaultPermission())
 			if err := registry.Register(editor); err != nil {
 				t.Fatal(err)

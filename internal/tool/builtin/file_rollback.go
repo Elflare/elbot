@@ -75,8 +75,7 @@ func (t RollbackFileTool) PrepareCall(ctx context.Context, req toolshare.CallReq
 	}), nil
 }
 
-func (t RollbackFileTool) call(ctx context.Context, prepared *fileops.PreparedRollback) (_ *toolshare.Result, logContent string, _ error) {
-	defer func() { logContent = toolshare.TruncateLogContent(logContent, 1024) }()
+func (t RollbackFileTool) call(ctx context.Context, prepared *fileops.PreparedRollback) (*toolshare.Result, string, error) {
 	result, err := prepared.Commit(ctx)
 	if err != nil {
 		return nil, err.Error(), err
@@ -85,8 +84,6 @@ func (t RollbackFileTool) call(ctx context.Context, prepared *fileops.PreparedRo
 	if result.Deleted {
 		action = "deleted_created_file"
 	}
-	{
-		result := &toolshare.Result{Content: fmt.Sprintf("rolled_back: %s\naction: %s\nrevision: %s", result.Path, action, result.Revision)}
-		return result, result.Content, nil
-	}
+	content := fmt.Sprintf("rolled_back: %s\naction: %s\nrevision: %s", result.Path, action, result.Revision)
+	return &toolshare.Result{Content: content}, content, nil
 }

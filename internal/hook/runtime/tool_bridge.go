@@ -181,11 +181,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	// Authorization may use the synthetic Hook principal; audit never does.
 	permissionActor := contextinfo.Actor{ID: "hook:" + w.config.ID, Role: contextinfo.RoleSuperadmin}
 	if !params.Background || strings.TrimSpace(params.Origin) != "" {
-		token := params.ToolContext
-		if params.Background {
-			token = params.Origin
-		}
-		contextValue, ok := w.manager.takeToolContext(token, w)
+		contextValue, ok := w.manager.takeToolContext(invocation, w)
 		if !ok {
 			err := fmt.Errorf("invalid, expired or exhausted hook context")
 			logHook("hook_tool_call_completed", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})
