@@ -432,7 +432,8 @@ FROM (VALUES
     (23, 'normalize_native_seed_media_ids'),
     (24, 'remove_tool_result_preview'),
     (25, 'create_media_signed_urls'),
-    (26, 'cron_report_sources')
+    (26, 'cron_report_sources'),
+    (27, 'migrate_discovered_tool_snapshots')
 );
 `
 

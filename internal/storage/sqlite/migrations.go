@@ -624,6 +624,32 @@ CREATE TRIGGER media_cron_update AFTER UPDATE OF delivery_state ON cron_jobs BEG
 END;
 `,
 	},
+	{
+		version: 27,
+		name:    "migrate_discovered_tool_snapshots",
+		sql: `
+-- v0.6 stored names in discovered_tools and complete declarations in tool_cache.
+-- Validate the legacy containers once, then move snapshots without rebuilding schemas.
+UPDATE sessions SET metadata = CASE
+ WHEN json_type(metadata)<>'object' THEN json('invalid-session-metadata')
+ WHEN json_type(metadata,'$.discovered_tools') IS NULL
+  AND json_type(metadata,'$.tool_cache') IS NULL THEN metadata
+ WHEN COALESCE(json_type(metadata,'$.discovered_tools'),'null') NOT IN ('array','null')
+  OR COALESCE(json_type(metadata,'$.tool_cache'),'null') NOT IN ('array','null')
+  THEN json('invalid-tool-metadata')
+ WHEN EXISTS (SELECT 1 FROM json_each(json_extract(metadata,'$.discovered_tools')) WHERE type NOT IN ('text','object'))
+  OR (SELECT count(DISTINCT type) FROM json_each(json_extract(metadata,'$.discovered_tools')))>1
+  OR EXISTS (SELECT 1 FROM json_each(json_extract(metadata,'$.tool_cache')) WHERE type<>'object')
+  THEN json('invalid-tool-metadata')
+ WHEN json_type(metadata,'$.discovered_tools[0]')='object'
+  THEN json_remove(metadata,'$.tool_cache')
+ WHEN json_array_length(metadata,'$.tool_cache')>0
+  THEN json_remove(json_set(metadata,'$.discovered_tools',json_extract(metadata,'$.tool_cache')),'$.tool_cache')
+ ELSE json_remove(metadata,'$.discovered_tools','$.tool_cache')
+END
+WHERE metadata IS NOT NULL AND trim(metadata,char(9)||char(10)||char(13)||' ')<>'';
+`,
+	},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {
