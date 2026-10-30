@@ -30,7 +30,6 @@ type Config struct {
 	HTTPTimeoutSeconds       int      `toml:"http_timeout_seconds"`
 	ReconnectIntervalSeconds int      `toml:"reconnect_interval_seconds"`
 	TriggerKeywords          []string `toml:"trigger_keywords"`
-	CommandPrefixes          []string
 	Superadmins              []string
 }
 
@@ -40,7 +39,6 @@ func NewFromPlatformConfig(raw map[string]any, deps Deps) (*Adapter, error) {
 		return nil, fmt.Errorf("decode qqofficial config: %w", err)
 	}
 	cfg.Superadmins = append([]string(nil), deps.Superadmins...)
-	cfg.CommandPrefixes = append([]string(nil), deps.CommandPrefixes...)
 	applyDefaults(&cfg)
 	if cfg.Enabled {
 		if strings.TrimSpace(cfg.AppID) == "" {
@@ -57,7 +55,8 @@ func NewFromPlatformConfig(raw map[string]any, deps Deps) (*Adapter, error) {
 	}
 	sendCtx, sendCancel := context.WithCancel(context.Background())
 	adapter := &Adapter{
-		cfg: cfg, chatHistory: deps.ChatHistory, referenceResolver: deps.ReferenceResolver,
+		parseCommand: deps.ParseCommand,
+		cfg:          cfg, chatHistory: deps.ChatHistory, referenceResolver: deps.ReferenceResolver,
 		client: newAPIClient(cfg), seqByID: make(map[string]int),
 		sendCtx: sendCtx, sendCancel: sendCancel,
 		gatewayDone: make(chan struct{}), done: make(chan struct{}), closeDone: make(chan struct{}),

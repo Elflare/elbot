@@ -58,7 +58,7 @@ func newTestAdapter(t *testing.T, cfg Config, history share.ChatHistoryWriter) *
 		t.Fatal(err)
 	}
 	a, err := NewFromPlatformConfig(raw, Deps{
-		CommonConfig: share.CommonConfig{Superadmins: cfg.Superadmins, CommandPrefixes: cfg.CommandPrefixes, ConfigDir: cfg.ConfigEnvDir},
+		CommonConfig: share.CommonConfig{Superadmins: cfg.Superadmins, ConfigDir: cfg.ConfigEnvDir},
 		ChatHistory:  history,
 	})
 	if err != nil {

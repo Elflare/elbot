@@ -18,15 +18,14 @@ type ReferencedMessage struct {
 
 // ReferenceOptions 是单次引用恢复输入；存储依赖由根部固定注入。
 type ReferenceOptions struct {
-	Platform        string                                                                     // 平台名称。
-	ScopeID         string                                                                     // 聊天范围。
-	ActorID         string                                                                     // 当前行为者。
-	IsSuperadmin    bool                                                                       // 是否允许接管后台会话。
-	ReplyID         string                                                                     // 被引用的消息 ID。
-	Text            string                                                                     // 当前输入正文。
-	CommandPrefixes []string                                                                   // 当前平台的命令前缀。
-	Fetch           func(context.Context, string) (ReferencedMessage, bool, error)             // 可选协议查询。
-	Enrich          func(context.Context, string, ReferencedMessage) ([]MessageSegment, error) // 可选展示加工，不改变原始媒体序号。
+	Platform     string                                                                     // 平台名称。
+	ScopeID      string                                                                     // 聊天范围。
+	ActorID      string                                                                     // 当前行为者。
+	IsSuperadmin bool                                                                       // 是否允许接管后台会话。
+	ReplyID      string                                                                     // 被引用的消息 ID。
+	Text         string                                                                     // 当前输入正文。
+	Fetch        func(context.Context, string) (ReferencedMessage, bool, error)             // 可选协议查询。
+	Enrich       func(context.Context, string, ReferencedMessage) ([]MessageSegment, error) // 可选展示加工，不改变原始媒体序号。
 }
 
 type ReferenceResult struct {

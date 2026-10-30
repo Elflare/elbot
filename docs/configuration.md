@@ -1,46 +1,36 @@
 # 配置说明
 
-ElBot 使用一个主配置入口加载应用配置、Provider 配置和运行态状态。默认配置由程序内置 assets 生成到平台配置目录；已有配置文件不会被覆盖。
+ElBot 使用一个主配置入口加载应用配置、Provider 配置和运行态状态。除 `.env` 外，所有配置文件均由内置 assets 首次运行时自动生成到平台配置目录，已存在的文件不会被覆盖。
 
 ## 配置文件职责
 
-所有配置文件均由程序内置 assets 首次运行时自动生成到平台配置目录，已有文件不会被覆盖；源码中不再保留 `config/` 目录。
-
 | 文件或目录 | 职责 |
 | --- | --- |
-| `elnis.toml` | Elnis 监听枢纽配置，保存 HTTP、token、delivery、allowed_tools 和 Elwisp 策略。 |
-| `state.toml` | 运行态状态，例如默认 Session 模式、chat/work/compact/naming 模型选择。 |
-| `tool_tags.toml` | 给工具添加 tag 和 prompt 的配置文件。 |
-| `SOUL.md` | Agent 的 System Prompt 来源文件。 |
-| `.env` | 可选，本地密钥文件，不建议提交；首次自动生成的是 `.env.example`，不会直接生成 `.env`。 |
-| `plugins/.env` | 自动生成的 Hook 公共环境文件；默认只有注释，可补充公共变量和额外 `PATH`。 |
-| `plugins/` | Hook 和插件配置目录。 |
-| `skills/` | 用户侧 Skill 目录，默认位于配置目录下；当前子目录为 `skills/agent/` 和 `skills/go/`。AgentSkill 可在根目录放置 `ELBOT_SKILL.toml` 配置可见性或注册为普通工具。 |
-| `memories.toml` | 常驻记忆文件，默认位于配置目录下。 |
-| `long_memory/` | 长期记忆 Markdown 源数据目录，默认位于配置目录下。 |
+| `app.toml` | 主配置：`config_files` 引用、存储、日志、维护任务、平台、安全策略等。 |
+| `providers.toml` | Provider 与模型配置。 |
+| `state.toml` | 运行态状态：默认 Session 模式、chat/work/compact/naming 模型选择。 |
+| `elnis.toml` | Elnis 监听枢纽：HTTP、token、delivery、allowed_tools 和 Elwisp 策略。 |
+| `tool_tags.toml` | 工具 tag 与 tag 激活后追加的 prompt。 |
+| `SOUL.md` | Agent 的 System Prompt 来源。 |
+| `memories.toml` | 常驻记忆。 |
+| `long_memory/` | 长期记忆 Markdown 源数据。 |
+| `plugins/` | Hook 与插件配置目录（`hooks.toml`、`<plugin>/hook.toml`、`.env`、`_shared/`）。 |
+| `skills/` | 用户 Skill 目录，含 `skills/agent/` 与 `skills/go/`；AgentSkill 可在根目录放 `ELBOT_SKILL.toml` 配置可见性或注册为普通工具。 |
+| `.env` | 可选本地密钥文件，不建议提交；首次只生成 `.env.example`，不会直接生成 `.env`。 |
+
+以上均可放在平台配置目录，也可用 `--config` 指向其他位置。
 
 ## 主配置查找顺序
-
-启动时主配置按以下顺序查找：
 
 1. 命令行 `--config`。
 2. 环境变量 `ELBOT_CONFIG_FILE`。
 3. 平台配置目录：Windows `%APPDATA%/ElBot/app.toml`；Linux 使用 XDG 配置目录。
-4. 若平台配置不存在，则自动在平台配置目录生成默认配置文件。已有配置不会被覆盖。自动生成只在没有显式 `--config` 和 `ELBOT_CONFIG_FILE` 时触发。若显式指定的配置路径不存在，ElBot 会报错而不是偷偷生成，避免掩盖路径拼写错误。
 
-开发期直接运行即可使用平台配置目录：
-
-```bash
-go run ./cmd/elbot
-```
-
-如需使用临时配置文件，也可以显式指定 `--config`。
+平台配置不存在时会自动生成默认配置（已存在的文件不覆盖），但自动生成只在没有显式 `--config` 和 `ELBOT_CONFIG_FILE` 时触发；显式指定的路径不存在则报错，避免掩盖路径拼写错误。
 
 ## 相对路径规则
 
-相对路径默认基于主配置文件所在目录解析。
-
-例如平台配置目录下的 `app.toml` 写入：
+相对路径基于主配置文件所在目录解析，默认就是平台配置目录。例如 `app.toml` 写入：
 
 ```toml
 [config_files]
@@ -52,98 +42,93 @@ elnis = "elnis.toml"
 path = "SOUL.md"
 ```
 
-这些路径都会解析到主配置文件所在目录下；默认情况下就是平台配置目录。
-
 ## 环境变量与进程环境继承
 
-ElBot 使用以下环境来源：
+ElBot 的环境层：
 
-- ElBot 进程环境：由终端、服务管理器或容器在启动时提供。
-- 每个技能自己的根目录 `.env`：用于该技能的专属变量，AgentSkill TOML 命令和 Go Skill 在每次执行前读取。
-- `plugins/.env`：所有 Hook 共用的环境层。
-- `plugins/<plugin-id>/.env`：单个插件 exec 和 Worker 的环境层。
+| 环境层 | 提供方 |
+| --- | --- |
+| ElBot 进程环境 | 终端、服务管理器或容器启动时提供 |
+| 配置根 `.env` | 本地密钥与普通变量 |
+| `plugins/.env` | 所有 Hook 共用的环境层 |
+| `plugins/<plugin-id>/.env` | 单个插件 exec 与 Worker |
+| `<skill>/.env` | 单个技能专属变量 |
 
 ### 配置变量与密钥
 
-`api_key_env`、`token_env`、`client_secret_env`、`access_token_env`、`bot_token_env`、`proxy_url_env` 等字段保存的是环境变量名。读取对应值时，优先级统一为：
+`api_key_env`、`token_env`、`client_secret_env`、`access_token_env`、`bot_token_env`、`proxy_url_env` 等字段保存的是环境变量名。
 
-1. ElBot 进程环境。
-2. 配置根 `.env`。
+读取顺序：ElBot 进程环境 → 配置根 `.env`。
 
-推荐把真实密钥放在系统环境或配置根 `.env`，不要直接写入 TOML 或提交到仓库。例如：
+真实密钥放在系统环境或配置根 `.env`，不要写进 TOML 或提交到仓库：
 
 ```dotenv
 DEEPSEEK_API_KEY=your-api-key
-OPENAI_API_KEY=your-api-key
-QQOFFICIAL_CLIENT_SECRET=your-client-secret
-QQONEBOT_ACCESS_TOKEN=your-access-token
 TELEGRAM_BOT_TOKEN=your-bot-token
-ELBOT_CLI_LOCAL_TOKEN=your-cli-token
 ELNIS_HOME_TOKEN=your-elnis-token
 ```
 
-配置根 `.env` 中的全部变量还会补充给 LLM Shell，因此只有在信任当前模型及 Shell 权限策略时才应启用相关工具。
+注意：配置根 `.env` 的全部变量会补充给 LLM Shell。只在信任当前模型及 Shell 权限策略时才启用相关工具。
 
 ### Shell、Skill 与 Hook 环境
 
 | 进程入口 | 环境来源与优先级 |
 | --- | --- |
-| 内置工具（含 LLM Shell） | ElBot 进程环境为基础，配置根 `.env` 只补充尚不存在的普通变量。 |
-| AgentSkill TOML 命令与 Go Skill | 普通变量优先级为技能 `.env` > ElBot 进程环境 > 配置根 `.env`。技能 `.env` 中的空值也会覆盖基础环境中的同名变量。 |
-| 根 Hook 规则 | ElBot 进程环境为基础，`plugins/.env` 覆盖同名普通变量。 |
-| 插件 exec 与 Worker | 根 Hook 环境为基础，插件配置文件同目录的 `.env` 再覆盖同名普通变量。 |
+| 内置工具（含 LLM Shell） | 进程环境为基础，配置根 `.env` 只补充尚不存在的普通变量。 |
+| AgentSkill TOML 命令与 Go Skill | 技能 `.env` > 进程环境 > 配置根 `.env`；技能 `.env` 中的空值也覆盖同名变量。 |
+| 根 Hook 规则 | 进程环境为基础，`plugins/.env` 覆盖同名普通变量。 |
+| 插件 exec 与 Worker | 根 Hook 环境为基础，插件目录 `.env` 再覆盖同名普通变量。 |
 
-技能执行的工作目录是每个技能自己的根目录。ElBot 将合并结果传给本次子进程。脚本可直接使用，无需自行加载 `.env`。Go Skill 编译阶段使用基础环境，不加载技能 `.env`。
-
-ElBot 自行读取配置文件时，配置根 `.env` 不会注入 Hook。所有 Hook 共用的代理、工具路径或变量应放在 `plugins/.env`，仅供单个插件使用的变量应放在该插件的 `.env`。一次性 exec、Persistent Worker 和 Transient Worker 使用相同规则。
-
-需要代理时，可在对应环境层设置标准变量；子进程是否使用仍取决于具体程序：
-
-```dotenv
-HTTP_PROXY=http://127.0.0.1:7890
-HTTPS_PROXY=http://127.0.0.1:7890
-NO_PROXY=localhost,127.0.0.1,::1
-```
+- 技能工作目录是技能根目录；合并结果由 ElBot 传给子进程，脚本无需自行加载 `.env`。
+- Go Skill 编译阶段用基础环境，不加载技能 `.env`。
+- 配置根 `.env` 不注入 Hook。共用变量放 `plugins/.env`，单插件变量放插件目录 `.env`；一次性 exec、Persistent / Transient Worker 规则相同。
+- 需要代理时在对应环境层设 `HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY`；子进程是否使用取决于具体程序。
 
 ### PATH 规则与 systemd
 
-ElBot 自行合并上述环境层时，`PATH` 不按普通变量覆盖，而是按照层级依次追加并去重。这里的基础 PATH 是 ElBot 启动时已经获得的进程 PATH；后续 `.env` 只需填写要增加的绝对目录：
+`PATH` 不参与普通覆盖，而是按层级追加并去重：
 
-技能执行时的 PATH 顺序为 ElBot 进程 PATH、配置根 `.env` PATH、技能 `.env` PATH。AgentSkill 命令也使用合并后的 PATH 查找可执行文件。
+- 基础值是 ElBot 启动时已获得的进程 PATH。
+- `.env` 中只写要增加的绝对目录。
+- 技能执行顺序：进程 PATH → 配置根 `.env` → 技能 `.env`；AgentSkill 命令也用它查找可执行文件。
 
 ```dotenv
 PATH=/home/elbot/.local/bin:/usr/local/go/bin
 ```
 
-不要填写 `$PATH`、`%PATH%` 或 `~`，dotenv 不执行变量替换或路径展开。没有额外目录时可以省略 `PATH`。
+不要写 `$PATH`、`%PATH%` 或 `~`——dotenv 不做变量替换或路径展开。没有额外目录时省略 `PATH`。
 
-systemd 用户服务没有显式设置 PATH 时，ElBot 使用服务管理器提供的 PATH。`EnvironmentFile` 本身不会影响 PATH，但文件中一旦包含 `PATH=`，systemd 会在启动 ElBot 前完整覆盖原值；ElBot 只能在这个结果上继续追加，无法恢复已经丢失的系统目录。systemd 的 `EnvironmentFile` 同样不会展开 `$PATH`。
+systemd 两个坑：
 
-由 ElBot 自行读取配置根 `.env` 时，systemd unit 不需要重复加载该文件；其中的 PATH 按上面的追加规则处理。若 unit 使用 `EnvironmentFile` 加载同一文件，则其中的 PATH 必须写成完整值
-
-通过 `EnvironmentFile` 加载后，该文件中的全部变量都已经属于 ElBot 进程环境，因而也会被 Shell 和 Hook 继承，不再具有“配置根 `.env` 不注入 Hook”的隔离效果。
+- 未显式设 PATH 时用服务管理器提供的 PATH。`EnvironmentFile` 本身不影响 PATH，但文件里一旦含 `PATH=`，systemd 会在启动前完整覆盖原值，ElBot 只能在此基础上追加，无法恢复已丢失的系统目录；`EnvironmentFile` 也不展开 `$PATH`。
+- 由 ElBot 自行读取配置根 `.env` 时，unit 不必重复加载该文件（PATH 按追加规则）。若 unit 用 `EnvironmentFile` 加载同一文件，PATH 必须写成完整值，且其中全部变量都成为进程环境、被 Shell 和 Hook 继承，失去“配置根 `.env` 不注入 Hook”的隔离。
 
 ### 生效时机
 
-配置根 `.env` 或 systemd 环境在重启 ElBot 后生效。`plugins/.env` 和插件 `.env` 在启动及 `/hooks reload` 时重新读取，reload 会按新环境重建 Worker；文件不存在时视为空配置。
+- 配置根 `.env`、systemd 环境：重启后生效。
+- `plugins/.env`、插件 `.env`：启动及 `/hooks reload` 时重读，reload 按新环境重建 Worker。
+- 文件不存在视为空配置。
 
 ## Workspace 工具
 
-在 work 模式中，超级管理员可以让 LLM 调用 `workspace` 工具切换当前 Session 的共享工作目录。切换后，`read_file`、`edit_file`、`rollback_file`、`send_file` 和前台 `shell` 等路径类工具会基于该目录解析相对路径，避免每次都传完整路径。
+work 模式下，超级管理员可让 LLM 调用 `workspace` 工具切换当前 Session 的共享工作目录。切换后 `read_file`、`edit_file`、`rollback_file`、`send_file` 和前台 `shell` 等路径类工具按该目录解析相对路径。
 
-某个目录的 `workspace` 工具首次被发现或注入，或者首次切换、重置到该目录时，如果目录根部存在 `AGENTS.md` 或 `AGENT.md`，系统会自动把文件内容附带给 LLM，供其读取当前目录的工作约定。文件名主体必须是大写 `AGENTS` 或 `AGENT`，`.md` 后缀大小写不限；`AGENTS.md` 优先于 `AGENT.md`。
+- 未设置 workspace 时沿用进程工作目录。
+- 目标目录根部有 `AGENTS.md` 或 `AGENT.md` 时，首次发现、注入或首次切换到该目录会自动把内容附带给 LLM。文件名主体必须大写 `AGENTS` / `AGENT`，`.md` 后缀大小写不限，`AGENTS.md` 优先。
+- 附带上限 64 KiB。超限不读取、不标记已附带，工具结果提示缩短或拆分后重新切换。
+- 编辑撤销备份按目标绝对路径保存：切换 workspace 不清空备份，但相同相对路径按新 workspace 解析；撤销原目录文件可切回或传绝对路径。见[文件编辑撤销](commands.md#文件编辑撤销)。
 
-自动附带的说明文件最大为 64 KiB。超过限制时不会读取内容，也不会标记为已附带，工具结果会提示需要缩短或拆分该文件后再切换 workspace。
+`read_file` 工具说明：
 
-文件编辑的撤销备份按实际目标的绝对路径保存；切换 workspace 不清空备份，但相同相对路径会按新的 workspace 解析。撤销原目录中的文件时，可以切回原 workspace 或传绝对路径。未设置 workspace 时沿用进程工作目录。使用方式见[文件编辑撤销](commands.md#文件编辑撤销)。
+- `ast` / `ast_function` 模式支持单文件和目录查询。
+- 方言判定：`.go` 按 Go，`.mksh` 按 mksh；其余看首行 Shell shebang（含 `env`、`env -S`、`env --split-string` 写法）。
+- `.sh`、`.bash`、`.bats` 无可识别 shebang 时按 Bash。
 
-`read_file` 的 `ast`／`ast_function` 模式支持单文件和目录查询。`.go` 按 Go 解析，`.mksh` 按 mksh 解析；其他文件识别首行有效的 Shell shebang，包括直接解释器路径及 `env`、`env -S`、`env --split-string` 写法。`.sh`、`.bash`、`.bats` 没有可识别的 Shell shebang 时使用 Bash 方言，声明 mksh 时使用 mksh 方言。
-
-`edit_file` 在确认前生成编辑结果和差异预览，确认后提交同一份结果。等待确认期间若文件内容或目标发生变化，提交会被拒绝，需要重新准备编辑。
+`edit_file` 确认前生成编辑结果和差异预览，确认后提交同一份结果；等待期间文件内容或目标变化会拒绝提交，需重新准备。
 
 ## 常驻记忆配置
 
-常驻记忆数据默认保存在配置目录的 `memories.toml`，文件由程序首次运行时生成。主配置中可以设置 core/normal 两段常驻记忆的长度上限：
+常驻记忆存放在配置目录的 `memories.toml`（首次运行时生成）。长度上限写在主配置：
 
 ```toml
 [resident_memory]
@@ -151,7 +136,13 @@ core_max_units = 200
 normal_max_units = 300
 ```
 
-长度单位 `units` 可以近似理解为“中文按字数、英文按单词”：中日韩字符按单字计数，英文/数字连续片段按一个词计数。core 是高风险核心记忆，普通用户修改自己的 core 时也必须由本人确认。normal 是可直接整理的低风险普通记忆，不需要确认；注入 Prompt 时两段会合并成一段自然文本。
+| 类型 | 含义 | 修改确认 |
+| --- | --- | --- |
+| `core` | 高风险核心记忆 | 普通用户改自己的 core 也需本人确认。 |
+| `normal` | 低风险普通记忆 | 无需确认。 |
+
+- `units` 近似“中文按字数、英文按单词”：中日韩字符单字计 1，英文/数字连续片段计 1。
+- 注入 Prompt 时两段合并为一段自然文本。
 
 ## Provider 配置
 
@@ -163,14 +154,13 @@ api_mode = "chat"                  # 可选：chat / response，省略为 chat
 base_url = "https://api.deepseek.com"
 api_key_env = "DEEPSEEK_API_KEY"
 proxy = ""                          # 可选，HTTP/SOCKS5 代理地址
-extra_payload = { provider_field = "xxx" }  # 可选，Provider 级 extra payload
+extra_payload = { provider_field = "xxx" }  # 可选，Provider 级原生参数
 
 [providers.openai]
 base_url = "https://api.openai.com/v1"
 api_key_env = "OPENAI_API_KEY"
-models = ["gpt-4o-mini"]             # 手动补充模型列表（API 获取不到时使用）
+models = ["gpt-4o-mini"]             # 手动补充模型列表（API 获取不到时用）
 
-# 可选：为特定模型配置 context_window 或 extra_payload
 # [providers.openai.model_configs."gpt-4o-mini"]
 # context_window = 128000
 # extra_payload = { }
@@ -179,19 +169,18 @@ models = ["gpt-4o-mini"]             # 手动补充模型列表（API 获取不�
 default_context_window = 256000
 ```
 
-说明：
+| 字段 | 说明 |
+| --- | --- |
+| `api_mode` | `chat`（默认）或 `response`，分别对应 Chat Completions 与 Responses API。 |
+| `base_url` | Provider API 基础地址。 |
+| `api_key_env` | 指向环境变量名（推荐用此方式保存密钥）。 |
+| `proxy` | 支持 `http://` 与 `socks5://`；省略或留空时直连，**不继承**进程的 `HTTP_PROXY` / `HTTPS_PROXY`。同时作用于模型列表和聊天请求。 |
+| `models` | 手动补充的模型名列表，用于模型列表接口获取不到的情况。 |
+| `model_configs."<model>"` | 为单个模型配 `context_window` 和 `extra_payload`，均可选。 |
+| `extra_payload` | Provider 级与模型级共用，按 `api_mode` 填该 API / 模型支持的原生参数，最终合并进 LLM 请求 JSON。 |
+| `[model_metadata].default_context_window` | 全局回退值，默认 `256000`；`model_configs` 未配 `context_window` 时用它。 |
 
-- `api_mode` 仅接受 `chat` 或 `response`，省略为 `chat`；分别调用 Chat Completions 或 Responses API。
-- `base_url` 使用 Provider 对应 API 的基础地址。
-- `api_key_env` 指向环境变量名，推荐用这种方式保存密钥。
-- `proxy` 可选，支持 `http://` 和 `socks5://` 代理地址；省略或留空时直连，不继承 ElBot 进程的 `HTTP_PROXY`、`HTTPS_PROXY` 等环境代理。该设置同时作用于模型列表和聊天请求。
-- `models` 是手动补充的模型名列表，当 Provider 的模型列表接口获取不到某些模型时使用。
-- `[providers.<name>.model_configs."<model>"]` 为特定模型配置 `context_window` 和 `extra_payload`，两者都是可选的。
-- provider 和模型级共用 `extra_payload`，按 `api_mode` 填写该 API／模型支持的原生参数。
-- `extra_payload` 会合并到 LLM 请求 JSON 中。
-- `[model_metadata]` 的 `default_context_window` 是全局回退值，默认 `256000`，没有在 `model_configs` 里配 `context_window` 时使用。
-
-Responses 的配置示例：
+### Responses 补充说明
 
 ```toml
 [providers.native_text]
@@ -201,40 +190,35 @@ api_key_env = "OPENAI_API_KEY"
 extra_payload = { store = false, reasoning = { effort = "medium" } }
 ```
 
-Responses 的 Provider 或模型级 `extra_payload` 可用 `store = false` 关闭服务端存储，后续发送完整原生历史；默认使用服务端续链，若上游返回 `store:false` 则自动切换，并在后台记录 WARN。
+- `store`：Provider 或模型级 `extra_payload` 可用 `store = false` 关闭服务端存储，之后发送完整原生历史。默认用服务端续链；上游返回 `store:false` 时自动切换并后台记 WARN。
+- 工具定义走原生输入的 `additional_tools`，当前调用权限由 `tool_choice.allowed_tools` 限定，无可用工具时发 `none`。上游必须支持这两项，没有顶层 `tools` 回退。`extra_payload.tool_choice` 只能进一步收窄权限，强制调用不可用工具或无工具时设 `required` 会报错。
+- 会话使用带版本的原生输入格式。缺少格式标记的旧会话不能继续对话、Fork 或压缩，需新建。同一原生历史中的工具定义固定，同名 schema 变化也需新建。
+- 压缩：Responses 会话用当前对话模型原生压缩，不使用 `/model --compact` 的选择。命名与 Chat 会话文字摘要则两个客户端都可用。
 
-Responses 工具定义通过原生输入中的 `additional_tools` 发送，当前调用权限通过 `tool_choice.allowed_tools` 限定，无可用工具时发送 `none`。上游需支持这两项能力，没有顶层 `tools` 回退。`extra_payload.tool_choice` 只能进一步收窄当前权限；强制调用不可用工具或在无可用工具时设置 `required` 会报错。
+### 会话协议锁定
 
-Responses 会话使用带版本的原生输入格式；缺少格式标记的旧会话不能继续对话、Fork 或压缩，请新建会话。同一原生历史中的工具定义固定，同名 schema 变化也需要新建会话。
+已有会话的协议和厂商在首次对话时固定。厂商即 `[providers.<name>]` 的节点名。
 
-Chat Completions 和 Responses 客户端都可用于命名及 Chat 会话的文字摘要。Responses 会话使用当前对话模型进行原生压缩，不使用 `/model --compact` 的选择。
+| 会话类型 | 可切换范围 |
+| --- | --- |
+| Chat | 任意 Chat 厂商 |
+| Responses | 同一节点下的 Responses 模型 |
 
-已有会话的协议和厂商在首次对话时固定。厂商就是 `[providers.<name>]` 的节点名：Chat 会话可切换到其他 Chat 厂商；Responses 会话只能切换同一节点下的 Responses 模型。跨协议或跨 Responses 厂商需要新建会话。同一节点的 `base_url` 变化时，Responses 用完整本地原生材料重建链。
+跨协议或跨 Responses 厂商需新建会话。同一节点 `base_url` 变化时，Responses 用完整本地原生材料重建链。
 
 ## 内置 Web 工具配置
 
-`web_search` 使用 `tavily`：
+| 工具 | 环境变量 | 行为 |
+| --- | --- | --- |
+| `web_search` | `TAVILY_API_KEY` | 必需。 |
+| `web_extract` | `JINA_API_KEY` | 配置后走 Jina Reader，未配置回退为直接抓取。 |
+| `web_extract` | `WEB_EXTRACT_PROXY` | 所有默认 `web_extract` 调用的固定代理，例如 `http://127.0.0.1:7890`。 |
 
-```env
-TAVILY_API_KEY=your_tavily_api_key
-```
-
-`web_extract` 默认优先使用 Jina Reader。配置 `JINA_API_KEY` 后会通过 Jina Reader 提取网页；未配置时回退为直接抓取：
-
-```env
-JINA_API_KEY=your_jina_api_key
-```
-
-`web_extract` 的 `proxy` 参数用于控制网页提取请求的代理：
-如果希望所有默认 `web_extract` 调用都走固定代理，可以设置 `WEB_EXTRACT_PROXY`：
-
-```env
-WEB_EXTRACT_PROXY=http://127.0.0.1:7890
-```
+`web_extract` 的 `proxy` 参数用于控制单次网页提取请求的代理。
 
 ## LLM 请求与整轮超时
 
-`app.toml` 的 `[llm_request]` 控制 OpenAI-compatible 流式请求、整轮处理和重试：
+`app.toml` 的 `[llm_request]` 控制流式请求、整轮处理和重试：
 
 ```toml
 [llm_request]
@@ -245,17 +229,16 @@ max_retries = 3
 retry_initial_delay_seconds = 2
 ```
 
-- `first_chunk_timeout_seconds`：从响应开始到首个流式事件的等待上限，默认 180 秒，适合首字较慢的模型。
-- `stream_idle_timeout_seconds`：流式过程中两次事件之间的静默上限，默认 60 秒；每收到一个新事件都会重新计时。
-- `response_timeout_seconds`：整轮用户请求总时长上限，从收到用户输入到最终回复结束，默认 0 表示不限时；设置为正数时，到时会停止本轮处理并提示用户。单次 LLM 流式请求不受这个字段限制。
-- `max_retries` 和 `retry_initial_delay_seconds` 用于建连或 HTTP 可重试失败，重试延迟按指数退避增长。
-
-旧版 `timeout_seconds` 已移除；已有配置需要改为上述三个新字段。
-
+| 字段 | 说明 |
+| --- | --- |
+| `first_chunk_timeout_seconds` | 从响应开始到首个流式事件的等待上限，默认 180；适合首字较慢的模型。 |
+| `stream_idle_timeout_seconds` | 流式过程中两次事件间的静默上限，默认 60；每收到新事件重新计时。 |
+| `response_timeout_seconds` | 整轮请求总时长，从收到输入到最终回复结束，默认 0 不限时；设正数后到时停止本轮并提示用户。单次 LLM 流式请求不受它限制。 |
+| `max_retries` / `retry_initial_delay_seconds` | 建连或 HTTP 可重试失败的重试次数与首次延迟，延迟按指数退避增长。 |
 
 ## CLI 远程配置
 
-`[platform.cli]` 同时保存 CLI 服务端配置和 CLI 客户端使用的连接配置。`server` 是当前 ElBot 作为服务端运行时读取的配置，`clients` 保存 CLI 客户端连接服务端时使用的各组连接配置。
+`[platform.cli]` 同时保存服务端配置和客户端连接配置：`server` 是当前 ElBot 作为服务端时读取的配置，`clients` 是客户端连接服务端时用的一组连接配置。
 
 ```toml
 [platform.cli]
@@ -279,21 +262,28 @@ url = "ws://192.168.1.10:32172/cli/v1/ws"
 token_env = ["ELBOT_CLI_WINDOWS_TOKEN"]
 ```
 
-- `server.enabled=true` 时，`elbot service run` 会启动 CLI WebSocket 服务端。
-- `server.listen` 是服务端监听地址。
-- `default_url` 是客户端默认连接地址；连接其他机器时在 `clients.<name>.url` 写远程 WebSocket 地址。
-- `server.tokens` 是服务端允许登录的 CLI client id 与 token 环境变量列表。
-- `clients.<name>` 是连接配置；`id` 可省略，默认等于 `<name>`；`url` 可省略，默认使用 `default_url`。
-- `elbot cli -c <name>` 使用指定连接配置；未指定时使用 `default_client`。
+- `server.enabled=true` 时，`elbot service run` 会启动 CLI WebSocket 服务端，监听 `server.listen`。
+- `server.tokens` 是允许登录的 CLI client id 与 token 环境变量列表。
+- `clients.<name>` 是连接配置：`id` 可省略（默认等于 `<name>`），`url` 可省略（默认用 `default_url`）；连其他机器时写远程 WebSocket 地址。
+- `elbot client -c <name>` 使用指定连接配置，未指定时用 `default_client`。
 
 ## AgentSkill 工具化配置
 
-AgentSkill 默认只作为说明文档使用；若按文档执行脚本，风险由实际调用的 `shell` 等工具承担。若要限制文档型 Skill 的可见性，或把 `skills/agent/<skill>/` 注册成普通工具，在该 Skill 根目录添加 `ELBOT_SKILL.toml`。未写 `command`/`parameters`/`[args]` 时只作为可见性配置，不会注册成普通工具；写了任一工具化字段后必须补齐完整工具化配置。默认生成的 `agent_skill_creator` Skill 可用于查看说明并辅助创建该文件：
+AgentSkill 默认只作为说明文档使用，按文档执行脚本的风险由实际调用的 `shell` 等工具承担。
+
+要限制文档型 Skill 的可见性，或把 `skills/agent/<skill>/` 注册成普通工具，在该 Skill 根目录加 `ELBOT_SKILL.toml`：
+
+- 未写 `command` / `parameters` / `[args]`：只作可见性配置，不注册成工具。
+- 写了任一工具化字段：必须补齐完整工具化配置。
+
+只限制可见性：
 
 ```toml
 risk = "high"
 superadmin_only = true
 ```
+
+注册成普通工具：
 
 ```toml
 risk = "medium"
@@ -317,43 +307,38 @@ parameters = '''
 input = "--input"
 ```
 
-字段说明：
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `risk` | 注册成工具时必填 | `safe`、`low`、`medium`、`high`、`critical`；文档型未写按 `safe` 处理。 |
+| `superadmin_only` | 否 | `true` 时只有超级管理员能发现、预载或调用。 |
+| `tags` | 否 | 工具分类，用于 `@tool:<tag>` 预载。 |
+| `command` | 工具化必填 | 命令数组，不用 shell 字符串。 |
+| `parameters` | 工具化必填 | JSON object schema，决定 LLM 看到的参数。 |
+| `[args]` | 工具化必填 | 扁平参数映射：`input = "--input"` 把参数 `input` 译为 `--input <value>`。 |
+| `timeout_seconds` | 否 | 命令超时时间。 |
+| `expose_root` | 否 | 默认 `false`；`true` 时发现该 Skill 会暴露其根路径。 |
 
-- `risk`：可选，允许 `safe`、`low`、`medium`、`high`、`critical`；注册成普通工具时必填。文档型 Skill 未写时按 `safe` 处理。
-- `superadmin_only`：可选，`true` 表示只有 ElBot 超级管理员能发现、预载或调用该 Skill。
-- `tags`：可选，相当于为该工具分类，可用于 `@tool:<tag>` 预载。
-- `command`：工具化时必填，命令数组，不使用 shell 字符串。
-- `parameters`：工具化时必填，JSON object schema，决定 LLM 看到的工具参数。
-- `[args]`：工具化时必填，扁平参数映射；`input = "--input"` 会把工具参数 `input` 翻译成 `--input <value>`。
-- `timeout_seconds`：可选，命令超时时间。
-- `expose_root`：可选，默认 `false`；为 `true` 时，发现该 Skill 时会暴露 Skill 根路径。
-
-ElBot 只读取 Skill 根目录下的 `ELBOT_SKILL.toml`，不递归扫描。执行时工作目录固定为该 Skill 根目录，stdout 会作为工具结果；若 stdout 是 `{"content":"..."}` JSON，会取 `content` 字段。
-
-媒体参数可在 `parameters.properties` 中声明为 `{"type":"media"}`，仍通过 `[args]` 映射 flag。LLM 看到字符串 schema 并传入完整 `media:<sha256>`，宿主仅在执行时将该参数导出为相对 Skill 根目录的临时文件路径。未声明为媒体的字符串不转换。stdout 还支持 `segments` 返回媒体 ID 或受控相对文件路径，具体格式与生命周期见 [Skill 使用媒体](concepts.md#skill-使用媒体)。
-
-通过 `agent_skill` 元工具写入配置时，ElBot 会在完整 reload 成功后才确认写入；若 reload 失败，会恢复原有 TOML，原先没有该文件时则删除本次新建文件。
+- ElBot 只读 Skill 根目录下的 `ELBOT_SKILL.toml`，不递归扫描。
+- 执行时工作目录固定为 Skill 根目录，stdout 作为工具结果；若 stdout 是 `{"content":"..."}` JSON，取 `content` 字段。
+- 媒体参数在 `parameters.properties` 声明为 `{"type":"media"}`，仍通过 `[args]` 映射 flag；LLM 传 `media:<sha256>`，宿主执行时导出为相对 Skill 根目录的临时文件路径。未声明为媒体的字符串不转换。stdout 也支持 `segments`，格式与生命周期见 [Skill 使用媒体](concepts.md#skill-使用媒体)。
+- 通过 `agent_skill` 元工具写入时，完整 reload 成功后才确认；reload 失败会恢复原 TOML，原先没有该文件则删除本次新建文件。
 
 ## Go Skill 编译器路径
 
-修改 Go skill 的 `code_source` 后，ElBot 会自动执行 `gofmt`、`go build` 并 reload。Go 可执行文件按以下规则定位。
+修改 Go skill 的 `code_source` 后，ElBot 自动执行 `gofmt`、`go build` 并 reload。可执行文件查找顺序：
 
-推荐在配置目录 `.env` 中指定 Go 可执行文件：
+1. 系统环境变量 `ELBOT_GO_BINARY`
+2. 配置目录 `.env` 中的 `ELBOT_GO_BINARY`
+3. `GOROOT/bin/go`（service 环境配了 `GOROOT` 时）
+4. 进程 `PATH` 中的 `go`
+
+推荐直接在配置目录 `.env` 指定：
 
 ```dotenv
 ELBOT_GO_BINARY=/usr/local/go/bin/go
 ```
 
-查找顺序：
-
-1. 系统环境变量 `ELBOT_GO_BINARY`。
-2. 配置目录 `.env` 中的 `ELBOT_GO_BINARY`。
-3. `GOROOT/bin/go`，如果 service 环境配置了 `GOROOT`。
-4. ElBot 进程 `PATH` 中的 `go`。
-
-如果使用 asdf、mise、Nix、Linuxbrew、Snap 或自定义安装路径，推荐直接把实际 `go` 路径写入 `ELBOT_GO_BINARY`，不要依赖交互 shell 的初始化脚本。
-
-高级部署也可以在 systemd service 中指定：
+用 asdf、mise、Nix、Linuxbrew、Snap 或自定义安装路径时，把实际 `go` 路径写入 `ELBOT_GO_BINARY`，不要依赖交互 shell 的初始化脚本。也可在 systemd service 中指定：
 
 ```ini
 [Service]
@@ -372,22 +357,20 @@ private_user_ttl_minutes = 10
 private_superadmin_ttl_minutes = 0
 ```
 
-字段说明：
+| 字段 | 作用 |
+| --- | --- |
+| `group_user_ttl_minutes` | 群聊普通用户 |
+| `group_superadmin_ttl_minutes` | 群聊超级管理员 |
+| `private_user_ttl_minutes` | 私聊普通用户 |
+| `private_superadmin_ttl_minutes` | 私聊超级管理员 |
 
-- `group_user_ttl_minutes`：群聊中普通用户当前 Session 的闲置过期时间。
-- `group_superadmin_ttl_minutes`：群聊中超级管理员当前 Session 的闲置过期时间。
-- `private_user_ttl_minutes`：私聊中普通用户当前 Session 的闲置过期时间。
-- `private_superadmin_ttl_minutes`：私聊中超级管理员当前 Session 的闲置过期时间。
-- 任一字段设为 `0` 表示禁用对应场景的闲置过期。
-
-默认配置下，群聊中的普通用户和超级管理员都会在闲置 10 分钟后开启新 Session；私聊中普通用户闲置 10 分钟后开启新 Session；私聊中超级管理员不过期。
-
-这里的“超级管理员”指 `[security.superadmins]` 中配置的 ElBot 超级管理员。平台群主或群管理员如果不在超级管理员列表中，仍按普通用户规则处理。
+- 单位分钟；设为 `0` 禁用对应场景的闲置过期。
+- 默认下群聊两种角色、私聊普通用户都是闲置 10 分钟开启新 Session，私聊超级管理员不过期。
+- 这里的“超级管理员”指 `[security.superadmins]` 中配置的 ElBot 超级管理员；平台群主或群管理员不在该列表中时仍按普通用户处理。
 
 ## 模型状态配置
 
-`state.toml` 保存运行态模型选择：
-
+`state.toml` 保存运行态模型选择（三个 elwisp 槽位结构相同）：
 
 ```toml
 [session]
@@ -414,12 +397,10 @@ provider = "deepseek"
 model = "deepseek-chat"
 ```
 
-- `default_mode` 决定新 Session 默认进入 `chat` 还是 `work`。
-- `work` 模式启用工具发现和工具调用。
-- `chat` 模式不注入工具，适合闲聊和低成本对话。
-- `elwisp1`、`elwisp2`、`elwisp3` 是 Elnis LLM 事件可选模型槽位；Elvena 请求可通过 `model_slot` 指定，未配置时回退到 `work`。
-- 运行时使用 `/model` 切换模型会同时保存至 `state.toml`。
-- `state.toml` 在启动时读取。运行中手动修改文件需要重启生效。
+- `default_mode`：新 Session 默认进入 `chat` 还是 `work`。两种模式的区别见 [Chat / Work 双模式](concepts.md#chat--work-双模式)。
+- `elwisp1/2/3`：Elnis LLM 事件的可选模型槽位，Elvena 请求通过 `model_slot` 指定，未配置时回退到 `work`。
+- 运行时 `/model` 切换会同步保存到 `state.toml`。
+- `state.toml` 只在启动时读取，运行中手动修改需重启生效。
 
 ## 存储与运行数据
 
@@ -431,14 +412,9 @@ sessions_sqlite_path = ""
 chat_history_sqlite_path = ""
 ```
 
-留空时使用平台默认数据目录：
+留空时使用平台默认数据目录（Windows `%APPDATA%/ElBot/data`，Linux `$XDG_DATA_HOME/elbot` 或 `~/.local/share/elbot`）；运行日志、SQLite、sandbox 也按配置或默认目录存放。
 
-- Windows：`%APPDATA%/ElBot/data`
-- Linux：`$XDG_DATA_HOME/elbot` 或 `~/.local/share/elbot`
-
-运行日志、SQLite、sandbox 等运行数据也会按配置或默认数据目录存放。
-
-平台入站附件下载限制使用 `[platform_files]`：
+平台入站附件下载限制用 `[platform_files]`：
 
 ```toml
 [platform_files]
@@ -446,31 +422,35 @@ max_receive_file_bytes = 104857600
 download_timeout_secs = 60
 ```
 
-- `max_receive_file_bytes`：媒体接收大小上限，默认 100MB；超过上限或无法取得时提示媒体不可用。
-- `download_timeout_secs`：媒体下载超时，默认 60 秒；Telegram 使用平台 API 超时。
-- 平台媒体在实际处理时才下载，不会收到就自动保存到 sandbox。纯文件消息也按平台统一唤醒规则处理。
-
+- `max_receive_file_bytes`：媒体接收上限，默认 100MB；超限或无法取得时提示媒体不可用。
+- `download_timeout_secs`：媒体下载超时，默认 60 秒；Telegram 用平台 API 超时。
+- 平台媒体在实际处理时才下载，不会收到即存 sandbox。纯文件消息也按统一唤醒规则处理。
 
 ### 媒体交付
 
-`app.toml` 的 `[file_delivery]` 控制模型请求中的媒体交付。按本次实际发送的完整请求统计媒体原始字节总量，同一媒体出现多次会累计多次，但读取、上传和签名按媒体 ID 复用。
+`[file_delivery]` 控制**模型请求**中的媒体交付，统计本次完整请求的媒体原始字节总量（同一媒体出现多次累加，但读取、上传、签名按媒体 ID 复用）。
 
-`send_file` 只检查本地文件路径、普通文件类型、文件名和 MIME，不使用 `[file_delivery]` 限制向聊天平台发送的文件。模型请求的交付限制由 Media 处理，聊天平台的发送方式由相应平台配置控制。
+`send_file` 不用此限制：它只检查本地路径、普通文件类型、文件名和 MIME。向聊天平台发送文件的方式由相应平台配置控制。
 
-- `base64`：总量超过 `max_direct_base64_bytes` 时停止请求，明确报告实际总量和配置上限。
-- `hybrid`：总量小于或等于上限时全部使用 base64；超过上限时全部使用 S3。
-- `s3`：全部使用预签名下载链接。已有本地媒体在需要远程交付时上传，并复用已记录的对象键。S3 配置、上传或签名失败会明确报错，不回退成混合交付。
+| `backend` | 行为 |
+| --- | --- |
+| `base64` | 总量超过 `max_direct_base64_bytes` 时停止请求，报告实际总量和上限。 |
+| `hybrid` | 未超限全用 base64，超限全用 S3。 |
+| `s3` | 全用预签名下载链接；本地媒体按需上传并复用已记录的对象键。配置、上传或签名失败会明确报错，不回退成混合交付。 |
 
-S3 交付使用 `s3_endpoint`、`s3_region`、`s3_bucket` 以及 `s3_access_key_env`、`s3_secret_key_env` 指定的变量。模型服务通过有效期为 1 小时的预签名 URL 下载对象，不需要另外提供密钥。Cloudflare R2 可保持 bucket 私有，无需开启公共访问；实际下载文件的模型服务或中转服务必须能访问该链接。
+- S3 使用 `s3_endpoint`、`s3_region`、`s3_bucket` 和 `s3_access_key_env`、`s3_secret_key_env` 指定的变量。
+- 模型服务通过有效期 1 小时的预签名 URL 下载，无需另给密钥。
+- Cloudflare R2 可保持 bucket 私有，无需开公共访问；下载方或中转服务必须能访问该链接。
+- 媒体中心在所有引用释放满 1 小时后，按 `[maintenance.sandbox_cleanup].schedule`（默认每天 04:00）清理对象，且独立启用、不受 sandbox 清理开关影响；删除失败保留记录待重试，仍被 Session 或聊天历史引用的不删。预签名 URL 到期只影响链接，不删对象。
 
-媒体中心在所有引用释放满 1 小时后，按 `[maintenance.sandbox_cleanup].schedule`（默认每天 04:00）清理对象；媒体清理独立启用，不受 sandbox 清理开关影响。删除失败会保留记录，后续清理重试；仍被 Session、聊天历史等引用的媒体不会删除。预签名 URL 到期仅影响链接访问，不会自动删除对象。
+`[media]` 控制图片入库压缩：
 
-`[media]` 控制图片入库压缩：`llm_image_compression_threshold_bytes` 是触发压缩的原图字节数阈值（默认 4 MiB），`llm_image_max_length` 是边长限制（默认 4096）。原图字节数超过阈值或任一边长达到限制时，等比例压缩图片。
+- `llm_image_compression_threshold_bytes`：触发压缩的原图字节数阈值，默认 4 MiB。
+- `llm_image_max_length`：压缩后的边长限制，默认 4096。
+- 原图超阈值或任一边长达到限制时等比例压缩。
 
 
 ## 日志与维护任务
-
-运行日志配置：
 
 ```toml
 [runtime]
@@ -478,41 +458,26 @@ log_level = "info"
 log_retention_days = 30
 ```
 
-`runtime.log_level` 只控制运行日志，支持 `debug`、`info`、`warn`、`error`。审计和 Elnis 日志独立保留，提高运行等级不会停止记录 `/usage` 所需的用量事实。日志文件按日轮转，使用 `elbot-`、`audit-`、`elnis-` 前缀，保留天数由 `log_retention_days` 控制。
+- `runtime.log_level` 只控制运行日志，支持 `debug`、`info`、`warn`、`error`。
+- 审计和 Elnis 日志独立保留，即使提高运行等级也会继续记录 `/usage` 所需的用量事实。
+- 日志文件按日轮转，前缀为 `elbot-`、`audit-`、`elnis-`，保留天数由 `log_retention_days` 控制。
+- 查询等级与记录等级独立：`/log -d` 只显示已有记录，不改配置、不补回未记录内容。筛选方式见[日志和审计命令](commands.md#日志和审计)。
+- 信号派发、后台信号任务和日志写入等设施故障直接报告到 stderr（不受日志等级过滤）；运行期报告后继续运行，初始化失败则返回主程序处理。
 
-`/log -d` 的查询等级和 `runtime.log_level` 的记录等级相互独立：查询只显示已有记录，不改变配置或补回未记录的内容。具体筛选方式见[日志和审计命令](commands.md#日志和审计)。
+维护任务使用 Linux crontab 风格的 5 字段 Cron：`分钟 小时 日 月 星期`，由内部 Cron Runtime 调度。
 
-信号派发、后台信号任务和日志写入等设施故障直接报告到 stderr，由终端或服务管理器收集，不受运行日志等级过滤。运行期报告后继续运行；初始化失败返回主程序处理。
-
-维护任务示例：
-
-```toml
-[maintenance.log_cleanup]
-enabled = true
-schedule = "0 3 * * *"
-```
-
-Cron 表达式由内部 Cron Runtime 调度，使用 Linux crontab 风格的 5 字段格式：`分钟 小时 日 月 星期`。默认维护任务包含日志、Session、sandbox 和聊天历史清理，例如 Session 清理默认保留 30 天，sandbox 默认每天 04:00 清理 7 天前内容，聊天历史默认每天 04:35 执行：
-
-```toml
-[maintenance.session_cleanup]
-enabled = false
-schedule = "15 3 * * *"
-retention_days = 30
-```
+| 任务 | 默认 enabled | 默认 schedule | 默认 retention_days |
+| --- | --- | --- | --- |
+| `[maintenance.log_cleanup]` | `true` | `0 3 * * *` | — |
+| `[maintenance.session_cleanup]` | `false` | `15 3 * * *` | 30 |
+| `[maintenance.sandbox_cleanup]` | `true` | `0 4 * * *` | 7 |
+| `[maintenance.chat_history_cleanup]` | `true` | `35 4 * * *` | 180 |
 
 ```toml
 [maintenance.sandbox_cleanup]
 enabled = true
 schedule = "0 4 * * *"
 retention_days = 7
-```
-
-```toml
-[maintenance.chat_history_cleanup]
-enabled = true
-schedule = "35 4 * * *"
-retention_days = 180
 ```
 
 ## Context 与压缩
@@ -523,10 +488,9 @@ compact_enabled = true
 compact_trigger_ratio = 0.8
 ```
 
-- 开启后，Session 上下文接近窗口上限时会触发压缩。
-- 也可以通过 `/compact` 手动压缩当前 Session。
-- 压缩成功后会切换到独立的新 Session，不修改原 Session 的历史。
-- 两种协议共用上述开关、阈值和当前模型的窗口配置。Responses 调用当前对话模型的 `/responses/compact`，保留整个原生返回窗口作为新会话起点。
+- 开启后，上下文接近窗口上限时自动压缩；也可用 `/compact` 手动触发。
+- 压缩成功后切换到独立的新 Session，不修改原 Session 的历史。
+- 两种协议共用上述开关、阈值和当前模型的窗口配置。Responses 调用当前对话模型的 `/responses/compact`，以整个原生返回窗口作为新会话起点。
 
 模型窗口在 `providers.toml` 的 `model_configs` 中配置：
 

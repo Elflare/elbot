@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"elbot/internal/command"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -177,15 +178,28 @@ func TestApplyForkCommandUsesReferencedAssistantID(t *testing.T) {
 	mapPlatformMessage(t, ctx, store, scope, "p-old", msg)
 
 	deps := newRefTestOptions(store, newRefTestHistory(t))
-	for _, prefix := range []string{"/", "!"} {
-		result, err := Apply(ctx, deps, share.ReferenceOptions{Platform: "qqofficial", ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-old", Text: prefix + "fork", CommandPrefixes: []string{prefix}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		want := prefix + "fork " + msg.ID
-		if result.Text != want {
-			t.Fatalf("text = %q, want %q", result.Text, want)
-		}
+	for _, tc := range []struct {
+		text, prefix string
+		prefixes     []string
+	}{
+		{text: "/fork", prefix: "/", prefixes: []string{"/"}},
+		{text: "!fork", prefix: "!", prefixes: []string{"!"}},
+		{text: "!!fork", prefix: "!!", prefixes: []string{"!", "!!"}},
+		{text: "!!fork", prefix: "!!", prefixes: []string{"!!", "!"}},
+		{text: "!!FORK", prefix: "!!", prefixes: []string{"!", "!!"}},
+		{text: "！！fork", prefix: "！！", prefixes: []string{"！", "！！"}},
+	} {
+		t.Run(tc.text+tc.prefixes[0], func(t *testing.T) {
+			deps.ParseCommand = func(text string) command.Parsed { return command.Parse(text, tc.prefixes) }
+			result, err := Apply(ctx, deps, share.ReferenceOptions{Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-old", Text: tc.text})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := tc.prefix + "fork " + msg.ID
+			if result.Text != want {
+				t.Fatalf("text = %q, want %q", result.Text, want)
+			}
+		})
 	}
 }
 
@@ -235,6 +249,7 @@ func mapPlatformMessage(t *testing.T, ctx context.Context, store storage.Store, 
 
 func newRefTestOptions(store storage.Store, history storage.ChatHistoryRepository) Options {
 	return Options{
+		ParseCommand:          func(text string) command.Parsed { return command.Parse(text, []string{"/"}) },
 		FindByPlatformMessage: store.Messages().FindByPlatformMessage,
 		GetSession:            store.Sessions().Get,
 		ListBySession:         store.Messages().ListBySession,

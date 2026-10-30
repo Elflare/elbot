@@ -138,8 +138,9 @@ flowchart LR
 
 `CommandExecutor → Router → command.Handler → 领域服务`。Agent 统一注册内置及 Hook 提供的命令，执行器统一发送结果和错误通知；用法见[命令文档](../docs/commands.md)。
 
-- `config` 统一前缀默认值与规范化，保留配置顺序。Agent、Hook 根部绑定首个前缀，通过 `CommandText` 函数向提示生成组件注入组装能力；`command.Format` 只负责拼接，不读配置。Router 排序副本进行最长匹配，输入补全保留实际输入前缀。
-- 命令元数据由 `Name` 和不含前缀、命令名的 `Args` 组成；帮助、分页与确认操作直接组装，不拆解或替换展示文本。业务错误只说明原因，含命令的建议由用户输出层追加。
+- `config` 统一前缀默认值与规范化，保留配置顺序。Agent、Hook 根部绑定首个前缀，通过 `CommandText` 函数向提示生成组件注入组装能力；`command.Format` 只负责拼接，不读配置。
+- `command.Parse` 统一最长前缀匹配，不修改配置顺序。Router 复用解析，排序副本仅供补全保留实际输入前缀；Platform 根部绑定配置，通过 `ParseCommand` 向 QQ 适配器和引用恢复组件注入解析能力，子包不持有前缀配置、不补默认值。
+- 命令元数据的 `Name`、`Aliases` 不含前缀，`Args` 仅保存参数语法；解析和平台不剥除命令名中的 `/`。帮助、分页与确认操作直接组装，不拆解或替换展示文本。业务错误只说明原因，含命令的建议由用户输出层追加。
 - 改变 Session 的命令声明 SessionEffect，执行器协调压缩／确认冲突，Session 判断绑定规则。
 - 普通用户查询与停止限定当前 Session，超管可管理全局；取消仍复核原 binding 和目标请求。
 - 结果成功发送后才执行 Continuation；通知保留原会话与连接，不依赖可能失效的旧 binding。
@@ -150,6 +151,10 @@ flowchart TD
     Format["command/format.go<br/>纯函数组装命令文本"] --> Wiring
     Wiring --> Hints["命令、确认与输入组件<br/>生成提示及 Action.Command"]
     Hints --> Platforms["qqofficial/keyboard.go、telegram/keyboard.go<br/>渲染结构化操作，不解析正文"]
+    Parse["command/parse.go<br/>纯解析、最长前缀匹配"] --> Router["command/router.go<br/>路由、补全"]
+    Config --> PlatformWiring["platform/wiring.go<br/>绑定配置并注入 ParseCommand"]
+    Parse --> PlatformWiring
+    PlatformWiring --> Consumers["QQ adapter.go、refcontext/refcontext.go<br/>命令识别、引用恢复"]
 ```
 
 <!-- locator:request-turn -->

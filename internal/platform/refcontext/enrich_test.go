@@ -72,7 +72,7 @@ func TestEnrichCanonicalAssistantKeepsReferenceDecisions(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
-			result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: tc.actor, ReplyID: tc.reply, Text: tc.text, CommandPrefixes: []string{"/"}, Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
+			result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: tc.actor, ReplyID: tc.reply, Text: tc.text, Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
 				return share.ReferencedMessage{Text: "[forward]", Segments: []share.MessageSegment{{Type: share.SegmentText, Text: "[forward]"}}}, true, nil
 			}, Enrich: func(_ context.Context, _ string, ref share.ReferencedMessage) ([]share.MessageSegment, error) {
 				calls++

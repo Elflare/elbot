@@ -3,6 +3,7 @@ package qqonebot
 
 import (
 	"context"
+	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
@@ -24,12 +25,12 @@ type Config struct {
 	TriggerKeywords          []string `toml:"trigger_keywords"`
 	SendFileMode             string   `toml:"send_file_mode"`
 	Superadmins              []string `toml:"-"`
-	CommandPrefixes          []string `toml:"-"`
 }
 
 // Deps 是 OneBot 构造所需的配置与借用能力，由 Platform 根部装配。
 type Deps struct {
 	share.CommonConfig
+	ParseCommand func(string) command.Parsed // 根部绑定配置前缀的命令解析能力。
 	// ChatHistory 只写入历史和查询被引用消息的身份。
 	ChatHistory interface {
 		share.ChatHistoryWriter
@@ -42,6 +43,7 @@ type Deps struct {
 
 type Adapter struct {
 	cfg               Config
+	parseCommand      func(string) command.Parsed                                                  // 借用的命令解析函数。
 	referenceResolver func(context.Context, share.ReferenceOptions) (share.ReferenceResult, error) // 根部注入的引用恢复能力。
 	chatHistory       interface {
 		share.ChatHistoryWriter
@@ -76,7 +78,6 @@ func NewFromPlatformConfig(raw map[string]any, deps Deps) (*Adapter, error) {
 		return nil, fmt.Errorf("decode qqonebot config: %w", err)
 	}
 	cfg.Superadmins = append([]string(nil), deps.Superadmins...)
-	cfg.CommandPrefixes = append([]string(nil), deps.CommandPrefixes...)
 	applyDefaults(&cfg)
 	if err := validateSendFileMode(cfg.SendFileMode); err != nil {
 		return nil, err
@@ -90,7 +91,8 @@ func NewFromPlatformConfig(raw map[string]any, deps Deps) (*Adapter, error) {
 		cfg.AccessToken = strings.TrimSpace(value)
 	}
 	return &Adapter{
-		cfg: cfg, chatHistory: deps.ChatHistory, referenceResolver: deps.ReferenceResolver,
+		parseCommand: deps.ParseCommand,
+		cfg:          cfg, chatHistory: deps.ChatHistory, referenceResolver: deps.ReferenceResolver,
 		findByPlatformMessage: deps.FindByPlatformMessage, findOutputs: deps.FindOutputs,
 		transport:   newTransport(cfg.URL, cfg.AccessToken, time.Duration(cfg.APITimeoutSeconds)*time.Second),
 		connectDone: make(chan struct{}), done: make(chan struct{}), closeDone: make(chan struct{}),
@@ -111,9 +113,6 @@ func applyDefaults(cfg *Config) {
 	cfg.SendFileMode = strings.ToLower(strings.TrimSpace(cfg.SendFileMode))
 	if cfg.SendFileMode == "" {
 		cfg.SendFileMode = sendFileModeBase64
-	}
-	if len(cfg.CommandPrefixes) == 0 {
-		cfg.CommandPrefixes = []string{"/"}
 	}
 }
 

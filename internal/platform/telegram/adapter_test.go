@@ -475,6 +475,7 @@ func TestSetMyCommandsPayload(t *testing.T) {
 func TestTelegramBotCommands(t *testing.T) {
 	commands := telegramBotCommands([]command.Info{
 		{Name: "help", Description: "查看帮助"},
+		{Name: "/legacy", Description: "invalid"},
 		{Name: "bad-name", Description: "invalid"},
 		{Name: "model", Args: "<name>"},
 		{Name: "UPPER", Description: "invalid"},

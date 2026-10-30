@@ -447,14 +447,13 @@ func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandle
 	var referenceSegments []share.MessageSegment
 	if normalized.ReplyID != "" {
 		ref, err := a.referenceResolver(msgCtx, share.ReferenceOptions{
-			Platform:        a.Name(),
-			ScopeID:         messageCtx.Conversation.Source.ScopeID,
-			ActorID:         messageCtx.Conversation.Identity.ActorID,
-			IsSuperadmin:    isConfiguredSuperadmin(a.cfg.Superadmins, userIDString(msg.From)),
-			ReplyID:         normalized.ReplyID,
-			Text:            text,
-			CommandPrefixes: a.cfg.CommandPrefixes,
-			Fetch:           a.referenceFetcher(msg, normalized),
+			Platform:     a.Name(),
+			ScopeID:      messageCtx.Conversation.Source.ScopeID,
+			ActorID:      messageCtx.Conversation.Identity.ActorID,
+			IsSuperadmin: isConfiguredSuperadmin(a.cfg.Superadmins, userIDString(msg.From)),
+			ReplyID:      normalized.ReplyID,
+			Text:         text,
+			Fetch:        a.referenceFetcher(msg, normalized),
 		})
 		if err != nil {
 			record := globalevents.LogRecord{

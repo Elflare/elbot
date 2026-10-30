@@ -126,21 +126,21 @@ work 模式下 LLM 可用 `discover_tool` 按需发现；聊天中也可用 `@to
 
 ## 日志和审计
 
-| 命令 | 日志文件 | 作用 |
-| --- | --- | --- |
-| `/log [options]` | `elbot-YYYY-MM-DD.log` | 运行日志。 |
-| `/audit [options]` | `audit-YYYY-MM-DD.log` | 审计日志。 |
-| `/elwisp [name] [options]` | `elnis-YYYY-MM-DD.log` | Elnis/Elwisp 事件日志。 |
-| `/usage [options]` | 审计日志 | 汇总 token 消耗（仅超级管理员）。 |
+| 命令 | 作用 |
+| --- | --- |
+| `/log [options]` | 运行日志。 |
+| `/audit [options]` | 审计日志。 |
+| `/elwisp [name] [options]` | Elnis/Elwisp 事件日志。 |
+| `/usage [options]` | 汇总审计日志的 token 消耗（仅超级管理员）。 |
 
 选项（“适用”列省略即三者通用）：
 
 | 选项 | 适用 | 作用 |
 | --- | --- | --- |
 | `-n, --limit <n>` | log/audit/elwisp | 返回条数，默认 5。 |
-| `-d, --days <n>` | log/audit/elwisp | 读取最近 n 天，默认 1。 |
+| `--days <n>` | log/audit/elwisp | 读取最近 n 天，默认 1。 |
 | `--level <level>` | log/audit/elwisp | 最低等级：`debug`、`info`、`warn`、`error`。 |
-| `-d, -i, -w, -e` | log/audit/elwisp | 等级快捷方式，不改变展示方式。 |
+| `-d, -i, -w, -e` | log/audit/elwisp | 等级快捷方式（debug/info/warn/error），不改变展示方式。 |
 | `--raw` | log/audit/elwisp | 显示文件中的完整原始记录，与等级筛选独立。 |
 | `--since <time>` / `--until <time>` | log/audit/elwisp | 时间范围，例如 `2h`、`30m`、`2026-06-03`。 |
 | `--msg <text>` | log/audit/elwisp | 按消息正文过滤。 |
@@ -173,17 +173,15 @@ work 模式下 LLM 可用 `discover_tool` 按需发现；聊天中也可用 `@to
 
 ## 高风险工具确认
 
-当工具调用触发高风险确认时，Agent 会提示可用确认命令，例如：
+触发高风险确认时可用的命令：
 
 | 命令 | 作用 |
 | --- | --- |
-| `/detail` | 查看待确认工具调用详情；支持工具自定义纯文本详情，未自定义时显示格式化后的参数。 |
+| `/detail` | 待确认工具调用详情；支持工具自定义纯文本详情，未自定义时显示格式化后的参数。 |
 | `/confirm` | 确认当前待确认工具调用。 |
 | `/confirmtool` | 确认当前工具。 |
 | `/confirmall` | 确认当前批次全部待确认工具。 |
 | `/reject` | 拒绝当前待确认工具调用。 |
-| `/stop` | 停止当前请求。 |
 
-普通用户的确认等待默认在 10 分钟无有效操作后过期；若当前群聊或私聊的 Session TTL 更短，则使用更短的时限。超级管理员不受额外的 10 分钟限制，但仍遵守大于 0 的 Session TTL。执行 `/detail` 会重新计时；过期后工具不会执行，当前处理会停止。
-
-具体提示以运行时输出为准。
+- 普通用户的确认等待默认 10 分钟无有效操作后过期；当前群聊或私聊的 Session TTL 更短时用更短时限。超级管理员不受额外的 10 分钟限制，但仍遵守大于 0 的 Session TTL。`/detail` 会重新计时；过期后工具不执行，当前处理停止。
+- 也可用 `/stop` 停止当前请求（见[请求管理](#请求管理)）。具体提示以运行时输出为准。

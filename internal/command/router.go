@@ -17,14 +17,7 @@ type Router struct {
 	commandText func(string, ...string) string // 绑定配置首个前缀，不受解析排序影响。
 }
 
-type Parsed struct {
-	OK     bool
-	Prefix string
-	Name   string
-	Args   string
-}
-
-// NewRouter 接收 config 已规范化且非空的前缀；解析使用独立的最长优先副本。
+// NewRouter 接收 config 已规范化且非空的前缀；补全使用独立的最长优先副本。
 func NewRouter(prefixes []string) *Router {
 	prefix := prefixes[0]
 	prefixes = append([]string(nil), prefixes...)
@@ -100,22 +93,7 @@ func (r *Router) IsCommand(text string) bool {
 }
 
 func (r *Router) Parse(text string) Parsed {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return Parsed{}
-	}
-	for _, prefix := range r.prefixes {
-		if !strings.HasPrefix(text, prefix) {
-			continue
-		}
-		rest := strings.TrimSpace(strings.TrimPrefix(text, prefix))
-		if rest == "" {
-			return Parsed{OK: true, Prefix: prefix}
-		}
-		name, args, _ := strings.Cut(rest, " ")
-		return Parsed{OK: true, Prefix: prefix, Name: normalizeName(name), Args: strings.TrimSpace(args)}
-	}
-	return Parsed{}
+	return Parse(text, r.prefixes)
 }
 
 func (r *Router) CommandInfo(name string) (Info, bool) {
@@ -222,5 +200,5 @@ func (r *Router) Prefixes() []string {
 }
 
 func normalizeName(name string) string {
-	return strings.ToLower(strings.TrimSpace(strings.TrimPrefix(name, "/")))
+	return strings.ToLower(strings.TrimSpace(name))
 }

@@ -163,13 +163,12 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 	var ref share.ReferenceResult
 	if err == nil && replyID != "" {
 		ref, err = a.referenceResolver(msgCtx, share.ReferenceOptions{
-			Platform:        a.Name(),
-			ScopeID:         messageCtx.Conversation.Source.ScopeID,
-			ActorID:         actorID,
-			IsSuperadmin:    isConfiguredSuperadmin(a.cfg.Superadmins, senderID),
-			ReplyID:         replyID,
-			Text:            text,
-			CommandPrefixes: a.cfg.CommandPrefixes,
+			Platform:     a.Name(),
+			ScopeID:      messageCtx.Conversation.Source.ScopeID,
+			ActorID:      actorID,
+			IsSuperadmin: isConfiguredSuperadmin(a.cfg.Superadmins, senderID),
+			ReplyID:      replyID,
+			Text:         text,
 			Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
 				return referenced, len(referenced.Segments) > 0, nil
 			},
@@ -189,7 +188,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 		_ = globalevents.EmitLog(context.WithoutCancel(msgCtx), record)
 		return
 	}
-	if replyID == "" && len(referenced.Segments) > 0 && !share.HasCommandPrefix(text, a.cfg.CommandPrefixes) {
+	if replyID == "" && len(referenced.Segments) > 0 && !a.parseCommand(text).OK {
 		ref.Reply = share.ReplyContext{Text: referenced.Text, Segments: referenced.Segments}
 		ref.ReferenceSegments = referenced.Segments
 		ref.Text = share.FormatReferenceText(a.Name(), ref.Reply, text)

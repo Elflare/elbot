@@ -14,6 +14,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
+	"elbot/internal/command"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/platform/share"
@@ -637,8 +638,9 @@ func newTestAdapter(t *testing.T, cfg Config, store storage.Store, history stora
 		"reconnect_interval_seconds": cfg.ReconnectIntervalSeconds, "api_timeout_seconds": cfg.APITimeoutSeconds,
 		"trigger_keywords": cfg.TriggerKeywords, "send_file_mode": cfg.SendFileMode,
 	}, Deps{
+		ParseCommand: func(text string) command.Parsed { return command.Parse(text, []string{"/"}) },
 		CommonConfig: share.CommonConfig{
-			Superadmins: cfg.Superadmins, CommandPrefixes: cfg.CommandPrefixes,
+			Superadmins: cfg.Superadmins,
 		},
 		ChatHistory: history, FindByPlatformMessage: store.Messages().FindByPlatformMessage,
 		FindOutputs: store.Media().FindOutputs,

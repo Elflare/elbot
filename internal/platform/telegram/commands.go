@@ -29,7 +29,7 @@ func telegramBotCommands(infos []command.Info) []botCommand {
 	out := make([]botCommand, 0, len(infos))
 	seen := map[string]bool{}
 	for _, info := range infos {
-		name := strings.TrimSpace(strings.TrimPrefix(info.Name, "/"))
+		name := info.Name
 		if !validTelegramCommandName(name) || seen[name] {
 			continue
 		}

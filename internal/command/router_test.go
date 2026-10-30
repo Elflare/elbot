@@ -54,7 +54,7 @@ func TestRouterCommandInfoFindsPrimaryAndAlias(t *testing.T) {
 	if err := r.Register(NewFunc(Info{Name: "audit", Args: "", Aliases: []string{"aud"}, Help: "details"}, nil)); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
-	for _, name := range []string{"audit", "aud", "/audit"} {
+	for _, name := range []string{"audit", "aud"} {
 		info, ok := r.CommandInfo(name)
 		if !ok {
 			t.Fatalf("CommandInfo(%q) not found", name)
@@ -62,6 +62,9 @@ func TestRouterCommandInfoFindsPrimaryAndAlias(t *testing.T) {
 		if info.Name != "audit" || info.Help != "details" {
 			t.Fatalf("CommandInfo(%q) = %#v", name, info)
 		}
+	}
+	if _, ok := r.CommandInfo("/audit"); ok {
+		t.Fatal("command name must not include a prefix")
 	}
 }
 

@@ -41,7 +41,6 @@ type Config struct {
 	Format                         string   `toml:"format"`
 	TriggerKeywords                []string `toml:"trigger_keywords"`
 	Superadmins                    []string `toml:"-"`
-	CommandPrefixes                []string `toml:"-"`
 	ConfigEnvDir                   string   `toml:"-"`
 }
 
@@ -51,7 +50,6 @@ func NewFromPlatformConfig(raw map[string]any, deps Deps) (*Adapter, error) {
 		return nil, fmt.Errorf("decode telegram config: %w", err)
 	}
 	cfg.Superadmins = append([]string(nil), deps.Superadmins...)
-	cfg.CommandPrefixes = append([]string(nil), deps.CommandPrefixes...)
 	cfg.ConfigEnvDir = deps.ConfigDir
 	applyDefaults(&cfg)
 	var client *apiClient
@@ -99,9 +97,6 @@ func applyDefaults(cfg *Config) {
 		cfg.StreamEditIntervalMilliseconds = int(defaultStreamEditInterval / time.Millisecond)
 	}
 	cfg.Format = normalizeTelegramFormat(cfg.Format)
-	if len(cfg.CommandPrefixes) == 0 {
-		cfg.CommandPrefixes = []string{"/"}
-	}
 }
 
 func (c Config) tokenValue() (string, error) {

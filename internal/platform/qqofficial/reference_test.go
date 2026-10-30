@@ -49,7 +49,7 @@ func TestInboundReferenceIndexes(t *testing.T) {
 }
 
 func TestReferenceAliasKeepsScope(t *testing.T) {
-	a := newTestAdapter(t, Config{CommandPrefixes: []string{"/"}}, nil)
+	a := newTestAdapter(t, Config{}, nil)
 	a.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
 		if opts.ScopeID != "group:group" || opts.ReplyID != "original" {
 			t.Fatalf("options = %+v", opts)
@@ -97,7 +97,7 @@ func TestEventReferenceWithoutHistory(t *testing.T) {
 			{name: "ordinary", content: "remember", quote: "not a quote"},
 		} {
 			t.Run(fmt.Sprintf("group=%v/%s", group, tc.name), func(t *testing.T) {
-				a := newTestAdapter(t, Config{CommandPrefixes: []string{"/"}}, nil)
+				a := newTestAdapter(t, Config{}, nil)
 				msg := inboundMessage{ID: "current", Author: inboundAuthor{UserOpenID: "user", MemberOpenID: "user"}, GroupOpenID: "group",
 					Content: tc.content, MessageType: tc.messageType,
 					MsgElements: []messageElement{{MsgIdx: "REFIDX_unknown", Content: tc.quote, Attachments: tc.attachments}},
@@ -136,7 +136,7 @@ type interfaceHistory interface {
 func TestMappedReferenceConsumesResolverMediaAndSuppliesEventFallback(t *testing.T) {
 	for _, fromHistory := range []bool{false, true} {
 		t.Run(fmt.Sprintf("history=%v", fromHistory), func(t *testing.T) {
-			a := newTestAdapter(t, Config{CommandPrefixes: []string{"/"}}, nil)
+			a := newTestAdapter(t, Config{}, nil)
 			mapTestReference(t, a, "c2c:user", "REFIDX_original", "original")
 			image := messageAttachment{URL: "https://example.com/quote.png", ContentType: "image/png", Filename: "quote.png"}
 			if fromHistory {
@@ -206,7 +206,7 @@ func TestSendRegistersReferenceIndexWithoutChangingDelivery(t *testing.T) {
 				fmt.Fprintf(w, `{"id":"sent-%d","ext_info":{"ref_idx":"REFIDX_%d"}}`, calls, calls)
 			}))
 			defer server.Close()
-			a := newTestAdapter(t, Config{CommandPrefixes: []string{"/"}}, nil)
+			a := newTestAdapter(t, Config{}, nil)
 			a.client = newQQOfficialSendTestAdapter(t, server).client
 			if fail {
 				a.chatHistory = failingAliasHistory{a.chatHistory}

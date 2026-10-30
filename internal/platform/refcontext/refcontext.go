@@ -8,11 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"elbot/internal/command"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 )
 
 type Options struct {
+	ParseCommand          func(string) command.Parsed                                                             // 根部绑定配置前缀的命令解析能力。
 	FindByPlatformMessage func(context.Context, string, string, string) (*storage.Message, error)                 // 平台消息对应的会话消息。
 	GetSession            func(context.Context, string) (*storage.Session, error)                                 // 引用会话的身份与模式。
 	ListBySession         func(context.Context, string) ([]storage.Message, error)                                // 判断引用是否为最新助手消息。
@@ -43,10 +45,9 @@ func Apply(ctx context.Context, deps Options, opts share.ReferenceOptions) (shar
 			result.Reply.Segments = []share.MessageSegment{{Type: share.SegmentText, Text: result.Reply.Text}}
 		}
 	}
-	trimmed := strings.TrimSpace(opts.Text)
-	if prefix, name, ok := share.CommandName(trimmed, opts.CommandPrefixes); ok {
-		if hasStored && stored.Role == storage.RoleAssistant && name == "fork" {
-			result.Text = prefix + "fork " + stored.ID
+	if parsed := deps.ParseCommand(opts.Text); parsed.OK {
+		if hasStored && stored.Role == storage.RoleAssistant && parsed.Name == "fork" {
+			result.Text = parsed.Prefix + "fork " + stored.ID
 		}
 		return result, nil
 	}

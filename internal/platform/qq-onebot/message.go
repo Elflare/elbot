@@ -166,7 +166,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 	msgCtx := share.WithMessageContext(ctx, messageCtx)
 
 	var currentDisplay []share.MessageSegment
-	if event.MessageType == "private" && !share.HasCommandPrefix(text, a.cfg.CommandPrefixes) {
+	if event.MessageType == "private" && !a.parseCommand(text).OK {
 		if segments, ok := decodeMessageSegments(event.Message); ok {
 			var err error
 			currentDisplay, err = a.expandForwardSegments(msgCtx, segments, event.SelfID, currentSegments)
@@ -185,15 +185,14 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 	var referenceSegments []share.MessageSegment
 	if normalized.ReplyID != "" {
 		ref, err := a.referenceResolver(msgCtx, share.ReferenceOptions{
-			Platform:        a.Name(),
-			ScopeID:         messageCtx.Conversation.Source.ScopeID,
-			ActorID:         security.ActorID(a.Name(), strconv.FormatInt(event.UserID, 10)),
-			IsSuperadmin:    isConfiguredSuperadmin(a.cfg.Superadmins, strconv.FormatInt(event.UserID, 10)),
-			ReplyID:         normalized.ReplyID,
-			Text:            referenceInputText,
-			CommandPrefixes: a.cfg.CommandPrefixes,
-			Fetch:           a.referenceFetcher(event),
-			Enrich:          a.expandForwardReference(event),
+			Platform:     a.Name(),
+			ScopeID:      messageCtx.Conversation.Source.ScopeID,
+			ActorID:      security.ActorID(a.Name(), strconv.FormatInt(event.UserID, 10)),
+			IsSuperadmin: isConfiguredSuperadmin(a.cfg.Superadmins, strconv.FormatInt(event.UserID, 10)),
+			ReplyID:      normalized.ReplyID,
+			Text:         referenceInputText,
+			Fetch:        a.referenceFetcher(event),
+			Enrich:       a.expandForwardReference(event),
 		})
 		if err != nil {
 			logContextFailure(msgCtx, err)

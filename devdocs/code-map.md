@@ -101,6 +101,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/command/`、`internal/command/builtin/register.go`：命令路由与契约；后者负责内置命令注册。
 - `internal/command/format.go`：根据前缀、命令名与参数组装文本；`internal/agent/wiring.go`、`internal/hook/wiring.go` 绑定配置首个前缀，注入 `CommandText` 能力。`command.Info.Args` 仅保存参数语法。
+- `internal/command/parse.go`：命令解析结果与最长前缀匹配；Router 复用解析，`internal/platform/wiring.go` 绑定配置并向 QQ 适配器、引用恢复组件注入 `ParseCommand`，子包不传递前缀列表。
 - `internal/command/builtin/`、`internal/agent/input/command_executor.go`：分别负责命令实现与执行协调。
 - `internal/command/completion.go`：补全 token、候选与替换范围。
 - `internal/command/builtin/log.go`、`usage.go`：分别负责日志查询与用量统计。

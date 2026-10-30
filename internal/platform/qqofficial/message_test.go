@@ -4,6 +4,7 @@ package qqofficial
 
 import (
 	"context"
+	"elbot/internal/command"
 	globalevents "elbot/internal/events"
 	"elbot/internal/signal"
 	"encoding/json"
@@ -434,7 +435,7 @@ func newTestAdapter(t *testing.T, cfg Config, history storage.ChatHistoryReposit
 	if cfg.MarkdownByDefault != nil {
 		raw["markdown_by_default"] = *cfg.MarkdownByDefault
 	}
-	a, err := NewFromPlatformConfig(raw, Deps{CommonConfig: share.CommonConfig{Superadmins: cfg.Superadmins, CommandPrefixes: cfg.CommandPrefixes}, ChatHistory: history})
+	a, err := NewFromPlatformConfig(raw, Deps{CommonConfig: share.CommonConfig{Superadmins: cfg.Superadmins}, ParseCommand: func(text string) command.Parsed { return command.Parse(text, []string{"/"}) }, ChatHistory: history})
 	if err != nil {
 		t.Fatal(err)
 	}

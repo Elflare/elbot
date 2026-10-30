@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
@@ -56,7 +57,10 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps) error {
 		}
 	}
 	// 引用恢复只在根部连接；适配器不导入 refcontext 兄弟包。
+	prefixes := cfg.Commands.Prefixes
+	parseCommand := func(text string) command.Parsed { return command.Parse(text, prefixes) }
 	referenceDeps := refcontext.Options{
+		ParseCommand:          parseCommand,
 		FindByPlatformMessage: deps.Store.Messages().FindByPlatformMessage,
 		GetSession:            deps.Store.Sessions().Get,
 		ListBySession:         deps.Store.Messages().ListBySession,
@@ -67,7 +71,8 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps) error {
 	}
 	if raw, ok := cfg.Platform["qqofficial"]; ok {
 		adapter, err := qqofficial.NewFromPlatformConfig(raw, qqofficial.Deps{
-			CommonConfig: share.CommonConfig{Superadmins: cfg.Security.Superadmins["qqofficial"], CommandPrefixes: cfg.Commands.Prefixes, ConfigDir: filepath.Dir(cfg.ConfigPath)},
+			CommonConfig: share.CommonConfig{Superadmins: cfg.Security.Superadmins["qqofficial"], ConfigDir: filepath.Dir(cfg.ConfigPath)},
+			ParseCommand: parseCommand,
 			ChatHistory:  deps.ChatHistory,
 			ReferenceResolver: func(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
 				return refcontext.Apply(ctx, referenceDeps, opts)
@@ -82,9 +87,10 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps) error {
 	}
 	if raw, ok := cfg.Platform["qqonebot"]; ok {
 		adapter, err := qqonebot.NewFromPlatformConfig(raw, qqonebot.Deps{
+			ParseCommand: parseCommand,
 			CommonConfig: share.CommonConfig{
-				Superadmins: cfg.Security.Superadmins["qqonebot"], CommandPrefixes: cfg.Commands.Prefixes,
-				ConfigDir: filepath.Dir(cfg.ConfigPath), AttachmentDir: filepath.Join(cfg.Sandbox.Root, "platform", "qqonebot"),
+				Superadmins: cfg.Security.Superadmins["qqonebot"],
+				ConfigDir:   filepath.Dir(cfg.ConfigPath), AttachmentDir: filepath.Join(cfg.Sandbox.Root, "platform", "qqonebot"),
 				MaxReceiveFileBytes: cfg.PlatformFiles.MaxReceiveFileBytes, DownloadTimeoutSecs: cfg.PlatformFiles.DownloadTimeoutSecs,
 			},
 			ChatHistory: deps.ChatHistory,
@@ -103,7 +109,7 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps) error {
 	}
 	if raw, ok := cfg.Platform["telegram"]; ok {
 		adapter, err := telegram.NewFromPlatformConfig(raw, telegram.Deps{
-			CommonConfig: share.CommonConfig{Superadmins: cfg.Security.Superadmins["telegram"], CommandPrefixes: cfg.Commands.Prefixes, ConfigDir: filepath.Dir(cfg.ConfigPath)},
+			CommonConfig: share.CommonConfig{Superadmins: cfg.Security.Superadmins["telegram"], ConfigDir: filepath.Dir(cfg.ConfigPath)},
 			ChatHistory:  deps.ChatHistory,
 			ReferenceResolver: func(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
 				return refcontext.Apply(ctx, referenceDeps, opts)

@@ -5,7 +5,7 @@
 ## 环境要求
 
 - Go 1.26 或更新版本。
-- 一个 OpenAI-compatible LLM 服务（兼容 `/chat/completions`，例如 DeepSeek、OpenAI）。
+- 一个 LLM 服务：兼容 `/chat/completions` 或 Responses API 之一（例如 DeepSeek、OpenAI）。
 - 至少一个可用 API Key。
 
 ## 获取代码并启动
