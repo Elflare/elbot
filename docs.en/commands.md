@@ -2,153 +2,80 @@
 
 # Command Quick Reference
 
-ElBot's slash commands are handled uniformly by Agent Core; CLI, QQ, and subsequent platforms share the same semantics. The default command prefix is `/`, which can be configured in `[commands]` of `app.toml`.
+Slash commands are handled uniformly by Agent Core, and platforms such as CLI and QQ share the same semantics. The default prefix is `/`, which can be configured in `[commands]` of `app.toml`.
 
-## Help
-
-| Command | Function |
-| --- | --- |
-| `/help` | View the list of available commands. |
-| `/help <command>` | View detailed help for a specific command. |
-
-Example:
-
-```text
-/help
-/help model
-/help log
-```
-
-## Configuration Diagnosis
+## Help and Diagnostics
 
 | Command | Function |
 | --- | --- |
-| `/doctor` | Performs a read-only check of the current service's configuration and built-in Skills, lists issues by file, and generates a processing request that can be copied to ElBot; available to superadmins only. |
+| `/help` | List of available commands. |
+| `/help <command>` | Detailed help for a specific command, for example `/help model`. |
+| `/doctor` | Read-only check of the current configuration and built-in Skills (superadmin only). |
 
-Send `/doctor` in the chat window; no parameters required. Checks the main configuration path selected when starting the current service; separate configurations are located according to `config_files` in the main file. When issues are found, the actual file path, specific problem, configuration description, and the GitHub raw address of the default template will be attached; Please copy the output request to an ElBot that has access to these files. The check itself will not modify files or automatically initiate repairs.
-
-If no issues are found, only `Everything is OK` will be returned. For the check scope and limitations, see [Configuration Diagnosis](configuration.md#配置诊断).
+`/doctor` uses the main configuration path selected during service startup; separated configurations are located according to `config_files`. When issues occur, it lists the actual file paths, specific issues, descriptions, and GitHub raw addresses of default templates, and generates a processing request that can be copied to ElBot; Copy and provide it to an ElBot that has access to these files for processing. The check itself does not modify files or perform automatic repairs; if there are no issues, it only returns `Everything is OK`. See [Configuration Diagnosis](configuration.md#配置诊断) for the scope.
 
 ## Model
 
 | Command | Function |
 | --- | --- |
-| `/models` | View the model list. |
-| `/models --fresh` or `/models --refresh` | Reload vendor configuration files and force refresh the model list. |
+| `/checkmodel [关键词]` (alias `/models`) | View or search for models. |
+| `/models --fresh` / `--refresh` | Reload vendor configurations and force refresh the model list. |
 | `/model <编号或名称>` | Switch the model used in the current Session mode. |
-| `/model --chat <模型>` | Switch the chat mode model. |
-| `/model --work <模型>` | Switch the work mode model. |
-| `/model --elwisp1 <模型>` | Switch to Elnis elwisp1 model slot. |
-| `/model --elwisp2 <模型>` | Switch to Elnis elwisp2 model slot. |
-| `/model --elwisp3 <模型>` | Switch to Elnis elwisp3 model slot. |
+| `/model --chat <模型>` / `--work <模型>` | Switch models for chat / work mode. |
+| `/model --elwisp<1\|2\|3> `<model>` | Switch Elnis elwisp1/2/3 model slots. |
 | `/model --compact <模型>` | Switch the Chat text summary model; Responses native compression uses the current conversation model. |
 | `/model --naming <模型>` | Switch the Session auto-naming model. |
-| `/checkmodel [关键词]` | View or search for models. |
 
-Model parameters can be a list number, model name, or `provider/model`.
+Model parameters can be a list number, a model name, or `provider/model`, for example `/model --work deepseek/deepseek-chat`.
 
-Model selection takes effect globally by mode/slot. `/model` uses the mode of the current Session when no target is specified, and the default mode when there is no current Session. Successful switches will be saved to `state.toml`.
-
-Example:
-
-```text
-/models
-/models --fresh
-/models --refresh
-/model 2
-/model --work deepseek/deepseek-chat
-/model --chat openai/gpt-4o-mini
-/model --elwisp2 openai/gpt-4.1
-/checkmodel deepseek
-```
+Model selection takes effect globally by mode/slot and is saved to `state.toml`; When `/model` does not specify a target, it uses the mode of the current Session; if there is no current Session, the default mode is used.
 
 ## Mode
 
 | Command | Function |
 | --- | --- |
-| `/chat [消息]` | Switch to chat mode, or create a new chat Session; if a message is provided, it will be sent immediately after switching. |
-| `/work [消息]` | Switch to work mode, or create a new work Session; if a message is provided, it will be sent immediately after switching. |
+| `/chat [消息]` | Switch to chat mode or create a new chat Session, without injecting tools. |
+| `/work [消息]` | Switch to work mode or create a new work Session, enabling tool discovery and invocation. |
 
-Note:
-
-- `chat` mode does not inject tools, making it suitable for casual chat, companionship, and low-cost Q&A.
-- `work` mode enables tool discovery and tool calling.
-- A work Session with existing history cannot be switched directly to chat; you need to `/new` first, and then `/chat`.
-- For example, `/chat 随便聊聊` will first switch to chat mode, then send "Just chatting" as the same user message to the model; if the mode switch is rejected, the message will not be sent.
+- When a message is provided, it switches first and then sends it as the same user message; if the mode switch is rejected, the message is not sent (e.g., `/chat 随便聊聊`).
+- A work Session with existing history cannot be switched directly to chat; `/new` is required first.
 
 ## Session
 
 | Command | Function |
 | --- | --- |
 | `/new` | Create and switch to a new Session. |
-| `/status` | View the current Session status. |
+| `/status` | Current Session status. |
 | `/sessions [关键词]` | List or search visible Sessions. |
-| `/resume [最近编号或session_id]` | Restore a historical Session; index `1` represents the most recently updated Session other than the current one. |
-| `/archives [页码] [关键词]` | View archived Sessions. |
-| `/archive [编号或session_id] --confirm` | Archive Session, defaults to the current Session. |
-| `/unarchive [编号或session_id]` | Unarchive Session, defaults to the current Session. |
-| `/pin [编号或session_id]` | Pin Session, defaults to the current Session. |
-| `/unpin [编号或session_id]` | Unpin Session, defaults to the current Session. |
-| `/rename [number or session_id|Current Title] <New Title>` | Rename the current or a specified Session. |
-| `/delete <编号或session_id> --confirm` | Permanently delete the Session. |
+| `/resume [编号或 session_id]` | Restore historical Session. |
+| `/archives [页码] [关键词]` | List of archived Sessions. |
+| `/archive [编号或 session_id] --confirm` | Archive. |
+| `/unarchive [编号或 session_id]` | Unarchive. |
+| `/pin` / `/unpin [编号或 session_id]` | Pin / Unpin. |
+| `/rename [Number or session_id\"|Current Title] <New Title>` | Rename. |
+| `/delete <编号或 session_id> --confirm` | Permanently delete. |
 | `/clean --confirm` | Delete expired Sessions that are not archived or pinned. |
 
-Example:
-
-```text
-/new
-/status
-/sessions
-/sessions project
-/resume 1
-/rename 我的新会话标题
-/archive --confirm
-/delete 2 --confirm
-```
-
-Note:
-
-- `/resume 1` can directly restore the most recently updated Session other than the current one without first executing a bare `/resume`; indices are sorted by update time, are not affected by pinning, and remain continuous when paging.
-- While the current Session is processing, executing Session switching commands such as `/new`, `/resume`, `/fork`, `/chat`, and `/work` is not supported; If necessary, please use `/stop` to end the current processing first.
-- The indices displayed by `/sessions` can be reused by Session operation commands such as `/archive`, `/pin`, and `/delete`.
-- CLI serves as a local high-privilege entry point and can view Sessions across platforms; non-CLI platforms view Sessions under the current platform and scope by default.
-- Deletion is a permanent operation and requires explicit `--confirm`; Sessions currently executing cannot be deleted and will be skipped by automatic cleanup.
-- Cron/Elnis background Sessions can only be restored by the owning user via private chat on the same platform or through the CLI management entry; they are not displayed in group chats or channels, and cannot be bypassed via direct ID, message quoting, or unarchiving.
-- The first time a background Session is restored, it will be permanently transferred to the current foreground ownership; switching away will not restore its background identity.
+- Except for `/rename` and `/delete`, commands with `[编号或 session_id]` act on the current Session when parameters are omitted; IDs are displayed by `/sessions` and `/archives`, and can be reused by these commands.
+- `/resume 1` directly restores the most recently updated non-current Session without needing to execute a bare `/resume` first; IDs are sorted by update time, unaffected by pinning, and pagination is continuous.
+- CLI is a local high-privilege entry point, allowing viewing and managing Sessions across platforms; Non-CLI platforms only see the current platform and scope. Cron/Elnis background Sessions can only be restored via private chat on the same platform by the owning user, or via the CLI management entry point; they are not displayed in group chats or channels, and cannot be bypassed via direct ID, message quoting, or unarchiving; The first recovery will permanently transfer ownership to the foreground; switching away will not restore the background identity.
+- While the current Session is processing, switching commands such as `/new`, `/resume`, `/fork`, `/chat`, and `/work` cannot be executed; `/stop` is required first.
+- Deletion is a permanent operation and requires `--confirm`; Sessions currently executing cannot be deleted, and automatic cleanup will also skip them.
 
 ## Fork
 
 | Command | Function |
 | --- | --- |
 | `/messages [页码]` | List assistant message IDs available for forking in the current Session. |
-| `/fork <message_id>` | Create a branched Session from a specified assistant message. |
-
-Example:
-
-```text
-/messages
-/fork msg_xxx
-```
-
-Fork preserves the original Session and creates a new context branch from the specified assistant message position.
+| `/fork <message_id>` | Create a branched Session from this assistant message; the original Session remains unchanged. |
 
 ## Request Management
 
 | Command | Function |
 | --- | --- |
-| `/requests` | View active requests in the current process, including turn, LLM, tool, and hook requests; turns will display the execution stage and the time spent on each stage. |
-| `/stop [request_id]` | Stop the specified request; The ID displayed by `/requests` can also be used; Stops the request of the current Session when no parameters are passed. Stopping a one-time exec Hook will terminate the complete process tree of that Hook; For persistent Workers, only the current call is cancelled. |
-| `/stopall` | Stop all active requests in the current process. |
-
-Example:
-
-```text
-/requests
-/stop
-/stop 1.1
-/stop req_xxx
-/stopall
-```
+| `/requests` | Active requests of the current process, including turn, LLM, tool, and hook; turn displays the execution stage and the duration of that stage. |
+| `/stop [request_id\|ID]` | Stop a specified request; the ID is taken from `/requests`; Stops the request of the current Session when no parameters are passed. A one-time exec Hook will terminate the entire process tree, while a persistent Worker only cancels the current call. |
+| `/stopall` | Stop all active requests of the current process. |
 
 ## Context Compaction
 
@@ -156,10 +83,8 @@ Example:
 | --- | --- |
 | `/compact` | Manually compact the current Session context. |
 
-Note:
-
 - Automatic compaction is controlled by `[context] compact_enabled` and `compact_trigger_ratio`.
-- Context compaction preserves historical user utterances and ignores tool return values; upon success, it creates and switches to an independent `原标题 compacted-N` Session; The old Session is not modified. Use `/stop` to cancel
+- Compaction retains the original user utterances from history and ignores tool return values; upon success, it creates and switches to an independent `原标题 compacted-N` Session, leaving the old Session unmodified; Can be canceled using `/stop`.
 
 ## Tools and Skills
 
@@ -167,197 +92,98 @@ Note:
 | --- | --- |
 | `/tools` | List registered tools and external Skills. |
 | `/tools reload` | Rescan and load Skills. |
-| `/tools remove <name> --confirm` | Delete external Skills and their directories. |
-| `/tools uninstall <name> --confirm` | Equivalent to remove. |
+| `/tools remove <name> --confirm` (alias `/tools uninstall`) | Delete external Skills and their directories. |
 
-Example:
+`reload` first fully scans and validates candidate Skills, then replaces the current set all at once; it returns an error and retains the original tool set if there are duplicate Skill names, names that conflict with built-in tools, or if reading fails.
 
-```text
-/tools
-/tools reload
-/tools remove my_skill --confirm
-```
-
-`/tools reload` will first fully scan and verify the candidate Skills, and then replace the current set all at once. If there are duplicate Skill names, names that conflict with built-in tools, or if reading fails, reload will return an error and preserve the original tool set.
-
-In work mode, the LLM can discover tool details on demand via `discover_tool`. In a chat, you can also use `@tool:<name-or-tag>` (shorthand `@t:<name-or-tag>`) to preload tools, or use `@skill:<name>` (shorthand `@s:<name>`) to add Skill documentation to the current round of messages and preload the corresponding runtime wrapper. The colon can also be written as a full-width Chinese colon `：`.
+In work mode, the LLM can use `discover_tool` for on-demand tool discovery; In chat, `@tool:<name-or-tag>` (shorthand `@t:`) can also be used to preload tools, or `@skill:<name>` (shorthand `@s:`) can be used to add Skill documentation to the current round and preload the execution wrapper. See [Inline Preloading](concepts.md#内联预载) for syntax and examples.
 
 ## Undo File Edits
 
-The following commands are only available to superadmins:
+Available to superadmins only.
 
 | Command | Function |
 | --- | --- |
-| `/rollback` | List files that can be undone in the current Session, showing the index, absolute path, edit time, and undo action. |
+| `/rollback` | List undoable files: ID, absolute path, edit time, undo action. |
 | `/rollback <编号>` | Directly undo the file edit corresponding to the index. |
 
-For each file, the most recent successful `edit_file` modification is retained. Existing files are restored to their original content and permissions before editing; Newly created files are deleted, while the parent directory is retained. Backups are consumed after a successful undo; consecutive undos or redos are not supported.
-
-IDs are bound to specific modifications: editing the same file again will generate a new ID, and the old ID will become invalid; IDs are not reused within the process. Undo will be rejected after the file has been modified again. An actual undo requires that the current Session has no running tasks or compaction; you can wait for them to complete or use `/stop` first.
-
-Backups are stored only in memory and are isolated by user, platform Scope, and the current Session. After switching or clearing the Session, the original backup becomes invalid immediately and cannot be recovered even after switching back; Restarting also invalidates it. The entire process retains a maximum of 256 MiB of original content and 1024 records; once the limit is exceeded, the oldest records are discarded, and a notification is provided in the editing results. Failures and previews do not replace existing backups.
+- Each file retains the most recent successful `edit_file` modification: existing files are restored to their original content and permissions, and new files are deleted while parent directories are kept; backups are consumed after undoing, and consecutive undoes or redos are not supported.
+- IDs are bound to specific modifications: editing again will generate a new ID and invalidate the old one; IDs are not reused within the process; Undo will be rejected after the file has been modified again. Undo requires that the current Session has no running tasks or compaction (you can wait for completion or `/stop`).
+- Backups are stored in memory only and are isolated by user, platform Scope, and current Session: they become invalid immediately after switching or clearing the Session, cannot be recovered upon switching back, and are also lost upon restart. The entire process supports a maximum of 256 MiB of original content and 1024 records; once the limit is exceeded, the oldest records are evicted, and a notification will be provided in the edit results; Failures and previews do not replace existing backups.
 
 ## Hook
-
 
 | Command | Function |
 | --- | --- |
 | `/hooks` | List all registered Hooks. |
-| `/hooks <name>` | View the detailed configuration of a specific Hook. |
-| `/hooks start <id>` | Start a persistent Hook. |
-| `/hooks stop <id>` | Gracefully stop a Hook. |
+| `/hooks <name>` | Detailed configuration of a specific Hook. |
+| `/hooks start <id>` / `stop <id>` | Start / gracefully stop a persistent Hook. |
 | `/hooks restart <id>` | Stop and restart a persistent Hook. |
-| `/hooks reload` | Reread rules and persistent Hook configurations, and re-coordinate the process lifecycle. |
+| `/hooks reload` | Reread rules and persistent Hook configurations, and re-coordinate process lifecycles. |
 
-Example:
-
-```text
-/hooks
-/hooks greet
-/hooks restart weather
-/hooks reload
-```
-
-Note:
-
-- Rule Hooks directly use `name` from the configuration; built-in Hooks use `builtin.*` names, for example `builtin.cron.missed_once`.
-- `Description` will be displayed in the list and details; rule details are only displayed in the details.
-- `reload` will reread `hooks.toml` and the `hook.toml` of each plugin, rebuild Hook registrations, and replace affected persistent processes.
+- Rule Hooks use `name` from the configuration; built-in Hooks use `builtin.*`, such as `builtin.cron.missed_once`.
+- `Description` is displayed in the list and details; rule details are only displayed in the details.
+- `reload` rereads `hooks.toml` and the `hook.toml` of each plugin, rebuilds Hook registrations, and replaces affected persistent processes.
 - `/hooks` is a superadmin command.
 
 ## Logs and Audit
 
 | Command | Function |
 | --- | --- |
-| `/log [options]` | Query runtime logs. |
-| `/audit [options]` | Query audit logs. |
-| `/elwisp [name] [options]` | Query Elnis/Elwisp event logs. |
+| `/log [options]` | Runtime log. |
+| `/audit [options]` | Audit log. |
+| `/elwisp [name] [options]` | Elnis/Elwisp event logs. |
+| `/usage [options]` | Summarize token consumption of audit logs (superadmin only). |
 
-Common options:
+Options (if the "Applicable" column is omitted, it applies to all three):
 
-| Option | Function |
-| --- | --- |
-| `-n, --limit <n>` | Number of entries to return, default is 5. |
-| `--days <n>` | Read logs from the last n days, default is 1. |
-| `--level <level>` | Minimum level: `debug`, `info`, `warn`, `error`. |
-| `-d, -i, -w, -e` | Lowest level shortcut, does not change the display mode. |
-| `--raw` | Displays the complete raw records in the file, independent of level filtering. |
-| `--since <time>` | Only view entries after a certain time, e.g., `2h`, `30m`, `2026-06-03`. |
-| `--until <time>` | Only view entries before a certain time. |
-| `--msg <text>` | Filter by message body. |
-| `--contains <text>` | Filter by decoded record content or raw records. |
+| Option | Applicable | Function |
+| --- | --- | --- |
+| `-n, --limit <n>` | log/audit/elwisp | Number of entries to return, default is 5. |
+| `--days <n>` | log/audit/elwisp | Read the last n days, default is 1. |
+| `--level <level>` | log/audit/elwisp | Minimum level: `debug`, `info`, `warn`, `error`. |
+| `-d, -i, -w, -e` | log/audit/elwisp | Level shortcuts (debug/info/warn/error), does not change the display format. |
+| `--raw` | log/audit/elwisp | Displays the complete raw records in the file, independent of level filtering. |
+| `--since <time>` / `--until <time>` | log/audit/elwisp | Time range, for example `2h`, `30m`, `2026-06-03`. |
+| `--msg <text>` | log/audit/elwisp | Filter by message body. |
+| `--contains <text>` | log/audit/elwisp | Filter by decoded record content or raw records. |
+| `-u` / `-a` | log | Filter user / assistant events. |
+| `-s, --system` | log | Filter and display `system prompt` logs. |
+| `--hook` | log/audit | Filter records of `module=hook`. |
+| `-t` | audit | Filter tool audits for `event=tool_call`. |
+| `--run_source <来源>` | audit | `foreground`, `cron`, `elnis`; can be combined with `-t` and other conditions. |
+| `--event <name>` | audit | For example, `tool_call`, `llm_usage`, `permission_denied`. |
+| `--risk <level>` | audit | Risk level. |
+| `--actor <id>` / `--session <id>` / `--tool <name>` | audit | Filter by actor, Session, or tool name. |
+| `[name]`、`--name`、`--elwisp <name>` | elwisp | Filter by Elwisp name; three writing styles are equivalent. |
+| `--source` / `--id`（= `--source-id`） | elwisp | By event source / external event ID. |
+| `--mode <record\|direct\|llm>` | elwisp | event mode. |
+| `--event-key <key>` / `--event-id <id>` | elwisp | Elnis event key / internal event ID. |
+| `--token <name>` | elwisp | token name (excluding original text). |
+| `--tag <tag>` | elwisp | Contains specified tags, can be repeated, all must match. |
+| `-d, --days <n>` | usage | Summarize the last n days, default is 1. |
+| `-n <x[-y]>` | usage | Summarize the x-th to y-th most recent model calls (inclusive), index 1–100000; if y is omitted, only the x-th call is taken. |
+| `-m, --model <name>` | usage | Model name. |
+| `-s, --session <id>` | usage | Session ID。 |
+| `--by <key>` | usage | `model` (default), `day`, `session`. |
+| `--since <time>` / `--until <time>` | usage | Time range. |
 
-`/log` additionally supports:
+Example: `/log -w -n 10` · `/log --system` · `/audit --event tool_call --risk high` · `/audit -t --run_source cron` · `/elwisp server-watchdog --mode llm --since 2h` · `/usage --by day -d 30` · `/usage -n 2-4 -m gpt-4o`.
 
-| Option | Function |
-| --- | --- |
-| `-u`、`-a` | Filter user and assistant events separately. |
-| `-s, --system` | Filter and display `system prompt` logs. |
-| `--hook` | Filter runtime logs for `module=hook`. |
-
-`/audit` additionally supports:
-
-| Option | Function |
-| --- | --- |
-| `-t` | Filter tool audits for `event=tool_call`. |
-| `--run_source <来源>` | Filter by tool call source: `foreground`, `cron`, `elnis`; can be combined with `-t` and other conditions. |
-| `--hook` | Filter audits for `module=hook`, which can be used simultaneously with conditions such as `--event`. |
-| `--event <name>` | Filter by audit event, e.g., `tool_call`, `llm_usage`, `permission_denied`. |
-| `--risk <level>` | Filter by risk level. |
-| `--actor <id>` | Filter by actor ID. |
-| `--session <id>` | Filter by Session ID. |
-| `--tool <name>` | Filter by tool name. |
-
-`/elwisp` queries `elnis-YYYY-MM-DD.log`, with additional support for:
-
-| Option | Function |
-| --- | --- |
-| `[name]` | Filter by Elwisp name, equivalent to `--name`. |
-| `--name <name>` or `--elwisp <name>` | Filter by Elwisp name. |
-| `--source <source>` | Filter by event source. |
-| `--id <id>` or `--source-id <id>` | Filter by external event ID. |
-| `--mode <record|direct|llm>` | Filter by event mode. |
-| `--event-key <key>` | Filter by Elnis event key. |
-| `--event-id <id>` | Filter by internal Elnis event ID. |
-| `--token <name>` | Filter by token name, excluding the original token text. |
-| `--tag <tag>` | Filters records containing specified tags; can be repeated, requiring all tags to match. |
-
-Example:
-
-```text
-/log
-/log -w -n 10
-/log --system
-/log -u -d
-/log -u -d --raw
-/log --msg startup --days 3
-/audit --event tool_call --risk high -n 10
-/audit --actor cli:local --since 24h
-/audit --hook --event hook_tool_call
-/audit --hook --event hook_tool_log
-/audit --hook --tool shell --contains <tool_call_id>
-/audit --event llm_error -d
-/audit -t --run_source cron -n 20
-/audit -t --run_source elnis --raw
-/audit -t --run_source foreground -i
-/elwisp
-/elwisp server-watchdog -n 20
-/elwisp --source minecraft-main --mode llm --since 2h
-```
-
-> Tool parameter logs are limited to 512 runes, and log summaries returned by each tool are limited to 1024 runes; truncation ellipses are counted towards the limit. Standard Chinese characters are counted as 1 rune. Actual call parameters and results returned to the model are not affected by the log length limit.
-
-## Token Consumption Statistics
-
-| Command | Function |
-| --- | --- |
-| `/usage [options]` | Summarize token consumption data in the audit log. |
-
-Options:
-
-| Option | Function |
-| --- | --- |
-| `-d, --days <n>` | View the last n days, default is 1. |
-| `-n <x[-y]>` | Summarize model calls from the x-th last to the y-th last (inclusive); if y is omitted, only the x-th last call is taken. Indices range from 1–100,000. |
-| `-m, --model <name>` | Filter by model name. |
-| `-s, --session <id>` | Filter by Session ID. |
-| `--by <key>` | Summarize by dimension: `model` (default), `day`, `session`. |
-| `--since <time>` | Only view entries after a certain time, e.g., `2h`, `30m`, `2026-06-03`. |
-| `--until <time>` | Only view entries before a certain time. |
-
-Example:
-
-```text
-/usage
-/usage -d 7
-/usage -m gpt-4o
-/usage -s sess-xxx
-/usage --by day -d 30
-/usage --since 2h
-/usage -n 1
-/usage -n 1-3
-/usage -n 2-4 -m gpt-4o
-```
-
-Note:
-
-- `/usage` aggregates token usage from `llm_usage` events in the audit log, calculating prompt, completion, total, cache, and duration grouped by model/day/Session.
-- Unknown, illegal, or overflowed values are displayed as `null` and are passed to the affected group and total items; Explicit zeros are counted normally, and other known items are unaffected. Calls with unknown usage are still counted. A prompt will indicate that statistics may be incomplete when the scan encounters corrupted records.
-- Available to superadmins only.
+- `/usage` aggregates from `llm_usage` events in the audit log, calculating statistics for prompt, completion, total, cache, and duration, grouped by model/day/Session; Unknown, illegal, or overflow values are displayed as `null` and passed to the affected groups and totals; explicit zeros are counted normally; calls with unknown usage are still counted in the number of calls; if corrupted records are encountered during scanning, a prompt will indicate that statistics may be incomplete.
+- Tool parameter logs are limited to 512 runes, and log summaries returned by tools are limited to 1024 runes; truncation ellipses are counted towards the limit (Chinese characters count as 1 rune); Actual call parameters and results returned to the model are not affected by the log length limit.
 
 ## High-risk Tool Confirmation
 
-When a tool call triggers a high-risk confirmation, the Agent will prompt the available confirmation commands, for example:
+Available commands when triggering high-risk confirmation:
 
 | Command | Function |
 | --- | --- |
-| `/detail` | View details of tool calls awaiting confirmation; supports custom plain-text details for tools, and displays formatted parameters if not customized. |
+| `/detail` | Details of the tool call awaiting confirmation; supports custom plain-text details defined by the tool; if not customized, formatted parameters are displayed. |
 | `/confirm` | Confirm the current tool call awaiting confirmation. |
 | `/confirmtool` | Confirm the current tool. |
 | `/confirmall` | Confirm all pending tools in the current batch. |
 | `/reject` | Reject the current pending tool call. |
-| `/stop` | Stop the current request. |
 
-Confirmation wait for ordinary users expires by default after 10 minutes of no valid operation; If the Session TTL of the current group chat or private chat is shorter, the shorter time limit will be used. Superadmins are not subject to the additional 10-minute limit, but still adhere to a Session TTL greater than 0. Executing `/detail` will reset the timer; After expiration, the tool will not be executed, and the current processing will stop.
-
-Specific prompts are subject to the runtime output.
+- Confirmation wait for ordinary users expires by default after 10 minutes of no valid operation; A shorter time limit is used if the Session TTL of the current group chat or private chat is shorter. Superadmins are not subject to the additional 10-minute limit, but still adhere to a Session TTL greater than 0. `/detail` will reset the timer; After expiration, the tool will not be executed, and current processing will stop.
+- `/stop` can also be used to stop the current request (see [Request Management](#请求管理)). Specific prompts are subject to the runtime output.
