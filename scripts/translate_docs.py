@@ -854,7 +854,11 @@ def translate_batch_parallel(
                 time.sleep(args.batch_delay)
         for future in as_completed(futures):
             index = futures[future]
-            out.update(future.result())
+            try:
+                out.update(future.result())
+            except RuntimeError as exc:
+                log(f"warning: {batches[index - 1][0].segment.source_file}, batch {index}/{len(batches)}: {exc}; skipping batch")
+                continue
             log(f"  completed batch {index}/{len(batches)}")
     return out
 
@@ -866,7 +870,8 @@ def translate_pending(
     client: TranslationClient | None,
     args: argparse.Namespace,
     rel: str,
-) -> str:
+) -> str | None:
+    """Cache successful segments; return None while any batch remains incomplete."""
     if not pending:
         return rendered
 
@@ -887,15 +892,22 @@ def translate_pending(
     else:
         for index, batch in enumerate(batches, start=1):
             log(f"  translating batch {index}/{len(batches)} ({len(batch)} segment(s))")
-            translations.update(client.translate_batch(batch, f"batch {index}/{len(batches)}"))
+            try:
+                translations.update(client.translate_batch(batch, f"batch {index}/{len(batches)}"))
+            except RuntimeError as exc:
+                log(f"warning: {rel}, batch {index}/{len(batches)}: {exc}; skipping batch")
             if args.batch_delay > 0 and index < len(batches):
                 log(f"  waiting {args.batch_delay:g}s before next batch")
                 time.sleep(args.batch_delay)
+    failed_count = 0
     for item in pending:
+        if item.segment.key not in translations:
+            failed_count += 1
+            continue
         translation = translations[item.segment.key]
         rendered = rendered.replace(item.placeholder, unmask_inline_code(translation, item.masks))
         cache_entries[item.segment.key] = cache_entry(item, translation)
-    return rendered
+    return None if failed_count else rendered
 
 
 def cache_entry(item: PendingSegment, translation: str) -> dict:
@@ -1055,6 +1067,7 @@ def run(args: argparse.Namespace) -> int:
     staged_caches: dict[Path, dict] = {}
     total_pending = 0
     total_reused = 0
+    failed_count = 0
 
     for source_index, doc in enumerate(sources, start=1):
         rel = doc.source_rel
@@ -1072,11 +1085,20 @@ def run(args: argparse.Namespace) -> int:
         if result.pending and not args.dry_run and client is None:
             client = make_client(args)
         rendered = translate_pending(result.text, result.pending, result.cache_entries, client, args, rel)
-        rendered = finalize_rendered(doc, rendered)
-        staged_outputs[doc.target] = rendered
         cache_path = cache_path_for_source(rel)
         new_cache = make_doc_cache(doc, cache, result.cache_entries)
         staged_caches[cache_path] = new_cache
+        if rendered is None:
+            failed_count += 1
+            # An incomplete document must remain stale even after saving its successful segments.
+            new_cache["source_hash"] = ""
+            log(f"warning: {rel}: translation incomplete; preserving target and saving successful segments")
+            if args.commit_each and not args.dry_run:
+                write_json(cache_path, new_cache)
+                commit_translation([cache_path], f"docs: cache partial translation for {rel}")
+            continue
+        rendered = finalize_rendered(doc, rendered)
+        staged_outputs[doc.target] = rendered
         if args.commit_each and not args.dry_run:
             write_text_file(doc.target, rendered)
             write_json(cache_path, new_cache)
@@ -1093,7 +1115,7 @@ def run(args: argparse.Namespace) -> int:
         log("dry run completed; changed segments were copied from source text")
     else:
         log(f"translated {len(staged_outputs)} file(s)")
-    log(f"summary: reused={total_reused}, changed={total_pending}, batch_size={args.batch_size}")
+    log(f"summary: reused={total_reused}, changed={total_pending}, incomplete={failed_count}, batch_size={args.batch_size}")
     return 0
 
 
