@@ -310,6 +310,16 @@ func TestLatestUserTextActionWritesBoundMessage(t *testing.T) {
 	}
 }
 
+func TestSendActionRejectsMixedOutputForms(t *testing.T) {
+	for _, action := range []Action{{Text: "quick"}, {EmoticonID: "14"}} {
+		action.Outputs = []SegmentSpec{{Kind: "text", Text: "group"}}
+		_, err := makeOutputs(action, share.Event{}, state{})
+		if err == nil || !strings.Contains(err.Error(), "cannot combine outputs with quick output fields") {
+			t.Fatalf("mixed output forms: %v", err)
+		}
+	}
+}
+
 func TestSendActionWithOutputs(t *testing.T) {
 	module := Module{Opts: Options{Log: testLog, Notify: testNotify}}
 	event := share.Event{Point: share.PointLLMResponseReceived, LLM: share.LLMPayload{Text: "done"}}

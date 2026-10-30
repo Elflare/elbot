@@ -18,6 +18,21 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
+func TestPluginConfigPathRejectsEscapes(t *testing.T) {
+	base := t.TempDir()
+	for _, path := range []string{".", "..", "../hook.toml", "demo/../../hook.toml", filepath.Join(base, "hook.toml")} {
+		if _, err := pluginConfigPath(base, PluginRef{Name: "demo", Path: path}); err == nil {
+			t.Errorf("accepted plugin path %q", path)
+		}
+	}
+	for _, path := range []string{"", "demo/./hook.toml", "other/../demo/hook.toml"} {
+		got, err := pluginConfigPath(base, PluginRef{Name: "demo", Path: path})
+		if want := filepath.Join(base, "demo", "hook.toml"); err != nil || got != want {
+			t.Errorf("path %q: got %q, %v; want %q", path, got, err, want)
+		}
+	}
+}
+
 func TestDecodeTOMLRejectsStringCommands(t *testing.T) {
 	for _, tc := range []struct {
 		name   string

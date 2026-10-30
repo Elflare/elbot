@@ -270,6 +270,48 @@ func TestExecDoneUnmatchedRollsBackAndSkipsRemainingActions(t *testing.T) {
 	}
 }
 
+func TestExecStderrNormalizesChunkedLines(t *testing.T) {
+	var records []globalevents.LogRecord
+	module := Module{Opts: Options{Log: func(_ context.Context, record globalevents.LogRecord) {
+		records = append(records, record)
+	}}}
+	tail := newExecStderrTail()
+	logger := newExecStderrLogger(context.Background(), module, Action{}, tail)
+	for _, chunk := range []string{" \r\n\t\n first", " line \r", "\n\n second line \t"} {
+		if _, err := logger.Write([]byte(chunk)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	logger.Flush()
+	logger.Flush()
+	if got := tail.String(); got != "first line\nsecond line" {
+		t.Fatalf("stderr tail = %q", got)
+	}
+	if len(records) != 2 {
+		t.Fatalf("stderr records = %d, want 2", len(records))
+	}
+	for i, line := range []string{"first line", "second line"} {
+		if want := "hook exec stderr: " + line + "\nrule="; records[i].Content != want {
+			t.Fatalf("stderr record = %q, want %q", records[i].Content, want)
+		}
+	}
+}
+
+func TestProtocolDecodeFailurePreservesCauseAndLog(t *testing.T) {
+	reader := bufio.NewReader(strings.NewReader("{invalid}\n"))
+	_, result, err := (Module{}).readV2Response(context.Background(), reader, io.Discard, share.Event{}, Action{}, state{}, "host:event")
+	var syntaxError *json.SyntaxError
+	if !errors.As(err, &syntaxError) {
+		t.Fatalf("error = %v, want wrapped JSON syntax error", err)
+	}
+	if result.ResultStatus != globalevents.ResultFailed || result.Content != err.Error() {
+		t.Fatalf("log result = %#v, error = %v", result, err)
+	}
+	if !strings.Contains(err.Error(), "parse hook.v2 stdout frame:") || !strings.Contains(err.Error(), "line={invalid}") {
+		t.Fatalf("missing protocol context: %v", err)
+	}
+}
+
 func TestExecSuccessLogsStderr(t *testing.T) {
 	var logs bytes.Buffer
 	captureLogs(t, slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))

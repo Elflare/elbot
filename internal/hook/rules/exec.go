@@ -84,12 +84,7 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 		return event, actionResult{Error: err.Error()}, logResult, err
 	}
 	defer stdin.Close()
-	waited := false
 	waitExec := func() error {
-		if waited {
-			return nil
-		}
-		waited = true
 		err := cmd.Wait()
 		stderrLogger.Flush()
 		return err
@@ -100,10 +95,11 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 		if contextErr := execContextError(runCtx, action); contextErr != nil {
 			logResult.Content += "\ncontext_error=" + contextErr.Error()
 		}
-		source = withExecStderr(source, stderrTail.String())
+		stderr := stderrTail.String()
+		source = withExecStderr(source, stderr)
 		result.Error = source.Error()
-		if stderrTail.String() != "" {
-			logResult.Content += "\nstderr=" + stderrTail.String()
+		if stderr != "" {
+			logResult.Content += "\nstderr=" + stderr
 		}
 		return event, result, logResult, source
 	}
@@ -164,7 +160,7 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 		if errors.Is(err, context.Canceled) {
 			logResult.ResultStatus = globalevents.ResultCanceled
 		}
-		err = execProcessError(err)
+		err = fmt.Errorf("hook plugin exec failed: %w", err)
 		err = withExecStderr(err, stderrTail.String())
 		return event, actionResult{Error: err.Error()}, logResult, err
 	}
@@ -201,7 +197,7 @@ func (m Module) readV2Response(ctx context.Context, reader *bufio.Reader, stdin 
 				return nil, logResult, execContextError(ctx, action)
 			}
 			if errors.Is(err, io.EOF) {
-				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook.v2 plugin closed stdout while waiting for response %q", wantedID)}, fmt.Errorf("hook.v2 plugin closed stdout while waiting for response %q", wantedID)
+				err = fmt.Errorf("hook.v2 plugin closed stdout while waiting for response %q", wantedID)
 			}
 			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 		}
@@ -211,23 +207,28 @@ func (m Module) readV2Response(ctx context.Context, reader *bufio.Reader, stdin 
 		}
 		frame, err := hookprotocol.DecodeFrame([]byte(line))
 		if err != nil {
-			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("parse hook.v2 stdout frame: %v; line=%s", err, shortProtocolLine(line))}, fmt.Errorf("parse hook.v2 stdout frame: %w; line=%s", err, shortProtocolLine(line))
+			err = fmt.Errorf("parse hook.v2 stdout frame: %w; line=%s", err, shortProtocolLine(line))
+			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 		}
 		switch frame.Type {
 		case "response":
 			if err := hookprotocol.ValidateID(frame.ID, "host:"); err != nil {
-				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook.v2 response: %v", err)}, fmt.Errorf("hook.v2 response: %w", err)
+				err = fmt.Errorf("hook.v2 response: %w", err)
+				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 			}
 			if frame.ID != wantedID {
-				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("unexpected hook.v2 response id %q while waiting for %q", frame.ID, wantedID)}, fmt.Errorf("unexpected hook.v2 response id %q while waiting for %q", frame.ID, wantedID)
+				err := fmt.Errorf("unexpected hook.v2 response id %q while waiting for %q", frame.ID, wantedID)
+				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 			}
 			if frame.OK == nil || !*frame.OK {
-				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook.v2 request %q failed: %s", wantedID, firstNonEmpty(frame.Error, "plugin returned ok=false"))}, fmt.Errorf("hook.v2 request %q failed: %s", wantedID, firstNonEmpty(frame.Error, "plugin returned ok=false"))
+				err := fmt.Errorf("hook.v2 request %q failed: %s", wantedID, firstNonEmpty(frame.Error, "plugin returned ok=false"))
+				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 			}
 			return frame.Result, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: wantedID + " completed"}, nil
 		case "request":
 			if err := hookprotocol.ValidateID(frame.ID, "plugin:"); err != nil {
-				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook.v2 request: %v", err)}, fmt.Errorf("hook.v2 request: %w", err)
+				err = fmt.Errorf("hook.v2 request: %w", err)
+				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 			}
 			result, logResult, requestErr := m.handleProtocolRequest(ctx, event, action, state, frame.Method, frame.Params)
 			if err := writeV2Response(stdin, frame.ID, result, requestErr); err != nil {
@@ -252,7 +253,8 @@ func (m Module) readV2Response(ctx context.Context, reader *bufio.Reader, stdin 
 				m.Opts.Log(ctx, record)
 			}
 		default:
-			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("unsupported hook.v2 frame type %q", frame.Type)}, fmt.Errorf("unsupported hook.v2 frame type %q", frame.Type)
+			err := fmt.Errorf("unsupported hook.v2 frame type %q", frame.Type)
+			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 		}
 	}
 }
@@ -379,7 +381,8 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 			platformName = event.Platform.Name
 		}
 		if event.Platform.Name != "" && platformName != event.Platform.Name {
-			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("platform.call can only call current platform %q", event.Platform.Name)}, fmt.Errorf("platform.call can only call current platform %q", event.Platform.Name)
+			err := fmt.Errorf("platform.call can only call current platform %q", event.Platform.Name)
+			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 		}
 		api, err := rawString(paramsMap["api"])
 		if err != nil {
@@ -499,7 +502,8 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 		m.Opts.Log(ctx, record)
 		return map[string]any{"ok": true}, logResult, nil
 	default:
-		return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("unsupported hook protocol method %q", method)}, fmt.Errorf("unsupported hook protocol method %q", method)
+		err := fmt.Errorf("unsupported hook protocol method %q", method)
+		return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
 }
 
@@ -570,10 +574,6 @@ func pluginStdinWriteError(frame string, err error) error {
 	return fmt.Errorf("write hook plugin stdin %s frame failed; plugin may have exited early or closed stdin: %w", frame, err)
 }
 
-func execProcessError(err error) error {
-	return fmt.Errorf("hook plugin exec failed: %w", err)
-}
-
 func execContextError(ctx context.Context, action Action) error {
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return fmt.Errorf("hook plugin exec canceled: %w", context.Canceled)
@@ -606,10 +606,6 @@ func newExecStderrTail() *execStderrTail {
 }
 
 func (t *execStderrTail) Add(line string) {
-	line = strings.TrimSpace(line)
-	if line == "" {
-		return
-	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	const maxLines = 20
@@ -687,21 +683,22 @@ func (w *execStderrLogger) Flush() {
 }
 
 func (w *execStderrLogger) emitLocked(line string) {
-	line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
-	w.tail.Add(line)
-	if line != "" {
-		record := globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
-			Level:        slog.LevelInfo,
-			EventName:    "hook_exec_stderr",
-			Module:       "hook",
-			Type:         globalevents.ContentText,
-			Content:      fmt.Sprintf("%s\nrule=%v", "hook exec stderr"+": "+line, firstNonEmpty(w.action.source.FinalName, w.action.ActionName)),
-			ContentLimit: 4096,
-		}
-		record.Identity = logIdentity(w.ctx)
-		w.module.Opts.Log(w.ctx, record)
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return
 	}
+	w.tail.Add(line)
+	record := globalevents.LogRecord{
+		Category:     globalevents.LogRuntime,
+		Level:        slog.LevelInfo,
+		EventName:    "hook_exec_stderr",
+		Module:       "hook",
+		Type:         globalevents.ContentText,
+		Content:      fmt.Sprintf("%s\nrule=%v", "hook exec stderr"+": "+line, firstNonEmpty(w.action.source.FinalName, w.action.ActionName)),
+		ContentLimit: 4096,
+	}
+	record.Identity = logIdentity(w.ctx)
+	w.module.Opts.Log(w.ctx, record)
 }
 
 func (m Module) execCwd(action Action, event share.Event, state state) (string, error) {

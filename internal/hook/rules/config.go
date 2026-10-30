@@ -191,11 +191,7 @@ func safeRelativePath(base, rel string) (string, error) {
 	if clean == "." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || clean == ".." {
 		return "", fmt.Errorf("path %q escapes plugins directory", rel)
 	}
-	joined := filepath.Join(base, clean)
-	if !pathWithin(base, joined) {
-		return "", fmt.Errorf("path %q escapes plugins directory", rel)
-	}
-	return joined, nil
+	return filepath.Join(base, clean), nil
 }
 
 func pathWithin(base, path string) bool {

@@ -201,7 +201,7 @@ func makeOutputs(action Action, event share.Event, state state) ([]delivery.Outp
 		target.Platform = event.Platform.Name
 	}
 	quick := SegmentSpec{Kind: action.Kind, Text: action.Text, URL: action.URL, Path: action.Path, Base64: action.Base64, Name: action.Name, MIMEType: action.MIMEType, UserID: action.UserID, MessageID: action.MessageID, EmoticonID: action.EmoticonID}
-	if len(action.Outputs) > 0 && segmentSpecSet(quick) {
+	if len(action.Outputs) > 0 && quick != (SegmentSpec{}) {
 		return nil, fmt.Errorf("send action cannot combine outputs with quick output fields")
 	}
 	specs := action.Outputs
@@ -217,10 +217,6 @@ func makeOutputs(action Action, event share.Event, state state) ([]delivery.Outp
 		})
 	}
 	return hookoutput.BuildGroup(hookoutput.Group{Outputs: rendered, Target: target, Timing: render(action.Timing, event, state)}, hookoutput.BuildOptions{BaseDir: action.sourceBaseDir()})
-}
-
-func segmentSpecSet(spec SegmentSpec) bool {
-	return spec.Kind != "" || spec.Text != "" || spec.URL != "" || spec.Path != "" || spec.Base64 != "" || spec.Name != "" || spec.MIMEType != "" || spec.UserID != "" || spec.MessageID != "" || spec.EmoticonID != ""
 }
 
 // callTool invokes a registered tool without Agent risk or confirmation gates.
