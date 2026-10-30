@@ -1,5 +1,7 @@
 import argparse
+import io
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -258,6 +260,131 @@ class TranslationCacheTest(unittest.TestCase):
                     elif operation == "write_json":
                         write_json.side_effect = OSError("cache write failed")
                     self.assertEqual(td.main(["--commit-each"]), 1)
+
+    def git(self, cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(["git", *args], cwd=cwd, check=True, text=True, capture_output=True)
+
+    def make_git_remote(self) -> Path:
+        environment = mock.patch.dict(os.environ, {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull})
+        environment.start()
+        self.addCleanup(environment.stop)
+        remote_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(remote_dir.cleanup)
+        remote = Path(remote_dir.name) / "remote.git"
+        peer = Path(remote_dir.name) / "peer"
+        self.git(self.root, "init", "--bare", "--initial-branch=main", str(remote))
+        self.git(self.root, "init", "--initial-branch=main")
+        self.git(self.root, "config", "user.name", "Translation Test")
+        self.git(self.root, "config", "user.email", "translation@example.invalid")
+        self.git(self.root, "add", ".")
+        self.git(self.root, "commit", "-m", "initial")
+        self.git(self.root, "remote", "add", "origin", str(remote))
+        self.git(self.root, "push", "-u", "origin", "main")
+        self.git(self.root, "clone", str(remote), str(peer))
+        self.git(peer, "config", "user.name", "Other Writer")
+        self.git(peer, "config", "user.email", "writer@example.invalid")
+        return peer
+
+    def test_remote_advance_repushes_without_retranslation(self) -> None:
+        doc = self.make_doc("docs/push.md", "docs.en/push.md")
+        peer = self.make_git_remote()
+        (peer / "remote.txt").write_text("remote change\n", encoding="utf-8")
+        self.git(peer, "add", "remote.txt")
+        self.git(peer, "commit", "-m", "remote advance")
+        self.git(peer, "push")
+        remote_head = self.git(peer, "rev-parse", "HEAD").stdout.strip()
+        client = mock.Mock()
+        client.translate_batch.side_effect = lambda batch, label: {
+            item.segment.key: "Translated.\n" for item in batch
+        }
+        with (
+            mock.patch.object(td, "make_client", return_value=client),
+            mock.patch.object(td, "run_git", wraps=td.run_git) as git,
+            mock.patch.object(td, "log"),
+            mock.patch.object(td.sys, "stderr", new_callable=io.StringIO) as errors,
+        ):
+            self.assertEqual(td.main(["--commit-each"]), 0)
+
+        client.translate_batch.assert_called_once()
+        commands = [call.args[0] for call in git.call_args_list]
+        self.assertEqual(commands.count(["push", "--porcelain"]), 2)
+        self.assertEqual(sum(command[0] == "commit" for command in commands), 1)
+        self.assertIn("[rejected] (fetch first)", errors.getvalue())
+        self.git(peer, "pull", "--ff-only")
+        self.git(peer, "merge-base", "--is-ancestor", remote_head, "HEAD")
+        self.assertIn("Translated.", (peer / doc.target_rel).read_text(encoding="utf-8"))
+        self.assertEqual((self.root / "remote.txt").read_text(encoding="utf-8"), "remote change\n")
+        self.assertEqual(self.git(peer, "rev-list", "--count", f"{remote_head}..HEAD").stdout.strip(), "1")
+        self.assertEqual(self.git(self.root, "status", "--porcelain").stdout, "")
+
+    def test_rebase_conflict_aborts_and_preserves_translation_commit(self) -> None:
+        doc = self.make_doc("docs/conflict.md", "docs.en/conflict.md")
+        doc.target.write_text("old translation\n", encoding="utf-8")
+        peer = self.make_git_remote()
+        (peer / doc.target_rel).write_text("remote translation\n", encoding="utf-8")
+        self.git(peer, "add", doc.target_rel)
+        self.git(peer, "commit", "-m", "remote translation")
+        self.git(peer, "push")
+        doc.target.write_text("local translation\n", encoding="utf-8")
+        with (
+            mock.patch.object(td, "run_git", wraps=td.run_git) as git,
+            mock.patch.object(td, "log"),
+            mock.patch.object(td.sys, "stderr", new_callable=io.StringIO) as errors,
+        ):
+            with self.assertRaises(subprocess.CalledProcessError) as failure:
+                td.commit_translation([doc.target], "local translation")
+
+        self.assertEqual(failure.exception.cmd, ["git", "rebase", "@{upstream}"])
+        self.assertIn(mock.call(["rebase", "--abort"]), git.call_args_list)
+        self.assertIn("CONFLICT", errors.getvalue())
+        self.assertEqual(doc.target.read_text(encoding="utf-8"), "local translation\n")
+        self.assertEqual(self.git(self.root, "log", "-1", "--format=%s").stdout.strip(), "local translation")
+        self.assertEqual(self.git(self.root, "status", "--porcelain").stdout, "")
+        self.assertFalse((self.root / ".git/rebase-merge").exists())
+        self.assertFalse((self.root / ".git/rebase-apply").exists())
+        self.assertEqual((peer / doc.target_rel).read_text(encoding="utf-8"), "remote translation\n")
+
+    def test_push_recovery_is_bounded_and_only_for_remote_advance(self) -> None:
+        cases = (
+            ("[rejected] (fetch first)", "", 3),
+            ("[rejected] (non-fast-forward)", "", 3),
+            ("[remote rejected] (protected branch hook declined)", "protected branch", 1),
+            ("", "Permission denied", 1),
+            ("", "Could not resolve host", 1),
+        )
+        for reason, stderr, expected_pushes in cases:
+            with self.subTest(reason=reason, stderr=stderr):
+                def git(args):
+                    if args[0] == "push":
+                        raise subprocess.CalledProcessError(
+                            1, ["git", *args], output=f"!\trefs/heads/main:refs/heads/main\t{reason}\n", stderr=stderr,
+                        )
+                    return subprocess.CompletedProcess(args, 0, stdout="")
+
+                with (
+                    mock.patch.object(td, "run_git", side_effect=git) as run_git,
+                    mock.patch.object(td, "has_staged_changes", return_value=True),
+                    mock.patch.object(td, "log"),
+                ):
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        td.commit_translation([td.README_TARGET], "translation")
+                commands = [call.args[0] for call in run_git.call_args_list]
+                self.assertEqual(commands.count(["push", "--porcelain"]), expected_pushes)
+                self.assertEqual(commands.count(["fetch"]), expected_pushes - 1)
+                self.assertEqual(commands.count(["rebase", "@{upstream}"]), expected_pushes - 1)
+                self.assertEqual(sum(command[0] == "commit" for command in commands), 1)
+
+    def test_run_git_reports_stdout_and_stderr_without_wrapping_error(self) -> None:
+        failure = subprocess.CalledProcessError(1, ["git", "push"], output="push rejected\n", stderr="reason\n")
+        with (
+            mock.patch.object(td.subprocess, "run", side_effect=failure),
+            mock.patch.object(td.sys, "stderr", new_callable=io.StringIO) as errors,
+        ):
+            with self.assertRaises(subprocess.CalledProcessError) as caught:
+                td.run_git(["push"])
+        self.assertIs(caught.exception, failure)
+        self.assertIn("push rejected", errors.getvalue())
+        self.assertIn("reason", errors.getvalue())
 
 
 if __name__ == "__main__":

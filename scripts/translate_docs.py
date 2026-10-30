@@ -932,7 +932,18 @@ def make_client(args: argparse.Namespace) -> TranslationClient:
 
 
 def run_git(args: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["git", *args], cwd=ROOT, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        return subprocess.run(
+            ["git", *args], cwd=ROOT, check=True, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            env={**os.environ, "LC_ALL": "C"},
+        )
+    except subprocess.CalledProcessError as exc:
+        if exc.stdout:
+            print(exc.stdout.rstrip(), file=sys.stderr)
+        if exc.stderr:
+            print(exc.stderr.rstrip(), file=sys.stderr)
+        raise
 
 
 def has_staged_changes(paths: list[Path]) -> bool:
@@ -980,7 +991,24 @@ def commit_translation(paths: list[Path], message: str) -> None:
     log(f"  committing: {message}")
     run_git(["commit", "-m", message, "--", *rel_paths])
     log("  pushing translated output")
-    run_git(["push"])
+    for attempt in range(3):
+        try:
+            run_git(["push", "--porcelain"])
+            break
+        except subprocess.CalledProcessError as exc:
+            if attempt == 2 or not re.search(
+                r"^!\t[^\n]*\t\[rejected\] \((?:fetch first|non-fast-forward)\)$",
+                exc.stdout or "",
+                re.MULTILINE,
+            ):
+                raise
+            log(f"  remote advanced; syncing before push retry {attempt + 1}/2")
+            run_git(["fetch"])
+            try:
+                run_git(["rebase", "@{upstream}"])
+            except subprocess.CalledProcessError:
+                run_git(["rebase", "--abort"])
+                raise
     log(f"  committed: {message}")
 
 
