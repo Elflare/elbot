@@ -140,9 +140,6 @@ func (s *SharedState) SetWithTTL(key string, value json.RawMessage, ttl time.Dur
 	if err != nil {
 		return err
 	}
-	if ttl < 0 {
-		return fmt.Errorf("shared ttl must not be negative")
-	}
 	now := s.now()
 	entry := sharedEntry{value: value, ttl: ttl, lastAccess: now}
 	s.mu.Lock()
@@ -185,9 +182,6 @@ func (s *SharedState) CompareAndSwapWithTTL(key string, expected, value json.Raw
 	key, value, err := normalizeSharedValue(key, value)
 	if err != nil {
 		return false, err
-	}
-	if ttl < 0 {
-		return false, fmt.Errorf("shared ttl must not be negative")
 	}
 	if len(expected) > 0 {
 		expected, err = compactJSON(expected)

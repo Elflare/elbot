@@ -319,7 +319,7 @@ JSON 与 TOML target 都使用上述 snake_case 字段；省略时沿用当前�
 
 进程 Hook 使用 `hook.v2` JSON Lines。stdin 和 stdout 每行一个 JSON 帧；stdout 只能写协议，日志写 stderr。Host request ID 使用 `host:*`，Hook request ID 使用 `plugin:*`，response 必须复用 request ID。
 
-Host 先发送 `system.init`，成功后发送 `event.handle`。一次性 exec Hook 处理一次事件后退出；请求被 `/stop`、超时或上游 context 取消时，Host 会结束该次 exec 的完整进程树。Worker Hook 可处理多次事件，并接收 `system.shutdown`；当前调用取消时会收到 `event.cancel`，Worker 进程本身保持运行。
+Host 先发送 `system.init`，成功后发送 `event.handle`。一次性 exec Hook 处理一次事件后退出；请求被 `/stop`、超时或上游 context 取消时，Host 会结束该次 exec 的完整进程树。Worker Hook 可处理多次事件，并接收 `system.shutdown`。协议帧完整发送后等待响应时，普通取消会异步尝试发送 `event.cancel`，Persistent Worker 保持运行；实际写入期间取消、超时或写入失败时，Host 会关闭该进程的 stdin 并结束其完整进程树，避免继续使用不完整的协议流。等待写权限也可取消，不影响占用写权限的调用。
 
 ### 完整交互示例
 
@@ -565,9 +565,9 @@ stop_propagation = true
 
 Worker trigger rule 复用规则 Hook 的匹配、角色、priority、`wakeup`、`consume` 和 `stop_propagation`；配置 `action` 或 `actions` 会校验失败。`pass_through` 省略时使用规则中的两个控制字段。
 
-Worker 状态为 `starting`、`ready`、`running`、`degraded`、`stopping`、`stopped` 或 `failed`。停止时 Host 先请求 `system.shutdown`，超过关闭超时才强制结束进程。
+Worker 状态为 `starting`、`ready`、`running`、`degraded`、`stopping`、`stopped` 或 `failed`。停止时 Host 先请求 `system.shutdown`；发送请求、等待响应和优雅退出共用一次 `shutdown_timeout_seconds` 预算，到期立即强制结束进程。强杀后的实际退出另有有界等待；关闭调用返回超时不代表进程已退出。
 
-Host 关闭 Hook runtime 时停止接纳新的插件请求，取消在途工具调用，并等待进程、插件请求、重载和资源清理实际结束。后台工具调用也受 runtime 关闭取消约束；即使调用忽略取消，关闭等待超时也不会把它视为已经退出。
+Host 关闭 Hook runtime 时停止接纳新的插件请求和取消通知，撤销 waiting 定时器，取消在途工具调用，并等待进程、插件请求、已登记的通知与定时回调、重载和资源清理实际结束。取消通知和插件响应的协议发送受 runtime 关闭取消及 `event_timeout_seconds` 约束。后台工具调用也受 runtime 关闭取消约束；即使调用忽略取消，关闭等待超时也不会把它视为已经退出。
 
 ### waiting、并发与取消
 
@@ -581,9 +581,10 @@ Host 关闭 Hook runtime 时停止接纳新的插件请求，取消在途工具�
 - continuation 放行后不会用同一条消息重新触发刚结束 waiting 的插件。
 - 续接与后续普通规则的日志结果按执行顺序汇总；后续规则未匹配或成功，不会覆盖此前续接的失败或取消结果。
 - continuation 返回 `completed` 或省略 `status` 后，Host 立即释放租约；对于 transient worker，同时关闭该进程。再次返回 `waiting` 则以新 ID、过期时间续期。
+- waiting 通过一次性定时器主动到期，不需要新消息或路由查询触发。到期释放租约并关闭所属 Transient Worker，Persistent Worker 保留进程。已经开始的续接由事件超时约束；到期回调等待该路由执行结束后复核租约，旧回调不会删除续期或替换后的租约。
 - 阻断策略命中、worker 退出、停止或重载会清理该插件租约。
 
-用户发送精确的 `/cancel` 时，Host 取消该路由当前执行或 waiting 会话，并关闭 Transient Worker；Persistent Worker 只接收取消通知并保留进程和内存。
+用户发送精确的 `/cancel` 时，Host 取消该路由当前执行或 waiting 会话，并关闭 Transient Worker；Persistent Worker 在没有协议写入故障时保留进程和内存。续接的 `event.cancel` 使用插件租约的 `conversation_id`，普通事件使用平台会话 ID，不改写事件原始上下文。取消通知异步发送，不阻塞原调用返回；若通知自身写入阻塞直至超时，同样按协议写入故障结束该进程。
 
 ```json
 {"type":"event","method":"event.cancel","params":{"conversation_id":"weather-42"}}

@@ -43,7 +43,7 @@ type worker struct {
 	reload       func() (globalevents.LogResult, error)
 	reloadArmed  bool
 	reloadPrep   bool
-	writeMu      sync.Mutex
+	writeGate    chan struct{} // 容量为一的写入令牌；等待协议写权限可取消。
 	routeMu      sync.Mutex
 	routeLocks   map[routeKey]*routeLock
 }
@@ -54,7 +54,7 @@ type routeLock struct {
 }
 
 func newWorker(manager *Manager, config share.RuntimeConfig) *worker {
-	return &worker{manager: manager, config: config, status: StatusStopped, restartDelay: time.Duration(config.Restart.InitialDelaySeconds) * time.Second, pending: map[string]chan frame{}, routeLocks: map[routeKey]*routeLock{}}
+	return &worker{manager: manager, config: config, status: StatusStopped, restartDelay: time.Duration(config.Restart.InitialDelaySeconds) * time.Second, pending: map[string]chan frame{}, writeGate: make(chan struct{}, 1), routeLocks: map[routeKey]*routeLock{}}
 }
 
 func (w *worker) start() error {
@@ -335,29 +335,24 @@ func (w *worker) stop(ctx context.Context) (logResult globalevents.LogResult, er
 	}
 	w.setStatus(StatusStopping, "")
 	shutdownCtx, cancel := context.WithTimeout(ctx, time.Duration(w.config.ShutdownTimeoutSeconds)*time.Second)
+	defer cancel()
 	_, logResult, err = w.request(shutdownCtx, "system.shutdown", map[string]any{})
-	cancel()
 	graceful := true
-	timer := time.NewTimer(time.Duration(w.config.ShutdownTimeoutSeconds) * time.Second)
-	defer timer.Stop()
 	select {
 	case <-done:
-	case <-ctx.Done():
-		w.kill()
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: ctx.Err().Error()}
-		if ctx.Err() == context.Canceled {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
-		return logResult, errors.Join(err, ctx.Err())
-	case <-timer.C:
+	case <-shutdownCtx.Done():
 		graceful = false
-		w.kill()
+		_ = processenv.KillProcessTree(cmd)
 		killTimer := time.NewTimer(time.Duration(w.config.ShutdownTimeoutSeconds) * time.Second)
 		defer killTimer.Stop()
 		select {
 		case <-done:
 		case <-ctx.Done():
-			return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "graceful shutdown timed out; " + ctx.Err().Error()}, errors.Join(err, ctx.Err())
+			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: ctx.Err().Error()}
+			if errors.Is(ctx.Err(), context.Canceled) {
+				logResult.ResultStatus = globalevents.ResultCanceled
+			}
+			return logResult, errors.Join(err, ctx.Err())
 		case <-killTimer.C:
 			return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook worker %q did not exit after kill", w.config.ID)}, errors.Join(err, fmt.Errorf("hook worker %q did not exit after kill", w.config.ID))
 		}
@@ -366,7 +361,11 @@ func (w *worker) stop(ctx context.Context) (logResult globalevents.LogResult, er
 	w.stopping = false
 	w.mu.Unlock()
 	if !graceful {
-		return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook worker %q graceful shutdown timed out", w.config.ID)}, errors.Join(err, fmt.Errorf("hook worker %q graceful shutdown timed out", w.config.ID))
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook worker %q graceful shutdown ended: %v", w.config.ID, shutdownCtx.Err())}
+		if errors.Is(shutdownCtx.Err(), context.Canceled) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+		return logResult, errors.Join(err, shutdownCtx.Err())
 	}
 	if err != nil {
 		return logResult, fmt.Errorf("hook worker %q shutdown: %w", w.config.ID, err)
@@ -382,7 +381,7 @@ func (w *worker) kill() {
 	}
 }
 
-func (w *worker) handle(ctx context.Context, event share.Event, continuation bool, defaults share.Control) (_ share.Event, _ globalevents.LogResult, err error) {
+func (w *worker) handle(ctx context.Context, event share.Event, continuation bool, conversationID string, defaults share.Control) (_ share.Event, _ globalevents.LogResult, err error) {
 	var token string
 	// Keep the invocation counted until route release and all other cleanup finish.
 	defer func() {
@@ -436,7 +435,7 @@ func (w *worker) handle(ctx context.Context, event share.Event, continuation boo
 	}
 	response, logResult, err := w.request(requestCtx, "event.handle", params)
 	if errors.Is(err, context.Canceled) {
-		w.notifyCancel(event.Platform.ConversationID)
+		w.notifyCancel(conversationID)
 	}
 	if err != nil {
 		return event, logResult, err
@@ -617,11 +616,23 @@ func (w *worker) lockRoute(ctx context.Context, key routeKey) (func(), error) {
 }
 
 func (w *worker) notifyCancel(conversationID string) {
+	w.manager.mu.Lock()
+	if w.manager.closed {
+		w.manager.mu.Unlock()
+		return
+	}
+	w.manager.workWG.Add(1)
+	w.manager.mu.Unlock()
 	params := map[string]string{}
 	if strings.TrimSpace(conversationID) != "" {
 		params["conversation_id"] = conversationID
 	}
-	_ = w.write(frame{Type: "event", Method: "event.cancel", Params: mustJSON(params)})
+	go func() {
+		defer w.manager.workWG.Done()
+		ctx, cancel := context.WithTimeout(w.manager.rootCtx, time.Duration(w.config.EventTimeoutSeconds)*time.Second)
+		defer cancel()
+		_ = w.write(ctx, frame{Type: "event", Method: "event.cancel", Params: mustJSON(params)})
+	}()
 }
 
 func (w *worker) request(ctx context.Context, method string, params any) (json.RawMessage, globalevents.LogResult, error) {
@@ -643,48 +654,49 @@ func (w *worker) request(ctx context.Context, method string, params any) (json.R
 	if err != nil {
 		return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
-	if err := w.write(request); err != nil {
-		return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+	err = w.write(ctx, request)
+	if err == nil {
+		select {
+		case <-ctx.Done():
+			err = ctx.Err()
+		case value, ok := <-response:
+			if !ok {
+				logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "hook process exited while waiting for " + method}
+				w.mu.Lock()
+				status, detail := w.status, w.detail
+				w.mu.Unlock()
+				if status == StatusFailed || status == StatusDegraded {
+					logResult.Content += "\nworker_fault=" + detail
+				}
+				if ctx.Err() != nil {
+					logResult.Content += "\ncontext_error=" + ctx.Err().Error()
+				}
+				return nil, logResult, fmt.Errorf("hook process exited while waiting for %s", method)
+			}
+			if value.OK == nil || !*value.OK {
+				if value.Error == "" {
+					value.Error = "hook request failed"
+				}
+				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: value.Error}, errors.New(value.Error)
+			}
+			return value.Result, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: method + " completed"}, nil
+		}
 	}
-	select {
-	case <-ctx.Done():
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: method + ": " + ctx.Err().Error()}
-		if ctx.Err() == context.Canceled {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
-		w.mu.Lock()
-		status, detail := w.status, w.detail
-		w.mu.Unlock()
-		if status == StatusFailed || status == StatusDegraded {
-			logResult.ResultStatus = globalevents.ResultFailed
-			logResult.Content += "\nworker_fault=" + detail
-		}
-		return nil, logResult, ctx.Err()
-	case value, ok := <-response:
-		if !ok {
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "hook process exited while waiting for " + method}
-			w.mu.Lock()
-			status, detail := w.status, w.detail
-			w.mu.Unlock()
-			if status == StatusFailed || status == StatusDegraded {
-				logResult.Content += "\nworker_fault=" + detail
-			}
-			if ctx.Err() != nil {
-				logResult.Content += "\ncontext_error=" + ctx.Err().Error()
-			}
-			return nil, logResult, fmt.Errorf("hook process exited while waiting for %s", method)
-		}
-		if value.OK == nil || !*value.OK {
-			if value.Error == "" {
-				value.Error = "hook request failed"
-			}
-			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: value.Error}, errors.New(value.Error)
-		}
-		return value.Result, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: method + " completed"}, nil
+	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: method + ": " + err.Error()}
+	if errors.Is(err, context.Canceled) {
+		logResult.ResultStatus = globalevents.ResultCanceled
 	}
+	w.mu.Lock()
+	status, detail := w.status, w.detail
+	w.mu.Unlock()
+	if status == StatusFailed || status == StatusDegraded {
+		logResult.ResultStatus = globalevents.ResultFailed
+		logResult.Content += "\nworker_fault=" + detail
+	}
+	return nil, logResult, err
 }
 
-func (w *worker) write(value frame) error {
+func (w *worker) write(ctx context.Context, value frame) error {
 	data, err := hookprotocol.EncodeFrame(value)
 	if err != nil {
 		return err
@@ -692,18 +704,51 @@ func (w *worker) write(value frame) error {
 	if len(data)+1 > share.MaxProtocolFrameBytes {
 		return fmt.Errorf("hook protocol stdin frame exceeds 16 MiB limit")
 	}
-	w.writeMu.Lock()
-	defer w.writeMu.Unlock()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case w.writeGate <- struct{}{}:
+	}
+	defer func() { <-w.writeGate }()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	w.mu.Lock()
 	stdin := w.stdin
+	cmd := w.cmd
 	w.mu.Unlock()
 	if stdin == nil {
 		return fmt.Errorf("hook process stdin is closed")
 	}
-	if _, err := fmt.Fprintf(stdin, "%s\n", data); err != nil {
-		return fmt.Errorf("write hook protocol frame: %w", err)
+	// Capture this process: a late cancellation must never kill its replacement.
+	kill := sync.OnceFunc(func() {
+		w.mu.Lock()
+		if w.cmd == cmd {
+			w.stdin = nil
+		}
+		w.mu.Unlock()
+		_ = stdin.Close()
+		if cmd != nil {
+			_ = processenv.KillProcessTree(cmd)
+		}
+	})
+	done := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		defer close(done)
+		kill()
+	})
+	n, err := fmt.Fprintf(stdin, "%s\n", data)
+	if !stop() {
+		<-done
 	}
-	return nil
+	if err == nil && n != len(data)+1 {
+		err = io.ErrShortWrite
+	}
+	if err != nil {
+		kill() // A partial frame leaves this protocol stream unusable.
+		return errors.Join(ctx.Err(), fmt.Errorf("write hook protocol frame: %w", err))
+	}
+	return ctx.Err()
 }
 
 func (w *worker) readLoop(reader io.Reader) {
@@ -733,7 +778,9 @@ func (w *worker) readLoop(reader io.Reader) {
 			if w.manager.closed {
 				w.manager.mu.Unlock()
 				ok := false
-				_ = w.write(frame{Type: "response", ID: value.ID, OK: &ok, Error: ErrClosed.Error()})
+				ctx, cancel := context.WithTimeout(w.manager.rootCtx, time.Duration(w.config.EventTimeoutSeconds)*time.Second)
+				_ = w.write(ctx, frame{Type: "response", ID: value.ID, OK: &ok, Error: ErrClosed.Error()})
+				cancel()
 				continue
 			}
 			w.manager.workWG.Add(1)
@@ -794,7 +841,9 @@ func (w *worker) handlePluginRequest(value frame) {
 	} else {
 		response.Result = mustJSON(result)
 	}
-	writeErr := w.write(response)
+	ctx, cancel := context.WithTimeout(w.manager.rootCtx, time.Duration(w.config.EventTimeoutSeconds)*time.Second)
+	writeErr := w.write(ctx, response)
+	cancel()
 	if writeErr != nil {
 		w.manager.opts.Log(context.Background(), globalevents.LogRecord{
 			Category:     globalevents.LogRuntime,

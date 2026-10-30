@@ -200,8 +200,9 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/hook/rules/`：规则配置与执行；`rule.go` 编排动作及只读校验。
 - `internal/hook/control/service.go`：插件查询、重载与进程管理。
 - `internal/hook/control/command.go`：Hook 管理命令与补全；`internal/hook/share/logging.go` 管日志摘要。
-- `internal/hook/runtime/`：插件进程、RPC 与续接；`runtime/routes.go` 管 waiting 路由，`runtime/media.go` 管媒体租约。
-- `internal/hook/runtime/manager.go`、`worker.go`：分别负责运行任务管理与插件进程；`lifecycle_test.go` 测试运行时关闭。
+- `internal/hook/runtime/`：插件进程、RPC 与续接；`runtime/routes.go` 管 waiting 路由、一次性到期定时器及撤销计数，`runtime/media.go` 管媒体租约。
+- `internal/hook/runtime/manager.go`、`worker.go`：分别负责运行任务管理与实际退出等待，以及插件进程、可取消协议写入和统一关闭预算；`lifecycle_test.go` 测试运行时关闭，`behavior_test.go` 覆盖管道阻塞、续接取消及 waiting 到期竞态。
+- `internal/hook/runtime/maintenance_bench_test.go`：对比 KV／媒体现有维护成本与逐项定时器、最近期限调度模型；仅用于评估，不替换生产过期机制。
 - `internal/hook/media.go`、`logging.go`：分别负责媒体契约与日志通知；`share/output/` 转换输出，`share/protocol/` 编解码 hook.v2。
 - `internal/hook/agent_bridge_test.go`、`supervisor_test.go`、`wiring_test.go`：分别测试 Agent 桥接、总管与装配；`pipeline/continuation_test.go` 测试续接。
 - `internal/hook/command_test.go`：命令与补全测试；`internal/agent/hook_integration_test.go`：Agent／Hook 集成测试。

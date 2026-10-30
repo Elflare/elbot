@@ -198,14 +198,6 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		} else {
 			actor, _ = contextinfo.ActorFromContext(callCtx)
 		}
-		// Preserve invocation values and cancellation, and also join runtime shutdown.
-		var cancel context.CancelFunc
-		callCtx, cancel = context.WithCancel(callCtx)
-		stop := context.AfterFunc(w.manager.rootCtx, cancel)
-		defer func() {
-			stop()
-			cancel()
-		}()
 	} else if params.Target.Empty() {
 		err := fmt.Errorf("background tool output requires an explicit target")
 		logHook("hook_tool_call_completed", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered: " + err.Error()})

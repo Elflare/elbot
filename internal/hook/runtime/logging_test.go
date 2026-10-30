@@ -273,7 +273,7 @@ func (w protocolTestWriter) Write(data []byte) (int, error) { return len(data), 
 func (protocolTestWriter) Close() error                     { return nil }
 
 func TestWorkerRequestKeepsExplicitProtocolFailure(t *testing.T) {
-	worker := &worker{pending: map[string]chan frame{}}
+	worker := newWorker(nil, share.RuntimeConfig{})
 	worker.stdin = protocolTestWriter{write: func(data []byte) error {
 		var request frame
 		if err := json.Unmarshal(data, &request); err != nil {
@@ -292,7 +292,9 @@ func TestWorkerRequestKeepsExplicitProtocolFailure(t *testing.T) {
 func TestWorkerRequestKeepsKnownFaultWhenCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	worker := &worker{pending: map[string]chan frame{}, status: StatusDegraded, detail: "independent protocol fault", stdin: protocolTestWriter{write: func([]byte) error { return nil }}}
+	worker := newWorker(nil, share.RuntimeConfig{})
+	worker.status, worker.detail = StatusDegraded, "independent protocol fault"
+	worker.stdin = protocolTestWriter{write: func([]byte) error { return nil }}
 	_, result, err := worker.request(ctx, "event.handle", map[string]any{})
 	if !errors.Is(err, context.Canceled) || result.ResultStatus != events.ResultFailed || !strings.Contains(result.Content, "independent protocol fault") || !strings.Contains(result.Content, "context canceled") {
 		t.Fatalf("result=%+v err=%v", result, err)
@@ -408,7 +410,8 @@ func TestWorkerExitFactsPrecedeCanceledWaiters(t *testing.T) {
 			}
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
-			worker := &worker{manager: manager, config: share.RuntimeConfig{ID: "exit"}, cmd: cmd, done: make(chan struct{}), pending: map[string]chan frame{}, status: StatusRunning}
+			worker := newWorker(manager, share.RuntimeConfig{ID: "exit"})
+			worker.cmd, worker.done, worker.status = cmd, make(chan struct{}), StatusRunning
 			wantFault := "exit status 17"
 			if priorFault {
 				worker.status, worker.detail = StatusDegraded, "independent protocol fault"

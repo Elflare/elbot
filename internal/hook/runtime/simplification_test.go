@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"elbot/internal/hook/share"
@@ -40,7 +41,7 @@ func TestWorkerInvocationReleasesToolContext(t *testing.T) {
 		w.deliverResponse(frame{ID: request.ID, OK: &ok, Result: json.RawMessage(`{"status":"completed"}`)})
 		return nil
 	}}
-	if _, _, err := w.handle(t.Context(), share.Event{}, false, share.Control{}); err != nil {
+	if _, _, err := w.handle(t.Context(), share.Event{}, false, "", share.Control{}); err != nil {
 		t.Fatal(err)
 	}
 	if len(m.tokens) != 0 {
@@ -134,7 +135,7 @@ func TestManagerCancelAllWorkersOnRoute(t *testing.T) {
 			return nil
 		}}
 		go func() {
-			_, _, err := w.handle(ctx, event, false, share.Control{})
+			_, _, err := w.handle(ctx, event, false, "", share.Control{})
 			finished <- err
 		}()
 	}
@@ -201,7 +202,7 @@ func TestWorkerInvalidResultDoesNotPublishWaiting(t *testing.T) {
 		return nil
 	}}
 	event := share.Event{Actor: share.ActorContext{ID: "actor"}}
-	if _, _, err := w.handle(t.Context(), event, false, share.Control{}); err == nil {
+	if _, _, err := w.handle(t.Context(), event, false, "", share.Control{}); err == nil {
 		t.Fatal("invalid output was accepted")
 	}
 	if m.hasLease(event) {
@@ -238,43 +239,42 @@ func TestToolAuthorizationKeepsInvocationCancelable(t *testing.T) {
 }
 
 func TestWaitingOwnershipReclaimsOnlyItsTransientWorker(t *testing.T) {
-	m := simplificationManager(t)
-	event := share.Event{Actor: share.ActorContext{ID: "actor"}}
-	key := routeKeyFor(event)
-	first := newWorker(m, share.RuntimeConfig{ID: "first", Mode: share.RuntimeModeTransient, MaxWaitSeconds: 30})
-	second := newWorker(m, share.RuntimeConfig{ID: "second", Mode: share.RuntimeModeTransient, MaxWaitSeconds: 30})
-	firstRoute := workerRoute{HookID: first.config.ID, Route: key}
-	secondRoute := workerRoute{HookID: second.config.ID, Route: key}
-	m.transient[firstRoute], m.transient[secondRoute] = first, second
-	result := eventResult{ConversationID: "conversation", ExpiresAt: time.Now().Add(time.Second)}
-	if err := m.setLease(first, t.Context(), event, result, share.Control{}); err != nil {
-		t.Fatal(err)
-	}
-	if err := m.setLease(second, t.Context(), event, result, share.Control{}); err != nil {
-		t.Fatal(err)
-	}
-	m.mu.Lock()
-	m.clearWorkerLocked(first) // A late exit of the displaced process must not clear its successor.
-	_, retainedFirst := m.transient[firstRoute]
-	retainedSecond := m.transient[secondRoute] == second
-	m.mu.Unlock()
-	if retainedFirst || !retainedSecond || m.RouteHookID(event) != "second" {
-		t.Fatal("waiting replacement reclaimed the wrong worker")
-	}
-	m.mu.Lock()
-	lease := m.routes[key]
-	lease.ExpiresAt = time.Now().Add(-time.Second)
-	m.routes[key] = lease
-	m.mu.Unlock()
-	if m.RouteHookID(event) != "" {
-		t.Fatal("expired waiting route is still visible")
-	}
-	m.mu.RLock()
-	remaining := len(m.transient)
-	m.mu.RUnlock()
-	if remaining != 0 {
-		t.Fatal("expired waiting route retained its transient process")
-	}
+	synctest.Test(t, func(t *testing.T) {
+		m := simplificationManager(t)
+		event := share.Event{Actor: share.ActorContext{ID: "actor"}}
+		key := routeKeyFor(event)
+		first := newWorker(m, share.RuntimeConfig{ID: "first", Mode: share.RuntimeModeTransient, MaxWaitSeconds: 30})
+		second := newWorker(m, share.RuntimeConfig{ID: "second", Mode: share.RuntimeModeTransient, MaxWaitSeconds: 30})
+		firstRoute := workerRoute{HookID: first.config.ID, Route: key}
+		secondRoute := workerRoute{HookID: second.config.ID, Route: key}
+		m.transient[firstRoute], m.transient[secondRoute] = first, second
+		result := eventResult{ConversationID: "conversation", ExpiresAt: time.Now().Add(time.Second)}
+		if err := m.setLease(first, t.Context(), event, result, share.Control{}); err != nil {
+			t.Fatal(err)
+		}
+		if err := m.setLease(second, t.Context(), event, result, share.Control{}); err != nil {
+			t.Fatal(err)
+		}
+		m.mu.Lock()
+		m.clearWorkerLocked(first) // A late exit of the displaced process must not clear its successor.
+		_, retainedFirst := m.transient[firstRoute]
+		retainedSecond := m.transient[secondRoute] == second
+		m.mu.Unlock()
+		if retainedFirst || !retainedSecond || m.RouteHookID(event) != "second" {
+			t.Fatal("waiting replacement reclaimed the wrong worker")
+		}
+		time.Sleep(2 * time.Second)
+		synctest.Wait()
+		if m.RouteHookID(event) != "" {
+			t.Fatal("expired waiting route is still visible")
+		}
+		m.mu.RLock()
+		remaining := len(m.transient)
+		m.mu.RUnlock()
+		if remaining != 0 {
+			t.Fatal("expired waiting route retained its transient process")
+		}
+	})
 }
 
 func TestWorkerStaysRunningUntilLastInvocationEnds(t *testing.T) {
@@ -298,7 +298,7 @@ func TestWorkerStaysRunningUntilLastInvocationEnds(t *testing.T) {
 	}}
 	for _, id := range []string{"first", "second"} {
 		go func() {
-			_, _, err := w.handle(ctx, share.Event{Actor: share.ActorContext{ID: id}}, false, share.Control{})
+			_, _, err := w.handle(ctx, share.Event{Actor: share.ActorContext{ID: id}}, false, "", share.Control{})
 			finished <- err
 		}()
 	}
@@ -379,7 +379,7 @@ func TestRuntimeCloseWaitsForInvocationCleanup(t *testing.T) {
 	}}
 	finished := make(chan error, 1)
 	go func() {
-		_, _, err := w.handle(t.Context(), share.Event{}, false, share.Control{})
+		_, _, err := w.handle(t.Context(), share.Event{}, false, "", share.Control{})
 		finished <- err
 	}()
 	value := <-request

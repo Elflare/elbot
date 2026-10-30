@@ -31,8 +31,6 @@ func (m *Manager) lookupLease(event share.Event) (lease, bool) {
 	defer m.mu.Unlock()
 	lease, ok := m.routes[key]
 	if ok && !time.Now().Before(lease.ExpiresAt) {
-		delete(m.routes, key)
-		m.stopTransient(key, lease.Worker)
 		ok = false
 	}
 	return lease, ok
@@ -68,7 +66,7 @@ func (m *Manager) Route(ctx context.Context, event share.Event, observe func(con
 		ctx, done = observe(ctx, worker.config.ID)
 		defer done()
 	}
-	updated, logResult, err := worker.handle(ctx, event, true, lease.Control)
+	updated, logResult, err := worker.handle(ctx, event, true, lease.ConversationID, lease.Control)
 	// Runtime owns the continuation record; pipeline propagates this source outcome.
 	record := globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, EventName: "hook_triggered", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: fmt.Sprintf("continuation: hook=%s point=%s\n%s", worker.config.ID, event.Point, logResult.Content), ResultStatus: logResult.ResultStatus}
 	if logResult.ResultStatus == globalevents.ResultFailed {
@@ -109,7 +107,7 @@ func (m *Manager) Cancel(event share.Event) bool {
 	key := routeKeyFor(event)
 	m.mu.Lock()
 	lease, ok := m.routes[key]
-	delete(m.routes, key)
+	m.clearLeaseLocked(key)
 	running := make(map[*worker]bool)
 	for _, invocation := range m.tokens {
 		if routeKeyFor(invocation.Event) == key {
@@ -149,6 +147,7 @@ type lease struct {
 	Worker         *worker       // 租约所属的具体进程实例。
 	ConversationID string        // 插件签发的续接会话 ID。
 	ExpiresAt      time.Time     // waiting 租约到期时间。
+	Timer          *time.Timer   // 到期主动回收；定时器身份用于拒绝续期或替换前的旧回调。
 	Control        share.Control // 续接沿用的默认控制字段。
 }
 
@@ -207,11 +206,41 @@ func (m *Manager) setLease(worker *worker, ctx context.Context, event share.Even
 		return ErrClosed
 	}
 	key := routeKeyFor(event)
-	if current, ok := m.routes[key]; ok && current.Worker != worker {
+	current, ok := m.routes[key]
+	m.clearLeaseLocked(key)
+	if ok && current.Worker != worker {
 		m.stopTransient(key, current.Worker)
 	}
-	m.routes[key] = lease{Worker: worker, ConversationID: result.ConversationID, ExpiresAt: result.ExpiresAt, Control: defaults}
+	current = lease{Worker: worker, ConversationID: result.ConversationID, ExpiresAt: result.ExpiresAt, Control: defaults}
+	m.workWG.Add(1)
+	current.Timer = time.AfterFunc(time.Until(current.ExpiresAt), func() { m.expireLease(key, &current) })
+	m.routes[key] = current
 	return nil
+}
+
+func (m *Manager) expireLease(key routeKey, expired *lease) {
+	defer m.workWG.Done()
+	unlock, err := expired.Worker.lockRoute(m.rootCtx, key)
+	if err != nil {
+		return
+	}
+	defer unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if current, ok := m.routes[key]; ok && current.Timer == expired.Timer {
+		m.clearLeaseLocked(key)
+		m.stopTransient(key, expired.Worker)
+	}
+}
+
+// clearLeaseLocked 要求持有 m.mu；撤销成功时由调用者释放计数，否则由回调释放。
+func (m *Manager) clearLeaseLocked(key routeKey) {
+	if current, ok := m.routes[key]; ok {
+		delete(m.routes, key)
+		if current.Timer != nil && current.Timer.Stop() {
+			m.workWG.Done()
+		}
+	}
 }
 
 func (m *Manager) clearLease(worker *worker, event share.Event) {
@@ -219,14 +248,14 @@ func (m *Manager) clearLease(worker *worker, event share.Event) {
 	defer m.mu.Unlock()
 	key := routeKeyFor(event)
 	if current, ok := m.routes[key]; ok && current.Worker == worker {
-		delete(m.routes, key)
+		m.clearLeaseLocked(key)
 	}
 }
 
 func (m *Manager) clearWorkerLocked(worker *worker) {
 	for key, lease := range m.routes {
 		if lease.Worker == worker {
-			delete(m.routes, key)
+			m.clearLeaseLocked(key)
 		}
 	}
 	for _, invocation := range m.tokens {

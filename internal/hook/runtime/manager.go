@@ -28,7 +28,6 @@ type Manager struct {
 	tokens        map[string]invocation // 活动事件按 token 登记，同时供取消与工具授权使用。
 	shared        *SharedState
 	media         *mediaBridge
-	sharedCancel  context.CancelFunc
 	sharedDone    chan struct{}
 	prepareReload func(string) (func() (globalevents.LogResult, error), error)
 	rootCtx       context.Context
@@ -67,25 +66,23 @@ func NewManager(opts Options) (*Manager, error) {
 	if err := os.MkdirAll(opts.SharedDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create shared hook directory: %w", err)
 	}
-	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
 	rootCtx, rootCancel := context.WithCancel(context.Background())
 	m := &Manager{
-		opts:         opts,
-		workers:      map[string]*worker{},
-		transient:    map[workerRoute]*worker{},
-		configs:      map[string]share.RuntimeConfig{},
-		routes:       map[routeKey]lease{},
-		tokens:       map[string]invocation{},
-		shared:       NewSharedState(),
-		media:        newMediaBridge(opts.Media),
-		sharedCancel: cleanupCancel,
-		sharedDone:   make(chan struct{}),
-		rootCtx:      rootCtx,
-		rootCancel:   rootCancel,
-		closeDone:    make(chan struct{}),
-		closeMedia:   make(chan struct{}, 1),
+		opts:       opts,
+		workers:    map[string]*worker{},
+		transient:  map[workerRoute]*worker{},
+		configs:    map[string]share.RuntimeConfig{},
+		routes:     map[routeKey]lease{},
+		tokens:     map[string]invocation{},
+		shared:     NewSharedState(),
+		media:      newMediaBridge(opts.Media),
+		sharedDone: make(chan struct{}),
+		rootCtx:    rootCtx,
+		rootCancel: rootCancel,
+		closeDone:  make(chan struct{}),
+		closeMedia: make(chan struct{}, 1),
 	}
-	go m.cleanSharedState(cleanupCtx)
+	go m.cleanSharedState(rootCtx)
 	return m, nil
 }
 
@@ -306,13 +303,14 @@ func (m *Manager) Close(ctx context.Context) error {
 	for _, worker := range m.transient {
 		workers = append(workers, worker)
 	}
-	m.routes = map[routeKey]lease{}
+	for key := range m.routes {
+		m.clearLeaseLocked(key)
+	}
 	for _, invocation := range m.tokens {
 		invocation.Cancel()
 	}
 	m.mu.Unlock()
 
-	m.sharedCancel()
 	go m.finishClose(ctx, workers)
 	return m.waitClose(ctx, m.closeDone)
 }
@@ -500,7 +498,7 @@ func (m *Manager) Handle(ctx context.Context, id string, event share.Event, defa
 	if worker.config.Block.Blocks(event) {
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "worker not dispatched"}, nil
 	}
-	updated, logResult, err := worker.handle(ctx, event, false, defaults)
+	updated, logResult, err := worker.handle(ctx, event, false, event.Platform.ConversationID, defaults)
 	if err == nil {
 		if updated.Metadata == nil {
 			updated.Metadata = map[string]any{}

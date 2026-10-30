@@ -63,7 +63,6 @@ type mediaBridge struct {
 	api    mediaAPI
 	owner  string
 	leases map[string]*mediaLease
-	closed bool
 }
 
 func newMediaBridge(api mediaAPI) *mediaBridge {
@@ -137,10 +136,6 @@ func (b *mediaBridge) retain(ctx context.Context, id string) (*mediaLease, error
 			return nil, err
 		}
 		b.mu.Lock()
-		if b.closed {
-			b.mu.Unlock()
-			return nil, ErrClosed
-		}
 		lease := b.leases[id]
 		if lease != nil && lease.busy != nil {
 			done := lease.busy
@@ -298,9 +293,6 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 
 func (b *mediaBridge) prune(ctx context.Context, now time.Time, closeAll bool) (events.LogResult, error) {
 	b.mu.Lock()
-	if closeAll {
-		b.closed = true
-	}
 	selected := make(map[string]*mediaLease)
 	for id, lease := range b.leases {
 		if lease.busy != nil || (!closeAll && now.Before(lease.expires)) {

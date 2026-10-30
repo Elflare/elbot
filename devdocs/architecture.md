@@ -219,6 +219,17 @@ Hook 根部负责外部接入与装配；pipeline 编排续接、规则及错误
 - 入站先计算唤醒并检查原始取消命令，再尝试 waiting 续接和普通规则，完成后才进入命令／模型流程。改写不重新计算唤醒，改写后的取消命令仍须检查。
 - 同一 pipeline 按优先级及注册顺序串行运行；只读策略逐动作校验，llm.messages 只读，turn／request Hook 分别只改初始 user／新 pending，保存后才调用模型。
 - 重载先验证候选再替换，异步进程失败交 runtime 恢复。关闭停止新接入，保留在途生产者需要的回调，等待进程、请求及媒体租约操作实际退出后清理。
+- runtime 的协议写权限等待、实际写入和响应等待共用请求 context；写入取消或失败关闭捕获的管道并终止对应进程树，完整发送后的普通响应等待取消保留 Persistent Worker。异步取消通知和插件响应使用受 rootCtx 约束的事件超时；shutdown 独立共用一次关闭预算。
+- waiting 使用一次性定时器主动回收；回调先取 Worker 路由锁，再取 Manager 锁核对定时器身份，不打断已开始的续接或误删新租约。撤销成功或回调完成恰好释放一次 workWG 计数；Done 等待所属任务实际退出。KV／媒体周期维护共用 rootCtx，媒体在途等待及清理失败重试由原有机制负责。
+
+```mermaid
+flowchart TD
+    Routes["runtime/routes.go<br/>租约建立、续期、撤销、到期回收"] --> RouteLock["runtime/worker.go<br/>同 Worker 同路由串行"]
+    RouteLock --> Identity["runtime/routes.go<br/>Manager 锁内核对定时器身份"]
+    Identity --> Manager["runtime/manager.go<br/>关闭到期临时进程、登记并等待所属任务"]
+    Worker["runtime/worker.go<br/>可取消协议写入、单次 shutdown 预算"] --> Manager
+    Manager --> Done["Manager.Done<br/>所属工作实际结束"]
+```
 
 <!-- locator:output -->
 <!-- locator:notification -->

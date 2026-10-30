@@ -273,7 +273,7 @@ func (discardWriteCloser) Close() error                   { return nil }
 
 func TestWorkerRejectsOversizedInputFrame(t *testing.T) {
 	w := &worker{stdin: discardWriteCloser{}}
-	err := w.write(frame{Type: "request", Error: strings.Repeat("x", share.MaxProtocolFrameBytes)})
+	err := w.write(t.Context(), frame{Type: "request", Error: strings.Repeat("x", share.MaxProtocolFrameBytes)})
 	if err == nil || !strings.Contains(err.Error(), "stdin frame exceeds 16 MiB limit") {
 		t.Fatalf("err = %v", err)
 	}
