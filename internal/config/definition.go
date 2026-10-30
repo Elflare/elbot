@@ -122,8 +122,12 @@ func flattenRules(rules []Rule, prefix []string) []Rule {
 
 func ruleAt(rules []Rule, path []string) Rule {
 	var result Rule
-	for _, rule := range flattenRules(rules, nil) {
-		if hasPrefix(path, rule.Path) {
+	var visit func([]Rule, []string)
+	visit = func(rules []Rule, path []string) {
+		for _, rule := range rules {
+			if !hasPrefix(path, rule.Path) {
+				continue
+			}
 			result.Example = result.Example || rule.Example
 			result.Effective = result.Effective || rule.Effective
 			if rule.Topic != "" {
@@ -132,11 +136,13 @@ func ruleAt(rules []Rule, path []string) Rule {
 			if rule.Hint != "" {
 				result.Hint = rule.Hint
 			}
-			if slices.Equal(path, rule.Path) {
+			if len(path) == len(rule.Path) {
 				result.Presence = rule.Presence
 			}
+			visit(rule.Children, path[len(rule.Path):])
 		}
 	}
+	visit(rules, path)
 	return result
 }
 
@@ -185,33 +191,34 @@ func lookup(value any, path []string) (any, bool) {
 // only when their owner supplies a hint; ordinary fields need no declaration.
 func CheckRules(value any, rules []Rule) []Issue {
 	var issues []Issue
-	for _, rule := range rules {
-		actual, exists := lookup(value, rule.Path)
-		emptyString, isString := actual.(string)
-		missing := !exists || rule.Presence == Required && isString && emptyString == ""
-		if missing {
-			level := LevelHint
-			message := "缺失可选配置：" + keyPath(rule.Path)
-			if rule.Presence == Required {
-				level = LevelError
-				message = "有效配置缺少 " + keyPath(rule.Path)
-			} else if rule.Hint == "" {
+	var check func(any, []Rule, []string, string)
+	check = func(value any, rules []Rule, prefix []string, topic string) {
+		for _, rule := range rules {
+			actual, exists := lookup(value, rule.Path)
+			field := append(slices.Clone(prefix), rule.Path...)
+			if rule.Topic == "" {
+				rule.Topic = topic
+			}
+			emptyString, isString := actual.(string)
+			missing := !exists || rule.Presence == Required && isString && emptyString == ""
+			if missing {
+				level := LevelHint
+				message := "缺失可选配置：" + keyPath(field)
+				if rule.Presence == Required {
+					level = LevelError
+					message = "有效配置缺少 " + keyPath(field)
+				} else if rule.Hint == "" {
+					continue
+				}
+				if rule.Hint != "" {
+					message += "；" + rule.Hint
+				}
+				issues = append(issues, Issue{Field: field, Missing: true, Level: level, Topic: rule.Topic, Message: message})
 				continue
 			}
-			if rule.Hint != "" {
-				message += "；" + rule.Hint
-			}
-			issues = append(issues, Issue{Field: slices.Clone(rule.Path), Missing: true, Level: level, Topic: rule.Topic, Message: message})
-			continue
-		}
-		for _, issue := range CheckRules(actual, rule.Children) {
-			issue.Field = append(slices.Clone(rule.Path), issue.Field...)
-			issue.Message = strings.Replace(issue.Message, keyPath(issue.Field[len(rule.Path):]), keyPath(issue.Field), 1)
-			if issue.Topic == "" {
-				issue.Topic = rule.Topic
-			}
-			issues = append(issues, issue)
+			check(actual, rule.Children, field, rule.Topic)
 		}
 	}
+	check(value, rules, nil, "")
 	return issues
 }

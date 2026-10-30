@@ -64,6 +64,49 @@ func TestOptionalParentDoesNotRequireItsChildren(t *testing.T) {
 	}
 }
 
+func TestRuleLookupInheritanceAndDeclarationOrder(t *testing.T) {
+	rules := []Rule{
+		{Path: []string{"parent"}, Presence: Required, Example: true, Topic: "parent", Hint: "parent hint", Children: []Rule{
+			{Path: []string{"child"}, Presence: Required, Effective: true, Topic: "child", Hint: "child hint"},
+		}},
+		{Path: []string{"parent", "child"}, Topic: "later"},
+		{Path: []string{"other"}, Topic: "unrelated"},
+	}
+	for _, tc := range []struct {
+		path []string
+		want Rule
+	}{
+		{[]string{"parent"}, Rule{Presence: Required, Example: true, Topic: "parent", Hint: "parent hint"}},
+		{[]string{"parent", "child"}, Rule{Example: true, Effective: true, Topic: "later", Hint: "child hint"}},
+		{[]string{"parent", "child", "leaf"}, Rule{Example: true, Effective: true, Topic: "later", Hint: "child hint"}},
+		{[]string{"parent", "sibling"}, Rule{Example: true, Topic: "parent", Hint: "parent hint"}},
+		{[]string{"parent.child"}, Rule{}},
+	} {
+		t.Run(keyPath(tc.path), func(t *testing.T) {
+			if got := ruleAt(rules, tc.path); !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("rule = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCheckRulesBuildsFullPathsAndInheritsTopics(t *testing.T) {
+	rules := []Rule{{Path: []string{"a.b"}, Topic: "parent", Children: []Rule{
+		{Path: []string{`quoted"key`}, Presence: Required},
+		{Path: []string{"optional"}, Hint: "optional hint", Topic: "child"},
+		{Path: []string{"sibling"}, Presence: Required},
+	}}}
+	value := map[string]any{"a.b": map[string]any{`quoted"key`: ""}}
+	want := []Issue{
+		{Field: []string{"a.b", `quoted"key`}, Missing: true, Level: LevelError, Topic: "parent", Message: `有效配置缺少 "a.b"."quoted\"key"`},
+		{Field: []string{"a.b", "optional"}, Missing: true, Level: LevelHint, Topic: "child", Message: `缺失可选配置："a.b".optional；optional hint`},
+		{Field: []string{"a.b", "sibling"}, Missing: true, Level: LevelError, Topic: "parent", Message: `有效配置缺少 "a.b".sibling`},
+	}
+	if got := CheckRules(value, rules); !reflect.DeepEqual(got, want) {
+		t.Fatalf("issues = %+v, want %+v", got, want)
+	}
+}
+
 func TestInspectionAndLoadShareDefaultsAndOverrides(t *testing.T) {
 	dir := t.TempDir()
 	main := filepath.Join(dir, "custom.toml")
@@ -156,21 +199,48 @@ func TestExplicitModuleDefinition(t *testing.T) {
 	type module struct {
 		Value string `toml:"value"`
 	}
-	for _, content := range []string{"value=123", "value='ok'\ntyop=true"} {
-		t.Run(content, func(t *testing.T) {
-			state := newConfiguration("app.toml", []Definition{{Asset: "app.toml", Node: []string{"platform", "custom"}, New: func() any { return &module{} }, UnknownFields: true}})
-			doc := &document{path: "app.toml", data: []byte("[platform.custom]\n" + content)}
+	for _, tc := range []struct {
+		name, content string
+		strict        bool
+		fields        []string
+		level         Level
+	}{
+		{"valid", "value='ok'", true, nil, ""},
+		{"type", "value=123", true, []string{"value"}, LevelError},
+		{"unknown", "value='ok'\ntyop=true", true, []string{"tyop"}, LevelHint},
+		{"sorted unknown fields", "value='ok'\nz=true\n'a.b'=1", true, []string{"a.b", "z"}, LevelHint},
+		{"type before unknown hints", "aaa=true\nvalue=123\nzzz=1", true, []string{"value"}, LevelError},
+		{"unknown allowed", "value='ok'\ntyop=true", false, nil, ""},
+		{"type still checked", "value=123\ntyop=true", false, []string{"value"}, LevelError},
+		{"required checked once", "", true, []string{"value"}, LevelError},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state := newConfiguration("app.toml", []Definition{{
+				Asset: "app.toml", Node: []string{"platform", "custom"}, Topic: "module",
+				New: func() any { return &module{} }, UnknownFields: tc.strict,
+				Rules: []Rule{{Path: []string{"value"}, Presence: Required, Topic: "value"}},
+			}})
+			doc := &document{path: "app.toml", data: []byte("[platform.custom]\n" + tc.content)}
 			decodeDocument(doc, func() any { return &Config{} })
 			root, _ := state.definition("app.toml")
-			issues := state.inspectModules(doc, root)
-			if len(issues) != 1 || !strings.HasPrefix(keyPath(issues[0].Field), "platform.custom.") {
+			issues, err := inspectDocument(doc, root, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Inspect both stages before deduplication so repeated checks are visible.
+			issues = append(issues, state.inspectModules(doc, root)...)
+			if len(issues) != len(tc.fields) {
 				t.Fatalf("%+v", issues)
 			}
-			if strings.Contains(content, "123") && issues[0].Level != LevelError {
-				t.Fatalf("%+v", issues)
-			}
-			if strings.Contains(content, "tyop") && issues[0].Level != LevelHint {
-				t.Fatalf("%+v", issues)
+			for i, name := range tc.fields {
+				field, topic := []string{"platform", "custom", name}, "module"
+				if name == "value" {
+					topic = "value"
+				}
+				issue := issues[i]
+				if !reflect.DeepEqual(issue.Field, field) || issue.Path != doc.path || issue.Level != tc.level || issue.Topic != topic || !strings.Contains(issue.Message, keyPath(field)) || strings.Contains(issue.Message, "第 ") {
+					t.Fatalf("unexpected module diagnostic: %+v", issue)
+				}
 			}
 		})
 	}

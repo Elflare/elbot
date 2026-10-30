@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -146,7 +147,7 @@ func (s *configuration) assetOrder() []string {
 		}
 	}
 	for _, compare := range []bool{false, true} {
-		for _, asset := range DefaultAssets() {
+		for _, asset := range defaultConfigAssets {
 			name := filepath.ToSlash(asset.Path)
 			if asset.CompareContent == compare && !slices.Contains(names, name) {
 				names = append(names, name)
@@ -171,31 +172,24 @@ func (s *configuration) inspectModules(doc *document, root Definition) []Issue {
 			issues = append(issues, Issue{Path: doc.path, Field: definition.Node, Level: LevelError, Topic: definition.Topic, Message: "字段类型错误：" + keyPath(definition.Node)})
 			continue
 		}
-		child := &document{path: doc.path, data: data}
-		decodeDocument(child, definition.New)
-		found, err := inspectDocument(child, definition, "")
-		if err != nil {
-			continue // There is no template to fail parsing here.
+		// Root inspection already checks module rules; decode only for types
+		// and unknown fields here, without re-parsing the subtree into a map.
+		decoder := toml.NewDecoder(bytes.NewReader(data))
+		if definition.UnknownFields {
+			decoder.DisallowUnknownFields()
 		}
-		for _, issue := range found {
-			relative := keyPath(issue.Field)
-			issue.Field = append(slices.Clone(definition.Node), issue.Field...)
-			if issue.Level == LevelError && child.err != nil {
-				// Child data was encoded from the parsed subtree; its line
-				// numbers are not positions in the original file.
-				detail := child.err.Error()
-				var decodeErr *toml.DecodeError
-				if errors.As(child.err, &decodeErr) {
-					detail = decodeErr.Error()
-				}
-				issue.Message = "字段类型错误：" + keyPath(issue.Field) + "；" + detail
-			} else {
-				issue.Message = strings.Replace(issue.Message, relative, keyPath(issue.Field), 1)
+		err = decoder.Decode(definition.New())
+		var unknown *toml.StrictMissingError
+		if errors.As(err, &unknown) {
+			slices.SortFunc(unknown.Errors, func(a, b toml.DecodeError) int { return strings.Compare(keyPath(a.Key()), keyPath(b.Key())) })
+			for _, issue := range unknown.Errors {
+				field := append(slices.Clone(definition.Node), issue.Key()...)
+				issues = append(issues, Issue{Path: doc.path, Field: field, Level: LevelHint, Topic: topicFor(root, field), Message: "未知字段：" + keyPath(field) + "；代码不会读取此字段。"})
 			}
-			if issue.Topic == "" {
-				issue.Topic = topicFor(root, issue.Field)
-			}
-			issues = append(issues, issue)
+		} else if err != nil {
+			field := append(slices.Clone(definition.Node), decodeField(data, err)...)
+			// Re-encoded subtree positions do not refer to the original file.
+			issues = append(issues, Issue{Path: doc.path, Field: field, Level: LevelError, Topic: topicFor(root, field), Message: "字段类型错误：" + keyPath(field) + "；" + err.Error()})
 		}
 	}
 	for _, rule := range flattenRules(root.Rules, nil) {

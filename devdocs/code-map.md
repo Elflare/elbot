@@ -60,7 +60,8 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 配置、资产与日志
 
 - `internal/config/`：配置加载、默认资产、配置声明与检查。
-- `internal/config/definition.go`、`provider.go`：分别负责配置规则与厂商配置加载。
+- `internal/config/definition.go`、`provider.go`：分别负责配置规则查询与校验、厂商配置加载。
+- `internal/config/inspect.go`、`inspect_toml.go`：分别负责诊断装配与模块类型／未知字段检查、根文档字段与规则检查；模块规则并入根文档统一检查。
 - `internal/doctor/`、`internal/command/builtin/doctor.go`：配置诊断与命令入口。
 - `internal/logging/logging.go`、`signals.go`：分别负责日志中心与订阅。
 - `internal/logging/record.go`、`reader.go`：分别负责日志格式化与查询。
