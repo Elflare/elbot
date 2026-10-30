@@ -84,7 +84,7 @@ func (c *Client) Do(ctx context.Context, request func(context.Context) (*http.Re
 			return resp, nil
 		}
 		if err != nil {
-			lastErr = fmt.Errorf("http request: %w", err)
+			lastErr = err
 		} else {
 			lastErr = decodeError(resp)
 			_ = resp.Body.Close()

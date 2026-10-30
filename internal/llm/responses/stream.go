@@ -88,9 +88,9 @@ func readStream(ctx context.Context, sse *httpclient.SSE, out chan<- Event) {
 		if frame.Err != nil {
 			err := frame.Err
 			if err == io.EOF {
-				err = io.ErrUnexpectedEOF
+				err = fmt.Errorf("response stream closed before response.completed: %w", io.ErrUnexpectedEOF)
 			}
-			send(Event{Error: fmt.Errorf("response stream: %w", err)})
+			send(Event{Error: err})
 			return
 		}
 		var event Event

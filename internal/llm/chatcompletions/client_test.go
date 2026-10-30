@@ -535,8 +535,8 @@ func TestChatStream_StreamIdleTimeout(t *testing.T) {
 		if gotText != "start" {
 			t.Fatalf("text = %q, want start", gotText)
 		}
-		if gotErr == nil || !strings.Contains(gotErr.Error(), "idle timeout") {
-			t.Fatalf("error = %v, want idle timeout", gotErr)
+		if gotErr == nil || gotErr.Error() != "LLM stream idle timeout after 10ms" {
+			t.Fatalf("error = %v, want unwrapped idle timeout", gotErr)
 		}
 	})
 }
@@ -1036,8 +1036,8 @@ func TestChatStream_ReportsMissingDoneAsInterrupted(t *testing.T) {
 	if gotErr == nil {
 		t.Fatal("expected missing [DONE] error")
 	}
-	if !strings.Contains(gotErr.Error(), "unexpected EOF") {
-		t.Fatalf("error = %v, want unexpected EOF", gotErr)
+	if !errors.Is(gotErr, io.ErrUnexpectedEOF) || gotErr.Error() != "chat stream closed before [DONE]: unexpected EOF" {
+		t.Fatalf("error = %v, want missing [DONE] with unexpected EOF cause", gotErr)
 	}
 }
 func TestChatStream_HTTPError(t *testing.T) {

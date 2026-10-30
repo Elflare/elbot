@@ -22,12 +22,12 @@ func (e *APIError) Error() string {
 	if e.StatusCode != 0 {
 		return fmt.Sprintf("HTTP %d: %s", e.StatusCode, message)
 	}
-	prefix := "response error"
+	prefix := errorSummary(e.Code, 256)
 	if e.EventType == "response.incomplete" {
-		prefix = e.EventType
+		prefix = strings.TrimSpace(e.EventType + " " + prefix)
 	}
-	if code := errorSummary(e.Code, 256); code != "" {
-		prefix += " " + code
+	if prefix == "" {
+		return message
 	}
 	return prefix + ": " + message
 }

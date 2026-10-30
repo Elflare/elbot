@@ -325,7 +325,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		return result, err
 	}
 	if status != "completed" || result.Response == nil || result.Response.Status != "completed" || result.Response.ID == "" {
-		err = fmt.Errorf("responses stream: %w", io.ErrUnexpectedEOF)
+		err = fmt.Errorf("response stream closed before response.completed: %w", io.ErrUnexpectedEOF)
 		observation.Event().ProviderError, observation.Event().Err = true, err
 		observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultFailed, slog.LevelError
 		return result, err

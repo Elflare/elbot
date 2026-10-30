@@ -126,3 +126,30 @@ func TestStreamErrorsPreserveStructuredRecovery(t *testing.T) {
 		})
 	}
 }
+
+func TestAPIErrorSummaryUsesStructuredFacts(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  APIError
+		want string
+	}{
+		{"message", APIError{Message: "upstream failed"}, "upstream failed"},
+		{"code", APIError{Code: "server_error", Message: "upstream failed"}, "server_error: upstream failed"},
+		{"HTTP", APIError{StatusCode: 429, Code: "rate_limit", Message: "slow down"}, "HTTP 429: slow down"},
+		{"incomplete", APIError{EventType: "response.incomplete", Message: "max_output_tokens"}, "response.incomplete: max_output_tokens"},
+		{"incomplete code", APIError{EventType: "response.incomplete", Code: "limit", Message: "limit reached"}, "response.incomplete limit: limit reached"},
+		{"empty", APIError{}, "上游返回错误，但未提供可识别的错误说明"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.err.Error(); got != tc.want {
+				t.Fatalf("summary=%q want=%q", got, tc.want)
+			}
+		})
+	}
+	const message = "stream error: stream disconnected before completion: stream closed before response.completed"
+	raw := `{"type":"error","error":{"code":"request_timeout","message":"` + message + `"}}`
+	err := streamErrorForTest(t, "error", raw)
+	if err.Message != message || err.Error() != "request_timeout: "+message || !strings.Contains(err.Detail, message) {
+		t.Fatalf("upstream message or diagnostics changed: %+v detail=%s", err, err.Detail)
+	}
+}

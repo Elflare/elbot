@@ -102,7 +102,7 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 		completed.ElapsedMS = elapsedMillis(startedAt)
 		publishCompleted()
 		c.Calls.NotifyError(ctx, sessionID, agentshare.LLMResponse{Provider: selection.Provider, Model: selection.Model, ElapsedMS: elapsedMillis(startedAt)}, err)
-		return llmCallResult{}, fmt.Errorf("chat: %w", err)
+		return llmCallResult{}, err
 	}
 	var assistant strings.Builder
 	var usage *llm.Usage
@@ -148,7 +148,7 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 				ElapsedMS:  elapsedMillis(startedAt),
 			}, chunk.Error)
 
-			return llmCallResult{}, fmt.Errorf("chat stream: %w", chunk.Error)
+			return llmCallResult{}, chunk.Error
 		}
 		if chunk.Usage != nil {
 			usage = chunk.Usage

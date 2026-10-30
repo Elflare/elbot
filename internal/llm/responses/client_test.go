@@ -129,7 +129,7 @@ func TestStreamRejectsFailedIncompleteAndPrematureEOF(t *testing.T) {
 		{"incomplete", "response.incomplete", `{"type":"response.incomplete","response":{"id":"r","status":"incomplete","incomplete_details":{"reason":"max_output_tokens"}}}`, "max_output_tokens"},
 		{"error", "error", `{"type":"error","code":"bad","message":"bad event"}`, "bad event"},
 		{"invalid completed", "response.completed", `{"type":"response.completed","response":{"id":"r","status":"in_progress"}}`, "invalid completed"},
-		{"EOF", "response.output_text.delta", `{"type":"response.output_text.delta","delta":"partial"}`, "unexpected EOF"},
+		{"EOF", "response.output_text.delta", `{"type":"response.output_text.delta","delta":"partial"}`, "response stream closed before response.completed: unexpected EOF"},
 		{"bad JSON", "response.created", `{broken`, "parse response event"},
 		{"mismatched event", "response.completed", `{"type":"response.in_progress"}`, "invalid response event type"},
 	} {
@@ -145,6 +145,9 @@ func TestStreamRejectsFailedIncompleteAndPrematureEOF(t *testing.T) {
 			_, err := client.GenerateText(context.Background(), llm.TextRequest{Model: "m", Input: "input"})
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error=%v want=%s", err, tc.want)
+			}
+			if tc.name == "EOF" && !errors.Is(err, io.ErrUnexpectedEOF) {
+				t.Fatalf("unexpected EOF cause lost: %v", err)
 			}
 			if calls.Load() != 1 {
 				t.Fatal("failed stream was replayed")
@@ -209,11 +212,11 @@ func TestResponseTimeoutsAndCancellation(t *testing.T) {
 				}))
 				client := mustClient(t, srv.URL, nil, nil, RequestOptions{HTTPClient: srv.Client(), FirstChunkTimeout: 40 * time.Millisecond, StreamIdleTimeout: 40 * time.Millisecond})
 				_, err := client.GenerateText(context.Background(), llm.TextRequest{Model: "m", Input: "input"})
-				want := "idle timeout"
+				want := "LLM stream idle timeout after 40ms"
 				if first {
-					want = "first stream chunk timeout"
+					want = "LLM first stream chunk timeout after 40ms"
 				}
-				if err == nil || !strings.Contains(err.Error(), want) {
+				if err == nil || err.Error() != want {
 					t.Fatalf("error=%v", err)
 				}
 			})

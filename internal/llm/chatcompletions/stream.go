@@ -34,9 +34,9 @@ func (a *Client) readStream(ctx context.Context, sse *httpclient.SSE, out chan<-
 		if frame.Err != nil {
 			err := frame.Err
 			if err == io.EOF {
-				err = io.ErrUnexpectedEOF
+				err = fmt.Errorf("chat stream closed before [DONE]: %w", io.ErrUnexpectedEOF)
 			}
-			send(Chunk{Error: fmt.Errorf("read stream: %w", err)})
+			send(Chunk{Error: err})
 			return
 		}
 		if string(frame.Data) == "[DONE]" {
