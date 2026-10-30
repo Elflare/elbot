@@ -26,7 +26,7 @@ func TestTakeoverSuppressesRepairAndDelivery(t *testing.T) {
 		return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	}})
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "takeover", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
-	if _, err := svc.runLLM(context.Background(), *job, mustDecodeTestMetadata(t, job.Metadata)); err != nil {
+	if _, err := svc.runTask(context.Background(), *job, mustDecodeTestMetadata(t, job.Metadata)); err != nil {
 		t.Fatal(err)
 	}
 	state := mustDecodeTestDelivery(t, repo.jobs[job.Name].DeliveryState)
@@ -48,9 +48,9 @@ func TestInjectedTakeoverQuerySuppressesRepairAndSurfacesFailure(t *testing.T) {
 		runner := &fakeCronRunner{text: "invalid JSON"}
 		queried := ""
 		svc := newTestCronService(t, Options{Runner: runner, SessionTakenOver: func(_ context.Context, id string) (bool, error) { queried = id; return lookupErr == nil, lookupErr }})
-		state, report, _, err := svc.runLLMReport(t.Context(), Job{Name: "job"}, Metadata{}, CronDeliveryState{RunID: "run"})
-		if runner.calls != 1 || queried != "cron-session" || report != "" {
-			t.Fatalf("calls=%d query=%q report=%q", runner.calls, queried, report)
+		state, _, err := svc.runLLMReport(t.Context(), Job{Name: "job"}, Metadata{}, CronDeliveryState{RunID: "run"})
+		if runner.calls != 1 || queried != "cron-session" || state.Report != "" {
+			t.Fatalf("calls=%d query=%q report=%q", runner.calls, queried, state.Report)
 		}
 		if lookupErr != nil {
 			if !errors.Is(err, lookupErr) {

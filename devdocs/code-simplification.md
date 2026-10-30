@@ -45,7 +45,7 @@
 
 按包记录具体问题、精简建议、讨论结论与验证结果，确认方案后再实施。任务入口见 [任务清单](tasks.md)。
 
-当前进度：`internal/app`、`internal/delivery`、`internal/turn`、`internal/tool/builtin`、`internal/memory/resident`、`internal/hook/rules`、`internal/storage/sqlite` 已完成一轮审查与调整；`internal/config` 已完成第三轮精简；`internal/hook/runtime` 已完成第三轮精简；`internal/hook/control` 已完成一轮精简，其余包进度分别记录。
+当前进度：`internal/app`、`internal/delivery`、`internal/turn`、`internal/tool/builtin`、`internal/memory/resident`、`internal/hook/rules`、`internal/storage/sqlite` 已完成一轮审查与调整；`internal/config` 已完成第三轮精简；`internal/hook/runtime` 已完成第三轮精简；`internal/hook/control`、`internal/background/cron` 已完成一轮精简，其余包进度分别记录。
 
 ### delivery
 
@@ -126,10 +126,17 @@
 - 数组筛选、反向扫描分别使用 slices.ContainsFunc、slices.Reverse 和 min；格式化函数删除未使用的 context 参数。公共接口、日志格式、扫描边界及关闭资源顺序保持不变。
 - 复用现有混合格式、损坏行、查询条件、跨块扫描、UTF-8 与大小上限、背压和关闭回归。gofmt、go test ./internal/logging ./internal/command/builtin 和 go test -race ./internal/logging 均通过。
 
+### background/cron
+
+- direct／LLM 共用 runTask 准备与投递流程，保留原操作标签；报告正文统一存于 state.Report，模型选择在 modelForTask 完成校验与回退，直接复用共享 Runner 和 JSON 解析器。
+- 十处日志身份提取共用 cronLogIdentity，发送日志保留报告 SessionID 优先；任务和发送完成日志各自统一构造，由源头结果决定事件名与级别，业务错误独立返回。
+- 错误返回删除重复判断、变量复制与嵌套；目标解析删除未使用参数，管理员 ID 复用入口归一化结果。保留恢复重读、逐项接管检查、条件提交、迟到回执、取消收尾和生命周期同步。
+
 ## 已完成精简
 
 | 包 | 完成情况 | 非测试 Go 行数 |
 | --- | --- | --- |
+| `internal/background/cron` | 合并执行和完成日志，统一身份提取，删除重复返回值、包装与检查。 | 2,693 → 2,413，减少 280 行（约 10.4%），仍为 11 个生产文件。 |
 | `internal/logging` | 删除重复解析、归一化和无用分配，简化扫描与匹配循环，移除未使用参数。 | 971 → 955，减少 16 行（约 1.6%），仍为 4 个生产文件。 |
 | `internal/hook/pipeline` | 共用 handler 执行收尾并补齐 context 取消，简化插件替换、活动计数及重复处理。 | 本轮 522 → 499，减少 23 行；相对初始基线 528 行累计减少 29 行（约 5.5%），仍为 2 个生产文件。 |
 | `internal/storage/sqlite` | 已完成第二轮；共用连接和扫描，删除遗留接口与重复转换、校验及关闭，简化分批和循环判断。 | 本轮 4,717 → 4,708，减少 9 行；相对初始基线累计减少 60 行（约 1.3%），仍为 17 个生产文件；连同 Storage 接口声明累计减少 61 行。 |
@@ -158,6 +165,8 @@ tool/builtin 本轮连同 Tool 内部调用方共净减 332 行非测试 Go 代�
 Tool 竞态检查中除 execution 外的包均通过，无数据竞争报告。execution 的 `TestRunConcurrentFailuresKeepOriginalResultOrderAndFlushOnce` 存在调度顺序断言不稳定，使用改动前执行边界的 Go overlay 已复现；本轮未调整执行调度。初次竞态检查还出现取消完成断言失败，单独重复检查及最终整包检查未再次出现。
 
 memory/resident 保留原有行为覆盖，新增拒绝写入不污染缓存与其他用户、无变化不落盘及时间戳不变、空文件与外部编辑内容追加的回归。测试代码增加 121 行，本轮 Go 代码合计增加 91 行。已执行 `gofmt`；resident、Tool 根包及 Agent dialogue／execution 包测试，以及 `GORACE=atexit_sleep_ms=0 go test -race ./internal/memory/resident` 均通过。
+
+background/cron 回归覆盖 direct／LLM 操作标签、日志身份缺省与报告 SessionID 覆盖、完成／失败／取消日志单次报告，以及模型快照、前台接管、恢复、部分回执和混合失败。生产代码净减 280 行，测试代码净增 54 行，Go 代码合计净减 226 行；已执行 `gofmt`、`go test ./internal/background/...`、`GORACE=atexit_sleep_ms=0 go test -race ./internal/background/cron` 和本轮 diff 检查，均通过。
 
 hook/control 回归覆盖空列表、独立规则、普通插件活动数汇总、runtime 活动数与描述优先级、多插件状态独立和 Unicode 截断；停止测试直接验证 StopHook。生产代码净减 31 行，测试代码增加 24 行，Go 代码合计净减 7 行。已执行 `gofmt`，`go test ./internal/hook/...` 与本轮 diff 检查通过。
 

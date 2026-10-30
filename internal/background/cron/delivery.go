@@ -12,7 +12,6 @@ import (
 
 	"elbot/internal/agent"
 	background "elbot/internal/background/share"
-	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/media"
@@ -61,7 +60,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 		}
 		return logResult, nil
 	}
-	for _, resolved := range s.resolveDeliveryTargets(meta, job.Name) {
+	for _, resolved := range s.resolveDeliveryTargets(meta) {
 		if platformFilter != "" && resolved.platform != platformFilter {
 			continue
 		}
@@ -215,7 +214,7 @@ func (s *Service) disableCompletedDelivery(ctx context.Context, jobName, deliver
 	return logResult, err
 }
 
-func (s *Service) resolveDeliveryTargets(meta Metadata, jobName string) []resolvedCronTarget {
+func (s *Service) resolveDeliveryTargets(meta Metadata) []resolvedCronTarget {
 	platforms := s.enabledPlatforms
 	if !meta.Target.AllEnabledPlatforms {
 		platforms = []PlatformTarget{{Name: meta.Target.SourcePlatform}}
@@ -246,7 +245,7 @@ func (s *Service) deliveryComplete(meta Metadata, state CronDeliveryState) bool 
 		return false
 	}
 	outputIDs := deliveryOutputIDs(state)
-	for _, target := range s.resolveDeliveryTargets(meta, "") {
+	for _, target := range s.resolveDeliveryTargets(meta) {
 		targetState := findDeliveryTargetState(state, target.key)
 		for _, outputID := range outputIDs {
 			if targetState == nil || !deliveryStatusDone(findDeliveryOutputStatus(*targetState, outputID)) {
@@ -392,23 +391,7 @@ func (s *Service) sendToPlatforms(ctx context.Context, jobName string, platforms
 }
 
 func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, platformName string, target delivery.Target, outputs []delivery.Output, sessionID string) (delivery.Receipt, globalevents.LogResult, error) {
-	identity := globalevents.LogIdentity{}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if facts.SessionID != "" {
-		identity.SessionID = &facts.SessionID
-	}
-	if facts.RunID != "" {
-		identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		identity.RootRequestID = &facts.RootRequestID
-	}
+	identity := cronLogIdentity(ctx)
 
 	content := fmt.Sprintf("platform=%s target=%q", platformName, cronTargetLabel(target))
 	if sessionID != "" {
@@ -425,11 +408,7 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 					resultStatus = globalevents.ResultCanceled
 				}
 			}
-			{
-				err := errors.Join(append(errs, err)...)
-				logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content + fmt.Sprintf("\ncontext_error=%q", ctx.Err().Error())}
-				return receipt, logResult, err
-			}
+			return receipt, globalevents.LogResult{ResultStatus: resultStatus, Content: content + fmt.Sprintf("\ncontext_error=%q", ctx.Err().Error())}, errors.Join(append(errs, err)...)
 		}
 		{
 			content, _ := json.Marshal(map[string]any{"job": jobName, "platform": platformName, "target": cronTargetLabel(target), "kind": out.Kind})
@@ -462,40 +441,6 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 			err = fmt.Errorf("send %s: %w", platformName, err)
 			errs = append(errs, err)
 		}
-		if logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled {
-			status := logResult.ResultStatus
-			{
-				content, _ := json.Marshal(map[string]any{"job": jobName, "platform": platformName, "target": cronTargetLabel(target), "kind": out.Kind, "content": logResult.Content})
-				record := globalevents.LogRecord{
-					Category:     globalevents.LogAudit,
-					Level:        slog.LevelError,
-					EventName:    "cron.send_failed",
-					Module:       "cron",
-					Type:         globalevents.ContentJSON,
-					Content:      string(content),
-					ContentLimit: 4096,
-					ResultStatus: globalevents.ResultFailed,
-				}
-				record.ResultStatus = status
-				if status == globalevents.ResultCanceled {
-					record.Level = slog.LevelInfo
-				}
-
-				record.Identity = identity
-				if sessionID != "" {
-					record.Identity.SessionID = &sessionID
-				}
-				background.LogBackground(ctx, record)
-			}
-			if err != nil && ctx.Err() != nil {
-				{
-					err := errors.Join(errs...)
-					logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-					return receipt, logResult, err
-				}
-			}
-			continue
-		}
 		{
 			content, _ := json.Marshal(map[string]any{"job": jobName, "platform": platformName, "target": cronTargetLabel(target), "kind": out.Kind, "content": logResult.Content})
 			record := globalevents.LogRecord{
@@ -507,19 +452,24 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 				Content:      string(content),
 				ContentLimit: 4096,
 				ResultStatus: logResult.ResultStatus,
+				Identity:     identity,
 			}
-			record.Identity = identity
+			if logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled {
+				record.EventName = "cron.send_failed"
+			}
+			if logResult.ResultStatus == globalevents.ResultFailed {
+				record.Level = slog.LevelError
+			}
 			if sessionID != "" {
 				record.Identity.SessionID = &sessionID
 			}
 			background.LogBackground(ctx, record)
 		}
+		if (logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled) && err != nil && ctx.Err() != nil {
+			return receipt, globalevents.LogResult{ResultStatus: resultStatus, Content: content}, errors.Join(errs...)
+		}
 	}
-	{
-		err := errors.Join(errs...)
-		logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-		return receipt, logResult, err
-	}
+	return receipt, globalevents.LogResult{ResultStatus: resultStatus, Content: content}, errors.Join(errs...)
 }
 
 func (s *Service) sendOutputsToPlatforms(ctx context.Context, jobName string, platforms []string, outputs []delivery.Output) (globalevents.LogResult, error) {
@@ -528,9 +478,6 @@ func (s *Service) sendOutputsToPlatforms(ctx context.Context, jobName string, pl
 	resultStatus := globalevents.ResultSucceeded
 	var errs []error
 	for _, platformName := range uniqueStrings(platforms) {
-		if platformName == "" {
-			continue
-		}
 		_, logResult, err := s.sendOutputsToPlatformTarget(ctx, jobName, platformName, delivery.Target{Platform: platformName, Superadmins: true}, outputs, "")
 		status := logResult.ResultStatus
 		content += "\n" + logResult.Content
@@ -541,18 +488,10 @@ func (s *Service) sendOutputsToPlatforms(ctx context.Context, jobName string, pl
 		}
 		errs = append(errs, err)
 		if ctx.Err() != nil {
-			{
-				err := errors.Join(errs...)
-				logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-				return logResult, err
-			}
+			return globalevents.LogResult{ResultStatus: resultStatus, Content: content}, errors.Join(errs...)
 		}
 	}
-	{
-		err := errors.Join(errs...)
-		logResult := globalevents.LogResult{ResultStatus: resultStatus, Content: content}
-		return logResult, err
-	}
+	return globalevents.LogResult{ResultStatus: resultStatus, Content: content}, errors.Join(errs...)
 }
 
 func cronTargetLabel(target delivery.Target) string {
@@ -601,22 +540,7 @@ func (s *Service) copySessionToBroadcastTargets(ctx context.Context, sourceSessi
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultSucceeded,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
+			record.Identity = cronLogIdentity(ctx)
 			background.LogBackground(ctx, record)
 		}
 	}

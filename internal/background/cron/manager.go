@@ -3,7 +3,6 @@ package cron
 import (
 	"context"
 	background "elbot/internal/background/share"
-	"elbot/internal/contextinfo"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -155,22 +154,7 @@ func (m *Manager) Start(ctx context.Context) error {
 			Content:      "cron manager started",
 			ContentLimit: 4096,
 		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
+		record.Identity = cronLogIdentity(ctx)
 		background.LogBackground(ctx, record)
 	}
 	return nil
@@ -236,22 +220,7 @@ func (m *Manager) reloadEnabled(ctx context.Context) error {
 					ContentLimit: 4096,
 					ResultStatus: globalevents.ResultFailed,
 				}
-				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				if facts.SessionID != "" {
-					record.Identity.SessionID = &facts.SessionID
-				}
-				if facts.RunID != "" {
-					record.Identity.RunID = &facts.RunID
-				}
-				if facts.Attempt != "" {
-					record.Identity.Attempt = &facts.Attempt
-				}
-				if facts.RequestID != "" {
-					record.Identity.RequestID = &facts.RequestID
-				}
-				if facts.RootRequestID != "" {
-					record.Identity.RootRequestID = &facts.RootRequestID
-				}
+				record.Identity = cronLogIdentity(ctx)
 				background.LogBackground(ctx, record)
 			}
 		}
@@ -335,23 +304,7 @@ func (m *Manager) runJob(name string) {
 	}
 	ctx := m.runCtx
 
-	identity := globalevents.LogIdentity{}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if facts.SessionID != "" {
-		identity.SessionID = &facts.SessionID
-	}
-	if facts.RunID != "" {
-		identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		identity.RootRequestID = &facts.RootRequestID
-	}
+	identity := cronLogIdentity(ctx)
 	m.workers.Add(1)
 	m.mu.Unlock()
 	defer m.workers.Done()
@@ -541,22 +494,7 @@ func (m *Manager) updateNextRunAt(ctx context.Context, job Job, nextRunAt *time.
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultFailed,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
+			record.Identity = cronLogIdentity(ctx)
 			background.LogBackground(ctx, record)
 		}
 		return err

@@ -33,10 +33,6 @@ type PlatformTarget struct {
 	SuperadminIDs []string
 }
 
-type LLMRunner interface {
-	background.Runner
-}
-
 type Models interface {
 	ResolveMode(string) modelmgr.Selection
 	ValidateSelection(config.ModelSelection) error
@@ -47,7 +43,7 @@ type Service struct {
 	store   JobRepository
 
 	sendTarget       TargetSenderFunc
-	runner           LLMRunner
+	runner           background.Runner
 	models           Models
 	media            background.ReportMedia
 	copyBackground   func(context.Context, agent.BackgroundCopyRequest) (string, error)
@@ -66,7 +62,7 @@ type Options struct {
 	Store   JobRepository
 
 	SendTarget       TargetSenderFunc
-	Runner           LLMRunner
+	Runner           background.Runner
 	Models           Models
 	Media            background.ReportMedia
 	CopyBackground   func(context.Context, agent.BackgroundCopyRequest) (string, error)
@@ -94,23 +90,7 @@ func NewService(opts Options) *Service {
 }
 
 func (s *Service) Handler(ctx context.Context, job Job) (logResult globalevents.LogResult, err error) {
-	identity := globalevents.LogIdentity{}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if facts.SessionID != "" {
-		identity.SessionID = &facts.SessionID
-	}
-	if facts.RunID != "" {
-		identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		identity.RootRequestID = &facts.RootRequestID
-	}
+	identity := cronLogIdentity(ctx)
 
 	logResult.ResultStatus = globalevents.ResultFailed
 	logResult.Content = "stage=lock"
@@ -161,37 +141,13 @@ func (s *Service) Handler(ctx context.Context, job Job) (logResult globalevents.
 	logResult.Content = ""
 	var runErr error
 	switch meta.Trigger.Mode {
-	case TriggerDirect:
-		logResult, runErr = s.runDirect(ctx, job, meta)
-	case TriggerLLM:
-		logResult, runErr = s.runLLM(ctx, job, meta)
+	case TriggerDirect, TriggerLLM:
+		logResult, runErr = s.runTask(ctx, job, meta)
 	default:
 		runErr = fmt.Errorf("unsupported trigger mode %q", meta.Trigger.Mode)
 		logResult.Content = runErr.Error()
 	}
 	logResult.Content = content + "\n" + logResult.Content
-	if logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled {
-		{
-			content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": meta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms": meta.Target.AllEnabledPlatforms, "result": fmt.Sprintf("%.2048s", logResult.Content)})
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogAudit,
-				Level:        slog.LevelError,
-				EventName:    "cron.trigger_failed",
-				Module:       "cron",
-				Type:         globalevents.ContentJSON,
-				Content:      string(content),
-				ContentLimit: 4096,
-				ResultStatus: logResult.ResultStatus,
-			}
-			if logResult.ResultStatus == globalevents.ResultCanceled {
-				record.Level = slog.LevelInfo
-			}
-
-			record.Identity = identity
-			background.LogBackground(ctx, record)
-		}
-		return globalevents.LogResult{ResultStatus: logResult.ResultStatus, Content: logResult.Content}, runErr
-	}
 	{
 		content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": meta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms": meta.Target.AllEnabledPlatforms, "result": fmt.Sprintf("%.2048s", logResult.Content)})
 		record := globalevents.LogRecord{
@@ -203,11 +159,38 @@ func (s *Service) Handler(ctx context.Context, job Job) (logResult globalevents.
 			Content:      string(content),
 			ContentLimit: 4096,
 			ResultStatus: logResult.ResultStatus,
+			Identity:     identity,
 		}
-		record.Identity = identity
+		if logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled {
+			record.EventName = "cron.trigger_failed"
+		}
+		if logResult.ResultStatus == globalevents.ResultFailed {
+			record.Level = slog.LevelError
+		}
 		background.LogBackground(ctx, record)
 	}
-	return globalevents.LogResult{ResultStatus: logResult.ResultStatus, Content: logResult.Content}, runErr
+	return logResult, runErr
+}
+
+func cronLogIdentity(ctx context.Context) globalevents.LogIdentity {
+	identity := globalevents.LogIdentity{}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.SessionID != "" {
+		identity.SessionID = &facts.SessionID
+	}
+	if facts.RunID != "" {
+		identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		identity.RootRequestID = &facts.RootRequestID
+	}
+	return identity
 }
 
 func normalizePlatformTargets(targets []PlatformTarget) []PlatformTarget {
@@ -235,7 +218,7 @@ func (s *Service) enabledPlatformNames() []string {
 }
 
 func targetOwnerID(target PlatformTarget) string {
-	ids := trimStrings(target.SuperadminIDs)
+	ids := target.SuperadminIDs
 	if len(ids) == 0 {
 		return ""
 	}

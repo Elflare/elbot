@@ -49,7 +49,7 @@ func TestCronModelSnapshotSurvivesFormatRetry(t *testing.T) {
 			meta.LLM.ModelProvider, meta.LLM.Model = "provider", "explicit"
 			want = "explicit"
 		}
-		if _, _, _, err := svc.runLLMReport(context.Background(), Job{Name: "models"}, meta, CronDeliveryState{}); err != nil {
+		if _, _, err := svc.runLLMReport(context.Background(), Job{Name: "models"}, meta, CronDeliveryState{}); err != nil {
 			t.Fatal(err)
 		}
 		if len(runner.requests) != 2 {
@@ -73,7 +73,7 @@ func TestCronExecutionRejectsInvalidModelBeforeRunning(t *testing.T) {
 	for _, pair := range []config.ModelSelection{{Provider: "provider"}, {Model: "model"}, {Provider: "missing", Model: "model"}} {
 		runner := &fakeCronRunner{}
 		svc := newTestCronService(t, Options{Models: &taskModels{}, Runner: runner})
-		_, _, _, err := svc.runLLMReport(t.Context(), Job{Name: "model"}, Metadata{LLM: CronLLMMetadata{ModelProvider: pair.Provider, Model: pair.Model}}, CronDeliveryState{})
+		_, _, err := svc.runLLMReport(t.Context(), Job{Name: "model"}, Metadata{LLM: CronLLMMetadata{ModelProvider: pair.Provider, Model: pair.Model}}, CronDeliveryState{})
 		if err == nil || runner.calls != 0 {
 			t.Fatalf("model=%#v err=%v calls=%d", pair, err, runner.calls)
 		}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -40,7 +41,7 @@ func TestDeliveryUsesSourceFailureWithSuccessfulBusinessReturn(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(connection.Disconnect)
-	logResult, err := s.runDirect(ctx, *job, meta)
+	logResult, err := s.runTask(ctx, *job, meta)
 	if err != nil || logResult.ResultStatus != globalevents.ResultFailed || !strings.Contains(logResult.Content, "one destination failed") {
 		t.Fatalf("log result=%#v error=%v", logResult, err)
 	}
@@ -69,7 +70,7 @@ func TestHandlerUsesDeclaredDeliveryResult(t *testing.T) {
 			}})
 			var records []globalevents.LogRecord
 			connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
-				if record.EventName == "cron.trigger_failed" || record.EventName == "cron.trigger_completed" {
+				if record.EventName == "cron.trigger_failed" || record.EventName == "cron.trigger_completed" || record.EventName == "cron.send_failed" || record.EventName == "cron.send_completed" {
 					records = append(records, record)
 				}
 				return nil
@@ -79,15 +80,68 @@ func TestHandlerUsesDeclaredDeliveryResult(t *testing.T) {
 			}
 			defer connection.Disconnect()
 			logResult, err := s.Handler(t.Context(), *job)
-			if !errors.Is(err, tc.err) || logResult.ResultStatus != tc.status || len(records) != 1 {
+			if !errors.Is(err, tc.err) || logResult.ResultStatus != tc.status || len(records) != 2 {
 				t.Fatalf("source/business result changed: log=%#v error=%v records=%#v", logResult, err, records)
 			}
 			for _, record := range records {
+				if strings.HasSuffix(record.EventName, "_failed") != (tc.status == globalevents.ResultFailed || tc.status == globalevents.ResultCanceled) {
+					t.Fatalf("unexpected event: %s", record.EventName)
+				}
 				if record.ResultStatus != tc.status || !strings.Contains(record.Content, "source delivery diagnostic") || (record.Level == slog.LevelError) != (tc.status == globalevents.ResultFailed) {
 					t.Fatalf("trigger ignored source outcome: %#v", record)
 				}
 			}
 		})
+	}
+}
+
+func TestTaskAuditIdentityAndOperation(t *testing.T) {
+	for _, mode := range []TriggerMode{TriggerDirect, TriggerLLM} {
+		for _, withIdentity := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/identity=%t", mode, withIdentity), func(t *testing.T) {
+				ctx := t.Context()
+				want := globalevents.LogIdentity{}
+				if withIdentity {
+					facts := contextinfo.Execution{SessionID: "source-session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}
+					ctx = contextinfo.WithExecution(ctx, facts)
+					want = globalevents.LogIdentity{SessionID: &facts.SessionID, RunID: &facts.RunID, Attempt: &facts.Attempt, RequestID: &facts.RequestID, RootRequestID: &facts.RootRequestID}
+				}
+				repo := newFakeCronRepo()
+				job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Schedule: CronSchedule{Mode: ScheduleCron}, Trigger: CronTrigger{Mode: mode, Message: "report"}, Target: CronTarget{SourcePlatform: "cli"}})
+				s := newTestCronService(t, Options{Store: repo, Runner: &fakeCronRunner{text: `{"completed":true,"need_report":true,"report":"report"}`}, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+					return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+				}})
+				var records []globalevents.LogRecord
+				connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
+					if strings.HasPrefix(record.EventName, "cron.trigger_") || strings.HasPrefix(record.EventName, "cron.send_") {
+						records = append(records, record)
+					}
+					return nil
+				}, signal.ConnectOptions{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer connection.Disconnect()
+				result, err := s.Handler(ctx, *job)
+				operation := "operation=runDirect\n"
+				if mode == TriggerLLM {
+					operation = "operation=runLLM\n"
+				}
+				if err != nil || result.ResultStatus != globalevents.ResultSucceeded || !strings.Contains(result.Content, operation) || len(records) != 4 {
+					t.Fatalf("result=%+v err=%v records=%+v", result, err, records)
+				}
+				for i, name := range []string{"cron.trigger_started", "cron.send_started", "cron.send_completed", "cron.trigger_completed"} {
+					identity := want
+					if mode == TriggerLLM && strings.HasPrefix(name, "cron.send_") {
+						sessionID := "cron-session"
+						identity.SessionID = &sessionID
+					}
+					if records[i].EventName != name || !reflect.DeepEqual(records[i].Identity, identity) {
+						t.Fatalf("record=%+v want event=%s identity=%+v", records[i], name, identity)
+					}
+				}
+			})
+		}
 	}
 }
 

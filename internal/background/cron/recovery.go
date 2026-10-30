@@ -3,7 +3,6 @@ package cron
 import (
 	"context"
 	background "elbot/internal/background/share"
-	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,45 +24,14 @@ func (s *Service) handlePlatformConnected(ctx context.Context, platformName stri
 			Content:      fmt.Sprintf("cron platform connected\nplatform=%v", platformName),
 			ContentLimit: 4096,
 		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
+		record.Identity = cronLogIdentity(ctx)
 		background.LogBackground(ctx, record)
 	}
 	s.runMissedOnceForPlatform(ctx, platformName)
 }
 
 func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName string) {
-	identity := globalevents.LogIdentity{}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if facts.SessionID != "" {
-		identity.SessionID = &facts.SessionID
-	}
-	if facts.RunID != "" {
-		identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		identity.RootRequestID = &facts.RootRequestID
-	}
+	identity := cronLogIdentity(ctx)
 
 	jobs, err := s.store.ListEnabled(ctx)
 	if err != nil {

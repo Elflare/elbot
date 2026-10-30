@@ -6,22 +6,15 @@ import (
 	"elbot/internal/config"
 )
 
-func (s *Service) validateModel(meta CronLLMMetadata) error {
+func (s *Service) modelForTask(meta CronLLMMetadata) (config.ModelSelection, error) {
 	if meta.ModelProvider == "" && meta.Model == "" {
-		return nil
+		return s.models.ResolveMode("work").ModelSelection, nil
 	}
 	if meta.ModelProvider == "" || meta.Model == "" {
-		return fmt.Errorf("model_provider and model must both be set or cleared")
+		return config.ModelSelection{}, fmt.Errorf("model_provider and model must both be set or cleared")
 	}
-	return s.models.ValidateSelection(config.ModelSelection{Provider: meta.ModelProvider, Model: meta.Model})
-}
-
-func (s *Service) modelForTask(meta CronLLMMetadata) (config.ModelSelection, error) {
-	if err := s.validateModel(meta); err != nil {
+	if err := s.models.ValidateSelection(config.ModelSelection{Provider: meta.ModelProvider, Model: meta.Model}); err != nil {
 		return config.ModelSelection{}, err
 	}
-	if meta.ModelProvider != "" {
-		return config.ModelSelection{Provider: meta.ModelProvider, Model: meta.Model}, nil
-	}
-	return s.models.ResolveMode("work").ModelSelection, nil
+	return config.ModelSelection{Provider: meta.ModelProvider, Model: meta.Model}, nil
 }

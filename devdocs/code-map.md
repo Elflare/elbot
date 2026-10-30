@@ -362,6 +362,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/background/cron/`：后台任务调度、执行、报告与恢复。
 - `internal/background/cron/service.go`、`manager.go`：分别负责任务运行与调度。
+- `internal/background/cron/execution.go`：共用执行准备与投递流程，生成 LLM 报告并处理格式修正与接管结果。
 - `internal/background/cron/repository.go`、`model.go`：分别定义 Cron 存储契约与任务模型。
 - `internal/background/cron/refresh.go`：任务定义变更与调度刷新。
 - `internal/background/cron/lifecycle.go`：平台通知消费与启停。
