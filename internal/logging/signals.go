@@ -83,7 +83,7 @@ func (m *Manager) handleRecord(ctx context.Context, record events.LogRecord) err
 		if record.Category == events.LogRuntime && record.Level < m.level {
 			return nil
 		}
-		data, err := formatRecord(ctx, record, at)
+		data, err := formatRecord(record, at)
 		if err != nil {
 			return err
 		}

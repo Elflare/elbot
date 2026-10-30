@@ -485,7 +485,7 @@ func TestRecordPreservesContentUTF8AndSerializedLimit(t *testing.T) {
 	t.Run("text limits", func(t *testing.T) {
 		for _, limit := range []int{0, 1, 2, 256, 512} {
 			record := events.LogRecord{Category: events.LogRuntime, Content: strings.Repeat("中🙂", 300), ContentLimit: limit}
-			data, err := formatRecord(context.Background(), record, at)
+			data, err := formatRecord(record, at)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -511,7 +511,7 @@ func TestRecordPreservesContentUTF8AndSerializedLimit(t *testing.T) {
 	})
 	t.Run("text stays text", func(t *testing.T) {
 		for _, text := range []string{"", "中🙂", "line\n\"quoted\"", " { \"count\" : 9007199254740993 } "} {
-			data, err := formatRecord(context.Background(), events.LogRecord{Category: events.LogRuntime, Content: text}, at)
+			data, err := formatRecord(events.LogRecord{Category: events.LogRuntime, Content: text}, at)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -529,7 +529,7 @@ func TestRecordPreservesContentUTF8AndSerializedLimit(t *testing.T) {
 		}
 	})
 	t.Run("text is only limited", func(t *testing.T) {
-		data, err := formatRecord(context.Background(), events.LogRecord{Category: events.LogRuntime, Content: "reason: token=" + strings.Repeat("secret", 1000)}, at)
+		data, err := formatRecord(events.LogRecord{Category: events.LogRuntime, Content: "reason: token=" + strings.Repeat("secret", 1000)}, at)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -547,7 +547,7 @@ func TestRecordPreservesContentUTF8AndSerializedLimit(t *testing.T) {
 	})
 	t.Run("JSON types and precision", func(t *testing.T) {
 		for _, text := range []string{"null", "true", "false", "9007199254740993123456789", "0.12345678901234567890123456789", "1e1000", "\"中🙂\"", "[1,\"two\",null]", "{\"count\":9007199254740993}", strings.Repeat("[", 64) + "9007199254740993" + strings.Repeat("]", 64)} {
-			data, err := formatRecord(context.Background(), events.LogRecord{Category: events.LogAudit, Type: events.ContentJSON, Content: text, ContentLimit: 1}, at)
+			data, err := formatRecord(events.LogRecord{Category: events.LogAudit, Type: events.ContentJSON, Content: text, ContentLimit: 1}, at)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -565,7 +565,7 @@ func TestRecordPreservesContentUTF8AndSerializedLimit(t *testing.T) {
 		values := []string{"session", "", "2", "request", "root"}
 		record := events.LogRecord{Category: events.LogAudit, EventName: "outer", Module: "test", Type: events.ContentJSON, Content: text, ContentLimit: 1,
 			ResultStatus: events.ResultCanceled, Identity: events.LogIdentity{SessionID: &values[0], RunID: &values[1], Attempt: &values[2], RequestID: &values[3], RootRequestID: &values[4]}}
-		data, err := formatRecord(context.Background(), record, at)
+		data, err := formatRecord(record, at)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -598,7 +598,7 @@ func TestRecordPreservesContentUTF8AndSerializedLimit(t *testing.T) {
 			if value == events.ContentJSON {
 				record.Content = "\"\""
 			}
-			data, err := formatRecord(context.Background(), record, at)
+			data, err := formatRecord(record, at)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -607,7 +607,7 @@ func TestRecordPreservesContentUTF8AndSerializedLimit(t *testing.T) {
 			if value == events.ContentJSON {
 				record.Content = "\"" + text + "\""
 			}
-			data, err = formatRecord(context.Background(), record, at)
+			data, err = formatRecord(record, at)
 			if err != nil || len(data) != maxRecordBytes || data[len(data)-1] != '\n' || !json.Valid(data) {
 				t.Fatalf("boundary: len=%d err=%v", len(data), err)
 			}
@@ -615,7 +615,7 @@ func TestRecordPreservesContentUTF8AndSerializedLimit(t *testing.T) {
 			if value == events.ContentJSON {
 				record.Content = "\"" + record.Content + "\""
 			}
-			data, err = formatRecord(context.Background(), record, at)
+			data, err = formatRecord(record, at)
 			if err == nil || data != nil {
 				t.Fatalf("oversize record accepted: len=%d err=%v", len(data), err)
 			}

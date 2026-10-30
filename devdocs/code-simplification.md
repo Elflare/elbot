@@ -120,10 +120,17 @@
 - 插件替换一次遍历收集候选顺序与注册，使用 slices.Insert 保持插入位置；List 按规则名一次统计活动执行。唤醒默认值直接由执行分支处理，输出标记原地修改，消息日志文本只提取一次。
 - 回归覆盖执行结束取消、父 context 隔离、Observe 收尾、panic 释放、插件新增与删除及排序、同名活动计数、Stop 取消和输出长度缩短。gofmt、go test ./internal/hook/... 与 go test -race ./internal/hook/pipeline 均通过。
 
+### logging
+
+- 查询先区分 JSON 与旧文本格式，只执行对应解析，行首尾空白只处理一次；保留旧文本兼容、原始记录和损坏行判定。只读查询 map 保持 nil，等级与保留天数各在现有边界归一化一次。
+- 数组筛选、反向扫描分别使用 slices.ContainsFunc、slices.Reverse 和 min；格式化函数删除未使用的 context 参数。公共接口、日志格式、扫描边界及关闭资源顺序保持不变。
+- 复用现有混合格式、损坏行、查询条件、跨块扫描、UTF-8 与大小上限、背压和关闭回归。gofmt、go test ./internal/logging ./internal/command/builtin 和 go test -race ./internal/logging 均通过。
+
 ## 已完成精简
 
 | 包 | 完成情况 | 非测试 Go 行数 |
 | --- | --- | --- |
+| `internal/logging` | 删除重复解析、归一化和无用分配，简化扫描与匹配循环，移除未使用参数。 | 971 → 955，减少 16 行（约 1.6%），仍为 4 个生产文件。 |
 | `internal/hook/pipeline` | 共用 handler 执行收尾并补齐 context 取消，简化插件替换、活动计数及重复处理。 | 本轮 522 → 499，减少 23 行；相对初始基线 528 行累计减少 29 行（约 5.5%），仍为 2 个生产文件。 |
 | `internal/storage/sqlite` | 已完成第二轮；共用连接和扫描，删除遗留接口与重复转换、校验及关闭，简化分批和循环判断。 | 本轮 4,717 → 4,708，减少 9 行；相对初始基线累计减少 60 行（约 1.3%），仍为 17 个生产文件；连同 Storage 接口声明累计减少 61 行。 |
 | `internal/app` | 已完成一轮；本文件未登记具体改动及对比数据。 | 基线为 719 行。 |

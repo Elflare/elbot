@@ -100,11 +100,12 @@ func (r Reader) Query(ctx context.Context, query LogQuery) (LogQueryResult, erro
 			return result, err
 		}
 		err := readLogFileReverse(ctx, path, func(raw string) (bool, error) {
-			if strings.TrimSpace(raw) == "" {
+			trimmed := strings.TrimSpace(raw)
+			if trimmed == "" {
 				return false, nil
 			}
-			entry := parseLogLine(raw)
-			if strings.HasPrefix(strings.TrimSpace(raw), "{") || strings.HasPrefix(strings.TrimSpace(raw), "[") || json.Valid([]byte(raw)) {
+			var entry LogEntry
+			if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") || json.Valid([]byte(raw)) {
 				var fields map[string]json.RawMessage
 				err := json.Unmarshal([]byte(raw), &fields)
 				if err == nil {
@@ -198,6 +199,8 @@ func (r Reader) Query(ctx context.Context, query LogQuery) (LogQueryResult, erro
 					}
 					return false, nil
 				}
+			} else {
+				entry = parseLogLine(raw)
 			}
 			if matchLogEntry(entry, query) {
 				result.Entries = append(result.Entries, entry)
@@ -224,13 +227,6 @@ func normalizeLogQuery(query LogQuery) LogQuery {
 	}
 	if query.Days <= 0 {
 		query.Days = 1
-	}
-	query.MinLevel = strings.ToUpper(strings.TrimSpace(query.MinLevel))
-	if query.Fields == nil {
-		query.Fields = map[string]string{}
-	}
-	if query.ContentFieldContains == nil {
-		query.ContentFieldContains = map[string][]string{}
 	}
 	return query
 }
@@ -280,9 +276,7 @@ func scanLogLinesReverse(ctx context.Context, reader io.ReaderAt, size int64, vi
 		if err := ctx.Err(); err != nil {
 			return false, err
 		}
-		for left, right := 0, len(line)-1; left < right; left, right = left+1, right-1 {
-			line[left], line[right] = line[right], line[left]
-		}
+		slices.Reverse(line)
 		raw := strings.TrimSuffix(string(line), "\r")
 		stop, err := visit(raw)
 		line = line[:0]
@@ -295,10 +289,7 @@ func scanLogLinesReverse(ctx context.Context, reader io.ReaderAt, size int64, vi
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		length := int64(len(block))
-		if offset < length {
-			length = offset
-		}
+		length := min(int64(len(block)), offset)
 		offset -= length
 		n, err := reader.ReadAt(block[:length], offset)
 		if err != nil && (err != io.EOF || int64(n) != length) {
@@ -494,14 +485,9 @@ func matchLogEntry(entry LogEntry, query LogQuery) bool {
 			if strings.TrimSpace(needle) == "" {
 				continue
 			}
-			matched := false
-			for _, value := range values {
-				if strings.EqualFold(value, needle) {
-					matched = true
-					break
-				}
-			}
-			if !matched {
+			if !slices.ContainsFunc(values, func(value string) bool {
+				return strings.EqualFold(value, needle)
+			}) {
 				return false
 			}
 		}

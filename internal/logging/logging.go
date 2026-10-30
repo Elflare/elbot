@@ -186,7 +186,6 @@ func (w *dailyFileWriter) rotateLocked(day string) error {
 }
 
 func cleanupOldLogs(logDir string, days int) error {
-	days = normalizeRetentionDays(days)
 	entries, err := os.ReadDir(logDir)
 	if err != nil {
 		return fmt.Errorf("read log dir: %w", err)

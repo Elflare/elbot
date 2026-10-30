@@ -1,7 +1,6 @@
 package logging
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -24,7 +23,7 @@ func limitRunes(text string, limit int) string {
 	return string(runes[:limit-1]) + truncatedMarker
 }
 
-func formatRecord(ctx context.Context, record events.LogRecord, at time.Time) ([]byte, error) {
+func formatRecord(record events.LogRecord, at time.Time) ([]byte, error) {
 	var value any = record.Content
 	switch record.Type {
 	case events.ContentText:
