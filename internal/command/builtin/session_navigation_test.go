@@ -194,7 +194,7 @@ func TestResumeCommandEmitsAudit(t *testing.T) {
 	}
 }
 
-func TestResumeCommandUsesRecentNonCurrentGlobalIndex(t *testing.T) {
+func TestResumeCommandUsesPinnedNonCurrentGlobalIndex(t *testing.T) {
 	ctx := context.Background()
 	store := newCommandTestStore(t)
 	svc := newSessionSupervisor(t, store)
@@ -228,26 +228,36 @@ func TestResumeCommandUsesRecentNonCurrentGlobalIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resume page: %v", err)
 	}
-	if !strings.Contains(page.Content, "[1] recent") || strings.Contains(page.Content, current.ID) {
+	if !strings.Contains(page.Content, "[1] older pinned") || strings.Contains(page.Content, current.ID) {
 		t.Fatalf("resume page = %q", page.Content)
 	}
 	secondPage, err := NewResume(deps).Handle(ctx, command.Request{Args: "--page 2"})
 	if err != nil {
 		t.Fatalf("resume page 2: %v", err)
 	}
-	if !strings.Contains(secondPage.Content, "[2] older pinned") {
+	if !strings.Contains(secondPage.Content, "[2] recent") {
 		t.Fatalf("resume page 2 = %q", secondPage.Content)
 	}
+	listed, err := NewSessions(deps).Handle(ctx, command.Request{})
+	if err != nil || !strings.Contains(listed.Content, "[1] older pinned") {
+		t.Fatalf("sessions disagree with resume: %+v, %v", listed, err)
+	}
+	completions := NewResume(deps).(command.Completer).Complete(ctx, command.CompletionRequest{Raw: "/resume ", Prefix: "/", Name: "resume", Cursor: len("/resume ")})
+	if len(completions) != 1 || completions[0].Text != older.ID {
+		t.Fatalf("resume completions = %+v", completions)
+	}
 
+	// 使用没有列表缓存的新命令状态，直接编号恢复仍遵循统一排序。
+	deps.SessionState = NewSessionCommandState(1, 30)
 	result, err := NewResume(deps).Handle(ctx, command.Request{Args: "1"})
 	if err != nil {
 		t.Fatalf("resume 1: %v", err)
 	}
-	if !strings.Contains(result.Content, recent.ID) {
+	if !strings.Contains(result.Content, older.ID) {
 		t.Fatalf("resume result = %q", result.Content)
 	}
 	resumed, err := svc.Current(ctx, scope)
-	if err != nil || resumed.ID != recent.ID {
+	if err != nil || resumed.ID != older.ID {
 		t.Fatalf("current = %#v, err=%v", resumed, err)
 	}
 	if _, err := NewResume(deps).Handle(ctx, command.Request{Args: "0"}); err == nil {

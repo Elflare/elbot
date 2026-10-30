@@ -37,10 +37,7 @@ func qqTextPages(text string) []string {
 	total := (len(runes) + qqTextPageRunes - 1) / qqTextPageRunes
 	pages := make([]string, 0, total)
 	for start := 0; start < len(runes); start += qqTextPageRunes {
-		end := start + qqTextPageRunes
-		if end > len(runes) {
-			end = len(runes)
-		}
+		end := min(start+qqTextPageRunes, len(runes))
 		pages = append(pages, string(runes[start:end]))
 	}
 	return pages
@@ -52,18 +49,15 @@ func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (deli
 	}
 	t, err := contextTarget(ctx)
 	if err != nil {
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		logResult := sendLogResult(err)
 		return delivery.Receipt{}, logResult, err
 	}
 	segments, err := outputSegments(a.cfg.SendFileMode, outputs...)
 	if err != nil {
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
+		logResult := sendLogResult(err)
 		return delivery.Receipt{}, logResult, err
 	}
-	receipt, logResult, err := a.sendSegments(ctx, t, segments)
+	receipt, logResult, err := sendSegments(ctx, a.transport, t, segments)
 	return oneBotReceipt(receipt, t, outputs), logResult, err
 }
 
@@ -83,13 +77,8 @@ func (a *Adapter) sendTemporary(ctx context.Context, target delivery.Target, out
 		a.unregisterTemporary(transport)
 	}()
 	if err := transport.Connect(dialCtx); err != nil {
-		{
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-			if errors.Is(err, context.Canceled) {
-				logResult.ResultStatus = globalevents.ResultCanceled
-			}
-			return delivery.Receipt{}, logResult, err
-		}
+		logResult := sendLogResult(err)
+		return delivery.Receipt{}, logResult, err
 	}
 	cancel()
 	readDone = make(chan struct{})
@@ -102,10 +91,7 @@ func (a *Adapter) sendTemporary(ctx context.Context, target delivery.Target, out
 		t, err = contextTarget(ctx)
 	}
 	if err != nil {
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
+		logResult := sendLogResult(err)
 		return delivery.Receipt{}, logResult, err
 	}
 	if text, ok := textOutputs(outputs); ok {
@@ -113,44 +99,20 @@ func (a *Adapter) sendTemporary(ctx context.Context, target delivery.Target, out
 	}
 	segments, err := outputSegments(a.cfg.SendFileMode, outputs...)
 	if err != nil {
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
+		logResult := sendLogResult(err)
 		return delivery.Receipt{}, logResult, err
 	}
-	var id string
-	switch t.MessageType {
-	case "private":
-		id, err = transport.SendPrivateSegments(ctx, t.UserID, segments)
-	case "group":
-		id, err = transport.SendGroupSegments(ctx, t.GroupID, segments)
-	default:
-		err = fmt.Errorf("unsupported message target %q", t.MessageType)
-	}
-	receipt := receiptWithMessageID(id)
-	{
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
-		if err != nil {
-			logResult.ResultStatus = globalevents.ResultFailed
-			logResult.Content = err.Error()
-			if errors.Is(err, context.Canceled) {
-				logResult.ResultStatus = globalevents.ResultCanceled
-			}
-		}
-		return oneBotReceipt(receipt, t, outputs), logResult, err
-	}
+	receipt, logResult, err := sendSegments(ctx, transport, t, segments)
+	return oneBotReceipt(receipt, t, outputs), logResult, err
 }
 
 func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	outTarget := target
 	if outTarget.Superadmins {
 		if len(a.cfg.Superadmins) == 0 {
-			{
-				err := fmt.Errorf("qqonebot superadmins are not configured")
-				logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-				return delivery.Receipt{}, logResult, err
-			}
+			err := fmt.Errorf("qqonebot superadmins are not configured")
+			logResult := sendLogResult(err)
+			return delivery.Receipt{}, logResult, err
 		}
 		var receipt delivery.Receipt
 		for _, id := range a.cfg.Superadmins {
@@ -180,10 +142,7 @@ func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []
 	}
 	t, err := targetToQQ(outTarget)
 	if err != nil {
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
+		logResult := sendLogResult(err)
 		return delivery.Receipt{}, logResult, err
 	}
 	if text, ok := textOutputs(outputs); ok {
@@ -191,13 +150,10 @@ func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []
 	}
 	segments, err := outputSegments(a.cfg.SendFileMode, outputs...)
 	if err != nil {
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
+		logResult := sendLogResult(err)
 		return delivery.Receipt{}, logResult, err
 	}
-	receipt, logResult, err := a.sendSegments(ctx, t, segments)
+	receipt, logResult, err := sendSegments(ctx, a.transport, t, segments)
 	return oneBotReceipt(receipt, t, outputs), logResult, err
 }
 
@@ -218,7 +174,7 @@ func (a *Adapter) sendContextText(ctx context.Context, text string) (delivery.Re
 	}
 	t, err := contextTarget(ctx)
 	if err != nil {
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		logResult := sendLogResult(err)
 		return delivery.Receipt{}, logResult, err
 	}
 	return sendText(ctx, a.transport, t, text)
@@ -255,54 +211,22 @@ func sendText(ctx context.Context, transport *Transport, t target, text string) 
 	default:
 		err = fmt.Errorf("unsupported message target %q", t.MessageType)
 	}
-	{
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
-		if err != nil {
-			logResult.ResultStatus = globalevents.ResultFailed
-			logResult.Content = err.Error()
-			if errors.Is(err, context.Canceled) {
-				logResult.ResultStatus = globalevents.ResultCanceled
-			}
-		}
-		return oneBotReceipt(receiptWithMessageID(id), t, nil), logResult, err
-	}
+	logResult := sendLogResult(err)
+	return oneBotReceipt(receiptWithMessageID(id), t, nil), logResult, err
 }
 
-func (a *Adapter) sendSegments(ctx context.Context, t target, segments []Segment) (delivery.Receipt, globalevents.LogResult, error) {
+func sendSegments(ctx context.Context, transport *Transport, t target, segments []Segment) (delivery.Receipt, globalevents.LogResult, error) {
+	var id string
+	var err error
 	switch t.MessageType {
 	case "private":
-		id, err := a.transport.SendPrivateSegments(ctx, t.UserID, segments)
-		{
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
-			if err != nil {
-				logResult.ResultStatus = globalevents.ResultFailed
-				logResult.Content = err.Error()
-				if errors.Is(err, context.Canceled) {
-					logResult.ResultStatus = globalevents.ResultCanceled
-				}
-			}
-			return receiptWithMessageID(id), logResult, err
-		}
+		id, err = transport.SendPrivateSegments(ctx, t.UserID, segments)
 	case "group":
-		id, err := a.transport.SendGroupSegments(ctx, t.GroupID, segments)
-		{
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
-			if err != nil {
-				logResult.ResultStatus = globalevents.ResultFailed
-				logResult.Content = err.Error()
-				if errors.Is(err, context.Canceled) {
-					logResult.ResultStatus = globalevents.ResultCanceled
-				}
-			}
-			return receiptWithMessageID(id), logResult, err
-		}
+		id, err = transport.SendGroupSegments(ctx, t.GroupID, segments)
 	default:
-		{
-			err := fmt.Errorf("unsupported message target %q", t.MessageType)
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-			return delivery.Receipt{}, logResult, err
-		}
+		err = fmt.Errorf("unsupported message target %q", t.MessageType)
 	}
+	return receiptWithMessageID(id), sendLogResult(err), err
 }
 
 func receiptWithMessageID(id string) delivery.Receipt {
@@ -321,9 +245,7 @@ func oneBotReceipt(receipt delivery.Receipt, target target, outputs []delivery.O
 		}
 	}
 	for _, id := range receipt.PlatformMessageIDs {
-		if id = strings.TrimSpace(id); id != "" {
-			receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: id, Platform: "qqonebot", ScopeID: oneBotTargetScope(target), OutputIndexes: append([]int(nil), indexes...)})
-		}
+		receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: id, Platform: "qqonebot", ScopeID: oneBotTargetScope(target), OutputIndexes: append([]int(nil), indexes...)})
 	}
 	return receipt
 }
@@ -393,28 +315,18 @@ func outputSegments(sendFileMode string, outputs ...delivery.Output) ([]Segment,
 		case delivery.KindEmoticon:
 			id := strings.TrimSpace(out.EmoticonID)
 			segments = append(segments, Segment{Type: "face", Data: map[string]any{"id": id}})
-		case delivery.KindImage:
-			file, err := oneBotSourceFile(out.Source, "image", sendFileMode)
-			if err != nil {
-				return nil, err
-			}
-			segments = append(segments, Segment{Type: "image", Data: map[string]any{"file": file}})
-		case delivery.KindFile:
-			file, err := oneBotSourceFile(out.Source, "file", sendFileMode)
+		case delivery.KindImage, delivery.KindFile, delivery.KindRecord:
+			file, err := oneBotSourceFile(out.Source, string(out.Kind), sendFileMode)
 			if err != nil {
 				return nil, err
 			}
 			data := map[string]any{"file": file}
-			if name := strings.TrimSpace(out.Name); name != "" {
-				data["name"] = name
+			if out.Kind == delivery.KindFile {
+				if name := strings.TrimSpace(out.Name); name != "" {
+					data["name"] = name
+				}
 			}
-			segments = append(segments, Segment{Type: "file", Data: data})
-		case delivery.KindRecord:
-			file, err := oneBotSourceFile(out.Source, "record", sendFileMode)
-			if err != nil {
-				return nil, err
-			}
-			segments = append(segments, Segment{Type: "record", Data: map[string]any{"file": file}})
+			segments = append(segments, Segment{Type: string(out.Kind), Data: data})
 		case delivery.KindAt:
 			qq := strings.TrimSpace(out.Name)
 			segments = append(segments, Segment{Type: "at", Data: map[string]any{"qq": qq}})
@@ -464,4 +376,16 @@ func localPathFileURI(path, label string) (string, error) {
 		slashPath = "/" + slashPath
 	}
 	return (&url.URL{Scheme: "file", Path: slashPath}).String(), nil
+}
+
+func sendLogResult(err error) globalevents.LogResult {
+	result := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+	if err != nil {
+		result.ResultStatus = globalevents.ResultFailed
+		result.Content = err.Error()
+		if errors.Is(err, context.Canceled) {
+			result.ResultStatus = globalevents.ResultCanceled
+		}
+	}
+	return result
 }

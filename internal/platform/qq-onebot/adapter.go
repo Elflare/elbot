@@ -4,6 +4,8 @@ package qqonebot
 import (
 	"context"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 	"fmt"
@@ -127,3 +129,24 @@ func validateSendFileMode(mode string) error {
 func (a *Adapter) Name() string { return "qqonebot" }
 
 func (a *Adapter) Enabled() bool { return a.cfg.Enabled }
+
+func logIdentity(ctx context.Context) events.LogIdentity {
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	var identity events.LogIdentity
+	if facts.SessionID != "" {
+		identity.SessionID = &facts.SessionID
+	}
+	if facts.RunID != "" {
+		identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		identity.RootRequestID = &facts.RootRequestID
+	}
+	return identity
+}

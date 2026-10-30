@@ -4,7 +4,6 @@ package qqonebot
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -414,22 +413,7 @@ func (t *Transport) call(ctx context.Context, action string, params map[string]a
 				record.ResultStatus = globalevents.ResultCanceled
 			}
 		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
+		record.Identity = logIdentity(ctx)
 		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 
 	}()
@@ -511,10 +495,7 @@ func (t *Transport) writeTimeout(frameBytes int) time.Duration {
 		base = 15 * time.Second
 	}
 	extra := time.Duration(frameBytes/(1024*1024)) * time.Second
-	if extra > base {
-		extra = base
-	}
-	return base + extra
+	return base + min(extra, base)
 }
 
 func (t *Transport) acquireWrite(ctx context.Context) (func(), error) {
@@ -542,14 +523,8 @@ func (t *Transport) removePending(echo string) {
 }
 
 func (t *Transport) dispatchResponse(raw json.RawMessage) bool {
-	var probe struct {
-		Echo string `json:"echo"`
-	}
-	if json.Unmarshal(raw, &probe) != nil || probe.Echo == "" {
-		return false
-	}
 	var resp response
-	if err := json.Unmarshal(raw, &resp); err != nil {
+	if json.Unmarshal(raw, &resp) != nil || resp.Echo == "" {
 		return false
 	}
 	t.mu.Lock()

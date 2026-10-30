@@ -6,6 +6,7 @@ package qqonebot
 import (
 	"context"
 	"elbot/internal/platform/share"
+	"slices"
 	"strings"
 )
 
@@ -13,10 +14,9 @@ import (
 // references. Private direct messages already have them and use expandForwardSegments.
 func (a *Adapter) expandForwardReference(event Event) func(context.Context, string, share.ReferencedMessage) ([]share.MessageSegment, error) {
 	return func(ctx context.Context, replyID string, ref share.ReferencedMessage) ([]share.MessageSegment, error) {
-		hasForward := strings.Contains(ref.Text, "[forward]")
-		for _, segment := range ref.Segments {
-			hasForward = hasForward || (segment.Type == share.SegmentText && strings.Contains(segment.Text, "[forward]"))
-		}
+		hasForward := strings.Contains(ref.Text, "[forward]") || slices.ContainsFunc(ref.Segments, func(segment share.MessageSegment) bool {
+			return segment.Type == share.SegmentText && strings.Contains(segment.Text, "[forward]")
+		})
 		if !hasForward {
 			return nil, nil
 		}
@@ -42,10 +42,7 @@ func (a *Adapter) expandForwardReference(event Event) func(context.Context, stri
 // expandForwardSegments renders one layer without changing source media indexes.
 // Only actual protocol segments can supply a resource ID; literal text never does.
 func (a *Adapter) expandForwardSegments(ctx context.Context, segments []Segment, selfID int64, original []share.MessageSegment) ([]share.MessageSegment, error) {
-	found := false
-	for _, segment := range segments {
-		found = found || segment.Type == "forward"
-	}
+	found := slices.ContainsFunc(segments, func(segment Segment) bool { return segment.Type == "forward" })
 	if !found {
 		return nil, nil
 	}

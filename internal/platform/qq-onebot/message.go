@@ -99,7 +99,7 @@ func firstNonEmpty(values ...string) string {
 }
 
 func cleanText(text string) string {
-	return strings.TrimSpace(strings.Join(strings.Fields(text), " "))
+	return strings.Join(strings.Fields(text), " ")
 }
 
 func atText(qq, name string) string {
@@ -111,29 +111,14 @@ func atText(qq, name string) string {
 	return "[at " + name + " qq:" + qq + "]"
 }
 
-func senderName(sender Sender) string {
-	if name := strings.TrimSpace(sender.Card); name != "" {
-		return name
-	}
-	return strings.TrimSpace(sender.Nickname)
-}
+func senderName(sender Sender) string { return firstNonEmpty(sender.Card, sender.Nickname) }
 
 func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler, event Event) {
 	normalized := normalizeMessage(event.Message, event.RawMessage, event.SelfID)
 	normalized = a.resolveAtSegments(ctx, event, normalized)
 	replyToSenderID, err := a.replyToSenderID(ctx, event, normalized.ReplyID)
 	if err != nil {
-		record := globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
-			Level:        slog.LevelError,
-			EventName:    "platform_context_failed",
-			Module:       "qq-onebot",
-			Type:         globalevents.ContentText,
-			Content:      fmt.Sprintf("prepare platform context failed: %v", err),
-			ContentLimit: 4096,
-			ResultStatus: globalevents.ResultFailed,
-		}
-		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		logContextFailure(ctx, err)
 		return
 	}
 	text := normalized.Text
@@ -186,17 +171,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 			var err error
 			currentDisplay, err = a.expandForwardSegments(msgCtx, segments, event.SelfID, currentSegments)
 			if err != nil {
-				record := globalevents.LogRecord{
-					Category:     globalevents.LogRuntime,
-					Level:        slog.LevelError,
-					EventName:    "platform_context_failed",
-					Module:       "qq-onebot",
-					Type:         globalevents.ContentText,
-					Content:      fmt.Sprintf("prepare platform context failed: %v", err),
-					ContentLimit: 4096,
-					ResultStatus: globalevents.ResultFailed,
-				}
-				_ = globalevents.EmitLog(context.WithoutCancel(msgCtx), record)
+				logContextFailure(msgCtx, err)
 				return
 			}
 		}
@@ -221,17 +196,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 			Enrich:          a.expandForwardReference(event),
 		})
 		if err != nil {
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelError,
-				EventName:    "platform_context_failed",
-				Module:       "qq-onebot",
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("prepare platform context failed: %v", err),
-				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultFailed,
-			}
-			_ = globalevents.EmitLog(context.WithoutCancel(msgCtx), record)
+			logContextFailure(msgCtx, err)
 			return
 		}
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
@@ -295,22 +260,7 @@ func (a *Adapter) resolveAtSegments(ctx context.Context, event Event, msg Normal
 					record.ResultStatus = globalevents.ResultCanceled
 					record.Level = slog.LevelInfo
 				}
-				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				if facts.SessionID != "" {
-					record.Identity.SessionID = &facts.SessionID
-				}
-				if facts.RunID != "" {
-					record.Identity.RunID = &facts.RunID
-				}
-				if facts.Attempt != "" {
-					record.Identity.Attempt = &facts.Attempt
-				}
-				if facts.RequestID != "" {
-					record.Identity.RequestID = &facts.RequestID
-				}
-				if facts.RootRequestID != "" {
-					record.Identity.RootRequestID = &facts.RootRequestID
-				}
+				record.Identity = logIdentity(ctx)
 				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 			}
 			continue
@@ -445,22 +395,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized
 				record.ResultStatus = globalevents.ResultCanceled
 				record.Level = slog.LevelInfo
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
+			record.Identity = logIdentity(ctx)
 			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 		}
 	}
@@ -508,4 +443,12 @@ func isConfiguredSuperadmin(superadmins []string, id string) bool {
 		}
 	}
 	return false
+}
+
+func logContextFailure(ctx context.Context, err error) {
+	_ = globalevents.EmitLog(context.WithoutCancel(ctx), globalevents.LogRecord{
+		Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "platform_context_failed",
+		Module: "qq-onebot", Type: globalevents.ContentText, Content: fmt.Sprintf("prepare platform context failed: %v", err),
+		ContentLimit: 4096, ResultStatus: globalevents.ResultFailed,
+	})
 }
