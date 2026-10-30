@@ -401,9 +401,11 @@ func formatUsageBucket(sb *strings.Builder, label string, b *usageBucket) {
 		formatThousands(b.promptTokens),
 		formatThousands(b.completionTokens),
 		formatThousands(b.totalTokens)))
-	sb.WriteString(fmt.Sprintf("  cache: %s | elapsed: %s\n",
-		formatThousands(b.cacheHitTokens),
-		formatElapsed(b.elapsedMs)))
+	sb.WriteString(fmt.Sprintf("  cache: %s", formatThousands(b.cacheHitTokens)))
+	if b.cacheHitTokens != nil && *b.cacheHitTokens >= 0 && b.promptTokens != nil && *b.promptTokens > 0 {
+		sb.WriteString(fmt.Sprintf(" (%.1f%%)", float64(*b.cacheHitTokens)/float64(*b.promptTokens)*100))
+	}
+	sb.WriteString(fmt.Sprintf(" | elapsed: %s\n", formatElapsed(b.elapsedMs)))
 }
 
 func formatElapsed(ms *int64) string {
