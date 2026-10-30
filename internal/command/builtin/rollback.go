@@ -65,6 +65,9 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 		return nil, fmt.Errorf("用法：%srollback [编号]；先不带参数列出文件", req.Prefix)
 	}
 	ctx, err = c.deps.PrepareFileContext(ctx, true)
+	if errors.Is(err, session.ErrNoCurrentSession) {
+		return nil, err
+	}
 	if err != nil {
 		return &command.Result{Content: fmt.Sprintf("无法撤销：%v\n使用 %srollback 查看当前可撤销记录。", err, req.Prefix)}, nil
 	}

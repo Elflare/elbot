@@ -5,6 +5,7 @@ import (
 	"elbot/internal/modelmgr"
 	"elbot/internal/notification/rules"
 	"elbot/internal/workspace"
+	"errors"
 	"time"
 
 	chatroute "elbot/internal/agent/chat"
@@ -285,7 +286,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 			Context: func(ctx context.Context) (context.Context, error) {
 				ctx = contextinfo.WithActor(security.WithPermission(ctx, deps.Permission), identity.Actor(ctx))
 				row, err := m.sessions.Current(ctx, identity.Scope(ctx))
-				if err != nil && err != storage.ErrNotFound {
+				if err != nil && !errors.Is(err, session.ErrNoCurrentSession) {
 					return ctx, err
 				}
 				return execution.ModelContext(ctx, row)

@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复首次进入或 `/new` 后，一些命令因没有当前 Session 而报 `not found` 的问题。
 - 修复 `/resume` 忽略置顶的问题。
 - 在重构中修复一些可能会出现的bug。
 - 修复chat历史搜索工具bug。现在后台、前台都能搜了，且互不影响。

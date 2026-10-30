@@ -10,6 +10,8 @@ import (
 )
 
 var (
+	// ErrNoCurrentSession 表示当前 Scope 还未开始对话，与指定记录不存在区分。
+	ErrNoCurrentSession             = control.ErrNoCurrentSession
 	ErrSessionBusy                  = share.ErrSessionBusy
 	ErrForegroundSession            = share.ErrForegroundSession
 	ErrChatModeRequiresEmptySession = control.ErrChatModeRequiresEmptySession

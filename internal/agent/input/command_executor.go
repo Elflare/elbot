@@ -47,7 +47,7 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 	parsed := e.router.Parse(text)
 	info, hasInfo := e.router.CommandInfo(parsed.Name)
 	sessionRow, binding, sessionErr := e.sessions.CurrentBound(ctx, e.identity.Scope(ctx))
-	if sessionErr != nil && !errors.Is(sessionErr, storage.ErrNotFound) {
+	if sessionErr != nil && !errors.Is(sessionErr, session.ErrNoCurrentSession) {
 		return true, sessionErr
 	}
 	if sessionErr == nil {
@@ -115,6 +115,9 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 		}
 	}
 	result, err := e.router.Dispatch(ctx, text)
+	if errors.Is(err, session.ErrNoCurrentSession) {
+		result, err = &command.Result{Content: session.ErrNoCurrentSession.Error()}, nil
+	}
 	if err != nil {
 		_, notifyErr := globalevents.NotificationRequested.Emit(session.WithBinding(ctx, nil), globalevents.NewNotification(ctx, slog.LevelError, fmt.Sprintf("命令 %s%s 执行失败：%v", parsed.Prefix, parsed.Name, err)))
 		return true, errors.Join(err, notifyErr)

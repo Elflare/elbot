@@ -78,7 +78,7 @@ func (s *Service) enterTarget(ctx context.Context, scope share.Scope, id string)
 		binding := s.CurrentBinding(scope)
 		if binding == nil {
 			leaveScope()
-			return nil, "", nil, storage.ErrNotFound
+			return nil, "", nil, ErrNoCurrentSession
 		}
 		id = binding.SessionID()
 	}

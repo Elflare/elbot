@@ -275,6 +275,8 @@ Platform 负责输入归一化、历史落库、引用恢复及实际发送，�
 
 Session 唯一管理 current 与 Binding：control 管会话业务及过期，binding 管准入，branch 管 Fork／压缩／后台复制，naming 管命名。
 
+无当前会话由 Session 返回 `ErrNoCurrentSession`；失效的当前记录在清理绑定后返回同一错误，与指定记录缺失的 `storage.ErrNotFound` 区分。命令执行出口将此状态展示为普通提示“还未开始对话”；自动创建、模式激活及状态查询按各自语义处理。
+
 - 切离使旧 binding 永久失效，切回建立新 binding；删除使相关绑定全部失效。准入锁顺序为 Scope → 排序 SessionID → 状态锁，模型、工具、Hook、发送及一般信号在锁外。
 - ForegroundActivated 是例外：接管提交后、释放准入前同步交付，仅更新执行内存，不做 I/O 或再次准入；派发失败不回滚接管。展示用 BindingChanged 在锁外发布，必要释放不依赖观察者成功。
 - 后台身份只由 Mode 决定，不从来源或接管历史猜测。后台准备不激活 current；永久接管转为前台 work，保留历史与 workspace，在途调用不重启，后续调用和发送刷新来源，并解除后台自动汇报要求。

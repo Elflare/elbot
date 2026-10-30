@@ -195,7 +195,7 @@ func TestAccessAndCreateUnderPreallocatedAdmission(t *testing.T) {
 	if err := f.store.Sessions().Delete(ctx, "a-target"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.s.Current(ctx, scope); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := f.s.Current(ctx, scope); !errors.Is(err, ErrNoCurrentSession) {
 		t.Fatalf("missing current: %v", err)
 	}
 	if f.s.CurrentBinding(scope) != nil {

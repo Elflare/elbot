@@ -11,6 +11,7 @@ import (
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/modelmgr"
+	"elbot/internal/session"
 	"elbot/internal/storage"
 )
 
@@ -26,7 +27,7 @@ func NewNew(deps Deps) command.Handler {
 func NewStatus(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{Name: "status", Usage: "/status", Description: "Show current session status.", MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		status, err := deps.Sessions.Status(ctx, deps.Scope(ctx))
-		if errors.Is(err, storage.ErrNotFound) {
+		if errors.Is(err, session.ErrNoCurrentSession) {
 			return &command.Result{Content: formatEmptyStatus(ctx, deps)}, nil
 		}
 		if err != nil {

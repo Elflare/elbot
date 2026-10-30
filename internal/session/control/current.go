@@ -13,6 +13,8 @@ import (
 	"elbot/internal/storage"
 )
 
+// ErrNoCurrentSession 表示当前 Scope 尚无有效会话，不等同于指定记录不存在。
+var ErrNoCurrentSession = errors.New("还未开始对话")
 var ErrChatModeRequiresEmptySession = errors.New("chat mode requires an empty work session")
 
 func (s *Service) DefaultMode() string { return s.cfg.DefaultMode }
@@ -28,7 +30,7 @@ func (s *Service) GetOrCreateCurrent(ctx context.Context, scope share.Scope, fir
 	if err == nil {
 		return row, nil
 	}
-	if !errors.Is(err, storage.ErrNotFound) {
+	if !errors.Is(err, ErrNoCurrentSession) {
 		return nil, err
 	}
 	return s.Create(ctx, scope, CreateRequest{Title: defaultTitle(firstMessage)})
@@ -83,11 +85,12 @@ func (s *Service) CurrentBound(ctx context.Context, scope share.Scope) (*storage
 	defer release()
 	binding := s.CurrentBinding(scope)
 	if binding == nil {
-		return nil, nil, storage.ErrNotFound
+		return nil, nil, ErrNoCurrentSession
 	}
 	row, err := s.deps.Sessions.Get(ctx, binding.SessionID())
 	if errors.Is(err, storage.ErrNotFound) {
 		s.SetCurrent(ctx, scope, "")
+		return nil, nil, ErrNoCurrentSession
 	}
 	return row, binding, err
 }
@@ -123,7 +126,7 @@ func (s *Service) ActivateMode(ctx context.Context, scope share.Scope, req Activ
 		return ActivateModeResult{}, err
 	}
 	row, err := s.Current(locked, scope)
-	if errors.Is(err, storage.ErrNotFound) {
+	if errors.Is(err, ErrNoCurrentSession) {
 		leave() // 释放旧 Session 准入，再创建新的目标。
 		row, err = s.createCurrent(ctx, scope, CreateRequest{Title: req.NewSessionTitle, Mode: req.Mode})
 		return ActivateModeResult{Session: row}, err

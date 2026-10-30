@@ -213,7 +213,7 @@ func TestPublicBindingIdentityAndSynchronousRollbackRelease(t *testing.T) {
 				err = store.Sessions().Delete(t.Context(), row.ID)
 				if err == nil {
 					_, missing := s.Current(t.Context(), scope)
-					if !errors.Is(missing, storage.ErrNotFound) {
+					if !errors.Is(missing, ErrNoCurrentSession) {
 						t.Fatal(missing)
 					}
 				}

@@ -75,7 +75,7 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 			mode = deps.Sessions.DefaultMode()
 			var currentErr error
 			current, currentErr = deps.Sessions.Current(ctx, deps.Scope(ctx))
-			if currentErr != nil && !errors.Is(currentErr, storage.ErrNotFound) {
+			if currentErr != nil && !errors.Is(currentErr, session.ErrNoCurrentSession) {
 				return nil, currentErr
 			}
 		}

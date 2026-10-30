@@ -111,7 +111,7 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 		_, binding, _ = deps.Sessions.CurrentBound(ctx, deps.Scope(ctx))
 	}
 	if binding == nil {
-		return &command.Result{Content: "no current session"}, nil
+		return &command.Result{Content: session.ErrNoCurrentSession.Error()}, nil
 	}
 	locked, release, err := deps.Sessions.EnterBinding(ctx, binding)
 	if err != nil {
