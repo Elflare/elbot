@@ -34,16 +34,21 @@ func riskConfirmationCommands() []riskConfirmationCommand {
 
 func riskConfirmationCommandHelp(commandText func(string, ...string) string) string {
 	parts := make([]string, 0, len(riskConfirmationCommands()))
-	for _, cmd := range riskConfirmationCommands() {
+	for i, cmd := range riskConfirmationCommands() {
 		name := cmd.Name
 		for _, alias := range cmd.Aliases {
 			if len(alias) < len(name) {
 				name = alias
 			}
 		}
-		parts = append(parts, commandText(name, cmd.Args)+": "+cmd.Description)
+		text := commandText(name, cmd.Args) + ": " + cmd.Description
+		if i%2 == 0 {
+			parts = append(parts, text)
+		} else {
+			parts[len(parts)-1] += " | " + text
+		}
 	}
-	return strings.Join(parts, " · ")
+	return strings.Join(parts, "\n")
 }
 
 func riskConfirmationPromptText(timeout time.Duration, commandText func(string, ...string) string) string {
