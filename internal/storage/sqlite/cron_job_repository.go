@@ -52,9 +52,6 @@ func (r *CronJobRepository) Upsert(ctx context.Context, req storage.UpsertCronJo
 }
 
 func cronJobMatchesUpsert(job *storage.CronJob, req storage.UpsertCronJobRequest) bool {
-	if job == nil {
-		return false
-	}
 	if req.ResetDelivery && (job.DeliveryState != "" || job.DeliveryToken != "") {
 		return false
 	}
@@ -93,14 +90,13 @@ func (r *CronJobRepository) List(ctx context.Context, includeDisabled bool) ([]s
 SELECT id, name, handler, schedule, enabled, metadata, last_run_at, next_run_at,
        run_count, created_at, updated_at, delivery_state, delivery_token
 FROM cron_jobs`
-	args := []any{}
 	if !includeDisabled {
 		query += `
 WHERE enabled = 1`
 	}
 	query += `
 ORDER BY name`
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("list cron jobs: %w", err)
 	}

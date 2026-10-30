@@ -45,7 +45,7 @@
 
 按包记录具体问题、精简建议、讨论结论与验证结果，确认方案后再实施。任务入口见 [任务清单](tasks.md)。
 
-当前进度：`internal/app`、`internal/delivery`、`internal/turn`、`internal/tool/builtin`、`internal/memory/resident`、`internal/hook/rules` 已完成一轮审查与调整；`internal/config` 已完成第二轮精简；`internal/hook/runtime` 已完成第三轮精简，其余包进度分别记录。
+当前进度：`internal/app`、`internal/delivery`、`internal/turn`、`internal/tool/builtin`、`internal/memory/resident`、`internal/hook/rules`、`internal/storage/sqlite` 已完成一轮审查与调整；`internal/config` 已完成第二轮精简；`internal/hook/runtime` 已完成第三轮精简，其余包进度分别记录。
 
 ### delivery
 
@@ -97,10 +97,18 @@
 - 模块子树只解码一次，按声明检查类型与未知字段；模块规则统一由根文档检查，诊断直接使用完整字段路径，不展示重编码子树的行列号。资产排序只读遍历包内资产列表。
 - 仍为原有 8 个生产文件；公开接口、配置格式、默认值与默认资产保持现有契约。
 
+### storage/sqlite
+
+- 主库与聊天历史库共用现有 store.go 中的 openDB 初始化连接，各自负责建表、迁移及失败关闭；保留单连接和外键设置。
+- 原生待处理输入复用扫描函数，工具批次复用已解码 metadata，时间空值统一使用 nullTime；聊天历史反转使用 slices.Reverse，删除 Cron 无效参数和 nil 分支。
+- 媒体回收使用 ClaimOrphans／FinishDelete，删除无业务调用的 DeleteOrphans 及接口声明。Session 列表在错误路径关闭 rows，并在读取消息摘录前显式释放连接。
+- 回归先复现损坏时间导致 List 返回后仍占用唯一连接，修复后验证连接释放及后续查询。已执行 gofmt，Storage 包测试、SQLite 竞态测试和 go test ./... 全仓测试均通过。
+
 ## 已完成精简
 
 | 包 | 完成情况 | 非测试 Go 行数 |
 | --- | --- | --- |
+| `internal/storage/sqlite` | 共用连接初始化、扫描和已解析数据，删除遗留媒体接口，修复列表错误路径连接泄漏。 | 4,768 → 4,717，减少 51 行（约 1.1%），仍为 17 个生产文件；连同 Storage 接口声明共减少 52 行。 |
 | `internal/app` | 已完成一轮；本文件未登记具体改动及对比数据。 | 基线为 719 行。 |
 | `internal/delivery` | 统一发送与投递信息契约、复用目标校验结果、收拢降级文案并清理重复日志处理。 | 479 → 415，减少 64 行（约 13.4%）。 |
 | `internal/turn`（含子包） | 完成生命周期与确认等待职责拆分、新接口及调用方迁移、刷新与过期原子裁决；删除旧接口测试，保留有效行为覆盖。 | 932 → 1,010，增加 78 行（约 8.4%）；当前共 11 个生产文件，含装配与内部契约，未实现总代码量下降。 |

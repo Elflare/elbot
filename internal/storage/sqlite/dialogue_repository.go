@@ -330,12 +330,7 @@ func (r *DialogueRepository) PendingInputs(ctx context.Context, sessionID string
 	defer rows.Close()
 	var result []storage.NativeInput
 	for rows.Next() {
-		var row storage.NativeInput
-		var created string
-		if err := rows.Scan(&row.ID, &row.SessionID, &row.MessageID, &row.ExchangeID, &row.CallID, &row.ItemJSON, &row.MediaJSON, &row.ConsumedBy, &created); err != nil {
-			return nil, err
-		}
-		row.CreatedAt, err = storage.ParseTime(created)
+		row, err := scanNativeInput(rows)
 		if err != nil {
 			return nil, err
 		}

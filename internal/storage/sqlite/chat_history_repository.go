@@ -5,8 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -23,24 +22,9 @@ type ChatHistoryRepository struct {
 }
 
 func NewChatHistory(ctx context.Context, path string) (*ChatHistoryStore, error) {
-	if path == "" {
-		return nil, fmt.Errorf("chat history sqlite path is empty")
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, fmt.Errorf("create chat history sqlite directory: %w", err)
-	}
-	db, err := sql.Open("sqlite", path)
+	db, err := openDB(ctx, path)
 	if err != nil {
-		return nil, fmt.Errorf("open chat history sqlite: %w", err)
-	}
-	db.SetMaxOpenConns(1)
-	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("enable chat history sqlite foreign keys: %w", err)
-	}
-	if err := db.PingContext(ctx); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("ping chat history sqlite: %w", err)
+		return nil, fmt.Errorf("chat history: %w", err)
 	}
 	if err := migrateChatHistory(ctx, db); err != nil {
 		_ = db.Close()
@@ -255,9 +239,7 @@ LIMIT ?`, params...)
 	if err != nil {
 		return nil, err
 	}
-	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
-		messages[i], messages[j] = messages[j], messages[i]
-	}
+	slices.Reverse(messages)
 	return messages, nil
 }
 
@@ -329,9 +311,7 @@ LIMIT ?`, operator, order), platform, scopeID, seq, limit)
 		return nil, err
 	}
 	if before {
-		for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
-			messages[i], messages[j] = messages[j], messages[i]
-		}
+		slices.Reverse(messages)
 	}
 	return messages, nil
 }

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"time"
 
 	"elbot/internal/storage"
 	sqlitedriver "modernc.org/sqlite"
@@ -77,36 +76,11 @@ func (r *MediaRepository) Upsert(ctx context.Context, m *storage.Media) error {
 	if m.LastAccessedAt.IsZero() {
 		m.LastAccessedAt = m.CreatedAt
 	}
-	_, err := r.db.ExecContext(ctx, `INSERT INTO media (id, name, mime_type, size, local_path, backend, object_key, source_platform, source_url, source_file_id, created_at, last_accessed_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, mime_type=excluded.mime_type, size=excluded.size, local_path=excluded.local_path, backend=excluded.backend, object_key=excluded.object_key, source_platform=excluded.source_platform, source_url=excluded.source_url, source_file_id=excluded.source_file_id, last_accessed_at=excluded.last_accessed_at, expires_at=excluded.expires_at WHERE media.deleting=0`, m.ID, nullString(m.Name), m.MIMEType, m.Size, nullString(m.LocalPath), m.Backend, nullString(m.ObjectKey), nullString(m.SourcePlatform), nullString(m.SourceURL), nullString(m.SourceFileID), storage.FormatTime(m.CreatedAt), storage.FormatTime(m.LastAccessedAt), nullableTime(m.ExpiresAt))
+	_, err := r.db.ExecContext(ctx, `INSERT INTO media (id, name, mime_type, size, local_path, backend, object_key, source_platform, source_url, source_file_id, created_at, last_accessed_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, mime_type=excluded.mime_type, size=excluded.size, local_path=excluded.local_path, backend=excluded.backend, object_key=excluded.object_key, source_platform=excluded.source_platform, source_url=excluded.source_url, source_file_id=excluded.source_file_id, last_accessed_at=excluded.last_accessed_at, expires_at=excluded.expires_at WHERE media.deleting=0`, m.ID, nullString(m.Name), m.MIMEType, m.Size, nullString(m.LocalPath), m.Backend, nullString(m.ObjectKey), nullString(m.SourcePlatform), nullString(m.SourceURL), nullString(m.SourceFileID), storage.FormatTime(m.CreatedAt), storage.FormatTime(m.LastAccessedAt), nullTime(m.ExpiresAt))
 	if err != nil {
 		return fmt.Errorf("upsert media: %w", err)
 	}
 	return nil
-}
-
-func (r *MediaRepository) DeleteOrphans(ctx context.Context, cutoff time.Time) ([]storage.Media, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, name, mime_type, size, local_path, backend, object_key, source_platform, source_url, source_file_id, created_at, last_accessed_at, expires_at FROM media WHERE created_at < ? AND NOT EXISTS (SELECT 1 FROM media_references WHERE media_references.media_id = media.id)`, storage.FormatTime(cutoff))
-	if err != nil {
-		return nil, fmt.Errorf("list orphan media: %w", err)
-	}
-	defer rows.Close()
-	var out []storage.Media
-	for rows.Next() {
-		var m storage.Media
-		var name, localPath, objectKey, sourcePlatform, sourceURL, sourceFileID, createdAt, lastAccessedAt sql.NullString
-		var expiresAt sql.NullString
-		if err := rows.Scan(&m.ID, &name, &m.MIMEType, &m.Size, &localPath, &m.Backend, &objectKey, &sourcePlatform, &sourceURL, &sourceFileID, &createdAt, &lastAccessedAt, &expiresAt); err != nil {
-			return nil, err
-		}
-		m.Name, m.LocalPath, m.ObjectKey, m.SourcePlatform, m.SourceURL, m.SourceFileID = name.String, localPath.String, objectKey.String, sourcePlatform.String, sourceURL.String, sourceFileID.String
-		m.CreatedAt, _ = storage.ParseTime(createdAt.String)
-		m.LastAccessedAt, _ = storage.ParseTime(lastAccessedAt.String)
-		out = append(out, m)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (r *MediaReferenceRepository) Add(ctx context.Context, ref *storage.MediaReference) error {
@@ -172,11 +146,4 @@ func (r *MediaReferenceRepository) list(ctx context.Context, where string, args 
 		out = append(out, ref)
 	}
 	return out, rows.Err()
-}
-
-func nullableTime(value *time.Time) any {
-	if value == nil {
-		return nil
-	}
-	return storage.FormatTime(*value)
 }

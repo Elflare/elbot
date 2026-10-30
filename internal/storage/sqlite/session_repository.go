@@ -225,6 +225,7 @@ LIMIT ? OFFSET ?`, strings.Join(where, " AND "), orderBy)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
 	}
+	defer rows.Close()
 
 	var sessions []storage.SessionSummary
 	for rows.Next() {

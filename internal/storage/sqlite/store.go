@@ -25,7 +25,7 @@ type Store struct {
 	mediaReferences  *MediaReferenceRepository
 }
 
-func New(ctx context.Context, path string) (*Store, error) {
+func openDB(ctx context.Context, path string) (*sql.DB, error) {
 	if path == "" {
 		return nil, fmt.Errorf("sqlite path is empty")
 	}
@@ -39,6 +39,27 @@ func New(ctx context.Context, path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 
+	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("enable sqlite foreign keys: %w", err)
+	}
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("ping sqlite: %w", err)
+	}
+	return db, nil
+}
+
+func New(ctx context.Context, path string) (*Store, error) {
+	db, err := openDB(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	if err := initializeDB(ctx, db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+
 	store := &Store{db: db}
 	store.sessions = &SessionRepository{db: db}
 	store.messages = &MessageRepository{db: db}
@@ -49,20 +70,6 @@ func New(ctx context.Context, path string) (*Store, error) {
 	store.elnisEvents = &ElnisEventRepository{db: db}
 	store.media = &MediaRepository{db: db}
 	store.mediaReferences = &MediaReferenceRepository{db: db}
-
-	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("enable sqlite foreign keys: %w", err)
-	}
-	if err := db.PingContext(ctx); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("ping sqlite: %w", err)
-	}
-	if err := initializeDB(ctx, db); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-
 	return store, nil
 }
 

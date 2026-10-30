@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -8,6 +9,28 @@ import (
 
 	"elbot/internal/storage"
 )
+
+func TestSessionListReleasesRowsOnInvalidTime(t *testing.T) {
+	store := newTestStore(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	session := &storage.Session{}
+	if err := store.Sessions().Create(ctx, session); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx, "UPDATE sessions SET created_at='invalid'"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Sessions().List(ctx, storage.ListSessionsRequest{IncludeAllPlatforms: true}); err == nil {
+		t.Fatal("expected invalid time error")
+	}
+	if n := store.db.Stats().InUse; n != 0 {
+		t.Fatalf("connections still in use: %d", n)
+	}
+	if err := store.db.PingContext(ctx); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestSessionListUsesModeForBackgroundIdentity(t *testing.T) {
 	store, err := New(t.Context(), filepath.Join(t.TempDir(), "sessions.db"))

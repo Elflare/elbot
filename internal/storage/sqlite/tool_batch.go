@@ -26,7 +26,10 @@ func validateToolBatch(commit storage.DialogueCommit) error {
 	if err := json.Unmarshal(fields["tool_calls"], &calls); err != nil {
 		return err
 	}
-	ids, err := storage.ToolResultMessageIDs(*batch.Call)
+	var ids []string
+	if raw, ok := fields[storage.ToolResultMessageKey]; ok {
+		err = json.Unmarshal(raw, &ids)
+	}
 	if err != nil || len(calls) != len(batch.Results) || len(ids) != len(calls) {
 		return fmt.Errorf("tool batch identity mismatch")
 	}

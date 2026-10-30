@@ -693,15 +693,8 @@ func TestMediaRepositoryAndReferences(t *testing.T) {
 	if err != nil || len(refs) != 1 {
 		t.Fatalf("media references = %#v, err=%v", refs, err)
 	}
-	if orphaned, err := store.Media().DeleteOrphans(ctx, storage.Now()); err != nil || len(orphaned) != 0 {
-		t.Fatalf("referenced media orphaned = %#v, err=%v", orphaned, err)
-	}
 	if err := store.MediaReferences().Remove(ctx, *ref); err != nil {
 		t.Fatalf("remove reference: %v", err)
-	}
-	orphaned, err := store.Media().DeleteOrphans(ctx, storage.Now())
-	if err != nil || len(orphaned) != 1 || orphaned[0].ID != media.ID {
-		t.Fatalf("orphaned media = %#v, err=%v", orphaned, err)
 	}
 	if _, err := store.db.ExecContext(ctx, `DELETE FROM media WHERE id = ?`, media.ID); err != nil {
 		t.Fatalf("delete media: %v", err)

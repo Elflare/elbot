@@ -476,7 +476,6 @@ type MediaRepository interface {
 	Upsert(ctx context.Context, media *Media) error
 	GetSignedURL(ctx context.Context, mediaID string) (*MediaSignedURL, error)
 	UpsertSignedURL(ctx context.Context, record *MediaSignedURL) error
-	DeleteOrphans(ctx context.Context, cutoff time.Time) ([]Media, error)
 	ClaimOrphans(ctx context.Context, cutoff time.Time) ([]Media, error)
 	FinishDelete(ctx context.Context, id string) error
 	Touch(ctx context.Context, id string, now time.Time) error
