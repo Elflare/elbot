@@ -242,6 +242,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Confirmations:             confirmations,
 		Input:                     input,
 	}, commandbuiltin.Deps{
+		Doctor:             deps.Doctor,
 		Router:             m.commands,
 		Sessions:           m.sessions,
 		Requests:           m.requests,

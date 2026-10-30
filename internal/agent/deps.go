@@ -6,6 +6,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
+	"elbot/internal/doctor"
 	"elbot/internal/events"
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
@@ -22,6 +23,9 @@ import (
 
 // SupervisorDeps borrows shared resources and business capabilities; their owners retain lifecycle control.
 type SupervisorDeps struct {
+	Doctor interface {
+		Check(context.Context) (doctor.Report, error)
+	} // 借用只读配置诊断能力，由 App 按当前配置路径装配。
 	Store       storage.Store
 	ChatHistory interface {
 		GetByPlatformMessage(context.Context, string, string, string) (*storage.ChatMessage, error)

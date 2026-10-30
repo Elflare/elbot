@@ -5,16 +5,24 @@ import (
 
 	"elbot/internal/agent"
 	"elbot/internal/background"
+	"elbot/internal/config"
+	"elbot/internal/doctor"
 	"elbot/internal/hook"
 	"elbot/internal/platform"
 	"elbot/internal/tool"
 )
 
-// buildBusinessLines 只构造总管并交付公开能力；失败时保留部分结果。
+// buildBusinessLines 构造业务服务并交付公开能力；失败时保留部分结果。
 // 每条线接收完整 cfg，在内部拆分配置、构造组件，禁止在 App 展开其内部装配。
 func buildBusinessLines(ctx context.Context, resources *sharedResources, mode RunMode) (businessLines, error) {
 	lines := businessLines{}
 	cfg := resources.config
+	definitions := append(platform.ConfigDefinitions(), hook.ConfigDefinitions()...)
+	inspector := config.NewInspector(definitions...)
+	doctorService, err := doctor.New(cfg.ConfigPath, inspector)
+	if err != nil {
+		return lines, err
+	}
 	// 历史库由 App 持有，各线只借用实际使用的能力。
 	history := resources.historyStore.Repository()
 	platformSupervisor, err := platform.NewSupervisor(ctx, cfg, platform.SupervisorDeps{
@@ -54,7 +62,8 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 	}
 
 	agentSupervisor, err := agent.NewSupervisor(ctx, cfg, agent.SupervisorDeps{
-		Store: resources.store, Models: resources.models, Media: resources.media,
+		Doctor: doctorService,
+		Store:  resources.store, Models: resources.models, Media: resources.media,
 		Permission: resources.permission, Logs: resources.logs,
 		Tools: toolSupervisor, Hooks: hookSupervisor, Platform: platformSupervisor, ChatHistory: history,
 	})

@@ -78,7 +78,7 @@ Background 创建任务目录并注入范围，文件工具与 Shell 共用目�
 
 - app.toml 管主配置，providers.toml 管模型客户端，state.toml 管命令修改的模型状态；协议 chat／response 与 Session 模式 chat／work／background 独立。
 - 厂商刷新只重读厂商配置、模型元数据及凭据，不重读主配置或模型状态；准备失败保留旧快照。
-- `/doctor` 为超管只读诊断，不初始化文件或启动 runtime。
+- `/doctor` 为超管只读诊断，不初始化文件或启动 runtime。App 使用当前配置路径及 Platform、Hook 根包提供的配置定义装配诊断服务；Agent 通过根部声明的 `Check` 能力交给命令。
 
 <!-- locator:agent-chat -->
 ## Agent 对话链路

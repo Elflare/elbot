@@ -25,7 +25,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/app/environment.go`：运行模式、配置路径与配置独占锁。
 - `internal/app/environment_test.go`：配置路径与跨进程锁测试。
 - `internal/app/resources.go`：配置加载与共享资源构造。
-- `internal/app/wiring.go`：业务总管构造、跨模块接线与生命周期登记。
+- `internal/app/wiring.go`：业务总管构造、跨模块接线与生命周期登记；汇总模块配置定义，构造并注入 Doctor。
 - `internal/app/shutdown.go`：关闭步骤、统一期限与资源释放。
 - `internal/app/client.go`：客户端调用与回退结果转换。
 - `internal/agent/`：Agent 总管；`supervisor.go` 提供公开入口，`deps.go` 定义消费契约，`wiring.go` 装配，`lifecycle.go` 启停，`signals.go` 管订阅。
@@ -194,6 +194,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/hook/supervisor.go`、`deps.go`：分别负责 Hook 公开入口与消费契约。
 - `internal/hook/wiring.go`、`lifecycle.go`：分别负责 Hook 装配与启停。
+- `internal/hook/config.go`：汇总 Hook 内部模块的只读配置检查定义。
 - `internal/hook/agent_bridge.go`：Agent 回调注册与 Hook 事件转换。
 - `internal/hook/platform_signals.go`：平台连接订阅与全局 Hook 输出。
 - `internal/hook/context_to_event.go`：公共上下文到 Hook 事件的转换。
