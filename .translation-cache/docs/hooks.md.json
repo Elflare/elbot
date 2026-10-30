@@ -280,6 +280,14 @@
       "translation": "__ELBOT_CODE_0__ is bound to the pending item only when a new pending exists before the next request in the tool flow;",
       "updated_at": 1784466987
     },
+    "docs/hooks.md:list:24f777ee46fdabcbcf371bcf1bf144425cddb33cbc579e73fcea69d2384e2b55": {
+      "kind": "list",
+      "source": "续接与后续普通规则的日志结果按执行顺序汇总；后续规则未匹配或成功，不会覆盖此前续接的失败或取消结果。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "24f777ee46fdabcbcf371bcf1bf144425cddb33cbc579e73fcea69d2384e2b55",
+      "translation": "Log results of the continuation and subsequent ordinary rules are aggregated in execution order; if subsequent rules are not matched or succeed, they will not override the previous failure or cancellation results of the continuation.",
+      "updated_at": 1793334768
+    },
     "docs/hooks.md:list:28d01b9f2d4ced97f17ff6894b20a78a7233f1be35b5adad4801d8187d927fc3": {
       "kind": "list",
       "source": "插件返回 __ELBOT_CODE_0__ 时，再从后续规则继续传播，最后可进入命令或主 LLM。",
@@ -320,6 +328,14 @@
       "translation": "__ELBOT_CODE_0__ / __ELBOT_CODE_1__ only process text segments; images and files are preserved.",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:list:3e6adf15538f5afacb00cbcdfeb4d61e9fbdee0ce422fd363a779b305dce8d98": {
+      "kind": "list",
+      "source": "waiting 通过一次性定时器主动到期，不需要新消息或路由查询触发。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "3e6adf15538f5afacb00cbcdfeb4d61e9fbdee0ce422fd363a779b305dce8d98",
+      "translation": "`waiting` expires actively via a one-time timer, without requiring a new message or route query to trigger it.",
+      "updated_at": 1793334768
+    },
     "docs/hooks.md:list:3f978bf24294ecd8692160bc4c627efeccbd70d61f96d0e4c6a473237300aa2e": {
       "kind": "list",
       "source": "再次返回 __ELBOT_CODE_0__ 则以新 ID、过期时间续期。",
@@ -336,6 +352,14 @@
       "translation": "After the continuation is released, the plugin that just finished waiting will not be re-triggered by the same message.",
       "updated_at": 1783825265
     },
+    "docs/hooks.md:list:502877a9131ddee6b91ec4ab1c4491fdbe310987f40fee776c6beb77a249ad69": {
+      "kind": "list",
+      "source": "到期回调等待该路由执行结束后复核租约，旧回调不会删除续期或替换后的租约。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "502877a9131ddee6b91ec4ab1c4491fdbe310987f40fee776c6beb77a249ad69",
+      "translation": "The expiration callback waits for the execution of the route to finish before re-verifying the lease; old callbacks will not delete renewed or replaced leases.",
+      "updated_at": 1793334768
+    },
     "docs/hooks.md:list:557fc0dba2fa2cc07c31225c535e72b5ece69a29c698c09a33ff4779c215c840": {
       "kind": "list",
       "source": "若并发事件使多个 worker 同时竞争，最后写入者覆盖此前租约。",
@@ -351,6 +375,14 @@
       "source_hash": "6048f2efe3433aeca7ecc45449958097b9da6fa3dd4db369d90c5f76247f00ce",
       "translation": "Add a text segment when no text segment exists;",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:list:618b4023d218c820d4d352d288cb37ef521860f4ef0cacac7bee4af4c7e37bf7": {
+      "kind": "list",
+      "source": "到期释放租约并关闭所属 Transient Worker，Persistent Worker 保留进程。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "618b4023d218c820d4d352d288cb37ef521860f4ef0cacac7bee4af4c7e37bf7",
+      "translation": "Upon expiration, the lease is released and the associated Transient Worker is closed, while the Persistent Worker retains its process.",
+      "updated_at": 1793334768
     },
     "docs/hooks.md:list:6c2eaf42edef0b218ac26db77639fc568db36eb715d7beba122010a587d283e6": {
       "kind": "list",
@@ -400,13 +432,13 @@
       "translation": "Therefore, when multiple worker Hooks may match the same route, __ELBOT_CODE_0__, stricter conditions, or __ELBOT_CODE_1__ should be used to clarify ownership.",
       "updated_at": 1783825265
     },
-    "docs/hooks.md:list:96c3f65b3f393124a552737b60fdae39ebfe85c81026618d8b6bc4ff91f49b87": {
+    "docs/hooks.md:list:94259478b1f4b4f6eec86cc6a1ce95a55549853b528adb45215240d3e39a804c": {
       "kind": "list",
-      "source": "waiting 存在时，普通 __ELBOT_CODE_0__ 规则仍会先运行；worker trigger rule 不会再次触发。",
+      "source": "已经开始的续接由事件超时约束；",
       "source_file": "docs/hooks.md",
-      "source_hash": "96c3f65b3f393124a552737b60fdae39ebfe85c81026618d8b6bc4ff91f49b87",
-      "translation": "When waiting exists, ordinary __ELBOT_CODE_0__ rules will still run first; worker trigger rules will not be triggered again.",
-      "updated_at": 1783825265
+      "source_hash": "94259478b1f4b4f6eec86cc6a1ce95a55549853b528adb45215240d3e39a804c",
+      "translation": "Continuations that have already started are constrained by event timeouts;",
+      "updated_at": 1793334768
     },
     "docs/hooks.md:list:af2fb583dc8d03e89ea5e166754261d2a1d56e5546c01756bb6c559597d05958": {
       "kind": "list",
@@ -432,6 +464,22 @@
       "translation": "__ELBOT_CODE_0__, __ELBOT_CODE_1__, and __ELBOT_CODE_2__ are bound to the initial user message of this turn.",
       "updated_at": 1784466987
     },
+    "docs/hooks.md:list:ec71e81e47db0abbfc0f954feb2bf2c795b38a1141ba0e27e74bdd486b551f5a": {
+      "kind": "list",
+      "source": "waiting 存在时优先处理续接，续接放行后执行普通 __ELBOT_CODE_0__ 规则；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "ec71e81e47db0abbfc0f954feb2bf2c795b38a1141ba0e27e74bdd486b551f5a",
+      "translation": "When `waiting` exists, continuation is processed with priority; after continuation is allowed, ordinary __ELBOT_CODE_0__ rules are executed;",
+      "updated_at": 1793334768
+    },
+    "docs/hooks.md:list:f7621e5554dc7c5ddd8fc161f2d685e4bd2ec0a2d484ff73449a46a8e74403ab": {
+      "kind": "list",
+      "source": "对应 worker trigger rule 不会再次触发。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "f7621e5554dc7c5ddd8fc161f2d685e4bd2ec0a2d484ff73449a46a8e74403ab",
+      "translation": "The corresponding worker trigger rule will not be triggered again.",
+      "updated_at": 1793334768
+    },
     "docs/hooks.md:paragraph:002643c220b4a967c59decfa71cc0a8521cffd9952f1d78c0de24fef0152c713": {
       "kind": "paragraph",
       "source": "尝试改写会报错并停止该次 Hook，工具准备失败时以原 __ELBOT_CODE_0__ 返回错误结果。",
@@ -439,6 +487,14 @@
       "source_hash": "002643c220b4a967c59decfa71cc0a8521cffd9952f1d78c0de24fef0152c713",
       "translation": "Attempting to rewrite will result in an error and stop the current Hook; when tool preparation fails, the error result is returned using the original __ELBOT_CODE_0__.",
       "updated_at": 1791301786
+    },
+    "docs/hooks.md:paragraph:00d7fb378b4d7c68fed35bb0d4e71e23990d202aea323ecb0062a9f4aa082800": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 是事件已累积的输出快照，数组项使用 Go 导出的 JSON 字段名，例如 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__、__ELBOT_CODE_5__。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "00d7fb378b4d7c68fed35bb0d4e71e23990d202aea323ecb0062a9f4aa082800",
+      "translation": "__ELBOT_CODE_0__ is a snapshot of the accumulated output of the event; array items use the JSON field names exported by Go, such as __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, __ELBOT_CODE_4__, and __ELBOT_CODE_5__.",
+      "updated_at": 1793334768
     },
     "docs/hooks.md:paragraph:0111d6ae39b723fac26c08abced963f1d89aa7bc37bfc6c6fec9d290168665aa": {
       "kind": "paragraph",
@@ -520,13 +576,13 @@
       "translation": "Fields unrelated to the current Hook point will be zero values, empty objects, or omitted; plugins must handle them as nullable values.\n",
       "updated_at": 1783771179
     },
-    "docs/hooks.md:paragraph:0cd433944c50233b6ea36d832fdd127389c95a4697f0e2d4e912fc755ecf120e": {
+    "docs/hooks.md:paragraph:0feeca5eb71611b799df434f200f64f699910faa611312bffcf735e80b4b64c2": {
       "kind": "paragraph",
-      "source": "当前调用取消时会收到 __ELBOT_CODE_0__，Worker 进程本身保持运行。\n",
+      "source": "Worker Hook 可处理多次事件，并接收 __ELBOT_CODE_0__。",
       "source_file": "docs/hooks.md",
-      "source_hash": "0cd433944c50233b6ea36d832fdd127389c95a4697f0e2d4e912fc755ecf120e",
-      "translation": "When the current call is cancelled, __ELBOT_CODE_0__ will be received, and the Worker process itself remains running.\n",
-      "updated_at": 1786539358
+      "source_hash": "0feeca5eb71611b799df434f200f64f699910faa611312bffcf735e80b4b64c2",
+      "translation": "Worker Hooks can handle multiple events and receive __ELBOT_CODE_0__.",
+      "updated_at": 1793334768
     },
     "docs/hooks.md:paragraph:1047bb6cc155fe9c8200bdeb78b8f9fd931797f6de7cdc14ebc3dbb2680e0b69": {
       "kind": "paragraph",
@@ -622,14 +678,6 @@
       "source_file": "docs/hooks.md",
       "source_hash": "19ae69aaac3e9b5c7b426c4dd74374feddd7424cc5c53f4dcac607b4fba4edc6",
       "translation": "A single __ELBOT_CODE_0__ JSON Lines frame has a maximum size of 16 MiB; do not inline large data.\n",
-      "updated_at": 1784025692
-    },
-    "docs/hooks.md:paragraph:19b76200ac0350bf0d95017b0db83145b3f318019d2e0d4c0b01c7b15969ec00": {
-      "kind": "paragraph",
-      "source": "Persistent Worker 只接收取消通知并保留进程和内存。\n",
-      "source_file": "docs/hooks.md",
-      "source_hash": "19b76200ac0350bf0d95017b0db83145b3f318019d2e0d4c0b01c7b15969ec00",
-      "translation": "Persistent Worker only receives cancellation notifications and retains the process and memory.\n",
       "updated_at": 1784025692
     },
     "docs/hooks.md:paragraph:1ae9a8a5a273b42c6c5b50fe85b683f97db84bbf8c18c288ca6607571efc8abc": {
@@ -760,14 +808,6 @@
       "translation": "The key must be non-empty after trimming leading and trailing whitespace, with a maximum length of 256 bytes.",
       "updated_at": 1784025692
     },
-    "docs/hooks.md:paragraph:2799fcdafd945c3c733fdd8f2f40fe270a124ccd6ac62b17885f711c496cbfa5": {
-      "kind": "paragraph",
-      "source": "Worker Hook 可处理多次事件，并接收 __ELBOT_CODE_0__；",
-      "source_file": "docs/hooks.md",
-      "source_hash": "2799fcdafd945c3c733fdd8f2f40fe270a124ccd6ac62b17885f711c496cbfa5",
-      "translation": "Worker Hooks can handle multiple events and receive __ELBOT_CODE_0__;",
-      "updated_at": 1786539358
-    },
     "docs/hooks.md:paragraph:284365fb1f2218fd73ff9553e52c5d00d4f22a0ffef3314f34ee43fa3091beb8": {
       "kind": "paragraph",
       "source": "__ELBOT_CODE_0__ 保留平台归一化后的原始内容；处理文本指令时优先读取已去除唤醒前缀的 __ELBOT_CODE_1__，为空再拼接 text segments：\n",
@@ -831,6 +871,14 @@
       "source_hash": "2f5ecdf3c82de2bd458cdc6f8251dc1bb00abd94a3c179aab0cfc10f1886e62f",
       "translation": "Shared state is preserved across Hook restarts and __ELBOT_CODE_0__, and is cleared after ElBot restarts;",
       "updated_at": 1784025692
+    },
+    "docs/hooks.md:paragraph:311becc4607019fbc76f64b25a4ba093939dbec21321d74a1014c9d15ecfeaa4": {
+      "kind": "paragraph",
+      "source": "取消通知异步发送，不阻塞原调用返回；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "311becc4607019fbc76f64b25a4ba093939dbec21321d74a1014c9d15ecfeaa4",
+      "translation": "Cancellation notifications are sent asynchronously and do not block the return of the original call;",
+      "updated_at": 1793334768
     },
     "docs/hooks.md:paragraph:323689bda76703e89c1d54d42af6c52f25ece306b7565c23ec9a0cd2002e2c75": {
       "kind": "paragraph",
@@ -920,6 +968,22 @@
       "translation": "Plugin source code, __ELBOT_CODE_0__, and plugin private state files are placed in __ELBOT_CODE_1__.",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:paragraph:3ae4bb09e4ac2cbba76ee102b0e40c78705c8097c80dec8b85790959d23d90e0": {
+      "kind": "paragraph",
+      "source": "实际写入期间取消、超时或写入失败时，Host 会关闭该进程的 stdin 并结束其完整进程树，避免继续使用不完整的协议流。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "3ae4bb09e4ac2cbba76ee102b0e40c78705c8097c80dec8b85790959d23d90e0",
+      "translation": "If a cancellation, timeout, or write failure occurs during the actual writing process, the Host will close the stdin of that process and terminate its entire process tree to avoid continuing to use an incomplete protocol stream.",
+      "updated_at": 1793334768
+    },
+    "docs/hooks.md:paragraph:3b64f5ba33fbdea69d6d3b3fd8c85d975e3d5387d6acced506a7c12dff445933": {
+      "kind": "paragraph",
+      "source": "原生表情使用 __ELBOT_CODE_0__ 发送，可读内容只取必填的 __ELBOT_CODE_1__。纯文本展示时统一显示 __ELBOT_CODE_2__。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "3b64f5ba33fbdea69d6d3b3fd8c85d975e3d5387d6acced506a7c12dff445933",
+      "translation": "Native emojis are sent using __ELBOT_CODE_0__, and the readable content only takes the required __ELBOT_CODE_1__. When displayed as plain text, __ELBOT_CODE_2__ is shown uniformly.\n",
+      "updated_at": 1793334768
+    },
     "docs/hooks.md:paragraph:3e7993b42d99dce2595ceb41dc7f1cf2aa72c48a5a27d6de0aafd77570da1830": {
       "kind": "paragraph",
       "source": "Hook 返回处理结果：\n",
@@ -968,6 +1032,14 @@
       "translation": "The value must be valid JSON, with a maximum size of 1 MiB per value after compression;",
       "updated_at": 1784015429
     },
+    "docs/hooks.md:paragraph:446778fa59b855c109c107b641832f7991bf9ae1f781c0f1f1357c36c44247f6": {
+      "kind": "paragraph",
+      "source": "空 __ELBOT_CODE_0__ 表示立即发送，非 Hook 输出的来源字段为空。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "446778fa59b855c109c107b641832f7991bf9ae1f781c0f1f1357c36c44247f6",
+      "translation": "An empty __ELBOT_CODE_0__ indicates immediate sending; for non-Hook output, the source field is empty.",
+      "updated_at": 1793334768
+    },
     "docs/hooks.md:paragraph:45f1dadf7fbab9b7da3dd7a60fbf52c1eb5db314afe17245345f7ff18d01153b": {
       "kind": "paragraph",
       "source": "协议请求编码由客户端完成。\n",
@@ -991,6 +1063,14 @@
       "source_hash": "46a0db842885d6caf7c37a24302dd24e7f8e8ed62fd4007010ef9408bdbe5b4a",
       "translation": "Worker Hooks are declared by the plugin's own __ELBOT_CODE_0__.",
       "updated_at": 1784025692
+    },
+    "docs/hooks.md:paragraph:4a0e197a66414ed91d6fe7fc991378b0c1c3e39a79d8e07c6c4626d82b0a465c": {
+      "kind": "paragraph",
+      "source": "发送请求、等待响应和优雅退出共用一次 __ELBOT_CODE_0__ 预算，到期立即强制结束进程。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "4a0e197a66414ed91d6fe7fc991378b0c1c3e39a79d8e07c6c4626d82b0a465c",
+      "translation": "Sending requests, waiting for responses, and graceful shutdown share a single __ELBOT_CODE_0__ budget; the process is forcibly terminated immediately upon expiration.",
+      "updated_at": 1793334768
     },
     "docs/hooks.md:paragraph:4bea6bebb3bffb91d95ca85c53b3ebda365b48c0ebecc5facfb89803fb70147f": {
       "kind": "paragraph",
@@ -1032,6 +1112,14 @@
       "translation": "The __ELBOT_CODE_0__ of the response must be the same as the request.\n",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:paragraph:4dc2ee9c6c8b3f45d7ee7f81e759d96fd2f405c3de27403a31f2eadcdf3ac0f0": {
+      "kind": "paragraph",
+      "source": "停止时 Host 先请求 __ELBOT_CODE_0__；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "4dc2ee9c6c8b3f45d7ee7f81e759d96fd2f405c3de27403a31f2eadcdf3ac0f0",
+      "translation": "When stopping, the Host first requests __ELBOT_CODE_0__;",
+      "updated_at": 1793334768
+    },
     "docs/hooks.md:paragraph:4efee3b4e5b850ccbb9cebc67dd084c1e7ef78110cf31ef77a0475a2d63c4b26": {
       "kind": "paragraph",
       "source": "修改 Hook 环境文件后执行 __ELBOT_CODE_0__ 即可应用，并会按新环境重建 Worker。\n",
@@ -1071,6 +1159,14 @@
       "source_hash": "544b9b7d9b89dbd1e8f0abb001e23ca9e6d71f09b60c15992eb1dcee7874ebeb",
       "translation": "The configuration root __ELBOT_CODE_0__ will not inject Hooks.",
       "updated_at": 1784812467
+    },
+    "docs/hooks.md:paragraph:5455421bbdd8a8c1bd48bceaa65329c9fd118b8c5e5cae303c471e87fc75686e": {
+      "kind": "paragraph",
+      "source": "Persistent Worker 在没有协议写入故障时保留进程和内存。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "5455421bbdd8a8c1bd48bceaa65329c9fd118b8c5e5cae303c471e87fc75686e",
+      "translation": "Persistent Worker retains its process and memory provided there are no protocol write failures.",
+      "updated_at": 1793334768
     },
     "docs/hooks.md:paragraph:55578b40e72abf5c30e6cc6b5e1d07824f1367b5d6dc59adf4286fe6d2fd3ed0": {
       "kind": "paragraph",
@@ -1184,6 +1280,14 @@
       "translation": "The caller's identity is determined by the process, and it cannot reload other plugins;",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:paragraph:68fe982169950d17685be288b0ba513e8581bd1c1c13ab81ca836f34e902d66e": {
+      "kind": "paragraph",
+      "source": "续接的 __ELBOT_CODE_0__ 使用插件租约的 __ELBOT_CODE_1__，普通事件使用平台会话 ID，不改写事件原始上下文。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "68fe982169950d17685be288b0ba513e8581bd1c1c13ab81ca836f34e902d66e",
+      "translation": "Continued __ELBOT_CODE_0__ uses the plugin lease's __ELBOT_CODE_1__, while ordinary events use the platform Session ID and do not rewrite the original event context.",
+      "updated_at": 1793334768
+    },
     "docs/hooks.md:paragraph:6963456237fd510d7cd175eaafe92029140e5d3a256a4a1e4f66258072521e8a": {
       "kind": "paragraph",
       "source": "Host request ID 使用 __ELBOT_CODE_0__，Hook request ID 使用 __ELBOT_CODE_1__，response 必须复用 request ID。\n",
@@ -1288,6 +1392,14 @@
       "translation": "__ELBOT_CODE_0__ must be later than the current time, and the remaining time must not exceed __ELBOT_CODE_1__.",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:paragraph:73563b4a7f5b81867efb30dd59c4a3c7ad601aacf079cff7c5979322d4619a19": {
+      "kind": "paragraph",
+      "source": "__ELBOT_CODE_0__ 对象包含 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__：分别表示发送时机、来源 Hook 点、名称和执行模式；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "73563b4a7f5b81867efb30dd59c4a3c7ad601aacf079cff7c5979322d4619a19",
+      "translation": "The __ELBOT_CODE_0__ object contains __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, and __ELBOT_CODE_4__, representing the sending timing, source Hook point, name, and execution mode, respectively;",
+      "updated_at": 1793334768
+    },
     "docs/hooks.md:paragraph:736f6acee2dde258c0276ecaf271f94eb4eee4ce759915ae1999cc3fcff7806a": {
       "kind": "paragraph",
       "source": "根规则的阻断检查先于普通匹配和 action 执行，因此命中后不会启动 exec 进程；",
@@ -1311,6 +1423,14 @@
       "source_hash": "7451a127568b4908200123c53a074cb46e392eb672a1f6c3204291f890e77bbf",
       "translation": "__ELBOT_CODE_0__ field:\n",
       "updated_at": 1783392421
+    },
+    "docs/hooks.md:paragraph:745e81e810224a4d0b822d6d841b4e57c7c07b182e32900ed2b67846d068519a": {
+      "kind": "paragraph",
+      "source": "后台工具调用也受 runtime 关闭取消约束；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "745e81e810224a4d0b822d6d841b4e57c7c07b182e32900ed2b67846d068519a",
+      "translation": "Background tool calls are also constrained by the runtime closure cancellation;",
+      "updated_at": 1793334768
     },
     "docs/hooks.md:paragraph:746786d3fdedf442a5a5a16d7760e6983d223c64e8e494642c664ae363bd417c": {
       "kind": "paragraph",
@@ -1376,6 +1496,14 @@
       "translation": "__ELBOT_CODE_0__ does not expire by time;",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:paragraph:7a3d212ca7f8f85382e29bd9e12d9afcb5dc013907d110fd5ef14bae629416f7": {
+      "kind": "paragraph",
+      "source": "插件新增输出时仍使用“统一输出”章节的小写 segment 字段及组级 __ELBOT_CODE_0__、__ELBOT_CODE_1__。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "7a3d212ca7f8f85382e29bd9e12d9afcb5dc013907d110fd5ef14bae629416f7",
+      "translation": "When the plugin adds new output, it still uses the lowercase segment field and group-level __ELBOT_CODE_0__ and __ELBOT_CODE_1__ from the \"Unified Output\" section.\n",
+      "updated_at": 1793334768
+    },
     "docs/hooks.md:paragraph:7b36efcc3976703539ee3d8503cf7a3acbc17c5fa9a43e2980069db4bebe1fb8": {
       "kind": "paragraph",
       "source": "它不是插件目录，也不会被扫描。\n",
@@ -1391,6 +1519,14 @@
       "source_hash": "7b44e01416c52581ef6fb5b9d85226b510096337c2b8753e15b84b1fc8225c2f",
       "translation": "__ELBOT_CODE_0__ rules will skip directly when encountering awakened messages, without affecting subsequent plugins, commands, or the main LLM.\n",
       "updated_at": 1783912115
+    },
+    "docs/hooks.md:paragraph:7e2e75cafaf5a186eb515e927a43da8e2ab053c027fab9f0ccfbddd03302f346": {
+      "kind": "paragraph",
+      "source": "即使调用忽略取消，关闭等待超时也不会把它视为已经退出。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "7e2e75cafaf5a186eb515e927a43da8e2ab053c027fab9f0ccfbddd03302f346",
+      "translation": "Even if the call ignores the cancellation, a timeout during the close wait will not treat it as having exited.\n",
+      "updated_at": 1793334768
     },
     "docs/hooks.md:paragraph:7ee68c09489d22ef300dd710b01cfd55063538c852723d5c8bbe0da52ae6f4de": {
       "kind": "paragraph",
@@ -1455,6 +1591,14 @@
       "source_hash": "88e72920d61775f97e31fbdb846316dde9f03c024bd5bd4d2e2cc50aafc6338c",
       "translation": "When there is no origin in the background, the calling entity is __ELBOT_CODE_0__, and plugins should handle authorization with particular caution.\n",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:paragraph:892dbfab633517020850f44ac4cd7e725ab955f53ecb18674df41a2cca315520": {
+      "kind": "paragraph",
+      "source": "关闭调用返回超时不代表进程已退出。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "892dbfab633517020850f44ac4cd7e725ab955f53ecb18674df41a2cca315520",
+      "translation": "A timeout return from the close call does not mean the process has exited.\n",
+      "updated_at": 1793334768
     },
     "docs/hooks.md:paragraph:89c7985508128e014cf1d2454bb564d5ea50ecd8e5efc6552845d626e9bc1a22": {
       "kind": "paragraph",
@@ -1527,6 +1671,14 @@
       "source_hash": "9178157061863fe641d8fd580222c368cd4b8815a6e154e3c6edf61c63f964b2",
       "translation": "Responses continue the chain with native records, and requests only send new inputs and tool results.",
       "updated_at": 1791301786
+    },
+    "docs/hooks.md:paragraph:93ff4947d8da295356ea6e5b4f8e848f71fd978e2748f5b3a653d318e4791a40": {
+      "kind": "paragraph",
+      "source": "强杀后的实际退出另有有界等待；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "93ff4947d8da295356ea6e5b4f8e848f71fd978e2748f5b3a653d318e4791a40",
+      "translation": "The actual exit after a forced kill has a separate bounded wait;",
+      "updated_at": 1793334768
     },
     "docs/hooks.md:paragraph:97d54f103a29f122174bec87135f8d77b051f49c265a948063c6a5b49ad79c82": {
       "kind": "paragraph",
@@ -1776,6 +1928,14 @@
       "translation": "A one-time exec Hook exits after processing a single event;",
       "updated_at": 1784025692
     },
+    "docs/hooks.md:paragraph:b5cffaac7b8c14185f38d7486cd26691ea691c7c86ba40b4d22b4f46b5a2f336": {
+      "kind": "paragraph",
+      "source": "取消通知和插件响应的协议发送受 runtime 关闭取消及 __ELBOT_CODE_0__ 约束。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "b5cffaac7b8c14185f38d7486cd26691ea691c7c86ba40b4d22b4f46b5a2f336",
+      "translation": "The protocol transmission of cancellation notifications and plugin responses is constrained by the runtime closure cancellation and __ELBOT_CODE_0__.",
+      "updated_at": 1793334768
+    },
     "docs/hooks.md:paragraph:b60c33c968e10f1152043bda6cc03f83ffbc1ff5168346029a42c808525ce1db": {
       "kind": "paragraph",
       "source": "Hook 工具调用不会写入 Agent Session。\n",
@@ -1799,6 +1959,14 @@
       "source_hash": "b6ff4576549e53039ef4ac152f763deedbb9a41a6563adfd796edf35926adf00",
       "translation": "__ELBOT_CODE_0__ is a non-empty argv array: the first element is the program, and the remaining elements are passed as arguments as-is;",
       "updated_at": 1784027267
+    },
+    "docs/hooks.md:paragraph:b7f3846253e956a956435bf9b9b14d9db7af3c34a2d8205e4b4586a15812ecec": {
+      "kind": "paragraph",
+      "source": "等待写权限也可取消，不影响占用写权限的调用。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "b7f3846253e956a956435bf9b9b14d9db7af3c34a2d8205e4b4586a15812ecec",
+      "translation": "Waiting for write permissions can also be cancelled, which does not affect calls that already hold write permissions.\n",
+      "updated_at": 1793334768
     },
     "docs/hooks.md:paragraph:b92eb66a81c86f0491485b0863ae3a3e1f3ac1044c1c2b176c7bb401c4b7e3f8": {
       "kind": "paragraph",
@@ -1928,6 +2096,22 @@
       "translation": "__ELBOT_CODE_0__ does not create a worker and does not require other runtime fields.\n",
       "updated_at": 1783825265
     },
+    "docs/hooks.md:paragraph:c635601748ddeade987fc0cc06aaf7fe4155debb4a8e77b485f72d20df5828bf": {
+      "kind": "paragraph",
+      "source": "协议帧完整发送后等待响应时，普通取消会异步尝试发送 __ELBOT_CODE_0__，Persistent Worker 保持运行；",
+      "source_file": "docs/hooks.md",
+      "source_hash": "c635601748ddeade987fc0cc06aaf7fe4155debb4a8e77b485f72d20df5828bf",
+      "translation": "When waiting for a response after a protocol frame has been fully sent, a normal cancellation will asynchronously attempt to send __ELBOT_CODE_0__, and the Persistent Worker will remain running;",
+      "updated_at": 1793334768
+    },
+    "docs/hooks.md:paragraph:c6c8a75a65acb6995aea380c8d275c55fc2296c66eeae6a7aac75ffa76109543": {
+      "kind": "paragraph",
+      "source": "Host 关闭 Hook runtime 时停止接纳新的插件请求和取消通知，撤销 waiting 定时器，取消在途工具调用，并等待进程、插件请求、已登记的通知与定时回调、重载和资源清理实际结束。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "c6c8a75a65acb6995aea380c8d275c55fc2296c66eeae6a7aac75ffa76109543",
+      "translation": "When the Host closes the Hook runtime, it stops accepting new plugin requests and cancellation notifications, revokes waiting timers, cancels in-flight tool calls, and waits for the actual completion of processes, plugin requests, registered notifications and timed callbacks, reloads, and resource cleanup.",
+      "updated_at": 1793334768
+    },
     "docs/hooks.md:paragraph:c72cb5c57edd916181c06675ce779b6ddf3cb73a145e2ef29c703c6073f2bea5": {
       "kind": "paragraph",
       "source": "省略时沿用当前事件。",
@@ -1935,14 +2119,6 @@
       "source_hash": "c72cb5c57edd916181c06675ce779b6ddf3cb73a145e2ef29c703c6073f2bea5",
       "translation": "If omitted, the current event is used.",
       "updated_at": 1784025692
-    },
-    "docs/hooks.md:paragraph:c845375650fb802d1965c3b2a8f5e9e32881779b857af2f9678e743771e6975f": {
-      "kind": "paragraph",
-      "source": "停止时 Host 先请求 __ELBOT_CODE_0__，超过关闭超时才强制结束进程。\n",
-      "source_file": "docs/hooks.md",
-      "source_hash": "c845375650fb802d1965c3b2a8f5e9e32881779b857af2f9678e743771e6975f",
-      "translation": "When stopping, the Host first requests __ELBOT_CODE_0__, and the process is forcibly terminated only after the shutdown timeout is exceeded.\n",
-      "updated_at": 1783771179
     },
     "docs/hooks.md:paragraph:c8675a087c53bcfaa09283de44aa7af12af46c9e79c61e62ebbc4218d94cb371": {
       "kind": "paragraph",
@@ -2015,6 +2191,14 @@
       "source_hash": "da4652e1a525a9a5f49efc3d0ec239599f11327705c4054371b00f855daffd87",
       "translation": "__ELBOT_CODE_0__ is the business work context, containing system, historical messages, current messages, and tool messages, but it is read-only for ordinary Hooks.",
       "updated_at": 1791301786
+    },
+    "docs/hooks.md:paragraph:dc752646dd2ec071d184d0746627bf1e0982dc1a3bcf6fb41cc28995412edd9b": {
+      "kind": "paragraph",
+      "source": "若通知自身写入阻塞直至超时，同样按协议写入故障结束该进程。\n",
+      "source_file": "docs/hooks.md",
+      "source_hash": "dc752646dd2ec071d184d0746627bf1e0982dc1a3bcf6fb41cc28995412edd9b",
+      "translation": "If the notification write itself blocks until timeout, the process will be terminated by writing a failure according to the protocol.\n",
+      "updated_at": 1793334768
     },
     "docs/hooks.md:paragraph:dc82b9d8562b4beb20f9c4faada0cb78fb82758c46ff6db55c52b08e62622008": {
       "kind": "paragraph",
@@ -2776,6 +2960,14 @@
       "translation": "LLM message array; non-LLM context is usually empty.",
       "updated_at": 1783771179
     },
+    "docs/hooks.md:table:64ce4e7b8f87daaa683d6acc264c889219c10260a0fedc1d7ce1ef676ca4a6b6": {
+      "kind": "table",
+      "source": "图片、文件或语音的显示名；__ELBOT_CODE_0__ 必填的非空表情名称。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "64ce4e7b8f87daaa683d6acc264c889219c10260a0fedc1d7ce1ef676ca4a6b6",
+      "translation": "Display name for images, files, or voice messages; for __ELBOT_CODE_0__, a required non-empty emoji name.",
+      "updated_at": 1793334768
+    },
     "docs/hooks.md:table:6572c38d6c3415454eebc106c7f530f8d09eefcd9b10600af3806505d8a21e0f": {
       "kind": "table",
       "source": "当前规则名；规则无名称时使用 action 名。",
@@ -2807,14 +2999,6 @@
       "source_hash": "6c1111b839208b814e23b4ed0707bf20414cb1ecaf2fa5bea726a0b1e5e5b964",
       "translation": "The same priority is executed stably according to the loading order: root rules, __ELBOT_CODE_0__ declaration order, and the order of rules within each plugin.",
       "updated_at": 1783771179
-    },
-    "docs/hooks.md:table:6c6504e8fd528dd956038b3ca564d4cfd61194457f1b828f4eef6f3e155b7a77": {
-      "kind": "table",
-      "source": "文本、媒体 fallback、回复正文或原生表情 fallback。",
-      "source_file": "docs/hooks.md",
-      "source_hash": "6c6504e8fd528dd956038b3ca564d4cfd61194457f1b828f4eef6f3e155b7a77",
-      "translation": "Text, media fallback, reply body, or native emoji fallback.",
-      "updated_at": 1783853279
     },
     "docs/hooks.md:table:6e17f8123e58f7a6bc34355529e217c61af753b3a7988ac758781400027b6c6d": {
       "kind": "table",
@@ -3496,14 +3680,6 @@
       "translation": "__ELBOT_CODE_0__ (default), __ELBOT_CODE_1__, or __ELBOT_CODE_2__.",
       "updated_at": 1783825265
     },
-    "docs/hooks.md:table:ddedf0798b2e49154b5ef829b4590a95bbb210e3baa781f090fec8e75893678a": {
-      "kind": "table",
-      "source": "图片、文件或语音的显示名和 MIME 类型；__ELBOT_CODE_0__ 也可作为原生表情的可读名称。",
-      "source_file": "docs/hooks.md",
-      "source_hash": "ddedf0798b2e49154b5ef829b4590a95bbb210e3baa781f090fec8e75893678a",
-      "translation": "The display name and MIME type of images, files, or voice messages; __ELBOT_CODE_0__ can also serve as the readable name for native emojis.",
-      "updated_at": 1784611260
-    },
     "docs/hooks.md:table:df3e06b3faeef6880dae2e520eec5462872249b3a2b5d5a0bc05106ba95ca0c6": {
       "kind": "table",
       "source": "__ELBOT_CODE_0__；只返回名称、MIME 和大小等安全元数据。",
@@ -3567,6 +3743,22 @@
       "source_hash": "ef00bf15982334816fa61bf0345fb4d5696f420d96d0bfa8f757252a857a440d",
       "translation": "Completely stop distributing events from the specified platform, such as __ELBOT_CODE_0__.",
       "updated_at": 1783771179
+    },
+    "docs/hooks.md:table:f0aed3c1d2ff0891043242fd5010675b387bb9893ecd8f90715d3a97f0f87918": {
+      "kind": "table",
+      "source": "文本、媒体 fallback 或回复正文。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "f0aed3c1d2ff0891043242fd5010675b387bb9893ecd8f90715d3a97f0f87918",
+      "translation": "Text, media fallback, or reply body.",
+      "updated_at": 1793334768
+    },
+    "docs/hooks.md:table:f127c70a731b8913b2597ae2637ee19f1f773eee412194364c2f4857aa59f728": {
+      "kind": "table",
+      "source": "图片、文件或语音的 MIME 类型。",
+      "source_file": "docs/hooks.md",
+      "source_hash": "f127c70a731b8913b2597ae2637ee19f1f773eee412194364c2f4857aa59f728",
+      "translation": "MIME type for images, files, or voice messages.",
+      "updated_at": 1793334768
     },
     "docs/hooks.md:table:f13751cb854ca1d3919954f2a480f916e8ca690d2e2643f3a54669dab086602b": {
       "kind": "table",
@@ -3634,8 +3826,8 @@
     }
   },
   "source": "docs/hooks.md",
-  "source_hash": "519e312429c6bd6771e4f6cb7d653b75d35c24288ce7505145274272e32809ef",
+  "source_hash": "1b250c86ad42472db6b0f17ac0fc4e3e97c24538b5739da6c605ad9a9b418e2a",
   "target": "docs.en/hooks.md",
-  "updated_at": 1791856849,
+  "updated_at": 1793334768,
   "version": 2
 }

@@ -268,6 +268,7 @@ outputs = [
   { kind = "text", text = "检测到关键词" },
   { kind = "image", path = "assets/alert.png", name = "alert.png" },
   { kind = "record", path = "assets/alert.mp3", name = "alert.mp3" },
+  { kind = "emoticon", emoticon_id = "14", name = "微笑" },
   { kind = "at", user_id = "10001" },
   { kind = "reply", message_id = "456", text = "引用回复" },
 ]
@@ -288,12 +289,15 @@ Process Hook responses and `output.send` use the same structure:
 | Field | Description |
 | --- | --- |
 | `kind` | `text`, `image`, `file`, `record`, `emoticon`, `at`, `reply`; default is `text`. |
-| `text` | Text, media fallback, reply body, or native emoji fallback. |
+| `text` | Text, media fallback, or reply body. |
 | `url` / `path` / `base64` | One and only one source must be selected from `image`, `file`, or `record`. The full value of any field can be filled with `media:<sha256>`, which is resolved by the Host at the sending boundary; Otherwise, `url` accepts HTTP(S), `path` is resolved as a file system path relative to the plugin directory, and `base64` has a maximum size of 10 MiB after decoding. |
-| `name` / `mime_type` | The display name and MIME type of images, files, or voice messages; `name` can also serve as the readable name for native emojis. |
+| `name` | Display name for images, files, or voice messages; for `emoticon`, a required non-empty emoji name. |
+| `mime_type` | MIME type for images, files, or voice messages. |
 | `user_id` | Non-empty platform user ID of `kind = "at"`. |
 | `message_id` | Non-empty platform message ID of `kind = "reply"`. |
 | `emoticon_id` | Non-empty platform native emoji or sticker ID of `kind = "emoticon"`; native emojis do not accept media sources. |
+
+Native emojis are sent using `emoticon_id`, and the readable content only takes the required `name`. When displayed as plain text, `[表情: 名称]` is shown uniformly.
 
 `outputs` is a group of segments for a single message. Sending multiple messages requires multiple `send` actions or multiple `output.send`.
 
@@ -317,7 +321,7 @@ Relative media paths are resolved based on the plugin directory of the declared 
 
 Process Hook uses `hook.v2` JSON Lines. one JSON frame per line for stdin and stdout; stdout can only be used to write the protocol; logs should be written to stderr. Host request ID uses `host:*`, Hook request ID uses `plugin:*`, and the response must reuse the request ID.
 
-The Host first sends `system.init`, and then sends `event.handle` upon success. A one-time exec Hook exits after processing a single event; When the request is `/stop`, timed out, or the upstream context is cancelled, the Host will terminate the complete process tree of that exec. Worker Hooks can handle multiple events and receive `system.shutdown`; When the current call is cancelled, `event.cancel` will be received, and the Worker process itself remains running.
+The Host first sends `system.init`, and then sends `event.handle` upon success. A one-time exec Hook exits after processing a single event; When the request is `/stop`, timed out, or the upstream context is cancelled, the Host will terminate the complete process tree of that exec. Worker Hooks can handle multiple events and receive `system.shutdown`. When waiting for a response after a protocol frame has been fully sent, a normal cancellation will asynchronously attempt to send `event.cancel`, and the Persistent Worker will remain running; If a cancellation, timeout, or write failure occurs during the actual writing process, the Host will close the stdin of that process and terminate its entire process tree to avoid continuing to use an incomplete protocol stream. Waiting for write permissions can also be cancelled, which does not affect calls that already hold write permissions.
 
 ### Complete Interaction Example
 
@@ -563,7 +567,9 @@ All rules within the plugin (including exec actions), Worker triggers, and waiti
 
 Worker trigger rule reuses the matching, role, priority, `wakeup`, `consume`, and `stop_propagation` of the rule Hook; Configuring `action` or `actions` will result in a validation failure. When `pass_through` is omitted, the two control fields in the rule are used.
 
-Worker status is `starting`, `ready`, `running`, `degraded`, `stopping`, `stopped`, or `failed`. When stopping, the Host first requests `system.shutdown`, and the process is forcibly terminated only after the shutdown timeout is exceeded.
+Worker status is `starting`, `ready`, `running`, `degraded`, `stopping`, `stopped`, or `failed`. When stopping, the Host first requests `system.shutdown`; Sending requests, waiting for responses, and graceful shutdown share a single `shutdown_timeout_seconds` budget; the process is forcibly terminated immediately upon expiration. The actual exit after a forced kill has a separate bounded wait; A timeout return from the close call does not mean the process has exited.
+
+When the Host closes the Hook runtime, it stops accepting new plugin requests and cancellation notifications, revokes waiting timers, cancels in-flight tool calls, and waits for the actual completion of processes, plugin requests, registered notifications and timed callbacks, reloads, and resource cleanup. The protocol transmission of cancellation notifications and plugin responses is constrained by the runtime closure cancellation and `event_timeout_seconds`. Background tool calls are also constrained by the runtime closure cancellation; Even if the call ignores the cancellation, a timeout during the close wait will not treat it as having exited.
 
 ### Waiting, Concurrency, and Cancellation
 
@@ -572,13 +578,15 @@ Return `status = "waiting"`, `conversation_id`, and `expires_at` when continuing
 The same `platform + scope_id + actor.id` is executed serially within the same worker, while different routes can be executed in parallel. The waiting lease also uses this triplet as the key:
 
 - In normal serial distribution, the first worker to return `waiting` holds the route, and subsequent worker trigger rules will no longer distribute this route. Ensuring that only one lease is stored per route; If concurrent events cause multiple workers to compete simultaneously, the last writer overrides the previous lease. Therefore, when multiple worker Hooks may match the same route, `priority`, stricter conditions, or `stop_propagation` should be used to clarify ownership.
-- When waiting exists, ordinary `platform.message.received` rules will still run first; worker trigger rules will not be triggered again.
+- When `waiting` exists, continuation is processed with priority; after continuation is allowed, ordinary `platform.message.received` rules are executed; The corresponding worker trigger rule will not be triggered again.
 - The Host first routes subsequent messages to the Hook holding the lease via `continuation = true`; When the plugin returns `pass_through = true`, propagation continues from subsequent rules, and can finally enter a command or the main LLM.
 - After the continuation is released, the plugin that just finished waiting will not be re-triggered by the same message.
+- Log results of the continuation and subsequent ordinary rules are aggregated in execution order; if subsequent rules are not matched or succeed, they will not override the previous failure or cancellation results of the continuation.
 - After the continuation returns `completed` or omits `status`, the Host immediately releases the lease; For transient workers, the process is closed simultaneously. Returning `waiting` again will renew it with a new ID and expiration time.
+- `waiting` expires actively via a one-time timer, without requiring a new message or route query to trigger it. Upon expiration, the lease is released and the associated Transient Worker is closed, while the Persistent Worker retains its process. Continuations that have already started are constrained by event timeouts; The expiration callback waits for the execution of the route to finish before re-verifying the lease; old callbacks will not delete renewed or replaced leases.
 - Blocking strategy hits, worker exits, stops, or reloads will clear the plugin lease.
 
-When the user sends the exact `/cancel`, the Host cancels the current execution or waiting Session of the route and closes the Transient Worker; Persistent Worker only receives cancellation notifications and retains the process and memory.
+When the user sends the exact `/cancel`, the Host cancels the current execution or waiting Session of the route and closes the Transient Worker; Persistent Worker retains its process and memory provided there are no protocol write failures. Continued `event.cancel` uses the plugin lease's `conversation_id`, while ordinary events use the platform Session ID and do not rewrite the original event context. Cancellation notifications are sent asynchronously and do not block the return of the original call; If the notification write itself blocks until timeout, the process will be terminated by writing a failure according to the protocol.
 
 ```json
 {"type":"event","method":"event.cancel","params":{"conversation_id":"weather-42"}}
@@ -671,6 +679,8 @@ The first call where the trigger rule has already matched usually does not requi
 `llm` contains `provider`, `model`, `messages`, `tools`, `usage`, `source_text`, `text`, `tool_calls`, `elapsed_ms`. Among them, nested `messages`, `tool_calls`, `usage` follow the JSON names exported by Go: `Role/Segments/Name/ToolCallID/ToolCalls`, `ID/Name/Arguments`, `PromptTokens/CompletionTokens/TotalTokens/CacheHitTokens`.
 
 `tool` contains `id`, `name`, `arguments` (JSON string), `risk`, `result`, `error`. The prepared stage primarily provides `id/name/arguments`; The completed stage also provides `risk/result/error`, and the full content of the corresponding tool message is located in `message.segments`.
+
+`event.outputs` is a snapshot of the accumulated output of the event; array items use the JSON field names exported by Go, such as `Kind`, `Text`, `Name`, `EmoticonID`, and `Delivery`. The `Delivery` object contains `Timing`, `HookPoint`, `HookName`, and `HookMode`, representing the sending timing, source Hook point, name, and execution mode, respectively; An empty `Timing` indicates immediate sending; for non-Hook output, the source field is empty. When the plugin adds new output, it still uses the lowercase segment field and group-level `target` and `timing` from the "Unified Output" section.
 
 Text fields that can be used in `if`, `match.field`, and templates:
 
