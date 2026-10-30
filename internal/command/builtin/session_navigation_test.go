@@ -96,7 +96,7 @@ func TestResumeAndForkTruncateHistoryWithoutChangingMessages(t *testing.T) {
 		Store:    store,
 		Scope:    func(context.Context) session.Scope { return scope },
 	}
-	wantHistory := "user: " + strings.Repeat("中😀", 100) + "...\nassistant: " + strings.Repeat("中😀", 100) + "..."
+	wantHistory := "user: " + strings.Repeat("中😀", 100) + "...\nbot: " + strings.Repeat("中😀", 100) + "..."
 	for _, tc := range []struct {
 		name    string
 		handler command.Handler
@@ -118,8 +118,8 @@ func TestResumeAndForkTruncateHistoryWithoutChangingMessages(t *testing.T) {
 				if err != nil {
 					t.Fatalf("get message: %v", err)
 				}
-				if stored.Content != original {
-					t.Fatalf("stored message changed: %q", stored.Content)
+				if stored.Content != original || stored.Role != message.Role {
+					t.Fatalf("stored message changed: %+v", stored)
 				}
 			}
 		})
@@ -357,7 +357,7 @@ func TestForkMessagesUseForkContextAndForkShowsHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fork handle: %v", err)
 	}
-	if !strings.Contains(forkResult.Content, "assistant:") || !strings.Contains(forkResult.Content, "这是可以 fork 的回复") {
+	if !strings.Contains(forkResult.Content, "bot:") || !strings.Contains(forkResult.Content, "这是可以 fork 的回复") {
 		t.Fatalf("fork result = %q", forkResult.Content)
 	}
 

@@ -292,7 +292,7 @@ func formatUsageSummary(entries []logging.LogEntry, query logging.LogQuery, grou
 	rangeDesc := usageRangeDesc(query)
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("usage · %s · by=%s\n", rangeDesc, groupBy))
+	sb.WriteString(fmt.Sprintf("usage: %s · by=%s\n", rangeDesc, groupBy))
 	for _, key := range order {
 		b := buckets[key]
 		formatUsageBucket(&sb, key, b)

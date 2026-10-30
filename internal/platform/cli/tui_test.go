@@ -96,7 +96,7 @@ func TestTUIInputSeparatorTruncatesShortcutsWhenNarrow(t *testing.T) {
 	if got := lipgloss.Width(view); got != m.width {
 		t.Fatalf("toolbar width = %d, want %d: %q", got, m.width, view)
 	}
-	if !strings.Contains(view, "…") || !strings.HasSuffix(view, "Ctrl+C exit") {
+	if !strings.Contains(view, "…") || !strings.HasSuffix(view, "Ctrl+C: exit") {
 		t.Fatalf("shortcuts were not left-truncated: %q", view)
 	}
 	if strings.Count(view, "─") < 8 {
@@ -106,11 +106,11 @@ func TestTUIInputSeparatorTruncatesShortcutsWhenNarrow(t *testing.T) {
 
 func TestTUIStatusCopyHintMatchesNoticePanel(t *testing.T) {
 	narrow := tuiModel{width: 80}.inputSeparatorView()
-	if !strings.Contains(narrow, "Alt+h copy") || strings.Contains(narrow, "Alt+h/l copy") {
+	if !strings.Contains(narrow, "Alt+h: copy") || strings.Contains(narrow, "Alt+h/l: copy") {
 		t.Fatalf("narrow status hint = %q", narrow)
 	}
 	wide := tuiModel{width: 120}.inputSeparatorView()
-	if !strings.Contains(wide, "Alt+h/l copy") {
+	if !strings.Contains(wide, "Alt+h/l: copy") {
 		t.Fatalf("wide status hint = %q", wide)
 	}
 }

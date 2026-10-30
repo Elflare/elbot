@@ -37,7 +37,7 @@ func (h helpCommand) Handle(ctx context.Context, req command.Request) (*command.
 	actor, _ := contextinfo.ActorFromContext(ctx)
 	for _, info := range h.deps.Router.CommandsForActor(actor) {
 		usage := h.deps.CommandText(info.Name, info.Args)
-		sb.WriteString(fmt.Sprintf("%s · %s\n", usage, info.Description))
+		sb.WriteString(fmt.Sprintf("%s: %s\n", usage, info.Description))
 	}
 	sb.WriteString("\n" + h.deps.CommandText("help", "<command>"))
 	return &command.Result{Content: sb.String()}, nil

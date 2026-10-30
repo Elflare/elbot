@@ -462,9 +462,9 @@ func (m tuiModel) inputSeparatorView() string {
 
 func (m tuiModel) inputShortcutText() string {
 	if _, noticeWidth := m.layoutWidths(); noticeWidth > 0 {
-		return "Alt+h/l copy · Esc clear · Ctrl+C exit"
+		return "Alt+h/l: copy · Esc: clear · Ctrl+C: exit"
 	}
-	return "Alt+h copy · Esc clear · Ctrl+C exit"
+	return "Alt+h: copy · Esc: clear · Ctrl+C: exit"
 }
 
 func truncateLeftDisplayWidth(text string, width int) string {

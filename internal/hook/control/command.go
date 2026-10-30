@@ -217,7 +217,7 @@ func formatHookReloadResult(report share.ReloadReport) string {
 		return "hooks reloaded"
 	}
 	var sb strings.Builder
-	sb.WriteString("hooks reloaded · warn:\n")
+	sb.WriteString("hooks reloaded\nwarn:\n")
 	for _, notice := range report.Notices {
 		notice = strings.TrimSpace(notice)
 		if notice == "" {

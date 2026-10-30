@@ -178,9 +178,9 @@ func (m tuiModel) updateCopySearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m tuiModel) copyStatusText() string {
 	if m.copyState.Mode == modeCopySearch {
-		return "SEARCH " + regionName(m.copyState.Region) + " /" + m.copyState.SearchInput + " · Enter jump · Esc cancel"
+		return "SEARCH " + regionName(m.copyState.Region) + " /" + m.copyState.SearchInput + " · Enter: jump · Esc: cancel"
 	}
-	status := strings.ToUpper(modeName(m.copyState.Mode)) + " " + regionName(m.copyState.Region) + " · hjkl/w e b move · v/V select · y copy · / search · i input · Esc"
+	status := strings.ToUpper(modeName(m.copyState.Mode)) + " " + regionName(m.copyState.Region) + " · hjkl/w e b: move · v/V: select · y: copy · /: search · i: input · Esc"
 	if m.copyState.Status != "" {
 		status += " · " + m.copyState.Status
 	}

@@ -58,29 +58,19 @@ ELNIS_HOME_TOKEN=change-me
 
 配置说明：
 
-- `enabled=false` 时不启动 Elnis HTTP runtime。
-- `elbot cli` 是 CLI-only 模式，即使 `enabled=true` 也不会启动 Elnis HTTP runtime；需要接收 Elvena 事件时请使用 `elbot run` 或 `elbot service run`。
-- 当前 `targets=[{"platform":"cli"}]` 只适用于 Elnis 与 CLI 同处一个 `elbot run` 前台进程，或 service 模式启用 CLI 远程服务端的场景；独立 `elbot cli` 进程需连接服务端后才能收到通知。
-- token 原文不写入配置，推荐放在系统环境变量或配置目录 `.env`。
-- `token_env` 可以写多个环境变量名，按顺序尝试。
-- Elwisp 默认启用；没写 `[elwisps.<name>]`、写了但没写 `enabled`、或写了 `enabled=true` 都会接收。
-- 只有显式 `enabled=false` 才会禁用对应 Elwisp。
-- `allowed_tokens` 限制哪些 token 可以代表该 Elwisp 投递事件；不写则允许任意已认证 token。
-- 顶层 `allowed_tools` 是 ElBot 内部工具默认白名单，单个 Elwisp 的 `allowed_tools` 存在时覆盖它。
-- 外部工具默认允许；单个 Elwisp 可以用 `disabled_external_tools` 禁用指定外部工具。
-- Elnis 默认允许投递；只有 `[delivery_disabled].targets` 或单 Elwisp `disabled_targets` 显式列出的目标会被禁止。
-- HTTP 超时配置小于等于 0 时使用上述安全默认值，不能用 0 关闭超时。
-- 非 loopback 地址应放在反向代理后，由代理负责 TLS、连接上限和请求速率限制；应用层超时不能代替这些边界。
+- **启动条件**：`enabled=false` 时不启动 Elnis HTTP runtime。
+- `elbot client` 是 CLI-only 模式，即使 `enabled=true` 也不启动 Elnis HTTP runtime；需要接收事件时用 `elbot run` 或 `elbot service run`。
+- `targets=[{"platform":"cli"}]` 只在两种情况生效：Elnis 与 CLI 同处一个 `elbot run` 前台进程，或 service 模式启用了 CLI 远程服务端。独立 `elbot client` 进程需连接服务端后才能收到通知。
+- **token**：原文不写入配置，放系统环境变量或配置目录 `.env`；`token_env` 支持多个变量名按顺序尝试；`allowed_tokens` 限制哪些 token 可代表该 Elwisp 投递，不写则允许任意已认证 token。
+- **Elwisp 启用**：默认启用。没写 `[elwisps.<name>]`、写了没写 `enabled`、或写了 `enabled=true` 都会接收；只有显式 `enabled=false` 才禁用。
+- **工具白名单**：顶层 `allowed_tools` 是 ElBot 内部工具的默认白名单，单个 Elwisp 的 `allowed_tools` 存在时覆盖它；外部工具默认允许，单个 Elwisp 可用 `disabled_external_tools` 禁用指定项。
+- **投递**：默认允许，只有 `[delivery_disabled].targets` 或单 Elwisp `disabled_targets` 显式列出的目标会被禁止。
+- **超时**：小于等于 0 时使用上述安全默认值，不能用 0 关闭。
+- **暴露**：非 loopback 地址应放在反向代理后，由代理负责 TLS、连接上限和请求速率限制；应用层超时不能代替这些边界。
 
-如果想让 ElBot 帮你生成 Elwisp 监听器，可以在 work 模式下向超级管理员会话提出需求，例如：
+需要 ElBot 生成 Elwisp 时，在 work 模式的超级管理员会话里提出需求即可，例如 `@tool:elwisp_creator 帮我创建一个监听 RSS 更新并通过 Elnis 投递摘要的 Elwisp`。
 
-```text
-@tool:elwisp_creator 帮我创建一个监听 RSS 更新并通过 Elnis 投递摘要的 Elwisp
-```
-
-`elwisp_creator` 会提供协议说明、配置片段、事件模板、代码脚手架和测试命令；真正写文件或运行命令仍会继续使用对应工具。
-
-启动 ElBot 后，可以用 curl 测试一个 `direct` 事件：
+启动后可用 curl 测试一个 `direct` 事件：
 
 ```bash
 curl -sS http://127.0.0.1:32170/elvena/v3/events \
@@ -98,7 +88,7 @@ curl -sS http://127.0.0.1:32170/elvena/v3/events \
   }'
 ```
 
-如果同一个 `elwisp.name + source + id` 再次发送，Elnis 会返回 duplicate，不重复分发。
+同一个 `elwisp.name + source + id` 再次发送会返回 duplicate，不重复分发。
 
 ## Elvena 请求示例
 

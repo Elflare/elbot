@@ -53,8 +53,8 @@ func NewStatus(deps Deps) command.Handler {
 %s · %s/%s · msgs=%d
 %screated=%s
 updated=%s
-u: %s
-b: %s
+user: %s
+bot: %s
 %sphase=%s · pending=%s
 %s
 %s`, s.ID, s.Title, s.Mode, currentModel.Provider, currentModel.Model, status.MessageCount, indentStatusBlock(pinned+archived), formatTime(s.CreatedAt), formatTime(s.UpdatedAt), emptyTODO(sessionStatusPreview(status.LastUserContent)), emptyTODO(sessionStatusPreview(status.LastAnswerContent)), indentStatusBlock(active), turnSnapshot.Phase, pendingInput, formatToolUsage(ctx, deps, s.ID, turnSnapshot.Tools), formatContextStatus(ctx, deps, s, currentModel))}, nil

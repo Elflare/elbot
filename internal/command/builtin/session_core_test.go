@@ -69,7 +69,7 @@ func TestStatusSessionMarkers(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, want := range []string{row.ID, "status test", "requests:", "[1] chat · turn"} {
+			for _, want := range []string{row.ID, "status test", "requests:", "[1] chat · turn", "user: nil", "bot: nil"} {
 				if !strings.Contains(result.Content, want) {
 					t.Fatalf("status missing %q:\n%s", want, result.Content)
 				}
@@ -96,16 +96,16 @@ func TestFormatTimeForDisplay(t *testing.T) {
 }
 
 func TestFormatSessionsPageShowsNextCommand(t *testing.T) {
-	content := formatSessionsPage([]storage.SessionSummary{{ID: "s1", Title: "one", UpdatedAt: time.Date(2026, 1, 1, 1, 2, 3, 0, time.UTC)}}, "", 1, "foo", true, testCommandText, "sessions")
-	if !strings.Contains(content, "page=1") || !strings.Contains(content, "next: /sessions 2 foo") {
+	content := formatSessionsPage([]storage.SessionSummary{{ID: "s1", Title: "one", UpdatedAt: time.Date(2026, 1, 1, 1, 2, 3, 0, time.UTC), Messages: []storage.Message{{Role: storage.RoleUser, Content: "question"}, {Role: storage.RoleAssistant, Content: "answer"}}}}, "", 1, "foo", true, testCommandText, "sessions")
+	if !strings.Contains(content, "page=1") || !strings.Contains(content, "next: /sessions 2 foo") || !strings.Contains(content, "user: question / bot: answer") {
 		t.Fatalf("content = %q", content)
 	}
-	resume := formatSessionsPage([]storage.SessionSummary{{ID: "s1", Title: "one", UpdatedAt: time.Date(2026, 1, 1, 1, 2, 3, 0, time.UTC)}}, "", 2, "", false, testCommandText, "resume")
-	if !strings.Contains(resume, "prev: /resume --page 1") {
+	resume := formatSessionsPage([]storage.SessionSummary{{ID: "s1", Title: "one", UpdatedAt: time.Date(2026, 1, 1, 1, 2, 3, 0, time.UTC), Messages: []storage.Message{{Role: storage.RoleUser, Content: "question"}, {Role: storage.RoleAssistant, Content: "answer"}}}}, "", 2, "", false, testCommandText, "resume")
+	if !strings.Contains(resume, "prev: /resume --page 1") || !strings.Contains(resume, "user: question / bot: answer") {
 		t.Fatalf("resume content = %q", resume)
 	}
-	resumable := formatResumableSessionsPage([]storage.SessionSummary{{ID: "s11", Title: "eleven"}}, 2, 10, false, testCommandText)
-	if !strings.Contains(resumable, "[11] eleven") || !strings.Contains(resumable, "prev: /resume --page 1") {
+	resumable := formatResumableSessionsPage([]storage.SessionSummary{{ID: "s11", Title: "eleven", Messages: []storage.Message{{Role: storage.RoleUser, Content: "question"}, {Role: storage.RoleAssistant, Content: "answer"}}}}, 2, 10, false, testCommandText)
+	if !strings.Contains(resumable, "[11] eleven") || !strings.Contains(resumable, "prev: /resume --page 1") || !strings.Contains(resumable, "user: question / bot: answer") {
 		t.Fatalf("resumable content = %q", resumable)
 	}
 }

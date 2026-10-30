@@ -164,7 +164,7 @@ func TestHooksReloadShowsWarnings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "hooks reloaded · warn:") || !strings.Contains(result.Content, "gpt_image") {
+	if !strings.Contains(result.Content, "hooks reloaded\nwarn:") || !strings.Contains(result.Content, "gpt_image") {
 		t.Fatalf("reload content = %q", result.Content)
 	}
 }

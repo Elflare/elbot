@@ -74,6 +74,7 @@ func TestUsageDefaultQueryByModel(t *testing.T) {
 		t.Fatalf("query = %#v", service.query)
 	}
 	for _, want := range []string{
+		"usage: 1d · by=model",
 		"by=model",
 		"[deepseek/deepseek-v4] calls: 2",
 		"prompt: 1,800 | completion: 300 | total: 2,100",

@@ -30,7 +30,7 @@ func modelCommandInfo() command.Info {
 		Name:        "model",
 		Args:        "[--chat|--work|--elwisp1|--elwisp2|--elwisp3|--compact|--naming] <name or number>",
 		Description: "切换模型",
-		Help:        "省略目标=当前模式；模型=编号、名称或 provider/model。\n--compact 压缩 · --naming 命名 · --elwisp1/2/3 Elnis 槽位",
+		Help:        "省略目标=当前模式；模型=编号、名称或 provider/model。\n--compact: 压缩 · --naming: 命名 · --elwisp1/2/3: Elnis 槽位",
 	}
 }
 

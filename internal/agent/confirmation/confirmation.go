@@ -301,7 +301,7 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 		for _, cmd := range riskConfirmationCommands() {
 			actions = append(actions, delivery.Action{ID: cmd.Name, Label: cmd.Description, Command: c.commandText(cmd.Name)})
 		}
-		if _, logResult, err := c.output.SendAssistant(ctx, fmt.Sprintf("%s [%s] · confirm\n%s%s\n\n%s", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout, c.commandText)), actions...); err != nil {
+		if _, logResult, err := c.output.SendAssistant(ctx, fmt.Sprintf("%s [%s]: confirm\n%s%s\n\n%s", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout, c.commandText)), actions...); err != nil {
 			resultStatus, level := logResult.ResultStatus, slog.LevelError
 			if resultStatus == events.ResultCanceled {
 				level = slog.LevelInfo

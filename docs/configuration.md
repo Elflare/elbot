@@ -511,7 +511,7 @@ default_context_window = 256000
 prefixes = ["/"]
 ```
 
-默认使用 `/`。如果要支持其他命令前缀，可以在这里添加。
+默认 `/`，需要其他前缀时在此添加。
 
 ## 工具与安全
 
@@ -530,22 +530,14 @@ superadmin_confirm_risk = "high"
 cli = ["local"]
 ```
 
-- 普通用户只能发现和调用允许风险范围内的工具；工具通过权限校验后，`high`/`critical` 风险调用还需要当前用户确认。
-- `OwnerScoped` 工具只能访问调用者自己的数据，因此普通用户可以调用；其中 `high`/`critical` 风险操作仍需本人确认。
-- 超级管理员的确认阈值由 `superadmin_confirm_risk` 配置。
+- 普通用户只能发现和调用允许风险范围内的工具；通过权限校验后，`high` / `critical` 风险调用还需当前用户确认。
+- `OwnerScoped` 工具只能访问调用者自己的数据，因此普通用户可调用；其中 `high` / `critical` 操作仍需本人确认。
+- 超管的确认阈值由 `superadmin_confirm_risk` 配置。
 - CLI 默认本地用户 `local` 是超级管理员。
-- `tool_tags.toml` 用来配置 `@tool:<tag>` 可注入的工具组，以及 tag 激活后追加到 system prompt 的工具使用策略。
 
 ### `tool_tags.toml`
 
-`tool_tags.toml` 是独立配置文件，路径由 `[config_files].tool_tags` 指定。相对路径以 `app.toml` 所在目录为基准：
-
-```toml
-[config_files]
-tool_tags = "tool_tags.toml"
-```
-
-文件格式以 tag 为入口：
+独立配置文件，路径由 `[config_files].tool_tags` 指定，相对 `app.toml` 所在目录：
 
 ```toml
 [tags.agent]
@@ -561,83 +553,36 @@ MUST:
 """
 ```
 
-字段说明：
+| 字段 | 说明 |
+| --- | --- |
+| `[tags.<tag-name>]` | 定义一个 tag，例如 `[tags.agent]` 对应 `@tool:agent` / `@t:agent`。 |
+| `tools` | 该 tag 预载的工具名列表；必须是已注册且当前用户有权访问的工具。 |
+| `prompt` | tag 激活后追加到 system prompt 的工具使用策略；直接给模型看，不自动加 tag 标题。 |
 
-- `[tags.<tag-name>]`：定义一个可在聊天里使用的 tag，例如 `[tags.agent]` 对应 `@tool:agent` 或简写 `@t:agent`。
-- `tools`：这个 tag 会预载的工具名列表。工具名必须是已注册且当前用户有权限访问的工具。
-- `prompt`：这个 tag 成功激活后追加到 system prompt 的工具使用策略。内容会直接给模型看，不会自动添加 tag 名标题。
+使用：`@tool:agent 帮我检查这个项目的问题`（或 `@t:agent`）会把 `agent` 下的工具预载到当前 Session；`prompt` 非空时从本轮起追加到 system prompt。
 
-使用方式：
-
-```text
-@tool:agent 帮我检查这个项目的问题
-@t:agent 帮我检查这个项目的问题
-```
-
-这会把 `agent` 下配置的工具预载到当前 Session。如果 `prompt` 非空，也会从本轮开始追加到 system prompt。
-
-注意事项：
-
-- 配置 tag 会追加到内置 tag，不覆盖内置 tag。
-- 只有 `@tool:<tag>` 或 `@t:<tag>` 成功命中至少一个工具后，当前 Session 才会激活该 tag 的 prompt。
-- 直接 `@tool:<tool-name>` 或 `@t:<tool-name>` 只预载指定工具，不激活 tag prompt。
-- 激活的 tag 会写入 Session metadata，`/resume` 后仍生效。
-- prompt 文本从 `tool_tags.toml` 动态读取；文件变更后影响后续请求，行为类似 `SOUL.md`。
-- 重复预载已经存在的工具时不会重复添加，平台会提示 `已存在工具：<name>`。
-- 建议把 `prompt` 写成具体工具使用策略，不要写“当前 tag 是 xxx”这类模型不需要知道的配置机制。
+- 配置 tag 追加到内置 tag，不覆盖。
+- 只有 `@tool:<tag>` 命中至少一个工具后，本 Session 才激活该 tag 的 prompt。
+- 直接 `@tool:<tool-name>` 只预载指定工具，不激活 tag prompt。
+- 激活的 tag 写入 Session metadata，`/resume` 后仍生效。
+- `prompt` 每次从文件动态读取，变更影响后续请求（类似 `SOUL.md`）。
+- 重复预载已存在的工具不会重复添加，平台提示 `已存在工具：<name>`。
+- `prompt` 应写具体工具使用策略，不要写“当前 tag 是 xxx”这类模型无需知道的配置机制。
 
 ## Elnis 监听枢纽
 
-Elnis 默认关闭。启用后，ElBot 会启动本地 HTTP ingress，接收 Elwisp 按 Elvena 协议投递的事件。Elnis 配置建议拆到独立 `elnis.toml`，`app.toml` 只保留入口路径。
+Elnis 默认关闭；启用后 ElBot 启动本地 HTTP ingress，接收 Elwisp 按 Elvena 协议投递的事件。配置建议拆到独立 `elnis.toml`，`app.toml` 只保留入口：
 
 ```toml
 [config_files]
 elnis = "elnis.toml"
-
-# elnis.toml
-enabled = true
-allowed_tools = ["shell", "web_search"]
-
-[http]
-addr = "127.0.0.1:32170"
-max_body_bytes = 1048576
-queue_size = 128
-workers = 2
-
-[tokens.home]
-token_env = ["ELNIS_HOME_TOKEN", "ELNIS_HOME_TOKEN_ALT"]
-
-[delivery_disabled]
-targets = [
-  # { platform = "telegram" },
-  # { platform = "telegram", type = "private", id = "123456789" },
-  # { platform = "qqonebot", type = "group", id = "987654321" },
-]
-
-[elwisps.server-watchdog]
-allowed_tokens = ["home"]
-allowed_tools = ["shell"]
-disabled_external_tools = ["danger_tool"]
-disabled_targets = [
-  # { platform = "qqonebot", type = "group", id = "987654321" },
-]
 ```
 
-说明：
+- 内部工具白名单、外部工具开关、投递禁用、token、Elwisp 策略均在 `elnis.toml` 中配置。
+- 日志只记录 token name，不写 token 原文。
+- 支持 `record`、`direct`、`llm` 三种模式；`llm` 可用 `model_slot` 选 `elwisp1/2/3`，未配置时回退 `work`。
 
-- `allowed_tools` 是 Elnis 内部工具白名单；未单独配置的 Elwisp 继承全局默认。
-- 单个 Elwisp 若配置 `allowed_tools`，会覆盖全局默认。
-- 外部工具默认允许；只有单个 Elwisp 配置 `disabled_external_tools` 时才禁用指定外部工具。
-- Elnis 投递默认允许；`[delivery_disabled].targets` 和单 Elwisp `disabled_targets` 用于显式禁止平台、私聊或群聊，配置中的 platform-only 表示禁用整个平台所有投递。
-- Elnis 日志只记录 token name，不记录 token 原文。
-- `token_env` 支持写成列表，按顺序尝试多个环境变量名；适合临时切换 token 或做多环境兼容。
-- Elwisp 默认启用；只有显式配置 `enabled=false` 才会禁用对应 Elwisp。
-- 当前支持 `record`、`direct` 和 `llm` 模式；`llm` 模式使用后台 Session runner 执行。
-- `llm` 模式可在 Elvena 请求中指定 `model_slot` 为 `elwisp1`、`elwisp2` 或 `elwisp3`；未指定或对应槽位未配置时回退到 `work` 模型。
-- `direct` 和 `llm` 报告只支持按 Elnis 裁决后的平台发送给 superadmins，不支持任意 user/group 目标。
-- Elvena 请求中的 `tools` 进入校验、持久化和执行链路；外部工具名仍需由单个 Elwisp 的禁用列表控制。
-
-更多说明见 [Elnis 配置与使用](elnis-usage.md)。
+完整字段、示例与安全边界见 [Elnis 配置与使用](elnis-usage.md)。
 
 ## 平台配置
 
@@ -648,9 +593,9 @@ CLI 默认启用：
 enabled = true
 ```
 
-QQ 官方机器人、QQ OneBot 和 Telegram 配置在示例中默认注释。启用时需要补齐平台自己的认证信息和触发关键词。媒体在实际处理时按 `[platform_files]` 限制下载。
+QQ 官方机器人、QQ OneBot 和 Telegram 在默认示例中是注释状态，启用时需补齐各自认证信息和触发关键词。媒体按 `[platform_files]` 限制下载。
 
-QQ 官方机器人最小配置示例：
+### QQ 官方机器人
 
 ```toml
 [platform.qqofficial]
@@ -660,35 +605,34 @@ client_secret_env = "QQOFFICIAL_CLIENT_SECRET"
 trigger_keywords = ["bot"]
 ```
 
-对应的配置目录 `.env`：
-
 ```dotenv
 QQOFFICIAL_CLIENT_SECRET=your-client-secret
 ```
 
-`client_secret_env` 指向保存 Client Secret 的环境变量名；也可以用 `client_secret` 直接写入配置，但不建议提交真实 Secret。
+- `client_secret_env` 指向保存 Client Secret 的环境变量名；也可用 `client_secret` 直接写入，但不建议提交真实 Secret。
+- 处理私聊、群内 @ 和平台实际下发的普通群消息。
+- 群聊沿用统一唤醒规则：slash 命令、`trigger_keywords`、@ 机器人或引用机器人的历史回复触发响应；未触发的普通群消息仍写入聊天历史。
+- 普通群消息是否下发取决于 QQ 开放平台为机器人启用的群消息能力。
 
-QQ 官方机器人会处理私聊、群内 @ 和平台实际下发的普通群消息。群聊沿用统一唤醒规则：slash 命令、`trigger_keywords`、@ 机器人或引用机器人的历史回复会触发响应；未触发的普通群消息仍会写入聊天历史。普通群消息是否下发取决于 QQ 开放平台为机器人启用的群消息能力。
-
-QQ OneBot 最小配置示例：
+### QQ OneBot
 
 ```toml
 [platform.qqonebot]
 enabled = true
 ws_url = "ws://127.0.0.1:6700/"
 access_token_env = "QQONEBOT_ACCESS_TOKEN"
-api_timeout_seconds = 15 # OneBot 写入和响应等待的基础超时
+api_timeout_seconds = 15 # 写入与响应等待的基础超时
 trigger_keywords = ["bot"]
-send_file_mode = "base64" # 本地图片、文件、语音默认用 base64；共享文件系统可改为 file_uri
+send_file_mode = "base64" # 本地图片/文件/语音默认 base64；共享文件系统可用 file_uri
 ```
 
-`access_token_env` 指向保存 Access Token 的环境变量名；原有 `access_token` 仍然兼容且优先于 `access_token_env`。OneBot 不要求鉴权时，两项都可省略。
+- `access_token_env` 指向保存 Access Token 的环境变量名；原 `access_token` 仍兼容且优先。不要求鉴权时两项均可省略。
+- `send_file_mode` 同时控制本地图片、文件和 `record` 语音的发送：`base64` 适用于不共享文件系统的部署，`file_uri` 仅适用于双方能访问同一路径。
+- `api_timeout_seconds` 分别作用于帧写入和 API 响应等待。大帧按编码后大小每完整 1 MiB 加 1 秒，最多加到基础超时本身；写入失败或超时后 ElBot 断开重连，避免一次慢发送占住后续消息。发送仍同步等待平台回执。
 
-`send_file_mode` 同时控制 QQ OneBot 本地图片、文件和 `record` 语音的发送方式。`base64` 适用于 ElBot 与 OneBot 不共享文件系统的部署；`file_uri` 仅适用于双方能访问同一本地路径的场景。
+### Telegram
 
-`api_timeout_seconds` 分别作为 OneBot 帧写入和 API 响应等待的基础超时。大帧写入会按编码后大小每完整 1 MiB 增加 1 秒，最多增加到基础超时本身；写入失败或超时后 ElBot 会断开并重连 OneBot，避免一个慢发送长期占住后续消息。发送仍会同步等待平台回执。
-
-Telegram 使用 Bot API long polling。最小配置示例：
+使用 Bot API long polling。
 
 ```toml
 [security.superadmins]
@@ -704,48 +648,41 @@ format = "html" # html/plain/rich
 stream_edit_interval_milliseconds = 250
 ```
 
-说明：
+| `format` | 行为 |
+| --- | --- |
+| `html`（默认） | 普通 `sendMessage` + `parse_mode="HTML"`，把常见 Markdown 轻量转为 HTML；支持标题、引用、分割线、代码块和表格的可读渲染。 |
+| `plain` | 关闭格式化，只发纯文本。 |
+| `rich` | 实验：用 `sendRichMessage` / 私聊 `sendRichMessageDraft`；部分客户端可能看不到。 |
 
-- `bot_token_env` 指向保存 Bot Token 的环境变量名；也可以用 `bot_token` 直接写入配置，但不建议提交真实 token。
-- `proxy_url_env` 指向保存代理地址的环境变量名；也可以用 `proxy_url` 直接写入配置。代理地址示例：`http://127.0.0.1:7890`、`socks5://127.0.0.1:1080`。
-- `format="html"` 是默认值：使用普通 `sendMessage` + `parse_mode="HTML"`，并把常见 Markdown 轻量转换成 Telegram HTML；支持标题、引用、分割线、代码块和表格的可读渲染。
-- `format="plain"` 关闭格式化，只发送纯文本。
-- `format="rich"` 是实验模式：使用 `sendRichMessage` / 私聊 `sendRichMessageDraft`；部分客户端可能无法查看 Rich Message。
-- `stream_edit_interval_milliseconds` 控制流式刷新节流间隔，默认 250ms，避免触发平台限频。
-- 启动连接成功后，ElBot 会把内置 slash 命令同步到 Telegram bot 命令菜单；只同步主命令名，不同步 alias。
-- 群聊/超级群组中，命令前缀、触发关键词、`@bot_username` 或回复 bot 消息都会触发处理。私聊默认处理。
-- 高风险工具确认消息会附带 Telegram inline keyboard，点击按钮会转换为 `/confirm`、`/reject` 等现有确认命令。
-- `security.superadmins.telegram` 填 Telegram 用户 ID 或可直接发送的私聊 chat ID，用于超级管理员权限与通知投递。
-
+- `bot_token_env` / `proxy_url_env` 指向环境变量名，也可用 `bot_token` / `proxy_url` 直接写入（不建议提交真实值）。代理示例：`http://127.0.0.1:7890`、`socks5://127.0.0.1:1080`。
+- `stream_edit_interval_milliseconds`：流式刷新节流间隔，默认 250ms，避免触发平台限频。
+- 连接成功后会把内置 slash 命令同步到 bot 命令菜单，只同步主命令名、不同步 alias。
+- 群聊/超级群组中，命令前缀、触发关键词、`@bot_username` 或回复 bot 消息都会触发处理；私聊默认处理。
+- 高风险工具确认消息附带 inline keyboard，点击会转为 `/confirm`、`/reject` 等现有确认命令。
+- `security.superadmins.telegram` 填 Telegram 用户 ID 或可直接发送的私聊 chat ID，用于超管权限与通知投递。
 
 ## 插件和 Hook 配置
 
 插件配置固定放在配置目录的 `plugins/` 下：
 
-- `plugins/hooks.toml`：规则 Hook 配置。
-- `plugins/<plugin-id>/hook.toml`：被 `hooks.toml` 引用的插件 Hook；可包含 `[plugin.runtime]` 持久运行配置。
-- `plugins/_shared/`：ElBot 创建的跨 Hook 文件协作目录，不作为插件扫描。
+| 路径 | 作用 |
+| --- | --- |
+| `plugins/hooks.toml` | 规则 Hook 配置。 |
+| `plugins/<plugin-id>/hook.toml` | 被 `hooks.toml` 引用的插件 Hook，可含 `[plugin.runtime]` 持久运行配置。 |
+| `plugins/_shared/` | ElBot 创建的跨 Hook 文件协作目录，不作插件扫描。 |
 
-Hook 不要直接发平台消息，应返回输出意图，由 Agent 统一交给 Output Manager 发送。
-
-规则与持久 Hook 的完整配置说明见 [Hook](hooks.md)。
+Hook 不要直接发平台消息，应返回输出意图，由 Agent 统一交给 Output Manager 发送。完整配置见 [Hook](hooks.md)。
 
 ## 配置诊断
 
-超级管理员可以在聊天窗口执行 `/doctor`。命令只读检查当前服务实际使用的主配置及其 `config_files` 指向的分离配置，支持自定义主配置文件名、相对路径和绝对路径；`SOUL.md` 按 `soul.path` 定位。
+超级管理员可在聊天窗口执行 `/doctor`，只读检查当前服务实际使用的主配置及其 `config_files` 指向的分离配置（支持自定义主配置文件名、相对/绝对路径；`SOUL.md` 按 `soul.path` 定位）。
 
 检查范围：
 
-- 对默认资产清单中的文件检查是否缺失。
-- 对配置 TOML 检查格式、重复定义和字段类型；内置 Skill 的 `ELBOT_SKILL.toml` 检查 TOML 格式。
-- `app.toml` 会检查未知字段置
-- 内置 `SKILL.md` 及配套 `ELBOT_SKILL.toml` 检查内容差异；用户自己添加的 Skill 不参与比较。
+- 默认资产清单中的文件是否缺失。
+- 配置 TOML 的格式、重复定义和字段类型；`app.toml` 另外检查未知字段。
+- 内置 Skill 的 `ELBOT_SKILL.toml` 的 TOML 格式。
+- 内置 `SKILL.md` 及配套 `ELBOT_SKILL.toml` 的内容差异；用户自己添加的 Skill 不参与比较。
 - SOUL、记忆和环境文件只检查存在性。
 
-`/doctor` 只在已启动的聊天服务中可用。如果配置错误导致 ElBot 无法启动，需要先根据启动输出修正错误。
-
-## 建议的维护方式
-
-- 用户可编辑配置集中放在平台配置目录，避免直接改源码示例。
-- 新增配置项时同步更新本文档。
-- 改变默认路径或启动行为时同步更新 [快速开始](getting-started.md) 和 README。
+`/doctor` 只在已启动的聊天服务中可用。配置错误导致无法启动时，需先按启动输出修正。

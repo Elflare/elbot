@@ -69,7 +69,7 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 	}
 	if err != nil {
 		if errors.Is(err, session.ErrSessionBusy) {
-			err = fmt.Errorf("%w · 等待或先 %s", err, c.deps.CommandText("stop"))
+			err = fmt.Errorf("%w，请等待完成，或先用 %s 停止任务。", err, c.deps.CommandText("stop"))
 		}
 		return &command.Result{Content: fmt.Sprintf("rollback: %v\n%s", err, c.deps.CommandText("rollback"))}, nil
 	}
@@ -112,7 +112,7 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 	}
 	if err != nil {
 		if errors.Is(err, session.ErrSessionBusy) {
-			err = fmt.Errorf("%w · 等待或先 %s", err, c.deps.CommandText("stop"))
+			err = fmt.Errorf("%w，请等待完成，或先用 %s 停止任务。", err, c.deps.CommandText("stop"))
 		}
 		return &command.Result{Content: fmt.Sprintf("rollback: %v\n%s", err, c.deps.CommandText("rollback"))}, nil
 	}

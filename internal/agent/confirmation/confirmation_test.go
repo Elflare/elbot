@@ -157,7 +157,7 @@ func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
 		}
 		actions := <-output.sent
 		text := <-output.texts
-		if !strings.Contains(text, "!c 本次") || !strings.Contains(text, "!detail 重置计时") || strings.Contains(text, "/confirm") {
+		if !strings.Contains(text, "shell [high]: confirm") || !strings.Contains(text, "!c: 本次") || !strings.Contains(text, "!detail: 重置计时") || strings.Contains(text, "/confirm") {
 			t.Fatal(text)
 		}
 		want := []string{"detail", "confirm", "confirmtool", "confirmall", "reject", "stop"}

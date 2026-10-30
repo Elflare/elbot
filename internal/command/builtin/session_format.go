@@ -128,7 +128,11 @@ func appendRecentMessages(sb *strings.Builder, ctx context.Context, deps Deps, s
 		return
 	}
 	for _, message := range history {
-		sb.WriteString(fmt.Sprintf("%s: %s\n", message.Role, previewContent(message.Content)))
+		role := message.Role
+		if role == storage.RoleAssistant {
+			role = "bot"
+		}
+		sb.WriteString(fmt.Sprintf("%s: %s\n", role, previewContent(message.Content)))
 	}
 }
 
@@ -280,9 +284,9 @@ func sessionMessagePreview(messages []storage.Message) string {
 		if len(runes) > 24 {
 			content = string(runes[:24]) + "..."
 		}
-		role := "u"
+		role := "user"
 		if message.Role == storage.RoleAssistant {
-			role = "b"
+			role = "bot"
 		}
 		parts = append(parts, role+": "+content)
 	}

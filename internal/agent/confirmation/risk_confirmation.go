@@ -41,7 +41,7 @@ func riskConfirmationCommandHelp(commandText func(string, ...string) string) str
 				name = alias
 			}
 		}
-		parts = append(parts, commandText(name, cmd.Args)+" "+cmd.Description)
+		parts = append(parts, commandText(name, cmd.Args)+": "+cmd.Description)
 	}
 	return strings.Join(parts, " · ")
 }
@@ -49,7 +49,7 @@ func riskConfirmationCommandHelp(commandText func(string, ...string) string) str
 func riskConfirmationPromptText(timeout time.Duration, commandText func(string, ...string) string) string {
 	text := riskConfirmationCommandHelp(commandText)
 	if timeout > 0 {
-		text += fmt.Sprintf("\nidle=%s → stop · %s 重置计时", agentshare.ConfirmationWaitDurationText(timeout), commandText("detail"))
+		text += fmt.Sprintf("\nidle=%s → stop · %s: 重置计时", agentshare.ConfirmationWaitDurationText(timeout), commandText("detail"))
 	}
 	return text
 }

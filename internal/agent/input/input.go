@@ -60,7 +60,7 @@ func (c *InputCoordinator) HandleInput(ctx context.Context, text string) error {
 	ctx, session, err := c.execution.ResolveInput(ctx, text)
 	if err != nil {
 		if errors.Is(err, sessionpkg.ErrSessionBusy) {
-			_, err = globalevents.NotificationRequested.Emit(sessionpkg.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelWarn, fmt.Sprintf("%v · 等待或先 %s", err, c.commandText("stop"))))
+			_, err = globalevents.NotificationRequested.Emit(sessionpkg.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelWarn, fmt.Sprintf("%v，请等待完成，或先用 %s 停止任务。", err, c.commandText("stop"))))
 		} else if ctx.Err() == nil && !errors.Is(err, agentshare.ErrSessionBindingChanged) {
 			agentshare.ReportFailure(ctx, "", fmt.Errorf("准备会话: %w", err), c.output.Notify)
 		}
@@ -101,7 +101,7 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 		return c.output.SendChat(ctx, fmt.Sprintf("%v · 等待或 %s", err, c.commandText("stop")))
 	}
 	if errors.Is(err, agentshare.ErrInputArchived) {
-		return c.output.SendChat(ctx, fmt.Sprintf("%v · %s 后继续", err, c.commandText("unarchive")))
+		return c.output.SendChat(ctx, fmt.Sprintf("%v · %s 后可继续", err, c.commandText("unarchive")))
 	}
 	if err != nil {
 		if ctx.Err() == nil && !errors.Is(err, agentshare.ErrSessionBindingChanged) {

@@ -47,7 +47,7 @@ func TestCommandsUseConfiguredPrefixInsteadOfRequestPrefix(t *testing.T) {
 	}
 	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	for _, tc := range []struct{ input, want string }{
-		{"!!help", "!stop [request_id|number]"},
+		{"!!help", "!stop [request_id|number]: 停止请求"},
 		{"!!help model", "!model [--chat"},
 		{"!!tools remove echo", "!tools remove echo --confirm"},
 		{"!!doctor invalid", "usage: !doctor"},
